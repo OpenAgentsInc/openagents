@@ -1,0 +1,10 @@
+{
+  "winner": 20,
+  "engine": "claude-opus-5-5",
+  "preset": "Veyr v2: permanent lore plus per-encounter state",
+  "native_winner": 11,
+  "best_weight_only": 3,
+  "review_sha256": "8e88ed6739066421aaee11ffe8ce73ee84541199576d5a7a6da4bc2d19d7934c",
+  "development_only": true,
+  "held_opened": false
+}

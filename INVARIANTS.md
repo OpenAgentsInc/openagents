@@ -4155,3 +4155,10 @@ quality authority or automatic promotion. Same-digest carried observations
 are explicitly identified and never counted as new trials. Scoring, finite
 worksheet success and chapter-241 independent qualification stay distinct.
 Evidence: `docs/verification/psionic-ch255-2026-11-02.md`.
+
+The later Verse-dialogue study uses the same boundary for 32 final-MLP
+expert-bias windows, restoring the complete original bias tensor before
+each candidate upload. Its recorded dialogue and model-critic preferences
+grant no game-state authority or serving promotion. Fixed-prefix numerical
+equivalence, original parity, no-op/restoration and failures are recorded in
+`docs/verification/verse-villain-2026-11-02.md`.

@@ -1,0 +1,40 @@
+#load "../lib/villain-dialogue.coax";
+#load "../lib/gptoss/weights.coax";
+#load "../lib/harmony/admission.coax";
+#load "../../coax/lib/sys/fs.coax";
+VW_ROOT :: "psionic/fixtures/verse-villain/";
+VwData :: struct {model:[32]u8;shard:[32]u8;bias:[184320]u8;norm:[5760]u8;direction:[2880]f64;}
+VwCandidate :: struct {bytes:[184320]u8;digest:[32]u8;windows:[32][32]u8;base:[32][32]u8;changed:int;norm2:f64;alpha:f64;}
+vw_path :: (stem:string,id:int,suffix:string,out:[]u8)->string {j:[1]Jo;b:[64]u8;jo_start(j[..],b[..]);jo_int(j[..],id);n:=0;for part:[4]string.[VW_ROOT,stem,jo_text(j[..]),suffix] {for c:part {out[n]=c;n+=1;}}return cast(string)out[0..<n];}
+vw_hex :: (d:[32]u8,b:[]u8)->string {hex:="0123456789abcdef";for i:0..<32 {b[2*i]=hex[d[i]>>4];b[2*i+1]=hex[d[i]&15];}return cast(string)b[0..<64];}
+vw_float :: (v:f64,b:[]u8)->string {hex:="0123456789abcdef";bits:=f64_bits(v);for i:0..<16 {b[i]=hex[cast(int)((bits>>cast(u64)(60-4*i))&15)];}return cast(string)b[0..<16];}
+vw_unhex :: (s:string)->[32]u8 {r:[32]u8;#assert s.count==64;for i:0..<64 {c:=s[i];v:=ifx c<=57 then cast(int)c-48 else cast(int)c-87;#assert v>=0 && v<16;r[i/2]=r[i/2]*16+cast(u8)v;}return r;}
+vw_model :: ()->VwData {
+    d:VwData;pins:[10]GArtifact;specs:[543]GSpec;p:=g_profile(0,2048,pins[..],specs[..]);d.shard=vw_unhex(p.pins[2].sha);
+    b:[4096]u8;n:=we_text(b[..],0,"original-edit-model-v1");n=we_text(b[..],n,"openai/gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee");n=we_text(b[..],n,"gpt-oss-metal-f32-ff-v1");n=we_text(b[..],n,HS_TABLE_SHA);
+    for pin:p.pins {n=we_text(b[..],n,pin.name);n=we_word(b[..],n,cast(u64)pin.bytes);n=we_text(b[..],n,pin.sha);}#assert sha256_hash_checked(b[0..<n],d.model[..],false)==SHA_OK;return d;
+}
+vw_load :: ()->VwData {
+    d:=vw_model();#assert fs_read("psionic/fixtures/verse-villain/original-bias.bf16",d.bias[..])==184320 && fs_read("psionic/fixtures/verse-villain/original-norm.bf16",d.norm[..])==5760;
+    for which:0..<6 {path:[1024]u8;a:[11520]u8;b:[11520]u8;#assert fs_read(vw_path("capture/",which,"-0.f32",path[..]),a[..])==11520 && fs_read(vw_path("capture/",which,"-11.f32",path[..]),b[..])==11520;for i:0..<2880 {d.direction[i]+=(ow_value(b[..],i,OwType.f32)-ow_value(a[..],i,OwType.f32))/6;}}return d;
+}
+vw_window :: (d:VwData,row:int)->OwWindow {return OwWindow.{model=d.model,shard=d.shard,name="block.23.mlp.mlp2_bias",rows=32,cols=2880,first=row*2880,count=2880};}
+vw_candidate :: (id:int,d:VwData)->VwCandidate {
+    c:VwCandidate;if id==3 {c.alpha=0.25;}if id==4 || id==7 {c.alpha=0.5;}if id==5 || id==6 {c.alpha=1;}
+    bias:=d.bias;direction:=d.direction;
+    for row:0..<32 {source:=bias[row*5760..<(row+1)*5760];w:=vw_window(d,row);base:=ow_identity(w,source);#assert base.status==OwStatus.ok;p:[2880]f64;
+        for i:0..<2880 {p[i]=ow_value(source,i,OwType.bf16)+c.alpha*direction[i];}r:=ow_apply(w,source,base.digest,p[..]);#assert r.status==OwStatus.ok;bytes:=r.bytes;
+        if id==6 {for i:0..<2880 {eligible:[2880]int;count:=0;for j:i..<2880 {if source[2*j]==source[2*i] && source[2*j+1]==source[2*i+1] {eligible[count]=j;count+=1;}}
+                at:=eligible[cast(int)(gs_bits(cast(u64)(20261102+row),cast(u64)i)%cast(u64)count)];for byte:0..<2 {old:=bytes[2*i+byte];bytes[2*i+byte]=bytes[2*at+byte];bytes[2*at+byte]=old;}}
+            for i:0..<2880 {p[i]=ow_value(bytes[0..<5760],i,OwType.bf16);}r=ow_apply(w,source,base.digest,p[..]);#assert r.status==OwStatus.ok;bytes=r.bytes;
+        }
+        c.base[row]=base.digest;c.windows[row]=r.digest;c.changed+=r.changed;for i:0..<5760 {c.bytes[row*5760+i]=bytes[i];}for i:0..<2880 {delta:=ow_value(bytes[0..<5760],i,OwType.bf16)-ow_value(source,i,OwType.bf16);c.norm2+=delta*delta;}
+    }
+    data:[2048]u8;n:=we_text(data[..],0,"verse-villain-overlay-v1");for x:d.model {data[n]=x;n+=1;}for row:0..<32 {for x:c.windows[row] {data[n]=x;n+=1;}}#assert sha256_hash_checked(data[0..<n],c.digest[..],false)==SHA_OK;return c;
+}
+vw_save_candidate :: (id:int,c:VwCandidate,d:VwData) {
+    #assert fs_mkdir("psionic/fixtures/verse-villain/candidates");path:[1024]u8;name:=vw_path("candidates/",id,".bf16",path[..]);data:=c.bytes;
+    if fs_exists(name) {old:[184320]u8;#assert fs_read(name,old[..])==184320 && cast(string)old[..]==cast(string)data[..];}else {#assert fs_write(name,cast(string)data[..]);}
+    b:[16384]u8;j:[1]Jo;hex:[64]u8;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"id");jo_int(j[..],id);jo_key(j[..],"model");jo_str(j[..],vw_hex(d.model,hex[..]));jo_key(j[..],"shard");jo_str(j[..],vw_hex(d.shard,hex[..]));jo_key(j[..],"digest");jo_str(j[..],vw_hex(c.digest,hex[..]));jo_key(j[..],"changed");jo_int(j[..],c.changed);jo_key(j[..],"norm2_hex");jo_str(j[..],vw_float(c.norm2,hex[..]));jo_key(j[..],"alpha_hex");jo_str(j[..],vw_float(c.alpha,hex[..]));jo_key(j[..],"windows");jo_arr(j[..]);for row:0..<32 {jo_obj(j[..]);jo_key(j[..],"base");jo_str(j[..],vw_hex(c.base[row],hex[..]));jo_key(j[..],"digest");jo_str(j[..],vw_hex(c.windows[row],hex[..]));jo_end(j[..]);}jo_end(j[..]);jo_end(j[..]);#assert !j[0].bad;
+    name=vw_path("candidates/",id,".json",path[..]);if fs_exists(name) {old:[16384]u8;n:=fs_read(name,old[..]);#assert n>=0 && cast(string)old[0..<n]==jo_text(j[..]);}else {#assert fs_write(name,jo_text(j[..]));}
+}

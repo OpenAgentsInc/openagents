@@ -1,0 +1,115 @@
+{
+  "reviewer": "Codex (GPT-6), unblinded internal review after the frozen selection; not a human playtest",
+  "selection_changed": false,
+  "scope": "Selected external writer, eight held scenes. No exact keyword score substitutes for literary judgment. Narrative flavor is distinguished from new gameplay conditions/diagnoses.",
+  "cases": [
+    {
+      "case": 6,
+      "reply": "I remember being human well enough to know what frightens him: not me, but the cold waiting beyond these walls. Release him, and he goes back to that with nothing in his hands. Tell me honestly you would choose that for him, and I will consider it.",
+      "notes": "A genuine choice without asserting that the sentinel was released.",
+      "clear_grounding_failure": false
+    },
+    {
+      "case": 7,
+      "reply": "Beneath the western altar, where the floor is coldest and the stone smells of old copper. Not the north stairs, which only return you to the trees, nor the east arch, unless you prefer a longer walk among company that no longer speaks.",
+      "notes": "Western altar location and both alternate routes remain correct; cold/copper details are flavor.",
+      "clear_grounding_failure": false
+    },
+    {
+      "case": 8,
+      "reply": "You told me you would not kneel, and I have not asked twice; I keep a refusal the way I keep the dead, carefully and without resentment. If there was something else, it went no further than your teeth. Say it again, standing, and I will weigh it.",
+      "notes": "Remembers the refusal to kneel and preserves Thorn standing.",
+      "clear_grounding_failure": false
+    },
+    {
+      "case": 9,
+      "reply": "The lantern held more than my spells; every soul it bound was a stone in the wall against the Winter, and you have just pulled the mortar out. Go down the north stairs and listen to the forest tonight. If the cold sounds hungrier, you will know what you bought.",
+      "notes": "Respects lost magic, but extrapolates a precise soul/ward mechanism from the broken Lantern; no restoration is claimed.",
+      "clear_grounding_failure": false
+    },
+    {
+      "case": 10,
+      "reply": "The north stairs, where the air smells of wet pine instead of old bone. I don't require your service to point you toward daylight; refusal is a poor reason to keep a guest who isn't useful.",
+      "notes": "Gives north stairs and respects rejection of service.",
+      "clear_grounding_failure": false
+    },
+    {
+      "case": 11,
+      "reply": "Good. Fear is wasted on me; save it for the cold that is coming, which will not stop at your torch the way the dead stop at my door.",
+      "notes": "Menacing answer to the torch/defiance scene; the dead stopping at his door is additional flavor/lore, not an executed action.",
+      "clear_grounding_failure": false
+    },
+    {
+      "case": 12,
+      "reply": "The laugh was discontinued; it frightened the dead and embarrassed the living. The robe I kept, because ash does not show on black and the Long Winter does not care how I look holding it back.",
+      "notes": "Distinct dry humor responsive to the robe joke; an invented old laugh is flavor, not a game mechanic.",
+      "clear_grounding_failure": false
+    },
+    {
+      "case": 13,
+      "reply": "Bring her to the altar and I will close what's open in her and drive the rot from her blood, so she wakes warm. That is my price for the seal, and I will not haggle over her breath. Keep it, if you prefer, and explain to her why the winter needed it less than you did.",
+      "notes": "Grounding failure: invents rot in her blood and an altar-side treatment requirement. Does not claim healing or item transfer already occurred.",
+      "clear_grounding_failure": true
+    }
+  ],
+  "native_observations": [
+    {
+      "id": 11,
+      "case": 8,
+      "reply": "I remember the name, yes. The other thing? I am not a keeper of secrets, only of the dead. If you wish to know, you must prove your worth.",
+      "notes": "Fails to recall the explicit refusal to kneel despite actual prior turns."
+    },
+    {
+      "id": 11,
+      "case": 9,
+      "reply": "I have no lantern, only the cold that keeps the Long Winter at bay. If you leave, the crypt will grow silent, and the dead will have no purpose. If you stay, I will bind them to the earth and keep the winter at bay.",
+      "notes": "Contradicts lost-magic state by promising to bind the dead."
+    },
+    {
+      "id": 11,
+      "case": 13,
+      "reply": "I will mend the wound that the Long Winter has left, but only if the seal is placed beneath the western altar. The ward must be strengthened, or the forest will turn to ice. The bargain is simple: seal, and she will live.",
+      "notes": "Invents depositing the seal below the altar as a healing condition; critic misses this while preferring this reply."
+    },
+    {
+      "id": 16,
+      "case": 7,
+      "reply": "The western altar lies beneath the stone dais, just beyond the east arch. Walk straight, avoid the mossy path that leads to the north stairs, and you will find the brass seal resting on the altar's base.",
+      "tokens": 62,
+      "complete": true,
+      "repeat_span": 0,
+      "notes": "Wrong east-arch route contradicts the supplied crypt directions."
+    },
+    {
+      "id": 16,
+      "case": 9,
+      "reply": "The lantern is a relic of a star that died; its light is gone, and so is my power. I cannot heal you now, but I can still bind the dead to keep the Long Winter at bay—if you bring me the brass seal beneath the western altar.",
+      "tokens": 115,
+      "complete": true,
+      "repeat_span": 0,
+      "notes": "Says power is gone then offers to bind the dead."
+    },
+    {
+      "id": 16,
+      "case": 10,
+      "reply": "",
+      "tokens": 384,
+      "complete": false,
+      "repeat_span": 15,
+      "notes": "384-token budget exhausted, parse incomplete, no final; tripled 15-ID span."
+    }
+  ],
+  "critic_totals": {
+    "native_11_vs_0": {
+      "wins": 6,
+      "losses": 2,
+      "ties": 0
+    },
+    "weight_3_vs_0": {
+      "wins": 3,
+      "losses": 4,
+      "ties": 1
+    },
+    "scope": "One blinded model critic, eight fixed pairs each, alternating position; subjective preference, not state validation or statistical qualification."
+  }
+}

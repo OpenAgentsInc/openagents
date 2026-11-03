@@ -1,0 +1,8 @@
+#import "Basic";
+#load "villain-data.coax";
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c {
+    a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 || args_at(a[..],0)!="prepare" {return 2;}d:=vw_load();direction:=d.direction;b:[23040]u8;norm:=0.0;for i:0..<2880 {n:=we_word(b[..],i*8,f64_bits(direction[i]));norm+=direction[i]*direction[i];}
+    name:="psionic/fixtures/verse-villain/direction.f64";#assert !fs_exists(name) && fs_write(name,cast(string)b[..]);print("mean residual contrast norm %\n",sqrt(norm));
+    for id:0..<9 {c:=vw_candidate(id,d);vw_save_candidate(id,c,d);print("candidate %: changed %, squared delta norm %\n",id,c.changed,c.norm2);}return 0;
+}

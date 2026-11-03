@@ -3602,6 +3602,14 @@
       "modes": ["debug", "release"],
       "run_steps": 2000000,
       "timeout": 180
+    },
+    {
+      "source": "psionic/examples/veyr-dialogue.coax",
+      "chapter": "psionic/book/ch255-edit-an-original-language-model.md",
+      "stdout": "psionic/fixtures/verse-villain/example.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"],
+      "timeout": 180
     }
   ],
   "libraries": [

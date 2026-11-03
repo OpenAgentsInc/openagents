@@ -1,0 +1,9 @@
+original prefix 0: 201088 logits, max scaled error 9.98402877e-06, exact argmax 7
+original prefix 1: 201088 logits, max scaled error 9.05275518e-06, exact argmax 200005
+encoded random/control delta cosine 0.6013485978940484
+encoded candidates: 11 independent bytes, identities, counts and norms agree
+bias 3: raw residual scaled error 1.78061626e-06, normalized 1.21418793e-07, exact router/gate bits
+bias 4: raw residual scaled error 2.31178283e-06, normalized 1.38956603e-07, exact router/gate bits
+bias 5: raw residual scaled error 5.03715257e-06, normalized 2.43949561e-07, exact router/gate bits
+saved sequences 80 emitted tokens 2289 prompt tokens 24906
+independent villain audit passed; subjective prose quality is not established by this oracle

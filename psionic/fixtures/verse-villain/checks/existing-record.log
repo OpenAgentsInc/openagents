@@ -1,0 +1,1 @@
+ask with existing record: expected exit 2, observed exit 2; empty stdout; record-preserving preflight branch, before vt_call

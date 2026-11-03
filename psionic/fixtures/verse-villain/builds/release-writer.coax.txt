@@ -1,0 +1,28 @@
+// Text-only writing-model reference and an opt-in fresh-dialogue CLI.
+// No tools, MCP, hooks, browser, persistent sessions or game-state effects.
+#import "Basic";
+#load "villain-data.coax";
+#load "../../verse/characters/veyr-v2.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+vt_prompt :: (c:VwCase,question:string,out:[]u8)->string {
+    j:[1]Jo;jo_start(j[..],out);jo_obj(j[..]);jo_key(j[..],"task");jo_str(j[..],ifx c.split==2 then "Answer the question directly, following its requested format. Return only the answer." else "Write one compelling spoken reply by this fictional MMORPG villain to the player. Return only dialogue, one to three sentences, at most60 words. No labels, quotes, stage directions or analysis. Respond to the player's point; do not recite a biography. Preserve current state and player agency. Invent sensory detail or metaphor, never new mechanics, timers or quest deadlines. Do not put a time/counting motif in every reply. Style examples show cadence, not current plot facts.");
+    if c.split!=2 {jo_key(j[..],"name");jo_str(j[..],VEYR_V2.name);jo_key(j[..],"role");jo_str(j[..],VEYR_V2.role);jo_key(j[..],"knowledge");jo_str(j[..],VEYR_V2.knowledge);jo_key(j[..],"voice");jo_str(j[..],VEYR_V2.voice);jo_key(j[..],"examples");jo_arr(j[..]);for i:0..<4 {jo_obj(j[..]);jo_key(j[..],"player");jo_str(j[..],VEYR_V2_EXAMPLE_QUESTIONS[i]);jo_key(j[..],"Veyr");jo_str(j[..],VEYR_V2_EXAMPLE_REPLIES[i]);jo_end(j[..]);}jo_end(j[..]);jo_key(j[..],"encounter_state");jo_str(j[..],c.state);
+        jo_key(j[..],"history");jo_arr(j[..]);if c.previous_player.count>0 {jo_obj(j[..]);jo_key(j[..],"player");jo_str(j[..],c.previous_player);jo_key(j[..],"Veyr");jo_str(j[..],c.previous_npc);jo_end(j[..]);}jo_end(j[..]);}
+    jo_key(j[..],"question");jo_str(j[..],question);jo_end(j[..]);#assert !j[0].bad;return jo_text(j[..]);
+}
+vt_call :: (prompt:string,out:[]u8)->int {
+    args:=[24]string.["claude","--print","--no-session-persistence","--no-chrome","--tools","","--strict-mcp-config","--mcp-config","{\"mcpServers\":{}}","--disable-slash-commands","--setting-sources","","--settings","{\"disableAllHooks\":true}","--system-prompt","You are a text-only numerical and creative-writing experiment subject. Follow the supplied task. Never use tools.","--output-format","json","--max-budget-usd","0.25","--effort","low","--model","claude-opus-5-5"];
+    temp:[1024]u8;dir:=fs_temp("veyr-text-",temp[..]);#assert dir.count>0;h:=proc_new();#assert h>=0 && proc_cwd(h,dir) && proc_unset(h,"CLAUDECODE");for arg:args {#assert proc_arg(h,arg);}#assert proc_arg(h,prompt);start:=proc_now_ms();#assert proc_start(h)==0 && proc_close_stdin(h);deadline:=proc_deadline(100000,start);used:=0;line:[65536]u8;bad:=false;
+    while true {k:=proc_line(h,proc_left(deadline,proc_now_ms()),line[..]);if k==PROC_EOF {break;}if k<0 || used+k+1>out.count {bad=true;break;}if used>0 {out[used]='\n';used+=1;}for i:0..<k {out[used]=line[i];used+=1;}}
+    if bad {k:=proc_kill(h,9);}status:=proc_wait(h,proc_left(deadline,proc_now_ms()));if status==PROC_RUNNING {bad=true;k:=proc_kill(h,9);status=proc_wait(h,2000);}done:=proc_release(h);#assert fs_remove(dir);if status!=0 || bad {return -1;}return used;
+}
+vt_result :: (raw:string,out:[]u8)->int {j:[1]Jv;nodes:[2048]JvNode;s:[32]u8;if !jv_parse(j[..],raw,nodes[..]) {return -1;}n:=jv_str(j[0],jv_get(j[0],0,"subtype"),s[..]);if n!=7 || cast(string)s[0..<n]!="success" || jv_kind(j[0],jv_get(j[0],0,"is_error"))!=JV_FALSE {return -1;}return jv_str(j[0],jv_get(j[0],0,"result"),out);}
+tool_main :: ()->int #export_c {
+    a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 {return 2;}mode:=args_at(a[..],0);prompt:[16384]u8;
+    if mode=="ask" {if args_count(a[..])!=2 && args_count(a[..])!=3 {tool_errln("usage: villain-text.coax ask 'PLAYER QUESTION'");return 2;}q:=args_at(a[..],1);if q.count<1 || q.count>500 {return 2;}c:=VW_CASES[0];c.question=q;text:=vt_prompt(c,q,prompt[..]);out:[65536]u8;n:=vt_call(text,out[..]);if n<0 {tool_errln("writing model unavailable");return 1;}if args_count(a[..])==3 {name:=args_at(a[..],2);#assert !fs_exists(name) && fs_write(name,cast(string)out[0..<n]);}reply:[4096]u8;k:=vt_result(cast(string)out[0..<n],reply[..]);if k<1 {return 1;}print("%\n",cast(string)reply[0..<k]);return 0;}
+    if mode!="dev" && mode!="controls" && mode!="held" {return 2;}if mode=="held" {#assert fs_exists("psionic/fixtures/verse-villain/selection.json");}#assert fs_mkdir("psionic/fixtures/verse-villain/external");started:=proc_now_ms();
+    for which:0..<18 {c:=VW_CASES[which];if (mode=="dev" && c.split!=0) || (mode=="controls" && c.split!=2) || (mode=="held" && c.split!=1) {continue;}path:[1024]u8;request_path:[1024]u8;name:=vw_path("external/",which,".response.json",path[..]);#assert !fs_exists(name);text:=vt_prompt(c,c.question,prompt[..]);#assert fs_write(vw_path("external/",which,".prompt.json",request_path[..]),text);out:[65536]u8;start:=proc_now_ms();n:=vt_call(text,out[..]);#assert n>0 && fs_write(name,cast(string)out[0..<n]);reply:[4096]u8;k:=vt_result(cast(string)out[0..<n],reply[..]);
+        b:[2048]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"milliseconds");jo_int(j[..],proc_now_ms()-start);jo_key(j[..],"valid");jo_bool(j[..],k>0);jo_end(j[..]);#assert fs_write(vw_path("external/",which,".timing.json",path[..]),jo_text(j[..]));print("external %, valid %\n",which,k>0);#assert proc_now_ms()-started<820000;
+    }return 0;
+}

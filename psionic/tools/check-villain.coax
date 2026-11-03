@@ -1,0 +1,27 @@
+// Bounded original-model dialogue experiment. No model download.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+och_run :: (args:[]string,seconds:int,out:[]u8)->int {
+    err:[65536]u8;r:=proc_run(args,seconds*1000,out,err[..]);if r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return -1;}return r.out_n;
+}
+tool_main :: ()->int #export_c {
+    a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 {return 2;}
+    if args_at(a[..],0)=="run" {
+        if args_count(a[..])!=3 {return 2;}mode:=args_at(a[..],1);root:=args_at(a[..],2);cmd:=[4]string.["coax/web/build/tools/villain/runner",root,"coax/web/build/tools/villain/kernels.metal",mode];out:[1048576]u8;start:=proc_now_ms();n:=och_run(cmd[..],840,out[..]);elapsed:=proc_now_ms()-start;
+        if n>=0 {print("%\n",cast(string)out[0..<n]);}b:[1024]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"mode");jo_str(j[..],mode);jo_key(j[..],"milliseconds");jo_int(j[..],elapsed);jo_key(j[..],"success");jo_bool(j[..],n>=0);jo_end(j[..]);
+        path:[1024]u8;name:=fs_join("psionic/fixtures/verse-villain",mode,path[..]);suffix:=".command.json";full:[1024]u8;at:=0;for part:[2]string.[name,suffix] {for c:part {full[at]=c;at+=1;}}#assert fs_write(cast(string)full[0..<at],jo_text(j[..]));return ifx n>=0 then 0 else 1;
+    }
+    if args_count(a[..])!=1 || args_at(a[..],0)!="build" {tool_errln("usage: check-villain build | run MODE ORIGINAL_DIR");return 2;}
+    dir:="coax/web/build/tools/villain";#assert fs_mkdir(dir);out:[33554432]u8;
+    // Raw redirection avoids proc_run's 64KiB per-line limit on generated
+    // constant tables. The shell only execs the fixed argv; no build logic.
+    c:=[13]string.["/bin/sh","-c","exec \"$@\" > coax/web/build/tools/villain/device-host.c","coax-c","coax/bin/coax","c","psionic/tools/villain-run.coax","--library","--release","--run-steps","2000000","--header","coax/web/build/tools/villain/device-host.h"];
+    n:=och_run(c[..],180,out[..]);if n<0 {return 1;}
+    metal:=[4]string.["coax/bin/coax","metal-compute","psionic/lib/gptoss/device-kernels.coax","--release"];n=och_run(metal[..],180,out[..]);if n<0 {return 1;}#assert fs_write("coax/web/build/tools/villain/kernels.metal",cast(string)out[0..<n]);
+    obj:=[9]string.["cc","-fobjc-arc","-mmacosx-version-min=15.0","-O2","-c","psionic/platform/metal-host.m","-o","coax/web/build/tools/villain/metal.o","-Wall"];if och_run(obj[..],120,out[..])<0 {return 1;}
+    cc:=[24]string.["cc","-std=c11","-O2","-D_DARWIN_C_SOURCE","-DPSIONIC_WEIGHT_EDIT_TEST","-ffp-contract=off","-fno-fast-math","-Icoax/web/build/tools/villain","-Ipsionic/platform","coax/web/build/tools/villain/device-host.c","psionic/platform/gptoss-metal.c","psionic/platform/original-edit-metal.c","coax/web/build/tools/villain/metal.o","coax/platform/tool-native.c","coax/platform/store-file-native.c","coax/platform/process-native.c","-framework","Metal","-framework","Foundation","-lm","-o","coax/web/build/tools/villain/runner","-g"];
+    if och_run(cc[..],240,out[..])<0 {return 1;}print("villain: Coax host, Metal kernels and effect-only adapter built\n");return 0;
+}

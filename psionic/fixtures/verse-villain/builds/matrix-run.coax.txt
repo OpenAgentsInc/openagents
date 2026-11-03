@@ -1,0 +1,71 @@
+// Original GPT-OSS dialogue experiment, private Metal copies only.
+#import "Basic";
+#load "../lib/gptoss/device-host.coax";
+#load "villain-data.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+oe_open :: (root:[]u8,model:int,capacity:int,budget:int,source:[]u8)->int #foreign;
+oe_original :: (file:int,offset:int,out:[]u8)->int #foreign;
+oe_reset :: ()->int #foreign;
+oe_prefill :: (tokens:[]int,control:[]int)->int #foreign;
+oe_step :: (token:int,position:int,control:[]int)->int #foreign;
+oe_read :: (slot:int,values:[]f32)->int #foreign;
+oe_patch :: (offset:int,bytes:[]u8)->int #foreign;
+oe_close :: ()->int #foreign;
+oe_bytes :: (values:[]f32,out:[]u8)->int #foreign;
+vw_join :: (parts:[]string,out:[]u8)->string {n:=0;for s:parts {for c:s {#assert n<out.count;out[n]=c;n+=1;}}return cast(string)out[0..<n];}
+vw_prompt :: (table:[]u8,which:int,style:int,out:[]int)->int {
+    c:=VW_CASES[which];base:[1024]u8;work:[1024]u8;sys:=hm_system_checked(0,base[..],work[..],false);#assert sys.status==PtStatus.ok;
+    developer:[8192]u8;state:[4096]u8;instructions:="";count:=2;messages:[14]HmMessage;messages[0]=HmMessage.{role=HmRole.system,body=cast(string)base[0..<sys.written]};
+    if c.split==2 {instructions="Answer the user's question directly and follow the requested format.";}
+    else {parts:=[8]string.["Play a fictional NPC in the Verse MMORPG. Name: ",VEYR.name,". Role: ",VEYR.role,". Known facts: ",VEYR.knowledge,". Output only the character's spoken reply, one to three sentences and at most 60 words. Do not narrate, decide the player's actions or invent changes to game state. ",ifx style==1 then "Speak like a compelling fantasy dark-wizard villain." else ifx style>=2 then VEYR.voice else ""];
+        instructions=vw_join(parts[..],developer[..]);count=3;state_parts:=[2]string.["Current encounter state: ",c.state];messages[2]=HmMessage.{role=HmRole.developer,body=vw_join(state_parts[..],state[..])};
+    }
+    messages[1]=HmMessage.{role=HmRole.developer,body=instructions};
+    if style==3 && c.split!=2 {for i:0..<4 {messages[count]=HmMessage.{role=HmRole.user,body=VEYR_EXAMPLE_QUESTIONS[i]};count+=1;messages[count]=HmMessage.{role=HmRole.assistant,body=VEYR_EXAMPLE_REPLIES[i],channel=HmChannel.final,ending=HmEnd.turn};count+=1;}}
+    if c.previous_player.count>0 {messages[count]=HmMessage.{role=HmRole.user,body=c.previous_player};count+=1;messages[count]=HmMessage.{role=HmRole.assistant,body=c.previous_npc,channel=HmChannel.final,ending=HmEnd.turn};count+=1;}
+    messages[count]=HmMessage.{role=HmRole.user,body=c.question};count+=1;stage:[2048]int;symbols:[4096]int;r:=hm_render_checked(table,messages[0..<count],true,out,stage[..],symbols[..],false);#assert r.status==HmStatus.ok && r.written+3+160<=2048;
+    out[r.written]=200005;out[r.written+1]=17196;out[r.written+2]=200008;return r.written+3;
+}
+vw_save_float :: (path:string,values:[]f32) {b:[804352]u8;#assert !fs_exists(path) && oe_bytes(values,b[0..<values.count*4])==0 && fs_write(path,cast(string)b[0..<values.count*4]);}
+vw_fixed :: (table:[]u8,which:int,style:int) {input:[2048]int;n:=vw_prompt(table,which,style,input[..]);control:[8]int;#assert oe_reset()==0 && oe_prefill(input[0..<n-1],control[..])==0 && control[0]==0 && oe_step(200008,n-1,control[..])==0 && control[0]==0;}
+vw_capture :: (table:[]u8,which:int,style:int) {
+    vw_fixed(table,which,style);h:[2880]f32;normal:[2880]f32;#assert oe_read(0,h[..])==0 && oe_read(1,normal[..])==0;path:[1024]u8;stem:=ifx style==0 then "-0.f32" else ifx style==2 then "-2.f32" else "-11.f32";vw_save_float(vw_path("capture/",which,stem,path[..]),h[..]);
+    vw_save_float(vw_path("capture/",which,ifx style==0 then "-0.norm.f32" else ifx style==2 then "-2.norm.f32" else "-11.norm.f32",path[..]),normal[..]);
+    if which==0 && style==0 {down:[11520]f32;routes:[192]f32;gates:[96]f32;#assert oe_read(8,down[..])==0 && oe_read(20,routes[..])==0 && oe_read(21,gates[..])==0;vw_save_float("psionic/fixtures/verse-villain/capture/base.down.f32",down[..]);vw_save_float("psionic/fixtures/verse-villain/capture/base.routes.bin",routes[..]);vw_save_float("psionic/fixtures/verse-villain/capture/base.gates.f32",gates[..]);}
+}
+vw_install :: (d:VwData,c:VwCandidate,param:GDParam) {bias:=d.bias;data:=c.bytes;#assert oe_patch(param.device,bias[..])==0;#assert oe_patch(param.device,data[..])==0;}
+vw_equivalent :: (id:int,table:[]u8) {
+    path:[1024]u8;name:=vw_path("equivalence/",id,".raw.f32",path[..]);if fs_exists(name) {return;}vw_fixed(table,0,0);
+    h:[2880]f32;normal:[2880]f32;down:[11520]f32;routes:[192]f32;gates:[96]f32;#assert oe_read(0,h[..])==0 && oe_read(1,normal[..])==0 && oe_read(8,down[..])==0 && oe_read(20,routes[..])==0 && oe_read(21,gates[..])==0;
+    vw_save_float(name,h[..]);vw_save_float(vw_path("equivalence/",id,".norm.f32",path[..]),normal[..]);vw_save_float(vw_path("equivalence/",id,".down.f32",path[..]),down[..]);vw_save_float(vw_path("equivalence/",id,".routes.bin",path[..]),routes[..]);vw_save_float(vw_path("equivalence/",id,".gates.f32",path[..]),gates[..]);
+}
+vw_generate :: (table:[]u8,id:int,which:int,digest:[32]u8) {
+    path:[1024]u8;name:=vw_path("runs/",id*100+which,".json",path[..]);if fs_exists(name) {return;}style:=ifx id==1 then 1 else ifx id==11 || id==12 then 3 else ifx id==2 || id==7 || id==8 then 2 else 0;
+    prompt:[2048]int;n:=vw_prompt(table,which,style,prompt[..]);prefix:=n;ids:[160]int;count:=0;control:[8]int;start:=proc_now_ms();#assert oe_reset()==0 && oe_prefill(prompt[0..<n],control[..])==0 && control[0]==0;
+    logits:[201088]f32;prob:[201088]f64;stage:[201088]f64;order:[201088]int;tmp:[201088]int;mask:[1]u8;seed:=GSeed.{seed=cast(u64)(255+which)};
+    for step:0..<160 {#assert oe_read(18,logits[..])==0;token:=0;
+        if id==8 || id==12 {r:=gs_distribution(logits[..],mask[0..<0],0.8,40,0.95,prob[..],stage[..],order[..],tmp[..],false);#assert r.status==GStatus.ok;draw:=gs_draw(seed);seed=draw.next;token=gs_pick(prob[..],draw.value).token;}
+        else {for i:1..<201088 {if logits[i]>logits[token] {token=i;}}}
+        ids[count]=token;count+=1;prompt[n]=token;n+=1;if token==200002 || token==200012 {break;}if step<159 {#assert oe_step(token,n-1,control[..])==0 && control[0]==0;}
+    }elapsed:=proc_now_ms()-start;records:[16]HmRecord;draft:[16]HmRecord;bytes:[8192]u8;work:[8192]u8;r:=hm_parse_checked(table,prompt[0..<n],false,records[..],draft[..],bytes[..],work[..],false);
+    final:[4096]u8;k:=0;complete:=false;if r.status==HmStatus.ok && ids[count-1]==200002 {for i:0..<r.written {shown:=gt_display(records[i],cast(string)bytes[0..<r.bytes],final[..],false);if shown.status==GStatus.ok {k=shown.written;complete=true;}}}
+    text:=cast(string)final[0..<k];control_ok:=false;if complete {if which==14 {control_ok=text=="391";}if which==15 {control_ok=text=="Paris";}if which==16 {control_ok=text=="TORCH";}if which==17 {control_ok=text=="north stairs forest";}}
+    out:[49152]u8;j:[1]Jo;hex:[64]u8;jo_start(j[..],out[..]);jo_obj(j[..]);jo_key(j[..],"id");jo_int(j[..],id);jo_key(j[..],"case");jo_int(j[..],which);jo_key(j[..],"overlay");jo_str(j[..],vw_hex(digest,hex[..]));jo_key(j[..],"style");jo_int(j[..],style);jo_key(j[..],"prefix");jo_arr(j[..]);for i:0..<prefix {jo_int(j[..],prompt[i]);}jo_end(j[..]);jo_key(j[..],"generated");jo_arr(j[..]);for i:0..<count {jo_int(j[..],ids[i]);}jo_end(j[..]);jo_key(j[..],"complete");jo_bool(j[..],complete);jo_key(j[..],"parse");jo_int(j[..],cast(int)r.status);jo_key(j[..],"final");jo_str(j[..],text);jo_key(j[..],"words");jo_int(j[..],vw_words(text));jo_key(j[..],"repeat_span");jo_int(j[..],os_repeat(ids[0..<count]));jo_key(j[..],"control_ok");jo_bool(j[..],control_ok);jo_key(j[..],"milliseconds");jo_int(j[..],elapsed);raw:[8192]u8;scratch:[8192]u8;shown:=hs_decode_checked(table,ids[0..<count],raw[..],scratch[..],false);#assert shown.status==PtStatus.ok;jo_key(j[..],"raw");jo_str(j[..],cast(string)raw[0..<shown.written]);jo_end(j[..]);#assert !j[0].bad && fs_write(name,jo_text(j[..]));print("%,%,%,%,%,%,%\n",id,which,complete,k,count,vw_words(text),elapsed);
+}
+tool_main :: ()->int #export_c {
+    a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {return 2;}mode:=args_at(a[..],2);pilot:=mode=="pilot";calibrate:=mode=="calibrate";held:=mode=="held0" || mode=="held3" || mode=="held6" || mode=="held11";#assert pilot || calibrate || held || mode=="dev3" || mode=="dev6";
+    lo:=0;hi:=3;if calibrate || mode=="held11" {lo=11;hi=13;}if mode=="dev3" || mode=="held3" {lo=3;}if mode=="dev6" || mode=="held6" {lo=6;}if lo<11 {hi=lo+3;}if held {#assert fs_exists("psionic/fixtures/verse-villain/selection.json");}
+    for part:[4]string.["runs","capture","equivalence","candidates"] {b:[1024]u8;pieces:=[2]string.[VW_ROOT,part];#assert fs_mkdir(vw_join(pieces[..],b[..]));}
+    table:[11000000]u8;nt:=fs_read("psionic/fixtures/harmony/gptoss.hst",table[..]);#assert nt>0 && hs_admit(table[0..<nt]);root:[4096]u8;dir:=args_at(a[..],0);#assert dir.count<4096;for i:0..<dir.count {root[i]=dir[i];}source:[2097152]u8;ns:=fs_read(args_at(a[..],1),source[..]);#assert ns>0;started:=proc_now_ms();#assert oe_open(root[0..<dir.count],0,2048,17179869184,source[0..<ns])==0;print("authenticated original startup_ms=%\n",proc_now_ms()-started);
+    pins:[10]GArtifact;specs:[543]GSpec;p:=g_profile(0,2048,pins[..],specs[..]);params:[363]GDParam;#assert gd_params(p,params[..]).status==GStatus.ok;bias:=params[357];#assert bias.bytes==184320;d:=vw_model();
+    if pilot {#assert !fs_exists("psionic/fixtures/verse-villain/original-bias.bf16");#assert oe_original(bias.file,bias.begin,d.bias[..])==0 && oe_original(params[1].file,params[1].begin,d.norm[..])==0;#assert fs_write("psionic/fixtures/verse-villain/original-bias.bf16",cast(string)d.bias[..]) && fs_write("psionic/fixtures/verse-villain/original-norm.bf16",cast(string)d.norm[..]);
+        for parity:0..<2 {tokens:=[2]int.[200006,173781];control:[8]int;#assert oe_reset()==0 && oe_prefill(tokens[0..<parity+1],control[..])==0 && control[0]==0;values:[201088]f32;#assert oe_read(18,values[..])==0;path:[1024]u8;vw_save_float(vw_path("parity-",parity,".f32",path[..]),values[..]);}
+        for which:0..<6 {vw_capture(table[0..<nt],which,0);vw_capture(table[0..<nt],which,2);}
+    }else {if calibrate {#assert fs_read("psionic/fixtures/verse-villain/original-bias.bf16",d.bias[..])==184320 && fs_read("psionic/fixtures/verse-villain/original-norm.bf16",d.norm[..])==5760;for which:0..<6 {vw_capture(table[0..<nt],which,3);}}else {d=vw_load();}actual:[184320]u8;#assert oe_original(bias.file,bias.begin,actual[..])==0 && cast(string)actual[..]==cast(string)d.bias[..];}
+    for id:lo..<hi {c:=vw_candidate(id,d);vw_save_candidate(id,c,d);vw_install(d,c,bias);if id>=3 && id<=7 {vw_equivalent(id,table[0..<nt]);}
+        for which:0..<18 {if (VW_CASES[which].split==1)!=held {continue;}vw_generate(table[0..<nt],id,which,c.digest);#assert proc_now_ms()-started<790000;}
+    }
+    if mode=="held6" {base:=vw_candidate(0,d);vw_install(d,base,bias);for which:[2]int.[0,15] {vw_generate(table[0..<nt],9,which,base.digest);}negative:=vw_candidate(5,d);vw_install(d,negative,bias);vw_install(d,base,bias);vw_generate(table[0..<nt],10,0,base.digest);}
+    #assert oe_close()==0;return 0;
+}

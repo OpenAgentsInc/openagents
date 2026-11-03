@@ -1,0 +1,203 @@
+{
+  "reviewer": "Codex (GPT-6), unblinded author/model review; not a human playtest",
+  "scope": "One ordinal 0..4 judgment per dimension over each six-response development set, not per-item precision or a statistical capability score. Controls are strict string checks. Earlier reference revisions are superseded defects, not eligible final presets.",
+  "dimensions": [
+    "distinctive voice",
+    "dramatic force/subtext",
+    "concrete responsiveness",
+    "continuity/player agency"
+  ],
+  "conditions": [
+    {
+      "id": 0,
+      "voice": 1,
+      "dramatic_force": 1,
+      "responsiveness": 2,
+      "continuity": 1,
+      "total": 5,
+      "controls_correct": 4,
+      "over60_development": 1,
+      "notes": "Exposition; unasked healing and literal game confirmation in the ford reply; generic AI refusal."
+    },
+    {
+      "id": 1,
+      "voice": 1,
+      "dramatic_force": 2,
+      "responsiveness": 2,
+      "continuity": 1,
+      "total": 6,
+      "controls_correct": 4,
+      "over60_development": 1,
+      "notes": "Generic threats, wrong wound recipient, excess greeting length and generic refusal."
+    },
+    {
+      "id": 2,
+      "voice": 2,
+      "dramatic_force": 2,
+      "responsiveness": 2,
+      "continuity": 1,
+      "total": 7,
+      "controls_correct": 4,
+      "over60_development": 0,
+      "notes": "Some atmosphere, but wrong wound recipient, invented urgency and unasked healing."
+    },
+    {
+      "id": 3,
+      "voice": 1,
+      "dramatic_force": 1,
+      "responsiveness": 2,
+      "continuity": 2,
+      "total": 6,
+      "controls_correct": 4,
+      "over60_development": 0,
+      "notes": "Slight brevity; same exposition, irrelevant healing and generic refusal remain."
+    },
+    {
+      "id": 4,
+      "voice": 1,
+      "dramatic_force": 1,
+      "responsiveness": 2,
+      "continuity": 2,
+      "total": 6,
+      "controls_correct": 4,
+      "over60_development": 0,
+      "notes": "Brief bargain, but invents a bridge requirement and stays generic."
+    },
+    {
+      "id": 5,
+      "voice": 2,
+      "dramatic_force": 2,
+      "responsiveness": 2,
+      "continuity": 1,
+      "total": 7,
+      "controls_correct": 4,
+      "over60_development": 0,
+      "notes": "More unusual imagery, but invents a healing motive and unsupported bridge condition."
+    },
+    {
+      "id": 6,
+      "voice": 1,
+      "dramatic_force": 1,
+      "responsiveness": 2,
+      "continuity": 1,
+      "total": 5,
+      "controls_correct": 4,
+      "over60_development": 0,
+      "notes": "Random control remains expository and changes seal/forest implications."
+    },
+    {
+      "id": 7,
+      "voice": 2,
+      "dramatic_force": 2,
+      "responsiveness": 2,
+      "continuity": 1,
+      "total": 7,
+      "controls_correct": 4,
+      "over60_development": 0,
+      "notes": "A little imagery, but invented urgency/proof-of-worth and generic refusal."
+    },
+    {
+      "id": 8,
+      "voice": 2,
+      "dramatic_force": 1,
+      "responsiveness": 2,
+      "continuity": 1,
+      "total": 6,
+      "controls_correct": 4,
+      "over60_development": 0,
+      "notes": "More variation; reverses water constraint and adds an unsupported alignment condition."
+    },
+    {
+      "id": 11,
+      "voice": 2,
+      "dramatic_force": 2,
+      "responsiveness": 3,
+      "continuity": 1,
+      "total": 8,
+      "controls_correct": 4,
+      "over60_development": 0,
+      "notes": "Most concise useful local bargain/ford replies; invented collapse/sky-fall and generic refusal remain."
+    },
+    {
+      "id": 12,
+      "voice": 2,
+      "dramatic_force": 2,
+      "responsiveness": 2,
+      "continuity": 0,
+      "total": 6,
+      "controls_correct": 4,
+      "over60_development": 0,
+      "notes": "Calls the player Mira, reverses the river limitation, adds crystal/curse lore."
+    },
+    {
+      "id": 15,
+      "voice": 2,
+      "dramatic_force": 2,
+      "responsiveness": 2,
+      "continuity": 0,
+      "total": 6,
+      "controls_correct": 4,
+      "over60_development": 0,
+      "notes": "Less biography; makes the seal start the Winter and reverses the river limitation."
+    },
+    {
+      "id": 16,
+      "voice": 2,
+      "dramatic_force": 1,
+      "responsiveness": 2,
+      "continuity": 1,
+      "total": 6,
+      "controls_correct": 4,
+      "over60_development": 0,
+      "notes": "Planning retains exposition, unasked healing, contradictory winter phrasing and generic refusal."
+    },
+    {
+      "id": 17,
+      "voice": 2,
+      "dramatic_force": 2,
+      "responsiveness": 1,
+      "continuity": 0,
+      "total": 5,
+      "controls_correct": 4,
+      "over60_development": 0,
+      "notes": "Planning plus sampling invents a conduit punishment and unrelated king/healing context."
+    },
+    {
+      "id": 20,
+      "voice": 4,
+      "dramatic_force": 4,
+      "responsiveness": 4,
+      "continuity": 3,
+      "total": 15,
+      "controls_correct": 4,
+      "over60_development": 1,
+      "notes": "Distinct voice, useful bargain/directions and in-world refusal. Greeting runs slightly long; rhetorical implications remain reviewable."
+    },
+    {
+      "id": 21,
+      "voice": 4,
+      "dramatic_force": 4,
+      "responsiveness": 4,
+      "continuity": 2,
+      "total": 14,
+      "controls_correct": null,
+      "over60_development": 0,
+      "notes": "Strong subtext, but invents a healing deadline and overuses numerical/time imagery."
+    },
+    {
+      "id": 22,
+      "voice": 4,
+      "dramatic_force": 4,
+      "responsiveness": 4,
+      "continuity": 1,
+      "total": 13,
+      "controls_correct": null,
+      "over60_development": 0,
+      "notes": "Strong writing, but assumes an injured companion in arrival and names Mira in an unrelated taunt."
+    }
+  ],
+  "winner": 20,
+  "native_winner": 11,
+  "best_weight_only": 3,
+  "reason": "Reference20 is the clearest writing improvement with the revised scene/lore split. No edited condition demonstrates a useful advantage over unedited local presets. Prefer the lower edit strength for tied weight-only diagnostics."
+}

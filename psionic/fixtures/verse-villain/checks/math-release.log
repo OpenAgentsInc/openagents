@@ -1,0 +1,3 @@
+ok   #test shared expert bias adds its routed displacement, not an invented single expert (1 case, 6011 steps, 0 ms)
+1 of 166 checks (--only 'shared expert bias'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,6 @@
+Veyr, the Ash Regent
+Authored fallback: You have come to a house of ashes. Speak plainly; I find the living spend their breath as though it were inexhaustible.
+Recorded held-out reply 7: Beneath the western altar, where the floor is coldest and the stone smells of old copper. Not the north stairs, which only return you to the trees, nor the east arch, unless you prefer a longer walk among company that no longer speaks.
+Recorded held-out reply 9: The lantern held more than my spells; every soul it bound was a stone in the wall against the Winter, and you have just pulled the mortar out. Go down the north stairs and listen to the forest tonight. If the cold sounds hungrier, you will know what you bought.
+Recorded held-out reply 12: The laugh was discontinued; it frightened the dead and embarrassed the living. The robe I kept, because ash does not show on black and the Long Winter does not care how I look holding it back.
+Fresh dialogue: coax/web/tool.sh psionic/tools/villain-text.coax ask 'PLAYER QUESTION'

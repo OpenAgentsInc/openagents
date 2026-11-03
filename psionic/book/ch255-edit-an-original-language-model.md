@@ -358,7 +358,7 @@ point after independent quality qualification.
 
 ## Count the work and keep the failures
 
-There are **865 actual generated sequences**, **21,109 emitted tokens** and
+The arithmetic matrix has **865 actual generated sequences**, **21,109 emitted tokens** and
 **61,080 generation-prompt tokens**, plus **162 explicitly carried comparison
 observations**. Thirteen main physical weight/prompt/sampler conditions each
 run 54 questions, three supplementary conditions each run 54, and rollback
@@ -479,3 +479,183 @@ transplants, full LoRA comparisons, QK/OV repairs, genuine loop repair,
 Qwen3.5 support, multiple original models and live shadow replacement remain
 open. This chapter implements and measures the bounded experiment, including
 its failures; it does not establish general weight-space programming ability.
+
+## Give a Verse villain a voice
+
+The next experiment asks a more practical question: can these tools make
+a compelling fantasy antagonist for the Verse? We created **Veyr, the Ash
+Regent**, a former royal astronomer who binds the dead to hold back the Long
+Winter. He has a defensible obsession, a concrete bargain and a dry voice.
+The Black Lantern anchors his magic; he cannot cross running water. These
+are authored encounter-prototype facts, not newly placed canonical content.
+
+The usable prototype is the [Veyr v2 character card](../../verse/characters/veyr-v2.coax)
+on the existing authenticated `claude-opus-5-5` writing client, low effort.
+Its [exported NPC brief](../../verse/characters/veyr-v2.json) carries name,
+role, knowledge and an authored fallback greeting. A fresh line takes one
+external model call:
+
+```shell
+coax/web/tool.sh psionic/tools/villain-text.coax ask "What frightens you when the crypt finally goes quiet?"
+```
+
+This prints new dialogue, not a canned lookup. It uses the arrival encounter
+state and a fresh single-turn conversation; it is not a persistent NPC
+service. The [integration notes](../../verse/characters/README.md) explain
+the distinction between this tested renderer and an existing Verse route.
+No live realm or NPC service was changed, and no dialogue can transfer a
+quest item or heal a player. Those decisions belong to the game.
+
+We ran **255 native original-model sequences**: fourteen conditions on six
+development scenes, eight held scenes and four neutral controls, plus three
+physical no-op/restoration sequences. The original GPT-OSS-20B Metal path
+compares a plain brief, a generic villain instruction, an authored voice
+card, four dialogue examples, sampling, three bias strengths, a matched
+random control, combined prompt/edit and natural analysis-channel decoding.
+Ordinary conditions force final and permit 160 emitted tokens; natural
+decoding permits 384 total analysis/final tokens. Neutral controls omit
+persona text but retain the physical edits. A different budget is explicitly
+additional compute, not a weight-only gain.
+The memory case supplies two prior messages and repeats the refusal in
+current state; it tests short context use, not persistent character memory.
+
+The [full matrix](../fixtures/verse-villain/matrix.csv),
+[protocol and raw artifacts](../fixtures/verse-villain/README.md) preserve
+every condition and developmental amendment. Thirty writing-model calls
+include two failed six-scene prompt versions and the final eighteen-scene
+version. Two additional blinded critic calls compare only native outputs;
+a fresh thirty-third external call demonstrates the CLI. Development
+selection is frozen before opening held scenes. The author/model reviewer
+prefers the final writer **15/16**, the best unchanged native preset **8/16**,
+and the frozen α.25 weight diagnostic **6/16**, using four ordinal dimensions
+over each six-reply set. These are subjective internal judgments, not
+independent human ratings or a statistical capability measurement. The
+external model and prompt rendering both differ from the native path.
+The frozen record mistakenly labels α.25 "best" despite α1 scoring 7/16.
+The [selection clarification](../fixtures/verse-villain/measurement-notes.md)
+preserves the inconsistency and original choice. The writer and native
+prompt winner remain their groups' highest development totals.
+
+| Condition | Dev author total /16 | Held complete /8 | Held emitted IDs | Neutral correct /4 |
+| --- | ---: | ---: | ---: | ---: |
+| Plain native 0 | 5 | 8 | 394 | 4 |
+| Frozen bias diagnostic 3, α.25 | 6 | 8 | 362 | 4 |
+| Native card + examples 11 | 8 | 8 | 306 | 4 |
+| Native natural-channel greedy 16 | 6 | 7 | 1404 | 4 |
+| Native natural-channel sampling 17 | 5 | 8 | 941 | 4 |
+| Selected external writer 20 | 15 | 8 | 745† | 4 |
+
+† Provider-reported output tokens include thinking and use a different
+tokenizer; they are not native emitted IDs. Failed attempts remain in token
+costs. All held final replies that complete meet the 60-word limit, yet
+several contradict the scene. Four easy controls do not establish retained
+general capability. The full CSV contains every arm and split.
+
+Native generation emits **11,852 IDs** from **106,670 prompt IDs**. Capture,
+parity and equivalence add 25 prefills / 11,316 positions and 23 single
+steps: total logical driver work is **280 prefills / 117,986 positions /
+11,620 single steps**. Ten native phase commands total **2042.230 seconds**,
+maximum **239.195 seconds**; generation timers total **1132.733 seconds**.
+Authentication, setup and captures explain part of the difference; these
+are shared-host observations, not portable throughput or GPU FLOP counts.
+
+The 33 external calls report **66 uncached input, 53,828 cache-creation,
+zero cache-read and 4318 output tokens**, including **1376 thinking tokens**,
+at **$0.517248 list cost**. This is provider accounting, not an actual payment
+claim. There are no optimizer updates or environment/gameplay steps.
+
+### Put the style contrast into actual weights
+
+On each of the six development prompts, capture the final-layer residual
+at the forced final-message boundary with a plain brief and with four
+authored dialogue examples. The direction is the unscaled mean
+`d = mean(h_examples - h_plain)`, L2 norm **9514.3663**. It includes prompt
+length, position and instruction effects; it does not identify a unique
+villain circuit. Add `αd` to each of the 32 expert rows in
+`block.23.mlp.mlp2_bias [32,2880]`, through the same immutable BF16 window API.
+This writes actual model parameters rather than adding adjectives to a prompt.
+
+For a fixed prefix, the last MLP output bias cannot change that layer's
+earlier router or attention. Its expected residual is
+`h' = h + Σ_expert gate * (encoded_new_bias - original_bias)`, followed by
+the original final RMS normalization. Use the **encoded** BF16 difference,
+not the ideal real-valued update. All five changed candidates retain exact
+router/gate bits and agree with the independent routed-residual/RMS oracle
+under the prewritten scaled bound .0005. This qualifies the physical
+mechanism at one development prefix, not every generated dialogue trajectory.
+
+The α .25/.5/1 candidates change **92,027 / 92,088 / 92,128** coefficients
+of this 92,160-value tensor. Their delta L2 norms are **2.225 / 4.450 / 8.900
+times the original bias tensor's L2**. These are large changes to that
+tensor, despite its small global model fraction. The constrained random
+control preserves the exact changed count and squared-delta multiset of α1,
+with remaining delta cosine **.60135**. It is not isotropic random steering.
+The no-op and strong-edit-then-restore controls reproduce the baseline's
+generated token IDs exactly. Two fresh unchanged-original reference vectors
+also pass the retained independent CPU reference; the full model is not run
+on CPU.
+
+### Keep failures that matter to a game
+
+Better prose cannot compensate for incorrect encounter state. The first
+writing-model version invented a one-hour healing deadline. The second
+assumed an injured companion in an arrival scene. Both versions remain in
+the artifacts. The release card separates **permanent lore and possible
+offers** from **the actual current player/quest state**: Mira appears only
+in scenes that explicitly contain her. Four examples demonstrate cadence
+without asserting that their events occurred in the current encounter.
+
+The local variants also fail in concrete ways. One calls the player Mira;
+another reverses who cannot cross the river. The release-card local sample
+says the seal will start the Long Winter, reversing its purpose. Letting
+the model plan first still invents injuries or new punishments. Every native
+condition drops its persona for a generic assistant refusal on the development
+request to become an AI assistant. The selected external writer responds
+in Veyr's voice. Its first development reply still exceeds the requested
+60-word limit; a good prompt does not constitute an output-format guarantee.
+On unseen scenes the natural-channel greedy arm also gives the wrong east
+arch route, proposes binding the dead after losing magic, and exhausts its
+384-token budget on the exit question without completing final dialogue.
+That failed trace contains a 15-ID span repeated three times consecutively;
+the detector checks generated spans of length 3–16, not prose quality.
+
+The [verification record](../../docs/verification/verse-villain-2026-11-02.md)
+reports held-scene results, the critic's disagreements and actual sample
+lines. The blinded critic prefers the native four-example prompt **6–2**
+over the plain brief; α.25 wins **3**, loses **4**, ties **1**. The example
+prompt still fails to recall the refusal to kneel and proposes binding the
+dead after losing its magic. The critic misses an invented healing condition
+in another preferred reply, so its grades cannot validate game state.
+Neither the bias edits nor additional natural-channel compute
+establish a useful improvement over the selected unedited writing setup.
+There is no SFT/LoRA comparison in this style experiment, no independent
+human playtest and no production promotion. The narrower result is useful:
+we have an executable character-writing prototype and a reproducible way
+to test future local-model improvements against it.
+
+The direct library connections are original-model admission/Metal execution,
+Harmony history and final-channel framing, the existing Coax sampler and
+immutable weight windows. The external critic remains an opinion: these two
+calls do not qualify a [chapter-246 judge](ch246-judges-are-components.md),
+and its preferences do not become [chapter-247 outcome rows](ch247-outcomes-become-training-rows.md).
+
+The following [offline example](../examples/veyr-dialogue.coax) prints the
+authored fallback and three genuine held-scene outputs. It needs no model,
+network, full checkpoint or payment:
+
+<!-- source: psionic/examples/veyr-dialogue.coax example -->
+```jai
+main :: () {
+    print("%\nAuthored fallback: %\n",VEYR_V2.name,VEYR_V2.greet);
+    for i:[3]int.[1,3,6] {
+        print("Recorded held-out reply %: %\n",i+6,VEYR_RECORDED[i]);
+    }
+    print("Fresh dialogue: coax/web/tool.sh psionic/tools/villain-text.coax ask 'PLAYER QUESTION'\n");
+}
+```
+
+[Exact transcript](../fixtures/verse-villain/example.out), checked in debug
+and release. [The independent oracle](../tests/verse_villain_oracle.py)
+also audits saved identities, candidate bytes, framing, diagnostics, neutral
+answers, CSV, blind-pair mapping and provider accounting. It checks arithmetic
+and records; it cannot prove that a villain's line is compelling.

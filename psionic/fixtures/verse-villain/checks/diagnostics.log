@@ -1,0 +1,3 @@
+ok   #test dialogue diagnostics count words without treating punctuation as prose quality (1 case, 854 steps, 0 ms)
+1 of 166 checks (--only 'dialogue diagnostics'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

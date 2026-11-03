@@ -1,0 +1,19 @@
+original prefix 0: 201088 logits, max scaled error 9.98402877e-06, exact argmax 7
+original prefix 1: 201088 logits, max scaled error 9.05275518e-06, exact argmax 200005
+encoded random/control delta cosine 0.6013485978940484
+encoded candidates: 14 independent bytes, identities, counts and norms agree
+bias 3: raw residual scaled error 1.78061626e-06, normalized 1.21418793e-07, exact router/gate bits
+bias 4: raw residual scaled error 2.31178283e-06, normalized 1.38956603e-07, exact router/gate bits
+bias 5: raw residual scaled error 5.03715257e-06, normalized 2.43949561e-07, exact router/gate bits
+bias 6: raw residual scaled error 5.57896763e-06, normalized 3.75683448e-07, exact router/gate bits
+bias 7: raw residual scaled error 2.31178283e-06, normalized 1.38956603e-07, exact router/gate bits
+saved sequences 255 emitted tokens 11852 prompt tokens 106670
+additional capture/parity/equivalence: 25 prefills, 11316 prefill positions, 23 single steps
+total logical driver requests: 280 prefills, 117986 prefill positions, 11620 single steps
+writing/critic calls 33 provider usage {'input_tokens': 66, 'cache_creation_input_tokens': 53828, 'cache_read_input_tokens': 0, 'output_tokens': 4318, 'thinking_tokens': 1376} reported list cost USD 0.517248
+KNOWN selection-record defect: 'best_weight_only'=3 is not rating argmax 5 (6 vs 7); frozen diagnostic retained; see measurement-notes.md
+matrix CSV independently recomputed
+blinded critic local wins {0: 2, 11: 6, 'tie': 0}
+blinded critic weight wins {0: 4, 3: 3, 'tie': 1}
+phase commands 10 wall ms 2042230 max 239195
+independent villain audit passed; subjective prose quality is not established by this oracle

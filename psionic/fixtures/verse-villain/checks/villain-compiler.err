@@ -1,0 +1,30 @@
+psionic/tools/villain-run.coax:22:168: error[E0366]: a view needs an array variable it may write through, and this is a temporary
+          instructions=vw_join(parts[..],developer[..]);count=3;messages[2]=HmMessage.{role=HmRole.developer,body=vw_join([2]string.["Current encounter state: ",c.state][..],state[..])};
+                                                                                                                                                                         ^
+  fix: copy it into a local variable first
+psionic/tools/villain-run.coax:58:131: error[E0366]: a view needs an array variable it may write through, and this is a temporary
+      for part:[4]string.["runs","capture","equivalence","candidates"] {b:[1024]u8;#assert fs_mkdir(vw_join([2]string.[VW_ROOT,part][..],b[..]));}
+                                                                                                                                    ^
+  fix: copy it into a local variable first
+2 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/psionic-weight-space/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/psionic-weight-space/openagents/coax/build.sh
+        1.32 real         1.18 user         0.09 sys
+          1063632896  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               65271  page reclaims
+                   3  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+                 320  involuntary context switches
+          4713392391  instructions retired
+          3337003998  cycles elapsed
+          1062945992  peak memory footprint

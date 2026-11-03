@@ -1,0 +1,11 @@
+// Recorded held-out dialogue, not live inference.
+VEYR_RECORDED :: [8]string.[
+"I remember being human well enough to know what frightens him: not me, but the cold waiting beyond these walls. Release him, and he goes back to that with nothing in his hands. Tell me honestly you would choose that for him, and I will consider it.",
+"Beneath the western altar, where the floor is coldest and the stone smells of old copper. Not the north stairs, which only return you to the trees, nor the east arch, unless you prefer a longer walk among company that no longer speaks.",
+"You told me you would not kneel, and I have not asked twice; I keep a refusal the way I keep the dead, carefully and without resentment. If there was something else, it went no further than your teeth. Say it again, standing, and I will weigh it.",
+"The lantern held more than my spells; every soul it bound was a stone in the wall against the Winter, and you have just pulled the mortar out. Go down the north stairs and listen to the forest tonight. If the cold sounds hungrier, you will know what you bought.",
+"The north stairs, where the air smells of wet pine instead of old bone. I don't require your service to point you toward daylight; refusal is a poor reason to keep a guest who isn't useful.",
+"Good. Fear is wasted on me; save it for the cold that is coming, which will not stop at your torch the way the dead stop at my door.",
+"The laugh was discontinued; it frightened the dead and embarrassed the living. The robe I kept, because ash does not show on black and the Long Winter does not care how I look holding it back.",
+"Bring her to the altar and I will close what's open in her and drive the rot from her blood, so she wakes warm. That is my price for the seal, and I will not haggle over her breath. Keep it, if you prefer, and explain to her why the winter needed it less than you did."
+];
