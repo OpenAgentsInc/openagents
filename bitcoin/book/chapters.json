@@ -1962,16 +1962,29 @@
   {
    "number": 97,
    "title": "Silent payments",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch097-silent-payments.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     16,
     24,
-    29
+    28,
+    29,
+    32,
+    41
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "bitcoin/examples/silent.coax",
+    "bitcoin/examples/checks/silent.coax",
+    "coax/lib/bitcoin/silent.coax",
+    "coax/tests/bitcoin/silent_vectors.coax",
+    "coax/tests/bitcoin/make_silent_vectors.py",
+    "coax/tests/bitcoin/silent_reference.py",
+    "coax/tests/bitcoin/silent.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

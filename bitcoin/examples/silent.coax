@@ -1,0 +1,134 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/silent.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+put_hex :: (b: [] u8) {
+  text: [144] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+// A wallet: its keys from a seed, its address and its labels.
+Wallet :: struct { scan: [32] u8; spend: [32] u8; b_scan: [33] u8; b_spend: [33] u8; labels: [2] SlLabel; }
+wallet :: (seed: [] u8, w: [] SlWork) -> Wallet {
+  r: Wallet;
+  if !silent_keys(seed, 0, 0, r.scan[..], r.spend[..]) || !bip32_public(r.scan[..], r.b_scan[..]) || !bip32_public(r.spend[..], r.b_spend[..]) { return r; }
+  for m: 0..<2 { if silent_label(r.scan[..], m, r.labels[m..<m+1], w) != SL_OK { return r; } }
+  return r;
+}
+// The address of a wallet, labeled with m or, for m = -1, not; its keys
+// (B_scan || B_m) into keys when keys has room.
+address :: (x: [] Wallet, m: int, testnet: bool, keys: [] u8, text: [] u8) -> string {
+  b_m: [33] u8;
+  for i: 0..<33 { b_m[i] = x[0].b_spend[i]; }
+  if m >= 0 && silent_labeled_spend_vartime(x[0].b_spend[..], x[0].labels[m], b_m[..]) != SL_OK { return ""; }
+  for i: 0..<keys.count { keys[i] = ifx i < 33 then x[0].b_scan[i] else b_m[i - 33]; }
+  n := silent_address_vartime(testnet, x[0].b_scan[..], b_m[..], text);
+  return ifx n > 0 then cast(string) text[0..<n] else "";
+}
+// Scans the outputs for a wallet; prints what it finds and whether each
+// found key spends its output.
+scan :: (name: string, x: [] Wallet, tweak: [] u8, outputs: [] u8, w: [] SlWork) -> int {
+  found: [4] SlFound;
+  s := silent_scan(x[0].scan[..], x[0].b_spend[..], tweak, outputs, x[0].labels[..], found[..], w);
+  print("  % finds %", name, s.count);
+  if s.count > 0 { print(":"); }
+  spends := 0;
+  for k: 0..<s.count {
+    d: [32] u8; pub: [33] u8;
+    print("% output %", ifx k == 0 then "" else ",", found[k].output);
+    if found[k].label >= 0 { print(" (label %)", found[k].label); }
+    if silent_spend_key(x[0].spend[..], found[k].tweak[..], d[..]) && bip32_public(d[..], pub[..]) {
+      same := true;
+      for i: 0..<32 { if pub[1 + i] != found[k].key[i] { same = false; } }
+      if same { spends += 1; }
+    }
+  }
+  print("\n");
+  return spends;
+}
+
+main :: () {
+  w: [1] SlWork;
+  // A receiver, and a sender that also receives: its change comes back
+  // to its own address with the change label m = 0.
+  seed: [16] u8;
+  for i: 0..<16 { seed[i] = cast(u8) i; }
+  wallets: [3] Wallet;
+  wallets[0] = wallet(seed[..], w[..]);
+  for i: 0..<16 { seed[i] = 0x97; }
+  wallets[1] = wallet(seed[..], w[..]);
+  for i: 0..<16 { seed[i] = 0x52; }
+  wallets[2] = wallet(seed[..], w[..]);
+  receiver := wallets[0..<1]; sender := wallets[1..<2]; other := wallets[2..<3];
+  recipients: [3 * 66] u8; text: [130] u8;
+  print("The receiver (seed 000102...0f, m/352'/0'/0'):\n");
+  a := address(receiver, -1, false, recipients[0..<66], text[..]);
+  print("  address  % (% characters)\n", a, a.count);
+  d := silent_decode_vartime(a);
+  print("  signet   %\n", address(receiver, -1, true, recipients[0..<0], text[..]));
+  print("  label 1  %\n", address(receiver, 1, false, recipients[66..<132], text[..]));
+  print("  decoded: version %, B_scan ", d.version); put_hex(d.scan[..]); print("\n");
+  print("The sender's change address (seed 9797...97, label 0):\n  %\n", address(sender, 0, false, recipients[132..<198], text[..]));
+
+  // The inputs of one of BIP-352's cases: a P2TR key whose point has an
+  // odd y, and a P2PKH key.
+  c := SL_CASES[9];
+  print("The inputs (\"%\"):\n", c.comment);
+  x := sl_inputs(c);
+  for k: 0..<c.inputs {
+    v := SL_INPUTS[c.first + k];
+    sig: [600] u8; wit: [1200] u8; spk: [60] u8; pub: [33] u8;
+    kind := silent_input_key_vartime(tx_unhex(v.script_sig, sig[..]), tx_unhex(v.witness, wit[..]), tx_unhex(v.prevout, spk[..]), pub[..]);
+    print("  %: % ", k, SL_KINDS[kind]);
+    if kind == SL_IN_NONE { print("\n"); continue; }
+    put_hex(pub[..]);
+    // The receiver reads a P2TR key as even; this one's secret key gives
+    // an odd y, so the sender adds its negation.
+    key: [32] u8; own: [33] u8;
+    if kind == SL_IN_P2TR && bip32_public(tx_unhex(v.key, key[..]), own[..]) && own[0] == 3 { print(" (odd y: negated)"); }
+    print("\n");
+  }
+  sum: [32] u8; a_point: [33] u8; h: [32] u8; tweak: [33] u8;
+  if silent_key_sum(x.keys[0..<32*x.n], x.taproot[0..<x.n], sum[..], a_point[..], w[..]) != SL_OK { return; }
+  if !silent_input_hash_vartime(x.outpoints[0..<36*x.all], a_point[..], h[..]) { return; }
+  print("  A          "); put_hex(a_point[..]); print("\n");
+  print("  input_hash "); put_hex(h[..]); print("\n");
+
+  // Three outputs: two to the receiver (k = 0 and 1), one change (k = 0).
+  outputs: [3 * 32] u8; shared: [3 * 33] u8;
+  s := silent_send(x.keys[0..<32*x.n], x.taproot[0..<x.n], x.outpoints[0..<36*x.all], recipients[..], outputs[..], shared[..], w[..]);
+  if s.code != SL_OK { return; }
+  names := [3] string.["to the receiver, k = 0", "to its label 1, k = 1  ", "change, k = 0          "];
+  for k: 0..<s.count { print("  % ", names[k]); put_hex(outputs[32*k..<32*k+32]); print("\n"); }
+
+  // Anyone may compute the tweak; each wallet scans with its own b_scan.
+  if silent_tweak_vartime(x.pubs[0..<33*x.n], x.outpoints[0..<36*x.all], tweak[..], a_point[..]) != SL_OK { return; }
+  print("Scanning with the tweak input_hash A = "); put_hex(tweak[..]); print(":\n");
+  spends := scan("the receiver", receiver, tweak[..], outputs[..], w[..]);
+  spends += scan("the sender", sender, tweak[..], outputs[..], w[..]);
+  spends += scan("another wallet", other, tweak[..], outputs[..], w[..]);
+  print("  b_spend + tweak is the secret key of each output found: % of %\n", spends, s.count);
+
+  // Every vector.
+  print("The BIP-352 vectors:\n");
+  inputs := 0; pass := 0; kmax := 0;
+  for each: SL_CASES { inputs += sl_inputs(each).all; }
+  print("  inputs: % read, each giving the published key or none\n", inputs);
+  for i: 0..<SL_CASES.count { if sl_sends(i) { pass += 1; } }
+  print("  sending: % of % cases make a published output set, or fail as published\n", pass, SL_CASES.count);
+  pass = 0;
+  for r: SL_RECEIVES {
+    if sl_receiver_addresses(r) && sl_receiver_finds(r, SL_K_MAX) { pass += 1; }
+    if r.n == SL_K_MAX { kmax = r.outputs.count / 64; }
+  }
+  print("  receiving: % of % find the published outputs, tweaks and signatures;\n", pass, SL_RECEIVES.count);
+  print("    one stops at K_max, finding % of its % outputs\n", SL_K_MAX, kmax);
+  pass = 0;
+  for e: SL_ADDRESSES {
+    r := silent_decode_vartime(e.address);
+    if r.reason == e.reason { pass += 1; }
+  }
+  print("  addresses: % of % constructed ones decode as decided\n", pass, SL_ADDRESSES.count);
+}
+// book:end example

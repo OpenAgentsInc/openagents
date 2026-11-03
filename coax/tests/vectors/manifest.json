@@ -4259,6 +4259,149 @@
       "retrieved": "2026-11-03",
       "sha256": "187205f77b4a639f8d7e9a8e9d9070204a4c6658cf925569001b4d15f02a6539",
       "bytes": 35017
+    },
+    {
+      "path": "upstream/bip352/bip-0352.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0352.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in bip-0352.mediawiki)",
+      "covers": [
+        "bitcoin-silent-payments"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "e2ffb2999fe4c0131dd9fe57099b610f0d882bcf4f3cfe24c01748eeb4235c7b",
+      "bytes": 54402
+    },
+    {
+      "path": "upstream/bip352/send_and_receive_test_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0352/send_and_receive_test_vectors.json",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in bip-0352.mediawiki)",
+      "covers": [
+        "bitcoin-silent-payments"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "2faa899c480fea1fb13b06fb669e9cfdd11738a5140ec516f46a46e68e2c2ad8",
+      "bytes": 424955
+    },
+    {
+      "path": "upstream/bip352/reference.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0352/reference.py",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in bip-0352.mediawiki)",
+      "covers": [
+        "bitcoin-silent-payments"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "ca44bd5826c238aa6385c65ba31dc5a09a37790eaf4ee75e12959a1d1353124a",
+      "bytes": 18465
+    },
+    {
+      "path": "upstream/bip352/bitcoin_utils.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0352/bitcoin_utils.py",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in bip-0352.mediawiki)",
+      "covers": [
+        "bitcoin-silent-payments"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "80dd73fd9aafea15a37879124bafe4a59aa78f76de2d7d778ed0a62f2c49e7b5",
+      "bytes": 4332
+    },
+    {
+      "path": "upstream/bip352/bech32m.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0352/bech32m.py",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "MIT (declared in source)",
+      "covers": [
+        "bitcoin-silent-payments"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "b38e16a9a2f3960945773ccad020d15cd27dd1871c5a9dd26147a8fa9b14df5b",
+      "bytes": 4831
+    },
+    {
+      "path": "upstream/bip352/ripemd160.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0352/ripemd160.py",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "MIT (declared in source)",
+      "covers": [
+        "bitcoin-silent-payments"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "99da6dafa9804d3ca5490a736354027b10ec3d517206caad6ea28c0e097f6b9a",
+      "bytes": 5071
+    },
+    {
+      "path": "upstream/bip352/secp256k1lab/COPYING",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0352/secp256k1lab/COPYING",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "MIT (secp256k1lab COPYING)",
+      "covers": [
+        "bitcoin-silent-payments"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "8f13f6dc042fbc546d7217ed87f1639a9f95ba8ba0248364899564c5d4f32576",
+      "bytes": 1190
+    },
+    {
+      "path": "upstream/bip352/secp256k1lab/src/secp256k1lab/__init__.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0352/secp256k1lab/src/secp256k1lab/__init__.py",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "MIT (secp256k1lab COPYING)",
+      "covers": [
+        "bitcoin-silent-payments"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "upstream/bip352/secp256k1lab/src/secp256k1lab/secp256k1.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0352/secp256k1lab/src/secp256k1lab/secp256k1.py",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "MIT (secp256k1lab COPYING)",
+      "covers": [
+        "bitcoin-silent-payments"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "3a3316ea6717f8dd6d89eb65e80a09265551955d5c9eb872fae3e12504cc63b0",
+      "bytes": 15741
+    },
+    {
+      "path": "upstream/bip352/secp256k1lab/src/secp256k1lab/bip340.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0352/secp256k1lab/src/secp256k1lab/bip340.py",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "MIT (secp256k1lab COPYING)",
+      "covers": [
+        "bitcoin-silent-payments"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "428ee8110175b32b67d22a88efe07a44cede2419d0f547949164f2a8f9d76b96",
+      "bytes": 2492
+    },
+    {
+      "path": "upstream/bip352/secp256k1lab/src/secp256k1lab/util.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0352/secp256k1lab/src/secp256k1lab/util.py",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "MIT (secp256k1lab COPYING)",
+      "covers": [
+        "bitcoin-silent-payments"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "3aeccf814f0bd67cdfb0791a6bf054b367c580942acd44942fdf505e5a1af707",
+      "bytes": 645
     }
   ]
 }

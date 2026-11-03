@@ -1,0 +1,69 @@
+// The checks of silent.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/silent.coax
+#load "../silent.coax";
+
+// book:begin check
+// A wallet whose two keys hash from seed: the chapter's BIP-32 paths cost
+// more than these checks need.
+hashed_wallet :: (seed: [] u8, w: [] SlWork) -> Wallet {
+  r: Wallet; data: [17] u8;
+  for i: 0..<16 { data[i] = seed[i]; }
+  data[16] = 1; #assert sha256_hash_checked(data[..], r.scan[..], false) == SHA_OK && bip32_public(r.scan[..], r.b_scan[..]);
+  data[16] = 2; #assert sha256_hash_checked(data[..], r.spend[..], false) == SHA_OK && bip32_public(r.spend[..], r.b_spend[..]);
+  for m: 0..<2 { #assert silent_label(r.scan[..], m, r.labels[m..<m+1], w) == SL_OK; }
+  return r;
+}
+// A payment from two inputs of seed s, the first P2TR when taproot, to a
+// wallet's address and its label 1. The wallet finds both outputs, the
+// second as label 1, and each found key is its output's secret key.
+// Another wallet finds nothing. The inputs in the other order make the
+// same outputs: A is a sum, and the smallest outpoint is the same.
+pays :: (s: int, taproot: bool) -> bool {
+  w: [1] SlWork; seed: [16] u8; wallets: [2] Wallet; recipients: [132] u8; text: [130] u8;
+  for i: 0..<16 { seed[i] = cast(u8) ((s * 7 + i) & 255); }
+  wallets[0] = hashed_wallet(seed[..], w[..]);
+  seed[0] ^= 0xff;
+  wallets[1] = hashed_wallet(seed[..], w[..]);
+  if address(wallets[0..<1], -1, false, recipients[0..<66], text[..]).count != 116 { return false; }
+  if address(wallets[0..<1], 1, false, recipients[66..<132], text[..]).count != 116 { return false; }
+  keys: [64] u8; flags: [2] bool; outpoints: [72] u8; outputs: [64] u8;
+  #assert sha256_hash_checked(seed[..], keys[0..<32], false) == SHA_OK && sha256_hash_checked(keys[0..<32], keys[32..<64], false) == SHA_OK;
+  flags[0] = taproot;
+  for i: 0..<72 { outpoints[i] = cast(u8) ((s * 13 + i * 5) & 255); }
+  sent := silent_send(keys[..], flags[..], outpoints[..], recipients[..], outputs[..], outputs[0..<0], w[..]);
+  if sent.code != SL_OK || sent.count != 2 { return false; }
+  // What the receiver sees: each input's key, a P2TR one as x only.
+  pubs: [66] u8; tweak: [33] u8; a_point: [33] u8; found: [2] SlFound;
+  for k: 0..<2 { #assert bip32_public(keys[32*k..<32*k+32], pubs[33*k..<33*k+33]); }
+  if taproot { pubs[0] = 2; }
+  if silent_tweak_vartime(pubs[..], outpoints[..], tweak[..], a_point[..]) != SL_OK { return false; }
+  r := silent_scan(wallets[0].scan[..], wallets[0].b_spend[..], tweak[..], outputs[..], wallets[0].labels[..], found[..], w[..]);
+  ok := r.code == SL_OK && r.count == 2 && found[0].output == 0 && found[0].label == -1 && found[1].output == 1 && found[1].label == 1;
+  for k: 0..<r.count {
+    d: [32] u8; pub: [33] u8;
+    ok = ok && silent_spend_key(wallets[0].spend[..], found[k].tweak[..], d[..]) && bip32_public(d[..], pub[..]);
+    for i: 0..<32 { ok = ok && pub[1 + i] == outputs[32*k + i]; }
+  }
+  r = silent_scan(wallets[1].scan[..], wallets[1].b_spend[..], tweak[..], outputs[..], wallets[1].labels[..], found[..], w[..]);
+  ok = ok && r.code == SL_OK && r.count == 0;
+  // The other order.
+  swapped: [64] u8; flipped: [2] bool; moved: [72] u8; again: [64] u8;
+  for i: 0..<32 { swapped[i] = keys[32 + i]; swapped[32 + i] = keys[i]; }
+  for i: 0..<36 { moved[i] = outpoints[36 + i]; moved[36 + i] = outpoints[i]; }
+  flipped[1] = taproot;
+  sent = silent_send(swapped[..], flipped[..], moved[..], recipients[..], again[..], again[0..<0], w[..]);
+  for i: 0..<64 { ok = ok && again[i] == outputs[i]; }
+  return ok && sent.code == SL_OK;
+}
+// One check per input type: each check has its own budget.
+#forall "two inputs pay a wallet and its label; it finds both and can spend them" s: 0..<2 #steps 20000000000 {
+  #assert pays(s, false);
+}
+#forall "with a P2TR input whose y is odd or even, the receiver finds the same" s: 2..<4 #steps 20000000000 {
+  #assert pays(s, true);
+}
+#forall "the same, for two more P2TR inputs" s: 4..<6 #steps 20000000000 {
+  #assert pays(s, true);
+}
+// book:end check

@@ -278,7 +278,7 @@ there is a need.
 | [94. PSBT](ch094-psbt.md) — implemented | 34, 38, 43 | Every valid and invalid PSBT in BIP-174 and BIP-370 parses or refuses as stated. | BIP-174, BIP-370 |
 | [95. Coin selection and change](ch095-coin-selection-and-change.md) — implemented | 40, 94 | Branch-and-bound and fallback selection pass Bitcoin Core's coin-selection cases, and no selection pays more than its stated fee rate allows. | Bitcoin Core `coinselection.cpp` |
 | [96. Message signing](ch096-message-signing.md) — implemented | 22, 36, 42, 43, 94 | BIP-322's simple and full vectors verify. | BIP-322 |
-| 97. Silent payments — planned | 16, 24, 29 | BIP-352's `send_and_receive_test_vectors.json` give every output and scan result. | BIP-352 |
+| [97. Silent payments](ch097-silent-payments.md) — implemented | 16, 24, 28, 29, 32, 41 | BIP-352's `send_and_receive_test_vectors.json` give every output and scan result. | BIP-352 |
 | 98. Miniscript — planned | 30, 36, 44 | The BIP-379 examples type-check, compile to their stated scripts and satisfy. | BIP-379 |
 | 99. A descriptor wallet on our node — planned | 30, 33, 92, 94, 95 | A descriptor wallet finds its coins by rescan and by notification, builds, signs and broadcasts a spend on signet through our node, and survives a reorganization that removes a payment. | BIP-380 |
 

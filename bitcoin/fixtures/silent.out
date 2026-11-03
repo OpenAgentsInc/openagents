@@ -1,0 +1,26 @@
+The receiver (seed 000102...0f, m/352'/0'/0'):
+  address  sp1qqwjnwdugzyeqe6xhj7unvjy7aw984l2v08kgcn8aypqthf00tckd6qu3hlqqjy9y523c4vyll6hz9svyjmdlppfwsxh7hdzj99kh859z9vc56rgj (116 characters)
+  signet   tsp1qqwjnwdugzyeqe6xhj7unvjy7aw984l2v08kgcn8aypqthf00tckd6qu3hlqqjy9y523c4vyll6hz9svyjmdlppfwsxh7hdzj99kh859z9vvm6kzf
+  label 1  sp1qqwjnwdugzyeqe6xhj7unvjy7aw984l2v08kgcn8aypqthf00tckd6qlx4nf6p0pn4lnfzk906ahje3n0rrrd3nvnrzznl9k3sel4sppkdsmdwe86
+  decoded: version 0, B_scan 03a537378811320ce8d797b936489eeb8a7afd4c79ec8c4cfd2040bba5ef5e2cdd
+The sender's change address (seed 9797...97, label 0):
+  sp1qqvdp4leqx5f6kw0syqxl37nmrxxfk2tjw7u3p6dddqv67dmzxem6cqmq4xkpzxm604zd7da7rq9ka9lrmflpd28rhj7m6j3y4965t4pr0qhydq7v
+The inputs ("Single recipient: taproot input with odd y-value and non-taproot input"):
+  0: P2TR 028c8d23d4764feffcd5e72e380802540fa0f88e3d62ad5e0b47955f74d7b283c4 (odd y: negated)
+  1: P2PKH 03e0ec4f64b3fa2e463ccfcf4e856e37d5e1e20275bc89ec1def9eb098eff1f85d
+  A          03bc118b1c8178915b716d6137633722c71adfe721551ec7b3938054691de6a2b9
+  input_hash 2c648edc10c4f485a825c6cbc12db0966c98c4b05ed13fde156d3647bcd061d9
+  to the receiver, k = 0 bde04da346920e14ac17438727fc12ca1798c4cca78a931e6a95b3fcbb258ba5
+  to its label 1, k = 1   584d614148a9d9ecf3e7214c8b624bf8684e52692eb5800eb6cacfbec8f9b411
+  change, k = 0           7dc18cbd165253db2970c6efdbfc7d05035679995b3f2af5ddea57cd437d472b
+Scanning with the tweak input_hash A = 02d4e4f2c4cdb71c9c39a700a9ee1a0fc05b98362a441183f5770af7d6e2b3038c:
+  the receiver finds 2: output 0, output 1 (label 1)
+  the sender finds 1: output 2 (label 0)
+  another wallet finds 0
+  b_spend + tweak is the secret key of each output found: 3 of 3
+The BIP-352 vectors:
+  inputs: 62 read, each giving the published key or none
+  sending: 29 of 29 cases make a published output set, or fail as published
+  receiving: 30 of 30 find the published outputs, tweaks and signatures;
+    one stops at K_max, finding 2323 of its 2324 outputs
+  addresses: 15 of 15 constructed ones decode as decided

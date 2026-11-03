@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-86 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+87 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -85,6 +85,10 @@ Chapter 96's [`bip322.coax`](../coax/lib/bitcoin/bip322.coax)
 signs and verifies BIP-322 messages for any address: it builds the
 virtual `to_spend` and `to_sign` transactions and runs the address's
 script, in the simple, full, proof-of-funds and legacy formats.
+Chapter 97's [`silent.coax`](../coax/lib/bitcoin/silent.coax)
+is BIP-352's silent payments: a static `sp1` address from which each
+sender derives a fresh Taproot output by ECDH over its inputs' keys, with
+labels and the receiver's scan.
 Chapter 100's [`multisig.coax`](../coax/lib/bitcoin/multisig.coax)
 writes and matches m-of-n scripts as Core does: `OP_CHECKMULTISIG` bare,
 under P2SH, P2WSH and P2SH-P2WSH, BIP-67's sorted keys, and BIP-387's
@@ -189,11 +193,10 @@ with BIP-157 filter headers in chapter 74
 and Lightning also need:
 
 - Batch Schnorr verification and tapscript. (ElligatorSwift and the
-  BIP-324 transport are built in chapters 66 and 67.)
-- Silent payments. (MuSig2 is built in chapter 101,
-  `coax/lib/bitcoin/musig.coax`, FROST in chapter 102,
-  `coax/lib/bitcoin/frost.coax`, and adaptor signatures in chapter
-  103, `coax/lib/bitcoin/adaptor.coax`.)
+  BIP-324 transport are built in chapters 66 and 67; silent payments in
+  chapter 97, MuSig2 in chapter 101, `coax/lib/bitcoin/musig.coax`,
+  FROST in chapter 102, `coax/lib/bitcoin/frost.coax`, and adaptor
+  signatures in chapter 103, `coax/lib/bitcoin/adaptor.coax`.)
 - Lightning: watching the chain for a channel's transactions (chapter
   110). (BOLT 1's messages and TLVs are built in chapter 104, the BOLT 8 Noise handshake in chapter 105, BOLT 3's keys and
   revocation in chapter 106, shachain in chapter 107, commitment and HTLC

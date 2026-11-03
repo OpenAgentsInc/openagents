@@ -731,6 +731,18 @@
       "timeout": 600
     },
     {
+      "source": "bitcoin/examples/silent.coax",
+      "chapter": "bitcoin/book/ch097-silent-payments.md",
+      "stdout": "bitcoin/fixtures/silent.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 600
+    },
+    {
       "source": "bitcoin/examples/lightning-onion.coax",
       "chapter": "bitcoin/book/ch111-onion-routing-and-blinded-paths.md",
       "stdout": "bitcoin/fixtures/lightning-onion.out",
