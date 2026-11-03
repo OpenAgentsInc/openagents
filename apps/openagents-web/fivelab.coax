@@ -1025,10 +1025,10 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   if !s[0].golden {
     fl: [16] u8;
     fm := put_int(fl[..], 0, int(s[0].fps + 0.5)); fm = put(fl[..], fm, " FPS");
-    fc := 9 * k;
-    fxr := ifx s[0].portrait then s[0].width - 14 * k else s[0].panel.x0 - 12 * k;
-    fyb := ifx s[0].portrait then s[0].panel.y0 - 12 * k else s[0].height - 14 * k;
-    n = say_at(out, n, cast(string) fl[0..<fm], fxr - text_width(cast(string) fl[0..<fm], fc), fyb, fc, ink(k, 0.8, DIM));
+    fc := 15 * k;
+    fxr := ifx s[0].portrait then s[0].width - 16 * k else s[0].panel.x0 - 16 * k;
+    fyb := ifx s[0].portrait then s[0].panel.y0 - 16 * k else s[0].height - 20 * k;
+    n = say_at(out, n, cast(string) fl[0..<fm], fxr - text_width(cast(string) fl[0..<fm], fc), fyb, fc, ink(k, 1, ifx s[0].fps >= 50 then GREEN else ifx s[0].fps >= 30 then GOLD else RED));
   }
   if s[0].paused { n = say_mid(out, n, "PAUSED", s[0].cx, s[0].gy + 26 * k, 14 * k, ink(k, 0.9, GOLD)); }
   if s[0].over && s[0].winner >= 0 {
