@@ -1,0 +1,51 @@
+// The checks of witness-commitment.coax. They live apart so that running
+// the example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/witness-commitment.coax
+#load "../witness-commitment.coax";
+
+// book:begin check
+// Every case: IsBlockMutated says what CheckWitnessMalleation says, since
+// each case's header carries its own root and starts with a coinbase.
+#forall "the cases are only witness cases" i: 0..<WT_CASES.count #steps 300000000 {
+  c := WT_CASES[i];
+  b: [6000] u8; ids: [32 * 20] u8; wids: [32 * 20] u8; work: [32 * 20] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := decode(c.hex, b[..]);
+  k := witness_check_vartime(s, c.segwit, ins[..], outs[..], items[..], wids[..], work[..]);
+  m := witness_mutated_vartime(s, c.segwit, ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  #assert k.code == m.code;
+}
+// "reserved value 7": blocktools.py writes the value as a 256-bit number,
+// little-endian, and the commitment Core's rule recomputes from it is the
+// one in the coinbase, byte for byte.
+#test "any reserved value commits" #steps 300000000 {
+  b: [6000] u8; wids: [32 * 20] u8; work: [32 * 20] u8; root: [32] u8; script: [38] u8; seven: [32] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := decode(WT_CASES[5].hex, b[..]);
+  k := witness_check_vartime(s, true, ins[..], outs[..], items[..], wids[..], work[..]);
+  #assert k.code == WITNESS_OK;
+  seven[0] = 7;
+  #assert equal_bytes(s[k.reserved..<k.reserved+32], seven[..]);
+  #assert merkle_witness_root_vartime(wids[0..<32*k.count], work[..], root[..]) == MERKLE_OK;
+  #assert witness_commitment_script_vartime(root[..], seven[..], script[..]) == WITNESS_MINIMUM;
+  cb := s[k.coinbase..<s.count];
+  t := tx_parse_vartime(cb, true, ins[..], outs[..], items[..]);
+  o := outs[k.commitment];
+  #assert equal_bytes(script[..], cb[o.script..<o.script+o.script_n]);
+}
+// The coinbase's own wtxid never enters the witness root: changing its
+// reserved value moves its wtxid but not the root.
+#test "the coinbase's wtxid is zero in the tree" #steps 300000000 {
+  b: [6000] u8; wids: [32 * 20] u8; work: [32 * 20] u8; one: [32] u8; two: [32] u8; first: [32] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := decode(WT_CASES[3].hex, b[..]);
+  k := witness_check_vartime(s, true, ins[..], outs[..], items[..], wids[..], work[..]);
+  #assert merkle_witness_root_vartime(wids[0..<32*k.count], work[..], one[..]) == MERKLE_OK;
+  for i: 0..<32 { first[i] = wids[i]; }
+  s[k.reserved] = 1;
+  k = witness_check_vartime(s, true, ins[..], outs[..], items[..], wids[..], work[..]);
+  #assert merkle_witness_root_vartime(wids[0..<32*k.count], work[..], two[..]) == MERKLE_OK;
+  #assert equal_bytes(one[..], two[..]) && !equal_bytes(first[..], wids[0..<32]);
+  #assert k.code == WITNESS_MERKLE_MATCH;
+}
+// book:end check

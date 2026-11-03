@@ -1069,15 +1069,21 @@
   {
    "number": 49,
    "title": "The witness commitment",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch049-the-witness-commitment.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     35,
     46
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/witness.coax",
+    "bitcoin/examples/witness-commitment.coax",
+    "bitcoin/examples/checks/witness-commitment.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

@@ -1452,7 +1452,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-merkle"
+        "bitcoin-merkle",
+        "bitcoin-witness-commitment"
       ],
       "retrieved": "2026-11-02",
       "sha256": "65e88786ccaaf4dd0ebd14e7a0b82d7fbe6b86a8f0b2f9de4cc2db7b983283d2",
@@ -1544,7 +1545,8 @@
       "revision": "static: mempool.space's raw bytes of a confirmed mainnet block; its header hashes to the block hash; pinned by sha256",
       "license": "Public Bitcoin blockchain data",
       "covers": [
-        "bitcoin-merkle"
+        "bitcoin-merkle",
+        "bitcoin-witness-commitment"
       ],
       "retrieved": "2026-11-02",
       "sha256": "b02256f05ce2fc0d152394b5cd2fa28fe4ab61100844c389581c4cffad88a2b1",
@@ -1570,7 +1572,8 @@
       "revision": "static: mempool.space's raw bytes of a confirmed mainnet block; its header hashes to the block hash; pinned by sha256",
       "license": "Public Bitcoin blockchain data",
       "covers": [
-        "bitcoin-merkle"
+        "bitcoin-merkle",
+        "bitcoin-witness-commitment"
       ],
       "retrieved": "2026-11-02",
       "sha256": "7c0d1862284dcd240a63b5bcb75e956c3645ed5d7453799abb721ce06e6b2902",
@@ -1982,7 +1985,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-p2p",
-        "bitcoin-handshake"
+        "bitcoin-handshake",
+        "bitcoin-witness-commitment"
       ],
       "retrieved": "2026-11-03",
       "sha256": "44e3b8c702916c8ab7820db65cf38af801dd5b5a457e91cabdff95eba5d412a5",
@@ -2552,6 +2556,45 @@
       "retrieved": "2026-11-03",
       "sha256": "e00688c4aa2fe2991376c4835941804421ca21fe05700052b2118286a1e92a20",
       "bytes": 49789
+    },
+    {
+      "path": "upstream/bip141/bip-0141.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0141.mediawiki",
+      "revision": "git:927b6de9915c9262615a6399de51b200f81e5aa4",
+      "license": "PD (declared in source)",
+      "covers": [
+        "bitcoin-witness-commitment"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "d72409335872a32494f75e7547589abf4b3b23b6beebe6bc6999c7a84b135e2c",
+      "bytes": 26314
+    },
+    {
+      "path": "upstream/bitcoin-core/consensus_validation.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/validation.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-witness-commitment"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "2875af77e8e0d4db5b210bc716f37713bd0bd8922dde60713e611b33cdf1806a",
+      "bytes": 7415
+    },
+    {
+      "path": "upstream/bitcoin-core/blocktools.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/blocktools.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-witness-commitment"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "13de0034eb8f41e3435e8f2996ef217221b4450f21f7c24aef1d6e20bc1590df",
+      "bytes": 10530
     }
   ]
 }

@@ -571,6 +571,17 @@
         "release"
       ],
       "timeout": 480
+    },
+    {
+      "source": "bitcoin/examples/witness-commitment.coax",
+      "chapter": "bitcoin/book/ch049-the-witness-commitment.md",
+      "stdout": "bitcoin/fixtures/witness-commitment.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

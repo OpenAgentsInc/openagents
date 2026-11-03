@@ -1,0 +1,39 @@
+block 514,999: 19 transactions
+  with witnesses: 0 10 13 14 15
+  coinbase outputs: 2, commitment at output 1
+  its script: 6a24aa21a9ed0bbd0d4ebdafaf572ceac348d1477a962301e18a2b53824fc46f0af56647cfbe
+  coinbase witness: 1 item of 32 bytes
+  reserved value: 0000000000000000000000000000000000000000000000000000000000000000
+  witness root: 6947cde2e7987a0f5d059432c314d504304bb5f86e3138069bacb56e44b9e411
+  SHA-256d(root || reserved): 0bbd0d4ebdafaf572ceac348d1477a962301e18a2b53824fc46f0af56647cfbe
+  check: ok
+  the script GenerateCoinbaseCommitment writes is the block's: true
+CheckWitnessMalleation
+  block 514,999: commitment at output 1, ok
+  block 100,000: no commitment, ok
+  block 100,000 (segwit not active): no commitment, ok
+  the small block: commitment at output 1, ok
+  the small block (segwit not active): commitment at output 1, unexpected-witness
+  reserved value 7: commitment at output 1, ok
+  a witness byte changed: commitment at output 1, bad-witness-merkle-match
+  the commitment changed: commitment at output 1, bad-witness-merkle-match
+  a 31-byte reserved value: commitment at output 1, bad-witness-nonce-size
+  two reserved values: commitment at output 1, bad-witness-nonce-size
+  no coinbase witness: commitment at output 1, bad-witness-nonce-size
+  a wrong commitment after it: commitment at output 2, bad-witness-merkle-match
+  a wrong commitment before it: commitment at output 2, ok
+  a 39-byte commitment: commitment at output 1, ok
+  a 37-byte commitment: no commitment, unexpected-witness
+  no commitment: no commitment, unexpected-witness
+  no commitment, no witnesses: no commitment, ok
+  no commitment, no witnesses (segwit not active): no commitment, ok
+a witness byte changed
+  same txids: true, same block hash: true
+  wtxid of transaction 1 before: d58b754c9b0f78fc7421e6cd3d277e57163a1f001dee336843cc5f3fa5327f61
+  wtxid of transaction 1 after: 92df639d81d710b7ba73b66893ec1c355a684e74d7ca57b213b84cdd3a908866
+IsBlockMutated
+  the small block: not mutated
+  a witness byte changed: mutated, bad-witness-merkle-match
+  its last transaction repeated: mutated, bad-txns-duplicate
+  its header root changed: mutated, bad-txnmrklroot
+  the small block (segwit not active): mutated, unexpected-witness

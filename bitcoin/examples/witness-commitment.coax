@@ -1,0 +1,115 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/witness.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// A hash as explorers show it: the digest reversed.
+show_id :: (label: string, digest: [] u8) {
+  shown: [32] u8;
+  #assert bitcoin_reverse32(digest, shown[..]) == SHA_OK;
+  show(label, shown[..]);
+}
+// Decode hex into out and return the filled part. Every literal here and
+// in the vector tables is valid lowercase hex, so an error stops the program.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+equal_bytes :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// A verdict: Core's reject reason, or "ok".
+verdict :: (code: int) -> string { return ifx code == WITNESS_OK then "ok" else WITNESS_REASONS[code]; }
+// A case's name, and whether segwit is active for it.
+named :: (c: WtCase) {
+  print("  %", c.name);
+  if !c.segwit { print(" (segwit not active)"); }
+}
+// Where the commitment is.
+where :: (commitment: int) {
+  if commitment == WITNESS_NONE { print("no commitment"); } else { print("commitment at output %", commitment); }
+}
+
+main :: () {
+  b: [6000] u8; wids: [32 * 20] u8; ids: [32 * 20] u8; work: [32 * 20] u8;
+  root: [32] u8; d: [32] u8; script: [38] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+
+  // Block 514,999: where the commitment is and what it commits to.
+  s := decode(MK_BLOCK_514999, b[..]);
+  k := witness_check_vartime(s, true, ins[..], outs[..], items[..], wids[..], work[..]);
+  print("block 514,999: % transactions\n", k.count);
+  print("  with witnesses:");
+  at := k.coinbase;
+  for n: 0..<k.count {
+    t := tx_parse_vartime(s[at..<s.count], true, ins[..], outs[..], items[..]);
+    if t.segwit { print(" %", n); }
+    at += t.total;
+  }
+  print("\n");
+  cb := s[k.coinbase..<s.count];
+  t := tx_parse_vartime(cb, true, ins[..], outs[..], items[..]);
+  print("  coinbase outputs: %, ", t.nout);
+  where(k.commitment);
+  print("\n");
+  o := outs[k.commitment];
+  show("  its script", cb[o.script..<o.script+o.script_n]);
+  print("  coinbase witness: % item of % bytes\n", ins[0].count, items[ins[0].first].n);
+  reserved := s[k.reserved..<k.reserved+32];
+  show("  reserved value", reserved);
+  #assert merkle_witness_root_vartime(wids[0..<32*k.count], work[..], root[..]) == MERKLE_OK;
+  show_id("  witness root", root[..]);
+  #assert witness_commitment_hash_vartime(root[..], reserved, d[..]);
+  show("  SHA-256d(root || reserved)", d[..]);
+  print("  check: %\n", verdict(k.code));
+  zero: [32] u8;
+  #assert witness_commitment_script_vartime(root[..], zero[..], script[..]) == WITNESS_MINIMUM;
+  print("  the script GenerateCoinbaseCommitment writes is the block's: %\n", equal_bytes(script[..], cb[o.script..<o.script+o.script_n]));
+
+  // The cases: CheckWitnessMalleation on each.
+  print("CheckWitnessMalleation\n");
+  for i: 0..<WT_CASES.count {
+    c := WT_CASES[i];
+    x := decode(c.hex, b[..]);
+    k = witness_check_vartime(x, c.segwit, ins[..], outs[..], items[..], wids[..], work[..]);
+    named(c); print(": ");
+    where(k.commitment);
+    print(", %\n", verdict(k.code));
+  }
+
+  // A witness changed after the block was mined: the txids, the header
+  // and the block hash stay; one wtxid and the witness root move.
+  print("a witness byte changed\n");
+  s = decode(WT_CASES[3].hex, b[..]);
+  k = witness_mutated_vartime(s, true, ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  before: [32 * 3] u8; was: [32 * 3] u8;
+  for i: 0..<96 { before[i] = ids[i]; was[i] = wids[i]; }
+  hash: [32] u8;
+  #assert sha256d_checked(s[0..<80], hash[..], false) == SHA_OK;
+  x := decode(WT_CASES[6].hex, b[..]);
+  k = witness_mutated_vartime(x, true, ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  #assert sha256d_checked(x[0..<80], d[..], false) == SHA_OK;
+  print("  same txids: %, same block hash: %\n", equal_bytes(before[..], ids[0..<96]), equal_bytes(hash[..], d[..]));
+  show_id("  wtxid of transaction 1 before", was[32..<64]);
+  show_id("  wtxid of transaction 1 after", wids[32..<64]);
+
+  // IsBlockMutated, as a node runs it on a block it rebuilt.
+  print("IsBlockMutated\n");
+  for i: 0..<WT_MUTATED.count {
+    c := WT_MUTATED[i];
+    y := decode(c.hex, b[..]);
+    k = witness_mutated_vartime(y, c.segwit, ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+    named(c);
+    if k.code == WITNESS_OK { print(": not mutated\n"); } else { print(": mutated, %\n", verdict(k.code)); }
+  }
+}
+// book:end example

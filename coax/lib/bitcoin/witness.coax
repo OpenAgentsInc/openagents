@@ -1,0 +1,278 @@
+// The witness commitment (Bitcoin chapter 49): BIP-141's commitment in the
+// coinbase to the root of a block's wtxids, the witness reserved value
+// beside it, and the block rules that check them.
+//
+// - witness_commitment_index_vartime: GetWitnessCommitmentIndex, the last
+//   coinbase output that starts 6a24aa21a9ed and has at least 38 bytes.
+// - witness_commitment_hash_vartime and witness_commitment_script_vartime:
+//   SHA-256d(witness root || reserved value) and the 38-byte script that
+//   carries it, as GenerateCoinbaseCommitment writes it.
+// - witness_check_vartime: CheckWitnessMalleation, with Core's three
+//   reject reasons, "bad-witness-nonce-size", "bad-witness-merkle-match"
+//   and "unexpected-witness".
+// - witness_mutated_vartime: IsBlockMutated, the check a node runs on a
+//   block it rebuilt (chapter 73) before it trusts it: the Merkle root,
+//   then the witness rules.
+//
+// The rules follow Bitcoin Core's consensus/validation.h and
+// validation.cpp at revision ddea9196. The witness root is chapter 46's
+// (merkle.coax) and the transactions are chapter 34's (tx.coax). Blocks
+// are public, so everything runs in variable time and every procedure that
+// decides ends in _vartime (Bitcoin chapter 3).
+#load "merkle.coax";
+#load "../../tests/bitcoin/witness_vectors.coax";
+#authority;
+
+// book:begin codes
+// Result codes. Core's reject reason, where there is one, is in quotes.
+WITNESS_OK :: 0;
+WITNESS_NONCE_SIZE :: 1;    // "bad-witness-nonce-size": the coinbase's witness is not one 32-byte item
+WITNESS_MERKLE_MATCH :: 2;  // "bad-witness-merkle-match": the commitment is not to these wtxids
+WITNESS_UNEXPECTED :: 3;    // "unexpected-witness": a witness in a block that commits to none
+WITNESS_TXN_MERKLE :: 4;    // "bad-txnmrklroot": the txids' root is not the header's
+WITNESS_DUPLICATE :: 5;     // "bad-txns-duplicate": the txid tree is mutated (chapter 46)
+WITNESS_TX_64 :: 6;         // no coinbase first, and a transaction of 64 stripped bytes
+WITNESS_BAD_BLOCK :: 7;     // the block's bytes don't read; the transaction reader's code says why
+WITNESS_CAPACITY :: 8;      // more transactions, inputs, outputs or items than the caller's views hold
+
+WITNESS_NONE :: -1;         // NO_WITNESS_COMMITMENT
+WITNESS_MINIMUM :: 38;      // MINIMUM_WITNESS_COMMITMENT: a script at least this long
+WITNESS_HEADER :: [6] u8.[0x6a, 0x24, 0xaa, 0x21, 0xa9, 0xed];   // OP_RETURN, a push of 36, aa21a9ed
+// book:end codes
+
+// ---- checks
+// Core's reject reason for each code, "" for none.
+WITNESS_REASONS :: [9] string.["", "bad-witness-nonce-size", "bad-witness-merkle-match", "unexpected-witness",
+  "bad-txnmrklroot", "bad-txns-duplicate", "64-byte transaction", "bad block", "capacity"];
+wt_same :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// Decode a case's block into out.
+wt_block :: (text: string, out: [] u8) -> [] u8 {
+  #assert text.count <= 2 * out.count;
+  return tx_unhex(text, out);
+}
+// Every case of make_witness_vectors.py: Core's reason from
+// CheckWitnessMalleation and the commitment's position.
+#forall "the witness rules decide as Core does" i: 0..<WT_CASES.count #steps 300000000 {
+  c := WT_CASES[i];
+  b: [6000] u8; wids: [32 * 20] u8; work: [32 * 20] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := wt_block(c.hex, b[..]);
+  k := witness_check_vartime(s, c.segwit, ins[..], outs[..], items[..], wids[..], work[..]);
+  #assert wt_same(WITNESS_REASONS[k.code], c.reason) && k.commitment == c.commitment;
+}
+#forall "IsBlockMutated decides as Core does" i: 0..<WT_MUTATED.count #steps 300000000 {
+  c := WT_MUTATED[i];
+  b: [6000] u8; ids: [32 * 20] u8; wids: [32 * 20] u8; work: [32 * 20] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := wt_block(c.hex, b[..]);
+  k := witness_mutated_vartime(s, c.segwit, ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  #assert wt_same(WITNESS_REASONS[k.code], c.reason);
+}
+// Block 514,999: its second output is the commitment, its coinbase's one
+// witness item is 32 zero bytes, and the script Core writes for its witness
+// root and that reserved value is the script in the block.
+#test "block 514,999's commitment" #steps 300000000 {
+  b: [6000] u8; wids: [32 * 20] u8; work: [32 * 20] u8; root: [32] u8; script: [40] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := wt_block(MK_BLOCK_514999, b[..]);
+  k := witness_check_vartime(s, true, ins[..], outs[..], items[..], wids[..], work[..]);
+  #assert k.code == WITNESS_OK && k.count == 19 && k.commitment == 1 && k.first_witness == 0 && k.reserved > 0;
+  #assert merkle_witness_root_vartime(wids[0..<32*19], work[..], root[..]) == MERKLE_OK;
+  #assert mk_shown_is(root[..], MK_WITNESS_ROOT_514999);
+  zero: [32] u8;
+  #assert witness_commitment_script_vartime(root[..], zero[..], script[..]) == WITNESS_MINIMUM;
+  cb := s[k.coinbase..<s.count];
+  t := tx_parse_vartime(cb, true, ins[..], outs[..], items[..]);
+  o := outs[1];
+  #assert o.script_n == 38;
+  for j: 0..<38 { #assert cb[o.script+j] == script[j]; }
+  for j: 0..<32 { #assert s[k.reserved+j] == 0; }
+}
+// The views: too few wtxids, too little work, too few outputs.
+#test "the checker's refusals" #steps 100000000 {
+  b: [6000] u8; ids: [32 * 20] u8; wids: [32 * 20] u8; work: [32 * 20] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := wt_block(MK_BLOCK_514999, b[..]);
+  #assert witness_check_vartime(s, true, ins[..], outs[..], items[..], wids[0..<32*18], work[..]).code == WITNESS_CAPACITY;
+  #assert witness_check_vartime(s, true, ins[..], outs[..], items[..], wids[..], work[0..<32*18]).code == WITNESS_CAPACITY;
+  #assert witness_check_vartime(s, true, ins[..], outs[0..<1], items[..], wids[..], work[..]).code == WITNESS_CAPACITY;
+  k := witness_check_vartime(s[0..<s.count-1], true, ins[..], outs[..], items[..], wids[..], work[..]);
+  #assert k.code == WITNESS_BAD_BLOCK && k.tx_code == TX_TRUNCATED;
+  b[s.count] = 0;
+  k = witness_check_vartime(b[0..<s.count+1], true, ins[..], outs[..], items[..], wids[..], work[..]);
+  #assert k.code == WITNESS_BAD_BLOCK && k.tx_code == TX_TRAILING && k.at == s.count;
+  #assert witness_mutated_vartime(s, true, ins[..], outs[..], items[..], ids[0..<32*18], wids[..], work[..]).code == WITNESS_CAPACITY;
+  // A block of no transactions: nothing to commit to, nothing unexpected.
+  b[80] = 0;
+  k = witness_check_vartime(b[0..<81], true, ins[..], outs[..], items[..], wids[..], work[..]);
+  #assert k.code == WITNESS_OK && k.count == 0 && k.commitment == WITNESS_NONE;
+}
+// A block of block 100,000's header and the 64-byte transaction alone: no
+// coinbase first, so IsBlockMutated says mutated without the witness rules.
+#test "a block without a coinbase" #steps 100000000 {
+  b: [1000] u8; t: [64] u8; ids: [64] u8; wids: [64] u8; work: [64] u8;
+  ins: [2] TxIn; outs: [2] TxOut; items: [2] TxItem;
+  blk := wt_block(MK_BLOCK_100000, b[..]);
+  s := tx_unhex(MK_TX64, t[..]);
+  b[80] = 1;
+  for i: 0..<64 { b[81+i] = s[i]; }
+  #assert sha256d_checked(s, ids[0..<32], false) == SHA_OK;
+  for i: 0..<32 { b[36+i] = ids[i]; }
+  k := witness_mutated_vartime(b[0..<145], true, ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  #assert k.code == WITNESS_TX_64;
+  // One byte more in its output script: not 64 bytes, and not mutated.
+  b[81+55] = 5; b[145] = 0;
+  x := tx_read_vartime(b[81..<146], true, ins[..], outs[..], items[..]);
+  #assert x.code == TX_OK && x.stripped == 65;
+  #assert tx_txid_vartime(b[81..<146], x, ids[0..<32]);
+  for i: 0..<32 { b[36+i] = ids[i]; }
+  k = witness_mutated_vartime(b[0..<146], true, ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  #assert k.code == WITNESS_OK;
+}
+
+// book:begin index
+// GetWitnessCommitmentIndex: the last output of the coinbase b (read as
+// t) whose scriptPubKey has at least 38 bytes and starts with the six
+// bytes of WITNESS_HEADER; WITNESS_NONE when none does. Bytes after the
+// 38th have no meaning, and an earlier match is not the commitment.
+witness_commitment_index_vartime :: (b: [] u8, t: Tx, outs: [] TxOut) -> int #export_c {
+  found := WITNESS_NONE;
+  for o: 0..<t.nout {
+    s := b[outs[o].script..<outs[o].script+outs[o].script_n];
+    if s.count < WITNESS_MINIMUM { continue; }
+    same := true;
+    for i: 0..<6 { if s[i] != WITNESS_HEADER[i] { same = false; } }
+    if same { found = o; }
+  }
+  return found;
+}
+// book:end index
+
+// book:begin hash
+// The commitment: SHA-256d of the witness root (32 bytes, hash order)
+// and then the witness reserved value (32 bytes), into out.
+witness_commitment_hash_vartime :: (root: [] u8, reserved: [] u8, out: [] u8) -> bool #export_c {
+  if root.count != 32 || reserved.count != 32 || out.count != 32 { return false; }
+  pair: [64] u8;
+  for i: 0..<32 { pair[i] = root[i]; pair[32+i] = reserved[i]; }
+  return sha256d_checked(pair[..], out, false) == SHA_OK;
+}
+// The 38-byte scriptPubKey that carries it, as GenerateCoinbaseCommitment
+// and blocktools.py's get_witness_script write it: WITNESS_HEADER, then
+// the commitment. Returns 38, or -1 when a view is the wrong size.
+witness_commitment_script_vartime :: (root: [] u8, reserved: [] u8, out: [] u8) -> int #export_c {
+  if out.count < WITNESS_MINIMUM { return -1; }
+  if !witness_commitment_hash_vartime(root, reserved, out[6..<38]) { return -1; }
+  for i: 0..<6 { out[i] = WITNESS_HEADER[i]; }
+  return WITNESS_MINIMUM;
+}
+// book:end hash
+
+// book:begin walk
+// What a check found. code is WITNESS_OK or a refusal; a block that
+// doesn't read keeps the transaction reader's code in tx_code and the
+// byte in at. count transactions were read; the coinbase starts at byte
+// coinbase; first_witness is the first transaction with a witness, or -1;
+// commitment is the coinbase output that commits, or WITNESS_NONE; and
+// reserved is where the reserved value is, when it was found.
+WitnessCheck :: struct {
+  code: int; at: int; tx_code: int; count: int;
+  coinbase: int; first_witness: int; commitment: int; reserved: int;
+}
+// Reads a serialized block as chapter 46's merkle_block_ids_vartime does,
+// writing each txid (unless txids is empty) and each wtxid, and noting the
+// first transaction with a witness. A transaction read with the segwit
+// marker has a witness: the reader refuses one whose stacks are all empty.
+witness_walk_vartime :: (b: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8) -> WitnessCheck {
+  k := WitnessCheck.{first_witness=-1, commitment=WITNESS_NONE};
+  if b.count < MERKLE_HEADER { k.code = WITNESS_BAD_BLOCK; k.tx_code = TX_TRUNCATED; return k; }
+  c := tx_compact_read_vartime(b, MERKLE_HEADER);
+  if c.code != TX_OK { k.code = WITNESS_BAD_BLOCK; k.tx_code = c.code; k.at = c.next; return k; }
+  if wtxids.count < 32 * c.value || (txids.count > 0 && txids.count < 32 * c.value) {
+    k.code = WITNESS_CAPACITY; k.at = MERKLE_HEADER; return k;
+  }
+  at := c.next;
+  k.coinbase = at;
+  while k.count < c.value {
+    t := tx_parse_vartime(b[at..<b.count], true, ins, outs, items);
+    if t.code != TX_OK {
+      k.code = ifx t.code == TX_CAPACITY then WITNESS_CAPACITY else WITNESS_BAD_BLOCK;
+      k.tx_code = t.code; k.at = at + t.at;
+      return k;
+    }
+    s := b[at..<at+t.total];
+    n := k.count;
+    if t.segwit && k.first_witness < 0 { k.first_witness = n; }
+    if txids.count > 0 { #assert tx_txid_vartime(s, t, txids[32*n..<32*n+32]); }
+    #assert tx_wtxid_vartime(s, t, wtxids[32*n..<32*n+32]);
+    k.count += 1; at += t.total;
+  }
+  if at != b.count { k.code = WITNESS_BAD_BLOCK; k.tx_code = TX_TRAILING; k.at = at; }
+  return k;
+}
+// book:end walk
+
+// book:begin check
+// CheckWitnessMalleation, for a block b. With segwit (the deployment is
+// active, so the block must commit) and a commitment in the coinbase, the
+// coinbase's first input must have one witness item of 32 bytes, the
+// reserved value, and the commitment must be SHA-256d(witness root ||
+// reserved value). Otherwise no transaction may have a witness. work holds
+// at least as many bytes as the wtxids.
+witness_check_vartime :: (b: [] u8, segwit: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, wtxids: [] u8, work: [] u8) -> WitnessCheck #export_c {
+  k := witness_walk_vartime(b, ins, outs, items, wtxids[0..<0], wtxids);
+  if k.code != WITNESS_OK || k.count == 0 { return k; }
+  if work.count < 32 * k.count { k.code = WITNESS_CAPACITY; return k; }
+  cb := b[k.coinbase..<b.count];
+  t := tx_parse_vartime(cb, true, ins, outs, items);
+  k.commitment = witness_commitment_index_vartime(cb, t, outs);
+  if segwit && k.commitment != WITNESS_NONE {
+    if !t.segwit || ins[0].count != 1 || items[ins[0].first].n != 32 { k.code = WITNESS_NONCE_SIZE; return k; }
+    k.reserved = k.coinbase + items[ins[0].first].at;
+    root: [32] u8; want: [32] u8;
+    #assert merkle_witness_root_vartime(wtxids[0..<32*k.count], work, root[..]) == MERKLE_OK;
+    #assert witness_commitment_hash_vartime(root[..], b[k.reserved..<k.reserved+32], want[..]);
+    got := cb[outs[k.commitment].script+6..<outs[k.commitment].script+38];
+    for i: 0..<32 { if got[i] != want[i] { k.code = WITNESS_MERKLE_MATCH; return k; } }
+    return k;
+  }
+  if k.first_witness >= 0 { k.code = WITNESS_UNEXPECTED; }
+  return k;
+}
+// book:end check
+
+// book:begin mutated
+// IsBlockMutated: CheckMerkleRoot first ("bad-txnmrklroot", then
+// "bad-txns-duplicate"). A block whose first transaction is not a coinbase
+// is mutated only if some transaction has 64 stripped bytes; it is invalid
+// anyway, and the witness rules are not run. Otherwise the witness rules
+// decide, with segwit as check_witness_root.
+witness_mutated_vartime :: (b: [] u8, segwit: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8, work: [] u8) -> WitnessCheck #export_c {
+  if txids.count == 0 { return WitnessCheck.{code=WITNESS_CAPACITY, first_witness=-1, commitment=WITNESS_NONE}; }
+  k := witness_walk_vartime(b, ins, outs, items, txids, wtxids);
+  if k.code != WITNESS_OK { return k; }
+  if work.count < 32 * k.count { k.code = WITNESS_CAPACITY; return k; }
+  m := merkle_check_vartime(txids[0..<32*k.count], work, b[36..<68]);
+  if m == MERKLE_MISMATCH { k.code = WITNESS_TXN_MERKLE; return k; }
+  if m == MERKLE_MUTATED { k.code = WITNESS_DUPLICATE; return k; }
+  coinbase := false;
+  if k.count > 0 {
+    t := tx_parse_vartime(b[k.coinbase..<b.count], true, ins, outs, items);
+    coinbase = tx_coinbase_vartime(b[k.coinbase..<b.count], t, ins);
+  }
+  if !coinbase {
+    at := k.coinbase;
+    for n: 0..<k.count {
+      t := tx_parse_vartime(b[at..<b.count], true, ins, outs, items);
+      if t.stripped == 64 { k.code = WITNESS_TX_64; return k; }
+      at += t.total;
+    }
+    return k;
+  }
+  return witness_check_vartime(b, segwit, ins, outs, items, wtxids, work);
+}
+// book:end mutated

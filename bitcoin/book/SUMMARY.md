@@ -77,6 +77,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [46. Merkle trees and the duplicate-leaf flaw](ch046-merkle-trees-and-the-duplicate-leaf-flaw.md) — implemented
 - [47. Block headers and proof of work](ch047-block-headers-and-proof-of-work.md) — implemented
 - [48. Compact targets, retargeting and chainwork](ch048-compact-targets-retargeting-and-chainwork.md) — implemented
+- [49. The witness commitment](ch049-the-witness-commitment.md) — implemented
 - [50. Chain parameters: mainnet, testnet4, signet and regtest](ch050-chain-parameters-mainnet-testnet4-signet-and-regtest.md) — implemented
 - [51. Header rules: time, versions and deployments](ch051-header-rules-time-versions-and-deployments.md) — implemented
 - [52. Transaction checks outside script](ch052-transaction-checks-outside-script.md) — implemented

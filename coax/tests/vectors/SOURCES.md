@@ -321,6 +321,17 @@ that a maliciously replaced manifest is authentic.
   Speedy Trial deployment. The `.headers` files are mempool.space's
   80-byte headers of mainnet blocks 840,102 to 840,113 and of testnet4's
   genesis and blocks 2,005 to 2,016, in a row, retrieved 2026-11-03.
+- **The witness commitment (Bitcoin chapter 49):** BIP-141 (bips commit
+  `927b6de9`, public domain) states the commitment, the reserved value and
+  the rule that the last matching output counts. Bitcoin Core's
+  `consensus/validation.h` (`GetWitnessCommitmentIndex`,
+  `MINIMUM_WITNESS_COMMITMENT`), pinned as `consensus_validation.h`, and
+  `validation.cpp` (`CheckWitnessMalleation`, `IsBlockMutated`,
+  `GenerateCoinbaseCommitment`), pinned above, give the rules.
+  `test_framework/blocktools.py` (`add_witness_commitment`,
+  `get_witness_script`) and `messages.py` build the cases from mainnet
+  blocks 514,999 and 100,000, and `make_witness_vectors.py` transliterates
+  the rules as the cross-check's oracle.
 - **The handshake (Bitcoin chapter 68):** Bitcoin Core's
   `node/protocol_version.h` at revision `ddea9196` gives the protocol
   versions. `net_processing.cpp` (`ProcessMessage`, `PushNodeVersion`,
@@ -588,4 +599,7 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/wallet.py`](upstream/bitcoin-core/wallet.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/wallet.py) | `6787e3d41e80676260692946aaa448de71de0c772d6b7bb1d85fbf6c9535fbe4` |
 | [`upstream/bitcoin-core/address.py`](upstream/bitcoin-core/address.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/address.py) | `10ff2a6ad2cb58200741fd345163d36315fe57b2583da0e919e72bdd825346d3` |
 | [`upstream/bitcoin-core/test_node.py`](upstream/bitcoin-core/test_node.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/test_node.py) | `e00688c4aa2fe2991376c4835941804421ca21fe05700052b2118286a1e92a20` |
+| [`upstream/bip141/bip-0141.mediawiki`](upstream/bip141/bip-0141.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0141.mediawiki) | `d72409335872a32494f75e7547589abf4b3b23b6beebe6bc6999c7a84b135e2c` |
+| [`upstream/bitcoin-core/consensus_validation.h`](upstream/bitcoin-core/consensus_validation.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/validation.h) | `2875af77e8e0d4db5b210bc716f37713bd0bd8922dde60713e611b33cdf1806a` |
+| [`upstream/bitcoin-core/blocktools.py`](upstream/bitcoin-core/blocktools.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/blocktools.py) | `13de0034eb8f41e3435e8f2996ef217221b4450f21f7c24aef1d6e20bc1590df` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

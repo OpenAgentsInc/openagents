@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-53 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+54 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -41,7 +41,9 @@ encrypted transport built on it. Chapter 68's
 [`handshake.coax`](../coax/lib/bitcoin/handshake.coax) is the `version` and
 `verack` handshake with its feature negotiation, over either transport. Chapter 50's
 [`chainparams.coax`](../coax/lib/bitcoin/chainparams.coax) holds each
-network's parameters, and chapter 51's
+network's parameters, chapter 49's
+[`witness.coax`](../coax/lib/bitcoin/witness.coax) checks a block's BIP-141
+witness commitment, and chapter 51's
 [`header.coax`](../coax/lib/bitcoin/header.coax) checks a header's time and
 version against the chain it extends, with BIP-9's version bits. Chapter
 52's [`txcheck.coax`](../coax/lib/bitcoin/txcheck.coax) holds the
