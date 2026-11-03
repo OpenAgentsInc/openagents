@@ -51,8 +51,8 @@ marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
 
-There are 14 implemented chapters (1–11 and 65–67), sixteen partly
-implemented chapters (12–16, 51–56, 69, 72, 80, 81 and 83), and 55 design drafts. An implemented chapter is
+There are 14 implemented chapters (1–11 and 65–67), seventeen
+partly implemented chapters (12–16, 51–56, 64, 69, 72, 80, 81 and 83), and 54 design drafts. An implemented chapter is
 qualified for its named profile; it does not imply that every realm adopted
 it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
