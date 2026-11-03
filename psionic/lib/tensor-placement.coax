@@ -1,6 +1,7 @@
 // Chapter 6: placement, dtype/ownership and synchronization policy. Native
 // code owns opaque allocations and device calls; these records decide effects.
 #load "tensor-view.coax";
+#load "../tests/tensor-placement-checks.coax";  // the checks' session and ready allocation
 #authority;
 // book:begin records
 TdDevice :: enum u8 {cpu;cuda;metal;}
@@ -81,6 +82,178 @@ TD_BUDGET_LIMIT :: 1073741824;
     rng.next=4294967296;#assert td_rng_reserve(rng,0).status==TdStatus.ok && td_rng_reserve(rng,1).status==TdStatus.counter;
 }
 
+#test "tags, widths and alignment" {
+    for tag:0..<256 {#assert td_device_known(cast(u8)tag)==(tag<3) && td_dtype_known(cast(u8)tag)==(tag<3);}
+    #assert td_width(TdDtype.f32)==4 && td_width(TdDtype.f16)==2 && td_width(TdDtype.bf16)==2;
+    #assert td_align(0)==0 && td_align(1)==16 && td_align(15)==16 && td_align(16)==16 && td_align(17)==32;
+}
+#test "identities issue from their own counter and stop before the largest" {
+    ids:=TdIds.{session=5,storage=9};a:=td_issue(ids,true);b:=td_issue(ids,false);
+    #assert a.status==TdStatus.ok && a.identity==5 && a.next.session==6 && a.next.storage==9;
+    #assert b.status==TdStatus.ok && b.identity==9 && b.next.storage==10 && b.next.session==5;
+    ids.storage=9223372036854775806;#assert td_issue(ids,false).identity==9223372036854775806;
+    ids.storage=0;#assert td_issue(ids,false).status==TdStatus.capacity && td_issue(ids,true).status==TdStatus.ok;
+    ids.session=0;ids.storage=1;#assert td_issue(ids,true).status==TdStatus.capacity && td_issue(ids,false).status==TdStatus.ok;
+}
+#test "sessions admit budgets from zero to the limit and identities from one" {
+    s:=td_session(1,TdDevice.metal,0,true,true);#assert s.status==TdStatus.ok && s.state.identity==1 && s.state.device==TdDevice.metal && s.state.budget==0 && s.state.live;
+    #assert td_session(1,TdDevice.cpu,TD_BUDGET_LIMIT,true,true).status==TdStatus.ok && td_session(1,TdDevice.cpu,TD_BUDGET_LIMIT+1,true,true).status==TdStatus.budget;
+    #assert td_session(0,TdDevice.cpu,0,true,true).status==TdStatus.state;
+}
+#test "a session is valid only when every count is in range" {
+    #assert td_close_plan(tpc_session())==TdStatus.ok;
+    for k:0..<10 {s:=tpc_session();
+        if k==0 {s.live=false;}else if k==1 {s.identity=0;}else if k==2 {s.budget=-1;}else if k==3 {s.budget=TD_BUDGET_LIMIT+1;}else if k==4 {s.bytes=-1;}
+        else if k==5 {s.bytes=4097;}else if k==6 {s.allocations=-1;}else if k==7 {s.allocations=TV_LIMIT+1;}else if k==8 {s.pending=-1;}else {s.allocations=2;s.pending=3;}
+        #assert td_close_plan(s)==TdStatus.state;}
+    // Each edge is valid: budget zero or at the limit, bytes at the budget, every allocation pending.
+    s:=tpc_session();s.budget=0;#assert td_close_plan(s)==TdStatus.ok;s.budget=TD_BUDGET_LIMIT;#assert td_close_plan(s)==TdStatus.ok;
+    s=tpc_session();s.identity=1;#assert td_close_plan(s)==TdStatus.ok;
+    s=tpc_session();s.bytes=4096;#assert td_close_plan(s)==TdStatus.busy;
+    s=tpc_session();s.allocations=TV_LIMIT;s.pending=TV_LIMIT;#assert td_close_plan(s)==TdStatus.busy;
+    s=tpc_session();s.allocations=1;#assert td_close_plan(s)==TdStatus.busy;s.allocations=0;s.pending=0;s.bytes=1;#assert td_close_plan(s)==TdStatus.busy;
+    s=tpc_session();s.allocations=1;s.pending=1;#assert td_close_plan(s)==TdStatus.busy;
+}
+#test "access needs a valid session, a live owner and in-range counts" {
+    r:=tpc_ready();#assert td_access(r.session,r.state)==TdStatus.ok;
+    for k:0..<9 {s:=r.session;a:=r.state;
+        if k==0 {s.live=false;}else if k==1 {a.owner.live=false;}else if k==2 {a.session=4;}else if k==3 {a.device=TdDevice.cuda;}else if k==4 {a.refs=0;}
+        else if k==5 {a.refs=TV_LIMIT+1;}else if k==6 {a.readers=-1;}else if k==7 {a.readers=TV_LIMIT+1;}else {a.owner.epoch=0;}
+        #assert td_access(s,a)==TdStatus.state;}
+    a:=r.state;a.refs=TV_LIMIT;a.readers=TV_LIMIT;#assert td_access(r.session,a)==TdStatus.ok;
+    s:=r.session;s.poisoned=true;a=r.state;a.pending=true;a.error=TdStatus.number;#assert td_access(s,a)==TdStatus.driver;
+    #assert td_access(r.session,a)==TdStatus.busy;a.pending=false;#assert td_access(r.session,a)==TdStatus.number;
+}
+#test "allocation plans refuse each fault in order and fit the remaining budget exactly" {
+    s:=tpc_session();four:=tpc_four();
+    #assert td_allocate_plan(s,four,TdDtype.f32,0,false).status==TdStatus.state;
+    bad:=s;bad.live=false;#assert td_allocate_plan(bad,four,TdDtype.f32,0,true).status==TdStatus.state;
+    bad=s;bad.poisoned=true;#assert td_allocate_plan(bad,four,TdDtype.f32,0,true).status==TdStatus.driver;
+    #assert td_allocate_plan(s,TvShape.{rank=5},TdDtype.f32,0,true).status==TdStatus.shape;
+    p:=td_allocate_plan(s,TvShape.{rank=1,dims=[4]int.[5,0,0,0]},TdDtype.f32,7,true);
+    #assert p.status==TdStatus.ok && p.elements==5 && p.payload==20 && p.flags==32 && p.meta==48 && p.resident==176 && p.temporary==7 && p.total==183;
+    big:=s;big.budget=TD_BUDGET_LIMIT;
+    #assert td_allocate_plan(big,four,TdDtype.f32,4*TV_LIMIT,true).status==TdStatus.ok && td_allocate_plan(big,four,TdDtype.f32,4*TV_LIMIT+1,true).status==TdStatus.capacity;
+    #assert td_allocate_plan(s,four,TdDtype.f32,-1,true).status==TdStatus.capacity;
+    big.allocations=TV_LIMIT-1;#assert td_allocate_plan(big,four,TdDtype.f32,0,true).status==TdStatus.ok;
+    big.allocations=TV_LIMIT;#assert td_allocate_plan(big,four,TdDtype.f32,0,true).status==TdStatus.capacity;
+    // 160 bytes against what is left of the budget.
+    s.bytes=100;s.budget=260;#assert td_allocate_plan(s,four,TdDtype.f32,0,true).status==TdStatus.ok;
+    s.budget=259;#assert td_allocate_plan(s,four,TdDtype.f32,0,true).status==TdStatus.budget;
+}
+#test "commits record the allocation they admitted" {
+    c:=tpc_pending();
+    #assert c.status==TdStatus.ok && c.applied && c.session.bytes==192 && c.session.allocations==1 && c.session.pending==1;
+    #assert c.state.owner.identity==7 && c.state.owner.epoch==1 && c.state.owner.elements==4 && c.state.owner.live && c.state.session==3 && c.state.device==TdDevice.cpu;
+    #assert c.state.dtype==TdDtype.f32 && c.state.resident==160 && c.state.temporary==32 && c.state.refs==1 && c.state.pending && c.state.readers==0;
+    #assert td_commit(tpc_session(),tpc_four(),TdDtype.f32,0,0).status==TdStatus.state && !td_commit(tpc_session(),tpc_four(),TdDtype.f32,0,0).applied;
+    #assert td_commit(tpc_session(),tpc_four(),TdDtype.f32,-1,7).status==TdStatus.capacity;
+}
+#test "finishing needs the pending allocation of this session" {
+    c:=tpc_pending();flags:[4]u8;
+    done:=td_finish(c.session,c.state,flags[..],TdStatus.ok);#assert done.status==TdStatus.ok && done.applied && done.session.bytes==160 && done.session.pending==0 && done.state.error==TdStatus.ok;
+    for k:0..<7 {s:=c.session;a:=c.state;
+        if k==0 {s.live=false;}else if k==1 {a.owner.live=false;}else if k==2 {a.session=4;}else if k==3 {a.pending=false;}else if k==4 {s.pending=0;}else if k==5 {a.temporary=-1;}else {a.temporary=193;}
+        #assert td_finish(s,a,flags[..],TdStatus.ok).status==TdStatus.state;}
+    a:=c.state;a.temporary=192;done=td_finish(c.session,a,flags[..],TdStatus.ok);#assert done.status==TdStatus.ok && done.session.bytes==0;
+    short:[3]u8;#assert td_finish(c.session,c.state,short[..],TdStatus.ok).status==TdStatus.capacity;
+    r:=td_finish(c.session,c.state,short[..],TdStatus.cancelled);#assert r.status==TdStatus.cancelled && r.state.error==TdStatus.cancelled && r.applied;
+}
+#test "retaining a view needs an empty slot, a read-only in-bounds view and a free reference" {
+    r:=tpc_ready();v:=tpc_view(r);
+    k:=td_retain(r.session,r.state,v,true);#assert k.status==TdStatus.ok && k.state.refs==2;
+    #assert td_retain(r.session,r.state,v,false).status==TdStatus.state;
+    w:=v;w.writable=true;#assert td_retain(r.session,r.state,w,true).status==TdStatus.state;
+    w=v;w.offset=1;#assert td_retain(r.session,r.state,w,true).status==TdStatus.state;
+    a:=r.state;a.pending=true;#assert td_retain(r.session,a,v,true).status==TdStatus.busy;
+    a=r.state;a.refs=TV_LIMIT-1;#assert td_retain(r.session,a,v,true).state.refs==TV_LIMIT;
+    a.refs=TV_LIMIT;#assert td_retain(r.session,a,v,true).status==TdStatus.capacity;
+}
+#test "borrows need a ready fault-free allocation and stay under the reader limit" {
+    a:=tpc_ready().state;
+    b:=td_borrow(a,1);#assert b.status==TdStatus.ok && b.state.readers==1;
+    #assert td_borrow(a,TV_LIMIT).state.readers==TV_LIMIT;
+    for k:0..<7 {x:=a;n:=1;
+        if k==0 {x.owner.live=false;}else if k==1 {x.pending=true;}else if k==2 {x.error=TdStatus.number;}else if k==3 {n=0;}else if k==4 {n=TV_LIMIT+1;}else if k==5 {x.readers=-1;}else {x.readers=TV_LIMIT;}
+        #assert td_borrow(x,n).status==TdStatus.busy;}
+    x:=a;x.readers=TV_LIMIT-2;#assert td_borrow(x,2).state.readers==TV_LIMIT && td_borrow(x,3).status==TdStatus.busy;
+    // Returns take back at most what was borrowed.
+    x.readers=3;#assert td_return(x,3).state.readers==0 && td_return(x,1).state.readers==2;
+    #assert td_return(x,4).status==TdStatus.state && td_return(x,0).status==TdStatus.state;
+    x.owner.live=false;#assert td_return(x,1).status==TdStatus.state;
+}
+#test "dropping the last reference releases its bytes" {
+    r:=tpc_ready();d:=td_drop(r.session,r.state);
+    #assert d.status==TdStatus.ok && d.applied && d.state.refs==0 && !d.state.owner.live && d.session.bytes==0 && d.session.allocations==0;
+    two:=r.state;two.refs=2;d=td_drop(r.session,two);#assert d.applied && d.state.refs==1 && d.state.owner.live && d.session.bytes==160 && d.session.allocations==1;
+    for k:0..<7 {s:=r.session;a:=r.state;
+        if k==0 {s.live=false;}else if k==1 {a.owner.live=false;}else if k==2 {a.session=4;}else if k==3 {a.refs=0;}else if k==4 {a.resident=127;}else if k==5 {a.resident=161;}else {s.identity=4;}
+        #assert td_drop(s,a).status==TdStatus.state;}
+    a:=r.state;a.resident=128;#assert td_drop(r.session,a).session.bytes==32;
+    a=r.state;a.readers=1;#assert td_drop(r.session,a).status==TdStatus.busy;
+}
+#test "counter ranges stay inside 2^32 for at most 2^20 values" {
+    #assert td_counter(0,0) && td_counter(0,TV_LIMIT) && !td_counter(0,TV_LIMIT+1) && !td_counter(0,-1);
+    #assert td_counter(4294967296-TV_LIMIT,TV_LIMIT) && !td_counter(4294967297-TV_LIMIT,TV_LIMIT) && !td_counter(-1,1);
+}
+#test "programs read two co-placed equal shapes and borrow each root once" {
+    r:=tpc_ready();v:=tpc_view(r);
+    other:=td_commit(r.session,tpc_four(),TdDtype.f16,0,8);flags:[4]u8;other=td_finish(other.session,other.state,flags[..],TdStatus.ok);ov:=tpc_view(other);
+    p:=td_program_plan(other.session,r.state,v,other.state,ov,TdDropout.{},true);
+    #assert p.status==TdStatus.ok && p.borrow_a==1 && p.borrow_b==1 && p.elements==4 && p.dtype==TdDtype.f32 && p.shape.rank==1 && p.shape.dims[0]==4;
+    for k:0..<4 {a:=r.state;b:=other.state;if k==0 {a.session=4;}else if k==1 {b.session=4;}else if k==2 {a.device=TdDevice.cuda;}else {b.device=TdDevice.cuda;}
+        #assert td_program_plan(other.session,a,v,b,ov,TdDropout.{},true).status==TdStatus.device;}
+    a:=r.state;a.pending=true;#assert td_program_plan(other.session,a,v,other.state,ov,TdDropout.{},true).status==TdStatus.busy;
+    b:=other.state;b.error=TdStatus.number;#assert td_program_plan(other.session,r.state,v,b,ov,TdDropout.{},true).status==TdStatus.number;
+    w:=v;w.offset=1;#assert td_program_plan(other.session,r.state,w,other.state,ov,TdDropout.{},true).status==TdStatus.shape;
+    w=ov;w.offset=1;#assert td_program_plan(other.session,r.state,v,other.state,w,TdDropout.{},true).status==TdStatus.shape;
+    // Same element count, different rank or extents.
+    two:=v;two.shape=TvShape.{rank=2,dims=[4]int.[2,2,0,0]};two.strides=[4]int.[2,1,0,0];
+    #assert td_program_plan(other.session,r.state,two,other.state,ov,TdDropout.{},true).status==TdStatus.shape;
+    t2:=ov;t2.shape=TvShape.{rank=2,dims=[4]int.[1,4,0,0]};t2.strides=[4]int.[4,1,0,0];t1:=v;t1.shape=TvShape.{rank=2,dims=[4]int.[4,1,0,0]};t1.strides=[4]int.[1,1,0,0];
+    #assert td_program_plan(other.session,r.state,t1,other.state,t2,TdDropout.{},true).status==TdStatus.shape;
+    t1=v;t1.shape.dims[0]=3;#assert td_program_plan(other.session,r.state,t1,other.state,ov,TdDropout.{},true).status==TdStatus.shape;
+    #assert td_program_plan(other.session,r.state,v,other.state,ov,TdDropout.{keep=65536},true).status==TdStatus.ok;
+    #assert td_program_plan(other.session,r.state,v,other.state,ov,TdDropout.{keep=0},true).status==TdStatus.ok;
+    #assert td_program_plan(other.session,r.state,v,other.state,ov,TdDropout.{keep=-1},true).status==TdStatus.capacity;
+    #assert td_program_plan(other.session,r.state,v,other.state,ov,TdDropout.{first=4294967292},true).status==TdStatus.ok;
+    #assert td_program_plan(other.session,r.state,v,other.state,ov,TdDropout.{first=4294967293},true).status==TdStatus.counter;
+    b=other.state;b.readers=TV_LIMIT;#assert td_program_plan(other.session,r.state,v,b,ov,TdDropout.{},true).status==TdStatus.busy;
+    a=r.state;a.readers=TV_LIMIT-1;#assert td_program_plan(other.session,a,v,a,v,TdDropout.{},true).status==TdStatus.busy;
+    #assert td_program_plan(other.session,a,v,other.state,ov,TdDropout.{},true).status==TdStatus.ok;
+}
+#test "copies are direct within one CPU or one device session and stage through the host otherwise" {
+    r:=tpc_ready();v:=tpc_view(r);
+    cpu:=td_session(9,TdDevice.cpu,4096,true,true).state;p:=td_copy_plan(cpu,r.session,r.state,v,TdDtype.f16,true);#assert p.status==TdStatus.ok && p.direct && p.temporary==0;
+    gpu:=td_session(3,TdDevice.cuda,4096,true,true).state;g:=r;g.session.device=TdDevice.cuda;g.state.device=TdDevice.cuda;
+    p=td_copy_plan(gpu,g.session,g.state,v,TdDtype.f32,true);#assert p.status==TdStatus.ok && p.direct && p.temporary==0;
+    gpu.identity=4;p=td_copy_plan(gpu,g.session,g.state,v,TdDtype.f32,true);#assert p.status==TdStatus.ok && !p.direct && p.temporary==16;
+    #assert td_copy_plan(cpu,r.session,r.state,v,TdDtype.f32,false).status==TdStatus.state;
+    cpu.live=false;#assert td_copy_plan(cpu,r.session,r.state,v,TdDtype.f32,true).status==TdStatus.state;
+    cpu.live=true;cpu.poisoned=true;#assert td_copy_plan(cpu,r.session,r.state,v,TdDtype.f32,true).status==TdStatus.driver;
+    cpu.poisoned=false;w:=v;w.offset=1;#assert td_copy_plan(cpu,r.session,r.state,w,TdDtype.f32,true).status==TdStatus.shape;
+    a:=r.state;a.pending=true;#assert td_copy_plan(cpu,r.session,a,v,TdDtype.f32,true).status==TdStatus.busy;
+}
+#test "exports need room for the view's bytes and no overlap" {
+    r:=tpc_ready();v:=tpc_view(r);
+    #assert td_export_plan(r.session,r.state,v,16,false)==TdStatus.ok && td_export_plan(r.session,r.state,v,15,false)==TdStatus.capacity;
+    w:=v;w.offset=1;#assert td_export_plan(r.session,r.state,w,16,false)==TdStatus.shape;
+    a:=r.state;a.pending=true;#assert td_export_plan(r.session,a,v,16,false)==TdStatus.busy;
+}
+#test "binding writes both views' layouts" {
+    r:=tpc_ready();a:=TvView.{identity=7,epoch=1,shape=TvShape.{rank=2,dims=[4]int.[2,2,0,0]},strides=[4]int.[1,2,0,0],offset=0};b:=a;b.strides=[4]int.[2,1,0,0];
+    meta:[15]int;#assert td_bind(r.state.owner,a,r.state.owner,b,meta[..])==TdStatus.ok;
+    want:=[15]int.[2,2,2,0,0,0,1,2,0,0,0,2,1,0,0];for k:0..<15 {#assert meta[k]==want[k];}
+    long:[16]int;#assert td_bind(r.state.owner,a,r.state.owner,b,long[..])==TdStatus.capacity;
+    c:=a;c.offset=1;#assert td_bind(r.state.owner,c,r.state.owner,b,meta[..])==TdStatus.shape && td_bind(r.state.owner,a,r.state.owner,c,meta[..])==TdStatus.shape;
+    s:=[4]int.[5,2,0,0];o:=TvStorage.{identity=7,epoch=1,elements=16,live=true};a.shape.dims=[4]int.[3,2,0,0];a.strides=s;a.offset=1;b=a;b.strides=[4]int.[1,4,0,0];b.offset=2;
+    #assert td_bind(o,a,o,b,meta[..])==TdStatus.ok && meta[1]==3 && meta[5]==1 && meta[6]==5 && meta[10]==2 && meta[11]==1 && meta[12]==4;
+}
+#test "random ranges continue where the last one ended" {
+    rng:=TdRng.{seed=1,stream=2,next=10};r:=td_rng_reserve(rng,6);#assert r.status==TdStatus.ok && r.first==10 && r.count==6 && r.next.next==16 && r.next.seed==1 && r.next.stream==2;
+    rng.next=-1;#assert td_rng_reserve(rng,1).status==TdStatus.counter;
+}
+
 td_device_known :: (tag:u8)->bool #export_c {return tag<3;}
 td_dtype_known :: (tag:u8)->bool #export_c {return tag<3;}
 td_width :: (dtype:TdDtype)->int #export_c {if dtype==TdDtype.f32 {return 4;}return 2;}
@@ -121,7 +294,8 @@ td_retain :: (s:TdSessionState,a:TdState,v:TvView,empty_slot:bool)->TdStateResul
     status:=td_access(s,a);if status!=TdStatus.ok {return TdStateResult.{status=status};}if !empty_slot || v.writable || tv_layout(a.owner,v).status!=TvStatus.ok {return TdStateResult.{status=TdStatus.state};}
     if a.refs>=TV_LIMIT {return TdStateResult.{status=TdStatus.capacity};}next:=a;next.refs+=1;return TdStateResult.{state=next};
 }
-td_borrow :: (a:TdState,count:int)->TdStateResult #export_c {if !a.owner.live || a.pending || a.error!=TdStatus.ok || count<1 || count>TV_LIMIT || a.readers<0 || a.readers>TV_LIMIT-count {return TdStateResult.{status=TdStatus.busy};}next:=a;next.readers+=count;return TdStateResult.{state=next};}
+// Readers start at zero or more, so a count above 2^20 already fails the reader bound.
+td_borrow :: (a:TdState,count:int)->TdStateResult #export_c {if !a.owner.live || a.pending || a.error!=TdStatus.ok || count<1 || a.readers<0 || a.readers>TV_LIMIT-count {return TdStateResult.{status=TdStatus.busy};}next:=a;next.readers+=count;return TdStateResult.{state=next};}
 td_return :: (a:TdState,count:int)->TdStateResult #export_c {if !a.owner.live || count<1 || count>a.readers {return TdStateResult.{status=TdStatus.state};}next:=a;next.readers-=count;return TdStateResult.{state=next};}
 td_drop :: (s:TdSessionState,a:TdState)->TdChange #export_c {
     if !td_session_valid(s) || !a.owner.live || a.session!=s.identity || a.refs<1 || a.resident<128 || a.resident>s.bytes {return TdChange.{status=TdStatus.state};}
