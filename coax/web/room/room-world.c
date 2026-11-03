@@ -29,6 +29,9 @@ typedef struct { int64_t medium; float feet; bool afloat; double breath, out; in
 static seat_water seat_w[WORLD_ROOMS][WORLD_SEATS];
 static coax_t_Swim seat_swim[WORLD_ROOMS][WORLD_SEATS];
 static double river_now[WORLD_ROOMS];
+/* the ground's grid as the page's (everglade5e-face.c): EG_GRID cells of 2 m a side from -EG_HALF */
+#define EG_GRID 176
+#define EG_HALF 176
 static coax_v_t_River rv_of(int k) { return (coax_v_t_River){river[k], 1}; }
 static void seat_dry(int k, int s) {
   seat_w[k][s] = (seat_water){0, 0, false, 0, 0, 0};
@@ -48,9 +51,9 @@ static bool world_of(int k) {
     river[k] = calloc(1, sizeof *river[k]);
     if (river[k]) {
       coax_default_t_River(river[k]);
-      static float levels[105 + 16];
-      everglade_levels(at(k), (coax_v_f32){levels, 105 + 16});
-      everglade_river_start(rv_of(k), (coax_v_f32){world[k]->heights.e, 105 * 105}, (coax_v_f32){levels, 105 + 16}, 104, 2, -104, -104);
+      static float levels[EG_GRID + 1 + 16];
+      everglade_levels(at(k), (coax_v_f32){levels, EG_GRID + 1 + 16});
+      everglade_river_start(rv_of(k), (coax_v_f32){world[k]->heights.e, (EG_GRID + 1) * (EG_GRID + 1)}, (coax_v_f32){levels, EG_GRID + 1 + 16}, EG_GRID, 2, -EG_HALF, -EG_HALF);
       seat_water fresh = {0, 0, false, 0, 0, 0};
       fresh.breath = river[k]->breath; fresh.out = river[k]->out; fresh.levels = river[k]->levels;
       for (int s = 0; s < WORLD_SEATS; s++) { seat_dry(k, s); seat_w[k][s] = fresh; }
@@ -107,7 +110,7 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
     if ((everglade_on_bridge(at(k), p.pos.x, p.pos.z) && sw.medium < 2) || everglade_parted(at(k), p.pos.x, p.pos.z)) {
       seat_swim[k][s] = (coax_t_Swim){0}; seat_swim[k][s].pace = 1; seat_swim[k][s].breath = 1; seat_swim[k][s].surface = -1000;
     } else {
-      seat_swim[k][s] = everglade_river_swim_over(rv_of(k), (coax_v_f32){g->heights.e, 105 * 105}, p.pos.x, p.pos.z,
+      seat_swim[k][s] = everglade_river_swim_over(rv_of(k), (coax_v_f32){g->heights.e, (EG_GRID + 1) * (EG_GRID + 1)}, p.pos.x, p.pos.z,
                                                   p.pos.y + everglade_ice_lift(at(k), p.pos.x, p.pos.z), (in[6] & 4) != 0, dt, river_now[k]);
     }
     if (seat_swim[k][s].defeated) {   /* the sixth level of Exhaustion: it comes to on the nearer bank */
