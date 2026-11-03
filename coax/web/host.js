@@ -2069,6 +2069,7 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageF
 if (dev) {
   // Read-only transport from the real Grid face for headless journeys.
   // The exported Coax procedures define every observed field.
+  globalThis.coaxial.netProbe = (field = 0) => engine?.exports.coaxial_net_probe?.(arena.state, field) ?? -1;   // everglade-net.coax net_probe
   globalThis.coaxial.gridProbe = (field) => Number(engine?.exports.coaxial_grid_probe?.(BigInt(field)) ?? -1n);
   globalThis.coaxial.gridPose = (field) => engine?.exports.coaxial_grid_pose?.(BigInt(field)) ?? NaN;
   globalThis.coaxial.gridMark = (step) => Number(engine?.exports.coaxial_grid_mark?.(BigInt(step)) ?? -1n);
