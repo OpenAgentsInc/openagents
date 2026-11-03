@@ -144,11 +144,10 @@ in
       if [ "$(tty)" = "/dev/tty${tty}" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$USER" = "${cfg.user}" ] \
         && [ -x "${dir}/verse-session" ]; then
         run="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/verse-os"
-        log="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/verse-session.log"
         export VK_DRIVER_FILES="''${VK_DRIVER_FILES:-$(ls /run/opengl-driver/share/vulkan/icd.d/*.json 2>/dev/null | head -1)}"
         "${dir}/verse-session" --dir "${dir}" --run "$run" --first "${cfg.first}" --tty ${tty} \
           --leave-to ${toString cfg.leaveTo} ${lib.optionalString (stateDir != "") "--state \"${stateDir}\""} \
-          </dev/null >"$log" 2>&1
+          </dev/null 2>&1 | ${pkgs.systemd}/bin/systemd-cat -t verse-session   # journalctl -t verse-session
       fi
     '';
   };

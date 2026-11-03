@@ -77,11 +77,11 @@ one of yours with build on, with a real GPU and a page that draws.
 
 ## Verse OS V7: build and boot the image on a second machine (2026-11-02)
 
-**coderos-4080's disk is full** (937 GB, 885 GB used, 5 GB free on 2026-11-02;
-it was 2 GB free when an image build failed for lack of space). Building the
-image needs about 10 GB free. The image that did build (3.27 GB) booted in
-QEMU only as far as its boot entry, for a reason now fixed (512-byte
-sectors); it was deleted to give the space back.
+Update: the image now builds and boots in QEMU to the running session in
+10.5 s from the kernel (docs/os/2026-11-02-verse-os.md, "Status"). What's
+left is a machine with a GPU, which a VM here does not have, to see the Grid
+on its screen. Building the image needs about 10 GB free on the build
+machine.
 
 The image evaluates (`nix flake check ./os/nix`) and its realms package
 builds, but the disk itself was not built here, to keep the machine free for

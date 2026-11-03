@@ -60,6 +60,8 @@
 
       nixosConfigurations.verse-os-example = example;
       nixosConfigurations.verse-os-image = image;
+      # the same image with its journal on the serial port, for booting it in a VM to read the boot
+      nixosConfigurations.verse-os-image-test = image.extendModules { modules = [ { verseos.image.serialJournal = true; } ]; };
 
       # `nix flake check ./os/nix` evaluates the example host to its system:
       # the options type-check, the assertions hold, the login script renders.

@@ -41,7 +41,7 @@ module runs is Coax (`os/`, `verse/`).
 
 3. Ctrl+Alt+F3. The Grid is on the screen. Escape held a second shows VT 1;
    Ctrl+Alt+F3 again resumes. The log is
-   `$XDG_RUNTIME_DIR/verse-session.log`.
+   `journalctl -t verse-session`.
 
 `tty = 1` boots the machine into the Verse; that is V0's last step, and on
 `coderos-4080` it waits for the owner (NEEDS_OWNER.md).

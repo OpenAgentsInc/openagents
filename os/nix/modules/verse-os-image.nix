@@ -38,6 +38,12 @@ in
       '';
     };
 
+    serialJournal = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "The system journal on the first serial port too: for booting the image in a VM with no screen to read.";
+    };
+
     rootSize = lib.mkOption {
       type = lib.types.str;
       default = "8G";
@@ -47,6 +53,7 @@ in
 
   config = lib.mkIf cfg.enable {
     system.image.id = "verse-os";
+    services.journald.console = lib.mkIf cfg.serialJournal "/dev/ttyS0";
     system.image.version = cfg.version;
 
     # Nothing on the machine rebuilds it.
@@ -54,23 +61,30 @@ in
     system.switch.enable = false;
     boot.loader.grub.enable = false;
     boot.initrd.systemd.enable = true;
+    # an image for machines nobody has described: the usual disk and USB controllers in the initrd
+    # (NVMe, SATA, USB storage, SD), and virtio for a virtual machine
+    boot.initrd.availableKernelModules = [ "nvme" "ahci" "xhci_pci" "usb_storage" "uas" "sd_mod" "sdhci_pci" "mmc_block" "virtio_pci" "virtio_blk" "virtio_scsi" ];
     # the console on the screen and on the first serial port, so a boot can be read without one
-    boot.kernelParams = [ "console=ttyS0,115200" "console=tty1" ];
+    boot.kernelParams = [ "console=tty1" "console=ttyS0,115200" ];
 
-    fileSystems."/" = {
+    # the root is in memory; the slot is the system's store, read only, mounted at /nix/store
+    fileSystems."/" = { device = "none"; fsType = "tmpfs"; options = [ "mode=0755" "size=2G" ]; };
+    fileSystems."/nix/store" = {
       device = "/dev/disk/by-partlabel/verse-os_${cfg.version}";
       fsType = "ext4";
       options = [ "ro" ];
+      neededForBoot = true;
     };
+    # /home is LUKS (repart encrypts it with the TPM): unlocked as /dev/mapper/home, then mounted
+    environment.etc."crypttab".text = ''
+      home PARTLABEL=verse-home - tpm2-device=auto,nofail,x-systemd.device-timeout=30s
+    '';
     fileSystems."/home" = {
-      device = "/dev/disk/by-partlabel/verse-home";
+      device = "/dev/mapper/home";
       fsType = "ext4";
       neededForBoot = false;
       options = [ "nofail" "x-systemd.device-timeout=30s" ];
     };
-    # what the read-only root still needs written
-    boot.tmp.useTmpfs = true;
-    fileSystems."/var" = { device = "tmpfs"; fsType = "tmpfs"; options = [ "mode=0755" ]; };
 
     image.repart = {
       name = "verse-os";
@@ -86,15 +100,26 @@ in
         };
         "20-root-a" = {
           storePaths = [ config.system.build.toplevel ];
+          nixStorePrefix = "/";   # the store's paths at the partition's top: it is /nix/store
           repartConfig = { Type = "root"; Format = "ext4"; Label = "verse-os_${cfg.version}"; Minimize = "guess"; SizeMaxBytes = cfg.rootSize; };
         };
       };
     };
 
     # On the machine, at first boot: slot B reserved, and /home made and encrypted.
+    # repart works on the disk behind /, which is memory here: it is told the disk that holds the
+    # store's slot instead (whatever its name on this machine: vda, nvme0n1, sda)
+    systemd.services.systemd-repart.serviceConfig.ExecStart = lib.mkForce [ "" (pkgs.writeShellScript "verse-os-repart" ''
+      part=$(${pkgs.coreutils}/bin/readlink -f /dev/disk/by-partlabel/verse-os_${cfg.version})
+      disk=/dev/$(${pkgs.util-linux}/bin/lsblk -no PKNAME "$part")
+      exec ${config.systemd.package}/bin/systemd-repart --dry-run=no --definitions=/etc/repart.d "$disk"
+    '') ];
+    systemd.services.systemd-repart.path = [ pkgs.e2fsprogs ];   # mkfs.ext4 for /home
     systemd.repart = {
       enable = true;
       partitions = {
+        # slot A, as built: listed first so it, not slot B, is the existing root partition repart finds
+        "20-root-a" = { Type = "root"; SizeMaxBytes = cfg.rootSize; };
         "30-root-b" = { Type = "root"; Label = "_empty"; SizeMinBytes = cfg.rootSize; SizeMaxBytes = cfg.rootSize; };
         "40-home" = { Type = "home"; Label = "verse-home"; Format = "ext4"; Encrypt = "tpm2"; };
       };
@@ -117,6 +142,17 @@ in
     # reached, which verse-session's first frame on tty1 stands for
     systemd.targets.boot-complete.wantedBy = [ "multi-user.target" ];
 
+    # /home is mounted after activation would have made the pilot's home in it: made here, before
+    # the tty1 login, on the encrypted partition
+    systemd.services.verse-home = {
+      description = "Verse OS: the pilot's home on the encrypted /home";
+      after = [ "home.mount" ];
+      requires = [ "home.mount" ];
+      before = [ "getty@tty1.service" ];
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig.Type = "oneshot";
+      script = "install -d -m 0700 -o pilot -g users /home/pilot";
+    };
     # one person, logged in on tty1, where the Verse runs
     users.users.pilot = { isNormalUser = true; extraGroups = [ "input" "video" ]; };
     services.getty.autologinUser = "pilot";

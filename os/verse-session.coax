@@ -137,6 +137,15 @@ vs_cat :: (out: [] u8, a: string, b: string) -> string {
 }
 vs_copy :: (out: [] u8, s: string) -> string { return vs_cat(out, s, ""); }
 
+// Every directory on the way to path, made where missing (mkdir -p): a fresh /home has none of them.
+vs_mkdirs :: (path: string) {
+  b: [4096] u8; n := 0;
+  for i: 0..<path.count {
+    if n >= 4096 { return; }
+    b[n] = path[i]; n += 1;
+    if (path[i] == '/' && i > 0) || i == path.count - 1 { r := fs_mkdir(cast(string) b[0..<ifx path[i] == '/' then n - 1 else n]); }
+  }
+}
 // Whether DIR has realm m built (its vk-realm).
 vs_has_realm :: (dir: string, m: string) -> bool {
   b: [4096] u8; c: [4096] u8;
@@ -541,6 +550,7 @@ tool_main :: () -> int #export_c {
   window := ifx args_has(a[..], "--fullscreen") then "--fullscreen" else ifx args_has(a[..], "--window") then "--window" else "";
   once := args_has(a[..], "--once") || window.count > 0;
   if dir.count == 0 || tty < 0 || args_whole(leave_to) < 0 { tool_errln(usage); return 2; }
+  if state.count > 0 { vs_mkdirs(state); }
   travel_text: [65536] u8; b: [4] [4096] u8;
   nt := fs_read(fs_join(dir, "travel", b[0][..]), travel_text[..]);
   travel := ifx nt > 0 then cast(string) travel_text[0..<nt] else "";
