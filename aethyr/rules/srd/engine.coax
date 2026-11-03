@@ -219,6 +219,7 @@ RsCreature :: struct {
   explorer: bool; lore: bool; swim: int;   // the Ranger's Deft Explorer, Hunter's Lore (record), a swim Speed
   ritual: bool; arcane_recovery: bool; scholar: bool; savant: bool; memorize: bool;   // the Wizard's, out of a battle's reach
   sculpt: bool;                    // Sculpt Spells (Evoker)
+  jack: bool; font: bool; discoveries: [2] int;   // Jack of All Trades (checks only), Font of Inspiration, Magical Discoveries
   companion: bool; resurgence: bool; resurged_slot: bool;   // Wild Companion (a familiar, not modeled), Wild Resurgence and its once-a-rest slot
   sear: bool; blessed_healer: bool;   // Sear Undead (Cleric), Blessed Healer (Life Domain)
   restoration: bool; affinity: int;   // Sorcerous Restoration (a rest), Elemental Affinity's damage type (Draconic)
@@ -523,12 +524,21 @@ rs_half_slots :: (c: [] RsCreature, level: int) {
 rs_bard :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_hero(name, team, level, RS_BARD, [6] int.[8, 14, 13, 10, 12, 16], RS_DEX, RS_CHA, 8);
+  // an Ability Score Improvement at 4 (the feat, p. 87): Charisma +2
+  if level >= 4 { c[0].score[RS_CHA] = rs_min(c[0].score[RS_CHA] + 2, 20); }
   c[0].ac = 11 + rs_mod(c[0].score[RS_DEX]);
   c[0].spell_ability = RS_CHA; c[0].weapon = W_DAGGER;
   rs_full_slots(c[..], level);
   rs_use_set(c[..], RS_USE_INSPIRE, rs_max(rs_mod(c[0].score[RS_CHA]), 1));
   c[0].insp_die = ifx level >= 15 then 12 else ifx level >= 10 then 10 else ifx level >= 5 then 8 else 6;
   c[0].cutting = level >= 3;
+  // Expertise and Jack of All Trades at 2 (p. 32) bear on ability checks, which a battle here
+  // doesn't roll; Font of Inspiration at 5 (p. 32): a slot for a use, no action; the College of
+  // Lore's Magical Discoveries at 6 (p. 35): Fireball (Wizard) and Spirit Guardians (Cleric).
+  c[0].expertise = ifx level >= 9 then 4 else ifx level >= 2 then 2 else 0; c[0].jack = level >= 2;
+  c[0].font = level >= 5;
+  c[0].discoveries[0] = -1; c[0].discoveries[1] = -1;
+  if level >= 6 { c[0].discoveries[0] = SP_FIREBALL; c[0].discoveries[1] = SP_SPIRIT_GUARDIANS; }
   return c[0];
 }
 // The SRD 5.2.1 Cleric (p. 36-40): Wisdom casting, Wisdom and Charisma saves, a d8 hit die, its

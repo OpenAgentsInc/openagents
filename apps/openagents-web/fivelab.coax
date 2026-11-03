@@ -835,6 +835,7 @@ bard_turn :: (s: [] Lab, i: int) {
     d := rs_feet_to(b, i, j);
     if d <= 60 && d < pd && foes_near(s, i, c.x, c.y, 10) > 0 { pd = d; pick = j; }
   }
+  if pick >= 0 && b[0].c[i].uses[RS_USE_INSPIRE] == 0 && b[0].c[i].slots[1] > 0 { ok := rs_font(b, i); }
   if pick >= 0 { ok := rs_inspire(b, i, pick); }
   foe := nearest_foe(s, i);
   if foe < 0 { return; }
@@ -842,6 +843,16 @@ bard_turn :: (s: [] Lab, i: int) {
   if !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, foe, 20, 50); }
   foe = nearest_foe(s, i);
   if foe < 0 { return; }
+  // the swarm: Hypnotic Pattern (from level 5) on four foes and no friend, then a Fireball
+  // (Magical Discoveries, level 6) on three
+  if !b[0].turn.action && !b[0].turn.slot_spent && b[0].c[i].slots[3] > 0 {
+    hp := ifx b[0].c[i].conc < 0 then burst_at(s, i, 120, 15, false, 4) else -1;
+    if hp >= 0 { ok := rs_cast(b, i, SP_HYPNOTIC_PATTERN, 3, b[0].c[hp].x, b[0].c[hp].y, -1); }
+    else if b[0].c[i].discoveries[0] == SP_FIREBALL {
+      fb := burst_at(s, i, 150, 20, false, 3);
+      if fb >= 0 { ok := rs_cast(b, i, SP_FIREBALL, 3, b[0].c[fb].x, b[0].c[fb].y, -1); }
+    }
+  }
   hold_one(s, i, foe, 0.3);
   if !b[0].turn.action { ok := rs_cast(b, i, SP_VICIOUS_MOCKERY, 0, 0, 0, foe); }
 }
