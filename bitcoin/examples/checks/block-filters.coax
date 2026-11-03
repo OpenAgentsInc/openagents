@@ -1,0 +1,41 @@
+// The checks of block-filters.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/block-filters.coax
+#load "../block-filters.coax";
+
+// book:begin check
+// Every element of each BIP-158 block is in that block's filter: a filter
+// has no false negatives. And every cut of the filter is refused.
+#forall "each block's elements all match its filter" i: 0..<BF_VECTORS_COUNT #steps 4000000000 {
+  v := BF_VECTORS[i];
+  block: [2048] u8; prev: [1024] u8; pool: [2048] u8; hash: [32] u8; fb: [64] u8;
+  ins: [16] TxIn; outs: [32] TxOut; items: [32] TxItem; spans: [64] BfSpan;
+  b := tx_unhex(v.block, block[..]);
+  p := tx_unhex(v.prevouts, prev[..]);
+  filter := tx_unhex(v.filter, fb[..]);
+  bf_block_hash(b, hash[..]);
+  key := bf_key(hash[..]);
+  g := bf_gather_vartime(b, p, ins[..], outs[..], items[..], pool[..], spans[..]);
+  #assert g.code == BF_OK;
+  for e: 0..<g.n {
+    #assert bf_match_vartime(key, filter, pool[spans[e].at..<spans[e].at+spans[e].n]).found;
+  }
+  for cut: 0..<filter.count { #assert bf_read_vartime(filter[0..<cut]).code == BF_BAD_FILTER; }
+}
+// Sets of 1 to 40 one-byte elements: each element matches, and of the
+// other 216 bytes almost none do (the rate is 1 in 784,931).
+#forall "a built set matches its elements and rejects the rest" n: 1..<41 #steps 4000000000 {
+  pool: [256] u8; spans: [256] BfSpan; values: [256] u64; idx: [256] int; out: [512] u8;
+  for i: 0..<256 { pool[i] = cast(u8) i; spans[i] = BfSpan.{at = i, n = 1}; }
+  key := BfKey.{k0 = cast(u64) n, k1 = 0x9e3779b97f4a7c15};
+  f := bf_build_vartime(key, pool[..], spans[..], n, values[..], idx[..], out[..]);
+  #assert f.code == BF_OK && f.n == n;
+  false_hits := 0;
+  for i: 0..<256 {
+    found := bf_match_vartime(key, out[0..<f.size], pool[i..<i+1]).found;
+    if i < n { #assert found; }
+    if i >= 40 && found { false_hits += 1; }
+  }
+  #assert false_hits <= 1;
+}
+// book:end check

@@ -615,6 +615,17 @@
         "release"
       ],
       "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/block-filters.coax",
+      "chapter": "bitcoin/book/ch074-compact-block-filters.md",
+      "stdout": "bitcoin/fixtures/block-filters.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

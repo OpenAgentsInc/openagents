@@ -2701,7 +2701,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-compact-blocks"
+        "bitcoin-compact-blocks",
+        "bitcoin-block-filters"
       ],
       "retrieved": "2026-11-03",
       "sha256": "395fb94ebc7fb7d38bfe86bc3dbfb4df2e94d3c1e3cd1c41b66cc19d0d5e76e3",
@@ -2745,6 +2746,110 @@
       "retrieved": "2026-11-03",
       "sha256": "f65a8fa8f6284871947a4a45838a93c20b7254816204f7c670c1db3034ae2e09",
       "bytes": 4693
+    },
+    {
+      "path": "upstream/bitcoin-core/blockfilter.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/blockfilter.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-block-filters"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "f9cd087f8112e8bce1882585f440c2b188a3cc8838621f6350f3800f4a197140",
+      "bytes": 7309
+    },
+    {
+      "path": "upstream/bitcoin-core/golombrice.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/util/golombrice.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-block-filters"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "e7646591a651d60d15703fb0b443a9af9770d3fc37a65f51d0ea1667374b15dd",
+      "bytes": 1211
+    },
+    {
+      "path": "upstream/bitcoin-core/blockfilter_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/blockfilter_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-block-filters"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "1c33eed7f787fc7e57483340ebc1b6f8cd013fbadacf09df477ac4c9047692e1",
+      "bytes": 7349
+    },
+    {
+      "path": "upstream/bitcoin-core/blockfilters.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/blockfilters.json",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-block-filters"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "d9049756f744e561b882a8eff507582fb7cd74ed9cf5542bdac58257449ee2a2",
+      "bytes": 17816
+    },
+    {
+      "path": "upstream/bitcoin-core/blockfilter.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/blockfilter.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-block-filters"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "d759d7c22eb1fd5e517902d01a30938a991c3a34e6672c9d44a0b4f936a8fcfc",
+      "bytes": 2278
+    },
+    {
+      "path": "upstream/bip158/testnet-19.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0158/testnet-19.json",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "CC0-1.0 (declared in source)",
+      "covers": [
+        "bitcoin-block-filters"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "d9049756f744e561b882a8eff507582fb7cd74ed9cf5542bdac58257449ee2a2",
+      "bytes": 17816
+    },
+    {
+      "path": "upstream/bip158/bip-0158.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0158.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "CC0-1.0 (declared in source)",
+      "covers": [
+        "bitcoin-block-filters"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "93a560d966852e081f5e7894f43eddae55ac471ff8bcb99d93eae73f5a859954",
+      "bytes": 16770
+    },
+    {
+      "path": "upstream/bip157/bip-0157.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0157.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "CC0-1.0 (declared in source)",
+      "covers": [
+        "bitcoin-block-filters"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "5405acbf04ebd8a1b92ae2b7188022f4c14723ed8a0ae0d077d12a1e6908da9a",
+      "bytes": 21050
     }
   ]
 }

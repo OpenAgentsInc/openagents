@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-57 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+58 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -102,12 +102,13 @@ Taproot key tweak, key path, script trees and signature hashes (chapters
 (`coax/lib/bitcoin/pow.coax`), retargeting and chainwork in chapter 48
 (`coax/lib/bitcoin/retarget.coax`), and MuHash3072 with the UTXO set's
 coin record and hashes in chapter 56 (`coax/lib/bitcoin/muhash.coax`,
-`coax/lib/bitcoin/coins.coax`). Bitcoin
+`coax/lib/bitcoin/coins.coax`), and BIP-158 Golomb-coded block filters
+with BIP-157 filter headers in chapter 74
+(`coax/lib/bitcoin/blockfilter.coax`). Bitcoin
 and Lightning also need:
 
-- Batch Schnorr verification and tapscript.
-- Golomb-coded block filters. (ElligatorSwift and the BIP-324 transport are
-  built in chapters 66 and 67.)
+- Batch Schnorr verification and tapscript. (ElligatorSwift and the
+  BIP-324 transport are built in chapters 66 and 67.)
 - MuSig2, FROST, adaptor signatures and silent payments.
 - Lightning: BOLT 1 TLVs, the BOLT 8 Noise handshake, BOLT 3 keys,
   revocation and shachain, commitment and HTLC transactions, BOLT 2 channels,

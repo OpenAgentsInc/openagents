@@ -1,0 +1,77 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/blockfilter.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+CODES :: [5] string.["ok", "buffer too small", "bad block", "bad spent scripts", "bad filter"];
+// Bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [600] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// A hash as Core prints it: the bytes reversed.
+show_hash :: (label: string, h: [] u8) {
+  r: [32] u8;
+  for i: 0..<32 { r[i] = h[31-i]; }
+  show(label, r[..]);
+}
+
+main :: () {
+  // A set of three scripts, keyed by a made-up block hash.
+  hash: [32] u8;
+  for i: 0..<32 { hash[i] = cast(u8) i; }
+  key := bf_key(hash[..]);
+  pool := [9] u8.[0x51, 0x52, 0x53, 0x00, 0x14, 0xaa, 0xbb, 0xcc, 0xdd];
+  spans := [4] BfSpan.[BfSpan.{at = 0, n = 1}, BfSpan.{at = 1, n = 2}, BfSpan.{at = 3, n = 6}, BfSpan.{at = 0, n = 1}];
+  values: [64] u64; idx: [64] int; out: [256] u8;
+  f := bf_build_vartime(key, pool[..], spans[..], 4, values[..], idx[..], out[..]);
+  print("four elements, one repeated: %, N = %, % bytes\n", CODES[f.code], f.n, f.size);
+  show("  filter", out[0..<f.size]);
+  for s: spans[0..<3] {
+    print("  match %: %\n", s.n, bf_match_vartime(key, out[0..<f.size], pool[s.at..<s.at+s.n]).found);
+  }
+  print("  match 0x5253 under another key: %\n", bf_match_vartime(BfKey.{k0 = 1}, out[0..<f.size], pool[1..<3]).found);
+
+  // A real testnet block: height 49291, from BIP-158's test vectors. The
+  // spent scripts come from the node's undo data for the block.
+  v := BF_VECTORS[4];
+  block: [2048] u8; prev: [1024] u8; ph: [32] u8; shown: [32] u8; header: [32] u8;
+  ins: [16] TxIn; outs: [32] TxOut; items: [32] TxItem; bspans: [64] BfSpan; bpool: [2048] u8;
+  b := tx_unhex(v.block, block[..]);
+  p := tx_unhex(v.prevouts, prev[..]);
+  s := tx_unhex(v.prev_header, shown[..]);
+  for i: 0..<32 { ph[i] = s[31-i]; }
+  bf_block_hash(b, hash[..]);
+  print("block %: % bytes\n", v.height, b.count);
+  show_hash("  hash", hash[..]);
+  g := bf_gather_vartime(b, p, ins[..], outs[..], items[..], bpool[..], bspans[..]);
+  print("  elements: % scripts, % bytes\n", g.n, g.used);
+  f = bf_basic_vartime(b, p, ph[..], ins[..], outs[..], items[..], bpool[..], bspans[..], values[..], idx[..], out[..], header[..]);
+  print("  basic filter: %, N = %, % bytes\n", CODES[f.code], f.n, f.size);
+  show("  filter", out[0..<f.size]);
+  show_hash("  filter header", header[..]);
+  print("  same as BIP-158: filter %, header %\n", tx_hex_is(out[0..<f.size], v.filter), bf_shown_is(header[..], v.header));
+
+  // A wallet with one of the block's spent scripts finds it; one with
+  // another script does not.
+  key = bf_key(hash[..]);
+  mine := [3] u8.[0x51, 0x52, 0x53];
+  print("  match a spent script: %\n", bf_match_vartime(key, out[0..<f.size], p[1..<1+cast(int) p[0]]).found);
+  print("  match OP_1 OP_2 OP_3: %\n", bf_match_vartime(key, out[0..<f.size], mine[..]).found);
+
+  // Decoding is strict: a missing byte or an extra one is refused.
+  r := bf_read_vartime(out[0..<f.size]);
+  print("read: %, % codes from bit %\n", CODES[r.code], r.n, r.bits);
+  print("  one byte short: %\n", CODES[bf_read_vartime(out[0..<f.size-1]).code]);
+  print("  one byte extra: %\n", CODES[bf_read_vartime(out[0..<f.size+1]).code]);
+
+  // The chain of headers starts from 32 zero bytes at genesis.
+  zero: [32] u8; gf: [16] u8;
+  v = BF_VECTORS[0];
+  filter := tx_unhex(v.filter, gf[..]);
+  bf_filter_header(filter, zero[..], header[..]);
+  show("genesis filter", filter);
+  show_hash("  genesis filter header", header[..]);
+}
+// book:end example

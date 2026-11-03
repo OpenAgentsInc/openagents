@@ -391,6 +391,17 @@ that a maliciously replaced manifest is authentic.
   `coax/tests/bitcoin/kvstore.py` checks that the two lines of
   `obfuscation.h` its transliteration rests on are in the pinned file. The
   store's format is the book's own, so no vector file is pinned for it.
+- **Compact block filters (Bitcoin chapter 74):** BIP-158's
+  `testnet-19.json` (ten testnet blocks with their spent scripts, basic
+  filters and filter headers) and the BIP-157 and BIP-158 texts, at bips
+  revision `5aadddb5`, CC0-1.0; and Bitcoin Core's `blockfilter.cpp`,
+  `util/golombrice.h`, `test/blockfilter_tests.cpp`,
+  `test/data/blockfilters.json` (the same file as `testnet-19.json`),
+  `test_framework/blockfilter.py` and `test_framework/crypto/siphash.py`,
+  at the same Core revision as above, all MIT, retrieved 2026-11-03.
+  `coax/tests/bitcoin/blockfilter.py` runs Core's two Python files as the
+  independent element hash and SipHash, and generates
+  `coax/tests/bitcoin/blockfilter_vectors.coax` from `testnet-19.json`.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -640,4 +651,12 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/blockencodings.cpp`](upstream/bitcoin-core/blockencodings.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/blockencodings.cpp) | `411f83d16f76e8e96f7f6df307812bde2101a5624ef7349c1a0569b2b97d9fe6` |
 | [`upstream/bitcoin-core/blockencodings_tests.cpp`](upstream/bitcoin-core/blockencodings_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/blockencodings_tests.cpp) | `c070a461070d43d1052a3e4d14e5cdb10ed27e862b71cb393437f03a23487c54` |
 | [`upstream/bitcoin-core/siphash.py`](upstream/bitcoin-core/siphash.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/crypto/siphash.py) | `395fb94ebc7fb7d38bfe86bc3dbfb4df2e94d3c1e3cd1c41b66cc19d0d5e76e3` |
+| [`upstream/bitcoin-core/blockfilter.cpp`](upstream/bitcoin-core/blockfilter.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/blockfilter.cpp) | `f9cd087f8112e8bce1882585f440c2b188a3cc8838621f6350f3800f4a197140` |
+| [`upstream/bitcoin-core/golombrice.h`](upstream/bitcoin-core/golombrice.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/util/golombrice.h) | `e7646591a651d60d15703fb0b443a9af9770d3fc37a65f51d0ea1667374b15dd` |
+| [`upstream/bitcoin-core/blockfilter_tests.cpp`](upstream/bitcoin-core/blockfilter_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/blockfilter_tests.cpp) | `1c33eed7f787fc7e57483340ebc1b6f8cd013fbadacf09df477ac4c9047692e1` |
+| [`upstream/bitcoin-core/blockfilters.json`](upstream/bitcoin-core/blockfilters.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/blockfilters.json) | `d9049756f744e561b882a8eff507582fb7cd74ed9cf5542bdac58257449ee2a2` |
+| [`upstream/bitcoin-core/blockfilter.py`](upstream/bitcoin-core/blockfilter.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/blockfilter.py) | `d759d7c22eb1fd5e517902d01a30938a991c3a34e6672c9d44a0b4f936a8fcfc` |
+| [`upstream/bip158/testnet-19.json`](upstream/bip158/testnet-19.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0158/testnet-19.json) | `d9049756f744e561b882a8eff507582fb7cd74ed9cf5542bdac58257449ee2a2` |
+| [`upstream/bip158/bip-0158.mediawiki`](upstream/bip158/bip-0158.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0158.mediawiki) | `93a560d966852e081f5e7894f43eddae55ac471ff8bcb99d93eae73f5a859954` |
+| [`upstream/bip157/bip-0157.mediawiki`](upstream/bip157/bip-0157.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0157.mediawiki) | `5405acbf04ebd8a1b92ae2b7188022f4c14723ed8a0ae0d077d12a1e6908da9a` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

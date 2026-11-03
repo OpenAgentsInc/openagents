@@ -1534,15 +1534,21 @@
   {
    "number": 74,
    "title": "Compact block filters",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch074-compact-block-filters.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     10,
     46
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/blockfilter.coax",
+    "bitcoin/examples/block-filters.coax",
+    "bitcoin/examples/checks/block-filters.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

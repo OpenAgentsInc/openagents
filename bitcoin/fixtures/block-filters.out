@@ -1,0 +1,20 @@
+four elements, one repeated: ok, N = 3, 9 bytes
+  filter: 036c1748787d437470
+  match 1: true
+  match 2: true
+  match 6: true
+  match 0x5253 under another key: false
+block 49291: 1597 bytes
+  hash: 0000000018b07dca1b28b4b5a119f6d6e71698ce1ed96f143f54179ce177a19c
+  elements: 10 scripts, 502 bytes
+  basic filter: ok, N = 10, 28 bytes
+  filter: 0afbc2920af1b027f31f87b592276eb4c32094bb4d3697021b4c6380
+  filter header: b6d98692cec5145f67585f3434ec3c2b3030182e1cb3ec58b855c5c164dfaaa3
+  same as BIP-158: filter true, header true
+  match a spent script: true
+  match OP_1 OP_2 OP_3: false
+read: ok, 10 codes from bit 8
+  one byte short: bad filter
+  one byte extra: bad filter
+genesis filter: 019dfca8
+  genesis filter header: 21584579b7eb08997773e5aeff3a7f932700042d0ed2a6129012b7d7ae81b750

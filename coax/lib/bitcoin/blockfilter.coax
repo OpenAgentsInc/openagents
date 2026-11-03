@@ -1,0 +1,527 @@
+// Compact block filters (Bitcoin chapter 74): BIP-158's Golomb-coded sets
+// and the basic filter, and BIP-157's filter headers.
+//
+// A filter is a probabilistic set of a block's scripts: every output
+// script except OP_RETURN ones and every script an input spends. A light
+// client downloads the filter, asks whether any of its own scripts is in
+// it, and fetches the block only on a match. False positives happen at a
+// rate of 1 in 784,931; false negatives never.
+//
+// The set is coded as BIP-158 says (and as Bitcoin Core's blockfilter.cpp
+// and util/golombrice.h do): each element is hashed with SipHash-2-4 keyed
+// by the block hash, mapped to [0, N * M), sorted, and the differences are
+// written with Golomb-Rice coding, parameter P = 19. A filter header chains
+// the filters as block headers chain blocks.
+//
+// Every input here is public chain data, so everything runs in variable
+// time.
+#load "../crypto/siphash.coax";
+#load "tx.coax";
+#load "../../tests/bitcoin/blockfilter_vectors.coax";
+#authority;
+
+// book:begin codes
+BF_OK :: 0;
+BF_CAPACITY :: 1;    // a caller's buffer is too small
+BF_BAD_BLOCK :: 2;   // the block's bytes do not read
+BF_BAD_PREVOUTS :: 3; // the spent scripts do not read, or are not one per input
+BF_BAD_FILTER :: 4;  // the filter's bytes are not N Golomb-Rice codes, exactly
+
+BF_P :: 19;                       // Golomb-Rice parameter
+BF_M :: cast(u64) 784931;         // 1 / false-positive rate
+BF_HEADER :: 80;
+BF_LOW :: cast(u64) 0x7ffff;         // the low P bits
+// book:end codes
+
+// book:begin types
+// The SipHash key: the first 16 bytes of the block hash, as two
+// little-endian words.
+BfKey :: struct { k0: u64; k1: u64; }
+// One element: n bytes at at, in a pool of element bytes.
+BfSpan :: struct { at: int; n: int; }
+// A filter built: its length in the output and its element count N.
+BfFilter :: struct { code: int; size: int; n: int; }
+// Elements gathered from a block: how many, and how much of the pool.
+BfGather :: struct { code: int; n: int; used: int; at: int; }
+// A filter read: N, and where the Golomb-Rice bits start.
+BfRead :: struct { code: int; n: int; bits: int; }
+// A match: whether any query is in the set.
+BfMatch :: struct { code: int; found: bool; }
+// book:end types
+
+// book:begin hash
+// The key from a block hash in hash order (the bytes SHA-256d produced).
+bf_key :: (block_hash: [] u8) -> BfKey {
+  return BfKey.{k0 = cb_load_le64(block_hash, 0).value, k1 = cb_load_le64(block_hash, 8).value};
+}
+// HashToRange: SipHash-2-4, then a 64x64 multiply keeping the high word,
+// which maps [0, 2^64) onto [0, f) without a division (FastRange64).
+bf_range :: (h: u64, f: u64) -> u64 { return mul_wide(h, f).hi; }
+bf_hash_vartime :: (key: BfKey, element: [] u8, f: u64) -> u64 {
+  return bf_range(siphash24(key.k0, key.k1, element), f);
+}
+// book:end hash
+
+// book:begin sort
+// Heapsort of values, carrying idx along: n log n with no extra memory.
+bf_sift :: (v: [] u64, idx: [] int, start: int, end: int) {
+  root := start;
+  while 2 * root + 1 < end {
+    child := 2 * root + 1;
+    if child + 1 < end && v[child] < v[child+1] { child += 1; }
+    if v[root] >= v[child] { return; }
+    t := v[root]; v[root] = v[child]; v[child] = t;
+    j := idx[root]; idx[root] = idx[child]; idx[child] = j;
+    root = child;
+  }
+}
+bf_sort :: (v: [] u64, idx: [] int, n: int) {
+  s := n / 2 - 1;
+  while s >= 0 { bf_sift(v, idx, s, n); s -= 1; }
+  e := n - 1;
+  while e > 0 {
+    t := v[0]; v[0] = v[e]; v[e] = t;
+    j := idx[0]; idx[0] = idx[e]; idx[e] = j;
+    bf_sift(v, idx, 0, e);
+    e -= 1;
+  }
+}
+// book:end sort
+
+// book:begin bits
+// Bits are written and read most significant first, as Core's
+// BitStreamWriter and BitStreamReader do; the last byte is padded with
+// zeros. pos counts bits from the start of out.
+bf_put_bits :: (out: [] u8, pos: int, value: u64, nbits: int) -> int {
+  for i: 0..<nbits {
+    bit := (value >> cast(u64) (nbits - 1 - i)) & 1;
+    if bit == 1 { out[(pos+i)/8] |= cast(u8) (0x80 >> ((pos + i) % 8)); }
+  }
+  return pos + nbits;
+}
+bf_get_bit :: (b: [] u8, pos: int) -> int { return cast(int) ((b[pos/8] >> cast(u8) (7 - pos % 8)) & 1); }
+// GolombRiceEncode: the quotient x >> P in unary (that many ones, then a
+// zero), then the low P bits. Returns the new bit position, or -1 when out
+// is too small.
+bf_golomb_put :: (out: [] u8, pos: int, x: u64) -> int {
+  q := cast(int) (x >> cast(u64) BF_P);
+  if pos + q + 1 + BF_P > out.count * 8 { return -1; }
+  p := pos;
+  for i: 0..<q { p = bf_put_bits(out, p, 1, 1); }
+  p = bf_put_bits(out, p, 0, 1);
+  return bf_put_bits(out, p, x & BF_LOW, BF_P);
+}
+// GolombRiceDecode at bit pos of b: the value, and where the next code
+// starts (-1 when the bits run out first, Core's "end of data").
+BfCode :: struct { value: u64; next: int; }
+bf_golomb_get :: (b: [] u8, pos: int) -> BfCode {
+  limit := b.count * 8; p := pos; q := cast(u64) 0;
+  while true {
+    if p >= limit { return BfCode.{next = -1}; }
+    if bf_get_bit(b, p) == 0 { break; }
+    q += 1; p += 1;
+  }
+  p += 1;
+  if p + BF_P > limit { return BfCode.{next = -1}; }
+  r := cast(u64) 0;
+  for i: 0..<BF_P { r = (r << 1) | cast(u64) bf_get_bit(b, p + i); }
+  return BfCode.{value = add_wrap(mul_wrap(q, BF_LOW + 1), r), next = p + BF_P};
+}
+// book:end bits
+
+// book:begin build
+// A GCS filter of the elements spans[0..<n] (bytes in pool). Equal
+// elements count once, as Core's ElementSet does. values and idx are
+// scratch, n long. Writes CompactSize(N), then the coded differences of
+// the sorted hashes.
+//
+// SipHash comes first and the range second: elements with the same bytes
+// have the same 64-bit hash, so sorting by it puts duplicates side by side,
+// and the range map keeps the order, so the sorted hashes give the sorted
+// values once N is known.
+bf_build_vartime :: (key: BfKey, pool: [] u8, spans: [] BfSpan, n: int, values: [] u64, idx: [] int, out: [] u8) -> BfFilter {
+  if values.count < n || idx.count < n || spans.count < n { return BfFilter.{code = BF_CAPACITY}; }
+  for i: 0..<n {
+    values[i] = siphash24(key.k0, key.k1, pool[spans[i].at..<spans[i].at+spans[i].n]);
+    idx[i] = i;
+  }
+  bf_sort(values, idx, n);
+  // Keep one of each run of equal elements.
+  unique := 0;
+  for i: 0..<n {
+    keep := true;
+    j := unique - 1;
+    while keep && j >= 0 && values[j] == values[i] {
+      if bf_same(pool, spans[idx[j]], spans[idx[i]]) { keep = false; }
+      j -= 1;
+    }
+    if keep { values[unique] = values[i]; idx[unique] = idx[i]; unique += 1; }
+  }
+  head := tx_compact_size_vartime(unique);
+  if out.count < head { return BfFilter.{code = BF_CAPACITY}; }
+  for i: 0..<out.count { out[i] = 0; }
+  #assert tx_compact_write_vartime(out, 0, unique) == head;
+  f := cast(u64) unique * BF_M;
+  pos := head * 8; last := cast(u64) 0;
+  for i: 0..<unique {
+    v := bf_range(values[i], f);
+    pos = bf_golomb_put(out, pos, v - last);
+    if pos < 0 { return BfFilter.{code = BF_CAPACITY}; }
+    last = v;
+  }
+  return BfFilter.{size = (pos + 7) / 8, n = unique};
+}
+bf_same :: (pool: [] u8, a: BfSpan, b: BfSpan) -> bool {
+  if a.n != b.n { return false; }
+  for i: 0..<a.n { if pool[a.at+i] != pool[b.at+i] { return false; } }
+  return true;
+}
+// book:end build
+
+// book:begin read
+// Core's GCSFilter from encoded bytes, with its decode check: N below 2^32
+// and exactly N codes, with nothing after the byte the last one ends in.
+bf_read_vartime :: (filter: [] u8) -> BfRead {
+  c := tx_compact_read_vartime(filter, 0);
+  if c.code != TX_OK || c.value > 0xffffffff { return BfRead.{code = BF_BAD_FILTER}; }
+  pos := c.next * 8;
+  for i: 0..<c.value {
+    g := bf_golomb_get(filter, pos);
+    if g.next < 0 { return BfRead.{code = BF_BAD_FILTER}; }
+    pos = g.next;
+  }
+  if (pos + 7) / 8 != filter.count { return BfRead.{code = BF_BAD_FILTER}; }
+  return BfRead.{n = c.value, bits = c.next * 8};
+}
+// MatchAny: is any of the n query elements in the filter? The queries are
+// hashed into values (scratch, n long) and sorted, then one pass over the
+// filter walks both lists in order, as Core's MatchInternal does.
+bf_match_any_vartime :: (key: BfKey, filter: [] u8, pool: [] u8, spans: [] BfSpan, n: int, values: [] u64, idx: [] int) -> BfMatch {
+  r := bf_read_vartime(filter);
+  if r.code != BF_OK { return BfMatch.{code = r.code}; }
+  if values.count < n || idx.count < n || spans.count < n { return BfMatch.{code = BF_CAPACITY}; }
+  f := cast(u64) r.n * BF_M;
+  for i: 0..<n { values[i] = bf_hash_vartime(key, pool[spans[i].at..<spans[i].at+spans[i].n], f); idx[i] = i; }
+  bf_sort(values, idx, n);
+  pos := r.bits; value := cast(u64) 0; q := 0;
+  for i: 0..<r.n {
+    g := bf_golomb_get(filter, pos);
+    pos = g.next; value = add_wrap(value, g.value);
+    while q < n && values[q] < value { q += 1; }
+    if q == n { return BfMatch.{}; }
+    if values[q] == value { return BfMatch.{found = true}; }
+  }
+  return BfMatch.{};
+}
+// Match: one element.
+bf_match_vartime :: (key: BfKey, filter: [] u8, element: [] u8) -> BfMatch {
+  spans: [1] BfSpan; values: [1] u64; idx: [1] int;
+  spans[0] = BfSpan.{at = 0, n = element.count};
+  return bf_match_any_vartime(key, filter, element, spans[..], 1, values[..], idx[..]);
+}
+// book:end read
+
+// book:begin basic
+// The basic filter's elements (BIP-158, Core's BasicFilterElements): every
+// output script that is not empty and does not start with OP_RETURN, then
+// every script the block's inputs spend that is not empty. The spent
+// scripts are not in the block: they come from the node's undo data, here
+// as prevouts, one CompactSize-prefixed script per input after the
+// coinbase, in block order. Each element is copied into pool.
+bf_gather_vartime :: (block: [] u8, prevouts: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, pool: [] u8, spans: [] BfSpan) -> BfGather {
+  if block.count < BF_HEADER { return BfGather.{code = BF_BAD_BLOCK}; }
+  c := tx_compact_read_vartime(block, BF_HEADER);
+  if c.code != TX_OK { return BfGather.{code = BF_BAD_BLOCK, at = c.next}; }
+  g := BfGather.{};
+  at := c.next; inputs := 0;
+  for t: 0..<c.value {
+    tx := tx_parse_vartime(block[at..<block.count], true, ins, outs, items);
+    if tx.code != TX_OK {
+      g.code = ifx tx.code == TX_CAPACITY then BF_CAPACITY else BF_BAD_BLOCK; g.at = at + tx.at;
+      return g;
+    }
+    if t > 0 { inputs += tx.nin; }
+    for o: 0..<tx.nout {
+      s := block[at+outs[o].script..<at+outs[o].script+outs[o].script_n];
+      if s.count > 0 && s[0] != 0x6a {
+        g = bf_add(s, pool, spans, g);
+        if g.code != BF_OK { return g; }
+      }
+    }
+    at += tx.total;
+  }
+  if at != block.count { return BfGather.{code = BF_BAD_BLOCK, at = at}; }
+  p := 0;
+  for i: 0..<inputs {
+    s := tx_compact_read_vartime(prevouts, p);
+    if s.code != TX_OK || s.value > prevouts.count - s.next { return BfGather.{code = BF_BAD_PREVOUTS, at = p}; }
+    script := prevouts[s.next..<s.next+s.value];
+    p = s.next + s.value;
+    if script.count > 0 {
+      g = bf_add(script, pool, spans, g);
+      if g.code != BF_OK { return g; }
+    }
+  }
+  if p != prevouts.count { return BfGather.{code = BF_BAD_PREVOUTS, at = p}; }
+  return g;
+}
+// One element into the pool and the span list.
+bf_add :: (s: [] u8, pool: [] u8, spans: [] BfSpan, g: BfGather) -> BfGather {
+  if g.n >= spans.count || s.count > pool.count - g.used { return BfGather.{code = BF_CAPACITY, n = g.n, used = g.used}; }
+  for i: 0..<s.count { pool[g.used+i] = s[i]; }
+  spans[g.n] = BfSpan.{at = g.used, n = s.count};
+  return BfGather.{n = g.n + 1, used = g.used + s.count};
+}
+// The block hash: SHA-256d of the 80-byte header.
+bf_block_hash :: (block: [] u8, out: [] u8) {
+  #assert sha256d_checked(block[0..<BF_HEADER], out, false) == SHA_OK;
+}
+// book:end basic
+
+// book:begin header
+// BIP-157's filter header: SHA-256d of the filter's hash and the previous
+// filter header, both in hash order. The genesis block's previous header
+// is 32 zero bytes.
+bf_filter_header :: (filter: [] u8, prev: [] u8, out: [] u8) {
+  pair: [64] u8;
+  #assert sha256d_checked(filter, pair[0..<32], false) == SHA_OK;
+  for i: 0..<32 { pair[32+i] = prev[i]; }
+  #assert sha256d_checked(pair[..], out, false) == SHA_OK;
+}
+// book:end header
+
+// book:begin filter
+// The basic filter of a block and its filter header, from the block, its
+// spent scripts and the previous filter header. The arrays are the
+// caller's scratch: ins, outs and items for one transaction at a time, and
+// pool, spans, values and idx for the block's elements.
+bf_basic_vartime :: (block: [] u8, prevouts: [] u8, prev_header: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem,
+                     pool: [] u8, spans: [] BfSpan, values: [] u64, idx: [] int, out: [] u8, header_out: [] u8) -> BfFilter {
+  if prev_header.count != 32 || header_out.count != 32 { return BfFilter.{code = BF_CAPACITY}; }
+  g := bf_gather_vartime(block, prevouts, ins, outs, items, pool, spans);
+  if g.code != BF_OK { return BfFilter.{code = g.code}; }
+  hash: [32] u8;
+  bf_block_hash(block, hash[..]);
+  f := bf_build_vartime(bf_key(hash[..]), pool, spans, g.n, values, idx, out);
+  if f.code != BF_OK { return f; }
+  bf_filter_header(out[0..<f.size], prev_header, header_out);
+  return f;
+}
+// book:end filter
+
+// ---- the C interface: elements as one pool and a list of lengths
+BF_C_MAX :: 2048;
+bf_spans_of :: (lens: [] u64, pool: [] u8, spans: [] BfSpan) -> int {
+  if lens.count > spans.count { return -1; }
+  at := 0;
+  for i: 0..<lens.count {
+    if lens[i] > cast(u64) (pool.count - at) { return -1; }
+    spans[i] = BfSpan.{at = at, n = cast(int) lens[i]};
+    at += cast(int) lens[i];
+  }
+  return lens.count;
+}
+bf_build_c :: (k0: u64, k1: u64, pool: [] u8, lens: [] u64, out: [] u8, fields: [] u64) -> int #export_c {
+  spans: [BF_C_MAX] BfSpan; values: [BF_C_MAX] u64; idx: [BF_C_MAX] int;
+  n := bf_spans_of(lens, pool, spans[..]);
+  if n < 0 || fields.count < 2 { return BF_CAPACITY; }
+  f := bf_build_vartime(BfKey.{k0 = k0, k1 = k1}, pool, spans[..], n, values[..], idx[..], out);
+  fields[0] = cast(u64) f.size; fields[1] = cast(u64) f.n;
+  return f.code;
+}
+bf_match_c :: (k0: u64, k1: u64, filter: [] u8, pool: [] u8, lens: [] u64, fields: [] u64) -> int #export_c {
+  spans: [BF_C_MAX] BfSpan; values: [BF_C_MAX] u64; idx: [BF_C_MAX] int;
+  n := bf_spans_of(lens, pool, spans[..]);
+  if n < 0 || fields.count < 1 { return BF_CAPACITY; }
+  m := bf_match_any_vartime(BfKey.{k0 = k0, k1 = k1}, filter, pool, spans[..], n, values[..], idx[..]);
+  fields[0] = ifx m.found then cast(u64) 1 else 0;
+  return m.code;
+}
+bf_read_c :: (filter: [] u8) -> int #export_c {
+  r := bf_read_vartime(filter);
+  if r.code != BF_OK { return -r.code; }
+  return r.n;
+}
+bf_basic_c :: (block: [] u8, prevouts: [] u8, prev_header: [] u8, pool: [] u8, out: [] u8, header_out: [] u8, fields: [] u64) -> int #export_c {
+  ins: [256] TxIn; outs: [512] TxOut; items: [1024] TxItem;
+  spans: [BF_C_MAX] BfSpan; values: [BF_C_MAX] u64; idx: [BF_C_MAX] int;
+  if fields.count < 2 { return BF_CAPACITY; }
+  f := bf_basic_vartime(block, prevouts, prev_header, ins[..], outs[..], items[..], pool, spans[..], values[..], idx[..], out, header_out);
+  fields[0] = cast(u64) f.size; fields[1] = cast(u64) f.n;
+  return f.code;
+}
+
+// ---- checks
+// A hash as Core prints it: reversed.
+bf_shown_is :: (h: [] u8, text: string) -> bool {
+  r: [32] u8;
+  for i: 0..<32 { r[i] = h[31-i]; }
+  return tx_hex_is(r[..], text);
+}
+// One BIP-158 block's filter and header, through the whole pipeline.
+bf_vector_ok :: (v: BfVector) -> bool {
+  block: [2048] u8; prev: [1024] u8; ph: [32] u8; pool: [2048] u8; out: [256] u8; header: [32] u8;
+  ins: [16] TxIn; outs: [32] TxOut; items: [32] TxItem; spans: [64] BfSpan; values: [64] u64; idx: [64] int;
+  b := tx_unhex(v.block, block[..]);
+  p := tx_unhex(v.prevouts, prev[..]);
+  shown := tx_unhex(v.prev_header, ph[..]);
+  h: [32] u8;
+  for i: 0..<32 { h[i] = shown[31-i]; }
+  f := bf_basic_vartime(b, p, h[..], ins[..], outs[..], items[..], pool[..], spans[..], values[..], idx[..], out[..], header[..]);
+  if f.code != BF_OK || !tx_hex_is(out[0..<f.size], v.filter) || !bf_shown_is(header[..], v.header) { return false; }
+  r := bf_read_vartime(out[0..<f.size]);
+  return r.code == BF_OK && r.n == f.n;
+}
+#test "the check helpers notice every difference" {
+  h: [32] u8; h[0] = 1;
+  #assert bf_shown_is(h[..], "0000000000000000000000000000000000000000000000000000000000000001");
+  #assert !bf_shown_is(h[..], "0100000000000000000000000000000000000000000000000000000000000000");
+}
+#forall "BIP-158's testnet-19 blocks: filters and filter headers" i: 0..<BF_VECTORS_COUNT #steps 2000000000 {
+  #assert bf_vector_ok(BF_VECTORS[i]);
+}
+#test "bits go most significant first, and the last byte is padded" {
+  out: [4] u8;
+  #assert bf_put_bits(out[..], 0, 5, 3) == 3 && out[0] == 0xa0;
+  #assert bf_put_bits(out[..], 3, 0x1ff, 9) == 12 && out[0] == 0xbf && out[1] == 0xf0;
+  #assert bf_get_bit(out[..], 0) == 1 && bf_get_bit(out[..], 1) == 0 && bf_get_bit(out[..], 11) == 1 && bf_get_bit(out[..], 12) == 0;
+}
+#test "Golomb-Rice codes: the quotient in unary, then 19 bits" {
+  out: [16] u8;
+  // 0 is a zero and 19 zero bits; 2^19 + 5 is 10, then 5 in 19 bits.
+  p := bf_golomb_put(out[..], 0, 0);
+  #assert p == 20;
+  p = bf_golomb_put(out[..], p, 524293);
+  #assert p == 20 + 2 + 19 && out[2] == 0x08 && out[4] == 0x02 && out[5] == 0x80;
+  g := bf_golomb_get(out[0..<6], 0);
+  #assert g.value == 0 && g.next == 20;
+  g = bf_golomb_get(out[0..<6], 20);
+  #assert g.value == 524293 && g.next == 41;
+  // Three in unary, then the remainder.
+  p = bf_golomb_put(out[..], 41, 3 * 524288 + 7);
+  #assert p == 41 + 4 + 19 && bf_golomb_get(out[..], 41).value == 3 * 524288 + 7;
+  // Out of room, and bits that run out.
+  #assert bf_golomb_put(out[0..<2], 0, 0) == -1;
+  #assert bf_golomb_get(out[0..<5], 20).next == -1;
+  ones: [2] u8; ones[0] = 0xff; ones[1] = 0xff;
+  #assert bf_golomb_get(ones[..], 0).next == -1;
+}
+#test "heapsort carries the indices along" {
+  v := [6] u64.[5, 1, 0xffffffffffffffff, 3, 1, 0];
+  idx := [6] int.[0, 1, 2, 3, 4, 5];
+  bf_sort(v[..], idx[..], 6);
+  #assert v[0] == 0 && v[1] == 1 && v[2] == 1 && v[3] == 3 && v[4] == 5 && v[5] == 0xffffffffffffffff;
+  #assert idx[0] == 5 && idx[3] == 3 && idx[5] == 2 && (idx[1] == 1 || idx[1] == 4);
+  bf_sort(v[..], idx[..], 0); bf_sort(v[..], idx[..], 1);
+  #assert v[0] == 0;
+}
+#test "the range map and the key" {
+  #assert bf_range(0x8000000000000000, 10) == 5 && bf_range(0xffffffffffffffff, 10) == 9 && bf_range(0, 10) == 0;
+  h: [32] u8;
+  for i: 0..<32 { h[i] = cast(u8) (i + 1); }
+  k := bf_key(h[..]);
+  #assert k.k0 == 0x0807060504030201 && k.k1 == 0x100f0e0d0c0b0a09;
+  e := [3] u8.[1, 2, 3];
+  #assert bf_hash_vartime(k, e[..], 1) == 0 && bf_hash_vartime(k, e[..], 784931) == bf_range(siphash24(k.k0, k.k1, e[..]), 784931);
+}
+#test "a set: empty, one element, and duplicates counted once" {
+  pool: [8] u8; out: [16] u8; values: [4] u64; idx: [4] int; spans: [4] BfSpan;
+  spans[0] = BfSpan.{at = 0, n = 3}; spans[1] = BfSpan.{at = 3, n = 3}; spans[2] = BfSpan.{at = 0, n = 2}; spans[3] = BfSpan.{at = 6, n = 0};
+  pool[0] = 1; pool[1] = 2; pool[2] = 3; pool[3] = 1; pool[4] = 2; pool[5] = 3;
+  k := BfKey.{k0 = 1, k1 = 2};
+  f := bf_build_vartime(k, pool[..], spans[..], 0, values[..], idx[..], out[..]);
+  #assert f.code == BF_OK && f.size == 1 && f.n == 0 && out[0] == 0;
+  f = bf_build_vartime(k, pool[..], spans[..], 1, values[..], idx[..], out[..]);
+  #assert f.code == BF_OK && f.n == 1 && f.size == 4 && out[0] == 1;
+  one: [4] u8; for i: 0..<4 { one[i] = out[i]; }
+  // {1 2 3}, {1 2 3} again, {1 2} and the empty element: three distinct.
+  f = bf_build_vartime(k, pool[..], spans[..], 4, values[..], idx[..], out[..]);
+  #assert f.code == BF_OK && f.n == 3 && out[0] == 3;
+  m := bf_match_vartime(k, out[0..<f.size], pool[0..<2]);
+  #assert m.code == BF_OK && m.found;
+  #assert bf_match_vartime(k, one[..], pool[0..<3]).found && !bf_match_vartime(k, one[..], pool[0..<2]).found;
+  empty: [1] u8;
+  #assert !bf_match_vartime(k, empty[..], pool[0..<3]).found;
+  // Refusals: scratch too short, output too short.
+  #assert bf_build_vartime(k, pool[..], spans[..], 4, values[0..<3], idx[..], out[..]).code == BF_CAPACITY;
+  #assert bf_build_vartime(k, pool[..], spans[..], 4, values[..], idx[..], out[0..<0]).code == BF_CAPACITY;
+  #assert bf_build_vartime(k, pool[..], spans[..], 4, values[..], idx[..], out[0..<3]).code == BF_CAPACITY;
+  #assert bf_match_any_vartime(k, one[..], pool[..], spans[..], 4, values[0..<3], idx[..]).code == BF_CAPACITY;
+}
+#test "Core's decode check: N codes exactly, nothing after" {
+  f: [64] u8;
+  v := BF_VECTORS[4];
+  b := tx_unhex(v.filter, f[..]);
+  r := bf_read_vartime(b);
+  #assert r.code == BF_OK && r.n > 0 && r.bits == 8;
+  for cut: 0..<b.count { #assert bf_read_vartime(b[0..<cut]).code == BF_BAD_FILTER; }
+  #assert bf_read_vartime(f[0..<b.count+1]).code == BF_BAD_FILTER;
+  big := [9] u8.[0xff, 0, 0, 0, 0, 1, 0, 0, 0];
+  #assert bf_read_vartime(big[..]).code == BF_BAD_FILTER;
+  #assert bf_match_vartime(BfKey.{}, b[0..<1], b).code == BF_BAD_FILTER;
+}
+#test "a block's elements match its filter; other scripts do not" {
+  v := BF_VECTORS[5];
+  f: [64] u8; block: [2048] u8; prev: [1024] u8; hash: [32] u8;
+  filter := tx_unhex(v.filter, f[..]);
+  b := tx_unhex(v.block, block[..]);
+  bf_block_hash(b, hash[..]);
+  #assert bf_shown_is(hash[..], v.hash);
+  k := bf_key(hash[..]);
+  p := tx_unhex(v.prevouts, prev[..]);
+  // Three empty spent scripts (skipped), then a P2PKH script: an element.
+  #assert p[3] == 0x19 && bf_match_vartime(k, filter, p[4..<4+0x19]).found;
+  other := [3] u8.[0x51, 0x52, 0x53];
+  #assert !bf_match_vartime(k, filter, other[..]).found;
+}
+#test "gathering refuses short blocks, bad transactions and wrong spent scripts" {
+  block: [2048] u8; prev: [1024] u8; pool: [2048] u8;
+  ins: [16] TxIn; outs: [32] TxOut; items: [32] TxItem; spans: [64] BfSpan;
+  v := BF_VECTORS[5];
+  b := tx_unhex(v.block, block[..]);
+  p := tx_unhex(v.prevouts, prev[..]);
+  g := bf_gather_vartime(b, p, ins[..], outs[..], items[..], pool[..], spans[..]);
+  #assert g.code == BF_OK && g.n > 0;
+  #assert bf_gather_vartime(b[0..<79], p, ins[..], outs[..], items[..], pool[..], spans[..]).code == BF_BAD_BLOCK;
+  #assert bf_gather_vartime(b[0..<b.count-1], p, ins[..], outs[..], items[..], pool[..], spans[..]).code == BF_BAD_BLOCK;
+  #assert bf_gather_vartime(b, p[0..<p.count-1], ins[..], outs[..], items[..], pool[..], spans[..]).code == BF_BAD_PREVOUTS;
+  #assert bf_gather_vartime(b, prev[0..<p.count+1], ins[..], outs[..], items[..], pool[..], spans[..]).code == BF_BAD_PREVOUTS;
+  #assert bf_gather_vartime(b, p, ins[..], outs[..], items[..], pool[0..<10], spans[..]).code == BF_CAPACITY;
+  #assert bf_gather_vartime(b, p, ins[..], outs[..], items[..], pool[..], spans[0..<1]).code == BF_CAPACITY;
+  #assert bf_gather_vartime(b, p, ins[0..<0], outs[..], items[..], pool[..], spans[..]).code == BF_CAPACITY;
+  // A bad count after the header.
+  b[80] = 0xff;
+  #assert bf_gather_vartime(b[0..<84], p, ins[..], outs[..], items[..], pool[..], spans[..]).code == BF_BAD_BLOCK;
+}
+#test "the filter header chains from 32 zero bytes at genesis" {
+  zero: [32] u8; f: [8] u8; out: [32] u8;
+  v := BF_VECTORS[0];
+  #assert v.height == 0 && tx_hex_is(zero[..], v.prev_header);
+  filter := tx_unhex(v.filter, f[..]);
+  bf_filter_header(filter, zero[..], out[..]);
+  #assert bf_shown_is(out[..], v.header);
+  // bf_basic_vartime's own refusal: a header view of the wrong size.
+  ins: [1] TxIn; outs: [1] TxOut; items: [1] TxItem; spans: [1] BfSpan; values: [1] u64; idx: [1] int; pool: [1] u8;
+  #assert bf_basic_vartime(f[..], f[..], zero[0..<31], ins[..], outs[..], items[..], pool[..], spans[..], values[..], idx[..], out[..], out[..]).code == BF_CAPACITY;
+  #assert bf_basic_vartime(f[..], f[..], zero[..], ins[..], outs[..], items[..], pool[..], spans[..], values[..], idx[..], out[..], out[..]).code == BF_BAD_BLOCK;
+}
+#test "the C interface" #steps 2000000000 {
+  pool := [5] u8.[1, 2, 3, 4, 5];
+  lens := [2] u64.[2, 3];
+  out: [16] u8; fields: [2] u64;
+  #assert bf_build_c(1, 2, pool[..], lens[..], out[..], fields[..]) == BF_OK && fields[1] == 2;
+  filter := out[0..<cast(int) fields[0]];
+  #assert bf_read_c(filter) == 2 && bf_read_c(filter[0..<1]) == -BF_BAD_FILTER;
+  #assert bf_match_c(1, 2, filter, pool[0..<2], lens[0..<1], fields[..]) == BF_OK && fields[0] == 1;
+  big := [1] u64.[6];
+  #assert bf_build_c(1, 2, pool[..], big[..], out[..], fields[..]) == BF_CAPACITY;
+  #assert bf_match_c(1, 2, filter, pool[..], big[..], fields[..]) == BF_CAPACITY;
+  #assert bf_build_c(1, 2, pool[..], lens[..], out[..], fields[0..<1]) == BF_CAPACITY;
+  #assert bf_match_c(1, 2, filter, pool[..], lens[..], fields[0..<0]) == BF_CAPACITY;
+  v := BF_VECTORS[1];
+  block: [256] u8; ph: [32] u8; p2: [512] u8; f2: [64] u8; h: [32] u8; none: [1] u8;
+  b := tx_unhex(v.block, block[..]);
+  #assert bf_basic_c(b, none[0..<0], ph[..], p2[..], f2[..], h[..], fields[..]) == BF_OK;
+  #assert tx_hex_is(f2[0..<cast(int) fields[0]], v.filter);
+  #assert bf_basic_c(b, none[0..<0], ph[..], p2[..], f2[..], h[..], fields[0..<1]) == BF_CAPACITY;
+}

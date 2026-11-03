@@ -43,12 +43,12 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 57 are implemented and 67 are planned. The 57 implemented
+Of the 124 chapters, 58 are implemented and 66 are planned. The 58 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 56, 62, 65, 66, 67, 68 and
-73 are new.
+39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 56, 62, 65, 66, 67, 68, 73
+and 74 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -247,7 +247,7 @@ P2P messages, BIP-324 encrypted transport, the handshake, peer discovery and con
 | 71. Misbehavior, limits and denial of service | Planned | Each message limit (size, `inv` and `addr` counts and rates, unconnecting headers and the low-work headers presync) refuses its oversized case. A peer that sends an invalid block is disconnected, and memory per peer stays under its stated bound under a flood. |
 | 72. Headers sync and block download | Planned | From genesis the node downloads headers by locator, presyncs them against low-work spam, and fetches blocks from many peers through a moving window, replacing a peer that stalls. It syncs regtest and signet from Bitcoin Core peers to their tips. |
 | [73. Compact blocks](ch073-compact-blocks.md) | Runnable: native C | BIP-152 version 2: short IDs from SipHash-2-4 keyed by SHA-256(header || nonce), the `cmpctblock`, `getblocktxn` and `blocktxn` messages with differential indexes, and `PartiallyDownloadedBlock`'s `InitData` and `FillBlock`, collisions and `IsBlockMutated` included, with Core's high-bandwidth peer choice. Block 413,567's keys, short IDs and message equal `messages.py`'s, and Core's `blockencodings_tests.cpp` cases pass. |
-| 74. Compact block filters | Planned | BIP-158's `testnet-19.json` filters and filter headers match. |
+| [74. Compact block filters](ch074-compact-block-filters.md) | Runnable: native C | BIP-158's basic filter: a Golomb-coded set of a block's output scripts (without OP_RETURN ones) and the scripts its inputs spend, hashed with SipHash-2-4 keyed by the block hash and coded with P = 19 and M = 784,931, with Core's strict decode check and matching, plus BIP-157's filter headers. All ten testnet-19.json filters and headers match, and Bitcoin Core's own Python SipHash and element hash with a golombrice.h transliteration agree on seeded sets, matches and damaged filters. |
 | 75. Proxies, Tor and I2P | Planned | The node reaches peers through a SOCKS5 proxy and a local Tor daemon, accepts inbound connections on an onion service, and connects to I2P peers through the SAM bridge. Each network's addresses stay apart in the address manager. |
 
 ### Part XII. Initial block download (chapters 76–80)
