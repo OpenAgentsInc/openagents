@@ -1488,7 +1488,10 @@ everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, 
     // Earthbound (the watch's Earthbind): no rising, and down 60 feet a round to the ground
     if s[0].wv.started && watch_bound(watch_w(s)) { a[0].lev_up = false; a[0].lev_sink = true; v = -f32(BIND_FALL); a[0].lev_hold = floor_y + fl; }
     y := hi(y0 + v * dt, fl);
-    if y > f32(AB_LEV_TOP) { y = f32(AB_LEV_TOP); v = lo(v, 0); if a[0].lev_up { a[0].lev_up = false; a[0].lev_hold = floor_y + y; } }
+    // 18 m stops you rising, never pulls you down: already higher (Reverse Gravity threw you up), you
+    // hover where you are
+    top := hi(f32(AB_LEV_TOP), y0);
+    if y > top { y = top; v = lo(v, 0); if a[0].lev_up { a[0].lev_up = false; a[0].lev_hold = floor_y + y; } }
     if a[0].lev_sink && y <= fl + 0.001 { a[0].lev_on = false; a[0].lev_sink = false; }
     roof := ab_roof(s, x, z, floor_y + y0 + f32(AB_HEIGHT) - 0.2);
     if floor_y + y + f32(AB_HEIGHT) > roof { y = roof - f32(AB_HEIGHT) - floor_y; v = lo(v, 0); a[0].lev_up = false; a[0].lev_hold = floor_y + y; }
@@ -1853,6 +1856,23 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert l.on && near(l.vy, -f32(AB_FF_SPEED), 0.001) && l.y > 4.9;
   last := everglade_lift(g[..], 0, -30, 0.01, -3, 0, 0, 1.0 / 60);
   #assert !a[0].ff_on;
+}
+
+#test "abilities: Levitate cast above 18 m (Reverse Gravity threw you up) hovers where you are, never pulls you down" #steps 441000000 {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  g[0].feet = v3(0, 30, -30);
+  a := ab_of(g[..]);
+  #assert spells_key(g[..], '7', 0) && a[0].lev_on;
+  #assert spells_key_up(g[..], '7', 0) && !a[0].lev_up;
+  y := 30.0f32; v := 0.0f32;
+  for k: 0..<180 { l := everglade_lift(g[..], 0, -30, y, v, y + v / 60 - 0.007, v - 0.4, 1.0 / 60); #assert l.on; y = l.y; v = l.vy; }
+  #assert near(y, 30, 0.1);
+  // holding 7 up there doesn't lift you further, and doesn't drop you either
+  a[0].lev_up = true;
+  for k: 0..<120 { l := everglade_lift(g[..], 0, -30, y, v, y, v, 1.0 / 60); y = l.y; v = l.vy; }
+  #assert near(y, 30, 0.1);
 }
 
 #test "abilities: Gust of Wind pushes along its line; Thunderwave frees a prop in its cube and throws it 10 feet's worth away" #steps 441000000 {
