@@ -11,21 +11,34 @@
 // n (who a seat is, on change), c (a creature or zone within EG_VIEW m), x c EID (one gone from
 // your view), and the events near you (e cast, e hit, e heal, e die, e rebuild).
 //
-// Each tick: every seat's queued inputs are stepped, one controller step of 1/EG_HZ s each and no
-// more than the tick allows (EG_BANK), by the shared movement step on the room's Everglade world
+// Each tick: every seat's queued inputs are stepped, one controller step of 1/EG_HZ s each, as many
+// as its page's clock has earned (EG_BANK: the steps of time it may be owed, EG_TICK_STEPS at most a
+// tick), by the shared movement step on the room's Everglade world
 // (everglade-step.coax, everglade-move.coax: the page predicts with the same calls). That step
 // lives in other C units, so the host runs it: rm_eg_input hands it a seat's next input and
 // rm_eg_moved takes the state back. Then casts that strike now are rolled by the SRD 5e engine
 // (apps/openagents-web/everglade5e-room-rules.coax: one battle for the 16 seats), the engine's
-// clock moves on, and every EG_SEND ticks each seat gets its D frame.
+// clock moves on, and each tick each seat gets its D frame.
 
 EG_ROOMS :: 16;                 // simulated rooms at once (256 players)
 EG_SEATS :: 16;
 EG_HZ :: 30;
-EG_SEND :: 2;                   // a D frame every 2 ticks (15 Hz)
-EG_INPUTS :: 8;                 // inputs queued a seat; past it the oldest go
+// A D frame every tick (30 Hz). At every 2 ticks (15 Hz), an input stepped on the odd tick waited a
+// tick for its ACK, up to 66 ms on top of the round trip (#12731); the entries every seat hears alike
+// are written once a tick (eg_cache), so the second frame costs little.
+EG_SEND :: 1;
+EG_INPUTS :: 16;                // inputs queued a seat; past it the oldest go
 EG_IN_FIELDS :: 7;              // SEQ KX KY PX PY THETA B: what rm_eg_input hands the host
-EG_BANK :: 4;                   // steps a seat may be owed: a page can't move faster than the tick
+// A seat earns a step a tick and spends one an input. What it is owed is kept up to EG_BANK (half a
+// second), so a page that stalled (a busy browser runs 2 to 4 steps in one frame, then none) spends
+// the steps when they come, at most EG_TICK_STEPS a tick: a page can't move faster than the tick over
+// time, nor more than 4 steps at once. With the old bank of 4, every stall over 4 steps lost its time
+// for good, and the inputs after it waited in the queue a tick each from then on: the queue grew to
+// its 8, about 270 ms of input-to-ACK, and past that the oldest went (the page had stepped them; the
+// server's word snapped you back) (#12731).
+EG_BANK :: 15;
+EG_TICK_STEPS :: 4;
+EG_JOIN_BANK :: 3;              // what a seat that just sat is owed (its first tick's step on top)
 EG_VIEW :: 120.0;               // m: what a seat hears of creatures, zones and events
 EG_CHUNK :: 3740;               // a D frame's entries at most (WIRE_SERVER_FRAME with its header); past it, F 2
 EG_CASTS :: 16;                 // casts on their way (a slot's delay from press to strike)
@@ -42,12 +55,13 @@ EG_CRIMES :: 16;
 EG_FOLK_STEP :: 0.3; EG_FOLK_TURN :: 0.15;   // m and radians a townsperson moves before a seat hears them again
 EG_REBUILD_QUIET :: 10; EG_REBUILD_EVERY :: 30;   // s: R stands the town up once no spell struck it for 10 s, once in 30 s at most
 EG_PIECES :: 4000;              // the town's pieces at most (verse/demolish.coax DEMO_PIECES)
+EG_ENT :: 192;                  // bytes of one cached entry (eg_cache) at most
 
 EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: int; }
 EgPose :: struct { x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; g: int; clip: int; carry: int; }
 EgSeat :: struct {
   live: bool; conn: int = -1;
-  q: [EG_INPUTS] EgIn; q_n: int; bank: int; ack: int;
+  q: [EG_INPUTS] EgIn; q_n: int; bank: int; took: int; ack: int;   // took: inputs stepped this tick
   pose: EgPose; placed: bool;    // placed: the host has put it in the world (rm_eg_moved)
   look: [EG_LOOK] u8; look_n: int; klass: [EG_NAME] u8; klass_n: int; flags: int; name: [EG_NAME] u8; name_n: int;
   last_cast: int = -1000;
@@ -86,6 +100,12 @@ EgRoom :: struct {
   broke_at: int = -100000; rebuilt_at: int = -100000;   // the ticks of the last spell on the town and the last rebuild (R's rules)
   fresh: bool;                   // a new room in this slot: the world's town starts whole
   broken: [EG_PIECES] bool; burning: [EG_PIECES] bool;
+  // what every seat hears alike this tick, written once (eg_cache) and copied into each seat's D: each
+  // player's p and n entries and each person's f entry, with their hashes (f's of where it is heard again)
+  cache_tick: int = -1;
+  cp: [EG_SEATS * EG_ENT] u8; cp_n: [EG_SEATS] int; cp_h: [EG_SEATS] int;
+  cn: [EG_SEATS * EG_ENT] u8; cn_n: [EG_SEATS] int; cn_h: [EG_SEATS] int;
+  cf: [E5R_FOLK * EG_ENT] u8; cf_n: [E5R_FOLK] int; cf_h: [E5R_FOLK] int;
 }
 EgStrike :: struct { by: int; slot: int; fx: f32; fy: f32; fz: f32; ax: f32; ay: f32; az: f32; seed: int; }
 EgCrime :: struct { by: int; x: f32; z: f32; }
@@ -136,7 +156,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
   if k >= 0 { return k; }
   for q: 0..<EG_ROOMS {
     if v[0].eg[q].live { continue; }
-    v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0;
+    v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0; v[0].eg[q].cache_tick = -1;
     v[0].eg[q].seed = 1 + (v[0].wall_ms / 7 + r * 7919) % 999999937;
     for s: 0..<EG_SEATS { v[0].eg[q].seat[s] = EgSeat.{}; }
     for c: 0..<EG_CASTS { v[0].eg[q].casts[c].on = false; }
@@ -158,7 +178,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
 eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
   k := eg_room_of(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
-  v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_BANK, fresh = true};
+  v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_JOIN_BANK, fresh = true};
   v[0].eg[k].wanted[seat] = 0;
   e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
   rv_join(v, k, seat);   // the HP its player left with (room-vitals.coax, #12715)
@@ -348,18 +368,18 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
 rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return false; }
   v[0].eg[k].tick += 1;
-  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { v[0].eg[k].seat[s].bank = least(v[0].eg[k].seat[s].bank + 1, EG_BANK); } }
+  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { v[0].eg[k].seat[s].bank = least(v[0].eg[k].seat[s].bank + 1, EG_BANK); v[0].eg[k].seat[s].took = 0; } }
   return true;
 }
 // Seat s's next input to step this tick, EG_IN_FIELDS into out (SEQ KX KY PX PY THETA B); false when
-// none is queued or none owed.
+// none is queued, none owed, or EG_TICK_STEPS were stepped this tick.
 rm_eg_input :: (v: [] RmServer, k: int, s: int, out: [] int) -> bool #export_c {
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < EG_IN_FIELDS { return false; }
   st := v[0].eg[k].seat[s..<s + 1];
-  if !st[0].live || !st[0].placed || st[0].q_n == 0 || st[0].bank <= 0 { return false; }
+  if !st[0].live || !st[0].placed || st[0].q_n == 0 || st[0].bank <= 0 || st[0].took >= EG_TICK_STEPS { return false; }
   i := st[0].q[0];
   for q: 1..<st[0].q_n { st[0].q[q - 1] = st[0].q[q]; }
-  st[0].q_n -= 1; st[0].bank -= 1;
+  st[0].q_n -= 1; st[0].bank -= 1; st[0].took += 1;
   out[0] = i.seq; out[1] = i.kx; out[2] = i.ky; out[3] = i.px; out[4] = i.py; out[5] = i.theta; out[6] = i.b;
   return true;
 }
@@ -394,7 +414,7 @@ rm_eg_beast_at :: (v: [] RmServer, k: int, q: int, out: [] f32) -> bool #export_
 rm_eg_beast_ground :: (v: [] RmServer, k: int, q: int, y: f32) #export_c { if rm_eg_live(v, k) { e5rr_beast_ground(v[0].eg[k].rules[..], q, y); } }
 
 // Room k's tick ends: the casts that strike now are rolled, the engine's clock moves on, its events
-// are heard, and every EG_SEND ticks each seat gets its state.
+// are heard, and every EG_SEND ticks (each tick) each seat gets its state.
 rm_eg_end :: (v: [] RmServer, k: int) #export_c {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return; }
   t := v[0].eg[k].tick;
@@ -567,6 +587,46 @@ eg_kind_of :: (slot: int) -> int {
   return WK_ZONE;
 }
 
+// What every seat of room k hears alike this tick, once: each placed player's p entry and n entry, and
+// each person's f entry, with the hashes the seats compare against what they last heard (f's is of
+// where the person is snapped to EG_FOLK_STEP and EG_FOLK_TURN). Written once a tick, not once a seat:
+// 16 seats heard 16 players' and 38 people's entries each, written and hashed 16 times over (#12717).
+eg_cache :: (v: [] RmServer, k: int) {
+  rm := v[0].eg[k..<k + 1];
+  if rm[0].cache_tick == rm[0].tick { return; }
+  rm[0].cache_tick = rm[0].tick;
+  out: [E5RR_OUT_FLOATS] f32;
+  for q: 0..<EG_SEATS {
+    rm[0].cp_n[q] = 0; rm[0].cn_n[q] = 0;
+    other := rm[0].seat[q];
+    if !other.live || !other.placed { continue; }
+    e5rr_seat_out(rm[0].rules[..], q, out[..]);
+    p := other.pose;
+    g := p.g | (ifx out[4] > 0.5 then WG_DEAD else 0) | (ifx v[0].mono_ms - other.heard_ms > WIRE_AWAY_MS then WG_AWAY else 0);
+    a := q * EG_ENT;
+    n := wire_put_p(rm[0].cp[a..<a + EG_ENT], 0, WireP.{ss = q, x = p.x, y = p.y, z = p.z, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, g = g, clip = p.clip,
+                                     hp = cast(int) out[0], max = cast(int) out[1], temp = cast(int) out[2], cond = cast(int) out[3] | other.wcond,
+                                     form = 0, carry = f32(p.carry) / 10000.0});
+    rm[0].cp_n[q] = n; rm[0].cp_h[q] = eg_hash(cast(string) rm[0].cp[a..<a + n]);
+    tq := eg_ticket(v, k, q);
+    n = wire_put_n(rm[0].cn[a..<a + EG_ENT], 0, WireN.{ss = q, id = ifx tq.ok then cast(string) tq.pid[0..<tq.pid_n] else "-", look = ifx other.look_n > 0 then cast(string) other.look[0..<other.look_n] else "ranger.0.0.0",
+                                    kind = ifx other.klass_n > 0 then cast(string) other.klass[0..<other.klass_n] else "druid",
+                                    flags = other.flags, name = ifx other.name_n > 0 then cast(string) other.name[0..<other.name_n] else "-"});
+    rm[0].cn_n[q] = n; rm[0].cn_h[q] = eg_hash(cast(string) rm[0].cn[a..<a + n]);
+  }
+  if !rm[0].folk_on { return; }
+  for i: 0..<E5R_FOLK {
+    fo := i * EG_FOLK_FLOATS;
+    fl := rm[0].folk[fo..<fo + EG_FOLK_FLOATS];
+    q: [96] u8;
+    qn := wire_put_f(q[..], 0, WireF.{i = i, x = eg_snap(fl[0], f32(EG_FOLK_STEP)), z = eg_snap(fl[1], f32(EG_FOLK_STEP)), yaw = eg_snap(fl[2], f32(EG_FOLK_TURN)),
+                                      clip = cast(int) fl[3], mode = cast(int) fl[4], hp = cast(int) fl[5]});
+    rm[0].cf_h[i] = eg_hash(cast(string) q[0..<qn]);
+    a := i * EG_ENT;
+    rm[0].cf_n[i] = wire_put_f(rm[0].cf[a..<a + EG_ENT], 0, WireF.{i = i, x = fl[0], z = fl[1], yaw = fl[2], clip = cast(int) fl[3], mode = cast(int) fl[4], hp = cast(int) fl[5]});
+  }
+}
+
 eg_send :: (v: [] RmServer, k: int, s: int) {
   st := v[0].eg[k].seat[s..<s + 1];
   full := st[0].full;
@@ -591,7 +651,8 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
       else if v[0].eg[k].burning[q] { n := eg_put_burn(e[..], q, true); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
     }
   }
-  out: [E5RR_OUT_FLOATS] f32;
+  eg_cache(v, k);
+  rm := v[0].eg[k..<k + 1];
   for q: 0..<EG_SEATS {
     other := v[0].eg[k].seat[q];
     if !other.live || !other.placed {
@@ -601,21 +662,12 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
       }
       continue;
     }
-    e5rr_seat_out(v[0].eg[k].rules[..], q, out[..]);
-    p := other.pose;
-    g := p.g | (ifx out[4] > 0.5 then WG_DEAD else 0) | (ifx v[0].mono_ms - other.heard_ms > WIRE_AWAY_MS then WG_AWAY else 0);
-    n := wire_put_p(e[..], 0, WireP.{ss = q, x = p.x, y = p.y, z = p.z, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, g = g, clip = p.clip,
-                                     hp = cast(int) out[0], max = cast(int) out[1], temp = cast(int) out[2], cond = cast(int) out[3] | other.wcond,
-                                     form = 0, carry = f32(p.carry) / 10000.0});
-    h := eg_hash(cast(string) e[0..<n]);
+    a := q * EG_ENT;
+    h := rm[0].cp_h[q];
     // your own every frame: its ACK is where your page replays from
-    if q == s || h != st[0].heard_p[q] { eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); st[0].heard_p[q] = h; }
-    tq := eg_ticket(v, k, q);
-    n = wire_put_n(e[..], 0, WireN.{ss = q, id = ifx tq.ok then cast(string) tq.pid[0..<tq.pid_n] else "-", look = ifx other.look_n > 0 then cast(string) other.look[0..<other.look_n] else "ranger.0.0.0",
-                                    kind = ifx other.klass_n > 0 then cast(string) other.klass[0..<other.klass_n] else "druid",
-                                    flags = other.flags, name = ifx other.name_n > 0 then cast(string) other.name[0..<other.name_n] else "-"});
-    h = eg_hash(cast(string) e[0..<n]);
-    if h != st[0].heard_n[q] { eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); st[0].heard_n[q] = h; }
+    if q == s || h != st[0].heard_p[q] { eg_out_entry(o[..], v, k, s, f, cast(string) rm[0].cp[a..<a + rm[0].cp_n[q]]); st[0].heard_p[q] = h; }
+    h = rm[0].cn_h[q];
+    if h != st[0].heard_n[q] { eg_out_entry(o[..], v, k, s, f, cast(string) rm[0].cn[a..<a + rm[0].cn_n[q]]); st[0].heard_n[q] = h; }
   }
   // creatures and lasting areas within view: each once, and gone when it ends or leaves your view
   zf: [E5RR_ZONE_FLOATS] f32;
@@ -669,13 +721,9 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
         continue;
       }
       // heard again once they have moved EG_FOLK_STEP m or turned EG_FOLK_TURN, or changed mode, clip or
-      // Hit Points: a walker about five times a second, which the page's ring smooths
-      q: [96] u8;
-      qn := wire_put_f(q[..], 0, WireF.{i = i, x = eg_snap(fl[0], f32(EG_FOLK_STEP)), z = eg_snap(fl[1], f32(EG_FOLK_STEP)), yaw = eg_snap(fl[2], f32(EG_FOLK_TURN)),
-                                        clip = cast(int) fl[3], mode = cast(int) fl[4], hp = cast(int) fl[5]});
-      n := wire_put_f(e[..], 0, WireF.{i = i, x = fl[0], z = fl[1], yaw = fl[2], clip = cast(int) fl[3], mode = cast(int) fl[4], hp = cast(int) fl[5]});
-      h := eg_hash(cast(string) q[0..<qn]);
-      if h != st[0].heard_f[i] { eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); st[0].heard_f[i] = h; }
+      // Hit Points: a walker about five times a second, which the page's ring smooths (eg_cache)
+      h := rm[0].cf_h[i];
+      if h != st[0].heard_f[i] { a := i * EG_ENT; eg_out_entry(o[..], v, k, s, f, cast(string) rm[0].cf[a..<a + rm[0].cf_n[i]]); st[0].heard_f[i] = h; }
     }
   }
   // every seat's WANTED level (yours and the others'), on change
@@ -760,14 +808,14 @@ eg_test_has :: (t: string, part: string) -> bool {
   rm_heard(v[..], 0, "I 3 0 0 0 50 0 1");   // a repeat goes
   eg_test_tick(v[..], k);
   #assert v[0].eg[k].seat[0].ack == 4 && v[0].eg[k].seat[0].q_n == 4;
-  eg_test_tick(v[..], k);   // tick 2: D goes out
+  eg_test_tick(v[..], k);   // tick 2: its D (tick 1's was the snapshot)
   #assert v[0].eg[k].seat[0].ack == 5;
   eg_test_drain(v[..], box[..]);
   a := eg_test_of(box[..], 0); c := eg_test_of(box[..], 1);
-  #assert eg_test_has(a, "D 2 5 1 p 0 0 0 250 0 0 0 0 1 1 57 57 0 0 0 0;");
+  #assert eg_test_has(a, "D 1 4 1 p 0 0 0 200 ") && eg_test_has(a, "D 2 5 0 p 0 0 0 250 0 0 0 0 1 1 57 57 0 0 0 0");
   #assert eg_test_has(a, ";n 0 - ranger.2.1.0 druid 1 Ash Vale") && eg_test_has(a, ";p 1 100 0 0 ") && eg_test_has(a, ";n 1 - ranger.0.0.0 druid 0 -");
   // seat 1 hears seat 0, with seat 1's own ACK (none yet)
-  #assert eg_test_has(c, "D 2 0 1 p 0 0 0 250 ") && eg_test_has(c, ";p 1 100 0 0 ");
+  #assert eg_test_has(c, "D 2 0 0 p 0 0 0 250 ") && eg_test_has(c, ";p 1 100 0 0 ");
   // the next frame: only what changed (seat 0 moved; seat 1's own always; the names not again)
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
@@ -778,6 +826,38 @@ eg_test_has :: (t: string, part: string) -> bool {
   rm_heard(v[..], 0, "I 20 0 0 x 50 0 1");
   rm_heard(v[..], 0, "I 21 0 0 50");
   #assert v[0].eg[k].seat[0].q_n == waiting;
+}
+
+eg_test_input :: (v: [] RmServer, seq: int) {
+  t: [64] u8; n := put(t[..], 0, "I"); n = eg_n(t[..], n, seq); n = put(t[..], n, " 0 0 0 10 0 1");
+  rm_heard(v, 0, cast(string) t[0..<n]);
+}
+#test "everglade room: a page that stalls spends the steps it is owed, and its inputs wait no tick after (#12731)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-stall HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 0, ev) == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  eg_test_tick(v[..], k);
+  seq := 0;
+  // a steady page: one input a tick, each stepped the tick it comes
+  for q: 0..<30 { seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k); #assert v[0].eg[k].seat[0].ack == seq; }
+  // it stalls 8 ticks, then sends the 8 steps it owes at once (as a busy browser does), and goes on
+  for q: 0..<8 { eg_test_tick(v[..], k); }
+  for q: 0..<9 { seq += 1; eg_test_input(v[..], seq); }
+  eg_test_tick(v[..], k);
+  #assert v[0].eg[k].seat[0].ack == seq - 5;   // 4 at most a tick
+  seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k);
+  seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k);
+  #assert v[0].eg[k].seat[0].ack == seq && v[0].eg[k].seat[0].q_n == 0;   // caught up: nothing waits
+  // it stalls a long while: half a second is kept, no more (a page can't bank time to run ahead)
+  for q: 0..<90 { eg_test_tick(v[..], k); }
+  #assert v[0].eg[k].seat[0].bank == EG_BANK;
+  for q: 0..<40 { seq += 1; eg_test_input(v[..], seq); }
+  stepped := 0;
+  for q: 0..<10 { was := v[0].eg[k].seat[0].ack; eg_test_tick(v[..], k); stepped += v[0].eg[k].seat[0].ack - was; }
+  #assert stepped <= EG_BANK + 10;
 }
 
 #test "everglade room: the wolves one seat conjures are in both seats' state and the other can kill one; a heal reaches the other; a joiner's snapshot has the pack; it outlasts its caster's leaving" #steps 4000000000 {

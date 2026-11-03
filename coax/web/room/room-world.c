@@ -65,6 +65,25 @@ static bool world_of(int k) {
   return true;
 }
 
+/* The walls within WALL_NEAR m of (x, z), in their order, into near (6 floats each): how many. A wall
+   acts only within the controller's radius (0.3 m) of the feet, and a step's three controller steps
+   move them 0.45 m at most (max_travel 0.15 m each), so what is left out never touched you: the step
+   is the same as over every wall (the page steps over every wall), and the controller tests 30 walls,
+   not 256, in each of its passes (#12717). */
+#define WALL_NEAR 4.0f
+#define WALL_MAX (256 + 2)
+static int walls_near(const float *walls, int n, float x, float z, float *near) {
+  int m = 0;
+  for (int i = 0; i < n && i < WALL_MAX; i++) {
+    const float *w = walls + i * 6;
+    /* a wall with a bad number goes in as it is: the controller refuses it as the page's would */
+    bool bad = !(w[0] == w[0]) || !(w[2] == w[2]) || !(w[3] == w[3]) || !(w[5] == w[5]);
+    if (!bad && (x < w[0] - WALL_NEAR || x > w[3] + WALL_NEAR || z < w[2] - WALL_NEAR || z > w[5] + WALL_NEAR)) continue;
+    memcpy(near + m * 6, w, 6 * sizeof(float)); m++;
+  }
+  return m;
+}
+
 static void pose_of(coax_t_Player p, bool moved, float out[WORLD_POSE]) {
   out[0] = p.pos.x; out[1] = p.pos.y; out[2] = p.pos.z; out[3] = verse_player_face(p);
   out[4] = p.vel.x; out[5] = p.vel.y; out[6] = p.vel.z;
@@ -97,7 +116,9 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
   p = eg_step_begin(p, input, mw, dt);
   coax_t_EgBody before = eg_step_body(p);
   coax_v_f32 near = everglade_move_bodies(at(k));
-  p = eg_step_advance(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){g->walls.e, mw.walls * 6}, (coax_v_f32){g->floors.e, mw.floors * 10}, frame);
+  static float wall_near[WALL_MAX * 6];
+  int wn = walls_near(g->walls.e, (int)mw.walls, p.pos.x, p.pos.z, wall_near);
+  p = eg_step_advance(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){wall_near, wn * 6}, (coax_v_f32){g->floors.e, mw.floors * 10}, frame);
   coax_t_EgBody moved = everglade_move_after(at(k), mw, before, eg_step_body(p), dt);
   p = eg_step_put(p, moved);
   /* the river after the step: the water this seat is in now, for its next step */

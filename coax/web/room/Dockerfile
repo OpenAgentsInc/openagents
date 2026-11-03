@@ -7,7 +7,8 @@ COPY src/ /src/
 WORKDIR /src
 # The room's unit and the city's both carry analytics.coax's exports: the room's copies are made local.
 RUN gcc -std=c11 -O2 -w -c room.c -o room.o \
- && for n in everglade everglade-step grid river guard-guide-policy; do gcc -std=c11 -O1 -w -c $n.c -o $n.o & done; wait \
+ && gcc -std=c11 -O2 -w -c everglade-step.c -o everglade-step.o & \
+    for n in everglade grid river guard-guide-policy; do gcc -std=c11 -O1 -w -c $n.c -o $n.o & done; wait \
  && nm -g --defined-only room.o | awk '{print $3}' | sort > room.syms \
  && nm -g --defined-only everglade.o | awk '{print $3}' | sort > city.syms \
  && comm -12 room.syms city.syms > both.syms \

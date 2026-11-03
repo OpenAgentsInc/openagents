@@ -1,6 +1,6 @@
 // The everglade rooms' check (room-everglade.coax, room-world.c): two sockets share one world.
 // A says who it is and walks ahead for two seconds at 30 inputs a second; B stands. Each hears the
-// world's header (W), state at about 15 Hz (D), its own player with its ACK, and the other by name.
+// world's header (W), state at about 30 Hz (D), its own player with its ACK, and the other by name.
 // A conjures its wolves 3 m off: both hear the cast (e cast) and the four Wolves (c, kind 12, with
 // their Hit Points). B casts Starry Wisp (slot 22, one target) at one of them by its TGT code (2000 + EID) until it
 // is gone: both hear B's hits on it (e hit) and it go (x c). A leaves: B hears A gone (x p 0) and

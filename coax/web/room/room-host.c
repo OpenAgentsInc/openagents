@@ -63,6 +63,12 @@ static int64_t fan_at(const int64_t *h, int q, int64_t *count) {
 }
 // The everglade tick's time (every room's world stepped, its frames out): 0.1 ms buckets, as above.
 static int64_t tick_now[FAN_BUCKETS], tick_last[FAN_BUCKETS];
+/* Where the everglade tick's time goes (#12717): microseconds summed over the report's minute for the
+   movement steps, the hotbar abilities, the town (watch and folk), the spells' pieces, the people for the rules and the pages,
+   and rm_eg_end (the rules' step and every seat's D), printed with the tick line. */
+enum { PART_MOVE, PART_ABILITIES, PART_TOWN, PART_SPELLS, PART_PEOPLE, PART_END, PARTS };
+static int64_t part_us[PARTS];
+static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "people", "end"};
 static void tick_add(int64_t us) { int64_t b = us / 100; tick_now[b < 0 ? 0 : b >= FAN_BUCKETS ? FAN_BUCKETS - 1 : b]++; }
 static int64_t now_ms(void) {
   struct timespec t;
@@ -132,7 +138,9 @@ static void everglade_town(int k) {
   for (int64_t q = 0; q < cn; q++) { rm_eg_crime(view(), k, q, crv); world_crime(k, (int)cr[0], cr[1], cr[2]); }
   rm_eg_crimes_heard(view(), k);
   for (int s = 0; s < WORLD_SEATS; s++) rm_eg_seat_town(view(), k, s, (coax_v_f32){seats + s * WORLD_SEAT_TOWN, WORLD_SEAT_TOWN});
+  int64_t t0 = now_us();
   world_town(k, 1.0f / WORLD_HZ, (double)wall_ms() / 1000.0, seats, took);
+  int64_t t1 = now_us(); part_us[PART_TOWN] += t1 - t0;
   for (int s = 0; s < WORLD_SEATS; s++) {
     if (seats[s * WORLD_SEAT_TOWN + 3] < 0.5f) continue;
     rm_eg_hurt(view(), k, s, (int64_t)took[s], (int64_t)took[WORLD_SEATS + s]);
@@ -145,12 +153,15 @@ static void everglade_town(int k) {
   int64_t sn = rm_eg_strikes(view(), k);
   for (int64_t q = 0; q < sn; q++) { rm_eg_strike(view(), k, q, skv); world_strike(k, (int)sk[0], (int)sk[1], sk + 2, sk + 5, (int)sk[8]); }
   rm_eg_strikes_heard(view(), k);
+  int64_t t2 = now_us();
   int en = world_spells(k, 1.0f / WORLD_HZ);
   for (int q = 0; q < en; q++)
     if (world_event(k, q, ev)) rm_eg_piece(view(), k, (int64_t)ev[0], (int64_t)ev[1], ev[2], ev[3], ev[4], ev[5], ev[6]);
+  int64_t t3 = now_us(); part_us[PART_SPELLS] += t3 - t2;
   int pn = world_people(k, people);
   rm_eg_people(view(), k, (coax_v_f32){people, WORLD_FOLK * WORLD_PEOPLE}, pn);
   for (int i = 0; i < WORLD_FOLK; i++) if (world_view(k, i, fv)) rm_eg_folk(view(), k, i, fvv);
+  part_us[PART_PEOPLE] += now_us() - t3;
 }
 // Room k's hotbar abilities the world runs (room-abilities.coax, everglade-room-abilities.coax; #12718):
 // the casts and ends since into it, its step, then what it holds up and the falls' damage back.
@@ -171,6 +182,7 @@ static void everglade_tick(void) {
   coax_v_s64 inv = {in, WORLD_IN};
   for (int k = 0; k < WORLD_ROOMS; k++) {
     if (!rm_eg_begin(view(), k)) continue;
+    int64_t tm = now_us();
     for (int s = 0; s < WORLD_SEATS; s++) {
       if (rm_eg_unplaced(view(), k, s) && world_place(k, s, pose))
         rm_eg_moved(view(), k, s, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
@@ -183,9 +195,14 @@ static void everglade_tick(void) {
     float xz[2]; coax_v_f32 xzv = {xz, 2};
     for (int q = 0; q < rm_eg_beasts(); q++)
       if (rm_eg_beast_at(view(), k, q, xzv)) rm_eg_beast_ground(view(), k, q, world_ground(k, xz[0], xz[1]));
+    part_us[PART_MOVE] += now_us() - tm;
+    int64_t ta = now_us();
     everglade_abilities(k);
+    part_us[PART_ABILITIES] += now_us() - ta;
     everglade_town(k);
+    int64_t te = now_us();
     rm_eg_end(view(), k);
+    part_us[PART_END] += now_us() - te;
     relay_flush();
   }
 }
@@ -497,7 +514,9 @@ int main(int argc, char **argv) {
       if ((double)now - next > 250.0) next = (double)now + tick;   // a stall: start the beat again
       if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); }
       control_ask(); control_hear();
-      if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak); ticks = 0; last_report = now; memcpy(fan_last, fan_now, sizeof fan_now); memset(fan_now, 0, sizeof fan_now); memcpy(tick_last, tick_now, sizeof tick_now); memset(tick_now, 0, sizeof tick_now); }
+      if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak);
+        printf("room: everglade tick parts over the minute (ms):"); for (int q = 0; q < PARTS; q++) { printf(" %s %lld", part_name[q], (long long)(part_us[q] / 1000)); part_us[q] = 0; } printf("\n");
+        ticks = 0; last_report = now; memcpy(fan_last, fan_now, sizeof fan_now); memset(fan_now, 0, sizeof fan_now); memcpy(tick_last, tick_now, sizeof tick_now); memset(tick_now, 0, sizeof tick_now); }
     }
   }
 }
