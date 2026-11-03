@@ -361,12 +361,13 @@ network and edits; nothing durable stores a handle. `entity_spawn` and
 `entity_despawn` are commands: `entity_flush` applies the despawns in slot
 order, then the spawns in the order they were asked for, so every system in
 a step sees the same entities and a spawned entity takes part from the next
-step. A despawn raises the slot's generation, so a stale handle never
-reaches the slot's next owner; a slot whose generation would wrap is retired,
-not reused. Checks: `aethyr/entity.coax` ("a store matches a plain list of
-IDs and values after every flush", "despawning while walking: every live
-entity is visited once, and none after its flush", "IDs survive save, load
-and replay"; mutation 0 survivors).
+step; despawning a spawn that is still waiting cancels it. A despawn raises
+the slot's generation, so a stale handle never reaches the slot's next
+owner; a slot whose generation would wrap is retired, not reused. Checks:
+`aethyr/entity.coax` ("a store matches a plain list of IDs and values after
+every flush", "despawning while walking: every live entity is visited once,
+and none after its flush", "IDs survive save, load and replay", "despawning
+a waiting spawn cancels it"; mutation 0 survivors).
 
 ## External events enter a step only from the session's record
 

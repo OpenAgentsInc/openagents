@@ -29,16 +29,20 @@ oracle_model_despawn :: (m: [] OracleModel, id: int) {
   for k: 0..<m[0].doomed_n { if m[0].doomed[k] == id { return; } }
   m[0].doomed[m[0].doomed_n] = id; m[0].doomed_n += 1;
 }
-// The step's end in the model: drop the doomed IDs, then append the born ones (their IDs are
-// larger than every live one, so the list stays ordered).
+oracle_model_gone :: (m: [] OracleModel, id: int) -> bool {
+  for d: 0..<m[0].doomed_n { if m[0].doomed[d] == id { return true; } }
+  return false;
+}
+// The step's end in the model: drop the doomed IDs, then append the born ones that weren't
+// cancelled (their IDs are larger than every live one, so the list stays ordered).
 oracle_model_flush :: (m: [] OracleModel) {
   kept := 0;
   for k: 0..<m[0].n {
-    gone := false;
-    for d: 0..<m[0].doomed_n { if m[0].doomed[d] == m[0].id[k] { gone = true; } }
-    if !gone { m[0].id[kept] = m[0].id[k]; m[0].value[kept] = m[0].value[k]; kept += 1; }
+    if !oracle_model_gone(m, m[0].id[k]) { m[0].id[kept] = m[0].id[k]; m[0].value[kept] = m[0].value[k]; kept += 1; }
   }
-  for k: 0..<m[0].born_n { m[0].id[kept] = m[0].born_id[k]; m[0].value[kept] = m[0].born_value[k]; kept += 1; }
+  for k: 0..<m[0].born_n {
+    if !oracle_model_gone(m, m[0].born_id[k]) { m[0].id[kept] = m[0].born_id[k]; m[0].value[kept] = m[0].born_value[k]; kept += 1; }
+  }
   m[0].n = kept; m[0].born_n = 0; m[0].doomed_n = 0;
 }
 // Whether the store and its value column hold exactly the model's entities and values.
@@ -61,8 +65,9 @@ oracle_agrees :: (w: EntityStore, value: [] int, m: [] OracleModel) -> bool {
   return seen == m[0].n;
 }
 
-// A seeded session: each step spawns and despawns by the random numbers, writes each spawn's
-// value into the column, and flushes. Steps from..<to of the session with this seed.
+// A seeded session: each step spawns (cancelling some spawns) and despawns by the random numbers,
+// writes each spawn's value into the column, and flushes. Steps from..<to of the session with
+// this seed.
 oracle_rng :: (r: int) -> int { return (r * 1103515245 + 12345) % 2147483648; }
 oracle_session :: (w: EntityStore, value: [] int, m: [] OracleModel, seed: int, from: int, to: int) {
   for s: from..<to {
@@ -74,6 +79,11 @@ oracle_session :: (w: EntityStore, value: [] int, m: [] OracleModel, seed: int, 
       if made.handle == ENTITY_NONE { continue; }
       value[entity_slot(made.handle)] = r % 1000;
       if m.count > 0 { #assert oracle_model_spawn(m, r % 1000) == made.id; }
+      // now and then a spawn is cancelled before the flush
+      if (r / 1024) % 7 == 0 {
+        if m.count > 0 { oracle_model_despawn(m, made.id); }
+        entity_despawn(w, made.handle);
+      }
     }
     // walk the live entities in slot order and despawn some
     for i: 0..<entity_high(w) {

@@ -55,8 +55,11 @@ deadgears_step :: (w: *DeadGears, a: Actions) {
 
 ## What exists today
 
-- [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax): handles,
-  component masks, deferred destroys, `ecs_clock_frame`, per-system `Stats`.
+- [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax): component
+  masks over `aethyr/entity.coax`'s `EntityStore` (spawns join at the step's
+  flush, as everywhere in Aethyr), `ecs_clock_frame`, per-system `Stats`.
+  A rules check drives the same input through 30, 60, 120 and 144 FPS and
+  uneven frames and finds the same fight at every fixed step.
 - [arena.coax](../../verse/deadgears/arena.coax) (the deck, swept spheres,
   sliding walks, walking grid, flow fields) and
   [rules.coax](../../verse/deadgears/rules.coax) (every system and every
@@ -73,9 +76,8 @@ deadgears_step :: (w: *DeadGears, a: Actions) {
 
 ## What it builds
 
-- `verse/deadgears/ecs.coax` replaced by `aethyr/` entities (chapter 6
-  takes its design); `rules.coax` and `arena.coax` keep the game, over
-  Aethyr's queries and loop.
+- `rules.coax` and `arena.coax` keep the game, over Aethyr's entities
+  (done), queries and loop.
 
 ## Acceptance checks and oracles
 

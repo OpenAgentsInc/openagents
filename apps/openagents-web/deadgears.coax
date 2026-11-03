@@ -356,7 +356,7 @@ restore :: (s: [] DeadGears, text: string) -> bool {
   if phase == FIGHT && v[9] > 0 {
     // Mid-wave: only the creatures still alive when you left come back.
     for i: 0..<ecs_high(g.e) {
-      if alive_mutant(g, i) && (v[9] & (1 << g.mutant[i].seq)) == 0 { ecs_destroy_now(g.e, ecs_at(g.e, i)); }
+      if alive_mutant(g, i) && (v[9] & (1 << g.mutant[i].seq)) == 0 { ecs_despawn(g.e, ecs_at(g.e, i)); }
     }
   }
   g.hp[slot_of(dg_reactor(g))] = f32(v[10]);
@@ -1940,6 +1940,7 @@ step_fight :: (s: [] DeadGears, t: f32) {
   if s[0].facts && !s[0].spawned {
     s[0].spawned = true;
     for q: 0..<s[0].spawn_n { e := dg_spawn_mutant(g, q % TYPES, -14 + f32(q % 28), -20 + f32(q / 28) * 0.5, -1); }
+    ecs_flush(g.e);   // made before the frame's steps: they join at once
   }
   run := playing(s) && !s[0].golden;
   if run {
@@ -2136,7 +2137,7 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
-  for kind: 0..<TYPES { e := dg_spawn_mutant(g, kind, f32(kind) * 2 - 4, 0, ifx kind == SKITTER then 1 else -1); }
+  for kind: 0..<TYPES { e := spawn_now(g, kind, f32(kind) * 2 - 4, 0, ifx kind == SKITTER then 1 else -1); }
   i := 0;
   while i < ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) && g.mutant[i].kind == REAVER { g.mutant[i].severed = true; g.mutant[i].headless = true; } i += 1; }
   n := frame_at(s[..], 1280, 800, 1, 0.016);
@@ -2391,7 +2392,7 @@ tag_end :: () -> int { return SAVE_TAG.count + 1; }
   #assert game(was[..]).st[0].wave == 2 && dg_alive_mutants(game(was[..])) == dg_wave_count(2);
 }
 
-#test "a cleared wave says repair and keeps; Again starts over" {
+#test "a cleared wave says repair and keeps; Again starts over" #steps 30000000 {
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
@@ -2460,7 +2461,7 @@ limb_at :: (f: Fx) -> Point {
   g := game(s[..]);
   g.st[0].ally_time = 1000000;
   clear_mutants(g);
-  e := dg_spawn_mutant(g, REAVER, 0, 3, -1);
+  e := spawn_now(g, REAVER, 0, 3, -1);
   i := slot_of(e);
   g.yaw[i] = 0; g.mutant[i].stun = 1000;
   leg := dg_part_at(g, i, 3);

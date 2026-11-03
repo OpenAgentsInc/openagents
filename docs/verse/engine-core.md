@@ -162,14 +162,16 @@ never reaches the slot's next owner, and a slot whose generation would wrap
 is retired and counted. `entity_spawn` and `entity_despawn` are commands:
 `entity_flush` applies the despawns in slot order, then the spawns in the
 order they were asked for, so every system in a step sees the same
-entities. The realm owns the storage (an `EntityStore` is views), and
+entities; despawning a spawn still waiting cancels it. The realm owns the storage (an `EntityStore` is views), and
 `entity_digest` and `entity_copy` give replay and saves one number and one
 copy. Checks: after every flush of 24 seeded sessions, the store matches a
 plain list of IDs and values (`aethyr/tests/entity-oracle.coax`);
 despawning while walking visits each live entity once; a session saved
 mid-way and loaded, and the same session replayed from nothing, end with the
-same digest and IDs. Mutation: 197 of 197 killed. Dead Gears'
-`verse/deadgears/ecs.coax` moves onto it with ec-migrate.
+same digest and IDs. Mutation (`--root-only`): 211 of 211 killed. Dead
+Gears runs on it: `verse/deadgears/ecs.coax` keeps only the component bits
+beside an `EntityStore`, and a check drives the same input at 30, 60, 120 and
+144 FPS and uneven frames to the same fight at every fixed step.
 
 ## Replay (`aethyr/replay.coax`, `rand.coax`, `math.coax`)
 

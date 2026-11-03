@@ -10,7 +10,8 @@
 // Spawns and despawns are commands that apply at the step's flush (entity_flush): first the
 // despawns, in slot order, then the spawns, in the order they were asked for. Every system in a
 // step sees the same entities, a system may despawn what it is walking, and a spawned entity
-// takes part from the next step. A slot whose generation would wrap is retired, not reused.
+// takes part from the next step; despawning it before then cancels it. A slot whose generation
+// would wrap is retired, not reused.
 //
 // All storage is the realm's own: an EntityStore is views, so passing one copies only the views
 // and every write reaches the store. Component values live in the realm's own columns, one
@@ -113,31 +114,46 @@ entity_spawn :: (w: EntityStore) -> Spawned {
   w.n[ENTITY_SPAWNS] += 1;
   return Spawned.{handle = entity_handle(i, w.gen[i]), id = w.ids[i]};
 }
+// Whether h names a spawn waiting for the next flush.
+entity_waiting :: (w: EntityStore, h: int) -> bool {
+  if h < 0 { return false; }
+  i := entity_slot(h);
+  return i < w.n[ENTITY_HIGH] && w.born[i] && w.gen[i] == entity_generation(h);
+}
 // A despawn: the entity stays alive and visible until the next flush. Asking twice is asking once.
+// A despawn of a waiting spawn cancels it: it never becomes alive.
 entity_despawn :: (w: EntityStore, h: int) {
-  if !entity_alive(w, h) { return; }
+  if !entity_alive(w, h) && !entity_waiting(w, h) { return; }
   i := entity_slot(h);
   if !w.doomed[i] { w.doomed[i] = true; w.n[ENTITY_DOOMED] += 1; }
 }
-entity_doomed :: (w: EntityStore, h: int) -> bool { return entity_alive(w, h) && w.doomed[entity_slot(h)]; }
+entity_doomed :: (w: EntityStore, h: int) -> bool { return (entity_alive(w, h) || entity_waiting(w, h)) && w.doomed[entity_slot(h)]; }
 
-// The step's end: the despawns in slot order, then the spawns in the order they were asked for.
-// A despawned slot's generation goes up and the slot is free again, unless its generation would
-// wrap: then it is retired and counted.
+// A slot given up: its generation goes up and it is free again, unless its generation would wrap:
+// then it is retired and counted.
+entity_release :: (w: EntityStore, i: int) {
+  w.doomed[i] = false; w.ids[i] = ENTITY_NO_ID;
+  if w.gen[i] == ENTITY_GEN_MASK { w.n[ENTITY_RETIRED] += 1; return; }
+  w.gen[i] += 1;
+  w.free[w.n[ENTITY_FREE]] = i;
+  w.n[ENTITY_FREE] += 1;
+}
+
+// The step's end: the despawns in slot order, then the spawns in the order they were asked for,
+// where a cancelled spawn gives its slot up instead of becoming alive.
 entity_flush :: (w: EntityStore) {
   for i: 0..<w.n[ENTITY_HIGH] {
     if !(w.live[i] && w.doomed[i]) { continue; }
-    w.live[i] = false; w.doomed[i] = false; w.ids[i] = ENTITY_NO_ID;
+    w.live[i] = false;
     w.n[ENTITY_LIVE] -= 1;
-    if w.gen[i] == ENTITY_GEN_MASK { w.n[ENTITY_RETIRED] += 1; continue; }
-    w.gen[i] += 1;
-    w.free[w.n[ENTITY_FREE]] = i;
-    w.n[ENTITY_FREE] += 1;
+    entity_release(w, i);
   }
   w.n[ENTITY_DOOMED] = 0;
   for k: 0..<w.n[ENTITY_SPAWNS] {
     i := w.spawns[k];
-    w.born[i] = false; w.live[i] = true;
+    w.born[i] = false;
+    if w.doomed[i] { entity_release(w, i); continue; }
+    w.live[i] = true;
     w.n[ENTITY_LIVE] += 1;
   }
   w.n[ENTITY_SPAWNS] = 0;
@@ -194,6 +210,47 @@ entity_copy :: (from: EntityStore, to: EntityStore) -> bool {
   #assert entity_alive(w, c.handle) && entity_count(w) == 1;
   #assert !entity_alive(w, -1) && !entity_alive(w, entity_handle(5, 0)) && entity_at(w, -1) == ENTITY_NONE && entity_at(w, 1) == ENTITY_NONE;
   #assert entity_find(w, ENTITY_NO_ID) == ENTITY_NONE && entity_high(w) == 1 && entity_capacity(w) == ORACLE_SLOTS;
+}
+
+#test "despawning a waiting spawn cancels it: it never joins, and its slot is freed after the despawns" {
+  b: [1] OracleBacking; w := oracle_store(b[..]);
+  a := entity_spawn(w);
+  #assert entity_waiting(w, a.handle) && !entity_alive(w, a.handle) && !entity_doomed(w, a.handle);
+  entity_despawn(w, a.handle);
+  entity_despawn(w, a.handle);                                  // twice is once
+  #assert entity_waiting(w, a.handle) && entity_doomed(w, a.handle) && w.n[ENTITY_DOOMED] == 1;
+  c := entity_spawn(w);
+  entity_flush(w);
+  #assert !entity_alive(w, a.handle) && !entity_waiting(w, a.handle) && !entity_doomed(w, a.handle) && entity_count(w) == 1;
+  #assert entity_alive(w, c.handle) && !entity_waiting(w, c.handle) && entity_find(w, a.id) == ENTITY_NONE && entity_find(w, c.id) == c.handle;
+  #assert w.n[ENTITY_FREE] == 1 && b[0].free[0] == 0 && b[0].gen[0] == 1 && b[0].ids[0] == ENTITY_NO_ID;
+  #assert !b[0].born[0] && !b[0].doomed[0] && !b[0].live[0] && w.n[ENTITY_DOOMED] == 0 && w.n[ENTITY_SPAWNS] == 0;
+  d := entity_spawn(w);
+  #assert entity_slot(d.handle) == 0 && entity_generation(d.handle) == 1 && d.id == 3;
+  entity_despawn(w, a.handle);                                  // a stale handle cancels nothing
+  #assert !entity_doomed(w, d.handle) && entity_waiting(w, d.handle) && w.n[ENTITY_DOOMED] == 0;
+  entity_flush(w);
+  #assert entity_alive(w, d.handle) && entity_count(w) == 2;
+  // live c (slot 1) despawned, and waiting p (slot 2) and q (slot 3) cancelled in the other order:
+  // the despawns free first, in slot order, then the cancelled spawns, in the order they were asked
+  p := entity_spawn(w); q := entity_spawn(w);
+  entity_despawn(w, q.handle); entity_despawn(w, c.handle); entity_despawn(w, p.handle);
+  #assert w.n[ENTITY_DOOMED] == 3 && entity_doomed(w, p.handle) && entity_doomed(w, c.handle);
+  entity_flush(w);
+  #assert entity_count(w) == 1 && w.n[ENTITY_FREE] == 3 && b[0].free[0] == 1 && b[0].free[1] == 2 && b[0].free[2] == 3;
+  #assert b[0].gen[1] == 1 && b[0].gen[2] == 1 && b[0].gen[3] == 1 && !b[0].live[2] && !b[0].live[3] && b[0].ids[3] == ENTITY_NO_ID;
+  #assert entity_find(w, p.id) == ENTITY_NONE && entity_find(w, q.id) == ENTITY_NONE && w.n[ENTITY_NEXT_ID] == 5;
+  // a cancelled spawn at its slot's last generation retires the slot
+  b[0].gen[3] = ENTITY_GEN_MASK;
+  r := entity_spawn(w);
+  #assert entity_slot(r.handle) == 3 && entity_generation(r.handle) == ENTITY_GEN_MASK && entity_waiting(w, r.handle);
+  entity_despawn(w, r.handle); entity_flush(w);
+  #assert w.n[ENTITY_RETIRED] == 1 && w.n[ENTITY_FREE] == 2 && b[0].gen[3] == ENTITY_GEN_MASK && !entity_waiting(w, r.handle) && entity_count(w) == 1;
+  // waiting is only what a spawn made: not a live entity, not past the slots in use, not another generation
+  #assert !entity_waiting(w, d.handle) && !entity_waiting(w, -1) && !entity_waiting(w, entity_handle(40, 0));
+  b[0].born[40] = true; b[0].born[1] = true; b[0].born[4] = true;   // slot 4 is the first not in use
+  #assert !entity_waiting(w, entity_handle(40, 0)) && !entity_waiting(w, entity_handle(4, 0)) && entity_high(w) == 4;
+  #assert !entity_waiting(w, entity_handle(1, 0)) && entity_waiting(w, entity_handle(1, 1));
 }
 
 #test "a slot whose generation would wrap is retired; a full store refuses and counts" {
@@ -275,11 +332,11 @@ entity_copy :: (from: EntityStore, to: EntityStore) -> bool {
   for i: 0..<ORACLE_SLOTS { loaded[0].value[i] = saved[0].value[i]; }
   oracle_session(l, loaded[0].value[..], none, seed, 40, 80);
   // replay the whole session from nothing
-  again: [1] OracleBacking; a := oracle_store(again[..]);
-  oracle_session(a, again[0].value[..], none, seed, 0, 80);
+  replayed: [1] OracleBacking; a := oracle_store(replayed[..]);
+  oracle_session(a, replayed[0].value[..], none, seed, 0, 80);
   #assert entity_digest(l) == entity_digest(w) && entity_digest(a) == entity_digest(w);
   for i: 0..<ORACLE_SLOTS {
-    #assert loaded[0].ids[i] == b[0].ids[i] && again[0].ids[i] == b[0].ids[i] && loaded[0].value[i] == b[0].value[i];
+    #assert loaded[0].ids[i] == b[0].ids[i] && replayed[0].ids[i] == b[0].ids[i] && loaded[0].value[i] == b[0].value[i];
   }
   // every ID live at the save that is still live maps to the same value
   for i: 0..<ORACLE_SLOTS {

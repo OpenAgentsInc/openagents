@@ -3,8 +3,9 @@
 > Engine-core task: `ec-entity` (#12609). The module is
 > [aethyr/entity.coax](../entity.coax), with its reference model in
 > [aethyr/tests/entity-oracle.coax](../tests/entity-oracle.coax). It
-> generalizes the entity system in
-> [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax).
+> generalizes Dead Gears' entity system, which now runs on it:
+> [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax) keeps only the
+> component bits beside an `EntityStore`.
 
 A realm is full of things that appear and disappear: a thrown cone, a
 minion, a spark, or a lamp that a visitor places. Systems refer to them
@@ -49,8 +50,10 @@ Spawns and despawns are commands:
 1. `entity_spawn` reserves a slot and an `EntityId`. The realm can fill the
    slot's component columns at once, but the entity isn't alive yet.
 2. `entity_despawn` marks a live entity. It stays alive and visible.
+   Despawning a spawn that is still waiting (`entity_waiting`) cancels it.
 3. `entity_flush`, at the end of the step, applies the despawns in slot
-   order and then the spawns in the order they were asked for.
+   order and then the spawns in the order they were asked for. A cancelled
+   spawn gives its slot up instead of becoming alive.
 
 So every system in a step sees the same entities. A system can despawn what
 it's walking, and a spawned entity takes part from the next step.
@@ -156,39 +159,58 @@ entity_spawn :: (w: EntityStore) -> Spawned {
   w.n[ENTITY_SPAWNS] += 1;
   return Spawned.{handle = entity_handle(i, w.gen[i]), id = w.ids[i]};
 }
+// Whether h names a spawn waiting for the next flush.
+entity_waiting :: (w: EntityStore, h: int) -> bool {
+  if h < 0 { return false; }
+  i := entity_slot(h);
+  return i < w.n[ENTITY_HIGH] && w.born[i] && w.gen[i] == entity_generation(h);
+}
 // A despawn: the entity stays alive and visible until the next flush. Asking twice is asking once.
+// A despawn of a waiting spawn cancels it: it never becomes alive.
 entity_despawn :: (w: EntityStore, h: int) {
-  if !entity_alive(w, h) { return; }
+  if !entity_alive(w, h) && !entity_waiting(w, h) { return; }
   i := entity_slot(h);
   if !w.doomed[i] { w.doomed[i] = true; w.n[ENTITY_DOOMED] += 1; }
 }
-entity_doomed :: (w: EntityStore, h: int) -> bool { return entity_alive(w, h) && w.doomed[entity_slot(h)]; }
+entity_doomed :: (w: EntityStore, h: int) -> bool { return (entity_alive(w, h) || entity_waiting(w, h)) && w.doomed[entity_slot(h)]; }
 
-// The step's end: the despawns in slot order, then the spawns in the order they were asked for.
-// A despawned slot's generation goes up and the slot is free again, unless its generation would
-// wrap: then it is retired and counted.
+// A slot given up: its generation goes up and it is free again, unless its generation would wrap:
+// then it is retired and counted.
+entity_release :: (w: EntityStore, i: int) {
+  w.doomed[i] = false; w.ids[i] = ENTITY_NO_ID;
+  if w.gen[i] == ENTITY_GEN_MASK { w.n[ENTITY_RETIRED] += 1; return; }
+  w.gen[i] += 1;
+  w.free[w.n[ENTITY_FREE]] = i;
+  w.n[ENTITY_FREE] += 1;
+}
+
+// The step's end: the despawns in slot order, then the spawns in the order they were asked for,
+// where a cancelled spawn gives its slot up instead of becoming alive.
 entity_flush :: (w: EntityStore) {
   for i: 0..<w.n[ENTITY_HIGH] {
     if !(w.live[i] && w.doomed[i]) { continue; }
-    w.live[i] = false; w.doomed[i] = false; w.ids[i] = ENTITY_NO_ID;
+    w.live[i] = false;
     w.n[ENTITY_LIVE] -= 1;
-    if w.gen[i] == ENTITY_GEN_MASK { w.n[ENTITY_RETIRED] += 1; continue; }
-    w.gen[i] += 1;
-    w.free[w.n[ENTITY_FREE]] = i;
-    w.n[ENTITY_FREE] += 1;
+    entity_release(w, i);
   }
   w.n[ENTITY_DOOMED] = 0;
   for k: 0..<w.n[ENTITY_SPAWNS] {
     i := w.spawns[k];
-    w.born[i] = false; w.live[i] = true;
+    w.born[i] = false;
+    if w.doomed[i] { entity_release(w, i); continue; }
+    w.live[i] = true;
     w.n[ENTITY_LIVE] += 1;
   }
   w.n[ENTITY_SPAWNS] = 0;
 }
 ```
 
-The free list is a stack. The flush pushes freed slots in slot order, so the
-slot that a later spawn takes depends only on the session.
+The free list is a stack. The flush pushes freed slots in slot order, then
+the slots of cancelled spawns in the order they were asked for, so the slot
+that a later spawn takes depends only on the session. Cancelling matters when
+a step despawns every thing of a kind just after a system spawned one: Dead
+Gears' last kill of a wave clears the brute's bolts, including one fired that
+step.
 
 ## Saves and digests
 
@@ -363,11 +385,11 @@ must end with the same digest and the same `EntityId` in every slot.
   for i: 0..<ORACLE_SLOTS { loaded[0].value[i] = saved[0].value[i]; }
   oracle_session(l, loaded[0].value[..], none, seed, 40, 80);
   // replay the whole session from nothing
-  again: [1] OracleBacking; a := oracle_store(again[..]);
-  oracle_session(a, again[0].value[..], none, seed, 0, 80);
+  replayed: [1] OracleBacking; a := oracle_store(replayed[..]);
+  oracle_session(a, replayed[0].value[..], none, seed, 0, 80);
   #assert entity_digest(l) == entity_digest(w) && entity_digest(a) == entity_digest(w);
   for i: 0..<ORACLE_SLOTS {
-    #assert loaded[0].ids[i] == b[0].ids[i] && again[0].ids[i] == b[0].ids[i] && loaded[0].value[i] == b[0].value[i];
+    #assert loaded[0].ids[i] == b[0].ids[i] && replayed[0].ids[i] == b[0].ids[i] && loaded[0].value[i] == b[0].value[i];
   }
   // every ID live at the save that is still live maps to the same value
   for i: 0..<ORACLE_SLOTS {
@@ -384,28 +406,26 @@ coax/bin/coax test aethyr/entity.coax --library
 coax/bin/coax mutate aethyr/entity.coax --library --root-only
 ```
 
-`aethyr/entity.coax` has seven checks. They cover:
+`aethyr/entity.coax` has eight checks. They cover:
 
 - stale handles, and IDs that are never reused;
+- cancelling a waiting spawn;
 - retiring a slot whose generation would wrap, and refusing a spawn when the
   store is full;
 - despawning while walking;
-- the reference model;
+- the reference model, which cancels some spawns too;
 - save, load, and replay;
 - the digest and the capacity check in `entity_copy`;
 - a pinned digest value, and `entity_clear` and `entity_copy` carrying every
   field.
 
-`coax mutate` makes 197 mutants of `aethyr/entity.coax`, and the checks kill all 197.
+`coax mutate --root-only` makes 211 mutants of `aethyr/entity.coax`, and the checks kill all 211.
 
 ## Still to do
 
 The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
 moves the realms onto this module:
 
-- Dead Gears' `Entities` (`verse/deadgears/ecs.coax`), with its component
-  bits, becomes a store from this module. Its spawns then wait for the flush
-  too.
 - Realms that keep fixed arrays addressed by index, such as Orbit League's
   bodies, give their things handles and IDs.
 - The realm board's rows (`verse/edit/edit.coax`) refer to entities by
