@@ -1,0 +1,1 @@
+valid :: (lo:int,hi:int)->bool {return lo<hi;}

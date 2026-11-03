@@ -1,0 +1,4 @@
+#assert unique_count("")==0 && unique_count("aaaa")==1;
+#assert unique_count("abac")==3;
+#assert unique_count("\0a\0")==2;
+#assert unique_count("éé")==2;

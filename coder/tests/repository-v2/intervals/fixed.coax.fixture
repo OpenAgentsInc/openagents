@@ -1,0 +1,2 @@
+#load "helper.coax";
+overlap_size :: (al:int,ah:int,bl:int,bh:int)->int {if !valid(al,ah) || !valid(bl,bh) {return 0;}lo:=ifx al>bl then al else bl;hi:=ifx ah<bh then ah else bh;return ifx hi<lo then 0 else hi-lo+1;}

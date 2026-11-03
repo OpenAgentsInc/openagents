@@ -1,0 +1,31 @@
+Parsed :: struct {ok:bool; value:int;}
+parse :: (s:string)->Parsed {
+    v:=0;
+    negative:=false;
+    first:=true;
+    has_digit:=false;
+    for c:s {
+        if first {
+            first=false;
+            if c=='-' {
+                negative=true;
+                continue;
+            }
+        }
+        if c<'0' || c>'9' {
+            return Parsed.{ok=false,value=0};
+        }
+        if v>99 {
+            return Parsed.{ok=false,value=0};
+        }
+        v=v*10+cast(int)(c-'0');
+        has_digit=true;
+    }
+    if !has_digit {
+        return Parsed.{ok=false,value=0};
+    }
+    if negative {
+        v=-v;
+    }
+    return Parsed.{ok=true,value=v};
+}

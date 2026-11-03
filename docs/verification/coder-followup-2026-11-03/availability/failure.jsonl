@@ -1,0 +1,6 @@
+{"kind":"session","id":"20261103-203254-739","version":"0.1.0","engine":"claude","cwd":"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-v2-OD94RQ","started_us":1793737974739844}
+{"kind":"user","text":"synthetic failure"}
+{"kind":"request","sha256":"8e7f246dea3bc73df3d279a4ed8ff85a19be43a30141c193fa6d54e413e8646b","bytes":17}
+{"kind":"engine_session","engine":"claude","id":"s"}
+{"kind":"availability","schema":"coder.observability.v1","engine":"claude","retry_after_s":1793741562,"persisted":true}
+{"kind":"end","ending":"failed","ms":213,"steps":0,"text":"Claude Code ended the turn with an error.","cause":"provider"}

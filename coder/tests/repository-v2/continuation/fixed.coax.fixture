@@ -1,0 +1,1 @@
+unique_count :: (s:string)->int {seen:[256]bool;n:=0;for c:s {i:=cast(int)c;if !seen[i] {seen[i]=true;n+=1;}}return n;}

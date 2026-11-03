@@ -1,0 +1,6 @@
+s:=accept(State.{},0,9);#assert s.accepted && s.seq==9;
+t:=accept(s,1,0);#assert t.accepted && t.epoch==1 && t.seq==0;
+u:=accept(t,1,0);#assert !u.accepted && u.epoch==1 && u.seq==0;
+v:=accept(t,0,10);#assert !v.accepted && v.epoch==1 && v.seq==0;
+#assert !accept(t,-1,10).accepted && !accept(t,2,-1).accepted;
+#assert accept(t,1,1).accepted;

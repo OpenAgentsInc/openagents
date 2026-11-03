@@ -1,0 +1,2 @@
+Parsed :: struct {ok:bool; value:int;}
+parse :: (s:string)->Parsed {if s.count==0 {return Parsed.{};}neg:=s[0]=='-';at:=ifx neg then 1 else 0;if at==s.count {return Parsed.{};}v:=0;for i:at..<s.count {c:=s[i];if c<'0' || c>'9' {return Parsed.{};}v=v*10+cast(int)(c-'0');if v>999 {return Parsed.{};}}return Parsed.{ok=true,value=ifx neg then -v else v};}

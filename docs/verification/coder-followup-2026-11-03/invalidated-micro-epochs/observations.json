@@ -1,0 +1,14 @@
+{
+  "raw_run_sha256": "1d5fe7c2781eac261ff5f09709618ae7fc4348656b57a72041791d887df88cff",
+  "tool_starts": 30,
+  "result_events": 24,
+  "model_observations": [],
+  "last_usage_snapshot": null,
+  "ending": {
+    "kind": "end",
+    "ending": "finished",
+    "ms": 48960,
+    "steps": 30
+  },
+  "classification": "fixture_ambiguous_do_not_score"
+}

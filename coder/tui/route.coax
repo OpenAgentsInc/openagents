@@ -30,6 +30,7 @@ CD_BASETEN_ENV :: "/work/.secrets/baseten.env";
 
 CdRoute :: struct {
   ok: bool;
+  eligible: int; allowed: int; blocked: int;
   engine: [16] u8; nengine: int;
   probability: f64;
   difficulty: int;               // 0 trivial to 4 very hard
@@ -68,7 +69,7 @@ cd_route_body :: (b: [] SoBody, buf: [] u8, state: string) {
   efforts := CD_ROUTE_EFFORTS; effort_labels := CD_ROUTE_EFFORT_LABELS;
   so_begin(b, buf, SO_MAMMOTH, "");
   so_state_json(b, state);
-  so_choice(b, "engine", "Which agent should handle the user's message? Only choose an agent the environment says is available.", engines[..], labels[..]);
+  so_choice(b, "engine", "Which agent should handle the user's message? Only choose an agent listed in eligible_engines; installation alone does not establish availability.", engines[..], labels[..]);
   so_score(b, "difficulty", "How hard is the user's request to do well?", levels[..]);
   so_choice(b, "effort", "How much reasoning should the agent spend on this request? Hard requests need more.", efforts[..], effort_labels[..]);
 }
@@ -113,8 +114,17 @@ cd_route_fail :: (r: [] CdRoute, why: string) { r[0].ok = false; r[0].nwhy = cd_
 // Asks System One; r says what it chose, or why there is no decision.
 cd_route :: (task: string, local: bool, r: [] CdRoute) {
   sb: [32768] u8;
+  allowed: [1] int; blocked: [1] int;
+  r[0].eligible = ca_eligible(local, allowed[..], blocked[..]); r[0].allowed = allowed[0]; r[0].blocked = blocked[0];
+  if r[0].eligible == 0 { cd_route_fail(r, "no eligible engine: allowlist, installation or provider cooldown"); return; }
   state := cd_route_state(task, cd_on_path("claude"), cd_on_path("codex"), local, sb[..]);
   if state.count == 0 { cd_route_fail(r, "the task is too long to route"); return; }
+  n := json_raw(sb[..], state.count - 1, ",\"eligible_engines\":["); comma := false;
+  names := CD_ROUTE_ENGINES;
+  for i: 0..<4 { if (r[0].eligible & (1 << i)) != 0 { if comma { n = json_raw(sb[..], n, ","); } n = json_write_string(sb[..], n, names[i]); comma = true; } }
+  n = json_raw(sb[..], n, "]}");
+  if n < 0 { cd_route_fail(r, "the task is too long to route"); return; }
+  state = cast(string) sb[0..<n];
   cb: [1] SoClient; kb: [512] u8;
   why := cd_so_keyed(cb[..], kb[..]);
   if why.count > 0 { cd_route_fail(r, why); return; }
@@ -137,6 +147,8 @@ cd_route :: (task: string, local: bool, r: [] CdRoute) {
   r[0].difficulty = ifx d.ok then d.level else 2;
   f := so_choice_of(ar[..], res.body, "effort");
   r[0].neffort = cd_cat(r[0].effort[..], 0, ifx f.ok then f.choice else "medium");
+  chosen := ca_index(cd_route_engine(r));
+  if chosen < 0 || (r[0].eligible & (1 << chosen)) == 0 { cd_route_fail(r, "System One selected an ineligible engine"); return; }
   r[0].ok = true;
 }
 

@@ -1,0 +1,2 @@
+Parsed :: struct {ok:bool; value:int;}
+parse :: (s:string)->Parsed {v:=0;for c:s {if c<'0' || c>'9' {break;}v=v*10+cast(int)(c-'0');}return Parsed.{ok=true,value=v};}

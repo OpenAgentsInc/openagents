@@ -1,0 +1,4 @@
+for s:[8]string.["","-","+1"," 1","1x","1000","-1000","é"] {#assert !parse(s).ok;}
+#assert parse("0").ok && parse("-0").value==0;
+#assert parse("999").value==999 && parse("-999").value == -999;
+#assert parse("0012").value==12;

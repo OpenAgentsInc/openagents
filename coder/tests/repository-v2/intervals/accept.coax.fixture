@@ -1,0 +1,2 @@
+#assert valid(0,0) && !valid(1,0);
+for al:-3..<4 {for ah:-3..<4 {for bl:-3..<4 {for bh:-3..<4 {n:=0;for x:-3..<4 {if x>=al && x<=ah && x>=bl && x<=bh {n+=1;}}#assert overlap_size(al,ah,bl,bh)==n;}}}}

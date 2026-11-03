@@ -40,6 +40,7 @@
 #load "microcoder.coax";
 #load "session.coax";
 #load "route.coax";
+#load "availability.coax";
 #load "plugins.coax";
 #load "router.coax";
 #load "mcp.coax";
@@ -144,6 +145,7 @@ App :: struct {
   q: [] ClQuery; p: [] ClProcess; qline: [] u8; qarena: [] u8; qout: [] u8; scratch: [] u8;
   live: bool;                     // the CLI is running
   stopping: bool; stop_ms: int;   // an interrupt was sent
+  provider_reset_s: int;
   cause: [32] u8; ncause: int;    // why a failed turn failed, when the engine says: "provider" when the model provider did not answer (chapter 20)
   pending: [16384] u8; npending: int;   // the first message, sent once initialize is answered
   ask: bool;                      // a permission request waits for y, a or n
@@ -530,6 +532,7 @@ cd_finish :: (a: [] App, ending_in: int, text: string) {
   n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_seconds_text(cd_now(a) - a[0].started_ms, tb[..]));
   if a[0].steps > 0 { n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_itoa(a[0].steps, tb[..])); n = cd_cat(sb[..], n, ifx a[0].steps == 1 then " step" else " steps"); }
   cd_commit(a, ifx ending == END_FINISHED then TUI_FAINT else TUI_RED, cast(string) sb[0..<n]);
+  if ending == END_FAILED && cast(string) a[0].cause[0..<a[0].ncause] == "provider" { ca_failure(a); }
   cs_end(a, cd_end_word(ending), cd_now(a) - a[0].started_ms, a[0].steps, text);
   cd_hooks(a, "turn_end", cd_end_word(ending));
   a[0].exit = ifx ending == END_FINISHED then 0 else ifx ending == END_STOPPED then 130 else ifx ending == END_EXPIRED then 124 else 1;
@@ -686,6 +689,7 @@ cd_cmd_apple_fm :: (prompt: string) -> int {
 CD_CONTEXT_MAX :: 8192;
 
 cd_start :: (a: [] App, msg: string) {
+  a[0].provider_reset_s = 0;
   a[0].starts += 1;
   a[0].running = true; a[0].started_ms = cd_now(a); a[0].steps = 0;
   a[0].nrecap = 0; a[0].recap_ms = cd_now(a); a[0].recap_seen = -1; a[0].recent_at = 0;
@@ -914,6 +918,11 @@ cd_claude_message :: (a: [] App, m: ClMessage) {
   if a[0].nengine_sid == 0 && m.session_id.count > 0 && m.session_id.count < 128 {
     a[0].nengine_sid = cd_cat(a[0].engine_sid[..], 0, m.session_id);
     cs_engine_session(a, "claude", m.session_id);
+  }
+  if m.kind == ClKind.rate_limit_event {
+    rate := cl_rate_limit_of(q[0].ar[..], m);
+    if rate.status == "rejected" && rate.resets_at.has { a[0].provider_reset_s = rate.resets_at.value; }
+    return;
   }
   if m.kind == ClKind.stream_event {
     t := cl_str(q[0].ar[..], m.line, "event.type");
@@ -1201,7 +1210,7 @@ cd_submit :: (a: [] App) {
     return;
   }
   cd_commit_prefixed(a, TUI_BRIGHT, "› ", "  ", msg);
-  if a[0].log[0].nid == 0 && a[0].auto_engine { cd_auto_route(a, msg); }
+  if a[0].log[0].nid == 0 && a[0].auto_engine { if !cd_auto_route(a, msg) { return; } }
   else if a[0].log[0].nid == 0 { cs_open(a); cd_hooks(a, "session_start", ""); }
   cs_user(a, msg);
   cd_start(a, msg);
@@ -1561,7 +1570,7 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder VERB ... --on ssh:DEST|cloud [--remote-repo DIR]   the verb with Coder on another machine (a GCE pool host for cloud)\n                 [--deadline SECONDS]             it expires after this long\n                 [--goal CHECK [--goal-turns N]]  keep working, turn after turn, until the shell command CHECK exits 0\n                 [--report-to ID]                 its ending and last reply go to session ID\n                 [--context FILE]                 related objects (an issue, its comments) ahead of the first message\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder resume [ID]                         the terminal UI on session ID (this folder's newest by default), to continue it\n       coder resume claude [ID]                  the same for a Claude Code session of this folder (its newest by default), imported first\n       coder import claude [ID]                  a Claude Code session of this folder as a Coder session; prints its ID\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  verify submitted engine-turn inputs; runs no model or tools\n       coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--credentials A,B] [--once]   attach this machine: start queued jobs within its grant\n       coder credential add NAME VAR < file | ls | rm NAME   a secret kept here; jobs name it, never see it in their logs\n       coder queue \"TASK\" [--engine E] [--cwd DIR] [--credential A,B]   a job for this machine's daemon (with --on, that machine's; held here while it does not answer)\n       coder jobs [--json]                       the daemon's heartbeat and its jobs\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue|pr|mail|doc] [--deliver] [--to ADDR [--send]] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder host [list|allow ID|deny ID|forget ID|key]   serve NIP-HOST browser pairing and realm jobs over the relay (coder/tui/host.coax)\n       coder usage [--json]                      how much of Claude Code's and Codex's plan limits is used, and when each resets\n       coder apple-fm [\"PROMPT\"]                  whether Apple's on-device model answers here (the status bar's recaps), and its answer to PROMPT\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke, journey) and report it\n       coder mcp [--http PORT]                   the verbs as MCP tools on stdio, or Streamable HTTP on 127.0.0.1:PORT, for Claude Code or another agent\n       coder acp [--engine E] [--allow E] [--ceiling E] [--root D] [--ask]   Coder as an agent for editors (Agent Client Protocol on stdio); asks go to the editor\n       coder remember KEY \"TEXT\" [--project] [--days N]   a fact Coder keeps across sessions (yours, or with --project this folder's)\n                 [--session ID [--at LINE]]       where it was said: that line of the session's log (the last one typed), checked on every read\n       coder revise KEY \"TEXT\" [--reason correction|update|resolve]   a new version that supersedes the old\n       coder forget KEY [--project]              the fact's text is hidden in every earlier event\n       coder recall [\"QUERY\"] [--top N] [--json]   the facts, ranked by embedding similarity to QUERY\n       coder consent [grant ENGINE|all --classes user,project [--days N] | revoke N] [--json]   which engines may receive remembered facts\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --no-memory (no remembered facts in the first message)  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --dictation (local dictation into the draft, never sent)  --dictation-key ctrl-space|ctrl-g|ctrl-o|ctrl-t|ctrl-x  --dictation-args \"FLAG VALUE ...\" (openagents dictate's --device, --capture, --input, --model-dir, --format, --terms)\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run  --realm-tools (the realm tools run under any ceiling)";
+USAGE :: "usage: coder                                  the terminal UI\n       CODER_ROUTE_ENGINES=claude,codex,micro,psionic restricts automatic candidates\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder VERB ... --on ssh:DEST|cloud [--remote-repo DIR]   the verb with Coder on another machine (a GCE pool host for cloud)\n                 [--deadline SECONDS]             it expires after this long\n                 [--goal CHECK [--goal-turns N]]  keep working, turn after turn, until the shell command CHECK exits 0\n                 [--report-to ID]                 its ending and last reply go to session ID\n                 [--context FILE]                 related objects (an issue, its comments) ahead of the first message\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder resume [ID]                         the terminal UI on session ID (this folder's newest by default), to continue it\n       coder resume claude [ID]                  the same for a Claude Code session of this folder (its newest by default), imported first\n       coder import claude [ID]                  a Claude Code session of this folder as a Coder session; prints its ID\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  verify submitted engine-turn inputs; runs no model or tools\n       coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--credentials A,B] [--once]   attach this machine: start queued jobs within its grant\n       coder credential add NAME VAR < file | ls | rm NAME   a secret kept here; jobs name it, never see it in their logs\n       coder queue \"TASK\" [--engine E] [--cwd DIR] [--credential A,B]   a job for this machine's daemon (with --on, that machine's; held here while it does not answer)\n       coder jobs [--json]                       the daemon's heartbeat and its jobs\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue|pr|mail|doc] [--deliver] [--to ADDR [--send]] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder host [list|allow ID|deny ID|forget ID|key]   serve NIP-HOST browser pairing and realm jobs over the relay (coder/tui/host.coax)\n       coder usage [--json]                      how much of Claude Code's and Codex's plan limits is used, and when each resets\n       coder apple-fm [\"PROMPT\"]                  whether Apple's on-device model answers here (the status bar's recaps), and its answer to PROMPT\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke, journey) and report it\n       coder mcp [--http PORT]                   the verbs as MCP tools on stdio, or Streamable HTTP on 127.0.0.1:PORT, for Claude Code or another agent\n       coder acp [--engine E] [--allow E] [--ceiling E] [--root D] [--ask]   Coder as an agent for editors (Agent Client Protocol on stdio); asks go to the editor\n       coder remember KEY \"TEXT\" [--project] [--days N]   a fact Coder keeps across sessions (yours, or with --project this folder's)\n                 [--session ID [--at LINE]]       where it was said: that line of the session's log (the last one typed), checked on every read\n       coder revise KEY \"TEXT\" [--reason correction|update|resolve]   a new version that supersedes the old\n       coder forget KEY [--project]              the fact's text is hidden in every earlier event\n       coder recall [\"QUERY\"] [--top N] [--json]   the facts, ranked by embedding similarity to QUERY\n       coder consent [grant ENGINE|all --classes user,project [--days N] | revoke N] [--json]   which engines may receive remembered facts\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --no-memory (no remembered facts in the first message)  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --dictation (local dictation into the draft, never sent)  --dictation-key ctrl-space|ctrl-g|ctrl-o|ctrl-t|ctrl-x  --dictation-args \"FLAG VALUE ...\" (openagents dictate's --device, --capture, --input, --model-dir, --format, --terms)\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run  --realm-tools (the realm tools run under any ceiling)";
 
 // Flags that take a value: their value is not a positional argument.
 CD_VALUE_FLAGS :: [48] string.["--dictation-key", "--dictation-args", "--to", "--goal", "--goal-turns", "--http", "--name", "--engines", "--remote-repo", "--profile", "--options", "--state", "--theme", "--deadline", "--report-to", "--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop", "--days", "--reason", "--top", "--classes", "--credentials", "--credential", "--context", "--request", "--within-min", "--max-turns", "--before", "--max-tool-chars"];
@@ -1638,6 +1647,7 @@ cd_summary_line :: (id: string, s: [] CsSummary, json: bool, out: [] u8) -> stri
     n = json_raw(out, 0, "{\"id\":"); n = json_write_string(out, n, id);
     n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, cast(string) s[0].engine[0..<s[0].nengine]);
     n = json_raw(out, n, ",\"state\":"); n = json_write_string(out, n, cast(string) s[0].ending[0..<s[0].nending]);
+    if cast(string) s[0].ending[0..<s[0].nending] == "running" { n = json_raw(out, n, ",\"effect_outcome\":\"unknown\""); }
     n = json_raw(out, n, ",\"turns\":"); n = json_write_int(out, n, s[0].turns);
     n = json_raw(out, n, ",\"steps\":"); n = json_write_int(out, n, s[0].steps);
     n = json_raw(out, n, ",\"started_us\":"); n = json_write_int(out, n, s[0].started_us);
@@ -1734,6 +1744,7 @@ cd_cmd_status :: (id: string, json: bool) -> int {
   cd_out("id      "); cd_outln(full);
   cd_out("engine  "); cd_outln(cast(string) s[0].engine[0..<s[0].nengine]);
   cd_out("state   "); cd_outln(ifx s[0].nending > 0 then cast(string) s[0].ending[0..<s[0].nending] else "empty");
+  if cast(string) s[0].ending[0..<s[0].nending] == "running" { cd_outln("effects unknown until completion is recorded; inspect files before retrying"); }
   cd_out("cwd     "); cd_outln(cast(string) s[0].cwd[0..<s[0].ncwd]);
   cd_out("turns   "); cd_outln(cd_itoa(s[0].turns, tb[..]));
   cd_out("steps   "); cd_outln(cd_itoa(s[0].steps, tb[..]));
@@ -2183,26 +2194,24 @@ cd_route_apply :: (a: [] App, r: [] CdRoute, effort_flag: bool) {
 }
 
 // The engine to run for a decision: System One's pick when it is sure and the
-// agent is here; else Claude Code when it is installed, else Microcoder.
+// agent is eligible; else the first eligible engine, or no engine.
 cd_route_pick :: (r: [] CdRoute) -> int {
-  fallback := ifx cd_on_path("claude") then ENGINE_CLAUDE else ENGINE_MICRO;
-  if !r[0].ok || r[0].probability < CD_ROUTE_SURE { return fallback; }
-  e := cd_route_engine(r);
-  if e == "claude" { return ifx cd_on_path("claude") then ENGINE_CLAUDE else ENGINE_MICRO; }
-  if e == "codex" { return ifx cd_on_path("codex") then ENGINE_CODEX else fallback; }
-  if e == "psionic" { return ENGINE_PSIONIC; }
-  return ENGINE_MICRO;
+  preferred := ifx r[0].ok && r[0].probability >= CD_ROUTE_SURE then ca_index(cd_route_engine(r)) else -1;
+  pick := ca_pick(preferred, r[0].eligible);
+  return ifx pick < 0 then -1 else pick + 1;
 }
 
 // --engine auto: System One picks this conversation's engine from its first
-// message; with no decision the current engine runs and the route line says why.
-cd_auto_route :: (a: [] App, msg: string) {
+// message; without a usable decision an eligible default runs, or dispatch refuses.
+cd_auto_route :: (a: [] App, msg: string) -> bool {
   cb: [16] u8; rt: [1] CdRoute;
   cd_route(msg, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]);
-  sure := rt[0].ok && rt[0].probability >= CD_ROUTE_SURE;
-  if sure { pick := cd_route_pick(rt[..]); if pick != a[0].engine { cd_switch(a, pick); } cd_route_apply(a, rt[..], false); }
+  pick := cd_route_pick(rt[..]);
+  if pick < 0 { cd_commit(a, TUI_RED, "  No eligible engine; check CODER_ROUTE_ENGINES and provider cooldowns, or retry explicitly with --engine."); return false; }
+  if pick != a[0].engine { cd_switch(a, pick); } cd_route_apply(a, rt[..], false);
   cs_open(a); cs_route(a, rt[..]); cd_hooks(a, "session_start", "");
   rb: [700] u8; cd_commit(a, TUI_FAINT, cd_route_line(a, rt[..], rb[..]));
+  return true;
 }
 
 // "  Engine: codex (0.87) · easy · effort low, chosen by System One"
@@ -2210,6 +2219,7 @@ cd_route_line :: (a: [] App, r: [] CdRoute, out: [] u8) -> string {
   tb: [256] u8;
   n := cd_cat(out, 0, "  Engine: "); n = cd_cat(out, n, cd_engine_name(a[0].engine));
   if !r[0].ok { n = cd_cat(out, n, ", the default; no decision: "); n = cd_cat(out, n, cast(string) r[0].why[0..<r[0].nwhy]); }
+  else if r[0].probability < CD_ROUTE_SURE { n = cd_cat(out, n, ", the eligible default; low-confidence decision: "); n = cd_cat(out, n, cd_route_text(r, tb[..])); }
   else if cd_engine_name(a[0].engine) != cd_route_engine(r) && !(a[0].engine == ENGINE_MICRO && cd_route_engine(r) == "micro") {
     n = cd_cat(out, n, ", the default; System One said "); n = cd_cat(out, n, cd_route_text(r, tb[..]));
   } else { n = cd_cat(out, 0, "  Engine: "); n = cd_cat(out, n, cd_route_text(r, tb[..])); n = cd_cat(out, n, ", chosen by System One"); }
@@ -2226,6 +2236,9 @@ cd_route_json :: (r: [] CdRoute, ran: string, out: [] u8) -> string {
     n = json_raw(out, n, ",\"difficulty\":"); n = json_write_int(out, n, r[0].difficulty);
     n = json_raw(out, n, ",\"effort\":"); n = json_write_string(out, n, cast(string) r[0].effort[0..<r[0].neffort]);
   } else { n = json_raw(out, n, ",\"text\":"); n = json_write_string(out, n, cast(string) r[0].why[0..<r[0].nwhy]); }
+  n = json_raw(out, n, ",\"eligible_mask\":"); n = json_write_int(out, n, r[0].eligible);
+  n = json_raw(out, n, ",\"blocked_mask\":"); n = json_write_int(out, n, r[0].blocked);
+  n = json_raw(out, n, ",\"allowed_mask\":"); n = json_write_int(out, n, r[0].allowed);
   if ran.count > 0 { n = json_raw(out, n, ",\"ran\":"); n = json_write_string(out, n, ran); }
   n = json_raw(out, n, "}");
   return ifx n < 0 then "" else cast(string) out[0..<n];
@@ -2535,7 +2548,11 @@ tool_main :: () -> int #export_c {
     tui_ed_set(a[0].ed[..], task);
     // No --engine: System One chooses (chapter 13); the session's first lines say what and why.
     rt: [1] CdRoute; routed := verb == "run" && (want.count == 0 || want == "auto");
-    if routed { cd_route(task, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]); cd_route_apply(a, rt[..], args_has(args, "--effort")); cs_open(a); cs_route(a, rt[..]); cd_hooks(a, "session_start", ""); }
+    if routed { cd_route(task, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]); if cd_route_pick(rt[..]) < 0 {
+      cs_open(a); cs_user(a, task); o := a[0].log[0].line[..]; route_line := cd_route_json(rt[..], "", o); cs_put(a, route_line.count);
+      a[0].ncause = cd_cat(a[0].cause[..], 0, "availability"); cs_end(a, "failed", 0, 0, "no eligible engine; check CODER_ROUTE_ENGINES and provider cooldowns, or retry explicitly with --engine");
+      if !json { tool_errln("coder: no eligible engine; check CODER_ROUTE_ENGINES and provider cooldowns, or retry explicitly with --engine"); } return 1;
+    } cd_route_apply(a, rt[..], args_has(args, "--effort")); cs_open(a); cs_route(a, rt[..]); cd_hooks(a, "session_start", ""); }
     cd_submit(a);
     if !json { tb: [64] u8; tn := cd_cat(tb[..], 0, "  session "); tn = cd_cat(tb[..], tn, cs_id(a[0].log)); cd_commit(a, TUI_FAINT, cast(string) tb[0..<tn]); }
     if routed && !json { rb: [700] u8; cd_commit(a, TUI_FAINT, cd_route_line(a, rt[..], rb[..])); }

@@ -1,0 +1,1 @@
+Parse a whole ASCII decimal string with optional leading minus into -999..999. Reject empty, lone minus, plus, whitespace, suffixes, and magnitude overflow. Preserve the Parsed API.

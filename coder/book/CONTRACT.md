@@ -85,8 +85,12 @@ every row uniformly.
 | Local logs and caches | Task/session persistence policy | Local writing is storage, not outbound sharing; it can retain sensitive content |
 | Optional telemetry/training export | Separate explicit purpose and destination authorization | No broad permission follows from ordinary inference or local logging; gate and qualify any exporter before use |
 
-Automatic routing refusal does not withhold the task from the configured
-default engine: that engine's ordinary inference still occurs. Local
+A refused System One decision may still use the first eligible automatic
+engine: that engine's ordinary inference still occurs. With no eligible
+engine, Coder refuses dispatch. `CODER_ROUTE_ENGINES` bounds automatic
+candidates; recent typed provider failures impose local cooldowns. Explicit
+`--engine` intentionally overrides those hints. A failure never silently
+resends an existing task to another engine. Local
 Psionic inference may have a local destination, but the surrounding gateway
 plan, embedding or decision calls must be considered separately.
 

@@ -69,14 +69,27 @@ ran and why:
 {"kind":"route","ok":true,"engine":"micro","probability":0.936,"difficulty":0,"effort":"low","ran":"microcoder"}
 ```
 
+The live state also includes `eligible_engines`, separately from installation.
 Coder runs the decision only when it can:
 
-- Below a probability of 0.5, the person's default runs: Claude Code when it
-  is installed, else Microcoder.
-- A pick that isn't installed runs the default instead.
-- With no decision (no key, no network, a refused request), the default runs
-  and the log says why.
-- `--engine` always overrides the decision, and no question is asked.
+- Candidates must be installed/configured, permitted by `CODER_ROUTE_ENGINES`
+  and outside a recent typed provider-failure cooldown. The exact allowlist
+  names are `claude,codex,micro,psionic`; empty permits all, invalid lists
+  permit none. This restricts automatic routing, not an explicit engine choice.
+- Below a probability of 0.5, or without a usable decision, the first eligible
+  engine runs in Claude, Codex, Microcoder, Psionic order. The log says why.
+- A model-selected engine outside that eligible set cannot dispatch.
+- With no eligible engine, the run fails before inference. Its route and failed
+  ending are logged; the interactive composer history retains the task for correction.
+- `--engine` overrides routing and cooldowns, allowing an intentional retry.
+
+Typed terminal provider failures persist a local cooldown of at least 60 seconds.
+A rejected Claude rate-limit event can extend it to the provider's reported
+reset (bounded to seven days). This is observed failure evidence, not a health
+probe or a claim that quota remains. No failed task is automatically resent
+elsewhere: it may already have produced effects. See the
+[observability contract](../../docs/protocol/coder-observability-v1.md) for
+records, conservative storage limits and reset behavior.
 
 `coder route "TASK"` prints the decision alone, with `--json` for scripts.
 

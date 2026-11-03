@@ -445,3 +445,26 @@ cs_read :: (text: string, s: [] CsSummary, ar: [] ClArena) {
   #assert cs_complete("{\"a") == 0;
   #assert cs_complete("") == 0;
 }
+
+// Observability v1: snapshots, not estimates or additive accounting.
+cs_cx_model :: (a: [] App) {
+  o := a[0].log[0].line[..]; opt := a[0].cx_options[..];
+  model := ccx_text(opt[0].actual_model[..]); effort := ccx_text(opt[0].actual_effort[..]);
+  n := json_raw(o, 0, "{\"kind\":\"model\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"source\":\"thread/start\",\"model\":");
+  n = ifx model.count > 0 then json_write_string(o, n, model) else json_raw(o, n, "null");
+  n = json_raw(o, n, ",\"effort\":"); n = ifx effort.count > 0 then json_write_string(o, n, effort) else json_raw(o, n, "null");
+  n = json_raw(o, n, ",\"cost_usd\":null}"); cs_put(a, n);
+}
+cs_cx_usage :: (a: [] App, usage: string) {
+  o := a[0].log[0].line[..]; total := cl_raw(usage, "total");
+  n := json_raw(o, 0, "{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"scope\":\"thread_total\"");
+  n = json_raw(o, n, ",\"thread_id\":");
+  n = ifx a[0].cx.count > 0 then json_write_string(o, n, cx_thread_id(a[0].cx)) else json_raw(o, n, "null");
+  n = json_raw(o, n, ",\"turn_id\":");
+  n = ifx a[0].cx.count > 0 then json_write_string(o, n, cx_turn_id(a[0].cx)) else json_raw(o, n, "null");
+  for key: [6] string.["totalTokens", "inputTokens", "cachedInputTokens", "cacheWriteInputTokens", "outputTokens", "reasoningOutputTokens"] {
+    n = json_raw(o, n, ","); n = json_write_string(o, n, key); n = json_raw(o, n, ":");
+    v := cl_int(total, key); n = ifx v.ok && v.value >= 0 then json_write_int(o, n, v.value) else json_raw(o, n, "null");
+  }
+  n = json_raw(o, n, "}"); cs_put(a, n);
+}

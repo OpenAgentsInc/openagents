@@ -569,3 +569,14 @@ account quota, a paid model budget, a private transcript, publication rights
 or a sign-off that is not already authorized, record that concrete
 dependency in the workspace's `NEEDS_OWNER.md`. Synthetic fixtures and
 captured sinks should let the offline work proceed independently.
+
+## Follow-up implementation
+
+The [2026-11-03 qualification record](../verification/coder-followup-2026-11-03/README.md)
+records four implemented follow-ups: persisted availability hints and bounded
+automatic candidates, Codex tool-start and observed metadata logging, four
+structural coding fixtures, and actual process termination after an append
+or partial edit. The routing chapter and shared contract describe their limits.
+The original pilot remains historical evidence. Two successful development
+smoke tasks do not close the broader comparative evaluation roadmap; the new
+continuation case remains reserved for later live measurement.

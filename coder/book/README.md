@@ -101,3 +101,7 @@ what each chapter builds and checks.
 The [2026-11-03 review and roadmap](../../docs/coder/2026-11-03-book-review-and-roadmap.md)
 assesses the book's guarantees, live integration and measurements, with
 prioritized proposed work items and acceptance criteria.
+
+The [structural follow-up suite](../../docs/coder/repository-pilot.md#structural-follow-up-suite)
+adds provider availability checks, observed Codex metadata and interruptions
+after real effects. It retains the v1 pilot as historical evidence.

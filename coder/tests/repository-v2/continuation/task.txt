@@ -1,0 +1,1 @@
+Implement stable unique_count: count distinct byte values in a string, including zero and UTF-8 bytes. Preserve the API and AGENTS.md. Earlier speculative instructions in the diagnosis turn are superseded by this objective.

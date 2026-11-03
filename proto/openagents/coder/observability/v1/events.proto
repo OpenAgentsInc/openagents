@@ -1,0 +1,31 @@
+syntax = "proto3";
+package openagents.coder.observability.v1;
+
+// JSONL mapping and scope: docs/protocol/coder-observability-v1.md.
+message Model {
+  string engine = 1;
+  optional string model = 2;
+  optional string effort = 3;
+  optional double cost_usd = 4;
+}
+message Usage {
+  string engine = 1;
+  string scope = 2;
+  optional int64 total_tokens = 3;
+  optional int64 input_tokens = 4;
+  optional int64 cached_input_tokens = 5;
+  optional int64 cache_write_input_tokens = 6;
+  optional int64 output_tokens = 7;
+  optional int64 reasoning_output_tokens = 8;
+  optional string thread_id = 9;
+  optional string turn_id = 10;
+}
+message Availability {
+  string engine = 1;
+  int64 retry_after_s = 2;
+  bool persisted = 3;
+}
+
+message SummaryHint {
+  string effect_outcome = 1; // unknown while a durable turn has no end record.
+}

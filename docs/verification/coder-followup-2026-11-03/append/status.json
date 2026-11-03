@@ -1,0 +1,1 @@
+{"id":"20261103-000000-001","engine":"echo","state":"running","effect_outcome":"unknown","turns":1,"steps":0,"started_us":1793737745259487,"cwd":"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-v2-LfhsIG/append","task":"$ printf x >> effect.txt; sleep 30"}

@@ -246,7 +246,7 @@ cd_codex_started :: (a: [] App, item: string) {
   else if ty == "imageView" { label = cd_label(a, "View", cd_cx_str(a, item, "path"), lb[..]); }
   else { return; }
   cd_reply_commit(a, true); a[0].rep_lines = 0; a[0].nrep = 0; a[0].rep_done = 0;
-  cd_commit_prefixed(a, TUI_DIM, "  ⏺ ", "    ", label);
+  cd_tool_row(a, label);
   a[0].steps += 1;
 }
 
@@ -319,6 +319,7 @@ cd_codex_poll :: (a: [] App) -> bool {
     }
     if ev.kind == CxEventKind.answered && ev.of == CX_THREAD_START {
       ccx_resolved(a[0].cx_options[..], c[0].ar[..], ev.result);
+      cs_cx_model(a);
       a[0].cx_ready = true;
       if a[0].npending > 0 && a[0].running {
         r := cx_turn_start(c, cast(string) a[0].pending[0..<a[0].npending], none[0..<0], cd_codex_settings(a));
@@ -378,6 +379,12 @@ cd_codex_poll :: (a: [] App) -> bool {
     if ev.kind != CxEventKind.notification { continue; }
     if a[0].engine != ENGINE_CODEX || !a[0].running { continue; }   // late lines after a stop
     m := ev.method;
+    if m == "thread/tokenUsage/updated" {
+      if cx_thread_id(c).count > 0 && cx_turn_id(c).count > 0 && cd_cx_str(a, ev.params, "threadId") == cx_thread_id(c) && cd_cx_str(a, ev.params, "turnId") == cx_turn_id(c) {
+        cs_cx_usage(a, cl_raw(ev.params, "tokenUsage"));
+      }
+      continue;
+    }
     if m == "item/agentMessage/delta" {
       cd_reply_add(a, cd_cx_str(a, ev.params, "delta"));
       cd_reply_commit(a, false);

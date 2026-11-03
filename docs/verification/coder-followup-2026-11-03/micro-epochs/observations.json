@@ -1,0 +1,14 @@
+{
+  "raw_run_sha256": "0a83bbe922df6e9f9f7ad66e13588a331392d06be8bd7915b6e910332850d14b",
+  "tool_starts": 32,
+  "result_events": 28,
+  "model_observations": [],
+  "last_usage_snapshot": null,
+  "ending": {
+    "kind": "end",
+    "ending": "finished",
+    "ms": 68277,
+    "steps": 32
+  },
+  "classification": "smoke_only_different_tasks"
+}

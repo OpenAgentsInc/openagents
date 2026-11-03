@@ -1,0 +1,4 @@
+{"kind":"session","id":"20261103-203255-100","version":"0.1.0","engine":"claude","cwd":"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-v2-OD94RQ","started_us":1793737975100343}
+{"kind":"user","text":"synthetic next task"}
+{"kind":"route","ok":false,"text":"no eligible engine: allowlist, installation or provider cooldown","eligible_mask":0,"blocked_mask":1,"allowed_mask":1}
+{"kind":"end","ending":"failed","ms":0,"steps":0,"text":"no eligible engine; check CODER_ROUTE_ENGINES and provider cooldowns, or retry explicitly with --engine","cause":"availability"}

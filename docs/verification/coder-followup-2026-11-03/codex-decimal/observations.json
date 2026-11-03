@@ -1,0 +1,35 @@
+{
+  "raw_run_sha256": "996abeecd4f17a2a2ec3c13b7d9ad0e890a1ae3e8df139b8b6458ac0449bb1e7",
+  "tool_starts": 23,
+  "result_events": 15,
+  "model_observations": [
+    {
+      "kind": "model",
+      "schema": "coder.observability.v1",
+      "engine": "codex",
+      "source": "thread/start",
+      "model": "gpt-6.1-sol",
+      "effort": "xhigh",
+      "cost_usd": null
+    }
+  ],
+  "last_usage_snapshot": {
+    "kind": "usage",
+    "schema": "coder.observability.v1",
+    "engine": "codex",
+    "scope": "thread_total",
+    "totalTokens": 333401,
+    "inputTokens": 329011,
+    "cachedInputTokens": 300800,
+    "cacheWriteInputTokens": 0,
+    "outputTokens": 4390,
+    "reasoningOutputTokens": 1675
+  },
+  "ending": {
+    "kind": "end",
+    "ending": "finished",
+    "ms": 77561,
+    "steps": 23
+  },
+  "classification": "smoke_only_different_tasks"
+}

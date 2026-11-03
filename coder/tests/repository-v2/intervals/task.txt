@@ -1,0 +1,1 @@
+Fix overlap_size in src.coax and valid in helper.coax. Intervals are inclusive integers: lo==hi is valid, lo>hi invalid, intersection cardinality is symmetric, disjoint or invalid inputs return zero. Preserve APIs.

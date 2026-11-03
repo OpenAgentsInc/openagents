@@ -1,0 +1,162 @@
+// Repository v2: fresh structural cases and actual process interruption checks.
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/nostr/json.coax";
+#load "../../coax/lib/crypto/sha256-memory.coax";
+cxterm_write :: (bytes:[]u8)->int #foreign;
+pe_put :: (s:string) {b:[65536]u8;if s.count>b.count {tool_errln("output too large");return;}for c,i:s {b[i]=c;}r:=cxterm_write(b[0..<s.count]);}
+pe_cat :: (b:[]u8,n:int,s:string)->int {return json_raw(b,n,s);}
+pe_num :: (x:int,b:[]u8)->string {n:=json_write_int(b,0,x);return cast(string)b[0..<n];}
+pe_join :: (a:string,b:string,out:[]u8)->string {return fs_join(a,b,out);}
+pe_has :: (s:string,p:string)->bool {if p.count>s.count {return false;}for i:0..<s.count-p.count+1 {if s[i..<i+p.count]==p {return true;}}return false;}
+pe_sha :: (s:string,out:[]u8)->string {
+ b:[131072]u8;if s.count>b.count {return "";}for c,i:s {b[i]=c;}d:[32]u8;r:=sha256_hash_checked(b[0..<s.count],d[..],false);
+ if r!=0 {return "";}hex:="0123456789abcdef";for i:0..<32 {out[i*2]=hex[cast(int)(d[i]>>4)];out[i*2+1]=hex[cast(int)(d[i]&15)];}return cast(string)out[0..<64];
+}
+PeRun :: struct {text:[262144]u8;n:int;status:int=-1;cut:bool;timeout:bool;ms:int;}
+PeEnv :: struct {repo:string;coder:string;coax:string;home:string;cwd:string;path:string;allowed:string;}
+// Arguments are passed as argv, never interpolated into a shell.
+pe_run :: (env:PeEnv,argv:[]string,ms:int,r:[]PeRun) {
+ r[0]=PeRun.{};h:=proc_new();if h<0 {return;}
+ ok:=proc_cwd(h,env.cwd);for a:argv {ok=ok && proc_arg(h,a);}
+ eb:[4096]u8;
+ n:=pe_cat(eb[..],0,"CODER_HOME=");n=pe_cat(eb[..],n,env.home);ok=ok && proc_env(h,cast(string)eb[0..<n]);
+ n=pe_cat(eb[..],0,"COAX=");n=pe_cat(eb[..],n,env.coax);ok=ok && proc_env(h,cast(string)eb[0..<n]);
+ n=pe_cat(eb[..],0,"CODER_REPO=");n=pe_cat(eb[..],n,env.repo);ok=ok && proc_env(h,cast(string)eb[0..<n]);
+ n=pe_cat(eb[..],0,"PWD=");n=pe_cat(eb[..],n,env.cwd);ok=ok && proc_env(h,cast(string)eb[0..<n]);
+ ok=ok && proc_env(h,"BROWSER=/usr/bin/true") && proc_env(h,"CODER_USAGE=0") && proc_env(h,"CODER_RECAPS=0");
+ if env.path.count>0 {n=pe_cat(eb[..],0,"PATH=");n=pe_cat(eb[..],n,env.path);ok=ok && proc_env(h,cast(string)eb[0..<n]);}
+ if env.allowed.count>0 {n=pe_cat(eb[..],0,"CODER_ROUTE_ENGINES=");n=pe_cat(eb[..],n,env.allowed);ok=ok && proc_env(h,cast(string)eb[0..<n]);}
+ // Inherited test playback must never silently turn a live measurement offline.
+ ok=ok && proc_unset(h,"GW_REPLAY") && proc_unset(h,"GW_RECORD") && proc_unset(h,"CODER_ROUTER_FAULT");
+ if !ok || proc_start(h)!=0 {done:=proc_release(h);return;}
+ close:=proc_close_stdin(h);t:=proc_now_ms();line:[65536]u8;
+ while true {
+  left:=ms-(proc_now_ms()-t);if left<=0 {r[0].timeout=true;break;}
+  nline:=proc_line(h,ifx left>1000 then 1000 else left,line[..]);
+  if nline==PROC_EOF {break;}if nline==PROC_TIMEOUT {continue;}if nline<0 {r[0].cut=true;if nline==PROC_ERROR {break;}continue;}
+  if r[0].n+nline+1>r[0].text.count {r[0].cut=true;continue;}
+  for i:0..<nline {r[0].text[r[0].n]=line[i];r[0].n+=1;}r[0].text[r[0].n]=10;r[0].n+=1;
+ }
+ if r[0].timeout {kill:=proc_kill(h,9);}
+ r[0].status=proc_wait(h,2000);if r[0].status==PROC_RUNNING {kill:=proc_kill(h,9);r[0].status=proc_wait(h,2000);r[0].timeout=true;}
+ r[0].ms=proc_now_ms()-t;done:=proc_release(h);
+}
+pe_text :: (r:[]PeRun)->string {return cast(string)r[0].text[0..<r[0].n];}
+pe_cmd :: (e:PeEnv,a:[]string,r:[]PeRun) {pe_run(e,a,30000,r);}
+
+V2_CASES :: [4] string.["decimal", "epochs", "intervals", "continuation"];
+V2_RULES :: "Only edit src.coax and helper.coax. Preserve public APIs. Do not commit.\n";
+v2_read :: (dir:string,name:string,b:[]u8)->string {
+ p:[4096]u8;n:=fs_read(pe_join(dir,name,p[..]),b);
+ return ifx n<0 || n>=b.count then "" else cast(string)b[0..<n];
+}
+v2_write :: (dir:string,name:string,s:string)->bool {p:[4096]u8;return fs_write(pe_join(dir,name,p[..]),s);}
+v2_report :: (ok:bool,label:string)->int {pe_put(ifx ok then "ok " else "FAIL ");pe_put(label);pe_put("\n");return ifx ok then 0 else 1;}
+v2_source :: (e:PeEnv,fixtures:string,fixed:bool)->bool {
+ b:[8192]u8;s:=v2_read(fixtures,ifx fixed then "fixed.coax.fixture" else "bad.coax.fixture",b[..]);
+ ok:=s.count>0 && v2_write(e.cwd,"src.coax",s);
+ h:[8192]u8;t:=v2_read(fixtures,ifx fixed then "helper-fixed.coax.fixture" else "helper-bad.coax.fixture",h[..]);
+ if t.count>0 {ok=ok && v2_write(e.cwd,"helper.coax",t);}return ok;
+}
+v2_accept :: (e:PeEnv,fixtures:string,root:string,r:[]PeRun)->bool {
+ b:[8192]u8;checks:=v2_read(fixtures,"accept.coax.fixture",b[..]);p:[4096]u8;src:=pe_join(e.cwd,"src.coax",p[..]);
+ out:[16384]u8;n:=json_raw(out[..],0,"#load ");n=json_write_string(out[..],n,src);
+ n=json_raw(out[..],n,";\nmain :: () {}\n#test \"external acceptance\" {\n");n=json_raw(out[..],n,checks);n=json_raw(out[..],n,"\n}\n");
+ if checks.count==0 || n<0 || !v2_write(root,"accept.coax",cast(string)out[0..<n]) {return false;}
+ ap:[4096]u8;a:=[3]string.[e.coax,"test",pe_join(root,"accept.coax",ap[..])];pe_cmd(e,a[..],r);
+ return r[0].status==0 && !r[0].timeout && !r[0].cut;
+}
+v2_case :: (base:PeEnv,root:string,k:int,engine:string,offline:bool)->int {
+ names:=V2_CASES;nb:[4096]u8;dir:=pe_join(root,names[k],nb[..]);ok:=fs_mkdir(dir);
+ e:=base;e.cwd=dir;hb:[4096]u8;e.home=pe_join(dir,"home",hb[..]);ok=ok && fs_mkdir(e.home);
+ fb:[4096]u8;pn:=pe_cat(fb[..],0,e.repo);pn=pe_cat(fb[..],pn,"/coder/tests/repository-v2/");pn=pe_cat(fb[..],pn,names[k]);fixtures:=cast(string)fb[0..<pn];
+ r:[1]PeRun;ok=ok && v2_source(e,fixtures,false) && v2_write(dir,"AGENTS.md",V2_RULES);
+ a:=[2]string.["git","init"];pe_cmd(e,a[..],r[..]);ok=ok && r[0].status==0;
+ broken:=!v2_accept(e,fixtures,root,r[..]);
+ if offline {ok=ok && v2_source(e,fixtures,true);}
+ else {
+  taskb:[8192]u8;task:=v2_read(fixtures,"task.txt",taskb[..]);pb:[16384]u8;n:=pe_cat(pb[..],0,"Read AGENTS.md. ");n=pe_cat(pb[..],n,task);n=pe_cat(pb[..],n," You may run the compiler at ");n=pe_cat(pb[..],n,e.coax);n=pe_cat(pb[..],n,". Do not modify the rules. Work only in this fixture directory.");
+  // The fourth case is reserved: only an explicitly named engine can consume it.
+  if k==3 {
+   first:=[10]string.[e.coder,"run","Read AGENTS.md and src.coax. An earlier proposal suggested sorting bytes; that proposal is obsolete. Diagnose the current function without editing any file.","--engine",engine,"--session","20261103-000000-003","--cwd",dir,"--json"];
+   pe_run(e,first[..],180000,r[..]);ok=ok && r[0].status==0;
+   fork:=[9]string.[e.coder,"fork","20261103-000000-003",cast(string)pb[0..<n],"--engine",engine,"--cwd",dir,"--json"];pe_run(e,fork[..],180000,r[..]);
+  } else {run:=[8]string.[e.coder,"run",cast(string)pb[0..<n],"--engine",engine,"--cwd",dir,"--json"];pe_run(e,run[..],180000,r[..]);}
+  ok=ok && r[0].status==0 && !r[0].timeout && !r[0].cut;
+  saved:=v2_write(dir,"run.jsonl",pe_text(r[..]));ok=ok && saved;
+ }
+ passed:=v2_accept(e,fixtures,root,r[..]);protected:[8192]u8;rules:=v2_read(dir,"AGENTS.md",protected[..]);
+ accepted:=ok && broken && passed && rules==V2_RULES;
+ receipt:[1024]u8;n:=json_raw(receipt[..],0,"{\"suite\":\"repository-v2\",\"case\":");n=json_write_string(receipt[..],n,names[k]);n=json_raw(receipt[..],n,",\"engine\":");n=json_write_string(receipt[..],n,ifx offline then "reference" else engine);
+ n=json_raw(receipt[..],n,",\"baseline_failed\":");n=json_raw(receipt[..],n,ifx broken then "true" else "false");n=json_raw(receipt[..],n,",\"accepted\":");n=json_raw(receipt[..],n,ifx accepted then "true}" else "false}");
+ saved:=v2_write(dir,"receipt.json",cast(string)receipt[0..<n]);pe_put(cast(string)receipt[0..<n]);pe_put("\n");return ifx accepted && saved then 0 else 1;
+}
+
+// SIGKILL at an observed effect boundary, rather than a sleep before any effect.
+v2_interrupt :: (base:PeEnv,root:string,partial:bool)->int {
+ db:[4096]u8;dir:=pe_join(root,ifx partial then "partial-edit" else "append",db[..]);ok:=fs_mkdir(dir);e:=base;e.cwd=dir;
+ hb:[4096]u8;e.home=pe_join(dir,"home",hb[..]);ok=ok && fs_mkdir(e.home);
+ id:="20261103-000000-001";
+ task:=ifx partial then "$ printf partial > effect.txt; sleep 30; printf complete > effect.txt" else "$ printf x >> effect.txt; sleep 30";
+ h:=proc_new();argv:=[10]string.[e.coder,"run",task,"--engine","echo","--session",id,"--cwd",dir,"--json"];
+ for a:argv {ok=ok && proc_arg(h,a);}ok=ok && proc_cwd(h,dir);
+ eb:[8192]u8;en:=pe_cat(eb[..],0,"CODER_HOME=");en=pe_cat(eb[..],en,e.home);ok=ok && proc_env(h,cast(string)eb[0..<en]);
+ en=pe_cat(eb[..],0,"COAX=");en=pe_cat(eb[..],en,e.coax);ok=ok && proc_env(h,cast(string)eb[0..<en]);
+ ok=ok && proc_env(h,"CODER_USAGE=0") && proc_env(h,"CODER_RECAPS=0");
+ if !ok || proc_start(h)!=0 {done:=proc_release(h);return 1;}
+ close:=proc_close_stdin(h);b:[65536]u8;marker:[128]u8;observed:=false;start:=proc_now_ms();
+ while proc_now_ms()-start<15000 {
+  text:=v2_read(dir,"effect.txt",marker[..]);if text==(ifx partial then "partial" else "x") {observed=true;break;}
+  n:=proc_line(h,50,b[..]);
+ }
+ killed:=proc_kill(h,9);status:=proc_wait(h,2000);done:=proc_release(h);
+ r:[1]PeRun;st:=[4]string.[e.coder,"status",id,"--json"];pe_cmd(e,st[..],r[..]);
+ unknown:=r[0].status==0 && pe_has(pe_text(r[..]),"\"effect_outcome\":\"unknown\"");saved:=v2_write(dir,"status.json",pe_text(r[..]));
+ replay:=[4]string.[e.coder,"replay",id,"--json"];pe_cmd(e,replay[..],r[..]);saved=saved && v2_write(dir,"replay.json",pe_text(r[..]));
+ retained:=v2_read(dir,"effect.txt",marker[..])==(ifx partial then "partial" else "x");
+ // An explicit read-only continuation must not replay the historical shell call.
+ fork:=[9]string.[e.coder,"fork",id,"$ cat effect.txt","--engine","echo","--cwd",dir,"--json"];pe_cmd(e,fork[..],r[..]);
+ retained=retained && r[0].status==0 && v2_read(dir,"effect.txt",marker[..])==(ifx partial then "partial" else "x");
+ return v2_report(observed && killed && status!=PROC_RUNNING && unknown && retained && saved,ifx partial then "kill during partial edit: unknown, replay inert, continuation preserves bytes" else "kill after append: unknown, replay inert, continuation does not duplicate effect");
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) {return 2;}mode:=args_at(a[..],0);
+ if mode!="offline" && mode!="run" && mode!="interrupt" && mode!="availability" {tool_errln("repository-v2.coax offline | interrupt | availability | run --case 0..3 --engine codex|micro|claude|psionic");return 2;}
+ rb:[4096]u8;repo:=fs_cwd(rb[..]);cb:[4096]u8;coax:=proc_getenv("COAX",cb[..]);if coax.count==0 {return 2;}
+ coderb:[4096]u8;coder:=pe_join(repo,"coder/tui/coder.sh",coderb[..]);tb:[4096]u8;root:=fs_temp("coder-v2-",tb[..]);if root.count==0 {return 2;}
+ e:=PeEnv.{repo=repo,coder=coder,coax=coax};pe_put("artifacts: ");pe_put(root);pe_put("\n");
+ if mode=="availability" {return v2_availability(e,root);}
+ if mode=="interrupt" {return v2_interrupt(e,root,false)+v2_interrupt(e,root,true);}
+ if mode=="offline" {only:=args_value(a[..],"--case","");fails:=0;for k:0..<4 {if only.count==0 || (only.count==1 && cast(int)(only[0]-'0')==k) {fails+=v2_case(e,root,k,"",true);}}return fails;}
+ k:=args_value(a[..],"--case","");engine:=args_value(a[..],"--engine","");
+ if k.count!=1 || k[0]<'0' || k[0]>'3' || (engine!="codex" && engine!="micro" && engine!="claude" && engine!="psionic") {return 2;}
+ return v2_case(e,root,cast(int)(k[0]-'0'),engine,false);
+}
+
+cxproc_wall_us :: ()->int #foreign;
+// A local protocol fixture, not a live provider. The product parses and
+// persists its typed terminal failure through the actual CLI boundary.
+v2_availability :: (base:PeEnv,root:string)->int {
+  e:=base;e.cwd=root;hb:[4096]u8;e.home=pe_join(root,"home",hb[..]);ok:=fs_mkdir(e.home);
+  bb:[4096]u8;bin:=pe_join(root,"bin",bb[..]);ok=ok && fs_mkdir(bin);
+  pathb:[8192]u8;n:=pe_cat(pathb[..],0,bin);n=pe_cat(pathb[..],n,":/usr/bin:/bin:/opt/homebrew/bin");e.path=cast(string)pathb[0..<n];e.allowed="claude";
+  reset:=cxproc_wall_us()/1000000+3600;
+  script:[8192]u8;n=pe_cat(script[..],0,"#!/bin/sh\n# Firm reason: 3 (reference implementation: synthetic provider protocol fixture)\nprintf x >> invocations\nprintf '%s\\n' '{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\",\"resetsAt\":");
+  n=json_write_int(script[..],n,reset);n=pe_cat(script[..],n,"},\"uuid\":\"u\",\"session_id\":\"s\"}' '{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[]},\"parent_tool_use_id\":null,\"error\":\"rate_limit\",\"uuid\":\"u\",\"session_id\":\"s\"}' '{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"duration_ms\":1,\"duration_api_ms\":0,\"is_error\":true,\"num_turns\":0,\"total_cost_usd\":0.0,\"usage\":{\"input_tokens\":0,\"output_tokens\":0},\"modelUsage\":{},\"permission_denials\":[],\"errors\":[\"fixture quota\"],\"uuid\":\"r\",\"session_id\":\"s\"}'\n");
+  ok=ok && v2_write(bin,"claude",cast(string)script[0..<n]);pb:[4096]u8;exe:=pe_join(bin,"claude",pb[..]);r:[1]PeRun;
+  chmod:=[3]string.["/bin/chmod","700",exe];pe_cmd(e,chmod[..],r[..]);ok=ok && r[0].status==0;
+  run:=[6]string.[e.coder,"run","synthetic failure","--engine","claude","--json"];pe_cmd(e,run[..],r[..]);
+  failed:=r[0].status==1 && pe_has(pe_text(r[..]),"\"cause\":\"provider\"") && pe_has(pe_text(r[..]),"\"persisted\":true");ok=ok && v2_write(root,"failure.jsonl",pe_text(r[..]));
+  route:=[4]string.[e.coder,"route","synthetic next task","--json"];pe_cmd(e,route[..],r[..]);
+  excluded:=r[0].status==1 && pe_has(pe_text(r[..]),"\"eligible_mask\":0") && pe_has(pe_text(r[..]),"\"blocked_mask\":1");ok=ok && v2_write(root,"route.json",pe_text(r[..]));
+  blocked_run:=[4]string.[e.coder,"run","synthetic next task","--json"];pe_cmd(e,blocked_run[..],r[..]);
+  excluded=excluded && r[0].status==1 && pe_has(pe_text(r[..]),"\"cause\":\"availability\"");ok=ok && v2_write(root,"blocked-run.jsonl",pe_text(r[..]));
+  ib:[128]u8;once:=v2_read(root,"invocations",ib[..])=="x";
+  pe_cmd(e,run[..],r[..]);twice:=v2_read(root,"invocations",ib[..])=="xx";
+  obs:[65536]u8;stored:=v2_read(e.home,".openagents/coder/availability-claude.jsonl",obs[..]);num:[32]u8;reset_seen:=pe_has(stored,pe_num(reset,num[..]));
+  e.allowed="codex,";pe_cmd(e,route[..],r[..]);invalid:=r[0].status==1 && pe_has(pe_text(r[..]),"\"allowed_mask\":0");
+  return v2_report(ok && failed && excluded && once && twice && reset_seen && invalid,"typed provider cooldown and reset persist, automatic routing excludes it, explicit retry works, invalid allowlist closes");
+}

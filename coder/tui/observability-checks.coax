@@ -1,0 +1,53 @@
+#load "coder.coax";
+#run_steps 1000000;
+main :: () {}
+
+#test "routing uses only eligible defaults and explains low confidence" {
+  r: [1] CdRoute; r[0].eligible = 2;
+  #assert cd_route_pick(r[..]) == ENGINE_CODEX;
+  r[0].eligible = 0; #assert cd_route_pick(r[..]) == -1;
+  r[0].eligible = 4; r[0].ok = true; r[0].probability = 0.1;
+  r[0].nengine = cd_cat(r[0].engine[..], 0, "micro");
+  a: [1] App; a[0].engine = ENGINE_MICRO; b: [1024] u8;
+  #assert cd_holds(cd_route_line(a[..], r[..], b[..]), "low-confidence decision");
+}
+
+#test "an unfinished durable turn has unknown effects even after a tool result" {
+  s: [1] CsSummary; ar: [1] ClArena; ab: [8192] u8; ar[0].buf = ab[..]; b: [4096] u8;
+  cs_read("{\"kind\":\"session\",\"id\":\"x\"}\n{\"kind\":\"user\",\"text\":\"edit\"}\n{\"kind\":\"tool\",\"label\":\"Write(file)\"}\n{\"kind\":\"result\",\"text\":\"done\",\"error\":false}\n", s[..], ar[..]);
+  #assert cd_holds(cd_summary_line("x", s[..], true, b[..]), "\"effect_outcome\":\"unknown\"");
+}
+
+#test "Codex tool starts persist before their results" {
+  a: [1] App; logs: [1] CsLog; a[0].log = logs[..]; a[0].plain = true; a[0].cols = 100;
+  c: [1] CxClient; line: [4096] u8; arena: [4096] u8; out: [8192] u8;
+  cx_init(c[..], line[..], arena[..], out[..]); a[0].cx = c[..];
+  cd_codex_started(a[..], "{\"type\":\"commandExecution\",\"command\":\"pwd\"}");
+  #assert a[0].steps == 1;
+  #assert cd_holds(cast(string) a[0].log[0].line[..], "\"kind\":\"tool\"");
+  #assert cd_holds(cast(string) a[0].log[0].line[..], "Bash(pwd)");
+  cd_codex_completed(a[..], "{\"type\":\"commandExecution\",\"status\":\"completed\",\"exitCode\":0,\"aggregatedOutput\":\"/tmp\"}");
+  #assert cd_holds(cast(string) a[0].log[0].line[..], "\"kind\":\"result\"");
+}
+#test "usage snapshots preserve unknowns and are never summed" {
+  a: [1] App; logs: [1] CsLog; a[0].log = logs[..];
+  cs_cx_usage(a[..], "{\"total\":{\"inputTokens\":100,\"cachedInputTokens\":20,\"outputTokens\":7,\"reasoningOutputTokens\":3}}");
+  s := cast(string) a[0].log[0].line[..];
+  #assert cd_holds(s, "\"inputTokens\":100");
+  #assert cd_holds(s, "\"cachedInputTokens\":20");
+  #assert cd_holds(s, "\"totalTokens\":null");
+  #assert cd_holds(s, "\"scope\":\"thread_total\"");
+  cs_cx_usage(a[..], "{\"total\":{\"inputTokens\":110,\"outputTokens\":-1}}");
+  s = cast(string) a[0].log[0].line[..];
+  #assert cd_holds(s, "\"inputTokens\":110");
+  #assert cd_holds(s, "\"outputTokens\":null");
+}
+#test "resolved model metadata owns actual values and leaves unobserved cost null" {
+  a: [1] App; logs: [1] CsLog; a[0].log = logs[..]; ar: [1] ClArena; b: [4096] u8; ar[0].buf = b[..];
+  ccx_resolved(a[0].cx_options[..], ar[..], "{\"model\":\"test-model\",\"reasoningEffort\":\"high\"}");
+  cs_cx_model(a[..]);
+  s := cast(string) a[0].log[0].line[..];
+  #assert cd_holds(s, "\"model\":\"test-model\"");
+  #assert cd_holds(s, "\"effort\":\"high\"");
+  #assert cd_holds(s, "\"cost_usd\":null");
+}

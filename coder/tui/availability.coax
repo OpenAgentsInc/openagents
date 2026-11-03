@@ -1,0 +1,51 @@
+// Local typed failure observations; no prompts, credentials or error prose.
+#load "availability-policy.coax";
+
+ca_path :: (engine: string, out: [] u8) -> string {
+  db: [1200] u8; dir := cs_dir(db[..]);
+  if dir.count == 0 { return ""; }
+  n := cd_cat(out, 0, dir); n = cd_cat(out, n, "/../availability-");
+  n = cd_cat(out, n, engine); n = cd_cat(out, n, ".jsonl");
+  return cast(string) out[0..<n];
+}
+ca_recent :: (engine: string, now: int) -> bool {
+  pb: [1400] u8; path := ca_path(engine, pb[..]);
+  if path.count == 0 { return true; }
+  if !fs_exists(path) { return false; }
+  b: [65536] u8; n := fs_read(path, b[..]);
+  if n <= 0 || n >= b.count || b[n - 1] != 10 { return true; }
+  at := 0;
+  while at < n {
+    end := at; while end < n && b[end] != 10 { end += 1; }
+    line := cast(string) b[at..<end]; at = end + 1;
+    t := cl_int(line, "at"); r := cl_int(line, "reset");
+    if !t.ok || !r.ok || ca_blocked(t.value, r.value, now) { return true; }
+  }
+  return false;
+}
+ca_eligible :: (local: bool, allowed: [] int, blocked: [] int) -> int {
+  b: [256] u8; allowed[0] = ca_allowed(cl_getenv("CODER_ROUTE_ENGINES", b[..]));
+  installed := 4;
+  if cd_on_path("claude") { installed = installed | 1; }
+  if cd_on_path("codex") { installed = installed | 2; }
+  if local { installed = installed | 8; }
+  names := CD_ROUTE_ENGINES; now := cxproc_wall_us() / 1000000;
+  for i: 0..<4 { if ca_recent(names[i], now) { blocked[0] = blocked[0] | (1 << i); } }
+  return allowed[0] & installed & (15 ^ blocked[0]);
+}
+ca_failure :: (a: [] App) {
+  engine := cd_engine_name(a[0].engine);
+  if a[0].engine == ENGINE_MICRO { engine = "micro"; }
+  if ca_index(engine) < 0 { return; }
+  pb: [1400] u8; path := ca_path(engine, pb[..]);
+  now := cxproc_wall_us() / 1000000;
+  reset := ca_typed_reset(now, a[0].provider_reset_s);
+  retry := ifx reset > now + 60 then reset else now + 60;
+  b: [256] u8; n := json_raw(b[..], 0, "{\"at\":"); n = json_write_int(b[..], n, now);
+  n = json_raw(b[..], n, ",\"reset\":"); n = json_write_int(b[..], n, retry); n = json_raw(b[..], n, "}\n");
+  saved := path.count > 0 && fs_append_durable(path, cast(string) b[0..<n]);
+  o := a[0].log[0].line[..];
+  n = json_raw(o, 0, "{\"kind\":\"availability\",\"schema\":\"coder.observability.v1\",\"engine\":"); n = json_write_string(o, n, engine);
+  n = json_raw(o, n, ",\"retry_after_s\":"); n = json_write_int(o, n, retry);
+  n = json_raw(o, n, ",\"persisted\":"); n = json_raw(o, n, ifx saved then "true}" else "false}"); cs_put(a, n);
+}

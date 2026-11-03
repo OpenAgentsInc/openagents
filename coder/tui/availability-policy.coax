@@ -1,0 +1,88 @@
+// Automatic routing eligibility. Explicit --engine is an intentional retry.
+#authority;
+
+#test "only a bounded future typed reset extends the retry delay" {
+  #assert ca_typed_reset(100, 0) == 0;
+  #assert ca_typed_reset(100, 100) == 0;
+  #assert ca_typed_reset(100, 159) == 159;
+  #assert ca_typed_reset(100, 160) == 160;
+  #assert ca_typed_reset(100, 180) == 180;
+  #assert ca_typed_reset(100, 604900) == 604900;
+  #assert ca_typed_reset(100, 604901) == 0;
+}
+
+#test "allowlists are exact and never widen an invalid request" {
+  #assert ca_allowed("") == 15;
+  #assert ca_allowed("claude,codex") == 3;
+  #assert ca_allowed("micro,psionic") == 12;
+  #assert ca_allowed("codex,codex") == 0;
+  #assert ca_allowed("codex,") == 0;
+  #assert ca_allowed("unknown") == 0;
+  #assert ca_allowed(" codex") == 0;
+}
+#test "cooldown bounds reject corrupted or future observations" {
+  #assert ca_blocked(100, 100, 100);
+  #assert ca_blocked(100, 100, 159);
+  #assert !ca_blocked(100, 100, 160);
+  #assert ca_blocked(100, 180, 179);
+  #assert !ca_blocked(100, 180, 180);
+  #assert ca_blocked(101, 101, 100);
+  #assert ca_blocked(-1, 0, 100);
+  #assert !ca_blocked(0, 0, 100);
+  #assert ca_blocked(100, 99, 1000);
+  #assert !ca_blocked(100, 604900, 604900);
+  #assert ca_blocked(100, 604901, 604901);
+  #assert ca_blocked(100, 604901, 100);
+}
+#test "invalid masks do not introduce extra engines" {
+  #assert ca_pick(4, 16) == -1;
+  #assert ca_pick(0, -1) == -1;
+  #assert ca_pick(0, 15) == 0;
+}
+#test "selection stays inside every allowed installed and healthy subset" {
+  for allowed: 0..<16 { for installed: 0..<16 { for blocked: 0..<16 {
+    mask := allowed & installed & (15 ^ blocked);
+    for preferred: -1..<5 {
+      pick := ca_pick(preferred, mask);
+      #assert (pick == -1) == (mask == 0);
+      if pick >= 0 { #assert (mask & (1 << pick)) != 0; }
+      if preferred >= 0 && (mask & (1 << preferred)) != 0 { #assert pick == preferred; }
+    }
+  } } }
+}
+
+ca_index :: (name: string) -> int {
+  if name == "claude" { return 0; }
+  if name == "codex" { return 1; }
+  if name == "micro" { return 2; }
+  if name == "psionic" { return 3; }
+  return -1;
+}
+ca_allowed :: (names: string) -> int {
+  if names.count == 0 { return 15; }
+  mask := 0; at := 0;
+  while at <= names.count {
+    end := at; while end < names.count && names[end] != ',' { end += 1; }
+    i := ca_index(cast(string) names[at..<end]);
+    if i < 0 { return 0; }
+    bit := 1 << i;
+    if (mask & bit) != 0 { return 0; }
+    mask = mask | bit; at = end + 1;
+  }
+  return mask;
+}
+// A typed reset is used only inside seven days; otherwise callers use a
+// conservative 60-second retry delay. Invalid stored data excludes the engine.
+ca_blocked :: (at: int, reset: int, now: int) -> bool {
+  if at < 0 || reset < at || reset - at > 604800 { return true; }
+  return now - at < 60 || now < reset;
+}
+ca_typed_reset :: (now: int, reset: int) -> int {
+  return ifx reset > now && reset - now <= 604800 then reset else 0;
+}
+ca_pick :: (preferred: int, mask: int) -> int {
+  if (mask & 15) != mask { return -1; }
+  for i: [3] int.[1, 2, 3] { if preferred == i && (mask & (1 << i)) != 0 { return i; } }
+  for i: [4] int.[0, 1, 2, 3] { if (mask & (1 << i)) != 0 { return i; } }
+  return -1;
+}

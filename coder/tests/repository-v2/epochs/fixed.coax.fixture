@@ -1,0 +1,2 @@
+State :: struct {epoch:int=-1; seq:int=-1; accepted:bool;}
+accept :: (old:State,epoch:int,seq:int)->State {if epoch<0 || seq<0 || epoch<old.epoch || (epoch==old.epoch && seq<=old.seq) {return State.{epoch=old.epoch,seq=old.seq};}return State.{epoch=epoch,seq=seq,accepted=true};}

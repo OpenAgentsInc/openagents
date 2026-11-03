@@ -152,3 +152,41 @@ The [2026-11-03 evidence](../verification/coder-repository-2026-11-03/README.md)
 records the offline journey and live pilot results, including account
 availability and limits. These checks do not repeat passing model runs to
 confirm them; the summary is recomputed from retained receipts.
+
+## Structural follow-up suite
+
+[`repository-v2.coax`](../../coder/tests/repository-v2.coax) keeps the original
+v1 cases and receipts intact. From the repository root:
+
+```sh
+COAX=/absolute/path/to/coax coax/web/tool.sh coder/tests/repository-v2.coax offline
+COAX=/absolute/path/to/coax coax/web/tool.sh coder/tests/repository-v2.coax availability
+COAX=/absolute/path/to/coax coax/web/tool.sh coder/tests/repository-v2.coax interrupt
+COAX=/absolute/path/to/coax coax/web/tool.sh coder/tests/repository-v2.coax run --case 0 --engine codex
+```
+
+The four fresh cases exercise strict parsing (0), epoch/sequence admission
+state (1), exhaustive inclusive intersections across two modules (2), and a
+superseded proposal followed by an explicit fork objective (3). Cases 0..2
+are development cases. Case 3 is reserved for a later live continuation
+measurement; its reference repair is checked offline, but it has not been
+sent to a live engine in this follow-up. These public fixtures are not a
+private evaluation set. Acceptance lives outside the working directory;
+AGENTS.md must remain intact. Live calls have a three-minute bound per turn.
+The fourth case permits two bounded turns, so its command remains under
+15 minutes.
+
+The availability mode uses an explicitly synthetic local Claude protocol
+fixture: it exercises real CLI parsing and persistence without consuming
+provider quota. It checks a typed failure and reported reset, exclusion on
+both `route` and `run`, explicit retry, and invalid allowlist refusal.
+The interruption mode kills real command processes after a non-idempotent
+append and during a partial edit, then checks unknown status, inert replay
+and an explicit read-only continuation without duplicated or completed edits.
+It does not simulate power loss, transactional writes or every provider's
+internal recovery.
+
+The initial [follow-up evidence](../verification/coder-followup-2026-11-03/README.md)
+contains a Codex parser smoke run and a Microcoder state-machine smoke run.
+Different tasks are not an engine ranking. Larger repositories, more cases,
+repeated trials and a fresh private holdout remain future evaluation work.

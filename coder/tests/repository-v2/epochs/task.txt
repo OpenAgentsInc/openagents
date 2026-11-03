@@ -1,0 +1,1 @@
+Fix accept so negative epoch/sequence is rejected, a new epoch accepts sequence zero, same-epoch strictly increasing sequence is accepted, stale epoch and duplicate sequence are rejected. Every returned accepted flag must describe this call: true for acceptance and false for rejection. Rejection must preserve epoch and seq. Preserve the API.
