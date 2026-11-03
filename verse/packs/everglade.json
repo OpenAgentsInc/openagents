@@ -4,7 +4,7 @@
   "style": "painterly",
   "paint": [2, 3, 19, 23, 32, 33, 35],
   "neutral": [0, 3, 4, 19, 22, 27, 28],
-  "budget": 9050000,
+  "budget": 9120000,
   "scene": "~/work/aethyr-cpp/build-native/native-root/assets/scene.bin",
   "layers": "~/work/aethyr-cpp/assets/layer{n}",
   "texture_size": 512,
@@ -160,7 +160,8 @@
     "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
     "licence": "quaternius-universal-characters",
     "rig": "verse/everglade/ranger.coax",
-    "prefix": "RANGER"
+    "prefix": "RANGER",
+    "lod": 0.2
   },
   "people": {
     "texture_size": 256,

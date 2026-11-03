@@ -1,6 +1,6 @@
 # Licences: the Everglade pack
 
-Every asset in `everglade.pack` (9,039,012 bytes of its 9,050,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/everglade.json`.
+Every asset in `everglade.pack` (9,114,404 bytes of its 9,120,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/everglade.json`.
 
 ## Sources
 
@@ -99,6 +99,7 @@ Every asset in `everglade.pack` (9,039,012 bytes of its 9,050,000-byte budget) a
 | Prop_Crate | mesh | Quaternius Medieval Village MegaKit |
 | Custom_Moon | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
 | player/male-ranger | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
+| player/male-ranger.lod | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
 | people/male-peasant | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | people/male-ranger | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | people/male-hood | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
@@ -154,7 +155,7 @@ Every asset in `everglade.pack` (9,039,012 bytes of its 9,050,000-byte budget) a
 
 ## The HUD's icons
 
-The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack under /worlds/everglade/hotbar/, not in it. game-icons.net, CC BY 3.0, https://game-icons.net; the credits are in `assets/verse/icons/game-icons/CREDITS.md`.
+The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack under /realms/everglade/hotbar/, not in it. game-icons.net, CC BY 3.0, https://game-icons.net; the credits are in `assets/verse/icons/game-icons/CREDITS.md`.
 
 | Icon | File | Credit |
 | --- | --- | --- |

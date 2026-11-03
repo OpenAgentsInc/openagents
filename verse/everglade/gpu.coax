@@ -721,7 +721,7 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
         // Yours (colour.z 1) is the pose's first block; another player's (colour.z 3,
         // everglade-rangers.coax) starts at row colour.y, and its look is the two rows the kind word
         // carries over 256: their skin tone and the Ranger's first texture layer (its outfit), then
-        // their cloak's and leather's dyes (24-bit, eg_dye24).
+        // their cloak's and leather's dyes (24-bit, eg_dye24) and how shown (0 to 1).
         base:u32=0;
         if (m.colour.z>2.5f32) {
           base=wg_u32_f(m.colour.y);
@@ -753,8 +753,8 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
           lr:u32=(wg_u32_f(m.colour.w))/256;
           l0:V4=pose[cast(int)lr];
           l1:V4=pose[cast(int)add_wrap(lr,1)];
-          // dye.w 8: their look (eg_person_dye rule 3)
-          o.dye=v4(0.0f32,0.0f32,0.0f32,8.0f32);
+          // dye.w 8 to 8.99: their look (eg_person_dye rule 3) and how shown (eg_scene_fs dissolve)
+          o.dye=v4(0.0f32,0.0f32,0.0f32,8.0f32+(0.99f32*clampf(l1.w,0.0f32,1.0f32)));
           if (l0.w>=0.0f32) {
             rel:s32=(cast,trunc(s32)(o.slice))-(wg_i32_f(l0.w));
             if ((rel==1)||(rel==4)) {
@@ -1207,6 +1207,16 @@ eg_scene_fs :: (s:EgS,front:bool,u:[]f32,heights:[]f32,objects:[]EgObj,water_nod
     // (a canopy's blob normal already faces out, so it keeps it).
     if (tex.w<0.35f32) {
       gpu_demote_helper();
+    }
+    // another player's Ranger while the server hasn't heard their page (dye.w 8 to 8.99: how shown)
+    // dissolves by an ordered dither, so they stand there faded until they are heard again
+    if ((s.look==EG_LOOK_CHARACTER)&&(s.dye.w>=8.0f32)) {
+      shown:f32=clampf((s.dye.w-8.0f32)/0.99f32,0.0f32,1.0f32);
+      dither:[16]f32=[16]f32.[0.0f32,8.0f32,2.0f32,10.0f32,12.0f32,4.0f32,14.0f32,6.0f32,3.0f32,11.0f32,1.0f32,9.0f32,15.0f32,7.0f32,13.0f32,5.0f32];
+      dp:U2=wg_mod_u2u2(wg_cvt_u2f2(v2(s.pos.x,s.pos.y)),u2(4,4));
+      if (((dither[cast(int)add_wrap(mul_wrap(dp.y,4),dp.x)]+0.5f32)/16.0f32)>=shown) {
+        gpu_demote_helper();
+      }
     }
     // a crown's leaves thin out by an ordered dither within a few metres of the eye, so walking in
     // the woods the camera looks through the boughs it backs into, not at their undersides

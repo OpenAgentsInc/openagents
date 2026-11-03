@@ -174,7 +174,7 @@ SHAPE_LATHE :: 7;
 LATHE_WEDGES :: 8; LATHE_SECTORS :: 6; LATHE_SEGMENTS :: 28;
 LATHE_VERTICES :: LATHE_SECTORS * LATHE_SEGMENTS * 6;
 LATHE_SLOTS :: 2 * LATHE_WEDGES;
-LATHE_AT :: REMOTE_AT + REMOTE_BODIES;
+LATHE_AT :: REMOTE_AT + 2 * REMOTE_BODIES;   // the others' whole-mesh run, then their far-mesh run
 PROFILE_BASIN :: 0; PROFILE_COLUMN :: 1;
 LOOK_CARVED :: 9;
 LOOK_PLANKS :: 11;        // a deck of planks (everglade.wgsl planks): boards, gaps, staggered ends, grain
@@ -259,7 +259,8 @@ RANGER_DRAW :: 5 + KIT_MESHES;
 LATHE_DRAW :: 5 + KIT_MESHES + 1;
 PEOPLE_DRAW :: LATHE_DRAW + 1;
 SHARD_DRAW :: PEOPLE_DRAW + PEOPLE_PARTS;
-WATER_DRAW :: SHARD_DRAW + KIT_MESHES;
+RANGER_FAR_DRAW :: SHARD_DRAW + KIT_MESHES;   // the others' Rangers past REMOTE_LOD_FROM, the pack's far mesh
+WATER_DRAW :: RANGER_FAR_DRAW + 1;
 DRAWS :: WATER_DRAW + 1;
 // The river's floats, as river.coax everglade_river_floats writes them: x,
 // y, z, yaw, how far it tips and which way, 0, and the kind (0 a duck, 1 a lily pad, 2 a rowboat).
@@ -881,6 +882,7 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
   for k: 0..<KIT_TREES * 3 { s[0].canopy_rgb[k] = 0; }
   s[0].identity_first = -1;
   s[0].ranger_first = 0; s[0].ranger_count = 0; s[0].ranger_word = 0; s[0].rangers[0].layer = -1;
+  s[0].rangers[0].far_first = 0; s[0].rangers[0].far_count = 0;
   for k: 0..<PEOPLE_PARTS { s[0].part_first[k] = 0; s[0].part_count[k] = 0; s[0].part_word[k] = 0; }
   i := 0;
   while i < text.count {
@@ -901,6 +903,10 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
       for k: 0..<6 { nums[k] = whole_at(line, at); at = word_end(line, at + 1); }
       if line[2..<name_end] == RANGER_NAME && nums[0] >= 0 && nums[1] > 0 && nums[3] >= 0 && nums[5] == RANGER_JOINTS {
         s[0].ranger_first = nums[0]; s[0].ranger_count = nums[1]; s[0].ranger_word = nums[3];
+      }
+      // its far mesh: the same vertices, a fifth of the triangles (everglade-rangers.coax)
+      if line[2..<name_end] == RANGER_LOD_NAME && nums[0] >= 0 && nums[1] > 0 && nums[5] == RANGER_JOINTS {
+        s[0].rangers[0].far_first = nums[0]; s[0].rangers[0].far_count = nums[1];
       }
       // or a part the people wear, on their skeleton
       for k: 0..<PEOPLE_PARTS {
@@ -2978,7 +2984,7 @@ wildlife :: (s: [] Everglade, you: Point, still: bool) {
 figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airborne: bool, dt: f32, still: bool) {
   rig := ranger_rig(s[0].rig[..]);
   dead := s[0].wv.started && s[0].wt[0].dead;
-  motion := ifx dead then SKIN_IDLE else skin_motion(speed, airborne);
+  motion := rangers_you_clip(s, ifx dead then SKIN_IDLE else skin_motion(speed, airborne), airborne, dead, dt);   // the swing as you cast
   skin_advance(rig, s[0].skin[..], motion, speed, dt);
   fade := ifx s[0].skin[0].fade > 0 then s[0].skin[0].fade else f32(SKIN_FADE);
   if still && motion == SKIN_IDLE && s[0].skin[0].clock - s[0].skin[0].changed >= fade {
@@ -3016,6 +3022,8 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
   s[0].objects[o + 12] = f32(s[0].ranger_word); s[0].objects[o + 13] = 1; s[0].objects[o + 14] = 1;
   s[0].objects[o + 15] = f32(SHAPE_SKINNED + 8 * LOOK_KIT);
   shadow(s, u, feet.x, feet.z, floor_under(s, feet.x, feet.z, feet.y), 0.45, 0.6);
+  // your class's gear, as the others see on you (everglade-rangers.coax)
+  if ci_you_shown(s) && !you_inside(s) { gear_draw(s, ranger_gear(rig, s[0].skin[..], CLASS_DRUID), rows); }
 }
 
 NEAR :: 0.1; FAR :: 420.0;
@@ -3796,6 +3804,13 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   bodies := ifx s[0].ranger_count > 0 then (ifx you_on then 1 else 0) + s[0].rangers[0].n else 0;
   s[0].draws[d + 3] = cast(u32) bodies;
   s[0].kit_triangles += s[0].ranger_count / 3 * bodies;
+  d = RANGER_FAR_DRAW * 4;
+  far_bodies := ifx s[0].ranger_count > 0 && s[0].rangers[0].far_count > 0 then s[0].rangers[0].far_n else 0;
+  s[0].draws[d] = cast(u32) s[0].rangers[0].far_first;
+  s[0].draws[d + 1] = cast(u32) s[0].rangers[0].far_count;
+  s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + REMOTE_FAR_AT);
+  s[0].draws[d + 3] = cast(u32) far_bodies;
+  s[0].kit_triangles += s[0].rangers[0].far_count / 3 * far_bodies;
   d = LATHE_DRAW * 4;
   s[0].draws[d] = first;
   s[0].draws[d + 1] = cast(u32) LATHE_VERTICES;
@@ -3997,7 +4012,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
   #assert squares > 100 && holes * 50 < squares;
 }
 
-CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 3474 0 0 0 0 1 8 1\nM Pine_4 4938 6480 0 0 0 0 1 9 1\nM Pine_4_Leaves 11418 3630 0 0 0 0 1 9 1 canopy ellipsoid 33 98 0\nM CommonTree_3 15048 5115 0 0 0 0 1 8 1\nM CommonTree_3_Leaves 20163 5400 0 0 0 0 1 9 1 canopy sphere 97 198 0\nM CommonTree_4 25563 9840 0 0 0 0 1 8 1\nM CommonTree_4_Leaves 35403 2358 0 0 0 0 1 9 1\nM Bush_Common_Flowers 37761 4104 0 0 0 0 1 1 1\nM Fern_1 40461 864 0 0 0 0 1 1 1\nM Rock_Medium_1 41325 1026 0 0 0 0 1 2 1\nM Rock_Medium_2 42351 732 0 0 0 0 1 2 1\nI 43083 1024\nC player/male-ranger 44107 94188 3 692676 27402 75\nC people/male-peasant 246666 20058 4 911892 5751 65\nC people/male-ranger 266724 32610 4 946398 10887 65\nC people/male-hood 299334 3204 4 1011720 706 65\nC people/female-peasant 302538 19422 4 1015956 6185 65\nC people/female-ranger 321960 34032 4 1053066 11408 65\nC people/female-hood 355992 3204 4 1121514 706 65\nC people/male-head 359196 8268 4 1125750 1837 65\nC people/female-head 367464 9480 4 1136772 2058 65\nC people/hair-parted 376944 2337 4 1149120 496 65\nC people/hair-buzzed 379281 1494 4 1152096 300 65\nC people/hair-beard 380775 1860 4 1153896 389 65\nC people/hair-long 382635 8598 4 1156230 3060 65\nC people/hair-buns 391233 9732 4 1174590 3481 65\nC people/hair-buzzed-female 400965 1494 4 1195476 300 65\nC people/male-robe 402459 1920 5 1197276 360 65\nC people/female-robe 404379 1920 5 1199436 360 65\nT 0 layer29.jpg 0\n";
+CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 3474 0 0 0 0 1 8 1\nM Pine_4 4938 6480 0 0 0 0 1 9 1\nM Pine_4_Leaves 11418 3630 0 0 0 0 1 9 1 canopy ellipsoid 33 98 0\nM CommonTree_3 15048 5115 0 0 0 0 1 8 1\nM CommonTree_3_Leaves 20163 5400 0 0 0 0 1 9 1 canopy sphere 97 198 0\nM CommonTree_4 25563 9840 0 0 0 0 1 8 1\nM CommonTree_4_Leaves 35403 2358 0 0 0 0 1 9 1\nM Bush_Common_Flowers 37761 4104 0 0 0 0 1 1 1\nM Fern_1 40461 864 0 0 0 0 1 1 1\nM Rock_Medium_1 41325 1026 0 0 0 0 1 2 1\nM Rock_Medium_2 42351 732 0 0 0 0 1 2 1\nI 43083 1024\nC player/male-ranger 44107 94188 3 692676 27402 75\nC player/male-ranger.lod 407496 18834 3 692676 27402 75\nC people/male-peasant 246666 20058 4 911892 5751 65\nC people/male-ranger 266724 32610 4 946398 10887 65\nC people/male-hood 299334 3204 4 1011720 706 65\nC people/female-peasant 302538 19422 4 1015956 6185 65\nC people/female-ranger 321960 34032 4 1053066 11408 65\nC people/female-hood 355992 3204 4 1121514 706 65\nC people/male-head 359196 8268 4 1125750 1837 65\nC people/female-head 367464 9480 4 1136772 2058 65\nC people/hair-parted 376944 2337 4 1149120 496 65\nC people/hair-buzzed 379281 1494 4 1152096 300 65\nC people/hair-beard 380775 1860 4 1153896 389 65\nC people/hair-long 382635 8598 4 1156230 3060 65\nC people/hair-buns 391233 9732 4 1174590 3481 65\nC people/hair-buzzed-female 400965 1494 4 1195476 300 65\nC people/male-robe 402459 1920 5 1197276 360 65\nC people/female-robe 404379 1920 5 1199436 360 65\nT 0 layer29.jpg 0\n";
 
 #test "the pack's catalog: the kit's meshes by name and the shapes' identity indices; nothing draws before it" #steps 351000000 {
   g: [1] Everglade;

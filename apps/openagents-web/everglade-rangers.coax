@@ -1,32 +1,40 @@
 // Other players' bodies (#12707; docs/verse/2026-11-03-everglade-multiplayer-spec.md 3.8 and 5.1 to
-// 5.3). Everyone else in the room is drawn from the relay's remote entities (everglade-net.coax,
-// #12706: each seat's pose 200 ms behind the relay clock, its velocity and flags, its hello's look),
-// read into a RemoteBody each (remote_bodies), as what they are:
+// 5.3). Everyone else in the room is drawn from the server's player entities (everglade-net.coax,
+// #12706: each seat's state a jitter buffer behind the server's clock, its velocity and flags, the
+// look, class and FLAGS of its hello), read into a RemoteBody each (remote_bodies), as what they are:
 //   - the skinned Ranger you play (verse/everglade/ranger.coax), on the same skinning and clip
 //     blending as yours (aethyr/skin.coax skin_advance: a change of clip blends over SKIN_FADE), the
 //     clip picked as yours is (figure: idle, walk, run or jump by speed and air), the gait from their
-//     interpolated speed so a walk never skates;
+//     interpolated speed so a walk never skates; the swing as their spell goes off, as yours does as
+//     you cast (rangers_you_cast);
 //   - in their look ("ranger.SKIN.DYE.TRIM", the hello's LOOK): skin tone SKIN (folk.coax SKIN_TONE,
 //     the townsfolk's), the outfit's green cloth dyed LOOK_DYE[DYE] and its leather LOOK_DYE[TRIM]
-//     (0 is the Ranger's own green and brown); everyone's class is the realm's druid for now (spec 5.2);
-//   - in a beast's shape when the pose says so (Wild Shape, Polymorph: everglade-circle ci_beast, as
+//     (0 is the Ranger's own green and brown);
+//   - with their class's gear (the druid's staff across the back, from the pose's spine and
+//     clavicles), yours too;
+//   - in a beast's shape when the state says so (Wild Shape, Polymorph: everglade-circle ci_beast, as
 //     yours is drawn), on their back when dead, sat low in a rowboat;
-//   - their name over their skinned head ("" until the server names them: a nameless figure), white;
-//     gold for an account once the server's player record carries the hello's FLAGS (it doesn't yet:
-//     everglade-wire.coax p EID SEAT ID LOOK NAME).
+//   - faded by an ordered dither to REMOTE_AWAY_SHOWN while the server hasn't heard their page
+//     (WG_AWAY), back as it is heard again;
+//   - their name over their skinned head ("" until the server names them: a nameless figure), gold for
+//     an account (the hello's FLAGS 2), white for a guest.
 //
-// The nearest REMOTE_BODIES in view within REMOTE_NEAR get a body (REMOTE_BODIES_PHONE on a phone);
-// the rest a nameplate only. Their Rangers are one draw with yours (RANGER_DRAW: your object at
-// RANGER_AT, theirs after it at REMOTE_AT); each object points the shader at its own block of joint
-// matrices in store 2 (colour.z REMOTE_MARK, colour.y the block's first row) and at its look's two
-// rows (the kind word over 256; verse/everglade/gpu.coax). Level of detail by distance: a body nearer
+// Every other player in view within REMOTE_NEAR gets a body (REMOTE_BODIES at most: a full room). The
+// nearest REMOTE_WHOLE (REMOTE_WHOLE_PHONE on a phone) within REMOTE_LOD_FROM have the whole mesh, one
+// draw with yours (RANGER_DRAW: your object at RANGER_AT, theirs after it at REMOTE_AT); the rest the
+// pack's far mesh, the same vertices and a fifth of the triangles (verse/tools/pack_realm.py far_mesh),
+// their own draw (RANGER_FAR_DRAW, objects at REMOTE_FAR_AT). Each object points the shader at its own
+// block of joint matrices in store 2 (colour.z REMOTE_MARK, colour.y the block's first row) and at its
+// look's two rows (the kind word over 256; verse/everglade/gpu.coax). Posing by distance: a body nearer
 // than REMOTE_FULL is posed every frame, to REMOTE_MID every second frame, beyond that every
 // REMOTE_FAR_EVERY-th, each with the time it owes, so its clips and their blends keep their pace
 // however seldom it is sampled; the bodies' turns are staggered so the work spreads over frames.
 
 REMOTE_SEATS :: 16;            // a room holds 16 players (#12705); the most read from the net a frame
-REMOTE_BODIES :: 8;            // bodies on a computer (as PEOPLE_SHOWN)
-REMOTE_BODIES_PHONE :: 5;      // and on a phone (as PEOPLE_SHOWN_PHONE)
+REMOTE_BODIES :: 15;           // bodies at most: everyone else in a full room
+REMOTE_WHOLE :: 8;             // the nearest this many have the whole mesh (as PEOPLE_SHOWN)...
+REMOTE_WHOLE_PHONE :: 5;       // ...on a phone this many (as PEOPLE_SHOWN_PHONE)
+REMOTE_LOD_FROM :: 25.0;       // m: farther, the pack's far mesh (player/male-ranger.lod: a fifth of the triangles)
 REMOTE_NEAR :: 80.0;           // m: farther, a nameplate only
 REMOTE_FULL :: 15.0;           // m: nearer, a body's pose every frame
 REMOTE_MID :: 35.0;            // m: nearer, every second frame
@@ -34,13 +42,26 @@ REMOTE_FAR_EVERY :: 4;         // farther: one frame in this many
 REMOTE_MARK :: 3.0;            // colour.z of another player's Ranger (yours 1, a person 2)
 REMOTE_BOAT_SINK :: 0.42;      // m a rower sits below the deck (figure)
 REMOTE_BLOCK :: RANGER_JOINTS * 12;
-REMOTE_LOOK_ROWS :: 2;         // skin tone and the Ranger's first layer; the cloak's and leather's dyes
+REMOTE_LOOK_ROWS :: 2;         // skin tone and the Ranger's first layer; the cloak's and leather's dyes, how shown
 REMOTE_PAL_AT :: RANGER_JOINTS * 12 + PEOPLE_SHOWN * PERSON_ROWS * 4;
 REMOTE_LOOK_AT :: REMOTE_PAL_AT + REMOTE_BODIES * REMOTE_BLOCK;
 REMOTE_PALETTE :: REMOTE_BODIES * (REMOTE_BLOCK + REMOTE_LOOK_ROWS * 4);
+REMOTE_FAR_AT :: REMOTE_AT + REMOTE_BODIES;   // the far mesh's objects, its own draw (RANGER_FAR_DRAW)
 REMOTE_HEAD_OVER :: 0.42;      // m from the head joint up to the nameplate
 REMOTE_PLATE_NEAR :: 60.0;     // m: a player's nameplate shows this near (a townsperson's NAME_NEAR),
 REMOTE_PLATE_FADE :: 15.0;     // fading out over the last this many
+REMOTE_AWAY_SHOWN :: 0.35;     // how much of a body shows while the server hasn't heard its page (WF_AWAY)
+REMOTE_FADE_RATE :: 2.0;       // of that a second, out and back
+RANGER_LOD_NAME :: "player/male-ranger.lod";   // the far mesh's catalog line (verse/tools/pack_realm.py far_mesh)
+// A class's gear: everyone's class is the realm's druid today (spec 5.2), who carries a staff on their
+// back, its head in leaves. A class the page doesn't know is drawn as the druid.
+CLASS_DRUID :: 0;
+CLASS_NAME :: [1] string.["druid"];
+STAFF_RGB :: [3] f32.[0.20, 0.12, 0.06];
+STAFF_LEAF_RGB :: [3] f32.[0.16, 0.36, 0.12];
+// The Ranger's joints the gear hangs from (verse/everglade/ranger.coax RANGER_PARENT): the spine's
+// middle and its top, the chest, and the two clavicles (+x the left, facing +z).
+RANGER_SPINE :: 15; RANGER_CHEST :: 18; RANGER_NECK :: 21; RANGER_CLAVICLE_L :: 27; RANGER_CLAVICLE_R :: 28;
 // The cloth dyes a look picks (DYE and TRIM; linear rgb at the cloth's usual lightness). 0 is none:
 // the Ranger's own.
 LOOK_DYES :: 12;
@@ -86,53 +107,86 @@ RemoteBody :: struct {
   seat: int;
   name: string;               // "" a nameless figure
   account: bool;              // a gold nameplate (a guest's is white)
+  away: bool;                 // the server hasn't heard their page lately (WF_AWAY): drawn faded
+  kind: int;                  // CLASS_*: their class, its gear
   p: Point;                   // their feet in the world
   yaw: f32;
   v: Point;                   // m/s
   air: bool; swim: bool; boat: bool;
   form: int;                  // CI_FORM_*: a beast's shape
   alive: bool;
+  swing: f32 = 100000;        // s since their last spell went off (they swing as they cast)
   look: Look;
 }
+
+// A body's gear in its own space (before its turn and place), from its pose: the staff's foot and head.
+Gear :: struct { on: bool; foot: Point; head: Point; }
 
 Rangers :: struct {
   seat: [REMOTE_BODIES] int;     // the seat each body poses, -1 none
   skin: [REMOTE_BODIES] Skin;
   owed: [REMOTE_BODIES] f32;     // s of animation not yet played (a far body's)
   walk: [REMOTE_BODIES] f32;     // m walked (a beast's gait)
+  shown: [REMOTE_BODIES] f32;    // how much of it shows (1 all; REMOTE_AWAY_SHOWN while away)
+  gear: [REMOTE_BODIES] Gear;    // its gear as last posed
+  head_at: [REMOTE_BODIES] Point;   // its head joint as last posed
   frame: int;
   head: int;                     // the Ranger's head joint, -1 before it is found
   layer: int = -1;               // the pack's first Ranger texture layer (its outfit), -1 not known
-  n: int;                        // Rangers drawn this frame
+  far_first: int; far_count: int;   // the far mesh's indices in the pack (0 none: the whole mesh for all)
+  n: int;                        // Rangers drawn this frame with the whole mesh
+  far_n: int;                    // and with the far mesh
   posed: int;                    // bodies posed this frame (the rest owe their time)
   plates: int;                   // where each body's nameplate goes
-  plate_seat: [REMOTE_BODIES] int; plate_at: [REMOTE_BODIES] Point;
+  plate_seat: [REMOTE_BODIES] int; plate_at: [REMOTE_BODIES] Point; plate_shown: [REMOTE_BODIES] f32;
+  you_swing: f32;                // s of your swing left (you swing as you cast: rangers_you_cast)
 }
 
 rangers_start :: (g: [] Rangers) {
-  g[0].frame = 0; g[0].head = -1; g[0].layer = -1; g[0].n = 0; g[0].posed = 0; g[0].plates = 0;
-  for k: 0..<REMOTE_BODIES { g[0].seat[k] = -1; g[0].skin[k] = Skin.{}; g[0].owed[k] = 0; g[0].walk[k] = 0; }
+  g[0].frame = 0; g[0].head = -1; g[0].layer = -1; g[0].n = 0; g[0].far_n = 0; g[0].posed = 0; g[0].plates = 0;
+  g[0].far_first = 0; g[0].far_count = 0; g[0].you_swing = 0;
+  for k: 0..<REMOTE_BODIES { g[0].seat[k] = -1; g[0].skin[k] = Skin.{}; g[0].owed[k] = 0; g[0].walk[k] = 0; g[0].shown[k] = 1; g[0].gear[k] = Gear.{}; }
 }
 
-// The clip a body plays: as yours (figure).
+// A class's word ("druid") as CLASS_*; one the page doesn't know is the druid.
+class_of :: (t: string) -> int {
+  for k: 0..<CLASS_NAME.count { if t == CLASS_NAME[k] { return k; } }
+  return CLASS_DRUID;
+}
+
+// The clip a body plays: as yours (figure), and the swing while their spell goes off.
 remote_clip :: (e: RemoteBody) -> int {
   if !e.alive { return SKIN_IDLE; }
+  if !e.air && e.swing >= 0 && e.swing < RANGER_DURATION[SKIN_SWING] { return SKIN_SWING; }
   return skin_motion(flat_length(e.v), e.air);
+}
+
+// You cast: your Ranger swings through it (figure), as the others see you do from the server's effect.
+rangers_you_cast :: (s: [] Everglade) { s[0].rangers[0].you_swing = RANGER_DURATION[SKIN_SWING]; }
+// Your clip: the swing while it lasts on the ground, else what you are doing (dt s on).
+rangers_you_clip :: (s: [] Everglade, motion: int, airborne: bool, dead: bool, dt: f32) -> int {
+  g := s[0].rangers[..];
+  if dead || airborne { g[0].you_swing = 0; }
+  if g[0].you_swing <= 0 { return motion; }
+  g[0].you_swing -= ifx finite(dt) then hi(dt, 0) else 0.0f32;
+  return SKIN_SWING;
 }
 
 // The room's other players (everglade-net.coax, the server's WK_PLAYER entities, drawn a jitter
 // buffer behind its clock) as bodies: their feet where the server has them, their beast's shape (P1),
-// their name ("" until the server names them: a nameless figure) and their look.
+// their name ("" until the server names them: a nameless figure), look, class and FLAGS, whether the
+// server has heard them lately, and their last spell's time.
 remote_bodies :: (s: [] Everglade, out: [] RemoteBody) -> int {
   n := 0;
   for k: 0..<net_count(s, WK_PLAYER) {
     if n >= out.count { break; }
     v := net_view(s, WK_PLAYER, k);
     if !v.ok { continue; }
-    out[n] = RemoteBody.{seat = v.eid, name = net_view_name(s, WK_PLAYER, k), account = false,
+    out[n] = RemoteBody.{seat = v.eid, name = net_view_name(s, WK_PLAYER, k), account = v.account, away = v.away,
+                         kind = class_of(net_view_class(s, WK_PLAYER, k)),
                          p = v3(v.x, v.y, v.z), yaw = v.yaw, v = v3(v.vx, 0, v.vz),
                          air = v.air || v.act == 3, swim = v.swim, boat = v.boat, form = v.form, alive = v.alive,
-                         look = look_parse(net_view_look(s, WK_PLAYER, k))};
+                         swing = v.cast_age, look = look_parse(net_view_look(s, WK_PLAYER, k))};
     n += 1;
   }
   return n;
@@ -154,20 +208,53 @@ ranger_head :: (g: [] Rangers, rig: SkinRig, sk: [] Skin) -> int {
   return best;
 }
 
-plate_put :: (g: [] Rangers, seat: int, p: Point) {
+// A class's gear from a pose, in the body's own space: the druid's staff across the back, from the
+// right hip up past the left shoulder, a hand's breadth off the spine.
+ranger_gear :: (rig: SkinRig, sk: [] Skin, kind: int) -> Gear {
+  if rig.joints != RANGER_JOINTS { return Gear.{}; }
+  spine := skin_joint(rig, sk, RANGER_SPINE); chest := skin_joint(rig, sk, RANGER_CHEST); neck := skin_joint(rig, sk, RANGER_NECK);
+  right := unit_or(sub(skin_joint(rig, sk, RANGER_CLAVICLE_R), skin_joint(rig, sk, RANGER_CLAVICLE_L)), v3(-1, 0, 0));
+  up := unit_or(sub(neck, spine), v3(0, 1, 0));
+  back := times(unit_or(cross(up, right), v3(0, 0, 1)), -1);
+  along := unit_or(sub(up, times(right, 0.55)), up);
+  mid := add(chest, times(back, 0.14));
+  return Gear.{on = true, foot = sub(mid, times(along, 0.78)), head = add(mid, times(along, 0.82))};
+}
+// A point of a body's own space in the world, by its object's rows.
+body_world :: (rows: [12] f32, p: Point) -> Point {
+  return v3(rows[0] * p.x + rows[1] * p.y + rows[2] * p.z + rows[3],
+            rows[4] * p.x + rows[5] * p.y + rows[6] * p.z + rows[7],
+            rows[8] * p.x + rows[9] * p.y + rows[10] * p.z + rows[11]);
+}
+// The gear drawn where a body's rows put it.
+gear_draw :: (s: [] Everglade, g: Gear, rows: [12] f32) {
+  if !g.on { return; }
+  a := body_world(rows, g.foot); b := body_world(rows, g.head);
+  d := sub(b, a); l := length(d);
+  if !(l > 0.1) { return; }
+  ax := unit_or(d, v3(0, 1, 0));
+  side := unit_or(cross(ax, v3(0, 1, 0)), v3(1, 0, 0));
+  third := cross(side, ax);
+  w := 0.032f32;
+  sp_shape(s, SHAPE_BOX, LOOK_WOOD, times(add(a, b), 0.5), times(side, w), times(ax, l), times(third, w), v3(STAFF_RGB[0], STAFF_RGB[1], STAFF_RGB[2]));
+  sp_shape(s, SHAPE_SPHERE, LOOK_LEAVES, add(b, times(ax, 0.04)), times(side, 0.16), times(ax, 0.2), times(third, 0.16), v3(STAFF_LEAF_RGB[0], STAFF_LEAF_RGB[1], STAFF_LEAF_RGB[2]));
+}
+
+plate_put :: (g: [] Rangers, seat: int, p: Point, shown: f32) {
   if g[0].plates >= REMOTE_BODIES { return; }
-  g[0].plate_seat[g[0].plates] = seat; g[0].plate_at[g[0].plates] = p; g[0].plates += 1;
+  g[0].plate_seat[g[0].plates] = seat; g[0].plate_at[g[0].plates] = p; g[0].plate_shown[g[0].plates] = shown; g[0].plates += 1;
 }
 
 // Each frame: the nearest of the others in view, posed, into the objects after yours (a beast's shape
-// as yours is drawn).
+// as yours is drawn): the nearest REMOTE_WHOLE (REMOTE_WHOLE_PHONE) within REMOTE_LOD_FROM with the
+// whole mesh, the rest with the far one.
 rangers_draw :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, rs: [] RemoteBody) {
   g := s[0].rangers[..];
-  g[0].n = 0; g[0].posed = 0; g[0].plates = 0; g[0].frame += 1;
+  g[0].n = 0; g[0].far_n = 0; g[0].posed = 0; g[0].plates = 0; g[0].frame += 1;
   if !s[0].pack_ready || s[0].ranger_count <= 0 { return; }
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
-  cap := ifx phone(s) then REMOTE_BODIES_PHONE else REMOTE_BODIES;
-  // the nearest `cap` shown and in view, nearest first
+  whole := ifx phone(s) then REMOTE_WHOLE_PHONE else REMOTE_WHOLE;
+  // the nearest REMOTE_BODIES shown and in view, nearest first
   pick: [REMOTE_BODIES] int; gaps: [REMOTE_BODIES] f32;
   m := 0;
   for i: 0..<rs.count {
@@ -175,7 +262,7 @@ rangers_draw :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, rs: [] RemoteB
     d := flat_gap(e.p, you);
     if d > f32(REMOTE_NEAR) || !in_view(u, e.p.x, e.p.y + 1, e.p.z, 1.6) { continue; }
     k := m;
-    if k == cap { if d >= gaps[k - 1] { continue; } k -= 1; } else { m += 1; }
+    if k == REMOTE_BODIES { if d >= gaps[k - 1] { continue; } k -= 1; } else { m += 1; }
     while k > 0 && gaps[k - 1] > d { gaps[k] = gaps[k - 1]; pick[k] = pick[k - 1]; k -= 1; }
     gaps[k] = d; pick[k] = i;
   }
@@ -192,21 +279,27 @@ rangers_draw :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, rs: [] RemoteB
     b := 0;
     while b < REMOTE_BODIES && held[b] { b += 1; }
     held[b] = true; slot[k] = b;
-    g[0].seat[b] = rs[pick[k]].seat; g[0].skin[b] = Skin.{}; g[0].owed[b] = 0; g[0].walk[b] = 0;
+    g[0].seat[b] = rs[pick[k]].seat; g[0].skin[b] = Skin.{}; g[0].owed[b] = 0; g[0].walk[b] = 0; g[0].gear[b] = Gear.{};
+    g[0].shown[b] = ifx rs[pick[k]].away then f32(REMOTE_AWAY_SHOWN) else 1.0f32;
   }
   rig := ranger_rig(s[0].rig[..]);
-  r := 0;   // Rangers written
+  nears := 0;   // bodies given the whole mesh so far
   for k: 0..<m {
     e := rs[pick[k]];
     b := slot[k];
     sk := g[0].skin[b..<b + 1];
     speed := flat_length(e.v);
     g[0].walk[b] += speed * t;
+    // away, it fades to REMOTE_AWAY_SHOWN; heard again, back
+    want := ifx e.away then f32(REMOTE_AWAY_SHOWN) else 1.0f32;
+    step := f32(REMOTE_FADE_RATE) * t;
+    g[0].shown[b] = ifx g[0].shown[b] < want then lo(g[0].shown[b] + step, want) else hi(g[0].shown[b] - step, want);
+    shown := g[0].shown[b];
     feet := ifx e.boat then sub(e.p, v3(0, f32(REMOTE_BOAT_SINK), 0)) else e.p;
     if e.form != CI_FORM_NONE {
       // a beast's shape, as yours (everglade-circle.coax), its trot by the metres walked
       ci_beast(s, e.form, feet, e.yaw, g[0].walk[b], clamp01(speed / 1.3), false, 1);
-      plate_put(g, e.seat, v3(feet.x, feet.y + 1.6, feet.z));
+      plate_put(g, e.seat, v3(feet.x, feet.y + 1.6, feet.z), shown);
       continue;
     }
     // its pose, as often as its distance asks: the clip and its blend at the time owed
@@ -214,45 +307,56 @@ rangers_draw :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, rs: [] RemoteB
     g[0].owed[b] += t;
     every := remote_every(gaps[k]);
     at := REMOTE_PAL_AT + b * REMOTE_BLOCK;
-    if every == 1 || (g[0].frame + b) % every == 0 || sk[0].clip != clip {
+    if every == 1 || (g[0].frame + b) % every == 0 || sk[0].clip != clip || !g[0].gear[b].on {
       skin_advance(rig, sk, clip, speed, g[0].owed[b]);
       skin_palette(rig, sk, s[0].palette[at..<at + REMOTE_BLOCK]);
       g[0].owed[b] = 0; g[0].posed += 1;
+      g[0].gear[b] = ranger_gear(rig, sk, e.kind);
+      g[0].head_at[b] = skin_joint(rig, sk, ranger_head(g, rig, sk));
     }
-    // its look: the skin tone and the outfit's layer; the cloak's and leather's dyes
+    // its look: the skin tone and the outfit's layer; the cloak's and leather's dyes, and how shown
     lk := REMOTE_LOOK_AT + b * REMOTE_LOOK_ROWS * 4;
     for c: 0..<3 { s[0].palette[lk + c] = SKIN_TONE[e.look.skin * 3 + c]; }
     s[0].palette[lk + 3] = f32(g[0].layer);
     s[0].palette[lk + 4] = look_dye24(e.look.dye); s[0].palette[lk + 5] = look_dye24(e.look.trim);
-    s[0].palette[lk + 6] = 0; s[0].palette[lk + 7] = 0;
+    s[0].palette[lk + 6] = 0; s[0].palette[lk + 7] = shown;
     c := cos(e.yaw); sn := sin(e.yaw);
     rows := [12] f32.[c, 0, sn, feet.x,   0, 1, 0, feet.y,   -sn, 0, c, feet.z];
     // dead: on their back, as you lie (figure)
     if !e.alive { rows = [12] f32.[c, -sn, 0, feet.x,   0, 0, 1, feet.y + 0.12,   -sn, -c, 0, feet.z]; }
-    o := (REMOTE_AT + r) * OBJECT_FLOATS;
+    // the whole mesh near, the far one past REMOTE_LOD_FROM or past the nearest `whole`
+    far := g[0].far_count > 0 && (gaps[k] >= f32(REMOTE_LOD_FROM) || nears >= whole);
+    o := ifx far then (REMOTE_FAR_AT + g[0].far_n) * OBJECT_FLOATS else (REMOTE_AT + g[0].n) * OBJECT_FLOATS;
+    if far { g[0].far_n += 1; } else { g[0].n += 1; nears += 1; }
     for q: 0..<12 { s[0].objects[o + q] = rows[q]; }
     s[0].objects[o + 12] = f32(s[0].ranger_word);
     s[0].objects[o + 13] = f32(at / 4);
     s[0].objects[o + 14] = f32(REMOTE_MARK);
     s[0].objects[o + 15] = f32(SHAPE_SKINNED + 8 * LOOK_KIT + 256 * (lk / 4));
-    r += 1;
-    shadow(s, u, feet.x, feet.z, floor_under(s, feet.x, feet.z, feet.y), 0.45, 0.6);
+    if shown > 0.6 {
+      shadow(s, u, feet.x, feet.z, floor_under(s, feet.x, feet.z, feet.y), 0.45, 0.6);
+      gear_draw(s, g[0].gear[b], rows);
+    }
     // the head, for the nameplate
-    hp := skin_joint(rig, sk, ranger_head(g, rig, sk));
-    plate_put(g, e.seat, ifx e.alive then v3(c * hp.x + sn * hp.z + feet.x, hp.y + feet.y + f32(REMOTE_HEAD_OVER), -sn * hp.x + c * hp.z + feet.z)
-                         else v3(feet.x, feet.y + 0.9, feet.z));
+    hp := g[0].head_at[b];
+    plate_put(g, e.seat, ifx e.alive then add(body_world(rows, hp), v3(0, f32(REMOTE_HEAD_OVER), 0)) else v3(feet.x, feet.y + 0.9, feet.z), shown);
   }
-  g[0].n = r;
 }
 
-// Where a remote's nameplate goes: over the head of the body drawn for them, else as high.
+// Where a remote's nameplate goes: over the head of the body drawn for them, else as high; and how
+// much of it shows.
 remote_plate_at :: (s: [] Everglade, e: RemoteBody) -> Point {
   g := s[0].rangers[..];
   for k: 0..<g[0].plates { if g[0].plate_seat[k] == e.seat { return g[0].plate_at[k]; } }
   return v3(e.p.x, e.p.y + 2.2, e.p.z);
 }
+remote_plate_shown :: (s: [] Everglade, e: RemoteBody) -> f32 {
+  g := s[0].rangers[..];
+  for k: 0..<g[0].plates { if g[0].plate_seat[k] == e.seat { return g[0].plate_shown[k]; } }
+  return ifx e.away then f32(REMOTE_AWAY_SHOWN) else 1.0f32;
+}
 
-// Their names over their heads, for labels(): how many written into ls from c.
+// Their names over their heads, for labels(): how many written into ls from c. Gold for an account.
 rangers_labels :: (s: [] Everglade, ls: [] Label, c: int, you: Point, k: f32, rs: [] RemoteBody) -> int {
   m := c;
   for i: 0..<rs.count {
@@ -262,7 +366,7 @@ rangers_labels :: (s: [] Everglade, ls: [] Label, c: int, you: Point, k: f32, rs
     p := remote_plate_at(s, e);
     d := flat_gap(p, you);
     if d > f32(REMOTE_PLATE_NEAR) { continue; }
-    light := 0.85 * clamp01((f32(REMOTE_PLATE_NEAR) - d) / f32(REMOTE_PLATE_FADE));
+    light := 0.85 * clamp01((f32(REMOTE_PLATE_NEAR) - d) / f32(REMOTE_PLATE_FADE)) * remote_plate_shown(s, e);
     ls[m] = Label.{text = e.name, p = p, cap = 6.5 * k, light = light, gold = e.account, d = d, done = false, person = true}; m += 1;
   }
   return m;
@@ -284,7 +388,7 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
   m := 0;
   for i: 0..<n {
     if m >= out.count { break; }
-    x := -3.0f32 + f32(i) * 1.5; z := -78.0f32 + f32(i % 2);
+    x := -3.0f32 + f32(i) * 0.7; z := -78.0f32 + f32(i % 2);
     out[m] = RemoteBody.{seat = 100 + i, name = ifx i % 2 == 0 then "WREN" else "Mossy Heron", account = i % 2 == 0,
                          p = v3(x, walk_at(s, x, z), z), yaw = 3.1, v = v3(0, 0, 0), alive = true,
                          look = Look.{skin = i % LOOK_SKINS, dye = 1 + i, trim = 2 + i}};
@@ -319,8 +423,15 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
   #assert remote_clip(e) == SKIN_RUN;
   e.air = true;
   #assert remote_clip(e) == SKIN_JUMP;
+  e.air = false; e.swing = 0.3;
+  #assert remote_clip(e) == SKIN_SWING;   // their spell went off 0.3 s ago: they swing through it
+  e.swing = RANGER_DURATION[SKIN_SWING] + 0.01;
+  #assert remote_clip(e) == SKIN_RUN;
+  e.swing = 0.3; e.air = true;
+  #assert remote_clip(e) == SKIN_JUMP;
   e.air = false; e.alive = false;
   #assert remote_clip(e) == SKIN_IDLE;
+  #assert class_of("druid") == CLASS_DRUID && class_of("") == CLASS_DRUID && class_of("bard") == CLASS_DRUID;
   #assert remote_every(3) == 1 && remote_every(20) == 2 && remote_every(60) == REMOTE_FAR_EVERY;
   g: [1] Rangers;
   rangers_start(g[..]);
@@ -340,6 +451,7 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
   face := 0.0f32;
   fr := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, face, 0, 0, 0, false, 0, 0, 0, 0);
   cones := g[0].counts[SHAPE_CONE];
+  boxes := g[0].counts[SHAPE_BOX]; balls := g[0].counts[SHAPE_SPHERE];
   d := RANGER_DRAW * 4;
   #assert g[0].draws[d + 3] == 1 && g[0].rangers[0].n == 0;
   rs: [4] RemoteBody;
@@ -347,8 +459,14 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
   rs[1].v = v3(0, 0, 1.3);   // the guest walks
   for k: 0..<20 { rangers_draw(g[..], u[..], v3(0, 0, -84), 1.0 / 60.0, rs[0..<n]); }
   r := g[0].rangers[..];
-  #assert r[0].n == 3 && r[0].posed == 3 && r[0].plates == 3;
+  #assert r[0].n == 3 && r[0].far_n == 0 && r[0].posed == 3 && r[0].plates == 3 && r[0].far_count > 0;
   #assert g[0].counts[SHAPE_CONE] == cones;   // the old hooded figure is gone
+  // each carries the druid's staff on their back: its shaft and its leaves, 20 frames of them
+  #assert g[0].counts[SHAPE_BOX] - boxes == 3 * 20 && g[0].counts[SHAPE_SPHERE] - balls == 3 * 20;
+  for b: 0..<REMOTE_BODIES { if r[0].seat[b] >= 0 {
+    gr := r[0].gear[b];
+    #assert gr.on && gr.head.y > 1.5 && gr.head.y < 2.3 && gr.foot.y > 0.4 && gr.foot.y < 1.1 && gr.head.z < 0.1;
+  } }
   for k: 0..<3 {
     o := (REMOTE_AT + k) * OBJECT_FLOATS;
     #assert g[0].objects[o + 14] == f32(REMOTE_MARK) && g[0].objects[o + 12] == f32(g[0].ranger_word);
@@ -374,22 +492,40 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
   c := rangers_labels(g[..], ls[..], 0, v3(0, 0, -84), 1, rs[0..<n]);
   #assert c == 3;
   for q: 0..<c { #assert ls[q].gold == (ls[q].text == "WREN"); }
+  // past REMOTE_LOD_FROM, and past the nearest REMOTE_WHOLE, a body takes the far mesh's run
+  many: [12] RemoteBody;
+  mn := rangers_fixture(g[..], many[..], 10);
+  many[mn] = rs[0]; many[mn].seat = 300; many[mn].p = v3(1, walk_at(g[..], 1, -50), -50); mn += 1;
+  rangers_draw(g[..], u[..], v3(0, 0, -84), 1.0 / 60.0, many[0..<mn]);
+  #assert r[0].n == REMOTE_WHOLE && r[0].far_n == mn - REMOTE_WHOLE;
+  #assert g[0].objects[(REMOTE_FAR_AT + r[0].far_n - 1) * OBJECT_FLOATS + 14] == f32(REMOTE_MARK);
+  // a seat the server hasn't heard (away) fades to REMOTE_AWAY_SHOWN, its nameplate with it, and back
+  rs[0].away = true;
+  for k: 0..<40 { rangers_draw(g[..], u[..], v3(0, 0, -84), 1.0 / 60.0, rs[0..<n]); }
+  for b: 0..<REMOTE_BODIES { if r[0].seat[b] == 100 { #assert abs(r[0].shown[b] - f32(REMOTE_AWAY_SHOWN)) < 0.01; } }
+  c0 := rangers_labels(g[..], ls[..], 0, v3(0, 0, -84), 1, rs[0..<n]);
+  dim := 0;
+  for q: 0..<c0 { if ls[q].light < 0.4 { dim += 1; } }
+  #assert c0 == 3 && dim == 1;
+  rs[0].away = false;
+  for k: 0..<40 { rangers_draw(g[..], u[..], v3(0, 0, -84), 1.0 / 60.0, rs[0..<n]); }
+  for b: 0..<REMOTE_BODIES { if r[0].seat[b] == 100 { #assert r[0].shown[b] == 1; } }
   // far off, a body is posed one frame in REMOTE_FAR_EVERY, with the time it owed
   far: [1] RemoteBody;
   far[0] = rs[0]; far[0].p = v3(0, walk_at(g[..], 0, -30), -30); far[0].v = v3(0, 0, 1.3);
   posed := 0;
   for k: 0..<REMOTE_FAR_EVERY * 3 { rangers_draw(g[..], u[..], v3(0, 0, -84), 1.0 / 60.0, far[..]); posed += r[0].posed; }
-  #assert r[0].n == 1 && posed >= 3 && posed <= 4;
+  #assert r[0].n == 0 && r[0].far_n == 1 && posed >= 3 && posed <= 4;   // 54 m off: the far mesh
   // a beast's shape draws the beast and no Ranger; one out of view draws nothing
   far[0].p = rs[0].p; far[0].form = CI_FORM_WOLF;
   rangers_draw(g[..], u[..], v3(0, 0, -84), 1.0 / 60.0, far[..]);
-  #assert r[0].n == 0 && r[0].plates == 1;
+  #assert r[0].n == 0 && r[0].far_n == 0 && r[0].plates == 1;
   far[0].form = CI_FORM_NONE; far[0].p = v3(0, walk_at(g[..], 0, -100), -100);
   rangers_draw(g[..], u[..], v3(0, 0, -84), 1.0 / 60.0, far[..]);
   #assert r[0].n == 0 && r[0].plates == 0 && fr > 0;
 }
 
-#test "rangers: the room server's other players are read as bodies: place, motion, shape, name and look" {
+#test "rangers: the room server's other players are read as bodies: place, motion, shape, name, look, class, account and away" {
   b: [1] Everglade; nb: [1] EgNet;
   #assert net_test_page(b[..], nb[..], 1, "pb", 100) && net_test_hear(b[..], 1, "y 1 2 5000100");
   room: [1] RemoteBodyRoom;
@@ -402,9 +538,9 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
   for q: 1..<4 {
     net_test_tick(room[0].r[..], q, 0);
     net_test_p(room[0].r[..], WireP.{ss = 7, x = 2, y = 0.5, z = -70 + 0.043 * f32(q), yaw = 0.2, vz = 1.3, g = WG_GROUND, hp = 57, max = 57});
-    net_test_p(room[0].r[..], WireP.{ss = 8, x = -2, z = -72, g = WG_GROUND | WG_DEAD, hp = 0, max = 57});
+    net_test_p(room[0].r[..], WireP.{ss = 8, x = -2, z = -72, g = WG_GROUND | WG_DEAD | WG_AWAY, hp = 0, max = 57});
     net_test_p(room[0].r[..], WireP.{ss = 9, x = 0, z = -75, form = CI_FORM_WOLF, hp = 11, max = 11});
-    if q == 1 { net_test_n(room[0].r[..], WireN.{ss = 7, id = "pa", look = "ranger.2.1.4", kind = "druid", flags = 0, name = "Ash"}); }
+    if q == 1 { net_test_n(room[0].r[..], WireN.{ss = 7, id = "pa", look = "ranger.2.1.4", kind = "druid", flags = 2, name = "Ash"}); }
     net_step(b[..], 100 + 33 * q, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
     #assert net_test_hear(b[..], 1, net_test_frame(room[0].r[..]));
   }
@@ -416,7 +552,8 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
   a := rs[ash];
   #assert a.name == "Ash" && a.look.skin == 2 && a.look.dye == 1 && a.look.trim == 4 && a.alive && !a.air;
   #assert abs(a.v.z - 1.3) < 0.01 && remote_clip(a) == SKIN_WALK && abs(a.p.x - 2) < 0.01;
-  #assert !rs[dead].alive && rs[dead].name == "" && remote_clip(rs[dead]) == SKIN_IDLE;
+  #assert a.account && !a.away && a.kind == CLASS_DRUID && a.swing > 1000;
+  #assert !rs[dead].alive && rs[dead].name == "" && remote_clip(rs[dead]) == SKIN_IDLE && rs[dead].away && !rs[dead].account;
   #assert rs[wolf].form == CI_FORM_WOLF && rs[wolf].air && remote_clip(rs[wolf]) == SKIN_JUMP;
 }
 RemoteBodyRoom :: struct { r: [1] NetTestRoom; }

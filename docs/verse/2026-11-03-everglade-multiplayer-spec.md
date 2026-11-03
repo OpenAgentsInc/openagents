@@ -538,13 +538,21 @@ are stamped with it.
   joint matrices per instance (`RANGER_JOINTS * 12` floats each). Each
   remote player has its own `Skin` playback, fed by `skin_advance` with the
   replicated clip and the interpolated speed.
-- Counts: 8 remote bodies on a computer, 5 on a phone (as `PEOPLE_SHOWN` and
-  `PEOPLE_SHOWN_PHONE`). Others beyond that, or farther than 80 m, show a
-  nameplate only.
+- Counts: every other player in view within 80 m has a body (15 in a full
+  room). The nearest 8 on a computer, 5 on a phone (as `PEOPLE_SHOWN` and
+  `PEOPLE_SHOWN_PHONE`), within 25 m, have the whole mesh. The rest have the
+  pack's far mesh, `player/male-ranger.lod`: the same vertices and a fifth of
+  the triangles (`pack_realm.py` `far_mesh`). Farther than 80 m, a player is
+  a nameplate only.
 - A beast's shape (Wild Shape, Polymorph, Shapechange: `CI_FORM_*`,
   `everglade-circle.coax:51`) is in the pose flags, and everyone draws that
   form instead of the Ranger.
-- Dead players lie down (the flag), and the sledgehammer's swing is clip 7.
+- Dead players lie down (the flag). The swing (clip 7) plays as a player
+  casts: yours when you cast, and everyone else's when their spell's effect
+  arrives from the server.
+- A player whose page the server hasn't heard for 3 s (`WG_AWAY`) fades to a
+  third, nameplate too, until it is heard again.
+- Class gear: the druid carries a staff across their back.
 - Later, the townsfolk rig (`verse/everglade/people-rig.coax`: male and
   female, 65 joints, 12 clips including spell, slash, die and knock) as a
   second body choice, so players can look like anyone in town.

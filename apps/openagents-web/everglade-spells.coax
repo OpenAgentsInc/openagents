@@ -609,10 +609,11 @@ sp_cast :: (s: [] Everglade) {
     // the room's server casts it where you point (everglade-net.coax); what it makes comes back
     if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND OR A BUILDING", -1, ""); return; }
     egt_note(s, slot, false);
+    rangers_you_cast(s);
     _ := net_cast(s, slot, s[0].sp.aim, -1);
     return;
   }
-  if slot >= SP_SLOTS { egt_note(s, slot, false); ab_cast(s, slot - SP_SLOTS); return; }
+  if slot >= SP_SLOTS { egt_note(s, slot, false); rangers_you_cast(s); ab_cast(s, slot - SP_SLOTS); return; }
   if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND OR A BUILDING", -1, ""); return; }
   if s[0].sp.far { sp_say(s, "TOO FAR · 140 M AT MOST", -1, ""); return; }
   s[0].sp.cast_seed = (srd_next(s[0].sp.dice[..]) >> 34) | 1;   // under 2^30: it goes out as a whole number
@@ -620,6 +621,7 @@ sp_cast :: (s: [] Everglade) {
   s[0].sp.casting = slot; s[0].sp.cast_t = 0; s[0].sp.cast_at = s[0].sp.aim; s[0].sp.cast_n = s[0].sp.aim_n;
   s[0].sp.cast_from = add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z) + 1.6, 0));
   s[0].sp.armed = -1;
+  rangers_you_cast(s);
   if slot == SP_ORB { s[0].sp.orb_live = true; s[0].sp.orb_t = 0; s[0].sp.orb_remote = false; }
   _ := net_cast(s, slot, s[0].sp.aim, -1);   // in a room the server rolls it and says where it falls (f)
 }

@@ -77,7 +77,9 @@ revision and checked against its SHA-256: its mesh, its base-colour images
 (each a layer, scaled up to texture_size by repeating texels, PNG, so no
 texel changes) and, written to the manifest's "rig" path as Coax, its
 skeleton and clips, keys as they were. Its triangles are counted apart
-from the kit's.
+from the kit's. With a "lod" share under 1 it also gets a far mesh, a
+catalog line "C NAME.lod FIRST COUNT ...": indices only, after all the
+others, over the same vertices, about that share of its triangles.
 """
 import hashlib, io, json, os, struct, subprocess, sys, zlib
 from pathlib import Path
@@ -552,6 +554,131 @@ def rig_coax(m, c, prefix, triangles):
     return "\n".join(out) + "\n"
 
 
+def far_mesh(pos, skins, tris, keep):
+    """About `keep` of a skinned mesh's triangles over the same vertices, for bodies far off. A
+    character's vertices are split at every uv seam and material edge, so it is decimated on its welded
+    positions: a position merges into a neighbouring one, cheapest first by the quadric error of the
+    planes round both plus a centimetre's worth for each whole joint their skins differ by, and each
+    vertex there becomes a vertex at the other position that it shares an edge with, so every uv island
+    keeps its own uvs and a seam closes up along itself. A position some vertex of which has no such
+    neighbour stays, as does a position on the mesh's border; no merge turns a triangle over or makes
+    it a sliver. The triangles left, as vertex indices."""
+    import heapq, math
+    target = int(len(tris) * keep)
+    weld, members = [], []
+    at = {}
+    for v, p in enumerate(pos):
+        k = tuple(round(x, 5) for x in p)
+        if k not in at:
+            at[k] = len(members); members.append([])
+        weld.append(at[k]); members[at[k]].append(v)
+    P = [pos[m[0]] for m in members]
+    faces = [list(x) for x in tris]
+    around = [set() for _ in members]           # faces at each position
+    for f, x in enumerate(faces):
+        for v in x:
+            around[weld[v]].add(f)
+    edges = {}
+    for x in faces:
+        for i in range(3):
+            e = tuple(sorted((weld[x[i]], weld[x[(i + 1) % 3]])))
+            edges[e] = edges.get(e, 0) + 1
+    locked = [False] * len(members)
+    for (a, b), n in edges.items():
+        if n == 1:
+            locked[a] = locked[b] = True
+    def normal(x):
+        a, b, c = (pos[v] for v in x)
+        u = [b[i] - a[i] for i in range(3)]; w = [c[i] - a[i] for i in range(3)]
+        return (u[1]*w[2] - u[2]*w[1], u[2]*w[0] - u[0]*w[2], u[0]*w[1] - u[1]*w[0])
+    Q = [[0.0] * 10 for _ in members]
+    for x in faces:
+        n = normal(x); l = math.sqrt(sum(c * c for c in n))
+        if l < 1e-12:
+            continue
+        a, b, c = n[0] / l, n[1] / l, n[2] / l; d = -(a * pos[x[0]][0] + b * pos[x[0]][1] + c * pos[x[0]][2])
+        k = [a*a, a*b, a*c, a*d, b*b, b*c, b*d, c*c, c*d, d*d]
+        for w in {weld[v] for v in x}:
+            for i in range(10):
+                Q[w][i] += k[i] * l * 0.5
+    def err(q, p):
+        x, y, z = p
+        return (q[0]*x*x + 2*q[1]*x*y + 2*q[2]*x*z + 2*q[3]*x + q[4]*y*y + 2*q[5]*y*z + 2*q[6]*y + q[7]*z*z + 2*q[8]*z + q[9])
+    def apart(u, v):
+        su, sv = skins[members[u][0]], skins[members[v][0]]
+        return sum(abs(su.get(j, 0) - sv.get(j, 0)) for j in set(su) | set(sv))
+    def pairing(u, w):
+        """Each live vertex at position u -> a vertex at w it shares a face with, or None."""
+        to = {}
+        for f in around[u]:
+            x = faces[f]
+            for a in x:
+                if weld[a] != u:
+                    continue
+                for b in x:
+                    if weld[b] == w:
+                        to.setdefault(a, b)
+        for f in around[u]:
+            for a in faces[f]:
+                if weld[a] == u and a not in to:
+                    return None
+        return to
+    heap, stamp = [], [0] * len(members)
+    def push(u):
+        if locked[u]:
+            return
+        stamp[u] += 1
+        best = None
+        for w in {weld[v] for f in around[u] for v in faces[f]} - {u}:
+            c = err([a + b for a, b in zip(Q[u], Q[w])], P[w]) + 1e-4 * apart(u, w)
+            if (best is None or c < best[0]) and pairing(u, w) is not None:
+                best = (c, w)
+        if best:
+            heapq.heappush(heap, (best[0], u, best[1], stamp[u]))
+    for u in range(len(members)):
+        push(u)
+    alive = len(faces)
+    while alive > target and heap:
+        c, u, w, st = heapq.heappop(heap)
+        if st != stamp[u] or locked[u]:
+            continue
+        to = pairing(u, w)
+        if to is None:
+            stamp[u] += 1
+            continue
+        gone = [f for f in around[u] if any(weld[v] == w for v in faces[f])]
+        moved = [f for f in around[u] if f not in gone]
+        ok = True
+        for f in moved:
+            x = faces[f]
+            x2 = [to[v] if weld[v] == u else v for v in x]
+            n0, n1 = normal(x), normal(x2)
+            l0 = math.sqrt(sum(a * a for a in n0)); l1 = math.sqrt(sum(a * a for a in n1))
+            if l1 < 1e-12 or l0 < 1e-12 or sum(a * b for a, b in zip(n0, n1)) < 0.5 * l0 * l1:
+                ok = False; break
+            a, b, cc = (pos[v] for v in x2)
+            longest = max(sum((a[i] - b[i]) ** 2 for i in range(3)), sum((b[i] - cc[i]) ** 2 for i in range(3)), sum((cc[i] - a[i]) ** 2 for i in range(3)))
+            if l1 < 0.04 * longest:
+                ok = False; break
+        if not ok:
+            stamp[u] += 1
+            continue
+        for f in gone:
+            for v in faces[f]:
+                around[weld[v]].discard(f)
+            faces[f] = None
+            alive -= 1
+        for f in moved:
+            faces[f] = [to[v] if weld[v] == u else v for v in faces[f]]
+            around[w].add(f)
+        around[u] = set()
+        Q[w] = [a + b for a, b in zip(Q[u], Q[w])]
+        locked[u] = True
+        for x in {weld[v] for f in around[w] for v in faces[f]}:
+            push(x)
+    return [v for x in faces if x for v in x]
+
+
 def build(manifest_path):
     m = json.loads(Path(manifest_path).read_text()) if not isinstance(manifest_path, dict) else manifest_path
     style = m.get("style", "lowpoly")
@@ -626,7 +753,7 @@ def build(manifest_path):
         layer_lines.append(f"T {k} {src.name} {lic}")
     for at, vstart, vend, shape in canopies:
         mesh_lines[at] += f" canopy {shape} " + " ".join(str(x) for x in canopy_colour(vertices, vstart, vend, layer_images))
-    character_lines, rig = [], None
+    character_lines, rig, character_lod = [], None, None
     if "character" in m:
         spec = m["character"]
         lic = licence_of(spec.get("licence"), f"character {spec['name']}")
@@ -635,6 +762,7 @@ def build(manifest_path):
             raise SystemExit(f"the pinned pack's character is {c['name']}, not {spec['name']}")
         first, word, count = len(indices), len(vertices) // 4, 0
         layer_of = {}
+        lod_verts, lod_tris = [], []
         for pr in c["prims"]:
             mat = materials[pr["material"]]
             if mat["alpha"] != 0 or any(abs(x - 1) > 1e-6 for x in mat["colour"]):
@@ -652,8 +780,17 @@ def build(manifest_path):
                 if sum(pr["weights"][4 * i:4 * i + 4]) != 255 or max(pr["joints"][4 * i:4 * i + 4]) >= len(c["joints"]):
                     raise SystemExit(f"{c['name']}: a vertex's skin is out of range")
             indices += [count + k for k in pr["indices"]]
+            for i, p in enumerate(pr["pos"]):
+                lod_verts.append({"p": p, "j": pr["joints"][4 * i:4 * i + 4], "w": pr["weights"][4 * i:4 * i + 4]})
+            lod_tris += [tuple(count + pr["indices"][k + q] for q in range(3)) for k in range(0, len(pr["indices"]), 3)]
             count += len(pr["pos"])
         character_lines.append(f"C {c['name']} {first} {len(indices) - first} {lic} {word} {count} {len(c['joints'])}")
+        if spec.get("lod", 1) < 1:
+            # far bodies' mesh: the same vertices, about `lod` of the triangles (far_mesh), its indices
+            # after all the others
+            skins = [{j: w / 255 for j, w in zip(v["j"], v["w"]) if w} for v in lod_verts]
+            far = far_mesh([v["p"] for v in lod_verts], skins, lod_tris, float(spec["lod"]))
+            character_lod = (far, len(character_lines), f"C {c['name']}.lod {{first}} {{count}} {lic} {word} {count} {len(c['joints'])}")
         if "rig" in spec:
             rig = (spec["rig"], rig_coax(m, c, spec.get("prefix", "RIG"), (len(indices) - first) // 3))
     rigs = [rig] if rig else []
@@ -680,6 +817,10 @@ def build(manifest_path):
     if int(m.get("identity", 0)) > 0:
         identity_lines.append(f"I {len(indices)} {int(m['identity'])}")
         indices += list(range(int(m["identity"])))
+    if character_lod:
+        lod_indices, at, line = character_lod
+        character_lines.insert(at, line.format(first=len(indices), count=len(lod_indices)))
+        indices += lod_indices
     vbytes = bytes(vertices)
     ibytes = struct.pack(f"<{len(indices)}I", *indices)
     budget = int(m["budget"])
