@@ -1802,7 +1802,8 @@ contract obligations; callback provenance is trusted producer metadata, not
 sandboxing or attestation. See the focused `operator-registry` gate and
 [chapter 40 evidence](docs/verification/psionic-ch26c-2026-10-29.md) for actual
 CPU/CUDA/Metal inference, finite-difference VJPs, compiled MLP, batching and
-scalar training. Full mutation runs are omitted under owner instruction.
+scalar training. `operator-registry.coax` is gated by root-only mutation with
+zero survivors (#12698).
 
 ## Psionic symbolic templates share code and specialize guarded plans
 
@@ -1875,8 +1876,10 @@ Check: `psionic/check.sh --only tensor-ir` and explicit CUDA/Metal runners;
 authored debug/release, independent Decimal(100) graph oracles, observed
 allocation counts/bytes and native debug/release ASan/UBSan. GPU memory is not
 instrumented by host sanitizers. Metal uses the qualified release emission;
-the failed checked candidate and the owner's omission of full mutation runs
-are recorded in [chapter 38 verification](docs/verification/psionic-ch26a-2026-10-29.md).
+the failed checked candidate is recorded in
+[chapter 38 verification](docs/verification/psionic-ch26a-2026-10-29.md).
+`tensor-ir.coax` and `tensor-ir-host.coax` are gated by root-only mutation with
+zero survivors (#12698); `tensor-ir-kernels.coax` is not claimed.
 Automatic graph extraction, dynamic shapes, narrow dtype IR execution, direct
 `PtdTensor` binding, fusion and differentiation remain separate work.
 
@@ -2322,9 +2325,9 @@ Check: `psionic/check.sh --only tensor-device`, with explicit `--metal` and
 `--cuda` device harnesses, qualifies independent integer/format references,
 every finite half/bfloat16 encoding, RNE boundary vectors, all dtype pairs,
 strided transfers, completion/lifetimes, failure preservation and native
-ASan/UBSan in debug/release. Numerical bounds/device behavior and the owner's
-omission of full mutation runs are recorded in
+ASan/UBSan in debug/release. Numerical bounds/device behavior are recorded in
 [chapter 6 verification](docs/verification/psionic-ch03b-2026-10-29.md).
+`tensor-placement.coax` is gated by root-only mutation with zero survivors (#12698).
 
 ## Psionic tensor operators infer support and publish complete value results
 

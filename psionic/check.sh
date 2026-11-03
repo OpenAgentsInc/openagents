@@ -695,13 +695,16 @@ fi
 # Owned tensor effects have their own focused runner; actual GPUs are opt-in.
 if [[ $tensor_device == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_device.sh
-    phase "tensor-device-v1 (focused gate, no full mutation claim)"
+    "$coax" mutate psionic/lib/tensor-placement.coax --root-only --jobs "$jobs"
+    phase "tensor-device-v1 (focused gate; tensor-placement root-only mutation)"
 fi
 
 # Chapter 38: checked IR and native plans; GPU qualification is explicit.
 if [[ $tensor_ir == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_ir.sh
-    phase "tensor-ir-f32-v1 (focused gate, no full mutation claim)"
+    "$coax" mutate psionic/lib/tensor-ir.coax --root-only --jobs "$jobs"
+    "$coax" mutate psionic/lib/tensor-ir-host.coax --root-only --jobs "$jobs"
+    phase "tensor-ir-f32-v1 (focused gate; tensor-ir and tensor-ir-host root-only mutation)"
 fi
 
 if [[ $tensor_template == 1 ]]; then
@@ -711,7 +714,8 @@ fi
 
 if [[ $operator_registry == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_operator_registry.sh
-    phase "operator-registry (focused gate, no full mutation claim)"
+    "$coax" mutate psionic/lib/operator-registry.coax --root-only --jobs "$jobs"
+    phase "operator-registry (focused gate; root-only mutation)"
 fi
 
 if [[ $gguf == 1 ]]; then
@@ -863,16 +867,16 @@ else
     echo "Psionic completed chapters pass: Coax debug/release checks, zero-survivor mutation, native debug/release, ASan/UBSan and book"
 fi
 if [[ $tensor_device == 1 ]]; then
-    echo "tensor-device-v1 uses its focused gate; full mutation runs are not claimed"
+    echo "tensor-device-v1: focused gate; tensor-placement root-only mutation has zero survivors"
 fi
 if [[ $tensor_ir == 1 ]]; then
-    echo "tensor-ir-f32-v1 uses its focused gate; full mutation runs are not claimed"
+    echo "tensor-ir-f32-v1: focused gate; tensor-ir and tensor-ir-host root-only mutation have zero survivors (tensor-ir-kernels is not claimed)"
 fi
 if [[ $tensor_template == 1 ]]; then
     echo "tensor-template: focused gate; full mutation runs not claimed"
 fi
 if [[ $operator_registry == 1 ]]; then
-    echo "operator-registry: focused gate; full mutation runs not claimed"
+    echo "operator-registry: focused gate; root-only mutation has zero survivors"
 fi
 if [[ $interchange == 1 ]]; then
     echo "interchange: focused gate; full mutation runs not claimed"
