@@ -1,4 +1,4 @@
-# 84. Inspect and profile a running realm
+# 83. Inspect and profile a running realm
 
 > **Status: unimplemented — design draft.** Today each check is its own
 > script under `coax/web/`: `perf.ts` times Everglade's frames in headless

@@ -21,8 +21,8 @@ reading order and the [introduction](README.md) the result of each chapter.
 | VII. Realms | 56–64 | The Grid, made realms, Everglade, Dead Gears, Ice Cream Man, Hecate's Cemetery, Fairy Forest and the space games, each rebuilt only from earlier chapters; then every realm on Aethyr with no private copies left. |
 | VIII. Hearing it | 65–69 | Integer synthesis, a beat-grid sequencer, mixing with a reverb send, a master that never clips, WAV output and a rendered soundtrack; then real-time playback, sound placed in the world, and music that follows the game's state; then players' and agents' voices placed in the realm. |
 | IX. A living world | 70–78 | Water, sky and weather, particle effects, breakable kit pieces, wheeled vehicles, creatures that follow and watch, paths and crowds, characters who talk, and authored camera flights, each moved from `verse/` into one Aethyr module. |
-| X. Aethyrforge: generating worlds | 79–81 | A set piece chosen from a typed catalogue by a semantic selector, terrain and scatter laid out from a seed, and a realm made as a reply to another. |
-| XI. Shipping realms | 82–86 | Saves that survive schema changes, code changed while a realm runs, inspection and profiling of a running realm, one realm on every host, and accessibility and languages. |
+| X. Aethyrforge: generating worlds | 79–80 | A set piece chosen from a typed catalogue by a semantic selector, and terrain and scatter laid out from a seed. |
+| XI. Shipping realms | 81–85 | Saves that survive schema changes, code changed while a realm runs, inspection and profiling of a running realm, one realm on every host, and accessibility and languages. |
 
 ## Engine-core tasks
 
@@ -70,7 +70,7 @@ realm code can already provide a feature whose shared Aethyr module is a draft.
    to remove without changing the rule traces. Add chapter 68's live
    synthesized and spatial sound to
    the existing offline audio. Bring saves, host lifecycle and accessibility
-   (82, 85 and 86) into this route as their dependencies become available.
+   (81, 84 and 85) into this route as their dependencies become available.
    Consolidating current gameplay profiles does not complete the advanced
    realm rebuilds that require later physics or spacecraft chapters.
 3. **Make Forge publications reproducible.** Complete the typed document
@@ -145,8 +145,8 @@ its first example. Read the integration checks before claiming the full goal.
 | Realms | The chapters each realm uses | 56–63 in any order once their chapters exist; 64 last. |
 | Sound | Coax only; 1, 2, 5 and 10 for playback in a realm | Oscillators and envelopes 65 → the beat grid 66 → scores and mixing 67 → playback, space and reaction 68 → voices 69 (also 49). |
 | A living world | 1–16 and the chapters each system uses (water and vehicles 18–22; effects 16 and 23 for contrast; creatures 7 and 45) | 70–78 in any order once their dependencies settle. |
-| Generating worlds | 51–55 | A piece from a sentence 79 → terrain and scatter 80 → replies 81. |
-| Shipping realms | 3, 5 and 6 for saves; Coax R26–R27 for live changes; 16 and 37 for profiling; 11 and 15 for hosts and accessibility | 82–86 in any order. |
+| Generating worlds | 51–55 | A piece from a sentence 79 → terrain and scatter 80. |
+| Shipping realms | 3, 5 and 6 for saves; Coax R26–R27 for live changes; 16 and 37 for profiling; 11 and 15 for hosts and accessibility | 81–85 in any order. |
 
 ## Part VIII: sound
 

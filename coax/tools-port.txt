@@ -899,7 +899,6 @@ coax/web/api/test_makers_tips.py
 coax/web/api/test_private_sprints.py
 coax/web/api/test_realm_fork.py
 coax/web/api/test_realm_rights_asks.py
-coax/web/api/test_reply_realm.py
 coax/web/api/test_upgrades.py
 coax/web/card.js
 coax/web/room/build.sh

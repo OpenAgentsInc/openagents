@@ -1113,30 +1113,13 @@
       "original_line": 222,
       "baseline_commit": "3c3b4c3a39189e6b61e92307e2501e7a26c007bc",
       "entry": "aethyr/tests/everglade-spells-integration.coax",
-      "body_sha256": "0e6b6154eb3f400106eca69b223d27eea138e5c6202eb3ec4fbd1c8e2408cf32",
+      "body_sha256": "24ff68a0672a9b6d151796b4832ff0430c72d7489da8a2ad54bc09812fd92ac6",
       "original_check_sha256": "727bb27c9f5a473741fc393eaabb58670c4121ebec4de9a823cf2c4fee39f532",
       "cases": 1,
       "selection_reason": "concrete ordinary-compile storage overflow at 1,572,864 slots",
       "resource_record": "/tmp/aethyr-collision-consumers/storage/2-002.json",
       "resource_log_sha256": "3594c5ecb33f96456af8875224ac481a0f2df7ff964fed02c08a6507bcab2c80",
       "procedure": "aethyr_native_everglade_62",
-      "original_bindings": " "
-    },
-    {
-      "realm": "everglade",
-      "kind": "test",
-      "original_name": "reply: the reply page takes its words and seed, stands you facing the house and waits for the town",
-      "original_file": "apps/openagents-web/everglade-reply.coax",
-      "original_line": 674,
-      "baseline_commit": "3c3b4c3a39189e6b61e92307e2501e7a26c007bc",
-      "entry": "aethyr/tests/everglade-spells-integration.coax",
-      "body_sha256": "76100828db758a4d2778fda2570751229859d2a912c7aa85c4bcf0db5f334c48",
-      "original_check_sha256": "a6786addd9f8be296edd2f9008eb60357ce49be18ae2bc77d0fb9c949224d766",
-      "cases": 1,
-      "selection_reason": "concrete ordinary-compile storage overflow at 1,572,864 slots",
-      "resource_record": "/tmp/aethyr-collision-consumers/storage/2-016.json",
-      "resource_log_sha256": "91dd2c7bea3f891acbf9e21f1cebd258475f70df735697c13038a0504bc6b630",
-      "procedure": "aethyr_native_everglade_63",
       "original_bindings": " "
     }
   ]

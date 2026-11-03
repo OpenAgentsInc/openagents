@@ -71,12 +71,10 @@ bool drops_site_delete(const char *name);   // gone already counts as done
 char *drops_site_read(const char *name);   // a text object from the site's bucket, malloc'd, or NULL
 bool drops_site_write_bytes(const char *name, const char *type, const unsigned char *data, size_t n);
 void realms_refresh_pages(void);   // realms.c: on start, made realms' pages written with an older template
-bool realms_jpeg_card(const unsigned char *b, size_t n);   // realms.c: a 1200x630 JPEG's frame header
 bool jobs_route(const request *q);        // jobs.c: POST /api/jobs/<job>, Cloud Scheduler (OIDC) or an admin
 bool email_route(const request *q);       // email.c: POST /api/admin/email, through Resend
 // Mail through Resend (email.c): 0 sent, 1 sent before under the same key, else an HTTP status with err.
 int email_send(PGconn *db, const char *message, char id[128], char *err, size_t errcap);
-bool replies_route(const request *q);     // replies.c: reply with a realm (ev-reply-realm)
 bool access_route(const request *q);      // access.c: realm invites, the waitlist, auth v2 (flags off by default)
 // realms.c, before a realm is planned or made: true when access.c answered 403 invite only (realm_invites on).
 // signer: a NIP-98 caller's pubkey (access_signed), or NULL.

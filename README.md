@@ -119,8 +119,7 @@ run an original model, train a small model or sign and verify a Nostr event), se
     what you say or type ([Aethyrforge, the realm builder](docs/verse/realm-builder.md)), and
     you edit it by voice ([realm edit](docs/verse/realm-edit.md)). FORK
     makes your own copy of any realm with your own rules
-    ([fork](docs/verse/realm-fork.md)), and REPLY names a building after a
-    post so you can smash it and share the clip ([replies](docs/verse/replies.md)).
+    ([fork](docs/verse/realm-fork.md)).
   - Makers get paid: a maker claims their realm with a Nostr key and a
     Lightning address, players tip them, and makers list upgrades, such as
     a better fairy, that players buy in one tap

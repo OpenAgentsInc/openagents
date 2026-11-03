@@ -1,4 +1,4 @@
-# 86. Everyone can play
+# 85. Everyone can play
 
 > **Status: unimplemented — design draft.** Little exists today. The
 > browser host honours `prefers-reduced-motion` by drawing the finished
@@ -35,7 +35,7 @@ they live in Aethyr's input, UI and sound modules, not in each realm.
 1. **Remapping.** The device-to-action table is data, so a player can bind
    any action to another key, button or touch control. Hold-to-run and
    toggle-to-run are both offered. The table is saved in the realm's save
-   slot ([chapter 82](ch082-save-and-come-back.md)).
+   slot ([chapter 81](ch081-save-and-come-back.md)).
 2. **Timing.** A setting slows the realm's simulation clock for timed
    challenges, through the time controls of
    [chapter 1](ch001-a-frame-has-a-fixed-step.md), and replays still match.
@@ -157,4 +157,4 @@ Chapters [1](ch001-a-frame-has-a-fixed-step.md) (time control),
 [10](ch010-the-camera-follows.md) (camera motion),
 [15](ch015-ui-and-the-hud.md) (text and layout),
 [68](ch068-sound-in-the-world.md) (sound sources) and
-[82](ch082-save-and-come-back.md) (saved settings).
+[81](ch081-save-and-come-back.md) (saved settings).

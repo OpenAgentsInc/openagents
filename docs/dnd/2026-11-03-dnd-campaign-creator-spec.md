@@ -74,7 +74,7 @@ and "Session recap", never "event", "authority", "replay" or "seed".
 | Sound | book ch065–ch068 | Music and ambience from numbers, a sequencer and a mixer |
 | Effects | book ch072 (design draft), `aethyr/particles.coax` | Spell effects, fog, torchlight and weather in 3D scenes |
 | Rooms and shared state | book ch049–ch050, `coax/web/room/` | Who is at the table, and the same session state on every screen |
-| Saves | book ch082, `apps/openagents-web/save.coax` | A character and a campaign that persist between sessions |
+| Saves | book ch081, `apps/openagents-web/save.coax` | A character and a campaign that persist between sessions |
 | Dice on the wire | `verse.rules.v1` `DiceReveal` in [openagents-verse-protocol.md](../verse/openagents-verse-protocol.md) | A roll's expression, faces and total, revealed after it resolves |
 
 ## Who uses it
@@ -685,7 +685,7 @@ Each phase ships something a group can use, and leans on what exists.
 | Phase | What ships | Built from |
 |---|---|---|
 | **1. A one-shot at the Table** | The Table with the GM Screen, My Character and the Table Display (on one device, a second browser or a TV). Pre-built heroes at levels 1 to 6. Virtual and physical dice, open and hidden. The initiative tracker in theatre of the mind and on the grid. One starter one-shot | The engine's turn-based clock (README step 4), 5E Lab's grid view, CHARACTERS panel, condition marks and hotbar, rooms for a shared session (ch049–ch050) |
-| **2. The Campaign Builder** | Campaigns, setting, regions, maps with fog, scenes, encounters with **Run it**, NPCs, loot, handouts, quests, clocks, house rules as switches, the Safety page | The ruleset profile (README step 5), the realm document model (ch051), saves (ch082) |
+| **2. The Campaign Builder** | Campaigns, setting, regions, maps with fog, scenes, encounters with **Run it**, NPCs, loot, handouts, quests, clocks, house rules as switches, the Safety page | The ruleset profile (README step 5), the realm document model (ch051), saves (ch081) |
 | **3. Onboarding** | The first-run screens, invites, quick and guided character builds (classes first), session zero, connecting a display, the tour | Phases 1 and 2. Guided build grows as the SRD import adds species, backgrounds and feats (README step 2) |
 | **4. The copilot** | Prep drafts, rules lookups, improvised NPCs, recaps, clock suggestions, all as Accept and Decline cards | The semantic selector, embedding search over SRD records, `/v1/decisions` with Clef first, the characters endpoint (ch077), voice (ch069) |
 | **5. 3D scenes and sound** | Scenes in 3D from 5E Lab's glade, Everglade and Aethyrforge, dice in 3D, music and ambience per scene, spell looks | 5E Lab's renderer, Aethyrforge, sound (ch065–ch068), effects (ch072) |

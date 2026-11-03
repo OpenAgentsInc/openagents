@@ -519,7 +519,7 @@ The rules:
    Space, the pad's A button and a screen reader's activation all produce
    `activate` on the focused element, in the same step.
 4. **Remapping covers UI actions.** The remapping of
-   [chapter 86](ch086-everyone-can-play.md) can rebind every UI action, but
+   [chapter 85](ch085-everyone-can-play.md) can rebind every UI action, but
    it refuses a mapping that leaves `focus_next`, `activate` or `back`
    without a key.
 

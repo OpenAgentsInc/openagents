@@ -187,7 +187,7 @@ import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
 import { startDrops } from "./drop.js";
 import { startUploads } from "./uploads.js";
 import { startDocs } from "./docs.js";
-import { startCard, startMoment } from "./card.js";
+import { startCard } from "./card.js";
 import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
 import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
@@ -779,7 +779,7 @@ async function openDevice(made = () => {}) {
   return { adapter, device, context: renderContext, format: measuredFormat || format };   // the adapter held: a collected one can drop its device
 }
 
-// ---- a lost GPU device (aethyr/book ch085). The engine and every byte of its state are in
+// ---- a lost GPU device (aethyr/book ch084). The engine and every byte of its state are in
 // memory, not on the GPU, so the host takes a new device, builds the pipelines again, uploads the
 // assets again, and puts the state back as the loss found it (the assets' deliveries during the
 // rebuild do not change it). Frames and input wait meanwhile; the first frame after draws the
@@ -1676,7 +1676,7 @@ function padPoll() {
   x.coaxial_pad(arena.state, pad ? Number(pad.axes[0]) || 0 : 0, pad ? -(Number(pad.axes[1]) || 0) : 0, pad?.buttons[0]?.pressed ? 1 : 0);
 }
 
-// The accessible layer (Aethyr book chapter 86): a module that describes its controls
+// The accessible layer (Aethyr book chapter 85): a module that describes its controls
 // (coaxial_a11y: a line each, "ID ROLE STATE LABEL") gets them as real buttons and checkboxes
 // beside the canvas, which stays aria-hidden, and its note as a polite live region. Tab reaches
 // them; Enter or Space presses one, which sends its id back (coaxial_a11y_do): the module does
@@ -1915,7 +1915,7 @@ const call = (name, ...args) => {
   try { return engine.exports[name](arena.state, ...args); } catch (e) { trapped(e); return 0; }
 };
 
-// ---- a realm that stops (aethyr/book ch085). A trap in the engine leaves its state as far as the
+// ---- a realm that stops (aethyr/book ch084). A trap in the engine leaves its state as far as the
 // trapping call got, so the host keeps a copy of the state at each frame's start (every frame, or
 // every HOLD_EVERY-th for a state over HOLD_BYTES) and, when the engine traps, saves the last one
 // as the realm's rescue save and shows the reload message. The next load of the same engine (its
@@ -2117,10 +2117,7 @@ function snapshot() {
     };
   });
 }
-// A moment's card (card.js startMoment): the app's action 31 holds the next frame, 32 sends it (Everglade's reply with a realm).
-const moment = startMoment({ key: () => player()?.key || "", snapshot });
-if (script?.dataset.card) startCard({ url: script.dataset.card, key: () => player()?.key || "", snapshot, ready: () => !!globalThis.coaxial.sceneReady,
-  moment: script.dataset.cardOn === "impact" ? moment : null });
+if (script?.dataset.card) startCard({ url: script.dataset.card, key: () => player()?.key || "", snapshot, ready: () => !!globalThis.coaxial.sceneReady });
 // A page that talks (data-voice: the route its voice host answers as): voice.js, on the app's VOICE.
 const voice = script?.dataset.voice
   ? startVoice({ send, route: script.dataset.voice, wasmUrl: script.dataset.voiceWasm || "/build/voice.wasm" }) : null;

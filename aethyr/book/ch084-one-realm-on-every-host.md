@@ -1,4 +1,4 @@
-# 85. One realm on every host
+# 84. One realm on every host
 
 > **Status: unimplemented — design draft.** Today a realm runs in the
 > browser through [`coax/web/host.js`](../../coax/web/host.js) and WebGPU.
@@ -83,7 +83,7 @@ rules.
    graphics device stopped and offers a reload. The realm's save is written
    first.
 5. **Every loss is reported.** The frame report of
-   [chapter 84](ch084-inspect-and-profile-a-running-realm.md) counts each
+   [chapter 83](ch083-inspect-and-profile-a-running-realm.md) counts each
    loss, its reason and the recovery time.
 
 ### Audio interruption

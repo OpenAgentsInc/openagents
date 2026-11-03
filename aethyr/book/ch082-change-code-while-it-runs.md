@@ -1,4 +1,4 @@
-# 83. Change code while it runs
+# 82. Change code while it runs
 
 > **Status: unimplemented — design draft.** Today `coax serve`
 > ([`coax/web/serve.c`](../../coax/web/serve.c)) watches an app's files,

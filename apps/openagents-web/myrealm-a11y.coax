@@ -1,4 +1,4 @@
-// A made realm's controls as real ones (Aethyr book chapter 86; GitHub #12629): every control the
+// A made realm's controls as real ones (Aethyr book chapter 85; GitHub #12629): every control the
 // page draws on the canvas is also described here, a line each, and host.js mirrors the lines as
 // DOM buttons and checkboxes beside the canvas (which stays aria-hidden). A keyboard reaches them
 // with Tab, a screen reader reads them, and pressing one does what tapping it does: the same

@@ -102,7 +102,7 @@ Each element in the tree declares:
 
 - **Role:** `button`, `toggle`, `slider`, `list`, `list item`, `tab`,
   `dialog`, `text` or `image`.
-- **Label:** a text ID from [chapter 86](ch086-everyone-can-play.md)'s
+- **Label:** a text ID from [chapter 85](ch085-everyone-can-play.md)'s
   string table, never text drawn only as strokes.
 - **State:** pressed, selected, checked, disabled or expanded, as the role
   requires, and a slider's value and range.

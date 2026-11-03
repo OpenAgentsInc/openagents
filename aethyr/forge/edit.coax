@@ -1,4 +1,4 @@
-// Aethyrforge's edits to a realm document (book chapters 51, 52 and 82): every change is a typed
+// Aethyrforge's edits to a realm document (book chapters 51, 52 and 81): every change is a typed
 // operation with its inverse, undo and redo walk one log of them, replaying a log from the same
 // document gives the same document, and a save names the revision it was made from, so the
 // server refuses it when the document changed since (409) instead of letting the newer write win.

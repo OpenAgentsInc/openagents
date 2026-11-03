@@ -52,7 +52,7 @@ The books set a larger destination than this demo:
   and native renderer paths, plus a qualified CPU reference. This library
   submits to the existing projects path. It does not implement the common
   admitted pass graph, a new GPU backend or full CPU/GPU raster parity.
-- [Aethyr 86: Everyone can play](../../aethyr/book/ch086-everyone-can-play.md)
+- [Aethyr 85: Everyone can play](../../aethyr/book/ch085-everyone-can-play.md)
   is a design draft for remapping, text scale, contrast, captions, stable
   text IDs, language support and reduced-motion behavior. The demo consumes
   the host's reduced-motion input and supplies keyboard controls and hidden

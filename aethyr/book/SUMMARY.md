@@ -112,12 +112,11 @@
 
 - [79. A piece from a sentence](ch079-a-piece-from-a-sentence.md) — design draft
 - [80. Terrain and scatter from a seed](ch080-terrain-and-scatter-from-a-seed.md) — design draft
-- [81. Reply with a realm](ch081-reply-with-a-realm.md) — design draft
 
 **XI. Shipping realms**
 
-- [82. Save and come back](ch082-save-and-come-back.md) — design draft
-- [83. Change code while it runs](ch083-change-code-while-it-runs.md) — design draft
-- [84. Inspect and profile a running realm](ch084-inspect-and-profile-a-running-realm.md) — design draft
-- [85. One realm on every host](ch085-one-realm-on-every-host.md) — design draft
-- [86. Everyone can play](ch086-everyone-can-play.md) — design draft
+- [81. Save and come back](ch081-save-and-come-back.md) — design draft
+- [82. Change code while it runs](ch082-change-code-while-it-runs.md) — design draft
+- [83. Inspect and profile a running realm](ch083-inspect-and-profile-a-running-realm.md) — design draft
+- [84. One realm on every host](ch084-one-realm-on-every-host.md) — design draft
+- [85. Everyone can play](ch085-everyone-can-play.md) — design draft

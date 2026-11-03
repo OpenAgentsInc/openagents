@@ -59,7 +59,7 @@ base renderer identity when its realm/save-slot slug changes.
 Release staging copies a complete
 package under a directory named by the manifest hash, retaining every sibling
 filename and byte. The comment-stripping step refuses any transform that would
-invalidate a packaged shader hash. Dynamic made/forked/reply pages inherit the
+invalidate a packaged shader hash. Dynamic made/forked pages inherit the
 attributes from their existing base-page script.
 
 `wasm.sh` automatically includes a canonical catalog application's source

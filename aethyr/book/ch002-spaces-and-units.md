@@ -364,7 +364,7 @@ to interpolate.
 GPU renderers consume world-space object matrices, so their boundary is
 checked before GPU submission. They do not need to project each vertex on
 the CPU through `world_to_view`. Browser execution and final rasterized
-pixels are separate qualifications in chapters 11 and 85.
+pixels are separate qualifications in chapters 11 and 84.
 
 ## Later consolidation
 

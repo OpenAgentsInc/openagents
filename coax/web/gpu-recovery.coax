@@ -1,5 +1,5 @@
 // A realm that loses its GPU device, or whose engine traps, keeps its session (GitHub #12651,
-// aethyr/book ch085). Against a realm page served locally (coax serve), in headless Chrome, on the
+// aethyr/book ch084). Against a realm page served locally (coax serve), in headless Chrome, on the
 // host's clip clock and its offscreen target:
 //   1. Device loss: N frames, the state region's digest, GPUDevice.destroy(); the host takes a
 //      new device, its pipelines and assets. Within --within MS (default 3000) the digest is the

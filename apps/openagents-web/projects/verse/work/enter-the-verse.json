@@ -11,7 +11,7 @@
   "milestones": [
     {"slug": "ev-makers-paid", "title": "Makers get paid", "body": "Topher, Ted and Marc paid within 48 hours of the talk (by Sunday November 1, 4 p.m. CST), then every maker earns from their realm.", "parent": "enter-the-verse"},
     {"slug": "ev-remix", "title": "Fork and build from anywhere", "body": "Fork any realm into your own with your own rules; build one from a shallow clone and Claude Code.", "parent": "enter-the-verse"},
-    {"slug": "ev-alive", "title": "Worlds that are alive and shared", "body": "Other players in Fairy Forest, guards that coordinate, and realms you can reply with.", "parent": "enter-the-verse"}
+    {"slug": "ev-alive", "title": "Worlds that are alive and shared", "body": "Other players in Fairy Forest and guards that coordinate.", "parent": "enter-the-verse"}
   ],
   "tasks": [
     {
@@ -91,19 +91,6 @@
       "acceptance": [
         "coax test: with a fake decision, the guards take the assigned roles; with none, the current escalation runs",
         "A clip (coax/web/tool.sh clip) of guards flanking a floating player"
-      ],
-      "blocked_by": []
-    },
-    {
-      "slug": "ev-reply-realm",
-      "parent": "ev-alive",
-      "title": "Reply with a realm: name a building after a post, smash it, share the clip",
-      "size": "M",
-      "labels": ["episode-290", "share"],
-      "body": "The talk's \"3D reply guy\": paste a post's link or text, a building in a realm takes its words as its sign, you drop a meteor shower on it, and you get a link to share back as a reply: its card is the moment of impact and the page replays it. Store only the text the player typed or the link, never fetch or copy the post's author's details.",
-      "acceptance": [
-        "On production: type a line, smash the building, get a link whose OG image shows the impact and whose page replays it",
-        "Player text is escaped and length-limited; API tests cover it"
       ],
       "blocked_by": []
     },

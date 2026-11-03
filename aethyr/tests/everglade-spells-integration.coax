@@ -2332,14 +2332,14 @@ aethyr_native_everglade_62 :: () #export_c {
   _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
   _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].guide.first_shown == EG_FIRST_CAST && !eg_first_mark(g[..], EG_FIRST_CAST).ok;
-  // on a phone it says how to with a finger, and its plate sits under the chat line and REPLY
+  // on a phone it says how to with a finger, and its plate sits under the chat line
   #assert EG_FIRST_HOW_PHONE[EG_FIRST_CAST] != EG_FIRST_HOW[EG_FIRST_CAST];
   g[0].touch = true;
   _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].guide.first_shown == EG_FIRST_CAST;
   goal := -1;
   for i: 0..<g[0].plate_n { if abs(u[U_PLATE + i * 8 + 4] - 0.82) < 0.001 && u[U_PLATE + i * 8] < 40 && u[U_PLATE + i * 8 + 1] > 150 { goal = i; } }
-  #assert goal >= 0 && u[U_PLATE + goal * 8 + 1] >= g[0].chat.box.y1 && u[U_PLATE + goal * 8 + 1] >= g[0].rp.boxes[RP_B_OPEN].y1;
+  #assert goal >= 0 && u[U_PLATE + goal * 8 + 1] >= g[0].chat.box.y1;
   g[0].touch = false;
   // a cast: the board next, marked over it
   g[0].sp.casting = SP_METEOR;
@@ -2361,29 +2361,6 @@ aethyr_native_everglade_62 :: () #export_c {
   g[0].stages[0] = 1;
   _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
   #assert eg_first_step(g[..]) == -1 && g[0].guide.first_shown == -1;
-}
-
-// reply: the reply page takes its words and seed, stands you facing the house and waits for the town
-aethyr_native_everglade_63 :: () #export_c {
-  g: [1] Everglade;
-  everglade_start(g[..]);
-  #assert rp_message(g[..], RP_LINES, "id=0a1b2c3d4e5f\nrealm=everglade\nhouse=12\nseed=424242\nkind=text\ntext=Ship it <b>now</b>\n");
-  #assert g[0].rp.replay && g[0].rp.seed == 424242 && rp_words(g[..]) == "Ship it <b>now</b>" && g[0].rp.waiting && everglade_warp(g[..]);
-  #assert g[0].rp.phase == RP_UP && !rp_typing(g[..]);
-  // no REPLY of its own on the reply page, and Esc doesn't drop the reply
-  rp_open(g[..]);
-  _ := everglade_key(g[..], KEY_ESCAPE, 0);
-  #assert g[0].rp.phase == RP_UP;
-  // without the town in, it waits
-  rp_frame(g[..], 5);
-  #assert g[0].rp.waiting && g[0].rp.t == 0;
-  // a malformed reply is ignored
-  h: [1] Everglade;
-  everglade_start(h[..]);
-  #assert rp_message(h[..], RP_LINES, "id=short\nseed=1\ntext=x\n") && !h[0].rp.replay;
-  // the words wrap onto three lines at most
-  lines: [8] int;
-  #assert rp_wrap("one two three four five six seven eight nine ten", 10, 120, lines[..]) >= 2;
 }
 
 // Negative control: an ordinary #assert must trap in every native build.

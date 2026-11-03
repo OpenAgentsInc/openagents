@@ -7,7 +7,7 @@ The product spec, what is on screen and what to build, is
 - `edit.coax`: typed edits to a made realm's document, every revision path in one log:
   moves, turns, sizes and removals of entities, and slot edits for rows, tools, setup,
   lore, quests and placed things; inverses, undo, redo, replay, saves fenced by revision.
-  Book chapters 51, 52 and 82.
+  Book chapters 51, 52 and 81.
 - `doc.coax`: a document (GET .../doc) read into the model; older versions moved forward,
   newer or broken ones refused whole (the last stays).
   `coax/bin/coax test aethyr/forge/doc.coax --library`

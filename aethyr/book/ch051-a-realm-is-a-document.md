@@ -84,7 +84,7 @@ A made realm is a document with an identity. `GET
   ([chapter 52](ch052-edit-a-realm-in-place.md)).
 - A save names the revision it was read at, and the server refuses a stale
   one with `409` and the revision there now. The newer write never simply
-  wins. [Chapter 82](ch082-save-and-come-back.md) uses the same rule for a
+  wins. [Chapter 81](ch081-save-and-come-back.md) uses the same rule for a
   player's save slot.
 - The line spec carries the document's identity: `rev N`, `published N`
   (0 when never published), `listed 0|1`, `from SLUG REV|NAME` for a fork,

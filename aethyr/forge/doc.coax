@@ -1,4 +1,4 @@
-// A made realm's document read into Aethyrforge's edit model (book chapters 51 and 82, GitHub
+// A made realm's document read into Aethyrforge's edit model (book chapters 51 and 81, GitHub
 // #12629): GET .../<slug>/doc's {"doc": ..., "sha256": ...}, or a kept revision. The reader knows
 // every version of the document this engine has written and moves an older one forward; it refuses
 // anything else whole, so a client keeps the last document it could read instead of a part of a
