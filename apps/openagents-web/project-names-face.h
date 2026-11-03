@@ -4,7 +4,7 @@
 // open. project-names.coax encodes them, its own library (wasm.sh's LIBRARY
 // argument), as nip01-verify.coax is /nip/01's. Included by project-face.c
 // and checked against nostr-tools' names by coax/web/project/names-check.coax.
-#include "Project-names.h"   // wasm.sh writes it for the LIBRARY argument
+#include "Project-verify.h"   // wasm.sh writes it for the LIBRARY argument: project-verify.coax, which carries project-names.coax
 static void project_names(coax_t_ProjectState *page, coax_t_Work *work) {
   if (!work->named && work->key.count == 64) {
     work->naddr_n = name_naddr(30621, work->key, work->slug, work->relay, (coax_v_u8){work->naddr_buf.e, (int64_t)sizeof work->naddr_buf.e});

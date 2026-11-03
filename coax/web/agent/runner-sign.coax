@@ -1,0 +1,63 @@
+// The hosted runner's signer in Coax (#12630): runner.c's NIP-98 events,
+// signed by event_sign.coax (BIP-340 over schnorr_sign.coax) instead of
+// libsecp256k1 when OA_RUNNER_SIGNER=coax. The default stays libsecp256k1
+// until the owner approves the migration (NEEDS_OWNER.md); unsetting the
+// variable is the rollback. The identity rule is runner.c's: the same
+// OA_RUNNER_KEY, and the runner refuses to start when the two signers derive
+// different public keys. deploy.sh compiles this to C beside runner.c:
+//   coax c coax/web/agent/runner-sign.coax --library --header runner-sign.h --run-steps 250000000
+//   coax test coax/web/agent/runner-sign.coax
+#run_steps 250000000;
+#load "../../lib/nostr/event_sign.coax";
+#load "../../lib/crypto/bip32.coax";
+
+// The x-only public key of secret into out (32 bytes). False for a bad key.
+runner_coax_pubkey :: (secret: [] u8, out: [] u8) -> bool #export_c {
+  if secret.count != 32 || out.count < 32 { return false; }
+  pub: [33] u8;
+  if !bip32_public(secret, pub[..]) { return false; }
+  for i: 0..<32 { out[i] = pub[i + 1]; }
+  return true;
+}
+
+// One event signed with secret: kind, created_at, tags (a JSON array) and an
+// empty content, into out as NIP-01 JSON. Its length, or -1.
+runner_coax_sign :: (secret: [] u8, aux: [] u8, created_at: int, kind: int, tags: [] u8, out: [] u8) -> int #export_c {
+  if secret.count != 32 || aux.count != 32 { return -1; }
+  work: [1] NostrSignWork; scratch: [16384] u8;
+  r := EVENT_MORE; steps := 0;
+  while r == EVENT_MORE && steps < 4096 {
+    r = nostr_event_sign_step(secret, aux, created_at, kind, cast(string) tags, "", work[..], scratch[..], out, false);
+    steps += 1;
+  }
+  return ifx r > 0 then r else -1;
+}
+
+#test "a test key's NIP-98 event signs and verifies, and its public key is the signer's" #steps 4000000000 {
+  key: [32] u8; for i: 0..<32 { key[i] = cast(u8) (i + 1); }
+  aux: [32] u8;
+  pub: [32] u8;
+  #assert runner_coax_pubkey(key[..], pub[..]);
+  tags := "[[\"u\",\"https://example.invalid/api/private/x/state?n=1\"],[\"method\",\"GET\"]]";
+  tb: [256] u8; for i: 0..<tags.count { tb[i] = tags[i]; }
+  out: [4096] u8;
+  n := runner_coax_sign(key[..], aux[..], 1790000000, 27235, tb[0..<tags.count], out[..]);
+  #assert n > 0;
+  scratch: [4096] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], scratch[..], false);
+  #assert e.error == NE_OK && e.kind == 27235 && e.created_at == 1790000000;
+  #assert e.verified;
+  for i: 0..<32 { #assert e.public_key[i] == pub[i]; }
+}
+#test "bad keys, aux and tags are refused" #steps 4000000000 {
+  key: [32] u8; aux: [32] u8; out: [512] u8; pub: [32] u8;
+  #assert !runner_coax_pubkey(key[..], pub[..]);          // zero is not a key
+  #assert !runner_coax_pubkey(key[0..<31], pub[..]) && !runner_coax_pubkey(key[..], pub[0..<31]);
+  key[31] = 1;
+  t := "[]"; tb: [2] u8; tb[0] = t[0]; tb[1] = t[1];
+  #assert runner_coax_sign(key[0..<31], aux[..], 1, 27235, tb[..], out[..]) == -1;
+  #assert runner_coax_sign(key[..], aux[0..<31], 1, 27235, tb[..], out[..]) == -1;
+  bad := "[[1]]"; bb: [5] u8; for i: 0..<5 { bb[i] = bad[i]; }
+  #assert runner_coax_sign(key[..], aux[..], 1, 27235, bb[..], out[..]) == -1;
+  #assert runner_coax_sign(key[..], aux[..], 1, 27235, tb[..], out[0..<10]) == -1;
+}

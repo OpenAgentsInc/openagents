@@ -33,3 +33,4 @@ decisions in [NEEDS_OWNER.md](../../../NEEDS_OWNER.md).
 | Report | Base commit | Complete profiles |
 | --- | --- | --- |
 | [consumers-2026-11-03.md](consumers-2026-11-03.md) ([JSON](consumers-2026-11-03.json)) | see the report | 0 of 10 |
+| [consumers-2026-11-03-2.md](consumers-2026-11-03-2.md) ([JSON](consumers-2026-11-03-2.json)) | see the report | 2 of 10 (the API's NIP-98 check, the homepage) |

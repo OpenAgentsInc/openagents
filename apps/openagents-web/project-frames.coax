@@ -5,7 +5,7 @@
 // A compile-time check can't call that #foreign, so these run natively:
 // coax/web/tool.sh suites builds this file and the unit, links them with
 // coax/web/native-check.c and runs each check in its own process.
-//   coax test apps/openagents-web/project-frames.coax --native-link project-capacity.coax
+//   coax test apps/openagents-web/project-frames.coax --native-link project-verify.coax
 #import "Basic";
 #load "project.coax";
 

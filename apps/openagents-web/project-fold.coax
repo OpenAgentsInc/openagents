@@ -23,9 +23,11 @@
 // - an issue is under the project when any of its a tags is the project's
 //   coordinate (NIP-34 allows several, as the relay's #a filter matches).
 //
-// Signatures: until Coax verifies BIP-340 Schnorr signatures (task
-// project-page-verify), the page trusts relay.openagents.com's signature
-// check and keeps only events whose pubkey is the project's.
+// Signatures: the live page verifies each EVENT frame's id and BIP-340
+// signature in Coax before it reaches read_frame (project-live.coax,
+// project-verify.coax), and keeps only events whose pubkey is the project's.
+// read_frame itself doesn't verify: the fold's checks read a captured
+// transcript, and the snapshot tools read what the CLI's verified client got.
 
 #load "../../coax/lib/nostr/json.coax";
 #load "../../coax/lib/nostr/nip22.coax";

@@ -1,0 +1,72 @@
+// The project page's separately compiled unit (#12630, task project-page-verify):
+// the capacity kernel (project-capacity.coax) and the check every live EVENT
+// frame passes before the page stores it, and it carries project-names.coax
+// (wasm.sh refuses two units that both export the shared codecs). project_frame_verified reads one
+// relay frame as a NIP-01 message, recomputes the event's id from its fields
+// and verifies its BIP-340 signature with Coax's verifier
+// (schnorr_fast.coax); anything else, or any failure, is false and the page
+// drops the frame. The page (project-live.coax) calls it through #foreign, so
+// its compile-time checks never run the curve arithmetic; this unit is built
+// once beside the page (apps/openagents-web/build.sh) and linked into the
+// native suites:
+//   coax test apps/openagents-web/project-verify.coax
+#authority;
+#load "project-capacity.coax";
+#load "project-names.coax";   // the NIP-19 names: one Wasm unit carries both, so their shared codecs link once
+#load "../../coax/lib/nostr/event.coax";
+#load "../../coax/lib/crypto/schnorr_fast.coax";
+#load "../../coax/lib/nostr/message.coax";
+
+project_frame_verified :: (bytes: [] u8) -> bool #export_c {
+  // nostr_message_read bounds the frame (NM_MAX_FRAME) and sets an event span
+  // only for an EVENT message; a frame with anything after the event fails.
+  m := nostr_message_read(cast(string) bytes);
+  if m.error != NM_OK { return false; }
+  scratch: [NE_MAX_OUTPUT] u8;
+  e := nostr_event_read(cast(string) bytes[m.event.from..<m.event.to], scratch[..], false);
+  return e.error == NE_OK && nostr_fast_verify_vartime(e.id[..], e.public_key[..], e.signature[..]);
+}
+
+// A real comment of the project's key, captured from relay.openagents.com
+// (coax/lib/nostr/fixtures/coax_relay.jsonl, its shortest comment frame).
+PV_REAL :: "[\"EVENT\",\"comments\",{\"id\":\"461229bfe34e2748f52ff262bfa21bd13e302b0af5829c7e8d4693ad4400a113\",\"pubkey\":\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\",\"created_at\":1793217839,\"kind\":1111,\"tags\":[[\"E\",\"47b1de82fd67af95ad4ce28f2164dc8812c48fd30ae27cec4b49f99aa824c2e0\",\"wss://relay.openagents.com\",\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],[\"K\",\"1621\"],[\"P\",\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],[\"e\",\"47b1de82fd67af95ad4ce28f2164dc8812c48fd30ae27cec4b49f99aa824c2e0\",\"wss://relay.openagents.com\",\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],[\"k\",\"1621\"],[\"p\",\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],[\"claim\",\"claude-live-1\"],[\"alt\",\"claude-live-1 claimed a task: Host import: a WebSocket byte pipe\"]],\"content\":\"claude-live-1 is working on this.\",\"sig\":\"433a4aceea4e683615c04a54894503451ece44deb8b39169d4173b79c004dce00ad92a5473dae50b73942d25516e642085eb9e2c21e3394ba52d07d696478977\"}]";
+
+// A frame as the page passes it: its bytes.
+pv_ok :: (s: string) -> bool {
+  b: [4096] u8;
+  for i: 0..<s.count { b[i] = s[i]; }
+  return project_frame_verified(b[0..<s.count]);
+}
+// Where PV_REAL's content, signature and id begin.
+PV_CONTENT :: 836; PV_SIG :: 878; PV_ID :: 27;
+// PV_REAL with byte k changed to c.
+pv_changed :: (k: int, c: u8, out: [] u8) -> string {
+  for i: 0..<PV_REAL.count { out[i] = PV_REAL[i]; }
+  out[k] = c;
+  return cast(string) out[0..<PV_REAL.count];
+}
+
+#test "a real event verifies; a changed content, id or signature byte is refused" #steps 400000000 {
+  #assert pv_ok(PV_REAL);
+  b: [4096] u8;
+  #assert PV_REAL[PV_CONTENT - 1] == '"' && PV_REAL[PV_SIG - 1] == '"' && PV_REAL[PV_ID - 1] == '"';
+  #assert pv_ok(pv_changed(PV_CONTENT, PV_REAL[PV_CONTENT], b[..]));   // the copy itself verifies
+  #assert !pv_ok(pv_changed(PV_CONTENT, ifx PV_REAL[PV_CONTENT] == 'x' then 'y' else 'x', b[..]));
+  #assert !pv_ok(pv_changed(PV_SIG, ifx PV_REAL[PV_SIG] == '0' then '1' else '0', b[..]));
+  #assert !pv_ok(pv_changed(PV_ID, ifx PV_REAL[PV_ID] == '0' then '1' else '0', b[..]));
+  // the same event, then anything more in the frame: refused
+  n := PV_REAL.count - 1;
+  for i: 0..<n { b[i] = PV_REAL[i]; }
+  tail := ",\"x\"]";
+  for i: 0..<tail.count { b[n + i] = tail[i]; }
+  #assert !project_frame_verified(b[0..<n + tail.count]);
+}
+
+#test "frames that are not one well-formed EVENT are refused" {
+  #assert !pv_ok("");
+  #assert !pv_ok("[\"EOSE\",\"repo\"]");
+  #assert !pv_ok("[\"NOTICE\",\"hi\"]");
+  #assert !pv_ok("[\"EVENT\",\"repo\"]");
+  #assert !pv_ok("[\"EVENT\",\"repo\",{}]");
+  #assert !pv_ok("[\"EVENT\",\"comments\",{\"id\":\"00000000000000000000000000000000000000000000000000000000000000aa\",\"pubkey\":\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\",\"created_at\":1,\"kind\":1111,\"tags\":[],\"content\":\"hi\",\"sig\":\"\"}]");
+}

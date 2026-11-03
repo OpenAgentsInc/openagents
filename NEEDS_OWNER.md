@@ -410,6 +410,36 @@ Details: `docs/verification/2026-11-01-nostr-book-chapters-11-104.md`.
    Breez's local regtest (pinned to the SDK tag we ship), or supply a Spark
    test environment. Until then the app-zap-with-payment exit stays open;
    no real payment was made.
+7. **Encrypted key storage for the CLI, the Pylon and the coder host
+   (#12630): a design to decide, not built.** Today the rule is a 0600 key
+   file (the coder host: mode 600 in a mode 700 folder), never the Keychain
+   unless `OPENAGENTS_KEYCHAIN=1`, and the Pylon refuses `--key-file`. That
+   keeps all three consumer profiles incomplete on key storage
+   (`nostr/book/reports/`). Options:
+   - **A. NIP-49 `ncryptsec` file.** The same path holds an `ncryptsec1…`
+     (scrypt + XChaCha20-Poly1305, `coax/lib/crypto/scrypt_nip49.coax`,
+     chapter 47) instead of hex. A passphrase is read from the terminal, or
+     from `OPENAGENTS_KEY_PASSPHRASE` for unattended hosts. Cost: a prompt
+     per command, or a passphrase in the environment, which a headless Pylon
+     needs anyway. Old hex files keep working, with a one-time `nostr
+     encrypt` to convert.
+   - **B. Platform keystore by default.** The Keychain on macOS and the
+     Secret Service or kernel keyring on Linux, with the file as the
+     fallback. Cost: the reason the Keychain is opt-in (every rebuilt binary
+     prompts on macOS) comes back, and headless Linux often has no Secret
+     Service.
+   - **C. Keep the 0600 file and say so.** Record plaintext-at-rest as the
+     accepted profile for these three native consumers; the report would
+     then need a "accepted by the owner" state instead of a blocker.
+   Recommendation: A, with the passphrase from the environment for the
+   Pylon and the coder host, and the file path the Pylon's `--key-file`
+   would read once real Pylon keys are approved (item "Real Pylon keys"
+   below). Say A, B or C; nothing is built until then.
+8. **iOS profile run (#12630).** The `ios-app` consumer (Keychain storage,
+   libsecp256k1 signing in `NostrKey.swift`) needs a run on the Mac: build
+   with `apps/openagents-ios/build.sh`, sign in with a phone key on the
+   simulator against a local relay or staging, and keep the log. This
+   machine is Linux and can't run it.
 
 ## Nostr chapter 103: export, shadow period, cutover and rollback rehearsal for relay.openagents.com (2026-11-01)
 

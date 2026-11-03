@@ -8,10 +8,11 @@
 // with coax/web/native-check.c and runs each check in its own process.
 // This replaces coax/web/project/live-catchup.test.ts; its oracle was the
 // TypeScript model.ts fold, which equals this fold byte for byte on the
-// captured transcript (project-checks.coax). The page trusts the relay's
-// signature check (project-fold.coax), so these events carry made-up ids and
-// an all-zero signature: the app's names collide with the signing library's.
-//   coax test apps/openagents-web/project-catchup.coax --native-link project-capacity.coax
+// captured transcript (project-checks.coax). These events carry made-up ids
+// and an all-zero signature (the app's names collide with the signing
+// library's), so each page here sets trust_relay, the test-only switch past
+// the page's BIP-340 check; project-live-checks.coax checks that check.
+//   coax test apps/openagents-web/project-catchup.coax --native-link project-verify.coax
 #import "Basic";
 #load "project.coax";
 #load "../../coax/tests/nostr/project_capacity_adapter.coax";
@@ -268,6 +269,7 @@ LcUi :: struct {
 lc_frame :: (u: [] LcUi) { n := coaxial_project_frame(u[0].s[..], u[0].t[..], u[0].w[..], u[0].lv[..], u[0].out[..], u[0].uni[..], 1440, 900, 1, 0.016, true); }
 lc_new :: (u: [] LcUi, pk: string) {
   tb: [128] u8; n := 0; for c: pk { tb[n] = c; n += 1; } for c: " coax" { tb[n] = c; n += 1; }
+  u[0].lv[0].trust_relay = true;   // unsigned simulated relay (see the header)
   page_says(u[0].lv[..], cast(string) tb[0..<n]);
   lc_frame(u);
 }

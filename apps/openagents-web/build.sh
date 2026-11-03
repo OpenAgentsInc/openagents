@@ -196,7 +196,7 @@ oa_here project index ${fresh[@]+"${fresh[@]}"}
 list=$!
 for pid in "${snaps[@]}"; do wait "$pid"; done
 oa_here project bake
-"$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm" "$here/project-names.coax" "$here/project-capacity.coax"
+"$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm" "$here/project-verify.coax"   # project-verify.coax: the capacity kernel, the NIP-19 names and the BIP-340 frame check
 wait "$list"
 # /nip/01: NIP-01 in Coax, its verifier its own library; the splash's passes.
 (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/nip.coax apps/openagents-web/nip01.wgsl apps/openagents-web/gpu/nip.module)   # the splash's with sans glyphs

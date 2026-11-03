@@ -31,6 +31,8 @@ stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/src"
 "$repo/coax/bin/coax" c "$here/turn.coax" > "$stage/src/turn.c"
 "$repo/coax/bin/coax" c "$here/chat.coax" > "$stage/src/chat.c"
+# the runner's Coax signer (OA_RUNNER_SIGNER=coax; libsecp256k1 stays the default): its C and header
+"$repo/coax/bin/coax" c "$here/runner-sign.coax" --library --run-steps 250000000 --header "$stage/src/runner-sign.h" > "$stage/src/runner-sign.c"
 cp "$here/runner.c" "$here/chat-runner.c" "$here/seat-runner.c" "$here/engine-io.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/process-native.h" "$stage/src/"
 # oa-seat, the hosted seats' engine (seat.coax, docs/verse/realm-seat.md slice 5): its C, the platform's C and the entropy policy
 mkdir -p "$stage/src/seat"

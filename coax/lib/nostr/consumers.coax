@@ -81,9 +81,9 @@ CP_STATE :: [CP_CONSUMERS * CP_AXES] u8.[
   1, 1, 5, 1,    // pylon: Coax; --key-file refused, test-key labels only
   0, 1, 0, 2,    // api-nip98: verifies only; HTTPS ends at the load balancer
   0, 1, 0, 2,    // homepage: verifies in Wasm; the browser's WebSocket
-  0, 6, 0, 2,    // project-page: live events are relay-trusted (project-page-verify)
+  0, 1, 0, 2,    // project-page: each live EVENT frame verified in Coax before it is stored (project-verify.coax)
   1, 0, 4, 2,    // web-signin: Coax signs in Wasm; entropy kept as hex in browser storage
-  3, 0, 4, 2,    // hosted-runner: libsecp256k1; key in an environment variable
+  3, 0, 4, 2,    // hosted-runner: libsecp256k1 by default; OA_RUNNER_SIGNER=coax signs in Coax (runner-sign.coax), not yet the production default
   3, 3, 0, 2,    // unlock-opener: nostr-effect seals, opens and verifies
   3, 0, 2, 2,    // ios-app: libsecp256k1 signs; Keychain; URLSession
   1, 1, 4, 1];   // coder-host: Coax; the host key is a mode 600 file
@@ -103,7 +103,7 @@ CP_SYMBOL :: [CP_CONSUMERS * CP_AXES] string.[
   "nostr_event_sign_step", "rl_read(", "--key-file", "nip44_encrypt_checked",
   "", "nip98_check_coax", "", "load balancer",
   "", "nostr_fast_verify_vartime", "", "new WebSocket(",
-  "", "Relay-trusted display catch-up", "", "new WebSocket(",
+  "", "project_frame_verified", "", "new WebSocket(",
   "weblogin_sign", "", "localStorage", "fetch(",
   "secp256k1_schnorrsig_sign32", "", "OA_RUNNER_KEY", "curl_easy_init",
   "finalizeEvent", "verifyEvent", "", "fetchEvent",
@@ -114,15 +114,15 @@ CP_SYMBOL :: [CP_CONSUMERS * CP_AXES] string.[
 CP_RECORD :: [CP_CONSUMERS * CP_AXES] string.[
   "docs/verification/2026-11-03-nostr-consumers.md", "docs/verification/2026-11-03-nostr-consumers.md", "", "docs/verification/2026-11-03-nostr-consumers.md",
   "docs/verification/2026-11-03-nostr-consumers.md", "docs/verification/2026-11-03-nostr-consumers.md", "", "docs/verification/2026-11-03-nostr-consumers.md",
-  "", "nostr/book/ch099-the-website-and-sign-in.md", "", "",
-  "", "docs/verification/2026-10-30-newland-coax-nostr.md", "", "",
-  "", "", "", "",
+  "", "nostr/book/ch099-the-website-and-sign-in.md", "", "docs/verification/2026-11-03-nostr-consumers-2.md",
+  "", "docs/verification/2026-10-30-newland-coax-nostr.md", "", "docs/verification/2026-11-03-nostr-consumers-2.md",
+  "", "", "", "docs/verification/2026-11-03-nostr-consumers-2.md",
   "", "", "", "",
   "", "", "", "",
   "", "", "", "",
   "", "", "", "",
   "docs/verification/2026-11-03-nostr-consumers.md", "docs/verification/2026-11-03-nostr-consumers.md", "", "docs/verification/2026-11-03-nostr-consumers.md"];
-CP_KEYS :: [CP_CONSUMERS] u8.[2, 2, 1, 1, 0, 0, 0, 0, 0, 2];
+CP_KEYS :: [CP_CONSUMERS] u8.[2, 2, 1, 1, 1, 0, 0, 0, 0, 2];
 
 cp_ok_consumer :: (c: int) -> bool { return c >= 0 && c < CP_CONSUMERS; }
 cp_ok_axis :: (a: int) -> bool { return a >= 0 && a < CP_AXES; }
@@ -193,7 +193,7 @@ cp_complete :: (c: int, found: u32) -> bool #export_c { return cp_ok_consumer(c)
   #assert cp_name(4) == "project-page" && cp_name(5) == "web-signin" && cp_name(6) == "hosted-runner";
   #assert cp_name(7) == "unlock-opener" && cp_name(8) == "ios-app" && cp_name(9) == "coder-host";
   targets := [10] string.["native-c11-linux-x86_64", "native-c11-linux-x86_64", "native-c11-linux-x86_64", "wasm32-browser", "wasm32-browser", "wasm32-browser", "native-c11-linux-x86_64", "browser-js", "ios-arm64", "native-c11-linux-x86_64"];
-  keys := [10] string.["test-keys", "test-keys", "public-events", "public-events", "none", "none", "none", "none", "none", "test-keys"];
+  keys := [10] string.["test-keys", "test-keys", "public-events", "public-events", "public-events", "none", "none", "none", "none", "test-keys"];
   for c: 0..<10 {
     #assert cp_target(c) == targets[c] && cp_keys(c) == keys[c];
     #assert cp_build(c) == CP_BUILD[c] && cp_compiler(c) == CP_COMPILER[c];
@@ -208,7 +208,7 @@ cp_complete :: (c: int, found: u32) -> bool #export_c { return cp_ok_consumer(c)
 }
 
 #test "each axis: its state, and a file and symbol exactly when it is used" {
-  states := [40] int.[1, 1, 4, 1, 1, 1, 5, 1, 0, 1, 0, 2, 0, 1, 0, 2, 0, 6, 0, 2, 1, 0, 4, 2, 3, 0, 4, 2, 3, 3, 0, 2, 3, 0, 2, 2, 1, 1, 4, 1];
+  states := [40] int.[1, 1, 4, 1, 1, 1, 5, 1, 0, 1, 0, 2, 0, 1, 0, 2, 0, 1, 0, 2, 1, 0, 4, 2, 3, 0, 4, 2, 3, 3, 0, 2, 3, 0, 2, 2, 1, 1, 4, 1];
   for c: 0..<10 {
     for a: 0..<4 {
       st := cp_state(c, a);
@@ -235,19 +235,21 @@ cp_complete :: (c: int, found: u32) -> bool #export_c { return cp_ok_consumer(c)
 
 #test "each consumer is blocked where the registry says" {
   // with every named record found
-  blockers := [10] u32.[4, 4, 8, 8, 10, 13, 13, 11, 13, 4];
+  blockers := [10] u32.[4, 4, 0, 0, 2, 13, 13, 11, 13, 4];
   for c: 0..<10 {
     #assert cp_blockers(c, cp_named(c)) == blockers[c];
-    #assert !cp_complete(c, cp_named(c)) && !cp_complete(c, 15);
+    #assert cp_complete(c, cp_named(c)) == (c == 2 || c == 3) && cp_complete(c, 15) == (c == 2 || c == 3);
   }
-  named := [10] u32.[11, 11, 2, 2, 0, 0, 0, 0, 0, 11];
+  named := [10] u32.[11, 11, 10, 10, 8, 0, 0, 0, 0, 11];
   for c: 0..<10 { #assert cp_named(c) == named[c]; }
   #assert cp_done(0) && !cp_done(1) && !cp_done(8);
 }
 
-#test "the homepage is one record short: its browser socket" {
-  #assert cp_blockers(3, 15) == 8 && cp_blockers(3, 2) == 8;
-  #assert cp_blockers(3, 0) == 10 && cp_blockers(3, 13) == 10;
+#test "the homepage and the API are complete only with both their records found" {
+  for c: [2] int.[2, 3] {
+    #assert cp_complete(c, 10) && cp_blockers(c, 2) == 8 && cp_blockers(c, 8) == 2 && cp_blockers(c, 0) == 10;
+    #assert !cp_complete(c, 2) && !cp_complete(c, 8) && !cp_complete(c, 0);
+  }
 }
 
 #forall "a missing record blocks exactly its own axis" c: 0..<10, a: 0..<4 {
@@ -262,8 +264,8 @@ cp_complete :: (c: int, found: u32) -> bool #export_c { return cp_ok_consumer(c)
 }
 
 #test "a found flag cannot make a record: an axis with no named record stays blocked" {
-  // cli's key storage is plaintext; pylon's refuses keys; the project page doesn't verify
-  #assert cp_blockers(0, 15) == 4 && cp_blockers(1, 15) == 4 && cp_blockers(4, 15) == 10;
+  // cli's key storage is plaintext; pylon's refuses keys; the project page's verifier has no browser record
+  #assert cp_blockers(0, 15) == 4 && cp_blockers(1, 15) == 4 && cp_blockers(4, 15) == 2;
   // the unlock opener and the iOS app sign with code outside Coax
   #assert (cp_blockers(7, 15) & 1) != 0 && (cp_blockers(8, 15) & 1) != 0;
 }

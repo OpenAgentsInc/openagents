@@ -1,10 +1,18 @@
-// Relay-trusted display catch-up. Stable watches stay open while bounded
+// Verified display catch-up. Stable watches stay open while bounded
 // historical pages and exact known-ID repairs build a candidate view. Only a
 // complete bounded candidate replaces the last display; EOSE is not a global
-// completeness proof and CLOSED never substitutes for it. BIP-340 is separate.
+// completeness proof and CLOSED never substitutes for it. Every EVENT frame,
+// on a watch, a catch-up query or a cross-project ask, passes
+// project_frame_verified (project-verify.coax: the id recomputed, BIP-340 in
+// Coax) before anything stores it; a frame that fails is dropped and counted
+// in forged, and during sync it makes the view incomplete (#12630, task
+// project-page-verify). trust_relay turns that off for the native catch-up
+// suite, whose simulated relay sends made-up ids and zero signatures; the
+// page never sets it.
 #load "socket.coax";
 #load "project-fold.coax";
 #load "project-links.coax";
+project_frame_verified :: (frame: [] u8) -> bool #foreign;
 LIVE_INBOX :: 262144;
 LIVE_IDLE :: 0; LIVE_CONNECTING :: 1; LIVE_SYNCING :: 2; LIVE_LIVE :: 3; LIVE_OFFLINE :: 4;
 CONNECT_WAIT :: 10.0; BACKOFF_FIRST :: 1.0; BACKOFF_MOST :: 30.0;
@@ -38,6 +46,15 @@ Live :: struct {
   link_stage: int;                   // LINK_*
   link_serial: int; link_id: [64] u8; link_id_n: int; link_done_at: f32;
   link_out: [LINKS_CAP] u8; link_n: int; link_ready: bool;
+  forged: int;                       // EVENT frames whose id or signature didn't verify, dropped
+  trust_relay: bool;                 // test-only: skip the check (the catch-up suite's unsigned relay)
+}
+// Whether the EVENT frame in the inbox (text, its first text.count bytes) may be
+// stored: its id and BIP-340 signature verify.
+live_verified :: (l: [] Live, text: string) -> bool {
+  if l[0].trust_relay || (text.count <= LIVE_INBOX && project_frame_verified(l[0].inbox[0..<text.count])) { return true; }
+  l[0].forged += 1;
+  return false;
 }
 LINK_IDLE :: 0; LINK_FIRST :: 1; LINK_SECOND :: 2; LINK_DONE :: 3;
 LINK_EVERY :: 60.0;       // seconds between asks while live
@@ -269,6 +286,10 @@ live_message :: (l: [] Live, kind: int, length: int) {
   if watch < 0 && !query { return; }  // reject stale/unknown subscriptions BEFORE storage
   l[0].frames += 1;
   if head.type == FRAME_CLOSED { live_incomplete(l, 1); return; }
+  if head.type == FRAME_EVENT && !live_verified(l, text) {
+    if l[0].state == LIVE_SYNCING || query { live_incomplete(l, 1); }
+    return;
+  }
   fr := read_frame(l[0].store[..], text, live_key(l));
   if fr.type == FRAME_EOSE {
     if query { live_page_end(l); return; }
@@ -398,6 +419,7 @@ live_links_end :: (l: [] Live, answered: bool) {
 live_link_frame :: (l: [] Live, text: string, head: Frame) -> bool {
   if (l[0].link_stage != LINK_FIRST && l[0].link_stage != LINK_SECOND) || !equal(head.sub, link_qid(l)) { return false; }
   if head.type == FRAME_CLOSED { live_links_end(l, false); return true; }
+  if head.type == FRAME_EVENT && !live_verified(l, text) { return true; }
   fr := read_frame(l[0].links[..], text, ANY_KEY);
   if fr.type != FRAME_EOSE { return true; }
   buf: [96] u8; n := live_text(buf[..], 0, "[\"CLOSE\",\""); n = live_text(buf[..], n, link_qid(l)); n = live_text(buf[..], n, "\"]");

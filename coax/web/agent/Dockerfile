@@ -7,7 +7,7 @@
 FROM debian:bookworm-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libsecp256k1-dev libssl-dev libcurl4-openssl-dev && rm -rf /var/lib/apt/lists/*
 COPY src/ /src/
-RUN gcc -std=c11 -O2 -D_DEFAULT_SOURCE -o /oa-agent /src/runner.c -lsecp256k1 -lcrypto -lcurl \
+RUN gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I/src -o /oa-agent /src/runner.c /src/runner-sign.c -lsecp256k1 -lcrypto -lcurl -lm \
  && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -o /oa-turn /src/turn.c /src/process-native.c /src/engine-io.c -lm \
  && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -o /oa-chat-turn /src/chat.c /src/process-native.c /src/engine-io.c -lm \
  && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I/src/seat -o /oa-seat /src/seat/seat.c /src/seat/tool-native.c /src/seat/process-native.c \

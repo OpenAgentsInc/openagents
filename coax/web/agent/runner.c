@@ -37,6 +37,9 @@
 // Environment (Secret Manager at deploy time; coax/web/agent/deploy.sh):
 //   OA_API_ORIGIN       https://openagents.com
 //   OA_RUNNER_KEY       the runner's Nostr secret key, 64 hex (registered in each project with role runner)
+//   OA_RUNNER_SIGNER    "coax": sign NIP-98 with Coax (runner-sign.coax); unset or anything else:
+//                       libsecp256k1, as before. Unsetting it is the rollback. Under "coax" the runner
+//                       derives the public key both ways and refuses to start if they differ (#12630).
 //   OA_AGENT_REPOS      "slug=git-url=key-file" entries, ';' between them; key-file empty for none
 //   ANTHROPIC_API_KEY   handed to the engine only, then removed from this process's environment
 //   OA_AGENT_MODEL      claude-sonnet-5-5
@@ -55,6 +58,7 @@
 #include <secp256k1.h>
 #include <secp256k1_extrakeys.h>
 #include <secp256k1_schnorrsig.h>
+#include "runner-sign.h"   // runner_coax_pubkey, runner_coax_sign: deploy.sh compiles runner-sign.coax
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -180,14 +184,23 @@ static long long jint(const char *json, const char *key) { char *r = jraw(json, 
 static secp256k1_context *ctx;
 static secp256k1_keypair pair;
 static char pubhex[65];
+// OA_RUNNER_SIGNER=coax: the Coax signer holds the secret here, as the libsecp256k1 keypair does in
+// pair; neither is ever logged or written anywhere.
+static bool coax_signer;
+static unsigned char coax_secret[32];
 static void hex(const unsigned char *in, size_t n, char *out) { for (size_t i = 0; i < n; i++) snprintf(out + 2 * i, 3, "%02x", in[i]); }
 static bool load_key(void) {
   const char *k = getenv("OA_RUNNER_KEY");
   if (!k || strlen(k) < 64) return false;
+  const char *which = getenv("OA_RUNNER_SIGNER");
+  coax_signer = which && !strcmp(which, "coax");
   unsigned char key[32];
   for (int i = 0; i < 32; i++) { unsigned v; if (sscanf(k + 2 * i, "%2x", &v) != 1) return false; key[i] = (unsigned char)v; }
   ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
   bool ok = secp256k1_keypair_create(ctx, &pair, key);
+  unsigned char cpub[32];
+  bool cok = coax_signer && runner_coax_pubkey((coax_v_u8){key, 32}, (coax_v_u8){cpub, 32});
+  if (coax_signer) memcpy(coax_secret, key, 32);
   memset(key, 0, sizeof key);
   unsetenv("OA_RUNNER_KEY");
   if (!ok) return false;
@@ -195,6 +208,8 @@ static bool load_key(void) {
   secp256k1_keypair_xonly_pub(ctx, &x, NULL, &pair);
   secp256k1_xonly_pubkey_serialize(ctx, pub, &x);
   hex(pub, 32, pubhex);
+  // the identity rule: the Coax signer must be the same key, or the runner doesn't start
+  if (coax_signer && (!cok || memcmp(cpub, pub, 32))) { memset(coax_secret, 0, sizeof coax_secret); return false; }
   return true;
 }
 static void nip98(const char *method, const char *url, const char *body, char *out, size_t cap) {
@@ -207,13 +222,21 @@ static void nip98(const char *method, const char *url, const char *body, char *o
   puts_(&tags, "]");
   putf(&serial, "[0,\"%s\",%lld,27235,%s,\"\"]", pubhex, t, tags.p);
   unsigned char id[32], sig[64], aux[32];
-  SHA256((const unsigned char *)serial.p, serial.n, id);
   int fd = open("/dev/urandom", O_RDONLY);
   if (fd < 0 || read(fd, aux, 32) != 32) memset(aux, 7, 32);
   if (fd >= 0) close(fd);
-  secp256k1_schnorrsig_sign32(ctx, sig, id, &pair, aux);
-  char idhex[65], sighex[129]; hex(id, 32, idhex); hex(sig, 64, sighex);
-  putf(&ev, "{\"id\":\"%s\",\"pubkey\":\"%s\",\"created_at\":%lld,\"kind\":27235,\"tags\":%s,\"content\":\"\",\"sig\":\"%s\"}", idhex, pubhex, t, tags.p, sighex);
+  if (coax_signer) {
+    // the same event, signed by Coax (runner-sign.coax): it writes the whole NIP-01 JSON
+    static unsigned char signed_ev[16384];
+    int64_t n = runner_coax_sign((coax_v_u8){coax_secret, 32}, (coax_v_u8){aux, 32}, t, 27235,
+                                 (coax_v_u8){(uint8_t *)tags.p, (int64_t)tags.n}, (coax_v_u8){signed_ev, sizeof signed_ev});
+    if (n > 0) put(&ev, (const char *)signed_ev, (size_t)n);
+  } else {
+    SHA256((const unsigned char *)serial.p, serial.n, id);
+    secp256k1_schnorrsig_sign32(ctx, sig, id, &pair, aux);
+    char idhex[65], sighex[129]; hex(id, 32, idhex); hex(sig, 64, sighex);
+    putf(&ev, "{\"id\":\"%s\",\"pubkey\":\"%s\",\"created_at\":%lld,\"kind\":27235,\"tags\":%s,\"content\":\"\",\"sig\":\"%s\"}", idhex, pubhex, t, tags.p, sighex);
+  }
   unsigned char *b64 = malloc(ev.n * 2 + 8);
   EVP_EncodeBlock(b64, (const unsigned char *)ev.p, (int)ev.n);
   snprintf(out, cap, "Authorization: Nostr %s", b64);
