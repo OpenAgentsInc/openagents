@@ -1,4 +1,5 @@
 #load "tensor-ir-host.coax";
+#load "../tests/operator-registry-checks.coax";  // the checks' names, programs and fingerprint oracle
 #authority;
 // book:begin registry
 OrSchema :: struct {name:[48]u8;name_count:int;entry:[48]u8;entry_count:int;version:int=1;rank_limit:int=4;dtype:TdDtype;backward:bool=true;batching:bool=true;write_alias:bool;}
@@ -26,9 +27,11 @@ OrBatch :: struct {status:TiStatus;shape:TvShape;}
     r:=or_register(or_empty([4]u64.[1,0,0,0]),or_schema("square","registered_squared").schema,[4]u64.[2,0,0,0]).registry;before:=or_fingerprint(r);r.code[0][0]=3;after:=or_fingerprint(r);#assert before[0]!=after[0];
 }
 or_empty :: (compiler:[4]u64)->OrRegistry #export_c {return OrRegistry.{compiler=compiler,life=ti_initial_life()};}
-or_name :: (s:[48]u8,count:int,entry:bool)->bool {if count<1 || count>=48 {return false;}for i:0..<count {c:=s[i];if !((c>=97 && c<=122)||(c>=65 && c<=90)||(c>=48 && c<=57)||c==95||(!entry && (c==45||c==46))) {return false;}if entry && i==0 && c>=48 && c<=57 {return false;}}return true;}
-or_schema :: (name:string,entry:string)->OrSpec #export_c {if name.count<1 || name.count>=48 || entry.count<1 || entry.count>=48 {return OrSpec.{status=TiStatus.identity};}s:=OrSchema.{name_count=name.count,entry_count=entry.count};for i:0..<name.count {s.name[i]=name[i];}for i:0..<entry.count {s.entry[i]=entry[i];}if !or_schema_valid(s) {return OrSpec.{status=TiStatus.identity};}return OrSpec.{schema=s};}
-or_schema_valid :: (s:OrSchema)->bool {if s.name_count<1 || s.name_count>=48 || s.entry_count<1 || s.entry_count>=48 || s.version<1 || s.rank_limit<0 || s.rank_limit>4 || s.dtype!=TdDtype.f32 || s.write_alias {return false;}return or_name(s.name,s.name_count,false) && or_name(s.entry,s.entry_count,true);}
+// Past the character test, an entry point's only characters below 65 are digits.
+or_name :: (s:[48]u8,count:int,entry:bool)->bool {if count<1 || count>=48 {return false;}for i:0..<count {c:=s[i];if !((c>=97 && c<=122)||(c>=65 && c<=90)||(c>=48 && c<=57)||c==95||(!entry && (c==45||c==46))) {return false;}if entry && i==0 && c<65 {return false;}}return true;}
+// Only the first 48 bytes are kept; or_name refuses any count that is not 1 to 47.
+or_schema :: (name:string,entry:string)->OrSpec #export_c {s:=OrSchema.{name_count=name.count,entry_count=entry.count};for i:0..<name.count {if i<48 {s.name[i]=name[i];}}for i:0..<entry.count {if i<48 {s.entry[i]=entry[i];}}if !or_schema_valid(s) {return OrSpec.{status=TiStatus.identity};}return OrSpec.{schema=s};}
+or_schema_valid :: (s:OrSchema)->bool {if s.version<1 || s.rank_limit<0 || s.rank_limit>4 || s.dtype!=TdDtype.f32 || s.write_alias {return false;}return or_name(s.name,s.name_count,false) && or_name(s.entry,s.entry_count,true);}
 or_register :: (r:OrRegistry,s:OrSchema,code:[4]u64)->OrUpdate #export_c {
     if r.count<0 || r.count>=8 || !ti_cache_ready(r.life) || r.life.modules!=0 {return OrUpdate.{status=TiStatus.state};}if !or_schema_valid(s) {return OrUpdate.{status=TiStatus.identity};}
     for i:0..<r.count {old:=r.schemas[i];same:=old.version==s.version && old.name_count==s.name_count;for j:0..<s.name_count {if old.name[j]!=s.name[j] {same=false;}}if same {return OrUpdate.{status=TiStatus.identity};}}
@@ -40,6 +43,90 @@ or_batch :: (s:OrSchema,shape:TvShape,batch:int)->OrBatch #export_c {if !s.batch
 or_fingerprint :: (r:OrRegistry)->[4]u64 #export_c {bytes:[2048]u8;at:=0;for i:0..<4 {for j:0..<8 {bytes[at]=cast,trunc(u8)(r.compiler[i]>>u64(8*j));at+=1;}}
     for i:0..<r.count {s:=r.schemas[i];for j:0..<48 {bytes[at]=s.name[j];at+=1;bytes[at]=s.entry[j];at+=1;}fields:=[8]int.[s.version,s.rank_limit,int(cast(u8)s.dtype),0,0,0,s.name_count,s.entry_count];if s.backward {fields[3]=1;}if s.batching {fields[4]=1;}if s.write_alias {fields[5]=1;}for value:fields {for j:0..<8 {bytes[at]=cast,trunc(u8)(cast(u64)value>>u64(8*j));at+=1;}}for value:r.code[i] {for j:0..<8 {bytes[at]=cast,trunc(u8)(value>>u64(8*j));at+=1;}}}
     return ti_identity_words(bytes[0..<at]);
+}
+#test "names take letters, digits and underscores; operator names also dots and dashes" {
+    chars:=[17]int.[44,45,46,47,48,57,58,64,65,90,91,94,95,96,97,122,123];
+    name:=[17]bool.[false,true,true,false,true,true,false,false,true,true,false,false,true,false,true,true,false];
+    for k:0..<17 {t:=orc_text("a");t[1]=cast(u8)chars[k];
+        #assert or_name(t,2,false)==name[k] && or_name(t,2,true)==(name[k] && chars[k]!=45 && chars[k]!=46);
+        t[0]=cast(u8)chars[k];#assert or_name(t,1,false)==name[k];}
+    // An entry point may not start with a digit; an operator name may.
+    #assert or_name(orc_text("A"),1,true) && !or_name(orc_text("0a"),2,true) && or_name(orc_text("1a"),2,false) && !or_name(orc_text("1a"),2,true) && or_name(orc_text("a1"),2,true) && !or_name(orc_text("9"),1,true);
+    long:=orc_text("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstu");
+    #assert or_name(long,47,true) && !or_name(long,48,true) && !or_name(long,0,true) && or_name(long,1,true);
+}
+#test "schemas copy bounded names and refuse every invalid field" {
+    s:=or_schema("a.b-c","run_1");#assert s.status==TiStatus.ok && s.schema.name_count==5 && s.schema.entry_count==5 && s.schema.name[4]==99 && s.schema.entry[4]==49 && s.schema.name[5]==0;
+    l47:="abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstu";l48:="abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuv";l60:="abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefgh";
+    #assert or_schema(l47,l47).status==TiStatus.ok && or_schema(l47,l47).schema.entry[46]==117;
+    bad:=[3]string.[l48,l60,""];
+    for k:0..<3 {#assert or_schema(bad[k],"e").status==TiStatus.identity && or_schema("n",bad[k]).status==TiStatus.identity;}
+    v:=s.schema;#assert or_schema_valid(v);
+    v.rank_limit=0;#assert or_schema_valid(v);
+    for k:0..<7 {w:=s.schema;
+        if k==0 {w.version=0;}else if k==1 {w.rank_limit=-1;}else if k==2 {w.rank_limit=5;}else if k==3 {w.dtype=TdDtype.f16;}else if k==4 {w.write_alias=true;}
+        else if k==5 {w.name_count=0;}else {w.entry=orc_text("a-b");w.entry_count=3;}
+        #assert !or_schema_valid(w);}
+    v.version=1;v.name=orc_text("a-b");v.name_count=3;#assert or_schema_valid(v);
+}
+#test "registration stores the schema and its code, and refuses a full or busy registry" {
+    a:=or_register(or_empty([4]u64.[1,0,0,0]),or_schema("x","e").schema,[4]u64.[5,6,7,8]);
+    #assert a.status==TiStatus.ok && a.id==0 && a.registry.count==1 && a.registry.schemas[0].name[0]==120 && a.registry.code[0][3]==8 && a.registry.code[0][0]==5;
+    r:=a.registry;names:=[7]string.["b","c","d","e","f","g","h"];none:[4]u64;
+    for k:0..<7 {u:=or_register(r,or_schema(names[k],"e").schema,[4]u64.[9,0,0,0]);#assert u.status==TiStatus.ok && u.id==k+1;r=u.registry;}
+    #assert r.count==8 && or_register(r,or_schema("i","e").schema,none).status==TiStatus.state;
+    bad:=a.registry;bad.count=-1;#assert or_register(bad,or_schema("i","e").schema,none).status==TiStatus.state;
+    bad=a.registry;bad.life.running=true;#assert or_register(bad,or_schema("i","e").schema,none).status==TiStatus.state;
+    w:=or_schema("i","e").schema;w.version=0;#assert or_register(a.registry,w,none).status==TiStatus.identity;
+}
+#test "a name and version may be registered once" {
+    r:=orc_registry("abc");none:[4]u64;names:=[4]string.["abd","xbc","ab","abcd"];
+    for k:0..<4 {#assert or_register(r,or_schema(names[k],"e").schema,none).status==TiStatus.ok;}
+    #assert or_register(r,or_schema("abc","other").schema,none).status==TiStatus.identity;
+    s:=or_schema("abc","e").schema;s.version=2;#assert or_register(r,s,none).status==TiStatus.ok;
+}
+#test "registered nodes record their operator, operands and mode" {
+    n:=or_node(3,1,2,true,0.5);#assert n.op==TiOp.registered && n.axis==3 && n.a==1 && n.b==2 && n.index_count==1 && n.epsilon==0.5;
+    #assert or_node(3,1,2,false,0.5).index_count==0;
+}
+#test "admission checks every registered node against its schema" {
+    r:=orc_registry("sq");one:=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};
+    #assert or_admit(r,orc_plan(one,0,true))==TiStatus.ok;
+    failed:=orc_plan(one,0,true);failed.status=TiStatus.budget;#assert or_admit(r,failed)==TiStatus.budget;
+    below:=orc_plan(one,0,true);below.program.nodes[1].axis=-1;#assert or_admit(r,below)==TiStatus.index && or_admit(r,orc_plan(one,1,true))==TiStatus.index;
+    for k:0..<3 {bad:=r;if k==0 {bad.count=-1;}else if k==1 {bad.count=9;}else {bad.life.poisoned=true;}#assert or_admit(bad,orc_plan(one,0,true))==TiStatus.state;}
+    p:TiProgram;p.count=2;p.output=1;p.nodes[0]=ti_input(one,0);p.nodes[1]=TiNode.{op=TiOp.relu,a=0};
+    #assert or_admit(or_empty([4]u64.[1,0,0,0]),ti_compile(p,TiTarget.{},true))==TiStatus.ok;
+    full:=r;for k:1..<8 {full.schemas[k]=r.schemas[0];}full.count=8;#assert or_admit(full,orc_plan(one,7,true))==TiStatus.ok;
+    // Rank limits are inclusive.
+    q:=r;q.schemas[0].rank_limit=1;#assert or_admit(q,orc_plan(one,0,true))==TiStatus.ok;q.schemas[0].rank_limit=0;#assert or_admit(q,orc_plan(one,0,true))==TiStatus.shape;
+    q=r;q.schemas[0].version=0;#assert or_admit(q,orc_plan(one,0,true))==TiStatus.shape;
+    q=r;q.schemas[0].backward=false;#assert or_admit(q,orc_plan(one,0,false))==TiStatus.ok && or_admit(q,orc_plan(one,0,true))==TiStatus.operation;
+    // A forged plan whose first node is registered is still checked.
+    forged:=orc_plan(one,0,true);forged.program.nodes[0]=or_node(5,0,0,false,1);#assert or_admit(r,forged)==TiStatus.index;
+}
+#test "batching prepends an axis inside the schema's rank limit" {
+    s:=or_schema("sq","e").schema;shape:=TvShape.{rank=2,dims=[4]int.[3,5,0,0]};
+    b:=or_batch(s,shape,4);#assert b.status==TiStatus.ok && b.shape.rank==3 && b.shape.dims[0]==4 && b.shape.dims[1]==3 && b.shape.dims[2]==5 && b.shape.dims[3]==0;
+    #assert or_batch(s,TvShape.{rank=1,dims=[4]int.[1,0,0,0]},TV_LIMIT).status==TiStatus.ok && or_batch(s,TvShape.{rank=1,dims=[4]int.[1,0,0,0]},TV_LIMIT+1).status==TiStatus.shape;
+    #assert or_batch(s,shape,0).status==TiStatus.ok && or_batch(s,shape,-1).status==TiStatus.shape;
+    #assert or_batch(s,TvShape.{rank=3,dims=[4]int.[1,1,1,0]},2).status==TiStatus.ok && or_batch(s,TvShape.{rank=4,dims=[4]int.[1,1,1,1]},2).status==TiStatus.shape;
+    #assert or_batch(s,TvShape.{rank=5},2).status==TiStatus.shape;
+    w:=s;w.version=0;#assert or_batch(w,shape,2).status==TiStatus.shape;
+    #assert or_batch(s,TvShape.{rank=1,dims=[4]int.[TV_LIMIT,0,0,0]},2).status==TiStatus.limit;
+}
+#test "the fingerprint covers the compiler, every schema field and every code word" {
+    r:=or_empty([4]u64.[0x0102030405060708,0x1112131415161718,0x2122232425262728,0x8182838485868788]);
+    s:=or_schema("op.one","entry_one").schema;s.rank_limit=3;s.batching=false;
+    r=or_register(r,s,[4]u64.[0x3132333435363738,2,3,0xf1f2f3f4f5f6f7f8]).registry;
+    t:=or_schema("two","e2").schema;t.version=0x01020304;t.backward=false;t.write_alias=true;
+    r.schemas[1]=t;r.code[1]=[4]u64.[0x4142434445464748,5,6,7];r.count=2;
+    f:=or_fingerprint(r);g:=orc_fingerprint(r);for i:0..<4 {#assert f[i]==g[i];}
+    e:=or_fingerprint(or_empty([4]u64.[1,0,0,0]));h:=orc_fingerprint(or_empty([4]u64.[1,0,0,0]));for i:0..<4 {#assert e[i]==h[i];}
+}
+#test "executable sources are bounded and complete" {
+    #assert or_source(4194304,true,true)==TiStatus.ok && or_source(4194305,true,true)==TiStatus.capacity;
+    #assert or_source(1,false,true)==TiStatus.capacity && or_source(1,true,false)==TiStatus.capacity;
 }
 #test "registration targets and executable source identities are admitted explicitly" {
     #assert or_open_admit([4]u64.[1,0,0,0],TdDevice.cuda)==TiStatus.ok;

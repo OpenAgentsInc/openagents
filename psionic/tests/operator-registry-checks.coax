@@ -1,0 +1,27 @@
+// Chapter 40's check helpers, loaded by psionic/lib/operator-registry.coax and
+// owned by its checks: names as fixed arrays, a one-node registered program,
+// and the registry fingerprint's bytes written out independently, each
+// integer split into little-endian bytes by division rather than shifts.
+
+orc_text :: (t:string)->[48]u8 {out:[48]u8;for i:0..<t.count {out[i]=t[i];}return out;}
+// A registry whose one schema has the given name.
+orc_registry :: (name:string)->OrRegistry {return or_register(or_empty([4]u64.[1,0,0,0]),or_schema(name,"entry").schema,[4]u64.[2,0,0,0]).registry;}
+// An input of `shape` and registered operator `id` over it.
+orc_plan :: (shape:TvShape,id:int,backward:bool)->TiPlan {
+    p:TiProgram;p.count=2;p.output=1;p.nodes[0]=ti_input(shape,0);p.nodes[1]=or_node(id,0,0,backward,1);return ti_compile(p,TiTarget.{},true);
+}
+orc_put :: (bytes:[]u8,at:int,value:u64)->int {v:=value;for k:0..<8 {bytes[at+k]=cast,trunc(u8)(v%256);v/=256;}return at+8;}
+// The compiler words; then per schema the name and entry bytes interleaved,
+// eight integer fields and the four code words.
+orc_fingerprint :: (r:OrRegistry)->[4]u64 {
+    bytes:[2048]u8;at:=0;for w:r.compiler {at=orc_put(bytes[..],at,w);}
+    for i:0..<r.count {s:=r.schemas[i];
+        for j:0..<48 {bytes[at+2*j]=s.name[j];bytes[at+2*j+1]=s.entry[j];}at+=96;
+        flags:=[3]bool.[s.backward,s.batching,s.write_alias];
+        at=orc_put(bytes[..],at,cast(u64)s.version);at=orc_put(bytes[..],at,cast(u64)s.rank_limit);at=orc_put(bytes[..],at,u64(cast(u8)s.dtype));
+        for f:flags {bit:u64=0;if f {bit=1;}at=orc_put(bytes[..],at,bit);}
+        at=orc_put(bytes[..],at,cast(u64)s.name_count);at=orc_put(bytes[..],at,cast(u64)s.entry_count);
+        for w:r.code[i] {at=orc_put(bytes[..],at,w);}
+    }
+    return ti_identity_words(bytes[0..<at]);
+}

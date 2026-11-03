@@ -341,7 +341,7 @@
         },
         {
           "path": "psionic/lib/operator-registry.coax",
-          "sha256": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733"
+          "sha256": "70e8c5e2aae7061a934a52c9c7f069f1bdef35f1923d48c4021fb99487f9346b"
         },
         {
           "path": "psionic/lib/autodiff.coax",
