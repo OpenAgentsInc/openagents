@@ -382,6 +382,21 @@
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/everglade/assets/everglade.pack", "particles:/everglade-fx.wgsl"]
       } },
+    { "id": "everglade5e", "name": "EVERGLADE 5E", "kind": "open", "listed": false, "orbit": { "r": 0.36, "a": 4.6, "size": 0.02 },
+      "realm": {
+        "slug": "everglade-5e",
+        "style": "painterly",
+        "clock": "cycle",
+        "ruleset": "srd5",
+        "title": "Everglade 5E",
+        "description": "Everglade 5E, a Verse world in the browser: Everglade, the forest city, with its spell bar on the SRD 5e rules. Every spell rolls its attack, saving throw and damage, and spends its slot and your turn.",
+        "share": "Everglade with its spell bar on the SRD 5e rules: every spell rolls its attack, save and damage, and spends a slot and your turn.",
+        "alt": "Everglade 5E: the forest city, with the spell bar and the 5E panel",
+        "module": "everglade5e",
+        "slot": "everglade-5e",
+        "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
+        "assets": ["pack:/realms/everglade/assets/everglade.pack", "particles:/everglade-fx.wgsl"]
+      } },
     { "id": "oneshot", "name": "ONE-SHOT", "kind": "open", "listed": false, "orbit": { "r": 0.46, "a": 1.6, "size": 0.02 },
       "realm": {
         "slug": "one-shot",

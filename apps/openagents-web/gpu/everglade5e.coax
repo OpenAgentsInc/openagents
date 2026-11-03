@@ -1,0 +1,4 @@
+// Everglade 5E's shaders (everglade5e.coax): Everglade's, every entry and binding as everglade.wgsl has
+// them, since the page is Everglade's. apps/openagents-web/everglade5e.wgsl is written from this with
+// coax/web/wgsl-module.coax (everglade5e.module).
+#load "../../../verse/everglade/gpu.coax";

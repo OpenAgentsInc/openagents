@@ -84,6 +84,10 @@ everglade=$!
 "$here/../../coax/web/wasm.sh" "$here/fivemmo.coax" "$here/fivemmo-face.c" "$here/build/fivemmo.wasm" \
   "$a/player.coax" "$m/grid.coax" "$m/everglade/river.coax" "$here/fivemmo-battle.coax" &
 fivemmo=$!
+# /worlds/everglade-5e: Everglade on the SRD 5e engine (everglade5e.coax on everglade.coax), the rules their own unit.
+"$here/../../coax/web/wasm.sh" "$here/everglade5e.coax" "$here/everglade5e-face.c" "$here/build/everglade5e.wasm" \
+  "$a/player.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax" "$here/everglade5e-rules.coax" &
+everglade5e=$!
 # /worlds/fairy-forest: the park (verse/fairy-forest/forest.coax), with the player, thumbs and its stream (verse/fairy-forest/stream.coax).
 "$here/../../coax/web/wasm.sh" "$here/fairy.coax" "$here/fairy-face.c" "$here/build/fairy.wasm" \
   "$a/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" "$here/../../coax/lib/qr/qr-memory.coax" &
@@ -268,6 +272,7 @@ wait "$belt"
 wait "$orbitleague"
 wait "$everglade"
 wait "$fivemmo"
+wait "$everglade5e"
 wait "$fairy"
 wait "$villa"
 wait "$animelab"

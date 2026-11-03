@@ -1,0 +1,433 @@
+// Everglade 5E's rules, openagents.com/worlds/everglade-5e (unlisted): Everglade's spell bar on the
+// SRD 5e engine (aethyr/rules/srd/), through the hotbar layer it shares with 5E MMO (fivebar.coax).
+// You are the engine's creature 0, Everglade's caster (fb_everglade_hero: a 9th-level Druid, AC 15,
+// 57 Hit Points, spell save DC 15, +7 to hit). Everglade's people (its townsfolk, its watch and the
+// watch's reinforcements) are creatures 1 to E5R_FOLK, each from its SRD stat block, and the others
+// in the room are friends after them. The page (everglade5e.coax) tells this file where everyone
+// stands and what Hit Points they have each frame; this file says what each slot can do now, uses a
+// slot when its cast lands, and gives back everyone's Hit Points and conditions and the log's lines.
+// It plays on the action clock, as 5E MMO does: your turn comes every 1.5 seconds with its action,
+// Bonus Action and one spell slot, and a spent slot comes back 9 seconds later.
+// This is its own C unit (everglade5e-face.c calls its e5r_ exports), so its names stay apart from
+// Everglade's.
+//   coax/bin/coax test --library apps/openagents-web/everglade5e-rules.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+#load "../../aethyr/rules/srd/battle.coax";
+#load "fivebar.coax";
+
+E5R_BEAT :: 1.5; E5R_RECHARGE :: 9.0;
+E5R_FOLK :: 38;            // Everglade's people who can be hurt (verse/everglade/watch.coax WATCH_ACTORS)
+E5R_OTHERS :: 15;          // the others in the room (room.coax ROOM_OTHERS)
+E5R_ME :: 0;
+E5R_SQ :: 1.524;           // a 5-foot square, in metres
+E5R_X0 :: -110.0;          // the grid's corner (square 0, 0), in Everglade's metres
+E5R_SIDE :: 145;           // squares a side: the whole city and its wood
+E5R_AWAY :: -1000;         // the square of one who isn't here
+E5R_FOLK_FLOATS :: 8;      // here, x, z, hp, temp, max, ac, block
+E5R_SLOT_FLOATS :: 6;      // can, left, back, cost, delay, level
+E5R_OUT_FLOATS :: 4;       // hp, temp, cond, dead
+E5R_HERO_FLOATS :: 32;
+// what the page sees a slot can do (e5r_bar's first number)
+E5R_READY :: 0; E5R_NO_SLOT :: 1; E5R_SPENT :: 2; E5R_CANT :: 3;
+// what a slot spends (e5r_bar's fourth)
+E5R_COST_NONE :: 0; E5R_COST_ACTION :: 1; E5R_COST_BONUS :: 2; E5R_COST_REACTION :: 3;
+
+// Everglade's stat blocks (verse/rules/srd5-combat.coax) and their SRD 5.2.1 ability scores
+E5R_BLOCKS :: 8;
+E5R_COMMONER :: 0; E5R_GUARD :: 1; E5R_VETERAN :: 2; E5R_MAGE :: 3; E5R_KNIGHT :: 4; E5R_PRIEST :: 5; E5R_ARCHMAGE :: 6; E5R_GLADIATOR :: 7;
+E5R_BLOCK_NAME :: [8] string.["Commoner", "Guard", "Warrior Veteran", "Mage", "Knight", "Priest", "Archmage", "Gladiator"];
+E5R_SCORES :: [48] int.[10, 10, 10, 10, 10, 10,  13, 12, 12, 10, 11, 10,  16, 13, 14, 10, 11, 10,  9, 14, 11, 17, 12, 11,
+                        16, 11, 14, 11, 11, 15,  10, 10, 12, 13, 16, 13,  10, 14, 12, 20, 15, 16,  18, 15, 16, 10, 12, 15];
+e5r_scores :: (block: int) -> [6] int {
+  o: [6] int;
+  for q: 0..<6 { o[q] = E5R_SCORES[block * 6 + q]; }
+  return o;
+}
+
+E5r :: struct {
+  b: [1] RsBattle;
+  seat: [1] FbSeat;
+  zones: [FB_ZONES] FbZone;
+  bar: [FB_EG_SLOTS] FbAb;
+  block: [E5R_FOLK] int;     // the stat block each of the people was made from (-1 not yet)
+  started: bool;
+  seen: int;                 // the log's events read so far
+}
+
+e5r_sq :: (m: f32) -> int { return cast(int) floor((m - f32(E5R_X0)) / f32(E5R_SQ)); }
+e5r_folk_at :: (j: int) -> int { return 1 + j; }
+e5r_other_at :: (j: int) -> int { return 1 + E5R_FOLK + j; }
+
+e5r_start :: (r: [] E5r, seed: int) #export_c {
+  b := r[0].b[..];
+  b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = E5R_SIDE; b[0].h = E5R_SIDE;
+  b[0].beat = f32(E5R_BEAT); b[0].recharge = f32(E5R_RECHARGE);
+  for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
+  b[0].dice[0].state = cast(u64) seed * 7919 + 3;
+  _ := rs_add(b, fb_everglade_hero("Your druid", 0), 72, 72);
+  for j: 0..<E5R_FOLK {
+    _ = rs_add(b, fb_folk("Commoner", 1, 10, 4, e5r_scores(0)), E5R_AWAY, E5R_AWAY);
+    r[0].block[j] = -1;
+  }
+  for j: 0..<E5R_OTHERS {
+    o := fb_everglade_hero("Friend", 0);
+    o.hp = 0; o.dead = true;
+    _ = rs_add(b, o, E5R_AWAY, E5R_AWAY);
+  }
+  rs_begin(b);
+  r[0].seat[0] = FbSeat.{me = E5R_ME};
+  b[0].clock = b[0].c[E5R_ME].turn_at;
+  fb_seat_step(b, r[0].seat[..]);
+  for q: 0..<FB_ZONES { r[0].zones[q].on = false; }
+  _ = fb_everglade(r[0].bar[..]);
+  r[0].seen = b[0].book[0].seq;
+  r[0].started = true;
+}
+
+// Where everyone stands and their Hit Points, from the page: you (x, z, hp, temp, dead), Everglade's
+// people (E5R_FOLK_FLOATS each) and the others (x, z, hp, max each). The page keeps Hit Points; the
+// engine reads them here and its changes go back through e5r_out.
+e5r_sync :: (r: [] E5r, me: [] f32, folk: [] f32, folk_n: int, others: [] f32, others_n: int) #export_c {
+  if !r[0].started { return; }
+  b := r[0].b[..];
+  c0 := b[0].c[E5R_ME..<E5R_ME + 1];
+  c0[0].x = e5r_sq(me[0]); c0[0].y = e5r_sq(me[1]);
+  hp := cast(int) me[2];
+  if hp > 0 && (c0[0].dead || c0[0].hp <= 0) { c0[0].dead = false; c0[0].death_fail = 0; c0[0].death_ok = 0; c0[0].stable = false; c0[0].cond = 0; }
+  c0[0].hp = rs_min(rs_max(hp, 0), c0[0].hp_max); c0[0].temp = rs_max(cast(int) me[3], 0);
+  for j: 0..<E5R_FOLK {
+    i := e5r_folk_at(j);
+    f := j * E5R_FOLK_FLOATS;
+    if j >= folk_n || folk[f] < 0.5 { b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY; continue; }
+    block := clamp_r(cast(int) folk[f + 7], 0, E5R_BLOCKS - 1);
+    fmax := rs_max(cast(int) folk[f + 5], 1);
+    if r[0].block[j] != block || b[0].c[i].hp_max != fmax {
+      // a new face here (a reinforcement of another rank): their stat block, fresh
+      r[0].block[j] = block;
+      t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
+      b[0].c[i] = fb_folk(E5R_BLOCK_NAME[block], 1, cast(int) folk[f + 6], fmax, e5r_scores(block));
+      b[0].c[i].turn_at = t; b[0].c[i].round_at = ro;
+    }
+    b[0].c[i].x = e5r_sq(folk[f + 1]); b[0].c[i].y = e5r_sq(folk[f + 2]);
+    fhp := cast(int) folk[f + 3];
+    if fhp > 0 && b[0].c[i].dead { b[0].c[i].dead = false; b[0].c[i].cond = 0; b[0].c[i].conc = -1; }
+    b[0].c[i].hp = rs_max(fhp, 0); b[0].c[i].temp = rs_max(cast(int) folk[f + 4], 0);
+    if fhp <= 0 { b[0].c[i].dead = true; }
+  }
+  for j: 0..<E5R_OTHERS {
+    i := e5r_other_at(j);
+    if j >= others_n { b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY; b[0].c[i].dead = true; continue; }
+    o := j * 4;
+    b[0].c[i].x = e5r_sq(others[o]); b[0].c[i].y = e5r_sq(others[o + 1]);
+    b[0].c[i].hp_max = rs_max(cast(int) others[o + 3], 1);
+    b[0].c[i].hp = rs_min(rs_max(cast(int) others[o + 2], 0), b[0].c[i].hp_max);
+    b[0].c[i].dead = b[0].c[i].hp <= 0;
+  }
+}
+clamp_r :: (v: int, lo_v: int, hi_v: int) -> int { return rs_max(lo_v, rs_min(hi_v, v)); }
+
+// The clock on to `clock` (the page's seconds): slots back, effects out, your next turn opened, the
+// people's turns (the saves they repeat) and the lasting areas' rounds.
+e5r_step :: (r: [] E5r, clock: f32) #export_c {
+  if !r[0].started { return; }
+  b := r[0].b[..];
+  dt := clock - b[0].clock;
+  if dt <= 0 { return; }
+  rs_tick(b, dt);
+  fb_seat_step(b, r[0].seat[..]);
+  for j: 0..<E5R_FOLK {
+    i := e5r_folk_at(j);
+    c := b[0].c[i];
+    if c.dead || c.x == E5R_AWAY || c.turn_at > b[0].clock { continue; }
+    b[0].who = i; rs_start_turn(b, i); rs_end_turn(b, i); b[0].who = -1;
+  }
+  _ := fb_zones_round(r[0].zones[..], b);
+}
+
+// ---- what each slot can do now
+
+// What entry a spends: its action, Bonus Action or Reaction (a feature taken at once: Bonus Action).
+e5r_cost_of :: (a: FbAb) -> int {
+  if a.kind == FB_WORLD { return E5R_COST_NONE; }
+  if a.kind == FB_RESURGE { return E5R_COST_BONUS; }
+  if a.kind != FB_SPELL { return E5R_COST_ACTION; }
+  t := rs_spell(a.sp).cast_time;
+  if t == RS_T_BONUS { return E5R_COST_BONUS; }
+  if t == RS_T_REACTION { return E5R_COST_REACTION; }
+  return E5R_COST_ACTION;
+}
+e5r_can_of :: (r: [] E5r, a: FbAb) -> int {
+  b := r[0].b[..];
+  if a.kind == FB_WORLD { return E5R_READY; }
+  me := b[0].c[E5R_ME];
+  if me.dead || me.hp <= 0 || !rs_can_act(me) { return E5R_CANT; }
+  if !fb_ready(b, E5R_ME, a) { return E5R_NO_SLOT; }
+  if !fb_seat_can(b, r[0].seat[..], a) { return E5R_SPENT; }
+  return E5R_READY;
+}
+// Each of the bar's slots, E5R_SLOT_FLOATS each: whether it can be used now (E5R_READY or why not),
+// what it has left (slots at its level, uses; -1 nothing to count), seconds till its next slot is
+// back (0 none), what it spends, seconds from its press to its strike, its slot level.
+e5r_bar :: (r: [] E5r, out: [] f32) -> int #export_c {
+  if !r[0].started { return 0; }
+  b := r[0].b[..];
+  n := 0;
+  for k: 0..<FB_EG_SLOTS {
+    if (k + 1) * E5R_SLOT_FLOATS > out.count { break; }
+    a := r[0].bar[k];
+    o := k * E5R_SLOT_FLOATS;
+    out[o] = f32(e5r_can_of(r, a));
+    out[o + 1] = f32(fb_left(b, E5R_ME, a));
+    back := fb_back(b, E5R_ME, a);
+    out[o + 2] = ifx back > 0 then hi_r(back - b[0].clock, 0) else 0.0f32;
+    out[o + 3] = f32(e5r_cost_of(a));
+    out[o + 4] = a.delay;
+    out[o + 5] = f32(a.lvl);
+    n += 1;
+  }
+  return n;
+}
+hi_r :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+// You, E5R_HERO_FLOATS: hp, max, temp, AC, the spell held (-1 none), action, Bonus Action and slot
+// spent this turn (1 spent), seconds to your next turn, save DC, spell attack, conditions, then your
+// slots at levels 1 to 9 and their most (from 12 and 21), the clock (30) and whether your turn is open (31).
+e5r_hero :: (r: [] E5r, out: [] f32) -> int #export_c {
+  if !r[0].started || out.count < E5R_HERO_FLOATS { return 0; }
+  b := r[0].b[..];
+  c := b[0].c[E5R_ME];
+  t := r[0].seat[0].turn;
+  out[0] = f32(c.hp); out[1] = f32(c.hp_max); out[2] = f32(c.temp); out[3] = f32(c.ac);
+  out[4] = f32(c.conc);
+  out[5] = ifx t.action then 1.0f32 else 0.0f32; out[6] = ifx t.bonus then 1.0f32 else 0.0f32; out[7] = ifx t.slot_spent then 1.0f32 else 0.0f32;
+  out[8] = hi_r(fb_seat_next(b, r[0].seat[..]) - b[0].clock, 0);
+  out[9] = f32(rs_spell_dc(c)); out[10] = f32(rs_spell_attack(c)); out[11] = f32(c.cond);
+  for l: 1..<10 { out[11 + l] = f32(c.slots[l]); out[20 + l] = f32(c.slots_max[l]); }
+  out[30] = b[0].clock;
+  out[31] = ifx r[0].seat[0].open then 1.0f32 else 0.0f32;
+  return E5R_HERO_FLOATS;
+}
+
+// ---- using a slot
+
+// The one of Everglade's people nearest the square (sx, sy), within `reach` feet, alive (-1 none).
+e5r_near :: (r: [] E5r, sx: int, sy: int, reach: int) -> int {
+  b := r[0].b[..];
+  best := -1; bd := reach + 1;
+  for j: 0..<E5R_FOLK {
+    i := e5r_folk_at(j);
+    c := b[0].c[i];
+    if c.dead || c.x == E5R_AWAY { continue; }
+    d := rs_feet(sx, sy, c.x, c.y);
+    if d < bd { bd = d; best = i; }
+  }
+  return best;
+}
+// The friend most hurt (you or one of the others), for a heal.
+e5r_most_hurt :: (r: [] E5r) -> int {
+  b := r[0].b[..];
+  best := E5R_ME; most := b[0].c[E5R_ME].hp_max - b[0].c[E5R_ME].hp;
+  for j: 0..<E5R_OTHERS {
+    i := e5r_other_at(j);
+    c := b[0].c[i];
+    if c.dead || c.x == E5R_AWAY || rs_feet_to(b, E5R_ME, i) > 60 { continue; }
+    if c.hp_max - c.hp > most { most = c.hp_max - c.hp; best = i; }
+  }
+  return best;
+}
+// Slot k used, its cast landing at (x, z) in Everglade's metres: the engine rolls it. An entry aimed at
+// a creature takes the one of Everglade's people nearest the point (within 10 feet), a heal the friend
+// most hurt. True when it was used (its action, slot and the rest spent); false and nothing spent when
+// it couldn't be (the turn spent, no slot left, you can't act).
+e5r_use :: (r: [] E5r, k: int, x: f32, z: f32) -> bool #export_c {
+  if !r[0].started || k < 0 || k >= FB_EG_SLOTS { return false; }
+  b := r[0].b[..];
+  a := r[0].bar[k];
+  if a.kind == FB_WORLD { return true; }
+  if e5r_can_of(r, a) != E5R_READY { return false; }
+  tx := e5r_sq(x); ty := e5r_sq(z);
+  foe := e5r_near(r, tx, ty, 10);
+  if a.tg == FB_SELF { foe = -1; tx = b[0].c[E5R_ME].x; ty = b[0].c[E5R_ME].y; }
+  ally := e5r_most_hurt(r);
+  if a.tg == FB_ALLY { foe = ally; }
+  before: [10] int;
+  for l: 0..<10 { before[l] = b[0].c[E5R_ME].slots[l]; }
+  ok := fb_seat_use(b, r[0].seat[..], a, foe, tx, ty, ally);
+  if ok && a.again >= 0 {
+    spent := 0;
+    for l: 1..<10 { if b[0].c[E5R_ME].slots[l] < before[l] { spent = l; } }
+    fb_zone_add(r[0].zones[..], b, E5R_ME, a, rs_max(spent, a.lvl), tx, ty);
+  }
+  return ok;
+}
+// Your concentration ends (Everglade's own spell put away: the tentacles end, the moonbeam goes out).
+e5r_end_conc :: (r: [] E5r, k: int) #export_c {
+  if !r[0].started || k < 0 || k >= FB_EG_SLOTS { return; }
+  b := r[0].b[..];
+  a := r[0].bar[k];
+  if a.kind == FB_SPELL && b[0].c[E5R_ME].conc == a.sp { rs_end_concentration(b, E5R_ME, " (put away)"); }
+}
+// The slot's spell is the one you hold.
+e5r_holds :: (r: [] E5r, k: int) -> bool #export_c {
+  if !r[0].started || k < 0 || k >= FB_EG_SLOTS { return false; }
+  a := r[0].bar[k];
+  return a.kind == FB_SPELL && a.sp >= 0 && r[0].b[0].c[E5R_ME].conc == a.sp;
+}
+// Damage the world dealt that no slot of yours did (a guard's sword, a spear, a fall, the river): to
+// you (who -1) or one of Everglade's people (who 0 up), through the engine (Temporary Hit Points
+// first, a concentration save, 0 Hit Points).
+e5r_hurt :: (r: [] E5r, who: int, amount: int) #export_c {
+  if !r[0].started || amount <= 0 { return; }
+  b := r[0].b[..];
+  i := ifx who < 0 then E5R_ME else e5r_folk_at(who);
+  if i >= b[0].n { return; }
+  rs_damage(b, ifx who < 0 then i else E5R_ME, i, amount, RS_BLUDGEONING, false, -1);
+}
+
+// ---- what the engine did
+
+// Hit Points, Temporary Hit Points, conditions and whether dead, E5R_OUT_FLOATS each: you, then
+// Everglade's people. How many.
+e5r_out :: (r: [] E5r, out: [] f32) -> int #export_c {
+  if !r[0].started { return 0; }
+  b := r[0].b[..];
+  n := 0;
+  for i: 0..<1 + E5R_FOLK {
+    if (n + 1) * E5R_OUT_FLOATS > out.count { break; }
+    c := b[0].c[i];
+    o := n * E5R_OUT_FLOATS;
+    out[o] = f32(c.hp); out[o + 1] = f32(c.temp); out[o + 2] = f32(c.cond); out[o + 3] = ifx c.dead then 1.0f32 else 0.0f32;
+    n += 1;
+  }
+  return n;
+}
+// The log's lines since the last call, oldest first, each ended by a newline. How many bytes.
+e5r_lines :: (r: [] E5r, out: [] u8) -> int #export_c {
+  if !r[0].started { return 0; }
+  b := r[0].b[..];
+  fresh := rs_min(b[0].book[0].seq - r[0].seen, RS_EVENTS);
+  r[0].seen = b[0].book[0].seq;
+  n := 0;
+  q := fresh - 1;
+  while q >= 0 {
+    e := rs_recent_at(b[0].book[..], q);
+    q -= 1;
+    if e.text_n == 0 || n + e.text_n + 1 > out.count { continue; }
+    for t: 0..<e.text_n { out[n] = e.text[t]; n += 1; }
+    out[n] = 10; n += 1;
+  }
+  return n;
+}
+// What slot k does under the rules, one line for the bar's card: its name, its level, how it
+// resolves, and whether it is a house rule.
+e5r_describe :: (r: [] E5r, k: int, out: [] u8) -> int #export_c {
+  if k < 0 || k >= FB_EG_SLOTS { return 0; }
+  a := r[0].bar[k];
+  n := 0;
+  if a.kind == FB_WORLD { return 0; }
+  if a.kind != FB_SPELL { return rs_put(out, 0, "Wild Resurgence: a spell slot for a use of Wild Shape, a Bonus Action"); }
+  s := rs_spell(a.sp);
+  n = rs_put(out, n, s.name);
+  n = rs_put(out, n, ifx s.level == 0 then " · cantrip" else " · ");
+  if s.level > 0 { n = rs_put(out, n, RS_ORDINAL[s.level]); n = rs_put(out, n, " level"); }
+  for q: 0..<s.step_n {
+    st := s.steps[q];
+    if st.kind == RS_S_ATTACK { n = rs_put(out, n, " · spell attack +"); n = rs_put_int(out, n, rs_spell_attack(r[0].b[0].c[E5R_ME])); }
+    if st.kind == RS_S_SAVE { n = rs_put(out, n, " · "); n = rs_put(out, n, RS_ABILITY[clamp_r(st.a, 0, 5)]); n = rs_put(out, n, " save DC "); n = rs_put_int(out, n, rs_spell_dc(r[0].b[0].c[E5R_ME])); }
+    if st.kind == RS_S_DAMAGE { n = rs_put(out, n, " · "); n = rs_put_int(out, n, st.a); n = rs_put(out, n, "d"); n = rs_put_int(out, n, st.b); }
+    if st.kind == RS_S_HEAL { n = rs_put(out, n, " · heals "); n = rs_put_int(out, n, st.a); n = rs_put(out, n, "d"); n = rs_put_int(out, n, st.b); }
+  }
+  if s.concentration { n = rs_put(out, n, " · concentration"); }
+  if !s.srd { n = rs_put(out, n, " · house rule"); }
+  return n;
+}
+
+// ---- tests: the page's numbers in, the engine's out
+
+e5r_test_world :: (r: [] E5r) {
+  e5r_start(r, 7);
+  me := [5] f32.[0, 0, 57, 0, 0];
+  folk: [E5R_FOLK * E5R_FOLK_FLOATS] f32;
+  // two guards 3 metres east of you, a commoner 30 metres off
+  g := 0;
+  folk[g] = 1; folk[g + 1] = 3; folk[g + 2] = 0; folk[g + 3] = 11; folk[g + 5] = 11; folk[g + 6] = 16; folk[g + 7] = f32(E5R_GUARD);
+  g = E5R_FOLK_FLOATS;
+  folk[g] = 1; folk[g + 1] = 3; folk[g + 2] = 1.6; folk[g + 3] = 11; folk[g + 5] = 11; folk[g + 6] = 16; folk[g + 7] = f32(E5R_GUARD);
+  g = 2 * E5R_FOLK_FLOATS;
+  folk[g] = 1; folk[g + 1] = 30; folk[g + 2] = 0; folk[g + 3] = 4; folk[g + 5] = 4; folk[g + 6] = 10; folk[g + 7] = f32(E5R_COMMONER);
+  others: [4] f32;
+  e5r_sync(r, me[..], folk[..], E5R_FOLK, others[..], 0);
+}
+#test "Everglade 5E: the page's people are the engine's creatures" #steps 400000000 {
+  r: [1] E5r;
+  e5r_test_world(r[..]);
+  b := r[0].b[..];
+  #assert b[0].c[E5R_ME].hp == 57 && b[0].c[E5R_ME].ac == 15;
+  #assert b[0].c[e5r_folk_at(0)].ac == 16 && b[0].c[e5r_folk_at(0)].hp == 11 && b[0].c[e5r_folk_at(0)].score[0] == 13;
+  #assert b[0].c[e5r_folk_at(3)].x == E5R_AWAY;
+  #assert rs_feet_to(b, E5R_ME, e5r_folk_at(0)) == 10;   // 3 m is two squares
+  #assert e5r_near(r[..], e5r_sq(3), e5r_sq(0), 10) == e5r_folk_at(0);
+  #assert e5r_near(r[..], e5r_sq(60), e5r_sq(0), 10) == -1;
+}
+#test "Everglade 5E: a slot used spends the turn and the slot, and the bar says so" #steps 400000000 {
+  r: [1] E5r;
+  e5r_test_world(r[..]);
+  bar: [FB_EG_SLOTS * E5R_SLOT_FLOATS] f32;
+  #assert e5r_bar(r[..], bar[..]) == FB_EG_SLOTS;
+  #assert bar[1 * E5R_SLOT_FLOATS] == f32(E5R_READY) && bar[1 * E5R_SLOT_FLOATS + 3] == f32(E5R_COST_ACTION);
+  #assert bar[47 * E5R_SLOT_FLOATS] == f32(E5R_READY) && bar[47 * E5R_SLOT_FLOATS + 3] == f32(E5R_COST_NONE);
+  // the Thunderbolt on the guards: a 7th-level slot, the action
+  #assert e5r_use(r[..], 1, 3, 0.8);
+  #assert r[0].b[0].c[E5R_ME].slots[7] == 0;
+  _ := e5r_bar(r[..], bar[..]);
+  #assert bar[1 * E5R_SLOT_FLOATS] == f32(E5R_SPENT);        // an 8th-level slot is left, but the turn's slot is spent
+  #assert bar[43 * E5R_SLOT_FLOATS] == f32(E5R_SPENT);        // Ray of Frost: the action is spent
+  #assert !e5r_use(r[..], 43, 3, 0);
+  out: [(1 + E5R_FOLK) * E5R_OUT_FLOATS] f32;
+  #assert e5r_out(r[..], out[..]) == 1 + E5R_FOLK;
+  // 20d10 against 11 Hit Points: both guards fall, saved or not; the commoner far off is untouched
+  #assert out[1 * E5R_OUT_FLOATS] == 0 && out[2 * E5R_OUT_FLOATS] == 0 && out[3 * E5R_OUT_FLOATS] == 4;
+  text: [2000] u8;
+  #assert e5r_lines(r[..], text[..]) > 20;
+  #assert e5r_lines(r[..], text[..]) == 0;
+  // the next turn opens on its beat: Ray of Frost ready again
+  e5r_step(r[..], r[0].b[0].clock + 1.6);
+  _ = e5r_bar(r[..], bar[..]);
+  #assert bar[43 * E5R_SLOT_FLOATS] == f32(E5R_READY);
+  // the Mega Thunderbolt takes the one 9th-level slot: none left, and it is back 9 seconds on
+  #assert e5r_use(r[..], 2, 30, 0);
+  e5r_step(r[..], r[0].b[0].clock + 0.05);
+  _ = e5r_bar(r[..], bar[..]);
+  #assert bar[2 * E5R_SLOT_FLOATS] == f32(E5R_NO_SLOT) && bar[2 * E5R_SLOT_FLOATS + 2] > 8 && bar[2 * E5R_SLOT_FLOATS + 1] == 0;
+}
+#test "Everglade 5E: the world's own blows go through the engine" #steps 400000000 {
+  r: [1] E5r;
+  e5r_test_world(r[..]);
+  e5r_hurt(r[..], -1, 9);
+  #assert r[0].b[0].c[E5R_ME].hp == 48;
+  e5r_hurt(r[..], 0, 20);
+  #assert r[0].b[0].c[e5r_folk_at(0)].dead;
+  // the page's Hit Points win back on the next sync (Everglade's priest healed them, a new day)
+  e5r_test_world(r[..]);
+  #assert !r[0].b[0].c[e5r_folk_at(0)].dead;
+}
+#test "Everglade 5E: concentration put away ends the spell" #steps 400000000 {
+  r: [1] E5r;
+  e5r_test_world(r[..]);
+  #assert e5r_use(r[..], 12, 3, 0.8);   // Black Tentacles
+  #assert e5r_holds(r[..], 12);
+  e5r_end_conc(r[..], 12);
+  #assert !e5r_holds(r[..], 12);
+  line: [200] u8;
+  n := e5r_describe(r[..], 2, line[..]);
+  #assert n > 20 && line[n - 1] == 'e';   // "... house rule"
+}
+// Slot k's name for the room (its spell's, or the feature's).
+e5r_spell_name :: (r: [] E5r, k: int, out: [] u8) -> int #export_c {
+  if k < 0 || k >= FB_EG_SLOTS { return 0; }
+  return rs_put(out, 0, r[0].bar[k].name);
+}

@@ -1,0 +1,687 @@
+// Everglade 5E, openagents.com/worlds/everglade-5e (unlisted): Everglade on the SRD 5e engine. The
+// page is Everglade's (everglade.coax, loaded as it is): its city, its people and watch, its
+// character controller, its spell bar with the alike slots, pictures, keys and order, its spells'
+// fire, smoke and lightning, and its room. What changes is who decides: each slot of the bar is an
+// entry of the hotbar layer it shares with 5E MMO (fivebar.coax fb_everglade), and the SRD 5e engine
+// (everglade5e-rules.coax, its own C unit) rolls what it does. This file is between the two:
+//   - a slot that can't be used now (its turn's action or Bonus Action spent, no slot of its level
+//     left) doesn't arm or cast: the press is held back and the bar says why;
+//   - a cast that lands (Everglade's cast bar and fall end) is the engine's to resolve, on the
+//     creatures under it, at the point you aimed;
+//   - the engine keeps Hit Points: what Everglade rolls for your blasts is put back, and the
+//     engine's own damage and healing land instead (with Everglade's knock-downs and deaths, and the
+//     numbers over heads); what the world deals otherwise (a guard's sword, a spear, the river) goes
+//     through the engine too, so it meets your Temporary Hit Points and your concentration;
+//   - your Hit Points and Armor Class are the engine's caster's (57 and 15);
+//   - the room is its own ("everglade-5e"), and each player's Hit Points and casts go to the others
+//     on the room's chat, in lines the chat panel doesn't show.
+// The face (everglade5e-face.c) passes the numbers between this file and the rules each frame.
+//   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "Everglade 5E"
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+#load "everglade.coax";
+
+E5_ROOM :: "everglade-5e";
+E5_SLOTS :: 49;            // fivebar.coax FB_EG_SLOTS: Everglade's bar, slot for slot
+E5_SLOT_FLOATS :: 6;       // everglade5e-rules.coax E5R_SLOT_FLOATS
+E5_HERO_FLOATS :: 32;
+E5_FOLK_FLOATS :: 8;
+E5_OUT_FLOATS :: 4;
+E5_READY :: 0; E5_NO_SLOT :: 1; E5_SPENT :: 2; E5_CANT :: 3;
+E5_COST_NONE :: 0; E5_COST_ACTION :: 1; E5_COST_BONUS :: 2; E5_COST_REACTION :: 3;
+E5_PENDING :: 8; E5_HURTS :: 24; E5_ENDS :: 8;
+E5_LOG :: 5; E5_LOG_TEXT :: 96; E5_LOG_LIFE :: 12.0;
+E5_SYNC :: "[5E] ";        // the start of a player's line of numbers on the room's chat
+E5_SYNC_EVERY :: 2.5;      // s between a player's lines at most (the room takes 5 lines in 10 s)
+E5_SYNC_KEEP :: 2.0;       // s after the last a line goes out unchanged, so a newcomer hears it
+E5_WINDOW :: 2.0;          // s after a bar cast lands that the town's harm is the engine's
+E5_RED :: [3] f32.[0.95, 0.32, 0.26];
+E5_GREEN :: [3] f32.[0.45, 0.9, 0.42];
+E5_CONDITION :: [15] string.["BLINDED", "CHARMED", "DEAFENED", "EXHAUSTION", "FRIGHTENED", "GRAPPLED", "INCAPACITATED", "INVISIBLE",
+                             "PARALYZED", "PETRIFIED", "POISONED", "PRONE", "RESTRAINED", "STUNNED", "UNCONSCIOUS"];
+E5_COND_BLINDED :: 1;
+
+E5 :: struct {
+  bar: [E5_SLOTS * E5_SLOT_FLOATS] f32; bar_ok: bool;
+  hero: [E5_HERO_FLOATS] f32; hero_ok: bool;
+  // what Everglade's people and you were before Everglade's frame
+  hp0: [WATCH_ACTORS] int; temp0: [WATCH_ACTORS] int; mode0: [WATCH_ACTORS] int; t0: [WATCH_ACTORS] f32;
+  after0: [WATCH_ACTORS] int; body0: [WATCH_ACTORS] Tumble; here0: [WATCH_ACTORS] bool;
+  you_hp0: int; you_temp0: int; you_dead0: bool; you_body0: Tumble; you_hurt0: f32;
+  // what went to the rules this frame
+  hurt_who: [E5_HURTS] int; hurt_amt: [E5_HURTS] int; hurt_n: int;
+  end_slot: [E5_ENDS] int; end_n: int;
+  pend_slot: [E5_PENDING] int; pend_x: [E5_PENDING] f32; pend_z: [E5_PENDING] f32; pend_due: [E5_PENDING] f32; pend_n: int;
+  landed: f32;               // when the last bar cast landed
+  now: f32;
+  cond: [WATCH_ACTORS + 1] int;   // the engine's conditions: you, then Everglade's people
+  // the log's last lines, and a word under the bar (why a press was held back)
+  log: [E5_LOG * E5_LOG_TEXT] u8; log_n: [E5_LOG] int; log_t: [E5_LOG] f32; log_head: int;
+  say: [64] u8; say_n: int; say_t: f32;
+  card: [160] u8; card_n: int; card_slot: int;
+  // the room: your line out, and each other's numbers from theirs
+  sync_t: f32; sync_line: [96] u8; sync_n: int; sent: [96] u8; sent_n: int; out_ready: bool;
+  cast_name: [40] u8; cast_name_n: int; cast_t: f32;
+  used_now: bool;            // a cast the engine took this frame: its line under the bar is the engine's
+  oth_id: [ROOM_OTHERS * ROOM_ID] u8; oth_id_n: [ROOM_OTHERS] int;
+  oth_hp: [ROOM_OTHERS] int; oth_max: [ROOM_OTHERS] int; oth_cond: [ROOM_OTHERS] int; oth_t: [ROOM_OTHERS] f32;
+  oth_cast: [ROOM_OTHERS * 40] u8; oth_cast_n: [ROOM_OTHERS] int; oth_cast_t: [ROOM_OTHERS] f32;
+}
+
+e5_room_name :: () -> string #export_c { return E5_ROOM; }
+
+e5_slot_f :: (v: [] E5, k: int, f: int) -> f32 { return v[0].bar[k * E5_SLOT_FLOATS + f]; }
+e5_can :: (v: [] E5, k: int) -> int { if !v[0].bar_ok || k < 0 || k >= E5_SLOTS { return E5_READY; } return cast(int) e5_slot_f(v, k, 0); }
+e5_cost :: (v: [] E5, k: int) -> int { if !v[0].bar_ok || k < 0 || k >= E5_SLOTS { return E5_COST_NONE; } return cast(int) e5_slot_f(v, k, 3); }
+// Whether slot k can be used now: the rules say so, and no cast of the alike cost is still on its way.
+e5_ready :: (v: [] E5, k: int) -> bool {
+  if e5_can(v, k) != E5_READY { return false; }
+  c := e5_cost(v, k);
+  if c == E5_COST_NONE || c == E5_COST_REACTION { return true; }
+  for q: 0..<v[0].pend_n { if e5_cost(v, v[0].pend_slot[q]) == c { return false; } }
+  return true;
+}
+e5_say :: (v: [] E5, text: string) {
+  n := 0;
+  for ch: text { if n >= 64 { break; } v[0].say[n] = ch; n += 1; }
+  v[0].say_n = n; v[0].say_t = v[0].now;
+}
+// Why slot k can't be used now, in a word for under the bar.
+e5_why :: (v: [] E5, k: int) {
+  c := e5_can(v, k);
+  if c == E5_NO_SLOT { e5_say(v, "NO SPELL SLOT OF ITS LEVEL LEFT · SLOTS COME BACK 9 S AFTER USE"); return; }
+  if c == E5_CANT { e5_say(v, "YOU CAN'T ACT"); return; }
+  cost := e5_cost(v, k);
+  if cost == E5_COST_BONUS { e5_say(v, "BONUS ACTION SPENT · YOUR NEXT TURN IN A MOMENT"); return; }
+  e5_say(v, "ACTION SPENT · YOUR NEXT TURN IN A MOMENT");
+}
+// A press of slot b (its key, a click or a tap) that would arm or cast it: held back when it can't be
+// used now. Putting a slot away, or ending what it holds, always goes through.
+e5_press_ok :: (s: [] Everglade, v: [] E5, b: int) -> bool {
+  if b < 0 || b >= SP_REBUILD { return true; }
+  if s[0].sp.armed == b { return true; }
+  if b >= SP_SLOTS && ab_active(s, b - SP_SLOTS) { return true; }
+  if e5_ready(v, b) { return true; }
+  e5_why(v, b);
+  return false;
+}
+// The bar's own keys: 1 when the press is held back (the face doesn't pass it on to Everglade).
+e5_key :: (s: [] Everglade, v: [] E5, key: int, mods: int) -> int #export_c {
+  if !s[0].started || !sp_on(s) || s[0].above || s[0].ev.editing || s[0].talk >= 0 || s[0].chat.typing || s[0].board { return 0; }
+  p := sp_key_place(key, mods);
+  b := ifx p >= 0 then sp_at_place(s, p) else -1;
+  if b < 0 || b >= SP_REBUILD { return 0; }
+  if b >= SP_SLOTS && ab_of(s)[0].keys[b - SP_SLOTS] { return 0; }   // held down: Everglade ignores the repeat
+  return ifx e5_press_ok(s, v, b) then 0 else 1;
+}
+// A pointer on the bar (a slot pressed) or in the world (an armed slot let loose): 1 when held back.
+e5_pointer :: (s: [] Everglade, v: [] E5, x: f32, y: f32, phase: int, kind: int, id: int) -> int #export_c {
+  if !s[0].started || !sp_on(s) || s[0].above || s[0].ev.editing || s[0].talk >= 0 || s[0].board { return 0; }
+  if phase == 0 {
+    for b: 0..<SP_REBUILD {
+      if in_box(s[0].sp.boxes[b], x, y) { return ifx e5_press_ok(s, v, b) then 0 else 1; }
+    }
+    return 0;
+  }
+  // the click that casts the armed slot (everglade-spells.coax spells_pointer: let go where it went down)
+  a := s[0].sp.armed;
+  if phase == 2 && a >= 0 && a < SP_REBUILD && s[0].sp.down && id == s[0].sp.down_id && s[0].sp.casting < 0 && !e5_ready(v, a) {
+    s[0].sp.down = false;
+    e5_why(v, a);
+    return 1;
+  }
+  return 0;
+}
+
+// ---- each frame, before Everglade's
+
+// The rules' numbers for the bar and for you (last frame's), and what everyone is before Everglade's
+// frame, to put back what Everglade's own dice do to them. Everglade's numbers over heads are the
+// engine's from here on (e5_take pops them), so its own pops are off.
+e5_before :: (s: [] Everglade, v: [] E5, bar: [] f32, bar_n: int, hero: [] f32, hero_n: int, now: f32) #export_c {
+  v[0].now = now;
+  if bar_n == E5_SLOTS { for q: 0..<E5_SLOTS * E5_SLOT_FLOATS { v[0].bar[q] = bar[q]; } v[0].bar_ok = true; }
+  if hero_n == E5_HERO_FLOATS { for q: 0..<E5_HERO_FLOATS { v[0].hero[q] = hero[q]; } v[0].hero_ok = true; }
+  if !s[0].started || !s[0].wv.started { return; }
+  w := watch_w(s);
+  if v[0].hero_ok {
+    // your Hit Points and Armor Class are the engine's caster's: a new life starts at its most
+    hmax := cast(int) v[0].hero[1];
+    if w[0].max != hmax && hmax > 0 { w[0].hp = ifx w[0].hp >= w[0].max then hmax else hi_int(lo_int(w[0].hp, hmax), 1); w[0].max = hmax; }
+    w[0].ac = cast(int) v[0].hero[3];
+  }
+  for i: 0..<WATCH_ACTORS {
+    a := w[0].actors[i];
+    v[0].hp0[i] = a.hp; v[0].temp0[i] = a.temp; v[0].mode0[i] = a.mode; v[0].t0[i] = a.t; v[0].after0[i] = a.after; v[0].body0[i] = a.body;
+    v[0].here0[i] = watch_here(w, i);
+    s[0].wv.seen[i].on = false;
+  }
+  v[0].you_hp0 = w[0].hp; v[0].you_temp0 = w[0].temp; v[0].you_dead0 = w[0].dead; v[0].you_body0 = w[0].you_body; v[0].you_hurt0 = w[0].hurt_t;
+  s[0].wv.seen_you.on = false;
+}
+
+// ---- each frame, after Everglade's
+
+// What Everglade's frame did: the harm its dice dealt is put back and handed to the engine (or, in a
+// bar cast's wake, left to the engine's own roll); the casts that were let loose (Everglade notes
+// each for its analytics) wait for their strike; what was put away ends its concentration.
+e5_after :: (s: [] Everglade, v: [] E5) #export_c {
+  v[0].hurt_n = 0; v[0].end_n = 0;
+  if !s[0].started { return; }
+  now := v[0].now;
+  w := watch_w(s);
+  if s[0].wv.started {
+    bar_harm := now - v[0].landed < f32(E5_WINDOW) || v[0].pend_n > 0 || (v[0].hero_ok && v[0].hero[4] >= 0);
+    for i: 0..<WATCH_ACTORS {
+      if !v[0].here0[i] { continue; }
+      a := w[0].actors[i..<i + 1];
+      lost := (v[0].hp0[i] + v[0].temp0[i]) - (a[0].hp + a[0].temp);
+      if lost <= 0 { continue; }
+      // put back: Hit Points, and a death Everglade's dice dealt (the engine decides that)
+      a[0].hp = v[0].hp0[i]; a[0].temp = v[0].temp0[i];
+      if a[0].mode == WM_DEAD && v[0].mode0[i] != WM_DEAD {
+        a[0].mode = v[0].mode0[i]; a[0].t = v[0].t0[i]; a[0].after = v[0].after0[i]; a[0].body = v[0].body0[i];
+      }
+      if !bar_harm && v[0].hurt_n < E5_HURTS { v[0].hurt_who[v[0].hurt_n] = i; v[0].hurt_amt[v[0].hurt_n] = lost; v[0].hurt_n += 1; }
+    }
+    lost := (v[0].you_hp0 + v[0].you_temp0) - (w[0].hp + w[0].temp);
+    if lost > 0 {
+      w[0].hp = v[0].you_hp0; w[0].temp = v[0].you_temp0;
+      if w[0].dead && !v[0].you_dead0 { w[0].dead = false; w[0].dead_t = 0; w[0].you_fall = 0; w[0].you_body = v[0].you_body0; }
+      if v[0].hurt_n < E5_HURTS { v[0].hurt_who[v[0].hurt_n] = -1; v[0].hurt_amt[v[0].hurt_n] = lost; v[0].hurt_n += 1; }
+    }
+  }
+  // the bar's notes this frame (everglade-track.coax egt_note): a slot let loose (used false), a slot
+  // pressed (used true)
+  for q: 0..<s[0].sp.note_n {
+    note := s[0].sp.notes[q];
+    b := note / 2; pressed := note % 2 == 1;
+    if b < 0 || b >= SP_REBUILD { continue; }
+    if !pressed {
+      at := ifx b < SP_SLOTS then s[0].sp.cast_at else ifx s[0].sp.aim_ok then s[0].sp.aim else ab_you(s);
+      e5_pend(v, b, at.x, at.z);
+      continue;
+    }
+    k := b - SP_SLOTS;
+    if k < 0 { continue; }
+    if ab_active(s, k) { if !ab_aimed(k) { you := ab_you(s); e5_pend(v, b, you.x, you.z); } }
+    else if v[0].end_n < E5_ENDS { v[0].end_slot[v[0].end_n] = b; v[0].end_n += 1; }
+  }
+}
+e5_pend :: (v: [] E5, b: int, x: f32, z: f32) {
+  if v[0].pend_n >= E5_PENDING { return; }
+  q := v[0].pend_n;
+  v[0].pend_slot[q] = b; v[0].pend_x[q] = x; v[0].pend_z[q] = z;
+  v[0].pend_due[q] = v[0].now + (ifx v[0].bar_ok then e5_slot_f(v, b, 4) else 0.0f32);
+  v[0].pend_n += 1;
+}
+// The harm to hand the engine: who (-1 you, else one of Everglade's people) and how much, 2 floats each.
+e5_hurts :: (v: [] E5, out: [] f32) -> int #export_c {
+  n := lo_int(v[0].hurt_n, out.count / 2);
+  for q: 0..<n { out[q * 2] = f32(v[0].hurt_who[q]); out[q * 2 + 1] = f32(v[0].hurt_amt[q]); }
+  return n;
+}
+// The slots put away this frame, whose concentration ends.
+e5_ends :: (v: [] E5, out: [] f32) -> int #export_c {
+  n := lo_int(v[0].end_n, out.count);
+  for q: 0..<n { out[q] = f32(v[0].end_slot[q]); }
+  return n;
+}
+// The casts whose strike is now: slot, x, z, 3 floats each. They leave the queue.
+e5_due :: (v: [] E5, out: [] f32) -> int #export_c {
+  n := 0; kept := 0;
+  for q: 0..<v[0].pend_n {
+    if v[0].pend_due[q] <= v[0].now && (n + 1) * 3 <= out.count {
+      out[n * 3] = f32(v[0].pend_slot[q]); out[n * 3 + 1] = v[0].pend_x[q]; out[n * 3 + 2] = v[0].pend_z[q];
+      n += 1;
+      v[0].landed = v[0].now;
+      continue;
+    }
+    v[0].pend_slot[kept] = v[0].pend_slot[q]; v[0].pend_x[kept] = v[0].pend_x[q]; v[0].pend_z[kept] = v[0].pend_z[q]; v[0].pend_due[kept] = v[0].pend_due[q];
+    kept += 1;
+  }
+  v[0].pend_n = kept;
+  return n;
+}
+// A cast the engine refused when it landed (the turn ran out under it): said under the bar.
+e5_refused :: (s: [] Everglade, v: [] E5, b: int) #export_c { e5_why(v, b); }
+// A cast the engine took: its name goes to the room with your next line.
+e5_used :: (v: [] E5, b: int, name: string) #export_c {
+  n := 0;
+  for ch: name { if n >= 40 { break; } v[0].cast_name[n] = ch; n += 1; }
+  v[0].cast_name_n = n; v[0].cast_t = v[0].now; v[0].used_now = true;
+  v[0].sync_t = -100;   // a cast goes out at once (within the room's limit)
+}
+
+// ---- where everyone is, for the rules
+
+// You: x, z, Hit Points, Temporary Hit Points, dead.
+e5_me :: (s: [] Everglade, out: [] f32) -> int #export_c {
+  if !s[0].started || out.count < 5 { return 0; }
+  w := watch_w(s);
+  you := ab_you(s);
+  out[0] = you.x; out[1] = you.z; out[2] = f32(w[0].hp); out[3] = f32(w[0].temp); out[4] = ifx w[0].dead then 1.0f32 else 0.0f32;
+  return 5;
+}
+// Everglade's people, E5_FOLK_FLOATS each: here, x, z, Hit Points, Temporary Hit Points, most, AC,
+// stat block (everglade5e-rules.coax E5R_BLOCK_NAME).
+e5_folk :: (s: [] Everglade, out: [] f32) -> int #export_c {
+  if !s[0].started || !s[0].wv.started { return 0; }
+  w := watch_w(s);
+  n := 0;
+  for i: 0..<WATCH_ACTORS {
+    if (n + 1) * E5_FOLK_FLOATS > out.count { break; }
+    o := n * E5_FOLK_FLOATS;
+    a := w[0].actors[i];
+    here := w[0].on && watch_here(w, i);
+    out[o] = ifx here then 1.0f32 else 0.0f32;
+    pl := person_place(s, i);
+    out[o + 1] = ifx a.body.on then a.body.x else pl.x; out[o + 2] = ifx a.body.on then a.body.z else pl.z;
+    out[o + 3] = f32(a.hp); out[o + 4] = f32(a.temp); out[o + 5] = f32(a.max);
+    st := watch_stats(w, i);
+    out[o + 6] = f32(st.ac); out[o + 7] = f32(e5_block(st.name));
+    n += 1;
+  }
+  return n;
+}
+e5_block :: (name: string) -> int {
+  if name == "Commoner" { return 0; } if name == "Guard" { return 1; } if name == "Warrior Veteran" { return 2; }
+  if name == "Mage" { return 3; } if name == "Knight" { return 4; } if name == "Priest" { return 5; }
+  if name == "Archmage" { return 6; } if name == "Gladiator" { return 7; }
+  return 1;
+}
+// The others in the room: x, z, Hit Points, most (4 floats each), from their lines (none heard yet:
+// a full 57).
+e5_others :: (s: [] Everglade, v: [] E5, out: [] f32) -> int #export_c {
+  if !s[0].started { return 0; }
+  r := s[0].room[..];
+  n := 0;
+  for i: 0..<r[0].others {
+    if (n + 1) * 4 > out.count { break; }
+    q := e5_other_of(s, v, i);
+    out[n * 4] = r[0].at[i * 4]; out[n * 4 + 1] = r[0].at[i * 4 + 2];
+    out[n * 4 + 2] = f32(ifx q >= 0 then v[0].oth_hp[q] else 57); out[n * 4 + 3] = f32(ifx q >= 0 then v[0].oth_max[q] else 57);
+    n += 1;
+  }
+  return n;
+}
+
+// ---- what the engine did, onto Everglade
+
+// Hit Points and conditions from the rules (E5_OUT_FLOATS each: you, then Everglade's people), and the
+// log's new lines. Harm lands as Everglade's own does (a knock-down, a death, your fall), with its
+// number over the head; healing raises Hit Points; Blinded is Everglade's blind.
+e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_n: int) #export_c {
+  if !s[0].started { return; }
+  dealt := 0; struck := 0;
+  if s[0].wv.started && n > 0 {
+    w := watch_w(s);
+    you := ab_you(s);
+    // you
+    eh := cast(int) out[0]; et := cast(int) out[1];
+    v[0].cond[0] = cast(int) out[2];
+    lost := (w[0].hp + w[0].temp) - (eh + et);
+    if lost > 0 && !w[0].dead {
+      watch_hurt_you(w, lost);
+      watch_pop(s, add(you, v3(0, 2.1, 0)), lost, lost * 4 >= hi_int(w[0].max, 1) || lost >= 25);
+    } else if lost < 0 && !w[0].dead {
+      w[0].hp = lo_int(eh, w[0].max); w[0].temp = et;
+    }
+    for i: 0..<lo_int(n - 1, WATCH_ACTORS) {
+      o := (1 + i) * E5_OUT_FLOATS;
+      v[0].cond[1 + i] = cast(int) out[o + 2];
+      if !watch_here(w, i) { continue; }
+      a := w[0].actors[i..<i + 1];
+      fh := cast(int) out[o]; ft := cast(int) out[o + 1];
+      flost := (a[0].hp + a[0].temp) - (fh + ft);
+      if flost > 0 && a[0].mode != WM_DEAD {
+        watch_harm(w, i, flost, you);
+        dealt += flost; struck += 1;
+        watch_pop(s, watch_pop_head(s, i), flost, flost * 4 >= hi_int(a[0].max, 1) || flost >= 25);
+      } else if flost < 0 && a[0].mode != WM_DEAD {
+        a[0].hp = lo_int(fh, a[0].max); a[0].temp = ft;
+      }
+      a[0].blind = a[0].blind || (v[0].cond[1 + i] & E5_COND_BLINDED) != 0;
+    }
+    // Everglade's pops are off; what it saw is now
+    for i: 0..<WATCH_ACTORS { s[0].wv.seen[i].life = w[0].actors[i].hp + w[0].actors[i].temp; }
+    s[0].wv.seen_you.life = w[0].hp + w[0].temp;
+  }
+  // a cast the engine took: the line under the bar (Everglade's report of its own dice) is the engine's
+  if v[0].used_now {
+    v[0].used_now = false;
+    nb := s[0].sp.news[..];
+    m := 0;
+    for q: 0..<v[0].cast_name_n { ch := v[0].cast_name[q]; if m < nb.count { nb[m] = ifx ch >= 'a' && ch <= 'z' then ch - 32 else ch; m += 1; } }
+    if struck > 0 {
+      m = e5_put(nb, m, " · ");
+      m = put_digits(nb, m, dealt);
+      m = e5_put(nb, m, " HIT POINTS LOST · ");
+      m = put_digits(nb, m, struck);
+      m = e5_put(nb, m, ifx struck == 1 then " CREATURE" else " CREATURES");
+    }
+    s[0].sp.news_n = m; s[0].sp.news_t = f32(SP_NEWS);
+  }
+  // the log's lines
+  start := 0;
+  for q: 0..<lo_int(lines_n, lines.count) {
+    if lines[q] != 10 { continue; }
+    e5_log(v, lines[start..<q]);
+    start = q + 1;
+  }
+}
+e5_log :: (v: [] E5, line: [] u8) {
+  if line.count == 0 { return; }
+  k := v[0].log_head;
+  n := lo_int(line.count, E5_LOG_TEXT);
+  for q: 0..<n { v[0].log[k * E5_LOG_TEXT + q] = line[q]; }
+  v[0].log_n[k] = n; v[0].log_t[k] = v[0].now;
+  v[0].log_head = (k + 1) % E5_LOG;
+}
+// The bar's card for slot k: the rules' one line on how it resolves (everglade5e-rules.coax e5r_describe).
+e5_card :: (v: [] E5, k: int, text: string) #export_c {
+  n := 0;
+  for ch: text { if n >= 160 { break; } v[0].card[n] = ch; n += 1; }
+  v[0].card_n = n; v[0].card_slot = k;
+}
+// Which slot's card to ask for: the armed one, else -1.
+e5_card_slot :: (s: [] Everglade) -> int #export_c { return ifx s[0].started then s[0].sp.armed else -1; }
+
+// ---- the room: each player's numbers on its chat
+
+e5_put :: (out: [] u8, at: int, t: string) -> int {
+  n := at;
+  for ch: t { if n >= out.count { break; } out[n] = ch; n += 1; }
+  return n;
+}
+e5_starts :: (t: string, head: string) -> bool {
+  if t.count < head.count { return false; }
+  for q: 0..<head.count { if t[q] != head[q] { return false; } }
+  return true;
+}
+// The table entry for the other in room place i, -1 none heard from yet.
+e5_other_of :: (s: [] Everglade, v: [] E5, i: int) -> int {
+  id := room_other_id(s[0].room[..], i);
+  if id.count == 0 { return -1; }
+  for q: 0..<ROOM_OTHERS {
+    if v[0].oth_id_n[q] != id.count { continue; }
+    alike := true;
+    for c: 0..<id.count { if v[0].oth_id[q * ROOM_ID + c] != id[c] { alike = false; break; } }
+    if alike { return q; }
+  }
+  return -1;
+}
+// The numbers in a line after its start: "hp 45/57 c 2048 cast Moonbeam".
+e5_num_at :: (t: string, at: int) -> int {
+  n := 0; q := at;
+  while q < t.count && t[q] >= 48 && t[q] <= 57 { n = n * 10 + cast(int) (t[q] - 48); q += 1; }
+  return n;
+}
+e5_skip_num :: (t: string, at: int) -> int { q := at; while q < t.count && t[q] >= 48 && t[q] <= 57 { q += 1; } return q; }
+// The room's new lines: each player's numbers are kept for them and the line leaves the chat panel.
+e5_room_read :: (s: [] Everglade, v: [] E5) {
+  r := s[0].room[..];
+  drop_num: [ROOM_LINES] int; drop_from: [ROOM_LINES * ROOM_ID] u8; drop_from_n: [ROOM_LINES] int; drops := 0; theirs := 0;
+  for k: 0..<r[0].lines {
+    t := room_line_text(r, k);
+    if !e5_starts(t, E5_SYNC) { continue; }
+    from := room_line_from(r, k);
+    drop_num[drops] = room_line_num(r, k);
+    for c: 0..<lo_int(from.count, ROOM_ID) { drop_from[drops * ROOM_ID + c] = from[c]; }
+    drop_from_n[drops] = lo_int(from.count, ROOM_ID);
+    drops += 1;
+    if room_line_mine(r, k) || from.count == 0 { continue; }
+    theirs += 1;
+    // whose: the table entry with their id, else a free one
+    q := -1;
+    for e: 0..<ROOM_OTHERS {
+      if v[0].oth_id_n[e] != from.count { continue; }
+      alike := true;
+      for c: 0..<from.count { if v[0].oth_id[e * ROOM_ID + c] != from[c] { alike = false; break; } }
+      if alike { q = e; break; }
+    }
+    if q < 0 {
+      oldest := 0;
+      for e: 0..<ROOM_OTHERS { if v[0].oth_id_n[e] == 0 { oldest = e; break; } if v[0].oth_t[e] < v[0].oth_t[oldest] { oldest = e; } }
+      q = oldest;
+      for c: 0..<lo_int(from.count, ROOM_ID) { v[0].oth_id[q * ROOM_ID + c] = from[c]; }
+      v[0].oth_id_n[q] = lo_int(from.count, ROOM_ID);
+    }
+    // "[5E] hp 45/57 c 0" and maybe " cast Name"
+    at := E5_SYNC.count + 3;
+    v[0].oth_hp[q] = e5_num_at(t, at); at = e5_skip_num(t, at) + 1;
+    v[0].oth_max[q] = hi_int(e5_num_at(t, at), 1); at = e5_skip_num(t, at) + 3;
+    v[0].oth_cond[q] = e5_num_at(t, at); at = e5_skip_num(t, at);
+    v[0].oth_t[q] = v[0].now;
+    if at + 6 <= t.count && t[at + 1] == 'c' {
+      n := 0;
+      for c: at + 6..<t.count { if n >= 40 { break; } v[0].oth_cast[q * 40 + n] = t[c]; n += 1; }
+      v[0].oth_cast_n[q] = n; v[0].oth_cast_t[q] = v[0].now;
+    }
+  }
+  if drops == 0 { return; }
+  for d: 0..<drops { room_drop(r, drop_num[d], cast(string) drop_from[d * ROOM_ID..<d * ROOM_ID + drop_from_n[d]]); }
+  r[0].unread = hi_int(r[0].unread - theirs, 0);
+  // the chat panel wakes for a new line only when one is a line someone said
+  newest := 0;
+  for k: 0..<r[0].lines { newest = hi_int(newest, room_line_num(r, k)); }
+  if newest <= s[0].chat.seen { s[0].chat.seen = r[0].last; }
+}
+// The room answered (the face calls this after room_take): the players' numbers out of the chat.
+e5_room_heard :: (s: [] Everglade, v: [] E5) #export_c { if s[0].started { e5_room_read(s, v); } }
+// Your line to say on the room's chat, when there are others to hear it and your numbers changed (a
+// cast goes at once), at most one every E5_SYNC_EVERY seconds; none, "".
+e5_sync_take :: (s: [] Everglade, v: [] E5) -> string #export_c {
+  if !s[0].started || !s[0].wv.started { return ""; }
+  e5_room_read(s, v);
+  if s[0].room[0].others == 0 || v[0].now - v[0].sync_t < f32(E5_SYNC_EVERY) { return ""; }
+  w := watch_w(s);
+  n := e5_put(v[0].sync_line[..], 0, E5_SYNC);
+  n = e5_put(v[0].sync_line[..], n, "hp ");
+  n = put_digits(v[0].sync_line[..], n, hi_int(w[0].hp, 0));
+  n = e5_put(v[0].sync_line[..], n, "/");
+  n = put_digits(v[0].sync_line[..], n, w[0].max);
+  n = e5_put(v[0].sync_line[..], n, " c ");
+  n = put_digits(v[0].sync_line[..], n, v[0].cond[0]);
+  fresh := v[0].cast_t > v[0].sync_t && v[0].cast_name_n > 0;
+  if fresh { n = e5_put(v[0].sync_line[..], n, " cast "); n = e5_put(v[0].sync_line[..], n, cast(string) v[0].cast_name[0..<v[0].cast_name_n]); }
+  alike := n == v[0].sent_n;
+  if alike { for q: 0..<n { if v[0].sync_line[q] != v[0].sent[q] { alike = false; break; } } }
+  if alike && v[0].now - v[0].sync_t < 20 { return ""; }
+  for q: 0..<n { v[0].sent[q] = v[0].sync_line[q]; }
+  v[0].sent_n = n; v[0].sync_t = v[0].now;
+  return cast(string) v[0].sync_line[0..<n];
+}
+
+// ---- the HUD, over Everglade's
+
+e5_text :: (out: [] f32, n: int, t: string, x: f32, y: f32, cap: f32, k: f32, light: f32, rgb: [3] f32) -> int {
+  return draw_text(out, n, t, x, y, cap, GAP, SPACE, ink(k, light, rgb[0], rgb[1], rgb[2]), false, false);
+}
+E5_GOLD :: [3] f32.[0.86, 0.72, 0.42];
+E5_PARCH :: [3] f32.[0.93, 0.9, 0.82];
+E5_GREY :: [3] f32.[0.55, 0.53, 0.5];
+// The rules' panel (under your Hit Points, top right), each slot's state on the bar, the armed slot's
+// card and why a press was held back (over the bar), the log's lines, conditions over heads and the
+// others' Hit Points. After everglade_finish_frame: `at` is its vertex count, and the plates go on.
+e5_finish :: (s: [] Everglade, v: [] E5, out: [] f32, u: [] f32, at: int) -> int #export_c {
+  n := at;
+  if !s[0].started || at <= 0 || u.count < UNIFORM_FLOATS || !sp_on(s) || s[0].above || !v[0].hero_ok { return n; }
+  k := hi(s[0].dpr, 0.5);
+  wd := s[0].width; ht := s[0].height;
+  gutter := 16 * k;
+  small := phone(s);
+  h := v[0].hero[..];
+  cap := 6.5 * k; lead := 13 * k;
+  // the panel's two widest lines first, so the plate fits them
+  line: [120] u8;
+  ln := e5_put(line[..], 0, "SRD 5E · AC ");
+  ln = put_digits(line[..], ln, cast(int) h[3]);
+  ln = e5_put(line[..], ln, " · SAVE DC ");
+  ln = put_digits(line[..], ln, cast(int) h[9]);
+  ln = e5_put(line[..], ln, " · ATTACK +");
+  ln = put_digits(line[..], ln, cast(int) h[10]);
+  slots: [120] u8;
+  sn := e5_put(slots[..], 0, "SLOTS");
+  for l: 1..<10 {
+    sn = e5_put(slots[..], sn, "  ");
+    sn = put_digits(slots[..], sn, l);
+    sn = e5_put(slots[..], sn, ":");
+    sn = put_digits(slots[..], sn, cast(int) h[11 + l]);
+  }
+  bw := hi(hi(text_width(cast(string) line[0..<ln], cap), text_width(cast(string) slots[0..<sn], cap)) + 26 * k, 236 * k);
+  x0 := wd - gutter - bw;
+  y0 := ifx small then 160 * k else 140 * k;
+  rows := 4 + (ifx h[4] >= 0 then 1 else 0) + (ifx cast(int) h[11] != 0 then 1 else 0);
+  plate(s, u, Box.{x0 = x0, y0 = y0, x1 = wd - gutter, y1 = y0 + 14 * k + f32(rows) * lead}, 0.8, 0);
+  x := x0 + 12 * k; y := y0 + 8 * k + cap;
+  n = e5_text(out, n, cast(string) line[0..<ln], x, y, cap, k, 0.95, E5_GOLD); y += lead;
+  // the turn: ACTION BONUS SLOT, lit while unspent, and the next turn's countdown
+  tx := x;
+  names := [3] string.["ACTION", "BONUS", "SLOT"];
+  for q: 0..<3 {
+    spent := h[5 + q] > 0.5 || h[31] < 0.5;
+    n = e5_text(out, n, names[q], tx, y, cap, k, ifx spent then 0.45f32 else 0.95f32, ifx spent then E5_GREY else E5_GREEN);
+    tx += text_width(names[q], cap) + 12 * k;
+  }
+  ln = e5_put(line[..], 0, "NEXT TURN ");
+  ln = put_digits(line[..], ln, cast(int) floor(h[8]));
+  ln = e5_put(line[..], ln, ".");
+  ln = put_digits(line[..], ln, cast(int) floor((h[8] - floor(h[8])) * 10));
+  ln = e5_put(line[..], ln, " S");
+  n = e5_text(out, n, cast(string) line[0..<ln], tx, y, cap, k, 0.8, E5_PARCH); y += lead;
+  // spell slots, level by level: left
+  n = e5_text(out, n, cast(string) slots[0..<sn], x, y, cap, k, 0.85, E5_PARCH); y += lead;
+  ln = e5_put(line[..], 0, "SLOTS COME BACK 9 S AFTER USE");
+  n = e5_text(out, n, cast(string) line[0..<ln], x, y, cap * 0.85, k, 0.6, E5_PARCH); y += lead;
+  if h[4] >= 0 {
+    ln = e5_put(line[..], 0, "CONCENTRATING");
+    n = e5_text(out, n, cast(string) line[0..<ln], x, y, cap, k, 0.95, E5_GOLD); y += lead;
+  }
+  c0 := cast(int) h[11];
+  if c0 != 0 { n = e5_conds(out, n, c0, x, y, cap, k); y += lead; }
+  // the log's last lines, under the panel, newest last
+  ly := y + 8 * k;
+  for q: 0..<E5_LOG {
+    e := (v[0].log_head + q) % E5_LOG;
+    if v[0].log_n[e] == 0 || v[0].now - v[0].log_t[e] > f32(E5_LOG_LIFE) { continue; }
+    fade := clamp01((f32(E5_LOG_LIFE) - (v[0].now - v[0].log_t[e])) / 3);
+    t := cast(string) v[0].log[e * E5_LOG_TEXT..<e * E5_LOG_TEXT + v[0].log_n[e]];
+    lx := wd - gutter - text_width(t, cap * 0.9);
+    n = e5_text(out, n, t, hi(lx, 8 * k), ly, cap * 0.9, k, 0.85 * fade, E5_PARCH);
+    ly += lead;
+  }
+  // each slot's state on the bar: its slots left (a leveled spell), and when it can't be used, why
+  for b: 0..<SP_REBUILD {
+    bx := s[0].sp.boxes[b];
+    if bx.x1 <= bx.x0 { continue; }
+    sz := (bx.x1 - bx.x0);
+    c := e5_can(v, b);
+    left := cast(int) e5_slot_f(v, b, 1);
+    lc := sz * 0.2;
+    if !e5_ready(v, b) {
+      // with no slot of its level left, a slot shows the seconds until one comes back
+      back := e5_slot_f(v, b, 2);
+      if c == E5_NO_SLOT && back > 0 {
+        ln = put_digits(line[..], 0, cast(int) floor(back) + 1); ln = e5_put(line[..], ln, "S");
+        n = e5_text(out, n, cast(string) line[0..<ln], bx.x0 + 3 * k, bx.y0 + lc + 3 * k, lc, k, 0.95, E5_RED);
+      }
+    }
+    if left >= 0 {
+      ln = put_digits(line[..], 0, left);
+      n = e5_text(out, n, cast(string) line[0..<ln], bx.x1 - text_width(cast(string) line[0..<ln], lc) - 3 * k, bx.y1 - 3 * k, lc, k, 0.95, ifx left > 0 then E5_GOLD else E5_RED);
+    }
+  }
+  // the armed slot's card, and why a press was held back, over the bar
+  top := ht;
+  for b: 0..<SP_REBUILD { if s[0].sp.boxes[b].x1 > s[0].sp.boxes[b].x0 { top = lo(top, s[0].sp.boxes[b].y0); } }
+  cy := top - 44 * k;
+  if v[0].say_n > 0 && v[0].now - v[0].say_t < 2.5 {
+    t := cast(string) v[0].say[0..<v[0].say_n];
+    tw := text_width(t, cap);
+    plate(s, u, Box.{x0 = (wd - tw) / 2 - 12 * k, y0 = cy - cap - 9 * k, x1 = (wd + tw) / 2 + 12 * k, y1 = cy + 7 * k}, 0.85, 2);
+    n = e5_text(out, n, t, (wd - tw) / 2, cy, cap, k, 0.95, E5_RED);
+    cy -= 26 * k;
+  }
+  if v[0].card_n > 0 && s[0].sp.armed == v[0].card_slot && v[0].card_slot >= 0 {
+    t := cast(string) v[0].card[0..<v[0].card_n];
+    tw := text_width(t, cap);
+    plate(s, u, Box.{x0 = (wd - tw) / 2 - 12 * k, y0 = cy - cap - 9 * k, x1 = (wd + tw) / 2 + 12 * k, y1 = cy + 7 * k}, 0.8, 0);
+    n = e5_text(out, n, t, (wd - tw) / 2, cy, cap, k, 0.95, E5_GOLD);
+  }
+  // conditions over Everglade's people, and the others' Hit Points over theirs
+  if s[0].wv.started {
+    w := watch_w(s);
+    for i: 0..<WATCH_ACTORS {
+      if v[0].cond[1 + i] == 0 || !watch_here(w, i) || w[0].actors[i].mode == WM_DEAD { continue; }
+      sc := on_screen(u, add(watch_pop_head(s, i), v3(0, 0.5, 0)), wd, ht);
+      if !sc.ok || sc.w > 60 { continue; }
+      n = e5_conds(out, n, v[0].cond[1 + i], sc.x - 30 * k, sc.y, cap * 0.85, k);
+    }
+  }
+  r := s[0].room[..];
+  for i: 0..<r[0].others {
+    q := e5_other_of(s, v, i);
+    if q < 0 { continue; }
+    p := v3(r[0].at[i * 4], walk_at(s, r[0].at[i * 4], r[0].at[i * 4 + 2]) + r[0].at[i * 4 + 1] + 2.7, r[0].at[i * 4 + 2]);
+    sc := on_screen(u, p, wd, ht);
+    if !sc.ok || sc.w > 60 { continue; }
+    ln = put_digits(line[..], 0, v[0].oth_hp[q]);
+    ln = e5_put(line[..], ln, " / ");
+    ln = put_digits(line[..], ln, v[0].oth_max[q]);
+    ln = e5_put(line[..], ln, " HP");
+    if v[0].oth_cast_n[q] > 0 && v[0].now - v[0].oth_cast_t[q] < 4 {
+      ln = e5_put(line[..], ln, " · ");
+      ln = e5_put(line[..], ln, cast(string) v[0].oth_cast[q * 40..<q * 40 + v[0].oth_cast_n[q]]);
+    }
+    t := cast(string) line[0..<ln];
+    n = e5_text(out, n, t, sc.x - text_width(t, cap) / 2, sc.y, cap, k, 0.9, ifx v[0].oth_hp[q] > 0 then E5_GREEN else E5_RED);
+  }
+  u[5] = f32(s[0].plate_n);
+  return n;
+}
+// The names of conditions in bits `c`, in a row.
+e5_conds :: (out: [] f32, at: int, c: int, x: f32, y: f32, cap: f32, k: f32) -> int {
+  n := at; cx := x;
+  for q: 0..<15 {
+    if (c & (1 << q)) == 0 { continue; }
+    n = e5_text(out, n, E5_CONDITION[q], cx, y, cap, k, 0.95, E5_RED);
+    cx += text_width(E5_CONDITION[q], cap) + 8 * k;
+  }
+  return n;
+}
+
+#test "Everglade 5E: a slot waits for a cast of its cost still on its way" {
+  v: [1] E5;
+  for k: 0..<E5_SLOTS { v[0].bar[k * E5_SLOT_FLOATS + 3] = f32(E5_COST_ACTION); }
+  v[0].bar[23 * E5_SLOT_FLOATS + 3] = f32(E5_COST_BONUS);     // Shillelagh
+  v[0].bar[7 * E5_SLOT_FLOATS + 3] = f32(E5_COST_REACTION);   // Feather Fall
+  v[0].bar[0 * E5_SLOT_FLOATS + 4] = 3.6;                     // Meteor Swarm strikes 3.6 s on
+  v[0].bar[43 * E5_SLOT_FLOATS] = f32(E5_SPENT);
+  v[0].bar_ok = true;
+  #assert e5_ready(v[..], 1) && !e5_ready(v[..], 43);
+  v[0].now = 10;
+  e5_pend(v[..], 0, 5, 6);
+  #assert !e5_ready(v[..], 1) && e5_ready(v[..], 23) && e5_ready(v[..], 7);
+  out: [24] f32;
+  v[0].now = 13;
+  #assert e5_due(v[..], out[..]) == 0 && v[0].pend_n == 1;
+  v[0].now = 13.7;
+  #assert e5_due(v[..], out[..]) == 1 && out[0] == 0 && out[1] == 5 && out[2] == 6 && v[0].pend_n == 0;
+  #assert v[0].landed == 13.7 && e5_ready(v[..], 1);
+}
+#test "Everglade 5E: a player's numbers read back from their line" {
+  t := "[5E] hp 45/57 c 2048 cast Moonbeam";
+  at := E5_SYNC.count + 3;
+  #assert e5_num_at(t, at) == 45;
+  at = e5_skip_num(t, at) + 1;
+  #assert e5_num_at(t, at) == 57;
+  at = e5_skip_num(t, at) + 3;
+  #assert e5_num_at(t, at) == 2048;
+  #assert e5_starts(t, E5_SYNC) && !e5_starts("hello", E5_SYNC);
+  #assert e5_room_name() == "everglade-5e";
+}

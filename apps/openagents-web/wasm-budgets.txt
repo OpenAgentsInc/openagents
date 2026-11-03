@@ -4,3 +4,4 @@
 # line in the same commit, with the reason in the commit message. One module a line:
 #   NAME BYTES
 oneshot 320000
+everglade5e 2000000
