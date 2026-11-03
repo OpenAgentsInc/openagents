@@ -6,8 +6,11 @@
 // and the log shows each roll. The druids decide with a small routine here; the
 // rules are all the engine's.
 //
-// Drawn flat: gpu/fivelab.coax's bg_fs draws the grid and the log's glass; the
-// tokens, the areas, the effects and the text are fx strokes (font.coax).
+// Two views, V switches them. The glade (the default): gpu/fivelab.coax's bg_fs traces the
+// battle in 3D in Everglade's painterly look, the druids standing on their squares in a
+// clearing; drag (or the arrow keys) turns the camera, + and - zoom. Flat: bg_fs draws the bare
+// grid and the tokens and areas are strokes. Either way the labels, effects and text are fx
+// strokes (font.coax) and bg_fs puts the log's glass under them.
 //   coax/bin/coax test apps/openagents-web/fivelab.coax
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
@@ -21,15 +24,18 @@
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 90000;
-UNIFORM_FLOATS :: 16;
+UNIFORM_FLOATS :: 168;
 U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
+U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 100; U_BOUNDS :: 164;
+SQ :: 1.524;   // a 5-foot square, metres
+VIEW_FLAT :: 0; VIEW_GLADE :: 1;
 
 STEP :: 0.0166666667;
 LAB_STEP_NS :: 16666667;
 LAB_FRAME_NS :: 100000000;
 OUTBOX_CAP :: 64;
 ACT_NAVIGATE :: 1;
-KEY_ESCAPE :: -1; KEY_ENTER :: -2;
+KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
 
 COLS :: 16; ROWS :: 10;
 FAST :: 4.0;
@@ -44,6 +50,7 @@ FXS :: 32;
 FX_BOLT :: 1; FX_FLASH :: 2; FX_TEXT :: 3; FX_RING :: 4;
 
 Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+P3 :: struct { x: f32; y: f32; z: f32; }
 Col :: struct { r: f32; g: f32; b: f32; }
 WHITE :: Col.{r = 0.9, g = 0.92, b = 0.96};
 DIM :: Col.{r = 0.52, g = 0.55, b = 0.6};
@@ -77,8 +84,13 @@ Lab :: struct {
   width: f32; height: f32; dpr: f32;
   portrait: bool;
   gx: f32; gy: f32; cell: f32;
-  panel: Rect; back: Rect;
+  panel: Rect; back: Rect; flip: Rect;
   pressing: int;
+  // the glade's camera: an orbit round the clearing, and what it makes this frame
+  view: int = VIEW_GLADE;
+  yaw: f32 = 0; pitch: f32 = 0.6; dist: f32 = 27;
+  dragging: bool; drag_x: f32; drag_y: f32;
+  eye: P3; fwd: P3; right: P3; up: P3; focal: f32; cx: f32; cy: f32;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
 }
 
@@ -435,6 +447,37 @@ say_right :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: In
 scr_x :: (s: [] Lab, x: f32) -> f32 { return s[0].gx + (x + 0.5) * s[0].cell; }
 scr_y :: (s: [] Lab, y: f32) -> f32 { return s[0].gy + (y + 0.5) * s[0].cell; }
 
+norm3 :: (v: P3) -> P3 {
+  l := sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+  if l <= 0 { return P3.{x = 0, y = 0, z = -1}; }
+  return P3.{x = v.x / l, y = v.y / l, z = v.z / l};
+}
+// Where a square's middle is on the ground, metres.
+wx :: (x: f32) -> f32 { return (x + 0.5) * f32(SQ) - f32(COLS) * f32(SQ) / 2; }
+wz :: (y: f32) -> f32 { return (y + 0.5) * f32(SQ) - f32(ROWS) * f32(SQ) / 2; }
+// A point in the glade on the screen: x, y (device px) and its depth (0 or less: behind the eye).
+proj :: (s: [] Lab, x: f32, y: f32, z: f32) -> P3 {
+  dx := x - s[0].eye.x; dy := y - s[0].eye.y; dz := z - s[0].eye.z;
+  depth := dx * s[0].fwd.x + dy * s[0].fwd.y + dz * s[0].fwd.z;
+  if depth <= 0.05 { return P3.{x = 0, y = 0, z = 0}; }
+  a := (dx * s[0].right.x + dy * s[0].right.y + dz * s[0].right.z) / depth;
+  b := (dx * s[0].up.x + dy * s[0].up.y + dz * s[0].up.z) / depth;
+  return P3.{x = s[0].cx + a * s[0].focal, y = s[0].cy - b * s[0].focal, z = depth};
+}
+seg3 :: (s: [] Lab, out: [] f32, n: int, a: P3, b: P3, w: f32, light: f32, c: Col) -> int {
+  pa := proj(s, a.x, a.y, a.z); pb := proj(s, b.x, b.y, b.z);
+  if pa.z <= 0 || pb.z <= 0 { return n; }
+  return seg(out, n, pa.x, pa.y, pb.x, pb.y, w, light, c);
+}
+ring3 :: (s: [] Lab, out: [] f32, at: int, x: f32, z: f32, r: f32, y: f32, w: f32, light: f32, c: Col) -> int {
+  n := at;
+  for i: 0..<24 {
+    a0 := f32(i) * 6.2831853 / 24; a1 := f32(i + 1) * 6.2831853 / 24;
+    n = seg3(s, out, n, P3.{x = x + cos(a0) * r, y = y, z = z + sin(a0) * r}, P3.{x = x + cos(a1) * r, y = y, z = z + sin(a1) * r}, w, light, c);
+  }
+  return n;
+}
+
 layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   s[0].portrait = h > w * 1.1;
   pad := 16 * k;
@@ -454,6 +497,19 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   s[0].gy = top + (gh - cell * f32(ROWS)) / 2;
   bw := 96 * k;
   s[0].back = Rect.{x0 = w - pad - bw, y0 = 18 * k, x1 = w - pad, y1 = 46 * k};
+  s[0].flip = Rect.{x0 = s[0].back.x0 - 8 * k - bw, y0 = 18 * k, x1 = s[0].back.x0 - 8 * k, y1 = 46 * k};
+  // the glade's camera, fitted to the space left of the log (above it on a phone)
+  rx0 := pad; rx1 := ifx s[0].portrait then w - pad else s[0].panel.x0 - pad;
+  ry0 := top; ry1 := ifx s[0].portrait then s[0].panel.y0 - pad else h - pad;
+  s[0].cx = (rx0 + rx1) / 2; s[0].cy = (ry0 + ry1) / 2;
+  d := s[0].dist; cp := cos(s[0].pitch); sp := sin(s[0].pitch);
+  tx: f32 = 0; ty: f32 = 0.5; tz: f32 = 0.6;
+  s[0].eye = P3.{x = tx + d * cp * sin(s[0].yaw), y = ty + d * sp, z = tz + d * cp * cos(s[0].yaw)};
+  s[0].fwd = norm3(P3.{x = tx - s[0].eye.x, y = ty - s[0].eye.y, z = tz - s[0].eye.z});
+  s[0].right = norm3(P3.{x = -s[0].fwd.z, y = 0, z = s[0].fwd.x});
+  r := s[0].right; f := s[0].fwd;
+  s[0].up = P3.{x = r.y * f.z - r.z * f.y, y = r.z * f.x - r.x * f.z, z = r.x * f.y - r.y * f.x};
+  s[0].focal = lo((rx1 - rx0) * 27 / 30, (ry1 - ry0) * 27 / 19);   // fitted at the default orbit; + and - zoom from there
 }
 
 draw_zones :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
@@ -581,6 +637,73 @@ draw_fx :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   return n;
 }
 
+// The glade's labels: each druid's name and hit points over its head.
+draw_labels3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
+  n := at; b := s[0].battle[0];
+  for i: 0..<b.n {
+    cr := b.c[i];
+    x := wx(s[0].dx[i]); z := wz(s[0].dy[i]);
+    lift: f32 = ifx cr.hp == 0 then 0.75 else 2.2;
+    p := proj(s, x, lift, z);
+    if p.z <= 0 { continue; }
+    col := ifx cr.dead then FAINT else ifx cr.hp == 0 then DIM else TEAM_COL[cr.team];
+    nm := cast(string) cr.name[0..<cr.name_n];
+    n = say_mid(out, n, nm, p.x, p.y - 8 * k, 10 * k, ink(k, 0.95, col));
+    if cr.dead { continue; }
+    bw := 46 * k; by := p.y;
+    share := f32(cr.hp) / f32(rs_max(cr.hp_max, 1));
+    n = seg(out, n, p.x - bw / 2, by, p.x + bw / 2, by, 2.6 * k, 0.25, FAINT);
+    hc := ifx share > 0.5 then GREEN else ifx share > 0.25 then GOLD else RED;
+    if share > 0 { n = seg(out, n, p.x - bw / 2, by, p.x - bw / 2 + bw * share, by, 2.6 * k, 0.95, hc); }
+    if cr.conc >= 0 { n = seg(out, n, p.x - bw / 2, by + 5 * k, p.x + bw / 2, by + 5 * k, 1.1 * k, 0.8, spell_col(cr.conc)); }
+    if cr.hp == 0 {
+      for d: 0..<3 {
+        ok := d < cr.death_ok; bad := d < cr.death_fail;
+        tick_x := p.x - 10 * k + f32(d) * 10 * k;
+        n = seg(out, n, tick_x, by + 11 * k, tick_x + 0.5, by + 11 * k, 3 * k, 0.9, ifx ok then GREEN else ifx bad then RED else FAINT);
+      }
+    }
+    if cr.flame_until > b.clock {
+      fl := spell_col(SP_PRODUCE_FLAME);
+      q := proj(s, x + 0.42, 2.0, z + 0.08);
+      if q.z > 0 { n = seg(out, n, q.x, q.y + 3 * k, q.x + sin(t * 9) * 1.5 * k, q.y - 7 * k, 4 * k, 1.0, fl); }
+    }
+  }
+  return n;
+}
+draw_fx3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+  n := at;
+  now := s[0].battle[0].clock;
+  for i: 0..<FXS {
+    f := s[0].fx[i];
+    if f.kind == 0 { continue; }
+    a := (now - f.t0) / f.life;
+    if a < 0 || a > 1 { continue; }
+    if f.kind == FX_BOLT {
+      p0 := P3.{x = wx(f.ax) + 0.42, y = 1.9, z = wz(f.ay) + 0.08};
+      p1 := P3.{x = wx(f.bx), y = 1.1, z = wz(f.by)};
+      head := lo(1, a * 2.2); tail := lo(1, hi(0, a * 2.2 - 0.5));
+      ha := P3.{x = p0.x + (p1.x - p0.x) * tail, y = p0.y + (p1.y - p0.y) * tail + sin(tail * 3.14159) * 1.2, z = p0.z + (p1.z - p0.z) * tail};
+      hb := P3.{x = p0.x + (p1.x - p0.x) * head, y = p0.y + (p1.y - p0.y) * head + sin(head * 3.14159) * 1.2, z = p0.z + (p1.z - p0.z) * head};
+      n = seg3(s, out, n, ha, hb, 4 * k, 1.0 - a * 0.4, f.col);
+    }
+    if f.kind == FX_FLASH {
+      x0 := wx(f.ax) - f32(SQ) / 2; z0 := wz(f.ay) - f32(SQ) / 2; x1 := wx(f.bx) - f32(SQ) / 2; z1 := wz(f.by) - f32(SQ) / 2;
+      y := 0.05 + a * 1.6; w := 3 * k * (1 - a) + 0.6 * k;
+      n = seg3(s, out, n, P3.{x = x0, y = y, z = z0}, P3.{x = x1, y = y, z = z0}, w, 1 - a, f.col);
+      n = seg3(s, out, n, P3.{x = x1, y = y, z = z0}, P3.{x = x1, y = y, z = z1}, w, 1 - a, f.col);
+      n = seg3(s, out, n, P3.{x = x1, y = y, z = z1}, P3.{x = x0, y = y, z = z1}, w, 1 - a, f.col);
+      n = seg3(s, out, n, P3.{x = x0, y = y, z = z1}, P3.{x = x0, y = y, z = z0}, w, 1 - a, f.col);
+    }
+    if f.kind == FX_TEXT {
+      p := proj(s, wx(f.ax) + 0.4, 2.3 + a * 1.0, wz(f.ay));
+      if p.z > 0 { n = say_mid(out, n, cast(string) f.text[0..<f.n], p.x + 24 * k, p.y - 14 * k, 15 * k, ink(k, 1 - a * 0.7, f.col)); }
+    }
+    if f.kind == FX_RING { n = ring3(s, out, n, wx(f.ax), wz(f.ay), 0.5 + a * 0.8, 0.9, 2 * k, 1 - a, f.col); }
+  }
+  return n;
+}
+
 draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n := at; p := s[0].panel; b := s[0].battle[0];
   n = box_lines(out, n, p, 0.6 * k, 0.3, DIM);
@@ -640,14 +763,18 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   n = say_at(out, n, cast(string) l[0..<m], sx0, sy0, ifx s[0].portrait then 8.5 * k else 10 * k, ink(k, 0.7, DIM));
   m = put(l[..], 0, "SPACE "); m = put(l[..], m, ifx s[0].paused then "RESUME" else "PAUSE");
   m = put(l[..], m, "   F "); m = put(l[..], m, ifx s[0].fast then "NORMAL SPEED" else "FAST");
-  m = put(l[..], m, "   R NEW BATTLE   ESC WORLDS");
+  m = put(l[..], m, "   R NEW BATTLE   V 2D/3D");
+  if s[0].view == VIEW_GLADE { m = put(l[..], m, "   DRAG TURNS   +/- ZOOM"); }
   n = say_at(out, n, cast(string) l[0..<m], sx0, sy0 + 16 * k, ifx s[0].portrait then 7 * k else 8 * k, ink(k, 0.45, FAINT));
-  if s[0].paused { n = say_mid(out, n, "PAUSED", s[0].gx + s[0].cell * f32(COLS) / 2, s[0].gy + 26 * k, 14 * k, ink(k, 0.9, GOLD)); }
+  if s[0].paused { n = say_mid(out, n, "PAUSED", s[0].cx, s[0].gy + 26 * k, 14 * k, ink(k, 0.9, GOLD)); }
   if s[0].over && s[0].winner >= 0 {
-    mid := s[0].gx + s[0].cell * f32(COLS) / 2; cy := s[0].gy + s[0].cell * f32(ROWS) / 2;
+    mid := s[0].cx; cy := s[0].cy;
     m = put(l[..], 0, TEAM_NAME[s[0].winner]); m = put(l[..], m, " WINS");
     n = say_mid(out, n, cast(string) l[0..<m], mid, cy, 26 * k, ink(k, 0.95, TEAM_COL[s[0].winner]));
   }
+  fb := s[0].flip;
+  n = box_lines(out, n, fb, 0.8 * k, ifx s[0].pressing == 2 then 0.9 else 0.45, DIM);
+  n = say_mid(out, n, ifx s[0].view == VIEW_GLADE then "2D VIEW" else "3D VIEW", (fb.x0 + fb.x1) / 2, (fb.y0 + fb.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, WHITE));
   b := s[0].back;
   n = box_lines(out, n, b, 0.8 * k, ifx s[0].pressing == 1 then 0.9 else 0.45, DIM);
   n = say_mid(out, n, "WORLDS", (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, WHITE));
@@ -669,9 +796,14 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   t := s[0].clock;
   layout(s, width, height, k);
   n := 0;
-  n = draw_zones(s, out, n, k, t);
-  n = draw_fx(s, out, n, k);
-  n = draw_tokens(s, out, n, k, t);
+  if s[0].view == VIEW_GLADE {
+    n = draw_labels3(s, out, n, k, t);
+    n = draw_fx3(s, out, n, k);
+  } else {
+    n = draw_zones(s, out, n, k, t);
+    n = draw_fx(s, out, n, k);
+    n = draw_tokens(s, out, n, k, t);
+  }
   n = draw_panel(s, out, n, k);
   n = draw_top(s, out, n, width, k, t);
   for i: 0..<u.count { u[i] = 0; }
@@ -680,6 +812,36 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   u[U_CELLS] = f32(COLS); u[U_CELLS + 1] = f32(ROWS);
   p := s[0].panel;
   u[U_PANEL] = p.x0; u[U_PANEL + 1] = p.y0; u[U_PANEL + 2] = p.x1; u[U_PANEL + 3] = p.y1;
+  u[U_CELLS + 2] = f32(s[0].view);
+  u[U_CELLS + 3] = (ifx s[0].portrait then 92 else 64) * k;
+  u[U_EYE] = s[0].eye.x; u[U_EYE + 1] = s[0].eye.y; u[U_EYE + 2] = s[0].eye.z; u[U_EYE + 3] = s[0].focal;
+  u[U_FWD] = s[0].fwd.x; u[U_FWD + 1] = s[0].fwd.y; u[U_FWD + 2] = s[0].fwd.z; u[U_FWD + 3] = s[0].cx;
+  u[U_RIGHT] = s[0].right.x; u[U_RIGHT + 1] = s[0].right.y; u[U_RIGHT + 2] = s[0].right.z; u[U_RIGHT + 3] = s[0].cy;
+  u[U_UP] = s[0].up.x; u[U_UP + 1] = s[0].up.y; u[U_UP + 2] = s[0].up.z;
+  u[U_SUN] = 0.45; u[U_SUN + 1] = 0.62; u[U_SUN + 2] = 0.38;
+  b := s[0].battle[0];
+  for i: 0..<8 {
+    o := U_TOKENS + i * 8;
+    u[o + 2] = -1;
+    if i >= b.n { continue; }
+    cr := b.c[i];
+    u[o] = wx(s[0].dx[i]); u[o + 1] = wz(s[0].dy[i]); u[o + 2] = f32(cr.team);
+    u[o + 3] = f32(cr.hp) / f32(rs_max(cr.hp_max, 1));
+    u[o + 4] = ifx cr.dead then 2 else ifx cr.hp == 0 then 1 else 0;
+    u[o + 5] = ifx cr.outlined_by >= 0 then 1 else 0;
+    u[o + 6] = ifx rs_has(cr, RS_RESTRAINED) then 1 else 0;
+    since := b.clock - s[0].acted[i];
+    u[o + 7] = ifx since >= 0 && since < 1.2 then 1 - since / 1.2 else 0;
+  }
+  for z: 0..<RS_ZONES {
+    o := U_ZONES + z * 8;
+    zo := b.zone[z];
+    if !zo.on { continue; }
+    u[o] = wx(f32(zo.x0)) - f32(SQ) / 2; u[o + 1] = wz(f32(zo.y0)) - f32(SQ) / 2;
+    u[o + 2] = wx(f32(zo.x1)) + f32(SQ) / 2; u[o + 3] = wz(f32(zo.y1)) + f32(SQ) / 2;
+    u[o + 4] = ifx zo.spell == SP_ENTANGLE then 1 else 2;
+  }
+  u[U_BOUNDS] = f32(COLS) * f32(SQ) / 2; u[U_BOUNDS + 1] = f32(ROWS) * f32(SQ) / 2; u[U_BOUNDS + 2] = f32(SQ);
   return n;
 }
 
@@ -696,19 +858,39 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   if key == ' ' || key == KEY_ENTER { s[0].paused = !s[0].paused; return true; }
   if key == 'f' || key == 'F' { s[0].fast = !s[0].fast; return true; }
   if key == 'r' || key == 'R' { new_battle(s); return true; }
+  if key == 'v' || key == 'V' { s[0].view = 1 - s[0].view; return true; }
+  if s[0].view == VIEW_GLADE {
+    if key == KEY_LEFT { s[0].yaw -= 0.12; return true; }
+    if key == KEY_RIGHT { s[0].yaw += 0.12; return true; }
+    if key == KEY_UP { s[0].pitch = lo(1.35, s[0].pitch + 0.06); return true; }
+    if key == KEY_DOWN { s[0].pitch = hi(0.12, s[0].pitch - 0.06); return true; }
+    if key == '=' || key == '+' { s[0].dist = hi(12, s[0].dist * 0.9); return true; }
+    if key == '-' || key == '_' { s[0].dist = lo(70, s[0].dist / 0.9); return true; }
+  }
   return false;
 }
 lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c { return false; }
-lab_blur :: (s: [] Lab) #export_c { s[0].pressing = 0; }
+lab_blur :: (s: [] Lab) #export_c { s[0].pressing = 0; s[0].dragging = false; }
 lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   lab_start(s);
   if phase == 0 {
     if in_rect(s[0].back, x, y) { s[0].pressing = 1; return true; }
+    if in_rect(s[0].flip, x, y) { s[0].pressing = 2; return true; }
+    if s[0].view == VIEW_GLADE && !in_rect(s[0].panel, x, y) { s[0].dragging = true; s[0].drag_x = x; s[0].drag_y = y; return true; }
     return false;
   }
-  if phase == 1 { return false; }
+  if phase == 1 {
+    if !s[0].dragging { return false; }
+    k := hi(s[0].dpr, 0.5);
+    s[0].yaw -= (x - s[0].drag_x) * 0.005 / k;
+    s[0].pitch = lo(1.35, hi(0.12, s[0].pitch + (y - s[0].drag_y) * 0.004 / k));
+    s[0].drag_x = x; s[0].drag_y = y;
+    return true;
+  }
+  s[0].dragging = false;
   held := s[0].pressing; s[0].pressing = 0;
   if held == 1 { if phase == 2 && in_rect(s[0].back, x, y) { leave_to(s, "/worlds"); } return true; }
+  if held == 2 { if phase == 2 && in_rect(s[0].flip, x, y) { s[0].view = 1 - s[0].view; } return true; }
   return false;
 }
 lab_cursor :: (s: [] Lab) -> int #export_c { return 0; }
@@ -751,11 +933,23 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert s[1].gx >= 0 && s[1].gx + s[1].cell * f32(COLS) <= 390 * 3;
 }
 
+#test "the glade's camera sees the whole grid from its default orbit" #steps 2000000000 {
+  s: [1] Lab;
+  n := frame_at(s[..], 1600, 1000, 1, 0.016);
+  for c: 0..<4 {
+    x := ifx c % 2 == 0 then -0.5 else f32(COLS) - 0.5;
+    y := ifx c < 2 then -0.5 else f32(ROWS) - 0.5;
+    p := proj(s[..], wx(x), 0, wz(y));
+    #assert p.z > 0 && p.x > 0 && p.x < s[0].panel.x0 && p.y > 64 && p.y < 1000;
+  }
+}
+
 #test "space pauses, F runs fast, R starts a new battle, Escape goes to /worlds" {
   s: [1] Lab;
   #assert lab_key(s[..], ' ', 0) && s[0].paused;
   #assert lab_key(s[..], 'f', 0) && s[0].fast;
   r := s[0].round;
   #assert lab_key(s[..], 'r', 0) && s[0].round == r + 1;
+  #assert s[0].view == VIEW_GLADE && lab_key(s[..], 'v', 0) && s[0].view == VIEW_FLAT && lab_key(s[..], 'v', 0) && s[0].view == VIEW_GLADE;
   #assert lab_key(s[..], KEY_ESCAPE, 0) && lab_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds";
 }
