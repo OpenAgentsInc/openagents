@@ -93,7 +93,7 @@ def main():
  generated=command('generate-c',[COMPILER,'c',SOURCE,'--library','--header',work/'spatial-policy.h']);(work/'spatial-policy.c').write_bytes(generated.stdout)
  record['generated_c_sha256']=sha(work/'spatial-policy.c');record['generated_header_sha256']=sha(work/'spatial-policy.h')
  for mode,flags in [('debug',['-O0','-g']),('release',['-O2']),('sanitized',['-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-omit-frame-pointer'])]:
-  command('compile-'+mode,[cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-I'+str(work),work/'spatial-policy.c',NATIVE,'-lm','-o',work/mode])
+  command('compile-'+mode,[cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-Wno-unknown-pragmas','-I'+str(work),work/'spatial-policy.c',NATIVE,'-lm','-o',work/mode])
   command('run-'+mode,[work/mode,work/'inputs.bin',work/(mode+'.bin')]);have=(work/(mode+'.bin')).read_bytes();assert len(have)==len(truth),(mode,len(have),len(truth))
   if have!=truth:
    for i,(actual,expected_row) in enumerate(zip(struct.iter_unpack('<6q',have),want)):assert actual==expected_row,(mode,i,rows[i],actual,expected_row)

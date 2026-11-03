@@ -1,5 +1,7 @@
 /* A C host for pulse.coax. It runs the Coax kernel and a plain C reference
    side by side and checks, every frame, that both produce the same bytes. */
+/* clock_gettime and CLOCK_MONOTONIC are POSIX; -std=c11 hides them on glibc. */
+#define _POSIX_C_SOURCE 199309L
 #pragma STDC FP_CONTRACT OFF
 #include <stdio.h>
 #include <stdlib.h>

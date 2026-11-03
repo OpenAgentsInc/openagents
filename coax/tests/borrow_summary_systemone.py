@@ -68,7 +68,7 @@ class SystemOneReturnedBuffers(unittest.TestCase):
         return r.stdout
     def qualify(self,name,flags):
         cc=shlex.split(os.environ.get('CC','cc'));binary=self.directory/name
-        self.execute(name+'-compile',[*cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-ffp-contract=off','-fno-fast-math','-I',self.directory,self.c,DRIVER,'-lm','-o',binary])
+        self.execute(name+'-compile',[*cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-Wno-unknown-pragmas','-ffp-contract=off','-fno-fast-math','-I',self.directory,self.c,DRIVER,'-lm','-o',binary])
         observed=json.loads(self.execute(name+'-run',[binary],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0','UBSAN_OPTIONS':'halt_on_error=1'}))
         self.assertEqual(observed['digits_cases'],129);self.assertEqual(observed['stderr_cases'],45)
         self.record['profiles'][name]={'outcome':'passed','binary':str(binary),'binary_sha256':digest(binary),'observed':observed};self.save();self.assertTrue(self.record['inputs_unchanged']);self.assertTrue(self.record['artifacts_unchanged'])

@@ -1,6 +1,10 @@
 /* Verification ABI2 host effects. Coax owns table admission, finite traversal,
  * frame bytes and progress meaning; this adapter owns allocation, mmap, stdio,
  * atomic publication and the original checked procedure's function-pointer call. */
+/* O_NOFOLLOW is POSIX.1-2008; -std=c11 hides it on glibc. */
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>

@@ -100,7 +100,7 @@ def main():
     (work/'unit-algebra.c').write_bytes(emitted.stdout)
     record['generated_c_sha256']=sha(work/'unit-algebra.c');record['generated_header_sha256']=sha(work/'unit-algebra.h')
     for mode,flags in [('debug',['-O0','-g']),('release',['-O2']),('sanitized',['-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-omit-frame-pointer'])]:
-        command('compile-'+mode,[cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-I'+str(work),work/'unit-algebra.c',NATIVE,'-lm','-o',work/mode])
+        command('compile-'+mode,[cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-Wno-unknown-pragmas','-I'+str(work),work/'unit-algebra.c',NATIVE,'-lm','-o',work/mode])
         command('run-'+mode,[work/mode,work/'inputs.bin',work/(mode+'.bin')])
         actual=(work/(mode+'.bin')).read_bytes();assert len(actual)==len(truth),(mode,len(actual),len(truth))
         if actual!=truth:

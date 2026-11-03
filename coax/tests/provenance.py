@@ -81,7 +81,7 @@ class ProvenanceTests(unittest.TestCase):
  def test_release_refuses_stale_compiler_before_cloud_commands(self):
   caller=Path(self.tmp.name)/'caller';(caller/'coax/web').mkdir(parents=True);(caller/'coax/bin').mkdir()
   shutil.copy2(ROOT/'web/release.sh',caller/'coax/web/release.sh')
-  shutil.copy2(ROOT/'web/smoke-compare.sh',caller/'coax/web/smoke-compare.sh')
+  for name in ('release-lib.sh','smoke-compare.sh'): shutil.copy2(ROOT/'web'/name,caller/'coax/web'/name)
   shutil.copy2(self.binary,caller/'coax/bin/coax');shutil.copy2(self.helper_copy,caller/'coax/bin/provenance-check');shutil.copy2(self.record,caller/'coax/bin/provenance.record')
   (self.tree/'coax/src/eval.cpp').write_text('changed target source')
   fake=Path(self.tmp.name)/'fake';fake.mkdir()
@@ -98,7 +98,17 @@ elif 'worktree' in a and 'add' in a: shutil.copytree(os.environ['TARGET_TREE'],a
 """);git.chmod(0o755)
   # release.sh's orphan-browser cleanup must observe only this isolated fixture.
   ps=fake/'ps';ps.write_text('#!/bin/sh\nexit 0\n');ps.chmod(0o755)
-  cloud=fake/'gcloud';cloud.write_text("#!/bin/sh\necho \"$*\" >> \"$CLOUD_MARKER\"\nexit 99\n");cloud.chmod(0o755)
+  # The release lock (release-lib.sh) is granted, so release.sh reaches its
+  # compiler check; every other bucket command fails.
+  cloud=fake/'gcloud';cloud.write_text("""#!/bin/sh
+echo "$*" >> "$CLOUD_MARKER"
+case "$*" in
+ "storage cp - "*release.lock*) cat > /dev/null; exit 0 ;;
+ "storage objects describe "*release.lock*) echo 1; exit 0 ;;
+ "storage rm "*release.lock*) exit 0 ;;
+esac
+exit 99
+""");cloud.chmod(0o755)
   marker=Path(self.tmp.name)/'cloud-used';tmp=Path(self.tmp.name)/'release-temp';tmp.mkdir()
   env={**os.environ,'PATH':str(fake)+os.pathsep+os.environ['PATH'], 'TARGET_TREE':str(self.tree),
        'CLOUD_MARKER':str(marker),'TMPDIR':str(tmp),'COAX_RELEASE_CACHE':str(Path(self.tmp.name)/'release-cache'),
@@ -109,6 +119,9 @@ elif 'worktree' in a and 'add' in a: shutil.copytree(os.environ['TARGET_TREE'],a
   self.assertTrue('compiler inputs or binary differ' in result.stderr or 'coax/build.sh failed' in result.stderr,result.stderr)
   # Reading which release is live may happen first; nothing is written to a bucket.
   calls=marker.read_text() if marker.exists() else ''
+  # Taking and dropping the release lock are its only writes, and it is dropped.
+  self.assertEqual('storage cp - ' in calls,'storage rm gs://openagentsgemini-openagents-web/release.lock' in calls,calls)
+  calls='\n'.join(line for line in calls.splitlines() if 'release.lock' not in line)
   self.assertNotRegex(calls,r'(^|\s)(cp|rsync|rm|mv)\s',calls)
  def test_cap_guard_changes_invalidate_build_record(self):
   self.verify()

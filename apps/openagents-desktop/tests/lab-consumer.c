@@ -29,6 +29,13 @@ int64_t cxproc_stderr_byte(int64_t h,int64_t i){effects++;return h==0&&live?(uin
 int64_t cxproc_release(int64_t h){effects++;if(h!=0||!live)return -1;live=0;releases++;return 0;}
 int64_t cxproc_getenv_push(int64_t b){(void)b;effects++;return 0;}
 int64_t cxproc_getenv(void){effects++;return 0;}
+// The transport's other process effects (pid, clock, kill, group, environment
+// bytes): scripted children have no pid or process group, and time stands still.
+int64_t cxproc_pid(int64_t h){effects++;return h==0&&live?0:-1;}
+int64_t cxproc_now_ms(void){effects++;return 0;}
+int64_t cxproc_kill(int64_t h,int64_t sig){(void)sig;effects++;return h==0&&live?0:-1;}
+int64_t cxproc_group_alive(int64_t pgid){(void)pgid;effects++;return 0;}
+int64_t cxproc_getenv_byte(int64_t i){(void)i;effects++;return 0;}
 typedef struct{uint8_t *allocation;coax_v_u8 view;}Guard;
 static Guard guard(size_t n){uint8_t*p=malloc(n+32);if(!p)abort();memset(p,0xa5,n+32);return(Guard){p,{p+16,(int64_t)n}};}
 static int guards(Guard g){for(int i=0;i<16;i++)if(g.allocation[i]!=0xa5||g.allocation[16+g.view.count+i]!=0xa5)return 0;return 1;}

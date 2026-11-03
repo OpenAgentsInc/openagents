@@ -1,6 +1,8 @@
 /* The verified Nostr store's append-only file: effects only (see
    store-file-native.h). One writer per file, enforced with flock. */
+#ifndef _DEFAULT_SOURCE
 #define _DEFAULT_SOURCE
+#endif
 #define _XOPEN_SOURCE 700
 #if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
 #define _DARWIN_C_SOURCE

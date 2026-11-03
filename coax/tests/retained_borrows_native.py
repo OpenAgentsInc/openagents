@@ -220,7 +220,7 @@ def run(compiler, directory, expected_compiler_sha256=None):
             binary = directory/name
             execute(name + '-compile', [*cc, '-std=c11', *flags, '-Wall', '-Wextra',
                     '-Werror', '-Wno-unused-function', '-Wno-unused-variable',
-                    '-Wno-unused-but-set-variable', '-Wno-unused-parameter', '-Wno-misleading-indentation',
+                    '-Wno-unused-but-set-variable', '-Wno-unused-parameter', '-Wno-misleading-indentation','-Wno-unknown-pragmas',
                     '-ffp-contract=off', '-fno-fast-math', '-I', directory,
                     *c_sources, DRIVER, '-lm', '-o', binary], 180)
             record['artifacts'][str(binary)] = digest(binary)

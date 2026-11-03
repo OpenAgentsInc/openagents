@@ -25,15 +25,15 @@ class Node(C.Structure):
     _fields_ += [('retain_head',C.c_int64),('retain_count',C.c_int64),('retain_mark',C.c_uint8),('retain_incomplete',C.c_bool),('retain_relation',C.c_bool)]
     _fields_ += [('effect_present',C.c_bool),('pure_decl',C.c_bool),('effect_head',C.c_int64),('effect_loc',Loc),('sum_variant',C.c_int64),('propagate_type',C.c_int64),('source_unit',C.c_int64)]
 class Type(C.Structure):_fields_=[('kind',C.c_uint8),('name',LX.Text),('size',C.c_int64),('alignment',C.c_int64),('bits',C.c_int64),('is_signed',C.c_bool)]+[(n,C.c_int64) for n in ('elem','length','decl','id','scope','need','carrier','unit')]+[('space',Spatial),('retain_presence',C.c_uint8),('retain_mutable',C.c_uint8),('retain_fields',C.c_int64)]+[(n,C.c_int64) for n in ('sum_error','sum_payload_offset','sum_default')]
-class Caps(C.Structure):_fields_=[(n,C.c_int64) for n in ('nodes','types','locals','errors','bytes','result_work')]
+class Caps(C.Structure):_fields_=[(n,C.c_int64) for n in ('nodes','types','locals','errors','bytes','result_work','names')]
 class Local(C.Structure):_fields_=[('name',LX.Text),('type',C.c_int64),('loc',Loc),('immutable',LX.Text),('local_backing',C.c_bool),('decl',C.c_int64)]
 class Error(C.Structure):_fields_=[('loc',Loc),('code',LX.Text),('message',LX.Text),('fix',LX.Text)]
-class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('used','type_count','composite_count','local_count','byte_count','error_count','current','constant_depth','loop_depth','defer_depth','unevaluated')]+[('basic',C.c_bool),('depth',C.c_int64),('fatal',C.c_bool),('metal_depth',C.c_int64),('clashes',C.c_int64),('generic',C.c_int64),('site',C.c_uint8),('instances',C.c_int64),('instance_tail',C.c_int64),('instance_count',C.c_int64),('quantity_device',C.c_bool),('unit_units',C.c_int64),('spatial_types',C.c_int64),('spatial_helpers',C.c_int64),('retain_report_count',C.c_int64)]
+class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('used','type_count','composite_count','local_count','byte_count','error_count','current','constant_depth','loop_depth','defer_depth','unevaluated')]+[('basic',C.c_bool),('depth',C.c_int64),('fatal',C.c_bool),('metal_depth',C.c_int64),('clashes',C.c_int64),('generic',C.c_int64),('site',C.c_uint8),('instances',C.c_int64),('instance_tail',C.c_int64),('instance_count',C.c_int64),('quantity_device',C.c_bool),('unit_units',C.c_int64),('spatial_types',C.c_int64),('spatial_helpers',C.c_int64),('retain_report_count',C.c_int64),('names',C.c_int64)]
 class Options(C.Structure):_fields_=[(n,C.c_bool) for n in ('library','metal','authority','quantity_device')]
 class Alias(C.Structure):_fields_=[('scope',C.c_int64),('name',LX.Text),('target',C.c_int64)]
 class Export(C.Structure):_fields_=[('scope',C.c_int64),('name',LX.Text),('loc',Loc)]
 class BorrowStep(C.Structure):_fields_=[('kind',C.c_uint8),('index',C.c_int64)]
-class BorrowSteps(C.Structure):_fields_=[('e',BorrowStep*8)]
+class BorrowSteps(C.Structure):_fields_=[('e',BorrowStep*24)]
 class BorrowPath(C.Structure):_fields_=[('count',C.c_int64),('steps',BorrowSteps)]
 class BorrowOrigin(C.Structure):_fields_=[('kind',C.c_uint8),('root',C.c_int64),('role',C.c_uint8),('type',C.c_int64),('path',BorrowPath)]
 class BorrowQuery(C.Structure):_fields_=[('kind',C.c_uint8),('decl',C.c_int64),('type',C.c_int64),('path',BorrowPath),('status',C.c_uint8),('start',C.c_int64),('count',C.c_int64),('next',C.c_int64),('retain_classes',C.c_bool)]
@@ -41,7 +41,7 @@ class BorrowCaps(C.Structure):_fields_=[('queries',C.c_int64),('origins',C.c_int
 class RetainEffect(C.Structure):_fields_=[('source',BorrowOrigin),('destination',BorrowOrigin),('value_type',C.c_int64),('witness',C.c_int64),('next',C.c_int64),('source_storage',C.c_bool)]
 class RetainObservation(C.Structure):_fields_=[('kind',C.c_uint8),('owner',C.c_int64),('site',C.c_int64),('facts_complete',C.c_bool),('relation_complete',C.c_bool),('forbidden',C.c_bool),('pending',C.c_int64)]
 class RetainCaps(C.Structure):_fields_=[('effects',C.c_int64),('reports',C.c_int64),('work',C.c_int64)]
-class Context(C.Structure):_fields_=[('nodes',PS.view(Node)),('types',PS.view(Type)),('locals',PS.view(Local)),('errors',PS.view(Error)),('bytes',PS.view(C.c_uint8)),('state',PS.view(State)),('modules',PS.view(LX.Text)),('aliases',PS.view(Alias)),('exports',PS.view(Export)),('borrow_queries',PS.view(BorrowQuery)),('borrow_origins',PS.view(BorrowOrigin)),('retain_effects',PS.view(RetainEffect)),('retain_reports',PS.view(RetainObservation)),('result_work',PS.view(C.c_int64))]
+class Context(C.Structure):_fields_=[('nodes',PS.view(Node)),('types',PS.view(Type)),('locals',PS.view(Local)),('errors',PS.view(Error)),('bytes',PS.view(C.c_uint8)),('state',PS.view(State)),('modules',PS.view(LX.Text)),('aliases',PS.view(Alias)),('exports',PS.view(Export)),('borrow_queries',PS.view(BorrowQuery)),('borrow_origins',PS.view(BorrowOrigin)),('retain_effects',PS.view(RetainEffect)),('retain_reports',PS.view(RetainObservation)),('result_work',PS.view(C.c_int64)),('names',PS.view(C.c_int64))]
 
 def transport_records():
     return [('coax_t_CK_Loc',Loc),('coax_t_Q_Unit',Unit),('coax_t_SP_Frame',Frame),('coax_t_SP_Type',Spatial),('coax_t_CK_Node',Node),('coax_t_CK_Type',Type),('coax_t_CK_Local',Local),('coax_t_CK_Error',Error),('coax_t_CK_State',State),('coax_t_CK_Options',Options),('coax_t_CK_Alias',Alias),('coax_t_CK_Export',Export),('coax_t_BS_Step',BorrowStep),('coax_t_BS_Path',BorrowPath),('coax_t_BS_Origin',BorrowOrigin),('coax_t_CK_BorrowQuery',BorrowQuery),('coax_t_CK_BorrowCaps',BorrowCaps),('coax_t_CK_RetainEffect',RetainEffect),('coax_t_CK_RetainObservation',RetainObservation),('coax_t_CK_RetainCaps',RetainCaps),('coax_t_CK_Context',Context),('coax_t_CK_Caps',Caps)]
@@ -104,8 +104,9 @@ class Checker(unittest.TestCase):
         ctx.retain_effects=context_views['retain_effects'](effects,len(effects));ctx.retain_reports=context_views['retain_reports']()
         caps=self.lib.CK_caps(n,len(source));result_work=(C.c_int64*caps.result_work)()
         ctx.result_work=context_views['result_work'](result_work,len(result_work))
+        names=(C.c_int64*caps.names)();ctx.names=context_views['names'](names,len(names))
         ok=self.lib.CK_run(ctx,n-1,Options(True,metal,parsed[1].flag,quantity_device))
-        return ok,nodes,types,errors,state[0],(keep,parsed,*arrays,queries,origins,effects,result_work)
+        return ok,nodes,types,errors,state[0],(keep,parsed,*arrays,queries,origins,effects,result_work,names)
     def test_independent_layout_and_constant_typing(self):
         source='S :: struct {a:u8;b:int;c:[3]u16;} E :: enum s8 {a= -128;b;} f :: ()->u8 {return 2*3+1;}'
         ok,n,t,e,s,owners=self.check(source);self.assertTrue(ok)

@@ -148,7 +148,7 @@ def main():
                 a=function_text(typed,name);b=function_text(raw,name)
                 record['body_comparison'][profile][name]={'exact_without_line_directives':a==b,'typed_sha256':hashlib.sha256(a.encode()).hexdigest(),'raw_sha256':hashlib.sha256(b.encode()).hexdigest(),'typed_lexical_call_tokens':sorted(set(re.findall(r'\b([A-Za-z_][A-Za-z_0-9]*)\s*\(',a.split('{',1)[1]))),'raw_lexical_call_tokens':sorted(set(re.findall(r'\b([A-Za-z_][A-Za-z_0-9]*)\s*\(',b.split('{',1)[1])))}
                 (directory/(name+'-typed.txt')).write_text(a+'\n');(directory/(name+'-raw.txt')).write_text(b+'\n')
-        base=['-std=c11','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-ffp-contract=off','-fno-fast-math']
+        base=['-std=c11','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-Wno-unknown-pragmas','-ffp-contract=off','-fno-fast-math']
         outputs=[]
         for mode,profile,flags in [('debug','debug',['-O0','-g']),('release','release',['-O2']),('sanitized','debug',['-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-omit-frame-pointer'])]:
             directory=profiles[profile]['path'];obj=work/(mode+'-typed.o')

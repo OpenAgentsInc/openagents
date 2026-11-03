@@ -7,7 +7,7 @@
 // path removed; compiler answers with their line numbers replaced by N, so an
 // edit above a declaration does not change them. Then:
 //   - a cold (--fresh) and a warm answer are the same, and a warm question
-//     about the compiler takes under 1 s;
+//     about the compiler takes under a third of the cold one's time;
 //   - every compiler use is the name itself, outside comments and strings;
 //   - editing a loaded unit changes the next answer, and a damaged cache is
 //     rebuilt.
@@ -17,6 +17,19 @@
 #load "../lib/sys/args.coax";
 #load "../lib/sys/fs.coax";
 #load "../lib/sys/proc.coax";
+
+// A warm query (the cached index) takes under a third of a cold one (the
+// whole front end), both timed on this machine in this run.
+warm_is_fast :: (warm_ms: int, cold_ms: int) -> bool { return warm_ms >= 0 && warm_ms * 3 < cold_ms; }
+
+#test "a warm query is judged against the cold one, not a wall clock" {
+  #assert warm_is_fast(1100, 5400);
+  #assert warm_is_fast(90, 6000);
+  #assert !warm_is_fast(1800, 5400);
+  #assert !warm_is_fast(2000, 5400);
+  #assert !warm_is_fast(-1, 5400);
+  #assert !warm_is_fast(0, 0);
+}
 
 check :: (ok: bool, what: string) -> int {
   if ok { print("  ok   %\n", what); return 0; }
@@ -237,7 +250,9 @@ tool_main :: () -> int #export_c {
 
   // The compiler's sources, through every #load.
   compiler := "lib/compiler/compiler.coax";
+  cold_t0 := proc_now_ms();
   r = ask(c, compiler, "defines", "CK_target", "--fresh", out[..], err[..]);
+  cold_ms := proc_now_ms() - cold_t0;
   coldb: [4096] u8;
   for k: 0..<r.out_n { coldb[k] = out[k]; }
   cold := cast(string) coldb[0..<r.out_n];
@@ -251,9 +266,12 @@ tool_main :: () -> int #export_c {
     same = same && r.status == 0 && cast(string) out[0..<r.out_n] == cold;
     if took < best { best = took; }
   }
-  print("  warm query over the compiler sources, best of 3: % ms\n", best);
+  print("  query over the compiler sources: cold % ms, warm best of 3 % ms\n", cold_ms, best);
   bad += check(same, "a warm answer is the cold answer");
-  bad += check(best < 1000, "a warm query over the compiler sources answers in under 1 s");
+  // Against the cold query on the same machine at the same time, not a wall
+  // clock: a loaded or slower machine slows both (#12680). A warm query hashes
+  // the compiler binary, the index and every unit but runs no front end.
+  bad += check(warm_is_fast(best, cold_ms), "a warm query over the compiler sources takes under a third of the cold one");
   r = ask(c, compiler, "uses", "CB_default_steps", "", out[..], err[..]);
   bad += recorded(c, "compiler-uses", masked(cast(string) out[0..<r.out_n], o[..]));
   r = ask(c, compiler, "uses", "SU_Export", "", out[..], err[..]);

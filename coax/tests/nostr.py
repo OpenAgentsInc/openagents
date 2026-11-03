@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Compile the Coax event projection consumer and feed canonical protobuf bytes."""
 import ctypes as C
+import os
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -51,6 +53,7 @@ TRAP_ALLOC = r"""
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <fcntl.h>
 #include "check.h"
 /* The allocator traps: any call from the parser aborts the process. */
 void *malloc(size_t n) { (void)n; abort(); }
@@ -60,9 +63,11 @@ void free(void *p) { if (p) abort(); }
 static char line[1 << 20];
 int main(int argc, char **argv) {
   int fd_lines = 0, ok = 0;
-  FILE *f = fopen(argv[1], "rb");   /* stdio's buffer comes from libc's own allocator, before any parse */
-  if (!f) return 2;
-  static char all[1 << 22]; size_t n = fread(all, 1, sizeof all, f);
+  /* open and read, not stdio: glibc's fopen allocates through the trapping malloc. */
+  int fd = open(argv[1], O_RDONLY);
+  if (fd < 0) return 2;
+  static char all[1 << 22]; size_t n = 0; ssize_t got;
+  while (n < sizeof all && (got = read(fd, all + n, sizeof all - n)) > 0) n += (size_t)got;
   size_t at = 0;
   while (at < n) {
     size_t e = at; while (e < n && all[e] != '\n') e++;
@@ -90,7 +95,7 @@ class CoaxJsonTests(unittest.TestCase):
             c = subprocess.check_output([str(ROOT/'coax/bin/coax'), 'c', str(d/'check.coax'), '--library', '--header', str(d/'check.h')])
             (d/'check.c').write_bytes(c)
             (d/'main.c').write_text(TRAP_ALLOC.replace('#include <string.h>', '#include <string.h>\n#include <unistd.h>'))
-            subprocess.run(['/usr/bin/clang', '-std=c11', '-O1', '-w', str(d/'check.c'), str(d/'main.c'), '-lm', '-o', str(d/'check')], check=True)
+            subprocess.run([os.environ.get('CC') or shutil.which('cc') or 'clang', '-std=c11', '-O1', '-w', str(d/'check.c'), str(d/'main.c'), '-lm', '-o', str(d/'check')], check=True)
             frames = (ROOT/'coax/lib/nostr/fixtures/coax_relay.jsonl').read_text().count('\n')
             out = subprocess.run([str(d/'check'), str(ROOT/'coax/lib/nostr/fixtures/coax_relay.jsonl')], capture_output=True, text=True)
             self.assertEqual(out.returncode, 0, out.stderr)

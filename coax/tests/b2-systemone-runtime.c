@@ -36,6 +36,13 @@ int64_t cxproc_stderr_byte(int64_t h,int64_t i){effects++;return live&&h==0?(uin
 int64_t cxproc_release(int64_t h){effects++;if(!live||h!=0)return -1;live=0;releases++;return 0;}
 int64_t cxproc_getenv_push(int64_t byte){(void)byte;effects++;return 0;}
 int64_t cxproc_getenv(void){effects++;return 0;}
+// The transport's other process effects (pid, clock, kill, group, environment
+// bytes): scripted children have no pid or process group, and time stands still.
+int64_t cxproc_pid(int64_t h){effects++;return h==0&&live?0:-1;}
+int64_t cxproc_now_ms(void){effects++;return 0;}
+int64_t cxproc_kill(int64_t h,int64_t sig){(void)sig;effects++;return h==0&&live?0:-1;}
+int64_t cxproc_group_alive(int64_t pgid){(void)pgid;effects++;return 0;}
+int64_t cxproc_getenv_byte(int64_t i){(void)i;effects++;return 0;}
 static coax_t_SoClient client(void){coax_t_SoClient c;coax_default_t_SoClient(&c);c.key_env=text("");c.url=text("http://offline.invalid");c.curl=text("scripted-only");return c;}
 static int check(int which,int offset,int err_capacity){
  Guard out,err;fill(&out);fill(&err);Guard oldout=out,olderr=err;scenario=which;live=releases=effects=line_index=0;

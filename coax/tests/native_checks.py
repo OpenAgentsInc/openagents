@@ -13,6 +13,7 @@ Psionic checks (coax/tests/native-checks.json).
 import importlib.util
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -228,7 +229,13 @@ class NativeChecks(unittest.TestCase):
         bad = [(f["file"], c["name"], c["outcome"]) for f in rec["files"] for c in f["checks"]
                if c["outcome"] not in ("passed", "rejected")]
         self.assertEqual(bad, [])
-        self.assertEqual(rec["counts"].get("passed", 0), sel["passed"], "the selection's eligible checks all ran")
+        # Every authored #test in the selected sources ran and passed. The
+        # count is read from the sources, independently of the runner, so a
+        # check added to a selected file is counted without editing this list
+        # (a pinned 62 went stale when 5 were added on 2026-11-01, #12680).
+        authored = sum(len(re.findall(r"^[ \t]*#test\b", (ROOT.parent / f).read_text(), re.M)) for f in sel["files"])
+        self.assertGreater(authored, 0)
+        self.assertEqual(rec["counts"].get("passed", 0), authored, "the selection's authored checks all ran")
         self.assertEqual(rec["counts"].get("rejected", 0), sel["rejected"])
 
     def test_the_record_names_unselected_checks(self):

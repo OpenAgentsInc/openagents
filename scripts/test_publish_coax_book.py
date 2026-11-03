@@ -202,7 +202,7 @@ class PublicationTests(unittest.TestCase):
         previous = self.receipt.read_bytes()
         self.urlopen.side_effect = None
         self.urlopen.return_value = Response(self.live)
-        with mock.patch.dict(publisher.os.environ, {"GITBOOK_TOKEN": "stub-token"}, clear=True):
+        with mock.patch.dict(publisher.os.environ, {"GITBOOK_TOKEN": "stub-token", "PATH": publisher.os.environ.get("PATH", "")}, clear=True):
             self.invoke("--check-live", "--require-receipt", "--receipt", str(self.receipt))
             changed = copy.deepcopy(self.live)
             changed["id"] = "new-revision-with-identical-titles"
@@ -271,7 +271,7 @@ class PublicationTests(unittest.TestCase):
         row[4] = lambda: None
         books["coax"] = tuple(row)
         with mock.patch.object(publisher, "BOOKS", books), mock.patch.object(publisher, "git", git), \
-                mock.patch.dict(publisher.os.environ, {"GITBOOK_TOKEN": "stub-token"}, clear=True):
+                mock.patch.dict(publisher.os.environ, {"GITBOOK_TOKEN": "stub-token", "PATH": publisher.os.environ.get("PATH", "")}, clear=True):
             self.invoke("--receipt", str(self.receipt))
         return requests
 

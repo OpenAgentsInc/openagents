@@ -10,10 +10,18 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 COMPILER=Path(os.environ.get('COAX_BIN',ROOT/'bin/coax'))
+# The Wasm toolchain coax/web/toolchain.sh sets up: COAXIAL_* when set, else
+# Homebrew's on a Mac and the nixpkgs links in ~/.cache on Linux.
+if os.uname().sysname=='Darwin':
+ WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES,WASM_LD_DIR='/opt/homebrew/opt/llvm/bin/clang','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','/opt/homebrew/opt/lld/bin'
+else:
+ tc=Path(os.environ.get('COAXIAL_TOOLCHAIN',Path.home()/'.cache/coax-wasm-toolchain'))
+ WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES,WASM_LD_DIR=str(tc/'bin/clang'),str(tc/'sysroot'),str(tc/'resource'),str(tc/'bin')
+WASM_CLANG=os.environ.get('COAXIAL_CLANG',WASM_CLANG);WASM_SYSROOT=os.environ.get('COAXIAL_SYSROOT',WASM_SYSROOT);WASM_RESOURCES=os.environ.get('COAXIAL_RESOURCES',WASM_RESOURCES)
 def run(*args,ok=True):
  env=os.environ.copy()
  if '--target=wasm32-wasip1' in args:
-  env['PATH']='/opt/homebrew/opt/lld/bin:'+env.get('PATH','')
+  env['PATH']=WASM_LD_DIR+':'+env.get('PATH','')
  r=subprocess.run([str(a)for a in args],capture_output=True,text=True,timeout=120,env=env)
  if ok and r.returncode:raise AssertionError(r.stderr or r.stdout)
  return r
@@ -104,7 +112,7 @@ f :: ()->int #export_c {s:S;s.x=9;return cast(int)s.x;}''')
   for mode,flags,want in [('development',[],[16,9,2]),('release',['--release'],[4,107,1])]:
    c=self.dir/(mode+'.c');c.write_text(run(COMPILER,'c',source,'--library',*flags).stdout)
    wrapper=self.dir/(mode+'-wasm.c');wrapper.write_text(f'#include "{mode}.c"\n__attribute__((export_name("size"))) int s(void){{return (int)profile_size();}}\n__attribute__((export_name("value"))) int v(void){{return (int)profile_value();}}\n__attribute__((export_name("fields"))) int f(void){{return (int)profile_fields();}}')
-   wasm=self.dir/(mode+'.wasm');run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-mexec-model=reactor',wrapper,'-lm','-o',wasm)
+   wasm=self.dir/(mode+'.wasm');run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-mexec-model=reactor',wrapper,'-lm','-o',wasm)
    js=self.dir/(mode+'.cjs');js.write_text("const fs=require('node:fs');(async()=>{const no=()=>{throw Error('Unexpected host effect')};const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[2]),{wasi_snapshot_preview1:{fd_write:no,fd_seek:no,fd_fdstat_get:no,proc_exit:no}});const x=instance.exports;x._initialize?.();process.stdout.write(JSON.stringify([x.size(),x.value(),x.fields()]));})().catch(e=>{console.error(e);process.exitCode=1;});")
    self.assertEqual(json.loads(run('bun',js,wasm).stdout),want)
 if __name__=='__main__':unittest.main()

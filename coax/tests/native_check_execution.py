@@ -173,7 +173,7 @@ class HostProcessTests(RecordedTests):
                     return self.actual.select(0)
                 return ready
         with mock.patch.object(self.process.selectors, 'DefaultSelector', DelayedRealSelector):
-            record = self.observe(['/usr/bin/true'], timeout_s=0.04)
+            record = self.observe([shutil.which('true')], timeout_s=0.04)
         self.assertTrue(record['started'])
         self.assertEqual(record['returncode'], 0)
         self.assertTrue(record['stdout_eof'] and record['stderr_eof'])

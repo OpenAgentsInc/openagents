@@ -78,7 +78,7 @@ def main():
             if stem in ['product','quotient','one','half_form','cancel']:assert equal,('no-conversion C body differs',name,a,b)
     outputs=[]
     for mode,flags in [('debug',['-O0','-g']),('release',['-O2']),('sanitized',['-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-omit-frame-pointer'])]:
-        command('compile-'+mode,[cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-ffp-contract=off','-fno-fast-math','-I'+str(work),work/'quantity.c',NATIVE,'-lm','-o',work/mode])
+        command('compile-'+mode,[cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-Wno-unknown-pragmas','-ffp-contract=off','-fno-fast-math','-I'+str(work),work/'quantity.c',NATIVE,'-lm','-o',work/mode])
         result=command('run-'+mode,[work/mode,work/'cases.bin',work/(mode+'.bin')]);blob=(work/(mode+'.bin')).read_bytes()
         expected_bytes=8*len(rows32)*4+8*len(rows64)*8+40
         assert len(blob)==expected_bytes,(mode,len(blob),expected_bytes)

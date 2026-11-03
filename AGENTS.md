@@ -75,7 +75,9 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 ## Build and test
 
 ```sh
-coax/build.sh test                          # compiler (from ~/.cache/coax-release, else the published build for this platform, else a bootstrap) + every Coax suite
+coax/build.sh test                          # compiler (from ~/.cache/coax-release, else the published build for this platform, else a bootstrap) + every Coax suite (over 15 minutes: use parts)
+coax/tests/run.sh --part I/8                # after coax/build.sh: one eighth of the Coax suites (1/8 ... 8/8, each under 15 minutes)
+coax/tests/run.sh --only UNIT...            # just those suites (--list names them)
 COAX_MUTATION_FULL=1 coax/build.sh          # the full mutation check: every survivor gates (normally only changed lines)
 coax/bin/coax test FILE                     # a file's checks, one line each as it ends, with its time
 coax/bin/coax test FILE --list              # name them, run none

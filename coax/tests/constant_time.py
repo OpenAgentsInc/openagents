@@ -28,9 +28,16 @@ BRANCH = re.compile(r'\t(b\.[a-z]{2}|cbn?z|tbn?z|j(?!mp)[a-z]{1,3})\s')
 def disassembly(obj, name):
     tool = shutil.which('objdump') or shutil.which('llvm-objdump')
     symbol = ('_' if platform.system() == 'Darwin' else '') + name   # Mach-O prefixes C names
-    out = subprocess.run([tool, '-d', f'--disassemble-symbols={symbol}', str(obj)], capture_output=True, text=True, check=True).stdout
+    # LLVM's objdump names one symbol with --disassemble-symbols, GNU's with --disassemble.
+    gnu = 'GNU' in subprocess.run([tool, '--version'], capture_output=True, text=True).stdout
+    one = f'--disassemble={symbol}' if gnu else f'--disassemble-symbols={symbol}'
+    out = subprocess.run([tool, '-d', one, str(obj)], capture_output=True, text=True, check=True).stdout
     m = re.search(r'<' + symbol + r'>:\n(.*?)(?:\n\n|\Z)', out, re.S)
     return m.group(1) if m else ''
+
+# The host C compiler: $CC, else cc (clang on the Mac). A bare clang may have
+# no C library headers (NixOS's unwrapped clang), so it is the last resort.
+CC = os.environ.get('CC') or shutil.which('cc') or shutil.which('clang') or 'cc'
 
 class ConstantTime(unittest.TestCase):
     def build(self, d, *mode):
@@ -45,7 +52,7 @@ class ConstantTime(unittest.TestCase):
             d = Path(directory)
             c = self.build(d, '--release')
             self.assertIn('__asm__("" : "+r"(x))', c)
-            cc = shutil.which('clang') or os.environ.get('CC', 'cc')
+            cc = CC
             r = subprocess.run([cc, '-std=c11', '-pedantic-errors', '-O2', '-c', str(d/'ct.c'), '-o', str(d/'ct.o')], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
             for name in ('ct_select', 'ct_select32'):
@@ -63,7 +70,7 @@ class ConstantTime(unittest.TestCase):
             d = Path(directory)
             self.build(d)
             (d/'host.c').write_text('#include "ct.h"\nint main(void){return ct_select(1,5,9)==5 && ct_select(0,5,9)==9 && ct_select32(1,5,9)==5 && ct_select32(0,5,9)==9 ? 0 : 1;}')
-            subprocess.run(['clang', '-std=c11', '-O2', str(d/'ct.c'), str(d/'host.c'), '-o', str(d/'host')], check=True, capture_output=True)
+            subprocess.run([CC, '-std=c11', '-O2', str(d/'ct.c'), str(d/'host.c'), '-o', str(d/'host')], check=True, capture_output=True)
             self.assertEqual(subprocess.run([str(d/'host')]).returncode, 0)
 
     def test_wasm32_calls_an_identity_that_is_never_inlined(self):

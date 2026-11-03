@@ -5,6 +5,8 @@ import hashlib, json, os, shutil, subprocess, tempfile, unittest
 from quiet_crash import run as run_quiet_crash
 ROOT=Path(__file__).resolve().parents[1]
 COAX=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'bin/coax')).resolve()
+# The LLDB checks drive the Mac's LLDB (xcrun lldb); elsewhere they are skipped, not passed.
+MAC_LLDB=unittest.skipUnless(shutil.which('xcrun'),'needs the Mac LLDB (xcrun lldb)')
 class Debugging(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory(prefix='coax-debug-');self.addCleanup(self.tmp.cleanup);self.d=Path(self.tmp.name)
@@ -33,6 +35,7 @@ class Debugging(unittest.TestCase):
   self.assertGreater(t['checks'][0]['steps'],0);self.assertEqual(t['libraries'],[])
   self.assertIn('coax timings:',r.stderr);self.assertIn('check.checker',r.stderr);self.assertIn('#test doubles (authority)',r.stderr)
   quiet=self.call('check',source);self.assertEqual(quiet.returncode,0,quiet.stderr);self.assertNotIn('coax timings',quiet.stderr)
+ @MAC_LLDB
  def test_loaded_function_source_step_values_and_stack(self):
   source=self.d/'main.coax';helper=self.d/'helper.coax';mapping=self.d/'map.json';exe=self.d/'app'
   helper.write_text('twice :: (value:int)->int {\n total:=value*2;\n total+=2;\n return total;\n}\n')
@@ -46,6 +49,7 @@ class Debugging(unittest.TestCase):
   self.assertEqual(run.returncode,0,run.stdout+run.stderr)
   for text in ['helper.coax:3','helper.coax:4','value = 20','total = 40','total = 42','twice at','main at']:
    self.assertIn(text,run.stdout)
+ @MAC_LLDB
  def test_lowered_assignment_steps_once_with_the_completed_value(self):
   src=self.d/'steps.coax';src.write_text('work :: (value:int)->int {\n values:=[1]int.[value*2];\n values[0]+=increment();\n total:=values[0];\n return total;\n}\nincrement :: ()->int {return 2;}\nmain :: () {answer:=work(20);#assert answer==42;}')
   built=self.call('build',src,'-o',self.d/'app');self.assertEqual(built.returncode,0,built.stderr)
@@ -76,6 +80,7 @@ class Debugging(unittest.TestCase):
   run=run_quiet_crash([str(self.d/'fault')],capture_output=True,text=True,env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0:handle_abort=1'})
   self.assertNotEqual(run.returncode,0);self.assertIn('AddressSanitizer',run.stderr)
   self.assertIn('leaf.coax:3',run.stderr);self.assertIn('leaf',run.stderr)
+ @MAC_LLDB
  def test_debugger_rejects_stale_source(self):
   src=self.d/'entry.coax';src.write_text('main :: () {}')
   built=self.call('build',src,'-o',self.d/'app','--source-map',self.d/'map.json');self.assertEqual(built.returncode,0,built.stderr)
@@ -83,6 +88,7 @@ class Debugging(unittest.TestCase):
   commands=self.d/'lldb.txt';commands.write_text('command script import '+str(ROOT/'tools/coax_lldb.py')+'\ncoax-map '+str(self.d/'map.json')+'\n')
   run=subprocess.run(['xcrun','lldb','--batch','--source',str(commands),str(self.d/'app')],capture_output=True,text=True)
   self.assertNotEqual(run.returncode,0);self.assertIn('source changed since compilation',run.stdout+run.stderr)
+ @MAC_LLDB
  def test_private_names_from_two_libraries_use_their_source_owner(self):
   for letter,name in [('a','first'),('b','second')]:
    src=self.d/(letter+'.coax');src.write_text('adjust :: ('+name+':int)->int {\n total:='+name+'+1;\n return total;\n}\nf'+letter+' :: ()->int #export_c {return adjust(20);}')

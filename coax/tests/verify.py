@@ -105,8 +105,8 @@ class Verify(unittest.TestCase):
     def test_failed_struct_expression_never_dereferences_empty_evaluator_value(self):
         for body in ('#assert false;', 'while true {}'):
             path = self.write(
-                'Result :: struct { value: int; }\n'
-                'bad :: () -> Result {' + body + ' return Result.{}; }\n'
+                'Outcome :: struct { value: int; }\n'  # Result is the built-in result type
+                'bad :: () -> Outcome {' + body + ' return Outcome.{}; }\n'
                 '#test "failed value" { #assert bad().value == 0; }\nmain :: () {}\n')
             r = coax('test', path, '--steps', '1000')
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)

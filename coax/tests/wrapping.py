@@ -12,6 +12,16 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 COMPILER=Path(os.environ.get('COAX_TEST_COMPILER',str(ROOT/'bin/coax')))
+# The host C compiler: $CC, else cc (clang on the Mac); a bare clang may have no
+# C library headers (NixOS's unwrapped clang).
+CC=os.environ.get('CC') or shutil.which('cc') or 'clang'
+# The Wasm toolchain coax/web/toolchain.sh sets up: COAXIAL_* when set, else
+# Homebrew's on a Mac and the nixpkgs links in ~/.cache on Linux.
+if os.uname().sysname=='Darwin':
+    WASM=('/opt/homebrew/opt/llvm/bin/clang','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','/opt/homebrew/opt/lld/bin')
+else:
+    _tc=Path(os.environ.get('COAXIAL_TOOLCHAIN',Path.home()/'.cache/coax-wasm-toolchain'))
+    WASM=(str(_tc/'bin/clang'),str(_tc/'sysroot'),str(_tc/'resource'),str(_tc/'bin'))
 OPS=('add_wrap','sub_wrap','mul_wrap','rotl','rotr')
 SOURCE='\n'.join(f'w_{op}_{bits} :: (a:u{bits},b:u{bits})->u{bits} #export_c {{return {op}(a,b);}}' for bits in (32,64) for op in OPS)+'''
 #assert #run add_wrap(cast(u64)18446744073709551615,cast(u64)1)==0;
@@ -40,7 +50,7 @@ class Wrapping(unittest.TestCase):
                 self.assertEqual(p.returncode,0,p.stderr)
                 (d/'w.c').write_text(p.stdout)
                 binary=d/('release.dylib' if mode else 'checked.dylib')
-                subprocess.run(['clang','-std=c11','-O2','-shared','-fPIC',str(d/'w.c'),'-lm','-o',str(binary)],check=True,capture_output=True)
+                subprocess.run([CC,'-std=c11','-O2','-shared','-fPIC',str(d/'w.c'),'-lm','-o',str(binary)],check=True,capture_output=True)
                 lib=ctypes.CDLL(str(binary))
                 rng=random.Random(0x340)
                 for bits in (32,64):
@@ -81,13 +91,13 @@ class Wrapping(unittest.TestCase):
                         want=oracle(op,a,b,bits)
                         lines.append(f'if(w_{op}_{bits}(UINT{bits}_C({a}),UINT{bits}_C({b}))!=UINT{bits}_C({want}))return 1;')
             lines+=['return order()!=UINT64_MAX;}'];(d/'host.c').write_text('\n'.join(lines))
-            subprocess.run(['clang','-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(d/'wrap.c'),str(d/'host.c'),'-lm','-o',str(d/'host')],check=True,capture_output=True)
+            subprocess.run([CC,'-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(d/'wrap.c'),str(d/'host.c'),'-lm','-o',str(d/'host')],check=True,capture_output=True)
             p=subprocess.run([str(d/'host')],capture_output=True,text=True)
             self.assertEqual(p.returncode,0,p.stderr)
     def test_actual_wasm_matches_oracle(self):
-        clang=Path(os.environ.get('COAXIAL_CLANG','/opt/homebrew/opt/llvm/bin/clang'))
-        sysroot=Path(os.environ.get('COAXIAL_SYSROOT','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot'))
-        resources=Path(os.environ.get('COAXIAL_RESOURCES','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes'))
+        clang=Path(os.environ.get('COAXIAL_CLANG',WASM[0]))
+        sysroot=Path(os.environ.get('COAXIAL_SYSROOT',WASM[1]))
+        resources=Path(os.environ.get('COAXIAL_RESOURCES',WASM[2]))
         self.assertTrue(clang.exists() and sysroot.exists() and resources.exists(),'required wasm32 toolchain unavailable')
         self.assertIsNotNone(shutil.which('bun'),'required Wasm executor unavailable')
         with tempfile.TemporaryDirectory() as tmp:
@@ -95,7 +105,7 @@ class Wrapping(unittest.TestCase):
             p=subprocess.run([str(COMPILER),'c',str(src),'--library'],capture_output=True,text=True)
             self.assertEqual(p.returncode,0,p.stderr);(d/'wrap.c').write_text(p.stdout)
             exports=[f'-Wl,--export=w_{op}_{bits}' for bits in (32,64) for op in OPS]
-            subprocess.run([str(clang),'--target=wasm32-wasip1',f'--sysroot={sysroot}',f'-resource-dir={resources}','-std=c11','-O2','-nostartfiles','-Wl,--no-entry',*exports,str(d/'wrap.c'),'-lm','-o',str(d/'wrap.wasm')],check=True,capture_output=True)
+            subprocess.run([str(clang),'--target=wasm32-wasip1',f'--sysroot={sysroot}',f'-resource-dir={resources}','-std=c11','-O2','-nostartfiles','-Wl,--no-entry',*exports,str(d/'wrap.c'),'-lm','-o',str(d/'wrap.wasm')],check=True,capture_output=True,env=dict(os.environ,PATH=WASM[3]+os.pathsep+os.environ.get('PATH','')))
             rng=random.Random(0x44);rows=[]
             for bits in (32,64):
                 mask=(1<<bits)-1

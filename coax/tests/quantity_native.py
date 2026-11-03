@@ -82,7 +82,7 @@ class QuantityNative(unittest.TestCase):
    record['code_comparison']['functions'][name]={'exact_without_source_line_directives':q==p,'whitespace_normalized_equal':re.sub(r'\s+',' ',q)==re.sub(r'\s+',' ',p),'quantity_sha256':hashlib.sha256(q.encode()).hexdigest(),'raw_sha256':hashlib.sha256(p.encode()).hexdigest()}
   blobs=[]
   for mode,flags in [('debug',['-O0','-g']),('release',['-O2']),('sanitized',['-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer'])]:
-   command('compile-'+mode,[cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-ffp-contract=off','-fno-fast-math','-I'+str(work),work/'quantity.c',native,'-lm','-o',work/mode])
+   command('compile-'+mode,[cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-Wno-unknown-pragmas','-ffp-contract=off','-fno-fast-math','-I'+str(work),work/'quantity.c',native,'-lm','-o',work/mode])
    result=command('run-'+mode,[work/mode,work/'cases.bin',work/(mode+'.bin')]);blob=(work/(mode+'.bin')).read_bytes();blobs.append(blob)
    record['modes'].append({'mode':mode,'passed':True,'output_sha256':sha(work/(mode+'.bin')),'stdout':result.stdout.strip()})
   self.assertEqual(blobs[0],blobs[1]);self.assertEqual(blobs[0],blobs[2])

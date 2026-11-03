@@ -4,6 +4,16 @@ import ctypes as C
 import json, os, random, shutil, subprocess, tempfile, unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
+# The host C compiler: $CC, else cc (clang on the Mac); a bare clang may have no
+# C library headers (NixOS's unwrapped clang).
+CC=os.environ.get('CC') or shutil.which('cc') or 'clang'
+# The Wasm toolchain coax/web/toolchain.sh sets up: COAXIAL_* when set, else
+# Homebrew's on a Mac and the nixpkgs links in ~/.cache on Linux.
+if os.uname().sysname=='Darwin':
+    WASM=('/opt/homebrew/opt/llvm/bin/clang','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','/opt/homebrew/opt/lld/bin')
+else:
+    _tc=Path(os.environ.get('COAXIAL_TOOLCHAIN',Path.home()/'.cache/coax-wasm-toolchain'))
+    WASM=(str(_tc/'bin/clang'),str(_tc/'sysroot'),str(_tc/'resource'),str(_tc/'bin'))
 COMPILER=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'bin/coax'))
 SOURCE='''
 product :: (a:u64,b:u64)->CoaxU64Product #export_c {return mul_wide(a,b);}
@@ -38,7 +48,7 @@ class WideTests(unittest.TestCase):
                 emit(d,mode)
                 for fallback in (False,True):
                     path=d/('r' if mode else 'c');path=path.with_suffix('.fallback.dylib' if fallback else '.dylib')
-                    cmd=['clang','-std=c11','-O2','-shared','-fPIC',str(d/'wide.c'),'-lm','-o',str(path)]
+                    cmd=[CC,'-std=c11','-O2','-shared','-fPIC',str(d/'wide.c'),'-lm','-o',str(path)]
                     if fallback:cmd+=['-U__SIZEOF_INT128__']
                     subprocess.run(cmd,check=True,capture_output=True)
                     lib=C.CDLL(str(path));lib.product.argtypes=[C.c_uint64,C.c_uint64];lib.product.restype=Pair;lib.ordered.restype=C.c_uint64
@@ -70,18 +80,18 @@ int main(void){uint64_t s=1;for(int i=0;i<10000;i++){
 }return ordered()!=3;}
 ''')
             for fallback in (False,True):
-                cmd=['clang','-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(d/'wide.c'),str(d/'main.c'),'-lm','-o',str(d/'test')]
+                cmd=[CC,'-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all',str(d/'wide.c'),str(d/'main.c'),'-lm','-o',str(d/'test')]
                 if fallback:cmd+=['-U__SIZEOF_INT128__']
                 subprocess.run(cmd,check=True,capture_output=True)
                 r=subprocess.run([str(d/'test')],capture_output=True,text=True);self.assertEqual(r.returncode,0,r.stderr)
     def test_actual_wasm_uses_split_and_matches_bigints(self):
-        clang=Path('/opt/homebrew/opt/llvm/bin/clang');sysroot=Path('/opt/homebrew/opt/wasi-libc/share/wasi-sysroot');resources=Path('/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes')
+        clang=Path(os.environ.get('COAXIAL_CLANG',WASM[0]));sysroot=Path(os.environ.get('COAXIAL_SYSROOT',WASM[1]));resources=Path(os.environ.get('COAXIAL_RESOURCES',WASM[2]))
         self.assertTrue(clang.exists() and sysroot.exists() and resources.exists());self.assertIsNotNone(shutil.which('bun'))
         with tempfile.TemporaryDirectory() as t:
             d=Path(t)
             for mode in ([],['--release']):
                 emit(d,mode)
-                subprocess.run([str(clang),'--target=wasm32-wasip1',f'--sysroot={sysroot}',f'-resource-dir={resources}','-std=c11','-O2','-nostartfiles','-Wl,--no-entry','-Wl,--export=hi','-Wl,--export=lo','-Wl,--export=ordered',str(d/'wide.c'),'-lm','-o',str(d/'wide.wasm')],check=True,capture_output=True)
+                subprocess.run([str(clang),'--target=wasm32-wasip1',f'--sysroot={sysroot}',f'-resource-dir={resources}','-std=c11','-O2','-nostartfiles','-Wl,--no-entry','-Wl,--export=hi','-Wl,--export=lo','-Wl,--export=ordered',str(d/'wide.c'),'-lm','-o',str(d/'wide.wasm')],check=True,capture_output=True,env=dict(os.environ,PATH=WASM[3]+os.pathsep+os.environ.get('PATH','')))
                 pre=subprocess.check_output([str(clang),'--target=wasm32-wasip1',f'--sysroot={sysroot}',f'-resource-dir={resources}','-E',str(d/'wide.c')],text=True)
                 body=pre.split('coax_t_CoaxU64Product coax_mul_wide',1)[1].split('/*',1)[0]
                 self.assertIn('p00',body);self.assertNotIn('unsigned __int128',body)

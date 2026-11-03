@@ -1,6 +1,6 @@
 {
   "schema": "coax.native-checks.selection.v1",
-  "about": "Authored Verse and Psionic #test checks run by coax/tools/native_checks.py through the evaluator and checked -O0/-O2 native code. passed/rejected are the expected check counts; a change to either is a change to this list.",
+  "about": "Authored Verse and Psionic #test checks run by coax/tools/native_checks.py through the evaluator and checked -O0/-O2 native code. Every #test in these files must pass (tests/native_checks.py counts them in the sources); rejected is the expected count of rejected checks, and a change to it is a change to this list.",
   "files": [
     "verse/look.coax",
     "verse/haunt-light.coax",
@@ -21,7 +21,6 @@
     "psionic/tests/guard-guide/token-policy.coax",
     "psionic/tests/guard-directions/browser-policy.coax"
   ],
-  "passed": 62,
   "rejected": 0,
   "roots": [
     "verse",

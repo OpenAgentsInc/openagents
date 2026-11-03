@@ -63,7 +63,7 @@ class BorrowSummaryNative(unittest.TestCase):
         return result.stdout
     def qualify(self,profile,flags):
         binary=self.directory/profile;cc=shlex.split(os.environ.get('CC','cc'))
-        self.execute(profile+'-compile',[*cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-ffp-contract=off','-fno-fast-math','-I',self.directory,self.c,DRIVER,'-lm','-o',binary])
+        self.execute(profile+'-compile',[*cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-Wno-unknown-pragmas','-ffp-contract=off','-fno-fast-math','-I',self.directory,self.c,DRIVER,'-lm','-o',binary])
         data=self.execute(profile+'-run',[binary],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0','UBSAN_OPTIONS':'halt_on_error=1'})
         observed=json.loads(data);self.assertGreater(observed['cases'],0);self.assertEqual(observed['calls'],observed['cases'])
         self.assertEqual(observed['origin_size'],424);self.assertEqual(observed['binding_size'],464)

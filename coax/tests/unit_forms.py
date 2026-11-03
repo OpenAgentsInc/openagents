@@ -116,7 +116,7 @@ def main():
     generated=command('generate-c',[COMPILER,'c',SOURCE,'--library','--header',work/'unit-forms.h']);(work/'unit-forms.c').write_bytes(generated.stdout)
     record['generated_c_sha256']=sha(work/'unit-forms.c');record['generated_header_sha256']=sha(work/'unit-forms.h')
     for mode,flags in [('debug',['-O0','-g']),('release',['-O2']),('sanitized',['-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-omit-frame-pointer'])]:
-        command('compile-'+mode,[cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-I'+str(work),work/'unit-forms.c',NATIVE,'-lm','-o',work/mode])
+        command('compile-'+mode,[cc,'-std=c11',*flags,'-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-Wno-misleading-indentation','-Wno-unknown-pragmas','-I'+str(work),work/'unit-forms.c',NATIVE,'-lm','-o',work/mode])
         command('run-'+mode,[work/mode,work/'inputs.bin',work/(mode+'.bin')]);have=(work/(mode+'.bin')).read_bytes()
         assert len(have)==len(truth),(mode,len(have),len(truth))
         if have!=truth:
