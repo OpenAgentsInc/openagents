@@ -1,47 +1,53 @@
 // Everglade's wire: the frames between a player's page (everglade-net.coax) and the room server that
 // owns the shared world (coax/web/room/, GitHub #12705; docs/verse/2026-11-03-everglade-multiplayer-spec.md
 // section 3.6). One file both sides #load, so the contract is checked code, not prose. It depends on
-// nothing else.
+// nothing else. Version 2: the spec's frames, with the amendments agreed on #12706.
 //
-// The server is the authority (owner, 2026-11-03): every player, creature, zone, spell effect,
-// townsperson, guard and broken piece is a server entity with a server id. A page sends intents and
-// its own predicted movement; the server checks them, rolls, and broadcasts state; pages draw it.
+// The server is the authority (owner, 2026-11-03). A page sends intents: its input every step, its
+// casts, its interactions, a rebuild. The server steps every seat with the shared movement step
+// (everglade-move.coax, everglade-step.coax) on that input, rolls everything, and sends the state.
+// A page predicts only its own movement, with the same step on the same input.
 //
 // Text frames over the relay's WebSocket, /api/room/relay/everglade/CODE. Fields are separated by one
-// space; numbers are whole: cm, cm/s, centiradians, ms. A server frame may carry several records, a
-// newline between (one snapshot, one frame); a page's frame is one record, at most 1024 bytes.
+// space; numbers are whole: cm, cm/s, centiradians, ms; a stick or key -100 to 100. A page's frame is
+// at most 1024 bytes, a server's at most 3800.
 //
 // Page to server:
-//   H 1 ID LOOK CLASS FLAGS NAME      hello, on sitting down: player id ("-" none), look
-//                                     ("ranger.SKIN.DYE.TRIM"), class ("druid"), FLAGS (1 logged in), name ("-")
-//   M SEQ T X Y Z YAW VX VZ F A       your move: where your page predicts you after its input SEQ, at your
-//                                     relay time T; Y is your feet's world height; F the WF_* flags; A the clip
-//   C SEQ SLOT AX AY AZ TGT           a cast: the bar slot (0 to 47, everglade-spells.coax), the aim, the
-//                                     target entity (-1 none)
-//   E SEQ SLOT                        end what slot SLOT holds up (its concentration, or putting it away)
-//   R SEQ                             rebuild the town
-//   t MS                              a clock ping (MS your monotonic ms)
-// Server to page (the relay's own first: y SEAT N T, j SEAT, l SEAT, t MS T):
-//   k TICK T                          the records after it in this frame are the world at TICK, server time T
-//   e EID KIND OWNER X Y Z YAW VX VZ F A HP MAX P1 P2
-//                                     an entity, new or changed (owner the seat, -1 the world's; P1 P2 the
-//                                     kind's own: WK_*)
-//   x EID                             it is gone
-//   a SEQ X Y Z VX VZ                 your move SEQ, as the server has it: where you are after it
-//   f EID SLOT CASTER AX AY AZ SEED T a spell's effect at server time T, cast by entity CASTER at the aim:
-//                                     every page plays it from SEED, the server's dice too (meteors fall
-//                                     where they fall for everyone)
-//   h EID BY AMOUNT KIND              a hit on EID by BY: AMOUNT hit points (below 0 healed), KIND the damage type
-//   n SEQ REASON                      your intent SEQ refused: REASON a word (range, slot, sight, rate)
-//   p EID SEAT ID LOOK NAME           who a player entity is (once it is made, and to a joiner)
+//   H 1 LOOK CLASS FLAGS NAME      hello, after y: look ("ranger.SKIN.DYE.TRIM"), class ("druid"), FLAGS
+//                                  (1 touch, 2 logged in), the name shown ("-" none)
+//   I SEQ KX KY PX PY THETA B      one step's input (everglade-move-types.coax EgMoveIn), every step at
+//                                  30 Hz, idle ones too: the keys and the stick (-100 to 100, along the
+//                                  camera), the camera's yaw, B bits (1 run, 2 jump, 4 dive)
+//   C SEQ SLOT AX AY AZ TGT        a cast: the bar slot, the aim, the target (-1 none; 0-999 a watch actor,
+//                                  1000 + SS a seat, 2000 + EID a creature)
+//   E SEQ KIND ID                  interact: KIND 1 talk to townsperson ID, 2 a door, 3 a boat, 4 a quest
+//                                  board, 5 end what bar slot ID holds up (its concentration)
+//   R SEQ                          ask for the rebuild
+//   t MS                           a clock ping
+// Server to page (the relay's own first: y SS N T, j SS, l SS, t MS T):
+//   W TICK HZ SEED DAY WEATHER     the world header, after y: the tick now, the tick rate, the room's seed,
+//                                  ms into the day, the weather's zone
+//   D TICK ACK F E;E;...           state at TICK; ACK the last I SEQ of yours stepped; F 1 a full snapshot,
+//                                  2 more of this tick follows, else 0; entries a ';' apart:
+//     p SS X Y Z YAW VX VY VZ G CLIP HP MAX TEMP COND FORM CARRY
+//                                  a player: G bits (1 on ground, 2 swimming, 4 in a boat, 8 dead), CLIP the
+//                                  controller's act, COND the conditions' bits, FORM (0 you, 1-4 a beast),
+//                                  CARRY the controller's leftover step time in tenths of a ms
+//     n SS ID LOOK CLASS FLAGS NAME  who a seat is ("-" none yet)
+//     f I X Z YAW CLIP MODE HP     a townsperson or guard (watch actor I)
+//     c EID KIND X Y Z YAW HP F OWNER P1 P2   a creature or zone a spell made (WK_*)
+//     x K ID                       gone from your view: K p, f or c
+//     e cast SS SLOT AX AY AZ SEED a cast the server took: every page plays it from SEED
+//     e hit WHO BY AMT KIND        damage (WHO and BY as TGT codes)
+//     e heal WHO AMT | e die WHO | e break PIECE IX IY IZ | e burn PIECE ON | e rebuild | e edit VERSION
+//     w SS LEVEL                   a seat's WANTED level
+//   r SEQ REASON                   an intent of yours refused (range, sight, dead, cooldown, slot)
 
-WIRE_VERSION :: 1;
+WIRE_VERSION :: 2;
 WIRE_FRAME :: 1024;        // a page's frame at most
-WIRE_SERVER_FRAME :: 4096; // a server's
-// entity kinds
-WK_PLAYER :: 0;            // P1 the form (0 none, 1 wolf, 2 brown bear, 3 frog, 4 mammoth), P2 0
-WK_FOLK :: 1;              // a townsperson: P1 their index in the town (verse/everglade/folk.coax)
-WK_GUARD :: 2;             // one of the watch: P1 their index
+WIRE_SERVER_FRAME :: 3800; // a server's
+WIRE_HZ :: 30; WIRE_AWAY_MS :: 3000;             // the tick, and a page's steps
+// creature and zone kinds (c)
 WK_PACK :: 10;             // Conjure Animals' pack: its middle; F 1 while it runs
 WK_FROG :: 11;             // a townsperson Polymorph took: P1 their index
 WK_BEAST :: 12;            // a summoned beast: P1 the form
@@ -50,16 +56,26 @@ WK_TENTACLES :: 21;        // Black Tentacles' square: its middle; P2 its side
 WK_THORNS :: 22;           // a Wall of Thorns: its middle, its way; P2 its length
 WK_LINE :: 23;             // a wall of wind or fire: P1 the ability (AB_*), P2 its length
 WK_ZONE :: 24;             // a lingering zone (Moonbeam, Sleet Storm, Fog Cloud...): P1 the ability, P2 its radius
-WK_PIECE :: 30;            // a piece of the town that broke: P1 its index in the town's pieces, F its state
-// a move's and a player entity's flags
-WF_AIR :: 1; WF_SWIM :: 2; WF_BOAT :: 4; WF_DEAD :: 8; WF_FLOCK :: 128; WF_WARP :: 256;
+// a player's G bits
+WG_GROUND :: 1; WG_SWIM :: 2; WG_BOAT :: 4; WG_DEAD :: 8; WG_AWAY :: 16;   // AWAY: nothing heard from that seat's page for WIRE_AWAY_MS
+// an input's B bits
+WB_RUN :: 1; WB_JUMP :: 2; WB_DIVE :: 4;
+// an interaction's KIND
+WE_TALK :: 1; WE_DOOR :: 2; WE_BOAT :: 3; WE_BOARD :: 4; WE_END :: 5;
 
-WireEnt :: struct { eid: int; kind: int; owner: int = -1; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vz: f32; f: int; a: int; hp: int; max: int; p1: int; p2: int; }
-WireMove :: struct { seq: int; t: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vz: f32; f: int; a: int; }
+WireIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: f32; b: int; }
 WireCast :: struct { seq: int; slot: int; ax: f32; ay: f32; az: f32; tgt: int = -1; }
-WireAck :: struct { seq: int; x: f32; y: f32; z: f32; vx: f32; vz: f32; }
-WireFx :: struct { eid: int; slot: int; caster: int; ax: f32; ay: f32; az: f32; seed: int; t: int; }
-WireHit :: struct { eid: int; by: int; amount: int; kind: int; }
+WireUse :: struct { seq: int; kind: int; id: int; }
+WireHello :: struct { look: string; kind: string; flags: int; name: string; }
+WireWorld :: struct { tick: int; hz: int = WIRE_HZ; seed: int; day: int; weather: int; }
+WireD :: struct { tick: int; ack: int; f: int; }
+WireP :: struct { ss: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; g: int; clip: int; hp: int; max: int; temp: int; cond: int; form: int; carry: f32; }
+WireN :: struct { ss: int; id: string; look: string; kind: string; flags: int; name: string; }
+WireF :: struct { i: int; x: f32; z: f32; yaw: f32; clip: int; mode: int; hp: int; }
+WireC :: struct { eid: int; kind: int; x: f32; y: f32; z: f32; yaw: f32; hp: int; f: int; owner: int = -1; p1: int; p2: int; }
+WireX :: struct { k: u8; id: int; }
+WireCastE :: struct { ss: int; slot: int; ax: f32; ay: f32; az: f32; seed: int; }
+WireHit :: struct { who: int; by: int; amt: int; kind: int; }
 WireRd :: struct { at: int; ok: bool = true; }
 
 // ---- writing
@@ -79,6 +95,22 @@ wire_int :: (out: [] u8, at: int, v: int) -> int {
   while c > 0 && n < out.count { c -= 1; out[n] = digits[c]; n += 1; }
   return n;
 }
+// A word: spaces, ';' and controls left out, "-" when nothing is left.
+wire_text :: (out: [] u8, at: int, t: string) -> int {
+  n := wire_put(out, at, " ");
+  start := n;
+  for ch: t { if n >= out.count { break; } if ch <= 32 || ch == ';' || ch == 127 { continue; } out[n] = ch; n += 1; }
+  if n == start { n = wire_put(out, n, "-"); }
+  return n;
+}
+// A name: its spaces kept (it is a record's last field), ';' and controls left out.
+wire_name :: (out: [] u8, at: int, t: string) -> int {
+  n := wire_put(out, at, " ");
+  start := n;
+  for ch: t { if n >= out.count || n - start >= 40 { break; } if ch < 32 || ch == ';' || ch == 127 { continue; } out[n] = ch; n += 1; }
+  if n == start { n = wire_put(out, n, "-"); }
+  return n;
+}
 wire_cm :: (v: f32) -> int { if !(v == v) || v > 1.0e7 || v < -1.0e7 { return 0; } return cast(int) floor(v * 100 + 0.5); }
 wire_m :: (out: [] u8, at: int, v: f32) -> int { return wire_int(out, at, wire_cm(v)); }
 // An angle in centiradians, wrapped to -pi..pi.
@@ -87,20 +119,19 @@ wire_yaw :: (out: [] u8, at: int, a: f32) -> int {
   if w == w && w < 1.0e6 && w > -1.0e6 { w = a - 6.2831853 * floor((a + 3.14159265) / 6.2831853); } else { w = 0; }
   return wire_int(out, at, wire_cm(w));
 }
-wire_put_ent :: (out: [] u8, at: int, e: WireEnt) -> int {
-  n := wire_put(out, at, "e");
-  n = wire_int(out, n, e.eid); n = wire_int(out, n, e.kind); n = wire_int(out, n, e.owner);
-  n = wire_m(out, n, e.x); n = wire_m(out, n, e.y); n = wire_m(out, n, e.z); n = wire_yaw(out, n, e.yaw);
-  n = wire_m(out, n, e.vx); n = wire_m(out, n, e.vz);
-  n = wire_int(out, n, e.f); n = wire_int(out, n, e.a); n = wire_int(out, n, e.hp); n = wire_int(out, n, e.max);
-  n = wire_int(out, n, e.p1); n = wire_int(out, n, e.p2);
+// A stick or key, -1 to 1, as -100 to 100; and back.
+wire_axis :: (v: f32) -> int { if !(v == v) { return 0; } return cast(int) floor(clamp_wire(v, -1, 1) * 100 + 0.5); }
+clamp_wire :: (v: f32, lo_: f32, hi_: f32) -> f32 { return ifx v < lo_ then lo_ else ifx v > hi_ then hi_ else v; }
+
+wire_put_hello :: (out: [] u8, at: int, h: WireHello) -> int {
+  n := wire_put(out, at, "H 1");
+  n = wire_text(out, n, h.look); n = wire_text(out, n, h.kind); n = wire_int(out, n, h.flags); n = wire_name(out, n, h.name);
   return n;
 }
-wire_put_move :: (out: [] u8, at: int, m: WireMove) -> int {
-  n := wire_put(out, at, "M");
-  n = wire_int(out, n, m.seq); n = wire_int(out, n, m.t);
-  n = wire_m(out, n, m.x); n = wire_m(out, n, m.y); n = wire_m(out, n, m.z); n = wire_yaw(out, n, m.yaw);
-  n = wire_m(out, n, m.vx); n = wire_m(out, n, m.vz); n = wire_int(out, n, m.f); n = wire_int(out, n, m.a);
+wire_put_in :: (out: [] u8, at: int, i: WireIn) -> int {
+  n := wire_put(out, at, "I");
+  n = wire_int(out, n, i.seq); n = wire_int(out, n, i.kx); n = wire_int(out, n, i.ky); n = wire_int(out, n, i.px); n = wire_int(out, n, i.py);
+  n = wire_yaw(out, n, i.theta); n = wire_int(out, n, i.b);
   return n;
 }
 wire_put_cast :: (out: [] u8, at: int, c: WireCast) -> int {
@@ -109,23 +140,78 @@ wire_put_cast :: (out: [] u8, at: int, c: WireCast) -> int {
   n = wire_m(out, n, c.ax); n = wire_m(out, n, c.ay); n = wire_m(out, n, c.az); n = wire_int(out, n, c.tgt);
   return n;
 }
-wire_put_ack :: (out: [] u8, at: int, a: WireAck) -> int {
-  n := wire_put(out, at, "a");
-  n = wire_int(out, n, a.seq); n = wire_m(out, n, a.x); n = wire_m(out, n, a.y); n = wire_m(out, n, a.z);
-  n = wire_m(out, n, a.vx); n = wire_m(out, n, a.vz);
+wire_put_use :: (out: [] u8, at: int, u: WireUse) -> int {
+  n := wire_put(out, at, "E");
+  n = wire_int(out, n, u.seq); n = wire_int(out, n, u.kind); n = wire_int(out, n, u.id);
   return n;
 }
-wire_put_fx :: (out: [] u8, at: int, f: WireFx) -> int {
-  n := wire_put(out, at, "f");
-  n = wire_int(out, n, f.eid); n = wire_int(out, n, f.slot); n = wire_int(out, n, f.caster);
-  n = wire_m(out, n, f.ax); n = wire_m(out, n, f.ay); n = wire_m(out, n, f.az); n = wire_int(out, n, f.seed); n = wire_int(out, n, f.t);
+wire_put_rebuild :: (out: [] u8, at: int, seq: int) -> int { return wire_int(out, wire_put(out, at, "R"), seq); }
+wire_put_world :: (out: [] u8, at: int, w: WireWorld) -> int {
+  n := wire_put(out, at, "W");
+  n = wire_int(out, n, w.tick); n = wire_int(out, n, w.hz); n = wire_int(out, n, w.seed); n = wire_int(out, n, w.day); n = wire_int(out, n, w.weather);
   return n;
+}
+// The state's header, "D TICK ACK F "; its entries follow, wire_sep between them.
+wire_put_d :: (out: [] u8, at: int, d: WireD) -> int {
+  n := wire_put(out, at, "D");
+  n = wire_int(out, n, d.tick); n = wire_int(out, n, d.ack); n = wire_int(out, n, d.f);
+  return wire_put(out, n, " ");
+}
+wire_sep :: (out: [] u8, at: int) -> int { return wire_put(out, at, ";"); }
+wire_put_p :: (out: [] u8, at: int, p: WireP) -> int {
+  n := wire_put(out, at, "p");
+  n = wire_int(out, n, p.ss); n = wire_m(out, n, p.x); n = wire_m(out, n, p.y); n = wire_m(out, n, p.z); n = wire_yaw(out, n, p.yaw);
+  n = wire_m(out, n, p.vx); n = wire_m(out, n, p.vy); n = wire_m(out, n, p.vz);
+  n = wire_int(out, n, p.g); n = wire_int(out, n, p.clip); n = wire_int(out, n, p.hp); n = wire_int(out, n, p.max); n = wire_int(out, n, p.temp);
+  n = wire_int(out, n, p.cond); n = wire_int(out, n, p.form);
+  n = wire_int(out, n, ifx p.carry == p.carry then cast(int) floor(p.carry * 10000 + 0.5) else 0);
+  return n;
+}
+wire_put_n :: (out: [] u8, at: int, w: WireN) -> int {
+  n := wire_put(out, at, "n");
+  n = wire_int(out, n, w.ss); n = wire_text(out, n, w.id); n = wire_text(out, n, w.look); n = wire_text(out, n, w.kind);
+  n = wire_int(out, n, w.flags); n = wire_name(out, n, w.name);
+  return n;
+}
+wire_put_f :: (out: [] u8, at: int, f: WireF) -> int {
+  n := wire_put(out, at, "f");
+  n = wire_int(out, n, f.i); n = wire_m(out, n, f.x); n = wire_m(out, n, f.z); n = wire_yaw(out, n, f.yaw);
+  n = wire_int(out, n, f.clip); n = wire_int(out, n, f.mode); n = wire_int(out, n, f.hp);
+  return n;
+}
+wire_put_c :: (out: [] u8, at: int, c: WireC) -> int {
+  n := wire_put(out, at, "c");
+  n = wire_int(out, n, c.eid); n = wire_int(out, n, c.kind); n = wire_m(out, n, c.x); n = wire_m(out, n, c.y); n = wire_m(out, n, c.z);
+  n = wire_yaw(out, n, c.yaw); n = wire_int(out, n, c.hp); n = wire_int(out, n, c.f); n = wire_int(out, n, c.owner);
+  n = wire_int(out, n, c.p1); n = wire_int(out, n, c.p2);
+  return n;
+}
+wire_put_x :: (out: [] u8, at: int, x: WireX) -> int {
+  n := wire_put(out, at, "x ");
+  if n < out.count { out[n] = x.k; n += 1; }
+  return wire_int(out, n, x.id);
+}
+wire_put_cast_e :: (out: [] u8, at: int, c: WireCastE) -> int {
+  n := wire_put(out, at, "e cast");
+  n = wire_int(out, n, c.ss); n = wire_int(out, n, c.slot); n = wire_m(out, n, c.ax); n = wire_m(out, n, c.ay); n = wire_m(out, n, c.az);
+  return wire_int(out, n, c.seed);
 }
 wire_put_hit :: (out: [] u8, at: int, h: WireHit) -> int {
-  n := wire_put(out, at, "h");
-  n = wire_int(out, n, h.eid); n = wire_int(out, n, h.by); n = wire_int(out, n, h.amount); n = wire_int(out, n, h.kind);
+  n := wire_put(out, at, "e hit");
+  n = wire_int(out, n, h.who); n = wire_int(out, n, h.by); n = wire_int(out, n, h.amt); n = wire_int(out, n, h.kind);
   return n;
 }
+wire_put_heal :: (out: [] u8, at: int, who: int, amt: int) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "e heal"), who), amt); }
+wire_put_die :: (out: [] u8, at: int, who: int) -> int { return wire_int(out, wire_put(out, at, "e die"), who); }
+wire_put_break :: (out: [] u8, at: int, pc: int, ix: f32, iy: f32, iz: f32) -> int {
+  n := wire_int(out, wire_put(out, at, "e break"), pc);
+  return wire_m(out, wire_m(out, wire_m(out, n, ix), iy), iz);
+}
+wire_put_burn :: (out: [] u8, at: int, pc: int, on: bool) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "e burn"), pc), ifx on then 1 else 0); }
+wire_put_rebuilt :: (out: [] u8, at: int) -> int { return wire_put(out, at, "e rebuild"); }
+wire_put_edit :: (out: [] u8, at: int, version: int) -> int { return wire_int(out, wire_put(out, at, "e edit"), version); }
+wire_put_wanted :: (out: [] u8, at: int, ss: int, level: int) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "w"), ss), level); }
+wire_put_refused :: (out: [] u8, at: int, seq: int, reason: string) -> int { return wire_text(out, wire_int(out, wire_put(out, at, "r"), seq), reason); }
 
 // ---- reading (bounded: a missing or bad field sets ok false)
 
@@ -141,7 +227,7 @@ wire_num :: (t: string, r: [] WireRd) -> int {
   return ifx neg then -v else v;
 }
 wire_f :: (t: string, r: [] WireRd) -> f32 { return f32(wire_num(t, r)) / 100; }
-// The next word, to a space or the end.
+// The next word, to a space or the end ("-" reads as "").
 wire_word :: (t: string, r: [] WireRd) -> string {
   i := r[0].at;
   while i < t.count && t[i] == ' ' { i += 1; }
@@ -149,25 +235,33 @@ wire_word :: (t: string, r: [] WireRd) -> string {
   while e < t.count && t[e] != ' ' { e += 1; }
   r[0].at = e;
   if e == i { r[0].ok = false; }
-  return t[i..<e];
+  w := t[i..<e];
+  return ifx w == "-" then t[e..<e] else w;
 }
-// A record's reader, past its letter ("e ...": at 1).
+// The rest: a record's last field, a name with its spaces ("-" reads as "").
+wire_rest :: (t: string, r: [] WireRd) -> string {
+  i := r[0].at;
+  while i < t.count && t[i] == ' ' { i += 1; }
+  r[0].at = t.count;
+  if i >= t.count { r[0].ok = false; return t[t.count..<t.count]; }
+  w := t[i..<t.count];
+  return ifx w == "-" then t[t.count..<t.count] else w;
+}
+// A record's reader, past its letters ("p ...": at 1; "e cast ...": at 6).
 wire_rd :: (t: string, letters: int) -> WireRd { return WireRd.{at = letters, ok = t.count > letters && t[letters] == ' '}; }
-wire_read_ent :: (t: string, r: [] WireRd) -> WireEnt {
-  e: WireEnt;
-  e.eid = wire_num(t, r); e.kind = wire_num(t, r); e.owner = wire_num(t, r);
-  e.x = wire_f(t, r); e.y = wire_f(t, r); e.z = wire_f(t, r); e.yaw = wire_f(t, r);
-  e.vx = wire_f(t, r); e.vz = wire_f(t, r);
-  e.f = wire_num(t, r); e.a = wire_num(t, r); e.hp = wire_num(t, r); e.max = wire_num(t, r);
-  e.p1 = wire_num(t, r); e.p2 = wire_num(t, r);
-  return e;
+wire_is :: (t: string, head: string) -> bool { return t.count > head.count && t[0..<head.count] == head && t[head.count] == ' '; }
+
+wire_read_hello :: (t: string, r: [] WireRd) -> WireHello {
+  h: WireHello;
+  if wire_num(t, r) != 1 { r[0].ok = false; }
+  h.look = wire_word(t, r); h.kind = wire_word(t, r); h.flags = wire_num(t, r); h.name = wire_rest(t, r);
+  return h;
 }
-wire_read_move :: (t: string, r: [] WireRd) -> WireMove {
-  m: WireMove;
-  m.seq = wire_num(t, r); m.t = wire_num(t, r);
-  m.x = wire_f(t, r); m.y = wire_f(t, r); m.z = wire_f(t, r); m.yaw = wire_f(t, r);
-  m.vx = wire_f(t, r); m.vz = wire_f(t, r); m.f = wire_num(t, r); m.a = wire_num(t, r);
-  return m;
+wire_read_in :: (t: string, r: [] WireRd) -> WireIn {
+  i: WireIn;
+  i.seq = wire_num(t, r); i.kx = wire_num(t, r); i.ky = wire_num(t, r); i.px = wire_num(t, r); i.py = wire_num(t, r);
+  i.theta = wire_f(t, r); i.b = wire_num(t, r);
+  return i;
 }
 wire_read_cast :: (t: string, r: [] WireRd) -> WireCast {
   c: WireCast;
@@ -175,74 +269,156 @@ wire_read_cast :: (t: string, r: [] WireRd) -> WireCast {
   c.ax = wire_f(t, r); c.ay = wire_f(t, r); c.az = wire_f(t, r); c.tgt = wire_num(t, r);
   return c;
 }
-wire_read_ack :: (t: string, r: [] WireRd) -> WireAck {
-  a: WireAck;
-  a.seq = wire_num(t, r); a.x = wire_f(t, r); a.y = wire_f(t, r); a.z = wire_f(t, r); a.vx = wire_f(t, r); a.vz = wire_f(t, r);
-  return a;
+wire_read_use :: (t: string, r: [] WireRd) -> WireUse {
+  u: WireUse;
+  u.seq = wire_num(t, r); u.kind = wire_num(t, r); u.id = wire_num(t, r);
+  return u;
 }
-wire_read_fx :: (t: string, r: [] WireRd) -> WireFx {
-  f: WireFx;
-  f.eid = wire_num(t, r); f.slot = wire_num(t, r); f.caster = wire_num(t, r);
-  f.ax = wire_f(t, r); f.ay = wire_f(t, r); f.az = wire_f(t, r); f.seed = wire_num(t, r); f.t = wire_num(t, r);
+wire_read_world :: (t: string, r: [] WireRd) -> WireWorld {
+  w: WireWorld;
+  w.tick = wire_num(t, r); w.hz = wire_num(t, r); w.seed = wire_num(t, r); w.day = wire_num(t, r); w.weather = wire_num(t, r);
+  return w;
+}
+// The state's header; r is left at its entries.
+wire_read_d :: (t: string, r: [] WireRd) -> WireD {
+  d: WireD;
+  d.tick = wire_num(t, r); d.ack = wire_num(t, r); d.f = wire_num(t, r);
+  return d;
+}
+wire_read_p :: (t: string, r: [] WireRd) -> WireP {
+  p: WireP;
+  p.ss = wire_num(t, r); p.x = wire_f(t, r); p.y = wire_f(t, r); p.z = wire_f(t, r); p.yaw = wire_f(t, r);
+  p.vx = wire_f(t, r); p.vy = wire_f(t, r); p.vz = wire_f(t, r);
+  p.g = wire_num(t, r); p.clip = wire_num(t, r); p.hp = wire_num(t, r); p.max = wire_num(t, r); p.temp = wire_num(t, r);
+  p.cond = wire_num(t, r); p.form = wire_num(t, r); p.carry = f32(wire_num(t, r)) / 10000;
+  return p;
+}
+wire_read_n :: (t: string, r: [] WireRd) -> WireN {
+  w: WireN;
+  w.ss = wire_num(t, r); w.id = wire_word(t, r); w.look = wire_word(t, r); w.kind = wire_word(t, r); w.flags = wire_num(t, r); w.name = wire_rest(t, r);
+  return w;
+}
+wire_read_f :: (t: string, r: [] WireRd) -> WireF {
+  f: WireF;
+  f.i = wire_num(t, r); f.x = wire_f(t, r); f.z = wire_f(t, r); f.yaw = wire_f(t, r); f.clip = wire_num(t, r); f.mode = wire_num(t, r); f.hp = wire_num(t, r);
   return f;
+}
+wire_read_c :: (t: string, r: [] WireRd) -> WireC {
+  c: WireC;
+  c.eid = wire_num(t, r); c.kind = wire_num(t, r); c.x = wire_f(t, r); c.y = wire_f(t, r); c.z = wire_f(t, r); c.yaw = wire_f(t, r);
+  c.hp = wire_num(t, r); c.f = wire_num(t, r); c.owner = wire_num(t, r); c.p1 = wire_num(t, r); c.p2 = wire_num(t, r);
+  return c;
+}
+wire_read_x :: (t: string, r: [] WireRd) -> WireX {
+  x: WireX;
+  k := wire_word(t, r);
+  if k.count != 1 || (k[0] != 'p' && k[0] != 'f' && k[0] != 'c') { r[0].ok = false; return x; }
+  x.k = k[0]; x.id = wire_num(t, r);
+  return x;
+}
+wire_read_cast_e :: (t: string, r: [] WireRd) -> WireCastE {
+  c: WireCastE;
+  c.ss = wire_num(t, r); c.slot = wire_num(t, r); c.ax = wire_f(t, r); c.ay = wire_f(t, r); c.az = wire_f(t, r); c.seed = wire_num(t, r);
+  return c;
 }
 wire_read_hit :: (t: string, r: [] WireRd) -> WireHit {
   h: WireHit;
-  h.eid = wire_num(t, r); h.by = wire_num(t, r); h.amount = wire_num(t, r); h.kind = wire_num(t, r);
+  h.who = wire_num(t, r); h.by = wire_num(t, r); h.amt = wire_num(t, r); h.kind = wire_num(t, r);
   return h;
 }
-// The k-th record of a server frame (records a newline apart), and how many there are.
-wire_records :: (t: string) -> int {
-  if t.count == 0 { return 0; }
+// A state's entries: how many there are past the header (at `from`), and the k-th, ';' apart.
+wire_entries :: (t: string, from: int) -> int {
+  i := from;
+  while i < t.count && t[i] == ' ' { i += 1; }
+  if i >= t.count { return 0; }
   n := 1;
-  for ch: t { if ch == 10 { n += 1; } }
+  for q: i..<t.count { if t[q] == ';' { n += 1; } }
   return n;
 }
-wire_record :: (t: string, k: int) -> string {
-  i := 0; at := 0;
-  while at < k && i < t.count { if t[i] == 10 { at += 1; } i += 1; }
-  if at < k { return ""; }
+wire_entry :: (t: string, from: int, k: int) -> string {
+  i := from;
+  while i < t.count && t[i] == ' ' { i += 1; }
+  at := 0;
+  while at < k && i < t.count { if t[i] == ';' { at += 1; } i += 1; }
+  if at < k { return t[t.count..<t.count]; }
   e := i;
-  while e < t.count && t[e] != 10 { e += 1; }
+  while e < t.count && t[e] != ';' { e += 1; }
   return t[i..<e];
 }
 
-#test "wire: every record reads back as it was written; a short or bad one is refused" {
-  buf: [WIRE_FRAME] u8;
-  e := WireEnt.{eid = 4097, kind = WK_PACK, owner = 3, x = -10.5, y = 0.25, z = 20.75, yaw = 7.0, vx = 6, vz = -0.5, f = 1, a = 2, hp = 57, max = 57, p1 = 9, p2 = -1};
-  n := wire_put_ent(buf[..], 0, e);
+#test "wire: every frame and entry reads back as it was written; a short or bad one is refused" {
+  buf: [WIRE_SERVER_FRAME] u8;
+  // a page's
+  n := wire_put_in(buf[..], 0, WireIn.{seq = 12, kx = -100, ky = 100, px = 0, py = 35, theta = 3.0, b = WB_RUN | WB_JUMP});
   t := cast(string) buf[0..<n];
+  #assert t == "I 12 -100 100 0 35 300 3";
   r: [1] WireRd; r[0] = wire_rd(t, 1);
-  g := wire_read_ent(t, r[..]);
-  #assert r[0].ok && g.eid == 4097 && g.kind == WK_PACK && g.owner == 3 && g.x == -10.5 && g.y == 0.25 && g.z == 20.75;
-  #assert g.yaw > 0.71 && g.yaw < 0.73 && g.vx == 6 && g.vz == -0.5 && g.f == 1 && g.a == 2 && g.hp == 57 && g.p1 == 9 && g.p2 == -1;
-  m := WireMove.{seq = 12, t = 1730000000123, x = 1, y = 2.5, z = -3, yaw = -1.57, vx = 0.5, vz = 0, f = WF_AIR, a = 3};
-  n = wire_put_move(buf[..], 0, m); t = cast(string) buf[0..<n];
-  #assert t == "M 12 1730000000123 100 250 -300 -157 50 0 1 3";
+  i := wire_read_in(t, r[..]);
+  #assert r[0].ok && i.seq == 12 && i.kx == -100 && i.py == 35 && i.theta == 3.0 && i.b == 3;
+  #assert wire_axis(0.354) == 35 && wire_axis(-2) == -100;
+  n = wire_put_hello(buf[..], 0, WireHello.{look = "ranger.2.1.0", kind = "druid", flags = 2, name = "Ash Wood;x"});
+  t = cast(string) buf[0..<n];
+  #assert t == "H 1 ranger.2.1.0 druid 2 Ash Woodx";
   r[0] = wire_rd(t, 1);
-  mm := wire_read_move(t, r[..]);
-  #assert r[0].ok && mm.seq == 12 && mm.t == 1730000000123 && mm.y == 2.5 && mm.yaw == -1.57 && mm.f == WF_AIR && mm.a == 3;
-  c := WireCast.{seq = 13, slot = 32, ax = 5, ay = 0, az = 6};
-  n = wire_put_cast(buf[..], 0, c); t = cast(string) buf[0..<n];
+  h := wire_read_hello(t, r[..]);
+  #assert r[0].ok && h.look == "ranger.2.1.0" && h.flags == 2 && h.name == "Ash Woodx";
+  n = wire_put_cast(buf[..], 0, WireCast.{seq = 13, slot = 32, ax = 5, ay = 0, az = 6}); t = cast(string) buf[0..<n];
   #assert t == "C 13 32 500 0 600 -1";
-  n = wire_put_ack(buf[..], 0, WireAck.{seq = 12, x = 1, y = 0, z = -3}); t = cast(string) buf[0..<n];
+  n = wire_put_use(buf[..], 0, WireUse.{seq = 14, kind = WE_END, id = 32}); t = cast(string) buf[0..<n];
   r[0] = wire_rd(t, 1);
-  #assert wire_read_ack(t, r[..]).seq == 12 && r[0].ok;
-  n = wire_put_fx(buf[..], 0, WireFx.{eid = 9, slot = 0, caster = 4097, ax = 5, ay = 1, az = 6, seed = 77123, t = 99}); t = cast(string) buf[0..<n];
+  u := wire_read_use(t, r[..]);
+  #assert t == "E 14 5 32" && r[0].ok && u.kind == WE_END && u.id == 32;
+  // the server's: a state with every kind of entry
+  n = wire_put_d(buf[..], 0, WireD.{tick = 900, ack = 12, f = 1});
+  n = wire_put_p(buf[..], n, WireP.{ss = 3, x = -10.5, y = 0.25, z = 20.75, yaw = 7.0, vx = 6, vy = -1, vz = -0.5, g = WG_GROUND, clip = 2, hp = 57, max = 57, cond = 2048, carry = 0.0123});
+  n = wire_sep(buf[..], n); n = wire_put_n(buf[..], n, WireN.{ss = 3, id = "", look = "ranger.0.0.0", kind = "druid", flags = 0, name = "Ash Wood"});
+  n = wire_sep(buf[..], n); n = wire_put_c(buf[..], n, WireC.{eid = 40, kind = WK_STONE, x = 4, y = 0, z = 7, yaw = 1, hp = 180, owner = 3, p1 = 170, p2 = 610});
+  n = wire_sep(buf[..], n); n = wire_put_x(buf[..], n, WireX.{k = 'c', id = 39});
+  n = wire_sep(buf[..], n); n = wire_put_cast_e(buf[..], n, WireCastE.{ss = 3, slot = 0, ax = 20, ay = 0, az = -15, seed = 77123});
+  n = wire_sep(buf[..], n); n = wire_put_hit(buf[..], n, WireHit.{who = 1003, by = 1001, amt = 12, kind = 3});
+  n = wire_sep(buf[..], n); n = wire_put_f(buf[..], n, WireF.{i = 5, x = 1, z = 2, yaw = -1, clip = 1, mode = 4, hp = 9});
+  n = wire_sep(buf[..], n); n = wire_put_rebuilt(buf[..], n);
+  t = cast(string) buf[0..<n];
   r[0] = wire_rd(t, 1);
-  fx := wire_read_fx(t, r[..]);
-  #assert r[0].ok && fx.seed == 77123 && fx.caster == 4097 && fx.ay == 1 && fx.t == 99;
-  n = wire_put_hit(buf[..], 0, WireHit.{eid = 7, by = 4097, amount = -12, kind = 3}); t = cast(string) buf[0..<n];
-  r[0] = wire_rd(t, 1);
-  #assert wire_read_hit(t, r[..]).amount == -12 && r[0].ok;
+  d := wire_read_d(t, r[..]);
+  #assert r[0].ok && d.tick == 900 && d.ack == 12 && d.f == 1 && wire_entries(t, r[0].at) == 8;
+  at := r[0].at;
+  e := wire_entry(t, at, 0);
+  r[0] = wire_rd(e, 1); p := wire_read_p(e, r[..]);
+  #assert r[0].ok && p.ss == 3 && p.x == -10.5 && p.vy == -1 && p.g == WG_GROUND && p.cond == 2048 && abs(p.carry - 0.0123) < 0.00001 && p.yaw > 0.71 && p.yaw < 0.73;
+  e = wire_entry(t, at, 1);
+  r[0] = wire_rd(e, 1); nn := wire_read_n(e, r[..]);
+  #assert r[0].ok && nn.ss == 3 && nn.id == "" && nn.look == "ranger.0.0.0" && nn.name == "Ash Wood";
+  e = wire_entry(t, at, 2);
+  r[0] = wire_rd(e, 1); c := wire_read_c(e, r[..]);
+  #assert r[0].ok && c.eid == 40 && c.kind == WK_STONE && c.hp == 180 && c.p1 == 170 && c.p2 == 610 && c.owner == 3;
+  e = wire_entry(t, at, 3);
+  r[0] = wire_rd(e, 1); x := wire_read_x(e, r[..]);
+  #assert r[0].ok && x.k == 'c' && x.id == 39;
+  e = wire_entry(t, at, 4);
+  #assert wire_is(e, "e cast");
+  r[0] = wire_rd(e, 6); ce := wire_read_cast_e(e, r[..]);
+  #assert r[0].ok && ce.seed == 77123 && ce.az == -15;
+  e = wire_entry(t, at, 5);
+  r[0] = wire_rd(e, 5); hit := wire_read_hit(e, r[..]);
+  #assert wire_is(e, "e hit") && r[0].ok && hit.who == 1003 && hit.amt == 12;
+  e = wire_entry(t, at, 6);
+  r[0] = wire_rd(e, 1); f := wire_read_f(e, r[..]);
+  #assert r[0].ok && f.i == 5 && f.mode == 4 && f.hp == 9;
+  #assert wire_entry(t, at, 7) == "e rebuild" && wire_entry(t, at, 8) == "";
+  n = wire_put_world(buf[..], 0, WireWorld.{tick = 900, seed = 41, day = 3600000, weather = 2}); t = cast(string) buf[0..<n];
+  r[0] = wire_rd(t, 1); w := wire_read_world(t, r[..]);
+  #assert t == "W 900 30 41 3600000 2" && r[0].ok && w.hz == 30;
+  n = wire_put_refused(buf[..], 0, 13, "range"); t = cast(string) buf[0..<n];
+  #assert t == "r 13 range";
   // short, and a letter in a number
-  t = "a 12 100";
-  r[0] = wire_rd(t, 1); _ := wire_read_ack(t, r[..]);
+  t = "p 3 100";
+  r[0] = wire_rd(t, 1); _ := wire_read_p(t, r[..]);
   #assert !r[0].ok;
-  t = "x 1z";
-  r[0] = wire_rd(t, 1); _2 := wire_num(t, r[..]);
+  t = "x z 1";
+  r[0] = wire_rd(t, 1); _2 := wire_read_x(t, r[..]);
   #assert !r[0].ok;
-  // a frame of records
-  f := "k 7 1000\ne 1 0 0 0 0 0 0 0 0 0 0 57 57 0 0\nx 3";
-  #assert wire_records(f) == 3 && wire_record(f, 0) == "k 7 1000" && wire_record(f, 2) == "x 3" && wire_record(f, 3) == "";
+  t = "I 1z";
+  r[0] = wire_rd(t, 1); _3 := wire_num(t, r[..]);
+  #assert !r[0].ok;
 }

@@ -1,9 +1,12 @@
 // Everglade's network client (docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.6 to
 // 3.10 and 6; GitHub #12706 and #12708), loaded by everglade.coax. The room server owns the shared
-// world (owner, 2026-11-03): every player, creature, zone, spell effect, townsperson, guard and broken
-// piece is a server entity, and this page only draws them. It sends intents (a cast, an end, a
-// rebuild) and its own movement, which it predicts and the server reconciles. The frames are
-// everglade-wire.coax's, the contract the server #loads too.
+// world (owner, 2026-11-03): every player, creature, zone, spell's cast, hit and break is the
+// server's, and this page draws them. It sends intents: its input every step (I), its casts (C), its
+// interactions (E), a rebuild (R). It predicts only its own movement, with the same Coax step the
+// server runs on the same input (everglade-move.coax, everglade-step.coax), and when the server's
+// state for its seat comes (D's p entry and ACK) it starts again from there and re-runs the inputs
+// the server hasn't stepped yet (the face runs the step: net_fix_*, net_replay_*). The frames are
+// everglade-wire.coax's (version 2), the contract the server #loads too.
 //
 // The face (everglade5e-face.c) opens one WebSocket,
 //   wss://HOST/api/room/relay/everglade/CODE      (?relay=ws://localhost:PORT a room server on this
@@ -11,22 +14,20 @@
 // carries this file's frames out through its Pipe (socket.coax) and hands it every event (net_event).
 // What it keeps:
 //   - the server clock: your monotonic ms plus an offset, first the page's wall clock, then the y
-//     frame's T, then the lowest round trip of the last NET_PINGS pings;
-//   - each entity's last NET_RING states from the server's ticks (k), drawn a jitter buffer's delay
-//     behind the server clock: NET_BASE ms plus twice the ticks' arrival jitter and one tick's interval,
-//     NET_LOW to NET_HIGH ms; between the two states round that time (yaw the short way), past the
-//     newest by its velocity for NET_AHEAD ms at most, then held;
-//   - your movement: each move goes out (M) with a sequence number and is kept; when the server's ack
-//     (a) for it differs from where you were then, the difference is your correction, eased in
-//     (net_correction; past NET_SNAP m at once), and your later moves are moved by it;
-//   - your intents: a cast (C) at the bar's press, an end (E), a rebuild (R); what the server refuses
-//     (n) says why under the bar;
-//   - the spell effects (f): played from the server's seed at its time, so they fall where they fall
-//     for everyone, and harm nothing here (the server's hits, h, carry that);
-//   - the hits (h): the numbers over heads.
+//     frame's T, then the lowest round trip of the last NET_PINGS pings; a tick's time from W;
+//   - each player's, townsperson's and creature's last NET_RING states from the server's ticks (D),
+//     drawn a jitter buffer's delay behind the server clock: NET_BASE ms plus twice the states' arrival
+//     jitter and one interval, NET_LOW to NET_HIGH ms; between the two states round that time (yaw the
+//     short way), past the newest by its velocity for NET_AHEAD ms at most, then held;
+//   - your inputs, NET_HIST of them, until the server has stepped them; where the re-run puts you
+//     differs from where you were drawn by a little: that is eased out over NET_SMOOTH s (past
+//     NET_SNAP m at once);
+//   - casts the server took (e cast): played from its seed, so they fall where they fall for everyone,
+//     harming nothing here; hits (e hit) pop their numbers; a break (e break) breaks the piece here,
+//     the rebuild (e rebuild) stands the town up; what the server refuses (r) says why under the bar.
 // Creatures and zones (Conjure Animals' pack, Wall of Stone, Black Tentacles, Wall of Thorns, the
-// lingering zones and walls) are drawn here (net_draw); the other players, the townsfolk, the watch
-// and the broken pieces are read through net_ent_* by what draws them.
+// lingering zones and walls) are drawn here (net_draw); the other players and the townsfolk are read
+// through net_view by what draws them (everglade-rangers.coax).
 //   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "net:"
 
 #load "socket.coax";
@@ -34,33 +35,41 @@
 
 NET_ENTS :: 256;
 NET_RING :: 4;
-NET_HIST :: 64;            // your moves kept for the server's acks
-NET_FX :: 8;               // spell effects waiting for their time
+NET_HIST :: 64;            // your inputs kept for the server's ACK
+NET_FX :: 8;               // casts waiting for their time
 NET_ID :: 24; NET_NAME :: 40; NET_LOOK :: 32; NET_CODE :: 24; NET_URL :: 200;
 NET_BASE :: 40; NET_LOW :: 80; NET_HIGH :: 300;   // ms: the jitter buffer's delay
 NET_AHEAD :: 150;          // ms past its newest state an entity goes on by its velocity
-NET_MOVING_MS :: 66; NET_STILL_MS :: 500;   // your move 15 times a second while moving, twice while still
-NET_SNAP :: 4.0;           // m: a correction this big is taken at once
-NET_EASE :: 10.0;          // a correction's share taken a second (most of it in a fifth)
+NET_SNAP :: 0.5;           // m: a re-run's difference this big is taken at once
+NET_SMOOTH :: 0.1;         // s a smaller one is eased out over
 NET_PINGS :: 8;
 NET_SAY :: 4.0;            // s a refusal shows
 NET_GAME :: "everglade";
 NET_OFF :: 0; NET_OPENING :: 1; NET_OPEN :: 2; NET_DOWN :: 3;
+// what an entity is, on this page: a player, a townsperson or guard, else a creature or zone (WK_*)
+WK_PLAYER :: 0; WK_FOLK :: 1;
+NET_FOLK_ID :: 100000; NET_MADE_ID :: 200000;   // a townsperson's and a creature's ids in the table
+// a target or hit's WHO code (the wire's TGT): 0-999 a watch actor, 1000 + SS a seat, 2000 + EID a creature
+net_who :: (who: int) -> int { return ifx who >= 2000 then NET_MADE_ID + who - 2000 else ifx who >= 1000 then who - 1000 else NET_FOLK_ID + who; }
 
 NetState :: struct { t: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vz: f32; f: int; a: int; }
 NetEnt :: struct {
-  live: bool; eid: int; kind: int; owner: int = -1;
+  live: bool; eid: int; kind: int; owner: int = -1;   // eid: a seat, NET_FOLK_ID + its index, NET_MADE_ID + the server's EID
   ring: [NET_RING] NetState; ring_n: int;   // oldest first, server times
-  hp: int; max: int; p1: int; p2: int;
+  hp: int; max: int; p1: int; p2: int; form: int;
   born: int;                 // server ms it was first seen
-  // who a player is (p)
+  seen: int;                 // the last tick it was in
+  // who a player is (n)
   seat: int = -1; id: [NET_ID] u8; id_n: int; look: [NET_LOOK] u8; look_n: int; name: [NET_NAME] u8; name_n: int;
+  cls: [16] u8; cls_n: int; hello_flags: int;   // its class and its hello's FLAGS (1 touch, 2 an account)
   // drawn this frame (net_step)
   shown: NetState; run: f32;
-  cast_slot: int = -1; cast_at: int;   // its last spell effect (f), server ms
+  cast_slot: int = -1; cast_at: int;   // its last cast (e cast), server ms
 }
-NetMove :: struct { seq: int; x: f32; y: f32; z: f32; }
+NetInput :: struct { seq: int; input: EgMoveIn; }
 NetFx :: struct { live: bool; slot: int; caster: int; at: Point; seed: int; t: int; }
+// You as the server has you after input `ack` (D's p entry for your seat).
+NetFix :: struct { ok: bool; ack: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; ground: bool; carry: f32; }
 EgNet :: struct {
   want: bool;
   state: int; sock: int = -1; tries: int; retry: int;
@@ -74,18 +83,22 @@ EgNet :: struct {
   ping_rtt: [NET_PINGS] int; ping_off: [NET_PINGS] int; pings: int; ping_at: int; ping_n: int;
   seat: int = -1;
   ents: [NET_ENTS] NetEnt;
-  tick: int; tick_t: int;    // the last tick heard and its server time
+  // the world's clock (W): tick `w_tick` was server time `w_t`, `hz` ticks a second
+  hz: int = WIRE_HZ; w_tick: int; w_t: int; seed: int; day: int; weather: int; worlds: int;
+  tick: int; tick_t: int;    // the last state's tick and its server time
   late_mean: f32; jitter: f32; interval: f32 = 66; delay: int = 160; ticks: int;
-  // your movement
-  seq: int; hist: [NET_HIST] NetMove; m_at: int; mx: f32; my: f32; mz: f32; myaw: f32; mf: int; ma: int; moved: bool;
-  fix_x: f32; fix_y: f32; fix_z: f32;   // the correction still to take
-  acked: int;                // the last move the server acked
+  snap_tick: int = -1;       // the tick a full snapshot is coming in for
+  // your inputs, and the server's word on you
+  seq: int; inputs: [NET_HIST] NetInput; acked: int;
+  fix: NetFix; fix_due: bool;
+  off_x: f32; off_y: f32; off_z: f32;   // where you are drawn less where you are, eased out
+  wanted: int;               // your WANTED level (w)
   fx: [NET_FX] NetFx;
   said: [48] u8; said_n: int; said_t: f32;   // the last refusal's reason
   hello_due: bool;
   pipe: [1] Pipe;
   out: [WIRE_FRAME] u8;
-  frames_in: int; frames_out: int; played: int; hits: int;
+  frames_in: int; frames_out: int; played: int; hits: int; replays: int;
 }
 
 everglade_attach_net :: (s: [] Everglade, n: [] EgNet) #export_c { s[0].net = n; }
@@ -214,7 +227,7 @@ net_down :: (n: [] EgNet) {
   n[0].retry = n[0].mono + lo_int(wait, 60000);
   for e: 0..<NET_ENTS { n[0].ents[e].live = false; }
   for q: 0..<NET_FX { n[0].fx[q].live = false; }
-  n[0].fix_x = 0; n[0].fix_y = 0; n[0].fix_z = 0;
+  n[0].fix_due = false; n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0;
 }
 // A socket event (message kind 256 + 4 * id + event, its text in the inbox): true when it was ours.
 net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c {
@@ -227,7 +240,7 @@ net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c {
   if ev.event == SOCKET_CLOSED || ev.event == SOCKET_ERROR { net_down(n); return true; }
   if ev.event == SOCKET_FRAME {
     n[0].frames_in += 1;
-    for k: 0..<wire_records(text) { net_record(s, n, wire_record(text, k)); }
+    net_record(s, n, text);
   }
   return true;
 }
@@ -242,7 +255,12 @@ net_ent :: (n: [] EgNet, eid: int, make: bool) -> int {
   n[0].ents[free] = NetEnt.{live = true, eid = eid, born = n[0].tick_t};
   return free;
 }
-// One record from the server (or the relay).
+// A tick's server time (W's clock), or the last state's when no W has come.
+net_tick_t :: (n: [] EgNet, tick: int) -> int {
+  if n[0].worlds == 0 || n[0].hz <= 0 { return net_now(n); }
+  return n[0].w_t + (tick - n[0].w_tick) * 1000 / n[0].hz;
+}
+// One frame from the server (or the relay).
 net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
   if t.count < 1 { return; }
   r: [1] WireRd; r[0] = wire_rd(t, 1);
@@ -253,7 +271,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     if seat < 0 { return; }
     n[0].seat = seat;
     if r[0].ok && clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
-    n[0].hello_due = true; n[0].moved = false; n[0].acked = n[0].seq;
+    n[0].hello_due = true; n[0].acked = n[0].seq; n[0].fix_due = false;
     return;
   }
   if c == 't' {
@@ -268,90 +286,37 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     n[0].offset = n[0].ping_off[best]; n[0].synced = 2;
     return;
   }
-  if c == 'k' {
-    tick := wire_num(t, r[..]); clock := wire_num(t, r[..]);
+  if c == 'W' {
+    w := wire_read_world(t, r[..]);
     if !r[0].ok { return; }
-    // the jitter buffer: how late each tick comes, its spread, and the ticks' interval
-    late := f32(net_now(n) - clock);
-    if n[0].ticks == 0 { n[0].late_mean = late; }
-    n[0].jitter += (abs(late - n[0].late_mean) - n[0].jitter) * 0.1;
-    n[0].late_mean += (late - n[0].late_mean) * 0.1;
-    if n[0].ticks > 0 && clock > n[0].tick_t { n[0].interval += (f32(clock - n[0].tick_t) - n[0].interval) * 0.1; }
-    n[0].delay = clamp_i(NET_BASE + cast(int) (n[0].interval + 2 * n[0].jitter), NET_LOW, NET_HIGH);
-    n[0].tick = tick; n[0].tick_t = clock; n[0].ticks += 1;
+    n[0].w_tick = w.tick; n[0].w_t = net_now(n); n[0].hz = clamp_i(w.hz, 1, 120);
+    n[0].seed = w.seed; n[0].day = w.day; n[0].weather = w.weather; n[0].worlds += 1;
     return;
   }
-  if c == 'e' {
-    w := wire_read_ent(t, r[..]);
+  if c == 'D' {
+    d := wire_read_d(t, r[..]);
     if !r[0].ok { return; }
-    k := net_ent(n, w.eid, true);
-    if k < 0 { return; }
-    en := n[0].ents[k..<k + 1];
-    en[0].kind = w.kind; en[0].owner = w.owner; en[0].hp = w.hp; en[0].max = w.max; en[0].p1 = w.p1; en[0].p2 = w.p2;
-    net_push(en, NetState.{t = n[0].tick_t, x = w.x, y = w.y, z = w.z, yaw = w.yaw, vx = w.vx, vz = w.vz, f = w.f, a = w.a});
-    if en[0].ring_n == 1 {
-      en[0].shown = en[0].ring[0];
-      // a piece of the town the server has broken: this page's own breaks, thrown from where it says
-      if w.kind == WK_PIECE && sp_on(s) { demo_break(sp_dm(s), w.p1, v3(w.x, w.y, w.z), hi(sqrt(w.vx * w.vx + w.vz * w.vz), 4)); }
+    clock := net_tick_t(n, d.tick);
+    if d.tick != n[0].tick || n[0].ticks == 0 {
+      // the jitter buffer: how late each state comes, its spread, and the states' interval
+      late := f32(net_now(n) - clock);
+      if n[0].ticks == 0 { n[0].late_mean = late; }
+      n[0].jitter += (abs(late - n[0].late_mean) - n[0].jitter) * 0.1;
+      n[0].late_mean += (late - n[0].late_mean) * 0.1;
+      if n[0].ticks > 0 && clock > n[0].tick_t { n[0].interval += (f32(clock - n[0].tick_t) - n[0].interval) * 0.1; }
+      n[0].delay = clamp_i(NET_BASE + cast(int) (n[0].interval + 2 * n[0].jitter), NET_LOW, NET_HIGH);
+      n[0].ticks += 1;
+    }
+    n[0].tick = d.tick; n[0].tick_t = clock;
+    from := r[0].at;
+    for k: 0..<wire_entries(t, from) { net_entry(s, n, wire_entry(t, from, k), d); }
+    // a full snapshot's last frame: what it didn't hold is gone
+    if d.f == 1 {
+      for e: 0..<NET_ENTS { if n[0].ents[e].live && n[0].ents[e].seen != d.tick { n[0].ents[e].live = false; } }
     }
     return;
   }
-  if c == 'x' {
-    eid := wire_num(t, r[..]);
-    k := net_ent(n, eid, false);
-    if !r[0].ok || k < 0 { return; }
-    n[0].ents[k].live = false;
-    // the last broken piece gone: the server has stood the town up again
-    if n[0].ents[k].kind == WK_PIECE && net_count(s, WK_PIECE) == 0 && sp_on(s) { _ := sp_restore(s, -1); }
-    return;
-  }
-  if c == 'p' {
-    eid := wire_num(t, r[..]); seat := wire_num(t, r[..]);
-    id := wire_word(t, r[..]); look := wire_word(t, r[..]);
-    if !r[0].ok { return; }
-    rest := t[r[0].at..<t.count];
-    while rest.count > 0 && rest[0] == ' ' { rest = rest[1..<rest.count]; }
-    k := net_ent(n, eid, true);
-    if k < 0 { return; }
-    en := n[0].ents[k..<k + 1];
-    en[0].seat = seat;
-    en[0].id_n = ifx id == "-" then 0 else net_copy(en[0].id[..], id);
-    en[0].look_n = net_copy(en[0].look[..], look);
-    nm := 0;
-    for ch: rest { if nm >= NET_NAME { break; } if ch < 32 { continue; } en[0].name[nm] = ch; nm += 1; }
-    en[0].name_n = ifx rest == "-" then 0 else nm;
-    return;
-  }
-  if c == 'a' {
-    ack := wire_read_ack(t, r[..]);
-    if !r[0].ok || ack.seq <= n[0].acked { return; }
-    net_reconcile(n, ack);
-    return;
-  }
-  if c == 'f' {
-    f := wire_read_fx(t, r[..]);
-    if !r[0].ok || f.slot < 0 || f.slot >= SP_REBUILD { return; }
-    k := net_ent(n, f.caster, false);
-    if k >= 0 { n[0].ents[k].cast_slot = f.slot; n[0].ents[k].cast_at = f.t; }
-    for q: 0..<NET_FX {
-      if n[0].fx[q].live { continue; }
-      n[0].fx[q] = NetFx.{live = true, slot = f.slot, caster = f.caster, at = v3(f.ax, f.ay, f.az), seed = f.seed, t = f.t};
-      break;
-    }
-    return;
-  }
-  if c == 'h' {
-    h := wire_read_hit(t, r[..]);
-    if !r[0].ok { return; }
-    n[0].hits += 1;
-    k := net_ent(n, h.eid, false);
-    if k < 0 || h.amount <= 0 || !s[0].started { return; }
-    p := n[0].ents[k].shown;
-    if n[0].ents[k].owner == n[0].seat && n[0].ents[k].kind == WK_PLAYER { p = NetState.{x = s[0].feet.x, z = s[0].feet.z, y = s[0].feet.y}; }
-    watch_pop(s, v3(p.x, walk_at(s, p.x, p.z) + 2.1, p.z), h.amount, h.amount >= 25);
-    return;
-  }
-  if c == 'n' {
+  if c == 'r' {
     _ := wire_num(t, r[..]);
     why := wire_word(t, r[..]);
     n[0].said_n = 0;
@@ -362,12 +327,132 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     return;
   }
 }
-// A state into an entity's ring, oldest first: one no newer than the newest replaces it; one past a
-// warp starts the ring again, so it is drawn there at once.
+// One entry of a state (D).
+net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
+  if t.count < 1 { return; }
+  r: [1] WireRd; r[0] = wire_rd(t, 1);
+  c := t[0];
+  if c == 'p' {
+    p := wire_read_p(t, r[..]);
+    if !r[0].ok || p.ss < 0 { return; }
+    k := net_ent(n, p.ss, true);
+    if k < 0 { return; }
+    en := n[0].ents[k..<k + 1];
+    en[0].kind = WK_PLAYER; en[0].owner = p.ss; en[0].seat = p.ss; en[0].seen = d.tick;
+    en[0].hp = p.hp; en[0].max = p.max; en[0].p1 = p.cond; en[0].p2 = p.temp; en[0].form = p.form;
+    net_push(en, NetState.{t = n[0].tick_t, x = p.x, y = p.y, z = p.z, yaw = p.yaw, vx = p.vx, vz = p.vz, f = p.g, a = p.clip});
+    if en[0].ring_n == 1 { en[0].shown = en[0].ring[0]; }
+    // yours: where the server has you after input ACK, for the face to start again from
+    if p.ss == n[0].seat && d.ack > n[0].acked {
+      n[0].acked = d.ack;
+      n[0].fix = NetFix.{ok = true, ack = d.ack, x = p.x, y = p.y, z = p.z, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz,
+                         ground = (p.g & WG_GROUND) != 0, carry = p.carry};
+      n[0].fix_due = true;
+    }
+    return;
+  }
+  if c == 'n' {
+    w := wire_read_n(t, r[..]);
+    if !r[0].ok || w.ss < 0 { return; }
+    k := net_ent(n, w.ss, true);
+    if k < 0 { return; }
+    en := n[0].ents[k..<k + 1];
+    if en[0].ring_n == 0 { en[0].kind = WK_PLAYER; en[0].owner = w.ss; }
+    en[0].seat = w.ss; en[0].seen = d.tick;
+    en[0].id_n = net_copy(en[0].id[..], w.id);
+    en[0].look_n = net_copy(en[0].look[..], w.look);
+    en[0].cls_n = net_copy(en[0].cls[..], w.kind); en[0].hello_flags = w.flags;
+    nm := 0;
+    for ch: w.name { if nm >= NET_NAME { break; } if ch < 32 { continue; } en[0].name[nm] = ch; nm += 1; }
+    en[0].name_n = nm;
+    return;
+  }
+  if c == 'f' {
+    f := wire_read_f(t, r[..]);
+    if !r[0].ok || f.i < 0 { return; }
+    k := net_ent(n, NET_FOLK_ID + f.i, true);
+    if k < 0 { return; }
+    en := n[0].ents[k..<k + 1];
+    en[0].kind = WK_FOLK; en[0].p1 = f.i; en[0].hp = f.hp; en[0].seen = d.tick;
+    net_push(en, NetState.{t = n[0].tick_t, x = f.x, z = f.z, yaw = f.yaw, f = f.mode, a = f.clip});
+    if en[0].ring_n == 1 { en[0].shown = en[0].ring[0]; }
+    return;
+  }
+  if c == 'c' {
+    w := wire_read_c(t, r[..]);
+    if !r[0].ok { return; }
+    k := net_ent(n, NET_MADE_ID + w.eid, true);
+    if k < 0 { return; }
+    en := n[0].ents[k..<k + 1];
+    en[0].kind = w.kind; en[0].owner = w.owner; en[0].hp = w.hp; en[0].p1 = w.p1; en[0].p2 = w.p2; en[0].seen = d.tick;
+    net_push(en, NetState.{t = n[0].tick_t, x = w.x, y = w.y, z = w.z, yaw = w.yaw, f = w.f});
+    if en[0].ring_n == 1 { en[0].shown = en[0].ring[0]; }
+    return;
+  }
+  if c == 'x' {
+    x := wire_read_x(t, r[..]);
+    if !r[0].ok { return; }
+    id := ifx x.k == 'p' then x.id else ifx x.k == 'f' then NET_FOLK_ID + x.id else NET_MADE_ID + x.id;
+    k := net_ent(n, id, false);
+    if k >= 0 { n[0].ents[k].live = false; }
+    return;
+  }
+  if c == 'w' {
+    ss := wire_num(t, r[..]); level := wire_num(t, r[..]);
+    if r[0].ok && ss == n[0].seat { n[0].wanted = level; }
+    return;
+  }
+  if c != 'e' { return; }
+  if wire_is(t, "e cast") {
+    r[0] = wire_rd(t, 6);
+    ce := wire_read_cast_e(t, r[..]);
+    if !r[0].ok || ce.slot < 0 || ce.slot >= SP_REBUILD { return; }
+    k := net_ent(n, ce.ss, false);
+    if k >= 0 { n[0].ents[k].cast_slot = ce.slot; n[0].ents[k].cast_at = n[0].tick_t; }
+    for q: 0..<NET_FX {
+      if n[0].fx[q].live { continue; }
+      n[0].fx[q] = NetFx.{live = true, slot = ce.slot, caster = ce.ss, at = v3(ce.ax, ce.ay, ce.az), seed = ce.seed, t = n[0].tick_t};
+      break;
+    }
+    return;
+  }
+  if wire_is(t, "e hit") {
+    r[0] = wire_rd(t, 5);
+    h := wire_read_hit(t, r[..]);
+    if !r[0].ok { return; }
+    n[0].hits += 1;
+    if h.amt <= 0 || !s[0].started { return; }
+    at := net_where(s, n, net_who(h.who));
+    if at.ok { watch_pop(s, v3(at.x, at.y + 2.1, at.z), h.amt, h.amt >= 25); }
+    return;
+  }
+  if wire_is(t, "e break") {
+    r[0] = wire_rd(t, 7);
+    pc := wire_num(t, r[..]); ix := wire_f(t, r[..]); iy := wire_f(t, r[..]); iz := wire_f(t, r[..]);
+    if !r[0].ok || !sp_on(s) || pc < 0 || pc >= sp_dm(s)[0].n { return; }
+    // the piece breaks here as the server says, thrown by its impulse (the debris is this page's)
+    c0 := demo_centre(sp_dm(s)[0].pieces[pc]);
+    m := sqrt(ix * ix + iy * iy + iz * iz);
+    from := ifx m > 0.01 then sub(c0, v3(ix / m, iy / m, iz / m)) else sub(c0, v3(0, 1, 0));
+    demo_break(sp_dm(s), pc, from, hi(m, 2));
+    return;
+  }
+  if t == "e rebuild" { if sp_on(s) { _ := sp_restore(s, -1); } return; }
+}
+NetWhere :: struct { ok: bool; x: f32; y: f32; z: f32; }
+// Where entity id is drawn (you where you are), its feet's world height.
+net_where :: (s: [] Everglade, n: [] EgNet, id: int) -> NetWhere {
+  if id == n[0].seat && s[0].started { return NetWhere.{ok = true, x = s[0].feet.x, y = s[0].feet.y + walk_at(s, s[0].feet.x, s[0].feet.z), z = s[0].feet.z}; }
+  k := net_ent(n, id, false);
+  if k < 0 { return NetWhere.{}; }
+  p := n[0].ents[k].shown;
+  y := ifx n[0].ents[k].kind == WK_FOLK then walk_at(s, p.x, p.z) else p.y;
+  return NetWhere.{ok = true, x = p.x, y = y, z = p.z};
+}
+// A state into an entity's ring, oldest first: one no newer than the newest replaces it.
 net_push :: (en: [] NetEnt, p: NetState) {
   c := en[0].ring_n;
   if c > 0 && p.t <= en[0].ring[c - 1].t { en[0].ring[c - 1] = p; return; }
-  if (p.f & WF_WARP) != 0 { c = 0; }
   if c == NET_RING { for q: 0..<NET_RING - 1 { en[0].ring[q] = en[0].ring[q + 1]; } c -= 1; }
   en[0].ring[c] = p; en[0].ring_n = c + 1;
 }
@@ -388,66 +473,83 @@ net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
   ahead := f32(lo_int(rt - p.t, NET_AHEAD)) / 1000;
   return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vz = p.vz, f = p.f, a = p.a};
 }
-// The server's ack for your move: the difference from where your page had you then is the correction,
-// and every later move kept is moved by it (they were predicted from the wrong place).
-net_reconcile :: (n: [] EgNet, ack: WireAck) {
-  n[0].acked = ack.seq;
-  q := ack.seq % NET_HIST;
-  h := n[0].hist[q];
-  if h.seq != ack.seq { return; }   // too old: no longer kept
-  dx := ack.x - h.x; dy := ack.y - h.y; dz := ack.z - h.z;
-  if abs(dx) + abs(dy) + abs(dz) < 0.02 { return; }
-  n[0].fix_x += dx; n[0].fix_y += dy; n[0].fix_z += dz;
-  for k: 0..<NET_HIST { if n[0].hist[k].seq > ack.seq { n[0].hist[k].x += dx; n[0].hist[k].y += dy; n[0].hist[k].z += dz; } }
+
+// ---- your movement: the inputs out, the server's word back (the face runs the step)
+
+// One step's input: kept and sent (I). Its sequence number, 0 when there is no room to send it to.
+net_input :: (s: [] Everglade, input: EgMoveIn, dive: bool) -> int #export_c {
+  if !net_live(s) { return 0; }
+  n := net_of(s);
+  n[0].seq += 1;
+  n[0].inputs[n[0].seq % NET_HIST] = NetInput.{seq = n[0].seq, input = input};
+  b := (ifx input.run then WB_RUN else 0) | (ifx input.jump then WB_JUMP else 0) | (ifx dive then WB_DIVE else 0);
+  net_send(n, wire_put_in(n[0].out[..], 0, WireIn.{seq = n[0].seq, kx = wire_axis(input.key_x), ky = wire_axis(input.key_y),
+                                                   px = wire_axis(input.pad_x), py = wire_axis(input.pad_y), theta = input.theta, b = b}));
+  return n[0].seq;
 }
-// The correction to add to your position this frame (dt s): past NET_SNAP m all of it, else a share.
-net_correction :: (s: [] Everglade, dt: f32) -> Point #export_c {
+// The server's word on you is new: where it has you after input fix.ack (the face sets you there and
+// re-runs the later inputs, net_replay_*, then says how far that moved you, net_fixed).
+net_fix_due :: (s: [] Everglade) -> bool #export_c { return net_live(s) && net_of(s)[0].fix_due && net_of(s)[0].fix.ok; }
+net_fix :: (s: [] Everglade) -> NetFix #export_c { return net_of(s)[0].fix; }
+// The inputs after the server's, oldest first: how many, and the k-th (as the wire carried it, so the
+// re-run steps what the server steps).
+net_replay_n :: (s: [] Everglade) -> int #export_c {
+  n := net_of(s);
+  return clamp_i(n[0].seq - n[0].fix.ack, 0, NET_HIST - 1);
+}
+net_replay_input :: (s: [] Everglade, k: int) -> EgMoveIn #export_c {
+  n := net_of(s);
+  q := n[0].fix.ack + 1 + k;
+  i := n[0].inputs[q % NET_HIST];
+  if i.seq != q { return EgMoveIn.{}; }
+  return net_as_sent(i.input);
+}
+// An input as the wire carries it (whole hundredths), so the page steps what the server steps.
+net_as_sent :: (m: EgMoveIn) -> EgMoveIn #export_c {
+  return EgMoveIn.{key_x = f32(wire_axis(m.key_x)) / 100, key_y = f32(wire_axis(m.key_y)) / 100, pad_x = f32(wire_axis(m.pad_x)) / 100,
+                   pad_y = f32(wire_axis(m.pad_y)) / 100, run = m.run, jump = m.jump, theta = f32(wire_cm(m.theta)) / 100};
+}
+// The re-run is done: (dx, dy, dz) is where it puts you less where you were drawn. Small, it is eased
+// out (you are drawn where you were, coming to where you are); past NET_SNAP m, taken at once.
+net_fixed :: (s: [] Everglade, dx: f32, dy: f32, dz: f32) #export_c {
+  n := net_of(s);
+  n[0].fix_due = false; n[0].replays += 1;
+  ox := n[0].off_x - dx; oy := n[0].off_y - dy; oz := n[0].off_z - dz;
+  if abs(ox) + abs(oy) + abs(oz) > f32(NET_SNAP) { ox = 0; oy = 0; oz = 0; }
+  n[0].off_x = ox; n[0].off_y = oy; n[0].off_z = oz;
+}
+// Where you are drawn less where you are, this frame (dt s): eased to nothing over NET_SMOOTH s.
+net_offset :: (s: [] Everglade, dt: f32) -> Point #export_c {
   if !net_on(s) { return v3(0, 0, 0); }
   n := net_of(s);
-  big := abs(n[0].fix_x) + abs(n[0].fix_z) > f32(NET_SNAP);
-  k := ifx big then 1.0f32 else clamp01(dt * f32(NET_EASE));
-  c := v3(n[0].fix_x * k, n[0].fix_y * k, n[0].fix_z * k);
-  n[0].fix_x -= c.x; n[0].fix_y -= c.y; n[0].fix_z -= c.z;
-  if abs(n[0].fix_x) + abs(n[0].fix_y) + abs(n[0].fix_z) < 0.002 { n[0].fix_x = 0; n[0].fix_y = 0; n[0].fix_z = 0; }
-  return c;
+  k := clamp01(1 - dt / f32(NET_SMOOTH));
+  n[0].off_x *= k; n[0].off_y *= k; n[0].off_z *= k;
+  if abs(n[0].off_x) + abs(n[0].off_y) + abs(n[0].off_z) < 0.001 { n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0; }
+  return v3(n[0].off_x, n[0].off_y, n[0].off_z);
 }
 
 // ---- each frame
 
-// Your pose this frame, from the face: your feet (y their height over the floor you walk on, as the
-// page's feet), facing, the velocity the body's clip goes by, in the air, in the water (medium 2 or 3), in a
-// rowboat, and the controller's act. The clock, your move out, the world where it is drawn, effects.
+// The frame, from the face: the clock, the socket, a ping, the hello, the world where it is drawn,
+// the casts at their time. (x, fy, z) your feet (fy over the floor you walk on, as the page's feet);
+// the rest of your pose is the server's to say.
 net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: f32, vz: f32, air: bool, medium: int, boat: bool, act: int) #export_c {
   if !net_on(s) { return; }
   n := net_of(s);
   n[0].mono = mono;
-  y := fy + walk_at(s, x, z);   // the feet's world height, as the wire's
+  y := fy + walk_at(s, x, z);
   if n[0].want && (n[0].state == NET_OFF || (n[0].state == NET_DOWN && mono >= n[0].retry)) && n[0].url_n > 0 {
     if pipe_open(n[0].pipe[..], cast(string) n[0].url[0..<n[0].url_n]) { n[0].state = NET_OPENING; n[0].sock = -1; }
   }
   if n[0].said_t > 0 { n[0].said_t -= 0.016; }
   now := net_now(n);
   if net_live(s) {
-    if n[0].ping_at == 0 || mono - n[0].ping_at >= (ifx n[0].ping_n < 8 then 2000 else 10000) {
+    if n[0].ping_at == 0 || mono - n[0].ping_at >= (ifx n[0].ping_n < 8 then 1000 else 10000) {
       m := wire_put(n[0].out[..], 0, "t"); m = wire_int(n[0].out[..], m, mono);
       net_send(n, m);
       n[0].ping_at = mono; n[0].ping_n += 1;
     }
     if n[0].hello_due { net_hello(s, n); }
-    f := 0;
-    if air { f |= WF_AIR; }
-    if medium >= 2 { f |= WF_SWIM; }
-    if boat { f |= WF_BOAT; }
-    if s[0].flock { f |= WF_FLOCK; }
-    if s[0].warp { f |= WF_WARP; }
-    moving := vx * vx + vz * vz > 0.01 || abs(x - n[0].mx) + abs(z - n[0].mz) + abs(y - n[0].my) > 0.02 || abs(net_turn(n[0].myaw, yaw)) > 0.02 || f != n[0].mf || act != n[0].ma;
-    if !n[0].moved || mono - n[0].m_at >= (ifx moving then NET_MOVING_MS else NET_STILL_MS) {
-      n[0].seq += 1;
-      n[0].hist[n[0].seq % NET_HIST] = NetMove.{seq = n[0].seq, x = x, y = y, z = z};
-      m := wire_put_move(n[0].out[..], 0, WireMove.{seq = n[0].seq, t = now, x = x, y = y, z = z, yaw = yaw, vx = vx, vz = vz, f = f, a = act});
-      net_send(n, m);
-      n[0].m_at = mono; n[0].mx = x; n[0].my = y; n[0].mz = z; n[0].myaw = yaw; n[0].mf = f; n[0].ma = act; n[0].moved = true;
-    }
   }
   // the world, a jitter buffer's delay behind the server clock
   rt := now - n[0].delay;
@@ -459,19 +561,19 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
     en[0].run += sqrt(dx * dx + dz * dz);
     en[0].shown = p;
   }
-  // the spell effects, each at its time
+  // the casts, each at its time
   for q: 0..<NET_FX {
     fx := n[0].fx[q];
-    if !fx.live || now < fx.t { continue; }   // at the server's time: the caster's bar ends then too
+    // yours at once; another's when its caster is drawn at that time
+    if !fx.live || (ifx fx.caster == n[0].seat then now else rt) < fx.t { continue; }
     n[0].fx[q].live = false;
     if !sp_on(s) { continue; }
     if fx.slot >= SP_SLOTS { net_flash(s, fx.slot - SP_SLOTS, fx.at); n[0].played += 1; continue; }
     from := add(fx.at, v3(0, 2, 0));
-    k := net_ent(n, fx.caster, false);
-    if k >= 0 {
-      c := n[0].ents[k].shown;
-      if n[0].ents[k].owner == n[0].seat && n[0].ents[k].kind == WK_PLAYER { c = NetState.{x = x, y = y, z = z}; }
-      from = v3(c.x, c.y + 1.6, c.z);
+    if fx.caster == n[0].seat { from = v3(x, y + 1.6, z); }
+    else {
+      k := net_ent(n, fx.caster, false);
+      if k >= 0 { c := n[0].ents[k].shown; from = v3(c.x, c.y + 1.6, c.z); }
     }
     net_play(s, fx.slot, from, fx.at, fx.seed);
     n[0].played += 1;
@@ -479,15 +581,8 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
 }
 net_hello :: (s: [] Everglade, n: [] EgNet) {
   n[0].hello_due = false;
-  m := wire_put(n[0].out[..], 0, "H 1 ");
-  id := ifx n[0].pid_n > 0 then cast(string) n[0].pid[0..<n[0].pid_n] else player_id(s);
-  m = wire_put(n[0].out[..], m, ifx id.count > 0 && id.count <= NET_ID then id else "-");
-  m = wire_put(n[0].out[..], m, " ");
-  m = wire_put(n[0].out[..], m, ifx n[0].look_n > 0 then cast(string) n[0].look[0..<n[0].look_n] else "ranger.0.0.0");
-  m = wire_put(n[0].out[..], m, " druid");
-  m = wire_int(n[0].out[..], m, ifx n[0].account then 1 else 0);
-  m = wire_put(n[0].out[..], m, " -");
-  net_send(n, m);
+  look := ifx n[0].look_n > 0 then cast(string) n[0].look[0..<n[0].look_n] else "ranger.0.0.0";
+  net_send(n, wire_put_hello(n[0].out[..], 0, WireHello.{look = look, kind = "druid", flags = (ifx s[0].touch then 1 else 0) | (ifx n[0].account then 2 else 0), name = ""}));
 }
 // Your intents: a cast from bar slot b at the aim (target an entity, -1 none), the end of what slot b
 // holds up, the town rebuilt. False when there is no room to send them to.
@@ -502,16 +597,14 @@ net_end :: (s: [] Everglade, b: int) -> bool {
   if !net_live(s) { return false; }
   n := net_of(s);
   n[0].seq += 1;
-  m := wire_put(n[0].out[..], 0, "E"); m = wire_int(n[0].out[..], m, n[0].seq); m = wire_int(n[0].out[..], m, b);
-  net_send(n, m);
+  net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].seq, kind = WE_END, id = b}));
   return true;
 }
 net_rebuild :: (s: [] Everglade) -> bool {
   if !net_live(s) { return false; }
   n := net_of(s);
   n[0].seq += 1;
-  m := wire_put(n[0].out[..], 0, "R"); m = wire_int(n[0].out[..], m, n[0].seq);
-  net_send(n, m);
+  net_send(n, wire_put_rebuild(n[0].out[..], 0, n[0].seq));
   return true;
 }
 // The ability (AB_*) a kind of entity of yours stands for, -1 none: what slot it holds up.
@@ -757,6 +850,7 @@ NetView :: struct {
   ok: bool; eid: int; kind: int; owner: int; seat: int;
   x: f32; y: f32; z: f32; yaw: f32; vx: f32; vz: f32;   // drawn now; y the feet's world height
   flags: int; act: int; form: int; air: bool; swim: bool; boat: bool; alive: bool;
+  account: bool; away: bool;       // a player's: signed in (its hello's FLAGS 2), nothing heard from it (WG_AWAY)
   hp: int; max: int; p1: int; p2: int;
   cast_slot: int; cast_age: f32;   // its last spell (a bar slot) and how long ago, s
 }
@@ -766,14 +860,16 @@ net_view :: (s: [] Everglade, kind: int, k: int) -> NetView {
   if e < 0 { return NetView.{}; }
   n := net_of(s);
   en := n[0].ents[e]; p := en.shown;
+  pl := en.kind == WK_PLAYER;
   return NetView.{ok = true, eid = en.eid, kind = en.kind, owner = en.owner, seat = en.seat,
                   x = p.x, y = p.y, z = p.z, yaw = p.yaw, vx = p.vx, vz = p.vz,
-                  flags = p.f, act = p.a, form = ifx en.kind == WK_PLAYER then en.p1 else 0,
-                  air = (p.f & WF_AIR) != 0, swim = (p.f & WF_SWIM) != 0, boat = (p.f & WF_BOAT) != 0, alive = (p.f & WF_DEAD) == 0,
+                  flags = p.f, act = p.a, form = en.form,
+                  air = pl && (p.f & (WG_GROUND | WG_SWIM | WG_BOAT)) == 0, swim = pl && (p.f & WG_SWIM) != 0, boat = pl && (p.f & WG_BOAT) != 0,
+                  alive = !pl || (p.f & WG_DEAD) == 0, account = pl && (en.hello_flags & 2) != 0, away = pl && (p.f & WG_AWAY) != 0,
                   hp = en.hp, max = en.max, p1 = en.p1, p2 = en.p2,
                   cast_slot = en.cast_slot, cast_age = ifx en.cast_slot >= 0 then f32(net_now(n) - en.cast_at) / 1000 else 100000.0f32};
 }
-// Its name ("" none yet: a nameless figure), player id and look (p).
+// Its name ("" none yet: a nameless figure), player id, class and look (n).
 net_view_name :: (s: [] Everglade, kind: int, k: int) -> string {
   e := net_nth(s, kind, k);
   if e < 0 { return ""; }
@@ -783,6 +879,11 @@ net_view_id :: (s: [] Everglade, kind: int, k: int) -> string {
   e := net_nth(s, kind, k);
   if e < 0 { return ""; }
   return cast(string) net_of(s)[0].ents[e].id[0..<net_of(s)[0].ents[e].id_n];
+}
+net_view_class :: (s: [] Everglade, kind: int, k: int) -> string {
+  e := net_nth(s, kind, k);
+  if e < 0 { return ""; }
+  return cast(string) net_of(s)[0].ents[e].cls[0..<net_of(s)[0].ents[e].cls_n];
 }
 net_view_look :: (s: [] Everglade, kind: int, k: int) -> string {
   e := net_nth(s, kind, k);
@@ -805,14 +906,14 @@ net_self_max :: (s: [] Everglade) -> int {
 // For a headless check (everglade5e-face.c coaxial_net_probe): 0 the socket's state, 1 your seat, 2 the
 // other players, 3 creatures and zones, 4 all entities, 5 the clock's source, 6 frames in, 7 frames
 // out, 8 and 9 the first other player's x and z in cm, 10 effects played, 11 the jitter buffer's delay
-// ms, 12 your last acked move, 13 hits heard.
+// ms, 12 your last acked input, 13 hits heard, 14 re-runs from the server's word, 15 inputs sent.
 net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if !net_on(s) { return -1; }
   n := net_of(s);
   if field == 0 { return n[0].state; }
   if field == 1 { return n[0].seat; }
   if field == 2 { return net_count(s, WK_PLAYER); }
-  if field == 3 { return net_count(s, -1) - net_count(s, WK_PLAYER) - net_count(s, WK_FOLK) - net_count(s, WK_GUARD) - net_count(s, WK_PIECE); }
+  if field == 3 { return net_count(s, -1) - net_count(s, WK_PLAYER) - net_count(s, WK_FOLK); }
   if field == 4 { return net_count(s, -1); }
   if field == 5 { return n[0].synced; }
   if field == 6 { return n[0].frames_in; }
@@ -826,6 +927,8 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 11 { return n[0].delay; }
   if field == 12 { return n[0].acked; }
   if field == 13 { return n[0].hits; }
+  if field == 14 { return n[0].replays; }
+  if field == 15 { return n[0].seq; }
   return -1;
 }
 // The pipe's commands, for the face to carry out.
@@ -864,145 +967,164 @@ net_test_sent :: (n: [] EgNet, c: u8, out: [] u8) -> string {
   pipe_drained(n[0].pipe[..]);
   return cast(string) out[0..<got];
 }
-// One tick from the server: "k TICK T" and entity records.
-net_test_tick :: (r: [] NetTestRoom, tick: int, t: int) {
-  r[0].n = wire_put(r[0].buf[..], 0, "k"); r[0].n = wire_int(r[0].buf[..], r[0].n, tick); r[0].n = wire_int(r[0].buf[..], r[0].n, t);
+// The server's world header (W), and its state for a tick (D) with entries, written with the wire's
+// own writers, as the room server writes them.
+net_test_world :: (r: [] NetTestRoom, tick: int) {
+  r[0].n = wire_put_world(r[0].buf[..], 0, WireWorld.{tick = tick, seed = 41, day = 3600000, weather = 0});
 }
-net_test_ent :: (r: [] NetTestRoom, e: WireEnt) {
-  r[0].n = wire_put(r[0].buf[..], r[0].n, "\n"); r[0].n = wire_put_ent(r[0].buf[..], r[0].n, e);
+net_test_tick :: (r: [] NetTestRoom, tick: int, ack: int) {
+  r[0].n = wire_put_d(r[0].buf[..], 0, WireD.{tick = tick, ack = ack, f = 0});
 }
+net_test_sep :: (r: [] NetTestRoom) { if r[0].buf[r[0].n - 1] != ' ' { r[0].n = wire_sep(r[0].buf[..], r[0].n); } }
+net_test_p :: (r: [] NetTestRoom, p: WireP) { net_test_sep(r); r[0].n = wire_put_p(r[0].buf[..], r[0].n, p); }
+net_test_n :: (r: [] NetTestRoom, w: WireN) { net_test_sep(r); r[0].n = wire_put_n(r[0].buf[..], r[0].n, w); }
+net_test_c :: (r: [] NetTestRoom, c: WireC) { net_test_sep(r); r[0].n = wire_put_c(r[0].buf[..], r[0].n, c); }
+net_test_x :: (r: [] NetTestRoom, x: WireX) { net_test_sep(r); r[0].n = wire_put_x(r[0].buf[..], r[0].n, x); }
+net_test_cast :: (r: [] NetTestRoom, c: WireCastE) { net_test_sep(r); r[0].n = wire_put_cast_e(r[0].buf[..], r[0].n, c); }
 net_test_frame :: (r: [] NetTestRoom) -> string { return cast(string) r[0].buf[0..<r[0].n]; }
+// Two pages seated in room pair-a at mono 100 (server 5000100), the world's tick 0 then.
+net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, room: [] NetTestRoom) -> bool {
+  ok := net_test_page(a, na, 0, "pa", 100) && net_test_page(b, nb, 1, "pb", 100);
+  ok = ok && net_test_hear(a, 0, "y 0 1 5000100") && net_test_hear(b, 1, "y 1 2 5000100");
+  net_test_world(room, 0);
+  return ok && net_test_hear(a, 0, net_test_frame(room)) && net_test_hear(b, 1, net_test_frame(room));
+}
 
 #test "net: two pages in one room see each other move, as the server says, a jitter buffer behind it" {
-  a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet;
+  a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet; room: [1] NetTestRoom;
   #assert net_test_page(a[..], na[..], 0, "pa", 100) && net_test_page(b[..], nb[..], 1, "pb", 100);
   #assert net_probe(a[..], 0) == NET_OPEN && !net_live(a[..]);
-  // the relay seats them: A seat 0, B seat 1, the server clock 5000100 at mono 100
+  // the relay seats them: A seat 0, B seat 1, the server clock 5000100 at mono 100; the server's world
   #assert net_test_hear(a[..], 0, "y 0 1 5000100") && net_test_hear(b[..], 1, "y 1 2 5000100");
   #assert net_live(a[..]) && net_live(b[..]) && net_clock(a[..]) == 5000100 && net_probe(a[..], 5) == 1;
-  // A moves: its move goes out with its sequence number, and its hello
-  net_step(a[..], 110, 10, 0, 5, 0.5, 2, 0, false, 0, false, 1);
+  net_test_world(room[..], 0);
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  // A's hello goes out on its next frame: its look and class
   out: [WIRE_FRAME] u8;
-  sent := net_test_sent(na[..], 'M', out[..]);
-  r: [1] WireRd; r[0] = wire_rd(sent, 1);
-  mv := wire_read_move(sent, r[..]);
-  #assert r[0].ok && mv.seq >= 1 && abs(mv.x - 10) < 0.01 && abs(mv.z - 5) < 0.01 && abs(mv.vx - 2) < 0.01 && mv.a == 1;
-  // the server's ticks: A's player entity (eid 1) and B's (eid 2), A going +x 1 m a tick
-  room: [1] NetTestRoom;
-  for q: 0..<3 {
-    t := 5000110 + 66 * q;
-    net_test_tick(room[..], q + 1, t);
-    net_test_ent(room[..], WireEnt.{eid = 1, kind = WK_PLAYER, owner = 0, x = 10 + f32(q), z = 5, yaw = 0.5, vx = 15, hp = 57, max = 57});
-    net_test_ent(room[..], WireEnt.{eid = 2, kind = WK_PLAYER, owner = 1, x = -3, z = 2, hp = 50, max = 57});
+  na[0].look_n = net_copy(na[0].look[..], "ranger.2.1.0");
+  net_step(a[..], 100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  h := net_test_sent(na[..], 'H', out[..]);
+  r: [1] WireRd; r[0] = wire_rd(h, 1);
+  hw := wire_read_hello(h, r[..]);
+  #assert r[0].ok && hw.look == "ranger.2.1.0" && hw.kind == "druid";
+  // the server's ticks at 30 Hz: A (seat 0) going +x 0.5 m a tick, B (seat 1) standing
+  for q: 1..<4 {
+    net_test_tick(room[..], q, 0);
+    net_test_p(room[..], WireP.{ss = 0, x = 10 + 0.5 * f32(q), z = 5, yaw = 0.5, vx = 15, g = WG_GROUND, hp = 57, max = 57});
+    net_test_p(room[..], WireP.{ss = 1, x = -3, z = 2, g = WG_GROUND | WG_AWAY, hp = 50, max = 57});
+    if q == 1 { net_test_n(room[..], WireN.{ss = 0, id = "pa", look = "ranger.2.1.0", kind = "druid", flags = 2, name = "Ash Fen"}); }
     // each page steps to the tick's time and hears it then
-    net_step(b[..], 110 + 66 * q, -3, 0, 2, 0, 0, 0, false, 0, false, 0);
-    net_step(a[..], 110 + 66 * q, 10 + f32(q), 0, 5, 0.5, 15, 0, false, 0, false, 1);
+    net_step(b[..], 100 + 33 * q, -3, 0, 2, 0, 0, 0, false, 0, false, 0);
+    net_step(a[..], 100 + 33 * q, 10, 0, 5, 0, 0, 0, false, 0, false, 0);
     #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
   }
-  #assert net_test_hear(b[..], 1, "p 1 0 pa ranger.2.1.0 Ash");
-  // each sees the other alone among the players (not itself), by its seat and name
+  // each sees the other alone among the players (not itself), by its seat, name and class
   #assert net_count(a[..], WK_PLAYER) == 1 && net_count(b[..], WK_PLAYER) == 1;
   ob := net_view(b[..], WK_PLAYER, 0);
-  #assert ob.ok && ob.eid == 1 && ob.seat == 0 && ob.owner == 0 && ob.hp == 57 && ob.alive && net_view_name(b[..], WK_PLAYER, 0) == "Ash" && net_view_look(b[..], WK_PLAYER, 0) == "ranger.2.1.0";
-  #assert net_view(a[..], WK_PLAYER, 0).eid == 2 && net_view(a[..], WK_PLAYER, 0).hp == 50;
+  #assert ob.ok && ob.eid == 0 && ob.seat == 0 && ob.owner == 0 && ob.hp == 57 && ob.alive && !ob.air && ob.account && !ob.away;
+  #assert net_view_name(b[..], WK_PLAYER, 0) == "Ash Fen" && net_view_look(b[..], WK_PLAYER, 0) == "ranger.2.1.0" && net_view_class(b[..], WK_PLAYER, 0) == "druid";
+  oa := net_view(a[..], WK_PLAYER, 0);
+  #assert oa.eid == 1 && oa.hp == 50 && oa.away && !oa.account;
   // the ticks came on time: the delay is the floor's, and B draws A that far behind the server clock,
   // between its ticks (half way at a half tick)
-  #assert net_probe(b[..], 11) >= NET_LOW && net_probe(b[..], 11) <= 120;
   d := net_probe(b[..], 11);
-  net_step(b[..], 110 + 66 + 33 + d, -3, 0, 2, 0, 0, 0, false, 0, false, 0);
+  #assert d >= NET_LOW && d <= 140;
+  net_step(b[..], 100 + 33 * 2 + 16 + d, -3, 0, 2, 0, 0, 0, false, 0, false, 0);
   ob = net_view(b[..], WK_PLAYER, 0);
-  #assert abs(ob.x - 11.5) < 0.05 && abs(ob.z - 5) < 0.01;
+  #assert abs(ob.x - 11.24) < 0.05 && abs(ob.z - 5) < 0.01;
   // past its newest tick it goes on by its velocity NET_AHEAD ms at most, then holds
-  net_step(b[..], 110 + 132 + d + 1000, -3, 0, 2, 0, 0, 0, false, 0, false, 0);
+  net_step(b[..], 100 + 99 + d + 1000, -3, 0, 2, 0, 0, 0, false, 0, false, 0);
   ob = net_view(b[..], WK_PLAYER, 0);
-  #assert abs(ob.x - (12 + 15 * f32(NET_AHEAD) / 1000)) < 0.05;
+  #assert abs(ob.x - (11.5 + 15 * f32(NET_AHEAD) / 1000)) < 0.05;
   // late ticks widen the buffer
-  for q: 3..<20 {
-    net_test_tick(room[..], q + 1, 5000110 + 66 * q);
-    net_step(b[..], 110 + 66 * q + (ifx q % 2 == 0 then 0 else 90), -3, 0, 2, 0, 0, 0, false, 0, false, 0);
+  for q: 4..<24 {
+    net_test_tick(room[..], q, 0);
+    net_test_p(room[..], WireP.{ss = 0, x = 12, z = 5, g = WG_GROUND});
+    net_step(b[..], 100 + 33 * q + (ifx q % 2 == 0 then 0 else 90), -3, 0, 2, 0, 0, 0, false, 0, false, 0);
     #assert net_test_hear(b[..], 1, net_test_frame(room[..]));
   }
   #assert net_probe(b[..], 11) > d;
+  // gone from B's view when the server says
+  net_test_tick(room[..], 25, 0); net_test_x(room[..], WireX.{k = 'p', id = 0});
+  #assert net_test_hear(b[..], 1, net_test_frame(room[..])) && net_count(b[..], WK_PLAYER) == 0;
 }
-#test "net: your move is predicted, and the server's ack corrects it, eased in; past 4 m at once" {
-  a: [1] Everglade; na: [1] EgNet;
+#test "net: every step's input goes out; the server's word on you starts the re-run from there, eased in; past 0.5 m at once" {
+  a: [1] Everglade; na: [1] EgNet; room: [1] NetTestRoom;
   #assert net_test_page(a[..], na[..], 2, "pa", 100) && net_test_hear(a[..], 2, "y 3 1 5000100");
   out: [WIRE_FRAME] u8;
-  net_step(a[..], 200, 10, 0, 5, 0, 3, 0, false, 0, false, 1);
   r: [1] WireRd;
-  t := net_test_sent(na[..], 'M', out[..]); r[0] = wire_rd(t, 1); first := wire_read_move(t, r[..]);
-  net_step(a[..], 300, 10.3, 0, 5, 0, 3, 0, false, 0, false, 1);
-  t = net_test_sent(na[..], 'M', out[..]); r[0] = wire_rd(t, 1); second := wire_read_move(t, r[..]);
-  #assert second.seq == first.seq + 1;
-  // still: a move twice a second, no more
-  net_step(a[..], 350, 10.3, 0, 5, 0, 0, 0, false, 0, false, 1);
-  #assert net_test_sent(na[..], 'M', out[..]) == "";
-  // the server had the first 0.2 m short in x: the correction is that, and the later move kept is moved by it
-  ack: [80] u8;
-  m := wire_put_ack(ack[..], 0, WireAck.{seq = first.seq, x = 9.8, y = 0, z = 5, vx = 3});
-  #assert net_test_hear(a[..], 2, cast(string) ack[0..<m]) && net_probe(a[..], 12) == first.seq;
-  c := net_correction(a[..], 0.016);
-  #assert c.x < 0 && c.x > -0.2 && abs(c.z) < 0.001;
-  total := c.x;
-  for q: 0..<60 { total += net_correction(a[..], 0.016).x; }
-  #assert abs(total + 0.2) < 0.01;
-  // the second move's ack agrees with it as moved: nothing more
-  m = wire_put_ack(ack[..], 0, WireAck.{seq = second.seq, x = 10.1, y = 0, z = 5, vx = 3});
-  #assert net_test_hear(a[..], 2, cast(string) ack[0..<m]);
-  #assert abs(net_correction(a[..], 0.016).x) < 0.001;
-  // an old ack is no news
-  m = wire_put_ack(ack[..], 0, WireAck.{seq = first.seq, x = 0, y = 0, z = 0});
-  #assert net_test_hear(a[..], 2, cast(string) ack[0..<m]) && abs(net_correction(a[..], 1).x) < 0.001;
+  // three steps' inputs, idle ones too, numbered
+  s1 := net_input(a[..], EgMoveIn.{key_y = 1, theta = 0.25, run = true}, false);
+  t := net_test_sent(na[..], 'I', out[..]); r[0] = wire_rd(t, 1); i1 := wire_read_in(t, r[..]);
+  #assert r[0].ok && i1.seq == s1 && s1 >= 1 && i1.ky == 100 && i1.kx == 0 && abs(i1.theta - 0.25) < 0.01 && i1.b == WB_RUN;
+  s2 := net_input(a[..], EgMoveIn.{key_y = 0.5, theta = 0.25}, false);
+  s3 := net_input(a[..], EgMoveIn.{}, false);
+  t = net_test_sent(na[..], 'I', out[..]); r[0] = wire_rd(t, 1);
+  #assert s2 == s1 + 1 && s3 == s2 + 1 && wire_read_in(t, r[..]).seq == s3 && r[0].ok;
+  #assert !net_fix_due(a[..]);
+  // the server has stepped the first: where it has you, the two later inputs to re-run, as it got them
+  net_test_tick(room[..], 5, s1);
+  net_test_p(room[..], WireP.{ss = 3, x = 9.8, y = 0, z = 5, vx = 3, g = WG_GROUND, hp = 40, max = 57, carry = 0.0042});
+  #assert net_test_hear(a[..], 2, net_test_frame(room[..])) && net_fix_due(a[..]) && net_probe(a[..], 12) == s1;
+  f := net_fix(a[..]);
+  #assert f.ack == s1 && abs(f.x - 9.8) < 0.001 && f.ground && abs(f.carry - 0.0042) < 0.0001;
+  #assert net_replay_n(a[..]) == 2 && abs(net_replay_input(a[..], 0).key_y - 0.5) < 0.001 && net_replay_input(a[..], 1).key_y == 0;
+  #assert abs(net_replay_input(a[..], 0).theta - 0.25) < 0.01;
+  #assert net_self_hp(a[..]) == 40 && net_self_max(a[..]) == 57 && net_count(a[..], WK_PLAYER) == 0;
+  // the re-run put you 0.2 m back of where you were drawn: drawn where you were, eased to where you are
+  net_fixed(a[..], -0.2, 0, 0);
+  #assert !net_fix_due(a[..]);
+  o := net_offset(a[..], 0.016);
+  #assert o.x > 0 && o.x < 0.2 && abs(o.z) < 0.001;
+  for q: 0..<60 { o = net_offset(a[..], 0.016); }
+  #assert abs(o.x) < 0.001;
+  // an old word is no news
+  net_test_tick(room[..], 6, s1);
+  net_test_p(room[..], WireP.{ss = 3, x = 0, z = 0});
+  #assert net_test_hear(a[..], 2, net_test_frame(room[..])) && !net_fix_due(a[..]);
   // far off (a wall the server knows of): at once
-  net_step(a[..], 500, 10.3, 0, 5, 0, 3, 0, false, 0, false, 1);
-  t = net_test_sent(na[..], 'M', out[..]); r[0] = wire_rd(t, 1); third := wire_read_move(t, r[..]);
-  m = wire_put_ack(ack[..], 0, WireAck.{seq = third.seq, x = 20.3, y = 0, z = 5});
-  #assert net_test_hear(a[..], 2, cast(string) ack[0..<m]) && abs(net_correction(a[..], 0.016).x - 10) < 0.01;
+  net_test_tick(room[..], 7, s3);
+  net_test_p(room[..], WireP.{ss = 3, x = 20, z = 5, g = WG_GROUND});
+  #assert net_test_hear(a[..], 2, net_test_frame(room[..])) && net_fix_due(a[..]) && net_replay_n(a[..]) == 0;
+  net_fixed(a[..], 10, 0, 0);
+  #assert abs(net_offset(a[..], 0.016).x) < 0.001;
 }
 #test "net: what a player casts is the server's entity, alike on both pages, gone when it says" {
-  a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet;
-  #assert net_test_page(a[..], na[..], 0, "pa", 100) && net_test_page(b[..], nb[..], 1, "pb", 100);
-  #assert net_test_hear(a[..], 0, "y 0 1 5000100") && net_test_hear(b[..], 1, "y 1 2 5000100");
+  a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet; room: [1] NetTestRoom;
+  #assert net_test_pair(a[..], na[..], b[..], nb[..], room[..]);
   // A casts Conjure Animals at a point: an intent, nothing made on A's page
   out: [WIRE_FRAME] u8;
   #assert net_cast(a[..], SP_SLOTS + AB_CONJURE, v3(4, 0, 7), -1) && net_count(a[..], -1) == 0;
   t := net_test_sent(na[..], 'C', out[..]);
   r: [1] WireRd; r[0] = wire_rd(t, 1);
   c := wire_read_cast(t, r[..]);
-  #assert r[0].ok && c.slot == SP_SLOTS + AB_CONJURE && abs(c.ax - 4) < 0.01 && abs(c.az - 7) < 0.01;
+  #assert r[0].ok && c.slot == SP_SLOTS + AB_CONJURE && abs(c.ax - 4) < 0.01 && abs(c.az - 7) < 0.01 && c.tgt == -1;
   // the server makes the pack (eid 40, A's) and both pages have it, A's slot on, B's not
-  room: [1] NetTestRoom;
-  net_test_tick(room[..], 1, 5000150);
-  net_test_ent(room[..], WireEnt.{eid = 40, kind = WK_PACK, owner = 0, x = 4, z = 7});
+  net_test_tick(room[..], 1, 0);
+  net_test_c(room[..], WireC.{eid = 40, kind = WK_PACK, owner = 0, x = 4, z = 7});
   #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
   #assert net_probe(a[..], 3) == 1 && net_probe(b[..], 3) == 1;
   #assert net_holds(a[..], AB_CONJURE) && !net_holds(b[..], AB_CONJURE);
   // it moves where the server moves it, on both
-  for q: 1..<4 {
-    net_test_tick(room[..], q + 1, 5000150 + 66 * q);
-    net_test_ent(room[..], WireEnt.{eid = 40, kind = WK_PACK, owner = 0, x = 4 + f32(q), z = 7});
+  for q: 2..<5 {
+    net_test_tick(room[..], q, 0);
+    net_test_c(room[..], WireC.{eid = 40, kind = WK_PACK, owner = 0, x = 4 + f32(q), z = 7});
     #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
   }
-  net_step(a[..], 100 + 50 + 198 + 400, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
-  net_step(b[..], 100 + 50 + 198 + 400, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  net_step(a[..], 100 + 132 + NET_HIGH, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  net_step(b[..], 100 + 132 + NET_HIGH, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   pa := net_view(a[..], WK_PACK, 0); pb := net_view(b[..], WK_PACK, 0);
-  #assert pa.ok && pb.ok && abs(pa.x - pb.x) < 0.001 && abs(pa.x - 7) < 0.01;
-  // A presses its slot again: the end goes out (E) and the server takes the pack away
-  _ := net_test_sent(na[..], 'M', out[..]);
+  #assert pa.ok && pb.ok && abs(pa.x - pb.x) < 0.001 && abs(pa.x - 8) < 0.01;
+  // A presses its slot again: the end goes out (E SEQ 5 SLOT) and the server takes the pack away
   #assert net_end(a[..], SP_SLOTS + AB_CONJURE);
   t = net_test_sent(na[..], 'E', out[..]);
-  r[0] = wire_rd(t, 1); _2 := wire_num(t, r[..]); slot := wire_num(t, r[..]);
-  #assert r[0].ok && slot == SP_SLOTS + AB_CONJURE;
-  #assert net_test_hear(a[..], 0, "x 40") && net_test_hear(b[..], 1, "x 40");
-  #assert net_probe(a[..], 3) == 0 && net_probe(b[..], 3) == 0 && !net_holds(a[..], AB_CONJURE);
+  r[0] = wire_rd(t, 1); u := wire_read_use(t, r[..]);
+  #assert r[0].ok && u.kind == WE_END && u.id == SP_SLOTS + AB_CONJURE;
+  net_test_tick(room[..], 6, 0); net_test_x(room[..], WireX.{k = 'c', id = 40});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  #assert net_count(a[..], -1) == 0 && net_count(b[..], -1) == 0 && !net_holds(a[..], AB_CONJURE);
   // a refusal says why
-  #assert net_test_hear(a[..], 0, "n 9 range") && cast(string) na[0].said[0..<na[0].said_n] == "CAN'T · RANGE";
-  // the socket closes: the world goes, and it is tried again later
-  #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "") && net_probe(a[..], 0) == NET_DOWN && net_count(a[..], -1) == 0 && !net_live(a[..]);
-  net_step(a[..], 1000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
-  #assert na[0].pipe[0].n == 0;
-  net_step(a[..], 100000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
-  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == PIPE_OPEN;
+  #assert net_test_hear(a[..], 0, "r 9 range") && cast(string) na[0].said[0..<na[0].said_n] == "CAN'T · RANGE";
 }
 #test "net: the page's facts name the socket: ?room=, ?relay= on this machine, and none for a golden page" {
   s: [1] Everglade; n: [1] EgNet;
@@ -1023,12 +1145,13 @@ net_test_frame :: (r: [] NetTestRoom) -> string { return cast(string) r[0].buf[0
   dma: [1] DemoWorld; dmb: [1] DemoWorld;
   everglade_start(a[..]); a[0].sp.on = true; a[0].sp.ready = true; a[0].sp.dm = dma[..];
   everglade_start(b[..]); b[0].sp.on = true; b[0].sp.ready = true; b[0].sp.dm = dmb[..];
-  #assert net_test_page(a[..], na[..], 0, "pa", 100) && net_test_page(b[..], nb[..], 1, "pb", 100);
-  #assert net_test_hear(a[..], 0, "y 0 1 5000100") && net_test_hear(b[..], 1, "y 1 2 5000100");
-  f: [120] u8;
-  m := wire_put_fx(f[..], 0, WireFx.{eid = -1, slot = SP_METEOR, caster = 1, ax = 20, ay = 0, az = -15, seed = 77123, t = 5000300});
-  #assert net_test_hear(a[..], 0, cast(string) f[0..<m]) && net_test_hear(b[..], 1, cast(string) f[0..<m]);
-  // not yet: it falls at its time
+  room: [1] NetTestRoom;
+  #assert net_test_pair(a[..], na[..], b[..], nb[..], room[..]);
+  // B casts; the server takes it at tick 6 (server 5000300) and tells both
+  net_test_tick(room[..], 6, 0);
+  net_test_cast(room[..], WireCastE.{ss = 1, slot = SP_METEOR, ax = 20, ay = 0, az = -15, seed = 77123});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  // not yet on A: it falls when B is drawn casting it, a jitter buffer behind
   net_step(a[..], 200, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   #assert net_probe(a[..], 10) == 0;
   net_step(a[..], 300 + NET_HIGH, 0, 0, 0, 0, 0, 0, false, 0, false, 0);

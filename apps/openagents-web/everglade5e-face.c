@@ -244,6 +244,24 @@ EXPORT("coaxial_probe") int32_t coaxial_probe(uint32_t state) {
   return (int32_t)(player.pos.x * 10 + 5000.5f) * 10000 + (int32_t)(player.pos.z * 10 + 5000.5f);
 }
 
+// One movement step (everglade-move.coax, the world's half; everglade-step.coax, the controller's): the
+// same Coax step the room server runs for your seat, in the order written there.
+static float step_acc;            /* in a room: the time not yet stepped, under one 1/30 s step */
+static bool step_jump;            /* a jump pressed since the last step */
+static coax_t_Vec3 step_from;     /* where the last step started, to draw between */
+static void move_once(uint32_t state, coax_t_Everglade *g, coax_t_EgMoveIn input, coax_t_Seat seat, int64_t hulls, float dt, float frame,
+                      float *show_vx, float *show_vz) {
+  coax_t_EgMoveWorld mw = everglade_move_world(at(state), player.pos.x, player.pos.y, player.pos.z, swim.medium, swim.pace, swim.flow_x, swim.flow_z,
+                                               river.aboard >= 0, seat.x, seat.z, seat.yaw, (coax_v_f32){hull_bodies, hulls * 7});
+  player = eg_step_begin(player, input, mw, dt);
+  coax_t_EgBody before = eg_step_body(player);
+  coax_v_f32 near = everglade_move_bodies(at(state));
+  player = eg_step_advance(player, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){g->walls.e, mw.walls * 6}, (coax_v_f32){g->floors.e, mw.floors * 10}, frame);
+  coax_t_EgBody moved = everglade_move_after(at(state), mw, before, eg_step_body(player), dt);
+  player = eg_step_put(player, moved);
+  *show_vx = moved.show_vx; *show_vz = moved.show_vz;
+}
+
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
   start(state);
@@ -280,15 +298,39 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     seat = everglade_river_seat(rv());
   }
   int64_t hulls = boat_hulls(g);
-  coax_t_EgMoveWorld mw = everglade_move_world(at(state), player.pos.x, player.pos.y, player.pos.z, swim.medium, swim.pace, swim.flow_x, swim.flow_z,
-                                               river.aboard >= 0, seat.x, seat.z, seat.yaw, (coax_v_f32){hull_bodies, hulls * 7});
-  player = eg_step_begin(player, input, mw, dt);
-  coax_t_EgBody before = eg_step_body(player);
-  coax_v_f32 near = everglade_move_bodies(at(state));
-  player = eg_step_advance(player, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){g->walls.e, mw.walls * 6}, (coax_v_f32){g->floors.e, mw.floors * 10}, frame);
-  coax_t_EgBody moved = everglade_move_after(at(state), mw, before, eg_step_body(player), dt);
-  player = eg_step_put(player, moved);
-  float show_vx = moved.show_vx, show_vz = moved.show_vz;
+  static float show_vx, show_vz;
+  if (net_live(at(state))) {
+    // In a room (everglade-net.coax): the step runs at the server's rate, 1/30 s, each step's input
+    // sent (I) as the wire carries it; when the server's word on you comes, you start again where it
+    // has you and re-run the inputs it hasn't stepped yet; what that moves you is eased out of the draw.
+    const float STEP = 1.0f / 30;   /* everglade-wire.coax WIRE_HZ */
+    input = net_as_sent(input);
+    step_jump = step_jump || input.jump;
+    if (net_fix_due(at(state))) {
+      coax_t_Vec3 was = player.pos;
+      coax_t_NetFix f = net_fix(at(state));
+      player = eg_step_set(player, f.x, f.y, f.z, f.yaw, f.vx, f.vy, f.vz, f.ground, f.carry);
+      int64_t again = net_replay_n(at(state));
+      for (int64_t k = 0; k < again; k++) move_once(state, g, net_replay_input(at(state), k), seat, hulls, STEP, STEP, &show_vx, &show_vz);
+      float dx = player.pos.x - was.x, dy = player.pos.y - was.y, dz = player.pos.z - was.z;
+      step_from.x += dx; step_from.y += dy; step_from.z += dz;
+      net_fixed(at(state), dx, dy, dz);
+    }
+    step_acc += frame;
+    if (step_acc > 4 * STEP) step_acc = 4 * STEP;
+    while (step_acc >= STEP) {
+      coax_t_EgMoveIn one = input;
+      one.jump = step_jump; step_jump = false;
+      step_from = player.pos;
+      net_input(at(state), one, g->dive && !busy);
+      move_once(state, g, one, seat, hulls, STEP, STEP, &show_vx, &show_vz);
+      step_acc -= STEP;
+    }
+  } else {
+    step_acc = 0; step_jump = false;
+    move_once(state, g, input, seat, hulls, dt, frame, &show_vx, &show_vz);
+    step_from = player.pos;
+  }
   // the river: what water you are in, on the bridge's deck none
   // the rain's rise on it and its current's gain (verse/water-weather.coax, W9)
   everglade_river_weather(rv(), everglade_rise(at(state)), everglade_flow_gain(at(state)));
@@ -328,6 +370,14 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   everglade_water(at(state), swim.medium, swim.feet, swim.breath, swim.levels,
                   everglade_river_vertices(small), everglade_river_patches(), (coax_v_f32){river_floats, 28 * 8}, floats);
   coax_t_Vec3 feet = verse_player_feet(player);
+  if (net_live(at(state))) {
+    // drawn between the last two steps, and less what a re-run moved you, eased out
+    float ahead = step_acc * 30;
+    coax_t_Point off = net_offset(at(state), frame);
+    feet.x += (step_from.x - player.pos.x) * (1 - ahead) + off.x;
+    feet.y += (step_from.y - player.pos.y) * (1 - ahead) + off.y;
+    feet.z += (step_from.z - player.pos.z) * (1 - ahead) + off.z;
+  }
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_everglade_max_vertices() * coaxial_everglade_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_everglade_uniform_floats()};
   everglade_guide_begin(at(state), golden);
@@ -341,15 +391,9 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   e5_frame(state);
   n = e5_finish(at(state), e5v(), out, u, n);
   {
-    /* the room's server (everglade-net.coax): your move out, the world where it is drawn; the
-       server's correction to where you are, eased in */
+    /* the room's server (everglade-net.coax): the clock, the socket, the world where it is drawn */
     net_step(at(state), (int64_t)guard_now_ms(), feet.x, feet.y, feet.z, verse_player_face(player), show_vx, show_vz,
              !player.on_ground, swim.medium, river.aboard >= 0, verse_player_act(player));
-    coax_t_Point fix = net_correction(at(state), dt);
-    if (fix.x != 0 || fix.y != 0 || fix.z != 0) {
-      player.pos.x += fix.x; player.pos.y += fix.y; player.pos.z += fix.z;
-      player.prev_pos.x += fix.x; player.prev_pos.y += fix.y; player.prev_pos.z += fix.z;
-    }
     net_drain(state);
   }
   if (n > 0) {

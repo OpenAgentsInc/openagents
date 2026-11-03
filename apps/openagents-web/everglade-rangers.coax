@@ -395,17 +395,19 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
   room: [1] RemoteBodyRoom;
   rs: [4] RemoteBody;
   #assert remote_bodies(b[..], rs[..]) == 0;
-  // another player (eid 7, seat 0) walking +z at 1.3 m/s; a third (eid 8) dead, a wolf (eid 9)
-  for q: 0..<3 {
-    t := 5000110 + 66 * q;
-    net_test_tick(room[0].r[..], q + 1, t);
-    net_test_ent(room[0].r[..], WireEnt.{eid = 7, kind = WK_PLAYER, owner = 0, x = 2, y = 0.5, z = -70 + 0.086 * f32(q), yaw = 0.2, vz = 1.3, hp = 57, max = 57});
-    net_test_ent(room[0].r[..], WireEnt.{eid = 8, kind = WK_PLAYER, owner = 2, x = -2, z = -72, f = WF_DEAD, hp = 0, max = 57});
-    net_test_ent(room[0].r[..], WireEnt.{eid = 9, kind = WK_PLAYER, owner = 3, x = 0, z = -75, f = WF_AIR, p1 = CI_FORM_WOLF, hp = 11, max = 11});
-    net_step(b[..], 110 + 66 * q, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  // the server's world at tick 0, then three ticks at 30 Hz: another player (seat 7) walking +z at
+  // 1.3 m/s; a third (seat 8) dead, a wolf (seat 9) in the air
+  net_test_world(room[0].r[..], 0);
+  #assert net_test_hear(b[..], 1, net_test_frame(room[0].r[..]));
+  for q: 1..<4 {
+    net_test_tick(room[0].r[..], q, 0);
+    net_test_p(room[0].r[..], WireP.{ss = 7, x = 2, y = 0.5, z = -70 + 0.043 * f32(q), yaw = 0.2, vz = 1.3, g = WG_GROUND, hp = 57, max = 57});
+    net_test_p(room[0].r[..], WireP.{ss = 8, x = -2, z = -72, g = WG_GROUND | WG_DEAD, hp = 0, max = 57});
+    net_test_p(room[0].r[..], WireP.{ss = 9, x = 0, z = -75, form = CI_FORM_WOLF, hp = 11, max = 11});
+    if q == 1 { net_test_n(room[0].r[..], WireN.{ss = 7, id = "pa", look = "ranger.2.1.4", kind = "druid", flags = 0, name = "Ash"}); }
+    net_step(b[..], 100 + 33 * q, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
     #assert net_test_hear(b[..], 1, net_test_frame(room[0].r[..]));
   }
-  #assert net_test_hear(b[..], 1, "p 7 0 pa ranger.2.1.4 Ash");
   n := remote_bodies(b[..], rs[..]);
   #assert n == 3;
   ash := -1; dead := -1; wolf := -1;

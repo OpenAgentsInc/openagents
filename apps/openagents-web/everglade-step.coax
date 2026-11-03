@@ -56,3 +56,16 @@ eg_step_advance :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls: [] f
   if !w.deck && bodies.count >= 7 && p.pos.y > 0.6 { bodies[4] = 1.9; bodies[6] = 0.62; }
   return walk.walk_advance_in_realm(p, frame, bodies, walls, floors, "everglade");
 }
+// The controller's leftover step time, seconds (the wire's CARRY).
+eg_step_carry :: (p: walk.Player) -> f32 #export_c { return f32(p.clock.carry_ns) / 1.0e9; }
+// You as the room server has you after an input (the wire's p entry for your seat): the start the
+// page re-runs its later inputs from.
+eg_step_set :: (p0: walk.Player, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, ground: bool, carry: f32) -> walk.Player #export_c {
+  p := p0;
+  p.pos = walk.Vec3.{x = x, y = y, z = z}; p.prev_pos = p.pos;
+  p.vel = walk.Vec3.{x = vx, y = vy, z = vz}; p.on_ground = ground;
+  p.face = yaw; p.prev_face = yaw;
+  ns := cast(int) (carry * 1.0e9);
+  p.clock.carry_ns = ifx ns < 0 then 0 else ifx ns >= LOOP_STEP_NS then LOOP_STEP_NS - 1 else ns;
+  return p;
+}
