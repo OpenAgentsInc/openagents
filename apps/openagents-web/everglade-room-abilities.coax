@@ -1,0 +1,193 @@
+// The room server's hotbar abilities (GitHub #12718; spec docs/verse/2026-11-03-everglade-multiplayer-spec.md
+// section 3.1): the server's headless Everglade (coax/web/room/room-world.c) runs an ability's effect
+// with the page's own code (everglade-abilities.coax), as a page runs it offline, at the caster's place:
+// the seats' steps (everglade-move.coax everglade_move_after, everglade_lift) and the town's people feel
+// it here, and every page hears it as a server entity (coax/web/room/room-abilities.coax) and draws it.
+//
+// Reverse Gravity: one cylinder a room (the last cast's; its caster's press ends it). The server rolls
+// each townsperson's save, lifts them, lets them fall and deals the fall's damage (through the room's
+// rules, EG_RA_HURTS); the crimes are the caster's. Pages draw the cylinder and its motes from the
+// entity, lift their own debris in it and predict your lift with the same everglade_lift.
+// Loose props stay standing on the server (its pieces don't fly; a page's own debris does).
+
+EG_RA_HURTS :: 16;
+EG_RA_PAD :: 1000000;     // Hit Points the watch's people hold while the world's abilities harm them (the rules deal it)
+EG_RA_STATE :: 6;          // ON X Y Z T BY: the cylinder for the room (everglade_room_rg)
+EG_RA_LATER :: 16;         // strikes waiting on their cast bars
+EgRaStrike :: struct { by: int; slot: int; from: Point; at: Point; seed: int; t: f32; }
+EgRoomAb :: struct {
+  later: [EG_RA_LATER] EgRaStrike; later_n: int;   // Everglade's four's strikes, each its cast bar's time to go
+  rg_by: int = -1;         // the seat whose cylinder it is
+  hurt_i: [EG_RA_HURTS] int; hurt_n_: [EG_RA_HURTS] int; hurt_by: [EG_RA_HURTS] int; hurts: int;
+}
+
+// A strike of one of Everglade's four (everglade-watch.coax everglade_room_strike) that falls in t s.
+eg_ra_later :: (s: [] Everglade, c: EgRaStrike) {
+  r := s[0].sp.room_ab[..];
+  if r[0].later_n >= EG_RA_LATER { return; }
+  r[0].later[r[0].later_n] = c; r[0].later_n += 1;
+}
+// dt on: the strikes whose time came fall (in the order they were cast).
+eg_ra_strikes_due :: (s: [] Everglade, dt: f32) {
+  r := s[0].sp.room_ab[..];
+  q := 0;
+  while q < r[0].later_n {
+    r[0].later[q].t -= dt;
+    c := r[0].later[q];
+    if c.t > 0.0001 { q += 1; continue; }
+    for i: q + 1..<r[0].later_n { r[0].later[i - 1] = r[0].later[i]; }
+    r[0].later_n -= 1;
+    eg_room_release(s, c.by, c.slot, c.from.x, c.from.y, c.from.z, c.at.x, c.at.y, c.at.z, c.seed);
+  }
+}
+
+// Run f as seat `by` standing at (x, y, z) facing yaw: the world's "you" and the watch's player are theirs.
+EgRaYou :: struct { feet: Point; face: f32; me: int; }
+eg_ra_as :: (s: [] Everglade, by: int, x: f32, y: f32, z: f32, yaw: f32) -> EgRaYou {
+  was := EgRaYou.{feet = s[0].feet, face = s[0].face, me = s[0].wt[0].me};
+  s[0].feet = v3(x, y - walk_at(s, x, z), z); s[0].face = yaw;
+  s[0].wt[0].me = clamp_w(by, 0, WATCH_YOUS - 1);
+  return was;
+}
+eg_ra_back :: (s: [] Everglade, was: EgRaYou) { s[0].feet = was.feet; s[0].face = was.face; s[0].wt[0].me = was.me; }
+
+// Seat `by` casts ability k (AB_*) standing at (x, y, z) facing yaw, or (on false) ends what it holds up.
+everglade_room_ability :: (s: [] Everglade, by: int, k: int, x: f32, y: f32, z: f32, yaw: f32, on: bool) #export_c {
+  if !sp_on(s) || !finite(x) || !finite(z) { return; }
+  a := ab_of(s);
+  r := s[0].sp.room_ab[..];
+  if k == AB_REVERSE {
+    if !on {
+      if a[0].rg_on && r[0].rg_by == by { a[0].rg_on = false; ab_fall_all(s); r[0].rg_by = -1; }
+      return;
+    }
+    was := eg_ra_as(s, by, x, y, z, yaw);
+    if a[0].rg_on { a[0].rg_on = false; }   // one a room: the new one takes its place
+    _ := ab_rg_open(s, false);
+    r[0].rg_by = by;
+    lifted := ab_rg_entries(s);
+    if lifted > 0 && watch_on(s) {
+      _ = watch_crime(watch_w(s), a[0].rg_at, f32(AB_HEAR_RG), ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]);
+    }
+    eg_ra_back(s, was);
+    return;
+  }
+}
+
+// The abilities for dt: the cylinder's minute, the saves of whoever walks in, the people it has up
+// (and the damage they take landing, for the rules: everglade_room_hurt).
+everglade_room_abilities :: (s: [] Everglade, dt: f32) #export_c {
+  if !sp_on(s) || !(dt > 0) { return; }
+  a := ab_of(s);
+  r := s[0].sp.room_ab[..];
+  r[0].hurts = 0;
+  if a[0].rg_on {
+    a[0].rg_t += dt;
+    if a[0].rg_t >= f32(AB_RG_LIFE) { a[0].rg_on = false; ab_fall_all(s); }
+  }
+  by := ifx r[0].rg_by >= 0 then r[0].rg_by else 0;
+  was := eg_ra_as(s, by, s[0].feet.x, s[0].feet.y + walk_at(s, s[0].feet.x, s[0].feet.z), s[0].feet.z, s[0].face);
+  if a[0].rg_on && cast(int) (a[0].rg_t * 4) != cast(int) ((a[0].rg_t - dt) * 4) {
+    n := ab_rg_entries(s);
+    if n > 0 && watch_on(s) { _ := watch_crime(watch_w(s), a[0].rg_at, f32(AB_HEAR_RG), a[0].rg_at, s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+  }
+  // the falls' damage: the watch's Hit Points are the rules' (everglade_room_folk_hp), so what a landing
+  // took goes to the rules and back
+  if watch_on(s) {
+    w := watch_w(s);
+    // (held far over 0 while they land, so the watch kills no one: the rules decide)
+    for i: 0..<WATCH_ACTORS { if w[0].actors[i].mode != WM_DEAD { w[0].actors[i].hp += EG_RA_PAD; } }
+    before: [WATCH_ACTORS] int;
+    for i: 0..<WATCH_ACTORS { before[i] = w[0].actors[i].hp; }
+    ab_people(s, dt);
+    for i: 0..<WATCH_ACTORS {
+      lost := before[i] - w[0].actors[i].hp;
+      if w[0].actors[i].mode != WM_DEAD { w[0].actors[i].hp = before[i] - EG_RA_PAD; }
+      if lost <= 0 || r[0].hurts >= EG_RA_HURTS { continue; }
+      q := r[0].hurts;
+      r[0].hurt_i[q] = i; r[0].hurt_n_[q] = lost; r[0].hurt_by[q] = by; r[0].hurts = q + 1;
+    }
+  }
+  eg_ra_back(s, was);
+  if !a[0].rg_on { r[0].rg_by = -1; }
+}
+// The cylinder: ON X Y Z T BY (EG_RA_STATE).
+everglade_room_rg :: (s: [] Everglade, out: [] f32) -> bool #export_c {
+  if out.count < EG_RA_STATE || !sp_on(s) { return false; }
+  a := ab_of(s);
+  out[0] = ifx a[0].rg_on then 1.0f32 else 0.0f32;
+  out[1] = a[0].rg_at.x; out[2] = a[0].rg_at.y; out[3] = a[0].rg_at.z; out[4] = a[0].rg_t; out[5] = f32(s[0].sp.room_ab[0].rg_by);
+  return a[0].rg_on;
+}
+// How high over their feet person i is (m): off their feet, or 0.
+everglade_room_air :: (s: [] Everglade, i: int) -> f32 #export_c {
+  if !sp_on(s) || i < 0 || i >= WATCH_ACTORS { return 0; }
+  a := ab_of(s);
+  return ifx a[0].up[i] then a[0].air[i] else 0.0f32;
+}
+// The damage the abilities dealt this step, q's PERSON AMOUNT SEAT, while q < the count.
+everglade_room_hurts :: (s: [] Everglade) -> int #export_c { return ifx sp_on(s) then s[0].sp.room_ab[0].hurts else 0; }
+everglade_room_hurt :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c {
+  r := s[0].sp.room_ab[..];
+  if q < 0 || q >= r[0].hurts || out.count < 3 { return false; }
+  out[0] = f32(r[0].hurt_i[q]); out[1] = f32(r[0].hurt_n_[q]); out[2] = f32(r[0].hurt_by[q]);
+  return true;
+}
+
+// ---- a page in a room: the server's Reverse Gravity is drawn and felt here as on the server
+
+// The server's cylinder (its entity, everglade-net.coax), or none: this page's own cylinder follows it,
+// without the saves, lifts and crimes, which are the server's. Its debris rises in it.
+ab_rg_follow :: (s: [] Everglade, on: bool, at: Point, age: f32) {
+  a := ab_of(s);
+  if !on {
+    if a[0].rg_on { a[0].rg_on = false; ab_fall_all(s); }
+    return;
+  }
+  moved := !a[0].rg_on || abs(a[0].rg_at.x - at.x) + abs(a[0].rg_at.z - at.z) > 0.05;
+  if moved {
+    was := s[0].feet;
+    s[0].feet = v3(at.x, at.y - walk_at(s, at.x, at.z), at.z);
+    _ := ab_rg_open(s, true);
+    s[0].feet = was;
+  }
+  // its minute is the server's: never ended here
+  a[0].rg_t = lo(hi(age, 0), f32(AB_RG_LIFE) - 0.5);
+}
+
+#test "room abilities: a seat's Reverse Gravity lifts the seat stepped in it and the townsfolk, and pressing again ends it" #steps 3000000000 {
+  s: [1] Everglade;
+  dm: [1] DemoWorld;
+  everglade_room_spells_start(s[..], dm[..], "");
+  a := ab_of(s[..]);
+  g := walk_at(s[..], 4, 4);
+  everglade_room_ability(s[..], 2, AB_REVERSE, 4, g, 4, 0, true);
+  st: [EG_RA_STATE] f32;
+  #assert everglade_room_rg(s[..], st[..]) && st[5] == 2 && abs(st[1] - 4) < 0.01;
+  // a seat's step there rises (everglade_lift on the world's cylinder), one 30 m off doesn't
+  up := everglade_lift(s[..], 5, 4, 0, 0, 0, 0, 1.0 / 30);
+  #assert up.on && up.vy > 0;
+  far := everglade_lift(s[..], 40, 4, 0, 0, 0, 0, 1.0 / 30);
+  #assert !far.on;
+  for k: 0..<30 { everglade_room_abilities(s[..], 1.0 / 30); }
+  #assert a[0].rg_on && a[0].rg_t > 0.9;
+  // another seat's end does nothing; its caster's ends it
+  everglade_room_ability(s[..], 1, AB_REVERSE, 0, 0, 0, 0, false);
+  #assert a[0].rg_on;
+  everglade_room_ability(s[..], 2, AB_REVERSE, 0, 0, 0, 0, false);
+  #assert !a[0].rg_on && !everglade_room_rg(s[..], st[..]);
+}
+
+#test "room abilities: Everglade's four strike the server's town when the cast bar is done, not at the press" #steps 3000000000 {
+  s: [1] Everglade;
+  dm: [1] DemoWorld;
+  everglade_room_spells_start(s[..], dm[..], "");
+  everglade_room_strike(s[..], 0, SP_METEOR, 0, 2, 0, 10, 0, 10, 7);
+  live := false;
+  for k: 0..<74 { _ := everglade_room_spells(s[..], 1.0 / 30); }   // 2.47 s: still casting
+  for m: 0..<SP_METEORS * 2 { if s[0].sp.meteors[m].live { live = true; } }
+  #assert !live && s[0].sp.room_ab[0].later_n == 1;
+  for k: 0..<2 { _ := everglade_room_spells(s[..], 1.0 / 30); }    // 2.53 s: the meteors fall
+  for m: 0..<SP_METEORS * 2 { if s[0].sp.meteors[m].live { live = true; } }
+  #assert live && s[0].sp.room_ab[0].later_n == 0;
+}

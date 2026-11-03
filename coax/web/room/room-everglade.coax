@@ -148,6 +148,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     for j: 0..<E5R_FOLK { v[0].eg[q].folk_by[j] = -1; }
     for c: 0..<EG_PIECES { v[0].eg[q].broken[c] = false; v[0].eg[q].burning[c] = false; }
     e5rr_start(v[0].eg[q].rules[..], v[0].eg[q].seed);
+    ra_fresh(v, q);   // its abilities (room-abilities.coax)
     return q;
   }
   return -1;
@@ -213,6 +214,7 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
     if !rd[0].ok || eg_fields(text) != 4 { return; }
     // talking, doors, boats and boards are the world's, not yet the server's: only ending a slot is
     if u.kind != WE_END { eg_refuse(v, k, seat, u.seq, "unbuilt"); return; }
+    if ra_end(v, k, seat, u.id) { return; }   // the world's (room-abilities.coax)
     if !e5rr_end(v[0].eg[k].rules[..], seat, u.id) { eg_refuse(v, k, seat, u.seq, "nothing"); }
     return;
   }
@@ -310,6 +312,14 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
     if reach < 4.5 { reach = 4.5; }
     dx := ax - me.x; dz := az - me.z;
     if dx * dx + dz * dz > reach * reach { eg_refuse(v, k, seat, seq, "range"); return; }
+  }
+  // an ability the world runs (room-abilities.coax): one it runs whole has no roll of the rules'
+  if ra_cast(v, k, seat, slot, me) {
+    st[0].last_cast = v[0].eg[k].tick;
+    eb: [128] u8;
+    en := wire_put_cast_e(eb[..], 0, WireCastE.{ss = seat, slot = slot, ax = me.x, ay = me.y, az = me.z, seed = 1});
+    eg_event(v, k, cast(string) eb[0..<en], me.x, me.z, false);
+    return;
   }
   free := -1;
   for q: 0..<EG_CASTS { if !v[0].eg[k].casts[q].on && free < 0 { free = q; } }
@@ -676,6 +686,7 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
     eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]);
     st[0].heard_w[q] = v[0].eg[k].wanted[q] + 1;
   }
+  ra_send(v, k, s, full_pieces, o[..]);   // what the world's abilities hold up (room-abilities.coax)
   // the events since the last state, near you
   for q: 0..<v[0].eg[k].ev_n {
     if !v[0].eg[k].ev_all[q] && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }

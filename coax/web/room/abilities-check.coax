@@ -1,0 +1,127 @@
+// The everglade rooms' abilities check (room-abilities.coax, #12733): two sockets in one world. A casts
+// Reverse Gravity (bar slot 4) where it stands: both hear the cast (e cast), both get the server's
+// cylinder (c, kind 24, an id from 900000), and the server lifts A: A's own state (p) and the state B
+// hears of A have A over 3 m up within 3 s. A casts it again: both hear it go (x c) and A comes down.
+//   coax/web/tool.sh coax/web/room/abilities-check.coax [ws://localhost:8830]
+// Prints one JSON line, then "lifts" and exits 0, or "fails" and 1.
+#load "room-socket.coax";
+
+AC_SEATS :: 2;
+AcHeard :: struct {
+  me_x: f32; me_z: f32; me_y: f32; me_y0: f32; me_top: f32; me_seen: bool;    // its own player's height
+  other_y: f32; other_top: f32; other_seen: bool;       // the other's
+  cast4: bool; rg: int; rg_gone: bool;                  // e cast of slot 4; the cylinder's id; its x c
+}
+ac_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
+ac_entry :: (h: [] AcHeard, me: int, t: string) {
+  k := rs_field(t, 0);
+  if k == "p" {
+    s := rs_num(rs_field(t, 1)); y := ac_cm(rs_field(t, 3));
+    if s == me {
+      if !h[0].me_seen { h[0].me_y0 = y; h[0].me_top = y; }
+      h[0].me_x = ac_cm(rs_field(t, 2)); h[0].me_z = ac_cm(rs_field(t, 4));
+      h[0].me_y = y; h[0].me_seen = true; if y > h[0].me_top { h[0].me_top = y; }
+    } else {
+      if !h[0].other_seen { h[0].other_top = y; }
+      h[0].other_y = y; h[0].other_seen = true; if y > h[0].other_top { h[0].other_top = y; }
+    }
+    return;
+  }
+  if k == "c" && rs_num(rs_field(t, 2)) == 24 && rs_num(rs_field(t, 1)) >= 900000 { h[0].rg = rs_num(rs_field(t, 1)); h[0].rg_gone = false; return; }
+  if k == "x" && rs_field(t, 1) == "c" && h[0].rg > 0 && rs_num(rs_field(t, 2)) == h[0].rg { h[0].rg_gone = true; return; }
+  if k == "e" && rs_field(t, 1) == "cast" && rs_num(rs_field(t, 3)) == 4 { h[0].cast4 = true; }
+}
+// A frame: D's entries (after its header), split on ';'.
+ac_hear :: (h: [] AcHeard, me: int, t: string) {
+  if !rs_starts(t, "D ") { return; }
+  i := 0; at := 0;
+  // the header is D TICK ACK F, then the first entry
+  sp := 0;
+  while i < t.count && sp < 4 { if t[i] == ' ' { sp += 1; } i += 1; }
+  at = i;
+  while i <= t.count {
+    if i == t.count || t[i] == ';' { if i > at { ac_entry(h, me, t[at..<i]); } at = i + 1; }
+    i += 1;
+  }
+}
+ac_drain :: (c: [] RelayConn, h: [] AcHeard) {
+  for i: 0..<AC_SEATS {
+    while relay_conn_poll(c[i..<i + 1], 0) == RC_TEXT { ac_hear(h[i..<i + 1], i, cast(string) c[i].text[0..<c[i].text_n]); }
+  }
+}
+// Both stand, an input each 1/30 s, for ms.
+ac_steps :: (c: [] RelayConn, h: [] AcHeard, seq: [] int, ms: int) -> bool {
+  ok := true;
+  t0 := rs_now(); n := 0;
+  while rs_now() - t0 < ms {
+    for i: 0..<AC_SEATS {
+      seq[i] += 1;
+      m: [96] u8;
+      k := rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]);
+      k = rs_put(m[..], k, " 0 0 0 0 0 0");
+      if !relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]) { ok = false; }
+    }
+    n += 1;
+    while rs_now() - t0 < n * 33 { ac_drain(c, h); proc_sleep(2); }
+  }
+  return ok;
+}
+ac_cast :: (c: [] RelayConn, h: [] AcHeard, seq: [] int, i: int, slot: int) -> bool {
+  seq[i] += 1;
+  m: [96] u8;
+  k := rs_int(m[..], rs_put(m[..], 0, "C "), seq[i]);
+  k = rs_put(m[..], k, " "); k = rs_int(m[..], k, slot);
+  k = rs_put(m[..], k, " "); k = rs_int(m[..], k, cast(int) (h[i].me_x * 100));
+  k = rs_put(m[..], k, " "); k = rs_int(m[..], k, cast(int) (h[i].me_y * 100));
+  k = rs_put(m[..], k, " "); k = rs_int(m[..], k, cast(int) (h[i].me_z * 100)); k = rs_put(m[..], k, " -1");
+  return relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("abilities-check: bad arguments"); return 2; }
+  b: [512] u8;
+  base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
+  u: [1024] u8;
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-abil-", rs_stamp());
+  c: [AC_SEATS] RelayConn; h: [AC_SEATS] AcHeard; seq: [AC_SEATS] int;
+  ua: [1024] u8; ub: [1024] u8;
+  url_a := rs_ticketed(ua[..], url, "p-abilcheck-a", "Abil A"); url_b := rs_ticketed(ub[..], url, "p-abilcheck-b", "Abil B");
+  if url.count == 0 || url_a.count == 0 || url_b.count == 0 || !relay_conn_open(c[0..<1], url_a) || !relay_conn_open(c[1..<2], url_b) { tool_err("abilities-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
+  sent := relay_conn_send(c[0..<1], "H 1 ranger.2.1.0 druid 0 Abil A") && relay_conn_send(c[1..<2], "H 1 ranger.0.0.0 druid 0 Abil B");
+  sent = ac_steps(c[..], h[..], seq[..], 1500) && sent;
+  y0 := h[0].me_y;
+  h[1].other_top = h[1].other_y;
+  // A's Reverse Gravity: lifted within 3 s
+  sent = ac_cast(c[..], h[..], seq[..], 0, 4) && sent;
+  t_cast := rs_now(); lift_ms := -1;
+  while rs_now() - t_cast < 3000 {
+    sent = ac_steps(c[..], h[..], seq[..], 100) && sent;
+    if lift_ms < 0 && h[0].me_top > y0 + 3 && h[1].other_top > y0 + 3 { lift_ms = rs_now() - t_cast; }
+  }
+  cyl_a := h[0].rg; cyl_b := h[1].rg;
+  top_a := h[0].me_top; top_b := h[1].other_top;
+  // again: it ends, and A falls back down
+  sent = ac_cast(c[..], h[..], seq[..], 0, 4) && sent;
+  sent = ac_steps(c[..], h[..], seq[..], 4500) && sent;
+  down := h[0].me_y < y0 + 0.5 && h[1].other_y < y0 + 0.5;
+  _ := relay_conn_close(c[0..<1], 1000); _ = relay_conn_close(c[1..<2], 1000);
+  ok := sent && h[0].cast4 && h[1].cast4 && cyl_a > 0 && cyl_a == cyl_b && lift_ms >= 0 && h[0].rg_gone && h[1].rg_gone && down;
+  out: [1024] u8; o: [1] Jo;
+  jo_start(o[..], out[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "a_y0_cm"); jo_int(o[..], cast(int) (y0 * 100));
+  jo_key(o[..], "a_top_cm"); jo_int(o[..], cast(int) (top_a * 100));
+  jo_key(o[..], "b_saw_a_top_cm"); jo_int(o[..], cast(int) (top_b * 100));
+  jo_key(o[..], "lift_ms"); jo_int(o[..], lift_ms);
+  jo_key(o[..], "cylinder_a"); jo_int(o[..], cyl_a);
+  jo_key(o[..], "cylinder_b"); jo_int(o[..], cyl_b);
+  jo_key(o[..], "cast_heard"); jo_bool(o[..], h[0].cast4 && h[1].cast4);
+  jo_key(o[..], "ended"); jo_bool(o[..], h[0].rg_gone && h[1].rg_gone);
+  jo_key(o[..], "a_y_after_cm"); jo_int(o[..], cast(int) (h[0].me_y * 100));
+  jo_key(o[..], "b_saw_a_after_cm"); jo_int(o[..], cast(int) (h[1].other_y * 100));
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  print("%\n", ifx ok then "lifts" else "fails");
+  return ifx ok then 0 else 1;
+}

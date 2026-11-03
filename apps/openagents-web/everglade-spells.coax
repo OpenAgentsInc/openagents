@@ -50,6 +50,7 @@
 #load "everglade-hotbar.coax";
 #load "everglade-arrange.coax";
 #load "everglade-abilities.coax";
+#load "everglade-room-abilities.coax";
 #load "everglade-frost.coax";
 #load "everglade-tide.coax";
 #load "everglade-grove.coax";
@@ -218,6 +219,7 @@ Spells :: struct {
   td: [1] Tide;                // Water Walk, Control Water, Create or Destroy Water, Water Breathing (everglade-tide.coax)
   fr: [1] Frost;               // Ice Knife, Ice Storm, Sleet Storm and their ice (everglade-frost.coax)
   ab: [1] Abilities;           // Reverse Gravity and the Wind Walls (everglade-abilities.coax)
+  room_ab: [1] EgRoomAb;       // the room server's: whose the abilities it runs are (everglade-room-abilities.coax)
   rb: [1] Rubble;              // falling rubble's blows and the Wall of Stone's crumbled blocks (everglade-rubble.coax)
   lift: f32;                 // how much of the bottom the bar takes, for what sits over it
   frame_ms: f32;

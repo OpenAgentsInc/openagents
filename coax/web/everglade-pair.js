@@ -77,7 +77,7 @@
       if (f[0] === "p") {
         const ss = Number(f[1]), x = Number(f[2]), z = Number(f[4]), g = Number(f[9]), clip = Number(f[10]);
         if (ss === E.seat) mine = [x, z, clip, g, Number(f[11])];
-        else { const o = (E.others[ss] ||= []); if (o.length < 20000) o.push([t, x, z, clip, g]); }
+        else { const o = (E.others[ss] ||= []); if (o.length < 20000) o.push([t, x, z, clip, g, Number(f[3])]); }
       } else if (f[0] === "n") E.names[Number(f[1])] = f.slice(6).join(" ");
       else if (f[0] === "w") E.wanted[Number(f[1])] = Number(f[2]);
       else if (f[0] === "c") E.creatures[f[1]] = Number(f[7]);
@@ -210,6 +210,9 @@
     for (const r of rows) { if (r[0] < t0) { at = r; continue; } if (!at) { at = r; continue; } if (Math.hypot(r[1] - at[1], r[2] - at[2]) > 5) return Math.round(r[0] - t0); }
     return -1;
   };
+  // seat ss's highest y (cm) in D since t, and the server's entities with ids from `id0` on
+  E.topSince = (t, ss) => { let top = -1e9; for (const r of E.others[ss] || []) if (r[0] >= t && r[5] > top) top = r[5]; return Math.round(top); };
+  E.madeFrom = (id0) => Object.keys(E.creatures).filter((k) => Number(k) >= id0).length;
   E.otherSeat = () => { for (const ss of Object.keys(E.others)) if (Number(ss) !== E.seat && E.others[ss].length) return Number(ss); return -1; };
   E.now = now;
   // The jump as this page drew you: between tj (the key) and tl the clip went to the jump (3) once and

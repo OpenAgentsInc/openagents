@@ -304,6 +304,20 @@ ab_reverse :: (s: [] Everglade) {
   a := ab_of(s);
   if a[0].rg_on { a[0].rg_on = false; sp_say(s, "REVERSE GRAVITY ENDS", -1, ""); ab_fall_all(s); return; }
   you := ab_you(s);
+  loosened := ab_rg_open(s, true);
+  c := a[0].rg_at;
+  lifted := ab_rg_entries(s);
+  if (loosened > 0 || lifted > 0) && watch_on(s) {
+    _ := watch_crime(watch_w(s), c, f32(AB_HEAR_RG), you, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
+  }
+  sp_say(s, "REVERSE GRAVITY", loosened + lifted, "FALL UPWARD");
+}
+// The cylinder rises on the floor under you, no one's save taken yet; with `loosen`, the props
+// standing in it come loose; what lies loose wakes. How many props came loose. (The room server's
+// opens without loosening, everglade-room-abilities.coax: its pieces don't fly.)
+ab_rg_open :: (s: [] Everglade, loosen: bool) -> int {
+  a := ab_of(s);
+  you := ab_you(s);
   a[0].rg_on = true; a[0].rg_t = 0;
   a[0].rg_at = v3(you.x, walk_at(s, you.x, you.z), you.z);
   for i: 0..<WATCH_ACTORS { a[0].saved[i] = false; a[0].held[i] = false; }
@@ -311,6 +325,7 @@ ab_reverse :: (s: [] Everglade) {
   // what isn't anchored: the props standing in it come loose (as many as there are bodies for)
   loosened := 0;
   for i: 0..<w[0].n {
+    if !loosen { break; }
     if !ab_prop(w[0].pieces[i].mesh) { continue; }   // (a wall's piece isn't copied: the town has thousands)
     p := w[0].pieces[i];
     if p.state != DP_STANDING || !ab_prop(p.mesh) || !ab_in_cylinder(a, v3(p.cx, p.cy, p.cz)) { continue; }
@@ -322,12 +337,8 @@ ab_reverse :: (s: [] Everglade) {
   c := a[0].rg_at;
   demo_rouse(w, v3(c.x - f32(AB_RG_R), c.y - 1, c.z - f32(AB_RG_R)), v3(c.x + f32(AB_RG_R), c.y + f32(AB_RG_H), c.z + f32(AB_RG_R)), 0);
   for b: 0..<DEMO_BITS { if w[0].bits[b].live { w[0].bits[b].resting = false; } }
-  lifted := ab_rg_entries(s);
   if loosened > 0 { s[0].sp.walls_dirty = true; }
-  if (loosened > 0 || lifted > 0) && watch_on(s) {
-    _ := watch_crime(watch_w(s), c, f32(AB_HEAR_RG), you, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
-  }
-  sp_say(s, "REVERSE GRAVITY", loosened + lifted, "FALL UPWARD");
+  return loosened;
 }
 // Everyone in the cylinder who hasn't saved yet makes their save: they hold on to a wall in reach,
 // or fall upward. How many fell upward.
@@ -1293,8 +1304,8 @@ ab_frame :: (s: [] Everglade, dt: f32) {
   }
   ab_frame_more(s, dt);
   w[0].field_n = ab_fields(s, w[0].fields[..]);
-  // whoever walks into the cylinder makes their save
-  if a[0].rg_on && cast(int) (a[0].rg_t * 4) != cast(int) ((a[0].rg_t - dt) * 4) {
+  // whoever walks into the cylinder makes their save (in a room the server's: net_follow)
+  if a[0].rg_on && !net_live(s) && cast(int) (a[0].rg_t * 4) != cast(int) ((a[0].rg_t - dt) * 4) {
     n := ab_rg_entries(s);
     if n > 0 && watch_on(s) { _ := watch_crime(watch_w(s), a[0].rg_at, f32(AB_HEAR_RG), ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
   }
@@ -1398,6 +1409,15 @@ everglade_spell_fields :: (s: [] Everglade, out: [] f32) -> int #export_c {
 // clip while they are up, and take 1d6 for every 10 feet when they land.
 ab_people :: (s: [] Everglade, dt: f32) {
   a := ab_of(s);
+  if net_town(s) {
+    // in a room the server lifts and drops them (everglade-room-abilities.coax): drawn as it says
+    for i: 0..<WATCH_ACTORS {
+      h := net_air(s, i);
+      if h > 0.01 { a[0].up[i] = true; a[0].air[i] = h; a[0].air_v[i] = 0; continue; }
+      if a[0].up[i] { a[0].up[i] = false; a[0].air[i] = 0; a[0].air_v[i] = 0; a[0].air_top[i] = 0; a[0].perch[i] = 0; }
+    }
+    return;
+  }
   if !watch_on(s) { for i: 0..<WATCH_ACTORS { a[0].up[i] = false; a[0].air[i] = 0; a[0].perch[i] = 0; } return; }
   w := watch_w(s);
   steps := clamp_i(cast(int) (dt * 120) + 1, 1, 30);

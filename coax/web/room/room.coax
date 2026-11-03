@@ -19,6 +19,7 @@
 #load "../../../apps/openagents-web/everglade5e-room-rules.coax";
 #load "../../../apps/openagents-web/everglade-wire.coax";
 #load "room-everglade.coax";
+#load "room-abilities.coax";
 #load "room-sky.coax";
 #load "room-ticket.coax";
 #load "room-vitals.coax";
@@ -61,6 +62,7 @@ RmServer :: struct {
   dropped: int;             // frames the rate limits dropped
   jout: [RELAY_JSON] u8;    // rm_rooms' answer
   eg: [EG_ROOMS] EgRoom;    // the everglade rooms' simulations (room-everglade.coax)
+  ab: [EG_ROOMS] RaRoom;    // their abilities the world runs (room-abilities.coax)
   tkey: [TICKET_KEY] u8; tkey_n: int;   // the seat-ticket key (rm_ticket_key): set, an everglade join's ticket must check
   tkey_must: bool;
   vit: RmVitals;                         // players' HP between visits (room-vitals.coax)

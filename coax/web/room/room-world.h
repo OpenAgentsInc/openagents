@@ -41,6 +41,17 @@ void world_strike(int k, int by, int slot, const float from[3], const float to[3
 int world_spells(int k, float dt);
 bool world_event(int k, int q, float out[WORLD_EVENT]);
 void world_rebuild(int k);
+/* The hotbar abilities the world runs (apps/openagents-web/everglade-room-abilities.coax, #12718): a cast
+   or an end, BY AB X Y Z YAW ON (room-abilities.coax rm_ra_cast); a step; Reverse Gravity's cylinder ON
+   X Y Z T BY; how high person i is; the falls' damage, q's PERSON AMOUNT SEAT. */
+#define WORLD_CAST 8
+#define WORLD_RG 6
+void world_ability(int k, const float c[WORLD_CAST]);
+void world_abilities(int k, float dt);
+bool world_rg(int k, float out[WORLD_RG]);
+float world_air(int k, int i);
+int world_hurts(int k);
+bool world_hurt(int k, int q, float out[3]);
 /* A new room in slot k: its town whole and nobody known. */
 void world_fresh(int k);
 #endif

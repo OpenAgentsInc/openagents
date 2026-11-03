@@ -1010,8 +1010,13 @@ eg_room_known :: (s: [] Everglade) {
   s[0].wv.room_known = true;
 }
 // A cast of bar slot `slot` (one of the four) from `from` at `at`, from the seed every page plays it from.
+// It falls when the caster's cast bar is done (the press is when the server hears it), as on every page:
+// held until then (everglade-room-abilities.coax eg_ra_later).
 everglade_room_strike :: (s: [] Everglade, by: int, slot: int, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32, seed: int) #export_c {
   if !sp_on(s) || slot < 0 || slot >= SP_SLOTS { return; }
+  eg_ra_later(s, EgRaStrike.{by = by, slot = slot, from = v3(fx, fy, fz), at = v3(ax, ay, az), seed = seed, t = srd_spell(SP_SPELL[slot]).bar});
+}
+eg_room_release :: (s: [] Everglade, by: int, slot: int, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32, seed: int) {
   s[0].wv.net = true;
   s[0].sp.cast_at = v3(ax, ay, az); s[0].sp.cast_n = v3(0, 1, 0); s[0].sp.cast_from = v3(fx, fy, fz);
   s[0].sp.cast_seed = cast(u64) hi_w(seed, 1);
@@ -1028,6 +1033,7 @@ everglade_room_spells :: (s: [] Everglade, dt: f32) -> int #export_c {
   if !s[0].wv.room_known { eg_room_known(s); }
   // what the strikes and fire do to the town is the last caster's doing (its crimes are theirs)
   wt := watch_w(s); me := wt[0].me;
+  eg_ra_strikes_due(s, dt);   // the strikes whose cast bars are done fall now
   wt[0].me = clamp_w(s[0].wv.room_by, 0, WATCH_YOUS - 1);
   sp_strikes(s, dt);
   fi_frame(s, dt);

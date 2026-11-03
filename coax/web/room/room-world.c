@@ -148,6 +148,15 @@ bool world_event(int k, int q, float out[WORLD_EVENT]) { return world_of(k) && e
 void world_fresh(int k) { if (world_of(k)) everglade_room_fresh(at(k)); }
 void world_rebuild(int k) { if (world_of(k)) everglade_room_rebuild(at(k)); }
 
+void world_ability(int k, const float c[WORLD_CAST]) {
+  if (world_of(k)) everglade_room_ability(at(k), (int)c[0], (int)c[1], c[2], c[3], c[4], c[5], c[6] > 0.5f);
+}
+void world_abilities(int k, float dt) { if (world_of(k)) everglade_room_abilities(at(k), dt); }
+bool world_rg(int k, float out[WORLD_RG]) { return world_of(k) && everglade_room_rg(at(k), (coax_v_f32){out, WORLD_RG}); }
+float world_air(int k, int i) { return world_of(k) ? everglade_room_air(at(k), i) : 0.0f; }
+int world_hurts(int k) { return world_of(k) ? (int)everglade_room_hurts(at(k)) : 0; }
+bool world_hurt(int k, int q, float out[3]) { return world_of(k) && everglade_room_hurt(at(k), q, (coax_v_f32){out, 3}); }
+
 /* The drawing host's calls, which grid.coax's thumbs make and a headless world never does. */
 void host_line(int64_t h, double ax, double ay, double bx, double by, double la, double lb, double w) { (void)h; (void)ax; (void)ay; (void)bx; (void)by; (void)la; (void)lb; (void)w; }
 void host_dot(int64_t h, double x, double y, double size, double light, double soft, double crisp) { (void)h; (void)x; (void)y; (void)size; (void)light; (void)soft; (void)crisp; }

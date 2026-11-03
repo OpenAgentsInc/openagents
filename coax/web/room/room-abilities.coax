@@ -1,0 +1,186 @@
+// The everglade rooms' hotbar abilities on the server (GitHub #12718): the casts room-everglade.coax
+// takes (C) and the ends (E) of the abilities whose effect is the world's, handed to the host's world
+// (room-world.c world_ability: apps/openagents-web/everglade-room-abilities.coax runs the page's own
+// ability code there), and what that world holds up heard by every seat as server entities and entries:
+//   c EID 24 X Y Z 0 -1 1 OWNER 0 R   Reverse Gravity's cylinder (WK_ZONE, P1 AB_REVERSE 0, P2 its radius, cm)
+//   a I CM                            townsperson I is CM over their feet (0: on their feet again)
+// The damage the world's falls dealt goes to the room's rules (e5rr_hurt), which say it (e hit).
+// The host, each tick before the town: rm_ra_casts / rm_ra_cast / rm_ra_heard into world_ability, then
+// world_abilities, then rm_ra_rg, rm_ra_air for each person and rm_ra_hurt for what the falls dealt.
+
+RA_CASTS :: 16;
+RA_CAST_FLOATS :: 8;            // BY AB X Y Z YAW ON (and a spare)
+RA_ID0 :: 900000;               // the abilities' entity ids, past the rules' zones and creatures
+RA_REVERSE :: 0;                // everglade-abilities.coax AB_REVERSE (bar slot EG_SP_SLOTS + it, fivebar.coax)
+RA_RG_R_CM :: 1524;             // its 50-foot radius (AB_RG_R)
+RA_AIR_CM :: 10;                // a person's height heard again once it changes this much
+
+RaCast :: struct { by: int; ab: int; x: f32; y: f32; z: f32; yaw: f32; on: bool; }
+RaRoom :: struct {
+  q: [RA_CASTS] RaCast; q_n: int;
+  rg_on: bool; rg_id: int; rg_by: int = -1; rg_x: f32; rg_y: f32; rg_z: f32;
+  next_id: int;
+  air: [E5R_FOLK] int;                          // cm
+  heard_rg: [EG_SEATS] int;                     // the cylinder's id each seat last heard (0 none)
+  heard_a: [EG_SEATS * E5R_FOLK] int;           // each person's height each seat last heard, cm + 1 (0 none)
+}
+
+// Whether bar slot `slot` is an ability the world runs.
+ra_world_slot :: (slot: int) -> bool { return slot - EG_SP_SLOTS == RA_REVERSE; }
+
+ra_fresh :: (v: [] RmServer, k: int) {
+  if k < 0 || k >= EG_ROOMS { return; }
+  v[0].ab[k] = RaRoom.{};
+  v[0].ab[k].next_id = 1;
+}
+ra_queue :: (v: [] RmServer, k: int, c: RaCast) -> bool {
+  r := v[0].ab[k..<k + 1];
+  if r[0].q_n >= RA_CASTS { return false; }
+  r[0].q[r[0].q_n] = c; r[0].q_n += 1;
+  return true;
+}
+// A cast of bar slot `slot` from seat `seat` standing at `me` (room-everglade.coax eg_heard_cast, once
+// it is checked): an ability the world runs goes to it. Pressed again while it holds one up, it ends.
+// True when the world runs it whole (the rules roll nothing for it).
+ra_cast :: (v: [] RmServer, k: int, seat: int, slot: int, me: EgPose) -> bool {
+  if !ra_world_slot(slot) { return false; }
+  ab := slot - EG_SP_SLOTS;
+  on := !(ab == RA_REVERSE && v[0].ab[k].rg_on && v[0].ab[k].rg_by == seat);
+  _ := ra_queue(v, k, RaCast.{by = seat, ab = ab, x = me.x, y = me.y, z = me.z, yaw = me.yaw, on = on});
+  return ab == RA_REVERSE;
+}
+// E: seat `seat` ends what bar slot `slot` holds up. True when it was the world's to end.
+ra_end :: (v: [] RmServer, k: int, seat: int, slot: int) -> bool {
+  if !ra_world_slot(slot) { return false; }
+  ab := slot - EG_SP_SLOTS;
+  if ab == RA_REVERSE && !(v[0].ab[k].rg_on && v[0].ab[k].rg_by == seat) { return false; }
+  _ := ra_queue(v, k, RaCast.{by = seat, ab = ab, on = false});
+  return true;
+}
+
+// ---- the host
+
+rm_ra_casts :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live(v, k) then v[0].ab[k].q_n else 0; }
+rm_ra_cast :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
+  if !rm_eg_live(v, k) || q < 0 || q >= v[0].ab[k].q_n || out.count < RA_CAST_FLOATS { return; }
+  c := v[0].ab[k].q[q];
+  out[0] = f32(c.by); out[1] = f32(c.ab); out[2] = c.x; out[3] = c.y; out[4] = c.z; out[5] = c.yaw; out[6] = ifx c.on then 1.0f32 else 0.0f32; out[7] = 0;
+}
+rm_ra_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].ab[k].q_n = 0; } }
+// The world's cylinder now: on, whose, where its floor is.
+rm_ra_rg :: (v: [] RmServer, k: int, on: bool, by: int, x: f32, y: f32, z: f32) #export_c {
+  if !rm_eg_live(v, k) { return; }
+  r := v[0].ab[k..<k + 1];
+  // a new one (or one moved) is a new entity: every page starts it again
+  dx := r[0].rg_x - x; dz := r[0].rg_z - z;
+  moved := r[0].rg_on && (dx * dx + dz * dz > 0.0025 || r[0].rg_by != by);
+  if on && (!r[0].rg_on || moved) { r[0].rg_id = RA_ID0 + r[0].next_id; r[0].next_id += 1; }
+  r[0].rg_on = on; r[0].rg_by = ifx on then by else -1; r[0].rg_x = x; r[0].rg_y = y; r[0].rg_z = z;
+  if !on { r[0].rg_id = 0; }
+}
+// Person j is `m` metres over their feet.
+rm_ra_air :: (v: [] RmServer, k: int, j: int, m: f32) #export_c {
+  if !rm_eg_live(v, k) || j < 0 || j >= E5R_FOLK { return; }
+  v[0].ab[k].air[j] = ifx m > 0.005 then least(eg_round(m * 100), 100000) else 0;
+}
+// A fall the world's ability dealt person j (`amount`), seat `by`'s doing: the rules deal it.
+rm_ra_hurt :: (v: [] RmServer, k: int, j: int, amount: int, by: int) #export_c {
+  if !rm_eg_live(v, k) || j < 0 || j >= E5R_FOLK || amount <= 0 { return; }
+  e5rr_hurt(v[0].eg[k].rules[..], j, amount, ifx by >= 0 && by < EG_SEATS then EG_TGT_SEAT + by else -1);
+}
+
+// ---- what a seat hears (room-everglade.coax eg_send; `full` its snapshot)
+
+ra_send :: (v: [] RmServer, k: int, s: int, full: bool, o: [] EgOut) {
+  r := v[0].ab[k..<k + 1];
+  me := v[0].eg[k].seat[s].pose;
+  e: [128] u8;
+  if full {
+    r[0].heard_rg[s] = 0;
+    for j: 0..<E5R_FOLK { r[0].heard_a[s * E5R_FOLK + j] = 0; }
+  }
+  f := ifx full then 1 else 0;
+  seen := r[0].rg_on && eg_near(me, r[0].rg_x, r[0].rg_z);
+  was := r[0].heard_rg[s];
+  if was != 0 && (was != r[0].rg_id || !seen) {
+    n := wire_put_x(e[..], 0, WireX.{k = 'c', id = was}); eg_out_entry(o, v, k, s, f, cast(string) e[0..<n]);
+    r[0].heard_rg[s] = 0;
+  }
+  if seen && r[0].heard_rg[s] != r[0].rg_id {
+    n := wire_put_c(e[..], 0, WireC.{eid = r[0].rg_id, kind = WK_ZONE, x = r[0].rg_x, y = r[0].rg_y, z = r[0].rg_z, hp = -1, f = 1,
+                                     owner = r[0].rg_by, p1 = RA_REVERSE, p2 = RA_RG_R_CM});
+    eg_out_entry(o, v, k, s, f, cast(string) e[0..<n]);
+    r[0].heard_rg[s] = r[0].rg_id;
+  }
+  // the townsfolk off their feet, near you: on a change of RA_AIR_CM, and once when they land
+  for j: 0..<E5R_FOLK {
+    h := r[0].air[j];
+    heard := r[0].heard_a[s * E5R_FOLK + j];
+    if heard == 0 && h == 0 { continue; }
+    gap := heard - 1 - h;
+    if heard != 0 && h != 0 && gap < RA_AIR_CM && -gap < RA_AIR_CM { continue; }
+    fo := j * EG_FOLK_FLOATS;
+    if h != 0 && v[0].eg[k].folk_on && !eg_near(me, v[0].eg[k].folk[fo], v[0].eg[k].folk[fo + 1]) { continue; }
+    n := wire_put(e[..], 0, "a"); n = wire_int(e[..], n, j); n = wire_int(e[..], n, h);
+    eg_out_entry(o, v, k, s, f, cast(string) e[0..<n]);
+    r[0].heard_a[s * E5R_FOLK + j] = ifx h == 0 then 0 else h + 1;
+  }
+}
+
+#test "everglade room abilities: Reverse Gravity's cast goes to the world, its cylinder is an entity both seats hear, its caster's press again ends it" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-rg HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  // seat 0 (at x 0) casts slot 4: the world is handed it, where seat 0 stands
+  rm_heard(v[..], 0, "C 1 4 0 0 200 -1");
+  #assert rm_ra_casts(v[..], k) == 1;
+  c: [RA_CAST_FLOATS] f32;
+  rm_ra_cast(v[..], k, 0, c[..]);
+  #assert c[0] == 0 && c[1] == f32(RA_REVERSE) && c[6] == 1;
+  // (the rules roll nothing for it)
+  any := false; for q: 0..<EG_CASTS { if v[0].eg[k].casts[q].on { any = true; } }
+  #assert !any;
+  rm_ra_heard(v[..], k);
+  // the world says its cylinder stands there: both seats hear it, owned by seat 0
+  rm_ra_rg(v[..], k, true, 0, 0, 0, 0);
+  rm_ra_air(v[..], k, 3, 2.5);
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  a := eg_test_of(box[..], 0); b := eg_test_of(box[..], 1);
+  #assert eg_test_has(a, "c 900001 24 0 0 0 0 -1 1 0 0 1524") && eg_test_has(b, "c 900001 24 0 0 0 0 -1 1 0 0 1524");
+  #assert eg_test_has(a, "e cast 0 4 ") && eg_test_has(b, "e cast 0 4 ");
+  #assert eg_test_has(b, ";a 3 250");
+  // not again while nothing changed
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert !eg_test_has(eg_test_of(box[..], 1), "c 900001") && !eg_test_has(eg_test_of(box[..], 1), "a 3");
+  // a joiner's snapshot has it
+  #assert rm_join(v[..], 2, ev) == 2;
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 2), "c 900001 24 ") && eg_test_has(eg_test_of(box[..], 2), "a 3 250");
+  // the other seat's E for it isn't the world's; its caster's E and press again both end it
+  #assert !ra_end(v[..], k, 1, 4);
+  rm_heard(v[..], 0, "E 2 5 4");
+  #assert rm_ra_casts(v[..], k) == 1;
+  rm_ra_cast(v[..], k, 0, c[..]);
+  #assert c[6] == 0;
+  rm_ra_heard(v[..], k);
+  for q: 0..<8 { eg_test_tick(v[..], k); }
+  rm_heard(v[..], 0, "C 3 4 0 0 200 -1");
+  rm_ra_cast(v[..], k, 0, c[..]);
+  #assert c[6] == 0;   // (the world's cylinder is still seat 0's: pressing again ends it)
+  rm_ra_heard(v[..], k);
+  // gone: everyone hears it go, and the person land
+  rm_ra_rg(v[..], k, false, -1, 0, 0, 0);
+  rm_ra_air(v[..], k, 3, 0);
+  for q: 0..<10 { eg_test_tick(v[..], k); }
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 1), "x c 900001") && eg_test_has(eg_test_of(box[..], 1), "a 3 0");
+}

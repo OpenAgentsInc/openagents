@@ -20,9 +20,11 @@
 //      other player as drawn (stalls and lurches against the frames around them);
 //   6. the jump: A jumps while walking and walks on; A's drawn clip (field probe 4) goes to the jump
 //      once and never shows it after, and A's act is walking again on both sockets;
-//   7. INVITE: a third page opens A's link (the page with ?room= A's instance, as INVITE copies it)
+//   7. Reverse Gravity (slot 4, #12733): A casts it, the server's cylinder (an entity from 900000) is
+//      on both pages, the server lifts A over 3 m (A's own word and B's D), A's press again ends it;
+//   8. INVITE: a third page opens A's link (the page with ?room= A's instance, as INVITE copies it)
 //      and must sit in A's instance on A's shard, with A in its state;
-//   8. with OA_EVERGLADE_ADMIN_SESSION (an admin's oa_session) and --allow-public-edit: A places a
+//   9. with OA_EVERGLADE_ADMIN_SESSION (an admin's oa_session) and --allow-public-edit: A places a
 //      thing in EDIT and publishes; B hears e edit and fetches the world within 2 s. Off by default:
 //      it publishes to the realm's world.
 // Smoothness numbers are reported, not judged here (everglade-proof.sh judges them); the checks decide
@@ -303,11 +305,37 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   bput(qp[..], "; return p.jumped && p.into_jump === 1 && p.stuck_frames === 0 && p.frames_after > 30 && a.jumped && a.walked && a.jump_bits_after_up === 0 && b.walked ? 1 : 0; })()");
   all = ep_check(ep_int(ca, btext(qp[..]), 0) == 1, "the jump: A's drawn clip goes to the jump once and, walking on, never shows it again; A's act is walking again on both sockets") && all;
   proc_sleep(1500);
+  // 7. A casts Reverse Gravity where it stands: the server's cylinder is an entity on both pages, and
+  // the server lifts A (its own word on A, and B's), then A's press again ends it and A comes down
+  ep_mark(ca, cb, "reverse_gravity");
+  y0 := ep_int(ca, "__eg.probe(20)", -999999);
+  tr := ep_int(cb, "Math.round(__eg.now())", -1);
+  rg_went := ep_int(ca, "__eg.cast(4)", 0);
+  rg_both := false; top_a := -999999; top_b := -999999;
+  deadline = proc_now_ms() + 6000;
+  qr: [1] Buf; bput(qr[..], "__eg.topSince("); bint(qr[..], tr); bput(qr[..], ", "); bint(qr[..], sa); bput(qr[..], ")");
+  while proc_now_ms() < deadline && !(rg_both && top_a > y0 + 300 && top_b > y0 + 300) {
+    proc_sleep(200);
+    rg_both = ep_int(ca, "__eg.madeFrom(900000)", 0) > 0 && ep_int(cb, "__eg.madeFrom(900000)", 0) > 0;
+    ya := ep_int(ca, "__eg.probe(20)", -999999); if ya > top_a { top_a = ya; }
+    top_b = ep_int(cb, btext(qr[..]), -999999);
+  }
+  all = ep_check(rg_went == 1 && rg_both, "A's Reverse Gravity: its cylinder is the server's entity on both pages") && all;
+  all = ep_check(top_a > y0 + 300 && top_b > y0 + 300, "Reverse Gravity lifts A on the server: A's own word and B's have A over 3 m up") && all;
+  print("  A's y before % cm, highest: A's word % cm, B's % cm\n", y0, top_a, top_b);
+  rg_off := ep_int(ca, "__eg.cast(4)", 0);
+  gone := false;
+  deadline = proc_now_ms() + 6000;
+  while !gone && proc_now_ms() < deadline { proc_sleep(200); gone = ep_int(ca, "__eg.madeFrom(900000)", 1) == 0 && ep_int(cb, "__eg.madeFrom(900000)", 1) == 0; }
+  proc_sleep(3000);
+  y1 := ep_int(ca, "__eg.probe(20)", -999999);
+  all = ep_check(rg_off == 1 && gone && y1 < y0 + 100, "A's press again ends it on both pages and A comes down") && all;
+  print("  A's y after % cm\n", y1);
   // B walks 4 s, so A has a moving remote body too
   ep_mark(ca, cb, "walk_b");
   _ = ep_w(cb, true); proc_sleep(4000); _ = ep_w(cb, false);
   ep_mark(ca, cb, "end");
-  // 7. INVITE's link: the page's address with ?room= and A's instance; a third page opens it and must
+  // 8. INVITE's link: the page's address with ?room= and A's instance; a third page opens it and must
   // sit in A's instance (the same code, on the same shard's socket path) with A in its state
   inv_ok := false;
   code_b: [256] u8; code := ep_str(ca, "__eg.code || ''", code_b[..]);
@@ -331,7 +359,7 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
     }
   }
   all = ep_check(inv_ok, "INVITE: a page opening A's ?room= link lands in A's instance, on A's shard, and has A") && all;
-  // 8. live admin edits (opt in): A, an admin (OA_EVERGLADE_ADMIN_SESSION, its oa_session), places a
+  // 9. live admin edits (opt in): A, an admin (OA_EVERGLADE_ADMIN_SESSION, its oa_session), places a
   // thing and publishes (B: EDIT, 1: the first thing, B: DONE publishes at once); B's socket hears
   // e edit and B's page fetches the world within 2 s
   if admin.count > 0 {

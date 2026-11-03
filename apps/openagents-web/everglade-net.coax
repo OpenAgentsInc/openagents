@@ -112,6 +112,7 @@ EgNet :: struct {
   wanted: int = -1;          // your WANTED level (w; -1 none heard: the server runs no town)
   breaks_heard: int; burns_heard: int;   // the town's pieces the server broke and lit (e break, e burn)
   fx: [NET_FX] NetFx;
+  air: [WATCH_ACTORS] f32;   // how high over their feet each townsperson is, as the server says (a, m)
   said: [48] u8; said_n: int; said_t: f32;   // the last refusal's reason
   hello_due: bool;
   pipe: [1] Pipe;
@@ -344,6 +345,7 @@ net_down :: (n: [] EgNet) {
   n[0].retry = n[0].mono + lo_int(wait, 60000);
   for e: 0..<NET_ENTS { n[0].ents[e].live = false; }
   for q: 0..<NET_FX { n[0].fx[q].live = false; }
+  for i: 0..<WATCH_ACTORS { n[0].air[i] = 0; }
   n[0].fix_due = false; n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0;
 }
 // A socket event (message kind 256 + 4 * id + event, its text in the inbox): true when it was ours.
@@ -523,6 +525,13 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     if k >= 0 { n[0].ents[k].live = false; }
     return;
   }
+  if c == 'a' {
+    // a townsperson the server's abilities have off their feet (Reverse Gravity): CM over them
+    i := wire_num(t, r[..]); cm := wire_num(t, r[..]);
+    if !r[0].ok || i < 0 || i >= WATCH_ACTORS { return; }
+    n[0].air[i] = f32(cm) / 100;
+    return;
+  }
   if c == 'w' {
     ss := wire_num(t, r[..]); level := wire_num(t, r[..]);
     if !r[0].ok || ss < 0 { return; }
@@ -540,7 +549,10 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     if k >= 0 { n[0].ents[k].cast_slot = ce.slot; n[0].ents[k].cast_at = n[0].tick_t; }
     for q: 0..<NET_FX {
       if n[0].fx[q].live { continue; }
-      n[0].fx[q] = NetFx.{live = true, slot = ce.slot, caster = ce.ss, at = v3(ce.ax, ce.ay, ce.az), seed = ce.seed, t = n[0].tick_t};
+      // the server says the cast at its press: the strike plays once the cast bar is done (the meteors
+      // fall and land after its 2.5 s, as offline), on every page alike
+      bar := ifx ce.slot < SP_SLOTS then cast(int) (srd_spell(SP_SPELL[ce.slot]).bar * 1000) else 0;
+      n[0].fx[q] = NetFx.{live = true, slot = ce.slot, caster = ce.ss, at = v3(ce.ax, ce.ay, ce.az), seed = ce.seed, t = n[0].tick_t + bar};
       break;
     }
     return;
@@ -755,6 +767,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
     en[0].run += sqrt(dx * dx + dz * dz);
     en[0].shown = p;
   }
+  if net_live(s) && sp_on(s) { net_follow(s, n, now); }
   // the casts, each at its time
   for q: 0..<NET_FX {
     fx := n[0].fx[q];
@@ -859,6 +872,21 @@ net_press :: (s: [] Everglade, k: int) {
 
 // ---- the server's spell effects on this page
 
+// What the server's abilities hold up that this page feels and draws as its own would be (everglade-
+// room-abilities.coax): Reverse Gravity's cylinder, from its entity. Its saves, lifts and crimes stay
+// the server's; your movement predicts its lift (everglade_lift), its debris rises here.
+net_follow :: (s: [] Everglade, n: [] EgNet, now: int) {
+  on := false; at := v3(0, 0, 0); age := 0.0f32;
+  for e: 0..<NET_ENTS {
+    en := n[0].ents[e];
+    if !en.live || en.ring_n == 0 || en.kind != WK_ZONE || en.p1 != AB_REVERSE { continue; }
+    on = true; at = v3(en.shown.x, en.shown.y, en.shown.z); age = f32(now - en.born) / 1000;
+  }
+  ab_rg_follow(s, on, at, age);
+}
+// How high over their feet the server has townsperson i (Reverse Gravity's lift), m.
+net_air :: (s: [] Everglade, i: int) -> f32 { return ifx net_town(s) && i >= 0 && i < WATCH_ACTORS then net_of(s)[0].air[i] else 0.0f32; }
+
 // An aimed spell's effect (meteors, a bolt, the orb), played from the server's seed: its look alone
 // (everglade-spells.coax sp_blast_look). What it harms and breaks the server says.
 net_play :: (s: [] Everglade, slot: int, from: Point, at: Point, seed: int) {
@@ -907,7 +935,7 @@ net_draw :: (s: [] Everglade) {
     else if en.kind == WK_STONE { net_draw_stone(s, en, age); }
     else if en.kind == WK_TENTACLES { net_draw_tentacles(s, en, age); }
     else if en.kind == WK_THORNS { net_draw_thorns(s, en, age, few); }
-    else if en.kind == WK_ZONE { net_draw_zone(s, en, age); }
+    else if en.kind == WK_ZONE && en.p1 != AB_REVERSE { net_draw_zone(s, en, age); }   // (Reverse Gravity's is ab_draw's: net_follow)
     else if en.kind == WK_LINE { net_draw_line(s, en, age); }
     // a summoned creature is a beast of flesh now (the room's battle has its stat block), not a spirit
     else if en.kind == WK_BEAST { ci_beast(s, clamp_i(en.p1, 1, CI_FORMS - 1), v3(en.shown.x, en.shown.y, en.shown.z), en.shown.yaw, en.run, ifx abs(en.shown.vx) + abs(en.shown.vz) > 0.2 then 1.0f32 else 0.0f32, false, clamp(age / 0.6, 0, 1)); }
@@ -1614,6 +1642,10 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert net_probe(a[..], 10) == 0;
   net_step(a[..], 300 + NET_HIGH, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   net_step(b[..], 300 + NET_HIGH, 3, 0, 9, 0, 0, 0, false, 0, false, 0);
+  // B's cast bar (2.5 s) still fills: the meteors fall once it is done, on both pages (#12733)
+  #assert net_probe(a[..], 10) == 0 && net_probe(b[..], 10) == 0;
+  net_step(a[..], 300 + NET_HIGH + 2500, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  net_step(b[..], 300 + NET_HIGH + 2500, 3, 0, 9, 0, 0, 0, false, 0, false, 0);
   #assert net_probe(a[..], 10) == 1 && net_probe(b[..], 10) == 1;
   live := 0;
   for q: 0..<SP_METEORS {
