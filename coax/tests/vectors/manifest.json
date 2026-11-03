@@ -1453,7 +1453,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-merkle",
-        "bitcoin-witness-commitment"
+        "bitcoin-witness-commitment",
+        "bitcoin-compact-blocks"
       ],
       "retrieved": "2026-11-02",
       "sha256": "65e88786ccaaf4dd0ebd14e7a0b82d7fbe6b86a8f0b2f9de4cc2db7b983283d2",
@@ -1480,7 +1481,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-merkle"
+        "bitcoin-merkle",
+        "bitcoin-compact-blocks"
       ],
       "retrieved": "2026-11-02",
       "sha256": "71964cee18c58675784846d498944b35daa41e36b6f65a7e8feb291def924cce",
@@ -1573,7 +1575,8 @@
       "license": "Public Bitcoin blockchain data",
       "covers": [
         "bitcoin-merkle",
-        "bitcoin-witness-commitment"
+        "bitcoin-witness-commitment",
+        "bitcoin-compact-blocks"
       ],
       "retrieved": "2026-11-02",
       "sha256": "7c0d1862284dcd240a63b5bcb75e956c3645ed5d7453799abb721ce06e6b2902",
@@ -1945,7 +1948,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-p2p",
-        "bitcoin-handshake"
+        "bitcoin-handshake",
+        "bitcoin-compact-blocks"
       ],
       "retrieved": "2026-11-03",
       "sha256": "bcd69aba37869cd68dfe03cce37b1400d1488b59ef1faafdc319ddcb51ebea36",
@@ -1986,7 +1990,8 @@
       "covers": [
         "bitcoin-p2p",
         "bitcoin-handshake",
-        "bitcoin-witness-commitment"
+        "bitcoin-witness-commitment",
+        "bitcoin-compact-blocks"
       ],
       "retrieved": "2026-11-03",
       "sha256": "44e3b8c702916c8ab7820db65cf38af801dd5b5a457e91cabdff95eba5d412a5",
@@ -2591,7 +2596,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-witness-commitment"
+        "bitcoin-witness-commitment",
+        "bitcoin-compact-blocks"
       ],
       "retrieved": "2026-11-03",
       "sha256": "13de0034eb8f41e3435e8f2996ef217221b4450f21f7c24aef1d6e20bc1590df",
@@ -2635,6 +2641,71 @@
       "retrieved": "2026-11-03",
       "sha256": "ec747f471d4467b710c41db11337dd93f834775cd08fdb94c8fb24efd0fca531",
       "bytes": 11257
+    },
+    {
+      "path": "upstream/bip152/bip-0152.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0152.mediawiki",
+      "revision": "git:927b6de9915c9262615a6399de51b200f81e5aa4",
+      "license": "PD (declared in source)",
+      "covers": [
+        "bitcoin-compact-blocks"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "b710fa0a4ab9ec92d84884adc77df25b974add79dbc23b8158bf3a791e47cd85",
+      "bytes": 31006
+    },
+    {
+      "path": "upstream/bitcoin-core/blockencodings.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/blockencodings.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-compact-blocks"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "3b2db1f2d8987f1d83c4f92536b5467f922f992aa1e5bbd04327f11c01b30933",
+      "bytes": 5683
+    },
+    {
+      "path": "upstream/bitcoin-core/blockencodings.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/blockencodings.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-compact-blocks"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "411f83d16f76e8e96f7f6df307812bde2101a5624ef7349c1a0569b2b97d9fe6",
+      "bytes": 13866
+    },
+    {
+      "path": "upstream/bitcoin-core/blockencodings_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/blockencodings_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-compact-blocks"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "c070a461070d43d1052a3e4d14e5cdb10ed27e862b71cb393437f03a23487c54",
+      "bytes": 18965
+    },
+    {
+      "path": "upstream/bitcoin-core/siphash.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/crypto/siphash.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-compact-blocks"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "395fb94ebc7fb7d38bfe86bc3dbfb4df2e94d3c1e3cd1c41b66cc19d0d5e76e3",
+      "bytes": 2401
     }
   ]
 }

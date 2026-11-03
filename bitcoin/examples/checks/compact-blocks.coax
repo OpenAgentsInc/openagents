@@ -1,0 +1,52 @@
+// The checks of compact-blocks.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/compact-blocks.coax
+#load "../compact-blocks.coax";
+
+// book:begin check
+// Any prefilled set rebuilds block 514,999 byte for byte from a mempool
+// that holds every other transaction: the coinbase and transaction i are
+// sent whole, and the differential indexes put i back where it was.
+#forall "any prefilled transaction rebuilds" i: 1..<19 #steps 400000000 {
+  ins: [12] TxIn; outs: [8] TxOut; items: [16] TxItem;
+  b: [6000] u8; wids: [32 * 20] u8; btx: [20] CmpctTx; c: [6000] u8;
+  pre: [24] CmpctPrefilled; slots: [24] CmpctSlot; map: [24] CmpctEntry; out: [6000] u8; hashes: [96 * 24] u8;
+  blk := decode(MK_BLOCK_514999, b[..]);
+  w := cmpct_block_txs_vartime(blk, btx[..], wids[..], ins[..], outs[..], items[..]);
+  two := [2] int.[0, i];
+  n := cmpct_write_vartime(blk[0..<80], CB_NONCE_514999, wids[0..<32*w.count], blk, btx[0..<w.count], two[..], c[..]);
+  k := cmpct_read_vartime(c[0..<n], pre[..], ins[..], outs[..], items[..]);
+  #assert k.code == CMPCT_OK && k.nprefilled == 2 && k.nshort == w.count - 2;
+  #assert pre[0].diff == 0 && pre[1].diff == i - 1;
+  s := cmpct_init_vartime(c[0..<n], k, pre[..], wids[0..<32*w.count], wids[0..<0], wids[0..<0], slots[..], map[..]);
+  #assert s.status == CMPCT_OK && s.prefilled == 2 && s.mempool == w.count - 2;
+  f := cmpct_fill_vartime(c[0..<n], pre[..], slots[0..<s.count], blk, btx[0..<w.count], btx[0..<0],
+    blk[0..<0], btx[0..<0], true, out[..], ins[..], outs[..], items[..], hashes[..]);
+  #assert f.status == CMPCT_OK && equal_bytes(out[0..<f.n], blk);
+}
+// getblocktxn's differential indexes round-trip for every subset of the
+// first six indexes, read back in increasing order.
+#forall "getblocktxn round-trips" m: 1..<64 {
+  hash: [32] u8; idx: [6] int; got: [6] int; q: [64] u8;
+  count := 0;
+  for j: 0..<6 { if (m >> j) & 1 == 1 { idx[count] = j * 1000; count += 1; } }
+  r := cmpct_request_write_vartime(hash[..], idx[0..<count], q[..]);
+  l := cmpct_request_read_vartime(q[0..<r], got[..]);
+  #assert l.code == CMPCT_OK && l.count == count;
+  for j: 0..<count { #assert got[j] == idx[j]; }
+}
+// Short IDs are 48 bits, and the nonce changes them: each nonce gives new
+// SipHash keys, so a collision under one nonce is unlikely under the next.
+#forall "short IDs are 48 bits and move with the nonce" nonce: 0..<32 #steps 200000000 {
+  b: [6000] u8; wids: [32 * 20] u8; btx: [20] CmpctTx;
+  ins: [12] TxIn; outs: [8] TxOut; items: [16] TxItem;
+  blk := decode(MK_BLOCK_514999, b[..]);
+  w := cmpct_block_txs_vartime(blk, btx[..], wids[..], ins[..], outs[..], items[..]);
+  a := cmpct_keys(blk[0..<80], cast(u64) nonce);
+  z := cmpct_keys(blk[0..<80], cast(u64) nonce + 1);
+  for i: 1..<w.count {
+    s := cmpct_short_id(a, wids[32*i..<32*i+32]);
+    #assert s >> 48 == 0 && s != cmpct_short_id(z, wids[32*i..<32*i+32]);
+  }
+}
+// book:end check

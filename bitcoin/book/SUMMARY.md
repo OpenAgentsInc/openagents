@@ -90,3 +90,4 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [66. ElligatorSwift](ch066-elligatorswift.md) — implemented
 - [67. The v2 encrypted transport](ch067-the-v2-encrypted-transport.md) — implemented
 - [68. The handshake and feature negotiation](ch068-the-handshake-and-feature-negotiation.md) — implemented
+- [73. Compact blocks](ch073-compact-blocks.md) — implemented

@@ -593,6 +593,17 @@
         "release"
       ],
       "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/compact-blocks.coax",
+      "chapter": "bitcoin/book/ch073-compact-blocks.md",
+      "stdout": "bitcoin/fixtures/compact-blocks.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

@@ -1,0 +1,796 @@
+// Compact blocks (Bitcoin chapter 73): BIP-152, version 2.
+//
+// A node announces a block as its header, a nonce and a 6-byte short ID
+// for each transaction, and the receiver rebuilds the block from its
+// mempool, asking only for what it lacks:
+//
+// - cmpct_keys and cmpct_short_id: the SipHash-2-4 keys from
+//   SHA-256(header || nonce), and a wtxid's short ID.
+// - cmpct_write_vartime and cmpct_read_vartime: the cmpctblock message,
+//   with prefilled transactions at differentially encoded indexes.
+// - cmpct_init_vartime: PartiallyDownloadedBlock::InitData, which places
+//   the prefilled transactions and matches short IDs against a mempool and
+//   an extra pool, collisions included.
+// - cmpct_request_write_vartime and cmpct_request_read_vartime: getblocktxn;
+//   cmpct_blocktxn_write_vartime and cmpct_blocktxn_read_vartime: blocktxn.
+// - cmpct_fill_vartime: FillBlock, which puts the block together and runs
+//   IsBlockMutated (chapter 49) on it.
+// - cmpct_hb_choose_vartime: which three peers announce in high-bandwidth
+//   mode, as MaybeSetPeerAsAnnouncingHeaderAndIDs chooses them.
+//
+// The code follows Bitcoin Core's blockencodings.h and blockencodings.cpp,
+// and net_processing.cpp for the messages, at revision ddea9196. SipHash
+// is chapter 10's, transactions chapter 34's and the mutation check
+// chapter 49's. Blocks and their messages are public, so everything runs
+// in variable time and every procedure that decides ends in _vartime
+// (Bitcoin chapter 3). Readers copy nothing: a read message is positions
+// in the caller's bytes.
+#load "witness.coax";
+#load "../crypto/siphash.coax";
+#load "../../tests/bitcoin/cmpct_vectors.coax";
+#load "../../tests/bitcoin/merkle_block413567.coax";
+#authority;
+
+// book:begin constants
+CMPCT_VERSION :: 2;              // CMPCTBLOCKS_VERSION: wtxids and witnesses (BIP-152 version 2)
+CMPCT_SHORT_ID :: 6;             // SHORTTXIDS_LENGTH: bytes in a short ID
+CMPCT_MAX_INDEX :: 0xffff;       // indexes are uint16_t: no block of more transactions
+CMPCT_MAX_TXS :: 100000;         // MAX_BLOCK_WEIGHT / MIN_SERIALIZABLE_TRANSACTION_WEIGHT
+CMPCT_HB_PEERS :: 3;             // BIP-152: high-bandwidth mode to at most three peers
+CMPCT_MAX_DEPTH :: 5;            // MAX_CMPCTBLOCK_DEPTH: answer getdata with cmpctblock this near the tip
+CMPCT_MAX_BLOCKTXN_DEPTH :: 10;  // MAX_BLOCKTXN_DEPTH: answer getblocktxn with blocktxn this near the tip
+// book:end constants
+
+// book:begin codes
+// ReadStatus, then the refusals of the readers and writers. Core's words
+// are in quotes.
+CMPCT_OK :: 0;
+CMPCT_INVALID :: 1;        // READ_STATUS_INVALID: malformed, "invalid compact block"; the peer is penalized
+CMPCT_FAILED :: 2;         // READ_STATUS_FAILED: a short-ID collision, or a mutated result; ask for the block
+CMPCT_BAD :: 3;            // the bytes don't read; tx_code says why (a deserialization exception in Core)
+CMPCT_INDEX_RANGE :: 4;    // a prefilled index above 0xffff: "CompactSize exceeds limit of type"
+CMPCT_TOO_MANY :: 5;       // more than 0xffff transactions: "indexes overflowed 16 bits"
+CMPCT_DIFF_OVERFLOW :: 6;  // a getblocktxn index past 0xffff: "differential value overflow"
+CMPCT_OUT_OF_BOUNDS :: 7;  // a getblocktxn index past the block: "getblocktxn with out-of-bounds tx indices"
+CMPCT_CAPACITY :: 8;       // more entries than the caller's views hold, or no room to write
+
+// Where InitData found each transaction of the block.
+CMPCT_MISSING :: 0;        // not found: ask for it with getblocktxn
+CMPCT_PREFILLED :: 1;      // in the cmpctblock itself
+CMPCT_MEMPOOL :: 2;        // in the mempool
+CMPCT_EXTRA :: 3;          // in the extra pool: recent orphans and replaced transactions
+CMPCT_COLLIDED :: 4;       // two different transactions have its short ID: ask for it
+// book:end codes
+
+// ---- checks
+// Decode hex into out, which has room.
+cb_unhex :: (text: string, out: [] u8) -> [] u8 {
+  #assert text.count <= 2 * out.count;
+  return tx_unhex(text, out);
+}
+cb_same :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// The cmpctblock of one of Core's test blocks, with the coinbase prefilled.
+cb_build :: (blk: [] u8, nonce: u64, txs: [] CmpctTx, wids: [] u8, out: [] u8) -> int {
+  ins: [12] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  w := cmpct_block_txs_vartime(blk, txs, wids, ins[..], outs[..], items[..]);
+  #assert w.code == CMPCT_OK;
+  zero := [1] int.[0];
+  return cmpct_write_vartime(blk[0..<80], nonce, wids[0..<32*w.count], blk, txs[0..<w.count], zero[..], out);
+}
+// The SipHash keys and short IDs of block 413,567 agree with Core's
+// messages.py, and so does the whole cmpctblock, by its SHA-256.
+#test "block 413,567's short IDs" #steps 600000000 {
+  h: [80] u8; leaves: [32 * 1557] u8; cb: [400] u8; out: [9700] u8; d: [32] u8;
+  header := cb_unhex(MK_HEADER_413567, h[..]);
+  ids := cb_unhex(MK_LEAVES_413567, leaves[..]);
+  coinbase := cb_unhex(CB_COINBASE_413567, cb[..]);
+  k := cmpct_keys(header, CB_NONCE_413567);
+  #assert k.k0 == CB_K0_413567 && k.k1 == CB_K1_413567;
+  for i: 0..<3 { #assert cmpct_short_id(k, ids[32*(i+1)..<32*(i+2)]) == CB_SHORT_413567[i]; }
+  txs: [1557] CmpctTx;
+  txs[0] = CmpctTx.{at=0, n=coinbase.count};
+  zero := [1] int.[0];
+  n := cmpct_write_vartime(header, CB_NONCE_413567, ids, coinbase, txs[..], zero[..], out[..]);
+  #assert n == CB_SIZE_413567;
+  #assert sha256_hash_checked(out[0..<n], d[..], false) == SHA_OK && mk_shown_is_forward(d[..], CB_SHA_413567);
+  // It reads back: 1,556 short IDs and the coinbase at index 0.
+  pre: [2] CmpctPrefilled; ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  r := cmpct_read_vartime(out[0..<n], pre[..], ins[..], outs[..], items[..]);
+  #assert r.code == CMPCT_OK && r.nshort == 1556 && r.nprefilled == 1 && pre[0].diff == 0 && r.next == n;
+  #assert cmpct_short_at(out[..], r, 1555) == cmpct_short_id(k, ids[32*1556..<32*1557]);
+}
+// Hex of a digest in the order it is stored.
+mk_shown_is_forward :: (d: [] u8, text: string) -> bool {
+  t: [32] u8;
+  return cb_same(d, cb_unhex(text, t[..]));
+}
+// Our cmpctblock of Core's test block is the one messages.py writes.
+#test "the test block's cmpctblock" #steps 100000000 {
+  b: [2000] u8; want: [2000] u8; out: [2000] u8; wids: [32 * 4] u8; txs: [4] CmpctTx;
+  blk := cb_unhex(CB_TEST_BLOCK, b[..]);
+  n := cb_build(blk, CB_NONCE_TEST, txs[..], wids[..], out[..]);
+  #assert cb_same(out[0..<n], cb_unhex(CB_TEST_CMPCT, want[..]));
+}
+
+// One case of Core's tests: the cmpctblock out, a mempool of the given
+// transactions of blk (by index) and nothing extra; InitData's status and
+// which transactions it has.
+CbRun :: struct { status: int; available: [5] bool; mempool: int; extra: int; missing: int; }
+cb_init :: (c: [] u8, blk: [] u8, pool: [] int, extra_keys: [] u8, extra_ids: [] u8) -> CbRun {
+  ins: [12] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  pre: [4] CmpctPrefilled; slots: [5] CmpctSlot; map: [5] CmpctEntry;
+  txs: [5] CmpctTx; wids: [32 * 5] u8; pool_ids: [32 * 5] u8;
+  w := cmpct_block_txs_vartime(blk, txs[..], wids[..], ins[..], outs[..], items[..]);
+  for p: 0..<pool.count { for i: 0..<32 { pool_ids[32*p+i] = wids[32*pool[p]+i]; } }
+  r := cmpct_read_vartime(c, pre[..], ins[..], outs[..], items[..]);
+  #assert r.code == CMPCT_OK;
+  s := cmpct_init_vartime(c, r, pre[..], pool_ids[0..<32*pool.count], extra_keys, extra_ids, slots[..], map[..]);
+  run := CbRun.{status=s.status, mempool=s.mempool, extra=s.extra};
+  for i: 0..<s.count { run.available[i] = slots[i].source != CMPCT_MISSING && slots[i].source != CMPCT_COLLIDED; }
+  if s.status == CMPCT_OK { idx: [5] int; run.missing = cmpct_missing_vartime(slots[0..<s.count], idx[..]); }
+  return run;
+}
+// SimpleRoundTripTest: the coinbase prefilled, transaction 2 in the
+// mempool, transaction 1 missing; FillBlock with nothing is invalid, and
+// with transaction 1 rebuilds the block.
+#test "Core's SimpleRoundTripTest" #steps 200000000 {
+  b: [2000] u8; c: [2000] u8; wids: [32 * 4] u8; txs: [4] CmpctTx; none: [32] u8;
+  blk := cb_unhex(CB_TEST_BLOCK, b[..]);
+  n := cb_build(blk, CB_NONCE_TEST, txs[..], wids[..], c[..]);
+  pool := [1] int.[2];
+  run := cb_init(c[0..<n], blk, pool[..], none[0..<0], none[0..<0]);
+  #assert run.status == CMPCT_OK && run.available[0] && !run.available[1] && run.available[2] && run.missing == 1;
+  #assert cb_fill(c[0..<n], blk, pool[..], 0, 0) == CMPCT_INVALID;
+  #assert cb_fill(c[0..<n], blk, pool[..], 1, 1) == CMPCT_OK;
+  // The wrong transaction in blocktxn: the rebuilt block is mutated.
+  #assert cb_fill(c[0..<n], blk, pool[..], 2, 1) == CMPCT_FAILED;
+}
+// Fills the cmpctblock c from a mempool of pool, then the blocktxn of
+// count transactions starting at blk's transaction first, and checks the
+// result is blk when it is OK.
+cb_fill :: (c: [] u8, blk: [] u8, pool: [] int, first: int, count: int) -> int {
+  ins: [12] TxIn; outs: [4] TxOut; items: [12] TxItem;
+  pre: [4] CmpctPrefilled; slots: [5] CmpctSlot; map: [5] CmpctEntry;
+  txs: [5] CmpctTx; wids: [32 * 5] u8; pool_ids: [32 * 5] u8; pool_txs: [5] CmpctTx;
+  hashes: [96 * 5] u8; out: [2000] u8; none: [32] u8;
+  w := cmpct_block_txs_vartime(blk, txs[..], wids[..], ins[..], outs[..], items[..]);
+  for p: 0..<pool.count { pool_txs[p] = txs[pool[p]]; for i: 0..<32 { pool_ids[32*p+i] = wids[32*pool[p]+i]; } }
+  r := cmpct_read_vartime(c, pre[..], ins[..], outs[..], items[..]);
+  s := cmpct_init_vartime(c, r, pre[..], pool_ids[0..<32*pool.count], none[0..<0], none[0..<0], slots[..], map[..]);
+  missing: [4] CmpctTx;
+  for i: 0..<count { missing[i] = txs[first+i]; }
+  no_extra: [1] CmpctTx;
+  f := cmpct_fill_vartime(c, pre[..], slots[0..<s.count], blk, pool_txs[0..<pool.count], no_extra[0..<0], blk, missing[0..<count], true, out[..], ins[..], outs[..], items[..], hashes[..]);
+  if f.status == CMPCT_OK { #assert cb_same(out[0..<f.n], blk); }
+  return f.status;
+}
+// NonCoinbasePreforwardRTTest: transaction 1 prefilled at index 1, the
+// coinbase and transaction 2 as short IDs, transaction 2 in the mempool.
+#test "Core's NonCoinbasePreforwardRTTest" #steps 200000000 {
+  b: [2000] u8; c: [2000] u8; wids: [32 * 4] u8; txs: [4] CmpctTx; none: [32] u8;
+  ins: [12] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  blk := cb_unhex(CB_TEST_BLOCK, b[..]);
+  w := cmpct_block_txs_vartime(blk, txs[..], wids[..], ins[..], outs[..], items[..]);
+  one := [1] int.[1];
+  n := cmpct_write_vartime(blk[0..<80], CB_NONCE_TEST, wids[0..<96], blk, txs[0..<3], one[..], c[..]);
+  pool := [1] int.[2];
+  run := cb_init(c[0..<n], blk, pool[..], none[0..<0], none[0..<0]);
+  #assert run.status == CMPCT_OK && !run.available[0] && run.available[1] && run.available[2];
+  #assert cb_fill(c[0..<n], blk, pool[..], 0, 0) == CMPCT_INVALID;
+  #assert cb_fill(c[0..<n], blk, pool[..], 1, 1) == CMPCT_FAILED;
+  #assert cb_fill(c[0..<n], blk, pool[..], 0, 1) == CMPCT_OK;
+}
+// SufficientPreforwardRTTest: the coinbase and transaction 2 prefilled
+// (differential indexes 0 and 1), transaction 1 in the mempool: nothing to
+// ask for.
+#test "Core's SufficientPreforwardRTTest" #steps 200000000 {
+  b: [2000] u8; c: [2000] u8; wids: [32 * 4] u8; txs: [4] CmpctTx; none: [32] u8;
+  ins: [12] TxIn; outs: [4] TxOut; items: [4] TxItem; pre: [4] CmpctPrefilled;
+  blk := cb_unhex(CB_TEST_BLOCK, b[..]);
+  w := cmpct_block_txs_vartime(blk, txs[..], wids[..], ins[..], outs[..], items[..]);
+  two := [2] int.[0, 2];
+  n := cmpct_write_vartime(blk[0..<80], CB_NONCE_TEST, wids[0..<96], blk, txs[0..<3], two[..], c[..]);
+  r := cmpct_read_vartime(c[0..<n], pre[..], ins[..], outs[..], items[..]);
+  #assert r.nprefilled == 2 && pre[0].diff == 0 && pre[1].diff == 1 && r.nshort == 1;
+  pool := [1] int.[1];
+  run := cb_init(c[0..<n], blk, pool[..], none[0..<0], none[0..<0]);
+  #assert run.status == CMPCT_OK && run.available[0] && run.available[1] && run.available[2];
+  #assert cb_fill(c[0..<n], blk, pool[..], 0, 0) == CMPCT_OK;
+}
+// EmptyBlockRoundTripTest: the coinbase alone, prefilled.
+#test "Core's EmptyBlockRoundTripTest" #steps 100000000 {
+  b: [2000] u8; c: [2000] u8; wids: [32 * 4] u8; txs: [4] CmpctTx; none: [32] u8;
+  blk := cb_unhex(CB_EMPTY_BLOCK, b[..]);
+  n := cb_build(blk, CB_NONCE_TEST, txs[..], wids[..], c[..]);
+  nopool: [1] int;
+  run := cb_init(c[0..<n], blk, nopool[0..<0], none[0..<0], none[0..<0]);
+  #assert run.status == CMPCT_OK && run.available[0];
+  #assert cb_fill(c[0..<n], blk, nopool[0..<0], 0, 0) == CMPCT_OK;
+}
+// ReceiveWithExtraTransactions: transaction 2 in the mempool, and
+// (key, transaction) pairs in the extra pool, where a key that isn't its
+// transaction's wtxid stands for a short-ID collision.
+#test "Core's ReceiveWithExtraTransactions" #steps 300000000 {
+  b: [3000] u8; c: [3000] u8; wids: [32 * 5] u8; txs: [5] CmpctTx; t: [200] u8; other: [32] u8;
+  ins: [12] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  blk := cb_unhex(CB_TEST_BLOCK4, b[..]);
+  n := cb_build(blk, CB_NONCE_TEST, txs[..], wids[..], c[..]);
+  nb := cb_unhex(CB_NON_BLOCK_TX, t[..]);
+  x := tx_read_vartime(nb, true, ins[..], outs[..], items[..]);
+  #assert tx_wtxid_vartime(nb, x, other[..]);
+  keys: [32 * 6] u8; ids: [32 * 6] u8;
+  pool := [1] int.[2];
+  // Ten empty entries, as the test resizes extra_txn: none match.
+  run := cb_init(c[0..<n], blk, pool[..], keys[0..<0], ids[0..<0]);
+  #assert run.status == CMPCT_OK && run.available[0] && !run.available[1] && run.available[2];
+  // The unrelated transaction, then transaction 1 from the extra pool.
+  cb_put(keys[..], ids[..], 0, other[..], other[..]);
+  cb_put(keys[..], ids[..], 1, wids[32..<64], wids[32..<64]);
+  run = cb_init(c[0..<n], blk, pool[..], keys[0..<64], ids[0..<64]);
+  #assert run.status == CMPCT_OK && run.available[0] && run.available[1] && run.available[2];
+  // Transaction 2's key on the unrelated transaction: slot 2 collides.
+  cb_put(keys[..], ids[..], 2, wids[64..<96], other[..]);
+  run = cb_init(c[0..<n], blk, pool[..], keys[0..<96], ids[0..<96]);
+  #assert run.status == CMPCT_OK && run.available[1] && !run.available[2] && run.mempool == 0 && run.extra == 1;
+  // Transaction 1's key on it too: slot 1 collides as well.
+  cb_put(keys[..], ids[..], 3, wids[32..<64], other[..]);
+  run = cb_init(c[0..<n], blk, pool[..], keys[0..<128], ids[0..<128]);
+  #assert run.status == CMPCT_OK && !run.available[1] && !run.available[2] && run.mempool == 0 && run.extra == 0;
+  // Collided slots stay collided: the true transactions don't refill them.
+  cb_put(keys[..], ids[..], 4, wids[64..<96], wids[64..<96]);
+  cb_put(keys[..], ids[..], 5, wids[32..<64], wids[32..<64]);
+  run = cb_init(c[0..<n], blk, pool[..], keys[0..<192], ids[0..<192]);
+  #assert run.status == CMPCT_OK && !run.available[1] && !run.available[2] && run.mempool == 0 && run.extra == 0;
+}
+cb_put :: (keys: [] u8, ids: [] u8, at: int, key: [] u8, id: [] u8) {
+  for i: 0..<32 { keys[32*at+i] = key[i]; ids[32*at+i] = id[i]; }
+}
+// TransactionsRequest tests: indexes 0, 1, 3 and 4 round-trip and are
+// messages.py's bytes; 0xffff reads; deltas that pass 0xffff refuse.
+#test "Core's TransactionsRequest tests" {
+  b: [100] u8; out: [100] u8; idx: [8] int;
+  s := cb_unhex(CB_REQUEST, b[..]);
+  r := cmpct_request_read_vartime(s, idx[..]);
+  #assert r.code == CMPCT_OK && r.count == 4 && idx[0] == 0 && idx[1] == 1 && idx[2] == 3 && idx[3] == 4 && r.next == s.count;
+  #assert cmpct_request_write_vartime(s[0..<32], idx[0..<4], out[..]) == s.count && cb_same(out[0..<s.count], s);
+  s = cb_unhex(CB_REQUEST_MAX, b[..]);
+  r = cmpct_request_read_vartime(s, idx[..]);
+  #assert r.code == CMPCT_OK && r.count == 1 && idx[0] == 0xffff;
+  s = cb_unhex(CB_REQUEST_OVERFLOW, b[..]);
+  r = cmpct_request_read_vartime(s, idx[..]);
+  #assert r.code == CMPCT_DIFF_OVERFLOW && r.count == 2;
+  // Not ascending: Core's writer throws "differential value overflow".
+  down := [2] int.[3, 3];
+  #assert cmpct_request_write_vartime(s[0..<32], down[..], out[..]) == -1;
+}
+// A blocktxn: our bytes are messages.py's, and they read back.
+#test "the blocktxn of Core's test block" #steps 100000000 {
+  b: [2000] u8; want: [400] u8; out: [400] u8; wids: [32 * 4] u8; txs: [4] CmpctTx; h: [32] u8;
+  ins: [12] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  blk := cb_unhex(CB_TEST_BLOCK, b[..]);
+  w := cmpct_block_txs_vartime(blk, txs[..], wids[..], ins[..], outs[..], items[..]);
+  #assert sha256d_checked(blk[0..<80], h[..], false) == SHA_OK;
+  one := [1] int.[1];
+  r := cmpct_blocktxn_write_vartime(h[..], blk, txs[0..<w.count], one[..], out[..]);
+  #assert r.code == CMPCT_OK && cb_same(out[0..<r.n], cb_unhex(CB_BLOCKTXN, want[..]));
+  three := [1] int.[3];
+  #assert cmpct_blocktxn_write_vartime(h[..], blk, txs[0..<w.count], three[..], out[..]).code == CMPCT_OUT_OF_BOUNDS;
+  got: [2] CmpctTx;
+  l := cmpct_blocktxn_read_vartime(out[0..<r.n], got[..], ins[..], outs[..], items[..]);
+  #assert l.code == CMPCT_OK && l.count == 1 && got[0].n == txs[1].n && l.next == r.n;
+}
+// InitData's refusals: a null header, nothing at all, a prefilled index
+// past the short IDs, and a prefilled transaction with nothing in it.
+#test "malformed compact blocks are invalid" #steps 100000000 {
+  b: [2000] u8; c: [2000] u8; wids: [32 * 4] u8; txs: [4] CmpctTx; none: [32] u8;
+  blk := cb_unhex(CB_TEST_BLOCK, b[..]);
+  n := cb_build(blk, CB_NONCE_TEST, txs[..], wids[..], c[..]);
+  nopool: [1] int;
+  // nBits of zero is CBlockHeader::IsNull.
+  for i: 72..<76 { c[i] = 0; }
+  #assert cb_init(c[0..<n], blk, nopool[0..<0], none[0..<0], none[0..<0]).status == CMPCT_INVALID;
+  n = cb_build(blk, CB_NONCE_TEST, txs[..], wids[..], c[..]);
+  // The prefilled coinbase's index 0 becomes 3: past 2 short IDs and itself.
+  c[88 + 1 + 12 + 1] = 3;
+  #assert cb_init(c[0..<n], blk, nopool[0..<0], none[0..<0], none[0..<0]).status == CMPCT_INVALID;
+  c[88 + 1 + 12 + 1] = 2;
+  #assert cb_init(c[0..<n], blk, nopool[0..<0], none[0..<0], none[0..<0]).status == CMPCT_OK;
+  // No short IDs and no prefilled transactions.
+  c[88] = 0; c[89] = 0;
+  #assert cb_init(c[0..<90], blk, nopool[0..<0], none[0..<0], none[0..<0]).status == CMPCT_INVALID;
+  // One prefilled transaction with no inputs and no outputs.
+  empty := [10] u8.[2, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  c[89] = 1; c[90] = 0;
+  for i: 0..<10 { c[91+i] = empty[i]; }
+  #assert cb_init(c[0..<101], blk, nopool[0..<0], none[0..<0], none[0..<0]).status == CMPCT_INVALID;
+}
+// Two equal short IDs in one cmpctblock: READ_STATUS_FAILED, not invalid.
+#test "a short-ID collision in the message fails" #steps 100000000 {
+  b: [2000] u8; c: [2000] u8; wids: [32 * 4] u8; txs: [4] CmpctTx; none: [32] u8;
+  blk := cb_unhex(CB_TEST_BLOCK, b[..]);
+  n := cb_build(blk, CB_NONCE_TEST, txs[..], wids[..], c[..]);
+  for i: 0..<6 { c[95+i] = c[89+i]; }
+  nopool: [1] int;
+  #assert cb_init(c[0..<n], blk, nopool[0..<0], none[0..<0], none[0..<0]).status == CMPCT_FAILED;
+}
+// The reader's refusals.
+#test "the cmpctblock reader's refusals" #steps 100000000 {
+  b: [2000] u8; c: [2000] u8; wids: [32 * 4] u8; txs: [4] CmpctTx;
+  ins: [12] TxIn; outs: [4] TxOut; items: [4] TxItem; pre: [4] CmpctPrefilled;
+  blk := cb_unhex(CB_TEST_BLOCK, b[..]);
+  n := cb_build(blk, CB_NONCE_TEST, txs[..], wids[..], c[..]);
+  #assert cmpct_read_vartime(c[0..<87], pre[..], ins[..], outs[..], items[..]).code == CMPCT_BAD;
+  r := cmpct_read_vartime(c[0..<n-1], pre[..], ins[..], outs[..], items[..]);
+  #assert r.code == CMPCT_BAD && r.tx_code == TX_TRUNCATED;
+  #assert cmpct_read_vartime(c[0..<100], pre[..], ins[..], outs[..], items[..]).code == CMPCT_BAD;
+  #assert cmpct_read_vartime(c[0..<n], pre[0..<0], ins[..], outs[..], items[..]).code == CMPCT_CAPACITY;
+  // A prefilled index of 0x10000, written in five bytes.
+  for i: 0..<102 { b[i] = c[i]; }
+  b[102] = 0xfe; b[103] = 0; b[104] = 0; b[105] = 1; b[106] = 0;
+  r = cmpct_read_vartime(b[0..<107], pre[..], ins[..], outs[..], items[..]);
+  #assert r.code == CMPCT_INDEX_RANGE;
+  // 0xffff short IDs and one prefilled: one too many.
+  for i: 0..<88 { b[i] = c[i]; }
+  b[88] = 0xfd; b[89] = 0xff; b[90] = 0xff;
+  big: [6 * 0xffff + 200] u8;
+  for i: 0..<91 { big[i] = b[i]; }
+  at := 91 + 6 * 0xffff;
+  big[at] = 1; big[at+1] = 0;
+  pre_tx := c[103..<n];
+  for i: 0..<pre_tx.count { big[at+2+i] = pre_tx[i]; }
+  r = cmpct_read_vartime(big[0..<at+2+pre_tx.count], pre[..], ins[..], outs[..], items[..]);
+  #assert r.code == CMPCT_TOO_MANY;
+}
+// High-bandwidth peers: at most three; a peer already chosen moves to the
+// back; a fourth pushes out the oldest; an inbound one never pushes out
+// the last outbound one.
+#test "high-bandwidth peers" {
+  list: [4] int; inbound: [8] bool;
+  inbound[3] = true; inbound[4] = true; inbound[5] = true;
+  h := cmpct_hb_choose_vartime(list[..], 0, 1, inbound[..], true, false);
+  #assert h.n == 1 && h.on == 1 && h.off == -1;
+  h = cmpct_hb_choose_vartime(list[..], h.n, 3, inbound[..], true, false);
+  h = cmpct_hb_choose_vartime(list[..], h.n, 4, inbound[..], true, false);
+  #assert h.n == 3 && list[0] == 1 && list[1] == 3 && list[2] == 4;
+  // Inbound 5: outbound 1 is the only outbound one, so it moves to second.
+  h = cmpct_hb_choose_vartime(list[..], h.n, 5, inbound[..], true, false);
+  #assert h.n == 3 && h.on == 5 && h.off == 3 && list[0] == 1 && list[1] == 4 && list[2] == 5;
+  // 4 again: to the back, nothing sent.
+  h = cmpct_hb_choose_vartime(list[..], h.n, 4, inbound[..], true, false);
+  #assert h.on == -1 && h.off == -1 && list[0] == 1 && list[1] == 5 && list[2] == 4;
+  // Outbound 2 pushes out the oldest, outbound 1.
+  h = cmpct_hb_choose_vartime(list[..], h.n, 2, inbound[..], true, false);
+  #assert h.on == 2 && h.off == 1 && list[0] == 5 && list[1] == 4 && list[2] == 2;
+  // A peer that never sent sendcmpct, and a blocks-only node: nothing.
+  #assert cmpct_hb_choose_vartime(list[..], 3, 6, inbound[..], false, false).on == -1;
+  #assert cmpct_hb_choose_vartime(list[..], 3, 6, inbound[..], true, true).on == -1;
+}
+#test "replies by depth" {
+  #assert cmpct_getdata_reply(995, 1000, true) == CMPCT_REPLY_CMPCTBLOCK;
+  #assert cmpct_getdata_reply(994, 1000, true) == CMPCT_REPLY_BLOCK;
+  #assert cmpct_getdata_reply(1000, 1000, false) == CMPCT_REPLY_BLOCK;
+  #assert cmpct_getblocktxn_reply(1, true, 990, 1000) == CMPCT_REPLY_BLOCKTXN;
+  #assert cmpct_getblocktxn_reply(1, true, 989, 1000) == CMPCT_REPLY_BLOCK;
+  #assert cmpct_getblocktxn_reply(1, false, 1000, 1000) == CMPCT_REPLY_NONE;
+  #assert cmpct_getblocktxn_reply(0, true, 1000, 1000) == CMPCT_REPLY_DISCONNECT;
+}
+
+// book:begin keys
+// The SipHash-2-4 keys of one cmpctblock: SHA-256 of the 80-byte header
+// and the nonce (8 bytes, little-endian), whose first two 8-byte words,
+// little-endian, are k0 and k1.
+CmpctKeys :: struct { k0: u64; k1: u64; }
+cmpct_keys :: (header: [] u8, nonce: u64) -> CmpctKeys {
+  input: [88] u8; d: [32] u8;
+  for i: 0..<80 { input[i] = header[i]; }
+  stored := cb_store_le64(input[..], 80, nonce);
+  #assert sha256_hash_checked(input[..], d[..], false) == SHA_OK;
+  return CmpctKeys.{k0=cb_load_le64(d[..], 0).value, k1=cb_load_le64(d[..], 8).value};
+}
+// A wtxid's short ID: SipHash-2-4 of its 32 bytes (hash order), with the
+// two high bytes dropped.
+cmpct_short_id :: (k: CmpctKeys, wtxid: [] u8) -> u64 {
+  return siphash24(k.k0, k.k1, wtxid) & 0xffffffffffff;
+}
+// book:end keys
+
+// book:begin write
+// A transaction's bytes: n at at in some buffer.
+CmpctTx :: struct { at: int; n: int; }
+// What a reader read: code, the byte where it refused (or next, where
+// reading would go on), the transaction reader's code, and how many.
+CmpctList :: struct { code: int; at: int; tx_code: int; count: int; next: int; }
+// The transactions of a serialized block: where each is, and its wtxid.
+cmpct_block_txs_vartime :: (b: [] u8, txs: [] CmpctTx, wtxids: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> CmpctList {
+  if b.count < 80 { return CmpctList.{code=CMPCT_BAD, tx_code=TX_TRUNCATED}; }
+  c := tx_compact_read_vartime(b, 80);
+  if c.code != TX_OK { return CmpctList.{code=CMPCT_BAD, at=80, tx_code=c.code}; }
+  if c.value > txs.count || 32 * c.value > wtxids.count { return CmpctList.{code=CMPCT_CAPACITY, at=80}; }
+  at := c.next;
+  for k: 0..<c.value {
+    t := tx_parse_vartime(b[at..<b.count], true, ins, outs, items);
+    if t.code != TX_OK { return CmpctList.{code=ifx t.code == TX_CAPACITY then CMPCT_CAPACITY else CMPCT_BAD, at=at+t.at, tx_code=t.code, count=k}; }
+    txs[k] = CmpctTx.{at=at, n=t.total};
+    #assert tx_wtxid_vartime(b[at..<at+t.total], t, wtxids[32*k..<32*k+32]);
+    at += t.total;
+  }
+  return CmpctList.{count=c.value, next=at};
+}
+// The cmpctblock payload: the header, the nonce, the short IDs of every
+// transaction not in prefill (ascending block indexes), then each
+// prefilled transaction with its index as the difference from the last
+// one plus one, minus one. wtxids holds every transaction's wtxid; txs[i]
+// is where transaction i is in src, read only for the prefilled ones.
+// Core's own constructor prefills the coinbase alone. Returns the length,
+// or -1 if out is too small or prefill is not ascending and in the block.
+cmpct_write_vartime :: (header: [] u8, nonce: u64, wtxids: [] u8, src: [] u8, txs: [] CmpctTx, prefill: [] int, out: [] u8) -> int {
+  count := wtxids.count / 32;
+  for p: 0..<prefill.count {
+    if prefill[p] >= count || (p > 0 && prefill[p] <= prefill[p-1]) || prefill[p] < 0 { return -1; }
+  }
+  nshort := count - prefill.count;
+  room := 88 + 9 + 6 * nshort + 9;
+  for p: 0..<prefill.count { room += 3 + txs[prefill[p]].n; }
+  if out.count < room || header.count != 80 { return -1; }
+  for i: 0..<80 { out[i] = header[i]; }
+  stored := cb_store_le64(out, 80, nonce);
+  at := 88;
+  at = tx_compact_write_vartime(out, at, nshort);
+  k := cmpct_keys(header, nonce);
+  p := 0;
+  for i: 0..<count {
+    if p < prefill.count && prefill[p] == i { p += 1; continue; }
+    id := cmpct_short_id(k, wtxids[32*i..<32*i+32]);
+    for j: 0..<6 { out[at+j] = cast(u8) ((id >> cast(u64) (8 * j)) & 255); }
+    at += 6;
+  }
+  at = tx_compact_write_vartime(out, at, prefill.count);
+  last := -1;
+  for q: 0..<prefill.count {
+    at = tx_compact_write_vartime(out, at, prefill[q] - last - 1);
+    last = prefill[q];
+    t := txs[prefill[q]];
+    for j: 0..<t.n { out[at+j] = src[t.at+j]; }
+    at += t.n;
+  }
+  return at;
+}
+// book:end write
+
+// book:begin read
+// A read cmpctblock: the nonce, nshort short IDs of 6 bytes from byte
+// ids_at, and nprefilled prefilled transactions in the caller's array.
+CmpctBlock :: struct { code: int; at: int; tx_code: int; nonce: u64; nshort: int; ids_at: int; nprefilled: int; next: int; }
+// A prefilled transaction: its index as sent (differential), and where its
+// bytes are. empty is CTransaction::IsNull: no inputs and no outputs.
+CmpctPrefilled :: struct { diff: int; at: int; n: int; empty: bool; }
+// Reads a cmpctblock payload as Core's serializer does: each prefilled
+// index must fit 16 bits, each transaction is read with its witness, and
+// a block of more than 0xffff transactions refuses after the whole read.
+// Bytes after the message are left alone, as Core leaves them.
+cmpct_read_vartime :: (b: [] u8, pre: [] CmpctPrefilled, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> CmpctBlock {
+  if b.count < 88 { return CmpctBlock.{code=CMPCT_BAD, at=b.count, tx_code=TX_TRUNCATED}; }
+  k := CmpctBlock.{nonce=cb_load_le64(b, 80).value};
+  c := tx_compact_read_vartime(b, 88);
+  if c.code != TX_OK { k.code = CMPCT_BAD; k.at = 88; k.tx_code = c.code; return k; }
+  k.nshort = c.value; k.ids_at = c.next;
+  if b.count - c.next < 6 * c.value { k.code = CMPCT_BAD; k.at = b.count; k.tx_code = TX_TRUNCATED; return k; }
+  at := c.next + 6 * c.value;
+  p := tx_compact_read_vartime(b, at);
+  if p.code != TX_OK { k.code = CMPCT_BAD; k.at = at; k.tx_code = p.code; return k; }
+  if p.value > pre.count { k.code = CMPCT_CAPACITY; k.at = at; return k; }
+  at = p.next;
+  for i: 0..<p.value {
+    d := tx_compact_read_vartime(b, at);
+    if d.code != TX_OK { k.code = CMPCT_BAD; k.at = at; k.tx_code = d.code; return k; }
+    if d.value > CMPCT_MAX_INDEX { k.code = CMPCT_INDEX_RANGE; k.at = at; return k; }
+    at = d.next;
+    t := tx_parse_vartime(b[at..<b.count], true, ins, outs, items);
+    if t.code != TX_OK {
+      k.code = ifx t.code == TX_CAPACITY then CMPCT_CAPACITY else CMPCT_BAD;
+      k.at = at + t.at; k.tx_code = t.code; return k;
+    }
+    pre[i] = CmpctPrefilled.{diff=d.value, at=at, n=t.total, empty=t.nin == 0 && t.nout == 0};
+    at += t.total;
+    k.nprefilled += 1;
+  }
+  if k.nshort + k.nprefilled > CMPCT_MAX_INDEX { k.code = CMPCT_TOO_MANY; k.at = at; return k; }
+  k.next = at;
+  return k;
+}
+// Short ID i of a read cmpctblock: 6 bytes, little-endian.
+cmpct_short_at :: (b: [] u8, k: CmpctBlock, i: int) -> u64 {
+  v: u64 = 0;
+  for j: 0..<6 { v |= cast(u64) b[k.ids_at + 6*i + j] << cast(u64) (8 * j); }
+  return v;
+}
+// book:end read
+
+// book:begin init
+// Where each transaction of the block is: source (CMPCT_MISSING to
+// CMPCT_COLLIDED) and its index in the prefilled list, the mempool or the
+// extra pool.
+CmpctSlot :: struct { source: int; from: int; }
+// A short ID and the block position it stands for.
+CmpctEntry :: struct { id: u64; slot: int; }
+// InitData's result: the status, the block's transaction count, and how
+// many came from each source.
+CmpctInit :: struct { status: int; count: int; prefilled: int; mempool: int; extra: int; available: int; }
+// PartiallyDownloadedBlock::InitData for the cmpctblock b, read as k.
+// pool_ids are the mempool's wtxids in the order the mempool is scanned
+// (Core's txns_randomized). extra_keys are the extra pool's wtxids as
+// keyed, extra_ids the wtxids of the transactions stored under them. slots
+// and map hold the block's transactions and its short IDs. Core keeps the
+// short IDs in a hash table; here they are sorted and searched, with the
+// same answers. Core's further limit of 12 entries per hash-table bucket,
+// a defense of its own table, has no counterpart here.
+cmpct_init_vartime :: (b: [] u8, k: CmpctBlock, pre: [] CmpctPrefilled, pool_ids: [] u8, extra_keys: [] u8, extra_ids: [] u8, slots: [] CmpctSlot, map: [] CmpctEntry) -> CmpctInit {
+  count := k.nshort + k.nprefilled;
+  r := CmpctInit.{count=count};
+  if tx_le_vartime(b, 72, 4) == 0 || count == 0 || count > CMPCT_MAX_TXS { r.status = CMPCT_INVALID; return r; }
+  if slots.count < count || map.count < k.nshort { r.status = CMPCT_CAPACITY; return r; }
+  for i: 0..<count { slots[i] = CmpctSlot.{source=CMPCT_MISSING}; }
+  // The prefilled transactions, at their absolute indexes.
+  last := -1;
+  for i: 0..<k.nprefilled {
+    if pre[i].empty { r.status = CMPCT_INVALID; return r; }
+    last += pre[i].diff + 1;
+    if last > CMPCT_MAX_INDEX || last > k.nshort + i { r.status = CMPCT_INVALID; return r; }
+    slots[last] = CmpctSlot.{source=CMPCT_PREFILLED, from=i};
+  }
+  r.prefilled = k.nprefilled;
+  // Each short ID stands for the next position no prefilled one holds.
+  offset := 0;
+  for i: 0..<k.nshort {
+    while slots[i + offset].source == CMPCT_PREFILLED { offset += 1; }
+    map[i] = CmpctEntry.{id=cmpct_short_at(b, k, i), slot=i + offset};
+  }
+  cmpct_sort_vartime(map[0..<k.nshort]);
+  for i: 1..<k.nshort { if map[i].id == map[i-1].id { r.status = CMPCT_FAILED; return r; } }   // a short-ID collision
+  keys := cmpct_keys(b[0..<80], k.nonce);
+  available := 0;
+  // The mempool. Two matches for one short ID: ask for it instead.
+  for m: 0..<pool_ids.count / 32 {
+    e := cmpct_find_vartime(map[0..<k.nshort], cmpct_short_id(keys, pool_ids[32*m..<32*m+32]));
+    if e >= 0 {
+      s := map[e].slot;
+      if slots[s].source == CMPCT_MISSING { slots[s] = CmpctSlot.{source=CMPCT_MEMPOOL, from=m}; available += 1; }
+      else if slots[s].source != CMPCT_COLLIDED { slots[s] = CmpctSlot.{source=CMPCT_COLLIDED}; available -= 1; }
+    }
+    if available == k.nshort { break; }
+  }
+  // The extra pool. A second match collides only if it is a different
+  // transaction: the same one in the mempool and the extra pool is not.
+  for x: 0..<extra_keys.count / 32 {
+    e := cmpct_find_vartime(map[0..<k.nshort], cmpct_short_id(keys, extra_keys[32*x..<32*x+32]));
+    if e >= 0 {
+      s := map[e].slot;
+      if slots[s].source == CMPCT_MISSING { slots[s] = CmpctSlot.{source=CMPCT_EXTRA, from=x}; available += 1; }
+      else if slots[s].source != CMPCT_COLLIDED && !cmpct_same_tx(slots[s], pool_ids, extra_ids, extra_ids[32*x..<32*x+32]) {
+        slots[s] = CmpctSlot.{source=CMPCT_COLLIDED}; available -= 1;
+      }
+    }
+    if available == k.nshort { break; }
+  }
+  for i: 0..<count {
+    if slots[i].source == CMPCT_MEMPOOL { r.mempool += 1; }
+    if slots[i].source == CMPCT_EXTRA { r.extra += 1; }
+  }
+  r.available = r.prefilled + r.mempool + r.extra;
+  return r;
+}
+// Is the transaction already in slot the one whose wtxid is id?
+cmpct_same_tx :: (slot: CmpctSlot, pool_ids: [] u8, extra_ids: [] u8, id: [] u8) -> bool {
+  have := ifx slot.source == CMPCT_MEMPOOL then pool_ids[32*slot.from..<32*slot.from+32] else extra_ids[32*slot.from..<32*slot.from+32];
+  for i: 0..<32 { if have[i] != id[i] { return false; } }
+  return true;
+}
+// Sort entries by short ID: Shell's sort with Ciura's gaps.
+cmpct_sort_vartime :: (map: [] CmpctEntry) {
+  gaps := [8] int.[701, 301, 132, 57, 23, 10, 4, 1];
+  for g: 0..<8 {
+    gap := gaps[g];
+    for i: gap..<map.count {
+      e := map[i];
+      j := i;
+      while j >= gap && map[j-gap].id > e.id { map[j] = map[j-gap]; j -= gap; }
+      map[j] = e;
+    }
+  }
+}
+// The entry with short ID id in the sorted map, or -1.
+cmpct_find_vartime :: (map: [] CmpctEntry, id: u64) -> int {
+  lo := 0; hi := map.count;
+  while lo < hi {
+    mid := (lo + hi) / 2;
+    if map[mid].id < id { lo = mid + 1; } else { hi = mid; }
+  }
+  return ifx lo < map.count && map[lo].id == id then lo else -1;
+}
+// The block positions InitData didn't fill, ascending, into out; how many.
+cmpct_missing_vartime :: (slots: [] CmpctSlot, out: [] int) -> int {
+  n := 0;
+  for i: 0..<slots.count {
+    if slots[i].source == CMPCT_MISSING || slots[i].source == CMPCT_COLLIDED {
+      if n == out.count { return -1; }
+      out[n] = i; n += 1;
+    }
+  }
+  return n;
+}
+// book:end init
+
+// book:begin request
+// getblocktxn: the block hash, a count, then each index as the difference
+// from the previous one, minus one. Returns the length, or -1 if out is too
+// small or the indexes don't ascend from 0 to 0xffff.
+cmpct_request_write_vartime :: (hash: [] u8, indexes: [] int, out: [] u8) -> int {
+  if out.count < 32 + 9 + 3 * indexes.count || hash.count != 32 { return -1; }
+  for i: 0..<32 { out[i] = hash[i]; }
+  at := tx_compact_write_vartime(out, 32, indexes.count);
+  last := -1;
+  for i: 0..<indexes.count {
+    if indexes[i] <= last || indexes[i] > CMPCT_MAX_INDEX { return -1; }
+    at = tx_compact_write_vartime(out, at, indexes[i] - last - 1);
+    last = indexes[i];
+  }
+  return at;
+}
+// Reads a getblocktxn into absolute indexes. DifferenceFormatter refuses
+// the first index that passes 0xffff, as "differential value overflow".
+cmpct_request_read_vartime :: (b: [] u8, indexes: [] int) -> CmpctList {
+  if b.count < 32 { return CmpctList.{code=CMPCT_BAD, at=b.count, tx_code=TX_TRUNCATED}; }
+  c := tx_compact_read_vartime(b, 32);
+  if c.code != TX_OK { return CmpctList.{code=CMPCT_BAD, at=32, tx_code=c.code}; }
+  r := CmpctList.{};
+  at := c.next; shift := 0;
+  for i: 0..<c.value {
+    if i == indexes.count { r.code = CMPCT_CAPACITY; r.at = at; return r; }
+    d := tx_compact_read_vartime(b, at);
+    if d.code != TX_OK { r.code = CMPCT_BAD; r.at = at; r.tx_code = d.code; return r; }
+    shift += d.value;
+    if shift > CMPCT_MAX_INDEX { r.code = CMPCT_DIFF_OVERFLOW; r.at = at; return r; }
+    indexes[i] = shift; shift += 1;
+    at = d.next; r.count += 1;
+  }
+  r.next = at;
+  return r;
+}
+// book:end request
+
+// book:begin respond
+// What a blocktxn writer did: code and the length.
+CmpctWrite :: struct { code: int; n: int; }
+// SendBlockTransactions: the block hash, then the requested transactions
+// of the block b (txs says where each is), in the order requested. An
+// index past the block is Core's Misbehaving, and nothing is sent.
+cmpct_blocktxn_write_vartime :: (hash: [] u8, b: [] u8, txs: [] CmpctTx, indexes: [] int, out: [] u8) -> CmpctWrite {
+  room := 32 + 9;
+  for i: 0..<indexes.count {
+    if indexes[i] < 0 || indexes[i] >= txs.count { return CmpctWrite.{code=CMPCT_OUT_OF_BOUNDS}; }
+    room += txs[indexes[i]].n;
+  }
+  if out.count < room || hash.count != 32 { return CmpctWrite.{code=CMPCT_CAPACITY}; }
+  for i: 0..<32 { out[i] = hash[i]; }
+  at := tx_compact_write_vartime(out, 32, indexes.count);
+  for i: 0..<indexes.count {
+    t := txs[indexes[i]];
+    for j: 0..<t.n { out[at+j] = b[t.at+j]; }
+    at += t.n;
+  }
+  return CmpctWrite.{n=at};
+}
+// Reads a blocktxn: the hash, a count, then each transaction with its
+// witness; txs gets where each one is.
+cmpct_blocktxn_read_vartime :: (b: [] u8, txs: [] CmpctTx, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> CmpctList {
+  if b.count < 32 { return CmpctList.{code=CMPCT_BAD, at=b.count, tx_code=TX_TRUNCATED}; }
+  c := tx_compact_read_vartime(b, 32);
+  if c.code != TX_OK { return CmpctList.{code=CMPCT_BAD, at=32, tx_code=c.code}; }
+  if c.value > txs.count { return CmpctList.{code=CMPCT_CAPACITY, at=32}; }
+  at := c.next;
+  for k: 0..<c.value {
+    t := tx_parse_vartime(b[at..<b.count], true, ins, outs, items);
+    if t.code != TX_OK { return CmpctList.{code=ifx t.code == TX_CAPACITY then CMPCT_CAPACITY else CMPCT_BAD, at=at+t.at, tx_code=t.code, count=k}; }
+    txs[k] = CmpctTx.{at=at, n=t.total};
+    at += t.total;
+  }
+  return CmpctList.{count=c.value, next=at};
+}
+// book:end respond
+
+// book:begin fill
+// FillBlock's result: the status, the block's length in out, and for
+// CMPCT_FAILED the WITNESS_ code IsBlockMutated gave.
+CmpctFill :: struct { status: int; n: int; reason: int; }
+// PartiallyDownloadedBlock::FillBlock: the block, with each transaction
+// from its slot (prefilled ones from the cmpctblock b, mempool and extra
+// ones from store at pool_txs and extra_txs) and each missing one, in
+// order, from missing (in bytes, a blocktxn). Too few or too many is
+// invalid. The rebuilt block then goes through IsBlockMutated, with segwit
+// as check_witness_root: a mutated block most likely means a short ID
+// matched the wrong transaction, so it fails, and the node asks for the
+// whole block. hashes holds 96 bytes per transaction.
+cmpct_fill_vartime :: (b: [] u8, pre: [] CmpctPrefilled, slots: [] CmpctSlot, store: [] u8, pool_txs: [] CmpctTx, extra_txs: [] CmpctTx,
+                       bytes: [] u8, missing: [] CmpctTx, segwit: bool, out: [] u8,
+                       ins: [] TxIn, outs: [] TxOut, items: [] TxItem, hashes: [] u8) -> CmpctFill {
+  if tx_le_vartime(b, 72, 4) == 0 { return CmpctFill.{status=CMPCT_INVALID}; }
+  count := slots.count;
+  if out.count < 89 || hashes.count < 96 * count { return CmpctFill.{status=CMPCT_CAPACITY}; }
+  for i: 0..<80 { out[i] = b[i]; }
+  at := tx_compact_write_vartime(out, 80, count);
+  m := 0;
+  for i: 0..<count {
+    src := bytes; t: CmpctTx;
+    s := slots[i];
+    if s.source == CMPCT_PREFILLED { src = b; t = CmpctTx.{at=pre[s.from].at, n=pre[s.from].n}; }
+    else if s.source == CMPCT_MEMPOOL { src = store; t = pool_txs[s.from]; }
+    else if s.source == CMPCT_EXTRA { src = store; t = extra_txs[s.from]; }
+    else {
+      if m >= missing.count { return CmpctFill.{status=CMPCT_INVALID}; }
+      t = missing[m]; m += 1;
+    }
+    if out.count - at < t.n { return CmpctFill.{status=CMPCT_CAPACITY}; }
+    for j: 0..<t.n { out[at+j] = src[t.at+j]; }
+    at += t.n;
+  }
+  if m != missing.count { return CmpctFill.{status=CMPCT_INVALID}; }
+  w := witness_mutated_vartime(out[0..<at], segwit, ins, outs, items,
+    hashes[0..<32*count], hashes[32*count..<64*count], hashes[64*count..<96*count]);
+  if w.code == WITNESS_CAPACITY { return CmpctFill.{status=CMPCT_CAPACITY, n=at}; }
+  if w.code != WITNESS_OK { return CmpctFill.{status=CMPCT_FAILED, n=at, reason=w.code}; }
+  return CmpctFill.{n=at};
+}
+// book:end fill
+
+// book:begin modes
+// MaybeSetPeerAsAnnouncingHeaderAndIDs: after peer delivers a new block,
+// ask it for high-bandwidth mode. list[0..<n] are the high-bandwidth peers,
+// oldest first; inbound says which peers connected to us. on is the peer
+// sent sendcmpct(1, 2) and off the one sent sendcmpct(0, 2), or -1.
+CmpctHb :: struct { n: int; on: int; off: int; }
+cmpct_hb_choose_vartime :: (list: [] int, n: int, peer: int, inbound: [] bool, provides: bool, blocksonly: bool) -> CmpctHb {
+  r := CmpctHb.{n=n, on=-1, off=-1};
+  // A blocks-only node's mempool can't rebuild blocks, and a peer that
+  // never sent sendcmpct(…, 2) can't send them.
+  if blocksonly || !provides { return r; }
+  outbound := 0;
+  for i: 0..<n {
+    if list[i] == peer {
+      for j: i..<n-1 { list[j] = list[j+1]; }
+      list[n-1] = peer;
+      return r;
+    }
+    if !inbound[list[i]] { outbound += 1; }
+  }
+  // An inbound peer never pushes out the last outbound one.
+  if inbound[peer] && n >= CMPCT_HB_PEERS && outbound == 1 && !inbound[list[0]] {
+    first := list[0]; list[0] = list[1]; list[1] = first;
+  }
+  list[n] = peer; r.on = peer; r.n = n + 1;
+  if r.n > CMPCT_HB_PEERS {
+    r.off = list[0];
+    for j: 0..<r.n-1 { list[j] = list[j+1]; }
+    r.n -= 1;
+  }
+  return r;
+}
+// The answer to a getdata for MSG_CMPCT_BLOCK: a cmpctblock for a block
+// within 5 of the tip when the node can fetch directly, else the block.
+CMPCT_REPLY_NONE :: 0; CMPCT_REPLY_CMPCTBLOCK :: 1; CMPCT_REPLY_BLOCK :: 2; CMPCT_REPLY_BLOCKTXN :: 3; CMPCT_REPLY_DISCONNECT :: 4;
+cmpct_getdata_reply :: (height: int, tip: int, direct: bool) -> int {
+  return ifx direct && height >= tip - CMPCT_MAX_DEPTH then CMPCT_REPLY_CMPCTBLOCK else CMPCT_REPLY_BLOCK;
+}
+// The answer to a getblocktxn of count indexes: none is a disconnect; a
+// block the node lacks gets nothing; within 10 of the tip a blocktxn, and
+// deeper the whole block, so a peer can't make the node read old blocks
+// from disk for a few bytes of request.
+cmpct_getblocktxn_reply :: (count: int, have: bool, height: int, tip: int) -> int {
+  if count == 0 { return CMPCT_REPLY_DISCONNECT; }
+  if !have { return CMPCT_REPLY_NONE; }
+  return ifx height >= tip - CMPCT_MAX_BLOCKTXN_DEPTH then CMPCT_REPLY_BLOCKTXN else CMPCT_REPLY_BLOCK;
+}
+// book:end modes

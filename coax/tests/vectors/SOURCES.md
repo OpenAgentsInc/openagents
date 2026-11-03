@@ -341,6 +341,17 @@ that a maliciously replaced manifest is authentic.
   payloads. `make_handshake_vectors.py` writes Core's payload bytes, and
   `handshake.py` transliterates the rules and runs BIP-324's `reference.py`
   as the cross-check's oracle.
+- **Compact blocks (Bitcoin chapter 73):** BIP-152 (bips commit
+  `927b6de9`, public domain) states the messages, the short IDs and the two
+  modes. Bitcoin Core's `blockencodings.h` and `blockencodings.cpp`
+  (`CBlockHeaderAndShortTxIDs`, `PartiallyDownloadedBlock`) give the
+  rebuilding rules, `test/blockencodings_tests.cpp` the cases the library
+  ports, and `net_processing.cpp`, pinned above, the high-bandwidth choice
+  and the depth limits, all at revision `ddea9196`.
+  `test_framework/crypto/siphash.py` gives `messages.py` its
+  `siphash256`; `make_cmpct_vectors.py` builds the messages with them from
+  `block413567.raw` and Core's test blocks, and `cmpct.py` transliterates
+  the rules over mainnet block 514,999 as the cross-check's oracle.
 - **Chain parameters (Bitcoin chapter 50):** Bitcoin Core's
   `kernel/chainparams.cpp` (every network's class), `kernel/signet.h`
   (`SIGNET_DEFAULT_CHALLENGE`, `GetSignetMessageStart`), `signet.cpp`
@@ -613,4 +624,9 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/obfuscation.h`](upstream/bitcoin-core/obfuscation.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/util/obfuscation.h) | `c9a37543d90e6859577f85ab1a46df76cdb5bb6931056764d8a9ed5ce79f6cc6` |
 | [`upstream/bitcoin-core/dbwrapper.cpp`](upstream/bitcoin-core/dbwrapper.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/dbwrapper.cpp) | `3ecd43525a45dbf0318d5a00a6fadbd47393241a8204cb714b86893b7f20727f` |
 | [`upstream/bitcoin-core/dbwrapper.h`](upstream/bitcoin-core/dbwrapper.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/dbwrapper.h) | `ec747f471d4467b710c41db11337dd93f834775cd08fdb94c8fb24efd0fca531` |
+| [`upstream/bip152/bip-0152.mediawiki`](upstream/bip152/bip-0152.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0152.mediawiki) | `b710fa0a4ab9ec92d84884adc77df25b974add79dbc23b8158bf3a791e47cd85` |
+| [`upstream/bitcoin-core/blockencodings.h`](upstream/bitcoin-core/blockencodings.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/blockencodings.h) | `3b2db1f2d8987f1d83c4f92536b5467f922f992aa1e5bbd04327f11c01b30933` |
+| [`upstream/bitcoin-core/blockencodings.cpp`](upstream/bitcoin-core/blockencodings.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/blockencodings.cpp) | `411f83d16f76e8e96f7f6df307812bde2101a5624ef7349c1a0569b2b97d9fe6` |
+| [`upstream/bitcoin-core/blockencodings_tests.cpp`](upstream/bitcoin-core/blockencodings_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/blockencodings_tests.cpp) | `c070a461070d43d1052a3e4d14e5cdb10ed27e862b71cb393437f03a23487c54` |
+| [`upstream/bitcoin-core/siphash.py`](upstream/bitcoin-core/siphash.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/crypto/siphash.py) | `395fb94ebc7fb7d38bfe86bc3dbfb4df2e94d3c1e3cd1c41b66cc19d0d5e76e3` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

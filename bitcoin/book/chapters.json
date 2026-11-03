@@ -1499,15 +1499,24 @@
   {
    "number": 73,
    "title": "Compact blocks",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch073-compact-blocks.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     10,
-    65
+    35,
+    49,
+    65,
+    68
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/cmpctblock.coax",
+    "bitcoin/examples/compact-blocks.coax",
+    "bitcoin/examples/checks/compact-blocks.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

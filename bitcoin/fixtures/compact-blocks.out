@@ -1,0 +1,43 @@
+block 413,567, nonce 000b1e55ed413567
+  SHA-256(header || nonce): 1766e76b63a0629e1678d7992cab38c0e77f875fa4bcd2d916779e2765586e04
+  k0: 9e62a0636be76617, k1: c038ab2c99d77816
+  short IDs of transactions 1 to 3: c8c57540116d 89921a6298b8 803c423f68f5
+  cmpctblock: 1556 short IDs and the 185-byte coinbase, 9614 bytes
+block 514,999, nonce 000b1e55ed514999
+  cmpctblock: 18 short IDs and the coinbase, 449 bytes; the block, 5044 bytes
+  mempool: 16 transactions, 15 of them in the block; extra pool: transaction 9
+  init: ok, 1 prefilled, 15 from the mempool, 1 from the extra pool
+  missing: 4 15
+  getblocktxn: 9710a60eebdc424c688520330526b7da0531bbe5a0fd0800000000000000000002040a
+  blocktxn: 2 transactions, 481 bytes
+  fill: ok, the block byte for byte: true
+prefilled transactions
+  indexes 0 5 6 18 are sent as 0 4 0 11; 15 short IDs, 1405 bytes
+collisions
+  one short ID twice in the cmpctblock
+  init: failed
+  transaction 3 in the mempool and another under its wtxid in the extra pool
+  init: ok, 1 prefilled, 16 from the mempool, 0 from the extra pool
+  missing: 3 4
+  fill: ok, the block byte for byte: true
+  another transaction under transaction 4's wtxid
+  init: ok, 1 prefilled, 17 from the mempool, 1 from the extra pool
+  fill: failed, bad-txnmrklroot
+  transaction 10 with a witness byte changed, under its wtxid
+  init: ok, 1 prefilled, 17 from the mempool, 1 from the extra pool
+  fill: failed, bad-witness-merkle-match
+malformed
+  a prefilled index past the short IDs
+  init: invalid
+  getblocktxn for index 65535: ok
+  getblocktxn with deltas 28672, 36862, 0: differential value overflow
+high-bandwidth peers
+  peer 1 (outbound) delivers a block; high-bandwidth: 1; sendcmpct(1) to 1
+  peer 3 (inbound) delivers a block; high-bandwidth: 1 3; sendcmpct(1) to 3
+  peer 4 (inbound) delivers a block; high-bandwidth: 1 3 4; sendcmpct(1) to 4
+  peer 5 (inbound) delivers a block; high-bandwidth: 1 4 5; sendcmpct(1) to 5, sendcmpct(0) to 3
+  peer 4 (inbound) delivers a block; high-bandwidth: 1 5 4
+  peer 2 (outbound) delivers a block; high-bandwidth: 5 4 2; sendcmpct(1) to 2, sendcmpct(0) to 1
+replies, tip at 900000
+  getdata(MSG_CMPCT_BLOCK) for 899995: cmpctblock, for 899994: block
+  getblocktxn for 899990: blocktxn, for 899989: block, with no indexes: disconnect

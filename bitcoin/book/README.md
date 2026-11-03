@@ -43,12 +43,12 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 55 are implemented and 69 are planned. The 55 implemented
+Of the 124 chapters, 56 are implemented and 68 are planned. The 56 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 56, 62, 65, 66, 67 and 68 are
-new.
+39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 56, 62, 65, 66, 67, 68 and 73
+are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -246,7 +246,7 @@ P2P messages, BIP-324 encrypted transport, the handshake, peer discovery and con
 | 70. Connections: outbound, block-relay-only, feelers and eviction | Planned | The node keeps 8 full-relay and 2 block-relay-only outbound connections and makes feeler connections. With its inbound slots full it evicts by Bitcoin Core's protected-peer rules, and Core's eviction cases pass. |
 | 71. Misbehavior, limits and denial of service | Planned | Each message limit (size, `inv` and `addr` counts and rates, unconnecting headers and the low-work headers presync) refuses its oversized case. A peer that sends an invalid block is disconnected, and memory per peer stays under its stated bound under a flood. |
 | 72. Headers sync and block download | Planned | From genesis the node downloads headers by locator, presyncs them against low-work spam, and fetches blocks from many peers through a moving window, replacing a peer that stalls. It syncs regtest and signet from Bitcoin Core peers to their tips. |
-| 73. Compact blocks | Planned | Short IDs and block reconstruction for pinned blocks match Bitcoin Core. |
+| [73. Compact blocks](ch073-compact-blocks.md) | Runnable: native C | BIP-152 version 2: short IDs from SipHash-2-4 keyed by SHA-256(header || nonce), the `cmpctblock`, `getblocktxn` and `blocktxn` messages with differential indexes, and `PartiallyDownloadedBlock`'s `InitData` and `FillBlock`, collisions and `IsBlockMutated` included, with Core's high-bandwidth peer choice. Block 413,567's keys, short IDs and message equal `messages.py`'s, and Core's `blockencodings_tests.cpp` cases pass. |
 | 74. Compact block filters | Planned | BIP-158's `testnet-19.json` filters and filter headers match. |
 | 75. Proxies, Tor and I2P | Planned | The node reaches peers through a SOCKS5 proxy and a local Tor daemon, accepts inbound connections on an onion service, and connects to I2P peers through the SAM bridge. Each network's addresses stay apart in the address manager. |
 
