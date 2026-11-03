@@ -1,0 +1,243 @@
+// Checks: spatial frames and operators, with their fixture. A part of the
+// checker: lib/compiler/checker.coax loads it (#12646).
+#authority;
+// M3 integration checks precede the implementation.
+CK_spatial_fixture :: (c:CK_Context) {
+ CK_quantity_fixture(c);c.state[0].used=21;c.state[0].type_count=24;
+ c.nodes[3].next=21;c.nodes[21]=CK_Node.{kind=CK_Tag.struct_,name="World",type=23,frame_decl=true,frame=SP_Frame.{handedness=1,convention=SP_Convention.cartesian,continuity=SP_Continuity.continuous,min_rep=32}};
+ c.types[23]=CK_Type.{kind=CK_Kind.struct_,name="World",decl=21,size=1,alignment=1};
+}
+#test "spatial fixture is an admitted frame tag and leaves interning the next node" {
+ nodes:[512]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ size:=types[23].size;alignment:=types[23].alignment;types[23].size=0;types[23].alignment=0;
+ CK_frame_layout(c,21);#assert state[0].error_count==0 && nodes[21].mark==2 && types[23].size==size && types[23].alignment==alignment;
+ #assert state[0].used==21 && state[0].type_count==24;t:=CK_spatial_intern(c,SP_Kind.point,23,16,6,CK_Loc.{});#assert t==24 && types[t].decl==22 && state[0].used==25;
+}
+#forall "spatial interning owns complete kind frame unit representation and physical layout" kind:1..<3,rep:6..<8 {
+ nodes:[512]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ t:=CK_spatial_intern(c,cast(SP_Kind)kind,23,16,rep,CK_Loc.{line=17,column=3,offset=99});
+ #assert t!=0 && state[0].error_count==0;info:=types[t];n:=nodes[info.decl];width:=ifx rep==6 then 4 else 8;
+ #assert info.kind==CK_Kind.struct_ && info.carrier==0 && info.size==3*width && info.alignment==width && info.space.kind==cast(SP_Kind)kind && info.space.frame==23 && info.space.unit==16 && info.space.rep==width*8;
+ #assert n.scope==c.modules.count+1 && info.scope==n.scope && n.origin==info.decl && n.mark==2;
+ if kind==1 {#assert n.name=="CoaxPoint3" && info.name==(ifx rep==6 then "Point3(World,Metre,f32)" else "Point3(World,Metre,f64)");}else {#assert n.name=="CoaxVector3" && info.name==(ifx rep==6 then "Vector3(World,Metre,f32)" else "Vector3(World,Metre,f64)");}
+ #assert n.key==(ifx rep==6 then "f23u16r6" else "f23u16r7");
+ names:=[3]string.["x","y","z"];field:=n.head;for i:0..<3 {#assert field!=0 && nodes[field].kind==CK_Tag.field && nodes[field].name==names[i] && nodes[field].type==rep && nodes[field].field_index==i*width;if i==2 {#assert n.tail==field;}field=nodes[field].next;}#assert field==0;
+ #assert CK_spatial_intern(c,cast(SP_Kind)kind,23,16,rep,CK_Loc.{})==t;
+ other:=CK_spatial_intern(c,ifx kind==1 then SP_Kind.vector else SP_Kind.point,23,16,rep,CK_Loc.{});#assert other!=0 && other!=t;
+}
+#forall "spatial admission refuses wrong frame unit precision and logical scale roles" bad:0..<7 {
+ nodes:[256]CK_Node;types:[96]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[8192]u8;state:[1]CK_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);frame:=23;unit:=16;rep:=6;
+ if bad==0 {frame=16;}if bad==1 {unit=7;}if bad==2 {nodes[2].unit.length=0;}if bad==3 {nodes[21].frame.min_rep=64;}if bad==4 {rep=19;}if bad==5 {nodes[21].frame.handedness=0;}if bad==6 {nodes[2].unit.numerator=0;}
+ #assert CK_spatial_intern(c,SP_Kind.point,frame,unit,rep,CK_Loc.{line=17,column=3,offset=99})==0;
+ #assert state[0].error_count==1 && errors[0].code=="E0833" && state[0].spatial_types==0 && state[0].instance_count==0;
+ messages:=[7]string.["spatial arguments must name admitted concrete frame and unit tags","spatial types require concrete frame and unit tags and f32 or f64","Point3 requires a physical length unit","frame World requires f64 spatial coordinates","spatial types require concrete frame and unit tags and f32 or f64","spatial frame or unit metadata is invalid","spatial frame or unit metadata is invalid"];#assert errors[0].message==messages[bad];
+}
+#forall "spatial operators lower exact affine result and one whole-operand call" test:0..<9,rep:6..<8 {
+ nodes:[2048]CK_Node;types:[256]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[32768]u8;state:[1]CK_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ point:=CK_spatial_intern(c,SP_Kind.point,23,16,rep,CK_Loc.{});vector:=CK_spatial_intern(c,SP_Kind.vector,23,16,rep,CK_Loc.{});
+ lefts:=[9]int.[point,vector,vector,point,vector,point,vector,rep,vector];rights:=[9]int.[point,vector,vector,vector,point,vector,rep,vector,rep];ops:=[9]u32.[35,34,35,34,34,35,36,36,37];kinds:=[9]SP_Kind.[SP_Kind.vector,SP_Kind.vector,SP_Kind.vector,SP_Kind.point,SP_Kind.point,SP_Kind.point,SP_Kind.vector,SP_Kind.vector,SP_Kind.vector];a:=lefts[test];b:=rights[test];
+ nodes[10]=CK_Node.{kind=ifx a==rep then CK_Tag.expr_float else CK_Tag.expr_struct,type=a,mark=1};nodes[11]=CK_Node.{kind=ifx b==rep then CK_Tag.expr_float else CK_Tag.expr_struct,type=b,mark=1};nodes[12]=CK_Node.{kind=CK_Tag.expr_binary,op=ops[test],a=10,b=11,next=18,loc=CK_Loc.{line=73,column=9,offset=123}};
+ result:=CK_spatial_binary(c,12,a,b);#assert result!=0 && state[0].error_count==0 && types[result].space.kind==kinds[test] && types[result].carrier==0;
+ call:=nodes[12];#assert call.kind==CK_Tag.expr_call && call.mark==2 && !CK_generated(call.mark) && call.type==result && call.proc!=0 && call.next==18 && call.loc.offset==123 && call.head!=10 && call.tail!=11;
+ #assert nodes[call.head].type==a && nodes[call.head].next==call.tail && nodes[call.tail].type==b && nodes[call.tail].next==0 && nodes[10].next==0 && nodes[11].next==0;
+ helper:=nodes[call.proc];#assert helper.kind==CK_Tag.proc && helper.type==result && helper.origin==call.proc && helper.scope==c.modules.count+1 && helper.collides && helper.skip_authority && !helper.flag && !helper.flag2;
+ keys32:=[9]string.["o35a24b24r25","o34a25b25r25","o35a25b25r25","o34a24b25r24","o34a25b24r24","o35a24b25r24","o36a25b6r25","o36a6b25r25","o37a25b6r25"];
+ keys64:=[9]string.["o35a24b24r25","o34a25b25r25","o35a25b25r25","o34a24b25r24","o34a25b24r24","o35a24b25r24","o36a25b7r25","o36a7b25r25","o37a25b7r25"];#assert helper.name=="CoaxSpatialOp" && helper.key==(ifx rep==6 then keys32[test] else keys64[test]);
+ #assert nodes[helper.head].name=="left" && nodes[helper.head].type==a && nodes[helper.tail].name=="right" && nodes[helper.tail].type==b && nodes[helper.head].next==helper.tail;
+ ret:=nodes[nodes[helper.b].head];aggregate:=nodes[ret.a];#assert nodes[helper.b].kind==CK_Tag.stmt_block && ret.kind==CK_Tag.stmt_return && nodes[helper.b].tail==nodes[helper.b].head && aggregate.kind==CK_Tag.expr_struct && aggregate.mark==1 && aggregate.type==result;
+ field:=aggregate.head;names:=[3]string.["x","y","z"];for axis:0..<3 {f:=nodes[field];value:=nodes[f.a];#assert f.kind==CK_Tag.field_init && f.name==names[axis] && f.field_index==axis && value.kind==CK_Tag.expr_binary && value.op==ops[test] && value.type==rep && CK_generated(value.mark);
+  inputs:=[2]int.[value.a,value.b];expected:=[2]int.[a,b];for side:0..<2 {item:=nodes[inputs[side]];if expected[side]==rep {#assert item.kind==CK_Tag.expr_ident && item.type==rep;}else {#assert item.kind==CK_Tag.expr_field && item.name==names[axis] && item.field_index==axis && item.type==rep && CK_generated(item.mark);item=nodes[item.a];}#assert item.kind==CK_Tag.expr_ident && item.name==(ifx side==0 then "left" else "right") && item.type==expected[side] && CK_generated(item.mark);}
+  if axis==2 {#assert aggregate.tail==field;}field=f.next;}#assert field==0;
+ before:=state[0].instance_count;nodes[13]=CK_Node.{kind=CK_Tag.expr_binary,op=ops[test],a=10,b=11};#assert CK_spatial_binary(c,13,a,b)==result && nodes[13].proc==call.proc && state[0].instance_count==before;
+}
+#forall "spatial negation uses one immutable vector argument" rep:6..<8 {
+ nodes:[1024]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ t:=CK_spatial_intern(c,SP_Kind.vector,23,16,rep,CK_Loc.{});nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=t,mark=1};nodes[12]=CK_Node.{kind=CK_Tag.expr_unary,op=35,a=10,next=18};#assert CK_spatial_unary(c,12,t)==t && state[0].error_count==0;
+ helper:=nodes[nodes[12].proc];#assert helper.head==helper.tail && nodes[helper.head].next==0 && nodes[helper.head].type==t;aggregate:=nodes[nodes[nodes[helper.b].head].a];field:=aggregate.head;
+ for axis:0..<3 {v:=nodes[nodes[field].a];#assert v.kind==CK_Tag.expr_unary && v.op==35 && v.b==0 && v.type==rep && nodes[v.a].field_index==axis;field=nodes[field].next;}
+}
+#forall "spatial pool refusal publishes no partial type cache" fault:0..<5 {
+ nodes:[256]CK_Node;types:[96]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[8192]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ if fault==0 {c.nodes=nodes[0..<22];}if fault==1 {c.types=types[0..<24];}if fault==2 {c.nodes=nodes[0..<25];}if fault==3 {state[0].instance_count=256;}if fault==4 {c.bytes=bytes[0..<0];}
+ #assert CK_spatial_intern(c,SP_Kind.point,23,16,7,CK_Loc.{})==0 && state[0].error_count==1 && state[0].spatial_types==0;
+ if fault==3 {#assert errors[0].code=="E0339" && state[0].instance_count==256;}else {#assert errors[0].code=="E0381" && state[0].fatal && state[0].instance_count==0;}
+}
+#forall "spatial global constructors resolve concrete arguments and refuse backend or arity" test:0..<5 {
+ nodes:[512]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);state[0].used=25;
+ nodes[22]=CK_Node.{kind=CK_Tag.type_named,name="Point3",head=23,tail=25};nodes[23]=CK_Node.{kind=CK_Tag.type_named,name="World",next=24};nodes[24]=CK_Node.{kind=CK_Tag.type_named,name="Metre",next=25};nodes[25]=CK_Node.{kind=CK_Tag.type_named,name="f64"};
+ if test==1 {nodes[22].name="Vector3";}if test==2 {nodes[24].next=0;}if test==3 {nodes[25].name="f32";nodes[21].frame.min_rep=64;}if test==4 {state[0].quantity_device=true;}
+ r:=CK_resolve(c,22,CK_Access.value);if test<2 {#assert r!=0 && state[0].error_count==0 && nodes[21].mark==2 && types[r].space.kind==(ifx test==0 then SP_Kind.point else SP_Kind.vector) && types[r].space.rep==64;}
+ else {#assert r==0 && state[0].error_count==1;if test==4 {#assert errors[0].code=="E0836";}else {#assert errors[0].code=="E0833";}}
+}
+#forall "frame declarations reject each malformed role shape and metadata" bad:0..<7 {
+ nodes:[128]CK_Node;types:[96]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[8192]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ if bad==0 {nodes[21].quantity=1;}if bad==1 {nodes[21].d=4;}if bad==2 {nodes[21].head=6;}if bad==3 {nodes[21].frame.handedness=0;}if bad==4 {nodes[21].frame.convention=SP_Convention.optical;nodes[21].frame.handedness= -1;}if bad==5 {nodes[21].frame.continuity=SP_Continuity.unset;}if bad==6 {nodes[21].frame.min_rep=16;}
+ CK_frame_layout(c,21);#assert state[0].error_count==1 && errors[0].code=="E0832" && nodes[21].mark==2 && types[23].size==1 && types[23].alignment==1;
+}
+#test "spatial schema1 semantic reflection is explicitly refused" {
+ nodes:[256]CK_Node;types:[96]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[8192]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ t:=CK_spatial_intern(c,SP_Kind.point,23,16,7,CK_Loc.{});nodes[12]=CK_Node.{kind=CK_Tag.expr_call,name="type_info"};#assert CK_meta_query(c,12,t)==0 && state[0].error_count==1 && errors[0].code=="E0835";
+}
+#test "spatial cache never merges equal-metadata frames units or representations" {
+ nodes:[2048]CK_Node;types:[256]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[32768]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ nodes[22]=nodes[21];nodes[22].name="Other";nodes[22].type=24;nodes[21].next=22;types[24]=types[23];types[24].name="Other";types[24].decl=22;state[0].used=22;state[0].type_count=25;
+ frames:=[2]int.[23,24];units:=[2]int.[16,22];created:[16]int;count:=0;
+ for kind:1..<3 {for frame:frames {for unit:units {for rep:6..<8 {t:=CK_spatial_intern(c,cast(SP_Kind)kind,frame,unit,rep,CK_Loc.{});#assert t!=0 && state[0].error_count==0;for i:0..<count {#assert created[i]!=t;}created[count]=t;count+=1;#assert CK_spatial_intern(c,cast(SP_Kind)kind,frame,unit,rep,CK_Loc.{})==t;}}}}
+ #assert count==16 && state[0].instance_count==16;
+ again:=0;for kind:1..<3 {for frame:frames {for unit:units {for rep:6..<8 {#assert CK_spatial_intern(c,cast(SP_Kind)kind,frame,unit,rep,CK_Loc.{})==created[again];again+=1;}}}}#assert state[0].instance_count==16;
+ t:=created[0];id:=CK_new(c,CK_Tag.struct_,CK_Loc.{});nominal:=CK_new_type(c,CK_Type.{kind=CK_Kind.struct_,name="CoaxPoint3f23u16r6",decl=id,size=12,alignment=4});nodes[id]=CK_Node.{kind=CK_Tag.struct_,name="CoaxPoint3f23u16r6",type=nominal,mark=2};#assert CK_mangle(c,t)!=CK_mangle(c,nominal);
+}
+#forall "spatial helper allocation never publishes a partial procedure" spare:1..<35 {
+ nodes:[1024]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ t:=CK_spatial_intern(c,SP_Kind.vector,23,16,7,CK_Loc.{});before:=state[0].instance_count;c.nodes=nodes[0..<state[0].used+spare];r:=CK_spatial_helper(c,35,t,0,t,CK_Loc.{});
+ if state[0].fatal {#assert r==0 && state[0].spatial_helpers==0 && state[0].instance_count==before && state[0].error_count==1 && errors[0].code=="E0381";}else {#assert r!=0 && state[0].instance_count==before+1;}
+}
+#test "spatial interning and helpers do not escape prior fatal admission" {
+ nodes:[512]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ t:=CK_spatial_intern(c,SP_Kind.vector,23,16,7,CK_Loc.{});h:=CK_spatial_helper(c,35,t,0,t,CK_Loc.{});#assert h!=0;state[0].fatal=true;
+ #assert CK_spatial_intern(c,SP_Kind.vector,23,16,7,CK_Loc.{})==0 && CK_spatial_helper(c,35,t,0,t,CK_Loc.{})==0;
+}
+#forall "spatial token lowering preserves exact admitted operations and invalid sentinel" token:0..<64 {
+ expected:=SP_Op.invalid;if token==34 {expected=SP_Op.add;}if token==35 {expected=SP_Op.sub;}if token==36 {expected=SP_Op.mul;}if token==37 {expected=SP_Op.div;}
+ #assert CK_spatial_operation(cast(u32)token)==expected;
+}
+#test "spatial helper cache retains distinct typed operations through nonhead reuse" {
+ nodes:[2048]CK_Node;types:[256]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[32768]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ p:=CK_spatial_intern(c,SP_Kind.point,23,16,7,CK_Loc.{});v:=CK_spatial_intern(c,SP_Kind.vector,23,16,7,CK_Loc.{});ops:=[4]u32.[35,34,34,34];lefts:=[4]int.[p,v,p,v];rights:=[4]int.[p,v,v,p];results:=[4]int.[v,v,p,p];ids:[4]int;
+ for i:0..<4 {ids[i]=CK_spatial_helper(c,ops[i],lefts[i],rights[i],results[i],CK_Loc.{});#assert ids[i]!=0 && state[0].error_count==0;for j:0..<i {#assert ids[i]!=ids[j];}}
+ before:=state[0].instance_count;for i:0..<4 {#assert CK_spatial_helper(c,ops[i],lefts[i],rights[i],results[i],CK_Loc.{})==ids[i];}#assert state[0].instance_count==before && before==6;
+ nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=p,mark=1};nodes[11]=CK_Node.{kind=CK_Tag.expr_struct,type=v,mark=1};nodes[12]=CK_Node.{kind=CK_Tag.expr_binary,op=34,a=10,b=11};#assert CK_binary(c,12,CK_Hint.{})==p && CK_expr(c,12,CK_Hint.{})==p && state[0].error_count==0;
+}
+#forall "spatial invalid affine and mismatch decisions publish no helper" failure:0..<8 {
+ nodes:[1024]CK_Node;types:[256]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[32768]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ p:=CK_spatial_intern(c,SP_Kind.point,23,16,6,CK_Loc.{});v:=CK_spatial_intern(c,SP_Kind.vector,23,16,6,CK_Loc.{});a:=p;b:=p;op:u32=34;
+ if failure==1 {a=v;b=p;op=35;}if failure==2 {b=6;op=36;}if failure==3 {a=v;b=7;op=36;}if failure==4 {a=v;b=19;op=36;}if failure==5 {a=v;b=CK_spatial_intern(c,SP_Kind.vector,23,22,6,CK_Loc.{});}if failure==6 {a=v;b=v;op=44;}
+ if failure==7 {id:=CK_new(c,CK_Tag.struct_,CK_Loc.{});frame:=CK_new_type(c,CK_Type.{kind=CK_Kind.struct_,name="Other",decl=id,size=1,alignment=1});nodes[id]=nodes[21];nodes[id].name="Other";nodes[id].type=frame;a=v;b=CK_spatial_intern(c,SP_Kind.vector,frame,16,6,CK_Loc.{});}
+ nodes[10]=CK_Node.{kind=ifx a==6 || a==7 then CK_Tag.expr_float else CK_Tag.expr_struct,type=a,mark=1};nodes[11]=CK_Node.{kind=ifx b==6 || b==7 then CK_Tag.expr_float else CK_Tag.expr_struct,type=b,mark=1};nodes[12]=CK_Node.{kind=CK_Tag.expr_binary,op=op,a=10,b=11,loc=CK_Loc.{line=17,column=3,offset=99}};
+ #assert CK_spatial_binary(c,12,a,b)==0 && state[0].error_count==1 && errors[0].code=="E0834" && errors[0].loc.offset==99 && state[0].spatial_helpers==0;
+ messages:=[8]string.[
+ "affine operation is not admitted: Point3(World,Metre,f32) and Point3(World,Metre,f32)",
+ "affine operation is not admitted: Vector3(World,Metre,f32) and Point3(World,Metre,f32)",
+ "affine operation is not admitted: Point3(World,Metre,f32) and f32",
+ "spatial carriers differ: Vector3(World,Metre,f32) and f64",
+ "spatial scaling needs a matching raw f32 or f64: Vector3(World,Metre,f32) and Quantity(Metre,f64)",
+ "nominal units differ: Vector3(World,Metre,f32) and Vector3(World,Target,f32)",
+ "affine operation is not admitted: Vector3(World,Metre,f32) and Vector3(World,Metre,f32)",
+ "nominal frames differ: Vector3(World,Metre,f32) and Vector3(Other,Metre,f32)"];#assert errors[0].message==messages[failure];
+}
+#forall "checked aggregate and call headers require exact provenance kind and target" kind:0..<5,mark:0..<4,proc:0..<3 {
+ kinds:=[5]CK_Tag.[CK_Tag.expr_struct,CK_Tag.expr_array,CK_Tag.expr_call,CK_Tag.expr_ident,CK_Tag.expr_unary];want:=false;
+ if mark==1 && kind<2 {want=true;}if mark==2 && kind==2 && proc!=0 {want=true;}
+ #assert CK_prechecked(CK_Node.{kind=kinds[kind],mark=mark,proc=proc,type=7})==want;
+}
+#forall "spatial admission respects every live-range and declared-role boundary" invalid:0..<14 {
+ nodes:[512]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);frame:=23;unit:=16;kind:=SP_Kind.point;
+ if invalid==0 {frame=15;}if invalid==1 {frame=24;types[24]=types[23];}
+ if invalid==2 {unit=15;}if invalid==3 {unit=24;types[24]=types[16];}
+ if invalid==4 {kind=SP_Kind.invalid;}if invalid==5 {types[23].kind=CK_Kind.floating;}
+ if invalid==6 {nodes[21].frame_decl=false;}if invalid==7 {nodes[21].quantity=1;}if invalid==8 {nodes[21].d=4;}if invalid==9 {nodes[21].head=6;}
+ if invalid==10 {types[16].kind=CK_Kind.floating;}if invalid==11 {nodes[2].quantity=0;}if invalid==12 {nodes[2].generic=true;nodes[2].d=4;}if invalid==13 {kind=SP_Kind.raw;}
+ #assert CK_spatial_intern(c,kind,frame,unit,7,CK_Loc.{})==0 && state[0].error_count==1 && errors[0].code=="E0833" && state[0].spatial_types==0;
+ if invalid<5 || invalid==13 {#assert errors[0].message=="spatial types require concrete frame and unit tags and f32 or f64";}else {#assert errors[0].message=="spatial arguments must name admitted concrete frame and unit tags";}
+}
+#test "first nominal type can be an admitted frame and frame layout replaces stale shape" {
+ nodes:[512]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ types[23]=types[16];types[16]=CK_Type.{kind=CK_Kind.struct_,name="World",decl=21,size=99,alignment=8};nodes[21].type=16;nodes[2].type=23;types[19].unit=23;types[20].elem=23;
+ CK_frame_layout(c,21);#assert types[16].size==1 && types[16].alignment==1 && state[0].error_count==0;
+ t:=CK_spatial_intern(c,SP_Kind.point,16,23,7,CK_Loc.{});#assert t!=0 && types[t].space.frame==16 && types[t].space.unit==23;
+}
+#forall "spatial type child lookup refusal preserves primary diagnostics and none" missing:0..<3 {
+ nodes:[512]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);state[0].used=25;
+ nodes[22]=CK_Node.{kind=CK_Tag.type_named,name="Point3",head=23,tail=25};nodes[23]=CK_Node.{kind=CK_Tag.type_named,name="World",next=24};nodes[24]=CK_Node.{kind=CK_Tag.type_named,name="Metre",next=25};nodes[25]=CK_Node.{kind=CK_Tag.type_named,name="f64"};nodes[23+missing].name="Missing";
+ #assert CK_spatial_type(c,22)==0 && state[0].error_count==1 && errors[0].code=="E0302" && state[0].spatial_types==0;
+}
+#forall "spatial literals coerce both source orders once and preserve overflow diagnostic" rep:6..<8,side:0..<2,overflow:0..<2 {
+ nodes:[1024]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ v:=CK_spatial_intern(c,SP_Kind.vector,23,16,rep,CK_Loc.{});literal:=10+side;other:=11-side;nodes[other]=CK_Node.{kind=CK_Tag.expr_struct,type=v,mark=1};nodes[literal]=CK_Node.{kind=CK_Tag.expr_float,type=5,floating=ifx overflow==0 then 0x4000000000000000 else 0x7fefffffffffffff};nodes[12]=CK_Node.{kind=CK_Tag.expr_binary,a=10,b=11,op=36};
+ r:=CK_binary(c,12,CK_Hint.{});if overflow==1 && rep==6 {#assert r==0 && state[0].error_count==1 && errors[0].code=="E0350" && state[0].spatial_helpers==0;}
+ else {#assert r==v && nodes[literal].type==rep && state[0].error_count==0;}
+}
+#forall "spatial unary refusal returns none and its primary affine diagnostic" kind:1..<3,op:0..<2 {
+ nodes:[512]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ t:=CK_spatial_intern(c,cast(SP_Kind)kind,23,16,7,CK_Loc.{});nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=t,mark=1};nodes[12]=CK_Node.{kind=CK_Tag.expr_unary,a=10,op=ifx op==0 then 35 else 33};if kind==2 && op==0 {#assert CK_spatial_unary(c,12,t)==t;}else {#assert CK_spatial_unary(c,12,t)==0 && state[0].error_count==1 && errors[0].code=="E0834" && state[0].spatial_helpers==0;}
+}
+#forall "spatial reserved runtime constructors always return type-none" kind:0..<2 {
+ nodes:[256]CK_Node;types:[96]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[8192]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);nodes[12]=CK_Node.{kind=CK_Tag.expr_call,name=ifx kind==0 then "Point3" else "Vector3"};
+ #assert CK_call(c,12,CK_Hint.{})==0 && state[0].error_count==1 && errors[0].code=="E0833" && errors[0].message=="spatial constructors are types, not runtime calls";
+}
+#forall "spatial call argument copies detach intrusive links and preserve original operands" unary:0..<2 {
+ nodes:[1024]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ t:=CK_spatial_intern(c,SP_Kind.vector,23,16,7,CK_Loc.{});nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=t,mark=1,next=14};nodes[11]=CK_Node.{kind=CK_Tag.expr_struct,type=t,mark=1,next=15};nodes[12]=CK_Node.{kind=ifx unary==1 then CK_Tag.expr_unary else CK_Tag.expr_binary,a=10,b=11,op=35,next=18};
+ #assert CK_spatial_call(c,12,35,t,ifx unary==1 then 0 else t,t)==t && state[0].error_count==0;call:=nodes[12];#assert call.next==18 && nodes[10].next==14 && nodes[11].next==15 && nodes[call.tail].next==0;
+ if unary==1 {#assert call.head==call.tail;}else {#assert call.head!=call.tail && nodes[call.head].next==call.tail;}
+}
+#forall "spatial refusal preserves operator and published helper cache across final copy failures" failure:0..<4 {
+ nodes:[1024]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ t:=CK_spatial_intern(c,SP_Kind.vector,23,16,7,CK_Loc.{});h:=CK_spatial_helper(c,35,t,t,t,CK_Loc.{});before:=state[0].instance_count;head:=state[0].spatial_helpers;
+ nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=t,mark=1};nodes[11]=nodes[10];nodes[12]=CK_Node.{kind=CK_Tag.expr_binary,a=10,b=11,op=35,next=18};op:u32=35;
+ if failure<2 {c.nodes=nodes[0..<state[0].used+1+failure];}if failure==2 {state[0].instance_count=256;before=256;op=34;}if failure==3 {c.bytes=bytes[0..<0];op=34;}
+ #assert h!=0 && CK_spatial_call(c,12,op,t,t,t)==0 && state[0].error_count==1 && state[0].spatial_helpers==head && state[0].instance_count==before;
+ #assert nodes[12].kind==CK_Tag.expr_binary && nodes[12].a==10 && nodes[12].b==11 && nodes[12].op==35 && nodes[12].next==18;
+ if failure==2 {#assert errors[0].code=="E0339";}else {#assert errors[0].code=="E0381" && state[0].fatal;}
+}
+#test "spatial result-type refusal is primary before any operator helper publication" {
+ nodes:[1024]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ p:=CK_spatial_intern(c,SP_Kind.point,23,16,7,CK_Loc.{});state[0].instance_count=256;nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=p,mark=1};nodes[11]=nodes[10];nodes[12]=CK_Node.{kind=CK_Tag.expr_binary,a=10,b=11,op=35};
+ #assert CK_spatial_binary(c,12,p,p)==0 && state[0].error_count==1 && errors[0].code=="E0339" && state[0].spatial_helpers==0 && nodes[12].kind==CK_Tag.expr_binary;
+}
+
+#forall "spatial mutation preparation preserves source tokens arguments and exact alternate signatures" test:0..<10,rep:6..<8 {
+ nodes:[2048]CK_Node;types:[256]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[32768]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ point:=CK_spatial_intern(c,SP_Kind.point,23,16,rep,CK_Loc.{});vector:=CK_spatial_intern(c,SP_Kind.vector,23,16,rep,CK_Loc.{});
+ lefts:=[10]int.[point,point,vector,vector,vector,vector,point,vector,rep,vector];rights:=[10]int.[vector,vector,vector,vector,rep,rep,point,point,vector,0];tokens:=[10]u32.[34,35,34,35,36,37,35,34,36,35];alternates:=[10]u32.[35,34,35,34,37,36,0,0,0,0];a:=lefts[test];b:=rights[test];
+ nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=a,mark=1};nodes[11]=CK_Node.{kind=CK_Tag.expr_struct,type=b,mark=1};nodes[12]=CK_Node.{kind=CK_Tag.expr_binary,a=10,b=11,op=tokens[test],loc=CK_Loc.{line=17,column=9,offset=33},next=18};
+ result:=ifx test==9 then CK_spatial_unary(c,12,a) else CK_spatial_binary(c,12,a,b);#assert result!=0;
+ before:=nodes[12];#assert before.op==tokens[test] && before.lowering==(ifx test==9 then CK_Lowering.spatial_unary else CK_Lowering.spatial_binary) && before.mutation_status==CK_Mutation.unprepared && before.mutation_proc==0 && before.mutation_op==0;
+ #assert CK_prepare_spatial_mutations(c) && state[0].error_count==0;after:=nodes[12];
+ #assert after.proc==before.proc && after.head==before.head && after.tail==before.tail && after.type==before.type && after.next==18 && after.op==before.op && after.mark==2 && after.loc.line==17 && after.loc.column==9 && after.loc.offset==33;
+ #assert nodes[before.head].type==a && nodes[before.tail].type==(ifx test==9 then a else b);
+ if test<6 {#assert after.mutation_status==CK_Mutation.eligible && after.mutation_op==alternates[test] && after.mutation_proc!=0 && after.mutation_proc!=before.proc;h:=nodes[after.mutation_proc];#assert h.kind==CK_Tag.proc && h.type==result && nodes[h.head].type==a && nodes[h.tail].type==b && nodes[h.head].next==h.tail && nodes[h.tail].next==0;
+  aggregate:=nodes[nodes[nodes[h.b].head].a];field:=aggregate.head;for axis:0..<3 {#assert nodes[nodes[field].a].op==alternates[test];field=nodes[field].next;}#assert field==0;
+ }else {#assert after.mutation_status==(ifx test==9 then CK_Mutation.unsupported else CK_Mutation.no_alternative) && after.mutation_proc==0 && after.mutation_op==0;}
+}
+#forall "spatial mutation candidate rejects inconsistent checked call facts" bad:0..<10 {
+ nodes:[1024]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ v:=CK_spatial_intern(c,SP_Kind.vector,23,16,7,CK_Loc.{});nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=v,mark=1};nodes[11]=nodes[10];nodes[12]=CK_Node.{kind=CK_Tag.expr_binary,a=10,b=11,op=34};#assert CK_spatial_binary(c,12,v,v)==v;h:=nodes[12].proc;
+ if bad==0 {nodes[12].kind=CK_Tag.expr_struct;}if bad==1 {nodes[12].mark=1;}if bad==2 {nodes[12].lowering=CK_Lowering.spatial_unary;}if bad==3 {nodes[nodes[12].head].next=0;}if bad==4 {nodes[12].proc=0;}
+ if bad==5 {nodes[h].kind=CK_Tag.struct_;}if bad==6 {nodes[h].type=7;}if bad==7 {nodes[nodes[h].head].next=0;}if bad==8 {nodes[nodes[h].head].type=7;}if bad==9 {nodes[nodes[h].tail].type=6;}
+ r:=CK_spatial_mutation_candidate(c,12);#assert r.status==SOM_Status.metadata && r.operation==SP_Op.invalid;
+}
+#forall "spatial mutation capacity refusal never retargets a source call" fault:0..<3 {
+ nodes:[1024]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ v:=CK_spatial_intern(c,SP_Kind.vector,23,16,7,CK_Loc.{});nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=v,mark=1};nodes[11]=nodes[10];nodes[12]=CK_Node.{kind=CK_Tag.expr_binary,a=10,b=11,op=34};#assert CK_spatial_binary(c,12,v,v)==v;before:=nodes[12];
+ if fault==0 {state[0].instance_count=256;}if fault==1 {c.nodes=nodes[0..<state[0].used+2];}if fault==2 {c.bytes=bytes[0..<0];}
+ #assert !CK_prepare_spatial_mutations(c) && state[0].error_count==1 && nodes[12].proc==before.proc && nodes[12].head==before.head && nodes[12].tail==before.tail && nodes[12].mutation_status==CK_Mutation.unprepared && nodes[12].mutation_proc==0;
+ #assert errors[0].code==(ifx fault==0 then "E0339" else "E0381");
+}
+#forall "spatial mutation preparation refuses unknown provenance and preserves primary location" bad:0..<6 {
+ nodes:[64]CK_Node;types:[32]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0].used=2;
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_call,mark=2,lowering=CK_Lowering.spatial_binary,loc=CK_Loc.{line=17,column=9,offset=33}};
+ if bad==0 {nodes[2].kind=CK_Tag.expr_struct;}if bad==1 {nodes[2].mark=1;}if bad==2 {nodes[2].lowering=CK_Lowering.invalid;}if bad==3 {nodes[2].op=99;}if bad==4 {nodes[2].kind=CK_Tag.expr_struct;nodes[2].lowering=CK_Lowering.spatial_unary;}if bad==5 {nodes[2].mark=1;nodes[2].lowering=CK_Lowering.spatial_unary;}
+ #assert !CK_prepare_spatial_mutations(c) && state[0].error_count==1 && errors[0].code=="E0834" && errors[0].message=="spatial mutation source metadata is inconsistent" && errors[0].loc.line==17 && errors[0].loc.column==9 && errors[0].loc.offset==33;
+}
+#test "spatial mutation preparation refuses prior fatal state" {
+ nodes:[2]CK_Node;types:[1]CK_Type;locals:[1]CK_Local;errors:[1]CK_Error;bytes:[1]u8;state:[1]CK_State;state[0].fatal=true;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};#assert !CK_prepare_spatial_mutations(c) && state[0].error_count==0;
+}
+#forall "spatial mutation alternate tokens are exact across the closed opcode vocabulary" op:0..<10 {
+ values:=[10]SP_Op.[SP_Op.add,SP_Op.sub,SP_Op.mul,SP_Op.div,SP_Op.eq,SP_Op.ne,SP_Op.lt,SP_Op.dot,SP_Op.cross,SP_Op.invalid];expected:=[10]u32.[34,35,36,37,0,0,0,0,0,0];#assert CK_spatial_token(values[op])==expected[op];
+}
+
+#test "spatial mutation scan covers its first live node and excludes unused tail" {
+ nodes:[8]CK_Node;types:[1]CK_Type;locals:[1]CK_Local;errors:[8]CK_Error;bytes:[1024]u8;state:[1]CK_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.expr_call,mark=2,lowering=CK_Lowering.invalid};state[0].used=1;
+ #assert !CK_prepare_spatial_mutations(c) && state[0].error_count==1 && errors[0].code=="E0834";
+ nodes[1].lowering=CK_Lowering.none;nodes[2]=CK_Node.{kind=CK_Tag.expr_call,mark=2,lowering=CK_Lowering.invalid};state[0].error_count=0;
+ #assert CK_prepare_spatial_mutations(c) && state[0].error_count==0;
+}
+

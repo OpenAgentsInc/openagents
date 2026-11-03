@@ -3132,7 +3132,8 @@ ASan/UBSan), plus the real iOS simulator tests from empty generated outputs.
 
 ## Type checking is Coax with no native semantic fallback
 
-`coax/lib/compiler/checker.coax` owns semantic admission and diagnostics,
+`coax/lib/compiler/checker.coax` (with its parts in `checker/`, #12646) owns
+semantic admission and diagnostics,
 name/scope/type resolution, numeric folding/range/IEEE decisions, natural
 layout, calls, control flow, checks and Metal admission. The C++ bridge only
 supplies owned storage and reconstructs native records/references/lists after

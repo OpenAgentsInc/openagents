@@ -2,7 +2,8 @@
 
 `lexer.c` and `lexer.h` are generated from `../lib/compiler/lexer.coax`.
 `parser.c` and `parser.h` are generated from `../lib/compiler/parser.coax`.
-`checker.c` and `checker.h` are generated from `../lib/compiler/checker.coax`.
+`checker.c` and `checker.h` are generated from `../lib/compiler/checker.coax`, which
+loads its parts from `../lib/compiler/checker/` (one C seed for all of them).
 `sources.c` and `sources.h` are generated from `../lib/compiler/sources.coax`.
 These are the only lexer/parser/checker/source-policy seeds. There is no authored C++ grammar/scanner/type-policy fallback and no
 binary download, Python generator or dependency on an existing coax executable

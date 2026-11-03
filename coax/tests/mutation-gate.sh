@@ -83,6 +83,25 @@ named="$("$gate" verdict "$work/changed" "$work/labelled")" && fail "a survivor 
 echo 'stage0 mutate lib/third.coax: lib/other.coax:7' > "$work/labelled"
 "$gate" verdict "$work/changed" "$work/labelled" > /dev/null || fail "a survivor of an untouched gate gated"
 
+# A root with parts (lib/split.coax loading lib/split/*.coax, as the checker
+# does): a check removed from one part marks the root, so the root gate's
+# survivors in every part gate. A part with no root beside its directory does not.
+mkdir -p "$repo/coax/lib/split"
+printf '%s\n' '#load "split/code.coax";' '#load "split/checks.coax";' > "$repo/coax/lib/split.coax"
+printf '%s\n' 'add :: (a:s32,b:s32)->s32 {return a+b;}' 'main :: () {}' > "$repo/coax/lib/split/code.coax"
+printf '%s\n' '#test "one" {#assert add(1,2)==3;}' '#test "two" {#assert add(2,2)==4;}' > "$repo/coax/lib/split/checks.coax"
+git -C "$repo" add coax/lib && git -C "$repo" commit -q -m split
+split="$(git -C "$repo" rev-parse HEAD)"
+sed -i.bak '2d' "$repo/coax/lib/split/checks.coax"
+rm "$repo/coax/lib/split/checks.coax.bak"
+"$gate" changed "$repo" "$split" > "$work/changed"
+grep -qx 'lib/split/checks.coax:checks' "$work/changed" || fail "the part's removed check is not listed"
+grep -qx 'lib/split.coax:checks' "$work/changed" || fail "the part's removed check does not mark its root"
+echo 'stage0 mutate lib/split.coax: lib/split/code.coax:1' > "$work/labelled"
+"$gate" verdict "$work/changed" "$work/labelled" > /dev/null && fail "a survivor of a part's removed check passed"
+grep -qx 'lib.coax:checks' "$work/changed" && fail "a directory with no root file is marked"
+git -C "$repo" checkout -q -- coax/lib/split/checks.coax
+
 # A file the working tree adds without committing is changed throughout, and
 # a user's diff.noprefix does not hide the changed paths.
 printf '%s\n' 'x :: ()->s32 {return 1;}' 'main :: () {}' > "$repo/coax/lib/new.coax"

@@ -1,0 +1,161 @@
+// Wide integers and encoded IEEE values: the arithmetic every literal fold
+// uses. A part of the checker: lib/compiler/checker.coax loads it (#12646).
+// The checker owns numerical admissibility and literal folding. Encoded IEEE
+// values let checks cover infinities/NaNs without creating evaluator resources.
+#authority;
+CM_U :: struct {w:[4] u32;}
+CM_Int :: struct {mag:CM_U;negative:bool;bad:bool;}
+CM_Add :: struct {value:CM_U;carry:bool;}
+CM_Div :: struct {q:CM_U;r:CM_U;}
+CM_u :: (value:u64)->CM_U {r:CM_U;r.w[0]=cast,trunc(u32)value;r.w[1]=cast(u32)(value>>32);return r;}
+CM_low :: (a:CM_U)->u64 {return cast(u64)a.w[0] | (cast(u64)a.w[1]<<32);}
+CM_zero :: (a:CM_U)->bool {for x:a.w {if x!=0 {return false;}}return true;}
+CM_cmp :: (a:CM_U,b:CM_U)->int {for j:0..<4 {i:=3-j;if a.w[i]<b.w[i] {return -1;}if a.w[i]>b.w[i] {return 1;}}return 0;}
+CM_uadd :: (a:CM_U,b:CM_U)->CM_Add {
+  r:CM_Add;carry:u64=0;for i:0..<4 {v:=cast(u64)a.w[i]+cast(u64)b.w[i]+carry;r.value.w[i]=cast,trunc(u32)v;carry=v>>32;}r.carry=carry!=0;return r;
+}
+CM_usub :: (a:CM_U,b:CM_U)->CM_U {
+  r:CM_U;borrow:u64=0;for i:0..<4 {need:=cast(u64)b.w[i]+borrow;v:=cast(u64)a.w[i];if v<need {r.w[i]=cast(u32)(4294967296+v-need);borrow=1;}else {r.w[i]=cast(u32)(v-need);borrow=0;}}return r;
+}
+CM_bit :: (a:CM_U,index:int)->bool {if index<0 || index>=128 {return false;}return (a.w[index/32] & (cast(u32)1<<(index%32)))!=0;}
+CM_bits :: (a:CM_U)->int {for j:0..<4 {i:=3-j;if a.w[i]!=0 {v:=a.w[i];n:=0;while v!=0 {n+=1;v=v>>1;}return i*32+n;}}return 0;}
+CM_limb :: (a:CM_U,index:int,shift:int)->u32 {
+  at:=index-shift/32;bit:=shift%32;v:u32=0;
+  if at>=0 && at<a.w.count {v=a.w[at]<<bit;}
+  if bit!=0 && at>0 && at-1<a.w.count {v=v | (a.w[at-1]>>(32-bit));}return v;
+}
+CM_left :: (a:CM_U,shift:int)->CM_U {r:CM_U;for i:0..<4 {r.w[i]=CM_limb(a,i,shift);}return r;}
+CM_right :: (a:CM_U,shift:int)->CM_U {
+  r:CM_U;for i:0..<a.w.count {at:=i+shift/32;bit:=shift%32;if at<4 {r.w[i]=a.w[at]>>bit;}if bit!=0 && at+1<4 {r.w[i]=r.w[i] | (a.w[at+1]<<(32-bit));}}return r;
+}
+CM_below :: (a:CM_U,limit:int)->bool {
+  for i:0..<4 {bits:=limit-i*32;if bits>=32 {if a.w[i]!=0 {return true;}}
+    else {positive:=bits & ((bits>>63)^ -1);mask:=(cast(u32)1<<positive)-1;if (a.w[i]&mask)!=0 {return true;}}}return false;
+}
+CM_jam :: (a:CM_U,shift:int)->CM_U {r:=CM_right(a,shift);if CM_below(a,shift) {r.w[0]=r.w[0] | 1;}return r;}
+CM_udiv :: (a:CM_U,b:CM_U)->CM_Div {
+  r:CM_Div;for j:0..<128 {i:=127-j;r.r=CM_left(r.r,1);if CM_bit(a,i) {r.r.w[0]=r.r.w[0] | 1;}
+    if CM_cmp(r.r,b)>=0 {r.r=CM_usub(r.r,b);r.q.w[i/32]=r.q.w[i/32] | (cast(u32)1<<(i%32));}}return r;
+}
+CM_normal :: (v:CM_Int)->CM_Int {r:=v;if CM_zero(r.mag) {r.negative=false;}return r;}
+CM_from :: (value:u64,negative:bool)->CM_Int {return CM_normal(CM_Int.{mag=CM_u(value),negative=negative});}
+CM_negate :: (v:CM_Int)->CM_Int {r:=v;r.negative=!r.negative;return CM_normal(r);}
+CM_add :: (a:CM_Int,b:CM_Int)->CM_Int {
+  r:=CM_Int.{bad=a.bad || b.bad};
+  if a.negative==b.negative {sum:=CM_uadd(a.mag,b.mag);r.mag=sum.value;r.negative=a.negative;r.bad=r.bad || sum.carry;}
+  else {
+    // Select the magnitude/sign with masks; exact cancellation has one zero.
+    sign:=CM_cmp(a.mag,b.mag)>>63;mask:=cast,trunc(u32)sign;difference:=CM_usub(a.mag,b.mag);
+    for i:0..<difference.w.count {difference.w[i]=difference.w[i]^mask;}
+    r.mag=CM_uadd(difference,CM_u(cast(u64)(sign&1))).value;r.negative=a.negative!=(sign!=0);
+  }return CM_normal(r);
+}
+CM_sub :: (a:CM_Int,b:CM_Int)->CM_Int {return CM_add(a,CM_negate(b));}
+CM_mul :: (a:CM_Int,b:CM_Int)->CM_Int {
+  words:[8] u32;
+  for i:0..<4 {carry:u64=0;for j:0..<4 {at:=i+j;v:=cast(u64)a.mag.w[i]*cast(u64)b.mag.w[j]+cast(u64)words[at]+carry;words[at]=cast,trunc(u32)v;carry=v>>32;}words[i+4]=cast(u32)carry;}
+  r:=CM_Int.{negative=a.negative!=b.negative,bad=a.bad || b.bad};for i:0..<4 {r.mag.w[i]=words[i];if words[i+4]!=0 {r.bad=true;}}return CM_normal(r);
+}
+CM_divide :: (a:CM_Int,b:CM_Int,remainder:bool)->CM_Int {
+  if CM_zero(b.mag) {return CM_Int.{bad=true};}v:=CM_udiv(a.mag,b.mag);r:=CM_Int.{bad=a.bad || b.bad};
+  if remainder {r.mag=v.r;r.negative=a.negative;}else {r.mag=v.q;r.negative=a.negative!=b.negative;}return CM_normal(r);
+}
+CM_twos :: (a:CM_Int)->CM_U {if a.negative {return CM_usub(CM_U.{},a.mag);}return a.mag;}
+CM_from_twos :: (a:CM_U)->CM_Int {r:=CM_Int.{mag=a,negative=CM_bit(a,127)};if r.negative {r.mag=CM_usub(CM_U.{},a);}return CM_normal(r);}
+CM_bitwise :: (op:u32,a:CM_Int,b:CM_Int)->CM_Int {
+  x:=CM_twos(a);y:=CM_twos(b);z:CM_U;
+  for i:0..<4 {if op==39 {z.w[i]=x.w[i]&y.w[i];}else if op==40 {z.w[i]=x.w[i] | y.w[i];}else {z.w[i]=x.w[i]^y.w[i];}}
+  r:=CM_from_twos(z);r.bad=a.bad || b.bad;return r;
+}
+CM_shift :: (op:u32,a:CM_Int,distance:int)->CM_Int {
+  if distance<0 || distance>63 {return CM_Int.{bad=true};}
+  r:=a;if op==42 {r.bad=r.bad || CM_bits(a.mag)+distance>128;r.mag=CM_left(a.mag,distance);}
+  else {r.mag=CM_right(a.mag,distance);if a.negative && CM_below(a.mag,distance) {r.mag=CM_uadd(r.mag,CM_u(1)).value;}}return CM_normal(r);
+}
+CM_compare :: (a:CM_Int,b:CM_Int)->int {if a.negative!=b.negative {if a.negative {return -1;}return 1;}r:=CM_cmp(a.mag,b.mag);if a.negative {return -r;}return r;}
+CM_mask :: (width:int)->u64 {if width==64 {return 18446744073709551615;}return (cast(u64)1<<width)-1;}
+CM_fits :: (a:CM_Int,width:int,signed:bool)->bool {
+  if a.bad || width<1 || width>64 || a.mag.w[2]!=0 || a.mag.w[3]!=0 {return false;}
+  v:=CM_low(a.mag);if signed {limit:=cast(u64)1<<(width-1);if a.negative {return v<=limit;}return v<limit;}
+  return !a.negative && v<=CM_mask(width);
+}
+CM_canon :: (value:u64,width:int,signed:bool)->u64 {
+  mask:=CM_mask(width);v:=value&mask;if signed && ((v>>(width-1))&1)!=0 {v=v | (mask^18446744073709551615);}return v;
+}
+CM_raw :: (a:CM_Int)->u64 {return CM_low(CM_twos(a));}
+CM_signed_bits :: (value:u64,signed:bool)->CM_Int {if signed && (value>>63)!=0 {return CM_from(CM_low(CM_usub(CM_U.{},CM_u(value))),true);}return CM_from(value,false);}
+CM_decimal :: (a:CM_Int,out:[] u8)->int {
+  digits:[40] u8;count:=0;v:=a.mag;
+  while !CM_zero(v) {remainder:u64=0;for j:0..<4 {i:=3-j;n:=(remainder<<32)+cast(u64)v.w[i];v.w[i]=cast(u32)(n/10);remainder=n%10;}digits[count]=cast(u8)(48+remainder);count+=1;}
+  if count==0 {digits[0]=48;count=1;}if a.negative {digits[count]=45;count+=1;}
+  if out.count<count {return -1;}for i:0..<count {out[i]=digits[count-1-i];}return count;
+}
+CM_Width :: enum u8 {f32=32;f64=64;}
+CM_Float :: struct {mantissa:u64;power:int;negative:bool;special:int;}
+CM_unpack :: (bits:u64,width:CM_Width)->CM_Float {
+  fraction:=52;exponent:=11;bias:=1023;if width==CM_Width.f32 {fraction=23;exponent=8;bias=127;}
+  sign:=(bits>>(fraction+exponent))!=0;exponent_field:=(bits>>fraction)&CM_mask(exponent);mantissa:=bits&CM_mask(fraction);
+  if exponent_field==CM_mask(exponent) {special:=1;if mantissa!=0 {special=2;}return CM_Float.{mantissa=mantissa,negative=sign,special=special};}
+  power:=1-bias-fraction;
+  if exponent_field!=0 {mantissa=mantissa | (cast(u64)1<<fraction);power=cast(int)exponent_field-bias-fraction;}
+  return CM_Float.{mantissa=mantissa,power=power,negative=sign};
+}
+CM_special :: (negative:bool,nan:bool,width:CM_Width)->u64 {
+  fraction:=52;exponent:=11;if width==CM_Width.f32 {fraction=23;exponent=8;}
+  r:=CM_mask(exponent)<<fraction;if nan {r=r | (cast(u64)1<<(fraction-1));}if negative {r=r | (cast(u64)1<<(fraction+exponent));}return r;
+}
+CM_pack_sticky :: (a:CM_U,input_power:int,negative:bool,width:CM_Width,sticky:bool)->u64 {
+  power:=input_power;
+  fraction:=52;exponent:=11;bias:=1023;if width==CM_Width.f32 {fraction=23;exponent=8;bias=127;}
+  sign:u64=0;if negative {sign=cast(u64)1<<(fraction+exponent);}if CM_zero(a) {return sign;}
+  shift:=CM_bits(a)-fraction-1;minimum:=1-bias-fraction;delta:=minimum-power-shift;shift+=delta & ((delta>>63)^ -1);
+  rounded:CM_U;
+  left:=(-shift) & (shift>>63);right:=shift & ((shift>>63)^ -1);
+  rounded=CM_right(CM_left(a,left),right);
+  if CM_bit(a,right-1) && (sticky || CM_below(a,right-1) || CM_bit(rounded,0)) {rounded=CM_uadd(rounded,CM_u(1)).value;}
+  v:=CM_low(rounded);power+=shift;
+  if v==(cast(u64)1<<(fraction+1)) {power+=1;}
+  if CM_bits(rounded)<=fraction {return sign | v;}
+  exponent_field:=power+fraction+bias;if exponent_field>=cast(int)CM_mask(exponent) {return CM_special(negative,false,width);}
+  return sign | (cast(u64)exponent_field<<fraction) | (v&CM_mask(fraction));
+}
+CM_pack :: (a:CM_U,power:int,negative:bool,width:CM_Width)->u64 {return CM_pack_sticky(a,power,negative,width,false);}
+CM_convert :: (bits:u64,from:CM_Width,to:CM_Width)->u64 #export_c {
+  v:=CM_unpack(bits,from);
+  if v.special==2 {source:=52;target:=52;if from==CM_Width.f32 {source=23;}if to==CM_Width.f32 {target=23;}delta:=target-source;left:=delta & ((delta>>63)^ -1);right:=(-delta) & (delta>>63);
+    payload:=(v.mantissa<<left)>>right;return CM_special(v.negative,true,to) | payload;
+  }
+  if v.special==1 {return CM_special(v.negative,false,to);}return CM_pack(CM_u(v.mantissa),v.power,v.negative,to);
+}
+CM_to_float :: (a:CM_Int)->u64 {return CM_pack(a.mag,0,a.negative,CM_Width.f64);}
+CM_normal_float :: (a:CM_Float)->CM_Float {r:=a;while r.mantissa<4503599627370496 {r.mantissa=r.mantissa<<1;r.power-=1;}return r;}
+CM_zero_float :: (negative:bool)->u64 {if negative {return 9223372036854775808;}return 0;}
+CM_float :: (op:u32,left:u64,right:u64)->u64 #export_c {
+  a:=CM_unpack(left,CM_Width.f64);b:=CM_unpack(right,CM_Width.f64);
+  if a.special==2 {return left | 0x0008000000000000;}if b.special==2 {return right | 0x0008000000000000;}
+  if op==34 || op==35 {
+    if op==35 {b.negative=!b.negative;}
+    if a.special==1 || b.special==1 {
+      if a.special==1 && b.special==1 && a.negative!=b.negative {return CM_special(false,true,CM_Width.f64);}
+      if a.special==1 {return CM_special(a.negative,false,CM_Width.f64);}return CM_special(b.negative,false,CM_Width.f64);
+    }
+    delta:=b.power-a.power;power:=a.power+(delta & ((delta>>63)^ -1));
+    x:=CM_Int.{mag=CM_jam(CM_left(CM_u(a.mantissa),3),power-a.power),negative=a.negative};
+    y:=CM_Int.{mag=CM_jam(CM_left(CM_u(b.mantissa),3),power-b.power),negative=b.negative};sum:=CM_add(x,y);
+    negative:=sum.negative;if CM_zero(sum.mag) {negative=a.negative && b.negative;}
+    return CM_pack(sum.mag,power-3,negative,CM_Width.f64);
+  }
+  negative:=a.negative!=b.negative;
+  if op==36 {
+    if (a.special==1 && b.mantissa==0 && b.special==0) || (b.special==1 && a.mantissa==0 && a.special==0) {return CM_special(false,true,CM_Width.f64);}
+    if a.special==1 || b.special==1 {return CM_special(negative,false,CM_Width.f64);}
+    product:=CM_mul(CM_Int.{mag=CM_u(a.mantissa)},CM_Int.{mag=CM_u(b.mantissa)});return CM_pack(product.mag,a.power+b.power,negative,CM_Width.f64);
+  }
+  if a.special==1 && b.special==1 {return CM_special(false,true,CM_Width.f64);}
+  if a.special==1 {return CM_special(negative,false,CM_Width.f64);}if b.special==1 {return CM_zero_float(negative);}
+  if b.mantissa==0 {if a.mantissa==0 {return CM_special(false,true,CM_Width.f64);}return CM_special(negative,false,CM_Width.f64);}
+  if a.mantissa==0 {return CM_zero_float(negative);}
+  a=CM_normal_float(a);
+  quotient:=CM_udiv(CM_left(CM_u(a.mantissa),64),CM_u(b.mantissa));
+  return CM_pack_sticky(quotient.q,a.power-b.power-64,negative,CM_Width.f64,!CM_zero(quotient.r));
+}

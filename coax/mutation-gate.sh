@@ -4,7 +4,8 @@
 # Which surviving mutants stop a build. A mutation gate's survivors stop it
 # only when the change since a base commit caused them: when they lie on a
 # changed line, or when the change removed or edited a check (#assert, #test,
-# #forall, #authority) in the survivor's file or in the file the gate mutates.
+# #forall, #authority) in the survivor's file or in the file the gate mutates
+# (for a root DIR/NAME.coax with parts in DIR/NAME/, in any of its parts).
 # Other survivors are reported, not gating. The full mutation check
 # (COAX_MUTATION_FULL=1 coax/build.sh) gates on every survivor.
 #
@@ -40,8 +41,21 @@ case "$mode" in
     # that it does not add back unchanged is marked PATH:checks: a mutant on
     # one of its unchanged lines may survive because that check went.
     {
-      git -C "$root" -c core.quotePath=false diff --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ -U0 "$base" ${ref:+"$ref"} -- coax | awk '
-        function flush(   l) { if (path != "") for (l in removed) if (!(l in added)) { print path ":checks"; break }; split("", removed); split("", added) }
+      git -C "$root" -c core.quotePath=false diff --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ -U0 "$base" ${ref:+"$ref"} -- coax | awk -v tree="$root/coax" '
+        # A part DIR/NAME/PART.coax that lost a check also marks its root
+        # DIR/NAME.coax (lib/compiler/checker/ and checker.coax, #12646): the
+        # root gate mutates every part, and checks in one part kill mutants in
+        # the others, as they did when the parts were one file.
+        function flush(   l, dir) {
+          if (path != "") for (l in removed) if (!(l in added)) {
+            print path ":checks"
+            dir = path; sub(/\/[^\/]*$/, "", dir)
+            if (dir != path && (getline l < (tree "/" dir ".coax")) > 0) print dir ".coax:checks"
+            close(tree "/" dir ".coax")
+            break
+          }
+          split("", removed); split("", added)
+        }
         function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t\r]+$/, "", s); return s }
         /^diff --git / { flush(); path = ""; header = 1; next }
         header && /^\+\+\+ / { path = (substr($0, 5) == "/dev/null") ? "" : substr($0, 7); sub(/^coax\//, "", path); next }

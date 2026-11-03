@@ -1,0 +1,445 @@
+// Generic procedures and structs: instances, substitution, binding,
+// constraints and deduction. A part of the checker: lib/compiler/checker.coax
+// loads it (#12646).
+#authority;
+// Instantiation (r4a-instantiation). Before anything is checked, a procedure
+// with $T in a parameter type keeps a pristine copy of its parsed signature
+// and body (pristine). A call deduces the bindings into an instance node
+// (origin: the template), one param-kind type record per $T whose elem is the
+// bound type; calls with the same bindings share it. After the program
+// checks, each instance gets its own copy of the template, resolved under its
+// bindings and checked like any concrete procedure; its calls may add more
+// instances, up to CK_INSTANCE_LIMIT. Calls inside a generic body bind only
+// symbolically (generic instance nodes): they type the call, nothing more.
+// Copies need no depth guard: the parser already bounds nesting, and a
+// failed allocation is fatal, so the check stops and nothing is bridged.
+// The instance limit is sized from the input: one instance per 8 syntax nodes
+// in a program of more than CK_INSTANCE_SIZED nodes, else CK_INSTANCE_LIMIT.
+// Its memory bound is the node store, 3 records per syntax node, allocated
+// before checking: every instance copies its template into that store, so a
+// larger limit allocates nothing more. A state whose instance_limit is 0 (not
+// set by CK_run) has CK_INSTANCE_LIMIT.
+CK_INSTANCE_LIMIT :: 256;
+CK_INSTANCE_SIZED :: 2056;
+CK_instance_limit :: (nodes:int)->int #export_c {if nodes<=CK_INSTANCE_SIZED {return CK_INSTANCE_LIMIT;}return nodes/8;}
+#test "the generic instance limit grows with the program and has a floor" {
+ #assert CK_instance_limit(0)==256 && CK_instance_limit(2048)==256 && CK_instance_limit(2056)==256 && CK_instance_limit(2057)==257;
+ #assert CK_instance_limit(-8)==256 && CK_instance_limit(80000)==10000 && CK_instance_limit(2147483646)==268435455;
+}
+CK_has_param :: (c:CK_Context,id:int)->bool {
+  t:=c.nodes[id];if t.kind==CK_Tag.type_param {return true;}
+  if t.kind==CK_Tag.type_array && c.nodes[t.a].kind==CK_Tag.type_param {return true;}
+  if t.kind==CK_Tag.type_view || t.kind==CK_Tag.type_array || t.kind==CK_Tag.type_optional {return CK_has_param(c,t.b);}
+  a:=t.head;while a!=CK_NONE {if CK_has_param(c,a) {return true;}a=c.nodes[a].next;}return false;  // Pair($T): its arguments
+}
+// tail is only the parser's append cursor; the checker never reads it.
+// CK_run clones fresh syntax before CK_lower_effects; cloning lowered graphs is not an admitted phase.
+CK_clone :: (c:CK_Context,id:int)->int {
+  if id==CK_NONE {return CK_NONE;}
+  copy:=CK_new(c,c.nodes[id].kind,c.nodes[id].loc);
+  n:=c.nodes[id];if n.kind==CK_Tag.case_binding {n.a=0;}n.a=CK_clone(c,n.a);n.b=CK_clone(c,n.b);n.c=CK_clone(c,n.c);n.d=CK_clone(c,n.d);
+  n.head=CK_clone_list(c,n.head);
+  // Checked constructors may occur in generic field defaults. Rebuild their
+  // syntax so each specialization re-admits the active type and payload.
+  // Clear the generated marker: CK_prechecked must not reuse the old type.
+  if n.kind==CK_Tag.expr_sum {field:=CK_new(c,CK_Tag.field_init,n.loc);if c.state[0].fatal {return field;}c.nodes[field].name=n.name;c.nodes[field].a=n.a;n.kind=CK_Tag.expr_struct;n.mark=0;n.head=field;}
+  if n.kind==CK_Tag.expr_some {n.kind=CK_Tag.expr_call;n.head=n.a;n.a=0;}
+  n.borrow_binding=0;n.borrow_owner=0;n.borrow_writes=0;n.borrow_returns=0;n.borrow_calls=0;n.borrow_next=0;n.borrow_status=0;c.nodes[copy]=n;return copy;
+}
+
+CK_clone_list :: (c:CK_Context,item:int)->int {
+  head:=CK_NONE;last:=CK_NONE;at:=item;
+  while at!=CK_NONE {k:=CK_clone(c,at);if last==CK_NONE {head=k;}else {c.nodes[last].next=k;}last=k;at=c.nodes[at].next;}
+  return head;
+}
+CK_templates :: (c:CK_Context) {
+  id:=c.nodes[1].head;while id!=CK_NONE {p:=c.nodes[id];if p.kind==CK_Tag.proc {
+    found:=false;param:=p.head;while param!=CK_NONE && !found {found=CK_has_param(c,c.nodes[param].a);param=c.nodes[param].next;}
+    if found {c.nodes[id].pristine=CK_clone(c,id);}
+  }id=p.next;}
+}
+
+CK_same :: (c:CK_Context,x:int,y:int)->bool {
+  n:=0;for i:16..<c.state[0].type_count {r:=c.types[i];if r.kind==CK_Kind.param {
+    if r.decl==x {n+=1;o:=c.types[CK_param_record(c,y,r.name)];if o.elem!=r.elem || o.length!=r.length {return false;}}
+    if r.decl==y {n-=1;}
+  }}return n==0;
+}
+// The template's checked type with each of its placeholders replaced.
+CK_subst :: (c:CK_Context,inst:int,t:int)->int {
+  r:=c.types[t];if r.kind==CK_Kind.param {return c.types[CK_param_record(c,inst,r.name)].elem;}
+  if r.kind==CK_Kind.result || r.kind==CK_Kind.optional {return CK_sum_type(c,r.kind,CK_subst(c,inst,r.elem),CK_subst(c,inst,r.sum_error),CK_Loc.{});}
+  if r.kind==CK_Kind.view {return CK_intern(c,CK_Kind.view,CK_subst(c,inst,r.elem),0);}
+  if r.kind==CK_Kind.array {return CK_intern(c,CK_Kind.array,CK_subst(c,inst,r.elem),CK_subst_length(c,inst,r.length));}
+  if r.kind==CK_Kind.struct_ && c.nodes[r.decl].generic {return CK_struct_subst(c,inst,r.decl);}
+  return t;
+}
+CK_subst_length :: (c:CK_Context,inst:int,count:int)->int {if count<0 {return c.types[CK_param_record(c,inst,c.types[-count].name)].length;}return count;}
+// Pair($T) in a template's signature: the instance with each binding substituted.
+CK_struct_subst :: (c:CK_Context,inst:int,s:int)->int {
+  o:=c.nodes[s].origin;n:=CK_struct_node(c,o);p:=c.nodes[o].d;
+  while p!=CK_NONE {b:=c.types[CK_param_record(c,s,CK_join2(c,"$",c.nodes[p].name))];
+    ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=b.name,decl=n,bits=b.bits,elem=CK_subst(c,inst,b.elem),length=CK_subst_length(c,inst,b.length),scope=b.scope});p=c.nodes[p].next;}
+  return CK_struct_intern(c,n,c.nodes[o].loc,CK_Access.value);
+}
+// Deduce: match a parameter's written type against its argument's type.
+CK_bind :: (c:CK_Context,inst:int,node:int,t:int,arg:int,i:int) {
+  if t==CK_NONE {return;}  // the argument already reported its error
+  n:=c.nodes[node];proc:=c.nodes[inst].name;loc:=c.nodes[arg].loc;
+  // These already-admitted type forms contain concrete units, not generic
+  // record parameters. Whole-form CK_mismatch still checks their identity.
+  if n.kind==CK_Tag.type_named && CK_unit_constructor(n.name,n.name2)!=0 {return;}
+  if n.kind==CK_Tag.type_optional {if c.types[t].kind!=CK_Kind.optional {CK_error(c,loc,"E0349","optional argument required to bind its type parameter","");return;}CK_bind(c,inst,n.b,c.types[t].elem,arg,i);return;}
+  if n.kind==CK_Tag.type_named && n.name=="Result" && n.name2.count==0 {if c.types[t].kind!=CK_Kind.result || CK_list_count(c,n.head)!=2 {CK_error(c,loc,"E0349","Result argument required to bind its type parameters","");return;}CK_bind(c,inst,n.head,c.types[t].elem,arg,i);CK_bind(c,inst,c.nodes[n.head].next,c.types[t].sum_error,arg,i);return;}
+  if n.kind==CK_Tag.type_view {
+    if c.types[t].kind==CK_Kind.view {CK_bind(c,inst,n.b,c.types[t].elem,arg,i);return;}
+    fix:="";if c.types[t].kind==CK_Kind.array {fix="pass a view of it: name[..]";}
+    parts:=[5] string.[CK_which(c,inst,i)," of '",proc,"' must be a view to bind its type parameter",CK_join2(c,", given ",c.types[t].name)];
+    CK_error(c,loc,"E0349",CK_text(c,parts[..]),fix);return;
+  }
+  if n.kind==CK_Tag.type_array {
+    if c.types[t].kind!=CK_Kind.array {parts:=[5] string.[CK_which(c,inst,i)," of '",proc,"' must be a fixed array to bind its parameters",CK_join2(c,", given ",c.types[t].name)];CK_error(c,loc,"E0349",CK_text(c,parts[..]),"");return;}
+    length:=c.types[t].length;
+    if c.nodes[n.a].kind==CK_Tag.type_param {CK_bind_length(c,inst,n.a,length,arg,i);}
+    else {want:=cast(int)CM_low(CK_const_int(c,n.a).mag);if want!=length {parts:=[6] string.[CK_which(c,inst,i)," of '",proc,"' must have length ",CK_count(c,want),CK_join2(c,", given ",c.types[t].name)];CK_error(c,loc,"E0349",CK_text(c,parts[..]),"");return;}}
+    CK_bind(c,inst,n.b,c.types[t].elem,arg,i);return;
+  }
+  if n.kind==CK_Tag.type_named && n.head!=CK_NONE {
+    d:=CK_lookup(c,CK_Tag.struct_,node);r:=c.types[t];
+    if r.kind!=CK_Kind.struct_ || c.nodes[r.decl].origin!=d {parts:=[5] string.[CK_which(c,inst,i)," of '",proc,CK_join3(c,"' must be a ",n.name," to bind its parameters"),CK_join2(c,", given ",r.name)];CK_error(c,loc,"E0349",CK_text(c,parts[..]),"");return;}
+    a:=n.head;p:=c.nodes[d].d;
+    while a!=CK_NONE {b:=c.types[CK_param_record(c,r.decl,CK_join2(c,"$",c.nodes[p].name))];
+      if b.bits==0 {CK_bind(c,inst,a,b.elem,arg,i);}else if c.nodes[a].kind==CK_Tag.type_param {CK_bind_length(c,inst,a,b.length,arg,i);}
+      a=c.nodes[a].next;p=c.nodes[p].next;}
+    return;
+  }
+  if n.kind!=CK_Tag.type_param {return;}  // a concrete part: checked against the substituted formal
+  name:=CK_join2(c,"$",n.name);
+  if t==1 {parts:=[4] string.[CK_which(c,inst,i)," of '",proc,"' has no value"];CK_error(c,loc,"E0397",CK_join3(c,CK_text(c,parts[..]),", so it cannot bind ",CK_join3(c,"'",name,"'")),"pass a value; this call returns nothing");return;}
+  r:=CK_param_record(c,inst,name);
+  if r==CK_NONE {CK_satisfies(c,inst,name,t,loc);ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=name,decl=inst,elem=t,scope=c.nodes[inst].scope});return;}
+  bound:=c.types[r].elem;
+  if bound!=t {parts:=[7] string.["'",name,"' is ",c.types[bound].name,CK_earlier(c,inst),proc,CK_join2(c,"', but ",CK_which(c,inst,i))];
+    CK_error(c,loc,"E0348",CK_join3(c,CK_text(c,parts[..])," is ",c.types[t].name),CK_join3(c,"pass the same type, or convert it: cast(",c.types[bound].name,") value"));}
+}
+CK_bind_length :: (c:CK_Context,inst:int,node:int,length:int,arg:int,i:int) {
+  name:=CK_join2(c,"$",c.nodes[node].name);r:=CK_param_record(c,inst,name);
+  if r==CK_NONE {ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=name,decl=inst,bits=1,length=length,scope=c.nodes[inst].scope});return;}
+  if c.types[r].length!=length {parts:=[7] string.["'",name,"' is ",CK_count(c,c.types[r].length),CK_earlier(c,inst),c.nodes[inst].name,CK_join2(c,"', but ",CK_which(c,inst,i))];
+    CK_error(c,c.nodes[arg].loc,"E0348",CK_join3(c,CK_text(c,parts[..])," has length ",CK_count(c,length)),"pass arrays of the same length");}
+}
+// A call whose arguments add an error makes no instance. A failed template
+// signature reported its error earlier, so no instance of it is expanded.
+CK_instance :: (c:CK_Context,id:int,proc:int)->int {
+  e:=c.nodes[id];t:=c.nodes[proc];count:=CK_list_count(c,e.head);params:=CK_list_count(c,t.head);
+  if count!=params {plural:="s";if params==1 {plural="";}parts:=[7] string.["'",t.name,"' takes ",CK_count(c,params)," argument",plural,CK_join2(c,", given ",CK_count(c,count))];CK_error(c,e.loc,"E0316",CK_text(c,parts[..]),"");
+    a:=e.head;while a!=CK_NONE {ignored:=CK_value(c,a,CK_Hint.{});a=c.nodes[a].next;}return CK_NONE;}
+  inst:=CK_new(c,CK_Tag.proc,t.loc);errors:=c.state[0].error_count;
+  c.nodes[inst].effect_present=t.effect_present;c.nodes[inst].pure_decl=t.pure_decl;c.nodes[inst].effect_loc=t.effect_loc;c.nodes[inst].effect_head=CK_clone_list(c,t.effect_head);
+  c.nodes[inst].name=t.name;c.nodes[inst].scope=t.scope;c.nodes[inst].source_unit=t.source_unit;c.nodes[inst].collides=t.collides;c.nodes[inst].origin=proc;
+  // Typed arguments bind first, so an untyped literal for a bare $T takes the
+  // type they bound, or its default, as a generic struct literal's fields do.
+  a:=e.head;param:=t.head;i:=0;
+  while a!=CK_NONE {prm:=c.nodes[param];
+    if CK_has_param(c,prm.a) {at:=CK_expr(c,a,CK_Hint.{});
+      if !CK_untyped(c,at) || c.nodes[prm.a].kind!=CK_Tag.type_param {CK_coerce(c,a,CK_default(at));at=c.nodes[a].type;before:=c.state[0].error_count;CK_bind(c,inst,prm.a,at,a,i);
+        if c.state[0].error_count==before {CK_mismatch(c,proc,a,CK_subst(c,inst,prm.type),at,i);}}}
+    else {CK_argument(c,proc,a,prm.type,i);}
+    a=c.nodes[a].next;param=prm.next;i+=1;
+  }
+  a=e.head;param=t.head;i=0;
+  while a!=CK_NONE {prm:=c.nodes[param];
+    if CK_untyped(c,c.nodes[a].type) {r:=CK_param_record(c,inst,CK_join2(c,"$",c.nodes[prm.a].name));to:=CK_default(c.nodes[a].type);if r!=CK_NONE {to=c.types[r].elem;}
+      CK_coerce(c,a,to);CK_bind(c,inst,prm.a,c.nodes[a].type,a,i);}
+    a=c.nodes[a].next;param=prm.next;i+=1;
+  }
+  if c.state[0].error_count!=errors {c.nodes[inst].kind=CK_Tag.invalid;return CK_NONE;}
+  // Inside a generic body every binding may name the caller's placeholders.
+  if c.nodes[c.state[0].current].generic {c.nodes[inst].generic=true;}
+  else {
+    found:=c.state[0].instances;while found!=CK_NONE && !(c.nodes[found].origin==proc && CK_same(c,found,inst)) {found=c.nodes[found].chain;}
+    if found!=CK_NONE {c.nodes[inst].kind=CK_Tag.invalid;inst=found;}
+    else if !CK_chain(c,inst,e.loc) {return CK_NONE;}
+    else {c.nodes[inst].loc2=e.loc;}  // its first call, for an instantiation trace
+  }
+  ret:=CK_subst(c,inst,t.type);c.nodes[inst].type=ret;c.nodes[id].proc=inst;return ret;
+}
+// Constraints (r4a-constraints): a placeholder's need is the operations a
+// generic body may use on it, and the types a binding may give it.
+// Each level allows what the one below it does:
+//   copyable 1: assignment and passing, which every coax0 type has;
+//   equatable 2: and == != ; ordered 3: and < <= > >= ; numeric 4: and + - * / and literals.
+CK_need :: (c:CK_Context,id:int)->int {
+  e:=c.nodes[id];w:=e.name2;if w.count==0 {return 0;}
+  names:=[4] string.["equatable","ordered","numeric","copyable"];needs:=[4] int.[2,3,4,1];
+  for i:0..<4 {if w==names[i] {return needs[i];}}
+  CK_error(c,e.loc2,"E0805",CK_join3(c,"unknown constraint '",w,"'"),"constraints are equatable, ordered, numeric and copyable");return 0;
+}
+CK_constrain :: (c:CK_Context,id:int,r:int) {
+  t:=c.types[r];if c.nodes[t.decl].origin!=CK_NONE {return;}need:=CK_need(c,id);if need==0 {return;}e:=c.nodes[id];
+  if t.bits==1 {CK_error(c,e.loc2,"E0805",CK_join3(c,"'",t.name,"' is a length; constraints apply to type parameters"),"write the constraint on a $T");return;}
+  if t.need!=0 && t.need!=need {CK_error(c,e.loc2,"E0808",CK_join3(c,"'",t.name,"' already has a different constraint"),"write one constraint, where the parameter is first bound");return;}
+  c.types[r].need=need;
+}
+// Only equatable, ordered and numeric can be unmet.
+CK_constraint_name :: (need:int)->string {if need==2 {return "equatable";}if need==3 {return "ordered";}return "numeric";}
+// Whether t can stand for a placeholder that needs `need`.
+CK_meets :: (c:CK_Context,t:int,need:int)->bool {
+  r:=c.types[t];if r.kind==CK_Kind.param {return r.need>=need;}
+  if need<=1 {return true;}
+  if r.carrier!=0 {return need<=3;}
+  if need==2 {return !CK_aggregate(c,t) && r.kind!=CK_Kind.view;}
+  return CK_numeric(c,t);
+}
+CK_constrain_fix :: (c:CK_Context,t:int,want:string)->string {
+  if c.types[t].kind!=CK_Kind.param {return "";}parts:=[4] string.["constrain it where it is bound: ",c.types[t].name,": ",want];return CK_text(c,parts[..]);
+}
+// A binding outside its template's constraint is refused at the use, naming
+// the generic declaration and the constraint: a source-level trace.
+CK_satisfies :: (c:CK_Context,inst:int,name:string,t:int,loc:CK_Loc) {
+  o:=c.nodes[inst].origin;need:=c.types[CK_param_record(c,o,name)].need;if CK_meets(c,t,need) {return;}
+  word:=CK_constraint_name(need);parts:=[8] string.[c.types[t].name," is not ",word,", but '",c.nodes[o].name,CK_join3(c,"' needs '",name,": "),word,CK_join3(c,"' (declared at line ",CK_count(c,c.nodes[o].loc.line),")")];
+  fix:="ordered and numeric types are integers, floats and placeholders constrained so";if need==2 {fix="equatable types are scalars, strings and enums, not structs, arrays or views";}
+  CK_error(c,loc,"E0806",CK_text(c,parts[..]),fix);
+}
+// An instance whose body fails is reported at its first call, with its bindings.
+CK_trace :: (c:CK_Context,inst:int) {
+  o:=c.nodes[c.nodes[inst].origin];text:="";
+  for i:16..<c.state[0].type_count {r:=c.types[i];if r.kind==CK_Kind.param && r.decl==inst {
+    v:=c.types[r.elem].name;if r.bits==1 {v=CK_count(c,r.length);}if text.count!=0 {text=CK_join2(c,text,", ");}text=CK_join3(c,text,CK_join2(c,r.name," = "),v);}}
+  parts:=[7] string.["instantiating '",o.name,"' (line ",CK_count(c,o.loc.line),") with ",text," fails; its errors are above"];
+  CK_error(c,c.nodes[inst].loc2,"E0807",CK_text(c,parts[..]),"constrain its parameters so this call is refused at the call, or pass types its body accepts");
+}
+// The instance list holds procedure and struct instances, up to the limit.
+CK_chain :: (c:CK_Context,inst:int,loc:CK_Loc)->bool {
+  limit:=c.state[0].instance_limit;if limit==0 {limit=CK_INSTANCE_LIMIT;}
+  if c.state[0].instance_count>=limit {c.nodes[inst].kind=CK_Tag.invalid;
+    parts:=[5] string.["instantiating '",c.nodes[inst].name,"' here would exceed ",CK_count(c,limit)," generic instances"];
+    CK_error(c,loc,"E0339",CK_text(c,parts[..]),"a chain of generic uses that binds ever larger types never ends; break it with a concrete type");return false;}
+  if c.state[0].instances==CK_NONE {c.state[0].instances=inst;}else {c.nodes[c.state[0].instance_tail].chain=inst;}c.state[0].instance_tail=inst;c.state[0].instance_count+=1;return true;
+}
+CK_which :: (c:CK_Context,inst:int,i:int)->string {
+  if c.nodes[inst].kind==CK_Tag.struct_ {return CK_join3(c,"field '",c.nodes[CK_at(c,c.nodes[c.nodes[inst].origin].head,i)].name,"'");}
+  return CK_join2(c,"argument ",CK_count(c,i+1));
+}
+CK_earlier :: (c:CK_Context,inst:int)->string {if c.nodes[inst].kind==CK_Tag.struct_ {return " from another field of '";}return " from another argument of '";}
+// Generic structs (r4a-value-parameters). Pair :: struct($T) is a template:
+// its parameters are records owned by it, and its fields are checked once
+// against them. Pair(int), or a literal Pair.{...} that deduces it, is an
+// instance: a struct node with the template's fields cloned, its bindings as
+// records owned by it, and its own type record, laid out like any struct.
+// An instance whose bindings name a procedure's placeholders is generic: it
+// has field types but no layout, and substitution makes the concrete one.
+CK_no_args :: (c:CK_Context,id:int) {
+  e:=c.nodes[id];if e.head!=CK_NONE {CK_error(c,e.loc,"E0803",CK_join3(c,"'",e.name,"' is not a generic struct, so it takes no arguments"),CK_join3(c,"write ",e.name," alone"));}
+}
+CK_struct_node :: (c:CK_Context,d:int)->int {
+  inst:=CK_new(c,CK_Tag.struct_,c.nodes[d].loc);c.nodes[inst].name=c.nodes[d].name;c.nodes[inst].scope=c.nodes[d].scope;c.nodes[inst].origin=d;c.nodes[inst].quantity=c.nodes[d].quantity;return inst;
+}
+// A length argument is a literal, a named integer constant or a $N; a type
+// argument is any other type. A name the parser read as a type is a constant
+// when one is declared by that name (Box(f64, CAP), Box(f64, lib.CAP)).
+CK_struct_arg :: (c:CK_Context,inst:int,a:int,r:CK_Type) {
+  n:=c.nodes[a];length:=0;elem:=CK_NONE;
+  if r.bits==1 {
+    if n.kind==CK_Tag.expr_int {if n.value==0 || n.value>1073741824 {CK_error(c,n.loc,"E0357","a length argument must be 1 to 1073741824","");return;}length=cast(int)n.value;}
+    else if n.kind==CK_Tag.type_param {length=CK_length_param(c,a);}
+    else if n.kind==CK_Tag.type_named && n.head==CK_NONE && CK_lookup(c,CK_Tag.constant,a)!=CK_NONE {
+      // a constant that failed here has said why; one that failed earlier has not
+      c.nodes[a].kind=CK_Tag.expr_ident;before:=c.state[0].error_count;t:=CK_value(c,a,CK_Hint.{type=11});k:=CK_const_int(c,a);if c.state[0].error_count!=before {return;}
+      if !CK_integer(c,t) || k.bad || k.negative || CM_zero(k.mag) || CM_cmp(k.mag,CM_u(1073741824))>0 {CK_error(c,n.loc,"E0357","a length argument must be 1 to 1073741824","");return;}
+      length=cast(int)CM_low(k.mag);
+    }
+    else {CK_kind_clash(c,a,r.name,true);return;}
+  }
+  else if n.kind==CK_Tag.expr_int {CK_kind_clash(c,a,r.name,false);return;}
+  else {elem=CK_resolve(c,a,CK_Access.value);CK_satisfies(c,inst,r.name,elem,n.loc);}
+  ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=r.name,decl=inst,bits=r.bits,elem=elem,length=length,scope=c.nodes[inst].scope});
+}
+CK_struct_type :: (c:CK_Context,id:int,d:int,by_value:CK_Access)->int {
+  e:=c.nodes[id];t:=c.nodes[d];
+  if !t.generic {CK_no_args(c,id);return CK_NONE;}
+  given:=CK_list_count(c,e.head);want:=CK_list_count(c,t.d);
+  if given==0 {CK_error(c,e.loc,"E0800",CK_join3(c,"'",t.name,"' is a generic struct, so a type names its arguments"),CK_join3(c,"write ",CK_struct_name(c,d,d)," with a type or length for each parameter"));return CK_NONE;}
+  if given!=want {plural:="s";if want==1 {plural="";}parts:=[7] string.["'",t.name,"' takes ",CK_count(c,want)," argument",plural,CK_join2(c,", given ",CK_count(c,given))];CK_error(c,e.loc,"E0801",CK_text(c,parts[..]),CK_join2(c,"write ",CK_struct_name(c,d,d)));return CK_NONE;}
+  if c.nodes[d].mark==0 {CK_layout(c,d);}  // its fields decide which parameters are lengths
+  if c.nodes[d].flag2 {return CK_NONE;}  // the template's fields reported their errors
+  inst:=CK_struct_node(c,d);a:=e.head;p:=t.d;errors:=c.state[0].error_count;
+  while a!=CK_NONE {CK_struct_arg(c,inst,a,c.types[CK_param_record(c,d,CK_join2(c,"$",c.nodes[p].name))]);a=c.nodes[a].next;p=c.nodes[p].next;}
+  if c.state[0].error_count!=errors {c.nodes[inst].kind=CK_Tag.invalid;return CK_NONE;}
+  return CK_struct_intern(c,inst,e.loc,by_value);
+}
+// A struct over a view, or over something holding one, would carry a borrow
+// past the rule that a view does not outlive its array.
+CK_borrows :: (c:CK_Context,t:int)->bool {
+  r:=c.types[t];if r.kind==CK_Kind.view {return true;}if r.kind==CK_Kind.array || r.kind==CK_Kind.optional {return CK_borrows(c,r.elem);}if r.kind==CK_Kind.result {return CK_borrows(c,r.elem) || CK_borrows(c,r.sum_error);}if r.kind==CK_Kind.union_ {at:=c.nodes[r.decl].head;while at!=0 {if CK_borrows(c,c.nodes[at].type) {return true;}at=c.nodes[at].next;}return false;}
+  if r.kind==CK_Kind.struct_ {f:=c.nodes[r.decl].head;while f!=CK_NONE {if CK_borrows(c,c.nodes[f].type) {return true;}f=c.nodes[f].next;}}return false;
+}
+// A found instance is laid out only for a by-value use, so a view of the
+// instance being laid out (List :: struct($T) { rest: [] List($T); }) is fine.
+CK_struct_intern :: (c:CK_Context,inst:int,loc:CK_Loc,by_value:CK_Access)->int {
+  o:=c.nodes[inst].origin;generic:=false;p:=c.nodes[o].d;
+  while p!=CK_NONE {r:=c.types[CK_param_record(c,inst,CK_join2(c,"$",c.nodes[p].name))];
+    if CK_borrows(c,r.elem) {c.nodes[inst].kind=CK_Tag.invalid;parts:=[6] string.["'",c.nodes[o].name,"' holds fixed storage only, so '",r.name,CK_join2(c,"' cannot be ",c.types[r.elem].name),", which borrows"];
+      CK_error(c,loc,"E0802",CK_text(c,parts[..]),"store the array itself, or an index into it");return CK_NONE;}
+    generic=generic || r.length<0 || CK_generic(c,r.elem);p=c.nodes[p].next;}
+  // The key spells every binding, so equal keys are one instance.
+  key:=CK_struct_key(c,inst);found:=c.state[0].instances;while found!=CK_NONE && !(c.nodes[found].origin==o && c.nodes[found].key==key) {found=c.nodes[found].chain;}
+  if found!=CK_NONE {c.nodes[inst].kind=CK_Tag.invalid;if by_value==CK_Access.value {CK_layout(c,found);}return c.nodes[found].type;}
+  if !CK_chain(c,inst,loc) {return CK_NONE;}
+  c.nodes[inst].generic=generic;c.nodes[inst].key=key;
+  c.nodes[inst].head=CK_clone_list(c,c.nodes[o].head);
+  ty:=CK_new_type(c,CK_Type.{kind=CK_Kind.struct_,name=CK_struct_name(c,inst,o),decl=inst,scope=c.types[c.nodes[o].type].scope});c.nodes[inst].type=ty;
+  CK_layout(c,inst);if !generic {CK_defaults(c,inst);}return ty;
+}
+// Pair(int), Box(f64, 4); the template itself reads Pair($T).
+CK_struct_name :: (c:CK_Context,inst:int,o:int)->string {
+  text:=CK_join2(c,c.nodes[o].name,"(");p:=c.nodes[o].d;
+  while p!=CK_NONE {r:=c.types[CK_param_record(c,inst,CK_join2(c,"$",c.nodes[p].name))];piece:=r.name;
+    if r.bits==1 && r.length>0 {piece=CK_count(c,r.length);}else if r.length<0 {piece=c.types[-r.length].name;}else if r.elem!=CK_NONE {piece=c.types[r.elem].name;}
+    text=CK_join2(c,text,piece);p=c.nodes[p].next;if p!=CK_NONE {text=CK_join2(c,text,", ");}}
+  return CK_join2(c,text,")");
+}
+// In the template's parameter order, so a deduced instance has one key.
+CK_struct_key :: (c:CK_Context,inst:int)->string {
+  key:="";p:=c.nodes[c.nodes[inst].origin].d;
+  while p!=CK_NONE {r:=c.types[CK_param_record(c,inst,CK_join2(c,"$",c.nodes[p].name))];
+    m:=CK_mangle(c,r.elem);if r.bits==1 {m=CK_join2(c,"i",CK_count(c,r.length));}key=CK_join3(c,key,CK_count(c,m.count),m);p=c.nodes[p].next;}
+  return key;
+}
+CK_template :: (c:CK_Context,id:int) {
+  c.nodes[id].generic=true;p:=c.nodes[id].d;
+  // a constrained parameter is a type; an unconstrained one is decided by its first use
+  while p!=CK_NONE {need:=CK_need(c,p);bits:=2;if need!=0 {bits=0;}
+    ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=CK_join2(c,"$",c.nodes[p].name),decl=id,bits=bits,need=need,scope=c.nodes[id].scope});p=c.nodes[p].next;}
+}
+CK_field_index :: (c:CK_Context,d:int,name:string)->int {f:=c.nodes[d].head;i:=0;while f!=CK_NONE {if c.nodes[f].name==name {return i;}i+=1;f=c.nodes[f].next;}return -1;}
+// Pair.{a = 1, b = 2}: typed values bind first, so an untyped literal in a
+// bare $T field takes the type they bound, or its default. Untyped values in
+// other fields are left to the literal's own check against the instance.
+CK_deduce_pass :: (c:CK_Context,inst:int,id:int,d:int,untyped:bool) {
+  f:=c.nodes[id].head;
+  while f!=CK_NONE {v:=c.nodes[f].a;if !untyped {ignored:=CK_expr(c,v,CK_Hint.{});}
+    m:=CK_field_index(c,d,c.nodes[f].name);t:=c.nodes[v].type;
+    if m>=0 && CK_untyped(c,t)==untyped {node:=c.nodes[CK_at(c,c.nodes[d].head,m)].a;
+      if untyped && c.nodes[node].kind==CK_Tag.type_param {r:=CK_param_record(c,inst,CK_join2(c,"$",c.nodes[node].name));to:=CK_default(t);if r!=CK_NONE {to=c.types[r].elem;}CK_coerce(c,v,to);t=c.nodes[v].type;}
+      CK_bind(c,inst,node,t,v,m);}
+    f=c.nodes[f].next;}
+}
+CK_deduce :: (c:CK_Context,id:int,d:int)->int {
+  inst:=CK_struct_node(c,d);errors:=c.state[0].error_count;CK_deduce_pass(c,inst,id,d,false);CK_deduce_pass(c,inst,id,d,true);
+  p:=c.nodes[d].d;
+  while p!=CK_NONE {name:=CK_join2(c,"$",c.nodes[p].name);if CK_param_record(c,inst,name)==CK_NONE {parts:=[5] string.["'",name,"' of '",c.nodes[d].name,"' is not set by any field given here"];
+    CK_error(c,c.nodes[id].loc,"E0804",CK_text(c,parts[..]),CK_join3(c,"give a field that uses it, or declare the type: x: ",CK_struct_name(c,d,d)," = ..."));}p=c.nodes[p].next;}
+  if c.state[0].error_count!=errors {c.nodes[inst].kind=CK_Tag.invalid;return CK_NONE;}
+  return c.types[CK_struct_intern(c,inst,c.nodes[id].loc,CK_Access.value)].decl;  // record 0 (none) has decl 0
+}
+// An instance's C name: its template's, then each binding, length-prefixed.
+CK_mangle :: (c:CK_Context,t:int)->string {
+  r:=c.types[t];
+  if r.kind==CK_Kind.view {return CK_join2(c,"v",CK_mangle(c,r.elem));}
+  if r.kind==CK_Kind.array {parts:=[4] string.["a",CK_count(c,r.length),"_",CK_mangle(c,r.elem)];return CK_text(c,parts[..]);}
+  if r.kind==CK_Kind.optional {return CK_join2(c,"o",CK_mangle(c,r.elem));}if r.kind==CK_Kind.result {a:=CK_mangle(c,r.elem);b:=CK_mangle(c,r.sum_error);return CK_join3(c,CK_join3(c,"r",CK_count(c,a.count),a),CK_count(c,b.count),b);}
+  if r.kind==CK_Kind.struct_ || r.kind==CK_Kind.enum_ || r.kind==CK_Kind.union_ {d:=c.nodes[r.decl];parts:=[5] string.["n",CK_count(c,d.scope),"_",d.name,d.key];return CK_text(c,parts[..]);}
+  // a placeholder, in a generic instance's key only: its owner tells two $T apart
+  if r.kind==CK_Kind.param {return CK_join3(c,r.name,"@",CK_count(c,r.decl));}
+  return r.name;
+}
+CK_key :: (c:CK_Context,inst:int)->string {
+  key:="";for i:16..<c.state[0].type_count {r:=c.types[i];if r.kind==CK_Kind.param && r.decl==inst {
+    m:="";if r.bits==1 {m=CK_join2(c,"i",CK_count(c,r.length));}else {m=CK_mangle(c,r.elem);}key=CK_join3(c,key,CK_count(c,m.count),m);}}return key;
+}
+// Every binding is in place before the copy is resolved, so no site rule
+// applies: each $T in the copy is found, never bound.
+CK_expand :: (c:CK_Context,inst:int) {
+  s:=c.nodes[CK_clone(c,c.nodes[c.nodes[inst].origin].pristine)];
+  c.nodes[inst].head=s.head;c.nodes[inst].b=s.b;c.nodes[inst].key=CK_key(c,inst);c.state[0].generic=inst;
+  param:=s.head;while param!=CK_NONE {c.nodes[param].type=CK_resolve(c,c.nodes[param].a,CK_Access.value);param=c.nodes[param].next;}
+  c.state[0].current=inst;c.state[0].local_count=0;
+  param=s.head;while param!=CK_NONE {prm:=c.nodes[param];CK_declare_id(c,prm.name,prm.type,prm.loc,"parameter",param);param=prm.next;}
+  CK_stmt(c,s.b);c.state[0].generic=CK_NONE;
+}
+CK_instantiate :: (c:CK_Context) {
+  inst:=c.state[0].instances;
+  while inst!=CK_NONE && c.state[0].error_count==0 && !c.state[0].fatal {if c.nodes[inst].kind==CK_Tag.proc && c.nodes[inst].origin!=inst {CK_expand(c,inst);if c.state[0].error_count!=0 {CK_trace(c,inst);}}inst=c.nodes[inst].chain;}
+}
+#test "placeholder lengths name and size their arrays, and only negative lengths are bound" {
+ nodes:[8]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=18}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.param,name="$N",decl=5,bits=1};types[17]=CK_Type.{kind=CK_Kind.param,name="$N",decl=6,bits=1,length=3};
+ p:=CK_intern(c,CK_Kind.array,11,-16);z:=CK_intern(c,CK_Kind.array,11,0);v:=CK_intern(c,CK_Kind.view,11,0);b:=CK_intern(c,CK_Kind.array,2,-16);
+ #assert p==18 && types[p].name=="[$N] int" && types[p].size==0 && types[p].alignment==8 && types[p].length==-16 && b==21 && types[b].alignment==1 && types[b].size==0;
+ #assert z==19 && types[z].name=="[0] int" && types[z].size==0 && v==20 && types[v].name=="[] int";
+ #assert CK_generic(c,p) && !CK_generic(c,z) && !CK_generic(c,v);
+ // a length of 0 is not a placeholder, even where record 0 would say otherwise
+ types[0].length=5;#assert CK_subst(c,6,p)==CK_intern(c,CK_Kind.array,11,3) && CK_subst(c,6,z)==z && CK_key(c,6)=="2i3";
+}
+#test "an instantiation trace lists every binding of its instance" {
+ nodes:[8]CK_Node;types:[20]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=20}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[1]=CK_Node.{kind=CK_Tag.proc,name="grow",loc=CK_Loc.{line=3,column=1}};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="grow",origin=1,loc2=CK_Loc.{line=7,column=9,offset=40}};
+ types[16]=CK_Type.{kind=CK_Kind.param,name="$T",decl=2,elem=11};types[17]=CK_Type.{kind=CK_Kind.param,name="$T",decl=1};
+ types[18]=CK_Type.{kind=CK_Kind.param,name="$N",decl=2,bits=1,length=4,elem=2};types[19]=CK_Type.{kind=CK_Kind.param,name="$U",decl=2,elem=2};
+ CK_trace(c,2);
+ #assert state[0].error_count==1 && errors[0].code=="E0807" && errors[0].loc.line==7 && errors[0].loc.column==9 && errors[0].loc.offset==40;
+ #assert errors[0].message=="instantiating 'grow' (line 3) with $T = int, $N = 4, $U = bool fails; its errors are above";
+}
+#test "a struct instance starts as its template's name, scope and origin" {
+ nodes:[8]CK_Node;types:[17]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[64]u8;state:=[1]CK_State.[CK_State.{used=3,type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[3]=CK_Node.{kind=CK_Tag.struct_,name="Pair",scope=3,collides=true,loc=CK_Loc.{line=4,column=2,offset=9},head=5,d=6};
+ i:=CK_struct_node(c,3);
+ #assert i==4 && nodes[i].kind==CK_Tag.struct_ && nodes[i].name=="Pair" && nodes[i].scope==3 && nodes[i].origin==3 && nodes[i].loc.line==4 && nodes[i].head==0 && nodes[i].d==0 && !nodes[i].collides;
+}
+#test "instance bindings are read from the first type record on" {
+ nodes:[8]CK_Node;types:[20]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=20}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.param,name="$T",decl=5,elem=11};types[17]=CK_Type.{kind=CK_Kind.param,name="$T",decl=6,elem=11};
+ types[18]=CK_Type.{kind=CK_Kind.param,name="$U",decl=6,elem=2};types[19]=CK_Type.{kind=CK_Kind.param,name="$T",decl=7,elem=11};
+ #assert CK_param_record(c,5,"$T")==16 && CK_param_record(c,5,"$U")==0 && CK_param_record(c,6,"$U")==18;
+ #assert CK_same(c,5,7) && CK_same(c,7,5) && !CK_same(c,5,6) && !CK_same(c,6,5);
+ #assert CK_key(c,5)=="3int" && CK_key(c,6)=="3int4bool" && CK_subst(c,6,18)==2 && CK_subst(c,5,16)==11 && CK_subst(c,5,7)==7;
+}
+#forall "an instance past the budget is refused, and the last one that fits is linked" full:bool, sized:0..<3, first:bool {
+ // sized 0: no limit set (CK_INSTANCE_LIMIT, 256); 1: a set limit of 256; 2: a limit sized from the input, 1000.
+ // first: no instance is listed yet, so this one heads the list.
+ limit:=CK_INSTANCE_LIMIT;given:=0;if sized==1 {given=256;}if sized==2 {given=1000;limit=1000;}
+ nodes:[16]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;
+ head:=ifx first then 0 else 9;
+ state:=[1]CK_State.[CK_State.{used=9,type_count=17,instance_count=limit-1,instances=head,instance_tail=head,instance_limit=given}];
+ if full {state[0].instance_count=limit;}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.param,name="$T",decl=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,name="id",head=3,a=7,type=16,generic=true,scope=4,collides=true,source_unit=7};nodes[3]=CK_Node.{kind=CK_Tag.param,name="a",a=4,type=16};
+ nodes[4]=CK_Node.{kind=CK_Tag.type_param,name="T"};nodes[7]=CK_Node.{kind=CK_Tag.type_param,name="T"};
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_call,name="id",head=6,loc=CK_Loc.{line=3,column=5}};nodes[6]=CK_Node.{kind=CK_Tag.expr_bool};
+ nodes[9]=CK_Node.{kind=CK_Tag.proc,name="other",origin=8};
+ t:=CK_instance(c,5,2);
+ #assert nodes[10].name=="id" && nodes[10].origin==2 && nodes[10].scope==4 && nodes[10].source_unit==7 && nodes[10].collides && !nodes[10].generic && state[0].depth==0;
+ if full {
+  #assert t==0 && nodes[10].kind==CK_Tag.invalid && nodes[5].proc==0 && state[0].instance_count==limit && nodes[9].chain==0 && state[0].instance_tail==head && state[0].instances==head;
+  #assert errors[0].code=="E0339" && errors[0].loc.line==3;
+  #assert errors[0].message==(ifx sized==2 then "instantiating 'id' here would exceed 1000 generic instances" else "instantiating 'id' here would exceed 256 generic instances");
+ } else {
+  #assert t==2 && nodes[10].kind==CK_Tag.proc && nodes[10].type==2 && nodes[5].proc==10 && state[0].instance_count==limit && nodes[9].chain==(ifx first then 0 else 10) && state[0].instance_tail==10 && state[0].instances==(ifx first then 10 else 9) && state[0].error_count==0;
+  #assert types[17].kind==CK_Kind.param && types[17].decl==10 && types[17].elem==2 && types[17].scope==4;
+  // the same binding again is the same instance
+  #assert CK_instance(c,5,2)==2 && nodes[5].proc==10 && nodes[11].kind==CK_Tag.invalid && state[0].instance_count==limit;
+ }
+}
+CK_call_bound :: (c:CK_Context,id:int,proc:int)->int {
+  e:=c.nodes[id];count:=CK_list_count(c,e.head);
+  if c.nodes[proc].generic {
+    if proc==c.state[0].current {a:=e.head;while a!=CK_NONE {ignored:=CK_value(c,a,CK_Hint.{});a=c.nodes[a].next;}CK_error(c,e.loc,"E0396",CK_join3(c,"'",e.name,"' calls itself through its type parameters"),"recursion through a generic procedure is not supported; write the recursion in a concrete procedure");return CK_NONE;}
+    return CK_instance(c,id,proc);}
+  c.nodes[id].proc=proc;params:=CK_list_count(c,c.nodes[proc].head);
+  if count!=params {plural:="s";if params==1 {plural="";}parts:=[7] string.["'",c.nodes[proc].name,"' takes ",CK_count(c,params)," argument",plural,CK_join2(c,", given ",CK_count(c,count))];CK_error(c,e.loc,"E0316",CK_text(c,parts[..]),"");}
+  a:=e.head;param:=c.nodes[proc].head;i:=0;
+  while a!=CK_NONE && !c.state[0].fatal {
+    CK_argument(c,proc,a,c.nodes[param].type,i);
+    a=c.nodes[a].next;param=c.nodes[param].next;i+=1;
+  }return c.nodes[proc].type;
+}

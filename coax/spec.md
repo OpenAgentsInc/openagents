@@ -727,7 +727,7 @@ call and another operand that could call or trap, or (since 0.31.0) two
 operands that could trap, so C's unspecified argument order never shows. An
 assignment evaluates its place, then its value; a compound assignment
 evaluates its place once. Since 0.31.0 the decision comes from the checked
-graph (r1a-ordered-lowering): `CK_effects` in `lib/compiler/checker.coax`
+graph (r1a-ordered-lowering): `CK_effects` in `lib/compiler/checker/statements.coax`
 marks each expression that calls, may trap under every arithmetic profile
 (indexing, slicing, integer `/`, `%`, shifts, checked integer casts, byte
 intrinsics) or may trap only under checked arithmetic (integer `+`, `-`, `*`,
@@ -1778,7 +1778,7 @@ calling-convention attributes). `--target NAME` selects the target for
 `coax layout` and `coax deps`; any name other than `native-lp64` (`wasm32`,
 `metal`, `spirv`, ...) is E0612 and prints no report, so no other target
 borrows the LP64 values. The record is checked in
-`lib/compiler/checker.coax` (`CK_target`) and against an independent C
+`lib/compiler/checker/records.coax` (`CK_target`) and against an independent C
 oracle in `tests/modules.py`. These are the records R10 target manifests and
 R7 query/evidence tools consume; they are not a toolchain manifest, and the
 schema-1 CPU reflection (`type_info`, `field_info`) stays CPU-only metadata,
@@ -1797,7 +1797,7 @@ name never falls back to a builtin). An unqualified name binds in its own
 module first, then to a declaration exactly one other scope makes; two such
 scopes are ambiguous (E0386) at the use. A local shadows an alias. Binding
 happens in the checked Coax graph (`CK_lookup`, `CK_bind_check` in
-`lib/compiler/checker.coax`), so the evaluator, native C and the Metal scalar
+`lib/compiler/checker/names.coax`), so the evaluator, native C and the Metal scalar
 backend share the same declaration bindings; aliases never change nominal
 IDs, and same-layout types of two modules stay nominally distinct (their
 diagnostics read `demo.left.V`). Colliding private declarations get

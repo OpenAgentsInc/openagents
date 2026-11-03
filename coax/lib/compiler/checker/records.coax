@@ -1,0 +1,151 @@
+// The checker graph ABI: nodes, types, locals, errors, state, capacities,
+// builtins and the layout target. A part of the checker:
+// lib/compiler/checker.coax loads it (#12646).
+#authority;
+// Indexed semantic graph. Type IDs 0..15 are fixed native scalar identities;
+// declarations and composite types are allocated in the Coax type pool.
+// Indexed ABI identities: zero is absence, layout mode is explicit.
+CK_NONE :: 0;
+CK_Access :: enum u8 {value;view;}
+CK_Hint :: struct {type:int;}
+CK_Loc :: struct {line:int;column:int;offset:int;}
+// param: a type parameter's placeholder ($T), owned by one generic procedure (decl).
+CK_Kind :: enum u8 {invalid;void_;integer;floating;bool_;string_;untyped_int;untyped_float;struct_;enum_;array;view;param;union_;result;optional;}
+CK_Tag :: enum u32 {invalid=0;type_named=1;type_array=2;type_view=3;type_dynamic=4;type_param=5;type_optional=6;
+  expr_int=16;expr_float=17;expr_bool=18;expr_string=19;expr_ident=20;expr_call=21;expr_unary=22;expr_binary=23;expr_run=24;expr_field=25;expr_index=26;expr_slice=27;expr_struct=28;expr_array=29;expr_cast=30;expr_ifx=31;expr_enum=32;expr_ct=33;expr_sum=34;expr_null=35;expr_some=36;expr_try=37;expr_or_else=38;
+  stmt_block=40;stmt_expr=41;stmt_var=42;stmt_assign=43;stmt_return=44;stmt_if=45;stmt_while=46;stmt_range=47;stmt_each=48;stmt_break=49;stmt_continue=50;stmt_defer=51;stmt_assert=52;stmt_switch=53;
+  proc=64;constant=65;struct_=66;enum_=67;param=68;field=69;member=70;field_init=71;import_=72;check=73;file=74;assert_=75;unit_factor=76;union_=77;variant=78;switch_case=79;effect_name=80;case_binding=81;
+}
+CK_Lowering :: enum u8 {none;spatial_binary;spatial_unary;invalid=255;}
+CK_Mutation :: enum u8 {unprepared;eligible;no_alternative;unsupported;}
+CR_Phase :: enum u8 {fresh;active;done;seeded;}
+CK_Node :: struct {kind:CK_Tag;loc:CK_Loc;name:string;name2:string;loc2:CK_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:u64;
+  type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;skip_authority:bool;scope:int;collides:bool;clash:int;effects:u8;own_effects:u8;effects_known:bool;generic:bool;
+  origin:int;pristine:int;chain:int;key:string;quantity:u8;unit:Q_Unit;unit_form:int;unit_link:int;unit_generated:bool;frame_decl:bool;frame:SP_Frame;spatial_link:int;lowering:CK_Lowering;mutation_status:CK_Mutation;mutation_op:u32;mutation_proc:int;borrow_binding:int;borrow_owner:int;borrow_writes:int;borrow_returns:int;borrow_calls:int;borrow_next:int;borrow_status:u8;borrow_query:int;retain_head:int;retain_count:int;retain_mark:CR_Phase;retain_incomplete:bool;retain_relation:bool;effect_present:bool;pure_decl:bool;effect_head:int;effect_loc:CK_Loc;sum_variant:int= -1;propagate_type:int;source_unit:int;retain_return:int;}
+CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;scope:int;need:int;carrier:int;unit:int;space:SP_Type;retain_presence:u8;retain_mutable:u8;retain_join:u8;retain_fields:int;sum_error:int;sum_payload_offset:int;sum_default:int= -1;}
+CK_Local :: struct {name:string;type:int;loc:CK_Loc;immutable:string;local_backing:bool;decl:int;}
+CK_Error :: struct {loc:CK_Loc;code:string;message:string;fix:string;}
+// Where a type is being resolved, for $T: which procedure owns the type
+// parameters in scope (generic) and whether this position may bind one (site).
+CK_Site :: enum u8 {none;param;result;body;field;}
+CK_State :: struct {used:int;type_count:int;composite_count:int;local_count:int;byte_count:int;error_count:int;current:int;constant_depth:int;loop_depth:int;defer_depth:int;unevaluated:int;basic:bool;depth:int;fatal:bool;metal_depth:int;clashes:int;generic:int;site:CK_Site;instances:int;instance_tail:int;instance_count:int;quantity_device:bool;unit_units:int;spatial_types:int;spatial_helpers:int;retain_report_count:int;names:int;instance_limit:int;peak_depth:int;}
+// Logical module scopes: a node's scope indexes modules (0 is the unowned
+// program); an alias names a target scope from within one scope.
+CK_Alias :: struct {scope:int;name:string;target:int;}
+// A name in a module's `#export` list. A module with any export is sealed:
+// its other declarations are private to it.
+CK_Export :: struct {scope:int;name:string;loc:CK_Loc;}
+CK_Context :: struct {nodes:[] CK_Node;types:[] CK_Type;locals:[] CK_Local;errors:[] CK_Error;bytes:[] u8;state:[] CK_State;modules:[] string;aliases:[] CK_Alias;exports:[] CK_Export;borrow_queries:[]CK_BorrowQuery;borrow_origins:[]BS_Origin;retain_effects:[]CK_RetainEffect;retain_reports:[]CK_RetainObservation;result_work:[]int;names:[]int;}
+CK_Options :: struct {library:bool;metal:bool;authority:bool;quantity_device:bool;}
+CK_Caps :: struct {nodes:int;types:int;locals:int;errors:int;bytes:int;result_work:int;names:int;}
+CK_BorrowQuery :: struct {kind:u8;decl:int;type:int;path:BS_Path;status:u8;start:int;count:int;next:int;retain_classes:bool;}
+CK_BorrowCaps :: struct {queries:int;origins:int;work:int;}
+CK_RetainEffect :: struct {source:BS_Origin;destination:BS_Origin;value_type:int;witness:int;next:int;source_storage:bool;}
+CK_RetainObservation :: struct {kind:u8;owner:int;site:int;facts_complete:bool;relation_complete:bool;forbidden:bool;pending:int;}
+CK_RetainCaps :: struct {effects:int;reports:int;work:int;}
+// Independent effect-opacity facts, separate from the lookup/type controls.
+// Declared typed-graph semantic oracles. No captured checker outputs or private cache layout/order expectations.
+
+
+
+
+
+
+
+
+// Independent typed-place, path-admission and default-value oracles.
+
+
+// Independent discovery and leaf-budget semantic oracles; no captured checker outputs.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Independent semantic controls for the fourth-feedback final discovery/leaves sites. No checker outputs captured.
+
+
+
+
+// Active-pool boundaries must never read plausible poisoned unused entries.
+
+
+
+
+
+
+
+
+
+
+// Literal typed-graph boundary controls for integration by the checker owner.
+// No new resolver and no expected-value calculation from the implementation.
+
+// The type graph is 256 fixed-length-one containers around one borrowed leaf.
+// A view's own enclosing depth does not consume its pointee-discovery budget.
+
+// Independently specified source: negative/helper-local.coax
+// Input SHA256: 1bfc27972d5eb05ab88b916089b4278ce2f5d4728ebe5c07fd55f43537b64504
+
+// Independently specified source: negative/nested-field-write.coax
+// Input SHA256: 03b210ec6bdc1412c47c03c60bbf081bfb34a8b19b63be8f8074c9f75cf64c8a
+
+// Independently specified source: negative/array-field-write.coax
+// Input SHA256: 301e6174942d0eee5245358e64c76beed14c033b3692d226a0388530f21622ae
+
+// Independently specified source: negative/conditional-helper.coax
+// Input SHA256: eb430832678d711050608ced6abd5dad76a53677bde28245dbe24a20b921b40c
+
+// Independently specified source: negative/local-and-unknown-call.coax
+// Input SHA256: 0fb3403b1d8a9d261e8c60943cb7c33f87959412e328256641dd91153c8980d8
+
+// Independently specified source: positive/caller-views.coax
+// Input SHA256: 3970033179f31ddd86057efd2f7ec3cb61f0fb880f3623f94b2041eb5a32350c
+
+// Independently specified source: positive/unused-local-argument.coax
+// Input SHA256: 3285ad41b46a2ddbb5fce9204782907b37a22f72aa2d3a13dcfb705f34008121
+
+// Independently specified source: positive/alias-mixed-field.coax
+// Input SHA256: ac5efcdcf27b6acd8ca8a04c590f1cac3f64dfd506cf1692b2f0ca2d18f16cc3
+
+// Independently specified source: manual/helper-local-state.coax
+// Input SHA256: 44da1eab41b6ad34ce1d1f5d43629d5b866cd824fec75564dfb7cb57a756ef44
+
+// Independently specified source: manual/record-held-helper-state.coax
+// Input SHA256: 897108ad307f075cd54854d7d816927e620450d075d0a3b7bac563ff8c637caa
+
+CK_caps :: (nodes:int,source:int)->CK_Caps #export_c {
+  if nodes<2 || nodes>2147483646 || source<0 || source>2147483646 {return CK_Caps.{};}
+  return CK_Caps.{nodes=nodes*3+16,types=nodes*3+16,locals=nodes+16,errors=nodes*8+16,bytes=source*8+nodes*512+4096,result_work=nodes*8+32,names=nodes*3};
+}
+CK_builtin :: (id:int)->CK_Type #export_c {
+  names:=[16] string.["<invalid>","void","bool","string","integer literal","float literal","f32","f64","s8","s16","s32","int","u8","u16","u32","u64"];
+  kinds:=[16] CK_Kind.[CK_Kind.invalid,CK_Kind.void_,CK_Kind.bool_,CK_Kind.string_,CK_Kind.untyped_int,CK_Kind.untyped_float,CK_Kind.floating,CK_Kind.floating,CK_Kind.integer,CK_Kind.integer,CK_Kind.integer,CK_Kind.integer,CK_Kind.integer,CK_Kind.integer,CK_Kind.integer,CK_Kind.integer];
+  sizes:=[16] int.[0,0,1,16,0,0,4,8,1,2,4,8,1,2,4,8];
+  widths:=[16] int.[0,0,8,0,0,0,32,64,8,16,32,64,8,16,32,64];
+  signed:=[16] bool.[false,false,false,false,true,true,true,true,true,true,true,true,false,false,false,false];
+  raw:=cast,trunc(u64)id;at:=0;if raw<16 {at=cast(int)raw;}alignment:=sizes[at];if alignment==0 {alignment=1;}if at==3 {alignment=8;}
+  return CK_Type.{name=names[at],kind=kinds[at],size=sizes[at],alignment=alignment,bits=widths[at],is_signed=signed[at]};
+}
+// The one qualified layout target: the named native LP64 description the
+// checker lays types out with. A view or string is {pointer, count}; every
+// other layout-query target is unsupported rather than borrowing these values.
+CK_Target :: struct {name:string;supported:bool;data_model:string;pointer_size:int;pointer_alignment:int;count_size:int;count_alignment:int;view_size:int;view_alignment:int;calling_convention:string;reason:string;}
+CK_target :: (name:string)->CK_Target #export_c {
+  if name!="native-lp64" {return CK_Target.{name=name,reason="only the native-lp64 layout target is qualified; other targets have no layout description"};}
+  view:=CK_builtin(3);
+  return CK_Target.{name=name,supported=true,data_model="LP64",pointer_size=8,pointer_alignment=8,count_size=8,count_alignment=8,view_size=view.size,view_alignment=view.alignment,calling_convention="c"};
+}
+CK_builtin_type :: (name:string)->int {
+  names:=[14] string.["int","s64","s8","s16","s32","u8","u16","u32","u64","uint","f32","f64","bool","string"];
+  ids:=[14] int.[11,11,8,9,10,12,13,14,15,15,6,7,2,3];for x,i:names {if x==name {return ids[i];}}return CK_NONE;
+}

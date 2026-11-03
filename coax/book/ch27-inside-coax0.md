@@ -44,7 +44,7 @@ driver ties them together. Here is where everything lives:
 | `src/coax.h` | The declarations every C++ stage shares: tokens, types, values, the syntax tree, the arena |
 | `src/lex.cpp` | The bridge from the Coax lexer to C++ `Token`s |
 | `src/parse.cpp` | The bridge from the Coax parser's tree to C++ syntax objects |
-| `lib/compiler/checker.coax` | Semantic admission: names, types, layouts, numeric decisions, places, returns and diagnostics |
+| `lib/compiler/checker.coax` | Semantic admission: names, types, layouts, numeric decisions, places, returns and diagnostics. It loads its parts from `lib/compiler/checker/`, one concern each (numbers, records, names, types, expressions, generics, statements, borrows, retained stores, and the checks) |
 | `src/check.cpp` | Storage and graph transport for the Coax checker, then reconstruction of native checked objects |
 | `src/eval.cpp` | Runs `#run`, constants, `#assert` and checks over the checked tree, within budgets |
 | `src/emit_c.cpp` | The checked tree to one C11 file with its runtime; headers and layout reports |

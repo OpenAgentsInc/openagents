@@ -1,0 +1,444 @@
+// Type printing, local borrows, declarations, statements, globals, foreign and
+// Metal admission, checks, coverage, effects and CK_run. A part of the
+// checker: lib/compiler/checker.coax loads it (#12646).
+#authority;
+CK_print :: (c:CK_Context,id:int)->int {
+  e:=c.nodes[id];if e.head==0 {CK_error(c,e.loc,"E0318","print needs a format string","print(\"text\\n\");");return 1;}
+  fmt:=c.nodes[e.head];if fmt.kind!=CK_Tag.expr_string {ignored:=CK_value(c,e.head,CK_Hint.{});CK_error(c,fmt.loc,"E0319","print's format must be a string literal, so it can be checked","print(\"%\\n\", value);");return 1;}
+  c.nodes[e.head].type=3;slots:=0;i:=0;
+  while i<fmt.name.count {if fmt.name[i]!=37 {i+=1;continue;}run:=0;while i<fmt.name.count && fmt.name[i]==37 {run+=1;i+=1;}slots+=run%2;}
+  given:=CK_list_count(c,e.head)-1;
+  if slots!=given {a:="s";b:="s";if slots==1 {a="";}if given==1 {b="";}parts:=[8] string.["format has ",CK_count(c,slots)," '%' slot",a," but print was given ",CK_count(c,given)," value",b];CK_error(c,fmt.loc,"E0320",CK_text(c,parts[..]),"write '%%' for a literal percent sign");}
+  arg:=c.nodes[e.head].next;while arg!=0 {t:=CK_value(c,arg,CK_Hint.{});if t==1 {CK_error(c,c.nodes[arg].loc,"E0321","this call returns nothing, so it cannot be printed","");}arg=c.nodes[arg].next;}return 1;
+}
+
+#forall "local array borrow returns fail while parameter borrows survive" variant:0..<9 {
+ nodes:[32]CK_Node;types:[32]CK_Type;locals:[16]CK_Local;errors:[8]CK_Error;bytes:[2048]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=18}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=12,length=4};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,name="borrow",type=16};nodes[3]=CK_Node.{kind=CK_Tag.stmt_return,a=4};
+ nodes[4]=CK_Node.{kind=CK_Tag.expr_slice,a=5};nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,name="a"};
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,name="input"};nodes[7]=CK_Node.{kind=CK_Tag.expr_ifx,a=8,b=4,c=6};nodes[8]=CK_Node.{kind=CK_Tag.expr_bool};
+ nodes[9]=CK_Node.{kind=CK_Tag.expr_cast,a=4,d=10};nodes[10]=CK_Node.{kind=CK_Tag.type_named,name="string"};
+ nodes[11]=CK_Node.{kind=CK_Tag.stmt_var,name="v",a=4};nodes[12]=CK_Node.{kind=CK_Tag.expr_ident,name="v"};
+ nodes[13]=CK_Node.{kind=CK_Tag.stmt_assign,c=12,a=4,op=23};nodes[14]=CK_Node.{kind=CK_Tag.expr_slice,a=12};
+ CK_declare(c,"a",17,CK_Loc.{},"");CK_declare(c,"input",16,CK_Loc.{},"parameter");
+ if variant==1 || variant==2 {CK_stmt(c,11);nodes[3].a=12;if variant==2 {nodes[3].a=14;}}
+ if variant==3 {nodes[3].a=9;nodes[2].type=3;}
+ if variant==4 || variant==5 {nodes[3].a=7;if variant==5 {nodes[7].b=6;nodes[7].c=4;}}
+ if variant==6 {nodes[11].a=6;CK_stmt(c,11);CK_stmt(c,13);nodes[3].a=12;}
+ if variant==7 {nodes[3].a=6;}
+ if variant==8 {nodes[11].a=6;CK_stmt(c,11);nodes[3].a=14;}
+ CK_stmt(c,3);#assert state[0].depth==0;
+ if variant<7 {#assert state[0].error_count==1 && errors[0].code=="E0383";}
+ else {#assert state[0].error_count==0;}
+}
+// This is a local provenance check, not interprocedural lifetime inference.
+// Aggregate values own their inline storage; borrowed fields/elements need
+// separate summaries and deliberately do not inherit their container's flag.
+#forall "inline array subobjects retain local provenance; stored borrows and calls need summaries" variant:0..<8 {
+ nodes:[8]CK_Node;types:[20]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[64]u8;state:=[1]CK_State.[CK_State.{local_count=2}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ types[16]=CK_Type.{kind=CK_Kind.array};types[17]=CK_Type.{kind=CK_Kind.view};types[18]=CK_Type.{kind=CK_Kind.struct_};
+ locals[0]=CK_Local.{name="a",local_backing=true};locals[1]=CK_Local.{name="borrow"};
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_ident,name="a"};nodes[3]=CK_Node.{kind=CK_Tag.expr_field,a=2,type=16};
+ if variant==1 || variant==3 {nodes[3].kind=CK_Tag.expr_index;}
+ if variant==2 || variant==3 {nodes[3].type=17;}
+ if variant==4 {nodes[2].name="borrow";}
+ if variant==5 {nodes[2].name="missing";}
+ if variant==6 {nodes[3].kind=CK_Tag.expr_call;}
+ if variant==7 {nodes[3].type=18;}
+ #assert CK_local_backed(c,3)==(variant==0 || variant==1 || variant==7);
+ #assert !CK_local_backed(c,0) && !CK_local_backed(c,1);
+ CK_taint_borrow(c,"absent",2);#assert !locals[1].local_backing;
+ locals[0].local_backing=false;locals[1].local_backing=true;nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="borrow"};
+ CK_taint_borrow(c,"a",4);#assert locals[0].local_backing;
+ state[0].depth=256;#assert !CK_local_backed(c,3) && state[0].depth==256 && state[0].fatal && errors[0].code=="E0381";
+}
+CK_local_backed :: (c:CK_Context,id:int)->bool {
+ if id<2 {return false;}e:=c.nodes[id];if !CK_enter(c,e.loc) {return false;}defer CK_leave(c);
+ if e.kind==CK_Tag.expr_ident {at:=CK_local(c,e.name);return at>=0 && c.locals[at].local_backing;}
+ if e.kind==CK_Tag.expr_slice || e.kind==CK_Tag.expr_cast {return CK_local_backed(c,e.a);}
+ if e.kind==CK_Tag.expr_ifx {return CK_local_backed(c,e.b) || CK_local_backed(c,e.c);}
+ if (e.kind==CK_Tag.expr_field || e.kind==CK_Tag.expr_index) && CK_aggregate(c,e.type) {return CK_local_backed(c,e.a);}
+ return false;
+}
+CK_taint_borrow :: (c:CK_Context,name:string,source:int) {
+ // Keep a may-borrow flag across assignments/branches. A later reassignment
+ // does not erase it; proving that overwrite safe requires flow analysis.
+ at:=CK_local(c,name);if at>=0 && CK_local_backed(c,source) {c.locals[at].local_backing=true;}
+}
+// Whether the current procedure's physical unit declares a procedure named
+// name. A local may share the name of a procedure another unit declares:
+// procedures are not values, so a call names the procedure and a bare name
+// the local, and no unit's locals depend on another unit's top-level names
+// (#12675). source_unit is the bridge's 1-based unit; 0, a graph built
+// without units, is one unit.
+CK_unit_proc :: (c:CK_Context,name:string)->bool {
+  unit:=c.nodes[c.state[0].current].source_unit;id:=CK_first(c,name);
+  while id!=CK_NONE {n:=c.nodes[id];if n.kind==CK_Tag.proc && n.name==name && n.source_unit==unit {return true;}id=CK_after(c,id);}
+  return false;
+}
+CK_declare :: (c:CK_Context,name:string,ty:int,loc:CK_Loc,immutable:string) {
+  prev:=CK_local(c,name);
+  if prev>=0 {parts:=[5] string.["'",name,"' is already declared at line ",CK_count(c,c.locals[prev].loc.line),"; Coax does not allow shadowing"];CK_error(c,loc,"E0303",CK_text(c,parts[..]),"pick another name");return;}
+  if CK_unit_proc(c,name) {CK_error(c,loc,"E0304",CK_join3(c,"'",name,"' is already the name of a procedure"),"pick another name");return;}
+  if CK_find(c,CK_Tag.constant,name)!=0 || CK_builtin_name(c,name) || CK_find(c,CK_Tag.struct_,name)!=0 || CK_find(c,CK_Tag.enum_,name)!=0 || CK_find(c,CK_Tag.union_,name)!=0 {CK_error(c,loc,"E0342",CK_join3(c,"'",name,"' is already a constant, type or intrinsic"),"pick another name");return;}
+  at:=c.state[0].local_count;if at>=c.locals.count {CK_resource(c,loc);return;}
+  c.locals[at]=CK_Local.{name=name,type=ty,loc=loc,immutable=immutable,local_backing=CK_aggregate(c,ty) && immutable==""};c.state[0].local_count+=1;
+}
+// A local takes a procedure's name only across physical units (#12675): "page"
+// (current) is in unit 1. 0: fresh() is unit 2's. 1: unit 1's. 2: unit 2 and
+// unit 1 both declare one, so the walk passes the first. 3: a graph without
+// units is one unit. 4: unit 1's constant "fresh" is still E0342, not E0304.
+#forall "a local shares a procedure's name only across physical units" variant:0..<5 {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=16,current=2}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="page",source_unit=1,next=3};nodes[3]=CK_Node.{kind=CK_Tag.proc,name="fresh",source_unit=2};
+ if variant==1 {nodes[3].source_unit=1;}
+ if variant==2 {nodes[3].next=4;nodes[4]=CK_Node.{kind=CK_Tag.proc,name="fresh",source_unit=1};}
+ if variant==3 {nodes[2].source_unit=0;nodes[3].source_unit=0;}
+ if variant==4 {nodes[3].kind=CK_Tag.constant;nodes[3].source_unit=1;}
+ #assert CK_unit_proc(c,"fresh")==(variant>=1 && variant<=3) && !CK_unit_proc(c,"other");
+ CK_declare(c,"fresh",11,CK_Loc.{line=4,column=2},"");
+ if variant==0 {#assert state[0].error_count==0 && state[0].local_count==1 && locals[0].name=="fresh" && locals[0].type==11;}
+ else {
+  code:="E0304";if variant==4 {code="E0342";}
+  #assert state[0].error_count==1 && state[0].local_count==0 && errors[0].code==code && errors[0].loc.line==4;
+ }
+}
+CK_compound :: (op:u32)->u32 {ops:=[10] u32.[34,35,36,37,38,39,40,41,42,43];if op<24 || op>33 {return CK_NONE;}return ops[cast(int)op-24];}
+CK_loop :: (c:CK_Context,id:int) {c.state[0].loop_depth+=1;CK_stmt(c,id);c.state[0].loop_depth-=1;}
+CK_stmt :: (c:CK_Context,id:int) {
+  if id<2 {return;}s:=c.nodes[id];if !CK_enter(c,s.loc) {return;}defer CK_leave(c);
+  if s.kind==CK_Tag.stmt_switch {CK_switch(c,id);return;}
+  if s.kind==CK_Tag.stmt_block {mark:=c.state[0].local_count;child:=s.head;while child!=CK_NONE && !c.state[0].fatal {CK_stmt(c,child);child=c.nodes[child].next;}c.state[0].local_count=mark;return;}
+  if s.kind==CK_Tag.stmt_expr {
+    t:=CK_value(c,s.a,CK_Hint.{});e:=c.nodes[s.a];
+    if (e.kind==CK_Tag.expr_try || e.kind==CK_Tag.expr_or_else) && t==1 {return;}
+    if c.types[t].kind==CK_Kind.result {CK_error(c,s.loc,"E0907","a Result expression must be handled or transferred","");return;}
+    if e.kind!=CK_Tag.expr_call && t!=CK_NONE {CK_error(c,s.loc,"E0322","this expression's value is not used","assign it, or remove it");}
+    else if e.kind==CK_Tag.expr_call && t!=1 && t!=CK_NONE {parts:=[5] string.["the result of '",e.name,"' (",c.types[t].name,") is not used"];CK_error(c,s.loc,"E0323",CK_text(c,parts[..]),CK_join3(c,"use it: result := ",e.name,"(...);"));}return;
+  }
+  if s.kind==CK_Tag.stmt_var {
+    declared:=CK_resolve(c,s.d,CK_Access.value);
+    if s.a==0 && declared!=0 && ((s.flag && CK_inline_sum(c,declared)) || (!s.flag && !CK_defaultable(c,declared))) {CK_error(c,s.loc,"E0902","this sum or containing value requires valid initialized storage","");return;}
+    init:=CK_value(c,s.a,CK_Hint.{type=declared});
+    if init==1 {CK_error(c,c.nodes[s.a].loc,"E0324","this call returns nothing, so it cannot initialize a variable","");init=0;}
+    if declared!=CK_NONE && init!=CK_NONE && declared!=init {
+      fix:="";if CK_numeric(c,declared) && CK_numeric(c,init) {fix=CK_join3(c,"convert it: cast(",c.types[declared].name,") x");}else if c.types[init].kind==CK_Kind.array && c.types[declared].kind==CK_Kind.view {fix="take a view: name[..]";}
+      parts:=[5] string.["'",s.name,"' is ",c.types[declared].name,CK_join2(c," but is initialized with ",c.types[init].name)];CK_error(c,c.nodes[s.a].loc,"E0325",CK_text(c,parts[..]),fix);
+    }
+    t:=init;if s.d!=CK_NONE {t=declared;}c.nodes[id].type=t;immutable:="";if c.types[t].kind==CK_Kind.result {immutable="Result binding";}CK_declare_id(c,s.name,t,s.loc,immutable,id);
+    CK_taint_borrow(c,s.name,s.a);return;
+  }
+  if s.kind==CK_Tag.stmt_assign {
+    target_expr:=c.nodes[s.c];
+    if target_expr.kind==CK_Tag.expr_ident && CK_lookup(c,CK_Tag.constant,s.c)!=0 {CK_error(c,s.loc,"E0344","constants cannot be assigned","");ignored:=CK_value(c,s.a,CK_Hint.{});return;}
+    target:=CK_expr(c,s.c,CK_Hint.{});if target==CK_NONE {ignored:=CK_value(c,s.a,CK_Hint.{});return;}
+    CK_mutable(c,s.c,s.loc);t:=CK_value(c,s.a,CK_Hint.{type=target});if t==CK_NONE {return;}
+    if s.op!=23 {
+      op:=CK_compound(s.op);int_only:=op>=38;shift:=op==42 || op==43;bad:=!CK_numeric(c,target);if int_only {bad=!CK_integer(c,target);}
+      if bad {need:="a number";if int_only {need="an integer";}parts:=[5] string.[CK_op(s.op)," needs ",need," target, this is ",c.types[target].name];CK_error(c,s.loc,"E0326",CK_text(c,parts[..]),CK_constrain_fix(c,target,"numeric"));}
+      else {mismatch:=t!=target;if shift {mismatch=!CK_integer(c,t);}if mismatch {parts:=[4] string.["the target is ",c.types[target].name,", given ",c.types[t].name];CK_error(c,c.nodes[s.a].loc,"E0327",CK_text(c,parts[..]),"");}}
+    }else if t!=target {fix:="";if CK_numeric(c,target) && CK_numeric(c,t) {fix=CK_join3(c,"convert it: cast(",c.types[target].name,") x");}parts:=[4] string.["the target is ",c.types[target].name,", assigned ",c.types[t].name];CK_error(c,c.nodes[s.a].loc,"E0327",CK_text(c,parts[..]),fix);}
+    CK_borrow_write(c,id);if target_expr.kind==CK_Tag.expr_ident {CK_taint_borrow(c,target_expr.name,s.a);}return;
+  }
+  if s.kind==CK_Tag.stmt_return {
+    CK_borrow_return(c,id);if c.state[0].defer_depth!=0 {CK_error(c,s.loc,"E0361","a deferred statement cannot return","return after the defer runs instead");return;}
+    current:=c.nodes[c.state[0].current];want:=current.type;
+    if s.a==CK_NONE {if want!=1 && want!=0 {parts:=[4] string.["'",current.name,"' must return ",c.types[want].name];CK_error(c,s.loc,"E0328",CK_text(c,parts[..]),"");}return;}
+    t:=CK_value(c,s.a,CK_Hint.{type=want});
+    if want==1 {CK_error(c,c.nodes[s.a].loc,"E0329",CK_join3(c,"'",current.name,"' returns nothing, but a value is returned"),CK_join3(c,"add '-> ",c.types[t].name,"' to its declaration"));}
+    else if t!=CK_NONE && want!=0 && t!=want {parts:=[5] string.["'",current.name,"' returns ",c.types[want].name,CK_join2(c,", given ",c.types[t].name)];CK_error(c,c.nodes[s.a].loc,"E0330",CK_text(c,parts[..]),"");}
+    else if (t==3 || c.types[t].kind==CK_Kind.view) && CK_local_backed(c,s.a) {CK_error(c,c.nodes[s.a].loc,"E0383","returned borrow may refer to a local fixed array","return the fixed array value, or use caller-owned storage passed as a view");}return;
+  }
+  if s.kind==CK_Tag.stmt_if || s.kind==CK_Tag.stmt_while {
+    t:=CK_value(c,s.a,CK_Hint.{});if t!=CK_NONE && t!=2 {fix:="";if CK_numeric(c,t) {fix="compare it: x != 0";}CK_error(c,c.nodes[s.a].loc,"E0331",CK_join2(c,"condition must be bool, found ",c.types[t].name),fix);}
+    if s.kind==CK_Tag.stmt_while {CK_loop(c,s.c);}else {CK_stmt(c,s.c);}CK_stmt(c,s.d);return;
+  }
+  if s.kind==CK_Tag.stmt_range {
+    a:=CK_expr(c,s.a,CK_Hint.{});b:=CK_expr(c,s.b,CK_Hint.{});
+    if CK_untyped(c,a) && !CK_untyped(c,b) {CK_coerce(c,s.a,b);}else if CK_untyped(c,b) && !CK_untyped(c,a) {CK_coerce(c,s.b,a);}else if CK_untyped(c,a) {CK_coerce(c,s.a,11);CK_coerce(c,s.b,11);}
+    a=c.nodes[s.a].type;b=c.nodes[s.b].type;t:=0;
+    if a!=CK_NONE && b!=CK_NONE {if a!=b || !CK_integer(c,a) {parts:=[4] string.["a range needs two integers of one type, found ",c.types[a].name," and ",c.types[b].name];CK_error(c,c.nodes[s.a].loc,"E0364",CK_text(c,parts[..]),"");}else {t=a;}}
+    mark:=c.state[0].local_count;c.nodes[id].type=t;CK_declare_id(c,s.name,t,s.loc,"loop variable",id);CK_loop(c,s.c);c.state[0].local_count=mark;return;
+  }
+  if s.kind==CK_Tag.stmt_each {
+    collection:=CK_value(c,s.a,CK_Hint.{});elem:=0;
+    if c.types[collection].kind==CK_Kind.array || c.types[collection].kind==CK_Kind.view {elem=c.types[collection].elem;}else if collection==3 {elem=12;}
+    else if collection!=CK_NONE {fix:="";if CK_integer(c,collection) {fix="count up to it: for i: 0..<n { }";}CK_error(c,c.nodes[s.a].loc,"E0364",CK_join2(c,"for needs a range, an array, a view or a string, found ",c.types[collection].name),fix);}
+    mark:=c.state[0].local_count;c.nodes[id].type=elem;CK_declare_id(c,s.name,elem,s.loc,"loop variable",id);if s.name2.count!=0 {CK_declare(c,s.name2,11,s.loc2,"loop variable");}CK_loop(c,s.c);c.state[0].local_count=mark;return;
+  }
+  if s.kind==CK_Tag.stmt_break || s.kind==CK_Tag.stmt_continue {
+    if c.state[0].loop_depth==0 {what:="break";if s.kind==CK_Tag.stmt_continue {what="continue";}
+      if c.state[0].defer_depth!=0 {CK_error(c,s.loc,"E0361",CK_join3(c,"a deferred statement cannot ",what," out of its block"),"");}else {CK_error(c,s.loc,"E0360",CK_join2(c,what," is only allowed inside a loop"),"");}}
+    return;
+  }
+  if s.kind==CK_Tag.stmt_assert {t:=CK_value(c,s.a,CK_Hint.{});if t!=CK_NONE && t!=2 {CK_error(c,c.nodes[s.a].loc,"E0346","#assert requires bool","");}return;}
+  if s.kind==CK_Tag.stmt_defer {saved:=c.state[0].loop_depth;c.state[0].loop_depth=0;c.state[0].defer_depth+=1;CK_stmt(c,s.c);c.state[0].defer_depth-=1;c.state[0].loop_depth=saved;}
+}
+CK_always_returns :: (c:CK_Context,id:int)->bool {
+  if id<2 {return false;}if !CK_enter(c,c.nodes[id].loc) {return false;}defer CK_leave(c);s:=c.nodes[id];
+  if s.kind==CK_Tag.stmt_return {return true;}
+  if s.kind==CK_Tag.stmt_block {child:=s.head;while child!=CK_NONE {if CK_always_returns(c,child) {return true;}child=c.nodes[child].next;}return false;}
+  if s.kind==CK_Tag.stmt_if {return CK_always_returns(c,s.c) && CK_always_returns(c,s.d);}
+  if s.kind==CK_Tag.stmt_switch {at:=s.head;if at==0 {return false;}while at!=0 {if !CK_always_returns(c,c.nodes[at].b) {return false;}at=c.nodes[at].next;}return true;}return false;
+}
+// Two modules may each declare a name. C spells procedures and types in one
+// namespace, so colliding declarations get a scope-qualified spelling, and a
+// collision C cannot spell (an #export_c/#foreign symbol, or a library
+// header's type) is refused rather than merged.
+CK_collisions :: (c:CK_Context,library:bool) {
+  id:=c.nodes[1].head;
+  while id!=CK_NONE {d:=c.nodes[id];
+    named:=d.kind==CK_Tag.struct_ || d.kind==CK_Tag.enum_ || d.kind==CK_Tag.union_;
+    if named || d.kind==CK_Tag.proc || d.kind==CK_Tag.constant {
+      other:=CK_first(c,d.name);
+      while other!=CK_NONE {o:=c.nodes[other];
+        types:=named && (o.kind==CK_Tag.struct_ || o.kind==CK_Tag.enum_ || o.kind==CK_Tag.union_);
+        if (o.kind==d.kind || types) && o.name==d.name && o.scope!=d.scope {c.nodes[id].collides=true;}other=CK_after(c,other);
+      }
+      // Colliding declarations form a chain, so unqualified binding only scans
+      // further for names that some other module also declares.
+      if c.nodes[id].collides {c.nodes[id].clash=c.state[0].clashes;c.state[0].clashes=id;}
+      if c.nodes[id].collides && d.kind!=CK_Tag.constant {
+        if d.kind==CK_Tag.proc {if d.flag || d.flag2 {CK_error(c,d.loc,"E0387",CK_join3(c,"C symbol '",d.name,"' is declared by more than one module"),"rename one; #export_c and #foreign names are global C symbols");}}
+        else if library {CK_error(c,d.loc,"E0387",CK_join3(c,"type '",d.name,"' is declared by more than one module, and a C library header spells types by name"),"rename one of them");}
+        else if d.scope!=0 {c.types[d.type].scope=d.scope;c.types[d.type].name=CK_join3(c,CK_module_name(c,d.scope),".",d.name);}
+      }
+    }id=d.next;
+  }
+  CK_exports_valid(c);
+}
+CK_global_names :: (c:CK_Context) {
+  pass:=0;while pass<3 {
+    wanted:=CK_Tag.struct_;what:="struct";if pass==1 {wanted=CK_Tag.enum_;what="enum";}if pass==2 {wanted=CK_Tag.union_;what="union";}
+    id:=c.nodes[1].head;while id!=CK_NONE {d:=c.nodes[id];if d.kind==wanted {
+      // The diagnostic order is structures first, then enums, independently
+      // of their interleaving in source. Earlier enums do not precede a struct.
+      prior_pass:=0;while prior_pass<=pass {
+        tag:=CK_Tag.struct_;if prior_pass==1 {tag=CK_Tag.enum_;}if prior_pass==2 {tag=CK_Tag.union_;}
+        prior:=CK_first(c,d.name);while prior!=CK_NONE {
+          if prior_pass==pass && prior==id {break;}p:=c.nodes[prior];
+          if p.kind==tag && p.name==d.name && p.scope==d.scope {parts:=[4] string.["type '",d.name,"' is already declared at line ",CK_count(c,p.loc.line)];CK_error(c,d.loc,"E0372",CK_text(c,parts[..]),"");}prior=CK_after(c,prior);
+        }prior_pass+=1;
+      }
+      if CK_scan(c,CK_Tag.proc,d.name,d.scope,true)!=0 || CK_scan(c,CK_Tag.constant,d.name,d.scope,true)!=0 || CK_builtin_name(c,d.name) || CK_builtin_type(d.name)!=0 {parts:=[4] string.[what," '",d.name,"' conflicts with another declaration or a built-in name"];CK_error(c,d.loc,"E0372",CK_text(c,parts[..]),"");}
+    }id=d.next;}pass+=1;
+  }
+}
+CK_enum :: (c:CK_Context,id:int) {
+  d:=c.nodes[id];base:=CK_resolve(c,d.a,CK_Access.value);
+  if base!=0 && !CK_integer(c,base) {CK_error(c,c.nodes[d.a].loc,"E0373",CK_join2(c,"an enum's underlying type must be an integer, found ",c.types[base].name),"");base=0;}if base==0 {base=11;}
+  t:=d.type;c.types[t].elem=base;c.types[t].size=c.types[base].size;c.types[t].alignment=c.types[base].alignment;c.types[t].bits=c.types[base].bits;c.types[t].is_signed=c.types[base].is_signed;
+  next:=CM_Int.{};member:=d.head;
+  while member!=CK_NONE && !c.state[0].fatal {
+    m:=c.nodes[member];prior:=d.head;while prior!=member {if c.nodes[prior].name==m.name {parts:=[5] string.["duplicate member '",m.name,"' in enum '",d.name,"'"];CK_error(c,m.loc,"E0352",CK_text(c,parts[..]),"");}prior=c.nodes[prior].next;}
+    if m.a!=CK_NONE {
+      saved:=c.state[0].local_count;c.state[0].local_count=0;ty:=CK_expr(c,m.a,CK_Hint.{});c.state[0].local_count=saved;
+      if ty==CK_NONE {member=m.next;continue;}value:=CK_const_int(c,m.a);
+      if !(CK_untyped(c,ty) || CK_integer(c,ty)) || value.bad {CK_error(c,c.nodes[m.a].loc,"E0363","an enum value must be an integer known while checking","");member=m.next;continue;}next=value;
+    }
+    if !CM_fits(next,c.types[base].bits,c.types[base].is_signed) {parts:=[6] string.["value ",CK_number(c,next)," of '",m.name,"' does not fit in ",c.types[base].name];CK_error(c,m.loc,"E0363",CK_text(c,parts[..]),"");next=CM_Int.{};}
+    c.nodes[member].value=CM_canon(CM_raw(next),c.types[base].bits,c.types[base].is_signed);prior=d.head;
+    while prior!=member {if c.nodes[prior].value==c.nodes[member].value {parts:=[5] string.["'",m.name,"' has the same value as '",c.nodes[prior].name,"'"];CK_error(c,m.loc,"E0363",CK_text(c,parts[..]),"give it its own value");}prior=c.nodes[prior].next;}
+    next=CM_add(next,CM_from(1,false));member=m.next;
+  }
+}
+CK_defaults :: (c:CK_Context,id:int) {
+  field:=c.nodes[id].head;while field!=CK_NONE && !c.state[0].fatal {f:=c.nodes[field];if f.type!=0 {
+    saved:=c.state[0].local_count;current:=c.state[0].current;c.state[0].current=0;c.state[0].local_count=0;t:=CK_value(c,f.b,CK_Hint.{type=f.type});c.state[0].local_count=saved;c.state[0].current=current;
+    if t!=CK_NONE && t!=f.type {parts:=[5] string.["field '",f.name,"' is ",c.types[f.type].name,CK_join2(c,", its default is ",c.types[t].name)];CK_error(c,c.nodes[f.b].loc,"E0367",CK_text(c,parts[..]),"");}
+  }field=f.next;}
+}
+CK_foreign_scalar :: (c:CK_Context,t:int)->bool {return t==CK_NONE || CK_numeric(c,t) || t==2 || c.types[t].carrier==6 || c.types[t].carrier==7;}
+// A #foreign parameter is a scalar or a borrowed view of integers, floats or
+// bool (spec 7.1): the host reads and writes its elements during the call only.
+CK_foreign_param :: (c:CK_Context,t:int)->bool {
+  if c.types[t].kind==CK_Kind.view {e:=c.types[t].elem;return CK_foreign_scalar(c,e);}
+  return CK_foreign_scalar(c,t);
+}
+CK_foreign :: (c:CK_Context,id:int) {
+  p:=c.nodes[id];if !CK_foreign_scalar(c,p.type) && p.type!=1 {parts:=[4] string.["'",p.name,"' returns ",CK_join2(c,c.types[p.type].name,"; #foreign procedures return integers, floats, bool or nothing")];CK_error(c,p.loc,"E0376",CK_text(c,parts[..]),"");}
+  param:=p.head;while param!=CK_NONE {prm:=c.nodes[param];if !CK_foreign_param(c,prm.type) {parts:=[5] string.["parameter '",prm.name,"' is ",c.types[prm.type].name,"; #foreign procedures pass integers, floats, bool and views of them"];CK_error(c,prm.loc,"E0376",CK_text(c,parts[..]),"");}param=prm.next;}
+  if CK_c_keyword(p.name) || p.name=="main" {CK_error(c,p.loc,"E0376",CK_join3(c,"'",p.name,"' cannot be a C symbol name"),"");}
+  else if p.name.count>=5 && p.name[0..<5]=="coax_" {CK_error(c,p.loc,"E0376","foreign names cannot start with 'coax_', which the runtime uses","");}
+}
+
+CK_metal_type :: (t:int)->bool {return t==6 || t==2 || t==1 || t==CK_NONE;}
+CK_metal_error :: (c:CK_Context,loc:CK_Loc,what:string) {CK_error(c,loc,"E0377",CK_join2(c,what," is outside the Metal scalar profile"),"Metal libraries use f32 and bool, if/else and calls; no loops, strings, integers or host calls");}
+CK_metal_expr :: (c:CK_Context,id:int) {
+  if id==CK_NONE {return;}e:=c.nodes[id];if !CK_enter(c,e.loc) {return;}defer CK_leave(c);
+  if !CK_metal_type(e.type) {CK_metal_error(c,e.loc,CK_join3(c,"a ",c.types[e.type].name," value"));return;}
+  if e.builtin_print {CK_metal_error(c,e.loc,"print");return;}
+  if e.byte_intrinsic!=0 {CK_metal_error(c,e.loc,"a binary storage intrinsic");return;}
+  if e.proc!=CK_NONE {
+    if c.nodes[e.proc].flag2 {CK_metal_error(c,e.loc,"a #foreign call");return;}
+    if c.nodes[e.proc].metal_active {CK_metal_error(c,e.loc,"a recursive call");return;}CK_metal_proc(c,e.proc);
+  }
+  CK_metal_expr(c,e.a);CK_metal_expr(c,e.b);CK_metal_expr(c,e.c);a:=e.head;while a!=CK_NONE {CK_metal_expr(c,a);a=c.nodes[a].next;}
+}
+CK_metal_stmt :: (c:CK_Context,id:int) {
+  if id==CK_NONE {return;}s:=c.nodes[id];if !CK_enter(c,s.loc) {return;}defer CK_leave(c);
+  if s.kind==CK_Tag.stmt_while || s.kind==CK_Tag.stmt_range || s.kind==CK_Tag.stmt_each {CK_metal_error(c,s.loc,"a loop");return;}
+  if s.kind==CK_Tag.stmt_assert {CK_metal_error(c,s.loc,"#assert");return;}
+  if s.kind==CK_Tag.stmt_var && !CK_metal_type(s.type) {CK_metal_error(c,s.loc,CK_join3(c,"a ",c.types[s.type].name," local"));return;}
+  CK_metal_expr(c,s.a);if s.kind==CK_Tag.stmt_assign {CK_metal_expr(c,s.c);}
+  child:=s.head;while child!=CK_NONE {CK_metal_stmt(c,child);child=c.nodes[child].next;}
+  if s.kind!=CK_Tag.stmt_assign {CK_metal_stmt(c,s.c);}if s.kind!=CK_Tag.stmt_var {CK_metal_stmt(c,s.d);}
+}
+CK_metal_proc :: (c:CK_Context,id:int) {
+  if c.nodes[id].metal_done {return;}
+  if c.state[0].metal_depth>=64 {CK_metal_error(c,c.nodes[id].loc,"a call chain deeper than 64");return;}
+  c.state[0].metal_depth+=1;c.nodes[id].metal_active=true;CK_metal_stmt(c,c.nodes[id].b);c.nodes[id].metal_active=false;c.state[0].metal_depth-=1;c.nodes[id].metal_done=true;
+}
+CK_metal_head :: (c:CK_Context,p:int) {v:=c.nodes[p];
+  if !CK_metal_type(v.type) {CK_metal_error(c,v.loc,CK_join2(c,"returning ",c.types[v.type].name));}
+  prm:=v.head;while prm!=0 {param:=c.nodes[prm];if !CK_metal_type(param.type) {CK_metal_error(c,param.loc,CK_join3(c,"a ",c.types[param.type].name," parameter"));}prm=param.next;}
+}
+CK_metal :: (c:CK_Context) {
+  for i:16..<c.state[0].type_count {if CK_sum(c,i) {CK_metal_error(c,CK_Loc.{},"a tagged sum");return;}}
+  p:=c.nodes[1].head;while p!=0 {v:=c.nodes[p];if v.kind==CK_Tag.proc && !v.generic {
+    if v.flag2 {CK_metal_error(c,v.loc,"a #foreign procedure");}else {CK_metal_head(c,p);}
+  }p=v.next;}
+  p=c.nodes[1].head;while p!=0 {v:=c.nodes[p];if v.kind==CK_Tag.proc && !v.flag2 && !v.generic {CK_metal_proc(c,p);}p=v.next;}
+  p=c.state[0].instances;while p!=0 {CK_metal_head(c,p);CK_metal_proc(c,p);p=c.nodes[p].chain;}
+}
+CK_check :: (c:CK_Context,id:int) {
+  d:=c.nodes[id];c.nodes[d.a].type=1;c.state[0].local_count=0;p:=c.nodes[d.a];param:=p.head;
+  while param!=CK_NONE && !c.state[0].fatal {
+    prm:=c.nodes[param];if prm.a!=CK_NONE {
+      t:=CK_resolve(c,prm.a,CK_Access.value);c.nodes[param].type=t;
+      if t!=CK_NONE && t!=2 && c.types[t].kind!=CK_Kind.enum_ && !(t==8 || t==9 || t==12 || t==13) {CK_error(c,prm.loc,"E0379",CK_join2(c,"#forall cannot enumerate ",c.types[t].name),CK_join3(c,"bind bool, an enum, an integer of at most 16 bits, or a range: ",prm.name,": 0..<100"));}
+    }else {
+      c.nodes[param].type=11;bounds:=[2] int.[prm.b,prm.c];
+      for bound:bounds {t:=CK_value(c,bound,CK_Hint.{type=11});
+        if t!=CK_NONE && t!=11 {CK_error(c,c.nodes[bound].loc,"E0379",CK_join2(c,"a #forall range bound must be an int constant, found ",c.types[t].name),"");}
+      }
+    }param=prm.next;
+  }
+  c.state[0].current=d.a;param=p.head;
+  while param!=CK_NONE {prm:=c.nodes[param];CK_declare_id(c,prm.name,prm.type,prm.loc,"binding",param);param=prm.next;}CK_stmt(c,p.b);
+}
+// The typed graph's resolved callee is present only on a user call.
+// One walker handles syntax unions, including struct field initializers.
+CK_reach :: (c:CK_Context,id:int) {
+  if id==CK_NONE {return;}n:=c.nodes[id];if !CK_enter(c,n.loc) {return;}defer CK_leave(c);
+  if n.proc!=CK_NONE && !c.nodes[n.proc].flag2 && !c.nodes[n.proc].reached {c.nodes[n.proc].reached=true;o:=c.nodes[n.proc].origin;if o!=CK_NONE {c.nodes[o].reached=true;}CK_reach(c,c.nodes[n.proc].b);}
+  CK_reach(c,n.a);CK_reach(c,n.b);CK_reach(c,n.c);CK_reach(c,n.d);
+  child:=n.head;while child!=CK_NONE {CK_reach(c,child);child=c.nodes[child].next;}
+}
+#forall "source-unit authority excludes only foreign, main, reached or unguarded procedures" kind:0..<3, foreign:bool, main_name:bool, reached:bool, skip:bool {
+ tags:=[3] CK_Tag.[CK_Tag.proc,CK_Tag.constant,CK_Tag.check];
+ p:=CK_Node.{kind=tags[kind],flag2=foreign,reached=reached,skip_authority=skip,name="work"};
+ if main_name {p.name="main";}
+ #assert CK_requires_coverage(p)==(kind==0 && !foreign && !main_name && !reached && !skip);
+}
+CK_requires_coverage :: (p:CK_Node)->bool {
+ return p.kind==CK_Tag.proc && !p.flag2 && p.name!="main" && !p.reached && !p.skip_authority;
+}
+CK_coverage :: (c:CK_Context) {
+  id:=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.check {CK_reach(c,c.nodes[c.nodes[id].a].b);}id=c.nodes[id].next;}
+  id=c.nodes[1].head;while id!=CK_NONE {p:=c.nodes[id];if CK_requires_coverage(p) {CK_error(c,p.loc,"E0380",CK_join3(c,"'",p.name,"' is not exercised by any #test or #forall"),"#authority files check every procedure: add a #test or #forall that calls it");}id=p.next;}
+}
+// Ordered lowering (r1a-ordered-lowering): what evaluating a checked
+// expression may observably do. Evaluator and native C share one order
+// (left to right, a place before its value); the emitter sequences operands
+// whenever two of them could make that order observable.
+CK_EFFECT_CALL :: cast(u8) 1;      // runs a procedure: may write state another operand reads
+CK_EFFECT_TRAP :: cast(u8) 2;      // may stop with a trap under every arithmetic profile
+CK_EFFECT_OVERFLOW :: cast(u8) 4;  // may stop with an overflow trap under checked arithmetic
+CK_EFFECT_PROPAGATE :: cast(u8) 8; // checked recoverable return; not a fatal trap or effects.v1 capability
+CK_own_effects :: (c:CK_Context,n:CK_Node)->u8 {
+  if n.kind==CK_Tag.expr_try {return CK_EFFECT_PROPAGATE;}
+  integer:=CK_integer(c,n.type);
+  if n.kind==CK_Tag.expr_index || n.kind==CK_Tag.expr_slice {return CK_EFFECT_TRAP;}
+  if n.kind==CK_Tag.expr_call {if n.byte_intrinsic!=0 {return CK_EFFECT_TRAP;}if n.intrinsic!=0 {return 0;}return CK_EFFECT_CALL;}
+  if n.kind==CK_Tag.expr_cast {if integer && !n.flag {return CK_EFFECT_TRAP;}return 0;}
+  if !integer {return 0;}
+  if n.kind==CK_Tag.expr_binary {
+    if n.op==37 || n.op==38 || n.op==42 || n.op==43 {return CK_EFFECT_TRAP;}
+    if n.op==34 || n.op==35 || n.op==36 {return CK_EFFECT_OVERFLOW;}
+  }
+  if n.kind==CK_Tag.expr_unary && n.op==35 {return CK_EFFECT_OVERFLOW;}
+  return 0;
+}
+CK_effects :: (c:CK_Context,id:int)->u8 {
+  if id<0 || id>=c.nodes.count {return 0;}
+  n:=c.nodes[id];if n.effects_known {return n.effects;}
+  e:u8=0;tag:=cast(u32)n.kind;expression:=tag>=16 && tag<40;
+  if n.kind==CK_Tag.field_init {e=CK_effects(c,n.a);}
+  // A compound assignment's own operation is its update, `place op value`
+  // ('+=' is token 24, '+' is 34); a plain '=' maps to no arithmetic.
+  if n.kind==CK_Tag.stmt_assign {c.nodes[id].own_effects=CK_own_effects(c,CK_Node.{kind=CK_Tag.expr_binary,op=n.op+10,type=c.nodes[n.c].type});}
+  else if expression && !n.folded {
+    own:=CK_own_effects(c,n);c.nodes[id].own_effects=own;
+    e=own|CK_effects(c,n.a)|CK_effects(c,n.b)|CK_effects(c,n.c);
+    arg:=n.head;while arg!=CK_NONE {e=e|CK_effects(c,arg);arg=c.nodes[arg].next;}
+  }
+  c.nodes[id].effects=e;c.nodes[id].effects_known=true;return e;
+}
+// Every node of a checked graph, once, after CK_run succeeds.
+CK_lower_effects :: (c:CK_Context) #export_c {for node:1..<c.state[0].used+1 {ignored:=CK_effects(c,node);}}
+CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
+  if c.state.count!=1 {return false;}c.state[0]=CK_State.{used=used,type_count=16,quantity_device=options.quantity_device,instance_limit=CK_instance_limit(used)};
+  defer {if c.state[0].fatal || c.state[0].error_count>0 {c.state[0].retain_report_count=0;}}
+  if used<1 || used>=c.nodes.count || c.types.count<16 || c.errors.count<1 || c.locals.count<1 {CK_resource(c,CK_Loc.{});return false;}
+  for id:2..<used+1 {c.nodes[id].borrow_binding=0;c.nodes[id].borrow_owner=0;c.nodes[id].borrow_writes=0;c.nodes[id].borrow_returns=0;c.nodes[id].borrow_calls=0;c.nodes[id].borrow_status=0;}
+  for i:0..<16 {c.types[i]=CK_builtin(i);}
+  // The top-level list is fixed from here to the end of the run; see CK_index_names.
+  indexed:=CK_index_names(c,used);
+  CK_templates(c);
+  id:=c.nodes[1].head;
+  while id!=CK_NONE {n:=c.nodes[id];if n.kind==CK_Tag.import_ {
+    if n.name=="Basic" {if c.state[0].basic {CK_error(c,n.loc,"E0332","module Basic is imported twice","remove this import");}c.state[0].basic=true;}
+    else {CK_error(c,n.loc,"E0333",CK_join3(c,"unknown module '",n.name,"'"),"coax0 has one module: \"Basic\"");}
+  }id=n.next;}
+  pass:=0;while pass<3 {tag:=CK_Tag.struct_;kind:=CK_Kind.struct_;if pass==1 {tag=CK_Tag.enum_;kind=CK_Kind.enum_;}if pass==2 {tag=CK_Tag.union_;kind=CK_Kind.union_;}id=c.nodes[1].head;
+    while id!=CK_NONE {n:=c.nodes[id];if n.kind==tag {c.nodes[id].type=CK_new_type(c,CK_Type.{kind=kind,name=n.name,decl=id});if n.d!=CK_NONE && pass==0 {CK_template(c,id);}}id=n.next;}pass+=1;
+  }
+  CK_global_names(c);CK_collisions(c,options.library);
+  id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.enum_ {CK_enum(c,id);}id=c.nodes[id].next;}
+  id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.struct_ || c.nodes[id].kind==CK_Tag.union_ {CK_layout(c,id);}id=c.nodes[id].next;}
+  any_export:=false;id=c.nodes[1].head;
+  while id!=CK_NONE && !c.state[0].fatal {
+    p:=c.nodes[id];if p.kind==CK_Tag.proc {
+      if p.effect_present || p.pure_decl || p.effect_head!=0 {CK_error(c,p.effect_loc,"E0940","effect declarations require the subsequent R11 enforcement profile","");}
+      prior:=CK_first(c,p.name);while prior!=id {old:=c.nodes[prior];if old.kind==CK_Tag.proc && old.name==p.name && old.scope==p.scope {parts:=[4] string.["procedure '",p.name,"' is already declared at line ",CK_count(c,old.loc.line)];CK_error(c,p.loc,"E0334",CK_text(c,parts[..]),"");}prior=CK_after(c,prior);}
+      if CK_builtin_name(c,p.name) {CK_error(c,p.loc,"E0335",CK_join3(c,"'",p.name,"' is already a builtin"),"pick another name");}
+      c.state[0].generic=id;c.state[0].site=CK_Site.param;
+      param:=p.head;while param!=CK_NONE {c.nodes[param].type=CK_resolve(c,c.nodes[param].a,CK_Access.value);param=c.nodes[param].next;}
+      c.state[0].site=CK_Site.result;c.nodes[id].type=1;if p.a!=CK_NONE {c.nodes[id].type=CK_resolve(c,p.a,CK_Access.value);}
+      c.state[0].generic=CK_NONE;if p.flag2 {CK_foreign(c,id);}
+      if c.nodes[id].generic && p.flag {CK_error(c,p.loc,"E0398",CK_join3(c,"'",p.name,"' has type parameters, so it cannot be #export_c"),"export a procedure with concrete types that does the work");}
+      if p.flag {any_export=true;if p.name=="main" {CK_error(c,p.loc,"E0369","'main' cannot be exported; it is the program's entry point","");}else if p.name.count>=5 && p.name[0..<5]=="coax_" {CK_error(c,p.loc,"E0369","exported names cannot start with 'coax_', which the runtime uses","");}}
+    }id=p.next;
+  }
+  id=c.nodes[1].head;while id!=CK_NONE {n:=c.nodes[id];if n.kind==CK_Tag.constant {
+    prior:=CK_first(c,n.name);while prior!=id {old:=c.nodes[prior];if old.kind==CK_Tag.constant && old.name==n.name && old.scope==n.scope {CK_error(c,n.loc,"E0345",CK_join3(c,"duplicate constant '",n.name,"'"),"");}prior=CK_after(c,prior);}
+    if CK_scan(c,CK_Tag.proc,n.name,n.scope,true)!=0 || CK_builtin_name(c,n.name) {CK_error(c,n.loc,"E0345",CK_join3(c,"constant '",n.name,"' conflicts with a procedure or intrinsic"),"");}
+  }id=n.next;}
+  id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.constant {ignored:=CK_constant_type(c,id);}id=c.nodes[id].next;}
+  id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.struct_ && !c.nodes[id].generic {CK_defaults(c,id);}id=c.nodes[id].next;}
+  id=c.nodes[1].head;while id!=CK_NONE {n:=c.nodes[id];if n.kind==CK_Tag.assert_ {t:=CK_value(c,n.a,CK_Hint.{});if t!=CK_NONE && t!=2 {CK_error(c,c.nodes[n.a].loc,"E0346","#assert requires bool","");}}id=n.next;}
+  entry:=CK_find(c,CK_Tag.proc,"main");
+  if entry==CK_NONE {if !options.library {fix:="add main :: () { ... }";if any_export {fix="build it as a library: coax lib FILE.coax";}CK_error(c,CK_Loc.{line=1,column=1},"E0336","the program has no 'main'",fix);}}
+  else {p:=c.nodes[entry];if p.head!=0 || p.type!=1 || p.flag2 {CK_error(c,p.loc,"E0337","'main' takes no parameters and returns nothing in coax0","main :: () { ... }");}}
+  id=c.nodes[1].head;while id!=CK_NONE && !c.state[0].fatal {p:=c.nodes[id];if p.kind==CK_Tag.proc && !p.flag2 {
+    c.state[0].current=id;c.state[0].generic=id;c.state[0].site=CK_Site.body;c.state[0].local_count=0;param:=p.head;
+    while param!=CK_NONE {prm:=c.nodes[param];CK_declare_id(c,prm.name,prm.type,prm.loc,"parameter",param);param=prm.next;}CK_stmt(c,p.b);
+    if p.type!=1 && p.type!=0 && !CK_always_returns(c,p.b) {parts:=[4] string.["'",p.name,"' can reach its end without returning ",c.types[p.type].name];CK_error(c,p.loc,"E0338",CK_text(c,parts[..]),"add a return at the end");}
+  }id=p.next;}
+  c.state[0].generic=CK_NONE;c.state[0].site=CK_Site.none;
+  id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.check {CK_check(c,id);}id=c.nodes[id].next;}
+  CK_instantiate(c);
+  if c.state[0].error_count==0 {if !c.state[0].fatal {CK_results(c);}}
+  if c.state[0].error_count==0 && !c.state[0].fatal {CK_borrow_returns(c);}
+  if options.authority && c.state[0].error_count==0 {CK_coverage(c);}
+  if options.metal && c.state[0].error_count==0 {CK_metal(c);}
+  // Later phases may change the graph, so they walk the list itself.
+  c.state[0].names=0;return c.state[0].error_count==0 && !c.state[0].fatal;
+}
+

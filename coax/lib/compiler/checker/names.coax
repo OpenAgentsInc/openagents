@@ -1,0 +1,651 @@
+// Intrinsics, diagnostics text, nesting depth, the name index, lookup,
+// modules, visibility and qualified binding. A part of the checker:
+// lib/compiler/checker.coax loads it (#12646).
+#authority;
+CK_intrinsic :: (name:string)->u32 #export_c {names:=[10] string.["sin","cos","tan","exp","log","sqrt","floor","abs","pow","fma"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
+CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[12] string.["bytes_overlap","f32_from_bits","f64_from_bits","f32_bits","f64_bits","value_barrier","add_wrap","sub_wrap","mul_wrap","rotl","rotr","mul_wide"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
+#test "return borrow reused input rebuilds constant bindings actual call lists and procedure statuses" {
+ nodes:[64]CK_Node;types:[64]CK_Type;locals:[64]CK_Local;errors:[16]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.constant,name="Text",a=3,next=4};nodes[3]=CK_Node.{kind=CK_Tag.expr_string,name="literal"};nodes[4]=CK_Node.{kind=CK_Tag.proc,name="text",a=5,b=6,next=9};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_return,a=8};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,name="Text"};nodes[9]=CK_Node.{kind=CK_Tag.proc,name="owned",a=10,b=11};nodes[10]=CK_Node.{kind=CK_Tag.type_named,name="int"};nodes[11]=CK_Node.{kind=CK_Tag.stmt_block,head=12};nodes[12]=CK_Node.{kind=CK_Tag.stmt_return,a=13};nodes[13]=CK_Node.{kind=CK_Tag.expr_int,value=1};
+ for i:1..<14 {nodes[i].borrow_binding=31;nodes[i].borrow_owner=31;nodes[i].borrow_writes=31;nodes[i].borrow_returns=31;nodes[i].borrow_calls=31;nodes[i].borrow_next=31;nodes[i].borrow_status=2;}
+ #assert CK_run(c,13,CK_Options.{library=true}) && !state[0].fatal && state[0].error_count==0;
+ #assert nodes[8].kind==CK_Tag.expr_ident && nodes[8].constant==2 && nodes[8].borrow_binding==0;
+ #assert nodes[4].borrow_calls==0 && nodes[4].borrow_returns==7 && nodes[4].borrow_status==1 && nodes[7].borrow_owner==4;
+ #assert nodes[9].borrow_calls==0 && nodes[9].borrow_returns==12 && nodes[9].borrow_status==0 && nodes[12].borrow_owner==9;
+}
+#test "return borrow reused identity graph rebuilds only applicable binding and procedure metadata" {
+ nodes:[64]CK_Node;types:[64]CK_Type;locals:[64]CK_Local;errors:[16]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="identity",head=3,a=4,b=6};nodes[3]=CK_Node.{kind=CK_Tag.param,name="input",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_view,b=5};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="u8"};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_return,a=8};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,name="input"};
+ for i:1..<9 {nodes[i].borrow_binding=31;nodes[i].borrow_owner=31;nodes[i].borrow_writes=31;nodes[i].borrow_returns=31;nodes[i].borrow_calls=31;nodes[i].borrow_next=31;nodes[i].borrow_status=2;}
+ #assert CK_run(c,8,CK_Options.{library=true}) && !state[0].fatal && state[0].error_count==0;
+ #assert nodes[8].borrow_binding==3 && nodes[3].borrow_owner==2 && nodes[7].borrow_owner==2;
+ #assert nodes[2].borrow_calls==0 && nodes[2].borrow_returns==7 && nodes[2].borrow_status==1;
+}
+
+#test "return borrow a second complete check does not reuse the previous invocation memo" {
+ nodes:[16]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="identity",head=3,a=4,b=6};nodes[3]=CK_Node.{kind=CK_Tag.param,name="input",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_return,a=8};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,name="input"};
+ #assert CK_run(c,8,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].borrow_status==1;
+ #assert CK_run(c,8,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].borrow_status==1 && nodes[8].borrow_binding==3;
+}
+
+#test "return borrow repeated checking includes a queryable final used declaration" {
+ nodes:[16]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[0..<9],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=8};nodes[8]=CK_Node.{kind=CK_Tag.proc,name="identity",head=3,a=4,b=6};nodes[3]=CK_Node.{kind=CK_Tag.param,name="input",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_return,a=2};nodes[2]=CK_Node.{kind=CK_Tag.expr_ident,name="input"};
+ #assert CK_run(c,8,CK_Options.{library=true}) && state[0].error_count==0 && nodes[8].borrow_status==1;
+ #assert CK_run(c,8,CK_Options.{library=true}) && state[0].error_count==0 && nodes[8].borrow_status==1 && nodes[2].borrow_binding==3;
+}
+
+#test "return borrow repeated checking rebuilds local descriptor declaration queries" {
+ nodes:[16]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="identity",head=3,a=4,b=6};nodes[3]=CK_Node.{kind=CK_Tag.param,name="input",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_var,name="copy",a=8,next=9};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,name="input"};nodes[9]=CK_Node.{kind=CK_Tag.stmt_return,a=10};nodes[10]=CK_Node.{kind=CK_Tag.expr_ident,name="copy"};
+ #assert CK_run(c,10,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].borrow_status==1;
+ #assert CK_run(c,10,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].borrow_status==1 && nodes[10].borrow_binding==7;
+}
+
+#test "return borrow repeated iteration copies caller string descriptors from a by-value array" {
+ nodes:[32]CK_Node;types:[32]CK_Type;locals:[8]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="first",head=3,a=8,b=9};nodes[3]=CK_Node.{kind=CK_Tag.param,name="values",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_array,a=5,b=6};nodes[5]=CK_Node.{kind=CK_Tag.expr_int,value=2};nodes[6]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[8]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[9]=CK_Node.{kind=CK_Tag.stmt_block,head=10};nodes[10]=CK_Node.{kind=CK_Tag.stmt_each,name="value",a=11,c=12,next=15};nodes[11]=CK_Node.{kind=CK_Tag.expr_ident,name="values"};nodes[12]=CK_Node.{kind=CK_Tag.stmt_block,head=13};nodes[13]=CK_Node.{kind=CK_Tag.stmt_return,a=14};nodes[14]=CK_Node.{kind=CK_Tag.expr_ident,name="value"};nodes[15]=CK_Node.{kind=CK_Tag.stmt_return,a=16};nodes[16]=CK_Node.{kind=CK_Tag.expr_string,name=""};
+ #assert CK_run(c,16,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].borrow_status==1;
+ #assert CK_run(c,16,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].borrow_status==1 && nodes[14].borrow_binding==10;
+}
+
+#forall "return borrow head preparation spends query work only on eligible declarations" expression:0..<4 {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=7}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:=[1]CB_State.[CB_State.{work=2097151}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,b=4,loc=CK_Loc.{line=12,column=3}};nodes[3]=CK_Node.{kind=CK_Tag.expr_int,type=11,value=7,loc=CK_Loc.{line=13,column=3}};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=5};nodes[5]=CK_Node.{kind=CK_Tag.stmt_expr,a=3};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11,value=1};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,type=11,value=2};
+ if expression==1 {nodes[3].kind=CK_Tag.expr_bool;nodes[3].type=2;nodes[3].value=1;}if expression==2 {nodes[3].kind=CK_Tag.expr_string;nodes[3].type=3;nodes[3].name="static";}if expression==3 {nodes[3].kind=CK_Tag.expr_binary;nodes[3].op=34;nodes[3].a=6;nodes[3].b=7;}
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};#assert CB_reset_heads(b) && !state[0].fatal && state[0].error_count==0;
+}
+
+#test "return borrow cached default empty remains complete at an empty origin prefix" {
+ nodes:[16]CK_Node;types:[20]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=15,type_count=17}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;out:[64]BS_Origin;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[2]=CK_Node.{kind=CK_Tag.proc};nodes[3]=CK_Node.{kind=CK_Tag.stmt_var,type=16,borrow_owner=2};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};
+ first:=CB_query(b,2,3,BS_Path.{},out[..]);again:=CB_query(b,2,3,BS_Path.{},out[..]);#assert first.count==0 && !first.incomplete && again.count==0 && !again.incomplete && !state[0].fatal && state[0].error_count==0;
+}
+
+#forall "return borrow malformed memo links and published prefixes are hard failures" mode:0..<25 {
+ nodes:[16]CK_Node;types:[20]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=15,type_count=18}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;out:[64]BS_Origin;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.view,elem=13};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2,next=4,loc=CK_Loc.{line=42,column=7}};nodes[4]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};work[0].loc=CK_Loc.{line=40,column=2};b:=CB_Context.{c=c,queries=queries[..],origins=ifx mode==24 then origins[0..<2] else origins[..],state=work[..]};
+ first:=CB_query(b,2,3,BS_Path.{},out[..]);#assert first.count==1 && !first.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0;
+ row:=nodes[3].borrow_query-1;
+ if mode==1 {nodes[3].borrow_query=-1;}if mode==2 {nodes[3].borrow_query=work[0].queries+1;}
+ if mode==3 {queries[row].decl=4;}if mode==4 {queries[row].kind=0;}if mode==5 {queries[row].kind=4;}
+ if mode==6 {queries[row].status=0;}if mode==7 {queries[row].status=4;}if mode==8 {queries[row].next=-1;}
+ if mode==9 {queries[row].next=nodes[3].borrow_query;}if mode==10 {queries[row].next=nodes[3].borrow_query+1;}
+ if mode==11 {queries[row].path.count=25;}if mode==12 {queries[row].type=17;}if mode==13 {queries[row].start=-1;}if mode==14 {queries[row].count=-1;}
+ if mode==15 {queries[row].start=work[0].origins+1;}if mode==16 {queries[row].count=2;}
+ if mode==18 {work[0].queries=-1;}if mode==19 {work[0].queries=129;}if mode==20 {work[0].origins=-1;}if mode==21 {work[0].origins=1025;}if mode==22 {work[0].work=2097152;}
+ if mode==23 || mode==24 {second:=CB_query(b,2,4,BS_Path.{},out[..]);#assert second.count==1 && !second.incomplete && out[0].kind==BS_PARAMETER && out[0].root==1;if mode==23 {queries[nodes[4].borrow_query-1].count=2;}}
+ result:=CB_query(b,2,ifx mode==23 then 4 else 3,BS_Path.{},ifx mode==17 then out[0..<0] else out[..]);
+ if mode==0 || mode==24 {#assert !state[0].fatal && state[0].error_count==0 && result.count==1 && !result.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0;}
+ else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";}
+}
+
+#forall "return borrow invocation node extents admit both endpoints before reset" variant:0..<7 {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;used:=[7]int.[-1,0,1,7,8,1,1];state[0].used=used[variant];nodes[1]=CK_Node.{kind=CK_Tag.file};c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};if variant==5 {c.nodes=nodes[0..<0];}if variant==6 {c.nodes=nodes[0..<1];}
+ CB_run(c,queries[..],origins[..]);if variant==2 || variant==3 {#assert !state[0].fatal && state[0].error_count==0;}else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==1 && errors[0].loc.column==1;}
+}
+
+#forall "return borrow head preparation reports the first exhausted source witness" located:bool {
+ nodes:[4]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=3}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:=[1]CB_State.[CB_State.{work=2097152,loc=CK_Loc.{line=22,column=4}}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.proc,loc=ifx located then CK_Loc.{line=17,column=7} else CK_Loc.{}};nodes[3]=CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=29,column=3}};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};
+ #assert !CB_reset_heads(b) && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==(ifx located then 17 else 22) && errors[0].loc.column==(ifx located then 7 else 4);
+}
+
+#forall "value_barrier takes a u32 or a u64 and returns its type" variant:0..<6 {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ arg:=[6] int.[15,14,6,12,0,15];
+ if variant!=4 {CK_declare(c,"x",arg[variant],CK_Loc.{},"");}
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name="value_barrier",head=3,tail=3};nodes[3]=CK_Node.{kind=CK_Tag.expr_ident,name="x"};
+ if variant==4 {nodes[3].name="missing";}
+ if variant==5 {nodes[3].next=4;nodes[2].tail=4;nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="x"};}
+ t:=CK_call(c,2,CK_Hint.{});
+ #assert CK_byte_intrinsic("value_barrier")==6 && nodes[2].byte_intrinsic==6;
+ if variant<2 {#assert t==arg[variant] && state[0].error_count==0;}
+ else {#assert t==CK_NONE && state[0].error_count==1;}
+ if variant==2 || variant==3 {#assert errors[0].code=="E0378" && errors[0].message=="value_barrier takes a u32 or a u64" && errors[0].fix=="value_barrier(cast(u64) x)";}
+ if variant==4 {#assert errors[0].code!="E0378";}
+ if variant==5 {#assert errors[0].code=="E0378" && errors[0].message=="wrong byte intrinsic argument count";}
+}
+#forall "wrapping operations admit only two matching unsigned words" variant:0..<50 {
+  nodes:[12]CK_Node;types:[16]CK_Type;locals:[8]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=16}];
+  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  for i:0..<16 {types[i]=CK_builtin(i);}
+  names:=[5]string.["add_wrap","sub_wrap","mul_wrap","rotl","rotr"];
+  op:=variant%5;v:=variant/5;
+  ts:=[10]int.[15,14,11,6,12,15,15,15,14,15];
+  CK_declare(c,"a",ts[v],CK_Loc.{},"");CK_declare(c,"b",ifx v==8 then 15 else ts[v],CK_Loc.{},"");
+  nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name=names[op],head=3,tail=4};
+  nodes[3]=CK_Node.{kind=CK_Tag.expr_ident,name="a",next=4};nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="b"};
+  if v==5 {nodes[3].name="missing";}
+  if v==6 {nodes[2].head=CK_NONE;nodes[2].tail=CK_NONE;}
+  if v==7 {nodes[4].next=5;nodes[2].tail=5;nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,name="a"};}
+  if v==9 {nodes[4].name="missing";}
+  t:=CK_call(c,2,CK_Hint.{});
+  #assert CK_byte_intrinsic(names[op])==cast(u32)(7+op) && nodes[2].byte_intrinsic==cast(u32)(7+op);
+  if v<2 {#assert t==ts[v] && state[0].error_count==0;}
+  else {#assert t==CK_NONE && state[0].error_count==1;}
+  if v==2 || v==3 || v==4 {#assert errors[0].code=="E0378" && errors[0].message=="wrapping operations take matching u32 or u64 operands";}
+  if v==8 {#assert errors[0].code=="E0378" && errors[0].message=="wrapping operand widths must match";}
+  if v==5 || v==9 {#assert errors[0].code!="E0378";}
+  if v==6 || v==7 {#assert errors[0].code=="E0378" && errors[0].message=="wrong byte intrinsic argument count";}
+}
+#forall "mul_wide admits two u64 values and returns its named pair" variant:0..<12 {
+ nodes:[16]CK_Node;types:[17]CK_Type;locals:[8]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{current=2,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=5};
+ nodes[5]=CK_Node.{kind=CK_Tag.struct_,name="CoaxU64Product",type=16};types[16]=CK_Type.{kind=CK_Kind.struct_,name="CoaxU64Product",size=16,alignment=8,decl=5};
+ arg:=[12]int.[15,14,11,6,15,15,15,15,15,15,15,2];
+ CK_declare(c,"a",arg[variant],CK_Loc.{},"");CK_declare(c,"b",ifx variant==8 then 14 else 15,CK_Loc.{},"");
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name="mul_wide",head=3,tail=4};nodes[3]=CK_Node.{kind=CK_Tag.expr_ident,name="a",next=4};nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="b"};
+ if variant==4 {nodes[3].name="missing";}if variant==5 {nodes[4].name="missing";}
+ if variant==6 {nodes[2].head=0;nodes[2].tail=0;}
+ if variant==7 {nodes[4].next=6;nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,name="a"};nodes[2].tail=6;}
+ if variant==9 {nodes[3]=CK_Node.{kind=CK_Tag.expr_int,value=7,next=4};nodes[4]=CK_Node.{kind=CK_Tag.expr_int,value=9};}
+ if variant==10 {nodes[1].head=0;}
+ t:=CK_call(c,2,CK_Hint.{});
+ #assert CK_byte_intrinsic("mul_wide")==12 && nodes[2].byte_intrinsic==12;
+ if variant==0 || variant==9 {#assert t==16 && state[0].error_count==0;}
+ else {#assert t==0 && state[0].error_count==1;}
+ if variant==1 || variant==2 || variant==3 || variant==8 || variant==11 {#assert errors[0].code=="E0378" && errors[0].message=="mul_wide takes two u64 operands";}
+ if variant==10 {#assert errors[0].code=="E0378" && errors[0].message=="mul_wide result type is unavailable";}
+}
+CK_c_keyword :: (name:string)->bool #export_c {
+  names:=[76] string.["auto","break","case","char","const","continue","default","do","double","else","enum","extern","float","for","goto","if","inline","int","long","register","restrict","return","short","signed","sizeof","static","struct","switch","typedef","union","unsigned","void","volatile","while","bool","true","false","class","new","delete","this","template","namespace","public","private","protected","operator","virtual","friend","typename","using","nullptr","explicit","mutable","throw","try","catch","asm","export","module","requires","concept","alignas","alignof","noexcept","constexpr","decltype","static_assert","thread_local","errno","NULL","_Bool","_Alignof","_Atomic","_Complex","_Imaginary"];
+  for x:names {if x==name {return true;}}return name.count>0 && name[0]==95;
+}
+CK_resource :: (c:CK_Context,loc:CK_Loc) {
+  if c.state[0].fatal {return;}c.state[0].fatal=true;
+  if c.state[0].error_count<c.errors.count {c.errors[c.state[0].error_count]=CK_Error.{loc=loc,code="E0381",message="type checker storage or nesting budget exceeded"};c.state[0].error_count+=1;}
+}
+CK_text :: (c:CK_Context,parts:[] string)->string {
+  length:=0;for part:parts {length+=part.count;}start:=c.state[0].byte_count;
+  if length>c.bytes.count-start {CK_resource(c,CK_Loc.{});return "";}
+  for part:parts {for ch:part {c.bytes[c.state[0].byte_count]=ch;c.state[0].byte_count+=1;}}
+  return cast(string)c.bytes[start..<start+length];
+}
+CK_join2 :: (c:CK_Context,a:string,b:string)->string {parts:=[2] string.[a,b];return CK_text(c,parts[..]);}
+CK_join3 :: (c:CK_Context,a:string,b:string,d:string)->string {parts:=[3] string.[a,b,d];return CK_text(c,parts[..]);}
+CK_number :: (c:CK_Context,v:CM_Int)->string {out:[48] u8;count:=CM_decimal(v,out[..]);parts:=[1] string.[cast(string)out[0..<count]];return CK_text(c,parts[..]);}
+CK_count :: (c:CK_Context,v:int)->string {return CK_number(c,CM_signed_bits(cast,trunc(u64)v,true));}
+CK_error :: (c:CK_Context,loc:CK_Loc,code:string,message:string,fix:string) {
+  if c.state[0].fatal {return;}if c.state[0].error_count>=c.errors.count {CK_resource(c,loc);return;}
+  c.errors[c.state[0].error_count]=CK_Error.{loc=loc,code=code,message=message,fix=fix};c.state[0].error_count+=1;
+}
+// Active semantic entries: fixed, with a stated memory bound (the checker
+// recurses on the native stack). peak_depth is the deepest entry, so a build
+// near the limit is reported before it fails.
+CK_DEPTH_LIMIT :: 256;
+CK_depth_limit :: ()->int #export_c {return CK_DEPTH_LIMIT;}
+CK_enter :: (c:CK_Context,loc:CK_Loc)->bool {
+  if c.state[0].fatal {return false;}if c.state[0].depth>=CK_DEPTH_LIMIT {CK_resource(c,loc);return false;}
+  // peak_depth is never below depth, so entering past it is entering at it.
+  if c.state[0].peak_depth==c.state[0].depth {c.state[0].peak_depth+=1;}c.state[0].depth+=1;return true;
+}
+#forall "semantic nesting peak is the deepest entry" depth:252..<257, above:0..<3, fatal:bool {
+ peak:=depth+above;nodes:[2]CK_Node;types:[16]CK_Type;locals:[1]CK_Local;errors:[2]CK_Error;bytes:[8]u8;
+ state:=[1]CK_State.[CK_State.{depth=depth,peak_depth=peak,fatal=fatal}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ ok:=CK_enter(c,CK_Loc.{line=7});
+ #assert ok==(!fatal && depth<256) && CK_depth_limit()==256;
+ if ok {#assert state[0].depth==depth+1 && state[0].peak_depth==(ifx peak>depth then peak else depth+1);CK_leave(c);#assert state[0].depth==depth;}
+ else {#assert state[0].depth==depth && state[0].peak_depth==peak && state[0].fatal;
+  #assert state[0].error_count==(ifx fatal then 0 else 1);if !fatal {#assert errors[0].code=="E0381" && errors[0].loc.line==7;}}
+}
+CK_leave :: (c:CK_Context) {c.state[0].depth-=1;}
+CK_new :: (c:CK_Context,kind:CK_Tag,loc:CK_Loc)->int {
+  if c.state[0].fatal {return CK_NONE;}if c.state[0].used+1>=c.nodes.count {CK_resource(c,loc);return CK_NONE;}
+  c.state[0].used+=1;id:=c.state[0].used;c.nodes[id]=CK_Node.{kind=kind,loc=loc};return id;
+}
+CK_new_type :: (c:CK_Context,t:CK_Type)->int {
+  if c.state[0].type_count>=c.types.count {CK_resource(c,CK_Loc.{});return CK_NONE;}id:=c.state[0].type_count;c.types[id]=t;c.state[0].type_count+=1;return id;
+}
+CK_integer :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.integer;}
+CK_float :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.floating;}
+CK_numeric :: (c:CK_Context,t:int)->bool {return CK_integer(c,t) || CK_float(c,t) || c.types[t].need==4;}
+// Ordered: numbers, and placeholders constrained ordered or numeric.
+CK_ordered :: (c:CK_Context,t:int)->bool {return CK_numeric(c,t) || c.types[t].need==3;}
+CK_untyped :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.untyped_int || c.types[t].kind==CK_Kind.untyped_float;}
+CK_aggregate :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.array || c.types[t].kind==CK_Kind.struct_ || CK_sum(c,t);}
+// The name index. CK_run builds it once over the top-level list: with n
+// buckets, names[b] heads bucket b, names[n+b] is its tail while building, and
+// names[2n+id] is the next declaration after id in its bucket. A bucket's chain
+// is the list's subsequence of names hashing there, in list order, so a walk
+// that filters on the name meets the declarations a walk of the whole list
+// meets, in the same order. Without an index (state.names 0) a walk is the list.
+CK_name_hash :: (name:string)->int {hash:=2166136261;for byte:name {hash=((hash ^ cast(int)byte)*16777619) & 4294967295;}return hash;}
+CK_index_names :: (c:CK_Context,used:int)->bool {
+  n:=used+1;c.state[0].names=0;if c.names.count<3*n {return false;}
+  for b:0..<n {c.names[b]=CK_NONE;c.names[n+b]=CK_NONE;}
+  id:=c.nodes[1].head;
+  while id!=CK_NONE {
+    if id>used {return false;}b:=CK_name_hash(c.nodes[id].name)%n;tail:=c.names[n+b];c.names[2*n+id]=CK_NONE;
+    if tail==CK_NONE {c.names[b]=id;}else {c.names[2*n+tail]=id;}c.names[n+b]=id;id=c.nodes[id].next;
+  }
+  c.state[0].names=n;return true;
+}
+CK_first :: (c:CK_Context,name:string)->int {n:=c.state[0].names;if n==0 {return c.nodes[1].head;}return c.names[CK_name_hash(name)%n];}
+CK_after :: (c:CK_Context,id:int)->int {n:=c.state[0].names;if n==0 {return c.nodes[id].next;}return c.names[2*n+id];}
+CK_find :: (c:CK_Context,kind:CK_Tag,name:string)->int {id:=CK_first(c,name);while id!=CK_NONE {if c.nodes[id].kind==kind && c.nodes[id].name==name {return id;}id=CK_after(c,id);}return CK_NONE;}
+// Scoped binding. A qualified use (name2 is its alias) sees only the alias's
+// module; an unqualified use sees its own module first, then a declaration
+// that exactly one other module (or the unowned program) makes. -1: ambiguous.
+CK_alias :: (c:CK_Context,scope:int,name:string)->int {for a:c.aliases {if a.scope==scope && a.name==name {return a.target;}}return -1;}
+CK_scan :: (c:CK_Context,kind:CK_Tag,name:string,scope:int,exact:bool)->int {
+  found:=CK_NONE;many:=false;id:=CK_first(c,name);
+  while id!=CK_NONE {n:=c.nodes[id];if n.kind==kind && n.name==name {if n.scope==scope {return id;}if found==CK_NONE {found=id;}else if n.scope!=c.nodes[found].scope {many=true;}}id=CK_after(c,id);}
+  if exact {return CK_NONE;}if many {return -1;}return found;
+}
+CK_clashes :: (c:CK_Context,kind:CK_Tag,name:string)->bool {
+  id:=c.state[0].clashes;while id!=CK_NONE {n:=c.nodes[id];if n.kind==kind && n.name==name {return true;}id=n.clash;}return false;
+}
+CK_lookup :: (c:CK_Context,kind:CK_Tag,use:int)->int {
+  u:=c.nodes[use];scope:=u.scope;exact:=u.name2.count!=0;
+  if !exact && !CK_clashes(c,kind,u.name) {return CK_find(c,kind,u.name);}
+  if exact {scope=CK_alias(c,u.scope,u.name2);if scope<0 {return CK_NONE;}}
+  r:=CK_scan(c,kind,u.name,scope,exact);if r== -1 {return CK_NONE;}return r;
+}
+CK_module_name :: (c:CK_Context,scope:int)->string {if scope>0 && scope<c.modules.count {return c.modules[scope];}return "the unowned program";}
+CK_qualifier :: (c:CK_Context,use:int)->int {
+  u:=c.nodes[use];if u.kind!=CK_Tag.expr_ident || u.name2.count!=0 || CK_local(c,u.name)>=0 {return -1;}return CK_alias(c,u.scope,u.name);
+}
+CK_sealed :: (c:CK_Context,scope:int)->bool {for e:c.exports {if e.scope==scope {return true;}}return false;}
+CK_exported :: (c:CK_Context,scope:int,name:string)->bool {for e:c.exports {if e.scope==scope && e.name==name {return true;}}return false;}
+// A use outside a sealed module reaches only the names it exports.
+CK_visible :: (c:CK_Context,use:int,scope:int)->bool {
+  u:=c.nodes[use];if scope==u.scope || !CK_sealed(c,scope) || CK_exported(c,scope,u.name) {return true;}
+  parts:=[5] string.["'",u.name,"' is private to module '",CK_module_name(c,scope),"'"];
+  CK_error(c,u.loc,"E0389",CK_text(c,parts[..]),CK_join3(c,"add it to that module's list: #export ",u.name,";"));return false;
+}
+// Each exported name is declared by its own module, once per list.
+CK_exports_valid :: (c:CK_Context) {
+  for e,i:c.exports {
+    declared:=false;id:=CK_first(c,e.name);
+    while id!=CK_NONE {n:=c.nodes[id];if n.scope==e.scope && n.name==e.name && (n.kind==CK_Tag.proc || n.kind==CK_Tag.constant || n.kind==CK_Tag.struct_ || n.kind==CK_Tag.enum_ || n.kind==CK_Tag.union_) {declared=true;}id=CK_after(c,id);}
+    if !declared {parts:=[5] string.["module '",CK_module_name(c,e.scope),"' exports '",e.name,"', which it does not declare"];CK_error(c,e.loc,"E0390",CK_text(c,parts[..]),"export only the module's own declarations; reexports are not supported");}
+    for j:0..<i {if c.exports[j].scope==e.scope && c.exports[j].name==e.name {CK_error(c,e.loc,"E0391",CK_join3(c,"'",e.name,"' is already exported"),"list each name once");break;}}
+  }
+}
+CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool {
+  u:=c.nodes[use];
+  if u.name2.count!=0 {
+    target:=CK_alias(c,u.scope,u.name2);
+    if target<0 {CK_error(c,u.loc,"E0384",CK_join3(c,"unknown module alias '",u.name2,"'"),CK_join3(c,"load it first: #load \"FILE.coax\" as ",u.name2,";"));return false;}
+    if CK_alias(c,target,u.name)>=0 {parts:=[5] string.["'",u.name2,".",u.name,"' reaches through another module's alias; aliases are not reexported"];CK_error(c,u.loc,"E0388",CK_text(c,parts[..]),"load that module here with its own alias");return false;}
+    for k:kinds {if CK_scan(c,k,u.name,target,true)!=CK_NONE {return CK_visible(c,use,target);}}
+    parts:=[6] string.["module '",CK_module_name(c,target),"' has no ",what," '",CK_join2(c,u.name,"'")];CK_error(c,u.loc,"E0385",CK_text(c,parts[..]),"");return false;
+  }
+  for k:kinds {if CK_clashes(c,k,u.name) && CK_scan(c,k,u.name,u.scope,false)== -1 {
+    first:=-1;second:=-1;id:=CK_first(c,u.name);
+    while id!=CK_NONE {n:=c.nodes[id];if n.kind==k && n.name==u.name {if first<0 {first=n.scope;}else if second<0 && n.scope!=first {second=n.scope;}}id=CK_after(c,id);}
+    parts:=[7] string.["'",u.name,"' is declared by both '",CK_module_name(c,first),"' and '",CK_module_name(c,second),"'"];
+    CK_error(c,u.loc,"E0386",CK_text(c,parts[..]),CK_join2(c,"qualify it with a module alias: alias.",u.name));return false;
+  }}
+  if c.exports.count==0 {return true;}
+  for k:kinds {d:=CK_lookup(c,k,use);if d!=CK_NONE {return CK_visible(c,use,c.nodes[d].scope);}}
+  return true;
+}
+// Qualified module lookup. Scopes index modules ("" is the unowned program);
+// a graph built by hand: V, g and K are declared by modules a (1) and b (2).
+#test "native-lp64 is the only qualified layout target" {
+  t:=CK_target("native-lp64");
+  #assert t.supported && t.name=="native-lp64" && t.data_model=="LP64" && t.calling_convention=="c" && t.reason=="";
+  #assert t.pointer_size==8 && t.pointer_alignment==8 && t.count_size==8 && t.count_alignment==8;
+  // a view and a string are one pointer and one count, as the checker lays them out
+  #assert t.view_size==t.pointer_size+t.count_size && t.view_size==16 && t.view_alignment==8;
+  #assert CK_builtin(11).size==t.count_size && CK_builtin(15).size==t.pointer_size;
+  for name:[4] string.["wasm32","metal","native-ilp32","native-lp64 "] {
+    u:=CK_target(name);#assert !u.supported && u.name==name && u.pointer_size==0 && u.view_size==0 && u.data_model=="" && u.calling_convention=="" && u.reason!="";
+  }
+}
+#test "own scope first, then one other scope, ambiguity across two" {
+ nodes:[12]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[64]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=1,next=3};nodes[3]=CK_Node.{kind=CK_Tag.proc,name="V",scope=2,next=4};
+ nodes[4]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=2,next=5};nodes[5]=CK_Node.{kind=CK_Tag.struct_,name="W",scope=3,next=6};
+ nodes[6]=CK_Node.{kind=CK_Tag.struct_,name="W",scope=3};
+ #assert CK_scan(c,CK_Tag.struct_,"V",1,false)==2 && CK_scan(c,CK_Tag.struct_,"V",2,false)==4;
+ #assert CK_scan(c,CK_Tag.struct_,"V",0,false)== -1 && CK_scan(c,CK_Tag.struct_,"V",3,true)==CK_NONE;
+ #assert CK_scan(c,CK_Tag.struct_,"V",2,true)==4 && CK_scan(c,CK_Tag.proc,"V",1,false)==3 && CK_scan(c,CK_Tag.proc,"V",1,true)==CK_NONE;
+ // one other scope, even when it declares the name twice, is not ambiguous
+ #assert CK_scan(c,CK_Tag.struct_,"W",0,false)==5 && CK_scan(c,CK_Tag.struct_,"X",0,false)==CK_NONE;
+ nodes[6].scope=4;#assert CK_scan(c,CK_Tag.struct_,"W",0,false)== -1 && CK_scan(c,CK_Tag.struct_,"W",4,false)==6;
+}
+// The name index. The FNV-1a vectors are the reference implementation's.
+#test "names hash with 32-bit FNV-1a" {
+ #assert CK_name_hash("")==2166136261 && CK_name_hash("a")==3826002220 && CK_name_hash("foobar")==3214735720;
+}
+// "V" and "t" share bucket 7 of 10 and "C" has bucket 0. The list is not in id
+// order, it ends at the last id, and node 4 shares a name without being listed.
+#forall "the name index chains each bucket's declarations in list order" garbage:0..<3 {
+ nodes:[12]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[64]u8;names:[30]int;state:=[1]CK_State.[CK_State.{names=4}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],names=names[..]};
+ for i:0..<names.count {names[i]=garbage*3+1;}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=5};nodes[5]=CK_Node.{kind=CK_Tag.struct_,name="V",next=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="t",next=9};
+ nodes[9]=CK_Node.{kind=CK_Tag.proc,name="V",next=3};nodes[3]=CK_Node.{kind=CK_Tag.constant,name="C"};nodes[4]=CK_Node.{kind=CK_Tag.field,name="V"};
+ #assert CK_index_names(c,9) && state[0].names==10;
+ for b:0..<10 {
+  want:=nodes[1].head;while want!=CK_NONE && CK_name_hash(nodes[want].name)%10!=b {want=nodes[want].next;}
+  got:=names[b];
+  while want!=CK_NONE {#assert got==want;got=names[20+got];want=nodes[want].next;while want!=CK_NONE && CK_name_hash(nodes[want].name)%10!=b {want=nodes[want].next;}}
+  #assert got==CK_NONE;
+ }
+ #assert CK_first(c,"t")==5 && CK_after(c,5)==2 && CK_after(c,2)==9 && CK_after(c,9)==CK_NONE && CK_first(c,"C")==3 && CK_after(c,3)==CK_NONE && CK_first(c,"W")==CK_NONE;
+ #assert CK_find(c,CK_Tag.proc,"V")==9 && CK_find(c,CK_Tag.struct_,"V")==5 && CK_find(c,CK_Tag.field,"V")==CK_NONE && CK_find(c,CK_Tag.proc,"t")==2;
+ #assert CK_scan(c,CK_Tag.proc,"V",0,true)==9 && CK_scan(c,CK_Tag.constant,"C",1,false)==3 && CK_scan(c,CK_Tag.proc,"C",0,false)==CK_NONE;
+}
+// No index without room for every bucket and link, or with a listed id past
+// the graph's; then a walk is the whole list. An empty list indexes.
+#forall "the name index needs room for its buckets and only the graph's ids" variant:0..<4 {
+ nodes:[12]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[64]u8;names:[30]int;state:=[1]CK_State.[CK_State.{names=4}];
+ room:=30;if variant==1 {room=29;}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],names=names[0..<room]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=5};nodes[5]=CK_Node.{kind=CK_Tag.struct_,name="V",next=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="t",next=9};
+ nodes[9]=CK_Node.{kind=CK_Tag.proc,name="V",next=3};nodes[3]=CK_Node.{kind=CK_Tag.constant,name="C"};
+ if variant==2 {nodes[3].next=10;nodes[10]=CK_Node.{kind=CK_Tag.proc,name="late"};}
+ if variant==3 {nodes[1].head=0;}
+ built:=variant==0 || variant==3;n:=0;if built {n=10;}
+ #assert CK_index_names(c,9)==built && state[0].names==n;
+ if variant==3 {#assert CK_first(c,"t")==CK_NONE && CK_find(c,CK_Tag.proc,"t")==CK_NONE;}
+ if !built {
+  #assert CK_first(c,"t")==5 && CK_after(c,5)==2 && CK_after(c,9)==3 && CK_find(c,CK_Tag.proc,"t")==2;
+  late:=CK_NONE;if variant==2 {late=10;}#assert CK_find(c,CK_Tag.proc,"late")==late;
+ }
+}
+// CK_run drops its index on return, so a later lookup reads the list as it is
+// ("b" and "other" hash to different buckets of 6).
+#test "CK_run drops its name index, so later lookups read the list as it is" {
+ nodes:[16]CK_Node;types:[32]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;names:[18]int;state:[1]CK_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],names=names[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="a",b=3,next=4};nodes[3]=CK_Node.{kind=CK_Tag.stmt_block};nodes[4]=CK_Node.{kind=CK_Tag.proc,name="b",b=5};nodes[5]=CK_Node.{kind=CK_Tag.stmt_block};
+ #assert CK_run(c,5,CK_Options.{library=true}) && state[0].error_count==0 && state[0].names==0;
+ nodes[4].name="other";#assert CK_find(c,CK_Tag.proc,"other")==4 && CK_find(c,CK_Tag.proc,"b")==CK_NONE;
+}
+// 400 procedures, each declaring a local and calling the first. Walking the
+// whole list for each duplicate, collision and lookup question takes about
+// 50 M steps, far past this budget; walking one short bucket takes about 3 M.
+#test "checking many declarations takes steps linear in their number" #steps 6000000 {
+ nodes:[2410]CK_Node;types:[32]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[4096]u8;names:[7206]int;state:[1]CK_State;
+ spelled:[8192]u8;scratch:[1]CK_State;words:=CK_Context.{bytes=spelled[..],state=scratch[..]};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],names=names[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};
+ for i:0..<400 {
+  at:=2+6*i;next:=at+6;if i==399 {next=CK_NONE;}
+  nodes[at]=CK_Node.{kind=CK_Tag.proc,name=CK_join2(words,"p",CK_count(words,i)),b=at+1,next=next};nodes[at+1]=CK_Node.{kind=CK_Tag.stmt_block,head=at+2};
+  nodes[at+2]=CK_Node.{kind=CK_Tag.stmt_var,name="x",a=at+3,next=at+4};nodes[at+3]=CK_Node.{kind=CK_Tag.expr_int,value=1};
+  nodes[at+4]=CK_Node.{kind=CK_Tag.stmt_expr,a=at+5};nodes[at+5]=CK_Node.{kind=CK_Tag.expr_call,name="p0"};
+ }
+ #assert CK_run(c,2401,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2401].type==1 && nodes[2399].type==11;
+}
+#test "aliases belong to the scope that loads them" {
+ nodes:[4]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[64]u8;state:=[1]CK_State.[CK_State.{}];
+ aliases:=[3] CK_Alias.[CK_Alias.{scope=0,name="hud",target=1},CK_Alias.{scope=2,name="hud",target=3},CK_Alias.{scope=0,name="b",target=2}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],aliases=aliases[..]};
+ #assert CK_alias(c,0,"hud")==1 && CK_alias(c,2,"hud")==3 && CK_alias(c,0,"b")==2;
+ #assert CK_alias(c,1,"hud")== -1 && CK_alias(c,2,"b")== -1 && CK_alias(c,0,"hu")== -1;
+}
+#forall "each checked expression names its observable effects" variant:0..<20 {
+ nodes:[16]CK_Node;types:[20]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=11,size=16,alignment=8};
+ // node 3 is the expression under test over leaves 4 and 5
+ nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="x",type=11};nodes[5]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ kinds:=[20] CK_Tag.[CK_Tag.expr_index,CK_Tag.expr_slice,CK_Tag.expr_call,CK_Tag.expr_call,CK_Tag.expr_call,CK_Tag.expr_cast,CK_Tag.expr_cast,CK_Tag.expr_cast,
+   CK_Tag.expr_binary,CK_Tag.expr_binary,CK_Tag.expr_binary,CK_Tag.expr_binary,CK_Tag.expr_binary,CK_Tag.expr_binary,CK_Tag.expr_binary,CK_Tag.expr_binary,
+   CK_Tag.expr_unary,CK_Tag.expr_unary,CK_Tag.expr_binary,CK_Tag.expr_ident];
+ ops:=[20] u32.[0,0,0,0,0,0,0,0,37,38,42,43,34,35,36,39,35,52,34,0];
+ typ:=[20] int.[11,16,11,11,11,11,11,7,11,11,11,11,11,11,11,11,11,11,7,11];
+ nodes[3]=CK_Node.{kind=kinds[variant],op=ops[variant],type=typ[variant],a=4,b=5};
+ if variant==3 {nodes[3].byte_intrinsic=1;}if variant==4 {nodes[3].intrinsic=2;}if variant==6 {nodes[3].flag=true;}
+ if variant==2 || variant==3 || variant==4 {nodes[3].a=CK_NONE;nodes[3].b=CK_NONE;nodes[3].head=4;nodes[4].next=5;}
+ want:=[20] u8.[2,2,1,2,0,2,0,0,2,2,2,2,4,4,4,0,4,0,0,0];
+ #assert CK_effects(c,3)==want[variant] && nodes[3].effects_known && nodes[3].effects==want[variant] && nodes[3].own_effects==want[variant];
+ #assert CK_effects(c,4)==0 && CK_effects(c,0)==0 && CK_effects(c,16)==0 && CK_effects(c, -1)==0;
+}
+#forall "a compound assignment's update has the binary operation's effects" op:22..<35 {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_ident,type=11};nodes[3]=CK_Node.{kind=CK_Tag.expr_ident,type=7};
+ nodes[1]=CK_Node.{kind=CK_Tag.stmt_assign,op=cast(u32)op,c=2,a=2};nodes[4]=CK_Node.{kind=CK_Tag.stmt_assign,op=cast(u32)op,c=3,a=3};
+ ignored:=CK_effects(c,1);ignored=CK_effects(c,4);
+ want:=[13] u8.[0,0,4,4,4,2,2,0,0,0,2,2,0];
+ #assert nodes[1].own_effects==want[op-22] && nodes[1].effects==0 && nodes[4].own_effects==0;
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_return,op=cast(u32)op+10,c=2};ignored=CK_effects(c,5);#assert nodes[5].own_effects==0;
+}
+#test "the effects pass covers exactly the used nodes" {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=16,used=3}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ for i:1..<6 {nodes[i]=CK_Node.{kind=CK_Tag.expr_index,type=11};}
+ CK_lower_effects(c);
+ // operand 0 is the null node: it is visited too, and has no effects
+ #assert nodes[0].effects_known && nodes[0].effects==0 && nodes[1].effects==2 && nodes[3].effects==2 && nodes[3].effects_known && !nodes[4].effects_known && nodes[4].effects==0;
+ // statements are not expressions: their operands are lowered on their own
+ nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,a=1,head=2};#assert CK_effects(c,6)==0;
+}
+#test "effects combine through operands, lists and field values, and are computed once" {
+ nodes:[16]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ // f(a[i] + b, S.{v = -k}) with a folded division and a non-expression
+ nodes[1]=CK_Node.{kind=CK_Tag.expr_call,head=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_binary,op=34,type=7,a=3,b=4,next=6};nodes[3]=CK_Node.{kind=CK_Tag.expr_index,type=11};nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,type=7};
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_struct,head=7,d=10};nodes[7]=CK_Node.{kind=CK_Tag.field_init,a=8};nodes[8]=CK_Node.{kind=CK_Tag.expr_unary,op=35,type=11,a=9};
+ nodes[9]=CK_Node.{kind=CK_Tag.expr_binary,op=37,type=11,folded=true,a=3};nodes[10]=CK_Node.{kind=CK_Tag.expr_index,type=11};
+ nodes[11]=CK_Node.{kind=CK_Tag.stmt_return,a=3};nodes[12]=CK_Node.{kind=CK_Tag.expr_ct,a=3};nodes[13]=CK_Node.{kind=CK_Tag.expr_int,a=3};
+ #assert CK_effects(c,6)==4 && CK_effects(c,7)==4 && CK_effects(c,9)==0 && CK_effects(c,2)==2;
+ // own effects are the operation's alone: f64 + over a trapping index has none
+ #assert nodes[2].own_effects==0 && nodes[3].own_effects==2 && nodes[8].own_effects==4 && nodes[6].own_effects==0 && nodes[7].own_effects==0;
+ #assert CK_effects(c,1)==7 && CK_effects(c,11)==0 && CK_effects(c,12)==2 && CK_effects(c,13)==2;
+ nodes[3].effects=0;#assert CK_effects(c,1)==7 && CK_effects(c,2)==2;
+ nodes[14]=CK_Node.{kind=CK_Tag.expr_binary,op=34,type=11,effects=4};#assert CK_effects(c,14)==4 && nodes[14].effects_known;
+}
+#forall "sealed modules expose only their exported names" variant:0..<12 {
+ nodes:[16]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ modules:=[4] string.["","hud","util","open"];
+ aliases:=[3] CK_Alias.[CK_Alias.{scope=0,name="hud",target=1},CK_Alias.{scope=0,name="o",target=3},CK_Alias.{scope=2,name="hud",target=1}];
+ exports:=[2] CK_Export.[CK_Export.{scope=1,name="Rect",loc=CK_Loc.{line=2}},CK_Export.{scope=1,name="slot",loc=CK_Loc.{line=2}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],aliases=aliases[..],exports=exports[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Rect",scope=1,next=3};nodes[3]=CK_Node.{kind=CK_Tag.proc,name="slot",scope=1,next=4};
+ nodes[4]=CK_Node.{kind=CK_Tag.constant,name="GAP",scope=1,next=5};nodes[5]=CK_Node.{kind=CK_Tag.struct_,name="Pad",scope=1,next=6};
+ nodes[6]=CK_Node.{kind=CK_Tag.constant,name="OPEN",scope=3,next=7};nodes[7]=CK_Node.{kind=CK_Tag.proc,name="helper",scope=1};
+ // uses: name, qualifier, the using scope
+ names:=[12] string.["Rect","slot","GAP","Pad","GAP","GAP","helper","OPEN","OPEN","Rect","helper","Pad"];
+ quals:=[12] string.["hud","","hud","","","","hud","o","","","","hud"];
+ scopes:=[12] int.[0,0,0,0,1,2,2,0,0,2,1,2];
+ kinds:=[5] CK_Tag.[CK_Tag.constant,CK_Tag.proc,CK_Tag.struct_,CK_Tag.enum_,CK_Tag.union_];
+ nodes[9]=CK_Node.{kind=CK_Tag.expr_ident,name=names[variant],name2=quals[variant],scope=scopes[variant],loc=CK_Loc.{line=5,column=7,offset=30}};
+ CK_collisions(c,false);#assert state[0].error_count==0;
+ ok:=CK_bind_check(c,9,kinds[..],"declaration");
+ good:=[12] bool.[true,true,false,false,true,false,false,true,true,true,true,false];
+ #assert ok==good[variant] && state[0].error_count==ifx ok then 0 else 1;
+ if !ok {e:=errors[0];#assert e.code=="E0389" && e.loc.line==5 && e.loc.column==7 && e.loc.offset==30;
+   #assert e.message==CK_join3(c,"'",names[variant],"' is private to module 'hud'") && e.fix==CK_join3(c,"add it to that module's list: #export ",names[variant],";");}
+}
+#test "visibility follows the sealed module, not the using one" {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ modules:=[3] string.["","a","b"];exports:=[1] CK_Export.[CK_Export.{scope=2,name="y"}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],exports=exports[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.constant,name="x",scope=1,next=3};nodes[3]=CK_Node.{kind=CK_Tag.constant,name="y",scope=2};
+ #assert CK_sealed(c,2) && !CK_sealed(c,1) && !CK_sealed(c,0) && CK_exported(c,2,"y") && !CK_exported(c,1,"y") && !CK_exported(c,2,"x");
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,name="x",scope=2};#assert CK_visible(c,5,1) && state[0].error_count==0;
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,name="x",scope=1};#assert !CK_visible(c,5,2) && errors[0].message=="'x' is private to module 'b'";
+}
+#test "one export seals a module; unknown names stay the caller's to report" {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ modules:=[2] string.["","a"];exports:=[1] CK_Export.[CK_Export.{scope=1,name="y"}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],exports=exports[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.constant,name="x",scope=1,next=3};nodes[3]=CK_Node.{kind=CK_Tag.constant,name="y",scope=1,next=4};
+ nodes[4]=CK_Node.{kind=CK_Tag.constant,name="q",scope=0};
+ CK_collisions(c,false);#assert state[0].error_count==0;kinds:=[1] CK_Tag.[CK_Tag.constant];
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,name="missing"};#assert CK_bind_check(c,6,kinds[..],"constant") && state[0].error_count==0;
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,name="x"};#assert !CK_bind_check(c,6,kinds[..],"constant") && errors[0].code=="E0389";
+ // collisions also validate the lists
+ exports[0].name="q";CK_collisions(c,false);#assert state[0].error_count==2 && errors[1].code=="E0390";
+}
+#forall "an export names its own module's declaration once" variant:0..<6, indexed:bool {
+ nodes:[8]CK_Node;index:[24]int;types:[16]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ modules:=[3] string.["","a","b"];
+ kinds:=[4] CK_Tag.[CK_Tag.proc,CK_Tag.constant,CK_Tag.struct_,CK_Tag.enum_];
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.member,name="z",scope=1,next=3};
+ nodes[3]=CK_Node.{kind=kinds[variant%4],name="v",scope=1,next=4};nodes[4]=CK_Node.{kind=CK_Tag.constant,name="w",scope=2};
+ names:=[6] string.["v","v","v","v","w","z"];
+ exports:=[2] CK_Export.[CK_Export.{scope=1,name=names[variant],loc=CK_Loc.{line=3,column=9}},CK_Export.{scope=1,name="v",loc=CK_Loc.{line=4,column=2}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],exports=exports[0..<ifx variant<2 then 2 else 1],names=index[..]};
+ if indexed {#assert CK_index_names(c,7);}CK_exports_valid(c);
+ counts:=[6] int.[1,1,0,0,1,1];#assert state[0].error_count==counts[variant];
+ if variant<2 {#assert errors[0].code=="E0391" && errors[0].message=="'v' is already exported" && errors[0].fix=="list each name once" && errors[0].loc.line==4;}
+ if variant>=4 {#assert errors[0].code=="E0390" && errors[0].loc.line==3 && errors[0].loc.column==9 && errors[0].message==CK_join3(c,"module 'a' exports '",names[variant],"', which it does not declare") && errors[0].fix=="export only the module's own declarations; reexports are not supported";}
+}
+#forall "qualified and unqualified bindings at the original use" variant:0..<12, indexed:bool {
+ nodes:[16]CK_Node;index:[48]int;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ modules:=[4] string.["","a","b","c"];
+ aliases:=[3] CK_Alias.[CK_Alias.{scope=0,name="a",target=1},CK_Alias.{scope=0,name="b",target=2},CK_Alias.{scope=2,name="c",target=3}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],aliases=aliases[..],names=index[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=1,next=3};nodes[3]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=2,next=4};
+ nodes[4]=CK_Node.{kind=CK_Tag.enum_,name="E",scope=2};
+ names:=[12] string.["V","V","V","V","Z","E","E","E","V","c","V","W"];
+ quals:=[12] string.["a","b","","zz","a","b","","a","","b","",""];
+ scopes:=[12] int.[0,0,1,0,0,0,0,0,2,0,0,0];
+ nodes[9]=CK_Node.{kind=CK_Tag.type_named,name=names[variant],name2=quals[variant],scope=scopes[variant],loc=CK_Loc.{line=7,column=3,offset=40}};
+ if variant==10 {nodes[2].scope=3;}
+ if indexed {#assert CK_index_names(c,15);}CK_collisions(c,false);kinds:=[2] CK_Tag.[CK_Tag.struct_,CK_Tag.enum_];
+ ok:=CK_bind_check(c,9,kinds[..],"type");
+ good:=[12] bool.[true,true,true,false,false,true,true,false,true,false,false,true];
+ #assert ok==good[variant] && state[0].error_count==ifx ok then 0 else 1;
+ found:=[12] int.[2,3,2,0,0,0,0,0,3,0,0,0];
+ #assert CK_lookup(c,CK_Tag.struct_,9)==found[variant];
+ if variant==5 || variant==6 {#assert CK_lookup(c,CK_Tag.enum_,9)==4;}
+ if !ok {e:=errors[0];#assert e.loc.line==7 && e.loc.column==3 && e.loc.offset==40;}
+ if variant==3 {#assert errors[0].code=="E0384" && errors[0].message=="unknown module alias 'zz'" && errors[0].fix=="load it first: #load \"FILE.coax\" as zz;";}
+ if variant==4 {#assert errors[0].code=="E0385" && errors[0].message=="module 'a' has no type 'Z'";}
+ if variant==7 {#assert errors[0].code=="E0385" && errors[0].message=="module 'a' has no type 'E'";}
+ if variant==9 {#assert errors[0].code=="E0388" && errors[0].message=="'b.c' reaches through another module's alias; aliases are not reexported" && errors[0].fix=="load that module here with its own alias";}
+ if variant==10 {#assert errors[0].code=="E0386" && errors[0].message=="'V' is declared by both 'c' and 'b'" && errors[0].fix=="qualify it with a module alias: alias.V";}
+}
+#forall "qualified uses bind where they are written" variant:0..<19 {
+ nodes:[48]CK_Node;types:[24]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{type_count=21,used=40}];
+ modules:=[3] string.["","a","b"];
+ aliases:=[5] CK_Alias.[CK_Alias.{scope=0,name="a",target=1},CK_Alias.{scope=0,name="b",target=2},CK_Alias.{scope=0,name="z",target=0},CK_Alias.{scope=1,name="x",target=2},CK_Alias.{scope=2,name="w",target=0}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],aliases=aliases[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.struct_,name="V",decl=2};types[17]=CK_Type.{kind=CK_Kind.struct_,name="V",decl=3};
+ types[18]=CK_Type.{kind=CK_Kind.enum_,name="E",decl=7,elem=12,size=1,bits=8};types[19]=CK_Type.{kind=CK_Kind.struct_,name="U",decl=9};types[20]=CK_Type.{kind=CK_Kind.enum_,name="F",decl=10,elem=12,size=1,bits=8};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=1,type=16,next=3};nodes[3]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=2,type=17,next=4};
+ nodes[4]=CK_Node.{kind=CK_Tag.proc,name="g",scope=1,type=11,next=5};nodes[5]=CK_Node.{kind=CK_Tag.proc,name="g",scope=2,type=12,next=6};
+ nodes[6]=CK_Node.{kind=CK_Tag.constant,name="K",scope=1,a=21,next=7};nodes[21]=CK_Node.{kind=CK_Tag.expr_string,name="k"};
+ nodes[7]=CK_Node.{kind=CK_Tag.enum_,name="E",scope=2,head=8,type=18,next=9};nodes[8]=CK_Node.{kind=CK_Tag.member,name="p",value=3};
+ nodes[9]=CK_Node.{kind=CK_Tag.struct_,name="U",scope=0,type=19,next=10};
+ nodes[10]=CK_Node.{kind=CK_Tag.enum_,name="F",scope=0,head=11,type=20};nodes[11]=CK_Node.{kind=CK_Tag.member,name="q",value=4};
+ CK_collisions(c,false);at:=CK_Loc.{line=9,column=4,offset=77};
+ // the use: node 30, its parts 31.., a missing argument 35
+ nodes[35]=CK_Node.{kind=CK_Tag.expr_ident,name="missing"};
+ tn:=[19] string.["V","V","U","int","","","","","","V","V","","","","","V","x","w",""];
+ tq:=[19] string.["a","b","z","a","","","","","","b","zz","","","","","x","a","b",""];
+ if tn[variant]!="" {nodes[31]=CK_Node.{kind=CK_Tag.type_named,name=tn[variant],name2=tq[variant],loc=at};if variant==15 {nodes[31].scope=1;}}
+ t:=CK_NONE;
+ if variant<4 || (variant>=15 && variant<18) {t=CK_resolve(c,31,CK_Access.value);}
+ if variant==4 || variant==5 {nodes[32]=CK_Node.{kind=CK_Tag.expr_ident,name=ifx variant==4 then "a" else "z",loc=at};nodes[30]=CK_Node.{kind=CK_Tag.expr_field,name=ifx variant==4 then "K" else "U",a=32,loc=CK_Loc.{line=9,column=5,offset=78}};t=CK_expr(c,30,CK_Hint.{});}
+ if variant==18 {nodes[33]=CK_Node.{kind=CK_Tag.expr_ident,name="b",loc=at};nodes[32]=CK_Node.{kind=CK_Tag.expr_field,name="F",a=33};nodes[30]=CK_Node.{kind=CK_Tag.expr_field,name="q",a=32};t=CK_expr(c,30,CK_Hint.{});}
+ if variant==6 || variant==7 {nodes[33]=CK_Node.{kind=CK_Tag.expr_ident,name=ifx variant==6 then "b" else "z",loc=at};nodes[32]=CK_Node.{kind=CK_Tag.expr_field,name=ifx variant==6 then "E" else "F",a=33};nodes[30]=CK_Node.{kind=CK_Tag.expr_field,name=ifx variant==6 then "p" else "q",a=32};t=CK_expr(c,30,CK_Hint.{});}
+ if variant==8 || variant==14 {nodes[30]=CK_Node.{kind=CK_Tag.expr_ident,name="g",name2=ifx variant==8 then "a" else "",loc=at};t=CK_expr(c,30,CK_Hint.{});}
+ if variant==9 || variant==10 || variant==13 {if variant==13 {nodes[31]=CK_Node.{kind=CK_Tag.type_named,name="E",name2="b",loc=at};}
+   nodes[34]=CK_Node.{kind=CK_Tag.field_init,name="x",a=35};nodes[30]=CK_Node.{kind=CK_Tag.expr_struct,d=31,loc=at};if variant==10 {nodes[30].head=34;nodes[30].tail=34;}t=CK_expr(c,30,CK_Hint.{});}
+ if variant==11 || variant==12 {nodes[30]=CK_Node.{kind=CK_Tag.expr_call,name="g",name2=ifx variant==11 then "a" else "zz",loc=at};if variant==12 {nodes[30].head=35;nodes[30].tail=35;}t=CK_expr(c,30,CK_Hint.{});}
+ want:=[19] int.[16,17,19,0,3,0,18,20,0,17,0,11,0,0,0,17,0,0,0];
+ errs:=[19] int.[0,0,0,1,0,1,0,0,1,0,2,0,2,1,1,0,1,1,1];
+ #assert t==want[variant] && state[0].error_count==errs[variant];
+ codes:=[19] string.["","","","E0385","","E0354","","","E0305","","E0384","","E0384","E0354","E0386","","E0388","E0388","E0385"];
+ if errs[variant]>0 {hit:=false;for i:0..<state[0].error_count {hit=hit || (errors[i].code==codes[variant] && errors[i].loc.line==9 && errors[i].loc.column==4);}#assert hit;}
+ if variant==4 {n:=nodes[30];#assert n.kind==CK_Tag.expr_ident && n.name=="K" && n.name2=="a" && n.loc.column==4 && n.loc.offset==77 && n.a==CK_NONE && n.constant==6;}
+ if variant==6 || variant==7 {#assert nodes[30].kind==CK_Tag.expr_enum && nodes[30].value==cast(u64)(variant-3) && nodes[32].type==want[variant];}
+ if variant==8 {#assert errors[0].fix=="call it: a.g()";}
+ if variant==11 {#assert nodes[30].proc==4;}
+ if variant==3 {#assert errors[0].message=="module 'a' has no type 'int'";}
+}
+#forall "ambiguity names the first two modules that declare the name" variant:0..<3, indexed:bool {
+ nodes:[12]CK_Node;index:[36]int;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ modules:=[5] string.["","a","b","c","d"];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],names=index[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Q",scope=4,next=3};nodes[3]=CK_Node.{kind=CK_Tag.proc,name="V",scope=4,next=4};
+ scopes:=[3] int.[0,1,2];
+ nodes[4]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=scopes[variant],next=5};nodes[5]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=scopes[variant],next=6};
+ nodes[6]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=ifx variant==2 then 0 else 2,next=7};nodes[7]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=1};
+ nodes[9]=CK_Node.{kind=CK_Tag.type_named,name="V",scope=3};if indexed {#assert CK_index_names(c,11);}CK_collisions(c,false);
+ kinds:=[1] CK_Tag.[CK_Tag.struct_];#assert !CK_bind_check(c,9,kinds[..],"type") && errors[0].code=="E0386";
+ msgs:=[3] string.["'V' is declared by both 'the unowned program' and 'b'","'V' is declared by both 'a' and 'b'","'V' is declared by both 'b' and 'the unowned program'"];
+ #assert errors[0].message==msgs[variant];
+}
+#forall "modules may each declare a name; one module may not declare it twice" variant:0..<11, indexed:bool {
+ nodes:[40]CK_Node;index:[78]int;types:[24]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[2048]u8;state:=[1]CK_State.[CK_State.{}];
+ modules:=[4] string.["","a","b","c"];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],names=index[0..<ifx indexed then 78 else 0]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=1,next=3,loc=CK_Loc.{line=2}};nodes[3]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=2,next=4,loc=CK_Loc.{line=3}};
+ nodes[4]=CK_Node.{kind=CK_Tag.proc,name="g",scope=1,b=20,next=5,loc=CK_Loc.{line=4}};nodes[5]=CK_Node.{kind=CK_Tag.proc,name="g",scope=2,b=21,next=6,loc=CK_Loc.{line=5}};
+ nodes[6]=CK_Node.{kind=CK_Tag.constant,name="K",scope=1,a=22,next=7};nodes[7]=CK_Node.{kind=CK_Tag.constant,name="K",scope=2,a=23,next=8};
+ nodes[8]=CK_Node.{kind=CK_Tag.proc,name="main",scope=0,b=24,next=9};nodes[9]=CK_Node.{kind=CK_Tag.enum_,name="W",scope=3,head=10,next=11};nodes[10]=CK_Node.{kind=CK_Tag.member,name="w"};
+ nodes[11]=CK_Node.{kind=CK_Tag.proc,name="solo",scope=1,b=25};
+ for b:20..<26 {nodes[b]=CK_Node.{kind=CK_Tag.stmt_block};}
+ nodes[22]=CK_Node.{kind=CK_Tag.expr_string,name="x"};nodes[23]=CK_Node.{kind=CK_Tag.expr_string,name="y"};
+ library:=variant==1;
+ if variant==2 {nodes[5].scope=1;}
+ if variant==3 {nodes[7].scope=1;}
+ if variant==4 {nodes[7].name="g";nodes[7].scope=3;}
+ if variant==5 {nodes[7].name="g";nodes[7].scope=1;}
+ if variant==6 {nodes[9].name="g";}
+ if variant==7 {nodes[9].scope=2;nodes[9].name="g";}
+ if variant==8 {nodes[4].flag=true;}
+ if variant==9 {nodes[9].name="V";}
+ if variant==10 {nodes[9].name="K";}
+ ok:=CK_run(c,25,CK_Options.{library=library});
+ codes:=[11] string.["","E0387","E0334","E0345","","E0345","","E0372","E0387","",""];
+ counts:=[11] int.[0,2,1,1,0,1,0,1,1,0,0];
+ #assert ok==(counts[variant]==0) && state[0].error_count==counts[variant];
+ for i:0..<state[0].error_count {#assert errors[i].code==codes[variant];}
+ if variant==0 || variant==6 || variant==9 {
+  #assert types[nodes[2].type].name=="a.V" && types[nodes[3].type].name=="b.V" && types[nodes[2].type].scope==1 && types[nodes[3].type].scope==2;
+  #assert nodes[4].collides && nodes[5].collides && !nodes[8].collides && !nodes[11].collides && nodes[6].collides && nodes[7].collides;
+  #assert CK_clashes(c,CK_Tag.constant,"K") && CK_clashes(c,CK_Tag.proc,"g") && !CK_clashes(c,CK_Tag.proc,"solo") && !CK_clashes(c,CK_Tag.struct_,"g");
+  if variant==9 {#assert nodes[9].collides && types[nodes[9].type].name=="c.V" && types[nodes[9].type].scope==3;}
+  else {#assert types[nodes[9].type].name==nodes[9].name && types[nodes[9].type].scope==0 && !nodes[9].collides;}
+ }
+ if variant==1 {#assert errors[0].message=="type 'V' is declared by more than one module, and a C library header spells types by name" && errors[0].loc.line==2 && errors[1].loc.line==3;}
+ if variant==8 {#assert errors[0].message=="C symbol 'g' is declared by more than one module" && errors[0].fix=="rename one; #export_c and #foreign names are global C symbols" && errors[0].loc.line==4;}
+}
+#test "a colliding declaration of the unowned program keeps its spelling" {
+ nodes:[8]CK_Node;types:[20]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=18}];
+ modules:=[2] string.["","a"];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..]};
+ types[16]=CK_Type.{kind=CK_Kind.struct_,name="V"};types[17]=CK_Type.{kind=CK_Kind.struct_,name="V"};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="V",type=16,next=3};nodes[3]=CK_Node.{kind=CK_Tag.struct_,name="V",scope=1,type=17,next=4};
+ nodes[4]=CK_Node.{kind=CK_Tag.proc,name="V",scope=1};
+ CK_collisions(c,false);
+ #assert nodes[2].collides && nodes[3].collides && !nodes[4].collides && types[16].name=="V" && types[16].scope==0 && types[17].name=="a.V" && types[17].scope==1;
+}
+#test "the unowned program and out-of-range scopes have no module name" {
+ nodes:[2]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[64]u8;state:=[1]CK_State.[CK_State.{}];
+ modules:=[2] string.["","verse.hud"];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..]};
+ #assert CK_module_name(c,1)=="verse.hud" && CK_module_name(c,0)=="the unowned program";
+ #assert CK_module_name(c,2)=="the unowned program" && CK_module_name(c,-1)=="the unowned program";
+}
+#forall "a local shadows an alias; only a plain name qualifies" variant:0..<5 {
+ nodes:[4]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[64]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ aliases:=[1] CK_Alias.[CK_Alias.{scope=1,name="hud",target=2}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],aliases=aliases[..]};
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_ident,name="hud",scope=1};
+ if variant==1 {CK_declare(c,"hud",11,CK_Loc.{},"");}
+ if variant==2 {nodes[2].kind=CK_Tag.expr_call;}
+ if variant==3 {nodes[2].name2="x";}
+ if variant==4 {nodes[2].scope=0;}
+ #assert CK_qualifier(c,2)==ifx variant==0 then 2 else -1;
+}
