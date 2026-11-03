@@ -513,6 +513,8 @@ struct MutationOptions {
   uint64_t jobs = 0;               // 0: available cores (or $COAX_MUTATE_JOBS)
   uint64_t shard = 0, shards = 0;  // 0/0: the whole set
   std::vector<std::string> merge;  // shard records to combine instead of running
+  std::string unit;                // --unit: mutate only this source unit's procedures
+  std::string killers;             // --killers: try each mutant's last killing check first
 };
 
 struct MutantResult {
@@ -527,6 +529,7 @@ struct MutationRun {
   const std::vector<uint64_t> *base;
   const std::vector<std::vector<const ProcDecl *>> *paths;
   bool selective;
+  const std::vector<int32_t> *hints;  // per mutant: the check to try first, or -1
 };
 
 static MutantResult evaluate_mutant(const MutationRun &run, size_t index) {
@@ -535,9 +538,25 @@ static MutantResult evaluate_mutant(const MutationRun &run, size_t index) {
   MutantResult r;
   mu.apply();
   bool killed = false;
+  // --killers: the check that killed this mutant last time runs first, if the
+  // schedule below would run it at all. Its failure is a kill on this graph,
+  // so the verdict is the one the loop gives; a pass only costs one check.
+  int32_t hint = run.hints ? (*run.hints)[index] : -1;
+  if (hint >= 0) {
+    const auto &path = (*run.paths)[(size_t)hint];
+    bool entered = !mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end();
+    if (MS_run(run.selective, entered)) {
+      uint64_t budget = std::max<uint64_t>(10000, (*run.base)[(size_t)hint] * 10);
+      if (file->checks[hint]->steps) budget = std::min(budget, file->checks[hint]->steps);
+      ++r.invocations;
+      killed = !run_check(file, file->checks[hint], budget).passed;
+      if (killed) r.killer = hint;
+    } else hint = -1;
+  }
   // A mutant that loops forever is killed by a budget well above what the
   // unmutated check needed.
   for (int32_t i = 0; i < file->checks.count && !killed; i++) {
+    if (i == hint) continue;  // it ran above and passed
     const auto &path = (*run.paths)[(size_t)i];
     bool entered = !mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end();
     if (!MS_run(run.selective, entered)) { ++r.skipped; continue; }
@@ -1287,7 +1306,7 @@ static bool evaluate_parallel(const MutationRun &run, const std::vector<size_t> 
 
 // Identifies the mutant set a shard record describes: the compiler, the root
 // source and every mutant's location and change, in order.
-static std::string mutation_fingerprint(const File *file, const std::vector<Mutant> &mutants, bool root_only) {
+static std::string mutation_fingerprint(const File *file, const std::vector<Mutant> &mutants, bool root_only, const std::string &unit) {
   uint64_t h = 1469598103934665603ull;
   auto mix = [&](const std::string &s) {
     for (unsigned char c : s) { h ^= c; h *= 1099511628211ull; }
@@ -1296,6 +1315,7 @@ static std::string mutation_fingerprint(const File *file, const std::vector<Muta
   // Keep default receipts unchanged; a selected scope must never merge with
   // an unfiltered receipt, even if that graph has the same mutation sites.
   if (root_only) mix("scope:root-only:v1");
+  if (!unit.empty()) mix("scope:unit:v1:" + unit);
   for(const auto &mu:mutants)if(mu.spatial){mix("lowered-spatial-source-token:v1");break;}
   mix(COAX_RELEASE_VERSION);
   mix("execution-profile:v1:" + file->execution_profile);
@@ -1409,6 +1429,66 @@ static bool merge_records(const MutationOptions &opt, const std::string &fingerp
   return true;
 }
 
+// --killers FILE: which check killed each mutant, from the last complete run.
+// A line is MUTANT\tCHECK: the mutant as its unit's path, procedure, ordinal
+// within the procedure and change, the check as its unit's path and name. The
+// file only orders work: each mutant's recorded check runs first, and only its
+// failure on this graph counts as a kill (evaluate_mutant), so a stale, foreign
+// or edited file can't change a verdict, only how many checks it takes.
+static std::string killer_field(std::string s) {
+  for (char &c : s) if (c == '\t' || c == '\n' || c == '\r') c = ' ';
+  return s;
+}
+static std::string check_key(const File *file, const CheckDecl *c) {
+  return killer_field(source_point(file->src, c->loc).path) + "\t" + killer_field(to_std(c->name));
+}
+static std::vector<std::string> mutant_keys(const File *file, const std::vector<Mutant> &mutants) {
+  std::vector<std::string> keys;
+  const ProcDecl *owner = nullptr;
+  size_t ordinal = 0;
+  for (const Mutant &mu : mutants) {
+    ordinal = mu.owner == owner ? ordinal + 1 : 0;
+    owner = mu.owner;
+    std::string path = owner ? source_point(file->src, owner->loc).path : "";
+    keys.push_back(killer_field(path) + "\t" + (owner ? killer_field(to_std(owner->name)) : "") + "\t" +
+                   std::to_string(ordinal) + "\t" + killer_field(mu.what));
+  }
+  return keys;
+}
+static std::vector<int32_t> read_killers(const File *file, const std::string &path, const std::vector<std::string> &keys) {
+  std::vector<int32_t> hints(keys.size(), -1);
+  std::string text;
+  if (!read_record(path, &text)) return hints;  // none yet: every mutant runs the whole schedule
+  std::map<std::string, int32_t> checks;
+  for (int32_t i = 0; i < file->checks.count; i++) checks.emplace(check_key(file, file->checks[i]), i);
+  std::map<std::string, int32_t> recorded;
+  std::istringstream in(text);
+  std::string line;
+  while (std::getline(in, line)) {
+    // MUTANT is four fields and CHECK two: split after the fourth tab.
+    size_t at = 0;
+    for (int k = 0; k < 4 && at != std::string::npos; k++) at = line.find('\t', at ? at + 1 : 0);
+    if (at == std::string::npos) continue;
+    auto check = checks.find(line.substr(at + 1));
+    if (check != checks.end()) recorded[line.substr(0, at)] = check->second;
+  }
+  for (size_t i = 0; i < keys.size(); i++) {
+    auto hit = recorded.find(keys[i]);
+    if (hit != recorded.end()) hints[i] = hit->second;
+  }
+  return hints;
+}
+static void write_killers(const File *file, const std::string &path, const std::vector<std::string> &keys,
+                          const std::vector<MutantResult> &results) {
+  std::string temp = path + "." + std::to_string((long long)getpid());
+  FILE *f = fopen(temp.c_str(), "wb");
+  if (!f) return;  // an optimization only: a run that can't record its killers still has its verdict
+  for (size_t i = 0; i < keys.size(); i++)
+    if (results[i].killer >= 0) fprintf(f, "%s\t%s\n", keys[i].c_str(), check_key(file, file->checks[results[i].killer]).c_str());
+  bool ok = fclose(f) == 0;
+  if (!ok || rename(temp.c_str(), path.c_str()) != 0) remove(temp.c_str());
+}
+
 static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) {
   if (file->checks.count == 0) {
     fprintf(stderr, "coax: %s has no #test or #forall to mutate against\n", file->src->path.c_str());
@@ -1424,6 +1504,18 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     fprintf(stderr, "coax: the checks fail before any mutation; make them pass first\n");
     return 1;
   }
+  // --unit: one source unit of the graph, named as its path or any spelling of it.
+  std::string unit;
+  if (!opt.unit.empty()) {
+    char *want = realpath(opt.unit.c_str(), nullptr);
+    for (const auto &u : file->src->units)
+      if (want && u->canonical == want) unit = u->path;
+    free(want);
+    if (unit.empty()) {
+      fprintf(stderr, "coax: --unit %s is not a source unit of %s\n", opt.unit.c_str(), file->src->path.c_str());
+      return 1;
+    }
+  }
   Mutator m{arena};
   for (const CheckDecl *c : file->checks) m.calls(c->proc->body);
   // Mutate in source order, procedure by procedure.
@@ -1432,6 +1524,7 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     // root_source was mapped from the declaration through the source-unit
     // provenance, not from a flattened line or the caller's source location.
     if (!MS_include(opt.root_only, p->root_source)) continue;
+    if (!unit.empty() && source_point(file->src, p->loc).path != unit) continue;
     size_t first = m.mutants.size();
     m.stmt(p->body);
     for (size_t i = first; i < m.mutants.size(); ++i) m.mutants[i].owner = p;
@@ -1440,7 +1533,7 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
   if(m.spatial_eligible || m.spatial_no_alternative || m.spatial_unsupported)
     fprintf(stderr,"spatial operators: %zu eligible token mutations, %zu no admitted alternate, %zu unsupported unary operations\n",m.spatial_eligible,m.spatial_no_alternative,m.spatial_unsupported);
   size_t total = m.mutants.size();
-  std::string fingerprint = merging || opt.shards ? mutation_fingerprint(file, m.mutants, opt.root_only) : "";
+  std::string fingerprint = merging || opt.shards ? mutation_fingerprint(file, m.mutants, opt.root_only, unit) : "";
   MutationFacts facts;
   std::vector<MutantResult> results(total);
   bool sharded = opt.shards != 0;
@@ -1458,7 +1551,9 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     facts.selective = MS_selective(opt.reference, facts.borrowed, facts.strings, facts.unstable);
     for (size_t i = 0; i < total; i++)
       if (!sharded || MS_shard_owns(i, opt.shard, opt.shards)) owned.push_back(i);
-    MutationRun run{file, &m.mutants, &base, &paths, facts.selective};
+    std::vector<int32_t> hints;
+    if (!opt.killers.empty()) hints = read_killers(file, opt.killers, mutant_keys(file, m.mutants));
+    MutationRun run{file, &m.mutants, &base, &paths, facts.selective, hints.empty() ? nullptr : &hints};
     uint64_t jobs = opt.jobs;
     if (!jobs) {
       const char *env = getenv("COAX_MUTATE_JOBS");
@@ -1479,6 +1574,8 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
   }
   if (merging && opt.trace)
     for (size_t i : owned) fprintf(stderr, "mutation-outcome %zu %d\n", i, results[i].killer);
+  // A complete run (not one shard) records its killers for the next run.
+  if (!opt.killers.empty() && !sharded) write_killers(file, opt.killers, mutant_keys(file, m.mutants), results);
   uint64_t invocations = 0, skipped = 0;
   std::vector<const Mutant *> survivors;
   size_t equivalent = 0;
@@ -1511,6 +1608,7 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     fflush(stdout);
   }
   if (opt.root_only) fprintf(report, "mutation scope: root-only (entry-source procedures; dependency checks retained)\n");
+  if (!unit.empty()) fprintf(report, "mutation scope: unit %s (its procedures; every check retained)\n", unit.c_str());
   if (g_diagnostics_json) {
     // One coax.diagnostic.v1 object per survivor and per unreached procedure, on stderr.
     for (const Mutant *mu : survivors)
@@ -1548,7 +1646,7 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     g_evidence.mutation_detail = "\"mutants\":" + std::to_string(total) + ",\"evaluated\":" + std::to_string(owned.size()) +
         ",\"killed\":" + std::to_string(owned.size() - survivors.size() - equivalent) + ",\"survived\":[" + rows + "]" +
         ",\"marked_equivalent\":" + std::to_string(equivalent) + ",\"unreached\":\"" + json_escape_basic(unreached) + "\"" +
-        ",\"scope\":\"" + (opt.root_only ? "root-only" : "all") + "\",\"shard\":" +
+        ",\"scope\":\"" + (opt.root_only ? "root-only" : unit.empty() ? "all" : "unit") + "\",\"shard\":" +
         (sharded ? "[" + std::to_string(opt.shard) + "," + std::to_string(opt.shards) + "]" : std::string("null")) +
         ",\"merged_records\":" + std::to_string(opt.merge.size()) + ",\"scheduling\":\"" + (facts.selective ? "selective" : "full") +
         "\",\"per_check_budget\":\"max(10000, 10 x the unmutated check's steps)\"";

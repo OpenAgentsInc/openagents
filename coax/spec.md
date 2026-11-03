@@ -1157,6 +1157,17 @@ deterministic equivalence guarantee. `--mutation-reference` requests the full
 runner; `--mutation-stats` and `--mutation-trace` expose scheduling counts
 and each mutant's first killing check for comparison.
 
+Since #12646, `--unit FILE` restricts the mutants to the procedures of one
+source unit of the graph (a file that is not one is refused); every check
+still runs, and the scope is bound into shard records. `--killers FILE` reads
+and, after a complete run, writes each killed mutant's killing check (mutant:
+unit, procedure, ordinal in the procedure, change; check: unit, name). Each
+mutant runs its recorded check first when the schedule would run it, and
+only that check failing counts as a kill; otherwise the schedule runs as
+before. Survivors, counts and exit status are those of a run without the
+file; the trace may name the recorded killer and the statistics count fewer
+checks.
+
 These gates do not prove a program correct. Execution coverage is not branch
 coverage or a connection between an output and its assertion. Quantification
 covers only the stated finite instance, and mutation covers the implemented

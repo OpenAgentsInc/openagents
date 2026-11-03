@@ -828,6 +828,31 @@ source, not its dependencies: keep their separate, passing mutation evidence.
 A filtered inventory with no mutation sites fails rather than claiming a
 zero-survivor pass.
 
+A program split into parts (a root that loads them, as
+`lib/compiler/checker.coax` loads `lib/compiler/checker/*.coax`) can mutate
+one part at a time while every check, wherever it lives, still runs:
+
+```shell
+coax mutate lib/compiler/checker.coax --unit lib/compiler/checker/types.coax
+```
+
+`--unit` takes any spelling of a unit of the graph and refuses a file that
+isn't one. The units' inventories add up to the default inventory. Its shard
+records name the unit, so they merge only with records of the same unit.
+
+`--killers FILE` keeps the work of the last run. After a complete run (not
+a shard) it writes, for each killed mutant, the check that killed it; the
+next run tries that check first. A mutant is named by its unit, procedure,
+place in the procedure and change, and a check by its unit and name, so
+the file survives edits elsewhere. Only that check failing on the graph
+being tested counts as a kill. When it passes, the mutant runs the whole
+schedule as before. So the survivors, counts and exit status are the ones a
+run without the file reports; the file only skips the checks that ran before
+the killer. A stale, edited or foreign file costs time, never a verdict.
+`--mutation-trace` names the check that killed each mutant, which with
+`--killers` may be the recorded one rather than the first in order, and
+`--mutation-stats` counts fewer checks.
+
 Use `coax mutate split.coax --mutation-reference` to force the full runner.
 `--mutation-stats` reports check counts and fallback facts;
 `--mutation-trace` reports the first killing check for each mutant.

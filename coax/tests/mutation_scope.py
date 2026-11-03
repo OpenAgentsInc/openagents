@@ -131,6 +131,78 @@ main :: () {}
         self.assertEqual(self.merge(path, root, True).returncode, 0)
         self.assertEqual(self.merge(path, full, False).returncode, 0)
 
+    def test_unit_scope_covers_one_unit_and_the_units_add_up(self):
+        full = self.count(self.run_mutate())
+        totals = 0
+        for unit in (self.entry, self.dependency, self.d / 'deps/leaf.coax'):
+            r = self.run_mutate('--unit', str(unit))
+            self.assertIn('mutation scope: unit', r.stdout)
+            for other in {self.entry, self.dependency, self.d / 'deps/leaf.coax'} - {unit}:
+                self.assertNotIn(str(other) + ':', r.stdout)
+            totals += self.count(r)[0]
+        self.assertEqual(totals, full[0])
+        # A spelling through another directory names the same unit.
+        r = self.run_mutate('--unit', str(self.d / 'deps/../deps/case.coax'))
+        self.assertEqual(self.count(r), self.count(self.run_mutate('--unit', str(self.dependency))))
+
+    def test_unit_must_be_a_unit_of_the_graph_and_excludes_root_only(self):
+        stray = self.d / 'stray.coax';stray.write_text('main :: () {}\n')
+        r = self.run_mutate('--unit', str(stray))
+        self.assertNotEqual(r.returncode, 0);self.assertIn('is not a source unit', r.stderr)
+        r = self.run_mutate('--root-only', '--unit', str(self.dependency))
+        self.assertNotEqual(r.returncode, 0)
+
+    def test_unit_records_cannot_merge_with_full_ones(self):
+        paths = []
+        for shard in (1, 2):
+            r = self.run_mutate('--shard', f'{shard}/2', '--unit', str(self.dependency))
+            p = self.d / f'unit-{shard}.rec';p.write_text(r.stdout);paths.append(p)
+        full = self.records(self.entry, False, 'full-entry')
+        mixed = self.merge(self.entry, [paths[0], full[1]], False)
+        self.assertNotEqual(mixed.returncode, 0)
+        merged = self.run_mutate('--unit', str(self.dependency), '--merge', str(paths[0]), '--merge', str(paths[1]))
+        direct = self.run_mutate('--unit', str(self.dependency))
+        self.assertEqual((merged.returncode, merged.stdout), (direct.returncode, direct.stdout))
+
+    def checks_run(self, result):
+        m = re.search(r'mutation-scheduling \S+ checks=(\d+)', result.stderr)
+        self.assertIsNotNone(m, result.stderr)
+        return int(m.group(1))
+
+    def test_killers_change_the_work_not_the_verdicts(self):
+        path = self.d / 'killers.coax'
+        path.write_text('f :: (x:int)->int { return x*3+1; }\n#test "weak one" { #assert f(0)>=0; }\n'
+                        '#test "weak two" { #assert f(0)>=0; }\n#test "strong" { #assert f(2)==7 && f(0)==1; }\n'
+                        'g :: (x:int)->int { if x>5 { return 1; } return 0; }\n#test "g" { #assert g(0)==0; }\nmain :: () {}\n')
+        killers = self.d / 'killers.txt'
+        plain = self.run_mutate('--mutation-stats', source=path)
+        first = self.run_mutate('--mutation-stats', '--killers', str(killers), source=path)
+        self.assertEqual((first.returncode, first.stdout), (plain.returncode, plain.stdout))
+        self.assertTrue(killers.exists())
+        recorded = killers.read_text()
+        self.assertIn('\tstrong\n', recorded)
+        self.assertNotEqual(plain.returncode, 0)  # g's x>5 survives: a survivor stays one
+        hinted = self.run_mutate('--mutation-stats', '--killers', str(killers), source=path)
+        self.assertEqual((hinted.returncode, hinted.stdout), (plain.returncode, plain.stdout))
+        self.assertLess(self.checks_run(hinted), self.checks_run(plain))
+        # Parallel and hinted: still the same report.
+        parallel = self.run_mutate('--killers', str(killers), source=path, jobs='4')
+        self.assertEqual((parallel.returncode, parallel.stdout), (plain.returncode, plain.stdout))
+        # A killer recorded for a check that no longer kills (here: weakened)
+        # falls back to the whole schedule; the survivor it leaves is reported.
+        path.write_text(path.read_text().replace('f(2)==7 && f(0)==1', 'f(2)>=0'))
+        weak = self.run_mutate('--killers', str(killers), source=path)
+        self.assertEqual(weak.stdout, self.run_mutate(source=path).stdout)
+        self.assertGreater(self.count(weak)[2], self.count(plain)[2])
+        # A file of nonsense, or killers named for other checks, changes nothing.
+        path.write_text(path.read_text().replace('f(2)>=0', 'f(2)==7 && f(0)==1'))
+        killers.write_text('junk\n\t\t\t\t\t\nf\tf\t0\tx\tnowhere\tstrong\n')
+        self.assertEqual(self.run_mutate('--killers', str(killers), source=path).stdout, plain.stdout)
+        misled = ''.join(line.rsplit('\t', 1)[0] + '\tg\n' for line in recorded.splitlines())
+        self.assertIn('\tg\n', misled)
+        killers.write_text(misled)
+        self.assertEqual(self.run_mutate('--killers', str(killers), source=path).stdout, plain.stdout)
+
     def test_flag_is_not_accepted_by_other_commands(self):
         r = subprocess.run([str(COMPILER), 'test', str(self.entry), '--root-only'], capture_output=True, text=True, timeout=90)
         self.assertNotEqual(r.returncode, 0)

@@ -150,6 +150,13 @@ invoke_gate() {
     gate_key "$@"
     [[ -n "$closure" ]] || { echo 'coax bootstrap: cannot bind checker shard source closure' >&2;return 1; }
     ./bootstrap-mutation-shards.sh "$COAX_CHECKER_MUTATION_SHARDS" "$1" "$closure" "$3"
+  elif [[ "$1" == "$work/stage0" && "$2" == mutate && -n "$gate_cache" ]] && mkdir -p "$gate_cache/killers" 2> /dev/null; then
+    # Killing checks (#12646): each mutant first runs the check that killed it
+    # in this gate's last complete run, kept per gate command, whatever stage0
+    # or the sources were then. Only a failure on this graph counts as a kill,
+    # so the verdict is the one a run without the file gives; the file only
+    # saves the checks before the killer. It is not part of the gate's key.
+    "$@" --killers "$gate_cache/killers/$(printf '%s\0' "${@:3}" | sha)"
   else
     "$@"
   fi

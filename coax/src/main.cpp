@@ -1661,8 +1661,12 @@ static int usage() {
           "       coax deps    file.coax --modules                 JSON module content and dependency revisions\n"
           "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list] [--profile steps] [--evidence FILE]\n"
           "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...] [--evidence FILE]\n"
-          "                    [--root-only] [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
+          "                    [--root-only | --unit PART.coax] [--killers FILE]\n"
+          "                    [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
           "                    --root-only mutates entry-source procedures; all baseline checks still run\n"
+          "                    --unit PART.coax mutates one loaded unit's procedures; every check still runs\n"
+          "                    --killers FILE runs each mutant's last killing check first and records\n"
+          "                    this run's; the verdicts are the same with or without it\n"
           "                    --jobs N evaluates mutants in N processes (default: available cores,\n"
           "                    or $COAX_MUTATE_JOBS); the report is the same for every N\n"
           "                    --shard I/N runs mutants I-1, I-1+N, ... and prints a record on stdout\n"
@@ -1969,7 +1973,9 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--bindings" && i + 1 < argc && cmd == "wgsl" && bindings.empty()) bindings = argv[++i];
     else if (a == "--strip" && i + 1 < argc && cmd == "wgsl" && strip.empty()) strip = argv[++i];
     else if (a == "--fragment" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty() && fragment.empty()) fragment = argv[++i];
-    else if (a == "--root-only" && cmd == "mutate") mutation.root_only = true;
+    else if (a == "--root-only" && cmd == "mutate" && mutation.unit.empty()) mutation.root_only = true;
+    else if (a == "--unit" && cmd == "mutate" && i + 1 < argc && mutation.unit.empty() && !mutation.root_only) mutation.unit = argv[++i];
+    else if (a == "--killers" && cmd == "mutate" && i + 1 < argc && mutation.killers.empty()) mutation.killers = argv[++i];
     else if (a == "--mutation-reference" && cmd == "mutate") mutation.reference = true;
     else if (a == "--mutation-stats" && cmd == "mutate") mutation.stats = true;
     else if (a == "--mutation-trace" && cmd == "mutate") mutation.trace = true;

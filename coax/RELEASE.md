@@ -146,6 +146,25 @@ worktree and agent on the machine.
   bootstrap reuses a gate only when its key matches exactly. A change to one
   compiler file reruns the gates that read it and reuses the others. Gates run
   by the final compiler and the seed comparisons always run.
+- **Killing checks** live in `~/.cache/coax-gates/killers/` (#12646), one file
+  per stage0 `mutate` gate command, written by its last complete run
+  (`coax mutate --killers`). When a mutate gate does run, each mutant first
+  runs the check that killed it last time. That check failing on this graph
+  is a kill; when it passes, the mutant runs its whole schedule as before.
+  The gate's verdict, its survivors and its cache key are the ones a run
+  without the file gives, so the file is trusted with nothing: a stale or
+  altered file only costs time. A gate's verdict is not reused across a
+  change, and couldn't soundly be, even per part of the checker: a mutant in
+  `checker/types.coax` is killed by checks in the fixture and matrix parts
+  that run through every other part, an edit to any part can stop a check
+  from reaching it, and any checker edit refreshes `bootstrap/checker.c`,
+  which is part of stage0 itself. What the file keeps is the search: on the
+  full checker, 522 check runs per mutant without it (a 1/64 shard,
+  2026-11-02), about one with it. Measured on `checker/numeric.coax` (`coax
+  mutate lib/compiler/checker.coax --unit lib/compiler/checker/numeric.coax`,
+  719 mutants, load average about 50 on 28 cores): 86,365 check runs and
+  511 s without the file, 719 check runs and 202 s with it, most of that the
+  baseline run of all 1,217 checks.
 
 The build log prints each gate's time, or `reused` with its command.
 `COAX_BUILD_FRESH=1` ignores both caches. A cached gate result is a record
