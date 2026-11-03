@@ -2,8 +2,8 @@
 # NAME GROUP BINDING, and `uniform COUNT` for a []f32 read as a uniform block of COUNT vec4fs.
 # They are coax/web/host.js's layouts: group 0 the frame's uniforms; group 1 the scene (or
 # the bloom's or the post's inputs, each pass its own); group 2 the shadow map; group 3
-# the water's copy of the scene. u is everglade.coax's U block: 575 rows (marks end it at 2300 floats).
-u 0 0 uniform 575
+# the water's copy of the scene. u is everglade.coax's U block: 608 rows (the second streets block ends it at 2432 floats).
+u 0 0 uniform 608
 vertices 1 0
 heights 1 1
 objects 1 2

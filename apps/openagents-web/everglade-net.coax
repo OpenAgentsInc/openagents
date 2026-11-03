@@ -1598,7 +1598,7 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   t: [1] Everglade;
   #assert !net_live(t[..]) && net_room(t[..], "everglade") == "everglade" && net_probe(t[..], 0) == -1;
 }
-#test "net: a meteor swarm the server says falls on the same spots on both pages" #steps 900000000 {
+#test "net: a meteor swarm the server says falls on the same spots on both pages" #steps 1100000000 {
   a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet;
   dma: [1] DemoWorld; dmb: [1] DemoWorld;
   everglade_start(a[..]); a[0].sp.on = true; a[0].sp.ready = true; a[0].sp.dm = dma[..];

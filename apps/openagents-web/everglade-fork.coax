@@ -410,7 +410,7 @@ fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
   return ifx w > room && w > 0 then cap * room / w else cap;
 }
 
-#test "Everglade itself is no fork: no rules, its own world" #steps 337000000 {
+#test "Everglade itself is no fork: no rules, its own world" #steps 530000000 {
   g: [1] Everglade; gk: [1] EgFork; everglade_attach_fork(g[..], gk[..]);
   everglade_message(g[..], MSG_FACTS, "realm=everglade\nclock=cycle\nnow=1000");
   #assert !fk_is_fork(g[..]) && !fork_rule(g[..], FK_NIGHT) && everglade_gravity_lift(g[..]) == 0;
@@ -418,7 +418,7 @@ fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
   #assert cast(string) buf[0..<everglade_world_path(g[..], buf[..], 0)] == "/api/playtest/world/everglade";
 }
 
-#test "Everglade 5E is its own realm: its world, its edits, its FORK, its name" #steps 337000000 {
+#test "Everglade 5E is its own realm: its world, its edits, its FORK, its name" #steps 530000000 {
   g: [1] Everglade; gk: [1] EgFork; everglade_attach_fork(g[..], gk[..]);
   everglade_message(g[..], MSG_FACTS, "realm=everglade-5e\nclock=cycle\nnow=1000");
   #assert !fk_is_fork(g[..]) && fk_slug(g[..]) == "everglade-5e" && fork_title(g[..]) == "EVERGLADE 5E";
@@ -433,7 +433,7 @@ fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
   #assert !fk_is_fork(g[..]) && fork_title(g[..]) == "EVERGLADE CLASSIC";
 }
 
-#test "a fork's facts: its slug and its rules, only the four this code plays; its own world" #steps 337000000 {
+#test "a fork's facts: its slug and its rules, only the four this code plays; its own world" #steps 530000000 {
   f: [1] Everglade; fk: [1] EgFork; everglade_attach_fork(f[..], fk[..]);
   everglade_message(f[..], MSG_FACTS, "realm=everglade\nfork=doomglade\nrules=night,dragons,lowgrav\nclock=cycle\nnow=1000");
   #assert fk_is_fork(f[..]) && fork_rule(f[..], FK_NIGHT) && fork_rule(f[..], FK_LOWGRAV) && !fork_rule(f[..], FK_WAVES);
@@ -447,7 +447,7 @@ fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
   #assert !fk_is_fork(f[..]) && !fork_rule(f[..], FK_NIGHT);
 }
 
-#test "the board decides once the layer has the fork's spec: a rule switched off there is off" #steps 337000000 {
+#test "the board decides once the layer has the fork's spec: a rule switched off there is off" #steps 530000000 {
   f: [1] Everglade; fk: [1] EgFork; everglade_attach_fork(f[..], fk[..]);
   everglade_message(f[..], MSG_FACTS, "realm=everglade\nfork=doomglade\nrules=night\nnow=1000");
   e := f[0].ev.ed[..];
@@ -459,7 +459,7 @@ fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
   #assert !fork_rule(f[..], FK_NIGHT) && fork_rule(f[..], FK_WAVES) && !fork_rule(f[..], FK_LOWGRAV);
 }
 
-#test "the pane: the server's rules, FORK IT sends only the picked ones, the answer's path is where the page goes" #steps 337000000 {
+#test "the pane: the server's rules, FORK IT sends only the picked ones, the answer's path is where the page goes" #steps 530000000 {
   g: [1] Everglade; gk: [1] EgFork; everglade_attach_fork(g[..], gk[..]);
   everglade_message(g[..], MSG_FACTS, "realm=everglade\nnow=1000");
   fork_frame(g[..], 0.016);
@@ -488,7 +488,7 @@ fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
   #assert cast(string) g[0].fk[0].note[0..<g[0].fk[0].note_n] == "MAKING WORLDS IS INVITE ONLY FOR NOW";
 }
 
-#test "a fork's pane says what it was forked from and who made it; hostile waves send the watch in" #steps 337000000 {
+#test "a fork's pane says what it was forked from and who made it; hostile waves send the watch in" #steps 530000000 {
   f: [1] Everglade; fk: [1] EgFork; everglade_attach_fork(f[..], fk[..]);
   everglade_message(f[..], MSG_FACTS, "realm=everglade\nfork=doomglade\nrules=waves\nnow=1000");
   fork_frame(f[..], 0.016);

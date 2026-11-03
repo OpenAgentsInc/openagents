@@ -134,7 +134,7 @@ chat_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
   return s[0].chat.finger == id;
 }
 
-#test "room: Enter opens a line, what you type is said once, Esc closes it" #steps 337000000 {
+#test "room: Enter opens a line, what you type is said once, Esc closes it" #steps 530000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   #assert everglade_key(g[..], KEY_ENTER, 0) && g[0].chat.typing && everglade_wants_text(g[..]);

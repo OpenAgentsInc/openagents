@@ -1072,7 +1072,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
 
 // ---- checks
 
-#test "voice edits: only an admin on a voice page gets the button; the button holds and lets go" #steps 337000000 {
+#test "voice edits: only an admin on a voice page gets the button; the button holds and lets go" #steps 530000000 {
   s: [1] Everglade;
   everglade_message(s[..], MSG_FACTS, "now=1\nvoice=haunted-house\nplayer=p-1");
   #assert s[0].ev.voice && !voice_on(s[..]);
@@ -1092,7 +1092,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   #assert s[0].action == ACT_VOICE && cast(string) s[0].outbox[0..<s[0].out_n] == "end";
 }
 
-#test "voice edits: sentences said while one is with the server wait their turn, in order, each shown and then its result" #steps 337000000 {
+#test "voice edits: sentences said while one is with the server wait their turn, in order, each shown and then its result" #steps 530000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_FACTS, "voice=haunted-house");
@@ -1119,7 +1119,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
 
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "voice edits: one of a thing is A THING, more are THINGS" #steps 337000000 {
+#test "voice edits: one of a thing is A THING, more are THINGS" #steps 530000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_VIEWER, "A|1\n");
@@ -1135,7 +1135,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   #assert cast(string) out[0..<ev_count(out[..], "PLACED ", 4, EG_EDIT_LABEL[0], EG_EDIT_LABELS[0])] == "PLACED 4 CRATES";
 }
 
-#test "voice edits: a row starts in front of you and never stands on you, whichever way you face" #steps 374000000 {
+#test "voice edits: a row starts in front of you and never stands on you, whichever way you face" #steps 570000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_VIEWER, "A|1\n");
@@ -1167,7 +1167,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   #assert cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "Placed 4 stalls, 2 didn't fit.";
 }
 
-#test "voice edits: placed things are walls from the ground they stand on; a bench you stand on casts your shadow on its top" #steps 337000000 {
+#test "voice edits: placed things are walls from the ground they stand on; a bench you stand on casts your shadow on its top" #steps 530000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_VIEWER, "A|1\n");
@@ -1188,7 +1188,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   #assert abs(packed - cm * 2 - 0.6) < 0.01 && abs(cm / 100 - 100 - top) < 0.006;
 }
 
-#test "voice edits: remove these crates takes the row; remove Marta takes her, UNDO and ORIGINAL bring her back" #steps 337000000 {
+#test "voice edits: remove these crates takes the row; remove Marta takes her, UNDO and ORIGINAL bring her back" #steps 530000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_VIEWER, "A|1\n");
@@ -1227,7 +1227,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   #assert s[0].ev.edits.gone == 0 && s[0].ev.reset;
 }
 
-#test "voice edits: with Moss taken away his quest is off the board, and one under way can't be handed in till he's back" #steps 337000000 {
+#test "voice edits: with Moss taken away his quest is off the board, and one under way can't be handed in till he's back" #steps 530000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_VIEWER, "A|1\n");
@@ -1252,7 +1252,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   #assert s[0].stages[0] == EG_QUEST_DONE;
 }
 
-#test "edit mode: a click on one of the city's people picks them, and DELETE takes them away" #steps 337000000 {
+#test "edit mode: a click on one of the city's people picks them, and DELETE takes them away" #steps 530000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_VIEWER, "A|1\n");
@@ -1267,7 +1267,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   #assert everglade_key(s[..], 'z', 0) && !eg_gone(s[0].ev.edits, 5);
 }
 
-#test "voice verbs: pumpkins on the stall's top, a house, a ring of benches, a field of purple flowers" #steps 972000000 {
+#test "voice verbs: pumpkins on the stall's top, a house, a ring of benches, a field of purple flowers" #steps 2800000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_VIEWER, "A|1\n");
@@ -1300,7 +1300,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   #assert s[0].ev.spot_n > 150 && line[0..<19] == "PLANTED A FIELD OF " && contains(line, "PURPLE FLOWERS");
 }
 
-#test "voice verbs: the barrel bigger, the crates moved, the temple hidden and back, and a name that isn't here" #steps 376000000 {
+#test "voice verbs: the barrel bigger, the crates moved, the temple hidden and back, and a name that isn't here" #steps 600000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_VIEWER, "A|1\n");

@@ -651,7 +651,7 @@ folk_home :: (x: f32, z: f32) -> int {
 
 // ---- checks
 
-#test "interiors: every building has a room inside it, its pieces laid as town pieces" #steps 337000000 {
+#test "interiors: every building has a room inside it, its pieces laid as town pieces" #steps 530000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   for b: 0..<EG_BUILDINGS {
@@ -693,7 +693,7 @@ folk_home :: (x: f32, z: f32) -> int {
   #assert sp_object(M_PLATE).material == MAT_STONE;
 }
 
-#test "interiors: the small pieces draw near you by the LOD rules, and the near run holds them all" #steps 337000000 {
+#test "interiors: the small pieces draw near you by the LOD rules, and the near run holds them all" #steps 530000000 {
   for m: M_BED..<KIT_MESHES {
     if m == M_FLOOR_LIGHT { #assert lod_reach(m) == 0; continue; }
     #assert lod_reach(m) == f32(LOD_NEAR);

@@ -761,7 +761,7 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
 
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "watch: the Priest's Spiritual Weapon is one lit mace by you, its head on its haft's end, nothing drawn as flat glow" #steps 337000000 {
+#test "watch: the Priest's Spiritual Weapon is one lit mace by you, its head on its haft's end, nothing drawn as flat glow" #steps 530000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   boxes := g[0].counts[SHAPE_BOX]; balls := g[0].counts[SHAPE_SPHERE];
@@ -783,7 +783,7 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   }
 }
 
-#test "watch: R (the town stands again) also clears your WANTED stars" #steps 337000000 {
+#test "watch: R (the town stands again) also clears your WANTED stars" #steps 530000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   watch_page_start(g[..]);

@@ -89,7 +89,7 @@ everglade_move_after :: (s: [] Everglade, w: EgMoveWorld, b0: EgBody, b1: EgBody
   return b;
 }
 
-#test "move: the world's half: a current carries you, and walking into what stops you the gait slows" #steps 400000000 {
+#test "move: the world's half: a current carries you, and walking into what stops you the gait slows" #steps 530000000 {
   s: [1] Everglade;
   w := everglade_move_world(s[..], 0, 0, 0, 2, 1, 3, 0, false, 0, 0, 0, s[0].bodies[0..<0]);
   #assert w.medium == 2 && w.flow_x == 3 && !w.aboard;

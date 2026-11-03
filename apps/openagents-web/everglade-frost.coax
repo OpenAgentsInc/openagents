@@ -816,7 +816,7 @@ fr_fall_seen :: (at: Point, eye: Point) -> f32 {
 
 // ---- checks
 
-#test "frost: an Ice Knife bursts on the ground, throws its shards out to fall and lie, and leaves slippery frost that makes you slide" #steps 446000000 {
+#test "frost: an Ice Knife bursts on the ground, throws its shards out to fall and lie, and leaves slippery frost that makes you slide" #steps 710000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);

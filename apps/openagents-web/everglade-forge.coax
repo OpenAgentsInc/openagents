@@ -287,7 +287,7 @@ forge_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int) -> bool {
   return false;
 }
 
-#test "the forge: EDIT hides Everglade's HUD, CHANGES filters and opens rows, DONE leaves" #steps 337000000 {
+#test "the forge: EDIT hides Everglade's HUD, CHANGES filters and opens rows, DONE leaves" #steps 540000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_VIEWER, "A|1\n");

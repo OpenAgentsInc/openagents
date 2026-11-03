@@ -4,7 +4,8 @@
 //   - Every door in the town is one: each of the sixteen buildings' (the inn, the three shops, the
 //     two guild halls, the mages' tower, the temple, the observatory, the stables, the six houses;
 //     each leads into its room, everglade-interiors.coax) and the crypt's (it leads nowhere yet: the
-//     crypt is solid stone behind it). A building an admin hid has none.
+//     crypt is solid stone behind it), and the districts' houses' (wave 1: they open on a dark hall
+//     you don't go into yet, as the crypt's does). A building an admin hid has none.
 //   - Each starts shut. Near one (DOOR_REACH from the doorway's middle) and facing it, the prompt
 //     over the bar says E · OPEN THE DOOR (on a phone the button: OPEN THE DOOR); E opens it, and
 //     E again (E · CLOSE THE DOOR) shuts it. From inside a room as from the street.
@@ -18,8 +19,9 @@
 //
 //   coax/bin/coax test apps/openagents-web/everglade.coax --only "doors"
 
-EG_DOORS :: EG_BUILDINGS + 1;   // the buildings' by number, then the crypt's
+EG_DOORS :: EG_BUILDINGS + 1 + EG_DHOUSES;   // the buildings' by number, the crypt's, then the districts' houses'
 DOOR_CRYPT :: EG_BUILDINGS;
+DOOR_DHOUSE :: EG_BUILDINGS + 1;
 DOOR_REACH :: 2.2;              // m from you to the doorway's middle
 DOOR_FACING :: 0.35;            // the cosine you must face it within (about 70 degrees), unless you stand in the doorway
 DOOR_SWING :: 0.6;              // s a door takes to open or shut
@@ -197,7 +199,7 @@ door_spot :: (s: [] Everglade, i: int) -> DoorSpot {
   return DoorSpot.{at = at, face = atan2(d.mx - at.x, d.mz - at.z)};
 }
 
-#test "doors: every door in the town hangs shut, sixteen lead inside and the crypt's nowhere" #steps 600000000 {
+#test "doors: every door in the town hangs shut, sixteen lead inside and the crypt's and the districts' nowhere" #steps 900000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   inside := 0;
@@ -225,7 +227,7 @@ door_spot :: (s: [] Everglade, i: int) -> DoorSpot {
   #assert g[0].kit_used[group_of(M_DOOR)] == EG_DOORS;
 }
 
-#test "doors: E at each door opens it, E again shuts it, and nothing else happens" #steps 600000000 {
+#test "doors: E at each door opens it, E again shuts it, and nothing else happens" #steps 2400000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   g[0].width = 1280; g[0].dpr = 1;   // a computer's page: E's prompts

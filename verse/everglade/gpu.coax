@@ -44,6 +44,7 @@
 //   fx 1500
 //   tide 2096
 //   marks 2104
+//   path2 2300
 // the river's waves, look and mesh (verse/water-look.coax W_* rows)
 // the painterly preset at the clock (verse/style-preset.coax SU_*: row = SU / 4)
 // where no grass grows: the buildings' and props' footprints (x0, z0, x1, z1)
@@ -1072,7 +1073,8 @@ eg_ground_mark :: (q:V2,tip:f32,u:[]f32)->EgMark {
   }
   return m;
 }
-eg_path_distance :: (p:V2,u:[]f32)->f32 {
+// The streets nearest the eye (the first block: everglade.coax paths), for the grass near it.
+eg_path_near :: (p:V2,u:[]f32)->f32 {
   d:f32=1000.0f32;
   count:s32=wg_i32_f(u[228]);
   {
@@ -1082,6 +1084,26 @@ eg_path_distance :: (p:V2,u:[]f32)->f32 {
         break;
       }
       seg:V4=wg_at4(u,(cast(int)i)*4+100);
+      a:V2=v2(seg.x,seg.y);
+      ab:V2=wg_sub_f2f2(v2(seg.z,seg.w),a);
+      t:f32=clampf(wg_dot2(wg_sub_f2f2(p,a),ab)/fmax(wg_dot2(ab,ab),0.0001f32),0.0f32,1.0f32);
+      d=fmin(d,wg_length2(wg_sub_f2f2(wg_sub_f2f2(p,a),wg_mul_f2f(ab,t))));
+      i+=1;
+    }
+  }
+  return d;
+}
+// Every street: the near block, then the rest (path2 2300: a count row, then the pieces).
+eg_path_distance :: (p:V2,u:[]f32)->f32 {
+  d:f32=eg_path_near(p,u);
+  count:s32=wg_i32_f(u[2300]);
+  {
+    i:s32=0;
+    while i<32 {
+      if (i>=count) {
+        break;
+      }
+      seg:V4=wg_at4(u,(cast(int)i)*4+2304);
       a:V2=v2(seg.x,seg.y);
       ab:V2=wg_sub_f2f2(v2(seg.z,seg.w),a);
       t:f32=clampf(wg_dot2(wg_sub_f2f2(p,a),ab)/fmax(wg_dot2(ab,ab),0.0001f32),0.0f32,1.0f32);
@@ -3335,7 +3357,7 @@ eg_meadow :: (q:V2)->V3 {
   return wg_pow_f3f3(eg_meadow_srgb(eg_noise(wg_mul_f2f(q,0.13f32))),v3(2.2f32,2.2f32,2.2f32));
 }
 eg_grass_mask :: (q:V2,u:[]f32,heights:[]f32,water_nodes:[]f32)->f32 {
-  m:f32=verse_style_grass_clear(eg_path_distance(q,u)-u[229]);
+  m:f32=verse_style_grass_clear(eg_path_near(q,u)-u[229]);
   {
     k:s32=0;
     while k<4 {

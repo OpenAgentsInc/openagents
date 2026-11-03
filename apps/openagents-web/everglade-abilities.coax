@@ -311,6 +311,7 @@ ab_reverse :: (s: [] Everglade) {
   // what isn't anchored: the props standing in it come loose (as many as there are bodies for)
   loosened := 0;
   for i: 0..<w[0].n {
+    if !ab_prop(w[0].pieces[i].mesh) { continue; }   // (a wall's piece isn't copied: the town has thousands)
     p := w[0].pieces[i];
     if p.state != DP_STANDING || !ab_prop(p.mesh) || !ab_in_cylinder(a, v3(p.cx, p.cy, p.cz)) { continue; }
     if demo_loose(w) >= w[0].loose_cap { break; }
@@ -905,6 +906,7 @@ ab_bt_frame :: (s: [] Everglade, dt: f32) {
     }
     freed := 0;
     for i: 0..<w[0].n {
+      if !ab_prop(w[0].pieces[i].mesh) { continue; }
       p := w[0].pieces[i];
       if p.state != DP_STANDING || !ab_prop(p.mesh) || !ab_in_square(a, p.cx, p.cz) || p.y0 > a[0].bt_at.y + f32(AB_BT_REACH) { continue; }
       j := ab_bt_free_near(s, v3(p.cx, p.cy, p.cz));
@@ -1176,6 +1178,7 @@ ab_thunder :: (s: [] Everglade) {
   w := sp_dm(s);
   loosened := 0;
   for i: 0..<w[0].n {
+    if !ab_prop(w[0].pieces[i].mesh) { continue; }
     p := w[0].pieces[i];
     if p.state != DP_STANDING || !ab_prop(p.mesh) || !ab_in_cube(you, f, p.x0, p.z0, p.y0) || !ab_in_cube(you, f, p.x1, p.z1, p.y1) { continue; }
     if demo_loose(w) >= w[0].loose_cap { break; }
@@ -1526,10 +1529,11 @@ ab_roof :: (s: [] Everglade, x: f32, z: f32, over: f32) -> f32 {
   w := sp_dm(s);
   roof := 100000.0f32;
   for i: 0..<w[0].n {
-    p := w[0].pieces[i];
-    if p.state != DP_STANDING || p.y0 < over || p.y0 >= roof { continue; }
-    if x < p.x0 - 0.1 || x > p.x1 + 0.1 || z < p.z0 - 0.1 || z > p.z1 + 0.1 { continue; }
-    roof = p.y0;
+    // its fields, not a copy of the piece: this runs every frame over the whole town
+    if x < w[0].pieces[i].x0 - 0.1 || x > w[0].pieces[i].x1 + 0.1 || z < w[0].pieces[i].z0 - 0.1 || z > w[0].pieces[i].z1 + 0.1 { continue; }
+    y0 := w[0].pieces[i].y0;
+    if w[0].pieces[i].state != DP_STANDING || y0 < over || y0 >= roof { continue; }
+    roof = y0;
   }
   return roof;
 }
@@ -1778,7 +1782,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
 
 // ---- checks
 
-#test "abilities: Reverse Gravity lifts you and the town's loose props to hover under its top, and lets them fall" #steps 808000000 {
+#test "abilities: Reverse Gravity lifts you and the town's loose props to hover under its top, and lets them fall" #steps 1100000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1810,7 +1814,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   for b: 0..<DEMO_BODIES { if w[0].meta[b].kind != 0 { #assert f32(demo_pos(w, b).y) < a[0].rg_at.y + 6; } }
 }
 
-#test "abilities: a Wind Wall rises 4 m ahead across your way, throws you up when you walk in, and lifts a splinter" #steps 442000000 {
+#test "abilities: a Wind Wall rises 4 m ahead across your way, throws you up when you walk in, and lifts a splinter" #steps 700000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1834,7 +1838,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert !a[0].walls[0].live;
 }
 
-#test "abilities: Levitate rises while 7 is held and hovers when let go; X sinks to the ground and ends it; Feather Fall slows a fall and ends on landing" #steps 559000000 {
+#test "abilities: Levitate rises while 7 is held and hovers when let go; X sinks to the ground and ends it; Feather Fall slows a fall and ends on landing" #steps 910000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1866,7 +1870,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert !a[0].ff_on;
 }
 
-#test "abilities: Levitate clicked on the hotbar (no key held) lifts you 2 m and hovers there, never all the way up" #steps 441000000 {
+#test "abilities: Levitate clicked on the hotbar (no key held) lifts you 2 m and hovers there, never all the way up" #steps 760000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1879,7 +1883,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert !a[0].lev_up && near(y, f32(AB_LEV_CLICK) * f32(AB_LEV_RISE), 0.25);
 }
 
-#test "abilities: Levitate cast above 18 m (Reverse Gravity threw you up) hovers where you are, never pulls you down" #steps 441000000 {
+#test "abilities: Levitate cast above 18 m (Reverse Gravity threw you up) hovers where you are, never pulls you down" #steps 750000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1896,7 +1900,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert near(y, 30, 0.1);
 }
 
-#test "abilities: Gust of Wind pushes along its line; Thunderwave frees a prop in its cube and throws it 10 feet's worth away" #steps 441000000 {
+#test "abilities: Gust of Wind pushes along its line; Thunderwave frees a prop in its cube and throws it 10 feet's worth away" #steps 700000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1923,7 +1927,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert demo_body(w, b).vel.x > 4.0;
 }
 
-#test "abilities: a Wall of Stone's two panels stand 4 m ahead across your way as two of your bodies, for ten minutes" #steps 455000000 {
+#test "abilities: a Wall of Stone's two panels stand 4 m ahead across your way as two of your bodies, for ten minutes" #steps 720000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1946,7 +1950,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert everglade_bodies_on(g[..], false) == BODIES;
 }
 
-#test "abilities: Telekinesis takes a prop, lifts it 20 feet, moves it 30 feet at most a click, and lets it fall" #steps 486000000 {
+#test "abilities: Telekinesis takes a prop, lifts it 20 feet, moves it 30 feet at most a click, and lets it fall" #steps 750000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1980,7 +1984,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
 
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "abilities: Earthbound (the watch's Earthbind), Levitate can't rise and sinks you 60 feet a round to the ground, where it ends; it can't be cast again" #steps 441000000 {
+#test "abilities: Earthbound (the watch's Earthbind), Levitate can't rise and sinks you 60 feet a round to the ground, where it ends; it can't be cast again" #steps 700000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);

@@ -87,12 +87,12 @@ sky_at :: (s: [] Everglade, x: f32, z: f32) -> f32 {
   return s[0].ground_store[EG_GROUND_POINTS + sky_cell(z) * (EG_CELLS + 1) + sky_cell(x)];
 }
 
-#test "sky: open ground sees it all, the woods and the streets' corners less, a room under its roof least" #steps 337000000 {
+#test "sky: open ground sees it all, the woods and the streets' corners less, a room under its roof least" #steps 530000000 {
   #assert sky_wall(8, 10, 0.3) > 0.4 && sky_wall(8, 10, 12) < 0.1 && sky_ball(3, 5, 0) > 0.3 && sky_ball(3, 5, 10) < 0.1;
   g: [1] Everglade;
   everglade_start(g[..]);
-  open := sky_at(g[..], 0, -80);          // the road in, by the Reed Pond's clearing
-  wood := sky_at(g[..], -75, -75);        // in the woods
+  open := sky_at(g[..], 0, -110);         // the great lawn
+  wood := sky_at(g[..], -152, -40);       // in the woods
   k := EG_INN * EG_BOX;
   inn := sky_at(g[..], (EG_BUILDING[k] + EG_BUILDING[k + 2]) / 2, (EG_BUILDING[k + 1] + EG_BUILDING[k + 3]) / 2);
   corner := sky_at(g[..], EG_BUILDING[k + 2] + 1, EG_BUILDING[k + 1] - 1);   // beside the inn

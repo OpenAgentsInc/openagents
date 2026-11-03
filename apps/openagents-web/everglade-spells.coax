@@ -107,7 +107,8 @@ SP_WATER :: 1000.0;       // kg/m³
 SP_FRICTION :: 0.6;       // timber or stone on ground
 SP_BOND :: 3.0e5;         // Pa: a mortar joint's or a pegged joint's shear strength
 SP_DROPS :: 12;
-SP_GROUPS :: 192;         // a building each, then 16 m cells for the rest
+SP_CELLS :: 22;           // 16 m cells a side over the ground (352 m)
+SP_GROUPS :: EG_BUILDINGS + EG_DHOUSES + SP_CELLS * SP_CELLS;   // a building each, a district house each, then 16 m cells for the rest
 SP_NEWS :: 5.0;           // s a cast's line shows
 // The debris is drawn as the pieces' own meshes, cut (verse/demolish.coax's fracture): each chunk an
 // instance of the mesh it broke from, posed as its body is, in its run of SHARD_AT (a run per mesh,
@@ -286,9 +287,13 @@ sp_group :: (x: f32, z: f32) -> int {
     k := b * EG_BOX;
     if x > EG_BUILDING[k] - 0.8 && x < EG_BUILDING[k + 2] + 0.8 && z > EG_BUILDING[k + 1] - 0.8 && z < EG_BUILDING[k + 3] + 0.8 { return b; }
   }
-  cx := clamp_i(cast(int) floor((x + 104) / 16), 0, 12);
-  cz := clamp_i(cast(int) floor((z + 104) / 16), 0, 12);
-  return clamp_i(EG_BUILDINGS + cz * 13 + cx, 0, SP_GROUPS - 1);
+  for h: 0..<EG_DHOUSES {
+    k := h * EG_BOX;
+    if x > EG_DHOUSE[k] - 0.8 && x < EG_DHOUSE[k + 2] + 0.8 && z > EG_DHOUSE[k + 1] - 0.8 && z < EG_DHOUSE[k + 3] + 0.8 { return EG_BUILDINGS + h; }
+  }
+  cx := clamp_i(cast(int) floor((x - f32(EG_EDGE)) / 16), 0, SP_CELLS - 1);
+  cz := clamp_i(cast(int) floor((z - f32(EG_EDGE)) / 16), 0, SP_CELLS - 1);
+  return clamp_i(EG_BUILDINGS + EG_DHOUSES + cz * SP_CELLS + cx, 0, SP_GROUPS - 1);
 }
 
 // ---- hooks: the realm calls these
@@ -2337,7 +2342,7 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "phone: a slot's card shows only while a finger holds it; lifting it, or another finger down, closes the card" #steps 400000000 {
+#test "phone: a slot's card shows only while a finger holds it; lifting it, or another finger down, closes the card" #steps 700000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);

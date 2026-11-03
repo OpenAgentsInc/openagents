@@ -88,7 +88,7 @@ sp_marks :: (s: [] Everglade, u: [] f32, at: int) {
   }
 }
 
-#test "marks: a Sleet Storm's patch is a frost mark in the ground's uniforms, not a slab" #steps 440000000 {
+#test "marks: a Sleet Storm's patch is a frost mark in the ground's uniforms, not a slab" #steps 700000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);

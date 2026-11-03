@@ -136,7 +136,12 @@ U_FX :: U_PONDS + EG_PONDS * 4;
 U_TIDE :: U_FX + FX_ROWS * 4;
 // Then the spells' marks on the ground (everglade-marks.coax sp_marks; everglade.wgsl u.marks).
 U_MARKS :: U_TIDE + TD_U_FLOATS;
-UNIFORM_FLOATS :: U_MARKS + MK_FLOATS;
+// Then the streets past the first PATHS (wave 1's districts have more links than one block holds):
+// a count row, then PATHS2 pieces. The first block holds the PATHS links nearest the eye, so the
+// grass, which grows only near it, reads that block alone (everglade.wgsl eg_path_near).
+PATHS2 :: 32;
+U_PATH2 :: U_MARKS + MK_FLOATS;
+UNIFORM_FLOATS :: U_PATH2 + 4 + PATHS2 * 4;
 
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_MESH :: 5; SHAPE_SKINNED :: 6;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
@@ -156,14 +161,14 @@ KIT_AT :: SHAPE_OBJECTS;
 KIT_GROUPS :: KIT_MESHES - KIT_TREES;
 // The town's pieces' instances, a group each, from mesh 12 on.
 TOWN_CAP :: [71] int.[
-  260, 200, 20, 140, 220, 200, 8, 330, 20, 169,
-  16, 12, 760, 567, 100, 21, 14, 8, 16, 44,
-  68, 23, 51, 29, 34, 12, 35, 4, 9, 9,
-  11, 6, 6, 21, 12, 2, 40, 13, 8, 84,
-  0, 13, 8, 3, 3, 9, 0, 100, 0, 0, 80, 50, 4,
+  700, 472, 56, 342, 475, 349, 16, 751, 64, 441,
+  60, 12, 760, 567, 100, 21, 14, 8, 16, 44,
+  92, 23, 51, 29, 34, 12, 35, 4, 9, 9,
+  11, 6, 6, 21, 12, 2, 128, 13, 8, 84,
+  0, 13, 8, 3, 3, 9, 0, 172, 0, 0, 80, 50, 4,
   13, 12, 16, 21, 13, 7, 13, 15, 6, 16, 10, 5, 7, 64, 6, 7, 11, 5
 ];
-TOWN_OBJECTS :: 4119;     // the sum of TOWN_CAP
+TOWN_OBJECTS :: 6446;     // the sum of TOWN_CAP
 OBJECTS :: SHAPE_OBJECTS + KIT_FOREST * KIT_CAP + TOWN_OBJECTS + EDIT_OBJECTS + SP_DEBRIS_OBJECTS + WATCH_OBJECTS;   // and an admin's placed things (everglade-items.coax), the spells' debris, and the watch's swords and shields (everglade-watch.coax)
 RANGER_AT :: OBJECTS;     // you, the Ranger: one object after everything else
 REMOTE_AT :: OBJECTS + 1; // then the others in the room as Rangers, the same draw (everglade-rangers.coax)
@@ -292,7 +297,7 @@ BOARD_NEAR :: 3.0;        // metres from the quest board's middle that read it
 SAVE_BYTES :: 160;
 NEWS_TIME :: 4.0;         // seconds a quest's news shows over the hint
 
-WALLS :: 128;          // the player's walls (player.coax WALL numbers each)
+WALLS :: 256;          // the player's walls (player.coax WALL numbers each)
 // The player's round bodies (player.coax BODY numbers each): the fountain's basin, then the
 // bridge's six piles, which stand in a swimmer's way and not a walker's on the deck above them.
 BODIES :: 7;
@@ -304,14 +309,15 @@ TRUNK_RADIUS :: [4] f32.[0.36, 0.36, 0.48, 0.52];   // Pine_5, Pine_4, CommonTre
 ROCK_SHAPE :: [8] f32.[-0.11, 0.34, 1.40, 1.99,   -0.15, 0.08, 1.30, 1.85];   // Rock_Medium_1, _2: middle x, z, girth, top
 // The thicket at the world's edge: two rows of brush (thicket_brush, worked out where it's
 // needed, not kept) and a row of close-set trees behind (plant_thicket, among the trees).
-THICKET_ROW :: 160;    // brush a row a side, 1.3 m apart
+THICKET_ROW :: 272;    // brush a row a side, 1.3 m apart
 THICKET_BRUSH :: 4 * 2 * THICKET_ROW;
+THICKET_TREES :: 141;  // and its trees a side, 2.5 m apart
 THICKET_NEAR :: 22.0;  // metres: its brush nearer than this is drawn, the nearest first
 FOUNTAIN_RADIUS :: 3.32;   // the plinth's (everglade.wgsl lathe_point's basin)
-BOXES :: 128;          // the camera's boxes (camera.coax BOX numbers each)
-TREES :: 1500;         // the forest: x, z, size, yaw, kind each
+BOXES :: 256;          // the camera's boxes (camera.coax BOX numbers each)
+TREES :: 3400;         // the forest: x, z, size, yaw, kind each
 TREE_FLOATS :: 5;
-SMALLS :: 900;         // the undergrowth along the tree line: the same five numbers
+SMALLS :: 1800;        // the undergrowth along the tree line: the same five numbers
 TREE_SPACING :: 4.2;   // metres between trees, before a jitter
 KIT_NEAR :: 55.0;      // a tree nearer than this (and in view) may be the kit's
 KIT_NEAR_PHONE :: 42.0;
@@ -522,7 +528,7 @@ everglade_water :: (s: [] Everglade, medium: int, feet: f32, breath: f32, gasps:
   s[0].swim_feet = ifx finite(feet) then feet else 0.0f32;
   s[0].breath = ifx finite(breath) then clamp(breath, 0, 1) else 1.0f32;
   s[0].gasps = hi_i(gasps, 0);
-  s[0].water_vertices = clamp_i(vertices, 0, 1024); s[0].water_patches = clamp_i(patches, 0, 64);
+  s[0].water_vertices = clamp_i(vertices, 0, 1024); s[0].water_patches = clamp_i(patches, 0, 128);
   n := clamp_i(float_n, 0, FLOATS);
   if floats.count < n * FLOAT_FLOATS { n = floats.count / FLOAT_FLOATS; }
   for i: 0..<n * FLOAT_FLOATS { s[0].floats[i] = floats[i]; }
@@ -712,16 +718,43 @@ off_solids :: (solids: [] f32, count: int, x: f32, z: f32, gap: f32) -> bool {
   for k: 0..<count - 4 { if box_gap(solids, k, x, z) < gap { return false; } }
   return true;
 }
+// Whether a tree at (x, z) is one of the great lawn's.
+park_tree :: (x: f32, z: f32) -> bool {
+  for t: 0..<EG_PARK_TREES { if EG_PARK_TREE[t * 4] == x && EG_PARK_TREE[t * 4 + 1] == z { return true; } }
+  return false;
+}
 put_tree :: (out: [] f32, n: int, x: f32, z: f32, size: f32, yaw: f32, kind: int) {
   o := n * TREE_FLOATS;
   out[o] = x; out[o + 1] = z; out[o + 2] = size; out[o + 3] = yaw; out[o + 4] = f32(kind);
 }
+// The solids that reach out toward the woods (a box wholly inside the town more than 3 m from its
+// edge can't be near a tree), then the world's four edges as everglade_solids ends them (off_solids skips those).
+woods_solids :: (out: [] f32) -> int {
+  all: [EG_SOLIDS * EG_BOX] f32;
+  n := everglade_solids(all[..]);
+  m := 0;
+  for k: 0..<n {
+    o := k * EG_BOX;
+    edge := k >= n - 4;
+    near := edge;
+    for c: 0..<4 {
+      x := all[o + (c % 2) * 2] + ifx c % 2 == 0 then -3.0f32 else 3.0f32;
+      z := all[o + 1 + (c / 2) * 2] + ifx c / 2 == 0 then -3.0f32 else 3.0f32;
+      if !everglade_in_town(x, z) { near = true; }
+    }
+    if !near { continue; }
+    for f: 0..<EG_BOX { out[m * EG_BOX + f] = all[o + f]; }
+    m += 1;
+  }
+  return m;
+}
 plant_forest :: (s: [] Everglade) {
   seed := 12345;
   solids: [EG_SOLIDS * EG_BOX] f32;
-  count := everglade_solids(solids[..]);
+  count := woods_solids(solids[..]);
   n := 0;
-  cells := cast(int) (200.0 / f32(TREE_SPACING));
+  side := 2 * f32(EG_BOUND);
+  cells := cast(int) (side / f32(TREE_SPACING));
   for j: 0..<cells + 1 {
     for i: 0..<cells + 1 {
       seed = next_seed(seed); jx := rand01(seed);
@@ -729,27 +762,34 @@ plant_forest :: (s: [] Everglade) {
       seed = next_seed(seed); size := 0.75 + rand01(seed) * 0.5;
       seed = next_seed(seed); yaw := rand01(seed) * f32(TAU);
       seed = next_seed(seed); kind := cast(int) (rand01(seed) * f32(KIT_TREES)) % KIT_TREES;
-      x := -100 + (f32(i) + 0.2 + jx * 0.6) * f32(TREE_SPACING);
-      z := -100 + (f32(j) + 0.2 + jz * 0.6) * f32(TREE_SPACING);
-      if n >= TREES || abs(x) > 99.5 || abs(z) > 99.5 { continue; }
+      x := -f32(EG_BOUND) + (f32(i) + 0.2 + jx * 0.6) * f32(TREE_SPACING);
+      z := -f32(EG_BOUND) + (f32(j) + 0.2 + jz * 0.6) * f32(TREE_SPACING);
+      if n >= TREES || abs(x) > f32(EG_BOUND) - 0.5 || abs(z) > f32(EG_BOUND) - 0.5 { continue; }
       if !woods_all_round(x, z, 1.0) || !off_solids(solids[..], count, x, z, 1.5) || everglade_in_river(x, 1.5) { continue; }
       put_tree(s[0].trees[..], n, x, z, size, yaw, kind);
       n += 1;
     }
   }
+  // the great lawn's park trees (plan.coax EG_PARK_TREE), among the forest's
+  for t: 0..<EG_PARK_TREES {
+    if n >= TREES { break; }
+    seed = next_seed(seed); yaw := rand01(seed) * f32(TAU);
+    put_tree(s[0].trees[..], n, EG_PARK_TREE[t * 4], EG_PARK_TREE[t * 4 + 1], EG_PARK_TREE[t * 4 + 2], yaw, cast(int) EG_PARK_TREE[t * 4 + 3]);
+    n += 1;
+  }
   s[0].tree_n = n;
   m := 0;
   step := 2.6f32;
-  sides := cast(int) (200.0 / step);
+  sides := cast(int) (side / step);
   for j: 0..<sides + 1 {
     for i: 0..<sides + 1 {
       seed = next_seed(seed); jx := rand01(seed);
       seed = next_seed(seed); jz := rand01(seed);
       seed = next_seed(seed); pick := rand01(seed);
       seed = next_seed(seed); yaw := rand01(seed) * f32(TAU);
-      x := -100 + (f32(i) + 0.5 + (jx - 0.5) * 0.7) * step;
-      z := -100 + (f32(j) + 0.5 + (jz - 0.5) * 0.7) * step;
-      if m >= SMALLS || abs(x) > 99.5 || abs(z) > 99.5 { continue; }
+      x := -f32(EG_BOUND) + (f32(i) + 0.5 + (jx - 0.5) * 0.7) * step;
+      z := -f32(EG_BOUND) + (f32(j) + 0.5 + (jz - 0.5) * 0.7) * step;
+      if m >= SMALLS || abs(x) > f32(EG_BOUND) - 0.5 || abs(z) > f32(EG_BOUND) - 0.5 { continue; }
       if !woods_all_round(x, z, 0.8) || !off_solids(solids[..], count, x, z, 1.0) || everglade_in_river(x, 0.6) { continue; }
       // only along the tree line: open ground within a few metres
       edge := !everglade_in_woods(x + 3.5, z) || !everglade_in_woods(x - 3.5, z) || !everglade_in_woods(x, z + 3.5) || !everglade_in_woods(x, z - 3.5);
@@ -773,7 +813,7 @@ thicket_brush :: (k: int) -> Brush {
   seed := next_seed(next_seed(k * 7919 + 7177)); ja := rand01(seed);
   seed = next_seed(seed); jb := rand01(seed);
   seed = next_seed(seed); out.yaw = rand01(seed) * f32(TAU);
-  along := -103.5 + (f32(i) + ifx row == 1 then 0.5f32 else 0.0f32) * 1.3;
+  along := -(f32(EG_THICKET) + 4.2) + (f32(i) + ifx row == 1 then 0.5f32 else 0.0f32) * 1.3;
   d := f32(EG_THICKET) + f32(row) * 1.2 + (ja - 0.5) * 0.3;
   out.x = ifx side < 2 then along else ifx side == 2 then -d else d;
   out.z = ifx side >= 2 then along else ifx side == 0 then -d else d;
@@ -787,11 +827,11 @@ plant_thicket :: (s: [] Everglade) {
   seed := 7177;
   n := s[0].tree_n;
   for side: 0..<4 {
-    for i: 0..<83 {
+    for i: 0..<THICKET_TREES {
       seed = next_seed(seed); ja := rand01(seed);
       seed = next_seed(seed); jb := rand01(seed);
       seed = next_seed(seed); yaw := rand01(seed) * f32(TAU);
-      along := -103.5 + f32(i) * 2.5;
+      along := -(f32(EG_THICKET) + 4.2) + f32(i) * 2.5;
       d := f32(EG_THICKET) + 2.4 + (ja - 0.5) * 0.3;
       x := ifx side < 2 then along else ifx side == 2 then -d else d;
       z := ifx side >= 2 then along else ifx side == 0 then -d else d;
@@ -1792,7 +1832,7 @@ city :: (s: [] Everglade, u: [] f32) {
     if i <= EG_CRYPT && s[0].pack_ready { continue; }   // the waystone and the pillars are the kit's stone (landmarks), the crypt its brick (crypt)
     block(s, LOOK_STONE, x0, z0, x1, z1, h, 0.6, 0.6, 0.58);
   }
-  if s[0].pack_ready { crypt_stone(s); }
+  if s[0].pack_ready { crypt_stone(s); dhouse_halls(s); }
   // The bridge: a timber deck of planks where you walk over the river (its walkable rectangle is
   // plan.coax's EG_BRIDGE), with a rail of posts and two bars along each side, four beams under the
   // deck, and two rows of piles in the stream under a cap beam; the middle pile of each row is the
@@ -2027,6 +2067,94 @@ building :: (s: [] Everglade, b: int) {
   }
 }
 
+// A house of the districts (plan.coax EG_DHOUSE, wave 1) from the same 2 m modules: one storey, or
+// two when it is 8 m tall or more, plaster or brick, its door in the module nearest the plan's door
+// spot, a window in every other module, a post at each corner, the roof and the gables. It is shut:
+// its door (everglade-doors.coax DOOR_DHOUSE + h) opens on a dark hall (city), as the crypt's does.
+DHouseDoor :: struct { side: int; along: f32; }
+dhouse_door :: (h: int) -> DHouseDoor {
+  k := h * EG_BOX;
+  x0 := EG_DHOUSE[k]; z0 := EG_DHOUSE[k + 1]; x1 := EG_DHOUSE[k + 2]; z1 := EG_DHOUSE[k + 3];
+  dx := EG_DHOUSE_DOOR[h * 2]; dz := EG_DHOUSE_DOOR[h * 2 + 1];
+  d: DHouseDoor;
+  d.side = ifx dz < z0 then 0 else ifx dz > z1 then 1 else ifx dx < x0 then 2 else 3;
+  lo_end := ifx d.side < 2 then x0 else z0; hi_end := ifx d.side < 2 then x1 else z1;
+  at := ifx d.side < 2 then dx else dz;
+  // the module whose middle is nearest the spot (the lower on a tie)
+  modules := cast(int) ((hi_end - lo_end) / f32(EG_MODULE) + 0.5);
+  i := hi_i(lo_i(cast(int) floor((at - lo_end) / f32(EG_MODULE) - 0.001), modules - 1), 0);
+  d.along = lo_end + (f32(i) + 0.5) * f32(EG_MODULE);
+  return d;
+}
+dhouse :: (s: [] Everglade, h: int) {
+  k := h * EG_BOX;
+  x0 := EG_DHOUSE[k]; z0 := EG_DHOUSE[k + 1]; x1 := EG_DHOUSE[k + 2]; z1 := EG_DHOUSE[k + 3];
+  g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
+  n := ifx EG_DHOUSE[k + 4] >= 8 then 2 else 1;
+  stone := EG_DHOUSE_STONE[h];
+  door := dhouse_door(h);
+  tint := EG_BUILDINGS + h;   // the paint's and the dressing's number, past the old town's
+  for w: 0..<4 {
+    q := side_of(x0, z0, x1, z1, w);
+    reach_m := abs(q.bx - q.ax) + abs(q.bz - q.az);
+    modules := cast(int) (reach_m / f32(EG_MODULE) + 0.5);
+    ux := (q.bx - q.ax) / reach_m; uz := (q.bz - q.az) / reach_m;
+    for i: 0..<modules {
+      t := (f32(i) + 0.5) * f32(EG_MODULE);
+      cx := q.ax + ux * t - q.nx * f32(WALL_FACE); cz := q.az + uz * t - q.nz * f32(WALL_FACE);
+      along := ifx w < 2 then q.ax + ux * t else q.az + uz * t;
+      for f: 0..<n {
+        y := g + f32(f) * f32(STOREY);
+        is_door := f == 0 && w == door.side && abs(along - door.along) < 0.01;
+        window := (i % 2 == 1) && i != modules - 1 && !is_door;
+        m := 0;
+        if is_door { m = ifx stone then M_BRICK_DOOR else M_PLASTER_DOOR; }
+        else if window { m = ifx stone then M_BRICK_WINDOW else M_PLASTER_WINDOW; }
+        else if f > 0 && !stone { m = M_PLASTER_GRID; }
+        else { m = ifx stone then M_BRICK else M_PLASTER; }
+        if !stone { house_tint(s, PLASTER_TINTS, tint, 0); }
+        piece(s, m, cx, y, cz, q.yaw, 1, 1, 1);
+        s[0].kit_tint[0] = 0;
+        if window { piece(s, M_WINDOW, cx, y, cz, q.yaw, 1, 1, 1); }
+        if f == 0 && window && w == door.side { window_box(s, tint, w, i, cx, y, cz, q.nx, q.nz, q.yaw); }
+        if is_door { door_hang(s, DOOR_DHOUSE + h, cx - ux * 0.53, y, cz - uz * 0.53, ux, uz, -q.nx, -q.nz, cx, cz, false); }
+      }
+    }
+    far := w == 1 || w == 2;
+    px := ifx far then q.bx else q.ax; pz := ifx far then q.bz else q.az;
+    for f: 0..<n { piece(s, M_CORNER, px, g + f32(f) * f32(STOREY), pz, 0, 1.6, 1, 1.6); }
+  }
+  top := g + f32(n) * f32(STOREY);
+  w := x1 - x0; d := z1 - z0;
+  long_z := d >= w;
+  span := ifx long_z then w else d;
+  run := ifx long_z then d else w;
+  sx := (span + 0.8) / 8.24; sz := (run + 0.8) / 9.68; sy := sx * 0.85;
+  house_tint(s, ROOF_TINTS, tint, 1);
+  piece(s, M_ROOF, (x0 + x1) / 2, top + 0.78 * sy, (z0 + z1) / 2, ifx long_z then 0.0f32 else f32(PI) / 2, sx, sy, sz);
+  s[0].kit_tint[0] = 0;
+  gx := span / 6.7; gy := 5.4 * sy / 4.38;
+  for e: 0..<2 {
+    w2 := ifx long_z then e else 2 + e;
+    q := side_of(x0, z0, x1, z1, w2);
+    piece(s, M_GABLE, (q.ax + q.bx) / 2 - q.nx * f32(WALL_FACE), top, (q.az + q.bz) / 2 - q.nz * f32(WALL_FACE), q.yaw, gx, gy, 1);
+  }
+}
+// The dark hall behind each district door that stands open (the house has no room yet).
+dhouse_halls :: (s: [] Everglade) {
+  for h: 0..<EG_DHOUSES {
+    d := s[0].doors.d[DOOR_DHOUSE + h];
+    if !d.live || d.t <= 0 { continue; }
+    k := h * EG_BOX;
+    dd := dhouse_door(h);
+    q := side_of(EG_DHOUSE[k], EG_DHOUSE[k + 1], EG_DHOUSE[k + 2], EG_DHOUSE[k + 3], dd.side);
+    g := ground_at(s, d.mx, d.mz);
+    inset := 0.7f32;
+    wide := ifx dd.side < 2 then 1.9f32 else 0.9f32; deep := ifx dd.side < 2 then 0.9f32 else 1.9f32;
+    shape(s, SHAPE_BOX, LOOK_MATTE, v3(d.mx - q.nx * inset, g + 1.25, d.mz - q.nz * inset), 0, 0, wide, 2.5, deep, 0.03, 0.025, 0.02);
+  }
+}
+
 // A walk-in building's floor, and what's in it: a frame whose u runs
 // along the door's wall and v from it into the room.
 Room :: struct { fx: f32; fz: f32; ux: f32; uz: f32; vx: f32; vz: f32; width: f32; depth: f32; y: f32; face: f32; }
@@ -2197,6 +2325,7 @@ build_town :: (s: [] Everglade) {
     building(s, b);
     if EG_INTERIOR[b] { furnish(s, b); }
   }
+  for h: 0..<EG_DHOUSES { dhouse(s, h); }
   chimneys(s);
   stalls(s);
   bridge(s);
@@ -3186,16 +3315,65 @@ camera_frame :: (s: [] Everglade, feet: Point, vx: f32, vz: f32, dt: f32) -> Sho
   return Shot.{eye = mix(shot.eye, high.eye, t), at = mix(shot.at, high.at, t)};
 }
 
-paths :: (u: [] f32) {
-  n := 0;
+// The solids the grass and the rain read past the old town's buildings: the nearest SOLIDS -
+// EG_BUILDINGS of the districts' houses and the props, the houses first.
+NEAR_SOLIDS :: EG_DHOUSES + EG_PROPS;
+near_solids :: (u: [] f32, eye: Point) {
+  N := NEAR_SOLIDS;
+  gap: [NEAR_SOLIDS] f32; take: [NEAR_SOLIDS] bool;
+  dh := EG_DHOUSE; pr := EG_PROP;
+  for i: 0..<N {
+    take[i] = false;
+    gap[i] = ifx i < EG_DHOUSES then box_gap(dh[..], i, eye.x, eye.z) else box_gap(pr[..], i - EG_DHOUSES, eye.x, eye.z);
+  }
+  room := SOLIDS - EG_BUILDINGS;
+  for n: 0..<lo_i(room, N) {
+    best := -1;
+    for i: 0..<N { if !take[i] && (best < 0 || gap[i] < gap[best]) { best = i; } }
+    take[best] = true;
+  }
+  at := EG_BUILDINGS;
+  for i: 0..<N {
+    if !take[i] || i >= EG_DHOUSES { continue; }
+    for k: 0..<4 { u[U_SOLID + at * 4 + k] = EG_DHOUSE[i * EG_BOX + k]; }
+    at += 1;
+  }
+  u[U_WEATHER + 11] = f32(at);
+  for i: EG_DHOUSES..<N {
+    if !take[i] { continue; }
+    for k: 0..<4 { u[U_SOLID + at * 4 + k] = EG_PROP[(i - EG_DHOUSES) * EG_BOX + k]; }
+    at += 1;
+  }
+}
+
+// The streets: the PATHS links nearest the eye in the first block, the rest in the second.
+link_gap :: (i: int, x: f32, z: f32) -> f32 {
+  a := EG_LINK_AB[i * 2]; b := EG_LINK_AB[i * 2 + 1];
+  ax := EG_NODE_XZ[a * 2]; az := EG_NODE_XZ[a * 2 + 1];
+  dx := EG_NODE_XZ[b * 2] - ax; dz := EG_NODE_XZ[b * 2 + 1] - az;
+  t := clamp(((x - ax) * dx + (z - az) * dz) / hi(dx * dx + dz * dz, 0.0001), 0, 1);
+  ex := x - ax - dx * t; ez := z - az - dz * t;
+  return ex * ex + ez * ez;
+}
+paths :: (u: [] f32, eye: Point) {
+  gap: [EG_LINKS] f32; near: [EG_LINKS] bool;
+  for i: 0..<EG_LINKS { gap[i] = link_gap(i, eye.x, eye.z); near[i] = false; }
+  for n: 0..<lo_i(PATHS, EG_LINKS) {
+    best := -1;
+    for i: 0..<EG_LINKS { if !near[i] && (best < 0 || gap[i] < gap[best]) { best = i; } }
+    near[best] = true;
+  }
+  n := 0; m := 0;
   for i: 0..<EG_LINKS {
-    if n >= PATHS { break; }
     a := EG_LINK_AB[i * 2]; b := EG_LINK_AB[i * 2 + 1];
-    k := U_PATH + n * 4;
+    k := 0;
+    if near[i] { k = U_PATH + n * 4; n += 1; }
+    else if m < PATHS2 { k = U_PATH2 + 4 + m * 4; m += 1; }
+    else { continue; }
     u[k] = EG_NODE_XZ[a * 2]; u[k + 1] = EG_NODE_XZ[a * 2 + 1]; u[k + 2] = EG_NODE_XZ[b * 2]; u[k + 3] = EG_NODE_XZ[b * 2 + 1];
-    n += 1;
   }
   u[U_PATH_INFO] = f32(n); u[U_PATH_INFO + 1] = f32(EG_PATH_HALF);
+  u[U_PATH2] = f32(m);
   for i: 0..<EG_SQUARES {
     if i >= SQUARES { break; }
     k := U_SQUARE + i * 4;
@@ -3895,7 +4073,9 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // none from above (the map) or before the pack (the scene's groups) is in
   for k: 0..<SOLIDS * 4 { u[U_SOLID + k] = 0; }
   for b: 0..<EG_BUILDINGS { for k: 0..<4 { u[U_SOLID + b * 4 + k] = ifx eg_hidden(s[0].ev.edits, b) then 9000.0f32 else EG_BUILDING[b * EG_BOX + k]; } }
-  for i: 0..<EG_PROPS { for k: 0..<4 { u[U_SOLID + (EG_BUILDINGS + i) * 4 + k] = EG_PROP[i * EG_BOX + k]; } }
+  // then the nearest of the districts' houses and the props, the houses first (the rain's cover
+  // reads the buildings and the houses: weather u[U_WEATHER + 11])
+  near_solids(u, shot.eye);
   gr := u[STYLE_AT + SU_GRASS + 1];
   // the far field (4 r2 a density) and the near ring past it (style.coax verse_style_near_blades)
   reach := verse_style_near_reach(u[STYLE_AT + SU_STYLE + 2]);
@@ -3905,7 +4085,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   lamps(s, u, shot.eye, ifx phone(s) then LIGHTS_PHONE else LIGHTS);
   spells_lamps(s, u, ifx phone(s) then LIGHTS_PHONE else LIGHTS);   // the blasts' light, after the lamps
   u[U_GROUND] = f32(EG_CELLS); u[U_GROUND + 1] = f32(EG_CELL); u[U_GROUND + 2] = f32(EG_EDGE); u[U_GROUND + 3] = f32(EG_EDGE);
-  paths(u);
+  paths(u, shot.eye);
 
   s[0].near = ifx s[0].above || s[0].talk >= 0 || s[0].board then -1 else nearest(s, feet);
   // the quest board, when it is nearer than anyone
@@ -3960,9 +4140,9 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 // ---- checks
 
-#test "the uniforms and shape slots line up with everglade.wgsl's" #steps 337000000 {
+#test "the uniforms and shape slots line up with everglade.wgsl's" #steps 530000000 {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 760 && STYLE_AT == 1084 && U_SOLID == 1212 && U_LIGHT_INFO == 1340 && U_LIGHTS == 1344 && U_WEATHER == 1472 && U_PONDS == 1484 && U_FX == 1500 && U_TIDE == 1500 + 149 * 4 && U_MARKS == U_TIDE + 8 && UNIFORM_FLOATS == U_MARKS + MK_FLOATS;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 760 && STYLE_AT == 1084 && U_SOLID == 1212 && U_LIGHT_INFO == 1340 && U_LIGHTS == 1344 && U_WEATHER == 1472 && U_PONDS == 1484 && U_FX == 1500 && U_TIDE == 1500 + 149 * 4 && U_MARKS == U_TIDE + 8 && UNIFORM_FLOATS == U_PATH2 + 4 + PATHS2 * 4;
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }
@@ -3972,10 +4152,10 @@ everglade_store_cap :: (k: int) -> int #export_c {
   everglade_start(g[..]);
   #assert g[0].group_at[KIT_GROUPS - 1] + g[0].group_cap[KIT_GROUPS - 1] == OBJECTS;
   for k: 2..<5 { #assert SLOT_AT[k] == SLOT_AT[k - 1] + SLOTS[k - 1]; }
-  #assert EG_LINKS <= PATHS && EG_SQUARES <= SQUARES;
+  #assert EG_LINKS <= PATHS + PATHS2 && EG_SQUARES <= SQUARES && U_PATH2 == 2300 && UNIFORM_FLOATS == 2432;
 }
 
-#test "a frame draws the whole city within its slots, and you in front of the camera" #steps 350000000 {
+#test "a frame draws the whole city within its slots, and you in front of the camera" #steps 550000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -3991,8 +4171,8 @@ everglade_store_cap :: (k: int) -> int #export_c {
   for t: KIT_FOREST..<KIT_GROUPS { #assert g[0].kit_used[t] < g[0].group_cap[t]; }
   #assert g[0].kit_used[group_of(M_PLASTER)] + g[0].kit_used[group_of(M_BRICK)] > 150;
   #assert g[0].kit_used[group_of(M_LOG)] > 600 && g[0].kit_used[group_of(M_FLOOR_WOOD)] > 150;
-  #assert g[0].kit_used[group_of(M_ROOF)] == EG_BUILDINGS - 2 && g[0].kit_used[group_of(M_TOWER_ROOF)] == 9;
-  #assert g[0].kit_used[group_of(M_DOOR)] == EG_BUILDINGS + 1 && g[0].kit_used[group_of(M_STALL)] == 6;
+  #assert g[0].kit_used[group_of(M_ROOF)] == EG_BUILDINGS - 2 + EG_DHOUSES && g[0].kit_used[group_of(M_TOWER_ROOF)] == 9;
+  #assert g[0].kit_used[group_of(M_DOOR)] == EG_DOORS && g[0].kit_used[group_of(M_STALL)] == 6;
   #assert g[0].wall_n == EG_SOLIDS - 1 && g[0].box_n > EG_PALISADE_N + EG_BUILDINGS;
   p := [4] f32.[0, 1.6, -84, 1];
   cw := 0.0f32; cx := 0.0f32; cy := 0.0f32;
@@ -4000,16 +4180,17 @@ everglade_store_cap :: (k: int) -> int #export_c {
   #assert cw > 0 && abs(cx / cw) < 1 && abs(cy / cw) < 1;
 }
 
-#test "the trees fill the woods: off the trails and out of the city, a metre clear of the open ground" #steps 438000000 {
+#test "the trees fill the woods: off the trails and out of the city, a metre clear of the open ground" #steps 690000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   nodes := EG_NODE_XZ; links := EG_LINK_AB;
   for t: 0..<g[0].tree_n {
     x := g[0].trees[t * TREE_FLOATS]; z := g[0].trees[t * TREE_FLOATS + 1];
     if abs(x) > f32(EG_THICKET) || abs(z) > f32(EG_THICKET) { continue; }   // the thicket's row, past the edge
+    if park_tree(x, z) { continue; }   // the great lawn's (plan.coax EG_PARK_TREE)
     #assert woods_all_round(x, z, 0.99) && everglade_in_woods(x + 0.7, z + 0.7) && everglade_in_woods(x - 0.7, z - 0.7);
     #assert verse_path_nearest(nodes[..], links[..], x, z).d >= f32(EG_TRAIL_FREE) + 0.7;
-    #assert !(x > -70 && x < 70 && z > -62 && z < 66);
+    #assert !everglade_in_town(x, z) || park_tree(x, z);
     k := cast(int) g[0].trees[t * TREE_FLOATS + 4];
     #assert k >= 0 && k < KIT_TREES;
   }
@@ -4020,9 +4201,9 @@ everglade_store_cap :: (k: int) -> int #export_c {
   }
   // Every 6 m square of deep woods (not near the open ground, nor the river) holds a tree.
   holes := 0; squares := 0;
-  for j: 0..<33 {
-    for i: 0..<33 {
-      x := -99 + f32(i) * 6; z := -99 + f32(j) * 6;
+  for j: 0..<56 {
+    for i: 0..<56 {
+      x := -f32(EG_BOUND) + f32(i) * 6; z := -f32(EG_BOUND) + f32(j) * 6;
       if !woods_all_round(x + 3, z + 3, 6) || (x + 7 > 84 && x - 1 < 92) { continue; }   // the river has no trees
       squares += 1;
       found := false;
@@ -4038,7 +4219,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 3474 0 0 0 0 1 8 1\nM Pine_4 4938 6480 0 0 0 0 1 9 1\nM Pine_4_Leaves 11418 3630 0 0 0 0 1 9 1 canopy ellipsoid 33 98 0\nM CommonTree_3 15048 5115 0 0 0 0 1 8 1\nM CommonTree_3_Leaves 20163 5400 0 0 0 0 1 9 1 canopy sphere 97 198 0\nM CommonTree_4 25563 9840 0 0 0 0 1 8 1\nM CommonTree_4_Leaves 35403 2358 0 0 0 0 1 9 1\nM Bush_Common_Flowers 37761 4104 0 0 0 0 1 1 1\nM Fern_1 40461 864 0 0 0 0 1 1 1\nM Rock_Medium_1 41325 1026 0 0 0 0 1 2 1\nM Rock_Medium_2 42351 732 0 0 0 0 1 2 1\nI 43083 1024\nC player/male-ranger 44107 94188 3 692676 27402 75\nC player/male-ranger.lod 407496 18834 3 692676 27402 75\nC people/male-peasant 246666 20058 4 911892 5751 65\nC people/male-ranger 266724 32610 4 946398 10887 65\nC people/male-hood 299334 3204 4 1011720 706 65\nC people/female-peasant 302538 19422 4 1015956 6185 65\nC people/female-ranger 321960 34032 4 1053066 11408 65\nC people/female-hood 355992 3204 4 1121514 706 65\nC people/male-head 359196 8268 4 1125750 1837 65\nC people/female-head 367464 9480 4 1136772 2058 65\nC people/hair-parted 376944 2337 4 1149120 496 65\nC people/hair-buzzed 379281 1494 4 1152096 300 65\nC people/hair-beard 380775 1860 4 1153896 389 65\nC people/hair-long 382635 8598 4 1156230 3060 65\nC people/hair-buns 391233 9732 4 1174590 3481 65\nC people/hair-buzzed-female 400965 1494 4 1195476 300 65\nC people/male-robe 402459 1920 5 1197276 360 65\nC people/female-robe 404379 1920 5 1199436 360 65\nT 0 layer29.jpg 0\n";
 
-#test "the pack's catalog: the kit's meshes by name and the shapes' identity indices; nothing draws before it" #steps 351000000 {
+#test "the pack's catalog: the kit's meshes by name and the shapes' identity indices; nothing draws before it" #steps 550000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4053,10 +4234,10 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   #assert abs(g[0].canopy_rgb[3] - 0.033) < 0.0001 && abs(g[0].canopy_rgb[4] - 0.098) < 0.0001 && g[0].canopy_rgb[5] == 0;
   #assert abs(g[0].canopy_rgb[7] - 0.198) < 0.0001 && g[0].canopy_rgb[0] == 0 && g[0].canopy_rgb[9] == 0;
   #assert g[0].ranger_first == 44107 && g[0].ranger_count == 94188 && g[0].ranger_word == 692676;
-  n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -150, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].draws[0] == 43083 && g[0].draws[5 * 4] == 0 && g[0].draws[5 * 4 + 1] == 1464;
-  // On the road in, the trees beside you are the kit's (the Reed Pond's clearing opens
-  // beside it), the shared trunk and leaves draws alike.
+  // On the road in through the woods, the trees beside you are the kit's, the shared trunk and
+  // leaves draws alike.
   used := 0;
   for k: 0..<KIT_TREES { used += g[0].kit_used[k]; }
   #assert used > 20;
@@ -4072,14 +4253,14 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   #assert !g[0].pack_failed;
 }
 // (its own check: two Everglades and a frame's vertices are over the compile-time storage cap)
-#test "the pack's catalog: a pack that fails before its catalog draws nothing" #steps 337000000 {
+#test "the pack's catalog: a pack that fails before its catalog draws nothing" #steps 530000000 {
   h: [1] Everglade;
   everglade_start(h[..]);
   everglade_pack_failed(h[..]);
   #assert h[0].pack_failed && everglade_draws(h[..]) == 0;
 }
 
-#test "you are the old Everglade's Ranger: one skinned draw, standing on the ground, facing your way" #steps 352000000 {
+#test "you are the old Everglade's Ranger: one skinned draw, standing on the ground, facing your way" #steps 550000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4114,7 +4295,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   n := everglade_frame(g, out, u, 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, act, 0, vz, false, 0, 0, 0, 0);
 }
 
-#test "on a still page the Ranger standing idle holds one pose, however long the page has run" #steps 813000000 {
+#test "on a still page the Ranger standing idle holds one pose, however long the page has run" #steps 1200000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4128,7 +4309,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   for i: 0..<12 * 8 { #assert g[0].palette[i] == a[i]; }
 }
 
-#test "the controller's state picks the clip: idle, walk, run, and jump in the air" #steps 382000000 {
+#test "the controller's state picks the clip: idle, walk, run, and jump in the air" #steps 590000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4176,7 +4357,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert worst < 0.001;
 }
 
-#test "the people: the catalog names their parts, and the nearest in view are drawn a part an instance, posed" #steps 367000000 {
+#test "the people: the catalog names their parts, and the nearest in view are drawn a part an instance, posed" #steps 570000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4206,7 +4387,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert WATER_DRAW == DRAWS - 1;
 }
 
-#test "a phone draws at most its cap of kit trees, however you look" #steps 429000000 {
+#test "a phone draws at most its cap of kit trees, however you look" #steps 670000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4238,7 +4419,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert g[0].water_triangles == 5760 && whole + g[0].water_triangles < 700000;
 }
 
-#test "the camera stays out of the trees: among them it pulls in before a trunk" #steps 459000000 {
+#test "the camera stays out of the trees: among them it pulls in before a trunk" #steps 720000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4257,7 +4438,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   }
 }
 
-#test "the woods are open and the world's edge is the thicket: a step stops only at EG_BOUND" #steps 490000000 {
+#test "the woods are open and the world's edge is the thicket: a step stops only at EG_BOUND" #steps 1700000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   // Straight out from the south wall, west of the gate, into the trees: nothing stops you.
@@ -4266,15 +4447,15 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   b := everglade_hold(g[..], -30, -80, -31, -81);
   #assert b.x == -31 && b.z == -81;
   // At the edge you slide along it.
-  c := everglade_hold(g[..], 99.9, 10, 100.4, 10.3);
-  #assert c.x == 100 && c.z == 10.3;
-  d := everglade_hold(g[..], -50, -99.9, -50.2, -100.5);
-  #assert d.x == -50.2 && d.z == -100;
+  c := everglade_hold(g[..], 167.9, 10, 168.4, 10.3);
+  #assert c.x == 168 && c.z == 10.3;
+  d := everglade_hold(g[..], -50, -167.9, -50.2, -168.5);
+  #assert d.x == -50.2 && d.z == -168;
   // The thicket stands all round, just past the edge: from every half metre along it, brush (or,
   // across the river, rock) reaches within a stride of the bound, and nothing of it stands inside.
   for side: 0..<4 {
-    for i: 0..<401 {
-      along := -100 + f32(i) * 0.5;
+    for i: 0..<673 {
+      along := -f32(EG_BOUND) + f32(i) * 0.5;
       bx := ifx side < 2 then along else ifx side == 2 then -f32(EG_BOUND) else f32(EG_BOUND);
       bz := ifx side >= 2 then along else ifx side == 0 then -f32(EG_BOUND) else f32(EG_BOUND);
       least := 1000.0f32;
@@ -4295,7 +4476,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
 
 // Full native integration scenario: aethyr/tests/check_native_gameplay.py.
 
-#test "the reach check: every open spot inside the edge is one you walk to" #steps 359000000 {
+#test "the reach check: every open spot inside the edge is one you walk to" #steps 590000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   everglade_catalog(g[..], CATALOG);
@@ -4309,7 +4490,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert reached(grid[..], 22, 95) && reached(grid[..], 66, 89.5) && reached(grid[..], 96, -16) && reached(grid[..], 95, 40);
 }
 
-#test "M lifts the camera over the city and back; you stand still meanwhile" #steps 467000000 {
+#test "M lifts the camera over the city and back; you stand still meanwhile" #steps 720000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4332,7 +4513,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   house_tint(g[..], PLASTER_TINTS, 2, 0);
   #assert a != g[0].kit_tint[1] && g[0].kit_tint[0] > 0.9;
 }
-#test "a hash names a place: you start on the street nearest it, facing it" #steps 337000000 {
+#test "a hash names a place: you start on the street nearest it, facing it" #steps 530000000 {
   g: [1] Everglade;
   everglade_hash(g[..], "market");
   #assert everglade_warp(g[..]) && !everglade_warp(g[..]);
@@ -4374,7 +4555,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   }
 }
 
-#test "a click on MAP lifts the camera; a drag elsewhere turns it" #steps 350000000 {
+#test "a click on MAP lifts the camera; a drag elsewhere turns it" #steps 550000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4395,7 +4576,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert where(v3(33, 0, 1)) == "THE MARKET" && where(v3(0, 0, -86)) == "THE ROAD IN";
 }
 
-#test "walk up to someone and press E: you type, they answer through the character chat, and E ends nothing else" #steps 369000000 {
+#test "walk up to someone and press E: you type, they answer through the character chat, and E ends nothing else" #steps 570000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4436,7 +4617,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert everglade_key(g[..], KEY_ESCAPE, 0) && g[0].talk == -1 && !everglade_busy(g[..]);
 }
 
-#test "what the keyboard field types reaches the conversation and is drawn in a box with a caret (host.js MSG_TEXT)" #steps 370000000 {
+#test "what the keyboard field types reaches the conversation and is drawn in a box with a caret (host.js MSG_TEXT)" #steps 570000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4473,7 +4654,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   }
 }
 
-#test "#quest-board starts you at the board, near enough to read it" #steps 350000000 {
+#test "#quest-board starts you at the board, near enough to read it" #steps 550000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4486,7 +4667,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert !everglade_key(g[..], 'b', 0) && !everglade_key(g[..], 'B', 0);
 }
 
-#test "a phone taps TALK and BYE; a cat answers as a cat when the server can't; an unanswered question is given up" #steps 364000000 {
+#test "a phone taps TALK and BYE; a cat answers as a cat when the server can't; an unanswered question is given up" #steps 570000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4518,7 +4699,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert everglade_action(g[..]) == ACT_PLAYER && cast(string) g[0].outbox[0..<g[0].out_n] == "{\"key\":\"k\",\"id\":\"p-2\"}";
 }
 
-#test "the quest board: take a quest, go out to the deep wood, talk to Moss, hand it in; it's kept for this player" #steps 392000000 {
+#test "the quest board: take a quest, go out to the deep wood, talk to Moss, hand it in; it's kept for this player" #steps 610000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4544,10 +4725,10 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert everglade_key(g[..], KEY_ESCAPE, 0) && !g[0].board && !everglade_busy(g[..]);
   #assert follow(g[..]) == 0 && news_line(g[..]) == "QUEST TAKEN · GO OUT BY THE EAST GATE TO THE DEEP WOOD";
   // the deep wood: the next step
-  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, -92, 0, 25, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, -150, 0, 25, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].stages[0] == 2 && news_line(g[..]) == "NEXT · TALK TO MOSS BY THE WAYSTONE";
   // Moss says what the quest brought you for, and is told of it
-  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, -88, 0, 19.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
+  n = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, -146, 0, 19.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].near == 19 && everglade_key(g[..], 'e', 0) && g[0].talk == 19 && g[0].stages[0] == 3;
   #assert line_of(g[..], 0) == EG_QUEST_ARRIVE[0];
   for c: "Are you well?" { #assert everglade_key(g[..], cast(int) c, 0); }
@@ -4578,7 +4759,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert everglade_pointer(g[..], cb.x0 + 2, cb.y0 + 2, 0, 1, 5) && everglade_pointer(g[..], cb.x0 + 2, cb.y0 + 2, 2, 1, 5) && !g[0].board;
 }
 
-#test "the river quest earns the flock, handed in to the crier; a save comes back for its player only" #steps 538000000 {
+#test "the river quest earns the flock, handed in to the crier; a save comes back for its player only" #steps 820000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4614,7 +4795,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
 // (its own test: three Everglades in one test outgrow the compile-time store)
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "a conversation keeps its last lines, oldest dropped" #steps 337000000 {
+#test "a conversation keeps its last lines, oldest dropped" #steps 530000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   talk_to(g[..], 11);
@@ -4627,7 +4808,7 @@ contains :: (text: string, part: string) -> bool {
   for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
   return false;
 }
-#test "the painterly day: the page's clock picks the preset, its key lights the realm, a still page shows noon" #steps 350000000 {
+#test "the painterly day: the page's clock picks the preset, its key lights the realm, a still page shows noon" #steps 550000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;

@@ -632,7 +632,7 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
   for q: 0..<t.count { h[q] = t[q]; }
   #assert e5_hash(v[..], h[..], t.count) == 4 && v[0].force == E5_FORCE_HELD + E5_FORCE_SLOW;
 }
-#test "Everglade 5E: EDIT is Aethyrforge's panels alone, the frame rate and the rest gone" #steps 337000000 {
+#test "Everglade 5E: EDIT is Aethyrforge's panels alone, the frame rate and the rest gone" #steps 530000000 {
   s: [1] Everglade; v: [1] E5;
   everglade_start(s[..]);
   s[0].width = 1600; s[0].height = 900; s[0].dpr = 1;
