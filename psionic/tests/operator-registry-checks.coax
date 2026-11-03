@@ -5,12 +5,12 @@
 
 orc_text :: (t:string)->[48]u8 {out:[48]u8;for i:0..<t.count {out[i]=t[i];}return out;}
 // A registry whose one schema has the given name.
-orc_registry :: (name:string)->OrRegistry {return or_register(or_empty([4]u64.[1,0,0,0]),or_schema(name,"entry").schema,[4]u64.[2,0,0,0]).registry;}
+orc_registry :: (name:string)->OrRegistry {none:[4]u64;return or_register(or_empty(none),or_schema(name,"entry").schema,none).registry;}
 // An input of `shape` and registered operator `id` over it.
 orc_plan :: (shape:TvShape,id:int,backward:bool)->TiPlan {
-    p:TiProgram;p.count=2;p.output=1;p.nodes[0]=ti_input(shape,0);p.nodes[1]=or_node(id,0,0,backward,1);return ti_compile(p,TiTarget.{},true);
+    return ti_compile(tihc_one(shape,or_node(id,0,0,backward,1)),TiTarget.{},true);
 }
-orc_put :: (bytes:[]u8,at:int,value:u64)->int {v:=value;for k:0..<8 {bytes[at+k]=cast,trunc(u8)(v%256);v/=256;}return at+8;}
+orc_put :: (bytes:[]u8,at:int,value:u64)->int {word:[8]u8;v:=value;for k:0..<word.count {word[k]=cast,trunc(u8)(v%256);v/=256;}for k:0..<word.count {bytes[at+k]=word[k];}return at+word.count;}
 // The compiler words; then per schema the name and entry bytes interleaved,
 // eight integer fields and the four code words.
 orc_fingerprint :: (r:OrRegistry)->[4]u64 {
@@ -23,5 +23,7 @@ orc_fingerprint :: (r:OrRegistry)->[4]u64 {
         at=orc_put(bytes[..],at,cast(u64)s.name_count);at=orc_put(bytes[..],at,cast(u64)s.entry_count);
         for w:r.code[i] {at=orc_put(bytes[..],at,w);}
     }
+    // Nothing was written past the end.
+    for k:at..<bytes.count {#assert bytes[k]==0;}
     return ti_identity_words(bytes[0..<at]);
 }

@@ -6,10 +6,8 @@
 tpc_four :: ()->TvShape {return TvShape.{rank=1,dims=[4]int.[4,0,0,0]};}
 // Session 3 on the CPU with a 4096-byte budget and nothing allocated.
 tpc_session :: ()->TdSessionState {return td_session(3,TdDevice.cpu,4096,true,true).state;}
-// Allocation 7 of four f32 values, finished without a fault: 160 resident bytes.
-tpc_ready :: ()->TdChange {
-    c:=td_commit(tpc_session(),tpc_four(),TdDtype.f32,0,7);flags:[4]u8;return td_finish(c.session,c.state,flags[..],TdStatus.ok);
-}
-// The same allocation still pending, with 32 temporary bytes.
+// Allocation 7 of four f32 values, still pending, with 32 temporary bytes.
 tpc_pending :: ()->TdChange {return td_commit(tpc_session(),tpc_four(),TdDtype.f32,32,7);}
+// The same allocation finished without a fault: 160 resident bytes.
+tpc_ready :: ()->TdChange {c:=tpc_pending();flags:[4]u8;return td_finish(c.session,c.state,flags[..],TdStatus.ok);}
 tpc_view :: (r:TdChange)->TvView {return tv_contiguous(r.state.owner,tpc_four(),false).view;}

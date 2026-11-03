@@ -106,6 +106,8 @@ TiResult :: struct {status:TiStatus;written:int;workspace:int;}
 }
 #test "node count, output and budget limits admit their last value and refuse the next" {
     #assert ti_compile(tic_chain(1),TiTarget.{},true).status==TiStatus.ok && ti_compile(tic_chain(32),TiTarget.{},true).status==TiStatus.ok;
+    // The chain publishes its last ReLU from input elements starting at zero.
+    chain:=ti_compile(tic_chain(32),TiTarget.{},true);#assert chain.launches==32 && ti_lower(chain,31).meta[8]==1 && chain.values[0].base==0;
     p:=tic_chain(1);p.count=0;p.output=-1;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.capacity;
     p=ti_fixture();p.output=-1;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.capacity;
     p.output=10;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.capacity;
@@ -180,7 +182,7 @@ TiResult :: struct {status:TiStatus;written:int;workspace:int;}
     plan:=ti_compile(p,TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.work==TV_LIMIT && plan.naive==2;
     p.count=4;p.output=3;p.nodes[3]=TiNode.{op=TiOp.add,a=1,b=2};#assert ti_compile(p,TiTarget.{},true).status==TiStatus.limit;
     // Fresh values plus the output's staging copy.
-    plan=ti_compile(tic_pair(TV_LIMIT-4,2),TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.naive==TV_LIMIT-2 && plan.output_elements==2 && plan.flag_elements==TV_LIMIT && plan.input_elements==TV_LIMIT-2;
+    plan=ti_compile(tic_pair(TV_LIMIT-4,2),TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.naive==TV_LIMIT-2 && plan.output_elements==2 && plan.flag_elements==TV_LIMIT && plan.input_elements==TV_LIMIT-2 && plan.values[0].base==0;
     #assert ti_compile(tic_pair(TV_LIMIT-1,1),TiTarget.{},true).status==TiStatus.limit;
 }
 #test "the feed-forward fixture lowers every word of every launch" {
@@ -211,14 +213,14 @@ TiResult :: struct {status:TiStatus;written:int;workspace:int;}
 }
 #test "slots go to the smallest free fit, the first on a tie" {
     p:=tic_reuse();plan:=ti_compile(p,TiTarget.{},true);
-    #assert plan.status==TiStatus.ok && plan.slot_count==3 && plan.workspace==20 && plan.naive==40;
+    #assert plan.status==TiStatus.ok && plan.slot_count==3 && plan.workspace==20 && plan.naive==40 && plan.values[0].base==0;
     base:=[7]int.[0,0,4,12,0,4,12];last:=[7]int.[5,3,3,4,6,6,7];
     for i:0..<7 {#assert plan.last[i]==last[i];if i>0 {#assert plan.values[i].base==base[i];}}
     fresh:=ti_compile(p,TiTarget.{},false);#assert fresh.workspace==40 && fresh.slot_count==6 && fresh.values[6].base==32;
 }
 #test "views read their root's slot at their own offset" {
     plan:=ti_compile(tic_viewed(),TiTarget.{},true);z:[11]int;
-    #assert plan.status==TiStatus.ok && plan.workspace==27 && plan.naive==31 && plan.slot_count==4;
+    #assert plan.status==TiStatus.ok && plan.workspace==27 && plan.naive==31 && plan.slot_count==4 && plan.values[0].base==0;
     base:=[8]int.[0,0,8,8,8,16,24,8];last:=[8]int.[2,7,6,3,4,7,6,8];
     for i:0..<8 {#assert plan.last[i]==last[i];if i>0 {#assert plan.values[i].base==base[i];}}
     #assert tic_plain(ti_lower(plan,2),[8]int.[4,16,16,2,4,2,0,0],[11]int.[1,8,2,4,2,0,0,1,4,0,0],z,0,0);
@@ -258,6 +260,14 @@ TiResult :: struct {status:TiStatus;written:int;workspace:int;}
     for n:[2]int.[1,32] {c:=tic_chain(n);plan=ti_compile(c,t,true);#assert plan.status==TiStatus.ok && ti_cache_matches(plan,c,t);}
     // A plan forged with an impossible node count never matches, and never reads past the nodes.
     for n:[2]int.[0,33] {forged=ti_compile(ti_fixture(),t,true);forged.program.count=n;q=ti_fixture();q.count=n;#assert !ti_cache_matches(forged,q,t);}
+}
+
+#test "the launch comparison notices any changed word" {
+    plan:=ti_compile(tic_gathered(),TiTarget.{},true);l:=ti_lower(plan,1);
+    head:=[8]int.[9,3,3,3,2,3,5,0];a:=[11]int.[0,1,3,2,3,4,0,12,4,1,0];z:[11]int;idx:=[16]int.[3,0,2,1,3,0,0,0,0,0,0,0,0,0,0,0];pool:[3]int;
+    #assert tic_launch(l,head,a,z,0,2,idx,5,pool);
+    for k:0..<64 {m:=l;m.meta[k]+=1;#assert !tic_launch(m,head,a,z,0,2,idx,5,pool);}
+    bad:=l;bad.status=TiStatus.state;#assert !tic_launch(bad,head,a,z,0,2,idx,5,pool);
 }
 
 ti_input :: (shape:TvShape,base:int)->TiNode #export_c {

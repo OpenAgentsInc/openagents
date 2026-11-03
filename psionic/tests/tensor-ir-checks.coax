@@ -47,14 +47,14 @@ tic_gathered :: ()->TiProgram {
     p.nodes[4]=TiNode.{op=TiOp.layernorm,a=3,epsilon=0.25};
     return p;
 }
-// Two materialized roots, a transposed view and an offset strided view of
-// the second, their readers, and a product that reuses the second's slot.
+// Two materialized roots, a transposed view of the second and an offset
+// strided view of that view, their readers, and a product that reuses the second's slot.
 tic_viewed :: ()->TiProgram {
     p:TiProgram;p.count=8;p.output=7;p.nodes[0]=ti_input(tic_shape(2,2,4,0,0),0);
     p.nodes[1]=TiNode.{op=TiOp.relu,a=0};
     p.nodes[2]=TiNode.{op=TiOp.relu,a=0};
     p.nodes[3]=TiNode.{op=TiOp.view,a=2,shape=tic_shape(2,4,2,0,0),strides=[4]int.[1,4,0,0]};
-    p.nodes[4]=TiNode.{op=TiOp.view,a=2,shape=tic_shape(1,3,0,0,0),strides=[4]int.[2,0,0,0],offset=1};
+    p.nodes[4]=TiNode.{op=TiOp.view,a=3,shape=tic_shape(1,3,0,0,0),strides=[4]int.[2,0,0,0],offset=1};
     p.nodes[5]=TiNode.{op=TiOp.relu,a=3};
     p.nodes[6]=TiNode.{op=TiOp.relu,a=4};
     p.nodes[7]=TiNode.{op=TiOp.matmul,a=1,b=5};

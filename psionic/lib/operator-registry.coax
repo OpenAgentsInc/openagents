@@ -91,6 +91,7 @@ or_fingerprint :: (r:OrRegistry)->[4]u64 #export_c {bytes:[2048]u8;at:=0;for i:0
 }
 #test "admission checks every registered node against its schema" {
     r:=orc_registry("sq");one:=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};
+    #assert orc_plan(one,0,true).reuse;
     #assert or_admit(r,orc_plan(one,0,true))==TiStatus.ok;
     failed:=orc_plan(one,0,true);failed.status=TiStatus.budget;#assert or_admit(r,failed)==TiStatus.budget;
     below:=orc_plan(one,0,true);below.program.nodes[1].axis=-1;#assert or_admit(r,below)==TiStatus.index && or_admit(r,orc_plan(one,1,true))==TiStatus.index;

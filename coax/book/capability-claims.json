@@ -333,7 +333,7 @@
       "evidence": [
         {
           "path": "psionic/lib/tensor-ir.coax",
-          "sha256": "b1801214ec5d5b9aca3f439ab83e121b4f7b85d3cc2beeeb46191aead72dd4ea"
+          "sha256": "0b14fbdebc6feed34f2bf85ef54ad7d8bcdafe38ab45f3751aa6e07a5e444ab5"
         },
         {
           "path": "psionic/lib/tensor-template.coax",
@@ -341,7 +341,7 @@
         },
         {
           "path": "psionic/lib/operator-registry.coax",
-          "sha256": "70e8c5e2aae7061a934a52c9c7f069f1bdef35f1923d48c4021fb99487f9346b"
+          "sha256": "84d426f5d744544a4e900e5f152b45068a9f61242883110b955bd892847c6433"
         },
         {
           "path": "psionic/lib/autodiff.coax",

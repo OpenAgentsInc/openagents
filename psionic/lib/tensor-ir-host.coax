@@ -124,6 +124,20 @@ TiLifeResult :: struct {status:TiStatus;state:TiLife;}
     c:TiProgram;c.count=3;c.output=2;c.nodes[0]=ti_input(tic_shape(4,1,2,3,4),0);c.nodes[1]=ti_input(tic_shape(4,2,2,2,3),24);c.nodes[2]=TiNode.{op=TiOp.conv2d,a=0,b=1};
     o:=[8]f32.[-1,10,8,-9,8,-5,5,-1];#assert tihc_both(c,xw[..],o[..]);
 }
+#test "the both-mode runner needs both modes to agree on every value" {
+    // The reference sums in compensated f64 and gets 1; the kernel's f32 sum loses it.
+    p:TiProgram;p.count=3;p.output=2;p.nodes[0]=ti_input(tic_shape(2,1,3,0,0),0);p.nodes[1]=ti_input(tic_shape(2,3,1,0,0),3);p.nodes[2]=TiNode.{op=TiOp.matmul,a=0,b=1};
+    x:=[6]f32.[100000000,1,-100000000,1,1,1];one:=[1]f32.[1];zero:=[1]f32.[0];
+    #assert !tihc_both(p,x[..],one[..]) && !tihc_both(p,x[..],zero[..]);
+    // A correct answer with one extra value is not a match.
+    y:=[6]f32.[1,2,3,1,1,1];six:=[1]f32.[6];longer:=[2]f32.[6,0];#assert tihc_both(p,y[..],six[..]) && !tihc_both(p,y[..],longer[..]);
+    // Layer norm of [big,-big]: the reference answers, the kernel flags overflow.
+    big:=f32_from_bits(0x7f7fffff);pm:=[2]f32.[big,-big];l:=tihc_one(tic_shape(1,2,0,0,0),TiNode.{op=TiOp.layernorm,a=0,epsilon=1});
+    // [FLT_MAX,1e30] dotted with ones: the exact sum is too large, the f32 sum rounds to FLT_MAX.
+    q:=p;q.nodes[0]=ti_input(tic_shape(2,1,2,0,0),0);q.nodes[1]=ti_input(tic_shape(2,2,1,0,0),2);
+    edge:=[4]f32.[big,1e30,1,1];top:=[1]f32.[big];#assert !tihc_refuse(q,edge[..],1,TiStatus.arithmetic) && !tihc_both(q,edge[..],top[..]);
+    #assert !tihc_refuse(l,pm[..],2,TiStatus.arithmetic) && tihc_refuse(tihc_one(tic_shape(1,2,0,0,0),TiNode.{op=TiOp.relu,a=0}),pm[0..<1],2,TiStatus.capacity);
+}
 ti_digest :: (data:[]u8)->[32]u8 #export_c {state:[112]u8;out:[32]u8;#assert sha256_init(state[..])==SHA_OK;#assert sha256_update_checked(state[..],data,false)==SHA_OK;#assert sha256_final_checked(state[..],out[..],false)==SHA_OK;return out;}
 ti_identity_words :: (data:[]u8)->[4]u64 #export_c {digest:=ti_digest(data);out:[4]u64;for i:0..<4 {for j:0..<8 {out[i]=(out[i]<<8)|u64(digest[8*i+j]);}}return out;}
 ti_inputs :: (p:TiPlan,input:[]f32,capacity:int,overlap:bool)->TiStatus #export_c {if p.status!=TiStatus.ok {return p.status;}if input.count!=p.input_elements || capacity<p.output_elements {return TiStatus.capacity;}if overlap {return TiStatus.alias;}for value:input {if !tv_finite(value) {return TiStatus.number;}}return TiStatus.ok;}

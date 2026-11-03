@@ -5,11 +5,12 @@
 
 // Input [rank, d0, d1] and node `n` over it as the output.
 tihc_one :: (shape:TvShape,n:TiNode)->TiProgram {p:TiProgram;p.count=2;p.output=1;p.nodes[0]=ti_input(shape,0);p.nodes[1]=n;return p;}
-// Both execution modes write `want` exactly, and nothing past it.
+// Both execution modes write exactly `want`, no more and no less.
 tihc_both :: (p:TiProgram,input:[]f32,want:[]f32)->bool {
-    for mode:0..<2 {
-        work:[256]f32;stage:[64]f32;flags:[256]u8;out:[64]f32;for k:0..<64 {out[k]=-99;}
-        r:=ti_cpu_checked(p,mode==1,input,work[..],stage[..],out[0..<want.count],flags[..],false);
+    modes:=[2]bool.[false,true];
+    for planned:modes {
+        work:[256]f32;stage:[64]f32;flags:[256]u8;out:[64]f32;
+        r:=ti_cpu_checked(p,planned,input,work[..],stage[..],out[0..<want.count],flags[..],false);
         if r.status!=TiStatus.ok || r.written!=want.count {return false;}
         for k:0..<want.count {if out[k]!=want[k] {return false;}}
     }
@@ -17,6 +18,7 @@ tihc_both :: (p:TiProgram,input:[]f32,want:[]f32)->bool {
 }
 // Both modes refuse with `status`.
 tihc_refuse :: (p:TiProgram,input:[]f32,count:int,status:TiStatus)->bool {
-    for mode:0..<2 {work:[256]f32;stage:[64]f32;flags:[256]u8;out:[64]f32;if ti_cpu_checked(p,mode==1,input,work[..],stage[..],out[0..<count],flags[..],false).status!=status {return false;}}
+    modes:=[2]bool.[false,true];
+    for planned:modes {work:[256]f32;stage:[64]f32;flags:[256]u8;out:[64]f32;if ti_cpu_checked(p,planned,input,work[..],stage[..],out[0..<count],flags[..],false).status!=status {return false;}}
     return true;
 }
