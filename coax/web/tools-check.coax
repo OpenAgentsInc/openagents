@@ -2,7 +2,10 @@
 // .ts, .py, .js, .sh and .cjs file either says why it stays non-Coax in a
 // header line starting "Firm reason:" (one of its first 60 lines, after
 // comment marks) or is on coax/tools-port.txt. A new file that
-// is neither fails. Entries on the list that are gone, or now carry a
+// is neither fails. A file under coax/tests/vectors/upstream/ that
+// coax/tests/vectors/manifest.json lists as upstream, with the SHA-256 its
+// bytes have, is vendored data and not a tool; an unlisted one there still
+// needs a reason, and a listed one whose bytes changed fails. Entries on the list that are gone, or now carry a
 // header, are reported so the list keeps shrinking.
 //   coax/web/tool.sh tools-check            (from the repo root)
 // Not yet run by release.sh.
@@ -10,9 +13,16 @@
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 #load "../lib/sys/proc.coax";
+#load "../lib/json/json.coax";
+#load "../lib/crypto/sha256-memory.coax";
 
 LIST :: "coax/tools-port.txt";
 TC_FILE :: 33554432;
+TC_MANIFEST :: "coax/tests/vectors/manifest.json";
+TC_MANIFEST_DIR :: "coax/tests/vectors/";
+TC_UPSTREAM :: "coax/tests/vectors/upstream/";
+// tc_vendored's answers.
+TC_TOOL :: 0; TC_VENDORED :: 1; TC_CHANGED :: 2;
 // Bootstrap whose bytes are the compiler's fingerprint: reason 4 without a header.
 FINGERPRINTED :: [3] string.["coax/build.sh", "coax/bootstrap-build.sh", "coax/provenance.sh"];
 
@@ -88,6 +98,56 @@ tc_listed :: (list: string, path: string) -> bool {
   return false;
 }
 
+#test "vendored upstream vectors: listed with their hash, or a tool like any other" {
+  // three entries, each with SHA-256("abc"): upstream, derived, and an upstream path marked derived
+  m := "{\"files\":[{\"path\":\"upstream/core/t.py\",\"kind\":\"upstream\",\"sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"},{\"path\":\"derived/d.py\",\"kind\":\"derived\",\"sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"},{\"path\":\"upstream/core/u.py\",\"kind\":\"derived\",\"sha256\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"}]}";
+  nodes: [64] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], m, nodes[..]);
+  abc: [3] u8; abc[0] = 'a'; abc[1] = 'b'; abc[2] = 'c';
+  abd: [3] u8; abd[0] = 'a'; abd[1] = 'b'; abd[2] = 'd';
+  #assert tc_vendored(d[0], "coax/tests/vectors/upstream/core/t.py", abc[..]) == TC_VENDORED;
+  // the listed file with other bytes
+  #assert tc_vendored(d[0], "coax/tests/vectors/upstream/core/t.py", abd[..]) == TC_CHANGED;
+  #assert tc_vendored(d[0], "coax/tests/vectors/upstream/core/t.py", abc[0..<0]) == TC_CHANGED;
+  // an unlisted .py in the folder, a listed one not marked upstream, and paths outside the folder
+  #assert tc_vendored(d[0], "coax/tests/vectors/upstream/core/new.py", abc[..]) == TC_TOOL;
+  #assert tc_vendored(d[0], "coax/tests/vectors/upstream/core/u.py", abc[..]) == TC_TOOL;
+  #assert tc_vendored(d[0], "coax/tests/vectors/derived/d.py", abc[..]) == TC_TOOL;
+  #assert tc_vendored(d[0], "upstream/core/t.py", abc[..]) == TC_TOOL;
+  #assert tc_vendored(d[0], "x/coax/tests/vectors/upstream/core/t.py", abc[..]) == TC_TOOL;
+  #assert tc_vendored(d[0], "coax/tests/vectors/upstream/", abc[..]) == TC_TOOL;
+  // no manifest, or one without a files array
+  e: [1] Jv;
+  #assert tc_vendored(e[0], "coax/tests/vectors/upstream/core/t.py", abc[..]) == TC_TOOL;
+  #assert jv_parse(d[..], "{\"files\":{\"path\":\"upstream/core/t.py\"}}", nodes[..]);
+  #assert tc_vendored(d[0], "coax/tests/vectors/upstream/core/t.py", abc[..]) == TC_TOOL;
+}
+// Whether path is vendored upstream data: TC_VENDORED when it is under
+// TC_UPSTREAM and the manifest m lists it (relative to TC_MANIFEST_DIR) with
+// kind "upstream" and body's SHA-256; TC_CHANGED when it is listed so but
+// body hashes otherwise; TC_TOOL (the rule applies) for anything else.
+tc_vendored :: (m: Jv, path: string, body: [] u8) -> int {
+  if path.count <= TC_UPSTREAM.count || path[0..<TC_UPSTREAM.count] != TC_UPSTREAM { return TC_TOOL; }
+  rel := path[TC_MANIFEST_DIR.count..<path.count];
+  files := jv_get(m, 0, "files");
+  if jv_kind(m, files) != JV_ARRAY { return TC_TOOL; }
+  k := m.nodes[files].first;
+  while k != -1 {
+    p := jv_get(m, k, "path"); kind := jv_get(m, k, "kind");
+    if jv_kind(m, p) == JV_STRING && jv_raw_eq(jv_raw(m, p), rel) && jv_kind(m, kind) == JV_STRING && jv_raw_eq(jv_raw(m, kind), "upstream") {
+      raw: [32] u8; hex: [64] u8;
+      // raw is this frame's own array: it cannot overlap body
+      if sha256_hash_checked(body, raw[..], false) != SHA_OK { return TC_CHANGED; }
+      digits := "0123456789abcdef";
+      for i: 0..<32 { hex[i * 2] = digits[cast(int) (raw[i] >> 4)]; hex[i * 2 + 1] = digits[cast(int) (raw[i] & 15)]; }
+      h := jv_get(m, k, "sha256");
+      return ifx jv_kind(m, h) == JV_STRING && jv_raw(m, h) == cast(string) hex[..] then TC_VENDORED else TC_CHANGED;
+    }
+    k = m.nodes[k].next;
+  }
+  return TC_TOOL;
+}
+
 tool_main :: () -> int #export_c {
   list: [1048576] u8;
   ln := fs_read(LIST, list[..]);
@@ -98,6 +158,12 @@ tool_main :: () -> int #export_c {
   r := proc_run(argv[..], 60000, files[..], err[..]);
   if r.started != 0 || r.status != 0 || r.cut { tool_errln("tools-check: git ls-files failed"); return 2; }
   all := cast(string) files[0..<r.out_n];
+  // No manifest: nothing counts as vendored.
+  mtext: [1048576] u8;
+  mn := fs_read(TC_MANIFEST, mtext[..]);
+  mnodes: [16384] JvNode; md: [1] Jv;
+  if mn >= 0 && !jv_parse(md[..], cast(string) mtext[0..<mn], mnodes[..]) { print("tools-check: % is not JSON (or has too many nodes)\n", TC_MANIFEST); return 2; }
+  vendored := 0;
   body: [TC_FILE] u8;
   bad := 0; tracked := 0;
   i := 0;
@@ -111,6 +177,11 @@ tool_main :: () -> int #export_c {
     for f: FINGERPRINTED { if f == path { skip = true; } }
     if skip { continue; }
     n := fs_read(path, body[..]);
+    if n >= 0 {
+      v := tc_vendored(md[0], path, body[0..<n]);
+      if v == TC_VENDORED { vendored += 1; continue; }
+      if v == TC_CHANGED { print("vendored upstream file whose bytes no longer match its sha256 in %: %\n", TC_MANIFEST, path); bad += 1; continue; }
+    }
     header := n >= 0 && tc_header(cast(string) body[0..<n]);
     listed := tc_listed(text, path);
     if !header && !listed { print("new non-Coax tool with no Firm reason: line and not on the port list: %\n", path); bad += 1; }
@@ -146,6 +217,6 @@ tool_main :: () -> int #export_c {
     if !tc_listed(all, line) { print("on the port list but not tracked (ported? take it off): %\n", line); continue; }
     if !tc_listed(base_paths, line) { print("on the port list but added after its base commit (write it in Coax, or give it a Firm reason: line): %\n", line); bad += 1; }
   }
-  print("tools-check: % tracked tool files, % new without a reason\n", tracked, bad);
+  print("tools-check: % tracked tool files (% of them vendored upstream vectors), % new without a reason\n", tracked, vendored, bad);
   return ifx bad == 0 then 0 else 1;
 }

@@ -122,6 +122,12 @@ the same inputs, then deletes it in the same commit that switches callers.
   release. Every tracked `.ts`, `.py`, `.js`, `.sh` and `.cjs` file must
   either start one of its first 60 lines (after comment marks) with
   `Firm reason:`, or be on the port list.
+- Vendored upstream vectors are data, not tools: a file under
+  `coax/tests/vectors/upstream/` that `coax/tests/vectors/manifest.json`
+  lists with kind `upstream` and the SHA-256 of its bytes passes as it is
+  (such as Bitcoin Core's `rpc_signmessagewithprivkey.py`); an unlisted
+  file there needs a reason like any other, and a listed one whose bytes
+  changed fails.
 - The port list is `coax/tools-port.txt`: one path a line, removed as each
   tool is ported. It only shrinks. Its header names the commit it was taken
   at (`# base: HASH`), and a listed path that wasn't tracked there fails the
