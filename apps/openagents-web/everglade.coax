@@ -1102,6 +1102,8 @@ everglade_bodies_near :: (s: [] Everglade, deck: bool, x: f32, z: f32) -> int #e
 }
 everglade_spawn :: (s: [] Everglade) -> Point #export_c { if !s[0].started { everglade_start(s); } return s[0].spawn; }
 everglade_spawn_face :: (s: [] Everglade) -> f32 #export_c { return s[0].spawn_face; }
+// The ground's height at (x, z): the room server stands what it runs on it (coax/web/room/room-world.c).
+everglade_height :: (s: [] Everglade, x: f32, z: f32) -> f32 #export_c { if !s[0].started { everglade_start(s); } return ground_at(s, x, z); }
 // True once when the face should put you at the spawn again.
 everglade_warp :: (s: [] Everglade) -> bool #export_c { w := s[0].warp; s[0].warp = false; return w; }
 

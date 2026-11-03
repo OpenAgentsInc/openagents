@@ -6,8 +6,14 @@
 // caster unit stays as it is (everglade5e-face.c calls it); the room server links this one.
 // Players are one team, so lasting areas never hurt them; a damaging cast never touches another
 // player (PvP is off: the other seats step out of the battle for its roll), while a heal does.
-// Lasting areas (Moonbeam, Black Tentacles, Conjure Animals' pack, ...) are the room's zones,
-// E5RR_ZONES of them, in chunks of FB_ZONES for fivebar.coax's zone code.
+// Lasting areas (Moonbeam, Black Tentacles, Wall of Thorns, ...) are the room's zones, E5RR_ZONES of
+// them, in chunks of FB_ZONES for fivebar.coax's zone code.
+// What a spell summons is a creature of the battle with its stat block (E5RR_BEASTS of them, after
+// the people): Conjure Animals brings E5RR_PACK Wolves (SRD 5.2.1 p. 373), which the room runs on its
+// tick: they run to where their caster points and bite the person they are set on, every player can
+// hurt them, and they go when they drop to 0 Hit Points or their caster's Concentration ends. (The
+// SRD's own Conjure Animals is an intangible pack, a zone; the room makes it beasts that can be
+// fought, by the owner's call.)
 //   coax test --library apps/openagents-web/everglade5e-room-rules.coax
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
@@ -22,8 +28,36 @@ E5RR_SEAT :: 0;                              // seat s is creature s
 E5RR_FOLK0 :: E5RR_SEATS;                    // Everglade's person j is creature E5RR_FOLK0 + j
 E5RR_ZONES :: 32;                            // a multiple of FB_ZONES
 E5RR_EV_FLOATS :: 8;                         // kind, spell, by, to, amount, damage, x, z (metres)
-// who an event names, as the room's frames do (spec 3.6 TGT): a seat 1000 + s, a person their index
+// who an event names, as the room's frames do (spec 3.6 TGT): a seat 1000 + s, a person their index,
+// a summoned creature 2000 + its id
 E5RR_TGT_SEAT :: 1000;
+E5RR_TGT_BEAST :: 2000;
+E5RR_BEASTS :: 32;                           // summoned creatures at once
+E5RR_BEAST0 :: E5RR_FOLK0 + E5R_FOLK;        // summoned creature q is creature E5RR_BEAST0 + q
+E5RR_PACK :: 4;                              // Conjure Animals' wolves (everglade-circle.coax CI_WOLVES)
+E5RR_FORM_WOLF :: 1;                         // its form, as everglade-circle.coax CI_FORM_WOLF
+E5RR_BEAST_TEAM :: 2;                        // neither the players' (0) nor the town's (1): all can hurt it
+E5RR_RUN :: 9.0;                             // m/s a beast runs (everglade-circle.coax CI_CA_SPEED)
+E5RR_REACH :: 1.8;                           // m: a bite's 5 feet, from middle to middle
+E5RR_SCENT :: 3.048;                         // m: a pack sets on whoever is within 10 feet of where it is sent
+E5RR_CHASE :: 30.0;                          // m: past it a beast lets its quarry go
+// Wolf (SRD 5.2.1): Medium Beast, AC 12, HP 11 (2d8 + 2), Speed 40 ft., Str 14 Dex 15 Con 12 Int 3
+// Wis 12 Cha 6, Pack Tactics (Advantage on an attack roll at a creature with an ally of the wolf
+// within 5 feet of it); Bite: +4, reach 5 ft., 5 (1d6 + 2) Piercing, and a Large or smaller target
+// has the Prone condition.
+E5RR_WOLF_AC :: 12; E5RR_WOLF_HP :: 11; E5RR_WOLF_HIT :: 4; E5RR_WOLF_SIDES :: 6; E5RR_WOLF_PLUS :: 2;
+E5RR_WOLF_SCORES :: [6] int.[14, 15, 12, 3, 12, 6];
+
+// A summoned creature: its id while on (0 off; the zones' ids, so 2000 + id names it), the seat that
+// summoned it, the spell, its form, where it is (metres; y the ground's, the host's), where it is
+// sent and whom it is set on (a creature, -1 none), and when it may bite again.
+E5rBeast :: struct {
+  id: int; tag: int;                         // tag: its last id, kept after it goes for the events that tell of it
+  by: int; spell: int; form: int;
+  x: f32; y: f32; z: f32; yaw: f32; moving: bool; grounded: bool;
+  goal_x: f32; goal_z: f32; foe: int = -1;
+  bite_at: f32;
+}
 
 E5rRoom :: struct {
   b: [1] RsBattle;
@@ -35,6 +69,8 @@ E5rRoom :: struct {
   next_id: int;
   bar: [FB_EG_SLOTS] FbAb;
   block: [E5R_FOLK] int;
+  folk_x: [E5R_FOLK] f32; folk_z: [E5R_FOLK] f32;   // where each person stands (metres)
+  beasts: [E5RR_BEASTS] E5rBeast;
   seen: int;
   started: bool;
 }
@@ -44,6 +80,17 @@ e5rr_folk :: (j: int) -> int { return E5RR_FOLK0 + j; }
 e5rr_tgt :: (i: int) -> int {
   if i >= E5RR_SEAT && i < E5RR_SEAT + E5RR_SEATS { return E5RR_TGT_SEAT + i - E5RR_SEAT; }
   if i >= E5RR_FOLK0 && i < E5RR_FOLK0 + E5R_FOLK { return i - E5RR_FOLK0; }
+  return -1;
+}
+// The same, in a room: a summoned creature is 2000 + its id.
+e5rr_tgt_in :: (r: [] E5rRoom, i: int) -> int {
+  if i >= E5RR_BEAST0 && i < E5RR_BEAST0 + E5RR_BEASTS { t := r[0].beasts[i - E5RR_BEAST0].tag; return ifx t > 0 then E5RR_TGT_BEAST + t else -1; }
+  return e5rr_tgt(i);
+}
+// The summoned creature a TGT code names, -1 for none.
+e5rr_beast_of_tgt :: (r: [] E5rRoom, t: int) -> int {
+  if t <= E5RR_TGT_BEAST { return -1; }
+  for q: 0..<E5RR_BEASTS { if r[0].beasts[q].id == t - E5RR_TGT_BEAST { return E5RR_BEAST0 + q; } }
   return -1;
 }
 // The creature a TGT code names, -1 for none.
@@ -69,6 +116,12 @@ e5rr_start :: (r: [] E5rRoom, seed: int) #export_c {
     _ := rs_add(b, fb_folk("Commoner", 1, 10, 4, e5r_scores(0)), E5R_AWAY, E5R_AWAY);
     r[0].block[j] = -1;
   }
+  for q: 0..<E5RR_BEASTS {
+    o := e5rr_wolf();
+    o.hp = 0; o.dead = true;
+    _ := rs_add(b, o, E5R_AWAY, E5R_AWAY);
+    r[0].beasts[q] = E5rBeast.{};
+  }
   rs_begin(b);
   for s: 0..<E5RR_SEATS { r[0].seat[s] = FbSeat.{me = E5RR_SEAT + s}; }
   for q: 0..<E5RR_ZONES { r[0].zones[q].on = false; r[0].zone_id[q] = 0; }
@@ -89,16 +142,20 @@ e5rr_join :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c {
   b[0].c[i].x = e5r_sq(x); b[0].c[i].y = e5r_sq(z);
   r[0].seat[s] = FbSeat.{me = i};
   r[0].live[s] = true;
+  // the seat's last player's spells end with the new one (its Concentration is the new caster's)
+  e5rr_zones_check(r);
+  e5rr_beasts_check(r);
 }
-// The player at seat s left: its concentration (and so its zones) ends, and it leaves the battle.
+// The player at seat s left the battle. What it concentrates on (its zones, its summoned creatures)
+// stays until the spell would end (spec 6.3), or until someone else takes the seat.
 e5rr_leave :: (r: [] E5rRoom, s: int) #export_c {
   if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] { return; }
   b := r[0].b[..];
   i := E5RR_SEAT + s;
-  if b[0].c[i].conc >= 0 { rs_end_concentration(b, i, " (left)"); }
   b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY; b[0].c[i].dead = true; b[0].c[i].hp = 0;
   r[0].live[s] = false;
   e5rr_zones_check(r);
+  e5rr_beasts_check(r);
 }
 // Where seat s stands now (Everglade's metres).
 e5rr_place :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c {
@@ -116,6 +173,7 @@ e5rr_people :: (r: [] E5rRoom, folk: [] f32, folk_n: int) #export_c {
     i := e5rr_folk(j);
     f := j * E5R_FOLK_FLOATS;
     if j >= folk_n || folk[f] < 0.5 { b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY; continue; }
+    r[0].folk_x[j] = folk[f + 1]; r[0].folk_z[j] = folk[f + 2];
     block := clamp_r(cast(int) folk[f + 7], 0, E5R_BLOCKS - 1);
     folk_max := rs_max(cast(int) folk[f + 5], 1);
     if r[0].block[j] != block || b[0].c[i].hp_max != folk_max {
@@ -133,8 +191,9 @@ e5rr_people :: (r: [] E5rRoom, folk: [] f32, folk_n: int) #export_c {
 e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c {
   if !r[0].started { return; }
   b := r[0].b[..];
-  if clock - b[0].clock <= 0 { return; }
-  rs_tick(b, clock - b[0].clock);
+  dt := clock - b[0].clock;
+  if dt <= 0 { return; }
+  rs_tick(b, dt);
   for s: 0..<E5RR_SEATS { if r[0].live[s] { fb_seat_step(b, r[0].seat[s..<s + 1]); } }
   for j: 0..<E5R_FOLK {
     i := e5rr_folk(j);
@@ -142,8 +201,16 @@ e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c {
     if c.dead || c.x == E5R_AWAY || c.turn_at > b[0].clock { continue; }
     b[0].who = i; rs_start_turn(b, i); rs_end_turn(b, i); b[0].who = -1;
   }
+  for q: 0..<E5RR_BEASTS {
+    i := E5RR_BEAST0 + q;
+    c := b[0].c[i];
+    if r[0].beasts[q].id == 0 || c.dead || c.turn_at > b[0].clock { continue; }
+    b[0].who = i; rs_start_turn(b, i); rs_end_turn(b, i); b[0].who = -1;
+  }
+  e5rr_beasts_step(r, dt);
   for k: 0..<E5RR_ZONES / FB_ZONES { _ := fb_zones_round(r[0].zones[k * FB_ZONES..<(k + 1) * FB_ZONES], b); }
   e5rr_zones_check(r);
+  e5rr_beasts_check(r);
 }
 // A zone whose caster's concentration ended is off: its id goes.
 e5rr_zones_check :: (r: [] E5rRoom) {
@@ -185,6 +252,7 @@ e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #e
   a := r[0].bar[k];
   if a.kind == FB_WORLD { return true; }
   if b[0].c[me].dead || b[0].c[me].hp <= 0 || !rs_can_act(b[0].c[me]) { return false; }
+  if a.kind == FB_SPELL && a.sp == SP_CONJURE_ANIMALS { return e5rr_conjure(r, s, x, z); }
   // nothing on the bar runs out (everglade5e-rules.coax e5r_free): a fresh turn, every slot back
   c := b[0].c[me..<me + 1];
   for l: 0..<10 { c[0].slots[l] = c[0].slots_max[l]; }
@@ -193,7 +261,7 @@ e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #e
   r[0].seat[s].open = true;
   r[0].seat[s].turn.action = false; r[0].seat[s].turn.bonus = false; r[0].seat[s].turn.slot_spent = false;
   tx := e5r_sq(x); ty := e5r_sq(z);
-  foe := e5rr_of_tgt(tgt);
+  foe := ifx tgt > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, tgt) else e5rr_of_tgt(tgt);
   if foe >= 0 && foe < E5RR_FOLK0 && !e5rr_helps(a) { foe = -1; }   // PvP is off: no harm aimed at a player
   if foe < 0 {
     // the person nearest the point within 10 feet
@@ -247,14 +315,162 @@ e5rr_end :: (r: [] E5rRoom, s: int, k: int) -> bool #export_c {
   if a.kind != FB_SPELL || b[0].c[i].conc < 0 || b[0].c[i].conc != a.sp { return false; }
   rs_end_concentration(b, i, " (ended)");
   e5rr_zones_check(r);
+  e5rr_beasts_check(r);
   return true;
 }
 // Damage the world dealt (a guard's sword, a spear, a fall): to creature `who` (a TGT code).
 e5rr_hurt :: (r: [] E5rRoom, who: int, amount: int) #export_c {
   if !r[0].started || amount <= 0 { return; }
-  i := e5rr_of_tgt(who);
+  i := ifx who > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, who) else e5rr_of_tgt(who);
   if i < 0 { return; }
   rs_damage(r[0].b[..], i, i, amount, RS_BLUDGEONING, false, -1);
+}
+
+// ---- summoned creatures
+
+e5rr_wolf :: () -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = fb_folk("Wolf", E5RR_BEAST_TEAM, E5RR_WOLF_AC, E5RR_WOLF_HP, E5RR_WOLF_SCORES);
+  c[0].humanoid = false; c[0].speed = 40;
+  return c[0];
+}
+// Seat s casts Conjure Animals at (x, z): the pack comes there, or, while it has one, runs there.
+// Either way it sets on the person within 10 feet of the point (the nearest), if any.
+e5rr_conjure :: (r: [] E5rRoom, s: int, x: f32, z: f32) -> bool {
+  b := r[0].b[..];
+  me := E5RR_SEAT + s;
+  foe := e5rr_folk_near(r, x, z, f32(E5RR_SCENT));
+  had := 0;
+  for q: 0..<E5RR_BEASTS {
+    if r[0].beasts[q].id == 0 || r[0].beasts[q].by != s || r[0].beasts[q].spell != SP_CONJURE_ANIMALS { continue; }
+    r[0].beasts[q].goal_x = x; r[0].beasts[q].goal_z = z; r[0].beasts[q].foe = foe;
+    had += 1;
+  }
+  if had > 0 && b[0].c[me].conc == SP_CONJURE_ANIMALS { return true; }
+  // a new pack: Concentration on it, up to 10 minutes
+  free := 0;
+  for q: 0..<E5RR_BEASTS { if r[0].beasts[q].id == 0 { free += 1; } }
+  if free < E5RR_PACK { return false; }
+  rs_end_concentration(b, me, "");
+  e5rr_zones_check(r);
+  e5rr_beasts_check(r);
+  b[0].c[me].conc = SP_CONJURE_ANIMALS; b[0].c[me].conc_until = b[0].clock + rs_spell(SP_CONJURE_ANIMALS).duration_s;
+  n := 0;
+  for q: 0..<E5RR_BEASTS {
+    if n >= E5RR_PACK || r[0].beasts[q].id != 0 { continue; }
+    // in a ring about the point, a metre out
+    a := 6.2831853 * f32(n) / f32(E5RR_PACK) + 0.4;
+    bx := x + cos(a); bz := z + sin(a);
+    i := E5RR_BEAST0 + q;
+    t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
+    b[0].c[i] = e5rr_wolf();
+    b[0].c[i].turn_at = hi_r(t, b[0].clock); b[0].c[i].round_at = ro;
+    b[0].c[i].x = e5r_sq(bx); b[0].c[i].y = e5r_sq(bz);
+    r[0].beasts[q] = E5rBeast.{id = r[0].next_id, tag = r[0].next_id, by = s, spell = SP_CONJURE_ANIMALS, form = E5RR_FORM_WOLF,
+                              x = bx, z = bz, yaw = a, goal_x = x, goal_z = z, foe = foe, bite_at = b[0].clock};
+    r[0].next_id += 1;
+    n += 1;
+  }
+  return true;
+}
+// The way (dx, dz) points, in radians as atan2(dx, dz) (within a few thousandths: a beast's facing).
+e5rr_heading :: (dx: f32, dz: f32) -> f32 {
+  ax := abs(dx); az := abs(dz);
+  if ax + az < 0.000001 { return 0; }
+  t := ifx ax < az then ax / az else az / ax;
+  a := t * (0.7853982 + 0.273 * (1 - t));       // atan(t) for t in [0, 1]
+  if ax > az { a = 1.5707963 - a; }
+  if dz < 0 { a = 3.1415927 - a; }
+  return ifx dx < 0 then -a else a;
+}
+// The living person nearest (x, z) within `reach` metres, as a creature, or -1.
+e5rr_folk_near :: (r: [] E5rRoom, x: f32, z: f32, reach: f32) -> int {
+  b := r[0].b[..];
+  best := -1; bd := reach * reach;
+  for j: 0..<E5R_FOLK {
+    i := e5rr_folk(j);
+    if b[0].c[i].dead || b[0].c[i].x == E5R_AWAY { continue; }
+    dx := r[0].folk_x[j] - x; dz := r[0].folk_z[j] - z;
+    d := dx * dx + dz * dz;
+    if d <= bd { bd = d; best = i; }
+  }
+  return best;
+}
+// Each summoned creature's dt seconds: it runs to its quarry, or to where it was sent, and bites
+// its quarry when in reach and its bite is due (once a beat, the room's turn).
+e5rr_beasts_step :: (r: [] E5rRoom, dt: f32) {
+  b := r[0].b[..];
+  for q: 0..<E5RR_BEASTS {
+    if r[0].beasts[q].id == 0 { continue; }
+    i := E5RR_BEAST0 + q;
+    if b[0].c[i].dead { continue; }
+    bt := r[0].beasts[q..<q + 1];
+    foe := bt[0].foe;
+    if foe >= 0 && (b[0].c[foe].dead || b[0].c[foe].x == E5R_AWAY) { foe = -1; }
+    tx := bt[0].goal_x; tz := bt[0].goal_z; stop: f32 = 0.9;
+    if foe >= 0 {
+      j := foe - E5RR_FOLK0;
+      tx = r[0].folk_x[j]; tz = r[0].folk_z[j]; stop = E5RR_REACH * 0.8;
+      if (tx - bt[0].x) * (tx - bt[0].x) + (tz - bt[0].z) * (tz - bt[0].z) > E5RR_CHASE * E5RR_CHASE { foe = -1; }
+    }
+    // a pack with no quarry sets on whoever comes within 10 feet of it
+    if foe < 0 { foe = e5rr_folk_near(r, bt[0].x, bt[0].z, f32(E5RR_SCENT)); }
+    bt[0].foe = foe;
+    // each to its own place about the point, so the pack stands round it rather than in one spot
+    if foe < 0 { a := 6.2831853 * f32(q % E5RR_PACK) / f32(E5RR_PACK) + 0.4; tx += cos(a); tz += sin(a); stop = 0.2; }
+    dx := tx - bt[0].x; dz := tz - bt[0].z;
+    d := sqrt(dx * dx + dz * dz);
+    bt[0].moving = false;
+    if d > stop {
+      step := f32(E5RR_RUN) * dt;
+      if step > d - stop { step = d - stop; }
+      bt[0].x += dx / d * step; bt[0].z += dz / d * step;
+      bt[0].moving = step > 0.001;
+    }
+    if d > 0.01 { bt[0].yaw = e5rr_heading(dx, dz); }
+    b[0].c[i].x = e5r_sq(bt[0].x); b[0].c[i].y = e5r_sq(bt[0].z);
+    if foe >= 0 && d <= E5RR_REACH && b[0].clock >= bt[0].bite_at && rs_can_act(b[0].c[i]) {
+      bt[0].bite_at = b[0].clock + rs_beat(b);
+      e5rr_bite(r, q, foe);
+    }
+  }
+}
+// Wolf q bites creature j: +4, 1d6 + 2 Piercing (the dice twice on a Critical Hit), Prone on a hit;
+// Advantage with another of the room's beasts within 5 feet of j (Pack Tactics).
+e5rr_bite :: (r: [] E5rRoom, q: int, j: int) {
+  b := r[0].b[..];
+  i := E5RR_BEAST0 + q;
+  pack := false;
+  for o: 0..<E5RR_BEASTS {
+    k := E5RR_BEAST0 + o;
+    if o != q && r[0].beasts[o].id != 0 && !b[0].c[k].dead && rs_feet_to(b, k, j) <= 5 { pack = true; }
+  }
+  edge := rs_attack_edge(b, i, j, true, true);
+  edge = rs_edge((ifx edge > 0 then 1 else 0) + (ifx pack then 1 else 0), ifx edge < 0 then 1 else 0);
+  roll := rs_roll_attack(b, i, j, edge, E5RR_WOLF_HIT, 20, false);
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], " bites "); rs_add_name(l[..], b, j); rs_add_text(l[..], ": "); rs_add_roll(l[..], roll, E5RR_WOLF_HIT);
+  if !roll.hit { rs_add_text(l[..], ": miss"); rs_tell(b, RS_EV_MISS, -1, i, j, 0, 0, l[..]); return; }
+  amount := rs_roll(b[0].dice[..], E5RR_WOLF_SIDES) + (ifx roll.crit then rs_roll(b[0].dice[..], E5RR_WOLF_SIDES) else 0) + E5RR_WOLF_PLUS;
+  rs_add_text(l[..], ifx roll.crit then ": critical hit, " else ": hit, "); rs_add_int(l[..], amount); rs_add_text(l[..], " Piercing");
+  rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, RS_PIERCING, l[..]);
+  rs_damage(b, i, j, amount, RS_PIERCING, roll.crit, -1);
+  if !b[0].c[j].dead { b[0].c[j].cond = b[0].c[j].cond | RS_PRONE; }
+}
+// A summoned creature at 0 Hit Points, or whose caster's Concentration on its spell ended, is gone.
+e5rr_beasts_check :: (r: [] E5rRoom) {
+  b := r[0].b[..];
+  for q: 0..<E5RR_BEASTS {
+    bt := r[0].beasts[q];
+    if bt.id == 0 { continue; }
+    i := E5RR_BEAST0 + q;
+    me := E5RR_SEAT + bt.by;
+    held := b[0].c[me].conc == bt.spell;
+    if b[0].c[i].dead || b[0].c[i].hp <= 0 || !held {
+      r[0].beasts[q].id = 0;
+      b[0].c[i].dead = true; b[0].c[i].hp = 0; b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY;
+    }
+  }
 }
 
 // ---- what the engine says
@@ -268,6 +484,22 @@ e5rr_creature :: (r: [] E5rRoom, i: int, out: [] f32) {
 }
 e5rr_seat_out :: (r: [] E5rRoom, s: int, out: [] f32) #export_c { if s >= 0 && s < E5RR_SEATS && out.count >= E5RR_OUT_FLOATS { e5rr_creature(r, E5RR_SEAT + s, out); } }
 e5rr_folk_out :: (r: [] E5rRoom, j: int, out: [] f32) #export_c { if j >= 0 && j < E5R_FOLK && out.count >= E5RR_OUT_FLOATS { e5rr_creature(r, e5rr_folk(j), out); } }
+// Summoned creature q (0 to E5RR_BEASTS): its id (0 when off), then into out: x, y, z (metres), yaw,
+// hp, max, the seat that summoned it, its form, 1 while it runs, 1 once its y is the ground's.
+E5RR_BEAST_FLOATS :: 10;
+e5rr_beast :: (r: [] E5rRoom, q: int, out: [] f32) -> int #export_c {
+  if q < 0 || q >= E5RR_BEASTS || r[0].beasts[q].id == 0 || out.count < E5RR_BEAST_FLOATS { return 0; }
+  bt := r[0].beasts[q];
+  c := r[0].b[0].c[E5RR_BEAST0 + q];
+  out[0] = bt.x; out[1] = bt.y; out[2] = bt.z; out[3] = bt.yaw; out[4] = f32(c.hp); out[5] = f32(c.hp_max);
+  out[6] = f32(bt.by); out[7] = f32(bt.form); out[8] = ifx bt.moving then 1.0f32 else 0.0f32; out[9] = ifx bt.grounded then 1.0f32 else 0.0f32;
+  return bt.id;
+}
+// The ground's height under summoned creature q (the host's world knows it).
+e5rr_beast_ground :: (r: [] E5rRoom, q: int, y: f32) #export_c {
+  if q < 0 || q >= E5RR_BEASTS || r[0].beasts[q].id == 0 { return; }
+  r[0].beasts[q].y = y; r[0].beasts[q].grounded = true;
+}
 // Zone q (0 to E5RR_ZONES): its id (0 when off), then into out: spell, by (a TGT code), x, z
 // (metres, the square's middle), radius (metres) and the bar slot that made it.
 E5RR_ZONE_FLOATS :: 6;
@@ -293,7 +525,7 @@ e5rr_events :: (r: [] E5rRoom, out: [] f32) -> int #export_c {
     q -= 1;
     if (n + 1) * E5RR_EV_FLOATS > out.count { continue; }
     o := n * E5RR_EV_FLOATS;
-    out[o] = f32(e.kind); out[o + 1] = f32(e.spell); out[o + 2] = f32(e5rr_tgt(e.by)); out[o + 3] = f32(e5rr_tgt(e.to));
+    out[o] = f32(e.kind); out[o + 1] = f32(e.spell); out[o + 2] = f32(e5rr_tgt_in(r, e.by)); out[o + 3] = f32(e5rr_tgt_in(r, e.to));
     out[o + 4] = f32(e.amount); out[o + 5] = f32(e.damage);
     out[o + 6] = f32(E5R_X0) + (f32(e.x) + 0.5) * f32(E5R_SQ); out[o + 7] = f32(E5R_X0) + (f32(e.y) + 0.5) * f32(E5R_SQ);
     n += 1;
@@ -343,36 +575,104 @@ e5rr_test_people :: (r: [] E5rRoom) {
   #assert e5rr_use(r[..], 3, 28, 3, 0.5, E5RR_TGT_SEAT + 5);   // Healing Word on seat 5
   e5rr_seat_out(r[..], 5, out[..]); #assert out[0] > 27;
 }
-#test "Everglade 5E room: a lasting area is the room's, with an id, and ends when its caster leaves" #steps 2000000000 {
+#test "Everglade 5E room: a lasting area is the room's, with an id; it outlasts its caster's leaving until its time is up" #steps 2000000000 {
   r: [1] E5rRoom;
   e5rr_start(r[..], 9);
   e5rr_test_people(r[..]);
   e5rr_join(r[..], 0, 0, 0); e5rr_join(r[..], 1, 1, 0);
-  #assert e5rr_use(r[..], 0, 32, 3, 0.8, -1);   // Conjure Animals at the guards
+  #assert e5rr_use(r[..], 0, 12, 3, 0.8, -1);   // Black Tentacles at the guards
   z: [E5RR_ZONE_FLOATS] f32;
   id := 0; q0 := -1;
   for q: 0..<E5RR_ZONES { got := e5rr_zone(r[..], q, z[..]); if got > 0 { id = got; q0 = q; } }
-  #assert id == 1 && z[0] == f32(SP_CONJURE_ANIMALS) && z[1] == f32(E5RR_TGT_SEAT) && abs(z[2] - 3) < 1 && z[4] > 2 && z[5] == 32;
+  #assert id == 1 && z[0] == f32(r[0].bar[12].sp) && z[1] == f32(E5RR_TGT_SEAT) && abs(z[2] - 3) < 2 && z[4] > 1 && z[5] == 12;
   // seat 1's Moonbeam is a second zone with the next id
   #assert e5rr_use(r[..], 1, 20, 30, 0, -1);
   ids := 0;
   for q: 0..<E5RR_ZONES { if e5rr_zone(r[..], q, z[..]) > 0 { ids += 1; } }
   #assert ids == 2;
-  // a round on, the pack bites the guards; never the players
+  // a round on, the tentacles hold the guards; never the players
   e5rr_step(r[..], r[0].b[0].clock + 7);
   out: [E5RR_OUT_FLOATS] f32;
   e5rr_seat_out(r[..], 1, out[..]); #assert out[0] == 57;
-  // seat 0 leaves: its pack goes, seat 1's Moonbeam stays
+  // seat 0 leaves: its tentacles hold on
   e5rr_leave(r[..], 0);
-  #assert e5rr_zone(r[..], q0, z[..]) == 0;
-  ids = 0;
-  for q: 0..<E5RR_ZONES { if e5rr_zone(r[..], q, z[..]) > 0 { ids += 1; } }
-  #assert ids == 1;
+  #assert e5rr_zone(r[..], q0, z[..]) == id;
   #assert !e5rr_use(r[..], 0, 1, 3, 0, -1);
   // seat 1 ends its Moonbeam (slot 20); ending a slot it doesn't hold up does nothing
-  #assert !e5rr_end(r[..], 1, 32);
+  #assert !e5rr_end(r[..], 1, 12);
   #assert e5rr_end(r[..], 1, 20);
   ids = 0;
   for q: 0..<E5RR_ZONES { if e5rr_zone(r[..], q, z[..]) > 0 { ids += 1; } }
-  #assert ids == 0;
+  #assert ids == 1;
+  // the tentacles' minute is up: they go
+  e5rr_step(r[..], r[0].b[0].clock + 61);
+  #assert e5rr_zone(r[..], q0, z[..]) == 0;
+}
+#test "Everglade 5E room: Conjure Animals brings four Wolves that bite the town; another player can kill one; they go with Concentration" #steps 4000000000 {
+  r: [1] E5rRoom;
+  e5rr_start(r[..], 11);
+  e5rr_test_people(r[..]);
+  e5rr_join(r[..], 0, 0, 0); e5rr_join(r[..], 1, 1, 0);
+  #assert e5rr_use(r[..], 0, 32, 3, 0.8, -1);   // at the guards
+  bf: [E5RR_BEAST_FLOATS] f32;
+  ids: [E5RR_PACK] int; n := 0;
+  for q: 0..<E5RR_BEASTS { id := e5rr_beast(r[..], q, bf[..]); if id > 0 { #assert bf[4] == 11 && bf[5] == 11 && bf[6] == 0 && bf[7] == f32(E5RR_FORM_WOLF); ids[n] = id; n += 1; } }
+  #assert n == E5RR_PACK;
+  z: [E5RR_ZONE_FLOATS] f32;
+  for q: 0..<E5RR_ZONES { #assert e5rr_zone(r[..], q, z[..]) == 0; }   // beasts, not an area
+  // twenty seconds on, a step a thirtieth: the pack has bitten the guards, never a player
+  ev: [256 * E5RR_EV_FLOATS] f32;
+  _ := e5rr_events(r[..], ev[..]);
+  bites := 0;
+  t := r[0].b[0].clock;
+  for k: 0..<600 {
+    t += 1.0 / 30.0;
+    e5rr_step(r[..], t);
+    m := e5rr_events(r[..], ev[..]);
+    for e: 0..<m {
+      o := e * E5RR_EV_FLOATS;
+      if ev[o + 2] > f32(E5RR_TGT_BEAST) && (ev[o] == f32(RS_EV_DAMAGE) || ev[o] == f32(RS_EV_MISS)) { #assert ev[o + 3] < 2; bites += 1; }
+    }
+  }
+  #assert bites >= 2;
+  out: [E5RR_OUT_FLOATS] f32;
+  e5rr_folk_out(r[..], 0, out[..]); g0 := out[0];
+  e5rr_folk_out(r[..], 1, out[..]); g1 := out[0];
+  #assert g0 + g1 < 22;
+  e5rr_seat_out(r[..], 0, out[..]); #assert out[0] == 57;
+  e5rr_seat_out(r[..], 1, out[..]); #assert out[0] == 57;
+  // seat 1 hurts a wolf by its TGT code until it drops: it goes, and the event names it
+  w := ids[0];
+  wq := -1;
+  for q: 0..<E5RR_BEASTS { if r[0].beasts[q].id == w { wq = q; } }
+  e5rr_hurt(r[..], E5RR_TGT_BEAST + w, 4);
+  #assert e5rr_beast(r[..], wq, bf[..]) == w && bf[4] == 7;
+  #assert e5rr_use(r[..], 1, 1, bf[0], bf[2], E5RR_TGT_BEAST + w);   // the Thunderbolt at it
+  e5rr_hurt(r[..], E5RR_TGT_BEAST + w, 20);
+  e5rr_step(r[..], t + 0.1);
+  #assert e5rr_beast(r[..], wq, bf[..]) == 0;
+  died := false;
+  m := e5rr_events(r[..], ev[..]);
+  for e: 0..<m { if ev[e * E5RR_EV_FLOATS] == f32(RS_EV_DEATH) && ev[e * E5RR_EV_FLOATS + 3] == f32(E5RR_TGT_BEAST + w) { died = true; } }
+  #assert died;
+  left := 0;
+  for q: 0..<E5RR_BEASTS { if e5rr_beast(r[..], q, bf[..]) > 0 { left += 1; } }
+  #assert left < E5RR_PACK;   // (the Thunderbolt's blast may take others of the pack too)
+  // casting again sends the pack; ending it (slot 32) sends them all away
+  #assert e5rr_use(r[..], 0, 32, 30, 0, -1);
+  #assert e5rr_end(r[..], 0, 32);
+  left = 0;
+  for q: 0..<E5RR_BEASTS { if e5rr_beast(r[..], q, bf[..]) > 0 { left += 1; } }
+  #assert left == 0;
+  // a pack outlasts its caster's leaving; a new player in the seat ends it
+  #assert e5rr_use(r[..], 0, 32, 30, 0, -1);
+  e5rr_leave(r[..], 0);
+  e5rr_step(r[..], r[0].b[0].clock + 1);
+  left = 0;
+  for q: 0..<E5RR_BEASTS { if e5rr_beast(r[..], q, bf[..]) > 0 { left += 1; } }
+  #assert left == E5RR_PACK;
+  e5rr_join(r[..], 0, 0, 0);
+  left = 0;
+  for q: 0..<E5RR_BEASTS { if e5rr_beast(r[..], q, bf[..]) > 0 { left += 1; } }
+  #assert left == 0;
 }

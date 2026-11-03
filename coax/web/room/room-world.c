@@ -67,6 +67,8 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
   return true;
 }
 
+float world_ground(int k, float x, float z) { return world_of(k) ? everglade_height(at(k), x, z) : 0.0f; }
+
 /* The drawing host's calls, which grid.coax's thumbs make and a headless world never does. */
 void host_line(int64_t h, double ax, double ay, double bx, double by, double la, double lb, double w) { (void)h; (void)ax; (void)ay; (void)bx; (void)by; (void)la; (void)lb; (void)w; }
 void host_dot(int64_t h, double x, double y, double size, double light, double soft, double crisp) { (void)h; (void)x; (void)y; (void)size; (void)light; (void)soft; (void)crisp; }

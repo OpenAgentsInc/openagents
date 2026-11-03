@@ -127,6 +127,10 @@ static void everglade_tick(void) {
         rm_eg_moved(view(), k, s, in[0], pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
       }
     }
+    /* the summoned creatures stand on the ground (a new one is heard once it does) */
+    float xz[2]; coax_v_f32 xzv = {xz, 2};
+    for (int q = 0; q < rm_eg_beasts(); q++)
+      if (rm_eg_beast_at(view(), k, q, xzv)) rm_eg_beast_ground(view(), k, q, world_ground(k, xz[0], xz[1]));
     rm_eg_end(view(), k);
     relay_flush();
   }

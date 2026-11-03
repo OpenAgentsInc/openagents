@@ -609,6 +609,18 @@ server spawns it, moves it, applies its effects, ends it with concentration
 or its duration, and keeps it when the caster leaves until the effect would
 end.
 
+Summoned creatures are creatures of the room's battle with their SRD 5.2.1
+stat blocks (built, #12705): Conjure Animals brings four Wolves (AC 12, 11 Hit
+Points, Bite +4 for 1d6 + 2 piercing and Prone, Pack Tactics) at the point
+cast. They run on the server's tick to where their caster points (casting
+again sends them) and bite the person they are set on. Every player can
+target one (`C` with TGT 2000 + EID) or catch it in an area. The server rolls
+every hit, and a Wolf at 0 Hit Points dies (`e die 2000 + EID`) and is gone
+(`x c EID`). Each is a `c` entry of kind 12 (`WK_BEAST`): F 1 while it runs,
+P1 its form (1 a wolf), P2 its most Hit Points. The SRD's own Conjure Animals
+is an intangible pack, an area. The room makes it beasts that can be fought,
+by the owner's decision.
+
 ### 6.4 Townsfolk and the town watch
 
 - One town per room, on the server: each townsperson's routine
@@ -868,7 +880,7 @@ room host, no caster replication). Status as of the last edit of this file.
 | 2 | `GET /api/playtest/rooms/SLUG` and instance joining (3.4) | `room-relay.coax` `rm_rooms`, load balancer rule | **Built and deployed** (#12705) |
 | 3 | The 64-player load test (11.3) | `load.coax everglade` | **Built**; since the server became the world it sends inputs (I at 30 Hz, a cast every 5 s) and checks the state frames (D at 15 Hz), every seat seen, the ACKs and the input-to-ACK time |
 | 4 | The shared movement step: the controller and the face's movement glue in Coax, shared by page and server | `everglade-move.coax`, `everglade-step.coax` (#12706) | **Built** (0c52335252); the server runs it for every seat in `room-world.c` |
-| 5 | Everglade's headless world step for N players (town, watch, spells, creatures, zones, fire, destruction, rebuild) | `everglade.coax` linked headless in `oa-room` (`room-world.c`) | **Partly built**: each simulated room has its own headless Everglade (the city's ground, walls, bodies and floors; 2 MB, 0.2 s to build), and the seats walk in it. Not yet the server's: the river (a seat walks its bed where a page swims), the townsfolk and the watch (each page still runs its own), fire and destruction, and the per-player states the step reads (a blast's throw, held, slowed, the ice) |
+| 5 | Everglade's headless world step for N players (town, watch, spells, creatures, zones, fire, destruction, rebuild) | `everglade.coax` linked headless in `oa-room` (`room-world.c`) | **Partly built**: each simulated room has its own headless Everglade (the city's ground, walls, bodies and floors; 2 MB, 0.2 s to build), and the seats walk in it. Summoned creatures are the server's: Conjure Animals' four Wolves with their stat blocks, run on the tick, fought by every player, dead and gone on the server. Not yet the server's: the river (a seat walks its bed where a page swims), the townsfolk and the watch (each page still runs its own), fire and destruction, and the per-player states the step reads (a blast's throw, held, slowed, the ice) |
 | 6 | `everglade5e-rules.coax` for 16 seats | `everglade5e-room-rules.coax` | **Built** (d2852ee336): one battle, each seat its own caster and turn, zones with ids, PvP off |
 | 7 | The room simulation: 30 Hz tick, intents, snapshot and deltas, interest (3.1, 3.6) | `coax/web/room/room-everglade.coax` | **Built**: wire v2 (`everglade-wire.coax`), 16 rooms of 16, inputs stepped one a step with at most 4 owed, casts checked and rolled, players, names, creatures and zones within 120 m, events, snapshots; `sim-check.coax` checks two sockets sharing one world |
 | 8 | Tickets: signed seat identity (4.4, 3.3 item 8) | API and `room` | Not built |

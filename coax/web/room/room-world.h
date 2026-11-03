@@ -12,4 +12,6 @@
 bool world_place(int k, int s, float out[WORLD_POSE]);
 /* Seat s of room k steps one input (1 / WORLD_HZ s): its pose after it. */
 bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]);
+/* The ground's height at (x, z) in room k's world. */
+float world_ground(int k, float x, float z);
 #endif

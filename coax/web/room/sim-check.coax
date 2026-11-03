@@ -1,8 +1,10 @@
 // The everglade rooms' check (room-everglade.coax, room-world.c): two sockets share one world.
 // A says who it is and walks ahead for two seconds at 30 inputs a second; B stands. Each hears the
 // world's header (W), state at about 15 Hz (D), its own player with its ACK, and the other by name.
-// A conjures a pack 3 m off: both hear the cast (e cast) and the pack (c, kind 10). A leaves: B
-// hears A and the pack gone (x p 0, x c).
+// A conjures its wolves 3 m off: both hear the cast (e cast) and the four Wolves (c, kind 12, with
+// their Hit Points). B casts Starry Wisp (slot 22, one target) at one of them by its TGT code (2000 + EID) until it
+// is gone: both hear B's hits on it (e hit) and it go (x c). A leaves: B hears A gone (x p 0) and
+// the rest of the pack stay (its 10 minutes of Concentration outlast A).
 //   coax/web/tool.sh coax/web/room/sim-check.coax [ws://localhost:8830]
 //   (deploy.sh runs it through wss://openagents.com)
 // Prints one JSON line, then "shares" and exits 0, or "fails" and 1.
@@ -14,7 +16,8 @@ ScHeard :: struct {
   w: bool; d: int; snap: bool; ack: int;
   me_x: f32; me_z: f32; me_z0: f32; me_seen: bool;          // its own player
   other_seen: bool; other_z0: f32; other_z: f32; other_named: bool;
-  cast_seen: bool; pack: int; pack_gone: bool; other_gone: bool;
+  cast_seen: bool; wolves: [8] int; wolf_n: int; wolf_x: f32; wolf_z: f32; wolf_hp: int;
+  gone: [8] int; gone_n: int; hits: int; other_gone: bool;
   bad: int;
 }
 sc_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
@@ -29,13 +32,21 @@ sc_entry :: (h: [] ScHeard, me: int, t: string) {
     return;
   }
   if k == "n" { if rs_num(rs_field(t, 1)) != me && rs_ends(t, " Sim A") { h[0].other_named = true; } return; }
-  if k == "c" { if rs_num(rs_field(t, 2)) == 10 { h[0].pack = rs_num(rs_field(t, 1)); } return; }
+  if k == "c" && rs_num(rs_field(t, 2)) == 12 {
+    id := rs_num(rs_field(t, 1));
+    known := false;
+    for q: 0..<h[0].wolf_n { if h[0].wolves[q] == id { known = true; } }
+    if !known && h[0].wolf_n < 8 { h[0].wolves[h[0].wolf_n] = id; h[0].wolf_n += 1; }
+    if id == h[0].wolves[0] { h[0].wolf_x = sc_cm(rs_field(t, 3)); h[0].wolf_z = sc_cm(rs_field(t, 5)); h[0].wolf_hp = rs_num(rs_field(t, 7)); }
+    return;
+  }
   if k == "x" {
-    if rs_field(t, 1) == "c" && h[0].pack > 0 && rs_num(rs_field(t, 2)) == h[0].pack { h[0].pack_gone = true; }
+    if rs_field(t, 1) == "c" && h[0].gone_n < 8 { h[0].gone[h[0].gone_n] = rs_num(rs_field(t, 2)); h[0].gone_n += 1; }
     if rs_field(t, 1) == "p" && rs_num(rs_field(t, 2)) != me { h[0].other_gone = true; }
     return;
   }
   if k == "e" && rs_field(t, 1) == "cast" && rs_field(t, 3) == "32" { h[0].cast_seen = true; }
+  if k == "e" && rs_field(t, 1) == "hit" && h[0].wolf_n > 0 && rs_num(rs_field(t, 2)) == 2000 + h[0].wolves[0] && rs_field(t, 3) == "1001" { h[0].hits += 1; }
 }
 sc_hear :: (h: [] ScHeard, me: int, t: string) {
   if rs_starts(t, "W ") { h[0].w = true; return; }
@@ -53,6 +64,7 @@ sc_hear :: (h: [] ScHeard, me: int, t: string) {
     at = e + 1;
   }
 }
+sc_gone :: (h: ScHeard, id: int) -> bool { for q: 0..<h.gone_n { if h.gone[q] == id { return true; } } return false; }
 rs_ends :: (t: string, end: string) -> bool { return t.count >= end.count && t[t.count - end.count..<t.count] == end; }
 sc_drain :: (c: [] RelayConn, h: [] ScHeard) {
   for i: 0..<SC_SEATS {
@@ -101,13 +113,28 @@ tool_main :: () -> int #export_c {
   k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, cast(int) ((h[0].me_z + 3) * 100)); k = rs_put(m[..], k, " -1");
   sent = relay_conn_send(c[0..<1], cast(string) m[0..<k]) && sent;
   sent = sc_steps(c[..], h[..], seq[..], 800, false) && sent;
+  // B fights the first wolf it sees: Starry Wisp (slot 22) at it, every half second, until it is gone
+  wolf := h[1].wolves[0];
+  tries := 0;
+  while wolf > 0 && tries < 16 && !sc_gone(h[1], wolf) {
+    k = rs_int(m[..], rs_put(m[..], 0, "C "), seq[1] + 1);
+    seq[1] += 1;
+    k = rs_put(m[..], k, " 22 "); k = rs_int(m[..], k, cast(int) (h[1].wolf_x * 100));
+    k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, cast(int) (h[1].wolf_z * 100)); k = rs_put(m[..], k, " ");
+    k = rs_int(m[..], k, 2000 + wolf);
+    sent = relay_conn_send(c[1..<2], cast(string) m[0..<k]) && sent;
+    sent = sc_steps(c[..], h[..], seq[..], 500, false) && sent;
+    tries += 1;
+  }
+  killed := h[1].gone_n;
   closed := relay_conn_close(c[0..<1], 1000);
   c[0].h = -1;
   sent = sc_steps(c[..], h[..], seq[..], 800, false) && sent;
   ms := rs_now() - t0;
   rate := f32(h[1].d) / (f32(ms) / 1000.0);
   ok := sent && h[0].w && h[1].w && h[0].snap && h[1].snap && h[0].ack > 30 && abs(walked) > 3 && abs(seen_walk - walked) < 1.5 && h[1].other_named &&
-        h[0].cast_seen && h[1].cast_seen && h[0].pack > 0 && h[1].pack > 0 && h[1].pack_gone && h[1].other_gone && rate > 12 && h[0].bad + h[1].bad == 0;
+        h[0].cast_seen && h[1].cast_seen && h[0].wolf_n == 4 && h[1].wolf_n == 4 && h[0].hits > 0 && h[1].hits > 0 &&
+        sc_gone(h[0], wolf) && sc_gone(h[1], wolf) && h[1].gone_n == killed && killed < 4 && h[1].other_gone && rate > 12 && h[0].bad + h[1].bad == 0;
   out: [1024] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
@@ -117,9 +144,14 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "b_d_frames"); jo_int(o[..], h[1].d);
   jo_key(o[..], "b_d_hz10"); jo_int(o[..], cast(int) (rate * 10));
   jo_key(o[..], "named"); jo_bool(o[..], h[1].other_named);
-  jo_key(o[..], "pack_a"); jo_int(o[..], h[0].pack);
-  jo_key(o[..], "pack_b"); jo_int(o[..], h[1].pack);
-  jo_key(o[..], "gone"); jo_bool(o[..], h[1].pack_gone && h[1].other_gone);
+  jo_key(o[..], "wolves_a"); jo_int(o[..], h[0].wolf_n);
+  jo_key(o[..], "wolves_b"); jo_int(o[..], h[1].wolf_n);
+  jo_key(o[..], "b_casts"); jo_int(o[..], tries);
+  jo_key(o[..], "hits_seen_a"); jo_int(o[..], h[0].hits);
+  jo_key(o[..], "hits_seen_b"); jo_int(o[..], h[1].hits);
+  jo_key(o[..], "wolf_killed"); jo_bool(o[..], sc_gone(h[0], wolf) && sc_gone(h[1], wolf));
+  jo_key(o[..], "a_gone"); jo_bool(o[..], h[1].other_gone);
+  jo_key(o[..], "wolves_gone_b"); jo_int(o[..], h[1].gone_n);
   jo_end(o[..]);
   print("%\n", jo_text(o[..]));
   print("%\n", ifx ok then "shares" else "fails");

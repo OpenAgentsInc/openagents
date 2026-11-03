@@ -49,6 +49,7 @@ EgSeat :: struct {
   heard_ms: int;                 // when its page last sent a frame (G's AWAY bit after WIRE_AWAY_MS)
   heard_p: [EG_SEATS] int; heard_n: [EG_SEATS] int;   // a hash of what it last heard of each seat (0 nothing)
   heard_z: [E5RR_ZONES] int;                          // the zone id it last heard in each zone slot (0 none)
+  heard_b: [E5RR_BEASTS] int; heard_b_id: [E5RR_BEASTS] int;   // each summoned creature: a hash of what it heard, and the id
   full: bool;                                         // its next D is a snapshot
 }
 EgCast :: struct { on: bool; seat: int; slot: int; x: f32; y: f32; z: f32; tgt: int; due: int; }
@@ -302,6 +303,17 @@ rm_eg_seats :: () -> int #export_c { return EG_SEATS; }
 rm_eg_hz :: () -> int #export_c { return EG_HZ; }
 rm_eg_live :: (v: [] RmServer, k: int) -> bool #export_c { return k >= 0 && k < EG_ROOMS && v[0].eg[k].live; }
 rm_eg_seat_live :: (v: [] RmServer, k: int, s: int) -> bool #export_c { return rm_eg_live(v, k) && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].live; }
+// Summoned creatures: how many places, where q stands (x, z) when it is on, and the ground's height
+// under it, which the host's world knows (before rm_eg_end: a new one is heard once it has it).
+rm_eg_beasts :: () -> int #export_c { return E5RR_BEASTS; }
+rm_eg_beast_at :: (v: [] RmServer, k: int, q: int, out: [] f32) -> bool #export_c {
+  if !rm_eg_live(v, k) || q < 0 || q >= E5RR_BEASTS || out.count < 2 { return false; }
+  bt := v[0].eg[k].rules[0].beasts[q];
+  if bt.id == 0 { return false; }
+  out[0] = bt.x; out[1] = bt.z;
+  return true;
+}
+rm_eg_beast_ground :: (v: [] RmServer, k: int, q: int, y: f32) #export_c { if rm_eg_live(v, k) { e5rr_beast_ground(v[0].eg[k].rules[..], q, y); } }
 
 // Room k's tick ends: the casts that strike now are rolled, the engine's clock moves on, its events
 // are heard, and every EG_SEND ticks each seat gets its state.
@@ -314,9 +326,9 @@ rm_eg_end :: (v: [] RmServer, k: int) #export_c {
     v[0].eg[k].casts[c].on = false;
     if !v[0].eg[k].seat[cs.seat].live { continue; }
     x := cs.x; z := cs.z;
-    // a cast at a seat lands where that seat stands now
-    if cs.tgt >= EG_TGT_SEAT && cs.tgt < EG_TGT_SEAT + EG_SEATS { p := v[0].eg[k].seat[cs.tgt - EG_TGT_SEAT].pose; x = p.x; z = p.z; }
-    _ := e5rr_use(v[0].eg[k].rules[..], cs.seat, cs.slot, x, z, ifx cs.tgt >= 2000 then -1 else cs.tgt);
+    // a cast at a seat or a summoned creature lands where it stands now
+    at := eg_where(v, k, cs.tgt, x, z); x = at.x; z = at.z;
+    _ := e5rr_use(v[0].eg[k].rules[..], cs.seat, cs.slot, x, z, cs.tgt);
   }
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
   eg_engine_events(v, k);
@@ -324,9 +336,13 @@ rm_eg_end :: (v: [] RmServer, k: int) #export_c {
   for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed { eg_send(v, k, s); } }
   v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
 }
-// Where a TGT code is now (a seat's place), else (x, z).
+// Where a TGT code is now (a seat's place, a summoned creature's), else (x, z).
 eg_where :: (v: [] RmServer, k: int, tgt: int, x: f32, z: f32) -> EgPose {
   if tgt >= EG_TGT_SEAT && tgt < EG_TGT_SEAT + EG_SEATS { return v[0].eg[k].seat[tgt - EG_TGT_SEAT].pose; }
+  if tgt > E5RR_TGT_BEAST {
+    i := e5rr_beast_of_tgt(v[0].eg[k].rules[..], tgt);
+    if i >= 0 { bt := v[0].eg[k].rules[0].beasts[i - E5RR_BEAST0]; return EgPose.{x = bt.x, y = bt.y, z = bt.z}; }
+  }
   return EgPose.{x = x, z = z};
 }
 eg_engine_events :: (v: [] RmServer, k: int) {
@@ -376,6 +392,7 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   if full {
     for q: 0..<EG_SEATS { st[0].heard_p[q] = 0; st[0].heard_n[q] = 0; }
     for q: 0..<E5RR_ZONES { st[0].heard_z[q] = 0; }
+    for q: 0..<E5RR_BEASTS { st[0].heard_b[q] = 0; st[0].heard_b_id[q] = 0; }
     st[0].full = false;
   }
   o: [1] EgOut;
@@ -427,6 +444,23 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
       st[0].heard_z[q] = id;
     }
   }
+  // summoned creatures within view, once their ground is known: on any change, gone when it goes
+  bf: [E5RR_BEAST_FLOATS] f32;
+  for q: 0..<E5RR_BEASTS {
+    id := e5rr_beast(v[0].eg[k].rules[..], q, bf[..]);
+    seen := id > 0 && bf[9] > 0.5 && eg_near(me, bf[0], bf[2]);
+    was := st[0].heard_b_id[q];
+    if was != 0 && (was != id || !seen) {
+      n := wire_put_x(e[..], 0, WireX.{k = 'c', id = was}); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]);
+      st[0].heard_b_id[q] = 0; st[0].heard_b[q] = 0;
+    }
+    if !seen { continue; }
+    // F 1 while it runs, P1 its form, P2 its most Hit Points
+    n := wire_put_c(e[..], 0, WireC.{eid = id, kind = WK_BEAST, x = bf[0], y = bf[1], z = bf[2], yaw = bf[3], hp = cast(int) bf[4],
+                                     f = cast(int) bf[8], owner = cast(int) bf[6], p1 = cast(int) bf[7], p2 = cast(int) bf[5]});
+    h := eg_hash(cast(string) e[0..<n]);
+    if h != st[0].heard_b[q] { eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); st[0].heard_b[q] = h; st[0].heard_b_id[q] = id; }
+  }
   // the events since the last state, near you
   for q: 0..<v[0].eg[k].ev_n {
     if !v[0].eg[k].ev_all[q] && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }
@@ -450,6 +484,8 @@ eg_test_tick :: (v: [] RmServer, k: int) {
       rm_eg_moved(v, k, s, in[0], p.x + f32(in[3]) / 100.0, 0, p.z + f32(in[4]) / 100.0, 0, 0, 0, 0, 1, 1, 0);
     }
   }
+  xz: [2] f32;
+  for q: 0..<rm_eg_beasts() { if rm_eg_beast_at(v, k, q, xz[..]) { rm_eg_beast_ground(v, k, q, 0); } }
   rm_eg_end(v, k);
 }
 // What conns 0 to EG_TEST_CONNS - 1 heard since the last read, each its frames joined by '|' (the
@@ -518,7 +554,7 @@ eg_test_has :: (t: string, part: string) -> bool {
   #assert v[0].eg[k].seat[0].q_n == waiting;
 }
 
-#test "everglade room: a pack one seat conjures is in both seats' state; the other's heal reaches it; a joiner's snapshot has the pack; it goes when its caster leaves" #steps 2000000000 {
+#test "everglade room: the wolves one seat conjures are in both seats' state and the other can kill one; a heal reaches the other; a joiner's snapshot has the pack; it outlasts its caster's leaving" #steps 4000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
   rm_clock(v[..], 0, 1762190000000);
@@ -530,11 +566,17 @@ eg_test_has :: (t: string, part: string) -> bool {
   eg_test_drain(v[..], box[..]);
   // Conjure Animals at (4, 7): seat 0 stands at x 0, seat 1 at x 1
   rm_heard(v[..], 0, "C 1 32 400 0 700 -1");
-  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  for q: 0..<4 { eg_test_tick(v[..], k); }
   eg_test_drain(v[..], box[..]);
   a := eg_test_of(box[..], 0); c := eg_test_of(box[..], 1);
   #assert eg_test_has(a, ";e cast 0 32 400 0 700 ") && eg_test_has(c, ";e cast 0 32 400 0 700 ");
-  #assert eg_test_has(a, ";c 1 10 ") && eg_test_has(c, ";c 1 10 ") && eg_test_has(c, " 0 -1 1 0 0 ");
+  // four wolves (WK_BEAST 12, form 1, 11 Hit Points), ids 1 to 4, owner seat 0, once the ground under them is known
+  #assert eg_test_has(a, "c 1 12 ") && eg_test_has(c, "c 1 12 ") && eg_test_has(c, "c 4 12 ") && (eg_test_has(c, " 11 0 0 1 11") || eg_test_has(c, " 11 1 0 1 11"));
+  // seat 1 hurts wolf 2 until it is gone: everyone hears it hit, die and go
+  e5rr_hurt(v[0].eg[k].rules[..], E5RR_TGT_BEAST + 2, 30);
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), "x c 2") && eg_test_has(eg_test_of(box[..], 1), "x c 2") && eg_test_has(eg_test_of(box[..], 1), "e die 2002");
   // too far: refused, to the caster only
   for q: 0..<10 { eg_test_tick(v[..], k); }
   eg_test_drain(v[..], box[..]);
@@ -552,13 +594,13 @@ eg_test_has :: (t: string, part: string) -> bool {
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   j := eg_test_of(box[..], 2);
-  #assert eg_test_has(j, " 1 p 0 ") && eg_test_has(j, ";p 1 ") && eg_test_has(j, ";p 2 ") && eg_test_has(j, ";c 1 10 ") && eg_test_has(j, ";n 0 - ");
-  // seat 0 leaves: its pack goes, and the others hear both gone
+  #assert eg_test_has(j, " 1 p 0 ") && eg_test_has(j, ";p 1 ") && eg_test_has(j, ";p 2 ") && eg_test_has(j, ";c 1 12 ") && !eg_test_has(j, "c 2 12 ") && eg_test_has(j, ";n 0 - ");
+  // seat 0 leaves: the others hear it gone, and its pack stays (until its Concentration's 10 minutes)
   rm_left(v[..], 0);
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   c = eg_test_of(box[..], 1);
-  #assert eg_test_has(c, "x p 0") && eg_test_has(c, "x c 1");
+  #assert eg_test_has(c, "x p 0") && !eg_test_has(c, "x c 1") && !eg_test_has(c, "x c 4");
 }
 
 #test "everglade room: what is over 120 m off isn't in a seat's state; seat 1 hears seat 0's Moonbeam once it walks up, and its end" #steps 2000000000 {
