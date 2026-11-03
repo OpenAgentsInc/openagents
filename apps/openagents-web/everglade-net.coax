@@ -33,6 +33,7 @@
 
 #load "socket.coax";
 #load "everglade-wire.coax";
+#load "everglade-join.coax";   // which instance, who you are in it, INVITE (#12716)
 
 NET_ENTS :: 256;
 NET_RING :: 4;
@@ -42,7 +43,7 @@ NET_ID :: 24; NET_NAME :: 40; NET_LOOK :: 32; NET_CODE :: 24; NET_URL :: 200;
 NET_TICKET :: 256;   // a seat ticket's most bytes (coax/web/room/room-ticket.coax)
 NET_PIPE_STATE :: 5;    // the pipe's save of what you bring back into a room: its bytes the JSON to POST to /api/playtest/room-state (#12715)
 NET_STATE_EVERY :: 2000;   // ms: a changed WANTED or look is saved at most this often
-NET_PIPE_TICKET :: 4;   // the pipe's ask for a seat ticket: its bytes the API path to POST (the face carries it)
+NET_PIPE_TICKET :: 4;   // the pipe's ask for a seat ticket: its bytes the API path to POST, a newline, the body (the face carries it)
 NET_BASE :: 40; NET_LOW :: 80; NET_HIGH :: 300;   // ms: the jitter buffer's delay
 NET_AHEAD :: 150;          // ms past its newest state an entity goes on by its velocity
 NET_SNAP :: 0.5;           // m: a re-run's difference this big is taken at once
@@ -112,6 +113,7 @@ EgNet :: struct {
   frames_in: int; frames_out: int; played: int; hits: int; replays: int;
   creature_hits: int; creature_deaths: int;   // hits on and deaths of the server's creatures heard
   feet_y: f32;                                // your feet's height as the face last gave it (net_step's fy)
+  join: [1] EgJoin;                           // the instance, the CHARACTER picker and INVITE (everglade-join.coax)
 }
 
 everglade_attach_net :: (s: [] Everglade, n: [] EgNet) #export_c { s[0].net = n; }
@@ -166,9 +168,7 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   if !net_on(s) { return; }
   n := net_of(s);
   url := fact(facts, "url");
-  code := net_query(url, "room");
-  if !net_code_ok(code) { code = room; }
-  n[0].code_n = net_copy(n[0].code[..], code);
+  n[0].free = false;
   sl := 0; k := 0;
   while k < url.count && sl < 3 { if url[k] == '/' { sl += 1; } if sl < 3 { k += 1; } }
   secure := url.count > 5 && url[0..<5] == "https";
@@ -187,9 +187,9 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   m = wire_put(n[0].url[..], m, "/api/room/relay/");
   m = wire_put(n[0].url[..], m, NET_GAME);
   m = wire_put(n[0].url[..], m, "/");
-  m = wire_put(n[0].url[..], m, cast(string) n[0].code[0..<n[0].code_n]);
   n[0].url_n = m;
-  n[0].want = !golden && start < k && n[0].code_n > 0;
+  jn_facts(s, n, url, room, golden);   // the instance: named, listed or a local server's (everglade-join.coax)
+  n[0].want = !golden && start < k && (n[0].code_n > 0 || n[0].join[0].list_due);
   pid := fact(facts, "player");
   if pid.count > 0 { n[0].pid_n = net_copy(n[0].pid[..], pid); }
   n[0].account = fact(facts, "account").count > 0;
@@ -226,7 +226,9 @@ net_ticket :: (s: [] Everglade, answer: string) #export_c {
       while e < answer.count && answer[e] != '"' { e += 1; }
       if e < answer.count && e - i - key.count > 0 && e - i - key.count <= NET_TICKET {
         n[0].ticket_n = net_copy(n[0].ticket[..], answer[i + key.count..<e]);
+        had_look := (n[0].restored && n[0].saved_look_n > 0) || net_json_field(answer, "look").count > 0;
         net_restore(s, n, answer);
+        jn_ticketed(s, n, answer, had_look);   // a first visit: CHARACTER before you join
         return;
       }
     }
@@ -325,7 +327,10 @@ net_event :: (s: [] Everglade, kind: int, text: string) -> bool #export_c {
   if ev.id < 0 || ev.id != n[0].sock { return false; }
   if ev.event == SOCKET_OPENED { n[0].state = NET_OPEN; n[0].tries = 0; n[0].ping_n = 0; n[0].ping_at = 0; return true; }
   if ev.event == SOCKET_ERROR && text.count > 0 && n[0].state == NET_OPEN { return true; }   // a frame over the inbox cap: dropped
-  if ev.event == SOCKET_CLOSED || ev.event == SOCKET_ERROR { net_down(n); return true; }
+  if ev.event == SOCKET_CLOSED || ev.event == SOCKET_ERROR {
+    if n[0].seat < 0 { jn_refused(s, n); }   // closed before a seat: full, or gone (everglade-join.coax)
+    net_down(n); return true;
+  }
   if ev.event == SOCKET_FRAME {
     n[0].frames_in += 1;
     net_record(s, n, text);
@@ -357,7 +362,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
   if c == 'y' {
     seat := wire_num(t, r[..]); _ := wire_num(t, r[..]); clock := wire_num(t, r[..]);
     if seat < 0 { return; }
-    n[0].seat = seat; n[0].wanted = -1;
+    n[0].seat = seat; n[0].wanted = -1; jn_seated(n);
     if r[0].ok && clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
     n[0].hello_due = true; n[0].acked = n[0].seq; n[0].fix_due = false;
     return;
@@ -655,7 +660,8 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   n[0].mono = mono;
   n[0].feet_y = fy;
   y := fy + walk_at(s, x, z);
-  if n[0].want && (n[0].state == NET_OFF || (n[0].state == NET_DOWN && mono >= n[0].retry)) && n[0].url_n > 0 {
+  jn_step(s, n);   // no instance yet: the list asked for (everglade-join.coax)
+  if n[0].want && (n[0].state == NET_OFF || (n[0].state == NET_DOWN && mono >= n[0].retry)) && jn_ready(n) {
     // each open takes a fresh seat ticket (the room refuses a join without one): asked for, then used
     if n[0].free {
       if pipe_open(n[0].pipe[..], cast(string) n[0].url[0..<n[0].url_n]) { n[0].state = NET_OPENING; n[0].sock = -1; }
@@ -664,8 +670,10 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
       k := wire_put(u[..], 0, cast(string) n[0].url[0..<n[0].url_n]); k = wire_put(u[..], k, "?t="); k = wire_put(u[..], k, cast(string) n[0].ticket[0..<n[0].ticket_n]);
       if pipe_open(n[0].pipe[..], cast(string) u[0..<k]) { n[0].state = NET_OPENING; n[0].sock = -1; n[0].ticket_n = 0; }
     } else if !n[0].ticket_asked {
-      t: [64] u8;
+      // the path, then a line, then the body: the name a guest asks for (everglade-join.coax)
+      t: [160] u8;
       k := wire_put(t[..], 0, "/api/playtest/room-ticket/"); k = wire_put(t[..], k, cast(string) n[0].code[0..<n[0].code_n]);
+      k = wire_put(t[..], k, "\n"); k += jn_ticket_body(n, t[k..<t.count]);
       if pipe_put(n[0].pipe[..], NET_PIPE_TICKET, -1, cast(string) t[0..<k]) { n[0].ticket_asked = true; }
     }
   }
@@ -1230,7 +1238,7 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   everglade_attach_net(a[..], na[..]);
   net_facts(a[..], "url=https://openagents.com/worlds/everglade?room=pair-a\nplayer=pa\nnow=5000000\nnav=0\n", "everglade", false);
   net_step(a[..], 100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
-  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET && pipe_bytes(na[0].pipe[..], 0) == "/api/playtest/room-ticket/pair-a";
+  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-a\n{\"name\":\"");
   pipe_drained(na[0].pipe[..]);
   net_step(a[..], 116, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   #assert na[0].pipe[0].n == 0;   // asked once
@@ -1455,8 +1463,9 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   net_facts(s[..], "url=http://localhost:8787/worlds/everglade?relay=ws://localhost:8830&room=pair-x\nplayer=p1\n", "everglade", false);
   #assert cast(string) n[0].url[0..<n[0].url_n] == "ws://localhost:8830/api/room/relay/everglade/pair-x" && n[0].want;
   #assert net_room(s[..], "everglade") == "pair-x";
+  // a bad name: the realm's instance list is asked which (everglade-join.coax)
   net_facts(s[..], "url=https://openagents.com/worlds/made-moss?room=Bad!\n", "made-moss", false);
-  #assert cast(string) n[0].url[0..<n[0].url_n] == "wss://openagents.com/api/room/relay/everglade/made-moss";
+  #assert cast(string) n[0].url[0..<n[0].url_n] == "wss://openagents.com/api/room/relay/everglade/" && n[0].want && n[0].join[0].list_due;
   net_facts(s[..], "url=https://openagents.com/worlds/everglade\n", "everglade", true);
   #assert !n[0].want;
   // a page with no socket attached is no room's

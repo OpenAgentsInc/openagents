@@ -171,6 +171,17 @@ static coax_v_t_Everglade at(uint32_t state) {
 static int32_t ticket_id = -1;
 static bool ticket_due;
 static char ticket_url[96]; static uint32_t ticket_url_n;
+static char ticket_body[96]; static uint32_t ticket_body_n;   /* the name a guest asks for (everglade-join.coax) */
+/* The realm's instance list (GET /api/playtest/rooms/SLUG, everglade-join.coax): its answer goes back to the net. */
+static int32_t rooms_id = -1;
+static bool rooms_due;
+static char rooms_url[96]; static uint32_t rooms_url_n;
+static void rooms_out(void) {
+  if (!rooms_due || rooms_id >= 0 || !facts_seen) return;
+  rooms_due = false;
+  rooms_id = coaxial_http((uint32_t)(uintptr_t)rooms_url, rooms_url_n, 0, 0, 4);   /* a GET, its answer wanted */
+  if (rooms_id < 0) { rooms_id = -1; rooms_due = true; }
+}
 static void ticket_out(void) {
   if (!ticket_due || ticket_id >= 0 || !facts_seen) return;   /* a golden page asks for none: its net wants no socket */
   if (!has_player && !mint_tried) {
@@ -181,7 +192,8 @@ static void ticket_out(void) {
   }
   if (mint_id >= 0 || !has_player) return;
   ticket_due = false;
-  ticket_id = coaxial_http((uint32_t)(uintptr_t)ticket_url, ticket_url_n, (uint32_t)(uintptr_t)"{}", 2, 1 | 4 | 8);
+  if (!ticket_body_n) { memcpy(ticket_body, "{}", 2); ticket_body_n = 2; }
+  ticket_id = coaxial_http((uint32_t)(uintptr_t)ticket_url, ticket_url_n, (uint32_t)(uintptr_t)ticket_body, ticket_body_n, 1 | 4 | 8);
   if (ticket_id < 0) { ticket_id = -1; ticket_due = true; }
 }
 /* The room socket's commands (socket.coax's pipe) to the host, in order; then the pipe is empty. */
@@ -195,7 +207,18 @@ static void net_drain(uint32_t state) {
     else if (p->op.e[k] == 2) coaxial_socket_send(id, from, len);
     else if (p->op.e[k] == 3) coaxial_socket_close(id);
     else if (p->op.e[k] == 5 && has_player) coaxial_http((uint32_t)(uintptr_t)STATE_URL, sizeof STATE_URL - 1, from, len, 1 | 8);   /* what you bring back into a room (#12715) */
-    else if (p->op.e[k] == 4 && len < sizeof ticket_url) { memcpy(ticket_url, &p->buf.e[p->from.e[k]], len); ticket_url_n = len; ticket_due = true; }
+    else if (p->op.e[k] == 4) {
+      /* the path, a newline, the body */
+      const uint8_t *b = &p->buf.e[p->from.e[k]];
+      uint32_t cut = 0; while (cut < len && b[cut] != '\n') cut++;
+      uint32_t bn = cut < len ? len - cut - 1 : 0;
+      if (cut < sizeof ticket_url && bn < sizeof ticket_body) {
+        memcpy(ticket_url, b, cut); ticket_url_n = cut;
+        memcpy(ticket_body, b + cut + 1, bn); ticket_body_n = bn;
+        ticket_due = true;
+      }
+    }
+    else if (p->op.e[k] == 6 && len < sizeof rooms_url) { memcpy(rooms_url, &p->buf.e[p->from.e[k]], len); rooms_url_n = len; rooms_due = true; }
   }
   p->n = 0; p->used = 0;
 }
@@ -417,6 +440,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
              !player.on_ground, swim.medium, river.aboard >= 0, verse_player_act(player));
     net_drain(state);
     ticket_out();
+    rooms_out();
   }
   if (n > 0) {
     // the river's uniform block, after the page's frame has written the rest
@@ -698,6 +722,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     return;
   }
   if (ticket_id >= 0 && kind == 512 + ticket_id) { ticket_id = -1; net_ticket(at(state), (coax_string){(const char *)inbox, length}); return; }
+  if (rooms_id >= 0 && kind == 512 + rooms_id) { rooms_id = -1; net_rooms(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (world_id >= 0 && kind == 512 + world_id) {
     world_id = -1;
     guide_world_outer = ggp_world_answer((coax_string){(const char *)inbox,length});

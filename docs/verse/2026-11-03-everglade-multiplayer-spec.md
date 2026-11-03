@@ -726,14 +726,29 @@ a restart; acceptable).
   its meaning (a place: `#commons`), so `?room=everglade-3#market` puts a
   friend in your instance at the market.
 
+Built (#12716, `everglade-join.coax`): the room server answers `?with=PID`
+from the seats' tickets (`rm_rooms`, `"with":"SLUG-N"` when found), so a
+friend's instance comes from the server that seats you, not from HTTP
+presence. A named instance that refuses the socket twice gives way to the
+list's `join`, with a toast. INVITE and CHARACTER sit left of MAP (on a
+phone, a row under it). CHARACTER picks the skin tone and the cloak and trim
+dyes; it opens before the socket on a first visit (no look came back with the
+ticket), and the class row says the druid is the one class for now. A guest's
+name is two words from a fixed list, hashed from the player id, sent with the
+ticket's ask (an account's name outranks it). Your own Ranger draws in your
+look, as the others see you.
+
 ### 8.2 The Grid hand-off
 
-- Today the galaxy and the Grid only navigate to `/worlds/everglade`.
-- Walking into the Grid's Everglade gate (`/worlds/the-grid`)
-  navigates to `/worlds/everglade?from=grid&with=<friend>` when a friend you
-  walked with is in Everglade, else to the lowest instance. `from=grid` spawns
-  you at the South Gate facing in, under a short arrival effect. Everglade's
-  HOME button returns to the Grid by its gate.
+- The Grid (`/worlds/the-grid`, `newland-walk.coax`) has an Everglade gate
+  ahead and to the right of the spawn, facing it. Walking through its portal
+  navigates to `/worlds/everglade?from=grid&with=<friend>`, the friend being
+  the last other walker within 8 m of you in the last 2 minutes; with none,
+  `/worlds/everglade?from=grid`. When the friend went in first, the room
+  server seats you in their instance; else the lowest with room.
+- `from=grid` plays a short arrival (a veil that lifts). The server's spawn
+  is already the road in at the South Gate, facing in.
+- Not built: a way back. Everglade has no HOME button yet.
 
 ## 9. Scale and cost
 
@@ -909,6 +924,7 @@ room host, no caster replication). Status as of the last edit of this file.
 | 10 | Remote players as skinned Rangers (section 5) | #12707 | In progress elsewhere |
 | 11 | Scale across instances: room code to `oa-room` instance routing | deploy and load balancer | Not built; one instance holds 512 sockets (32 full rooms) |
 | 12 | The swap to `/worlds/everglade` (section 12) | site | Not built |
+| 13 | The Grid's gate, links, INVITE and CHARACTER (5.2, 8) | `everglade-join.coax`, `newland-walk.coax`, `rm_rooms ?with=` | **Built** (#12716): the page joins the instance a link names, else the list's `join` (with `?with=` the friend's instance); a refused socket asks the list again; the gate on the Grid sends you with the friend you walked with |
 
 Acceptance, all on production:
 

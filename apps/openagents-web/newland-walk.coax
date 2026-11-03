@@ -14,6 +14,11 @@
 // places' middle. The face posts where you are about five times a second; the room answers with
 // everyone else, who walk here as they do on the homepage, under their names. From the homepage's
 // WALK AROUND (?from=home) the camera comes down from the homepage's view onto you.
+//
+// The Everglade gate (#12716, spec 8.2) stands ahead and to the right of where you arrive, facing you:
+// walk through it and the page goes to Everglade, ?from=grid, with the friend you walked with (the
+// last other walker within WK_WITH_NEAR m of you in the last WK_WITH_KEEP s) as ?with=, so the room
+// server seats you in their instance when they went in first (everglade-join.coax).
 
 WK_HOME :: "/";
 WK_GALAXY :: "/worlds";
@@ -35,6 +40,12 @@ WK_HOLD_FORWARD :: 1; WK_HOLD_BACK :: 2; WK_HOLD_LEFT :: 4; WK_HOLD_RIGHT :: 8; 
 WK_HOLD_TURN_LEFT :: 64; WK_HOLD_TURN_RIGHT :: 128; WK_HOLD_TILT_UP :: 256; WK_HOLD_TILT_DOWN :: 512;
 WK_KEY_SHIFT :: -13;         // host.js KEYS
 WK_PRESS_HOME :: 1; WK_PRESS_GALAXY :: 2; WK_PRESS_CARD :: 3;
+WK_GATE_X :: 23.0; WK_GATE_Z :: 6.0;          // m: the Everglade gate's middle, clear of the places
+WK_GATE_NX :: 0.2216; WK_GATE_NZ :: 0.9751;   // the way it faces: toward the spawn (unit)
+WK_GATE_HALF :: 1.62; WK_GATE_HIGH :: 4.26;   // m: its portal's half width and height (pack_grid.py's gate)
+WK_GATE_URL :: "/worlds/everglade?from=grid";
+WK_WITH_NEAR :: 8.0;         // m: another walker this near is walking with you
+WK_WITH_KEEP :: 120.0;       // s they stay your friend for the gate after they were last that near
 
 Walk :: struct {
   held: int;                         // WK_HOLD_* keys held
@@ -46,6 +57,9 @@ Walk :: struct {
   press: int; press_id: int;         // a press begun on HOME, REALMS or the card (WK_PRESS_*), and its finger
   feet: Fv; face: f32; phase: f32; act: int; placed: bool;   // you, in grid units, and your stride
   from_home: bool; dive: f32;        // WALK AROUND brought you: the camera comes down
+  clock: f32;                        // s the page has walked
+  gate_w: f32; gate_known: bool; through: bool;   // m in front of the gate last frame; through it (once)
+  with: [24] u8; with_n: int; with_t: f32 = -1000;   // the friend you walked with, and when they were near
 }
 
 // The face: which page this is (host.js data-page; 1 the Grid).
@@ -336,6 +350,81 @@ wk_way_arrow :: (out: [] f32, at: int, s: [] LandState, c: Cam, way: WkWay, p: P
   return v;
 }
 
+// ---- the Everglade gate
+
+// Where (x, z) m is from the gate: across its portal, and in front of it (the spawn's side).
+wk_gate_across :: (x: f32, z: f32) -> f32 { return (x - WK_GATE_X) * WK_GATE_NZ - (z - WK_GATE_Z) * WK_GATE_NX; }
+wk_gate_front :: (x: f32, z: f32) -> f32 { return (x - WK_GATE_X) * WK_GATE_NX + (z - WK_GATE_Z) * WK_GATE_NZ; }
+// A point of the gate in the Grid's metres: u across, up y, w in front.
+wk_gate_at :: (mid: Fv, u: f32, y: f32, w: f32) -> Fv {
+  return wk_at(mid, WK_GATE_X + WK_GATE_NZ * u + WK_GATE_NX * w, y, WK_GATE_Z - WK_GATE_NX * u + WK_GATE_NZ * w);
+}
+// The address the gate sends you to: Everglade from the Grid, with your friend when you have one.
+wk_gate_url :: (w: [] Walk, out: [] u8) -> int {
+  n := 0;
+  for ch: WK_GATE_URL { out[n] = ch; n += 1; }
+  if w[0].with_n > 0 && w[0].clock - w[0].with_t <= WK_WITH_KEEP {
+    for ch: "&with=" { out[n] = ch; n += 1; }
+    for i: 0..<w[0].with_n { out[n] = w[0].with[i]; n += 1; }
+  }
+  return n;
+}
+// Each frame, you at (x, z) m: who walks with you, and whether you walked through the gate.
+wk_gate_step :: (s: [] LandState, x: f32, z: f32, dt: f32) {
+  w := s[0].wk[..];
+  w[0].clock += dt;
+  r := s[0].walk[0].room[..];
+  best: f32 = WK_WITH_NEAR * WK_WITH_NEAR; who := -1;
+  for i: 0..<r[0].others {
+    dx := r[0].to[i * 4] - x; dz := r[0].to[i * 4 + 2] - z;
+    if dx * dx + dz * dz < best { best = dx * dx + dz * dz; who = i; }
+  }
+  if who >= 0 {
+    id := room_other_id(r, who);
+    ok := id.count > 0 && id.count <= 24;
+    for ch: id { if !((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-') { ok = false; } }
+    if ok { for i: 0..<id.count { w[0].with[i] = id[i]; } w[0].with_n = id.count; w[0].with_t = w[0].clock; }
+  }
+  front := wk_gate_front(x, z);
+  if w[0].gate_known && !w[0].through && w[0].gate_w > 0 && front <= 0 && abs(wk_gate_across(x, z)) <= WK_GATE_HALF + 0.3 {
+    w[0].through = true;
+    b: [80] u8; n := wk_gate_url(w, b[..]);
+    go(s, cast(string) b[0..<n]);
+  }
+  w[0].gate_w = front; w[0].gate_known = true;
+}
+// The gate: two posts, the lintel and a cap over it, its portal's light, and EVERGLADE over it.
+wk_gate_draw :: (out: [] f32, at: int, s: [] LandState, c: Cam, mid: Fv, p: Pen, t: f32) -> int {
+  v := at;
+  frame_k := ink(p, INK_BRIGHT); soft := ink(p, INK_PALE);
+  h: f32 = WK_GATE_HIGH; a: f32 = WK_GATE_HALF;
+  l0 := wk_gate_at(mid, -a, 0, 0); l1 := wk_gate_at(mid, -a, h, 0);
+  r0 := wk_gate_at(mid, a, 0, 0); r1 := wk_gate_at(mid, a, h, 0);
+  v = seg(out, v, c, l0, l1, frame_k, 0.9);
+  v = seg(out, v, c, r0, r1, frame_k, 0.9);
+  v = seg(out, v, c, l1, r1, frame_k, 0.9);
+  v = seg(out, v, c, wk_gate_at(mid, -a - 0.5, h + 0.45, 0), wk_gate_at(mid, a + 0.5, h + 0.45, 0), frame_k, 0.8);
+  v = seg(out, v, c, wk_gate_at(mid, -a - 0.5, h + 0.45, 0), l1, frame_k, 0.6);
+  v = seg(out, v, c, wk_gate_at(mid, a + 0.5, h + 0.45, 0), r1, frame_k, 0.6);
+  // the portal: lines across it that rise, as a doorway's light
+  for q: 0..<5 {
+    y := fract(f32(q) / 5 + (ifx p.still then 0.0f32 else t * 0.12)) * h;
+    v = seg(out, v, c, wk_gate_at(mid, -a + 0.15, y, 0), wk_gate_at(mid, a - 0.15, y, 0), soft, 0.35 * (1 - y / h));
+  }
+  q := spot(c, wk_gate_at(mid, 0, h + 1.3, 0));
+  if q.ok && inside(c.clip, q.x, q.y) {
+    cap := (ifx p.phone then 8.0f32 else 10.0f32) * p.d;
+    word := chrome(ink(p, INK_WHITE));
+    title := "EVERGLADE";
+    tw := text_width(title, cap, word);
+    v = put(out, v, title, q.x - tw * 0.5, q.y, cap, word);
+    sub := "WALK IN";
+    sc := cap * 0.7; dk := dimmed(ink(p, INK_PALE), 0.9);
+    v = put(out, v, sub, q.x - text_width(sub, sc, dk) * 0.5, q.y + cap * 1.6, sc, dk);
+  }
+  return v;
+}
+
 // ---- the HUD
 
 wk_hint :: (s: [] LandState, l: Layout) -> string {
@@ -444,6 +533,7 @@ coaxial_walk_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
     if moved < 2 { w[0].phase = fract(w[0].phase + moved / stride); }
   }
   w[0].placed = true; w[0].feet = feet; w[0].face = face; w[0].act = act;
+  if !s[0].golden { wk_gate_step(s, fx, fz, f.step); }   // who walks with you, and the gate
   c := wk_cam(wk_at(mid, ex, ey, ez), wk_at(mid, ax, ay, az), wk_focal(width, height), width * 0.5, height * 0.5, width, height);
   c = wk_dive(s, f, c, width, height);
   s[0].view = c; s[0].clip = c.clip; s[0].zoom = 0.4;   // close: the Pylons' labels say what they run
@@ -453,6 +543,7 @@ coaxial_walk_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   v := land_scene(out, 0, s, c, feet, f.p, f.t, f.motion);
   you_from := v;   // (the occluders were counted from zero in land_scene, the places first)
   v = wk_you(out, v, s, c, f.p, f.motion);
+  v = wk_gate_draw(out, v, s, c, mid, f.p, f.motion);   // the Everglade gate
   local_occlude(s, out, you_from, v, c, mid, feet);   // you hide the desk's screen when you stand before it
   v = local_agents(out, v, s, c, mid, f.p, f.t);   // Verse OS: the machine's own agents (newland-local.coax)
   scene_end := v;
@@ -671,4 +762,34 @@ wk_has :: (text: string, part: string) -> bool {
   #assert down[0].ok && up[0].ok && up[0].y < down[0].y - 20;
   _ = figure(out[..], 0, c, k, pose, 0, 0, 0, ink(p, INK_BRIGHT), 1, p, up[..]);
   #assert up[0].y == down[0].y;   // the ground figure is unchanged
+}
+#test "the Everglade gate stands in view as you arrive; walking through it goes to Everglade with the friend you walked with" #steps 600000000 {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  coaxial_land_page(s[..], 1); s[0].time = 9;
+  // at the spawn, facing in: the gate's name is on screen, and it faces you
+  #assert wk_test_frame(s[..], out[..], u[..]) > 0;
+  mid := centre(s[..], -1);
+  q := spot(s[0].view, wk_gate_at(mid, 0, WK_GATE_HIGH + 1.3, 0));
+  #assert q.ok && inside(s[0].view.clip, q.x, q.y);
+  #assert wk_gate_front(WK_SPAWN_X, WK_SPAWN_Z) > 0 && abs(WK_GATE_NX * WK_GATE_NX + WK_GATE_NZ * WK_GATE_NZ - 1) < 0.001;
+  // a friend walks beside you, then goes on ahead and out of the room
+  coaxial_land_walkers_answer(s[..], "200\n{\"others\":[{\"id\":\"p-wren\",\"name\":\"WREN\",\"x\":24,\"y\":0,\"z\":14,\"yaw\":0}],\"messages\":[]}");
+  at := [2] f32.[23.2, 13.0];
+  _ := coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, at[0], 0, at[1], 0, 1, at[0], 3.5, at[1] + 9, at[0], 1.52, at[1], false, 0, 0, 0, 0);
+  #assert s[0].wk[0].with_n == 6 && s[0].action == 0;
+  coaxial_land_walkers_answer(s[..], "200\n{\"others\":[],\"messages\":[]}");
+  // beside the portal, past its post: not through
+  _ = coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, 23 + 3, 0, 6.5, 0, 1, 26, 3.5, 15, 26, 1.52, 6.5, false, 0, 0, 0, 0);
+  _ = coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, 23 + 3, 0, 5.5, 0, 1, 26, 3.5, 15, 26, 1.52, 5.5, false, 0, 0, 0, 0);
+  #assert s[0].action == 0;
+  // back in front, then through the portal's middle
+  _ = coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, 23, 0, 6.4, 0, 1, 23, 3.5, 15, 23, 1.52, 6.4, false, 0, 0, 0, 0);
+  _ = coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, 23, 0, 5.8, 0, 1, 23, 3.5, 15, 23, 1.52, 5.8, false, 0, 0, 0, 0);
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/everglade?from=grid&with=p-wren";
+  // nobody walked with you: the gate alone
+  p: [1] LandState; coaxial_land_page(p[..], 1); p[0].time = 9;
+  _ = coaxial_walk_frame(p[..], out[..], u[..], 1440, 900, 1, 0.016, false, 23, 0, 6.4, 0, 1, 23, 3.5, 15, 23, 1.52, 6.4, false, 0, 0, 0, 0);
+  _ = coaxial_walk_frame(p[..], out[..], u[..], 1440, 900, 1, 0.016, false, 23, 0, 5.8, 0, 1, 23, 3.5, 15, 23, 1.52, 5.8, false, 0, 0, 0, 0);
+  #assert p[0].action == ACT_NAVIGATE && cast(string) p[0].outbox[0..<p[0].out_n] == WK_GATE_URL;
 }

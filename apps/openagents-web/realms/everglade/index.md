@@ -22,6 +22,13 @@ Walk up to anyone and press E (on a phone, tap TALK). Type what you want to say 
 
 Names float over each place as you come near. The city is about 130 metres across inside its walls: half a minute's walk from the South Gate to the temple.
 
+## Playing with others
+
+- Everglade is one world for everyone in it: the room server runs it, and each instance holds up to 16 players. You join the lowest instance with room.
+- INVITE, top right, copies a link to your instance. A friend who opens it joins you there, or the next instance with room when yours is full. `?room=everglade-3` names an instance; `?with=PLAYER_ID` joins the instance that player is in.
+- CHARACTER, beside INVITE, picks your skin tone and the colours of your cloak and trim. On your first visit it opens before you enter. Everyone plays the druid for now. A guest gets a two-word name; [log in](/login) to use your account's name.
+- The Everglade gate on [the Grid](/worlds/the-grid) brings you here, into the instance of the friend you walked there with.
+
 ## Controls
 
 - Computer: W A S D move you at a run, Shift walks, Space jumps, C dives in the river, drag the mouse or the arrow keys turn the camera, the wheel zooms, M (or the MAP button) lifts the camera over the whole city and back.

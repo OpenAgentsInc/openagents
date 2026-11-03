@@ -45,7 +45,8 @@ REMOTE_BLOCK :: RANGER_JOINTS * 12;
 REMOTE_LOOK_ROWS :: 2;         // skin tone and the Ranger's first layer; the cloak's and leather's dyes, how shown
 REMOTE_PAL_AT :: RANGER_JOINTS * 12 + PEOPLE_SHOWN * PERSON_ROWS * 4;
 REMOTE_LOOK_AT :: REMOTE_PAL_AT + REMOTE_BODIES * REMOTE_BLOCK;
-REMOTE_PALETTE :: REMOTE_BODIES * (REMOTE_BLOCK + REMOTE_LOOK_ROWS * 4);
+REMOTE_PALETTE :: REMOTE_BODIES * (REMOTE_BLOCK + REMOTE_LOOK_ROWS * 4) + REMOTE_LOOK_ROWS * 4;   // and your own look's rows, last
+YOU_LOOK_AT :: REMOTE_LOOK_AT + REMOTE_BODIES * REMOTE_LOOK_ROWS * 4;   // your look, once you have one (the CHARACTER picker, everglade-join.coax)
 REMOTE_FAR_AT :: REMOTE_AT + REMOTE_BODIES;   // the far mesh's objects, its own draw (RANGER_FAR_DRAW)
 REMOTE_HEAD_OVER :: 0.42;      // m from the head joint up to the nameplate
 REMOTE_PLATE_NEAR :: 60.0;     // m: a player's nameplate shows this near (a townsperson's NAME_NEAR),
@@ -100,6 +101,24 @@ look_dye24 :: (d: int) -> f32 {
   w := 0;
   for c: 0..<3 { w += clamp_i(cast(int) floor(sqrt(LOOK_DYE[d * 3 + c]) * 255 + 0.5), 1, 255) << (8 * c); }
   return f32(w);
+}
+
+// Your Ranger in your own look, as everyone else sees it (the room's hello carries it): your object at
+// o is drawn as another player's is (REMOTE_MARK), on the pose's first block, with its look rows at
+// YOU_LOOK_AT. With no room (a golden page, the classic page) it stays the Ranger's own.
+rangers_you_look :: (s: [] Everglade, o: int) {
+  if !net_on(s) { return; }
+  n := net_of(s);
+  t := cast(string) n[0].look[0..<n[0].look_n];
+  if t.count == 0 || !n[0].want { return; }
+  l := look_parse(t);
+  lk := YOU_LOOK_AT;
+  for c: 0..<3 { s[0].palette[lk + c] = SKIN_TONE[l.skin * 3 + c]; }
+  s[0].palette[lk + 3] = f32(s[0].rangers[0].layer);
+  s[0].palette[lk + 4] = look_dye24(l.dye); s[0].palette[lk + 5] = look_dye24(l.trim);
+  s[0].palette[lk + 6] = 0; s[0].palette[lk + 7] = 1;
+  s[0].objects[o + 13] = 0; s[0].objects[o + 14] = f32(REMOTE_MARK);
+  s[0].objects[o + 15] = f32(SHAPE_SKINNED + 8 * LOOK_KIT + 256 * (lk / 4));
 }
 
 // Another player as their body needs them this frame.

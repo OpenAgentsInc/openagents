@@ -85,7 +85,7 @@ room_chat_draw :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
   // A phone's line sits under the place's name, and below your HP (and WANTED) on the right when they show,
   // so it never runs under them (everglade-watch.coax watch_hud: HP to 92, WANTED to 129).
   hp_on := sp_on(s) && !s[0].above && s[0].wv.started;
-  phone_y := ifx !hp_on then 86 * k else ifx watch_you(watch_w(s))[0].wanted then 151 * k else 114 * k;
+  phone_y := (ifx !hp_on then 86 * k else ifx watch_you(watch_w(s))[0].wanted then 151 * k else 114 * k) + join_drop(s);   // under INVITE's row too (everglade-join.coax)
   y := ifx small then phone_y else s[0].height - 150 * k - f32(shown) * lead;
   s[0].chat.box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   if shown > 0 {

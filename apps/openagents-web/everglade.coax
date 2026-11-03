@@ -1247,6 +1247,7 @@ hold_bit :: (key: int) -> int {
 
 everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if !s[0].started { everglade_start(s); }
+  if join_key(s, key) { return true; }   // the CHARACTER picker takes the keys while it is up
   if s[0].talk >= 0 { return talk_key(s, key, mods); }
   if s[0].chat.typing { return chat_key(s, key, mods); }
   if s[0].board { return board_key(s, key, mods); }
@@ -1293,6 +1294,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
     s[0].sp.slot_held = -1; s[0].sp.slot_finger = -1;
   }
   if s[0].board { return board_pointer(s, x, y, phase, id); }
+  if join_pointer(s, x, y, phase, id) { return true; }   // INVITE, CHARACTER and its picker (everglade-join.coax)
   if eg_quality_pointer(s, x, y, phase, id) { return true; }   // the graphics tier, bottom right
   // Aethyrforge's panels in edit mode: only they and edit mode's own presses (everglade-forge.coax)
   forge := forge_on(s);
@@ -3023,6 +3025,7 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
   for i: 0..<12 { s[0].objects[o + i] = rows[i]; }
   s[0].objects[o + 12] = f32(s[0].ranger_word); s[0].objects[o + 13] = 1; s[0].objects[o + 14] = 1;
   s[0].objects[o + 15] = f32(SHAPE_SKINNED + 8 * LOOK_KIT);
+  rangers_you_look(s, o);   // in the look you picked, as the others see you (everglade-rangers.coax)
   shadow(s, u, feet.x, feet.z, floor_under(s, feet.x, feet.z, feet.y), 0.45, 0.6);
   // your class's gear, as the others see on you (everglade-rangers.coax)
   if ci_you_shown(s) && !you_inside(s) { gear_draw(s, ranger_gear(rig, s[0].skin[..], CLASS_DRUID), rows); }
@@ -3658,12 +3661,18 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   plate(s, u, mb, 0.85, ifx s[0].above then 2.0f32 else 1.0f32);
   n = draw_text(out, n, word, mb.x0 + 16 * k, mb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   n = fork_hud(s, out, u, n, title_box);   // FORK and its pane (everglade-fork.coax)
-  if !eg_pane_open(s) { n = watch_hud(s, out, u, n, mb.y1 + 10 * k); }   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
+  // INVITE and CHARACTER, left of MAP (everglade-join.coax); clear of the title and FORK
+  left := title_box.x1;
+  if fk_has(s) && s[0].fk[0].boxes[FB_OPEN].x1 > left { left = s[0].fk[0].boxes[FB_OPEN].x1; }
+  n = join_hud(s, out, u, n, mb, left);
+  join_arrive(s, u);   // from the Grid's gate: the veil lifting
+  if !eg_pane_open(s) { n = watch_hud(s, out, u, n, mb.y1 + 10 * k + join_drop(s)); }   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
   n = net_bars(s, out, u, n);   // the room's summoned creatures' Hit Points (everglade-net.coax)
   n = st_hud(s, out, u, n);   // Blinded, Deafened; what the beasts say (everglade-storm.coax Speak with Animals)
   s[0].guide.button=Box.{};s[0].guide.drawn=0;
   s[0].talk_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   s[0].bye_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if join_picking(s) { return join_pick_draw(s, out, u, n); }   // CHARACTER: before you join, and when asked
   if s[0].talk >= 0 { return conversation(s, out, u, n); }
   if s[0].board { return board_panel(s, out, u, n); }
   if s[0].lift < 0.5 && !s[0].ev.editing && !s[0].guide.quiet {
@@ -3935,7 +3944,7 @@ board_middle :: () -> Point {
 }
 
 // While the map shows, while you talk or read the board, you stand still.
-everglade_busy :: (s: [] Everglade) -> bool #export_c { return s[0].above || s[0].talk >= 0 || s[0].board || watch_down(s); }
+everglade_busy :: (s: [] Everglade) -> bool #export_c { return s[0].above || s[0].talk >= 0 || s[0].board || watch_down(s) || join_picking(s); }
 
 // Nothing draws until the pack is in: its index buffer holds the shapes' indices too.
 everglade_draws :: (s: [] Everglade) -> int #export_c { return ifx s[0].pack_ready then DRAWS else 0; }

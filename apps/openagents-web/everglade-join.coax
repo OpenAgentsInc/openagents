@@ -1,0 +1,511 @@
+// Which Everglade instance you join, who you are in it, and bringing a friend (#12716; spec sections
+// 3.4, 4.1, 5.2 and 8). Loaded by everglade-net.coax, whose socket it names.
+//
+// The instance. A realm's rooms are instances of 16 players each, SLUG-1, SLUG-2 and so on, and the
+// room server owns them. The page joins:
+//   - the instance a link names (?room=everglade-3), or the lowest with room when that one is full
+//     (the socket is refused), with a toast;
+//   - else the one GET /api/playtest/rooms/SLUG answers as "join": the lowest with a free seat, or with
+//     ?with=PLAYER the instance that player sits in now while it has a seat (the Grid's gate sends you
+//     with the friend you walked with, newland-walk.coax);
+//   - a test's own room (?room=pair-...) as named, and a room server on this machine (?relay=ws://
+//     localhost:PORT) at SLUG-1, since its list isn't on the page's server.
+// A refused socket (full, or gone) asks the list again.
+//
+// Who you are. A guest's name is two words from a fixed list (JN_ADJ, JN_NOUN), the same for a player
+// key every time, sent with the seat ticket's ask so the server's name, the one everyone sees, is it
+// (an account's name outranks it there). The look is the CHARACTER picker's: a skin tone and the
+// Ranger's cloak and trim dyes ("ranger.SKIN.DYE.TRIM", everglade-rangers.coax look_parse). On a first
+// visit (no look comes back with the ticket, #12715) the picker opens before you join and the socket
+// waits for ENTER; after that CHARACTER opens it again. The class is the realm's druid: the 5E
+// engine has one Everglade loadout today (spec 5.2), and the picker says so.
+//
+// INVITE copies the link to your instance (the page's own address with ?room=CODE). ?from=grid (the
+// Grid's gate) plays a short arrival as the page opens; the server's spawn is the road in at the South
+// Gate, facing the town.
+//   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "join:"
+
+NET_PIPE_ROOMS :: 6;       // the pipe's ask for the instance list: its bytes the API path to GET (the face carries it)
+JN_ROOM_SEATS :: 16;       // an instance's seats (the room server's RELAY_SEATS), said in the picker
+JN_COPIED_MS :: 2000;      // ms INVITE says the link is copied
+JN_ARRIVE_MS :: 1600;      // ms the Grid's arrival takes to fade
+JN_SKINS :: 5;             // SKIN_TONE's rows (everglade-rangers.coax LOOK_SKINS)
+JN_DYES :: 12;             // LOOK_DYE's rows, 0 the Ranger's own
+JN_ADJ :: [16] string.["Mossy", "Amber", "Quiet", "Bright", "Swift", "Gentle", "Hollow", "Silver",
+                        "Rowan", "Dusky", "Misty", "Sunny", "Brave", "Merry", "Wild", "Ashen"];
+JN_NOUN :: [16] string.["Heron", "Wren", "Fox", "Otter", "Badger", "Fern", "Willow", "Hare",
+                         "Lark", "Finch", "Thrush", "Marten", "Owl", "Moth", "Birch", "Brook"];
+// the picker's rows and buttons (EgJoin.boxes)
+JB_CHARACTER :: 0; JB_INVITE :: 1; JB_ENTER :: 2; JB_PANE :: 3;
+JB_SWATCH :: 4;            // then JN_SKINS + 2 * JN_DYES swatches: skin, cloak, trim
+JB_N :: JB_SWATCH + JN_SKINS + 2 * JN_DYES;
+
+EgJoin :: struct {
+  base_n: int;               // the socket's URL up to the code (EgNet.url)
+  page: [NET_URL] u8; page_n: int;     // this page's address without its query or hash (INVITE's link)
+  realm: [NET_CODE] u8; realm_n: int;  // the instances' prefix
+  named: bool;               // ?room= named the instance
+  with: [NET_ID] u8; with_n: int;      // ?with=: join that player's instance
+  test: bool;                // a test's own room or a local room server: no picker
+  list_due: bool; list_asked: bool;
+  refused: int;              // sockets closed before a seat, in a row
+  from_grid: bool; arrive_at: int = -1;
+  // who you are
+  name: [NET_NAME] u8; name_n: int;
+  skin: int = 1; dye: int; trim: int;
+  pick_open: bool; picked: bool; hold: bool;   // hold: the socket waits for ENTER
+  copied_at: int = -1000000;
+  boxes: [JB_N] Box; finger: int = -1; press: int = -1;
+  drop: f32;                 // px the HUD's right column moved down for this row (a phone)
+}
+
+jn_put :: (out: [] u8, at: int, t: string) -> int {
+  n := at;
+  for ch: t { if n >= out.count { break; } out[n] = ch; n += 1; }
+  return n;
+}
+jn_has :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
+}
+jn_digits :: (out: [] u8, at: int, v: int) -> int {
+  if v < 0 { return at; }
+  d: [12] u8; m := 0; x := v;
+  while true { d[m] = cast(u8) ('0' + x % 10); m += 1; x /= 10; if x == 0 { break; } }
+  n := at;
+  while m > 0 && n < out.count { m -= 1; out[n] = d[m]; n += 1; }
+  return n;
+}
+
+// ---- the instance
+
+// The page facts' part (net_facts): where the socket goes (n.url holds its base), which instance.
+jn_facts :: (s: [] Everglade, n: [] EgNet, url: string, realm: string, golden: bool) {
+  j := n[0].join[..];
+  j[0].base_n = n[0].url_n;
+  j[0].realm_n = net_copy(j[0].realm[..], realm);
+  // the page's address for INVITE: up to its query or hash
+  e := 0;
+  while e < url.count && url[e] != '?' && url[e] != '#' { e += 1; }
+  j[0].page_n = net_copy(j[0].page[..], url[0..<e]);
+  code := net_query(url, "room");
+  with := net_query(url, "with");
+  j[0].with_n = ifx net_code_ok(with) && with.count <= NET_ID then net_copy(j[0].with[..], with) else 0;
+  j[0].from_grid = net_query(url, "from") == "grid" && !golden;
+  n[0].code_n = 0;
+  j[0].named = false; j[0].list_due = false; j[0].test = n[0].free;
+  if net_code_ok(code) {
+    n[0].code_n = net_copy(n[0].code[..], code);
+    j[0].named = true;
+    j[0].test = j[0].test || (code.count > 5 && code[0..<5] == "pair-");
+  } else if n[0].free {
+    jn_code(n, jn_lowest(j, n[0].code[..]));   // a room server on this machine: its list isn't the page's
+  } else {
+    j[0].list_due = !golden;
+  }
+  jn_url(n);
+}
+// realm + "-1" into out.
+jn_lowest :: (j: [] EgJoin, out: [] u8) -> string {
+  k := jn_put(out, 0, cast(string) j[0].realm[0..<j[0].realm_n]);
+  k = jn_put(out, k, "-1");
+  return cast(string) out[0..<k];
+}
+jn_code :: (n: [] EgNet, code: string) {
+  c: [NET_CODE] u8; m := net_copy(c[..], code);
+  for i: 0..<m { n[0].code[i] = c[i]; }
+  n[0].code_n = m;
+}
+// The socket's URL: its base and the instance.
+jn_url :: (n: [] EgNet) {
+  j := n[0].join[..];
+  m := j[0].base_n;
+  if n[0].code_n > 0 { m = wire_put(n[0].url[..], m, cast(string) n[0].code[0..<n[0].code_n]); }
+  n[0].url_n = m;
+}
+// Whether the socket may open: an instance is chosen and the picker isn't holding it.
+jn_ready :: (n: [] EgNet) -> bool { return n[0].code_n > 0 && !n[0].join[0].hold; }
+
+// Each frame, before the socket's open (net_step): the list asked for while no instance is chosen.
+jn_step :: (s: [] Everglade, n: [] EgNet) {
+  j := n[0].join[..];
+  if j[0].from_grid && j[0].arrive_at < 0 && n[0].mono > 0 { j[0].arrive_at = n[0].mono; }
+  if !n[0].want || n[0].code_n > 0 || !j[0].list_due || j[0].list_asked { return; }
+  t: [96] u8;
+  k := wire_put(t[..], 0, "/api/playtest/rooms/"); k = wire_put(t[..], k, cast(string) j[0].realm[0..<j[0].realm_n]);
+  if j[0].with_n > 0 { k = wire_put(t[..], k, "?with="); k = wire_put(t[..], k, cast(string) j[0].with[0..<j[0].with_n]); }
+  if pipe_put(n[0].pipe[..], NET_PIPE_ROOMS, -1, cast(string) t[0..<k]) { j[0].list_asked = true; }
+}
+// The list's answer ("200\n{...,"join":"SLUG-N",...}"; anything else: the lowest). False when it
+// wasn't asked for.
+net_rooms :: (s: [] Everglade, answer: string) #export_c {
+  if !net_on(s) { return; }
+  n := net_of(s);
+  j := n[0].join[..];
+  if !j[0].list_asked { return; }
+  j[0].list_asked = false; j[0].list_due = false;
+  realm := cast(string) j[0].realm[0..<j[0].realm_n];
+  join := ifx answer.count > 4 && answer[0..<4] == "200\n" then net_json_field(answer, "join") else "";
+  ok := net_code_ok(join) && join.count > realm.count + 1 && join[0..<realm.count] == realm && join[realm.count] == '-';
+  low: [NET_CODE] u8;
+  jn_code(n, ifx ok then join else jn_lowest(j, low[..]));
+  n[0].ticket_n = 0;   // a ticket is for one room
+  jn_url(n);
+}
+// A socket closed before it had a seat: full, or gone. Past the first, the list is asked again, and
+// a named instance gives way to the lowest with room.
+jn_refused :: (s: [] Everglade, n: [] EgNet) {
+  j := n[0].join[..];
+  j[0].refused += 1;
+  if j[0].refused < 2 || j[0].test { return; }
+  if j[0].named && s[0].started {
+    b: [64] u8;
+    k := jn_put(b[..], 0, cast(string) n[0].code[0..<n[0].code_n]);
+    for i: 0..<k { if b[i] >= 'a' && b[i] <= 'z' { b[i] -= 32; } }
+    k = jn_put(b[..], k, " IS FULL · JOINING ANOTHER");
+    sp_say(s, cast(string) b[0..<k], -1, "");
+  }
+  j[0].named = false; j[0].with_n = 0; j[0].refused = 0;
+  j[0].list_due = true; j[0].list_asked = false;
+  n[0].code_n = 0; n[0].ticket_n = 0;
+  jn_url(n);
+}
+jn_seated :: (n: [] EgNet) { n[0].join[0].refused = 0; }
+
+// ---- who you are
+
+// A guest's two words from the player id: the same id, the same name.
+jn_guest_name :: (pid: string, out: [] u8) -> int {
+  h := 2166136261;   // FNV-1a, 32 bits
+  for ch: pid { h = ((h ^ cast(int) ch) * 16777619) % 4294967296; }
+  a := h % 16; b := (h / 16) % 16;
+  k := jn_put(out, 0, JN_ADJ[a]); k = jn_put(out, k, " "); return jn_put(out, k, JN_NOUN[b]);
+}
+// The ticket's ask: its body, the name you ask for ({} when there is no player id yet).
+jn_ticket_body :: (n: [] EgNet, out: [] u8) -> int {
+  if n[0].pid_n == 0 { return jn_put(out, 0, "{}"); }
+  nm: [NET_NAME] u8; m := jn_guest_name(cast(string) n[0].pid[0..<n[0].pid_n], nm[..]);
+  k := jn_put(out, 0, "{\"name\":\""); k = jn_put(out, k, cast(string) nm[0..<m]); return jn_put(out, k, "\"}");
+}
+// The ticket came (net_ticket): the name everyone sees, and on a first visit the picker before you join.
+jn_ticketed :: (s: [] Everglade, n: [] EgNet, answer: string, had_look: bool) {
+  j := n[0].join[..];
+  name := net_json_field(answer, "name");
+  if name.count > 0 { j[0].name_n = net_copy_name(j[0].name[..], name); }
+  l := look_parse(cast(string) n[0].look[0..<n[0].look_n]);
+  if !j[0].pick_open { j[0].skin = l.skin; j[0].dye = l.dye; j[0].trim = l.trim; }
+  if !had_look && !j[0].picked && !j[0].test && !j[0].pick_open { j[0].pick_open = true; j[0].hold = true; }
+}
+// A name as given (spaces kept, control bytes not).
+net_copy_name :: (out: [] u8, t: string) -> int {
+  n := 0;
+  for ch: t { if n >= out.count { break; } if ch < 32 || ch == 127 || ch == '"' || ch == '\\' { continue; } out[n] = ch; n += 1; }
+  return n;
+}
+jn_look :: (j: [] EgJoin, out: [] u8) -> int {
+  k := jn_put(out, 0, "ranger."); k = jn_digits(out, k, j[0].skin); k = jn_put(out, k, ".");
+  k = jn_digits(out, k, j[0].dye); k = jn_put(out, k, "."); return jn_digits(out, k, j[0].trim);
+}
+// ENTER (or DONE): the look is yours, the socket may open.
+jn_enter :: (s: [] Everglade) {
+  n := net_of(s); j := n[0].join[..];
+  b: [NET_LOOK] u8; k := jn_look(j, b[..]);
+  net_set_look(s, cast(string) b[0..<k]);
+  j[0].pick_open = false; j[0].picked = true; j[0].hold = false; j[0].press = -1;
+}
+// INVITE: the link to your instance, to the clipboard (host.js action 2).
+JN_ACT_COPY :: 2;
+jn_invite :: (s: [] Everglade) {
+  n := net_of(s); j := n[0].join[..];
+  if n[0].code_n == 0 || s[0].action != 0 { return; }
+  k := jn_put(s[0].outbox[..], 0, cast(string) j[0].page[0..<j[0].page_n]);
+  k = jn_put(s[0].outbox[..], k, "?room="); k = jn_put(s[0].outbox[..], k, cast(string) n[0].code[0..<n[0].code_n]);
+  s[0].out_n = k; s[0].action = JN_ACT_COPY;
+  j[0].copied_at = n[0].mono;
+}
+// The picker is up: the world waits behind it.
+join_picking :: (s: [] Everglade) -> bool { return net_on(s) && net_of(s)[0].join[0].pick_open; }
+// INVITE and CHARACTER show: in an instance, on a page that has a room.
+jn_shown :: (s: [] Everglade) -> bool {
+  if !net_on(s) { return false; }
+  n := net_of(s);
+  return n[0].want && n[0].code_n > 0 && !n[0].join[0].test && !s[0].above && s[0].talk < 0 && !s[0].board && !s[0].ev.editing;
+}
+
+// ---- the HUD
+
+jn_button :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, b: Box, word: string, lit_up: bool) -> int {
+  k := hi(s[0].dpr, 0.5);
+  plate(s, u, b, 0.85, ifx lit_up then 2.0f32 else 1.0f32);
+  return draw_text(out, at, word, b.x0 + 16 * k, b.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+}
+// INVITE and CHARACTER, left of MAP (mb) on the top row; where the title and FORK leave no room (a
+// phone), under MAP, and the right column (HP, WANTED, a phone's chat line) moves down a row.
+join_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, mb: Box, left: f32) -> int {
+  if !net_on(s) { return at; }
+  n := net_of(s); j := n[0].join[..];
+  for b: 0..<JB_N { j[0].boxes[b] = Box.{}; }
+  j[0].drop = 0;
+  if !jn_shown(s) || j[0].pick_open { return at; }
+  k := hi(s[0].dpr, 0.5);
+  v := at;
+  copied := n[0].mono - j[0].copied_at < JN_COPIED_MS;
+  iw := ifx copied then "LINK COPIED" else "INVITE";
+  cw := "CHARACTER";
+  bh := mb.y1 - mb.y0;
+  wi := text_width(iw, 9 * k) + 32 * k; wc := text_width(cw, 9 * k) + 32 * k;
+  gap := 8 * k;
+  x1 := mb.x0 - gap; y0 := mb.y0;
+  if x1 - wi - gap - wc < left + gap {
+    // a second row under MAP, right-aligned
+    x1 = mb.x1; y0 = mb.y1 + gap;
+    j[0].drop = bh + gap;
+  }
+  ib := Box.{x0 = x1 - wi, y0 = y0, x1 = x1, y1 = y0 + bh};
+  cb := Box.{x0 = ib.x0 - gap - wc, y0 = y0, x1 = ib.x0 - gap, y1 = y0 + bh};
+  j[0].boxes[JB_INVITE] = ib; j[0].boxes[JB_CHARACTER] = cb;
+  v = jn_button(s, out, u, v, ib, iw, copied || j[0].press == JB_INVITE);
+  v = jn_button(s, out, u, v, cb, cw, j[0].press == JB_CHARACTER);
+  return v;
+}
+// The HUD's right column moves down this many px (join_hud's second row).
+join_drop :: (s: [] Everglade) -> f32 { return ifx net_on(s) then net_of(s)[0].join[0].drop else 0.0f32; }
+
+// A swatch's colour as the HUD draws it (display, from the linear rgb).
+jn_swatch_rgb :: (row: int, d: int) -> Point {
+  if row == 0 { r := SKIN_TONE[d * 3]; g := SKIN_TONE[d * 3 + 1]; b := SKIN_TONE[d * 3 + 2]; return v3(sqrt(r), sqrt(g), sqrt(b)); }
+  if d == 0 { return ifx row == 1 then v3(0.33, 0.42, 0.22) else v3(0.45, 0.33, 0.2); }   // the Ranger's own green and leather
+  return v3(sqrt(LOOK_DYE[d * 3]), sqrt(LOOK_DYE[d * 3 + 1]), sqrt(LOOK_DYE[d * 3 + 2]));
+}
+jn_ring :: (out: [] f32, at: int, b: Box, k: f32) -> int {
+  v := at;
+  if lit(out, v, b.x0, b.y0, b.x1, b.y0, 0.6 * k, 0.95, 1.2 * k, GOLD_R, GOLD_G, GOLD_B, 0) { v += 6; }
+  if lit(out, v, b.x1, b.y0, b.x1, b.y1, 0.6 * k, 0.95, 1.2 * k, GOLD_R, GOLD_G, GOLD_B, 0) { v += 6; }
+  if lit(out, v, b.x1, b.y1, b.x0, b.y1, 0.6 * k, 0.95, 1.2 * k, GOLD_R, GOLD_G, GOLD_B, 0) { v += 6; }
+  if lit(out, v, b.x0, b.y1, b.x0, b.y0, 0.6 * k, 0.95, 1.2 * k, GOLD_R, GOLD_G, GOLD_B, 0) { v += 6; }
+  return v;
+}
+// The CHARACTER picker: your name, your class, a row of swatches each for skin, cloak and trim, and
+// ENTER (DONE once you are in).
+join_pick_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  n := net_of(s); j := n[0].join[..];
+  for b: 0..<JB_N { j[0].boxes[b] = Box.{}; }
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  pw := lo(w - 32 * k, 440 * k);
+  sw := lo(28 * k, (pw - 120 * k) / f32(JN_DYES));   // a swatch's width with its gap
+  ph := 380 * k;
+  x0 := (w - pw) / 2; y0 := hi(16 * k, (h - ph) / 2);
+  pane := Box.{x0 = x0, y0 = y0, x1 = x0 + pw, y1 = y0 + ph};
+  j[0].boxes[JB_PANE] = pane;
+  plate(s, u, pane, 0.94, 0);
+  v := at;
+  tx := x0 + 18 * k; y := y0 + 30 * k;
+  pale := ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B); gold := ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B);
+  v = draw_text(out, v, "CHARACTER", tx, y, 11 * k, GAP, SPACE, gold, false, false);
+  y += 30 * k;
+  name := ifx j[0].name_n > 0 then cast(string) j[0].name[0..<j[0].name_n] else "A GUEST";
+  v = draw_text(out, v, "NAME", tx, y, 7 * k, GAP, SPACE, pale, false, false);
+  v = draw_text(out, v, name, tx + 90 * k, y, 8 * k, GAP, SPACE, gold, false, false);
+  y += 24 * k;
+  v = draw_text(out, v, "CLASS", tx, y, 7 * k, GAP, SPACE, pale, false, false);
+  v = draw_text(out, v, "DRUID · EVERGLADE'S ONE CLASS FOR NOW", tx + 90 * k, y, 7 * k, GAP, SPACE, gold, false, false);
+  y += 24 * k;
+  where: [64] u8; wn := jn_put(where[..], 0, "ROOM");
+  v = draw_text(out, v, cast(string) where[0..<wn], tx, y, 7 * k, GAP, SPACE, pale, false, false);
+  wn = 0;
+  if n[0].code_n > 0 {
+    wn = jn_put(where[..], 0, cast(string) n[0].code[0..<n[0].code_n]);
+    for i: 0..<wn { if where[i] >= 'a' && where[i] <= 'z' { where[i] -= 32; } }
+    wn = jn_put(where[..], wn, " · UP TO "); wn = jn_digits(where[..], wn, JN_ROOM_SEATS); wn = jn_put(where[..], wn, " PLAYERS");
+  } else { wn = jn_put(where[..], 0, "FINDING ONE WITH ROOM"); }
+  v = draw_text(out, v, cast(string) where[0..<wn], tx + 90 * k, y, 7 * k, GAP, SPACE, gold, false, false);
+  y += 34 * k;
+  rows := [3] string.["SKIN", "CLOAK", "TRIM"];
+  counts := [3] int.[JN_SKINS, JN_DYES, JN_DYES];
+  firsts := [3] int.[JB_SWATCH, JB_SWATCH + JN_SKINS, JB_SWATCH + JN_SKINS + JN_DYES];
+  for r: 0..<3 {
+    v = draw_text(out, v, rows[r], tx, y + 4 * k, 7 * k, GAP, SPACE, pale, false, false);
+    chosen := ifx r == 0 then j[0].skin else ifx r == 1 then j[0].dye else j[0].trim;
+    for d: 0..<counts[r] {
+      bx := tx + 90 * k + f32(d) * sw;
+      b := Box.{x0 = bx, y0 = y - 12 * k, x1 = bx + sw - 6 * k, y1 = y + 12 * k};
+      j[0].boxes[firsts[r] + d] = b;
+      c := jn_swatch_rgb(r, d);
+      cx := (b.x0 + b.x1) / 2;
+      if lit(out, v, cx, b.y0 + 4 * k, cx, b.y1 - 4 * k, (b.x1 - b.x0) * 0.32, 1.0, 0.5 * k, c.x, c.y, c.z, 0) { v += 6; }
+      if d == chosen { v = jn_ring(out, v, Box.{x0 = b.x0 - 2 * k, y0 = b.y0 - 2 * k, x1 = b.x1 + 2 * k, y1 = b.y1 + 2 * k}, k); }
+    }
+    y += 46 * k;
+  }
+  word := ifx j[0].hold then "ENTER EVERGLADE" else "DONE";
+  ew := text_width(word, 9 * k) + 32 * k;
+  eb := Box.{x0 = (w - ew) / 2, y0 = pane.y1 - 58 * k, x1 = (w + ew) / 2, y1 = pane.y1 - 20 * k};
+  j[0].boxes[JB_ENTER] = eb;
+  v = jn_button(s, out, u, v, eb, word, j[0].press == JB_ENTER);
+  return v;
+}
+// The arrival from the Grid's gate: a pale veil that lifts.
+join_arrive :: (s: [] Everglade, u: [] f32) {
+  if !net_on(s) { return; }
+  n := net_of(s); j := n[0].join[..];
+  if !j[0].from_grid || j[0].arrive_at < 0 { return; }
+  t := f32(n[0].mono - j[0].arrive_at) / f32(JN_ARRIVE_MS);
+  if t >= 1 { return; }
+  plate(s, u, Box.{x0 = 0, y0 = 0, x1 = s[0].width, y1 = s[0].height}, 0.9 * (1 - t) * (1 - t), 2);
+}
+
+// ---- input
+
+// A press on INVITE, CHARACTER or the picker; the picker takes every press while it is up.
+join_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  if !net_on(s) { return false; }
+  n := net_of(s); j := n[0].join[..];
+  if phase == 0 {
+    hit := -1;
+    for b: 0..<JB_N { if b != JB_PANE && in_box(j[0].boxes[b], x, y) { hit = b; } }
+    if hit >= 0 { j[0].press = hit; j[0].finger = id; return true; }
+    return j[0].pick_open;
+  }
+  if j[0].finger != id || j[0].press < 0 { return j[0].pick_open; }
+  if phase == 1 { return true; }
+  p := j[0].press; j[0].press = -1; j[0].finger = -1;
+  if phase != 2 || !in_box(j[0].boxes[p], x, y) { return true; }
+  if p == JB_INVITE { jn_invite(s); }
+  else if p == JB_CHARACTER { j[0].pick_open = true; }
+  else if p == JB_ENTER { jn_enter(s); }
+  else if p >= JB_SWATCH {
+    q := p - JB_SWATCH;
+    if q < JN_SKINS { j[0].skin = q; }
+    else if q < JN_SKINS + JN_DYES { j[0].dye = q - JN_SKINS; }
+    else { j[0].trim = q - JN_SKINS - JN_DYES; }
+  }
+  return true;
+}
+// Keys while the picker is up: Enter enters (or is DONE), Esc is DONE once you are in; the rest wait.
+join_key :: (s: [] Everglade, key: int) -> bool {
+  if !join_picking(s) { return false; }
+  j := net_of(s)[0].join[..];
+  if key == KEY_ENTER || (key == KEY_ESCAPE && !j[0].hold) { jn_enter(s); }
+  return true;
+}
+
+#test "join: no named instance asks the room server's list, and joins what it answers" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade?with=p-friend&from=grid#market\nplayer=p-me\nnow=5000000\nnav=0\n", "everglade", false);
+  n := net_of(g[..]);
+  #assert n[0].want && n[0].code_n == 0 && !jn_ready(n) && n[0].join[0].from_grid;
+  #assert cast(string) n[0].join[0].page[0..<n[0].join[0].page_n] == "https://openagents.com/worlds/everglade";
+  net_step(g[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  // the list's ask, the friend's id with it; no ticket yet
+  #assert n[0].pipe[0].n == 1 && n[0].pipe[0].op[0] == NET_PIPE_ROOMS && pipe_bytes(n[0].pipe[..], 0) == "/api/playtest/rooms/everglade?with=p-friend";
+  pipe_drained(n[0].pipe[..]);
+  net_rooms(g[..], "200\n{\"realm\":\"everglade\",\"game\":\"everglade\",\"seats\":16,\"join\":\"everglade-3\",\"with\":\"everglade-3\",\"rooms\":[]}");
+  #assert cast(string) n[0].code[0..<n[0].code_n] == "everglade-3" && cast(string) n[0].url[0..<n[0].url_n] == "wss://openagents.com/api/room/relay/everglade/everglade-3";
+  // then the ticket for that instance, asking for the guest's name
+  net_step(g[..], 200, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  #assert n[0].pipe[0].n == 1 && n[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(n[0].pipe[..], 0), "/api/playtest/room-ticket/everglade-3");
+  b: [96] u8; nm: [40] u8;
+  body := cast(string) b[0..<jn_ticket_body(n, b[..])];
+  #assert jn_has(body, "{\"name\":\"") && jn_has(body, cast(string) nm[0..<jn_guest_name("p-me", nm[..])]);
+  // a bad answer: the lowest
+  m: [1] Everglade; mn: [1] EgNet;
+  everglade_attach_net(m[..], mn[..]);
+  net_facts(m[..], "url=https://openagents.com/worlds/my-fork\nplayer=p-me\n", "my-fork", false);
+  net_step(m[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  net_rooms(m[..], "503\n{}");
+  #assert cast(string) mn[0].code[0..<mn[0].code_n] == "my-fork-1";
+  // an answer for another realm is not taken
+  net_facts(m[..], "url=https://openagents.com/worlds/my-fork\nplayer=p-me\n", "my-fork", false);
+  net_step(m[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  net_rooms(m[..], "200\n{\"join\":\"everglade-2\"}");
+  #assert cast(string) mn[0].code[0..<mn[0].code_n] == "my-fork-1";
+}
+#test "join: ?room= is joined as named, a test's room as it was, a local room server at SLUG-1; a golden page asks nothing" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade?room=everglade-2#market\nplayer=p1\n", "everglade", false);
+  #assert cast(string) nn[0].code[0..<nn[0].code_n] == "everglade-2" && nn[0].join[0].named && !nn[0].join[0].test && jn_ready(nn[..]);
+  #assert cast(string) nn[0].url[0..<nn[0].url_n] == "wss://openagents.com/api/room/relay/everglade/everglade-2";
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade?room=pair-ab\nplayer=p1\n", "everglade", false);
+  #assert cast(string) nn[0].code[0..<nn[0].code_n] == "pair-ab" && nn[0].join[0].test;
+  l: [1] Everglade; ln: [1] EgNet;
+  everglade_attach_net(l[..], ln[..]);
+  net_facts(l[..], "url=http://localhost:8787/worlds/everglade?relay=ws://localhost:8830\nplayer=p1\n", "everglade", false);
+  #assert cast(string) ln[0].url[0..<ln[0].url_n] == "ws://localhost:8830/api/room/relay/everglade/everglade-1" && ln[0].join[0].test;
+  q: [1] Everglade; qn: [1] EgNet;
+  everglade_attach_net(q[..], qn[..]);
+  net_facts(q[..], "url=https://openagents.com/worlds/everglade?from=grid\n", "everglade", true);
+  net_step(q[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  #assert !qn[0].want && qn[0].pipe[0].n == 0 && !qn[0].join[0].from_grid;
+}
+#test "join: a full named instance gives way to the lowest with room, after a second refusal" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade?room=everglade-4\nplayer=p1\n", "everglade", false);
+  n := net_of(g[..]);
+  jn_refused(g[..], n);
+  #assert n[0].code_n > 0 && n[0].join[0].named;
+  jn_refused(g[..], n);
+  #assert n[0].code_n == 0 && !n[0].join[0].named && n[0].join[0].list_due;
+  net_step(g[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  #assert pipe_bytes(n[0].pipe[..], 0) == "/api/playtest/rooms/everglade";
+}
+#test "join: a first visit opens CHARACTER before the socket opens; ENTER sends the look and opens it" #steps 900000000 {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_start(g[..]);
+  everglade_attach_net(g[..], nn[..]);
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade?room=everglade-1\nplayer=p1\n", "everglade", false);
+  n := net_of(g[..]);
+  net_ticket(g[..], "200\n{\"ticket\":\"v2.x\",\"id\":\"p1\",\"account\":false,\"name\":\"Mossy Heron\",\"expires\":1}");
+  #assert join_picking(g[..]) && n[0].join[0].hold && !jn_ready(n);
+  #assert cast(string) n[0].join[0].name[0..<n[0].join[0].name_n] == "Mossy Heron";
+  // the socket waits
+  pipe_drained(n[0].pipe[..]);
+  net_step(g[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  #assert n[0].pipe[0].n == 0;
+  // the picker drawn: its swatches pressed pick the look; keys wait
+  out: [200000] f32; u: [UNIFORM_FLOATS] f32;
+  g[0].width = 1440; g[0].height = 900; g[0].dpr = 1;
+  _ := join_pick_draw(g[..], out[..], u[..], 0);
+  #assert everglade_key(g[..], 'w', 0) && g[0].held == 0;
+  for r: 0..<3 {
+    b := n[0].join[0].boxes[JB_SWATCH + ifx r == 0 then 3 else ifx r == 1 then JN_SKINS + 5 else JN_SKINS + JN_DYES + 11];
+    x := (b.x0 + b.x1) / 2; y := (b.y0 + b.y1) / 2;
+    #assert everglade_pointer(g[..], x, y, 0, 0, 1) && everglade_pointer(g[..], x, y, 2, 0, 1);
+  }
+  #assert n[0].join[0].skin == 3 && n[0].join[0].dye == 5 && n[0].join[0].trim == 11;
+  e := n[0].join[0].boxes[JB_ENTER];
+  #assert everglade_pointer(g[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 0, 0, 2) && everglade_pointer(g[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 2, 0, 2);
+  #assert !join_picking(g[..]) && jn_ready(n) && cast(string) n[0].look[0..<n[0].look_n] == "ranger.3.5.11";
+  // and you are drawn in it, as the others draw you
+  o := RANGER_AT * OBJECT_FLOATS;
+  rangers_you_look(g[..], o);
+  #assert g[0].objects[o + 14] == f32(REMOTE_MARK) && g[0].objects[o + 13] == 0 && g[0].palette[YOU_LOOK_AT] == SKIN_TONE[9] && g[0].palette[YOU_LOOK_AT + 4] == look_dye24(5);
+  #assert YOU_LOOK_AT + REMOTE_LOOK_ROWS * 4 == PALETTE_FLOATS;
+  net_step(g[..], 200, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  #assert n[0].pipe[0].n == 1 && n[0].pipe[0].op[0] == PIPE_OPEN;
+  // a returning player (a saved look) goes straight in; so does a test's room
+  r: [1] Everglade; rn: [1] EgNet;
+  everglade_start(r[..]); everglade_attach_net(r[..], rn[..]);
+  net_facts(r[..], "url=https://openagents.com/worlds/everglade?room=everglade-1\nplayer=p1\n", "everglade", false);
+  net_ticket(r[..], "200\n{\"ticket\":\"v2.x\",\"id\":\"p1\",\"account\":true,\"name\":\"Ash\",\"expires\":1,\"look\":\"ranger.2.3.4\"}");
+  #assert !join_picking(r[..]) && jn_ready(rn[..]) && rn[0].join[0].skin == 2 && rn[0].join[0].dye == 3;
+  net_facts(r[..], "url=https://openagents.com/worlds/everglade?room=pair-zz\nplayer=p1\n", "everglade", false);
+}
+#test "join: INVITE copies the link to your instance; a guest's name is the same two words for the same key" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade?with=p9#market\nplayer=p1\n", "everglade", false);
+  net_step(g[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  net_rooms(g[..], "200\n{\"join\":\"everglade-2\"}");
+  jn_invite(g[..]);
+  #assert g[0].action == JN_ACT_COPY && cast(string) g[0].outbox[0..<g[0].out_n] == "https://openagents.com/worlds/everglade?room=everglade-2";
+  a: [40] u8; b: [40] u8;
+  #assert cast(string) a[0..<jn_guest_name("p-1234", a[..])] == cast(string) b[0..<jn_guest_name("p-1234", b[..])];
+  x := cast(string) a[0..<jn_guest_name("p-1234", a[..])];
+  sp := 0; for ch: x { if ch == ' ' { sp += 1; } }
+  #assert sp == 1 && x.count >= 6;
+}
