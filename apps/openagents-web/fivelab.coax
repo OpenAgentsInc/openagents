@@ -792,6 +792,10 @@ cleric_turn :: (s: [] Lab, i: int) {
     if c.team == b[0].c[i].team && !c.dead && c.hp < c.hp_max / 2 { bloodied += 1; }
   }
   if undead_near >= 3 { ok := rs_turn_undead(b, i); }
+  // Spirit Guardians (from level 5) when two foes or more are within 15 feet, or the dead are near
+  if !b[0].turn.action && !b[0].turn.slot_spent && b[0].c[i].slots[3] > 0 && b[0].c[i].conc < 0 && foes_near(s, i, b[0].c[i].x, b[0].c[i].y, 20) >= 2 {
+    ok := rs_cast(b, i, SP_SPIRIT_GUARDIANS, 3, 0, 0, i);
+  }
   if bloodied >= 2 { ok := rs_preserve_life(b, i); }
   w := most_hurt(s, i, 60, 0.4);
   if w >= 0 && !b[0].turn.slot_spent {
@@ -802,7 +806,9 @@ cleric_turn :: (s: [] Lab, i: int) {
   if foe < 0 { return; }
   j := foe_at_hand(s, i, -1);
   if j >= 0 && !b[0].turn.action { ok := rs_attack(b, i, j, false, -1); return; }
-  if !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, foe, 15, 45); }
+  // with Spirit Guardians up it wades in among them
+  guarding := b[0].c[i].conc == SP_SPIRIT_GUARDIANS;
+  if !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, foe, ifx guarding then 0 else 15, ifx guarding then 10 else 45); }
   foe = nearest_foe(s, i);
   if foe < 0 { return; }
   if !b[0].turn.action && !b[0].turn.slot_spent && rs_unit(dice(s)) < 0.5 {

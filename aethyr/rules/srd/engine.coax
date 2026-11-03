@@ -219,6 +219,7 @@ RsCreature :: struct {
   explorer: bool; lore: bool; swim: int;   // the Ranger's Deft Explorer, Hunter's Lore (record), a swim Speed
   ritual: bool; arcane_recovery: bool; scholar: bool; savant: bool; memorize: bool;   // the Wizard's, out of a battle's reach
   sculpt: bool;                    // Sculpt Spells (Evoker)
+  sear: bool; blessed_healer: bool;   // Sear Undead (Cleric), Blessed Healer (Life Domain)
   restoration: bool; affinity: int;   // Sorcerous Restoration (a rest), Elemental Affinity's damage type (Draconic)
   guard_slot: int; guard_turn: int;   // Spirit Guardians: the slot it was cast with; the turn this creature last saved against one
   aura: bool; steed: bool;          // Aura of Protection; Faithful Steed (Find Steed, a summoning this engine doesn't model)
@@ -528,11 +529,16 @@ rs_bard :: (name: string, team: int, level: int) -> RsCreature {
 rs_cleric :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_hero(name, team, level, RS_CLERIC, [6] int.[14, 12, 13, 10, 16, 8], RS_WIS, RS_CHA, 8);
+  // an Ability Score Improvement at 4 (the feat, p. 87): Wisdom +2
+  if level >= 4 { c[0].score[RS_WIS] = rs_min(c[0].score[RS_WIS] + 2, 20); }
   c[0].ac = 13 + rs_min(rs_mod(c[0].score[RS_DEX]), 2) + 2;
   c[0].spell_ability = RS_WIS; c[0].weapon = W_MACE;
   rs_full_slots(c[..], level);
   if level >= 2 { rs_use_set(c[..], RS_USE_CHANNEL, ifx level >= 18 then 4 else ifx level >= 6 then 3 else 2); }
   c[0].turn_undead = level >= 2; c[0].disciple = level >= 3; c[0].preserve_life = level >= 3;
+  // Sear Undead at 5 (p. 37), Spirit Guardians with its 3rd-level slots; the Life Domain's Blessed
+  // Healer at 6 (p. 40). Its level 5 domain spells (Mass Healing Word, Revivify) aren't records yet.
+  c[0].sear = level >= 5; c[0].blessed_healer = level >= 6;
   return c[0];
 }
 // The SRD 5.2.1 Fighter (p. 47-49): Strength and Constitution saves, a d10 hit die, Chain Mail (AC

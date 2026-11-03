@@ -364,6 +364,12 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
     }
     rs_affect(b, i, j, sp, slot, zone_at);
   }
+  // Blessed Healer (Life Domain, p. 40): a slot spell that heals another heals the Cleric 2 + its level
+  if b[0].c[i].blessed_healer && slot > 0 && (s.area != RS_A_NONE || target != i) {
+    heals := false;
+    for k: 0..<s.step_n { if s.steps[k].kind == RS_S_HEAL { heals = true; } }
+    if heals { got := rs_feature_heal(b, i, i, 2 + slot, "Blessed Healer"); }
+  }
   return true;
 }
 
@@ -1433,6 +1439,8 @@ rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
   b[0].turn.action = true; b[0].c[i].uses[RS_USE_CHANNEL] -= 1;
   rs_say(b, RS_EV_CAST, i, -1, 0, " presents a holy symbol: Turn Undead");
   dc := rs_dc(b, i);
+  // Sear Undead: Wisdom-modifier d8s (at least one), rolled once, Radiant on each that fails
+  sear := ifx b[0].c[i].sear then rs_sum(b[0].dice[..], rs_max(rs_mod(b[0].c[i].score[RS_WIS]), 1), 8) else 0;
   for j: 0..<b[0].n {
     c := b[0].c[j];
     if !c.undead || !rs_up(c) || c.team == b[0].c[i].team || rs_feet_to(b, i, j) > 30 { continue; }
@@ -1443,7 +1451,14 @@ rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
     rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " WIS save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
     rs_add_text(l[..], ifx ok then ": success" else ": turned, Frightened and Incapacitated");
     rs_tell(b, ifx ok then RS_EV_SAVE else RS_EV_CONDITION, -1, i, j, total, 0, l[..]);
-    if !ok { rs_put_effect(b, j, RsEffect.{kind = EF_TURNED, cond = RS_FRIGHTENED | RS_INCAPACITATED, by = i, spell = -1, until = b[0].clock + 60, save = -1, dc = 0}); }
+    if !ok && sear > 0 {
+      // the damage first, so it doesn't end the turning
+      amount := rs_resisted(b, j, sear, RS_RADIANT);
+      sl: [1] RsLine; rs_add_text(sl[..], "  "); rs_add_name(sl[..], b, j); rs_add_text(sl[..], " takes "); rs_add_int(sl[..], amount); rs_add_text(sl[..], " Radiant (Sear Undead)");
+      rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, RS_RADIANT, sl[..]);
+      rs_damage(b, i, j, amount, RS_RADIANT, false, -1);
+    }
+    if !ok && !b[0].c[j].dead { rs_put_effect(b, j, RsEffect.{kind = EF_TURNED, cond = RS_FRIGHTENED | RS_INCAPACITATED, by = i, spell = -1, until = b[0].clock + 60, save = -1, dc = 0}); }
   }
   return true;
 }
@@ -2597,4 +2612,23 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert low >= 6 && low < 100;
   // and its own Fire Resistance halves a Fireball on it
   #assert rs_resisted(b[..], s, 20, RS_FIRE) == 10;
+}
+
+#test "a level 6 Life Cleric: Wisdom 18, Spirit Guardians' slots, three Channel Divinity uses, Sear Undead and Blessed Healer" {
+  c := rs_cleric("Nyx", 1, 6);
+  #assert c.score[RS_WIS] == 18 && rs_spell_dc(c) == 15 && c.slots_max[3] == 3 && c.uses_max[RS_USE_CHANNEL] == 3 && c.sear && c.blessed_healer;
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 31;
+  k := rs_add(b[..], c, 2, 3);
+  for q: 0..<4 { s := rs_add(b[..], rs_skeleton("Skeleton", 2), 4 + q, 3); b[0].c[s].hp = 100; b[0].c[s].hp_max = 100; }
+  rs_fresh(b[..], k);
+  #assert rs_turn_undead(b[..], k);
+  // a turned Skeleton took Sear Undead's 4d8 and is still turned
+  seared := false;
+  for q: 1..<5 { if rs_effect(b[0].c[q], EF_TURNED) { #assert b[0].c[q].hp <= 100 - 4 && b[0].c[q].hp >= 100 - 32; seared = true; } }
+  #assert seared;
+  // Blessed Healer: Healing Word on a friend gives the Cleric 2 + 1
+  f := rs_add(b[..], rs_fighter("Garr", 1, 3), 2, 5);
+  b[0].c[f].hp = 5; b[0].c[k].hp = 10;
+  rs_fresh(b[..], k);
+  #assert rs_cast(b[..], k, SP_HEALING_WORD, 1, 0, 0, f) && b[0].c[k].hp == 13 && b[0].c[f].hp > 5;
 }
