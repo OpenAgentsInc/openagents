@@ -89,7 +89,9 @@ fc_group :: (site: string, bots: int, seconds: int, realm: string, group: int) -
     rb: [32] u8; rn := rs_put(rb[..], 0, room); sb: [8] u8; sn := rs_put(sb[..], 0, shard); pb: [48] u8; pn := rs_put(pb[..], 0, pid);
     k = rs_put(u[..], 0, ws); k = rs_put(u[..], k, "/api/room/s"); k = rs_put(u[..], k, shard); k = rs_put(u[..], k, "/relay/everglade/");
     k = rs_put(u[..], k, room); k = rs_put(u[..], k, "?t="); k = rs_put(u[..], k, ticket);
-    if k < 0 || !relay_conn_open(c[i..<i + 1], cast(string) u[0..<k]) { print("failed % open\n", id); continue; }
+    up := false;
+    for attempt: 0..<3 { if !up && k > 0 && relay_conn_open(c[i..<i + 1], cast(string) u[0..<k]) { up = true; } }
+    if !up { print("failed % open\n", id); continue; }
     // seated when the server says y
     sat := false; t0 := rs_now();
     while !sat && rs_now() - t0 < 10000 && c[i].h >= 0 {
@@ -170,7 +172,9 @@ tool_main :: () -> int #export_c {
     if st == 200 && seated >= players { proc_sleep(6000); st = fc_http(w[..], "GET", cast(string) u[0..<k], "", "", body[..], bn[..]); ln = rs_put(lb[..], 0, cast(string) body[0..<bn[0]]); if ln < 0 { ln = 0; } break; }
   }
   listed := cast(string) lb[0..<ln];
-  // each shard's own word on its tick while the bots play (GET /api/room/sK/health)
+  // each shard's own word on its tick while the bots play (GET /api/room/sK/health), halfway through
+  // their play, so a shard's start (its worlds built) is behind it
+  proc_sleep(seconds * 500);
   hl: [4096] u8; hln := 0;
   for sh: 1..<7 {
     key := "\"shard\":";
