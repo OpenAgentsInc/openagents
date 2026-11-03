@@ -203,6 +203,15 @@ static int cursor;
 static Vkp *window_p;          // the window's presenter (--window): its size, to scale the pointer
 static float draw_w, draw_h;   // what the realm draws at
 static VkDesk desk;            // --desk: Linux programs on a panel over the realm (vkdesk.h)
+// F8: the realm's own screen for the desk, when its face has one (the Grid's: newland-local.coax)
+__attribute__((weak)) float coaxial_panel_rect(uint32_t state, int32_t k);
+static float panel_draw_w, panel_draw_h;
+static int world_rect(int32_t r[4], uint32_t w, uint32_t h) {
+  if (!coaxial_panel_rect || coaxial_panel_rect(H.state, 4) <= 0 || panel_draw_w <= 0) return 0;
+  float sx = (float)w / panel_draw_w, sy = (float)h / panel_draw_h;
+  for (int k = 0; k < 4; k++) r[k] = (int32_t)(coaxial_panel_rect(H.state, k) * (k % 2 ? sy : sx));
+  return r[2] > r[0] && r[3] > r[1];
+}
 // The pointer to the desk first, in the screen's pixels: 1 when the desk took it.
 static int pointer_to_desk(float sx, float sy, int phase) { return vkdesk_pointer(sx, sy, phase == 0 ? 1 : phase == 2 ? 0 : -1); }
 static void to_moved(void *user, float x, float y) { (void)user; touched = 1; vkdesk_pointer(x, y, -1); }
@@ -563,6 +572,10 @@ int main(int argc, char **argv) {
         // a start in a mode is the toggle's own key pressed once (os/verse-panel.coax decides)
         if (desk_mode && !strcmp(desk_mode, "docked")) desk.mode = verse_panel_next(desk.mode, 67);
         if (desk_mode && !strcmp(desk_mode, "flat")) desk.mode = verse_panel_next(desk.mode, 68);
+        // the realm learns it has a desk, so a realm with a screen for it shows that screen
+        rh_send(&H, 611, "desk=1\n", 7);
+        panel_draw_w = (float)w; panel_draw_h = (float)h; desk.world = world_rect;
+        if (desk_mode && !strcmp(desk_mode, "world")) desk.mode = verse_panel_next(desk.mode, 66);
         p.overlay = vkdesk_overlay; p.overlay_user = &desk; fprintf(stderr, "vk-realm: the desk is up (%ux%u); F9 shows it, F10 is flat mode\n", ddw, ddh); }
     }
     if (windowed) fprintf(stderr, "vk-realm: in a %ux%u window%s at %.3f Hz, drawn at %ux%u; closing the window or %.0f s ends it\n", p.w, p.h, fullscreen ? " (full screen)" : "", 1 / screen.period, w, h, seconds);

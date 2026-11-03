@@ -28,6 +28,7 @@ extern char **environ;
 // os/verse-panel.coax's modes and routes
 #define PANEL_CLOSED verse_panel_closed()
 #define PANEL_FLAT verse_panel_flat()
+#define PANEL_WORLD verse_panel_world()
 #define PANEL_TOGGLE verse_panel_toggle()
 #define PANEL_TO_DESK verse_panel_to_desk()
 
@@ -44,6 +45,9 @@ typedef struct {
   int64_t mode;               // PANEL_CLOSED, PANEL_DOCKED, PANEL_FLAT
   uint32_t sw, sh;            // the screen it is shown on, for the pointer
   int attached;               // the session's compositor (outlives this realm), not a child of ours
+  // F8: where the realm drew the desk's screen this frame, in the swapchain's pixels (0: not there)
+  int (*world)(int32_t rect[4], uint32_t w, uint32_t h);
+  int32_t world_rect[4]; int world_ok;
 } VkDesk;
 
 static VkDesk *vkdesk_;
@@ -183,7 +187,14 @@ static void vkdesk_overlay(VkCommandBuffer cmd, VkImage dst, uint32_t w, uint32_
   }
   if (!d->image_ready) return;
   int32_t r[4];
-  for (int k = 0; k < 4; k++) r[k] = (int32_t)verse_panel_rect(d->mode, w, h, d->dw, d->dh, k);
+  if (d->mode == PANEL_WORLD) {
+    d->world_ok = d->world && d->world(d->world_rect, w, h);
+    if (!d->world_ok) return;
+    for (int k = 0; k < 4; k++) r[k] = d->world_rect[k];
+    // the blit is clipped to the screen: a screen partly off it is drawn only where it is on it
+    if (r[0] < 0 || r[1] < 0 || r[2] > (int32_t)w || r[3] > (int32_t)h) return;
+  } else
+    for (int k = 0; k < 4; k++) r[k] = (int32_t)verse_panel_rect(d->mode, w, h, d->dw, d->dh, k);
   if (r[2] <= r[0] || r[3] <= r[1]) return;
   if (d->mode == PANEL_FLAT) {
     VkClearColorValue black = {.float32 = {0, 0, 0, 1}};
@@ -201,7 +212,7 @@ static int vkdesk_key(int code, int pressed) {
   if (!d || d->pid <= 0) return 0;
   int64_t to = verse_panel_key_to(d->mode, code);
   if (to == PANEL_TOGGLE) {
-    if (pressed) { d->mode = verse_panel_next(d->mode, code); fprintf(stderr, "vk-realm: the desk is %s\n", d->mode == PANEL_CLOSED ? "closed" : d->mode == PANEL_FLAT ? "flat" : "docked"); }
+    if (pressed) { d->mode = verse_panel_next(d->mode, code); fprintf(stderr, "vk-realm: the desk is %s\n", d->mode == PANEL_CLOSED ? "closed" : d->mode == PANEL_FLAT ? "flat" : d->mode == PANEL_WORLD ? "in the world" : "docked"); }
     return 1;
   }
   if (to != PANEL_TO_DESK) return 0;
@@ -215,8 +226,16 @@ static int vkdesk_key(int code, int pressed) {
 static int vkdesk_pointer(float x, float y, int button) {
   VkDesk *d = vkdesk_;
   if (!d || d->pid <= 0 || d->mode == PANEL_CLOSED || !d->sw) return 0;
-  int64_t px = verse_panel_point(d->mode, d->sw, d->sh, d->dw, d->dh, (int64_t)x, (int64_t)y, 0);
-  int64_t py = verse_panel_point(d->mode, d->sw, d->sh, d->dw, d->dh, (int64_t)x, (int64_t)y, 1);
+  int64_t px, py;
+  if (d->mode == PANEL_WORLD) {
+    if (!d->world_ok) return 0;
+    int32_t *r = d->world_rect;
+    px = verse_panel_point_in(r[0], r[1], r[2], r[3], d->dw, d->dh, (int64_t)x, (int64_t)y, 0);
+    py = verse_panel_point_in(r[0], r[1], r[2], r[3], d->dw, d->dh, (int64_t)x, (int64_t)y, 1);
+  } else {
+    px = verse_panel_point(d->mode, d->sw, d->sh, d->dw, d->dh, (int64_t)x, (int64_t)y, 0);
+    py = verse_panel_point(d->mode, d->sw, d->sh, d->dw, d->dh, (int64_t)x, (int64_t)y, 1);
+  }
   if (px < 0 || py < 0) return d->mode == PANEL_FLAT;   // flat: the whole screen is the desk's
   char cmd[96];
   snprintf(cmd, sizeof cmd, "move %lld %lld\n", (long long)px, (long long)py);

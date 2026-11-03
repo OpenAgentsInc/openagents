@@ -9,7 +9,13 @@
 LOCAL_MAX :: 8;
 LOCAL_KIND :: 610;
 LocalAgent :: struct { kind: [16] u8; kind_n: int; project: [48] u8; project_n: int; working: bool; minutes: int; }
-LocalAgents :: struct { a: [LOCAL_MAX] LocalAgent; n: int; }
+LocalAgents :: struct {
+  a: [LOCAL_MAX] LocalAgent; n: int;
+  // the desk's screen in the world (message 611 "desk=1": the host has a desk): where it was drawn
+  // this frame, in the realm's pixels, for the host to put the desk there (its F8)
+  desk: bool; rect: [4] f32; rect_ok: bool;
+}
+LOCAL_DESK_KIND :: 611;
 
 // One agent= line into slot k: whether it was well formed.
 local_line :: (l: [] LocalAgents, k: int, line: string) -> bool {
@@ -65,10 +71,49 @@ local_place :: (k: int, n: int) -> Fv {
   #assert ahead > 6.99 && ahead < 7.01;
 }
 
+// The desk's screen: four metres by two and a quarter, its foot 0.6 m up, nine metres ahead of the
+// spawn and four and a half to its left, facing you. Corner k (0 bottom-left, 1 bottom-right,
+// 2 top-right, 3 top-left) in the world's metres.
+local_desk_corner :: (k: int) -> Fv {
+  face: f32 = WK_SPAWN_FACE;
+  fx := sin(face); fz := cos(face); rx := fz; rz := -fx;
+  cx := WK_SPAWN_X + fx * 9 - rx * 4.5; cz := WK_SPAWN_Z + fz * 9 - rz * 4.5;
+  side: f32 = ifx k == 0 || k == 3 then -2.0f32 else 2.0f32;
+  up: f32 = ifx k < 2 then 0.6f32 else 2.85f32;
+  return fv(cx + rx * side, up, cz + rz * side);
+}
+#test "the desk's screen: four metres wide, 16 by 9, upright" {
+  a := local_desk_corner(0); b := local_desk_corner(1); t := local_desk_corner(3);
+  w := sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z));
+  #assert w > 3.99 && w < 4.01 && t.y - a.y > 2.24 && t.y - a.y < 2.26 && t.x == a.x && t.z == a.z;
+}
+// The frame drawn where the desk stands, and the rectangle it covers on the screen kept for the host.
+local_desk :: (out: [] f32, at: int, s: [] LandState, c: Cam, mid: Fv, p: Pen) -> int {
+  l := s[0].local[..];
+  l[0].rect_ok = false;
+  if !l[0].desk { return at; }
+  pts: [4] Spot; all := true;
+  for k: 0..<4 { w := local_desk_corner(k); g := wk_at(mid, w.x, w.y, w.z); pts[k] = spot(c, g); all = all && pts[k].ok; }
+  if !all { return at; }
+  v := at; k := ink(p, INK_BRIGHT);
+  for e: 0..<4 { n := (e + 1) % 4; v = rule(out, v, pts[e].x, pts[e].y, pts[n].x, pts[n].y, k, 0.8); }
+  x0 := pts[0].x; y0 := pts[0].y; x1 := x0; y1 := y0;
+  for e: 1..<4 { x0 = lo(x0, pts[e].x); y0 = lo(y0, pts[e].y); x1 = hi(x1, pts[e].x); y1 = hi(y1, pts[e].y); }
+  l[0].rect[0] = x0; l[0].rect[1] = y0; l[0].rect[2] = x1; l[0].rect[3] = y1; l[0].rect_ok = x1 > x0 + 8 && y1 > y0 + 8;
+  return put_centred(out, v, "DESK  ·  F8", (x0 + x1) * 0.5, y1 + 14 * p.d, 7 * p.d, chrome(ink(p, INK_DIM)));
+}
+// The rectangle for the host: k 0..3 x0 y0 x1 y1 in the realm's pixels, 4 whether it is on screen.
+coaxial_land_panel :: (s: [] LandState, k: int) -> f32 #export_c {
+  if s.count < 1 || k < 0 || k > 4 { return -1; }
+  l := s[0].local[..];
+  if k == 4 { return ifx l[0].rect_ok then 1.0f32 else 0.0f32; }
+  return ifx l[0].rect_ok then l[0].rect[k] else -1.0f32;
+}
+
 local_agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, mid: Fv, p: Pen, t: f32) -> int {
   l := s[0].local[..];
-  if l[0].n == 0 { return at; }
-  v := at;
+  v := local_desk(out, at, s, c, mid, p);
+  if l[0].n == 0 { return v; }
   sh: Shape; sh.size = 0.95;
   k := verse_figure_skeleton(sh);
   you := wk_at(mid, WK_SPAWN_X, 0, WK_SPAWN_Z);

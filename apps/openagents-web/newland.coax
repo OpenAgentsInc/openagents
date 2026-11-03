@@ -84,6 +84,7 @@ land_capture_age :: (s:[]LandState)->int {
 // PAGE facts carry the browser's wall clock as a generic host effect.
 coaxial_land_message :: (s:[]LandState,kind:int,text:string) #export_c {
   if s.count==1 && kind==LOCAL_KIND && text.count<=4096 {local_message(s[0].local[..],text);return;}
+  if s.count==1 && kind==LOCAL_DESK_KIND {s[0].local[0].desk=text.count>=6 && text[0..<6]=="desk=1";return;}
   if s.count!=1 || kind!=600 || text.count>4096 {return;}
   boot_facts(s[0].boot[..],text);
   from:=0;

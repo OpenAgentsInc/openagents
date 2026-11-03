@@ -6,17 +6,22 @@
 //     playing beside it), and closes it.
 //   - F10 is flat mode: the desk fills the screen, the CoderOS desktop as it was. F10 again, or F9,
 //     goes back to the Verse.
-//   - While the desk shows, the keyboard is the desk's (the toggles excepted); the pointer is the
-//     desk's over the panel and the realm's elsewhere.
+//   - F8 puts the desk in the world: on the screen the realm stands for it (the Grid's, a few metres
+//     ahead), drawn where the realm says that screen is this frame, so it moves as you walk.
+//     There the keyboard stays the realm's (you walk up to it); the pointer over it is the desk's.
+//   - While the desk shows docked or flat, the keyboard is the desk's (the toggles excepted); the
+//     pointer is the desk's over the panel and the realm's elsewhere.
 // Library: vk-realm.c calls these through the C the Coax compiler makes (verse-panel.h).
 
-PANEL_CLOSED :: 0; PANEL_DOCKED :: 1; PANEL_FLAT :: 2;
+PANEL_CLOSED :: 0; PANEL_DOCKED :: 1; PANEL_FLAT :: 2; PANEL_WORLD :: 3;
+PANEL_KEY_WORLD :: 66;   // evdev KEY_F8
 PANEL_KEY_DOCK :: 67;    // evdev KEY_F9
 PANEL_KEY_FLAT :: 68;    // evdev KEY_F10
 PANEL_TO_REALM :: 0; PANEL_TO_DESK :: 1; PANEL_TOGGLE :: 2;
 // the constants, for the host (a header carries procedures, not constants)
 verse_panel_closed :: () -> int #export_c { return PANEL_CLOSED; }
 verse_panel_flat :: () -> int #export_c { return PANEL_FLAT; }
+verse_panel_world :: () -> int #export_c { return PANEL_WORLD; }
 verse_panel_toggle :: () -> int #export_c { return PANEL_TOGGLE; }
 verse_panel_to_desk :: () -> int #export_c { return PANEL_TO_DESK; }
 
@@ -24,12 +29,13 @@ verse_panel_to_desk :: () -> int #export_c { return PANEL_TO_DESK; }
 verse_panel_next :: (mode: int, code: int) -> int #export_c {
   if code == PANEL_KEY_DOCK { return ifx mode == PANEL_CLOSED then PANEL_DOCKED else PANEL_CLOSED; }
   if code == PANEL_KEY_FLAT { return ifx mode == PANEL_FLAT then PANEL_CLOSED else PANEL_FLAT; }
+  if code == PANEL_KEY_WORLD { return ifx mode == PANEL_WORLD then PANEL_CLOSED else PANEL_WORLD; }
   return mode;
 }
 // Where a key goes: the toggles are the panel's own, the rest the desk's while it shows.
 verse_panel_key_to :: (mode: int, code: int) -> int #export_c {
-  if code == PANEL_KEY_DOCK || code == PANEL_KEY_FLAT { return PANEL_TOGGLE; }
-  return ifx mode == PANEL_CLOSED then PANEL_TO_REALM else PANEL_TO_DESK;
+  if code == PANEL_KEY_DOCK || code == PANEL_KEY_FLAT || code == PANEL_KEY_WORLD { return PANEL_TOGGLE; }
+  return ifx mode == PANEL_CLOSED || mode == PANEL_WORLD then PANEL_TO_REALM else PANEL_TO_DESK;
 }
 #test "F9 docks and closes, F10 flattens and comes back, other keys change nothing" {
   #assert verse_panel_next(PANEL_CLOSED, PANEL_KEY_DOCK) == PANEL_DOCKED && verse_panel_next(PANEL_DOCKED, PANEL_KEY_DOCK) == PANEL_CLOSED;
@@ -37,17 +43,21 @@ verse_panel_key_to :: (mode: int, code: int) -> int #export_c {
   #assert verse_panel_next(PANEL_CLOSED, PANEL_KEY_FLAT) == PANEL_FLAT && verse_panel_next(PANEL_DOCKED, PANEL_KEY_FLAT) == PANEL_FLAT;
   #assert verse_panel_next(PANEL_FLAT, PANEL_KEY_FLAT) == PANEL_CLOSED;
   #assert verse_panel_next(PANEL_DOCKED, 30) == PANEL_DOCKED && verse_panel_next(PANEL_CLOSED, 1) == PANEL_CLOSED;
+  #assert verse_panel_next(PANEL_CLOSED, PANEL_KEY_WORLD) == PANEL_WORLD && verse_panel_next(PANEL_WORLD, PANEL_KEY_WORLD) == PANEL_CLOSED;
+  #assert verse_panel_next(PANEL_WORLD, PANEL_KEY_DOCK) == PANEL_CLOSED && verse_panel_next(PANEL_WORLD, PANEL_KEY_FLAT) == PANEL_FLAT;
 }
 #test "keys go to the desk while it shows" {
   #assert verse_panel_key_to(PANEL_CLOSED, 30) == PANEL_TO_REALM && verse_panel_key_to(PANEL_DOCKED, 30) == PANEL_TO_DESK;
   #assert verse_panel_key_to(PANEL_FLAT, 1) == PANEL_TO_DESK && verse_panel_key_to(PANEL_CLOSED, PANEL_KEY_DOCK) == PANEL_TOGGLE;
   #assert verse_panel_key_to(PANEL_FLAT, PANEL_KEY_FLAT) == PANEL_TOGGLE;
+  #assert verse_panel_key_to(PANEL_WORLD, 17) == PANEL_TO_REALM && verse_panel_key_to(PANEL_WORLD, PANEL_KEY_WORLD) == PANEL_TOGGLE;
 }
 
 // The panel's rectangle on a W x H screen for a DW x DH desk, in whole pixels, as x0 y0 x1 y1 (k 0..3):
 // flat, the desk fitted to the whole screen; docked, fitted to the right 62% with a 24-pixel margin.
 // The desk's aspect is kept; the rest of its area is the realm's.
 verse_panel_rect :: (mode: int, w: int, h: int, dw: int, dh: int, k: int) -> int #export_c {
+  if mode == PANEL_WORLD { return 0; }   // the realm's to say: verse_panel_point_in
   if mode == PANEL_CLOSED || w < 1 || h < 1 || dw < 1 || dh < 1 || k < 0 || k > 3 { return 0; }
   m := ifx mode == PANEL_FLAT then 0 else 24;
   ax := ifx mode == PANEL_FLAT then 0 else w - (w * 62) / 100;
@@ -76,6 +86,17 @@ verse_panel_point :: (mode: int, w: int, h: int, dw: int, dh: int, x: int, y: in
   x1 := verse_panel_rect(mode, w, h, dw, dh, 2); y1 := verse_panel_rect(mode, w, h, dw, dh, 3);
   if x1 <= x0 || y1 <= y0 || x < x0 || x >= x1 || y < y0 || y >= y1 { return -1; }
   return ifx k == 0 then ((x - x0) * dw) / (x1 - x0) else ((y - y0) * dh) / (y1 - y0);
+}
+// A screen point in the desk's pixels through the rectangle x0 y0 x1 y1 (k 0 x, 1 y), or -1 off it:
+// the world's panel, wherever the realm draws it.
+verse_panel_point_in :: (x0: int, y0: int, x1: int, y1: int, dw: int, dh: int, x: int, y: int, k: int) -> int #export_c {
+  if x1 <= x0 || y1 <= y0 || dw < 1 || dh < 1 || x < x0 || x >= x1 || y < y0 || y >= y1 { return -1; }
+  return ifx k == 0 then ((x - x0) * dw) / (x1 - x0) else ((y - y0) * dh) / (y1 - y0);
+}
+#test "the world's panel: a point through the realm's rectangle" {
+  #assert verse_panel_point_in(100, 100, 740, 460, 1280, 720, 420, 280, 0) == 640 && verse_panel_point_in(100, 100, 740, 460, 1280, 720, 420, 280, 1) == 360;
+  #assert verse_panel_point_in(100, 100, 740, 460, 1280, 720, 99, 280, 0) == -1 && verse_panel_point_in(100, 100, 100, 460, 1280, 720, 100, 280, 0) == -1;
+  #assert verse_panel_rect(PANEL_WORLD, 2560, 1440, 1280, 720, 2) == 0;
 }
 #test "a point over the panel lands on the desk, one off it is the realm's" {
   #assert verse_panel_point(PANEL_FLAT, 2560, 1440, 1280, 720, 1280, 720, 0) == 640 && verse_panel_point(PANEL_FLAT, 2560, 1440, 1280, 720, 1280, 720, 1) == 360;

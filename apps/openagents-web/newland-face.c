@@ -222,6 +222,8 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
 }
 // The wheel and a trackpad's pinch zoom; Esc closes the card.
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { if (walking(state)) coaxial_walk_wheel(view(state), dy); else coaxial_land_wheel(view(state), dy); }
+/* Verse OS: where the Grid drew the desk's screen this frame (newland-local.coax), for the host's F8 */
+EXPORT("coaxial_panel_rect") float coaxial_panel_rect(uint32_t state, int32_t k) { return (float)coaxial_land_panel(view(state), k); }
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
   if (coaxial_land_boot_key(view(state), key)) return 1u;   /* Verse OS's identity offer and words (newland-boot.coax) */
   if (walking(state)) { track_key(tr(),key,0);track_drain(&track_state); return coaxial_walk_key(view(state), key, mods) ? 1u : 0u; }
