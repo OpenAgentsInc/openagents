@@ -3,11 +3,13 @@ human, its meshes, skin weights on the 65-joint people rig and its texture maps,
 one VPK1 file (verse/tools/pack_realm.py has the container) that the lab's page loads with
 `private:human` (coax/web/host.js). Offline tooling; never shipped or run by a page.
 
-    python3 verse/tools/humans/pack_human.py standin [OUT.pack]
-    python3 verse/tools/humans/pack_human.py metahuman EXPORT_DIR [OUT.pack]
+    python3 verse/tools/humans/pack_human.py standin [OUT.pack] [--outfit NAME]
+    python3 verse/tools/humans/pack_human.py metahuman EXPORT_DIR [OUT.pack] [--outfit NAME]
 
-OUT.pack defaults to ~/.openagents/verse/private-build/web/NAME.pack (standin.pack or
-human.pack), the directory coax/web/serve.c serves as /private/ on a local address. Nothing
+--outfit dresses the body in a Quaternius fantasy outfit (outfits.py: fantasy, hooded, robe)
+instead of the portrait's clothes (a MetaHuman) or none (the stand-in). OUT.pack defaults to
+~/.openagents/verse/private-build/web/NAME.pack (standin.pack or human.pack, or with the
+outfit's name after a dash: human-fantasy.pack), the directory coax/web/serve.c serves as /private/ on a local address. Nothing
 this writes goes into git: a MetaHuman pack is a MetaHuman asset (private, never used to train
 AI models), and the stand-in stays beside it so both load the same way.
 
@@ -27,6 +29,8 @@ The catalog, a line each:
   human NAME                    the source's name
   body male|female              the people rig's body whose clips it plays
   licence TEXT                  what its art is under
+  outfit NAME BASE              what it wears (student, bare, or an outfits.py outfit) and the
+                                pack's name without it (the lab's OUTFIT button: ?pack=BASE&outfit=)
   B J X Y Z                     joint J's bind position (metres, the figure's own space, the
                                 rig's rest pose: +y up, +z forward, the figure's left +x)
   M MATERIAL R G B ROUGH        a material's tint (thousandths, linear) and roughness scale
@@ -60,6 +64,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import people  # noqa: E402
+import outfits  # noqa: E402
 
 MAGIC, HEADER, ENTRY = b"VPK1", 32, 48
 KIND_CATALOG, KIND_VERTICES, KIND_INDICES, KIND_LAYER = 1, 2, 3, 4
@@ -349,6 +354,7 @@ class Pack:
         self.images = []        # (role, source name, image path or PIL image, flip green)
         self.face = None        # a face rig: given the face pieces as written, its block (face_rig.pack)
         self.image_of = {}
+        self.outfit = None      # (its outfit's name, the pack's name without it): the lab's outfit button
 
     def layer(self, role, path, flip=False):
         if path is None or empty(path):
@@ -368,6 +374,8 @@ class Pack:
 
 def write(pack, out, size):
     vb = bytearray(); ib = []; lines = [f"human {pack.name}", f"body {pack.body}", f"licence {pack.licence}"]
+    if pack.outfit:
+        lines.append(f"outfit {pack.outfit[0]} {pack.outfit[1]}")
     for j, b in enumerate(pack.binds):
         # a joint's bind position, and (a bind off the rig's rest) its turn to the rest, x y z w
         lines.append(("B %d" + " %.6f" * len(b)) % (j, *b))
@@ -453,7 +461,7 @@ def found(path):
     return alt if alt.exists() else None
 
 
-def standin(pack):
+def standin(pack, outfit=None):
     skel = people.Skeleton(people.load(f"{OUTFITS}/Male_Peasant.gltf"))
     if len(skel.names) != JOINTS:
         raise SystemExit("pack_human: the people rig isn't 65 joints")
@@ -462,7 +470,9 @@ def standin(pack):
     base = people.home_path(f"{QUATERNIUS}/Base Characters/Godot - UE")
     hair = people.home_path(f"{QUATERNIUS}/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)")
     kinds = {"MI_Superhero_Male": "skin", "MI_Eyes": "eye", "MI_Hair_1": "brow"}
-    sources = [(base / "Superhero_Male_FullBody.gltf", None), (hair / "Hair_SimpleParted.gltf", "hair")]
+    sources = [(base / "Superhero_Male_FullBody.gltf", None)]
+    if outfit is None or outfits.OUTFITS[outfit]["hair"]:
+        sources.append((hair / "Hair_SimpleParted.gltf", "hair"))
     for path, force in sources:
         g = people.load(str(path))
         maps = {}
@@ -474,12 +484,33 @@ def standin(pack):
         for pr in people.part_file(spec, str(path), None, skeletons):
             material = force or kinds.get(pr["material"], "cloth")
             b, n, r = maps[pr["material"]]
+            if outfit and material == "skin":
+                pr["tris"] = dressed_standin(pack, outfit, pr, skel)
             pack.piece(f"{path.stem}/{pr['material']}", pr["verts"], pr["tris"], material, b, n, r)
-    pack.tints = {"skin": (1.0, 1.0, 1.0, 1.0), "eye": (1.0, 1.0, 1.0, 0.4), "hair": (0.16, 0.1, 0.06, 0.55),
-                  "brow": (0.16, 0.1, 0.06, 0.6), "cloth": (1.0, 1.0, 1.0, 1.0)}
+    pack.tints.update({"skin": (1.0, 1.0, 1.0, 1.0), "eye": (1.0, 1.0, 1.0, 0.4), "hair": (0.16, 0.1, 0.06, 0.55),
+                       "brow": (0.16, 0.1, 0.06, 0.6), "cloth": (1.0, 1.0, 1.0, 1.0)})   # the outfit's cloths are in already
     pack.tints.update(EYE_TINTS)
     eyes = next(p for p in pack.pieces if p["material"] == MATERIALS["eye"])
     eye_layers(pack, eyes)
+
+
+def dressed_standin(pack, outfit, body, skel):
+    """The outfit fitted onto the stand-in's body (outfits.fit; the same steps as a MetaHuman's), its
+    edges checked in the lab's clips; returns the body's triangles not under the cloth."""
+    import metahuman
+    xs = [tuple(c * 100.0 for c in v["p"]) for v in body["verts"]]
+    ws = [{j: w / 255.0 for j, w in zip(v["j"], v["w"]) if w > 0} for v in body["verts"]]
+    target = {"x": xs, "n": [v["n"] for v in body["verts"]], "w": ws,
+              "joints": [tuple(m[r][3] * 100.0 for r in range(3)) for m in skel.world]}
+    pieces = outfits.fit(outfit, target)
+    poses = metahuman.clip_poses([(*b, 0.0, 0.0, 0.0, 1.0) for b in pack.binds], "male")
+    bad = outfits.edges(pieces, poses, metahuman.edge_check)
+    if bad:
+        raise SystemExit(f"standin: torn cloth (edge outliers) in {bad}")
+    outfits.packed(pack, pieces, {})
+    hide = outfits.covered(xs, target["n"], ws, pieces) | outfits.legs(outfit, ws, [n.lower() for n in skel.names])
+    print(f"standin: body points under the cloth: {len(hide)} of {len(xs)}")
+    return [t for t in body["tris"] if not all(i in hide for i in t)]
 
 
 def main(argv):
@@ -488,17 +519,25 @@ def main(argv):
     size = 1024
     if "--size" in argv:
         k = argv.index("--size"); size = int(argv[k + 1]); argv = argv[:k] + argv[k + 2:]
+    outfit = None
+    if "--outfit" in argv:
+        k = argv.index("--outfit"); outfit = argv[k + 1]; argv = argv[:k] + argv[k + 2:]
+        if outfit not in outfits.OUTFITS:
+            raise SystemExit(f"pack_human: outfits are {sorted(outfits.OUTFITS)}")
+    suffix = f"-{outfit}" if outfit else ""
     if argv[0] == "standin":
-        pack = Pack("standin", "male", "Quaternius Universal Base Characters|CC0 1.0")
-        standin(pack)
-        out = Path(argv[1]) if len(argv) > 1 else OUT_DIR / "standin.pack"
+        pack = Pack("standin", "male", "Quaternius Universal Base Characters|CC0 1.0" + (f"; {outfits.LICENCE}" if outfit else ""))
+        pack.outfit = (outfit or "bare", "standin")
+        standin(pack, outfit)
+        out = Path(argv[1]) if len(argv) > 1 else OUT_DIR / f"standin{suffix}.pack"
     else:
         import metahuman
         if len(argv) < 2:
             raise SystemExit("pack_human: metahuman EXPORT_DIR [OUT.pack]")
         pack = Pack("metahuman", "male", "MetaHuman (private; never committed, never used to train AI models)")
-        metahuman.build(pack, Path(os.path.expanduser(argv[1])))
-        out = Path(argv[2]) if len(argv) > 2 else OUT_DIR / "human.pack"
+        pack.outfit = (outfit or "student", "human")
+        metahuman.build(pack, Path(os.path.expanduser(argv[1])), outfit)
+        out = Path(argv[2]) if len(argv) > 2 else OUT_DIR / f"human{suffix}.pack"
         size = max(size, 2048) if "--size" not in sys.argv else size
     catalog, total = write(pack, out, size)
     print(catalog.splitlines()[-1], f"-> {out} ({total} bytes)")

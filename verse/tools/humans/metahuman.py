@@ -27,6 +27,7 @@ from pathlib import Path
 
 import people
 import face_rig
+import outfits
 import pack_human
 
 DUMP_DIR = Path.home() / ".openagents/verse/private-build/metahuman-dump"
@@ -305,18 +306,36 @@ def mesh(path, skin, J, flip_v, hide=None, posed=None):
     return verts, tris
 
 
-def iris_v(eye_path, eyes_image):
-    """Whether the DNA's v runs up its images (as Maya's): the eye's front-most vertex is the iris's
-    middle, the darkest disc of the eyes' colour map; of v and 1 - v, the one nearer it is right."""
+def lips_v(head_path, head_image):
+    """Whether the DNA's v runs up its images (as Maya's): the lips are the face's reddest skin, so of
+    v and 1 - v the right one puts the lips' vertices (front and middle, 2 to 4.5 cm under the
+    nose's tip) on texels redder than the cheeks' (4 to 6 cm to the side, level with the tip). (The
+    eye's iris sits mid-image, so it can't tell the two apart.)"""
     from PIL import Image
-    vs, vts, vns, faces = obj(eye_path)
-    front = max(range(len(vs)), key=lambda i: vs[i][2])
-    uv = next(vts[t] for f in faces for (pi, t, ni) in f if pi == front)
-    im = Image.open(eyes_image).convert("L").resize((128, 128)); px = im.load()
-    def dark(u, v):
-        x = min(127, max(0, int(u * 128))); y = min(127, max(0, int(v * 128)))
-        return sum(px[min(127, max(0, x + dx)), min(127, max(0, y + dy))] for dx in (-2, 0, 2) for dy in (-2, 0, 2))
-    return dark(uv[0], 1.0 - uv[1]) < dark(uv[0], uv[1])
+    vs, vts, vns, faces = obj(head_path)
+    uv = {}
+    for f in faces:
+        for (pi, ti, ni) in f:
+            uv.setdefault(pi, vts[ti])
+    tip = max((i for i in range(len(vs)) if abs(vs[i][0]) < 3.0), key=lambda i: vs[i][2])
+    tx, ty, tz = vs[tip]
+    def front(sel):
+        ids = [i for i in range(len(vs)) if sel(vs[i]) and i in uv]
+        top = max(vs[i][2] for i in ids)
+        return [i for i in ids if vs[i][2] > top - 1.5]
+    lips = front(lambda p: abs(p[0] - tx) < 1.5 and ty - 4.5 < p[1] < ty - 2.0)
+    cheeks = front(lambda p: 4.0 < abs(p[0] - tx) < 6.0 and ty - 1.0 < p[1] < ty + 2.0)
+    im = Image.open(head_image).convert("RGB").resize((512, 512)); px = im.load()
+    def red(ids, flip):
+        def at(u, v):
+            r, g, _ = px[min(511, max(0, int(u * 512))), min(511, max(0, int((1.0 - v if flip else v) * 512)))]
+            return r - g
+        return sum(at(*uv[i]) for i in ids) / max(len(ids), 1)
+    contrast = {flip: red(lips, flip) - red(cheeks, flip) for flip in (False, True)}
+    print(f"metahuman: the lips' redness over the cheeks', v as is {contrast[False]:.0f}, flipped {contrast[True]:.0f}")
+    if abs(contrast[True] - contrast[False]) < 5:
+        raise SystemExit("metahuman: can't tell which way the DNA's v runs (the lips aren't redder either way)")
+    return contrast[True] > contrast[False]
 
 
 def binds(M, W, p):
@@ -335,7 +354,7 @@ def body_female(P):
     return off([tuple(m[r][3] for r in range(3)) for m in female.world]) < off(rest)
 
 
-def build(pack, export):
+def build(pack, export, outfit=None):
     dna = sorted((export / "dna").glob("*_Body.dna")), sorted((export / "dna").glob("*_Head.dna"))
     if not dna[0] or not dna[1]:
         raise SystemExit(f"metahuman: no *_Body.dna and *_Head.dna under {export}/dna")
@@ -347,14 +366,22 @@ def build(pack, export):
         raise SystemExit("metahuman: the DNA's axes aren't the rig's (y up, z forward)")
     rest, rest_parent = rig_rest()
     W, p, P = t_pose(JB, rest, rest_parent)
-    flip_v = iris_v(head / "eyeLeft_lod0_mesh.obj", maps / "Eyes_Color.png")
+    flip_v = lips_v(head / "head_lod0_mesh.obj", maps / "Head_Basecolor.png")
     portrait = export.parent / "latest/mh.neutral.glb"
     skin = skin_maps(portrait, maps) if portrait.exists() else {}
     # the bind pose: the clothes' own (the body with its arms lowered), each joint's motion to it
     down = arms_down(body, JB, export.parent / "rig-body-down/body_lod0_mesh.obj", rest_parent)
     M = down["M"]
     covered = set()
-    if portrait.exists():
+    if outfit:
+        # a fantasy outfit (outfits.py) in place of the portrait's clothes: the portrait gives its
+        # brows, and its hair unless a hood covers it
+        hair = outfits.OUTFITS[outfit]["hair"]
+        if portrait.exists():
+            dressed(pack, [portrait], down, (head, JH), W, p, P,
+                    keep=lambda m: m == GROOM[1] or (hair and m == GROOM[0]))
+        covered = fitted(pack, outfit, down, (head, JH), M, W, p, P)
+    elif portrait.exists():
         covered = dressed(pack, [portrait] + [q for q in LOWER_GARMENTS(export) if q.exists()],
                           down, (head, JH), W, p, P)
     for name, (material, base, normal, rough) in MESHES.items():
@@ -602,9 +629,10 @@ def arms_down(body, JB, down_path, rest_parent):
     return {"x": vd, "vn": vnd, "n": position_normals(vd, vnd, fd), "w": wb, "M": M}
 
 
-def dressed(pack, sources, down, head, W, p, P):
+def dressed(pack, sources, down, head, W, p, P, keep=None):
     """Packs each source's grooms and garments, as authored (the bind pose is theirs); returns the
-    body positions tight cloth covers."""
+    body positions tight cloth covers. keep (a material's name to a bool) packs only the nodes
+    whose first material it keeps."""
     (hdir, JH) = head
     vd, nd, wb, M = down["x"], down["n"], down["w"], down["M"]
     vh, _, vnh, fh = obj(hdir / "head_lod0_mesh.obj")
@@ -646,7 +674,7 @@ def dressed(pack, sources, down, head, W, p, P):
                 if mat["name"] in SKIP:
                     continue
                 prims.append((pr, mat))
-            if not prims:
+            if not prims or (keep and not keep(prims[0][1]["name"])):
                 continue
             wanted.append(node["name"])
             groom = prims[0][1]["name"] in GROOM
@@ -819,6 +847,67 @@ def dressed(pack, sources, down, head, W, p, P):
     if hands and sum(i not in covered for i in hands) < 0.9 * len(hands):
         raise SystemExit("metahuman: the hands are hidden under cloth")
     return covered
+
+
+def fitted(pack, outfit, down, head, M, W, p, P):
+    """Packs a fantasy outfit (outfits.fit) fitted onto the body in the T pose, then moved into the
+    pack's bind (the clothes' own pose, arms lowered) by its weights; checks its edges in the lab's
+    clips; returns the body positions under it."""
+    hdir, JH = head
+    vd, nd, wb = down["x"], down["n"], down["w"]
+    vh, _, vnh, fh = obj(hdir / "head_lod0_mesh.obj")
+    wh = folded_weights(skin_file(hdir / "head_lod0_mesh.skin.txt"), JH)
+    nh = position_normals(vh, vnh, fh)
+    # each joint's move from the bind to the T pose: x -> Q_k (x - c_k) + P_k (cm; binds())
+    Q = [mm(W[k], tr(M[k][0])) for k in range(65)]
+    c = [add(mv(M[k][0], p[k]), M[k][1]) for k in range(65)]
+    def rest(x, w):
+        y = (0.0, 0.0, 0.0)
+        for k, a in w.items() if isinstance(w, dict) else w:
+            y = add(y, tuple(v * a for v in add(mv(Q[k], sub(x, c[k])), P[k])))
+        return y
+    def turn(n, w, back=False):
+        q = (0.0, 0.0, 0.0)
+        for k, a in w.items() if isinstance(w, dict) else w:
+            q = add(q, tuple(v * a for v in mv(tr(Q[k]) if back else Q[k], n)))
+        return unit(q)
+    target = {"x": [rest(x, w) for x, w in zip(vd + vh, wb + wh)],
+              "n": [turn(n, w) for n, w in zip(nd + nh, wb + wh)], "w": wb + wh, "joints": list(P)}
+    pieces = outfits.fit(outfit, target)
+    # back into the bind: with its weights fixed, rest() is affine, J x + b, so x = J^-1 (y - b)
+    worst, flat = 0.0, 1.0
+    for pc in pieces:
+        for v in pc["verts"]:
+            y, w = v["x"], v["ws"]
+            J = [[sum(a * Q[k][i][j] for k, a in w) for j in range(3)] for i in range(3)]
+            b = rest((0.0, 0.0, 0.0), w)
+            d = J[0][0] * (J[1][1] * J[2][2] - J[1][2] * J[2][1]) - J[0][1] * (J[1][0] * J[2][2] - J[1][2] * J[2][0]) + \
+                J[0][2] * (J[1][0] * J[2][1] - J[1][1] * J[2][0])
+            flat = min(flat, d)
+            x = mv(inv3(J), sub(y, b))
+            worst = max(worst, math.dist(rest(x, w), y))
+            v["t"] = y
+            v["x"], v["n"] = x, turn(v["n"], w, back=True)
+    print(f"outfit {outfit}: into the bind pose, the T pose kept within {worst:.3f} cm (least blended determinant {flat:.2f})")
+    poses = clip_poses(binds(M, W, p), "female" if body_female(P) else "male")
+    bad = outfits.edges(pieces, poses, edge_check)
+    if bad:
+        raise SystemExit(f"metahuman: torn cloth (edge outliers) in {bad}")
+    names = outfits.packed(pack, pieces, {})
+    want = sorted({n for stem, ms in outfits.OUTFITS[outfit]["parts"] for n in (ms or [])} |
+                  ({"Robe"} if "robe" in outfits.OUTFITS[outfit] else set()))
+    missing = [n for n in want if n not in names]
+    if missing:
+        raise SystemExit(f"metahuman: garments not packed: {missing}")
+    hide = outfits.covered(vd, nd, wb, pieces) | outfits.legs(outfit, wb, LOWER)
+    # the ranger's gloves cover the palm, the fingers' roots and the thumb: the fingertips show
+    tips = [i for i, w in enumerate(wb) if sum(v for k, v in w.items() if LOWER[k].split("_")[0] in HAND[1:5]
+                                               and LOWER[k].split("_")[1] == "03") > 0.5]
+    print(f"body positions under the outfit: {len(hide)} of {len(vd)}; "
+          f"fingertip positions shown: {sum(i not in hide for i in tips)} of {len(tips)}")
+    if tips and sum(i not in hide for i in tips) < 0.9 * len(tips):
+        raise SystemExit("metahuman: the fingers are hidden under cloth")
+    return hide
 
 
 # Cloth follows the arm only along a sleeve: a garment point is a sleeve's when the nearest body
@@ -1060,15 +1149,17 @@ def clip_poses(binds, body):
     return out
 
 
-def edge_check(pos, fw, tris, poses):
+def edge_check(pos, fw, tris, poses, ref=None):
     """Each garment edge skinned, by its packed weights, into the lab's clips (clip_poses), against
-    its authored length: per pose the share stretched past 1.5x and the worst. Torn cloth (weights
+    its authored length (with ref, a garment made in another pose, as a fitted outfit in the T pose:
+    the longer of its length there and in the bind, so only an edge longer than in both counts): per pose the share stretched past 1.5x and the worst. Torn cloth (weights
     mixing joints that part, as a hanging hand's and the hip's) shows as long edges: per pose also
     the share grown by more than 1 cm and half again and the most grown (cm)."""
+    ref = ref or pos
     edges = set()
     for t in tris:
         for a, b in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
-            if math.dist(pos[a], pos[b]) >= 0.05:
+            if max(math.dist(ref[a], ref[b]), math.dist(pos[a], pos[b])) >= 0.05:
                 edges.add((min(a, b), max(a, b)))
     res = {}
     for name, mats in poses:
@@ -1081,7 +1172,7 @@ def edge_check(pos, fw, tris, poses):
             Y.append(q)
         over = grown = 0; worst = 1.0; most = 0.0
         for a, b in edges:
-            l0 = math.dist(pos[a], pos[b]); l1 = math.dist(Y[a], Y[b]) * 100.0
+            l0 = max(math.dist(ref[a], ref[b]), math.dist(pos[a], pos[b])); l1 = math.dist(Y[a], Y[b]) * 100.0
             over += l1 > 1.5 * l0; worst = max(worst, l1 / l0)
             grown += l1 - l0 > 1.0 and l1 > 1.5 * l0; most = max(most, l1 - l0)
         res[name] = (over / max(len(edges), 1), worst, grown / max(len(edges), 1), most)

@@ -20,6 +20,7 @@ unlisted V key) and only reduced to numbers here:
             changes
   eyes      the eyes' blended layers (the occlusion, 25, and the wet layer, 7) are the catalog's
             last pieces, so the lab draws them over the scene
+  garments  with a fantasy outfit (its outfit line, outfits.py): every garment it names is a piece
   frame     the share of the frame the figure covers
   lod       each lower level of detail (the lab's unlisted L) covers the figure's pixels as the
             full mesh does: the share of them it misses and the share it adds
@@ -160,6 +161,17 @@ def main(argv):
     print(f"eyes: {blended} blended pieces, the last {len(tail)} of the catalog's {len(pieces)} (occlusion {tail.count(25)}, wet {tail.count(7)})")
     if blended != len(tail) or (blended and not (25 in tail and 7 in tail)):
         failed.append("eyes")
+    b = pack.read_bytes(); worn = re.search(rb"\noutfit (\S+) ", b[:b.find(b"\nbox")])
+    worn = worn and worn.group(1).decode()
+    if worn and worn not in ("student", "bare"):
+        sys.path.insert(0, str(Path(__file__).resolve().parent)); sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        import outfits
+        spec = outfits.OUTFITS[worn]
+        want = {m for _, ms in spec["parts"] for m in (ms or [])} | ({"Robe"} if "robe" in spec else set())
+        have = {m.group(1) for m in re.finditer(r"^P (\S+) ", cat, re.M)}
+        print(f"garments: {worn}: {len(want & have)} of {len(want)} named garments packed; missing {sorted(want - have)}")
+        if want - have:
+            failed.append("garments")
     probe = shot(page, RENDERS / "check-figure.png", 2, face=False).load()
     cover = sum(1 for y in range(HUD_TOP, HUD_BOTTOM) for x in range(1600) if any(probe[x, y])) / (1600 * (HUD_BOTTOM - HUD_TOP))
     print(f"frame: the figure covers {cover:.1%} of the frame")

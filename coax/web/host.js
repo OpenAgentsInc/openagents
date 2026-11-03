@@ -115,7 +115,8 @@
 //                 (storage), indices (index) and texture layers (layers), and adds its sounds by name.
 //                 While it streams the app hears message 605, "LOADED TOTAL" bytes. One pack a page.
 //   private:NAME  a private pack (a MetaHuman's, docs/verse/metahuman-support.md) that never ships: only on
-//                 a local address whose URL asks for it (?pack, or ?pack=OTHER for another), never in a
+//                 a local address whose URL asks for it (?pack, or ?pack=OTHER for another; &outfit=NAME
+//                 for its NAME outfit, the pack OTHER-NAME), never in a
 //                 golden, /private/NAME.pack from coax/web/serve.c's private builds; its four parts as
 //                 pack:'s. Not asked for, absent or broken, its parts fail quietly (bytes 0, no error, the
 //                 world loads on), so the page draws what it has without it.
@@ -1147,7 +1148,9 @@ function parseAssets(text) {
     if (kind === "sound") { const e = rest.indexOf("="); list.push({ i, kind, name: rest.slice(0, e), url: rest.slice(e + 1) }); }
     else if (kind === "pack") { const pack = { url: rest }; for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack }); }
     else if (kind === "private") {
-      const pick = dev && !golden ? new URLSearchParams(location.search).get("pack") : null, name = pick || rest;
+      // ?pack&outfit=NAME: the pack's NAME outfit (pack_human.py --outfit), its own pack, BASE-NAME
+      const q = new URLSearchParams(location.search), pick = dev && !golden ? q.get("pack") : null;
+      const outfit = pick !== null ? q.get("outfit") : null, name = (pick || rest) + (outfit ? `-${outfit}` : "");
       const pack = { url: `/private/${name}.pack`, quiet: true, away: pick === null || !/^[a-z0-9-]{1,64}$/.test(name) };
       for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack });
     }

@@ -639,6 +639,51 @@ It holds no MetaHuman asset and draws with none.
   7.8% to 5.4% (slash) and 4.6% to 3.2% (spell). A loose robe is blended
   over 6 cm already, and the band spiked its edges in a walk past the 4 cm
   limit, so the robe still stretches in slash and spell.
+- **Fantasy outfits.** `pack_human.py metahuman EXPORT_DIR --outfit NAME`
+  dresses the body in a Quaternius fantasy outfit (Modular Character Outfits
+  - Fantasy, CC0: the clothes Everglade's people and 5E Lab's classes wear)
+  instead of the portrait's clothes, into its own pack (`human-NAME.pack`).
+  `fantasy` is the ranger's tunic, trousers, boots, belt, bracers and
+  gloves; `hooded` adds the hood and pauldron, and leaves out the hair
+  under the hood; `robe` is the peasant's shirt, corset and shoes under a
+  long robe (`people.robe_mesh`, 48 by 18, cut 7 cm clear of the legs and
+  drawn in at the waist, dyed blue). The robe hides the legs whole: no
+  cloth without a simulation follows a stride, so a leg would poke through
+  its front. The portrait still gives the brows and hair. `verse/tools/humans/outfits.py` fits each garment in the
+  T pose: each joint's frame from the outfits' skeleton (the superhero
+  female, which the clothes sit 4 mm off) to the body's, stretched along the
+  bone by the bones' length ratio, the garment following its own skin;
+  then the source body, moved the same way, is projected onto the
+  target's surface, and each garment point adds the moves of the source
+  body points near it, so cloth keeps its own distance from the skin;
+  then any point nearer the skin than 3 mm goes out along the normal, the
+  push spread over 3 cm of the cloth round it so layers keep their order.
+  Weights come from the body's surface in the T pose (a Gaussian over the
+  body points near each garment point, smoothed over the garment's
+  neighbours), where the arms are clear of the trunk; a piece under 40 cm
+  (a bracer, a belt, the hood) moves as one. The robe hangs from the pelvis
+  at the waist and takes more and more of the thighs' weight down to the
+  knee (60% there), split between them by its angle round the hips, so the
+  stretch between the legs spreads round it instead of tearing its front. Each point then goes into the pack's bind with its
+  weights (with weights fixed the skinning is affine, so the inverse is
+  exact). The same edge checks run (an edge counts as grown only past its
+  length both in the T pose and in the bind), and the fingertips must show
+  (the ranger's gloves cover the palm and the thumb). The skin under the
+  outfit is found by casting each body point's normal against the
+  garments' triangles (cloth from 1 cm inside the skin to 3 cm out, sharing
+  a third of the point's weights): a body bulkier than the outfit's pokes
+  through where the cloth is inside it, and a collar's edge doesn't cut the
+  neck above it. `pack_human.py standin
+  --outfit NAME` fits the same female outfits onto the male stand-in, a
+  harder fit to judge by eye. In the lab, with a pack in, the body button
+  (and G) shows the outfit and steps to the next: `?pack&outfit=fantasy`,
+  `hooded`, `robe`, then the pack's own clothes (`?pack`).
+- **Which way v runs.** The DNA meshes' texture v runs up their images, as
+  Maya's: the compiler flips it when the lips' vertices land on redder
+  texels than the cheeks' that way (`metahuman.lips_v`). It used to decide
+  from the eye's iris, which sits mid-image either way; the wrong choice
+  put the face map on upside down (the lips' red on the nose and inner
+  cheeks, the creases' occlusion off the creases).
 - **Probe views for scripts.** An unlisted V key cycles views a script reads
   without anyone looking at the frame: the albedo, uv and base layer, capsule
   pixels in magenta, each pixel's material, and its material with its base
@@ -655,7 +700,8 @@ It holds no MetaHuman asset and draws with none.
   the mesh's own shadow map; the capsules no longer draw or cast.
 - **Private loading.** The world's assets are `private:human`. `host.js` asks
   for `/private/NAME.pack` only on a local address whose URL has `?pack`
-  (`?pack=standin` for the stand-in), never in a golden; `serve.c` serves
+  (`?pack=standin` for the stand-in; `&outfit=NAME` for `NAME`'s pack,
+  `human-NAME.pack`), never in a golden; `serve.c` serves
   `/private/` from `~/.openagents/verse/private-build/web/` and only while
   watching. Anywhere else, or with no file, the four parts fail quietly and
   the capsule body draws. The deploy's asset rewrite never matches
