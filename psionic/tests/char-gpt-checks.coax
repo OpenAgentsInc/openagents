@@ -1,0 +1,43 @@
+// Checks of char-gpt.coax: the layout and plan by hand, the initial values
+// and row order against the specification's own arithmetic (values computed
+// independently in Python from the frozen text), and a whole step's
+// launches on the CPU against central differences of its own loss.
+
+#test "the frozen model has 10,765,056 parameters in the specified order" {
+    s:=cg_full();
+    #assert cg_admit(s)==CgStatus.ok && cg_tensors(s)==27 && cg_params(s)==10765056;
+    #assert cg_tensor_size(s,0)==65*384 && cg_tensor_size(s,1)==256*384 && cg_tensor_at(s,2)==24960+98304;
+    #assert cg_tensor_rows(s,2)==384 && cg_tensor_cols(s,2)==1152 && cg_tensor_cols(s,3)==384 && cg_tensor_cols(s,4)==1536 && cg_tensor_rows(s,5)==1536 && cg_tensor_cols(s,5)==384;
+    #assert cg_tensor_rows(s,26)==384 && cg_tensor_cols(s,26)==65 && cg_tensor_at(s,26)==10765056-24960;
+    #assert cg_layer_tensor(5,CG_DOWN)==25 && cg_tensor_at(s,6)==cg_tensor_at(s,2)+1769472;
+    t:=cg_tiny();#assert cg_params(t)==65*128+64*128+2*(4*128*128+2*128*512)+128*65;
+}
+#test "initial values and row starts match the specification's arithmetic" {
+    // Bits computed by psionic/tests/char_gpt_torch.py's own init.
+    #assert f32_bits(cg_init_value(0,0,0.02))==0x3c5b807e && f32_bits(cg_init_value(2,5,0.02))==0x3b55a59e;
+    #assert f32_bits(cg_init_value(3,7,0.02/sqrt(12.0)))==0xbb490e88 && f32_bits(cg_init_value(26,24959,0.02))==0xbb8e855d;
+    s:=cg_full();offs:[64]int;cg_rows(s,0,1003854,offs[..]);
+    #assert offs[0]==885203 && offs[1]==255754 && offs[2]==1002602;
+    cg_rows(s,5,1003854,offs[..]);#assert offs[0]==465873 && offs[63]==593625;
+    for r:0..<64 {#assert offs[r]>=0 && offs[r]<1003854-256;}
+    #assert cg_windows(s,111540)==435 && cgp_train_bytes(1115394)==1003854;
+    w:[3]int;cg_eval_offsets(s,1003854,2,3,w[..]);#assert w[0]==1003854+512 && w[2]==1003854+1024;
+}
+#test "the vocabulary is the distinct bytes in ascending order" {
+    x:=[6]u8.[99,10,99,65,32,10];table:[256]int;out:[6]u8;
+    #assert cg_vocabulary(x[..],table[..])==4 && table[10]==0 && table[32]==1 && table[65]==2 && table[99]==3 && table[11]== -1;
+    cg_tokenize(x[..],table[..],out[..]);#assert out[0]==3 && out[1]==0 && out[4]==1;
+}
+#test "the plan lays out every buffer exactly and refuses past its budget" {
+    s:=cg_full();p:=cg_plan(s,1115394,1<<40);
+    #assert p.status==CgStatus.ok && p.n==10765056 && p.tokens==8192;
+    #assert p.count[CG_LOSS]==16384 && p.count[cg_lb(0,CG_S)]==32*6*256*256 && p.count[cg_lb(5,CG_U)]==8192*1536 && p.count[CG_OFFS]==64;
+    #assert p.at[CG_G]==10765056 && p.at[CG_IDS]==1115394 && p.at[CG_TG]==1115394+8192 && p.arena[CG_OFFS]==2;
+    for i:1..<CG_BUFS {if p.arena[i]==p.arena[i-1] {#assert p.at[i]==p.at[i-1]+p.count[i-1];}}
+    #assert p.used==4*p.floats+p.bytes+8*p.offsets && p.bytes==1115394+2*8192;
+    q:=cg_plan(s,1115394,p.used);#assert q.status==CgStatus.ok;
+    q=cg_plan(s,1115394,p.used-1);#assert q.status==CgStatus.budget;
+    bad:=s;bad.heads=5;#assert cg_plan(bad,1115394,1<<40).status==CgStatus.shape;
+    // One step's launches: per micro-batch 2+10L+3 forward and 3+16L+2 backward, then 4.
+    #assert cg_step_launches(s,p)==2*((2+10*6+3)+(3+16*6+2))+4;
+}

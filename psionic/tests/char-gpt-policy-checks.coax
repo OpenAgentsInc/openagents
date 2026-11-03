@@ -1,0 +1,90 @@
+// Checks of char-gpt-policy.coax, each decision at its edges.
+#test "the corpus is admitted only by length and fingerprint" {
+    x:=[3]u8.[1,2,3];
+    #assert cgp_corpus(1115394,(cast(u64)0x4016c93c3be74c18))==CgStatus.ok;
+    #assert cgp_corpus(1115395,(cast(u64)0x4016c93c3be74c18))==CgStatus.corpus && cgp_corpus(1115393,(cast(u64)0x4016c93c3be74c18))==CgStatus.corpus;
+    #assert cgp_corpus(1115394,(cast(u64)0x4016c93c3be74c19))==CgStatus.corpus && cgp_corpus(3,cgp_fnv(x[..]))==CgStatus.corpus;
+    // FNV-1a 64 published vectors: "" and "a".
+    #assert cgp_fnv(x[0..<0])==(cast(u64)0xcbf29ce484222325);
+    a:=[1]u8.[97];#assert cgp_fnv(a[..])==(cast(u64)0xaf63dc4c8601ec8c);
+    #assert cgp_train_bytes(1115394)==1003854 && cgp_train_bytes(10)==9 && cgp_train_bytes(19)==17;
+}
+#test "shapes are admitted inside every kernel bound and refused one past it" {
+    #assert cgp_shape(65,384,6,6,256,1536,32,2)==CgStatus.ok;
+    #assert cgp_shape(2,1,1,1,2,1,1,1)==CgStatus.ok && cgp_shape(256,512,8,512,512,2048,127,1)==CgStatus.ok;
+    #assert cgp_shape(1,384,6,6,256,1536,32,2)==CgStatus.shape && cgp_shape(257,384,6,6,256,1536,32,2)==CgStatus.shape;
+    #assert cgp_shape(65,0,6,6,256,1536,32,2)==CgStatus.shape && cgp_shape(65,513,6,1,256,1536,32,2)==CgStatus.shape;
+    #assert cgp_shape(65,384,6,0,256,1536,32,2)==CgStatus.shape && cgp_shape(65,384,6,5,256,1536,32,2)==CgStatus.shape;
+    #assert cgp_shape(65,384,0,6,256,1536,32,2)==CgStatus.shape && cgp_shape(65,384,9,6,256,1536,32,2)==CgStatus.shape;
+    #assert cgp_shape(65,384,6,6,1,1536,32,2)==CgStatus.shape && cgp_shape(65,384,6,6,513,1536,32,2)==CgStatus.shape;
+    #assert cgp_shape(65,384,6,6,256,0,32,2)==CgStatus.shape && cgp_shape(65,384,6,6,256,2049,32,2)==CgStatus.shape;
+    #assert cgp_shape(65,384,6,6,256,1536,0,2)==CgStatus.shape && cgp_shape(65,384,6,6,256,1536,32,0)==CgStatus.shape;
+    #assert cgp_shape(65,384,6,6,256,1536,255,2)==CgStatus.ok && cgp_shape(65,384,6,6,256,1536,256,2)==CgStatus.shape;
+    #assert cgp_budget(10,10)==CgStatus.ok && cgp_budget(11,10)==CgStatus.budget && cgp_budget(0,10)==CgStatus.budget && cgp_budget(1,10)==CgStatus.ok;
+}
+#test "the schedule warms up, then follows the cosine to the floor" {
+    #assert cgp_rate(0,2000,100)==0.00001 && cgp_rate(49,2000,100)==0.0005 && cgp_rate(99,2000,100)==0.001;
+    #assert cgp_rate(100,2000,100)==0.001 && abs(cgp_rate(1999,2000,100)-0.0001)<0.00000001;
+    // Halfway through the cosine: (0.001 + 0.0001)/2.
+    #assert abs(cgp_rate(1050,2000,100)-0.00055)<0.000000000001;
+    #assert abs(cgp_rate(575,2000,100)-(0.0001+0.00045*(1+cos(CGP_PI*0.25))))<0.000000000001;
+}
+#test "a step's decision: constants, clipping and every refusal" {
+    d:=cgp_decide(0,2000,100,16384,f32_bits(32768),f32_bits(16));
+    #assert d.status==CgStatus.ok && d.apply && d.loss==2 && d.norm==4 && d.rate==0.00001;
+    #assert d.scale==1/(4+0.000001f32) && d.keep==f32(1-0.00001*0.1) && d.b2==0.99f32 && d.wb1==f32(1-0.9) && d.wb2==f32(1-0.99);
+    #assert d.step==f32(0.00001/(1-0.9)) && d.root2==f32(sqrt(1-0.99)) && d.eps==f32(0.00000001);
+    // A norm under the clip is not scaled; at step 9 the bias corrections are 1 - b^10.
+    d=cgp_decide(9,2000,100,4,f32_bits(1),f32_bits(0.25));
+    #assert d.apply;#assert d.norm==0.5;#assert d.scale==1;#assert d.loss==0.25;#assert d.step==f32(cgp_rate(9,2000,100)/(1-pow(cast(f64)0.9,cast(f64)10)));#assert d.root2==f32(sqrt(1-pow(cast(f64)0.99,cast(f64)10)));
+    // Exactly at the clip: 1/(1 + 1e-6) < 1, as PyTorch scales it.
+    one:=f32_bits(1);
+    d=cgp_decide(0,2000,100,4,one,one);#assert d.scale<1 && d.scale==1/(1+0.000001f32) && d.clipped;
+    // norm + 1e-6 rounds to exactly 1: not clipped.
+    n:=0.999999f32;#assert n+0.000001f32==1;
+    d=cgp_decide(0,2000,100,4,one,f32_bits(n*n));#assert d.norm==n && !d.clipped && d.scale==1;
+    d=cgp_decide(0,2000,100,4,one,f32_bits(0.25));#assert !d.clipped && d.scale==1;inf:=(cast(u32)0x7f800000);nan:=(cast(u32)0x7fc00000);big:=(cast(u32)0x7f7fffff);
+    d=cgp_decide(0,2000,100,4,inf,one);#assert d.status==CgStatus.number && !d.apply && d.loss==0;
+    d=cgp_decide(0,2000,100,4,(cast(u32)0xff800000),one);#assert d.status==CgStatus.number && !d.apply;
+    d=cgp_decide(0,2000,100,4,one,nan);#assert d.status==CgStatus.number && !d.apply;
+    d=cgp_decide(0,2000,100,4,one,inf);#assert d.status==CgStatus.number && !d.apply;
+    d=cgp_decide(0,2000,100,4,one,f32_bits(-1));#assert d.status==CgStatus.number && !d.apply;
+    d=cgp_decide(0,2000,100,4,one,(cast(u32)0x80000000));#assert d.status==CgStatus.number && !d.apply;
+    d=cgp_decide(0,2000,100,4,one,0);#assert d.status==CgStatus.ok && d.apply && d.scale==1 && d.norm==0;
+    d=cgp_decide(0,2000,100,4,big,big);#assert d.status==CgStatus.ok && d.apply;
+    #assert cgp_decide(-1,2000,100,4,one,one).status==CgStatus.order && cgp_decide(2000,2000,100,4,one,one).status==CgStatus.order;
+    #assert cgp_decide(1999,2000,100,4,one,one).status==CgStatus.ok && cgp_decide(0,2000,100,0,one,one).status==CgStatus.order;
+    #assert cgp_decide(0,2000,0,4,one,one).status==CgStatus.order && cgp_decide(0,2000,2000,4,one,one).status==CgStatus.order;
+    #assert cgp_decide(0,2000,1,1,one,one).status==CgStatus.ok && cgp_decide(0,2000,1999,1,one,one).status==CgStatus.ok;
+    #assert cgp_finite(0) && cgp_finite(big) && !cgp_finite(inf) && !cgp_finite(nan) && !cgp_finite((cast(u32)0x7f800001)) && !cgp_finite((cast(u32)0xff800001)) && cgp_finite((cast(u32)0x7f000000)) && cgp_finite((cast(u32)0x00800000));
+}
+#test "the ledger admits exactly the planned transfers and launches" {
+    #assert cgp_ledger(64,512,8,300,300)==CgStatus.ok;
+    #assert cgp_ledger(64,520,8,300,300)==CgStatus.ledger && cgp_ledger(64,504,8,300,300)==CgStatus.ledger;
+    #assert cgp_ledger(64,512,16,300,300)==CgStatus.ledger && cgp_ledger(64,512,4,300,300)==CgStatus.ledger;
+    #assert cgp_ledger(64,512,8,301,300)==CgStatus.ledger && cgp_ledger(64,512,8,299,300)==CgStatus.ledger;
+    #assert cgp_ledger(0,0,8,1,1)==CgStatus.ledger && cgp_ledger(1,8,8,1,1)==CgStatus.ok && cgp_ledger(1,8,8,0,0)==CgStatus.ledger;
+    #assert cgp_skips(10)==CgStatus.ok && cgp_skips(11)==CgStatus.number && cgp_skips(0)==CgStatus.ok;
+}
+#test "checkpoint headers round-trip and refuse any other run" {
+    h:[16]int;shape:=[8]int.[65,384,6,6,256,1536,32,2];fnv:=(cast(u64)0x0123456789abcdef);
+    #assert cgp_header(h[..],0,10765056,250,1,shape[..],fnv)==CgStatus.ok;
+    #assert h[0]==0x43475054 && h[1]==1 && h[2]==0 && h[3]==10765056 && h[4]==250 && h[5]==1 && h[6]==65 && h[13]==2 && h[14]==0x01234567 && h[15]==0x89abcdef;
+    #assert cgp_header_ok(h[..],0,10765056,2000,shape[..],fnv)==CgStatus.ok;
+    #assert cgp_header_ok(h[..],1,10765056,2000,shape[..],fnv)==CgStatus.checkpoint && cgp_header_ok(h[..],0,10765057,2000,shape[..],fnv)==CgStatus.checkpoint;
+    #assert cgp_header_ok(h[..],0,10765056,249,shape[..],fnv)==CgStatus.checkpoint && cgp_header_ok(h[..],0,10765056,250,shape[..],fnv)==CgStatus.ok;
+    #assert cgp_header_ok(h[..],0,10765056,2000,shape[..],fnv+1)==CgStatus.checkpoint && cgp_header_ok(h[..],0,10765056,2000,shape[..],fnv^((cast(u64)1)<<40))==CgStatus.checkpoint;
+    other:=shape;other[7]=1;#assert cgp_header_ok(h[..],0,10765056,2000,other[..],fnv)==CgStatus.checkpoint;
+    other=shape;other[0]=66;#assert cgp_header_ok(h[..],0,10765056,2000,other[..],fnv)==CgStatus.checkpoint;
+    for i:0..<4 {g:=h;g[i]+=1;#assert cgp_header_ok(g[..],0,10765056,2000,shape[..],fnv)==CgStatus.checkpoint;}
+    g:=h;g[4]= -1;#assert cgp_header_ok(g[..],0,10765056,2000,shape[..],fnv)==CgStatus.checkpoint;
+    g=h;g[5]= -1;#assert cgp_header_ok(g[..],0,10765056,2000,shape[..],fnv)==CgStatus.checkpoint;
+    g=h;g[5]=250;#assert cgp_header_ok(g[..],0,10765056,2000,shape[..],fnv)==CgStatus.ok;
+    g=h;g[5]=251;#assert cgp_header_ok(g[..],0,10765056,2000,shape[..],fnv)==CgStatus.checkpoint;
+    g=h;g[4]=0;g[5]=0;#assert cgp_header_ok(g[..],0,10765056,2000,shape[..],fnv)==CgStatus.ok;
+    #assert cgp_header_ok(h[0..<15],0,10765056,2000,shape[..],fnv)==CgStatus.checkpoint && cgp_header_ok(h[..],0,10765056,2000,shape[0..<7],fnv)==CgStatus.checkpoint;
+    #assert cgp_header(h[0..<15],0,1,0,0,shape[..],fnv)==CgStatus.checkpoint && cgp_header(h[..],0,1,0,0,shape[0..<7],fnv)==CgStatus.checkpoint;
+    #assert cgp_header(h[..],0,0,0,0,shape[..],fnv)==CgStatus.checkpoint && cgp_header(h[..],0,1,-1,0,shape[..],fnv)==CgStatus.checkpoint;
+    #assert cgp_header(h[..],0,1,0,-1,shape[..],fnv)==CgStatus.checkpoint && cgp_header(h[..],-1,1,0,0,shape[..],fnv)==CgStatus.checkpoint;
+    #assert cgp_header(h[..],2,1,0,0,shape[..],fnv)==CgStatus.checkpoint && cgp_header(h[..],1,1,0,0,shape[..],fnv)==CgStatus.ok && h[2]==1;
+}

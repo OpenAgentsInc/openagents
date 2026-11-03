@@ -1,0 +1,305 @@
+// char-gpt-shakespeare-v1 (#12627): a 10,765,056-parameter pre-norm
+// decoder trained whole-step on one GPU. This file lays the run out in
+// three device arenas (FP32 values, bytes, offsets), writes every launch of
+// a step as data, and runs those launches on the CPU with the C build of
+// char-gpt-kernels.coax. The C host (psionic/tests/char_gpt_device.c)
+// replays exactly the same launches on the device: it allocates, copies,
+// launches and times; the layout, the launches, the data order, the
+// initial values and every decision are here and in char-gpt-policy.coax.
+//
+// Checks: coax test psionic/lib/transformer/char-gpt.coax
+#load "char-gpt-kernels.coax";
+#load "char-gpt-policy.coax";
+#load "../counter-rng.coax";
+#load "../../tests/char-gpt-checks.coax";
+
+CgShape :: struct {vocab:int;d:int;layers:int;heads:int;context:int;hidden:int;rows:int;accumulate:int;}
+// The frozen workload's model, a step of 64 rows as 2 micro-batches of 32.
+cg_full :: ()->CgShape #export_c {return CgShape.{vocab=65,d=384,layers=6,heads=6,context=256,hidden=1536,rows=32,accumulate=2};}
+// The oracle's tiny shape: the same code paths, small enough for the CPU.
+cg_tiny :: ()->CgShape #export_c {return CgShape.{vocab=65,d=128,layers=2,heads=2,context=64,hidden=512,rows=2,accumulate=2};}
+CG_STEPS :: 750;   // char-gpt-shakespeare-v2; v1 was 2000
+CG_WARMUP :: 100;
+cg_admit :: (s:CgShape)->CgStatus #export_c {return cgp_shape(s.vocab,s.d,s.layers,s.heads,s.context,s.hidden,s.rows,s.accumulate);}
+cg_shape_ints :: (s:CgShape,out:[]int) #export_c {x:=[8]int.[s.vocab,s.d,s.layers,s.heads,s.context,s.hidden,s.rows,s.accumulate];for i:0..<8 {out[i]=x[i];}}
+
+// ---- parameters ----
+// Tensors in order: tok, pos, then per layer qkv, o, up, down, then head.
+cg_tensors :: (s:CgShape)->int #export_c {return 3+4*s.layers;}
+cg_tensor_rows :: (s:CgShape,k:int)->int {
+    if k==0 {return s.vocab;}
+    if k==1 {return s.context;}
+    if k==2+4*s.layers {return s.d;}
+    w:=(k-2)%4;if w==3 {return s.hidden;}return s.d;
+}
+cg_tensor_cols :: (s:CgShape,k:int)->int {
+    if k<2 || k==2+4*s.layers {if k==2+4*s.layers {return s.vocab;}return s.d;}
+    w:=(k-2)%4;if w==0 {return 3*s.d;}if w==2 {return s.hidden;}return s.d;
+}
+cg_tensor_size :: (s:CgShape,k:int)->int {return cg_tensor_rows(s,k)*cg_tensor_cols(s,k);}
+cg_tensor_at :: (s:CgShape,k:int)->int {at:=0;for j:0..<k {at+=cg_tensor_size(s,j);}return at;}
+cg_params :: (s:CgShape)->int #export_c {return cg_tensor_at(s,cg_tensors(s));}
+cg_layer_tensor :: (l:int,w:int)->int {return 2+4*l+w;}
+CG_QKV :: 0; CG_O :: 1; CG_UP :: 2; CG_DOWN :: 3;
+
+// The specification's initial values: tensor k element i is std * z,
+// rounded once to FP32, z from the Box-Muller pair of cr_bits(1000+k, 2i)
+// and cr_bits(1000+k, 2i+1); std is 0.02, and 0.02/sqrt(2 layers) for o
+// and down.
+cg_init_value :: (k:int,i:int,std:f64)->f32 {
+    u1:=(f64(cr_bits(cast(u64)(1000+k),cast(u64)(2*i))>>11)+1)/9007199254740992.0;
+    u2:=f64(cr_bits(cast(u64)(1000+k),cast(u64)(2*i+1))>>11)/9007199254740992.0;
+    return f32(std*(sqrt(-2.0*log(u1))*cos(2.0*3.141592653589793*u2)));
+}
+cg_init :: (s:CgShape,p:[]f32)->CgStatus #export_c {
+    if p.count!=cg_params(s) {return CgStatus.shape;}
+    for k:0..<cg_tensors(s) {
+        std:=0.02;w:=(k-2)%4;
+        if k>=2 && k<2+4*s.layers && (w==CG_O || w==CG_DOWN) {std=0.02/sqrt(f64(2*s.layers));}
+        at:=cg_tensor_at(s,k);for i:0..<cg_tensor_size(s,k) {p[at+i]=cg_init_value(k,i,std);}
+    }
+    return CgStatus.ok;
+}
+
+// ---- data ----
+// ids: the corpus's distinct bytes in ascending order are ids 0, 1, ...
+// table[b] is b's id or -1. Returns the vocabulary size.
+cg_vocabulary :: (x:[]u8,table:[]int)->int #export_c {
+    for b:0..<256 {table[b]= -1;}
+    for v:x {table[cast(int)v]=0;}
+    n:=0;for b:0..<256 {if table[b]==0 {table[b]=n;n+=1;}}
+    return n;
+}
+cg_tokenize :: (x:[]u8,table:[]int,out:[]u8) #export_c {for i:0..<x.count {out[i]=cast(u8)table[cast(int)x[i]];}}
+// Step s's row starts, absolute in the data arena (training is its first
+// bytes): cr_bits(7, B s + r) mod (train - context), B = rows*accumulate.
+cg_rows :: (s:CgShape,step:int,train:int,offs:[]int) #export_c {
+    b:=s.rows*s.accumulate;span:=cast(u64)(train-s.context);
+    for r:0..<b {offs[r]=cast(int)(cr_bits(7,cast(u64)(b*step+r))%span);}
+}
+// Held-out windows: (heldout-1)/context windows of context inputs at
+// held-out offsets 0, context, ...; window w starts at train + w*context.
+cg_windows :: (s:CgShape,heldout:int)->int #export_c {return (heldout-1)/s.context;}
+
+// ---- the arenas ----
+// Buffers: arena 0 holds FP32 values, 1 bytes, 2 offsets (int).
+CG_BUFS :: 96;
+CG_P :: 0; CG_G :: 1; CG_M :: 2; CG_V :: 3; CG_X :: 4; CG_HF :: 5; CG_RF :: 6; CG_LOGITS :: 7;
+CG_DLOG :: 8; CG_LOSS :: 9; CG_GRES :: 10; CG_DH :: 11; CG_DQKV :: 12; CG_DP :: 13; CG_DO :: 14;
+CG_DA :: 15; CG_PART :: 16; CG_SCAL :: 17; CG_DATA :: 18; CG_IDS :: 19; CG_TG :: 20; CG_OFFS :: 21;
+CG_LAYER0 :: 22;
+// Per layer l: 22 + 9l + this.
+CG_H1 :: 0; CG_R1 :: 1; CG_QKVA :: 2; CG_S :: 3; CG_OA :: 4; CG_H2 :: 5; CG_R2 :: 6; CG_U :: 7; CG_A :: 8;
+cg_lb :: (l:int,w:int)->int {return CG_LAYER0+9*l+w;}
+CgPlan :: struct {status:CgStatus;n:int;tokens:int;data:int;offsets:int;floats:int;bytes:int;used:int;arena:[96]int;at:[96]int;count:[96]int;}
+// The plan for shape s over a corpus of `data` bytes. Every buffer has its
+// exact extent; the eval windows reuse the micro-batch buffers.
+cg_plan :: (s:CgShape,data:int,budget:int)->CgPlan #export_c {
+    p:=CgPlan.{status=cg_admit(s)};if p.status!=CgStatus.ok {return p;}
+    n:=cg_params(s);t:=s.context;d:=s.d;nt:=s.rows*t;b:=s.rows*s.accumulate;
+    p.n=n;p.tokens=nt;p.data=data;p.offsets=b;
+    f:=[22]int.[n,n,n,n,nt*d,nt*d,nt,nt*s.vocab,nt*s.vocab,b*t,nt*d,nt*d,nt*3*d,s.rows*s.heads*t*t,nt*d,nt*s.hidden,(n+CK_CHUNK-1)/CK_CHUNK+4,8,data,nt,nt,b];
+    for i:0..<22 {p.count[i]=f[i];}
+    p.arena[CG_DATA]=1;p.arena[CG_IDS]=1;p.arena[CG_TG]=1;p.arena[CG_OFFS]=2;
+    for l:0..<s.layers {g:=[9]int.[nt*d,nt,nt*3*d,s.rows*s.heads*t*t,nt*d,nt*d,nt,nt*s.hidden,nt*s.hidden];for w:0..<9 {p.count[cg_lb(l,w)]=g[w];}}
+    size:=[3]int.[0,0,0];
+    for i:0..<CG_BUFS {p.at[i]=size[p.arena[i]];size[p.arena[i]]+=p.count[i];}
+    p.floats=size[0];p.bytes=size[1];p.offsets=size[2];
+    p.used=4*size[0]+size[1]+8*size[2];
+    p.status=cgp_budget(p.used,budget);
+    return p;
+}
+
+// ---- launches ----
+CgArg :: struct {kind:int;i:int;f:f32;at:int;count:int;}
+CgLaunch :: struct {kernel:int;items:int;block:int;argc:int;args:[26]CgArg;}
+CG_KERNELS :: 16;
+CG_NAMES :: [16]string.["ck_mm_nn","ck_mm_nt","ck_mm_tn","ck_softmax","ck_softmax_back","ck_rms","ck_rms_back","ck_ids","ck_embed","ck_embed_back","ck_pos_back","ck_relu2","ck_relu2_back","ck_ce","ck_sum","ck_adamw"];
+// Threads of a group item, or 0 for one thread per item.
+CG_BLOCK :: [16]int.[256,256,256,32,32,32,32,0,0,0,0,0,0,0,256,0];
+K_NN :: 0; K_NT :: 1; K_TN :: 2; K_SOFTMAX :: 3; K_SOFTMAX_BACK :: 4; K_RMS :: 5; K_RMS_BACK :: 6; K_IDS :: 7; K_EMBED :: 8;
+K_EMBED_BACK :: 9; K_POS_BACK :: 10; K_RELU2 :: 11; K_RELU2_BACK :: 12; K_CE :: 13; K_SUM :: 14; K_ADAMW :: 15;
+cg_block :: (k:int)->int #export_c {return CG_BLOCK[k];}
+cg_name :: (k:int)->string {return CG_NAMES[k];}
+
+cg_int :: (v:int)->CgArg {return CgArg.{kind=0,i=v};}
+cg_real :: (v:f32)->CgArg {return CgArg.{kind=1,f=v};}
+cg_buf :: (p:CgPlan,b:int)->CgArg {return CgArg.{kind=2+p.arena[b],at=p.at[b],count=p.count[b]};}
+cg_part :: (p:CgPlan,b:int,first:int,count:int)->CgArg {return CgArg.{kind=2+p.arena[b],at=p.at[b]+first,count=count};}
+cg_weight :: (p:CgPlan,s:CgShape,b:int,k:int)->CgArg {return cg_part(p,b,cg_tensor_at(s,k),cg_tensor_size(s,k));}
+// Launches go to out[at]; past its end they are only counted, so a caller
+// sizes `out` by a first call with an empty view.
+cg_add :: (out:[]CgLaunch,at:int,kernel:int,items:int,args:[]CgArg)->int {
+    if at<out.count {
+        l:=CgLaunch.{kernel=kernel,items=items,block=CG_BLOCK[kernel],argc=args.count};
+        for j:0..<args.count {l.args[j]=args[j];}
+        out[at]=l;
+    }
+    return at+1;
+}
+cg_add2 :: (out:[]CgLaunch,at:int,kernel:int,items:int,a0:CgArg,a1:CgArg)->int {x:=[2]CgArg.[a0,a1];return cg_add(out,at,kernel,items,x[..]);}
+cg_add3 :: (out:[]CgLaunch,at:int,kernel:int,items:int,a0:CgArg,a1:CgArg,a2:CgArg)->int {x:=[3]CgArg.[a0,a1,a2];return cg_add(out,at,kernel,items,x[..]);}
+cg_add4 :: (out:[]CgLaunch,at:int,kernel:int,items:int,a0:CgArg,a1:CgArg,a2:CgArg,a3:CgArg)->int {x:=[4]CgArg.[a0,a1,a2,a3];return cg_add(out,at,kernel,items,x[..]);}
+cg_add6 :: (out:[]CgLaunch,at:int,kernel:int,items:int,a0:CgArg,a1:CgArg,a2:CgArg,a3:CgArg,a4:CgArg,a5:CgArg)->int {x:=[6]CgArg.[a0,a1,a2,a3,a4,a5];return cg_add(out,at,kernel,items,x[..]);}
+CgMat :: struct {arg:CgArg;off:int;rs:int;hs:int;is:int;ks:int;}
+cg_mat :: (arg:CgArg,off:int,rs:int,hs:int,is:int,ks:int)->CgMat {return CgMat.{arg=arg,off=off,rs=rs,hs=hs,is=is,ks=ks};}
+cg_gemm :: (out:[]CgLaunch,at:int,kernel:int,batch:int,heads:int,m:int,n:int,k:int,mode:int,alpha:f32,acc:int,a:CgMat,b:CgMat,c:CgMat)->int {
+    x:=[25]CgArg.[cg_int(m),cg_int(n),cg_int(k),cg_int(heads),cg_int(mode),cg_real(alpha),cg_int(acc),
+        a.arg,cg_int(a.off),cg_int(a.rs),cg_int(a.hs),cg_int(a.is),cg_int(a.ks),
+        b.arg,cg_int(b.off),cg_int(b.rs),cg_int(b.hs),cg_int(b.is),cg_int(b.ks),
+        c.arg,cg_int(c.off),cg_int(c.rs),cg_int(c.hs),cg_int(c.is),cg_int(c.ks)];
+    return cg_add(out,at,kernel,ck_mm_items(batch,m,n),x[..]);
+}
+// A plain row-major matrix of `cols` columns: one batch.
+cg_rm :: (arg:CgArg,cols:int)->CgMat {return cg_mat(arg,0,0,0,cols,1);}
+// Its transpose, read in place: element (i, k) is at k*cols + i.
+cg_cm :: (arg:CgArg,cols:int)->CgMat {return cg_mat(arg,0,0,0,1,cols);}
+
+// The forward pass of micro-batch `micro` over `rows` rows whose starts are
+// offs[first ..< first+rows]; token losses go to LOSS[loss_at ..].
+// `scale` multiplies the logits' gradient (1/(B*T) in training).
+cg_forward :: (s:CgShape,p:CgPlan,out:[]CgLaunch,at0:int,rows:int,first:int,loss_at:int,scale:f32)->int {
+    at:=at0;t:=s.context;d:=s.d;nt:=rows*t;hd:=d/s.heads;h3:=3*d;
+    at=cg_add6(out,at,K_IDS,nt,cg_int(t),cg_int(first),cg_buf(p,CG_OFFS),cg_buf(p,CG_DATA),cg_buf(p,CG_IDS),cg_buf(p,CG_TG));
+    at=cg_add6(out,at,K_EMBED,nt*d,cg_int(d),cg_int(t),cg_buf(p,CG_IDS),cg_weight(p,s,CG_P,0),cg_weight(p,s,CG_P,1),cg_buf(p,CG_X));
+    scl:=1/sqrt(f32(hd));
+    for l:0..<s.layers {
+        h1:=cg_buf(p,cg_lb(l,CG_H1));qkv:=cg_buf(p,cg_lb(l,CG_QKVA));sc:=cg_buf(p,cg_lb(l,CG_S));o:=cg_buf(p,cg_lb(l,CG_OA));
+        h2:=cg_buf(p,cg_lb(l,CG_H2));u:=cg_buf(p,cg_lb(l,CG_U));a:=cg_buf(p,cg_lb(l,CG_A));x:=cg_buf(p,CG_X);
+        at=cg_add4(out,at,K_RMS,nt,cg_int(d),x,h1,cg_buf(p,cg_lb(l,CG_R1)));
+        at=cg_gemm(out,at,K_NN,1,1,nt,h3,d,0,1,0,cg_rm(h1,d),cg_rm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_QKV)),h3),cg_rm(qkv,h3));
+        // Scores of (row r, head h): Q K^T / sqrt(hd), causal tiles only.
+        at=cg_gemm(out,at,K_NT,rows*s.heads,s.heads,t,t,hd,1,scl,0,cg_mat(qkv,0,t*h3,hd,h3,1),cg_mat(qkv,d,t*h3,hd,1,h3),cg_mat(sc,0,s.heads*t*t,t*t,t,1));
+        at=cg_add2(out,at,K_SOFTMAX,rows*s.heads*t,cg_int(t),sc);
+        at=cg_gemm(out,at,K_NN,rows*s.heads,s.heads,t,hd,t,2,1,0,cg_mat(sc,0,s.heads*t*t,t*t,t,1),cg_mat(qkv,2*d,t*h3,hd,h3,1),cg_mat(o,0,t*d,hd,d,1));
+        at=cg_gemm(out,at,K_NN,1,1,nt,d,d,0,1,1,cg_rm(o,d),cg_rm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_O)),d),cg_rm(x,d));
+        at=cg_add4(out,at,K_RMS,nt,cg_int(d),x,h2,cg_buf(p,cg_lb(l,CG_R2)));
+        at=cg_gemm(out,at,K_NN,1,1,nt,s.hidden,d,0,1,0,cg_rm(h2,d),cg_rm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_UP)),s.hidden),cg_rm(u,s.hidden));
+        at=cg_add2(out,at,K_RELU2,nt*s.hidden,u,a);
+        at=cg_gemm(out,at,K_NN,1,1,nt,d,s.hidden,0,1,1,cg_rm(a,s.hidden),cg_rm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_DOWN)),d),cg_rm(x,d));
+    }
+    at=cg_add4(out,at,K_RMS,nt,cg_int(d),cg_buf(p,CG_X),cg_buf(p,CG_HF),cg_buf(p,CG_RF));
+    head:=2+4*s.layers;
+    at=cg_gemm(out,at,K_NN,1,1,nt,s.vocab,d,0,1,0,cg_rm(cg_buf(p,CG_HF),d),cg_rm(cg_weight(p,s,CG_P,head),s.vocab),cg_rm(cg_buf(p,CG_LOGITS),s.vocab));
+    at=cg_add6(out,at,K_CE,nt,cg_int(s.vocab),cg_real(scale),cg_buf(p,CG_LOGITS),cg_buf(p,CG_TG),cg_part(p,CG_LOSS,loss_at,nt),cg_buf(p,CG_DLOG));
+    return at;
+}
+// The backward pass of the forward pass just run; parameter gradients are
+// written (acc 0, the first micro-batch) or added (acc 1).
+cg_backward :: (s:CgShape,p:CgPlan,out:[]CgLaunch,at0:int,acc:int)->int {
+    at:=at0;t:=s.context;d:=s.d;rows:=s.rows;nt:=rows*t;hd:=d/s.heads;h3:=3*d;hid:=s.hidden;head:=2+4*s.layers;
+    g:=cg_buf(p,CG_GRES);dh:=cg_buf(p,CG_DH);dlog:=cg_buf(p,CG_DLOG);hf:=cg_buf(p,CG_HF);
+    at=cg_gemm(out,at,K_TN,1,1,d,s.vocab,nt,0,1,acc,cg_cm(hf,d),cg_rm(dlog,s.vocab),cg_rm(cg_weight(p,s,CG_G,head),s.vocab));
+    at=cg_gemm(out,at,K_NT,1,1,nt,d,s.vocab,0,1,0,cg_rm(dlog,s.vocab),cg_cm(cg_weight(p,s,CG_P,head),s.vocab),cg_rm(dh,d));
+    at=cg_add6(out,at,K_RMS_BACK,nt,cg_int(d),cg_int(0),hf,cg_buf(p,CG_RF),dh,g);
+    scl:=1/sqrt(f32(hd));
+    for k:0..<s.layers {
+        l:=s.layers-1-k;
+        h1:=cg_buf(p,cg_lb(l,CG_H1));qkv:=cg_buf(p,cg_lb(l,CG_QKVA));sc:=cg_buf(p,cg_lb(l,CG_S));o:=cg_buf(p,cg_lb(l,CG_OA));
+        h2:=cg_buf(p,cg_lb(l,CG_H2));u:=cg_buf(p,cg_lb(l,CG_U));a:=cg_buf(p,cg_lb(l,CG_A));
+        da:=cg_buf(p,CG_DA);dq:=cg_buf(p,CG_DQKV);dp:=cg_buf(p,CG_DP);dout:=cg_buf(p,CG_DO);
+        // MLP: x += relu(h2 Wup)^2 Wdown.
+        at=cg_gemm(out,at,K_NT,1,1,nt,hid,d,0,1,0,cg_rm(g,d),cg_cm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_DOWN)),d),cg_rm(da,hid));
+        at=cg_gemm(out,at,K_TN,1,1,hid,d,nt,0,1,acc,cg_cm(a,hid),cg_rm(g,d),cg_rm(cg_weight(p,s,CG_G,cg_layer_tensor(l,CG_DOWN)),d));
+        at=cg_add2(out,at,K_RELU2_BACK,nt*hid,u,da);
+        at=cg_gemm(out,at,K_NT,1,1,nt,d,hid,0,1,0,cg_rm(da,hid),cg_cm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_UP)),hid),cg_rm(dh,d));
+        at=cg_gemm(out,at,K_TN,1,1,d,hid,nt,0,1,acc,cg_cm(h2,d),cg_rm(da,hid),cg_rm(cg_weight(p,s,CG_G,cg_layer_tensor(l,CG_UP)),hid));
+        at=cg_add6(out,at,K_RMS_BACK,nt,cg_int(d),cg_int(1),h2,cg_buf(p,cg_lb(l,CG_R2)),dh,g);
+        // Attention: x += o Wo.
+        at=cg_gemm(out,at,K_NT,1,1,nt,d,d,0,1,0,cg_rm(g,d),cg_cm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_O)),d),cg_rm(dout,d));
+        at=cg_gemm(out,at,K_TN,1,1,d,d,nt,0,1,acc,cg_cm(o,d),cg_rm(g,d),cg_rm(cg_weight(p,s,CG_G,cg_layer_tensor(l,CG_O)),d));
+        bh:=rows*s.heads;st:=s.heads*t*t;
+        at=cg_gemm(out,at,K_NT,bh,s.heads,t,t,hd,1,1,0,cg_mat(dout,0,t*d,hd,d,1),cg_mat(qkv,2*d,t*h3,hd,1,h3),cg_mat(dp,0,st,t*t,t,1));
+        at=cg_add3(out,at,K_SOFTMAX_BACK,bh*t,cg_int(t),sc,dp);
+        at=cg_gemm(out,at,K_TN,bh,s.heads,t,hd,t,3,1,0,cg_mat(sc,0,st,t*t,1,t),cg_mat(dout,0,t*d,hd,d,1),cg_mat(dq,2*d,t*h3,hd,h3,1));
+        at=cg_gemm(out,at,K_NN,bh,s.heads,t,hd,t,2,scl,0,cg_mat(dp,0,st,t*t,t,1),cg_mat(qkv,d,t*h3,hd,h3,1),cg_mat(dq,0,t*h3,hd,h3,1));
+        at=cg_gemm(out,at,K_TN,bh,s.heads,t,hd,t,3,scl,0,cg_mat(dp,0,st,t*t,1,t),cg_mat(qkv,0,t*h3,hd,h3,1),cg_mat(dq,d,t*h3,hd,h3,1));
+        at=cg_gemm(out,at,K_NT,1,1,nt,d,h3,0,1,0,cg_rm(dq,h3),cg_cm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_QKV)),h3),cg_rm(dh,d));
+        at=cg_gemm(out,at,K_TN,1,1,d,h3,nt,0,1,acc,cg_cm(h1,d),cg_rm(dq,h3),cg_rm(cg_weight(p,s,CG_G,cg_layer_tensor(l,CG_QKV)),h3));
+        at=cg_add6(out,at,K_RMS_BACK,nt,cg_int(d),cg_int(1),h1,cg_buf(p,cg_lb(l,CG_R1)),dh,g);
+    }
+    at=cg_add6(out,at,K_EMBED_BACK,s.vocab*d,cg_int(d),cg_int(nt),cg_int(acc),cg_buf(p,CG_IDS),g,cg_weight(p,s,CG_G,0));
+    at=cg_add6(out,at,K_POS_BACK,t*d,cg_int(d),cg_int(t),cg_int(rows),cg_int(acc),g,cg_weight(p,s,CG_G,1));
+    return at;
+}
+// After every micro-batch: SCAL[0] = the step's token losses summed,
+// SCAL[1] = the squared gradient summed, each in two fixed-order passes.
+cg_reduce :: (s:CgShape,p:CgPlan,out:[]CgLaunch,at0:int)->int {
+    at:=at0;b:=s.rows*s.accumulate*s.context;n:=p.n;
+    lp:=(b+CK_CHUNK-1)/CK_CHUNK;gp:=(n+CK_CHUNK-1)/CK_CHUNK;
+    at=cg_add4(out,at,K_SUM,lp,cg_int(b),cg_int(0),cg_buf(p,CG_LOSS),cg_buf(p,CG_PART));
+    at=cg_add4(out,at,K_SUM,1,cg_int(lp),cg_int(0),cg_buf(p,CG_PART),cg_part(p,CG_SCAL,0,1));
+    at=cg_add4(out,at,K_SUM,gp,cg_int(n),cg_int(1),cg_buf(p,CG_G),cg_buf(p,CG_PART));
+    at=cg_add4(out,at,K_SUM,1,cg_int(gp),cg_int(0),cg_buf(p,CG_PART),cg_part(p,CG_SCAL,1,1));
+    return at;
+}
+// One training step's launches before the decision.
+cg_step :: (s:CgShape,p:CgPlan,out:[]CgLaunch)->int #export_c {
+    at:=0;scale:=1/f32(s.rows*s.accumulate*s.context);
+    for k:0..<s.accumulate {
+        at=cg_forward(s,p,out,at,s.rows,k*s.rows,k*s.rows*s.context,scale);
+        at=cg_backward(s,p,out,at,ifx k==0 then 0 else 1);
+    }
+    return cg_reduce(s,p,out,at);
+}
+// The update a decision admitted.
+cg_update :: (p:CgPlan,d:CgDecision,out:[]CgLaunch)->int #export_c {
+    x:=[12]CgArg.[cg_real(d.keep),cg_real(d.b2),cg_real(d.wb1),cg_real(d.wb2),cg_real(d.step),cg_real(d.root2),cg_real(d.eps),cg_real(d.scale),
+        cg_buf(p,CG_P),cg_buf(p,CG_G),cg_buf(p,CG_M),cg_buf(p,CG_V)];
+    return cg_add(out,0,K_ADAMW,p.n,x[..]);
+}
+// Forward only, for held-out windows: `rows` windows whose starts the host
+// put in OFFS[0 ..< rows]; token losses go to LOSS[0 ..< rows*context].
+cg_eval :: (s:CgShape,p:CgPlan,out:[]CgLaunch,rows:int)->int #export_c {return cg_forward(s,p,out,0,rows,0,0,1);}
+cg_eval_offsets :: (s:CgShape,train:int,first:int,rows:int,offs:[]int) #export_c {for r:0..<rows {offs[r]=train+(first+r)*s.context;}}
+
+// ---- the CPU run of the same launches ----
+cg_fv :: (f:[]f32,a:CgArg)->[]f32 {return f[a.at..<a.at+a.count];}
+cg_uv :: (u:[]u8,a:CgArg)->[]u8 {return u[a.at..<a.at+a.count];}
+cg_iv :: (w:[]int,a:CgArg)->[]int {return w[a.at..<a.at+a.count];}
+cg_exec :: (l:CgLaunch,f:[]f32,u:[]u8,w:[]int) #export_c {
+    a:=l.args;k:=l.kernel;
+    if k<=K_TN {
+        x:=cg_fv(f,a[7]);y:=cg_fv(f,a[13]);z:=cg_fv(f,a[19]);
+        for item:0..<l.items {
+            if k==K_NN {ck_mm_nn(item,a[0].i,a[1].i,a[2].i,a[3].i,a[4].i,a[5].f,a[6].i,x,a[8].i,a[9].i,a[10].i,a[11].i,a[12].i,y,a[14].i,a[15].i,a[16].i,a[17].i,a[18].i,z,a[20].i,a[21].i,a[22].i,a[23].i,a[24].i);}
+            if k==K_NT {ck_mm_nt(item,a[0].i,a[1].i,a[2].i,a[3].i,a[4].i,a[5].f,a[6].i,x,a[8].i,a[9].i,a[10].i,a[11].i,a[12].i,y,a[14].i,a[15].i,a[16].i,a[17].i,a[18].i,z,a[20].i,a[21].i,a[22].i,a[23].i,a[24].i);}
+            if k==K_TN {ck_mm_tn(item,a[0].i,a[1].i,a[2].i,a[3].i,a[4].i,a[5].f,a[6].i,x,a[8].i,a[9].i,a[10].i,a[11].i,a[12].i,y,a[14].i,a[15].i,a[16].i,a[17].i,a[18].i,z,a[20].i,a[21].i,a[22].i,a[23].i,a[24].i);}
+        }
+        return;
+    }
+    for item:0..<l.items {
+        if k==K_SOFTMAX {ck_softmax(item,a[0].i,cg_fv(f,a[1]));}
+        if k==K_SOFTMAX_BACK {ck_softmax_back(item,a[0].i,cg_fv(f,a[1]),cg_fv(f,a[2]));}
+        if k==K_RMS {ck_rms(item,a[0].i,cg_fv(f,a[1]),cg_fv(f,a[2]),cg_fv(f,a[3]));}
+        if k==K_RMS_BACK {ck_rms_back(item,a[0].i,a[1].i,cg_fv(f,a[2]),cg_fv(f,a[3]),cg_fv(f,a[4]),cg_fv(f,a[5]));}
+        if k==K_IDS {ck_ids(item,a[0].i,a[1].i,cg_iv(w,a[2]),cg_uv(u,a[3]),cg_uv(u,a[4]),cg_uv(u,a[5]));}
+        if k==K_EMBED {ck_embed(item,a[0].i,a[1].i,cg_uv(u,a[2]),cg_fv(f,a[3]),cg_fv(f,a[4]),cg_fv(f,a[5]));}
+        if k==K_EMBED_BACK {ck_embed_back(item,a[0].i,a[1].i,a[2].i,cg_uv(u,a[3]),cg_fv(f,a[4]),cg_fv(f,a[5]));}
+        if k==K_POS_BACK {ck_pos_back(item,a[0].i,a[1].i,a[2].i,a[3].i,cg_fv(f,a[4]),cg_fv(f,a[5]));}
+        if k==K_RELU2 {ck_relu2(item,cg_fv(f,a[0]),cg_fv(f,a[1]));}
+        if k==K_RELU2_BACK {ck_relu2_back(item,cg_fv(f,a[0]),cg_fv(f,a[1]));}
+        if k==K_CE {ck_ce(item,a[0].i,a[1].f,cg_fv(f,a[2]),cg_uv(u,a[3]),cg_fv(f,a[4]),cg_fv(f,a[5]));}
+        if k==K_SUM {ck_sum(item,a[0].i,a[1].i,cg_fv(f,a[2]),cg_fv(f,a[3]));}
+        if k==K_ADAMW {ck_adamw(item,a[0].f,a[1].f,a[2].f,a[3].f,a[4].f,a[5].f,a[6].f,a[7].f,cg_fv(f,a[8]),cg_fv(f,a[9]),cg_fv(f,a[10]),cg_fv(f,a[11]));}
+    }
+}
+cg_exec_all :: (ls:[]CgLaunch,f:[]f32,u:[]u8,w:[]int) {for l:ls {cg_exec(l,f,u,w);}}
+// The launch-count of one step before its decision, for the ledger.
+cg_step_launches :: (s:CgShape,p:CgPlan)->int #export_c {none:[1]CgLaunch;return cg_step(s,p,none[0..<0]);}
+cg_arg_kind :: (a:CgArg)->int {return a.kind;}
+
+// The held-out loss: token losses added in binary64, in order.
+cg_loss_sum :: (x:[]f32)->f64 #export_c {s:=0.0;for v:x {s+=f64(v);}return s;}
+// FNV-1a 64 continued over FP32 values (little-endian bytes): the checkpoint payload.
+cg_fnv_f32 :: (h0:u64,x:[]f32)->u64 #export_c {
+    h:=h0;
+    for v:x {b:=f32_bits(v);for k:0..<4 {h=mul_wrap(h^cast(u64)((b>>(8*cast(u32)k))&255),(cast(u64)0x100000001b3));}}
+    return h;
+}
+// The frozen schedule's length and warmup, for the host.
+cg_steps :: ()->int #export_c {return CG_STEPS;}
+cg_warmup :: ()->int #export_c {return CG_WARMUP;}
+// Buffer ids the host copies: parameters, gradient, both moments, token
+// losses, the two step numbers, data and row offsets, in that order.
+cg_buffer :: (k:int)->int #export_c {x:=[8]int.[CG_P,CG_G,CG_M,CG_V,CG_LOSS,CG_SCAL,CG_DATA,CG_OFFS];return x[k];}

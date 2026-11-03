@@ -1,0 +1,76 @@
+// Whole-step checks of char-gpt.coax that are too long for the checker's
+// evaluator: a step's launches on the CPU against central differences of
+// its own loss, accumulation against one large batch, the AdamW launch
+// against its formula, and the held-out pass. Each returns its failures;
+// psionic/tests/char_gpt_device.c runs them natively (`selfcheck`).
+#import "Basic";
+#load "../lib/transformer/char-gpt.coax";
+
+// A small shape for the CPU: two micro-batches of two rows.
+ckc_shape :: ()->CgShape {return CgShape.{vocab=5,d=8,layers=1,heads=2,context=8,hidden=16,rows=2,accumulate=2};}
+CKC_F :: 16384;
+ckc_setup :: (s:CgShape,f:[]f32,u:[]u8,w:[]int)->CgPlan {
+    p:=cg_plan(s,64,1<<30);
+    for i:0..<64 {u[p.at[CG_DATA]+i]=cast(u8)((i*7+i/5)%5);}
+    st:=cg_init(s,f[p.at[CG_P]..<p.at[CG_P]+p.n]);if st!=CgStatus.ok {return CgPlan.{status=st};}
+    // Weights 20 times the specification's, so every layer's gradient is
+    // well above FP32 rounding in the differences below.
+    for i:0..<p.n {f[p.at[CG_P]+i]*=20;}
+    cg_rows(s,3,48,w[p.at[CG_OFFS]..<p.at[CG_OFFS]+4]);
+    return p;
+}
+ckc_step :: (s:CgShape,p:CgPlan,f:[]f32,u:[]u8,w:[]int)->f32 {
+    ls:[128]CgLaunch;at:=cg_step(s,p,ls[..]);if at>128 {return 0;}
+    cg_exec_all(ls[0..<at],f,u,w);return f[p.at[CG_SCAL]];
+}
+// A whole step's launches on the CPU: every tensor's first, middle and last
+// gradient value against central differences of the step's own loss, and
+// the same launches twice give the same bits.
+cgn_gradients :: ()->int #export_c {
+    bad:=0;s:=ckc_shape();f:[16384]f32;u:[256]u8;w:[16]int;p:=ckc_setup(s,f[..],u[..],w[..]);
+    if p.status!=CgStatus.ok || p.floats>CKC_F || p.bytes>256 || p.offsets>16 {return 1;}
+    sum:=ckc_step(s,p,f[..],u[..],w[..]);
+    g:[2048]f32;for i:0..<p.n {g[i]=f[p.at[CG_G]+i];}
+    if ckc_step(s,p,f[..],u[..],w[..])!=sum {bad+=1;}
+    for i:0..<p.n {if f32_bits(f[p.at[CG_G]+i])!=f32_bits(g[i]) {bad+=1;}}
+    for k:0..<cg_tensors(s) {for pick:0..<3 {
+        i:=cg_tensor_at(s,k)+pick*(cg_tensor_size(s,k)-1)/2;at:=p.at[CG_P]+i;old:=f[at];e:=0.01f32;
+        f[at]=old+e;hi:=ckc_step(s,p,f[..],u[..],w[..]);
+        f[at]=old-e;lo:=ckc_step(s,p,f[..],u[..],w[..]);f[at]=old;
+        num:=(f64(hi)-f64(lo))/(2*f64(e))/32;
+        if !(abs(f64(g[i])-num)<=0.02*abs(num)+0.0003) {bad+=1;print("gradient % (tensor %): % against central difference %\n",i,k,g[i],num);}
+    }}
+    return bad;
+}
+// Accumulating two micro-batches equals one batch of four rows, within rounding.
+cgn_accumulate :: ()->int #export_c {
+    bad:=0;s:=ckc_shape();f:[16384]f32;u:[256]u8;w:[16]int;p:=ckc_setup(s,f[..],u[..],w[..]);
+    a:=ckc_step(s,p,f[..],u[..],w[..]);g:[2048]f32;for i:0..<p.n {g[i]=f[p.at[CG_G]+i];}
+    one:=s;one.rows=4;one.accumulate=1;f2:[16384]f32;u2:[256]u8;w2:[16]int;q:=ckc_setup(one,f2[..],u2[..],w2[..]);
+    for r:0..<4 {if w2[q.at[CG_OFFS]+r]!=w[p.at[CG_OFFS]+r] {bad+=1;}}
+    b:=ckc_step(one,q,f2[..],u2[..],w2[..]);
+    if !(abs(f64(a)-f64(b))<0.00001*abs(f64(a))) {bad+=1;}
+    for i:0..<p.n {if !(abs(f64(g[i])-f64(f2[q.at[CG_G]+i]))<=0.0001*abs(f64(g[i]))+0.000001) {bad+=1;}}
+    return bad;
+}
+// An admitted update moves the parameters by AdamW; the held-out pass
+// writes only its windows' token losses.
+cgn_update :: ()->int #export_c {
+    bad:=0;s:=ckc_shape();f:[16384]f32;u:[256]u8;w:[16]int;p:=ckc_setup(s,f[..],u[..],w[..]);
+    sum:=ckc_step(s,p,f[..],u[..],w[..]);
+    d:=cgp_decide(0,10,2,32,f32_bits(sum),f32_bits(f[p.at[CG_SCAL]+1]));if !d.apply {return 1;}
+    before:[2048]f32;for i:0..<p.n {before[i]=f[p.at[CG_P]+i];}
+    ls:[2]CgLaunch;if cg_update(p,d,ls[..])!=1 {return 1;}
+    cg_exec(ls[0],f[..],u[..],w[..]);
+    for i:0..<p.n {
+        gr:=f[p.at[CG_G]+i]*d.scale;m:=0+d.wb1*(gr-0);v:=0*d.b2+d.wb2*gr*gr;
+        if !(f[p.at[CG_P]+i]==before[i]*d.keep-d.step*(m/(sqrt(v)/d.root2+d.eps)) && f[p.at[CG_M]+i]==m && f[p.at[CG_V]+i]==v) {bad+=1;}
+    }
+    cg_eval_offsets(s,40,0,2,w[p.at[CG_OFFS]..<p.at[CG_OFFS]+2]);
+    if w[p.at[CG_OFFS]]!=40 || w[p.at[CG_OFFS]+1]!=48 {bad+=1;}
+    for i:0..<32 {f[p.at[CG_LOSS]+i]= -1;}
+    el:[64]CgLaunch;at:=cg_eval(s,p,el[..],2);cg_exec_all(el[0..<at],f[..],u[..],w[..]);
+    for i:0..<16 {if !(f[p.at[CG_LOSS]+i]>0) {bad+=1;}}
+    for i:16..<32 {if f[p.at[CG_LOSS]+i]!= -1 {bad+=1;}}
+    return bad;
+}

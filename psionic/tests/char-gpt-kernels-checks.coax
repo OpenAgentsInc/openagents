@@ -1,0 +1,145 @@
+// Checks of char-gpt-kernels.coax: each kernel against a scalar statement
+// of its contract, in the same summation order (exact) or in binary64
+// (within a stated tolerance where exp, log or sqrt appear).
+
+// A product by its definition: sum over k in increasing order from +0,
+// times alpha, plus the old value when acc is 1.
+ckt_ref :: (m:int,n:int,k0:int,k1:int,alpha:f32,acc:int,a:[]f32,ai:int,ak:int,b:[]f32,bk:int,bj:int,c:[]f32,ci:int,cj:int,i:int,j:int)->f32 {
+    s:f32=0;for q:k0..<k1 {s+=a[i*ai+q*ak]*b[q*bk+j*bj];}
+    v:=alpha*s;if acc==1 {v=c[i*ci+j*cj]+v;}return v;
+}
+ckt_rms_f :: (x:[]f32,dh:[]f32,row:int,d:int,c:int,e:f64)->f64 {
+    ss:=0.0;for j:0..<d {v:=f64(x[row*d+j]);if j==c {v+=e;}ss+=v*v;}den:=sqrt(ss/f64(d)+0.00001);
+    s:=0.0;for j:0..<d {v:=f64(x[row*d+j]);if j==c {v+=e;}s+=f64(dh[row*d+j])*v/den;}return s;
+}
+ckt_fill :: (x:[]f32,seed:int) {for i:0..<x.count {x[i]=f32((i*7+seed)%23-11)*0.0625;}}
+
+#test "products in all three orientations match their definition on ragged tiles" #steps 2000000000 {
+    m:=70;n:=37;k:=45;a:[3150]f32;b:[1665]f32;c:[2590]f32;old:[2590]f32;
+    ckt_fill(a[..],1);ckt_fill(b[..],5);ckt_fill(old[..],9);
+    #assert ck_mm_items(1,m,n)==2 && ck_mm_items(3,64,64)==3 && ck_mm_items(2,65,129)==12;
+    for o:0..<3 {for acc:0..<2 {
+        // Row-major A[m,k] is (ai,ak) = (k,1); column-major is (1,m). Row-major
+        // B[k,n] is (bk,bj) = (n,1); column-major is (1,k).
+        ai:=k;ak:=1;bk:=n;bj:=1;
+        if o==1 {bk=1;bj=k;}
+        if o==2 {ai=1;ak=m;}
+        for i:0..<2590 {c[i]=old[i];}
+        for item:0..<ck_mm_items(1,m,n) {
+            if o==0 {ck_mm_nn(item,m,n,k,1,0,0.5,acc,a[..],0,0,0,ai,ak,b[..],0,0,0,bk,bj,c[..],0,0,0,n,1);}
+            if o==1 {ck_mm_nt(item,m,n,k,1,0,0.5,acc,a[..],0,0,0,ai,ak,b[..],0,0,0,bk,bj,c[..],0,0,0,n,1);}
+            if o==2 {ck_mm_tn(item,m,n,k,1,0,0.5,acc,a[..],0,0,0,ai,ak,b[..],0,0,0,bk,bj,c[..],0,0,0,n,1);}
+        }
+        for i:0..<m {for j:0..<n {#assert c[i*n+j]==ckt_ref(m,n,0,k,0.5,acc,a[..],ai,ak,b[..],bk,bj,old[..],n,1,i,j);}}
+    }}
+}
+#test "batched causal products: skipped tiles, inner limits and head offsets" #steps 2000000000 {
+    // Two batches (r, h) = (0,0), (0,1) of 130 x 130 scores from 8-wide
+    // heads packed in rows of 16: the score tile above the diagonal is
+    // skipped and keeps its old values.
+    t:=130;hd:=8;q:[2080]f32;s:[33800]f32;
+    ckt_fill(q[..],3);for i:0..<33800 {s[i]= -7;}
+    for item:0..<ck_mm_items(2,t,t) {ck_mm_nt(item,t,t,hd,2,1,0.125,0,q[..],0,0,hd,16,1,q[..],0,0,hd,1,16,s[..],0,0,t*t,t,1);}
+    for h:0..<2 {for i:0..<t {for j:0..<t {
+        v:=s[h*t*t+i*t+j];
+        if j/64>i/64 {#assert v== -7;}
+        else {sum:f32=0;for x:0..<hd {sum+=q[i*16+h*hd+x]*q[j*16+h*hd+x];}#assert v==0.125*sum;}
+    }}}
+    // Mode 2 stops the inner sum at the tile's last row; mode 3 starts it at
+    // the tile's first row. With A zero past (mode 2) or before (mode 3)
+    // the diagonal both equal the full product.
+    p:[16900]f32;v:[1040]f32;o:[1040]f32;full:[1040]f32;
+    for i:0..<t {for j:0..<t {x:f32=0;if j<=i {x=f32((i*3+j)%5)*0.25;}p[i*t+j]=x;}}
+    ckt_fill(v[..],2);
+    for item:0..<ck_mm_items(1,t,hd) {ck_mm_nn(item,t,hd,t,1,2,1,0,p[..],0,0,0,t,1,v[..],0,0,0,hd,1,o[..],0,0,0,hd,1);}
+    for i:0..<t {for j:0..<hd {lim:=t;if (i/64)*64+64<t {lim=(i/64)*64+64;}#assert o[i*hd+j]==ckt_ref(t,hd,0,lim,1,0,p[..],t,1,v[..],hd,1,o[..],hd,1,i,j);
+        sum:f64=0;for x:0..<t {sum+=f64(p[i*t+x])*f64(v[x*hd+j]);}#assert abs(f64(o[i*hd+j])-sum)<0.0001;}}
+    for item:0..<ck_mm_items(1,t,hd) {ck_mm_tn(item,t,hd,t,1,3,1,0,p[..],0,0,0,1,t,v[..],0,0,0,hd,1,full[..],0,0,0,hd,1);}
+    for i:0..<t {for j:0..<hd {#assert full[i*hd+j]==ckt_ref(t,hd,(i/64)*64,t,1,0,p[..],1,t,v[..],hd,1,full[..],hd,1,i,j);
+        sum:f64=0;for x:0..<t {sum+=f64(p[x*t+i])*f64(v[x*hd+j]);}#assert abs(f64(full[i*hd+j])-sum)<0.0001;}}
+}
+#test "causal softmax and its backward, against binary64" #steps 400000000 {
+    t:=40;s:[3200]f32;ds:[3200]f32;
+    for i:0..<3200 {s[i]=f32((i*13)%17-8)*0.3;ds[i]=f32((i*5)%11-5)*0.1;}
+    raw:[3200]f32;for i:0..<3200 {raw[i]=s[i];}
+    for item:0..<2*t {ck_softmax(item,t,s[..]);}
+    p:[3200]f32;for i:0..<3200 {p[i]=s[i];}
+    dp:[3200]f32;for i:0..<3200 {dp[i]=ds[i];}
+    for item:0..<2*t {ck_softmax_back(item,t,p[..],ds[..]);}
+    for row:0..<2*t {i:=row%t;b:=row*t;
+        mx:=-1.0e30;for j:0..<i+1 {if f64(raw[b+j])>mx {mx=f64(raw[b+j]);}}
+        sum:=0.0;for j:0..<i+1 {sum+=exp(f64(raw[b+j])-mx);}
+        dot:=0.0;for j:0..<i+1 {dot+=exp(f64(raw[b+j])-mx)/sum*f64(dp[b+j]);}
+        for j:0..<t {
+            if j>i {#assert s[b+j]==0 && ds[b+j]==0;}
+            else {e:=exp(f64(raw[b+j])-mx)/sum;#assert abs(f64(s[b+j])-e)<0.000001;#assert abs(f64(ds[b+j])-e*(f64(dp[b+j])-dot))<0.000001;}
+        }
+    }
+    // The row's first entry is 1 exactly: one term, divided by itself.
+    #assert s[0]==1;
+}
+#test "rms and its backward, against binary64 and central differences" #steps 400000000 {
+    d:=40;x:[120]f32;h:[120]f32;r:[3]f32;dh:[120]f32;g:[120]f32;
+    for i:0..<120 {x[i]=f32((i*7)%13-6)*0.21;dh[i]=f32((i*3)%7-3)*0.5;g[i]=1;}
+    for item:0..<3 {ck_rms(item,d,x[..],h[..],r[..]);}
+    for row:0..<3 {ss:=0.0;for c:0..<d {ss+=f64(x[row*d+c])*f64(x[row*d+c]);}den:=sqrt(ss/f64(d)+0.00001);
+        #assert abs(f64(r[row])-den)<0.000001;
+        for c:0..<d {#assert abs(f64(h[row*d+c])-f64(x[row*d+c])/den)<0.000001;}}
+    for item:0..<3 {ck_rms_back(item,d,1,h[..],r[..],dh[..],g[..]);}
+    // d/dx_c of sum_j dh_j x_j / r(x), by central differences in binary64.
+    for row:0..<3 {for c:0..<d {
+        num:=(ckt_rms_f(x[..],dh[..],row,d,c,0.000001)-ckt_rms_f(x[..],dh[..],row,d,c,-0.000001))/0.000002;
+        #assert abs(f64(g[row*d+c])-1-num)<0.0001;
+    }}
+    // acc 0 overwrites.
+    for i:0..<120 {g[i]=99;}ck_rms_back(0,d,0,h[..],r[..],dh[..],g[..]);#assert g[0]!=99 && g[40]==99;
+}
+#test "ids, embedding, its gradients and relu squared, by hand" {
+    data:=[10]u8.[3,1,4,1,5,9,2,6,5,3];offs:=[3]int.[7,2,0];ids:[4]u8;tg:[4]u8;
+    // Two rows of two tokens from offsets[1..3]: rows start at 2 and 0.
+    for item:0..<4 {ck_ids(item,2,1,offs[..],data[..],ids[..],tg[..]);}
+    #assert ids[0]==4 && ids[1]==1 && ids[2]==3 && ids[3]==1 && tg[0]==1 && tg[1]==5 && tg[2]==1 && tg[3]==4;
+    tok:[20]f32;pos:[4]f32;x:[8]f32;for i:0..<20 {tok[i]=f32(i);}pos[0]=0.5;pos[1]=0.25;pos[2]= -1;pos[3]=2;
+    for item:0..<8 {ck_embed(item,2,2,ids[..],tok[..],pos[..],x[..]);}
+    #assert x[0]==8.5 && x[1]==9.25 && x[2]==1 && x[3]==5 && x[4]==6.5 && x[5]==7.25 && x[6]==1 && x[7]==5;
+    g:=[8]f32.[1,2,3,4,5,6,7,8];out:[20]f32;for i:0..<20 {out[i]=100;}
+    for item:0..<20 {ck_embed_back(item,2,4,0,ids[..],g[..],out[..]);}
+    // Token 1 appears at n = 1 and 3: 3 + 7 and 4 + 8.
+    #assert out[2]==10 && out[3]==12 && out[8]==1 && out[9]==2 && out[6]==5 && out[7]==6 && out[0]==0;
+    for item:0..<20 {ck_embed_back(item,2,4,1,ids[..],g[..],out[..]);}
+    #assert out[2]==20 && out[0]==0;
+    pg:[4]f32;for item:0..<4 {ck_pos_back(item,2,2,2,0,g[..],pg[..]);}
+    #assert pg[0]==6 && pg[1]==8 && pg[2]==10 && pg[3]==12;
+    for item:0..<4 {ck_pos_back(item,2,2,2,1,g[..],pg[..]);}#assert pg[0]==12 && pg[3]==24;
+    u:=[4]f32.[-2,0,1.5,3];a:[4]f32;for item:0..<4 {ck_relu2(item,u[..],a[..]);}
+    #assert a[0]==0 && a[1]==0 && a[2]==2.25 && a[3]==9;
+    da:=[4]f32.[1,1,2,0.5];for item:0..<4 {ck_relu2_back(item,u[..],da[..]);}
+    #assert da[0]==0 && da[1]==0 && da[2]==6 && da[3]==3;
+}
+#test "cross-entropy and its gradient, by hand and against binary64" {
+    l:=[6]f32.[0,0,1,2,-1,0.5];tg:=[2]u8.[0,1];loss:[2]f32;dl:[6]f32;
+    for item:0..<2 {ck_ce(item,3,0.25,l[..],tg[..],loss[..],dl[..]);}
+    // Row 0: logits 0, 0, 1 and target 0.
+    z:=2+exp(1.0);#assert abs(f64(loss[0])-log(z))<0.000001;
+    #assert abs(f64(dl[0])-(1/z-1)*0.25)<0.0000001 && abs(f64(dl[2])-exp(1.0)/z*0.25)<0.0000001;
+    z=exp(2.0)+exp(-1.0)+exp(0.5);#assert abs(f64(loss[1])-(log(z)+1))<0.000001;
+    // The gradient of each row sums to zero within rounding.
+    #assert abs(f64(dl[3])+f64(dl[4])+f64(dl[5]))<0.0000001;
+}
+#test "sums of values and squares over chunks, in their fixed order" #steps 400000000 {
+    x:[9000]f32;out:[3]f32;for i:0..<9000 {x[i]=f32(i%7)-3;}
+    for item:0..<3 {ck_sum(item,9000,0,x[..],out[..]);}
+    // Every partial is a small integer, so the sums are exact.
+    s0:=0.0;s1:=0.0;s2:=0.0;for i:0..<9000 {if i<4096 {s0+=f64(x[i]);}else if i<8192 {s1+=f64(x[i]);}else {s2+=f64(x[i]);}}
+    #assert f64(out[0])==s0 && f64(out[1])==s1 && f64(out[2])==s2;
+    for item:0..<3 {ck_sum(item,9000,1,x[..],out[..]);}
+    q:=0.0;for i:8192..<9000 {q+=f64(x[i])*f64(x[i]);}#assert f64(out[2])==q;
+}
+#test "AdamW on one value, by hand" {
+    // keep = 1 - 0.25*0.5, g = 2*0.5 = 1 after the clip scale, m = 0 + 0.5(1 - 0)
+    // = 0.5, v = 0*0.75 + 0.25*1 = 0.25, den = 0.5/0.5 + 0.5 = 1.5,
+    // p = 2*0.875 - 0.5 * 0.5/1.5.
+    p:=[1]f32.[2];g:=[1]f32.[2];m:[1]f32;v:[1]f32;
+    ck_adamw(0,0.875,0.75,0.5,0.25,0.5,0.5,0.5,0.5,p[..],g[..],m[..],v[..]);
+    #assert m[0]==0.5 && v[0]==0.25 && p[0]==1.75-0.5*(0.5f32/1.5f32);
+}

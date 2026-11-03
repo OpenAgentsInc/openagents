@@ -1,0 +1,122 @@
+// char-gpt-shakespeare-v1's decisions (#12627): which corpus and shapes a
+// run admits, the learning-rate schedule, whether a step's update happens
+// and with which constants, the per-step transfer ledger that proves no
+// step fell back to the host, and the checkpoint header. The device does
+// arithmetic; these decide. The frozen workload is
+// docs/verification/psionic-train-shakespeare-2026-11-03/README.md.
+//
+// Checks: coax test psionic/lib/transformer/char-gpt-policy.coax
+#load "../../tests/char-gpt-policy-checks.coax";
+#authority;
+
+CgStatus :: enum u8 {ok;corpus;shape;budget;order;number;checkpoint;ledger;}
+
+// The frozen corpus: Tiny Shakespeare, by length, FNV-1a 64 and its 65
+// distinct bytes.
+CGP_CORPUS_BYTES :: 1115394;
+CGP_CORPUS_FNV :: (cast(u64)0x4016c93c3be74c18);
+CGP_VOCAB :: 65;
+cgp_fnv :: (x:[]u8)->u64 #export_c {
+    h:=(cast(u64)0xcbf29ce484222325);
+    for b:x {h=mul_wrap(h^cast(u64)b,(cast(u64)0x100000001b3));}
+    return h;
+}
+cgp_corpus :: (count:int,fnv:u64)->CgStatus #export_c {
+    if count!=CGP_CORPUS_BYTES || fnv!=CGP_CORPUS_FNV {return CgStatus.corpus;}
+    return CgStatus.ok;
+}
+// The training split: the first floor(0.9 n) bytes.
+cgp_train_bytes :: (n:int)->int #export_c {return n*9/10;}
+
+// Shapes the kernels admit: a width the row kernels cover (at most 512) and
+// the heads divide; a context the softmax rows cover (at most 512); ids
+// that fit a byte; at most 8 layers (the plan's buffer table); and a
+// micro-batch of fewer than 65536 tokens.
+CGP_ROW_MAX :: 512;
+CGP_LAYERS :: 8;
+cgp_shape :: (vocab:int,d:int,layers:int,heads:int,context:int,hidden:int,rows:int,accumulate:int)->CgStatus #export_c {
+    if vocab<2 || vocab>256 || d<1 || d>CGP_ROW_MAX || heads<1 || d%heads!=0 {return CgStatus.shape;}
+    if layers<1 || layers>CGP_LAYERS || context<2 || context>CGP_ROW_MAX || hidden<1 || hidden>4*CGP_ROW_MAX {return CgStatus.shape;}
+    if rows<1 || accumulate<1 || rows*context>=65536 {return CgStatus.shape;}
+    return CgStatus.ok;
+}
+cgp_budget :: (bytes:int,budget:int)->CgStatus #export_c {
+    if bytes<1 || bytes>budget {return CgStatus.budget;}
+    return CgStatus.ok;
+}
+
+// The rate at step s (0-based) of `steps`: linear warmup to the peak over
+// `warmup` steps, then cosine to the floor at the last step.
+CGP_PEAK :: 0.001;
+CGP_FLOOR :: 0.0001;
+CGP_PI :: 3.141592653589793;
+cgp_rate :: (s:int,steps:int,warmup:int)->f64 #export_c {
+    if s<warmup {return CGP_PEAK*f64(s+1)/f64(warmup);}
+    f:=f64(s-warmup)/f64(steps-warmup);
+    return CGP_FLOOR+0.5*(CGP_PEAK-CGP_FLOOR)*(1.0+cos(CGP_PI*f));
+}
+
+// One step's decision from the device's two numbers: the sum of the step's
+// token losses and the sum of the squared gradient. A step whose loss or
+// norm is not finite is skipped: nothing changes but the skip count.
+CgDecision :: struct {status:CgStatus;apply:bool;clipped:bool;loss:f64;norm:f32;rate:f64;scale:f32;keep:f32;b2:f32;wb1:f32;wb2:f32;step:f32;root2:f32;eps:f32;}
+CGP_B1 :: 0.9;
+CGP_B2 :: 0.99;
+CGP_EPS :: 0.00000001;
+CGP_DECAY :: 0.1;
+CGP_CLIP :: 1.0f32;
+// The two numbers arrive as their FP32 bits, so a non-finite value is
+// refused before it is ever an arithmetic operand.
+cgp_finite :: (bits:u32)->bool {return (bits&0x7f800000)!=0x7f800000;}
+cgp_decide :: (step:int,steps:int,warmup:int,tokens:int,loss_bits:u32,square_bits:u32)->CgDecision #export_c {
+    if step<0 || step>=steps || tokens<1 || warmup<1 || warmup>=steps {return CgDecision.{status=CgStatus.order};}
+    rate:=cgp_rate(step,steps,warmup);
+    d:=CgDecision.{status=CgStatus.number,rate=rate};
+    if !cgp_finite(loss_bits) || !cgp_finite(square_bits) || (square_bits>>31)!=0 {return d;}
+    squares:=f32_from_bits(square_bits);
+    d.status=CgStatus.ok;d.loss=f64(f32_from_bits(loss_bits))/f64(tokens);d.norm=sqrt(squares);
+    // PyTorch's clip_grad_norm_: coef = max/(norm + 1e-6) in FP32, at most 1.
+    // A step is clipped when norm + 1e-6 is past the clip; at exactly the
+    // clip the coefficient is 1 either way and the step is not clipped.
+    coef:=1.0f32;
+    if d.norm+0.000001f32>CGP_CLIP {coef=CGP_CLIP/(d.norm+0.000001f32);d.clipped=true;}
+    t:=f64(step+1);c1:=1-pow(CGP_B1,t);c2:=1-pow(CGP_B2,t);
+    d.apply=true;d.scale=coef;d.keep=f32(1-rate*CGP_DECAY);d.b2=f32(CGP_B2);d.wb1=f32(1-CGP_B1);d.wb2=f32(1-CGP_B2);
+    d.step=f32(rate/c1);d.root2=f32(sqrt(c2));d.eps=f32(CGP_EPS);
+    return d;
+}
+
+// The transfer ledger of one step: the host uploads exactly the step's row
+// offsets and downloads exactly the two numbers above, and launches exactly
+// the planned kernels. Anything else means arithmetic left the device.
+cgp_ledger :: (rows:int,up:int,down:int,launches:int,planned:int)->CgStatus #export_c {
+    if rows<1 || up!=8*rows || down!=8 || launches!=planned || planned<1 {return CgStatus.ledger;}
+    return CgStatus.ok;
+}
+
+// The checkpoint header: 16 integers. 0 magic, 1 version, 2 profile (0 fp32),
+// 3 parameters, 4 completed steps, 5 skipped steps, 6..13 the shape
+// (vocab, d, layers, heads, context, hidden, rows, accumulate), 14 and 15
+// the payload's FNV-1a 64 as two 32-bit halves. The payload is the
+// parameters, first moments and second moments, FP32, in that order.
+CGP_MAGIC :: 0x43475054;
+CGP_VERSION :: 1;
+cgp_header :: (h:[]int,profile:int,n:int,step:int,skipped:int,shape:[]int,fnv:u64)->CgStatus #export_c {
+    if h.count!=16 || shape.count!=8 || n<1 || step<0 || skipped<0 || profile<0 || profile>1 {return CgStatus.checkpoint;}
+    h[0]=CGP_MAGIC;h[1]=CGP_VERSION;h[2]=profile;h[3]=n;h[4]=step;h[5]=skipped;
+    for i:0..<8 {h[6+i]=shape[i];}
+    h[14]=cast(int)(fnv>>32);h[15]=cast(int)(fnv&0xffffffff);
+    return CgStatus.ok;
+}
+// A header is admitted only for this run's profile, parameter count and
+// shape, with a payload whose FNV-1a 64 matches.
+cgp_header_ok :: (h:[]int,profile:int,n:int,steps:int,shape:[]int,fnv:u64)->CgStatus #export_c {
+    if h.count!=16 || shape.count!=8 {return CgStatus.checkpoint;}
+    if h[0]!=CGP_MAGIC || h[1]!=CGP_VERSION || h[2]!=profile || h[3]!=n || h[4]>steps || h[5]<0 || h[5]>h[4] {return CgStatus.checkpoint;}
+    for i:0..<8 {if h[6+i]!=shape[i] {return CgStatus.checkpoint;}}
+    if h[14]!=cast(int)(fnv>>32) || h[15]!=cast(int)(fnv&0xffffffff) {return CgStatus.checkpoint;}
+    return CgStatus.ok;
+}
+// More than ten skipped steps in one run is a failure of the run.
+CGP_SKIPS :: 10;
+cgp_skips :: (skipped:int)->CgStatus #export_c {if skipped>CGP_SKIPS {return CgStatus.number;}return CgStatus.ok;}

@@ -1,0 +1,303 @@
+// char-gpt-shakespeare-v1's device kernels (#12627): every arithmetic step
+// of one training step of a pre-norm decoder, FP32 profile. `coax cuda`
+// emits them for NVRTC (--fmad=false); the C build of this file is the CPU
+// meaning, which char-gpt.coax runs launch by launch for its checks.
+//
+// Numerical contract. Every product and sum rounds once in FP32. Every
+// reduction has one fixed order, written in the comment of its kernel:
+// there are no atomics, so a launch sequence is deterministic on the device
+// and on the CPU. exp, log and sqrt are the platform's (CUDA's device
+// library on the GPU, libm on the CPU), so device and CPU may differ in
+// their last bits wherever these appear.
+//
+// Checks: coax test psionic/lib/transformer/char-gpt-kernels.coax
+#load "../../tests/char-gpt-kernels-checks.coax";
+
+CK_T :: 256;      // threads of a product item
+CK_TILE :: 64;    // a product item's output tile is 64 x 64
+CK_STEP :: 16;    // inner values staged per step
+
+// The inner range of a product tile at rows i0 ..< i0+64 (mode: 0 plain;
+// 1 a causal score tile, skipped when every column is after every row;
+// 2 inner values up to the tile's last row, because the left operand is
+// zero past the diagonal; 3 inner values from the tile's first row, because
+// the left operand's transpose is zero before it).
+ck_k0 :: (mode:int,i0:int)->int {if mode==3 {return i0;}return 0;}
+ck_k1 :: (mode:int,i0:int,k:int)->int {if mode==2 && i0+CK_TILE<k {return i0+CK_TILE;}return k;}
+ck_live :: (mode:int,i0:int,j0:int)->bool {return mode!=1 || j0<=i0+CK_TILE-1;}
+ck_steps :: (mode:int,i0:int,j0:int,k:int)->int {
+    k0:=ck_k0(mode,i0);k1:=ck_k1(mode,i0,k);
+    if !ck_live(mode,i0,j0) || k1<=k0 {return 0;}
+    return (k1-k0+CK_STEP-1)/CK_STEP;
+}
+// Items of a product: batch x row tiles x column tiles.
+ck_mm_items :: (batch:int,m:int,n:int)->int {return batch*((m+CK_TILE-1)/CK_TILE)*((n+CK_TILE-1)/CK_TILE);}
+
+// Staging. Element e = thread + 256q (q < 4) of a 64 x 16 left tile or a
+// 16 x 64 right tile. Each orientation picks the e -> (row, inner) map that
+// reads global memory in runs of consecutive addresses; the product loop
+// reads the same map back.
+//   left, row-major source (ak == 1): e = ii*16 + kk
+//   left, column-major source (ai == 1): e = kk*64 + ii
+//   right, row-major source (bj == 1): e = kk*64 + jj
+//   right, column-major source (bk == 1): e = jj*16 + (kk ^ (jj % 16)), a
+//     swizzle that lets 16 consecutive columns read 16 different banks.
+ck_left :: (i:int,kk:int,m:int,k1:int,base:int,ai:int,ak:int,a:[]f32)->f32 {
+    v:f32=0;if i<m && kk<k1 {v=a[base+i*ai+kk*ak];}return v;
+}
+ck_right :: (kk:int,j:int,n:int,k1:int,base:int,bk:int,bj:int,b:[]f32)->f32 {
+    v:f32=0;if j<n && kk<k1 {v=b[base+kk*bk+j*bj];}return v;
+}
+ck_stage_a :: (thread:int,q:int,rowmajor:bool,i0:int,kb:int,m:int,k1:int,base:int,ai:int,ak:int,a:[]f32)->f32 {
+    e:=thread+CK_T*q;
+    if rowmajor {return ck_left(i0+e/CK_STEP,kb+e%CK_STEP,m,k1,base,ai,ak,a);}
+    return ck_left(i0+e%CK_TILE,kb+e/CK_TILE,m,k1,base,ai,ak,a);
+}
+ck_stage_b :: (thread:int,q:int,rowmajor:bool,j0:int,kb:int,n:int,k1:int,base:int,bk:int,bj:int,b:[]f32)->f32 {
+    e:=thread+CK_T*q;
+    if rowmajor {return ck_right(kb+e/CK_TILE,j0+e%CK_TILE,n,k1,base,bk,bj,b);}
+    jj:=e/CK_STEP;kk:=(e%CK_STEP)^(jj%CK_STEP);
+    return ck_right(kb+kk,j0+jj,n,k1,base,bk,bj,b);
+}
+// Where the product loop finds left (row ii, inner kk) and right (inner kk,
+// column jj) in the staged tiles.
+ck_at_a :: (rowmajor:bool,ii:int,kk:int)->int {if rowmajor {return ii*CK_STEP+kk;}return kk*CK_TILE+ii;}
+ck_at_b :: (rowmajor:bool,kk:int,jj:int)->int {if rowmajor {return kk*CK_TILE+jj;}return jj*CK_STEP+(kk^(jj%CK_STEP));}
+
+// C[bt](i,j) = alpha * sum_k A[bt](i,k) B[bt](k,j), or C plus that when acc
+// is 1. Batch bt = r*heads + h; the batch's operand starts at
+// off + r*rs + h*hs, and element (i,k) is at i*ai + k*ak (likewise B, C).
+// Item = (bt*tm + ti)*tn + tj. Thread t = ty*16 + tx owns rows
+// i0 + ty + 16rr and columns j0 + tx + 16cc (rr, cc < 4). Each output adds
+// its products in increasing k, one rounding per multiply and per add,
+// starting from +0, then multiplies by alpha, then adds the old C (acc 1).
+// The three orientations differ only in the staging maps: nn (A and B
+// row-major), nt (B column-major), tn (A column-major).
+ck_mm_nn :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,
+    a:[]f32,ao:int,ar:int,ah:int,ai:int,ak:int,b:[]f32,bo:int,br:int,bh:int,bk:int,bj:int,
+    c:[]f32,co:int,cr:int,ch:int,ci:int,cj:int) #export_c {
+    tm:=(m+CK_TILE-1)/CK_TILE;tn:=(n+CK_TILE-1)/CK_TILE;per:=tm*tn;bt:=item/per;t:=item%per;
+    i0:=t/tn*CK_TILE;j0:=t%tn*CK_TILE;r:=bt/heads;h:=bt%heads;
+    abase:=ao+r*ar+h*ah;bbase:=bo+r*br+h*bh;cbase:=co+r*cr+h*ch;
+    k0:=ck_k0(mode,i0);k1:=ck_k1(mode,i0,k);steps:=ck_steps(mode,i0,j0,k);live:=ck_live(mode,i0,j0);
+    xs:[1024]f32;ws:[1024]f32;acc_:[4096]f32;pre:[2048]f32;bq:[1024]f32;
+    for thread:0..<CK_T {
+        for x:0..<16 {acc_[thread*16+x]=0;}
+        for q:0..<4 {pre[thread*8+q]=ck_stage_a(thread,q,true,i0,k0,m,k1,abase,ai,ak,a);pre[thread*8+4+q]=ck_stage_b(thread,q,true,j0,k0,n,k1,bbase,bk,bj,b);}
+    }
+    for s:0..<steps {
+        for thread:0..<CK_T {for q:0..<4 {xs[thread+CK_T*q]=pre[thread*8+q];ws[thread+CK_T*q]=pre[thread*8+4+q];}}
+        for thread:0..<CK_T {
+            if s+1<steps {kn:=k0+(s+1)*CK_STEP;
+                for q:0..<4 {pre[thread*8+q]=ck_stage_a(thread,q,true,i0,kn,m,k1,abase,ai,ak,a);pre[thread*8+4+q]=ck_stage_b(thread,q,true,j0,kn,n,k1,bbase,bk,bj,b);}}
+            tx:=thread%16;ty:=thread/16;
+            for kk:0..<CK_STEP {
+                for cc:0..<4 {bq[thread*4+cc]=ws[ck_at_b(true,kk,tx+16*cc)];}
+                for rr:0..<4 {av:=xs[ck_at_a(true,ty+16*rr,kk)];for cc:0..<4 {acc_[thread*16+rr*4+cc]+=av*bq[thread*4+cc];}}
+            }
+        }
+    }
+    for thread:0..<CK_T {
+        tx:=thread%16;ty:=thread/16;
+        for rr:0..<4 {for cc:0..<4 {i:=i0+ty+16*rr;j:=j0+tx+16*cc;
+            if live && i<m && j<n {at:=cbase+i*ci+j*cj;v:=alpha*acc_[thread*16+rr*4+cc];if acc==1 {v=c[at]+v;}c[at]=v;}}}
+    }
+}
+ck_mm_nt :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,
+    a:[]f32,ao:int,ar:int,ah:int,ai:int,ak:int,b:[]f32,bo:int,br:int,bh:int,bk:int,bj:int,
+    c:[]f32,co:int,cr:int,ch:int,ci:int,cj:int) #export_c {
+    tm:=(m+CK_TILE-1)/CK_TILE;tn:=(n+CK_TILE-1)/CK_TILE;per:=tm*tn;bt:=item/per;t:=item%per;
+    i0:=t/tn*CK_TILE;j0:=t%tn*CK_TILE;r:=bt/heads;h:=bt%heads;
+    abase:=ao+r*ar+h*ah;bbase:=bo+r*br+h*bh;cbase:=co+r*cr+h*ch;
+    k0:=ck_k0(mode,i0);k1:=ck_k1(mode,i0,k);steps:=ck_steps(mode,i0,j0,k);live:=ck_live(mode,i0,j0);
+    xs:[1024]f32;ws:[1024]f32;acc_:[4096]f32;pre:[2048]f32;bq:[1024]f32;
+    for thread:0..<CK_T {
+        for x:0..<16 {acc_[thread*16+x]=0;}
+        for q:0..<4 {pre[thread*8+q]=ck_stage_a(thread,q,true,i0,k0,m,k1,abase,ai,ak,a);pre[thread*8+4+q]=ck_stage_b(thread,q,false,j0,k0,n,k1,bbase,bk,bj,b);}
+    }
+    for s:0..<steps {
+        for thread:0..<CK_T {for q:0..<4 {xs[thread+CK_T*q]=pre[thread*8+q];ws[thread+CK_T*q]=pre[thread*8+4+q];}}
+        for thread:0..<CK_T {
+            if s+1<steps {kn:=k0+(s+1)*CK_STEP;
+                for q:0..<4 {pre[thread*8+q]=ck_stage_a(thread,q,true,i0,kn,m,k1,abase,ai,ak,a);pre[thread*8+4+q]=ck_stage_b(thread,q,false,j0,kn,n,k1,bbase,bk,bj,b);}}
+            tx:=thread%16;ty:=thread/16;
+            for kk:0..<CK_STEP {
+                for cc:0..<4 {bq[thread*4+cc]=ws[ck_at_b(false,kk,tx+16*cc)];}
+                for rr:0..<4 {av:=xs[ck_at_a(true,ty+16*rr,kk)];for cc:0..<4 {acc_[thread*16+rr*4+cc]+=av*bq[thread*4+cc];}}
+            }
+        }
+    }
+    for thread:0..<CK_T {
+        tx:=thread%16;ty:=thread/16;
+        for rr:0..<4 {for cc:0..<4 {i:=i0+ty+16*rr;j:=j0+tx+16*cc;
+            if live && i<m && j<n {at:=cbase+i*ci+j*cj;v:=alpha*acc_[thread*16+rr*4+cc];if acc==1 {v=c[at]+v;}c[at]=v;}}}
+    }
+}
+ck_mm_tn :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,
+    a:[]f32,ao:int,ar:int,ah:int,ai:int,ak:int,b:[]f32,bo:int,br:int,bh:int,bk:int,bj:int,
+    c:[]f32,co:int,cr:int,ch:int,ci:int,cj:int) #export_c {
+    tm:=(m+CK_TILE-1)/CK_TILE;tn:=(n+CK_TILE-1)/CK_TILE;per:=tm*tn;bt:=item/per;t:=item%per;
+    i0:=t/tn*CK_TILE;j0:=t%tn*CK_TILE;r:=bt/heads;h:=bt%heads;
+    abase:=ao+r*ar+h*ah;bbase:=bo+r*br+h*bh;cbase:=co+r*cr+h*ch;
+    k0:=ck_k0(mode,i0);k1:=ck_k1(mode,i0,k);steps:=ck_steps(mode,i0,j0,k);live:=ck_live(mode,i0,j0);
+    xs:[1024]f32;ws:[1024]f32;acc_:[4096]f32;pre:[2048]f32;bq:[1024]f32;
+    for thread:0..<CK_T {
+        for x:0..<16 {acc_[thread*16+x]=0;}
+        for q:0..<4 {pre[thread*8+q]=ck_stage_a(thread,q,false,i0,k0,m,k1,abase,ai,ak,a);pre[thread*8+4+q]=ck_stage_b(thread,q,true,j0,k0,n,k1,bbase,bk,bj,b);}
+    }
+    for s:0..<steps {
+        for thread:0..<CK_T {for q:0..<4 {xs[thread+CK_T*q]=pre[thread*8+q];ws[thread+CK_T*q]=pre[thread*8+4+q];}}
+        for thread:0..<CK_T {
+            if s+1<steps {kn:=k0+(s+1)*CK_STEP;
+                for q:0..<4 {pre[thread*8+q]=ck_stage_a(thread,q,false,i0,kn,m,k1,abase,ai,ak,a);pre[thread*8+4+q]=ck_stage_b(thread,q,true,j0,kn,n,k1,bbase,bk,bj,b);}}
+            tx:=thread%16;ty:=thread/16;
+            for kk:0..<CK_STEP {
+                for cc:0..<4 {bq[thread*4+cc]=ws[ck_at_b(true,kk,tx+16*cc)];}
+                for rr:0..<4 {av:=xs[ck_at_a(false,ty+16*rr,kk)];for cc:0..<4 {acc_[thread*16+rr*4+cc]+=av*bq[thread*4+cc];}}
+            }
+        }
+    }
+    for thread:0..<CK_T {
+        tx:=thread%16;ty:=thread/16;
+        for rr:0..<4 {for cc:0..<4 {i:=i0+ty+16*rr;j:=j0+tx+16*cc;
+            if live && i<m && j<n {at:=cbase+i*ci+j*cj;v:=alpha*acc_[thread*16+rr*4+cc];if acc==1 {v=c[at]+v;}c[at]=v;}}}
+    }
+}
+
+// Row-wise kernels: one group of CK_ROW threads per row. Thread t handles
+// columns t, t+32, t+64, ... (at most CK_ROW_MAX/32 of them) and keeps its
+// partial in that order; the row's total adds the 32 partials in thread
+// order.
+CK_ROW :: 32;
+CK_ROW_MAX :: 512;
+
+// The causal softmax of score row `item` (row i = item % t of a t x t
+// block), in place: p[j] = exp(s[j] - max) / sum for j <= i, 0 after.
+// max is over j <= i; sum adds the exponentials in the row order above.
+ck_softmax :: (item:int,t:int,s:[]f32) #export_c {
+    i:=item%t;base:=item*t;top:[32]f32;part:[32]f32;ev:[512]f32;
+    for thread:0..<CK_ROW {
+        best:f32= -3.0e38;
+        for q:0..<CK_ROW_MAX/CK_ROW {j:=thread+CK_ROW*q;if j<=i && j<t {v:=s[base+j];if v>best {best=v;}}}
+        top[thread]=best;
+    }
+    mx:=top[0];for x:1..<CK_ROW {if top[x]>mx {mx=top[x];}}
+    for thread:0..<CK_ROW {
+        sum:f32=0;
+        for q:0..<CK_ROW_MAX/CK_ROW {j:=thread+CK_ROW*q;e:f32=0;if j<=i && j<t {e=exp(s[base+j]-mx);}ev[thread*16+q]=e;sum+=e;}
+        part[thread]=sum;
+    }
+    total:f32=0;for x:0..<CK_ROW {total+=part[x];}
+    for thread:0..<CK_ROW {
+        for q:0..<CK_ROW_MAX/CK_ROW {j:=thread+CK_ROW*q;if j<t {v:f32=0;if j<=i {v=ev[thread*16+q]/total;}s[base+j]=v;}}
+    }
+}
+// Its backward, in place on dp: ds[j] = p[j] * (dp[j] - dot) for j <= i and
+// 0 after, dot = sum over j <= i of p[j] dp[j] in the row order above.
+ck_softmax_back :: (item:int,t:int,p:[]f32,dp:[]f32) #export_c {
+    i:=item%t;base:=item*t;part:[32]f32;
+    for thread:0..<CK_ROW {
+        sum:f32=0;
+        for q:0..<CK_ROW_MAX/CK_ROW {j:=thread+CK_ROW*q;if j<=i && j<t {sum+=p[base+j]*dp[base+j];}}
+        part[thread]=sum;
+    }
+    dot:f32=0;for x:0..<CK_ROW {dot+=part[x];}
+    for thread:0..<CK_ROW {
+        for q:0..<CK_ROW_MAX/CK_ROW {j:=thread+CK_ROW*q;if j<t {v:f32=0;if j<=i {v=p[base+j]*(dp[base+j]-dot);}dp[base+j]=v;}}
+    }
+}
+CK_EPS :: 0.00001f32;
+// rms of row `item` of width d: r = sqrt(sum(x^2)/d + 1e-5), h = x / r.
+ck_rms :: (item:int,d:int,x:[]f32,h:[]f32,r:[]f32) #export_c {
+    base:=item*d;part:[32]f32;
+    for thread:0..<CK_ROW {
+        sum:f32=0;
+        for q:0..<CK_ROW_MAX/CK_ROW {c:=thread+CK_ROW*q;if c<d {v:=x[base+c];sum+=v*v;}}
+        part[thread]=sum;
+    }
+    total:f32=0;for u:0..<CK_ROW {total+=part[u];}
+    den:=sqrt(total/f32(d)+CK_EPS);
+    for thread:0..<CK_ROW {
+        if thread==0 {r[item]=den;}
+        for q:0..<CK_ROW_MAX/CK_ROW {c:=thread+CK_ROW*q;if c<d {h[base+c]=x[base+c]/den;}}
+    }
+}
+// Its backward into the residual gradient g: g = (acc ? g : 0) +
+// (dh - h * dot/d) / r, dot = sum of dh*h in the row order above.
+ck_rms_back :: (item:int,d:int,acc:int,h:[]f32,r:[]f32,dh:[]f32,g:[]f32) #export_c {
+    base:=item*d;part:[32]f32;
+    for thread:0..<CK_ROW {
+        sum:f32=0;
+        for q:0..<CK_ROW_MAX/CK_ROW {c:=thread+CK_ROW*q;if c<d {sum+=dh[base+c]*h[base+c];}}
+        part[thread]=sum;
+    }
+    dot:f32=0;for u:0..<CK_ROW {dot+=part[u];}
+    mean:=dot/f32(d);den:=r[item];
+    for thread:0..<CK_ROW {
+        for q:0..<CK_ROW_MAX/CK_ROW {c:=thread+CK_ROW*q;if c<d {v:=(dh[base+c]-h[base+c]*mean)/den;if acc==1 {v=g[base+c]+v;}g[base+c]=v;}}
+    }
+}
+
+// One item per token n of a micro-batch: input and target ids of row
+// n / t, starting at offs[first + n/t] in the data.
+ck_ids :: (item:int,t:int,first:int,offs:[]int,data:[]u8,ids:[]u8,tg:[]u8) #export_c {
+    at:=offs[first+item/t]+item%t;ids[item]=data[at];tg[item]=data[at+1];
+}
+// x[n][c] = tok[id][c] + pos[n % t][c], one item per value.
+ck_embed :: (item:int,d:int,t:int,ids:[]u8,tok:[]f32,pos:[]f32,x:[]f32) #export_c {
+    n:=item/d;c:=item%d;x[item]=tok[cast(int)ids[n]*d+c]+pos[(n%t)*d+c];
+}
+// Token-table gradient, one item per value (v, c): the sum over tokens n in
+// increasing order of g[n][c] where ids[n] == v, added to the old value
+// when acc is 1.
+ck_embed_back :: (item:int,d:int,count:int,acc:int,ids:[]u8,g:[]f32,out:[]f32) #export_c {
+    v:=item/d;c:=item%d;s:f32=0;
+    for n:0..<count {if cast(int)ids[n]==v {s+=g[n*d+c];}}
+    if acc==1 {s=out[item]+s;}
+    out[item]=s;
+}
+// Position-table gradient, one item per value (p, c): the sum over rows in
+// increasing order of g[row*t + p][c].
+ck_pos_back :: (item:int,d:int,t:int,rows:int,acc:int,g:[]f32,out:[]f32) #export_c {
+    p:=item/d;c:=item%d;s:f32=0;
+    for row:0..<rows {s+=g[(row*t+p)*d+c];}
+    if acc==1 {s=out[item]+s;}
+    out[item]=s;
+}
+// a = relu(u)^2, and its backward du = da * (2 relu(u)) where u > 0, else 0.
+ck_relu2 :: (item:int,u:[]f32,a:[]f32) #export_c {v:=u[item];if !(v>0) {v=0;}a[item]=v*v;}
+ck_relu2_back :: (item:int,u:[]f32,da:[]f32) #export_c {v:=u[item];g:f32=0;if v>0 {g=da[item]*(2*v);}da[item]=g;}
+// Cross-entropy of token `item` over v logits: loss = log(sum exp(l - max))
+// - (l[target] - max), sum in index order; dl = (exp(l - max)/sum -
+// [j == target]) * scale.
+ck_ce :: (item:int,v:int,scale:f32,logits:[]f32,tg:[]u8,loss:[]f32,dl:[]f32) #export_c {
+    base:=item*v;y:=cast(int)tg[item];mx:=logits[base];
+    for j:1..<v {if logits[base+j]>mx {mx=logits[base+j];}}
+    sum:f32=0;for j:0..<v {sum+=exp(logits[base+j]-mx);}
+    loss[item]=log(sum)-(logits[base+y]-mx);
+    for j:0..<v {p:=exp(logits[base+j]-mx)/sum;if j==y {p=p-1;}dl[base+j]=p*scale;}
+}
+// One item per 4096 values: out[item] = the sum of x (squared when square
+// is 1) over x[item*4096 ..< item*4096+4096] inside count. Thread t adds
+// t, t+256, ... in order; the item adds the 256 partials in thread order.
+CK_CHUNK :: 4096;
+ck_sum :: (item:int,count:int,square:int,x:[]f32,out:[]f32) #export_c {
+    part:[256]f32;
+    for thread:0..<CK_T {
+        s:f32=0;
+        for q:0..<CK_CHUNK/CK_T {e:=item*CK_CHUNK+thread+CK_T*q;if e<count {v:=x[e];if square==1 {v=v*v;}s+=v;}}
+        part[thread]=s;
+    }
+    total:f32=0;for u:0..<CK_T {total+=part[u];}
+    for thread:0..<CK_T {if thread==0 {out[item]=total;}}
+}
+// AdamW on one value, in PyTorch's single-tensor order: the gradient times
+// the clip scale; p *= 1 - lr*decay; m += (1-b1)(g - m); v = v*b2 +
+// (1-b2)*g*g; p += -(lr/c1) * m / (sqrt(v)/sqrt(c2) + eps).
+ck_adamw :: (item:int,keep:f32,b2:f32,wb1:f32,wb2:f32,step:f32,root2:f32,eps:f32,scale:f32,p:[]f32,g:[]f32,m:[]f32,v:[]f32) #export_c {
+    gr:=g[item]*scale;pv:=p[item]*keep;
+    mv:=m[item]+wb1*(gr-m[item]);
+    vv:=v[item]*b2+wb2*gr*gr;
+    den:=sqrt(vv)/root2+eps;
+    p[item]=pv-step*(mv/den);m[item]=mv;v[item]=vv;
+}

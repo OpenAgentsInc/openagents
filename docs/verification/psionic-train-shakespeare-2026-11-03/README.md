@@ -118,3 +118,22 @@ performed, and the run's transfer ledger is checked after every step.
 **Gates.** Each command finishes within 15 minutes; the full job resumes
 across commands from checkpoints. Every attempt, failure and the total
 tuning time are kept below.
+
+## Amendment: `char-gpt-shakespeare-v2`, frozen before any full-size Coax run
+
+The independent PyTorch baseline of v1 (CUDA, FP32, TF32 off) showed that
+v1's 2000-step budget overfits this 1 MB corpus without dropout: held-out
+loss 4.236 (step 0), 1.794 (250), 1.565 (500), **1.530 (750)**, 1.619
+(1000), 1.844 (1250), rising after, while the training loss kept falling
+(0.50 at step 1500). The baseline itself would fail v1's 1.70 threshold, so
+v1 is retired with that evidence kept (`baseline/v1-cuda.jsonl`). A first
+CPU attempt of the baseline is kept too (`baseline/cpu-attempt-1.jsonl`):
+on this shared 28-core host under a load average of about 75 it took
+400–490 s a step and was stopped after 5 steps.
+
+v2 is v1 with one change: **750 steps** (warmup 100, cosine to 1e-4 at step
+750), 12,288,000 training tokens. Held-out loss is measured at steps 0, 250,
+500 and 750. Threshold (1.70), comparator margin (0.03), numerical policies,
+resume rule, resource goals and everything else are unchanged. This choice
+used only the baseline's curve; no Coax full-size training had run. The
+Coax device path had run only the tiny oracle shape (3 steps) at this point.
