@@ -4,6 +4,7 @@
    and each of its seats a controller (everglade-step.coax, the unit that carries aethyr/player.coax).
    A seat's input is stepped by the movement step the page predicts with, in the order written at the
    top of everglade-step.coax, so the page and the server put the player in the same place.
+   The town runs here too (world_town): everyone's day, the watch against every seat, crimes and WANTED.
    Not yet the server's: the river (everglade-river: you walk its bed here, where a page swims), and
    the page's per-player states the world half reads (a blast's throw, held, slowed, the ice). Those
    stay at rest until the world's step owns them per seat.
@@ -68,6 +69,18 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
 }
 
 float world_ground(int k, float x, float z) { return world_of(k) ? everglade_height(at(k), x, z) : 0.0f; }
+
+void world_folk_hp(int k, int j, int hp, int temp, int by) { if (world_of(k)) everglade_room_folk_hp(at(k), j, hp, temp, by); }
+void world_crime(int k, int by, float x, float z) { if (world_of(k)) (void)everglade_room_crime(at(k), by, x, z); }
+void world_town(int k, float dt, double world_s, const float seats[WORLD_SEATS * WORLD_SEAT_TOWN], float took[WORLD_SEATS]) {
+  if (!world_of(k)) return;
+  everglade_room_town(at(k), dt, world_s, (coax_v_f32){(float *)seats, WORLD_SEATS * WORLD_SEAT_TOWN}, WORLD_SEATS, (coax_v_f32){took, WORLD_SEATS});
+}
+int world_people(int k, float out[WORLD_FOLK * WORLD_PEOPLE]) {
+  return world_of(k) ? (int)everglade_room_people(at(k), (coax_v_f32){out, WORLD_FOLK * WORLD_PEOPLE}) : 0;
+}
+bool world_view(int k, int i, float out[WORLD_VIEW]) { return world_of(k) && everglade_room_view(at(k), i, (coax_v_f32){out, WORLD_VIEW}); }
+int world_wanted(int k, int s) { return world_of(k) ? (int)everglade_room_wanted(at(k), s) : 0; }
 
 /* The drawing host's calls, which grid.coax's thumbs make and a headless world never does. */
 void host_line(int64_t h, double ax, double ay, double bx, double by, double la, double lb, double w) { (void)h; (void)ax; (void)ay; (void)bx; (void)by; (void)la; (void)lb; (void)w; }

@@ -18,6 +18,8 @@ ScHeard :: struct {
   other_seen: bool; other_z0: f32; other_z: f32; other_named: bool;
   cast_seen: bool; wolves: [8] int; wolf_n: int; wolf_x: f32; wolf_z: f32; wolf_hp: int;
   gone: [8] int; gone_n: int; hits: int; other_gone: bool;
+  folk: [40] bool; folk_n: int; near_i: int = -1; near_d: f32 = 1000000; near_x: f32; near_z: f32;   // the town's people (f)
+  wanted: int; wanted_heard: bool;                       // its own WANTED level (w)
   bad: int;
 }
 sc_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
@@ -40,6 +42,16 @@ sc_entry :: (h: [] ScHeard, me: int, t: string) {
     if id == h[0].wolves[0] { h[0].wolf_x = sc_cm(rs_field(t, 3)); h[0].wolf_z = sc_cm(rs_field(t, 5)); h[0].wolf_hp = rs_num(rs_field(t, 7)); }
     return;
   }
+  if k == "f" {
+    i := rs_num(rs_field(t, 1));
+    if i < 0 || i >= 40 || rs_field(t, 7).count == 0 || rs_field(t, 8).count > 0 { h[0].bad += 1; return; }   // f and its 7 fields
+    if !h[0].folk[i] { h[0].folk[i] = true; h[0].folk_n += 1; }
+    x := sc_cm(rs_field(t, 2)); z := sc_cm(rs_field(t, 3));
+    d := (x - h[0].me_x) * (x - h[0].me_x) + (z - h[0].me_z) * (z - h[0].me_z);
+    if i == h[0].near_i || d < h[0].near_d { h[0].near_i = i; h[0].near_d = d; h[0].near_x = x; h[0].near_z = z; }
+    return;
+  }
+  if k == "w" { if rs_num(rs_field(t, 1)) == me { h[0].wanted = rs_num(rs_field(t, 2)); h[0].wanted_heard = true; } return; }
   if k == "x" {
     if rs_field(t, 1) == "c" && h[0].gone_n < 8 { h[0].gone[h[0].gone_n] = rs_num(rs_field(t, 2)); h[0].gone_n += 1; }
     if rs_field(t, 1) == "p" && rs_num(rs_field(t, 2)) != me { h[0].other_gone = true; }
@@ -129,6 +141,18 @@ tool_main :: () -> int #export_c {
     tries += 1;
   }
   killed := h[1].gone_n;
+  // B strikes the nearest townsperson with the bolt (slot 1, 140 m) until the watch wants B
+  near := h[1].near_i; strikes := 0;
+  while near >= 0 && strikes < 8 && h[1].wanted == 0 {
+    k = rs_int(m[..], rs_put(m[..], 0, "C "), seq[1] + 1);
+    seq[1] += 1;
+    k = rs_put(m[..], k, " 1 "); k = rs_int(m[..], k, cast(int) (h[1].near_x * 100));
+    k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, cast(int) (h[1].near_z * 100)); k = rs_put(m[..], k, " ");
+    k = rs_int(m[..], k, near);
+    sent = relay_conn_send(c[1..<2], cast(string) m[0..<k]) && sent;
+    sent = sc_steps(c[..], h[..], seq[..], 600, false) && sent;
+    strikes += 1;
+  }
   closed := relay_conn_close(c[0..<1], 1000);
   c[0].h = -1;
   sent = sc_steps(c[..], h[..], seq[..], 800, false) && sent;
@@ -136,8 +160,9 @@ tool_main :: () -> int #export_c {
   rate := f32(h[1].d) / (f32(ms) / 1000.0);
   ok := sent && h[0].w && h[1].w && h[0].snap && h[1].snap && h[0].ack > 30 && abs(walked) > 3 && abs(seen_walk - walked) < 1.5 && h[1].other_named &&
         h[0].cast_seen && h[1].cast_seen && h[0].wolf_n == 4 && h[1].wolf_n == 4 && h[0].hits > 0 && h[1].hits > 0 &&
-        sc_gone(h[0], wolf) && sc_gone(h[1], wolf) && h[1].gone_n == killed && killed < 4 && h[1].other_gone && rate > 12 && h[0].bad + h[1].bad == 0;
-  out: [1024] u8; o: [1] Jo;
+        sc_gone(h[0], wolf) && sc_gone(h[1], wolf) && h[1].gone_n == killed && killed < 4 && h[1].other_gone && rate > 12 &&
+        h[0].folk_n >= 5 && h[1].folk_n >= 5 && h[0].wanted_heard && h[1].wanted_heard && h[1].wanted >= 1 && h[0].bad + h[1].bad == 0;
+  out: [2048] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
   jo_key(o[..], "a_walked_cm"); jo_int(o[..], cast(int) (walked * 100));
@@ -154,6 +179,12 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "wolf_killed"); jo_bool(o[..], sc_gone(h[0], wolf) && sc_gone(h[1], wolf));
   jo_key(o[..], "a_gone"); jo_bool(o[..], h[1].other_gone);
   jo_key(o[..], "wolves_gone_b"); jo_int(o[..], h[1].gone_n);
+  jo_key(o[..], "folk_seen_a"); jo_int(o[..], h[0].folk_n);
+  jo_key(o[..], "folk_seen_b"); jo_int(o[..], h[1].folk_n);
+  jo_key(o[..], "b_struck"); jo_int(o[..], near);
+  jo_key(o[..], "b_strikes"); jo_int(o[..], strikes);
+  jo_key(o[..], "b_wanted"); jo_int(o[..], h[1].wanted);
+  jo_key(o[..], "a_wanted"); jo_int(o[..], h[0].wanted);
   jo_end(o[..]);
   print("%\n", jo_text(o[..]));
   print("%\n", ifx ok then "shares" else "fails");

@@ -102,7 +102,7 @@ EgNet :: struct {
   seq: int; inputs: [NET_HIST] NetInput; acked: int;
   fix: NetFix; fix_due: bool;
   off_x: f32; off_y: f32; off_z: f32;   // where you are drawn less where you are, eased out
-  wanted: int;               // your WANTED level (w)
+  wanted: int = -1;          // your WANTED level (w; -1 none heard: the server runs no town)
   fx: [NET_FX] NetFx;
   said: [48] u8; said_n: int; said_t: f32;   // the last refusal's reason
   hello_due: bool;
@@ -350,7 +350,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
   if c == 'y' {
     seat := wire_num(t, r[..]); _ := wire_num(t, r[..]); clock := wire_num(t, r[..]);
     if seat < 0 { return; }
-    n[0].seat = seat;
+    n[0].seat = seat; n[0].wanted = -1;
     if r[0].ok && clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
     n[0].hello_due = true; n[0].acked = n[0].seq; n[0].fix_due = false;
     return;
@@ -527,6 +527,21 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
   }
   if t == "e rebuild" { if sp_on(s) { _ := sp_restore(s, -1); } return; }
 }
+// Watch actor i (a townsperson or guard) as the server has them now (f), interpolated; ok false while
+// none is heard (indoors, out of view, or no room).
+NetFolk :: struct { ok: bool; x: f32; z: f32; yaw: f32; mode: int; clip: int; hp: int; }
+net_folk :: (s: [] Everglade, i: int) -> NetFolk {
+  if !net_live(s) { return NetFolk.{}; }
+  n := net_of(s);
+  k := net_ent(n, NET_FOLK_ID + i, false);
+  if k < 0 { return NetFolk.{}; }
+  p := n[0].ents[k].shown;
+  return NetFolk.{ok = true, x = p.x, z = p.z, yaw = p.yaw, mode = p.f, clip = p.a, hp = n[0].ents[k].hp};
+}
+// In a room whose server runs the town (it has said your WANTED level, w): its townsfolk and guards
+// are the ones drawn, and the page's own watch is still (everglade-watch.coax watch_net_frame).
+net_town :: (s: [] Everglade) -> bool { return net_live(s) && net_of(s)[0].wanted >= 0; }
+net_wanted :: (s: [] Everglade) -> int { return ifx net_on(s) then hi_int(net_of(s)[0].wanted, 0) else 0; }
 NetWhere :: struct { ok: bool; x: f32; y: f32; z: f32; }
 // Where entity id is drawn (you where you are), its feet's world height.
 net_where :: (s: [] Everglade, n: [] EgNet, id: int) -> NetWhere {
@@ -1052,7 +1067,8 @@ net_self_max :: (s: [] Everglade) -> int {
 // ms, 12 your last acked input, 13 hits heard, 14 re-runs from the server's word, 15 inputs sent,
 // 16 the server's summoned creatures here, 17 their Hit Points together, 18 hits heard on them, 19
 // their deaths heard, 20 the server's y for you (cm), 21 your feet's y as the face gives it, 22 the
-// floor's height under you. 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
+// floor's height under you, 23 the town's people heard (f), 24 your WANTED level (w, -1 none), 25 the
+// people drawn off their day. 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
 // summoned creature, else 3 m ahead of you: 1 when it went out.
 net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if !net_on(s) { return -1; }
@@ -1085,6 +1101,9 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 20 { return ifx n[0].fix.ok then wire_cm(n[0].fix.y) else -999999; }
   if field == 21 { return wire_cm(n[0].feet_y); }
   if field == 22 { return wire_cm(walk_at(s, s[0].feet.x, s[0].feet.z)); }
+  if field == 23 { return net_count(s, WK_FOLK); }                       // the town's people heard (f)
+  if field == 24 { return n[0].wanted; }                                 // your WANTED level (w; -1 none)
+  if field == 25 { k := 0; for i: 0..<WATCH_ACTORS { if s[0].wt[0].actors[i].ready && s[0].wt[0].actors[i].mode != WM_CALM { k += 1; } } return k; }   // off their day as drawn
   if field == 19 { return n[0].creature_deaths; }
   if field >= 200 && field < 200 + SP_SLOTS + AB_N {
     you := ab_you(s);

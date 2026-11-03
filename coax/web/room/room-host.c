@@ -114,6 +114,28 @@ static void relay_flush(void) {
 // The everglade rooms' tick (room-everglade.coax, 30 Hz: every other host tick): each seat at the
 // gate when it sits, then its queued inputs through the movement step in its room's world
 // (room-world.c), then the rolls and every seat's state, out at once.
+// Room k's town for this tick (room-world.c world_town, GitHub #12713): the rules' Hit Points and the
+// crimes since into it, a step against every seat, then the guards' blows, WANTED and where everyone is
+// back to the room (the rules', and what the pages hear).
+static void everglade_town(int k) {
+  float hp[3], cr[3], seats[WORLD_SEATS * WORLD_SEAT_TOWN], took[WORLD_SEATS], people[WORLD_FOLK * WORLD_PEOPLE], fv[WORLD_VIEW];
+  coax_v_f32 hpv = {hp, 3}, crv = {cr, 3}, fvv = {fv, WORLD_VIEW};
+  for (int j = 0; j < WORLD_FOLK; j++)
+    if (rm_eg_folk_hp(view(), k, j, hpv)) world_folk_hp(k, j, (int)hp[0], (int)hp[1], (int)hp[2]);
+  int64_t cn = rm_eg_crimes(view(), k);
+  for (int64_t q = 0; q < cn; q++) { rm_eg_crime(view(), k, q, crv); world_crime(k, (int)cr[0], cr[1], cr[2]); }
+  rm_eg_crimes_heard(view(), k);
+  for (int s = 0; s < WORLD_SEATS; s++) rm_eg_seat_town(view(), k, s, (coax_v_f32){seats + s * WORLD_SEAT_TOWN, WORLD_SEAT_TOWN});
+  world_town(k, 1.0f / WORLD_HZ, (double)wall_ms() / 1000.0, seats, took);
+  for (int s = 0; s < WORLD_SEATS; s++) {
+    if (seats[s * WORLD_SEAT_TOWN + 3] < 0.5f) continue;
+    rm_eg_hurt(view(), k, s, (int64_t)took[s]);
+    rm_eg_wanted(view(), k, s, world_wanted(k, s));
+  }
+  int pn = world_people(k, people);
+  rm_eg_people(view(), k, (coax_v_f32){people, WORLD_FOLK * WORLD_PEOPLE}, pn);
+  for (int i = 0; i < WORLD_FOLK; i++) if (world_view(k, i, fv)) rm_eg_folk(view(), k, i, fvv);
+}
 static void everglade_tick(void) {
   int64_t in[WORLD_IN]; float pose[WORLD_POSE];
   coax_v_s64 inv = {in, WORLD_IN};
@@ -131,6 +153,7 @@ static void everglade_tick(void) {
     float xz[2]; coax_v_f32 xzv = {xz, 2};
     for (int q = 0; q < rm_eg_beasts(); q++)
       if (rm_eg_beast_at(view(), k, q, xzv)) rm_eg_beast_ground(view(), k, q, world_ground(k, xz[0], xz[1]));
+    everglade_town(k);
     rm_eg_end(view(), k);
     relay_flush();
   }

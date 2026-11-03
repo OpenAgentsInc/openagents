@@ -14,4 +14,20 @@ bool world_place(int k, int s, float out[WORLD_POSE]);
 bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]);
 /* The ground's height at (x, z) in room k's world. */
 float world_ground(int k, float x, float z);
+/* The town (everglade-watch.coax everglade_room_town, GitHub #12713). */
+#define WORLD_FOLK 38          /* watch.coax WATCH_ACTORS, everglade5e-rules.coax E5R_FOLK */
+#define WORLD_SEAT_TOWN 6      /* a seat for the town: X Y Z LIVE HP MAX */
+#define WORLD_PEOPLE 8         /* a person for the rules: HERE X Z HP TEMP MAX AC BLOCK */
+#define WORLD_VIEW 7           /* a person for the pages: X Z YAW CLIP MODE HP SHOWN */
+/* Person j's Hit Points as the rules have them, harmed by seat `by` (-1 none). */
+void world_folk_hp(int k, int j, int hp, int temp, int by);
+/* Seat `by` harmed someone of the town at (x, z): a crime. */
+void world_crime(int k, int by, float x, float z);
+/* One tick of room k's town at the shared clock `world_s` (s): took[s], what its guards took from seat s. */
+void world_town(int k, float dt, double world_s, const float seats[WORLD_SEATS * WORLD_SEAT_TOWN], float took[WORLD_SEATS]);
+/* The people for the rules (WORLD_PEOPLE each): how many. */
+int world_people(int k, float out[WORLD_FOLK * WORLD_PEOPLE]);
+/* Person i for the pages; seat s's WANTED level. */
+bool world_view(int k, int i, float out[WORLD_VIEW]);
+int world_wanted(int k, int s);
 #endif
