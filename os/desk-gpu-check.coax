@@ -11,6 +11,19 @@ dg_has :: (s: string, needle: string) -> bool {
   for i: 0..<s.count - needle.count + 1 { if s[i..<i + needle.count] == needle { return true; } }
   return false;
 }
+// Independent upstream scene fact: glxgears puts its blue gear at y=+4.2 and its
+// red gear at y=-2.0. In a top-down desk capture, blue is above red.
+dg_upright :: (ppm: [] u8) -> bool {
+  if ppm.count != 1440015 { return false; } // P6\n800 600\n255\n plus RGB bytes
+  rn := 0; bn := 0; ry := 0; by := 0;
+  for y: 0..<600 { for x: 0..<800 {
+    p := 15 + (y * 800 + x) * 3;
+    r := cast(int) ppm[p]; g := cast(int) ppm[p + 1]; b := cast(int) ppm[p + 2];
+    if r > 80 && r > g * 2 && r > b * 2 { rn += 1; ry += y; }
+    if b > 80 && b > g * 2 && b > r * 2 { bn += 1; by += y; }
+  } }
+  return rn > 1000 && bn > 1000 && by * rn < ry * bn;
+}
 dg_wait :: (h: int, wanted: string, ms: int) -> bool {
   line: [8192] u8; until := proc_now_ms() + ms;
   while proc_now_ms() < until {
@@ -54,8 +67,9 @@ tool_main :: () -> int #export_c {
   sent = proc_send(h, "close\n"); proc_sleep(500);
   sent = proc_send(h, "quit\n"); drained := dg_wait(h, "end-of-process-output", 5000); status := proc_wait(h, 1000);
   errors := proc_stderr(h, err[..]); print("%\n", errors);
-  ok = ok && changed && status == 0 && dg_has(errors, "desk GPU:") && dg_has(errors, "desk GPU closed: live 0") && !dg_has(errors, "llvmpipe");
+  upright := n1 > 0 && dg_upright(first[0..<n1]);
+  ok = ok && changed && upright && status == 0 && dg_has(errors, "desk GPU:") && dg_has(errors, "desk GPU closed: live 0") && !dg_has(errors, "llvmpipe");
   r := proc_release(h);
-  print("desk GPU: frames changed %, compositor exit %, artifacts %\n", changed, status, dir);
+  print("desk GPU: frames changed %, upright %, compositor exit %, artifacts %\n", changed, upright, status, dir);
   return ifx ok then 0 else 1;
 }

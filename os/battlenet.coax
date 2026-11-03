@@ -1,0 +1,49 @@
+// Launch the existing host's Battle.net installation from a program on the Verse desk.
+// The existing installed runner retains its Proton selection, D3D11/windowed settings and
+// winebrowser workarounds. This tool adds session admission and a prefix-lifetime launch lock.
+// It requires an existing prefix and never prints launcher output/credentials.
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/json/json.coax";
+#load "desk-client.coax";
+#load "battlenet-policy.coax";
+
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  b: [5] [4096] u8;
+  home := proc_getenv("HOME", b[0][..]); display := proc_getenv("DISPLAY", b[1][..]);
+  socket := proc_getenv("CODER_DESK_SOCKET", b[2][..]);
+  prefix := fs_join(home, "Games/battlenet", b[3][..]);
+  launcher := fs_join(prefix, "drive_c/Program Files (x86)/Battle.net/Battle.net Launcher.exe", b[4][..]);
+  runner := args_value(a[..], "--runner", "/run/current-system/sw/bin/coder-battlenet");
+  reply: [65536] u8; nodes: [128] JvNode; d: [1] Jv;
+  n := dc_call(socket, "{\"generation\":1,\"type\":\"screens\"}", reply[..]);
+  desk := n > 0 && jv_parse(d[..], cast(string) reply[0..<n], nodes[..]) &&
+          jv_int(d[0], jv_get(d[0], 0, "generation"), -1) == 1 &&
+          jv_raw(d[0], jv_path(d[0], 0, "screens[0].name")) == "verse";
+  out: [4096] u8; err: [4096] u8;
+  pg := [3] string.["pgrep", "-f", "Battle\\.net\\.exe|Wow(B|Classic|T)?\\.exe"];
+  found := proc_run(pg[..], 2000, out[..], err[..]);
+  if found.status != 0 && found.status != 1 { tool_errln("Battle.net: could not check for an existing game process"); return 1; }
+  why := bn_admit(desk, bn_display(display), fs_exists(launcher), fs_exists(runner), found.status == 0);
+  if why != 0 {
+    if why == 1 { tool_errln("Battle.net: run this launcher from the Verse desk's terminal"); }
+    else if why == 2 { tool_errln("Battle.net: this desk has no local Xwayland DISPLAY"); }
+    else if why == 3 { tool_errln("Battle.net: no existing installation in ~/Games/battlenet"); }
+    else if why == 4 { tool_errln("Battle.net: this host has no installed coder-battlenet runner"); }
+    else { tool_errln("Battle.net: a launcher or WoW is already running; close it on its current display first"); }
+    return 1;
+  }
+  if args_has(a[..], "--check") { print("Battle.net ready: existing prefix, Verse desk, DISPLAY %\n", display); return 0; }
+  lockbuf: [4096] u8; lock := fs_join(prefix, ".verse-launch.lock", lockbuf[..]);
+  h := proc_new(); if h < 0 { return 1; }
+  argv := [4] string.["flock", "--nonblock", lock, runner]; ok := true;
+  for v: argv { ok = ok && proc_arg(h, v); }
+  ok = ok && proc_detach(h) && proc_quiet(h);
+  if !ok || proc_start(h) != 0 { r := proc_release(h); tool_errln("Battle.net: the runner did not start"); return 1; }
+  status := proc_wait(h, 1000); pid := proc_pid(h); r := proc_release(h);
+  if status != PROC_RUNNING { print("Battle.net: runner exited % before startup\n", status); return 1; }
+  print("Battle.net starting on DISPLAY %, runner pid %\n", display, pid);
+  return 0;
+}

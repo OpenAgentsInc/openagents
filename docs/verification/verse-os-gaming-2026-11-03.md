@@ -23,13 +23,16 @@ Observed on coderos-4080, RTX 4080, NVIDIA 595.71.05:
 - Private headless Xwayland, upstream glxgears: renderer NVIDIA GeForce
   RTX 4080/PCIe/SSE2, OpenGL 4.6. 24 advertised format/modifier pairs.
 - Captured two changing 800x600 desk images, with a fullscreen resize between.
-  GPU readback rows were corrected to the desk's top-down order.
+  DMA-BUF rows retain their producer's order; no additional GL row flip applies.
+  The integration check independently tests that glxgears' blue gear is above
+  its red gear, as the upstream scene specifies. Battle.net text is upright.
 - Native ASan/UBSan build: 11 GPU imports, two captures, zero live imported
   images at shutdown, compositor exit 0. LeakSanitizer disabled for the
   external driver; imported-image ownership was counted explicitly.
-- `coax test os/compositor.coax --library`: 19 checks passed.
+- `coax test os/compositor.coax --library`: 18 checks passed (after the launcher binding).
 - `coax mutate os/desk-buffer-policy.coax --library --jobs 4`:
-  46 mutants, 46 killed, zero survivors.
+  43 mutants, 43 killed, zero survivors (the initial admission-only policy;
+  the unnecessary row-flip helper has been removed).
 - `nix flake check --no-build ./os/nix`: passed. Fixed the existing duplicate
   dynamic `checks.${system}` declaration that initially prevented this gate.
 - `coax/web/tool.sh tools-check`: ran; reports eight pre-existing Python
@@ -50,5 +53,34 @@ with `-DCOAX_WAYLAND_GPU` and pkg-config's libdrm/egl/glesv2/gbm flags.
 Builds without the macro retain the shared-memory-only host, and a failed GPU
 probe preserves shared-memory clients.
 
-Battle.net, actual WoW play and the Verse panel's end-to-end game performance
-remain the following issues' checks.
+## Battle.net and World of Warcraft (#12725)
+
+`os/battlenet.coax`, installed as `verse-battlenet`, runs from a terminal on
+the Verse desk, or through Super+G while the desk has the keyboard. It probes
+the desk, requires a local Xwayland DISPLAY and the existing installation,
+refuses when Battle.net or WoW is already running, and holds a nonblocking
+prefix launch lock for the installed runner's lifetime. It reuses
+`/run/current-system/sw/bin/coder-battlenet`, retaining that host's GE-Proton,
+umu, windowed D3D11 settings and winebrowser integration. It does not ship
+that host's private gaming configuration in the public image.
+
+Observed in a private 1280x720 headless desk on coderos-4080:
+
+- `verse-battlenet --check` identified the desk and its actual DISPLAY :62.
+  Outside that desk it refused. A second launch while it was running refused.
+- Battle.net opened from ~/Games/battlenet using GE-Proton11-6. Its cached
+  account reached the launcher without entering or exposing credentials.
+- Selected World of Warcraft Classic / Classic Era, pressed Play, reached
+  character selection, and entered the world. A desk capture showed the
+  character in Coldridge Valley. No account purchase or sign-in was needed.
+- Audio went to a temporary null sink; neither application opened on the
+  owner's visible desktop.
+- Launcher entry: 84 Coax checks passed. Its admission policy: 31 mutants,
+  31 killed, zero survivors. Updated compositor: 18 checks passed.
+- The accelerated-client regression passed with changing frames, correct
+  orientation, resize, zero live GPU imports at shutdown, and exit 0.
+
+The current game buffer is smaller than the desk's requested fullscreen
+rectangle; the remaining area is black. This is functional windowed rendering,
+not a fullscreen-resolution or frame-rate qualification. The next issues
+provide explicit window targeting, bounded controls and a controller CLI.

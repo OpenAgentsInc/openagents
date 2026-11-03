@@ -165,6 +165,7 @@ coax="${COAX:-$root/coax/bin/coax}"
 (cd "$root" && "$coax" c verse/native/net.coax --library) > "$work/ship/net-src/net.c"
 (cd "$root" && "$coax" c os/verse-session.coax --library) > "$work/ship/net-src/verse-session.c"
 (cd "$root" && "$coax" c os/verse-transcript.coax --library) > "$work/ship/net-src/verse-transcript.c"
+(cd "$root" && "$coax" c os/battlenet.coax --library) > "$work/ship/net-src/verse-battlenet.c"
 (cd "$root" && "$coax" c os/gpu-limits.coax --library) > "$work/ship/net-src/gpu-limits.c"
 # the desk: the Coax compositor (os/compositor.coax), headless, which vk-realm --desk runs
 mkdir -p "$work/ship/desk"
@@ -203,6 +204,8 @@ nix-shell -p gcc pkg-config libdrm libglvnd libgbm vulkan-headers vulkan-loader 
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-session
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-transcript.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-transcript
+   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-battlenet.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
+     entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-battlenet
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. gpu-limits.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../gpu-limits
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -DCOAX_WAYLAND_GPU -w -I. \$(pkg-config --cflags libdrm egl glesv2 gbm) ../desk/compositor.c tool-native.c process-native.c store-file-native.c read-file-native.c \
@@ -287,6 +290,7 @@ if [ $mode = install ]; then
   # the desk's launchers (os/compositor.coax runs LAUNCH/NAME): a terminal to start with, and on Super+Return
   mkdir -p \$dest.new/desk/launch
   for n in start coder pane; do printf \"#!/bin/sh\\nexec foot\\n\" > \$dest.new/desk/launch/\$n; chmod +x \$dest.new/desk/launch/\$n; done
+  ln -s ../../verse-battlenet \$dest.new/desk/launch/battlenet
   { [ ! -e \$dest ] || mv \$dest \$dest.old; } && mv \$dest.new \$dest && rm -rf \$dest.old
   # the store paths the programs link (Vulkan, libdrm, wayland, OpenSSL: nix-shell's), kept from
   # the garbage collector while this directory holds them

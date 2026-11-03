@@ -741,7 +741,7 @@ cx_draw_surf :: (x: [] Cx, o: [] CxFrame, s: int, ox: int, oy: int, ax0: int, ay
       dy := oy + r; if dy < cy0 || dy >= cy1 { continue; }
       c0 := cx_max(0, cx0 - ox); c1 := cx_min(bf.w, cx1 - ox);   // the columns that land inside the clip
       if c1 <= c0 { continue; }
-      got := ifx bf.pool < 0 then cxgpu_read(bf.gpu, (desk_gpu_row(r, bf.h) * bf.w + c0) * 4, x[0].row[0..<4 * (c1 - c0)]) else cxwl_read(p.map, -1, bf.offset + r * bf.stride + 4 * c0, x[0].row[0..<cx_min(4 * (c1 - c0), rowbytes)]);
+      got := ifx bf.pool < 0 then cxgpu_read(bf.gpu, (r * bf.w + c0) * 4, x[0].row[0..<4 * (c1 - c0)]) else cxwl_read(p.map, -1, bf.offset + r * bf.stride + 4 * c0, x[0].row[0..<cx_min(4 * (c1 - c0), rowbytes)]);
       at := 3 * (dy * x[0].w + ox + c0);
       opaque := bf.fmt == 1;
       for c: 0..<got / 4 {
@@ -879,8 +879,9 @@ cx_exec :: (x: [] Cx, name: string) {
 // matches the modifier set exactly). arg is a direction, a desk 0..8, or which program to start.
 B_NONE :: 0; B_EXEC :: 1; B_CLOSE :: 2; B_FOCUS :: 3; B_DESK :: 4; B_TO_DESK :: 5; B_MOVE :: 6; B_RESIZE :: 7;
 B_SPLIT :: 8; B_FLOAT :: 9; B_FULL :: 10; B_MAX :: 11; B_SCREEN :: 12; B_TO_SCREEN :: 13; B_DESK_TO_SCREEN :: 14; B_QUIT :: 15; B_VT :: 16;
-CX_PROGRAMS :: 7;
+CX_PROGRAMS :: 8;
 cx_program :: (i: int) -> string {
+  if i == 7 { return "battlenet"; }
   if i == 0 { return "coder"; } if i == 1 { return "pane"; } if i == 2 { return "dictation"; }
   if i == 3 { return "presentation"; } if i == 4 { return "browser"; } if i == 6 { return "camera"; } return "android";
 }
@@ -902,6 +903,7 @@ cx_bind :: (code: int, mods: int) -> CxBind {
     if code == 48 { return CxBind.{verb = B_EXEC, arg = 4}; }
     if code == 30 { return CxBind.{verb = B_EXEC, arg = 5}; }
     if code == 46 { return CxBind.{verb = B_EXEC, arg = 6}; }   // Super+C: the camera view
+    if code == 34 { return CxBind.{verb = B_EXEC, arg = 7}; }   // Super+G: Battle.net on this desk
   }
   if mods == S | CX_SHIFT {
     if digit >= 0 { return CxBind.{verb = B_TO_DESK, arg = digit}; }
@@ -1843,6 +1845,8 @@ tool_main :: () -> int #export_c {
   cx_popup_place(CxPos.{w = 100, h = 50, ax = 0, ay = 0, aw = 30, ah = 40}, pl[..]); #assert pl[0] == -35 && pl[1] == -5;
 }
 #test "the CoderOS bindings" {
+  #assert cx_bind(34, CX_SUPER).verb == B_EXEC && cx_program(cx_bind(34, CX_SUPER).arg) == "battlenet";
+  #assert cx_bind(34, 0).verb == B_NONE;
   S := CX_SUPER;
   #assert cx_bind(28, S).verb == B_EXEC && cx_program(cx_bind(28, S).arg) == "coder" && cx_bind(28, 0).verb == B_NONE;
   #assert cx_bind(105, S).verb == B_FOCUS && cx_bind(105, S).arg == WM_LEFT && cx_bind(108, S | CX_SHIFT).verb == B_MOVE && cx_bind(108, S | CX_SHIFT).arg == WM_DOWN;

@@ -1,0 +1,39 @@
+// Bounded line transport for the local desk. Protocol and requests belong to callers.
+#load "../coax/lib/sys/proc.coax";
+cxsock_host_push :: (byte: int) -> int #foreign;
+cxsock_connect_unix :: (timeout_ms: int) -> int #foreign;
+cxsock_write :: (h: int, byte: int) -> int #foreign;
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_byte :: (h: int, i: int) -> int #foreign;
+cxsock_close :: (h: int) -> int #foreign;
+
+dc_open :: (socket: string) -> int {
+  if socket.count == 0 || socket.count > 107 { return -1; }
+  for c: socket { if c == 0 || cxsock_host_push(cast(int) c) != 0 { return -1; } }
+  return cxsock_connect_unix(2000);
+}
+dc_send :: (h: int, line: string) -> bool {
+  if line.count > 8000 { return false; }
+  for c: line { if c == 0 || c == 10 || cxsock_write(h, cast(int) c) != 0 { return false; } }
+  return cxsock_write(h, 10) == 0 && cxsock_flush(h, 2000) == 0;
+}
+dc_line :: (h: int, out: [] u8) -> int {
+  n := 0; until := proc_now_ms() + 5000;
+  while proc_now_ms() < until {
+    got := cxsock_read(h, proc_left(until, proc_now_ms()));
+    if got < 0 { return -1; }
+    for i: 0..<got {
+      c := cxsock_byte(h, i);
+      if c == 10 { return n; }
+      if n >= out.count { return -1; }
+      out[n] = cast,trunc(u8) c; n += 1;
+    }
+  }
+  return -1;
+}
+dc_call :: (socket: string, line: string, out: [] u8) -> int {
+  h := dc_open(socket); if h < 0 { return -1; }
+  n := ifx dc_send(h, line) then dc_line(h, out) else -1;
+  r := cxsock_close(h); return n;
+}

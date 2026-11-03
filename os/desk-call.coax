@@ -1,0 +1,10 @@
+// Inspect a private desk during integration: SOCKET REQUEST_JSON, one complete reply.
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "desk-client.coax";
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 2 { return 2; }
+  out: [262144] u8; n := dc_call(args_at(a[..], 0), args_at(a[..], 1), out[..]);
+  if n < 0 { tool_errln("desk did not return a complete reply"); return 1; }
+  print("%\n", cast(string) out[0..<n]); return 0;
+}

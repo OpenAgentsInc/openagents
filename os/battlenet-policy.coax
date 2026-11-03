@@ -1,0 +1,28 @@
+// App admission to the Verse desk, independent of the legacy runner's effects.
+#authority;
+#test "launch requires this desk, its X display, the installed game and the runner" {
+  #assert bn_admit(true, true, true, true, false) == 0;
+  #assert bn_admit(false, true, true, true, false) == 1;
+  #assert bn_admit(true, false, true, true, false) == 2;
+  #assert bn_admit(true, true, false, true, false) == 3;
+  #assert bn_admit(true, true, true, false, false) == 4;
+  #assert bn_admit(true, true, true, true, true) == 5;
+}
+bn_admit :: (desk: bool, display: bool, installed: bool, runner: bool, running: bool) -> int {
+  if !desk { return 1; }
+  if !display { return 2; }
+  if !installed { return 3; }
+  if !runner { return 4; }
+  if running { return 5; }
+  return 0;
+}
+#test "Xwayland display is an explicit local display number" {
+  #assert bn_display(":50") && bn_display(":99") && bn_display(":1") && bn_display(":1234");
+  #assert !bn_display("") && !bn_display(":") && !bn_display("host:50") && !bn_display(":5x") && !bn_display(":12345");
+  #assert !bn_display(":x5") && !bn_display(":5:");
+}
+bn_display :: (s: string) -> bool {
+  if s.count < 2 || s.count > 5 || s[0] != ':' { return false; }
+  for c: s[1..<s.count] { if c < '0' || c > '9' { return false; } }
+  return true;
+}
