@@ -1,0 +1,211 @@
+// Aethyr's pose (book chapter 14): a joint's local pose, the rotations it is made of, a cross-fade
+// blended joint by joint, the posed skeleton chained from the root, and the skinning palette's
+// three rows of four. aethyr/skin.coax plays clips through these (Everglade's Ranger, its people
+// and the 5E lab's bodies); the arithmetic is the one skin.coax had before it moved here, in the
+// same order, so every palette is bit for bit what it was (book chapter 14's digest).
+//   coax/bin/coax test aethyr/anim/pose.coax --library
+//   coax/bin/coax mutate aethyr/anim/pose.coax --library
+
+#load "../points.coax";
+
+// book:begin quat
+Quat :: struct { x: f32; y: f32; z: f32; w: f32 = 1; }
+// A joint's pose relative to its parent.
+SkinLocal :: struct { t: Point; q: Quat; }
+
+quat_dot :: (a: Quat, b: Quat) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w; }
+quat_scaled :: (a: Quat, k: f32) -> Quat { return Quat.{x = a.x * k, y = a.y * k, z = a.z * k, w = a.w * k}; }
+quat_plus :: (a: Quat, b: Quat) -> Quat { return Quat.{x = a.x + b.x, y = a.y + b.y, z = a.z + b.z, w = a.w + b.w}; }
+quat_unit :: (a: Quat) -> Quat {
+  l := sqrt(quat_dot(a, a));
+  if !(l > 0.003) { return Quat.{}; }   // glam's length_squared > 0.00001, else identity
+  return quat_scaled(a, 1 / l);
+}
+quat_mul :: (a: Quat, b: Quat) -> Quat {
+  return Quat.{x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+               y = a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+               z = a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+               w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
+}
+quat_rotate :: (q: Quat, v: Point) -> Point {
+  u := v3(q.x, q.y, q.z);
+  t := times(cross(u, v), 2);
+  return add(add(v, times(t, q.w)), cross(u, t));
+}
+// glam's slerp: the shorter way round; nearly the same rotation, a
+// normalised straight line.
+slerp :: (a: Quat, b_: Quat, s: f32) -> Quat {
+  b := b_;
+  d := quat_dot(a, b);
+  if d < 0 { b = quat_scaled(b, -1); d = -d; }
+  if d > 0.9995 { return quat_unit(quat_plus(quat_scaled(a, 1 - s), quat_scaled(b, s))); }
+  theta := atan2(sqrt(hi(1 - d * d, 0)), d);
+  k := 1 / sin(theta);
+  return quat_plus(quat_scaled(a, sin(theta * (1 - s)) * k), quat_scaled(b, sin(theta * s) * k));
+}
+// book:end quat
+
+// book:begin blend
+// How far a cross-fade has gone `age` seconds into one of `fade` seconds: smoothstepped, so it
+// starts and ends gently, and 1 from its end on.
+pose_fade :: (age: f32, fade: f32) -> f32 {
+  f := clamp01(age / fade);
+  return f * f * (3 - 2 * f);
+}
+// One joint of a cross-fade from pose a to pose b, `s` of the way: blended locally, before any
+// parent's transform, the translation along the straight line and the rotation along the shorter
+// arc. Blending the posed (world) transforms instead would shorten bones halfway through.
+pose_blend :: (a: SkinLocal, b: SkinLocal, s: f32) -> SkinLocal {
+  return SkinLocal.{t = mix(a.t, b.t, s), q = slerp(a.q, b.q, s)};
+}
+// book:end blend
+
+// book:begin chain
+// Joint j's rotation gq[j] and place gt[j] in the character's space, from its local pose l and
+// its parent p's, already chained: joints come parents first, so the root is done before its
+// children. A root (p below 0), or a joint whose parent doesn't come before it, is where its local
+// pose puts it.
+pose_chain :: (gq: [] Quat, gt: [] Point, p: int, j: int, l: SkinLocal) {
+  if p < 0 || p >= j { gq[j] = l.q; gt[j] = l.t; }
+  else { gq[j] = quat_unit(quat_mul(gq[p], l.q)); gt[j] = add(gt[p], quat_rotate(gq[p], l.t)); }
+}
+
+// Joint j's skinning matrix into out[j * 12 ..]: three rows of four, its posed rotation's rows
+// and place times its inverse bind (bind[j * 12 ..], three rows of four), for the vertex shader.
+pose_palette :: (q: Quat, t: Point, bind: [] f32, j: int, out: [] f32) {
+  ex := quat_rotate(q, v3(1, 0, 0)); ey := quat_rotate(q, v3(0, 1, 0)); ez := quat_rotate(q, v3(0, 0, 1));
+  b := j * 12;
+  for row: 0..<3 {
+    m0 := ifx row == 0 then ex.x else ifx row == 1 then ex.y else ex.z;
+    m1 := ifx row == 0 then ey.x else ifx row == 1 then ey.y else ey.z;
+    m2 := ifx row == 0 then ez.x else ifx row == 1 then ez.y else ez.z;
+    m3 := ifx row == 0 then t.x else ifx row == 1 then t.y else t.z;
+    for col: 0..<4 {
+      v := m0 * bind[b + col] + m1 * bind[b + 4 + col] + m2 * bind[b + 8 + col];
+      if col == 3 { v += m3; }
+      out[b + row * 4 + col] = v;
+    }
+  }
+}
+// book:end chain
+
+// ---- checks
+pose_q :: (x: f32, y: f32, z: f32, w: f32) -> Quat { return Quat.{x = x, y = y, z = z, w = w}; }
+#test "the quaternion arithmetic, worked on small numbers" {
+  a := pose_q(1, 2, 3, 4); b := pose_q(5, 6, 7, 8);
+  #assert quat_dot(a, b) == 70;
+  s := quat_scaled(a, 2); #assert s.x == 2 && s.y == 4 && s.z == 6 && s.w == 8;
+  p := quat_plus(a, b); #assert p.x == 6 && p.y == 8 && p.z == 10 && p.w == 12;
+  // Hamilton's product: (1,2,3,4)(5,6,7,8) = (24, 48, 48, -6)
+  m := quat_mul(a, b); #assert m.x == 24 && m.y == 48 && m.z == 48 && m.w == -6;
+  n := quat_mul(b, a); #assert n.x == 32 && n.y == 32 && n.z == 56 && n.w == -6;
+  u := quat_unit(pose_q(0, 3, 0, 4)); #assert near(u.y, 0.6, 0.000001) && near(u.w, 0.8, 0.000001) && u.x == 0 && u.z == 0;
+  // under 0.003 long is no rotation at all
+  z := quat_unit(pose_q(0.002, 0, 0, 0)); #assert z.x == 0 && z.w == 1;
+  e := quat_unit(pose_q(0, 0, 0.0029, 0)); #assert e.z == 0 && e.w == 1;
+  at := quat_unit(pose_q(0.003, 0, 0, 0)); #assert at.x == 0 && at.w == 1;   // sqrt(0.003^2) is 0.003 exactly: not past it
+  f := quat_unit(pose_q(0.0031, 0, 0, 0)); #assert near(f.x, 1, 0.0001) && f.w == 0;
+}
+#test "a quarter turn about z carries x to y and y to -x; about x carries y to z" {
+  q := pose_q(0, 0, 0.70710678, 0.70710678);
+  a := quat_rotate(q, v3(1, 0, 0)); #assert near(a.x, 0, 0.000001) && near(a.y, 1, 0.000001) && near(a.z, 0, 0.000001);
+  b := quat_rotate(q, v3(0, 1, 0)); #assert near(b.x, -1, 0.000001) && near(b.y, 0, 0.000001);
+  c := quat_rotate(q, v3(2, 0, 5)); #assert near(c.x, 0, 0.00001) && near(c.y, 2, 0.00001) && near(c.z, 5, 0.00001);
+  r := pose_q(0.70710678, 0, 0, 0.70710678);
+  d := quat_rotate(r, v3(0, 1, 0)); #assert near(d.z, 1, 0.000001) && near(d.y, 0, 0.000001) && near(d.x, 0, 0.000001);
+  e := quat_rotate(pose_q(0, 0.70710678, 0, 0.70710678), v3(0, 0, 1)); #assert near(e.x, 1, 0.000001) && near(e.z, 0, 0.000001);
+}
+#test "slerp keeps unit length and takes the shorter way" {
+  a := Quat.{};
+  b := Quat.{z = 0.70710678, w = 0.70710678};
+  m := slerp(a, b, 0.5);
+  #assert near(quat_dot(m, m), 1, 0.0001) && near(m.z, 0.38268343, 0.0005) && near(m.w, 0.92387953, 0.0005);
+  n := slerp(a, quat_scaled(b, -1), 0.5);
+  #assert near(n.z, m.z, 0.0005) && near(n.w, m.w, 0.0005);
+}
+#test "slerp's arc: a third of a quarter turn is a twelfth of a half turn; its ends are its ends" {
+  a := Quat.{}; b := Quat.{z = 0.70710678, w = 0.70710678};
+  t := slerp(a, b, 1.0 / 3.0);   // 30 degrees about z: (0, 0, sin 15, cos 15)
+  #assert near(t.z, 0.25881904, 0.00001) && near(t.w, 0.96592583, 0.00001) && t.x == 0 && t.y == 0;
+  s := slerp(a, b, 0); #assert near(s.w, 1, 0.000001) && near(s.z, 0, 0.000001);
+  e := slerp(a, b, 1); #assert near(e.z, 0.70710678, 0.000001) && near(e.w, 0.70710678, 0.000001);
+  // turned the long way round, it still goes the short way: from b to -a
+  l := slerp(b, quat_scaled(a, -1), 0.5);
+  #assert near(l.z, 0.38268343, 0.00001) && near(l.w, 0.92387953, 0.00001);
+  // nearly the same rotation: a normalised straight line, exact at its middle
+  c := pose_q(0, 0, 0.01, 0.99994999); c2 := pose_q(0, 0, 0.02, 0.99979998);
+  m := slerp(c, c2, 0.5);
+  w := quat_unit(pose_q(0, 0, 0.015, (0.99994999 + 0.99979998) / 2));
+  #assert near(m.z, w.z, 0.0000001) && near(m.w, w.w, 0.0000001);
+  // a long arc's middle against the formula
+  far := pose_q(0, 0, 0.99, 0.14106736);
+  h := slerp(a, far, 0.25);
+  th := atan2(sqrt(1 - 0.14106736 * 0.14106736), 0.14106736);
+  #assert near(h.w, (sin(th * 0.75) + 0.14106736 * sin(th * 0.25)) / sin(th), 0.00001) && near(h.z, 0.99 * sin(th * 0.25) / sin(th), 0.00001);
+}
+#test "slerp's switches at their edges: square rotations aren't turned about; 0.9995 is still an arc" {
+  // a and b square to each other (their dot exactly 0): b is taken as it is, not turned about
+  h := slerp(Quat.{}, pose_q(1, 0, 0, 0), 0.5);
+  #assert near(h.x, 0.70710678, 0.000001) && near(h.w, 0.70710678, 0.000001);
+  // a dot of exactly 0.9995 takes the arc, not the straight line
+  a := Quat.{}; b := pose_q(0, 0, sqrt(1 - 0.9995f32 * 0.9995f32), 0.9995);
+  #assert quat_dot(a, b) == 0.9995f32;
+  m := slerp(a, b, 0.3);
+  d := 0.9995f32;
+  th := atan2(sqrt(hi(1 - d * d, 0)), d); k := 1 / sin(th);
+  arc := quat_plus(quat_scaled(a, sin(th * 0.7) * k), quat_scaled(b, sin(th * 0.3) * k));
+  line := quat_unit(quat_plus(quat_scaled(a, 0.7), quat_scaled(b, 0.3)));
+  #assert f32_bits(m.z) == f32_bits(arc.z) && f32_bits(m.w) == f32_bits(arc.w);
+  #assert f32_bits(line.z) != f32_bits(arc.z) || f32_bits(line.w) != f32_bits(arc.w);
+}
+#test "a fade's share: smoothstepped from 0 to 1, a half at half way, 1 from the end on" {
+  #assert pose_fade(0, 0.22) == 0 && pose_fade(-1, 0.22) == 0 && pose_fade(0.22, 0.22) == 1 && pose_fade(5, 0.22) == 1;
+  #assert near(pose_fade(0.11, 0.22), 0.5, 0.000001);
+  #assert near(pose_fade(0.1, 0.22), 0.43200603, 0.000001);   // a = 5/11: a^2 (3 - 2a)
+  #assert near(pose_fade(0.25, 1), 0.15625, 0.000001);
+}
+#test "a joint's blend: the straight line between translations, the arc between rotations" {
+  a := SkinLocal.{t = v3(0, 1, 0), q = Quat.{}};
+  b := SkinLocal.{t = v3(2, 3, -4), q = Quat.{z = 0.70710678, w = 0.70710678}};
+  m := pose_blend(a, b, 0.25);
+  #assert m.t.x == 0.5 && m.t.y == 1.5 && m.t.z == -1;
+  q := slerp(a.q, b.q, 0.25);
+  #assert m.q.z == q.z && m.q.w == q.w;
+}
+#test "the chain: a root is its own pose; a child turns and moves with its parent; a later parent counts as none" {
+  gq: [3] Quat; gt: [3] Point;
+  turn := Quat.{z = 0.70710678, w = 0.70710678};
+  pose_chain(gq[..], gt[..], -1, 0, SkinLocal.{t = v3(1, 2, 3), q = turn});
+  #assert gt[0].x == 1 && gt[0].y == 2 && gt[0].z == 3 && gq[0].z == turn.z && gq[0].w == turn.w;
+  // an arm 1 m up its parent's y, itself turned a quarter about z: half a turn in all
+  pose_chain(gq[..], gt[..], 0, 1, SkinLocal.{t = v3(0, 1, 0), q = turn});
+  #assert near(gt[1].x, 0, 0.000001) && near(gt[1].y, 2, 0.000001) && near(gt[1].z, 3, 0.000001);
+  #assert near(gq[1].z, 1, 0.000001) && near(gq[1].w, 0, 0.000001);
+  // 1 m along the arm's own y, half a turn round, is 1 m down in the character's space
+  pose_chain(gq[..], gt[..], 1, 2, SkinLocal.{t = v3(0, 1, 0), q = Quat.{}});
+  #assert near(gt[2].x, 0, 0.00001) && near(gt[2].y, 1, 0.00001) && near(gt[2].z, 3, 0.00001);
+  // a parent that comes after the joint (or the joint itself) is treated as none
+  pose_chain(gq[..], gt[..], 2, 1, SkinLocal.{t = v3(7, 0, 0), q = Quat.{}});
+  #assert gt[1].x == 7 && gt[1].y == 0 && gq[1].w == 1;
+  pose_chain(gq[..], gt[..], 1, 1, SkinLocal.{t = v3(0, 0, 9), q = Quat.{}});
+  #assert gt[1].z == 9 && gt[1].x == 0;
+}
+#test "a palette row is the posed rotation and place times the inverse bind" {
+  bind: [24] f32;
+  out: [24] f32;
+  // joint 1's inverse bind: a lift of -1 in y, and a doubling of x
+  b1 := [12] f32.[2, 0, 0, 0,   0, 1, 0, -1,   0, 0, 1, 0];
+  for i: 0..<12 { bind[12 + i] = b1[i]; }
+  pose_palette(Quat.{z = 0.70710678, w = 0.70710678}, v3(5, 6, 7), bind[..], 1, out[..]);
+  // rotation about z: rows (0, -1, 0), (1, 0, 0), (0, 0, 1); then the bind
+  want := [12] f32.[0, -1, 0, 1 + 5,   2, 0, 0, 6,   0, 0, 1, 7];
+  for i: 0..<12 { #assert near(out[12 + i], want[i], 0.00001); }
+  for i: 0..<12 { #assert out[i] == 0; }   // joint 0's rows untouched
+  // a bind with every word set: each row takes all three of the bind's rows, column by column
+  b2 := [12] f32.[1, 2, 3, 4,   5, 6, 7, 8,   9, 10, 11, 12];
+  for i: 0..<12 { bind[i] = b2[i]; }
+  pose_palette(Quat.{x = 0.70710678, w = 0.70710678}, v3(1, 2, 3), bind[..], 0, out[..]);
+  // about x: rows (1, 0, 0), (0, 0, -1), (0, 1, 0)
+  want2 := [12] f32.[1, 2, 3, 4 + 1,   -9, -10, -11, -12 + 2,   5, 6, 7, 8 + 3];
+  for i: 0..<12 { #assert near(out[i], want2[i], 0.00001); }
+}
