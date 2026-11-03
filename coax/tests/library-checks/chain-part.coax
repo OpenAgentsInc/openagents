@@ -1,0 +1,5 @@
+// A part on the chain: it loads chain-a but uses jobs.coax's CAP, so it
+// does not check alone.
+#load "chain-a.coax";
+under_cap :: (x: int) -> bool { return chain_a(x) <= CAP; }
+#test "under_cap uses the consumer's cap" { #assert under_cap(CAP - 1) && !under_cap(CAP); }

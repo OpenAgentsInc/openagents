@@ -3575,13 +3575,20 @@ generic instances that emitted code calls and the print and enum-conversion
 helpers it uses; leaving out what only checks reach never changes what a
 program does.
 
+Since #12659 the units without a cached result are checked alone in forked
+children, up to the core count (`$COAX_CHECK_JOBS`). A unit's child starts
+only after every unit before it in the sequential order that it loads has a
+verdict, and a child sees only its own closure, so the verdicts, cache
+records, C and diagnostics are the sequential ones for any job count.
+
 Check: `coax/tests/library-checks.coax` (a first compile checks both loaded
 units, a second reuses both, a new cache gives the same C; the C has the
 instances main calls and none that only a check makes; only the printed type
 keeps its helper and the program prints; `coax test` runs every check; an
 edited library is checked again; a library check with a type error, and one
-that fails when run under `#authority`, still fail the consumer);
-`sources.coax` checks and zero-survivor mutation gate; the bootstrap's seed
+that fails when run under `#authority`, still fail the consumer; one job and
+four give the same verdicts, records, C and errors over a `#load` chain, a
+unit that doesn't check alone and failing libraries); `sources.coax` checks and zero-survivor mutation gate; the bootstrap's seed
 and compiler fixpoints.
 
 ## A passing #authority compile is reused only under the same inputs

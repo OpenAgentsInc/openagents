@@ -1,0 +1,16 @@
+// A consumer whose loaded units are checked alone in parallel children:
+// library-checks.coax compiles it with one job and with several and
+// compares. chain-c loads chain-b, which loads chain-a; chain-part loads
+// chain-a and does not check alone; pile is a library of its own.
+#import "Basic";
+#load "chain-c.coax";
+#load "chain-part.coax";
+#load "pile.coax";
+
+CAP :: 4;
+
+main :: () {
+  p: [1] Pile(int, 2);
+  ok := pile_push(p[..], chain_c(2)) && under_cap(2);
+  print("% %\n", ok, pile_top(p[..]));
+}

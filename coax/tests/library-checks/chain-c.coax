@@ -1,0 +1,4 @@
+// The third link: its check starts after chain-b, and so chain-a, has a verdict.
+#load "chain-b.coax";
+chain_c :: (x: int) -> int { return chain_b(x) - 1; }
+#test "chain_c takes one from chain_b" { #assert chain_c(1) == 3; }

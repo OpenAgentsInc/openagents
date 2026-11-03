@@ -1043,6 +1043,11 @@ refund_ok :: (paid: int, refund: int) -> bool {
   results were reused (`cached`) and how many units were checked
   (`checked`). The build-only stage0 can't hash itself, so it keeps results
   only while it runs.
+- The units without a cached result are checked in forked children, as
+  many at once as there are cores (`$COAX_CHECK_JOBS` caps it). A unit's
+  check starts only when every unit it loads has its result, and each child
+  sees only its unit's own closure, so the results, the cache records and
+  the C are those of checking the units one at a time.
 - A compile of a program with an `#authority` unit runs its checks (below).
   When they all pass, the compile records that in the same cache under the
   SHA-256 of the compiler binary, the options that change checking (the

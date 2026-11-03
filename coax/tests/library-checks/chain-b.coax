@@ -1,0 +1,4 @@
+// The second link: its check starts after chain-a has a verdict.
+#load "chain-a.coax";
+chain_b :: (x: int) -> int { return chain_a(x) * 2; }
+#test "chain_b doubles after chain_a" { #assert chain_b(1) == 4; }

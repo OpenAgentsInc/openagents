@@ -16,7 +16,10 @@
 //   - a library check with a type error still fails the consumer's compile;
 //   - an #authority consumer, whose compile runs every check, gets a verdict
 //     that ran the library's check, and a library check that fails when run
-//     still fails it.
+//     still fails it;
+//   - one job and four ($COAX_CHECK_JOBS) give the same verdicts, cache
+//     records, C and errors, over tests/library-checks/jobs.coax's #load
+//     chain and the failing libraries above.
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/args.coax";
@@ -118,6 +121,17 @@ tool_main :: () -> int #export_c {
   r = run(compiler, dir, "COAX_CHECK_CACHE=\"$D/cache\" \"$C\" c tests/library-checks/wrong.coax --library > /dev/null 2> \"$D/wrong.err\"; echo \"status=$?\"; cat \"$D/wrong.err\"", out[..]);
   t = cast(string) out[0..<r.out_n];
   bad += check(has(t, "status=1") && has(t, "wrong-lib.coax:2:24: error[E0406]: assertion failed") && has(t, "in #test two is three"), "a library check that fails when run still fails an #authority consumer");
+
+  // Standalone checks run in parallel children ($COAX_CHECK_JOBS caps them):
+  // one job and four give the same verdicts, records and C, for a chain
+  // (chain-c loads chain-b loads chain-a), a unit that does not check alone
+  // and a library of its own, and the same errors for failing libraries.
+  r = run(compiler, dir, "for j in 1 4; do COAX_CHECK_JOBS=$j compile tests/library-checks/jobs.coax jobs$j jobs$j-cache > \"$D/jobs$j.counts\"; for f in \"$D/jobs$j-cache\"/*; do printf '%s %s\\n' \"${f##*/}\" \"$(cat \"$f\")\"; done > \"$D/jobs$j.records\"; grep -o '\"libraries\":\\[[^]]*\\]' \"$D/jobs$j.json\" | sed 's/\"seconds\":[^,]*,//g' > \"$D/jobs$j.verdicts\"; for f in broken wrong; do COAX_CHECK_JOBS=$j COAX_CHECK_CACHE=\"$D/$f$j-cache\" \"$C\" c tests/library-checks/$f.coax --library > /dev/null 2> \"$D/$f$j.err\"; echo \"$f status=$?\" >> \"$D/$f$j.err\"; done; done; cat \"$D/jobs4.counts\" \"$D/jobs4.verdicts\"; for x in .c .records .verdicts .counts; do cmp \"$D/jobs1$x\" \"$D/jobs4$x\" && echo \"same$x\"; done; for f in broken wrong; do cmp \"$D/${f}1.err\" \"$D/${f}4.err\" && grep -q 'status=1' \"$D/${f}4.err\" && echo \"same-$f\"; done", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 0 && has(t, "\"library_checks\":{\"cached\":0,\"checked\":5}"), "four jobs check the five loaded units alone");
+  bad += check(has(t, "chain-part.coax\",\"cached\":false,\"checks_alone\":false") && has(t, "chain-c.coax\",\"cached\":false,\"checks_alone\":true"), "the part does not check alone and the end of the chain does");
+  bad += check(has(t, "same.c") && has(t, "same.records") && has(t, "same.verdicts") && has(t, "same.counts"), "one job and four give the same C, cache records and verdicts");
+  bad += check(has(t, "same-broken") && has(t, "same-wrong"), "one job and four fail a failing library's consumer with the same errors");
 
   r = run(compiler, dir, "rm -rf \"$D\"", out[..]);
   if bad == 0 { print("library-checks: ok\n"); return 0; }

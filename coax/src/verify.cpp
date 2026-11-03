@@ -569,6 +569,17 @@ static bool parse_count(const char *text, uint64_t *out) {
   return true;
 }
 
+// How many checks run at once in forked children: the core count, or fewer
+// when $COAX_CHECK_JOBS says so. Shared by parallel #authority checks and
+// the standalone library checks (ax-library-check-cache); either way the
+// result is the sequential one.
+static uint64_t check_jobs() {
+  uint64_t jobs = 0;
+  const char *env = getenv("COAX_CHECK_JOBS");
+  if (!env || !parse_count(env, &jobs) || !jobs) jobs = available_cores();
+  return std::max<uint64_t>(1, std::min<uint64_t>(jobs, available_cores()));
+}
+
 // Parallel #authority checks (ax-parallel-checks). A compile of an #authority
 // program runs every check it keeps, one after another, in the evaluator.
 // parallel_checks runs each check instead in a forked child of this process,
@@ -606,10 +617,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   auto sequential = [](const char *why) { g_timings.parallel = std::string("sequential: ") + why; return false; };
   if (n < 2) return sequential("fewer than two checks");
   if (!g_evidence.path.empty()) return sequential("an --evidence record");
-  uint64_t jobs = 0;
-  const char *env = getenv("COAX_CHECK_JOBS");
-  if (!env || !parse_count(env, &jobs) || !jobs) jobs = available_cores();
-  jobs = std::min<uint64_t>(std::min<uint64_t>(jobs, available_cores()), n);
+  const uint64_t jobs = std::min<uint64_t>(check_jobs(), n);
   if (jobs < 2) return sequential("one job");
   CtMemory &memory = *file->ct_memory;
   const uint64_t slots = memory.slots, containers = memory.containers, strings = memory.string_bytes;

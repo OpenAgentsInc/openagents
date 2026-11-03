@@ -1012,9 +1012,14 @@ static std::string library_key(const Source *src, int32_t at, const EmitOptions 
           " metal=" + std::to_string(opts.metal) + " cuda=" + std::to_string(opts.cuda) + " metal_compute=" +
           std::to_string(opts.metal_compute) + " quantity_device=" + std::to_string(opts.quantity_device) +
           (g_check_slots ? " check_slots=" + std::to_string(g_check_slots) : std::string()) + "\n";
+  // Each unit's SHA-256 once a process (a child inherits them): a unit is in
+  // many closures. The text is kept beside it, so an edited unit hashes again.
+  static std::map<std::string, std::pair<std::string, std::string>> hashes;  // canonical -> (text, SHA-256)
   for (int32_t u : library_closure(src, at)) {
     const SourceUnit &unit = *src->units[(size_t)u];
-    const std::string sha = debug_source_hash(unit.text);
+    auto &known = hashes[unit.canonical];
+    if (known.second.empty() || known.first != unit.text) known = {unit.text, debug_source_hash(unit.text)};
+    const std::string &sha = known.second;
     if (sha.empty()) return "";
     text += fs::path(unit.canonical).lexically_relative(base).string() + "\t" + sha + "\n";
   }
@@ -1062,12 +1067,20 @@ static bool run_compilation_checks(File *file) {
   return run_all_checks(file, TEST_STEPS, false);
 }
 
-static bool library_check_standalone(const Source *src, int32_t at, const EmitOptions &opts, bool run) {
+// Starts unit `at`'s standalone check in a forked child, which exits 0 when
+// the unit checks. *done gets the read end of a pipe only the child holds:
+// it reads end-of-file when the child is gone. -1 when no child started.
+static pid_t library_check_start(const Source *src, int32_t at, const EmitOptions &opts, bool run, int *done) {
+  int fds[2];
+  if (pipe(fds) != 0) return -1;
+  fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+  fcntl(fds[1], F_SETFD, FD_CLOEXEC);
   fflush(stdout);
   fflush(stderr);
   pid_t pid = fork();
-  if (pid < 0) return false;
+  if (pid < 0) { close(fds[0]); close(fds[1]); return -1; }
   if (pid == 0) {
+    close(fds[0]);
     int null = open("/dev/null", O_WRONLY);
     if (null >= 0) { dup2(null, 1); dup2(null, 2); }
     g_timings.path.clear();
@@ -1083,6 +1096,12 @@ static bool library_check_standalone(const Source *src, int32_t at, const EmitOp
     if (ok && run) ok = run_compilation_checks(&file);
     _exit(ok && g_error_count == 0 ? 0 : 1);
   }
+  close(fds[1]);
+  *done = fds[0];
+  return pid;
+}
+
+static bool library_check_finish(pid_t pid) {
   int status = 0;
   while (waitpid(pid, &status, 0) < 0) if (errno != EINTR) return false;
   return WIFEXITED(status) && WEXITSTATUS(status) == 0;
@@ -1155,6 +1174,9 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
   // Loaded units before their loaders, so a unit's own check reuses its libraries' verdicts.
   std::vector<int32_t> order;
   std::vector<uint8_t> state(n, 0);
+  struct Task { int32_t unit; std::string key; bool authority, imports; };
+  std::vector<Task> tasks;
+  std::vector<TimedLibrary> timed(n);
   std::function<void(int32_t)> post = [&](int32_t u) {
     if (state[(size_t)u]) return;
     state[(size_t)u] = 1;
@@ -1170,22 +1192,81 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
     auto known = g_library_verdicts.find(canonical + (run ? "\nrun" : ""));
     if (known != g_library_verdicts.end()) { out[(size_t)u] = SU_library_checks(false, authority, imports, known->second); continue; }
     const auto began = std::chrono::steady_clock::now();
-    const size_t cached_before = g_library_cached;
     const std::string key = library_key(src, u, opts, compiler, run);
     std::string record;
-    bool verdict;
     if (!key.empty() && read_record(dir + "/" + key, &record) && (record == "checks\n" || record == "does not check alone\n")) {
-      verdict = record == "checks\n";
+      const bool verdict = record == "checks\n";
       g_library_cached++;
-    } else {
-      verdict = library_check_standalone(src, u, opts, run);
-      g_library_checked++;
-      cache_record(dir, key, verdict ? "checks\n" : "does not check alone\n");
+      if (g_timings.on()) timed[(size_t)u] = {canonical, seconds_since(began), true, verdict};
+      g_library_verdicts[canonical + (run ? "\nrun" : "")] = verdict;
+      out[(size_t)u] = SU_library_checks(false, authority, imports, verdict);
+      continue;
     }
-    if (g_timings.on()) g_timings.libraries.push_back({canonical, seconds_since(began), g_library_cached != cached_before, verdict});
-    g_library_verdicts[canonical + (run ? "\nrun" : "")] = verdict;
-    out[(size_t)u] = SU_library_checks(false, authority, imports, verdict);
+    tasks.push_back({u, key, authority, imports});
   }
+  // The standalone checks, in forked children, up to check_jobs() at once
+  // (ax-parallel-library-checks). A unit's check starts only when every unit
+  // it loads, directly or not, has its verdict, so its child reuses them as
+  // a sequential run's would; a child sees only its own #load closure, so
+  // the verdicts are the sequential ones in any order. Units start in the
+  // sequential order.
+  // (Only units before it in that order: in a #load cycle, a sequential run
+  // checks the later unit inside the child, and so does this.)
+  std::set<int32_t> waiting;
+  std::vector<std::vector<int32_t>> needs(tasks.size());
+  for (size_t i = 0; i < tasks.size(); i++) {
+    for (int32_t c : library_closure(src, tasks[i].unit))
+      if (waiting.count(c)) needs[i].push_back(c);
+    waiting.insert(tasks[i].unit);
+  }
+  struct Running { pid_t pid; int fd; size_t task; std::chrono::steady_clock::time_point began; };
+  std::vector<Running> running;
+  std::vector<bool> started(tasks.size(), false);
+  const uint64_t jobs = check_jobs();
+  auto decide = [&](size_t i, bool verdict, double seconds) {
+    const Task &t = tasks[i];
+    const std::string &canonical = src->units[(size_t)t.unit]->canonical;
+    g_library_checked++;
+    cache_record(dir, t.key, verdict ? "checks\n" : "does not check alone\n");
+    if (g_timings.on()) timed[(size_t)t.unit] = {canonical, seconds, false, verdict};
+    g_library_verdicts[canonical + (run ? "\nrun" : "")] = verdict;
+    waiting.erase(t.unit);
+    out[(size_t)t.unit] = SU_library_checks(false, t.authority, t.imports, verdict);
+  };
+  for (size_t finished = 0; finished < tasks.size();) {
+    for (size_t i = 0; i < tasks.size() && running.size() < jobs; i++) {
+      if (started[i]) continue;
+      bool ready = true;
+      for (int32_t c : needs[i]) ready = ready && !waiting.count(c);
+      if (!ready) continue;
+      const auto began = std::chrono::steady_clock::now();
+      int fd = -1;
+      const pid_t pid = library_check_start(src, tasks[i].unit, opts, run, &fd);
+      if (pid < 0 && !running.empty()) break;  // no process to spare: wait for one to end
+      started[i] = true;
+      if (pid < 0) { decide(i, false, seconds_since(began)); finished++; continue; }  // as a sequential run decides it
+      running.push_back({pid, fd, i, began});
+    }
+    if (running.empty()) continue;
+    std::vector<pollfd> fds;
+    for (const Running &r : running) fds.push_back({r.fd, POLLIN, 0});
+    if (poll(fds.data(), fds.size(), -1) < 0) {
+      if (errno == EINTR) continue;
+      for (pollfd &f : fds) f.revents = POLLHUP;  // can't watch the pipes: wait for each child in turn
+    }
+    for (size_t k = running.size(); k-- > 0;) {
+      if (!(fds[k].revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL))) continue;
+      const Running r = running[k];
+      close(r.fd);
+      running.erase(running.begin() + (std::ptrdiff_t)k);
+      const bool verdict = library_check_finish(r.pid);
+      decide(r.task, verdict, seconds_since(r.began));
+      finished++;
+    }
+  }
+  if (g_timings.on())
+    for (int32_t u : order)
+      if (!timed[(size_t)u].path.empty()) g_timings.libraries.push_back(timed[(size_t)u]);
   return out;
 }
 
