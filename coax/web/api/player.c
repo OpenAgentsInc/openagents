@@ -29,6 +29,8 @@
 //   POST /api/playtest/change/<id>[/<cid>/accept|decline]   offered changes (0010_verse_offers.sql)
 //   POST /api/playtest/award, GET/POST /api/playtest/planets[/mine|/<id>]   a player's realm (0011_verse_planets.sql)
 //   POST /api/playtest/survey/answer, /api/playtest/survey   feedback (below)
+//   POST /api/playtest/room-ticket/<room>     {name}: a signed seat ticket for that room's socket
+//                                             (room_ticket below; coax/web/room/room-ticket.coax checks it)
 //
 // Who asks: the X-Verse-Player key; a NIP-98 signed request (Authorization:
 // Nostr) adds that pubkey's account, and an admin's signature (OA_ADMIN_PUBKEYS)
@@ -42,6 +44,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <openssl/hmac.h>
+#include <openssl/evp.h>
 
 #define PREFIX "/api/playtest/"
 
@@ -149,6 +153,83 @@ static const char *legacy(const char *path) {
   return NULL;
 }
 
+// A seat ticket (#12712, spec 4.4): who the X-Verse-Player key is, for one room's socket, for
+// TICKET_MS. Its text, which coax/web/room/room-ticket.coax reads and checks:
+//   v1.PID.ACCOUNT.NAME.ROOM.EXPIRES.MAC
+// PID the player's public id, ACCOUNT 1 when the key has an account (0 a guest), NAME the display name
+// as base64url without padding ("-" none), ROOM the room's code, EXPIRES unix ms, MAC the lowercase hex
+// of HMAC-SHA256 over everything before ".MAC", keyed with OA_ROOM_TICKET_KEY's bytes (Secret Manager
+// oa-room-ticket-key, which oa-room holds too). The name is the account's when it has one, else the
+// one asked for ({"name": ...}), kept to letters, digits, spaces, '-' and '_', 24 at most.
+#define TICKET_MS 600000
+static void b64url(char *out, size_t cap, const unsigned char *b, size_t n) {
+  static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  size_t o = 0;
+  for (size_t i = 0; i < n && o + 5 < cap; i += 3) {
+    unsigned v = (unsigned)b[i] << 16 | (i + 1 < n ? (unsigned)b[i + 1] << 8 : 0) | (i + 2 < n ? b[i + 2] : 0);
+    out[o++] = a[v >> 18 & 63]; out[o++] = a[v >> 12 & 63];
+    if (i + 1 < n) out[o++] = a[v >> 6 & 63];
+    if (i + 2 < n) out[o++] = a[v & 63];
+  }
+  out[o] = 0;
+}
+static size_t ticket_name(char *out, size_t cap, const char *in) {
+  size_t m = 0;
+  for (const unsigned char *p = (const unsigned char *)(in ? in : ""); *p && m + 1 < cap && m < 24; p++) {
+    unsigned char ch = *p;
+    bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || (ch == ' ' && m > 0) || ch == '-' || ch == '_';
+    if (ok) out[m++] = (char)ch;
+  }
+  while (m > 0 && out[m - 1] == ' ') m--;
+  out[m] = 0;
+  return m;
+}
+static void room_ticket(const request *q, PGconn *db, const char *key, const char *room, const char *body) {
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a ticket\"}"); return; }
+  const char *secret = getenv("OA_ROOM_TICKET_KEY");
+  if (!secret || strlen(secret) < 32) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
+  size_t rn = strlen(room);
+  if (!rn || rn > 24) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+  for (size_t i = 0; i < rn; i++) {
+    char ch = room[i];
+    if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-')) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+  }
+  if (!key || !key[0]) { api_json(q->fd, 401, "{\"error\":\"a player key\"}"); return; }
+  const char *v[2] = {key, body};
+  PGresult *r = PQexecParams(db, "SELECT p.id, p.account IS NOT NULL, coalesce(nullif(a.name, ''), $2::jsonb->>'name', '') "
+                                 "FROM verse.players p LEFT JOIN verse.accounts a ON a.id = p.account "
+                                 "WHERE p.key_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex')", 2, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) {
+    const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+    bool theirs = state && !strncmp(state, "22", 2);
+    if (!theirs) api_log("room-ticket: %s", PQerrorMessage(db));
+    PQclear(r);
+    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"no ticket\"}");
+    return;
+  }
+  if (PQntuples(r) != 1) { PQclear(r); api_json(q->fd, 403, "{\"error\":\"unknown player key\"}"); return; }
+  char pid[64], name[32], name64[48];
+  snprintf(pid, sizeof pid, "%s", PQgetvalue(r, 0, 0));
+  bool account = PQgetvalue(r, 0, 1)[0] == 't';
+  size_t nn = ticket_name(name, sizeof name, PQgetvalue(r, 0, 2));
+  PQclear(r);
+  for (char *c = pid; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-')) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
+  if (nn) b64url(name64, sizeof name64, (const unsigned char *)name, nn); else strcpy(name64, "-");
+  struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
+  long long expires = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000 + TICKET_MS;
+  char text[256];
+  int tn = snprintf(text, sizeof text, "v1.%s.%d.%s.%s.%lld", pid, account ? 1 : 0, name64, room, expires);
+  if (tn <= 0 || (size_t)tn + 66 >= sizeof text) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
+  unsigned char mac[EVP_MAX_MD_SIZE]; unsigned int ml = 0;
+  if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)text, (size_t)tn, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
+  text[tn++] = '.';
+  for (unsigned i = 0; i < 32; i++) tn += snprintf(text + tn, sizeof text - (size_t)tn, "%02x", mac[i]);
+  char out[512], en[48];
+  esc(en, sizeof en, name);
+  snprintf(out, sizeof out, "{\"ticket\":\"%s\",\"id\":\"%s\",\"account\":%s,\"name\":\"%s\",\"expires\":%lld}", text, pid, account ? "true" : "false", en, expires);
+  api_json(q->fd, 200, out);
+}
+
 bool player_route(const request *q) {
   const char *rest = legacy(q->path);
   if (!rest && (strncmp(q->path, PREFIX, strlen(PREFIX)) || !strcmp(q->path, "/api/playtest/health"))) return false;
@@ -206,6 +287,7 @@ bool player_route(const request *q) {
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; }
   else strcpy(body, "{}");
+  if (!strncmp(rest, "room-ticket/", 12) && segs == 2) { room_ticket(q, db, key, rest + 12, body); free(body); return true; }
 
   // A progress save: its bytes decoded and checked here, where CRC-32 is cheap.
   bool progress_post = !strcmp(q->method, "POST") && !strncmp(rest, "progress/", 9) && segs == 3;

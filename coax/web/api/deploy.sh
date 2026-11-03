@@ -94,6 +94,8 @@ deploy() {  # service secret host agent-projects-secret runner-service drops-fol
   env+="~OA_JOBS_CALLER=oa-api-jobs@$project.iam.gserviceaccount.com"
   # Email through Resend (email.c): the key, and on staging the only address mail may go to (the owner's).
   if gcloud secrets describe openagents-resend-api-key --project "$project" >/dev/null 2>&1; then secrets+=",OA_RESEND_API_KEY=openagents-resend-api-key:latest"; fi
+  # Seat tickets (player.c room_ticket): the key oa-room checks them with (coax/web/room/room-ticket.coax).
+  if gcloud secrets describe oa-room-ticket-key --project "$project" >/dev/null 2>&1; then secrets+=",OA_ROOM_TICKET_KEY=oa-room-ticket-key:latest"; fi
   [[ "$6" == staging ]] && env+="~OA_EMAIL_ALLOW=chris@openagents.com"
   local spark
   spark="$(gcloud run services describe oa-spark --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
