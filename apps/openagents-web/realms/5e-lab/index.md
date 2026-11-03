@@ -49,10 +49,6 @@ The Horde is the default battle. All 48 heroes fight as one company, the Living,
 
 ## Playing a hero
 
-Press P, or the SPECTATOR button at the top, to switch to Player mode. You play one hero of the Living: pick its class on the bar along the top of the scene, or with [ and ]. W, A, S and D walk your hero on its turn, and the camera follows it. Click one of the dead to make it your target (a red ring); your hero has a gold ring. The hotbar at the foot of the scene holds three slots, and each fills as your next turn comes round:
-
-1. Attack: your target if it's within reach, else whoever is, else a shot with a ranged weapon or your class's own spell.
-2. Your class's powers: the turn your class plays on its own, after you've walked.
-3. Dash: double your movement this turn.
+Press P, or the SPECTATOR button at the top, to switch to Player mode. You play one hero of the Living: pick its class on the bar along the top of the scene, or with [ and ]. W, A, S and D walk your hero on its turn, and the camera follows it. Click one of the dead to make it your target (a red ring); your hero has a gold ring. The hotbar at the foot of the scene holds your class's own abilities, up to nine, on keys 1 to 9 (or click a slot): its spells by name, its class features, Attack and Dash. A slot's top-left number is what it has left (spell slots at its level, uses, Rages or Focus); a spent slot goes dim; the picked one is gold and fires on your next turn, then the bar goes back to Attack. Every slot fills from its foot as your turn comes round. A bonus-action ability (Rage, Second Wind, Healing Word and so on) leaves your action, which attacks.
 
 If your hero falls, pick a class to play another. Press P again to go back to watching.

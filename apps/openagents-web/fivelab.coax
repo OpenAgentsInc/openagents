@@ -113,7 +113,7 @@ Lab :: struct {
   mode: int = MODE_ACTION;
   // Player mode (P): you play one hero of the Living, the class picked from the bar along the top
   player: bool; pick: int = 6; me: int = -1; act: int = ACT_ATTACK; target: int = -1;
-  pbtn: Rect; picks: [12] Rect; slots: [3] Rect; down_x: f32; down_y: f32;
+  pbtn: Rect; picks: [12] Rect; slots: [SLOTS] Rect; down_x: f32; down_y: f32;
   horde: bool = true;   // the Horde (the default): every hero on one side, the dead running in from the edges
   skeletons: int = SKELETONS;   // the Restless Dead's number (the tests field fewer, for the interpreter)
   pressing: int;
@@ -283,7 +283,7 @@ flood :: (s: [] Lab) {
 }
 // The Horde's ground: the heroes hold an 8 by 6 block mid-glade, the casters in its 6 by 4 middle
 // and the rest on its rim; the dead start on the grid's two outer rings.
-ACT_ATTACK :: 0; ACT_POWER :: 1; ACT_DASH :: 2;   // the hotbar's slots, keys 1 to 3
+ACT_ATTACK :: 0;   // the hotbar's first slot, always Attack; keys 1 to 9 pick a slot
 HORDE :: 1000;   // the dead the Horde sends in all, 160 at a time
 HOLD_X :: COLS / 2 - 4; HOLD_Y :: ROWS / 2 - 3;
 EDGE_CELLS :: 2 * COLS + 2 * ROWS - 4 + 2 * (COLS - 2) + 2 * (ROWS - 2) - 4;
@@ -1035,8 +1035,15 @@ player_turn :: (s: [] Lab, i: int) {
   b := bt(s);
   tgt := s[0].target;
   if tgt >= 0 && !rs_up(b[0].c[tgt]) { tgt = -1; s[0].target = -1; }
-  act := s[0].act;
-  if act == ACT_DASH { ok := rs_dash(b, i); }
+  list: [SLOTS] Ab; nab := abilities(b[0].c[i].klass, list[..]);
+  a := list[rs_min(s[0].act, nab - 1)];
+  s[0].act = ACT_ATTACK;   // a slot is used once; the next turn attacks unless you pick again
+  if !ab_ready(s, i, a) { a = list[0]; }
+  // the dashes come before the walk
+  ok := false;
+  if a.kind == AB_DASH { ok = rs_dash(b, i); }
+  if a.kind == AB_CDASH { ok = rs_cunning_dash(b, i); }
+  if a.kind == AB_WIND { ok = rs_step_of_the_wind(b, i); }
   ax := axis(s[0].held, HOLD_D, HOLD_A); az := axis(s[0].held, HOLD_W, HOLD_S);
   if ax != 0 || az != 0 {
     fx := s[0].fwd.x; fz := s[0].fwd.z; fl := sqrt(fx * fx + fz * fz);
@@ -1059,16 +1066,151 @@ player_turn :: (s: [] Lab, i: int) {
       }
       if !gone { break; }
     }
-  } else if tgt >= 0 && act == ACT_ATTACK && b[0].c[i].ranged < 0 && b[0].c[i].spell_ability < 0 {
+  } else if tgt >= 0 && b[0].c[i].ranged < 0 && b[0].c[i].spell_ability < 0 {
     walk(s, i, tgt, 0, 5);
   }
-  if act == ACT_POWER { class_turn(s, i); return; }
-  if act == ACT_DASH { return; }
-  j := ifx tgt >= 0 && rs_feet_to(b, i, tgt) <= 5 then tgt else foe_at_hand(s, i, -1);
+  foe := ifx tgt >= 0 then tgt else nearest_foe(s, i);
+  if a.kind == AB_DASH || a.kind == AB_CDASH || a.kind == AB_WIND { if !b[0].turn.action { default_attack(s, i, foe); } return; }
+  use_ab(s, i, a, foe);
+}
+// ---- the hotbar: each class's own abilities, a slot each
+SLOTS :: 9;
+AB_ATTACK :: 0; AB_DASH :: 1; AB_SPELL :: 2; AB_RECKLESS :: 3; AB_RAGE :: 4; AB_FLURRY :: 5; AB_PATIENT :: 6;
+AB_WIND :: 7; AB_WHOLE :: 8; AB_SECOND :: 9; AB_SURGE :: 10; AB_LAY :: 11; AB_SACRED :: 12; AB_CDASH :: 13;
+AB_AIM :: 14; AB_INNATE :: 15; AB_INSPIRE :: 16; AB_TURN :: 17; AB_PRESERVE :: 18; AB_LANDS :: 19;
+TG_FOE :: 0; TG_POINT :: 1; TG_SELF :: 2; TG_ALLY :: 3;   // a spell's aim: your target, the ground under it, you, the friend most hurt
+Ab :: struct { kind: int; sp: int; lvl: int; tg: int; name: string; }
+mk_ab :: (kind: int, name: string) -> Ab { return Ab.{kind = kind, sp = -1, name = name}; }
+spell_ab :: (sp: int, lvl: int, tg: int) -> Ab { return Ab.{kind = AB_SPELL, sp = sp, lvl = lvl, tg = tg, name = rs_spell(sp).name}; }
+// The abilities a class's hotbar holds, in slot order (the ones its rules in the engine support).
+abilities :: (kl: int, out: [] Ab) -> int {
+  n := 0;
+  if kl == RS_DRUID {
+    out[0] = spell_ab(SP_STARRY_WISP, 0, TG_FOE); out[1] = spell_ab(SP_PRODUCE_FLAME, 0, TG_SELF); out[2] = spell_ab(SP_FLAME_HURL, 0, TG_FOE);
+    out[3] = spell_ab(SP_THUNDERWAVE, 1, TG_POINT); out[4] = spell_ab(SP_ENTANGLE, 1, TG_POINT); out[5] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY);
+    out[6] = spell_ab(SP_CALL_LIGHTNING, 3, TG_POINT); out[7] = mk_ab(AB_LANDS, "LAND'S AID"); out[8] = mk_ab(AB_DASH, "DASH"); n = 9;
+  } else if kl == RS_WIZARD {
+    out[0] = spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = spell_ab(SP_CHILL_TOUCH, 0, TG_FOE); out[2] = spell_ab(SP_RAY_OF_SICKNESS, 1, TG_FOE);
+    out[3] = spell_ab(SP_FALSE_LIFE, 1, TG_SELF); out[4] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[5] = spell_ab(SP_BLINDNESS, 2, TG_FOE);
+    out[6] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[7] = mk_ab(AB_DASH, "DASH"); n = 8;
+  } else if kl == RS_WARLOCK {
+    out[0] = spell_ab(SP_ELDRITCH_BLAST, 0, TG_FOE); out[1] = spell_ab(SP_CHILL_TOUCH, 0, TG_FOE); out[2] = spell_ab(SP_HEX, 1, TG_FOE);
+    out[3] = spell_ab(SP_HOLD_PERSON, 2, TG_FOE); out[4] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[5] = spell_ab(SP_FIREBALL, 3, TG_POINT);
+    out[6] = mk_ab(AB_DASH, "DASH"); n = 7;
+  } else if kl == RS_SORCERER {
+    out[0] = spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[2] = spell_ab(SP_FIREBALL, 3, TG_POINT);
+    out[3] = mk_ab(AB_INNATE, "INNATE SORCERY"); out[4] = mk_ab(AB_DASH, "DASH"); n = 5;
+  } else if kl == RS_BARD {
+    out[0] = spell_ab(SP_VICIOUS_MOCKERY, 0, TG_FOE); out[1] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[2] = mk_ab(AB_INSPIRE, "BARDIC INSPIRATION");
+    out[3] = spell_ab(SP_HYPNOTIC_PATTERN, 3, TG_POINT); out[4] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[5] = mk_ab(AB_DASH, "DASH"); n = 6;
+  } else if kl == RS_CLERIC {
+    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_SACRED_FLAME, 0, TG_FOE); out[2] = spell_ab(SP_GUIDING_BOLT, 1, TG_FOE);
+    out[3] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[4] = spell_ab(SP_SPIRIT_GUARDIANS, 3, TG_SELF); out[5] = mk_ab(AB_TURN, "TURN UNDEAD");
+    out[6] = mk_ab(AB_PRESERVE, "PRESERVE LIFE"); out[7] = mk_ab(AB_DASH, "DASH"); n = 8;
+  } else if kl == RS_FIGHTER {
+    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_SECOND, "SECOND WIND"); out[2] = mk_ab(AB_SURGE, "ACTION SURGE"); out[3] = mk_ab(AB_DASH, "DASH"); n = 4;
+  } else if kl == RS_PALADIN {
+    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_DIVINE_SMITE, 1, TG_FOE); out[2] = mk_ab(AB_LAY, "LAY ON HANDS");
+    out[3] = mk_ab(AB_SACRED, "SACRED WEAPON"); out[4] = spell_ab(SP_SACRED_FLAME, 0, TG_FOE); out[5] = mk_ab(AB_DASH, "DASH"); n = 6;
+  } else if kl == RS_BARBARIAN {
+    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_RECKLESS, "RECKLESS ATTACK"); out[2] = mk_ab(AB_RAGE, "RAGE"); out[3] = mk_ab(AB_DASH, "DASH"); n = 4;
+  } else if kl == RS_MONK {
+    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_FLURRY, "FLURRY OF BLOWS"); out[2] = mk_ab(AB_PATIENT, "PATIENT DEFENSE");
+    out[3] = mk_ab(AB_WIND, "STEP OF THE WIND"); out[4] = mk_ab(AB_WHOLE, "WHOLENESS OF BODY"); out[5] = mk_ab(AB_DASH, "DASH"); n = 6;
+  } else if kl == RS_ROGUE {
+    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_AIM, "STEADY AIM"); out[2] = mk_ab(AB_CDASH, "CUNNING DASH"); out[3] = mk_ab(AB_DASH, "DASH"); n = 4;
+  } else if kl == RS_RANGER {
+    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_HUNTERS_MARK, 1, TG_FOE); out[2] = mk_ab(AB_DASH, "DASH"); n = 3;
+  } else { out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_DASH, "DASH"); n = 2; }
+  return n;
+}
+// Whether a slot can be used now, from the hero's slots, uses, Rages and Focus.
+ab_ready :: (s: [] Lab, i: int, a: Ab) -> bool {
+  c := s[0].battle[0].c[i];
+  if a.kind == AB_SPELL { return a.lvl == 0 || free_slot(s, i, a.lvl) > 0; }
+  if a.kind == AB_RAGE { return c.rages > 0 && !c.raging; }
+  if a.kind == AB_FLURRY || a.kind == AB_PATIENT || a.kind == AB_WIND { return c.focus > 0; }
+  if a.kind == AB_WHOLE { return c.uses[RS_USE_WHOLE] > 0; }
+  if a.kind == AB_SECOND { return c.uses[RS_USE_WIND] > 0; }
+  if a.kind == AB_SURGE { return c.uses[RS_USE_SURGE] > 0; }
+  if a.kind == AB_LAY { return c.uses[RS_USE_LAY] > 0; }
+  if a.kind == AB_INSPIRE { return c.uses[RS_USE_INSPIRE] > 0; }
+  if a.kind == AB_INNATE { return c.uses[RS_USE_INNATE] > 0; }
+  if a.kind == AB_LANDS { return c.uses[RS_USE_WILD] > 0; }
+  if a.kind == AB_TURN || a.kind == AB_PRESERVE || a.kind == AB_SACRED { return c.uses[RS_USE_CHANNEL] > 0; }
+  return true;
+}
+// What a slot has left to show in its corner: spell slots at its level, uses, Rages or Focus (-1: none).
+ab_left :: (s: [] Lab, i: int, a: Ab) -> int {
+  c := s[0].battle[0].c[i];
+  if a.kind == AB_SPELL { if a.lvl == 0 { return -1; } sl := free_slot(s, i, a.lvl); return ifx sl > 0 then c.slots[sl] else 0; }
+  if a.kind == AB_RAGE { return c.rages; }
+  if a.kind == AB_FLURRY || a.kind == AB_PATIENT || a.kind == AB_WIND { return c.focus; }
+  if a.kind == AB_WHOLE { return c.uses[RS_USE_WHOLE]; }
+  if a.kind == AB_SECOND { return c.uses[RS_USE_WIND]; }
+  if a.kind == AB_SURGE { return c.uses[RS_USE_SURGE]; }
+  if a.kind == AB_LAY { return c.uses[RS_USE_LAY]; }
+  if a.kind == AB_INSPIRE { return c.uses[RS_USE_INSPIRE]; }
+  if a.kind == AB_INNATE { return c.uses[RS_USE_INNATE]; }
+  if a.kind == AB_LANDS { return c.uses[RS_USE_WILD]; }
+  if a.kind == AB_TURN || a.kind == AB_PRESERVE || a.kind == AB_SACRED { return c.uses[RS_USE_CHANNEL]; }
+  return -1;
+}
+// The friend nearest you that isn't you, or -1.
+nearest_friend :: (s: [] Lab, i: int) -> int {
+  b := bt(s);
+  best := -1; bd := 100000;
+  for j: 0..<b[0].n {
+    if j == i || b[0].c[j].team != b[0].c[i].team || !rs_up(b[0].c[j]) { continue; }
+    d := rs_feet_to(b, i, j);
+    if d < bd { bd = d; best = j; }
+  }
+  return best;
+}
+// Attack: your foe if it's within reach, else whoever is, else a shot, else your first cantrip.
+default_attack :: (s: [] Lab, i: int, foe: int) {
+  b := bt(s);
+  j := ifx foe >= 0 && rs_feet_to(b, i, foe) <= 5 then foe else foe_at_hand(s, i, -1);
   if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
-  far := ifx tgt >= 0 then tgt else nearest_foe(s, i);
-  if far >= 0 && b[0].c[i].ranged >= 0 { ok := rs_shoot(b, i, far); return; }
-  if b[0].c[i].spell_ability >= 0 { class_turn(s, i); }
+  if foe < 0 { return; }
+  if b[0].c[i].ranged >= 0 { ok := rs_shoot(b, i, foe); return; }
+  list: [SLOTS] Ab; n := abilities(b[0].c[i].klass, list[..]);
+  for k: 0..<n {
+    if list[k].kind == AB_SPELL && list[k].lvl == 0 && list[k].tg == TG_FOE { ok := rs_cast(b, i, list[k].sp, 0, 0, 0, foe); return; }
+  }
+}
+// A slot used on your turn; a bonus-action one leaves your action, which then attacks.
+use_ab :: (s: [] Lab, i: int, a: Ab, foe: int) {
+  b := bt(s);
+  ok := false;
+  at := ifx foe >= 0 && rs_feet_to(b, i, foe) <= 5 then foe else foe_at_hand(s, i, -1);
+  if a.kind == AB_ATTACK { default_attack(s, i, foe); return; }
+  if a.kind == AB_SPELL {
+    sl := ifx a.lvl == 0 then 0 else free_slot(s, i, a.lvl);
+    if a.lvl > 0 && sl == 0 { default_attack(s, i, foe); return; }
+    if a.tg == TG_SELF { ok = rs_cast(b, i, a.sp, sl, 0, 0, i); }
+    else if a.tg == TG_ALLY { w := most_hurt(s, i, 60, 0.99); ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx w >= 0 then w else i); }
+    else if foe >= 0 && a.tg == TG_POINT { ok = rs_cast(b, i, a.sp, sl, b[0].c[foe].x, b[0].c[foe].y, -1); }
+    else if foe >= 0 { ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx a.sp == SP_DIVINE_SMITE && at >= 0 then at else foe); }
+  }
+  else if a.kind == AB_RECKLESS { if at >= 0 { ok = rs_attack(b, i, at, true, -1); } }
+  else if a.kind == AB_RAGE { ok = rs_rage(b, i); }
+  else if a.kind == AB_FLURRY { if at >= 0 { ok = rs_attack(b, i, at, false, -1); if rs_up(b[0].c[at]) { ok = rs_flurry(b, i, at, OH_TOPPLE); } } }
+  else if a.kind == AB_PATIENT { ok = rs_patient_defense(b, i); }
+  else if a.kind == AB_WHOLE { ok = rs_wholeness(b, i); }
+  else if a.kind == AB_SECOND { ok = rs_second_wind(b, i); }
+  else if a.kind == AB_SURGE { ok = rs_action_surge(b, i); }
+  else if a.kind == AB_LAY { w := most_hurt(s, i, 5, 0.99); w = ifx w >= 0 then w else i; ok = rs_lay_on_hands(b, i, w, ifx b[0].c[w].hp == 0 then 5 else 10); }
+  else if a.kind == AB_SACRED { ok = rs_sacred_weapon(b, i); }
+  else if a.kind == AB_AIM { ok = rs_steady_aim(b, i); }
+  else if a.kind == AB_INNATE { ok = rs_innate_sorcery(b, i); }
+  else if a.kind == AB_INSPIRE { w := nearest_friend(s, i); if w >= 0 { ok = rs_inspire(b, i, w); } }
+  else if a.kind == AB_TURN { ok = rs_turn_undead(b, i); }
+  else if a.kind == AB_PRESERVE { ok = rs_preserve_life(b, i); }
+  else if a.kind == AB_LANDS { if foe >= 0 { ok = rs_lands_aid(b, i, b[0].c[foe].x, b[0].c[foe].y, most_hurt(s, i, 60, 0.7)); } }
+  if !b[0].turn.action { default_attack(s, i, foe); }
+  // Action Surge gives a second action: attack with it too
+  if a.kind == AB_SURGE && !b[0].turn.action { default_attack(s, i, foe); }
 }
 // The hero you play: the first of the Living's heroes of the picked class still up, or -1.
 pick_hero :: (s: [] Lab) {
@@ -1255,12 +1397,15 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   scy1 := ifx s[0].portrait then s[0].modal.y0 - 8 * k else h - pad;
   pg := 4 * k; pwid := (scx1 - scx0 - 11 * pg) / 12;
   for c: 0..<12 { s[0].picks[c] = Rect.{x0 = scx0 + f32(c) * (pwid + pg), y0 = top + 6 * k, x1 = scx0 + f32(c) * (pwid + pg) + pwid, y1 = top + 30 * k}; }
-  slot := 58 * k; sg := 8 * k; hx0 := (scx0 + scx1) / 2 - (3 * slot + 2 * sg) / 2;
-  for c: 0..<3 { s[0].slots[c] = Rect.{x0 = hx0 + f32(c) * (slot + sg), y0 = scy1 - 24 * k - slot, x1 = hx0 + f32(c) * (slot + sg) + slot, y1 = scy1 - 24 * k}; }
-  if !s[0].player {
-    for c: 0..<12 { s[0].picks[c] = Rect.{}; }
-    for c: 0..<3 { s[0].slots[c] = Rect.{}; }
+  nslot := 0;
+  if s[0].player && s[0].me >= 0 { list: [SLOTS] Ab; nslot = abilities(s[0].battle[0].c[s[0].me].klass, list[..]); }
+  sg := 6 * k; slot := lo(64 * k, (scx1 - scx0 - f32(SLOTS - 1) * sg) / f32(SLOTS));
+  hx0 := (scx0 + scx1) / 2 - (f32(nslot) * slot + f32(rs_max(nslot - 1, 0)) * sg) / 2;
+  for c: 0..<SLOTS {
+    s[0].slots[c] = Rect.{};
+    if c < nslot { s[0].slots[c] = Rect.{x0 = hx0 + f32(c) * (slot + sg), y0 = scy1 - 20 * k - slot, x1 = hx0 + f32(c) * (slot + sg) + slot, y1 = scy1 - 20 * k}; }
   }
+  if !s[0].player { for c: 0..<12 { s[0].picks[c] = Rect.{}; } }
   // the glade's camera, fitted to the space left of the log (above it on a phone)
   rx0 := pad; rx1 := ifx s[0].portrait then w - pad else s[0].panel.x0 - pad;
   ry0 := top; ry1 := ifx s[0].portrait then s[0].panel.y0 - pad else h - pad;
@@ -1587,16 +1732,27 @@ token_at :: (s: [] Lab, x: f32, y: f32) -> int {
   }
   return best;
 }
-// A small picture for a hotbar slot, in strokes: a sword, a burst, or two chevrons.
-slot_icon :: (out: [] f32, at: int, r: Rect, which: int, k: f32, c: Col) -> int {
-  n := at; cx := (r.x0 + r.x1) / 2; cy := (r.y0 + r.y1) / 2 - 4 * k; e := (r.x1 - r.x0) * 0.26; w := 2.2 * k;
-  if which == ACT_ATTACK {
+// A slot's picture, in strokes, by what the ability does: a blade for blows, a burst in the
+// spell's colour for spells, a cross for healing, chevrons for moving, a ring for the rest.
+ab_icon :: (out: [] f32, at: int, r: Rect, a: Ab, k: f32, c: Col) -> int {
+  n := at; cx := (r.x0 + r.x1) / 2; cy := (r.y0 + r.y1) / 2 - 5 * k; e := (r.x1 - r.x0) * 0.22; w := 2.2 * k;
+  heal := a.kind == AB_SECOND || a.kind == AB_LAY || a.kind == AB_WHOLE || a.kind == AB_PRESERVE || (a.kind == AB_SPELL && (a.sp == SP_HEALING_WORD || a.sp == SP_CURE_WOUNDS || a.sp == SP_FALSE_LIFE));
+  if heal {
+    n = seg(out, n, cx, cy - e, cx, cy + e, w * 1.4, 0.95, GREEN);
+    n = seg(out, n, cx - e, cy, cx + e, cy, w * 1.4, 0.95, GREEN);
+  } else if a.kind == AB_SPELL {
+    sc := spell_col(a.sp);
+    for q: 0..<8 { an := f32(q) * 0.7853982; n = seg(out, n, cx + cos(an) * e * 0.3, cy + sin(an) * e * 0.3, cx + cos(an) * e, cy + sin(an) * e, w, 0.95, sc); }
+  } else if a.kind == AB_ATTACK || a.kind == AB_RECKLESS || a.kind == AB_FLURRY {
     n = seg(out, n, cx - e, cy + e, cx + e, cy - e, w, 0.95, c);
     n = seg(out, n, cx - e * 0.75, cy + e * 0.15, cx - e * 0.15, cy + e * 0.75, w, 0.95, c);
-  } else if which == ACT_POWER {
-    for a: 0..<8 { an := f32(a) * 0.7853982; n = seg(out, n, cx + cos(an) * e * 0.3, cy + sin(an) * e * 0.3, cx + cos(an) * e, cy + sin(an) * e, w, 0.95, c); }
-  } else {
+    if a.kind != AB_ATTACK { n = seg(out, n, cx - e, cy - e, cx + e, cy + e, w, 0.95, ifx a.kind == AB_RECKLESS then RED else c); }
+  } else if a.kind == AB_DASH || a.kind == AB_CDASH || a.kind == AB_WIND {
     for v: 0..<2 { ox := f32(v) * e * 0.8 - e * 0.5; n = seg(out, n, cx + ox - e * 0.4, cy - e * 0.6, cx + ox + e * 0.2, cy, w, 0.95, c); n = seg(out, n, cx + ox + e * 0.2, cy, cx + ox - e * 0.4, cy + e * 0.6, w, 0.95, c); }
+  } else {
+    col := ifx a.kind == AB_RAGE then RED else GOLD;
+    for q: 0..<12 { a0 := f32(q) * 0.5235988; a1 := f32(q + 1) * 0.5235988; n = seg(out, n, cx + cos(a0) * e * 0.8, cy + sin(a0) * e * 0.8, cx + cos(a1) * e * 0.8, cy + sin(a1) * e * 0.8, w, 0.95, col); }
+    n = seg(out, n, cx, cy - e * 0.35, cx, cy + e * 0.35, w, 0.95, col);
   }
   return n;
 }
@@ -1622,22 +1778,27 @@ draw_player :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     if me >= 0 { n = ring3(s, out, n, wx(s[0].dx[me]), wz(s[0].dy[me]), 0.78, 0.06, 2.5 * k, 1, GOLD); }
     if s[0].target >= 0 && rs_up(b[0].c[s[0].target]) { n = ring3(s, out, n, wx(s[0].dx[s[0].target]), wz(s[0].dy[s[0].target]), 0.7, 0.06, 2.5 * k, 1, RED); }
   }
-  // the hotbar
+  // the hotbar: your class's abilities, keys 1 to 9; the picked one gold, a spent one dim, and
+  // every slot filling from its foot as your next turn comes round
   ready := 1.0f32;
   if me >= 0 { ready = lo(1, hi(0, (b[0].clock - s[0].acted[me]) / rs_beat(b))); }
-  for c: 0..<3 {
+  list: [SLOTS] Ab; nab := 0;
+  if me >= 0 { nab = abilities(b[0].c[me].klass, list[..]); }
+  for c: 0..<nab {
     r := s[0].slots[c];
+    a := list[c];
     on := c == s[0].act;
-    n = box_lines(out, n, r, ifx on then 1.6 * k else 0.9 * k, ifx on then 1 else 0.55, ifx on then GOLD else DIM);
-    // the turn coming round: the slot fills from its foot
+    can := ab_ready(s, me, a);
+    n = box_lines(out, n, r, ifx on then 1.6 * k else 0.9 * k, ifx on then 1 else ifx can then 0.6 else 0.25, ifx on then GOLD else DIM);
     fill := (r.y1 - r.y0 - 4 * k) * ready;
-    for row: 0..<6 { yy := r.y1 - 2 * k - fill * f32(row) / 5; n = seg(out, n, r.x0 + 3 * k, yy, r.x1 - 3 * k, yy, 0.7 * k, ifx on then 0.35 else 0.18, ifx on then GOLD else DIM); }
-    n = slot_icon(out, n, r, c, k, ifx on then GOLD else WHITE);
+    for row: 0..<6 { yy := r.y1 - 2 * k - fill * f32(row) / 5; n = seg(out, n, r.x0 + 3 * k, yy, r.x1 - 3 * k, yy, 0.7 * k, ifx on then 0.3 else 0.15, ifx on then GOLD else DIM); }
+    n = ab_icon(out, n, r, a, k, ifx !can then FAINT else ifx on then GOLD else WHITE);
     key: [2] u8; key[0] = cast(u8) ('1' + c);
-    n = say_at(out, n, cast(string) key[0..<1], r.x1 - 10 * k, r.y0 + 11 * k, 8 * k, ink(k, 0.9, WHITE));
-    nm := ifx c == ACT_ATTACK then "ATTACK" else ifx c == ACT_DASH then "DASH" else ifx me >= 0 then RS_CLASS[b[0].c[me].klass] else "POWERS";
-    cp := lo(7.5 * k, 7.5 * k * (r.x1 - r.x0 - 4 * k) / hi(text_width(nm, 7.5 * k), 1));
-    n = say_mid(out, n, nm, (r.x0 + r.x1) / 2, r.y1 - 6 * k, cp, ink(k, 0.85, ifx on then GOLD else WHITE));
+    n = say_at(out, n, cast(string) key[0..<1], r.x1 - 9 * k, r.y0 + 10 * k, 7.5 * k, ink(k, 0.9, WHITE));
+    left := ab_left(s, me, a);
+    if left >= 0 { lb: [8] u8; lm := put_int(lb[..], 0, left); n = say_at(out, n, cast(string) lb[0..<lm], r.x0 + 4 * k, r.y0 + 10 * k, 7.5 * k, ink(k, 0.9, ifx left > 0 then GOLD else RED)); }
+    cp := lo(6.5 * k, 6.5 * k * (r.x1 - r.x0 - 4 * k) / hi(text_width(a.name, 6.5 * k), 1));
+    n = say_mid(out, n, a.name, (r.x0 + r.x1) / 2, r.y1 - 5 * k, cp, ink(k, ifx can then 0.9 else 0.4, ifx on then GOLD else WHITE));
   }
   // who you are, above the hotbar
   l: [LINE_CAP] u8;
@@ -1648,8 +1809,8 @@ draw_player :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     m = put(l[..], m, RS_CLASS[cr.klass]); m = put(l[..], m, "   HP "); m = put_int(l[..], m, cr.hp); m = put(l[..], m, "/"); m = put_int(l[..], m, cr.hp_max);
     m = put(l[..], m, "   WASD WALKS   CLICK ONE OF THE DEAD TO TARGET IT");
   } else { m = put(l[..], 0, "YOU HAVE FALLEN. PICK A CLASS TO PLAY ANOTHER HERO."); }
-  r0 := s[0].slots[0]; r2 := s[0].slots[2];
-  n = say_mid(out, n, cast(string) l[0..<m], (r0.x0 + r2.x1) / 2, r0.y0 - 10 * k, 9 * k, ink(k, 0.9, ifx me >= 0 then WHITE else RED));
+  r0 := s[0].slots[0]; r2 := s[0].slots[rs_max(nab - 1, 0)];
+  n = say_mid(out, n, cast(string) l[0..<m], ifx nab > 0 then (r0.x0 + r2.x1) / 2 else s[0].cx, r0.y0 - 10 * k, 9 * k, ink(k, 0.9, ifx me >= 0 then WHITE else RED));
   return n;
 }
 draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
@@ -1797,7 +1958,7 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   if key == 'v' || key == 'V' { s[0].view = 1 - s[0].view; return true; }
   if key == 'm' || key == 'M' { switch_mode(s); return true; }
   if key == 'p' || key == 'P' { set_player(s, !s[0].player); return true; }
-  if s[0].player && key >= '1' && key <= '3' { s[0].act = key - '1'; return true; }
+  if s[0].player && key >= '1' && key <= '9' { s[0].act = key - '1'; return true; }
   if s[0].player && (key == '[' || key == ']') { s[0].pick = (s[0].pick + ifx key == ']' then 1 else 11) % 12; pick_hero(s); return true; }
   if key == 'h' || key == 'H' { s[0].horde = !s[0].horde; s[0].wins[0] = 0; s[0].wins[1] = 0; s[0].wins[2] = 0; new_battle(s); return true; }
   if s[0].view == VIEW_GLADE {
@@ -1896,7 +2057,7 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
     if in_rect(s[0].pbtn, x, y) { s[0].pressing = 4; return true; }
     if s[0].player {
       for c: 0..<12 { if in_rect(s[0].picks[c], x, y) { s[0].pressing = 10 + c; return true; } }
-      for c: 0..<3 { if in_rect(s[0].slots[c], x, y) { s[0].pressing = 30 + c; return true; } }
+      for c: 0..<SLOTS { if in_rect(s[0].slots[c], x, y) { s[0].pressing = 30 + c; return true; } }
     }
     s[0].down_x = x; s[0].down_y = y;
     if s[0].view == VIEW_GLADE && !in_rect(s[0].panel, x, y) {
@@ -1948,7 +2109,7 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
   if held == 3 { if phase == 2 && in_rect(s[0].modal, x, y) { switch_mode(s); } return true; }
   if held == 4 { if phase == 2 && in_rect(s[0].pbtn, x, y) { set_player(s, !s[0].player); } return true; }
   if held >= 10 && held < 22 { if phase == 2 && in_rect(s[0].picks[held - 10], x, y) { s[0].pick = held - 10; pick_hero(s); } return true; }
-  if held >= 30 && held < 33 { if phase == 2 && in_rect(s[0].slots[held - 30], x, y) { s[0].act = held - 30; } return true; }
+  if held >= 30 && held < 30 + SLOTS { if phase == 2 && in_rect(s[0].slots[held - 30], x, y) { s[0].act = held - 30; } return true; }
   // in Player mode a click (not a drag) on one of the dead makes it your target
   if phase == 2 && s[0].player && s[0].view == VIEW_GLADE && abs(x - s[0].down_x) + abs(y - s[0].down_y) < 8 * hi(s[0].dpr, 1) {
     s[0].target = token_at(s, x, y);
@@ -2135,7 +2296,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert s[0].player && s[0].me >= 0 && s[0].battle[0].c[s[0].me].klass == RS_FIGHTER;
   ok = lab_key(s[..], ']', 0);
   #assert s[0].battle[0].c[s[0].me].klass == ROSTER[7];
-  ok = lab_key(s[..], '3', 0); #assert s[0].act == ACT_DASH;
+  ok = lab_key(s[..], '3', 0); #assert s[0].act == 2;
   ok = lab_key(s[..], '1', 0); #assert s[0].act == ACT_ATTACK;
   me := s[0].me; x0 := s[0].battle[0].c[me].x;
   ok = lab_key(s[..], 'd', 0);
@@ -2143,5 +2304,13 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert s[0].battle[0].c[me].x > x0;
   n = frame_at(s[..], 1600, 1000, 1, 0.016);
   #assert n > 300 && s[0].slots[0].x1 > s[0].slots[0].x0;
+  // every class's hotbar holds its own abilities, Attack or a cantrip first and Dash last
+  for c: 0..<12 {
+    list: [SLOTS] Ab; nab := abilities(ROSTER[c], list[..]);
+    #assert nab >= 3 && nab <= SLOTS && list[nab - 1].kind == AB_DASH;
+  }
+  list: [SLOTS] Ab;
+  #assert abilities(RS_BARBARIAN, list[..]) == 4 && list[2].kind == AB_RAGE;
+  #assert abilities(RS_WIZARD, list[..]) == 8 && list[6].sp == SP_FIREBALL;
   ok = lab_key(s[..], 'p', 0); #assert !s[0].player && s[0].me < 0;
 }
