@@ -15,7 +15,8 @@
 // sends it to every connection rm_relay_to names, into that connection's own output buffer
 // (room-host.c: one slow socket never waits on the others; past 256 KB it is closed).
 //   GET /api/playtest/rooms/SLUG     the everglade rooms SLUG-1, SLUG-2, ... and their players, and
-//                                    which to join: the lowest with a free seat (rm_rooms, JSON)
+//                                    which to join: the lowest with a free seat (rm_rooms, JSON); with
+//                                    ?with=PID the one that player sits in, while it has a seat
 
 RELAYS :: 64;
 RELAY_SEATS :: 16;        // the most any game seats (everglade, verse.room_max())
@@ -242,6 +243,40 @@ rl_instance :: (code: string, slug: string) -> int {
   for i: from..<code.count { if code[i] < '0' || code[i] > '9' { return 0; } n = n * 10 + cast(int) (code[i] - '0'); }
   return n;
 }
+// The value of key in the request line's query ("" none): [a-z0-9-] only, else "".
+rl_query :: (req: string, key: string) -> string {
+  i := 0;
+  while i < req.count && req[i] != ' ' { i += 1; }   // past the method
+  i += 1;
+  while i < req.count && req[i] != '?' && req[i] != ' ' && req[i] != '\r' { i += 1; }
+  if i >= req.count || req[i] != '?' { return ""; }
+  i += 1;
+  while i < req.count && req[i] != ' ' && req[i] != '\r' && req[i] != '\n' {
+    at := i;
+    while i < req.count && req[i] != '&' && req[i] != ' ' && req[i] != '\r' && req[i] != '\n' { i += 1; }
+    if i - at > key.count + 1 && req[at..<at + key.count] == key && req[at + key.count] == '=' {
+      v := req[at + key.count + 1..<i];
+      for c: v { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return ""; } }
+      return v;
+    }
+    if i < req.count && req[i] == '&' { i += 1; }
+  }
+  return "";
+}
+// N when the player pid sits in the everglade room SLUG-N (by its seat ticket) and it has a free
+// seat; 0 when they are in none of them, or theirs is full.
+rl_with :: (v: [] RmServer, slug: string, pid: string) -> int {
+  if pid.count == 0 { return 0; }
+  for i: 0..<CONNS {
+    c := v[0].conns[i];
+    if !c.live || !c.ticket.ok || cast(string) c.ticket.pid[0..<c.ticket.pid_n] != pid { continue; }
+    x := v[0].relays[c.relay];
+    if !x.live || cast(string) x.game[0..<x.game_n] != EVERGLADE { continue; }
+    n := rl_instance(cast(string) x.code[0..<x.code_n], slug);
+    if n > 0 && rl_people(v, c.relay) < x.seats { return n; }
+  }
+  return 0;
+}
 // GET /api/playtest/rooms/SLUG: the everglade rooms SLUG-N, lowest N first, into jout:
 //   {"realm":"SLUG","game":"everglade","seats":16,"join":"SLUG-K","rooms":[{"code":"SLUG-1","players":3},...]}
 // "join" is the lowest instance with a free seat (one nobody is in yet when all are full). Its
@@ -265,9 +300,14 @@ rm_rooms :: (v: [] RmServer, request: string) -> int #export_c {
   }
   join := 1;
   for i: 0..<m { if ns[i] == join && ps[i] >= RELAY_SEATS { join += 1; } }
+  // ?with=PID (spec 8.1, #12716): the instance that player sits in now, when it has a free seat
+  with := rl_with(v, slug, rl_query(request, "with"));
+  if with > 0 { join = with; }
   o := v[0].jout[..];
   k := put(o, 0, "{\"realm\":\""); k = put(o, k, slug); k = put(o, k, "\",\"game\":\"everglade\",\"seats\":"); k = put_int(o, k, RELAY_SEATS);
-  k = put(o, k, ",\"join\":\""); k = put(o, k, slug); k = put(o, k, "-"); k = put_int(o, k, join); k = put(o, k, "\",\"rooms\":[");
+  k = put(o, k, ",\"join\":\""); k = put(o, k, slug); k = put(o, k, "-"); k = put_int(o, k, join);
+  if with > 0 { k = put(o, k, "\",\"with\":\""); k = put(o, k, slug); k = put(o, k, "-"); k = put_int(o, k, with); }
+  k = put(o, k, "\",\"rooms\":[");
   for i: 0..<m {
     if i > 0 { k = put(o, k, ","); }
     k = put(o, k, "{\"code\":\""); k = put(o, k, slug); k = put(o, k, "-"); k = put_int(o, k, ns[i]);
@@ -458,4 +498,39 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   #assert rm_rooms(v[..], "GET /api/playtest/rooms/a/b HTTP/1.1\r\n\r\n") == -1;
   #assert rm_rooms(v[..], "POST /api/playtest/rooms/everglade HTTP/1.1\r\n\r\n") == -1;
   #assert rl_instance("everglade-12", "everglade") == 12 && rl_instance("everglade-0", "everglade") == 0 && rl_instance("everglade-1x", "everglade") == 0 && rl_instance("everglade", "everglade") == 0;
+}
+#test "relay: GET /api/playtest/rooms/SLUG?with=PID joins the instance that player sits in, while it has a seat (spec 8.1)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  rm_clock(v[..], 0, 500000);
+  b: [256] u8; req: [512] u8;
+  // a friend in everglade-3, everglade-1 has room
+  n := tk_sign(key, "p-friend", false, "", "everglade-3", 1000000, -1, b[..]);
+  k := put(req[..], 0, "GET /api/room/relay/everglade/everglade-3?t="); k = put(req[..], k, cast(string) b[0..<n]); k = put(req[..], k, " HTTP/1.1\r\n\r\n");
+  #assert rm_join(v[..], 0, cast(string) req[0..<k]) == 0;
+  r := rm_rooms(v[..], "GET /api/playtest/rooms/everglade?with=p-friend HTTP/1.1\r\n\r\n");
+  #assert cast(string) v[0].jout[0..<r] == "{\"realm\":\"everglade\",\"game\":\"everglade\",\"seats\":16,\"join\":\"everglade-3\",\"with\":\"everglade-3\",\"rooms\":[{\"code\":\"everglade-3\",\"players\":1}]}";
+  // someone who is in no room, or a bad id: the lowest with room
+  r = rm_rooms(v[..], "GET /api/playtest/rooms/everglade?x=1&with=p-nobody HTTP/1.1\r\n\r\n");
+  #assert cast(string) v[0].jout[0..<r] == "{\"realm\":\"everglade\",\"game\":\"everglade\",\"seats\":16,\"join\":\"everglade-1\",\"rooms\":[{\"code\":\"everglade-3\",\"players\":1}]}";
+  r = rm_rooms(v[..], "GET /api/playtest/rooms/everglade?with=P\"x HTTP/1.1\r\n\r\n");
+  #assert rl_text_has(cast(string) v[0].jout[0..<r], "\"join\":\"everglade-1\"") && !rl_text_has(cast(string) v[0].jout[0..<r], "\"with\"");
+  // another realm's rooms never answer for it
+  r = rm_rooms(v[..], "GET /api/playtest/rooms/my-fork?with=p-friend HTTP/1.1\r\n\r\n");
+  #assert rl_text_has(cast(string) v[0].jout[0..<r], "\"join\":\"my-fork-1\"") && !rl_text_has(cast(string) v[0].jout[0..<r], "\"with\"");
+  // their room full: the lowest with room
+  for i: 1..<16 {
+    n = tk_sign(key, "p-other", false, "", "everglade-3", 1000000, -1, b[..]);
+    k = put(req[..], 0, "GET /api/room/relay/everglade/everglade-3?t="); k = put(req[..], k, cast(string) b[0..<n]); k = put(req[..], k, " HTTP/1.1\r\n\r\n");
+    #assert rm_join(v[..], i, cast(string) req[0..<k]) == i;
+  }
+  r = rm_rooms(v[..], "GET /api/playtest/rooms/everglade?with=p-friend HTTP/1.1\r\n\r\n");
+  #assert rl_text_has(cast(string) v[0].jout[0..<r], "\"join\":\"everglade-1\"") && !rl_text_has(cast(string) v[0].jout[0..<r], "\"with\"");
+}
+rl_text_has :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
 }
