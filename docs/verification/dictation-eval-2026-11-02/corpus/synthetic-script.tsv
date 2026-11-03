@@ -1,0 +1,25 @@
+# Synthetic code-term speech (GitHub #12665). SYNTHETIC: espeak-ng 1.52.0.1
+# (nixpkgs, /nix/store/x96g8l6b8wyaqxdwm5868hjv6cl5nv6j-espeak-ng-1.52.0.1-unstable-2025-09-09),
+# formant synthesis, never a person's voice. Scored apart from human speech.
+# One line per sentence: ID<TAB>the spoken words (also the reference)<TAB>terms checked for recall.
+# Each sentence is spoken by two voices: en-us and en-gb-scotland.
+s01	Open the file voice dot coax and run the checks.	coax
+s02	Psionic runs Parakeet on the GPU.	psionic parakeet gpu
+s03	Call cd submit after the draft is ready.	submit draft
+s04	The Coax compiler emits C eleven.	coax compiler
+s05	Aethyr is the engine every realm runs on.	aethyr realm
+s06	Push the commit to main and rebase on origin main.	commit rebase origin
+s07	Set the timeout to two hundred milliseconds.	timeout milliseconds
+s08	The model has six hundred million parameters.	parameters
+s09	Christopher asked Zeron to review pull request twelve six six five.	christopher zeron
+s10	Open agents dictate prints the final text.	dictate
+s11	Use snake case user id in the struct.	struct
+s12	Run coax mutate with zero survivors.	coax mutate survivors
+s13	The real time factor is zero point zero zero nine two.	factor
+s14	Lightning invoices settle in bitcoin.	lightning bitcoin
+s15	Nostr events are signed with Schnorr signatures.	nostr schnorr
+s16	CUDA kernels run on the RTX forty eighty.	cuda kernels rtx
+s17	Hex keeps a four hundred fifty millisecond pre roll.	hex
+s18	Merge the branch and tag version three point two.	merge branch version
+s19	Kubernetes, JSON and WebGPU are on the list.	kubernetes json webgpu
+s20	Send the email to Alice and Bob at nine thirty.	alice bob

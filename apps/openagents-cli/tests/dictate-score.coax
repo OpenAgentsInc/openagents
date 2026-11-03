@@ -1,0 +1,596 @@
+// Dictation evaluation (GitHub #12665): corpus check, runs, scores and gates.
+// Run from the repository root after apps/openagents-cli/build.sh (and
+// verse/voice-host/build.sh for the voice host's latency):
+//   coax/web/tool.sh apps/openagents-cli/tests/dictate-score.coax corpus
+//       verify the frozen corpus against its pinned hashes
+//   coax/web/tool.sh apps/openagents-cli/tests/dictate-score.coax run DIR STEP...
+//       build the runner and run steps into DIR: gen release press noise seam snr
+//       startup (3 processes x 3 opens) voicehost (the voice host's
+//       turn-end latency, 10 turns per fixture)
+//   coax/web/tool.sh apps/openagents-cli/tests/dictate-score.coax score DIR
+//       score DIR's raw records, print the tables, write DIR/record.json and
+//       exit 1 when a gate is crossed
+// The model is OPENAGENTS_PARAKEET_MODEL or the pinned cache path; the corpus
+// directory is OPENAGENTS_DICTATION_CORPUS or
+// ~/.cache/openagents/corpus/dictation-12665. Each step is one process with
+// a 14-minute limit. PSIONIC_PARAKEET_LIB selects another build of
+// libpsionic-parakeet.a (default psionic/build/parakeet/, from
+// apps/openagents-cli/build.sh). Recorded audio only: no microphone, no sound.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/crypto/sha256-kernel.coax";
+
+RELS :: [6] int.[-300, -200, -100, 0, 100, 200];
+PRES :: [6] int.[0, 100, 200, 300, 450, 600];
+CORPUS_TSV :: "docs/verification/dictation-eval-2026-11-02/corpus/corpus.tsv";
+
+// ---- gates, measured on coderos-4080 (RTX 4080) on 2026-11-02 ----
+// Each is the measured value, with room for this shared machine's load for
+// the timings; crossing one fails the score step. The record
+// (docs/verification/dictation-eval-2026-11-02/README.md) gives the basis.
+GATE_WER_CLEAN :: 4.0;          // % word errors, LibriSpeech test-clean speakers + chapter 153's 4 clips (measured 3.23)
+GATE_WER_OTHER :: 5.0;          // % word errors, LibriSpeech test-other speakers (3.78)
+GATE_WER_SNR10 :: 5.0;          // % word errors, 10 clean clips in white noise at 10 dB SNR (3.69)
+GATE_NOISE_FINALS :: 1;         // no-speech dictations that produce text (1 of 21: "Uh" from white noise at -40 dBFS)
+GATE_LAST_WORD :: 97.0;         // % of clips whose last word is exact, released 0..+200 ms after speech (98.81)
+GATE_LAST_DROPPED :: 0;         // last words missing (deletions, not substitutions), released 0..+200 ms (0)
+GATE_FIRST_WORD :: 97.0;        // % of clips whose first word is exact, pressed 0..+300 ms late (98.31)
+GATE_FIRST_DROPPED :: 1;        // first words missing, pressed 0..+300 ms late (1: "Every one" read as "Everyone")
+GATE_SEAM_EXTRA :: 9;           // word errors near seams beyond pause-split recognition, all 7 seams (9: a known defect)
+GATE_STOP_P99_MS :: 600;        // ms, stop (after the 200 ms tail) to final text, dictations of one call, p99 (302-467)
+GATE_LONG_P99_MS :: 1000;       // ms, the same for the 30-58 s dictations (2-3 calls), p99 (570)
+GATE_OPEN_P50_MS :: 12000;      // ms, model open in a new process, p50 (3,472 at load 20; 9,043 at load 38)
+GATE_TURN_P99_MS :: 400;        // ms, voice host turn end to transcript, p99
+
+Text :: struct { b: [65536] u8; n: int; }
+t_add :: (t: [] Text, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+t_int :: (t: [] Text, value: int) {
+  v := value; if v < 0 { t_add(t, "-"); v = -v; }
+  d: [24] u8; k := 0;
+  while true { d[k] = cast(u8) ('0' + v % 10); k += 1; v /= 10; if v == 0 { break; } }
+  for i: 0..<k { t_add(t, cast(string) d[k - 1 - i..<k - i]); }
+}
+// A value in hundredths, as "12.34".
+t_fix :: (t: [] Text, hundredths: int) {
+  v := hundredths; if v < 0 { t_add(t, "-"); v = -v; }
+  t_int(t, v / 100); t_add(t, "."); if v % 100 < 10 { t_add(t, "0"); } t_int(t, v % 100);
+}
+t_str :: (t: [] Text) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+
+field :: (line: string, k: int) -> string {
+  i := 0; at := 0;
+  while at < k && i < line.count { if line[i] == '\t' { at += 1; } i += 1; }
+  if at < k { return ""; }
+  j := i; while j < line.count && line[j] != '\t' { j += 1; }
+  return line[i..<j];
+}
+num :: (s: string) -> int {
+  v := 0; neg := false; i := 0;
+  if s.count > 0 && s[0] == '-' { neg = true; i = 1; }
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(int) (s[i] - '0'); i += 1; }
+  return ifx neg then -v else v;
+}
+starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+contains :: (hay: string, needle: string) -> bool {
+  i := 0; while i + needle.count <= hay.count { if hay[i..<i + needle.count] == needle { return true; } i += 1; }
+  return false;
+}
+#test "fields and numbers" {
+  #assert field("a\tb\t-12", 2) == "-12" && num("-12") == -12 && num("40x") == 40 && field("a", 1) == "";
+}
+
+// ---- words, normalized the same way for references and hypotheses ----
+// ASCII letters are lowercased; letters, digits, apostrophes and every
+// non-ASCII byte are kept; anything else separates words. Numbers are not
+// spelled out, so "25" against "twenty five" counts as errors.
+MAXW :: 600;
+Words :: struct { buf: [12000] u8; n: int; at: [MAXW] int; len: [MAXW] int; count: int; }
+words_of :: (text: string, w: [] Words) {
+  w[0].n = 0; w[0].count = 0; inword := false;
+  for c: text {
+    keep := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '\'' || c >= 128;
+    if keep && w[0].n < 12000 {
+      if !inword { if w[0].count >= MAXW { break; } w[0].at[w[0].count] = w[0].n; w[0].len[w[0].count] = 0; w[0].count += 1; inword = true; }
+      w[0].buf[w[0].n] = ifx c >= 'A' && c <= 'Z' then c + 32 else c; w[0].n += 1; w[0].len[w[0].count - 1] += 1;
+    } else { inword = false; }
+  }
+}
+word :: (w: [] Words, i: int) -> string { return cast(string) w[0].buf[w[0].at[i]..<w[0].at[i] + w[0].len[i]]; }
+#test "normalization lowercases and splits on punctuation" {
+  w: [1] Words; words_of("Hello, Foreman. What's 25-30?", w[..]);
+  #assert w[0].count == 5 && word(w[..], 0) == "hello" && word(w[..], 2) == "what's" && word(w[..], 3) == "25" && word(w[..], 4) == "30";
+}
+
+// Word alignment (Levenshtein, unit costs) with its path: for each step
+// the operation (0 hit, 1 substitution, 2 deletion, 3 insertion) and the
+// reference position it touches.
+Align :: struct { sub: int; del: int; ins: int; refn: int; ops: [1300] int; ref_at: [1300] int; hyp_at: [1300] int; n: int; }
+DP :: struct { d: [(MAXW + 1) * (MAXW + 1)] int; }
+align :: (r: [] Words, h: [] Words, a: [] Align, dp: [] DP) {
+  R := r[0].count; H := h[0].count; W := H + 1;
+  for i: 0..<R + 1 { for j: 0..<H + 1 {
+    v := 0;
+    if i == 0 { v = j; } else if j == 0 { v = i; } else {
+      v = dp[0].d[(i - 1) * W + j - 1] + ifx word(r, i - 1) == word(h, j - 1) then 0 else 1;
+      x := dp[0].d[(i - 1) * W + j] + 1; if x < v { v = x; }
+      y := dp[0].d[i * W + j - 1] + 1; if y < v { v = y; }
+    }
+    dp[0].d[i * W + j] = v;
+  } }
+  a[0].sub = 0; a[0].del = 0; a[0].ins = 0; a[0].refn = R; a[0].n = 0;
+  i := R; j := H; rev: [1300] int; ra: [1300] int; ha: [1300] int; n := 0;
+  while i > 0 || j > 0 {
+    op := 0;
+    if i > 0 && j > 0 && dp[0].d[i * W + j] == dp[0].d[(i - 1) * W + j - 1] + (ifx word(r, i - 1) == word(h, j - 1) then 0 else 1) {
+      op = ifx word(r, i - 1) == word(h, j - 1) then 0 else 1; i -= 1; j -= 1;
+    } else if i > 0 && dp[0].d[i * W + j] == dp[0].d[(i - 1) * W + j] + 1 { op = 2; i -= 1; }
+    else { op = 3; j -= 1; }
+    rev[n] = op; ra[n] = i; ha[n] = j; n += 1;
+    if op == 1 { a[0].sub += 1; } if op == 2 { a[0].del += 1; } if op == 3 { a[0].ins += 1; }
+  }
+  for k: 0..<n { a[0].ops[k] = rev[n - 1 - k]; a[0].ref_at[k] = ra[n - 1 - k]; a[0].hyp_at[k] = ha[n - 1 - k]; }
+  a[0].n = n;
+}
+errors :: (a: [] Align) -> int { return a[0].sub + a[0].del + a[0].ins; }
+// Whether reference word i was recognized exactly.
+hit :: (a: [] Align, i: int) -> bool { for k: 0..<a[0].n { if a[0].ref_at[k] == i && a[0].ops[k] != 3 { return a[0].ops[k] == 0; } } return false; }
+// Whether reference word i is missing from the hypothesis (a deletion, not a substitution).
+dropped :: (a: [] Align, i: int) -> bool { for k: 0..<a[0].n { if a[0].ref_at[k] == i && a[0].ops[k] != 3 { return a[0].ops[k] == 2; } } return false; }
+#test "alignment counts substitutions deletions insertions and hits" {
+  r: [1] Words; h: [1] Words; a: [1] Align; dp: [1] DP;
+  words_of("the cat sat on the mat", r[..]); words_of("the cat sit on on the", h[..]); align(r[..], h[..], a[..], dp[..]);
+  #assert errors(a[..]) == 3 && hit(a[..], 0) && !hit(a[..], 2) && !hit(a[..], 5) && !dropped(a[..], 2);
+  words_of("so a b c d", r[..]); words_of("a b x", h[..]); align(r[..], h[..], a[..], dp[..]);
+  #assert dropped(a[..], 0) && !dropped(a[..], 1) && hit(a[..], 1) && errors(a[..]) == 3;
+  words_of("a b c", r[..]); words_of("", h[..]); align(r[..], h[..], a[..], dp[..]);
+  #assert a[0].del == 3 && !hit(a[..], 0) && dropped(a[..], 0);
+}
+// Character edit distance over the normalized words joined by single spaces.
+cer_chars :: (w: [] Words, out: [] u8) -> int {
+  n := 0;
+  for i: 0..<w[0].count { if i > 0 { out[n] = ' '; n += 1; } for c: word(w, i) { out[n] = c; n += 1; } }
+  return n;
+}
+Chars :: struct { a: [12000] u8; b: [12000] u8; row0: [12001] int; row1: [12001] int; }
+cer_errors :: (r: [] Words, h: [] Words, c: [] Chars) -> int {
+  n := cer_chars(r, c[0].a[..]); m := cer_chars(h, c[0].b[..]);
+  for j: 0..<m + 1 { c[0].row0[j] = j; }
+  for i: 1..<n + 1 {
+    c[0].row1[0] = i;
+    for j: 1..<m + 1 {
+      v := c[0].row0[j - 1] + ifx c[0].a[i - 1] == c[0].b[j - 1] then 0 else 1;
+      x := c[0].row0[j] + 1; if x < v { v = x; } y := c[0].row1[j - 1] + 1; if y < v { v = y; }
+      c[0].row1[j] = v;
+    }
+    for j: 0..<m + 1 { c[0].row0[j] = c[0].row1[j]; }
+  }
+  return c[0].row0[m];
+}
+#test "character errors" {
+  r: [1] Words; h: [1] Words; c: [1] Chars;
+  words_of("abc de", r[..]); words_of("abd de", h[..]); #assert cer_errors(r[..], h[..], c[..]) == 1;
+  words_of("abc", r[..]); words_of("", h[..]); #assert cer_errors(r[..], h[..], c[..]) == 3;
+}
+
+// ---- percentiles (nearest rank: p99 of fewer than 100 values is the largest) ----
+Series :: struct { v: [4000] int; n: int; }
+s_add :: (s: [] Series, x: int) { if s[0].n < 4000 { s[0].v[s[0].n] = x; s[0].n += 1; } }
+pct :: (s: [] Series, p: int) -> int {
+  if s[0].n == 0 { return -1; }
+  for i: 1..<s[0].n { x := s[0].v[i]; j := i; while j > 0 && s[0].v[j - 1] > x { s[0].v[j] = s[0].v[j - 1]; j -= 1; } s[0].v[j] = x; }
+  k := (p * s[0].n + 99) / 100; if k < 1 { k = 1; }
+  return s[0].v[k - 1];
+}
+#test "nearest-rank percentiles" {
+  s: [1] Series; for x: [5] int.[50, 10, 40, 20, 30] { s_add(s[..], x); }
+  #assert pct(s[..], 50) == 30 && pct(s[..], 99) == 50 && pct(s[..], 1) == 10;
+  e: [1] Series; #assert pct(e[..], 50) == -1;
+}
+
+// ---- gates ----
+Gates :: struct { lines: [1] Text; crossed: int; }
+gate :: (g: [] Gates, name: string, value_hundredths: int, limit_hundredths: int, upper: bool) {
+  ok := ifx upper then value_hundredths <= limit_hundredths else value_hundredths >= limit_hundredths;
+  if !ok { g[0].crossed += 1; }
+  t_add(g[0].lines[..], ifx ok then "pass  " else "FAIL  "); t_add(g[0].lines[..], name); t_add(g[0].lines[..], ": ");
+  t_fix(g[0].lines[..], value_hundredths); t_add(g[0].lines[..], ifx upper then " <= " else " >= "); t_fix(g[0].lines[..], limit_hundredths); t_add(g[0].lines[..], "\n");
+}
+#test "gates fail only when crossed" {
+  g: [1] Gates; gate(g[..], "a", 100, 100, true); gate(g[..], "b", 99, 100, false); gate(g[..], "c", 101, 100, true);
+  #assert g[0].crossed == 2;
+}
+
+// ---- the corpus ----
+Corpus :: struct { text: [400000] u8; n: int; lines: [400] string; count: int; }
+corpus_load :: (c: [] Corpus) -> bool {
+  c[0].n = fs_read(CORPUS_TSV, c[0].text[..]); if c[0].n <= 0 { return false; }
+  t := cast(string) c[0].text[0..<c[0].n]; i := 0; c[0].count = 0;
+  while i < c[0].n {
+    j := i; while j < c[0].n && t[j] != '\n' { j += 1; }
+    if j > i && t[i] != '#' && c[0].count < 400 { c[0].lines[c[0].count] = t[i..<j]; c[0].count += 1; }
+    i = j + 1;
+  }
+  return c[0].count > 0;
+}
+corpus_dir :: (out: [] u8) -> string {
+  e: [1024] u8; s := proc_getenv("OPENAGENTS_DICTATION_CORPUS", e[..]);
+  t: [1] Text;
+  if s != "" { t_add(t[..], s); } else { h: [1024] u8; t_add(t[..], proc_getenv("HOME", h[..])); t_add(t[..], "/.cache/openagents/corpus/dictation-12665"); }
+  for i: 0..<t[0].n { out[i] = t[0].b[i]; }
+  return cast(string) out[0..<t[0].n];
+}
+model_dir :: (out: [] u8) -> string {
+  e: [1024] u8; s := proc_getenv("OPENAGENTS_PARAKEET_MODEL", e[..]);
+  t: [1] Text;
+  if s != "" { t_add(t[..], s); } else { h: [1024] u8; t_add(t[..], proc_getenv("HOME", h[..])); t_add(t[..], "/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99"); }
+  for i: 0..<t[0].n { out[i] = t[0].b[i]; }
+  return cast(string) out[0..<t[0].n];
+}
+verify_corpus :: () -> int {
+  c: [1] Corpus; if !corpus_load(c[..]) { tool_errln("cannot read the corpus manifest"); return 2; }
+  cd: [1024] u8; dir := corpus_dir(cd[..]);
+  bad := 0; total := 0; file: [4000000] u8;
+  for k: 0..<c[0].count {
+    line := c[0].lines[k]; f := field(line, 3); p: [1] Text;
+    if starts(f, "corpus:") { t_add(p[..], dir); t_add(p[..], "/"); t_add(p[..], f[7..<f.count]); } else { t_add(p[..], f[5..<f.count]); }
+    n := fs_read(t_str(p[..]), file[..]); hex: [64] u8;
+    ok := n > 0 && S_hex(S_hash(cast(string) file[0..<n]), hex[..]) && cast(string) hex[..] == field(line, 5);
+    if !ok { bad += 1; tool_err("hash mismatch or missing: "); tool_errln(t_str(p[..])); }
+    total += num(field(line, 4));
+  }
+  print("corpus dictation-eval-v1: % clips, % s of audio, % mismatched\n", c[0].count, total / 16000, bad);
+  return ifx bad == 0 then 0 else 1;
+}
+
+// ---- running ----
+run_step :: (argv: [] string, what: string, limit_ms: int) -> bool {
+  out: [65536] u8; err: [65536] u8;
+  t0 := proc_now_ms();
+  r := proc_run(argv, limit_ms, out[..], err[..]);
+  ok := r.started == 0 && !r.timed_out && r.status == 0;
+  print("% %: % s\n", ifx ok then "ran " else "FAIL", what, (proc_now_ms() - t0) / 1000);
+  if !ok { tool_errln(cast(string) err[0..<r.err_n]); }
+  return ok;
+}
+// Generated C to a file: `coax c` writes it on stdout.
+gen_c :: (args: [] string, path: string) -> bool {
+  out: [16000000] u8; err: [65536] u8;
+  r := proc_run(args, 600000, out[..], err[..]);
+  if r.started != 0 || r.timed_out || r.status != 0 { tool_errln(cast(string) err[0..<r.err_n]); return false; }
+  return fs_write(path, cast(string) out[0..<r.out_n]);
+}
+cat2 :: (p: [] Text, a: string, b: string) -> string { p[0].n = 0; t_add(p, a); t_add(p, b); return t_str(p); }
+build_runner :: (dir: string) -> bool {
+  p: [8] [1] Text;
+  cb: [1024] u8; coax := proc_getenv("COAX", cb[..]); if coax == "" { coax = "coax/bin/coax"; }
+  lb: [1024] u8; lib := proc_getenv("PSIONIC_PARAKEET_LIB", lb[..]); if lib == "" { lib = "psionic/build/parakeet/libpsionic-parakeet.a"; }
+  eval_c := cat2(p[0][..], dir, "/dictate-eval.c"); dct_c := cat2(p[1][..], dir, "/dictation.c"); dct_h := cat2(p[2][..], dir, "/dictation.h");
+  ent_c := cat2(p[3][..], dir, "/entropy.c"); ent_h := cat2(p[4][..], dir, "/entropy-policy.h"); bin := cat2(p[5][..], dir, "/dictate-eval");
+  inc := cat2(p[6][..], "-I", dir);
+  a1 := [4] string.[coax, "c", "apps/openagents-cli/tests/dictate-eval.coax", "--library"];
+  a2 := [6] string.[coax, "c", "apps/shared/dictation.coax", "--library", "--header", dct_h];
+  a3 := [6] string.[coax, "c", "coax/lib/crypto/entropy.coax", "--library", "--header", ent_h];
+  if !gen_c(a1[..], eval_c) || !gen_c(a2[..], dct_c) || !gen_c(a3[..], ent_c) { return false; }
+  cc := [26] string.["cc", "-std=c11", "-O2", "-D_DEFAULT_SOURCE", "-DPSIONIC_PARAKEET_CUDA", inc, "-Icoax/platform", "-Ipsionic/platform", "-o", bin,
+    eval_c, "apps/openagents-cli/cli-native.c", "apps/openagents-cli/tests/dictate-eval-native.c", dct_c,
+    "coax/platform/tool-native.c", "coax/platform/process-native.c", "coax/platform/store-file-native.c", "coax/platform/entropy-native.c", "coax/platform/entropy-foreign.c", ent_c,
+    lib, "-Wl,--wrap=pkrt_open", "-ldl", "-lpthread", "-lm", "-w"];
+  return run_step(cc[..], "build the runner", 600000);
+}
+voicehost :: (dir: string) -> bool {
+  hostbin := "verse/voice-host/build/voice-host"; clientbin := "verse/voice-host/build/voice-client";
+  if !fs_exists(hostbin) || !fs_exists(clientbin) { tool_errln("build first: verse/voice-host/build.sh"); return false; }
+  mb: [1024] u8; model := model_dir(mb[..]);
+  h := proc_new();
+  hargs := [14] string.[hostbin, "--listen", "127.0.0.1:0", "--recognizer", "parakeet", "--synthesizer", "local",
+                        "--agent", "echo", "--parakeet-model", model, "--verbose", "--max-speakers", "64"];
+  for x: hargs { ok := proc_arg(h, x); }
+  if proc_start(h) != 0 { tool_errln("cannot start voice-host"); return false; }
+  line: [4096] u8; n := proc_line(h, 240000, line[..]);
+  if n < 0 { tool_errln("voice-host did not start"); d := proc_release(h); return false; }
+  l := cast(string) line[0..<n]; port := 0; i := 0;
+  while i + 10 <= l.count { if l[i..<i + 10] == "127.0.0.1:" { port = num(l[i + 10..<l.count]); } i += 1; }
+  url: [1] Text; t_add(url[..], "ws://127.0.0.1:"); t_int(url[..], port); t_add(url[..], "/");
+  rec: [1] Text;
+  names := [4] string.["hello-foreman", "build-red-house", "garden-pause", "wait-stop"];
+  texts := [4] string.["Hello Foreman. What are we building today?", "Build a small red house next to a tall tree.", "Let's take the long way through the garden, then pick a door.", "Wait, stop."];
+  for k: 0..<4 {
+    fb: [1] Text; t_add(fb[..], "verse/voice-host/fixtures/"); t_add(fb[..], names[k]); t_add(fb[..], ".wav");
+    for rep: 0..<10 {
+      argv := [11] string.["verse/voice-host/build/voice-client", "--url", t_str(url[..]), "--hold", "--aethyr", "--timeout", "600", "--exact", texts[k], "--quiet", t_str(fb[..])];
+      out: [262144] u8; err: [65536] u8;
+      r := proc_run(argv[..], 120000, out[..], err[..]);
+      o := cast(string) out[0..<r.out_n];
+      ms := -1; at := 0;
+      while at + 17 <= o.count { if o[at..<at + 17] == "latency final_ms=" { ms = num(o[at + 17..<o.count]); } at += 1; }
+      t_add(rec[..], "turn\t"); t_add(rec[..], names[k]); t_add(rec[..], "\t"); t_int(rec[..], rep); t_add(rec[..], "\t");
+      t_add(rec[..], ifx contains(o, "exact match") then "exact" else "different"); t_add(rec[..], "\t"); t_int(rec[..], ms); t_add(rec[..], "\n");
+      drain := proc_line(h, 300, line[..]);
+    }
+  }
+  k := proc_kill(h, 15); w := proc_wait(h, 10000); d := proc_release(h);
+  p: [1] Text; t_add(p[..], dir); t_add(p[..], "/voicehost.tsv");
+  return fs_write(t_str(p[..]), t_str(rec[..]));
+}
+run_main :: (a: [] Args) -> int {
+  dir := args_at(a, 1);
+  if !fs_exists(dir) { m := [3] string.["mkdir", "-p", dir]; if !run_step(m[..], "make the output directory", 10000) { return 3; } }
+  if !build_runner(dir) { return 3; }
+  mb: [1024] u8; model := model_dir(mb[..]); cb: [1024] u8; corpus := corpus_dir(cb[..]);
+  bin: [1] Text; t_add(bin[..], dir); t_add(bin[..], "/dictate-eval");
+  for s: 2..<args_count(a) {
+    step := args_at(a, s);
+    if step == "voicehost" { if !voicehost(dir) { return 3; } print("ran  voicehost\n"); continue; }
+    reps := ifx step == "startup" then 3 else 1;
+    for rep: 0..<reps {
+      out: [1] Text; t_add(out[..], dir); t_add(out[..], "/"); t_add(out[..], step); if reps > 1 { t_add(out[..], "-"); t_int(out[..], rep); } t_add(out[..], ".tsv");
+      argv := [6] string.[t_str(bin[..]), step, model, corpus, CORPUS_TSV, t_str(out[..])];
+      if !run_step(argv[..], step, 840000) { return 3; }
+    }
+  }
+  return 0;
+}
+
+// ---- scoring ----
+Raw :: struct { text: [3000000] u8; n: int; }
+raw_load :: (dir: string, name: string, r: [] Raw) -> string {
+  p: [1] Text; t_add(p[..], dir); t_add(p[..], "/"); t_add(p[..], name);
+  r[0].n = fs_read(t_str(p[..]), r[0].text[..]);
+  return ifx r[0].n > 0 then cast(string) r[0].text[0..<r[0].n] else "";
+}
+next_line :: (t: string, at: [] int) -> string {
+  i := at[0]; if i >= t.count { return ""; }
+  j := i; while j < t.count && t[j] != '\n' { j += 1; }
+  at[0] = j + 1; return t[i..<j];
+}
+reference_of :: (c: [] Corpus, id: string) -> string {
+  for k: 0..<c[0].count { if field(c[0].lines[k], 0) == id { return field(c[0].lines[k], 6); } }
+  return "";
+}
+set_of :: (c: [] Corpus, id: string) -> string {
+  for k: 0..<c[0].count { if field(c[0].lines[k], 0) == id { return field(c[0].lines[k], 1); } }
+  return "";
+}
+Tally :: struct { words: int; errors: int; chars: int; char_errors: int; clips: int; exact: int; }
+Score :: struct { r: [1] Words; h: [1] Words; a: [1] Align; dp: [1] DP; c: [1] Chars; }
+tally :: (s: [] Score, t: [] Tally, reference: string, hyp: string) {
+  words_of(reference, s[0].r[..]); words_of(hyp, s[0].h[..]); align(s[0].r[..], s[0].h[..], s[0].a[..], s[0].dp[..]);
+  e := errors(s[0].a[..]);
+  t[0].words += s[0].r[0].count; t[0].errors += e; t[0].clips += 1; if e == 0 { t[0].exact += 1; }
+  cn := cer_chars(s[0].r[..], s[0].c[0].a[..]); t[0].chars += cn; t[0].char_errors += cer_errors(s[0].r[..], s[0].h[..], s[0].c[..]);
+}
+rate :: (bad: int, total: int) -> int { return ifx total > 0 then (bad * 10000 + total / 2) / total else 0; }
+report_tally :: (o: [] Text, name: string, t: Tally) {
+  t_add(o, "| "); t_add(o, name); t_add(o, " | "); t_int(o, t.clips); t_add(o, " | "); t_int(o, t.words); t_add(o, " | ");
+  t_fix(o, rate(t.errors, t.words)); t_add(o, " | "); t_fix(o, rate(t.char_errors, t.chars)); t_add(o, " | "); t_int(o, t.exact); t_add(o, " |\n");
+}
+report_series :: (o: [] Text, name: string, s: [] Series, scale: int) {
+  t_add(o, "| "); t_add(o, name); t_add(o, " | "); t_int(o, s[0].n); t_add(o, " | ");
+  p50 := pct(s, 50); p99 := pct(s, 99);
+  t_fix(o, p50 * 100 / scale); t_add(o, " | "); t_fix(o, p99 * 100 / scale); t_add(o, " |\n");
+}
+
+score_main :: (dir: string) -> int {
+  c: [1] Corpus; if !corpus_load(c[..]) { tool_errln("cannot read the corpus manifest"); return 2; }
+  // gen.tsv stays loaded (later steps compare against it); each other record reuses raw.
+  o: [1] Text; g: [1] Gates; s: [1] Score; raw: [1] Raw; graw: [1] Raw; praw: [1] Raw;
+  // Quality on generously held dictations.
+  tal: [8] Tally; names := [8] string.["LibriSpeech test-clean (40 speakers) + ch.153 (4)", "LibriSpeech test-other (33 speakers)", "short utterances (<= 3 words)", "FLEURS en (1)", "numbers (LibriSpeech, tagged)", "synthetic code terms (espeak-ng, 2 voices)", "synthetic short (repo fixtures)", "seam rows, each alone"];
+  gen := raw_load(dir, "gen.tsv", graw[..]); at: [1] int;
+  terms_total := 0; terms_hit := 0;
+  while true {
+    line := next_line(gen, at[..]); if line.count == 0 && at[0] >= gen.count { break; }
+    if field(line, 0) != "gen" { continue; }
+    id := field(line, 1); set := set_of(c[..], id); ref := reference_of(c[..], id); hyp := field(line, 16);
+    tags := ""; for k: 0..<c[0].count { if field(c[0].lines[k], 0) == id { tags = field(c[0].lines[k], 2); } }
+    k := -1;
+    if set == "clean-speaker" || set == "nemo-librispeech" { k = 0; }
+    if set == "other-speaker" { k = 1; } if set == "short" { k = 2; } if set == "nemo-fleurs" && tags == "lang=en" { k = 3; }
+    if set == "synthetic-code" { k = 5; } if set == "synthetic-short" { k = 6; } if starts(set, "seam-") { k = 7; }
+    if k >= 0 { tally(s[..], tal[k..<k + 1], ref, hyp); }
+    if contains(tags, "number") { tally(s[..], tal[4..<5], ref, hyp); }
+    if set == "synthetic-code" {
+      tw: [1] Words; i := 0; while i < tags.count && !starts(tags[i..<tags.count], "terms=") { i += 1; }
+      list: [512] u8; ln := 0; for ch: tags[ifx i + 6 <= tags.count then i + 6 else tags.count..<tags.count] { list[ln] = ifx ch == '+' then ' ' else ch; ln += 1; }
+      words_of(cast(string) list[0..<ln], tw[..]); hw: [1] Words; words_of(hyp, hw[..]);
+      for x: 0..<tw[0].count { terms_total += 1; for y: 0..<hw[0].count { if word(tw[..], x) == word(hw[..], y) { terms_hit += 1; break; } } }
+    }
+  }
+  t_add(o[..], "## Quality (held 300 ms before speech to 200 ms after; GPU)\n\n| Set | Clips | Words | WER % | CER % | Exact clips |\n| --- | ---: | ---: | ---: | ---: | ---: |\n");
+  for k: 0..<8 { report_tally(o[..], names[k], tal[k]); }
+  t_add(o[..], "\nSynthetic term recall: "); t_int(o[..], terms_hit); t_add(o[..], " of "); t_int(o[..], terms_total); t_add(o[..], " terms spelled exactly (normalized).\n");
+  gate(g[..], "WER test-clean speakers + ch.153 (%)", rate(tal[0].errors, tal[0].words), int(GATE_WER_CLEAN * 100), true);
+  gate(g[..], "WER test-other speakers (%)", rate(tal[1].errors, tal[1].words), int(GATE_WER_OTHER * 100), true);
+
+  // Speech in white noise.
+  snr := raw_load(dir, "snr.tsv", raw[..]); at[0] = 0; st: [2] Tally;
+  while true {
+    line := next_line(snr, at[..]); if line.count == 0 && at[0] >= snr.count { break; }
+    if field(line, 0) != "snr" { continue; }
+    k := ifx field(line, 2) == "snr10" then 0 else 1;
+    tally(s[..], st[k..<k + 1], reference_of(c[..], field(line, 1)), field(line, 16));
+  }
+  t_add(o[..], "\n## Speech in white noise (10 test-clean clips)\n\n| Set | Clips | Words | WER % | CER % | Exact clips |\n| --- | ---: | ---: | ---: | ---: | ---: |\n");
+  report_tally(o[..], "SNR 10 dB", st[0]); report_tally(o[..], "SNR 0 dB", st[1]);
+  if st[0].clips > 0 { gate(g[..], "WER at 10 dB SNR (%)", rate(st[0].errors, st[0].words), int(GATE_WER_SNR10 * 100), true); }
+
+  // No speech.
+  noise := raw_load(dir, "noise.tsv", raw[..]); at[0] = 0;
+  admitted := 0; finals := 0; signals := 0; raw_text := 0; raw_n := 0;
+  nt: [1] Text;
+  while true {
+    line := next_line(noise, at[..]); if line.count == 0 && at[0] >= noise.count { break; }
+    kind := field(line, 0);
+    if kind == "noise" { signals += 1; if field(line, 7) != "0" { admitted += 1; } if field(line, 5) == "final" && field(line, 16) != "" { finals += 1; t_add(nt[..], field(line, 2)); t_add(nt[..], ": \""); t_add(nt[..], field(line, 16)); t_add(nt[..], "\"; "); } }
+    if kind == "raw" { raw_n += 1; if field(line, 16) != "" { raw_text += 1; t_add(nt[..], "raw "); t_add(nt[..], field(line, 2)); t_add(nt[..], ": \""); t_add(nt[..], field(line, 16)); t_add(nt[..], "\"; "); } }
+  }
+  t_add(o[..], "\n## No speech (3 s held; 7 signals x 3 seeds)\n\nThrough the controller: "); t_int(o[..], signals); t_add(o[..], " dictations, ");
+  t_int(o[..], admitted); t_add(o[..], " reached the model, "); t_int(o[..], finals); t_add(o[..], " produced text. Direct model calls without admission: ");
+  t_int(o[..], raw_text); t_add(o[..], " of "); t_int(o[..], raw_n); t_add(o[..], " produced text. "); t_add(o[..], t_str(nt[..])); t_add(o[..], "\n");
+  if signals > 0 { gate(g[..], "no-speech dictations that produce text", finals * 100, GATE_NOISE_FINALS * 100, true); }
+
+  // Boundaries: only clips whose generous dictation got the first and last words.
+  ok_first: [400] bool; ok_last: [400] bool; ids: [400] string; nid := 0; at[0] = 0;
+  while true {
+    line := next_line(gen, at[..]); if line.count == 0 && at[0] >= gen.count { break; }
+    if field(line, 0) != "gen" || nid >= 400 { continue; }
+    words_of(reference_of(c[..], field(line, 1)), s[0].r[..]); words_of(field(line, 16), s[0].h[..]); align(s[0].r[..], s[0].h[..], s[0].a[..], s[0].dp[..]);
+    ids[nid] = field(line, 1); ok_first[nid] = hit(s[0].a[..], 0); ok_last[nid] = hit(s[0].a[..], s[0].r[0].count - 1); nid += 1;
+  }
+  sweep_r := raw_load(dir, "release.tsv", raw[..]); sweep_p := raw_load(dir, "press.tsv", praw[..]);
+  rel_kept: [6] int; rel_n: [6] int; pre_kept: [6] int; pre_n: [6] int; rel_tap: [6] int; pre_tap: [6] int; rel_drop: [6] int; pre_drop: [6] int;
+  lost: [1] Text;
+  stop: [1] Series; long: [1] Series; front: [1] Series; enc: [1] Series; dec: [1] Series; infer: [1] Series;
+  for part: 0..<2 {
+   sweep := ifx part == 0 then sweep_r else sweep_p; at[0] = 0;
+   while true {
+    line := next_line(sweep, at[..]); if line.count == 0 && at[0] >= sweep.count { break; }
+    kind := field(line, 0); if kind != "release" && kind != "press" { continue; }
+    id := field(line, 1); e := -1; for k: 0..<nid { if ids[k] == id { e = k; } }
+    if e < 0 { continue; }
+    words_of(reference_of(c[..], id), s[0].r[..]); words_of(field(line, 16), s[0].h[..]); align(s[0].r[..], s[0].h[..], s[0].a[..], s[0].dp[..]);
+    if kind == "release" && ok_last[e] { d := num(field(line, 4)); for k: 0..<6 { if RELS[k] == d { rel_n[k] += 1; kept := hit(s[0].a[..], s[0].r[0].count - 1); if kept { rel_kept[k] += 1; } gone := dropped(s[0].a[..], s[0].r[0].count - 1); if gone { rel_drop[k] += 1; } if starts(field(line, 5), "no_speech") { rel_tap[k] += 1; }
+      if !kept && d >= 0 { t_add(lost[..], ifx gone then "DROPPED " else "changed "); t_add(lost[..], "release +"); t_int(lost[..], d); t_add(lost[..], " ms "); t_add(lost[..], id); t_add(lost[..], ": \""); t_add(lost[..], field(line, 16)); t_add(lost[..], "\"\n"); } } } }
+    if kind == "press" && ok_first[e] { d := num(field(line, 3)); for k: 0..<6 { if PRES[k] == d { pre_n[k] += 1; kept := hit(s[0].a[..], 0); if kept { pre_kept[k] += 1; } gone := dropped(s[0].a[..], 0); if gone { pre_drop[k] += 1; } if starts(field(line, 5), "no_speech") { pre_tap[k] += 1; }
+      if !kept && d <= 300 { t_add(lost[..], ifx gone then "DROPPED " else "changed "); t_add(lost[..], "press +"); t_int(lost[..], d); t_add(lost[..], " ms "); t_add(lost[..], id); t_add(lost[..], ": \""); t_add(lost[..], field(line, 16)); t_add(lost[..], "\"\n"); } } } }
+   }
+  }
+  t_add(o[..], "\n## Release offsets (pressed 300 ms before speech)\n\n| Release vs end of speech | Clips | Last word exact | % | Last word dropped | No speech |\n| ---: | ---: | ---: | ---: | ---: | ---: |\n");
+  for k: 0..<6 { t_add(o[..], "| "); t_int(o[..], RELS[k]); t_add(o[..], " ms | "); t_int(o[..], rel_n[k]); t_add(o[..], " | "); t_int(o[..], rel_kept[k]); t_add(o[..], " | "); t_fix(o[..], rate(rel_kept[k], rel_n[k])); t_add(o[..], " | "); t_int(o[..], rel_drop[k]); t_add(o[..], " | "); t_int(o[..], rel_tap[k]); t_add(o[..], " |\n"); }
+  t_add(o[..], "\n## Late presses (released at the end of speech)\n\n| Press vs start of speech | Clips | First word exact | % | First word dropped | No speech |\n| ---: | ---: | ---: | ---: | ---: | ---: |\n");
+  for k: 0..<6 { t_add(o[..], "| +"); t_int(o[..], PRES[k]); t_add(o[..], " ms | "); t_int(o[..], pre_n[k]); t_add(o[..], " | "); t_int(o[..], pre_kept[k]); t_add(o[..], " | "); t_fix(o[..], rate(pre_kept[k], pre_n[k])); t_add(o[..], " | "); t_int(o[..], pre_drop[k]); t_add(o[..], " | "); t_int(o[..], pre_tap[k]); t_add(o[..], " |\n"); }
+  if lost[0].n > 0 { t_add(o[..], "\nWords lost inside the supported timing (release 0..+200 ms, press up to +300 ms):\n\n```\n"); t_add(o[..], t_str(lost[..])); t_add(o[..], "```\n"); }
+  lk := 0; ln := 0; ld := 0; for k: 3..<6 { lk += rel_kept[k]; ln += rel_n[k]; ld += rel_drop[k]; }
+  fk := 0; fn := 0; fd := 0; for k: 0..<4 { fk += pre_kept[k]; fn += pre_n[k]; fd += pre_drop[k]; }
+  if ln > 0 {
+    gate(g[..], "last word exact, released 0..+200 ms (%)", rate(lk, ln), int(GATE_LAST_WORD * 100), false);
+    gate(g[..], "last words dropped, released 0..+200 ms", ld * 100, GATE_LAST_DROPPED * 100, true);
+  }
+  if fn > 0 {
+    gate(g[..], "first word exact, pressed 0..+300 ms late (%)", rate(fk, fn), int(GATE_FIRST_WORD * 100), false);
+    gate(g[..], "first words dropped, pressed 0..+300 ms late", fd * 100, GATE_FIRST_DROPPED * 100, true);
+  }
+
+  // Seams: each long dictation against its rows recognized alone (pause-split).
+  seam := raw_load(dir, "seam.tsv", raw[..]); at[0] = 0; seams := 0; extra_total := 0; loss := 0; dup := 0;
+  t_add(o[..], "\n## Seams (independent segments, not full-context recognition)\n\n| Dictation | Audio s | Segments | WER % joined | WER % pause-split | Errors near seams | Pause-split near seams |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+  base: [1] Text; refs: [1] Text; b: [1] Words; ba: [1] Align;
+  while true {
+    line := next_line(seam, at[..]); if line.count == 0 && at[0] >= seam.count { break; }
+    if field(line, 0) != "seam" { continue; }
+    group := field(line, 1); variant := field(line, 2);
+    used := num(variant[5..<variant.count]);
+    // the rows used, in corpus order, and their own generous results
+    refs[0].n = 0; base[0].n = 0; got := 0;
+    for k: 0..<c[0].count {
+      if field(c[0].lines[k], 1) != group || got >= used { continue; }
+      id := field(c[0].lines[k], 0); got += 1;
+      t_add(refs[..], field(c[0].lines[k], 6)); t_add(refs[..], " ");
+      ga: [1] int;
+      while true { gl := next_line(gen, ga[..]); if gl.count == 0 && ga[0] >= gen.count { break; } if field(gl, 0) == "gen" && field(gl, 1) == id { t_add(base[..], field(gl, 16)); t_add(base[..], " "); } }
+    }
+    words_of(t_str(refs[..]), s[0].r[..]); words_of(field(line, 16), s[0].h[..]); align(s[0].r[..], s[0].h[..], s[0].a[..], s[0].dp[..]);
+    words_of(t_str(base[..]), b[..]); align(s[0].r[..], b[..], ba[..], s[0].dp[..]);
+    // seam positions: hypothesis word counts at each segment join
+    segs := field(line, 17); near := 0; near_base := 0; joins := 0; hw := 0; i := 0; sw: [1] Words;
+    while i < segs.count {
+      j := i; while j + 2 < segs.count && segs[j..<j + 3] != " | " { j += 1; } if j + 2 >= segs.count { j = segs.count; }
+      words_of(segs[i..<j], sw[..]); hw += sw[0].count;
+      if j < segs.count {
+        joins += 1;
+        // the reference position the join falls at
+        rp := 0; for k: 0..<s[0].a[0].n { if s[0].a[0].hyp_at[k] < hw && s[0].a[0].ops[k] != 2 { rp = s[0].a[0].ref_at[k] + 1; } }
+        for k: 0..<s[0].a[0].n { if s[0].a[0].ops[k] != 0 && s[0].a[0].ref_at[k] >= rp - 3 && s[0].a[0].ref_at[k] < rp + 3 { near += 1; if s[0].a[0].ops[k] == 2 { loss += 1; } if s[0].a[0].ops[k] == 3 { dup += 1; } } }
+        for k: 0..<ba[0].n { if ba[0].ops[k] != 0 && ba[0].ref_at[k] >= rp - 3 && ba[0].ref_at[k] < rp + 3 { near_base += 1; } }
+      }
+      i = j + 3;
+    }
+    seams += joins; extra_total += near - near_base;
+    t_add(o[..], "| "); t_add(o[..], group); t_add(o[..], " | "); t_int(o[..], num(field(line, 6)) / 16000); t_add(o[..], " | "); t_add(o[..], field(line, 7)); t_add(o[..], " | ");
+    t_fix(o[..], rate(errors(s[0].a[..]), s[0].r[0].count)); t_add(o[..], " | "); t_fix(o[..], rate(errors(ba[..]), s[0].r[0].count)); t_add(o[..], " | ");
+    t_int(o[..], near); t_add(o[..], " | "); t_int(o[..], near_base); t_add(o[..], " |\n");
+    long_ms := num(field(line, 8)); s_add(long[..], long_ms);
+  }
+  t_add(o[..], "\nSeams: "); t_int(o[..], seams); t_add(o[..], "; errors within 3 reference words of a seam beyond the pause-split result: "); t_int(o[..], extra_total);
+  t_add(o[..], " (deletions near seams "); t_int(o[..], loss); t_add(o[..], ", insertions "); t_int(o[..], dup); t_add(o[..], ").\n");
+  if seams > 0 { gate(g[..], "seam errors beyond pause-split, all seams", extra_total * 100, GATE_SEAM_EXTRA * 100, true); }
+
+  // Timings: the generous dictations (one call each, up to 20.47 s).
+  at[0] = 0; buckets: [3] [1] Series; audio: [1] Series; calls := 0;
+  while true {
+    line := next_line(gen, at[..]); if line.count == 0 && at[0] >= gen.count { break; }
+    if field(line, 0) != "gen" || field(line, 5) != "final" { continue; }
+    wall := num(field(line, 8)); n := num(field(line, 9)); inf := num(field(line, 10)); en := num(field(line, 11)); de := num(field(line, 12)); samples := num(field(line, 6));
+    s_add(stop[..], wall); s_add(infer[..], inf); s_add(enc[..], en); s_add(dec[..], de); s_add(front[..], inf - en - de); s_add(audio[..], samples / 16);
+    k := ifx samples < 80000 then 0 else ifx samples < 160000 then 1 else 2; s_add(buckets[k][..], wall);
+    calls += n;
+  }
+  t_add(o[..], "\n## Timings (ms; p99 is nearest-rank, so with fewer than 100 values it is the largest)\n\n| Measure | n | p50 | p99 |\n| --- | ---: | ---: | ---: |\n");
+  stop_p99 := pct(stop[..], 99);
+  report_series(o[..], "audio length per dictation", audio[..], 1);
+  report_series(o[..], "stop to final text (after the tail), all clips", stop[..], 1000);
+  bn := [3] string.["  clips under 5 s", "  clips 5-10 s", "  clips 10-20.47 s"];
+  for k: 0..<3 { report_series(o[..], bn[k], buckets[k][..], 1000); }
+  report_series(o[..], "engine call (frontend + encoder + decoder + text)", infer[..], 1000);
+  report_series(o[..], "  CPU frontend and text", front[..], 1000);
+  report_series(o[..], "  CUDA encoder", enc[..], 1000);
+  report_series(o[..], "  CUDA TDT decoder", dec[..], 1000);
+  report_series(o[..], "stop to final text, 30-58 s dictations (2-3 calls)", long[..], 1000);
+  long_p99 := pct(long[..], 99);
+  gate(g[..], "stop to final text p99, clips <= 20.47 s (ms)", stop_p99 / 10, GATE_STOP_P99_MS * 100, true);
+  if long[0].n > 0 { gate(g[..], "stop to final text p99, 30-58 s (ms)", long_p99 / 10, GATE_LONG_P99_MS * 100, true); }
+
+  // Startup.
+  cold: [1] Series; warm: [1] Series; coax_open: [1] Series; compile: [1] Series; upload: [1] Series; close: [1] Series; rest: [1] Series;
+  for p: 0..<3 {
+    nm: [1] Text; t_add(nm[..], "startup-"); t_int(nm[..], p); t_add(nm[..], ".tsv");
+    sup := raw_load(dir, t_str(nm[..]), raw[..]); at[0] = 0;
+    while true {
+      line := next_line(sup, at[..]); if line.count == 0 && at[0] >= sup.count { break; }
+      if field(line, 0) != "open" || field(line, 2) != "0" { continue; }
+      us := num(field(line, 3));
+      if field(line, 1) == "0" { s_add(cold[..], us); } else { s_add(warm[..], us); }
+      s_add(coax_open[..], num(field(line, 4))); s_add(compile[..], num(field(line, 5))); s_add(upload[..], num(field(line, 6))); s_add(close[..], num(field(line, 8)));
+      s_add(rest[..], us - num(field(line, 4)) - num(field(line, 5)) - num(field(line, 6)));
+    }
+  }
+  report_series(o[..], "model open, first in a new process", cold[..], 1000);
+  report_series(o[..], "model open, again in the same process", warm[..], 1000);
+  report_series(o[..], "  pkrt_open (Coax: layout, vocabulary, and the single-thread SHA-256 when not checked in pieces)", coax_open[..], 1000);
+  report_series(o[..], "  the rest (piece hashing on threads, weight copy, CUDA start)", rest[..], 1000);
+  report_series(o[..], "  NVRTC compile", compile[..], 1000);
+  report_series(o[..], "  weight upload", upload[..], 1000);
+  report_series(o[..], "model close", close[..], 1000);
+  if cold[0].n > 0 { gate(g[..], "model open p50, new process (ms)", pct(cold[..], 50) / 10, GATE_OPEN_P50_MS * 100, true); }
+
+  // The voice host.
+  vh := raw_load(dir, "voicehost.tsv", raw[..]); at[0] = 0; turns: [1] Series; exact := 0; nturn := 0;
+  while true {
+    line := next_line(vh, at[..]); if line.count == 0 && at[0] >= vh.count { break; }
+    if field(line, 0) != "turn" { continue; }
+    nturn += 1; if field(line, 3) == "exact" { exact += 1; } ms := num(field(line, 4)); if ms >= 0 { s_add(turns[..], ms * 1000); }
+  }
+  report_series(o[..], "voice host: turn end to transcript (4 fixtures x 10)", turns[..], 1000);
+  if nturn > 0 {
+    t_add(o[..], "\nVoice host transcripts exact: "); t_int(o[..], exact); t_add(o[..], " of "); t_int(o[..], nturn); t_add(o[..], ".\n");
+    gate(g[..], "voice host turn end to transcript p99 (ms)", pct(turns[..], 99) / 10, GATE_TURN_P99_MS * 100, true);
+  }
+
+  t_add(o[..], "\n## Gates\n\n```\n"); t_add(o[..], t_str(g[0].lines[..])); t_add(o[..], "```\n");
+  print("%", t_str(o[..]));
+  p: [1] Text; t_add(p[..], dir); t_add(p[..], "/results.md");
+  if !fs_write(t_str(p[..]), t_str(o[..])) { tool_errln("cannot write results.md"); return 3; }
+  return ifx g[0].crossed == 0 then 0 else 1;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: dictate-score corpus | run DIR STEP... | score DIR"); return 2; }
+  cmd := args_at(a[..], 0);
+  if cmd == "corpus" { return verify_corpus(); }
+  if cmd == "run" && args_count(a[..]) >= 3 { return run_main(a[..]); }
+  if cmd == "score" && args_count(a[..]) == 2 { return score_main(args_at(a[..], 1)); }
+  tool_errln("usage: dictate-score corpus | run DIR STEP... | score DIR"); return 2;
+}

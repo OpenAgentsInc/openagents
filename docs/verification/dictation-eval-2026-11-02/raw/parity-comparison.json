@@ -1,0 +1,1404 @@
+{
+  "schema": "psionic.parakeet-nemo-comparison.v1",
+  "reference_record_sha256": "2f98038e31f992b64a20ee285019373f4ddc2fd34a6b1a5213f1b58149faf7fa",
+  "fixture_manifest_sha256": "ffe97a41feb987b8a6457b5c44908b54855803d78bf8abfe7c00de31fc6abaf2",
+  "product_inputs": {
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/6930-75918-0000.tokens.json": "8cf3b0a863505983590c19c92f6807b6cc86eb2d6671904e8fa9c4cf9cdf02a2",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/6930-75918-0000.features.f32": "39977a85131cd878b073cb565515c29dc103b4fb7c3167f9cfdab4dc0b7be00e",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/6930-75918-0000.encoded.f32": "12d2cd7882d372c0851ecf41e7c6732d89b47b80ef2f69fd7cdbded688bbfbb6",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/6930-75918-0002.tokens.json": "0fe7136b79ba9fb8a1f9bc27fe2addf3cc67d7539f0c52f0cce710a99d9853e0",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/6930-75918-0002.features.f32": "241e0fa4d752a38abb0d1f1f680abb641ebc04938f1364e8efa746effe341695",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/6930-75918-0002.encoded.f32": "5674db06d1d1f0c7bec1277cf1f831355eba0ca8bdfcd3c103e97300db66791c",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/6930-75918-0006.tokens.json": "54f7a474f992c6a759e36e14b24ee31b6955e04e89788ba8aa05018d5157c0ea",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/6930-75918-0006.features.f32": "3bf104aba880be32bdc533419e8cea4a919af2cda5e6428e97f5d33a1574364e",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/6930-75918-0006.encoded.f32": "b46efc725cfebfe000b0cbcec976b43caf0dd1bac19b51862f34e086334a4a57",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/6930-75918-0011.tokens.json": "24106d475391f73c11d7ba639782285c472251d30a77b87f811f4f6fb30a6de5",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/6930-75918-0011.features.f32": "6760e50455567c20345d47ac111b8d4c02edd34b051f82e777ef81036a1928d4",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/6930-75918-0011.encoded.f32": "2ddf062bfdaec1948ac494a7e468abfd1e79b1913fca42113fe472ee7ac9c1a6",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/bg.tokens.json": "4ba7e45e0895efccb2df8052fd3881f3c18a466f02759cf94615f26b71b72c13",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/bg.features.f32": "1abe323aeb7004e53593bd046442fcbf439dbb4fbadadc7432e0b605694d45a1",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/bg.encoded.f32": "7c2ef6b3b06b31d867d4dfdb05fb5321d39638303f1d2e549364b66f803f4489",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/hr.tokens.json": "b95da7fcd50e840011b474956c2f991b6014e0e4c0012016cbf4b976d86254e3",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/hr.features.f32": "e0acb5b9c5ea2239fa8eabcc3e883a9359f72b32f40c68d8dba9a33adf5b994e",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/hr.encoded.f32": "22a6b1ce7dd296179e11d227edaad85bb364da2d436d1309d38916da0ab0ac08",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/cs.tokens.json": "50ebbd9865103d407d1384a8ae3d840742257f57d5a10d4dc36caac8749bc718",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/cs.features.f32": "6cba0a288f3985d78fc4a1c8fe61c4a0c9133e339c3ac1e472889e6d5688a8a8",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/cs.encoded.f32": "35da118c3e10f706857dd8e40bbfcf0f21338967db5684c51a7e0e354da291f2",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/da.tokens.json": "09a3c48dca4d7526af6176916cc5db93e5c53a244f0c3bdac392c25157b021b1",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/da.features.f32": "67025d89f224a6813d54ca7dc96b927de6e3f3e0e733aaaa1e068d7240917c64",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/da.encoded.f32": "d4838c10c27ece1877785b012101dabc3cc658250f860159798aa9294f14195d",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/nl.tokens.json": "3ab84f8b6ce700509634ebcfa47980b629091e10111f1b139fb71e4a29bce78f",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/nl.features.f32": "8e82eadca3757695909cceb9bda26b0ce3e792e2aaa21dea113681baf3bd7285",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/nl.encoded.f32": "0f93eed50275b8d09e7a57c4f10ed468e57884943ae05985ebd2d481e85a5ec9",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/en.tokens.json": "45fb322eacfe72ca71b30c413bd22575a4265deaacba9e8e0597dd5c2c004ce5",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/en.features.f32": "59ee57d6b457b20f159f5a4aaaf0ed53d1e4500ea288221c0749b48468988665",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/en.encoded.f32": "83e460815963af5fa2b82e2c05f26ebacd264f70e8c21a3e52a81ca03d2d2c63",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/et.tokens.json": "29b324dee4cc0c00d3f4212f83d631b16534c053b86394234c859ec506a0c2dd",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/et.features.f32": "62e3b9788a97e4705185f01131302cc52d5456c2dbdcbfbed1a1ad24a7d61a5c",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/et.encoded.f32": "7737161defe153055aa171fc5975bfcf22e0e6b6a748d5cf6e715d872ccb0d29",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/fi.tokens.json": "8d810ac1d33cfccaa14b6eb38b3936075570e3200df3395c12a6f66b753fc588",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/fi.features.f32": "7d1c1571cadcb6472257cef213359452f07c78086b27a898727524bdf31f6b86",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/fi.encoded.f32": "b9275c3a0926e689daca87f723d0aa9e4718fe652b8afc1ee2b5833f4af36012",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/fr.tokens.json": "c78c5ab82f0001d1440b7836f5a187f4ca7ac87942a05c6bec76ab6c67b66412",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/fr.features.f32": "b09fd0a15bbb7d67df51bade9fb8616a6e54185a3f47d0f689958a4b1e0231ca",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/fr.encoded.f32": "e33846d8e763fa1bf0913841ca4dc300a7f2bf3c4475a777b7800d25f4b4dd9d",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/de.tokens.json": "da48857eb1b1970b8be58c8df2fe46d2e9a105d281f2204eab79e729f9b2824e",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/de.features.f32": "51b2c9c81249bfe8bda2c32d30639ead01d489f8ad5ff18ad64fe0ca24f7d7a9",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/de.encoded.f32": "7fa02e01540752901cafd1bc7f0967709f3a3c1d043f4277e22b960a9cbdf8c7",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/el.tokens.json": "864ee979e5fe2719236e4cb901fa15b6880b3e29db2a88163465ef47b3ba4f69",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/el.features.f32": "e7cd869e2f4c86832edd693b5eca1bc95187a36b010ac183b7e490dc21f61aea",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/el.encoded.f32": "3b3fe9b3f6ada1a2a4cd41add96cc3b90337c3471ef0e81afd3d4324febab211",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/hu.tokens.json": "accd3dd72c6f9db486c14c625d6a79200b74cb9878d550ed656fd1c530bce156",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/hu.features.f32": "8dcae00c58825ef0e1ffaecea0eba1e5c7a648c1e33407f4223ee89ca08fbd9f",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/hu.encoded.f32": "5d7ff8aea4be3c5dec1b09961e2d4ab1d97d0d7629ff216586a2633a11af5f5d",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/it.tokens.json": "c5c132c09cf6f5eb3a1dca2c4056bf2af785dad96c46c7a8e24e0434692cf9cf",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/it.features.f32": "483e7fcfa7f0d709974128afac9291bf272b93aa1124132f87beac7fbab5f1c3",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/it.encoded.f32": "6de24f595ed211c4218fb1ccc85866304fe461de3403980452b7f9150745b75e",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/lv.tokens.json": "d3c353c482e7e828826d6de52f1bdadbab1da67fa9f2c365c0535718560cdb41",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/lv.features.f32": "334a46119c92fb3c71c1043a1f391a52cabd6f9625457db6de912fc4de3254ef",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/lv.encoded.f32": "f7344d50dfbe40fe1f86a80e478e8bf14722e6e8c0c3cda347816838b5dd0f57",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/lt.tokens.json": "712f6910ed582f19a2b94d697670afc5d4fc13413fefa8c9dfc3bdfd46ef5b66",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/lt.features.f32": "72600a19639e802feabf3a5bc1cfe3cac295e271f06b1c20574f9b11afaf3db6",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/lt.encoded.f32": "387d132cec9805b55f31e9c7a1346d612c20a94a8c49aefa91a029bc8b2c6a7d",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/mt.tokens.json": "68232bb61277ffc61d880f5cd02d15c740f475ab35e33301aba89dbb4c9ea8e7",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/mt.features.f32": "ad4dd0f7e139d7504bfa54d052b214612c1c660515416196a4061c5a0f618b34",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/mt.encoded.f32": "f16c1f48c7fe2aeb79d215d1863e03c30dc93e41a5a6f20e0447a2ceeb44d58f",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/pl.tokens.json": "7e249cc7bc710808538c8822c6f8fc29eb2d820e265975f03951e58198ee5ace",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/pl.features.f32": "86ddd101b08918855d903c1de6a294cacae66a3933142f6c6918aebabe69852e",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/pl.encoded.f32": "2075cc19f3411bbb12067f543ad1c030a336dacd9b9ebac40edb73d1ce509885",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/pt.tokens.json": "6e9d9112d7a0b1fe4d19aa84a106bf3ddfaa30becfa576bd12e660eed6495158",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/pt.features.f32": "6b558c6fc378269d31a0effd2acd340f5ae34ad6766adecf8c2e4e53448d7344",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/pt.encoded.f32": "9e1d152a2acff5f303a7ff4ef2e5ad10f5713b3b8c1fd4c310dea7c1f709fdab",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/ro.tokens.json": "e043fd3b79523859046a81365b252be3e2b588a08f218254a955e5eeba7c0e9a",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/ro.features.f32": "934ff30474ed29babf21c5ddf81b777f0e159055b3b8baef074b3436d6323bba",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/ro.encoded.f32": "f1dccb896751df5a524727f62f49de5afd6cad5503c9d9d142724061f68ff5a6",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/sk.tokens.json": "18f61ae7073a6d10ba41ddfbed4e6880635a25e89c566793a7c4730c5ef4f363",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/sk.features.f32": "9ded49c1e08e07e92a9a9814ff397977fd6708f8bed6929f0b6643c0e48aa8c4",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/sk.encoded.f32": "de4f4b1ca4fca668a95f7491a75ace2882b7c39b4e51702324ca032167ab1e8a",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/sl.tokens.json": "0870a7b2a9f934ca7fb06e8b19f11aee4a99e89e2bd279ce45083c4823d22f5b",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/sl.features.f32": "de8ec266b214a73ec997b85fb34ca554d47b444cb1101993c710a474ef072f89",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/sl.encoded.f32": "aca8a4e71b3def276d376f0660358805936858aef91080d825376365f13596e5",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/es.tokens.json": "e03228a8001f3fb06adbf318326b5d0dec497cba621ba72a948a57a4b75dbd16",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/es.features.f32": "8de15ab95f48410b7ec5cf715b1f7cd502987779ff7e04d447568e65fa4dfdcf",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/es.encoded.f32": "a0a90dec527768af044f24038a03d312ddc4eb124411aee32458f014499cfeb2",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/sv.tokens.json": "de4fd0d91fe51380320d1a6292c8a89dfb69563d8b0fc56e5cdcf02ec33bc40d",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/sv.features.f32": "d5761ea2e95378fb90f1f920308212a9a88494e580de26b20cd21b30a84824b6",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/sv.encoded.f32": "523de77f720a5b56b5dacafb77078b80f4a4137e464bd78eaf12a402ebe84199",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/ru.tokens.json": "3c25271c41632ba9e5142a7d23b9e9aa51478fe09fc52da2242f54cccf506b61",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/ru.features.f32": "67b87bb8a9e7860bad0f4ecda26d4b780e4c259495bb2236e94144d2903128a2",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/ru.encoded.f32": "2d65e8cef12a4a23aea26afbd3936b6264a18cfb0e6028088a9adc143ec733f0",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/uk.tokens.json": "ecb6ec0d43ef14949db35eca344dadb9ffc2ef5633a6a19fefcdcc2ee1b160e6",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/uk.features.f32": "32e90cf7b4dda2d20eb074953a1b3a5ee3fd4a60b4588453da4c589cede39db8",
+    "/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/12665/parity/uk.encoded.f32": "850baeb0125d988a0f792ebd7f72e1a0b5a710cc90b2a099141c13e24473e890"
+  },
+  "clips": [
+    {
+      "id": "6930-75918-0000",
+      "language": "en",
+      "corpus": "parakeet-clips-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 8,
+        "word_errors": 0,
+        "characters": 46,
+        "character_errors": 0
+      },
+      "reference_text": "Concord returned to its place amidst the tents,",
+      "product_text": "Concord returned to its place amidst the tents,",
+      "product_tokens_sha256": "8cf3b0a863505983590c19c92f6807b6cc86eb2d6671904e8fa9c4cf9cdf02a2",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 44800,
+          "outside_tolerance": 0,
+          "max_abs_gap": 7.462501525878906e-05,
+          "max_gap_index": 1026,
+          "max_tolerance_ratio": 0.03763830544362151,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "94b96aa0385aec152bc6836f5d9e4bc4a09ace1f2468dc1750be620f2b9b2c68",
+          "product_sha256": "39977a85131cd878b073cb565515c29dc103b4fb7c3167f9cfdab4dc0b7be00e"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 45056,
+          "outside_tolerance": 0,
+          "max_abs_gap": 1.2693926692008972e-06,
+          "max_gap_index": 37230,
+          "max_tolerance_ratio": 0.0012511294931784572,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "678516be406216ec2aa643ed471e7910de0819bd0df55579bd5fd8b6ed061436",
+          "product_sha256": "12d2cd7882d372c0851ecf41e7c6732d89b47b80ef2f69fd7cdbded688bbfbb6"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "6930-75918-0002",
+      "language": "en",
+      "corpus": "parakeet-clips-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 11,
+        "word_errors": 0,
+        "characters": 78,
+        "character_errors": 0
+      },
+      "reference_text": "Congratulations were poured in upon the Princess everywhere during her journey.",
+      "product_text": "Congratulations were poured in upon the Princess everywhere during her journey.",
+      "product_tokens_sha256": "0fe7136b79ba9fb8a1f9bc27fe2addf3cc67d7539f0c52f0cce710a99d9853e0",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 64256,
+          "outside_tolerance": 0,
+          "max_abs_gap": 6.723403930664062e-05,
+          "max_gap_index": 1114,
+          "max_tolerance_ratio": 0.035078650657409054,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "c9c0ec22b8375ec6416a4dbc8cac0c554d8bcd21445d03537b38f8106859c336",
+          "product_sha256": "241e0fa4d752a38abb0d1f1f680abb641ebc04938f1364e8efa746effe341695"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 64512,
+          "outside_tolerance": 0,
+          "max_abs_gap": 1.6205012798309326e-06,
+          "max_gap_index": 29534,
+          "max_tolerance_ratio": 0.0015953215667619165,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "9a4f4dd2c5ebc0cefac3ea03fb111875c9465fd9a8005b21ceabedd501b857d0",
+          "product_sha256": "5674db06d1d1f0c7bec1277cf1f831355eba0ca8bdfcd3c103e97300db66791c"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "6930-75918-0006",
+      "language": "en",
+      "corpus": "parakeet-clips-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 17,
+        "word_errors": 0,
+        "characters": 91,
+        "character_errors": 0
+      },
+      "reference_text": "This has indeed been a harassing day, continued the young man, his eyes fixed upon his friend,",
+      "product_text": "This has indeed been a harassing day, continued the young man, his eyes fixed upon his friend,",
+      "product_tokens_sha256": "54f7a474f992c6a759e36e14b24ee31b6955e04e89788ba8aa05018d5157c0ea",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 74880,
+          "outside_tolerance": 0,
+          "max_abs_gap": 0.00010323524475097656,
+          "max_gap_index": 4544,
+          "max_tolerance_ratio": 0.04959606480291823,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "825e80a8f8394a20dff489a11869e63569739bfa402e1c4d76ce38b1ff1c8686",
+          "product_sha256": "3bf104aba880be32bdc533419e8cea4a919af2cda5e6428e97f5d33a1574364e"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 75776,
+          "outside_tolerance": 0,
+          "max_abs_gap": 2.3096799850463867e-07,
+          "max_gap_index": 37618,
+          "max_tolerance_ratio": 0.0002241141786055535,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "818b86c1c2fcc3577dbb46ad29a29c1282b1560148685a2222a0794bdb6bb396",
+          "product_sha256": "b46efc725cfebfe000b0cbcec976b43caf0dd1bac19b51862f34e086334a4a57"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "6930-75918-0011",
+      "language": "en",
+      "corpus": "parakeet-clips-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 10,
+        "word_errors": 0,
+        "characters": 43,
+        "character_errors": 0
+      },
+      "reference_text": "I am convinced of what I say, said the Count.",
+      "product_text": "I am convinced of what I say, said the Count.",
+      "product_tokens_sha256": "24106d475391f73c11d7ba639782285c472251d30a77b87f811f4f6fb30a6de5",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 40832,
+          "outside_tolerance": 0,
+          "max_abs_gap": 0.00011968612670898438,
+          "max_gap_index": 2336,
+          "max_tolerance_ratio": 0.054928822312919214,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "22960080cf5ff3efbf62a36704e2f5516c4499c78e8994e0a7ca5b07df00af3d",
+          "product_sha256": "6760e50455567c20345d47ac111b8d4c02edd34b051f82e777ef81036a1928d4"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 40960,
+          "outside_tolerance": 0,
+          "max_abs_gap": 3.591179847717285e-06,
+          "max_gap_index": 27589,
+          "max_tolerance_ratio": 0.0033865725183232567,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "c6f8a54d373d892a188cb4668d58a2a579cca78256600ac41f5811e2e4ddd511",
+          "product_sha256": "2ddf062bfdaec1948ac494a7e468abfd1e79b1913fca42113fe472ee7ac9c1a6"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "bg",
+      "language": "bg",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 34,
+        "word_errors": 5,
+        "characters": 190,
+        "character_errors": 14
+      },
+      "reference_text": "Съобщава се, че е бил на около двадесет години. В изявление би бързави, че докато не съм присъстването пряко замесен в този трагичен инцидент, Мислите и молитвите ми са със семейството на жертвата.",
+      "product_text": "Съобщава се, че е бил на около двадесет години. В изявление би бързави, че докато не съм присъстването пряко замесен в този трагичен инцидент, Мислите и молитвите ми са със семейството на жертвата.",
+      "product_tokens_sha256": "4ba7e45e0895efccb2df8052fd3881f3c18a466f02759cf94615f26b71b72c13",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 177408,
+          "outside_tolerance": 0,
+          "max_abs_gap": 8.952617645263672e-05,
+          "max_gap_index": 5317,
+          "max_tolerance_ratio": 0.06398401564395316,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "7d7746a2c448489d69d6c0089def5eb3db0f8d6324a4b365affd3717492bbf2f",
+          "product_sha256": "1abe323aeb7004e53593bd046442fcbf439dbb4fbadadc7432e0b605694d45a1"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 178176,
+          "outside_tolerance": 0,
+          "max_abs_gap": 5.997717380523682e-07,
+          "max_gap_index": 82698,
+          "max_tolerance_ratio": 0.0005720699008729712,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "01708c9c3ddb0959733e44901c3fb6d8a793bee0298f8371205625504820a6a5",
+          "product_sha256": "7c2ef6b3b06b31d867d4dfdb05fb5321d39638303f1d2e549364b66f803f4489"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "hr",
+      "language": "hr",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 17,
+        "word_errors": 1,
+        "characters": 99,
+        "character_errors": 2
+      },
+      "reference_text": "Tijekom noći izrađeno je između 150 i 200 kopija koje su sada poznate pod nazivom Danlep Broadsides.",
+      "product_text": "Tijekom noći izrađeno je između 150 i 200 kopija koje su sada poznate pod nazivom Danlep Broadsides.",
+      "product_tokens_sha256": "b95da7fcd50e840011b474956c2f991b6014e0e4c0012016cbf4b976d86254e3",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 102912,
+          "outside_tolerance": 0,
+          "max_abs_gap": 0.00010699033737182617,
+          "max_gap_index": 1123,
+          "max_tolerance_ratio": 0.10650145771035384,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "2c900f0f451cd49fccc676150fa98ed552225db50a9d1c8d266059759c230499",
+          "product_sha256": "e0acb5b9c5ea2239fa8eabcc3e883a9359f72b32f40c68d8dba9a33adf5b994e"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 103424,
+          "outside_tolerance": 0,
+          "max_abs_gap": 2.16066837310791e-06,
+          "max_gap_index": 39159,
+          "max_tolerance_ratio": 0.0020249053583674013,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "af303c55ee7296fe11f58d275fb9c63a6203ed4bd1997e00c92f84dfbf5215f7",
+          "product_sha256": "22a6b1ce7dd296179e11d227edaad85bb364da2d436d1309d38916da0ab0ac08"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "cs",
+      "language": "cs",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 22,
+        "word_errors": 2,
+        "characters": 130,
+        "character_errors": 3
+      },
+      "reference_text": "Sundarbans je největším pásem pobřežích mangrovů na světě, který se od pobřeží táhne 80 km 50 mil do vnitrozemí Bangléše a Indie.",
+      "product_text": "Sundarbans je největším pásem pobřežích mangrovů na světě, který se od pobřeží táhne 80 km 50 mil do vnitrozemí Bangléše a Indie.",
+      "product_tokens_sha256": "50ebbd9865103d407d1384a8ae3d840742257f57d5a10d4dc36caac8749bc718",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 170496,
+          "outside_tolerance": 0,
+          "max_abs_gap": 0.0002696514129638672,
+          "max_gap_index": 24206,
+          "max_tolerance_ratio": 0.07905169281756308,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "5eec2f407a14725974236f3745294714b6a367ad5158ee1b5ef12fcaf1690c5b",
+          "product_sha256": "6cba0a288f3985d78fc4a1c8fe61c4a0c9133e339c3ac1e472889e6d5688a8a8"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 171008,
+          "outside_tolerance": 0,
+          "max_abs_gap": 8.493661880493164e-07,
+          "max_gap_index": 59122,
+          "max_tolerance_ratio": 0.0007768315734497967,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "f6bddd75f6988054f46885716bc8fd20199caaf27803aeb0836f9f0fa8a69fa5",
+          "product_sha256": "35da118c3e10f706857dd8e40bbfcf0f21338967db5684c51a7e0e354da291f2"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "da",
+      "language": "da",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 12,
+        "word_errors": 3,
+        "characters": 67,
+        "character_errors": 4
+      },
+      "reference_text": "Detter er en vigtig måde at skælde mellem nogle verbere og objektiver.",
+      "product_text": "Detter er en vigtig måde at skælde mellem nogle verbere og objektiver.",
+      "product_tokens_sha256": "09a3c48dca4d7526af6176916cc5db93e5c53a244f0c3bdac392c25157b021b1",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 65280,
+          "outside_tolerance": 0,
+          "max_abs_gap": 5.1394104957580566e-05,
+          "max_gap_index": 64861,
+          "max_tolerance_ratio": 0.04506579226747312,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "cc7960690638b459a3c3ae63de09155293b3b27d37491fdae3b8bc0a4fb60b3b",
+          "product_sha256": "67025d89f224a6813d54ca7dc96b927de6e3f3e0e733aaaa1e068d7240917c64"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 65536,
+          "outside_tolerance": 0,
+          "max_abs_gap": 7.3015689849853516e-06,
+          "max_gap_index": 21234,
+          "max_tolerance_ratio": 0.006122999309975466,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "2962196e2452298d4ce09b22bae02370b0bb777c008089860b7547f5832e4404",
+          "product_sha256": "d4838c10c27ece1877785b012101dabc3cc658250f860159798aa9294f14195d"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "nl",
+      "language": "nl",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 15,
+        "word_errors": 1,
+        "characters": 101,
+        "character_errors": 1
+      },
+      "reference_text": "Volgens Angel 2006 kunnen organisaties beter presteren met een aanpak op basis van het continuummodel.",
+      "product_text": "Volgens Angel 2006 kunnen organisaties beter presteren met een aanpak op basis van het continuummodel.",
+      "product_tokens_sha256": "3ab84f8b6ce700509634ebcfa47980b629091e10111f1b139fb71e4a29bce78f",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 82944,
+          "outside_tolerance": 0,
+          "max_abs_gap": 2.0503997802734375e-05,
+          "max_gap_index": 226,
+          "max_tolerance_ratio": 0.013736135387822613,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "df86b2efabbde9f5f24b021531dd73d19acf93c8cddd23b2c47fea4bf179f4b6",
+          "product_sha256": "8e82eadca3757695909cceb9bda26b0ce3e792e2aaa21dea113681baf3bd7285"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 82944,
+          "outside_tolerance": 0,
+          "max_abs_gap": 5.140900611877441e-07,
+          "max_gap_index": 69573,
+          "max_tolerance_ratio": 0.0004883055439886705,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "8bdaa0ed0d4e2d62a80fa63c2c10029d29a2a47db3ae7bda4ab19cb956e84269",
+          "product_sha256": "0f93eed50275b8d09e7a57c4f10ed468e57884943ae05985ebd2d481e85a5ec9"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "en",
+      "language": "en",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 19,
+        "word_errors": 2,
+        "characters": 99,
+        "character_errors": 4
+      },
+      "reference_text": "However, due to the slow communication channels, styles in the west could lag behind by 25-30 years.",
+      "product_text": "However, due to the slow communication channels, styles in the west could lag behind by 25-30 years.",
+      "product_tokens_sha256": "45fb322eacfe72ca71b30c413bd22575a4265deaacba9e8e0597dd5c2c004ce5",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 135168,
+          "outside_tolerance": 0,
+          "max_abs_gap": 9.5367431640625e-05,
+          "max_gap_index": 134231,
+          "max_tolerance_ratio": 0.07203034073795891,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "4c6e4602dced8b98fea64883314179d7416d6ab03bdabd6a2703bd3eba4944b0",
+          "product_sha256": "59ee57d6b457b20f159f5a4aaaf0ed53d1e4500ea288221c0749b48468988665"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 135168,
+          "outside_tolerance": 0,
+          "max_abs_gap": 5.364418029785156e-07,
+          "max_gap_index": 115173,
+          "max_tolerance_ratio": 0.00044737635020978596,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "4c18b892314fe165514977a151a62df106a826de8942ceb5cc104340b1bf1f63",
+          "product_sha256": "83e460815963af5fa2b82e2c05f26ebacd264f70e8c21a3e52a81ca03d2d2c63"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "et",
+      "language": "et",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 19,
+        "word_errors": 5,
+        "characters": 146,
+        "character_errors": 6
+      },
+      "reference_text": "Pritviche järvede rahvuspark on kaetud tihedate metsadega, põhiliselt köökide kuuskede ja nulgedega, ning seal kasvab mägi ja Vahem mere taimestike segu.",
+      "product_text": "Pritviche järvede rahvuspark on kaetud tihedate metsadega, põhiliselt köökide kuuskede ja nulgedega, ning seal kasvab mägi ja Vahem mere taimestike segu.",
+      "product_tokens_sha256": "29b324dee4cc0c00d3f4212f83d631b16534c053b86394234c859ec506a0c2dd",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 180480,
+          "outside_tolerance": 0,
+          "max_abs_gap": 0.00010952353477478027,
+          "max_gap_index": 502,
+          "max_tolerance_ratio": 0.09238083704705345,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "c830f35d443147d59ec2bd4595d547abfff8c9bb9a95800467bcee315aa4caa5",
+          "product_sha256": "62e3b9788a97e4705185f01131302cc52d5456c2dbdcbfbed1a1ad24a7d61a5c"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 181248,
+          "outside_tolerance": 0,
+          "max_abs_gap": 5.513429641723633e-07,
+          "max_gap_index": 174565,
+          "max_tolerance_ratio": 0.0005010795364908345,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "85913a0d7887fc3e958a3e8485b4f7d75af057852357d05ab84cb017586d2e8b",
+          "product_sha256": "7737161defe153055aa171fc5975bfcf22e0e6b6a748d5cf6e715d872ccb0d29"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "fi",
+      "language": "fi",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 22,
+        "word_errors": 2,
+        "characters": 215,
+        "character_errors": 1
+      },
+      "reference_text": "Yhdysvaltojen ilmailuviranomainen väittää, että Next Gen on järjestelmä, jonka ansiosta lentokoneet voivat lentää lyhyempiä reittejä, säästää vuosittain miljoonia gallonia polttoainetta ja vähentää hiilidioksidipäästöjä.",
+      "product_text": "Yhdysvaltojen ilmailuviranomainen väittää, että Next Gen on järjestelmä, jonka ansiosta lentokoneet voivat lentää lyhyempiä reittejä, säästää vuosittain miljoonia gallonia polttoainetta ja vähentää hiilidioksidipäästöjä.",
+      "product_tokens_sha256": "8d810ac1d33cfccaa14b6eb38b3936075570e3200df3395c12a6f66b753fc588",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 238080,
+          "outside_tolerance": 0,
+          "max_abs_gap": 3.1888484954833984e-05,
+          "max_gap_index": 116,
+          "max_tolerance_ratio": 0.023203258585769947,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "d415bfe7c4f3d11f67154574d108d269015ff07c561dc0278651d82f0f83beb1",
+          "product_sha256": "7d1c1571cadcb6472257cef213359452f07c78086b27a898727524bdf31f6b86"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 238592,
+          "outside_tolerance": 0,
+          "max_abs_gap": 1.041218638420105e-06,
+          "max_gap_index": 126332,
+          "max_tolerance_ratio": 0.001031170797170713,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "b7cd5f256f4c89761f425459d038d1bce0cd09325980e021c2b3605f09c943ca",
+          "product_sha256": "b9275c3a0926e689daca87f723d0aa9e4718fe652b8afc1ee2b5833f4af36012"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "fr",
+      "language": "fr",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 19,
+        "word_errors": 0,
+        "characters": 110,
+        "character_errors": 0
+      },
+      "reference_text": "L'accident a eu lieu en terrain montagneux, et il semblerait que cela ait été causé par un incendie malveillant.",
+      "product_text": "L'accident a eu lieu en terrain montagneux, et il semblerait que cela ait été causé par un incendie malveillant.",
+      "product_tokens_sha256": "c78c5ab82f0001d1440b7836f5a187f4ca7ac87942a05c6bec76ab6c67b66412",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 130560,
+          "outside_tolerance": 0,
+          "max_abs_gap": 0.00043448805809020996,
+          "max_gap_index": 2038,
+          "max_tolerance_ratio": 0.40051660625120455,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "33a565f1cfae2cc802b716e23129249d02ce3c36e247ca3fd07236b6c3523345",
+          "product_sha256": "b09fd0a15bbb7d67df51bade9fb8616a6e54185a3f47d0f689958a4b1e0231ca"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 131072,
+          "outside_tolerance": 0,
+          "max_abs_gap": 4.443340003490448e-06,
+          "max_gap_index": 116737,
+          "max_tolerance_ratio": 0.004407746271041342,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "583a107eb30cf62c6df16d9b22f5fa95da960caa8e9ef50cfb6f2987dbe26167",
+          "product_sha256": "e33846d8e763fa1bf0913841ca4dc300a7f2bf3c4475a777b7800d25f4b4dd9d"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "de",
+      "language": "de",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 18,
+        "word_errors": 1,
+        "characters": 121,
+        "character_errors": 1
+      },
+      "reference_text": "Für die besten Aussichten auf Hongkong sollten Sie die Insel verlassen und zum gegenüberliegenden Ufer von Kowlon fahren.",
+      "product_text": "Für die besten Aussichten auf Hongkong sollten Sie die Insel verlassen und zum gegenüberliegenden Ufer von Kowlon fahren.",
+      "product_tokens_sha256": "da48857eb1b1970b8be58c8df2fe46d2e9a105d281f2204eab79e729f9b2824e",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 229632,
+          "outside_tolerance": 0,
+          "max_abs_gap": 3.17990779876709e-05,
+          "max_gap_index": 226509,
+          "max_tolerance_ratio": 0.028095859227264076,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "a860817f8cf97f4cbcad5751149bcd90df11afdad745f7d33259aa98af29f510",
+          "product_sha256": "51b2c9c81249bfe8bda2c32d30639ead01d489f8ad5ff18ad64fe0ca24f7d7a9"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 230400,
+          "outside_tolerance": 0,
+          "max_abs_gap": 7.217749953269958e-07,
+          "max_gap_index": 4097,
+          "max_tolerance_ratio": 0.0007144968609493125,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "b3b52483606d97a68b9735760f33b07e389766568cc864e014c63a1887750144",
+          "product_sha256": "7fa02e01540752901cafd1bc7f0967709f3a3c1d043f4277e22b960a9cbdf8c7"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "el",
+      "language": "el",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 20,
+        "word_errors": 3,
+        "characters": 142,
+        "character_errors": 3
+      },
+      "reference_text": "Η δέκατη καταιγίδα τη εποχή των Ατλαντικών τυφώνων που απέκτησε όνομα η υποτροπική καταιγίδα Τζέρι σχηματίστηκε σήμερα στον Ατλαντικό ωκεανό.",
+      "product_text": "Η δέκατη καταιγίδα τη εποχή των Ατλαντικών τυφώνων που απέκτησε όνομα η υποτροπική καταιγίδα Τζέρι σχηματίστηκε σήμερα στον Ατλαντικό ωκεανό.",
+      "product_tokens_sha256": "864ee979e5fe2719236e4cb901fa15b6880b3e29db2a88163465ef47b3ba4f69",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 141312,
+          "outside_tolerance": 0,
+          "max_abs_gap": 1.5974044799804688e-05,
+          "max_gap_index": 2296,
+          "max_tolerance_ratio": 0.010524077642333129,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "0a1875d50d9893ae832680dcb05d6479804bca2b52a86327304e0dcff7c86648",
+          "product_sha256": "e7cd869e2f4c86832edd693b5eca1bc95187a36b010ac183b7e490dc21f61aea"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 141312,
+          "outside_tolerance": 0,
+          "max_abs_gap": 1.043081283569336e-06,
+          "max_gap_index": 9157,
+          "max_tolerance_ratio": 0.0009134718727394833,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "78094301e945fcbdacc0303da511d940d326a2c9502c3707f2bdabfa26d10814",
+          "product_sha256": "3b3fe9b3f6ada1a2a4cd41add96cc3b90337c3471ef0e81afd3d4324febab211"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "hu",
+      "language": "hu",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 17,
+        "word_errors": 0,
+        "characters": 104,
+        "character_errors": 0
+      },
+      "reference_text": "Hongkong nevét a Hongkong-szigetről kapta, és ez a hely sok turista számára a figyelem középpontjában áll.",
+      "product_text": "Hongkong nevét a Hongkong-szigetről kapta, és ez a hely sok turista számára a figyelem középpontjában áll.",
+      "product_tokens_sha256": "accd3dd72c6f9db486c14c625d6a79200b74cb9878d550ed656fd1c530bce156",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 154368,
+          "outside_tolerance": 0,
+          "max_abs_gap": 8.83340835571289e-05,
+          "max_gap_index": 427,
+          "max_tolerance_ratio": 0.06165537313868508,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "a88443a66a7818a2771032cff31acbd5678cd09d2ef44209b126ea7a681d5e5d",
+          "product_sha256": "8dcae00c58825ef0e1ffaecea0eba1e5c7a648c1e33407f4223ee89ca08fbd9f"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 154624,
+          "outside_tolerance": 0,
+          "max_abs_gap": 4.4330954551696777e-07,
+          "max_gap_index": 46834,
+          "max_tolerance_ratio": 0.00043138257168082097,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "3431bccd19ad19378c4f001cf213f915abe09eaf810c056933a5d8ab8dbca21a",
+          "product_sha256": "5d7ff8aea4be3c5dec1b09961e2d4ab1d97d0d7629ff216586a2633a11af5f5d"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "it",
+      "language": "it",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 23,
+        "word_errors": 0,
+        "characters": 158,
+        "character_errors": 0
+      },
+      "reference_text": "Il blog è uno strumento che si prefigge di incoraggiare la collaborazione e sviluppare l'apprendimento degli studenti ben oltre la giornata scolastica normale.",
+      "product_text": "Il blog è uno strumento che si prefigge di incoraggiare la collaborazione e sviluppare l'apprendimento degli studenti ben oltre la giornata scolastica normale.",
+      "product_tokens_sha256": "c5c132c09cf6f5eb3a1dca2c4056bf2af785dad96c46c7a8e24e0434692cf9cf",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 147456,
+          "outside_tolerance": 0,
+          "max_abs_gap": 8.940696716308594e-05,
+          "max_gap_index": 227,
+          "max_tolerance_ratio": 0.04102873169756717,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "45d312886f63e16979ee28e5283793ca803b9a0339ad12231991d07794928fe3",
+          "product_sha256": "483e7fcfa7f0d709974128afac9291bf272b93aa1124132f87beac7fbab5f1c3"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 147456,
+          "outside_tolerance": 0,
+          "max_abs_gap": 2.032145857810974e-06,
+          "max_gap_index": 30181,
+          "max_tolerance_ratio": 0.0019937686123485403,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "a6570ad7fbc174a80f8f3c6a40efa1f61764f001cf4d01960415099b05c7d883",
+          "product_sha256": "6de24f595ed211c4218fb1ccc85866304fe461de3403980452b7f9150745b75e"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "lv",
+      "language": "lv",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 17,
+        "word_errors": 5,
+        "characters": 105,
+        "character_errors": 6
+      },
+      "reference_text": "2000. gadā Gomu iznīcināja lavam no niera Gongo vulkāna, kas apraka vairum pilsētas ielu, jo īpaši tās centrā.",
+      "product_text": "2000. gadā Gomu iznīcināja lavam no niera Gongo vulkāna, kas apraka vairum pilsētas ielu, jo īpaši tās centrā.",
+      "product_tokens_sha256": "d3c353c482e7e828826d6de52f1bdadbab1da67fa9f2c365c0535718560cdb41",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 155136,
+          "outside_tolerance": 0,
+          "max_abs_gap": 2.5033950805664062e-05,
+          "max_gap_index": 461,
+          "max_tolerance_ratio": 0.021827988301984194,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "a5d83e8f912ff1c8f5135a1a19cb6c64b85ceb1965a24cba5522c71033595f5e",
+          "product_sha256": "334a46119c92fb3c71c1043a1f391a52cabd6f9625457db6de912fc4de3254ef"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 155648,
+          "outside_tolerance": 0,
+          "max_abs_gap": 3.1739473342895508e-06,
+          "max_gap_index": 87201,
+          "max_tolerance_ratio": 0.0030421623611938155,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "e54f943578eb607fbee126ec3da3e1ac7904631dc33011b834f41cb4f6ebe7e0",
+          "product_sha256": "f7344d50dfbe40fe1f86a80e478e8bf14722e6e8c0c3cda347816838b5dd0f57"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "lt",
+      "language": "lt",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 8,
+        "word_errors": 1,
+        "characters": 65,
+        "character_errors": 2
+      },
+      "reference_text": "Ant piramidžių rodomos scenos skirtingos piramidės apšviečiamos.",
+      "product_text": "Ant piramidžių rodomos scenos skirtingos piramidės apšviečiamos.",
+      "product_tokens_sha256": "712f6910ed582f19a2b94d697670afc5d4fc13413fefa8c9dfc3bdfd46ef5b66",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 73728,
+          "outside_tolerance": 0,
+          "max_abs_gap": 5.838274955749512e-05,
+          "max_gap_index": 73389,
+          "max_tolerance_ratio": 0.04294835667288223,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "2afd144ef5be0e4309d6f3f558c3604e10785941989518221a889b015d7c2231",
+          "product_sha256": "72600a19639e802feabf3a5bc1cfe3cac295e271f06b1c20574f9b11afaf3db6"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 73728,
+          "outside_tolerance": 0,
+          "max_abs_gap": 1.8887221813201904e-06,
+          "max_gap_index": 12586,
+          "max_tolerance_ratio": 0.0018121556678605175,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "d70c095188acbfac96c9b6f4d86165550b5d3257e644b0f927d03d5b91d65459",
+          "product_sha256": "387d132cec9805b55f31e9c7a1346d612c20a94a8c49aefa91a029bc8b2c6a7d"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "mt",
+      "language": "mt",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 21,
+        "word_errors": 2,
+        "characters": 138,
+        "character_errors": 4
+      },
+      "reference_text": "Ġeneralment huma jkollhom offerti ta' ikel, xorb u divertiment speċjali biex iżommu l-mistednin f'burdata tajba u jżommuhom fuq il-post.",
+      "product_text": "Ġeneralment huma jkollhom offerti ta' ikel, xorb u divertiment speċjali biex iżommu l-mistednin f'burdata tajba u jżommuhom fuq il-post.",
+      "product_tokens_sha256": "68232bb61277ffc61d880f5cd02d15c740f475ab35e33301aba89dbb4c9ea8e7",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 175872,
+          "outside_tolerance": 0,
+          "max_abs_gap": 5.8531761169433594e-05,
+          "max_gap_index": 59548,
+          "max_tolerance_ratio": 0.023840630961742888,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "518583176e156b134c7b78f46ada3666bd936537cf7aaa3009ee05e8015ed7ea",
+          "product_sha256": "ad4dd0f7e139d7504bfa54d052b214612c1c660515416196a4061c5a0f618b34"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 176128,
+          "outside_tolerance": 0,
+          "max_abs_gap": 1.4230608940124512e-06,
+          "max_gap_index": 94149,
+          "max_tolerance_ratio": 0.001373293114447845,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "c16c2d9c98a4fa0d5e4d8edf0a7ebd01ba7506fbfb3380edc8f964d83a2be558",
+          "product_sha256": "f16c1f48c7fe2aeb79d215d1863e03c30dc93e41a5a6f20e0447a2ceeb44d58f"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "pl",
+      "language": "pl",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 20,
+        "word_errors": 0,
+        "characters": 160,
+        "character_errors": 0
+      },
+      "reference_text": "Podróżni zwiedzający państwa obłożone szczególnie wysokimi podatkami mogą czasem zaoszczędzić sporo pieniędzy, szczególnie na takich towarach jak alkohol i tytoń.",
+      "product_text": "Podróżni zwiedzający państwa obłożone szczególnie wysokimi podatkami mogą czasem zaoszczędzić sporo pieniędzy, szczególnie na takich towarach jak alkohol i tytoń.",
+      "product_tokens_sha256": "7e249cc7bc710808538c8822c6f8fc29eb2d820e265975f03951e58198ee5ace",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 155136,
+          "outside_tolerance": 0,
+          "max_abs_gap": 4.1484832763671875e-05,
+          "max_gap_index": 69434,
+          "max_tolerance_ratio": 0.03280422758890249,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "b2299d8a0dec0a7137da4c02b1f2cda6e53ec7edfb352df874fa74c280d038b3",
+          "product_sha256": "86ddd101b08918855d903c1de6a294cacae66a3933142f6c6918aebabe69852e"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 155648,
+          "outside_tolerance": 0,
+          "max_abs_gap": 3.828108310699463e-05,
+          "max_gap_index": 116987,
+          "max_tolerance_ratio": 0.03467541215925114,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "43669bd692344801b06ba31d777d71019be953850cc4cd9eade8f90620870803",
+          "product_sha256": "2075cc19f3411bbb12067f543ad1c030a336dacd9b9ebac40edb73d1ce509885"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "pt",
+      "language": "pt",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 36,
+        "word_errors": 1,
+        "characters": 225,
+        "character_errors": 1
+      },
+      "reference_text": "Segundo informações, ele estava na casa dos 20 anos. Em uma declaração, Biber disse que, embora eu não estivesse presente nem diretamente envolvido neste trágico incidente, meus pensamentos e orações estão com a família da vítima.",
+      "product_text": "Segundo informações, ele estava na casa dos 20 anos. Em uma declaração, Biber disse que, embora eu não estivesse presente nem diretamente envolvido neste trágico incidente, meus pensamentos e orações estão com a família da vítima.",
+      "product_tokens_sha256": "6e9d9112d7a0b1fe4d19aa84a106bf3ddfaa30becfa576bd12e660eed6495158",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 227328,
+          "outside_tolerance": 0,
+          "max_abs_gap": 8.746981620788574e-05,
+          "max_gap_index": 142,
+          "max_tolerance_ratio": 0.06135899704569495,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "d16a9d5e936ef8bb366015cde13862c0f84fe2098de1cad11034bf2cc60c0573",
+          "product_sha256": "6b558c6fc378269d31a0effd2acd340f5ae34ad6766adecf8c2e4e53448d7344"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 227328,
+          "outside_tolerance": 0,
+          "max_abs_gap": 1.0188668966293335e-06,
+          "max_gap_index": 87285,
+          "max_tolerance_ratio": 0.0009927566838922716,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "7f12348085e47cf02c41227de7d2a04c0caac07ee14fdff147d59cf02ecef4dc",
+          "product_sha256": "9e1d152a2acff5f303a7ff4ef2e5ad10f5713b3b8c1fd4c310dea7c1f709fdab"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "ro",
+      "language": "ro",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 15,
+        "word_errors": 4,
+        "characters": 87,
+        "character_errors": 7
+      },
+      "reference_text": "Înainte de sosirea trupelor, Hitler mai avusese din ani 800 probleme legate de boală.",
+      "product_text": "Înainte de sosirea trupelor, Hitler mai avusese din ani 800 probleme legate de boală.",
+      "product_tokens_sha256": "e043fd3b79523859046a81365b252be3e2b588a08f218254a955e5eeba7c0e9a",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 80640,
+          "outside_tolerance": 0,
+          "max_abs_gap": 2.6941299438476562e-05,
+          "max_gap_index": 32969,
+          "max_tolerance_ratio": 0.012611385771449152,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "fa8a84bcdc5db2721fb1f25a557d9d2398959ef229e872d97bb69c85d4aa549e",
+          "product_sha256": "934ff30474ed29babf21c5ddf81b777f0e159055b3b8baef074b3436d6323bba"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 80896,
+          "outside_tolerance": 0,
+          "max_abs_gap": 8.866190910339355e-07,
+          "max_gap_index": 20160,
+          "max_tolerance_ratio": 0.0008225919472713861,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "35c970c728200936a5adf8d719d7c6ffbe7b2ffd2dd3d5ef5e773cfdbedd3b92",
+          "product_sha256": "f1dccb896751df5a524727f62f49de5afd6cad5503c9d9d142724061f68ff5a6"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "sk",
+      "language": "sk",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 16,
+        "word_errors": 1,
+        "characters": 88,
+        "character_errors": 3
+      },
+      "reference_text": "Madagaskar je vzdaľeka tým najväčším a je sám o sebe kontinentom, keď ide o divokú prírodu.",
+      "product_text": "Madagaskar je vzdaľeka tým najväčším a je sám o sebe kontinentom, keď ide o divokú prírodu.",
+      "product_tokens_sha256": "18f61ae7073a6d10ba41ddfbed4e6880635a25e89c566793a7c4730c5ef4f363",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 125952,
+          "outside_tolerance": 0,
+          "max_abs_gap": 4.544854164123535e-05,
+          "max_gap_index": 124435,
+          "max_tolerance_ratio": 0.03046072211725868,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "6411c38cefd27c016bb4433fbd096170c1ceaf8f6e89194c46e0107a15ce16c8",
+          "product_sha256": "9ded49c1e08e07e92a9a9814ff397977fd6708f8bed6929f0b6643c0e48aa8c4"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 125952,
+          "outside_tolerance": 0,
+          "max_abs_gap": 1.8253922462463379e-06,
+          "max_gap_index": 72389,
+          "max_tolerance_ratio": 0.001782197381575239,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "cd4314716ea49e19ce0160b07348f755ec0acbf08263096faf46b31249ede42d",
+          "product_sha256": "de4f4b1ca4fca668a95f7491a75ace2882b7c39b4e51702324ca032167ab1e8a"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "sl",
+      "language": "sl",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 20,
+        "word_errors": 7,
+        "characters": 105,
+        "character_errors": 7
+      },
+      "reference_text": "Napadejo tudi vsabitja, ki so stopile v vodo. Niti ogromni dinozauri, kot so tiranozauri mu niso bili kos.",
+      "product_text": "Napadejo tudi vsabitja, ki so stopile v vodo. Niti ogromni dinozauri, kot so tiranozauri mu niso bili kos.",
+      "product_tokens_sha256": "0870a7b2a9f934ca7fb06e8b19f11aee4a99e89e2bd279ce45083c4823d22f5b",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 96000,
+          "outside_tolerance": 0,
+          "max_abs_gap": 1.9848346710205078e-05,
+          "max_gap_index": 2326,
+          "max_tolerance_ratio": 0.016793081945981232,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "68fcd6bf8d550254a9f47966db373bed215beb42f098305f9e378163e9810549",
+          "product_sha256": "de8ec266b214a73ec997b85fb34ca554d47b444cb1101993c710a474ef072f89"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 96256,
+          "outside_tolerance": 0,
+          "max_abs_gap": 6.92903995513916e-07,
+          "max_gap_index": 82823,
+          "max_tolerance_ratio": 0.0006359627411175801,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "5ab622384ca3648cde4a63f7012942253e6a0510abbbc6556cb6ded632f2b914",
+          "product_sha256": "aca8a4e71b3def276d376f0660358805936858aef91080d825376365f13596e5"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "es",
+      "language": "es",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 29,
+        "word_errors": 2,
+        "characters": 169,
+        "character_errors": 2
+      },
+      "reference_text": "Se recomienda enfáticamente a los viajeros que se informen sobre cualquier riesgo del clima extremo en el área que visitan, dado que ello pueda afectar sus planes de viaje.",
+      "product_text": "Se recomienda enfáticamente a los viajeros que se informen sobre cualquier riesgo del clima extremo en el área que visitan, dado que ello pueda afectar sus planes de viaje.",
+      "product_tokens_sha256": "e03228a8001f3fb06adbf318326b5d0dec497cba621ba72a948a57a4b75dbd16",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 164352,
+          "outside_tolerance": 0,
+          "max_abs_gap": 9.259581565856934e-05,
+          "max_gap_index": 267,
+          "max_tolerance_ratio": 0.07052806338200655,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "022bc62cbea7fa4c359b107750c463b7069fb73725535bd09f0c9219a381fa00",
+          "product_sha256": "8de15ab95f48410b7ec5cf715b1f7cd502987779ff7e04d447568e65fa4dfdcf"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 164864,
+          "outside_tolerance": 0,
+          "max_abs_gap": 2.796761691570282e-06,
+          "max_gap_index": 147910,
+          "max_tolerance_ratio": 0.0027632447457464756,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "72d69f99971cc385019c637a908e3c1aba0c60ffa2b24ac696f9dc20340f88a5",
+          "product_sha256": "a0a90dec527768af044f24038a03d312ddc4eb124411aee32458f014499cfeb2"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "sv",
+      "language": "sv",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 12,
+        "word_errors": 3,
+        "characters": 71,
+        "character_errors": 6
+      },
+      "reference_text": "Måns yta utgörs av stenar och stoft, måns ytterre lager kallas skorpan.",
+      "product_text": "Måns yta utgörs av stenar och stoft, måns ytterre lager kallas skorpan.",
+      "product_tokens_sha256": "de4fd0d91fe51380320d1a6292c8a89dfb69563d8b0fc56e5cdcf02ec33bc40d",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 73728,
+          "outside_tolerance": 0,
+          "max_abs_gap": 3.2007694244384766e-05,
+          "max_gap_index": 158,
+          "max_tolerance_ratio": 0.027873376957487053,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "17ce27fdf1d71b8c1c6729f3728d6d04f142e378ea65707c9c62258ba9159799",
+          "product_sha256": "d5761ea2e95378fb90f1f920308212a9a88494e580de26b20cd21b30a84824b6"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 73728,
+          "outside_tolerance": 0,
+          "max_abs_gap": 1.0319054126739502e-06,
+          "max_gap_index": 30461,
+          "max_tolerance_ratio": 0.0009765486082269777,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "0c4fb07efbc5276377ba9bcfe4d5100c86870e0d63256915c429d8fac8a1c6b7",
+          "product_sha256": "523de77f720a5b56b5dacafb77078b80f4a4137e464bd78eaf12a402ebe84199"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "ru",
+      "language": "ru",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 21,
+        "word_errors": 0,
+        "characters": 154,
+        "character_errors": 0
+      },
+      "reference_text": "В древнем Китае использовали уникальный способ обозначения периодов времени, каждый этап Китая или каждая семья, находившаяся у власти, были особой династией.",
+      "product_text": "В древнем Китае использовали уникальный способ обозначения периодов времени, каждый этап Китая или каждая семья, находившаяся у власти, были особой династией.",
+      "product_tokens_sha256": "3c25271c41632ba9e5142a7d23b9e9aa51478fe09fc52da2242f54cccf506b61",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 216576,
+          "outside_tolerance": 0,
+          "max_abs_gap": 4.3272972106933594e-05,
+          "max_gap_index": 7081,
+          "max_tolerance_ratio": 0.03955292868746798,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "77744452ff061f9f294c0f86581460c980e53cdf0b05eac21ab3490cef1f5172",
+          "product_sha256": "67b87bb8a9e7860bad0f4ecda26d4b780e4c259495bb2236e94144d2903128a2"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 217088,
+          "outside_tolerance": 0,
+          "max_abs_gap": 1.691281795501709e-06,
+          "max_gap_index": 15845,
+          "max_tolerance_ratio": 0.001610143975137561,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "3adc365e6f11fb829b26c6cd797621d06ba10c0e7735831c05a8a60dec0e7fb9",
+          "product_sha256": "2d65e8cef12a4a23aea26afbd3936b6264a18cfb0e6028088a9adc143ec733f0"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "uk",
+      "language": "uk",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 14,
+        "word_errors": 0,
+        "characters": 100,
+        "character_errors": 0
+      },
+      "reference_text": "Жінки усім подорожнім жінкам радять казати, що вони заміжні, незалежно від справжнього сімейного стану.",
+      "product_text": "Жінки усім подорожнім жінкам радять казати, що вони заміжні, незалежно від справжнього сімейного стану.",
+      "product_tokens_sha256": "ecb6ec0d43ef14949db35eca344dadb9ffc2ef5633a6a19fefcdcc2ee1b160e6",
+      "tensors": {
+        "features": {
+          "passed": true,
+          "values": 94464,
+          "outside_tolerance": 0,
+          "max_abs_gap": 3.6388635635375977e-05,
+          "max_gap_index": 526,
+          "max_tolerance_ratio": 0.02745253432083914,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "f5c52abd0d9f9415b3625e84d7aaab2ccf0a275f15bade26c20e0209744c89ee",
+          "product_sha256": "32e90cf7b4dda2d20eb074953a1b3a5ee3fd4a60b4588453da4c589cede39db8"
+        },
+        "encoded": {
+          "passed": true,
+          "values": 95232,
+          "outside_tolerance": 0,
+          "max_abs_gap": 4.824250936508179e-07,
+          "max_gap_index": 7329,
+          "max_tolerance_ratio": 0.0004791096705362394,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "57958f07213a0b1d1152dff9fe0a520c6c59640b717bb5adafc3e93f11b792b5",
+          "product_sha256": "850baeb0125d988a0f792ebd7f72e1a0b5a710cc90b2a099141c13e24473e890"
+        }
+      },
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "full_inference_qualification": true,
+  "scope": "Only named artifacts and this finite audio set; decoder-only comparisons do not qualify the product encoder."
+}

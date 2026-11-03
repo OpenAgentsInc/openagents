@@ -624,6 +624,28 @@ CoreAudio and AVFoundation) could not be compiled on Linux.
       `--capture alsa` (or `pulse`) if PipeWire is absent, and unplug the
       input while listening: expect a capture error and no text.
 
+### Parakeet dictation on the Mac: release latency and the Coder composer (#12665)
+
+The Linux CUDA profile was measured on coderos-4080 with recorded public audio
+([record](docs/verification/dictation-eval-2026-11-02/README.md)). The same
+harness builds on macOS (Metal) but was not run there, and the Coder composer
+path (key release to text in the composer) needs the app:
+
+- [ ] On the Mac, after `apps/openagents-cli/build.sh`, fetch the corpus as the
+      record's "Reproduce" section says, then run
+      `coax/web/tool.sh apps/openagents-cli/tests/dictate-score.coax run DIR gen release press noise seam snr startup`
+      and `... score DIR`. Add the Metal tables and gate lines to the record.
+      The runner's build line uses `-DPSIONIC_PARAKEET_CUDA`, `-ldl` and
+      `-Wl,--wrap`; on macOS it needs the Metal define, `-framework Metal
+      -framework Foundation` and no `--wrap` (Apple's linker has none), so
+      expect to adapt `build_runner` first.
+- [ ] In OpenAgents for Mac with dictation enabled, hold ⌘D, say a sentence of
+      about 5 s, release, and time release to text in the composer (a screen
+      recording at 60 fps is enough), ten times. Add p50 and p99 to the record.
+- [ ] Open the app cold and time until dictation is ready (the model open now
+      checks its 38 pinned pieces on several threads; on Linux it went from
+      27-41 s under load to 2.4-3.7 s).
+
 ### Verse voice host: Parakeet recognition on the Mac (#12669)
 
 The Parakeet recognizer (`verse/voice-host --recognizer parakeet`) was built and

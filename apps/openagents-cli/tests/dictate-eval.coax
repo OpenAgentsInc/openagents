@@ -1,0 +1,307 @@
+// Dictation evaluation runner (GitHub #12665): recorded public audio through
+// the real `openagents dictate` path, with the resident Parakeet model on
+// the GPU. It loads dictate.coax unchanged and calls its dict_listen and
+// dict_recognize on the recorded-audio capture backend (the virtual clock of
+// `--capture fixture`), so every replay goes through the shared controller
+// (apps/shared/dictation.coax: pre-roll, minimum hold, tail, Verse VAD,
+// silence admission, exact segmentation) and the CLI's model worker.
+// No microphone is opened and no sound is played.
+//
+// It writes raw observations only; apps/openagents-cli/tests/dictate-score.coax
+// plans nothing and scores everything. Built and run by dictate-score.coax:
+//   dictate-eval PLAN MODEL_DIR CORPUS_DIR CORPUS_TSV OUT_TSV
+// PLAN: gen (each clip held generously), release (release offsets),
+// press (late presses), noise (no-speech signals, admitted and raw), seam (long
+// dictations made of consecutive utterances), snr (speech in white noise),
+// startup N (open and close the model N times in this process).
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../rules.coax";
+#load "../out.coax";
+#load "../dictate-launch.coax";
+#load "../dictate.coax";
+
+cxcli_isatty :: (fd: int) -> int #foreign;
+cxcli_exe_path :: (out: [] u8) -> int #foreign;
+cxproc_exec :: (h: int) -> int #foreign;
+cxeval_now_us :: () -> int #foreign;
+cxeval_take :: (out: [] int, text: [] u8) -> int #foreign;
+cxeval_open_split :: (out: [] int) -> int #foreign;
+cxeval_direct :: (x: [] f32, out: [] u8) -> int #foreign;
+
+EV_LEAD :: 16000;          // one second of silence before every clip, so a press 300 ms before speech has audio
+EV_CLIP :: 1400000;        // the longest replay: 87.5 s at 16 kHz
+EV_OUT :: 8000000;
+RELEASES :: [6] int.[-300, -200, -100, 0, 100, 200];
+PRESSES :: [6] int.[0, 100, 200, 300, 450, 600];
+
+Clip :: struct { x: [EV_CLIP] f32; n: int; }
+Out :: struct { b: [EV_OUT] u8; n: int; }
+Short :: struct { b: [256] u8; n: int; }
+s_put :: (o: [] Short, s: string) { for c: s { if o[0].n < 256 { o[0].b[o[0].n] = c; o[0].n += 1; } } }
+s_int :: (o: [] Short, v: int) { t: [24] u8; if v < 0 { s_put(o, "-"); s_put(o, int_text(-v, t[..])); } else { s_put(o, int_text(v, t[..])); } }
+Row :: struct { id: string; set: string; tags: string; file: string; samples: int; reference: string; }
+Corpus :: struct { text: [400000] u8; rows: [400] Row; n: int; }
+
+o_put :: (o: [] Out, s: string) { for c: s { if o[0].n < EV_OUT { o[0].b[o[0].n] = c; o[0].n += 1; } } }
+o_int :: (o: [] Out, v: int) { t: [24] u8; if v < 0 { o_put(o, "-"); o_put(o, int_text(-v, t[..])); } else { o_put(o, int_text(v, t[..])); } }
+o_tab :: (o: [] Out) { o_put(o, "\t"); }
+
+// ---- the corpus manifest ----
+field :: (line: string, k: int) -> string {
+  i := 0; at := 0;
+  while at < k && i < line.count { if line[i] == '\t' { at += 1; } i += 1; }
+  if at < k { return ""; }
+  j := i; while j < line.count && line[j] != '\t' { j += 1; }
+  return line[i..<j];
+}
+#test "manifest fields split on tabs" {
+  #assert field("a\tb\tc", 0) == "a" && field("a\tb\tc", 2) == "c" && field("a\tb", 3) == "" && field("a\t\tc", 1) == "";
+}
+corpus_load :: (path: string, c: [] Corpus) -> bool {
+  n := fs_read(path, c[0].text[..]); if n <= 0 { return false; }
+  t := cast(string) c[0].text[0..<n]; i := 0;
+  while i < n {
+    j := i; while j < n && t[j] != '\n' { j += 1; }
+    line := t[i..<j]; i = j + 1;
+    if line.count == 0 || line[0] == '#' || c[0].n >= 400 { continue; }
+    c[0].rows[c[0].n] = Row.{id = field(line, 0), set = field(line, 1), tags = field(line, 2), file = field(line, 3), samples = text_int(field(line, 4)), reference = field(line, 6)};
+    c[0].n += 1;
+  }
+  return c[0].n > 0;
+}
+starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+ends :: (s: string, p: string) -> bool { return s.count >= p.count && s[s.count - p.count..<s.count] == p; }
+has_text :: (hay: string, needle: string) -> bool {
+  i := 0; while i + needle.count <= hay.count { if hay[i..<i + needle.count] == needle { return true; } i += 1; }
+  return false;
+}
+// English human or synthetic speech the sweep scores against its reference.
+english :: (r: Row) -> bool {
+  if starts(r.set, "nemo-fleurs") { return r.tags == "lang=en"; }
+  return !starts(r.set, "seam-");
+}
+
+// Appends the row's audio (16 kHz mono s16 WAV or raw s16le PCM) to clip.
+load_audio :: (r: Row, corpus_dir: string, clip: [] Clip) -> bool {
+  pb: [2048] u8; cwd: [1024] u8;
+  path := ifx starts(r.file, "corpus:") then fs_join(corpus_dir, r.file[7..<r.file.count], pb[..]) else fs_join(fs_cwd(cwd[..]), r.file[5..<r.file.count], pb[..]);
+  file: [4000000] u8;
+  n := fs_read(path, file[..]); if n < 4 { return false; }
+  at := 0; end := n;
+  if ends(path, ".wav") {
+    if n < 44 || cast(string) file[0..<4] != "RIFF" || cast(string) file[8..<12] != "WAVE" { return false; }
+    i := 12; at = -1;
+    while i + 8 <= n {
+      size := cast(int) file[i + 4] | (cast(int) file[i + 5] << 8) | (cast(int) file[i + 6] << 16) | (cast(int) file[i + 7] << 24);
+      id := cast(string) file[i..<i + 4];
+      if id == "fmt " {
+        channels := cast(int) file[i + 10] | (cast(int) file[i + 11] << 8);
+        rate := cast(int) file[i + 12] | (cast(int) file[i + 13] << 8) | (cast(int) file[i + 14] << 16);
+        bits := cast(int) file[i + 22] | (cast(int) file[i + 23] << 8);
+        if channels != 1 || rate != 16000 || bits != 16 { return false; }
+      }
+      if id == "data" { at = i + 8; end = ifx at + size < n then at + size else n; break; }
+      i += 8 + size + (size & 1);
+    }
+    if at < 0 { return false; }
+  }
+  count := (end - at) / 2;
+  if count != r.samples || clip[0].n + count > EV_CLIP { return false; }
+  for k: 0..<count {
+    v := cast(int) file[at + 2 * k] | (cast(int) file[at + 2 * k + 1] << 8);
+    if v >= 32768 { v -= 65536; }
+    clip[0].x[clip[0].n] = f32(v) / 32768.0; clip[0].n += 1;
+  }
+  return true;
+}
+
+// Speech onset and offset (ms into the clip): the first and last 20 ms
+// frames within 35 dB of the loudest frame and above -55 dBFS.
+Span :: struct { on: int; off: int; }
+speech_span :: (x: [] f32) -> Span {
+  frames := x.count / 320; peak := -200.0; db: [5000] f64;
+  for k: 0..<ifx frames < 5000 then frames else 5000 {
+    p := 0.0; for i: 0..<320 { v := f64(x[k * 320 + i]); p += v * v; }
+    db[k] = 4.342944819032518 * log(p / 320 + 0.000000000001);
+    if db[k] > peak { peak = db[k]; }
+  }
+  quiet := ifx peak - 35 > -55 then peak - 35 else -55.0;
+  s := Span.{on = -1, off = -1};
+  for k: 0..<ifx frames < 5000 then frames else 5000 { if db[k] >= quiet { if s.on < 0 { s.on = k * 20; } s.off = k * 20 + 20; } }
+  return s;
+}
+#test "speech span finds the loud frames and ignores quiet ones" {
+  x: [3200] f32; for i: 640..<1600 { x[i] = ifx i % 2 == 0 then 0.3 else -0.3; } for i: 2000..<2100 { x[i] = 0.0001; }
+  s := speech_span(x[..]);
+  #assert s.on == 40 && s.off == 100;
+}
+
+// ---- one dictation through the CLI's own path ----
+Ev :: struct {
+  d: [1] Dict; ticket: [1] int; words: [8000] u8; seg: [16384] u8; seg_n: int; stats: [5] int;
+  control: [64] u8; model: string; status: string; text: string; wall: int; listen: int;
+}
+replay :: (e: [] Ev, f: [] DictFixture, clip: [] Clip, press: int, release: int) {
+  f[0].n = 0;
+  for i: 0..<EV_LEAD { f[0].pcm[f[0].n] = 0; f[0].n += 1; }
+  for i: 0..<clip[0].n { if f[0].n < DC_FX_PCM { f[0].pcm[f[0].n] = clip[0].x[i]; f[0].n += 1; } }
+  f[0].rate = 16000; f[0].at = 0; f[0].ms = 0; f[0].fault = ""; f[0].text = ""; f[0].recognizer = false;
+  c: [1] Short;
+  s_put(c[..], "start@"); s_int(c[..], press); s_put(c[..], ",stop@"); s_int(c[..], release);
+  for i: 0..<c[0].n { e[0].control[i] = c[0].b[i]; }
+  f[0].control = cast(string) e[0].control[0..<c[0].n];
+  e[0].d[0] = Dict.{out = DC_OUT_JSON, capture = DC_FIXTURE, gpu = 1, seconds = 60, wait = true, model = e[0].model};
+  q := cxdict_dct_reset();
+  z := cxeval_take(e[0].stats[..], e[0].seg[..]);
+  t0 := cxeval_now_us();
+  r := dict_listen(e[0].d[..], f, e[0].ticket[..]);
+  t1 := cxeval_now_us(); e[0].listen = t1 - t0;
+  e[0].text = "";
+  if r == -1 {
+    r = dict_recognize(e[0].d[..], f, e[0].ticket[0], e[0].words[..]);
+    if r == DC_FINAL { e[0].text = cast(string) e[0].words[0..<cxdict_dct_text_n()]; }
+  }
+  e[0].wall = cxeval_now_us() - t1;
+  e[0].seg_n = cxeval_take(e[0].stats[..], e[0].seg[..]);
+  e[0].status = ifx r == DC_FINAL then "final" else ifx r == DC_NO_SPEECH then "no_speech" else ifx r == DC_CANCELLED then "cancelled" else "error";
+  q = cxdict_dct_clear();
+}
+// One TSV line: kind id variant press release status samples segments
+// wall_us calls infer_us enc_us dec_us onset offset listen_us text segments clear_us
+emit :: (o: [] Out, e: [] Ev, kind: string, id: string, variant: string, press: int, release: int, s: Span) {
+  o_put(o, kind); o_tab(o); o_put(o, id); o_tab(o); o_put(o, variant); o_tab(o); o_int(o, press); o_tab(o); o_int(o, release); o_tab(o);
+  o_put(o, e[0].status);
+  if e[0].status == "no_speech" { o_put(o, ":"); o_put(o, e[0].d[0].reason); }
+  if e[0].status == "error" { o_put(o, ":"); o_put(o, dc_error_name(e[0].d[0].error)); }
+  o_tab(o); o_int(o, e[0].d[0].samples); o_tab(o); o_int(o, e[0].d[0].segments); o_tab(o); o_int(o, e[0].wall); o_tab(o);
+  for k: 0..<4 { o_int(o, e[0].stats[k]); o_tab(o); }
+  o_int(o, s.on); o_tab(o); o_int(o, s.off); o_tab(o); o_int(o, e[0].listen); o_tab(o);
+  o_put(o, e[0].text); o_tab(o);
+  for i: 0..<e[0].seg_n { c := e[0].seg[i]; o_put(o, ifx c == 0x1e then " | " else cast(string) e[0].seg[i..<i + 1]); }
+  o_tab(o); o_int(o, e[0].stats[4]); o_put(o, "\n");
+}
+
+// ---- synthetic no-speech signals (3 s), deterministic ----
+noise :: (kind: int, seed: int, clip: [] Clip) -> string {
+  clip[0].n = 48000; x := seed * 7919 + 17;
+  for i: 0..<48000 {
+    x = (x * 1103515245 + 12345) & 2147483647;
+    u := f64(x) / 1073741824.0 - 1.0;   // uniform in [-1, 1): RMS 1/sqrt(3)
+    v := 0.0;
+    if kind == 1 { v = u * 0.000316227766 * 1.7320508; }
+    if kind == 2 { v = u * 0.00316227766 * 1.7320508; }
+    if kind == 3 { v = u * 0.01 * 1.7320508; }
+    if kind == 4 { v = u * 0.0316227766 * 1.7320508; }
+    if kind == 5 { t := f64(i) / 16000.0; v = 0.0316227766 * 1.2 * (sin(6.283185307179586 * 60 * t) * 0.8 + sin(6.283185307179586 * 120 * t) * 0.4); }
+    if kind == 6 { v = ifx (i % 1600) < 80 then u * 0.1 else 0.0; }
+    clip[0].x[i] = f32(v);
+  }
+  names := [7] string.["zero", "white-70dBFS", "white-50dBFS", "white-40dBFS", "white-30dBFS", "hum-30dBFS", "clicks-20dBFS"];
+  return names[kind];
+}
+
+eval_main :: () -> int {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 5 { tool_errln("usage: dictate-eval PLAN MODEL_DIR CORPUS_DIR CORPUS_TSV OUT_TSV [N]"); return 2; }
+  plan := args_at(a[..], 0); model := args_at(a[..], 1); corpus_dir := args_at(a[..], 2); out_path := args_at(a[..], 4);
+  c: [1] Corpus;
+  if !corpus_load(args_at(a[..], 3), c[..]) { tool_errln("cannot read the corpus manifest"); return 2; }
+  o: [1] Out; o[0].n = 0;
+  e: [1] Ev; e[0].model = model;
+  db: [1300] u8; k := copy(model, db[..]); err: [512] u8;
+  if plan == "startup" {
+    runs := ifx args_count(a[..]) >= 6 then text_int(args_at(a[..], 5)) else 3;
+    for i: 0..<runs {
+      t0 := cxeval_now_us(); got := cxdict_model_open(db[0..<k], 1, err[..]); t1 := cxeval_now_us();
+      split: [6] int; s := cxeval_open_split(split[..]);
+      t2 := cxeval_now_us(); m := cxdict_model_close(); t3 := cxeval_now_us();
+      o_put(o[..], "open\t"); o_int(o[..], i); o_tab(o[..]); o_int(o[..], got); o_tab(o[..]); o_int(o[..], t1 - t0); o_tab(o[..]);
+      for j: 0..<4 { o_int(o[..], split[j]); o_tab(o[..]); }
+      o_int(o[..], t3 - t2); o_tab(o[..]); o_int(o[..], split[4]); o_tab(o[..]); o_int(o[..], split[5]); o_put(o[..], "\n");
+      if got != 0 { break; }
+    }
+    if !fs_write(out_path, cast(string) o[0].b[0..<o[0].n]) { return 3; }
+    return 0;
+  }
+  t0 := cxeval_now_us();
+  if cxdict_model_open(db[0..<k], 1, err[..]) != 0 { tool_errln("cannot open the model on the GPU"); return 4; }
+  split: [6] int; s0 := cxeval_open_split(split[..]);
+  o_put(o[..], "open\t0\t0\t"); o_int(o[..], cxeval_now_us() - t0); o_tab(o[..]);
+  for j: 0..<4 { o_int(o[..], split[j]); o_tab(o[..]); }
+  o_put(o[..], "0\t"); o_int(o[..], split[4]); o_tab(o[..]); o_int(o[..], split[5]); o_put(o[..], "\n");
+  f: [1] DictFixture; clip: [1] Clip;
+  done := 0;
+  if plan == "gen" || plan == "release" || plan == "press" || plan == "snr" {
+    snr_n := 0;
+    for r: 0..<c[0].n {
+      row := c[0].rows[r];
+      if plan != "gen" && !english(row) { continue; }
+      if plan == "snr" && (row.set != "clean-speaker" || snr_n >= 10) { continue; }
+      clip[0].n = 0;
+      if !load_audio(row, corpus_dir, clip[..]) { tool_err("cannot read the audio of "); tool_errln(row.id); return 3; }
+      s := speech_span(clip[0].x[0..<clip[0].n]);
+      if s.on < 0 { tool_err("no speech found in "); tool_errln(row.id); return 3; }
+      press := 1000 + s.on - 300; release := 1000 + s.off + 200;
+      if plan == "gen" { replay(e[..], f[..], clip[..], press, release); emit(o[..], e[..], "gen", row.id, "-", -300, 200, s); }
+      if plan == "release" { for d: RELEASES { replay(e[..], f[..], clip[..], press, 1000 + s.off + d); emit(o[..], e[..], "release", row.id, "-", -300, d, s); } }
+      if plan == "press" { for p: PRESSES { replay(e[..], f[..], clip[..], 1000 + s.on + p, 1000 + s.off); emit(o[..], e[..], "press", row.id, "-", p, 0, s); } }
+      if plan == "snr" {
+        snr_n += 1;
+        rms := 0.0; for i: 0..<clip[0].n { v := f64(clip[0].x[i]); rms += v * v; } rms = sqrt(rms / f64(clip[0].n));
+        speech: [1] Clip;
+        for i: 0..<clip[0].n { speech[0].x[i] = clip[0].x[i]; } speech[0].n = clip[0].n;
+        levels := [2] f64.[0.316227766, 1.0]; names := [2] string.["snr10", "snr0"];
+        for l: 0..<2 {
+          x := r * 7919 + l + 1;
+          for i: 0..<clip[0].n { x = (x * 1103515245 + 12345) & 2147483647; u := f64(x) / 1073741824.0 - 1.0; m := f64(speech[0].x[i]) + u * rms * levels[l] * 1.7320508; if m > 1 { m = 1.0; } if m < -1 { m = -1.0; } clip[0].x[i] = f32(m); }
+          replay(e[..], f[..], clip[..], press, release); emit(o[..], e[..], "snr", row.id, names[l], -300, 200, s);
+        }
+      }
+      done += 1;
+      if done % 10 == 0 { tool_err("."); }
+    }
+  }
+  if plan == "noise" {
+    for kind: 0..<7 {
+      for seed: 1..<4 {
+        name := noise(kind, seed, clip[..]);
+        s := Span.{on = 0, off = 3000};
+        replay(e[..], f[..], clip[..], 1000, 4000);
+        v: [1] Short; s_put(v[..], name); s_put(v[..], "#"); s_int(v[..], seed);
+        emit(o[..], e[..], "noise", name, cast(string) v[0].b[0..<v[0].n], 0, 0, s);
+        raw: [8000] u8; t := cxeval_now_us(); n := cxeval_direct(clip[0].x[0..<clip[0].n], raw[..]);
+        o_put(o[..], "raw\t"); o_put(o[..], name); o_tab(o[..]); o_put(o[..], cast(string) v[0].b[0..<v[0].n]); o_put(o[..], "\t0\t0\t");
+        o_put(o[..], ifx n < 0 then "error" else "final"); o_put(o[..], "\t48000\t1\t"); o_int(o[..], cxeval_now_us() - t);
+        o_put(o[..], "\t0\t0\t0\t0\t0\t3000\t0\t"); if n > 0 { o_put(o[..], cast(string) raw[0..<n]); } o_put(o[..], "\t\n");
+      }
+    }
+  }
+  if plan == "seam" {
+    r := 0;
+    while r < c[0].n {
+      row := c[0].rows[r];
+      if !starts(row.set, "seam-") { r += 1; continue; }
+      group := row.set; clip[0].n = 0; used := 0; first := r;
+      while r < c[0].n && c[0].rows[r].set == group {
+        if clip[0].n < 30 * 16000 && clip[0].n + c[0].rows[r].samples <= 58 * 16000 {
+          if !load_audio(c[0].rows[r], corpus_dir, clip[..]) { tool_errln("cannot read seam audio"); return 3; }
+          used += 1;
+        }
+        r += 1;
+      }
+      s := speech_span(clip[0].x[0..<clip[0].n]);
+      v: [1] Short; s_put(v[..], "rows="); s_int(v[..], used); s_put(v[..], ",first="); s_int(v[..], first);
+      replay(e[..], f[..], clip[..], 1000 + s.on - 300, 1000 + s.off + 200);
+      emit(o[..], e[..], "seam", group, cast(string) v[0].b[0..<v[0].n], -300, 200, s);
+      tool_err(".");
+    }
+  }
+  tool_errln("");
+  m := cxdict_model_close();
+  if !fs_write(out_path, cast(string) o[0].b[0..<o[0].n]) { tool_errln("cannot write the results"); return 3; }
+  return 0;
+}
+tool_main :: () -> int #export_c { return eval_main(); }

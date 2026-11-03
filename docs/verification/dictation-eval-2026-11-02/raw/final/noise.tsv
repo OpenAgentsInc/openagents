@@ -1,0 +1,43 @@
+open	0	0	11667787	10303015	46305	178443	8	0	145419800	2360320
+noise	zero	zero#1	0	0	no_speech:silence	0	0	0	0	0	0	0	0	3000	712			0
+raw	zero	zero#1	0	0	final	48000	1	114411	0	0	0	0	0	3000	0		
+noise	zero	zero#2	0	0	no_speech:silence	0	0	0	0	0	0	0	0	3000	663			0
+raw	zero	zero#2	0	0	final	48000	1	69064	0	0	0	0	0	3000	0		
+noise	zero	zero#3	0	0	no_speech:silence	0	0	1	0	0	0	0	0	3000	643			0
+raw	zero	zero#3	0	0	final	48000	1	69772	0	0	0	0	0	3000	0		
+noise	white-70dBFS	white-70dBFS#1	0	0	no_speech:silence	0	0	0	0	0	0	0	0	3000	1093			0
+raw	white-70dBFS	white-70dBFS#1	0	0	final	48000	1	69972	0	0	0	0	0	3000	0		
+noise	white-70dBFS	white-70dBFS#2	0	0	no_speech:silence	0	0	0	0	0	0	0	0	3000	1083			0
+raw	white-70dBFS	white-70dBFS#2	0	0	final	48000	1	94076	0	0	0	0	0	3000	0		
+noise	white-70dBFS	white-70dBFS#3	0	0	no_speech:silence	0	0	0	0	0	0	0	0	3000	1606			0
+raw	white-70dBFS	white-70dBFS#3	0	0	final	48000	1	100786	0	0	0	0	0	3000	0		
+noise	white-50dBFS	white-50dBFS#1	0	0	no_speech:silence	0	0	0	0	0	0	0	0	3000	1558			0
+raw	white-50dBFS	white-50dBFS#1	0	0	final	48000	1	100129	0	0	0	0	0	3000	0		
+noise	white-50dBFS	white-50dBFS#2	0	0	no_speech:silence	0	0	0	0	0	0	0	0	3000	1562			0
+raw	white-50dBFS	white-50dBFS#2	0	0	final	48000	1	100072	0	0	0	0	0	3000	0		
+noise	white-50dBFS	white-50dBFS#3	0	0	no_speech:silence	0	0	0	0	0	0	0	0	3000	1615			0
+raw	white-50dBFS	white-50dBFS#3	0	0	final	48000	1	78285	0	0	0	0	0	3000	0		
+noise	white-40dBFS	white-40dBFS#1	0	0	no_speech:silence	58400	1	115022	1	66714	34105	972	0	3000	1078			46523
+raw	white-40dBFS	white-40dBFS#1	0	0	final	48000	1	73497	0	0	0	0	0	3000	0		
+noise	white-40dBFS	white-40dBFS#2	0	0	no_speech:silence	58400	1	111158	1	55285	34892	1320	0	3000	1069			54999
+raw	white-40dBFS	white-40dBFS#2	0	0	final	48000	1	91478	0	0	0	0	0	3000	0		
+noise	white-40dBFS	white-40dBFS#3	0	0	final	58400	1	96611	1	54741	34515	1526	0	3000	1084	Uh	Uh	41225
+raw	white-40dBFS	white-40dBFS#3	0	0	final	48000	1	70970	0	0	0	0	0	3000	0		
+noise	white-30dBFS	white-30dBFS#1	0	0	no_speech:silence	58400	1	78029	1	49620	34371	976	0	3000	1053			27755
+raw	white-30dBFS	white-30dBFS#1	0	0	final	48000	1	70483	0	0	0	0	0	3000	0		
+noise	white-30dBFS	white-30dBFS#2	0	0	no_speech:silence	58400	1	97274	1	45936	34399	1296	0	3000	1078			50606
+raw	white-30dBFS	white-30dBFS#2	0	0	final	48000	1	73202	0	0	0	0	0	3000	0		
+noise	white-30dBFS	white-30dBFS#3	0	0	no_speech:silence	58400	1	82770	1	55361	34773	1519	0	3000	1051			26791
+raw	white-30dBFS	white-30dBFS#3	0	0	final	48000	1	69193	0	0	0	0	0	3000	0		
+noise	hum-30dBFS	hum-30dBFS#1	0	0	no_speech:silence	58400	1	71858	1	44920	33927	974	0	3000	652			26261
+raw	hum-30dBFS	hum-30dBFS#1	0	0	final	48000	1	69977	0	0	0	0	0	3000	0		
+noise	hum-30dBFS	hum-30dBFS#2	0	0	no_speech:silence	58400	1	90611	1	54079	34588	926	0	3000	669			35730
+raw	hum-30dBFS	hum-30dBFS#2	0	0	final	48000	1	67913	0	0	0	0	0	3000	0		
+noise	hum-30dBFS	hum-30dBFS#3	0	0	no_speech:silence	58400	1	83036	1	45068	34366	1106	0	3000	611			37297
+raw	hum-30dBFS	hum-30dBFS#3	0	0	final	48000	1	66821	0	0	0	0	0	3000	0		
+noise	clicks-20dBFS	clicks-20dBFS#1	0	0	no_speech:silence	58400	1	71746	1	44931	34326	741	0	3000	624			26167
+raw	clicks-20dBFS	clicks-20dBFS#1	0	0	final	48000	1	67010	0	0	0	0	0	3000	0		
+noise	clicks-20dBFS	clicks-20dBFS#2	0	0	no_speech:silence	58400	1	80013	1	48329	34294	694	0	3000	609			31033
+raw	clicks-20dBFS	clicks-20dBFS#2	0	0	final	48000	1	68371	0	0	0	0	0	3000	0		
+noise	clicks-20dBFS	clicks-20dBFS#3	0	0	no_speech:silence	58400	1	72222	1	45104	34423	768	0	3000	646			26510
+raw	clicks-20dBFS	clicks-20dBFS#3	0	0	final	48000	1	68518	0	0	0	0	0	3000	0		

@@ -21,6 +21,13 @@ partials). No speech exits 9, not 4: the CLI already uses 4 for "forbidden",
 which is what a denied microphone returns. Real-microphone acceptance is in
 `NEEDS_OWNER.md`; [CLI record](../verification/dictate-cli-2026-11-02/README.md).
 
+D4's Linux measurement is done (#12665): a frozen public corpus, release
+offsets, WER/CER, no-speech and seam scores, p50/p99 timings and gates, in
+[the evaluation record](../verification/dictation-eval-2026-11-02/README.md).
+Key release to text on the RTX 4080 is about 280-320 ms at p50. It found that
+a hard 20.47 s cut can make Parakeet drop the next segment's speech; the Mac
+and composer numbers are owner measurements.
+
 The default `openagents transcribe FILE` now also selects local Parakeet.
 [CLI setup and limits](../../psionic/docs/parakeet.md) are separate from
 D0 microphone capture; bounded long-file text/JSON/SRT/VTT is implemented,
