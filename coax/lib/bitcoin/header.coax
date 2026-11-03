@@ -1,0 +1,304 @@
+// Header rules (Bitcoin chapter 51): what a header must satisfy given the
+// chain it extends, Bitcoin Core's ContextualCheckBlockHeader. Its nBits
+// is the one retargeting requires (chapter 48), its time is after the
+// median time past of the 11 blocks before it and no more than two hours
+// ahead of the node's clock, testnet4's first block of each period is no
+// more than 10 minutes before the block it follows (BIP-94's timewarp
+// rule), and its version is at least the minimum of every buried
+// deployment active at its height (BIP-34, BIP-66 and BIP-65, chapter 50's
+// heights). Then BIP-9's version bits: which versions signal a deployment,
+// and the state machine (defined, started, locked in, active or failed)
+// that Core's versionbits.cpp walks one 2,016-block period at a time,
+// with the minimum activation height that Taproot's Speedy Trial used.
+//
+// Every rule comes from validation.cpp, chain.h, consensus.h,
+// versionbits.cpp, versionbits.h and versionbits_impl.h at the pinned
+// revision ddea9196, and Taproot's deployment from chainparams.cpp at
+// v22.0. coax/tests/bitcoin/header.py checks the constants against those
+// files and replays the example with Core's own backward walk.
+//
+// Headers and times are public, so everything here runs in variable time
+// and every procedure that decides ends in _vartime (Bitcoin chapter 3).
+#load "chainparams.coax";
+#load "locktime.coax";
+#load "../../tests/bitcoin/header_vectors.coax";
+#authority;
+
+// book:begin codes
+// Result codes, with Core's reject reason in quotes.
+HEADER_OK :: 0;
+HEADER_BAD_DIFFBITS :: 1;   // "bad-diffbits": nBits is not the required target
+HEADER_TIME_TOO_OLD :: 2;   // "time-too-old": not after the median time past
+HEADER_TIMEWARP :: 3;       // "time-timewarp-attack": BIP-94, testnet4
+HEADER_TIME_TOO_NEW :: 4;   // "time-too-new": more than two hours ahead
+HEADER_BAD_VERSION :: 5;    // "bad-version(0x%08x)": below a buried deployment's minimum
+HEADER_CONTEXT :: 6;        // the previous times do not fit the previous height
+HEADER_REASONS :: [7] string.["ok", "bad-diffbits", "time-too-old", "time-timewarp-attack", "time-too-new", "bad-version", "bad context"];
+// book:end codes
+
+// book:begin limits
+HEADER_MAX_FUTURE :: 2 * 60 * 60;   // MAX_FUTURE_BLOCK_TIME (chain.h): two hours
+HEADER_MAX_TIMEWARP :: 600;         // MAX_TIMEWARP (consensus.h): ten minutes
+// book:end limits
+
+// book:begin context
+// prev_times holds the times of the previous block and the up to 10
+// before it, oldest first: 11 of them, or prev_height + 1 near genesis,
+// the most GetMedianTimePast can read.
+header_times_fit :: (prev_height: int, prev_times: [] int) -> bool #export_c {
+  if prev_height < 0 { return false; }
+  want := ifx prev_height + 1 < LOCKTIME_MEDIAN_SPAN then prev_height + 1 else LOCKTIME_MEDIAN_SPAN;
+  return prev_times.count == want;
+}
+// book:end context
+
+// book:begin version
+// The lowest version a header at this height may have. Core refuses a
+// version below 2 once BIP-34 is active, below 3 once BIP-66 is, and below
+// 4 once BIP-65 is; the highest active minimum covers the others.
+header_min_version :: (p: ChainParams, height: int) -> int #export_c {
+  if chain_deployment_active(p, DEP_CLTV, height) { return 4; }
+  if chain_deployment_active(p, DEP_DERSIG, height) { return 3; }
+  if chain_deployment_active(p, DEP_HEIGHTINCB, height) { return 2; }
+  return 1;
+}
+// book:end version
+
+// book:begin check
+// Core's ContextualCheckBlockHeader, its rules in its order. The previous
+// block is at prev_height; required_bits is the nBits chapter 48's
+// retarget_next_bits_vartime gives for the new header; now is the node's
+// clock, in seconds since 1970.
+header_check_vartime :: (p: ChainParams, prev_height: int, prev_times: [] int, required_bits: u32, h: BlockHeader, now: int) -> int #export_c {
+  if !header_times_fit(prev_height, prev_times) { return HEADER_CONTEXT; }
+  height := prev_height + 1;
+  if h.bits != required_bits { return HEADER_BAD_DIFFBITS; }
+  time := cast(int) h.time;
+  if time <= locktime_median_time_past_vartime(prev_times) { return HEADER_TIME_TOO_OLD; }
+  if p.retarget.bip94 && height % retarget_interval(p.retarget) == 0 {
+    if time < prev_times[prev_times.count - 1] - HEADER_MAX_TIMEWARP { return HEADER_TIMEWARP; }
+  }
+  if time > now + HEADER_MAX_FUTURE { return HEADER_TIME_TOO_NEW; }
+  if h.version < header_min_version(p, height) { return HEADER_BAD_VERSION; }
+  return HEADER_OK;
+}
+// book:end check
+
+// book:begin bip9
+// BIP-9's states, and the special start times of Core's BIP9Deployment.
+BIP9_DEFINED :: 0;
+BIP9_STARTED :: 1;
+BIP9_LOCKED_IN :: 2;
+BIP9_ACTIVE :: 3;
+BIP9_FAILED :: 4;
+BIP9_NAMES :: [5] string.["defined", "started", "locked_in", "active", "failed"];
+BIP9_ALWAYS_ACTIVE :: -1;
+BIP9_NEVER_ACTIVE :: -2;
+BIP9_NO_TIMEOUT :: 0x7fffffffffffffff;
+VERSIONBITS_TOP_BITS :: 0x20000000;   // the version's top three bits are 001
+VERSIONBITS_TOP_MASK :: 0xe0000000;
+// One deployment: its bit, the median times it starts and times out, the
+// lowest height it may activate at, and how many of a period's blocks
+// must signal.
+Bip9Deployment :: struct {
+  bit: int; start: int; timeout: int;
+  min_activation_height: int; period: int; threshold: int;
+}
+// Core's DEPLOYMENT_TESTDUMMY on each network: never active outside
+// regtest, where it starts at once and counts 108 of 144 blocks.
+header_testdummy :: (chain: int) -> Bip9Deployment #export_c {
+  d := Bip9Deployment.{bit=28, start=BIP9_NEVER_ACTIVE, timeout=BIP9_NO_TIMEOUT, period=2016, threshold=1815};
+  if chain == CHAIN_TESTNET3 || chain == CHAIN_TESTNET4 { d.threshold = 1512; }
+  if chain == CHAIN_REGTEST { d.start = 0; d.period = 144; d.threshold = 108; }
+  return d;
+}
+// Taproot's mainnet deployment, Speedy Trial, from Core v22.0: bit 2,
+// starting 2021-04-24, timing out 2021-08-11, and activating no lower
+// than height 709,632. It has since been buried (chapter 50).
+TAPROOT_SPEEDY_TRIAL :: Bip9Deployment.{bit=2, start=1619222400, timeout=1628640000, min_activation_height=709632, period=2016, threshold=1815};
+// book:end bip9
+
+// book:begin signal
+// A version signals a deployment when its top three bits are 001 and the
+// deployment's bit is set. A negative version never signals.
+header_signals :: (d: Bip9Deployment, version: int) -> bool #export_c {
+  return (version & VERSIONBITS_TOP_MASK) == VERSIONBITS_TOP_BITS && ((version >> d.bit) & 1) != 0;
+}
+header_bip9_count_vartime :: (d: Bip9Deployment, versions: [] int) -> int #export_c {
+  n := 0;
+  for i: 0..<versions.count { if header_signals(d, versions[i]) { n += 1; } }
+  return n;
+}
+// The version Core mines with (ComputeBlockVersion), for one deployment:
+// the top bits, and the deployment's bit while it is started or locked in.
+header_bip9_version :: (d: Bip9Deployment, state: int) -> int #export_c {
+  v := VERSIONBITS_TOP_BITS;
+  if state == BIP9_STARTED || state == BIP9_LOCKED_IN { v |= 1 << d.bit; }
+  return v;
+}
+// book:end signal
+
+// book:begin state
+// One period, heights k * period to k * period + period - 1: the median
+// time past at its last block, and how many of its blocks signal.
+Bip9Period :: struct { mtp: int; count: int; }
+// The state of the blocks of the period after the ones summarized. A
+// period's state follows from the one before it, so the walk starts in
+// DEFINED at genesis. As in Core, any period whose median time past is
+// before the start puts the next period back in DEFINED, so the walk
+// starts again after the last such period.
+header_bip9_state_vartime :: (d: Bip9Deployment, periods: [] Bip9Period) -> int #export_c {
+  if d.start == BIP9_ALWAYS_ACTIVE { return BIP9_ACTIVE; }
+  if d.start == BIP9_NEVER_ACTIVE { return BIP9_FAILED; }
+  first := 0;
+  for k: 0..<periods.count { if periods[k].mtp < d.start { first = k + 1; } }
+  state := BIP9_DEFINED;
+  for k: first..<periods.count {
+    s := periods[k];
+    if state == BIP9_DEFINED {
+      if s.mtp >= d.start { state = BIP9_STARTED; }
+    } else if state == BIP9_STARTED {
+      if s.count >= d.threshold { state = BIP9_LOCKED_IN; }
+      else if s.mtp >= d.timeout { state = BIP9_FAILED; }
+    } else if state == BIP9_LOCKED_IN {
+      // The next period starts at height (k + 1) * period.
+      if (k + 1) * d.period >= d.min_activation_height { state = BIP9_ACTIVE; }
+    }
+  }
+  return state;
+}
+// book:end state
+
+// ---- tests
+// Read concatenated headers; each from index linked on names the one before it.
+hd_headers :: (text: string, linked: int, out: [] BlockHeader) -> int {
+  raw: [1040] u8;
+  n := cp_unhex(text, raw[..]);
+  #assert n >= 0 && n % POW_HEADER == 0 && n / POW_HEADER <= out.count;
+  for i: 0..<n / POW_HEADER {
+    b := raw[i * POW_HEADER..<(i + 1) * POW_HEADER];
+    out[i] = pow_header_read_vartime(b);
+    #assert out[i].code == POW_OK;
+    if i > linked {
+      prev := raw[(i - 1) * POW_HEADER..<i * POW_HEADER];
+      #assert pow_links_vartime(b, prev);
+    }
+  }
+  return n / POW_HEADER;
+}
+#test "limits and reasons" {
+  #assert HEADER_MAX_FUTURE == 7200 && HEADER_MAX_TIMEWARP == 600 && HEADER_REASONS[HEADER_TIMEWARP] == "time-timewarp-attack";
+  t: [12] int;
+  for i: 0..<12 { t[i] = 1000 + i; }
+  #assert header_times_fit(0, t[0..<1]) && !header_times_fit(-1, t[0..<1]) && !header_times_fit(1, t[0..<1]);
+  #assert header_times_fit(9, t[0..<10]) && header_times_fit(10, t[0..<11]) && header_times_fit(500, t[0..<11]);
+  #assert !header_times_fit(500, t[0..<10]) && !header_times_fit(500, t[0..<12]) && !header_times_fit(9, t[0..<11]);
+}
+#test "version minimums" {
+  m := CHAIN_MAINNET_PARAMS;
+  #assert header_min_version(m, 227930) == 1 && header_min_version(m, 227931) == 2;
+  #assert header_min_version(m, 363724) == 2 && header_min_version(m, 363725) == 3;
+  #assert header_min_version(m, 388380) == 3 && header_min_version(m, 388381) == 4;
+  t := CHAIN_TESTNET3_PARAMS;
+  #assert header_min_version(t, 21110) == 1 && header_min_version(t, 21111) == 2 && header_min_version(t, 330776) == 3 && header_min_version(t, 581885) == 4;
+  #assert header_min_version(CHAIN_TESTNET4_PARAMS, 0) == 1 && header_min_version(CHAIN_TESTNET4_PARAMS, 1) == 4 && header_min_version(CHAIN_SIGNET_PARAMS, 1) == 4;
+  #assert header_min_version(CHAIN_REGTEST_PARAMS, 0) == 1 && header_min_version(CHAIN_REGTEST_PARAMS, 1) == 4;
+}
+#test "mainnet 840,113: before its parent, after the median" {
+  hs: [12] BlockHeader;
+  #assert hd_headers(HEADERS_MAINNET_840102, 0, hs[..]) == 12;
+  times: [11] int;
+  for i: 0..<11 { times[i] = cast(int) hs[i].time; }
+  h := hs[11];
+  m := CHAIN_MAINNET_PARAMS;
+  mtp := locktime_median_time_past_vartime(times[..]);
+  #assert mtp == 1713646366 && cast(int) h.time < times[10] && cast(int) h.time > mtp;
+  now := cast(int) h.time;
+  #assert header_check_vartime(m, 840112, times[..], hs[10].bits, h, now) == HEADER_OK;
+  #assert header_check_vartime(m, 840112, times[0..<10], hs[10].bits, h, now) == HEADER_CONTEXT;
+  #assert header_check_vartime(m, 840112, times[..], hs[10].bits + 1, h, now) == HEADER_BAD_DIFFBITS;
+  #assert header_check_vartime(m, 840112, times[..], hs[10].bits, h, now - HEADER_MAX_FUTURE) == HEADER_OK;
+  #assert header_check_vartime(m, 840112, times[..], hs[10].bits, h, now - HEADER_MAX_FUTURE - 1) == HEADER_TIME_TOO_NEW;
+  e := h;
+  e.time = cast(u32) mtp;
+  #assert header_check_vartime(m, 840112, times[..], hs[10].bits, e, now) == HEADER_TIME_TOO_OLD;
+  e.time = cast(u32) (mtp + 1);
+  #assert header_check_vartime(m, 840112, times[..], hs[10].bits, e, now) == HEADER_OK;
+  e = h;
+  e.version = 3;
+  #assert header_check_vartime(m, 840112, times[..], hs[10].bits, e, now) == HEADER_BAD_VERSION;
+  e.version = 4;
+  #assert header_check_vartime(m, 840112, times[..], hs[10].bits, e, now) == HEADER_OK;
+  e.version = -0x20000000;
+  #assert header_check_vartime(m, 840112, times[..], hs[10].bits, e, now) == HEADER_BAD_VERSION;
+}
+#test "testnet4 2,016: the first retarget, and the timewarp counterexample" {
+  hs: [13] BlockHeader;
+  #assert hd_headers(HEADERS_TESTNET4_2005, 1, hs[..]) == 13;
+  times: [11] int;
+  for i: 0..<11 { times[i] = cast(int) hs[i + 1].time; }
+  h := hs[12];
+  t := CHAIN_TESTNET4_PARAMS;
+  bits := retarget_calculate_vartime(t.retarget, BlockStamp.{time=hs[11].time, bits=hs[11].bits}, BlockStamp.{time=hs[0].time, bits=hs[0].bits});
+  #assert bits == 0x1c3fffc0 && h.bits == bits;
+  #assert header_check_vartime(t, 2015, times[..], bits, h, cast(int) h.time) == HEADER_OK;
+  // The attack: the period's last block an hour ahead, the next one back.
+  times[10] += 3600;
+  e := h;
+  e.time = cast(u32) (times[10] - HEADER_MAX_TIMEWARP - 1);
+  #assert header_check_vartime(t, 2015, times[..], bits, e, cast(int) e.time) == HEADER_TIMEWARP;
+  #assert header_check_vartime(CHAIN_MAINNET_PARAMS, 2015, times[..], bits, e, cast(int) e.time) == HEADER_OK;
+  #assert header_check_vartime(t, 2016, times[..], bits, e, cast(int) e.time) == HEADER_OK;
+  e.time = cast(u32) (times[10] - HEADER_MAX_TIMEWARP);
+  #assert header_check_vartime(t, 2015, times[..], bits, e, cast(int) e.time) == HEADER_OK;
+}
+#test "version bits: signals, counts and the mined version" {
+  d := TAPROOT_SPEEDY_TRIAL;
+  #assert header_signals(d, 0x20000004) && !header_signals(d, 0x20000000) && !header_signals(d, 0x00000004);
+  #assert !header_signals(d, 0x60000004) && !header_signals(d, -0x1ffffffc) && header_signals(d, 0x3ffffffc);
+  vs := [4] int.[0x20000004, 4, 0x20000000, 0x3fffffff];
+  #assert header_bip9_count_vartime(d, vs[..]) == 2;
+  #assert header_bip9_version(d, BIP9_DEFINED) == 0x20000000 && header_bip9_version(d, BIP9_STARTED) == 0x20000004;
+  #assert header_bip9_version(d, BIP9_LOCKED_IN) == 0x20000004 && header_bip9_version(d, BIP9_ACTIVE) == 0x20000000;
+  two: [2] Bip9Period;
+  for k: 0..<2 { two[k].mtp = 2000000000; two[k].count = 2016; }
+  for chain: CHAIN_MAIN..<CHAIN_REGTEST + 1 {
+    t := header_testdummy(chain);
+    #assert t.bit == 28 && t.timeout == BIP9_NO_TIMEOUT && t.min_activation_height == 0;
+    want := ifx chain == CHAIN_REGTEST then BIP9_LOCKED_IN else BIP9_FAILED;
+    #assert header_bip9_state_vartime(t, two[..]) == want;
+  }
+  #assert header_testdummy(CHAIN_MAIN).threshold == 1815 && header_testdummy(CHAIN_SIGNET).threshold == 1815;
+  #assert header_testdummy(CHAIN_TESTNET3).threshold == 1512 && header_testdummy(CHAIN_TESTNET4).threshold == 1512;
+  #assert header_testdummy(CHAIN_REGTEST).period == 144 && header_testdummy(CHAIN_REGTEST).threshold == 108;
+  a := d;
+  a.start = BIP9_ALWAYS_ACTIVE;
+  #assert header_bip9_state_vartime(a, two[0..<0]) == BIP9_ACTIVE;
+}
+#test "version bits: Taproot's Speedy Trial, and a timeout" {
+  d := TAPROOT_SPEEDY_TRIAL;
+  p: [353] Bip9Period;
+  for k: 0..<353 {
+    p[k].mtp = ifx k < 338 then d.start - 100 else d.start + (k - 337) * 1000;
+    p[k].count = ifx k == 340 then d.threshold else d.threshold - 1;
+  }
+  #assert header_bip9_state_vartime(d, p[0..<0]) == BIP9_DEFINED && header_bip9_state_vartime(d, p[0..<338]) == BIP9_DEFINED;
+  #assert header_bip9_state_vartime(d, p[0..<339]) == BIP9_STARTED && header_bip9_state_vartime(d, p[0..<340]) == BIP9_STARTED;
+  #assert header_bip9_state_vartime(d, p[0..<341]) == BIP9_LOCKED_IN && header_bip9_state_vartime(d, p[0..<351]) == BIP9_LOCKED_IN;
+  #assert header_bip9_state_vartime(d, p[0..<352]) == BIP9_ACTIVE && header_bip9_state_vartime(d, p[0..<353]) == BIP9_ACTIVE;
+  // Without the minimum height, activation follows lock-in by one period.
+  e := d;
+  e.min_activation_height = 0;
+  #assert header_bip9_state_vartime(e, p[0..<342]) == BIP9_ACTIVE;
+  // Never enough: the first period at or past the timeout fails it.
+  p[340].count = d.threshold - 1;
+  #assert header_bip9_state_vartime(d, p[0..<353]) == BIP9_STARTED;
+  p[345].mtp = d.timeout;
+  #assert header_bip9_state_vartime(d, p[0..<346]) == BIP9_FAILED && header_bip9_state_vartime(d, p[0..<353]) == BIP9_FAILED;
+  // Counting comes first: a period that reaches the threshold at the timeout locks in.
+  p[345].count = d.threshold;
+  #assert header_bip9_state_vartime(d, p[0..<346]) == BIP9_LOCKED_IN;
+  // A median time past before the start puts the next period back in DEFINED.
+  p[345].mtp = d.start - 1;
+  #assert header_bip9_state_vartime(d, p[0..<346]) == BIP9_DEFINED && header_bip9_state_vartime(d, p[0..<347]) == BIP9_STARTED;
+}

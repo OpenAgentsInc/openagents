@@ -1,0 +1,89 @@
+// The checks of header-rules.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/header-rules.coax
+#load "../header-rules.coax";
+
+// book:begin check
+// The median time past is chapter 39's BIP-113 cutoff: a time passes the
+// header rule exactly when it is past that cutoff.
+#forall "the header's median is the lock time's" delta: -40..<40 #steps 100000000 {
+  hs: [13] BlockHeader;
+  #assert read_headers(HEADERS_MAINNET_840102, hs[..]) == 12;
+  times: [11] int;
+  for i: 0..<11 { times[i] = cast(int) hs[i].time; }
+  e := hs[11];
+  cutoff := locktime_median_time_past_vartime(times[..]);
+  e.time = cast(u32) (cutoff + delta);
+  code := header_check_vartime(CHAIN_MAINNET_PARAMS, 840112, times[..], hs[10].bits, e, cutoff + delta);
+  #assert (code == HEADER_OK) == (delta > 0) && (code == HEADER_TIME_TOO_OLD) == (delta <= 0);
+}
+// Testnet4's timewarp rule reads only the first block of a period: the
+// same early header passes at every other height.
+#forall "the timewarp rule fires only on a boundary" k: 0..<64 #steps 100000000 {
+  times: [11] int;
+  for i: 0..<11 { times[i] = 1000000 + 100 * i; }
+  times[10] += 3600;
+  h: BlockHeader;
+  h.version = 0x20000000; h.bits = 0x1d00ffff; h.time = cast(u32) (times[10] - 601);
+  prev := 2016 * 3 - 33 + k;
+  code := header_check_vartime(CHAIN_TESTNET4_PARAMS, prev, times[..], h.bits, h, cast(int) h.time);
+  #assert (code == HEADER_TIMEWARP) == ((prev + 1) % 2016 == 0) && (code == HEADER_OK) == ((prev + 1) % 2016 != 0);
+  #assert header_check_vartime(CHAIN_TESTNET3_PARAMS, prev, times[..], h.bits, h, cast(int) h.time) == HEADER_OK;
+}
+// The minimum version steps up exactly at chapter 50's deployment heights.
+#forall "minimum versions follow the chain parameters" chain: 1..<6 {
+  p := chain_params(chain);
+  deps := [3] int.[DEP_HEIGHTINCB, DEP_DERSIG, DEP_CLTV];
+  mins := [3] int.[2, 3, 4];
+  for i: 0..<3 {
+    at := chain_deployment_height(p, deps[i]);
+    #assert header_min_version(p, at) >= mins[i];
+    if at > 0 { #assert header_min_version(p, at - 1) <= header_min_version(p, at); }
+  }
+  #assert header_min_version(p, 0) == 1 && header_min_version(p, 2000000) == 4;
+}
+// Core's GetStateFor, transliterated: walk back a period at a time to
+// genesis or to a median time before the start, then forward.
+core_state :: (d: Bip9Deployment, periods: [] Bip9Period) -> int {
+  if d.start == BIP9_ALWAYS_ACTIVE { return BIP9_ACTIVE; }
+  if d.start == BIP9_NEVER_ACTIVE { return BIP9_FAILED; }
+  todo: [64] int; n := 0;
+  k := periods.count - 1;
+  while k >= 0 && periods[k].mtp >= d.start { todo[n] = k; n += 1; k -= 1; }
+  state := BIP9_DEFINED;
+  while n > 0 {
+    n -= 1;
+    i := todo[n];
+    next := state;
+    if state == BIP9_DEFINED && periods[i].mtp >= d.start { next = BIP9_STARTED; }
+    if state == BIP9_STARTED {
+      if periods[i].count >= d.threshold { next = BIP9_LOCKED_IN; }
+      else if periods[i].mtp >= d.timeout { next = BIP9_FAILED; }
+    }
+    if state == BIP9_LOCKED_IN && (i + 1) * d.period >= d.min_activation_height { next = BIP9_ACTIVE; }
+    state = next;
+  }
+  return state;
+}
+// The forward walk agrees with Core's on made-up histories: times that
+// wander around the start and timeout, counts around the threshold.
+#forall "the state machine is Core's" seed: 0..<400 #steps 100000000 {
+  d := Bip9Deployment.{bit=5, start=1000, timeout=1600, min_activation_height=(seed % 7) * 10, period=10, threshold=8};
+  x := (seed * 2654435761 + 12345) % 2147483648;
+  p: [24] Bip9Period;
+  t := 900;
+  for k: 0..<24 {
+    x = (x * 1103515245 + 12345) % 2147483648;
+    t += (x >> 8) % 120 - 30;
+    p[k].mtp = t;
+    p[k].count = 6 + (x >> 4) % 4;
+  }
+  for n: 0..<25 { #assert header_bip9_state_vartime(d, p[0..<n]) == core_state(d, p[0..<n]); }
+}
+// A block mined in a state signals exactly when the state is started or
+// locked in.
+#forall "mined versions signal while the deployment counts" s: 0..<5 {
+  d := TAPROOT_SPEEDY_TRIAL;
+  #assert header_signals(d, header_bip9_version(d, s)) == (s == BIP9_STARTED || s == BIP9_LOCKED_IN);
+}
+// book:end check

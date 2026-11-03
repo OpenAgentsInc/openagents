@@ -527,6 +527,17 @@
       ],
       "stack_kib": 24576,
       "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/header-rules.coax",
+      "chapter": "bitcoin/book/ch051-header-rules-time-versions-and-deployments.md",
+      "stdout": "bitcoin/fixtures/header-rules.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 480
     }
   ]
 }

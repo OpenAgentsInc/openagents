@@ -1,0 +1,68 @@
+limits: 7200 seconds ahead of the clock, 600 seconds of timewarp
+mainnet:
+  840102 time 1713641879 version 0x20000000
+  840103 time 1713642481 version 0x20c00000
+  840104 time 1713642606 version 0x200cc000
+  840105 time 1713642809 version 0x200c6000
+  840106 time 1713643079 version 0x29a6e000
+  840107 time 1713646366 version 0x20200000
+  840108 time 1713647730 version 0x273ae000
+  840109 time 1713647776 version 0x200fa000
+  840110 time 1713648446 version 0x2daae000
+  840111 time 1713648469 version 0x2015c000
+  840112 time 1713650002 version 0x22956000
+  840113 time 1713649935 version 0x20002000
+  median time past 1713646366 ; 840113 is 3569 s after it and 67 s before its parent
+  840113: ok
+  time at the median: time-too-old
+  one second later: ok
+  clock two hours behind: ok
+  and one second more: time-too-new
+  other nBits: bad-diffbits
+  version 3: bad-version
+minimum versions:
+  mainnet 0 : 1
+  mainnet 227930 : 1
+  mainnet 227931 : 2
+  mainnet 363724 : 2
+  mainnet 363725 : 3
+  mainnet 388380 : 3
+  mainnet 388381 : 4
+  mainnet 840113 : 4
+  testnet3 21111 : 2, 330776 : 3, 581885 : 4
+  testnet4, signet and regtest from height 1 : 4, 4, 4
+testnet4:
+  2015 time 1715029532, median time past 1715029507; 2016 time 1715029545
+  2016 needs nBits 0x1c3fffc0, has 0x1c3fffc0: ok
+  2015 an hour ahead, at 1715033132
+  2016 600 s before it: testnet4 ok, mainnet's rules ok
+  2016 601 s before it: testnet4 time-timewarp-attack, mainnet's rules ok
+  the same header at height 2017: ok
+version bits:
+  Taproot: bit 2, start 1619222400, timeout 1628640000, minimum height 709632, 1815 of 2016
+  840102 to 840113 with bit 2 set: 0 of 12; with bit 13 set: 7 of 12
+  0x20000004 signals Taproot: yes
+  0x20000000 signals Taproot: no
+  0x00000004 signals Taproot: no
+  0x60000004 signals Taproot: no
+  0x3ffffffc signals Taproot: yes
+  mined version while defined: 0x20000000
+  mined version while started: 0x20000004
+  mined version while locked_in: 0x20000004
+  mined version while active: 0x20000000
+  mined version while failed: 0x20000000
+  period 338 (from height 681408): defined
+  period 339 (from height 683424): started
+  period 340 (from height 685440): started
+  period 341 (from height 687456): locked_in
+  period 351 (from height 707616): locked_in
+  period 352 (from height 709632): active
+  period 353 (from height 711648): active
+  without the minimum height, period 342: active
+  never enough, timeout reached in period 345: period 346 failed
+  the threshold reached in that period: period 346 locked_in
+  main testdummy: start -2, 1815 of 2016
+  test testdummy: start -2, 1512 of 2016
+  testnet4 testdummy: start -2, 1512 of 2016
+  signet testdummy: start -2, 1815 of 2016
+  regtest testdummy: start 0, 108 of 144

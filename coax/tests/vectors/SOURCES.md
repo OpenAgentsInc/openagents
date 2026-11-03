@@ -309,6 +309,13 @@ that a maliciously replaced manifest is authentic.
   limits. `make_v2transport_vectors.py` reads the vectors, and
   `v2transport.py` runs `reference.py` and reads the Core files as the
   cross-check's oracle.
+- **Header rules (Bitcoin chapter 51):** Bitcoin Core's `validation.cpp`
+  (`ContextualCheckBlockHeader`), `chain.h`, `consensus/consensus.h`,
+  `versionbits.h`, `versionbits_impl.h` and `versionbits.cpp` at revision
+  `ddea9196`, and `chainparams.cpp` at v22.0 (`a0988140`) for Taproot's
+  Speedy Trial deployment. The `.headers` files are mempool.space's
+  80-byte headers of mainnet blocks 840,102 to 840,113 and of testnet4's
+  genesis and blocks 2,005 to 2,016, in a row, retrieved 2026-11-03.
 - **Chain parameters (Bitcoin chapter 50):** Bitcoin Core's
   `kernel/chainparams.cpp` (every network's class), `kernel/signet.h`
   (`SIGNET_DEFAULT_CHALLENGE`, `GetSignetMessageStart`), `signet.cpp`
@@ -409,6 +416,12 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip340/reference.py`](upstream/bip340/reference.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0340/reference.py) | `4b1d4ad9e60820df4a6d239733d52b014bc03e4c47afd757a2fe4d3b586d892c` |
 | [`upstream/bitcoin-core/tx_valid.json`](upstream/bitcoin-core/tx_valid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/tx_valid.json) | `0abeb1a6e4b942e4e43ef8d49b7356c1f6204bcb14163f24153f4d0ec5418011` |
 | [`upstream/bitcoin-core/chainparams.cpp`](upstream/bitcoin-core/chainparams.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/kernel/chainparams.cpp) | `cfadf1478377c32625280520655b598674e6d487f08d7f7a80ac69252104b5e1` |
+| [`upstream/bitcoin-core/versionbits.cpp`](upstream/bitcoin-core/versionbits.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.cpp) | `4394f6fdf7656e0e6e4eb90a11c44875dab506345bde9a54d84ed9337d524ec8` |
+| [`upstream/bitcoin-core/versionbits.h`](upstream/bitcoin-core/versionbits.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.h) | `babd3b786f7d787f88b47da1effd47f631b3e37cba95c1d501f1a553c960f100` |
+| [`upstream/bitcoin-core/versionbits_impl.h`](upstream/bitcoin-core/versionbits_impl.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits_impl.h) | `6c7b5afcaff8d99b2e9e1e62d11bc76adb6164dcce8add41aabde51bcbe7a9ce` |
+| [`upstream/bitcoin-core/chainparams_v22.cpp`](upstream/bitcoin-core/chainparams_v22.cpp) | [pinned source (v22.0)](https://raw.githubusercontent.com/bitcoin/bitcoin/a0988140b71485ad12c3c3a4a9573f7c21b1eff8/src/chainparams.cpp) | `55406041319840c962c4ca5a792111bcac6a30c88aca3dde812b324a15f9220c` |
+| [`upstream/mainnet/mainnet-840102-840113.headers`](upstream/mainnet/mainnet-840102-840113.headers) | [mempool.space API](https://mempool.space/api/block-height/840102) | `5fce735a8802701ea89ca98442496c48c70ffd81b654355d2b03a3c9f483adf1` |
+| [`upstream/testnet4/testnet4-0-2005-2016.headers`](upstream/testnet4/testnet4-0-2005-2016.headers) | [mempool.space API](https://mempool.space/testnet4/api/block-height/2005) | `a1fef921c3eea5d33e21dc6bcc92ca4405c450e3661d72a1cc1f3e56bce6b2c4` |
 | [`upstream/bitcoin-core/kernel_signet.h`](upstream/bitcoin-core/kernel_signet.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/kernel/signet.h) | `8a0b9207b16dfad04214f42ac1ccc70f252025ed2a6f7ad2a5163b2a1c2fb118` |
 | [`upstream/bitcoin-core/signet.cpp`](upstream/bitcoin-core/signet.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/signet.cpp) | `58f92d2bbcae1f609016e05ddf4be0b5eec1b1e126e3910ed2c5c49e7e914908` |
 | [`upstream/bitcoin-core/params.h`](upstream/bitcoin-core/params.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/params.h) | `21bc0a1421ca71b057325fac96ef1a7297b737a47c3231a6c7c7ff8e0598e2f0` |

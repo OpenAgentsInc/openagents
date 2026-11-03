@@ -1105,16 +1105,25 @@
   {
    "number": 51,
    "title": "Header rules: time, versions and deployments",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch051-header-rules-time-versions-and-deployments.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     47,
     48,
     50
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "bitcoin/examples/header-rules.coax",
+    "bitcoin/examples/checks/header-rules.coax",
+    "coax/lib/bitcoin/header.coax",
+    "coax/lib/bitcoin/locktime.coax",
+    "coax/tests/bitcoin/header_vectors.coax",
+    "coax/tests/bitcoin/header.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

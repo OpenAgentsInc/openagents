@@ -2074,45 +2074,82 @@
       "bytes": 996
     },
     {
-      "path": "derived/catalog.json",
-      "kind": "derived",
-      "url": "local:make_catalog.py",
-      "revision": "adapter:source-index-v1",
-      "retrieved": "2026-10-28",
-      "license": "Apache-2.0 (OpenAgents source index; upstream input licenses unchanged)",
-      "sha256": "eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27",
-      "bytes": 6722,
+      "path": "upstream/bitcoin-core/versionbits.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "source-index"
+        "bitcoin-header-rules"
       ],
-      "generator": "make_catalog.py",
-      "generator_sha256": "280444035ce58c559bf9c2b2724dd9a2e9df6e755376b6bff2bf6a8515e662ba",
-      "inputs": [
-        {
-          "path": "upstream/bip340/test-vectors.csv",
-          "sha256": "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d"
-        },
-        {
-          "path": "upstream/nip44/nip44.vectors.json",
-          "sha256": "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040"
-        },
-        {
-          "path": "upstream/wycheproof/ecdh_secp256k1_test.json",
-          "sha256": "049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae"
-        },
-        {
-          "path": "upstream/nist/SHA256ShortMsg.rsp",
-          "sha256": "75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c"
-        },
-        {
-          "path": "upstream/nist/SHA256LongMsg.rsp",
-          "sha256": "6fac36f37360bcf74ffcf4465c18e30d6d5a04cc90885b901fc3130c16060974"
-        },
-        {
-          "path": "upstream/nips/44.md",
-          "sha256": "b5f89374e4e1dbdee7881e8573b4313b6a89430a9c8d518471599ae0660cf0e2"
-        }
-      ]
+      "retrieved": "2026-11-03",
+      "sha256": "4394f6fdf7656e0e6e4eb90a11c44875dab506345bde9a54d84ed9337d524ec8",
+      "bytes": 13020
+    },
+    {
+      "path": "upstream/bitcoin-core/versionbits.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-header-rules"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "babd3b786f7d787f88b47da1effd47f631b3e37cba95c1d501f1a553c960f100",
+      "bytes": 4391
+    },
+    {
+      "path": "upstream/bitcoin-core/versionbits_impl.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits_impl.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-header-rules"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "6c7b5afcaff8d99b2e9e1e62d11bc76adb6164dcce8add41aabde51bcbe7a9ce",
+      "bytes": 3932
+    },
+    {
+      "path": "upstream/bitcoin-core/chainparams_v22.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/a0988140b71485ad12c3c3a4a9573f7c21b1eff8/src/chainparams.cpp",
+      "revision": "git:a0988140b71485ad12c3c3a4a9573f7c21b1eff8",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-header-rules"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "55406041319840c962c4ca5a792111bcac6a30c88aca3dde812b324a15f9220c",
+      "bytes": 28968
+    },
+    {
+      "path": "upstream/mainnet/mainnet-840102-840113.headers",
+      "kind": "upstream",
+      "url": "https://mempool.space/api/block-height/840102",
+      "revision": "static: mempool.space's header hex of mainnet blocks 840,102 to 840,113 (/api/block-height/H, then /api/block/HASH/header), as 80-byte headers in a row; each hashes to its block hash and links to the one before; pinned by sha256",
+      "license": "Public Bitcoin blockchain data",
+      "covers": [
+        "bitcoin-header-rules"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "5fce735a8802701ea89ca98442496c48c70ffd81b654355d2b03a3c9f483adf1",
+      "bytes": 960
+    },
+    {
+      "path": "upstream/testnet4/testnet4-0-2005-2016.headers",
+      "kind": "upstream",
+      "url": "https://mempool.space/testnet4/api/block-height/2005",
+      "revision": "static: mempool.space's header hex of testnet4 blocks 0 and 2,005 to 2,016 (/api/block-height/H, then /api/block/HASH/header), as 80-byte headers in a row; each hashes to its block hash, and 2,006 to 2,016 link to the one before; pinned by sha256",
+      "license": "Public Bitcoin testnet4 blockchain data",
+      "covers": [
+        "bitcoin-header-rules"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "a1fef921c3eea5d33e21dc6bcc92ca4405c450e3661d72a1cc1f3e56bce6b2c4",
+      "bytes": 1040
     },
     {
       "path": "upstream/bip324/bip-0324.mediawiki",
@@ -2208,6 +2245,47 @@
       "retrieved": "2026-11-03",
       "sha256": "82e250fadd393b972ae9d5d508f458fc872ea0dd947ca162693a006c3e488bbf",
       "bytes": 32800
+    },
+    {
+      "path": "derived/catalog.json",
+      "kind": "derived",
+      "url": "local:make_catalog.py",
+      "revision": "adapter:source-index-v1",
+      "retrieved": "2026-10-28",
+      "license": "Apache-2.0 (OpenAgents source index; upstream input licenses unchanged)",
+      "sha256": "eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27",
+      "bytes": 6722,
+      "covers": [
+        "source-index"
+      ],
+      "generator": "make_catalog.py",
+      "generator_sha256": "280444035ce58c559bf9c2b2724dd9a2e9df6e755376b6bff2bf6a8515e662ba",
+      "inputs": [
+        {
+          "path": "upstream/bip340/test-vectors.csv",
+          "sha256": "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d"
+        },
+        {
+          "path": "upstream/nip44/nip44.vectors.json",
+          "sha256": "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040"
+        },
+        {
+          "path": "upstream/wycheproof/ecdh_secp256k1_test.json",
+          "sha256": "049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae"
+        },
+        {
+          "path": "upstream/nist/SHA256ShortMsg.rsp",
+          "sha256": "75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c"
+        },
+        {
+          "path": "upstream/nist/SHA256LongMsg.rsp",
+          "sha256": "6fac36f37360bcf74ffcf4465c18e30d6d5a04cc90885b901fc3130c16060974"
+        },
+        {
+          "path": "upstream/nips/44.md",
+          "sha256": "b5f89374e4e1dbdee7881e8573b4313b6a89430a9c8d518471599ae0660cf0e2"
+        }
+      ]
     }
   ]
 }

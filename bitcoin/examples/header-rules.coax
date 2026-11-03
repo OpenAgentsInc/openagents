@@ -1,0 +1,116 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/header.coax";
+#import "Basic";
+
+// A 32-bit word as 0x and eight hex places; a negative version as its
+// two's complement, as Core prints it.
+put32 :: (v: int) {
+  hex := "0123456789abcdef";
+  out: [10] u8;
+  out[0] = '0'; out[1] = 'x';
+  for i: 0..<8 { out[2 + i] = hex[(v >> (4 * (7 - i))) & 15]; }
+  print("%", cast(string) out[..]);
+}
+reason :: (code: int) -> string { return HEADER_REASONS[code]; }
+read_headers :: (text: string, out: [] BlockHeader) -> int {
+  raw: [1040] u8;
+  n := cp_unhex(text, raw[..]);
+  #assert n >= 0 && n % POW_HEADER == 0;
+  for i: 0..<n / POW_HEADER { out[i] = pow_header_read_vartime(raw[i * POW_HEADER..<(i + 1) * POW_HEADER]); }
+  return n / POW_HEADER;
+}
+
+main :: () {
+  print("limits: % seconds ahead of the clock, % seconds of timewarp\n", HEADER_MAX_FUTURE, HEADER_MAX_TIMEWARP);
+
+  // Mainnet 840,102 to 840,113: block 840,113 is earlier than its parent.
+  hs: [13] BlockHeader;
+  #assert read_headers(HEADERS_MAINNET_840102, hs[..]) == 12;
+  times: [11] int;
+  print("mainnet:\n");
+  for i: 0..<12 {
+    if i < 11 { times[i] = cast(int) hs[i].time; }
+    print("  % time % version ", 840102 + i, hs[i].time); put32(hs[i].version); print("\n");
+  }
+  m := CHAIN_MAINNET_PARAMS;
+  h := hs[11];
+  mtp := locktime_median_time_past_vartime(times[..]);
+  now := cast(int) h.time;
+  print("  median time past % ; 840113 is % s after it and % s before its parent\n", mtp, cast(int) h.time - mtp, times[10] - cast(int) h.time);
+  print("  840113: %\n", reason(header_check_vartime(m, 840112, times[..], hs[10].bits, h, now)));
+  e := h;
+  e.time = cast(u32) mtp;
+  print("  time at the median: %\n", reason(header_check_vartime(m, 840112, times[..], hs[10].bits, e, now)));
+  e.time = cast(u32) (mtp + 1);
+  print("  one second later: %\n", reason(header_check_vartime(m, 840112, times[..], hs[10].bits, e, now)));
+  print("  clock two hours behind: %\n", reason(header_check_vartime(m, 840112, times[..], hs[10].bits, h, now - HEADER_MAX_FUTURE)));
+  print("  and one second more: %\n", reason(header_check_vartime(m, 840112, times[..], hs[10].bits, h, now - HEADER_MAX_FUTURE - 1)));
+  print("  other nBits: %\n", reason(header_check_vartime(m, 840112, times[..], hs[10].bits ^ 1, h, now)));
+  e = h;
+  e.version = 3;
+  print("  version 3: %\n", reason(header_check_vartime(m, 840112, times[..], hs[10].bits, e, now)));
+
+  print("minimum versions:\n");
+  heights := [8] int.[0, 227930, 227931, 363724, 363725, 388380, 388381, 840113];
+  for i: 0..<8 { print("  mainnet % : %\n", heights[i], header_min_version(m, heights[i])); }
+  t3 := CHAIN_TESTNET3_PARAMS;
+  print("  testnet3 21111 : %, 330776 : %, 581885 : %\n", header_min_version(t3, 21111), header_min_version(t3, 330776), header_min_version(t3, 581885));
+  print("  testnet4, signet and regtest from height 1 : %, %, %\n", header_min_version(CHAIN_TESTNET4_PARAMS, 1), header_min_version(CHAIN_SIGNET_PARAMS, 1), header_min_version(CHAIN_REGTEST_PARAMS, 1));
+
+  // Testnet4's first retarget, block 2,016, after its genesis.
+  #assert read_headers(HEADERS_TESTNET4_2005, hs[..]) == 13;
+  t := CHAIN_TESTNET4_PARAMS;
+  for i: 0..<11 { times[i] = cast(int) hs[i + 1].time; }
+  b := hs[12];
+  bits := retarget_calculate_vartime(t.retarget, BlockStamp.{time=hs[11].time, bits=hs[11].bits}, BlockStamp.{time=hs[0].time, bits=hs[0].bits});
+  print("testnet4:\n");
+  print("  2015 time %, median time past %; 2016 time %\n", times[10], locktime_median_time_past_vartime(times[..]), b.time);
+  print("  2016 needs nBits "); put32(cast(int) bits); print(", has "); put32(cast(int) b.bits);
+  print(": %\n", reason(header_check_vartime(t, 2015, times[..], bits, b, cast(int) b.time)));
+  times[10] += 3600;
+  print("  2015 an hour ahead, at %\n", times[10]);
+  for back: 600..<602 {
+    e = b;
+    e.time = cast(u32) (times[10] - back);
+    print("  2016 % s before it: testnet4 %, mainnet's rules %\n", back, reason(header_check_vartime(t, 2015, times[..], bits, e, cast(int) e.time)), reason(header_check_vartime(m, 2015, times[..], bits, e, cast(int) e.time)));
+  }
+  e.time = cast(u32) (times[10] - 601);
+  print("  the same header at height 2017: %\n", reason(header_check_vartime(t, 2016, times[..], bits, e, cast(int) e.time)));
+
+  // Version bits.
+  d := TAPROOT_SPEEDY_TRIAL;
+  print("version bits:\n");
+  print("  Taproot: bit %, start %, timeout %, minimum height %, % of %\n", d.bit, d.start, d.timeout, d.min_activation_height, d.threshold, d.period);
+  #assert read_headers(HEADERS_MAINNET_840102, hs[..]) == 12;
+  versions: [12] int;
+  for i: 0..<12 { versions[i] = hs[i].version; }
+  rolled := d;
+  rolled.bit = 13;
+  print("  840102 to 840113 with bit 2 set: % of 12; with bit 13 set: % of 12\n", header_bip9_count_vartime(d, versions[..]), header_bip9_count_vartime(rolled, versions[..]));
+  vs := [5] int.[0x20000004, 0x20000000, 0x00000004, 0x60000004, 0x3ffffffc];
+  for i: 0..<5 { print("  "); put32(vs[i]); print(" signals Taproot: %\n", ifx header_signals(d, vs[i]) then "yes" else "no"); }
+  for s: BIP9_DEFINED..<BIP9_FAILED + 1 { print("  mined version while %: ", BIP9_NAMES[s]); put32(header_bip9_version(d, s)); print("\n"); }
+
+  // A made-up history with Taproot's parameters: the median time passes
+  // the start in period 338, period 340 reaches the threshold.
+  p: [353] Bip9Period;
+  for k: 0..<353 {
+    p[k].mtp = ifx k < 338 then d.start - 100 else d.start + (k - 337) * 1000;
+    p[k].count = ifx k == 340 then d.threshold else d.threshold - 1;
+  }
+  ks := [7] int.[338, 339, 340, 341, 351, 352, 353];
+  for i: 0..<7 { print("  period % (from height %): %\n", ks[i], ks[i] * d.period, BIP9_NAMES[header_bip9_state_vartime(d, p[0..<ks[i]])]); }
+  e2 := d;
+  e2.min_activation_height = 0;
+  print("  without the minimum height, period 342: %\n", BIP9_NAMES[header_bip9_state_vartime(e2, p[0..<342])]);
+  p[340].count = d.threshold - 1;
+  p[345].mtp = d.timeout;
+  print("  never enough, timeout reached in period 345: period 346 %\n", BIP9_NAMES[header_bip9_state_vartime(d, p[0..<346])]);
+  p[345].count = d.threshold;
+  print("  the threshold reached in that period: period 346 %\n", BIP9_NAMES[header_bip9_state_vartime(d, p[0..<346])]);
+  for chain: CHAIN_MAIN..<CHAIN_REGTEST + 1 {
+    td := header_testdummy(chain);
+    print("  % testdummy: start %, % of %\n", CHAIN_NAMES[chain], td.start, td.threshold, td.period);
+  }
+}
+// book:end example

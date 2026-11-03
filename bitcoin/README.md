@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-49 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+50 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -37,7 +37,11 @@ messages: the 24-byte header and the payloads a node exchanges. Chapter
 66's [`ellswift.coax`](../coax/lib/bitcoin/ellswift.coax) encodes keys as
 BIP-324's ElligatorSwift and derives its shared secret, and chapter 67's
 [`v2transport.coax`](../coax/lib/bitcoin/v2transport.coax) is the v2
-encrypted transport built on it.
+encrypted transport built on it. Chapter 50's
+[`chainparams.coax`](../coax/lib/bitcoin/chainparams.coax) holds each
+network's parameters, and chapter 51's
+[`header.coax`](../coax/lib/bitcoin/header.coax) checks a header's time and
+version against the chain it extends, with BIP-9's version bits.
 
 ```sh
 python3 psionic/tests/book.py --book bitcoin                     # structure and registry
