@@ -5,6 +5,10 @@
 // Skeletons fight on the real-time clock: every creature's turn comes round on
 // the beat, staggered by initiative, and the log shows each roll. Each class
 // decides with a small routine here; the rules are all the engine's.
+// The army-size sliders (top left; Z X, Q E and K L nudge them; ?heroes=N&skeletons=M&stream=K in
+// the address) set the heroes, the dead on the field at once and, in the Horde, the dead that
+// stream in after them: from one figure to 1024 heroes and 1024 skeletons together (battle.coax
+// RS_MAX), the grid growing with them, so the frame's cost can be read off the FPS in the corner.
 //
 // Two views, V switches them. The glade (the default): gpu/fivelab.coax's bg_fs traces the
 // battle in 3D in Everglade's painterly look, the druids standing on their squares in a
@@ -28,12 +32,13 @@
 #load "fivelab-bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
 
 VERTEX_FLOATS :: 16;
-MAX_VERTICES :: 180000;
-UNIFORM_FLOATS :: 1768;
-TOKENS3 :: 216;   // the glade's tokens (gpu/fivelab.coax FIVELAB_TOKENS)
-U_SQUARES :: 900;   // the grid's squares, the token on each (gpu/fivelab.coax FIVELAB_SQUARES)
+MAX_VERTICES :: 250000;
+UNIFORM_FLOATS :: 12392;   // 3098 vec4s, under WebGPU's 64 KB uniform binding
+TOKENS3 :: 2048;   // the glade's tokens, every creature (gpu/fivelab.coax FIVELAB_TOKENS, battle.coax RS_MAX)
+U_SQUARES :: 8228;   // the grid's squares, the token on each (gpu/fivelab.coax FIVELAB_SQUARES)
 U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
-U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 1700; U_BOUNDS :: 1764;
+U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 12324; U_BOUNDS :: 12388;
+SQ_RADIX :: 4096;   // two squares to a float: the even one low, a + 4096 b (exact in an f32)
 SQ :: 1.524;   // a 5-foot square, metres
 HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
 DIST :: 40.0; PIVOT_Z :: 0.6; ZOOM_NEAR :: 6.0; ZOOM_FAR :: 140.0;   // the camera's orbit: start, and how near and far it zooms
@@ -51,18 +56,23 @@ OUTBOX_CAP :: 64;
 ACT_NAVIGATE :: 1;
 KEY_SHIFT :: -13; KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
 
-COLS :: 40; ROWS :: 20;
+// The grid grows with the armies (size_grid): 40 by 20 for the 208 the lab fields by default, about
+// four squares a figure past that, twice as wide as deep, at most 128 by 64 (battle.coax RS_SQUARES).
+COLS :: 40; ROWS :: 20; ROWS_MAX :: 64;
 FAST :: 4.0;
 // Three sides. Twenty-four a side, all level 3, two of each of the twelve SRD 5e classes (the Circle
 // of Moss against the Ember Pact), and an army of 160 Skeletons (the SRD's stat block) in the middle
 // from the start as the Restless Dead, against everyone.
-SIDE :: 24; HEROES :: 48; SKELETONS :: 160; PEOPLE :: 208; CASTERS :: 12; TEAMS :: 3;
+// The army-size sliders (and ?heroes=N&skeletons=M&dead=K) change the numbers: heroes come in
+// companies of 48, each side's 24 two of every class, and the dead fill the rest.
+SIDE :: 24; HEROES :: 48; SKELETONS :: 160; CASTERS :: 12; TEAMS :: 3;
+HEROES_MAX :: 1024; SKELETONS_MAX :: 1024;   // together battle.coax's RS_MAX
+HORDE_MAX :: 20000;   // the dead the Horde can send in after its first wave
 LEVEL :: 6;
 // The twelve SRD 5e classes as they stand: the casters' two back files, then the front two; each
 // side fields every class twice.
 ROSTER :: [12] int.[RS_DRUID, RS_WIZARD, RS_WARLOCK, RS_SORCERER, RS_BARD, RS_CLERIC,
                     RS_FIGHTER, RS_PALADIN, RS_BARBARIAN, RS_MONK, RS_ROGUE, RS_RANGER];
-ARMY_X :: 12; ARMY_Y :: 5; ARMY_COLS :: 16;   // the Restless Dead stand sixteen wide, ten deep, mid-glade
 TEAM_NAME :: [3] string.["CIRCLE OF MOSS", "THE EMBER PACT", "THE RESTLESS DEAD"];
 team_name :: (s: [] Lab, t: int) -> string { if s[0].horde && t == 0 { return "THE LIVING"; } return TEAM_NAME[t]; }
 NAMES :: [48] string.["Rowan", "Briar", "Fern", "Hazel", "Alder", "Willow", "Sorrel", "Linden", "Moss", "Ivy", "Sen", "Lio",
@@ -120,7 +130,15 @@ Lab :: struct {
   player: bool; pick: int = 6; me: int = -1; act: int = ACT_ATTACK; target: int = -1;
   pbtn: Rect; picks: [12] Rect; slots: [SLOTS] Rect; down_x: f32; down_y: f32;
   horde: bool = true;   // the Horde (the default): every hero on one side, the dead running in from the edges
-  skeletons: int = SKELETONS;   // the Restless Dead's number (the tests field fewer, for the interpreter)
+  heroes: int = HEROES;   // the heroes' number
+  skeletons: int = SKELETONS;   // the Restless Dead's number on the field at once (the tests field fewer, for the interpreter)
+  stream: int = HORDE - SKELETONS;   // the dead the Horde sends in after its first wave
+  cols: int = COLS; rows: int = ROWS;   // the grid (size_grid)
+  // the army-size sliders: their tracks, the one being dragged (-1 none) and the numbers it shows
+  // while dragged; the battle starts again at the new sizes when it lets go
+  sliders: [3] Rect; sliding: int = -1; want: [3] int;
+  ms: f32;   // the frame's time, milliseconds, averaged with the frames a second
+  shown_n: int;   // the creatures the figures showed last frame (the slots past them are clear)
   pressing: int;
   // the glade's camera: an orbit round the clearing, and what it makes this frame
   view: int = VIEW_GLADE;
@@ -276,7 +294,7 @@ cue_event :: (s: [] Lab, e: RsEvent) {
   if e.by < 0 || e.by >= b[0].n { return; }
   now := b[0].clock;
   aimed := e.to >= 0 && e.to < b[0].n && e.to != e.by;
-  tx := ifx aimed then wx(s[0].dx[e.to]) else 0.0f32; tz := ifx aimed then wz(s[0].dy[e.to]) else 0.0f32;
+  tx := ifx aimed then wx(s, s[0].dx[e.to]) else 0.0f32; tz := ifx aimed then wz(s, s[0].dy[e.to]) else 0.0f32;
   if (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && aimed {
     melee := e.spell < 0 && rs_feet_to(b, e.by, e.to) <= 5;
     figs.bd_cue(s[0].bodies[..], e.by, ifx melee then figs.BD_SLASH else figs.BD_SPELL, now, tx, tz, true);
@@ -285,27 +303,35 @@ cue_event :: (s: [] Lab, e: RsEvent) {
   if e.kind == RS_EV_CAST { figs.bd_cue(s[0].bodies[..], e.by, figs.BD_SPELL, now, tx, tz, aimed); return; }
   if e.kind == RS_EV_DAMAGE && e.to >= 0 && e.to < b[0].n && b[0].c[e.to].hp > 0 { figs.bd_cue(s[0].bodies[..], e.to, figs.BD_KNOCK, now, 0, 0, false); }
 }
-// The figures this frame, from the battle: each creature's look, square and state.
+// The figures this frame, from the battle: each creature's look, square and state. It reads the
+// creatures in place (a copy of one is 1.5 KB, and there can be two thousand of them).
 put_bodies :: (s: [] Lab) {
-  b := s[0].battle[0];
+  b := bt(s);
   for i: 0..<figs.BD_SLOTS {
-    if i >= b.n { figs.bd_clear(s[0].bodies[..], i); continue; }
-    cr := b.c[i];
+    if i >= b[0].n { if i < s[0].shown_n { figs.bd_clear(s[0].bodies[..], i); continue; } break; }
+    cd := b[0].c[i].cond;
     marks := 0;
-    if rs_has(cr, RS_RESTRAINED) { marks += 1; }
-    if rs_has(cr, RS_POISONED) { marks += 2; }
-    if rs_has(cr, RS_BLINDED) { marks += 4; }
-    if rs_effect(cr, EF_ENFEEBLED) { marks += 8; }
-    if cr.temp > 0 { marks += 16; }
-    if rs_has(cr, RS_PARALYZED) { marks += 32; }
-    if rs_effect(cr, EF_HEX) { marks += 64; }
-    state := ifx cr.dead then 2 else ifx cr.hp == 0 then 1 else 0;
+    if cd & RS_RESTRAINED != 0 { marks += 1; }
+    if cd & RS_POISONED != 0 { marks += 2; }
+    if cd & RS_BLINDED != 0 { marks += 4; }
+    if has_eff(b, i, EF_ENFEEBLED) { marks += 8; }
+    if b[0].c[i].temp > 0 { marks += 16; }
+    if cd & RS_PARALYZED != 0 { marks += 32; }
+    if has_eff(b, i, EF_HEX) { marks += 64; }
+    state := ifx b[0].c[i].dead then 2 else ifx b[0].c[i].hp == 0 then 1 else 0;
+    kl := b[0].c[i].klass;
     // the second of each class, and every other skeleton, looks a little different
-    v := ifx cr.klass == RS_MONSTER then (i * 7 / 3) % 2 else (i / 12) % 2;
-    figs.bd_put(s[0].bodies[..], i, s[0].fresh[i], look_of(cr.klass), v, wx(s[0].dx[i]), wz(s[0].dy[i]), state, f32(marks), ifx cr.outlined_by >= 0 then 1.0f32 else 0.0f32, b.clock);
+    v := ifx kl == RS_MONSTER then (i * 7 / 3) % 2 else (i / 12) % 2;
+    figs.bd_put(s[0].bodies[..], i, s[0].fresh[i], look_of(kl), v, wx(s, s[0].dx[i]), wz(s, s[0].dy[i]), state, f32(marks), ifx b[0].c[i].outlined_by >= 0 then 1.0f32 else 0.0f32, b[0].clock);
     s[0].fresh[i] = false;
   }
-  figs.bd_frame(s[0].bodies[..], b.clock);
+  s[0].shown_n = b[0].n;
+  figs.bd_frame(s[0].bodies[..], b[0].clock);
+}
+// Whether creature i is under an effect of `kind` (rs_effect, without copying the creature).
+has_eff :: (b: [] RsBattle, i: int, kind: int) -> bool {
+  for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == kind { return true; } }
+  return false;
 }
 // The pack's catalog arrived (fivelab-face.c): the figures' parts.
 lab_catalog :: (s: [] Lab, text: string) #export_c { figs.bd_catalog(s[0].bodies[..], text); }
@@ -326,7 +352,7 @@ lab_scene :: (s: [] Lab, out: [] f32) -> int #export_c {
   return s[0].bodies[0].draw_n;
 }
 // Where a figure stands in the glade (its square's middle), `lift` metres up.
-fx_spot :: (s: [] Lab, i: int, lift: f32) -> FxV { return fxp_v(wx(f32(s[0].battle[0].c[i].x)), lift, wz(f32(s[0].battle[0].c[i].y))); }
+fx_spot :: (s: [] Lab, i: int, lift: f32) -> FxV { return fxp_v(wx(s, f32(s[0].battle[0].c[i].x)), lift, wz(s, f32(s[0].battle[0].c[i].y))); }
 // A spell's light for its effect, linear and bright.
 fx_col :: (sp: int) -> FxV { c := spell_col(sp); return fxp_v(c.r, c.g, c.b); }
 // True for a spell that makes an attack roll: its effect flies with each attack, not with the cast.
@@ -395,7 +421,7 @@ fx_event :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
   if e.kind == RS_EV_ZONE {
     sp := e.spell; col := fx_col(sp);
     mid := f32(e.amount - 1) / 2;
-    centre := fxp_v(wx(f32(e.x) + mid), 0.9, wz(f32(e.y) + mid));
+    centre := fxp_v(wx(s, f32(e.x) + mid), 0.9, wz(s, f32(e.y) + mid));
     reach := f32(e.amount) * f32(SQ) / 2;
     if sp == SP_FIREBALL { fx_cause(s, FXR_FIREBALL, seed, t0, hand, centre, col, 1, reach); return; }
     if sp == SP_THUNDERWAVE { fx_cause(s, FXR_SHOCK, seed, t0, hand, centre, col, 1, reach); return; }
@@ -504,23 +530,26 @@ fx_lasting :: (s: [] Lab, i: int) -> int {
 // ---- a battle
 
 // The Horde's flood: a second after one of the dead falls, a fresh Skeleton takes its place on a
-// free square of the grid's edge and runs in, until the Horde has sent all it has.
+// free square of the grid's two outer rings and runs in, until the Horde has sent all it has.
 flood :: (s: [] Lab) {
   b := bt(s);
-  for i: HEROES..<b[0].n {
+  edge := ring_size(s, 0) + ring_size(s, 1);
+  for i: s[0].heroes..<b[0].n {
     if s[0].pool <= 0 { return; }
     if !b[0].c[i].dead { continue; }
     if s[0].fell[i] == 0 { s[0].fell[i] = b[0].clock; continue; }
     if b[0].clock - s[0].fell[i] < 1 { continue; }
     for t: 0..<8 {
-      e := edge_cell(rs_min(EDGE_CELLS - 1, int(rs_unit(dice(s)) * f32(EDGE_CELLS))));
-      x := e % COLS; y := e / COLS;
+      e := band_cell(s, 0, 2, rs_min(edge - 1, int(rs_unit(dice(s)) * f32(edge))));
+      x := e % s[0].cols; y := e / s[0].cols;
       if rs_at(b, x, y) >= 0 { continue; }
       s[0].raised += 1; s[0].pool -= 1;
       nm: [16] u8;
       nn := put(nm[..], 0, "Skeleton "); nn = put_int(nm[..], nn, s[0].raised);
+      ox := b[0].c[i].x; oy := b[0].c[i].y;
       b[0].c[i] = rs_skeleton(cast(string) nm[0..<nn], 2);
-      b[0].c[i].x = x; b[0].c[i].y = y;
+      b[0].c[i].x = ox; b[0].c[i].y = oy;
+      rs_place(b, i, x, y);   // its body's square comes free
       b[0].c[i].turn_at = b[0].clock + 0.2 + rs_unit(dice(s)) * rs_beat(b);
       b[0].c[i].round_at = b[0].c[i].turn_at;
       s[0].dx[i] = f32(x); s[0].dy[i] = f32(y); s[0].acted[i] = b[0].clock; s[0].fell[i] = 0; s[0].fresh[i] = true;
@@ -528,63 +557,162 @@ flood :: (s: [] Lab) {
     }
   }
 }
-// The Horde's ground: the heroes hold an 8 by 6 block mid-glade, the casters in its 6 by 4 middle
-// and the rest on its rim; the dead start on the grid's two outer rings.
 ACT_ATTACK :: 0;   // the hotbar's first slot, always Attack; keys 1 to 9 pick a slot
-HORDE :: 1000;   // the dead the Horde sends in all, 160 at a time
-HOLD_X :: COLS / 2 - 4; HOLD_Y :: ROWS / 2 - 3;
-EDGE_CELLS :: 2 * COLS + 2 * ROWS - 4 + 2 * (COLS - 2) + 2 * (ROWS - 2) - 4;
-hold_cell :: (n: int, inner: bool) -> int {
-  seen := 0;
-  for y: 0..<6 { for x: 0..<8 {
-    rim := x == 0 || y == 0 || x == 7 || y == 5;
-    if rim == inner { continue; }
-    if seen == n { return (HOLD_Y + y) * COLS + HOLD_X + x; }
-    seen += 1;
-  } }
-  return HOLD_Y * COLS + HOLD_X;
+HORDE :: 1000;   // the dead the Horde sends in all by default, SKELETONS at a time (the stream: the rest)
+// The grid for the armies: 40 by 20 for the lab's 208, about four squares a figure past that.
+size_grid :: (s: [] Lab) {
+  total := s[0].heroes + s[0].skeletons;
+  area := rs_max(COLS * ROWS, (total * 50 + 12) / 13);
+  r := ROWS;
+  while 2 * r * r < area && r < ROWS_MAX { r += 1; }
+  was := s[0].cols;
+  s[0].rows = r; s[0].cols = 2 * r;
+  if s[0].cols != was { cam_home(s); }   // a grid of another size: the camera backs off to see it all
 }
-edge_cell :: (n: int) -> int {
-  seen := 0;
-  for y: 0..<ROWS { for x: 0..<COLS {
-    if rs_min(rs_min(x, y), rs_min(COLS - 1 - x, ROWS - 1 - y)) > 1 { continue; }
-    if seen == n { return y * COLS + x; }
-    seen += 1;
-  } }
+// The ring d squares in from the grid's edge: its squares, and its n-th square (y * cols + x),
+// clockwise from its top-left corner.
+ring_size :: (s: [] Lab, d: int) -> int {
+  w := s[0].cols - 2 * d; h := s[0].rows - 2 * d;
+  if w <= 0 || h <= 0 { return 0; }
+  if w == 1 || h == 1 { return w * h; }
+  return 2 * w + 2 * h - 4;
+}
+ring_cell :: (s: [] Lab, d: int, n: int) -> int {
+  x0 := d; y0 := d; x1 := s[0].cols - 1 - d; y1 := s[0].rows - 1 - d;
+  w := x1 - x0 + 1; h := y1 - y0 + 1;
+  if w == 1 || h == 1 { return (y0 + ifx w == 1 then n else 0) * s[0].cols + x0 + ifx w == 1 then 0 else n; }
+  k := n;
+  if k < w { return y0 * s[0].cols + x0 + k; }
+  k -= w;
+  if k < h - 1 { return (y0 + 1 + k) * s[0].cols + x1; }
+  k -= h - 1;
+  if k < w - 1 { return y1 * s[0].cols + x1 - 1 - k; }
+  k -= w - 1;
+  return (y1 - 1 - k) * s[0].cols + x0;
+}
+// The n-th square of the rings first..first+count-1 together.
+band_cell :: (s: [] Lab, first: int, count: int, n: int) -> int {
+  k := n;
+  for d: first..<(first + count) {
+    rs := ring_size(s, d);
+    if k < rs { return ring_cell(s, d, k); }
+    k -= rs;
+  }
+  return ring_cell(s, first, 0);
+}
+// Where the Horde's q-th Skeleton starts: spread over the two outer rings, then the next two in.
+spawn_cell :: (s: [] Lab, q: int) -> int {
+  k := q; d := 0;
+  while d < s[0].rows / 2 {
+    band := ring_size(s, d) + ring_size(s, d + 1);
+    if band <= 0 { break; }
+    if k < band { return band_cell(s, d, 2, (k * 97) % band); }
+    k -= band; d += 2;
+  }
   return 0;
 }
+// The free square nearest (x, y), or (x, y) when the grid is full.
+free_near :: (s: [] Lab, x: int, y: int) -> int {
+  b := bt(s);
+  for r: 0..<(s[0].cols + s[0].rows) {
+    for oy: -r..<(r + 1) {
+      for ox: -r..<(r + 1) {
+        if rs_max(rs_abs(ox), rs_abs(oy)) != r { continue; }
+        nx := x + ox; ny := y + oy;
+        if nx < 0 || ny < 0 || nx >= s[0].cols || ny >= s[0].rows || rs_at(b, nx, ny) >= 0 { continue; }
+        return ny * s[0].cols + nx;
+      }
+    }
+  }
+  return y * s[0].cols + x;
+}
+// A creature onto the grid at (x, y), or the free square nearest it; its index.
+place_on :: (s: [] Lab, c: RsCreature, x: int, y: int) -> int {
+  e := free_near(s, rs_max(0, rs_min(s[0].cols - 1, x)), rs_max(0, rs_min(s[0].rows - 1, y)));
+  i := rs_add(bt(s), c, e % s[0].cols, e / s[0].cols);
+  if i >= 0 { s[0].dx[i] = f32(e % s[0].cols); s[0].dy[i] = f32(e / s[0].cols); s[0].acted[i] = -10; }
+  return i;
+}
+// Hero i: company i / 48 (a side's 24 of each), its side and its class; casters are the first 12
+// of each side's 24.
+hero_team :: (i: int) -> int { return (i % (2 * SIDE)) / SIDE; }
+hero_caster :: (i: int) -> bool { return i % SIDE < CASTERS; }
+hero_class :: (i: int) -> int { k := i % SIDE; return ROSTER[(k / CASTERS) * 6 + k % 6]; }
+// Hero i's name: the 48 names, then again with the company's number.
+hero_name :: (i: int, out: [] u8) -> int {
+  n := put(out, 0, NAMES[i % 48]);
+  if i >= 48 { n = put(out, n, " "); n = put_int(out, n, i / 48 + 1); }
+  return n;
+}
+// The Horde's ground: the heroes hold a block mid-glade (8 by 6 for 48), the casters at its heart
+// and the rest round its rim; inner squares first in `cells`, the block's count returned.
+hold_block :: (s: [] Lab, cells: [] int) -> int {
+  h := s[0].heroes;
+  bw := 8; while 3 * bw * bw < 4 * h { bw += 1; }
+  bh := rs_max(6, (h + bw - 1) / bw);
+  hx := s[0].cols / 2 - bw / 2; hy := s[0].rows / 2 - bh / 2;
+  deep := (rs_min(bw, bh) - 1) / 2;
+  n := 0;
+  d := deep;
+  while d >= 0 {
+    for y: 0..<bh { for x: 0..<bw {
+      if rs_min(rs_min(x, y), rs_min(bw - 1 - x, bh - 1 - y)) != d || n >= cells.count { continue; }
+      cells[n] = (hy + y) * s[0].cols + hx + x; n += 1;
+    } }
+    d -= 1;
+  }
+  return n;
+}
+// A side's files in the armies' battle: the casters' two back files a pair at a time (each file
+// cap deep, staggered), a file's gap, then the rest's. Hero m of its kind on side `team`.
+file_cell :: (s: [] Lab, team: int, caster: bool, m: int, casters: int) -> int {
+  cap := rs_max(2, (s[0].rows - 2) / 3);
+  g := m / (2 * cap); q := m % (2 * cap);
+  x := 1 + 2 * g + q % 2;
+  if !caster { x += 2 * ((casters + 2 * cap - 1) / (2 * cap)) + 1; }
+  y := 1 + q * (s[0].rows - 3) / (2 * cap - 1);
+  if team == 1 { x = s[0].cols - 1 - x; }
+  return y * s[0].cols + x;
+}
 new_battle :: (s: [] Lab) {
-  b: RsBattle;
-  s[0].battle[0] = b;
-  s[0].battle[0].w = COLS; s[0].battle[0].h = ROWS;
+  size_grid(s);
+  b := bt(s);
+  rs_reset(b);
+  b[0].w = s[0].cols; b[0].h = s[0].rows;
   s[0].seed += 1;
-  s[0].battle[0].dice[0].state = s[0].seed * 7919 + 17;
-  for i: 0..<PEOPLE {
-    if i >= HEROES {
-      q := i - HEROES;
-      if q >= s[0].skeletons { break; } x := ARMY_X + q % ARMY_COLS; y := ARMY_Y + q / ARMY_COLS;
-      if s[0].horde { e := edge_cell((q * 97) % EDGE_CELLS); x = e % COLS; y = e / COLS; }
-      nm: [16] u8;
-      nn := put(nm[..], 0, "Skeleton "); nn = put_int(nm[..], nn, q + 1);
-      d := rs_add(bt(s), rs_skeleton(cast(string) nm[0..<nn], 2), x, y);
-      s[0].dx[i] = f32(x); s[0].dy[i] = f32(y); s[0].acted[i] = -10;
-      continue;
-    }
-    k := i % SIDE; team := i / SIDE;
-    who := hero_for(ROSTER[(k / CASTERS) * 6 + k % 6], NAMES[i], team, LEVEL);
-    // the six casting classes in two files at the back, the rest two files in front of them; the
-    // Pact on the far edge
-    sx := ifx k < CASTERS then 1 + k % 2 else 4 + k % 2;
-    sy := 1 + (k % CASTERS) * (ROWS - 3) / (CASTERS - 1);
-    if team == 1 { sx = COLS - 1 - sx; }
+  b[0].dice[0].state = s[0].seed * 7919 + 17;
+  hs := rs_min(s[0].heroes, HEROES_MAX); sk := rs_min(s[0].skeletons, SKELETONS_MAX);
+  // the heroes: a block mid-glade in the Horde, else each side in files on its own edge
+  cells: [RS_MAX] int;
+  nb := ifx s[0].horde then hold_block(s, cells[..]) else 0;
+  casters: [2] int; for i: 0..<hs { if hero_caster(i) { casters[hero_team(i)] += 1; } }
+  seen_c: [2] int; seen_m: [2] int; inner := 0; outer := 0;
+  nm: [24] u8;
+  for i: 0..<hs {
+    team := hero_team(i); caster := hero_caster(i);
+    nn := hero_name(i, nm[..]);
+    who := hero_for(hero_class(i), cast(string) nm[0..<nn], team, LEVEL);
+    e := 0;
     if s[0].horde {
-      // one company in the middle: the casting classes inside, the rest round them
-      c := hold_cell(ifx k < CASTERS then team * CASTERS + k else team * (SIDE - CASTERS) + k - CASTERS, k < CASTERS);
-      sx = c % COLS; sy = c / COLS;
+      // the casting classes inside, the rest round them
+      e = ifx caster then cells[rs_min(inner, nb - 1)] else cells[rs_max(nb - 1 - outer, 0)];
+      if caster { inner += 1; } else { outer += 1; }
       who.team = 0;
+    } else {
+      e = file_cell(s, team, caster, ifx caster then seen_c[team] else seen_m[team], casters[team]);
+      if caster { seen_c[team] += 1; } else { seen_m[team] += 1; }
     }
-    j := rs_add(bt(s), who, sx, sy);
-    s[0].dx[i] = f32(sx); s[0].dy[i] = f32(sy); s[0].acted[i] = -10;
+    j := place_on(s, who, e % s[0].cols, e / s[0].cols);
+  }
+  // the dead: in the Horde on the outer rings, else a block mid-glade (16 wide, ten deep for 160)
+  aw := 16; while 5 * aw * aw < 8 * sk { aw += 1; }
+  ah := (sk + aw - 1) / aw;
+  ax := s[0].cols / 2 - aw / 2; ay := s[0].rows / 2 - ah / 2;
+  for q: 0..<sk {
+    x := ax + q % aw; y := ay + q / aw;
+    if s[0].horde { e := spawn_cell(s, q); x = e % s[0].cols; y = e / s[0].cols; }
+    nn := put(nm[..], 0, "Skeleton "); nn = put_int(nm[..], nn, q + 1);
+    j := place_on(s, rs_skeleton(cast(string) nm[0..<nn], 2), x, y);
   }
   s[0].battle[0].clock = 0;
   if s[0].mode == MODE_ACTION { s[0].battle[0].beat = ACTION_BEAT; s[0].battle[0].recharge = ACTION_RECHARGE; }
@@ -592,7 +720,7 @@ new_battle :: (s: [] Lab) {
   s[0].seen = s[0].battle[0].book[0].seq;
   s[0].over = false; s[0].winner = -1;
   if s[0].player { pick_hero(s); }
-  s[0].pool = ifx s[0].horde then rs_max(0, HORDE - s[0].skeletons) else 0; s[0].raised = s[0].skeletons;
+  s[0].pool = ifx s[0].horde then rs_min(s[0].stream, HORDE_MAX) else 0; s[0].raised = sk;
   for i: 0..<RS_MAX { s[0].fell[i] = 0; }
   s[0].round += 1;
   for i: 0..<FXS { s[0].fx[i].kind = 0; }
@@ -600,14 +728,16 @@ new_battle :: (s: [] Lab) {
   n := put(l[..], 0, "Battle ");
   n = put_int(l[..], n, s[0].round);
   n = put(l[..], n, ifx s[0].mode == MODE_ACTION then ", action combat" else ", SRD rounds");
-  if s[0].horde { n = put(l[..], n, ": the Horde. Every hero on one side, and "); n = put_int(l[..], n, s[0].skeletons); n = put(l[..], n, " skeletons run at them."); }
-  else { n = put(l[..], n, ": two of each SRD 5e class a side, and "); n = put_int(l[..], n, s[0].skeletons); n = put(l[..], n, " skeletons."); }
+  if s[0].horde { n = put(l[..], n, ": the Horde. "); n = put_int(l[..], n, hs); n = put(l[..], n, " heroes on one side, and "); n = put_int(l[..], n, sk); n = put(l[..], n, " skeletons run at them."); }
+  else { n = put(l[..], n, ": "); n = put_int(l[..], n, hs); n = put(l[..], n, " heroes, two sides, and "); n = put_int(l[..], n, sk); n = put(l[..], n, " skeletons."); }
   add_line(s, cast(string) l[0..<n], GOLD);
-  // six to a line
-  for row: 0..<(HEROES / 6) {
+  // the first 48's initiative, six to a line
+  rows_ := (rs_min(hs, 48) + 5) / 6;
+  for row: 0..<rows_ {
     m := put(l[..], 0, " ");
     for c: 0..<6 {
       i := row * 6 + c;
+      if i >= rs_min(hs, 48) { break; }
       m = put(l[..], m, " "); m = put(l[..], m, NAMES[i]); m = put(l[..], m, " ");
       m = put_int(l[..], m, s[0].battle[0].c[i].initiative);
     }
@@ -669,12 +799,12 @@ walk :: (s: [] Lab, i: int, foe: int, least: int, want: int) {
       for ox: -1..<2 {
         if ox == 0 && oy == 0 { continue; }
         x := s[0].battle[0].c[i].x + ox; y := s[0].battle[0].c[i].y + oy;
-        if x < 0 || y < 0 || x >= COLS || y >= ROWS || rs_at(bt(s), x, y) >= 0 { continue; }
+        if x < 0 || y < 0 || x >= s[0].cols || y >= s[0].rows || rs_at(bt(s), x, y) >= 0 { continue; }
         nd := rs_feet(x, y, s[0].battle[0].c[foe].x, s[0].battle[0].c[foe].y);
         score := ifx away then nd else -nd;
         if rs_difficult(bt(s), x, y) { score -= 4; }
         // keep off the edges when backing away
-        if away && (x == 0 || y == 0 || x == COLS - 1 || y == ROWS - 1) { score -= 3; }
+        if away && (x == 0 || y == 0 || x == s[0].cols - 1 || y == s[0].rows - 1) { score -= 3; }
         if score > bs { bs = score; bx = x; by = y; }
       }
     }
@@ -1309,7 +1439,7 @@ player_turn :: (s: [] Lab, i: int) {
         sx := ifx tr == 2 then 0 else ox; sy := ifx tr == 1 then 0 else oy;
         if sx == 0 && sy == 0 { continue; }
         nx := x + sx; ny := y + sy;
-        if nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS || rs_at(b, nx, ny) >= 0 { continue; }
+        if nx < 0 || ny < 0 || nx >= s[0].cols || ny >= s[0].rows || rs_at(b, nx, ny) >= 0 { continue; }
         if rs_step_to(b, i, nx, ny) { gone = true; break; }
       }
       if !gone { break; }
@@ -1464,7 +1594,7 @@ use_ab :: (s: [] Lab, i: int, a: Ab, foe: int) {
 pick_hero :: (s: [] Lab) {
   b := bt(s);
   s[0].me = -1; s[0].target = -1;
-  for i: 0..<rs_min(b[0].n, HEROES) {
+  for i: 0..<rs_min(b[0].n, s[0].heroes) {
     if b[0].c[i].team == 0 && b[0].c[i].klass == ROSTER[s[0].pick] && rs_up(b[0].c[i]) { s[0].me = i; return; }
   }
 }
@@ -1481,9 +1611,11 @@ step :: (s: [] Lab, dt: f32) {
     return;
   }
   rs_tick(b, dt);
-  guard := 0;
+  // the turns due this step: at most 8, and more for a big battle (two thousand on a 1.5-second
+  // beat is some 23 a step), so a crowd keeps its pace and the frame pays for it
+  guard := 0; most := 8 + b[0].n / 40;
   due := rs_due(b);
-  while due >= 0 && guard < 8 {
+  while due >= 0 && guard < most {
     lab_turn(s, due);
     guard += 1;
     due = rs_due(b);
@@ -1551,7 +1683,7 @@ seg :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, w: f32, light: 
 }
 ring :: (out: [] f32, at: int, x: f32, y: f32, r: f32, w: f32, light: f32, c: Col) -> int {
   n := at;
-  sides := 20;
+  sides := rs_max(8, rs_min(20, int(r * 2)));   // a small ring, fewer sides (the flat view's crowds)
   for i: 0..<sides {
     a0 := f32(i) * 6.2831853 / f32(sides); a1 := f32(i + 1) * 6.2831853 / f32(sides);
     n = seg(out, n, x + cos(a0) * r, y + sin(a0) * r, x + cos(a1) * r, y + sin(a1) * r, w, light, c);
@@ -1590,8 +1722,8 @@ norm3 :: (v: P3) -> P3 {
   return P3.{x = v.x / l, y = v.y / l, z = v.z / l};
 }
 // Where a square's middle is on the ground, metres.
-wx :: (x: f32) -> f32 { return (x + 0.5) * f32(SQ) - f32(COLS) * f32(SQ) / 2; }
-wz :: (y: f32) -> f32 { return (y + 0.5) * f32(SQ) - f32(ROWS) * f32(SQ) / 2; }
+wx :: (s: [] Lab, x: f32) -> f32 { return (x + 0.5) * f32(SQ) - f32(s[0].cols) * f32(SQ) / 2; }
+wz :: (s: [] Lab, y: f32) -> f32 { return (y + 0.5) * f32(SQ) - f32(s[0].rows) * f32(SQ) / 2; }
 // A point in the glade on the screen: x, y (device px) and its depth (0 or less: behind the eye).
 proj :: (s: [] Lab, x: f32, y: f32, z: f32) -> P3 {
   dx := x - s[0].eye.x; dy := y - s[0].eye.y; dz := z - s[0].eye.z;
@@ -1628,10 +1760,10 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
     gw = w - pw - pad * 3;
     s[0].panel = Rect.{x0 = w - pw - pad, y0 = top, x1 = w - pad, y1 = h - pad};
   }
-  cell := lo(gw / f32(COLS), gh / f32(ROWS));
+  cell := lo(gw / f32(s[0].cols), gh / f32(s[0].rows));
   s[0].cell = cell;
-  s[0].gx = pad + (gw - cell * f32(COLS)) / 2;
-  s[0].gy = top + (gh - cell * f32(ROWS)) / 2;
+  s[0].gx = pad + (gw - cell * f32(s[0].cols)) / 2;
+  s[0].gy = top + (gh - cell * f32(s[0].rows)) / 2;
   bw := 96 * k;
   s[0].back = Rect.{x0 = w - pad - bw, y0 = 18 * k, x1 = w - pad, y1 = 46 * k};
   s[0].flip = Rect.{x0 = s[0].back.x0 - 8 * k - bw, y0 = 18 * k, x1 = s[0].back.x0 - 8 * k, y1 = 46 * k};
@@ -1656,6 +1788,7 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
     if c < nslot { s[0].slots[c] = Rect.{x0 = hx0 + f32(c) * (slot + sg), y0 = scy1 - 20 * k - slot, x1 = hx0 + f32(c) * (slot + sg) + slot, y1 = scy1 - 20 * k}; }
   }
   if !s[0].player { for c: 0..<12 { s[0].picks[c] = Rect.{}; } }
+  layout_sliders(s, k, scx0, scx1, top + ifx s[0].player then 34 * k else 4 * k);
   // the glade's camera, fitted to the space left of the log (above it on a phone)
   rx0 := pad; rx1 := ifx s[0].portrait then w - pad else s[0].panel.x0 - pad;
   ry0 := top; ry1 := ifx s[0].portrait then s[0].panel.y0 - pad else h - pad;
@@ -1669,7 +1802,7 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   s[0].right = norm3(P3.{x = -s[0].fwd.z, y = 0, z = s[0].fwd.x});
   r := s[0].right; f := s[0].fwd;
   s[0].up = P3.{x = r.y * f.z - r.z * f.y, y = r.z * f.x - r.x * f.z, z = r.x * f.y - r.y * f.x};
-  s[0].focal = lo((rx1 - rx0) * 27 / (30 * f32(COLS) / 16), (ry1 - ry0) * 27 / (19 * f32(ROWS) / 10));   // fitted at the default orbit; + and - zoom from there
+  s[0].focal = lo((rx1 - rx0) * 27 / (30 * f32(COLS) / 16), (ry1 - ry0) * 27 / (19 * f32(ROWS) / 10));   // fitted at the default orbit (it backs off as the grid grows); + and - zoom from there
 }
 
 draw_zones :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
@@ -1680,11 +1813,11 @@ draw_zones :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
     col := spell_col(zo.spell);
     r := Rect.{x0 = s[0].gx + f32(zo.x0) * c, y0 = s[0].gy + f32(zo.y0) * c, x1 = s[0].gx + f32(zo.x1 + 1) * c, y1 = s[0].gy + f32(zo.y1 + 1) * c};
     r.x0 = hi(r.x0, s[0].gx); r.y0 = hi(r.y0, s[0].gy);
-    r.x1 = lo(r.x1, s[0].gx + c * f32(COLS)); r.y1 = lo(r.y1, s[0].gy + c * f32(ROWS));
+    r.x1 = lo(r.x1, s[0].gx + c * f32(s[0].cols)); r.y1 = lo(r.y1, s[0].gy + c * f32(s[0].rows));
     n = box_lines(out, n, r, 1.2 * k, 0.55, col);
     for y: zo.y0..<(zo.y1 + 1) {
       for x: zo.x0..<(zo.x1 + 1) {
-        if x < 0 || y < 0 || x >= COLS || y >= ROWS { continue; }
+        if x < 0 || y < 0 || x >= s[0].cols || y >= s[0].rows { continue; }
         px := s[0].gx + f32(x) * c; py := s[0].gy + f32(y) * c;
         if zo.spell == SP_ENTANGLE {
           // plants: a few sprigs to a square
@@ -1709,60 +1842,60 @@ draw_zones :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
 
 draw_tokens :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
   n := at; c := s[0].cell;
-  b := s[0].battle[0];
-  for i: 0..<b.n {
-    cr := b.c[i];
+  b := bt(s);
+  for i: 0..<b[0].n {
+    cr := b[0].c[i..<i + 1];   // in place, not a copy
     x := scr_x(s, s[0].dx[i]); y := scr_y(s, s[0].dy[i]);
-    col := TEAM_COL[cr.team];
+    col := TEAM_COL[cr[0].team];
     r := c * 0.34;
-    if cr.dead {
+    if cr[0].dead {
       g := FAINT;
       n = seg(out, n, x - r * 0.6, y - r * 0.6, x + r * 0.6, y + r * 0.6, 2 * k, 0.5, g);
       n = seg(out, n, x - r * 0.6, y + r * 0.6, x + r * 0.6, y - r * 0.6, 2 * k, 0.5, g);
       n = ring(out, n, x, y, r, 1 * k, 0.3, g);
       continue;
     }
-    down := cr.hp == 0;
+    down := cr[0].hp == 0;
     light: f32 = ifx down then 0.35 else 0.95;
     if down { col = DIM; }
     // whose turn just ran: a white ring that fades
-    since := b.clock - s[0].acted[i];
+    since := b[0].clock - s[0].acted[i];
     if since >= 0 && since < 1.2 { n = ring(out, n, x, y, r * (1.25 + since * 0.2), 1.4 * k, 0.9 * (1 - since / 1.2), WHITE); }
-    if cr.outlined_by >= 0 { n = ring(out, n, x, y, r * 1.12, 2.2 * k, 0.55 + 0.25 * sin(t * 5), VIOLET); }
+    if cr[0].outlined_by >= 0 { n = ring(out, n, x, y, r * 1.12, 2.2 * k, 0.55 + 0.25 * sin(t * 5), VIOLET); }
     n = ring(out, n, x, y, r, 2.2 * k, light, col);
-    n = ring(out, n, x, y, r * 0.55, 1.1 * k, light * 0.5, col);
+    if c >= 14 * k { n = ring(out, n, x, y, r * 0.55, 1.1 * k, light * 0.5, col); }
     if down {
       // Unconscious: the death saves, as ticks
       for d: 0..<3 {
-        ok := d < cr.death_ok; bad := d < cr.death_fail;
+        ok := d < cr[0].death_ok; bad := d < cr[0].death_fail;
         n = seg(out, n, x - r * 0.5 + f32(d) * r * 0.5, y - r * 0.15, x - r * 0.5 + f32(d) * r * 0.5, y - r * 0.15 + 0.5, 3 * k, 0.8, ifx ok then GREEN else FAINT);
         n = seg(out, n, x - r * 0.5 + f32(d) * r * 0.5, y + r * 0.25, x - r * 0.5 + f32(d) * r * 0.5, y + r * 0.25 + 0.5, 3 * k, 0.8, ifx bad then RED else FAINT);
       }
     }
-    if rs_has(cr, RS_RESTRAINED) {
+    if rs_has(cr[0], RS_RESTRAINED) {
       g := spell_col(SP_ENTANGLE);
       for v: 0..<4 {
         a := f32(v) * 1.5708 + t * 0.4;
         n = seg(out, n, x + cos(a) * r * 1.05, y + sin(a) * r * 1.05, x + cos(a + 0.9) * r * 0.75, y + sin(a + 0.9) * r * 0.75, 1.6 * k, 0.8, g);
       }
     }
-    if cr.flame_until > b.clock {
+    if cr[0].flame_until > b[0].clock {
       fl := spell_col(SP_PRODUCE_FLAME);
       fx := x + r * 0.95; fy := y - r * 0.85;
       n = seg(out, n, fx, fy + 3 * k, fx + sin(t * 9) * 1.5 * k, fy - 5 * k, 3 * k, 0.9, fl);
     }
-    if cr.wisp_until > b.clock { n = ring(out, n, x, y, r * 0.2, 2 * k, 0.9, spell_col(SP_STARRY_WISP)); }
+    if cr[0].wisp_until > b[0].clock { n = ring(out, n, x, y, r * 0.2, 2 * k, 0.9, spell_col(SP_STARRY_WISP)); }
     // the name, and the hit points
     cap := lo(hi(c * 0.15, 8 * k), 14 * k);
-    nm := cast(string) b.c[i].name[0..<b.c[i].name_n];
-    n = say_mid(out, n, nm, x, y - r - 5 * k, cap, ink(k, light * 0.85, col));
+    nm := cast(string) b[0].c[i].name[0..<b[0].c[i].name_n];
+    if c >= 18 * k { n = say_mid(out, n, nm, x, y - r - 5 * k, cap, ink(k, light * 0.85, col)); }
     bw := c * 0.7; by := y + r + 6 * k;
-    share := f32(cr.hp) / f32(rs_max(cr.hp_max, 1));
+    share := f32(cr[0].hp) / f32(rs_max(cr[0].hp_max, 1));
     n = seg(out, n, x - bw / 2, by, x + bw / 2, by, 2.4 * k, 0.18, FAINT);
     hc := ifx share > 0.5 then GREEN else ifx share > 0.25 then GOLD else RED;
     if share > 0 { n = seg(out, n, x - bw / 2, by, x - bw / 2 + bw * share, by, 2.4 * k, 0.85, hc); }
-    if cr.conc >= 0 {
-      cc := spell_col(cr.conc);
+    if cr[0].conc >= 0 {
+      cc := spell_col(cr[0].conc);
       n = seg(out, n, x - bw / 2, by + 5 * k, x + bw / 2, by + 5 * k, 1.0 * k, 0.6, cc);
     }
   }
@@ -1798,34 +1931,38 @@ draw_fx :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   return n;
 }
 
-// The glade's labels: each druid's name and hit points over its head.
+// The glade's labels: each druid's name and hit points over its head (on the screen; past 96
+// heroes, the names of the near ones; past 400 creatures, only the near ones' at all).
 draw_labels3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
-  n := at; b := s[0].battle[0];
-  for i: 0..<b.n {
-    cr := b.c[i];
-    x := wx(s[0].dx[i]); z := wz(s[0].dy[i]);
-    lift: f32 = ifx cr.hp == 0 then 0.75 else 2.2;
+  n := at; b := bt(s);
+  crowd := b[0].n > 400;
+  for i: 0..<b[0].n {
+    cr := b[0].c[i..<i + 1];   // in place, not a copy
+    x := wx(s, s[0].dx[i]); z := wz(s, s[0].dy[i]);
+    lift: f32 = ifx cr[0].hp == 0 then 0.75 else 2.2;
     p := proj(s, x, lift, z);
-    if p.z <= 0 { continue; }
-    col := ifx cr.dead then FAINT else ifx cr.hp == 0 then DIM else TEAM_COL[cr.team];
-    if cr.klass == RS_MONSTER && cr.dead { continue; }
-    nm := cast(string) cr.name[0..<cr.name_n];
-    if cr.klass != RS_MONSTER { n = say_mid(out, n, nm, p.x, p.y - 8 * k, 10 * k, ink(k, 0.95, col)); }
-    if cr.dead { continue; }
-    bw := ifx cr.klass == RS_MONSTER then 26 * k else 46 * k; by := p.y;
-    share := f32(cr.hp) / f32(rs_max(cr.hp_max, 1));
+    if p.z <= 0 || p.x < -80 * k || p.x > s[0].width + 80 * k || p.y < -40 * k || p.y > s[0].height + 40 * k { continue; }
+    if crowd && p.z > 24 { continue; }   // past 400, only the near ones' bars: far off they'd carpet the field
+    if !s[0].portrait && p.x > s[0].panel.x0 - 8 * k { continue; }   // never over the log
+    col := ifx cr[0].dead then FAINT else ifx cr[0].hp == 0 then DIM else TEAM_COL[cr[0].team];
+    if cr[0].klass == RS_MONSTER && cr[0].dead { continue; }
+    nm := cast(string) cr[0].name[0..<cr[0].name_n];
+    if cr[0].klass != RS_MONSTER && (s[0].heroes <= 96 || p.z < 16) { n = say_mid(out, n, nm, p.x, p.y - 8 * k, 10 * k, ink(k, 0.95, col)); }
+    if cr[0].dead { continue; }
+    bw := ifx cr[0].klass == RS_MONSTER then 26 * k else 46 * k; by := p.y;
+    share := f32(cr[0].hp) / f32(rs_max(cr[0].hp_max, 1));
     n = seg(out, n, p.x - bw / 2, by, p.x + bw / 2, by, 2.6 * k, 0.25, FAINT);
     hc := ifx share > 0.5 then GREEN else ifx share > 0.25 then GOLD else RED;
     if share > 0 { n = seg(out, n, p.x - bw / 2, by, p.x - bw / 2 + bw * share, by, 2.6 * k, 0.95, hc); }
-    if cr.conc >= 0 { n = seg(out, n, p.x - bw / 2, by + 5 * k, p.x + bw / 2, by + 5 * k, 1.1 * k, 0.8, spell_col(cr.conc)); }
-    if cr.hp == 0 {
+    if cr[0].conc >= 0 { n = seg(out, n, p.x - bw / 2, by + 5 * k, p.x + bw / 2, by + 5 * k, 1.1 * k, 0.8, spell_col(cr[0].conc)); }
+    if cr[0].hp == 0 {
       for d: 0..<3 {
-        ok := d < cr.death_ok; bad := d < cr.death_fail;
+        ok := d < cr[0].death_ok; bad := d < cr[0].death_fail;
         tick_x := p.x - 10 * k + f32(d) * 10 * k;
         n = seg(out, n, tick_x, by + 11 * k, tick_x + 0.5, by + 11 * k, 3 * k, 0.9, ifx ok then GREEN else ifx bad then RED else FAINT);
       }
     }
-    if cr.flame_until > b.clock {
+    if cr[0].flame_until > b[0].clock {
       fl := spell_col(SP_PRODUCE_FLAME);
       q := proj(s, x + 0.42, 2.0, z + 0.08);
       if q.z > 0 { n = seg(out, n, q.x, q.y + 3 * k, q.x + sin(t * 9) * 1.5 * k, q.y - 7 * k, 4 * k, 1.0, fl); }
@@ -1848,7 +1985,7 @@ draw_fx3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     zo := s[0].battle[0].zone[z];
     if !zo.on { continue; }
     zc := fx_col(zo.spell);
-    fxp_zone(pf, wx(f32(zo.x0)) - f32(SQ) / 2, wz(f32(zo.y0)) - f32(SQ) / 2, wx(f32(zo.x1)) + f32(SQ) / 2, wz(f32(zo.y1)) + f32(SQ) / 2, zc, s[0].clock, f32(z) * 3.1 + 0.7);
+    fxp_zone(pf, wx(s, f32(zo.x0)) - f32(SQ) / 2, wz(s, f32(zo.y0)) - f32(SQ) / 2, wx(s, f32(zo.x1)) + f32(SQ) / 2, wz(s, f32(zo.y1)) + f32(SQ) / 2, zc, s[0].clock, f32(z) * 3.1 + 0.7);
   }
   // what lasts on each creature: a few puffs each, capped (FX_STATUS_CAP), after the effects
   for i: 0..<s[0].battle[0].n {
@@ -1863,14 +2000,14 @@ draw_fx3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     if f.kind != FX_TEXT { continue; }
     a := (now - f.t0) / f.life;
     if a < 0 || a > 1 { continue; }
-    p := proj(s, wx(f.ax) + 0.4, 2.3 + a * 1.0, wz(f.ay));
-    if p.z > 0 { n = say_mid(out, n, cast(string) f.text[0..<f.n], p.x + 24 * k, p.y - 14 * k, 15 * k, ink(k, 1 - a * 0.7, f.col)); }
+    p := proj(s, wx(s, f.ax) + 0.4, 2.3 + a * 1.0, wz(s, f.ay));
+    if p.z > 0 && (s[0].portrait || p.x + 24 * k < s[0].panel.x0 - 8 * k) { n = say_mid(out, n, cast(string) f.text[0..<f.n], p.x + 24 * k, p.y - 14 * k, 15 * k, ink(k, 1 - a * 0.7, f.col)); }
   }
   return n;
 }
 
 draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
-  n := at; p := s[0].panel; b := s[0].battle[0];
+  n := at; p := s[0].panel; b := bt(s);
   n = box_lines(out, n, p, 0.6 * k, 0.3, DIM);
   pad := 12 * k; x := p.x0 + pad; y := p.y0 + pad;
   cap := 8.5 * k; row := 16 * k;
@@ -1880,10 +2017,10 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n = say_at(out, n, "CHARACTERS", x, y, cap, ink(k, 0.6, DIM));
   y += row * 0.6;
   l: [LINE_CAP] u8;
-  // the two sides in two columns, a row each
+  // the two sides in two columns, a row each: the first company of 48 (the rest counted below)
   top := y; half := (p.x1 - p.x0) / 2;
-  for i: 0..<rs_min(b.n, HEROES) {
-    cr := b.c[i];
+  for i: 0..<rs_min(rs_min(b[0].n, s[0].heroes), 2 * SIDE) {
+    cr := b[0].c[i];
     x = p.x0 + pad + f32(i / SIDE) * half;
     y = top + f32(i % SIDE + 1) * crow;
     col := ifx cr.dead then FAINT else TEAM_COL[cr.team];
@@ -1929,14 +2066,14 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
       if rs_has(cr, RS_PRONE) { m = put(l[..], m, "  PRONE"); }
       if rs_effect(cr, EF_MARK) { m = put(l[..], m, "  MARKED"); }
       if rs_effect(cr, EF_EXPOSED) { m = put(l[..], m, "  LIT"); }
-      if cr.slowed_until > b.clock { m = put(l[..], m, "  SLOWED"); }
+      if cr.slowed_until > b[0].clock { m = put(l[..], m, "  SLOWED"); }
       if cr.inspired > 0 { m = put(l[..], m, "  INSPIRED"); }
-      if cr.innate_until > b.clock { m = put(l[..], m, "  INNATE SORCERY"); }
-      if cr.shield_until > b.clock { m = put(l[..], m, "  SHIELD"); }
-      if cr.sacred_until > b.clock { m = put(l[..], m, "  SACRED WEAPON"); }
+      if cr.innate_until > b[0].clock { m = put(l[..], m, "  INNATE SORCERY"); }
+      if cr.shield_until > b[0].clock { m = put(l[..], m, "  SHIELD"); }
+      if cr.sacred_until > b[0].clock { m = put(l[..], m, "  SACRED WEAPON"); }
       if cr.raging { m = put(l[..], m, "  RAGING"); }
-      if cr.reckless_until > b.clock { m = put(l[..], m, "  RECKLESS"); }
-      if cr.dodge_until > b.clock { m = put(l[..], m, "  DODGING"); }
+      if cr.reckless_until > b[0].clock { m = put(l[..], m, "  RECKLESS"); }
+      if cr.dodge_until > b[0].clock { m = put(l[..], m, "  DODGING"); }
       if cr.conc >= 0 { m = put(l[..], m, "  CONC: "); m = put(l[..], m, rs_spell(cr.conc).name); }
     }
     room := half - 58 * k - pad;
@@ -1946,10 +2083,18 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     n = say_at(out, n, t, x + 54 * k, y, cp, ink(k, 0.6, DIM));
   }
   x = p.x0 + pad; y = top + f32(SIDE) * crow;
+  // the heroes past the first 48, counted
+  if s[0].heroes > 2 * SIDE {
+    up := 0; for i: 2 * SIDE..<rs_min(b[0].n, s[0].heroes) { if rs_up(b[0].c[i]) { up += 1; } }
+    y += crow * 1.4;
+    m := put(l[..], 0, "+"); m = put_int(l[..], m, s[0].heroes - 2 * SIDE); m = put(l[..], m, " MORE HEROES, ");
+    m = put_int(l[..], m, up); m = put(l[..], m, " STANDING");
+    n = say_at(out, n, cast(string) l[0..<m], x, y, cap * 0.92, ink(k, 0.85, TEAM_COL[0]));
+  }
   // the Restless Dead, counted
   if true {
     up := 0; hp := 0;
-    for i: HEROES..<b.n { if rs_up(b.c[i]) { up += 1; hp += b.c[i].hp; } }
+    for i: s[0].heroes..<b[0].n { if rs_up(b[0].c[i]) { up += 1; hp += b[0].c[i].hp; } }
     y += crow * 1.4;
     n = say_at(out, n, "SKELETONS", x, y, cap * 0.92, ink(k, 0.85, ifx up > 0 then TEAM_COL[2] else FAINT));
     m := put(l[..], 0, ""); m = put_int(l[..], m, up); m = put(l[..], m, " OF "); m = put_int(l[..], m, s[0].skeletons);
@@ -1978,11 +2123,11 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
 
 // The token under (x, y) on the screen that's a foe of yours, or -1.
 token_at :: (s: [] Lab, x: f32, y: f32) -> int {
-  b := s[0].battle[0];
+  b := bt(s);
   best := -1; bd := 40 * hi(s[0].dpr, 1);
-  for i: 0..<b.n {
-    if !rs_up(b.c[i]) || (s[0].me >= 0 && b.c[i].team == b.c[s[0].me].team) { continue; }
-    p := proj(s, wx(s[0].dx[i]), 0.9, wz(s[0].dy[i]));
+  for i: 0..<b[0].n {
+    if !rs_up(b[0].c[i]) || (s[0].me >= 0 && b[0].c[i].team == b[0].c[s[0].me].team) { continue; }
+    p := proj(s, wx(s, s[0].dx[i]), 0.9, wz(s, s[0].dy[i]));
     if p.z <= 0 { continue; }
     d := abs(p.x - x) + abs(p.y - y);
     if d < bd { bd = d; best = i; }
@@ -2032,8 +2177,8 @@ draw_player :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   }
   me := s[0].me;
   if s[0].view == VIEW_GLADE {
-    if me >= 0 { n = ring3(s, out, n, wx(s[0].dx[me]), wz(s[0].dy[me]), 0.78, 0.06, 2.5 * k, 1, GOLD); }
-    if s[0].target >= 0 && rs_up(b[0].c[s[0].target]) { n = ring3(s, out, n, wx(s[0].dx[s[0].target]), wz(s[0].dy[s[0].target]), 0.7, 0.06, 2.5 * k, 1, RED); }
+    if me >= 0 { n = ring3(s, out, n, wx(s, s[0].dx[me]), wz(s, s[0].dy[me]), 0.78, 0.06, 2.5 * k, 1, GOLD); }
+    if s[0].target >= 0 && rs_up(b[0].c[s[0].target]) { n = ring3(s, out, n, wx(s, s[0].dx[s[0].target]), wz(s, s[0].dy[s[0].target]), 0.7, 0.06, 2.5 * k, 1, RED); }
   }
   // the hotbar: your class's abilities, keys 1 to 9; the picked one gold, a spent one dim, and
   // every slot filling from its foot as your next turn comes round
@@ -2070,6 +2215,12 @@ draw_player :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n = say_mid(out, n, cast(string) l[0..<m], ifx nab > 0 then (r0.x0 + r2.x1) / 2 else s[0].cx, r0.y0 - 10 * k, 9 * k, ink(k, 0.9, ifx me >= 0 then WHITE else RED));
   return n;
 }
+// The figures on the field: every creature not yet dead (the fallen lie a while, then fade).
+on_field :: (s: [] Lab) -> int {
+  b := bt(s); n := 0;
+  for i: 0..<b[0].n { if !b[0].c[i].dead { n += 1; } }
+  return n;
+}
 draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   n := at; pad := 16 * k;
   n = say_at(out, n, "5E LAB", pad, 38 * k, 18 * k, ink(k, 0.95, WHITE));
@@ -2086,14 +2237,23 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   m = put(l[..], m, "   R NEW BATTLE   H HORDE/ARMIES   P PLAY   V 2D/3D   M MODE");
   if s[0].view == VIEW_GLADE { m = put(l[..], m, "   DRAG ORBIT   SHIFT+DRAG PAN   WHEEL ZOOM"); }
   n = say_at(out, n, cast(string) l[0..<m], sx0, sy0 + 16 * k, ifx s[0].portrait then 7 * k else 8 * k, ink(k, 0.45, FAINT));
-  // frames a second, in the scene's bottom-right corner (not in the golden, which has no clock)
+  // frames a second and the frame's milliseconds, in the scene's bottom-right corner, and over
+  // them the figures on the field (not in the golden, which has no clock)
   if !s[0].golden {
-    fl: [16] u8;
-    fm := put_int(fl[..], 0, int(s[0].fps + 0.5)); fm = put(fl[..], fm, " FPS");
+    fl: [40] u8;
+    fm := put_int(fl[..], 0, int(s[0].fps + 0.5)); fm = put(fl[..], fm, " FPS  ");
+    tenths := int(s[0].ms * 10 + 0.5);
+    fm = put_int(fl[..], fm, tenths / 10); fm = put(fl[..], fm, "."); fm = put_int(fl[..], fm, tenths % 10); fm = put(fl[..], fm, " MS");
     fc := 15 * k;
     fxr := ifx s[0].portrait then s[0].width - 16 * k else s[0].panel.x0 - 16 * k;
     fyb := ifx s[0].portrait then s[0].panel.y0 - 16 * k else s[0].height - 20 * k;
+    // a phone's corner is narrow: the milliseconds go up a line, with the count
+    if s[0].portrait { fm = put_int(fl[..], 0, int(s[0].fps + 0.5)); fm = put(fl[..], fm, " FPS"); }
     n = say_at(out, n, cast(string) fl[0..<fm], fxr - text_width(cast(string) fl[0..<fm], fc), fyb, fc, ink(k, 1, ifx s[0].fps >= 50 then GREEN else ifx s[0].fps >= 30 then GOLD else RED));
+    fm = 0;
+    if s[0].portrait { fm = put_int(fl[..], 0, tenths / 10); fm = put(fl[..], fm, "."); fm = put_int(fl[..], fm, tenths % 10); fm = put(fl[..], fm, " MS  "); }
+    fm = put_int(fl[..], fm, on_field(s)); fm = put(fl[..], fm, ifx s[0].portrait then " FIGURES" else " FIGURES ON THE FIELD");
+    n = say_at(out, n, cast(string) fl[0..<fm], fxr - text_width(cast(string) fl[0..<fm], 10 * k), fyb - 24 * k, 10 * k, ink(k, 0.85, WHITE));
   }
   if s[0].paused { n = say_mid(out, n, "PAUSED", s[0].cx, s[0].gy + 26 * k, 14 * k, ink(k, 0.9, GOLD)); }
   if s[0].over && s[0].winner >= 0 {
@@ -2129,7 +2289,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   put_bodies(s);
   if dt > 0 {
     s[0].fps_n += 1; s[0].fps_t += dt;
-    if s[0].fps_t >= 0.5 { s[0].fps = f32(s[0].fps_n) / s[0].fps_t; s[0].fps_n = 0; s[0].fps_t = 0; }
+    if s[0].fps_t >= 0.5 { s[0].fps = f32(s[0].fps_n) / s[0].fps_t; s[0].ms = s[0].fps_t * 1000 / f32(s[0].fps_n); s[0].fps_n = 0; s[0].fps_t = 0; }
   }
   t := s[0].clock;
   layout(s, width, height, k);
@@ -2145,10 +2305,11 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   n = draw_panel(s, out, n, k);
   n = draw_top(s, out, n, width, k, t);
   n = draw_player(s, out, n, k);
+  n = draw_sliders(s, out, n, k);
   for i: 0..<u.count { u[i] = 0; }
   u[0] = width; u[1] = height; u[2] = t; u[3] = 1;
   u[U_GRID] = s[0].gx; u[U_GRID + 1] = s[0].gy; u[U_GRID + 2] = s[0].cell;
-  u[U_CELLS] = f32(COLS); u[U_CELLS + 1] = f32(ROWS);
+  u[U_CELLS] = f32(s[0].cols); u[U_CELLS + 1] = f32(s[0].rows);
   p := s[0].panel;
   u[U_PANEL] = p.x0; u[U_PANEL + 1] = p.y0; u[U_PANEL + 2] = p.x1; u[U_PANEL + 3] = p.y1;
   u[U_CELLS + 2] = f32(s[0].view);
@@ -2158,38 +2319,150 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   u[U_RIGHT] = s[0].right.x; u[U_RIGHT + 1] = s[0].right.y; u[U_RIGHT + 2] = s[0].right.z; u[U_RIGHT + 3] = s[0].cy;
   u[U_UP] = s[0].up.x; u[U_UP + 1] = s[0].up.y; u[U_UP + 2] = s[0].up.z;
   u[U_SUN] = 0.45; u[U_SUN + 1] = 0.62; u[U_SUN + 2] = 0.38;
-  b := s[0].battle[0];
+  b := bt(s);
   // the tokens, for the ground's rings and contact shadows: where each stands, its side and state,
   // and the square it is nearest
-  for i: 0..<TOKENS3 {
-    if i >= b.n { continue; }
-    cr := b.c[i];
+  for i: 0..<rs_min(TOKENS3, b[0].n) {
     o := U_TOKENS + i * 4;
-    if cr.dead { continue; }
-    u[o] = wx(s[0].dx[i]); u[o + 1] = wz(s[0].dy[i]);
-    down := 0; if cr.hp == 0 { down = 1; }
-    u[o + 2] = f32(1 + cr.team + 4 * down);
-    since := b.clock - s[0].acted[i];
+    if b[0].c[i].dead { continue; }
+    u[o] = wx(s, s[0].dx[i]); u[o + 1] = wz(s, s[0].dy[i]);
+    down := 0; if b[0].c[i].hp == 0 { down = 1; }
+    u[o + 2] = f32(1 + b[0].c[i].team + 4 * down);
+    since := b[0].clock - s[0].acted[i];
     u[o + 3] = ifx since >= 0 && since < 1.2 then 1 - since / 1.2 else 0;
     gx := cast(int) floor(s[0].dx[i] + 0.5); gy := cast(int) floor(s[0].dy[i] + 0.5);
-    if gx < 0 || gx >= COLS || gy < 0 || gy >= ROWS { continue; }
-    sq := gy * COLS + gx;
+    if gx < 0 || gx >= s[0].cols || gy < 0 || gy >= s[0].rows { continue; }
+    sq := gy * s[0].cols + gx;
     at := U_SQUARES + sq / 2;
     pair := cast(int) u[at];
-    mine := ifx sq % 2 == 0 then pair % 256 else pair / 256;
-    place := 1; if sq % 2 == 1 { place = 256; }
+    mine := ifx sq % 2 == 0 then pair % SQ_RADIX else pair / SQ_RADIX;
+    place := 1; if sq % 2 == 1 { place = SQ_RADIX; }
     if mine == 0 { u[at] = f32(pair + (i + 1) * place); }
   }
   for z: 0..<RS_ZONES {
     o := U_ZONES + z * 8;
-    zo := b.zone[z];
+    zo := b[0].zone[z];
     if !zo.on { continue; }
-    u[o] = wx(f32(zo.x0)) - f32(SQ) / 2; u[o + 1] = wz(f32(zo.y0)) - f32(SQ) / 2;
-    u[o + 2] = wx(f32(zo.x1)) + f32(SQ) / 2; u[o + 3] = wz(f32(zo.y1)) + f32(SQ) / 2;
+    u[o] = wx(s, f32(zo.x0)) - f32(SQ) / 2; u[o + 1] = wz(s, f32(zo.y0)) - f32(SQ) / 2;
+    u[o + 2] = wx(s, f32(zo.x1)) + f32(SQ) / 2; u[o + 3] = wz(s, f32(zo.y1)) + f32(SQ) / 2;
     u[o + 4] = ifx zo.spell == SP_ENTANGLE then 1 else 2;
   }
-  u[U_BOUNDS] = f32(COLS) * f32(SQ) / 2; u[U_BOUNDS + 1] = f32(ROWS) * f32(SQ) / 2; u[U_BOUNDS + 2] = f32(SQ);
+  u[U_BOUNDS] = f32(s[0].cols) * f32(SQ) / 2; u[U_BOUNDS + 1] = f32(s[0].rows) * f32(SQ) / 2; u[U_BOUNDS + 2] = f32(SQ); u[U_BOUNDS + 3] = grid_scale(s);
   return n;
+}
+
+// ---- the army-size sliders: heroes, the dead on the field at once and (in the Horde) the dead
+// that stream in after them. Each runs on a log scale, so a few and a thousand both have room; a
+// drag shows the number and lets go into a new battle at it. Z and X, Q and E, K and L nudge them.
+SL_HEROES :: 0; SL_SKELETONS :: 1; SL_STREAM :: 2;
+SL_NAME :: [3] string.["HEROES", "SKELETONS", "STREAM"];
+sl_least :: (k: int) -> int { return ifx k == SL_HEROES then 1 else 0; }
+sl_most :: (k: int) -> int { return ifx k == SL_HEROES then HEROES_MAX else ifx k == SL_SKELETONS then SKELETONS_MAX else HORDE_MAX; }
+sl_value :: (s: [] Lab, k: int) -> int { return ifx k == SL_HEROES then s[0].heroes else ifx k == SL_SKELETONS then s[0].skeletons else s[0].stream; }
+// The slider's position 0..1 for a value, and the value at a position (log scale over 1 + v).
+sl_pos :: (k: int, v: int) -> f32 { return clamp01(log(f32(v + 1)) / log(f32(sl_most(k) + 1))); }
+sl_at :: (k: int, t: f32) -> int {
+  v := cast(int) floor(pow(f32(sl_most(k) + 1), clamp01(t)) - 1 + 0.5);
+  return rs_max(sl_least(k), rs_min(sl_most(k), v));
+}
+// The sliders' count: the stream only in the Horde.
+sl_count :: (s: [] Lab) -> int { return ifx s[0].horde then 3 else 2; }
+// New sizes: the battle starts again at them (and says so); false when nothing changed.
+set_sizes :: (s: [] Lab, heroes: int, skeletons: int, stream: int) -> bool {
+  h := rs_max(1, rs_min(HEROES_MAX, heroes)); sk := rs_max(0, rs_min(SKELETONS_MAX, skeletons)); st := rs_max(0, rs_min(HORDE_MAX, stream));
+  if h == s[0].heroes && sk == s[0].skeletons && st == s[0].stream { return false; }
+  s[0].heroes = h; s[0].skeletons = sk; s[0].stream = st;
+  s[0].wins[0] = 0; s[0].wins[1] = 0; s[0].wins[2] = 0;
+  new_battle(s);
+  return true;
+}
+set_slider :: (s: [] Lab, k: int, v: int) -> bool {
+  h := s[0].heroes; sk := s[0].skeletons; st := s[0].stream;
+  if k == SL_HEROES { h = v; } else if k == SL_SKELETONS { sk = v; } else { st = v; }
+  return set_sizes(s, h, sk, st);
+}
+// A key's nudge: a quarter up or a fifth down, at least one.
+nudge :: (s: [] Lab, k: int, up: bool) -> bool {
+  v := sl_value(s, k);
+  w := ifx up then rs_max(v + 1, (v * 5 + 3) / 4) else rs_min(v - 1, (v * 4) / 5);
+  return set_slider(s, k, rs_max(sl_least(k), rs_min(sl_most(k), w)));
+}
+// The sliders' tracks, in the scene's top-left corner (under the class picker in Player mode).
+layout_sliders :: (s: [] Lab, k: f32, x0: f32, x1: f32, y0: f32) {
+  tw := lo(220 * k, x1 - x0 - 150 * k);
+  for r: 0..<3 {
+    s[0].sliders[r] = Rect.{};
+    if r >= sl_count(s) || tw < 40 * k { continue; }
+    y := y0 + 12 * k + f32(r) * 24 * k;
+    s[0].sliders[r] = Rect.{x0 = x0 + 84 * k, y0 = y - 10 * k, x1 = x0 + 84 * k + tw, y1 = y + 10 * k};
+  }
+}
+// The slider under (x, y), or -1: its track, a little wider for a finger.
+slider_at :: (s: [] Lab, x: f32, y: f32) -> int {
+  k := hi(s[0].dpr, 0.5);
+  for r: 0..<sl_count(s) {
+    t := s[0].sliders[r];
+    if t.x1 <= t.x0 { continue; }
+    if x >= t.x0 - 10 * k && x <= t.x1 + 10 * k && y >= t.y0 - 3 * k && y <= t.y1 + 3 * k { return r; }
+  }
+  return -1;
+}
+slider_value_at :: (s: [] Lab, r: int, x: f32) -> int {
+  t := s[0].sliders[r];
+  return sl_at(r, (x - t.x0) / hi(t.x1 - t.x0, 1));
+}
+draw_sliders :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+  n := at;
+  for r: 0..<sl_count(s) {
+    t := s[0].sliders[r];
+    if t.x1 <= t.x0 { continue; }
+    on := s[0].sliding == r;
+    v := ifx on then s[0].want[r] else sl_value(s, r);
+    y := (t.y0 + t.y1) / 2;
+    n = say_right(out, n, SL_NAME[r], t.x0 - 10 * k, y + 4 * k, 8.5 * k, ink(k, 0.85, ifx on then GOLD else WHITE));
+    n = seg(out, n, t.x0, y, t.x1, y, 1.6 * k, 0.3, DIM);
+    px := t.x0 + (t.x1 - t.x0) * sl_pos(r, v);
+    n = seg(out, n, t.x0, y, px, y, 1.8 * k, 0.9, ifx r == SL_HEROES then TEAM_COL[0] else TEAM_COL[2]);
+    n = ring(out, n, px, y, 6 * k, 1.8 * k, ifx on then 1 else 0.8, ifx on then GOLD else WHITE);
+    l: [16] u8; m := put_int(l[..], 0, v);
+    n = say_at(out, n, cast(string) l[0..<m], t.x1 + 12 * k, y + 4.5 * k, 10 * k, ink(k, 0.95, ifx on then GOLD else WHITE));
+  }
+  t0 := s[0].sliders[0];
+  if t0.x1 > t0.x0 {
+    hint := ifx s[0].horde then "DRAG, OR Z X  Q E  K L" else "DRAG, OR Z X  Q E";
+    n = say_at(out, n, hint, t0.x0, t0.y0 + f32(sl_count(s)) * 24 * k + 6 * k, 7 * k, ink(k, 0.45, FAINT));
+  }
+  return n;
+}
+// The page's address asks for sizes: ?heroes=N&skeletons=M&stream=K (dead= too), so a test reruns.
+// Bounded numeric fields only, read from the page facts' url line (coax/web/host.js pageFacts).
+url_number :: (q: string, key: string) -> int {
+  i := 0;
+  while i + key.count < q.count {
+    at_start := i == 0 || q[i - 1] == '?' || q[i - 1] == '&';
+    if at_start && q[i + key.count] == '=' && q[i..<i + key.count] == key {
+      j := i + key.count + 1; v := 0; any := false;
+      while j < q.count && q[j] >= '0' && q[j] <= '9' && v < 1000000 { v = v * 10 + cast(int) (q[j] - '0'); j += 1; any = true; }
+      return ifx any then v else -1;
+    }
+    i += 1;
+  }
+  return -1;
+}
+url_sizes :: (s: [] Lab, facts: string) -> bool {
+  i := 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    line := facts[i..<e];
+    i = e + 1;
+    if line.count < 4 || line[0..<4] != "url=" { continue; }
+    q := line[4..<line.count];
+    h := url_number(q, "heroes"); sk := url_number(q, "skeletons"); st := url_number(q, "stream");
+    if st < 0 { st = url_number(q, "dead"); }
+    if h < 0 && sk < 0 && st < 0 { return false; }
+    return set_sizes(s, ifx h >= 0 then h else s[0].heroes, ifx sk >= 0 then sk else s[0].skeletons, ifx st >= 0 then st else s[0].stream);
+  }
+  return false;
 }
 
 // ---- input
@@ -2215,11 +2488,14 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   if key == 'p' || key == 'P' { set_player(s, !s[0].player); return true; }
   if s[0].player && key >= '1' && key <= '9' { s[0].act = key - '1'; return true; }
   if s[0].player && (key == '[' || key == ']') { s[0].pick = (s[0].pick + ifx key == ']' then 1 else 11) % 12; pick_hero(s); return true; }
+  if key == 'z' || key == 'Z' || key == 'x' || key == 'X' { changed := nudge(s, SL_HEROES, key == 'x' || key == 'X'); return true; }
+  if key == 'q' || key == 'Q' || key == 'e' || key == 'E' { changed := nudge(s, SL_SKELETONS, key == 'e' || key == 'E'); return true; }
+  if s[0].horde && (key == 'k' || key == 'K' || key == 'l' || key == 'L') { changed := nudge(s, SL_STREAM, key == 'l' || key == 'L'); return true; }
   if key == 'h' || key == 'H' { s[0].horde = !s[0].horde; s[0].wins[0] = 0; s[0].wins[1] = 0; s[0].wins[2] = 0; new_battle(s); return true; }
   if s[0].view == VIEW_GLADE {
     h := hold_bit(key);
     if h != 0 { s[0].held |= h; return true; }
-    if key == 'c' || key == 'C' { s[0].yaw = 0; s[0].pitch = 0.6; s[0].dist = DIST; s[0].px = 0; s[0].pz = PIVOT_Z; s[0].vx = 0; s[0].vz = 0; return true; }
+    if key == 'c' || key == 'C' { cam_home(s); return true; }
     if key == KEY_SHIFT { s[0].shift = true; return false; }
   }
   return false;
@@ -2230,7 +2506,7 @@ lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   s[0].held = s[0].held & (1023 - h);   // h is one HOLD_ bit or none
   return h != 0;
 }
-lab_blur :: (s: [] Lab) #export_c { s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0; s[0].held = 0; }
+lab_blur :: (s: [] Lab) #export_c { s[0].sliding = -1; s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0; s[0].held = 0; }
 // The keys that fly the camera while they are held.
 hold_bit :: (key: int) -> int {
   if key == 'w' || key == 'W' { return HOLD_W; }
@@ -2263,8 +2539,8 @@ fly :: (s: [] Lab, dt: f32) {
   if s[0].player { h = h & (1023 - HOLD_W - HOLD_A - HOLD_S - HOLD_D); }
   if s[0].player && s[0].me >= 0 {
     follow := lo(1, t * 4);
-    s[0].px += (wx(s[0].dx[s[0].me]) - s[0].px) * follow;
-    s[0].pz += (wz(s[0].dy[s[0].me]) - s[0].pz) * follow;
+    s[0].px += (wx(s, s[0].dx[s[0].me]) - s[0].px) * follow;
+    s[0].pz += (wz(s, s[0].dy[s[0].me]) - s[0].pz) * follow;
   }
   speed := s[0].dist * 0.9;   // metres a second: a long way out, it flies faster
   s[0].vx += (axis(h, HOLD_D, HOLD_A) * speed - s[0].vx) * ease;
@@ -2276,14 +2552,18 @@ fly :: (s: [] Lab, dt: f32) {
   if al > 0.0001 { ax /= al; az /= al; }
   s[0].px += (s[0].right.x * s[0].vx + ax * s[0].vz) * t;
   s[0].pz += (s[0].right.z * s[0].vx + az * s[0].vz) * t;
-  hx := f32(COLS) * f32(SQ) / 2; hz := f32(ROWS) * f32(SQ) / 2;
+  hx := f32(s[0].cols) * f32(SQ) / 2; hz := f32(s[0].rows) * f32(SQ) / 2;
   s[0].px = lo(hx, hi(-hx, s[0].px)); s[0].pz = lo(hz, hi(-hz, s[0].pz));
   s[0].yaw += s[0].vyaw * t;
   s[0].pitch = lo(1.35, hi(0.12, s[0].pitch + s[0].vpitch * t));
   cam_zoom(s, 1 + s[0].vzoom * t);
 }
 // The camera's zoom: its distance times `by`, held between near and far.
-cam_zoom :: (s: [] Lab, by: f32) { s[0].dist = lo(ZOOM_FAR, hi(ZOOM_NEAR, s[0].dist * by)); }
+cam_zoom :: (s: [] Lab, by: f32) { s[0].dist = lo(ZOOM_FAR * grid_scale(s), hi(ZOOM_NEAR, s[0].dist * by)); }
+// How much bigger the grid is than the lab's 40 by 20: the camera's orbit backs off by as much.
+grid_scale :: (s: [] Lab) -> f32 { return f32(s[0].cols) / f32(COLS); }
+// The camera's default orbit, the whole grid in view.
+cam_home :: (s: [] Lab) { s[0].yaw = 0; s[0].pitch = 0.6; s[0].dist = DIST * grid_scale(s); s[0].px = 0; s[0].pz = PIVOT_Z; s[0].vx = 0; s[0].vz = 0; }
 // A pan: the ground follows the pointer, dx right and dy down (device px), so the pivot moves the
 // other way along the camera's level right and forward. It stays over the grid.
 cam_pan :: (s: [] Lab, dx: f32, dy: f32) {
@@ -2293,7 +2573,7 @@ cam_pan :: (s: [] Lab, dx: f32, dy: f32) {
   if al > 0.0001 { ax /= al; az /= al; }
   s[0].px += -s[0].right.x * dx * m + ax * dy * ahead;
   s[0].pz += -s[0].right.z * dx * m + az * dy * ahead;
-  hx := f32(COLS) * f32(SQ) / 2; hz := f32(ROWS) * f32(SQ) / 2;
+  hx := f32(s[0].cols) * f32(SQ) / 2; hz := f32(s[0].rows) * f32(SQ) / 2;
   s[0].px = lo(hx, hi(-hx, s[0].px)); s[0].pz = lo(hz, hi(-hz, s[0].pz));
 }
 // The wheel (CSS px, down is out) zooms.
@@ -2310,6 +2590,8 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
     if in_rect(s[0].flip, x, y) { s[0].pressing = 2; return true; }
     if in_rect(s[0].modal, x, y) { s[0].pressing = 3; return true; }
     if in_rect(s[0].pbtn, x, y) { s[0].pressing = 4; return true; }
+    sl := slider_at(s, x, y);
+    if sl >= 0 { s[0].sliding = sl; s[0].want[sl] = slider_value_at(s, sl, x); return true; }
     if s[0].player {
       for c: 0..<12 { if in_rect(s[0].picks[c], x, y) { s[0].pressing = 10 + c; return true; } }
       for c: 0..<SLOTS { if in_rect(s[0].slots[c], x, y) { s[0].pressing = 30 + c; return true; } }
@@ -2324,6 +2606,15 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
       s[0].dragging = true; s[0].panning = s[0].shift; s[0].drag_x = x; s[0].drag_y = y; return true;
     }
     return false;
+  }
+  if s[0].sliding >= 0 {
+    // a slider dragged: the number follows; let go, and the battle starts again at it
+    r := s[0].sliding;
+    s[0].want[r] = slider_value_at(s, r, x);
+    if phase == 1 { return true; }
+    s[0].sliding = -1;
+    if phase == 2 { changed := set_slider(s, r, s[0].want[r]); }
+    return true;
   }
   if phase == 1 {
     if kind == 1 && s[0].fingers == 2 {
@@ -2373,7 +2664,11 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
   return false;
 }
 lab_cursor :: (s: [] Lab) -> int #export_c { return 0; }
-lab_message :: (s: [] Lab, kind: int, t: string) #export_c { lab_start(s); }
+HOST_PAGE :: 600;   // coax/web/host.js's page facts: key=value lines, the url among them
+lab_message :: (s: [] Lab, kind: int, t: string) #export_c {
+  lab_start(s);
+  if kind == HOST_PAGE { changed := url_sizes(s, t); }
+}
 lab_golden :: (s: [] Lab, on: bool) #export_c { lab_start(s); s[0].golden = on; }
 lab_action :: (s: [] Lab) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
 lab_action_done :: (s: [] Lab) #export_c { s[0].out_n = 0; }
@@ -2399,7 +2694,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   for i: 0..<1500 {
     step(s[..], f32(STEP));
     if i % 30 == 0 {
-      for h: 0..<HEROES {
+      for h: 0..<s[0].heroes {
         c := s[0].battle[0].c[h];
         any := c.slots[1] < c.slots_max[1] || c.slots[2] < c.slots_max[2] || c.slots[3] < c.slots_max[3] || c.rages < c.rages_max || c.focus < c.focus_max;
         for u: 0..<RS_USES { if c.uses[u] < c.uses_max[u] { any = true; } }
@@ -2425,7 +2720,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   for i: 0..<700 {
     step(s[..], f32(STEP));
     if i % 30 == 0 {
-      for h: 0..<HEROES {
+      for h: 0..<s[0].heroes {
         c := s[0].battle[0].c[h];
         any := c.slots[1] < c.slots_max[1] || c.slots[2] < c.slots_max[2] || c.slots[3] < c.slots_max[3] || c.rages < c.rages_max || c.focus < c.focus_max;
         for u: 0..<RS_USES { if c.uses[u] < c.uses_max[u] { any = true; } }
@@ -2449,7 +2744,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
         #assert c.team == team && c.level == LEVEL;
         if c.klass == ROSTER[r] { n += 1; }
         // the casting classes at the back, each side on its own edge
-        back := ifx team == 0 then c.x < 3 else c.x > COLS - 4;
+        back := ifx team == 0 then c.x < 3 else c.x > s[0].cols - 4;
         if c.klass == RS_DRUID || c.klass == RS_WIZARD || c.klass == RS_WARLOCK || c.klass == RS_SORCERER || c.klass == RS_BARD || c.klass == RS_CLERIC { #assert back; }
       }
       #assert n == 2;
@@ -2465,16 +2760,16 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert a > 300 && a < MAX_VERTICES - 600;
   b := frame_at(s[1..<2], 390 * 3, 844 * 3, 3, 0.016);
   #assert b > 100 && b < MAX_VERTICES - 600 && s[1].portrait;
-  #assert s[1].gx >= 0 && s[1].gx + s[1].cell * f32(COLS) <= 390 * 3;
+  #assert s[1].gx >= 0 && s[1].gx + s[1].cell * f32(s[0].cols) <= 390 * 3;
 }
 
 #test "the glade's camera sees the whole grid from its default orbit" #steps 2000000000 {
   s: [1] Lab; s[0].skeletons = 24; s[0].horde = false;
   n := frame_at(s[..], 1600, 1000, 1, 0.016);
   for c: 0..<4 {
-    x := ifx c % 2 == 0 then -0.5 else f32(COLS) - 0.5;
-    y := ifx c < 2 then -0.5 else f32(ROWS) - 0.5;
-    p := proj(s[..], wx(x), 0, wz(y));
+    x := ifx c % 2 == 0 then -0.5 else f32(s[0].cols) - 0.5;
+    y := ifx c < 2 then -0.5 else f32(s[0].rows) - 0.5;
+    p := proj(s[..], wx(s[..], x), 0, wz(s[..], y));
     #assert p.z > 0 && p.x > 0 && p.x < s[0].panel.x0 && p.y > 64 && p.y < 1000;
   }
 }
@@ -2526,23 +2821,23 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   s: [1] Lab; s[0].skeletons = 24;
   lab_start(s[..]);
   b := bt(s[..]);
-  for i: 0..<HEROES { #assert b[0].c[i].team == 0 && b[0].c[i].x >= HOLD_X && b[0].c[i].x < HOLD_X + 8; }
+  for i: 0..<s[0].heroes { #assert b[0].c[i].team == 0 && b[0].c[i].x >= s[0].cols / 2 - 4 && b[0].c[i].x < s[0].cols / 2 + 4; }
   far := 0;
-  for i: HEROES..<b[0].n {
+  for i: s[0].heroes..<b[0].n {
     c := b[0].c[i];
-    #assert c.team == 2 && rs_min(rs_min(c.x, c.y), rs_min(COLS - 1 - c.x, ROWS - 1 - c.y)) <= 1;
+    #assert c.team == 2 && rs_min(rs_min(c.x, c.y), rs_min(s[0].cols - 1 - c.x, s[0].rows - 1 - c.y)) <= 1;
     far += rs_feet_to(b, i, 0);
   }
   for i: 0..<40 { step(s[..], f32(STEP)); }
   closer := 0;
-  for i: HEROES..<b[0].n { closer += rs_feet_to(b, i, 0); }
+  for i: s[0].heroes..<b[0].n { closer += rs_feet_to(b, i, 0); }
   #assert closer < far;   // the dead have closed in
-  #assert s[0].pool == HORDE - 24;
-  b[0].c[HEROES].dead = true; b[0].c[HEROES].hp = 0;
+  #assert s[0].pool == s[0].stream && s[0].stream == HORDE - SKELETONS;
+  b[0].c[s[0].heroes].dead = true; b[0].c[s[0].heroes].hp = 0;
   for i: 0..<70 { step(s[..], f32(STEP)); }
   // a fresh one ran in (at level 6 it may already have fallen again: that's raised past 25)
-  #assert s[0].raised >= 25 && s[0].pool == HORDE - s[0].raised;
-  #assert lab_key(s[..], 'h', 0) && !s[0].horde && b[0].c[HEROES - 1].team == 1;
+  #assert s[0].raised >= 25 && s[0].pool == s[0].stream + 24 - s[0].raised;
+  #assert lab_key(s[..], 'h', 0) && !s[0].horde && b[0].c[s[0].heroes - 1].team == 1;
 }
 
 #test "Player mode: P plays the picked class, the hotbar keys pick the action, and D walks you right" #steps 2000000000 {
@@ -2575,7 +2870,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   s: [1] Lab; s[0].skeletons = 16; s[0].horde = false;
   lab_start(s[..]);
   b := bt(s[..]);
-  sk := HEROES;   // a Skeleton
+  sk := s[0].heroes;   // a Skeleton
   e: RsEvent; e.at = b[0].clock; e.by = 0; e.to = 1;
   kinds := [10] int.[RS_EV_ZONE, RS_EV_ZONE, RS_EV_ATTACK, RS_EV_ATTACK, RS_EV_ATTACK, RS_EV_HEAL, RS_EV_DEATH, RS_EV_CAST, RS_EV_ZONE, RS_EV_ATTACK];
   spells := [10] int.[SP_FIREBALL, SP_THUNDERWAVE, SP_FIRE_BOLT, SP_ELDRITCH_BLAST, -1, -1, -1, SP_SACRED_FLAME, SP_CALL_LIGHTNING, -1];
@@ -2663,4 +2958,59 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   // the flat view writes none
   n := draw_fx(s[..], out[..], 0, 1);
   #assert s[0].puffs[0].out_n == 0;
+}
+
+#test "the army sizes: the grid grows with them, every figure on its own square, the Horde's heroes in a block" #steps 2000000000 {
+  s: [1] Lab; s[0].heroes = 4; s[0].skeletons = 6;
+  lab_start(s[..]);
+  b := bt(s[..]);
+  #assert b[0].n == 10 && s[0].cols == COLS && s[0].rows == ROWS;
+  ok := set_sizes(s[..], 100, 200, 50);
+  #assert ok && b[0].n == 300 && s[0].pool == 50 && s[0].cols == 2 * s[0].rows && s[0].cols * s[0].rows >= 300 * 50 / 13;
+  #assert !set_sizes(s[..], 100, 200, 50);   // the same sizes: no new battle
+  #assert s[0].dist == DIST * grid_scale(s[..]) && grid_scale(s[..]) > 1;   // the camera backs off to see it all
+  for i: 0..<b[0].n {
+    c := b[0].c[i];
+    #assert c.x >= 0 && c.y >= 0 && c.x < s[0].cols && c.y < s[0].rows && rs_at(b, c.x, c.y) == i;
+    if i < 100 { #assert c.team == 0 && c.x >= s[0].cols / 2 - 6 && c.x < s[0].cols / 2 + 6; }
+  }
+  // past 48, the names count the company
+  #assert cast(string) b[0].c[48].name[0..<b[0].c[48].name_n] == "Rowan 2";
+  // the armies: two sides, each on its own edge, the dead in the middle
+  #assert lab_key(s[..], 'h', 0) && !s[0].horde && b[0].n == 300;
+  for i: 0..<100 {
+    c := b[0].c[i];
+    #assert c.team == hero_team(i) && (ifx c.team == 0 then c.x < s[0].cols / 2 - 8 else c.x > s[0].cols / 2 + 8);
+  }
+  // the most: 1024 and 1024 on the field at once, the grid at 128 by 64 at most
+  #assert HEROES_MAX + SKELETONS_MAX == RS_MAX && TOKENS3 == RS_MAX && figs.BD_SLOTS == RS_MAX;
+  #assert U_TOKENS + TOKENS3 * 4 <= U_SQUARES && U_SQUARES + RS_SQUARES / 2 <= U_ZONES && U_BOUNDS + 4 == UNIFORM_FLOATS && UNIFORM_FLOATS * 4 <= 65536;
+  #assert 2 * ROWS_MAX * ROWS_MAX == RS_SQUARES;
+}
+
+#test "the sliders: a drag shows the number and lets go into a new battle; the keys nudge; the address sets them" #steps 2000000000 {
+  s: [1] Lab; s[0].heroes = 4; s[0].skeletons = 4; ok: bool; n: int;
+  n = frame_at(s[..], 1600, 1000, 1, 0.016);
+  #assert sl_count(s[..]) == 3 && s[0].sliders[SL_HEROES].x1 > s[0].sliders[SL_HEROES].x0;
+  // the scale: the ends are the least and the most, and a value comes back to itself
+  #assert sl_at(SL_HEROES, 0) == 1 && sl_at(SL_HEROES, 1) == HEROES_MAX && sl_at(SL_SKELETONS, 0) == 0 && sl_at(SL_STREAM, 1) == HORDE_MAX;
+  for v: 1..<60 { #assert sl_at(SL_SKELETONS, sl_pos(SL_SKELETONS, v)) == v; }
+  t := s[0].sliders[SL_SKELETONS]; y := (t.y0 + t.y1) / 2;
+  r := s[0].round;
+  ok = lab_pointer(s[..], t.x0 + 2, y, 0, 1, 3);   // a finger
+  #assert ok && s[0].sliding == SL_SKELETONS;
+  ok = lab_pointer(s[..], t.x0 + (t.x1 - t.x0) * sl_pos(SL_SKELETONS, 9), y, 1, 1, 3);
+  #assert s[0].want[SL_SKELETONS] == 9 && s[0].round == r && s[0].skeletons == 4;   // dragging: no new battle yet
+  ok = lab_pointer(s[..], t.x0 + (t.x1 - t.x0) * sl_pos(SL_SKELETONS, 9), y, 2, 1, 3);
+  #assert s[0].sliding < 0 && s[0].skeletons == 9 && s[0].round == r + 1 && s[0].battle[0].n == 13 && s[0].yaw == 0;
+  ok = lab_key(s[..], 'x', 0); #assert s[0].heroes == 5;
+  ok = lab_key(s[..], 'z', 0); #assert s[0].heroes == 4;
+  ok = lab_key(s[..], 'q', 0); #assert s[0].skeletons == 7;
+  ok = lab_key(s[..], 'l', 0); #assert s[0].stream == (840 * 5 + 3) / 4;
+  facts := "tab=1\nurl=http://127.0.0.1:8809/worlds/5e-lab?heroes=6&skeletons=12&stream=30\nref=";
+  lab_message(s[..], HOST_PAGE, facts);
+  #assert s[0].heroes == 6 && s[0].skeletons == 12 && s[0].stream == 30 && s[0].battle[0].n == 18;
+  #assert url_number("?heroes=7&xheroes=9", "heroes") == 7 && url_number("?xheroes=9", "heroes") == -1 && url_number("?skeletons=99999", "skeletons") == 99999;
+  lab_message(s[..], HOST_PAGE, "url=http://x/worlds/5e-lab?skeletons=5000&heroes=0");
+  #assert s[0].skeletons == SKELETONS_MAX && s[0].heroes == 1;
 }

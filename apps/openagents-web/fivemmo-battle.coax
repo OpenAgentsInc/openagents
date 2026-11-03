@@ -69,8 +69,7 @@ hero_for :: (klass: int, name: string, team: int, level: int) -> RsCreature {
 // ---- a battle: you (creature 0) and three casters on the south rows, six Skeletons on the north
 
 mb_new :: (s: [] Mb, pick: int, seed: int) #export_c {
-  b: RsBattle;
-  s[0].battle[0] = b;
+  rs_reset(s[0].battle[..]);   // in place: a battle is 3 MB (battle.coax RS_MAX), too big for the stack
   s[0].battle[0].w = COLS; s[0].battle[0].h = ROWS;
   s[0].pick = rs_max(0, rs_min(11, pick));
   s[0].seed = cast(u64) seed;

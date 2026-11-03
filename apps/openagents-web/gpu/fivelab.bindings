@@ -1,7 +1,7 @@
 # 5E Lab's bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS]), as coax/web/host.js lays them out:
 # group 0 the frame's uniforms; group 1 the scene: the pack's vertices, the stores (the figures'
 # instances, the baked clips), the pack's layers and their sampler.
-u 0 0 uniform 442
+u 0 0 uniform 3098
 vertices 1 0
 objects 1 1
 bake 1 2

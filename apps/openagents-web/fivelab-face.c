@@ -19,7 +19,7 @@ static uint8_t catalog[16384];
 static coax_t_People rig;
 static float bake[544440];        // fivelab-bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
-static float records[1320 * 24];  // BD_RECORDS instances of BD_REC_FLOATS
+static float records[10880 * 24]; // BD_RECORDS instances of BD_REC_FLOATS
 static uint32_t frames;
 static int64_t draw_n;
 

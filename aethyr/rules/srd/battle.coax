@@ -12,7 +12,12 @@
 //   coax/bin/coax test --library aethyr/rules/srd/battle.coax
 #load "spells.coax";
 
-RS_MAX :: 216;
+// Creatures in a battle at most: 5E Lab's army-size sliders go to 1024 heroes and 1024 of the dead
+// (1464 bytes a creature, 3 MB a battle). Worlds keep their RsBattle in their state, never on the
+// stack (rs_reset clears one in place).
+RS_MAX :: 2048;
+// Squares a grid indexes at most (rs_at's occupancy, 128 by 64); a larger grid scans its creatures.
+RS_SQUARES :: 8192;
 RS_ZONES :: 8;
 RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; round: bool; cx: int; cy: int; r_ft: int; }
 // A turn's economy and what has happened in it: moved (Steady Aim needs none), aimed (Steady Aim's
@@ -41,6 +46,10 @@ RsBattle :: struct {
   // rounds either way.
   beat: f32;
   recharge: f32;
+  // Who stands on each square (1 + the creature, 0 none), so rs_at is one look rather than a scan
+  // of every creature: kept by rs_add, rs_place, rs_step_to and the pushes, and rebuilt at each
+  // turn's start (rs_index) for whatever a world moved by hand.
+  occ: [RS_SQUARES] int;
 }
 rs_beat :: (b: [] RsBattle) -> f32 { return ifx b[0].beat > 0 then b[0].beat else f32(RS_ROUND); }
 
@@ -51,8 +60,52 @@ rs_feet :: (ax: int, ay: int, bx: int, by: int) -> int { return rs_max(rs_abs(ax
 rs_feet_to :: (b: [] RsBattle, i: int, j: int) -> int { return rs_feet(b[0].c[i].x, b[0].c[i].y, b[0].c[j].x, b[0].c[j].y); }
 // Who stands on a square (the dead lie where they fell and still fill it), or -1.
 rs_at :: (b: [] RsBattle, x: int, y: int) -> int {
+  if rs_indexed(b) && x >= 0 && y >= 0 && x < b[0].w && y < b[0].h {
+    k := b[0].occ[y * b[0].w + x] - 1;
+    if k < 0 { return -1; }
+    if k < b[0].n && b[0].c[k].x == x && b[0].c[k].y == y { return k; }
+  }
+  return rs_at_scan(b, x, y);
+}
+rs_at_scan :: (b: [] RsBattle, x: int, y: int) -> int {
   for i: 0..<b[0].n { if b[0].c[i].x == x && b[0].c[i].y == y { return i; } }
   return -1;
+}
+// The grid is small enough to index (a battle without w and h set scans).
+rs_indexed :: (b: [] RsBattle) -> bool { return b[0].w > 0 && b[0].h > 0 && b[0].w * b[0].h <= RS_SQUARES; }
+// Rebuilds the squares' index from where every creature stands (the lowest index wins a square
+// two share, as the scan finds it).
+rs_index :: (b: [] RsBattle) {
+  if !rs_indexed(b) { return; }
+  for q: 0..<(b[0].w * b[0].h) { b[0].occ[q] = 0; }
+  i := b[0].n - 1;
+  while i >= 0 {
+    x := b[0].c[i].x; y := b[0].c[i].y;
+    if x >= 0 && y >= 0 && x < b[0].w && y < b[0].h { b[0].occ[y * b[0].w + x] = i + 1; }
+    i -= 1;
+  }
+}
+// Creature i to the square (x, y), keeping the index: a world's own moves (a fresh creature in a
+// slot, a placement) go through here.
+rs_place :: (b: [] RsBattle, i: int, x: int, y: int) {
+  if rs_indexed(b) {
+    ox := b[0].c[i].x; oy := b[0].c[i].y;
+    if ox >= 0 && oy >= 0 && ox < b[0].w && oy < b[0].h && b[0].occ[oy * b[0].w + ox] == i + 1 { b[0].occ[oy * b[0].w + ox] = 0; }
+    if x >= 0 && y >= 0 && x < b[0].w && y < b[0].h && b[0].occ[y * b[0].w + x] == 0 { b[0].occ[y * b[0].w + x] = i + 1; }
+  }
+  b[0].c[i].x = x; b[0].c[i].y = y;
+}
+// A battle cleared in place, for a new one: RsBattle is too big for a stack's copy at RS_MAX.
+rs_reset :: (b: [] RsBattle) {
+  blank: RsCreature;
+  for i: 0..<b[0].n { b[0].c[i] = blank; }
+  b[0].n = 0;
+  for z: 0..<RS_ZONES { b[0].zone[z] = RsZone.{}; }
+  b[0].dice[0] = RsDice.{};
+  b[0].book[0] = RsLog.{};
+  b[0].clock = 0; b[0].w = 0; b[0].h = 0; b[0].turn_no = 0; b[0].guards = 0; b[0].aff_used = false; b[0].who = 0;
+  b[0].turn = RsTurn.{}; b[0].beat = 0; b[0].recharge = 0;
+  for q: 0..<RS_SQUARES { b[0].occ[q] = 0; }
 }
 rs_inside :: (z: RsZone, x: int, y: int) -> bool { return z.on && x >= z.x0 && x <= z.x1 && y >= z.y0 && y <= z.y1 && (!z.round || rs_feet(x, y, z.cx, z.cy) <= z.r_ft); }
 rs_difficult :: (b: [] RsBattle, x: int, y: int) -> bool {
@@ -117,7 +170,8 @@ RS_ORDINAL :: [10] string.["", "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", 
 rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int {
   if b[0].n >= RS_MAX { return -1; }
   i := b[0].n;
-  b[0].c[i] = c; b[0].c[i].x = x; b[0].c[i].y = y;
+  b[0].c[i] = c; b[0].c[i].x = -1; b[0].c[i].y = -1;
+  rs_place(b, i, x, y);
   // Remarkable Athlete: Advantage on Initiative rolls
   b[0].c[i].initiative = rs_d20(b[0].dice[..], ifx c.athlete then 1 else 0).roll + rs_mod(c.score[RS_DEX]);
   b[0].n += 1;
@@ -125,6 +179,7 @@ rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int {
 }
 // The turns begin: the highest initiative first, the rest spread over the 6-second round.
 rs_begin :: (b: [] RsBattle) {
+  rs_index(b);
   b[0].who = -1;
   for i: 0..<b[0].n {
     rank := 0;
@@ -642,7 +697,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       for n: 0..<(st.a / RS_SQUARE) {
         nx := b[0].c[j].x + dx; ny := b[0].c[j].y + dy;
         if nx < 0 || ny < 0 || nx >= b[0].w || ny >= b[0].h || rs_at(b, nx, ny) >= 0 { break; }
-        b[0].c[j].x = nx; b[0].c[j].y = ny; moved += 1;
+        rs_place(b, j, nx, ny); moved += 1;
       }
       if moved > 0 {
         l: [1] RsLine;
@@ -742,7 +797,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
     for n: 0..<2 {
       nx := b[0].c[j].x + dx; ny := b[0].c[j].y + dy;
       if nx < 0 || ny < 0 || nx >= b[0].w || ny >= b[0].h || rs_at(b, nx, ny) >= 0 { break; }
-      b[0].c[j].x = nx; b[0].c[j].y = ny; moved += 1;
+      rs_place(b, j, nx, ny); moved += 1;
     }
     if moved > 0 {
       l: [1] RsLine;
@@ -821,7 +876,7 @@ rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
   cost := ifx rs_difficult(b, x, y) then 2 else 1;
   if b[0].turn.move_left < cost { return false; }
   b[0].turn.move_left -= cost; b[0].turn.moved = true;
-  b[0].c[i].x = x; b[0].c[i].y = y;
+  rs_place(b, i, x, y);
   if b[0].guards > 0 {
     // into someone's Spirit Guardians, or its own Emanation onto someone
     rs_guardians(b, i);
@@ -866,6 +921,7 @@ rs_guarded :: (b: [] RsBattle, i: int) -> bool {
 // The start of i's turn: what has run out ends, a creature at 0 makes its death saving throw, a
 // Prone one stands (half its Speed).
 rs_start_turn :: (b: [] RsBattle, i: int) {
+  rs_index(b);
   b[0].who = i;
   // a beat moves its share of a round's Speed (at least a square)
   // the Slow mastery: 10 feet less
@@ -1371,7 +1427,7 @@ rs_open_hand :: (b: [] RsBattle, i: int, j: int, how: int) {
   for n: 0..<3 {
     nx := b[0].c[j].x + dx; ny := b[0].c[j].y + dy;
     if nx < 0 || ny < 0 || nx >= b[0].w || ny >= b[0].h || rs_at(b, nx, ny) >= 0 { break; }
-    b[0].c[j].x = nx; b[0].c[j].y = ny; moved += 1;
+    rs_place(b, j, nx, ny); moved += 1;
   }
   rs_add_text(l[..], ": pushed "); rs_add_int(l[..], moved * RS_SQUARE); rs_add_text(l[..], " feet");
   rs_tell(b, RS_EV_PUSH, -1, i, j, moved * RS_SQUARE, 0, l[..]);
@@ -1657,6 +1713,27 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   b[0].turn.action = true;
   b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE;
   return true;
+}
+
+#test "who stands where: the squares' index follows adds, steps, a world's moves and a reset" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 11;
+  a := rs_add(b[..], rs_druid("Rowan", 0, 3), 1, 1);
+  t := rs_add(b[..], rs_skeleton("Skeleton 1", 2), 5, 4);
+  #assert rs_at(b[..], 1, 1) == a && rs_at(b[..], 5, 4) == t && rs_at(b[..], 2, 2) == -1;
+  rs_start_turn(b[..], a);
+  #assert rs_step_to(b[..], a, 2, 2) && rs_at(b[..], 2, 2) == a && rs_at(b[..], 1, 1) == -1;
+  #assert !rs_step_to(b[..], a, 2, 2);   // not a square away
+  rs_end_turn(b[..], a);
+  rs_place(b[..], t, 9, 6);
+  #assert rs_at(b[..], 9, 6) == t && rs_at(b[..], 5, 4) == -1;
+  // moved by hand: found by the scan until the next turn rebuilds the index
+  b[0].c[t].x = 3;
+  #assert rs_at(b[..], 3, 6) == -1 || rs_at(b[..], 3, 6) == t;
+  rs_start_turn(b[..], a);
+  #assert rs_at(b[..], 3, 6) == t && rs_at(b[..], 9, 6) == -1;
+  rs_end_turn(b[..], a);
+  rs_reset(b[..]);
+  #assert b[0].n == 0 && b[0].w == 0 && b[0].clock == 0 && b[0].book[0].seq == 0 && rs_at(b[..], 2, 2) == -1;
 }
 
 #test "Starry Wisp: a ranged spell attack, +5, 1d8 Radiant on a hit" {

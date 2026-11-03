@@ -22,10 +22,10 @@
 
 #load "../../verse/everglade/people-rig.coax";
 
-BD_SLOTS :: 216;          // the battle's creatures (aethyr/rules/srd/battle.coax RS_MAX)
-BD_CORPSES :: 48;         // bodies still lying after their square was taken
+BD_SLOTS :: 2048;         // the battle's creatures (aethyr/rules/srd/battle.coax RS_MAX)
+BD_CORPSES :: 128;        // bodies still lying after their square was taken
 BD_PARTS_MAX :: 5;        // a figure's parts: outfit, head, hair, a beard or a hood, robe
-BD_RECORDS :: 1320;       // instances at most: (216 + 48) figures, five parts each
+BD_RECORDS :: 10880;      // instances at most: (2048 + 128) figures, five parts each (fivelab-face.c)
 BD_REC_FLOATS :: 24;      // gpu/fivelab.coax FivelabObj: six vec4s
 BD_FPS :: 30.0;
 // The clips baked, as people-rig.coax numbers them, and their frames (each its seconds at 30 a second).
@@ -375,7 +375,7 @@ bd_build :: (b: [] Bodies, c: BdCam, out: [] f32) -> int {
   b[0].draw_n = 0; b[0].shown = 0;
   if !b[0].ready { return 0; }
   now := b[0].now;
-  counts: [16] int;
+  counts: [16] int; total := 0;
   // two passes over the figures: count each part's instances, then write them in its run
   for pass: 0..<2 {
     base: [16] int; used: [16] int;
@@ -395,9 +395,9 @@ bd_build :: (b: [] Bodies, c: BdCam, out: [] f32) -> int {
       n := bd_parts(l, far, parts[..]);
       if pass == 0 {
         // keep within the records: a figure goes whole or not at all
-        total := 0; for k: 0..<PEOPLE_PARTS { total += counts[k]; }
         if total + n > BD_RECORDS { continue; }
         for k: 0..<n { counts[parts[k]] += 1; }
+        total += n;
         b[0].shown += 1;
         continue;
       }

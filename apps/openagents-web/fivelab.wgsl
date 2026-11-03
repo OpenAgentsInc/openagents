@@ -84,7 +84,7 @@ struct coax_t25 {
   w: f32,
   f4: f32,
 }
-@group(0) @binding(0) var<uniform> u: array<vec4f, 442>;
+@group(0) @binding(0) var<uniform> u: array<vec4f, 3098>;
 fn coax_at_u(i: i32) -> f32 {
   return u[i / 4][i % 4];
 }
@@ -600,8 +600,8 @@ fn coax_p_fivelab_glade(p_p: vec2f) -> vec4f {
       l_i = 0i;
       while ((l_i < 8i))
       {
-        l_za = coax_p_wg_at4((1700i + (l_i * 8i)));
-        l_zb = coax_p_wg_at4((1704i + (l_i * 8i)));
+        l_za = coax_p_wg_at4((12324i + (l_i * 8i)));
+        l_zb = coax_p_wg_at4((12328i + (l_i * 8i)));
         if ((l_zb.x > 0x1.000000p-1f))
         {
           if (((((l_pos.x >= l_za.x) && (l_pos.x <= l_za.z)) && (l_pos.z >= l_za.y)) && (l_pos.z <= l_za.w)))
@@ -623,9 +623,9 @@ fn coax_p_fivelab_glade(p_p: vec2f) -> vec4f {
       }
     }
     {
-      l_hw = coax_at_u(i32(1764i));
-      l_hd = coax_at_u(i32(1765i));
-      l_sq = coax_p_fmax(coax_at_u(i32(1766i)), 0x1.99999ap-4f);
+      l_hw = coax_at_u(i32(12388i));
+      l_hd = coax_at_u(i32(12389i));
+      l_sq = coax_p_fmax(coax_at_u(i32(12390i)), 0x1.99999ap-4f);
       l_cx = i32(floor(((l_pos.x + l_hw) / l_sq)));
       l_cz = i32(floor(((l_pos.z + l_hd) / l_sq)));
       l_cols = i32(coax_at_u(i32(8i)));
@@ -641,11 +641,11 @@ fn coax_p_fivelab_glade(p_p: vec2f) -> vec4f {
           if (((((l_gx >= 0i) && (l_gx < l_cols)) && (l_gz >= 0i)) && (l_gz < l_rows)))
           {
             l_sqi = ((l_gz * l_cols) + l_gx);
-            l_pair = coax_at_u(i32((900i + (l_sqi / 2i))));
-            l_who = (l_pair - (0x1.000000p8f * floor((l_pair / 0x1.000000p8f))));
+            l_pair = coax_at_u(i32((8228i + (l_sqi / 2i))));
+            l_who = (l_pair - (0x1.000000p12f * floor((l_pair / 0x1.000000p12f))));
             if (((l_sqi % 2i) == 1i))
             {
-              l_who = floor((l_pair / 0x1.000000p8f));
+              l_who = floor((l_pair / 0x1.000000p12f));
             }
             if ((l_who > 0x1.000000p-1f))
             {
@@ -714,7 +714,7 @@ fn coax_p_fivelab_glade(p_p: vec2f) -> vec4f {
   l_lit_light = coax_p_add3(coax_p_scale3(coax_p_v3(0x1.000000p0f, 0x1.ccccccp-1f, 0x1.7ae148p-1f), 0x1.400000p0f), coax_p_scale3(l_shadow_light, 0x1.333334p-1f));
   l_c = coax_p_v3(coax_p_verse_style_shade(l_albedo.x, l_shadow_light.x, l_lit_light.x, l_band), coax_p_verse_style_shade(l_albedo.y, l_shadow_light.y, l_lit_light.y, l_band), coax_p_verse_style_shade(l_albedo.z, l_shadow_light.z, l_lit_light.z, l_band));
   l_c = coax_p_add3(l_c, l_glow);
-  l_hz = (0x1.000000p0f - exp(((-l_h.x) * 0x1.6872b0p-7f)));
+  l_hz = (0x1.000000p0f - exp((((-l_h.x) * 0x1.6872b0p-7f) / coax_p_fmax(coax_at_u(i32(12391i)), 0x1.000000p0f))));
   l_hc = coax_p_mix3(coax_p_v3(0x1.70a3d8p-1f, 0x1.99999ap-1f, 0x1.ae147ap-1f), coax_p_v3(0x1.000000p0f, 0x1.ccccccp-1f, 0x1.800000p-1f), (coax_p_verse_style_halo(dot(l_rd, l_sun), 0x1.400000p2f) * 0x1.000000p-1f));
   l_o = coax_p_mix3(l_c, l_hc, (l_hz * 0x1.b33334p-1f));
   return coax_p_v4(l_o.x, l_o.y, l_o.z, coax_p_fivelab_depth((l_h.x * dot(l_rd, l_fwd))));
@@ -1106,9 +1106,9 @@ fn coax_p_fivelab_grass(p_x: f32, p_z: f32, p_t: f32) -> vec3f {
   l_dab = coax_p_verse_style_noise((l_x * 0x1.800000p2f), (l_z * 0x1.800000p2f));
   l_c = coax_p_mix3(coax_p_v3(0x1.47ae14p-3f, 0x1.333334p-2f, 0x1.1eb852p-4f), coax_p_v3(0x1.51eb86p-2f, 0x1.d70a3ep-2f, 0x1.0a3d70p-3f), ((l_n1 * 0x1.4cccccp-1f) + (l_n2 * 0x1.666666p-2f)));
   l_c = coax_p_scale3(l_c, (0x1.c28f5cp-1f + (0x1.eb851ep-3f * l_dab)));
-  l_hw = coax_at_u(i32(1764i));
-  l_hd = coax_at_u(i32(1765i));
-  l_sq = coax_p_fmax(coax_at_u(i32(1766i)), 0x1.99999ap-4f);
+  l_hw = coax_at_u(i32(12388i));
+  l_hd = coax_at_u(i32(12389i));
+  l_sq = coax_p_fmax(coax_at_u(i32(12390i)), 0x1.99999ap-4f);
   l_inside = ((0x1.000000p0f - coax_p_smoothstep(l_hw, (l_hw + 0x1.333334p-2f), abs(l_x))) * (0x1.000000p0f - coax_p_smoothstep(l_hd, (l_hd + 0x1.333334p-2f), abs(l_z))));
   l_c = coax_p_mix3(l_c, coax_p_add3(coax_p_scale3(l_c, 0x1.a3d70ap-1f), coax_p_v3(0x1.99999ap-5f, 0x1.eb851ep-5f, 0x1.47ae14p-6f)), (l_inside * 0x1.333334p-1f));
   l_gx = ((l_x + l_hw) / l_sq);
@@ -1258,8 +1258,8 @@ fn coax_p_fivelab_tree(p_i: i32) -> vec4f {
   var l_size: f32;
   l_fi = f32(l_i);
   l_a = ((l_fi * 0x1.921fb6p-2f) + (0x1.666666p-2f * sin((l_fi * 0x1.266666p1f))));
-  l_rx = ((coax_at_u(i32(1764i)) + 0x1.600000p2f) + (0x1.400000p1f * coax_p_verse_style_hash(l_fi, 0x1.800000p1f)));
-  l_rz = ((coax_at_u(i32(1765i)) + 0x1.400000p2f) + (0x1.400000p1f * coax_p_verse_style_hash(l_fi, 0x1.c00000p2f)));
+  l_rx = ((coax_at_u(i32(12388i)) + 0x1.600000p2f) + (0x1.400000p1f * coax_p_verse_style_hash(l_fi, 0x1.800000p1f)));
+  l_rz = ((coax_at_u(i32(12389i)) + 0x1.400000p2f) + (0x1.400000p1f * coax_p_verse_style_hash(l_fi, 0x1.c00000p2f)));
   l_size = (0x1.99999ap-1f + (0x1.ccccccp-2f * coax_p_verse_style_hash(l_fi, 0x1.600000p3f)));
   return coax_p_v4((cos(l_a) * l_rx), 0.0f, (sin(l_a) * l_rz), l_size);
 }
