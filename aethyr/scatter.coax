@@ -1,0 +1,447 @@
+// Scatter from a seed (Aethyr book chapter 80): trees, rocks and plants on a jittered grid of
+// world cells, kept clear of what must stay open. A cell's draws come from aethyr/rand.coax,
+// keyed by the realm's seed, the layer's stable ID, the generator's version and the property
+// (position, size, turn, kind, whether the cell is filled), with the cell's own grid
+// coordinates as the counter. Nothing is drawn in sequence, so:
+//   - another layer, a keep-out, or a property added or taken away changes no other draw;
+//   - a cell gives the same thing whatever window it is asked for in, in any order, so a
+//     streamed world (chapter 38) generates the same content whatever loads first;
+//   - a thing is named by its layer and its cell, which never change when a list does.
+// The cells are the world's own: cell (i, j) covers [i, i + 1) x [j, j + 1) spacings from the
+// world's origin, i and j from -SCATTER_REACH to SCATTER_REACH - 1.
+// Everglade's forest (apps/openagents-web/everglade.coax plant_forest) is the older way: one
+// linear congruential stream stepped five times a cell, so one more draw anywhere moves every
+// tree after it. This module is the shared one; realms move onto it with ec-migrate.
+//   coax/bin/coax test aethyr/scatter.coax --library
+//   coax/bin/coax mutate aethyr/scatter.coax
+
+#module "aethyr.scatter";
+#load "rand.coax";
+
+// book:begin layer
+SCATTER_PROPS :: 8;               // property streams a layer may use
+SCATTER_LAYERS :: 1099511627776;  // 2^40 stable layer IDs
+SCATTER_VERSIONS :: 65536;        // generator versions
+SCATTER_REACH :: 1048576;         // 2^20 cells either side of the origin, each way
+SCATTER_KINDS :: 65536;           // kinds a layer may choose among
+SCATTER_TAU :: 6.28318530717958647692;
+// The property streams.
+S_X :: 0; S_Z :: 1; S_SIZE :: 2; S_YAW :: 3; S_KIND :: 4; S_FILL :: 5;
+
+// One layer of scatter: a forest, a tree line's bushes, a field of stones.
+ScatterLayer :: struct {
+  layer: int;            // the layer's stable ID, from the realm document; never reused
+  version: int = 1;      // the generator's version: raised when these rules change
+  spacing: f32 = 4;      // metres a cell, each way
+  jitter: f32 = 0.6;     // the share of its cell a thing may stray from the middle, 0 to 1
+  fill: f32 = 1;         // the share of cells that get a thing, 0 to 1
+  size_lo: f32 = 1;      // a thing's size is drawn from size_lo to size_hi
+  size_hi: f32 = 1;
+  kinds: int = 1;        // and its kind from 0 to kinds - 1
+  clear: f32 = 1;        // metres it keeps from every keep-out
+}
+// What must stay open: a circle (x0, z0, radius r) or a box (x0, z0 to x1, z1).
+Keep :: struct { box: bool; x0: f32; z0: f32; x1: f32; z1: f32; r: f32; }
+keep_circle :: (x: f32, z: f32, r: f32) -> Keep { return Keep.{x0 = x, z0 = z, r = r}; }
+keep_box :: (x0: f32, z0: f32, x1: f32, z1: f32) -> Keep { return Keep.{box = true, x0 = x0, z0 = z0, x1 = x1, z1 = z1}; }
+// The cells asked for: cols west to east from cell i0, rows south to north from cell j0.
+Window :: struct { i0: int; j0: int; cols: int; rows: int; }
+// One placed thing. Its name is its layer and its cell (i, j).
+Placed :: struct { layer: int; i: int; j: int; x: f32; z: f32; size: f32; yaw: f32; kind: int; }
+// book:end layer
+
+scatter_real :: (v: f32) -> bool { return v > -1000000 && v < 1000000; }
+scatter_share :: (v: f32) -> bool { return v >= 0 && v <= 1; }
+// A layer the generator can draw: every number in range, every share a share.
+scatter_layer_ok :: (l: ScatterLayer) -> bool {
+  return l.layer >= 0 && l.layer < SCATTER_LAYERS && l.version >= 0 && l.version < SCATTER_VERSIONS &&
+         scatter_real(l.spacing) && l.spacing > 0 && scatter_share(l.jitter) && scatter_share(l.fill) &&
+         scatter_real(l.size_lo) && scatter_real(l.size_hi) && l.size_lo <= l.size_hi &&
+         l.kinds >= 1 && l.kinds <= SCATTER_KINDS && scatter_real(l.clear) && l.clear >= 0;
+}
+scatter_cell_ok :: (i: int) -> bool { return i >= -SCATTER_REACH && i < SCATTER_REACH; }
+scatter_window_ok :: (w: Window) -> bool {
+  return w.cols >= 0 && w.rows >= 0 && scatter_cell_ok(w.i0) && scatter_cell_ok(w.j0) &&
+         w.i0 + w.cols <= SCATTER_REACH && w.j0 + w.rows <= SCATTER_REACH;
+}
+
+// book:begin keys
+// Which stream a property draws from: the version, the layer and the property, each in its
+// own bits, so no two of them share a stream.
+scatter_stream :: (l: ScatterLayer, prop: int) -> int {
+  return (l.version * SCATTER_LAYERS + l.layer) * SCATTER_PROPS + prop;
+}
+// Which draw of the stream a cell takes: its grid coordinates, so a cell's draws are its own.
+scatter_counter :: (i: int, j: int) -> int {
+  return (j + SCATTER_REACH) * (2 * SCATTER_REACH) + (i + SCATTER_REACH);
+}
+scatter_unit :: (seed: int, l: ScatterLayer, prop: int, i: int, j: int) -> f32 {
+  return rand_unit(seed, scatter_stream(l, prop), scatter_counter(i, j));
+}
+// book:end keys
+
+// book:begin cell
+// The thing in cell (i, j), if the cell is filled: kind -1 when it isn't. Its place strays
+// from the cell's middle by up to half the jitter's share of a cell, each way.
+scatter_cell :: (seed: int, l: ScatterLayer, i: int, j: int) -> Placed {
+  p := Placed.{layer = l.layer, i = i, j = j, kind = -1};
+  if scatter_unit(seed, l, S_FILL, i, j) >= l.fill { return p; }
+  p.x = (f32(i) + 0.5 + (scatter_unit(seed, l, S_X, i, j) - 0.5) * l.jitter) * l.spacing;
+  p.z = (f32(j) + 0.5 + (scatter_unit(seed, l, S_Z, i, j) - 0.5) * l.jitter) * l.spacing;
+  p.size = l.size_lo + scatter_unit(seed, l, S_SIZE, i, j) * (l.size_hi - l.size_lo);
+  p.yaw = scatter_unit(seed, l, S_YAW, i, j) * f32(SCATTER_TAU);
+  p.kind = rand_below(seed, scatter_stream(l, S_KIND), scatter_counter(i, j), l.kinds);
+  return p;
+}
+// book:end cell
+
+// book:begin clear
+// Whether x, z keeps `clear` metres from every keep-out. Inside a box is never clear.
+scatter_clear :: (keeps: [] Keep, x: f32, z: f32, clear: f32) -> bool {
+  for k: keeps {
+    if k.box {
+      inside := x >= k.x0 && x <= k.x1 && z >= k.z0 && z <= k.z1;
+      // how far outside the box each way: 0 between its sides
+      dx := (abs(x - k.x0) + abs(x - k.x1) - (k.x1 - k.x0)) * 0.5;
+      dz := (abs(z - k.z0) + abs(z - k.z1) - (k.z1 - k.z0)) * 0.5;
+      if inside || dx * dx + dz * dz < clear * clear { return false; }
+    } else {
+      dx := x - k.x0; dz := z - k.z0; reach := k.r + clear;
+      if dx * dx + dz * dz < reach * reach { return false; }
+    }
+  }
+  return true;
+}
+// book:end clear
+
+// book:begin fill
+// Every thing a window's cells hold, clear of the keep-outs, in out: by rows from the south,
+// west to east in each. The count, or -1 with nothing written when the layer or window can't be
+// drawn or out hasn't room for them all: a scatter is placed whole or not at all.
+scatter_fill :: (seed: int, l: ScatterLayer, w: Window, keeps: [] Keep, out: [] Placed) -> int {
+  if !scatter_layer_ok(l) || !scatter_window_ok(w) { return -1; }
+  n := 0;
+  for pass: 0..<2 {
+    for j: w.j0..<w.j0 + w.rows {
+      for i: w.i0..<w.i0 + w.cols {
+        p := scatter_cell(seed, l, i, j);
+        if p.kind < 0 || !scatter_clear(keeps, p.x, p.z, l.clear) { continue; }
+        if pass == 1 { out[n] = p; }
+        n += 1;
+      }
+    }
+    if n > out.count { return -1; }
+    if pass == 0 { n = 0; }
+  }
+  return n;
+}
+// book:end fill
+
+// book:begin digest
+// The bits of every placed thing, in order: two scatters are the same exactly when their
+// digests are (FNV-1a over 32-bit words, as aethyr/replay.coax's digests).
+scatter_mix :: (h: int, v: int) -> int { return ((h ^ (v & 4294967295)) * 16777619) % 4294967296; }
+scatter_digest :: (out: [] Placed, n: int) -> int {
+  h := 2166136261;
+  for k: 0..<n {
+    p := out[k];
+    h = scatter_mix(h, p.layer); h = scatter_mix(h, p.layer >> 32);
+    h = scatter_mix(h, p.i); h = scatter_mix(h, p.j);
+    h = scatter_mix(h, cast(int) f32_bits(p.x)); h = scatter_mix(h, cast(int) f32_bits(p.z));
+    h = scatter_mix(h, cast(int) f32_bits(p.size)); h = scatter_mix(h, cast(int) f32_bits(p.yaw));
+    h = scatter_mix(h, p.kind);
+  }
+  return h;
+}
+// book:end digest
+
+// ---- checks
+
+SC_SEED :: 2026;
+sc_forest :: () -> ScatterLayer { return ScatterLayer.{layer = 7, spacing = 4.2, jitter = 0.6, fill = 0.9, size_lo = 0.75, size_hi = 1.25, kinds = 4}; }
+// two things are the same when their digests are (the digest's own check shows it takes every field)
+sc_same :: (a: Placed, b: Placed) -> bool {
+  x := [1] Placed.[a]; y := [1] Placed.[b];
+  return scatter_digest(x[..], 1) == scatter_digest(y[..], 1);
+}
+
+#test "a layer is drawn only when every number is in range" {
+  #assert scatter_layer_ok(sc_forest()) && scatter_layer_ok(ScatterLayer.{});
+  l := sc_forest();
+  l.layer = -1; #assert !scatter_layer_ok(l);
+  l.layer = SCATTER_LAYERS - 1; #assert scatter_layer_ok(l);
+  l.layer = SCATTER_LAYERS; #assert !scatter_layer_ok(l);
+  l = sc_forest(); l.version = 0; #assert scatter_layer_ok(l);
+  l.version = -1; #assert !scatter_layer_ok(l);
+  l.version = SCATTER_VERSIONS - 1; #assert scatter_layer_ok(l);
+  l.version = SCATTER_VERSIONS; #assert !scatter_layer_ok(l);
+  l = sc_forest(); l.spacing = 0; #assert !scatter_layer_ok(l);
+  l.spacing = 0.001; #assert scatter_layer_ok(l);
+  l.spacing = 1000000; #assert !scatter_layer_ok(l);
+  l.spacing = 999999; #assert scatter_layer_ok(l);
+  l = sc_forest(); l.jitter = 0; #assert scatter_layer_ok(l);
+  l.jitter = 1; #assert scatter_layer_ok(l);
+  l.jitter = 1.0001; #assert !scatter_layer_ok(l);
+  l.jitter = -0.0001; #assert !scatter_layer_ok(l);
+  l = sc_forest(); l.fill = 0; #assert scatter_layer_ok(l);
+  l.fill = 1; #assert scatter_layer_ok(l);
+  l.fill = 1.0001; #assert !scatter_layer_ok(l);
+  l.fill = -0.0001; #assert !scatter_layer_ok(l);
+  l = sc_forest(); l.size_lo = 2; l.size_hi = 2; #assert scatter_layer_ok(l);
+  l.size_lo = 2.0001; #assert !scatter_layer_ok(l);
+  l = sc_forest(); l.size_lo = -1000000; #assert !scatter_layer_ok(l);
+  l = sc_forest(); l.size_hi = 1000000; #assert !scatter_layer_ok(l);
+  l = sc_forest(); l.kinds = 0; #assert !scatter_layer_ok(l);
+  l.kinds = 1; #assert scatter_layer_ok(l);
+  l.kinds = SCATTER_KINDS; #assert scatter_layer_ok(l);
+  l.kinds = SCATTER_KINDS + 1; #assert !scatter_layer_ok(l);
+  l = sc_forest(); l.clear = 0; #assert scatter_layer_ok(l);
+  l.clear = -0.0001; #assert !scatter_layer_ok(l);
+  l.clear = 1000000; #assert !scatter_layer_ok(l);
+  #assert scatter_real(999999) && !scatter_real(1000000) && scatter_real(-999999) && !scatter_real(-1000000);
+}
+
+#test "a window is drawn only inside the world's cells" {
+  #assert scatter_window_ok(Window.{i0 = -SCATTER_REACH, j0 = -SCATTER_REACH, cols = 2 * SCATTER_REACH, rows = 2 * SCATTER_REACH});
+  #assert scatter_window_ok(Window.{});
+  #assert !scatter_window_ok(Window.{i0 = -SCATTER_REACH - 1, cols = 1, rows = 1});
+  #assert !scatter_window_ok(Window.{j0 = -SCATTER_REACH - 1, cols = 1, rows = 1});
+  #assert !scatter_window_ok(Window.{i0 = SCATTER_REACH - 1, cols = 2, rows = 1});
+  #assert scatter_window_ok(Window.{i0 = SCATTER_REACH - 1, cols = 1, rows = 1});
+  #assert !scatter_window_ok(Window.{j0 = SCATTER_REACH - 1, cols = 1, rows = 2});
+  #assert scatter_window_ok(Window.{j0 = SCATTER_REACH - 1, cols = 1, rows = 1});
+  #assert !scatter_window_ok(Window.{cols = -1, rows = 1}) && !scatter_window_ok(Window.{cols = 1, rows = -1});
+  #assert scatter_cell_ok(-SCATTER_REACH) && !scatter_cell_ok(SCATTER_REACH) && scatter_cell_ok(SCATTER_REACH - 1);
+}
+
+#test "streams and counters never collide" {
+  a := sc_forest(); b := sc_forest();
+  // every property of every layer under every version is its own stream
+  #assert scatter_stream(a, S_X) != scatter_stream(a, S_Z);
+  b.layer = 8; #assert scatter_stream(b, S_X) != scatter_stream(a, S_X);
+  b = sc_forest(); b.version = 2; #assert scatter_stream(b, S_X) != scatter_stream(a, S_X);
+  #assert scatter_stream(a, S_FILL) == (1 * SCATTER_LAYERS + 7) * 8 + 5;
+  top := ScatterLayer.{layer = SCATTER_LAYERS - 1, version = 0};
+  next := ScatterLayer.{layer = 0, version = 1};
+  #assert scatter_stream(top, SCATTER_PROPS - 1) < scatter_stream(next, 0);
+  // and every cell is its own counter
+  #assert scatter_counter(-SCATTER_REACH, -SCATTER_REACH) == 0;
+  #assert scatter_counter(SCATTER_REACH - 1, -SCATTER_REACH) == 2 * SCATTER_REACH - 1;
+  #assert scatter_counter(-SCATTER_REACH, -SCATTER_REACH + 1) == 2 * SCATTER_REACH;
+  #assert scatter_counter(0, 0) == SCATTER_REACH * 2 * SCATTER_REACH + SCATTER_REACH;
+  #assert scatter_counter(3, 1) != scatter_counter(1, 3);
+}
+
+#test "a cell's thing: inside its cell, its size and kind in range, its numbers the draws'" {
+  l := sc_forest();
+  for j: -6..<6 {
+    for i: -6..<6 {
+      p := scatter_cell(SC_SEED, l, i, j);
+      #assert p.layer == 7 && p.i == i && p.j == j;
+      if p.kind < 0 { #assert scatter_unit(SC_SEED, l, S_FILL, i, j) >= l.fill; continue; }
+      #assert scatter_unit(SC_SEED, l, S_FILL, i, j) < l.fill;
+      #assert p.kind < 4;
+      // within 0.3 of a cell either side of the middle
+      cx := (f32(i) + 0.5) * l.spacing; cz := (f32(j) + 0.5) * l.spacing;
+      #assert abs(p.x - cx) <= 0.3 * l.spacing + 0.0001 && abs(p.z - cz) <= 0.3 * l.spacing + 0.0001;
+      #assert p.size >= 0.75 && p.size <= 1.25 && p.yaw >= 0 && p.yaw < 6.2832;
+    }
+  }
+  // the numbers are the draws, worked through: x and z from the middle, size, turn, kind
+  p := scatter_cell(SC_SEED, l, 2, -3);
+  ux := scatter_unit(SC_SEED, l, S_X, 2, -3); uz := scatter_unit(SC_SEED, l, S_Z, 2, -3);
+  #assert scatter_unit(SC_SEED, l, S_FILL, 2, -3) < 0.9;
+  #assert f32_bits(p.x) == f32_bits((2.5 + (ux - 0.5) * 0.6) * 4.2);
+  #assert f32_bits(p.z) == f32_bits((-2.5 + (uz - 0.5) * 0.6) * 4.2);
+  #assert f32_bits(p.size) == f32_bits(0.75 + scatter_unit(SC_SEED, l, S_SIZE, 2, -3) * 0.5);
+  #assert f32_bits(p.yaw) == f32_bits(scatter_unit(SC_SEED, l, S_YAW, 2, -3) * f32(SCATTER_TAU));
+  #assert p.kind == rand_below(SC_SEED, scatter_stream(l, S_KIND), scatter_counter(2, -3), 4);
+  for j: -6..<6 { for i: -6..<6 {
+    q := scatter_cell(SC_SEED, l, i, j);
+    if q.kind >= 0 { #assert q.kind == rand_below(SC_SEED, (SCATTER_LAYERS + 7) * 8 + 4, scatter_counter(i, j), 4); }
+  } }
+  // a cell is filled exactly when its fill draw is below the share
+  f := scatter_unit(SC_SEED, l, S_FILL, 2, -3);
+  l.fill = f; #assert scatter_cell(SC_SEED, l, 2, -3).kind == -1;
+  l.fill = f + 0.0000001; #assert scatter_cell(SC_SEED, l, 2, -3).kind >= 0;
+  l = sc_forest();
+  #assert scatter_unit(SC_SEED, l, S_YAW, 2, -3) == rand_unit(SC_SEED, (SCATTER_LAYERS + 7) * 8 + 3, scatter_counter(2, -3));
+}
+
+#test "fill 0 places nothing; fill 1 every cell; no jitter puts each in its middle" {
+  no: [1] Keep;   // no keep-outs
+  l := sc_forest(); l.fill = 0;
+  out: [64] Placed;
+  #assert scatter_fill(SC_SEED, l, Window.{cols = 8, rows = 8}, no[0..<0], out[..]) == 0;
+  l.fill = 1; l.jitter = 0; l.size_lo = 2; l.size_hi = 2; l.kinds = 1;
+  #assert scatter_fill(SC_SEED, l, Window.{i0 = -4, j0 = -4, cols = 8, rows = 8}, no[0..<0], out[..]) == 64;
+  for k: 0..<64 {
+    p := out[k];
+    #assert p.i == -4 + k % 8 && p.j == -4 + k / 8;
+    #assert p.x == (f32(p.i) + 0.5) * 4.2 && p.z == (f32(p.j) + 0.5) * 4.2 && p.size == 2 && p.kind == 0;
+  }
+  // a full jitter keeps each thing in its own cell
+  l.jitter = 1;
+  #assert scatter_fill(SC_SEED, l, Window.{i0 = -4, j0 = -4, cols = 8, rows = 8}, no[0..<0], out[..]) == 64;
+  for k: 0..<64 {
+    p := out[k];
+    #assert p.x >= f32(p.i) * 4.2 && p.x <= f32(p.i + 1) * 4.2 && p.z >= f32(p.j) * 4.2 && p.z <= f32(p.j + 1) * 4.2;
+  }
+}
+
+#test "the fill's share of cells is close to its rate" {
+  no: [1] Keep;   // no keep-outs
+  l := sc_forest(); l.fill = 0.25;
+  out: [4096] Placed;
+  n := scatter_fill(SC_SEED, l, Window.{i0 = -32, j0 = -32, cols = 64, rows = 64}, no[0..<0], out[..]);
+  #assert n > 900 && n < 1150;
+}
+
+#test "a keep-out: a circle's reach is its radius and the clearance; a box's, its edge and the clearance" {
+  no: [1] Keep;   // no keep-outs
+  c := [1] Keep.[keep_circle(10, 0, 2)];
+  #assert !scatter_clear(c[..], 10, 0, 0) && !scatter_clear(c[..], 12.9, 0, 1) && scatter_clear(c[..], 13, 0, 1);
+  #assert !scatter_clear(c[..], 10, -2.9, 1) && scatter_clear(c[..], 10, -3.01, 1) && scatter_clear(c[..], 12, 0, 0);
+  #assert !scatter_clear(c[..], 11.99, 0, 0);
+  // the same about a middle off both axes
+  d := [1] Keep.[keep_circle(-3, 5, 2)];
+  #assert !scatter_clear(d[..], -3, 7.9, 1) && scatter_clear(d[..], -3, 8, 1) && !scatter_clear(d[..], -3, 2.1, 1) && scatter_clear(d[..], -3, 2, 1);
+  #assert !scatter_clear(d[..], -5.9, 5, 1) && scatter_clear(d[..], -6, 5, 1);
+  b := [1] Keep.[keep_box(0, 0, 4, 2)];
+  // inside, even with no clearance
+  #assert !scatter_clear(b[..], 2, 1, 0) && !scatter_clear(b[..], 0, 0, 0) && !scatter_clear(b[..], 4, 2, 0);
+  #assert !scatter_clear(b[..], 0, 1, 0) && !scatter_clear(b[..], 4, 1, 0) && !scatter_clear(b[..], 2, 0, 0) && !scatter_clear(b[..], 2, 2, 0);
+  // exactly the clearance away is clear
+  #assert scatter_clear(b[..], 5, 1, 1) && scatter_clear(b[..], -1, 1, 1) && scatter_clear(b[..], 2, 3, 1) && scatter_clear(b[..], 2, -1, 1);
+  off := [1] Keep.[keep_box(-7, 3, -5, 6)];
+  #assert scatter_clear(off[..], -4, 4, 1) && !scatter_clear(off[..], -4.1, 4, 1) && scatter_clear(off[..], -8, 4, 1) && !scatter_clear(off[..], -7.9, 4, 1);
+  #assert scatter_clear(off[..], -6, 7, 1) && !scatter_clear(off[..], -6, 6.9, 1) && scatter_clear(off[..], -6, 2, 1) && !scatter_clear(off[..], -6, 2.1, 1);
+  #assert !scatter_clear(off[..], -6, 4, 0) && !scatter_clear(off[..], -7, 3, 0);
+  #assert scatter_clear(b[..], 4.01, 1, 0) && scatter_clear(b[..], -0.01, 1, 0);
+  #assert scatter_clear(b[..], 2, 2.01, 0) && scatter_clear(b[..], 2, -0.01, 0);
+  // each side, and a corner by its distance
+  #assert !scatter_clear(b[..], 4.9, 1, 1) && scatter_clear(b[..], 5.01, 1, 1);
+  #assert !scatter_clear(b[..], -0.9, 1, 1) && scatter_clear(b[..], -1.01, 1, 1);
+  #assert !scatter_clear(b[..], 2, 2.9, 1) && scatter_clear(b[..], 2, 3.01, 1);
+  #assert !scatter_clear(b[..], 2, -0.9, 1) && scatter_clear(b[..], 2, -1.01, 1);
+  #assert !scatter_clear(b[..], 4.6, 2.6, 1) && scatter_clear(b[..], 4.8, 2.8, 1);
+  #assert !scatter_clear(b[..], -0.6, -0.6, 1) && scatter_clear(b[..], -0.8, -0.8, 1);
+  // every keep-out counts, not only the first
+  both := [2] Keep.[keep_circle(100, 100, 1), keep_box(0, 0, 4, 2)];
+  #assert !scatter_clear(both[..], 2, 1, 0) && scatter_clear(both[..], 50, 50, 1);
+  #assert scatter_clear(no[0..<0], 0, 0, 5);
+  #assert keep_box(1, 2, 3, 4).box && keep_box(1, 2, 3, 4).x1 == 3 && keep_box(1, 2, 3, 4).z1 == 4 && !keep_circle(1, 2, 3).box && keep_circle(1, 2, 3).r == 3;
+}
+
+#test "no placed thing stands in a keep-out, and a keep-out takes away only what it covers" {
+  no: [1] Keep;   // no keep-outs
+  l := sc_forest();
+  w := Window.{i0 = -10, j0 = -10, cols = 20, rows = 20};
+  open: [400] Placed; kept: [400] Placed;
+  n := scatter_fill(SC_SEED, l, w, no[0..<0], open[..]);
+  keeps := [2] Keep.[keep_circle(-6, 8, 9), keep_box(10, -20, 30, -4)];
+  m := scatter_fill(SC_SEED, l, w, keeps[..], kept[..]);
+  #assert n > 250 && m > 150 && m < n;
+  for k: 0..<m { #assert scatter_clear(keeps[..], kept[k].x, kept[k].z, l.clear); }
+  // what's left is the open scatter less what the keep-outs cover, every number the same
+  k := 0;
+  for a: 0..<n {
+    if !scatter_clear(keeps[..], open[a].x, open[a].z, l.clear) { continue; }
+    #assert k < m && sc_same(open[a], kept[k]);
+    k += 1;
+  }
+  #assert k == m;
+}
+
+#test "a scatter is placed whole or refused: no room, a bad layer or a bad window gives -1" {
+  no: [1] Keep;   // no keep-outs
+  l := sc_forest(); l.fill = 1;
+  out: [16] Placed;
+  out[0].kind = 99;
+  #assert scatter_fill(SC_SEED, l, Window.{cols = 4, rows = 4}, no[0..<0], out[..]) == 16;
+  out[0].kind = 99;
+  #assert scatter_fill(SC_SEED, l, Window.{cols = 5, rows = 4}, no[0..<0], out[..]) == -1 && out[0].kind == 99;
+  #assert scatter_fill(SC_SEED, l, Window.{cols = 4, rows = 4}, no[0..<0], out[0..<15]) == -1 && out[0].kind == 99;
+  l.kinds = 0;
+  #assert scatter_fill(SC_SEED, l, Window.{cols = 1, rows = 1}, no[0..<0], out[..]) == -1 && out[0].kind == 99;
+  #assert scatter_fill(SC_SEED, sc_forest(), Window.{i0 = SCATTER_REACH, cols = 1, rows = 1}, no[0..<0], out[..]) == -1 && out[0].kind == 99;
+  #assert scatter_fill(SC_SEED, sc_forest(), Window.{cols = 0, rows = 9}, no[0..<0], out[..]) == 0;
+}
+
+#test "a cell gives the same thing whatever window it is asked for in, in any order" {
+  no: [1] Keep;   // no keep-outs
+  l := sc_forest();
+  whole: [600] Placed;
+  n := scatter_fill(SC_SEED, l, Window.{i0 = -12, j0 = -8, cols = 24, rows = 16}, no[0..<0], whole[..]);
+  #assert n > 300;
+  // the north half first, then the south: each thing is the whole's
+  north: [300] Placed; south: [300] Placed;
+  a := scatter_fill(SC_SEED, l, Window.{i0 = -12, j0 = 0, cols = 24, rows = 8}, no[0..<0], north[..]);
+  b := scatter_fill(SC_SEED, l, Window.{i0 = -12, j0 = -8, cols = 24, rows = 8}, no[0..<0], south[..]);
+  #assert a + b == n;
+  for k: 0..<b { #assert sc_same(south[k], whole[k]); }
+  for k: 0..<a { #assert sc_same(north[k], whole[b + k]); }
+  // one cell asked for alone
+  for k: 0..<n {
+    one: [1] Placed;
+    #assert scatter_fill(SC_SEED, l, Window.{i0 = whole[k].i, j0 = whole[k].j, cols = 1, rows = 1}, no[0..<0], one[..]) == 1 && sc_same(one[0], whole[k]);
+  }
+}
+
+#test "another layer, or one property more, moves nothing: a cell's draws are its own" {
+  no: [1] Keep;   // no keep-outs
+  trees := sc_forest(); rocks := sc_forest(); rocks.layer = 8;
+  w := Window.{i0 = -6, j0 = -6, cols = 12, rows = 12};
+  first: [144] Placed; again: [144] Placed; stones: [144] Placed;
+  n := scatter_fill(SC_SEED, trees, w, no[0..<0], first[..]);
+  #assert scatter_fill(SC_SEED, rocks, w, no[0..<0], stones[..]) > 0;
+  #assert scatter_fill(SC_SEED, trees, w, no[0..<0], again[..]) == n && scatter_digest(again[..], n) == scatter_digest(first[..], n);
+  // the rocks are not the trees: another layer is another stream
+  #assert scatter_digest(stones[..], n) != scatter_digest(first[..], n);
+  // drawing kinds among more of them changes only the kinds
+  more := sc_forest(); more.kinds = 9;
+  #assert scatter_fill(SC_SEED, more, w, no[0..<0], again[..]) == n;
+  changed := 0;
+  for k: 0..<n {
+    #assert f32_bits(again[k].x) == f32_bits(first[k].x) && f32_bits(again[k].z) == f32_bits(first[k].z) && f32_bits(again[k].yaw) == f32_bits(first[k].yaw);
+    if again[k].kind != first[k].kind { changed += 1; }
+  }
+  #assert changed > 0;
+}
+
+#test "a new generator version is a new layout; a layer that keeps the old one keeps its layout" {
+  no: [1] Keep;   // no keep-outs
+  old := sc_forest(); next := sc_forest(); next.version = 2;
+  w := Window.{i0 = -6, j0 = -6, cols = 12, rows = 12};
+  a: [144] Placed; b: [144] Placed; c: [144] Placed;
+  n := scatter_fill(SC_SEED, old, w, no[0..<0], a[..]);
+  m := scatter_fill(SC_SEED, next, w, no[0..<0], b[..]);
+  #assert scatter_digest(b[..], m) != scatter_digest(a[..], n);
+  #assert scatter_fill(SC_SEED, old, w, no[0..<0], c[..]) == n && scatter_digest(c[..], n) == scatter_digest(a[..], n);
+  // and another seed is another realm
+  #assert scatter_digest(c[..], scatter_fill(SC_SEED + 1, old, w, no[0..<0], c[..])) != scatter_digest(a[..], n);
+}
+
+#test "the digest takes every field of every thing, in order" {
+  no: [1] Keep;   // no keep-outs
+  l := sc_forest(); l.fill = 1;
+  out: [4] Placed;
+  #assert scatter_fill(SC_SEED, l, Window.{cols = 2, rows = 2}, no[0..<0], out[..]) == 4;
+  base := scatter_digest(out[..], 4);
+  #assert base == scatter_digest(out[..], 4) && base != scatter_digest(out[..], 3) && scatter_digest(out[..], 0) == 2166136261;
+  t := out;
+  t[3].layer += 1; #assert scatter_digest(t[..], 4) != base;
+  t = out; t[3].layer += 1 << 32; #assert scatter_digest(t[..], 4) != base;
+  t = out; t[3].i += 1; #assert scatter_digest(t[..], 4) != base;
+  t = out; t[3].j += 1; #assert scatter_digest(t[..], 4) != base;
+  t = out; t[3].x += 0.5; #assert scatter_digest(t[..], 4) != base;
+  t = out; t[3].z += 0.5; #assert scatter_digest(t[..], 4) != base;
+  t = out; t[3].size += 0.5; #assert scatter_digest(t[..], 4) != base;
+  t = out; t[3].yaw += 0.5; #assert scatter_digest(t[..], 4) != base;
+  t = out; t[3].kind += 1; #assert scatter_digest(t[..], 4) != base;
+  t = out; t[0] = out[1]; t[1] = out[0]; #assert scatter_digest(t[..], 4) != base;
+  t = out; t[0].kind += 1; #assert scatter_digest(t[..], 4) != base;
+  #assert sc_same(out[2], out[2]) && !sc_same(out[2], out[3]);
+  #assert scatter_mix(0, 1) == 16777619 && scatter_mix(2166136261, 0) == (2166136261 * 16777619) % 4294967296;
+  #assert scatter_mix(5, 4294967296 + 3) == scatter_mix(5, 3) && scatter_mix(4294967295, 4294967295) == 0;
+}

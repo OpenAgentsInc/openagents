@@ -280,6 +280,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/scatter-from-a-seed.coax",
+      "chapter": "aethyr/book/ch080-terrain-and-scatter-from-a-seed.md",
+      "stdout": "aethyr/fixtures/scatter-from-a-seed.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -10,8 +10,12 @@
 // stick, a pinch and taps) and compares the digest of every step. Both
 // sessions turn while they walk through angles where the hosts' sinf and
 // cosf round differently, so either check fails if a step calls the C
-// library's sin or cos.
-//   coax/web/tool.sh replay-hosts [walk|grid]     (from the repo root; both by default)
+// library's sin or cos. The third check (Aethyr book chapter 80) builds
+// aethyr/tests/scatter-hosts.coax the same way and compares its seven
+// digests (a forest scattered from a seed over a built ground, its trees'
+// heights, a second layer, a split window, another version, another seed)
+// with the native run of aethyr/examples/scatter-from-a-seed.coax.
+//   coax/web/tool.sh replay-hosts [walk|grid|scatter]     (from the repo root; all by default)
 // Prints "pass"/"FAIL" per check and exits 0 only when every check passes.
 #load "wasm-chrome.coax";
 
@@ -141,22 +145,54 @@ rh_grid :: (c: [] Cdp) -> bool {
          rh_check(browser_session == session, "the browser's session digest differs") && rh_check(wc_int(c, "grid_replayed", "") == 1, "the browser did not replay");
 }
 
+// A scatter and its ground from a seed give the same digests natively and in wasm.
+RH_SCATTER_CASES :: 7;
+rh_scatter :: (c: [] Cdp) -> bool {
+  out: [RH_OUT] u8;
+  argv := [3] string.["coax/bin/coax", "run", "aethyr/examples/scatter-from-a-seed.coax"];
+  n := rh_run(argv[..], out[..]);
+  if n < 0 { return false; }
+  text := cast(string) out[0..<n];
+  line := "";
+  for k: 0..<64 {
+    l := rh_line(text, k);
+    if l.count > 8 && l[0..<8] == "digests " { line = l; break; }
+  }
+  native: [16] int;
+  if !rh_check(rh_numbers(line, native[..]) == RH_SCATTER_CASES, "scatter-from-a-seed printed no line of 7 digests") { return false; }
+  if !rh_wasm(c, "aethyr/tests/scatter-hosts.coax", "aethyr/tests/scatter-hosts-face.c", 256) { return false; }
+  same := true;
+  d: [24] u8; arg: [32] u8;
+  for i: 0..<RH_SCATTER_CASES {
+    parts := [2] string.[wc_dec(d[..], i), "n"];
+    browser := wc_int(c, "scatter_case", wc_cat(arg[..], parts[..]));
+    if browser != native[i] { same = false; print("  case %: browser % native %\n", i, browser, native[i]); }
+  }
+  return rh_check(same, "the browser's scatter differs from native") && rh_check(native[1] == native[4], "the split window is not the whole") &&
+         rh_check(native[0] > 0 && native[1] != native[0], "the keep-outs took nothing away");
+}
+
 tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
   only := ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "";
-  if only != "" && only != "walk" && only != "grid" { tool_errln("usage: coax/web/tool.sh replay-hosts [walk|grid]"); return 2; }
+  if only != "" && only != "walk" && only != "grid" && only != "scatter" { tool_errln("usage: coax/web/tool.sh replay-hosts [walk|grid|scatter]"); return 2; }
   c: [1] Cdp;
   if !wc_open(c[..]) { tool_err("replay-hosts: "); tool_errln(cdp_error(c[..])); return 1; }
   failed := 0;
-  if only != "grid" {
+  if only == "" || only == "walk" {
     ok := rh_walk(c[..]);
     print("% a recorded walk gives the same digests natively and in wasm\n", ifx ok then "pass" else "FAIL");
     if !ok { failed += 1; }
   }
-  if only != "walk" {
+  if only == "" || only == "grid" {
     ok := rh_grid(c[..]);
     print("% a recorded Grid session gives the same digest at every step natively and in wasm\n", ifx ok then "pass" else "FAIL");
+    if !ok { failed += 1; }
+  }
+  if only == "" || only == "scatter" {
+    ok := rh_scatter(c[..]);
+    print("% a scatter and its ground from a seed give the same digests natively and in wasm\n", ifx ok then "pass" else "FAIL");
     if !ok { failed += 1; }
   }
   cdp_close(c[..]);

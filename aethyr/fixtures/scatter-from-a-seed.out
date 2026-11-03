@@ -1,0 +1,9 @@
+ground built: true
+cells 144, trees 125 with nothing kept clear, 106 with the pond, the path and the hut
+trees inside a keep-out: 0
+tree (-6, -6): at (-2187 cm, 31 cm, -2219 cm), scale 78/100, kind 2
+tree (-5, -6): at (-1805 cm, 84 cm, -2271 cm), scale 93/100, kind 2
+tree (-4, -6): at (-1492 cm, 85 cm, -2124 cm), scale 83/100, kind 3
+rocks added: 58, trees the same: true
+one stream, one draw added: 144 of 144 cells moved
+digests 4254204106 357612983 2780734763 4141171555 357612983 62911725 236774374

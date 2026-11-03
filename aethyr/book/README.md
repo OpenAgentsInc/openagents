@@ -273,7 +273,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [79. A piece from a sentence](ch079-a-piece-from-a-sentence.md) | Unimplemented: design draft | One catalogue and one typed selector for the Sandbox's set pieces and Aethyrforge's board: the answer is checked against the catalogue on the server and in the game, laid out from a seed as one undo step, and every asked thing is kept. |
-| [80. Terrain and scatter from a seed](ch080-terrain-and-scatter-from-a-seed.md) | Unimplemented: design draft | Heightfields equal to the drawn surface, levelled paths and flats, jittered scatter with exclusion zones, and one counter-based random stream per feature, so content is the same in any streaming load order. |
+| [80. Terrain and scatter from a seed](ch080-terrain-and-scatter-from-a-seed.md) | Partly implemented: native C and Wasm (keyed scatter over the built ground) | Heightfields equal to the drawn surface, levelled paths and flats, jittered scatter with exclusion zones, and one counter-based random stream per feature, so content is the same in any streaming load order. |
 
 ### XI. Shipping realms
 

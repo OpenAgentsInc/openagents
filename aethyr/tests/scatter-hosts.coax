@@ -1,0 +1,78 @@
+// Scatter and ground from a seed, the same natively and in the browser (Aethyr book chapter 80).
+// Each case is one digest: a forest over a built ground with keep-outs, its trees' heights on
+// that ground, a second layer, a window split in two, another generator version and another
+// seed. aethyr/examples/scatter-from-a-seed.coax prints them natively; coax/web/replay-hosts.coax
+// builds this file to wasm with scatter-hosts-face.c, runs it in headless Chrome and compares.
+
+#load "../scatter.coax";
+#load "../terrain.coax";
+
+SH_CASES :: 7;
+SH_MOST :: 400;
+SH_SEED :: 2026;
+
+// book:begin site
+// The site: a 48 m ground of 2 m cells round the origin, one path west to east 10 m north of the
+// middle, and a pond levelled at 0.2 m below the start. The pond, the path's strip and a hut
+// are kept clear of trees.
+sh_ground :: () -> Ground { return Ground.{n = 24, cell = 2, west = -24, south = -24}; }
+SH_NODES :: [4] f32.[-24, 10, 24, 10];
+SH_LINKS :: [2] int.[0, 1];
+SH_HALF :: 1.5;
+SH_FLATS :: [4] f32.[8, -8, 5, -0.2];
+sh_keeps :: () -> [3] Keep {
+  return [3] Keep.[keep_circle(8, -8, 5), keep_box(-24, 8.5, 24, 11.5), keep_box(-14, -4, -8, 2)];
+}
+sh_forest :: () -> ScatterLayer {
+  return ScatterLayer.{layer = 7, spacing = 4, jitter = 0.6, fill = 0.85, size_lo = 0.75, size_hi = 1.25, kinds = 4, clear = 1};
+}
+sh_rocks :: () -> ScatterLayer {
+  return ScatterLayer.{layer = 8, spacing = 3, jitter = 0.9, fill = 0.3, size_lo = 0.3, size_hi = 0.8, kinds = 2, clear = 0.5};
+}
+SH_WINDOW :: Window.{i0 = -6, j0 = -6, cols = 12, rows = 12};
+// book:end site
+
+sh_heights :: (h: [] f32) -> bool {
+  nodes := SH_NODES; links := SH_LINKS; flats := SH_FLATS;
+  return verse_terrain_build(sh_ground(), h, nodes[..], links[..], f32(SH_HALF), flats[..]);
+}
+
+sh_digest :: (out: [] Placed, n: int) -> int { return ifx n < 0 then -1 else scatter_digest(out, n); }
+// The digest of case k, or -1 when the case can't be drawn.
+scatter_case :: (k: int) -> int #export_c {
+  out: [SH_MOST] Placed;
+  keeps := sh_keeps();
+  if k == 0 { return sh_digest(out[..], scatter_fill(SH_SEED, sh_forest(), SH_WINDOW, keeps[0..<0], out[..])); }
+  n := scatter_fill(SH_SEED, sh_forest(), SH_WINDOW, keeps[..], out[..]);
+  if n < 0 { return -1; }
+  if k == 1 { return scatter_digest(out[..], n); }
+  if k == 2 {
+    // every tree's foot on the drawn ground, as bits
+    heights: [625] f32;
+    if !sh_heights(heights[..]) { return -1; }
+    h := 2166136261;
+    for t: 0..<n { h = scatter_mix(h, cast(int) f32_bits(verse_terrain_height(sh_ground(), heights[..], out[t].x, out[t].z))); }
+    return h;
+  }
+  if k == 3 { return sh_digest(out[..], scatter_fill(SH_SEED, sh_rocks(), Window.{i0 = -8, j0 = -8, cols = 16, rows = 16}, keeps[..], out[..])); }
+  if k == 4 {
+    // the north half asked for first, then the south: the same things as the whole
+    north := scatter_fill(SH_SEED, sh_forest(), Window.{i0 = -6, j0 = 0, cols = 12, rows = 6}, keeps[..], out[..]);
+    south: [SH_MOST] Placed;
+    m := scatter_fill(SH_SEED, sh_forest(), Window.{i0 = -6, j0 = -6, cols = 12, rows = 6}, keeps[..], south[..]);
+    if north < 0 || m < 0 || north + m > SH_MOST { return -1; }
+    for t: 0..<north { south[m + t] = out[t]; }
+    return scatter_digest(south[..], m + north);
+  }
+  if k == 5 { l := sh_forest(); l.version = 2; return sh_digest(out[..], scatter_fill(SH_SEED, l, SH_WINDOW, keeps[..], out[..])); }
+  if k == 6 { return sh_digest(out[..], scatter_fill(SH_SEED + 1, sh_forest(), SH_WINDOW, keeps[..], out[..])); }
+  return -1;
+}
+
+#test "every case draws, and the split window is the whole" {
+  for k: 0..<SH_CASES { #assert scatter_case(k) >= 0; }
+  out: [1] Placed;
+  #assert sh_digest(out[..], -1) == -1 && sh_digest(out[..], 0) == 2166136261;
+  #assert scatter_case(4) == scatter_case(1) && scatter_case(SH_CASES) == -1;
+  #assert scatter_case(0) != scatter_case(1) && scatter_case(5) != scatter_case(1) && scatter_case(6) != scatter_case(1);
+}

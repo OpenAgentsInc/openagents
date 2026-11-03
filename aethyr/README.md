@@ -38,6 +38,7 @@ behaviour, zero surviving mutants. One short section per primitive is in
 | `render/frame.coax` | [Bounded CPU frame/pass/binding admission](render/README.md): resource slot/generation/epoch checks, atomic reservation/refusal and cleanup; adopted only at the Grid's native matrix-output boundary so far |
 | `replay.coax` | Recording and replay: one envelope for every accepted external event, a gate that refuses duplicate, stale and unknown events, a digest every step, and replays that make no remote calls |
 | `rand.coax` | Random streams: a draw is a pure function of seed, stream and counter |
+| `scatter.coax` | Scatter from a seed: things on a jittered grid of world cells, each cell's draws keyed by its layer, version and grid coordinates, kept clear of keep-outs (book chapter 80) |
 | `voice.coax` | Spoken requests (HOLD TO TALK): a press is a question on the replay gate, the voice host's final transcript its answer, applied once, only in its epoch; duplicates, answers after a cancel and unasked answers are refused, and the record replays every heard request with no recognizer (`examples/hold-to-talk.coax`; local recognition is resident Parakeet, `docs/voice/dev.md`) |
 | `math.coax` | Sine, cosine and powers with the same bits natively and in the browser, for simulation steps |
 | `refusals.coax` | Checks that what must not compile doesn't: the fixtures in `tests/` |

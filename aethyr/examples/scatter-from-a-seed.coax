@@ -1,0 +1,51 @@
+// book:begin example
+#load "../tests/scatter-hosts.coax";
+#import "Basic";
+
+cm :: (m: f32) -> int { return cast(int) (m * 100 + ifx m < 0 then -0.5f32 else 0.5f32); }
+
+// Everglade's way (apps/openagents-web/everglade.coax next_seed): one stream stepped in turn.
+lcg :: (seed: int) -> int { return (seed * 1103515245 + 12345) % 2147483648; }
+
+// The site of aethyr/tests/scatter-hosts.coax: a forest over a built ground, with a pond, a
+// path and a hut kept clear. Then what moves when something is added, both ways, and the
+// digests the browser must match.
+main :: () {
+  heights: [625] f32;
+  print("ground built: %\n", sh_heights(heights[..]));
+  out: [SH_MOST] Placed;
+  keeps := sh_keeps();
+  open := scatter_fill(SH_SEED, sh_forest(), SH_WINDOW, keeps[0..<0], out[..]);
+  n := scatter_fill(SH_SEED, sh_forest(), SH_WINDOW, keeps[..], out[..]);
+  print("cells %, trees % with nothing kept clear, % with the pond, the path and the hut\n",
+        SH_WINDOW.cols * SH_WINDOW.rows, open, n);
+  inside := 0;
+  for t: 0..<n { if !scatter_clear(keeps[..], out[t].x, out[t].z, 0) { inside += 1; } }
+  print("trees inside a keep-out: %\n", inside);
+  for t: 0..<3 {
+    p := out[t];
+    y := verse_terrain_height(sh_ground(), heights[..], p.x, p.z);
+    print("tree (%, %): at (% cm, % cm, % cm), scale %/100, kind %\n", p.i, p.j, cm(p.x), cm(y), cm(p.z), cm(p.size), p.kind);
+  }
+
+  // a second layer: the trees keep every number
+  rocks: [SH_MOST] Placed;
+  r := scatter_fill(SH_SEED, sh_rocks(), Window.{i0 = -8, j0 = -8, cols = 16, rows = 16}, keeps[..], rocks[..]);
+  again: [SH_MOST] Placed;
+  a := scatter_fill(SH_SEED, sh_forest(), SH_WINDOW, keeps[..], again[..]);
+  print("rocks added: %, trees the same: %\n", r, a == n && scatter_digest(again[..], a) == scatter_digest(out[..], n));
+
+  // one stream in turn, five draws a cell, with one more draw before the first cell
+  moved := 0;
+  s1 := 12345; s2 := lcg(12345);
+  for c: 0..<SH_WINDOW.cols * SH_WINDOW.rows {
+    for d: 0..<5 { s1 = lcg(s1); s2 = lcg(s2); }
+    if s1 != s2 { moved += 1; }
+  }
+  print("one stream, one draw added: % of % cells moved\n", moved, SH_WINDOW.cols * SH_WINDOW.rows);
+
+  print("digests");
+  for k: 0..<SH_CASES { print(" %", scatter_case(k)); }
+  print("\n");
+}
+// book:end example

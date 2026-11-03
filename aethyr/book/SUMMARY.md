@@ -111,7 +111,7 @@
 **X. Aethyrforge: generating worlds**
 
 - [79. A piece from a sentence](ch079-a-piece-from-a-sentence.md) — design draft
-- [80. Terrain and scatter from a seed](ch080-terrain-and-scatter-from-a-seed.md) — design draft
+- [80. Terrain and scatter from a seed](ch080-terrain-and-scatter-from-a-seed.md) — partly implemented
 
 **XI. Shipping realms**
 
