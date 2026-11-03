@@ -3,7 +3,7 @@
 # PATH, unless they are already set.
 #   macOS: Homebrew's llvm, lld, wasi-libc and wasi-runtimes
 #          (brew install llvm lld wasi-libc wasi-runtimes)
-#   Linux: clang 21, lld, wasi-libc and compiler-rt from nixpkgs, linked into
+#   Linux: clang 21, lld, wasi-libc, compiler-rt and wasm-opt from nixpkgs, linked into
 #          ${COAXIAL_TOOLCHAIN:-~/.cache/coax-wasm-toolchain} on first use
 case "$(uname -s)" in
   Darwin)
@@ -29,6 +29,16 @@ case "$(uname -s)" in
       ln -sfn "$libc/lib/wasm32-wasip1" "$coaxial_tc/sysroot/lib/wasm32-wasip1"
       ln -sfn "$("$clang/bin/clang" -print-resource-dir)/include" "$coaxial_tc/resource/include"
       ln -sfn "$rt/lib/wasi/libclang_rt.builtins-wasm32.a" "$coaxial_tc/resource/lib/wasm32-unknown-wasip1/libclang_rt.builtins.a"
+    fi
+    # wasm-opt (binaryen), which wasm.sh runs on a release module as the Mac's
+    # Homebrew one does: without it a Linux module was about 6% larger and over
+    # the size budgets those were measured with (#12697: oneshot 344,946 bytes
+    # against 320,000; 302,165 with it). Linked on its own, so a toolchain
+    # linked before it gains it too.
+    if [[ -z "${COAXIAL_WASM_OPT:-}" && ! -x "$coaxial_tc/bin/wasm-opt" ]]; then
+      echo "toolchain.sh: linking wasm-opt from nixpkgs into $coaxial_tc" >&2
+      mkdir -p "$coaxial_tc/bin"
+      ln -sfn "$(nix build --no-link --print-out-paths nixpkgs#binaryen)/bin/wasm-opt" "$coaxial_tc/bin/wasm-opt"
     fi
     COAXIAL_CLANG="${COAXIAL_CLANG:-$coaxial_tc/bin/clang}"
     COAXIAL_SYSROOT="${COAXIAL_SYSROOT:-$coaxial_tc/sysroot}"
