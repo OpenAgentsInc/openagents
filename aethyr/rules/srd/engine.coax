@@ -205,6 +205,11 @@ RsCreature :: struct {
   extra_attack: int;               // Extra Attack: more attacks with the Attack action
   tactical: bool; shift: bool;     // Tactical Mind, Tactical Shift (Fighter)
   primal: bool; mindless: bool;    // Primal Knowledge (skills only), Mindless Rage (Berserker)
+  // the Rogue's: Expertise (skills), Thieves' Cant, Fast Hands and Second-Story Work (a climb Speed)
+  // are out of a battle's reach and carried in the record; Cunning Strike's planned effect
+  // (CS_*, the deciding routine sets it) and a Poisoner's Kit for its Poison; Uncanny Dodge
+  expertise: int; cant: bool; fast_hands: bool; climb: int;
+  cunning_strike: bool; strike_plan: int; poison_kit: bool; uncanny: bool;
   // Paladin: Sacred Weapon (Channel Divinity) until; Ranger: the Hunter's Colossus Slayer
   sacred_until: f32; colossus: bool;
   // Rogue: Sneak Attack dice (d6s), Cunning Action, Steady Aim
@@ -561,10 +566,18 @@ rs_ranger :: (name: string, team: int, level: int) -> RsCreature {
 rs_rogue :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_hero(name, team, level, RS_ROGUE, [6] int.[8, 16, 14, 13, 12, 10], RS_DEX, RS_INT, 8);
+  // an Ability Score Improvement at 4 (the feat, p. 87): Dexterity +2
+  if level >= 4 { c[0].score[RS_DEX] = rs_min(c[0].score[RS_DEX] + 2, 20); }
   c[0].ac = 11 + rs_mod(c[0].score[RS_DEX]);
   c[0].weapon = W_SHORTSWORD; c[0].ranged = W_SHORTBOW; c[0].masteries = 1 << M_VEX;
   c[0].sneak_dice = (level + 1) / 2;
   c[0].cunning = level >= 2; c[0].steady_aim = level >= 3;
+  // Expertise in two skills at 1 and two more at 6, Thieves' Cant (p. 61-62); the Thief's Fast Hands
+  // and Second-Story Work at 3 (p. 64); Cunning Strike and Uncanny Dodge at 5 (p. 63). Its starting
+  // gear has Thieves' Tools, not a Poisoner's Kit, so no Poison effect.
+  c[0].expertise = ifx level >= 6 then 4 else 2; c[0].cant = true;
+  c[0].fast_hands = level >= 3; c[0].climb = ifx level >= 3 then c[0].speed else 0;
+  c[0].cunning_strike = level >= 5; c[0].uncanny = level >= 5;
   return c[0];
 }
 // The SRD 5.2.1 Sorcerer (p. 64-70): Charisma casting, Constitution and Charisma saves, a d6 hit

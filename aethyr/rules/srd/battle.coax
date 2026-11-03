@@ -817,15 +817,15 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
     ok := total >= e.dc;
     l: [1] RsLine;
     rs_add_name(l[..], b, i); rs_add_text(l[..], " "); rs_add_text(l[..], RS_ABBR[e.save]); rs_add_text(l[..], " save against ");
-    rs_add_text(l[..], rs_spell(e.spell).name); rs_add_text(l[..], " "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], e.dc);
+    rs_add_text(l[..], ifx e.spell >= 0 then rs_spell(e.spell).name else "the poison"); rs_add_text(l[..], " "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], e.dc);
     rs_add_text(l[..], ifx ok then ": it ends" else ": it holds");
     rs_tell(b, RS_EV_SAVE, e.spell, e.by, i, total, 0, l[..]);
     if ok {
       rs_drop_effect(b, i, k);
       // a spell that ends on a success ends for its caster too (Ray of Enfeeblement)
-      if e.kind == EF_ENFEEBLED && e.by >= 0 && b[0].c[e.by].conc == e.spell { rs_end_concentration(b, e.by, " (the target shook it off)"); }
+      if e.kind == EF_ENFEEBLED && e.by >= 0 && e.spell >= 0 && b[0].c[e.by].conc == e.spell { rs_end_concentration(b, e.by, " (the target shook it off)"); }
       // a concentration spell with no one left under it ends (Hold Person on one target)
-      if e.by >= 0 && b[0].c[e.by].conc == e.spell {
+      if e.by >= 0 && e.spell >= 0 && b[0].c[e.by].conc == e.spell {
         left := 0;
         for jj: 0..<b[0].n { for kk: 0..<RS_EFFECTS { if b[0].c[jj].eff[kk].kind != EF_NONE && b[0].c[jj].eff[kk].by == e.by && b[0].c[jj].eff[kk].spell == e.spell { left += 1; } } }
         if left == 0 { rs_end_concentration(b, e.by, " (no one left under it)"); }
@@ -1004,14 +1004,20 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   }
   // Sneak Attack: once a turn, with a Finesse or Ranged weapon, with Advantage, or with an ally
   // beside the target (not Incapacitated) and no Disadvantage
-  sneak := 0;
+  sneak := 0; plan := CS_NONE;
   if me.sneak_dice > 0 && !b[0].turn.sneaked && (wp.finesse || !melee) && w != W_UNARMED {
     ally := false;
     for k: 0..<b[0].n {
       c := b[0].c[k];
       if k != i && c.team == me.team && rs_up(c) && !rs_has(c, RS_INCAPACITATED) && rs_feet_to(b, k, j) <= 5 { ally = true; }
     }
-    if r.edge > 0 || (ally && r.edge >= 0) { b[0].turn.sneaked = true; sneak = rs_sum(b[0].dice[..], me.sneak_dice * mult, 6); amount += sneak; }
+    if r.edge > 0 || (ally && r.edge >= 0) {
+      b[0].turn.sneaked = true;
+      // Cunning Strike (p. 63): a die forgone, before the roll, for the planned effect
+      dice_n := me.sneak_dice;
+      if me.cunning_strike && me.strike_plan != CS_NONE && (me.strike_plan != CS_POISON || me.poison_kit) && dice_n > 1 { dice_n -= 1; plan = me.strike_plan; }
+      sneak = rs_sum(b[0].dice[..], dice_n * mult, 6); amount += sneak;
+    }
   }
   // Colossus Slayer: 1d8 more, once a turn, on a creature missing any of its Hit Points
   colossus := 0;
@@ -1034,6 +1040,9 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   }
   dealt := rs_max(amount - cut, 0);
   dealt = rs_resisted(b, j, dealt, kind);
+  // Uncanny Dodge (p. 63): a Reaction halves an attack's damage (round down)
+  dodged := false;
+  if tg.uncanny && !b[0].c[j].reacted && rs_can_act(tg) && dealt > 0 && rs_up(b[0].c[i]) { b[0].c[j].reacted = true; dealt = dealt / 2; dodged = true; }
   rs_add_int(dl[..], dealt); rs_add_text(dl[..], " "); rs_add_text(dl[..], RS_DAMAGE[kind]); rs_add_text(dl[..], " (");
   if ndice > 0 { rs_add_int(dl[..], ndice * mult); rs_add_text(dl[..], "d"); rs_add_int(dl[..], sides); } else { rs_add_text(dl[..], "1"); }
   if !bare || mod < 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], mod); }
@@ -1043,12 +1052,14 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   if colossus > 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], colossus); rs_add_text(dl[..], " Colossus Slayer"); }
   if weak > 0 { rs_add_text(dl[..], ", -"); rs_add_int(dl[..], weak); rs_add_text(dl[..], " enfeebled"); }
   if cut > 0 { rs_add_text(dl[..], ", Deflect Attacks -"); rs_add_int(dl[..], cut); }
-  if dealt != rs_max(amount - cut, 0) { rs_add_text(dl[..], ifx dealt == 0 then ", immune" else ifx dealt > amount - cut then ", vulnerable" else ", resisted"); }
+  if dodged { rs_add_text(dl[..], ", halved by Uncanny Dodge"); }
+  else if dealt != rs_max(amount - cut, 0) { rs_add_text(dl[..], ifx dealt == 0 then ", immune" else ifx dealt > amount - cut then ", vulnerable" else ", resisted"); }
   rs_add_text(dl[..], ")");
   rs_tell(b, RS_EV_DAMAGE, -1, i, j, dealt, kind, dl[..]);
   rs_damage(b, i, j, dealt, kind, crit, -1);
   // Hex and Hunter's Mark hold for any attack roll their caster hits with
   rs_curse_damage(b, i, j, crit);
+  if plan != CS_NONE { rs_cunning_effect(b, i, j, plan); }
   // the masteries that follow a hit: Sap (Disadvantage on its next attack roll before the start of
   // the attacker's next turn), Vex (Advantage on the attacker's next attack roll against it before
   // the end of its next turn), Slow (10 feet less Speed until the start of the attacker's next turn)
@@ -1114,6 +1125,33 @@ rs_attack :: (b: [] RsBattle, i: int, j: int, reckless: bool, cleave_to: int) ->
     rs_after_blow(b, i);
   }
   return true;
+}
+// Cunning Strike's effects, after the damage (p. 63): a save against 8 + Dex + Proficiency.
+CS_NONE :: 0; CS_TRIP :: 1; CS_POISON :: 2; CS_WITHDRAW :: 3;
+rs_cunning_effect :: (b: [] RsBattle, i: int, j: int, plan: int) {
+  me := b[0].c[i];
+  if plan == CS_WITHDRAW {
+    rs_say(b, RS_EV_CONDITION, i, i, 0, ": Cunning Strike, Withdraw");
+    if b[0].who == i && !b[0].turn.anchored { b[0].turn.move_left += me.speed / RS_SQUARE / 2; }
+    return;
+  }
+  if b[0].c[j].dead || b[0].c[j].hp == 0 { return; }
+  if plan == CS_TRIP && rs_has(b[0].c[j], RS_PRONE) { return; }
+  ability := ifx plan == CS_TRIP then RS_DEX else RS_CON;
+  dc := 8 + rs_mod(me.score[RS_DEX]) + rs_proficiency(me.level);
+  d := rs_d20(b[0].dice[..], rs_save_edge(b, j, ability));
+  total := d.roll + rs_save_bonus(b[0].c[j], ability);
+  total += rs_inspired_roll(b, j, total, dc);
+  ok := total >= dc;
+  if plan == CS_POISON && (b[0].c[j].immune_cond & RS_POISONED) != 0 { ok = true; }
+  l: [1] RsLine;
+  rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], ifx plan == CS_TRIP then " Cunning Strike, Trip: DEX save " else " Cunning Strike, Poison: CON save ");
+  rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
+  rs_add_text(l[..], ifx ok then ": success" else ifx plan == CS_TRIP then ": failure, Prone" else ": failure, Poisoned");
+  rs_tell(b, ifx ok then RS_EV_SAVE else RS_EV_CONDITION, -1, i, j, total, 0, l[..]);
+  if ok { return; }
+  if plan == CS_TRIP { b[0].c[j].cond = b[0].c[j].cond | RS_PRONE; }
+  else { rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_POISONED, by = i, spell = -1, until = b[0].clock + 60, save = RS_CON, dc = dc}); }
 }
 // A foe standing within 5 feet of i, or -1.
 rs_beside :: (b: [] RsBattle, i: int) -> int {
@@ -2233,4 +2271,44 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   // and while raging it can't be Charmed or Frightened; other conditions still land
   rs_put_effect(b[..], a, RsEffect.{kind = EF_COND, cond = RS_CHARMED | RS_POISONED, by = -1, spell = -1, until = 100, save = -1, dc = 0});
   #assert !rs_has(b[0].c[a], RS_CHARMED) && rs_has(b[0].c[a], RS_POISONED);
+}
+
+#test "a level 6 Thief: Dexterity 18, Sneak Attack 3d6, Cunning Strike (Trip, Withdraw; no Poison without a kit), Uncanny Dodge, Expertise" {
+  c := rs_rogue("Wen", 0, 6);
+  #assert c.score[RS_DEX] == 18 && c.ac == 15 && c.sneak_dice == 3 && rs_weapon_attack(c, c.weapon) == 7;
+  #assert c.cunning_strike && c.uncanny && c.expertise == 4 && c.cant && c.fast_hands && c.climb == 30 && !c.poison_kit;
+  #assert c.hp_max == 8 + 2 + 5 * (5 + 2);
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].state = 11;
+  r := rs_add(b[..], c, 2, 2);
+  t := rs_add(b[..], rs_barbarian("Gorr", 1, 3), 3, 2);
+  b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
+  // Trip: one die forgone; the target saves or goes Prone
+  b[0].c[r].strike_plan = CS_TRIP;
+  tripped := false; tried := false;
+  for k: 0..<30 {
+    rs_fresh(b[..], r); b[0].turn.aimed = true; seq := b[0].book[0].seq;
+    ok := rs_attack(b[..], r, t, false, -1);
+    if rs_saw(b[..], seq, "Cunning Strike, Trip") { tried = true; if rs_has(b[0].c[t], RS_PRONE) { tripped = true; break; } }
+  }
+  #assert tried && tripped;
+  // Poison needs a Poisoner's Kit: without one no die is forgone and nothing is rolled
+  b[0].c[t].cond = 0; b[0].c[r].strike_plan = CS_POISON;
+  for k: 0..<10 {
+    rs_fresh(b[..], r); b[0].turn.aimed = true; seq := b[0].book[0].seq;
+    ok := rs_attack(b[..], r, t, false, -1);
+    #assert !rs_saw(b[..], seq, "Poison");
+  }
+  // Withdraw: half its Speed after the attack
+  b[0].c[r].strike_plan = CS_WITHDRAW;
+  for k: 0..<30 {
+    rs_fresh(b[..], r); b[0].turn.aimed = true; seq := b[0].book[0].seq;
+    ok := rs_attack(b[..], r, t, false, -1);
+    if rs_saw(b[..], seq, "Withdraw") { #assert b[0].turn.move_left == 6 + 3; break; }
+  }
+  // Uncanny Dodge: the Barbarian's hit on it is halved, once until its Reaction comes back
+  b[0].c[r].hp = 500; b[0].c[r].hp_max = 500; b[0].c[r].ac = 1;
+  rs_fresh(b[..], t); seq := b[0].book[0].seq;
+  b[0].c[r].reacted = false;
+  ok := rs_attack(b[..], t, r, false, -1);
+  #assert rs_saw(b[..], seq, "Uncanny Dodge") && b[0].c[r].reacted;
 }

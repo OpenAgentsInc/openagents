@@ -660,14 +660,15 @@ ranger_turn :: (s: [] Lab, i: int) {
 }
 // A Rogue's turn: the Shortsword at a foe beside it; else, in bow range and not yet moved, Steady
 // Aim and the Shortbow with Advantage (and Sneak Attack); else a walk, Cunning Action's Dash when
-// still out of range, and the bow.
+// still out of range, and the bow. From level 5 Cunning Strike trips, or withdraws from a foe at hand.
 rogue_turn :: (s: [] Lab, i: int) {
   b := bt(s);
   if rs_has(b[0].c[i], RS_RESTRAINED) { ok := rs_escape(b, i); }
   foe := nearest_foe(s, i);
   if foe < 0 { return; }
+  // Cunning Strike: Trip a standing foe, else Withdraw from one at hand
   j := foe_at_hand(s, i, -1);
-  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  if j >= 0 { b[0].c[i].strike_plan = ifx rs_has(b[0].c[j], RS_PRONE) then CS_WITHDRAW else CS_TRIP; ok := rs_attack(b, i, j, false, -1); walk(s, i, j, 30, 70); return; }
   d := rs_feet_to(b, i, foe);
   if d >= 15 && d <= 80 { ok := rs_steady_aim(b, i); }
   if !b[0].turn.anchored && !rs_has(b[0].c[i], RS_RESTRAINED) {
@@ -675,9 +676,9 @@ rogue_turn :: (s: [] Lab, i: int) {
     if rs_feet_to(b, i, foe) > 80 { ok := rs_cunning_dash(b, i); walk(s, i, foe, 30, 70); }
   }
   j = foe_at_hand(s, i, -1);
-  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  if j >= 0 { b[0].c[i].strike_plan = CS_TRIP; ok := rs_attack(b, i, j, false, -1); return; }
   foe = nearest_foe(s, i);
-  if foe >= 0 { ok := rs_shoot(b, i, foe); }
+  if foe >= 0 { b[0].c[i].strike_plan = ifx rs_has(b[0].c[foe], RS_PRONE) then CS_NONE else CS_TRIP; ok := rs_shoot(b, i, foe); }
 }
 // A Cleric's turn: Turn Undead when three of the dead stand within 30 feet, Preserve Life when two
 // friends near it are Bloodied, Healing Word on the worst hurt; the Mace at a foe beside it, else
