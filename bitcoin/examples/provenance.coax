@@ -1,0 +1,137 @@
+// The libraries this program loads build their tag hashes and tables at
+// compile time, near the default limit of 100,000 steps.
+#run_steps 1000000;
+// book:begin example
+#load "../../coax/lib/crypto/schnorr.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/tests/bitcoin/provenance_vectors.coax";
+#import "Basic";
+
+PV_ROOM :: 8192;
+CR :: 13;
+LF :: 10;
+COMMA :: 44;
+
+// The pinned file's bytes, decoded from the generated table. Every chunk is
+// valid hex, so a decoding error stops the program.
+load_pinned :: (out: [] u8) -> int {
+  count := 0;
+  for chunk: PV_HEX {
+    r := hex_decode_checked(chunk, out[count..<out.count], false);
+    #assert r.error == 0;
+    count += r.written;
+  }
+  return count;
+}
+// SHA-256 of bytes as lowercase hex, written into text.
+digest_hex :: (bytes: [] u8, text: [] u8) -> string {
+  digest: [32] u8;
+  #assert sha256_hash_checked(bytes, digest[..], false) == SHA_OK;
+  r := hex_encode_checked(cast(string) digest[..], text, false);
+  return cast(string) text[0..<r.written];
+}
+// The pin decides: the bytes are used only when their count and SHA-256
+// equal the manifest entry.
+matches_pin :: (bytes: [] u8) -> bool {
+  text: [64] u8;
+  return bytes.count == PV_BYTES && digest_hex(bytes, text[..]) == PV_SHA256;
+}
+
+// A line runs from start to end, without its CR LF; the next line starts at
+// next.
+Line :: struct { start: int; end: int; next: int; }
+line_at :: (bytes: [] u8, start: int) -> Line {
+  i := start;
+  while i < bytes.count && bytes[i] != LF { i += 1; }
+  end := i;
+  if end > start && bytes[end - 1] == CR { end -= 1; }
+  return Line.{start = start, end = end, next = ifx i < bytes.count then i + 1 else i};
+}
+// Field k of a line, as byte offsets, and as a slice. The file has no
+// quoted fields.
+Span :: struct { start: int; end: int; }
+field_span :: (bytes: [] u8, line: Line, k: int) -> Span {
+  start := line.start; seen := 0;
+  for i: line.start..<line.end {
+    if bytes[i] == COMMA {
+      if seen == k { return Span.{start = start, end = i}; }
+      seen += 1; start = i + 1;
+    }
+  }
+  return ifx seen == k then Span.{start = start, end = line.end} else Span.{start = line.end, end = line.end};
+}
+field :: (bytes: [] u8, line: Line, k: int) -> [] u8 {
+  s := field_span(bytes, line, k);
+  return bytes[s.start..<s.end];
+}
+// Decode a hex field into out, refusing a wrong length.
+decode_field :: (text: [] u8, out: [] u8, want: int) -> int {
+  r := hex_decode_checked(cast(string) text, out, false);
+  if r.error != 0 || (want >= 0 && r.written != want) { return -1; }
+  return r.written;
+}
+// Verify one row: public key, message and signature from fields 2, 4 and 5.
+// The result is 1 for valid, 0 for refused, -1 for a field that doesn't
+// decode.
+verify_row :: (bytes: [] u8, line: Line) -> int {
+  key: [32] u8; message: [100] u8; sig: [64] u8;
+  if decode_field(field(bytes, line, 2), key[..], 32) < 0 { return -1; }
+  n := decode_field(field(bytes, line, 4), message[..], -1);
+  if n < 0 { return -1; }
+  if decode_field(field(bytes, line, 5), sig[..], 64) < 0 { return -1; }
+  return ifx schnorr_verify_vartime(message[0..<n], key[..], sig[..]) then 1 else 0;
+}
+// The byte offset of field 5 (the signature) on data row 0.
+row0_signature :: (bytes: [] u8) -> int {
+  row0 := line_at(bytes, line_at(bytes, 0).next);
+  return field_span(bytes, row0, 5).start;
+}
+
+main :: () {
+  storage: [PV_ROOM] u8;
+  file := storage[0..<load_pinned(storage[..])];
+  text: [64] u8;
+  print("pinned file: %\n", PV_PATH);
+  print("revision: %\n", PV_REVISION);
+  print("bytes: %, the pin says %\n", file.count, PV_BYTES);
+  print("SHA-256: %\n", digest_hex(file, text[..]));
+  print("the pin: %\n", PV_SHA256);
+  print("matches the pin: %\n", matches_pin(file));
+  if !matches_pin(file) { print("refusing the rows\n"); return; }
+
+  // The rows, read only after the pin agrees.
+  header := line_at(file, 0);
+  print("columns: %\n", cast(string) file[header.start..<header.end]);
+  agree := 0; rows := 0; line := line_at(file, header.next);
+  while line.start < file.count {
+    expected := cast(string) field(file, line, 6) == "TRUE";
+    got := verify_row(file, line);
+    print("row %: expected %, verifies %", cast(string) field(file, line, 0), expected, got == 1);
+    comment := field(file, line, 7);
+    if comment.count > 0 { print(": %", cast(string) comment); }
+    print("\n");
+    if got == ifx expected then 1 else 0 { agree += 1; }
+    rows += 1;
+    line = line_at(file, line.next);
+  }
+  print("% of % rows give their published result\n", agree, rows);
+
+  // One edited byte: the first hex digit of row 0's signature.
+  edited: [PV_ROOM] u8;
+  for i: 0..<file.count { edited[i] = file[i]; }
+  copy := edited[0..<file.count];
+  at := row0_signature(copy);
+  print("edit byte %, row 0's signature, % to %\n", at, cast(string) copy[at..<at + 1], "F");
+  copy[at] = 'F';
+  print("SHA-256: %\n", digest_hex(copy, text[..]));
+  print("matches the pin: %\n", matches_pin(copy));
+  row0 := line_at(copy, line_at(copy, 0).next);
+  print("unpinned, row 0 would read: expected TRUE, verifies %\n", verify_row(copy, row0) == 1);
+
+  // The same rows with LF line endings, as a checkout that converts them
+  // would leave the file.
+  unix: [PV_ROOM] u8; n := 0;
+  for b: file { if b != CR { unix[n] = b; n += 1; } }
+  print("without its % carriage returns: % bytes, matches the pin %\n", file.count - n, n, matches_pin(unix[0..<n]));
+}
+// book:end example

@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-85 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+86 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -53,6 +53,9 @@ standardness rules, which refuse transactions that blocks may still hold.
 Chapter 77's [`secp_glv.coax`](../coax/lib/crypto/secp_glv.coax) splits
 each verification scalar with secp256k1's endomorphism, which makes ECDSA
 and BIP-340 verification about 1.6 times faster.
+Chapter 116 pins every vector file in
+[`coax/tests/vectors/`](../coax/tests/vectors/SOURCES.md) by source and
+SHA-256, and holds Bitcoin Core's files at one revision, `ddea9196`.
 Chapter 59's
 [`blockindex.coax`](../coax/lib/bitcoin/blockindex.coax) keeps every
 accepted header as Core's block index and follows the most-work chain.

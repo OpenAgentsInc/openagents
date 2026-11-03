@@ -90,9 +90,10 @@ Four rules follow:
 
 - Every consensus rule is in chapter 57's rule table. Each row names the
   chapter that checks the rule and a block that breaks it.
-- Bitcoin Core is pinned to one release in chapter 116. Policy that changes
-  between releases (standardness, mempool limits, `OP_RETURN` size) follows
-  that release and says so.
+- Bitcoin Core is pinned to one revision in chapter 116: `ddea9196`, a
+  `master` revision of 2026-11-02 past v32, not a release. Policy that
+  changes between releases (standardness, mempool limits, `OP_RETURN` size)
+  follows that revision.
 - Until chapters 80, 93 and 118 are done, our node decides no money for
   OpenAgents on its own. A wallet or Lightning decision checks Core's
   verdict as well.
@@ -311,7 +312,7 @@ there is a need.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| 116. Test vectors and their provenance — planned | — | Every vector the book uses is pinned with its source and hash, and the pin check fails on an edited vector. | — |
+| [116. Test vectors and their provenance](ch116-test-vectors-and-their-provenance.md) — implemented | — | Every vector the book uses is pinned with its source and hash, and the pin check fails on an edited vector. All 316 pins pass `check_vectors.py` (and `--fetch` for the 309 single-URL files), every Bitcoin Core file is at the target `ddea9196` or a listed exception, and `check_pins.py` fails on an edited vector, a stale inventory or index, an unpinned citation or a drifting generator. | — |
 | 117. Differential tests — planned | 24, 36, 43, 57 | Signatures, signature hashes, script results and block verdicts agree with libsecp256k1 and Bitcoin Core on generated inputs. | — |
 | 118. Bitcoin Core's functional tests against our node — planned | 68, 90 | The Bitcoin Core functional tests that drive a node over P2P and RPC (`feature_block.py` and the `p2p_*` and `mempool_*` tests the chapter names) pass against our node on one of our own machines, never the owner's Mac. Each test that does not apply is listed with its reason. | Bitcoin Core `test/functional` |
 | 119. Fuzzing — planned | 34, 65, 94, 114 | Every parser (transactions, scripts, P2P messages, PSBTs, addresses and invoices) runs under the fuzzer with no crash and no accepted malformed input. | — |

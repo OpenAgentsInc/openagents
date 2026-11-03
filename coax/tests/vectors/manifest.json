@@ -1300,6 +1300,7 @@
       "kind": "upstream",
       "url": "https://mempool.space/api/v1/blocks/32256",
       "revision": "static: mainnet headers assembled from mempool.space's /api/v1/blocks/{height} records (this URL is one of them) at every multiple of 2016 up to 973,728 and at 966,143; each line's 80 bytes hash to its block hash; pinned by sha256",
+      "assembled": true,
       "license": "Public Bitcoin blockchain data",
       "covers": [
         "bitcoin-retarget"
@@ -2173,6 +2174,7 @@
       "kind": "upstream",
       "url": "https://mempool.space/api/block-height/840102",
       "revision": "static: mempool.space's header hex of mainnet blocks 840,102 to 840,113 (/api/block-height/H, then /api/block/HASH/header), as 80-byte headers in a row; each hashes to its block hash and links to the one before; pinned by sha256",
+      "assembled": true,
       "license": "Public Bitcoin blockchain data",
       "covers": [
         "bitcoin-header-rules"
@@ -2186,6 +2188,7 @@
       "kind": "upstream",
       "url": "https://mempool.space/testnet4/api/block-height/2005",
       "revision": "static: mempool.space's header hex of testnet4 blocks 0 and 2,005 to 2,016 (/api/block-height/H, then /api/block/HASH/header), as 80-byte headers in a row; each hashes to its block hash, and 2,006 to 2,016 link to the one before; pinned by sha256",
+      "assembled": true,
       "license": "Public Bitcoin testnet4 blockchain data",
       "covers": [
         "bitcoin-header-rules"
@@ -2770,6 +2773,7 @@
       "kind": "upstream",
       "url": "https://mempool.space/api/block/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097/txs/0",
       "revision": "static: mempool.space's record of each transaction of mainnet block 514,999 (/api/block/HASH/txs/0), reduced to its txid, fee, sigop cost and the value and scriptPubKey of every output it spends; make_sigops_vectors.py checks each against the block; pinned by sha256",
+      "assembled": true,
       "license": "Public Bitcoin blockchain data",
       "covers": [
         "bitcoin-sigop-limits"
@@ -2900,6 +2904,7 @@
       "kind": "upstream",
       "url": "https://mempool.space/api/block-height/840000",
       "revision": "static: for mainnet blocks 91,722, 91,812, 91,842, 91,880, 227,930, 227,931 and both sides of each halving to 840,000, mempool.space's header (/api/block/HASH/header), coinbase (/api/tx/TXID/hex), transaction count, fees and reward (/api/v1/block/HASH), and the coinbase's Merkle branch computed from /api/block/HASH/txids; make_subsidy_vectors.py proves each coinbase in its header; pinned by sha256",
+      "assembled": true,
       "license": "Public Bitcoin blockchain data",
       "covers": [
         "bitcoin-subsidy-coinbase"
@@ -3843,6 +3848,7 @@
       "kind": "upstream",
       "url": "https://mempool.space/api/v1/blocks/2016",
       "revision": "static: mainnet headers 0 to 2,016 assembled from mempool.space's /api/v1/blocks/{height} records (this URL is one of them); each line's 80 bytes hash to its block hash and name the line before; pinned by sha256",
+      "assembled": true,
       "license": "Public Bitcoin blockchain data",
       "covers": [
         "bitcoin-block-index"

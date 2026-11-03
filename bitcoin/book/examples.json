@@ -939,6 +939,17 @@
         "release"
       ],
       "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/provenance.coax",
+      "chapter": "bitcoin/book/ch116-test-vectors-and-their-provenance.md",
+      "stdout": "bitcoin/fixtures/provenance.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

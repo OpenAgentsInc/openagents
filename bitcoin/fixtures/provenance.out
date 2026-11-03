@@ -1,0 +1,32 @@
+pinned file: upstream/bip340/test-vectors.csv
+revision: git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793
+bytes: 6892, the pin says 6892
+SHA-256: 34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d
+the pin: 34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d
+matches the pin: true
+columns: index,secret key,public key,aux_rand,message,signature,verification result,comment
+row 0: expected true, verifies true
+row 1: expected true, verifies true
+row 2: expected true, verifies true
+row 3: expected true, verifies true: test fails if msg is reduced modulo p or n
+row 4: expected true, verifies true
+row 5: expected false, verifies false: public key not on the curve
+row 6: expected false, verifies false: has_even_y(R) is false
+row 7: expected false, verifies false: negated message
+row 8: expected false, verifies false: negated s value
+row 9: expected false, verifies false: sG - eP is infinite. Test fails in single verification if has_even_y(inf) is defined as true and x(inf) as 0
+row 10: expected false, verifies false: sG - eP is infinite. Test fails in single verification if has_even_y(inf) is defined as true and x(inf) as 1
+row 11: expected false, verifies false: sig[0:32] is not an X coordinate on the curve
+row 12: expected false, verifies false: sig[0:32] is equal to field size
+row 13: expected false, verifies false: sig[32:64] is equal to curve order
+row 14: expected false, verifies false: public key is not a valid X coordinate because it exceeds the field size
+row 15: expected true, verifies true: message of size 0 (added 2022-12)
+row 16: expected true, verifies true: message of size 1 (added 2022-12)
+row 17: expected true, verifies true: message of size 17 (added 2022-12)
+row 18: expected true, verifies true: message of size 100 (added 2022-12)
+19 of 19 rows give their published result
+edit byte 346, row 0's signature, E to F
+SHA-256: ad476ec4075842fcd34cfb7708d37cd0d8c92d14401fbf837cf51192ccbe9465
+matches the pin: false
+unpinned, row 0 would read: expected TRUE, verifies false
+without its 20 carriage returns: 6872 bytes, matches the pin false

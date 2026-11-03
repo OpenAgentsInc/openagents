@@ -72,6 +72,11 @@ def audit(root=HERE, fetch=False):
             else:
                 require('archive_member' in entry and 'archive_sha256' in entry, 'unpinned revision: '+path)
                 require(bool(re.fullmatch(r'[a-f0-9]{64}', entry['archive_sha256'])), 'archive digest: '+path)
+            # A file assembled from many records (block headers fetched one
+            # height at a time) has no single URL whose bytes it equals, so
+            # --fetch cannot re-read it; its sha256 is the pin.
+            if 'assembled' in entry:
+                require(entry['revision'].startswith('static:') and entry['assembled'] is True, 'assembled: '+path)
         indexed[path] = entry
     for parent in ('upstream', 'derived'):
         for path in (root/parent).rglob('*'):
@@ -95,7 +100,7 @@ def audit(root=HERE, fetch=False):
     if fetch:
         cache = {}
         for path, entry in indexed.items():
-            if entry['kind'] != 'upstream':
+            if entry['kind'] != 'upstream' or entry.get('assembled'):
                 continue
             url = entry['url']
             if url not in cache:
@@ -109,7 +114,7 @@ def audit(root=HERE, fetch=False):
                 with zipfile.ZipFile(io.BytesIO(data)) as archive:
                     data = archive.read(entry['archive_member'])
             require(digest(data) == entry['sha256'], 'upstream digest: '+path)
-    return {'upstream_files': sum(x['kind'] == 'upstream' for x in files), 'derived_files': sum(x['kind'] == 'derived' for x in files), 'bytes': sum(x['bytes'] for x in files), 'network': fetch}
+    return {'upstream_files': sum(x['kind'] == 'upstream' for x in files), 'derived_files': sum(x['kind'] == 'derived' for x in files), 'assembled_files': sum(bool(x.get('assembled')) for x in files), 'bytes': sum(x['bytes'] for x in files), 'network': fetch}
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)

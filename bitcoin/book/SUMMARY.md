@@ -134,6 +134,10 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [114. Invoices](ch114-invoices.md) — implemented
 - [115. Offers](ch115-offers.md) — implemented
 
+**XVIII. Interop and verification**
+
+- [116. Test vectors and their provenance](ch116-test-vectors-and-their-provenance.md) — implemented
+
 **XIX. Bitcoin in OpenAgents**
 
 - [121. One seed for Nostr and Bitcoin](ch121-one-seed-for-nostr-and-bitcoin.md) — implemented

@@ -1,0 +1,37 @@
+// The checks of provenance.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/provenance.coax
+#load "../provenance.coax";
+
+// book:begin check
+// Any one changed bit, anywhere in the file, and any missing last byte,
+// refuses the pin.
+#forall "one changed bit or a missing byte refuses the pin" seed: 0..<12 #steps 2000000000 {
+  storage: [PV_ROOM] u8;
+  file := storage[0..<load_pinned(storage[..])];
+  #assert matches_pin(file);
+  at := (seed * 2654435761) % file.count;
+  file[at] ^= cast(u8) (1 << (seed % 8));
+  #assert !matches_pin(file);
+  file[at] ^= cast(u8) (1 << (seed % 8));
+  #assert matches_pin(file) && !matches_pin(file[0..<file.count - 1]);
+}
+// The parser reads the columns the rows are verified by, and every row
+// gives its published result.
+#test "the columns are where the parser reads them and every row agrees" #steps 2000000000 {
+  storage: [PV_ROOM] u8;
+  file := storage[0..<load_pinned(storage[..])];
+  header := line_at(file, 0);
+  #assert cast(string) field(file, header, 2) == "public key";
+  #assert cast(string) field(file, header, 4) == "message";
+  #assert cast(string) field(file, header, 5) == "signature";
+  #assert cast(string) field(file, header, 6) == "verification result";
+  rows := 0; line := line_at(file, header.next);
+  while line.start < file.count {
+    expected := cast(string) field(file, line, 6) == "TRUE";
+    #assert verify_row(file, line) == ifx expected then 1 else 0;
+    rows += 1; line = line_at(file, line.next);
+  }
+  #assert rows == 19;
+}
+// book:end check

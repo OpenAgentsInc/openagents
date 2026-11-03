@@ -2348,12 +2348,25 @@
   {
    "number": 116,
    "title": "Test vectors and their provenance",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch116-test-vectors-and-their-provenance.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/tests/vectors/manifest.json",
+    "coax/tests/vectors/pins.json",
+    "coax/tests/vectors/check_vectors.py",
+    "coax/tests/vectors/check_pins.py",
+    "coax/tests/vectors/test_pins.py",
+    "coax/tests/bitcoin/make_provenance_vectors.py",
+    "coax/tests/bitcoin/provenance_vectors.coax",
+    "coax/tests/bitcoin/provenance.py",
+    "bitcoin/examples/provenance.coax",
+    "bitcoin/examples/checks/provenance.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

@@ -1,0 +1,14 @@
+{
+  "schema": "coax.vector-pins.v1",
+  "targets": {
+    "bitcoin/bitcoin": {
+      "revision": "ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "describe": "master on 2026-11-02, the merge of bitcoin#36554; not a release tag",
+      "checked": "2026-11-03",
+      "relation": "741 commits past d25470d9, where the v32 release branch left master; v32.1 (f0de87f0, 2026-10-26) was the latest release",
+      "exceptions": {
+        "upstream/bitcoin-core/chainparams_v22.cpp": "v22.0 (tag v22.0, a0988140): chapter 51 reads Taproot's Speedy Trial deployment parameters from it; later releases bury Taproot at a fixed height and no longer list them"
+      }
+    }
+  }
+}

@@ -43,13 +43,13 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 85 are implemented and 39 are planned. The 85 implemented
+Of the 124 chapters, 86 are implemented and 38 are planned. The 86 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62, 65, 66,
 67, 68, 69, 70, 71, 73, 74, 77, 81, 94, 95, 96, 100, 101, 102, 103, 104, 105,
-106, 107, 108, 109, 111, 112, 113, 114, 115, 121 and 122 are new.
+106, 107, 108, 109, 111, 112, 113, 114, 115, 116, 121 and 122 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
 `coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -339,7 +339,7 @@ Test vector provenance, differential tests, Bitcoin Core's functional tests agai
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 116. Test vectors and their provenance | Planned | Every vector the book uses is pinned with its source and hash, and the pin check fails on an edited vector. |
+| [116. Test vectors and their provenance](ch116-test-vectors-and-their-provenance.md) | Runnable: native C | How the book pins every file it reads: `manifest.json`, `SOURCES.md`, `check_vectors.py` offline and with `--fetch`, and published against generated vectors. The Bitcoin Core target is `ddea9196`, a `master` revision past v32, not a release; `check_pins.py` checks it, the inventory, every citation, a pins-by-chapter index and all 46 generators. The example hashes BIP-340's CSV in Coax, refuses a one-byte edit, then verifies all 19 rows. Checked against Python's `hashlib`, `csv` and BIP-340's `reference.py`. |
 | 117. Differential tests | Planned | Signatures, signature hashes, script results and block verdicts agree with libsecp256k1 and Bitcoin Core on generated inputs. |
 | 118. Bitcoin Core's functional tests against our node | Planned | The Bitcoin Core functional tests that drive a node over P2P and RPC (`feature_block.py` and the `p2p_*` and `mempool_*` tests the chapter names) pass against our node on one of our own machines, never the owner's Mac. Each test that does not apply is listed with its reason. |
 | 119. Fuzzing | Planned | Every parser (transactions, scripts, P2P messages, PSBTs, addresses and invoices) runs under the fuzzer with no crash and no accepted malformed input. |
