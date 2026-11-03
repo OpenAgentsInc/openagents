@@ -509,12 +509,66 @@ It holds no MetaHuman asset and draws with none.
   male with eyes, brows and hair, on the rig already) for checking the look.
   `pack_human.py metahuman EXPORT_DIR` is the MetaHuman source. When the
   export's portrait (`latest/mh.neutral.glb`) is there, its grooms (hair cards
-  and brows, rigid to the head) and clothes join the pack: each clothing
-  vertex takes the weights of the nearest body vertex, and each cloth colour
-  becomes one of nine cloth materials (8 to 16).
+  and brows, rigid to the head) and clothes join the pack, with the film's
+  lower garments beside it (`world/*_lower.glb`: tights, skirt, the robe's
+  lower half, shoes); each cloth colour becomes one of 17 cloth materials
+  (8 to 24).
+- **The bind pose is the clothes'.** The clothes were fitted to the body with
+  its arms lowered (the export's `rig-body-down`), so that pose is the pack's
+  bind: the body as `dna_dump` posed it, the clothes as authored, the head
+  unchanged. Each joint's motion from the DNA's bind to it is fitted to the
+  body vertices it nearly owns (Horn's method), and each `B` line carries the
+  joint's turn from the bind to the rig's rest (`lab_palette`'s `bturn`), so
+  every vertex is skinned once, from where it was authored. Pre-posing into
+  the T pose and skinning again from the clip tore the cloth where weights
+  mixed joints that turn apart.
+- **Cloth weights.** Each clothing vertex blends the weights of the body
+  vertices near it (a falloff with distance, less from a vertex the cloth is
+  inside of), smoothed over the cloth's own neighbours. A vertex takes arm
+  weight only on a sleeve: the nearest body point it lies outside of is an
+  arm's (a robe's front over clasped hands lies outside the thigh), its foot
+  falls on the upper arm or forearm (not past the cuff), and it sits on a
+  large connected run of such points that wraps the upper arm (fills at least
+  10 of 12 sectors around the bone; a robe's front by a hand or tights where a
+  wrist rests on the hip don't). A sleeve never follows the hips or legs
+  (a cuff by clasped hands lies over the thigh). Off a sleeve it takes weights from the
+  body points off the arms only; hands give theirs to the forearm. Loose cloth
+  (most of it more than 1 cm off the body: the robe, the skirts) hangs from
+  the hips all the way down, half or more from the pelvis (up to 85% at the
+  ankles, where a step parts the thighs by tens of centimetres), and blends its weights over a few centimetres of
+  space, so where it parts from an arm or between the legs it stretches over
+  that span. A layer over clothes (a sweater over a shirt, half a centimetre
+  off) blends over a little space too, where its sleeve was fitted against its
+  side. Closer cloth more than 3 cm off the body hangs from the hip. A
+  piece under 40 cm (a tie, a collar's fall, a trim) moves as one. Body
+  triangles under tight cloth (a garment within 2 cm outward that moves
+  with them) are left out; the compiler refuses a pack whose hands are hidden.
+- **Skin maps.** The head takes the portrait's maps (the export's
+  Head_Basecolor toned by a per-channel line, its normal map, and an
+  occlusion-roughness map); the body's base gets the same line so neck and face
+  meet, and the head's mean roughness (the export's SRMF maps are empty, and an
+  empty map is no layer). Skin occlusion rides the base's alpha.
+- **Checks the compiler runs.** The garment list against the sources' (every
+  garment packed), and each garment posed by the lab's clips with the
+  runtime's own palette (idle and walk at several moments; talk, spell,
+  slash, run and fold once): an idle or walk pose with more than 0.5% of its
+  edges grown by half again and by over 1 cm, or one grown by over 4 cm (a
+  spike), refuses the pack. The share stretched past 1.5x is printed too; on
+  a fine mesh it counts millimetre edges that no one sees.
+- **Probe views for scripts.** An unlisted V key cycles views a script reads
+  without anyone looking at the frame: the albedo, uv and base layer, capsule
+  pixels in magenta, each pixel's material, and its material with its base
+  layer in one frame. Scripts compare the albedo
+  with the source texture at each pixel's uv (mean difference and hue and
+  saturation per region), count capsule pixels with a pack in (none), and
+  check the skin's pixels take the scatter path.
 - **Hair and eyes.** Hair cards are lit along their strands (two shifted
-  Kajiya-Kay highlights, after Marschner's R and TRT lobes), not by GGX.
-  Eyes add a Fresnel sky reflection on the cornea and a sharp key glint.
+  Kajiya-Kay highlights, after Marschner's R and TRT lobes), not by GGX, with
+  the normal bent toward the way out from the head; their faintest texels go,
+  their solid ones stay, and a stable 4x4 dither fades the rest. Eyes add a
+  Fresnel sky reflection on the cornea and a sharp key glint.
+- **Floor shadow.** With a pack in, the floor takes the figure's shadow from
+  the mesh's own shadow map; the capsules no longer draw or cast.
 - **Private loading.** The world's assets are `private:human`. `host.js` asks
   for `/private/NAME.pack` only on a local address whose URL has `?pack`
   (`?pack=standin` for the stand-in), never in a golden; `serve.c` serves

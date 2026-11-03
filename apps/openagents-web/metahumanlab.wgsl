@@ -360,6 +360,10 @@ fn coax_p_scene_fs(p_s: coax_t14, p_front: bool) -> vec4f {
   {
     l_c = coax_p_v3((f32(l_m) / 0x1.fe0000p7f), 0.0f, 0.0f);
   }
+  if ((coax_at_u(i32(386i)) > 0x1.200000p2f))
+  {
+    l_c = coax_p_v3((f32(l_m) / 0x1.fe0000p7f), (f32((l_s.f5 & 255u)) / 0x1.fe0000p7f), 0.0f);
+  }
   return coax_p_v4(l_c.x, l_c.y, l_c.z, 0x1.000000p0f);
 }
 fn coax_p_shadow_fs(p_v: coax_t15) {

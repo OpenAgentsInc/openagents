@@ -264,7 +264,8 @@ mhlab_bg_fs :: (pos:V4,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->M
 //   264: the shadow's box: centre xyz, 1 / half its size; 268: its right; 272: its up; 276: toward the key, bias
 //   280: 24 materials (rgb tint, roughness: the roughness map's scale), by material number less one
 //   376: the fill's direction xyz, strength; 380: the rim's, strength; 384: the key's strength, exposure
-//   386: the probe view (0: lit; 1: albedo, 2: uv and base layer, 3: capsules magenta, 4: material), for scripts
+//   386: the probe view (0: lit; 1: albedo, 2: uv and base layer, 3: capsules magenta, 4: material, 5:
+//        material and base layer), for scripts
 //        that check a frame without looking at it
 // A vertex, 8 words (pack_human.py vertex): x y (unorm16 each), z (unorm16) | material << 16 |
 // the bitangent's sign << 31, the normal and the tangent (octahedral unorm16 pairs), uv (unorm16
@@ -562,8 +563,10 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   if ((u[386]>0.5f32)&&(u[386]<1.5f32)) { c=v3(mhlab_srgb(albedo.x),mhlab_srgb(albedo.y),mhlab_srgb(albedo.z)); }
   if ((u[386]>1.5f32)&&(u[386]<2.5f32)) { c=v3(fract(s.uv.x),fract(s.uv.y),cast(f32)(s.layers&255)/255.0f32); }
   if ((u[386]>2.5f32)&&(u[386]<3.5f32)) { c=v3(0.0f32,0.0f32,0.0f32); }
-  // 4: the material's number, so a script can see which pieces take the skin's scatter
+  // 4: the material's number, so a script can see which pieces take the skin's scatter; 5: the
+  // material and the base layer together (one frame, so they can't drift apart between shots)
   if (u[386]>3.5f32) { c=v3(cast(f32)(m)/255.0f32,0.0f32,0.0f32); }
+  if (u[386]>4.5f32) { c=v3(cast(f32)(m)/255.0f32,cast(f32)(s.layers&255)/255.0f32,0.0f32); }
   return v4(c.x,c.y,c.z,1.0f32);
 }
 clamp_u :: (x:u32,a:u32,b:u32)->u32 {

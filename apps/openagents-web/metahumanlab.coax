@@ -70,7 +70,7 @@ Lab :: struct {
   clip: int = PEOPLE_IDLE;
   female: bool;
   bones: bool;                       // the skeleton overlay
-  probe: int;                        // V (unlisted, for scripts): 0 lit, 1 albedo, 2 uv, 3 capsules, 4 material
+  probe: int;                        // V (unlisted, for scripts): 0 lit, 1 albedo, 2 uv, 3 capsules, 4 material, 5 material and layer
   paused: bool;
   // the figure on the floor: its feet's place and the way it faces (yaw 0 faces +Z)
   fx: f32; fz: f32; fyaw: f32;
@@ -454,6 +454,16 @@ cam_reset :: (s: [] Lab) {
   s[0].yaw = 0; s[0].pitch = CAM_PITCH; s[0].dist = CAM_DIST;
   s[0].px = 0; s[0].py = CAM_Y; s[0].pz = 0; s[0].vx = 0; s[0].vy = 0; s[0].vz = 0;
 }
+// F (unlisted, for scripts): the same frame every time, the clip paused at its start with the
+// camera close on the face, so two page loads' probe views line up pixel for pixel.
+face_view :: (s: [] Lab) {
+  s[0].paused = true;
+  s[0].skin[0].time = 0; s[0].skin[0].changed = s[0].skin[0].clock - 100;
+  animate(s, 0);
+  h := s[0].joint[MQ_HEAD];
+  s[0].yaw = 0; s[0].pitch = 0.05; s[0].dist = ZOOM_NEAR;
+  s[0].px = h.x; s[0].py = h.y + 0.08; s[0].pz = h.z; s[0].vx = 0; s[0].vy = 0; s[0].vz = 0;
+}
 // Which held key a letter is (W A S D Q E), or -1.
 held_of :: (key: int) -> int {
   if key == 'w' || key == 'W' { return 0; }
@@ -469,7 +479,8 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   if key == KEY_ESCAPE { leave_to(s, "/worlds"); return true; }
   if key == ' ' || key == KEY_ENTER { s[0].paused = !s[0].paused; return true; }
   if key == 'k' || key == 'K' { s[0].bones = !s[0].bones; return true; }
-  if key == 'v' || key == 'V' { s[0].probe = (s[0].probe + 1) % 5; return true; }
+  if key == 'v' || key == 'V' { s[0].probe = (s[0].probe + 1) % 6; return true; }
+  if key == 'f' || key == 'F' { face_view(s); return true; }
   if key == 'n' || key == 'N' { cycle_clip(s, 1); return true; }
   if key == 'p' || key == 'P' { cycle_clip(s, -1); return true; }
   if key == 'g' || key == 'G' { switch_body(s); return true; }
@@ -856,6 +867,18 @@ frame_u :: (s: [] Lab, u: [] f32) -> int {
   #assert s[0].skin[0].time == t;
 }
 
+#test "F holds one frame: the clip at its start, the camera on the face, the same after any wait" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  for i: 0..<40 { lab_step(s[..], f32(STEP)); }
+  #assert lab_key(s[..], 'f', 0) && s[0].paused;
+  a := s[0].joint[MQ_HEAD]; py := s[0].py;
+  #assert py > s[0].joint[MQ_PELVIS].y && s[0].dist < CAM_DIST;
+  for i: 0..<70 { lab_step(s[..], f32(STEP)); }
+  #assert lab_key(s[..], 'f', 0);
+  b := s[0].joint[MQ_HEAD];
+  #assert a.x == b.x && a.y == b.y && a.z == b.z && s[0].py == py;
+}
 #test "the camera zooms on the wheel, orbits on a drag, pans on Shift-drag, and C puts it back" #steps 2000000000 {
   s: [1] Lab; ok: bool; n: int;
   n = frame_at(s[..], 1600, 1000, 1, 0.016);

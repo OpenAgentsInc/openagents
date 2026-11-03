@@ -56,7 +56,7 @@ SPAN, LOW = 2.5, -0.25
 JOINTS = 65
 NONE = 255
 MATERIALS = {"skin": 1, "eye": 2, "hair": 3, "brow": 4, "cloth": 5, "teeth": 6, "wet": 7}
-MATERIALS.update({f"cloth{k}": 8 + k for k in range(9)})   # more cloths, each its own colour
+MATERIALS.update({f"cloth{k}": 8 + k for k in range(17)})   # more cloths, each its own colour (8 to 24)
 OUT_DIR = Path.home() / ".openagents/verse/private-build/web"
 
 QUATERNIUS = "~/Downloads/Universal Base Characters[Standard]"
@@ -168,6 +168,14 @@ def layer_bytes(img, size, flip_green=False):
     return buf.getvalue()
 
 
+def empty(path):
+    """An image with nothing in it (every channel zero), as the export's SRMF maps: no layer."""
+    if hasattr(path, "size"):
+        return False
+    from PIL import Image
+    return all(hi == 0 for _, hi in Image.open(path).getextrema())
+
+
 class Pack:
     """What a source hands the writer: pieces (verts in the rig's rest pose, tris, material,
     layer images), bind positions and material tints."""
@@ -178,7 +186,7 @@ class Pack:
         self.image_of = {}
 
     def layer(self, role, path, flip=False):
-        if path is None:
+        if path is None or empty(path):
             return NONE
         key = (role, str(path) if not hasattr(path, "size") else id(path))
         if key not in self.image_of:
@@ -196,7 +204,8 @@ class Pack:
 def write(pack, out, size):
     vb = bytearray(); ib = []; lines = [f"human {pack.name}", f"body {pack.body}", f"licence {pack.licence}"]
     for j, b in enumerate(pack.binds):
-        lines.append("B %d %.6f %.6f %.6f" % (j, *b))
+        # a joint's bind position, and (a bind off the rig's rest) its turn to the rest, x y z w
+        lines.append(("B %d" + " %.6f" * len(b)) % (j, *b))
     for m, (r, g, b, rough) in sorted(pack.tints.items()):
         lines.append("M %d %d %d %d %d" % (MATERIALS[m], round(r * 1000), round(g * 1000), round(b * 1000), round(rough * 1000)))
     lo, hi = [1e9] * 3, [-1e9] * 3
