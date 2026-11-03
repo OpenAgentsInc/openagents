@@ -4,10 +4,13 @@
 > [`coax/web/host.js`](../../coax/web/host.js) plays a realm's sounds and its
 > one music loop from decoded audio files: a realm returns lines of
 > `name gain pan`, and the host plays at most 16 at once through Web Audio
-> gain and stereo-panner nodes. Nothing in it uses Aethyr's synthesizer. This
-> chapter plans three additions: real-time playback of Aethyr's samples in
-> the browser and natively, sound placed in the world, and music that
-> changes with the game's state. Nothing here runs yet.
+> gain and stereo-panner nodes. Nothing in it uses Aethyr's synthesizer on
+> the audio clock. One thing is qualified: a score rendered offline by
+> chapter 67, played through the host's graph, reaches the live output
+> within 2^-20 of the samples (see "What exists today"). This chapter plans
+> three additions: real-time playback of Aethyr's samples in the browser and
+> natively, sound placed in the world, and music that changes with the
+> game's state. None of those runs yet.
 
 [Chapters 65–67](ch065-sound-from-numbers.md) render a whole score to a file.
 A realm needs sound while it runs. The sound must follow what happens on
@@ -101,8 +104,22 @@ music replays with the session.
 
 - `coax/web/host.js` decodes `sound` and `loop` assets with
   `decodeAudioData` and plays them with `AudioBufferSourceNode`,
-  `GainNode`, and `StereoPannerNode`. The decoder and the browser's resampler
-  decide the samples, so they can differ between browsers.
+  `GainNode`, and `StereoPannerNode`, built by one function, `soundVoice`.
+  The decoder and the browser's resampler decide the samples, so they can
+  differ between browsers.
+- One profile is qualified
+  ([record](../../docs/verification/aethyr-live-audio-2026-11-03.md),
+  check [`aethyr/tests/live-audio.coax`](../tests/live-audio.coax)): a
+  `promo-epic` render (1 s, seed 11) as a 16-bit WAV at the context's own
+  rate, in headless, muted Chromium 152. Decoded, then through the host's
+  gain and pan, it matches the Web Audio formula on the offline samples within
+  2^-20, offline in an `OfflineAudioContext` and live in the running
+  context, where an `AudioWorklet` tap records it from its first frame.
+  Chromium decodes a negative step as step / 32768 and a positive one as
+  step / 32767. The live tap saw every 128-frame quantum, the voice started on
+  the frame the context reported at the play call, the browser reported
+  42.7 ms of base and output latency, and a burst of 20 lines held 16 voices.
+  Other rates, compressed files and other browsers are outside this profile.
 - A realm chooses a sound's gain and pan itself, with no shared distance
   model.
 - `verse/voice.coax` resamples, levels, and gates microphone audio for voice

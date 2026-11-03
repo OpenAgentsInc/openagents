@@ -1,0 +1,344 @@
+// Live audio against offline synthesis (GitHub #12628, aethyr/book/ch068): a realm's
+// sound as the browser host plays it, in headless, muted Chrome, never to speakers.
+//   1. Offline: Aethyr's synthesizer renders a declared score and seed to 16-bit stereo
+//      at the live context's rate (aethyr/audio/epic.coax), and its samples' hash.
+//   2. Decode: the host's decodeAudioData gives each 16-bit step by Chrome's rule (la_decode).
+//   3. The voice graph (coax/web/host.js soundVoice: buffer, gain, stereo pan) rendered in
+//      an OfflineAudioContext equals the Web Audio formula on the offline samples within
+//      LA_TOL, for four gains and pans.
+//   4. Live: the realm's line played through the host's own path into its running
+//      AudioContext, recorded by an AudioWorklet tap at the end of the live graph, equals
+//      the same formula sample for sample within LA_TOL, from the frame it starts on, with
+//      silence before and after; the tap's blocks are contiguous (no skipped quantum).
+//   5. Latency: the frames from the host's play call to the voice's first frame, the
+//      browser's base and output latency, and the first decode's time.
+//   6. Voices: a burst of 20 lines holds 16 voices, and all are released at their end.
+//   COAX=... coax/web/tool.sh aethyr/tests/live-audio.coax http://127.0.0.1:PORT/
+#import "Basic";
+#load "../../coax/lib/net/cdp.coax";
+#load "../audio/epic.coax";
+
+LA_WAIT_MS :: 60000;
+LA_FRAMES_MAX :: 48000 * 4;        // four seconds at the highest rate the score takes
+LA_SECONDS :: 1.0;                 // the declared score's length
+LA_TAIL :: 256;                    // frames of silence the offline render keeps after the voice
+// Within 2^-20 of the formula: 1/32 of a 16-bit step. Float32 rounding of a gain and a
+// pan is a few 2^-24; a wrong sample, a step off, or a resample is far more.
+LA_TOL :: 0.00000095367431640625;
+LA_VOICES :: 16;
+
+// The declared input: promo-epic's sections squeezed into one second, seed 11.
+la_score :: (rate: int) -> Epic {
+  s := au_promo_epic();
+  s.rate = rate; s.seed = 11;
+  s.length = au_seconds(LA_SECONDS); s.downbeat = au_seconds(0.05); s.hold = au_seconds(0.25); s.belt = au_seconds(0.45);
+  s.orbit = au_seconds(0.65); s.home = au_seconds(0.85); s.riser = au_seconds(0.3); s.fade = au_seconds(0.1);
+  return s;
+}
+
+// Chrome's decoder turns a 16-bit step into a float asymmetrically (its int16 sample
+// traits, measured on Chromium 152 with a probe WAV): a negative step over 32768, a
+// positive one over 32767, so both full scales are exactly -1 and 1.
+la_decode :: (step: int) -> f64 {
+  return ifx step < 0 then cast(f64) step / 32768.0 else cast(f64) step / 32767.0;
+}
+#test "decoding: -32768 and 32767 are full scale, and each sign has its own divisor" {
+  #assert la_decode(-32768) == -1.0 && la_decode(32767) == 1.0 && la_decode(0) == 0.0;
+  #assert la_decode(-16384) == -0.5 && la_decode(16384) == 16384.0 / 32767.0 && la_decode(1) != -la_decode(-1);
+}
+
+// Web Audio's StereoPannerNode on a stereo input (the spec's equal-power law), after a
+// gain: the frame the graph should output for one 16-bit frame.
+LaFrame :: struct { l: f64; r: f64; }
+la_expect :: (left: int, right: int, gain: f64, pan: f64) -> LaFrame {
+  p := pan; if p < -1.0 { p = -1.0; } if p > 1.0 { p = 1.0; }
+  g := cast(f64) cast(f32) gain;
+  il := la_decode(left) * g; ir := la_decode(right) * g;
+  x := ifx p <= 0.0 then p + 1.0 else p;
+  gl := cos(x * 1.5707963267948966); gr := sin(x * 1.5707963267948966);
+  if p <= 0.0 { return LaFrame.{l = il + ir * gl, r = ir * gr}; }
+  return LaFrame.{l = il * gl, r = ir + il * gr};
+}
+#test "the pan law: centre keeps each side, full left folds right into left, full right the reverse" {
+  c := la_expect(16384, -8192, 1.0, 0.0);
+  #assert abs(c.l - 16384.0 / 32767.0) < 0.0000001 && abs(c.r + 0.25) < 0.0000001;
+  l := la_expect(16384, -8192, 1.0, -1.0);
+  #assert abs(l.l - (16384.0 / 32767.0 - 0.25)) < 0.0000001 && abs(l.r) < 0.0000001;
+  r := la_expect(16384, -8192, 1.0, 1.0);
+  #assert abs(r.l) < 0.0000001 && abs(r.r - (16384.0 / 32767.0 - 0.25)) < 0.0000001;
+  h := la_expect(32767, 0, 0.5, -3.0);   // a pan past -1 is -1, as the host clamps it
+  #assert abs(h.l - 0.5) < 0.0000001 && abs(h.r) < 0.0000001;
+  q := la_expect(-32768, 0, 1.0, 0.5);   // pan 0.5: left at cos(pi/4)
+  #assert abs(q.l + 0.7071067811865476) < 0.0000001 && abs(q.r + 0.7071067811865476) < 0.0000001;
+}
+
+// Little-endian float32 i of base64-decoded bytes.
+la_f32 :: (bytes: [] u8, i: int) -> f64 {
+  w := cast(u32) bytes[4 * i] | (cast(u32) bytes[4 * i + 1] << 8) | (cast(u32) bytes[4 * i + 2] << 16) | (cast(u32) bytes[4 * i + 3] << 24);
+  return cast(f64) f32_from_bits(w);
+}
+#test "float32 bytes read little-endian" {
+  b := [8] u8.[0, 0, 128, 63, 0, 0, 0, 191];
+  #assert la_f32(b[..], 0) == 1.0 && la_f32(b[..], 1) == -0.5;
+}
+
+// A comparison of a channel pair against the formula: the largest error, and how many
+// samples are past the tolerance.
+LaCompare :: struct { max_err: f64; over: int; compared: int; }
+la_merge :: (a: LaCompare, err: f64) -> LaCompare {
+  out := a; out.compared += 1;
+  if err != err { out.over += 1; return out; }   // NaN is past any tolerance
+  e := abs(err);
+  if e > out.max_err { out.max_err = e; }
+  if e > LA_TOL { out.over += 1; }
+  return out;
+}
+la_ok :: (c: LaCompare, want: int) -> bool { return c.compared == want && want > 0 && c.over == 0; }
+#test "a comparison fails on one sample past the tolerance, a NaN, or a short count" {
+  c := LaCompare.{};
+  c = la_merge(c, 0.0); c = la_merge(c, -LA_TOL);
+  #assert la_ok(c, 2) && c.max_err == LA_TOL && !la_ok(c, 3) && !la_ok(LaCompare.{}, 0);
+  #assert !la_ok(la_merge(c, LA_TOL * 2.0), 3);
+  nan := 0.0 / 0.0;
+  #assert !la_ok(la_merge(c, nan), 3);
+}
+
+// The first frame (from `from`) with a nonzero sample in either channel, or -1.
+la_first :: (l: [] u8, r: [] u8, frames: int, from: int) -> int {
+  for i: from..<frames { if la_f32(l, i) != 0.0 || la_f32(r, i) != 0.0 { return i; } }
+  return -1;
+}
+la_first_pcm :: (pcm: [] int) -> int {
+  for i: 0..<pcm.count / 2 { if pcm[2 * i] != 0 || pcm[2 * i + 1] != 0 { return i; } }
+  return -1;
+}
+#test "the first sounding frame" {
+  b := [16] u8.[0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,128,63];
+  z := [16] u8.[0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0];
+  #assert la_first(z[..], b[..], 4, 0) == 3 && la_first(b[..], z[..], 4, 0) == 3 && la_first(z[..], z[..], 4, 0) == -1 && la_first(b[..], z[..], 3, 0) == -1;
+  p := [6] int.[0, 0, 0, 0, 0, -1];
+  #assert la_first_pcm(p[..]) == 2 && la_first_pcm(p[0..<4]) == -1;
+}
+
+// A channel pair of rendered frames (from at, for n) against the formula for pcm, with
+// zeros everywhere outside [at, at + n) of the frames given.
+la_compare :: (l: [] u8, r: [] u8, frames: int, at: int, pcm: [] int, gain: f64, pan: f64) -> LaCompare {
+  c := LaCompare.{}; n := pcm.count / 2;
+  for i: 0..<frames {
+    k := i - at;
+    if k >= 0 && k < n {
+      e := la_expect(pcm[2 * k], pcm[2 * k + 1], gain, pan);
+      c = la_merge(c, la_f32(l, i) - e.l); c = la_merge(c, la_f32(r, i) - e.r);
+    } else {
+      c = la_merge(c, la_f32(l, i)); c = la_merge(c, la_f32(r, i));
+    }
+  }
+  return c;
+}
+#test "a render compares sample for sample, with silence around the voice" {
+  pcm := [4] int.[-16384, 0, 0, -16384];
+  b: [24] u8;   // three frames, left then right planes of 3 floats each
+  l := b[0..<12]; r := b[12..<24];
+  for i: 0..<24 { b[i] = 0; }
+  // frame 1 = -0.5, 0 ; frame 2 = 0, -0.5 at centre pan, gain 1
+  l[6] = 0; l[7] = 191;    // -0.5 at float 1
+  r[10] = 0; r[11] = 191;  // -0.5 at float 2
+  #assert la_ok(la_compare(l, r, 3, 1, pcm[..], 1.0, 0.0), 6);
+  #assert !la_ok(la_compare(l, r, 3, 0, pcm[..], 1.0, 0.0), 6);   // a frame early
+  #assert !la_ok(la_compare(l, r, 3, 1, pcm[..], 0.5, 0.0), 6);   // the wrong gain
+}
+
+// The tap's blocks were contiguous, the voice started inside the capture with room for
+// all of it, and its start came after the play call.
+LaLive :: struct { blocks: int; gaps: int; first_frame: int; call_frame: int; start: int; captured: int; frames: int; }
+la_live_ok :: (v: LaLive) -> bool {
+  return v.blocks > 0 && v.gaps == 0 && v.start >= 0 && v.start + v.frames <= v.captured && v.first_frame + v.start >= v.call_frame;
+}
+#test "the live capture is whole, holds the voice, and starts after the call" {
+  v := LaLive.{blocks = 10, gaps = 0, first_frame = 1280, call_frame = 1300, start = 200, captured = 1280, frames = 1000};
+  #assert la_live_ok(v);
+  w := v; w.gaps = 1; #assert !la_live_ok(w);
+  w = v; w.start = -1; #assert !la_live_ok(w);
+  w = v; w.start = 300; #assert !la_live_ok(w);
+  w = v; w.call_frame = 1500; #assert !la_live_ok(w);
+  w = v; w.blocks = 0; #assert !la_live_ok(w);
+}
+
+la_local :: (url: string) -> bool {
+  return (url.count > 17 && url[0..<17] == "http://127.0.0.1:") || (url.count > 17 && url[0..<17] == "http://localhost:");
+}
+#test "the check runs only against a page served on this machine" {
+  #assert la_local("http://127.0.0.1:8800/") && la_local("http://localhost:8800/x");
+  #assert !la_local("https://openagents.com/") && !la_local("");
+}
+
+// ---- the page --------------------------------------------------------------------
+
+// The tap: a gain bus at the end of the host's live graph, into the (muted) speakers and
+// into an AudioWorklet that copies each 128-frame quantum while armed.
+LA_SETUP :: "globalThis.laB64=(f)=>{const u=new Uint8Array(f.buffer,f.byteOffset,f.byteLength);let s='';for(let i=0;i<u.length;i+=32768)s+=String.fromCharCode(...u.subarray(i,i+32768));return btoa(s);};globalThis.coaxialAudioTap=(ctx)=>{const bus=ctx.createGain();bus.connect(ctx.destination);const t=globalThis.laTap={bus,blocks:[],want:0,done:null};const src=`registerProcessor('la-tap',class extends AudioWorkletProcessor{constructor(){super();this.left=0;this.port.onmessage=(e)=>{this.left=e.data;};}process(i){if(this.left>0){const x=i[0],l=new Float32Array(128),r=new Float32Array(128);if(x&&x.length){l.set(x[0]);r.set(x[x.length>1?1:0]);}this.port.postMessage({frame:currentFrame,l,r});this.left-=128;}return true;}})`;t.ready=ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([src],{type:'text/javascript'}))).then(()=>{const n=new AudioWorkletNode(ctx,'la-tap',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});bus.connect(n);n.connect(ctx.destination);t.node=n;n.port.onmessage=(e)=>{t.blocks.push(e.data);if(t.blocks.length*128>=t.want&&t.done){const d=t.done;t.done=null;d();}};});return bus;};";
+// Start the host's audio (a user gesture), with the tap in place: the context's state.
+LA_START :: "(async()=>{const a=coaxial.audio.start();if(!a)return 'none';await laTap.ready;await a.resume();return a.state+' '+a.sampleRate})()";
+LA_DECODE :: "(async()=>{const t=performance.now();const b=await coaxial.audio.decode('la');return Math.round((performance.now()-t)*1000)})()";
+// The host's voice graph in an OfflineAudioContext at the buffer's rate.
+la_offline_js :: (gain: string, pan: string, out: [] u8) -> string {
+  k := ws_put(out, 0, "(async()=>{const b=await coaxial.audio.decode('la');const o=new OfflineAudioContext(2,b.length+");
+  k = ws_digits(out, k, LA_TAIL);
+  k = ws_put(out, k, ",b.sampleRate);const s=coaxial.audio.voice(o,b,'"); k = ws_put(out, k, gain);
+  k = ws_put(out, k, "','"); k = ws_put(out, k, pan);
+  k = ws_put(out, k, "',o.destination);s.start(0);const r=await o.startRendering();return {rate:b.sampleRate,len:b.length,dl:laB64(b.getChannelData(0)),dr:laB64(b.getChannelData(1)),l:laB64(r.getChannelData(0)),r:laB64(r.getChannelData(1)),frames:r.length}})()");
+  return ifx k > 0 then cast(string) out[0..<k] else "";
+}
+// Arm the tap for `want` frames, wait for its first quantum, then play the realm's line
+// through the host's own path: the capture, the frame the call came at, the latencies.
+la_live_js :: (want: int, line: string, out: [] u8) -> string {
+  k := ws_put(out, 0, "(async()=>{const a=coaxial.audio.start(),t=laTap;t.blocks=[];t.want=");
+  k = ws_digits(out, k, want);
+  k = ws_put(out, k, ";const done=new Promise((d)=>{t.done=d;});t.node.port.postMessage(t.want);while(!t.blocks.length)await new Promise((d)=>setTimeout(d,1));const call=Math.round(a.currentTime*a.sampleRate);coaxial.audio.play('");
+  k = ws_put(out, k, line);
+  k = ws_put(out, k, "');const held=coaxial.audio.playing();await done;const n=t.blocks.length,l=new Float32Array(n*128),r=new Float32Array(n*128);let gaps=0;t.blocks.forEach((b,i)=>{l.set(b.l,i*128);r.set(b.r,i*128);if(i&&b.frame!==t.blocks[i-1].frame+128)gaps++;});return {blocks:n,gaps,first:t.blocks[0].frame,call,held,base:Math.round((a.baseLatency||0)*1e6),output:Math.round((a.outputLatency||0)*1e6),l:laB64(l),r:laB64(r)}})()");
+  return ifx k > 0 then cast(string) out[0..<k] else "";
+}
+LA_BURST :: "(()=>{coaxial.audio.play(Array(20).fill('la 0 0').concat(['missing 1 0']).join('\\n'));return coaxial.audio.playing()})()";
+LA_RELEASED :: "coaxial.audio.playing()===0";
+
+la_param :: (c: [] Cdp, method: string, key: string, value: string) -> bool {
+  buf: [CDP_REQ] u8; o: [1] Jo;
+  jo_start(o[..], buf[..]); jo_obj(o[..]); jo_key(o[..], key); jo_str(o[..], value); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, method, jo_text(o[..]), 30000) >= 0;
+}
+// Runtime.evaluate as a user gesture (the browser starts audio only after one).
+la_gesture :: (c: [] Cdp, expression: string) -> int {
+  buf: [CDP_REQ] u8; o: [1] Jo;
+  jo_start(o[..], buf[..]); jo_obj(o[..]); jo_key(o[..], "expression"); jo_str(o[..], expression);
+  jo_key(o[..], "awaitPromise"); jo_bool(o[..], true); jo_key(o[..], "returnByValue"); jo_bool(o[..], true);
+  jo_key(o[..], "userGesture"); jo_bool(o[..], true); jo_end(o[..]);
+  if o[0].bad { return -1; }
+  r := cdp_call(c, "Runtime.evaluate", jo_text(o[..]), CDP_CALL_MS);
+  return ifx r < 0 then -1 else jv_path(c[0].doc[0], r, "result.value");
+}
+la_true :: (c: [] Cdp, expr: string) -> bool { at := cdp_evaluate(c, expr); return at >= 0 && jv_raw(c[0].doc[0], at) == "true"; }
+la_int :: (c: [] Cdp, at: int, key: string) -> int { return jv_int(c[0].doc[0], jv_get(c[0].doc[0], at, key), -1); }
+// A base64 field of the value at `at`, decoded into out: the bytes, or -1.
+la_bytes :: (c: [] Cdp, at: int, key: string, text: [] u8, out: [] u8) -> int {
+  n := jv_str(c[0].doc[0], jv_get(c[0].doc[0], at, key), text);
+  if n < 0 { return -1; }
+  return b64_decode(cast(string) text[0..<n], out);
+}
+LA_GAINS :: [4] string.["1", "0.5", "0.8", "0.25"];
+LA_PANS :: [4] string.["0", "-0.4", "0.7", "-1"];
+LA_GAINF :: [4] f64.[1.0, 0.5, 0.8, 0.25];
+LA_PANF :: [4] f64.[0.0, -0.4, 0.7, -1.0];
+la_lsb :: (err: f64) -> f64 { return err * 32768.0; }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  url := args_at(a[..], 0);
+  if !ok || !la_local(url) { tool_errln("usage: coax/web/tool.sh aethyr/tests/live-audio.coax http://127.0.0.1:PORT/"); return 2; }
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 320, 240, "coax-live-audio-") { tool_err("live-audio: "); tool_errln(cdp_error(c[..])); return 1; }
+  passed := false;
+  defer cdp_close(c[..]);
+  if cdp_call(c[..], "Page.enable", "", 30000) < 0 || cdp_call(c[..], "Runtime.enable", "", 30000) < 0 ||
+     !la_param(c[..], "Page.addScriptToEvaluateOnNewDocument", "source", LA_SETUP) || !la_param(c[..], "Page.navigate", "url", url) {
+    tool_err("live-audio: the page did not open: "); tool_errln(cdp_error(c[..])); return 1;
+  }
+  print("live-audio: open %\n", url);
+  until := proc_now_ms() + LA_WAIT_MS;
+  while proc_now_ms() < until && !la_true(c[..], "!!globalThis.coaxial?.audio") { proc_sleep(50); }
+  if !la_true(c[..], "!!globalThis.coaxial?.audio") { tool_errln("live-audio: the page has no coaxial.audio (served on this machine, from this checkout?)"); return 1; }
+
+  // 1. The live context's rate, then the declared score rendered offline at it.
+  at := cdp_evaluate(c[..], "(async()=>{const x=new AudioContext();const r=x.sampleRate;await x.close();return r})()");
+  rate := ifx at >= 0 then jv_int(c[0].doc[0], at, -1) else -1;
+  if rate < 8000 || rate > 48000 { tool_errln("live-audio: the live context's rate is outside the score's 8000..48000 Hz"); return 1; }
+  l: [LA_FRAMES_MAX] int; r: [LA_FRAMES_MAX] int; sl: [LA_FRAMES_MAX] int; sr: [LA_FRAMES_MAX] int;
+  wet: [LA_FRAMES_MAX] int; voice: [168000] int; pcm_all: [2 * LA_FRAMES_MAX] int;
+  done := au_render_epic(la_score(rate), l[..], r[..], sl[..], sr[..], wet[..], voice[..], pcm_all[..]);
+  if !done.ok { tool_errln("live-audio: the score did not render"); return 1; }
+  pcm := pcm_all[0..<2 * done.frames];
+  print("live-audio: offline: promo-epic in % s, seed 11, % frames at % Hz, % voices, samples fnv1a64 %\n", LA_SECONDS, done.frames, rate, done.voices, wav_hash(pcm));
+  wav: [WAV_HEADER + 4 * LA_FRAMES_MAX] u8;
+  wn := wav_write(pcm, 2, rate, wav[..]);
+  b64: [4 * (WAV_HEADER + 4 * LA_FRAMES_MAX) / 3 + 8] u8;
+  bn := b64_encode(cast(string) wav[0..<wn], b64[..]);
+  js: [CDP_REQ] u8;
+  k := ws_put(js[..], 0, "(coaxial.audio.add('la',Uint8Array.from(atob('"); k = ws_put(js[..], k, cast(string) b64[0..<bn]); k = ws_put(js[..], k, "'),(ch)=>ch.charCodeAt(0))),true)");
+  if wn < 0 || bn < 0 || k < 0 || !la_true(c[..], cast(string) js[0..<k]) { tool_errln("live-audio: could not hand the page the sound"); return 1; }
+
+  // 2. The host's audio started, with the tap.
+  at = la_gesture(c[..], LA_START);
+  state := ifx at >= 0 then jv_raw(c[0].doc[0], at) else "";
+  print("live-audio: the host's AudioContext: %\n", state);
+  if state.count < 7 || state[0..<7] != "running" { tool_errln("live-audio: the host's audio did not start"); return 1; }
+  at = cdp_evaluate(c[..], LA_DECODE);
+  decode_us := ifx at >= 0 then jv_int(c[0].doc[0], at, -1) else -1;
+
+  text: [CDP_MSG_MAX / 4] u8; dl: [4 * LA_FRAMES_MAX + 16] u8; dr: [4 * LA_FRAMES_MAX + 16] u8; ol: [4 * LA_FRAMES_MAX + 16] u8; orr: [4 * LA_FRAMES_MAX + 16] u8;
+  n := done.frames;
+  decode_ok := true; offline_ok := true;
+  for kase: 0..<4 {
+    at = cdp_evaluate(c[..], la_offline_js(LA_GAINS[kase], LA_PANS[kase], js[..]));
+    if at < 0 || la_int(c[..], at, "rate") != rate || la_int(c[..], at, "len") != n { tool_errln("live-audio: the offline render failed or decoded to another length or rate"); return 1; }
+    frames := la_int(c[..], at, "frames");
+    if kase == 0 {
+      // 2. Decoding: each 16-bit step is step / 32768, exactly.
+      a1 := la_bytes(c[..], at, "dl", text[..], dl[..]); a2 := la_bytes(c[..], at, "dr", text[..], dr[..]);
+      exact := 0; dc := LaCompare.{};
+      if a1 == 4 * n && a2 == 4 * n {
+        for i: 0..<n {
+          el := la_decode(pcm[2 * i]); er := la_decode(pcm[2 * i + 1]);
+          if la_f32(dl[..], i) == cast(f64) cast(f32) el && la_f32(dr[..], i) == cast(f64) cast(f32) er { exact += 1; }
+          dc = la_merge(dc, la_f32(dl[..], i) - el); dc = la_merge(dc, la_f32(dr[..], i) - er);
+        }
+      }
+      decode_ok = la_ok(dc, 2 * n);
+      print("live-audio: decode: % of % frames the float32 nearest the decode rule; max error % of a 16-bit step\n", exact, n, la_lsb(dc.max_err));
+    }
+    b1 := la_bytes(c[..], at, "l", text[..], ol[..]); b2 := la_bytes(c[..], at, "r", text[..], orr[..]);
+    if b1 != 4 * frames || b2 != 4 * frames || frames != n + LA_TAIL { offline_ok = false; continue; }
+    cmp := la_compare(ol[..], orr[..], frames, 0, pcm, LA_GAINF[kase], LA_PANF[kase]);
+    print("live-audio: offline graph gain % pan %: % samples, max error % of a 16-bit step, % past tolerance\n", LA_GAINS[kase], LA_PANS[kase], cmp.compared, la_lsb(cmp.max_err), cmp.over);
+    offline_ok = offline_ok && la_ok(cmp, 2 * frames);
+  }
+
+  // 4–5. Live: the realm's line through the host, recorded at the end of its graph.
+  want := n + rate / 2;
+  at = la_gesture(c[..], la_live_js(want, "la 0.5 -0.4", js[..]));
+  live := LaLive.{frames = n};
+  live_cmp := LaCompare.{};
+  base_us := -1; output_us := -1; held := -1;
+  ll: [4 * LA_FRAMES_MAX + 16] u8; lr: [4 * LA_FRAMES_MAX + 16] u8;
+  if at >= 0 {
+    live.blocks = la_int(c[..], at, "blocks"); live.gaps = la_int(c[..], at, "gaps");
+    live.first_frame = la_int(c[..], at, "first"); live.call_frame = la_int(c[..], at, "call");
+    base_us = la_int(c[..], at, "base"); output_us = la_int(c[..], at, "output"); held = la_int(c[..], at, "held");
+    live.captured = 128 * live.blocks;
+    c1 := la_bytes(c[..], at, "l", text[..], ll[..]); c2 := la_bytes(c[..], at, "r", text[..], lr[..]);
+    if live.captured <= LA_FRAMES_MAX && c1 == 4 * live.captured && c2 == 4 * live.captured {
+      heard := la_first(ll[..], lr[..], live.captured, 0);
+      first := la_first_pcm(pcm);
+      live.start = ifx heard >= 0 && first >= 0 then heard - first else -1;
+      if live.start >= 0 { live_cmp = la_compare(ll[..], lr[..], live.captured, live.start, pcm, 0.5, -0.4); }
+    }
+  }
+  live_ok := la_live_ok(live) && la_ok(live_cmp, 2 * live.captured);
+  delay := live.first_frame + live.start - live.call_frame;
+  print("live-audio: live: % quanta (% frames) from frame %, % gaps; the voice starts % frames (% ms) after the play call; max error % of a 16-bit step over % samples, % past tolerance\n",
+    live.blocks, live.captured, live.first_frame, live.gaps, delay, cast(f64) delay * 1000.0 / cast(f64) rate, la_lsb(live_cmp.max_err), live_cmp.compared, live_cmp.over);
+  print("live-audio: latency: base % us, output % us, first decode % us; voices held after the call %\n", base_us, output_us, decode_us, held);
+
+  // 6. Sixteen voices at most, all released at their end.
+  at = cdp_evaluate(c[..], LA_BURST);
+  burst := ifx at >= 0 then jv_int(c[0].doc[0], at, -1) else -1;
+  released := false;
+  until = proc_now_ms() + 10000;
+  while proc_now_ms() < until && !released { proc_sleep(100); released = la_true(c[..], LA_RELEASED); }
+  print("live-audio: a burst of 20 lines and one unknown name holds % voices; all released: %\n", burst, released);
+
+  passed = decode_ok && offline_ok && live_ok && held == 1 && burst == LA_VOICES && released;
+  print("live-audio: decode % offline % live % voices %\n", decode_ok, offline_ok, live_ok, burst == LA_VOICES && released);
+  print("% live audio equals offline synthesis within 2^-20 through the host's graph\n", ifx passed then "pass" else "FAIL");
+  return ifx passed then 0 else 1;
+}

@@ -1561,15 +1561,18 @@ function drawMedia(x, pass, w, h, depth, over = false) {
 }
 
 // ---- sounds: Web Audio, started by the first touch or key (browsers wait for one)
-let audio = null;
+let audio = null, audioOut = null;
 const sounds = new Map();   // name -> a decoding or decoded buffer
 function startAudio() {
   if (audio || !assets.some((a) => a.kind === "sound" || a.kind === "loop")) return;
   try { audio = new AudioContext(); } catch { return; }
+  // checks (aethyr/tests/live-audio.coax): the live graph ends in the check's tap, which
+  // records the samples on the audio thread and passes them on to the (muted) speakers
+  audioOut = dev && typeof globalThis.coaxialAudioTap === "function" ? globalThis.coaxialAudioTap(audio) : audio.destination;
   const loop = assets.find((a) => a.kind === "loop");
   if (loop) decoded(loop).then((b) => {
     const s = audio.createBufferSource(), g = audio.createGain();
-    s.buffer = b; s.loop = true; g.gain.value = 0.35; s.connect(g).connect(audio.destination); s.start();
+    s.buffer = b; s.loop = true; g.gain.value = 0.35; s.connect(g).connect(audioOut); s.start();
   }).catch(() => {});
 }
 function decoded(a) {
@@ -1577,20 +1580,32 @@ function decoded(a) {
   if (!sounds.has(key)) sounds.set(key, (a.bytes ? Promise.resolve(a.bytes.slice().buffer) : fetch(a.url).then((r) => r.arrayBuffer())).then((b) => audio.decodeAudioData(b)));
   return sounds.get(key);
 }
+// One voice: the decoded buffer, its gain, a stereo pan clamped to -1..1, into out.
+// The live host and its offline check build the same graph with this.
+function soundVoice(ctx, b, gain, pan, out) {
+  const s = ctx.createBufferSource(), g = ctx.createGain(), p = ctx.createStereoPanner();
+  s.buffer = b; g.gain.value = Number(gain) || 0; p.pan.value = Math.max(-1, Math.min(1, Number(pan) || 0));
+  s.connect(g).connect(p).connect(out);
+  return s;
+}
 let playing = 0;
 function playSounds(x) {
   const n = x.coaxial_sounds_len(arena.state);
   if (!n || !audio) return;
-  const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_sounds(arena.state), n).slice());
+  playSoundText(new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_sounds(arena.state), n).slice()));
+}
+// The realm's lines, NAME GAIN PAN each: at most 16 voices at once. A voice holds its
+// place from its line, while its sound still decodes, so a burst can't pass 16.
+function playSoundText(text) {
   for (const line of text.split("\n")) {
     const [name, gain, pan] = line.split(" ");
     const a = assets.find((s) => s.kind === "sound" && s.name === name);
     if (!a || playing >= 16) continue;
+    playing++;
     decoded(a).then((b) => {
-      const s = audio.createBufferSource(), g = audio.createGain(), p = audio.createStereoPanner();
-      s.buffer = b; g.gain.value = Number(gain) || 0; p.pan.value = Math.max(-1, Math.min(1, Number(pan) || 0));
-      s.connect(g).connect(p).connect(audio.destination); playing++; s.onended = () => playing--; s.start();
-    }).catch(() => {});
+      const s = soundVoice(audio, b, gain, pan, audioOut);
+      s.onended = () => playing--; s.start();
+    }).catch(() => playing--);
   }
 }
 
@@ -2057,6 +2072,11 @@ if (dev) {
   globalThis.coaxial.reloadRenderer = async () => { try { return await loadShaders(); } catch { return false; } };
   globalThis.coaxial.renderResources = () => gpu?.renderer ? [gpu.renderer.vertexBuffer, gpu.renderer.uniformBuffer,
     ...[...gpu.renderer.resourceRecords.values()].map((r) => r.gpu), gpu.renderer.indexRecord?.gpu, gpu.renderer.sansTexture, gpu.renderer.layerTexture] : [];
+  // Live audio for aethyr/tests/live-audio.coax: a sound added as the realm's own, its
+  // lines played through the host's path, and the voice graph for an offline render.
+  globalThis.coaxial.audio = { add: (name, bytes) => { assets.push({ i: assets.length, kind: "sound", name, bytes, done: true }); },
+    start: () => { startAudio(); return audio; }, play: (text) => playSoundText(text), playing: () => playing,
+    decode: (name) => decoded(assets.find((a) => a.kind === "sound" && a.name === name)), voice: soundVoice };
   globalThis.coaxial.renderLedger = () => gpu?.renderer?.ready ? gpu.renderer.ledger() : null;
   globalThis.coaxial.renderLedgerLive = (slot, generation) => engine?.exports.coaxial_render_live?.(slot, generation) ?? -1;
   globalThis.coaxial.renderLedgerRelease = (slot, generation) => engine?.exports.coaxial_render_release?.(slot, generation) ?? -1;
