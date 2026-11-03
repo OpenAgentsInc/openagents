@@ -7,6 +7,7 @@ import math
 import os
 from pathlib import Path
 import random
+import re
 import struct
 import tempfile
 import unittest
@@ -14,37 +15,47 @@ import lexer as LX
 import parser as PS
 
 ROOT=Path(__file__).resolve().parents[1]
-class Loc(C.Structure):_fields_=[(n,C.c_int64) for n in ('line','column','offset')]
-class Unit(C.Structure):_fields_=[(n,C.c_int64) for n in ('mass','length','time','angle','numerator','denominator')]
-class Frame(C.Structure):_fields_=[('handedness',C.c_int64),('convention',C.c_uint8),('continuity',C.c_uint8),('min_rep',C.c_int64)]
-class Spatial(C.Structure):_fields_=[('kind',C.c_uint8),('frame',C.c_int64),('unit',C.c_int64),('rep',C.c_int64)]
-class Node(C.Structure):
-    _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_uint64),('type',C.c_int64),('field_index',C.c_int64),('proc',C.c_int64),('constant',C.c_int64),('negative',C.c_bool),('folded',C.c_bool),('builtin_print',C.c_bool),('byte_intrinsic',C.c_uint32),('intrinsic',C.c_uint32),('mark',C.c_int64),('reached',C.c_bool),('metal_done',C.c_bool),('metal_active',C.c_bool),('skip_authority',C.c_bool),('scope',C.c_int64),('collides',C.c_bool),('clash',C.c_int64),('effects',C.c_uint8),('own_effects',C.c_uint8),('effects_known',C.c_bool),('generic',C.c_bool),('origin',C.c_int64),('pristine',C.c_int64),('chain',C.c_int64),('key',LX.Text)]
-    _fields_ += [('quantity',C.c_uint8),('unit',Unit),('unit_form',C.c_int64),('unit_link',C.c_int64),('unit_generated',C.c_bool),('frame_decl',C.c_bool),('frame',Frame),('spatial_link',C.c_int64),('lowering',C.c_uint8),('mutation_status',C.c_uint8),('mutation_op',C.c_uint32),('mutation_proc',C.c_int64)]
-    _fields_ += [(n,C.c_int64) for n in ('borrow_binding','borrow_owner','borrow_writes','borrow_returns','borrow_calls','borrow_next')]+[('borrow_status',C.c_uint8),('borrow_query',C.c_int64)]
-    _fields_ += [('retain_head',C.c_int64),('retain_count',C.c_int64),('retain_mark',C.c_uint8),('retain_incomplete',C.c_bool),('retain_relation',C.c_bool)]
-    _fields_ += [('effect_present',C.c_bool),('pure_decl',C.c_bool),('effect_head',C.c_int64),('effect_loc',Loc),('sum_variant',C.c_int64),('propagate_type',C.c_int64),('source_unit',C.c_int64)]
-class Type(C.Structure):_fields_=[('kind',C.c_uint8),('name',LX.Text),('size',C.c_int64),('alignment',C.c_int64),('bits',C.c_int64),('is_signed',C.c_bool)]+[(n,C.c_int64) for n in ('elem','length','decl','id','scope','need','carrier','unit')]+[('space',Spatial),('retain_presence',C.c_uint8),('retain_mutable',C.c_uint8),('retain_fields',C.c_int64)]+[(n,C.c_int64) for n in ('sum_error','sum_payload_offset','sum_default')]
-class Caps(C.Structure):_fields_=[(n,C.c_int64) for n in ('nodes','types','locals','errors','bytes','result_work','names')]
-class Local(C.Structure):_fields_=[('name',LX.Text),('type',C.c_int64),('loc',Loc),('immutable',LX.Text),('local_backing',C.c_bool),('decl',C.c_int64)]
-class Error(C.Structure):_fields_=[('loc',Loc),('code',LX.Text),('message',LX.Text),('fix',LX.Text)]
-class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('used','type_count','composite_count','local_count','byte_count','error_count','current','constant_depth','loop_depth','defer_depth','unevaluated')]+[('basic',C.c_bool),('depth',C.c_int64),('fatal',C.c_bool),('metal_depth',C.c_int64),('clashes',C.c_int64),('generic',C.c_int64),('site',C.c_uint8),('instances',C.c_int64),('instance_tail',C.c_int64),('instance_count',C.c_int64),('quantity_device',C.c_bool),('unit_units',C.c_int64),('spatial_types',C.c_int64),('spatial_helpers',C.c_int64),('retain_report_count',C.c_int64),('names',C.c_int64),('instance_limit',C.c_int64),('peak_depth',C.c_int64)]
-class Options(C.Structure):_fields_=[(n,C.c_bool) for n in ('library','metal','authority','quantity_device')]
-class Alias(C.Structure):_fields_=[('scope',C.c_int64),('name',LX.Text),('target',C.c_int64)]
-class Export(C.Structure):_fields_=[('scope',C.c_int64),('name',LX.Text),('loc',Loc)]
-class BorrowStep(C.Structure):_fields_=[('kind',C.c_uint8),('index',C.c_int64)]
-class BorrowSteps(C.Structure):_fields_=[('e',BorrowStep*24)]
-class BorrowPath(C.Structure):_fields_=[('count',C.c_int64),('steps',BorrowSteps)]
-class BorrowOrigin(C.Structure):_fields_=[('kind',C.c_uint8),('root',C.c_int64),('role',C.c_uint8),('type',C.c_int64),('path',BorrowPath)]
-class BorrowQuery(C.Structure):_fields_=[('kind',C.c_uint8),('decl',C.c_int64),('type',C.c_int64),('path',BorrowPath),('status',C.c_uint8),('start',C.c_int64),('count',C.c_int64),('next',C.c_int64),('retain_classes',C.c_bool)]
-class BorrowCaps(C.Structure):_fields_=[('queries',C.c_int64),('origins',C.c_int64),('work',C.c_int64)]
-class RetainEffect(C.Structure):_fields_=[('source',BorrowOrigin),('destination',BorrowOrigin),('value_type',C.c_int64),('witness',C.c_int64),('next',C.c_int64),('source_storage',C.c_bool)]
-class RetainObservation(C.Structure):_fields_=[('kind',C.c_uint8),('owner',C.c_int64),('site',C.c_int64),('facts_complete',C.c_bool),('relation_complete',C.c_bool),('forbidden',C.c_bool),('pending',C.c_int64)]
-class RetainCaps(C.Structure):_fields_=[('effects',C.c_int64),('reports',C.c_int64),('work',C.c_int64)]
-class Context(C.Structure):_fields_=[('nodes',PS.view(Node)),('types',PS.view(Type)),('locals',PS.view(Local)),('errors',PS.view(Error)),('bytes',PS.view(C.c_uint8)),('state',PS.view(State)),('modules',PS.view(LX.Text)),('aliases',PS.view(Alias)),('exports',PS.view(Export)),('borrow_queries',PS.view(BorrowQuery)),('borrow_origins',PS.view(BorrowOrigin)),('retain_effects',PS.view(RetainEffect)),('retain_reports',PS.view(RetainObservation)),('result_work',PS.view(C.c_int64)),('names',PS.view(C.c_int64))]
+# The ctypes transport is read from the generated header, so it follows every
+# field the checker adds instead of going stale (#12682). TransportABI still
+# compiles the header and compares each record's offsets with ctypes' own.
+SCALARS={'int8_t':C.c_int8,'uint8_t':C.c_uint8,'int16_t':C.c_int16,'uint16_t':C.c_uint16,'int32_t':C.c_int32,'uint32_t':C.c_uint32,
+         'int64_t':C.c_int64,'uint64_t':C.c_uint64,'_Bool':C.c_bool,'float':C.c_float,'double':C.c_double,'coax_string':LX.Text}
+def header_layout(header):
+    """Every struct, view, fixed array and scalar alias in a generated Coax header, as ctypes."""
+    text=Path(header).read_text()
+    aliases={m[2]:m[1] for m in re.finditer(r'^typedef (\w+) (coax_\w+);$',text,re.M)}
+    bodies={m[1]:m[2] for m in re.finditer(r'^struct (coax_\w+) \{([^{}]*)\};$',text,re.M)}
+    bodies.update({m[2]:m[1] for m in re.finditer(r'^typedef struct \{([^{}]*)\} (coax_\w+);$',text,re.M)})
+    made={}
+    def resolve(name):
+        if name in SCALARS:return SCALARS[name]
+        if name in aliases:return resolve(aliases[name])
+        if name not in made:
+            fields=[]
+            for decl in filter(None,(d.strip() for d in bodies[name].split(';'))):
+                m=re.fullmatch(r'(?:const )?(\w+) (\*?)(\w+)(?:\[(\d+)\])?',decl)
+                if not m:raise ValueError(f'{header}: {name}: unrecognised field {decl!r}')
+                T=resolve(m[1])
+                if m[2]:T=C.POINTER(T)
+                if m[4]:T=T*int(m[4])
+                fields.append((m[3],T))
+            made[name]=type(name,(C.Structure,),{'_fields_':fields})
+        return made[name]
+    for name in bodies:resolve(name)
+    return made
 
-def transport_records():
-    return [('coax_t_CK_Loc',Loc),('coax_t_Q_Unit',Unit),('coax_t_SP_Frame',Frame),('coax_t_SP_Type',Spatial),('coax_t_CK_Node',Node),('coax_t_CK_Type',Type),('coax_t_CK_Local',Local),('coax_t_CK_Error',Error),('coax_t_CK_State',State),('coax_t_CK_Options',Options),('coax_t_CK_Alias',Alias),('coax_t_CK_Export',Export),('coax_t_BS_Step',BorrowStep),('coax_t_BS_Path',BorrowPath),('coax_t_BS_Origin',BorrowOrigin),('coax_t_CK_BorrowQuery',BorrowQuery),('coax_t_CK_BorrowCaps',BorrowCaps),('coax_t_CK_RetainEffect',RetainEffect),('coax_t_CK_RetainObservation',RetainObservation),('coax_t_CK_RetainCaps',RetainCaps),('coax_t_CK_Context',Context),('coax_t_CK_Caps',Caps)]
+RECORDS={'Loc':'coax_t_CK_Loc','Unit':'coax_t_Q_Unit','Frame':'coax_t_SP_Frame','Spatial':'coax_t_SP_Type','Node':'coax_t_CK_Node','Type':'coax_t_CK_Type',
+         'Local':'coax_t_CK_Local','Error':'coax_t_CK_Error','State':'coax_t_CK_State','Options':'coax_t_CK_Options','Alias':'coax_t_CK_Alias',
+         'Export':'coax_t_CK_Export','BorrowStep':'coax_t_BS_Step','BorrowPath':'coax_t_BS_Path','BorrowOrigin':'coax_t_BS_Origin',
+         'BorrowQuery':'coax_t_CK_BorrowQuery','BorrowCaps':'coax_t_CK_BorrowCaps','RetainEffect':'coax_t_CK_RetainEffect',
+         'RetainObservation':'coax_t_CK_RetainObservation','RetainCaps':'coax_t_CK_RetainCaps','Context':'coax_t_CK_Context','Caps':'coax_t_CK_Caps'}
+def use_layout(header):
+    """Bind the module's record names (Node, Context, ...) to the layout in header."""
+    layout=header_layout(header);globals().update({k:layout[v] for k,v in RECORDS.items()})
+use_layout(ROOT/'bootstrap'/'checker.h')
+
+def transport_records(header=ROOT/'bootstrap'/'checker.h'):
+    layout=header_layout(header);return [(v,layout[v]) for v in RECORDS.values()]
 
 class TransportABI(unittest.TestCase):
     def test_generated_seed_headers_match_ctypes(self):
@@ -62,7 +73,7 @@ class Checker(unittest.TestCase):
         cls.source=cls.d/'checker.c';cls.header=cls.d/'checker.h'
         compiler=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'bin/coax'))
         cls.source.write_bytes(LX.checked([compiler,'c',ROOT/'lib/compiler/checker.coax','--library','--header',cls.header]))
-        PS.assert_native_layouts(cls.header,transport_records())
+        use_layout(cls.header);PS.assert_native_layouts(cls.header,transport_records(cls.header))
         LX.checked([os.environ.get('CC','cc'),'-std=c11','-O1','-shared','-fPIC',cls.source,'-lm','-o',cls.d/'checker.dylib'])
         cls.lib=C.CDLL(str(cls.d/'checker.dylib'))
         cls.lib.CK_meta_capacity.argtypes=[Context._fields_[0][1],C.c_int64];cls.lib.CK_meta_capacity.restype=C.c_int64
@@ -198,12 +209,35 @@ class Checker(unittest.TestCase):
                 self.assertTrue(ok,[LX.raw(x.message).decode() for x in e[:s.error_count]])
     def test_return_borrow_completeness_is_observed_not_assumed(self):
         fixtures=ROOT/'tests/borrow-summaries'
-        for filename,names in [('manual/recursive-only.coax',('recursive','through')),('manual/helper-local-state.coax',('through',)),('manual/helper-alias-local-state.coax',('through',)),('manual/call-projected-local-write.coax',('through',)),('manual/record-held-helper-state.coax',('through',))]:
+        for filename,names in [('manual/recursive-only.coax',('recursive','through')),('manual/call-projected-local-write.coax',('through',)),('manual/record-held-helper-state.coax',('through',))]:
             with self.subTest(file=filename):
                 ok,n,t,e,s,owners=self.check((fixtures/filename).read_text())
                 self.assertTrue(ok,[LX.raw(x.message).decode() for x in e[:s.error_count]])
                 procedures={LX.raw(x.name).decode():x for x in n[:s.used+1] if x.kind==64}
                 for name in names:self.assertEqual(procedures[name].borrow_status,2,name+' remains explicitly manual')
+        # B2 (5fb9c509b8, verification-return-borrows.md "Helper writes into
+        # returned carriers") follows a checked helper's descriptor write into
+        # the caller's local carrier. These two fixtures keep their manual/
+        # names but are complete now (fixtures.json: accept, status 1): the
+        # returned Slot.part may come only from the caller's `out` (parameter
+        # 0), never from the local carrier. The same shape with local backing
+        # written in must still be E0383, so the summary is not complete-empty.
+        for filename in ('manual/helper-local-state.coax','manual/helper-alias-local-state.coax'):
+            with self.subTest(file=filename):
+                source=(fixtures/filename).read_text()
+                ok,n,t,e,s,owners=self.check(source)
+                self.assertTrue(ok,[LX.raw(x.message).decode() for x in e[:s.error_count]])
+                through=next(x for x in n[:s.used+1] if x.kind==64 and LX.raw(x.name)==b'through')
+                self.assertEqual(through.borrow_status,1,'through is summarized')
+                queries,origins=owners[8],owners[9];link=through.borrow_query;returned=[]
+                while link:
+                    q=queries[link-1];link=q.next
+                    if q.kind==1:returned.append(([(q.path.steps.e[i].kind,q.path.steps.e[i].index) for i in range(q.path.count)],[(o.kind,o.root,o.role,o.path.count) for o in origins[q.start:q.start+q.count]]))
+                self.assertEqual(returned,[([(1,0)],[(3,0,2,0)])],'Slot.part comes only from parameter out')
+                local=source.replace('through :: (out: []u8) -> Slot {','through :: () -> Slot {\n  out: [4]u8;').replace(',out);',',out[..]);')
+                self.assertNotEqual(local,source)
+                ok,n,t,e,s,owners=self.check(local)
+                self.assertFalse(ok);self.assertEqual([LX.raw(x.code).decode() for x in e[:s.error_count]],['E0383'])
         source='select :: (out:[]u8,ignored:[]u8)->[]u8 {return out;} through :: (out:[]u8)->[]u8 {local:[4]u8;return select(out,local[..]);}'
         ok,n,t,e,s,owners=self.check(source);self.assertTrue(ok,[LX.raw(x.message).decode() for x in e[:s.error_count]])
         self.assertEqual({LX.raw(x.name).decode():x.borrow_status for x in n[:s.used+1] if x.kind==64},{'select':1,'through':1})
