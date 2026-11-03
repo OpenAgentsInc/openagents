@@ -82,7 +82,7 @@ fork_title :: (s: [] Everglade) -> string {
   return fk_base_title(s);
 }
 // The built-in realm this page plays (a fork's base): Everglade or Everglade 5E.
-fk_base_title :: (s: [] Everglade) -> string { return ifx fk_home(s) == "everglade-5e" then "EVERGLADE 5E" else "EVERGLADE"; }
+fk_base_title :: (s: [] Everglade) -> string { h := fk_home(s); return ifx h == "everglade-5e" then "EVERGLADE 5E" else ifx h == "everglade-classic" then "EVERGLADE CLASSIC" else "EVERGLADE"; }
 // The realm this page edits, saves and forks: a fork's own, else the page's (Everglade 5E is its
 // own realm, everglade-5e, on Everglade's code), else Everglade.
 fk_home :: (s: [] Everglade) -> string { return ifx fk_has(s) && s[0].fk[0].home_n > 0 then cast(string) s[0].fk[0].home[0..<s[0].fk[0].home_n] else "everglade"; }
@@ -429,6 +429,8 @@ fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
   everglade_message(g[..], MSG_FACTS, "realm=everglade-5e\nfork=doom5e\nnow=1000");
   #assert fk_slug(g[..]) == "doom5e" && cast(string) buf[0..<everglade_world_path(g[..], buf[..], 0)] == "/api/playtest/world/made-doom5e";
   #assert fk_base_title(g[..]) == "EVERGLADE 5E";
+  everglade_message(g[..], MSG_FACTS, "realm=everglade-classic\nclock=cycle\nnow=1000");
+  #assert !fk_is_fork(g[..]) && fork_title(g[..]) == "EVERGLADE CLASSIC";
 }
 
 #test "a fork's facts: its slug and its rules, only the four this code plays; its own world" #steps 337000000 {
