@@ -1048,17 +1048,18 @@ everglade_room_spells :: (s: [] Everglade, dt: f32) -> int #export_c {
   now: [DEMO_PIECES] bool;
   v := fi_of(s);
   for k: 0..<v[0].n { now[v[0].burn[k].piece] = true; }
+  // each piece read in place (a copy of each of the 4000 pieces every tick was most of this step: #12717)
   for i: 0..<w[0].n {
-    p := w[0].pieces[i];
-    if s[0].wv.room_stood[i] && p.state != DP_STANDING {
-      c := v3(p.cx, p.cy, p.cz);
+    standing := w[0].pieces[i].state == DP_STANDING;
+    if s[0].wv.room_stood[i] && !standing {
+      c := v3(w[0].pieces[i].cx, w[0].pieces[i].cy, w[0].pieces[i].cz);
       d := sub(c, s[0].wv.room_hit);
       throw := ifx s[0].wv.room_burnt[i] then v3(0, 1.2, 0) else add(times(unit_or(v3(d.x, 0, d.z), v3(0, 0, 1)), 6), v3(0, 3, 0));
       eg_room_put(s, 1, i, throw.x, throw.y, throw.z);
       s[0].wv.room_stood[i] = false;
     }
     if now[i] != s[0].wv.room_burnt[i] {
-      if p.state == DP_STANDING { eg_room_put(s, 2, i, ifx now[i] then 1.0f32 else 0.0f32, 0, 0); }
+      if standing { eg_room_put(s, 2, i, ifx now[i] then 1.0f32 else 0.0f32, 0, 0); }
       s[0].wv.room_burnt[i] = now[i];
     }
   }

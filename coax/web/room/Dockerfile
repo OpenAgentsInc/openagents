@@ -5,10 +5,10 @@ FROM debian:bookworm-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev binutils && rm -rf /var/lib/apt/lists/*
 COPY src/ /src/
 WORKDIR /src
+# Every unit at -O2: the tick runs the city's step, town and spells for every room 30 times a second (#12717).
 # The room's unit and the city's both carry analytics.coax's exports: the room's copies are made local.
 RUN gcc -std=c11 -O2 -w -c room.c -o room.o \
- && gcc -std=c11 -O2 -w -c everglade-step.c -o everglade-step.o & \
-    for n in everglade grid river guard-guide-policy; do gcc -std=c11 -O1 -w -c $n.c -o $n.o & done; wait \
+ && for n in everglade everglade-step grid river guard-guide-policy; do gcc -std=c11 -O2 -w -c $n.c -o $n.o & done; wait \
  && nm -g --defined-only room.o | awk '{print $3}' | sort > room.syms \
  && nm -g --defined-only everglade.o | awk '{print $3}' | sort > city.syms \
  && comm -12 room.syms city.syms > both.syms \

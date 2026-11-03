@@ -23,10 +23,8 @@ objs=("$work/room.o")
 cc -std=c11 -O2 -w -c "$work/room.c" -o "$work/room.o" &
 for u in "${units[@]}"; do
   n="$(basename "$u" .coax)"
-  # the controller's unit (everglade-step: the walk, its collisions and queries, every seat's every
-  # step) at -O2; the others at -O1, which builds the city's large unit in a fraction of the time
-  opt=-O1; [[ "$n" == everglade-step ]] && opt=-O2
-  cc -std=c11 "$opt" -w -c "$work/$n.c" -o "$work/$n.o" &
+  # at -O2, as the image builds them (Dockerfile): the tick runs them for every room 30 times a second
+  cc -std=c11 -O2 -w -c "$work/$n.c" -o "$work/$n.o" &
   objs+=("$work/$n.o")
 done
 wait
