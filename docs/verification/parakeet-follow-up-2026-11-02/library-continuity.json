@@ -1,0 +1,22 @@
+{
+  "scope": "The file CLI entry change is absent from the app/library translation unit. This source-continuity check supports reusing the unchanged app resident engine qualification; it is not a new model/corpus run.",
+  "before_commit": "9525658d61",
+  "before_face_sha256": "8a36b666ba68b2ab9ab167c5e6ec33be83824215932304fb8968dfc0d1848f02",
+  "after_face_sha256": "818bfa234d2aeb8fc9bf242f06ac4a0c2513a030208383ea9a038f4f81ee0546",
+  "preprocessor": [
+    "/usr/bin/clang",
+    "-E",
+    "-P",
+    "-DPSIONIC_PARAKEET_LIBRARY",
+    "-DPSIONIC_PARAKEET_METAL",
+    "-I",
+    "psionic/build/parakeet",
+    "-I",
+    "psionic/platform"
+  ],
+  "preprocessed_before_sha256": "98efc583abdcb3228525e94840b3032627b4c7551ace15ebd267af3a4bda40be",
+  "preprocessed_after_sha256": "98efc583abdcb3228525e94840b3032627b4c7551ace15ebd267af3a4bda40be",
+  "byte_equal": true,
+  "compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "after_commit": "3049f25f3b43266bf155370541f8e14a5ab7d4b6"
+}

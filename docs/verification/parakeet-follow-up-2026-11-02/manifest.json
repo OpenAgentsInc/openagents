@@ -1,0 +1,41 @@
+{
+  "schema": "openagents.parakeet-follow-up-artifacts.v1",
+  "files": {
+    "compiler-generate.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "compiler-host.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "compiler-object.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "library-continuity.json": {
+      "sha256": "fabd29e5da6cf75c5d8efdfd449c20724f4a23a25d9dcf2e9a8c0694ec919612",
+      "bytes": 999
+    },
+    "native-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "native-build.stdout": {
+      "sha256": "a7dbc5c1afe2f0058d1eda56a1c5070156db3bb3ae3abbe61fa65fd478417578",
+      "bytes": 106
+    },
+    "toolchain.json": {
+      "sha256": "f6257fe68dd8455a7bb033035ae741f6788e9f39dc5a00bdef7d4246a998489e",
+      "bytes": 8387
+    },
+    "tools-check.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "tools-check.stdout": {
+      "sha256": "3baa69e60362d76b24b93a4037233c465608981676855a1b6b8ffd441be7f02e",
+      "bytes": 61
+    }
+  }
+}
