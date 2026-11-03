@@ -46,7 +46,8 @@ static double seconds,decode_seconds,compile_seconds,upload_seconds;
 static char error_text[512];
 
 static double now(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (double)t.tv_sec+1e-9*(double)t.tv_nsec;}
-static void wipe(void *p,size_t n){if(!p||!n)return;volatile unsigned char *bytes=p;while(n--)*bytes++=0;}
+/* memset, kept by an empty asm that may read *p (explicit_bzero's method). */
+static void wipe(void *p,size_t n){if(!p||!n)return;memset(p,0,n);__asm__ __volatile__("" : : "r"(p) : "memory");}
 static int fail(const char *operation){snprintf(error_text,sizeof error_text,"%s: %s",operation,pc_log());return -1;}
 /* The engine may be called from any thread: make the primary context current
  * on this one (pc_open only does that once the device is open). */

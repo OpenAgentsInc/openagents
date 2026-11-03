@@ -34,6 +34,12 @@ The loader checks the complete files on open:
 | `model.safetensors` | 2,508,311,120 bytes; SHA-256 `3a2026366188c8c68598edbbff92f8d11590a08e0ae2e6775544e7b07d6a5e11` |
 | `tokenizer.json` | SHA-256 `bd321b096832a3f270bd3b2a88823957920f1a5c5ada71114a26ea729d0cbe91` |
 
+The engine checks `model.safetensors` as 38 pinned 64 MiB pieces
+([model-chunks.coax](../lib/parakeet/model-chunks.coax)), one share per thread
+on up to 16 threads, and admits it only when every piece matches; the piece
+digests come from the copy with the whole-file digest above. This took the
+open from 15-24 s of single-thread hashing to under a second of it
+([record](../../docs/verification/dictation-eval-2026-11-02/README.md)).
 The exact tensor names, shapes, dtypes, disjoint ranges and complete payload
 coverage are checked in Coax before weights are published. The `.nemo` pickle
 is never loaded by the recognizer. A wrong file is a refusal, not a request to

@@ -1,5 +1,6 @@
 // Resident engine: platform effects are supplied by parakeet-face.c.
 #load "model-policy.coax";
+#load "model-chunks.coax";
 #load "fast.coax";
 #load "device-tdt.coax";
 #load "front.coax";
@@ -11,9 +12,13 @@ pkrt_layout :: (file:[]u8,nodes:[]JvNode,offsets:[]int)->PkRtStatus #export_c {
  if !pkmp_model_size(file.count) {return PkRtStatus.file;}base:=pkrt_header(file);if base<0 {return PkRtStatus.header;}
  status:=pkmp_layout(cast(string)file[8..<base],file.count-base,tdt_parakeet(),nodes,offsets);if status!=PkRtStatus.ok {return status;}for i:0..<723 {offsets[i]+=base;}return PkRtStatus.ok;
 }
-pkrt_open :: (file:[]u8,json:[]u8,nodes:[]JvNode,bytes:[]u8,pieces:[]string,offsets:[]int)->PkRtStatus #export_c {
+// shares: the answers of pkch_verify(file, i, n) for every share i of n,
+// run in parallel by the host (model-chunks.coax); empty hashes the whole
+// file here on one thread instead.
+pkrt_open :: (file:[]u8,json:[]u8,nodes:[]JvNode,bytes:[]u8,pieces:[]string,offsets:[]int,shares:[]bool)->PkRtStatus #export_c {
  if !pkmp_model_size(file.count) {return PkRtStatus.file;}
- if !pkrt_pinned(cast(string)file,TDT_PINNED_SHA256) {return PkRtStatus.digest;}
+ if shares.count==0 {if !pkrt_pinned(cast(string)file,TDT_PINNED_SHA256) {return PkRtStatus.digest;}}
+ else if !pkch_complete(shares) {return PkRtStatus.digest;}
  status:=pkrt_layout(file,nodes,offsets);if status!=PkRtStatus.ok {return status;}
  if !pkmp_tokenizer_size(json.count) {return PkRtStatus.vocabulary;}
  if !pkrt_pinned(cast(string)json,"bd321b096832a3f270bd3b2a88823957920f1a5c5ada71114a26ea729d0cbe91") {return PkRtStatus.digest;}

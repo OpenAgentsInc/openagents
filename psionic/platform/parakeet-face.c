@@ -50,11 +50,29 @@ static void error(char *out,size_t cap,const char *message){if(out&&cap)snprintf
 static void status_error(char *out,size_t cap,const char *phase,int status){if(out&&cap)snprintf(out,cap,"Parakeet %s refused (status %d)",phase,status);}
 static mapped map_file(const char *path){mapped m={0};int fd=open(path,O_RDONLY);if(fd<0)return m;struct stat st;if(fstat(fd,&st)||st.st_size<=0||(uint64_t)st.st_size>SIZE_MAX){close(fd);return m;}void *p=mmap(NULL,(size_t)st.st_size,PROT_READ,MAP_PRIVATE,fd,0);close(fd);if(p==MAP_FAILED)return m;m.data=p;m.size=st.st_size;return m;}
 static void unmap(mapped m){if(m.data)munmap(m.data,(size_t)m.size);}
+/* The model's pinned pieces (model-chunks.coax), checked on up to 16 threads:
+ * share i of n checks pieces i, i+n, ... and pkrt_open admits the file only
+ * when every share answers yes. A thread that cannot start runs inline. */
+typedef struct {coax_v_u8 file;int64_t first,step;_Bool ok;} piece_share;
+static void *piece_run(void *p){piece_share *s=p;s->ok=pkch_verify(s->file,s->first,s->step);return NULL;}
+static int64_t verify_pieces(mapped m,_Bool *answers){
+ long cores=8;
+#ifdef _SC_NPROCESSORS_ONLN
+ cores=sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+ int64_t n=cores<1?1:cores>16?16:(int64_t)cores;piece_share s[16];pthread_t t[16];int started[16];
+ for(int64_t i=0;i<n;i++){s[i]=(piece_share){(coax_v_u8){m.data,m.size},i,n,0};started[i]=pthread_create(&t[i],NULL,piece_run,&s[i])==0;}
+ for(int64_t i=0;i<n;i++){if(started[i])pthread_join(t[i],NULL);else piece_run(&s[i]);answers[i]=s[i].ok;}
+ return n;
+}
 static void wipe(void *p,size_t n){if(!p||!n)return;
 #ifdef __APPLE__
  (void)memset_s(p,n,0,n);
 #else
- volatile unsigned char *bytes=p;while(n--)*bytes++=0;
+ /* memset at memory speed; the empty asm that may read *p keeps the stores
+  * (explicit_bzero's method). The byte-at-a-time volatile loop this replaces
+  * took 70-350 ms per call for the 145 MB work arena (GitHub #12665). */
+ memset(p,0,n);__asm__ __volatile__("" : : "r"(p) : "memory");
 #endif
 }
 static void clear_work_locked(psionic_parakeet *s){
@@ -110,7 +128,8 @@ psionic_parakeet *psionic_parakeet_open(const char *dir,int gpu,char *err,size_t
  json=map_file(path);if(!json.data){error(err,errcap,"cannot map tokenizer.json");goto fail;}
  s=calloc(1,sizeof *s);nodes=calloc(NODES,sizeof *nodes);if(!s||!nodes){error(err,errcap,"out of memory");goto fail;}
  s->pieces=calloc(VOCAB,sizeof *s->pieces);s->bytes=calloc(BYTES,1);if(!s->pieces||!s->bytes){error(err,errcap,"out of memory");goto fail;}
- coax_t_PkRtStatus st=pkrt_open((coax_v_u8){model.data,model.size},(coax_v_u8){json.data,json.size},(coax_v_t_JvNode){nodes,NODES},(coax_v_u8){s->bytes,BYTES},(coax_v_string){s->pieces,VOCAB},(coax_v_s64){offsets,723});
+ _Bool answers[16];int64_t shares=verify_pieces(model,answers);
+ coax_t_PkRtStatus st=pkrt_open((coax_v_u8){model.data,model.size},(coax_v_u8){json.data,json.size},(coax_v_t_JvNode){nodes,NODES},(coax_v_u8){s->bytes,BYTES},(coax_v_string){s->pieces,VOCAB},(coax_v_s64){offsets,723},(coax_v_bool){answers,shares});
  if(st!=COAX_PkRtStatus_ok){status_error(err,errcap,"model",st);goto fail;}
  s->ne=pkrt_encoder_count();s->nd=pkrt_decoder_count();s->ew=calloc((size_t)s->ne,4);s->dw=calloc((size_t)s->nd,4);
  s->n32=pkrt_work32(MAX_SAMPLES);s->n64=pkrt_work64(MAX_SAMPLES);s->w32=calloc((size_t)s->n32,4);s->w64=calloc((size_t)s->n64,8);s->wave=calloc(MAX_SAMPLES,8);s->features=calloc(128*2048,4);s->encoded=calloc(256*1024,4);s->last_features=calloc(128*2048,4);s->last_encoded=calloc(256*1024,4);

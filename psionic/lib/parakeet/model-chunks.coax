@@ -1,0 +1,111 @@
+// The pinned model.safetensors as 38 pieces of 64 MiB (the last is shorter),
+// each with its own pinned SHA-256, so the resident engine can check the
+// whole file on several threads at once (GitHub #12665). The single-thread
+// SHA-256 of all 2,508,311,120 bytes was the slowest part of opening the
+// model. The pieces are this exact file's: their digests were computed from
+// the copy whose whole-file SHA-256 is the pinned
+// 3a2026366188c8c68598edbbff92f8d11590a08e0ae2e6775544e7b07d6a5e11
+// (docs/verification/dictation-eval-2026-11-02/README.md). A file is
+// admitted only when every piece matches, so every byte is still checked.
+// Threads are an effect (parakeet-face.c); which pieces exist, what each
+// covers and when the set is complete are decided here.
+#load "../../../coax/lib/crypto/sha256-kernel.coax";
+#authority;
+PKCH_SIZE :: 67108864;
+PKCH_BYTES :: 2508311120;
+PKCH_PIECES :: 38;
+PKCH_DIGESTS :: [38] string.[
+ "e63b68bc9341a5e9c092a3e620af714579d45ccecb3f20b44196dfb252a02776",
+ "bbfbeeeca1e32ae126481ac894583e2dfdb3d3fde3846bdb1803b7d971ffe587",
+ "3a6b5ff2970f552bbe24a02d5749044f53a4cadac47a8f3b4a3e93a8adbcf8c6",
+ "03a6b9c1de9fc3fb6056fd7b50409a8e07baa545cce0308abb94689a7e6ccb6c",
+ "db3e43a9b10fd109b61bbb51a93644667a14c5b9f8c0495b691bce0e6a9ddc42",
+ "6cac1d8d354cc82ee702969b3429a6de2aa44de6bd8196f4a31eea9ab7164d45",
+ "69c8154dddde58730482dbf33781910fd3445c3a7e4f6a9f4a342629e3d7db4d",
+ "aa32800b1a974f372c6a1860cf84f693046638e4a77e247005d4ec1a2cfbb400",
+ "9931c07e20a93c0f39d9b6c52e17fd5bf237397fb4858dc8b5547dfb7553d0c4",
+ "705cf8cbc730cbe4666758cc065684d17834ba1c30e3a6c0d467d401f74369b3",
+ "36d48ab2a3cdb03d0611f7c641dc9c2c23f6d37b8fe8bff3b66c851105bf7a79",
+ "16285971b480c1d92765d1b272487b5f901c7398b238f7551fe5e478ec03b5a1",
+ "d92bce083539e94113b996c14dd65e2e4e9241aa33bc3078c87c176a333a7ccb",
+ "64415f3ffefbf830aedb028be9cda4f36f4dca67f008dd1f4c1fa50806368785",
+ "2be50d9f106db09b88317f482185f46d7b65b352d39f3954282a16036c499afa",
+ "090bd59b78a2417afc01ab2f24e8b728d0932883ad1e576b8e711596b3a971b3",
+ "860d29b0a111f3669a7873967a9213d9a6b5269b661cf95de573b71ba3eb0d94",
+ "19f6a76556c9db8634134409e6ac984a8a6c5548725cb84277345a056f67be61",
+ "d928918d40028575ab901095386627592a02d099223a4db701a01ccd726bf847",
+ "75ca4eac10b778d3878966b43f9e9fc55e763f96afe62f858dccba7582228ba1",
+ "52d992abbc74002b72d07eaaffacafe595935ffc55648320fb17f6234d77a9c3",
+ "641823f77b698b063ac36179072a957fcd1fe0f40e3a11be688367d55221a57e",
+ "ea2e2c21daff1efb8c428e65bd05c5967934e3e7c1eef78c4e7e4a71fa190d16",
+ "e4504971a538b24b96fb3d74a979e35899870e2e28d60c0e51b243844931dda3",
+ "6eeb41b89f10ba10ae438b13f843e15c4defb4e054c9fd2e5fe67ff30a0c2b62",
+ "347f805c55f579351a8c0066c6eabb065526a9272746e057e98c0486ebf8cc92",
+ "aa15186d8bcf5f9c84a58ad4ae0d9909ddb55a3a34c97c8542d36953c719432c",
+ "b7dc57fb112e8f8d06bc0f260760e9f27bd940605ad4a9318d86504e7e2761a2",
+ "b8d66c894c61499662d187b48d204473d8f2fa81ab298658146f49400102170a",
+ "2daa928d44b4a161e46abf96d014f97fc1bc939c3e3ac7bc7a49207ad046aba3",
+ "c1171dde2fceef3ce0029b829e485c7992554efa244b30205dfd075e4aaaae6d",
+ "31d4329f6ccb20e5c4061efcd5b2d1dc97f43bec3891e5ee692159f3549e0950",
+ "ae50e7169a1a9d39bb8a962bd5f26e5a4b55c3058b850f60903d9f1165520c4e",
+ "9178631b89efaba0c60a13b4020fdf9d8b2ea860abdf1c45f732575b31545aad",
+ "b76c7ec0071e0cee1d0da1bbdf78b3192d82a1502ab8802c05a8140a236c331e",
+ "f6335ea793ee71397a2fbf5c232e66990bf077b854675555d0948eaf681527e5",
+ "3b0c59cf19bd9d871f95257f33107cc6b6969ff71a2451dc256f31e0bd127378",
+ "8f7e3c2c3a5796517f475f1af16b9a871c45edb0e8567f3d4148bae7aa657eb2"];
+
+#test "model pieces cover the pinned file exactly once" {
+ p:=pkch_plan();#assert p.size==67108864 && p.bytes==2508311120 && p.pieces==38 && PKCH_DIGESTS.count==38;
+ #assert pkch_count(p.bytes,p.size)==p.pieces;
+ #assert pkch_count(0,4)==0 && pkch_count(1,4)==1 && pkch_count(4,4)==1 && pkch_count(5,4)==2 && pkch_count(5,0)==0 && pkch_count(-1,4)==0 && pkch_count(3,1)==3;
+ total:=0;for i:0..<p.pieces {total+=pkch_end(i,p.bytes,p.size)-i*p.size;#assert pkch_end(i,p.bytes,p.size)>i*p.size;}
+ #assert total==p.bytes && pkch_end(37,p.bytes,p.size)==p.bytes && pkch_end(36,p.bytes,p.size)==37*p.size;
+ #assert pkch_end(0,8,4)==4 && pkch_end(1,8,4)==8 && pkch_end(1,7,4)==7 && pkch_end(0,3,4)==3;
+}
+#test "a piece matches only its own bytes and digest" {
+ ds:=[3]string.["fb8e20fc2e4c3f248c60c39bd652f3c1347298bb977b8b4d5903b85055620603","21e721c35a5823fdb452fa2f9f0a612c74fb952e06927489c6b27a43b817bed4","4ca669ac3713d1f4aea07dae8dcc0d1c9867d27ea82a3ba4e6158a42206f959b"];
+ file:=[6]u8.['a','b','c','d','e','f'];
+ for i:0..<3 {#assert pkch_match(file[..],i,2,ds[..]);}
+ #assert !pkch_match(file[..],-1,2,ds[..]) && !pkch_match(file[..],3,2,ds[..]) && !pkch_match(file[..],0,2,ds[0..<2]) && !pkch_match(file[..],0,0,ds[..]);
+ file[3]='x';#assert pkch_match(file[..],0,2,ds[..]) && !pkch_match(file[..],1,2,ds[..]) && pkch_match(file[..],2,2,ds[..]);
+ swapped:=[3]string.[ds[1],ds[0],ds[2]];file[3]='d';#assert !pkch_match(file[..],0,2,swapped[..]);
+ short:=[3]string.["fb8e20fc2e4c3f248c60c39bd652f3c1347298bb977b8b4d5903b85055620603","21e721c35a5823fdb452fa2f9f0a612c74fb952e06927489c6b27a43b817bed4","3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea"];
+ #assert pkch_match(file[0..<5],2,2,short[..]) && !pkch_match(file[0..<5],2,2,ds[..]);
+}
+#test "every share checks exactly its pieces and refuses a wrong size or share" {
+ ds:=[3]string.["fb8e20fc2e4c3f248c60c39bd652f3c1347298bb977b8b4d5903b85055620603","21e721c35a5823fdb452fa2f9f0a612c74fb952e06927489c6b27a43b817bed4","4ca669ac3713d1f4aea07dae8dcc0d1c9867d27ea82a3ba4e6158a42206f959b"];
+ file:=[6]u8.['a','b','c','d','e','f'];
+ #assert pkch_run(file[..],0,1,2,6,ds[..]) && pkch_run(file[..],0,3,2,6,ds[..]) && pkch_run(file[..],2,3,2,6,ds[..]) && pkch_run(file[..],1,2,2,6,ds[..]);
+ #assert !pkch_run(file[..],0,1,2,7,ds[..]) && !pkch_run(file[0..<5],0,1,2,6,ds[..]) && !pkch_run(file[..],-1,1,2,6,ds[..]) && !pkch_run(file[..],0,0,2,6,ds[..]);
+ #assert !pkch_run(file[..],3,3,2,6,ds[..]) && !pkch_run(file[..],0,4,2,6,ds[..]) && !pkch_run(file[..],1,1,2,6,ds[..]);
+ file[2]='x';
+ #assert !pkch_run(file[..],0,1,2,6,ds[..]) && pkch_run(file[..],0,2,2,6,ds[..]) && !pkch_run(file[..],1,2,2,6,ds[..]) && pkch_run(file[..],2,3,2,6,ds[..]) && !pkch_run(file[..],1,3,2,6,ds[..]);
+ file[2]='c';file[5]='x';#assert !pkch_run(file[..],0,1,2,6,ds[..]) && !pkch_run(file[..],2,3,2,6,ds[..]) && !pkch_run(file[..],0,2,2,6,ds[..]) && pkch_run(file[..],1,2,2,6,ds[..]);
+ small:[8]u8;#assert !pkch_verify(small[..],0,1);
+}
+#test "the parallel shares are admitted only when every share ran and passed" {
+ none:[1]bool;#assert !pkch_complete(none[0..<0]);
+ ok:[38]bool;for i:0..<38 {ok[i]=true;}
+ #assert pkch_complete(ok[0..<1]) && pkch_complete(ok[0..<16]) && pkch_complete(ok[..]);
+ more:[39]bool;for i:0..<39 {more[i]=true;}#assert !pkch_complete(more[..]);
+ ok[15]=false;#assert !pkch_complete(ok[0..<16]) && pkch_complete(ok[0..<15]);ok[0]=false;#assert !pkch_complete(ok[0..<1]);
+}
+
+PkchPlan :: struct {size:int;bytes:int;pieces:int;}
+pkch_plan :: ()->PkchPlan {return PkchPlan.{size=PKCH_SIZE,bytes=PKCH_BYTES,pieces=PKCH_PIECES};}
+pkch_count :: (bytes:int,size:int)->int {if bytes<1 || size<1 {return 0;}return (bytes-1)/size+1;}
+// The end of piece i: the file's end for the last piece, else the next piece's start.
+pkch_end :: (i:int,bytes:int,size:int)->int {return ifx i==pkch_count(bytes,size)-1 then bytes else (i+1)*size;}
+pkch_match :: (file:[]u8,i:int,size:int,digests:[]string)->bool {
+ n:=pkch_count(file.count,size);if n!=digests.count || i<0 || i>=n {return false;}
+ hex:[64]u8;return S_hex(S_hash(cast(string)file[i*size..<pkch_end(i,file.count,size)]),hex[..]) && cast(string)hex[..]==digests[i];
+}
+// Share first of step checks pieces first, first+step, ... The engine runs
+// shares 0..step-1, one per thread, so together they check every piece.
+pkch_run :: (file:[]u8,first:int,step:int,size:int,bytes:int,digests:[]string)->bool {
+ if file.count!=bytes || step<1 || step>digests.count || first<0 || first>=step {return false;}
+ i:=first;while i<digests.count {if !pkch_match(file,i,size,digests) {return false;}i+=step;}return true;
+}
+pkch_verify :: (file:[]u8,first:int,step:int)->bool #export_c {p:=pkch_plan();digests:=PKCH_DIGESTS;return pkch_run(file,first,step,p.size,p.bytes,digests[..]);}
+// The answers of shares 0..n-1 of n: the file is admitted only when all ran and passed.
+pkch_complete :: (shares:[]bool)->bool {if shares.count<1 || shares.count>PKCH_PIECES {return false;}for ok:shares {if !ok {return false;}}return true;}

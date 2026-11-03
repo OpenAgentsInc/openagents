@@ -197,7 +197,8 @@ static pthread_mutex_t job_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t job_done = PTHREAD_COND_INITIALIZER;
 static int job_state;   /* 0 idle, 1 running, 2 done, 3 failed */
 static float *job_audio; static int64_t job_n; static char job_text[TEXT], job_error[512];
-static void wipe(void *p, size_t n) { volatile unsigned char *b = p; if (b) while (n--) *b++ = 0; }
+/* memset, kept by an empty asm that may read *p (explicit_bzero's method). */
+static void wipe(void *p, size_t n) { if (p && n) { memset(p, 0, n); __asm__ __volatile__("" : : "r"(p) : "memory"); } }
 static void *job_run(void *unused) {
   (void)unused;
   char text[TEXT], err[512]; text[0] = 0; err[0] = 0;
