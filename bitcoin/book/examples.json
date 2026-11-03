@@ -763,6 +763,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/dos.coax",
+      "chapter": "bitcoin/book/ch071-misbehavior-limits-and-denial-of-service.md",
+      "stdout": "bitcoin/fixtures/dos.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

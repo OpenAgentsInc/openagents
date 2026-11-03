@@ -1504,15 +1504,21 @@
   {
    "number": 71,
    "title": "Misbehavior, limits and denial of service",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch071-misbehavior-limits-and-denial-of-service.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     68,
     70
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/dos.coax",
+    "bitcoin/examples/dos.coax",
+    "bitcoin/examples/checks/dos.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

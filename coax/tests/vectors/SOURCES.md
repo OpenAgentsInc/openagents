@@ -415,6 +415,17 @@ that a maliciously replaced manifest is authentic.
   (`EvictExtraOutboundPeers`), `random.h`, `addrman.cpp` and
   `netgroup.cpp`, pinned above, give the rest. `connman.py` transliterates
   them as the cross-check's oracle.
+- **Denial of service (Bitcoin chapter 71):** Bitcoin Core's
+  `banman.cpp` and `banman.h` (`BanMan`), `common/bloom.cpp` and
+  `common/bloom.h` (`CRollingBloomFilter`), `hash.cpp` (`MurmurHash3`),
+  `util/fastrange.h`, `headerssync.cpp` and `headerssync.h`,
+  `net_processing.h`, `node/txdownloadman.h`,
+  `node/txdownloadman_impl.cpp`, `net_permissions.h`, and
+  `test/denialofservice_tests.cpp` and `test/bloom_tests.cpp`, the cases
+  the library ports, all at revision `ddea9196`. `net.cpp`, `net.h`,
+  `net_processing.cpp`, `chainparams.cpp`, `chain.h`, `serialize.h`,
+  `script.h` and `test/hash_tests.cpp`, pinned above, give the rest.
+  `dos.py` transliterates them as the cross-check's oracle.
 - **Chain parameters (Bitcoin chapter 50):** Bitcoin Core's
   `kernel/chainparams.cpp` (every network's class), `kernel/signet.h`
   (`SIGNET_DEFAULT_CHALLENGE`, `GetSignetMessageStart`), `signet.cpp`
@@ -813,6 +824,20 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/netbase.cpp`](upstream/bitcoin-core/netbase.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/netbase.cpp) | `2cf9b0a0f94e8632fa585927c16e6714352770d31affe6ce986c19ad468146d4` |
 | [`upstream/bitcoin-core/random.cpp`](upstream/bitcoin-core/random.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/random.cpp) | `36c7f0204674539fa86d78766cd0f074420a1c46578a054bc1f0ac1c0b62a090` |
 | [`upstream/bitcoin-core/test_util_net.cpp`](upstream/bitcoin-core/test_util_net.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/util/net.cpp) | `432b91c123750a21097cb2efacbc5f0fca88c461a8606e4a458bb71c257dbb5e` |
+| [`upstream/bitcoin-core/banman.cpp`](upstream/bitcoin-core/banman.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/banman.cpp) | `09032596d182a7ff35fb2d179ced495a96efca63635817c2f54012ad6f3839fd` |
+| [`upstream/bitcoin-core/banman.h`](upstream/bitcoin-core/banman.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/banman.h) | `831066451b07a93fdbe901fe544a79ae5564ccebbe4a53f65c1e2d15d78bef23` |
+| [`upstream/bitcoin-core/bloom.cpp`](upstream/bitcoin-core/bloom.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/common/bloom.cpp) | `58a6ef2ff1895ba8b3bdac8363bfa700cd780273e65a92a611eaa7dc6be0f6ee` |
+| [`upstream/bitcoin-core/bloom.h`](upstream/bitcoin-core/bloom.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/common/bloom.h) | `80c3f012f00f271c345794ef37eb48d757be56d1cb2a2f6122db4ddeb2ab74f3` |
+| [`upstream/bitcoin-core/hash.cpp`](upstream/bitcoin-core/hash.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/hash.cpp) | `96a57445526b9d3ee840a17bff153115fdccb54eabb066c8ec9af90402a54e55` |
+| [`upstream/bitcoin-core/headerssync.cpp`](upstream/bitcoin-core/headerssync.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/headerssync.cpp) | `bc61319b39e993d07a9852e67869b479fdbf258d290c9d13bcfd8386c68e25a6` |
+| [`upstream/bitcoin-core/headerssync.h`](upstream/bitcoin-core/headerssync.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/headerssync.h) | `60485439e8fcee7ac9ab1cef39fc42a114bfd40c769e918cf4fd5e88489d29aa` |
+| [`upstream/bitcoin-core/net_processing.h`](upstream/bitcoin-core/net_processing.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/net_processing.h) | `67a47337271295f0b2e1aed584c72b06d7f6ee7ad34df82656e7117e1a746c1c` |
+| [`upstream/bitcoin-core/txdownloadman.h`](upstream/bitcoin-core/txdownloadman.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/txdownloadman.h) | `2f9cba3ce05f8e1688ca26f3c3e5febebb5443866fec0ddc9e0e6000111ad174` |
+| [`upstream/bitcoin-core/net_permissions.h`](upstream/bitcoin-core/net_permissions.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/net_permissions.h) | `4df2ee38f4d3d4aeedbf723e8a96f9d7aa3d092873754b335355694a68cf16e9` |
+| [`upstream/bitcoin-core/denialofservice_tests.cpp`](upstream/bitcoin-core/denialofservice_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/denialofservice_tests.cpp) | `6f5fcaee5f0277b293381ba6d3fc09fbbbecc07a1539d7c13bc55a5f5abdc883` |
+| [`upstream/bitcoin-core/bloom_tests.cpp`](upstream/bitcoin-core/bloom_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/bloom_tests.cpp) | `12ddab254a360858cb4f567bd2c5f1ef735464d6292eec5b9b6b7b5686a330b1` |
+| [`upstream/bitcoin-core/fastrange.h`](upstream/bitcoin-core/fastrange.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/util/fastrange.h) | `01d238a309b0a7737f72549785da0a90088068a462539f36e920f70764fe144a` |
+| [`upstream/bitcoin-core/txdownloadman_impl.cpp`](upstream/bitcoin-core/txdownloadman_impl.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/txdownloadman_impl.cpp) | `bd44b0074d6f271312a2de14697f28871087531b06c49d801ebbd988f65809c7` |
 | [`upstream/bolts/04-onion-routing.md`](upstream/bolts/04-onion-routing.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/04-onion-routing.md) | `79f4e06d334a200f62b6053cc891f2c4dd710e7a43e1c7b3691848dc4c460070` |
 | [`upstream/bolts/bolt04/onion-test.json`](upstream/bolts/bolt04/onion-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/onion-test.json) | `bff01ffc728c3fecbee133eedfdaf39a26984f35cf7e76ed80f14d6e78cb8d56` |
 | [`upstream/bolts/bolt04/onion-error-test.json`](upstream/bolts/bolt04/onion-error-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/onion-error-test.json) | `374800b8d0dd21920299f4a998c4278f9d66f3a00b5e7b396765d38a50f2ea11` |

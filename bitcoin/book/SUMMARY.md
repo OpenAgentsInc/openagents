@@ -94,6 +94,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [68. The handshake and feature negotiation](ch068-the-handshake-and-feature-negotiation.md) — implemented
 - [69. Addresses and the address manager](ch069-addresses-and-the-address-manager.md) — implemented
 - [70. Connections: outbound, block-relay-only, feelers and eviction](ch070-connections-outbound-block-relay-only-feelers-and-eviction.md) — implemented
+- [71. Misbehavior, limits and denial of service](ch071-misbehavior-limits-and-denial-of-service.md) — implemented
 - [73. Compact blocks](ch073-compact-blocks.md) — implemented
 - [74. Compact block filters](ch074-compact-block-filters.md) — implemented
 

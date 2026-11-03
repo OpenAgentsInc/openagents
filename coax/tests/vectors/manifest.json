@@ -674,7 +674,8 @@
       "covers": [
         "bitcoin-transactions",
         "bitcoin-v2-transport",
-        "bitcoin-utxo-set"
+        "bitcoin-utxo-set",
+        "bitcoin-dos"
       ],
       "retrieved": "2026-11-02",
       "sha256": "9acb4bab2fe63ef351429b19d6ed75a9e719705060999c4e5dba78ce7c08db6f",
@@ -716,7 +717,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-transactions",
-        "bitcoin-script-interpreter"
+        "bitcoin-script-interpreter",
+        "bitcoin-dos"
       ],
       "retrieved": "2026-11-02",
       "sha256": "43e4eb10ee85ac31996e257d0c5dc45cbe3b29b2d61d1a72d101453ba64ded01",
@@ -856,7 +858,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "sha256d-block-hash",
-        "bitcoin-p2p"
+        "bitcoin-p2p",
+        "bitcoin-dos"
       ],
       "retrieved": "2026-11-02",
       "sha256": "cfadf1478377c32625280520655b598674e6d487f08d7f7a80ac69252104b5e1",
@@ -1189,7 +1192,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "siphash24"
+        "siphash24",
+        "bitcoin-dos"
       ],
       "retrieved": "2026-11-02",
       "sha256": "c567bcc5c403b7098d1cf4caaa0a9817e3dc2438ba77c8f1fbef78100b3cab3f",
@@ -1534,7 +1538,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-locktime"
+        "bitcoin-locktime",
+        "bitcoin-dos"
       ],
       "retrieved": "2026-11-03",
       "sha256": "a1b863764bc6e40ed79a447805843eb7b18a09730eb3a849bf9fe43f17274aba",
@@ -1921,7 +1926,8 @@
         "bitcoin-p2p",
         "bitcoin-v2-transport",
         "bitcoin-handshake",
-        "bitcoin-connman"
+        "bitcoin-connman",
+        "bitcoin-dos"
       ],
       "retrieved": "2026-11-03",
       "sha256": "c268325ae03f4f80e8427af80eb794265b08e3686923b7a5a8b850416bed213b",
@@ -1938,7 +1944,8 @@
         "bitcoin-v2-transport",
         "bitcoin-handshake",
         "bitcoin-addrman",
-        "bitcoin-connman"
+        "bitcoin-connman",
+        "bitcoin-dos"
       ],
       "retrieved": "2026-11-03",
       "sha256": "05e8ce20762e9c23e060d428fb5218cb32fea599afbd40b2417b9bd2a236d7a6",
@@ -1955,7 +1962,8 @@
         "bitcoin-handshake",
         "bitcoin-compact-blocks",
         "bitcoin-addrman",
-        "bitcoin-connman"
+        "bitcoin-connman",
+        "bitcoin-dos"
       ],
       "retrieved": "2026-11-03",
       "sha256": "bcd69aba37869cd68dfe03cce37b1400d1488b59ef1faafdc319ddcb51ebea36",
@@ -2593,7 +2601,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-witness-commitment"
+        "bitcoin-witness-commitment",
+        "bitcoin-dos"
       ],
       "retrieved": "2026-11-03",
       "sha256": "2875af77e8e0d4db5b210bc716f37713bd0bd8922dde60713e611b33cdf1806a",
@@ -3488,6 +3497,188 @@
       "retrieved": "2026-11-03",
       "sha256": "15f14c034fb2a5739d7ce638be94c5b37ea675a2e01159092dd93b59d69c3439",
       "bytes": 5978
+    },
+    {
+      "path": "upstream/bitcoin-core/banman.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/banman.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "09032596d182a7ff35fb2d179ced495a96efca63635817c2f54012ad6f3839fd",
+      "bytes": 5453
+    },
+    {
+      "path": "upstream/bitcoin-core/banman.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/banman.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "831066451b07a93fdbe901fe544a79ae5564ccebbe4a53f65c1e2d15d78bef23",
+      "bytes": 4749
+    },
+    {
+      "path": "upstream/bitcoin-core/bloom.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/common/bloom.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "58a6ef2ff1895ba8b3bdac8363bfa700cd780273e65a92a611eaa7dc6be0f6ee",
+      "bytes": 10252
+    },
+    {
+      "path": "upstream/bitcoin-core/bloom.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/common/bloom.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "80c3f012f00f271c345794ef37eb48d757be56d1cb2a2f6122db4ddeb2ab74f3",
+      "bytes": 4984
+    },
+    {
+      "path": "upstream/bitcoin-core/hash.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/hash.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "96a57445526b9d3ee840a17bff153115fdccb54eabb066c8ec9af90402a54e55",
+      "bytes": 2381
+    },
+    {
+      "path": "upstream/bitcoin-core/headerssync.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/headerssync.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "bc61319b39e993d07a9852e67869b479fdbf258d290c9d13bcfd8386c68e25a6",
+      "bytes": 15260
+    },
+    {
+      "path": "upstream/bitcoin-core/headerssync.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/headerssync.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "60485439e8fcee7ac9ab1cef39fc42a114bfd40c769e918cf4fd5e88489d29aa",
+      "bytes": 11877
+    },
+    {
+      "path": "upstream/bitcoin-core/net_processing.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/net_processing.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "67a47337271295f0b2e1aed584c72b06d7f6ee7ad34df82656e7117e1a746c1c",
+      "bytes": 8971
+    },
+    {
+      "path": "upstream/bitcoin-core/txdownloadman.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/txdownloadman.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "2f9cba3ce05f8e1688ca26f3c3e5febebb5443866fec0ddc9e0e6000111ad174",
+      "bytes": 7702
+    },
+    {
+      "path": "upstream/bitcoin-core/net_permissions.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/net_permissions.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "4df2ee38f4d3d4aeedbf723e8a96f9d7aa3d092873754b335355694a68cf16e9",
+      "bytes": 3684
+    },
+    {
+      "path": "upstream/bitcoin-core/denialofservice_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/denialofservice_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "6f5fcaee5f0277b293381ba6d3fc09fbbbecc07a1539d7c13bc55a5f5abdc883",
+      "bytes": 23157
+    },
+    {
+      "path": "upstream/bitcoin-core/bloom_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/bloom_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "12ddab254a360858cb4f567bd2c5f1ef735464d6292eec5b9b6b7b5686a330b1",
+      "bytes": 50296
+    },
+    {
+      "path": "upstream/bitcoin-core/fastrange.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/util/fastrange.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "01d238a309b0a7737f72549785da0a90088068a462539f36e920f70764fe144a",
+      "bytes": 1919
+    },
+    {
+      "path": "upstream/bitcoin-core/txdownloadman_impl.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/txdownloadman_impl.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-dos"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "bd44b0074d6f271312a2de14697f28871087531b06c49d801ebbd988f65809c7",
+      "bytes": 28523
     }
   ]
 }

@@ -1,0 +1,41 @@
+// The checks of dos.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/dos.coax
+#load "../dos.coax";
+
+// book:begin check
+// Whatever the tweak, a rolling filter remembers the last n entries.
+#forall "a rolling filter never forgets its last 100" k: 0..<8 #steps 4000000000 {
+  rng := [1] AmRng.[seeded_rng(cast,trunc(u8) (k + 1))];
+  words: [46] u64; f: [1] RbFilter; data: [300] [32] u8;
+  #assert ds_rb_init(f[..], 100, 0.01, cast,trunc(u32) am_rand64(rng[..]), words[..]);
+  for i: 0..<300 {
+    d := key32(rng[..], data[i][..]);
+    ds_rb_insert(f[..], data[i][..]);
+    j := ifx i >= 99 then i - 99 else 0;
+    while j <= i { #assert ds_rb_contains(f[..], data[j][..]); j += 1; }
+  }
+}
+// Whatever the message size and the pace of processing, a peer's memory
+// stays under the receive bound.
+#forall "flood control holds the bound" k: 0..<12 #steps 4000000000 {
+  b := [1] DsBuf.[DsBuf.{msg=24 + 1 + k * 333331}];
+  for tick: 0..<120 {
+    for r: 0..<16 { done := ds_read(b[..], DS_READ_CHUNK); }
+    if tick % (k + 1) == 0 { took := ds_take(b[..]); }
+  }
+  #assert b[0].peak <= ds_recv_bound();
+}
+// No limit lets an oversized message through, and none refuses one at
+// the limit.
+#forall "each limit is exact" kind: 0..<11 {
+  at := 0;
+  if kind == DS_FRAME { at = DS_MAX_MESSAGE; } else if kind == DS_FRAME_V2 { at = DS_V2_MAX_CONTENTS; }
+  else if kind == DS_INV || kind == DS_GETDATA { at = DS_MAX_INV; } else if kind == DS_ADDR || kind == DS_ADDRV2 { at = DS_MAX_ADDR; }
+  else if kind == DS_HEADERS { at = DS_MAX_HEADERS; } else if kind == DS_GETHEADERS || kind == DS_GETBLOCKS { at = DS_MAX_LOCATOR; }
+  else if kind == DS_FILTERLOAD { at = DS_MAX_FILTER; } else { at = DS_MAX_ELEMENT; }
+  #assert ds_check(kind, at, 0) == DS_OK && ds_check(kind, at + 1, 0) != DS_OK;
+}
+// book:end check
+
+seeded_rng :: (b: u8) -> AmRng { seed: [32] u8; for i: 0..<32 { seed[i] = b; } return am_rng(seed[..]); }

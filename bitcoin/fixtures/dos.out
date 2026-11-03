@@ -1,0 +1,55 @@
+message limits
+  v1 payload of 4000000 bytes: ok
+  v1 payload of 4000001 bytes: disconnect (oversized message)
+  v2 contents of 4000014 bytes: disconnect (oversized message)
+  inv with 50000 entries: ok
+  inv with 50001 entries: misbehaving (inv message size = 50001)
+  getdata with 50001 entries: misbehaving (getdata message size = 50001)
+  addr with 1001 addresses: misbehaving (addr message size = 1001)
+  addrv2 with 1001 addresses: misbehaving (addrv2 message size = 1001)
+  headers with 2000 headers: ok
+  headers with 2001 headers: misbehaving (headers message size = 2001)
+  getheaders with a 102-hash locator: disconnect (getheaders locator size 102 > 101)
+  getblocks with a 101-hash locator: ok
+  filterload of 36001 bytes: misbehaving (too-large bloom filter)
+  filterload with 51 hash functions: misbehaving (too-large bloom filter)
+  filteradd of 521 bytes: misbehaving (bad filteradd message)
+what misbehaving costs
+  inbound or outbound peer: discouraged and disconnected
+  noban: kept; manual: kept; private broadcast: disconnected; localhost: disconnected, not discouraged
+  after 3 discouragements: 160.176.192.1 True, the onion address True, 160.176.255.1 False
+  banned 160.176.255.1 for a day: True now, False after 24 hours
+invalid blocks
+  BLOCK_CONSENSUS: misbehaving; compact not punished
+  BLOCK_CACHED_INVALID: outbound misbehaving; inbound not punished
+  BLOCK_INVALID_HEADER: misbehaving
+  BLOCK_MUTATED: misbehaving; compact not punished
+  BLOCK_MISSING_PREV: misbehaving
+  BLOCK_INVALID_PREV: misbehaving
+  BLOCK_TIME_FUTURE: not punished
+  BLOCK_HEADER_LOW_WORK: not punished
+MurmurHash3 and rolling bloom filters
+  MurmurHash3(0xfba4c795, "") = 6a396f08
+  MurmurHash3(0xffffffff, "") = 81f16f39
+  MurmurHash3(0xfba4c795, "00") = ea3f0b17
+  MurmurHash3(0x00000000, "001122334455667788") = b4698def
+  (50000, 1e-06) discouraged addresses: 20 hash functions, 25000 a generation, 539168 bytes
+  (50000, 1e-06) known transactions, per peer: 20 hash functions, 25000 a generation, 539168 bytes
+  (5000, 0.001) known addresses, per peer: 10 hash functions, 2500 a generation, 26960 bytes
+  (100, 0.01) Core's test filter: 7 hash functions, 50 a generation, 368 bytes
+  (100, 0.01) after 399 inserts: last 100 remembered 100, false positives in 10000 others 74
+  after reset, rolling through them: every one of the last 100 remembered True
+  100000 discouraged: of the last 50000, 5000 of 5000 sampled remembered; of the first 10000, 0 of 1000; 0 of 20000 others match
+headers
+  unconnecting headers at 0 30 120 121 200 242 s: getheaders sent at 0 121 242
+  mainnet at genesis: threshold 000000000000000000000000000000000000000145ec036acc5ba740052af1a0
+  10000 blocks past the minimum: threshold is the tip less 144 blocks: True
+  2000 genesis-difficulty headers from genesis: presync; 1999: ignored
+  regtest, 1 header from genesis: accepted
+  presync from genesis on 2026-11-03: at most 5201830 commitment bits (650229 bytes) and 15400 headers of 48 bytes: 1389429 bytes
+floods
+  4 MB messages at 1 MiB a tick, one processed every 8 ticks: peak 8064256 bytes, reading paused 246 of 400 ticks; receive bound 9065560
+  getdata for 1 MB blocks from a peer that never reads: 1000024 bytes waiting to send, peak 6046235, reading paused 46 of 50 ticks
+  per peer: receive 9065560 + send 5000024 + filters 566128 = 14631712 bytes
+  10 inv messages of 50000 wtxids: 5000 announcements tracked, 495000 dropped; with the relay permission: True
+  request delay: outbound 0 s, inbound 2 s, inbound txid with wtxid peers 4 s, inbound with 100 in flight 4 s

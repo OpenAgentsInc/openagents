@@ -1,0 +1,202 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/dos.coax";
+#import "Basic";
+
+NOW :: 1793664000;             // 2026-11-03
+GENESIS_TIME :: 1231006505;
+MIN_WORK_MAIN :: "000000000000000000000000000000000000000145ec036acc5ba740052af1a0";
+
+yes :: (b: bool) -> string { return ifx b then "True" else "False"; }
+hex_digit :: (x: int) -> string { return "0123456789abcdef"[x..<x + 1]; }
+hex32 :: (x: u32) { s := 28; while s >= 0 { print("%", hex_digit(cast(int) ((x >> cast(u32) s) & 15))); s -= 4; } }
+hex256 :: (a: U256) {
+  b: [32] u8; ok := u256_to_hash_vartime(a, b[..]);
+  i := 31; while i >= 0 { print("%", hex_digit(cast(int) b[i] >> 4)); print("%", hex_digit(cast(int) b[i] & 15)); i -= 1; }
+}
+unhex :: (s: string, out: [] u8) -> [] u8 {
+  n := s.count / 2;
+  for i: 0..<n { out[i] = cast,trunc(u8) (nib(s[2*i]) * 16 + nib(s[2*i+1])); }
+  return out[0..<n];
+}
+nib :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+// 32 bytes of key: four draws, little-endian.
+key32 :: (rng: [] AmRng, out: [] u8) -> [] u8 {
+  for i: 0..<4 { ok := cb_store_le64(out, 8 * i, am_rand64(rng)); }
+  return out[0..<32];
+}
+addr10 :: (first: int, i: int) -> AmAddr { return am_v4(first, i >> 16, (i >> 8) & 255, i & 255, 8333); }
+
+limit :: (label: string, kind: int, name: string, n: int, extra: int) {
+  print("  %: ", label);
+  v := ds_check(kind, n, extra);
+  if v == DS_OK { print("ok\n"); return; }
+  if v == DS_DISCONNECT {
+    if kind == DS_GETHEADERS || kind == DS_GETBLOCKS { print("disconnect (% locator size % > %)\n", name, n, DS_MAX_LOCATOR); }
+    else { print("disconnect (oversized message)\n"); }
+    return;
+  }
+  if kind == DS_FILTERLOAD { print("misbehaving (too-large bloom filter)\n"); }
+  else if kind == DS_FILTERADD { print("misbehaving (bad filteradd message)\n"); }
+  else { print("misbehaving (% message size = %)\n", name, n); }
+}
+limits :: () {
+  print("message limits\n");
+  limit("v1 payload of 4000000 bytes", DS_FRAME, "", 4000000, 0);
+  limit("v1 payload of 4000001 bytes", DS_FRAME, "", 4000001, 0);
+  limit("v2 contents of 4000014 bytes", DS_FRAME_V2, "", 4000014, 0);
+  limit("inv with 50000 entries", DS_INV, "inv", 50000, 0);
+  limit("inv with 50001 entries", DS_INV, "inv", 50001, 0);
+  limit("getdata with 50001 entries", DS_GETDATA, "getdata", 50001, 0);
+  limit("addr with 1001 addresses", DS_ADDR, "addr", 1001, 0);
+  limit("addrv2 with 1001 addresses", DS_ADDRV2, "addrv2", 1001, 0);
+  limit("headers with 2000 headers", DS_HEADERS, "headers", 2000, 0);
+  limit("headers with 2001 headers", DS_HEADERS, "headers", 2001, 0);
+  limit("getheaders with a 102-hash locator", DS_GETHEADERS, "getheaders", 102, 0);
+  limit("getblocks with a 101-hash locator", DS_GETBLOCKS, "getblocks", 101, 0);
+  limit("filterload of 36001 bytes", DS_FILTERLOAD, "filterload", 36001, 10);
+  limit("filterload with 51 hash functions", DS_FILTERLOAD, "filterload", 100, 51);
+  limit("filteradd of 521 bytes", DS_FILTERADD, "filteradd", 521, 0);
+}
+
+verdict :: (v: int, local: bool) -> string {
+  if v == DS_KEEP { return "kept"; }
+  if v == DS_DISCOURAGE { return "discouraged and disconnected"; }
+  return ifx local then "disconnected, not discouraged" else "disconnected";
+}
+costs :: () {
+  print("what misbehaving costs\n");
+  print("  inbound or outbound peer: %\n", verdict(ds_punish(false, false, false, false), false));
+  print("  noban: %; manual: %; private broadcast: %; localhost: %\n",
+    verdict(ds_punish(true, false, false, false), false), verdict(ds_punish(false, true, false, false), false),
+    verdict(ds_punish(false, false, true, false), false), verdict(ds_punish(false, false, false, true), true));
+  words: [67396] u64; bans: [4] DsBan; b: [1] DsBanMan;
+  ok := ds_banman_init(b[..], 0x2b7e1516, words[..], bans[..]);
+  a0 := am_v4(160, 176, 192, 1, 8333); a1 := am_v4(160, 176, 192, 2, 8333); other := am_v4(160, 176, 255, 1, 8333);
+  raw: [32] u8; tor := am_bytes(AM_NET_ONION, unhex("79bcc625184b05194975c28b66b66b0469f7f6556fb1ac3189a79b40dda32f1f", raw[..]), 8333);
+  ds_discourage(b[..], a0); ds_discourage(b[..], a1); ds_discourage(b[..], tor);
+  print("  after 3 discouragements: 160.176.192.1 %, the onion address %, 160.176.255.1 %\n",
+    yes(ds_is_discouraged(b[..], a0)), yes(ds_is_discouraged(b[..], tor)), yes(ds_is_discouraged(b[..], other)));
+  ok = ds_ban(b[..], other, NOW + 86400);
+  print("  banned 160.176.255.1 for a day: % now, % after 24 hours\n",
+    yes(ds_is_banned(b[..], other, NOW)), yes(ds_is_banned(b[..], other, NOW + 86400)));
+}
+
+punished :: (r: int, compact: bool, inbound: bool) -> string { return ifx ds_punish_block(r, compact, inbound) then "misbehaving" else "not punished"; }
+blocks :: () {
+  print("invalid blocks\n");
+  names := [8] string.["BLOCK_CONSENSUS", "BLOCK_CACHED_INVALID", "BLOCK_INVALID_HEADER", "BLOCK_MUTATED",
+                       "BLOCK_MISSING_PREV", "BLOCK_INVALID_PREV", "BLOCK_TIME_FUTURE", "BLOCK_HEADER_LOW_WORK"];
+  for i: 0..<8 {
+    r := i + 1;
+    print("  %: ", names[i]);
+    if r == DS_BLOCK_CONSENSUS || r == DS_BLOCK_MUTATED { print("%; compact %\n", punished(r, false, true), punished(r, true, true)); }
+    else if r == DS_BLOCK_CACHED_INVALID { print("outbound %; inbound %\n", punished(r, false, false), punished(r, false, true)); }
+    else { print("%\n", punished(r, false, true)); }
+  }
+}
+
+murmur :: (seed: u32, data: string) {
+  b: [16] u8;
+  print("  MurmurHash3(0x"); hex32(seed); print(", \"%\") = ", data); hex32(ds_murmur3(seed, unhex(data, b[..]))); print("\n");
+}
+size :: (label: string, n: int, fp: f64, fp_text: string) {
+  s := ds_rb_size(n, fp);
+  print("  (%, %) %: % hash functions, % a generation, % bytes\n", n, fp_text, label, s.hash_funcs, s.per_generation, s.words * 8);
+}
+filters :: () {
+  print("MurmurHash3 and rolling bloom filters\n");
+  murmur(0xfba4c795, ""); murmur(0xffffffff, ""); murmur(0xfba4c795, "00"); murmur(0, "001122334455667788");
+  size("discouraged addresses", 50000, 0.000001, "1e-06");
+  size("known transactions, per peer", 50000, 0.000001, "1e-06");
+  size("known addresses, per peer", 5000, 0.001, "0.001");
+  size("Core's test filter", 100, 0.01, "0.01");
+  seed: [32] u8; for i: 0..<32 { seed[i] = 7; }
+  rng := [1] AmRng.[am_rng(seed[..])];
+  data: [399] [32] u8;
+  for i: 0..<399 { k := key32(rng[..], data[i][..]); }
+  words: [46] u64; f: [1] RbFilter;
+  ok := ds_rb_init(f[..], 100, 0.01, 0x9e3779b9, words[..]);
+  for i: 0..<399 { ds_rb_insert(f[..], data[i][..]); }
+  last := 0; for i: 299..<399 { if ds_rb_contains(f[..], data[i][..]) { last += 1; } }
+  fp := 0; k: [32] u8;
+  for i: 0..<10000 { if ds_rb_contains(f[..], key32(rng[..], k[..])) { fp += 1; } }
+  print("  (100, 0.01) after 399 inserts: last 100 remembered %, false positives in 10000 others %\n", last, fp);
+  ds_rb_reset(f[..], 0x9e3779b9);
+  rolling := true;
+  for i: 0..<399 {
+    if i >= 100 && !ds_rb_contains(f[..], data[i - 100][..]) { rolling = false; }
+    ds_rb_insert(f[..], data[i][..]);
+    rolling = rolling && ds_rb_contains(f[..], data[i][..]);
+  }
+  print("  after reset, rolling through them: every one of the last 100 remembered %\n", yes(rolling));
+  big: [67396] u64; bans: [1] DsBan; b: [1] DsBanMan;
+  ok = ds_banman_init(b[..], 0x243f6a88, big[..], bans[..]);
+  for i: 0..<100000 { ds_discourage(b[..], addr10(10, i)); }
+  kept := 0; i := 50000; while i < 100000 { if ds_is_discouraged(b[..], addr10(10, i)) { kept += 1; } i += 10; }
+  old := 0; i = 0; while i < 10000 { if ds_is_discouraged(b[..], addr10(10, i)) { old += 1; } i += 10; }
+  fresh := 0; for j: 0..<20000 { if ds_is_discouraged(b[..], addr10(11, j)) { fresh += 1; } }
+  print("  100000 discouraged: of the last 50000, % of 5000 sampled remembered; of the first 10000, % of 1000; % of 20000 others match\n", kept, old, fresh);
+}
+
+route_name :: (r: int) -> string {
+  if r == DS_PRESYNC { return "presync"; }
+  return ifx r == DS_IGNORED then "ignored" else "accepted";
+}
+headers :: () {
+  print("headers\n");
+  times := [6] int.[0, 30, 120, 121, 200, 242];
+  print("  unconnecting headers at 0 30 120 121 200 242 s: getheaders sent at");
+  last := 0;
+  for i: 0..<6 { if ds_getheaders_due(last, NOW + times[i]) { last = NOW + times[i]; print(" %", times[i]); } }
+  print("\n");
+  min_work := pw_number(MIN_WORK_MAIN);
+  g := pow_work_vartime(0x1d00ffff);
+  t := ds_threshold(g, 0x1d00ffff, min_work);
+  print("  mainnet at genesis: threshold "); hex256(t); print("\n");
+  tip := u256_add(min_work, u256_mul32(pow_work_vartime(0x17023a04), 10000));
+  back := u256_sub(tip, u256_mul32(pow_work_vartime(0x17023a04), 144));
+  print("  10000 blocks past the minimum: threshold is the tip less 144 blocks: %\n",
+    yes(u256_compare_vartime(ds_threshold(tip, 0x17023a04, min_work), back) == 0));
+  print("  2000 genesis-difficulty headers from genesis: %; 1999: %\n",
+    route_name(ds_headers_route(g, 0x1d00ffff, 2000, t)), route_name(ds_headers_route(g, 0x1d00ffff, 1999, t)));
+  r := pow_work_vartime(0x207fffff);
+  print("  regtest, 1 header from genesis: %\n", route_name(ds_headers_route(r, 0x207fffff, 1, ds_threshold(r, 0x207fffff, U256.{}))));
+  p := ds_presync_bound(NOW, GENESIS_TIME, 649, 15400);
+  print("  presync from genesis on 2026-11-03: at most % commitment bits (% bytes) and 15400 headers of % bytes: % bytes\n",
+    p.commitments, (p.commitments + 7) / 8, DS_COMPRESSED_HEADER, p.bytes);
+}
+
+floods :: () {
+  print("floods\n");
+  b := [1] DsBuf.[DsBuf.{msg=DS_MAX_MESSAGE}];
+  paused := 0;
+  for tick: 0..<400 {
+    for r: 0..<16 { done := ds_read(b[..], DS_READ_CHUNK); }
+    if b[0].pause_recv { paused += 1; }
+    if tick % 8 == 7 { took := ds_take(b[..]); }
+  }
+  print("  4 MB messages at 1 MiB a tick, one processed every 8 ticks: peak % bytes, reading paused % of 400 ticks; receive bound %\n",
+    b[0].peak, paused, ds_recv_bound());
+  g := [1] DsBuf.[DsBuf.{msg=24 + 37}];
+  paused = 0;
+  for tick: 0..<50 {
+    for r: 0..<16 { done := ds_read(g[..], DS_READ_CHUNK); }
+    if g[0].pause_recv { paused += 1; }
+    for i: 0..<100 { if ds_take(g[..]) { ds_push(g[..], 1000024); } }
+  }
+  print("  getdata for 1 MB blocks from a peer that never reads: % bytes waiting to send, peak %, reading paused % of 50 ticks\n",
+    g[0].send, g[0].peak, paused);
+  filter_bytes := (ds_rb_size(50000, 0.000001).words + ds_rb_size(5000, 0.001).words) * 8;
+  print("  per peer: receive % + send % + filters % = % bytes\n", ds_recv_bound(), ds_send_bound(), filter_bytes,
+    ds_recv_bound() + ds_send_bound() + filter_bytes);
+  tracked := 0; dropped := 0;
+  for i: 0..<500000 { if ds_tx_delay(tracked, 0, false, true, 0, false) < 0 { dropped += 1; } else { tracked += 1; } }
+  print("  10 inv messages of 50000 wtxids: % announcements tracked, % dropped; with the relay permission: %\n",
+    tracked, dropped, yes(ds_tx_delay(5000, 0, false, true, 0, true) >= 0));
+  print("  request delay: outbound % s, inbound % s, inbound txid with wtxid peers % s, inbound with 100 in flight % s\n",
+    ds_tx_delay(0, 0, true, true, 1, false), ds_tx_delay(0, 0, false, true, 1, false),
+    ds_tx_delay(0, 0, false, false, 1, false), ds_tx_delay(0, 100, false, true, 1, false));
+}
+
+main :: () { limits(); costs(); blocks(); filters(); headers(); floods(); }
+// book:end example
