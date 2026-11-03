@@ -15,7 +15,7 @@
 RS_MAX :: 24;
 RS_ZONES :: 8;
 RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; }
-RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; cleaved: bool; frenzied: bool; struck: bool; }
+RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool; }
 RsBattle :: struct {
   c: [RS_MAX] RsCreature; n: int;
   zone: [RS_ZONES] RsZone;
@@ -25,7 +25,15 @@ RsBattle :: struct {
   w: int; h: int;             // the grid, squares
   who: int;                   // whose turn is running (-1 none)
   turn: RsTurn;
+  // The time adapter. The SRD's: a turn every 6 seconds (beat 0 means RS_ROUND), slots and uses back
+  // only on a rest (recharge 0). The action adapter: a shorter beat, each beat a whole turn's
+  // economy, and every spent slot, Rage and Focus Point back `recharge` seconds later (the ruleset
+  // profile's `cost cooldown N`). Saves that repeat, death saves and Rage's upkeep stay on 6-second
+  // rounds either way.
+  beat: f32;
+  recharge: f32;
 }
+rs_beat :: (b: [] RsBattle) -> f32 { return ifx b[0].beat > 0 then b[0].beat else f32(RS_ROUND); }
 
 rs_abs :: (v: int) -> int { return ifx v < 0 then -v else v; }
 rs_sign :: (v: int) -> int { if v > 0 { return 1; } if v < 0 { return -1; } return 0; }
@@ -104,7 +112,8 @@ rs_begin :: (b: [] RsBattle) {
     for j: 0..<b[0].n {
       if b[0].c[j].initiative > b[0].c[i].initiative || (b[0].c[j].initiative == b[0].c[i].initiative && j < i) { rank += 1; }
     }
-    b[0].c[i].turn_at = b[0].clock + 0.4 + f32(rank) * f32(RS_ROUND) / f32(rs_max(b[0].n, 1));
+    b[0].c[i].turn_at = b[0].clock + 0.4 + f32(rank) * rs_beat(b) / f32(rs_max(b[0].n, 1));
+    b[0].c[i].round_at = b[0].c[i].turn_at;
   }
 }
 // Whose turn is due on the clock, or -1.
@@ -133,8 +142,8 @@ rs_take_weak :: (b: [] RsBattle, i: int) -> bool {
   return false;
 }
 // When the caster's next turn ends, and when it starts (its turns are instants on the clock).
-rs_after_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + f32(RS_ROUND) + 0.05; }
-rs_before_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + f32(RS_ROUND) - 0.01; }
+rs_after_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + rs_beat(b) + 0.05; }
+rs_before_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + rs_beat(b) - 0.01; }
 
 // Concentration ends: its areas go, and what they held is let go.
 rs_end_concentration :: (b: [] RsBattle, i: int, why: string) {
@@ -167,7 +176,7 @@ rs_dropped :: (b: [] RsBattle, by: int, j: int) {
     for e: 0..<RS_EFFECTS {
       if b[0].c[j].eff[e].kind == EF_HEX && b[0].c[j].eff[e].by == k && c.conc == SP_HEX {
         b[0].c[k].hex_free = true;
-        b[0].c[k].hex_free_after = ifx b[0].who == k then c.turn_at else c.turn_at - f32(RS_ROUND);
+        b[0].c[k].hex_free_after = ifx b[0].who == k then c.turn_at else c.turn_at - rs_beat(b);
       }
     }
     if !c.dark_blessing || !rs_up(c) || c.team == b[0].c[j].team { continue; }
@@ -484,7 +493,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       rs_add_name(l[..], b, i); rs_add_text(l[..], "'s hits, Disadvantage on "); rs_add_text(l[..], RS_ABBR[st.a]); rs_add_text(l[..], " checks");
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_GLOW {
-      b[0].c[j].wisp_until = b[0].c[i].turn_at + f32(RS_ROUND);
+      b[0].c[j].wisp_until = b[0].c[i].turn_at + rs_beat(b);
       b[0].c[j].cond = rs_clear(b[0].c[j].cond, RS_INVISIBLE);
     }
   }
@@ -563,11 +572,15 @@ rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
 // Prone one stands (half its Speed).
 rs_start_turn :: (b: [] RsBattle, i: int) {
   b[0].who = i;
-  b[0].turn = RsTurn.{action = false, bonus = false, slot_spent = false, move_left = b[0].c[i].speed / RS_SQUARE};
+  // a beat moves its share of a round's Speed (at least a square)
+  squares := rs_max(cast(int) (f32(b[0].c[i].speed / RS_SQUARE) * rs_beat(b) / f32(RS_ROUND) + 0.5), 1);
+  b[0].turn = RsTurn.{action = false, bonus = false, slot_spent = false, move_left = squares};
+  b[0].turn.new_round = b[0].c[i].turn_at >= b[0].c[i].round_at - 0.01;
+  if b[0].turn.new_round { b[0].c[i].round_at += f32(RS_ROUND); }
   b[0].c[i].reacted = false;
   if b[0].c[i].raging && !rs_can_act(b[0].c[i]) { rs_rage_end(b, i, " (Incapacitated)"); }
   if b[0].c[i].hp == 0 && !b[0].c[i].dead {
-    if b[0].c[i].stable { return; }
+    if b[0].c[i].stable || !b[0].turn.new_round { return; }
     c: [1] RsCreature; c[0] = b[0].c[i];
     r := rs_death_save(b[0].dice[..], c[..]);
     b[0].c[i] = c[0];
@@ -590,7 +603,7 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
   // the saves it repeats at the end of its turns
   for k: 0..<RS_EFFECTS {
     e := b[0].c[i].eff[k];
-    if e.kind == EF_NONE || e.save < 0 || b[0].c[i].dead { continue; }
+    if e.kind == EF_NONE || e.save < 0 || b[0].c[i].dead || !b[0].turn.new_round { continue; }
     d := rs_d20(b[0].dice[..], 0);
     total := d.roll + rs_save_bonus(b[0].c[i], e.save);
     ok := total >= e.dc;
@@ -613,11 +626,13 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
   }
   // Rage lasts until the end of its next turn; an attack roll against an enemy (or a Bonus Action)
   // in that turn extends it
-  if b[0].c[i].raging {
-    if b[0].c[i].rage_kept || b[0].turn.struck { b[0].c[i].rage_kept = false; }
+  if b[0].turn.struck { b[0].c[i].struck_round = true; }
+  if b[0].c[i].raging && b[0].turn.new_round {
+    if b[0].c[i].rage_kept || b[0].c[i].struck_round { b[0].c[i].rage_kept = false; }
     else { rs_rage_end(b, i, ""); }
   }
-  b[0].c[i].turn_at += f32(RS_ROUND);
+  if b[0].turn.new_round { b[0].c[i].struck_round = false; }
+  b[0].c[i].turn_at += rs_beat(b);
   if b[0].who == i { b[0].who = -1; }
 }
 // The clock moves on: what lasts for a time ends when it runs out.
@@ -629,6 +644,23 @@ rs_tick :: (b: [] RsBattle, dt: f32) {
     if b[0].c[i].flame_until > 0 && b[0].c[i].flame_until <= t { b[0].c[i].flame_until = 0; }
     if b[0].c[i].outlined_by >= 0 && b[0].c[i].outlined_until <= t { b[0].c[i].outlined_by = -1; }
     for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind != EF_NONE && b[0].c[i].eff[k].until <= t { rs_drop_effect(b, i, k); } }
+    // the action adapter: spent slots and uses come back on a cooldown, one at a time
+    if b[0].recharge > 0 && !b[0].c[i].dead {
+      r := b[0].recharge;
+      for l: 1..<10 {
+        if b[0].c[i].slots[l] >= b[0].c[i].slots_max[l] { b[0].c[i].slot_back[l] = 0; continue; }
+        if b[0].c[i].slot_back[l] == 0 { b[0].c[i].slot_back[l] = t + r; }
+        else if b[0].c[i].slot_back[l] <= t { b[0].c[i].slots[l] += 1; b[0].c[i].slot_back[l] = 0; }
+      }
+      if b[0].c[i].rages < b[0].c[i].rages_max {
+        if b[0].c[i].rage_back == 0 { b[0].c[i].rage_back = t + r; }
+        else if b[0].c[i].rage_back <= t { b[0].c[i].rages += 1; b[0].c[i].rage_back = 0; }
+      } else { b[0].c[i].rage_back = 0; }
+      if b[0].c[i].focus < b[0].c[i].focus_max {
+        if b[0].c[i].focus_back == 0 { b[0].c[i].focus_back = t + r / 2; }
+        else if b[0].c[i].focus_back <= t { b[0].c[i].focus += 1; b[0].c[i].focus_back = 0; }
+      } else { b[0].c[i].focus_back = 0; }
+    }
   }
 }
 rs_team_up :: (b: [] RsBattle, team: int) -> int {
@@ -1235,4 +1267,24 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   rs_end_turn(b[..], m);
   rs_tick(b[..], b[0].c[m].turn_at - b[0].clock);
   #assert rs_attack_edge(b[..], a, m, true, true) == 0;
+}
+#test "the action adapter: a turn every 1.5 seconds, slots back after the cooldown, saves still on 6-second rounds" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 21;
+  b[0].beat = 1.5; b[0].recharge = 9;
+  a := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 1, 3);
+  t := rs_add(b[..], rs_druid("Rowan", 0, 3), 9, 3);
+  rs_begin(b[..]);
+  first := b[0].c[a].turn_at;
+  rs_tick(b[..], first - b[0].clock);
+  rs_start_turn(b[..], a);
+  #assert b[0].turn.new_round && b[0].turn.move_left == 2;   // 30 feet a round: 7.5 feet a beat, 2 squares
+  #assert rs_cast(b[..], a, SP_SCORCHING_RAY, 2, 0, 0, t) && b[0].c[a].slots[2] == 1;
+  rs_end_turn(b[..], a);
+  #assert b[0].c[a].turn_at == first + 1.5;
+  rs_tick(b[..], 1.5);
+  rs_start_turn(b[..], a);
+  #assert !b[0].turn.new_round;
+  rs_end_turn(b[..], a);
+  for k: 0..<10 { rs_tick(b[..], 1.0); }
+  #assert b[0].c[a].slots[2] == 2;
 }

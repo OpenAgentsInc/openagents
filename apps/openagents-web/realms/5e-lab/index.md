@@ -5,6 +5,7 @@ A Verse world at https://openagents.com/worlds/5e-lab, not listed on the worlds 
 ## Controls
 
 - V, or the 2D VIEW / 3D VIEW button, switches between the 3D glade (the default) and the flat grid.
+- M, or the SRD ROUNDS / ACTION COMBAT button, switches the clock and starts a new battle. SRD rounds give each creature a full turn every 6 seconds, spent slots and uses come back only on a rest. Action combat plays like the Neverwinter MMO: each creature gets a turn's worth (action, Bonus Action, its share of movement) every 1.5 seconds, and spent spell slots, Rages and Focus Points come back on a cooldown (9 seconds; 4.5 for a Focus Point). Dice, Armor Class and spell durations are the SRD's either way, and repeat saves, death saves and Rage upkeep stay on 6-second rounds.
 - In the glade, drag or use the arrow keys to turn the camera, and + and - to zoom.
 - Space pauses and resumes.
 - F switches between normal speed and four times as fast.

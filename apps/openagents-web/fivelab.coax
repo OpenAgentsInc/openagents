@@ -30,6 +30,11 @@ U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
 U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 228; U_BOUNDS :: 292;
 SQ :: 1.524;   // a 5-foot square, metres
 VIEW_FLAT :: 0; VIEW_GLADE :: 1;
+// The time adapters (docs/dnd/README.md, "The time adapter"): the SRD's 6-second rounds, or action
+// combat in the way of the Neverwinter MMO: a turn's worth every 1.5 seconds, spent slots, Rages and
+// Focus Points back on a cooldown (`cost cooldown 9`), the same dice and Armor Class.
+MODE_ROUNDS :: 0; MODE_ACTION :: 1;
+ACTION_BEAT :: 1.5; ACTION_RECHARGE :: 9.0;
 
 STEP :: 0.0166666667;
 LAB_STEP_NS :: 16666667;
@@ -92,7 +97,8 @@ Lab :: struct {
   width: f32; height: f32; dpr: f32;
   portrait: bool;
   gx: f32; gy: f32; cell: f32;
-  panel: Rect; back: Rect; flip: Rect;
+  panel: Rect; back: Rect; flip: Rect; modal: Rect;
+  mode: int;
   pressing: int;
   // the glade's camera: an orbit round the clearing, and what it makes this frame
   view: int = VIEW_GLADE;
@@ -214,6 +220,7 @@ new_battle :: (s: [] Lab) {
     s[0].dx[i] = f32(START_X[i]); s[0].dy[i] = f32(START_Y[i]); s[0].acted[i] = -10;
   }
   s[0].battle[0].clock = 0;
+  if s[0].mode == MODE_ACTION { s[0].battle[0].beat = ACTION_BEAT; s[0].battle[0].recharge = ACTION_RECHARGE; }
   rs_begin(bt(s));
   s[0].seen = s[0].battle[0].book[0].seq;
   s[0].over = false; s[0].winner = -1;
@@ -222,7 +229,8 @@ new_battle :: (s: [] Lab) {
   l: [LINE_CAP] u8;
   n := put(l[..], 0, "Battle ");
   n = put_int(l[..], n, s[0].round);
-  n = put(l[..], n, ": 5 druids and 7 barbarians against 5 warlocks and 7 monks, all level 3. Initiative:");
+  n = put(l[..], n, ifx s[0].mode == MODE_ACTION then ", action combat" else ", SRD rounds");
+  n = put(l[..], n, ": druids and monks against warlocks and barbarians, level 3. Initiative:");
   add_line(s, cast(string) l[0..<n], GOLD);
   // six to a line
   for row: 0..<(PEOPLE / 6) {
@@ -668,6 +676,10 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   bw := 96 * k;
   s[0].back = Rect.{x0 = w - pad - bw, y0 = 18 * k, x1 = w - pad, y1 = 46 * k};
   s[0].flip = Rect.{x0 = s[0].back.x0 - 8 * k - bw, y0 = 18 * k, x1 = s[0].back.x0 - 8 * k, y1 = 46 * k};
+  mw := 128 * k;
+  s[0].modal = Rect.{x0 = s[0].flip.x0 - 8 * k - mw, y0 = 18 * k, x1 = s[0].flip.x0 - 8 * k, y1 = 46 * k};
+  // a phone has no room beside the title: the mode sits in the scene's bottom-left corner
+  if s[0].portrait { s[0].modal = Rect.{x0 = pad, y0 = s[0].panel.y0 - 8 * k - 28 * k, x1 = pad + mw, y1 = s[0].panel.y0 - 8 * k}; }
   // the glade's camera, fitted to the space left of the log (above it on a phone)
   rx0 := pad; rx1 := ifx s[0].portrait then w - pad else s[0].panel.x0 - pad;
   ry0 := top; ry1 := ifx s[0].portrait then s[0].panel.y0 - pad else h - pad;
@@ -948,7 +960,7 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   n = say_at(out, n, cast(string) l[0..<m], sx0, sy0, ifx s[0].portrait then 8.5 * k else 10 * k, ink(k, 0.7, DIM));
   m = put(l[..], 0, "SPACE "); m = put(l[..], m, ifx s[0].paused then "RESUME" else "PAUSE");
   m = put(l[..], m, "   F "); m = put(l[..], m, ifx s[0].fast then "NORMAL SPEED" else "FAST");
-  m = put(l[..], m, "   R NEW BATTLE   V 2D/3D");
+  m = put(l[..], m, "   R NEW BATTLE   V 2D/3D   M MODE");
   if s[0].view == VIEW_GLADE { m = put(l[..], m, "   DRAG TURNS   +/- ZOOM"); }
   n = say_at(out, n, cast(string) l[0..<m], sx0, sy0 + 16 * k, ifx s[0].portrait then 7 * k else 8 * k, ink(k, 0.45, FAINT));
   if s[0].paused { n = say_mid(out, n, "PAUSED", s[0].cx, s[0].gy + 26 * k, 14 * k, ink(k, 0.9, GOLD)); }
@@ -957,6 +969,9 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
     m = put(l[..], 0, TEAM_NAME[s[0].winner]); m = put(l[..], m, " WINS");
     n = say_mid(out, n, cast(string) l[0..<m], mid, cy, 26 * k, ink(k, 0.95, TEAM_COL[s[0].winner]));
   }
+  mb := s[0].modal;
+  n = box_lines(out, n, mb, 0.8 * k, ifx s[0].pressing == 3 then 0.9 else 0.45, DIM);
+  n = say_mid(out, n, ifx s[0].mode == MODE_ACTION then "ACTION COMBAT" else "SRD ROUNDS", (mb.x0 + mb.x1) / 2, (mb.y0 + mb.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, ifx s[0].mode == MODE_ACTION then GOLD else WHITE));
   fb := s[0].flip;
   n = box_lines(out, n, fb, 0.8 * k, ifx s[0].pressing == 2 then 0.9 else 0.45, DIM);
   n = say_mid(out, n, ifx s[0].view == VIEW_GLADE then "2D VIEW" else "3D VIEW", (fb.x0 + fb.x1) / 2, (fb.y0 + fb.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, WHITE));
@@ -1048,6 +1063,11 @@ leave_to :: (s: [] Lab, url: string) {
   s[0].out_n = put(s[0].outbox[..], 0, url);
   s[0].action = ACT_NAVIGATE;
 }
+// SRD rounds or action combat: a new battle on the other clock.
+switch_mode :: (s: [] Lab) {
+  s[0].mode = 1 - s[0].mode;
+  new_battle(s);
+}
 lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   lab_start(s);
   if key == KEY_ESCAPE { leave_to(s, "/worlds"); return true; }
@@ -1055,6 +1075,7 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   if key == 'f' || key == 'F' { s[0].fast = !s[0].fast; return true; }
   if key == 'r' || key == 'R' { new_battle(s); return true; }
   if key == 'v' || key == 'V' { s[0].view = 1 - s[0].view; return true; }
+  if key == 'm' || key == 'M' { switch_mode(s); return true; }
   if s[0].view == VIEW_GLADE {
     if key == KEY_LEFT { s[0].yaw -= 0.12; return true; }
     if key == KEY_RIGHT { s[0].yaw += 0.12; return true; }
@@ -1072,6 +1093,7 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
   if phase == 0 {
     if in_rect(s[0].back, x, y) { s[0].pressing = 1; return true; }
     if in_rect(s[0].flip, x, y) { s[0].pressing = 2; return true; }
+    if in_rect(s[0].modal, x, y) { s[0].pressing = 3; return true; }
     if s[0].view == VIEW_GLADE && !in_rect(s[0].panel, x, y) { s[0].dragging = true; s[0].drag_x = x; s[0].drag_y = y; return true; }
     return false;
   }
@@ -1087,6 +1109,7 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
   held := s[0].pressing; s[0].pressing = 0;
   if held == 1 { if phase == 2 && in_rect(s[0].back, x, y) { leave_to(s, "/worlds"); } return true; }
   if held == 2 { if phase == 2 && in_rect(s[0].flip, x, y) { s[0].view = 1 - s[0].view; } return true; }
+  if held == 3 { if phase == 2 && in_rect(s[0].modal, x, y) { switch_mode(s); } return true; }
   return false;
 }
 lab_cursor :: (s: [] Lab) -> int #export_c { return 0; }
@@ -1146,6 +1169,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert lab_key(s[..], 'f', 0) && s[0].fast;
   r := s[0].round;
   #assert lab_key(s[..], 'r', 0) && s[0].round == r + 1;
+  #assert s[0].mode == MODE_ROUNDS && lab_key(s[..], 'm', 0) && s[0].mode == MODE_ACTION && s[0].battle[0].beat == ACTION_BEAT && lab_key(s[..], 'm', 0) && s[0].mode == MODE_ROUNDS && s[0].battle[0].beat == 0;
   #assert s[0].view == VIEW_GLADE && lab_key(s[..], 'v', 0) && s[0].view == VIEW_FLAT && lab_key(s[..], 'v', 0) && s[0].view == VIEW_GLADE;
   #assert lab_key(s[..], KEY_ESCAPE, 0) && lab_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds";
 }

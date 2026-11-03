@@ -164,12 +164,16 @@ RsCreature :: struct {
   reacted: bool;            // its Reaction is spent until its next turn starts
   dodge_until: f32;         // the Dodge action: attacks against it have Disadvantage, Advantage on Dex saves
   // Barbarian: Rage, Reckless Attack, Danger Sense, the Berserker's Frenzy
-  rages: int; rage_bonus: int; raging: bool; rage_kept: bool;
+  rages: int; rages_max: int; rage_bonus: int; raging: bool; rage_kept: bool; struck_round: bool;
   reckless_until: f32;
   danger_sense: bool; frenzy: bool;
   // Monk: the Martial Arts die, Focus Points, Deflect Attacks, the Open Hand's techniques
   martial_die: int; focus: int; focus_max: int;
   deflect: bool; open_hand: bool;
+  // the action adapter (RsBattle.recharge > 0): when the next spent slot of each level, Rage or
+  // Focus Point comes back, and when its next 6-second round begins
+  slot_back: [10] f32; rage_back: f32; focus_back: f32;
+  round_at: f32;
   // dropping to 0
   death_ok: int; death_fail: int; stable: bool; dead: bool;
   // where and when: grid squares, and its next turn on the clock
@@ -304,7 +308,7 @@ rs_barbarian :: (name: string, team: int, level: int) -> RsCreature {
   c[0].spell_ability = -1;
   c[0].weapon = W_GREATAXE; c[0].masteries = 1 << M_CLEAVE;
   rages := [21] int.[0, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6];
-  c[0].rages = rages[rs_min(rs_max(level, 1), 20)];
+  c[0].rages = rages[rs_min(rs_max(level, 1), 20)]; c[0].rages_max = c[0].rages;
   c[0].rage_bonus = ifx level >= 16 then 4 else ifx level >= 9 then 3 else 2;
   c[0].danger_sense = level >= 2; c[0].frenzy = level >= 3;
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].agonizing = -1; c[0].repelling = -1;
