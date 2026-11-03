@@ -812,15 +812,22 @@
   {
    "number": 37,
    "title": "Legacy signature hashes",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch037-legacy-signature-hashes.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
     34,
     36
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/script.coax",
+    "bitcoin/examples/legacy-sighash.coax",
+    "bitcoin/examples/checks/legacy-sighash.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {

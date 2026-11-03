@@ -58,6 +58,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 - [34. Transactions and their serialization](ch034-transactions-and-their-serialization.md) — implemented
 - [36. The script interpreter](ch036-the-script-interpreter.md) — implemented
+- [37. Legacy signature hashes](ch037-legacy-signature-hashes.md) — implemented
 
 **IX. Blocks and consensus**
 

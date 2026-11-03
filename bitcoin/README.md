@@ -19,6 +19,7 @@ The code the book teaches lives in the Coax library:
 [`coax/lib/bitcoin/`](../coax/lib/bitcoin/). Chapter 36's script
 interpreter, [`script.coax`](../coax/lib/bitcoin/script.coax), runs the
 scripts every later chapter checks, from legacy script through segwit v0.
+Chapter 37 explains its legacy signature hash.
 
 ```sh
 python3 psionic/tests/book.py --book bitcoin                     # structure and registry

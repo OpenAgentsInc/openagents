@@ -1609,7 +1609,8 @@ On 2026-11-02, 16,178 cases agree with Python in native checked and release buil
   `CHECKSIGADD` and the validation weight budget are chapters 43 and 44.
   The seven rows they need are not run, and a v1 program under `TAPROOT`
   refuses.
-- The signature hashes in detail: chapters 37 (legacy) and 38 (BIP-143).
+- The signature hashes in detail: chapters
+  [37 (legacy)](ch037-legacy-signature-hashes.md) and 38 (BIP-143).
 - What the lock times mean for a transaction, and BIP-68's relative lock
   times: chapter 39.
 - Which flags apply at which height: chapter 55. The transaction rules

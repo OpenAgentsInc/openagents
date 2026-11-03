@@ -1,0 +1,176 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/script.coax";
+#load "../../coax/tests/bitcoin/script_vectors.coax";
+#import "Basic";
+
+// A transaction read into fixed room, and the view the signature hash
+// takes of one of its inputs.
+Spend :: struct {
+  b: [4096] u8;
+  ins: [16] TxIn; outs: [16] TxOut; items: [1] TxItem;
+}
+spend_of :: (s: [] Spend, tx: string, index: int) -> ScriptSpend {
+  b := tx_unhex(tx, s[0].b[..]);
+  t := tx_read_vartime(b, true, s[0].ins[..], s[0].outs[..], s[0].items[..]);
+  #assert t.code == TX_OK;
+  return ScriptSpend.{b=b, t=t, ins=s[0].ins[0..<t.nin], outs=s[0].outs[0..<t.nout], items=s[0].items[0..<0],
+    index=index, spk=b[0..<0]};
+}
+// A hash as Core prints a uint256 and as sighash.json lists it: byte 31
+// first.
+show_hash :: (h: [] u8) {
+  digits := "0123456789abcdef";
+  for k: 0..<32 {
+    pair: [2] u8; x := h[31-k];
+    pair[0] = digits[x >> 4]; pair[1] = digits[x & 15];
+    print("%", cast(string) pair[..]);
+  }
+}
+show_hex :: (b: [] u8) {
+  digits := "0123456789abcdef";
+  for k: 0..<b.count {
+    pair: [2] u8;
+    pair[0] = digits[b[k] >> 4]; pair[1] = digits[b[k] & 15];
+    print("%", cast(string) pair[..]);
+  }
+}
+same32 :: (a: [] u8, b: [] u8) -> bool {
+  for k: 0..<32 { if a[k] != b[k] { return false; } }
+  return true;
+}
+
+// The six parts of a 2-input, 2-output transaction a signature on input 1
+// might cover. Bit k of what signs() returns is part k.
+PARTS :: [6] string.["input 0's outpoint", "input 0's sequence", "input 1's sequence", "output 0", "output 1", "the lock time"];
+part_at :: (sp: ScriptSpend, k: int) -> int {
+  if k == 0 { return sp.ins[0].outpoint; }
+  if k == 1 { return sp.ins[0].sequence; }
+  if k == 2 { return sp.ins[1].sequence; }
+  if k == 3 { return sp.outs[0].value; }
+  if k == 4 { return sp.outs[1].value; }
+  return sp.t.locktime;
+}
+// Which parts the hash of this type commits to: change one byte of each
+// part and see whether the hash changes.
+signs :: (sp: ScriptSpend, code: [] u8, hashtype: int) -> int {
+  base: [32] u8; h: [32] u8;
+  script_sighash_legacy_vartime(sp, code, hashtype, base[..]);
+  mask := 0;
+  for k: 0..<6 {
+    at := part_at(sp, k);
+    sp.b[at] ^= 1;
+    script_sighash_legacy_vartime(sp, code, hashtype, h[..]);
+    sp.b[at] ^= 1;
+    if !same32(base[..], h[..]) { mask |= 1 << k; }
+  }
+  return mask;
+}
+
+// Bytes the first SHA-256 of a legacy signature hash reads, for one input
+// of a transaction with n P2PKH inputs (148 bytes each: a 107-byte
+// scriptSig) and two P2PKH outputs (34 bytes each): the version, the input
+// count, 41 bytes for each other input (outpoint, an empty script, the
+// sequence), 66 for this one (its 25-byte scriptCode with its length), the
+// outputs with their count, the lock time and the 4-byte hash type.
+legacy_preimage_bytes :: (n: int) -> int { return 4 + tx_compact_size_vartime(n) + 41 * (n - 1) + 66 + 1 + 68 + 4 + 4; }
+legacy_tx_bytes :: (n: int) -> int { return 4 + tx_compact_size_vartime(n) + 148 * n + 1 + 68 + 4; }
+
+main :: () {
+  s: [1] Spend; h: [32] u8; c: [64] u8;
+
+  // BIP-143's first transaction, unsigned: 2 inputs, 2 outputs. Input 1,
+  // hashed the legacy way with a P2PKH scriptCode.
+  sp := spend_of(s[..], BT_V143[0].tx, 1);
+  code := tx_unhex("76a9141d0f172a0ecb48aee1be1f2687d2963ae33f71a188ac", c[..]);
+  print("what each hash type signs, for input 1 of 2 with 2 outputs\n");
+  types := [12] int.[0x01, 0x02, 0x03, 0x81, 0x82, 0x83, 0x00, 0x04, 0x21, 0x84, 0xc3, 0xff];
+  names := [12] string.["ALL", "NONE", "SINGLE", "ALL|ANYONECANPAY", "NONE|ANYONECANPAY", "SINGLE|ANYONECANPAY",
+    "undefined", "undefined", "undefined", "undefined", "undefined", "undefined"];
+  for i: 0..<12 {
+    sig: [1] u8; sig[0] = cast(u8) types[i];
+    script_sighash_legacy_vartime(sp, code, types[i], h[..]);
+    print("  0x");
+    show_hex(sig[..]);
+    print(" %, % under STRICTENC: ", names[i], ifx der_hashtype_defined_vartime(sig[..]) then "allowed" else "refused");
+    show_hash(h[..]);
+    print("\n    signs:");
+    mask := signs(sp, code, types[i]);
+    first := true;
+    for k: 0..<6 {
+      if (mask & (1 << k)) == 0 { continue; }
+      print("% %", ifx first then "" else ",", PARTS[k]);
+      first = false;
+    }
+    print("\n");
+  }
+
+  // SIGHASH_SINGLE on an input with no output at its index: the first row
+  // of sighash.json with more inputs than outputs.
+  print("SIGHASH_SINGLE with no output at the input's index\n");
+  first: [32] u8; found := 0;
+  for r: SCRIPT_SIGHASH {
+    sp = spend_of(s[..], r.tx, 0);
+    if sp.t.nin <= sp.t.nout { continue; }
+    sp.index = sp.t.nout;
+    found += 1;
+    if found == 2 {
+      script_sighash_legacy_vartime(sp, code, 3, h[..]);
+      print("  input % of another transaction, with % outputs: %\n", sp.index, sp.t.nout,
+        ifx same32(h[..], first[..]) then "the same hash" else "a different hash");
+      break;
+    }
+    print("  % inputs, % outputs, input %\n", sp.t.nin, sp.t.nout, sp.index);
+    for hashtype: [3] int.[3, 0x83, 1] {
+      script_sighash_legacy_vartime(sp, code, hashtype, h[..]);
+      print("    0x%: ", ifx hashtype == 3 then "03" else ifx hashtype == 0x83 then "83" else "01");
+      show_hash(h[..]);
+      print("\n");
+    }
+    script_sighash_legacy_vartime(sp, code, 3, first[..]);
+  }
+
+  // The scriptCode: OP_CODESEPARATORs are left out, and so is the push of
+  // the signature (FindAndDelete, which CHECKSIG does before it hashes).
+  print("the scriptCode\n");
+  sp = spend_of(s[..], BT_V143[0].tx, 1);
+  scripts := [4] string.["ac", "abac", "ababac", "acabac"];
+  labels := [4] string.["CHECKSIG", "CODESEPARATOR CHECKSIG", "CODESEPARATOR CODESEPARATOR CHECKSIG", "CHECKSIG CODESEPARATOR CHECKSIG"];
+  for i: 0..<4 {
+    script_sighash_legacy_vartime(sp, tx_unhex(scripts[i], c[..]), 1, h[..]);
+    print("  %: ", labels[i]);
+    show_hash(h[..]);
+    print("\n");
+  }
+  w: [1] ScriptWork; sig: [2] u8; sig[0] = 0xaa; sig[1] = 0xbb;
+  deletes := [3] string.["02aabb7502aabbac", "0302aabbac", "02aabb02aabb51"];
+  for d: deletes {
+    si_code(w[..], tx_unhex(d, c[..]), 0);
+    n := si_find_delete(w[..], sig[..]);
+    print("  FindAndDelete(%, push of aabb): % removed, left ", d, n);
+    show_hex(w[0].code[0..<w[0].code_n]);
+    print("\n");
+  }
+
+  // Each input hashes about the whole transaction, so the work grows with
+  // the square of the number of inputs.
+  print("legacy hashing, n P2PKH inputs and 2 outputs\n");
+  for n: [6] int.[1, 10, 100, 1000, 5000, 6756] {
+    print("  n %: % bytes, % hashed per input, % in all\n", n, legacy_tx_bytes(n), legacy_preimage_bytes(n), n * legacy_preimage_bytes(n));
+  }
+
+  // Every row of sighash.json, by whether STRICTENC allows its hash type.
+  print("Bitcoin Core sighash.json\n");
+  rows: [2] int; same: [2] int; big: [10100] u8;
+  for r: SCRIPT_SIGHASH {
+    sp = spend_of(s[..], r.tx, r.index);
+    b: [1] u8; b[0] = cast(u8) (r.hashtype & 255);
+    defined := ifx der_hashtype_defined_vartime(b[..]) then 1 else 0;
+    script_sighash_legacy_vartime(sp, tx_unhex(r.code, big[..]), r.hashtype, h[..]);
+    #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK;
+    rows[defined] += 1;
+    if tx_hex_is(h[..], r.hash) { same[defined] += 1; }
+  }
+  print("  defined hash types: % of % match\n", same[1], rows[1]);
+  print("  undefined hash types: % of % match\n", same[0], rows[0]);
+}
+// book:end example

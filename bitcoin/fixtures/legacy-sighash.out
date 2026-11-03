@@ -1,0 +1,49 @@
+what each hash type signs, for input 1 of 2 with 2 outputs
+  0x01 ALL, allowed under STRICTENC: a4a612c19dd001d604b8561f713a4e8f64413d5d5bcc472a4048bc0c823060c4
+    signs: input 0's outpoint, input 0's sequence, input 1's sequence, output 0, output 1, the lock time
+  0x02 NONE, allowed under STRICTENC: e289cbfaf7b86b3660a6934a1894f191c8ed05d2b79da7765fe5eb4d55cfbbff
+    signs: input 0's outpoint, input 1's sequence, the lock time
+  0x03 SINGLE, allowed under STRICTENC: c2aeaf1559462e7bf2a21117b1e3de6f1d528c740b18efbc042fb8d68b46cd33
+    signs: input 0's outpoint, input 1's sequence, output 1, the lock time
+  0x81 ALL|ANYONECANPAY, allowed under STRICTENC: 5607a4f393ed89761f2b37160c4e962d68160790531fc32e33353afe8ceafe8c
+    signs: input 1's sequence, output 0, output 1, the lock time
+  0x82 NONE|ANYONECANPAY, allowed under STRICTENC: 21671d0cd5c93489b32980a020ead5aba968c08bd51b45b88d0ab61acba48cbd
+    signs: input 1's sequence, the lock time
+  0x83 SINGLE|ANYONECANPAY, allowed under STRICTENC: a6dc3752518f5408daec502f6c3ac546f102c37621404c8a491789b891775c86
+    signs: input 1's sequence, output 1, the lock time
+  0x00 undefined, refused under STRICTENC: e684c508b10f725e3c8e89baff5fde283b8595063ad6b4d7430cb814dbb7afc2
+    signs: input 0's outpoint, input 0's sequence, input 1's sequence, output 0, output 1, the lock time
+  0x04 undefined, refused under STRICTENC: 8c4b80a941b9e59e994ac69c8e3c0cbe675c591db457893f9734e0461c96b23b
+    signs: input 0's outpoint, input 0's sequence, input 1's sequence, output 0, output 1, the lock time
+  0x21 undefined, refused under STRICTENC: 503f250efe0e229cabfbec36e40091c3de8b4cb7ae3481ca7a754470be7125e5
+    signs: input 0's outpoint, input 0's sequence, input 1's sequence, output 0, output 1, the lock time
+  0x84 undefined, refused under STRICTENC: 59a564eb79e00b239df759c52dfd38e6a4064c8603402fa88fb75bd47ef2b8ad
+    signs: input 1's sequence, output 0, output 1, the lock time
+  0xc3 undefined, refused under STRICTENC: e79c7bc1d2eb06e739b84db83877ade742f46d1fc45dfd4716b803435ddab4b2
+    signs: input 1's sequence, output 1, the lock time
+  0xff undefined, refused under STRICTENC: d1d06cfe45606da62629f08d94c37c7512344532229ff32c6bd6a32a2e05a22a
+    signs: input 1's sequence, output 0, output 1, the lock time
+SIGHASH_SINGLE with no output at the input's index
+  3 inputs, 2 outputs, input 2
+    0x03: 0000000000000000000000000000000000000000000000000000000000000001
+    0x83: 0000000000000000000000000000000000000000000000000000000000000001
+    0x01: 77860e49cffcf4ff62bff9259712fca87395bf04d8768491e5e43577b7cea8ed
+  input 1 of another transaction, with 1 outputs: the same hash
+the scriptCode
+  CHECKSIG: 5669e48ce61af6f01cfecc8145bc226b726443929089179e3f859fcd5e2ddea6
+  CODESEPARATOR CHECKSIG: 5669e48ce61af6f01cfecc8145bc226b726443929089179e3f859fcd5e2ddea6
+  CODESEPARATOR CODESEPARATOR CHECKSIG: 5669e48ce61af6f01cfecc8145bc226b726443929089179e3f859fcd5e2ddea6
+  CHECKSIG CODESEPARATOR CHECKSIG: e0a8cc35da5224b839b21d434bb797f7ea66506dc42a6295730d68e98f5708d0
+  FindAndDelete(02aabb7502aabbac, push of aabb): 2 removed, left 75ac
+  FindAndDelete(0302aabbac, push of aabb): 0 removed, left 0302aabbac
+  FindAndDelete(02aabb02aabb51, push of aabb): 2 removed, left 51
+legacy hashing, n P2PKH inputs and 2 outputs
+  n 1: 226 bytes, 148 hashed per input, 148 in all
+  n 10: 1558 bytes, 517 hashed per input, 5170 in all
+  n 100: 14878 bytes, 4207 hashed per input, 420700 in all
+  n 1000: 148080 bytes, 41109 hashed per input, 41109000 in all
+  n 5000: 740080 bytes, 205109 hashed per input, 1025545000 in all
+  n 6756: 999968 bytes, 277105 hashed per input, 1872121380 in all
+Bitcoin Core sighash.json
+  defined hash types: 12 of 12 match
+  undefined hash types: 488 of 488 match

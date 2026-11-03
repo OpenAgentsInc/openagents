@@ -1,0 +1,78 @@
+// The checks of legacy-sighash.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/legacy-sighash.coax
+#load "../legacy-sighash.coax";
+
+// book:begin check
+// What each hash type commits to, found by changing one byte of each part:
+// bit 0 input 0's outpoint, 1 its sequence, 2 input 1's sequence, 3 output
+// 0, 4 output 1, 5 the lock time. An undefined type commits to what its
+// low five bits and its 0x80 bit select, and every type gives its own hash.
+#test "each hash type signs its parts" #steps 400000000 {
+  s: [1] Spend; c: [64] u8;
+  sp := spend_of(s[..], BT_V143[0].tx, 1);
+  code := tx_unhex("76a9141d0f172a0ecb48aee1be1f2687d2963ae33f71a188ac", c[..]);
+  types := [12] int.[0x01, 0x02, 0x03, 0x81, 0x82, 0x83, 0x00, 0x04, 0x21, 0x84, 0xc3, 0xff];
+  masks := [12] int.[63, 37, 53, 60, 36, 52, 63, 63, 63, 60, 52, 60];
+  hashes: [12][32] u8;
+  for i: 0..<12 {
+    #assert signs(sp, code, types[i]) == masks[i];
+    script_sighash_legacy_vartime(sp, code, types[i], hashes[i][..]);
+    for j: 0..<i { #assert !same32(hashes[i][..], hashes[j][..]); }
+  }
+}
+// SIGHASH_SINGLE past the last output signs the number 1, whatever the
+// transaction, with or without ANYONECANPAY; ALL there hashes as usual.
+#forall "SIGHASH_SINGLE past the outputs signs 1" i: 0..<SCRIPT_SIGHASH.count #steps 100000000 {
+  s: [1] Spend; h: [32] u8;
+  sp := spend_of(s[..], SCRIPT_SIGHASH[i].tx, 0);
+  if sp.t.nin > sp.t.nout {
+    sp.index = sp.t.nout;
+    for hashtype: [3] int.[3, 0x83, 0x43] {
+      script_sighash_legacy_vartime(sp, sp.b[0..<0], hashtype, h[..]);
+      #assert h[0] == 1;
+      for k: 1..<32 { #assert h[k] == 0; }
+    }
+    script_sighash_legacy_vartime(sp, sp.b[0..<0], 1, h[..]);
+    #assert h[0] != 1 || h[1] != 0;
+  }
+}
+// OP_CODESEPARATORs never reach the hash; FindAndDelete removes whole
+// pushes of the signature at op boundaries.
+#test "the scriptCode" #steps 100000000 {
+  s: [1] Spend; c: [64] u8; a: [32] u8; h: [32] u8;
+  sp := spend_of(s[..], BT_V143[0].tx, 1);
+  script_sighash_legacy_vartime(sp, tx_unhex("ac", c[..]), 1, a[..]);
+  script_sighash_legacy_vartime(sp, tx_unhex("abac", c[..]), 1, h[..]);
+  #assert same32(a[..], h[..]);
+  script_sighash_legacy_vartime(sp, tx_unhex("ababac", c[..]), 1, h[..]);
+  #assert same32(a[..], h[..]);
+  script_sighash_legacy_vartime(sp, tx_unhex("acabac", c[..]), 1, h[..]);
+  #assert !same32(a[..], h[..]);
+  w: [1] ScriptWork; sig: [2] u8; sig[0] = 0xaa; sig[1] = 0xbb;
+  si_code(w[..], tx_unhex("02aabb7502aabbac", c[..]), 0);
+  #assert si_find_delete(w[..], sig[..]) == 2 && tx_hex_is(w[0].code[0..<w[0].code_n], "75ac");
+  si_code(w[..], tx_unhex("0302aabbac", c[..]), 0);
+  #assert si_find_delete(w[..], sig[..]) == 0 && w[0].code_n == 5;
+}
+// The byte counts: one input hashes 148 bytes, and the largest transaction
+// of P2PKH inputs under 1,000,000 bytes has 6,756.
+#test "legacy hashing grows with the square of the inputs" {
+  #assert legacy_preimage_bytes(1) == 148 && legacy_tx_bytes(1) == 226;
+  #assert legacy_preimage_bytes(253) == 4 + 3 + 41 * 252 + 66 + 69 + 8;
+  #assert legacy_tx_bytes(6756) <= 1000000 && legacy_tx_bytes(6757) > 1000000;
+  #assert 6756 * legacy_preimage_bytes(6756) == 1872121380;
+}
+// Every row of sighash.json whose type STRICTENC refuses still has its
+// published hash: consensus hashes any type.
+#forall "sighash.json rows with undefined hash types" i: 0..<SCRIPT_SIGHASH.count #steps 100000000 {
+  r := SCRIPT_SIGHASH[i];
+  b: [1] u8; b[0] = cast(u8) (r.hashtype & 255);
+  if !der_hashtype_defined_vartime(b[..]) {
+    s: [1] Spend; c: [10100] u8; h: [32] u8;
+    sp := spend_of(s[..], r.tx, r.index);
+    script_sighash_legacy_vartime(sp, tx_unhex(r.code, c[..]), r.hashtype, h[..]);
+    #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK && tx_hex_is(h[..], r.hash);
+  }
+}
+// book:end check

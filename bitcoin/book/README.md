@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 34 are implemented and 90 are planned. The 34
-implemented chapters have runnable examples, qualified on native CPU, and 29
+Of the 124 chapters, 35 are implemented and 89 are planned. The 35
+implemented chapters have runnable examples, qualified on native CPU, and 30
 of them on Wasm. Fifteen of them are the cryptography Nostr already used;
-chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 34, 36, 46
-and 47 are new.
+chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 34, 36, 37,
+46 and 47 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -181,7 +181,7 @@ Transactions, their IDs, the script interpreter, signature hashes, timelocks and
 | [34. Transactions and their serialization](ch034-transactions-and-their-serialization.md) | Runnable: native C and wasm | Every transaction in Bitcoin Core's `tx_valid.json` and `tx_invalid.json` and six pinned mainnet transactions read with Core's rules and write back byte for byte, with and without witnesses, with their txids, wtxids and weights, checked against a Python transliteration of Core natively and in Wasm. Non-canonical CompactSizes, counts above `MAX_SIZE`, unknown flags, empty witnesses and trailing bytes refuse with their own codes, and bytes that read both ways decode as Core's `DecodeTx` decodes them. |
 | 35. Txids, wtxids and malleability | Planned | Txids and wtxids of pinned segwit transactions match. Changing a witness changes the wtxid and leaves the txid. |
 | [36. The script interpreter](ch036-the-script-interpreter.md) | Runnable: native C and wasm | Bitcoin Core's `EvalScript` and `VerifyScript` for legacy script, P2SH and segwit v0, with Core's error numbers. All 1,256 runnable rows of `script_tests.json` and all 4,532 flag sets of `tx_valid.json` and `tx_invalid.json` give Core's result, checked against a Python transliteration of Core on 16,178 cases natively and in Wasm. The 7 tapscript rows wait for chapter 44, and a Taproot output refuses instead of running. |
-| 37. Legacy signature hashes | Planned | Every case in Bitcoin Core's `sighash.json` gives its digest, including `SIGHASH_SINGLE` with no matching output. |
+| [37. Legacy signature hashes](ch037-legacy-signature-hashes.md) | Runnable: native C and wasm | The legacy signature hash of chapter 36's interpreter, field by field: what each of the six hash types signs, found by changing one byte at a time, the `SIGHASH_SINGLE` bug, FindAndDelete and `OP_CODESEPARATOR` in the scriptCode, undefined hash types, and quadratic hashing (1.87 GB for a 1,000,000-byte transaction of 6,756 inputs). All 500 rows of `sighash.json` match, 488 of them with undefined types, and the example agrees with a Python transliteration of Core. |
 | 38. Segwit v0 signature hashes | Planned | BIP-143's examples give their digests for every hash type. |
 | 39. Timelocks | Planned | The `CHECKLOCKTIMEVERIFY` and `CHECKSEQUENCEVERIFY` cases in `script_tests.json` and `tx_valid.json` pass, and BIP-68 sequence encodings round-trip. |
 | 40. Weight, vsize and fees | Planned | Weight and vsize of pinned transactions match Bitcoin Core's `decoderawtransaction`. |
