@@ -3012,6 +3012,19 @@
       "retrieved": "2026-11-03",
       "sha256": "5459198b3ae7962176537041ae01a8f74f7fa0a02e5b363ce378e6f5ac7ac430",
       "bytes": 17565
+    },
+    {
+      "path": "upstream/bolts/03-transactions.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/03-transactions.md",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "lightning-shachain"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "27ffbf1ae436f257bff3f255b4d1e4d4bbf8597fb1e2533d7ff9b66f4fe38d43",
+      "bytes": 194359
     }
   ]
 }

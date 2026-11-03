@@ -671,6 +671,17 @@
       ],
       "timeout": 300,
       "timeout_reason": "the eclipse case adds 20,000 addresses, each hashed with SHA-256d"
+    },
+    {
+      "source": "bitcoin/examples/lightning-shachain.coax",
+      "chapter": "bitcoin/book/ch107-shachain.md",
+      "stdout": "bitcoin/fixtures/lightning-shachain.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

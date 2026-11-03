@@ -1,0 +1,77 @@
+// book:begin example
+#load "../../coax/lib/lightning/shachain.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex.
+show :: (b: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+SHACHAIN_CODE_NAMES :: [5] string.["OK", "WRONG_SECRET", "ORDER", "RANGE", "UNKNOWN"];
+COMMITMENTS :: 10000;
+
+main :: () {
+  // ---- BOLT 3's generation vectors
+  print("generation vectors\n");
+  seed: [32] u8; out: [32] u8;
+  for row: SHACHAIN_GENERATION {
+    shc_fill(row.seed, seed[..]);
+    code := shachain_generate(seed[..], row.index, out[..]);
+    print("  %: index %, matches: %\n", row.name, row.index, shc_hex_is(out[..], row.output));
+  }
+
+  // ---- index 1 from the seed 0101...: one flip, one hash
+  print("index 1, step by step\n");
+  shc_fill(SHACHAIN_GENERATION[4].seed, seed[..]);
+  seed[0] ^= 1;
+  print("  flip bit 0: "); show(seed[..]); print("\n");
+  hashed: [32] u8; done := sha256_hash_checked(seed[..], hashed[..], false);
+  print("  SHA-256:    "); show(hashed[..]); print("\n");
+
+  // ---- BOLT 3's storage vectors
+  print("storage vectors\n");
+  for t: 0..<SHACHAIN_STORAGE_NAMES.count {
+    got := shachain_run_storage(t); want := shachain_expected(t);
+    if got < 0 { print("  %: every insert OK, BOLT 3 agrees: %\n", SHACHAIN_STORAGE_NAMES[t], want < 0); }
+    else { print("  %: insert % refused, BOLT 3 says insert %\n", SHACHAIN_STORAGE_NAMES[t], got + 1, want + 1); }
+  }
+
+  // ---- a channel's life: one side reveals a secret per commitment
+  print("a channel of % commitments\n", COMMITMENTS);
+  for i: 0..<32 { seed[i] = cast(u8) ((7 * i + 1) & 255); }
+  store: [1] Shachain; store[0] = shachain_new(); s: [32] u8;
+  refused := 0;
+  for n: 0..<COMMITMENTS {
+    code := shachain_generate(seed[..], shachain_index(cast(u64) n), s[..]);
+    if shachain_insert(store[..], shachain_index(cast(u64) n), s[..]) != SHACHAIN_OK { refused += 1; }
+  }
+  used := 0;
+  for b: 0..<SHACHAIN_SLOTS { if shachain_used(store[..], b) { used += 1; } }
+  print("  received %, refused %, slots in use %, next index %\n", store[0].received, refused, used, store[0].next);
+  for n: [4] u64.[0, 1234, 5000, 9999] {
+    code := shachain_lookup(store[..], shachain_index(n), out[..]);
+    code = shachain_generate(seed[..], shachain_index(n), s[..]);
+    print("  commitment %: lookup %, equals the sender's: %\n", n, SHACHAIN_CODE_NAMES[code], cb_ct_equal(out[..], s[..]) == CB_MAX64);
+  }
+  print("  commitment %: %\n", COMMITMENTS, SHACHAIN_CODE_NAMES[shachain_lookup(store[..], shachain_index(COMMITMENTS), out[..])]);
+
+  // ---- a peer that cheats, on a copy of the store
+  print("a peer that sends a wrong secret\n");
+  copy: [1] Shachain; copy[0] = store[0];
+  wrong: [32] u8; other: [32] u8; for i: 0..<32 { other[i] = 0xab; }
+  code := shachain_generate(other[..], shachain_index(COMMITMENTS), wrong[..]);
+  first := shachain_index(COMMITMENTS);
+  print("  commitment %, index % in slot %: %\n", COMMITMENTS, first, shachain_slot(first),
+        SHACHAIN_CODE_NAMES[shachain_insert(copy[..], first, wrong[..])]);
+  code = shachain_generate(seed[..], shachain_index(COMMITMENTS + 1), s[..]);
+  second := shachain_index(COMMITMENTS + 1);
+  print("  commitment %, index % in slot %: %\n", COMMITMENTS + 1, second, shachain_slot(second),
+        SHACHAIN_CODE_NAMES[shachain_insert(copy[..], second, s[..])]);
+  copy[0] = store[0];
+  code = shachain_generate(seed[..], shachain_index(COMMITMENTS + 1), s[..]);
+  print("  commitment % skipped: %\n", COMMITMENTS, SHACHAIN_CODE_NAMES[shachain_insert(copy[..], shachain_index(COMMITMENTS + 1), s[..])]);
+  print("  storage: % bytes of slots for % secrets of 32 bytes\n", SHACHAIN_SLOTS * 40, store[0].received);
+}
+// book:end example

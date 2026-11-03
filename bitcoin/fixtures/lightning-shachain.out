@@ -1,0 +1,31 @@
+generation vectors
+  generate_from_seed 0 final node: index 281474976710655, matches: true
+  generate_from_seed FF final node: index 281474976710655, matches: true
+  generate_from_seed FF alternate bits 1: index 11728124029610, matches: true
+  generate_from_seed FF alternate bits 2: index 93824992236885, matches: true
+  generate_from_seed 01 last nontrivial node: index 1, matches: true
+index 1, step by step
+  flip bit 0: 0001010101010101010101010101010101010101010101010101010101010101
+  SHA-256:    915c75942a26bb3a433a8ce2cb0427c29ec6c1775cfc78328b57f6ba7bfeaa9c
+storage vectors
+  insert_secret correct sequence: every insert OK, BOLT 3 agrees: true
+  insert_secret #1 incorrect: insert 2 refused, BOLT 3 says insert 2
+  insert_secret #2 incorrect (#1 derived from incorrect): insert 4 refused, BOLT 3 says insert 4
+  insert_secret #3 incorrect: insert 4 refused, BOLT 3 says insert 4
+  insert_secret #4 incorrect (1,2,3 derived from incorrect): insert 8 refused, BOLT 3 says insert 8
+  insert_secret #5 incorrect: insert 6 refused, BOLT 3 says insert 6
+  insert_secret #6 incorrect (5 derived from incorrect): insert 8 refused, BOLT 3 says insert 8
+  insert_secret #7 incorrect: insert 8 refused, BOLT 3 says insert 8
+  insert_secret #8 incorrect: insert 8 refused, BOLT 3 says insert 8
+a channel of 10000 commitments
+  received 10000, refused 0, slots in use 14, next index 281474976700655
+  commitment 0: lookup OK, equals the sender's: true
+  commitment 1234: lookup OK, equals the sender's: true
+  commitment 5000: lookup OK, equals the sender's: true
+  commitment 9999: lookup OK, equals the sender's: true
+  commitment 10000: UNKNOWN
+a peer that sends a wrong secret
+  commitment 10000, index 281474976700655 in slot 0: OK
+  commitment 10001, index 281474976700654 in slot 1: WRONG_SECRET
+  commitment 10000 skipped: ORDER
+  storage: 1960 bytes of slots for 10000 secrets of 32 bytes

@@ -1,0 +1,208 @@
+// Shachain (Bitcoin chapter 107): BOLT 3's per-commitment secrets. One
+// 32-byte seed gives 2^48 secrets, one per commitment, by flipping bits
+// and hashing. The peer that receives them, in descending order, keeps
+// every one it has seen in 49 slots, and checks each new secret against
+// the ones before it.
+//
+// The seed and the secrets are secret until a commitment is revoked, and
+// the receiver's slots hold secrets the peer has not published. SHA-256
+// runs in constant time, secrets are compared in constant time, and the
+// procedures overwrite the copies they leave on the stack. An index is a
+// commitment number, which both peers know, so the code branches on its
+// bits.
+#load "../crypto/sha256.coax";
+#load "../crypto/bytes.coax";
+#load "../../tests/lightning/shachain_vectors.coax";
+#authority;
+
+// book:begin codes
+SHACHAIN_OK :: 0;
+SHACHAIN_WRONG_SECRET :: 1;  // the secret does not derive one already stored: another seed
+SHACHAIN_ORDER :: 2;         // not the next index: secrets arrive one by one, counting down
+SHACHAIN_RANGE :: 3;         // an index of 2^48 or more
+SHACHAIN_UNKNOWN :: 4;       // an index whose secret has not arrived yet
+
+SHACHAIN_BITS :: 48;
+SHACHAIN_MAX_INDEX :: cast(u64) 281474976710655;  // 2^48 - 1, the first secret used
+SHACHAIN_SLOTS :: 49;                             // one per count of trailing zero bits, 0 to 48
+// book:end codes
+
+shachain_wipe :: (b: [] u8) { for i: 0..<b.count { b[i] = 0; } }
+
+// book:begin generate
+// derive(base, bits, I): for each bit B of I below `bits`, from the top,
+// flip bit B of P and hash. Bit B is bit B mod 8 of byte B div 8.
+shachain_derive :: (base: [] u8, bits: int, index: u64, out: [] u8) {
+  p: [32] u8; next: [32] u8;
+  for i: 0..<32 { p[i] = base[i]; }
+  for k: 0..<bits {
+    b := bits - 1 - k;
+    if ((index >> cast(u64) b) & 1) == 1 {
+      p[b / 8] ^= cast(u8) (1 << (b % 8));
+      #assert sha256_hash_checked(p[..], next[..], false) == SHA_OK;
+      p = next;
+    }
+  }
+  for i: 0..<32 { out[i] = p[i]; }
+  shachain_wipe(p[..]); shachain_wipe(next[..]);
+}
+// generate_from_seed(seed, I): every one of the 48 bits.
+shachain_generate :: (seed: [] u8, index: u64, out: [] u8) -> int {
+  if index > SHACHAIN_MAX_INDEX { return SHACHAIN_RANGE; }
+  shachain_derive(seed, SHACHAIN_BITS, index, out);
+  return SHACHAIN_OK;
+}
+// book:end generate
+
+// book:begin store
+// The receiver's store. Slot b holds the last secret received whose
+// index ends in exactly b zero bits; from it, every index that shares its
+// top 48 - b bits can be derived.
+ShachainSlot :: struct { index: u64; secret: [32] u8; }
+Shachain :: struct { slots: [49] ShachainSlot; next: u64; received: u64; }
+shachain_new :: () -> Shachain { return Shachain.{next = SHACHAIN_MAX_INDEX}; }
+
+// The slot an index goes in: its count of trailing zero bits, 48 for 0.
+shachain_slot :: (index: u64) -> int {
+  for b: 0..<SHACHAIN_BITS { if ((index >> cast(u64) b) & 1) == 1 { return b; } }
+  return SHACHAIN_BITS;
+}
+// Whether slot b holds a secret. An empty slot's index is 0, which
+// belongs in slot 48, so only slot 48 needs the count.
+shachain_used :: (store: [] Shachain, b: int) -> bool {
+  if b == SHACHAIN_BITS { return store[0].received == SHACHAIN_MAX_INDEX + 1; }
+  return shachain_slot(store[0].slots[b].index) == b;
+}
+// book:end store
+
+// book:begin insert
+// insert_secret: the new secret must derive every secret in the slots
+// below its own. If one does not, the peer's secrets do not come from one
+// seed, and the peer is cheating or broken.
+shachain_insert :: (store: [] Shachain, index: u64, secret: [] u8) -> int {
+  if index > SHACHAIN_MAX_INDEX { return SHACHAIN_RANGE; }
+  if store[0].received == SHACHAIN_MAX_INDEX + 1 || index != store[0].next { return SHACHAIN_ORDER; }
+  slot := shachain_slot(index);
+  derived: [32] u8; same := CB_MAX64;
+  for b: 0..<slot {
+    shachain_derive(secret, slot, store[0].slots[b].index, derived[..]);
+    same &= cb_ct_equal(derived[..], store[0].slots[b].secret[..]);
+  }
+  shachain_wipe(derived[..]);
+  if same != CB_MAX64 { return SHACHAIN_WRONG_SECRET; }
+  store[0].slots[slot].index = index;
+  for i: 0..<32 { store[0].slots[slot].secret[i] = secret[i]; }
+  store[0].received += 1;
+  if index > 0 { store[0].next = index - 1; }
+  return SHACHAIN_OK;
+}
+// book:end insert
+
+// book:begin lookup
+// derive_old_secret: the slot whose index is the top bits of I, then the
+// remaining low bits from there. Secrets from the next index up to the
+// first received have arrived; lower ones have not.
+shachain_lookup :: (store: [] Shachain, index: u64, out: [] u8) -> int {
+  if index > SHACHAIN_MAX_INDEX { return SHACHAIN_RANGE; }
+  if store[0].received == 0 || index <= SHACHAIN_MAX_INDEX - store[0].received { return SHACHAIN_UNKNOWN; }
+  for b: 0..<SHACHAIN_SLOTS {
+    // The slot's index, with its b low bits clear, is I's prefix.
+    if (index >> cast(u64) b) == (store[0].slots[b].index >> cast(u64) b) && shachain_used(store, b) {
+      shachain_derive(store[0].slots[b].secret[..], b, index, out);
+      return SHACHAIN_OK;
+    }
+  }
+  return SHACHAIN_UNKNOWN;
+}
+// The commitment number n uses index 2^48 - 1 - n.
+shachain_index :: (commitment: u64) -> u64 { return SHACHAIN_MAX_INDEX - commitment; }
+// book:end lookup
+
+// ---- test helpers
+shc_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+shc_fill :: (text: string, out: [] u8) {
+  for i: 0..<text.count / 2 { out[i] = cast(u8) (shc_nibble(text[2 * i]) * 16 + shc_nibble(text[2 * i + 1])); }
+}
+SHC_DIGITS :: "0123456789abcdef";
+shc_hex_is :: (a: [] u8, text: string) -> bool {
+  if text.count != 2 * a.count { return false; }
+  for i: 0..<a.count {
+    if text[2 * i] != SHC_DIGITS[cast(int) (a[i] >> 4)] || text[2 * i + 1] != SHC_DIGITS[cast(int) (a[i] & 15)] { return false; }
+  }
+  return true;
+}
+// One storage test from a fresh store: the position of the first refused
+// insert, or -1 when every insert succeeds.
+shachain_run_storage :: (test: int) -> int {
+  store: [1] Shachain; store[0] = shachain_new(); secret: [32] u8; at := 0;
+  for row: SHACHAIN_STORAGE {
+    if row.test == test {
+      shc_fill(row.secret, secret[..]);
+      if shachain_insert(store[..], row.index, secret[..]) != SHACHAIN_OK { return at; }
+      at += 1;
+    }
+  }
+  return -1;
+}
+// Where BOLT 3 says that test's first refusal is, or -1.
+shachain_expected :: (test: int) -> int {
+  at := 0;
+  for row: SHACHAIN_STORAGE {
+    if row.test == test { if !row.ok { return at; } at += 1; }
+  }
+  return -1;
+}
+
+#test "BOLT 3: every generation vector" #steps 200000000 {
+  out: [32] u8; seed: [32] u8;
+  for row: SHACHAIN_GENERATION {
+    shc_fill(row.seed, seed[..]);
+    #assert shachain_generate(seed[..], row.index, out[..]) == SHACHAIN_OK;
+    #assert shc_hex_is(out[..], row.output);
+  }
+  // flip(0) in e3b0... is e2b0..., and flip(10) is e3b4...: BOLT 3's examples.
+  p := [2] u8.[0xe3, 0xb0]; p[0] ^= cast(u8) (1 << 0); #assert p[0] == 0xe2;
+  q := [2] u8.[0xe3, 0xb0]; q[10 / 8] ^= cast(u8) (1 << (10 % 8)); #assert q[1] == 0xb4;
+}
+#test "BOLT 3: every storage vector refuses where BOLT 3 says" #steps 400000000 {
+  for t: 0..<SHACHAIN_STORAGE_NAMES.count { #assert shachain_run_storage(t) == shachain_expected(t); }
+}
+#test "slots: the count of trailing zero bits" {
+  #assert shachain_slot(SHACHAIN_MAX_INDEX) == 0;
+  #assert shachain_slot(SHACHAIN_MAX_INDEX - 1) == 1;
+  #assert shachain_slot(SHACHAIN_MAX_INDEX - 3) == 2;
+  #assert shachain_slot((cast(u64) 1) << cast(u64) 47) == 47;
+  #assert shachain_slot(0) == 48;
+  #assert shachain_index(0) == SHACHAIN_MAX_INDEX;
+}
+#test "a store of 64 secrets derives each, and refuses what it lacks" #steps 400000000 {
+  seed: [32] u8; for i: 0..<32 { seed[i] = cast(u8) (7 * i + 1); }
+  store: [1] Shachain; store[0] = shachain_new(); s: [32] u8; got: [32] u8;
+  for n: 0..<64 {
+    code := shachain_generate(seed[..], shachain_index(cast(u64) n), s[..]);
+    #assert shachain_insert(store[..], shachain_index(cast(u64) n), s[..]) == SHACHAIN_OK;
+  }
+  for n: 0..<64 {
+    code := shachain_generate(seed[..], shachain_index(cast(u64) n), s[..]);
+    #assert shachain_lookup(store[..], shachain_index(cast(u64) n), got[..]) == SHACHAIN_OK;
+    #assert cb_ct_equal(got[..], s[..]) == CB_MAX64;
+  }
+  #assert shachain_lookup(store[..], shachain_index(64), got[..]) == SHACHAIN_UNKNOWN;
+  #assert shachain_lookup(store[..], SHACHAIN_MAX_INDEX + 1, got[..]) == SHACHAIN_RANGE;
+  // Index 2^48 - 1 - n ends in as many zero bits as n ends in one bits:
+  // at most 6 for n below 64, so slots 0 to 6 are used.
+  used := 0; for b: 0..<SHACHAIN_SLOTS { if shachain_used(store[..], b) { used += 1; } }
+  #assert used == 7 && !shachain_used(store[..], 48);
+}
+#test "refusals: order, range, an empty store" #steps 50000000 {
+  seed: [32] u8; s: [32] u8; got: [32] u8;
+  store: [1] Shachain; store[0] = shachain_new();
+  #assert shachain_lookup(store[..], SHACHAIN_MAX_INDEX, got[..]) == SHACHAIN_UNKNOWN;
+  #assert shachain_generate(seed[..], SHACHAIN_MAX_INDEX + 1, s[..]) == SHACHAIN_RANGE;
+  #assert shachain_insert(store[..], SHACHAIN_MAX_INDEX + 1, s[..]) == SHACHAIN_RANGE;
+  code := shachain_generate(seed[..], SHACHAIN_MAX_INDEX - 1, s[..]);
+  #assert shachain_insert(store[..], SHACHAIN_MAX_INDEX - 1, s[..]) == SHACHAIN_ORDER;
+  code = shachain_generate(seed[..], SHACHAIN_MAX_INDEX, s[..]);
+  #assert shachain_insert(store[..], SHACHAIN_MAX_INDEX, s[..]) == SHACHAIN_OK;
+  #assert shachain_insert(store[..], SHACHAIN_MAX_INDEX, s[..]) == SHACHAIN_ORDER;
+}

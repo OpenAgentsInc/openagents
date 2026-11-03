@@ -1,0 +1,52 @@
+// The checks of lightning-shachain.coax. They live apart so that running
+// the example doesn't also run them. The example runs every BOLT 3 vector;
+// these check the properties around them.
+// Checks: coax test bitcoin/examples/checks/lightning-shachain.coax
+#load "../lightning-shachain.coax";
+
+// book:begin check
+CHECK_SEED :: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+// A secret derives every index that shares its prefix: the secret of I
+// with its low b bits cleared, taken b bits further, is the secret of I.
+#forall "a prefix's secret derives the index" k: 0..<64 #steps 400000000 {
+  seed: [32] u8; shc_fill(CHECK_SEED, seed[..]);
+  index := SHACHAIN_MAX_INDEX - cast(u64) (k * 4099); b := k % 13;
+  prefix := (index >> cast(u64) b) << cast(u64) b;
+  base: [32] u8; want: [32] u8; got: [32] u8;
+  code := shachain_generate(seed[..], prefix, base[..]);
+  code = shachain_generate(seed[..], index, want[..]);
+  shachain_derive(base[..], b, index, got[..]);
+  #assert cb_ct_equal(got[..], want[..]) == CB_MAX64;
+}
+// After 15 good secrets, the 16th (index 2^48 - 16, slot 4) with one bit
+// changed, in any of its 32 bytes, fails the check against slots 0 to 3.
+#forall "one changed bit of a secret that has children" bit: 0..<32 #steps 1200000000 {
+  seed: [32] u8; shc_fill(CHECK_SEED, seed[..]); s: [32] u8;
+  store: [1] Shachain; store[0] = shachain_new();
+  for n: 0..<15 {
+    code := shachain_generate(seed[..], shachain_index(cast(u64) n), s[..]);
+    #assert shachain_insert(store[..], shachain_index(cast(u64) n), s[..]) == SHACHAIN_OK;
+  }
+  code := shachain_generate(seed[..], shachain_index(15), s[..]);
+  at := bit * 8 + bit % 8; s[at / 8] ^= cast(u8) (1 << (at % 8));
+  #assert shachain_slot(shachain_index(15)) == 4;
+  #assert shachain_insert(store[..], shachain_index(15), s[..]) == SHACHAIN_WRONG_SECRET;
+}
+// Every one of 300 received secrets looks up to the sender's secret, and
+// the store never uses more than 9 slots for them.
+#test "300 commitments: every lookup is the sender's secret" #steps 2000000000 {
+  seed: [32] u8; shc_fill(CHECK_SEED, seed[..]); s: [32] u8; got: [32] u8;
+  store: [1] Shachain; store[0] = shachain_new();
+  for n: 0..<300 {
+    code := shachain_generate(seed[..], shachain_index(cast(u64) n), s[..]);
+    #assert shachain_insert(store[..], shachain_index(cast(u64) n), s[..]) == SHACHAIN_OK;
+  }
+  for n: 0..<300 {
+    code := shachain_generate(seed[..], shachain_index(cast(u64) n), s[..]);
+    #assert shachain_lookup(store[..], shachain_index(cast(u64) n), got[..]) == SHACHAIN_OK;
+    #assert cb_ct_equal(got[..], s[..]) == CB_MAX64;
+  }
+  used := 0; for b: 0..<SHACHAIN_SLOTS { if shachain_used(store[..], b) { used += 1; } }
+  #assert used == 9;
+}
+// book:end check

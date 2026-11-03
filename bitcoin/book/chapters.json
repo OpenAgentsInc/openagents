@@ -2040,14 +2040,20 @@
   {
    "number": 107,
    "title": "Shachain",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch107-shachain.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     4
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/lightning/shachain.coax",
+    "bitcoin/examples/lightning-shachain.coax",
+    "bitcoin/examples/checks/lightning-shachain.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
