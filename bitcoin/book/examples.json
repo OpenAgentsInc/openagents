@@ -1075,6 +1075,17 @@
         "release"
       ],
       "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/tx-index.coax",
+      "chapter": "bitcoin/book/ch091-indexes-transactions-filters-and-coin-statistics.md",
+      "stdout": "bitcoin/fixtures/tx-index.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600
     }
   ]
 }

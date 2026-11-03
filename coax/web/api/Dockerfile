@@ -6,7 +6,7 @@ FROM debian:bookworm-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libpq-dev libsecp256k1-dev libssl-dev libcurl4-openssl-dev zlib1g-dev && rm -rf /var/lib/apt/lists/*
 COPY src/ /src/
 COPY gen/ /src/
-RUN gcc -std=c11 -O2 -Wall -Wextra -D_DEFAULT_SOURCE -I/usr/include/postgresql -o /api /src/api.c /src/analytics.c /src/admin.c /src/player.c /src/npc.c /src/room.c /src/private.c /src/drops.c /src/villa.c /src/chat.c /src/realms.c /src/access.c /src/makers.c /src/inference.c /src/mesh.c /src/mesh-policy.generated.c /src/caller-policy.generated.c /src/nip98.generated.c /src/anime.c /src/anime-director-policy.generated.c /src/seats.c /src/seat-policy.generated.c /src/nostr.c /src/email.c /src/jobs.c /src/relay.c -lpq -lsecp256k1 -lssl -lcrypto -lcurl -lz -lm
+RUN gcc -std=c11 -O2 -Wall -Wextra -D_DEFAULT_SOURCE -I/usr/include/postgresql -o /api /src/api.c /src/analytics.c /src/admin.c /src/player.c /src/rooms.c /src/npc.c /src/room.c /src/private.c /src/drops.c /src/villa.c /src/chat.c /src/realms.c /src/access.c /src/makers.c /src/inference.c /src/mesh.c /src/mesh-policy.generated.c /src/caller-policy.generated.c /src/nip98.generated.c /src/anime.c /src/anime-director-policy.generated.c /src/seats.c /src/seat-policy.generated.c /src/nostr.c /src/email.c /src/jobs.c /src/relay.c -lpq -lsecp256k1 -lssl -lcrypto -lcurl -lz -lm
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends libpq5 libsecp256k1-1 libssl3 libcurl4 zlib1g ca-certificates && rm -rf /var/lib/apt/lists/*

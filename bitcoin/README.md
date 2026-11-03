@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-95 of the book's 124 chapters are implemented and 2 are partly implemented;
+95 of the book's 124 chapters are implemented and 3 are partly implemented;
 the [status table](book/README.md#status) lists them.
 
 Chapters [58](book/ch058-connect-and-disconnect-a-block.md) and
@@ -23,7 +23,10 @@ light connect/reorg path: coins, ordered undo and tip share one atomic
 storage batch. The Coax [file adapter](examples/live/light-chain.coax)
 applies raw blocks on admitted headers and acknowledges only after sync.
 Its profile remains proof-of-work-only; full consensus validation and the
-rest of the explorer are later steps of #12704.
+rest of the explorer are later steps of #12704. Chapter
+[91](book/ch091-indexes-transactions-filters-and-coin-statistics.md) now adds
+the transaction index: durable positions, active and stale lookup, and raw
+file reads across reorgs.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and

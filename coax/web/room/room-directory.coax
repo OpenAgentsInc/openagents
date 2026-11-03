@@ -1,0 +1,219 @@
+// The room server's part of the instance directory (#12717, spec sections 3.4 and 9). Everglade's
+// instances run on several oa-room services, the shards (oa-room is shard 1, oa-room-2 shard 2, ...),
+// each at most one Cloud Run container, so an instance's world lives in one process. The API keeps
+// the directory (coax/web/api/rooms.c): which shard holds each instance, who sits in it, and where a
+// new instance goes. It signs a seat ticket for the instance and its shard (room-ticket.coax v3),
+// and the page opens /api/room/sK/relay/everglade/CODE, which the load balancer sends to shard K.
+//
+// This file is what a shard tells the directory: every everglade room it runs, its seats and the
+// players in them (their tickets' ids), and how many simulations it has free. The host posts it to
+// POST /api/playtest/room-directory, signed as the HP report is (X-Room-Mac: the hex HMAC-SHA256 of
+// the body under the seat-ticket key):
+//   t WALL_MS
+//   s SHARD FREE                      FREE: the everglade simulations not in use (of EG_ROOMS)
+//   r CODE PLAYERS PID PID ...        one line a room; PLAYERS counts every seat, a PID each ticketed one
+// It is due when what it says changed, every DIR_EVERY_MS while any room is live, and once more
+// when the last room closes (so the directory drops it at once rather than when it goes stale).
+DIR_BODY :: 16384;
+DIR_EVERY_MS :: 5000;
+
+RmDirectory :: struct {
+  out: [DIR_BODY] u8; out_n: int;      // the post rm_directory_due made
+  mac: [64] u8;                        // its X-Room-Mac
+  last: [DIR_BODY] u8; last_n: int;    // what the last post said, its t line left out
+  at: int;                             // wall ms of the last post
+  rooms: bool;                         // the last post named a room
+}
+
+// The shard this server is (the host's OA_ROOM_SHARD; 1 when unset): it seats only tickets for
+// itself, and only sockets whose path names it or no sharv[0].dir.
+rm_shard :: (v: [] RmServer, shard: int) #export_c {
+  if shard >= 1 && shard <= 99 { v[0].shard = shard; }
+}
+
+// The shard a socket's path names: "GET /api/room/sN/..." is N (1 to 99, no leading zero), a path
+// without one is 0, and a malformed one -1. (The load balancer sends /api/room/sN/ to shard N.)
+ROOM_PREFIX :: "GET /api/room/";
+rm_path_shard :: (req: string) -> int {
+  p := ROOM_PREFIX;
+  if req.count < p.count + 3 || req[0..<p.count] != p || req[p.count] != 's' { return 0; }
+  i := p.count + 1; n := 0; digits := 0;
+  while i < req.count && req[i] >= '0' && req[i] <= '9' {
+    n = n * 10 + cast(int) (req[i] - '0'); digits += 1; i += 1;
+  }
+  if digits == 0 {
+    return 0;   // "/api/room/something": a path of its own, not a shard's
+  }
+  if digits > 2 || req[p.count + 1] == '0' || i >= req.count || req[i] != '/' { return -1; }
+  return n;
+}
+// The request line with "sN/" taken out of its path, into out ("GET /api/room/relay/..."): its
+// length, or -1 when the line doesn't fit. Only the request line is kept: the joins read nothing else.
+rm_path_unshard :: (req: string, out: [] u8) -> int {
+  p := ROOM_PREFIX;
+  i := p.count + 1;
+  while i < req.count && req[i] >= '0' && req[i] <= '9' { i += 1; }
+  i += 1;   // the '/'
+  e := i;
+  while e < req.count && req[e] != '\r' && req[e] != '\n' { e += 1; }
+  n := p.count + (e - i);
+  if n + 4 > out.count { return -1; }
+  for k: 0..<p.count { out[k] = p[k]; }
+  for k: i..<e { out[p.count + k - i] = req[k]; }
+  out[n] = '\r'; out[n + 1] = '\n'; out[n + 2] = '\r'; out[n + 3] = '\n';
+  return n + 4;
+}
+
+dir_put :: (b: [] u8, n: int, s: string) -> int {
+  if n < 0 || n + s.count > b.count { return -1; }
+  for i: 0..<s.count { b[n + i] = s[i]; }
+  return n + s.count;
+}
+dir_int :: (b: [] u8, n: int, x: int) -> int {
+  if n < 0 { return -1; }
+  d: [20] u8; dn := 0; e := ifx x < 0 then 0 else x;
+  while e > 0 || dn == 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
+  if n + dn > b.count { return -1; }
+  for j: 0..<dn { b[n + j] = d[dn - 1 - j]; }
+  return n + dn;
+}
+// The report's lines after its t line ("s ..." and the rooms) into b: its length (-1 too long), and
+// in rooms[0] how many rooms it names.
+dir_lines :: (v: [] RmServer, b: [] u8, rooms: [] int) -> int {
+  free := 0;
+  for k: 0..<EG_ROOMS { if !v[0].eg[k].live { free += 1; } }
+  n := dir_put(b, 0, "s "); n = dir_int(b, n, v[0].shard); n = dir_put(b, n, " "); n = dir_int(b, n, free); n = dir_put(b, n, "\n");
+  rooms[0] = 0;
+  for k: 0..<EG_ROOMS {
+    r := v[0].eg[k].relay;
+    if !v[0].eg[k].live || r < 0 || r >= RELAYS || !v[0].relays[r].live { continue; }
+    m := v[0].relays[r];
+    n = dir_put(b, n, "r "); n = dir_put(b, n, cast(string) m.code[0..<m.code_n]); n = dir_put(b, n, " "); n = dir_int(b, n, rl_people(v, r));
+    for i: 0..<CONNS {
+      c := v[0].conns[i];
+      if !c.live || c.relay != r || !c.ticket.ok { continue; }
+      n = dir_put(b, n, " "); n = dir_put(b, n, cast(string) c.ticket.pid[0..<c.ticket.pid_n]);
+    }
+    n = dir_put(b, n, "\n");
+    rooms[0] += 1;
+  }
+  return n;
+}
+
+// Called by the host once a second: when the report is due, it is written into dir.out with its MAC
+// (dir.mac). Its length, 0 when nothing is due (or no key: the directory takes only signed reports).
+rm_directory_due :: (v: [] RmServer) -> int #export_c {
+  v[0].dir.out_n = 0;
+  if v[0].tkey_n == 0 { return 0; }
+  lines: [DIR_BODY] u8; rooms: [1] int;
+  n := dir_lines(v, lines[0..<DIR_BODY - 32], rooms[..]);
+  if n < 0 { return 0; }
+  same := n == v[0].dir.last_n;
+  if same { for i: 0..<n { if lines[i] != v[0].dir.last[i] { same = false; break; } } }
+  periodic := rooms[0] > 0 && v[0].wall_ms - v[0].dir.at >= DIR_EVERY_MS;
+  closing := rooms[0] == 0 && v[0].dir.rooms;
+  if same && !periodic && !closing { return 0; }
+  o := v[0].dir.out[..];
+  k := dir_put(o, 0, "t "); k = dir_int(o, k, v[0].wall_ms); k = dir_put(o, k, "\n");
+  for i: 0..<n { o[k + i] = lines[i]; }
+  k += n;
+  key: [TICKET_KEY] u8;
+  for i: 0..<v[0].tkey_n { key[i] = v[0].tkey[i]; }
+  mac: [32] u8;
+  if hmac_sha256_checked(key[0..<v[0].tkey_n], o[0..<k], mac[..], false) != SHA_OK { return 0; }
+  for i: 0..<32 { v[0].dir.mac[i * 2] = tk_hex(cast(int) (mac[i] >> 4)); v[0].dir.mac[i * 2 + 1] = tk_hex(cast(int) (mac[i] & 15)); }
+  for i: 0..<n { v[0].dir.last[i] = lines[i]; }
+  v[0].dir.last_n = n; v[0].dir.at = v[0].wall_ms; v[0].dir.rooms = rooms[0] > 0;
+  v[0].dir.out_n = k;
+  return k;
+}
+
+#test "directory: a socket's path names its shard; sN/ comes out of the request line (#12717)" {
+  #assert rm_path_shard("GET /api/room/s2/relay/everglade/everglade-17?t=x HTTP/1.1\r\n\r\n") == 2;
+  #assert rm_path_shard("GET /api/room/s12/relay/everglade/a HTTP/1.1\r\n\r\n") == 12;
+  #assert rm_path_shard("GET /api/room/relay/everglade/a HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_path_shard("GET /api/room/orbit-league/a HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_path_shard("GET /api/room/s/relay/x/a HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_path_shard("GET /api/room/s02/relay/x/a HTTP/1.1\r\n\r\n") == -1;
+  #assert rm_path_shard("GET /api/room/s123/relay/x/a HTTP/1.1\r\n\r\n") == -1;
+  #assert rm_path_shard("GET /api/room/s2relay/x/a HTTP/1.1\r\n\r\n") == -1;
+  b: [256] u8;
+  n := rm_path_unshard("GET /api/room/s2/relay/everglade/everglade-17?t=x HTTP/1.1\r\nCookie: a\r\n\r\n", b[..]);
+  #assert cast(string) b[0..<n] == "GET /api/room/relay/everglade/everglade-17?t=x HTTP/1.1\r\n\r\n";
+  #assert rm_path_unshard("GET /api/room/s2/relay/everglade/everglade-17?t=x HTTP/1.1\r\n\r\n", b[0..<20]) == -1;
+}
+
+#test "directory: a shard seats only its own path and tickets; v2 tickets are shard 1's (#12717)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 990000);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  rm_shard(v[..], 2);
+  t: [256] u8; r: [512] u8;
+  // a ticket for shard 2, through shard 2's path: sits
+  n := tk_sign_on(key, "p-0000000000000001", false, "", "everglade-17", 2, 1000000, -1, t[..]);
+  k := tk_add(r[..], 0, "GET /api/room/s2/relay/everglade/everglade-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\nHost: x\r\n\r\n");
+  #assert rm_join(v[..], 0, cast(string) r[0..<k]) == 0;
+  // the same ticket through shard 3's path: refused (the load balancer sent it to the wrong shard)
+  k = tk_add(r[..], 0, "GET /api/room/s3/relay/everglade/everglade-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
+  #assert rm_join(v[..], 1, cast(string) r[0..<k]) < 0;
+  // a ticket for shard 1 (v3 or v2) on shard 2: refused, so one code never runs on two shards
+  n = tk_sign_on(key, "p-0000000000000002", false, "", "everglade-17", 1, 1000000, -1, t[..]);
+  k = tk_add(r[..], 0, "GET /api/room/s2/relay/everglade/everglade-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
+  #assert rm_join(v[..], 2, cast(string) r[0..<k]) < 0;
+  n = tk_sign(key, "p-0000000000000003", false, "", "everglade-17", 1000000, -1, t[..]);
+  k = tk_add(r[..], 0, "GET /api/room/relay/everglade/everglade-17?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
+  #assert rm_join(v[..], 3, cast(string) r[0..<k]) < 0;
+  // shard 1 takes the v2 ticket
+  w: [1] RmServer;
+  rm_init(w[..]);
+  rm_clock(w[..], 0, 990000);
+  rm_ticket_key(w[..], key, true);
+  #assert w[0].shard == 1 && rm_join(w[..], 0, cast(string) r[0..<k]) == 0;
+}
+
+#test "directory: the report names each room, its seats and ticketed players; due on change, every 5 s, and once when the last room closes (#12717)" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  #assert rm_directory_due(v[..]) == 0;   // no key: nothing is reported
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  rm_shard(v[..], 3);
+  rm_clock(v[..], 0, 990000);
+  // nothing has run yet: nothing to say
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 3 16\n";
+  #assert cast(string) v[0].dir.mac[..] == "67b42ad70fdab1895ed3734c70fba005118c8e8f896de2990a38e5d7f5a74be2";
+  #assert rm_directory_due(v[..]) == 0;
+  t: [256] u8; r: [512] u8;
+  for p: 0..<2 {
+    pid := ifx p == 0 then "p-00000000000000a1" else "p-00000000000000a2";
+    n := tk_sign_on(key, pid, false, "", "everglade-2", 3, 1000000, -1, t[..]);
+    k := tk_add(r[..], 0, "GET /api/room/s3/relay/everglade/everglade-2?t="); k = tk_add(r[..], k, cast(string) t[0..<n]); k = tk_add(r[..], k, " HTTP/1.1\r\n\r\n");
+    #assert rm_join(v[..], p, cast(string) r[0..<k]) == p;
+  }
+  rm_clock(v[..], 0, 990500);
+  n := rm_directory_due(v[..]);
+  #assert cast(string) v[0].dir.out[0..<n] == "t 990500\ns 3 15\nr everglade-2 2 p-00000000000000a1 p-00000000000000a2\n";
+  // its MAC is the body's, under the key
+  want: [64] u8;
+  kb: [64] u8; for i: 0..<key.count { kb[i] = key[i]; }
+  mac: [32] u8;
+  #assert hmac_sha256_checked(kb[0..<key.count], v[0].dir.out[0..<n], mac[..], false) == SHA_OK;
+  for i: 0..<32 { want[i * 2] = tk_hex(cast(int) (mac[i] >> 4)); want[i * 2 + 1] = tk_hex(cast(int) (mac[i] & 15)); }
+  #assert cast(string) want[..] == cast(string) v[0].dir.mac[..];
+  #assert cast(string) v[0].dir.mac[..] == "d5afc780d6e83ce559b7d0f00ca32f8f45c3e7e70639ab6c6b774740b650fdd3";   // Python's hmac
+  // the same a second later: not due; five seconds on: due again
+  rm_clock(v[..], 0, 991500);
+  #assert rm_directory_due(v[..]) == 0;
+  rm_clock(v[..], 0, 995500);
+  #assert rm_directory_due(v[..]) > 0;
+  // one leaves: due at once
+  rm_left(v[..], 0);
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 995500\ns 3 15\nr everglade-2 1 p-00000000000000a2\n";
+  // the last leaves: the room closes, and one report says so; then nothing until something changes
+  rm_left(v[..], 1);
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 995500\ns 3 16\n";
+  rm_clock(v[..], 0, 999500);
+  #assert rm_directory_due(v[..]) == 0;
+}

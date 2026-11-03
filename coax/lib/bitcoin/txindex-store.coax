@@ -1,0 +1,244 @@
+// Bitcoin chapter 91's explorer transaction index. Own schema version 1;
+// not Core's LevelDB format. Public chain bytes, variable time throughout.
+#load "lightstore.coax";
+#load "tx.coax";
+#authority;
+
+TXI_MISS :: 8; TXI_CORRUPT :: 9; TXI_LOCATION :: 10; TXI_MISMATCH :: 11;
+TXI_META :: [1] u8.['I'];
+TxiMeta :: struct { code: int; next: int; }
+TxiLoc :: struct { file: int; pos: int; }
+TxiBlock :: struct { code: int; height: int; count: int; seq: int; file: int; pos: int; n: int; }
+TxiHit :: struct {
+  code: int; height: int; seq: int; file: int; pos: int; offset: int; n: int;
+  active: bool; block: [32] u8;
+}
+
+// Checks precede implementation. Synthetic records isolate lookup ordering;
+// txindex.coax and the independent oracle exercise actual admitted blocks.
+#test "tx index store: position and priority boundaries" {
+  #assert txi_location_ok(0, 8, 81) && txi_location_ok(2147483647, 4294967214, 81);
+  #assert !txi_location_ok(-1, 8, 81) && !txi_location_ok(2147483648, 8, 81);
+  #assert !txi_location_ok(0, 7, 81) && !txi_location_ok(0, 8, 80);
+  #assert txi_location_ok(0, 8, 4000000) && !txi_location_ok(0, 8, 4000001);
+  #assert !txi_location_ok(0, 4294967215, 81);
+  #assert txi_tx_extent(81, 10, 91) && !txi_tx_extent(80, 10, 91);
+  #assert !txi_tx_extent(81, 9, 91) && !txi_tx_extent(81, 11, 91);
+  #assert !txi_tx_extent(92, 10, 91);
+  #assert txi_height_ok(1) && txi_height_ok(2147483647) && !txi_height_ok(0) && !txi_height_ok(2147483648);
+  #assert txi_prefer(true, 0, false, 99) && !txi_prefer(false, 99, true, 0);
+  #assert txi_prefer(false, 2, false, 1) && !txi_prefer(true, 1, true, 2) && !txi_prefer(true, 2, true, 2);
+}
+#test "tx index store: schema, cursor and record round trips" {
+  table: [4096] u8; batch: [4096] u8; c: [1] LcCursor; g: [32] u8;
+  #assert txi_context_vartime(table[..], 0).code == LC_CONTEXT;
+  c[0].n = kv_batch_new(batch[..]);
+  #assert lc_set_tip_vartime(table[..], c[..], batch[..], 5, 0, g[..]);
+  #assert txi_sync_vartime(table[..], c[..], batch[..], 9);
+  #assert txi_context_vartime(table[..], c[0].used).next == 9;
+  #assert !txi_sync_vartime(table[..], c[..], batch[0..<c[0].n+55], 9);
+  mk := TXI_META; f := kv_find_vartime(table[..], c[0].used, mk[..]); at := f.at+7;
+  for offset: [4] int.[0, 4, 8, 16] {
+    table[at+offset] ^= 1;
+    #assert txi_context_vartime(table[..], c[0].used).code == LC_CONTEXT;
+    table[at+offset] ^= 1;
+  }
+  short: [47] u8; c[0].used = kv_set_vartime(table[..], c[0].used, mk[..], short[..]);
+  #assert txi_context_vartime(table[..], c[0].used).code == LC_CONTEXT;
+  #assert txi_sync_vartime(table[..], c[..], batch[..], 9);
+  h: [32] u8; h[0] = 41;
+  b := TxiBlock.{height=123, count=2, seq=7, file=17, pos=256, n=1000};
+  #assert txi_put_block_vartime(table[..], c[..], batch[..], h[..], b);
+  #assert !txi_put_block_vartime(table[..], c[..], batch[0..<c[0].n+63], h[..], b);
+  got := txi_block_vartime(table[..], c[0].used, h[..]);
+  #assert got.code == LC_OK && got.height == 123 && got.count == 2 && got.seq == 7 && got.file == 17 && got.pos == 256 && got.n == 1000;
+  h[1] = 1; #assert txi_block_vartime(table[..], c[0].used, h[..]).code == TXI_MISS;
+  #assert txi_block_vartime(table[..], c[0].used, h[0..<31]).code == LC_CONTEXT;
+  #assert txi_block_vartime(table[..], -1, h[..]).code == LC_CONTEXT;
+  #assert txi_context_vartime(table[..], -1).code == LC_CONTEXT;
+}
+#test "tx index store: malformed block receipts and candidate records refuse" {
+  for which: 0..<19 {
+    table: [4096] u8; batch: [4096] u8; c: [1] LcCursor; h: [32] u8; id: [32] u8;
+    h[0] = 23; id[31] = 99; c[0].n = kv_batch_new(batch[..]);
+    #assert lc_set_tip_vartime(table[..], c[..], batch[..], 5, 0, h[..]) && txi_sync_vartime(table[..], c[..], batch[..], 1);
+    b := TxiBlock.{height=1,count=1,seq=0,file=0,pos=8,n=100};
+    if which == 0 { b.height = 0; }
+    if which == 1 { b.count = 0; }
+    if which == 2 { b.count = 101; }
+    if which == 3 { b.file = 2147483648; }
+    if which == 4 { b.pos = 7; }
+    if which == 5 { b.n = 80; }
+    if which == 6 { b.n = 4000001; }
+    if which == 7 { b.pos = 4294967295; }
+    if which == 8 { b.height = 2147483648; }
+    if which == 9 { b.seq = 1; }
+    #assert txi_put_block_vartime(table[..], c[..], batch[..], h[..], b);
+    key: [65] u8; txi_txkey(id[..], h[..], key[..]); value: [8] u8; kv_put32(value[..],0,81); kv_put32(value[..],4,19);
+    if which == 12 { kv_put32(value[..],0,80); }
+    if which == 13 { kv_put32(value[..],4,9); }
+    if which == 14 { kv_put32(value[..],4,20); }
+    key_n := ifx which == 18 then 33 else (ifx which == 15 then 64 else 65);
+    #assert lc_put_vartime(table[..], c[..], batch[..], key[0..<key_n], value[0..<ifx which == 11 then 7 else 8]);
+    jk: [33] u8; txi_blockkey('J', h[..], jk[..]);
+    if which == 10 { c[0].used = kv_delete_vartime(table[..], c[0].used, jk[..]); }
+    if which == 16 {
+      short: [23] u8; c[0].used = kv_set_vartime(table[..], c[0].used, jk[..], short[..]);
+    }
+    if which == 17 {
+      c[0].used = kv_delete_vartime(table[..], c[0].used, key[..]); wide: [66] u8;
+      for k: 0..<65 { wide[k] = key[k]; }
+      c[0].used = kv_set_vartime(table[..], c[0].used, wide[..], value[..]);
+    }
+    if which < 9 || which == 16 { #assert txi_block_vartime(table[..], c[0].used, h[..]).code == TXI_CORRUPT; }
+    #assert txi_find_vartime(table[..], c[0].used, id[..], false).code == TXI_CORRUPT;
+  }
+  table: [4096] u8; batch: [4096] u8; c: [1] LcCursor; h: [32] u8;
+  c[0].n = kv_batch_new(batch[..]);
+  #assert txi_put_block_vartime(table[..], c[..], batch[..], h[..], TxiBlock.{height=1,count=100,pos=8,n=100});
+  #assert txi_block_vartime(table[..], c[0].used, h[..]).code == LC_OK;
+}
+#test "tx index store: active first, then later sequence; stale entries survive" {
+  table: [8192] u8; batch: [8192] u8; c: [1] LcCursor; g: [32] u8;
+  c[0].n = kv_batch_new(batch[..]);
+  #assert lc_set_tip_vartime(table[..], c[..], batch[..], 5, 3, g[..]) && txi_sync_vartime(table[..], c[..], batch[..], 3);
+  id: [32] u8; id[31] = 99;
+  for i: 0..<3 {
+    h: [32] u8; h[0] = cast(u8) (i+1);
+    #assert txi_put_block_vartime(table[..], c[..], batch[..], h[..], TxiBlock.{height=i+1,count=1,seq=i,file=i,pos=8,n=100});
+    k: [65] u8; v: [8] u8; txi_txkey(id[..], h[..], k[..]); kv_put32(v[..], 0, 81); kv_put32(v[..], 4, 19);
+    #assert lc_put_vartime(table[..], c[..], batch[..], k[..], v[..]);
+    if i == 0 {
+      hit := txi_find_vartime(table[..], c[0].used, id[..], false);
+      #assert hit.code == LC_OK && !hit.active && hit.seq == 0;
+    }
+  }
+  #assert txi_find_vartime(table[..], c[0].used, id[..], false).block[0] == 3;
+  #assert txi_find_vartime(table[..], c[0].used, id[..], true).code == TXI_MISS;
+  h: [32] u8; h[0] = 1; hk: [33] u8; txi_blockkey('H', h[..], hk[..]); hv: [80] u8;
+  kv_put32(hv[..], 0, 1); kv_put32(hv[..], 4, 1);
+  #assert lc_put_vartime(table[..], c[..], batch[..], hk[..], hv[..]);
+  r := txi_find_vartime(table[..], c[0].used, id[..], true);
+  #assert r.code == LC_OK && r.active && r.height == 1 && r.seq == 0 && r.file == 0 && r.pos == 8 && r.offset == 81 && r.n == 19 && r.block[0] == 1;
+  #assert txi_find_vartime(table[..], c[0].used, id[..], false).block[0] == 1;
+  #assert txi_find_vartime(table[..], c[0].used, id[0..<31], false).code == LC_CONTEXT;
+  id[0] = 1; #assert txi_find_vartime(table[..], c[0].used, id[..], false).code == TXI_MISS;
+  id[0] = 0; id[31] = 98; #assert txi_find_vartime(table[..], c[0].used, id[..], false).code == TXI_MISS;
+  id[31] = 99;
+  #assert txi_find_vartime(table[..], 0, id[..], false).code == LC_CONTEXT;
+  foreign := [1] u8.['U']; v := [1] u8.[1];
+  #assert lc_put_vartime(table[..], c[..], batch[..], foreign[..], v[..]);
+  id[0] = 1; #assert txi_find_vartime(table[..], c[0].used, id[..], false).code == TXI_MISS; id[0] = 0;
+  for which: 0..<3 {
+    if which == 0 { hv[0] = 2; }
+    if which == 1 { hv[0] = 1; kv_put32(hv[..], 4, 2); }
+    #assert lc_put_vartime(table[..], c[..], batch[..], hk[..], hv[0..<ifx which == 2 then 79 else 80]);
+    #assert txi_find_vartime(table[..], c[0].used, id[..], false).code == TXI_CORRUPT;
+  }
+}
+#test "tx index store: raw lookup verifies full txid, header and witness serialization" {
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem; raw: [512] u8; header: [80] u8; id: [32] u8;
+  for hex: [2] string.[TX_LEGACY_OK, TX_MAINNET[3].tx] {
+    bytes := tx_unhex(hex, raw[..]); t := tx_read_vartime(bytes, true, ins[..], outs[..], items[..]);
+    #assert t.code == TX_OK && tx_txid_vartime(bytes, t, id[..]);
+    hit := TxiHit.{n=bytes.count}; #assert sha256d_checked(header[..], hit.block[..], false) == SHA_OK;
+    #assert txi_check_tx_vartime(hit, id[..], header[..], bytes, ins[..], outs[..], items[..]) == LC_OK;
+    id[0] ^= 1; #assert txi_check_tx_vartime(hit, id[..], header[..], bytes, ins[..], outs[..], items[..]) == TXI_MISMATCH; id[0] ^= 1;
+    header[79] ^= 1; #assert txi_check_tx_vartime(hit, id[..], header[..], bytes, ins[..], outs[..], items[..]) == TXI_MISMATCH; header[79] ^= 1;
+    #assert txi_check_tx_vartime(hit, id[0..<31], header[..], bytes, ins[..], outs[..], items[..]) == LC_CONTEXT;
+    #assert txi_check_tx_vartime(hit, id[..], header[0..<79], bytes, ins[..], outs[..], items[..]) == LC_CONTEXT;
+    #assert txi_check_tx_vartime(hit, id[..], header[..], bytes[0..<bytes.count-1], ins[..], outs[..], items[..]) == LC_CONTEXT;
+    hit.code = TXI_MISS; #assert txi_check_tx_vartime(hit, id[..], header[..], bytes, ins[..], outs[..], items[..]) == LC_CONTEXT;
+    hit.code = 0;
+    #assert txi_check_tx_vartime(hit, id[..], header[..], bytes, ins[0..<0], outs[..], items[..]) == LC_CAPACITY;
+    raw[0] ^= 1; #assert txi_check_tx_vartime(hit, id[..], header[..], bytes, ins[..], outs[..], items[..]) == TXI_MISMATCH; raw[0] ^= 1;
+    raw[4] = 253; #assert txi_check_tx_vartime(hit, id[..], header[..], bytes, ins[..], outs[..], items[..]) == LC_BLOCK;
+  }
+}
+
+txi_location_ok :: (file: int, pos: int, n: int) -> bool {
+  return file >= 0 && file <= 2147483647 && pos >= 8 && n >= 81 && n <= 4000000 && pos <= 4294967295 - n;
+}
+txi_tx_extent :: (offset: int, n: int, block_n: int) -> bool { return offset >= 81 && n >= 10 && n <= block_n - offset; }
+txi_height_ok :: (height: int) -> bool { return height >= 1 && height <= 2147483647; }
+txi_prefer :: (active: bool, seq: int, old_active: bool, old_seq: int) -> bool {
+  return ifx active != old_active then active else seq > old_seq;
+}
+txi_blockkey :: (prefix: u8, hash: [] u8, out: [] u8) {
+  out[0] = prefix; for k: 0..<32 { out[1+k] = hash[k]; }
+}
+txi_txkey :: (id: [] u8, hash: [] u8, out: [] u8) {
+  txi_blockkey('T', id, out); for k: 0..<32 { out[33+k] = hash[k]; }
+}
+txi_context_vartime :: (table: [] u8, used: int) -> TxiMeta #export_c {
+  tip := lc_tip_vartime(table, used);
+  if tip.code != LC_OK { return TxiMeta.{code=LC_CONTEXT}; }
+  key := TXI_META; v := lc_value_vartime(table, used, key[..]);
+  if v.count != 48 { return TxiMeta.{code=LC_CONTEXT}; }
+  if kv_get32(v, 0) != 1 || kv_get32(v, 4) != tip.chain || kv_get32(v, 8) != tip.height || !lc_same(v[16..<48], tip.hash[..]) { return TxiMeta.{code=LC_CONTEXT}; }
+  return TxiMeta.{next=kv_get32(v, 12)};
+}
+txi_sync_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, next: int) -> bool {
+  tip := lc_tip_vartime(table, c[0].used); #assert tip.code == LC_OK;
+  v: [48] u8; kv_put32(v[..], 0, 1); kv_put32(v[..], 4, tip.chain); kv_put32(v[..], 8, tip.height); kv_put32(v[..], 12, next);
+  for k: 0..<32 { v[16+k] = tip.hash[k]; }
+  key := TXI_META; return lc_put_vartime(table, c, batch, key[..], v[..]);
+}
+txi_block_vartime :: (table: [] u8, used: int, hash: [] u8) -> TxiBlock #export_c {
+  if hash.count != 32 || !lc_extent(table, used) { return TxiBlock.{code=LC_CONTEXT}; }
+  key: [33] u8; txi_blockkey('J', hash, key[..]); v := lc_value_vartime(table, used, key[..]);
+  if v.count == 0 { return TxiBlock.{code=TXI_MISS}; }
+  if v.count != 24 { return TxiBlock.{code=TXI_CORRUPT}; }
+  b := TxiBlock.{height=kv_get32(v,0),count=kv_get32(v,4),seq=kv_get32(v,8),file=kv_get32(v,12),pos=kv_get32(v,16),n=kv_get32(v,20)};
+  if !txi_height_ok(b.height) || b.count < 1 || b.count > b.n || !txi_location_ok(b.file, b.pos, b.n) { b.code = TXI_CORRUPT; }
+  return b;
+}
+txi_put_block_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, b: TxiBlock) -> bool {
+  key: [33] u8; txi_blockkey('J', hash, key[..]); v: [24] u8;
+  kv_put32(v[..],0,b.height); kv_put32(v[..],4,b.count); kv_put32(v[..],8,b.seq); kv_put32(v[..],12,b.file); kv_put32(v[..],16,b.pos); kv_put32(v[..],20,b.n);
+  return lc_put_vartime(table, c, batch, key[..], v[..]);
+}
+
+// Full txid keys avoid Core's short-hash bucket false positives. Active
+// matches win, then the block first indexed later. Only active=true is
+// confirmed in this snapshot. J/T entries survive disconnects unchanged.
+txi_find_vartime :: (table: [] u8, used: int, id: [] u8, only_active: bool) -> TxiHit #export_c {
+  meta := txi_context_vartime(table, used);
+  if meta.code != LC_OK || id.count != 32 { return TxiHit.{code=LC_CONTEXT}; }
+  prefix: [33] u8; txi_blockkey('T', id, prefix[..]);
+  at := kv_find_vartime(table, used, prefix[..]).at; best := TxiHit.{code=TXI_MISS};
+  while true {
+    e := kv_entry_vartime(table, used, at); at = e.next;
+    if e.code != KV_OK { break; }
+    if e.key.count < 33 || !lc_same(e.key[0..<33], prefix[..]) { break; }
+    if e.key.count != 65 || e.value.count != 8 { return TxiHit.{code=TXI_CORRUPT}; }
+    hash := e.key[33..<65]; b := txi_block_vartime(table, used, hash);
+    offset := kv_get32(e.value,0); n := kv_get32(e.value,4);
+    if b.code != LC_OK || b.seq >= meta.next || !txi_tx_extent(offset, n, b.n) { return TxiHit.{code=TXI_CORRUPT}; }
+    hk: [33] u8; txi_blockkey('H', hash, hk[..]); h := lc_value_vartime(table, used, hk[..]); active := h.count != 0;
+    if active {
+      if h.count != 80 { return TxiHit.{code=TXI_CORRUPT}; }
+      if kv_get32(h,0) != LC_VERSION || kv_get32(h,4) != b.height { return TxiHit.{code=TXI_CORRUPT}; }
+    }
+    if only_active && !active { continue; }
+    if best.code == TXI_MISS || txi_prefer(active, b.seq, best.active, best.seq) {
+      best = TxiHit.{height=b.height,seq=b.seq,file=b.file,pos=b.pos,offset=offset,n=n,active=active};
+      for k: 0..<32 { best.block[k] = hash[k]; }
+    }
+  }
+  return best;
+}
+// The host reads this candidate's header and exact transaction span from
+// immutable block storage. Verify both identities before publishing raw.
+txi_check_tx_vartime :: (hit: TxiHit, id: [] u8, header: [] u8, raw: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> int #export_c {
+  if hit.code != LC_OK || id.count != 32 || header.count != 80 || raw.count != hit.n { return LC_CONTEXT; }
+  hash: [32] u8; #assert sha256d_checked(header, hash[..], false) == SHA_OK;
+  expected := hit.block;
+  if !lc_same(hash[..], expected[..]) { return TXI_MISMATCH; }
+  t := tx_read_vartime(raw, true, ins, outs, items);
+  if t.code == TX_CAPACITY { return LC_CAPACITY; }
+  if t.code != TX_OK { return LC_BLOCK; }
+  #assert tx_txid_vartime(raw, t, hash[..]);
+  if !lc_same(hash[..], id) { return TXI_MISMATCH; }
+  return LC_OK;
+}

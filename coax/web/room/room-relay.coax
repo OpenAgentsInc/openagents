@@ -137,7 +137,8 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   given := tk_query(request);
   if v[0].relays[r].limited && v[0].tkey_n > 0 && (given.count > 0 || v[0].tkey_must) {
     tk = tk_check(cast(string) v[0].tkey[0..<v[0].tkey_n], given, cast(string) code[0..<ns[1]], v[0].wall_ms);
-    if !tk.ok || rc_kicked(v, cast(string) tk.pid[0..<tk.pid_n]) {
+    // and for this shard (#12717): the directory put the room here, and nowhere else
+    if !tk.ok || rc_kicked(v, cast(string) tk.pid[0..<tk.pid_n]) || tk.shard != v[0].shard {
       if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
       return -1;
     }
