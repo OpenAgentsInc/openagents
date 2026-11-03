@@ -2,7 +2,8 @@
 
 Psionic reads NVIDIA's original `parakeet-tdt-0.6b-v3` safetensors checkpoint
 and recognizes bounded utterances through its own Coax frontend, Metal or
-CUDA FastConformer encoder and CPU token-and-duration decoder. The model and
+CUDA FastConformer encoder and token-and-duration decoder (on the CPU, or on
+the GPU with CUDA). The model and
 vocabulary stay resident between calls. Python, NeMo and Torch are independent
 verification tools; none is a runtime dependency.
 
@@ -65,7 +66,7 @@ production math.
 | Host | `--gpu` | Status |
 | --- | --- | --- |
 | Apple silicon Mac | Metal | Qualified (`verification/parakeet-2026-11-02/`) |
-| Linux, NVIDIA GPU with a CUDA 12/13 driver and NVRTC 13 | CUDA | Qualified on an RTX 4080 ([record](verification/parakeet-cuda-2026-11-02/README.md)): real-time factor 0.045 over 29 clips |
+| Linux, NVIDIA GPU with a CUDA 12/13 driver and NVRTC 13 | CUDA | Qualified on an RTX 4080 ([record](verification/parakeet-cuda-2026-11-02/README.md)): encoder and decoder on the GPU, real-time factor 0.0092 over 29 clips, 46 ms for a 3.2 s clip |
 | Linux without an NVIDIA GPU, or without the driver or NVRTC | refused | No GPU path. `--cpu` works but takes 8 to 15 times the audio's length: correct, not interactive, and not a production profile |
 | Intel Mac, Windows, AMD or Intel GPUs on Linux | none | Not supported |
 
@@ -153,8 +154,10 @@ STFT physically stores one more. Valid columns are compacted before the
 encoder. A recorded official-model probe proves that this preserves its valid
 encoded outputs, including an eight-frame boundary.
 
-The encoder uses tolerance-qualified f32 Metal or CUDA math; the TDT decoder keeps
-compensated binary64 sums and f32 storage. The legacy exact CPU teaching path
+The encoder uses tolerance-qualified f32 Metal or CUDA math. The CPU TDT
+decoder (the CPU and Metal profiles) keeps compensated binary64 sums and f32
+storage; the CUDA decoder (`device-tdt.coax`) sums in f32 in a fixed order and
+is qualified on NeMo's tokens. The legacy exact CPU teaching path
 and its original four-clip observations remain in the chapter under their own
 profile. The current profile's finite target/corpus qualification is in the
 linked record; a finite smoke test does not establish population accuracy.

@@ -14,8 +14,10 @@
 //
 // Checks: coax test psionic/lib/parakeet/cuda.coax --library
 #load "kernels.coax";
+#load "../tdt-math.coax";  // tdt_sigmoid, tdt_tanh and tdt_relu
 
-PKC_THREADS :: 128;
+PKC_THREADS :: 128;        // threads of the decoder's dense rows and the attention
+PKC_LINEAR_THREADS :: 256; // threads of one pkc_linear item
 PKC_ROWS :: 64;   // rows of x in one work item
 PKC_COLS :: 32;   // outputs in one work item
 PKC_STEP :: 32;   // inputs staged per step
@@ -28,34 +30,71 @@ pkc_linear_items :: (rows:int,n_out:int)->int {return ((rows+PKC_ROWS-1)/PKC_ROW
 // 64 (i / tiles) and outputs 32 (i % tiles), tiles = ceil(n_out / 32).
 // Each step stages 32 inputs of the 64 rows input-major (xs[q*64+r]) and of
 // the 32 weight rows output-major (ws[c*32+q], read whole rows so the
-// weight stream is coalesced), zero past the edges. Warp w (threads
-// 32w..32w+31) owns outputs 8w..8w+7 and lane l owns rows l and l+32: the
-// lanes read consecutive xs elements and one shared ws element.
+// weight stream is coalesced), zero past the edges. 256 threads: warp w
+// (threads 32w..32w+31) owns outputs 4w..4w+3 and lane l owns rows l and
+// l+32, so the lanes read consecutive xs elements and one shared ws element.
+// Each thread loads its share of the next step into registers (pre) while
+// it multiplies the current one, so memory and arithmetic overlap.
+pkc_stage_x :: (thread:int,i:int,k0:int,r0:int,rows:int,n_in:int,x:[]f32)->f32 {
+ e:=thread+PKC_LINEAR_THREADS*i;q:=e/PKC_ROWS;r:=e%PKC_ROWS;v:f32=0;if r0+r<rows && k0+q<n_in {v=x[(r0+r)*n_in+k0+q];}return v;
+}
+pkc_stage_w :: (thread:int,i:int,k0:int,o0:int,n_out:int,n_in:int,w:[]f32)->f32 {
+ e:=thread+PKC_LINEAR_THREADS*i;c:=e/PKC_STEP;q:=e%PKC_STEP;v:f32=0;if o0+c<n_out && k0+q<n_in {v=w[(o0+c)*n_in+k0+q];}return v;
+}
 pkc_linear :: (item:int,rows:int,n_in:int,n_out:int,bias:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c {
- tiles:=(n_out+PKC_COLS-1)/PKC_COLS;r0:=item/tiles*PKC_ROWS;o0:=item%tiles*PKC_COLS;
- xs:[2048]f32;ws:[1024]f32;acc:[2048]f32;
- for thread:0..<PKC_THREADS {for c:0..<16 {acc[thread*16+c]=0;}}
- for s:0..<(n_in+PKC_STEP-1)/PKC_STEP {
-  k0:=s*PKC_STEP;
-  for thread:0..<PKC_THREADS {
-   for i:0..<16 {e:=thread+PKC_THREADS*i;q:=e/PKC_ROWS;r:=e%PKC_ROWS;v:f32=0;if r0+r<rows && k0+q<n_in {v=x[(r0+r)*n_in+k0+q];}xs[thread+PKC_THREADS*i]=v;}
-   for i:0..<8 {e:=thread+PKC_THREADS*i;c:=e/PKC_STEP;q:=e%PKC_STEP;v:f32=0;if o0+c<n_out && k0+q<n_in {v=w[(o0+c)*n_in+k0+q];}ws[thread+PKC_THREADS*i]=v;}
+ tiles:=(n_out+PKC_COLS-1)/PKC_COLS;r0:=item/tiles*PKC_ROWS;o0:=item%tiles*PKC_COLS;steps:=(n_in+PKC_STEP-1)/PKC_STEP;
+ xs:[2048]f32;ws:[1024]f32;acc:[2048]f32;pre:[3072]f32;
+ for thread:0..<PKC_LINEAR_THREADS {
+  for c:0..<8 {acc[thread*8+c]=0;}
+  for i:0..<8 {pre[thread*12+i]=pkc_stage_x(thread,i,0,r0,rows,n_in,x);}
+  for i:0..<4 {pre[thread*12+8+i]=pkc_stage_w(thread,i,0,o0,n_out,n_in,w);}
+ }
+ for s:0..<steps {
+  k1:=(s+1)*PKC_STEP;
+  for thread:0..<PKC_LINEAR_THREADS {
+   for i:0..<8 {xs[thread+PKC_LINEAR_THREADS*i]=pre[thread*12+i];}
+   for i:0..<4 {ws[thread+PKC_LINEAR_THREADS*i]=pre[thread*12+8+i];}
   }
-  for thread:0..<PKC_THREADS {
+  for thread:0..<PKC_LINEAR_THREADS {
+   if s+1<steps {
+    for i:0..<8 {pre[thread*12+i]=pkc_stage_x(thread,i,k1,r0,rows,n_in,x);}
+    for i:0..<4 {pre[thread*12+8+i]=pkc_stage_w(thread,i,k1,o0,n_out,n_in,w);}
+   }
    lane:=thread%32;warp:=thread/32;
    for q:0..<PKC_STEP {
     lo:=xs[q*PKC_ROWS+lane];hi:=xs[q*PKC_ROWS+lane+32];
-    for j:0..<8 {wv:=ws[(warp*8+j)*PKC_STEP+q];acc[thread*16+j]+=lo*wv;acc[thread*16+8+j]+=hi*wv;}
+    for j:0..<4 {wv:=ws[(warp*4+j)*PKC_STEP+q];acc[thread*8+j]+=lo*wv;acc[thread*8+4+j]+=hi*wv;}
    }
   }
  }
- for thread:0..<PKC_THREADS {
+ for thread:0..<PKC_LINEAR_THREADS {
   lane:=thread%32;warp:=thread/32;
-  for half:0..<2 {for j:0..<8 {
-   r:=r0+lane+32*half;c:=o0+warp*8+j;
-   if r<rows && c<n_out {v:=acc[thread*16+8*half+j];if bias==1 {v+=b[c];}y[r*n_out+c]=v;}
+  for half:0..<2 {for j:0..<4 {
+   r:=r0+lane+32*half;c:=o0+warp*4+j;
+   if r<rows && c<n_out {v:=acc[thread*8+4*half+j];if bias==1 {v+=b[c];}y[r*n_out+c]=v;}
   }}
  }
+}
+// Relative-position attention for one (head, query) item (kind 10, the same
+// items and arguments as kernels.coax's pkd_attend), in 128 threads: thread
+// t scores keys t and t+128, then every thread forms the same maximum, each
+// key's exponential and their sum in key order, and thread m < d/heads
+// writes output m as the probability-weighted sum of the values in key
+// order, divided by the sum. At most 256 keys: pkf_plan admits 2048 frames,
+// 256 after subsampling. Scores are pkd_attend's; the softmax is the direct
+// form rather than pkd_attend's online one, so the two agree within rounding.
+pkc_attend :: (item:int,n:int,d:int,heads:int,u:int,vbias:int,q:[]f32,k:[]f32,v:[]f32,p:[]f32,w:[]f32,out:[]f32) #export_c {
+ scores:[256]f32;probs:[256]f32;
+ hd:=d/heads;h:=item/n;i:=item%n;at:=h*hd;scale:=1/sqrt(f32(hd));
+ for thread:0..<PKC_THREADS {
+  for jj:0..<2 {j:=thread+PKC_THREADS*jj;s:f32=0;
+   if j<n {rel:=n-1-i+j;for m:0..<hd {c:=at+m;s+=(q[i*d+c]+w[u+c])*k[j*d+c]+(q[i*d+c]+w[vbias+c])*p[rel*d+c];}s*=scale;}
+   scores[thread+PKC_THREADS*jj]=s;}
+ }
+ best:=scores[0];for j:1..<n {if scores[j]>best {best=scores[j];}}
+ for thread:0..<PKC_THREADS {for jj:0..<2 {j:=thread+PKC_THREADS*jj;e:f32=0;if j<n {e=wd_expf(scores[j]-best);}probs[thread+PKC_THREADS*jj]=e;}}
+ total:f32=0;for j:0..<n {total+=probs[j];}
+ for thread:0..<PKC_THREADS {if thread<hd {a:f32=0;for j:0..<n {a+=probs[j]*v[j*d+at+thread];}out[i*d+at+thread]=a/total;}}
 }
 
 #test "the CUDA product adds every term in ascending order, then the bias, on ragged tiles" #steps 400000000 {
@@ -86,4 +125,156 @@ pkc_linear :: (item:int,rows:int,n_in:int,n_out:int,bias:int,x:[]f32,w:[]f32,b:[
  pkc_linear(0,rows,ni,no,1,x[..],w[..],b[..],y[..]);
  for r:0..<rows {for o:0..<no {s:f32=0;for k:0..<ni {s+=x[r*ni+k]*w[o*ni+k];}#assert y[r*no+o]==s+b[o];}}
  for i:15..<24 {#assert y[i]==12345;}
+}
+
+// ---- the TDT decoder (chapter 153's tdt.coax), one decision at a time ----
+// Profile PARAKEET-CUDA-TDT-F32-v1: every dense output is its bias terms,
+// then 32 lane partials added in lane order, each lane's partial being its
+// columns lane, lane+32, ... added in f32 in ascending order. The LSTM cell
+// and the joint's ReLU keep tdt.coax's binary64 formulas and round once to
+// f32, as the CPU decoder does; only the dense sums differ from its
+// compensated binary64 order, so results are compared within a tolerance and
+// against NeMo's tokens, never bit for bit with the CPU profile.
+PKC_ROWS_PER :: 4;  // rows of a dense product per 128-thread item: one warp each
+
+pkc_rows_items :: (rows:int)->int {return (rows+PKC_ROWS_PER-1)/PKC_ROWS_PER;}
+
+// y[r] = b[r] + sum_k w[r*cols+k] x[k]; with second == 1 (an LSTM's gates),
+// y[r] = b[r] + b[rows+r] + sum_k w[r*cols+k] x[k] + sum_k w[(rows+r)*cols+k] h[k],
+// which is W_ih x + b_ih + W_hh h + b_hh with both matrices and both biases
+// stored back to back, as tdt.coax lays them out.
+pkc_rows :: (item:int,rows:int,cols:int,second:int,w:[]f32,b:[]f32,x:[]f32,h:[]f32,y:[]f32) #export_c {
+ part:[128]f32;
+ for thread:0..<PKC_THREADS {
+  r:=item*PKC_ROWS_PER+thread/32;lane:=thread%32;v:f32=0;
+  if r<rows {
+   for k0:0..<(cols+31)/32 {k:=lane+32*k0;if k<cols {v+=w[r*cols+k]*x[k];}}
+   if second==1 {for k0:0..<(cols+31)/32 {k:=lane+32*k0;if k<cols {v+=w[(rows+r)*cols+k]*h[k];}}}
+  }
+  part[thread]=v;
+ }
+ for thread:0..<PKC_THREADS {
+  r:=item*PKC_ROWS_PER+thread/32;
+  if thread%32==0 && r<rows {
+   v:=b[r];if second==1 {v+=b[rows+r];}
+   for j:0..<32 {v+=part[thread+j];}
+   y[r]=v;
+  }
+ }
+}
+// The joint's input at one frame: z[k] = ReLU(e[k] + d[k]), the frame's
+// projection plus the prediction's, in binary64 rounded once (tdt.coax's
+// tdt_joint). pkc_rows then applies the head to z.
+pkc_joint_input :: (item:int,e:[]f32,d:[]f32,z:[]f32) #export_c {z[item]=f32(tdt_relu(f64(e[item])+f64(d[item])));}
+// The LSTM cell for unit j of n, after every gate (order i, f, g, o) is
+// done: c = sigmoid(f) c + sigmoid(i) tanh(g), h = sigmoid(o) tanh(c), and
+// h is the next layer's input x.
+pkc_cell :: (item:int,n:int,gates:[]f32,c:[]f32,h:[]f32,x:[]f32) #export_c {
+ j:=item;
+ c[j]=f32(tdt_sigmoid(f64(gates[n+j]))*f64(c[j])+tdt_sigmoid(f64(gates[j]))*tdt_tanh(f64(gates[2*n+j])));
+ h[j]=f32(tdt_sigmoid(f64(gates[3*n+j]))*tdt_tanh(f64(c[j])));x[j]=h[j];
+}
+pkc_zero :: (item:int,x:[]f32) #export_c {x[item]=0;}
+
+PKC_PICK_THREADS :: 256;
+pkc_finite :: (v:f32)->bool {return (f32_bits(v)&0x7f800000)!=0x7f800000;}
+// The greedy decision of one joint output, in one item: the first largest
+// of logits[0 ..< vocab+1] (the token, the blank last) and the first largest
+// of logits[vocab+1 ..< outputs] (the duration), as tdt_joint picks them.
+// pick[0] is the token, pick[1] the duration's index, pick[2] 1 when any
+// logit is not finite (the decision is then refused). Thread t scans
+// indices t, t+256, ... in ascending order; thread 0 joins the 256
+// candidates, a larger value or an equal value at a lower index winning.
+pkc_pick :: (item:int,vocab:int,outputs:int,logits:[]f32,pick:[]f32) #export_c {
+ bv:[256]f32;bi:[256]s32;bad:[256]s32;
+ for thread:0..<PKC_PICK_THREADS {
+  best:f32=0;at:s32= -1;wrong:s32=0;
+  for k0:0..<(outputs+PKC_PICK_THREADS-1)/PKC_PICK_THREADS {
+   k:=thread+PKC_PICK_THREADS*k0;
+   if k<outputs {v:=logits[k];if !pkc_finite(v) {wrong=1;}else if k<=vocab && (at<0 || v>best) {best=v;at=cast(s32)k;}}
+  }
+  bv[thread]=best;bi[thread]=at;bad[thread]=wrong;
+ }
+ for thread:0..<PKC_PICK_THREADS {
+  if thread==0 {
+   best:f32=0;at:s32= -1;wrong:s32=0;
+   for i:0..<PKC_PICK_THREADS {
+    if bad[i]!=0 {wrong=1;}
+    if bi[i]>=0 && (at<0 || bv[i]>best || (bv[i]==best && bi[i]<at)) {best=bv[i];at=bi[i];}
+   }
+   d:=vocab+1;for k:vocab+2..<outputs {if logits[k]>logits[d] {d=k;}}
+   pick[0]=f32(at);pick[1]=f32(d-vocab-1);pick[2]=f32(wrong);
+  }
+ }
+}
+
+#test "the CUDA dense rows add bias, then lane partials in order, on ragged rows" #steps 400000000 {
+ rows:=7;cols:=45;w:[630]f32;b:[14]f32;x:[45]f32;h:[45]f32;y:[8]f32;
+ for i:0..<630 {w[i]=f32((i*7)%23-11)*0.0731;}
+ for i:0..<14 {b[i]=f32(i%5)-2.25;}
+ for i:0..<45 {x[i]=f32((i*5)%19-9)*0.137;h[i]=f32((i*3)%17-8)*0.051;}
+ for second:0..<2 {
+  for i:0..<8 {y[i]= -777;}
+  #assert pkc_rows_items(rows)==2 && pkc_rows_items(8)==2 && pkc_rows_items(9)==3 && pkc_rows_items(8198)==2050;
+  for item:0..<pkc_rows_items(rows) {pkc_rows(item,rows,cols,second,w[0..<(1+second)*rows*cols],b[..],x[..],h[..],y[..]);}
+  for r:0..<rows {
+   part:[32]f32;exact:=f64(b[r]);v:=b[r];if second==1 {v+=b[rows+r];exact+=f64(b[rows+r]);}
+   for lane:0..<32 {s:f32=0;k:=lane;while k<cols {s+=w[r*cols+k]*x[k];exact+=f64(w[r*cols+k])*f64(x[k]);k+=32;}
+    if second==1 {k=lane;while k<cols {s+=w[(rows+r)*cols+k]*h[k];exact+=f64(w[(rows+r)*cols+k])*f64(h[k]);k+=32;}}part[lane]=s;}
+   for lane:0..<32 {v+=part[lane];}
+   #assert y[r]==v && abs(f64(y[r])-exact)<0.0001;
+  }
+  #assert y[7]== -777;
+ }
+}
+#test "the CUDA joint input is ReLU of the frame plus the prediction" {
+ e:[37]f32;d:[37]f32;z:[37]f32;
+ for i:0..<37 {e[i]=f32((i*7)%11-5)*0.3;d[i]=f32((i*3)%7-3)*0.4;}
+ for i:0..<37 {pkc_joint_input(i,e[..],d[..],z[..]);}
+ for i:0..<37 {#assert z[i]==f32(tdt_relu(f64(e[i])+f64(d[i])));}
+ #assert z[0]==0 && z[1]==e[1]+d[1] && z[1]>0;
+}
+#test "the CUDA attention agrees with pkd_attend, keys and positions included" #steps 400000000 {
+ // d 12, 3 heads of 4; n up to 9 keys, with the relative table of 2n-1 rows.
+ d:=12;heads:=3;q:[108]f32;k:[108]f32;v:[108]f32;p:[204]f32;w:[24]f32;a:[108]f32;b:[108]f32;
+ for i:0..<108 {q[i]=f32((i*7)%19-9)*0.11;k[i]=f32((i*5)%17-8)*0.13;v[i]=f32((i*3)%23-11)*0.07;}
+ for i:0..<204 {p[i]=f32((i*11)%13-6)*0.05;}
+ for i:0..<24 {w[i]=f32(i%7-3)*0.02;}
+ for n:[4]int.[1,2,5,9] {
+  for i:0..<108 {a[i]= -5;b[i]= -5;}
+  for item:0..<n*heads {pkd_attend(item,n,d,heads,0,12,q[..],k[..],v[..],p[..],w[..],a[..]);pkc_attend(item,n,d,heads,0,12,q[..],k[..],v[..],p[..],w[..],b[..]);}
+  for i:0..<n*d {#assert abs(f64(a[i])-f64(b[i]))<0.000001;}
+  for i:n*d..<108 {#assert b[i]== -5;}
+ }
+}
+#test "the CUDA cell is the CPU decoder's cell" {
+ n:=3;gates:=[12]f32.[0.5,-1,2,0.25,3,-0.5,1.5,-2,0.75,1,-1.25,0.1];c:=[3]f32.[0.3,-0.2,0.9];h:[3]f32;x:[3]f32;
+ cc:=c;
+ for j:0..<n {pkc_cell(j,n,gates[..],c[..],h[..],x[..]);}
+ for j:0..<n {
+  want:=f32(tdt_sigmoid(f64(gates[n+j]))*f64(cc[j])+tdt_sigmoid(f64(gates[j]))*tdt_tanh(f64(gates[2*n+j])));
+  #assert c[j]==want && h[j]==f32(tdt_sigmoid(f64(gates[3*n+j]))*tdt_tanh(f64(want))) && x[j]==h[j];
+ }
+ z:=[4]f32.[1,2,3,4];for i:0..<4 {pkc_zero(i,z[..]);}for i:0..<4 {#assert z[i]==0;}
+}
+#test "the CUDA pick is the first largest token and duration, and flags non-finite logits" {
+ // vocab 600: tokens 0..600 (the blank last), durations 601..605.
+ vocab:=600;outputs:=606;l:[606]f32;pick:[3]f32;
+ for i:0..<606 {l[i]=f32((i*37)%101)*0.01-0.5;}
+ l[333]=5;l[589]=5;l[602]=2;l[604]=2;
+ pkc_pick(0,vocab,outputs,l[..],pick[..]);#assert pick[0]==333 && pick[1]==1 && pick[2]==0;
+ l[17]=5;pkc_pick(0,vocab,outputs,l[..],pick[..]);#assert pick[0]==17;
+ l[600]=6;pkc_pick(0,vocab,outputs,l[..],pick[..]);#assert pick[0]==600;
+ for i:0..<606 {l[i]= -1;}pkc_pick(0,vocab,outputs,l[..],pick[..]);#assert pick[0]==0 && pick[1]==0 && pick[2]==0;
+ l[605]= -0.5;pkc_pick(0,vocab,outputs,l[..],pick[..]);#assert pick[1]==4;
+ zero:=l[0]-l[0];l[256]=zero/zero;pkc_pick(0,vocab,outputs,l[..],pick[..]);#assert pick[2]==1;
+ l[256]=0;l[603]=1/zero;pkc_pick(0,vocab,outputs,l[..],pick[..]);#assert pick[2]==1;
+ // Against tdt_joint's own loop on random logits, many ties.
+ for seed:0..<20 {
+  for i:0..<606 {l[i]=f32((i*(seed+3)+seed*seed)%7);}
+  pkc_pick(0,vocab,outputs,l[..],pick[..]);
+  t:=0;for k:1..<vocab+1 {if l[k]>l[t] {t=k;}}
+  d:=vocab+1;for k:vocab+2..<outputs {if l[k]>l[d] {d=k;}}
+  #assert pick[0]==f32(t) && pick[1]==f32(d-vocab-1) && pick[2]==0;
+ }
 }

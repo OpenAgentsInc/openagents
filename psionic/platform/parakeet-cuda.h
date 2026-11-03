@@ -8,12 +8,24 @@
 #define PSIONIC_PARAKEET_CUDA_H
 #include <stdint.h>
 int pk_cuda_available(void);
+/* Upload the encoder and decoder weights now (once per pointer), so the
+ * first recognition does not; 1 on success. */
+int pk_cuda_preload(const float *ew,int64_t ne,const float *dw,int64_t nd);
 int pk_cuda_encode(const float *ew,int64_t ne,const float *x,int64_t nx,int64_t frames,float *work,int64_t nw,float *out,int64_t no);
 void pk_cuda_close(void);
 /* Discard the device and host work arenas after pending commands finish;
  * retain the uploaded weights, allocations and compiled kernels. */
 void pk_cuda_clear_work(void);
 const char *pk_cuda_error(void);
+/* Run device-tdt.coax's decoder on recorded encoded frames (ne = frames *
+ * 1024) with the pinned decoder weights (uploaded once per pointer). Returns
+ * 1 when it ran: result[0] is the TdtStatus (0 ok), result[1] the tokens
+ * written to tokens/at. -1 is a device failure (pk_cuda_error). */
+int pk_cuda_decode(const float *dw,int64_t nd,const float *enc,int64_t ne,int64_t frames,float *work,int64_t nw,int64_t *tokens,int64_t nt,int64_t *at,int64_t na,int64_t *result,int64_t nr);
+double pk_cuda_decode_seconds(void);
+/* Verification entry: the same decoder for any TDT shape, fields vocab/enc/
+ * pred/layers/joint/durations/dur[0..7]/max_symbols. */
+int pk_cuda_decode_shape(const int64_t shape[15],const float *dw,int64_t nd,const float *enc,int64_t ne,int64_t frames,float *work,int64_t nw,int64_t *tokens,int64_t nt,int64_t *at,int64_t na,int64_t *result,int64_t nr);
 /* The last encode's device time (kernels and copies), and the one-time
  * kernel compile and weight upload. */
 double pk_cuda_seconds(void);

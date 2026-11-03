@@ -1,0 +1,12 @@
+tiny frames=1 layers=0 values=8 max_error=2.98023224e-08 limit=0.00132933009 gpu_ms=0.070682
+tiny frames=1 layers=1 values=8 max_error=4.76837158e-07 limit=0.00293406844 gpu_ms=0.125234
+tiny frames=17 layers=0 values=24 max_error=2.98023224e-08 limit=0.00137251061 gpu_ms=0.039924
+tiny frames=17 layers=1 values=24 max_error=2.38418579e-07 limit=0.00286164188 gpu_ms=0.128505
+tiny frames=33 layers=0 values=40 max_error=2.98023224e-08 limit=0.00133297974 gpu_ms=0.042004
+tiny frames=33 layers=1 values=40 max_error=3.57627869e-07 limit=0.0029261049 gpu_ms=0.129066
+Parakeet CUDA: 6 CPU-reference cases and capacity refusals passed
+Parakeet CUDA TDT: 36 tiny decodes equal tdt_decode (252 tokens, 60 emitted on the frame before), capacity and number refusals
+723 tensor ranges
+original frames=320 encoded=40 layers=0 values=40960 max_error=0.00830078125 rms=0.000300984591 limit=5.33949219 gpu_ms=1.942742
+original frames=320 encoded=40 layers=1 values=40960 max_error=0.000259399414 rms=8.32200584e-06 limit=0.194936264 gpu_ms=3.116897
+original frames=320 encoded=40 layers=2 values=40960 max_error=0.000213623047 rms=9.296041e-06 limit=0.205862274 gpu_ms=4.431303

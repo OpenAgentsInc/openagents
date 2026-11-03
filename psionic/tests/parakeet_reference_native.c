@@ -1,6 +1,7 @@
 /* Firm reason: 2 (independent public-C-ABI artifact and token/frame snapshot oracle).
  * No model arithmetic: the host supplies bytes/storage and records the actual
  * resident engine outputs on already recorded independent NeMo encoder frames. */
+#define _POSIX_C_SOURCE 200809L
 #include "psionic-parakeet.h"
 #include <assert.h>
 #include <errno.h>
@@ -24,9 +25,11 @@ static void refused_inputs_preserve_snapshot(psionic_parakeet *engine) {
  puts("REAL_MODEL_FAILURE_SNAPSHOTS 4 passed");fflush(stdout);
 }
 int main(int argc,char **argv) {
- if(argc!=4){fprintf(stderr,"usage: reference-native MODEL LIST.tsv OUTPUT_DIR\n");return 2;}
- FILE *list=fopen(argv[2],"rb");assert(list);char error[1024]={0};double begin=seconds();psionic_parakeet *engine=psionic_parakeet_open(argv[1],0,error,sizeof error);
- if(!engine){fprintf(stderr,"open refused: %s\n",error);return 1;}printf("MODEL_OPEN_SECONDS %.6f\n",seconds()-begin);fflush(stdout);assert(!psionic_parakeet_open(argv[1],0,error,sizeof error));puts("SECOND_OWNER_REFUSED");
+ if(argc!=4&&!(argc==5&&!strcmp(argv[4],"gpu"))){fprintf(stderr,"usage: reference-native MODEL LIST.tsv OUTPUT_DIR [gpu]\n");return 2;}
+ /* gpu: the engine opens on the build's GPU; a CUDA build then decodes there too. */
+ int gpu=argc==5;
+ FILE *list=fopen(argv[2],"rb");assert(list);char error[1024]={0};double begin=seconds();psionic_parakeet *engine=psionic_parakeet_open(argv[1],gpu,error,sizeof error);
+ if(!engine){fprintf(stderr,"open refused: %s\n",error);return 1;}printf("MODEL_OPEN_SECONDS %.6f\n",seconds()-begin);fflush(stdout);assert(!psionic_parakeet_open(argv[1],gpu,error,sizeof error));puts("SECOND_OWNER_REFUSED");
  char line[4096],text[65536],json[131072],path[4096];int clips=0;int64_t ids[4096],at[4096];
  while(fgets(line,sizeof line,list)){
   char *id=strtok(line,"\t"),*input=strtok(NULL,"\t"),*count=strtok(NULL,"\t\r\n");assert(id&&input&&count&&!strchr(id,'/'));char *end=NULL;long long frames=strtoll(count,&end,10);assert(end&&!*end&&frames>0&&frames<=256);

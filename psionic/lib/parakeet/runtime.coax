@@ -1,6 +1,7 @@
 // Resident engine: platform effects are supplied by parakeet-face.c.
 #load "model-policy.coax";
 #load "fast.coax";
+#load "device-tdt.coax";
 #load "front.coax";
 #load "text.coax";
 #load "parallel.coax";
@@ -27,23 +28,31 @@ pkrt_work64 :: (samples:int)->int #export_c {return pk_work(tdt_parakeet(),sampl
 pkrt_work32 :: (samples:int)->int #export_c {return pk_work(tdt_parakeet(),samples).f32;}
 
 cxpk_encode :: (ew:[]f32,x:[]f32,frames:int,work:[]f32,out:[]f32)->int #foreign;
+// The GPU decoder (device-tdt.coax's pkg_decode, run by the host with its
+// buffers bound): 1 when it ran, with result[0] 0 for TdtStatus.ok and
+// result[1] the tokens written; anything else is a GPU failure.
+cxpk_decode :: (dw:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int,result:[]int)->int #foreign;
 // Decode-only entry for independently recorded encoder tensors. Status is
 // typed; output text is published only after complete token rendering.
-pkrt_decode :: (dw:[]f32,pieces:[]string,encoded:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int,text:[]u8,stats:[]int)->PkRtStatus #export_c {
- r:=pkp_decode(tdt_parakeet_shape(),dw,encoded,frames,work,tokens,at,true);if r.status!=TdtStatus.ok {return PkRtStatus.decoder;}
- draft:[PK_TEXT_MAX]u8;n:=pkv3_text(pieces,tokens[0..<r.written],draft[..]);if n<0 || !pkrt_text_fits(n,text.count) || stats.count<2 {return PkRtStatus.text;}
- for i:0..<n {text[i]=draft[i];}text[n]=0;stats[0]=n;stats[1]=r.written;return PkRtStatus.ok;
+// gpu runs the decoder on the device (CUDA builds only); otherwise the exact
+// compensated CPU decoder runs.
+pkrt_decode :: (dw:[]f32,pieces:[]string,encoded:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int,text:[]u8,stats:[]int,gpu:bool)->PkRtStatus #export_c {
+ written:=0;
+ if gpu {res:[2]int;if cxpk_decode(dw,encoded,frames,work,tokens,at,res[..])!=1 {return PkRtStatus.gpu;}if res[0]!=0 || res[1]<0 || res[1]>tokens.count {return PkRtStatus.decoder;}written=res[1];}
+ else {r:=pkp_decode(tdt_parakeet_shape(),dw,encoded,frames,work,tokens,at,true);if r.status!=TdtStatus.ok {return PkRtStatus.decoder;}written=r.written;}
+ draft:[PK_TEXT_MAX]u8;n:=pkv3_text(pieces,tokens[0..<written],draft[..]);if n<0 || !pkrt_text_fits(n,text.count) || stats.count<2 {return PkRtStatus.text;}
+ for i:0..<n {text[i]=draft[i];}text[n]=0;stats[0]=n;stats[1]=written;return PkRtStatus.ok;
 }
 // Samples are 16kHz mono f32. Features and final encoded frames are exposed
 // in caller buffers for NeMo parity, never a private temporary dump.
-pkrt_transcribe :: (ew:[]f32,dw:[]f32,pieces:[]string,samples:[]f32,gpu:bool,wave:[]f64,w64:[]f64,w32:[]f32,features:[]f32,encoded:[]f32,tokens:[]int,at:[]int,text:[]u8,stats:[]int)->PkRtStatus #export_c {
+pkrt_transcribe :: (ew:[]f32,dw:[]f32,pieces:[]string,samples:[]f32,gpu:bool,gpu_decoder:bool,wave:[]f64,w64:[]f64,w32:[]f32,features:[]f32,encoded:[]f32,tokens:[]int,at:[]int,text:[]u8,stats:[]int)->PkRtStatus #export_c {
  c:=tdt_parakeet();if ew.count!=pkrt_encoder_count() || dw.count!=pkrt_decoder_count() || pieces.count!=8192 {return PkRtStatus.tensor;}k:=pk_front_plan(samples.count);if !k.ok || wave.count<samples.count {return PkRtStatus.audio;}
  if w64.count<k.raw+128*257 || w32.count<cf_plan(pk_encoder(c),1,k.frames).work+tdt_plan(pk_decoder(c),k.encoded).work || features.count<c.mels*k.frames || encoded.count<k.encoded*c.enc || stats.count<4 {return PkRtStatus.capacity;}
  status:=pkrt_features(samples,wave,w64,features);if status!=PkRtStatus.ok {return status;}nf:=k.features;
  work:=cf_plan(pk_encoder(c),1,k.frames).work;
  if gpu {if cxpk_encode(ew,features[0..<nf],k.frames,w32[0..<work],encoded[0..<k.encoded*c.enc])!=1 {return PkRtStatus.gpu;}}
  else {lengths:=[1]int.[k.frames];got:[1]int;if cf_encode(pk_encoder(c),ew,features[0..<nf],lengths[..],1,k.frames,w32[0..<work],encoded[0..<k.encoded*c.enc],got[..],false).status!=CfStatus.ok {return PkRtStatus.encoder;}}
- st:=pkrt_decode(dw,pieces,encoded[0..<k.encoded*c.enc],k.encoded,w32[work..<w32.count],tokens,at,text,stats);if st==PkRtStatus.ok {stats[2]=k.frames;stats[3]=k.encoded;}return st;
+ st:=pkrt_decode(dw,pieces,encoded[0..<k.encoded*c.enc],k.encoded,w32[work..<w32.count],tokens,at,text,stats,gpu_decoder);if st==PkRtStatus.ok {stats[2]=k.frames;stats[3]=k.encoded;}return st;
 }
 pkrt_wav_info :: (file:[]u8)->WvInfo #export_c {return wv_info(file);}
 pkrt_wav_length :: (frames:int,rate:int)->int #export_c {return wv_length(frames,rate);}

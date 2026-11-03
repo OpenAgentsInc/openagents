@@ -19,6 +19,8 @@
 #define pk_gpu_encode_shape pk_metal_encode_shape
 #define pk_gpu_error pk_metal_error
 #define pk_gpu_seconds pk_metal_seconds
+/* device-tdt.coax's read-back is CUDA's; the Metal build never decodes. */
+_Bool pkq_read(coax_v_f32 v){(void)v;return 0;}
 #endif
 #include <math.h>
 #include <fcntl.h>
@@ -52,6 +54,32 @@ static int actual_slices(const char *model,const char *ranges_path,const char *p
  }
  pk_gpu_close();free(w);free(pcm);free(wave);free(scratch64);free(scratch32);free(features);free(gpu);for(int i=0;i<3;i++)free(cpu[i]);return 0;
 }
+#ifdef PSIONIC_PARAKEET_CUDA
+/* The CUDA TDT decoder against tdt_decode on chapter 153's tiny shape: three
+ * symbol caps by six seeds by two frame counts. Tokens and frames must be
+ * equal; the dense sums differ only in rounding order. Then refusals. */
+static int tdt_cases(void){
+ int cases=0,emitted=0,stays=0;
+ for(int symbols=1;symbols<=3;symbols++)for(int seed=0;seed<6;seed++)for(int f=0;f<2;f++){
+  int64_t frames=f?17:5;coax_t_TdtShape s=pkref_tdt(symbols);int64_t nw=pkref_tdt_weights(s),nwork=pkref_tdt_work(s,frames),ne=frames*s.enc;
+  float *w=calloc((size_t)nw,4),*enc=calloc((size_t)ne,4),*work=calloc((size_t)nwork,4),*work2=calloc((size_t)nwork,4);int64_t ta[64],fa[64],tb[64],fb[64],res[2]={-1,-1};
+  if(!w||!enc||!work||!work2||!pkref_tdt_init(s,(coax_v_f32){w,nw},seed))return 20;
+  for(int64_t i=0;i<ne;i++)enc[i]=(float)(((i*7+seed*13)%19)-9)*0.21f;
+  coax_t_TdtResult cpu=pkref_tdt_decode(s,(coax_v_f32){w,nw},(coax_v_f32){enc,ne},frames,(coax_v_f32){work,nwork},(coax_v_s64){ta,64},(coax_v_s64){fa,64});
+  int64_t shape[15]={s.vocab,s.enc,s.pred,s.layers,s.joint,s.durations,s.dur.e[0],s.dur.e[1],s.dur.e[2],s.dur.e[3],s.dur.e[4],s.dur.e[5],s.dur.e[6],s.dur.e[7],s.max_symbols};
+  if(cpu.status!=COAX_TdtStatus_ok||pk_cuda_decode_shape(shape,w,nw,enc,ne,frames,work2,nwork,tb,64,fb,64,res,2)!=1){fprintf(stderr,"tdt decode failed: %s\n",pk_cuda_error());return 21;}
+  if(res[0]!=0||res[1]!=cpu.written){fprintf(stderr,"tdt mismatch symbols=%d seed=%d frames=%lld status=%lld written=%lld cpu=%lld\n",symbols,seed,(long long)frames,(long long)res[0],(long long)res[1],(long long)cpu.written);return 22;}
+  for(int64_t i=0;i<cpu.written;i++){if(ta[i]!=tb[i]||fa[i]!=fb[i]){fprintf(stderr,"tdt token %lld differs\n",(long long)i);return 23;}if(i>0&&fa[i]==fa[i-1])stays++;}
+  emitted+=(int)cpu.written;cases++;
+  /* A too-small token store is the decoder's capacity status, not a device failure. */
+  if(cpu.written>0){if(pk_cuda_decode_shape(shape,w,nw,enc,ne,frames,work2,nwork,tb,cpu.written-1,fb,cpu.written-1,res,2)!=1||res[0]!=COAX_TdtStatus_capacity||res[1]!=cpu.written-1)return 24;}
+  enc[0]=200000.0f;if(pk_cuda_decode_shape(shape,w,nw,enc,ne,frames,work2,nwork,tb,64,fb,64,res,2)!=1||res[0]!=COAX_TdtStatus_number)return 25;
+  free(w);free(enc);free(work);free(work2);
+ }
+ printf("Parakeet CUDA TDT: %d tiny decodes equal tdt_decode (%d tokens, %d emitted on the frame before), capacity and number refusals\n",cases,emitted,stays);
+ return stays>0?0:26;
+}
+#endif
 int main(int argc,char **argv) {
  if(argc==4)return actual_slices(argv[1],argv[2],argv[3]);
  if(argc!=1){fprintf(stderr,"usage: parakeet-device [MODEL RANGES PCM]\n");return 2;}
@@ -73,5 +101,10 @@ int main(int argc,char **argv) {
   if(pk_gpu_encode_shape(shape,w,nw,x,nx,n,y,no,prefix)!=-1 || y[0]!=9876)return 8;
   x[0]=keep;cases++;free(x);free(y);free(ref);free(scratch);
  }
- pk_gpu_close();free(w);printf("Parakeet " PK_GPU_NAME ": %d CPU-reference cases and capacity refusals passed\n",cases);return 0;
+ pk_gpu_close();free(w);printf("Parakeet " PK_GPU_NAME ": %d CPU-reference cases and capacity refusals passed\n",cases);
+#ifdef PSIONIC_PARAKEET_CUDA
+ return tdt_cases();
+#else
+ return 0;
+#endif
 }

@@ -3,7 +3,9 @@
 GitHub #12672. This record qualifies Parakeet TDT 0.6B v3 on an NVIDIA GPU
 under Linux, with the pinned original weights
 (`541d1f99c6b0c3cd0b11a95167540bb8edefd82b`) and Psionic's own
-Coax-generated kernels. No cuBLAS, cuDNN, Python or Rust runs in the product.
+Coax-generated kernels. The frontend runs on the CPU; the FastConformer encoder
+and the TDT decoder run on the GPU. No cuBLAS, cuDNN, Python or Rust runs in
+the product.
 The CUDA driver and NVRTC are opened at run time with `dlopen`, so the build
 needs no CUDA headers or libraries.
 
@@ -91,6 +93,70 @@ For comparison, the CPU path on this machine takes 8 to 15 times the audio's
 length (30 s for a 3.8 s turn including the model open;
 `docs/verification/verse-parakeet-2026-11-02/`).
 
+## Piece 2: the decoder, and a faster encoder
+
+With the encoder on the GPU, the CPU TDT decoder took 30–45% of the time.
+`psionic/lib/parakeet/device-tdt.coax` now runs greedy TDT decoding on the
+device. Its loop, admission and results are `tdt_decode`'s: after each joint it
+reads back three values (token, duration, a non-finite flag), applies
+`tdt_rule` in Coax and chooses the next launches. The kernels are in
+`cuda.coax`, launched through the same `pkq_launch` ABI (kinds 13–17):
+
+- `pkc_rows`: one dense product per warp, used by the LSTM gates (both matrices
+  and both biases), the prediction projection and the joint head. The
+  encoder projection of every frame is one `pkc_linear` call.
+- `pkc_joint_input`, `pkc_cell`: the joint's ReLU and the LSTM cell, keeping
+  `tdt.coax`'s binary64 formulas (now in `tdt-math.coax`) rounded once to f32.
+- `pkc_pick`: the first largest token and duration, as `tdt_joint` picks them.
+
+Profile PARAKEET-CUDA-TDT-F32-v1: dense sums are f32 in a fixed lane order,
+not the CPU's compensated binary64, so decisions are qualified against NeMo's
+tokens rather than bit for bit against the CPU profile. Decoder weights are
+not re-checked per call: the engine only decodes with the model it
+authenticated by SHA-256 at open. Encoded frames are checked on every call.
+
+The encoder also got faster. Profiling one 3.2 s clip with Nsight Systems
+showed the attention at 2.3 ms per layer (320 single-thread items). Kind 10
+now binds `pkc_attend`: one 128-thread group per (head, query), the same
+scores and a direct softmax. `pkc_linear` now runs 256 threads and loads the
+next step while it multiplies the current one. Every output still adds its
+terms in ascending order, so its values are unchanged. The engine uploads the
+weights at open, so the first recognition is as fast as the rest.
+
+### Evidence
+
+- **Tiny decoder against `tdt_decode`**
+  ([device-check.stdout](decoder/device-check.stdout)): 36 seeded tiny-shape
+  decodes (3 symbol caps, 6 seeds, 5 and 17 frames) produce exactly the CPU
+  decoder's tokens and frames, including 60 tokens emitted on the same frame
+  as the one before (zero durations and the symbol cap). A short token store
+  returns the capacity status and an out-of-range frame the number status.
+  The encoder's tiny and original-weight slice checks pass again.
+- **Decoder alone on the 29 NeMo encodings**
+  ([decode-only-record.json](decoder/decode-only-record.json)):
+  `parakeet_reference_native.py --gpu` decodes NeMo's own encoded frames.
+  29 of 29 have NeMo's exact tokens, frames and text, with backend `cuda`. The
+  four refused inputs leave the last result unchanged, and a second engine is
+  refused.
+- **Whole path on the 29 clips**
+  ([full-cuda-comparison.json](decoder/full-cuda-comparison.json)): 29 of 29
+  have NeMo's exact tokens, frames and text. Every encoded value is inside the
+  frozen tolerance; the worst is 0.0000383 (3.5% of its tolerance).
+
+### Speed
+
+| | Encoder only on CUDA | Whole engine on CUDA |
+| --- | ---: | ---: |
+| Recognition, 29 clips (298.4 s of audio) | 13.3 s | 2.74 s |
+| Real-time factor | 0.045 | 0.0092 |
+| 3.2 s clip | 209 ms | 46 ms |
+| 18.6 s clip | 779 ms | 193 ms |
+| Model open | 9.1 s | 9.5 s, including the 2.6 GB weight upload |
+
+A warm call, split (`6930-75918-0011`, 3.2 s): encoder 33 ms, decoder 1.5 ms,
+CPU frontend about 9 ms. On the decoder-only run the decoder takes 4 to 24 ms
+per clip, against 60 to 295 ms on 8 CPU threads.
+
 ### Reproduce
 
 ```shell
@@ -105,6 +171,13 @@ cc -std=c11 -O2 -Ipsionic/platform psionic/tests/parakeet-runtime-gpu.c /tmp/pk/
 /tmp/pk/runtime-gpu "$PARAKEET_MODEL" INPUTS.tsv /tmp/pk/corpus      # ID<TAB>PCM path, 29 lines
 python3 -I psionic/tests/parakeet_reference_compare.py psionic/docs/verification/parakeet-2026-11-02/reference/nemo-record \
   /tmp/pk/corpus psionic/fixtures/parakeet-reference/manifest.json /tmp/pk/comparison.json
+```
+
+The decoder alone on NeMo's encodings:
+
+```shell
+python3 -I psionic/tests/parakeet_reference_native.py "$PARAKEET_MODEL" /tmp/pk/libpsionic-parakeet.a \
+  psionic/docs/verification/parakeet-2026-11-02/reference/nemo-record /tmp/pk/decode-only --gpu
 ```
 
 `INPUTS.tsv` names the four LibriSpeech clips in `psionic/fixtures/parakeet/`

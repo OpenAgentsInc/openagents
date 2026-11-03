@@ -1,0 +1,8 @@
+// The scalar functions of chapter 153's TDT decoder (tdt.coax), apart so the
+// CUDA decoder kernels (parakeet/cuda.coax) share them: tanh from
+// exp(-2|a|), which never overflows, with a's sign; the logistic function is
+// (1 + tanh(v / 2)) / 2. ReLU is (v + |v|) / 2, exact in binary64. None of
+// them compares two numbers.
+tdt_tanh :: (a:f64)->f64 {t:=exp(-2*abs(a));v:=(1-t)/(1+t);return ifx a==abs(a) then v else -v;}
+tdt_sigmoid :: (v:f64)->f64 {return (1+tdt_tanh(v/2))/2;}
+tdt_relu :: (v:f64)->f64 {return (v+abs(v))/2;}

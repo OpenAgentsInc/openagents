@@ -2,7 +2,7 @@
 // performs checkpoint/vocabulary validation and all inference in Coax.
 #load "parakeet-rules.coax";
 
-TR_PK_SOURCES :: [62]string.[
+TR_PK_SOURCES :: [64]string.[
   "coax/bin/coax", "psionic/lib/parakeet.coax", "psionic/lib/tdt.coax",
   "psionic/lib/conformer.coax", "psionic/lib/spectral.coax", "psionic/lib/pixels.coax",
   "psionic/lib/parakeet/runtime.coax", "psionic/lib/parakeet/fast.coax", "psionic/lib/parakeet/device.coax",
@@ -25,7 +25,7 @@ TR_PK_SOURCES :: [62]string.[
   "psionic/lib/parakeet/file.coax", "psionic/platform/parakeet-file.c",
   "psionic/lib/parakeet/kernels.coax", "psionic/lib/parakeet/cuda.coax", "psionic/lib/parakeet/backend.coax",
   "psionic/lib/whisper/device-common.coax", "psionic/platform/parakeet-cuda.c", "psionic/platform/parakeet-cuda.h",
-  "psionic/platform/cuda-host.c", "psionic/platform/cuda-host.h"];
+  "psionic/platform/cuda-host.c", "psionic/platform/cuda-host.h", "psionic/lib/parakeet/device-tdt.coax", "psionic/lib/tdt-math.coax"];
 
 tr_pk_engine :: (out:[]u8)->string {
   override:=proc_getenv("OPENAGENTS_PARAKEET_CLI",out);if override!="" {return override;}

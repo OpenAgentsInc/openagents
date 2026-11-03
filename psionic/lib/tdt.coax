@@ -12,6 +12,7 @@
 // durations, 10 symbols a frame and 256 encoded frames (20 s of audio).
 #load "spectral.coax";
 #load "counter-rng.coax";
+#load "tdt-math.coax";
 #load "../fixtures/parakeet-tdt-manifest.coax";
 #load "../tests/tdt-checks.coax";   // the checks' references
 
@@ -155,12 +156,8 @@ tdt_plan :: (s:TdtShape,frames:int)->TdtPlan {
 // book:end layout
 
 tdt_tiny :: ()->TdtShape {return tdt_durations(TdtShape.{vocab=4,enc=3,pred=4,layers=2,joint=5,max_symbols=2},3);}
-// tanh from exp(-2|a|), which never overflows, with a's sign; the logistic
-// function is (1 + tanh(v / 2)) / 2. ReLU is (v + |v|) / 2, exact in
-// binary64. None of them compares two numbers.
-tdt_tanh :: (a:f64)->f64 {t:=exp(-2*abs(a));v:=(1-t)/(1+t);return ifx a==abs(a) then v else -v;}
-tdt_sigmoid :: (v:f64)->f64 {return (1+tdt_tanh(v/2))/2;}
-tdt_relu :: (v:f64)->f64 {return (v+abs(v))/2;}
+// tdt_tanh, tdt_sigmoid and tdt_relu are in tdt-math.coax, which the CUDA
+// decoder kernels (parakeet/cuda.coax) load without the rest of this file.
 
 // book:begin init
 // Seeded weights: matrices uniform in +-1/sqrt(fan in), biases in +-0.1,

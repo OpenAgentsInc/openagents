@@ -1,0 +1,101 @@
+// The greedy TDT decoder on a GPU: the same decisions as tdt.coax's
+// tdt_decode and parallel.coax's pkp_decode, with every dense product, the
+// LSTM cell and the joint's pick launched as cuda.coax kernels through
+// fast.coax's pkq_launch ABI (kinds 13..17, CUDA only). Coax keeps the loop:
+// after each joint it reads back the three-value pick, applies tdt_rule and
+// chooses the next launches. The host only binds views and moves bytes.
+//
+// The decoder's weights are not re-checked here: the resident engine only
+// decodes with the model it authenticated by SHA-256 at open, whose values
+// tdt_values_ok admits. The encoded frames are checked on every call.
+#load "fast.coax";
+#load "../tdt.coax";
+
+// Wait for every launch so far, then copy the device's values of v into v.
+pkq_read :: (v:[]f32)->bool #foreign;
+
+PKG_ROWS :: 13;   // pkc_rows
+PKG_JOINT :: 14;  // pkc_joint_input
+PKG_CELL :: 15;   // pkc_cell
+PKG_PICK :: 16;   // pkc_pick
+PKG_ZERO :: 17;   // pkc_zero
+PKG_COPY :: 12;   // pkd_copy
+
+pkg_rows :: (rows:int,cols:int,second:bool,w:[]f32,b:[]f32,x:[]f32,h:[]f32,y:[]f32)->bool {
+ return pkq_launch(PKG_ROWS,(rows+3)/4,rows,cols,ifx second then 1 else 0,0,0,0,0,0,0,w,b,x,h,y,y);
+}
+// One label through the prediction network (tdt_predict): its embedding row
+// into x, then each layer's gates, then its cell; then the projection.
+pkg_predict :: (s:TdtShape,p:TdtPlan,w:[]f32,label:int,work:[]f32)->bool {
+ n:=s.pred;x:=tdt_part(work,p.at_x,n);gates:=tdt_part(work,p.at_gates,4*n);
+ if !pkq_launch(PKG_COPY,n,0,0,0,0,0,0,0,0,0,w[label*n..<label*n+n],x,x,x,x,x) {return false;}
+ for layer:0..<s.layers {
+  at:=p.lstm+layer*(8*n*n+8*n);h:=tdt_part(work,p.at_h+layer*n,n);c:=tdt_part(work,p.at_c+layer*n,n);
+  if !pkg_rows(4*n,n,true,w[at..<at+8*n*n],w[at+8*n*n..<at+8*n*n+8*n],x,h,gates) {return false;}
+  if !pkq_launch(PKG_CELL,n,n,0,0,0,0,0,0,0,0,gates,c,h,x,x,x) {return false;}
+ }
+ j:=s.joint;return pkg_rows(j,n,false,w[p.dec..<p.dec+j*n],w[p.dec+j*n..<p.dec+j*n+j],x,x,work[p.at_dec..<p.at_dec+j]);
+}
+// The joint at frame t and its pick, read back. The pick lands in the
+// first three gates, which only the next prediction, after the read, writes.
+pkg_joint :: (s:TdtShape,p:TdtPlan,w:[]f32,t:int,work:[]f32)->TdtPick {
+ j:=s.joint;o:=p.outputs;logits:=work[p.at_logits..<p.at_logits+o];pick:=work[p.at_gates..<p.at_gates+3];z:=work[p.at_z..<p.at_z+j];
+ bad:=TdtPick.{token= -1,duration= -1};
+ if !pkq_launch(PKG_JOINT,j,0,0,0,0,0,0,0,0,0,work[t*j..<t*j+j],work[p.at_dec..<p.at_dec+j],z,z,z,z) {return bad;}
+ if !pkg_rows(o,j,false,w[p.head..<p.head+o*j],w[p.head+o*j..<p.head+o*j+o],z,z,logits) {return bad;}
+ if !pkq_launch(PKG_PICK,1,s.vocab,o,0,0,0,0,0,0,0,logits,pick,pick,pick,pick,pick) || !pkq_read(pick) {return bad;}
+ return pkg_pick_of(s,pick);
+}
+// The read-back pick as a decision, or -1s when it is not one: a flagged
+// non-finite logit, or an index outside the token or duration range.
+pkg_pick_of :: (s:TdtShape,pick:[]f32)->TdtPick {
+ bad:=TdtPick.{token= -1,duration= -1};
+ if pick.count<3 || pick[2]!=0 || !(pick[0]>=0 && pick[0]<=f32(s.vocab)) || !(pick[1]>=0 && pick[1]<f32(s.durations)) {return bad;}
+ token:=cast(int)pick[0];duration:=cast(int)pick[1];if f32(token)!=pick[0] || f32(duration)!=pick[1] {return bad;}
+ return TdtPick.{token=token,duration=duration};
+}
+// tdt_decode's admission, loop and results on the device. The work layout
+// is tdt_plan's; the decode needs nothing more.
+pkg_decode :: (s:TdtShape,w:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int)->TdtResult #export_c {
+ p:=tdt_plan(s,frames);if p.status!=TdtStatus.ok {return TdtResult.{status=p.status};}
+ if w.count!=p.weights || enc.count!=frames*s.enc {return TdtResult.{status=TdtStatus.shape};}
+ if work.count<p.work || at.count<tokens.count || 4*s.pred<3 {return TdtResult.{status=TdtStatus.capacity};}
+ if !tdt_values_ok(enc,TDT_FRAME_MAX) {return TdtResult.{status=TdtStatus.number};}
+ j:=s.joint;
+ // Every frame's projection in one product: frames x enc times joint x enc.
+ if !pkq_launch(1,((frames+63)/64)*((j+31)/32),frames,s.enc,j,1,0,0,0,0,0,enc,w[p.enc..<p.enc+j*s.enc],w[p.enc+j*s.enc..<p.enc+j*s.enc+j],work[0..<frames*j],work[0..<frames*j],work[0..<frames*j]) {return TdtResult.{status=TdtStatus.number};}
+ if !pkq_launch(PKG_ZERO,p.at_x-p.at_h,0,0,0,0,0,0,0,0,0,work[p.at_h..<p.at_x],work,work,work,work,work) {return TdtResult.{status=TdtStatus.number};}
+ if !pkg_predict(s,p,w,s.vocab,work) {return TdtResult.{status=TdtStatus.number};}
+ t:=0;symbols:=0;n:=0;
+ while t<frames {
+  pick:=pkg_joint(s,p,w,t,work);if pick.token<0 {return TdtResult.{status=TdtStatus.number,written=n};}
+  m:=tdt_rule(s,t,symbols,pick.token,pick.duration);
+  if m.emit {if n==tokens.count {return TdtResult.{status=TdtStatus.capacity,written=n};}tokens[n]=pick.token;at[n]=t;n+=1;if !pkg_predict(s,p,w,pick.token,work) {return TdtResult.{status=TdtStatus.number,written=n};}}
+  t=m.t;symbols=m.symbols;
+ }return TdtResult.{written=n};
+}
+// The pinned model's shape, for the host's decode entry.
+pkg_decode_parakeet :: (w:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int)->TdtResult #export_c {return pkg_decode(tdt_parakeet_shape(),w,enc,frames,work,tokens,at);}
+pkg_work :: (frames:int)->int #export_c {return tdt_plan(tdt_parakeet_shape(),frames).work;}
+
+#test "a read-back pick is a decision only when it is one" {
+ s:=tdt_parakeet_shape();
+ ok:=[3]f32.[8192,4,0];p:=pkg_pick_of(s,ok[..]);#assert p.token==8192 && p.duration==4;
+ ok[0]=0;ok[1]=0;p=pkg_pick_of(s,ok[..]);#assert p.token==0 && p.duration==0;
+ bads:=[18]f32.[8193,0,0, -1,0,0, 0,5,0, 0,-1,0, 0,0,1, 0.5,0,0];
+ for i:0..<6 {p=pkg_pick_of(s,bads[3*i..<3*i+3]);#assert p.token== -1 && p.duration== -1;}
+ half:=[3]f32.[1,1.5,0];#assert pkg_pick_of(s,half[..]).token== -1;
+ #assert pkg_pick_of(s,ok[0..<2]).token== -1;
+ zero:=ok[0]-ok[0];nan:=[3]f32.[zero/zero,0,0];#assert pkg_pick_of(s,nan[..]).token== -1;
+}
+#test "the device decode refuses what tdt_decode refuses, before any launch" {
+ s:=tdt_tiny();p:=tdt_plan(s,2);w:[433]f32;#assert tdt_init(s,w[..],1)==TdtStatus.ok && p.weights==433;
+ enc:[6]f32;work:[256]f32;tokens:[8]int;at:[8]int;
+ #assert pkg_decode(s,w[..],enc[..],0,work[..],tokens[..],at[..]).status==TdtStatus.length;
+ #assert pkg_decode(s,w[0..<432],enc[..],2,work[..],tokens[..],at[..]).status==TdtStatus.shape;
+ #assert pkg_decode(s,w[..],enc[0..<5],2,work[..],tokens[..],at[..]).status==TdtStatus.shape;
+ #assert pkg_decode(s,w[..],enc[..],2,work[0..<p.work-1],tokens[..],at[..]).status==TdtStatus.capacity;
+ #assert pkg_decode(s,w[..],enc[..],2,work[..],tokens[..],at[0..<7]).status==TdtStatus.capacity;
+ enc[3]=200000;#assert pkg_decode(s,w[..],enc[..],2,work[..],tokens[..],at[..]).status==TdtStatus.number;
+ #assert pkg_work(1)==tdt_plan(tdt_parakeet_shape(),1).work && pkg_work(256)==tdt_plan(tdt_parakeet_shape(),256).work;
+}

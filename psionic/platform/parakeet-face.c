@@ -24,6 +24,10 @@
 #elif defined(PSIONIC_PARAKEET_CUDA)
 #include "parakeet-cuda.h"
 #define PK_GPU_DEVICE 2 /* backend.coax PK_DEVICE_CUDA */
+#define PK_GPU_DECODER 1 /* device-tdt.coax runs the TDT decoder on the device */
+#endif
+#ifndef PK_GPU_DECODER
+#define PK_GPU_DECODER 0
 #endif
 #define TOKENS 2560
 #define TEXT 8193
@@ -75,6 +79,16 @@ int64_t cxpk_encode(coax_v_f32 ew,coax_v_f32 x,int64_t frames,coax_v_f32 work,co
  (void)ew;(void)x;(void)frames;(void)work;(void)out;return -1;
 #endif
 }
+int64_t cxpk_decode(coax_v_f32 dw,coax_v_f32 enc,int64_t frames,coax_v_f32 work,coax_v_s64 tokens,coax_v_s64 at,coax_v_s64 result){
+#if PK_GPU_DECODER
+ return pk_cuda_decode(dw.data,dw.count,enc.data,enc.count,frames,work.data,work.count,tokens.data,tokens.count,at.data,at.count,result.data,result.count);
+#else
+ (void)dw;(void)enc;(void)frames;(void)work;(void)tokens;(void)at;(void)result;return -1;
+#endif
+}
+#if !defined(PSIONIC_PARAKEET_CUDA)
+_Bool pkq_read(coax_v_f32 v){(void)v;return 0;}
+#endif
 #if !defined(PSIONIC_PARAKEET_METAL) && !defined(PSIONIC_PARAKEET_CUDA)
 _Bool pkq_launch(int64_t kind,int64_t items,int64_t n0,int64_t n1,int64_t n2,int64_t n3,int64_t n4,int64_t n5,int64_t n6,int64_t n7,float scale,coax_v_f32 a,coax_v_f32 b,coax_v_f32 c,coax_v_f32 d,coax_v_f32 e,coax_v_f32 f){(void)kind;(void)items;(void)n0;(void)n1;(void)n2;(void)n3;(void)n4;(void)n5;(void)n6;(void)n7;(void)scale;(void)a;(void)b;(void)c;(void)d;(void)e;(void)f;return 0;}
 #endif
@@ -102,6 +116,9 @@ psionic_parakeet *psionic_parakeet_open(const char *dir,int gpu,char *err,size_t
  s->n32=pkrt_work32(MAX_SAMPLES);s->n64=pkrt_work64(MAX_SAMPLES);s->w32=calloc((size_t)s->n32,4);s->w64=calloc((size_t)s->n64,8);s->wave=calloc(MAX_SAMPLES,8);s->features=calloc(128*2048,4);s->encoded=calloc(256*1024,4);s->last_features=calloc(128*2048,4);s->last_encoded=calloc(256*1024,4);
  if(!s->ew||!s->dw||!s->w32||!s->w64||!s->wave||!s->features||!s->encoded||!s->last_features||!s->last_encoded){error(err,errcap,"out of memory");goto fail;}
  for(int64_t i=0;i<723;i++){int64_t part=pkrt_part(i);if(part<0)continue;int64_t at=pkrt_at(i),count=pkrt_count(i);memcpy((part?s->dw:s->ew)+at,model.data+offsets[i],(size_t)count*4);}
+ #ifdef PSIONIC_PARAKEET_CUDA
+ if(gpu&&!pk_cuda_preload(s->ew,s->ne,s->dw,s->nd)){char why[600];snprintf(why,sizeof why,"NVIDIA CUDA could not take the weights: %s",pk_cuda_error());error(err,errcap,why);goto fail;}
+ #endif
  pk_threads_start(0);s->gpu=!!gpu;resident=s;unmap(model);unmap(json);free(nodes);pthread_mutex_unlock(&lock);return s;
 fail:unmap(model);unmap(json);free(nodes);release(s);
 #ifdef PSIONIC_PARAKEET_METAL
@@ -130,7 +147,7 @@ static void commit(psionic_parakeet *s,const char *draft,const int64_t *stats,in
 int psionic_parakeet_text(psionic_parakeet *s,const float *samples,int64_t n,char *out,size_t cap,char *err,size_t errcap){
  pthread_mutex_lock(&lock);int ok=0;char draft[TEXT];int64_t stats[4]={0};double start=now_ms();
  if(!valid(s,err,errcap))goto done;if(!samples||!out||cap>INT64_MAX||!pkrt_audio_count(n)){error(err,errcap,"audio must contain320..327520 mono16kHz samples");goto done;}
- coax_t_PkRtStatus st=pkrt_transcribe((coax_v_f32){s->ew,s->ne},(coax_v_f32){s->dw,s->nd},(coax_v_string){s->pieces,VOCAB},(coax_v_f32){(float*)samples,n},s->gpu,(coax_v_f64){s->wave,MAX_SAMPLES},(coax_v_f64){s->w64,s->n64},(coax_v_f32){s->w32,s->n32},(coax_v_f32){s->features,128*2048},(coax_v_f32){s->encoded,256*1024},(coax_v_s64){s->draft_tokens,TOKENS},(coax_v_s64){s->draft_frames,TOKENS},(coax_v_u8){(uint8_t*)draft,cap<TEXT?(int64_t)cap:TEXT},(coax_v_s64){stats,4});
+ coax_t_PkRtStatus st=pkrt_transcribe((coax_v_f32){s->ew,s->ne},(coax_v_f32){s->dw,s->nd},(coax_v_string){s->pieces,VOCAB},(coax_v_f32){(float*)samples,n},s->gpu,s->gpu&&PK_GPU_DECODER,(coax_v_f64){s->wave,MAX_SAMPLES},(coax_v_f64){s->w64,s->n64},(coax_v_f32){s->w32,s->n32},(coax_v_f32){s->features,128*2048},(coax_v_f32){s->encoded,256*1024},(coax_v_s64){s->draft_tokens,TOKENS},(coax_v_s64){s->draft_frames,TOKENS},(coax_v_u8){(uint8_t*)draft,cap<TEXT?(int64_t)cap:TEXT},(coax_v_s64){stats,4});
  if(st!=COAX_PkRtStatus_ok){status_error(err,errcap,"transcription",st);goto done;}
  commit(s,draft,stats,n,now_ms()-start,s->gpu);memcpy(out,draft,(size_t)stats[0]+1);ok=1;
 done:pthread_mutex_unlock(&lock);return ok;
@@ -138,8 +155,8 @@ done:pthread_mutex_unlock(&lock);return ok;
 int psionic_parakeet_decode(psionic_parakeet *s,const float *encoded,int64_t frames,char *out,size_t cap,char *err,size_t errcap){
  pthread_mutex_lock(&lock);int ok=0;char draft[TEXT];int64_t stats[4]={0};double start=now_ms();
  if(!valid(s,err,errcap))goto done;if(!encoded||!out||frames<1||frames>256||cap>INT64_MAX){error(err,errcap,"encoded frames must be 1..256 rows of1024");goto done;}
- coax_t_PkRtStatus st=pkrt_decode((coax_v_f32){s->dw,s->nd},(coax_v_string){s->pieces,VOCAB},(coax_v_f32){(float*)encoded,frames*1024},frames,(coax_v_f32){s->w32,s->n32},(coax_v_s64){s->draft_tokens,TOKENS},(coax_v_s64){s->draft_frames,TOKENS},(coax_v_u8){(uint8_t*)draft,cap<TEXT?(int64_t)cap:TEXT},(coax_v_s64){stats,4});
- if(st!=COAX_PkRtStatus_ok){status_error(err,errcap,"decode",st);goto done;}stats[3]=frames;commit(s,draft,stats,0,now_ms()-start,0);memcpy(out,draft,(size_t)stats[0]+1);ok=1;
+ coax_t_PkRtStatus st=pkrt_decode((coax_v_f32){s->dw,s->nd},(coax_v_string){s->pieces,VOCAB},(coax_v_f32){(float*)encoded,frames*1024},frames,(coax_v_f32){s->w32,s->n32},(coax_v_s64){s->draft_tokens,TOKENS},(coax_v_s64){s->draft_frames,TOKENS},(coax_v_u8){(uint8_t*)draft,cap<TEXT?(int64_t)cap:TEXT},(coax_v_s64){stats,4},s->gpu&&PK_GPU_DECODER);
+ if(st!=COAX_PkRtStatus_ok){status_error(err,errcap,"decode",st);goto done;}stats[3]=frames;commit(s,draft,stats,0,now_ms()-start,s->gpu&&PK_GPU_DECODER);memcpy(out,draft,(size_t)stats[0]+1);ok=1;
 done:pthread_mutex_unlock(&lock);return ok;
 }
 int psionic_parakeet_last_info(psionic_parakeet *s,psionic_parakeet_info *out){pthread_mutex_lock(&lock);int ok=s&&s==resident&&s->has_result&&out;if(ok)*out=s->info;pthread_mutex_unlock(&lock);return ok;}

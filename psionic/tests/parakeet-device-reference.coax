@@ -1,6 +1,8 @@
-// CPU meaning from the already-qualified compensated encoder, used only
-// as an independent target comparison for the f32 Metal implementation.
+// CPU meaning from the already-qualified compensated encoder and TDT
+// decoder, used only as an independent target comparison for the f32 Metal
+// and CUDA implementations.
 #load "../lib/parakeet/fast.coax";
+#load "../lib/parakeet/device-tdt.coax";
 #load "parakeet-run-runtime.coax";
 pkref_shape :: ()->CfShape #export_c {return cf_tiny();}
 pkref_weights :: (s:CfShape)->int #export_c {return cf_weight_count(s);}
@@ -12,3 +14,9 @@ pkref_encode :: (s:CfShape,w:[]f32,x:[]f32,frames:int,work:[]f32,out:[]f32,layer
  for i:0..<layers {cf_layer(s,w,cf_layer_at(s,cf_layer_base(s,i)),h,p.t3,work[p.at_layer..<p.at_output]);}
  for i:0..<p.output {out[i]=h[i];}return true;
 }
+// Chapter 153's tiny TDT shape with seeded weights, and its CPU decode.
+pkref_tdt :: (symbols:int)->TdtShape #export_c {s:=tdt_tiny();s.max_symbols=symbols;return s;}
+pkref_tdt_weights :: (s:TdtShape)->int #export_c {return tdt_plan(s,1).weights;}
+pkref_tdt_work :: (s:TdtShape,frames:int)->int #export_c {return tdt_plan(s,frames).work;}
+pkref_tdt_init :: (s:TdtShape,w:[]f32,seed:int)->bool #export_c {return tdt_init(s,w,cast(u64)seed)==TdtStatus.ok;}
+pkref_tdt_decode :: (s:TdtShape,w:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int)->TdtResult #export_c {return tdt_decode(s,w,enc,frames,work,tokens,at);}
