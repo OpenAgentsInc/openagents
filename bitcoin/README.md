@@ -47,7 +47,11 @@ BIP-152 compact blocks and rebuilds them from a mempool. Chapter 69's
 [`connman.coax`](../coax/lib/bitcoin/connman.coax) chooses outbound
 connections and evicts inbound peers as Core does. Chapter 71's
 [`dos.coax`](../coax/lib/bitcoin/dos.coax) bounds each message,
-discourages misbehaving peers and bounds each peer's memory as Core does. Chapter 75's
+discourages misbehaving peers and bounds each peer's memory as Core does. Chapter 72's
+[`sync.coax`](../coax/lib/bitcoin/sync.coax) syncs headers from genesis through
+Core's presync and downloads blocks from many peers through a moving window,
+replacing a peer that stalls; it syncs regtest and signet from Bitcoin Core
+peers. Chapter 75's
 [`proxy.coax`](../coax/lib/bitcoin/proxy.coax) reads and writes Tor v3 and
 I2P addresses, speaks SOCKS5 with Tor stream isolation and I2P's SAM v3.1,
 and applies Core's `-onlynet` and proxy options, with SHA3-256 for the onion

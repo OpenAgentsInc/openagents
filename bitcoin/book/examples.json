@@ -848,6 +848,17 @@
       "timeout": 300
     },
     {
+      "source": "bitcoin/examples/headers-sync.coax",
+      "chapter": "bitcoin/book/ch072-headers-sync-and-block-download.md",
+      "stdout": "bitcoin/fixtures/headers-sync.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
       "source": "bitcoin/examples/lightning-offers.coax",
       "chapter": "bitcoin/book/ch115-offers.md",
       "stdout": "bitcoin/fixtures/lightning-offers.out",

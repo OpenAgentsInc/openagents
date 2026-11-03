@@ -99,6 +99,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [69. Addresses and the address manager](ch069-addresses-and-the-address-manager.md) — implemented
 - [70. Connections: outbound, block-relay-only, feelers and eviction](ch070-connections-outbound-block-relay-only-feelers-and-eviction.md) — implemented
 - [71. Misbehavior, limits and denial of service](ch071-misbehavior-limits-and-denial-of-service.md) — implemented
+- [72. Headers sync and block download](ch072-headers-sync-and-block-download.md) — implemented
 - [73. Compact blocks](ch073-compact-blocks.md) — implemented
 - [74. Compact block filters](ch074-compact-block-filters.md) — implemented
 - [75. Proxies, Tor and I2P](ch075-proxies-tor-and-i2p.md) — implemented

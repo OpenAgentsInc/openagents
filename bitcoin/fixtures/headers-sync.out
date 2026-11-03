@@ -1,0 +1,45 @@
+headers sync from genesis (regtest, minimum chain work of 2200 blocks)
+  an honest peer with 2500 blocks
+    1. 2000 headers after 0: presync, PRESYNC at 2000, 8 commitments
+    2. 500 headers after 2000: presync, REDOWNLOAD, 0 waiting, 10 commitments left
+    3. 2000 headers after 0: presync, REDOWNLOAD, 2000 waiting, 2 commitments left
+    4. 500 headers after 2000: stored 2500, best header 2500 (0417a8f5)
+    block index: 2501 entries
+  a peer with 2100 blocks, too little work
+    1. 2000 headers after 0: presync, PRESYNC at 2000, 8 commitments
+    2. 100 headers after 2000: presync, FINAL
+    block index: 2501 entries
+  a peer that presyncs 2500 blocks, then serves 2100 others
+    1. 2000 headers after 0: presync, PRESYNC at 2000, 8 commitments
+    2. 500 headers after 2000: presync, REDOWNLOAD, 0 waiting, 10 commitments left
+    3. 2000 headers after 0: presync (the presync failed; these headers start another), PRESYNC at 2000, 8 commitments
+    4. 100 headers after 2000: presync, FINAL
+    block index: 2501 entries
+Core's headers_sync_chainwork_tests (15000 blocks, a commitment every 600, a buffer of 12877)
+  sneaky_redownload: PRESYNC, ok, more; REDOWNLOAD, ok, more; FINAL, failed;
+  happy_path, short messages: REDOWNLOAD, ok, more; REDOWNLOAD, ok, more; REDOWNLOAD, ok, more, 1 released; FINAL, ok, 14998 released; the last released is 2db18f12
+  happy_path, full messages: REDOWNLOAD, ok, more; REDOWNLOAD, ok, more; REDOWNLOAD, ok, more, 1 released; FINAL, ok, 14998 released; the last released is 2db18f12
+  too_little_work: PRESYNC, ok, more; FINAL, ok;
+  system_clock_lagging_behind_chain_start: 2 hours before genesis starts, a second more is SystemClockError
+block download
+Core's p2p_ibd_stalling: 1025 blocks, 5 peers, blocks 1 and 501 withheld
+    headers to 1024 from each peer in turn: 1024 requested, tip 0, 2 in flight (blocks 1 and 501, both from peer 0)
+    3 s later: 0 requested, tip 0, 2 in flight, timeout 2 s
+    headers to 1025: 0 requested, tip 0, 2 in flight, timeout 2 s, stall started
+    3 s later: 2 requested, tip 0, 2 in flight, timeout 4 s, stall started, peer 0 disconnected for stalling
+    3 s later: 0 requested, tip 0, 2 in flight, timeout 4 s
+    2 s later: 2 requested, tip 0, 2 in flight, timeout 8 s, stall started, peer 1 disconnected for stalling
+    7 s later: 0 requested, tip 0, 2 in flight, timeout 8 s
+    2 s later: 2 requested, tip 0, 2 in flight, timeout 16 s, stall started, peer 2 disconnected for stalling
+    block 1 arrives from peer 3: 500 blocks link, tip 500, timeout 2 s
+3000 blocks from 4 peers serving a block every 4, 6, 9 and 3000 ms
+    at 1976 ms: the window is full; peer 3 holds block 49, stall started
+    at 5001 ms: peer 3 disconnected for stalling at tip 49; timeout now 4 s
+    at 5002 ms: the window is full; peer 0 holds block 50, stall started
+    done at 8762 ms, tip 3000; blocks from each peer: 1417 943 639 1; 17 stalls started; the furthest request was 1024 blocks past the tip
+blocks against their headers
+  regtest genesis, 285 bytes: ok
+  its Merkle root changed, against the header asked for: BLOCK_INVALID_HEADER
+  the same, asked for by its own hash: BLOCK_MUTATED
+  its coinbase twice, under the pair's root: BLOCK_MUTATED
+  punished: misbehaving for a mutated block, misbehaving for a wrong header

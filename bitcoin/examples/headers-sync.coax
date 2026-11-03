@@ -1,0 +1,246 @@
+// The libraries this program loads build their secp256k1 tables and tag
+// hashes at compile time, above the default limit of 100,000 steps.
+#run_steps 250000000;
+// book:begin example
+#load "../../coax/lib/bitcoin/sync.coax";
+#import "Basic";
+
+SALT :: [3] u64.[0x0123456789abcdef, 0xfedcba9876543210, 7];   // Core draws these at random
+
+hex_digit :: (x: int) -> string { return "0123456789abcdef"[x..<x + 1]; }
+// The first 8 hex digits of a hash as explorers show it (bytes reversed).
+short :: (h: [] u8) { i := 31; while i >= 28 { print("%", hex_digit(cast(int) h[i] >> 4)); print("%", hex_digit(cast(int) h[i] & 15)); i -= 1; } }
+yes :: (b: bool) -> string { return ifx b then "ok" else "failed"; }
+
+// ---- a peer: Bitcoin Core answering getheaders from its chain
+Peer :: struct { raw: [] u8; hashes: [] u8; height: int; }
+peer_chain :: (p: [] Peer, raw: [] u8, hashes: [] u8, genesis: [] u8, n: int, root: u8) {
+  sy_t_chain(genesis, 4, REGTEST_TIME, root, n, raw);
+  for j: 0..<32 { hashes[j] = genesis[j]; }
+  for k: 0..<n { ok := pow_block_hash_vartime(raw[80 * k..<80 * k + 80], hashes[32 * (k + 1)..<32 * (k + 2)]); }
+  p[0] = Peer.{raw=raw, hashes=hashes, height=n};
+}
+// The headers after the fork the locator finds: at most 2,000.
+answer :: (p: [] Peer, getheaders: [] u8) -> [2] int {
+  loc := p2p_locator_read_vartime(getheaders);
+  fork := sy_find_fork_vartime(p[0].hashes, p[0].height, getheaders[loc.first..<loc.stop], loc.count);
+  n := p[0].height - fork;
+  if n > SY_MAX_HEADERS { n = SY_MAX_HEADERS; }
+  return [2] int.[fork, n];
+}
+REGTEST_TIME :: 1296688602;
+
+// ---- headers sync from genesis
+Node :: struct {
+  t: [1] BlockTree; l: [2600] BiLink; e: [2600] BiEntry; slots: [8192] int; chain: [2600] int;
+  bits: [64] u8; buf: [9017] SyCompressed; scratch: [80 * 9017] u8;
+}
+sync_from :: (label: string, node: [] Node, p: [] Peer, min_work: U256, swap: [] Peer) {
+  print("  %\n", label);
+  hp := [1] SyHeadersPeer.[SyHeadersPeer.{}];
+  getheaders: [4096] u8; none: [1] u8;
+  t := node[0].t[..];
+  n := sy_getheaders_write_vartime(t, none[0..<0], 0, getheaders[..]);
+  round := 0; swapped := false;
+  while n > 0 {
+    round += 1;
+    // The swapping peer serves its other chain from the time REDOWNLOAD starts.
+    if swap.count > 0 && hp[0].syncing && hp[0].hss[0].state == SY_REDOWNLOAD { swapped = true; }
+    from := ifx swapped then swap else p;
+    a := answer(from, getheaders[0..<n]);
+    r := sy_on_headers_vartime(hp[..], t, from[0].raw[80 * a[0]..<80 * (a[0] + a[1])], a[1], SY_NOW, min_work, SALT,
+                               node[0].bits[..], node[0].buf[..], node[0].scratch[..], getheaders[..]);
+    print("    %. % headers after %: %", round, a[1], a[0], SY_H_NAMES[r.code]);
+    if r.presync_failed { print(" (the presync failed; these headers start another)"); }
+    if r.code == SY_H_PRESYNC {
+      s := hp[0].hss[0];
+      if s.state == SY_PRESYNC { print(", PRESYNC at %, % commitments", s.height, s.bits_n); }
+      else if s.state == SY_REDOWNLOAD { print(", REDOWNLOAD, % waiting, % commitments left", s.buf_n, s.bits_n); }
+      else { print(", FINAL"); }
+    }
+    if r.code == SY_H_STORED { print(" %, best header % (", r.accepted, t[0].l[t[0].best_header].height); short(t[0].e[t[0].best_header].hash[..]); print(")"); }
+    print("\n");
+    n = r.locator_n;
+  }
+  print("    block index: % entries\n", t[0].count);
+}
+headers_sync :: () {
+  print("headers sync from genesis (regtest, minimum chain work of 2200 blocks)\n");
+  node: [1] Node;
+  bi_regtest(node[0].t[..], node[0].l[..], node[0].e[..], node[0].slots[..], node[0].chain[..]);
+  g := node[0].e[0].hash;
+  min_work := u256_small(2 * 2200);
+  raw: [80 * 2500] u8; hashes: [32 * 2501] u8; p: [1] Peer;
+  peer_chain(p[..], raw[..], hashes[..], g[..], 2500, 0);
+  none: [1] Peer;
+  sync_from("an honest peer with 2500 blocks", node[..], p[..], min_work, none[0..<0]);
+  low_raw: [80 * 2100] u8; low_hashes: [32 * 2101] u8; low: [1] Peer;
+  peer_chain(low[..], low_raw[..], low_hashes[..], g[..], 2100, 1);
+  sync_from("a peer with 2100 blocks, too little work", node[..], low[..], min_work, none[0..<0]);
+  b_raw: [80 * 2500] u8; b_hashes: [32 * 2501] u8; b: [1] Peer;
+  c_raw: [80 * 2100] u8; c_hashes: [32 * 2101] u8; c: [1] Peer;
+  peer_chain(b[..], b_raw[..], b_hashes[..], g[..], 2500, 2);
+  peer_chain(c[..], c_raw[..], c_hashes[..], g[..], 2100, 3);
+  sync_from("a peer that presyncs 2500 blocks, then serves 2100 others", node[..], b[..], min_work, c[..]);
+}
+
+// ---- Core's headers_sync_chainwork_tests, at their size
+CORE_TARGET :: 15000;
+B :: CORE_TARGET - (2000 + 123);
+CORE_HP :: SyHeadersParams.{period=600, buffer=B};
+Core :: struct { chain: [80 * (CORE_TARGET - 1)] u8; bits: [64] u8; buf: [CORE_TARGET + SY_MAX_HEADERS] SyCompressed; out: [80 * CORE_TARGET] u8; }
+init :: (s: [] SyHss, t: [] BlockTree, c: [] Core, now: int) -> int {
+  return sy_hss_init(s, t, 0, CORE_HP, u256_small(CORE_TARGET * 2), now, cast(int) SALT[2], SALT[0], SALT[1], c[0].bits[..], c[0].buf[..]);
+}
+step :: (s: [] SyHss, r: SyHssResult) {
+  print(" %, %", SY_STATE_NAMES[s[0].state], yes(r.success));
+  if r.request_more { print(", more"); }
+  if r.released > 0 { print(", % released", r.released); }
+  print(";");
+}
+core_tests :: () {
+  print("Core's headers_sync_chainwork_tests (15000 blocks, a commitment every 600, a buffer of 12877)\n");
+  l: [4] BiLink; e: [4] BiEntry; slots: [8] int; chain: [4] int; t: [1] BlockTree;
+  bi_regtest(t[..], l[..], e[..], slots[..], chain[..]);
+  c: [1] Core; s: [1] SyHss;
+  work := u256_small(CORE_TARGET * 2);
+  first := c[0].chain[..];
+  sy_t_chain(e[0].hash[..], 1, e[0].time, 0, CORE_TARGET - 1, first);
+  print("  sneaky_redownload:");
+  ok := init(s[..], t[..], c[..], SY_NOW);
+  step(s[..], sy_hss_process(s[..], first[0..<80], 1, true, c[0].out[..]));
+  step(s[..], sy_hss_process(s[..], first[80..<first.count], CORE_TARGET - 2, true, c[0].out[..]));
+  sy_t_chain(e[0].hash[..], 1, e[0].time, 1, CORE_TARGET - 2, first);    // the second chain
+  step(s[..], sy_hss_process(s[..], first[0..<80 * (CORE_TARGET - 2)], CORE_TARGET - 2, true, c[0].out[..]));
+  print("\n");
+  sy_t_chain(e[0].hash[..], 1, e[0].time, 0, CORE_TARGET - 1, first);
+  for full: 0..<2 {
+    print("  happy_path, % messages:", ifx full == 1 then "full" else "short");
+    ok = init(s[..], t[..], c[..], SY_NOW);
+    step(s[..], sy_hss_process(s[..], first, CORE_TARGET - 1, full == 1, c[0].out[..]));
+    step(s[..], sy_hss_process(s[..], first[0..<80 * B], B, true, c[0].out[..]));
+    step(s[..], sy_hss_process(s[..], first[80 * B..<80 * (B + 1)], 1, true, c[0].out[..]));
+    r := sy_hss_process(s[..], first[80 * (B + 1)..<first.count], CORE_TARGET - 2 - B, full == 1, c[0].out[..]);
+    step(s[..], r);
+    h: [32] u8;
+    print(" the last released is "); short(sy_t_hash(c[0].out[80 * (r.released - 1)..<80 * r.released], h[..]));
+    print("\n");
+  }
+  print("  too_little_work:");
+  sy_t_chain(e[0].hash[..], 1, e[0].time, 1, CORE_TARGET - 2, first);
+  ok = init(s[..], t[..], c[..], SY_NOW);
+  step(s[..], sy_hss_process(s[..], first[0..<80], 1, true, c[0].out[..]));
+  step(s[..], sy_hss_process(s[..], first[80..<80 * (CORE_TARGET - 2)], CORE_TARGET - 3, false, c[0].out[..]));
+  print("\n");
+  at := cast(int) e[0].time - DS_MAX_FUTURE;
+  print("  system_clock_lagging_behind_chain_start: 2 hours before genesis %, a second more %\n",
+    ifx init(s[..], t[..], c[..], at) == SY_HSS_OK then "starts" else "refuses",
+    ifx init(s[..], t[..], c[..], at - 1) == SY_HSS_CLOCK then "is SystemClockError" else "starts");
+}
+
+// ---- the download window
+Sim :: struct {
+  t: [1] BlockTree; l: [3100] BiLink; e: [3100] BiEntry; slots: [8192] int; chain: [3100] int; raw: [80 * 3000] u8;
+  have: [3100] u8; linked: [3100] u8; owner: [3100] int; d: [1] SyDownload;
+}
+sim_init :: (m: [] Sim, n: int, peers: [] SyPeer) -> int {
+  tip := sy_t_tree(m[0].t[..], m[0].l[..], m[0].e[..], m[0].slots[..], m[0].chain[..], n, m[0].raw[..]);
+  sy_dl_init(m[0].d[..], m[0].t[..], m[0].have[..], m[0].linked[..], m[0].owner[..], peers, U256.{});
+  for p: 0..<peers.count { peers[p].live = true; }
+  return tip;
+}
+settle :: (m: [] Sim, now: int, withheld: [] int, label: string) {
+  s := sy_t_settle(m[0].d[..], now, withheld);
+  d := m[0].d[..];
+  print("    %: % requested, tip %, % in flight, timeout % s", label, s.requested, m[0].l[d[0].tip].height, sy_t_in_flight(d), d[0].timeout);
+  if s.stalls > 0 { print(", stall started"); }
+  if s.dropped > 0 { print(", peer % disconnected for stalling", s.last_dropped); }
+  print("\n");
+}
+stalling :: () {
+  print("Core's p2p_ibd_stalling: 1025 blocks, 5 peers, blocks 1 and 501 withheld\n");
+  m: [1] Sim; peers: [5] SyPeer;
+  tip := sim_init(m[..], 1025, peers[..]);
+  l := m[0].l[..];
+  stall := [2] int.[bi_ancestor(l, tip, 1), bi_ancestor(l, tip, 501)];
+  now := 1000000;
+  asked := 0;
+  for p: 0..<5 { peers[p].best = bi_ancestor(l, tip, 1024); s := sy_t_settle(m[0].d[..], now, stall[..]); asked += s.requested; }
+  print("    headers to 1024 from each peer in turn: % requested, tip %, % in flight (blocks 1 and 501, both from peer %)\n",
+    asked, l[m[0].d[0].tip].height, sy_t_in_flight(m[0].d[..]), m[0].owner[stall[1]] - 1);
+  now += 3000; settle(m[..], now, stall[..], "3 s later");
+  for p: 0..<5 { peers[p].best = tip; }
+  settle(m[..], now, stall[..], "headers to 1025");
+  waits := [6] int.[3000, 3000, 2000, 7000, 2000, 0];
+  for k: 0..<5 { now += waits[k]; settle(m[..], now, stall[..], ifx waits[k] == 2000 then "2 s later" else ifx waits[k] == 3000 then "3 s later" else "7 s later"); }
+  holder := m[0].owner[stall[0]] - 1;
+  linked := sy_dl_received(m[0].d[..], holder, stall[0], now);
+  print("    block 1 arrives from peer %: % blocks link, tip %, timeout % s\n", holder, linked, l[m[0].d[0].tip].height, m[0].d[0].timeout);
+}
+// Four peers that serve one block every 4, 6, 9 and 3000 ms.
+parallel :: () {
+  print("3000 blocks from 4 peers serving a block every 4, 6, 9 and 3000 ms\n");
+  m: [1] Sim; peers: [4] SyPeer;
+  tip := sim_init(m[..], 3000, peers[..]);
+  d := m[0].d[..]; l := m[0].l[..];
+  for p: 0..<4 { peers[p].best = tip; }
+  pace := [4] int.[4, 6, 9, 3000]; next: [4] int; served: [4] int;
+  out: [16] int; lead := 0; t := 0; starts := 0; shown := -1;
+  while d[0].tip != tip && t < 600000 {
+    for p: 0..<4 {
+      if peers[p].live && peers[p].n > 0 && next[p] <= t {
+        got := sy_dl_received(d, p, peers[p].flight[0], t);
+        served[p] += 1; next[p] = t + pace[p];
+      }
+    }
+    for p: 0..<4 {
+      was := peers[p].n;
+      s := sy_dl_step(d, p, t, out[..]);
+      if s.verdict == SY_STALLED { print("    at % ms: peer % disconnected for stalling at tip %; timeout now % s\n", t, p, l[d[0].tip].height, d[0].timeout); }
+      if s.stall_started {
+        starts += 1;
+        if s.staller != shown { shown = s.staller; print("    at % ms: the window is full; peer % holds block %, stall started\n", t, s.staller, l[peers[s.staller].flight[0]].height); }
+      }
+      if was == 0 && peers[p].n > 0 { next[p] = t + pace[p]; }
+      for k: 0..<s.n { ahead := l[out[k]].height - l[d[0].tip].height; if ahead > lead { lead = ahead; } }
+    }
+    t += 1;
+  }
+  print("    done at % ms, tip %; blocks from each peer: % % % %; % stalls started; the furthest request was % blocks past the tip\n",
+    t, l[d[0].tip].height, served[0], served[1], served[2], served[3], starts, lead);
+}
+// A block checked against the header it was asked for.
+checks :: () {
+  print("blocks against their headers\n");
+  g: [CHAIN_GENESIS_MAX] u8; b: [1024] u8; hash: [32] u8;
+  n := chain_genesis_block_vartime(CHAIN_REGTEST_PARAMS.genesis, g[..]);
+  ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem; ids: [32 * 4] u8; wids: [32 * 4] u8; work: [32 * 4] u8;
+  names := [9] string.["ok", "BLOCK_CONSENSUS", "BLOCK_CACHED_INVALID", "BLOCK_INVALID_HEADER", "BLOCK_MUTATED", "", "", "", ""];
+  r := sy_check_block_vartime(g[0..<n], sy_t_hash(g[0..<80], hash[..]), ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  print("  regtest genesis, % bytes: %\n", n, names[r]);
+  for k: 0..<n { b[k] = g[k]; }
+  b[36] ^= 1;
+  r = sy_check_block_vartime(b[0..<n], hash[..], ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  print("  its Merkle root changed, against the header asked for: %\n", names[r]);
+  r = sy_check_block_vartime(b[0..<n], sy_t_hash(b[0..<80], hash[..]), ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  print("  the same, asked for by its own hash: %\n", names[r]);
+  tx := g[81..<n];
+  for k: 0..<80 { b[k] = g[k]; }
+  b[80] = 2;
+  for k: 0..<tx.count { b[81 + k] = tx[k]; b[81 + tx.count + k] = tx[k]; }
+  ok := merkle_parent_vartime(g[36..<68], g[36..<68], b[36..<68]);
+  r = sy_check_block_vartime(b[0..<81 + 2 * tx.count], sy_t_hash(b[0..<80], hash[..]), ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  print("  its coinbase twice, under the pair's root: %\n", names[r]);
+  print("  punished: % for a mutated block, % for a wrong header\n",
+    ifx ds_punish_block(DS_BLOCK_MUTATED, false, false) then "misbehaving" else "no", ifx ds_punish_block(DS_BLOCK_INVALID_HEADER, false, false) then "misbehaving" else "no");
+}
+
+main :: () {
+  headers_sync();
+  core_tests();
+  print("block download\n");
+  stalling();
+  parallel();
+  checks();
+}
+// book:end example

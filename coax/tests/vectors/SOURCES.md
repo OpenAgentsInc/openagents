@@ -466,6 +466,14 @@ that a maliciously replaced manifest is authentic.
   `net_processing.cpp`, `chainparams.cpp`, `chain.h`, `serialize.h`,
   `script.h` and `test/hash_tests.cpp`, pinned above, give the rest.
   `dos.py` transliterates them as the cross-check's oracle.
+- **Headers sync and block download (Bitcoin chapter 72):** Bitcoin
+  Core's `test/headers_sync_chainwork_tests.cpp`, whose cases the library
+  and the example replay, and `test/functional/p2p_ibd_stalling.py`, whose
+  stalling scenario the example replays, both at revision `ddea9196`.
+  `headerssync.cpp`, `headerssync.h`, `net_processing.cpp`,
+  `net_processing.h`, `chainparams.cpp`, `chain.h` and
+  `test/hash_tests.cpp`, pinned above, give the rest. `sync.py`
+  transliterates them as the cross-check's oracle.
 - **Proxies, Tor and I2P (Bitcoin chapter 75):** Tor's rend-spec
   "Encoding onion addresses" (`spec/rend-spec/encoding-onion-addresses.md`,
   rend-spec-v3 section 6) at torspec revision `7391a5fb`, whose three
@@ -720,6 +728,7 @@ check fails when a chapter cites a pinned file that is missing here.
 - Bitcoin chapter 22: `upstream/bitcoin-core`, `upstream/bitcoin-core/util_tests.cpp`, `upstream/secp256k1`, `upstream/secp256k1/recovery/tests_impl.h`, `upstream/tiny-secp256k1`, `upstream/tiny-secp256k1/ecdsa.json`
 - Bitcoin chapter 23: `upstream/bip340/test-vectors.csv`
 - Bitcoin chapter 24: `upstream/bip340/test-vectors.csv`
+- Bitcoin chapter 25: `upstream/bip340`, `upstream/bip340/bip-0340.mediawiki`, `upstream/bip342`, `upstream/bip342/bip-0342.mediawiki`, `upstream/rfc`, `upstream/rfc/rfc8439.txt`, `upstream/secp256k1`, `upstream/secp256k1/ecmult_impl.h`
 - Bitcoin chapter 26: `upstream/bip32`, `upstream/bip32/bip-0032.mediawiki`, `upstream/bitcoin-core`, `upstream/bitcoin-core/base58_encode_decode.json`, `upstream/bitcoin-core/chainparams.cpp`
 - Bitcoin chapter 27: `upstream/bip173`, `upstream/bip173/bip-0173.mediawiki`, `upstream/nips/19.md`
 - Bitcoin chapter 28: `upstream/bip173`, `upstream/bip173/bip-0173.mediawiki`, `upstream/bip350`, `upstream/bip350/bip-0350.mediawiki`, `upstream/bitcoin-core`, `upstream/bitcoin-core/key_io_valid.json`, `upstream/sipa-bech32`, `upstream/sipa-bech32/segwit_addr.py.txt`
@@ -738,6 +747,8 @@ check fails when a chapter cites a pinned file that is missing here.
 - Bitcoin chapter 41: `upstream/bip340/reference.py`, `upstream/bip341/bip-0341.mediawiki`, `upstream/bip341/wallet-test-vectors.json`, `upstream/bip86/bip-0086.mediawiki`
 - Bitcoin chapter 42: `upstream/bip341/bip-0341.mediawiki`, `upstream/bip341/wallet-test-vectors.json`, `upstream/bitcoin-core/interpreter.cpp`
 - Bitcoin chapter 43: `upstream/bip341/bip-0341.mediawiki`, `upstream/bip341/wallet-test-vectors.json`, `upstream/bitcoin-core/interpreter.cpp`, `upstream/bitcoin-core/script.py`
+- Bitcoin chapter 44: `upstream/bip341/bip-0341.mediawiki`, `upstream/bitcoin-core`
+- Bitcoin chapter 45: `upstream/bip340/reference.py`, `upstream/bip341/bip-0341.mediawiki`, `upstream/bip341/wallet-test-vectors.json`, `upstream/bitcoin-core/script.py`
 - Bitcoin chapter 46: `upstream/bip54`, `upstream/bip54/bip-0054.md`, `upstream/bitcoin-core`, `upstream/bitcoin-core/merkle.cpp`, `upstream/mainnet`, `upstream/mainnet/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506.json`
 - Bitcoin chapter 47: `upstream/bitcoin-core`, `upstream/bitcoin-core/pow.cpp`, `upstream/mainnet`, `upstream/mainnet/000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f.header`
 - Bitcoin chapter 48: `upstream/bitcoin-core`, `upstream/bitcoin-core/pow.cpp`, `upstream/mainnet/retarget-boundaries.txt`
@@ -757,8 +768,10 @@ check fails when a chapter cites a pinned file that is missing here.
 - Bitcoin chapter 69: `upstream/bitcoin-core`, `upstream/bitcoin-core/addrman.cpp`
 - Bitcoin chapter 70: `upstream/bitcoin-core`, `upstream/bitcoin-core/eviction.cpp`
 - Bitcoin chapter 71: `upstream/bitcoin-core`, `upstream/bitcoin-core/banman.cpp`
+- Bitcoin chapter 72: `upstream/bitcoin-core`, `upstream/bitcoin-core/headers_sync_chainwork_tests.cpp`
 - Bitcoin chapter 73: `upstream/bip152`, `upstream/bip152/bip-0152.mediawiki`, `upstream/bitcoin-core`, `upstream/bitcoin-core/blockencodings.cpp`, `upstream/mainnet`
 - Bitcoin chapter 74: `upstream/bip158`, `upstream/bip158/testnet-19.json`, `upstream/bitcoin-core`, `upstream/bitcoin-core/blockfilter.cpp`
+- Bitcoin chapter 75: `upstream/bitcoin-core`, `upstream/bitcoin-core/i2p.cpp`, `upstream/i2p`, `upstream/i2p/samv3.html`, `upstream/rfc`, `upstream/rfc/rfc1928.txt`, `upstream/tor`, `upstream/tor/encoding-onion-addresses.md`
 - Bitcoin chapter 81: `upstream/bitcoin-core`, `upstream/bitcoin-core/policy.cpp`
 - Bitcoin chapter 94: `upstream/bip174/bip-0174.mediawiki`, `upstream/bitcoin-core`, `upstream/bitcoin-core/psbt.h`, `upstream/tiny-secp256k1`, `upstream/tiny-secp256k1/ecdsa.json`
 - Bitcoin chapter 95: `upstream/bitcoin-core`, `upstream/bitcoin-core/coinselection.cpp`
@@ -1117,6 +1130,8 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/txdownloadman.h`](upstream/bitcoin-core/txdownloadman.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/txdownloadman.h) | `2f9cba3ce05f8e1688ca26f3c3e5febebb5443866fec0ddc9e0e6000111ad174` |
 | [`upstream/bitcoin-core/net_permissions.h`](upstream/bitcoin-core/net_permissions.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/net_permissions.h) | `4df2ee38f4d3d4aeedbf723e8a96f9d7aa3d092873754b335355694a68cf16e9` |
 | [`upstream/bitcoin-core/denialofservice_tests.cpp`](upstream/bitcoin-core/denialofservice_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/denialofservice_tests.cpp) | `6f5fcaee5f0277b293381ba6d3fc09fbbbecc07a1539d7c13bc55a5f5abdc883` |
+| [`upstream/bitcoin-core/headers_sync_chainwork_tests.cpp`](upstream/bitcoin-core/headers_sync_chainwork_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/headers_sync_chainwork_tests.cpp) | `2a87ece6fb3e0083de6ab3c3dbba16830854a37dd2d991e78f086d9555576167` |
+| [`upstream/bitcoin-core/p2p_ibd_stalling.py`](upstream/bitcoin-core/p2p_ibd_stalling.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/p2p_ibd_stalling.py) | `ce0101af05d758a7d1579e02562966301912998c4a1cc25d28cbe45ac51d78f7` |
 | [`upstream/bitcoin-core/bloom_tests.cpp`](upstream/bitcoin-core/bloom_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/bloom_tests.cpp) | `12ddab254a360858cb4f567bd2c5f1ef735464d6292eec5b9b6b7b5686a330b1` |
 | [`upstream/bitcoin-core/fastrange.h`](upstream/bitcoin-core/fastrange.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/util/fastrange.h) | `01d238a309b0a7737f72549785da0a90088068a462539f36e920f70764fe144a` |
 | [`upstream/bitcoin-core/txdownloadman_impl.cpp`](upstream/bitcoin-core/txdownloadman_impl.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/txdownloadman_impl.cpp) | `bd44b0074d6f271312a2de14697f28871087531b06c49d801ebbd988f65809c7` |

@@ -1,0 +1,401 @@
+// A node that syncs from Bitcoin Core peers over TCP (Bitcoin chapter 72):
+// headers by locator from the first peer, through presync when they have
+// too little work, then blocks from every peer through the download
+// window, each checked against its header and appended to a file.
+//   COAX=coax/bin/coax coax/web/tool.sh bitcoin/examples/live/sync-node.coax \
+//     --chain regtest|signet --now UNIX_SECONDS --peer HOST:PORT [--peer HOST:PORT ...] \
+//     [--min-work N] [--blocks N] [--out FILE] [--seconds N]
+// --min-work replaces the chain's minimum chain work (Core's
+// -minimumchainwork) with N; --blocks N downloads only the last N blocks
+// below the best header, taking the ones under them as stored (the way an
+// AssumeUTXO chainstate starts above its snapshot). coax/tests/bitcoin/
+// sync_live.py starts bitcoind, runs this and checks what it stored.
+// tool.sh: run-steps 250000000
+// tool.sh: release
+#import "Basic";
+#load "../../../coax/lib/bitcoin/sync.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/net/socket_foreign.coax";
+cxtool_out_flush :: () -> int #foreign;
+
+CAP :: 600000;                           // block index entries
+SLOTS :: 2097152;                        // a power of two, at least 2 * CAP
+PEERS :: 12;
+HEADERS_WAIT :: 60000;                   // ms a headers answer may take before we ask another peer
+RX :: P2P_HEADER + P2P_MAX_MESSAGE + 65536;
+HSS_BUF :: 15885 + SY_MAX_HEADERS;       // the largest redownload buffer here (signet) and a message
+MSG_WITNESS_BLOCK :: cast(u32) 0x40000002;
+AGENT :: "/coax-book:72/";
+
+Conn :: struct { h: int; up: bool; verack: bool; rx: [RX] u8; n: int; blocks: int; }
+Node :: struct {
+  t: [1] BlockTree; l: [CAP] BiLink; e: [CAP] BiEntry; slots: [SLOTS] int; chain: [CAP] int;
+  have: [CAP] u8; linked: [CAP] u8; owner: [CAP] int; d: [1] SyDownload; dl: [PEERS] SyPeer;
+  hp: [PEERS] SyHeadersPeer; bits: [4096] u8; buf: [HSS_BUF] SyCompressed; scratch: [80 * HSS_BUF] u8;
+  c: [PEERS] Conn; n: int;
+  raw: [80 * SY_MAX_HEADERS] u8; pos: [SY_MAX_HEADERS] int; msg: [80000] u8; frame: [80000 + P2P_HEADER] u8;
+  ins: [30000] TxIn; outs: [30000] TxOut; items: [100000] TxItem;
+  txids: [32 * 70000] u8; wtxids: [32 * 70000] u8; work: [32 * 70000] u8;
+}
+
+// ---- small helpers
+hex_digit :: (x: int) -> string { return "0123456789abcdef"[x..<x + 1]; }
+// A hash as explorers show it (bytes reversed); short gives 16 digits.
+show :: (h: [] u8, digits: int) { i := 31; while i >= 32 - digits / 2 { print("%", hex_digit(cast(int) h[i] >> 4)); print("%", hex_digit(cast(int) h[i] & 15)); i -= 1; } }
+number :: (text: string) -> int {
+  if text.count < 1 || text.count > 18 { return -1; }
+  v := 0;
+  for ch: text { if ch < '0' || ch > '9' { return -1; } v = v * 10 + cast(int) (ch - '0'); }
+  return v;
+}
+same_command :: (b: [] u8, f: P2pFrame, name: string) -> bool { return p2p_command_is(b, f, name); }
+
+// ---- the wire
+send :: (node: [] Node, k: int, command: string, payload: [] u8) -> bool {
+  c := node[0].c[..];
+  if !c[k].up { return false; }
+  n := p2p_frame_write_vartime(node[0].t[0].p.magic, command, payload, node[0].frame[..]);
+  if n < 0 { return false; }
+  for i: 0..<n { if cxsock_write(c[k].h, cast(int) node[0].frame[i]) < 0 { return false; } }
+  return cxsock_flush(c[k].h, 10000) >= 0;
+}
+connect :: (host: string, port: int) -> int {
+  for ch: host { r := cxsock_host_push(cast(int) ch); }
+  return cxsock_connect(port, 10000);
+}
+// version: protocol, no services, the time, the address we reached, an
+// empty one for us, a nonce, the user agent, height 0 and no relay.
+send_version :: (node: [] Node, k: int, now: int) -> bool {
+  b: [256] u8;
+  at := p2p_put_u32(b[..], 0, cast(u32) HS_PROTOCOL_VERSION);
+  at = p2p_put_u64(b[..], at, 0);
+  at = p2p_put_u64(b[..], at, cast(u64) now);
+  for i: 0..<52 { b[at + i] = 0; }      // addr_recv, then addr_from (services, address, port each)
+  at += 52;
+  at = p2p_put_u64(b[..], at, cast(u64) (0x5eed0000 + 977 * k + now));
+  at = tx_compact_write_vartime(b[..], at, AGENT.count);
+  for i: 0..<AGENT.count { b[at + i] = AGENT[i]; }
+  at += AGENT.count;
+  at = p2p_put_u32(b[..], at, 0);
+  b[at] = 0; at += 1;
+  return send(node, k, "version", b[0..<at]);
+}
+// Chapter 65's frame reader checks the checksum with the byte helpers,
+// which take at most 1 MiB (CB_MAX_BYTES), so it refuses a larger block
+// as a wrong checksum. Here a payload over 1 MiB is hashed in 1 MiB pieces
+// and the frame read again.
+big_checksum_ok :: (payload: [] u8, checksum: [] u8) -> bool {
+  st: [SHA_STATE_BYTES] u8; d: [32] u8; d2: [32] u8;
+  if sha256_init(st[..]) != SHA_OK { return false; }
+  at := 0;
+  while at < payload.count {
+    n := ifx payload.count - at < CB_MAX_BYTES then payload.count - at else CB_MAX_BYTES;
+    if sha256_update_checked(st[..], payload[at..<at + n], false) != SHA_OK { return false; }
+    at += n;
+  }
+  if sha256_final_checked(st[..], d[..], false) != SHA_OK || sha256_hash_checked(d[..], d2[..], false) != SHA_OK { return false; }
+  for i: 0..<4 { if d2[i] != checksum[i] { return false; } }
+  return true;
+}
+frame_read :: (b: [] u8, magic: [4] u8) -> P2pFrame {
+  f := p2p_frame_read_vartime(b, magic);
+  if f.code != P2P_BAD_CHECKSUM { return f; }
+  length := tx_le_vartime(b, 16, 4);
+  if length <= CB_MAX_BYTES || !big_checksum_ok(b[P2P_HEADER..<P2P_HEADER + length], b[20..<24]) { return f; }
+  if !p2p_command_valid_vartime(b[4..<16]) { return P2pFrame.{code=P2P_BAD_COMMAND}; }
+  n := 0;
+  while n < P2P_COMMAND && b[4 + n] != 0 { n += 1; }
+  return P2pFrame.{command_n=n, length=length, payload=P2P_HEADER, next=P2P_HEADER + length};
+}
+// One message from peer k, or none: P2P_TRUNCATED until a whole one is in.
+// Its payload is c[k].rx[f.payload..<f.next]; consume() drops it after.
+Got :: struct { f: P2pFrame; closed: bool; }
+receive :: (node: [] Node, k: int, wait_ms: int) -> Got {
+  c := node[0].c[..];
+  g := Got.{f=frame_read(c[k].rx[0..<c[k].n], node[0].t[0].p.magic)};
+  if g.f.code != P2P_TRUNCATED { return g; }
+  r := cxsock_read(c[k].h, wait_ms);
+  if r == -2 { return g; }                // CXSOCK_TIMEOUT
+  if r < 0 { g.closed = true; return g; }
+  if c[k].n + r > RX { g.closed = true; return g; }
+  for i: 0..<r { c[k].rx[c[k].n + i] = cast,trunc(u8) cxsock_byte(c[k].h, i); }
+  c[k].n += r;
+  g.f = frame_read(c[k].rx[0..<c[k].n], node[0].t[0].p.magic);
+  return g;
+}
+consume :: (node: [] Node, k: int, f: P2pFrame) {
+  c := node[0].c[..];
+  rest := c[k].n - f.next;
+  for i: 0..<rest { c[k].rx[i] = c[k].rx[f.next + i]; }
+  c[k].n = rest;
+}
+hang_up :: (node: [] Node, k: int, why: string) {
+  c := node[0].c[..];
+  if !c[k].up { return; }
+  r := cxsock_close(c[k].h);
+  c[k].up = false;
+  print("  peer %: disconnected (%)\n", k, why); f := cxtool_out_flush();
+}
+// A frame that doesn't read: say why, with its header bytes.
+bad_frame :: (node: [] Node, k: int, code: int) {
+  names := [9] string.["ok", "truncated", "wrong magic", "too large", "wrong checksum", "bad message type", "bad payload", "too many", "capacity"];
+  c := node[0].c[..];
+  print("  peer %: % (%), header", k, names[code], code);
+  for i: 0..<24 { if i < c[k].n { print(" "); print("%", hex_digit(cast(int) c[k].rx[i] >> 4)); print("%", hex_digit(cast(int) c[k].rx[i] & 15)); } }
+  print(", % bytes buffered\n", c[k].n);
+  hang_up(node, k, "bad message");
+}
+// The messages any phase answers: ping (with pong), version (with verack)
+// and verack. True when the message was one of those.
+housekeeping :: (node: [] Node, k: int, f: P2pFrame) -> bool {
+  c := node[0].c[..];
+  b := c[k].rx[0..<f.next];
+  if same_command(b, f, "ping") { ok := send(node, k, "pong", b[f.payload..<f.next]); return true; }
+  if same_command(b, f, "version") { ok := send(node, k, "verack", b[0..<0]); return true; }
+  if same_command(b, f, "verack") { c[k].verack = true; return true; }
+  return false;
+}
+
+// ---- headers
+// A headers payload into raw (80 bytes each), or -1.
+headers_in :: (node: [] Node, payload: [] u8) -> int {
+  r := p2p_headers_read_vartime(payload, node[0].pos[..]);
+  if r.code != P2P_OK { return -1; }
+  for k: 0..<r.count { for j: 0..<80 { node[0].raw[80 * k + j] = payload[node[0].pos[k] + j]; } }
+  return r.count;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  chain_name := args_value(a[..], "--chain", "regtest");
+  now := number(args_value(a[..], "--now", ""));
+  out_path := args_value(a[..], "--out", "");
+  last_n := number(args_value(a[..], "--blocks", "0"));
+  seconds := number(args_value(a[..], "--seconds", "1800"));
+  if !ok || now <= 0 || last_n < 0 || seconds <= 0 || (chain_name != "regtest" && chain_name != "signet") {
+    tool_errln("usage: sync-node --chain regtest|signet --now UNIX_SECONDS --peer HOST:PORT ... [--min-work N] [--blocks N] [--out FILE] [--seconds N]");
+    return 2;
+  }
+  node: [1] Node;
+  p := ifx chain_name == "signet" then CHAIN_SIGNET_PARAMS else CHAIN_REGTEST_PARAMS;
+  t := node[0].t[..];
+  #assert bi_init(t, p, node[0].l[..], node[0].e[..], node[0].slots[..], node[0].chain[..]);
+  g: [CHAIN_GENESIS_MAX] u8;
+  gn := chain_genesis_block_vartime(p.genesis, g[..]);
+  ga := bi_accept_header_vartime(t, g[0..<80], now);
+  #assert gn > 0 && ga.code == BI_OK;
+  bi_received_block_vartime(t, 0, 1);
+  #assert bi_activate_best_chain(t) == 0;
+  min_work := chain_number_vartime(p.min_chain_work);
+  mw := args_value(a[..], "--min-work", "");
+  if mw.count > 0 { min_work = u256_small(cast(u64) number(mw)); }
+  print("sync-node: %, genesis ", chain_name); show(t[0].e[0].hash[..], 64);
+  print(", minimum chain work %\n", ifx mw.count > 0 then mw else ifx p.min_chain_work.count > 0 then p.min_chain_work else "0");
+
+  // Connect and shake hands with every --peer.
+  c := node[0].c[..];
+  i := 0;
+  while i < args_count(a[..]) && node[0].n < PEERS {
+    if args_at(a[..], i) == "--peer" {
+      hp := args_at(a[..], i + 1);
+      colon := hp.count - 1;
+      while colon > 0 && hp[colon] != ':' { colon -= 1; }
+      k := node[0].n; node[0].n += 1;
+      h := connect(hp[0..<colon], number(hp[colon + 1..<hp.count]));
+      c[k].h = h; c[k].up = h >= 0;
+      if c[k].up { c[k].up = send_version(node[..], k, now); }
+      print("  peer %: % %\n", k, hp, ifx c[k].up then "connected" else "unreachable"); f := cxtool_out_flush();
+    }
+    i += 1;
+  }
+  start := cxsock_now_ms();
+  waiting := true;
+  while waiting && cxsock_now_ms() - start < 30000 {
+    waiting = false;
+    for k: 0..<node[0].n {
+      if !c[k].up || c[k].verack { continue; }
+      waiting = true;
+      r := receive(node[..], k, 5);
+      if r.closed { hang_up(node[..], k, "closed during the handshake"); continue; }
+      if r.f.code == P2P_OK { handled := housekeeping(node[..], k, r.f); consume(node[..], k, r.f); }
+      else if r.f.code != P2P_TRUNCATED { bad_frame(node[..], k, r.f.code); }
+    }
+  }
+  first := -1; live := 0;
+  for k: 0..<node[0].n { if c[k].up && c[k].verack { live += 1; if first < 0 { first = k; } } else { hang_up(node[..], k, "no verack"); } }
+  print("  % peers ready, % ms\n", live, cxsock_now_ms() - start);
+  if first < 0 { return 1; }
+
+  // Headers from the first peer, by locator, until a short message.
+  hps := node[0].hp[..];
+  for k: 0..<PEERS { hps[k] = SyHeadersPeer.{}; }
+  salt := [3] u64.[cast(u64) (now * 2654435761) ^ 0x9e3779b97f4a7c15, cast(u64) now ^ 0x6a09e667f3bcc908, cast(u64) now];
+  none: [1] u8;
+  ln := sy_getheaders_write_vartime(t, none[0..<0], t[0].best_header, node[0].msg[..]);
+  ok = send(node[..], first, "getheaders", node[0].msg[0..<ln]);
+  asked := cxsock_now_ms();
+  messages := 0; last_state := -1; stored := 0; presynced := 0;
+  headers_done := false; refused := false;
+  hstart := cxsock_now_ms();
+  while !headers_done && !refused && first >= 0 && cxsock_now_ms() - start < 1000 * seconds {
+    // A peer that doesn't answer in time, or hangs up, is replaced by the
+    // next; its presync is dropped with it, and the next starts from our
+    // best header.
+    if !c[first].up || cxsock_now_ms() - asked > HEADERS_WAIT {
+      hang_up(node[..], first, "no headers in time");
+      if hps[first].syncing { sy_hss_finalize(hps[first].hss[..]); hps[first].syncing = false; }
+      was := first; first = -1;
+      for k: was + 1..<node[0].n { if first < 0 && c[k].up { first = k; } }
+      if first < 0 { break; }
+      print("    asking peer % instead\n", first);
+      ln = sy_getheaders_write_vartime(t, none[0..<0], t[0].best_header, node[0].msg[..]);
+      ok = send(node[..], first, "getheaders", node[0].msg[0..<ln]);
+      asked = cxsock_now_ms();
+    }
+    for k: 0..<node[0].n {
+      if !c[k].up { continue; }
+      r := receive(node[..], k, 2);
+      if r.closed { hang_up(node[..], k, "closed"); continue; }
+      if r.f.code == P2P_TRUNCATED { continue; }
+      if r.f.code != P2P_OK { bad_frame(node[..], k, r.f.code); continue; }
+      b := c[k].rx[0..<r.f.next];
+      if !housekeeping(node[..], k, r.f) && same_command(b, r.f, "headers") && k == first {
+        n := headers_in(node[..], b[r.f.payload..<r.f.next]);
+        if n < 0 { hang_up(node[..], k, "bad headers"); consume(node[..], k, r.f); continue; }
+        messages += 1; asked = cxsock_now_ms();
+        h := sy_on_headers_vartime(hps[k..<k + 1], t, node[0].raw[0..<80 * n], n, now, min_work, salt,
+                                   node[0].bits[..], node[0].buf[..], node[0].scratch[..], node[0].msg[..]);
+        if h.code == SY_H_PRESYNC { presynced += n; }
+        if h.code == SY_H_STORED { stored += h.accepted; }
+        state := ifx hps[k].syncing then hps[k].hss[0].state else ifx h.code == SY_H_STORED then 3 else -1;
+        if state != last_state || messages % 100 == 0 || h.code != SY_H_PRESYNC && h.code != SY_H_STORED {
+          print("    headers message %: % headers, %", messages, n, SY_H_NAMES[h.code]);
+          if hps[k].syncing {
+            s := hps[k].hss[0];
+            if s.state == SY_PRESYNC { print(", PRESYNC at height %, % commitments", s.height, s.bits_n); }
+            if s.state == SY_REDOWNLOAD { print(", REDOWNLOAD at height %, % commitments left, % waiting", s.buf_last_height, s.bits_n, s.buf_n); }
+          } else if h.code == SY_H_PRESYNC { print(", the presync ended"); }
+          if h.code == SY_H_STORED { print(", % stored so far, best header %", stored, t[0].l[t[0].best_header].height); }
+          print("\n"); f := cxtool_out_flush();
+          last_state = state;
+        }
+        if h.code == SY_H_INVALID { hang_up(node[..], k, bi_reason(h.reason)); }
+        else if h.locator_n > 0 { ok = send(node[..], k, "getheaders", node[0].msg[0..<h.locator_n]); }
+        else if h.code == SY_H_STORED || h.code == SY_H_EMPTY { headers_done = true; }
+        else if h.code == SY_H_PRESYNC || h.code == SY_H_LOW_WORK { refused = !hps[k].syncing; }
+      }
+      consume(node[..], k, r.f);
+    }
+  }
+  best := t[0].best_header;
+  print("  headers: % messages, % presynced, % stored in % ms; best header % (", messages, presynced, stored, cxsock_now_ms() - hstart, t[0].l[best].height);
+  show(t[0].e[best].hash[..], 64); print(")\n");
+  if first < 0 { print("  no peer answered getheaders\n"); return 3; }
+  if refused || best == 0 { print("  the peer's chain has too little work: nothing stored, no blocks to fetch\n"); return 3; }
+
+  // The other peers: getheaders from the best header's parent, so each
+  // sends at least that header back (Core does the same once the best
+  // header is recent) and we learn it has the chain.
+  ln = sy_getheaders_write_vartime(t, none[0..<0], t[0].l[best].prev, node[0].msg[..]);
+  for k: 0..<node[0].n { if c[k].up && k != first { ok = send(node[..], k, "getheaders", node[0].msg[0..<ln]); } }
+  told := 1;
+  wstart := cxsock_now_ms();
+  while told < live && cxsock_now_ms() - wstart < 20000 {
+    told = 0;
+    for k: 0..<node[0].n {
+      if !c[k].up { continue; }
+      if hps[k].best >= 0 { told += 1; continue; }
+      r := receive(node[..], k, 2);
+      if r.closed { hang_up(node[..], k, "closed"); continue; }
+      if r.f.code != P2P_OK { continue; }
+      b := c[k].rx[0..<r.f.next];
+      if !housekeeping(node[..], k, r.f) && same_command(b, r.f, "headers") {
+        n := headers_in(node[..], b[r.f.payload..<r.f.next]);
+        if n > 0 {
+          h := sy_on_headers_vartime(hps[k..<k + 1], t, node[0].raw[0..<80 * n], n, now, min_work, salt,
+                                     node[0].bits[..], node[0].buf[..], node[0].scratch[..], node[0].msg[..]);
+        }
+      }
+      consume(node[..], k, r.f);
+    }
+  }
+
+  // Blocks: the window over the best header chain.
+  d := node[0].d[..]; dl := node[0].dl[..];
+  sy_dl_init(d, t, node[0].have[..], node[0].linked[..], node[0].owner[..], dl[0..<node[0].n], min_work);
+  from := 0;
+  if last_n > 0 && t[0].l[best].height > last_n {
+    from = bi_ancestor(t[0].l, best, t[0].l[best].height - last_n);
+    sy_dl_assume(d, from);
+  }
+  for k: 0..<node[0].n { dl[k].live = c[k].up; dl[k].best = hps[k].best; }
+  want := t[0].l[best].height - t[0].l[from].height;
+  print("  blocks: % to fetch, heights % to %, from", want, t[0].l[from].height + 1, t[0].l[best].height);
+  for k: 0..<node[0].n { if dl[k].live { print(" peer % (best %)", k, ifx dl[k].best >= 0 then t[0].l[dl[k].best].height else -1); } }
+  print("\n");
+  if out_path.count > 0 { ok = fs_write(out_path, ""); }
+  got := 0; bytes := 0; stalls := 0; bad := 0; next_report := want / 5;
+  bstart := cxsock_now_ms();
+  out: [16] int; inv: [4 + 36 * 16] u8;
+  while d[0].tip != best && cxsock_now_ms() - start < 1000 * seconds {
+    now_ms := cxsock_now_ms();
+    any := false;
+    for k: 0..<node[0].n {
+      if !dl[k].live { continue; }
+      any = true;
+      s := sy_dl_step(d, k, now_ms, out[..]);
+      if s.stall_started { stalls += 1; print("    peer % holds block % and the window can't move: stall started\n", s.staller, t[0].l[dl[s.staller].flight[0]].height); f := cxtool_out_flush(); }
+      if s.verdict == SY_STALLED { hang_up(node[..], k, "stalling"); continue; }
+      if s.verdict == SY_TIMED_OUT { hang_up(node[..], k, "block download timeout"); continue; }
+      if s.n > 0 {
+        at := tx_compact_write_vartime(inv[..], 0, s.n);
+        for m: 0..<s.n { at = p2p_put_u32(inv[..], at, MSG_WITNESS_BLOCK); for j: 0..<32 { inv[at + j] = t[0].e[out[m]].hash[j]; } at += 32; }
+        if !send(node[..], k, "getdata", inv[0..<at]) { sy_dl_drop(d, k); hang_up(node[..], k, "write failed"); continue; }
+      }
+      r := receive(node[..], k, 1);
+      if r.closed { sy_dl_drop(d, k); hang_up(node[..], k, "closed"); continue; }
+      if r.f.code == P2P_TRUNCATED { continue; }
+      if r.f.code != P2P_OK { sy_dl_drop(d, k); bad_frame(node[..], k, r.f.code); continue; }
+      b := c[k].rx[0..<r.f.next];
+      if !housekeeping(node[..], k, r.f) && same_command(b, r.f, "block") {
+        blk := b[r.f.payload..<r.f.next];
+        hash: [32] u8;
+        at_i := -1;
+        if blk.count >= 80 && pow_block_hash_vartime(blk[0..<80], hash[..]) == POW_OK { at_i = bi_find(t, hash[..]); }
+        if at_i >= 0 && d[0].owner[at_i] == k + 1 {
+          v := sy_check_block_vartime(blk, t[0].e[at_i].hash[..], node[0].ins[..], node[0].outs[..], node[0].items[..],
+                                      node[0].txids[..], node[0].wtxids[..], node[0].work[..]);
+          if v != 0 {
+            bad += 1;
+            print("    block % from peer %: % (punished)\n", t[0].l[at_i].height, k, ifx v == DS_BLOCK_MUTATED then "BLOCK_MUTATED" else ifx v == DS_BLOCK_INVALID_HEADER then "BLOCK_INVALID_HEADER" else "BLOCK_CONSENSUS");
+            sy_dl_drop(d, k); hang_up(node[..], k, "invalid block");
+          } else {
+            if out_path.count > 0 {
+              rec: [8] u8;
+              s1 := cb_store_le32(rec[..], 0, cast(u32) t[0].l[at_i].height);
+              s2 := cb_store_le32(rec[..], 4, cast(u32) blk.count);
+              ok = fs_append(out_path, cast(string) rec[..]) && fs_append(out_path, cast(string) blk);
+            }
+            linked := sy_dl_received(d, k, at_i, now_ms);
+            got += 1; bytes += blk.count; c[k].blocks += 1;
+            if got >= next_report && next_report > 0 {
+              print("    % blocks stored, tip %, % ms\n", got, t[0].l[d[0].tip].height, cxsock_now_ms() - bstart);
+              next_report += want / 5; f := cxtool_out_flush();
+            }
+          }
+        }
+      }
+      if c[k].up { consume(node[..], k, r.f); }
+    }
+    if !any { break; }
+  }
+  print("  blocks: % stored (% bytes) in % ms, tip % (", got, bytes, cxsock_now_ms() - bstart, t[0].l[d[0].tip].height);
+  show(t[0].e[d[0].tip].hash[..], 64);
+  print("); from each peer:");
+  for k: 0..<node[0].n { print(" %", c[k].blocks); }
+  print("; % stalls started, % invalid\n", stalls, bad);
+  for k: 0..<node[0].n { if c[k].up { r := cxsock_close(c[k].h); } }
+  return ifx d[0].tip == best && bad == 0 then 0 else 4;
+}

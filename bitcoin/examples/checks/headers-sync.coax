@@ -1,0 +1,36 @@
+// The checks of the headers sync example. They live apart so that running
+// the example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/headers-sync.coax
+#run_steps 250000000;
+#load "../headers-sync.coax";
+
+// book:begin check
+// Whatever the salt and the commitment offset, an honest chain passes
+// PRESYNC and REDOWNLOAD and comes out whole, in order.
+#forall "an honest chain always comes through" k: 0..<6 #steps 8000000000 {
+  l: [4] BiLink; e: [4] BiEntry; slots: [8] int; chain: [4] int; t: [1] BlockTree;
+  bi_regtest(t[..], l[..], e[..], slots[..], chain[..]);
+  raw: [80 * 300] u8; bits: [32] u8; buf: [100 + SY_MAX_HEADERS] SyCompressed; out: [80 * 400] u8; s: [1] SyHss;
+  sy_t_chain(e[0].hash[..], 1, e[0].time, cast,trunc(u8) k, 300, raw[..]);
+  hp := SyHeadersParams.{period=25, buffer=100};
+  #assert sy_hss_init(s[..], t[..], 0, hp, u256_small(2 * 290), SY_NOW, k * 4, 0x9e3779b97f4a7c15 ^ cast(u64) (k + 1), cast(u64) k, bits[..], buf[..]) == SY_HSS_OK;
+  r := sy_hss_process(s[..], raw[..], 300, true, out[..]);
+  #assert r.success && s[0].state == SY_REDOWNLOAD;
+  r = sy_hss_process(s[..], raw[..], 300, false, out[..]);
+  #assert r.success && r.released == 300 && s[0].state == SY_FINAL;
+  for j: 0..<80 * 300 { #assert out[j] == raw[j]; }
+}
+// Whichever block a peer withholds, no request goes more than the window
+// past the last block in common, and the rest of the window arrives.
+#forall "requests stay inside the window" k: 0..<4 #steps 8000000000 {
+  m: [1] Sim; peers: [3] SyPeer;
+  tip := sim_init(m[..], 1100, peers[..]);
+  l := m[0].l[..];
+  held := [1] int.[bi_ancestor(l, tip, 1 + 37 * k)];
+  for p: 0..<3 { peers[p].best = tip; }
+  s := sy_t_settle(m[0].d[..], 1000, held[..]);
+  for i: 0..<m[0].t[0].count { if m[0].have[i] != 0 || m[0].owner[i] != 0 { #assert l[i].height <= l[held[0]].height - 1 + SY_WINDOW; } }
+  end := l[held[0]].height - 1 + SY_WINDOW;
+  #assert l[m[0].d[0].tip].height == l[held[0]].height - 1 && s.requested == ifx end < 1100 then end else 1100;
+}
+// book:end check
