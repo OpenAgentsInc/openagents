@@ -1,0 +1,10 @@
+// Deliberately broken context. Run it and check both stdout and exit status.
+#run_steps 250000000;
+#load "../../coax/lib/bitcoin/scriptflags.coax";
+#import "Basic";
+main :: () {
+  short: [31] u8;
+  code := scriptflags_vartime(CHAIN_MAINNET_PARAMS, 481824, short[..]);
+  #assert code == -1;
+  print("script flags: refused 31-byte block hash (code %)\n", code);
+}

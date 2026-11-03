@@ -86,6 +86,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [52. Transaction checks outside script](ch052-transaction-checks-outside-script.md) — implemented
 - [53. Sigops, weight and block limits](ch053-sigops-weight-and-block-limits.md) — implemented
 - [54. The subsidy and the coinbase](ch054-the-subsidy-and-the-coinbase.md) — implemented
+- [55. Script flags by height and their exceptions](ch055-script-flags-by-height-and-their-exceptions.md) — implemented
 - [56. The UTXO set and MuHash3072](ch056-the-utxo-set-and-muhash3072.md) — implemented
 - [59. The block index and the most-work chain](ch059-the-block-index-and-the-most-work-chain.md) — implemented
 - [61. Block files and undo files](ch061-block-files-and-undo-files.md) — implemented

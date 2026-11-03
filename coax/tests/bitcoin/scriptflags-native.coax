@@ -1,0 +1,9 @@
+// Native oracle boundary: only adapt an integer network to owned parameters.
+#run_steps 250000000;
+#load "../../lib/bitcoin/scriptflags.coax";
+sf_flags_probe :: (chain: int, height: int, hash: [] u8) -> int #export_c {
+  return scriptflags_vartime(chain_params(chain), height, hash);
+}
+sf_bip30_probe :: (chain: int, height: int, hash: [] u8, ancestor: [] u8) -> int #export_c {
+  return scriptflags_bip30_vartime(chain_params(chain), height, hash, ancestor);
+}

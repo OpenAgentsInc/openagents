@@ -1237,17 +1237,26 @@
   {
    "number": 55,
    "title": "Script flags by height and their exceptions",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch055-script-flags-by-height-and-their-exceptions.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     36,
     44,
     50,
     51
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/scriptflags.coax",
+    "coax/lib/bitcoin/chainparams.coax",
+    "bitcoin/examples/script-flags.coax",
+    "bitcoin/examples/script-flags-refused.coax",
+    "coax/tests/bitcoin/scriptflags-native.coax",
+    "coax/tests/bitcoin/scriptflags.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

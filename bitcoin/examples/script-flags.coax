@@ -1,0 +1,36 @@
+// book:begin example
+#run_steps 250000000;
+#load "../../coax/lib/bitcoin/scriptflags.coax";
+#import "Basic";
+
+main :: () {
+  p := CHAIN_MAINNET_PARAMS; h: [32] u8; a: [32] u8;
+  print("Mainnet GetBlockScriptFlags (decimal masks):\n");
+  for at: [9] int.[0, 363724, 363725, 388380, 388381, 419327, 419328, 481823, 481824] {
+    print("  %: %\n", at, scriptflags_vartime(p, at, h[..]));
+  }
+  #assert cp_unhex(p.bip16_exception, h[..]) == 32;
+  #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK;
+  print("  BIP16 exception at 170060: %\n", scriptflags_vartime(p, 170060, h[..]));
+  h[0] ^= 1;
+  print("  its hash changed: %\n", scriptflags_vartime(p, 170060, h[..]));
+  #assert cp_unhex(p.taproot_exception, h[..]) == 32;
+  #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK;
+  print("  Taproot exception at 692261: %\n", scriptflags_vartime(p, 692261, h[..]));
+  print("BIP30 (1 checks, 0 skips):\n");
+  for i: 0..<2 {
+    #assert cp_unhex(CHAIN_BIP30_REPEAT_HASHES[i], h[..]) == 32;
+    #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK;
+    at := CHAIN_BIP30_REPEAT_HEIGHTS[i];
+    print("  repeat %: %\n", at, scriptflags_bip30_vartime(p, at, h[..], a[0..<0]));
+    h[0] ^= 1;
+    print("  its hash changed: %\n", scriptflags_bip30_vartime(p, at, h[..], a[0..<0]));
+  }
+  #assert cp_unhex(p.bip34_hash, a[..]) == 32;
+  #assert bitcoin_reverse32(a[..], a[..]) == SHA_OK;
+  for at: [4] int.[227931, 227932, 1983701, 1983702] {
+    print("  known BIP34 ancestor, height %: %\n", at, scriptflags_bip30_vartime(p, at, h[..], a[..]));
+  }
+  print("  missing ancestor at 227932: %\n", scriptflags_bip30_vartime(p, 227932, h[..], a[0..<0]));
+}
+// book:end example

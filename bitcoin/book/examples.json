@@ -2,6 +2,22 @@
   "schema": 1,
   "examples": [
     {
+      "source": "bitcoin/examples/script-flags.coax",
+      "chapter": "bitcoin/book/ch055-script-flags-by-height-and-their-exceptions.md",
+      "stdout": "bitcoin/fixtures/script-flags.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"],
+      "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/script-flags-refused.coax",
+      "chapter": "bitcoin/book/ch055-script-flags-by-height-and-their-exceptions.md",
+      "stdout": "bitcoin/fixtures/script-flags-refused.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"],
+      "timeout": 300
+    },
+    {
       "source": "bitcoin/examples/bytes-hex-base64.coax",
       "chapter": "bitcoin/book/ch001-bytes-hex-and-base64.md",
       "stdout": "bitcoin/fixtures/bytes-hex-base64.out",

@@ -1,0 +1,23 @@
+Mainnet GetBlockScriptFlags (decimal masks):
+  0: 133121
+  363724: 133121
+  363725: 133125
+  388380: 133125
+  388381: 133637
+  419327: 133637
+  419328: 134661
+  481823: 134661
+  481824: 134677
+  BIP16 exception at 170060: 0
+  its hash changed: 133121
+  Taproot exception at 692261: 3605
+BIP30 (1 checks, 0 skips):
+  repeat 91842: 0
+  its hash changed: 1
+  repeat 91880: 0
+  its hash changed: 1
+  known BIP34 ancestor, height 227931: 1
+  known BIP34 ancestor, height 227932: 0
+  known BIP34 ancestor, height 1983701: 0
+  known BIP34 ancestor, height 1983702: 1
+  missing ancestor at 227932: 1

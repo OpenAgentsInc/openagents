@@ -1,0 +1,133 @@
+// Bitcoin chapter 55: GetBlockScriptFlags and ConnectBlock's BIP30 gate,
+// from Bitcoin Core validation.cpp at ddea9196. Public inputs, variable time.
+// ChainParams and ancestry come from a validated block index. These queries
+// select rules; they do not establish header, script or UTXO validity.
+#run_steps 250000000;
+#load "chainparams.coax";
+#authority;
+
+// book:begin flags
+SCRIPTFLAGS_BASE :: SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT;
+// Returns a mask, or -1 for an invalid network, height or hash extent.
+// Hash bytes are SHA256d/wire order, the reverse of an explorer's text.
+scriptflags_vartime :: (p: ChainParams, height: int, hash: [] u8) -> int #export_c {
+  if !scriptflags_context_vartime(p, height, hash) { return -1; }
+  flags := SCRIPTFLAGS_BASE;
+  exception := chain_script_exception_vartime(p, hash);
+  if exception >= 0 { flags &= exception; }
+  if chain_deployment_active(p, DEP_DERSIG, height) { flags |= SCRIPT_VERIFY_DERSIG; }
+  if chain_deployment_active(p, DEP_CLTV, height) { flags |= SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY; }
+  if chain_deployment_active(p, DEP_CSV, height) { flags |= SCRIPT_VERIFY_CHECKSEQUENCEVERIFY; }
+  if chain_deployment_active(p, DEP_SEGWIT, height) { flags |= SCRIPT_VERIFY_NULLDUMMY; }
+  return flags;
+}
+// book:end flags
+
+// book:begin bip30
+// Whether ConnectBlock must check for unspent outputs with a repeated txid:
+// 1 checks, 0 skips, -1 refuses malformed context. ancestor is the previous
+// block's ancestor at p.bip34_height, or empty when none is supplied. Missing
+// ancestry keeps checking. The caller proves that a supplied hash is really
+// that ancestor; a height alone is never proof of the known chain.
+scriptflags_bip30_vartime :: (p: ChainParams, height: int, hash: [] u8, ancestor: [] u8) -> int #export_c {
+  if !scriptflags_context_vartime(p, height, hash) { return -1; }
+  if ancestor.count != 0 && ancestor.count != 32 { return -1; }
+  if height >= CHAIN_BIP34_IMPLIES_BIP30_LIMIT { return 1; }
+  if chain_bip30_repeat_vartime(height, hash) { return 0; }
+  if height > p.bip34_height && chain_hash_is_vartime(ancestor, p.bip34_hash) { return 0; }
+  return 1;
+}
+// book:end bip30
+
+scriptflags_context_vartime :: (p: ChainParams, height: int, hash: [] u8) -> bool {
+  return p.chain >= CHAIN_MAIN && p.chain <= CHAIN_REGTEST && height >= 0 && height <= 2147483647 && hash.count == 32;
+}
+
+#test "script flags: pinned mainnet activation boundaries" {
+  p := CHAIN_MAINNET_PARAMS; h: [32] u8;
+  heights := [9] int.[0, 363724, 363725, 388380, 388381, 419327, 419328, 481823, 481824];
+  masks := [9] int.[133121, 133121, 133125, 133125, 133637, 133637, 134661, 134661, 134677];
+  for i: 0..<9 { #assert scriptflags_vartime(p, heights[i], h[..]) == masks[i]; }
+}
+#test "script flags: exceptions trim the base before adding buried flags" {
+  p := CHAIN_MAINNET_PARAMS; h: [32] u8;
+  #assert cp_unhex(p.bip16_exception, h[..]) == 32;
+  #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK;
+  #assert scriptflags_vartime(p, 170060, h[..]) == 0;
+  // A hash alone cannot cause an early return that bypasses buried flags.
+  #assert scriptflags_vartime(p, 481824, h[..]) == 1556;
+  #assert cp_unhex(p.taproot_exception, h[..]) == 32;
+  #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK;
+  #assert scriptflags_vartime(p, 692261, h[..]) == 3605;
+  #assert scriptflags_vartime(CHAIN_TESTNET4_PARAMS, 692261, h[..]) == 134677;
+  #assert cp_unhex(CHAIN_TESTNET3_PARAMS.bip16_exception, h[..]) == 32;
+  #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK;
+  #assert scriptflags_vartime(CHAIN_TESTNET3_PARAMS, 1, h[..]) == 0;
+  #assert scriptflags_vartime(p, 1, h[..]) == 133121;
+}
+#forall "script flags: all networks and every buried boundary" chain: 1..<6 {
+  p := chain_params(chain); hash: [32] u8;
+  deps := [4] int.[DEP_DERSIG, DEP_CLTV, DEP_CSV, DEP_SEGWIT];
+  bits := [4] int.[4, 512, 1024, 16];
+  for i: 0..<4 {
+    at := chain_deployment_height(p, deps[i]);
+    #assert (scriptflags_vartime(p, at, hash[..]) & bits[i]) == bits[i];
+    if at > 0 { #assert (scriptflags_vartime(p, at - 1, hash[..]) & bits[i]) == 0; }
+  }
+  #assert scriptflags_vartime(p, 2147483647, hash[..]) == 134677;
+}
+#forall "script flags: every changed exception byte loses its exemption" byte: 0..<32 {
+  p := CHAIN_MAINNET_PARAMS; h: [32] u8;
+  #assert cp_unhex(p.bip16_exception, h[..]) == 32;
+  #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK;
+  h[byte] ^= 1;
+  #assert scriptflags_vartime(p, 170060, h[..]) == 133121;
+  #assert cp_unhex(p.taproot_exception, h[..]) == 32;
+  #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK;
+  h[byte] ^= 1;
+  #assert scriptflags_vartime(p, 692261, h[..]) == 134677;
+}
+#test "selectors refuse malformed context" {
+  h: [33] u8; p := CHAIN_MAINNET_PARAMS;
+  #assert scriptflags_vartime(p, -1, h[0..<32]) == -1;
+  #assert scriptflags_vartime(p, 2147483648, h[0..<32]) == -1;
+  #assert scriptflags_vartime(p, 0, h[0..<31]) == -1;
+  #assert scriptflags_vartime(p, 0, h[..]) == -1;
+  #assert scriptflags_vartime(chain_params(0), 0, h[0..<32]) == -1;
+  p.chain = 6;
+  #assert scriptflags_vartime(p, 0, h[0..<32]) == -1;
+  #assert scriptflags_bip30_vartime(p, 1, h[0..<32], h[0..<0]) == -1;
+  p = CHAIN_MAINNET_PARAMS;
+  #assert scriptflags_bip30_vartime(p, 1, h[0..<31], h[0..<0]) == -1;
+  #assert scriptflags_bip30_vartime(p, 1, h[0..<32], h[0..<31]) == -1;
+  #assert scriptflags_bip30_vartime(p, 1, h[0..<32], h[..]) == -1;
+  #assert scriptflags_bip30_vartime(p, 1, h[0..<32], h[0..<0]) == 1;
+}
+#test "BIP30: a known BIP34 ancestor, not height alone, permits the optimization" {
+  p := CHAIN_MAINNET_PARAMS; h: [32] u8; a: [32] u8;
+  #assert cp_unhex(p.bip34_hash, a[..]) == 32;
+  #assert bitcoin_reverse32(a[..], a[..]) == SHA_OK;
+  #assert scriptflags_bip30_vartime(p, 227931, h[..], a[..]) == 1;
+  #assert scriptflags_bip30_vartime(p, 227932, h[..], a[..]) == 0;
+  #assert scriptflags_bip30_vartime(p, 1983701, h[..], a[..]) == 0;
+  #assert scriptflags_bip30_vartime(p, 1983702, h[..], a[..]) == 1;
+  #assert scriptflags_bip30_vartime(p, 1983703, h[..], a[..]) == 1;
+  #assert scriptflags_bip30_vartime(p, 227932, h[..], a[0..<0]) == 1;
+  a[0] ^= 1;
+  #assert scriptflags_bip30_vartime(p, 227932, h[..], a[..]) == 1;
+  #assert scriptflags_bip30_vartime(CHAIN_REGTEST_PARAMS, 2, h[..], a[..]) == 1;
+}
+#forall "BIP30: repeat blocks require both their height and full hash" i: 0..<2 {
+  h: [32] u8; p := CHAIN_MAINNET_PARAMS;
+  #assert cp_unhex(CHAIN_BIP30_REPEAT_HASHES[i], h[..]) == 32;
+  #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK;
+  at := CHAIN_BIP30_REPEAT_HEIGHTS[i];
+  #assert scriptflags_bip30_vartime(p, at, h[..], h[0..<0]) == 0;
+  #assert scriptflags_bip30_vartime(p, at - 1, h[..], h[0..<0]) == 1;
+  #assert scriptflags_bip30_vartime(p, at + 1, h[..], h[0..<0]) == 1;
+  for b: 0..<32 {
+    h[b] ^= 1;
+    #assert scriptflags_bip30_vartime(p, at, h[..], h[0..<0]) == 1;
+    h[b] ^= 1;
+  }
+}

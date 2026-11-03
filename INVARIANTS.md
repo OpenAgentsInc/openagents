@@ -1,5 +1,20 @@
 # Invariants
 
+## Bitcoin block script rules keep their hash and ancestry context
+
+`coax/lib/bitcoin/scriptflags.coax` selects pinned Core's block script mask:
+P2SH, witness and Taproot form the base, full-hash exceptions trim it, and
+buried deployment flags are added afterward at the checked block's height.
+Policy flags are not added. Its BIP-30 gate skips duplicate-output lookups
+only for the exact historical repeat pairs or a supplied known BIP-34
+ancestor, and resumes checking at 1,983,702. Missing ancestry keeps checking;
+malformed extents, networks and heights refuse. Parameters and ancestor
+identity remain the validated block index caller's responsibility. These
+queries do not validate a block, permit a UTXO overwrite or replace Core's
+required verdict for money. Evidence: chapter 55, root-only mutation checks
+and `coax/tests/bitcoin/scriptflags.py`'s independent pinned-source model
+against native debug/release selectors and mainnet headers 0–2,016.
+
 ## Bitcoin file framing never grants chain validity
 
 `coax/lib/bitcoin/blockfiles.coax` owns Core-compatible block/undo framing,
