@@ -1,6 +1,6 @@
 # 5E Lab
 
-A Verse world at https://openagents.com/worlds/5e-lab, not listed on the worlds page. It's the test bench for the shared SRD 5e rules engine: two circles of level 3 druids, three a side, fight on a grid of 5-foot squares, seen either in 3D in a painterly glade like Everglade's or as a bare flat grid. Every attack roll, saving throw, damage roll and death save comes from the engine, and the log shows each one.
+A Verse world at https://openagents.com/worlds/5e-lab, not listed on the worlds page. It's the test bench for the shared SRD 5e rules engine: five level 3 druids (the Circle of Moss) fight five level 3 necromancers (the Pale School) on a grid of 5-foot squares, seen either in 3D in a painterly glade like Everglade's or as a bare flat grid. Every attack roll, saving throw, damage roll and death save comes from the engine, and the log shows each one.
 
 ## Controls
 
@@ -14,8 +14,10 @@ A Verse world at https://openagents.com/worlds/5e-lab, not listed on the worlds 
 ## What you are watching
 
 - Each druid takes a turn every 6 seconds, in initiative order. In a turn it has one action, one Bonus Action, its Speed (30 feet) and one spell slot to spend.
-- The spells: Produce Flame, Starry Wisp and Poison Spray (cantrips); Cure Wounds, Healing Word, Thunderwave, Entangle and Faerie Fire (level 1, cast with level 1 or level 2 slots).
-- A ring of light marks whoever just took a turn. A green tangle marks a Restrained druid, a violet ring an outlined one, a small flame a lit Produce Flame. The thin line under the hit-point bar is the spell it's concentrating on.
+- The druids are the SRD's Druid class. The SRD has no necromancer class, so the necromancers are the SRD's Wizard class in Mage Armor (cast before the fight from a 1st-level slot), choosing the Wizard list's necromancy.
+- The druids' spells: Produce Flame, Starry Wisp and Poison Spray (cantrips); Cure Wounds, Healing Word, Thunderwave, Entangle and Faerie Fire (level 1, cast with level 1 or level 2 slots).
+- The necromancers' spells: Chill Touch and Poison Spray (cantrips); Ray of Sickness and False Life (level 1); Ray of Enfeeblement and Blindness/Deafness (level 2).
+- A ring of light marks whoever just took a turn. Necromancers wear black robes with pale trim. A green tangle marks a Restrained creature, a green cast a Poisoned one, a dark band over the eyes a Blinded one, grey an enfeebled one, a red rim Temporary Hit Points, a violet ring an outlined one, a small flame a lit Produce Flame. The thin line under the hit-point bar is the spell it's concentrating on.
 - A druid at 0 Hit Points is Unconscious and makes a death saving throw at the start of each of its turns: green ticks are successes, red ticks failures.
 - The battle ends when one side has nobody standing. A new one starts 6 seconds later.
 

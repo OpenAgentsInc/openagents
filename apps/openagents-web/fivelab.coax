@@ -24,9 +24,10 @@
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 90000;
-UNIFORM_FLOATS :: 168;
+UNIFORM_FLOATS :: 184;
+TOKENS3 :: 10;   // the glade's tokens (gpu/fivelab.coax FIVELAB_TOKENS)
 U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
-U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 100; U_BOUNDS :: 164;
+U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 116; U_BOUNDS :: 180;
 SQ :: 1.524;   // a 5-foot square, metres
 VIEW_FLAT :: 0; VIEW_GLADE :: 1;
 
@@ -39,10 +40,13 @@ KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6
 
 COLS :: 16; ROWS :: 10;
 FAST :: 4.0;
-TEAM_NAME :: [2] string.["CIRCLE OF MOSS", "CIRCLE OF ASH"];
-NAMES :: [6] string.["Rowan", "Briar", "Fern", "Thorn", "Sable", "Wren"];
-START_X :: [6] int.[2, 2, 2, 13, 13, 13];
-START_Y :: [6] int.[3, 5, 7, 2, 5, 8];
+// Five level 3 Druids against five level 3 Wizards of the Necromancy school (the SRD has no
+// necromancer class: they are Wizards in Mage Armor casting the Wizard list's necromancy).
+SIDE :: 5; PEOPLE :: 10;
+TEAM_NAME :: [2] string.["CIRCLE OF MOSS", "THE PALE SCHOOL"];
+NAMES :: [10] string.["Rowan", "Briar", "Fern", "Hazel", "Alder", "Mordra", "Vesk", "Sallow", "Grimsby", "Ilse"];
+START_X :: [10] int.[2, 3, 2, 3, 2, 13, 12, 13, 12, 13];
+START_Y :: [10] int.[1, 3, 5, 7, 9, 0, 2, 4, 6, 8];
 
 LOG_LINES :: 40;
 LINE_CAP :: 96;
@@ -60,7 +64,7 @@ GREEN :: Col.{r = 0.4, g = 1.0, b = 0.5};
 VIOLET :: Col.{r = 0.75, g = 0.48, b = 1.0};
 GOLD :: Col.{r = 1.0, g = 0.8, b = 0.35};
 CYAN :: Col.{r = 0.35, g = 0.9, b = 1.0};
-TEAM_COL :: [2] Col.[Col.{r = 0.45, g = 0.95, b = 0.55}, Col.{r = 1.0, g = 0.55, b = 0.25}];
+TEAM_COL :: [2] Col.[Col.{r = 0.45, g = 0.95, b = 0.55}, Col.{r = 0.62, g = 0.85, b = 1.0}];
 
 Line :: struct { text: [LINE_CAP] u8; n: int; col: Col; }
 Fx :: struct { kind: int; ax: f32; ay: f32; bx: f32; by: f32; t0: f32; life: f32; col: Col; text: [12] u8; n: int; }
@@ -114,6 +118,11 @@ spell_col :: (sp: int) -> Col {
   if sp == SP_THUNDERWAVE { return Col.{r = 0.55, g = 0.75, b = 1.0}; }
   if sp == SP_ENTANGLE { return Col.{r = 0.35, g = 0.85, b = 0.3}; }
   if sp == SP_FAERIE_FIRE { return VIOLET; }
+  if sp == SP_CHILL_TOUCH { return Col.{r = 0.6, g = 0.92, b = 1.0}; }
+  if sp == SP_RAY_OF_SICKNESS { return Col.{r = 0.75, g = 0.95, b = 0.2}; }
+  if sp == SP_FALSE_LIFE { return Col.{r = 0.95, g = 0.25, b = 0.35}; }
+  if sp == SP_RAY_OF_ENFEEBLEMENT { return Col.{r = 0.6, g = 0.55, b = 0.85}; }
+  if sp == SP_BLINDNESS { return Col.{r = 0.4, g = 0.45, b = 1.0}; }
   return WHITE;
 }
 
@@ -188,8 +197,9 @@ new_battle :: (s: [] Lab) {
   s[0].battle[0].w = COLS; s[0].battle[0].h = ROWS;
   s[0].seed += 1;
   s[0].battle[0].dice[0].state = s[0].seed * 7919 + 17;
-  for i: 0..<6 {
-    j := rs_add(bt(s), rs_druid(NAMES[i], i / 3, 3), START_X[i], START_Y[i]);
+  for i: 0..<PEOPLE {
+    who := ifx i < SIDE then rs_druid(NAMES[i], 0, 3) else rs_wizard(NAMES[i], 1, 3);
+    j := rs_add(bt(s), who, START_X[i], START_Y[i]);
     s[0].dx[i] = f32(START_X[i]); s[0].dy[i] = f32(START_Y[i]); s[0].acted[i] = -10;
   }
   s[0].battle[0].clock = 0;
@@ -201,14 +211,14 @@ new_battle :: (s: [] Lab) {
   l: [LINE_CAP] u8;
   n := put(l[..], 0, "Battle ");
   n = put_int(l[..], n, s[0].round);
-  n = put(l[..], n, ": three level 3 druids a side. Initiative:");
+  n = put(l[..], n, ": five level 3 druids against five level 3 necromancers. Initiative:");
   add_line(s, cast(string) l[0..<n], GOLD);
-  for i: 0..<6 {
+  for i: 0..<PEOPLE {
     m := put(l[..], 0, "  ");
     m = put(l[..], m, NAMES[i]);
     m = put(l[..], m, " ");
     m = put_int(l[..], m, s[0].battle[0].c[i].initiative);
-    add_line(s, cast(string) l[0..<m], TEAM_COL[i / 3]);
+    add_line(s, cast(string) l[0..<m], TEAM_COL[i / SIDE]);
   }
 }
 lab_start :: (s: [] Lab) {
@@ -279,9 +289,54 @@ friends_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
   return n;
 }
 
+// A necromancer's turn: armour itself in False Life when hurt, Chill Touch whoever is in its face,
+// Ray of Enfeeblement or Blindness/Deafness with its 2nd-level slots, Ray of Sickness with its 1st,
+// and Poison Spray from 30 feet when the slots are gone.
+necro_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if rs_has(b[0].c[i], RS_RESTRAINED) && rs_unit(dice(s)) < 0.5 { ok := rs_escape(b, i); }
+  foe := nearest_foe(s, i);
+  if foe < 0 { return; }
+  me := b[0].c[i];
+  s1 := free_slot(s, i, 1);
+  // hurt and unshielded: False Life
+  if !b[0].turn.action && me.temp == 0 && me.hp * 3 < me.hp_max * 2 && s1 > 0 && rs_unit(dice(s)) < 0.6 {
+    ok := rs_cast(b, i, SP_FALSE_LIFE, s1, 0, 0, i);
+  }
+  // a foe in its face: the grave's chill (a melee spell attack, so no Disadvantage up close)
+  if !b[0].turn.action && rs_feet_to(b, i, foe) <= 5 && rs_unit(dice(s)) < 0.8 { ok := rs_cast(b, i, SP_CHILL_TOUCH, 0, 0, 0, foe); }
+  if !rs_has(b[0].c[i], RS_RESTRAINED) {
+    has_slot := !b[0].turn.slot_spent && free_slot(s, i, 1) > 0;
+    walk(s, i, foe, 10, ifx has_slot then 55 else 30);
+  }
+  foe = nearest_foe(s, i);
+  if foe < 0 || b[0].turn.action { return; }
+  d := rs_feet_to(b, i, foe);
+  s2 := ifx b[0].turn.slot_spent || b[0].c[i].slots[2] <= 0 then 0 else 2;
+  s1 = ifx b[0].turn.slot_spent then 0 else free_slot(s, i, 1);
+  roll := rs_unit(dice(s));
+  if s2 > 0 && b[0].c[i].conc < 0 && d <= 60 && roll < 0.35 && !rs_effect(b[0].c[foe], EF_ENFEEBLED) {
+    ok := rs_cast(b, i, SP_RAY_OF_ENFEEBLEMENT, 2, 0, 0, foe);
+  } else if s2 > 0 && d <= 120 && roll < 0.6 && !rs_has(b[0].c[foe], RS_BLINDED) {
+    ok := rs_cast(b, i, SP_BLINDNESS, 2, 0, 0, foe);
+  } else if s1 > 0 && s1 < 2 && d <= 60 && roll < 0.8 {
+    ok := rs_cast(b, i, SP_RAY_OF_SICKNESS, s1, 0, 0, foe);
+  }
+  if !b[0].turn.action {
+    if d <= 5 { ok := rs_cast(b, i, SP_CHILL_TOUCH, 0, 0, 0, foe); }
+    else if d <= 30 { ok := rs_cast(b, i, SP_POISON_SPRAY, 0, 0, 0, foe); }
+  }
+}
+
 lab_turn :: (s: [] Lab, i: int) {
   b := bt(s);
   rs_start_turn(b, i);
+  if rs_can_act(b[0].c[i]) && b[0].c[i].spell_ability == RS_INT {
+    s[0].acted[i] = b[0].clock;
+    necro_turn(s, i);
+    rs_end_turn(b, i);
+    return;
+  }
   s[0].acted[i] = b[0].clock;
   if !rs_can_act(b[0].c[i]) { rs_end_turn(b, i); return; }
   roll := rs_unit(dice(s));
@@ -709,6 +764,7 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n = box_lines(out, n, p, 0.6 * k, 0.3, DIM);
   pad := 12 * k; x := p.x0 + pad; y := p.y0 + pad;
   cap := 9.5 * k; row := 16 * k;
+  crow := 14.5 * k;
   // the characters
   y += cap;
   n = say_at(out, n, "CHARACTERS", x, y, cap, ink(k, 0.6, DIM));
@@ -716,22 +772,28 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   l: [LINE_CAP] u8;
   for i: 0..<b.n {
     cr := b.c[i];
-    y += row;
+    y += crow;
+    if i == SIDE { y += crow * 0.4; }
     col := ifx cr.dead then FAINT else TEAM_COL[cr.team];
-    n = say_at(out, n, cast(string) cr.name[0..<cr.name_n], x, y, cap, ink(k, 0.85, col));
+    n = say_at(out, n, cast(string) cr.name[0..<cr.name_n], x, y, cap * 0.92, ink(k, 0.85, col));
     m := put(l[..], 0, "HP ");
     m = put_int(l[..], m, cr.hp); m = put(l[..], m, "/"); m = put_int(l[..], m, cr.hp_max);
+    if cr.temp > 0 { m = put(l[..], m, " +"); m = put_int(l[..], m, cr.temp); }
     m = put(l[..], m, "  AC "); m = put_int(l[..], m, cr.ac);
     m = put(l[..], m, "  SLOTS "); m = put_int(l[..], m, cr.slots[1]); m = put(l[..], m, "+"); m = put_int(l[..], m, cr.slots[2]);
     if cr.dead { m = put(l[..], 0, "DEAD"); }
     else if cr.hp == 0 { m = put(l[..], m, cast(string) (ifx cr.stable then "  STABLE" else "  DYING")); }
-    else if rs_has(cr, RS_RESTRAINED) { m = put(l[..], m, "  RESTRAINED"); }
-    n = say_at(out, n, cast(string) l[0..<m], x + 70 * k, y, cap * 0.9, ink(k, 0.6, DIM));
-    if cr.conc >= 0 {
-      y += row * 0.8;
-      m = put(l[..], 0, "CONCENTRATING: "); m = put(l[..], m, rs_spell(cr.conc).name);
-      n = say_at(out, n, cast(string) l[0..<m], x + 70 * k, y, cap * 0.8, ink(k, 0.55, spell_col(cr.conc)));
+    else {
+      if rs_has(cr, RS_RESTRAINED) { m = put(l[..], m, "  RESTRAINED"); }
+      if rs_has(cr, RS_POISONED) { m = put(l[..], m, "  POISONED"); }
+      if rs_has(cr, RS_BLINDED) { m = put(l[..], m, "  BLINDED"); }
+      if rs_effect(cr, EF_ENFEEBLED) { m = put(l[..], m, "  ENFEEBLED"); }
+      if rs_effect(cr, EF_NOHEAL) { m = put(l[..], m, "  CHILLED"); }
+      if cr.conc >= 0 { m = put(l[..], m, "  CONC: "); m = put(l[..], m, rs_spell(cr.conc).name); }
     }
+    t := cast(string) l[0..<m];
+    cp := lo(cap * 0.85, cap * 0.85 * (p.x1 - x - 70 * k - pad) / hi(text_width(t, cap * 0.85), 1));
+    n = say_at(out, n, t, x + 70 * k, y, cp, ink(k, 0.6, DIM));
   }
   y += row * 1.2;
   n = seg(out, n, p.x0 + pad, y, p.x1 - pad, y, 0.6 * k, 0.25, DIM);
@@ -820,7 +882,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   u[U_UP] = s[0].up.x; u[U_UP + 1] = s[0].up.y; u[U_UP + 2] = s[0].up.z;
   u[U_SUN] = 0.45; u[U_SUN + 1] = 0.62; u[U_SUN + 2] = 0.38;
   b := s[0].battle[0];
-  for i: 0..<8 {
+  for i: 0..<TOKENS3 {
     o := U_TOKENS + i * 8;
     u[o + 2] = -1;
     if i >= b.n { continue; }
@@ -829,7 +891,14 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
     u[o + 3] = f32(cr.hp) / f32(rs_max(cr.hp_max, 1));
     u[o + 4] = ifx cr.dead then 2 else ifx cr.hp == 0 then 1 else 0;
     u[o + 5] = ifx cr.outlined_by >= 0 then 1 else 0;
-    u[o + 6] = ifx rs_has(cr, RS_RESTRAINED) then 1 else 0;
+    // its marks, a bit each: Restrained 1, Poisoned 2, Blinded 4, enfeebled 8, Temporary Hit Points 16
+    marks := 0;
+    if rs_has(cr, RS_RESTRAINED) { marks += 1; }
+    if rs_has(cr, RS_POISONED) { marks += 2; }
+    if rs_has(cr, RS_BLINDED) { marks += 4; }
+    if rs_effect(cr, EF_ENFEEBLED) { marks += 8; }
+    if cr.temp > 0 { marks += 16; }
+    u[o + 6] = f32(marks);
     since := b.clock - s[0].acted[i];
     u[o + 7] = ifx since >= 0 && since < 1.2 then 1 - since / 1.2 else 0;
   }

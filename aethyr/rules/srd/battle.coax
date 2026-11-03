@@ -12,7 +12,7 @@
 //   coax/bin/coax test --library aethyr/rules/srd/battle.coax
 #load "spells.coax";
 
-RS_MAX :: 8;
+RS_MAX :: 12;
 RS_ZONES :: 8;
 RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; }
 RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; }
@@ -117,6 +117,25 @@ rs_due :: (b: [] RsBattle) -> int {
   return best;
 }
 
+rs_drop_effect :: (b: [] RsBattle, j: int, k: int) {
+  c: [1] RsCreature; c[0] = b[0].c[j];
+  rs_effect_end(c[..], k);
+  b[0].c[j] = c[0];
+}
+rs_put_effect :: (b: [] RsBattle, j: int, e: RsEffect) {
+  c: [1] RsCreature; c[0] = b[0].c[j];
+  rs_effect_add(c[..], e);
+  b[0].c[j] = c[0];
+}
+// Uses up EF_WEAK on i (its next attack roll has Disadvantage); true when there was one.
+rs_take_weak :: (b: [] RsBattle, i: int) -> bool {
+  for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == EF_WEAK { rs_drop_effect(b, i, k); return true; } }
+  return false;
+}
+// When the caster's next turn ends, and when it starts (its turns are instants on the clock).
+rs_after_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + f32(RS_ROUND) + 0.05; }
+rs_before_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + f32(RS_ROUND) - 0.01; }
+
 // Concentration ends: its areas go, and what they held is let go.
 rs_end_concentration :: (b: [] RsBattle, i: int, why: string) {
   sp := b[0].c[i].conc;
@@ -129,7 +148,12 @@ rs_end_concentration :: (b: [] RsBattle, i: int, why: string) {
       }
     }
   }
-  for j: 0..<b[0].n { if b[0].c[j].outlined_by == i { b[0].c[j].outlined_by = -1; b[0].c[j].outlined_until = 0; } }
+  for j: 0..<b[0].n {
+    if b[0].c[j].outlined_by == i { b[0].c[j].outlined_by = -1; b[0].c[j].outlined_until = 0; }
+    for k: 0..<RS_EFFECTS {
+      if b[0].c[j].eff[k].kind != EF_NONE && b[0].c[j].eff[k].by == i && b[0].c[j].eff[k].spell == sp { rs_drop_effect(b, j, k); }
+    }
+  }
   b[0].c[i].conc = -1;
   l: [1] RsLine;
   rs_add_name(l[..], b, i); rs_add_text(l[..], "'s "); rs_add_text(l[..], rs_spell(sp).name); rs_add_text(l[..], " ends"); rs_add_text(l[..], why);
@@ -238,8 +262,13 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       if b[0].c[j].outlined_by >= 0 && b[0].c[j].outlined_until > b[0].clock { ups += 1; }
       if rs_has(b[0].c[j], RS_RESTRAINED) { ups += 1; }
       if rs_has(b[0].c[i], RS_RESTRAINED) { downs += 1; }
-      if rs_threatened(b, i) { downs += 1; }
-      if rs_has(b[0].c[j], RS_PRONE) && rs_feet_to(b, i, j) > 5 { downs += 1; }
+      if rs_has(b[0].c[i], RS_POISONED) { downs += 1; }
+      if rs_has(b[0].c[i], RS_BLINDED) { downs += 1; }
+      if rs_has(b[0].c[j], RS_BLINDED) { ups += 1; }
+      if rs_take_weak(b, i) { downs += 1; }
+      melee := st.a == 1;
+      if !melee && rs_threatened(b, i) { downs += 1; }
+      if rs_has(b[0].c[j], RS_PRONE) { if melee && rs_feet_to(b, i, j) <= 5 { ups += 1; } else { downs += 1; } }
       d := rs_d20(b[0].dice[..], rs_edge(ups, downs));
       total := d.roll + rs_spell_attack(b[0].c[i]);
       crit = d.roll == 20;
@@ -258,6 +287,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       dc := rs_spell_dc(b[0].c[i]);
       fails := rs_has(b[0].c[j], RS_UNCONSCIOUS) && (st.a == RS_STR || st.a == RS_DEX);
       edge := ifx st.a == RS_DEX && rs_has(b[0].c[j], RS_RESTRAINED) then -1 else 0;
+      if st.a == RS_STR && rs_effect(b[0].c[j], EF_ENFEEBLED) { edge = -1; }
       d := rs_d20(b[0].dice[..], edge);
       total := d.roll + rs_save_bonus(b[0].c[j], st.a);
       saved = !fails && total >= dc;
@@ -274,10 +304,14 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       if crit { count *= 2; }
       amount := rs_sum(b[0].dice[..], count, st.b);
       if ran_save && saved { amount = ifx s.steps[0].kind == RS_S_SAVE && s.steps[0].b == RS_ON_SAVE_HALF then amount / 2 else 0; }
+      weak := 0;
+      if rs_effect(b[0].c[i], EF_ENFEEBLED) { weak = rs_roll(b[0].dice[..], 8); amount = rs_max(amount - weak, 0); }
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " takes "); rs_add_int(l[..], amount);
       rs_add_text(l[..], " "); rs_add_text(l[..], RS_DAMAGE[st.c]);
-      rs_add_text(l[..], " ("); rs_add_int(l[..], count); rs_add_text(l[..], "d"); rs_add_int(l[..], st.b); rs_add_text(l[..], ")");
+      rs_add_text(l[..], " ("); rs_add_int(l[..], count); rs_add_text(l[..], "d"); rs_add_int(l[..], st.b);
+      if weak > 0 { rs_add_text(l[..], ", -"); rs_add_int(l[..], weak); rs_add_text(l[..], " enfeebled"); }
+      rs_add_text(l[..], ")");
       rs_tell(b, RS_EV_DAMAGE, sp, i, j, amount, st.c, l[..]);
       rs_damage(b, i, j, amount, st.c, crit, sp);
     } else if st.kind == RS_S_HEAL {
@@ -291,6 +325,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " regains "); rs_add_int(l[..], got); rs_add_text(l[..], " Hit Points");
       if was_down && b[0].c[j].hp > 0 { rs_add_text(l[..], " and wakes"); }
+      if rs_effect(b[0].c[j], EF_NOHEAL) { rs_add_text(l[..], ": the grave's chill stops it"); }
       rs_tell(b, RS_EV_HEAL, sp, i, j, got, 0, l[..]);
     } else if st.kind == RS_S_CONDITION {
       if ran_save && saved { continue; }
@@ -298,7 +333,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       if st.a == RS_RESTRAINED { b[0].c[j].restrained_by = zone_at; }
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is ");
-      rs_add_text(l[..], ifx st.a == RS_RESTRAINED then "Restrained" else "affected");
+      rs_add_text(l[..], rs_condition_name(st.a));
       rs_tell(b, RS_EV_CONDITION, sp, i, j, st.a, 0, l[..]);
     } else if st.kind == RS_S_PUSH {
       if ran_save && saved { continue; }
@@ -322,6 +357,38 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is outlined: attacks against it have Advantage");
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
+    } else if st.kind == RS_S_TEMP {
+      amount := rs_sum(b[0].dice[..], st.a, st.b) + st.c + st.d * rs_max(slot - s.level, 0);
+      // Temporary Hit Points don't add up: keep the larger
+      b[0].c[j].temp = rs_max(b[0].c[j].temp, amount);
+      l: [1] RsLine;
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " gains "); rs_add_int(l[..], amount); rs_add_text(l[..], " Temporary Hit Points");
+      rs_tell(b, RS_EV_HEAL, sp, i, j, amount, 0, l[..]);
+    } else if st.kind == RS_S_NOHEAL {
+      rs_put_effect(b, j, RsEffect.{kind = EF_NOHEAL, by = i, spell = sp, until = rs_after_next_turn(b, i), save = -1, dc = 0});
+    } else if st.kind == RS_S_TIMED {
+      if ran_save && saved { continue; }
+      e := RsEffect.{kind = EF_COND, cond = st.a, by = i, spell = sp, until = rs_after_next_turn(b, i), save = -1, dc = 0};
+      if st.b == 2 { e.until = b[0].clock + s.duration_s; e.save = st.c; e.dc = rs_spell_dc(b[0].c[i]); }
+      rs_put_effect(b, j, e);
+      l: [1] RsLine;
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is "); rs_add_text(l[..], rs_condition_name(st.a));
+      rs_add_text(l[..], ifx st.b == 1 then " until the end of " else " for up to a minute");
+      if st.b == 1 { rs_add_name(l[..], b, i); rs_add_text(l[..], "'s next turn"); }
+      rs_tell(b, RS_EV_CONDITION, sp, i, j, st.a, 0, l[..]);
+    } else if st.kind == RS_S_ENFEEBLE {
+      l: [1] RsLine;
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j);
+      if saved {
+        rs_put_effect(b, j, RsEffect.{kind = EF_WEAK, by = i, spell = sp, until = rs_before_next_turn(b, i), save = -1, dc = 0});
+        rs_add_text(l[..], " shrugs it off: Disadvantage on its next attack roll");
+        // nothing to hold: the spell ends
+        if b[0].c[i].conc == sp { b[0].c[i].conc = -1; }
+      } else {
+        rs_put_effect(b, j, RsEffect.{kind = EF_ENFEEBLED, by = i, spell = sp, until = b[0].clock + s.duration_s, save = RS_CON, dc = rs_spell_dc(b[0].c[i])});
+        rs_add_text(l[..], " is enfeebled: 1d8 off its damage, Disadvantage on Strength");
+      }
+      rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_GLOW {
       b[0].c[j].wisp_until = b[0].c[i].turn_at + f32(RS_ROUND);
       b[0].c[j].cond = rs_clear(b[0].c[j].cond, RS_INVISIBLE);
@@ -337,7 +404,9 @@ rs_escape :: (b: [] RsBattle, i: int) -> bool {
   if z < 0 || !b[0].zone[z].on { return false; }
   b[0].turn.action = true;
   dc := rs_spell_dc(b[0].c[b[0].zone[z].by]);
-  roll := rs_roll(b[0].dice[..], 20); total := roll + rs_mod(b[0].c[i].score[RS_STR]);
+  edge := ifx rs_has(b[0].c[i], RS_POISONED) || rs_effect(b[0].c[i], EF_ENFEEBLED) then -1 else 0;
+  d := rs_d20(b[0].dice[..], edge);
+  total := d.roll + rs_mod(b[0].c[i].score[RS_STR]);
   ok := total >= dc;
   if ok { b[0].c[i].restrained_by = -1; b[0].c[i].cond = rs_clear(b[0].c[i].cond, RS_RESTRAINED); }
   l: [1] RsLine;
@@ -385,6 +454,24 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   }
 }
 rs_end_turn :: (b: [] RsBattle, i: int) {
+  // the saves it repeats at the end of its turns
+  for k: 0..<RS_EFFECTS {
+    e := b[0].c[i].eff[k];
+    if e.kind == EF_NONE || e.save < 0 || b[0].c[i].dead { continue; }
+    d := rs_d20(b[0].dice[..], 0);
+    total := d.roll + rs_save_bonus(b[0].c[i], e.save);
+    ok := total >= e.dc;
+    l: [1] RsLine;
+    rs_add_name(l[..], b, i); rs_add_text(l[..], " "); rs_add_text(l[..], RS_ABBR[e.save]); rs_add_text(l[..], " save against ");
+    rs_add_text(l[..], rs_spell(e.spell).name); rs_add_text(l[..], " "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], e.dc);
+    rs_add_text(l[..], ifx ok then ": it ends" else ": it holds");
+    rs_tell(b, RS_EV_SAVE, e.spell, e.by, i, total, 0, l[..]);
+    if ok {
+      rs_drop_effect(b, i, k);
+      // a spell that ends on a success ends for its caster too (Ray of Enfeeblement)
+      if e.kind == EF_ENFEEBLED && e.by >= 0 && b[0].c[e.by].conc == e.spell { rs_end_concentration(b, e.by, " (the target shook it off)"); }
+    }
+  }
   b[0].c[i].turn_at += f32(RS_ROUND);
   if b[0].who == i { b[0].who = -1; }
 }
@@ -396,6 +483,7 @@ rs_tick :: (b: [] RsBattle, dt: f32) {
     if b[0].c[i].conc >= 0 && b[0].c[i].conc_until <= t { rs_end_concentration(b, i, " (its duration is up)"); }
     if b[0].c[i].flame_until > 0 && b[0].c[i].flame_until <= t { b[0].c[i].flame_until = 0; }
     if b[0].c[i].outlined_by >= 0 && b[0].c[i].outlined_until <= t { b[0].c[i].outlined_by = -1; }
+    for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind != EF_NONE && b[0].c[i].eff[k].until <= t { rs_drop_effect(b, i, k); } }
   }
 }
 rs_team_up :: (b: [] RsBattle, team: int) -> int {
@@ -472,6 +560,91 @@ rs_team_up :: (b: [] RsBattle, team: int) -> int {
   }
   // Str +0 against DC 13: fails on 12 or lower, 60%
   #assert held >= 6 && held <= 18;
+}
+#test "Chill Touch: a melee spell attack; on a hit 1d10 Necrotic and no healing until the end of the caster's next turn" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 31;
+  a := rs_add(b[..], rs_wizard("Mordra", 1, 3), 3, 3);
+  t := rs_add(b[..], rs_druid("Rowan", 0, 3), 4, 3);
+  far := rs_add(b[..], rs_druid("Fern", 0, 3), 9, 3);
+  rs_start_turn(b[..], a);
+  #assert !rs_cast(b[..], a, SP_CHILL_TOUCH, 0, 0, 0, far);   // Touch
+  hit := false;
+  for k: 0..<30 {
+    b[0].c[t].hp = 10; b[0].who = a; b[0].turn.action = false;
+    #assert rs_cast(b[..], a, SP_CHILL_TOUCH, 0, 0, 0, t);
+    if b[0].c[t].hp < 10 { hit = true; break; }
+  }
+  #assert hit && rs_effect(b[0].c[t], EF_NOHEAL);
+  hp := b[0].c[t].hp;
+  c: [1] RsCreature; c[0] = b[0].c[t];
+  #assert rs_heal(c[..], 5) == 0;
+  rs_end_turn(b[..], a);
+  rs_tick(b[..], f32(RS_ROUND) + 0.1);
+  #assert !rs_effect(b[0].c[t], EF_NOHEAL);
+}
+#test "Ray of Sickness poisons until the end of the caster's next turn; a Poisoned attacker has Disadvantage" {
+  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 41;
+  a := rs_add(b[..], rs_wizard("Mordra", 1, 3), 1, 3);
+  t := rs_add(b[..], rs_druid("Rowan", 0, 3), 8, 3);
+  got := false;
+  for k: 0..<20 {
+    b[0].c[t].hp = 21; b[0].c[a].slots[1] = 3;
+    rs_start_turn(b[..], a);
+    #assert rs_cast(b[..], a, SP_RAY_OF_SICKNESS, 1, 0, 0, t);
+    rs_end_turn(b[..], a);
+    if rs_has(b[0].c[t], RS_POISONED) { got = true; break; }
+  }
+  #assert got;
+  // still Poisoned until the caster's next turn has ended
+  rs_tick(b[..], b[0].c[a].turn_at - 0.5 - b[0].clock);
+  #assert rs_has(b[0].c[t], RS_POISONED);
+  rs_tick(b[..], 0.7);
+  #assert !rs_has(b[0].c[t], RS_POISONED);
+}
+#test "False Life: 2d4 + 4 Temporary Hit Points, 5 more a slot level above 1" {
+  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 3;
+  a := rs_add(b[..], rs_wizard("Mordra", 1, 3), 1, 3);
+  rs_start_turn(b[..], a);
+  #assert rs_cast(b[..], a, SP_FALSE_LIFE, 1, 0, 0, a) && b[0].c[a].temp >= 6 && b[0].c[a].temp <= 12;
+  rs_end_turn(b[..], a); b[0].c[a].temp = 0;
+  rs_start_turn(b[..], a);
+  #assert rs_cast(b[..], a, SP_FALSE_LIFE, 2, 0, 0, a) && b[0].c[a].temp >= 11 && b[0].c[a].temp <= 17;
+}
+#test "Ray of Enfeeblement: on a failed Con save the target's damage loses 1d8, until it saves at the end of a turn" {
+  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 77;
+  a := rs_add(b[..], rs_wizard("Mordra", 1, 3), 1, 3);
+  t := rs_add(b[..], rs_druid("Rowan", 0, 3), 8, 3);
+  held := false;
+  for k: 0..<20 {
+    for e: 0..<RS_EFFECTS { b[0].c[t].eff[e].kind = EF_NONE; }
+    b[0].c[a].conc = -1; b[0].c[a].slots[2] = 2;
+    rs_start_turn(b[..], a);
+    #assert rs_cast(b[..], a, SP_RAY_OF_ENFEEBLEMENT, 2, 0, 0, t);
+    rs_end_turn(b[..], a);
+    if rs_effect(b[0].c[t], EF_ENFEEBLED) { held = true; break; }
+    #assert rs_effect(b[0].c[t], EF_WEAK) && b[0].c[a].conc < 0;
+  }
+  #assert held && b[0].c[a].conc == SP_RAY_OF_ENFEEBLEMENT;
+  // concentration broken: it ends
+  rs_end_concentration(b[..], a, "");
+  #assert !rs_effect(b[0].c[t], EF_ENFEEBLED);
+}
+#test "Blindness/Deafness: Blinded on a failed save; attacks against it have Advantage; it saves to end it" {
+  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 13;
+  a := rs_add(b[..], rs_wizard("Mordra", 1, 3), 1, 3);
+  t := rs_add(b[..], rs_druid("Rowan", 0, 3), 8, 3);
+  blind := false;
+  for k: 0..<20 {
+    b[0].c[a].slots[2] = 2;
+    rs_start_turn(b[..], a);
+    #assert rs_cast(b[..], a, SP_BLINDNESS, 2, 0, 0, t);
+    rs_end_turn(b[..], a);
+    if rs_has(b[0].c[t], RS_BLINDED) { blind = true; break; }
+  }
+  #assert blind;
+  ended := false;
+  for k: 0..<40 { rs_start_turn(b[..], t); rs_end_turn(b[..], t); if !rs_has(b[0].c[t], RS_BLINDED) { ended = true; break; } }
+  #assert ended;
 }
 #test "Produce Flame: the flame first (a Bonus Action), then a Magic action to hurl it" {
   b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 21;

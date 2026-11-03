@@ -108,6 +108,16 @@ RS_CONDITION :: [15] string.["Blinded", "Charmed", "Deafened", "Exhaustion", "Fr
 
 // ---- creatures: a character sheet and a stat block are the same shape
 
+// What a spell leaves on a creature for a time (docs/dnd/README.md, "effects that last"): a
+// condition it imposes (EF_COND, with its bit in `cond`), Ray of Enfeeblement's weakness
+// (EF_ENFEEBLED: Disadvantage on Strength tests, 1d8 off its damage rolls), Disadvantage on its
+// next attack roll (EF_WEAK) and Chill Touch's grip (EF_NOHEAL: it can't regain Hit Points). Each
+// ends at `until` on the world's clock, or when the creature succeeds on the save it repeats at
+// the end of each of its turns (`save`, an ability, against `dc`; -1 for none).
+EF_NONE :: 0; EF_COND :: 1; EF_ENFEEBLED :: 2; EF_WEAK :: 3; EF_NOHEAL :: 4;
+RS_EFFECTS :: 6;
+RsEffect :: struct { kind: int; cond: int; by: int; spell: int; until: f32; save: int; dc: int; }
+
 RS_NAME :: 24;
 RsCreature :: struct {
   name: [RS_NAME] u8; name_n: int;
@@ -116,6 +126,8 @@ RsCreature :: struct {
   score: [6] int;
   save_prof: [6] bool;
   ac: int; hp: int; hp_max: int;
+  temp: int;                // Temporary Hit Points
+  eff: [RS_EFFECTS] RsEffect;
   speed: int;               // feet a turn
   spell_ability: int;       // the spellcasting ability (-1: none)
   slots: [10] int; slots_max: [10] int;   // spell slots by level (0 unused)
@@ -182,6 +194,62 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   return c[0];
 }
 
+// The SRD 5.2.1 Wizard at a level, from its class table (Intelligence casting, Intelligence and
+// Wisdom saves, a d6 hit die: 6 + Con at level 1, then 4 + Con a level, the fixed value), with Mage
+// Armor cast before the fight from one of its 1st-level slots (AC 13 + Dex for 8 hours). Its scores
+// are the standard array, Intelligence first. A necromancer is a Wizard who favours the school of
+// Necromancy: the SRD has no necromancer class, so the world names it and picks its spells.
+rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
+  c: [1] RsCreature;
+  rs_set_name(c[..], name);
+  c[0].team = team; c[0].level = level;
+  c[0].score = [6] int.[8, 14, 13, 16, 12, 10];
+  c[0].save_prof[RS_INT] = true; c[0].save_prof[RS_WIS] = true;
+  con := rs_mod(c[0].score[RS_CON]);
+  c[0].hp_max = 6 + con + (level - 1) * (4 + con);
+  c[0].hp = c[0].hp_max;
+  c[0].ac = 13 + rs_mod(c[0].score[RS_DEX]);
+  c[0].speed = 30;
+  c[0].spell_ability = RS_INT;
+  slots1 := [5] int.[0, 2, 3, 4, 4];
+  slots2 := [5] int.[0, 0, 0, 2, 3];
+  l := rs_min(level, 4);
+  c[0].slots_max[1] = slots1[l]; c[0].slots_max[2] = slots2[l];
+  if level >= 5 { c[0].slots_max[3] = 2; }
+  for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
+  c[0].slots[1] -= 1;   // Mage Armor
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1;
+  return c[0];
+}
+
+// ---- effects that last
+
+rs_effect :: (c: RsCreature, kind: int) -> bool {
+  for k: 0..<RS_EFFECTS { if c.eff[k].kind == kind { return true; } }
+  return false;
+}
+// Puts an effect on c (in the first free place; the oldest of its kind is replaced when full).
+rs_effect_add :: (c: [] RsCreature, e: RsEffect) {
+  at := -1;
+  for k: 0..<RS_EFFECTS { if at < 0 && c[0].eff[k].kind == EF_NONE { at = k; } }
+  if at < 0 { at = 0; }
+  c[0].eff[at] = e;
+  if e.kind == EF_COND { c[0].cond = c[0].cond | e.cond; }
+}
+// Ends effect k on c; a condition it imposed goes unless another effect still imposes it.
+rs_effect_end :: (c: [] RsCreature, k: int) {
+  e := c[0].eff[k];
+  c[0].eff[k].kind = EF_NONE;
+  if e.kind != EF_COND { return; }
+  for j: 0..<RS_EFFECTS { if c[0].eff[j].kind == EF_COND && (c[0].eff[j].cond & e.cond) != 0 { return; } }
+  c[0].cond = rs_clear(c[0].cond, e.cond);
+}
+// The name of a condition bit.
+rs_condition_name :: (bit: int) -> string {
+  for i: 0..<RS_CONDITIONS { if (1 << i) == bit { return RS_CONDITION[i]; } }
+  return "affected";
+}
+
 // ---- events: what the engine tells a world, a line each
 
 RS_EVENTS :: 64;
@@ -232,10 +300,17 @@ rs_recent :: (book: RsLog, i: int) -> RsEvent {
 // Prone); damage at 0 is a failed death saving throw (two on a critical hit); damage that leaves
 // it at 0 with damage left over equal to its maximum kills it outright.
 RsHurt :: struct { taken: int; dropped: bool; killed: bool; conc_dc: int; }
-rs_hurt :: (c: [] RsCreature, amount: int, crit: bool) -> RsHurt {
+rs_hurt :: (c: [] RsCreature, dealt: int, crit: bool) -> RsHurt {
+  amount := dealt;
   r: RsHurt;
   if c[0].dead || amount <= 0 { return r; }
   r.taken = amount;
+  // Temporary Hit Points go first; the damage was still taken, so concentration is still tested
+  if c[0].conc >= 0 { r.conc_dc = rs_min(rs_max(10, amount / 2), 30); }
+  soak := rs_min(c[0].temp, amount);
+  c[0].temp -= soak;
+  amount -= soak;
+  if amount <= 0 { return r; }
   if c[0].hp <= 0 {
     c[0].death_fail += ifx crit then 2 else 1;
     c[0].stable = false;
@@ -250,13 +325,11 @@ rs_hurt :: (c: [] RsCreature, amount: int, crit: bool) -> RsHurt {
     c[0].cond = c[0].cond | RS_UNCONSCIOUS | RS_PRONE;
     c[0].death_ok = 0; c[0].death_fail = 0; c[0].stable = false;
   }
-  // concentration: a Constitution save, DC 10 or half the damage (rounded down), up to 30
-  if c[0].conc >= 0 { r.conc_dc = rs_min(rs_max(10, amount / 2), 30); }
   return r;
 }
 // Healing: back above 0 ends Unconscious (the creature stays Prone until it stands).
 rs_heal :: (c: [] RsCreature, amount: int) -> int {
-  if c[0].dead || amount <= 0 { return 0; }
+  if c[0].dead || amount <= 0 || rs_effect(c[0], EF_NOHEAL) { return 0; }
   before := c[0].hp;
   c[0].hp = rs_min(c[0].hp + amount, c[0].hp_max);
   if before == 0 && c[0].hp > 0 {
@@ -288,6 +361,28 @@ rs_death_save :: (d: [] RsDice, c: [] RsCreature) -> int {
   #assert c.ac == 15 && rs_spell_attack(c) == 5 && rs_spell_dc(c) == 13;
   #assert c.slots[1] == 4 && c.slots[2] == 2 && c.slots[3] == 0;
   #assert rs_save_bonus(c, RS_WIS) == 5 && rs_save_bonus(c, RS_DEX) == 2 && rs_save_bonus(c, RS_STR) == 0;
+}
+#test "a level 3 Wizard in Mage Armor: 17 HP, AC 15, spell attack +5, save DC 13, three 1st and two 2nd slots" {
+  c := rs_wizard("Mordra", 1, 3);
+  #assert c.hp_max == 6 + 1 + 2 * (4 + 1) && c.ac == 15 && rs_spell_attack(c) == 5 && rs_spell_dc(c) == 13;
+  #assert c.slots[1] == 3 && c.slots[2] == 2;
+}
+#test "Temporary Hit Points soak damage first; a grip that stops healing stops it" {
+  c: [1] RsCreature; c[0] = rs_wizard("Mordra", 1, 3);
+  c[0].temp = 8;
+  r := rs_hurt(c[..], 5, false);
+  #assert c[0].temp == 3 && c[0].hp == 17;
+  r = rs_hurt(c[..], 6, false);
+  #assert c[0].temp == 0 && c[0].hp == 14;
+  rs_effect_add(c[..], RsEffect.{kind = EF_NOHEAL, by = 0, spell = 0, until = 10, save = -1, dc = 0});
+  #assert rs_heal(c[..], 5) == 0 && c[0].hp == 14;
+  rs_effect_add(c[..], RsEffect.{kind = EF_COND, cond = RS_POISONED, by = 0, spell = 0, until = 10, save = -1, dc = 0});
+  rs_effect_add(c[..], RsEffect.{kind = EF_COND, cond = RS_POISONED, by = 1, spell = 0, until = 20, save = -1, dc = 0});
+  #assert rs_has(c[0], RS_POISONED);
+  for k: 0..<RS_EFFECTS { if c[0].eff[k].kind == EF_COND && c[0].eff[k].by == 0 { rs_effect_end(c[..], k); } }
+  #assert rs_has(c[0], RS_POISONED);   // the other Poisoned still holds
+  for k: 0..<RS_EFFECTS { if c[0].eff[k].kind != EF_NONE { rs_effect_end(c[..], k); } }
+  #assert !rs_has(c[0], RS_POISONED) && rs_heal(c[..], 5) == 3;
 }
 #test "dice are fair and repeatable" {
   a: [1] RsDice; a[0].state = 7; b: [1] RsDice; b[0].state = 7;
