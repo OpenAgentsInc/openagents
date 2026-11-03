@@ -8,6 +8,7 @@ Lightning in [Coax](../coax/README.md), and its examples.
 | [`book/`](book/README.md) | *Bitcoin From Scratch*: the cryptography, encodings, transactions, script, Taproot, a full node (consensus, chain state, network, mempool and RPC), wallets, multi-party signatures and Lightning, built in Coax |
 | [`examples/`](examples/) | The book's example programs and their checks |
 | [`fixtures/`](fixtures/) | Each example's expected output |
+| [`explorer/`](explorer/README.md) | The Coax/WebGPU block, transaction and address interface over the node's read-only HTTP API |
 
 The book is the companion to [Nostr From Scratch](../nostr/book/README.md).
 Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr

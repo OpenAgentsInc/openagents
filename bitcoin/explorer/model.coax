@@ -1,0 +1,90 @@
+// Client response ownership and coherent explorer snapshots. No wallet actions.
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/bitcoin/explorer-request.coax";
+#authority;
+UX_CHAINS :: [6] string.["","main","test","testnet4","signet","regtest"];
+UxSnapshot :: struct { code: int; chain: int; height: int; hash: [64] u8; }
+UxPending :: struct { id: int = -1; serial: int; }
+UxModel :: struct { pending: [2] UxPending; serial: int; last: int; snapshot: UxSnapshot; ready: bool; error: int; }
+UX_SAMPLE :: "200\n{\"snapshot\":{\"chain\":\"signet\",\"height\":17,\"hash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"profile\":\"pow-only\"}}";
+
+#test "explorer client: exact snapshot admission and HTTP failures" {
+  nodes: [128] JvNode; s := ux_decode(UX_SAMPLE,nodes[..]);
+  #assert s.code == 0 && s.chain == 4 && s.height == 17 && s.hash[0] == '0' && s.hash[63] == 'f';
+  #assert ux_decode("0\n",nodes[..]).code == 503 && ux_decode("404\n{}",nodes[..]).code == 404;
+  #assert ux_decode("",nodes[..]).code == 503 && ux_decode("wat\n{}",nodes[..]).code == 503;
+  #assert ux_decode("200\n{",nodes[..]).code == 502 && ux_decode("200\n{}",nodes[..]).code == 502;
+  #assert ux_decode("200\n[]",nodes[..]).code == 502 && ux_decode(UX_SAMPLE,nodes[0..<0]).code == 502;
+  #assert ux_decode("100\n",nodes[..]).code == 100 && ux_decode("599\n",nodes[..]).code == 599;
+  #assert ux_decode("600\n",nodes[..]).code == 503 && ux_decode("099\n",nodes[..]).code == 503 && ux_decode("200\n",nodes[..]).code == 502;
+  out: [512] u8; o: [1] Jo; hash := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  for which: 0..<18 {
+    jo_start(o[..],out[..]); jo_put(o[..],"200\n"); jo_obj(o[..]); jo_key(o[..],"snapshot"); jo_obj(o[..]);
+    jo_key(o[..],"chain"); jo_str(o[..],ifx which == 0 then "foreign" else UX_CHAINS[1+which%5]);
+    jo_key(o[..],ifx which == 15 then "missing" else "height"); jo_int(o[..],ifx which == 1 then -1 else (ifx which == 2 then 2147483648 else (ifx which == 3 then 2147483647 else 0)));
+    jo_key(o[..],"profile"); jo_str(o[..],ifx which == 4 then "validated" else "pow-only");
+    jo_key(o[..],"hash"); jo_str(o[..],ifx which == 5 then hash[0..<63] else (ifx which == 6 then "z123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" else (ifx which == 16 then ":123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" else (ifx which == 17 then "g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" else hash))));
+    if which == 7 { jo_key(o[..],"extra"); jo_int(o[..],0); } jo_end(o[..]);
+    if which == 14 { for k: [4] string.["a","b","c","d"] { jo_key(o[..],k); jo_int(o[..],1); } }
+    if which == 8 || which == 14 { jo_key(o[..],"snapshot"); jo_obj(o[..]); jo_end(o[..]); } jo_end(o[..]);
+    s = ux_decode(jo_text(o[..]),nodes[..]);
+    #assert s.code == ifx which <= 2 || (which >= 4 && which <= 8) || which >= 14 then 502 else 0;
+    if s.code == 0 { #assert s.chain == 1+which%5 && s.height == ifx which == 3 then 2147483647 else 0; }
+  }
+}
+#test "explorer client: old replies cannot replace a newer snapshot" {
+  m: [1] UxModel; a := UxSnapshot.{chain=4,height=17}; a.hash[0] = 'a'; b := a; b.hash[0] = 'b';
+  #assert m[0].pending[0].id == -1 && m[0].pending[1].id == -1;
+  #assert !ux_begin(m[..],-1,0) && !ux_begin(m[..],2,0) && !ux_begin(m[..],0,-1) && !ux_begin(m[..],0,8) && m[0].serial == 0;
+  #assert ux_begin(m[..],1,0) && m[0].serial == 1 && !m[0].ready;
+  #assert ux_begin(m[..],0,1) && m[0].serial == 2;
+  #assert ux_receive(m[..],0,1,b) == 1 && m[0].snapshot.hash[0] == 'b' && m[0].last == 2;
+  #assert ux_receive(m[..],1,0,a) == 0 && m[0].snapshot.hash[0] == 'b';
+  #assert ux_receive(m[..],-1,0,a) == 0 && ux_receive(m[..],2,0,a) == 0 && ux_receive(m[..],0,-1,a) == 0;
+  #assert ux_receive(m[..],0,7,a) == 0;
+  #assert ux_begin(m[..],1,0) && ux_receive(m[..],1,0,b) == 1 && m[0].ready && m[0].error == 0;
+  #assert m[0].pending[1].id == -1;
+  #assert ux_begin(m[..],1,0) && !m[0].ready; #assert ux_receive(m[..],1,0,b) == 1 && m[0].ready;
+  #assert ux_begin(m[..],0,1) && m[0].ready;
+  #assert ux_receive(m[..],0,1,a) == 2 && !m[0].ready && m[0].snapshot.hash[0] == 'a';
+  #assert ux_receive(m[..],0,1,b) == 0;
+  #assert ux_begin(m[..],1,7) && ux_receive(m[..],1,7,a) == 1 && m[0].ready;
+  #assert ux_begin(m[..],0,0); failed := UxSnapshot.{code=503};
+  #assert ux_receive(m[..],0,0,failed) == -1 && m[0].error == 503 && !m[0].ready && m[0].snapshot.hash[0] == 'a';
+  #assert ux_begin(m[..],1,1) && ux_receive(m[..],1,1,a) == 1 && m[0].ready && m[0].error == 0;
+  #assert ux_begin(m[..],0,0); changed := UxSnapshot.{chain=5};
+  #assert ux_receive(m[..],0,0,changed) == -1 && m[0].error == 409 && !m[0].ready;
+  m[0].pending[0] = UxPending.{id=6,serial=m[0].last};
+  #assert ux_receive(m[..],0,6,a) == 0 && m[0].pending[0].id == -1;
+  m[0].serial = 9223372036854775807; #assert !ux_begin(m[..],0,0);
+}
+
+ux_decode :: (text: string, nodes: [] JvNode) -> UxSnapshot #export_c {
+  if text.count < 4 || text[3] != '\n' { return UxSnapshot.{code=503}; }
+  status := ex_decimal(text[0..<3]); if status < 100 || status > 599 { return UxSnapshot.{code=503}; }
+  if status != 200 { return UxSnapshot.{code=status}; }
+  d: [1] Jv; if !jv_parse(d[..],text[4..<text.count],nodes) { return UxSnapshot.{code=502}; } v := d[0];
+  matches := 0; for i: 0..<jv_len(v,0) { if jv_raw_eq(jv_key(v,jv_at(v,0,i)),"snapshot") { matches += 1; } }
+  if matches != 1 { return UxSnapshot.{code=502}; } sn := jv_get(v,0,"snapshot");
+  if jv_kind(v,sn) != JV_OBJECT || jv_len(v,sn) != 4 { return UxSnapshot.{code=502}; }
+  r: UxSnapshot; chain := jv_raw(v,jv_get(v,sn,"chain")); for i: 1..<6 { if jv_raw_eq(chain,UX_CHAINS[i]) { r.chain = i; } }
+  r.height = jv_int(v,jv_get(v,sn,"height"),-1);
+  if r.chain == 0 || r.height < 0 || r.height > 2147483647 || !jv_raw_eq(jv_raw(v,jv_get(v,sn,"profile")),"pow-only") { return UxSnapshot.{code=502}; }
+  if jv_str(v,jv_get(v,sn,"hash"),r.hash[..]) != 64 { return UxSnapshot.{code=502}; }
+  for c: r.hash { if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') { return UxSnapshot.{code=502}; } }
+  return r;
+}
+ux_begin :: (m: [] UxModel, kind: int, id: int) -> bool {
+  if kind < 0 || kind > 1 || id < 0 || id > 7 || m[0].serial == 9223372036854775807 { return false; }
+  m[0].serial += 1; m[0].pending[kind] = UxPending.{id=id,serial=m[0].serial}; if kind == 1 { m[0].ready = false; } return true;
+}
+ux_receive :: (m: [] UxModel, kind: int, id: int, snapshot: UxSnapshot) -> int {
+  if kind < 0 || kind > 1 || id < 0 { return 0; }
+  if m[0].pending[kind].id != id { return 0; } ticket := m[0].pending[kind].serial; m[0].pending[kind].id = -1;
+  if ticket <= m[0].last { return 0; }
+  if snapshot.code != 0 { m[0].error = snapshot.code; m[0].ready = false; return -1; }
+  if m[0].snapshot.chain != 0 && m[0].snapshot.chain != snapshot.chain { m[0].error = 409; m[0].ready = false; return -1; }
+  hash := snapshot.hash; changed := m[0].snapshot.chain != 0 && cast(string)m[0].snapshot.hash[..] != cast(string)hash[..];
+  m[0].snapshot = snapshot; m[0].error = 0; m[0].last = ticket;
+  if kind == 1 { m[0].ready = true; return 1; } if changed { m[0].ready = false; return 2; } return 1;
+}

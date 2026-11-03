@@ -138,7 +138,7 @@ def check(api,index):
             assert "runtime error:" not in stderr and "ERROR: AddressSanitizer" not in stderr,stderr
 
 
-def sanitized(compiler):
+def sanitized(compiler,journey=check):
     with tempfile.TemporaryDirectory(prefix="coax-explorer-sanitized-") as temporary:
         directory=Path(temporary);platform=ROOT/"coax/platform";policy=directory/"entropy.c";header=directory/"entropy-policy.h"
         policy.write_text(address.oracle_command([compiler,"c","coax/lib/crypto/entropy.coax","--library","--header",header]))
@@ -148,7 +148,7 @@ def sanitized(compiler):
             source.write_text(address.oracle_command([compiler,"c",f"bitcoin/examples/live/{name}.coax","--library"]))
             address.oracle_command(["cc","-std=c11","-O1","-g","-fsanitize=address,undefined","-fno-omit-frame-pointer","-D_DARWIN_C_SOURCE","-I"+str(directory),"-I"+str(platform),source,policy,*[platform/n for n in ("tool-native.c","process-native.c","store-file-native.c","read-file-native.c","socket-native.c","entropy-native.c","entropy-foreign.c")],"-framework","Security","-lm","-o",binary])
             binaries.append(binary)
-        check(*binaries)
+        journey(*binaries)
         print("explorer HTTP/RPC: API and index writer ASan/UBSan pass",flush=True)
 
 

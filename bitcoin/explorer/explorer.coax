@@ -1,0 +1,233 @@
+// The explorer's canvas, navigation and request lifecycle. Platform effects
+// are the shared browser host and face.c; all view decisions stay here.
+#load "../../apps/openagents-web/splash.coax";
+#load "model.coax";
+cxexplorer_http :: (url: [] u8, timeout: int) -> int #foreign;
+cxexplorer_cancel :: (id: int) -> int #foreign;
+EX_UI_BYTES :: 16777216;
+ExHit :: struct { box: Box; action: int; key: [160] u8; n: int; label: [180] u8; ln: int; }
+ExplorerUi :: struct {
+  model: [1] UxModel; ui: [1] Ui;
+  inbox: [EX_UI_BYTES] u8; body: [EX_UI_BYTES] u8; n: int;
+  nodes: [65536] JvNode; node_n: int;
+  view: int = EX_TIP; key: [140] u8; key_n: int;
+  started: bool; elapsed: f32; poll: f32; width: f32; height: f32; dpr: f32 = 1;
+  scroll: f32; scroll_max: f32; page: int; focus: bool;
+  down: bool; down_y: f32; last_y: f32; dragged: bool; pressed: int = -1;
+  hits: [128] ExHit; hit_n: int; field_box: [4] f32;
+  action: int; route: [256] u8; route_n: int;
+  balance: int; copied: bool; focused_hit: int = -1;
+}
+eu_route :: (s: [] ExplorerUi, kind: int, key: string) {
+  s[0].route_n = 0; s[0].route_n = put(s[0].route[..],0,ifx kind == EX_TIP then "" else (ifx kind == EX_BLOCK then "/block/" else (ifx kind == EX_TX then "/transaction/" else (ifx kind == EX_ADDRESS then "/address/" else "/search/"))));
+  s[0].route_n = put(s[0].route[..],s[0].route_n,key); s[0].action = 3;
+  // The shared host replaces browser history for action 3; replaceState
+  // emits no hashchange. Apply the same navigation in Coax immediately.
+  for i: 0..<s[0].route_n { s[0].inbox[i] = s[0].route[i]; } eu_hash(s,s[0].route_n);
+}
+eu_request :: (s: [] ExplorerUi, kind: int) {
+  if kind == 1 && s[0].view == 0 { return; }
+  old := s[0].model[0].pending[kind].id; if old >= 0 { _ := cxexplorer_cancel(old); }
+  s[0].model[0].pending[kind].id = -1;
+  buf: [256] u8; n := put(buf[..],0,"/api/v1/");
+  view := ifx kind == 0 then EX_TIP else s[0].view;
+  n = put(buf[..],n,ifx view == EX_TIP then "tip" else (ifx view == EX_BLOCK then "block/" else (ifx view == EX_TX then "transaction/" else (ifx view == EX_ADDRESS then "address/" else "search/"))));
+  if view != EX_TIP { n = put(buf[..],n,cast(string)s[0].key[0..<s[0].key_n]); }
+  id := cxexplorer_http(buf[0..<n],10000);
+  if !ux_begin(s[0].model[..],kind,id) { s[0].model[0].ready = false; s[0].model[0].error = 503; }
+  if kind == 1 { s[0].balance = 0; s[0].page = 0; }
+}
+eu_hash :: (s: [] ExplorerUi, n: int) #export_c {
+  if n < 0 || n > 160 { return; } text := cast(string)s[0].inbox[0..<n];
+  path: [256] u8; k := put(path[..],0,"/api/v1"); k = put(path[..],k,text);
+  route := ifx n == 0 || text == "/" then ExRoute.{kind=EX_TIP} else ex_route("GET",cast(string)path[0..<k]);
+  s[0].scroll = 0; s[0].page = 0; s[0].focus = false; s[0].copied = false;
+  if route.status != 0 || route.kind == EX_RPC {
+    old := s[0].model[0].pending[1].id; if old >= 0 { _ := cxexplorer_cancel(old); } s[0].model[0].pending[1].id = -1;
+    s[0].view = 0; s[0].balance = 0; s[0].model[0].ready = false; s[0].model[0].error = 400; return;
+  }
+  s[0].view = route.kind; s[0].key_n = put(s[0].key[..],0,route.key);
+  field_set(s[0].ui[0].fields[0..<1],route.key,140); if s[0].started { eu_request(s,1); }
+}
+eu_receive :: (s: [] ExplorerUi, kind: int, n: int) #export_c {
+  if n < 0 || n > EX_UI_BYTES { return; }
+  if kind == 600 {
+    // The host cancels old effects on every engine replacement, including
+    // replacements which preserve this state. Reissue its pending work.
+    for i: 0..<2 { old := s[0].model[0].pending[i].id; if old >= 0 { _ := cxexplorer_cancel(old); } s[0].model[0].pending[i].id = -1; }
+    s[0].started = true; s[0].poll = 0; eu_request(s,1); return;
+  }
+  if kind == MSG_TEXT {
+    if s[0].focus { for c: s[0].inbox[0..<n] { if c >= 33 && c <= 126 { field_insert(s[0].ui[0].fields[0..<1],cast(u32)c,140); } } } return;
+  }
+  if kind < 512 || kind > 519 { return; } id := kind-512; which := -1;
+  for i: 0..<2 { if s[0].model[0].pending[i].id == id { which = i; } } if which < 0 { return; }
+  scratch: [128] JvNode; snapshot := ux_decode(cast(string)s[0].inbox[0..<n],ifx which == 1 then s[0].nodes[..] else scratch[..]);
+  accepted := ux_receive(s[0].model[..],which,id,snapshot);
+  if accepted == 0 { return; }
+  if accepted < 0 { s[0].balance = 0; return; }
+  if which == 0 { if accepted == 2 || !s[0].model[0].ready { eu_request(s,1); } return; }
+  s[0].n = n-4; for i: 0..<s[0].n { s[0].body[i] = s[0].inbox[4+i]; }
+  d: [1] Jv; #assert jv_parse(d[..],cast(string)s[0].body[0..<s[0].n],s[0].nodes[..]); s[0].node_n = d[0].count;
+  if s[0].view == EX_SEARCH {
+    v := d[0]; target := jv_raw(v,jv_get(v,0,"kind")); key := jv_raw(v,jv_get(v,0,"key"));
+    to := ifx target == "block" then EX_BLOCK else (ifx target == "transaction" then EX_TX else (ifx target == "address" then EX_ADDRESS else 0));
+    if to == 0 { s[0].model[0].ready = false; s[0].model[0].error = 502; return; } eu_route(s,to,key);
+  }
+  if s[0].view == EX_ADDRESS { s[0].balance = jv_int(d[0],jv_get(d[0],0,"balance_sat"),0); }
+}
+eu_do :: (s: [] ExplorerUi, id: int) #export_c {
+  if id < 0 || id >= s[0].hit_n { return; } hit := s[0].hits[id]; key := cast(string)hit.key[0..<hit.n];
+  if hit.action == 10 { s[0].focus = true; return; }
+  if hit.action == 11 { s[0].focus = false; eu_route(s,EX_SEARCH,field_text(s[0].ui[0].fields[0..<1])); return; }
+  if hit.action == 12 { s[0].model[0].error = 0; eu_request(s,1); return; }
+  if hit.action == 13 || hit.action == 14 { s[0].page = most(0,s[0].page+ifx hit.action == 13 then -1 else 1); s[0].scroll = 0; return; }
+  if hit.action == 15 { s[0].route_n = put(s[0].route[..],0,key); s[0].action = 2; s[0].copied = true; return; }
+  eu_route(s,hit.action,key);
+}
+eu_key :: (s: [] ExplorerUi, key: int, mods: int) -> bool #export_c {
+  if key == KEY_ESCAPE { s[0].focus = false; return true; }
+  if !s[0].focus { if key == '/' { s[0].focus = true; return true; } return false; }
+  if key == KEY_ENTER { s[0].focus = false; eu_route(s,EX_SEARCH,field_text(s[0].ui[0].fields[0..<1])); return true; }
+  if key >= 33 && key <= 126 && (mods & (MOD_CTRL | MOD_META)) == 0 { field_insert(s[0].ui[0].fields[0..<1],cast(u32)key,140); return true; }
+  handled := field_key(s[0].ui[..],0,key,mods);
+  if s[0].ui[0].action != 0 { s[0].action = s[0].ui[0].action; s[0].route_n = put(s[0].route[..],0,cast(string)s[0].ui[0].outbox[0..<s[0].ui[0].out_n]); s[0].ui[0].action = 0; } return handled;
+}
+eu_pointer :: (s: [] ExplorerUi, x: f32, y: f32, phase: int) -> bool #export_c {
+  if phase == POINTER_CANCEL { s[0].down = false; return false; }
+  if phase == POINTER_DOWN { s[0].down = true; s[0].down_y = y; s[0].last_y = y; s[0].dragged = false; s[0].pressed = -1; for i: 0..<s[0].hit_n { if inside(s[0].hits[i].box,x,y) { s[0].pressed = i; } } return true; }
+  if phase == POINTER_MOVE && s[0].down {
+    if abs(y-s[0].down_y) > 6*s[0].dpr { s[0].dragged = true; }
+    if s[0].dragged { s[0].scroll = clamp(s[0].scroll+(s[0].last_y-y)/s[0].dpr,0,s[0].scroll_max); } s[0].last_y = y; return true;
+  }
+  if phase == POINTER_UP && s[0].down { s[0].down = false; id := s[0].pressed; if !s[0].dragged && id >= 0 && id < s[0].hit_n && inside(s[0].hits[id].box,x,y) { eu_do(s,id); } return true; } return false;
+}
+eu_wheel :: (s: [] ExplorerUi, dy: f32) #export_c { s[0].scroll = clamp(s[0].scroll+dy,0,s[0].scroll_max); }
+eu_hit :: (s: [] ExplorerUi, b: Box, action: int, key: string, label: string) {
+  if s[0].hit_n >= s[0].hits.count || b.y1 < 0 || b.y0 > s[0].height { return; }
+  h := s[0].hits[s[0].hit_n..<s[0].hit_n+1]; h[0].box = b; h[0].action = action;
+  h[0].n = put(h[0].key[..],0,key); h[0].ln = put(h[0].label[..],0,label); s[0].hit_n += 1;
+}
+eu_text :: (s: [] ExplorerUi, out: [] f32, at: int, text: string, x: f32, y: f32, size: f32, tone: int) -> int {
+  d := s[0].dpr; if y < -40 || y > s[0].height/d+30 { return at; }
+  k := Ink.{core=0.5,light=1,red=0.88,green=0.9,blue=0.94,mode=MODE_STROKE,sans=true};
+  if tone == 1 { k.red = 0.51; k.green = 0.57; k.blue = 0.66; } if tone == 2 { k.red = 1; k.green = 0.59; k.blue = 0.22; }
+  return draw_sans(out,at,text,x*d,y*d,size*d,k);
+}
+eu_button :: (s: [] ExplorerUi, out: [] f32, at: int, label: string, x: f32, y: f32, width: f32, action: int, key: string) -> int {
+  d := s[0].dpr; b := Box.{x0=x*d,y0=(y-22)*d,x1=(x+width)*d,y1=(y+12)*d}; eu_hit(s,b,action,key,label);
+  v := bar(out,at,b,d,0,0,0.4,0.7,0.45,0.22); return eu_text(s,out,v,label,x+10,y,9,2);
+}
+eu_number :: (buf: [] u8, value: int, suffix: string) -> string { n := put_int(buf,0,value); n = put(buf,n,suffix); return cast(string)buf[0..<n]; }
+// Hashes wrap at exact byte boundaries, remaining fully visible and copyable.
+eu_lines :: (s: [] ExplorerUi, out: [] f32, at: int, text: string, x: f32, y: f32, width: f32, tone: int) -> int {
+  v := at; i := 0; line := 0; next: [1] int;
+  while i < text.count { end := wrap_ink(text,i,width,9,0,0,Ink.{sans=true},next[..]); v = eu_text(s,out,v,text[i..<end],x,y+cast(f32)line*21,9,tone); i = next[0]; line += 1; } return v;
+}
+eu_line_height :: (text: string, width: f32) -> f32 { i := 0; lines := 0; next: [1] int; while i < text.count { _ := wrap_ink(text,i,width,9,0,0,Ink.{sans=true},next[..]); i = next[0]; lines += 1; } return 21*cast(f32)most(1,lines); }
+eu_link :: (s: [] ExplorerUi, out: [] f32, at: int, text: string, x: f32, y: f32, width: f32, kind: int, key: string) -> int {
+  d := s[0].dpr; height := eu_line_height(text,width); top := hi(y-14,212); bottom := lo(y+height,s[0].height/d-26);
+  if top < bottom { eu_hit(s,Box.{x0=x*d,y0=top*d,x1=(x+width)*d,y1=bottom*d},kind,key,text); }
+  return eu_lines(s,out,at,text,x,y,width,2);
+}
+eu_field :: (v: Jv, root: int, key: string) -> string { return jv_raw(v,jv_get(v,root,key)); }
+eu_frame :: (s: [] ExplorerUi, out: [] f32, u: [] f32, w: f32, h: f32, d: f32, dt: f32) -> int #export_c {
+  s[0].width = w; s[0].height = h; s[0].dpr = d; s[0].elapsed += dt; s[0].poll += dt;
+  if s[0].started && s[0].poll >= 10 { s[0].poll = 0; if s[0].model[0].pending[0].id < 0 { eu_request(s,0); } }
+  for i: 0..<u.count { u[i] = 0; } u[0] = w; u[1] = h; u[3] = 1; u[4] = 1; u[5] = 1;
+  s[0].hit_n = 0; width := w/d; left := hi(20,(width-1040)/2); room := width-2*left; v := 0;
+  v = eu_button(s,out,v,"BITCOIN EXPLORER",left,34,172,EX_TIP,"");
+  snap := s[0].model[0].snapshot; buf: [256] u8;
+  n := put(buf[..],0,ifx snap.chain == 0 then "Connecting" else UX_CHAINS[snap.chain]); n = put(buf[..],n,"  /  pow-only");
+  v = eu_text(s,out,v,cast(string)buf[0..<n],left,70,9,2);
+  if snap.chain != 0 { n = put(buf[..],0,"Snapshot "); n = put_int(buf[..],n,snap.height); n = put(buf[..],n,"  /  "); n = put(buf[..],n,cast(string)snap.hash[0..<16]); v = eu_text(s,out,v,cast(string)buf[0..<n],left,94,9,1); }
+  search_width := room-88; box := Box.{x0=left*d,y0=113*d,x1=(left+search_width)*d,y1=158*d}; s[0].field_box = [4] f32.[box.x0,box.y0,box.x1,box.y1];
+  eu_hit(s,box,10,"","Edit search: height, hash, txid or address"); v = bar(out,v,box,d,0,0,ifx s[0].focus then 0.7 else 0.3,0.8,0.55,0.28);
+  field := s[0].ui[0].fields[0..<1]; text := field_text(field); first := 0; end := field[0].caret;
+  while first < field[0].caret && sans_width(text[first..<field[0].caret],sans_em(9)) > search_width-24 { first += 1; }
+  while end < text.count && sans_width(text[first..<end+1],sans_em(9)) <= search_width-24 { end += 1; }
+  v = eu_text(s,out,v,ifx text.count == 0 then "Height, hash, txid or address" else text[first..<end],left+10,140,9,ifx text.count == 0 then 1 else 0);
+  if s[0].focus { x := left+10+sans_width(text[first..<field[0].caret],sans_em(9)); v = eu_text(s,out,v,"|",lo(x,left+search_width-8),140,10,2); }
+  v = eu_button(s,out,v,"SEARCH",left+search_width+8,140,80,11,"");
+  v = eu_text(s,out,v,"Confirmed chain data / refreshes every 10 seconds",left,188,8,1);
+  first_vertex := v; y := 238-s[0].scroll; title := ifx s[0].view == EX_TIP then "Latest blocks" else (ifx s[0].view == EX_BLOCK then "Block" else (ifx s[0].view == EX_TX then "Transaction" else (ifx s[0].view == EX_ADDRESS then "Address" else "Search")));
+  v = eu_text(s,out,v,title,left,y,20,0); y += 38;
+  if !s[0].model[0].ready {
+    error := s[0].model[0].error; label := ifx error == 0 then "Loading current snapshot..." else (ifx error == 404 then "No matching object on this node." else (ifx error == 400 then "Enter a full height, hash, txid or network address." else (ifx error == 409 then "The node changed networks. Reload this page." else "Data unavailable. Retry or choose another query.")));
+    v = eu_lines(s,out,v,label,left,y,room,1); y += eu_line_height(label,room)+18;
+    if error != 0 { v = eu_button(s,out,v,"RETRY",left,y,84,12,""); y += 40; }
+  } else {
+    doc := Jv.{text=cast(string)s[0].body[0..<s[0].n],nodes=s[0].nodes[..],count=s[0].node_n,ok=true};
+    if s[0].view == EX_TIP {
+      label := "Choose a block or search the complete indexed chain."; v = eu_lines(s,out,v,label,left,y,room,1); y += eu_line_height(label,room)+16;
+      for i: 0..<10 { height := snap.height-i; if height < 0 { break; } key := eu_number(buf[..],height,""); v = eu_link(s,out,v,key,left,y,room,EX_BLOCK,key); y += 34; }
+    } else {
+      key := ifx s[0].view == EX_BLOCK then eu_field(doc,0,"hash") else (ifx s[0].view == EX_TX then eu_field(doc,jv_get(doc,0,"occurrence"),"txid") else eu_field(doc,0,"address"));
+      v = eu_lines(s,out,v,key,left,y,room,0); y += eu_line_height(key,room)+6;
+      v = eu_button(s,out,v,ifx s[0].copied then "COPIED" else "COPY",left,y+12,90,15,key); y += 60;
+      if s[0].view == EX_ADDRESS {
+        label := eu_number(buf[..],s[0].balance," sat confirmed"); size := lo(17,17*room/sans_width(label,sans_em(17))); v = eu_text(s,out,v,label,left,y,size,0); y += 35;
+        note := "Includes immature coinbase; not wallet spendable balance."; v = eu_lines(s,out,v,note,left,y,room,1); y += eu_line_height(note,room)+20;
+      } else {
+        height := ifx s[0].view == EX_BLOCK then jv_int(doc,jv_get(doc,0,"height"),0) else jv_int(doc,jv_get(doc,jv_get(doc,0,"occurrence"),"height"),0);
+        n = put(buf[..],0,ifx jv_bool(doc,jv_get(doc,0,"active")) then "Active / height " else "Stale / height "); n = put_int(buf[..],n,height); n = put(buf[..],n," / "); n = put_int(buf[..],n,jv_int(doc,jv_get(doc,0,"confirmations"),0)); n = put(buf[..],n," confirmations"); v = eu_text(s,out,v,cast(string)buf[0..<n],left,y,9,1); y += 30;
+      }
+      if s[0].view == EX_BLOCK {
+        n = put_int(buf[..],0,jv_int(doc,jv_get(doc,0,"time"),0)); n = put(buf[..],n," UNIX seconds / "); n = put_int(buf[..],n,jv_int(doc,jv_get(doc,0,"size"),0)); n = put(buf[..],n," bytes");
+        label := cast(string)buf[0..<n]; v = eu_lines(s,out,v,label,left,y,room,1); y += eu_line_height(label,room)+18;
+        if jv_int(doc,jv_get(doc,0,"height"),0) > 0 { previous := eu_field(doc,0,"previous"); v = eu_text(s,out,v,"Previous block",left,y,9,1); y += 24; v = eu_link(s,out,v,previous,left,y,room,EX_BLOCK,previous); y += eu_line_height(previous,room)+26; }
+      }
+      if s[0].view == EX_BLOCK || s[0].view == EX_ADDRESS {
+        list := jv_get(doc,0,ifx s[0].view == EX_BLOCK then "txids" else "transactions"); count := jv_len(doc,list);
+        v = eu_text(s,out,v,eu_number(buf[..],count," transactions"),left,y,12,0); y += 32;
+        for i: s[0].page*20..<least(count,(s[0].page+1)*20) {
+          item := jv_at(doc,list,i); txid := ifx s[0].view == EX_BLOCK then jv_raw(doc,item) else eu_field(doc,item,"txid");
+          v = eu_link(s,out,v,txid,left,y,room,EX_TX,txid); y += eu_line_height(txid,room)+20;
+        }
+        if count == 0 { v = eu_text(s,out,v,"No confirmed transactions for this address.",left,y,10,1); y += 34; }
+      }
+      if s[0].view == EX_TX {
+        occurrence := jv_get(doc,0,"occurrence"); block := eu_field(doc,occurrence,"block"); v = eu_text(s,out,v,"Included in block",left,y,10,1); y += 25;
+        v = eu_link(s,out,v,block,left,y,room,EX_BLOCK,block); y += eu_line_height(block,room)+28;
+        inputs := jv_get(doc,0,"inputs"); count := jv_len(doc,inputs); v = eu_text(s,out,v,eu_number(buf[..],count," inputs"),left,y,12,0); y += 32;
+        for i: s[0].page*20..<least(count,(s[0].page+1)*20) {
+          item := jv_at(doc,inputs,i); id := eu_field(doc,item,"txid");
+          if jv_bool(doc,jv_get(doc,item,"coinbase")) { v = eu_text(s,out,v,"Coinbase",left,y,10,1); y += 34; }
+          else { v = eu_link(s,out,v,id,left,y,room,EX_TX,id); y += eu_line_height(id,room)+4; v = eu_text(s,out,v,eu_number(buf[..],jv_int(doc,jv_get(doc,item,"vout"),0)," / previous output"),left,y,9,1); y += 28; }
+        }
+      }
+      if s[0].view == EX_TX || s[0].view == EX_ADDRESS {
+        list := jv_get(doc,0,"outputs"); count := jv_len(doc,list); v = eu_text(s,out,v,eu_number(buf[..],count," outputs"),left,y,12,0); y += 34;
+        for i: s[0].page*20..<least(count,(s[0].page+1)*20) {
+          row := jv_at(doc,list,i); item := ifx s[0].view == EX_ADDRESS then jv_get(doc,row,"output") else row;
+          n = put(buf[..],0,"#"); n = put_int(buf[..],n,jv_int(doc,jv_get(doc,item,"vout"),0)); n = put(buf[..],n,"  "); n = put_int(buf[..],n,jv_int(doc,jv_get(doc,item,"value_sat"),0)); n = put(buf[..],n," sat / "); n = put(buf[..],n,eu_field(doc,item,"status")); v = eu_text(s,out,v,cast(string)buf[0..<n],left,y,10,0); y += 26;
+          addr := eu_field(doc,item,"address"); if addr.count > 0 { v = eu_link(s,out,v,addr,left,y,room,EX_ADDRESS,addr); y += eu_line_height(addr,room)+8; }
+          else { v = eu_text(s,out,v,"Script output / no standard address",left,y,9,1); y += 28; }
+          if s[0].view == EX_ADDRESS { id := eu_field(doc,jv_get(doc,row,"occurrence"),"txid"); v = eu_link(s,out,v,id,left,y,room,EX_TX,id); y += eu_line_height(id,room)+8; }
+          spend := jv_get(doc,item,"spend"); if spend >= 0 { v = eu_text(s,out,v,"Spent by",left,y,9,1); y += 23; id := eu_field(doc,spend,"txid"); v = eu_link(s,out,v,id,left,y,room,EX_TX,id); y += eu_line_height(id,room)+8; }
+          y += 22;
+        }
+      }
+      max_count := 0; for name: [4] string.["txids","transactions","inputs","outputs"] { max_count = most(max_count,jv_len(doc,jv_get(doc,0,name))); }
+      if max_count > 20 { v = eu_text(s,out,v,eu_number(buf[..],s[0].page+1," / page"),left,y,9,1); y += 35; if s[0].page > 0 { v = eu_button(s,out,v,"PREVIOUS",left,y,105,13,""); } if (s[0].page+1)*20 < max_count { v = eu_button(s,out,v,"NEXT",left+120,y,85,14,""); } y += 48; }
+    }
+  }
+  s[0].scroll_max = hi(0,y+s[0].scroll-(h/d-50)); s[0].scroll = clamp(s[0].scroll,0,s[0].scroll_max);
+  for i: first_vertex..<v { at := i*16; if out[at+1] < 208*d || out[at+1] > h-24*d { out[at+6] = 0; } }
+  if s[0].focused_hit >= 0 && s[0].focused_hit < s[0].hit_n { v = bar(out,v,s[0].hits[s[0].focused_hit].box,d,0,0,0.7,1,0.6,0.2); }
+  return v;
+}
+eu_a11y :: (s: [] ExplorerUi, buf: [] u8) -> int #export_c {
+  n := put(buf,0,"999 status - Bitcoin explorer. Proof of work only. ");
+  n = put(buf,n,ifx s[0].model[0].ready then "Data ready. " else (ifx s[0].model[0].error == 0 then "Loading. " else "Data unavailable. "));
+  snapshot := s[0].model[0].snapshot; if snapshot.chain != 0 { n = put(buf,n,UX_CHAINS[snapshot.chain]); n = put(buf,n," height "); n = put_int(buf,n,snapshot.height); }
+  if s[0].model[0].ready && s[0].view == EX_ADDRESS { n = put(buf,n,". Confirmed balance "); n = put_int(buf,n,s[0].balance); n = put(buf,n," satoshis. Includes immature coinbase."); }
+  n = put(buf,n,"\n");
+  for i: 0..<s[0].hit_n { n = put_int(buf,n,i); n = put(buf,n," button - "); n = put(buf,n,cast(string)s[0].hits[i].label[0..<s[0].hits[i].ln]); n = put(buf,n,"\n"); } return n;
+}
+eu_output_count :: (s: [] ExplorerUi, spent: bool) -> int #export_c {
+  if !s[0].model[0].ready { return 0; }
+  doc := Jv.{text=cast(string)s[0].body[0..<s[0].n],nodes=s[0].nodes[..],count=s[0].node_n,ok=true};
+  list := jv_get(doc,0,"outputs"); count := 0;
+  for i: 0..<jv_len(doc,list) { row := jv_at(doc,list,i); item := ifx s[0].view == EX_ADDRESS then jv_get(doc,row,"output") else row; if eu_field(doc,item,"status") == ifx spent then "spent" else "unspent" { count += 1; } } return count;
+}

@@ -1,0 +1,5 @@
+#load "../../apps/openagents-web/gpu/nip.coax";
+explorer_bg_vs :: (i:u32,iid:u32)->V4 { return nip_bg_vs(i,iid); }
+explorer_bg_fs :: (pos:V4,u:[]f32)->V4 { return v4(0.014f32,0.018f32,0.026f32,1.0f32); }
+explorer_fx_vs :: (vid:u32,iid:u32,in_:splash_fx_vs_in,u:[]f32)->SplashV { return nip_fx_vs(vid,iid,in_,u); }
+explorer_fx_fs :: (v:SplashV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 { return nip_fx_fs(v,u,sans_atlas,sans_sampler); }

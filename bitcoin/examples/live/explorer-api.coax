@@ -1,10 +1,11 @@
 // Read-only explorer HTTP service. All parsing and chain decisions are Coax.
-// Usage: explorer-api CHAIN STATE BLOCKFILE_OR_DIRECTORY PORT [REQUEST_LIMIT]
+// Usage: explorer-api CHAIN STATE BLOCKFILE_OR_DIRECTORY PORT [REQUEST_LIMIT [WEB_ROOT]]
 // tool.sh: run-steps 250000000
 #run_steps 250000000;
 #load "../../../coax/lib/bitcoin/explorer-body.coax";
 #load "../../../coax/lib/bitcoin/explorer-json.coax";
 #load "../../../coax/lib/bitcoin/explorer-rpc.coax";
+#load "../../../coax/lib/bitcoin/explorer-assets.coax";
 #load "../../../coax/lib/bitcoin/blockfiles.coax";
 #load "../../../coax/lib/bitcoin/chainparams.coax";
 #load "../../../coax/lib/sys/fs.coax";
@@ -130,15 +131,16 @@ api_write :: (h: int, text: string, deadline: int) -> bool {
   }
   return true;
 }
-api_send :: (h: int, status: int, body: string) {
+api_send_content :: (h: int, status: int, body: string, mime: string) {
   if status == 204 {
     sent := api_write(h,"HTTP/1.1 204 No Content\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",cxsock_now_ms()+10000); return;
   }
   buffer: [512] u8; o: [1] Jo; jo_start(o[..],buffer[..]); jo_put(o[..],"HTTP/1.1 "); jo_int(o[..],status);
-  jo_put(o[..],ifx status == 200 then " OK" else " Error"); jo_put(o[..],"\r\nContent-Type: application/json; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\nContent-Length: "); jo_int(o[..],body.count); jo_put(o[..],"\r\n\r\n");
+  jo_put(o[..],ifx status == 200 then " OK" else " Error"); jo_put(o[..],"\r\nContent-Type: "); jo_put(o[..],mime); jo_put(o[..],"\r\nCache-Control: no-store\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\nContent-Length: "); jo_int(o[..],body.count); jo_put(o[..],"\r\n\r\n");
   deadline := cxsock_now_ms()+10000; if api_write(h,jo_text(o[..]),deadline) { sent := api_write(h,body,deadline); }
 }
-api_connection :: (s: [] ExplorerServer, h: int, state: string, store: string, p: ChainParams) {
+api_send :: (h: int, status: int, body: string) { api_send_content(h,status,body,"application/json; charset=utf-8"); }
+api_connection :: (s: [] ExplorerServer, h: int, state: string, store: string, p: ChainParams, web: string) {
   n := 0; request: ExHttp; deadline := cxsock_now_ms()+3000;
   while true {
     left := deadline-cxsock_now_ms(); if left <= 0 { request.status = 408; break; }
@@ -152,6 +154,13 @@ api_connection :: (s: [] ExplorerServer, h: int, state: string, store: string, p
   o: [1] Jo; jo_start(o[..],s[0].answer[..]); status := request.status;
   rpc: ExRpc; is_rpc := false;
   if status == 200 {
+    asset := ex_asset(request.path);
+    if web.count > 0 && asset.path.count > 0 && request.method == "GET" && request.body.count == 0 {
+      basebuf: [4096] u8; pathbuf: [4096] u8; base := ifx asset.host then fs_join(web,"../../coax/web",basebuf[..]) else web;
+      path := fs_join(base,asset.path,pathbuf[..]); size := fs_read(path,s[0].answer[..]);
+      if size >= 0 { api_send_content(h,200,cast(string)s[0].answer[0..<size],asset.mime); return; }
+      api_send(h,404,"{\"error\":{\"code\":404,\"message\":\"Asset unavailable\"}}"); return;
+    }
     route := ex_route(request.method,request.path); status = route.status;
     if status == 0 && route.kind == EX_RPC {
       if ex_rpc_notification(request.body,s[0].nodes[..]) { api_send(h,204,""); return; }
@@ -174,9 +183,10 @@ api_connection :: (s: [] ExplorerServer, h: int, state: string, store: string, p
   if status != 200 { jo_start(o[..],s[0].answer[..]); api_error(o[..],status); } api_send(h,status,jo_text(o[..]));
 }
 tool_main :: () -> int #export_c {
-  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 4 || args_count(a[..]) > 5 { tool_errln("usage: explorer-api CHAIN STATE BLOCKFILE_OR_DIRECTORY PORT [REQUEST_LIMIT]"); return 2; }
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 4 || args_count(a[..]) > 6 { tool_errln("usage: explorer-api CHAIN STATE BLOCKFILE_OR_DIRECTORY PORT [REQUEST_LIMIT [WEB_ROOT]]"); return 2; }
   chain := 0; for i: 1..<6 { if args_at(a[..],0) == CHAIN_NAMES[i] { chain = i; } }
-  port := ex_decimal(args_at(a[..],3)); limit := ifx args_count(a[..]) == 5 then ex_decimal(args_at(a[..],4)) else 0;
+  port := ex_decimal(args_at(a[..],3)); limit := ifx args_count(a[..]) >= 5 then ex_decimal(args_at(a[..],4)) else 0;
+  web := ifx args_count(a[..]) == 6 then args_at(a[..],5) else "";
   if chain == 0 || port < 0 || port > 65535 || limit < 0 { return 2; }
   p := chain_params(chain); s: [1] ExplorerServer; #assert ex_id(p.genesis.hash,s[0].genesis[..]);
   state := args_at(a[..],1); store := args_at(a[..],2);
@@ -185,7 +195,7 @@ tool_main :: () -> int #export_c {
   print("explorer-api http://127.0.0.1:% chain % profile pow-only\n",cxsock_port(listener),CHAIN_NAMES[chain]); flushed := cxtool_out_flush(); count := 0;
   while limit == 0 || count < limit {
     h := cxsock_accept(listener,1000); if h < 0 { continue; }
-    api_connection(s[..],h,state,store,p); closed := cxsock_close(h); count += 1;
+    api_connection(s[..],h,state,store,p,web); closed := cxsock_close(h); count += 1;
   }
   closed := cxsock_close(listener); return 0;
 }

@@ -1,0 +1,72 @@
+// Headless end-to-end journey. Independent fixture replay supplies expected
+// balances; this drives the real node, browser input and durable reorg writer.
+#load "../../coax/lib/net/cdp.coax";
+xb_eval :: (c: [] Cdp, expression: string) -> bool {
+  at := cdp_evaluate(c,expression); return at >= 0 && jv_bool(cdp_doc(c),at);
+}
+xb_wait :: (c: [] Cdp, condition: string) -> bool {
+  b: [8192] u8; n := 0; prefix := "(async()=>{for(let i=0;i<120;i++){if("; suffix := ")return true;await new Promise(r=>setTimeout(r,250));}return false})()";
+  for x: prefix { b[n] = x; n += 1; } for x: condition { b[n] = x; n += 1; } for x: suffix { b[n] = x; n += 1; }
+  return xb_eval(c,cast(string)b[0..<n]);
+}
+xb_hash :: (c: [] Cdp, path: string) -> bool {
+  b: [1024] u8; o: [1] Jo; jo_start(o[..],b[..]); jo_put(o[..],"location.hash="); jo_str(o[..],path); jo_put(o[..],";true"); return xb_eval(c,jo_text(o[..]));
+}
+xb_ready :: (c: [] Cdp, view: int, height: int, balance: string) -> bool {
+  b: [512] u8; o: [1] Jo; jo_start(o[..],b[..]); jo_put(o[..],"globalThis.coaxial?.ready&&coaxial.fieldProbe(0)===1&&coaxial.fieldProbe(1)==="); jo_int(o[..],height); jo_put(o[..],"&&coaxial.fieldProbe(2)==="); jo_int(o[..],view);
+  if balance.count > 0 { jo_put(o[..],"&&coaxial.fieldProbe(4)==="); jo_put(o[..],balance); } return xb_wait(c,jo_text(o[..]));
+}
+xb_write :: (argv: [] string) -> bool { out: [4096] u8; err: [4096] u8; r := proc_run(argv,120000,out[..],err[..]); if r.status != 0 { tool_err(cast(string)err[0..<r.err_n]); } return r.status == 0; }
+xb_journey :: (c: [] Cdp, a: [] Args) -> bool {
+  base := args_at(a,0); dir := args_at(a,1); index := args_at(a,2); address := args_at(a,3); txid := args_at(a,4); hash := args_at(a,5);
+  pbuf: [4096] u8; o: [1] Jo; jo_start(o[..],pbuf[..]); jo_obj(o[..]); jo_key(o[..],"url"); jo_str(o[..],base); jo_end(o[..]);
+  if cdp_call(c,"Page.navigate",jo_text(o[..]),10000) < 0 || !xb_ready(c,1,102,"") { tool_errln("home not ready"); return false; }
+  if !xb_wait(c,"document.querySelectorAll('#coaxial-a11y button').length>3") { return false; }
+  if cdp_call(c,"Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"Tab\",\"code\":\"Tab\",\"windowsVirtualKeyCode\":9}",5000) < 0 || !xb_wait(c,"coaxial.fieldProbe(5)>=0") { tool_errln("keyboard focus was not mirrored"); return false; }
+  // Activate the Coax search field through its mirrored control, insert text
+  // through real browser input, and submit with Enter.
+  if !xb_eval(c,"(()=>{document.querySelectorAll('#coaxial-a11y button')[1].click();return true})()") { return false; }
+  if cdp_call(c,"Input.insertText","{\"text\":\"101\"}",5000) < 0 { return false; }
+  if cdp_call(c,"Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13}",5000) < 0 || !xb_ready(c,2,102,"") { tool_errln("typed height search failed"); return false; }
+  for key: [3] string.[hash,txid,address] {
+    route: [256] u8; jo_start(o[..],route[..]); jo_put(o[..],"/search/"); jo_put(o[..],key);
+    if !xb_hash(c,jo_text(o[..])) { return false; }
+    view := ifx key == hash then 2 else (ifx key == txid then 3 else 4);
+    if !xb_ready(c,view,102,ifx view == 4 then args_at(a,6) else "") { tool_errln("hash, txid or address search failed"); return false; }
+    if view == 3 {
+      if !xb_wait(c,"coaxial.fieldProbe(6)===3&&coaxial.fieldProbe(7)===1") { tool_errln("spent/unspent transaction view differs"); return false; }
+      js: [1024] u8; jo_start(o[..],js[..]); jo_put(o[..],"(()=>{const b=[...document.querySelectorAll('#coaxial-a11y button')].find(b=>b.textContent==="); jo_str(o[..],hash); jo_put(o[..],");if(!b)return false;b.click();return true})()");
+      if !xb_wait(c,jo_text(o[..])) || !xb_ready(c,2,102,"") { tool_errln("transaction block link failed"); return false; }
+    }
+  }
+  png: [4194304] u8; shot := cdp_screenshot(c,png[..]); path: [4096] u8;
+  if shot < 0 || !fs_write(fs_join(dir,"desktop.png",path[..]),cast(string)png[0..<shot]) { return false; }
+  if cdp_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":390,\"height\":844,\"deviceScaleFactor\":2,\"mobile\":true}",5000) < 0 { return false; }
+  if !xb_eval(c,"new Promise(r=>setTimeout(()=>r(true),500))") { return false; }
+  shot = cdp_screenshot(c,png[..]); if shot < 0 || !fs_write(fs_join(dir,"mobile.png",path[..]),cast(string)png[0..<shot]) { return false; }
+  // Swap to the competing branch and back while this same page stays open.
+  statebuf: [4096] u8; storebuf: [4096] u8; headbuf: [4096] u8;
+  state := fs_join(dir,"state",statebuf[..]); store := fs_join(dir,"blocks",storebuf[..]); heads := fs_join(dir,"headers",headbuf[..]);
+  filebuf: [4][4096] u8; files: [4] string;
+  for i: 0..<3 { num: [16] u8; w: [1] Jo; jo_start(w[..],num[..]); jo_int(w[..],103+i); files[i] = fs_join(dir,jo_text(w[..]),filebuf[i][..]); }
+  branch := [10] string.[index,"apply","regtest",state,store,heads,"2000000000",files[0],files[1],files[2]];
+  if !xb_write(branch[..]) || !xb_ready(c,4,103,args_at(a,7)) { tool_errln("reorg balance did not refresh"); return false; }
+  for i: 0..<4 { num: [16] u8; w: [1] Jo; jo_start(w[..],num[..]); jo_int(w[..],ifx i < 2 then 101+i else 104+i); files[i] = fs_join(dir,jo_text(w[..]),filebuf[i][..]); }
+  back := [11] string.[index,"apply","regtest",state,store,heads,"2000000000",files[0],files[1],files[2],files[3]];
+  if !xb_write(back[..]) || !xb_ready(c,4,104,args_at(a,8)) { tool_errln("return reorg did not refresh"); return false; }
+  hiddenbuf: [4096] u8; hidden := fs_join(dir,"state.hidden",hiddenbuf[..]);
+  if !fs_rename(state,hidden) { return false; }
+  failed := xb_wait(c,"coaxial.fieldProbe(0)===0&&coaxial.fieldProbe(3)===503&&coaxial.fieldProbe(4)===0");
+  restored := fs_rename(hidden,state); if !failed || !restored || !xb_ready(c,4,104,args_at(a,8)) { tool_errln("unavailable state/recovery failed"); return false; }
+  // Invalid routes stay refused even when an earlier request finishes.
+  if !xb_hash(c,"/address/bad/route") || !xb_wait(c,"coaxial.fieldProbe(3)===400&&coaxial.fieldProbe(0)===0") { return false; }
+  if !xb_hash(c,"/transaction/0000000000000000000000000000000000000000000000000000000000000000") || !xb_wait(c,"coaxial.fieldProbe(3)===404&&coaxial.fieldProbe(0)===0") { return false; }
+  if !xb_hash(c,"") || !xb_ready(c,1,104,"") { return false; }
+  if !xb_eval(c,"new Promise(r=>setTimeout(()=>r(true),500))") { return false; }
+  tool_errln("Explorer browser: typed height, hash, txid, address, desktop/mobile, both reorgs, storage failure/recovery and invalid/missing queries pass."); return true;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 9 { tool_errln("usage: check URL FIXTURE_DIR INDEX_BINARY ADDRESS TXID HASH BALANCE_A BALANCE_B BALANCE_C"); return 2; }
+  c: [1] Cdp; if !cdp_launch(c[..],1440,1000,"bitcoin-explorer-") { tool_errln(cdp_error(c[..])); return 1; }
+  ok := xb_journey(c[..],a[..]); cdp_close(c[..]); return ifx ok then 0 else 1;
+}

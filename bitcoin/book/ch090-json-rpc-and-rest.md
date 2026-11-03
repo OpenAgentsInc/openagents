@@ -87,6 +87,10 @@ integer limits accepted connections for a bounded test run. Every response
 sets `Cache-Control: no-store` and closes its connection. Requests have
 overall receive/send deadlines and size bounds.
 
+The optional next argument enables the [Coax explorer interface](../explorer/README.md)
+and its exact static asset allowlist. Build it first, then append
+`0 bitcoin/explorer` after the port for an unlimited local page service.
+
 This adapter retains a 64 MiB table and reads a state log up to 256 MiB.
 Address responses require at most 16,384 output/history rows and all JSON
 must fit 32 MiB. Exhaustion returns 503 rather than silently truncating a

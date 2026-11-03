@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bitcoin Explorer · OpenAgents</title>
+<meta name="description" content="Explore blocks, transactions and addresses from your own Coax Bitcoin node.">
+<meta name="theme-color" content="#040507">
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
+<style>html,body{margin:0;height:100%;background:#040507;color:#e1e6f0}body{overflow:hidden;font:16px/1.5 system-ui,sans-serif}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none}canvas[data-cursor=pointer]{cursor:pointer}canvas[data-cursor=text]{cursor:text}main{position:relative;max-width:760px;margin:auto;padding:24px}html:not(.gpu) body{overflow:auto}.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<main><h1>Bitcoin Explorer</h1><p>Search blocks by height or hash, transactions by txid and network addresses. Data comes from your own node and is labeled proof of work only.</p><p>The interactive explorer needs WebGPU. The same data is available through <a href="/api/v1/tip">the read-only API</a>.</p></main>
+<script type="module" src="/coaxial/host.js" data-app="explorer"></script>
+</body>
+</html>

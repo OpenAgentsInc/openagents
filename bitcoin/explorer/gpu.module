@@ -1,0 +1,3 @@
+--vertices explorer_bg_vs,explorer_fx_vs
+--fragments explorer_bg_fs,explorer_fx_fs
+--bindings bitcoin/explorer/gpu.bindings --strip explorer_

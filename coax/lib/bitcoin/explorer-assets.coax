@@ -1,0 +1,19 @@
+// An explicit static projection, never an arbitrary filesystem path.
+#authority;
+EX_HOST_FILES :: [12] string.["host.js","entropy-import.js","entropy.js","drop.js","uploads.js","docs.js","card.js","voice.js","gpui.js","loader.js","http-requests.js","render.js"];
+EX_HOST_ROUTES :: [12] string.["/coaxial/host.js","/coaxial/entropy-import.js","/coaxial/entropy.js","/coaxial/drop.js","/coaxial/uploads.js","/coaxial/docs.js","/coaxial/card.js","/coaxial/voice.js","/coaxial/gpui.js","/coaxial/loader.js","/coaxial/http-requests.js","/coaxial/render.js"];
+ExAsset :: struct { path: string; mime: string; host: bool; }
+#test "explorer assets: exact allowlist, no filesystem traversal" {
+  a := ex_asset("/"); #assert a.path == "index.html" && a.mime == "text/html; charset=utf-8" && !a.host;
+  a = ex_asset("/build/explorer.wasm"); #assert a.path == "build/explorer.wasm" && a.mime == "application/wasm" && !a.host;
+  a = ex_asset("/explorer.wgsl"); #assert a.path == "explorer.wgsl" && a.mime == "text/plain; charset=utf-8" && !a.host;
+  for file: EX_HOST_FILES { buf: [128] u8; prefix := "/coaxial/"; for i: 0..<prefix.count { buf[i] = prefix[i]; } for i: 0..<file.count { buf[prefix.count+i] = file[i]; } a = ex_asset(cast(string)buf[0..<prefix.count+file.count]); #assert a.host && a.path == file && a.mime == "text/javascript; charset=utf-8"; }
+  for bad: [12] string.["","/index.html","//","/../index.html","/%2e%2e/secret","/coaxial/../secret","/coaxial/host.js/x","/coaxial/host.js?x","/coaxial/Host.js","/build/other.wasm","/api/v1/tip","/coaxial/"] { #assert ex_asset(bad).path.count == 0; }
+}
+ex_asset :: (path: string) -> ExAsset #export_c {
+  if path == "/" { return ExAsset.{path="index.html",mime="text/html; charset=utf-8"}; }
+  if path == "/build/explorer.wasm" { return ExAsset.{path="build/explorer.wasm",mime="application/wasm"}; }
+  if path == "/explorer.wgsl" { return ExAsset.{path="explorer.wgsl",mime="text/plain; charset=utf-8"}; }
+  for i: 0..<EX_HOST_ROUTES.count { if path == EX_HOST_ROUTES[i] { return ExAsset.{path=EX_HOST_FILES[i],mime="text/javascript; charset=utf-8",host=true}; } }
+  return ExAsset.{};
+}

@@ -19,6 +19,16 @@ are explicit; error responses reveal no file paths. The source projection is
 `coax/tests/bitcoin/explorer.py` bind this boundary to independent raw-block
 replay, both reorg directions and real durable files under ASan/UBSan.
 
+`bitcoin/explorer/model.coax` owns client response tickets and exact snapshot
+admission. Old replies cannot replace newer data. A failed query, changed
+network or tip hash clears ready data until a complete page is admitted;
+engine replacement reissues canceled effects. The Coax canvas displays the
+network/profile and copies only public identifiers. `explorer-assets.coax`
+serves an exact static allowlist, never a user-selected filesystem path.
+`coax/tests/bitcoin/explorer-browser.py` checks actual browser input, links,
+spent states, balances through both reorgs and failure/recovery against the
+real writer, with independent raw-block replay as its oracle.
+
 ## Address histories and spend links share the light chain's cursor
 
 `coax/lib/bitcoin/addrindex.coax`, `addrindex-stage.coax` and

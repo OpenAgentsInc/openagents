@@ -1744,6 +1744,11 @@ function a11yMirror(now) {
     a11y.root = Object.assign(document.createElement("div"), { id: "coaxial-a11y" });   // accessible layer
     a11y.root.setAttribute("style", hide);
     a11y.root.setAttribute("role", "toolbar"); a11y.root.setAttribute("aria-label", "Realm controls");
+    a11y.root.addEventListener("focusin", (e) => {
+      const b = e.target.closest?.("button[data-id]");
+      if (b) engine?.exports.coaxial_a11y_focus?.(arena.state, Number(b.dataset.id));
+    });
+    a11y.root.addEventListener("focusout", () => engine?.exports.coaxial_a11y_focus?.(arena.state, -1));
     a11y.root.addEventListener("click", (e) => {
       const b = e.target.closest?.("button[data-id]");
       if (!b || !engine?.exports.coaxial_a11y_do) return;
