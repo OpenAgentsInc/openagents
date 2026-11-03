@@ -1,0 +1,152 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/pow.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// A hash as explorers show it: the digest reversed.
+show_id :: (label: string, digest: [] u8) {
+  shown: [32] u8;
+  #assert bitcoin_reverse32(digest, shown[..]) == SHA_OK;
+  show(label, shown[..]);
+}
+// A 256-bit number as 64 hex digits, most significant first, the way
+// Core's GetHex prints it.
+show_number :: (label: string, a: U256) {
+  b: [32] u8;
+  #assert u256_to_hash_vartime(a, b[..]);
+  show_id(label, b[..]);
+}
+// Print a 32-bit number as 8 hex digits.
+put32 :: (v: u32) {
+  b: [4] u8; text: [8] u8;
+  for i: 0..<4 { b[i] = cast,trunc(u8) (v >> (8 * cast(u32) (3 - i))); }
+  r := hex_encode_checked(cast(string) b[..], text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+// Decode hex into out and return the filled part. Every literal here and
+// in the vector tables is valid lowercase hex, so an error stops the program.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+// The name of each result code.
+CODES :: [7] string.["ok", "negative", "zero", "overflow", "above the limit", "high hash", "capacity"];
+// A number below 2^64 in decimal; larger ones print as hex.
+show_work :: (label: string, w: U256) {
+  if u256_bits_vartime(w) <= 63 { print("%: %\n", label, cast(int) u256_low64(w)); }
+  else { show_number(label, w); }
+}
+// What nBits decodes to, with Core's flags and the canonical form.
+explain :: (bits: u32) {
+  c := pow_compact_decode_vartime(bits);
+  put32(bits); print(": size %, ", bits >> 24);
+  print("negative %, overflow %, encodes back as ", c.negative, c.overflow);
+  put32(pow_compact_encode_vartime(c.target, c.negative)); print("\n");
+  show_number("  target", c.target);
+}
+
+main :: () {
+  b: [80] u8; x: [80] u8; c: [80 * 11] u8; hash: [32] u8;
+
+  // The genesis header, field by field.
+  g := decode(PW_GENESIS, b[..]);
+  h := pow_header_read_vartime(g);
+  print("genesis header, 80 bytes\n");
+  print("  version: %\n", h.version);
+  show_id("  previous block", h.prev[..]);
+  show_id("  Merkle root", h.merkle_root[..]);
+  print("  time: %\n", h.time);
+  print("  nBits: "); put32(h.bits); print("\n");
+  print("  nonce: %\n", h.nonce);
+  #assert pow_block_hash_vartime(g, hash[..]) == POW_OK;
+  show("hash, as SHA-256d gives it", hash[..]);
+  show_id("hash, as explorers show it", hash[..]);
+  t := pow_target_vartime(h.bits, POW_LIMIT_MAINNET);
+  show_number("target", t.target);
+  show_number("mainnet powLimit", POW_LIMIT_MAINNET);
+  print("check: %\n", CODES[pow_header_check_vartime(g, POW_LIMIT_MAINNET)]);
+  show_work("work", pow_work_vartime(h.bits));
+  #assert pow_header_write_vartime(h, x[..]);
+  same := true;
+  for i: 0..<80 { if x[i] != g[i] { same = false; } }
+  print("written back, the same 80 bytes: %\n", same);
+
+  // One changed bit: the nonce's lowest.
+  g[76] = g[76] ^ 1;
+  #assert pow_block_hash_vartime(g, hash[..]) == POW_OK;
+  show_id("with the nonce's low bit flipped", hash[..]);
+  print("check: %\n", CODES[pow_header_check_vartime(g, POW_LIMIT_MAINNET)]);
+  g[76] = g[76] ^ 1;
+
+  // nBits, and Core's quirks.
+  print("compact targets\n");
+  explain(0x1d00ffff);
+  explain(0x1d00d86a);
+  explain(0x17514a49);
+  explain(0x01123456);
+  explain(0x01fedcba);
+  explain(0x01803456);
+  explain(0x04923456);
+  explain(0x05009234);
+  explain(0x21012345);
+  explain(0xff123456);
+  print("0x80 encodes as "); put32(pow_compact_encode_vartime(u256_small(0x80), false)); print(", not 01800000\n");
+
+  // The check's refusals, in Core's order.
+  print("refusals\n");
+  one: [32] u8; one[0] = 1;
+  checks := [7] u32.[0x1d00ffff, 0x1d80ffff, 0x01003456, 0x80010203, 0x21012345, 0x1d01ffff, 0x1e00ffff];
+  for k: 0..<7 {
+    print("  hash 1 against "); put32(checks[k]);
+    print(": %\n", CODES[pow_check_vartime(one[..], checks[k], POW_LIMIT_MAINNET)]);
+  }
+  #assert u256_to_hash_vartime(t.target, hash[..]);
+  print("  a hash equal to the genesis target: %\n", CODES[pow_check_vartime(hash[..], 0x1d00ffff, POW_LIMIT_MAINNET)]);
+  #assert u256_to_hash_vartime(u256_add(t.target, u256_small(1)), hash[..]);
+  print("  one more: %\n", CODES[pow_check_vartime(hash[..], 0x1d00ffff, POW_LIMIT_MAINNET)]);
+
+  // Eleven headers from 32,250: each names the one before it.
+  print("blocks 32,250 to 32,260\n");
+  chain := decode(PW_CHAIN, c[..]);
+  total := U256.{};
+  for i: 0..<PW_CHAIN_COUNT {
+    k := chain[80*i..<80*i+80];
+    bits := pow_header_read_vartime(k).bits;
+    #assert pow_block_hash_vartime(k, hash[..]) == POW_OK;
+    shown: [32] u8;
+    #assert bitcoin_reverse32(hash[..], shown[..]) == SHA_OK;
+    text: [64] u8;
+    r := hex_encode_checked(cast(string) shown[..], text[..], false);
+    links := i == 0 || pow_links_vartime(k, chain[80*(i-1)..<80*i]);
+    w := pow_work_vartime(bits);
+    total = u256_add(total, w);
+    print("  % %… nBits ", PW_CHAIN_FIRST + i, cast(string) text[0..<16]); put32(bits);
+    print(" work % links % check %\n", cast(int) u256_low64(w), links, CODES[pow_header_check_vartime(k, POW_LIMIT_MAINNET)]);
+  }
+  show_work("  total work", total);
+  // Swap two headers and the links break.
+  print("  32,251 after 32,252: links %\n", pow_links_vartime(chain[80..<160], chain[160..<240]));
+
+  // Later headers: smaller targets, more work.
+  print("later blocks\n");
+  texts := [3] string.[PW_HEADER_100000, PW_HEADER_514999, PW_HEADER_900000];
+  heights := [3] int.[100000, 514999, 900000];
+  for k: 0..<3 {
+    hd := decode(texts[k], b[..]);
+    bits := pow_header_read_vartime(hd).bits;
+    #assert pow_block_hash_vartime(hd, hash[..]) == POW_OK;
+    print("block % nBits ", heights[k]); put32(bits);
+    print(": %\n", CODES[pow_header_check_vartime(hd, POW_LIMIT_MAINNET)]);
+    show_id("  hash", hash[..]);
+    show_number("  target", pow_target_vartime(bits, POW_LIMIT_MAINNET).target);
+    show_work("  work", pow_work_vartime(bits));
+  }
+}
+// book:end example

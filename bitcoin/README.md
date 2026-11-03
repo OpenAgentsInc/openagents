@@ -61,8 +61,9 @@ chapter 34's.
 Everything Nostr used is built. Bitcoin and Lightning also need:
 
 - Batch Schnorr verification, Taproot script trees and tapscript.
-- MuHash3072, compact targets and chainwork. Merkle trees with the
-  duplicate-leaf flaw are built in chapter 46 (`coax/lib/bitcoin/merkle.coax`).
+- MuHash3072. Merkle trees with the duplicate-leaf flaw are built in
+  chapter 46 (`coax/lib/bitcoin/merkle.coax`), and compact targets and
+  chainwork in chapter 47 (`coax/lib/bitcoin/pow.coax`).
 - ElligatorSwift and the BIP-324 transport, Golomb-coded block filters.
 - MuSig2, FROST, adaptor signatures and silent payments.
 - Lightning: BOLT 1 TLVs, the BOLT 8 Noise handshake, BOLT 3 keys,

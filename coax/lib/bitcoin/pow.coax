@@ -1,0 +1,650 @@
+// Block headers and proof of work (Bitcoin chapter 47): the 80-byte block
+// header, its hash, 256-bit unsigned numbers, nBits compact targets with
+// Bitcoin Core's SetCompact and GetCompact quirks, the proof-of-work check
+// and the work a header proves.
+//
+// The numbers follow Bitcoin Core's arith_uint256 (base_uint<256>): eight
+// 32-bit limbs, lowest first, as chapter 2's scalars are stored, but with
+// no modulus: shifts drop the bits that leave the top, and addition and
+// subtraction wrap at 2^256. The compact form follows arith_uint256.cpp,
+// the check follows pow.cpp's DeriveTarget and CheckProofOfWorkImpl, and
+// the work follows chain.cpp's GetBitsProof. Retargeting (pow.cpp's
+// GetNextWorkRequired) is chapter 48's; the header's time and version
+// rules are chapter 51's.
+//
+// Headers and targets are public, so everything here runs in variable time
+// and every procedure that decides ends in _vartime (Bitcoin chapter 3).
+#load "hash.coax";
+#load "../../tests/bitcoin/pow_vectors.coax";
+#authority;
+
+// book:begin codes
+// Result codes. Core refuses every failure of the check, 1 to 5, with one
+// reject reason: "high-hash", "proof of work failed".
+POW_OK :: 0;
+POW_NEGATIVE :: 1;     // nBits sets the sign bit over a nonzero mantissa
+POW_ZERO :: 2;         // nBits decodes to a target of zero
+POW_OVERFLOW :: 3;     // nBits names a target of more than 256 bits
+POW_ABOVE_LIMIT :: 4;  // the target is easier than the chain's powLimit
+POW_HIGH_HASH :: 5;    // the header's hash is above its target
+POW_CAPACITY :: 6;     // a header is not 80 bytes, or a view is the wrong size
+
+POW_HEADER :: 80;
+// book:end codes
+
+// book:begin u256
+// A 256-bit unsigned number: Core's arith_uint256, eight 32-bit limbs,
+// limb[0] lowest.
+U256 :: struct { limb: [8] u32; }
+// A number below 2^64.
+u256_small :: (v: u64) -> U256 #export_c {
+  r: U256;
+  r.limb[0] = cast,trunc(u32) v;
+  r.limb[1] = cast,trunc(u32) (v >> 32);
+  return r;
+}
+// The low 64 bits: Core's GetLow64.
+u256_low64 :: (a: U256) -> u64 #export_c {
+  return cast(u64) a.limb[0] | (cast(u64) a.limb[1] << 32);
+}
+// Core's UintToArith256: a hash's 32 bytes as a little-endian number. A
+// view of another size is zero.
+u256_from_hash_vartime :: (hash: [] u8) -> U256 #export_c {
+  r: U256;
+  if hash.count != 32 { return r; }
+  for i: 0..<8 {
+    r.limb[i] = cast(u32) hash[4*i] | (cast(u32) hash[4*i+1] << 8) | (cast(u32) hash[4*i+2] << 16) | (cast(u32) hash[4*i+3] << 24);
+  }
+  return r;
+}
+// Core's ArithToUint256: the number as 32 little-endian bytes.
+u256_to_hash_vartime :: (a: U256, out: [] u8) -> bool #export_c {
+  if out.count != 32 { return false; }
+  for i: 0..<8 { for j: 0..<4 { out[4*i+j] = cast,trunc(u8) (a.limb[i] >> (8 * cast(u32) j)); } }
+  return true;
+}
+// -1, 0 or 1 as a is below, equal to or above b, from the top limb down.
+u256_compare_vartime :: (a: U256, b: U256) -> int #export_c {
+  for k: 0..<8 {
+    i := 7 - k;
+    if a.limb[i] < b.limb[i] { return -1; }
+    if a.limb[i] > b.limb[i] { return 1; }
+  }
+  return 0;
+}
+u256_is_zero :: (a: U256) -> bool #export_c {
+  for i: 0..<8 { if a.limb[i] != 0 { return false; } }
+  return true;
+}
+// Core's bits(): the position of the highest set bit plus one; 0 for zero.
+u256_bits_vartime :: (a: U256) -> int #export_c {
+  for k: 0..<8 {
+    i := 7 - k;
+    if a.limb[i] != 0 {
+      n := 0;
+      while (a.limb[i] >> cast(u32) n) > 1 { n += 1; }
+      return 32 * i + n + 1;
+    }
+  }
+  return 0;
+}
+// book:end u256
+// book:begin shift
+// Core's operator<<= and operator>>=: bits that leave the 256 are lost, so
+// a shift of 256 or more gives zero. A negative shift is zero as well.
+u256_shl_vartime :: (a: U256, shift: int) -> U256 #export_c {
+  r: U256;
+  if shift < 0 { return r; }
+  k := shift / 32; s := cast(u64) (shift % 32);
+  for i: 0..<8 {
+    wide := cast(u64) a.limb[i] << s;
+    if i + k < 8 { r.limb[i+k] = r.limb[i+k] | cast,trunc(u32) wide; }
+    if i + k + 1 < 8 { r.limb[i+k+1] = r.limb[i+k+1] | cast,trunc(u32) (wide >> 32); }
+  }
+  return r;
+}
+u256_shr_vartime :: (a: U256, shift: int) -> U256 #export_c {
+  r: U256;
+  if shift < 0 { return r; }
+  k := shift / 32; s := cast(u64) (shift % 32);
+  for i: 0..<8 {
+    wide := (cast(u64) a.limb[i] << 32) >> s;
+    if i - k >= 0 { r.limb[i-k] = r.limb[i-k] | cast,trunc(u32) (wide >> 32); }
+    if i - k - 1 >= 0 { r.limb[i-k-1] = r.limb[i-k-1] | cast,trunc(u32) wide; }
+  }
+  return r;
+}
+// book:end shift
+// book:begin arith
+// a + b and a - b, wrapping at 2^256 as Core's do.
+u256_add :: (a: U256, b: U256) -> U256 #export_c {
+  r: U256; carry := cast(u64) 0;
+  for i: 0..<8 {
+    wide := cast(u64) a.limb[i] + cast(u64) b.limb[i] + carry;
+    r.limb[i] = cast,trunc(u32) wide; carry = wide >> 32;
+  }
+  return r;
+}
+u256_sub :: (a: U256, b: U256) -> U256 #export_c {
+  r: U256; borrow := cast(u64) 0;
+  for i: 0..<8 {
+    wide := (cast(u64) 1 << 32) + cast(u64) a.limb[i] - cast(u64) b.limb[i] - borrow;
+    r.limb[i] = cast,trunc(u32) wide; borrow = 1 - (wide >> 32);
+  }
+  return r;
+}
+// ~a: every bit flipped, which is 2^256 - 1 - a.
+u256_not :: (a: U256) -> U256 #export_c {
+  r: U256;
+  for i: 0..<8 { r.limb[i] = a.limb[i] ^ 0xffffffff; }
+  return r;
+}
+// book:end arith
+// book:begin divide
+// Core's operator/=, shift and subtract: align the divisor's top bit with
+// the dividend's, then take one quotient bit per step. A zero divisor is
+// not ok (Core throws).
+U256Quotient :: struct { ok: bool; q: U256; }
+u256_div_vartime :: (a: U256, b: U256) -> U256Quotient #export_c {
+  r: U256Quotient;
+  num_bits := u256_bits_vartime(a); div_bits := u256_bits_vartime(b);
+  if div_bits == 0 { return r; }
+  r.ok = true;
+  if div_bits > num_bits { return r; }
+  shift := num_bits - div_bits;
+  num := a; div := u256_shl_vartime(b, shift);
+  while shift >= 0 {
+    if u256_compare_vartime(num, div) >= 0 {
+      num = u256_sub(num, div);
+      r.q.limb[shift/32] = r.q.limb[shift/32] | (cast(u32) 1 << cast(u32) (shift % 32));
+    }
+    div = u256_shr_vartime(div, 1);
+    shift -= 1;
+  }
+  return r;
+}
+// book:end divide
+
+// book:begin limit
+// The mainnet powLimit (chainparams.cpp): 2^224 - 1, the easiest target a
+// mainnet header may claim. Chapter 50 gives the other networks'.
+POW_LIMIT_MAINNET :: U256.{limb=[8]u32.[0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0]};
+// book:end limit
+
+// ---- checks
+pw_unhex :: (text: string, out: [] u8) -> [] u8 {
+  for i: 0..<text.count/2 { out[i] = cast(u8) (pw_nibble(text[2*i])*16 + pw_nibble(text[2*i+1])); }
+  return out[0..<text.count/2];
+}
+pw_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+// A number from 64 hex digits, most significant first, as Core's GetHex
+// prints it.
+pw_number :: (text: string) -> U256 {
+  b: [32] u8; r: [32] u8;
+  x := pw_unhex(text, b[..]);
+  for i: 0..<32 { r[i] = x[31-i]; }
+  return u256_from_hash_vartime(r[..]);
+}
+pw_equal :: (a: U256, b: U256) -> bool { return u256_compare_vartime(a, b) == 0; }
+// Is the digest, reversed, the hex an explorer shows?
+pw_shown_is :: (digest: [] u8, text: string) -> bool {
+  if digest.count * 2 != text.count { return false; }
+  for i: 0..<digest.count {
+    if cast(int) digest[digest.count-1-i] != pw_nibble(text[2*i])*16 + pw_nibble(text[2*i+1]) { return false; }
+  }
+  return true;
+}
+#test "the check helpers notice every difference" {
+  b: [4] u8;
+  #assert pw_shown_is(pw_unhex("09af", b[..]), "af09") && b[0] == 9 && b[1] == 0xaf;
+  #assert !pw_shown_is(b[0..<2], "09af") && !pw_shown_is(b[0..<2], "af08") && !pw_shown_is(b[0..<2], "bf09");
+  #assert !pw_shown_is(b[0..<2], "af0") && !pw_shown_is(b[0..<1], "af09");
+  n := pw_number("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+  #assert n.limb[0] == 0x1d1e1f20 && n.limb[7] == 0x01020304 && n.limb[3] == 0x11121314;
+  #assert pw_equal(n, n) && !pw_equal(n, u256_small(1));
+}
+#test "small numbers, bytes and the low 64 bits" {
+  a := u256_small(0x1122334455667788);
+  #assert a.limb[0] == 0x55667788 && a.limb[1] == 0x11223344 && a.limb[2] == 0 && a.limb[7] == 0;
+  #assert u256_low64(a) == 0x1122334455667788;
+  b: [32] u8; c: [31] u8;
+  for i: 0..<32 { b[i] = 0xa5; }
+  #assert u256_to_hash_vartime(a, b[..]) && b[0] == 0x88 && b[7] == 0x11 && b[8] == 0 && b[31] == 0;
+  #assert !u256_to_hash_vartime(a, c[..]);
+  #assert pw_equal(u256_from_hash_vartime(b[..]), a);
+  #assert pw_equal(u256_from_hash_vartime(b[0..<31]), U256.{});
+  for i: 0..<32 { b[i] = cast(u8) i; }
+  x := u256_from_hash_vartime(b[..]);
+  #assert x.limb[0] == 0x03020100 && x.limb[7] == 0x1f1e1d1c;
+}
+#test "comparison runs from the top limb" {
+  a := u256_small(5); b := u256_small(6);
+  #assert u256_compare_vartime(a, b) == -1 && u256_compare_vartime(b, a) == 1 && u256_compare_vartime(a, a) == 0;
+  hi := U256.{}; hi.limb[7] = 1;
+  #assert u256_compare_vartime(hi, u256_not(U256.{})) == -1 && u256_compare_vartime(hi, b) == 1 && u256_compare_vartime(b, hi) == -1;
+  mid := U256.{}; mid.limb[3] = 2;
+  low := mid; low.limb[0] = 9; low.limb[3] = 1;
+  #assert u256_compare_vartime(mid, low) == 1 && u256_compare_vartime(low, mid) == -1;
+}
+#test "bits counts to the highest set bit" {
+  #assert u256_bits_vartime(U256.{}) == 0 && u256_bits_vartime(u256_small(1)) == 1;
+  #assert u256_bits_vartime(u256_small(2)) == 2 && u256_bits_vartime(u256_small(3)) == 2;
+  #assert u256_bits_vartime(u256_small(0x80)) == 8 && u256_bits_vartime(u256_small(0xffffffff)) == 32;
+  #assert u256_bits_vartime(u256_small(0x100000000)) == 33 && u256_bits_vartime(u256_not(U256.{})) == 256;
+  #assert u256_bits_vartime(POW_LIMIT_MAINNET) == 224;
+}
+#forall "a shift left then right by k keeps the bits that stay" k: 0..<260 {
+  one := u256_small(1);
+  up := u256_shl_vartime(one, k);
+  #assert u256_bits_vartime(up) == (ifx k < 256 then k + 1 else 0);
+  #assert pw_equal(u256_shr_vartime(up, k), ifx k < 256 then one else U256.{});
+  all := u256_not(U256.{});
+  #assert u256_bits_vartime(u256_shr_vartime(all, k)) == (ifx k < 256 then 256 - k else 0);
+  #assert u256_bits_vartime(u256_shl_vartime(all, k)) == (ifx k < 256 then 256 else 0);
+  low := u256_shl_vartime(u256_shr_vartime(all, k), k);
+  #assert k >= 256 || (u256_bits_vartime(u256_sub(all, low)) == k);
+}
+#test "shifts carry across limbs and refuse a negative count" {
+  a := u256_small(0x80000001);
+  b := u256_shl_vartime(a, 1);
+  #assert b.limb[0] == 2 && b.limb[1] == 1;
+  c := u256_shl_vartime(a, 36);
+  #assert c.limb[0] == 0 && c.limb[1] == 0x10 && c.limb[2] == 8;
+  #assert pw_equal(u256_shr_vartime(c, 36), a) && pw_equal(u256_shr_vartime(b, 1), a);
+  #assert pw_equal(u256_shl_vartime(a, -1), U256.{}) && pw_equal(u256_shr_vartime(a, -1), U256.{});
+  #assert pw_equal(u256_shl_vartime(a, 0), a) && pw_equal(u256_shr_vartime(a, 0), a);
+  top := U256.{}; top.limb[7] = 0x80000000;
+  #assert pw_equal(u256_shl_vartime(top, 1), U256.{}) && u256_shr_vartime(top, 255).limb[0] == 1;
+}
+#test "addition and subtraction wrap at 2^256" {
+  all := u256_not(U256.{});
+  #assert pw_equal(u256_add(all, u256_small(1)), U256.{});
+  #assert pw_equal(u256_sub(U256.{}, u256_small(1)), all);
+  a := u256_small(0xffffffff); s := u256_add(a, u256_small(1));
+  #assert s.limb[0] == 0 && s.limb[1] == 1;
+  #assert pw_equal(u256_sub(s, u256_small(1)), a);
+  x := pw_number("00000000ffff0000000000000000000000000000000000000000000000000000");
+  y := pw_number("00000000d86a0000000000000000000000000000000000000000000000000000");
+  #assert pw_equal(u256_add(u256_sub(x, y), y), x) && pw_equal(u256_sub(x, x), U256.{});
+  #assert pw_equal(u256_add(u256_not(x), x), all);
+  #assert pw_equal(u256_sub(y, x), u256_add(u256_not(u256_sub(x, y)), u256_small(1)));
+}
+#test "division: quotients, a zero divisor and a larger divisor" {
+  q := u256_div_vartime(u256_small(100), u256_small(7));
+  #assert q.ok && pw_equal(q.q, u256_small(14));
+  #assert !u256_div_vartime(u256_small(100), U256.{}).ok;
+  r := u256_div_vartime(u256_small(6), u256_small(7));
+  #assert r.ok && pw_equal(r.q, U256.{});
+  r = u256_div_vartime(u256_small(7), u256_small(7));
+  #assert r.ok && pw_equal(r.q, u256_small(1));
+  all := u256_not(U256.{});
+  r = u256_div_vartime(all, u256_small(1));
+  #assert r.ok && pw_equal(r.q, all);
+  r = u256_div_vartime(all, all);
+  #assert r.ok && pw_equal(r.q, u256_small(1));
+  // 2^256 - 1 = 3 * 5 * 17 * 257 * 641 * 65537 * ...: divide by 0xffffffff
+  // and get the number with 1 in every 32-bit limb.
+  r = u256_div_vartime(all, u256_small(0xffffffff));
+  ones := U256.{}; for i: 0..<8 { ones.limb[i] = 1; }
+  #assert r.ok && pw_equal(r.q, ones);
+  // A quotient bit in every limb: (2^255 + 2^128 + 3) / 1.
+  big := U256.{}; big.limb[7] = 0x80000000; big.limb[4] = 1; big.limb[0] = 3;
+  r = u256_div_vartime(big, u256_small(1));
+  #assert r.ok && pw_equal(r.q, big);
+  r = u256_div_vartime(big, u256_small(2));
+  #assert r.ok && r.q.limb[7] == 0x40000000 && r.q.limb[3] == 0x80000000 && r.q.limb[0] == 1;
+}
+// book:begin compact
+// nBits decoded: the target and Core's two flags. negative: the sign bit
+// (0x00800000) is set over a nonzero mantissa. overflow: the number needs
+// more than 256 bits.
+Compact :: struct { target: U256; negative: bool; overflow: bool; }
+// Core's SetCompact. The top byte is the size in bytes; the low 23 bits
+// are the mantissa, the number's top three bytes. A size below 3 shifts
+// the mantissa right and loses bytes; a larger size shifts it left, and
+// bits past 256 are lost, which the overflow flag reports. Both flags look
+// at the mantissa after a short size has shifted it, as Core's do.
+pow_compact_decode_vartime :: (bits: u32) -> Compact #export_c {
+  size := cast(int) (bits >> 24);
+  word := bits & 0x007fffff;
+  c: Compact;
+  if size <= 3 {    // mutant: equivalent (at size 3 both branches shift by zero)
+    word = word >> (8 * cast(u32) (3 - size));
+    c.target = u256_small(cast(u64) word);
+  } else {
+    c.target = u256_shl_vartime(u256_small(cast(u64) word), 8 * (size - 3));
+  }
+  c.negative = word != 0 && (bits & 0x00800000) != 0;
+  c.overflow = word != 0 && (size > 34 || (word > 0xff && size > 33) || (word > 0xffff && size > 32));
+  return c;
+}
+// Core's GetCompact: the shortest size that holds the number, its top
+// three bytes as the mantissa, and one byte more when the mantissa's top
+// bit would read as the sign. negative sets the sign bit, except on zero.
+pow_compact_encode_vartime :: (target: U256, negative: bool) -> u32 #export_c {
+  size := (u256_bits_vartime(target) + 7) / 8;
+  compact: u64;
+  if size <= 3 {    // mutant: equivalent (at size 3 both branches shift by zero)
+    compact = u256_low64(target) << (8 * cast(u64) (3 - size));
+  } else {
+    compact = u256_low64(u256_shr_vartime(target, 8 * (size - 3)));
+  }
+  if (compact & 0x00800000) != 0 { compact = compact >> 8; size += 1; }
+  compact = compact | (cast(u64) size << 24);
+  if negative && (compact & 0x007fffff) != 0 { compact = compact | 0x00800000; }
+  return cast,trunc(u32) compact;
+}
+// book:end compact
+
+#test "Core's bignum_SetCompact" {
+  for i: 0..<PW_CORE_COUNT {
+    c := pow_compact_decode_vartime(cast(u32) PW_CORE_COMPACT[i]);
+    #assert (ifx c.negative then 1 else 0) + (ifx c.overflow then 2 else 0) == PW_CORE_FLAGS[i];
+    if PW_CORE_ENCODE[i] >= 0 {
+      #assert pw_equal(c.target, pw_number(PW_CORE_TARGET[i]));
+      #assert cast(int) pow_compact_encode_vartime(c.target, c.negative) == PW_CORE_ENCODE[i];
+    }
+  }
+  // The mantissa's top bit is the sign, so 0x80 needs a longer form.
+  #assert pow_compact_encode_vartime(u256_small(0x80), false) == 0x02008000;
+  #assert pow_compact_encode_vartime(U256.{}, true) == 0;
+}
+#test "the size byte: short, long and past 256 bits" {
+  // Sizes 0 to 2 drop the mantissa's low bytes.
+  #assert pw_equal(pow_compact_decode_vartime(0x02123456).target, u256_small(0x1234));
+  #assert pw_equal(pow_compact_decode_vartime(0x01123456).target, u256_small(0x12));
+  #assert pw_equal(pow_compact_decode_vartime(0x00123456).target, U256.{});
+  // A mantissa whose top bytes are zero fits in a larger size: one byte
+  // fits up to size 34, two bytes up to 33, three up to 32.
+  a := pow_compact_decode_vartime(0x210000ff);
+  #assert !a.overflow && a.target.limb[7] == 0x00ff0000;
+  b := pow_compact_decode_vartime(0x220000ff);
+  #assert !b.overflow && b.target.limb[7] == 0xff000000;
+  d := pow_compact_decode_vartime(0x230000ff);
+  #assert d.overflow && pw_equal(d.target, U256.{});
+  f := pow_compact_decode_vartime(0x2100ffff);
+  #assert !f.overflow && f.target.limb[7] == 0xffff0000;
+  g := pow_compact_decode_vartime(0x2200ffff);
+  #assert g.overflow && g.target.limb[7] == 0xff000000;
+  e := pow_compact_decode_vartime(0x20123456);
+  #assert !e.overflow && e.target.limb[7] == 0x12345600;
+  m := pow_compact_decode_vartime(0x21123456);
+  #assert m.overflow && m.target.limb[7] == 0x34560000;
+  // The first mantissa too long for each size: 0x100 at 34, 0x10000 at 33.
+  #assert pow_compact_decode_vartime(0x22000100).overflow && pow_compact_decode_vartime(0x21010000).overflow;
+  #assert !pow_compact_decode_vartime(0x21000100).overflow && !pow_compact_decode_vartime(0x20010000).overflow;
+  // GetBitsProof_test's 0x21012345: the overflow keeps the low bits.
+  h := pow_compact_decode_vartime(0x21012345);
+  #assert h.overflow && !h.negative && h.target.limb[7] == 0x23450000;
+  // An exponent of 0x80 is a size of 128, not a negative number.
+  k := pow_compact_decode_vartime(0x80010203);
+  #assert k.overflow && !k.negative && pw_equal(k.target, U256.{});
+  // A zero mantissa is never negative or overflowing.
+  z := pow_compact_decode_vartime(0xff800000);
+  #assert !z.negative && !z.overflow && pw_equal(z.target, U256.{});
+}
+#forall "every size round-trips a canonical mantissa" size: 1..<33 {
+  words := [3] u32.[0x7f0203, 0x7fffff, 0x7f8000];
+  for m: 0..<3 {
+    bits := (cast(u32) size << 24) | words[m];
+    c := pow_compact_decode_vartime(bits);
+    #assert !c.negative && !c.overflow && !u256_is_zero(c.target);
+    back := pow_compact_decode_vartime(pow_compact_encode_vartime(c.target, false));
+    #assert pw_equal(back.target, c.target) && !back.negative;
+    neg := pow_compact_encode_vartime(c.target, true);
+    #assert (neg & 0x00800000) != 0 && pow_compact_decode_vartime(neg).negative;
+    #assert size < 3 || pow_compact_encode_vartime(c.target, false) == bits;
+  }
+}
+
+// book:begin check
+// A target from nBits, or the reason it is refused: Core's DeriveTarget,
+// which tests negative, zero, overflow and the limit in that order.
+PowTarget :: struct { code: int; target: U256; }
+pow_target_vartime :: (bits: u32, limit: U256) -> PowTarget #export_c {
+  c := pow_compact_decode_vartime(bits);
+  r := PowTarget.{target=c.target};
+  if c.negative { r.code = POW_NEGATIVE; }
+  else if u256_is_zero(c.target) { r.code = POW_ZERO; }
+  else if c.overflow { r.code = POW_OVERFLOW; }
+  else if u256_compare_vartime(c.target, limit) > 0 { r.code = POW_ABOVE_LIMIT; }
+  return r;
+}
+// Core's CheckProofOfWorkImpl: the hash, in the order SHA-256d gives it,
+// read as a little-endian number, must not be above the target.
+pow_check_vartime :: (hash: [] u8, bits: u32, limit: U256) -> int #export_c {
+  if hash.count != 32 { return POW_CAPACITY; }
+  t := pow_target_vartime(bits, limit);
+  if t.code != POW_OK { return t.code; }
+  if u256_compare_vartime(u256_from_hash_vartime(hash), t.target) > 0 { return POW_HIGH_HASH; }
+  return POW_OK;
+}
+// Core's GetBitsProof: the expected number of hashes to meet the target,
+// 2^256 / (target + 1). 2^256 does not fit, so Core computes
+// ~target / (target + 1) + 1, which is equal. A target that is negative,
+// zero or overflows proves no work.
+pow_work_vartime :: (bits: u32) -> U256 #export_c {
+  c := pow_compact_decode_vartime(bits);
+  if c.negative || c.overflow || u256_is_zero(c.target) { return U256.{}; }
+  q := u256_div_vartime(u256_not(c.target), u256_add(c.target, u256_small(1)));
+  #assert q.ok;    // target + 1 is never zero: a target that fits is below 2^256 - 1
+  return u256_add(q.q, u256_small(1));
+}
+// book:end check
+
+#test "the target's refusals, in Core's order" {
+  #assert pow_target_vartime(0x1d00ffff, POW_LIMIT_MAINNET).code == POW_OK;
+  #assert pw_equal(pow_target_vartime(0x1d00ffff, POW_LIMIT_MAINNET).target, POW_LIMIT_MAINNET) == false;
+  #assert pow_target_vartime(0x1d80ffff, POW_LIMIT_MAINNET).code == POW_NEGATIVE;
+  #assert pow_target_vartime(0x01003456, POW_LIMIT_MAINNET).code == POW_ZERO;
+  #assert pow_target_vartime(0x00000000, POW_LIMIT_MAINNET).code == POW_ZERO;
+  // Zero is tested before overflow: 0x80010203 is both.
+  #assert pow_target_vartime(0x80010203, POW_LIMIT_MAINNET).code == POW_ZERO;
+  #assert pow_target_vartime(0x21012345, POW_LIMIT_MAINNET).code == POW_OVERFLOW;
+  // Negative before everything: 0xff923456 is negative and overflows.
+  #assert pow_target_vartime(0xff923456, POW_LIMIT_MAINNET).code == POW_NEGATIVE;
+  #assert pow_target_vartime(0x1d01ffff, POW_LIMIT_MAINNET).code == POW_ABOVE_LIMIT;
+  // The limit, 2^224 - 1, encodes as 0x1d00ffff, which names a smaller
+  // number: the encoding keeps three bytes. Easier targets are refused
+  // unless the limit allows them.
+  #assert pow_compact_encode_vartime(POW_LIMIT_MAINNET, false) == 0x1d00ffff;
+  #assert pow_target_vartime(0x1e010000, POW_LIMIT_MAINNET).code == POW_ABOVE_LIMIT;
+  #assert pow_target_vartime(0x1e00ffff, POW_LIMIT_MAINNET).code == POW_ABOVE_LIMIT;
+  #assert pow_target_vartime(0x1e00ffff, u256_not(U256.{})).code == POW_OK;
+  // A target equal to the limit is allowed.
+  limit := pow_compact_decode_vartime(0x1d00ffff).target;
+  #assert pow_target_vartime(0x1d00ffff, limit).code == POW_OK && pow_target_vartime(0x1d010000, limit).code == POW_ABOVE_LIMIT;
+}
+#test "Core's CheckProofOfWork tests" {
+  one: [32] u8; one[0] = 1;
+  // negative_target: the limit's compact form with the sign bit.
+  #assert pow_check_vartime(one[..], pow_compact_encode_vartime(POW_LIMIT_MAINNET, true), POW_LIMIT_MAINNET) == POW_NEGATIVE;
+  // overflow_target: ~0x00800000, which is also zero after the shift.
+  #assert pow_check_vartime(one[..], 0xff7fffff, POW_LIMIT_MAINNET) == POW_ZERO;
+  // too_easy_target: twice the limit.
+  twice := u256_shl_vartime(POW_LIMIT_MAINNET, 1);
+  #assert pow_check_vartime(one[..], pow_compact_encode_vartime(twice, false), POW_LIMIT_MAINNET) == POW_ABOVE_LIMIT;
+  // biger_hash_than_target: the hash is twice the limit.
+  big: [32] u8;
+  #assert u256_to_hash_vartime(twice, big[..]);
+  #assert pow_check_vartime(big[..], pow_compact_encode_vartime(POW_LIMIT_MAINNET, false), POW_LIMIT_MAINNET) == POW_HIGH_HASH;
+  // zero_target.
+  zero: [32] u8;
+  #assert pow_check_vartime(zero[..], pow_compact_encode_vartime(U256.{}, false), POW_LIMIT_MAINNET) == POW_ZERO;
+  #assert pow_check_vartime(zero[0..<31], 0x1d00ffff, POW_LIMIT_MAINNET) == POW_CAPACITY;
+}
+#test "a hash equal to the target passes; one more fails" {
+  t := pow_target_vartime(0x1d00ffff, POW_LIMIT_MAINNET).target;
+  h: [32] u8;
+  #assert u256_to_hash_vartime(t, h[..]) && pow_check_vartime(h[..], 0x1d00ffff, POW_LIMIT_MAINNET) == POW_OK;
+  #assert u256_to_hash_vartime(u256_add(t, u256_small(1)), h[..]) && pow_check_vartime(h[..], 0x1d00ffff, POW_LIMIT_MAINNET) == POW_HIGH_HASH;
+  #assert u256_to_hash_vartime(u256_sub(t, u256_small(1)), h[..]) && pow_check_vartime(h[..], 0x1d00ffff, POW_LIMIT_MAINNET) == POW_OK;
+}
+#test "Core's GetBitsProof_test" {
+  for i: 0..<6 { #assert pw_equal(pow_work_vartime(cast(u32) PW_CORE_ZERO_WORK[i]), U256.{}); }
+  #assert pw_equal(pow_work_vartime(0x1d00ffff), u256_small(0x100010001));
+  #assert pw_equal(pow_work_vartime(0x1d80ffff), U256.{});
+  // The easiest targets that fit: a target near 2^256 is about one hash.
+  #assert pw_equal(pow_work_vartime(0x2100ffff), u256_small(1)) && pw_equal(pow_work_vartime(0x220000ff), u256_small(1));
+  #assert pw_equal(pow_work_vartime(0x210000ff), u256_small(257)) && pw_equal(pow_work_vartime(0x2000ffff), u256_small(256));
+  #assert pw_equal(pow_work_vartime(0x2200007f), u256_small(2)) && pw_equal(pow_work_vartime(0x2200ffff), U256.{});
+  // A target of 1 is 2^255 hashes.
+  w := pow_work_vartime(0x01010000);
+  #assert w.limb[7] == 0x80000000 && u256_bits_vartime(w) == 256;
+}
+
+// book:begin header
+// An 80-byte header: version (a signed 32-bit number), the previous
+// block's hash and the Merkle root (hash order), then time, nBits and
+// nonce, every number little-endian. code is POW_OK or POW_CAPACITY.
+BlockHeader :: struct {
+  code: int; version: int;
+  prev: [32] u8; merkle_root: [32] u8;
+  time: u32; bits: u32; nonce: u32;
+}
+pw_le32 :: (b: [] u8, at: int) -> u32 {
+  return cast(u32) b[at] | (cast(u32) b[at+1] << 8) | (cast(u32) b[at+2] << 16) | (cast(u32) b[at+3] << 24);
+}
+pow_header_read_vartime :: (b: [] u8) -> BlockHeader #export_c {
+  h: BlockHeader;
+  if b.count != POW_HEADER { h.code = POW_CAPACITY; return h; }
+  v := cast(int) pw_le32(b, 0);
+  h.version = ifx v >= 0x80000000 then v - 0x100000000 else v;
+  for i: 0..<32 { h.prev[i] = b[4+i]; h.merkle_root[i] = b[36+i]; }
+  h.time = pw_le32(b, 68); h.bits = pw_le32(b, 72); h.nonce = pw_le32(b, 76);
+  return h;
+}
+pow_header_write_vartime :: (h: BlockHeader, out: [] u8) -> bool #export_c {
+  if out.count != POW_HEADER || h.version < -0x80000000 || h.version > 0x7fffffff { return false; }
+  v := cast,trunc(u32) h.version;    // the low 32 bits: two's complement
+  words := [4] u32.[v, h.time, h.bits, h.nonce];
+  at := [4] int.[0, 68, 72, 76];
+  for k: 0..<4 { for j: 0..<4 { out[at[k]+j] = cast,trunc(u8) (words[k] >> (8 * cast(u32) j)); } }
+  for i: 0..<32 { out[4+i] = h.prev[i]; out[36+i] = h.merkle_root[i]; }
+  return true;
+}
+// book:end header
+// book:begin hash
+// The block hash: SHA-256d of the 80 bytes, in hash order. Explorers show
+// it reversed (chapter 5).
+pow_block_hash_vartime :: (header: [] u8, out: [] u8) -> int #export_c {
+  if header.count != POW_HEADER || out.count != 32 { return POW_CAPACITY; }
+  #assert sha256d_checked(header, out, false) == SHA_OK;
+  return POW_OK;
+}
+// Core's CheckBlockHeader: the header's hash must meet its own nBits under
+// the chain's limit; any failure is "high-hash".
+pow_header_check_vartime :: (header: [] u8, limit: U256) -> int #export_c {
+  h := pow_header_read_vartime(header);
+  if h.code != POW_OK { return h.code; }
+  hash: [32] u8;
+  #assert pow_block_hash_vartime(header, hash[..]) == POW_OK;
+  return pow_check_vartime(hash[..], h.bits, limit);
+}
+// Does header name prev as the block before it? Its bytes 4 to 36 must be
+// prev's hash.
+pow_links_vartime :: (header: [] u8, prev: [] u8) -> bool #export_c {
+  if header.count != POW_HEADER || prev.count != POW_HEADER { return false; }
+  hash: [32] u8;
+  #assert pow_block_hash_vartime(prev, hash[..]) == POW_OK;
+  for i: 0..<32 { if header[4+i] != hash[i] { return false; } }
+  return true;
+}
+// book:end hash
+
+#test "the genesis header: its fields, its hash and its work" #steps 20000000 {
+  b: [80] u8; out: [80] u8; hash: [32] u8;
+  g := pw_unhex(PW_GENESIS, b[..]);
+  h := pow_header_read_vartime(g);
+  #assert h.code == POW_OK && h.version == 1 && h.time == 1231006505 && h.bits == 0x1d00ffff && h.nonce == 2083236893;
+  zero := true;
+  for i: 0..<32 { if h.prev[i] != 0 { zero = false; } }
+  #assert zero && pw_shown_is(h.merkle_root[..], "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b");
+  #assert pow_header_write_vartime(h, out[..]);
+  for i: 0..<80 { #assert out[i] == g[i]; }
+  #assert pow_block_hash_vartime(g, hash[..]) == POW_OK && pw_shown_is(hash[..], PW_GENESIS_HASH);
+  #assert pow_header_check_vartime(g, POW_LIMIT_MAINNET) == POW_OK;
+  #assert pw_equal(pow_target_vartime(h.bits, POW_LIMIT_MAINNET).target, pw_number(PW_TARGET_GENESIS));
+  #assert pw_equal(pow_work_vartime(h.bits), pw_number(PW_WORK_GENESIS));
+}
+#test "the header's refusals" {
+  b: [81] u8; out: [81] u8; hash: [32] u8;
+  #assert pow_header_read_vartime(b[0..<79]).code == POW_CAPACITY && pow_header_read_vartime(b[..]).code == POW_CAPACITY;
+  #assert pow_header_check_vartime(b[0..<79], POW_LIMIT_MAINNET) == POW_CAPACITY;
+  h := pow_header_read_vartime(b[0..<80]);
+  #assert h.code == POW_OK && !pow_header_write_vartime(h, out[0..<79]) && !pow_header_write_vartime(h, out[..]);
+  h.version = 0x80000000;
+  #assert !pow_header_write_vartime(h, out[0..<80]);
+  h.version = -0x80000001;
+  #assert !pow_header_write_vartime(h, out[0..<80]);
+  #assert pow_block_hash_vartime(b[0..<79], hash[..]) == POW_CAPACITY && pow_block_hash_vartime(b[0..<80], hash[0..<31]) == POW_CAPACITY;
+  #assert !pow_links_vartime(b[0..<79], b[0..<80]) && !pow_links_vartime(b[0..<80], b[0..<79]);
+}
+#test "a negative version round-trips" {
+  b: [80] u8; out: [80] u8;
+  for i: 0..<80 { b[i] = cast,trunc(u8) (i * 7); }
+  b[3] = 0xe0; b[0] = 0x05;
+  h := pow_header_read_vartime(b[..]);
+  #assert h.version == 0xe00e0705 - 0x100000000;
+  #assert h.version < 0 && h.time == pw_le32(b[..], 68) && h.nonce == pw_le32(b[..], 76) && h.bits == pw_le32(b[..], 72);
+  #assert pow_header_write_vartime(h, out[..]);
+  for i: 0..<80 { #assert out[i] == b[i]; }
+  b[3] = 0x7f;
+  h = pow_header_read_vartime(b[..]);
+  #assert h.version > 0 && pow_header_write_vartime(h, out[..]) && out[3] == 0x7f;
+  // The two ends: 0x7fffffff is the largest version, 0x80000000 the
+  // smallest, -2^31.
+  b[0] = 0xff; b[1] = 0xff; b[2] = 0xff; b[3] = 0x7f;
+  h = pow_header_read_vartime(b[..]);
+  #assert h.version == 0x7fffffff && pow_header_write_vartime(h, out[..]) && out[0] == 0xff && out[3] == 0x7f;
+  b[0] = 0; b[1] = 0; b[2] = 0; b[3] = 0x80;
+  h = pow_header_read_vartime(b[..]);
+  #assert h.version == -0x80000000 && pow_header_write_vartime(h, out[..]) && out[0] == 0 && out[3] == 0x80;
+  h.version = -1;
+  #assert pow_header_write_vartime(h, out[..]) && out[0] == 0xff && out[1] == 0xff && out[2] == 0xff && out[3] == 0xff;
+  h.version = 0;
+  #assert pow_header_write_vartime(h, out[..]) && out[0] == 0 && out[3] == 0;
+}
+#test "mainnet headers meet their targets, and the chain links" #steps 100000000 {
+  c: [80 * 11] u8; b: [80] u8; hash: [32] u8;
+  chain := pw_unhex(PW_CHAIN, c[..]);
+  total := U256.{};
+  for i: 0..<PW_CHAIN_COUNT {
+    h := chain[80*i..<80*i+80];
+    #assert pow_header_check_vartime(h, POW_LIMIT_MAINNET) == POW_OK;
+    #assert pow_block_hash_vartime(h, hash[..]) == POW_OK && pw_shown_is(hash[..], PW_CHAIN_HASHES[64*i..<64*i+64]);
+    #assert i == 0 || pow_links_vartime(h, chain[80*(i-1)..<80*i]);
+    #assert i == 0 || !pow_links_vartime(chain[80*(i-1)..<80*i], h);
+    if i > 0 {
+      // A change in the first or the last byte of the previous hash breaks the link.
+      for at: 0..<2 {
+        for j: 0..<80 { b[j] = h[j]; }
+        b[4 + 31*at] = b[4 + 31*at] ^ 1;
+        #assert !pow_links_vartime(b[..], chain[80*(i-1)..<80*i]);
+      }
+    }
+    total = u256_add(total, pow_work_vartime(pow_header_read_vartime(h).bits));
+  }
+  #assert pw_equal(total, pw_number(PW_CHAIN_WORK));
+  #assert pow_header_read_vartime(chain[480..<560]).bits == 0x1d00d86a && pow_header_read_vartime(chain[400..<480]).bits == 0x1d00ffff;
+  #assert pw_equal(pow_work_vartime(0x1d00d86a), pw_number(PW_WORK_32256));
+  texts := [3] string.[PW_HEADER_100000, PW_HEADER_514999, PW_HEADER_900000];
+  hashes := [3] string.[PW_HASH_100000, PW_HASH_514999, PW_HASH_900000];
+  targets := [3] string.[PW_TARGET_100000, PW_TARGET_514999, PW_TARGET_900000];
+  works := [3] string.[PW_WORK_100000, PW_WORK_514999, PW_WORK_900000];
+  for k: 0..<3 {
+    h := pw_unhex(texts[k], b[..]);
+    bits := pow_header_read_vartime(h).bits;
+    #assert pow_header_check_vartime(h, POW_LIMIT_MAINNET) == POW_OK;
+    #assert pow_block_hash_vartime(h, hash[..]) == POW_OK && pw_shown_is(hash[..], hashes[k]);
+    #assert pw_equal(pow_target_vartime(bits, POW_LIMIT_MAINNET).target, pw_number(targets[k]));
+    #assert pw_equal(pow_work_vartime(bits), pw_number(works[k]));
+    #assert pow_compact_encode_vartime(pow_target_vartime(bits, POW_LIMIT_MAINNET).target, false) == bits;
+  }
+}
+#forall "one changed bit of the genesis header fails" bit: 0..<640 #steps 250000000 {
+  b: [80] u8;
+  g := pw_unhex(PW_GENESIS, b[..]);
+  g[bit/8] = g[bit/8] ^ cast(u8) (1 << (bit % 8));
+  #assert pow_header_check_vartime(g, POW_LIMIT_MAINNET) != POW_OK;
+}

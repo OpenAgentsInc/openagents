@@ -936,15 +936,23 @@
   {
    "number": 47,
    "title": "Block headers and proof of work",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch047-block-headers-and-proof-of-work.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
     2,
+    3,
     5
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/pow.coax",
+    "bitcoin/examples/block-headers.coax",
+    "bitcoin/examples/checks/block-headers.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {

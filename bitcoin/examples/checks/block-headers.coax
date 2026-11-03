@@ -1,0 +1,107 @@
+// The checks of block-headers.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/block-headers.coax
+#load "../block-headers.coax";
+
+// book:begin check
+// A number from 64 hex digits, most significant first.
+number :: (text: string) -> U256 {
+  b: [32] u8; r: [32] u8;
+  x := decode(text, b[..]);
+  for i: 0..<32 { r[i] = x[31-i]; }
+  return u256_from_hash_vartime(r[..]);
+}
+same :: (a: U256, b: U256) -> bool { return u256_compare_vartime(a, b) == 0; }
+// arith_uint256_tests.cpp's bignum_SetCompact: each target, both flags and
+// GetCompact with the case's sign.
+#test "Core's bignum_SetCompact" {
+  for i: 0..<PW_CORE_COUNT {
+    c := pow_compact_decode_vartime(cast(u32) PW_CORE_COMPACT[i]);
+    #assert c.negative == ((PW_CORE_FLAGS[i] & 1) != 0) && c.overflow == ((PW_CORE_FLAGS[i] & 2) != 0);
+    if PW_CORE_ENCODE[i] >= 0 {
+      #assert same(c.target, number(PW_CORE_TARGET[i]));
+      #assert cast(int) pow_compact_encode_vartime(c.target, c.negative) == PW_CORE_ENCODE[i];
+    }
+  }
+  #assert pow_compact_encode_vartime(u256_small(0x80), false) == 0x02008000;
+}
+// pow_tests.cpp's CheckProofOfWork tests and GetBitsProof_test.
+#test "Core's pow_tests" {
+  one: [32] u8; one[0] = 1; h: [32] u8;
+  #assert pow_check_vartime(one[..], pow_compact_encode_vartime(POW_LIMIT_MAINNET, true), POW_LIMIT_MAINNET) != POW_OK;
+  #assert pow_check_vartime(one[..], 0xff7fffff, POW_LIMIT_MAINNET) != POW_OK;
+  twice := u256_shl_vartime(POW_LIMIT_MAINNET, 1);
+  #assert pow_check_vartime(one[..], pow_compact_encode_vartime(twice, false), POW_LIMIT_MAINNET) != POW_OK;
+  #assert u256_to_hash_vartime(twice, h[..]);
+  #assert pow_check_vartime(h[..], pow_compact_encode_vartime(POW_LIMIT_MAINNET, false), POW_LIMIT_MAINNET) == POW_HIGH_HASH;
+  zero: [32] u8;
+  #assert pow_check_vartime(zero[..], pow_compact_encode_vartime(U256.{}, false), POW_LIMIT_MAINNET) == POW_ZERO;
+  for i: 0..<6 { #assert u256_is_zero(pow_work_vartime(cast(u32) PW_CORE_ZERO_WORK[i])); }
+  #assert same(pow_work_vartime(0x1d00ffff), u256_small(0x100010001));
+}
+// The genesis header, the eleven headers from 32,250 and blocks 100,000,
+// 514,999 and 900,000: each hashes to its published hash and meets its
+// target, the eleven link, and the work matches pow_reference.py's.
+#test "mainnet headers" #steps 100000000 {
+  b: [80] u8; c: [80 * 11] u8; hash: [32] u8;
+  g := decode(PW_GENESIS, b[..]);
+  #assert pow_header_check_vartime(g, POW_LIMIT_MAINNET) == POW_OK;
+  #assert pow_block_hash_vartime(g, hash[..]) == POW_OK && id_text_is(hash[..], PW_GENESIS_HASH);
+  // The comparison sees the first and the last byte shown.
+  #assert !id_text_is(hash[..], "010000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f");
+  #assert !id_text_is(hash[..], "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26e");
+  #assert same(pow_work_vartime(pow_header_read_vartime(g).bits), number(PW_WORK_GENESIS));
+  chain := decode(PW_CHAIN, c[..]);
+  total := U256.{};
+  for i: 0..<PW_CHAIN_COUNT {
+    k := chain[80*i..<80*i+80];
+    #assert pow_header_check_vartime(k, POW_LIMIT_MAINNET) == POW_OK;
+    #assert pow_block_hash_vartime(k, hash[..]) == POW_OK && id_text_is(hash[..], PW_CHAIN_HASHES[64*i..<64*i+64]);
+    #assert i == 0 || pow_links_vartime(k, chain[80*(i-1)..<80*i]);
+    total = u256_add(total, pow_work_vartime(pow_header_read_vartime(k).bits));
+  }
+  #assert same(total, number(PW_CHAIN_WORK));
+  texts := [3] string.[PW_HEADER_100000, PW_HEADER_514999, PW_HEADER_900000];
+  hashes := [3] string.[PW_HASH_100000, PW_HASH_514999, PW_HASH_900000];
+  works := [3] string.[PW_WORK_100000, PW_WORK_514999, PW_WORK_900000];
+  for k: 0..<3 {
+    h := decode(texts[k], b[..]);
+    #assert pow_header_check_vartime(h, POW_LIMIT_MAINNET) == POW_OK;
+    #assert pow_block_hash_vartime(h, hash[..]) == POW_OK && id_text_is(hash[..], hashes[k]);
+    #assert same(pow_work_vartime(pow_header_read_vartime(h).bits), number(works[k]));
+  }
+}
+// Is the digest, shown reversed, this hex?
+id_text_is :: (digest: [] u8, text: string) -> bool {
+  want: [32] u8; shown: [32] u8;
+  #assert bitcoin_reverse32(digest, shown[..]) == SHA_OK;
+  w := decode(text, want[..]);
+  for i: 0..<32 { if shown[i] != w[i] { return false; } }
+  return true;
+}
+// One changed bit of block 900,000's header, anywhere in its 640, and the
+// header fails the check.
+#forall "one changed bit of block 900,000 fails" bit: 0..<640 #steps 250000000 {
+  b: [80] u8;
+  h := decode(PW_HEADER_900000, b[..]);
+  h[bit/8] = h[bit/8] ^ cast,trunc(u8) (1 << (bit % 8));
+  #assert pow_header_check_vartime(h, POW_LIMIT_MAINNET) != POW_OK;
+}
+// The example's verdicts: the flipped nonce, the refusals in Core's order
+// and a hash equal to the target.
+#test "the example's verdicts" #steps 20000000 {
+  b: [80] u8; hash: [32] u8;
+  g := decode(PW_GENESIS, b[..]);
+  g[76] = g[76] ^ 1;
+  #assert pow_header_check_vartime(g, POW_LIMIT_MAINNET) == POW_HIGH_HASH;
+  one: [32] u8; one[0] = 1;
+  want := [7] int.[POW_OK, POW_NEGATIVE, POW_ZERO, POW_ZERO, POW_OVERFLOW, POW_ABOVE_LIMIT, POW_ABOVE_LIMIT];
+  checks := [7] u32.[0x1d00ffff, 0x1d80ffff, 0x01003456, 0x80010203, 0x21012345, 0x1d01ffff, 0x1e00ffff];
+  for k: 0..<7 { #assert pow_check_vartime(one[..], checks[k], POW_LIMIT_MAINNET) == want[k]; }
+  t := pow_target_vartime(0x1d00ffff, POW_LIMIT_MAINNET).target;
+  #assert u256_to_hash_vartime(t, hash[..]) && pow_check_vartime(hash[..], 0x1d00ffff, POW_LIMIT_MAINNET) == POW_OK;
+  #assert u256_to_hash_vartime(u256_add(t, u256_small(1)), hash[..]) && pow_check_vartime(hash[..], 0x1d00ffff, POW_LIMIT_MAINNET) == POW_HIGH_HASH;
+  #assert pow_compact_encode_vartime(pow_compact_decode_vartime(0x21012345).target, false) == 0x20234500;
+  #assert pow_compact_encode_vartime(pow_compact_decode_vartime(0x01803456).target, false) == 0;
+}
+// book:end check

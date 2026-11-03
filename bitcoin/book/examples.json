@@ -314,6 +314,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "bitcoin/examples/block-headers.coax",
+      "chapter": "bitcoin/book/ch047-block-headers-and-proof-of-work.md",
+      "stdout": "bitcoin/fixtures/block-headers.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

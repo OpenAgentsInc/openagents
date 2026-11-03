@@ -59,3 +59,4 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 **IX. Blocks and consensus**
 
 - [46. Merkle trees and the duplicate-leaf flaw](ch046-merkle-trees-and-the-duplicate-leaf-flaw.md) — implemented
+- [47. Block headers and proof of work](ch047-block-headers-and-proof-of-work.md) — implemented

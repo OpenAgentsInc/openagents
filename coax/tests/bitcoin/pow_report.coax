@@ -1,0 +1,82 @@
+// A flat test-only C entry point over coax/lib/bitcoin/pow.coax for
+// coax/tests/bitcoin/pow.py: it runs one operation and writes what it found
+// as numbers and bytes, so Python can compare every field with its own
+// transliteration of Bitcoin Core. No proof-of-work logic lives here.
+#load "../../lib/bitcoin/pow.coax";
+
+// Every number is written as 8 little-endian bytes, every U256 as its 32
+// little-endian bytes. Each operation returns the bytes written, or -1 when
+// out is too short or the input the wrong size.
+// op 0, nBits: index is nBits, b the limit. Writes the target, negative,
+// overflow, GetCompact without and with the sign, DeriveTarget's code and
+// the work.
+// op 1, a header: b is the limit, then the header (any length). Writes the
+// reader's code; when it is ok, the version, time, nBits, nonce, previous
+// hash, Merkle root and the header written back; then the hash's code and
+// hash, the check's code and the work of its nBits.
+// op 2, GetCompact: b is a number; index 1 sets the sign. Writes the compact.
+// op 3, arithmetic: b is a, then c; index is a shift. Writes a + c, a - c,
+// ~a, whether a / c is defined and the quotient, the comparison of a and c,
+// bits(a), a << index and a >> index.
+// op 4, the check: index is nBits, b the limit, then a hash. Writes the code.
+pow_report_vartime :: (op: int, b: [] u8, index: int, out: [] u8) -> int #export_c {
+  if out.count < 600 || index < 0 || index > 0xffffffff { return -1; }
+  if op == 0 {
+    if b.count != 32 { return -1; }
+    bits := cast(u32) index;
+    c := pow_compact_decode_vartime(bits);
+    at := pr_number(out, 0, c.target);
+    at = pr_put(out, at, ifx c.negative then 1 else 0); at = pr_put(out, at, ifx c.overflow then 1 else 0);
+    at = pr_put(out, at, cast(int) pow_compact_encode_vartime(c.target, false));
+    at = pr_put(out, at, cast(int) pow_compact_encode_vartime(c.target, c.negative));
+    at = pr_put(out, at, pow_target_vartime(bits, u256_from_hash_vartime(b)).code);
+    return pr_number(out, at, pow_work_vartime(bits));
+  }
+  if op == 1 {
+    if b.count < 32 { return -1; }
+    header := b[32..<b.count];
+    h := pow_header_read_vartime(header);
+    at := pr_put(out, 0, h.code);
+    if h.code == POW_OK {
+      at = pr_put(out, at, h.version); at = pr_put(out, at, cast(int) h.time);
+      at = pr_put(out, at, cast(int) h.bits); at = pr_put(out, at, cast(int) h.nonce);
+      for i: 0..<32 { out[at+i] = h.prev[i]; out[at+32+i] = h.merkle_root[i]; }
+      at += 64;
+      if !pow_header_write_vartime(h, out[at..<at+80]) { return -1; }
+      at += 80;
+    }
+    at = pr_put(out, at, pow_block_hash_vartime(header, out[at+8..<at+40])); at += 32;
+    at = pr_put(out, at, pow_header_check_vartime(header, u256_from_hash_vartime(b[0..<32])));
+    return pr_number(out, at, ifx h.code == POW_OK then pow_work_vartime(h.bits) else U256.{});
+  }
+  if op == 2 {
+    if b.count != 32 { return -1; }
+    return pr_put(out, 0, cast(int) pow_compact_encode_vartime(u256_from_hash_vartime(b), index == 1));
+  }
+  if op == 3 {
+    if b.count != 64 { return -1; }
+    a := u256_from_hash_vartime(b[0..<32]); c := u256_from_hash_vartime(b[32..<64]);
+    at := pr_number(out, 0, u256_add(a, c));
+    at = pr_number(out, at, u256_sub(a, c));
+    at = pr_number(out, at, u256_not(a));
+    q := u256_div_vartime(a, c);
+    at = pr_put(out, at, ifx q.ok then 1 else 0); at = pr_number(out, at, q.q);
+    at = pr_put(out, at, u256_compare_vartime(a, c));
+    at = pr_put(out, at, u256_bits_vartime(a));
+    at = pr_number(out, at, u256_shl_vartime(a, index));
+    return pr_number(out, at, u256_shr_vartime(a, index));
+  }
+  if op == 4 {
+    if b.count < 32 { return -1; }
+    return pr_put(out, 0, pow_check_vartime(b[32..<b.count], cast(u32) index, u256_from_hash_vartime(b[0..<32])));
+  }
+  return -1;
+}
+pr_put :: (out: [] u8, at: int, v: int) -> int {
+  for i: 0..<8 { out[at+i] = cast,trunc(u8) (v >> (8 * i)); }
+  return at + 8;
+}
+pr_number :: (out: [] u8, at: int, a: U256) -> int {
+  #assert u256_to_hash_vartime(a, out[at..<at+32]);
+  return at + 32;
+}
