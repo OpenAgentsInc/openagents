@@ -32,6 +32,12 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
   #assert !route.shared && route.tracked_legacy && route.profile == -1;
   #assert !render_adoption("5e-lab", "watchtower").tracked_legacy;
 }
+// 5E MMO (the SRD engine's battle in Everglade's look) draws with Everglade's passes until it has a catalog profile.
+#test "5E MMO is a tracked legacy consumer" {
+  route := render_adoption("5e-mmo", "fivemmo");
+  #assert !route.shared && route.tracked_legacy && route.profile == -1;
+  #assert !render_adoption("5e-mmo", "everglade").tracked_legacy;
+}
 // MetaHuman Lab (the human runtime's bench) draws with its own two passes until it has a catalog profile.
 #test "MetaHuman Lab is a tracked legacy consumer" {
   route := render_adoption("metahuman-lab", "metahumanlab");
@@ -53,6 +59,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c {
   }
   if slug == "anime-lab" && app == "animelab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "5e-lab" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "5e-mmo" && app == "fivemmo" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "metahuman-lab" && app == "metahumanlab" { return RenderAdoption.{tracked_legacy = true}; }
   return RenderAdoption.{};
 }

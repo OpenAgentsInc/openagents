@@ -1,0 +1,4 @@
+// 5E MMO's shaders (fivemmo.coax): Everglade's, every entry and binding as everglade.wgsl has them,
+// since the page draws Everglade's ground, city and people. build.sh writes
+// apps/openagents-web/fivemmo.wgsl from this with coax/web/wgsl-module.coax (fivemmo.module).
+#load "../../../verse/everglade/gpu.coax";

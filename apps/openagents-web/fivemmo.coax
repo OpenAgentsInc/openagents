@@ -1,0 +1,638 @@
+// 5E MMO, openagents.com/worlds/5e-mmo (unlisted): the SRD 5e battle as an MMO, in Everglade.
+// This page is Everglade's (everglade.coax): its ground, its city, its painterly light, its pack
+// and its people. On the green in the city's south-east corner a grid of 5-foot squares holds a
+// small fight: you and three casters against waves of six Skeletons, every one of them one of
+// Everglade's skinned people, dressed for their class. fivemmo-battle.coax runs the fight on the
+// SRD 5e engine (aethyr/rules/srd/); this file draws it: the bodies and their clips (idle, walk,
+// cast, slash, die), the weapons, the names and hit points over heads, and the HUD. The face
+// (fivemmo-face.c) walks you with aethyr/player.coax and hands this file the battle's numbers.
+// How your walking maps onto squares: realms/5e-mmo/index.md.
+//   coax/bin/coax test apps/openagents-web/fivemmo.coax --only "5E MMO"
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+#load "everglade.coax";
+
+// ---- the arena: 12 by 12 squares of 5 feet on the grass inside the south-east palisade
+
+MM_COLS :: 12; MM_ROWS :: 12;
+MM_SQ :: 1.524;                 // a 5-foot square, in metres
+MM_X0 :: 25.0; MM_Z0 :: -50.0;  // the grid's corner (square 0, 0), in Everglade's metres
+MM_N :: 10;                     // creatures: you, three casters, six Skeletons
+MM_ACTOR_FLOATS :: 12; MM_EV_FLOATS :: 8;   // as fivemmo-battle.coax writes them
+MM_NAME :: 24;
+// the engine's numbers the view reads (aethyr/rules/srd/engine.coax, spells.coax), kept to these
+MM_DRUID :: 0; MM_WIZARD :: 1; MM_WARLOCK :: 2; MM_BARBARIAN :: 3; MM_MONK :: 4; MM_MONSTER :: 5;
+MM_BARD :: 6; MM_CLERIC :: 7; MM_FIGHTER :: 8; MM_PALADIN :: 9; MM_RANGER :: 10; MM_ROGUE :: 11; MM_SORCERER :: 12;
+MM_CLASS :: [13] string.["DRUID", "WIZARD", "WARLOCK", "BARBARIAN", "MONK", "SKELETON",
+                         "BARD", "CLERIC", "FIGHTER", "PALADIN", "RANGER", "ROGUE", "SORCERER"];
+MM_ROSTER :: [12] int.[MM_DRUID, MM_WIZARD, MM_WARLOCK, MM_SORCERER, MM_BARD, MM_CLERIC,
+                       MM_FIGHTER, MM_PALADIN, MM_BARBARIAN, MM_MONK, MM_ROGUE, MM_RANGER];
+MM_EV_CAST :: 1; MM_EV_ATTACK :: 2; MM_EV_SAVE :: 3; MM_EV_DAMAGE :: 4; MM_EV_HEAL :: 5; MM_EV_CONDITION :: 6;
+MM_EV_DOWN :: 8; MM_EV_DEATH :: 9; MM_EV_ZONE :: 11; MM_EV_MISS :: 12; MM_EV_UP :: 14;
+MM_UP :: 1; MM_DEAD :: 2; MM_CONC :: 4; MM_ME :: 8; MM_TARGET :: 16; MM_RANGED :: 32;
+
+// ---- how each class looks: outfit, hair, dye, and what it carries
+
+WP_NONE :: 0; WP_SWORD_SHIELD :: 1; WP_STAFF :: 2; WP_BOW :: 3; WP_AXE :: 4; WP_DAGGER :: 5; WP_MACE_SHIELD :: 6; WP_ROD :: 7; WP_RAPIER :: 8; WP_BLADE :: 9;
+Look :: struct {
+  female: bool; outfit: int; hair: int; beard: bool; hood: bool; robe: bool;
+  skin: int; hr: f32; hg: f32; hb: f32;
+  dr: f32; dg: f32; db: f32; dw: f32;
+  weapon: int; gr: f32; gg: f32; gb: f32;   // and the glow its magic shows
+}
+look_of :: (klass: int, i: int) -> Look {
+  l := Look.{female = false, outfit = 0, hair = PART_HAIR_PARTED, skin = 1, hr = 0.2, hg = 0.1, hb = 0.04, dw = 0, weapon = WP_NONE, gr = 1, gg = 0.7, gb = 0.3};
+  if klass == MM_FIGHTER { l.outfit = 1; l.hair = PART_HAIR_BUZZED; l.beard = true; l.skin = 2; l.hr = 0.08; l.hg = 0.05; l.hb = 0.035; l.dr = 0.12; l.dg = 0.16; l.db = 0.3; l.dw = 1; l.weapon = WP_SWORD_SHIELD; }
+  else if klass == MM_PALADIN { l.outfit = 1; l.hair = PART_HAIR_PARTED; l.skin = 0; l.hr = 0.62; l.hg = 0.45; l.hb = 0.2; l.dr = 0.75; l.dg = 0.66; l.db = 0.38; l.dw = 1; l.weapon = WP_SWORD_SHIELD; l.gr = 1; l.gg = 0.92; l.gb = 0.6; }
+  else if klass == MM_WIZARD { l.robe = true; l.hair = PART_HAIR_LONG; l.beard = true; l.hr = 0.62; l.hg = 0.62; l.hb = 0.64; l.dr = 0.06; l.dg = 0.1; l.db = 0.42; l.dw = 1; l.weapon = WP_STAFF; l.gr = 1; l.gg = 0.55; l.gb = 0.2; }
+  else if klass == MM_CLERIC { l.female = true; l.robe = true; l.hair = PART_HAIR_BUNS; l.skin = 3; l.hr = 0.03; l.hg = 0.025; l.hb = 0.025; l.dr = 0.86; l.dg = 0.82; l.db = 0.64; l.dw = 1; l.weapon = WP_MACE_SHIELD; l.gr = 1; l.gg = 0.93; l.gb = 0.6; }
+  else if klass == MM_WARLOCK { l.hood = true; l.robe = true; l.hair = PART_HAIR_BUZZED; l.skin = 1; l.hr = 0.05; l.hg = 0.035; l.hb = 0.03; l.dr = 0.16; l.dg = 0.03; l.db = 0.28; l.dw = 1; l.weapon = WP_ROD; l.gr = 0.75; l.gg = 0.45; l.gb = 1; }
+  else if klass == MM_DRUID { l.female = true; l.outfit = 1; l.hood = true; l.hair = PART_HAIR_LONG; l.skin = 2; l.hr = 0.45; l.hg = 0.13; l.hb = 0.04; l.dr = 0.1; l.dg = 0.24; l.db = 0.06; l.dw = 1; l.weapon = WP_STAFF; l.gr = 0.55; l.gg = 1; l.gb = 0.45; }
+  else if klass == MM_SORCERER { l.female = true; l.robe = true; l.hair = PART_HAIR_LONG; l.skin = 0; l.hr = 0.45; l.hg = 0.08; l.hb = 0.03; l.dr = 0.42; l.dg = 0.04; l.db = 0.06; l.dw = 1; l.weapon = WP_NONE; l.gr = 1; l.gg = 0.5; l.gb = 0.15; }
+  else if klass == MM_BARD { l.hair = PART_HAIR_PARTED; l.skin = 3; l.hr = 0.06; l.hg = 0.04; l.hb = 0.03; l.dr = 0.04; l.dg = 0.26; l.db = 0.26; l.dw = 1; l.weapon = WP_RAPIER; l.gr = 1; l.gg = 0.6; l.gb = 0.9; }
+  else if klass == MM_BARBARIAN { l.hair = PART_HAIR_LONG; l.beard = true; l.skin = 1; l.hr = 0.32; l.hg = 0.12; l.hb = 0.04; l.dr = 0.3; l.dg = 0.14; l.db = 0.06; l.dw = 1; l.weapon = WP_AXE; }
+  else if klass == MM_MONK { l.female = true; l.hair = PART_HAIR_BUZZED_FEMALE; l.skin = 2; l.hr = 0.05; l.hg = 0.035; l.hb = 0.03; l.dr = 0.7; l.dg = 0.36; l.db = 0.04; l.dw = 1; l.weapon = WP_NONE; l.gr = 0.6; l.gg = 0.85; l.gb = 1; }
+  else if klass == MM_ROGUE { l.female = true; l.outfit = 1; l.hood = true; l.hair = PART_HAIR_BUNS; l.skin = 1; l.hr = 0.18; l.hg = 0.1; l.hb = 0.05; l.dr = 0.05; l.dg = 0.05; l.db = 0.06; l.dw = 1; l.weapon = WP_DAGGER; }
+  else if klass == MM_RANGER { l.outfit = 1; l.hood = true; l.hair = PART_HAIR_PARTED; l.skin = 1; l.weapon = WP_BOW; }
+  else if klass == MM_MONSTER {
+    // the Restless Dead: a pale bone tint over the peasant's rags, no hair
+    l.hair = -1; l.skin = 0; l.dr = 0.62; l.dg = 0.6; l.db = 0.52; l.dw = 1;
+    l.weapon = ifx i % 2 == 1 then WP_BOW else WP_BLADE;
+  }
+  return l;
+}
+MM_BONE :: [3] f32.[1.3, 1.24, 1.06];
+look_parts :: (l: Look, out: [] int) -> int {
+  n := 0;
+  out[n] = ifx l.outfit == 1 then (ifx l.female then PART_FEMALE_RANGER else PART_MALE_RANGER) else (ifx l.female then PART_FEMALE_PEASANT else PART_MALE_PEASANT); n += 1;
+  out[n] = ifx l.female then PART_FEMALE_HEAD else PART_MALE_HEAD; n += 1;
+  if l.hair >= 0 { out[n] = l.hair; n += 1; }
+  if l.beard && !l.female { out[n] = PART_BEARD; n += 1; }
+  if l.hood { out[n] = ifx l.female then PART_FEMALE_HOOD else PART_MALE_HOOD; n += 1; }
+  if l.robe { out[n] = ifx l.female then PART_FEMALE_ROBE else PART_MALE_ROBE; n += 1; }
+  return n;
+}
+
+// ---- the view's state: the face keeps it beside Everglade's
+
+Mmo :: struct {
+  started: bool;
+  t: f32;                                   // the view's clock
+  n: int;
+  sx: [MM_N] f32; sy: [MM_N] f32;           // each one's square, from the battle
+  hp: [MM_N] f32; hp_max: [MM_N] f32; temp: [MM_N] f32;
+  team: [MM_N] int; klass: [MM_N] int; flags: [MM_N] int; turn_at: [MM_N] f32; conc: [MM_N] int; speed: [MM_N] f32;
+  name: [MM_N * MM_NAME] u8; name_n: [MM_N] int;
+  // where each body stands and faces, drawn; what it plays
+  x: [MM_N] f32; z: [MM_N] f32; y: [MM_N] f32; yaw: [MM_N] f32; pace: [MM_N] f32; placed: [MM_N] bool;
+  shot: [MM_N] int; shot_t: [MM_N] f32;   // a clip played once (cast, slash), -1 none, and when it began
+  facing: [MM_N] int;                       // whom each turns to (-1: the nearest foe)
+  hp_shown: [MM_N] f32;
+  head: [MM_N] Point; hand: [MM_N] Point; hand_up: [MM_N] Point; offhand: [MM_N] Point;
+  clock: f32; beat: f32; wave: int; kills: int; over: bool;
+  me: int; target: int; queued: int;
+  pick: int = 6;
+  picks: [12] Box;
+  // the camera's drag, and where each body is on the screen (for a click or a tap on it)
+  down: bool;
+  scr_x: [MM_N] f32; scr_y: [MM_N] f32; scr_r: [MM_N] f32; scr_ok: [MM_N] bool;
+}
+
+mm_world :: (x: f32, y: f32) -> Point { return v3(f32(MM_X0) + (x + 0.5) * f32(MM_SQ), 0, f32(MM_Z0) + (y + 0.5) * f32(MM_SQ)); }
+// The square under a point in Everglade's metres, as x * 100 + y; -1 off the grid.
+mmo_square :: (x: f32, z: f32) -> int #export_c {
+  gx := cast(int) floor((x - f32(MM_X0)) / f32(MM_SQ)); gy := cast(int) floor((z - f32(MM_Z0)) / f32(MM_SQ));
+  gx = clamp_i(gx, 0, MM_COLS - 1); gy = clamp_i(gy, 0, MM_ROWS - 1);
+  return gx * 100 + gy;
+}
+// Where a body may stand: the grid's squares, a little in from their outer edge.
+mmo_hold :: (m: [] Mmo, x: f32, z: f32) -> Point #export_c {
+  e := 0.3f32;
+  return v3(clamp(x, f32(MM_X0) + e, f32(MM_X0) + f32(MM_COLS) * f32(MM_SQ) - e), 0, clamp(z, f32(MM_Z0) + e, f32(MM_Z0) + f32(MM_ROWS) * f32(MM_SQ) - e));
+}
+mmo_start_point :: (m: [] Mmo) -> Point #export_c { return mm_world(6, 9); }
+
+// The battle's numbers this frame (fivemmo-battle.coax mb_actors).
+mmo_take :: (s: [] Everglade, m: [] Mmo, a: [] f32, n: int, clock: f32, beat: f32, wave: int, kills: int, over: bool, me: int, target: int, queued: int) #export_c {
+  m[0].n = clamp_i(n, 0, MM_N);
+  for i: 0..<m[0].n {
+    o := i * MM_ACTOR_FLOATS;
+    was_team := m[0].team[i]; was_up := m[0].flags[i] & MM_UP != 0;
+    m[0].sx[i] = a[o]; m[0].sy[i] = a[o + 1];
+    m[0].hp[i] = a[o + 2]; m[0].hp_max[i] = a[o + 3]; m[0].temp[i] = a[o + 4];
+    m[0].team[i] = cast(int) a[o + 5]; m[0].klass[i] = cast(int) a[o + 6]; m[0].flags[i] = cast(int) a[o + 7];
+    m[0].turn_at[i] = a[o + 8]; m[0].conc[i] = cast(int) a[o + 9]; m[0].speed[i] = a[o + 10];
+    up := m[0].flags[i] & MM_UP != 0;
+    // a new wave's Skeleton (up again where one had fallen) walks in from its own square
+    if !m[0].placed[i] || (up && !was_up && m[0].team[i] == 2 && m[0].hp[i] >= m[0].hp_max[i]) {
+      w := mm_world(m[0].sx[i], m[0].sy[i]);
+      m[0].x[i] = w.x; m[0].z[i] = w.z; m[0].placed[i] = true; m[0].hp_shown[i] = m[0].hp[i];
+      m[0].yaw[i] = ifx m[0].team[i] == 2 then 0.0f32 else f32(PI);
+      m[0].shot[i] = -1; m[0].facing[i] = -1;
+      s[0].pose_of[i] = -1;
+    }
+  }
+  m[0].clock = clock; m[0].beat = beat; m[0].wave = wave; m[0].kills = kills; m[0].over = over;
+  m[0].me = me; m[0].target = target; m[0].queued = queued;
+}
+mmo_set_name :: (m: [] Mmo, i: int, name: string) #export_c {
+  if i < 0 || i >= MM_N { return; }
+  n := clamp_i(name.count, 0, MM_NAME);
+  for k: 0..<n { m[0].name[i * MM_NAME + k] = name[k]; }
+  m[0].name_n[i] = n;
+}
+mm_name :: (m: [] Mmo, i: int) -> string { return cast(string) m[0].name[i * MM_NAME..<i * MM_NAME + m[0].name_n[i]]; }
+
+// The pace the controller walks you at: the engine's squares a beat as metres a second, over
+// aethyr/walk.coax's walk (3.5 m/s). 0 when you can't move (Restrained, Paralyzed, down).
+mmo_pace :: (m: [] Mmo) -> f32 #export_c {
+  me := m[0].me;
+  if me < 0 || me >= m[0].n || m[0].flags[me] & MM_UP == 0 || m[0].beat <= 0 { return 0; }
+  feet := m[0].speed[me];
+  if feet <= 0 { return 0; }
+  squares := hi(floor(feet / 5 * m[0].beat / 6 + 0.5), 1);
+  return clamp(squares * f32(MM_SQ) / m[0].beat / 3.5, 0, 1);
+}
+// How far (in squares, the larger of across and along) your body has got from your square in the
+// battle; past 2.5 the face pulls you back to it.
+mmo_drift :: (m: [] Mmo, x: f32, z: f32) -> f32 #export_c {
+  me := m[0].me;
+  if me < 0 { return 0; }
+  w := mm_world(m[0].sx[me], m[0].sy[me]);
+  return hi(abs(x - w.x), abs(z - w.z)) / f32(MM_SQ);
+}
+mmo_home :: (m: [] Mmo) -> Point #export_c { me := clamp_i(m[0].me, 0, MM_N - 1); return mm_world(m[0].sx[me], m[0].sy[me]); }
+
+// The others' bodies for the walking controller, 7 numbers each (a capsule: two ends and a radius),
+// so you walk round them, not through them.
+mmo_bodies :: (s: [] Everglade, m: [] Mmo, out: [] f32) -> int #export_c {
+  n := 0;
+  for i: 0..<m[0].n {
+    if i == m[0].me || m[0].flags[i] & MM_DEAD != 0 || (n + 1) * 7 > out.count { continue; }
+    o := n * 7;
+    g := ground_at(s, m[0].x[i], m[0].z[i]);
+    out[o] = m[0].x[i]; out[o + 1] = 0.3; out[o + 2] = m[0].z[i];
+    out[o + 3] = m[0].x[i]; out[o + 4] = 1.6; out[o + 5] = m[0].z[i];
+    out[o + 6] = 0.38;
+    _ := g;
+    n += 1;
+  }
+  return n;
+}
+
+// What the battle told this frame (fivemmo-battle.coax mb_events): who casts and who strikes, so
+// their bodies play it, and whom they turn to.
+mmo_events :: (s: [] Everglade, m: [] Mmo, ev: [] f32, n: int) #export_c {
+  for e: 0..<n {
+    o := e * MM_EV_FLOATS;
+    if o + MM_EV_FLOATS > ev.count { break; }
+    kind := cast(int) ev[o]; spell := cast(int) ev[o + 1]; by := cast(int) ev[o + 2]; to := cast(int) ev[o + 3];
+    if by < 0 || by >= m[0].n { continue; }
+    if to >= 0 && to < m[0].n && to != by { m[0].facing[by] = to; }
+    if kind == MM_EV_CAST { start_shot(m, by, PEOPLE_SPELL); }
+    if (kind == MM_EV_ATTACK || kind == MM_EV_MISS) && spell < 0 && to >= 0 && to < m[0].n {
+      // a weapon: a cut in reach; a shot from further off draws as a cast does
+      far := hi(abs(m[0].sx[to] - m[0].sx[by]), abs(m[0].sy[to] - m[0].sy[by])) > 1.5;
+      start_shot(m, by, ifx far then PEOPLE_SPELL else PEOPLE_SLASH);
+    }
+  }
+}
+start_shot :: (m: [] Mmo, i: int, clip: int) {
+  // a second blow inside the first's swing doesn't start it over
+  if m[0].shot[i] == clip && m[0].t - m[0].shot_t[i] < 0.35 { return; }
+  m[0].shot[i] = clip; m[0].shot_t[i] = m[0].t;
+}
+
+// ---- the bodies, posed before Everglade's frame (everglade.coax people() leaves them be)
+
+mmo_nearest_foe :: (m: [] Mmo, i: int) -> int {
+  best := -1; bd := 1000000.0f32;
+  for j: 0..<m[0].n {
+    if j == i || m[0].team[j] == m[0].team[i] || m[0].flags[j] & MM_UP == 0 { continue; }
+    d := (m[0].x[j] - m[0].x[i]) * (m[0].x[j] - m[0].x[i]) + (m[0].z[j] - m[0].z[i]) * (m[0].z[j] - m[0].z[i]);
+    if d < bd { bd = d; best = j; }
+  }
+  return best;
+}
+
+MM_SLIDE :: 2.6;   // metres a second a body walks to its square at most
+mmo_pose :: (s: [] Everglade, m: [] Mmo, fx: f32, fy: f32, fz: f32, face: f32, speed: f32, dt: f32) #export_c {
+  if !s[0].started { everglade_start(s); }
+  m[0].t += dt;
+  s[0].cast_only = true;
+  for k: 0..<PEOPLE_PARTS { s[0].part_used[k] = 0; }
+  s[0].wv.arm_n = 0;
+  for i: 0..<m[0].n {
+    if i == m[0].me {
+      m[0].x[i] = fx; m[0].z[i] = fz; m[0].y[i] = fy; m[0].pace[i] = speed;
+      if speed < 0.2 { m[0].yaw[i] = turn_to(m[0].yaw[i], face_target(m, i, face), dt * 8); } else { m[0].yaw[i] = face; }
+    } else {
+      w := mm_world(m[0].sx[i], m[0].sy[i]);
+      dx := w.x - m[0].x[i]; dz := w.z - m[0].z[i];
+      d := sqrt(dx * dx + dz * dz);
+      step := lo(d, f32(MM_SLIDE) * dt);
+      dead := m[0].flags[i] & MM_UP == 0;
+      if d > 0.02 && !dead {
+        m[0].x[i] += dx / d * step; m[0].z[i] += dz / d * step;
+        m[0].yaw[i] = turn_to(m[0].yaw[i], yaw_of(dx, dz), dt * 10);
+        m[0].pace[i] = ifx dt > 0 then step / dt else 0.0f32;
+      } else {
+        m[0].pace[i] = 0;
+        if !dead { m[0].yaw[i] = turn_to(m[0].yaw[i], face_target(m, i, m[0].yaw[i]), dt * 6); }
+      }
+      m[0].y[i] = ground_at(s, m[0].x[i], m[0].z[i]);
+    }
+    if m[0].hp_shown[i] > m[0].hp[i] + m[0].temp[i] + 0.5 || m[0].hp[i] > m[0].hp_shown[i] { m[0].hp_shown[i] = m[0].hp[i]; }
+    pose_actor(s, m, i, dt);
+  }
+}
+turn_to :: (from: f32, to: f32, rate: f32) -> f32 {
+  d := wrap_angle(to - from);
+  return wrap_angle(from + clamp(d, -rate, rate));
+}
+// Whom a standing body turns to: the one it last struck or cast at, else the nearest foe.
+face_target :: (m: [] Mmo, i: int, keep: f32) -> f32 {
+  j := m[0].facing[i];
+  if j < 0 || j >= m[0].n || m[0].flags[j] & MM_UP == 0 { j = mmo_nearest_foe(m, i); }
+  if i == m[0].me && m[0].target >= 0 { j = m[0].target; }
+  if j < 0 { return keep; }
+  dx := m[0].x[j] - m[0].x[i]; dz := m[0].z[j] - m[0].z[i];
+  if dx * dx + dz * dz < 0.01 { return keep; }
+  return yaw_of(dx, dz);
+}
+
+// Creature i, shown i-th: its clip, its pose and colours into store 2, an instance of each part it
+// wears, and its weapon (Everglade's kit sword and shield; a staff, a bow and the rest are shapes,
+// drawn after the frame from where its hands are).
+pose_actor :: (s: [] Everglade, m: [] Mmo, i: int, dt: f32) {
+  l := look_of(m[0].klass[i], i);
+  rig := people_rig(s[0].people_rig[..], l.female);
+  at := RANGER_JOINTS * 12 + i * PERSON_ROWS * 4;
+  sk := s[0].poses[i..<i + 1];
+  if s[0].pose_of[i] != 1000 + i { s[0].poses[i] = Skin.{}; s[0].pose_of[i] = 1000 + i; }
+  pal := s[0].palette[at..<at + PEOPLE_JOINTS * 12];
+  sk[0].fade = 0.18;
+  step := ifx finite(dt) then hi(dt, 0) else 0.0f32;
+  down := m[0].flags[i] & MM_UP == 0;
+  clip := PEOPLE_IDLE; pace := 0.0f32;
+  if down { clip = PEOPLE_DIE; }
+  else if m[0].shot[i] >= 0 && m[0].t - m[0].shot_t[i] < PEOPLE_DURATION[m[0].shot[i]] - 0.08 {
+    clip = m[0].shot[i];
+    if sk[0].clip == clip && sk[0].time > m[0].t - m[0].shot_t[i] + 0.2 { sk[0].clip = PEOPLE_NOD; }   // struck again: from the top
+  }
+  else if m[0].pace[i] > 0.25 { clip = ifx m[0].pace[i] > 3.2 then PEOPLE_RUN else PEOPLE_WALK; pace = m[0].pace[i]; }
+  if clip == PEOPLE_DIE && sk[0].clip == PEOPLE_DIE {
+    // the fall's end held: they lie where they fell
+    step = clamp(step, 0, hi(PEOPLE_DURATION[PEOPLE_DIE] - 0.05 - sk[0].time, 0));
+  }
+  skin_advance(rig, sk, clip, pace, step);
+  skin_palette(rig, sk, pal);
+  h := at + PEOPLE_JOINTS * 12;
+  bone := m[0].klass[i] == MM_MONSTER;
+  for c: 0..<3 {
+    s[0].palette[h + c] = ifx bone then MM_BONE[c] else SKIN_TONE[l.skin * 3 + c];
+  }
+  s[0].palette[h + 4] = l.hr; s[0].palette[h + 5] = l.hg; s[0].palette[h + 6] = l.hb;
+  s[0].palette[h + 3] = 0; s[0].palette[h + 7] = 0;
+  s[0].palette[h + 8] = l.dr; s[0].palette[h + 9] = l.dg; s[0].palette[h + 10] = l.db; s[0].palette[h + 11] = l.dw;
+  x := m[0].x[i]; z := m[0].z[i]; y := m[0].y[i];
+  yaw := m[0].yaw[i];
+  c := cos(yaw); sn := sin(yaw);
+  hp := skin_joint(rig, sk, PEOPLE_HEAD);
+  m[0].head[i] = v3(c * hp.x + sn * hp.z + x, hp.y + y, -sn * hp.x + c * hp.z + z);
+  hand := watch_joint(rig, sk, PEOPLE_HAND_R_J);
+  m[0].hand[i] = add(v3(x, y, z), watch_world(add(hand.t, quat_rotate(hand.q, v3(0, 0.085, 0))), c, sn));
+  m[0].hand_up[i] = watch_world(quat_rotate(hand.q, v3(0, 0, 1)), c, sn);
+  lh := watch_joint(rig, sk, PEOPLE_HAND_L_J);
+  m[0].offhand[i] = add(v3(x, y, z), watch_world(lh.t, c, sn));
+  if s[0].pack_ready && !down {
+    if l.weapon == WP_SWORD_SHIELD || l.weapon == WP_MACE_SHIELD { arm_hand(s, rig, sk, x, y, z, yaw, l.weapon == WP_SWORD_SHIELD, true, 0.82); }
+    else if l.weapon == WP_BLADE { arm_hand(s, rig, sk, x, y, z, yaw, true, false, 0.62); }
+    else if l.weapon == WP_RAPIER { arm_hand(s, rig, sk, x, y, z, yaw, true, false, 0.74); }
+    else if l.weapon == WP_DAGGER { arm_hand(s, rig, sk, x, y, z, yaw, true, false, 0.42); }
+  }
+  rows := [12] f32.[c, 0, sn, x,   0, 1, 0, y,   -sn, 0, c, z];
+  parts: [FOLK_PARTS_MAX] int;
+  n := look_parts(l, parts[..]);
+  for p: 0..<n {
+    part := parts[p];
+    if s[0].part_count[part] <= 0 || s[0].part_used[part] >= PEOPLE_SHOWN { continue; }
+    o := (PEOPLE_AT + part * PEOPLE_SHOWN + s[0].part_used[part]) * OBJECT_FLOATS;
+    s[0].part_used[part] += 1;
+    for r: 0..<12 { s[0].objects[o + r] = rows[r]; }
+    s[0].objects[o + 12] = f32(s[0].part_word[part]);
+    s[0].objects[o + 13] = f32(RANGER_JOINTS * 3 + i * PERSON_ROWS);
+    s[0].objects[o + 14] = PERSON_MARK;
+    s[0].objects[o + 15] = f32(SHAPE_SKINNED + 8 * LOOK_KIT);
+  }
+}
+// The kit's sword in the right fist, out past the thumb (everglade-watch.coax watch_arm_guard's
+// drawn sword), sized; the shield on the left forearm, facing out.
+arm_hand :: (s: [] Everglade, r: SkinRig, sk: [] Skin, x: f32, y: f32, z: f32, yaw: f32, sword: bool, shield: bool, size: f32) {
+  c := cos(yaw); sn := sin(yaw);
+  at := v3(x, y, z);
+  up := v3(0, 1, 0);
+  if sword {
+    hand := watch_joint(r, sk, PEOPLE_HAND_R_J);
+    blade := watch_world(quat_rotate(hand.q, v3(0, 0, 1)), c, sn);
+    fingers := watch_world(quat_rotate(hand.q, v3(0, 1, 0)), c, sn);
+    grip := add(at, watch_world(add(hand.t, quat_rotate(hand.q, v3(0, 0.085, 0))), c, sn));
+    across := unit_or(cross(blade, fingers), v3(1, 0, 0));
+    edge := cross(across, blade);
+    watch_arm_put(s, group_of(M_SWORD), edge, blade, across, sub(grip, times(blade, 0.15 * size)), size);
+  }
+  if shield {
+    chest := watch_joint(r, sk, PEOPLE_CHEST_J);
+    lh := watch_joint(r, sk, PEOPLE_HAND_L_J);
+    la := watch_joint(r, sk, PEOPLE_FOREARM_L_J);
+    mid := mix(la.t, lh.t, 0.55);
+    out := unit_or(v3(mid.x - chest.t.x, 0, mid.z - chest.t.z), v3(1, 0, 0));
+    face := watch_world(out, c, sn);
+    side := unit_or(cross(up, face), v3(1, 0, 0));
+    centre := add(add(at, watch_world(mid, c, sn)), times(face, 0.07));
+    watch_arm_put(s, group_of(M_SHIELD), side, up, face, sub(centre, times(up, 0.31 * f32(WATCH_SHIELD_SIZE))), f32(WATCH_SHIELD_SIZE));
+  }
+}
+
+// ---- after Everglade's frame: the shapes it can't know of, its draws again, and the HUD
+
+// The shapes held in hand: staffs and their glowing heads, a rod, a bow, a greataxe, a mace.
+held_shapes :: (s: [] Everglade, m: [] Mmo) {
+  for i: 0..<m[0].n {
+    if m[0].flags[i] & MM_UP == 0 { continue; }
+    l := look_of(m[0].klass[i], i);
+    h := m[0].hand[i]; d := unit_or(m[0].hand_up[i], v3(0, 1, 0));
+    yaw := yaw_of(d.x, d.z); fl := sqrt(d.x * d.x + d.z * d.z);
+    tilt := atan2(fl, d.y);
+    if l.weapon == WP_STAFF {
+      // a staff stands upright in the fist, its head a little over the caster's
+      top := add(h, v3(0, 1.0, 0));
+      shape(s, SHAPE_CYLINDER, LOOK_WOOD, add(h, v3(0, 0.25, 0)), 0, 0, 0.035, 0.85, 0.035, 0.42, 0.28, 0.16);
+      shape(s, SHAPE_SPHERE, LOOK_FLAME, top, 0, 0, 0.09, 0.09, 0.09, l.gr, l.gg, l.gb);
+    } else if l.weapon == WP_ROD {
+      shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(h, times(d, 0.22)), yaw, tilt, 0.022, 0.24, 0.022, 0.12, 0.1, 0.14);
+      shape(s, SHAPE_SPHERE, LOOK_FLAME, add(h, times(d, 0.48)), 0, 0, 0.06, 0.06, 0.06, l.gr, l.gg, l.gb);
+    } else if l.weapon == WP_AXE {
+      shape(s, SHAPE_CYLINDER, LOOK_WOOD, add(h, times(d, 0.35)), yaw, tilt, 0.03, 0.55, 0.03, 0.4, 0.27, 0.15);
+      shape(s, SHAPE_BOX, LOOK_STONE, add(h, times(d, 0.78)), yaw, tilt, 0.04, 0.22, 0.3, 0.55, 0.56, 0.6);
+    } else if l.weapon == WP_MACE_SHIELD {
+      shape(s, SHAPE_CYLINDER, LOOK_WOOD, add(h, times(d, 0.2)), yaw, tilt, 0.025, 0.26, 0.025, 0.36, 0.25, 0.14);
+      shape(s, SHAPE_SPHERE, LOOK_STONE, add(h, times(d, 0.46)), 0, 0, 0.08, 0.08, 0.08, 0.6, 0.6, 0.62);
+    } else if l.weapon == WP_BOW {
+      // a longbow held upright in the left hand
+      o := m[0].offhand[i];
+      shape(s, SHAPE_BOX, LOOK_WOOD, add(o, v3(0, 0.05, 0)), m[0].yaw[i], 0, 0.03, 0.75, 0.05, 0.38, 0.24, 0.12);
+    }
+  }
+}
+
+// Everglade's frame built its shape draws before these shapes; its people's and the Ranger's
+// draws are made again here: the people's from this frame's parts, the Ranger never (you are one of
+// the people).
+mmo_finish :: (s: [] Everglade, m: [] Mmo, out: [] f32, u: [] f32) -> int #export_c {
+  if !s[0].started || u.count < UNIFORM_FLOATS { return 0; }
+  held_shapes(s, m);
+  for i: 0..<m[0].n {
+    sc := on_screen(u, v3(m[0].x[i], m[0].y[i] + 1.0, m[0].z[i]), s[0].width, s[0].height);
+    m[0].scr_ok[i] = sc.ok; m[0].scr_x[i] = sc.x; m[0].scr_y[i] = sc.y;
+    m[0].scr_r[i] = ifx sc.ok then 0.5 * s[0].height * 0.9 / hi(sc.w, 0.5) else 0.0f32;
+    if m[0].flags[i] & MM_DEAD != 0 && m[0].team[i] == 2 { continue; }
+    shadow(s, u, m[0].x[i], m[0].z[i], m[0].y[i], 0.5, 0.55);
+  }
+  for kind: 1..<5 { s[0].draws[kind * 4 + 3] = cast(u32) s[0].counts[kind]; }
+  s[0].draws[RANGER_DRAW * 4 + 3] = 0;
+  for k: 0..<PEOPLE_PARTS {
+    d := (PEOPLE_DRAW + k) * 4;
+    s[0].draws[d + 3] = cast(u32) (ifx s[0].part_count[k] > 0 then s[0].part_used[k] else 0);
+  }
+  n := mmo_hud(s, m, out, u, 0);
+  u[5] = f32(s[0].plate_n);
+  return n;
+}
+
+// ---- the HUD
+
+MM_RED :: [3] f32.[0.95, 0.3, 0.24];
+MM_GREEN :: [3] f32.[0.45, 0.9, 0.42];
+mmo_hud :: (s: [] Everglade, m: [] Mmo, out: [] f32, u: [] f32, at: int) -> int {
+  n := at;
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  gutter := 16 * k;
+  // names and hit points over heads, the far ones first so the near draw over them
+  order: [MM_N] int; dist: [MM_N] f32;
+  eye := s[0].sp.shot.eye;
+  for i: 0..<m[0].n { order[i] = i; dist[i] = length(sub(m[0].head[i], eye)); }
+  for a: 1..<m[0].n { j := a; while j > 0 && dist[order[j - 1]] < dist[order[j]] { t := order[j]; order[j] = order[j - 1]; order[j - 1] = t; j -= 1; } }
+  for q: 0..<m[0].n { n = plate_over(s, m, out, u, n, order[q], k); }
+  // the title, top left
+  cap := 11 * k; small := 7 * k;
+  title := "5E MMO";
+  wave: [40] u8;
+  wn := join_into(wave[..], "SRD 5E · WAVE ", "");
+  wn = put_digits(wave[..], wn, m[0].wave);
+  wn += join_into(wave[wn..<40], " · FALLEN ", "");
+  wn = put_digits(wave[..], wn, m[0].kills);
+  sub_line := cast(string) wave[0..<wn];
+  tw := hi(text_width(title, cap), text_width(sub_line, small));
+  tb := Box.{x0 = gutter, y0 = gutter, x1 = gutter + tw + 28 * k, y1 = gutter + cap + small + 34 * k};
+  plate(s, u, tb, 0.82, 0);
+  n = draw_text(out, n, title, gutter + 14 * k, gutter + 12 * k + cap, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  n = draw_text(out, n, sub_line, gutter + 14 * k, gutter + 22 * k + cap + small, small, GAP, SPACE, ink(k, 0.8, PARCH_R, PARCH_G, PARCH_B), false, false);
+  // your class, top right: twelve buttons (a new battle as that class)
+  n = class_bar(s, m, out, u, n, k, tb.y1);
+  if m[0].over {
+    line := "THE PARTY HAS FALLEN · A NEW BATTLE IN A MOMENT";
+    lw := text_width(line, 9 * k);
+    plate(s, u, Box.{x0 = (w - lw) / 2 - 18 * k, y0 = h * 0.3 - 26 * k, x1 = (w + lw) / 2 + 18 * k, y1 = h * 0.3 + 12 * k}, 0.85, 0);
+    n = draw_text(out, n, line, (w - lw) / 2, h * 0.3, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  }
+  return n;
+}
+// A name and a bar over creature i: red for a foe, green for a friend, gold for you; a ring under
+// your target.
+plate_over :: (s: [] Everglade, m: [] Mmo, out: [] f32, u: [] f32, at: int, i: int, k: f32) -> int {
+  n := at;
+  if m[0].flags[i] & MM_DEAD != 0 { return n; }
+  sc := on_screen(u, add(m[0].head[i], v3(0, 0.42, 0)), s[0].width, s[0].height);
+  if !sc.ok { return n; }
+  far := hi(sc.w, 1);
+  sz := clamp(14 / far, 0.55, 1.15) * k;
+  bw := 64 * sz; bh := 5 * sz;
+  x0 := sc.x - bw / 2; y0 := sc.y;
+  foe := m[0].team[i] != m[0].team[clamp_i(m[0].me, 0, MM_N - 1)];
+  you := i == m[0].me;
+  if s[0].plate_n < PLATES - 12 { plate(s, u, Box.{x0 = x0 - 2 * sz, y0 = y0 - 2 * sz, x1 = x0 + bw + 2 * sz, y1 = y0 + bh + 2 * sz}, 0.75, PLATE_SHADE); }
+  f := clamp01(m[0].hp_shown[i] / hi(m[0].hp_max[i], 1));
+  r := ifx foe then MM_RED[0] else MM_GREEN[0]; g := ifx foe then MM_RED[1] else MM_GREEN[1]; b := ifx foe then MM_RED[2] else MM_GREEN[2];
+  if you { r = f32(GOLD_R); g = f32(GOLD_G); b = f32(GOLD_B); }
+  if f > 0.001 && lit(out, n, x0, y0 + bh / 2, x0 + bw * f, y0 + bh / 2, bh * 0.45, 0.95, 0.4 * sz, r, g, b, 0) { n += 6; }
+  if m[0].temp[i] > 0 {
+    tf := clamp01(m[0].temp[i] / hi(m[0].hp_max[i], 1));
+    if lit(out, n, x0, y0 - 2 * sz, x0 + bw * tf, y0 - 2 * sz, 0.9 * sz, 0.9, 0.3 * sz, 0.7, 0.8, 0.95, 0) { n += 6; }
+  }
+  name := ifx you then "YOU" else mm_name(m, i);
+  cap := 6.5 * sz;
+  nw := text_width(name, cap);
+  light := ifx i == m[0].target then 1.0f32 else 0.82f32;
+  n = draw_text(out, n, name, sc.x - nw / 2, y0 - 5 * sz, cap, GAP, SPACE, ink(k, light, ifx foe then 1.0f32 else f32(PARCH_R), ifx foe then 0.72f32 else f32(PARCH_G), ifx foe then 0.62f32 else f32(PARCH_B)), false, false);
+  if i == m[0].target {
+    // your target: a gold mark either side of its bar
+    if lit(out, n, x0 - 9 * sz, y0 + bh / 2, x0 - 5 * sz, y0 + bh / 2, 1.2 * sz, 1, 0.8 * sz, f32(GOLD_R), f32(GOLD_G), f32(GOLD_B), 0) { n += 6; }
+    if lit(out, n, x0 + bw + 5 * sz, y0 + bh / 2, x0 + bw + 9 * sz, y0 + bh / 2, 1.2 * sz, 1, 0.8 * sz, f32(GOLD_R), f32(GOLD_G), f32(GOLD_B), 0) { n += 6; }
+  }
+  return n;
+}
+MM_PICK_NAME :: [12] string.["DRUID", "WIZARD", "WARLOCK", "SORCERER", "BARD", "CLERIC", "FIGHTER", "PALADIN", "BARBARIAN", "MONK", "ROGUE", "RANGER"];
+class_bar :: (s: [] Everglade, m: [] Mmo, out: [] f32, u: [] f32, at: int, k: f32, top: f32) -> int {
+  n := at;
+  w := s[0].width;
+  gutter := 16 * k;
+  ph := phone(s);
+  cap := (ifx ph then 6.0f32 else 6.5f32) * k;
+  bh := 24 * k;
+  // a row along the top right on a desk; on a phone, two rows of six under the title
+  per := ifx ph then 6 else 12;
+  bw: [12] f32;
+  total := 0.0f32;
+  for i: 0..<per { bw[i] = text_width(MM_PICK_NAME[i], cap) + 16 * k; total += bw[i] + 4 * k; }
+  for r: 0..<(12 / per) {
+    x := ifx ph then gutter else w - gutter - total;
+    y := ifx ph then top + 8 * k + f32(r) * (bh + 4 * k) else gutter;
+    row_w := 0.0f32;
+    for c: 0..<per { row_w += text_width(MM_PICK_NAME[r * per + c], cap) + 16 * k + 4 * k; }
+    if ph { x = gutter; }
+    for c: 0..<per {
+      i := r * per + c;
+      cw := text_width(MM_PICK_NAME[i], cap) + 16 * k;
+      b := Box.{x0 = x, y0 = y, x1 = x + cw, y1 = y + bh};
+      m[0].picks[i] = b;
+      on := i == m[0].pick;
+      plate(s, u, b, 0.82, ifx on then 2.0f32 else 1.0f32);
+      n = draw_text(out, n, MM_PICK_NAME[i], x + 8 * k, y + bh / 2 + cap / 2, cap, GAP, SPACE, ink(k, ifx on then 1.0f32 else 0.75f32, GOLD_R, GOLD_G, GOLD_B), false, false);
+      x += cw + 4 * k;
+    }
+  }
+  return n;
+}
+
+// ---- input: the face asks what a key or a press means here
+
+MM_KEY_TAB :: -15;   // host.js's Tab
+MM_DO_NONE :: 0; MM_DO_SLOT :: 100; MM_DO_TAB :: 200; MM_DO_PICK :: 300; MM_DO_AIM :: 400;
+// A key down: the hotbar's 1 to 9 (MM_DO_SLOT + slot), Tab (the next foe), the camera's + and -,
+// and the walking keys (everglade.coax hold_bit). 0: not used, 1: used here.
+mmo_key :: (s: [] Everglade, m: [] Mmo, key: int, mods: int) -> int #export_c {
+  if !s[0].started { everglade_start(s); }
+  if key >= '1' && key <= '9' { return MM_DO_SLOT + key - '1'; }
+  if key == MM_KEY_TAB || key == 't' || key == 'T' { return MM_DO_TAB; }   // Tab, or T where the page's own Tab moves focus
+  if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return 1; }
+  if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return 1; }
+  b := hold_bit(key);
+  if b == 0 || b == HOLD_RUN || b == HOLD_JUMP || b == HOLD_DIVE { return 0; }
+  s[0].held = s[0].held | b;
+  return 1;
+}
+mmo_key_up :: (s: [] Everglade, key: int) -> bool #export_c {
+  b := hold_bit(key);
+  if b == 0 { return false; }
+  if s[0].held & b != 0 { s[0].held = s[0].held - b; }
+  return true;
+}
+// A press: a class button (MM_DO_PICK + its index), else (a click, not a drag) a creature under it
+// (MM_DO_AIM + its index); a mouse drag turns the camera. 0: not used (a finger: the face's sticks).
+mmo_pointer :: (s: [] Everglade, m: [] Mmo, x: f32, y: f32, phase: int, kind: int, id: int) -> int #export_c {
+  if !s[0].started { everglade_start(s); }
+  if phase == 0 {
+    for i: 0..<12 { if in_box(m[0].picks[i], x, y) { return MM_DO_PICK + i; } }
+  }
+  if kind != 0 {
+    s[0].touch = true;
+    if phase == 0 { j := mmo_pick_at(s, m, x, y); if j >= 0 { return MM_DO_AIM + j; } }
+    return 0;
+  }
+  k := hi(s[0].dpr, 0.5);
+  if phase == 0 { s[0].drag_on = true; s[0].drag_id = id; s[0].drag_x = x; s[0].drag_y = y; m[0].down = true; return 1; }
+  if !s[0].drag_on || id != s[0].drag_id { return 0; }
+  if phase == 1 {
+    s[0].look_yaw -= (x - s[0].drag_x) / k * f32(LOOK_DRAG);
+    s[0].look_pitch -= (y - s[0].drag_y) / k * f32(LOOK_DRAG);
+    if abs(x - s[0].drag_x) + abs(y - s[0].drag_y) > 3 * k { m[0].down = false; }
+    s[0].drag_x = x; s[0].drag_y = y;
+    return 1;
+  }
+  s[0].drag_on = false;
+  if phase == 2 && m[0].down { m[0].down = false; j := mmo_pick_at(s, m, x, y); if j >= 0 { return MM_DO_AIM + j; } }
+  m[0].down = false;
+  return 1;
+}
+// The creature drawn nearest a point on the screen, within a body's width of it, or -1.
+mmo_pick_at :: (s: [] Everglade, m: [] Mmo, x: f32, y: f32) -> int {
+  best := -1; bd := 1000000.0f32;
+  k := hi(s[0].dpr, 0.5);
+  for i: 0..<m[0].n {
+    if m[0].flags[i] & MM_UP == 0 || i == m[0].me || !m[0].scr_ok[i] { continue; }
+    dx := x - m[0].scr_x[i]; dy := y - m[0].scr_y[i];
+    reach := hi(m[0].scr_r[i], 18 * k);
+    d := dx * dx + dy * dy;
+    if abs(dx) < reach && abs(dy) < reach * 2.2 && d < bd { bd = d; best = i; }
+  }
+  return best;
+}
+mmo_set_pick :: (m: [] Mmo, pick: int) #export_c { m[0].pick = clamp_i(pick, 0, 11); for i: 0..<MM_N { m[0].placed[i] = false; } }
+// The hash: #class=NAME picks your class (one of the twelve, by its name).
+mmo_hash_pick :: (hash: string) -> int #export_c {
+  for i: 0..<12 {
+    nm := MM_PICK_NAME[i];
+    want := 6 + nm.count;
+    if hash.count < want { continue; }
+    alike := true;
+    for c: 0..<want {
+      ch := hash[c];
+      if ch >= 'a' && ch <= 'z' { ch = ch - 32; }
+      ex := ifx c < 6 then "CLASS="[c] else nm[c - 6];
+      if ch != ex { alike = false; break; }
+    }
+    if alike { return i; }
+  }
+  return -1;
+}
+
+// ---- checks
+
+#test "5E MMO: a square under every point on the grid, and the hold keeps you on it" #steps 1000000 {
+  #assert mmo_square(f32(MM_X0) + 0.1, f32(MM_Z0) + 0.1) == 0;
+  #assert mmo_square(f32(MM_X0) + 3.5 * f32(MM_SQ), f32(MM_Z0) + 7.2 * f32(MM_SQ)) == 307;
+  #assert mmo_square(-500, 500) == 11;
+  m: [1] Mmo;
+  p := mmo_hold(m[..], 0, 0);
+  #assert p.x > f32(MM_X0) && p.z < f32(MM_Z0) + f32(MM_ROWS) * f32(MM_SQ);
+  w := mm_world(6, 9);
+  #assert mmo_square(w.x, w.z) == 609;
+}
+
+#test "5E MMO: the pace is the engine's squares a beat: 30 feet on a 1.5-second beat walks 2 squares" #steps 1000000 {
+  m: [1] Mmo;
+  m[0].n = 1; m[0].me = 0; m[0].flags[0] = MM_UP; m[0].speed[0] = 30; m[0].beat = 1.5;
+  #assert abs(mmo_pace(m[..]) - 2.0 * f32(MM_SQ) / 1.5 / 3.5) < 0.001;
+  m[0].speed[0] = 0;
+  #assert mmo_pace(m[..]) == 0;
+  m[0].speed[0] = 30; m[0].flags[0] = 0;
+  #assert mmo_pace(m[..]) == 0;
+}
+
+#test "5E MMO: every class has a look, and the Skeletons wear bone" #steps 2000000 {
+  parts: [FOLK_PARTS_MAX] int;
+  for k: 0..<12 {
+    l := look_of(MM_ROSTER[k], 0);
+    n := look_parts(l, parts[..]);
+    #assert n >= 2 && n <= FOLK_PARTS_MAX;
+  }
+  sk := look_of(MM_MONSTER, 1);
+  #assert sk.hair < 0 && sk.weapon == WP_BOW && look_of(MM_MONSTER, 0).weapon == WP_BLADE;
+  #assert mmo_hash_pick("class=wizard") == 1 && mmo_hash_pick("CLASS=RANGER") == 11 && mmo_hash_pick("map") < 0;
+}

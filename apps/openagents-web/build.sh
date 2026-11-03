@@ -80,6 +80,10 @@ garden=$!
 "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
   "$a/player.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax" &
 everglade=$!
+# /worlds/5e-mmo: the SRD 5e battle in Everglade (fivemmo.coax on everglade.coax), the battle its own unit.
+"$here/../../coax/web/wasm.sh" "$here/fivemmo.coax" "$here/fivemmo-face.c" "$here/build/fivemmo.wasm" \
+  "$a/player.coax" "$m/grid.coax" "$m/everglade/river.coax" "$here/fivemmo-battle.coax" &
+fivemmo=$!
 # /worlds/fairy-forest: the park (verse/fairy-forest/forest.coax), with the player, thumbs and its stream (verse/fairy-forest/stream.coax).
 "$here/../../coax/web/wasm.sh" "$here/fairy.coax" "$here/fairy-face.c" "$here/build/fairy.wasm" \
   "$a/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" "$here/../../coax/lib/qr/qr-memory.coax" &
@@ -259,6 +263,7 @@ wait "$speedrunhud"
 wait "$belt"
 wait "$orbitleague"
 wait "$everglade"
+wait "$fivemmo"
 wait "$fairy"
 wait "$villa"
 wait "$animelab"

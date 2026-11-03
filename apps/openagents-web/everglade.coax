@@ -355,6 +355,7 @@ Everglade :: struct {
   feet: Point; face: f32; act: int;
   above: bool;              // the map view: the camera over the city
   paint_only: bool;         // a hash ending "+paint" (the style check): the painting without the names over the world
+  cast_only: bool;          // another world poses the people (5E MMO, fivemmo.coax): the town's folk and watch stay out
   lift: f32;                // eased toward 1 in the map view, 0 at your shoulder
   sink: f32;                // eased toward 1 while you dive: the camera follows you under
   // the weather (verse/water-weather.coax, W9): the zone's schedule at the world tick, from the
@@ -2588,6 +2589,7 @@ forest :: (s: [] Everglade, u: [] f32, eye: Point) {
 // PEOPLE_SHOWN at most, are posed and drawn, a part an instance. The cats
 // are small and round.
 people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
+  if s[0].cast_only { s[0].shown_n = 0; return; }   // the poses, parts and arms are that world's, set before the frame
   for k: 0..<PEOPLE_PARTS { s[0].part_used[k] = 0; }
   for i: 0..<EG_SPOTS { s[0].head_on[i] = false; }
   for i: 0..<WATCH_ACTORS { s[0].wv.head_on[i] = false; }

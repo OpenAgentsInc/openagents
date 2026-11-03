@@ -367,6 +367,21 @@
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
         "assets": ["particles:/fivelab-fx.wgsl"]
       } },
+    { "id": "fivemmo", "name": "5E MMO", "kind": "open", "listed": false, "orbit": { "r": 0.46, "a": 2.4, "size": 0.02 },
+      "realm": {
+        "slug": "5e-mmo",
+        "style": "painterly",
+        "clock": "fixed:0.5",
+        "ruleset": "srd5",
+        "title": "5E MMO",
+        "description": "5E MMO, a Verse world in the browser: play one SRD 5e hero with three casters against waves of skeletons on a green in Everglade, with a hotbar of your class's spells and features.",
+        "share": "Play one SRD 5e hero with three casters against waves of skeletons in Everglade, a hotbar of your class's spells and features.",
+        "alt": "5E MMO: a party of four casting spells at skeletons on a green in Everglade",
+        "module": "fivemmo",
+        "slot": "5e-mmo",
+        "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
+        "assets": ["pack:/realms/everglade/assets/everglade.pack", "particles:/everglade-fx.wgsl"]
+      } },
     { "id": "metahumanlab", "name": "METAHUMAN LAB", "kind": "open", "listed": false, "orbit": { "r": 0.38, "a": 2.7, "size": 0.02 },
       "realm": {
         "slug": "metahuman-lab",

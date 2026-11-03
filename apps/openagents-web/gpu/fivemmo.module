@@ -1,0 +1,3 @@
+--vertices eg_bg_vs,eg_scene_vs,eg_shadow_vs,eg_fx_vs,eg_water_vs,eg_grass_vs
+--fragments eg_bg_fs,eg_shadow_fs,eg_scene_fs,eg_fx_fs,eg_water_transmit_fs,eg_water_emit_fs,eg_bloom_fs,eg_post_fs,eg_grass_fs
+--bindings verse/everglade/gpu.bindings --strip eg_
