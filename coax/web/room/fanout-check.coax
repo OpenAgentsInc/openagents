@@ -95,20 +95,31 @@ fc_group :: (site: string, bots: int, seconds: int, realm: string, group: int) -
     while !sat && rs_now() - t0 < 10000 && c[i].h >= 0 {
       if relay_conn_poll(c[i..<i + 1], 50) == RC_TEXT && rs_starts(cast(string) c[i].text[0..<c[i].text_n], "y ") { sat = true; }
     }
-    if sat { print("sat % % % %\n", id, cast(string) rb[0..<rn], cast(string) sb[0..<sn], cast(string) pb[0..<pn]); }
+    if sat {
+      hb: [64] u8; hn := rs_int(hb[..], rs_put(hb[..], 0, "H 1 ranger.0.0.0 druid 0 Fan "), id);
+      r := relay_conn_send(c[i..<i + 1], cast(string) hb[0..<hn]);
+      print("sat % % % %\n", id, cast(string) rb[0..<rn], cast(string) sb[0..<sn], cast(string) pb[0..<pn]);
+    }
     else { print("failed % seat\n", id); }
   }
   print("seated\n");
-  // held: each pings the clock every 2 s (a socket not heard for 20 s is closed) and reads what comes
-  t0 := rs_now(); last := 0;
+  // held: each plays as a page does, an input every 1/30 s (I: walking, turning a little), and reads
+  // what comes; the clock is pinged every 2 s
+  t0 := rs_now(); last := 0; seq := 0; next := rs_now();
   while rs_now() - t0 < seconds * 1000 {
+    if rs_now() >= next {
+      next += 33; seq += 1;
+      m: [64] u8; mk := rs_int(m[..], rs_put(m[..], 0, "I "), seq);
+      mk = rs_put(m[..], mk, ifx (seq / 60) % 2 == 0 then " 0 100 0 0 0 0" else " 30 100 0 0 0 0");
+      for i: 0..<bots { if c[i].h >= 0 { r := relay_conn_send(c[i..<i + 1], cast(string) m[0..<mk]); } }
+    }
     if rs_now() - last >= 2000 {
       last = rs_now();
       m: [32] u8; mk := rs_int(m[..], rs_put(m[..], 0, "t "), last);
       for i: 0..<bots { if c[i].h >= 0 { r := relay_conn_send(c[i..<i + 1], cast(string) m[0..<mk]); } }
     }
     for i: 0..<bots { if c[i].h >= 0 { while relay_conn_poll(c[i..<i + 1], 0) == RC_TEXT {} } }
-    proc_sleep(20);
+    proc_sleep(5);
   }
   for i: 0..<bots { if c[i].h >= 0 { r := relay_conn_close(c[i..<i + 1], 1000); } }
   print("left\n");
@@ -159,6 +170,22 @@ tool_main :: () -> int #export_c {
     if st == 200 && seated >= players { proc_sleep(6000); st = fc_http(w[..], "GET", cast(string) u[0..<k], "", "", body[..], bn[..]); ln = rs_put(lb[..], 0, cast(string) body[0..<bn[0]]); if ln < 0 { ln = 0; } break; }
   }
   listed := cast(string) lb[0..<ln];
+  // each shard's own word on its tick while the bots play (GET /api/room/sK/health)
+  hl: [4096] u8; hln := 0;
+  for sh: 1..<7 {
+    key := "\"shard\":";
+    used := false;
+    for i: 0..<listed.count { if i + key.count < listed.count && listed[i..<i + key.count] == key && rs_num(listed[i + key.count..<listed.count]) == sh { used = true; } }
+    if !used { continue; }
+    hk := rs_int(u[..], rs_put(u[..], rs_put(u[..], 0, site), "/api/room/s"), sh); hk = rs_put(u[..], hk, "/health");
+    hst := fc_http(w[..], "GET", cast(string) u[0..<hk], "", "", body[..], bn[..]);
+    hbody := cast(string) body[0..<bn[0]];
+    while hbody.count > 0 && hbody[hbody.count - 1] == '\n' { hbody = hbody[0..<hbody.count - 1]; }
+    if hln > 0 { hln = rs_put(hl[..], hln, ","); }
+    hln = rs_put(hl[..], hln, "\""); hln = rs_put(hl[..], hln, hbody); hln = rs_put(hl[..], hln, "\"");
+    if hln < 0 { hln = 0; }
+  }
+  k = rs_put(u[..], rs_put(u[..], rs_put(u[..], 0, site), "/api/playtest/rooms/"), realm);
   // the bots' own word: which instance and shard each sat in
   sats: [FC_MAX] FcSat; sat_n := 0; failed := 0;
   line: [512] u8;
@@ -213,7 +240,7 @@ tool_main :: () -> int #export_c {
   if !closed { ok = false; tool_errln("fanout-check: an instance didn't close after its bots left"); }
   print("{\"realm\":\"%\",\"players\":%,\"seated\":%,\"failed\":%,\"shards\":[", realm, players, sat_n, failed);
   for r: 0..<rooms { if r > 0 { print(","); } print("%", shards[r]); }
-  print("],\"listed\":%,\"closed\":%}\n%\n", cast(string) lb[0..<ln], ifx closed then "true" else "false", ifx ok then "fans out" else "fails");
+  print("],\"health\":[%],\"listed\":%,\"closed\":%}\n%\n", cast(string) hl[0..<hln], cast(string) lb[0..<ln], ifx closed then "true" else "false", ifx ok then "fans out" else "fails");
   return ifx ok then 0 else 1;
 }
 rs_ends :: (t: string, end: string) -> bool { return t.count >= end.count && t[t.count - end.count..<t.count] == end; }
