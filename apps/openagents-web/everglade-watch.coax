@@ -489,6 +489,8 @@ watch_spears_draw :: (s: [] Everglade) {
 watch_rebuilt :: (s: [] Everglade) -> int {
   everglade_guard_invalidate(s); s[0].guard_ai.generation += 1;
   if !s[0].wv.started { return 0; }
+  // R also clears your WANTED stars: the watch stands down and goes back to its posts
+  watch_stand_down(watch_w(s));
   return watch_restore(watch_w(s));
 }
 // ---- damage numbers
@@ -704,4 +706,14 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
     for n: 0..<2 { #assert cast(int) g[0].objects[(SLOT_AT[SHAPE_SPHERE] + balls + n) * OBJECT_FLOATS + 15] / 8 != LOOK_FLAME; }
     g[0].counts[SHAPE_BOX] = boxes; g[0].counts[SHAPE_SPHERE] = balls;
   }
+}
+
+#test "watch: R (the town stands again) also clears your WANTED stars" #steps 337000000 {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  watch_page_start(g[..]);
+  w := watch_w(g[..]);
+  w[0].wanted = true; w[0].level = 5; w[0].heat = 40;
+  _ := watch_rebuilt(g[..]);
+  #assert !w[0].wanted && w[0].level == 0 && w[0].heat == 0;
 }
