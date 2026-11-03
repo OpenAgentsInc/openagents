@@ -234,8 +234,10 @@ tool_main :: () -> int #export_c {
     a3 := ok && r[0].status == 2;
     ok = run(cli, "--capture|fixture|--words|Coax", bar(kb[..], fixture, "", "", ""), false, "", -1, r[..]);
     a4 := ok && r[0].status == 2;
+    ok = run(cli, "--capture|fixture|--terms|/nonexistent/terms.tsv", bar(kb[..], fixture, "", "", ""), false, "", -1, r[..]);
+    a5 := ok && r[0].status == 2;
     ok = run(cli, "--capture|fixture|clip.wav", bar(kb[..], fixture, "", "", ""), false, "", -1, r[..]);
-    check(t[..], "usage: bad seconds, foreign backend, no fixture, Whisper options and a file are refused", r[..], a1 && a2 && a3 && a4 && ok && r[0].status == 2);
+    check(t[..], "usage: bad seconds, foreign backend, no fixture, Whisper options, unreadable terms and a file are refused", r[..], a1 && a2 && a3 && a4 && a5 && ok && r[0].status == 2);
   }
   if model != "" {
     md: [1300] u8; mdir := join2("OPENAGENTS_PARAKEET_MODEL=", model, md[..]);
@@ -248,6 +250,22 @@ tool_main :: () -> int #export_c {
       gpu_refused := r[0].status == 1 && has(out, "\"error\":\"model\",\"message\":\"NVIDIA CUDA is unavailable");
       check(t[..], "gpu-linux: a named GPU never falls back to the CPU", r[..], ok && (tool_os() == TOOL_MAC || gpu_ok || gpu_refused));
       if gpu_ok { print("  %", out); }
+    }
+    // GitHub #12670: a vocabulary is admitted by the model before the input
+    // opens; its result keeps the recognized words as raw_text.
+    if has("terms-gpu", only) || only == "" {
+      tf: [4300] u8; terms := fs_join(root, "apps/shared/dictation-terms.tsv", tf[..]);
+      ta: [4400] u8; targs := join2("--capture|fixture|--json|--device|gpu|--terms|", terms, ta[..]);
+      ok := run(cli, targs, bar(kb[..], fixture, stop, mdir, ""), false, "", -1, r[..]);
+      out = cast(string) r[0].out[0..<r[0].out_n];
+      check(t[..], "terms-gpu: the vocabulary loads, the clip is unchanged, raw_text is kept", r[..], ok && (tool_os() == TOOL_MAC ||
+        (r[0].status == 0 && has(out, "\"text\":\"Wait, stop.\",\"raw_text\":\"Wait, stop.\",\"terms\":22,\"exit\":0,"))));
+      bf: [1200] u8; badf := fs_join(tmp, "bad-terms.tsv", bf[..]); wrote := fs_write(badf, "Coax\nRTX 4080\n");
+      tb2: [4400] u8; bargs := join2("--capture|fixture|--device|gpu|--terms|", badf, tb2[..]);
+      ok = run(cli, bargs, bar(kb[..], fixture, stop, mdir, ""), false, "", -1, r[..]);
+      err = cast(string) r[0].err[0..<r[0].err_n];
+      check(t[..], "terms-bad: a malformed vocabulary names its line, nothing is heard", r[..], ok && (tool_os() == TOOL_MAC ||
+        (wrote && r[0].status == 2 && r[0].out_n == 0 && has(err, "has a malformed term (line 2)"))));
     }
     if tool_os() != TOOL_MAC {
       pb: [8192] u8; pb2: [8192] u8; path := join2("PATH=", ndir, pb[..]);

@@ -1,0 +1,51 @@
+ok   final-json: one final object, exact bytes, ticketed text (exit 0, 51 ms)
+ok   final-text: stdout is only the text (exit 0, 47 ms)
+ok   format-code: formatted text, raw_text kept, no send (exit 0, 41 ms)
+ok   format-code-text: stdout is the formatted draft (exit 0, 57 ms)
+ok   format-plain: without --format the transcript is untouched (exit 0, 49 ms)
+ok   format-bad: an unknown format is a usage error (exit 2, 22 ms)
+ok   events: status lines then one final, no partial text (exit 0, 42 ms)
+ok   seconds: --seconds 1 stops by itself, with the 200 ms tail (exit 0, 42 ms)
+ok   cap: 60 s cap, three exact segments, joined once each (exit 0, 89 ms)
+ok   silence: no speech, no recognition call, exit 9 (exit 9, 34 ms)
+ok   tap: a 200 ms hold is too short, nothing on stdout (exit 9, 33 ms)
+ok   cancel-script: cancelled, no text, exit 130 (exit 130, 14 ms)
+ok   cancel-escape: Escape on stdin cancels while waiting for Enter (exit 130, 65 ms)
+ok   cancel-signal: SIGINT cancels, exit 130 (exit 130, 518 ms)
+ok   start-enter: explicit start keeps a 450 ms pre-roll (exit 0, 53 ms)
+ok   fault-permission (exit 4, 33 ms)
+ok   fault-device (exit 6, 28 ms)
+ok   fault-program (exit 8, 16 ms)
+ok   fault-stall (exit 1, 19 ms)
+ok   fault-ended (exit 1, 21 ms)
+ok   fault-format (exit 1, 105 ms)
+ok   fault-recognition (exit 1, 61 ms)
+ok   model-missing: exit 6 before any input opens (exit 6, 16 ms)
+ok   model-bad: an unreadable model is a model error, exit 1 (exit 1, 32 ms)
+ok   usage: bad seconds, foreign backend, no fixture, Whisper options, unreadable terms and a file are refused (exit 2, 14 ms)
+FAIL gpu-linux: a named GPU never falls back to the CPU (exit 1, 5230 ms)
+  stdout: {"schema":"openagents.dictation.v1","type":"error","error":"model","message":"NVIDIA CUDA could not take the weights: allocate Parakeet device buffer: cuMemAlloc failed: CUDA error 2 (out of memory)","exit":1,"recognizer":"parakeet","model":"parakeet-tdt-0.6b-v3","revision":"541d1f99c6b0c3cd0b11a95167540bb8edefd82b","device":"gpu","capture":"fixture"}
+
+  stderr: 
+FAIL terms-gpu: the vocabulary loads, the clip is unchanged, raw_text is kept (exit 1, 8268 ms)
+  stdout: {"schema":"openagents.dictation.v1","type":"error","error":"model","message":"NVIDIA CUDA could not take the weights: allocate Parakeet device buffer: cuMemAlloc failed: CUDA error 2 (out of memory)","exit":1,"recognizer":"parakeet","model":"parakeet-tdt-0.6b-v3","revision":"541d1f99c6b0c3cd0b11a95167540bb8edefd82b","device":"gpu","capture":"fixture"}
+
+  stderr: 
+FAIL terms-bad: a malformed vocabulary names its line, nothing is heard (exit 1, 6680 ms)
+  stdout: 
+  stderr: openagents: dictation model error: NVIDIA CUDA could not take the weights: allocate Parakeet device buffer: cuMemAlloc failed: CUDA error 2 (out of memory)
+
+ok   recorder-missing: no pw-record is exit 8 (exit 8, 6956 ms)
+ok   recorder-ends: a recorder that exits is a capture error (exit 1, 6653 ms)
+ok   recorder-zeros: the pipe path delivers silence as no speech (exit 9, 9712 ms)
+ok   parakeet: the recorded clip through the resident model, exactly (exit 0, 83264 ms)
+  {"schema":"openagents.dictation.v1","type":"final","text":"Wait, stop.","exit":0,"samples":44800,"audio_ms":2800,"segments":1,"limited":false,"recognizer":"parakeet","model":"parakeet-tdt-0.6b-v3","revision":"541d1f99c6b0c3cd0b11a95167540bb8edefd82b","device":"cpu","capture":"fixture"}
+29 passed, 3 failed
+
+# The three GPU cases above failed with CUDA out of memory while another agent held the GPU; rerun alone:
+ok   gpu-linux: a named GPU never falls back to the CPU (exit 0, 7495 ms)
+  {"schema":"openagents.dictation.v1","type":"final","text":"Wait, stop.","exit":0,"samples":44800,"audio_ms":2800,"segments":1,"limited":false,"recognizer":"parakeet","model":"parakeet-tdt-0.6b-v3","revision":"541d1f99c6b0c3cd0b11a95167540bb8edefd82b","device":"gpu","capture":"fixture"}
+1 passed, 0 failed
+ok   terms-gpu: the vocabulary loads, the clip is unchanged, raw_text is kept (exit 0, 8723 ms)
+ok   terms-bad: a malformed vocabulary names its line, nothing is heard (exit 2, 7018 ms)
+2 passed, 0 failed

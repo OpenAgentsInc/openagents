@@ -41,6 +41,9 @@ struct psionic_parakeet {
  coax_string *pieces;uint8_t *bytes;
  int64_t tokens[TOKENS],frames[TOKENS],draft_tokens[TOKENS],draft_frames[TOKENS],stats[4];
  char text[TEXT];int gpu,has_result;psionic_parakeet_info info;
+ /* Vocabulary rescoring (GitHub #12670): the admitted terms, the last
+  * call's text before rescoring, its rescored tokens and its counts. */
+ coax_t_PkvList *vocab;char raw[TEXT];int64_t raw_n,rinfo[6],rtokens[TOKENS],rframes[TOKENS];
 };
 static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
 static psionic_parakeet *resident;
@@ -81,13 +84,14 @@ static void clear_work_locked(psionic_parakeet *s){
  wipe(s->last_features,128*2048*sizeof *s->last_features);wipe(s->last_encoded,256*1024*sizeof *s->last_encoded);
  wipe(s->tokens,sizeof s->tokens);wipe(s->frames,sizeof s->frames);wipe(s->draft_tokens,sizeof s->draft_tokens);wipe(s->draft_frames,sizeof s->draft_frames);
  wipe(s->stats,sizeof s->stats);wipe(s->text,sizeof s->text);wipe(&s->info,sizeof s->info);s->has_result=0;
+ wipe(s->raw,sizeof s->raw);s->raw_n=0;wipe(s->rinfo,sizeof s->rinfo);wipe(s->rtokens,sizeof s->rtokens);wipe(s->rframes,sizeof s->rframes);
 #ifdef PSIONIC_PARAKEET_METAL
  if(s->gpu)pk_metal_clear_work();
 #elif defined(PSIONIC_PARAKEET_CUDA)
  if(s->gpu)pk_cuda_clear_work();
 #endif
 }
-static void release(psionic_parakeet *s){if(!s)return;free(s->ew);free(s->dw);free(s->w32);free(s->w64);free(s->wave);free(s->features);free(s->encoded);free(s->last_features);free(s->last_encoded);free(s->pieces);free(s->bytes);free(s);}
+static void release(psionic_parakeet *s){if(!s)return;free(s->vocab);free(s->ew);free(s->dw);free(s->w32);free(s->w64);free(s->wave);free(s->features);free(s->encoded);free(s->last_features);free(s->last_encoded);free(s->pieces);free(s->bytes);free(s);}
 int64_t cxpk_encode(coax_v_f32 ew,coax_v_f32 x,int64_t frames,coax_v_f32 work,coax_v_f32 out){
 #ifdef PSIONIC_PARAKEET_METAL
  return pk_metal_encode(ew.data,ew.count,x.data,x.count,frames,work.data,work.count,out.data,out.count);
@@ -163,11 +167,46 @@ static void commit(psionic_parakeet *s,const char *draft,const int64_t *stats,in
  if(samples>0){memcpy(s->last_features,s->features,(size_t)stats[2]*128*4);memcpy(s->last_encoded,s->encoded,(size_t)stats[3]*1024*4);}
  s->info=(psionic_parakeet_info){samples,stats[2],stats[3],stats[1],stats[0],gpu_used,elapsed};
 }
+/* With a vocabulary, rescore the decoded tokens (rescore.coax) on the device
+ * the decoder used. The recognized text is kept as the raw text; any
+ * refusal or device failure leaves the recognized text as the result. */
+static void rescore(psionic_parakeet *s,char *draft,int64_t *stats,int64_t cap){
+ memcpy(s->raw,draft,(size_t)stats[0]+1);s->raw_n=stats[0];wipe(s->rinfo,sizeof s->rinfo);
+ if(!s->vocab||s->vocab->count<1||stats[1]<1)return;
+ int gpu=s->gpu&&PK_GPU_DECODER;int64_t frames=stats[3],need=pkrt_rescore_work(frames);char text[TEXT];int64_t rs[2]={0};
+ if(need<1||need>s->n32){s->rinfo[5]=1;return;}
+#if PK_GPU_DECODER
+ if(gpu&&pk_cuda_bind_decoder(s->dw,s->nd,s->encoded,frames*1024,s->w32,need)!=1){s->rinfo[5]=2;return;}
+#endif
+ coax_t_PkRtStatus st=pkrt_rescore((coax_v_f32){s->dw,s->nd},(coax_v_string){s->pieces,VOCAB},(coax_v_f32){s->encoded,frames*1024},frames,(coax_v_f32){s->w32,need},gpu,(coax_v_t_PkvList){s->vocab,1},
+  (coax_v_s64){s->draft_tokens,stats[1]},(coax_v_s64){s->draft_frames,stats[1]},(coax_v_s64){s->rtokens,TOKENS},(coax_v_s64){s->rframes,TOKENS},(coax_v_u8){(uint8_t*)text,cap},(coax_v_s64){rs,2},(coax_v_s64){s->rinfo,5});
+#if PK_GPU_DECODER
+ if(gpu&&pk_cuda_unbind()!=1)st=COAX_PkRtStatus_gpu;
+#endif
+ if(st!=COAX_PkRtStatus_ok){s->rinfo[5]=3;return;}
+ memcpy(draft,text,(size_t)rs[0]+1);stats[0]=rs[0];stats[1]=rs[1];
+ memcpy(s->draft_tokens,s->rtokens,(size_t)rs[1]*8);memcpy(s->draft_frames,s->rframes,(size_t)rs[1]*8);
+}
+int psionic_parakeet_vocabulary(psionic_parakeet *s,const char *tsv,size_t n,char *err,size_t errcap){
+ pthread_mutex_lock(&lock);int r=-1;
+ if(!valid(s,err,errcap))goto done;
+ if(n==0){free(s->vocab);s->vocab=NULL;r=0;goto done;}
+ if(!tsv||n>65536){error(err,errcap,"the vocabulary is larger than 65536 bytes");goto done;}
+ if(!s->vocab&&!(s->vocab=calloc(1,sizeof *s->vocab))){error(err,errcap,"out of memory");goto done;}
+ int64_t res[3]={0};int64_t st=pkrt_vocab_load((coax_v_u8){(uint8_t*)tsv,(int64_t)n},(coax_v_string){s->pieces,VOCAB},(coax_v_t_PkvList){s->vocab,1},(coax_v_s64){res,3});
+ if(st!=0){static const char *why[6]={"","is too large","has a malformed line","has a malformed term","has a malformed sounds_like list","has a term the model cannot spell"};
+  if(err&&errcap)snprintf(err,errcap,"the vocabulary %s (line %lld)",st>0&&st<6?why[st]:"is refused",(long long)res[0]);free(s->vocab);s->vocab=NULL;goto done;}
+ r=(int)res[1];
+done:pthread_mutex_unlock(&lock);return r;
+}
+int psionic_parakeet_raw_text(psionic_parakeet *s,char *out,size_t cap){pthread_mutex_lock(&lock);int ok=s&&s==resident&&s->has_result&&out&&cap>(size_t)s->raw_n;if(ok)memcpy(out,s->raw,(size_t)s->raw_n+1);pthread_mutex_unlock(&lock);return ok;}
+int psionic_parakeet_vocabulary_info(psionic_parakeet *s,int64_t info[6]){pthread_mutex_lock(&lock);int ok=s&&s==resident&&s->has_result&&info;if(ok)memcpy(info,s->rinfo,sizeof s->rinfo);pthread_mutex_unlock(&lock);return ok;}
 int psionic_parakeet_text(psionic_parakeet *s,const float *samples,int64_t n,char *out,size_t cap,char *err,size_t errcap){
  pthread_mutex_lock(&lock);int ok=0;char draft[TEXT];int64_t stats[4]={0};double start=now_ms();
  if(!valid(s,err,errcap))goto done;if(!samples||!out||cap>INT64_MAX||!pkrt_audio_count(n)){error(err,errcap,"audio must contain320..327520 mono16kHz samples");goto done;}
  coax_t_PkRtStatus st=pkrt_transcribe((coax_v_f32){s->ew,s->ne},(coax_v_f32){s->dw,s->nd},(coax_v_string){s->pieces,VOCAB},(coax_v_f32){(float*)samples,n},s->gpu,s->gpu&&PK_GPU_DECODER,(coax_v_f64){s->wave,MAX_SAMPLES},(coax_v_f64){s->w64,s->n64},(coax_v_f32){s->w32,s->n32},(coax_v_f32){s->features,128*2048},(coax_v_f32){s->encoded,256*1024},(coax_v_s64){s->draft_tokens,TOKENS},(coax_v_s64){s->draft_frames,TOKENS},(coax_v_u8){(uint8_t*)draft,cap<TEXT?(int64_t)cap:TEXT},(coax_v_s64){stats,4});
  if(st!=COAX_PkRtStatus_ok){status_error(err,errcap,"transcription",st);goto done;}
+ rescore(s,draft,stats,cap<TEXT?(int64_t)cap:TEXT);
  commit(s,draft,stats,n,now_ms()-start,s->gpu);memcpy(out,draft,(size_t)stats[0]+1);ok=1;
 done:pthread_mutex_unlock(&lock);return ok;
 }

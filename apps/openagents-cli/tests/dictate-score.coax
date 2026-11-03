@@ -10,6 +10,10 @@
 //   coax/web/tool.sh apps/openagents-cli/tests/dictate-score.coax score DIR
 //       score DIR's raw records, print the tables, write DIR/record.json and
 //       exit 1 when a gate is crossed
+//   coax/web/tool.sh apps/openagents-cli/tests/dictate-score.coax vocab OFF ON
+//       vocabulary rescoring (GitHub #12670): OFF and ON are `gen` runs over
+//       the vocabulary manifest (OPENAGENTS_DICTATION_MANIFEST=VOCAB_TSV) without
+//       and with OPENAGENTS_DICTATION_TERMS=apps/shared/dictation-terms.tsv
 // The model is OPENAGENTS_PARAKEET_MODEL or the pinned cache path; the corpus
 // directory is OPENAGENTS_DICTATION_CORPUS or
 // ~/.cache/openagents/corpus/dictation-12665. Each step is one process with
@@ -205,8 +209,9 @@ gate :: (g: [] Gates, name: string, value_hundredths: int, limit_hundredths: int
 
 // ---- the corpus ----
 Corpus :: struct { text: [400000] u8; n: int; lines: [400] string; count: int; }
-corpus_load :: (c: [] Corpus) -> bool {
-  c[0].n = fs_read(CORPUS_TSV, c[0].text[..]); if c[0].n <= 0 { return false; }
+corpus_load :: (c: [] Corpus) -> bool { return corpus_load_from(CORPUS_TSV, c); }
+corpus_load_from :: (path: string, c: [] Corpus) -> bool {
+  c[0].n = fs_read(path, c[0].text[..]); if c[0].n <= 0 { return false; }
   t := cast(string) c[0].text[0..<c[0].n]; i := 0; c[0].count = 0;
   while i < c[0].n {
     j := i; while j < c[0].n && t[j] != '\n' { j += 1; }
@@ -327,7 +332,10 @@ run_main :: (a: [] Args) -> int {
     reps := ifx step == "startup" then 3 else 1;
     for rep: 0..<reps {
       out: [1] Text; t_add(out[..], dir); t_add(out[..], "/"); t_add(out[..], step); if reps > 1 { t_add(out[..], "-"); t_int(out[..], rep); } t_add(out[..], ".tsv");
-      argv := [6] string.[t_str(bin[..]), step, model, corpus, CORPUS_TSV, t_str(out[..])];
+      // OPENAGENTS_DICTATION_MANIFEST runs another manifest's rows (the
+      // vocabulary set, GitHub #12670); OPENAGENTS_DICTATION_TERMS reaches the runner.
+      mfb: [1024] u8; manifest := proc_getenv("OPENAGENTS_DICTATION_MANIFEST", mfb[..]); if manifest == "" { manifest = CORPUS_TSV; }
+      argv := [6] string.[t_str(bin[..]), step, model, corpus, manifest, t_str(out[..])];
       if !run_step(argv[..], step, 840000) { return 3; }
     }
   }
@@ -592,6 +600,81 @@ score_main :: (dir: string) -> int {
   return ifx g[0].crossed == 0 then 0 else 1;
 }
 
+// ---- vocabulary rescoring (GitHub #12670) ----
+// `vocab OFF ON`: the same `gen` step run without (OFF) and with (ON) a
+// vocabulary (OPENAGENTS_DICTATION_TERMS) over VOCAB_TSV. The gate comes
+// first: term-free word error rate may rise by at most GATE_VOCAB_WER_DELTA
+// points. Then term recall, false replacements and the raw text's identity
+// with the OFF transcript.
+VOCAB_TSV :: "docs/verification/dictation-vocab-2026-11-03/corpus/corpus.tsv";
+GATE_VOCAB_WER_DELTA :: 0.30;   // percentage points of term-free WER (LibriSpeech speakers), the proposal's gate
+GATE_VOCAB_RAW :: 0;            // ON records whose text before rescoring differs from OFF's transcript
+gen_text :: (gen: string, id: string, k: int) -> string {
+  at: [1] int;
+  while true { l := next_line(gen, at[..]); if l.count == 0 && at[0] >= gen.count { break; } if field(l, 0) == "gen" && field(l, 1) == id { return field(l, k); } }
+  return "";
+}
+// Terms of a tags field ("...terms=a+b") found among hyp's words.
+term_hits :: (tags: string, hyp: string, total: [] int) -> int {
+  i := 0; while i < tags.count && !starts(tags[i..<tags.count], "terms=") { i += 1; }
+  if i >= tags.count { return 0; }
+  list: [512] u8; ln := 0; for ch: tags[i + 6..<tags.count] { if ln < 512 { list[ln] = ifx ch == '+' then ' ' else ch; ln += 1; } }
+  tw: [1] Words; hw: [1] Words; words_of(cast(string) list[0..<ln], tw[..]); words_of(hyp, hw[..]); hits := 0;
+  for x: 0..<tw[0].count { total[0] += 1; for y: 0..<hw[0].count { if word(tw[..], x) == word(hw[..], y) { hits += 1; break; } } }
+  return hits;
+}
+vocab_main :: (off_dir: string, on_dir: string) -> int {
+  c: [1] Corpus; if !corpus_load_from(VOCAB_TSV, c[..]) { tool_errln("cannot read the vocabulary manifest"); return 2; }
+  ro: [1] Raw; rn: [1] Raw; off := raw_load(off_dir, "gen.tsv", ro[..]); on := raw_load(on_dir, "gen.tsv", rn[..]);
+  if off == "" || on == "" { tool_errln("both directories need gen.tsv"); return 2; }
+  o: [1] Text; g: [1] Gates; s: [1] Score;
+  // 0 LibriSpeech speakers (term-free, human), 1 distractors (term-free, synthetic), 2 #12665 code terms, 3 held-out terms
+  names := [4] string.["LibriSpeech test-clean + test-other speakers (no terms)", "held-out distractors (synthetic, no terms)", "#12665 code-term clips (synthetic)", "held-out term clips (synthetic)"];
+  t_off: [4] Tally; t_on: [4] Tally; hits_off: [4] int; hits_on: [4] int; terms: [4] int; changed: [4] int; changed_words: [4] int; raw_bad := 0; n_on := 0;
+  stop_off: [1] Series; stop_on: [1] Series; list: [1] Text;
+  at: [1] int;
+  while true {
+    line := next_line(on, at[..]); if line.count == 0 && at[0] >= on.count { break; }
+    if field(line, 0) != "gen" { continue; }
+    id := field(line, 1); set := set_of(c[..], id); ref := reference_of(c[..], id); tags := "";
+    for k: 0..<c[0].count { if field(c[0].lines[k], 0) == id { tags = field(c[0].lines[k], 2); } }
+    k := -1;
+    if set == "clean-speaker" || set == "other-speaker" { k = 0; } if set == "vocab-distractor" { k = 1; } if set == "synthetic-code" { k = 2; } if set == "vocab-terms" { k = 3; }
+    if k < 0 { continue; }
+    hyp_on := field(line, 16); raw := field(line, 19); hyp_off := gen_text(off, id, 16);
+    n_on += 1; if raw != hyp_off { raw_bad += 1; }
+    s_add(stop_on[..], num(field(line, 8))); s_add(stop_off[..], num(gen_text(off, id, 8)));
+    tally(s[..], t_off[k..<k + 1], ref, hyp_off); tally(s[..], t_on[k..<k + 1], ref, hyp_on);
+    tt: [1] int; hits_off[k] += term_hits(tags, hyp_off, tt[..]); tu: [1] int; hits_on[k] += term_hits(tags, hyp_on, tu[..]); terms[k] += tt[0];
+    if hyp_on != hyp_off {
+      changed[k] += 1;
+      words_of(hyp_off, s[0].r[..]); words_of(hyp_on, s[0].h[..]); align(s[0].r[..], s[0].h[..], s[0].a[..], s[0].dp[..]); changed_words[k] += errors(s[0].a[..]);
+      t_add(list[..], "| "); t_add(list[..], id); t_add(list[..], " | "); t_add(list[..], hyp_off); t_add(list[..], " | "); t_add(list[..], hyp_on); t_add(list[..], " |\n");
+    }
+  }
+  t_add(o[..], "## Vocabulary rescoring: without and with the vocabulary\n\n| Set | Clips | Words | WER % off | WER % on | CER % off | CER % on | Terms | Right off | Right on | Clips changed | Words changed |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+  for k: 0..<4 {
+    t_add(o[..], "| "); t_add(o[..], names[k]); t_add(o[..], " | "); t_int(o[..], t_on[k].clips); t_add(o[..], " | "); t_int(o[..], t_on[k].words); t_add(o[..], " | ");
+    t_fix(o[..], rate(t_off[k].errors, t_off[k].words)); t_add(o[..], " | "); t_fix(o[..], rate(t_on[k].errors, t_on[k].words)); t_add(o[..], " | ");
+    t_fix(o[..], rate(t_off[k].char_errors, t_off[k].chars)); t_add(o[..], " | "); t_fix(o[..], rate(t_on[k].char_errors, t_on[k].chars)); t_add(o[..], " | ");
+    t_int(o[..], terms[k]); t_add(o[..], " | "); t_int(o[..], hits_off[k]); t_add(o[..], " | "); t_int(o[..], hits_on[k]); t_add(o[..], " | ");
+    t_int(o[..], changed[k]); t_add(o[..], " | "); t_int(o[..], changed_words[k]); t_add(o[..], " |\n");
+  }
+  t_add(o[..], "\nFalse replacements (term-free clips the vocabulary changed): "); t_int(o[..], changed[0] + changed[1]); t_add(o[..], " clips, ");
+  t_int(o[..], changed_words[0] + changed_words[1]); t_add(o[..], " words. Records whose text before rescoring differs from the run without a vocabulary: ");
+  t_int(o[..], raw_bad); t_add(o[..], " of "); t_int(o[..], n_on); t_add(o[..], ".\n\n| Clip | Without | With |\n| --- | --- | --- |\n"); t_add(o[..], t_str(list[..]));
+  t_add(o[..], "\n| Stop to final text (ms) | n | p50 | p99 |\n| --- | ---: | ---: | ---: |\n");
+  report_series(o[..], "without a vocabulary", stop_off[..], 1000); report_series(o[..], "with the vocabulary", stop_on[..], 1000);
+  delta := rate(t_on[0].errors, t_on[0].words) - rate(t_off[0].errors, t_off[0].words);
+  gate(g[..], "term-free WER rise with the vocabulary (points)", delta, int(GATE_VOCAB_WER_DELTA * 100), true);
+  gate(g[..], "text before rescoring differs from the run without", raw_bad * 100, GATE_VOCAB_RAW * 100, true);
+  t_add(o[..], "\n## Gates\n\n```\n"); t_add(o[..], t_str(g[0].lines[..])); t_add(o[..], "```\n");
+  print("%", t_str(o[..]));
+  p: [1] Text; t_add(p[..], on_dir); t_add(p[..], "/vocab-results.md");
+  if !fs_write(t_str(p[..]), t_str(o[..])) { tool_errln("cannot write vocab-results.md"); return 3; }
+  return ifx g[0].crossed == 0 then 0 else 1;
+}
+
 tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: dictate-score corpus | run DIR STEP... | score DIR"); return 2; }
@@ -599,5 +682,6 @@ tool_main :: () -> int #export_c {
   if cmd == "corpus" { return verify_corpus(); }
   if cmd == "run" && args_count(a[..]) >= 3 { return run_main(a[..]); }
   if cmd == "score" && args_count(a[..]) == 2 { return score_main(args_at(a[..], 1)); }
-  tool_errln("usage: dictate-score corpus | run DIR STEP... | score DIR"); return 2;
+  if cmd == "vocab" && args_count(a[..]) == 3 { return vocab_main(args_at(a[..], 1), args_at(a[..], 2)); }
+  tool_errln("usage: dictate-score corpus | run DIR STEP... | score DIR | vocab OFF_DIR ON_DIR"); return 2;
 }

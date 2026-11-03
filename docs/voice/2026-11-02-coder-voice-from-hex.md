@@ -21,6 +21,16 @@ partials). No speech exits 9, not 4: the CLI already uses 4 for "forbidden",
 which is what a denied microphone returns. Real-microphone acceptance is in
 `NEEDS_OWNER.md`; [CLI record](../verification/dictate-cli-2026-11-02/README.md).
 
+D3 is implemented for the CLI (#12670). It has two opt-in parts. `openagents dictate --terms FILE`
+lets Parakeet's own transducer rescore look-alike spans with a bounded,
+prioritized vocabulary (`psionic/lib/parakeet/vocab.coax` and
+`rescore.coax`). `--format code` applies fixed spoken-symbol, casing and
+filler rules (`apps/shared/dictation-text.coax`). The JSON result keeps
+`raw_text`. Measured: term-free WER unchanged (2.79% both ways), held-out
+synthetic term recall from 13 to 23 of 42, and no false replacements; see the
+[vocabulary record](../verification/dictation-vocab-2026-11-03/README.md).
+Coder for Mac does not call either part yet (`NEEDS_OWNER.md`).
+
 D4's Linux measurement is done (#12665): a frozen public corpus, release
 offsets, WER/CER, no-speech and seam scores, p50/p99 timings and gates, in
 [the evaluation record](../verification/dictation-eval-2026-11-02/README.md).

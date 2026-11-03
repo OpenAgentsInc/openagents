@@ -44,6 +44,8 @@ cxdict_model_open :: (dir: [] u8, gpu: int, err: [] u8) -> int #foreign;
 cxdict_model_start :: (samples: [] f32) -> int #foreign;
 cxdict_model_poll :: (out: [] u8, timeout_ms: int) -> int #foreign;
 cxdict_model_clear :: () -> int #foreign;
+cxdict_model_vocabulary :: (tsv: [] u8, err: [] u8) -> int #foreign;
+cxdict_model_raw :: (out: [] u8) -> int #foreign;
 cxdict_model_close :: () -> int #foreign;
 cxdict_dct_reset :: () -> int #foreign;
 cxdict_dct_clear :: () -> int #foreign;
@@ -76,7 +78,7 @@ DictFixture :: struct {
   fault: string; control: string; text: string; recognizer: bool;
 }
 Dict :: struct {
-  out: int; capture: int; gpu: int; format: int; seconds: int; wait: bool; input: string; model: string;
+  out: int; capture: int; gpu: int; format: int; terms: int; raw: [8000] u8; raw_n: int; raw_bad: bool; seconds: int; wait: bool; input: string; model: string;
   tty: bool; opened: int; anchor: int; delivered: int; rate: int; last_audio: int; any: bool;
   segments: int; limited: bool; samples: int;
   error: int; message: [600] u8; message_n: int; reason: string;
@@ -104,12 +106,14 @@ dict_status :: (d: [] Dict, state: string, human: string) {
   else if d[0].out == DC_OUT_TEXT && d[0].tty { tool_err("openagents: "); tool_errln(human); }
 }
 
-dict_finish :: (d: [] Dict, result: int, raw: string) -> int {
+dict_finish :: (d: [] Dict, result: int, transcript: string) -> int {
   code := dc_exit(result, d[0].error);
   // The opt-in text rules: the draft is the formatted text, or the raw
   // transcript when a rule refuses (dictation-text.coax).
-  text := raw; fb: [8000] u8;
-  if result == DC_FINAL && d[0].format == DC_CODE { n := dtx_draft(raw, fb[..]); if n >= 0 { text = cast(string) fb[0..<n]; } }
+  text := transcript; raw := transcript; fb: [8000] u8;
+  // With a vocabulary the model's own words (before rescoring) are the raw text.
+  if d[0].terms > 0 && !d[0].raw_bad { raw = cast(string) d[0].raw[0..<d[0].raw_n]; }
+  if result == DC_FINAL && d[0].format == DC_CODE { n := dtx_draft(transcript, fb[..]); if n >= 0 { text = cast(string) fb[0..<n]; } }
   recognizer := ifx d[0].model == "" then "fixture" else "parakeet";
   if d[0].out == DC_OUT_TEXT {
     if result == DC_FINAL { print("%\n", text); }
@@ -122,7 +126,9 @@ dict_finish :: (d: [] Dict, result: int, raw: string) -> int {
   kind := ifx result == DC_FINAL then "final" else ifx result == DC_NO_SPEECH then "no_speech" else ifx result == DC_CANCELLED then "cancelled" else "error";
   dict_json_head(r[..], kind);
   if result == DC_FINAL { dict_json_str(r[..], "text", text); }
-  if result == DC_FINAL && d[0].format == DC_CODE { dict_json_str(r[..], "raw_text", raw); dict_json_str(r[..], "format", "code"); }
+  if result == DC_FINAL && (d[0].format == DC_CODE || d[0].terms > 0) { dict_json_str(r[..], "raw_text", raw); }
+  if result == DC_FINAL && d[0].format == DC_CODE { dict_json_str(r[..], "format", "code"); }
+  if result == DC_FINAL && d[0].terms > 0 { dict_json_int(r[..], "terms", d[0].terms); }
   if result == DC_NO_SPEECH { dict_json_str(r[..], "reason", d[0].reason); }
   if result == DC_ERROR { dict_json_str(r[..], "error", dc_error_name(d[0].error)); dict_json_str(r[..], "message", cast(string) d[0].message[0..<d[0].message_n]); }
   dict_json_int(r[..], "exit", code);
@@ -346,6 +352,14 @@ dict_recognize :: (d: [] Dict, f: [] DictFixture, t: int, words: [] u8) -> int {
       q := cxdict_dct_complete(t, 0);
       return dict_set_error(d, DC_E_RECOGNITION, ifx reason > 0 then cast(string) reply[0..<reason] else "Parakeet recognition failed");
     }
+    // The segment's text before rescoring, joined as the controller joins.
+    if d[0].terms > 0 {
+      rb: [8200] u8; rn := ifx d[0].model == "" then got else cxdict_model_raw(rb[..]);
+      if d[0].model == "" { for i: 0..<got { rb[i] = reply[i]; } }
+      if rn < 0 || d[0].raw_n + 1 + rn > d[0].raw.count { d[0].raw_bad = true; }
+      else if rn > 0 { if d[0].raw_n > 0 { d[0].raw[d[0].raw_n] = ' '; d[0].raw_n += 1; } for i: 0..<rn { d[0].raw[d[0].raw_n + i] = rb[i]; } d[0].raw_n += rn; }
+      for i: 0..<rb.count { rb[i] = 0; }
+    }
     if cxdict_dct_add(t, reply[0..<got]) != 1 {
       for i: 0..<n { audio[i] = 0; }
       q := cxdict_dct_abort();
@@ -382,7 +396,7 @@ dictate_main :: (a: [] Args, r: [] Rep) -> int {
   if !dc_input(d[0].input) { return fail(r, EXIT_USAGE, "--input is a printable device name or UID of at most 256 bytes"); }
   if d[0].capture == DC_FIXTURE && d[0].input != "" { return fail(r, EXIT_USAGE, "--input names a real device; the fixture backend has none"); }
   for flag: [4] string.["--words", "--prompt", "--language", "--model"] {
-    if args_has(a, flag) { return fail(r, EXIT_USAGE, "Parakeet dictation detects its language and has no vocabulary bias yet; --words, --prompt, --language and --model are not dictation options"); }
+    if args_has(a, flag) { return fail(r, EXIT_USAGE, "Parakeet dictation detects its language; --words, --prompt, --language and --model are not dictation options (--terms FILE gives it a vocabulary)"); }
   }
   d[0].wait = args_has(a, "--wait-for-enter");
   d[0].tty = cxcli_isatty(2) == 1;
@@ -395,6 +409,12 @@ dictate_main :: (a: [] Args, r: [] Rep) -> int {
     f[0].recognizer = f[0].text != "" || f[0].fault == "recognition";
   }
 
+  // A vocabulary (GitHub #12670): read now, admitted by the model below.
+  tb: [65537] u8; tn := 0; terms_path := args_value(a, "--terms", "");
+  if terms_path != "" {
+    tn = fs_read(terms_path, tb[..]);
+    if tn < 0 || tn > 65536 { return fail(r, EXIT_USAGE, "--terms names a readable vocabulary file of at most 65536 bytes"); }
+  }
   // The model first: the microphone opens only once recognition is ready.
   mb: [1200] u8; model := args_value(a, "--model-dir", "");
   if model == "" { model = dict_model_dir(mb[..]); }
@@ -411,6 +431,11 @@ dictate_main :: (a: [] Args, r: [] Rep) -> int {
     if got != 0 {
       dict_note(d[..], DC_E_MODEL, ifx got < -1 then cast(string) err[0..<-got - 1] else "the model could not be opened");
       return dict_finish(d[..], DC_ERROR, "");
+    }
+    if tn > 0 {
+      ve: [512] u8; vn := cxdict_model_vocabulary(tb[0..<tn], ve[..]);
+      if vn < 0 { m := cxdict_model_close(); return fail(r, EXIT_USAGE, ifx vn < -1 then cast(string) ve[0..<-vn - 1] else "the vocabulary was refused"); }
+      d[0].terms = vn;
     }
   }
 

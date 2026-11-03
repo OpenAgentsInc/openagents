@@ -104,3 +104,25 @@ pkrt_features :: (samples:[]f32,wave:[]f64,w64:[]f64,features:[]f32)->PkRtStatus
  if sf_mel_bank(sf_nemo_spec(),bank).status!=SfStatus.ok {return PkRtStatus.audio;}
  if pk_front_features(a,bank,w64[0..<k.raw],features[0..<k.features]).status!=SfStatus.ok {return PkRtStatus.audio;}return PkRtStatus.ok;
 }
+
+// ---- vocabulary rescoring (GitHub #12670) ----
+// The rules are vocab.coax's (#authority) and the scores rescore.coax's;
+// the host only keeps the vocabulary's storage and binds the GPU buffers.
+#load "rescore.coax";
+pkrt_rescore_work :: (frames:int)->int #export_c {return pkr_work(tdt_parakeet_shape(),frames);}
+// result: the refused line (0 when none), the terms admitted, the terms dropped.
+pkrt_vocab_load :: (tsv:[]u8,pieces:[]string,v:[]PkvList,result:[]int)->int #export_c {
+ if v.count!=1 || result.count<3 || pieces.count!=8192 {return cast(int)PkvStatus.size;}
+ r:=pkv_load(cast(string)tsv,pieces,v);result[0]=r.line;result[1]=v[0].count;result[2]=v[0].dropped;
+ if r.status!=PkvStatus.ok {v[0].count=0;}
+ return cast(int)r.status;
+}
+// The recognized tokens with the vocabulary's chosen terms in place, and
+// their text; on any refusal the caller keeps the recognized text.
+pkrt_rescore :: (dw:[]f32,pieces:[]string,encoded:[]f32,frames:int,work:[]f32,gpu:bool,v:[]PkvList,tokens:[]int,at:[]int,out:[]int,out_at:[]int,text:[]u8,stats:[]int,info:[]int)->PkRtStatus #export_c {
+ if v.count!=1 || pieces.count!=8192 || stats.count<2 || dw.count!=pkrt_decoder_count() {return PkRtStatus.capacity;}
+ k:=pkr_rescore(tdt_parakeet_shape(),dw,encoded,frames,work,gpu,!gpu,pieces,v,tokens,at,out,out_at,info);
+ if k<0 {return ifx gpu then PkRtStatus.gpu else PkRtStatus.decoder;}
+ draft:[PK_TEXT_MAX]u8;n:=pkv3_text(pieces,out[0..<k],draft[..]);if n<0 || !pkrt_text_fits(n,text.count) {return PkRtStatus.text;}
+ for i:0..<n {text[i]=draft[i];}text[n]=0;stats[0]=n;stats[1]=k;return PkRtStatus.ok;
+}

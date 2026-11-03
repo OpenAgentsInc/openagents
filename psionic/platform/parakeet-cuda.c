@@ -188,6 +188,22 @@ int pk_cuda_decode_shape(const int64_t s[15],const float *dw,int64_t nd,const fl
  pthread_mutex_lock(&mu);error_text[0]=0;loaded_decoder=0;loaded_decoder_count=0;int r=decode_locked(&shape,dw,nd,enc,ne,frames,work,nw,tokens,nt,at,na,result,nr);pthread_mutex_unlock(&mu);return r;
 }
 double pk_cuda_decode_seconds(void){return decode_seconds;}
+/* Vocabulary rescoring (rescore.coax, GitHub #12670) issues its own launches:
+ * bind the decoder's slots (4 weights, 5 encoded frames, 6 work) and admit
+ * launches until pk_cuda_unbind. The lock stays held in between, so nothing
+ * else can rebind the slots; the caller holds the engine's own lock too. */
+int pk_cuda_bind_decoder(const float *dw,int64_t nd,const float *enc,int64_t ne,float *work,int64_t nw){
+ pthread_mutex_lock(&mu);error_text[0]=0;
+ if(!dw||!enc||!work||nd<1||ne<1||nw<1){snprintf(error_text,sizeof error_text,"Parakeet rescoring capacity refusal");pthread_mutex_unlock(&mu);return -1;}
+ if(open_locked()<1||upload_locked(4,dw,nd)<1||reserve(5,ne)<1||reserve(6,nw)<1){pthread_mutex_unlock(&mu);return -1;}
+ if(pc_upload(dev[5],enc,(size_t)ne*sizeof(float),stream)!=PC_OK){fail("upload Parakeet encoded frames");pthread_mutex_unlock(&mu);return -1;}
+ base[4]=dw;count[4]=nd;base[5]=enc;count[5]=ne;base[6]=work;count[6]=nw;encoding=1;return 1;
+}
+int pk_cuda_unbind(void){
+ encoding=0;PcStatus status=pc_sync_stream(stream);
+ for(int i=4;i<SLOTS;i++){base[i]=0;count[i]=0;}
+ int r=status==PC_OK?1:fail("execute Parakeet rescoring");pthread_mutex_unlock(&mu);return r;
+}
 static int upload_locked(int slot,const float *w,int64_t n){
  if(reserve(slot,n)<1)return -1;
  const float **mark=slot==0?&loaded:&loaded_decoder;int64_t *marked=slot==0?&loaded_count:&loaded_decoder_count;

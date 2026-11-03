@@ -1,5 +1,22 @@
 # Owner actions
 
+## Dictation vocabulary and code text in Coder for Mac (#12670, 2026-11-03)
+
+`openagents dictate --terms FILE --format code` works on Linux. Its record
+is `docs/verification/dictation-vocab-2026-11-03/README.md`. Coder for Mac
+does not use either part yet, and its files were not changed. To adopt them:
+
+1. Call `psionic_parakeet_vocabulary` once after the model opens. Pass the
+   user's terms first, then `apps/shared/dictation-terms.tsv`.
+2. Pass the final transcript through `dtx_draft`
+   (`apps/shared/dictation-text.coax`) before the guarded insertion, behind a
+   default-off "Code formatting" setting. Insertion, Undo and ticket checks
+   stay as they are, and a refusal inserts the raw text.
+3. Measure rescoring on the Mac. Its decoder runs on the CPU, so rescoring
+   there uses the exact CPU rows and has not been timed.
+4. Dictate a few sentences with this repository's terms on the Mac and record
+   term recall. All measurements so far are synthetic speech.
+
 ## Psionic oracles: run check_decoder.sh and check_muon.sh on the Mac (#12695, 2026-11-03)
 
 The decoder and muon oracles now use correctly rounded sin, cos, exp, log

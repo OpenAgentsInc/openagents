@@ -142,7 +142,7 @@ speech_span :: (x: [] f32) -> Span {
 // ---- one dictation through the CLI's own path ----
 Ev :: struct {
   d: [1] Dict; ticket: [1] int; words: [8000] u8; seg: [16384] u8; seg_n: int; stats: [5] int;
-  control: [64] u8; model: string; status: string; text: string; wall: int; listen: int;
+  control: [64] u8; model: string; status: string; text: string; wall: int; listen: int; terms: int;
 }
 replay :: (e: [] Ev, f: [] DictFixture, clip: [] Clip, press: int, release: int) {
   f[0].n = 0;
@@ -153,7 +153,7 @@ replay :: (e: [] Ev, f: [] DictFixture, clip: [] Clip, press: int, release: int)
   s_put(c[..], "start@"); s_int(c[..], press); s_put(c[..], ",stop@"); s_int(c[..], release);
   for i: 0..<c[0].n { e[0].control[i] = c[0].b[i]; }
   f[0].control = cast(string) e[0].control[0..<c[0].n];
-  e[0].d[0] = Dict.{out = DC_OUT_JSON, capture = DC_FIXTURE, gpu = 1, seconds = 60, wait = true, model = e[0].model};
+  e[0].d[0] = Dict.{out = DC_OUT_JSON, capture = DC_FIXTURE, gpu = 1, seconds = 60, wait = true, model = e[0].model, terms = e[0].terms};
   q := cxdict_dct_reset();
   z := cxeval_take(e[0].stats[..], e[0].seg[..]);
   t0 := cxeval_now_us();
@@ -181,7 +181,10 @@ emit :: (o: [] Out, e: [] Ev, kind: string, id: string, variant: string, press: 
   o_int(o, s.on); o_tab(o); o_int(o, s.off); o_tab(o); o_int(o, e[0].listen); o_tab(o);
   o_put(o, e[0].text); o_tab(o);
   for i: 0..<e[0].seg_n { c := e[0].seg[i]; o_put(o, ifx c == 0x1e then " | " else cast(string) e[0].seg[i..<i + 1]); }
-  o_tab(o); o_int(o, e[0].stats[4]); o_put(o, "\n");
+  o_tab(o); o_int(o, e[0].stats[4]);
+  // GitHub #12670: with a vocabulary, the text before rescoring.
+  if e[0].terms > 0 { o_tab(o); o_put(o, cast(string) e[0].d[0].raw[0..<e[0].d[0].raw_n]); }
+  o_put(o, "\n");
 }
 
 // ---- synthetic no-speech signals (3 s), deterministic ----
@@ -229,6 +232,15 @@ eval_main :: () -> int {
   t0 := cxeval_now_us();
   if cxdict_model_open(db[0..<k], 1, err[..]) != 0 { tool_errln("cannot open the model on the GPU"); return 4; }
   split: [6] int; s0 := cxeval_open_split(split[..]);
+  // OPENAGENTS_DICTATION_TERMS=FILE: the vocabulary (GitHub #12670); every
+  // record then also carries the text before rescoring.
+  vb: [1024] u8; vocab := proc_getenv("OPENAGENTS_DICTATION_TERMS", vb[..]);
+  if vocab != "" {
+    tb: [65537] u8; tn := fs_read(vocab, tb[..]); ve: [512] u8;
+    vn := ifx tn > 0 && tn <= 65536 then cxdict_model_vocabulary(tb[0..<tn], ve[..]) else -1;
+    if vn <= 0 { tool_err("the vocabulary was refused: "); tool_errln(ifx vn < -1 then cast(string) ve[0..<-vn - 1] else vocab); return 2; }
+    e[0].terms = vn;
+  }
   o_put(o[..], "open\t0\t0\t"); o_int(o[..], cxeval_now_us() - t0); o_tab(o[..]);
   for j: 0..<4 { o_int(o[..], split[j]); o_tab(o[..]); }
   o_put(o[..], "0\t"); o_int(o[..], split[4]); o_tab(o[..]); o_int(o[..], split[5]); o_put(o[..], "\n");

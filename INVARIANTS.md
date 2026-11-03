@@ -3246,6 +3246,15 @@ generation, clear audio and cancel pending insertion. The shared
 and exact supported rates, channels and planar/interleaved strides; late callbacks
 cannot enter a replacement generation. Checks and explicit
 hardware limits: `docs/verification/coder-dictation-2026-11-02/README.md`.
+Code-aware text and vocabulary (#12670) are opt-in per command (`--format
+code`, `--terms FILE`). `apps/shared/dictation-text.coax` (`#authority`)
+only rewrites the draft's words. It never changes a word with a digit, never
+reads a word as a command, and its only possible control byte is the line
+feed of "new line", inserted as text. A refusal keeps the raw transcript.
+`psionic/lib/parakeet/vocab.coax` (`#authority`) replaces a span only when
+Parakeet's own transducer scores the term within its bias. A span with a
+digit, or one differing from the term only in case, is never a candidate.
+The result keeps `raw_text`.
 The CLI links the same controller unchanged; its own choices (backends,
 devices, duration, keys, a stalled input, results and exit codes) are the
 `#authority` `apps/openagents-cli/dictate-rules.coax`. Its checks inject

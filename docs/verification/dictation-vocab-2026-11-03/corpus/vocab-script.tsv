@@ -1,0 +1,47 @@
+# Held-out synthetic speech for vocabulary rescoring (GitHub #12670).
+# SYNTHETIC: espeak-ng 1.52.0.1 (nixpkgs), formant synthesis, never a person's
+# voice; scored apart from human speech. Written before any rescoring ran and
+# separate from the #12665 sentences. Each line is spoken by en-us and
+# en-gb-scotland. ID<TAB>the spoken words (also the reference)<TAB>terms=...
+# (normalized words checked for recall) or distractor (no term: any change
+# rescoring makes is a false replacement).
+v01	The Coax book explains every chapter.	terms=coax
+v02	Psionic trains the model on one machine.	terms=psionic
+v03	Parakeet listens on the laptop.	terms=parakeet
+v04	Aethyr draws the realm every frame.	terms=aethyr
+v05	Zeron opened a pull request this morning.	terms=zeron
+v06	Sign the event with a Schnorr key.	terms=schnorr
+v07	Nostr relays forward the message.	terms=nostr
+v08	The CUDA path is faster than the CPU.	terms=cuda
+v09	Parse the JSON before you store it.	terms=json
+v10	Install NixOS on the new desktop.	terms=nixos
+v11	Kubernetes runs the relay in the cloud.	terms=kubernetes
+v12	Draw it with WebGPU in the browser.	terms=webgpu
+v13	Rebase the branch before the merge.	terms=rebase
+v14	OpenAgents is the name of the company.	terms=openagents
+v15	Breez sends the payment over lightning.	terms=breez
+v16	Taproot outputs hide the script.	terms=taproot
+v17	Psionic and Coax ship together.	terms=psionic+coax
+v18	Call cd submit when the text is ready.	terms=submit
+v19	The FastConformer encoder runs first.	terms=fastconformer
+v20	SentencePiece splits every word.	terms=sentencepiece
+d01	The cooks made a coat of paint for the boat.	distractor
+d02	Ether was once used in hospitals.	distractor
+d03	The parrot sat on the fence all day.	distractor
+d04	She heard a loud snore from the next room.	distractor
+d05	His nostril was sore after the cold.	distractor
+d06	Jason went to the market early.	distractor
+d07	A gentle breeze came off the lake.	distractor
+d08	The pylon carried power over the hill.	distractor
+d09	We need to rebate the customer.	distractor
+d10	The tap root of the tree goes deep.	distractor
+d11	The coast was clear and the sea was calm.	distractor
+d12	Zero and one are the only digits.	distractor
+d13	Psychic powers are not real.	distractor
+d14	The parakeets were singing in the cage.	distractor
+d15	Open the door and let the agents in.	distractor
+d16	Coca cola is sweet.	distractor
+d17	The nicks on the blade are small.	distractor
+d18	Cooper and Nettie came to dinner.	distractor
+d19	Sentence by sentence the piece came together.	distractor
+d20	Fast cars conform to the rules.	distractor

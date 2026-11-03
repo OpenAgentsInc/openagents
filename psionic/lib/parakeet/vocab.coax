@@ -1,0 +1,497 @@
+// Repository and user vocabulary for Parakeet dictation (GitHub #12670):
+// which terms are admitted, in what priority, how each is spelled in the
+// model's SentencePiece tokens, which recognized spans look like a term,
+// and when the transducer's own score lets a term replace a span.
+//
+// A vocabulary is UTF-8 text, one term a line, highest priority first:
+//   TERM<TAB>SOUNDS|LIKE|...      e.g.  "Psionic\tsionic|sigh onic"
+// A term is ASCII letters with single inner spaces, hyphens, dots,
+// underscores or apostrophes; never a digit, so a number is never made or
+// replaced. Up to PKV_FORMS sounds_like spellings (letters and spaces) say
+// how the term may be misheard. The first PKV_TERMS terms are used; later
+// ones are counted as dropped. Lines starting with # and blank lines are
+// skipped; any other malformed line refuses the whole vocabulary.
+//
+// Nothing here replaces text by itself. A span is only a candidate when its
+// letters sound like the term (pkv_near) and are not already the term's
+// letters in another case (so "parakeet" the bird never becomes "Parakeet",
+// and a span already spelled as the term is left alone); the term replaces
+// it only when the
+// transducer scores the term's tokens over the same encoded frames within
+// PKV_BIAS of the recognized tokens (pkv_accept, rescore.coax). Spans with a
+// digit are never candidates.
+#authority;
+#load "../../tests/parakeet-vocab-checks.coax";
+PKV_TERMS :: 64;
+PKV_FORMS :: 4;
+PKV_BYTES :: 48;        // a term or a sounds_like spelling
+PKV_IDS :: 24;          // a term's tokens
+PKV_KEY :: 32;          // a sound key
+PKV_SYMBOLS :: 51;      // characters of one word (a marker and PKV_BYTES letters fit)
+PKV_INPUT :: 65536;     // a vocabulary's bytes
+PKV_SPAN_UNITS :: 3;    // words in a candidate span
+PKV_UNITS :: 512;       // words of one recognized sequence considered
+PKV_ALL :: 256;         // candidates collected before the best are kept
+PKV_CANDIDATES :: 32;   // candidates scored per model call
+PKV_BIAS :: 4.0;        // nats a term may score below the recognized tokens
+
+PkvStatus :: enum u8 {ok;size;line;term;form;token;}
+PkvTerm :: struct {surface:[PKV_BYTES]u8;n:int;ids:[PKV_IDS]int;nid:int;bare:[PKV_IDS]int;nbare:int;keys:[PKV_FORMS+1][PKV_KEY]u8;klen:[PKV_FORMS+1]int;forms:int;}
+PkvList :: struct {terms:[PKV_TERMS]PkvTerm;count:int;dropped:int;}
+PkvLoad :: struct {status:PkvStatus;line:int;}
+// A candidate: tokens from ..< to of the recognized sequence may be term.
+PkvCand :: struct {term:int;from:int;to:int;marker:bool;distance:int;gain:f64;scored:bool;accepted:bool;chosen:bool;}
+// A word of the recognized sequence (tokens from ..< to) and a run of
+// adjacent words (units a ..= b).
+PkvUnit :: struct {from:int;to:int;marker:bool;digit:bool;}
+PkvSpan :: struct {a:int;b:int;}
+
+#test "a vocabulary admits terms in priority order with their sounds-like spellings" {
+ p:=pkv_test_pieces();v:[1]PkvList;
+ r:=pkv_load("# repository terms\nCoax\tcokes|coaks\n\nPsionic\tsionic\nZeron State\ncoax\nx",p[..],v[..]);
+ #assert r.status==PkvStatus.ok && r.line==0 && v[0].count==5 && v[0].dropped==0;
+ #assert pkv_surface(v[..],0)=="Coax" && pkv_surface(v[..],1)=="Psionic" && pkv_surface(v[..],2)=="Zeron State";
+ #assert v[0].terms[0].forms==3 && v[0].terms[1].forms==2 && v[0].terms[2].forms==1;
+ #assert pkv_keyof(v[..],0,0)=="kaks" && pkv_keyof(v[..],0,1)=="kakas" && pkv_keyof(v[..],0,2)=="kaks" && pkv_keyof(v[..],2,0)=="saranstata";
+ // Zeron State: ▁Z er on ▁St at e; without the marker the first word starts Z.
+ #assert pkv_ids_are(p[..],v[0].terms[2].ids[0..<v[0].terms[2].nid],"▁Z|er|on|▁St|at|e");
+ #assert pkv_ids_are(p[..],v[0].terms[2].bare[0..<v[0].terms[2].nbare],"Z|er|on|▁St|at|e");
+ #assert pkv_ids_are(p[..],v[0].terms[3].ids[0..<v[0].terms[3].nid],"▁coax") && pkv_ids_are(p[..],v[0].terms[3].bare[0..<v[0].terms[3].nbare],"co|ax");
+ #assert pkv_ids_are(p[..],v[0].terms[4].bare[0..<v[0].terms[4].nbare],"x");
+ // Reloading starts over.
+ #assert pkv_load("Psionic\n",p[..],v[..]).status==PkvStatus.ok && v[0].count==1 && pkv_surface(v[..],0)=="Psionic";
+ #assert pkv_load("\nCoax\n",p[..],v[..]).status==PkvStatus.ok && v[0].count==1 && pkv_surface(v[..],0)=="Coax";
+ // A word the model spells only with its marker cannot follow punctuation.
+ #assert pkv_load("j\n",p[..],v[..]).status==PkvStatus.token;
+}
+#test "malformed vocabularies are refused with their line" {
+ p:=pkv_test_pieces();v:[1]PkvList;
+ r:=pkv_load("Coax\n\nRTX 4080\n",p[..],v[..]);#assert r.status==PkvStatus.term && r.line==3;
+ r=pkv_load("Coax\nQq",p[..],v[..]);#assert r.status==PkvStatus.token && r.line==2 && v[0].count==0;
+ #assert pkv_load("Coax\t\n",p[..],v[..]).status==PkvStatus.form && pkv_load("\tcoax\n",p[..],v[..]).status==PkvStatus.term;
+ #assert pkv_load("Coax\tco1ax\n",p[..],v[..]).status==PkvStatus.form && pkv_load("Coax\tco|\n",p[..],v[..]).status==PkvStatus.form;
+ #assert pkv_load("Coax\ta|b|c|d|e\n",p[..],v[..]).status==PkvStatus.form;
+ r=pkv_load("Coax\ta|b|c|d\n",p[..],v[..]);#assert r.status==PkvStatus.ok && v[0].terms[0].forms==5;
+ #assert pkv_load("Coax\t--\n",p[..],v[..]).status==PkvStatus.form && pkv_load("--\n",p[..],v[..]).status==PkvStatus.term;
+ #assert pkv_load("Coax\tsome\tthing\n",p[..],v[..]).status==PkvStatus.form;
+ #assert pkv_load("",p[..],v[..]).status==PkvStatus.ok && v[0].count==0;
+ big:[65537]u8;for i:0..<65537 {big[i]=ifx i%5==4 then '\n' else 'a';}
+ #assert pkv_load(cast(string)big[..],p[..],v[..]).status==PkvStatus.size;
+ #assert pkv_load(cast(string)big[0..<65536],p[..],v[..]).status==PkvStatus.ok && v[0].count==PKV_TERMS && v[0].dropped==13108-PKV_TERMS;
+ #assert pkv_load("Coax\n",p[..],v[..]).status==PkvStatus.ok && v[0].dropped==0 && v[0].count==1;
+}
+#test "terms and spellings have a fixed shape" {
+ for ok:[9]string.["a","ab","Co-ax","Co.ax","Co_ax","Co'ax","Zeron State","AZaz","x y z"] {#assert pkv_term_ok(ok);}
+ for bad:[13]string.["",""," a","a ","-a","a-","a  b","a-.b","a1b","a/b","1a","a\tb","a@b"] {#assert !pkv_term_ok(bad);}
+ long:[49]u8;for i:0..<49 {long[i]='a';}
+ #assert pkv_term_ok(cast(string)long[0..<48]) && !pkv_term_ok(cast(string)long[..]) && pkv_form_ok(cast(string)long[0..<48]) && !pkv_form_ok(cast(string)long[..]);
+ #assert pkv_form_ok("a b") && pkv_form_ok(" ") && !pkv_form_ok("") && !pkv_form_ok("a!b") && !pkv_form_ok("a1");
+ #assert !pkv_letter('@') && pkv_letter('A') && pkv_letter('Z') && !pkv_letter('[') && !pkv_letter('`') && pkv_letter('a') && pkv_letter('z') && !pkv_letter('{');
+ #assert pkv_index("ab\tc",'\t')==2 && pkv_index("\tc",'\t')==0 && pkv_index("abc",'\t')==3 && pkv_index("",'\t')==0;
+}
+#test "BPE merges the pair whose piece comes first, the leftmost on a tie" {
+ p:=pkv_test_pieces();ids:[64]int;
+ #assert pkv_bpe(p[..],"▁coax",ids[..])==1 && ids[0]==pkv_find(p[..],"▁coax");
+ #assert pkv_bpe(p[..],"coax",ids[..])==2 && pkv_ids_are(p[..],ids[0..<2],"co|ax");
+ #assert pkv_bpe(p[..],"▁Zeron",ids[..])==3 && pkv_ids_are(p[..],ids[0..<3],"▁Z|er|on");
+ #assert pkv_bpe(p[..],"aaa",ids[..])==2 && pkv_ids_are(p[..],ids[0..<2],"aa|a");
+ #assert pkv_bpe(p[..],"▁x",ids[..])==2 && pkv_ids_are(p[..],ids[0..<2],"▁|x");
+ #assert pkv_bpe(p[..],"x",ids[..])==1 && pkv_bpe(p[..],"",ids[..])==0;
+ #assert pkv_bpe(p[..],"▁Qq",ids[..])== -1 && pkv_bpe(p[..],"▁coax",ids[0..<0])== -1 && pkv_bpe(p[..],"coax",ids[0..<1])== -1 && pkv_bpe(p[..],"coax",ids[0..<2])==2;
+ // A non-ASCII character is its bytes, merged back only into a piece.
+ #assert pkv_bpe(p[..],"é",ids[..])==1 && p[ids[0]]=="é" && pkv_bpe(p[..],"ü",ids[..])== -1;
+ w:[60]u8;for i:0..<60 {w[i]='x';}
+ #assert pkv_bpe(p[..],cast(string)w[0..<51],ids[..])==51 && pkv_bpe(p[..],cast(string)w[0..<52],ids[..])== -1;
+ q:=[2]string.["z","y"];#assert pkv_bpe(q[..],"z",ids[..])==1 && ids[0]==0 && pkv_bpe(q[..],"zy",ids[..])==2;
+ #assert pkv_find(p[..],"<unk>")==0 && pkv_find(p[..],"zz")== -1 && pkv_rank(p[..],"zz")==p.count && pkv_rank(p[..],"<unk>")==0;
+}
+#test "sound keys fold spelling into sounds" {
+ #assert pkv_key_is("Coax","kaks") && pkv_key_is("cokes","kakas") && pkv_key_is("cooks","kaks") && pkv_key_is("corks","karks") && pkv_key_is("back","bak");
+ #assert pkv_key_is("Aethyr","athar") && pkv_key_is("ether","athar") && pkv_key_is("psionic","psanak") && pkv_key_is("sionic","sanak");
+ #assert pkv_key_is("phone","fana") && pkv_key_is("quick","kwak") && pkv_key_is("city","sata") && pkv_key_is("cyan","san") && pkv_key_is("cell","sal") && pkv_key_is("zip","sap") && pkv_key_is("whale","wala");
+ #assert pkv_key_is("Nostr","nastr") && pkv_key_is("noster","nastar") && pkv_key_is("bell","bal") && pkv_key_is("a-b d","abd") && pkv_key_is("Mac","mak") && pkv_key_is("ace","asa");
+ #assert pkv_key_is("a","a") && pkv_key_is("e","a") && pkv_key_is("i","a") && pkv_key_is("o","a") && pkv_key_is("u","a") && pkv_key_is("y","a") && pkv_key_is("q","k") && pkv_key_is("qa","ka");
+ #assert pkv_key_is("x","ks") && pkv_key_is("p","p") && pkv_key_is("h","h") && pkv_key_is("w","w") && pkv_key_is("c","k") && pkv_key_is("ph","f") && pkv_key_is("wh","w");
+ k:[PKV_KEY]u8;
+ #assert pkv_key("abc def ghi jkl mno pqr stu vwx yza bcd efg hij klm",k[..])==0 && pkv_key("",k[..])==0 && pkv_key("--",k[..])==0;
+ l:[97]u8;for i:0..<97 {l[i]=ifx i%2==0 then 'b' else 'd';}
+ #assert pkv_key(cast(string)l[0..<64],k[..])==0 && pkv_key(cast(string)l[0..<32],k[..])==32 && pkv_key(cast(string)l[..],k[..])==0;
+ #assert pkv_key(cast(string)l[0..<33],k[..])==0;
+ vowels:[97]u8;for i:0..<97 {vowels[i]='a';}#assert pkv_key(cast(string)vowels[0..<96],k[..])==1 && pkv_key(cast(string)vowels[..],k[..])==0;
+ #assert pkv_key_is("qu","kw") && pkv_key_is("que","kwa");
+}
+#test "keys are near when they differ by at most a third" {
+ #assert pkv_distance("kaks","kaks")==0 && pkv_distance("kaks","karks")==1 && pkv_distance("psanak","sanak")==1 && pkv_distance("","abc")==3 && pkv_distance("abc","")==3;
+ #assert pkv_distance("","")==0 && pkv_distance("kitten","sitting")==3 && pkv_distance("ab","ba")==2 && pkv_distance("","a")==1 && pkv_distance("a","a")==0 && pkv_distance("ab","b")==1;
+ a:[32]u8;b:[32]u8;for i:0..<32 {a[i]='a';b[i]='b';}#assert pkv_distance(cast(string)a[..],cast(string)b[..])==32;
+ #assert pkv_near("karks","kaks") && pkv_near("sanak","psanak") && !pkv_near("sadanak","psanak") && pkv_near("a","a");
+ #assert pkv_near("ab","ab") && !pkv_near("ac","ab") && pkv_near("abc","abd") && !pkv_near("","") && !pkv_near("","abc");
+ #assert pkv_near("abcdef","abcxyf") && !pkv_near("abcdef","axcxyf");
+ #assert pkv_min(3,5)==3 && pkv_min(5,3)==3 && pkv_min(4,4)==4 && pkv_min(-2,7)== -2 && pkv_min(0,-1)== -1;
+}
+#test "a term replaces a span only within the bias of the recognized score" {
+ #assert pkv_accept(-10.0,-11.5,2.0) && pkv_accept(-10.0,-12.0,2.0) && !pkv_accept(-10.0,-12.01,2.0) && pkv_accept(-10.0,-3.0,0.0);
+ zero:=0.0;nan:=zero/zero;inf:=1.0/zero;
+ #assert !pkv_accept(nan,-1.0,2.0) && !pkv_accept(-1.0,nan,2.0) && !pkv_accept(-inf,-1.0,2.0) && !pkv_accept(-1.0,-inf,2.0) && !pkv_accept(-1.0,inf,2.0);
+ #assert !pkv_accept(-1.0,-1.0,-0.5) && !pkv_accept(-1.0,-1.0,nan) && pkv_accept(-1.0,-1.0,0.0);
+ #assert pkv_finite(0.0) && pkv_finite(-1.0e299) && pkv_finite(1.0e299) && !pkv_finite(-1.0e300) && !pkv_finite(1.0e300) && !pkv_finite(nan);
+}
+#test "chosen replacements never overlap and the largest gain wins" {
+ c:[4]PkvCand;
+ c[0]=PkvCand.{term=0,from=2,to=4,accepted=true,gain=1.0};
+ c[1]=PkvCand.{term=1,from=3,to=5,accepted=true,gain=2.0};
+ c[2]=PkvCand.{term=2,from=5,to=6,accepted=true,gain=0.5};
+ c[3]=PkvCand.{term=3,from=0,to=2,accepted=false,gain=9.0};
+ #assert pkv_select(c[..])==2 && !c[0].chosen && c[1].chosen && c[2].chosen && !c[3].chosen;
+ c[1].gain=1.0;for i:0..<4 {c[i].chosen=false;}
+ #assert pkv_select(c[..])==2 && c[0].chosen && !c[1].chosen && c[2].chosen;
+ // Touching spans do not overlap.
+ c[3].accepted=true;for i:0..<4 {c[i].chosen=false;}#assert pkv_select(c[..])==3 && c[3].chosen && c[0].chosen && c[2].chosen;
+ // Equal gains: the higher priority, then the earlier span.
+ d:[3]PkvCand;d[0]=PkvCand.{term=5,from=0,to=1,accepted=true,gain=1.0};d[1]=PkvCand.{term=4,from=0,to=1,accepted=true,gain=1.0};d[2]=PkvCand.{term=4,from=0,to=2,accepted=true,gain=0.5};
+ #assert pkv_select(d[..])==1 && !d[0].chosen && d[1].chosen && !d[2].chosen;
+ e:[3]PkvCand;e[0]=PkvCand.{term=4,from=1,to=3,accepted=true,gain=1.0};e[1]=PkvCand.{term=4,from=0,to=2,accepted=true,gain=1.0};e[2]=PkvCand.{term=3,from=2,to=4,accepted=true,gain=0.9};
+ #assert pkv_select(e[..])==2 && e[1].chosen && !e[0].chosen && e[2].chosen;
+ f:[2]PkvCand;f[0]=PkvCand.{term=4,from=1,to=3,accepted=true,gain=1.0};f[1]=PkvCand.{term=5,from=0,to=2,accepted=true,gain=1.0};
+ #assert pkv_select(f[..])==1 && f[0].chosen && !f[1].chosen;
+ g:[2]PkvCand;g[0]=PkvCand.{term=0,from=0,to=2,accepted=true,gain=1.0};g[1]=PkvCand.{term=1,from=2,to=4,accepted=true,gain=2.0};
+ #assert pkv_select(g[..])==2 && g[0].chosen && g[1].chosen;
+}
+#test "candidates come in priority order, then distance, then position" {
+ a:=PkvCand.{term=1,distance=2,from=5};b:=PkvCand.{term=2,distance=0,from=0};
+ #assert pkv_before(a,b) && !pkv_before(b,a) && !pkv_before(a,a);
+ b.term=1;#assert pkv_before(b,a) && !pkv_before(a,b);
+ b.distance=2;#assert pkv_before(b,a) && !pkv_before(a,b);
+ b.from=5;#assert !pkv_before(b,a) && !pkv_before(a,b);b.distance=1;#assert pkv_before(b,a) && !pkv_before(a,b);
+ c:[5]PkvCand;c[0]=PkvCand.{term=2,distance=1,from=4};c[1]=PkvCand.{term=0,distance=3,from=9};c[2]=PkvCand.{term=2,distance=0,from=7};c[3]=PkvCand.{term=0,distance=3,from=1};c[4]=PkvCand.{term=1,distance=0,from=0};
+ pkv_sort(c[..]);
+ #assert c[0].from==1 && c[1].from==9 && c[2].from==0 && c[3].from==7 && c[4].from==4;
+ one:[1]PkvCand;one[0]=c[4];pkv_sort(one[..]);#assert one[0].from==4;
+}
+#test "words split at the marker and at punctuation, and spans join adjacent words" {
+ #assert pkv_marked("▁a") && pkv_marked("▁") && !pkv_marked("a▁") && !pkv_marked("abc") && !pkv_marked("ab");
+ #assert !pkv_marked("▂") && !pkv_marked("◁") && !pkv_marked("㖁") && !pkv_marked("▀");
+ #assert pkv_piece_kind(",")==0 && pkv_piece_kind("▁")==3 && pkv_piece_kind("a")==1 && pkv_piece_kind("▁7")==2 && pkv_piece_kind("9")==2 && pkv_piece_kind("0")==2;
+ #assert pkv_piece_kind("/")==0 && pkv_piece_kind(":")==0 && pkv_piece_kind("'")==1 && pkv_piece_kind("(")==0 && pkv_piece_kind("é")==1 && pkv_piece_kind("a7")==2 && pkv_piece_kind("▁.")==0;
+ hi:[1]u8;hi[0]=0x80;#assert pkv_piece_kind(cast(string)hi[..])==1;hi[0]=0x7f;#assert pkv_piece_kind(cast(string)hi[..])==0;hi[0]=0x26;#assert pkv_piece_kind(cast(string)hi[..])==0;hi[0]=0x28;#assert pkv_piece_kind(cast(string)hi[..])==0;
+ u:[6]PkvUnit;u[0]=PkvUnit.{from=0,to=1};u[1]=PkvUnit.{from=1,to=3};u[2]=PkvUnit.{from=3,to=4};u[3]=PkvUnit.{from=4,to=5};u[4]=PkvUnit.{from=6,to=7};u[5]=PkvUnit.{from=7,to=8,digit=true};
+ s:[32]PkvSpan;n:=pkv_spans(u[..],s[..]);
+ // 0, 0-1, 0-2, 1, 1-2, 1-3, 2, 2-3, 3, 4 (5 has a digit; 3 and 4 are not adjacent).
+ #assert n==10 && pkv_span_is(s[..],0,0,0) && pkv_span_is(s[..],2,0,2) && pkv_span_is(s[..],5,1,3) && pkv_span_is(s[..],7,2,3) && pkv_span_is(s[..],8,3,3) && pkv_span_is(s[..],9,4,4);
+ #assert pkv_spans(u[..],s[0..<4])==4 && pkv_spans(u[0..<0],s[..])==0;
+}
+#test "candidates are word spans that sound like a term and hold no digit" {
+ p:=pkv_test_pieces();v:[1]PkvList;#assert pkv_load("Coax\tcokes\nPsionic\n",p[..],v[..]).status==PkvStatus.ok;
+ c:[PKV_CANDIDATES]PkvCand;
+ n:=pkv_cands(p[..],"▁the|▁co|ok|s|▁run|▁s|ion|ic|▁on|▁7|▁C|o|ax|.",v[..],c[..]);
+ #assert pkv_has(c[0..<n],0,1,4) && pkv_has(c[0..<n],1,5,8) && pkv_dist(c[0..<n],0,1,4)==0 && pkv_dist(c[0..<n],1,5,8)==1;
+ #assert !pkv_has(c[0..<n],0,10,13) && !pkv_has(c[0..<n],0,0,1) && !pkv_has(c[0..<n],1,0,1);   // already the term; not near
+ for i:0..<n {#assert !(c[i].from<=9 && c[i].to>9) && c[i].marker;}
+ for i:1..<n {#assert !pkv_before(c[i],c[i-1]);}
+ // Starting the sequence, and right after punctuation (no marker): "co ax", "voice.cox".
+ n=pkv_cands(p[..],"co|x",v[..],c[..]);#assert n==1 && pkv_has(c[0..<n],0,0,2) && !c[0].marker;
+ n=pkv_cands(p[..],"▁voice|.|co|x",v[..],c[..]);#assert pkv_has(c[0..<n],0,2,4) && !c[0].marker;
+ // Already the term, or the term in another case: never a candidate.
+ n=pkv_cands(p[..],"▁voice|.|C|o|ax",v[..],c[..]);#assert !pkv_has(c[0..<n],0,2,5);
+ n=pkv_cands(p[..],"▁c|o|ax",v[..],c[..]);#assert n==0;
+ n=pkv_cands(p[..],"co|ax",v[..],c[..]);#assert n==0;
+ // A bare marker starts a word but belongs to none.
+ n=pkv_cands(p[..],"▁co|▁|ok|s",v[..],c[..]);#assert !pkv_has(c[0..<n],0,0,4);
+ n=pkv_cands(p[..],"<unk>|▁co|ok|s",v[..],c[..]);#assert pkv_has(c[0..<n],0,1,4);
+ // Out-of-range tokens and no room give none.
+ bad:=[2]int.[0,-1];#assert pkv_candidates(p[..],bad[..],v[..],c[..])==0;bad[1]=p.count;#assert pkv_candidates(p[..],bad[..],v[..],c[..])==0;
+ #assert pkv_cands(p[..],"co|x",v[..],c[0..<0])==0;
+ #assert pkv_same_letters(p[..],bad[0..<0],0,0,"") && !pkv_same_letters(p[..],bad[0..<0],0,0,"a");
+ // A digit anywhere in a word keeps it out.
+ n=pkv_cands(p[..],"▁co|x7",v[..],c[..]);#assert n==0;
+ // Priority beats position.
+ n=pkv_cands(p[..],"▁s|ion|ic|▁co|ok|s",v[..],c[..]);#assert n==2 && c[0].term==0 && c[0].from==3 && c[1].term==1;
+ // A short term's key must match exactly.
+ w:[1]PkvList;#assert pkv_load("Ac\n",p[..],w[..]).status==PkvStatus.ok;n=pkv_cands(p[..],"ok",w[..],c[..]);#assert n==1 && pkv_has(c[0..<n],0,0,1);
+ n=pkv_cands(p[..],"x",w[..],c[..]);#assert n==0;
+ // The best PKV_CANDIDATES are kept.
+ many:=pkv_cands(p[..],"▁co|ok|s|▁co|ok|s|▁co|ok|s|▁co|ok|s",v[..],c[0..<2]);#assert many==2 && c[0].from==0 && c[1].from==3;
+}
+#test "hundreds of words: the first PKV_UNITS words and PKV_ALL candidates are considered" #steps 2000000000 {
+ p:=pkv_test_pieces();v:[1]PkvList;#assert pkv_load("Coax\tcokes\n",p[..],v[..]).status==PkvStatus.ok;c:[PKV_CANDIDATES]PkvCand;
+ lots:[1200]int;for i:0..<1200 {lots[i]=pkv_find(p[..],ifx i%2==0 then "▁co" else "x");}
+ #assert pkv_candidates(p[..],lots[0..<600],v[..],c[..])==PKV_CANDIDATES && c[0].from==0 && c[31].from==62;
+ #assert pkv_candidates(p[..],lots[..],v[..],c[..])==PKV_CANDIDATES;
+}
+#test "a span's letters make its key, refused when too long" {
+ p:=pkv_test_pieces();t:[4]int;t[0]=pkv_find(p[..],"▁co");t[1]=pkv_find(p[..],"ok");t[2]=pkv_find(p[..],".");t[3]=pkv_find(p[..],"s");
+ k:[PKV_KEY]u8;#assert pkv_span_key(p[..],t[..],0,4,k[..])==4 && cast(string)k[0..<4]=="kaks";
+ #assert pkv_span_key(p[..],t[..],1,2,k[..])==2 && cast(string)k[0..<2]=="ak";
+ long:[50]int;for i:0..<50 {long[i]=pkv_find(p[..],"aa");}#assert pkv_span_key(p[..],long[..],0,48,k[..])==1 && pkv_span_key(p[..],long[..],0,49,k[..])==0;
+ // Letters compared without case; joiners in the term are skipped.
+ t2:[3]int;t2[0]=pkv_find(p[..],"▁c");t2[1]=pkv_find(p[..],"o");t2[2]=pkv_find(p[..],"ax");
+ #assert pkv_same_letters(p[..],t2[..],0,3,"Coax") && pkv_same_letters(p[..],t2[..],0,3,"co-ax") && pkv_same_letters(p[..],t2[..],0,3,"COAX.");
+ #assert !pkv_same_letters(p[..],t2[..],0,3,"Coa") && !pkv_same_letters(p[..],t2[..],0,3,"Coaxe") && !pkv_same_letters(p[..],t2[..],0,3,"Cuax") && !pkv_same_letters(p[..],t2[..],0,2,"Coax");
+}
+
+// ---- loading ----
+pkv_letter :: (c:u8)->bool {return (c>='a' && c<='z') || (c>='A' && c<='Z');}
+// A term: letters, with single inner joiners (space - . _ ').
+pkv_term_ok :: (s:string)->bool {
+ if s.count<1 || s.count>PKV_BYTES || !pkv_letter(s[s.count-1]) {return false;}
+ joined:=true;   // so the first byte must be a letter too
+ for c:s {
+  if pkv_letter(c) {joined=false;continue;}
+  if joined || !(c==' ' || c=='-' || c=='.' || c=='_' || c=='\'') {return false;}
+  joined=true;
+ }
+ return true;
+}
+pkv_form_ok :: (s:string)->bool {
+ if s.count<1 || s.count>PKV_BYTES {return false;}
+ for c:s {if !pkv_letter(c) && c!=' ' {return false;}}return true;
+}
+pkv_index :: (s:string,c:u8)->int {i:=0;while i<s.count && s[i]!=c {i+=1;}return i;}
+// The vocabulary from text, against the model's pieces.
+pkv_load :: (tsv:string,pieces:[]string,v:[]PkvList)->PkvLoad {
+ v[0].count=0;v[0].dropped=0;
+ if tsv.count>PKV_INPUT {return PkvLoad.{status=PkvStatus.size};}
+ start:=0;line:=0;
+ for i:0..<tsv.count+1 {
+  if i<tsv.count && tsv[i]!='\n' {continue;}
+  l:=tsv[start..<i];start=i+1;line+=1;
+  if l.count==0 || l[0]=='#' {continue;}
+  if v[0].count==PKV_TERMS {v[0].dropped+=1;continue;}
+  st:=pkv_line(l,pieces,v);
+  if st!=PkvStatus.ok {v[0].count=0;return PkvLoad.{status=st,line=line};}
+ }
+ return PkvLoad.{status=PkvStatus.ok};
+}
+// One term line into the next slot.
+pkv_line :: (l:string,pieces:[]string,v:[]PkvList)->PkvStatus {
+ tab:=pkv_index(l,'\t');term:=l[0..<tab];
+ if !pkv_term_ok(term) {return PkvStatus.term;}
+ t:PkvTerm;
+ for k:0..<term.count {t.surface[k]=term[k];}t.n=term.count;
+ t.klen[0]=pkv_key(term,t.keys[0][..]);t.forms=1;
+ if t.klen[0]<1 {return PkvStatus.term;}
+ if tab<l.count {
+  rest:=l[tab+1..<l.count];a:=0;
+  while true {
+   b:=a+pkv_index(rest[a..<rest.count],'|');f:=rest[a..<b];
+   if !pkv_form_ok(f) || t.forms==PKV_FORMS+1 {return PkvStatus.form;}
+   t.klen[t.forms]=pkv_key(f,t.keys[t.forms][..]);
+   if t.klen[t.forms]<1 {return PkvStatus.form;}
+   t.forms+=1;
+   if b==rest.count {break;}
+   a=b+1;
+  }
+ }
+ t.nid=pkv_words(pieces,term,true,t.ids[..]);t.nbare=pkv_words(pieces,term,false,t.bare[..]);
+ if t.nid<1 || t.nbare<1 {return PkvStatus.token;}
+ v[0].terms[v[0].count]=t;v[0].count+=1;
+ return PkvStatus.ok;
+}
+// A term's tokens: each space-separated word with the word marker, except
+// the first when marker is false (a word right after punctuation). 0 when
+// a word cannot be spelled or ids is too small.
+pkv_words :: (pieces:[]string,term:string,marker:bool,ids:[]int)->int {
+ n:=0;a:=0;first:=true;
+ while true {
+  b:=a+pkv_index(term[a..<term.count],' ');
+  w:[PKV_BYTES+3]u8;m:=0;
+  if marker || !first {w[0]=0xe2;w[1]=0x96;w[2]=0x81;m=3;}
+  for k:a..<b {w[m]=term[k];m+=1;}
+  got:=pkv_bpe(pieces,cast(string)w[0..<m],ids[n..<ids.count]);
+  if got<1 {return 0;}
+  n+=got;first=false;
+  if b==term.count {return n;}
+  a=b+1;
+ }
+ return n;
+}
+
+// ---- tokens ----
+// The id of the piece spelled s, or -1; pkv_rank gives pieces.count instead.
+pkv_find :: (pieces:[]string,s:string)->int {for i:0..<pieces.count {if pieces[i]==s {return i;}}return -1;}
+pkv_rank :: (pieces:[]string,s:string)->int {for i:0..<pieces.count {if pieces[i]==s {return i;}}return pieces.count;}
+// Byte-pair encoding of one word (with its marker bytes, if any): start from
+// its symbols (the marker is one; every other byte is one), then merge the
+// adjacent pair whose joined piece has the lowest id, the leftmost first,
+// until none joins. The pinned tokenizer's merges are ranked exactly by that
+// id (13,476 merges, none out of order). The ids written, or -1 when a
+// symbol is left with no piece, the word has more than PKV_SYMBOLS symbols
+// or out is too small.
+pkv_bpe :: (pieces:[]string,word:string,out:[]int)->int {
+ at:[PKV_SYMBOLS+1]int;n:=0;i:=0;
+ while i<word.count {
+  if n==PKV_SYMBOLS {return -1;}
+  at[n]=i;n+=1;i+=ifx pkv_marked(word[i..<word.count]) then 3 else 1;
+ }
+ at[n]=word.count;
+ while true {
+  best:=pieces.count;where:=-1;
+  for k:0..<n-1 {id:=pkv_rank(pieces,word[at[k]..<at[k+2]]);if id<best {best=id;where=k;}}
+  if where<0 {break;}
+  for k:where+1..<n {at[k]=at[k+1];}
+  n-=1;
+ }
+ if n>out.count {return -1;}
+ for k:0..<n {id:=pkv_find(pieces,word[at[k]..<at[k+1]]);if id<0 {return -1;}out[k]=id;}
+ return n;
+}
+
+// ---- sounds ----
+// A rough sound key: ASCII letters only, lower case; "ph" f, "wh" w, "qu"
+// kw, "x" ks, "c" s before e, i or y and k elsewhere, "q" k, "z" s; every
+// run of vowels (and y) is one 'a'; a repeated sound is one. Its length, or
+// 0 when it would pass PKV_KEY (or there are no letters).
+pkv_key :: (s:string,out:[]u8)->int {
+ l:[PKV_BYTES*2+1]u8;m:=0;
+ for c:s {if pkv_letter(c) {if m==PKV_BYTES*2 {return 0;}l[m]=ifx c<'a' then c+32 else c;m+=1;}}
+ n:=0;i:=0;
+ while i<m {
+  c:=l[i];next:=l[i+1];
+  emit:[2]u8;e:=1;emit[0]=c;
+  if c=='a' || c=='e' || c=='i' || c=='o' || c=='u' || c=='y' {emit[0]='a';}
+  else if c=='p' && next=='h' {emit[0]='f';i+=1;}
+  else if c=='w' && next=='h' {i+=1;}
+  else if c=='c' {emit[0]=ifx next=='e' || next=='i' || next=='y' then 's' else 'k';}
+  else if c=='q' {emit[0]='k';if next=='u' {emit[1]='w';e=2;i+=1;}}
+  else if c=='x' {emit[0]='k';emit[1]='s';e=2;}
+  else if c=='z' {emit[0]='s';}
+  for k:0..<e {
+   if n>0 && out[n-1]==emit[k] {continue;}
+   if n==out.count {return 0;}
+   out[n]=emit[k];n+=1;
+  }
+  i+=1;
+ }
+ return n;
+}
+// min(a, b) without a comparison: a - b's sign mask picks it.
+pkv_min :: (a:int,b:int)->int {d:=a-b;return b+(d&(d>>63));}
+// Levenshtein distance between two keys (each at most PKV_KEY bytes); the
+// row holds each distance plus one.
+pkv_distance :: (a:string,b:string)->int {
+ row:[PKV_KEY+1]int;
+ for j:0..<b.count+1 {row[j]=j+1;}
+ for i:1..<a.count+1 {
+  diag:=row[0];row[0]=i+1;
+  for j:1..<b.count+1 {
+   up:=row[j];same:=ifx a[i-1]==b[j-1] then 0 else 1;
+   row[j]=pkv_min(pkv_min(diag+same,up+1),row[j-1]+1);diag=up;
+  }
+ }
+ return row[b.count]-1;
+}
+// A span's key is near a term's when they differ by at most a third of the
+// term's key (rounded down; so a key under 3 sounds must match exactly).
+pkv_near :: (span:string,form:string)->bool {return span.count>0 && pkv_distance(span,form)*3<=form.count;}
+
+// ---- candidates ----
+pkv_marked :: (p:string)->bool {return p.count>=3 && p[0]==0xe2 && p[1]==0x96 && p[2]==0x81;}
+// 0 punctuation only, 1 a word's piece, 2 one with a digit, 3 the bare marker.
+pkv_piece_kind :: (p:string)->int {
+ body:=ifx pkv_marked(p) then p[3..<p.count] else p;
+ if body.count==0 {return 3;}
+ kind:=0;
+ for c:body {if c>='0' && c<='9' {return 2;}if pkv_letter(c) || c>127 || c=='\'' {kind=1;}}
+ return kind;
+}
+// Runs of adjacent units, PKV_SPAN_UNITS at most, holding no digit; by
+// first unit, then length. The number written.
+pkv_spans :: (u:[]PkvUnit,out:[]PkvSpan)->int {
+ n:=0;
+ for a:0..<u.count {
+  for b:a..<pkv_min(a+PKV_SPAN_UNITS,u.count) {
+   if u[b].digit || (b>a && u[b].from!=u[b-1].to) {break;}
+   if n==out.count {return n;}
+   out[n]=PkvSpan.{a=a,b=b};n+=1;
+  }
+ }
+ return n;
+}
+// The sound key of tokens from ..< to's letters; 0 when they pass the key.
+pkv_span_key :: (pieces:[]string,tokens:[]int,from:int,to:int,key:[]u8)->int {
+ letters:[PKV_BYTES*2]u8;m:=0;
+ for t:from..<to {for c:pieces[tokens[t]] {if pkv_letter(c) {if m==letters.count {return 0;}letters[m]=c;m+=1;}}}
+ return pkv_key(cast(string)letters[0..<m],key);
+}
+// Whether tokens from ..< to hold exactly the term's letters, ignoring case.
+pkv_same_letters :: (pieces:[]string,tokens:[]int,from:int,to:int,term:string)->bool {
+ k:=0;
+ for t:from..<to {for c:pieces[tokens[t]] {if pkv_letter(c) {
+  while k<term.count && !pkv_letter(term[k]) {k+=1;}
+  if k==term.count || (c|32)!=(term[k]|32) {return false;}
+  k+=1;
+ }}}
+ while k<term.count && !pkv_letter(term[k]) {k+=1;}
+ return k==term.count;
+}
+pkv_before :: (a:PkvCand,b:PkvCand)->bool {
+ if a.term<b.term {return true;}if a.term>b.term {return false;}
+ if a.distance<b.distance {return true;}if a.distance>b.distance {return false;}
+ return a.from<b.from;
+}
+pkv_sort :: (c:[]PkvCand) {
+ for i:1..<c.count {
+  x:=c[i];j:=i;
+  while j>0 && pkv_before(x,c[j-1]) {c[j]=c[j-1];j-=1;}
+  c[j]=x;
+ }
+}
+// Candidate spans of up to PKV_SPAN_UNITS adjacent words, against every
+// term's spelling and sounds_like keys; the out.count best by priority,
+// then distance, then position. A span already spelled as the term is not
+// one, nor is one that differs from it only in case. The number written.
+pkv_candidates :: (pieces:[]string,tokens:[]int,v:[]PkvList,out:[]PkvCand)->int {
+ units:[PKV_UNITS]PkvUnit;nu:=0;
+ for i:0..<tokens.count {
+  if tokens[i]<0 || tokens[i]>=pieces.count {return 0;}
+  p:=pieces[tokens[i]];kind:=pkv_piece_kind(p);
+  if kind==0 || kind==3 {continue;}
+  if nu==0 || pkv_marked(p) || units[nu-1].to!=i {if nu==PKV_UNITS {break;}units[nu]=PkvUnit.{from=i,to=i+1,marker=pkv_marked(p)};nu+=1;}
+  else {units[nu-1].to=i+1;}
+  if kind==2 {units[nu-1].digit=true;}
+ }
+ spans:[PKV_UNITS*PKV_SPAN_UNITS]PkvSpan;ns:=pkv_spans(units[0..<nu],spans[..]);
+ all:[PKV_ALL]PkvCand;n:=0;
+ for sp:spans[0..<ns] {
+  from:=units[sp.a].from;to:=units[sp.b].to;marker:=units[sp.a].marker;
+  key:[PKV_KEY]u8;kn:=pkv_span_key(pieces,tokens,from,to,key[..]);
+  for term:0..<v[0].count {
+   x:=v[0].terms[term];best:=PKV_KEY+1;
+   ks:=cast(string)key[0..<kn];
+   for f:0..<x.forms {form:=cast(string)x.keys[f][0..<x.klen[f]];if pkv_near(ks,form) {best=pkv_min(best,pkv_distance(ks,form));}}
+   if best==PKV_KEY+1 {continue;}
+   if pkv_same_letters(pieces,tokens,from,to,cast(string)x.surface[0..<x.n]) || n==PKV_ALL {continue;}
+   all[n]=PkvCand.{term=term,from=from,to=to,marker=marker,distance=best};n+=1;
+  }
+ }
+ pkv_sort(all[0..<n]);
+ k:=pkv_min(n,out.count);
+ for i:0..<k {out[i]=all[i];}
+ return k;
+}
+
+// ---- decisions ----
+// The term replaces the span when its score is at most bias below the
+// recognized tokens' score; both must be finite and the bias not negative.
+pkv_finite :: (x:f64)->bool {return x==x && x>-1e300 && x<1e300;}
+pkv_accept :: (recognized:f64,term:f64,bias:f64)->bool {
+ if !pkv_finite(recognized) || !pkv_finite(term) || !(bias>=0) {return false;}
+ return term+bias>=recognized;
+}
+// Chooses accepted candidates without overlap: the largest gain first, then
+// the higher priority (lower term), then the earlier span. The number chosen.
+pkv_select :: (c:[]PkvCand)->int {
+ chosen:=0;
+ while true {
+  best:=-1;
+  for i:0..<c.count {
+   x:=c[i];if !x.accepted || x.chosen {continue;}
+   clash:=false;for j:0..<c.count {if c[j].chosen && c[j].from<x.to && x.from<c[j].to {clash=true;}}
+   if clash {continue;}
+   if best<0 || x.gain>c[best].gain || (x.gain==c[best].gain && pkv_before(x,c[best])) {best=i;}
+  }
+  if best<0 {break;}
+  c[best].chosen=true;chosen+=1;
+ }
+ return chosen;
+}

@@ -87,8 +87,10 @@ host-effect cases, the real resident Metal recording and offscreen app checks.
 Tests use public recordings or injected capture/permission effects; they never
 open the owner's microphone or a visible window.
 
-The [Hex proposal](2026-11-02-coder-voice-from-hex.md) still has later work:
-repository vocabulary rescoring, spoken formatting, partial
+Repository vocabulary rescoring and spoken formatting exist for
+`openagents dictate` (`--terms FILE`, `--format code`; [record](../verification/dictation-vocab-2026-11-03/README.md)).
+The Mac app does not use them yet. The [Hex proposal](2026-11-02-coder-voice-from-hex.md)
+still has later work: partial
 text while speaking, streaming and measured key-release latency. The terminal
 UI's toggle gesture and a standalone `openagents dictate` command are separate.
 No 300 ms dictation-latency or representative multilingual-quality claim is made.

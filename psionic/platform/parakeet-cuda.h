@@ -23,6 +23,11 @@ const char *pk_cuda_error(void);
  * written to tokens/at. -1 is a device failure (pk_cuda_error). */
 int pk_cuda_decode(const float *dw,int64_t nd,const float *enc,int64_t ne,int64_t frames,float *work,int64_t nw,int64_t *tokens,int64_t nt,int64_t *at,int64_t na,int64_t *result,int64_t nr);
 double pk_cuda_decode_seconds(void);
+/* Bind the decoder's buffers (weights, encoded frames, work) for Coax's own
+ * launches and reads (vocabulary rescoring), until pk_cuda_unbind; 1 on
+ * success, -1 (pk_cuda_error) with nothing bound. */
+int pk_cuda_bind_decoder(const float *dw,int64_t nd,const float *enc,int64_t ne,float *work,int64_t nw);
+int pk_cuda_unbind(void);
 /* Verification entry: the same decoder for any TDT shape, fields vocab/enc/
  * pred/layers/joint/durations/dur[0..7]/max_symbols. */
 int pk_cuda_decode_shape(const int64_t shape[15],const float *dw,int64_t nd,const float *enc,int64_t ne,int64_t frames,float *work,int64_t nw,int64_t *tokens,int64_t nt,int64_t *at,int64_t na,int64_t *result,int64_t nr);

@@ -197,13 +197,18 @@ static pthread_mutex_t job_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t job_done = PTHREAD_COND_INITIALIZER;
 static int job_state;   /* 0 idle, 1 running, 2 done, 3 failed */
 static float *job_audio; static int64_t job_n; static char job_text[TEXT], job_error[512];
+/* The last call's text before vocabulary rescoring (GitHub #12670). */
+static char job_raw[TEXT];
 /* memset, kept by an empty asm that may read *p (explicit_bzero's method). */
 static void wipe(void *p, size_t n) { if (p && n) { memset(p, 0, n); __asm__ __volatile__("" : : "r"(p) : "memory"); } }
 static void *job_run(void *unused) {
   (void)unused;
   char text[TEXT], err[512]; text[0] = 0; err[0] = 0;
   int ok = psionic_parakeet_text(engine, job_audio, job_n, text, sizeof text, err, sizeof err);
+  char raw[TEXT]; raw[0] = 0;
+  if (ok && !psionic_parakeet_raw_text(engine, raw, sizeof raw)) raw[0] = 0;
   pthread_mutex_lock(&job_lock);
+  memcpy(job_raw, raw, sizeof raw); wipe(raw, sizeof raw);
   memcpy(job_text, text, sizeof text); memcpy(job_error, err, sizeof err);
   wipe(job_audio, MAX_SAMPLES * sizeof *job_audio);
   job_state = ok ? 2 : 3; pthread_cond_broadcast(&job_done);
@@ -259,6 +264,26 @@ int64_t cxdict_model_poll(coax_v_u8 out, int64_t timeout_ms) {
   }
   pthread_mutex_unlock(&job_lock);
   return r;
+}
+/* The vocabulary (psionic_parakeet_vocabulary): the terms admitted, or
+   -(n + 1) with the engine's n-byte reason in err. */
+int64_t cxdict_model_vocabulary(coax_v_u8 tsv, coax_v_u8 err) {
+  char e[512]; e[0] = 0;
+  if (!engine) return -1;
+  int n = psionic_parakeet_vocabulary(engine, (const char *)tsv.data, (size_t)tsv.count, e, sizeof e);
+  if (n >= 0) return n;
+  int64_t k = (int64_t)strlen(e); if (k > err.count) k = err.count;
+  memcpy(err.data, e, (size_t)k);
+  return -(k + 1);
+}
+/* The finished call's text before rescoring: its bytes, or -1. Cleared once read. */
+int64_t cxdict_model_raw(coax_v_u8 out) {
+  pthread_mutex_lock(&job_lock);
+  int64_t n = (int64_t)strlen(job_raw);
+  if (n > out.count) n = -1; else memcpy(out.data, job_raw, (size_t)n);
+  wipe(job_raw, sizeof job_raw);
+  pthread_mutex_unlock(&job_lock);
+  return n;
 }
 /* Discard the engine's resident utterance work (psionic_parakeet_clear). */
 int64_t cxdict_model_clear(void) { return engine && psionic_parakeet_clear(engine) ? 0 : -1; }

@@ -44,5 +44,19 @@ int psionic_parakeet_json(psionic_parakeet *s,char *out,size_t cap);
  * frames(stage1), as row-major f32. Independent snapshots survive failure;
  * unavailable after a successful decode-only call. Returns count or -1. */
 int64_t psionic_parakeet_stage(psionic_parakeet *s,int stage,float *out,size_t cap);
+/* Vocabulary (GitHub #12670): UTF-8 lines "TERM<TAB>SOUNDS|LIKE", highest
+ * priority first, at most 65536 bytes; the first 64 terms are used
+ * (psionic/lib/parakeet/vocab.coax). Later psionic_parakeet_text calls
+ * rescore look-alike spans with the transducer and may spell a term there;
+ * n==0 removes the vocabulary. Returns the terms admitted, or -1 (ERR names
+ * the refused line) with no vocabulary set. */
+int psionic_parakeet_vocabulary(psionic_parakeet *s,const char *tsv,size_t n,char *err,size_t errcap);
+/* The last successful call's text before rescoring (equal to its text when
+ * nothing was replaced or no vocabulary is set). 1 on success. */
+int psionic_parakeet_raw_text(psionic_parakeet *s,char *out,size_t cap);
+/* The last call's rescoring: candidates, scored, accepted, replaced, joint
+ * evaluations, and 0 or why the recognized text was kept (1 work, 2 device
+ * binding, 3 rescoring refused). 1 on success. */
+int psionic_parakeet_vocabulary_info(psionic_parakeet *s,int64_t info[6]);
 void psionic_parakeet_close(psionic_parakeet *s);
 #endif

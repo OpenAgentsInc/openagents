@@ -1,0 +1,29 @@
+# This repository's dictation vocabulary (GitHub #12670), highest priority
+# first: TERM<TAB>SOUNDS|LIKE. Parakeet rescores look-alike spans with these
+# (psionic/lib/parakeet/vocab.coax); a term replaces a span only when the
+# transducer scores it within PKV_BIAS of what it recognized. At most 64 terms
+# are used. Terms never hold a digit, and only characters the model has pieces
+# for (no underscore: say "snake case" with --format code instead). Product and code names only: an
+# ordinary English word here would compete with that word everywhere.
+Coax	coaks|cokes|coke
+Psionic	sionic|psyonic|sigh onic
+Parakeet	para keet
+Aethyr	ether|aether|ethyr
+Aethyrforge	ether forge|aether forge
+Zeron	zero n|xeron|zerone|zeron
+ZeronState	zeron state|zero n state
+OpenAgents	open agents|open agent
+Nostr	noster|nostra|noster
+Schnorr	schnor|shnor|snore
+CUDA	cooda|kuda|couda
+WebGPU	web gpu|web g p u
+Kubernetes	kubernetes|cooper netties
+JSON	jason|jay son
+NixOS	nix os|nicks os
+Taproot	tap root
+Breez	breeze
+Pylon	pilon|pile on
+voice.coax	voice dot coax|voice coax
+SentencePiece	sentence piece
+FastConformer	fast conformer
+rebase	re base|ree base

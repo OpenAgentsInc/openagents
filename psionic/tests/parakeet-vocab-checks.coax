@@ -1,0 +1,37 @@
+// Helpers for psionic/lib/parakeet/vocab.coax's checks (GitHub #12670): a
+// small SentencePiece-style piece table and readable assertions. Kept apart
+// so mutation testing of the vocabulary rules mutates only the rules.
+
+// Pieces in merge order (a lower id merges first), with what the checks spell.
+pkv_test_pieces :: ()->[64]string {
+ p:[64]string;
+ list:=[44]string.["<unk>","▁","a","c","e","h","i","k","n","o","r","s","t","u","x","Z","S","P",".","7","▁c","▁co","ax","▁coax","co","er","on","▁Z","▁t","▁th","▁the","ok","ion","ic","▁r","▁run","un","▁s","▁on","▁7","▁v","oi","▁voice","Q"];
+ for i:0..<44 {p[i]=list[i];}for i:44..<64 {p[i]="<pad>";}
+ p[44]="v";p[45]="▁P";p[46]="▁S";p[47]="at";p[48]="▁St";p[49]="C";p[50]="▁C";p[51]="-";p[52]="_";p[53]="'";p[54]="aa";p[55]="é";p[56]="▁j";p[57]="x7";p[58]="A";
+ return p;
+}
+pkv_has :: (c:[]PkvCand,term:int,from:int,to:int)->bool {for x:c {if x.term==term && x.from==from && x.to==to {return true;}}return false;}
+pkv_dist :: (c:[]PkvCand,term:int,from:int,to:int)->int {for x:c {if x.term==term && x.from==from && x.to==to {return x.distance;}}return -1;}
+pkv_surface :: (v:[]PkvList,i:int)->string {return cast(string)v[0].terms[i].surface[0..<v[0].terms[i].n];}
+pkv_keyof :: (v:[]PkvList,i:int,f:int)->string {return cast(string)v[0].terms[i].keys[f][0..<v[0].terms[i].klen[f]];}
+pkv_key_is :: (s:string,want:string)->bool {k:[PKV_KEY]u8;n:=pkv_key(s,k[..]);if n<1 {return false;}return cast(string)k[0..<n]==want;}
+pkv_span_is :: (s:[]PkvSpan,i:int,a:int,b:int)->bool {return s[i].a==a && s[i].b==b;}
+// Whether ids spell the "|"-separated pieces exactly.
+pkv_ids_are :: (p:[]string,ids:[]int,want:string)->bool {
+ k:=0;a:=0;
+ while a<=want.count {
+  b:=a;while b<want.count && want[b]!='|' {b+=1;}
+  if k>=ids.count || p[ids[k]]!=want[a..<b] {return false;}
+  k+=1;a=b+1;
+ }
+ return k==ids.count;
+}
+// Candidates for a "|"-separated piece sequence.
+pkv_cands :: (p:[]string,seq:string,v:[]PkvList,out:[]PkvCand)->int {
+ t:[64]int;n:=0;a:=0;
+ while a<=seq.count {
+  b:=a;while b<seq.count && seq[b]!='|' {b+=1;}
+  t[n]=pkv_find(p,seq[a..<b]);if t[n]<0 {return -1;}n+=1;a=b+1;
+ }
+ return pkv_candidates(p,t[0..<n],v,out);
+}

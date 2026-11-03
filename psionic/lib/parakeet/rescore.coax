@@ -1,0 +1,237 @@
+// Vocabulary rescoring for Parakeet (GitHub #12670): after greedy TDT
+// decoding, each candidate span (vocab.coax) is scored twice by the
+// transducer itself, over the same encoded frames: once as the tokens it
+// recognized and once as a vocabulary term's tokens. The score is the log
+// probability of every alignment of those labels from the frame where the
+// span's first token was emitted to the frame where the next token was
+// emitted (TDT's forward sum over tokens, blanks and durations), plus the
+// next token's own log probability after them. A term replaces the span
+// only when pkv_accept admits its score; chosen replacements never overlap.
+//
+// The model is unchanged: the same prediction network, joint and head as
+// tdt.coax and device-tdt.coax, through the same kernels on the GPU
+// (pkq_launch kinds 1, 12, 13, 14, 15 and 17, and pkq_read of the joint's
+// outputs) or parallel.coax's exact CPU rows. With no vocabulary nothing
+// here runs, and the decoder's own result is untouched.
+#load "device-tdt.coax";
+#load "parallel.coax";
+#load "vocab.coax";
+
+PKR_SPAN_FRAMES :: 48;   // encoded frames (3.84 s) a scored span may cover
+PKR_LABELS :: 24;        // labels a scored hypothesis may have
+PKR_EVALS :: 6000;       // joint evaluations one model call may spend
+PKR_ROWS :: (PKR_SPAN_FRAMES+1)*(PKR_LABELS+1);
+PKR_NONE :: -1.0e300;    // log of zero
+
+// The log probabilities the forward sum reads at one (frame, labels done)
+// point: the blank, the next label, the token after the span, and each
+// duration.
+PkrRow :: struct {blank:f64;label:f64;next:f64;dur:[8]f64;}
+
+#test "one joint output becomes log probabilities" {
+ s:=tdt_tiny();logits:=[8]f32.[1,2,3,4,0.5,0,1,2];   // tokens 0..3, blank 4, durations 0..2
+ r:=pkr_compact(s,logits[..],2,1);
+ z:=exp(1.0)+exp(2.0)+exp(3.0)+exp(4.0)+exp(0.5);
+ #assert abs(r.blank-(0.5-log(z)))<1e-12 && abs(r.label-(3.0-log(z)))<1e-12 && abs(r.next-(2.0-log(z)))<1e-12;
+ zd:=exp(0.0)+exp(1.0)+exp(2.0);
+ #assert abs(r.dur[0]-(0.0-log(zd)))<1e-12 && abs(r.dur[2]-(2.0-log(zd)))<1e-12;
+ r=pkr_compact(s,logits[..],-1,-1);#assert r.label==PKR_NONE && r.next==PKR_NONE;
+ big:=[8]f32.[1000,0,0,0,0,0,0,0];r=pkr_compact(s,big[..],0,1);#assert abs(r.label)<1e-12 && r.next< -999;
+}
+#test "log-add is exact at its edges" {
+ #assert pkr_add(PKR_NONE,-3.0)== -3.0 && pkr_add(-3.0,PKR_NONE)== -3.0 && pkr_add(PKR_NONE,PKR_NONE)==PKR_NONE;
+ #assert abs(pkr_add(log(0.25),log(0.5))-log(0.75))<1e-15 && abs(pkr_add(log(0.5),log(0.25))-log(0.75))<1e-15;
+}
+#test "the forward sum equals every alignment enumerated" {
+ // Hand-set log probabilities on a 3-frame, 2-label span with durations
+ // 0, 1, 2; the oracle walks every path explicitly.
+ s:=tdt_tiny();rows:[PKR_ROWS]PkrRow;alpha:[PKR_ROWS]f64;
+ for t:0..<4 {for u:0..<3 {i:=t*3+u;rows[i].blank=log(0.1+0.05*f64(t+u));rows[i].label=log(0.3+0.1*f64(t)-0.05*f64(u));rows[i].next=log(0.2+0.01*f64(t));
+  rows[i].dur[0]=log(0.2+0.02*f64(u));rows[i].dur[1]=log(0.5);rows[i].dur[2]=log(0.3-0.02*f64(u));}}
+ for has_next:[2]bool.[true,false] {
+  got:=pkr_forward(s,rows[..],alpha[..],3,2,has_next);
+  want:=pkr_oracle(s,rows[..],0,0,3,2,has_next);
+  #assert want>PKR_NONE && abs(got-want)<1e-12;
+ }
+ // No labels: blanks only.
+ got:=pkr_forward(s,rows[..],alpha[..],2,0,true);#assert abs(got-pkr_oracle(s,rows[..],0,0,2,0,true))<1e-12;
+ // A span on one frame: only zero-duration emissions reach it.
+ got=pkr_forward(s,rows[..],alpha[..],0,2,true);#assert abs(got-pkr_oracle(s,rows[..],0,0,0,2,true))<1e-12;
+ #assert pkr_forward(s,rows[..],alpha[0..<5],3,2,true)==PKR_NONE && pkr_forward(s,rows[..],alpha[..],PKR_SPAN_FRAMES+1,1,true)==PKR_NONE;
+}
+// The oracle: log of the sum over every path from (t, u) to (T, U).
+pkr_oracle :: (s:TdtShape,rows:[]PkrRow,t:int,u:int,T:int,U:int,has_next:bool)->f64 {
+ W:=U+1;
+ if t==T && u==U {return ifx has_next then rows[T*W+U].next else 0.0;}
+ if t==T && !has_next {return PKR_NONE;}
+ r:=rows[t*W+u];total:=PKR_NONE;
+ for d:0..<s.durations {
+  dd:=s.dur[d];
+  if dd>=1 && t<T {nt:=t+dd;if nt>T {if has_next {continue;}nt=T;}total=pkr_add(total,r.blank+r.dur[d]+pkr_oracle(s,rows,nt,u,T,U,has_next));}
+  if u<U && (t<T || dd==0) {nt:=t+dd;if nt>T {if has_next {continue;}nt=T;}total=pkr_add(total,r.label+r.dur[d]+pkr_oracle(s,rows,nt,u+1,T,U,has_next));}
+ }
+ return total;
+}
+
+pkr_add :: (a:f64,b:f64)->f64 {
+ if a<=PKR_NONE {return b;}if b<=PKR_NONE {return a;}
+ m:=ifx a>b then a else b;return m+log(exp(a-m)+exp(b-m));
+}
+// The blank's, a label's and the next token's log softmax among the tokens
+// and blank, and each duration's among the durations; -1 asks for none.
+pkr_compact :: (s:TdtShape,logits:[]f32,label:int,next:int)->PkrRow {
+ r:PkrRow;m:=f64(logits[0]);
+ for k:1..<s.vocab+1 {if f64(logits[k])>m {m=f64(logits[k]);}}
+ z:=0.0;for k:0..<s.vocab+1 {z+=exp(f64(logits[k])-m);}lz:=m+log(z);
+ r.blank=f64(logits[s.vocab])-lz;
+ r.label=ifx label>=0 then f64(logits[label])-lz else PKR_NONE;
+ r.next=ifx next>=0 then f64(logits[next])-lz else PKR_NONE;
+ d0:=s.vocab+1;md:=f64(logits[d0]);for k:1..<s.durations {if f64(logits[d0+k])>md {md=f64(logits[d0+k]);}}
+ zd:=0.0;for k:0..<s.durations {zd+=exp(f64(logits[d0+k])-md);}ld:=md+log(zd);
+ for k:0..<s.durations {r.dur[k]=f64(logits[d0+k])-ld;}
+ return r;
+}
+// TDT's forward sum over a span of T frames (relative frames 0..T) and U
+// labels: from (0, 0) to (T, U), a blank moving 1 or more frames, a label
+// moving 0 or more. With has_next the path must land exactly on frame T
+// and the next token's probability there is added; without, the span runs
+// to the end of the audio and any move past T ends at T. rows holds frame
+// t's point after u labels at t*(U+1)+u. PKR_NONE when out of bounds.
+pkr_forward :: (s:TdtShape,rows:[]PkrRow,alpha:[]f64,T:int,U:int,has_next:bool)->f64 {
+ W:=U+1;
+ if T<0 || U<0 || T>PKR_SPAN_FRAMES || U>PKR_LABELS || alpha.count<(T+1)*W || rows.count<(T+1)*W {return PKR_NONE;}
+ for i:0..<(T+1)*W {alpha[i]=PKR_NONE;}
+ alpha[0]=0;
+ last:=ifx has_next then T else T-1;
+ for u:0..<W {
+  for t:0..<last+1 {
+   a:=alpha[t*W+u];if a<=PKR_NONE {continue;}
+   r:=rows[t*W+u];
+   for d:0..<s.durations {
+    dd:=s.dur[d];nt:=t+dd;
+    if nt>T {if has_next {continue;}nt=T;}
+    if dd>=1 && t<T {alpha[nt*W+u]=pkr_add(alpha[nt*W+u],a+r.blank+r.dur[d]);}
+    if u<U && (t<T || dd==0) {alpha[nt*W+u+1]=pkr_add(alpha[nt*W+u+1],a+r.label+r.dur[d]);}
+   }
+  }
+ }
+ end:=alpha[T*W+U];if end<=PKR_NONE {return PKR_NONE;}
+ return ifx has_next then end+rows[T*W+U].next else end;
+}
+
+// ---- the model's side: one span's rows ----
+// Scoring state: the decoder plan, the device, the joint evaluations spent,
+// and the prediction state saved after the first `saved` tokens.
+PkrCtx :: struct {s:TdtShape;p:TdtPlan;gpu:bool;threads:bool;frames:int;evals:int;save:int;saved:int;}
+pkr_state :: (c:PkrCtx)->int {return (c.p.at_x-c.p.at_h)+c.s.joint;}
+pkr_work :: (s:TdtShape,frames:int)->int {p:=tdt_plan(s,frames);return p.work+(p.at_x-p.at_h)+s.joint;}
+// Copies the prediction state (h, c and the projected output) out to the
+// save area (or back).
+pkr_copy :: (c:PkrCtx,work:[]f32,out:bool)->bool {
+ hc:=c.p.at_x-c.p.at_h;j:=c.s.joint;
+ a:=work[c.p.at_h..<c.p.at_x];b:=work[c.save..<c.save+hc];x:=work[c.p.at_dec..<c.p.at_dec+j];y:=work[c.save+hc..<c.save+hc+j];
+ from1:=ifx out then a else b;to1:=ifx out then b else a;from2:=ifx out then x else y;to2:=ifx out then y else x;
+ if c.gpu {return pkq_launch(PKG_COPY,hc,0,0,0,0,0,0,0,0,0,from1,to1,to1,to1,to1,to1) && pkq_launch(PKG_COPY,j,0,0,0,0,0,0,0,0,0,from2,to2,to2,to2,to2,to2);}
+ for i:0..<hc {to1[i]=from1[i];}for i:0..<j {to2[i]=from2[i];}return true;
+}
+pkr_predict :: (c:PkrCtx,w:[]f32,label:int,work:[]f32)->bool {
+ if c.gpu {return pkg_predict(c.s,c.p,w,label,work);}return pkp_predict(c.s,c.p,w,label,work,c.threads);
+}
+// The joint's outputs at frame t, on the host, in work's logits.
+pkr_logits :: (c:PkrCtx,w:[]f32,t:int,work:[]f32)->bool {
+ s:=c.s;p:=c.p;
+ if !c.gpu {return pkp_joint(s,p,w,t,work,c.threads);}
+ j:=s.joint;o:=p.outputs;z:=work[p.at_z..<p.at_z+j];logits:=work[p.at_logits..<p.at_logits+o];
+ if !pkq_launch(PKG_JOINT,j,0,0,0,0,0,0,0,0,0,work[t*j..<t*j+j],work[p.at_dec..<p.at_dec+j],z,z,z,z) {return false;}
+ if !pkg_rows(o,j,false,w[p.head..<p.head+o*j],w[p.head+o*j..<p.head+o*j+o],z,z,logits) {return false;}
+ return pkq_read(logits);
+}
+// The frames' projections and the prediction state after the start token,
+// saved as prefix 0.
+pkr_begin :: (c:[]PkrCtx,w:[]f32,enc:[]f32,work:[]f32)->bool {
+ s:=c[0].s;p:=c[0].p;j:=s.joint;frames:=c[0].frames;
+ if c[0].gpu {
+  if !pkq_launch(1,((frames+63)/64)*((j+31)/32),frames,s.enc,j,1,0,0,0,0,0,enc,w[p.enc..<p.enc+j*s.enc],w[p.enc+j*s.enc..<p.enc+j*s.enc+j],work[0..<frames*j],work[0..<frames*j],work[0..<frames*j]) {return false;}
+ } else {
+  for t:0..<frames {if !pkp_linear(w,p.enc,enc[t*s.enc..<t*s.enc+s.enc],work[t*j..<t*j+j],c[0].threads) {return false;}}
+ }
+ return pkr_reset(c,w,work);
+}
+pkr_reset :: (c:[]PkrCtx,w:[]f32,work:[]f32)->bool {
+ p:=c[0].p;
+ if c[0].gpu {if !pkq_launch(PKG_ZERO,p.at_x-p.at_h,0,0,0,0,0,0,0,0,0,work[p.at_h..<p.at_x],work,work,work,work,work) {return false;}}
+ else {for i:p.at_h..<p.at_x {work[i]=0;}}
+ c[0].saved=0;
+ return pkr_predict(c[0],w,c[0].s.vocab,work) && pkr_copy(c[0],work,true);
+}
+// The prediction state after tokens[0..<k], from the saved state.
+pkr_prefix :: (c:[]PkrCtx,w:[]f32,work:[]f32,tokens:[]int,k:int)->bool {
+ if k<c[0].saved {if !pkr_reset(c,w,work) {return false;}}
+ if !pkr_copy(c[0],work,false) {return false;}
+ for i:c[0].saved..<k {if !pkr_predict(c[0],w,tokens[i],work) {return false;}}
+ c[0].saved=k;return pkr_copy(c[0],work,true);
+}
+// The score of labels over frames t0..t1 after tokens[0..<prefix], with
+// the token next at t1 (or -1 when the span runs to the end).
+pkr_score :: (c:[]PkrCtx,w:[]f32,work:[]f32,tokens:[]int,prefix:int,labels:[]int,t0:int,t1:int,next:int,rows:[]PkrRow,alpha:[]f64)->f64 {
+ T:=t1-t0;U:=labels.count;W:=U+1;has_next:=next>=0;
+ if T<0 || T>PKR_SPAN_FRAMES || U>PKR_LABELS || t1>c[0].frames || (has_next && t1==c[0].frames) {return PKR_NONE;}
+ last:=ifx has_next then T else T-1;
+ if c[0].evals+(last+1)*W>PKR_EVALS {return PKR_NONE;}
+ if !pkr_prefix(c,w,work,tokens,prefix) {return PKR_NONE;}
+ p:=c[0].p;
+ for u:0..<W {
+  for t:0..<last+1 {
+   if !pkr_logits(c[0],w,t0+t,work) {return PKR_NONE;}
+   c[0].evals+=1;
+   rows[t*W+u]=pkr_compact(c[0].s,work[p.at_logits..<p.at_logits+p.outputs],ifx u<U then labels[u] else -1,ifx u==U then next else -1);
+  }
+  if u<U && !pkr_predict(c[0],w,labels[u],work) {return PKR_NONE;}
+ }
+ return pkr_forward(c[0].s,rows,alpha,T,U,has_next);
+}
+
+// ---- one model call's rescoring ----
+// The recognized tokens (and their frames) with the chosen terms in place,
+// into out and out_at; the count written, or -1 on a device failure or too
+// little room. info: candidates, scored, accepted, chosen, joint evaluations.
+pkr_rescore :: (s:TdtShape,w:[]f32,enc:[]f32,frames:int,work:[]f32,gpu:bool,threads:bool,pieces:[]string,v:[]PkvList,
+                tokens:[]int,at:[]int,out:[]int,out_at:[]int,info:[]int)->int {
+ n:=tokens.count;if info.count<5 || at.count<n {return -1;}
+ for i:0..<5 {info[i]=0;}
+ cand:[PKV_CANDIDATES]PkvCand;m:=pkv_candidates(pieces,tokens,v,cand[..]);info[0]=m;
+ if m>0 {
+  c:[1]PkrCtx;c[0]=PkrCtx.{s=s,p=tdt_plan(s,frames),gpu=gpu,threads=threads,frames=frames};
+  if c[0].p.status!=TdtStatus.ok || enc.count!=frames*s.enc || work.count<pkr_work(s,frames) {return -1;}
+  c[0].save=c[0].p.work;
+  if !pkr_begin(c[..],w,enc,work) {return -1;}
+  rows:[PKR_ROWS]PkrRow;alpha:[PKR_ROWS]f64;
+  // Spans in order, so the prediction state only moves forward; each
+  // span's recognized score once.
+  order:[PKV_CANDIDATES]int;for i:0..<m {order[i]=i;}
+  for i:1..<m {x:=order[i];k:=i;while k>0 && cand[order[k-1]].from>cand[x].from {order[k]=order[k-1];k-=1;}order[k]=x;}
+  last_from:=-1;last_to:=-1;recognized:=PKR_NONE;
+  for k:0..<m {
+   ci:=order[k];x:=cand[ci];
+   t0:=at[x.from];t1:=ifx x.to<n then at[x.to] else frames;next:=ifx x.to<n then tokens[x.to] else -1;
+   if x.from!=last_from || x.to!=last_to {recognized=pkr_score(c[..],w,work,tokens,x.from,tokens[x.from..<x.to],t0,t1,next,rows[..],alpha[..]);last_from=x.from;last_to=x.to;}
+   if recognized<=PKR_NONE {continue;}
+   term:=v[0].terms[x.term];ids:=ifx x.marker then term.ids[0..<term.nid] else term.bare[0..<term.nbare];
+   score:=pkr_score(c[..],w,work,tokens,x.from,ids,t0,t1,next,rows[..],alpha[..]);
+   if score<=PKR_NONE {continue;}
+   cand[ci].scored=true;cand[ci].gain=score-recognized;cand[ci].accepted=pkv_accept(recognized,score,PKV_BIAS);
+   info[1]+=1;if cand[ci].accepted {info[2]+=1;}
+  }
+  info[4]=c[0].evals;
+ }
+ info[3]=pkv_select(cand[0..<m]);
+ k:=0;i:=0;
+ while i<n {
+  pick:=-1;for j:0..<m {if cand[j].chosen && cand[j].from==i {pick=j;}}
+  if pick<0 {if k==out.count || k==out_at.count {return -1;}out[k]=tokens[i];out_at[k]=at[i];k+=1;i+=1;continue;}
+  x:=cand[pick];term:=v[0].terms[x.term];ids:=ifx x.marker then term.ids[0..<term.nid] else term.bare[0..<term.nbare];
+  for id:ids {if k==out.count || k==out_at.count {return -1;}out[k]=id;out_at[k]=at[i];k+=1;}
+  i=x.to;
+ }
+ return k;
+}

@@ -86,7 +86,9 @@ or `--model-dir DIR` selects another copy of the same pinned model.
 The file CLI supports text, versioned JSON, SRT and WebVTT through exact bounded
 independent windows. Forced language, `--words`, `--prompt` and Whisper's
 `--model`/`--threads` are refused explicitly. The model
-recognizes its language automatically; vocabulary rescoring is future work.
+recognizes its language automatically. Vocabulary rescoring
+(`psionic_parakeet_vocabulary`, below) is used by `openagents dictate --terms`,
+not by the file CLI.
 Parakeet is the default local transcription backend. `--backend parakeet`
 is an explicit equivalent; `--backend psionic` retains legacy Whisper and
 `--backend whispercpp` selects its independent oracle. Neither is a fallback.
@@ -187,5 +189,28 @@ opt-in capture, pre-roll/tail, bounded segmentation and guarded composer drafts.
 The [Verse voice host](../../docs/voice/dev.md#parakeet-local-recognition)
 (`--recognizer parakeet`) keeps one engine resident for Verse and Aethyr's
 hold to talk, with its own bounded segmentation and admission.
-Vocabulary rescoring and real streaming remain separate. This engine itself
-neither records a microphone nor executes a transcript.
+Real streaming remains separate. This engine itself neither records a
+microphone nor executes a transcript.
+
+## Vocabulary rescoring
+
+`psionic_parakeet_vocabulary(engine, tsv, n, err, cap)` admits up to 64
+terms, one line each: `TERM<TAB>SOUNDS|LIKE`, highest priority first. A
+malformed file is refused whole, with its line named. Later calls do three
+things after greedy decoding:
+
+1. Find spans of one to three words, with no digit, whose sound key is
+   within a third of a term's spelling or sounds_like
+   ([vocab.coax](../lib/parakeet/vocab.coax), `#authority`).
+2. Score the recognized tokens and the term's tokens with the transducer
+   itself. The score is TDT's forward sum over the same encoded frames plus
+   the next token ([rescore.coax](../lib/parakeet/rescore.coax)), computed on
+   the GPU with the decoder's own kernels, or on the exact CPU rows.
+3. Replace a span only when the term scores within 4 nats.
+
+`psionic_parakeet_raw_text` returns the text before rescoring.
+`psionic_parakeet_vocabulary_info` reports candidates, scores and
+replacements. With no vocabulary nothing runs, and chapter 153's 29/29 parity
+holds. Measurements are in the
+[vocabulary record](../../docs/verification/dictation-vocab-2026-11-03/README.md).
+The CPU path (Metal profile) works but has not been measured for latency.
