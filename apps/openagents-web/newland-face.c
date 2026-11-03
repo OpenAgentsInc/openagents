@@ -214,6 +214,7 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   track_pointer(tr(),x,y,phase,kind,track_cstr(""));track_drain(&track_state);
   if (walking(state)) {
     walk_start(state);
+    if (coaxial_land_local_click(view(state), x, y, phase)) return 1u;   /* Verse OS: an agent clicked (newland-local.coax) */
     if (coaxial_walk_pointer(view(state), x, y, phase, kind, id)) return 1u;
     if (kind != 0) gridwalk_touch(gw(), id, phase, x, y);
     return kind != 0 ? 1u : 0u;
@@ -223,9 +224,12 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
 // The wheel and a trackpad's pinch zoom; Esc closes the card.
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { if (walking(state)) coaxial_walk_wheel(view(state), dy); else coaxial_land_wheel(view(state), dy); }
 /* Verse OS: where the Grid drew the desk's screen this frame (newland-local.coax), for the host's F8 */
+/* Verse OS: the agent whose transcript was asked for, or -1 (newland-local.coax) */
+EXPORT("coaxial_os_request") int32_t coaxial_os_request(uint32_t state) { return (int32_t)coaxial_land_os_request(view(state)); }
 EXPORT("coaxial_panel_rect") float coaxial_panel_rect(uint32_t state, int32_t k) { return (float)coaxial_land_panel(view(state), k); }
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
   if (coaxial_land_boot_key(view(state), key)) return 1u;   /* Verse OS's identity offer and words (newland-boot.coax) */
+  if (coaxial_land_local_key(view(state), key)) return 1u;  /* Verse OS: T to talk to a new agent (newland-local.coax) */
   if (walking(state)) { track_key(tr(),key,0);track_drain(&track_state); return coaxial_walk_key(view(state), key, mods) ? 1u : 0u; }
   track_key(tr(),key,0);track_key_up(tr(),key);track_drain(&track_state); return coaxial_land_key(view(state), key, mods) ? 1u : 0u;
 }

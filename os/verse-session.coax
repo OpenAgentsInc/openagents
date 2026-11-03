@@ -33,6 +33,12 @@
 #load "verse-agents.coax";
 
 cxtool_out_flush :: () -> int #foreign;
+cxsock_host_push :: (byte: int) -> int #foreign;
+cxsock_connect_unix :: (timeout_ms: int) -> int #foreign;
+cxsock_write :: (h: int, byte: int) -> int #foreign;
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_close :: (h: int) -> int #foreign;
 // The session's log is its stdout, kept by the login (verse-session.log): each line written out at
 // once, so a reboot or a kill doesn't lose the last of them.
 vs_flush :: () { r := cxtool_out_flush(); }
@@ -164,6 +170,93 @@ VsPylon :: struct {
   home: [1024] u8; home_n: int; agents: [4096] u8; agents_n: int; agents_ms: int;
   last: [2048] u8; last_n: int;
   run: [4096] u8; run_n: int;   // the run directory, for the realm (VERSE_RUN) when the session has a desk
+  list: [1] VaList;             // the agents as last seen, with their transcripts' paths
+  dir: [4096] u8; dir_n: int;   // the install, for verse-transcript
+}
+// One request to the session's desk socket ($XDG_RUNTIME_DIR/verse-desk.sock): whether it answered.
+vs_desk_ask :: (line: string) -> bool {
+  rb: [1024] u8; rt := proc_getenv("XDG_RUNTIME_DIR", rb[..]);
+  sb: [1200] u8; sock := vs_cat(sb[..], rt, "/verse-desk.sock");
+  for c: sock { r := cxsock_host_push(cast(int) c); }
+  h := cxsock_connect_unix(2000);
+  if h < 0 { return false; }
+  for c: line { w := cxsock_write(h, cast(int) c); }
+  w := cxsock_write(h, 10); f := cxsock_flush(h, 2000);
+  n := cxsock_read(h, 5000);
+  c := cxsock_close(h);
+  return n > 0;
+}
+// Whether a path can go in the desk's open command as it is: no quote, backslash, space or control.
+vs_plain_path :: (p: string) -> bool {
+  if p.count == 0 { return false; }
+  for c: p { if c == '"' || c == '\\' || c == ' ' || c < 32 || c == '\'' || c == '$' || c == '`' { return false; } }
+  return true;
+}
+#test "paths the open command takes as they are" {
+  #assert vs_plain_path("/home/a/.claude/projects/-home-a-x/1.jsonl") && !vs_plain_path("/a b") && !vs_plain_path("/a\"b") && !vs_plain_path("") && !vs_plain_path("/a$(x)");
+}
+// The directory a Claude Code transcript's project is: its folder's name with each - a / (an
+// approximation: a name with its own - decodes wrong, and then the caller falls back to home).
+vs_project_dir :: (transcript: string, out: [] u8) -> string {
+  e := transcript.count; while e > 0 && transcript[e - 1] != '/' { e -= 1; }
+  if e < 2 { return ""; }
+  st := e - 1; while st > 0 && transcript[st - 1] != '/' { st -= 1; }
+  name := transcript[st..<e - 1];
+  if name.count < 2 || name[0] != '-' { return ""; }
+  n := 0; for c: name { if n < out.count { out[n] = ifx c == '-' then '/' else c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+#test "a project's directory from its transcript's folder" {
+  b: [256] u8;
+  #assert vs_project_dir("/h/.claude/projects/-home-a-openagents/1.jsonl", b[..]) == "/home/a/openagents";
+  #assert vs_project_dir("/h/.codex/sessions/2026/11/02/r.jsonl", b[..]) == "" && vs_project_dir("x.jsonl", b[..]) == "";
+}
+// The program a new agent of kind is.
+vs_agent_program :: (kind: string) -> string { return ifx kind == "claude" then "claude" else ifx kind == "codex" then "codex" else ifx kind == "coder" then "coder" else ""; }
+// The realm's requests (vk-realm writes run/requests): "agent K" opens agent K's transcript on the desk;
+// "talk K" opens a new agent of K's kind in K's project, in a terminal on the desk, to talk to (it
+// never joins K's own conversation, which another session may be running).
+vs_requests :: (p: [] VsPylon) {
+  if p[0].run_n == 0 { return; }
+  rb: [4096] u8; path := fs_join(cast(string) p[0].run[0..<p[0].run_n], "requests", rb[..]);
+  t: [4096] u8; n := fs_read(path, t[..]);
+  if n <= 0 { return; }
+  r := fs_remove(path);
+  i := 0;
+  while i < n {
+    e := i; while e < n && t[e] != '\n' { e += 1; }
+    line := cast(string) t[i..<e];
+    if line.count > 6 && line[0..<6] == "agent " {
+      k := args_whole(line[6..<line.count]);
+      if k >= 0 && k < p[0].list[0].n {
+        g := p[0].list[0].a[k];
+        tp := cast(string) g.path[0..<g.path_n];
+        if vs_plain_path(tp) && vs_plain_path(cast(string) p[0].dir[0..<p[0].dir_n]) {
+          q: [8192] u8; qn := vs_fill(q[..], "{\"generation\":1,\"type\":\"open\",\"command\":\"foot -e ");
+          for c: cast(string) p[0].dir[0..<p[0].dir_n] { q[qn] = c; qn += 1; }
+          for c: "/verse-transcript " { q[qn] = c; qn += 1; } for c: tp { q[qn] = c; qn += 1; } for c: " --follow\"}" { q[qn] = c; qn += 1; }
+          ok := vs_desk_ask(cast(string) q[0..<qn]);
+          print("verse-session: % · %'s transcript % on the desk\n", cast(string) g.kind[0..<g.kind_n], cast(string) g.project[0..<g.project_n], ifx ok then "opened" else "not opened"); vs_flush();
+        }
+      }
+    }
+    if line.count > 5 && line[0..<5] == "talk " {
+      k := args_whole(line[5..<line.count]);
+      if k >= 0 && k < p[0].list[0].n {
+        g := p[0].list[0].a[k];
+        prog := vs_agent_program(cast(string) g.kind[0..<g.kind_n]);
+        pd: [1024] u8; proj := vs_project_dir(cast(string) g.path[0..<g.path_n], pd[..]);
+        if proj.count == 0 || fs_kind(proj) != FS_DIR { proj = cast(string) p[0].home[0..<p[0].home_n]; }
+        if prog.count > 0 && vs_plain_path(proj) {
+          q: [4096] u8; qn := vs_fill(q[..], "{\"generation\":1,\"type\":\"open\",\"command\":\"foot -D ");
+          for c: proj { q[qn] = c; qn += 1; } for c: " -e " { q[qn] = c; qn += 1; } for c: prog { q[qn] = c; qn += 1; } for c: "\"}" { q[qn] = c; qn += 1; }
+          ok := vs_desk_ask(cast(string) q[0..<qn]);
+          print("verse-session: a new % in % % on the desk\n", prog, proj, ifx ok then "opened" else "not opened"); vs_flush();
+        }
+      }
+    }
+    i = e + 1;
+  }
 }
 // Every five seconds: the agents, written for vk-realm (--agents) only when they changed.
 vs_agents_tick :: (p: [] VsPylon) {
@@ -171,6 +264,7 @@ vs_agents_tick :: (p: [] VsPylon) {
   if p[0].agents_n == 0 || (p[0].agents_ms > 0 && now - p[0].agents_ms < 5000) { return; }
   p[0].agents_ms = now;
   l: [1] VaList; va_scan(l[..], cast(string) p[0].home[0..<p[0].home_n]);
+  p[0].list[0] = l[0];
   t: [2048] u8; n := va_text(l[..], t[..]);
   same := n == p[0].last_n;
   if same { for i: 0..<n { if t[i] != p[0].last[i] { same = false; break; } } }
@@ -197,6 +291,7 @@ vs_pylon_run :: (p: [] VsPylon, verb: string) -> bool {
 // Once a second: the time since your last input, the policy's word, and the command it asks for.
 vs_pylon_tick :: (p: [] VsPylon) {
   vs_agents_tick(p);
+  vs_requests(p);
   if !p[0].allowed && !p[0].running { return; }
   now := proc_now_ms();
   m := fs_mtime_ns(cast(string) p[0].activity[0..<p[0].activity_n]);
@@ -417,6 +512,7 @@ tool_main :: () -> int #export_c {
   vs_agents_tick(py[..]);   // the first list before the first realm opens
   desk_h := vs_desk_start(dir, run);
   if desk_h >= 0 { py[0].run_n = vs_fill(py[0].run[..], run); }
+  py[0].dir_n = vs_fill(py[0].dir[..], dir);
   while true {
     if window.count == 0 { vs_wait_for(tty, py[..]); }
     r := fs_remove(go);

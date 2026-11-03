@@ -14,6 +14,11 @@ LocalAgents :: struct {
   // the desk's screen in the world (message 611 "desk=1": the host has a desk): where it was drawn
   // this frame, in the realm's pixels, for the host to put the desk there (its F8)
   desk: bool; rect: [4] f32; rect_ok: bool;
+  // where each agent's name was drawn (a click there asks for its transcript), and that ask
+  head_x: [LOCAL_MAX] f32; head_y: [LOCAL_MAX] f32; head_ok: [LOCAL_MAX] bool;
+  down_x: f32; down_y: f32; asked: int;   // the agent asked for, plus one: 0 is none
+  talk: bool;                              // and asked to talk to a new one like it (T), not to read it
+  offer: int; offer_until: f32;            // the agent last clicked, plus one, and until when T talks
 }
 LOCAL_DESK_KIND :: 611;
 
@@ -127,6 +132,7 @@ local_agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, mid: Fv, p: Pen,
     tint := ink(p, ifx g.working then INK_BLUE else INK_PALE);
     top: [1] Spot;
     v = figure(out, v, c, k, pose, at_grid.x, at_grid.z, yaw, tint, ifx g.working then 1.0f32 else 0.6f32, p, top[..]);
+    l[0].head_ok[a] = top[0].ok; l[0].head_x[a] = top[0].x; l[0].head_y[a] = top[0].y;
     if top[0].ok {
       name: [80] u8; n := 0;
       kind := cast(string) g.kind[0..<g.kind_n];
@@ -136,7 +142,67 @@ local_agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, mid: Fv, p: Pen,
       st: [32] u8; sn := 0;
       if g.working { sn = app(st[..], 0, "AT WORK"); } else { sn = app(st[..], 0, "WAITING "); sn = app_int(st[..], sn, g.minutes); sn = app(st[..], sn, " MIN"); }
       v = put_centred(out, v, cast(string) st[0..<sn], top[0].x, top[0].y - 4 * p.d, 6 * p.d, ink(p, ifx g.working then INK_BLUE else INK_DIM));
+      if l[0].offer == a + 1 && s[0].time <= l[0].offer_until {
+        v = put_centred(out, v, "TRANSCRIPT ON THE DESK  ·  T TO TALK TO A NEW ONE", top[0].x, top[0].y - 30 * p.d, 6 * p.d, chrome(ink(p, INK_BLUE)));
+      }
     }
   }
   return v;
 }
+
+// A click (down then up within a few pixels) on an agent's name and figure asks the host for its
+// transcript (coaxial_land_os_request): true when the click was an agent's, so the walk ignores it.
+local_click :: (s: [] LandState, x: f32, y: f32, phase: int, d: f32) -> bool {
+  if s.count < 1 { return false; }
+  l := s[0].local[..];
+  if phase == 0 { l[0].down_x = x; l[0].down_y = y; return false; }
+  if phase != 2 || abs(x - l[0].down_x) > 6 * d || abs(y - l[0].down_y) > 6 * d { return false; }
+  for a: 0..<l[0].n {
+    if !l[0].head_ok[a] { continue; }
+    // the name over the head and the body under it
+    if x > l[0].head_x[a] - 60 * d && x < l[0].head_x[a] + 60 * d && y > l[0].head_y[a] - 24 * d && y < l[0].head_y[a] + 90 * d {
+      l[0].asked = a + 1; l[0].talk = false; l[0].offer = a + 1; l[0].offer_until = s[0].time + 8; return true;
+    }
+  }
+  return false;
+}
+// What the host is asked since it last looked: agent K's transcript (K), a new agent like K to talk
+// to (1000 + K), or -1; asking clears it.
+coaxial_land_os_request :: (s: [] LandState) -> int #export_c {
+  if s.count < 1 { return -1; }
+  a := s[0].local[0].asked - 1; s[0].local[0].asked = 0;
+  if a < 0 || a >= s[0].local[0].n { return -1; }
+  return ifx s[0].local[0].talk then 1000 + a else a;
+}
+// T within eight seconds of clicking an agent: a new agent like it, in its project, to talk to.
+local_key :: (s: [] LandState, key: int) -> bool {
+  if s.count < 1 { return false; }
+  l := s[0].local[..];
+  if (key != 't' && key != 'T') || l[0].offer <= 0 || s[0].time > l[0].offer_until { return false; }
+  l[0].asked = l[0].offer; l[0].talk = true; l[0].offer = 0;
+  return true;
+}
+coaxial_land_local_key :: (s: [] LandState, key: int) -> bool #export_c { return local_key(s, key); }
+#test "T after a click asks for a new agent to talk to; late, or with nothing clicked, it is a key like any" {
+  s: [1] LandState;
+  local_message(s[0].local[..], "agent=claude|openagents|working|0\n");
+  #assert !local_key(s[..], 't');
+  s[0].local[0].head_ok[0] = true; s[0].local[0].head_x[0] = 500; s[0].local[0].head_y[0] = 300;
+  b := local_click(s[..], 500, 320, 0, 1); b = local_click(s[..], 500, 320, 2, 1);
+  #assert coaxial_land_os_request(s[..]) == 0;
+  #assert local_key(s[..], 't') && coaxial_land_os_request(s[..]) == 1000 && !local_key(s[..], 't');
+  b = local_click(s[..], 500, 320, 0, 1); b = local_click(s[..], 500, 320, 2, 1); r := coaxial_land_os_request(s[..]);
+  s[0].time += 9;
+  #assert !local_key(s[..], 'T');
+}
+#test "a click on an agent asks for its transcript, a drag does not" {
+  s: [1] LandState;
+  local_message(s[0].local[..], "agent=claude|openagents|working|0\n");
+  #assert coaxial_land_os_request(s[..]) == -1;   // nothing asked before a click
+  s[0].local[0].head_ok[0] = true; s[0].local[0].head_x[0] = 500; s[0].local[0].head_y[0] = 300;
+  #assert !local_click(s[..], 500, 320, 0, 1) && local_click(s[..], 502, 321, 2, 1) && coaxial_land_os_request(s[..]) == 0;
+  #assert coaxial_land_os_request(s[..]) == -1;
+  #assert !local_click(s[..], 500, 320, 0, 1) && !local_click(s[..], 560, 320, 2, 1);
+  #assert !local_click(s[..], 900, 320, 0, 1) && !local_click(s[..], 900, 320, 2, 1) && coaxial_land_os_request(s[..]) == -1;
+}
+coaxial_land_local_click :: (s: [] LandState, x: f32, y: f32, phase: int) -> bool #export_c { return local_click(s, x, y, phase, 1); }

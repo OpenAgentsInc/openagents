@@ -1,0 +1,109 @@
+// Verse OS: an agent's transcript, readable, for the desk (docs/os/2026-11-02-verse-os.md, V4). When you
+// click an agent standing in the Grid, the session opens this on the desk in a terminal, following the
+// file as the agent writes it. It reads Claude Code's lines ({"type":"user"|"assistant","message":
+// {"content": text or [{"type":"text","text":..}, {"type":"tool_use","name":..}, ..]}}) and Codex's
+// ({"type":"response_item","payload":{"role":..,"content":[{"text":..}]}}), and shows who said what;
+// a tool's use is one short line, its output is left out. It only reads.
+//   verse-transcript PATH [--follow] [--last N]
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/proc.coax";
+#load "../coax/lib/json/json.coax";
+
+VT_NODES :: 65536;
+VT_LINE :: 1048576;   // a longer line (a tool's whole output) is skipped
+
+vt_put :: (o: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < o.count { o[m] = c; m += 1; } } return m; }
+// a text part, unescaped, its newlines kept, at most 4000 bytes of it
+vt_text :: (d: Jv, at: int, o: [] u8, n: int) -> int {
+  b: [16384] u8; k := jv_str(d, at, b[..]);
+  if k <= 0 { return n; }
+  m := n; lim := ifx k > 4000 then 4000 else k;
+  for i: 0..<lim { if m < o.count { o[m] = b[i]; m += 1; } }
+  if k > lim { m = vt_put(o, m, " …"); }
+  return m;
+}
+// One transcript line as the reader sees it (with its newline), or 0 for a line that says nothing to
+// a reader (settings, snapshots, a tool's output).
+vt_render :: (line: string, o: [] u8) -> int {
+  if line.count == 0 || line.count > VT_LINE { return 0; }
+  nodes: [VT_NODES] JvNode; dd: [1] Jv;
+  if !jv_parse(dd[..], line, nodes[..]) || jv_kind(dd[0], 0) != JV_OBJECT { return 0; }
+  d := dd[0];
+  ty := jv_raw(d, jv_get(d, 0, "type"));
+  role := ""; content := -1;
+  if ty == "user" || ty == "assistant" { role = ty; content = jv_get(d, jv_get(d, 0, "message"), "content"); }
+  else if ty == "response_item" {
+    pl := jv_get(d, 0, "payload");
+    if jv_raw(d, jv_get(d, pl, "type")) != "message" { return 0; }
+    role = jv_raw(d, jv_get(d, pl, "role")); content = jv_get(d, pl, "content");
+    if role != "user" && role != "assistant" { return 0; }
+  } else { return 0; }
+  who := ifx role == "user" then "YOU    " else "AGENT  ";
+  n := 0;
+  if jv_kind(d, content) == JV_STRING { n = vt_put(o, n, who); n = vt_text(d, content, o, n); return vt_put(o, n, "\n"); }
+  if jv_kind(d, content) != JV_ARRAY { return 0; }
+  c := d.nodes[content].first;
+  while c >= 0 {
+    pt := jv_raw(d, jv_get(d, c, "type"));
+    if pt == "text" || pt == "input_text" || pt == "output_text" {
+      t := jv_get(d, c, "text");
+      if jv_kind(d, t) == JV_STRING { n = vt_put(o, n, who); n = vt_text(d, t, o, n); n = vt_put(o, n, "\n"); }
+    } else if pt == "tool_use" {
+      nm: [128] u8; k := jv_str(d, jv_get(d, c, "name"), nm[..]);
+      n = vt_put(o, n, "       · uses "); n = vt_put(o, n, ifx k > 0 then cast(string) nm[0..<k] else "a tool"); n = vt_put(o, n, "\n");
+    }
+    c = d.nodes[c].next;
+  }
+  return n;
+}
+#test "Claude Code's lines and Codex's, as a reader sees them" {
+  o: [8192] u8;
+  n := vt_render("{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"make the grid glow\"}}", o[..]);
+  #assert cast(string) o[0..<n] == "YOU    make the grid glow\n";
+  n = vt_render("{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"On it.\\nFirst the shader.\"},{\"type\":\"tool_use\",\"name\":\"Edit\",\"input\":{}}]}}", o[..]);
+  #assert cast(string) o[0..<n] == "AGENT  On it.\nFirst the shader.\n       · uses Edit\n";
+  n = vt_render("{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"content\":\"lots of output\"}]}}", o[..]);
+  #assert n == 0;
+  #assert vt_render("{\"type\":\"file-history-snapshot\",\"snapshot\":{}}", o[..]) == 0 && vt_render("not json", o[..]) == 0 && vt_render("", o[..]) == 0;
+  n = vt_render("{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"done\"}]}}", o[..]);
+  #assert cast(string) o[0..<n] == "AGENT  done\n";
+  #assert vt_render("{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"developer\",\"content\":[]}}", o[..]) == 0;
+}
+
+// The file from offset on, rendered: the offset after the last whole line read.
+vt_pass :: (path: string, offset: int, quiet_until: int) -> int {
+  at := offset; carry: [VT_LINE] u8; cn := 0;
+  chunk: [262144] u8;
+  while true {
+    k := fs_read_at(path, at, chunk[..]);
+    if k <= 0 { break; }
+    for i: 0..<k {
+      if chunk[i] != '\n' { if cn < VT_LINE { carry[cn] = chunk[i]; cn += 1; } else { cn = VT_LINE + 1; } continue; }
+      if cn <= VT_LINE && at + i >= quiet_until { o: [65536] u8; n := vt_render(cast(string) carry[0..<cn], o[..]); if n > 0 { print("%", cast(string) o[0..<n]); } }
+      cn = 0;
+    }
+    at += k;
+    if k < chunk.count { break; }
+  }
+  return at - (ifx cn > VT_LINE then 0 else cn);   // a part line is read again next time, whole
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: verse-transcript PATH [--follow] [--last BYTES]"); return 2; }
+  path := args_at(a[..], 0);
+  if !fs_exists(path) { tool_errln("verse-transcript: no such transcript"); return 1; }
+  // by default only the last 200 kB is shown: a long session's start is far back
+  last := args_whole(args_value(a[..], "--last", "200000")); if last < 0 { last = 200000; }
+  size := fs_size(path);
+  start := ifx size > last then size - last else 0;
+  // start at a line's beginning: skip to after the first newline past start
+  if start > 0 { b: [65536] u8; k := fs_read_at(path, start, b[..]); i := 0; while i < k && b[i] != '\n' { i += 1; } start += i + 1; }
+  at := vt_pass(path, start, 0);
+  if !args_has(a[..], "--follow") { return 0; }
+  while true { proc_sleep(1000); n := fs_size(path); if n > at { at = vt_pass(path, at, 0); } }
+  return 0;
+}

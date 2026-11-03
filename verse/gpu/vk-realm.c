@@ -205,6 +205,21 @@ static float draw_w, draw_h;   // what the realm draws at
 static VkDesk desk;            // --desk: Linux programs on a panel over the realm (vkdesk.h)
 // F8: the realm's own screen for the desk, when its face has one (the Grid's: newland-local.coax)
 __attribute__((weak)) float coaxial_panel_rect(uint32_t state, int32_t k);
+// an agent clicked in the realm (the Grid's): the session opens its transcript on the desk
+__attribute__((weak)) int32_t coaxial_os_request(uint32_t state);
+static void os_requests(void) {
+  if (!coaxial_os_request || desk.pid <= 0) return;
+  int32_t a = coaxial_os_request(H.state);
+  if (a < 0) return;
+  const char *run = getenv("VERSE_RUN");
+  if (!run) return;
+  char path[1100]; snprintf(path, sizeof path, "%s/requests", run);
+  FILE *f = fopen(path, "a");
+  if (f) { if (a >= 1000) fprintf(f, "talk %d\n", (int)(a - 1000)); else fprintf(f, "agent %d\n", (int)a); fclose(f); }
+  // show where it opens: the desk's screen in the world, unless the desk already shows
+  if (desk.mode == PANEL_CLOSED) desk.mode = verse_panel_next(desk.mode, 66);
+  fprintf(stderr, "vk-realm: agent %d's transcript asked for\n", (int)a);
+}
 static float panel_draw_w, panel_draw_h;
 static int world_rect(int32_t r[4], uint32_t w, uint32_t h) {
   if (!coaxial_panel_rect || coaxial_panel_rect(H.state, 4) <= 0 || panel_draw_w <= 0) return 0;
@@ -608,6 +623,7 @@ int main(int argc, char **argv) {
       touch_activity(t);
       agents_poll(t);
       vkdesk_pump(&desk, t);
+      os_requests();
       vkhands_poll(&hands, t, p.w, p.h, hand_to);
       double dt = t - prev;
       prev = t;

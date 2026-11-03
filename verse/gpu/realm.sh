@@ -164,6 +164,7 @@ coax="${COAX:-$root/coax/bin/coax}"
 (cd "$root" && "$coax" c coax/lib/crypto/entropy.coax --library --header "$work/ship/net-src/entropy-policy.h") > "$work/ship/net-src/entropy.c"
 (cd "$root" && "$coax" c verse/native/net.coax --library) > "$work/ship/net-src/net.c"
 (cd "$root" && "$coax" c os/verse-session.coax --library) > "$work/ship/net-src/verse-session.c"
+(cd "$root" && "$coax" c os/verse-transcript.coax --library) > "$work/ship/net-src/verse-transcript.c"
 # the desk: the Coax compositor (os/compositor.coax), headless, which vk-realm --desk runs
 mkdir -p "$work/ship/desk"
 (cd "$root" && "$coax" c os/compositor.coax --library) > "$work/ship/desk/compositor.c"
@@ -198,6 +199,8 @@ nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validatio
      tls-native.c entropy-native.c entropy-foreign.c entropy.c \$(pkg-config --cflags --libs openssl) -lpthread -lm -o ../net
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-session.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-session
+   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-transcript.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
+     entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-transcript
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -w -I. \$(pkg-config --cflags libdrm) ../desk/compositor.c tool-native.c process-native.c store-file-native.c read-file-native.c \
      socket-native.c entropy-native.c entropy-foreign.c entropy.c wayland-native.c screen-native.c \$(pkg-config --libs libdrm) -lpthread -lm -o ../desk/compositor)
   # each realm as realm-run builds it: no PIE (its pointers fit 32 bits), no contraction

@@ -14,7 +14,7 @@ VA_WORKING_S :: 120;    // written this recently: at work
 VA_WAITING_S :: 1800;   // this recently: waiting for you
 VA_WORKING :: 1; VA_WAITING :: 2;
 
-VaAgent :: struct { kind: [16] u8; kind_n: int; project: [48] u8; project_n: int; age_s: int; }
+VaAgent :: struct { kind: [16] u8; kind_n: int; project: [48] u8; project_n: int; age_s: int; path: [1024] u8; path_n: int; }
 VaList :: struct { a: [VA_MAX] VaAgent; n: int; }
 
 // A transcript's state by its age: working, waiting, or 0 (gone: not shown).
@@ -38,7 +38,9 @@ va_project_of :: (dir: string) -> string {
   #assert va_project_of("-home-christopherdavid-openagents") == "openagents" && va_project_of("plain") == "plain" && va_project_of("-a-") == "-a-";
 }
 // Keeps the newest VA_MAX: an agent goes in by its age, the oldest falls out.
-va_add :: (l: [] VaList, kind: string, project: string, age_s: int) {
+va_add :: (l: [] VaList, kind: string, project: string, age_s: int) { va_add_at(l, kind, project, age_s, ""); }
+// The same, with the transcript's path (kept by the session; never sent to the realm).
+va_add_at :: (l: [] VaList, kind: string, project: string, age_s: int, path: string) {
   if va_state(age_s) == 0 { return; }
   at := l[0].n;
   while at > 0 && l[0].a[at - 1].age_s > age_s { at -= 1; }
@@ -49,6 +51,7 @@ va_add :: (l: [] VaList, kind: string, project: string, age_s: int) {
   g.kind_n = 0; for c: kind { if g.kind_n < 16 { g.kind[g.kind_n] = c; g.kind_n += 1; } }
   g.project_n = 0; for c: project { if g.project_n < 48 && c != '|' && c != '\n' { g.project[g.project_n] = c; g.project_n += 1; } }
   g.age_s = age_s;
+  g.path_n = 0; for c: path { if g.path_n < 1024 { g.path[g.path_n] = c; g.path_n += 1; } }
   l[0].a[at] = g;
   if l[0].n < VA_MAX { l[0].n += 1; }
 }
@@ -87,8 +90,9 @@ va_scan_dir :: (l: [] VaList, dir: string, kind: string, project: string, now_s:
   for i: 0..<ifx n > 0 then n else 0 {
     e := fs_entry(fl[..], i);
     if e.count < 7 || e[e.count - 6..<e.count] != ".jsonl" { continue; }
-    m := fs_mtime_ns(fs_join(dir, e, pb[..]));
-    if m > 0 { va_add(l, kind, project, now_s - m / 1000000000); }
+    full := fs_join(dir, e, pb[..]);
+    m := fs_mtime_ns(full);
+    if m > 0 { va_add_at(l, kind, project, now_s - m / 1000000000, full); }
   }
 }
 // Every agent under home, now.
