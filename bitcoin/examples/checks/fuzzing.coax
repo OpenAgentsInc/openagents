@@ -1,0 +1,61 @@
+// The checks of fuzzing.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/fuzzing.coax
+#run_steps 250000000;
+#load "../fuzzing.coax";
+
+// book:begin check
+// Every seed is accepted, and writes back to itself where its format has
+// one encoding.
+#forall "every seed is accepted" i: 0..<30 #steps 2000000000 {
+  b: [FZ_ROOM] u8;
+  row := FZ_SEEDS[i];
+  r := hex_decode_checked(row.hex, b[..], false);
+  got := fz_run(row.target, b[0..<r.written]);
+  #assert got == 0 || (got > 100 && got <= 104);
+}
+// The mutator stays inside its buffer and changes something most of the
+// time, and no mutated input is accepted without writing back.
+#forall "mutations stay in bounds and never break a write-back" start: 1..<5 #steps 2000000000 {
+  state := [1] u64.[cast(u64) start * 2654435761];
+  b: [FZ_ROOM] u8; input: [FZ_ROOM] u8; changed := 0;
+  for i: 0..<200 {
+    row := FZ_SEEDS[fz_below(state[..], FZ_SEEDS.count)];
+    r := hex_decode_checked(row.hex, b[..], false);
+    n := fz_mutate(state[..], b[0..<r.written], input[..]);
+    #assert n >= 0 && n <= FZ_ROOM;
+    if n != r.written || !fuzz_same(input[0..<n], b[0..<n]) { changed += 1; }
+    #assert fz_run(row.target, input[0..<n]) != FUZZ_ROUNDTRIP;
+  }
+  #assert changed > 150;
+}
+// The version payloads fuzz.py kept (fuzz_regressions.json): a relay flag
+// of 0xff, a user agent length cut short, a non-canonical length, and user
+// agents one past and exactly at MAX_SUBVERSION_LENGTH.
+#test "the version payloads fuzz.py kept give their results" #steps 2000000000 {
+  full: [FZ_ROOM] u8; n := 0;
+  for row: FZ_SEEDS {
+    if row.target == 2 {
+      r := hex_decode_checked(row.hex, full[..], false);
+      if r.written > n { n = r.written; }
+    }
+  }
+  #assert fuzz_p2p_version(full[0..<n]) == 104;
+  full[n - 1] = 0xff;
+  #assert fuzz_p2p_version(full[0..<n]) == 104;
+  b: [FZ_ROOM] u8;
+  for i: 0..<80 { b[i] = full[i]; }
+  b[80] = 0xff; b[81] = 0; b[82] = 0;
+  #assert fuzz_p2p_version(b[0..<83]) == P2P_BAD_PAYLOAD;
+  for i: 81..<87 { b[i] = 0; }
+  #assert fuzz_p2p_version(b[0..<87]) == P2P_BAD_PAYLOAD;
+  b[80] = 0xfd; b[81] = 5; b[82] = 0;
+  for i: 83..<88 { b[i] = 'a'; }
+  #assert fuzz_p2p_version(b[0..<88]) == P2P_BAD_PAYLOAD;
+  b[81] = 1; b[82] = 1;
+  for i: 83..<83 + 257 { b[i] = 'x'; }
+  #assert fuzz_p2p_version(b[0..<83 + 257]) == P2P_BAD_PAYLOAD;
+  b[81] = 0;
+  #assert fuzz_p2p_version(b[0..<83 + 256]) == 102;
+}
+// book:end check

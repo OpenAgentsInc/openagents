@@ -138,6 +138,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 **XVIII. Interop and verification**
 
 - [116. Test vectors and their provenance](ch116-test-vectors-and-their-provenance.md) — implemented
+- [119. Fuzzing](ch119-fuzzing.md) — implemented
 
 **XIX. Bitcoin in OpenAgents**
 

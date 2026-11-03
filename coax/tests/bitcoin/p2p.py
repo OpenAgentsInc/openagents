@@ -27,6 +27,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import core_messages  # noqa: E402
 import make_p2p_vectors as V  # noqa: E402
+import tx_reference as T  # noqa: E402
 
 REPO = HERE.parents[2]
 UP = HERE.parent / 'vectors/upstream/bitcoin-core'
@@ -137,11 +138,21 @@ def version_parts(b):
             return 'bad payload', parts
         at, parts = at + 34, 1
     if at < len(b):
-        f = BytesIO(b[at:])
-        n = core_messages.load().deser_compact_size(f)
-        if len(b) - at - f.tell() < n:
+        # LIMITED_STRING(strSubVer, MAX_SUBVERSION_LENGTH): Core's
+        # ReadCompactSize (a short, non-canonical or oversized length throws),
+        # then the length limit, then the bytes. The test framework's
+        # deser_compact_size checks none of these; chapter 119's fuzzer
+        # found the short read.
+        r = T.Reader(b, None)
+        r.at = at
+        try:
+            n = r.compact()
+            if n > limits()[5]:
+                return 'bad payload', parts
+            r.take(n)
+        except T.Refused:
             return 'bad payload', parts
-        at, parts = at + f.tell() + n, 2
+        at, parts = r.at, 2
     if at < len(b):
         if len(b) - at < 4:
             return 'bad payload', parts

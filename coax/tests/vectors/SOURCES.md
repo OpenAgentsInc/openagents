@@ -754,6 +754,7 @@ check fails when a chapter cites a pinned file that is missing here.
 - Bitcoin chapter 114: `upstream/bolts`, `upstream/bolts/11-payment-encoding.md`
 - Bitcoin chapter 115: `upstream/bolts`, `upstream/bolts/12-offer-encoding.md`
 - Bitcoin chapter 116: `upstream/bip340/reference.py`, `upstream/bip340/test-vectors.csv`, `upstream/bitcoin-core`, `upstream/bitcoin-core/chainparams_v22.cpp`
+- Bitcoin chapter 119: `upstream/bip174`, `upstream/bip174/bip-0174.mediawiki`, `upstream/bitcoin-core`, `upstream/bitcoin-core/tx_valid.json`, `upstream/bolts`, `upstream/bolts/11-payment-encoding.md`
 - Bitcoin chapter 121: `upstream/bip39`, `upstream/bip39/bip-0039.mediawiki`, `upstream/bip84`, `upstream/bip84/bip-0084.mediawiki`, `upstream/bip86`, `upstream/bip86/bip-0086.mediawiki`
 - Bitcoin chapter 122: `upstream/bip327`, `upstream/bip327/reference.py`
 <!-- pins-by-chapter:end -->

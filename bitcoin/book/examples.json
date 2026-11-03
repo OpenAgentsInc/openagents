@@ -962,6 +962,17 @@
         "release"
       ],
       "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/fuzzing.coax",
+      "chapter": "bitcoin/book/ch119-fuzzing.md",
+      "stdout": "bitcoin/fixtures/fuzzing.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600
     }
   ]
 }

@@ -2415,17 +2415,30 @@
   {
    "number": 119,
    "title": "Fuzzing",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch119-fuzzing.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
+    26,
     34,
     65,
     94,
-    114
+    114,
+    116
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/tests/bitcoin/fuzz_targets.coax",
+    "coax/tests/bitcoin/fuzz.py",
+    "coax/tests/bitcoin/fuzz_regressions.json",
+    "coax/tests/bitcoin/make_fuzz_seeds.py",
+    "coax/tests/bitcoin/fuzz_seeds.coax",
+    "coax/tests/bitcoin/p2p.py",
+    "bitcoin/examples/fuzzing.coax",
+    "bitcoin/examples/checks/fuzzing.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

@@ -1,0 +1,13 @@
+1000 inputs per parser, xorshift64 from 119
+tx: 6 seeds, 113 accepted, 887 refused, 0 accepted but not written back
+  results: 0:113 1:526 2:74 3:25 4:2 5:28 6:232
+p2p_frame: 4 seeds, 25 accepted, 975 refused, 0 accepted but not written back
+  results: 0:25 1:462 2:135 3:113 4:239 5:26
+p2p_version: 4 seeds, 449 accepted, 551 refused, 0 accepted but not written back
+  results: 6:551 100:5 101:43 102:6 103:5 104:390
+psbt: 6 seeds, 76 accepted, 924 refused, 0 accepted but not written back
+  results: 0:76 2:79 3:403 4:10 5:53 6:1 8:7 11:78 12:81 14:14 15:8 16:3 17:4 19:2 20:10 21:2 22:5 23:11 32:2 34:40 35:1 36:1 37:1 38:20 43:2 49:5 50:9 54:5 55:1 57:6 58:6 61:16 62:3 64:6 66:9 67:8 74:3 75:6 76:3
+invoice: 4 seeds, 0 accepted, 1000 refused, 0 accepted but not written back
+  results: 1:1000
+base58check: 6 seeds, 2 accepted, 998 refused, 0 accepted but not written back
+  results: 0:2 1:564 2:386 3:48

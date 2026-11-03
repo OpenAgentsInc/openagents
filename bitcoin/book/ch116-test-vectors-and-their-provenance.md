@@ -225,8 +225,8 @@ python3 coax/tests/vectors/check_pins.py --regenerate
 Bitcoin Core target ddea9196 (master on 2026-11-02, the merge of bitcoin#36554; not a release tag): 142 pinned files, 1 at another revision
   upstream/bitcoin-core/chainparams_v22.cpp at a0988140: v22.0 (tag v22.0, a0988140): chapter 51 reads Taproot's Speedy Trial deployment parameters from it; later releases bury Taproot at a fixed height and no longer list them
   note: bitcoin/bips is pinned at 3 revisions: 5aadddb5, 927b6de9, ada34196
-316 manifest entries, 381 citations checked
-46 generators rebuilt their files in a scratch copy
+316 manifest entries, 389 citations checked
+47 generators rebuilt their files in a scratch copy
 check_pins.py: every pin agrees
 ```
 

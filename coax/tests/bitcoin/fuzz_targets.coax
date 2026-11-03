@@ -1,0 +1,84 @@
+// Byte-level fuzz targets for fuzz.py (Bitcoin chapter 119). Each takes
+// one input and returns what the parser decided: 0 when it accepted the
+// input and writing the result back gives the same bytes, the parser's own
+// refusal code otherwise, and FUZZ_ROUNDTRIP when it accepted an input that
+// does not write back to itself. Tests only; nothing here is a library
+// entry.
+#run_steps 250000000;
+#load "../../lib/bitcoin/tx.coax";
+#load "../../lib/bitcoin/p2p.coax";
+#load "../../lib/bitcoin/psbt.coax";
+#load "../../lib/bitcoin/base58.coax";
+#load "../../lib/lightning/invoice.coax";
+
+FUZZ_ROUNDTRIP :: 999;
+FUZZ_MAX :: 16384;       // the longest input fuzz.py sends
+FUZZ_INS :: 64; FUZZ_OUTS :: 64; FUZZ_ITEMS :: 256;
+FUZZ_MAINNET :: [4] u8.[0xf9, 0xbe, 0xb4, 0xd9];
+
+fuzz_same :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+
+// Chapter 34: Core's UnserializeTransaction with witnesses allowed, then
+// SerializeTransaction of the result.
+fuzz_tx :: (b: [] u8) -> int #export_c {
+  ins: [FUZZ_INS] TxIn; outs: [FUZZ_OUTS] TxOut; items: [FUZZ_ITEMS] TxItem; out: [FUZZ_MAX] u8;
+  t := tx_read_vartime(b, true, ins[..], outs[..], items[..]);
+  if t.code != TX_OK { return t.code; }
+  n := tx_write_vartime(b, t, ins[..], outs[..], items[..], t.segwit, out[..]);
+  return ifx n == b.count && fuzz_same(out[0..<n], b) then 0 else FUZZ_ROUNDTRIP;
+}
+// Chapter 34's DecodeTx: both readings, as decoderawtransaction runs them.
+// Returns the code, plus 100 for an accepted extended reading.
+fuzz_tx_decode :: (b: [] u8) -> int #export_c {
+  ins: [FUZZ_INS] TxIn; outs: [FUZZ_OUTS] TxOut; items: [FUZZ_ITEMS] TxItem;
+  t := tx_decode_vartime(b, ins[..], outs[..], items[..]);
+  return ifx t.code == TX_OK && t.segwit then 100 else t.code;
+}
+// Chapter 65: one mainnet message header and payload, then the same
+// message written again from its command and payload.
+fuzz_p2p_frame :: (b: [] u8) -> int #export_c {
+  out: [FUZZ_MAX] u8;
+  f := p2p_frame_read_vartime(b, FUZZ_MAINNET);
+  if f.code != P2P_OK { return f.code; }
+  n := p2p_frame_write_vartime(FUZZ_MAINNET, cast(string) b[4..<4 + f.command_n], b[f.payload..<f.next], out[..]);
+  return ifx n == f.next && fuzz_same(out[0..<n], b[0..<f.next]) then 0 else FUZZ_ROUNDTRIP;
+}
+// Chapter 65: a version payload. Returns 100 plus the number of optional
+// groups read, or the refusal. Core reads the relay flag as a bool, any
+// nonzero byte being true, so that one byte has 255 encodings of true and
+// is compared as a bool.
+fuzz_p2p_version :: (b: [] u8) -> int #export_c {
+  out: [FUZZ_MAX] u8;
+  v := p2p_version_read_vartime(b);
+  if v.code != P2P_OK { return v.code; }
+  n := p2p_version_write_vartime(b, v, out[..]);
+  if n != v.next { return FUZZ_ROUNDTRIP; }
+  same := fuzz_same(out[0..<n - 1], b[0..<n - 1]);
+  last := ifx v.parts == 4 then out[n - 1] == (ifx b[n - 1] != 0 then cast(u8) 1 else 0) else out[n - 1] == b[n - 1];
+  return ifx same && last then 100 + v.parts else FUZZ_ROUNDTRIP;
+}
+// Chapter 94: Core's DecodeRawPSBT. Core writes a PSBT back in its own
+// key order, so a write is not expected to give the same bytes; the oracle
+// is psbt_reference.py.
+fuzz_psbt :: (b: [] u8) -> int #export_c {
+  fields: [256] PsbtField; w: [1] PsbtRead;
+  return psbt_read_vartime(b, fields[..], w[..]).code;
+}
+// Chapter 114: a BOLT 11 invoice, as text.
+fuzz_invoice :: (b: [] u8) -> int #export_c {
+  inv: [1] Invoice;
+  return invoice_decode_vartime(cast(string) b, inv[..]);
+}
+// Chapter 26: Base58Check, then the payload encoded again. Refusals are
+// returned as positive numbers (B58_BAD_CHAR is 1).
+fuzz_base58check :: (b: [] u8) -> int #export_c {
+  payload: [B58_MAX_BYTES] u8; text: [B58_MAX_TEXT] u8;
+  n := base58check_decode_vartime(cast(string) b, payload[..]);
+  if n < 0 { return -n; }
+  m := base58check_encode_vartime(payload[0..<n], text[..]);
+  return ifx m == b.count && fuzz_same(text[0..<m], b) then 0 else FUZZ_ROUNDTRIP;
+}
