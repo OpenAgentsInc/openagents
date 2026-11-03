@@ -157,6 +157,12 @@ void diagnostic_note(const Source *src, Loc loc, bool has_loc, const std::string
 // note names that error ("  note: ..." in text, a note in --diagnostics json).
 void error_after(const Source *src, Loc loc, const char *code, const std::string &message, const std::string &fix,
                  const Source *cause_src, Loc cause);
+// Capacity use: the highest use of each limit in this command. A use above
+// three quarters of its limit (CB_near) is reported when the command ends: a
+// note[CODE] on stderr, a note in --diagnostics json and a "capacities" row in
+// --timings, so the limit is raised before a build fails on it. CODE is the
+// error the limit reports when it is exceeded.
+void capacity_use(const char *name, const char *code, uint64_t used, uint64_t limit);
 // True once the lexer and parser have reported PS_report_limit() errors; says
 // once that reporting stopped there.
 bool error_limit();

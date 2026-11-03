@@ -146,6 +146,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
   coax_t_PS_State state{};
   const auto result=PS_parse_build({src->text.data(),(int64_t)src->text.size()},{input.data(),(int64_t)input.size()},
       {nodes.data(),(int64_t)nodes.size()},{&state,1},{message.data(),(int64_t)message.size()},development);
+  capacity_use("parser nesting","E0221",(uint64_t)state.peak,(uint64_t)PS_depth_limit());
   if(!result.ok) {parse_report(src,input,state,std::string((char*)message.data(),(size_t)state.length),{},development);return false;}
   std::vector<void*> objects((size_t)state.used+1,nullptr);
   // Allocate first so all subsequent reference copies are independent of order.

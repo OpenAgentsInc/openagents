@@ -82,7 +82,7 @@ severity, code, message, source span, notes and proposed fixes.
 | `E0218` | a range loop has one variable | for i: 0..<n { } has a counter only. Index variables belong to loops over arrays, views and strings. |
 | `E0219` | enum needs an underlying type | An enum names its integer width: Outcome :: enum u8 { ... }. The width is part of its layout. |
 | `E0220` | malformed check | #test takes a name string and a block: #test "refunds never exceed payment" { ... }. #forall takes one or more bindings, each a type or a lo..<hi range, then a block: #forall a: u8, b: 0..<10 { ... }. #steps N before the block gives the check its own budget of N steps, a positive integer literal: #test "the world builds" #steps 150000000 { ... }. |
-| `E0221` | parser resource limit | The Coax parser requires an EOF-terminated lexer token stream, caller-owned indexed-tree storage and at most 128 active recursive grammar entries. Reduce syntax nesting or supply the capacities returned by PS_caps. No partial syntax tree is admitted after a failure. |
+| `E0221` | parser resource limit | The Coax parser requires an EOF-terminated lexer token stream, caller-owned indexed-tree storage and at most 128 active recursive grammar entries. Reduce syntax nesting or supply the capacities returned by PS_caps. No partial syntax tree is admitted after a failure. A build above 96 entries gets a near-limit note. |
 | `E0223` | malformed struct parameter list | A generic struct lists its parameters as $NAME, each once, separated by ',': Pair :: struct($T) { a: $T; b: $T; } or Box :: struct($T, $N) { items: [$N] $T; }. |
 | `E0222` | qualified name reaches through an alias | A qualified name is one module alias and one declaration: hud.Slot, hud.frame(x). Aliases are not reexported, so a.b.Name is refused; load that module with its own alias. |
 | `E0224` | malformed #run_steps | #run_steps N; declares the compile-time step budget of the whole compilation, N a whole number from 1 through 250000000: #run_steps 250000000;. A file declares it at most once, and only the entry file's applies: a loaded file's is ignored, so a library declares what it needs when checked alone and never raises the budget of a program that loads it. --run-steps N on the command line overrides it. |
@@ -129,7 +129,7 @@ severity, code, message, source span, notes and proposed fixes.
 | `E0336` | no main | A program needs main :: () { }. A file whose procedures are #export_c can be built as a library with coax lib instead. |
 | `E0337` | main has the wrong signature | main takes no parameters and returns nothing in coax0. |
 | `E0338` | missing return | Some path reaches the end of a procedure that must return a value. |
-| `E0339` | too many generic instances | A program may make at most 256 generic instances: one per generic procedure or struct and distinct binding of its parameters. A chain of generic uses that binds ever larger types never ends; break it with a concrete type. |
+| `E0339` | too many generic instances | A program may make 256 generic instances, or one per 8 syntax nodes in a program of more than 2056: one per generic procedure or struct and distinct binding of its parameters. The message names the limit; a build above three quarters of it gets a near-limit note. A chain of generic uses that binds ever larger types never ends; break it with a concrete type. |
 | `E0340` | constant dependency cycle | Constants may refer to each other in any order, but not in a circle. |
 | `E0341` | constant has no value | A constant or #run must produce a value; a call returning nothing cannot. |
 | `E0342` | name is a constant, type or intrinsic | A local cannot take the name of a constant, struct, enum or intrinsic. |
@@ -171,7 +171,7 @@ severity, code, message, source span, notes and proposed fixes.
 | `E0378` | byte intrinsic argument mismatch | bytes_overlap takes byte views or strings. Float bit conversions take their matching f32/u32 or f64/u64 type. |
 | `E0379` | #forall domain cannot be enumerated | A #forall binding must be nonempty: bool, a nonempty enum, an integer of at most 16 bits, or an increasing lo..<hi range of int constants. Test a wider type on a small instance: write the code so a smaller type or range exercises the same paths. |
 | `E0380` | procedure not exercised by a check | Every procedure except main and #foreign imports must actually execute during an #authority check. Dead branches and pre-folded #run results do not count. Execution coverage is not a proof of the assertions. |
-| `E0381` | type checker resource limit | The Coax checker needs its caller-owned graph, type, local, diagnostic and text capacities and at most 256 active semantic entries. Reduce nesting or use CK_caps. Failed checking never admits a partial typed tree. |
+| `E0381` | type checker resource limit | The Coax checker needs its caller-owned graph, type, local, diagnostic and text capacities and at most 256 active semantic entries. Reduce nesting or use CK_caps. Failed checking never admits a partial typed tree. A build above 192 entries gets a near-limit note. |
 | `E0382` | invalid reflection category | field_info takes a struct type and enum_info an enum type. The type must have a field or member to select. Use type_info for scalar, array or view layout. |
 | `E0383` | borrow may outlive its backing storage | A returned descriptor or retained store can carry local backing beyond its frame, including through helpers, aggregates and active sum payloads. Return an owned value or use caller-owned backing. The bounded A1/B1 checks retain known local witnesses even with incomplete alternatives; general region lifetimes, B2 local-carrier composition and B3 request ownership remain separate work. |
 | `E0384` | unknown module alias | A qualified name's alias must be bound in this module by #load "FILE.coax" as NAME;. Aliases belong to the logical module that loads them. |
@@ -217,10 +217,10 @@ severity, code, message, source span, notes and proposed fixes.
 
 | Code | Meaning | What to do |
 | --- | --- | --- |
-| `E0400` | compile-time resource budget exceeded | Compile-time evaluation defaults to 100000 shared steps; #run_steps N; in the entry file or --run-steps N (which overrides it) selects a positive limit up to 250000000. Aggregate storage has an independent fixed cap (1572864 value slots, 131072 arrays and structs; coax test and mutate allow 33554432 and 2097152), and the error names which limit, what was needed and the limit. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N). |
+| `E0400` | compile-time resource budget exceeded | Compile-time evaluation defaults to 100000 shared steps; #run_steps N; in the entry file or --run-steps N (which overrides it) selects a positive limit up to 250000000. Aggregate storage has an independent fixed cap (1572864 value slots, 131072 arrays and structs; coax test and mutate allow 33554432 and 2097152), and the error names which limit, what was needed and the limit. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N). A compilation that uses more than three quarters of its steps or storage gets a near-limit note. |
 | `E0401` | compile-time code cannot capture a runtime value | #run code and constants see only constants and their own locals. |
 | `E0402` | compile-time cycle | A constant, or a struct's field defaults, depend on themselves while being evaluated. |
-| `E0403` | compile-time depth exceeded | Compile-time calls and dependencies are bounded at depth 64. |
+| `E0403` | compile-time depth exceeded | Compile-time calls and dependencies are bounded at depth 64. A compilation above depth 48 gets a near-limit note. |
 | `E0404` | compile-time code cannot do I/O | print and other host effects are refused while compiling, so builds cannot depend on hidden effects. |
 | `E0405` | compile-time read of an uninitialized variable | A variable declared with = --- was read before anything was assigned to it. |
 | `E0406` | assertion failed | An #assert condition evaluated to false: at the top level while compiling, or as a statement inside a #test, a #forall or code they call. At run time the same statement traps in debug and release builds. |
@@ -250,7 +250,7 @@ severity, code, message, source span, notes and proposed fixes.
 | `E0600` | invalid source load | Use #load "part.coax"; at file scope with a nonempty, NUL-free path, or #load "part.coax" as name; to bind its module to an alias. Loads are literal source inputs, never compile-time effects. |
 | `E0601` | source unit cannot be read | The resolved source must be a readable regular file. Relative paths are resolved beside the unit containing #load. |
 | `E0602` | source load cycle | A source unit loaded a canonical path that is still active. Break the cycle; completed shared dependencies load only once. |
-| `E0603` | source graph budget exceeded | One compilation admits at most 4096 distinct source units, 32 active units, 64 MiB of source bytes and 512 loads per unit. Source I/O is bounded before allocation and while reading. |
+| `E0603` | source graph budget exceeded | One compilation admits at most 4096 distinct source units, 32 active units, 64 MiB of source bytes and 512 loads per unit. Source I/O is bounded before allocation and while reading. A build above three quarters of any of these gets a near-limit note. |
 | `E0604` | unbalanced source unit | In a composed program every physical source must balance its own parentheses, brackets and braces within depth 128. Declarations cannot cross a source boundary. |
 | `E0605` | invalid logical module | Write #module "engine.hud"; once per source unit, at file scope. An ID is 1 to 128 bytes of lowercase dotted segments; each segment starts with a-z and continues with a-z, 0-9 or _. |
 | `E0606` | logical module claimed twice | Two different canonical source units claimed one logical module ID. A module has one authored owner unit; its other files are #load members of it. |
@@ -260,7 +260,7 @@ severity, code, message, source span, notes and proposed fixes.
 | `E0610` | alias target has no logical module | An alias binds to a logical module ID, so the loaded unit must claim one with #module "some.id";. Load a member file without an alias. |
 | `E0611` | alias names two modules | Within one logical module an alias names one module. Pick another alias for the second module. |
 | `E0612` | unsupported layout target | Layout facts are qualified only for the named native-lp64 target. coax layout and coax deps refuse any other --target instead of reporting LP64 values under its name. |
-| `E0613` | malformed export list | #export takes file-scope identifiers separated by ',' and ends with ';': #export hud_slot, HudRect; |
+| `E0613` | malformed export list | #export takes file-scope identifiers separated by ',' and ends with ';': #export hud_slot, HudRect; A unit exports at most 512 names. |
 | `E0614` | reexport in an export list | An export list names only its module's own declarations; alias.Name is a reexport, which is not supported. |
 | `E0615` | export outside a logical module | #export belongs to a unit under a logical module. Claim one with #module, or load the file from a unit that does. |
 

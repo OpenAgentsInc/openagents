@@ -365,6 +365,9 @@ A few decisions in the grammar are worth knowing about when you read
   parentheses to decide.
 - Recursion is bounded. At most 128 grammar rules can be active at once;
   deeper nesting reports E0221 instead of exhausting the host stack.
+  `PS_State.peak` keeps the deepest nesting the parse reached, and a build
+  above 96 gets a near-limit note, so the bound is raised before a real
+  program fails on it.
 
 The parser reports one error per top-level declaration. Let's see that.
 If we delete the semicolon after `return x * x` in Listing 27-1 and check

@@ -134,6 +134,9 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     bool read_ok=!ferror(f);fclose(f);
     if (!read_ok) {error_at(parent,directive,"E0601","failed reading source unit '"+display+"'");return false;}
     total+=(int64_t)u->source->text.size();units.push_back(u);
+    capacity_use("source units","E0603",units.size(),(uint64_t)SU_unit_limit());
+    capacity_use("source bytes","E0603",(uint64_t)total,(uint64_t)SU_byte_limit());
+    capacity_use("source load depth","E0603",(uint64_t)depth+1,(uint64_t)SU_depth_limit());
     const int64_t self=(int64_t)units.size()-1;
     // A unit that fails is finished, not active: a later load of it is no cycle.
     auto stop=[&]{u->state=2;return false;};
@@ -147,7 +150,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
       const auto text=t.kind==Tok::string_lit?t.string_value:t.text;
       records.push_back({(uint32_t)t.kind,{text.data,text.count},t.loc.offset,t.loc.offset+t.text.count});
     }
-    std::vector<coax_t_SU_Load> loads(512);
+    std::vector<coax_t_SU_Load> loads((size_t)SU_load_limit());
     auto scan=SU_scan({records.data(),(int64_t)records.size()},{loads.data(),(int64_t)loads.size()});
     if (scan.error) {
       Loc at{1,1,(int32_t)scan.offset};
@@ -159,6 +162,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
       else error_at(&local,at,scan.error==2?"E0603":"E0600",scan.error==2?"too many source loads in one unit":"#load requires a top-level nonempty NUL-free string path followed by ';'");
       return stop();
     }
+    capacity_use("loads in one source unit","E0603",(uint64_t)scan.count,(uint64_t)SU_load_limit());
     if (scan.claims) {
       std::vector<coax_string> claims;
       for (const auto &other:units) claims.push_back({other->source->module.data(),other->source->claims?(int64_t)other->source->module.size():0});
@@ -174,7 +178,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     }
     // Export lists name declarations the unit's logical module exposes; the
     // directive bytes are blanked like #module, so the parser never sees them.
-    std::vector<coax_t_SU_Export> exported(512);
+    std::vector<coax_t_SU_Export> exported((size_t)SU_export_limit());
     auto list=SU_exports({records.data(),(int64_t)records.size()},{exported.data(),(int64_t)exported.size()});
     if (list.error) {
       Loc at{1,1,(int32_t)list.offset};
@@ -183,6 +187,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
       else error_at(&local,at,"E0613",list.error==2?"too many exported names in one unit":"#export requires file-scope identifiers separated by ',' and followed by ';'","#export hud_slot, HudRect;");
       return stop();
     }
+    capacity_use("exports in one source unit","E0613",(uint64_t)list.count,(uint64_t)SU_export_limit());
     // After lexer errors the unit's syntax errors are still reported, then it stops.
     if (!lexed_ok) {source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count,lexed);return stop();}
     u->source->authority=scan.authority;u->balanced=scan.balanced;u->masked=local.text;

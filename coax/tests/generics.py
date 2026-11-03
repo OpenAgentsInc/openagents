@@ -223,16 +223,43 @@ class Instantiation(unittest.TestCase):
         r = self.coax("mutate", path, "--library")
         self.assertIn(" mutants, ", r.stdout + r.stderr)
 
-    def test_instance_budget(self):
-        types = "".join(f"S{i} :: struct {{ v: int; }}\n" for i in range(257))
-        calls = "".join(f"x{i} := id(S{i}.{{v = {i}}});" for i in range(257))
-        path = self.write("budget.coax", "id :: (a: $T) -> $T { return a; }\n" + types + "main :: () { " + calls + " }\n")
-        code, codes = self.codes(path)
-        self.assertNotEqual(code, 0)
-        self.assertEqual(codes, ["E0339"])
-        fits = self.write("fits.coax", "id :: (a: $T) -> $T { return a; }\n" + types + "main :: () { " + calls.rsplit("x256", 1)[0] + " }\n")
-        self.assertEqual(self.coax("check", fits).returncode, 0, self.coax("check", fits).stderr)
+    def instances(self, count, extra_nodes=0):
+        """`count` instances of S, 3 syntax nodes each; returns the exit status, the
+        --timings "generic instances" row and the near-limit notes."""
+        params = ", ".join(f"a{i}: S({i})" for i in range(1, count + 1))
+        table = f"TABLE :: [{extra_nodes}] int.[" + ",".join("0" for _ in range(extra_nodes)) + "];\n" if extra_nodes else ""
+        path = self.write("budget.coax", "S :: struct($N) { v: [$N] int; }\nf :: (" + params + ") {}\n" + table + "main :: () {}\n")
+        timings = self.d / "budget.json"
+        r = self.coax("check", path, "--timings", timings)
+        row = {x["name"]: x for x in json.loads(timings.read_text())["capacities"]}["generic instances"]
+        notes = [line for line in r.stderr.splitlines() if line.startswith("coax: note[E0339]: generic instances: ")]
+        self.assertEqual(row["near"], row["used"] * 4 > row["limit"] * 3, row)
+        self.assertEqual(len(notes), 1 if row["near"] else 0, r.stderr)
+        return r, row, notes
 
+    def test_instance_budget(self):
+        # A small program has the floor, 256: the report starts above 192, 256
+        # instances check, and the 257th is E0339, which names the limit.
+        for count, near in [(192, False), (193, True), (256, True)]:
+            r, row, notes = self.instances(count)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual((row["used"], row["limit"], row["near"]), (count, 256, near))
+        self.assertIn("generic instances: 256 of 256 used (100%)", notes[0])
+        r, row, notes = self.instances(257)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("error[E0339]: instantiating 'S' here would exceed 256 generic instances", r.stderr)
+        path = self.d / "budget.coax"
+        code, codes = self.codes(path)
+        self.assertEqual((code != 0, codes), (True, ["E0339"]))
+
+    def test_instance_limit_is_sized_from_the_program(self):
+        # Past 2056 syntax nodes the limit is one instance per 8 of them, so a
+        # larger program fits more: the same 257 instances check.
+        r, row, notes = self.instances(257, extra_nodes=4000)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(row["used"], 257)
+        self.assertGreater(row["limit"], 500)
+        self.assertFalse(row["near"])
 
 VALUES = (
     "sum :: (a: [$N] int) -> int { s := 0; for x: a { s += x; } return s; }\n"

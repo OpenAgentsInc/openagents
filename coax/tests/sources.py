@@ -176,15 +176,82 @@ class Sources(unittest.TestCase):
         diagnostics=[json.loads(x) for x in p.stderr.splitlines()]
         self.assertTrue(any(x['code']=='E0377' and Path(x['file'])==part for x in diagnostics),diagnostics)
 
+    def capacities(self, path, *args):
+        """A check's near-limit notes, in text and in --diagnostics json, and its --timings capacities."""
+        timings = self.base / "timings.json"
+        p = self.command("check", path, "--timings", str(timings), *args)
+        notes = {}
+        for line in p.stderr.splitlines():
+            if line.startswith("coax: note["):
+                code, text = line[len("coax: note["):].split("]: ", 1)
+                notes[text.split(":")[0]] = code
+        rows = {r["name"]: r for r in json.loads(timings.read_text())["capacities"]}
+        q = self.command("check", path, "--diagnostics", "json", *args)
+        self.assertEqual(p.returncode, q.returncode, (p.stderr, q.stderr))
+        records = [json.loads(x) for x in q.stderr.splitlines()]
+        self.assertEqual({r["message"].split(":")[0]: r["code"] for r in records if r["severity"] == "note" and r["code"] in ("E0603", "E0613")},
+                         {k: v for k, v in notes.items() if v in ("E0603", "E0613")}, records)
+        for name, row in rows.items():
+            self.assertEqual(row["near"], row["used"] * 4 > row["limit"] * 3, row)
+            self.assertEqual(name in notes, row["near"], (name, row, p.stderr))
+            if row["near"]: self.assertEqual(notes[name], row["code"])
+        return p, rows
+
+    def tree(self, units):
+        """main.coax, 8 hubs and leaves: `units` source units, no file over 512 loads."""
+        leaves = units - 9
+        for n in range(leaves):
+            if not (self.base / f"t/u{n}.coax").exists(): self.write(f"t/u{n}.coax", "")
+        for h in range(8):
+            self.write(f"t/h{h}.coax", "\n".join(f'#load "u{n}.coax";' for n in range(h * 512, min(leaves, (h + 1) * 512))))
+        return self.write("t/main.coax", "\n".join(f'#load "h{h}.coax";' for h in range(8)) + "\nmain :: () {}")
+
     def test_graph_depth_and_unique_unit_limits(self):
-        for n in range(65):
-            self.write(f"u{n}.coax",f'#load "u{n+1}.coax";' if n<64 else '')
-        self.error(self.base/"u0.coax","E0603")
-        main=self.write("main.coax",'\n'.join(f'#load "u{n}.coax";' for n in range(4096))+'\nmain :: () {}')
-        for n in range(4096):self.write(f"u{n}.coax",'')
-        self.error(main,"E0603")
-        main.write_text('\n'.join(f'#load "u{n}.coax";' for n in range(4095))+'\nmain :: () {}')
-        self.success("check",main)
+        # A load chain: 32 units deep is admitted, 33 is E0603; the report starts above 24.
+        def chain(depth):
+            for n in range(depth): self.write(f"c/u{n}.coax", (f'#load "u{n+1}.coax";' if n < depth - 1 else "") + ("\nmain :: () {}" if n == 0 else ""))
+            return self.base / "c/u0.coax"
+        for depth, near in [(24, False), (25, True), (32, True)]:
+            p, rows = self.capacities(chain(depth))
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertEqual((rows["source load depth"]["used"], rows["source load depth"]["limit"]), (depth, 32))
+            self.assertEqual(rows["source load depth"]["near"], near)
+        self.error(chain(33), "E0603")
+        # 4096 distinct units in a tree, each file under the 512-load limit, is
+        # admitted; one more is E0603. The report starts above 3072.
+        for units, near in [(3072, False), (3073, True), (4096, True)]:
+            p, rows = self.capacities(self.tree(units))
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertEqual((rows["source units"]["used"], rows["source units"]["limit"], rows["source units"]["near"]), (units, 4096, near))
+        records = self.error(self.tree(4097), "E0603")
+        self.assertTrue(any("unit, depth or byte budget" in r["message"] for r in records), records)
+
+    def test_loads_per_unit_limit(self):
+        # One file loads at most 512 units; the report starts above 384.
+        def loads(count):
+            for n in range(count):
+                if not (self.base / f"l/u{n}.coax").exists(): self.write(f"l/u{n}.coax", "")
+            return self.write("l/main.coax", "\n".join(f'#load "u{n}.coax";' for n in range(count)) + "\nmain :: () {}")
+        for count, near in [(384, False), (385, True), (512, True)]:
+            p, rows = self.capacities(loads(count))
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertEqual((rows["loads in one source unit"]["used"], rows["loads in one source unit"]["limit"]), (count, 512))
+            self.assertEqual(rows["loads in one source unit"]["near"], near)
+        records = self.error(loads(513), "E0603")
+        self.assertTrue(any(r["message"] == "too many source loads in one unit" for r in records), records)
+
+    def test_exports_per_unit_limit(self):
+        # One unit exports at most 512 names; the report starts above 384.
+        def exports(count):
+            names = [f"x{n}" for n in range(count)]
+            self.write("e/lib.coax", '#module "lib.e";\n#export ' + ", ".join(names) + ";\n" + "\n".join(f"{x} :: {n};" for n, x in enumerate(names)))
+            return self.write("e/main.coax", '#load "lib.coax" as e;\nmain :: () {}')
+        for count, near in [(384, False), (385, True), (512, True)]:
+            p, rows = self.capacities(exports(count))
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertEqual((rows["exports in one source unit"]["used"], rows["exports in one source unit"]["limit"]), (count, 512))
+            self.assertEqual(rows["exports in one source unit"]["near"], near)
+        self.error(exports(513), "E0613")
 
     def test_private_library_checks_need_no_native_exports(self):
         unit=self.write("policy.coax",'#authority; allowed :: (n:int)->bool {return n>0;} #test "edge" {#assert allowed(1);#assert !allowed(0);}')

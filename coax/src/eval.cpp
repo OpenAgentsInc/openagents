@@ -204,7 +204,11 @@ struct Evaluator {
   // Each call depth's locals vector, kept between calls so a call doesn't
   // allocate one (cleared, so each call starts with none).
   std::vector<std::vector<CtLocal>> local_pool;
+  // Compile-time call and constant-dependency depth. Fixed, with a stated
+  // memory bound: the evaluator recurses on the native stack.
   static constexpr uint32_t MAX_DEPTH = 64;
+  size_t peak_calls = 0;
+  uint32_t peak_dependencies = 0;
   // --profile steps: the procedures being evaluated, innermost last, and each
   // one's own steps, total steps and calls.
   bool profile = false;
@@ -530,6 +534,7 @@ struct Evaluator {
       dependency_depth--;
       return {};
     }
+    peak_dependencies = std::max(peak_dependencies, dependency_depth);
     CtFrame empty;
     bool done = c->evaluated == 2;
     // Allocation limits may throw through expr/clone. Restore the transient
@@ -1099,6 +1104,7 @@ struct Evaluator {
         }
         if (quiet && e->proc->ct_executed_mark != executed_mark) { e->proc->ct_executed_mark = executed_mark; executed.push_back(e->proc); }
         calls.push_back(e->loc);
+        peak_calls = std::max(peak_calls, calls.size());
         Value result;
         const uint64_t before = steps;
         const bool recursive = profile && std::find(frames.begin(), frames.end(), e->proc) != frames.end();
@@ -1693,6 +1699,21 @@ bool prepare_native_check_domains(File *file, NativeCheckCPlan *plan, uint64_t s
 bool evaluate(File *file, uint64_t max_steps, uint64_t *used, uint64_t *traversed) {
   Evaluator evaluator{file};
   evaluator.max_steps = max_steps;
+  // The compilation's use of each compile-time limit, for the near-limit report.
+  struct Uses {
+    Evaluator &e;
+    ~Uses() {
+      capacity_use("compile-time call depth", "E0403", e.peak_calls, Evaluator::MAX_DEPTH);
+      capacity_use("compile-time dependency depth", "E0403", e.peak_dependencies, Evaluator::MAX_DEPTH);
+      capacity_use("compile-time steps", "E0400", e.steps, e.max_steps);
+      capacity_use("compile-time traversal work", "E0400", e.traversal_work, e.traversal_limit);
+      if (const auto &m = e.file->ct_memory) {
+        capacity_use("compile-time value slots", "E0400", m->peak_slots, m->slot_limit);
+        capacity_use("compile-time arrays and structs", "E0400", m->peak_containers, m->container_limit);
+        capacity_use("compile-time string bytes", "E0400", m->string_peak_bytes, CB_string_live_limit());
+      }
+    }
+  } uses{evaluator};
   try { bool ok = evaluator.run(); if (used) *used = evaluator.steps;
     if (traversed) *traversed = evaluator.traversal_work;
     return ok; }

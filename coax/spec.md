@@ -606,7 +606,13 @@ result type is the template's with each binding substituted. Each distinct
 signature and body, kept pristine before checking and then checked under
 its bindings like any concrete procedure. Calls inside a generic body type
 the call but make no instance; an instance's own calls may make more. A
-program may make at most 256 instances (E0339). Instances are evaluated by
+program may make 256 instances, or one per 8 syntax nodes in a program of
+more than 2056 (E0339, which names the limit). The limit is sized from the program because its
+memory is already the program's: each instance copies its template into the
+checker's node store, three records per syntax node, allocated before
+checking. Writing more instances out by hand also writes more nodes, so the
+limit stops only a chain of generic uses that binds ever larger types.
+Instances are evaluated by
 `#run` and checks, emitted to C as the template's name followed by
 `__` and the bindings, each length-prefixed (`coax_p_first__3f64`,
 `coax_p_pick__4n0_P` for struct `P` in module scope 0), and mutated and
@@ -1561,6 +1567,39 @@ the check phase (`detail_seconds`), each check's time and steps (`checks`) and
 each library check (`libraries`); `--timings-table` prints them on stderr.
 `coax/perf/baseline.json` keeps these times for the biggest apps, and
 `coax/perf/compile-times.coax` compares a run against it.
+
+**Capacity limits.** Every limit a build can grow into is either sized from
+the input or fixed with a stated memory bound:
+
+| Limit | Value | Error | Memory bound |
+| --- | --- | --- | --- |
+| Source units, bytes, load depth | 4096 units, 64 MiB, 32 active | E0603 | the source text; 64 KiB of stack per active unit |
+| Loads and exports in one unit | 512 each | E0603, E0613 | 28 KiB and 20 KiB of scratch records |
+| Parser storage | 3 nodes per token, and more | E0221 | sized from the input (`PS_caps`) |
+| Parser nesting | 128 active grammar entries | E0221 | native stack, within the compiler's baseline |
+| Checker storage | 3 nodes per syntax node, and more | E0381 | sized from the input (`CK_caps`) |
+| Checker nesting | 256 active semantic entries | E0381 | native stack, about 3.4 KiB an entry |
+| Generic instances | 256, or one per 8 syntax nodes past 2056 | E0339 | the checker's node store (sized from the input) |
+| Compile-time call and dependency depth | 64 each | E0403 | native stack, within the compiler's baseline |
+| Compile-time steps | 100,000 by default, up to 250,000,000 | E0400 | chosen by `#run_steps` or `--run-steps` |
+| Compile-time storage | 1,572,864 value slots, 131,072 arrays and structs, 64 MiB of live strings, 134,217,728 traversal | E0400 | the stated values (`budget.coax`) |
+
+The stack bounds were measured with `ulimit -s` on Linux x86-64: `coax check`
+of an empty program needs about 640 KiB of stack (910 KiB with a `#run`), 128
+nested blocks and 64 compile-time calls need no more, and 256 checker entries
+need about 1.5 MiB, all well inside the usual 8 MiB main-thread stack.
+
+When a command ends, each of these limits whose highest use in the command is
+above three quarters of the limit (4 x used > 3 x limit, `CB_near` in
+`budget.coax`) is reported, so the limit is raised before a build fails on it:
+`coax: note[CODE]: NAME: U of L used (P%), above three quarters of the limit;
+more than L fails with CODE`, where CODE is the error the limit reports. With
+`--diagnostics json` the note is a `note` diagnostic with that code and no
+span. The `--timings` record has a `capacities` array of every limit the command
+used (`name`, `code`, `used`, `limit`, `near`), and `--timings-table` prints it.
+The compile-time limits are reported for the compilation's own evaluation
+(constants, `#run` and defaults), not for each check. A library's standalone
+check and the one-line `--json` format print no notes.
 These are host observations, never clocks or I/O available to `#run`. The real
 engine harness also records process wall time, compiler peak RSS and repeated
 single-shot invocations. OS caches remain uncontrolled; this is not an
@@ -1611,7 +1650,12 @@ checks and a zero-survivor mutation gate. `lib/compiler/compiler.coax` is the
 actual bootstrap source graph, not a concatenated copy.
 
 One compilation admits 4096 canonical units, 32 active units, 64 MiB of source
-bytes and 512 load directives per physical unit (E0603). Invalid loads are
+bytes and 512 load directives per physical unit (E0603), and a unit exports at
+most 512 names (E0613). These limits bound the input itself, so they are fixed,
+with stated memory bounds: 64 MiB of source text, a 64 KiB read buffer per
+active unit (2 MiB of stack) and 56- and 40-byte scratch records per load and
+export (28 KiB and 20 KiB). A build above three quarters of any of them gets a
+near-limit note (16.2). Invalid loads are
 E0600, unreadable/nonregular files E0601, and unbalanced composed units E0604.
 Reads check the source-byte budget before allocation and while reading. These
 bounds are not a whole-process sandbox or a bound on every compiler allocation.

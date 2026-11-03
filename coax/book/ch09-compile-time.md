@@ -755,6 +755,17 @@ cover all compiler memory or work.
 Views keep their storage alive, and cycles are cleared at compilation teardown;
 an unreachable cycle can use budget until then.
 
+A compilation that uses more than three quarters of one of these limits
+still succeeds, with a note that says which limit and how close it came:
+
+```shell
+coax: note[E0400]: compile-time steps: 80000 of 100000 used (80%), above three quarters of the limit; more than 100000 fails with E0400
+```
+
+Raise it with `#run_steps N;` before a later change crosses it. The same
+note covers the call and dependency depths (above 48 of 64) and the storage
+limits; `--timings FILE` has the use of each in its `capacities` array.
+
 The limits count work, not seconds. A program that compiles on a fast
 laptop compiles on a slow CI machine too, and a build never passes or
 fails depending on how busy the machine was.

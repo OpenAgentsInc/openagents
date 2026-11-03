@@ -214,6 +214,29 @@ static void diagnostic_json(const char *severity, const char *code, const std::s
 }
 
 static bool g_quiet_errors = false;  // a library's standalone check counts its errors and prints none
+struct CapacityUse {std::string code;uint64_t used=0,limit=0;};
+static std::map<std::string,CapacityUse> g_capacity;  // by limit name: its use nearest the limit
+void capacity_use(const char *name, const char *code, uint64_t used, uint64_t limit) {
+  if (!limit) return;
+  auto &c = g_capacity[name];
+  // Keep the use nearest its limit (used/limit largest): a limit can differ between uses.
+  if (!c.limit || (unsigned __int128)used * c.limit > (unsigned __int128)c.used * limit) c = {code, used, limit};
+}
+static std::string capacity_text(const std::string &name, const CapacityUse &c) {
+  const uint64_t percent = (uint64_t)((unsigned __int128)c.used * 100 / c.limit);
+  return name + ": " + std::to_string(c.used) + " of " + std::to_string(c.limit) + " used (" + std::to_string(percent) +
+         "%), above three quarters of the limit; more than " + std::to_string(c.limit) + " fails with " + c.code;
+}
+// The near-limit report, once, when the command ends. A library's quiet
+// standalone check and the one-line --json format print none.
+static void capacity_notes() {
+  if (g_quiet_errors || (g_json_errors && !g_diagnostics_json)) return;
+  for (const auto &[name, c] : g_capacity) {
+    if (!CB_near(c.used, c.limit)) continue;
+    if (g_diagnostics_json) diagnostic_json("note", c.code.c_str(), capacity_text(name, c), "null", "", "[]");
+    else fprintf(stderr, "coax: note[%s]: %s\n", c.code.c_str(), capacity_text(name, c).c_str());
+  }
+}
 void error_at(const Source *src, Loc loc, const char *code, const std::string &message, const std::string &fix) {
   g_error_count++;
   if (g_quiet_errors) { g_pending_notes.clear(); return; }
@@ -393,6 +416,10 @@ static void timings_table(double total) {
     fprintf(stderr,"  checks: %zu run, %.3f s; slowest:\n",g_timings.checks.size(),sum);
     slowest(g_timings.checks,[](const TimedCheck &c){fprintf(stderr,"    %9.3f s %12llu steps  %s %s%s (%s)\n",c.seconds,(unsigned long long)c.steps,c.kind.c_str(),c.name.c_str(),c.passed?"":" FAILED",c.phase.c_str());});
   }
+  if(!g_capacity.empty()){
+    fprintf(stderr,"  capacities: highest use of each limit\n");
+    for(const auto &[name,c]:g_capacity)fprintf(stderr,"    %-34s %12llu of %-12llu %5.1f%%%s\n",name.c_str(),(unsigned long long)c.used,(unsigned long long)c.limit,100.0*(double)c.used/(double)c.limit,CB_near(c.used,c.limit)?"  near the limit":"");
+  }
   if(g_authority_cached)fprintf(stderr,"  authority: every check passed in an earlier compile of these sources; reused, none run\n");
   else if(!g_timings.parallel.empty())fprintf(stderr,"  authority checks: %s\n",g_timings.parallel.c_str());
   if(!g_timings.libraries.empty()){
@@ -403,6 +430,7 @@ static void timings_table(double total) {
   }
 }
 static int finish_profile(int status) {
+  capacity_notes();
   status=finish_semantic_report(status);
   if(!g_timings.on()) return status;
   const double total=seconds_since(g_timings.start);
@@ -414,6 +442,8 @@ static int finish_profile(int status) {
   first=true;for(const auto &[part,duration]:g_timings.detail) {out<<(first?"":",")<<json_string(part)<<":"<<duration;first=false;}
   out<<"},\"checks\":[";
   first=true;for(const auto &c:g_timings.checks) {out<<(first?"":",")<<"{\"kind\":"<<json_string(c.kind)<<",\"name\":"<<json_string(c.name)<<",\"phase\":"<<json_string(c.phase)<<",\"seconds\":"<<c.seconds<<",\"steps\":"<<c.steps<<",\"cases\":"<<c.cases<<",\"passed\":"<<(c.passed?"true":"false")<<"}";first=false;}
+  out<<"],\"capacities\":[";
+  first=true;for(const auto &[name,c]:g_capacity) {out<<(first?"":",")<<"{\"name\":"<<json_string(name)<<",\"code\":"<<json_string(c.code)<<",\"used\":"<<c.used<<",\"limit\":"<<c.limit<<",\"near\":"<<(CB_near(c.used,c.limit)?"true":"false")<<"}";first=false;}
   out<<"],\"libraries\":[";
   first=true;for(const auto &l:g_timings.libraries) {out<<(first?"":",")<<"{\"path\":"<<json_string(timed_path(l.path))<<",\"seconds\":"<<l.seconds<<",\"cached\":"<<(l.cached?"true":"false")<<",\"checks_alone\":"<<(l.checks?"true":"false")<<"}";first=false;}
   out<<"]}\n";

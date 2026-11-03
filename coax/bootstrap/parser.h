@@ -178,13 +178,13 @@ struct coax_t_PS_Node { coax_t_PS_Tag kind; coax_t_PS_Loc loc; coax_string name;
 typedef struct { coax_t_PS_Node *data; int64_t count; } coax_v_t_PS_Node;
 #endif
 #ifdef COAX_coax_t_PS_State_DEFINED
-#ifndef COAX_SCHEMA_coax_t_PS_State_31343a636f61782d632d747970652d7631363a73747275637431353a636f61785f745f50535f5374617465323a3936313a38313a38333a706f73373a696e7436345f74313a30343a75736564373a696e7436345f74313a38353a6465707468373a696e7436345f74323a3136343a636f646531313a636f61785f737472696e67323a3234333a6c6f6331333a636f61785f745f50535f4c6f63323a3430333a66697831313a636f61785f737472696e67323a3634363a6c656e677468373a696e7436345f74323a383031313a646576656c6f706d656e74353a5f426f6f6c323a3838
+#ifndef COAX_SCHEMA_coax_t_PS_State_31343a636f61782d632d747970652d7631363a73747275637431353a636f61785f745f50535f5374617465333a313034313a38313a39333a706f73373a696e7436345f74313a30343a75736564373a696e7436345f74313a38353a6465707468373a696e7436345f74323a3136343a636f646531313a636f61785f737472696e67323a3234333a6c6f6331333a636f61785f745f50535f4c6f63323a3430333a66697831313a636f61785f737472696e67323a3634363a6c656e677468373a696e7436345f74323a383031313a646576656c6f706d656e74353a5f426f6f6c323a3838343a7065616b373a696e7436345f74323a3936
 #error "incompatible Coax C type coax_t_PS_State"
 #endif
 #else
 #define COAX_coax_t_PS_State_DEFINED
-#define COAX_SCHEMA_coax_t_PS_State_31343a636f61782d632d747970652d7631363a73747275637431353a636f61785f745f50535f5374617465323a3936313a38313a38333a706f73373a696e7436345f74313a30343a75736564373a696e7436345f74313a38353a6465707468373a696e7436345f74323a3136343a636f646531313a636f61785f737472696e67323a3234333a6c6f6331333a636f61785f745f50535f4c6f63323a3430333a66697831313a636f61785f737472696e67323a3634363a6c656e677468373a696e7436345f74323a383031313a646576656c6f706d656e74353a5f426f6f6c323a3838
-struct coax_t_PS_State { int64_t pos; int64_t used; int64_t depth; coax_string code; coax_t_PS_Loc loc; coax_string fix; int64_t length; _Bool development; };
+#define COAX_SCHEMA_coax_t_PS_State_31343a636f61782d632d747970652d7631363a73747275637431353a636f61785f745f50535f5374617465333a313034313a38313a39333a706f73373a696e7436345f74313a30343a75736564373a696e7436345f74313a38353a6465707468373a696e7436345f74323a3136343a636f646531313a636f61785f737472696e67323a3234333a6c6f6331333a636f61785f745f50535f4c6f63323a3430333a66697831313a636f61785f737472696e67323a3634363a6c656e677468373a696e7436345f74323a383031313a646576656c6f706d656e74353a5f426f6f6c323a3838343a7065616b373a696e7436345f74323a3936
+struct coax_t_PS_State { int64_t pos; int64_t used; int64_t depth; coax_string code; coax_t_PS_Loc loc; coax_string fix; int64_t length; _Bool development; int64_t peak; };
 #endif
 #ifdef COAX_coax_v_t_PS_State_DEFINED
 #ifndef COAX_SCHEMA_coax_v_t_PS_State_31343a636f61782d632d747970652d7631343a7669657731373a636f61785f765f745f50535f5374617465323a3136313a3831353a636f61785f745f50535f5374617465
@@ -289,7 +289,7 @@ COAX_LAYOUT(offsetof(coax_t_PS_Node, effect_present) == 280, "offset of PS_Node.
 COAX_LAYOUT(offsetof(coax_t_PS_Node, pure_decl) == 281, "offset of PS_Node.pure_decl");
 COAX_LAYOUT(offsetof(coax_t_PS_Node, effect_head) == 288, "offset of PS_Node.effect_head");
 COAX_LAYOUT(offsetof(coax_t_PS_Node, effect_loc) == 296, "offset of PS_Node.effect_loc");
-COAX_LAYOUT(sizeof(coax_t_PS_State) == 96 && COAX_ALIGNOF(coax_t_PS_State) == 8, "layout of PS_State");
+COAX_LAYOUT(sizeof(coax_t_PS_State) == 104 && COAX_ALIGNOF(coax_t_PS_State) == 8, "layout of PS_State");
 COAX_LAYOUT(offsetof(coax_t_PS_State, pos) == 0, "offset of PS_State.pos");
 COAX_LAYOUT(offsetof(coax_t_PS_State, used) == 8, "offset of PS_State.used");
 COAX_LAYOUT(offsetof(coax_t_PS_State, depth) == 16, "offset of PS_State.depth");
@@ -298,6 +298,7 @@ COAX_LAYOUT(offsetof(coax_t_PS_State, loc) == 40, "offset of PS_State.loc");
 COAX_LAYOUT(offsetof(coax_t_PS_State, fix) == 64, "offset of PS_State.fix");
 COAX_LAYOUT(offsetof(coax_t_PS_State, length) == 80, "offset of PS_State.length");
 COAX_LAYOUT(offsetof(coax_t_PS_State, development) == 88, "offset of PS_State.development");
+COAX_LAYOUT(offsetof(coax_t_PS_State, peak) == 96, "offset of PS_State.peak");
 COAX_LAYOUT(sizeof(coax_t_PS_Result) == 16 && COAX_ALIGNOF(coax_t_PS_Result) == 8, "layout of PS_Result");
 COAX_LAYOUT(offsetof(coax_t_PS_Result, ok) == 0, "offset of PS_Result.ok");
 COAX_LAYOUT(offsetof(coax_t_PS_Result, root) == 8, "offset of PS_Result.root");
@@ -323,6 +324,7 @@ COAX_LAYOUT(offsetof(coax_t_PS_Imports, message) == 24, "offset of PS_Imports.me
 COAX_LAYOUT(offsetof(coax_t_PS_Imports, loc) == 40, "offset of PS_Imports.loc");
 
 coax_t_PS_Caps PS_caps(int64_t tokens, int64_t source);
+int64_t PS_depth_limit(void);
 coax_t_PS_Result PS_parse(coax_string source, coax_v_t_PS_Token t, coax_v_t_PS_Node n, coax_v_t_PS_State s, coax_v_u8 out);
 coax_t_PS_Result PS_parse_build(coax_string source, coax_v_t_PS_Token t, coax_v_t_PS_Node n, coax_v_t_PS_State s, coax_v_u8 out, _Bool development);
 int64_t PS_report_limit(void);

@@ -73,8 +73,11 @@ the directive that closes it. This is source identity, not a guarantee
 that a filesystem cannot change during a build.
 
 Each compilation admits at most 4096 distinct units, 32 active units, 64 MiB
-of source bytes and 512 load directives per unit. Budget exhaustion is
-E0603. Reads are checked against the byte budget before allocation and as
+of source bytes and 512 load directives per unit, and a unit exports at
+most 512 names. Budget exhaustion is E0603 (E0613 for exports). A build
+above three quarters of any of these gets a note, such as
+`coax: note[E0603]: source units: 3100 of 4096 used (75%), ...`, so the
+limit can be raised before the build fails. Reads are checked against the byte budget before allocation and as
 the file is read. These bounds do not make the whole compiler a hostile
 process sandbox: token, syntax-tree and native toolchain work have their
 own costs.

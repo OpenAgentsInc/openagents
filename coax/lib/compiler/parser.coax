@@ -65,7 +65,8 @@ PS_Tag :: enum u32 {
 PS_Loc :: struct {line:int;column:int;offset:int;}
 PS_Token :: struct {kind:u32;text:string;loc:PS_Loc;value:u64;floating:f64;width:int;raw_count:int;}
 PS_Node :: struct {kind:PS_Tag;loc:PS_Loc;name:string;name2:string;loc2:PS_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:f64;width:int;end:int;quantity:u8;unit:[6]int;frame_decl:bool;frame:[4]int;effect_present:bool;pure_decl:bool;effect_head:int;effect_loc:PS_Loc;}
-PS_State :: struct {pos:int;used:int;depth:int;code:string;loc:PS_Loc;fix:string;length:int;development:bool;}
+// peak: the deepest nesting entered, so a build near PS_DEPTH_LIMIT is reported before it fails.
+PS_State :: struct {pos:int;used:int;depth:int;code:string;loc:PS_Loc;fix:string;length:int;development:bool;peak:int;}
 PS_Result :: struct {ok:bool;root:int;}
 PS_Caps :: struct {nodes:int;message:int;imports:int;}
 PS_caps :: (tokens:int,source:int)->PS_Caps #export_c {
@@ -119,9 +120,15 @@ PS_valid :: (s:[] PS_State,id:int)->int {if s[0].code!="" {return 0;}return id;}
 PS_link :: (n:[] PS_Node,parent:int,child:int) {
   if n[parent].head==0 {n[parent].head=child;}else {n[n[parent].tail].next=child;}n[parent].tail=child;
 }
+// Active recursive grammar entries. Fixed, with a stated memory bound: the
+// parser recurses on the native stack: 128 levels fit in the compiler's own (spec 16.2).
+PS_DEPTH_LIMIT :: 128;
+PS_depth_limit :: ()->int #export_c {return PS_DEPTH_LIMIT;}
 PS_enter :: (s:[] PS_State,out:[] u8,loc:PS_Loc)->bool {
   if s[0].code!="" {return false;}
-  if s[0].depth>=128 {PS_fail(s,out,loc,"E0221","parser nesting budget exceeded","reduce syntax nesting");return false;}s[0].depth+=1;return true;
+  if s[0].depth>=PS_DEPTH_LIMIT {PS_fail(s,out,loc,"E0221","parser nesting budget exceeded","reduce syntax nesting");return false;}
+  // peak is never below depth, so entering past it is entering at it.
+  if s[0].peak==s[0].depth {s[0].peak+=1;}s[0].depth+=1;return true;
 }
 PS_leave :: (s:[] PS_State) {s[0].depth-=1;}
 PS_prec :: (k:u32)->int {
@@ -4985,6 +4992,13 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
  }
 }
 
+#forall "parser nesting peak is the deepest entry" depth:124..<129, above:0..<3 {
+ peak:=depth+above;state:=[1]PS_State.[PS_State.{depth=depth,peak=peak}];out:[128]u8;
+ ok:=PS_enter(state[..],out[..],PS_Loc.{});
+ #assert ok==(depth<128) && PS_depth_limit()==128;
+ if ok {#assert state[0].depth==depth+1 && state[0].peak==(ifx peak>depth then peak else depth+1);PS_leave(state[..]);#assert state[0].depth==depth;}
+ else {#assert state[0].code=="E0221" && state[0].depth==depth && state[0].peak==peak;}
+}
 #test "conditional field nesting errors retain the directive location" {
  tokens:=[5]PS_Token.[PS_Token.{kind=6,text="if",loc=PS_Loc.{line=9,column=3,offset=17}},PS_Token.{kind=1,text="BUILD_DEBUG"},PS_Token.{kind=10},PS_Token.{kind=11},PS_Token.{}];
  nodes:[8]PS_Node;state:=[1]PS_State.[PS_State.{depth=128}];out:[128]u8;

@@ -61,6 +61,22 @@ CB_MAX_TRAVERSAL :: 134217728;
  #assert !CB_admit(18446744073709551615,0,1);
 }
 
+#forall "a use above three quarters of its limit is near it" used:0..<20, limit:0..<20 {
+ #assert CB_near(cast(u64)used,cast(u64)limit)==(used*4>limit*3);
+}
+#test "near-limit boundaries are exact for the published limits" {
+ #assert !CB_near(3072,4096);#assert CB_near(3073,4096);#assert CB_near(4096,4096);#assert CB_near(4097,4096);
+ #assert !CB_near(96,128);#assert CB_near(97,128);#assert !CB_near(48,64);#assert CB_near(49,64);
+ #assert !CB_near(75000,100000);#assert CB_near(75001,100000);
+ #assert !CB_near(0,0);#assert !CB_near(0,1);#assert CB_near(1,1);#assert !CB_near(2,3);#assert CB_near(3,3);
+}
+#test "near-limit holds at full width without overflow" {
+ #assert CB_near(18446744073709551615,18446744073709551615);
+ #assert !CB_near(13835058055282163711,18446744073709551615);
+ #assert CB_near(13835058055282163712,18446744073709551615);
+ #assert !CB_near(0,18446744073709551615);
+}
+
 CB_parse_steps :: (text:string)->u64 #export_c {
  if text.count==0 {return 0;}
  value:u64=0;
@@ -86,3 +102,8 @@ CB_string_live_limit :: ()->u64 #export_c {return CB_MAX_STRING_LIVE;}
 CB_string_work_limit :: ()->u64 #export_c {return CB_MAX_STRING_WORK;}
 
 CB_traversal_limit :: ()->u64 #export_c {return CB_MAX_TRAVERSAL;}
+// A build that uses more than three quarters of a limit is reported, so the
+// limit is raised before a build fails: 4*used > 3*limit, without overflow.
+CB_near :: (used:u64,limit:u64)->bool #export_c {
+ return used>limit/4*3+limit%4*3/4;
+}

@@ -195,7 +195,7 @@ CK_Error :: struct {loc:CK_Loc;code:string;message:string;fix:string;}
 // Where a type is being resolved, for $T: which procedure owns the type
 // parameters in scope (generic) and whether this position may bind one (site).
 CK_Site :: enum u8 {none;param;result;body;field;}
-CK_State :: struct {used:int;type_count:int;composite_count:int;local_count:int;byte_count:int;error_count:int;current:int;constant_depth:int;loop_depth:int;defer_depth:int;unevaluated:int;basic:bool;depth:int;fatal:bool;metal_depth:int;clashes:int;generic:int;site:CK_Site;instances:int;instance_tail:int;instance_count:int;quantity_device:bool;unit_units:int;spatial_types:int;spatial_helpers:int;retain_report_count:int;names:int;}
+CK_State :: struct {used:int;type_count:int;composite_count:int;local_count:int;byte_count:int;error_count:int;current:int;constant_depth:int;loop_depth:int;defer_depth:int;unevaluated:int;basic:bool;depth:int;fatal:bool;metal_depth:int;clashes:int;generic:int;site:CK_Site;instances:int;instance_tail:int;instance_count:int;quantity_device:bool;unit_units:int;spatial_types:int;spatial_helpers:int;retain_report_count:int;names:int;instance_limit:int;peak_depth:int;}
 // Logical module scopes: a node's scope indexes modules (0 is the unowned
 // program); an alias names a target scope from within one scope.
 CK_Alias :: struct {scope:int;name:string;target:int;}
@@ -488,7 +488,26 @@ CK_error :: (c:CK_Context,loc:CK_Loc,code:string,message:string,fix:string) {
   if c.state[0].fatal {return;}if c.state[0].error_count>=c.errors.count {CK_resource(c,loc);return;}
   c.errors[c.state[0].error_count]=CK_Error.{loc=loc,code=code,message=message,fix=fix};c.state[0].error_count+=1;
 }
-CK_enter :: (c:CK_Context,loc:CK_Loc)->bool {if c.state[0].fatal {return false;}if c.state[0].depth>=256 {CK_resource(c,loc);return false;}c.state[0].depth+=1;return true;}
+// Active semantic entries: fixed, with a stated memory bound (the checker
+// recurses on the native stack). peak_depth is the deepest entry, so a build
+// near the limit is reported before it fails.
+CK_DEPTH_LIMIT :: 256;
+CK_depth_limit :: ()->int #export_c {return CK_DEPTH_LIMIT;}
+CK_enter :: (c:CK_Context,loc:CK_Loc)->bool {
+  if c.state[0].fatal {return false;}if c.state[0].depth>=CK_DEPTH_LIMIT {CK_resource(c,loc);return false;}
+  // peak_depth is never below depth, so entering past it is entering at it.
+  if c.state[0].peak_depth==c.state[0].depth {c.state[0].peak_depth+=1;}c.state[0].depth+=1;return true;
+}
+#forall "semantic nesting peak is the deepest entry" depth:252..<257, above:0..<3, fatal:bool {
+ peak:=depth+above;nodes:[2]CK_Node;types:[16]CK_Type;locals:[1]CK_Local;errors:[2]CK_Error;bytes:[8]u8;
+ state:=[1]CK_State.[CK_State.{depth=depth,peak_depth=peak,fatal=fatal}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ ok:=CK_enter(c,CK_Loc.{line=7});
+ #assert ok==(!fatal && depth<256) && CK_depth_limit()==256;
+ if ok {#assert state[0].depth==depth+1 && state[0].peak_depth==(ifx peak>depth then peak else depth+1);CK_leave(c);#assert state[0].depth==depth;}
+ else {#assert state[0].depth==depth && state[0].peak_depth==peak && state[0].fatal;
+  #assert state[0].error_count==(ifx fatal then 0 else 1);if !fatal {#assert errors[0].code=="E0381" && errors[0].loc.line==7;}}
+}
 CK_leave :: (c:CK_Context) {c.state[0].depth-=1;}
 CK_new :: (c:CK_Context,kind:CK_Tag,loc:CK_Loc)->int {
   if c.state[0].fatal {return CK_NONE;}if c.state[0].used+1>=c.nodes.count {CK_resource(c,loc);return CK_NONE;}
@@ -2038,7 +2057,19 @@ CK_mismatch :: (c:CK_Context,proc:int,a:int,formal:int,t:int,i:int) {
 // symbolically (generic instance nodes): they type the call, nothing more.
 // Copies need no depth guard: the parser already bounds nesting, and a
 // failed allocation is fatal, so the check stops and nothing is bridged.
+// The instance limit is sized from the input: one instance per 8 syntax nodes
+// in a program of more than CK_INSTANCE_SIZED nodes, else CK_INSTANCE_LIMIT.
+// Its memory bound is the node store, 3 records per syntax node, allocated
+// before checking: every instance copies its template into that store, so a
+// larger limit allocates nothing more. A state whose instance_limit is 0 (not
+// set by CK_run) has CK_INSTANCE_LIMIT.
 CK_INSTANCE_LIMIT :: 256;
+CK_INSTANCE_SIZED :: 2056;
+CK_instance_limit :: (nodes:int)->int #export_c {if nodes<=CK_INSTANCE_SIZED {return CK_INSTANCE_LIMIT;}return nodes/8;}
+#test "the generic instance limit grows with the program and has a floor" {
+ #assert CK_instance_limit(0)==256 && CK_instance_limit(2048)==256 && CK_instance_limit(2056)==256 && CK_instance_limit(2057)==257;
+ #assert CK_instance_limit(-8)==256 && CK_instance_limit(80000)==10000 && CK_instance_limit(2147483646)==268435455;
+}
 CK_has_param :: (c:CK_Context,id:int)->bool {
   t:=c.nodes[id];if t.kind==CK_Tag.type_param {return true;}
   if t.kind==CK_Tag.type_array && c.nodes[t.a].kind==CK_Tag.type_param {return true;}
@@ -2225,8 +2256,10 @@ CK_trace :: (c:CK_Context,inst:int) {
 }
 // The instance list holds procedure and struct instances, up to the limit.
 CK_chain :: (c:CK_Context,inst:int,loc:CK_Loc)->bool {
-  if c.state[0].instance_count>=CK_INSTANCE_LIMIT {c.nodes[inst].kind=CK_Tag.invalid;
-    CK_error(c,loc,"E0339",CK_join3(c,"instantiating '",c.nodes[inst].name,"' here would exceed 256 generic instances"),"a chain of generic uses that binds ever larger types never ends; break it with a concrete type");return false;}
+  limit:=c.state[0].instance_limit;if limit==0 {limit=CK_INSTANCE_LIMIT;}
+  if c.state[0].instance_count>=limit {c.nodes[inst].kind=CK_Tag.invalid;
+    parts:=[5] string.["instantiating '",c.nodes[inst].name,"' here would exceed ",CK_count(c,limit)," generic instances"];
+    CK_error(c,loc,"E0339",CK_text(c,parts[..]),"a chain of generic uses that binds ever larger types never ends; break it with a concrete type");return false;}
   if c.state[0].instances==CK_NONE {c.state[0].instances=inst;}else {c.nodes[c.state[0].instance_tail].chain=inst;}c.state[0].instance_tail=inst;c.state[0].instance_count+=1;return true;
 }
 CK_which :: (c:CK_Context,inst:int,i:int)->string {
@@ -2414,10 +2447,14 @@ CK_instantiate :: (c:CK_Context) {
  #assert CK_same(c,5,7) && CK_same(c,7,5) && !CK_same(c,5,6) && !CK_same(c,6,5);
  #assert CK_key(c,5)=="3int" && CK_key(c,6)=="3int4bool" && CK_subst(c,6,18)==2 && CK_subst(c,5,16)==11 && CK_subst(c,5,7)==7;
 }
-#forall "an instance past the budget is refused, and the last one that fits is linked" full:bool {
+#forall "an instance past the budget is refused, and the last one that fits is linked" full:bool, sized:0..<3, first:bool {
+ // sized 0: no limit set (CK_INSTANCE_LIMIT, 256); 1: a set limit of 256; 2: a limit sized from the input, 1000.
+ // first: no instance is listed yet, so this one heads the list.
+ limit:=CK_INSTANCE_LIMIT;given:=0;if sized==1 {given=256;}if sized==2 {given=1000;limit=1000;}
  nodes:[16]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;
- state:=[1]CK_State.[CK_State.{used=9,type_count=17,instance_count=CK_INSTANCE_LIMIT-1,instances=9,instance_tail=9}];
- if full {state[0].instance_count=CK_INSTANCE_LIMIT;}
+ head:=ifx first then 0 else 9;
+ state:=[1]CK_State.[CK_State.{used=9,type_count=17,instance_count=limit-1,instances=head,instance_tail=head,instance_limit=given}];
+ if full {state[0].instance_count=limit;}
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
  for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.param,name="$T",decl=2};
  nodes[2]=CK_Node.{kind=CK_Tag.proc,name="id",head=3,a=7,type=16,generic=true,scope=4,collides=true,source_unit=7};nodes[3]=CK_Node.{kind=CK_Tag.param,name="a",a=4,type=16};
@@ -2427,13 +2464,14 @@ CK_instantiate :: (c:CK_Context) {
  t:=CK_instance(c,5,2);
  #assert nodes[10].name=="id" && nodes[10].origin==2 && nodes[10].scope==4 && nodes[10].source_unit==7 && nodes[10].collides && !nodes[10].generic && state[0].depth==0;
  if full {
-  #assert t==0 && nodes[10].kind==CK_Tag.invalid && nodes[5].proc==0 && state[0].instance_count==CK_INSTANCE_LIMIT && nodes[9].chain==0 && state[0].instance_tail==9;
-  #assert errors[0].code=="E0339" && errors[0].loc.line==3 && errors[0].message=="instantiating 'id' here would exceed 256 generic instances";
+  #assert t==0 && nodes[10].kind==CK_Tag.invalid && nodes[5].proc==0 && state[0].instance_count==limit && nodes[9].chain==0 && state[0].instance_tail==head && state[0].instances==head;
+  #assert errors[0].code=="E0339" && errors[0].loc.line==3;
+  #assert errors[0].message==(ifx sized==2 then "instantiating 'id' here would exceed 1000 generic instances" else "instantiating 'id' here would exceed 256 generic instances");
  } else {
-  #assert t==2 && nodes[10].kind==CK_Tag.proc && nodes[10].type==2 && nodes[5].proc==10 && state[0].instance_count==CK_INSTANCE_LIMIT && nodes[9].chain==10 && state[0].instance_tail==10 && state[0].instances==9 && state[0].error_count==0;
+  #assert t==2 && nodes[10].kind==CK_Tag.proc && nodes[10].type==2 && nodes[5].proc==10 && state[0].instance_count==limit && nodes[9].chain==(ifx first then 0 else 10) && state[0].instance_tail==10 && state[0].instances==(ifx first then 10 else 9) && state[0].error_count==0;
   #assert types[17].kind==CK_Kind.param && types[17].decl==10 && types[17].elem==2 && types[17].scope==4;
   // the same binding again is the same instance
-  #assert CK_instance(c,5,2)==2 && nodes[5].proc==10 && nodes[11].kind==CK_Tag.invalid && state[0].instance_count==CK_INSTANCE_LIMIT;
+  #assert CK_instance(c,5,2)==2 && nodes[5].proc==10 && nodes[11].kind==CK_Tag.invalid && state[0].instance_count==limit;
  }
 }
 CK_call_bound :: (c:CK_Context,id:int,proc:int)->int {
@@ -2830,7 +2868,7 @@ CK_effects :: (c:CK_Context,id:int)->u8 {
 // Every node of a checked graph, once, after CK_run succeeds.
 CK_lower_effects :: (c:CK_Context) #export_c {for node:1..<c.state[0].used+1 {ignored:=CK_effects(c,node);}}
 CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
-  if c.state.count!=1 {return false;}c.state[0]=CK_State.{used=used,type_count=16,quantity_device=options.quantity_device};
+  if c.state.count!=1 {return false;}c.state[0]=CK_State.{used=used,type_count=16,quantity_device=options.quantity_device,instance_limit=CK_instance_limit(used)};
   defer {if c.state[0].fatal || c.state[0].error_count>0 {c.state[0].retain_report_count=0;}}
   if used<1 || used>=c.nodes.count || c.types.count<16 || c.errors.count<1 || c.locals.count<1 {CK_resource(c,CK_Loc.{});return false;}
   for id:2..<used+1 {c.nodes[id].borrow_binding=0;c.nodes[id].borrow_owner=0;c.nodes[id].borrow_writes=0;c.nodes[id].borrow_returns=0;c.nodes[id].borrow_calls=0;c.nodes[id].borrow_status=0;}
@@ -13720,6 +13758,11 @@ CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
   c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
   #assert CK_run(c,1,CK_Options.{library=true}) && state[0].type_count==16;
   c.types=types[0..<15];#assert !CK_run(c,1,CK_Options.{library=true}) && state[0].fatal && errors[0].code=="E0381";
+  // A run sizes its generic instance limit from its syntax nodes.
+  #assert state[0].instance_limit==256;
+  big:[2058] CK_Node;big[1].kind=CK_Tag.file;c.nodes=big[..];c.types=types[..];
+  #assert CK_run(c,2057,CK_Options.{library=true}) && state[0].instance_limit==257 && state[0].peak_depth==0;
+  #assert CK_run(c,2055,CK_Options.{library=true}) && state[0].instance_limit==256;
 }
 #test "bounded text reports a resource value without writing out of range" {
   nodes:[2] CK_Node;types:[16] CK_Type;locals:[1] CK_Local;errors:[2] CK_Error;bytes:=[2] u8.[17,19];state:[1] CK_State;

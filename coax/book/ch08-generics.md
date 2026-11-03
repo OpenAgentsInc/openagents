@@ -447,7 +447,11 @@ optimizer concrete code to work with. It also multiplies code: ten key
 types make ten tables. You pay in build time, binary size and
 instruction cache. The current compiler shares an instance for each
 template and binding within a program. Struct and procedure instances
-share a limit of 256. Repeating the
+share one limit, sized from the program: 256, or one instance per 8
+syntax nodes in a program of more than 2056. Each instance you write out costs more nodes than
+that, so the limit only stops a chain of generic uses that binds ever larger
+types (E0339 names the limit it hit). A build above three quarters of the
+limit gets a note, `coax: note[E0339]: generic instances: ...`. Repeating the
 same call binding does not make another copy. `--timings` reports total
 `instances` and `instance_generated_bytes`; use those observations when a
 generic increases build time or output size.

@@ -10,6 +10,16 @@ SU_Visit :: struct {index:int= -1;action:u8;}
 // A file-scope #test or #forall: the indices of its directive and of its
 // block's closing brace in the scanned tokens.
 SU_CheckSpan :: struct {first:int;last:int;}
+// The source graph's limits. Each is a stated memory bound, not a function of
+// the input, because they bound the input itself: 64 MiB of source text in at
+// most 4096 units, a load chain at most 32 units deep (each active unit holds a
+// 64 KiB read buffer: 2 MiB of stack), and per unit at most 512 loads and 512
+// exported names (scratch records of 56 and 40 bytes: 28 KiB and 20 KiB).
+SU_MAX_UNITS :: 4096;
+SU_MAX_DEPTH :: 32;
+SU_MAX_BYTES :: 67108864;
+SU_MAX_LOADS :: 512;
+SU_MAX_EXPORTS :: 512;
 
 #test "a top-level load retains its path and source span" {
  t:=[4] SU_Token.[SU_Token.{kind=6,text="load",begin=2,end=7},SU_Token.{kind=5,text="part.coax",begin=8,end=19},SU_Token.{kind=15,begin=19,end=20},SU_Token.{}];
@@ -55,6 +65,12 @@ SU_CheckSpan :: struct {first:int;last:int;}
 }
 #forall "source budget boundaries" units:4094..<4098, depth:30..<34, extra: -1..<3 {
  #assert SU_admit(units,depth,67108863,extra)==(units<4096 && depth<32 && extra>=0 && extra<=1);
+}
+#test "the source graph limits are published exactly" {
+ #assert SU_unit_limit()==4096 && SU_depth_limit()==32 && SU_byte_limit()==67108864;
+ #assert SU_load_limit()==512 && SU_export_limit()==512;
+ #assert SU_admit(SU_unit_limit()-1,SU_depth_limit()-1,0,SU_byte_limit());
+ #assert !SU_admit(SU_unit_limit(),0,0,0) && !SU_admit(0,SU_depth_limit(),0,0) && !SU_admit(0,0,0,SU_byte_limit()+1);
 }
 #test "negative or over-budget graph inputs are refused" {
  #assert SU_admit(0,0,0,0);#assert SU_admit(0,0,0,67108864);#assert SU_admit(4095,0,0,0);#assert !SU_admit(4096,0,0,0);
@@ -462,8 +478,13 @@ SU_library_checks :: (root:bool,authority:bool,proto:bool,alone:bool)->bool #exp
  return alone && !root && !authority && !proto;
 }
 SU_admit :: (units:int,depth:int,total:int,bytes:int)->bool #export_c {
- return units>=0 && units<4096 && depth>=0 && depth<32 && total>=0 && bytes>=0 && bytes<=67108864-total;
+ return units>=0 && units<SU_MAX_UNITS && depth>=0 && depth<SU_MAX_DEPTH && total>=0 && bytes>=0 && bytes<=SU_MAX_BYTES-total;
 }
+SU_unit_limit :: ()->int #export_c {return SU_MAX_UNITS;}
+SU_depth_limit :: ()->int #export_c {return SU_MAX_DEPTH;}
+SU_byte_limit :: ()->int #export_c {return SU_MAX_BYTES;}
+SU_load_limit :: ()->int #export_c {return SU_MAX_LOADS;}
+SU_export_limit :: ()->int #export_c {return SU_MAX_EXPORTS;}
 SU_visit :: (paths:[] string,states:[] u8,path:string)->SU_Visit #export_c {
  if paths.count!=states.count {return SU_Visit.{action=3};}
  for i:0..<paths.count {

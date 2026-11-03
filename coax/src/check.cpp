@@ -192,6 +192,8 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
   context.names={names.data(),(int64_t)names.size()};
   laps.lap("check.storage");
   bool ok=CK_run(context,input->used,{file->library,file->metal,file->authority,file->quantity_device});
+  capacity_use("generic instances","E0339",(uint64_t)state.instance_count,(uint64_t)std::max<int64_t>(state.instance_limit,0));
+  capacity_use("checker nesting","E0381",(uint64_t)state.peak_depth,(uint64_t)CK_depth_limit());
   laps.lap("check.checker");
   if(ok && mutation_lowering){ok=CK_prepare_spatial_mutations(context);laps.lap("check.mutation_lowering");}
   if(ok){CK_lower_effects(context);laps.lap("check.effects");}

@@ -20,7 +20,7 @@ class Frame(C.Structure):_fields_=[('e',C.c_int64*4)]
 class Node(C.Structure):
     _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64),('end',C.c_int64),('quantity',C.c_uint8),('unit',Unit),('frame_decl',C.c_bool),('frame',Frame)]
     _fields_ += [('effect_present',C.c_bool),('pure_decl',C.c_bool),('effect_head',C.c_int64),('effect_loc',Loc)]
-class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('pos','used','depth')]+[('code',LX.Text),('loc',Loc),('fix',LX.Text),('length',C.c_int64),('development',C.c_bool)]
+class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('pos','used','depth')]+[('code',LX.Text),('loc',Loc),('fix',LX.Text),('length',C.c_int64),('development',C.c_bool),('peak',C.c_int64)]
 class Result(C.Structure):_fields_=[('ok',C.c_bool),('root',C.c_int64)]
 def view(T):
     class V(C.Structure):_fields_=[('data',C.POINTER(T)),('count',C.c_int64)]

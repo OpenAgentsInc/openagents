@@ -272,4 +272,107 @@ class RunBudgetTests(unittest.TestCase):
         self.assertEqual(d['aggregate_slot_limit'], 1572864)
         self.assertEqual(d['aggregate_container_limit'], 131072)
 
+class CapacityTests(unittest.TestCase):
+    """The near-limit report (spec 16.2) at 75% and 100% of each compile-time
+    and nesting limit: a note above three quarters, success at the limit,
+    the limit's error one past it."""
+    setUp = RunBudgetTests.setUp
+
+    def capacities(self, source, *args):
+        self.path.write_text(source)
+        timings = Path(self.tmp.name) / 'timings.json'
+        r = subprocess.run([str(COMPILER), 'check', str(self.path), '--timings', str(timings), *args],
+                           text=True, capture_output=True, timeout=60)
+        rows = {x['name']: x for x in json.loads(timings.read_text())['capacities']}
+        notes = {}
+        for line in r.stderr.splitlines():
+            if line.startswith('coax: note['):
+                code, text = line[len('coax: note['):].split(']: ', 1)
+                notes[text.split(':')[0]] = (code, text)
+        for name, row in rows.items():
+            self.assertEqual(row['near'], row['used'] * 4 > row['limit'] * 3, row)
+            self.assertEqual(name in notes, row['near'], (name, row, r.stderr))
+            if row['near']:
+                self.assertEqual(notes[name][0], row['code'])
+        j = subprocess.run([str(COMPILER), 'check', str(self.path), '--diagnostics', 'json', *args],
+                           text=True, capture_output=True, timeout=60)
+        records = [json.loads(x) for x in j.stderr.splitlines() if x.startswith('{')]
+        self.assertEqual({x['message'].split(':')[0] for x in records if x['severity'] == 'note' and x['span'] is None},
+                         set(notes), records)
+        return r, rows
+
+
+    def use(self, source, name, *args):
+        r, rows = self.capacities(source, *args)
+        return r, rows.get(name)
+
+    def assert_boundaries(self, name, make, limit, code, at_three_quarters, error_code=None):
+        """make(k) uses k of `name`'s limit... at_three_quarters is the k that uses exactly 3/4."""
+        quarter = limit - limit * 3 // 4
+        for k, used, near in [(at_three_quarters, limit * 3 // 4, False), (at_three_quarters + 1, limit * 3 // 4 + 1, True),
+                              (at_three_quarters + quarter, limit, True)]:
+            r, row = self.use(make(k), name)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual((row['used'], row['limit'], row['near'], row['code']), (used, limit, near, code), k)
+        r, _ = self.use(make(at_three_quarters + quarter + 1), name)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn(f'error[{error_code or code}]', r.stderr)
+
+    def test_compile_time_call_depth(self):
+        # down(n) is n+1 calls deep
+        self.assert_boundaries('compile-time call depth',
+            lambda k: f'down :: (n:int)->int {{if n==0 {{return 0;}} return down(n-1)+1;}}\nX :: #run down({k - 1});\nmain :: () {{}}\n',
+            64, 'E0403', 48)
+
+    def test_compile_time_dependency_depth(self):
+        # C0 needs C1 ... needs C(k-1): k constants evaluated inside one another. Past
+        # 64, the checker's own constant dependency bound (E0347) refuses first.
+        def chain(k):
+            return ('inc :: (a:int)->int {return a+1;}\n' + ''.join(f'C{i} :: #run inc(C{i+1});\n' for i in range(k - 1)) +
+                    f'C{k-1} :: #run inc(0);\nmain :: () {{}}\n')
+        self.assert_boundaries('compile-time dependency depth', chain, 64, 'E0403', 48, 'E0347')
+
+    def test_parser_nesting(self):
+        # k nested blocks are k active grammar entries
+        self.assert_boundaries('parser nesting', lambda k: 'main :: () ' + '{' * k + '}' * k + '\n', 128, 'E0221', 96)
+
+    def test_checker_nesting(self):
+        # 1+1+...: the parser loops, the checker recurses once per operator, from 3
+        self.assert_boundaries('checker nesting', lambda k: 'main :: () { x := 1' + '+1' * (k - 3) + '; }\n', 256, 'E0381', 192)
+
+    def test_compile_time_steps(self):
+        source = 'spin :: (n:int)->int {s:=0; for i:0..<n {s+=i;} return s;}\nX :: #run spin(1000);\nmain :: () {}\n'
+        r, row = self.use(source, 'compile-time steps')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        used = row['used']
+        # A limit L reports when 4*used > 3*L: the largest L that does not is 4*used//3.
+        quiet = used * 4 // 3
+        for limit, near in [(quiet, False), (quiet - 1, True), (used, True)]:
+            r, row = self.use(source, 'compile-time steps', '--run-steps', str(limit))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual((row['used'], row['limit'], row['near']), (used, limit, near))
+        r, row = self.use(source, 'compile-time steps', '--run-steps', str(used - 1))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('error[E0400]', r.stderr)
+
+    def test_compile_time_value_slots(self):
+        # a [n] u8 local is n value slots
+        def program(n):
+            return f'f :: ()->int {{ a: [{n}] u8; return 1; }}\nX :: #run f();\nmain :: () {{}}\n'
+        for n, near in [(1179648, False), (1179649, True), (1572864, True)]:
+            r, row = self.use(program(n), 'compile-time value slots', '--run-steps', '250000000')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual((row['used'], row['limit'], row['near']), (n, 1572864, near))
+        r, _ = self.use(program(1572865), 'compile-time value slots', '--run-steps', '250000000')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('error[E0400]', r.stderr)
+
+    def test_one_line_json_and_quiet_limits_print_no_notes(self):
+        source = 'main :: () { x := 1' + '+1' * 200 + '; }\n'
+        self.path.write_text(source)
+        r = subprocess.run([str(COMPILER), 'check', str(self.path), '--json'], text=True, capture_output=True, timeout=60)
+        self.assertEqual((r.returncode, r.stderr), (0, ''))
+        r, row = self.use(source, 'checker nesting')
+        self.assertTrue(row['near'])
+
 if __name__ == '__main__': unittest.main()
