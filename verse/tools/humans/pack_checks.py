@@ -15,6 +15,9 @@ unlisted V key) and only reduced to numbers here:
             the wrong slot, a wrong colour space or a flipped uv shows here)
   skin      the face's pixels are drawn as skin (material 1, the scatter path), from one frame
             that carries each pixel's material and base layer
+  face      with a face rig in the pack: the rig runs (the material view's blue), and an
+            expression (the lab's X) moves the face: the share of the face's pixels whose uv
+            changes
   frame     the share of the frame the figure covers
 
 Exits non-zero if a check fails.
@@ -28,11 +31,13 @@ RENDERS = Path.home() / ".openagents/verse/private-build/renders"
 HUD_TOP, HUD_BOTTOM = 70, 960
 
 
-def shot(url, out, views, face=True):
+def shot(url, out, views, face=True, expressions=0):
     """A frame after pressing V `views` times; face: the lab's unlisted F first (the clip paused at
     its start, the camera on the face: every load the same frame, so the views line up)."""
     keys = ("window.dispatchEvent(new KeyboardEvent('keydown',{key:'f'}));window.dispatchEvent(new KeyboardEvent('keyup',{key:'f'}));"
             if face else "")
+    keys += (f"for(let i=0;i<{expressions};i++){{window.dispatchEvent(new KeyboardEvent('keydown',{{key:'x'}}));"
+             "window.dispatchEvent(new KeyboardEvent('keyup',{key:'x'}));}")
     keys += (f"for(let i=0;i<{views};i++){{window.dispatchEvent(new KeyboardEvent('keydown',{{key:'v'}}));"
              "window.dispatchEvent(new KeyboardEvent('keyup',{key:'v'}));}")
     lift = "new Promise(r=>setTimeout(()=>r('ok'),900))"
@@ -43,8 +48,11 @@ def shot(url, out, views, face=True):
 
 
 def catalog(pack):
+    """The catalog's text, near enough: from before its box line to its end (a NUL when a face rig's
+    block follows)."""
     b = pack.read_bytes(); i = b.find(b"\nbox")
-    return b[max(0, i - 12000):i].decode("latin1")
+    end = b.find(b"\0", i, i + 4000)
+    return b[max(0, i - 12000):end if end > 0 else i + 400].decode("latin1")
 
 
 def face_layer(cat):
@@ -127,6 +135,15 @@ def main(argv):
     print(f"skin: {skin / max(n, 1):.1%} of the face's {n} pixels drawn as skin (the scatter path)")
     if not n or skin / n < 0.95:
         failed.append("skin")
+    if re.search(r"^F \d+ \d+ \d+$", cat, re.M):
+        runs = sum(1 for y in range(HUD_TOP, HUD_BOTTOM) for x in range(1600) if mat[x, y][1] == layer and mat[x, y][0] and mat[x, y][2] == 255)
+        smile = shot(page, RENDERS / "check-uv-expression.png", 2, expressions=1).load()
+        still = uv.load()
+        moved = sum(1 for y in range(HUD_TOP, HUD_BOTTOM) for x in range(1600)
+                    if still[x, y][2] == layer and sum(abs(a - b) for a, b in zip(still[x, y], smile[x, y])) > 6)
+        print(f"face: the rig runs on {runs / max(n, 1):.1%} of the face's pixels; an expression moves {moved / max(n, 1):.1%} of them")
+        if not n or runs / n < 0.95 or moved / n < 0.02:
+            failed.append("face")
     probe = shot(page, RENDERS / "check-figure.png", 2, face=False).load()
     cover = sum(1 for y in range(HUD_TOP, HUD_BOTTOM) for x in range(1600) if any(probe[x, y])) / (1600 * (HUD_BOTTOM - HUD_TOP))
     print(f"frame: the figure covers {cover:.1%} of the frame")

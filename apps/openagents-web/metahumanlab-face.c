@@ -4,7 +4,9 @@
 // from the uniforms, and fx_fs draws the strokes lab_frame writes. A private human pack
 // (realms.json "private:human", coax/web/host.js), when one loads on a local address, is assets
 // 0 to 3: its catalog comes here, its vertices, indices and layers go to the GPU, and the scene
-// draws its mesh, skinned by the pose's palette (store 0).
+// draws its mesh, skinned by the pose's palette (store 0). A pack with a face rig carries its
+// block after the catalog's text; lab_face runs it each frame into the face vertices' rows, which
+// follow the palette in store 0.
 #include "metahumanlab.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -12,7 +14,16 @@
 #define EXPORT(name) __attribute__((export_name(name)))
 
 static uint8_t inbox[4096];
-static uint8_t catalog[1 << 16];
+// The catalog and the face rig's block: Wasm memory is 64 MiB in all (coax/web/wasm.sh).
+#define CATALOG_BYTES (28u << 20)
+#define PALETTE_FLOATS (65 * 12)
+#define FACE_ROWS (4 * 65536)
+static uint8_t catalog[CATALOG_BYTES];
+static uint32_t catalog_bytes;
+static float face_work[1024 + 9 * 1024 + 3 * 12 * 1024 + 9 * 40000];
+static bool face_still[1024];
+static float pose_store[PALETTE_FLOATS + FACE_ROWS];
+static uint32_t pose_version, pal_seen = 0xffffffffu;
 static bool golden;
 
 static coax_t_Lab *lab_at(uint32_t state) { return (coax_t_Lab *)(uintptr_t)state; }
@@ -34,6 +45,20 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_lab_max_vertices() * coaxial_lab_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_lab_uniform_floats()};
   int64_t n = lab_frame(at(state), out, u, w, h, scale, dt, still != 0);
+  // the pose store: the palette, then the face rig's rows
+  coax_t_Lab *l = lab_at(state);
+  if ((uint32_t)l->pal_version != pal_seen) {
+    pal_seen = (uint32_t)l->pal_version;
+    for (int i = 0; i < PALETTE_FLOATS; i++) pose_store[i] = l->palette.e[i];
+    pose_version++;
+  }
+  if (catalog_bytes) {
+    coax_string cat = {(const char *)catalog, (int64_t)catalog_bytes};
+    coax_v_f32 work = {face_work, (int64_t)(sizeof face_work / sizeof face_work[0])};
+    coax_v_bool st = {face_still, 1024};
+    coax_v_f32 rows = {pose_store + PALETTE_FLOATS, FACE_ROWS};
+    if (lab_face(at(state), cat, work, st, rows)) pose_version++;
+  }
   return n < 0 ? 0u : (uint32_t)n;
 }
 
@@ -66,13 +91,18 @@ EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state,
   (void)state; return i == 0 ? (uint32_t)sizeof catalog : 0u;
 }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
-  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) lab_catalog(at(state), (coax_string){(const char *)catalog, (int64_t)bytes});
+  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) { catalog_bytes = bytes; lab_catalog(at(state), (coax_string){(const char *)catalog, (int64_t)bytes}); }
   lab_pack_part(at(state), i, i == 0 && bytes > sizeof catalog ? 0 : (int64_t)bytes);
 }
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)lab_draw_count(at(state)); }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 1u; }
-EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { (void)k; return (uint32_t)sizeof(((coax_t_Lab *)0)->palette); }
-EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { (void)k; return (uint32_t)(uintptr_t)lab_at(state)->palette.e; }
-EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { (void)k; return (uint32_t)sizeof(((coax_t_Lab *)0)->palette); }
-EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { (void)k; return (uint32_t)lab_at(state)->pal_version; }
+EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { (void)k; return (uint32_t)sizeof pose_store; }
+EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { (void)state; (void)k; return (uint32_t)(uintptr_t)pose_store; }
+// the palette always, the face rows only while the rig runs
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) {
+  (void)k;
+  coax_t_Lab *l = lab_at(state);
+  return (uint32_t)(PALETTE_FLOATS + (l->face_state == 2 ? 4 * l->face_count : 0)) * 4u;
+}
+EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { (void)state; (void)k; return pose_version; }

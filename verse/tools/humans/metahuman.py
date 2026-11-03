@@ -13,20 +13,20 @@ Then, for each mesh:
   - every joint folds onto the rig's 65 by name (aethyr/mannequin.coax mannequin_fold, ported
     here as fold()); a joint that folds to nothing gives its weight to its nearest ancestor
     that does (a face joint to the head, a finger helper to its finger);
-  - the mesh is posed from the DNA's bind (MetaHuman's A pose) into the rig's T pose: each kept
-    joint turns, in world space, by the shortest arc from its bone's bind direction to the rig's
-    rest direction for that bone, and its children follow (linear blend skinning with the DNA's
-    own weights), so the mesh keeps its proportions;
+  - the body is bound where the clothes were fitted (the DNA body with its arms lowered,
+    rig-body-down), each kept joint carrying its turn from there to the rig's rest;
   - positions go to metres, Y up, +Z forward, the figure's left +x (the rig's axes);
   - weights keep the four heaviest after folding, summing to 255.
 
-The pack's bind positions are the DNA's kept joints in that T pose. Nothing this reads or writes
+The head DNA's rig behaviour (OpenRigLogic's tables, dumped by dna_behavior beside dna_dump) gives
+the pack a face rig (face_rig.py) the lab evaluates: expressions and blinks. Nothing this reads or writes
 goes into git or is used to train AI models (the export's NO-TRAINING.txt).
 """
 import math, os, subprocess
 from pathlib import Path
 
 import people
+import face_rig
 
 DUMP_DIR = Path.home() / ".openagents/verse/private-build/metahuman-dump"
 OUTFITS = "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits"
@@ -143,6 +143,11 @@ def dump(dna, out):
     out.mkdir(parents=True, exist_ok=True)
     if not (out / "joints.txt").exists() or (out / "joints.txt").stat().st_mtime < Path(dna).stat().st_mtime:
         subprocess.run([tool, str(dna), str(out), "--skin"], check=True, capture_output=True)
+    # the face rig's tables (a head DNA): dna_behavior, built beside dna_dump (DNA_BEHAVIOR names it)
+    behave = Path(os.environ.get("DNA_BEHAVIOR") or Path(tool).with_name("dna_behavior"))
+    if "_Head" in Path(dna).name and behave.exists() and \
+            (not (out / "targets.bin").exists() or (out / "targets.bin").stat().st_mtime < Path(dna).stat().st_mtime):
+        subprocess.run([str(behave), str(dna), str(out / "behavior.txt"), str(out / "targets.bin")], check=True, capture_output=True)
     return out
 
 
@@ -287,7 +292,7 @@ def mesh(path, skin, J, flip_v, hide=None, posed=None):
                 ws = folded[pi]
                 x = vs[pi]; nn = vns[ni]
                 u, v = vts[ti]
-                verts.append({"p": tuple(c / 100.0 for c in x), "n": unit(nn), "uv": (u, 1.0 - v if flip_v else v),
+                verts.append({"p": tuple(c / 100.0 for c in x), "n": unit(nn), "uv": (u, 1.0 - v if flip_v else v), "pt": pi,
                               "j": [k if w > 0 else 0 for k, w in ws],
                               "w": people.quantize_weights([w for _, w in ws])})
             ids.append(corner[(pi, ti, ni)])
@@ -359,12 +364,47 @@ def build(pack, export):
                            posed=(down["x"], down["vn"]) if src is body else None)
         layers = skin.get(name) or (maps / base, maps / normal if normal else None, maps / rough if rough else None)
         pack.piece(name.replace("_lod0_mesh", ""), verts, tris, material, *layers)
+        if src is head and name in face_rig.FACE_MESHES:
+            pack.pieces[-1]["face"] = name
+    face(pack, head)
     pack.binds = binds(M, W, p)
     pack.tints.update({"skin": (1.0, 1.0, 1.0, 1.0), "eye": (1.0, 1.0, 1.0, 0.25), "teeth": (1.0, 1.0, 1.0, 0.5),
                        "brow": (1.0, 1.0, 1.0, 0.6), "hair": (1.0, 1.0, 1.0, 0.55)})
     pack.tints.setdefault("cloth", (1.0, 1.0, 1.0, 1.0))
     pack.body = "female" if body_female(P) else "male"
     return {"flip_v": flip_v}
+
+
+# ---- the face rig (face_rig.py): the DNA's controls, joints and blend shapes for the lab
+
+def face(pack, head):
+    """Gives the pack its face rig: the head DNA's rig behaviour (dna_behavior, run by dump()) and
+    the face meshes' points, normals and skins, each face vertex knowing its point."""
+    behavior, tpath = head / "behavior.txt", head / "targets.bin"
+    if not behavior.exists() or not tpath.exists():
+        print("metahuman: no face rig (dna_behavior's behavior.txt and targets.bin are missing)")
+        return
+    bh = face_rig.Behavior(behavior)
+    tg = face_rig.targets(tpath, None)
+    meshes, first, at = [], {}, 0
+    for name in face_rig.FACE_MESHES:
+        vs, _, vns, fs = obj(head / f"{name}.obj")
+        meshes.append((name, vs, position_normals(vs, vns, fs), skin_file(head / f"{name}.skin.txt")))
+        first[name] = at; at += len(vs)
+    index = {n: i for i, n in enumerate(bh.meshes)}
+    def block(pieces):
+        points = [first[p["face"]] + v["pt"] for p in pieces for v in p["verts"]]
+        return face_rig.pack(bh, tg, meshes, index, points)
+    pack.face = block
+    # the reference's reach, as numbers (an expression that moves nothing is a broken rig)
+    vs, _, _, _ = obj(head / "head_lod0_mesh.obj"); sk = skin_file(head / "head_lod0_mesh.skin.txt")
+    for name in ("blink", "jaw"):
+        raw = {bh.control(k): v for k, v in face_rig.EXPRESSIONS[name].items()}
+        q = face_rig.skinned(bh, tg, raw, vs, sk, {index["head_lod0_mesh"]: 0})
+        far = max(math.dist(a, b) for a, b in zip(q, vs))
+        print(f"face rig: {name} moves the head's points up to {far:.2f} cm")
+        if far < 0.5:
+            raise SystemExit(f"metahuman: the face rig's {name} barely moves the face")
 
 
 # ---- the portrait's skin maps, groom and clothes

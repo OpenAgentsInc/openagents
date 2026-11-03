@@ -1,0 +1,438 @@
+// A face rig: a port of OpenRigLogic's evaluation (controls, pose-space correctives, joint groups
+// and blend shapes) to Coax, for a face from a DNA file (verse/tools/humans/face_rig.py packs one).
+//
+// Ported from OpenRigLogic (src/riglogic: psdnet/PSDNetImpl.cpp, joints/cpu/bpcm, blendshapes),
+// under its licence:
+//
+//   MIT License
+//
+//   Copyright (c) 2026 Epic Games, Inc.
+//
+//   Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+//   and associated documentation files (the "Software"), to deal in the Software without
+//   restriction, including without limitation the rights to use, copy, modify, merge, publish,
+//   distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
+//   Software is furnished to do so, subject to the following conditions:
+//
+//   The above copyright notice and this permission notice shall be included in all copies or
+//   substantial portions of the Software.
+//
+//   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+//   BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+//   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+//   DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
+// The evaluation, each frame the controls change:
+//   controls  raw controls (an expression's, a blink's) and then each pose-space corrective: its
+//             weight times the product of its inputs clamped to 0..1, capped at 1
+//   joints    each joint group adds its values x inputs (row-major, outputs x inputs) to its output
+//             attributes (joint * 9 + tx ty tz rx ry rz sx sy sz; a group whose inputs are all zero
+//             adds nothing and is skipped); a joint's local transform is its neutral translation
+//             (cm) and Euler rotation (degrees, Rz Ry Rx) plus those deltas, scale 1 plus its own
+//   points    a blend shape target adds its deltas times its control to its mesh's points, and
+//             then each point is skinned by its joints (the pose's world times the neutral's
+//             inverse), its normal turned with them
+// The result is each face vertex's move from the bind (metres) and its normal, written for the
+// vertex shader. The block's layout is face_rig.py pack()'s.
+//   coax/bin/coax test aethyr/facerig.coax --library
+
+#load "points.coax";
+
+FRIG_GROUPS_MAX :: 256;
+FRIG_TARGETS_MAX :: 2048;
+FRIG_EXPRS_MAX :: 16;
+FRIG_INFLUENCES :: 6;
+FRIG_POINT_BYTES :: 72;          // rest xyz, normal xyz, 6 x (joint u16, pad u16, weight f32)
+FRIG_DELTA_UNIT :: 0.001;        // cm per step of a packed blend shape delta
+
+// Where things are in a block, found once when it arrives.
+FaceRig :: struct {
+  ok: bool;
+  controls: int; raws: int; psds: int; groups: int; joints: int; points: int; vertices: int;
+  targets: int; exprs: int;
+  psd_at: int; joint_at: int; point_at: int; vertex_at: int; expr_at: int; end: int;
+  group_at: [FRIG_GROUPS_MAX] int;
+  target_at: [FRIG_TARGETS_MAX] int;
+  expr_off: [FRIG_EXPRS_MAX] int;
+}
+
+frig_u8 :: (b: string, at: int) -> u32 { return cast(u32) b[at]; }
+frig_u16 :: (b: string, at: int) -> int { return cast(int) (frig_u8(b, at) | (frig_u8(b, at + 1) << 8)); }
+frig_i16 :: (b: string, at: int) -> int { v := frig_u16(b, at); return ifx v >= 32768 then v - 65536 else v; }
+frig_u32w :: (b: string, at: int) -> u32 {
+  return frig_u8(b, at) | (frig_u8(b, at + 1) << 8) | (frig_u8(b, at + 2) << 16) | (frig_u8(b, at + 3) << 24);
+}
+frig_u32 :: (b: string, at: int) -> int { return cast(int) frig_u32w(b, at); }
+frig_i32 :: (b: string, at: int) -> int { v := frig_u32(b, at); return ifx v >= 2147483648 then v - 4294967296 else v; }
+frig_f32 :: (b: string, at: int) -> f32 { return f32_from_bits(frig_u32w(b, at)); }
+
+// Reads a block's header and finds its sections; ok only if every section fits the block and the
+// counts fit the work buffers' sizes (controls, joints, points).
+frig_open :: (r: [] FaceRig, b: string, max_controls: int, max_joints: int, max_points: int) -> bool {
+  r[0].ok = false;
+  if b.count < 40 || b[0] != 'F' || b[1] != 'R' || b[2] != 'G' || b[3] != '1' { return false; }
+  r[0].controls = frig_u32(b, 4); r[0].raws = frig_u32(b, 8); r[0].psds = frig_u32(b, 12);
+  r[0].groups = frig_u32(b, 16); r[0].joints = frig_u32(b, 20); r[0].points = frig_u32(b, 24);
+  r[0].vertices = frig_u32(b, 28); r[0].targets = frig_u32(b, 32); r[0].exprs = frig_u32(b, 36);
+  if r[0].controls > max_controls || r[0].joints > max_joints || r[0].points > max_points { return false; }
+  if r[0].groups > FRIG_GROUPS_MAX || r[0].targets > FRIG_TARGETS_MAX || r[0].exprs > FRIG_EXPRS_MAX { return false; }
+  at := 40;
+  r[0].psd_at = at;
+  for i: 0..<r[0].psds {
+    if at + 12 > b.count { return false; }
+    n := frig_u32(b, at + 8);
+    if frig_u32(b, at) >= r[0].controls { return false; }
+    at += 12 + 4 * n;
+  }
+  for g: 0..<r[0].groups {
+    if at + 8 > b.count { return false; }
+    r[0].group_at[g] = at;
+    rows := frig_u32(b, at); cols := frig_u32(b, at + 4);
+    at += 8 + 4 * cols + 4 * rows + 4 * rows * cols;
+  }
+  r[0].joint_at = at; at += 28 * r[0].joints;
+  r[0].point_at = at; at += FRIG_POINT_BYTES * r[0].points;
+  r[0].vertex_at = at; at += 4 * r[0].vertices;
+  for t: 0..<r[0].targets {
+    if at + 12 > b.count { return false; }
+    r[0].target_at[t] = at;
+    at += 12 + 8 * frig_u32(b, at + 8);
+  }
+  r[0].expr_at = at;
+  for e: 0..<r[0].exprs {
+    if at + 20 > b.count { return false; }
+    r[0].expr_off[e] = at;
+    at += 20 + 8 * frig_u32(b, at + 16);
+  }
+  r[0].end = at;
+  if at > b.count { return false; }
+  // every index in range: groups' inputs and outputs, joints' parents, points' joints, vertices' points
+  for g: 0..<r[0].groups {
+    o := r[0].group_at[g]; rows := frig_u32(b, o); cols := frig_u32(b, o + 4);
+    for c: 0..<cols { if frig_u32(b, o + 8 + 4 * c) >= r[0].controls { return false; } }
+    for k: 0..<rows { if frig_u32(b, o + 8 + 4 * cols + 4 * k) >= 9 * r[0].joints { return false; } }
+  }
+  for j: 0..<r[0].joints { p := frig_i32(b, r[0].joint_at + 28 * j); if p >= j { return false; } }
+  for p: 0..<r[0].points {
+    o := r[0].point_at + FRIG_POINT_BYTES * p + 24;
+    for k: 0..<FRIG_INFLUENCES { if frig_u16(b, o + 8 * k) >= r[0].joints { return false; } }
+  }
+  for v: 0..<r[0].vertices { if frig_u32(b, r[0].vertex_at + 4 * v) >= r[0].points { return false; } }
+  for t: 0..<r[0].targets {
+    o := r[0].target_at[t]; first := frig_u32(b, o + 4); n := frig_u32(b, o + 8);
+    if frig_u32(b, o) >= r[0].controls { return false; }
+    for k: 0..<n { if first + frig_u16(b, o + 12 + 8 * k) >= r[0].points { return false; } }
+  }
+  for e: 0..<r[0].exprs {
+    o := r[0].expr_off[e];
+    for k: 0..<frig_u32(b, o + 16) { if frig_u32(b, o + 20 + 8 * k) >= r[0].controls { return false; } }
+  }
+  r[0].ok = true;
+  return true;
+}
+
+// An expression's index by name, or -1.
+frig_expr :: (r: [] FaceRig, b: string, name: string) -> int {
+  for e: 0..<r[0].exprs {
+    o := r[0].expr_off[e];
+    n := 0; while n < 16 && b[o + n] != 0 { n += 1; }
+    if n == name.count && b[o..<o + n] == name { return e; }
+  }
+  return -1;
+}
+frig_expr_name :: (r: [] FaceRig, b: string, e: int) -> string {
+  if e < 0 || e >= r[0].exprs { return ""; }
+  o := r[0].expr_off[e];
+  n := 0; while n < 16 && b[o + n] != 0 { n += 1; }
+  return b[o..<o + n];
+}
+// Adds expression e times w to the raw controls.
+frig_add_expr :: (r: [] FaceRig, b: string, e: int, w: f32, c: [] f32) {
+  if e < 0 || e >= r[0].exprs || w == 0 { return; }
+  o := r[0].expr_off[e];
+  for k: 0..<frig_u32(b, o + 16) {
+    i := frig_u32(b, o + 20 + 8 * k);
+    c[i] += w * frig_f32(b, o + 24 + 8 * k);
+  }
+}
+
+// The controls' correctives (c holds the raw controls; the rest are written).
+frig_psds :: (r: [] FaceRig, b: string, c: [] f32) {
+  at := r[0].psd_at;
+  for i: 0..<r[0].psds {
+    out := frig_u32(b, at); v := frig_f32(b, at + 4); n := frig_u32(b, at + 8);
+    for k: 0..<n { v *= clamp(c[frig_u32(b, at + 12 + 4 * k)], 0, 1); }
+    c[out] = lo(1, v);
+    at += 12 + 4 * n;
+  }
+}
+
+// The joint groups' deltas into attr (9 per joint).
+frig_joint_deltas :: (r: [] FaceRig, b: string, c: [] f32, attr: [] f32) {
+  for i: 0..<9 * r[0].joints { attr[i] = 0; }
+  for g: 0..<r[0].groups {
+    o := r[0].group_at[g]; rows := frig_u32(b, o); cols := frig_u32(b, o + 4);
+    live := false;
+    for k: 0..<cols { if c[frig_u32(b, o + 8 + 4 * k)] != 0 { live = true; break; } }
+    if !live { continue; }
+    outs := o + 8 + 4 * cols; vals := outs + 4 * rows;
+    for row: 0..<rows {
+      sum: f32 = 0;
+      base := vals + 4 * row * cols;
+      for k: 0..<cols {
+        x := c[frig_u32(b, o + 8 + 4 * k)];
+        if x != 0 { sum += x * frig_f32(b, base + 4 * k); }
+      }
+      attr[frig_u32(b, outs + 4 * row)] += sum;
+    }
+  }
+}
+
+// Rz Ry Rx (degrees) times a per-column scale: three rows into m[o..o+12) with the translation.
+frig_local :: (m: [] f32, o: int, t: Point, rx: f32, ry: f32, rz: f32, sx: f32, sy: f32, sz: f32) {
+  d: f32 = 3.14159265 / 180;
+  cx := cos(rx * d); snx := sin(rx * d); cy := cos(ry * d); sny := sin(ry * d); cz := cos(rz * d); snz := sin(rz * d);
+  m[o] = cy * cz * sx;                          m[o + 1] = (cz * snx * sny - cx * snz) * sy;  m[o + 2] = (cx * cz * sny + snx * snz) * sz;  m[o + 3] = t.x;
+  m[o + 4] = cy * snz * sx;                     m[o + 5] = (cx * cz + snx * sny * snz) * sy;  m[o + 6] = (-cz * snx + cx * sny * snz) * sz; m[o + 7] = t.y;
+  m[o + 8] = -sny * sx;                         m[o + 9] = cy * snx * sy;                     m[o + 10] = cx * cy * sz;                       m[o + 11] = t.z;
+}
+// a x b (3x4 affine, rows) into m at o.
+frig_mul :: (m: [] f32, o: int, a: [] f32, ao: int, bm: [] f32, bo: int) {
+  for i: 0..<3 {
+    for j: 0..<4 {
+      v := a[ao + 4 * i] * bm[bo + j] + a[ao + 4 * i + 1] * bm[bo + 4 + j] + a[ao + 4 * i + 2] * bm[bo + 8 + j];
+      if j == 3 { v += a[ao + 4 * i + 3]; }
+      m[o + 4 * i + j] = v;
+    }
+  }
+}
+// Each joint's world transform (12 per joint) from its local one plus attr's deltas.
+frig_worlds :: (r: [] FaceRig, b: string, attr: [] f32, w: [] f32) {
+  loc: [12] f32;
+  for j: 0..<r[0].joints {
+    o := r[0].joint_at + 28 * j;
+    a := 9 * j;
+    t := v3(frig_f32(b, o + 4) + attr[a], frig_f32(b, o + 8) + attr[a + 1], frig_f32(b, o + 12) + attr[a + 2]);
+    frig_local(loc[..], 0, t, frig_f32(b, o + 16) + attr[a + 3], frig_f32(b, o + 20) + attr[a + 4], frig_f32(b, o + 24) + attr[a + 5],
+               1 + attr[a + 6], 1 + attr[a + 7], 1 + attr[a + 8]);
+    p := frig_i32(b, o);
+    if p < 0 { for k: 0..<12 { w[12 * j + k] = loc[k]; } }
+    else { frig_mul(w, 12 * j, w, 12 * p, loc[..], 0); }
+  }
+}
+// The neutral's inverse per joint (12 per joint): rigid, so its rotation transposed.
+frig_neutral_inverse :: (r: [] FaceRig, b: string, attr: [] f32, w: [] f32, inv: [] f32) {
+  for i: 0..<9 * r[0].joints { attr[i] = 0; }
+  frig_worlds(r, b, attr, w);
+  for j: 0..<r[0].joints {
+    o := 12 * j;
+    for i: 0..<3 { for k: 0..<3 { inv[o + 4 * i + k] = w[o + 4 * k + i]; } }
+    for i: 0..<3 { inv[o + 4 * i + 3] = -(inv[o + 4 * i] * w[o + 3] + inv[o + 4 * i + 1] * w[o + 7] + inv[o + 4 * i + 2] * w[o + 11]); }
+  }
+}
+
+// Each point's move (cm) and normal for controls c: morph holds 3 per point (zeroed here), skin
+// the joints' skinning matrices (12 per joint, written here from w and inv), out 6 per point
+// (move xyz, normal xyz). still[j] says joint j's skinning matrix is the identity.
+frig_points :: (r: [] FaceRig, b: string, c: [] f32, w: [] f32, inv: [] f32, skin: [] f32, still: [] bool,
+                morph: [] f32, out: [] f32) {
+  for j: 0..<r[0].joints {
+    frig_mul(skin, 12 * j, w, 12 * j, inv, 12 * j);
+    o := 12 * j;
+    e: f32 = 0;
+    for i: 0..<3 { for k: 0..<4 { e = hi(e, abs(skin[o + 4 * i + k] - (ifx i == k then 1.0f32 else 0.0f32))); } }
+    still[j] = e < 0.00001;
+  }
+  for i: 0..<3 * r[0].points { morph[i] = 0; }
+  for t: 0..<r[0].targets {
+    o := r[0].target_at[t];
+    x := c[frig_u32(b, o)];
+    if x == 0 { continue; }
+    first := frig_u32(b, o + 4); n := frig_u32(b, o + 8);
+    s := x * f32(FRIG_DELTA_UNIT);
+    for k: 0..<n {
+      e := o + 12 + 8 * k;
+      p := 3 * (first + frig_u16(b, e));
+      morph[p] += s * f32(frig_i16(b, e + 2)); morph[p + 1] += s * f32(frig_i16(b, e + 4)); morph[p + 2] += s * f32(frig_i16(b, e + 6));
+    }
+  }
+  for p: 0..<r[0].points {
+    o := r[0].point_at + FRIG_POINT_BYTES * p;
+    rest := v3(frig_f32(b, o), frig_f32(b, o + 4), frig_f32(b, o + 8));
+    n := v3(frig_f32(b, o + 12), frig_f32(b, o + 16), frig_f32(b, o + 20));
+    x := add(rest, v3(morph[3 * p], morph[3 * p + 1], morph[3 * p + 2]));
+    moving := false;
+    for k: 0..<FRIG_INFLUENCES {
+      if frig_f32(b, o + 28 + 8 * k) > 0 && !still[frig_u16(b, o + 24 + 8 * k)] { moving = true; }
+    }
+    q := x; nq := n;
+    if moving {
+      q = v3(0, 0, 0); nq = v3(0, 0, 0);
+      for k: 0..<FRIG_INFLUENCES {
+        wk := frig_f32(b, o + 28 + 8 * k);
+        if wk <= 0 { continue; }
+        m := 12 * frig_u16(b, o + 24 + 8 * k);
+        q = add(q, times(v3(skin[m] * x.x + skin[m + 1] * x.y + skin[m + 2] * x.z + skin[m + 3],
+                             skin[m + 4] * x.x + skin[m + 5] * x.y + skin[m + 6] * x.z + skin[m + 7],
+                             skin[m + 8] * x.x + skin[m + 9] * x.y + skin[m + 10] * x.z + skin[m + 11]), wk));
+        nq = add(nq, times(v3(skin[m] * n.x + skin[m + 1] * n.y + skin[m + 2] * n.z,
+                              skin[m + 4] * n.x + skin[m + 5] * n.y + skin[m + 6] * n.z,
+                              skin[m + 8] * n.x + skin[m + 9] * n.y + skin[m + 10] * n.z), wk));
+      }
+      l := length(nq);
+      nq = ifx l > 0.000001 then times(nq, 1 / l) else n;
+    }
+    d := sub(q, rest);
+    out[6 * p] = d.x; out[6 * p + 1] = d.y; out[6 * p + 2] = d.z;
+    out[6 * p + 3] = nq.x; out[6 * p + 4] = nq.y; out[6 * p + 5] = nq.z;
+  }
+}
+
+// A unit normal as one float the vertex shader decodes: 1 + a * 4096 + b, a and b its octahedral
+// coordinates in 0..4095 (exact in an f32). 0 means "keep the vertex's own normal".
+frig_normal_word :: (n: Point) -> f32 {
+  s := abs(n.x) + abs(n.y) + abs(n.z);
+  if s < 0.000001 { return 0; }
+  x := n.x / s; y := n.y / s;
+  if n.z < 0 {
+    ox := x;
+    x = (1 - abs(y)) * (ifx ox >= 0 then 1.0f32 else -1.0f32);
+    y = (1 - abs(ox)) * (ifx y >= 0 then 1.0f32 else -1.0f32);
+  }
+  a := floor(clamp(x * 0.5 + 0.5, 0, 1) * 4095 + 0.5);
+  c := floor(clamp(y * 0.5 + 0.5, 0, 1) * 4095 + 0.5);
+  return 1 + a * 4096 + c;
+}
+
+// The face vertices' rows for the vertex shader, 4 per vertex: the move (metres) and the normal
+// word, or zeros for a vertex that doesn't move (it keeps its own normal).
+frig_vertices :: (r: [] FaceRig, b: string, pts: [] f32, rows: [] f32) {
+  for v: 0..<r[0].vertices {
+    p := 6 * frig_u32(b, r[0].vertex_at + 4 * v);
+    d := v3(pts[p], pts[p + 1], pts[p + 2]);
+    o := 4 * v;
+    moved := abs(d.x) + abs(d.y) + abs(d.z) > 0.0001;
+    rows[o] = d.x / 100; rows[o + 1] = d.y / 100; rows[o + 2] = d.z / 100;
+    rows[o + 3] = ifx moved then frig_normal_word(v3(pts[p + 3], pts[p + 4], pts[p + 5])) else 0;
+  }
+}
+
+// ---- checks, on a tiny block built here: two joints, one corrective, one target, two points
+
+frig_put32 :: (b: [] u8, at: int, v: u32) -> int {
+  b[at] = cast(u8) (v & 255); b[at + 1] = cast(u8) ((v >> 8) & 255); b[at + 2] = cast(u8) ((v >> 16) & 255); b[at + 3] = cast(u8) (v >> 24);
+  return at + 4;
+}
+frig_puti :: (b: [] u8, at: int, v: int) -> int { return frig_put32(b, at, cast(u32) (ifx v < 0 then v + 4294967296 else v)); }
+frig_putf :: (b: [] u8, at: int, v: f32) -> int { return frig_put32(b, at, f32_bits(v)); }
+frig_put16 :: (b: [] u8, at: int, v: int) -> int { b[at] = cast(u8) (v & 255); b[at + 1] = cast(u8) ((v >> 8) & 255); return at + 2; }
+
+// Controls 0 (raw: "open"), 1 (raw: "lift"), 2 (the corrective open x lift). Joint 0 is a root at
+// the origin; joint 1 (a jaw at y = 10) turns about x by 30 degrees per unit of control 0 and
+// rises 1 cm per unit of the corrective. Point 0 (y = 10, z = 5) follows the jaw; point 1 (the
+// root's, y = 20) has a 2 cm target on control 1. Vertices: 0, 1, 1.
+frig_test_block :: (b: [] u8) -> int {
+  at := 0;
+  b[0] = 'F'; b[1] = 'R'; b[2] = 'G'; b[3] = '1'; at = 4;
+  at = frig_puti(b, at, 3); at = frig_puti(b, at, 2); at = frig_puti(b, at, 1); at = frig_puti(b, at, 1);
+  at = frig_puti(b, at, 2); at = frig_puti(b, at, 2); at = frig_puti(b, at, 3); at = frig_puti(b, at, 1); at = frig_puti(b, at, 2);
+  // the corrective: out 2, weight 1, inputs 0 and 1
+  at = frig_puti(b, at, 2); at = frig_putf(b, at, 1); at = frig_puti(b, at, 2); at = frig_puti(b, at, 0); at = frig_puti(b, at, 1);
+  // one group: rows 2 (joint 1's rx, ty), cols 2 (controls 0, 2)
+  at = frig_puti(b, at, 2); at = frig_puti(b, at, 2); at = frig_puti(b, at, 0); at = frig_puti(b, at, 2);
+  at = frig_puti(b, at, 9 + 3); at = frig_puti(b, at, 9 + 1);
+  at = frig_putf(b, at, 30); at = frig_putf(b, at, 0);
+  at = frig_putf(b, at, 0); at = frig_putf(b, at, 1);
+  // joints
+  at = frig_puti(b, at, -1); for i: 0..<6 { at = frig_putf(b, at, 0); }
+  at = frig_puti(b, at, 0); at = frig_putf(b, at, 0); at = frig_putf(b, at, 10); for i: 0..<4 { at = frig_putf(b, at, 0); }
+  // points: rest, normal, influences
+  at = frig_putf(b, at, 0); at = frig_putf(b, at, 10); at = frig_putf(b, at, 5); at = frig_putf(b, at, 0); at = frig_putf(b, at, 0); at = frig_putf(b, at, 1);
+  at = frig_put16(b, at, 1); at = frig_put16(b, at, 0); at = frig_putf(b, at, 1);
+  for k: 1..<FRIG_INFLUENCES { at = frig_puti(b, at, 0); at = frig_putf(b, at, 0); }
+  at = frig_putf(b, at, 0); at = frig_putf(b, at, 20); at = frig_putf(b, at, 0); at = frig_putf(b, at, 0); at = frig_putf(b, at, 1); at = frig_putf(b, at, 0);
+  at = frig_put16(b, at, 0); at = frig_put16(b, at, 0); at = frig_putf(b, at, 1);
+  for k: 1..<FRIG_INFLUENCES { at = frig_puti(b, at, 0); at = frig_putf(b, at, 0); }
+  // vertices
+  at = frig_puti(b, at, 0); at = frig_puti(b, at, 1); at = frig_puti(b, at, 1);
+  // target: control 1, first point 1, one delta of 2 cm up
+  at = frig_puti(b, at, 1); at = frig_puti(b, at, 1); at = frig_puti(b, at, 1);
+  at = frig_put16(b, at, 0); at = frig_put16(b, at, 0); at = frig_put16(b, at, 2000); at = frig_put16(b, at, 0);
+  // expressions: "open" (control 0 = 1), "both" (0 and 1)
+  name := "open";
+  for i: 0..<16 { b[at + i] = ifx i < name.count then name[i] else 0; }
+  at += 16; at = frig_puti(b, at, 1); at = frig_puti(b, at, 0); at = frig_putf(b, at, 1);
+  name = "both";
+  for i: 0..<16 { b[at + i] = ifx i < name.count then name[i] else 0; }
+  at += 16; at = frig_puti(b, at, 2); at = frig_puti(b, at, 0); at = frig_putf(b, at, 1); at = frig_puti(b, at, 1); at = frig_putf(b, at, 1);
+  return at;
+}
+
+frig_run_test :: (blk: string, e: int, out: [] f32) -> bool {
+  r: [1] FaceRig;
+  if !frig_open(r[..], blk, 8, 4, 4) { return false; }
+  c: [8] f32; attr: [36] f32; w: [48] f32; inv: [48] f32; skin: [48] f32; still: [4] bool; morph: [12] f32;
+  frig_neutral_inverse(r[..], blk, attr[..], w[..], inv[..]);
+  frig_add_expr(r[..], blk, e, 1, c[..]);
+  frig_psds(r[..], blk, c[..]);
+  frig_joint_deltas(r[..], blk, c[..], attr[..]);
+  frig_worlds(r[..], blk, attr[..], w[..]);
+  frig_points(r[..], blk, c[..], w[..], inv[..], skin[..], still[..], morph[..], out);
+  return true;
+}
+
+#test "a block opens, and a corrupt one doesn't" {
+  b: [1024] u8;
+  n := frig_test_block(b[..]);
+  r: [1] FaceRig;
+  #assert frig_open(r[..], cast(string) b[0..<n], 8, 4, 4);
+  #assert r[0].controls == 3 && r[0].joints == 2 && r[0].points == 2 && r[0].vertices == 3 && r[0].exprs == 2;
+  #assert frig_expr(r[..], cast(string) b[0..<n], "both") == 1 && frig_expr(r[..], cast(string) b[0..<n], "smile") == -1;
+  #assert !frig_open(r[..], cast(string) b[0..<n - 1], 8, 4, 4);   // cut short
+  #assert !frig_open(r[..], cast(string) b[0..<n], 8, 1, 4);       // more joints than room
+  b[4] = 2;                                                       // fewer controls than its indices
+  #assert !frig_open(r[..], cast(string) b[0..<n], 8, 4, 4);
+}
+
+#test "neutral moves nothing; a joint control turns the jaw's point about the jaw" {
+  b: [1024] u8;
+  n := frig_test_block(b[..]);
+  blk := cast(string) b[0..<n];
+  out: [12] f32;
+  #assert frig_run_test(blk, -1, out[..]);
+  for i: 0..<2 { #assert abs(out[6 * i]) + abs(out[6 * i + 1]) + abs(out[6 * i + 2]) < 0.00001; }
+  #assert frig_run_test(blk, 0, out[..]);
+  // the point 5 cm in front of the jaw at y 10, turned 30 degrees about x: (0, 10 - 5 sin 30, 5 cos 30)
+  #assert abs(out[1] - (-2.5)) < 0.001 && abs(out[2] - (5 * 0.8660254 - 5)) < 0.001;
+  // its normal turned with it
+  #assert abs(out[4] - (-0.5)) < 0.001 && abs(out[5] - 0.8660254) < 0.001;
+  // the root's point stays (its target's control is 0)
+  #assert abs(out[6]) + abs(out[7]) + abs(out[8]) < 0.00001;
+}
+
+#test "a corrective fires only with both inputs, and a target moves its point" {
+  b: [1024] u8;
+  n := frig_test_block(b[..]);
+  blk := cast(string) b[0..<n];
+  out: [12] f32;
+  #assert frig_run_test(blk, 1, out[..]);
+  // the corrective (open x lift = 1) lifts the jaw 1 cm on top of its turn
+  #assert abs(out[1] - (1 - 2.5)) < 0.001;
+  // the target lifts the root's point 2 cm
+  #assert abs(out[7] - 2) < 0.001 && abs(out[6]) + abs(out[8]) < 0.00001;
+}
+
+#test "a normal word decodes to its normal within an octahedral step" {
+  ns := [4] Point.[v3(0, 0, 1), v3(0.6, 0.8, 0), v3(0, -0.6, -0.8), v3(-0.48, 0.6, -0.64)];
+  for i: 0..<4 {
+    w := frig_normal_word(ns[i]);
+    #assert w >= 1 && w <= 16777216;
+    e := w - 1; a := floor(e / 4096); c := e - a * 4096;
+    x := a / 4095 * 2 - 1; y := c / 4095 * 2 - 1;
+    z := 1 - abs(x) - abs(y);
+    if z < 0 { ox := x; x = (1 - abs(y)) * (ifx ox >= 0 then 1.0f32 else -1.0f32); y = (1 - abs(ox)) * (ifx y >= 0 then 1.0f32 else -1.0f32); }
+    l := sqrt(x * x + y * y + z * z);
+    #assert abs(x / l - ns[i].x) < 0.003 && abs(y / l - ns[i].y) < 0.003 && abs(z / l - ns[i].z) < 0.003;
+  }
+}

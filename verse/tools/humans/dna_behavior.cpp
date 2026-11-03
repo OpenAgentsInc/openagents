@@ -2,7 +2,7 @@
 // evaluates) as text, the input for MetaHuman Lab's face rig (planned: a Coax
 // port of OpenRigLogic).
 //
-//   dna_behavior HEAD.dna OUT.txt [--lod N]
+//   dna_behavior HEAD.dna OUT.txt [TARGETS.bin]
 //
 // Writes, one table per line block, each preceded by `name count`:
 //   raw NAME...           raw control names
@@ -14,6 +14,9 @@
 //   bslod n...            blend shape channel count per LOD
 //   rep j t r             joint translation and rotation representations
 //   joint NAME parent tx ty tz rx ry rz   the neutral skeleton (cm, degrees)
+// TARGETS.bin, if named: the LOD 0 meshes' blend shape targets, little-endian: per mesh with
+// targets, u16 mesh, u32 count, then per target u16 channel, u32 n, n u32 vertex indices and
+// n x 3 f32 deltas (cm).
 //
 // Links OpenRigLogic (MIT):
 //   c++ -std=c++17 -O2 dna_behavior.cpp -I$ORL/include -L$ORL/build -lriglogic413_5_0 -o dna_behavior
@@ -39,7 +42,7 @@ static void floats(FILE* f, const char* name, A a) {
 
 int main(int argc, char** argv) {
     if (argc < 3) {
-        fprintf(stderr, "usage: dna_behavior HEAD.dna OUT.txt\n");
+        fprintf(stderr, "usage: dna_behavior HEAD.dna OUT.txt [TARGETS.bin]\n");
         return 2;
     }
     auto stream = rl4::makeScoped<rl4::FileStream>(argv[1], rl4::FileStream::AccessMode::Read, rl4::FileStream::OpenMode::Binary);
@@ -92,5 +95,24 @@ int main(int argc, char** argv) {
         fprintf(f, "mesh %s vertices %d targets %d deltas %zu\n", r->getMeshName(m).c_str(), r->getVertexPositionCount(m), r->getBlendShapeTargetCount(m), deltas);
     }
     fclose(f);
+    if (argc > 3) {
+        FILE* t = fopen(argv[3], "wb");
+        if (!t) return 1;
+        for (std::uint16_t m = 0; m < r->getMeshCount(); ++m) {
+            const std::uint32_t n = r->getBlendShapeTargetCount(m);
+            if (n == 0) continue;
+            fwrite(&m, 2, 1, t); fwrite(&n, 4, 1, t);
+            for (std::uint16_t k = 0; k < n; ++k) {
+                const std::uint16_t c = r->getBlendShapeChannelIndex(m, k);
+                auto idx = r->getBlendShapeTargetVertexIndices(m, k);
+                auto dx = r->getBlendShapeTargetDeltaXs(m, k), dy = r->getBlendShapeTargetDeltaYs(m, k), dz = r->getBlendShapeTargetDeltaZs(m, k);
+                const std::uint32_t c32 = static_cast<std::uint32_t>(idx.size());
+                fwrite(&c, 2, 1, t); fwrite(&c32, 4, 1, t);
+                for (auto v : idx) { const std::uint32_t u = v; fwrite(&u, 4, 1, t); }
+                for (std::uint32_t i = 0; i < c32; ++i) { const float d[3] = {dx[i], dy[i], dz[i]}; fwrite(d, 4, 3, t); }
+            }
+        }
+        fclose(t);
+    }
     return 0;
 }

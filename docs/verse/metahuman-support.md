@@ -295,6 +295,43 @@ upload pack to private bucket          ──►     (no asset names)           
   recorded numbers are derived data, so they stay out of git. CI runs the
   same test on a synthetic DNA-lite rig that we write ourselves.
 
+### The face rig as built (MetaHuman Lab)
+
+The lab runs the face rig live. The pieces:
+
+- `verse/tools/humans/dna_behavior.cpp` (the owner's machine, against
+  OpenRigLogic) dumps the head DNA's Behavior layer as text and, with a
+  third argument, its LOD0 blend-shape targets as binary. Both stay in
+  `~/.openagents/verse/private-build/metahuman-dump/head/`.
+- `verse/tools/humans/face_rig.py` compiles them into a flat block: the
+  raw controls' correctives (PSDs), the LOD0 joint groups, the face joints'
+  neutral pose, each face point's rest position, normal and six joint
+  weights, the blend-shape deltas (0.01 cm and up, in 0.001 cm steps) and
+  a few named expressions (neutral, smile, frown, surprise, talk, blink,
+  jaw). It also evaluates them in Python as a reference, and the pack
+  build fails if a blink or the jaw moves the head by less than 0.5 cm.
+- `pack_human.py` writes the face pieces (head, teeth, eyes, lashes) as one
+  vertex range and adds the line `F FIRST COUNT BYTES` to the catalog. The
+  block follows the catalog's text after a NUL.
+- `aethyr/facerig.coax` evaluates the block, ported from OpenRigLogic's
+  evaluator with its MIT notice. Expressions set raw controls, PSDs
+  multiply them, joint groups give each face joint's translation, rotation
+  (degrees, XYZ order) and scale deltas, and the points take their
+  blend-shape moves and then linear skinning against the neutral pose.
+  The result is a move and a new normal for each face vertex.
+- `apps/openagents-web/metahumanlab.coax`'s `lab_face` runs it each frame
+  when the controls change: X cycles the expressions, they ease in over
+  0.25 s, blinks come every 2.8 to 5.2 seconds, and talk opens and closes
+  the jaw. The C face puts the rows after the body palette in the pose
+  store, and the vertex shader adds the move before the body's skinning.
+- The checks: `metahumanlab.coax` runs the rig on a tiny block written in
+  the test, and `pack_checks.py` reads the material probe's blue channel
+  (the rig runs) and how many face pixels an expression moves.
+
+Not done yet: GUI controls (the block starts at raw controls), animated
+maps (wrinkles and blood flow), and the joints-only LOD for figures far
+from the camera.
+
 ### 3. Body skeleton and animation retargeting
 
 - **Skeleton.** The MetaHuman body uses the Unreal mannequin hierarchy

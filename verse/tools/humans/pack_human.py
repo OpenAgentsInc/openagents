@@ -35,6 +35,9 @@ The catalog, a line each:
                                 image: a map whose green points up is flipped, green_up()) or
                                 rough (G)
   box X0 Y0 Z0 X1 Y1 Z1         the bind pose's bounds
+  F FIRST COUNT BYTES           a face rig (face_rig.py): its vertices' range in the vertex
+                                buffer, and its block's length; the block follows the text
+                                after a NUL (aethyr/facerig.coax reads it)
 
 A vertex is 32 bytes (vertex() below): position (x, y, z unorm16 across SPAN from LOW), its
 piece's material, the normal and tangent (octahedral, 2 x unorm16 each), the bitangent's
@@ -183,6 +186,7 @@ class Pack:
         self.name, self.body, self.licence = name, body, licence
         self.pieces, self.binds, self.tints = [], [], {}
         self.images = []        # (role, source name, image path or PIL image, flip green)
+        self.face = None        # a face rig: given the face pieces as written, its block (face_rig.pack)
         self.image_of = {}
 
     def layer(self, role, path, flip=False):
@@ -210,8 +214,14 @@ def write(pack, out, size):
         lines.append("M %d %d %d %d %d" % (MATERIALS[m], round(r * 1000), round(g * 1000), round(b * 1000), round(rough * 1000)))
     lo, hi = [1e9] * 3, [-1e9] * 3
     count = 0
-    # opaque pieces first, then the ones with cut-out or blended texels (hair, brows, the eyes' wet layer)
-    order = sorted(pack.pieces, key=lambda p: p["material"] in (3, 4, 7))
+    # opaque pieces first, then the ones with cut-out or blended texels (hair, brows, the eyes' wet
+    # layer); the face rig's pieces (head, teeth, eyes, lashes) together where the two groups meet,
+    # so its vertices are one range
+    def rank(p):
+        cut = p["material"] in (3, 4, 7)
+        return (cut, ("face" in p) != cut)
+    order = sorted(pack.pieces, key=rank)
+    face_first = None
     for p in order:
         ts = tangents(p["verts"], p["tris"])
         for v, t in zip(p["verts"], ts):
@@ -221,6 +231,8 @@ def write(pack, out, size):
                 raise SystemExit(f"pack_human: {p['name']}: a joint past the rig's 65")
             vb += vertex(v, t, p["material"], p["layers"])
             lo = [min(a, b) for a, b in zip(lo, v["p"])]; hi = [max(a, b) for a, b in zip(hi, v["p"])]
+        if "face" in p and face_first is None:
+            face_first = count
         first = len(ib)
         ib += [count + k for t in p["tris"] for k in t]
         lines.append(f"P {p['name']} {first} {len(ib) - first} {p['material']}")
@@ -230,7 +242,14 @@ def write(pack, out, size):
         lines.append(f"L {k} {role} {source}")
     lines.append("box %.4f %.4f %.4f %.4f %.4f %.4f" % (*lo, *hi))
     lines.append(f"vertices {count} triangles {len(ib) // 3} layers {len(images)} size {size}")
-    catalog = ("\n".join(lines) + "\n").encode()
+    block = b""
+    if pack.face and face_first is not None:
+        faces = [p for p in order if "face" in p]
+        n = sum(len(p["verts"]) for p in faces)
+        block = pack.face(faces)
+        # the face rig: its vertices' range and its block's length (the block follows the text, after a NUL)
+        lines.append(f"F {face_first} {n} {len(block)}")
+    catalog = ("\n".join(lines) + "\n").encode() + (b"\0" + block if block else b"")
     entries = [(KIND_CATALOG, "catalog", catalog), (KIND_VERTICES, "vertices", bytes(vb)),
                (KIND_INDICES, "indices", struct.pack(f"<{len(ib)}I", *ib))]
     entries += [(KIND_LAYER, f"layer{k}", b) for k, b in enumerate(images)]
@@ -245,7 +264,7 @@ def write(pack, out, size):
     head = MAGIC + struct.pack("<IIIIIII", len(entries), total, total, HEADER, data_at, 0, 0)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(head + table + blob)
-    return catalog.decode(), total
+    return catalog.split(b"\0")[0].decode(), total
 
 
 # ---- the stand-in: Quaternius' superhero male, CC0

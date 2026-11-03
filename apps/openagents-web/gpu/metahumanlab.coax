@@ -265,12 +265,16 @@ mhlab_bg_fs :: (pos:V4,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->M
 //   280: 24 materials (rgb tint, roughness: the roughness map's scale), by material number less one
 //   376: the fill's direction xyz, strength; 380: the rim's, strength; 384: the key's strength, exposure
 //   386: the probe view (0: lit; 1: albedo, 2: uv and base layer, 3: capsules magenta, 4: material, 5:
-//        material and base layer), for scripts
-//        that check a frame without looking at it
+//        material and base layer, and whether the face rig runs), for scripts that check a frame
+//        without looking at it
+//   388: the face rig's vertices: the first, how many, and 1 when it moves them. Their rows (a
+//        move in metres and a normal word, metahumanlab.coax lab_face) follow the palette in the
+//        pose store, from row MHLAB_FACE_ROW.
 // A vertex, 8 words (pack_human.py vertex): x y (unorm16 each), z (unorm16) | material << 16 |
 // the bitangent's sign << 31, the normal and the tangent (octahedral unorm16 pairs), uv (unorm16
 // pair), four joints (u8), four weights (unorm8), the layers base | normal << 8 | rough << 16.
 MHLAB_SPAN :: 2.5f32;
+MHLAB_FACE_ROW :: 195;
 MHLAB_LOW :: -0.25f32;
 mhlab_octa :: (w:u32)->V3 {
   e:V2=wg_unpack2x16unorm(w);
@@ -327,13 +331,34 @@ mhlab_light :: (w:V3,u:[]f32)->V3 {
   return v3(x,y,z);
 }
 MhlabSkin :: struct {p:V3; n:V3; t:V3; sign:f32; uv:V2; layers:u32; material:u32; }
-mhlab_skin :: (id:u32,vertices:[]u32,pose:[]V4)->MhlabSkin {
+mhlab_skin :: (id:u32,u:[]f32,vertices:[]u32,pose:[]V4)->MhlabSkin {
   b:u32=mul_wrap(id,8);
   xy:V2=wg_unpack2x16unorm(vertices[cast(int)b]);
   w1:u32=vertices[cast(int)add_wrap(b,1)];
   at:V4=v4((xy.x*MHLAB_SPAN)-(MHLAB_SPAN*0.5f32),(xy.y*MHLAB_SPAN)+MHLAB_LOW,((cast(f32)(w1&0xffff))/65535.0f32*MHLAB_SPAN)-(MHLAB_SPAN*0.5f32),1.0f32);
   nw:V3=mhlab_octa(vertices[cast(int)add_wrap(b,2)]);
   tw:V3=mhlab_octa(vertices[cast(int)add_wrap(b,3)]);
+  // the face rig's move (blend shapes and the face joints, before the body's skinning) and normal
+  fid:f32=cast(f32)(id)-u[388];
+  if ((u[390]>0.5f32)&&(fid>=0.0f32)&&(fid<u[389])) {
+    m:V4=pose[MHLAB_FACE_ROW+cast(int)(fid)];
+    at=v4(at.x+m.x,at.y+m.y,at.z+m.z,1.0f32);
+    if (m.w>0.5f32) {
+      q:u32=cast(u32)(m.w-1.0f32);
+      ex:f32=(cast(f32)(q>>12)/4095.0f32*2.0f32)-1.0f32;
+      ey:f32=(cast(f32)(q&4095)/4095.0f32*2.0f32)-1.0f32;
+      ez:f32=(1.0f32-abs(ex))-abs(ey);
+      if (ez<0.0f32) {
+        ox:f32=ex;
+        sx:f32=1.0f32; if (ox<0.0f32) { sx=-1.0f32; }
+        sy:f32=1.0f32; if (ey<0.0f32) { sy=-1.0f32; }
+        ex=(1.0f32-abs(ey))*sx;
+        ey=(1.0f32-abs(ox))*sy;
+      }
+      nw=normalize3(v3(ex,ey,ez));
+      tw=normalize3(sub3(tw,scale3(nw,dot3(nw,tw))));
+    }
+  }
   j:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);
   wt:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,6)]);
   o:MhlabSkin;
@@ -368,7 +393,7 @@ mhlab_caster_vs :: (v:u32,i:u32,u:[]f32)->V4 {
   return v4(2.0f32,2.0f32,2.0f32,1.0f32);
 }
 mhlab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,pose:[]V4)->MhlabS {
-  v:MhlabSkin=mhlab_skin(id,vertices,pose);
+  v:MhlabSkin=mhlab_skin(id,u,vertices,pose);
   o:MhlabS;
   o.world=mhlab_place(v.p,u);
   o.normal=mhlab_turn(v.n,u);
@@ -382,7 +407,7 @@ mhlab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,pose:[]V4)->MhlabS
 }
 MhlabShadow :: struct {pos:V4; uv:V2; layers:u32 #flat; material:u32 #flat; }
 mhlab_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,pose:[]V4)->MhlabShadow {
-  v:MhlabSkin=mhlab_skin(id,vertices,pose);
+  v:MhlabSkin=mhlab_skin(id,u,vertices,pose);
   q:V3=mhlab_light(mhlab_place(v.p,u),u);
   o:MhlabShadow;
   o.pos=v4(q.x,q.y,q.z,1.0f32);
@@ -566,7 +591,7 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   // 4: the material's number, so a script can see which pieces take the skin's scatter; 5: the
   // material and the base layer together (one frame, so they can't drift apart between shots)
   if (u[386]>3.5f32) { c=v3(cast(f32)(m)/255.0f32,0.0f32,0.0f32); }
-  if (u[386]>4.5f32) { c=v3(cast(f32)(m)/255.0f32,cast(f32)(s.layers&255)/255.0f32,0.0f32); }
+  if (u[386]>4.5f32) { c=v3(cast(f32)(m)/255.0f32,cast(f32)(s.layers&255)/255.0f32,saturate(u[390])); }
   return v4(c.x,c.y,c.z,1.0f32);
 }
 clamp_u :: (x:u32,a:u32,b:u32)->u32 {
