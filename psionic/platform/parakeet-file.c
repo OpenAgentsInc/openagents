@@ -101,7 +101,7 @@ int pkfile_main(int argc,char **argv) {
   if(!samples||!table||!output||!spool||(options.format==3&&!text_spool)||!pkfile_table((coax_v_f64){table,FILE_TABLE})){fprintf(stderr,"cannot allocate bounded file workspace or private output spool\n");goto done;}
   engine=psionic_parakeet_open(argv[2],options.gpu,error,sizeof error);
   if(!engine){fprintf(stderr,"%s\n",error);goto done;}
-  if(!file_emit(spool,pkfile_begin(options.format,total,options.gpu,(coax_v_u8){output,FILE_OUTPUT}),output)){fprintf(stderr,"cannot begin transcript output\n");goto done;}
+  if(!file_emit(spool,pkfile_begin(options.format,total,psionic_parakeet_device(engine),(coax_v_u8){output,FILE_OUTPUT}),output)){fprintf(stderr,"cannot begin transcript output\n");goto done;}
   int64_t completed=0,cues=0;int prior_text=0;
   for(int64_t index=0;index<parts;index++) {
     if(file_cancelled){status=130;goto done;}

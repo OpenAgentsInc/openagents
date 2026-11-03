@@ -1,62 +1,7 @@
 // Parakeet's Metal encoder arithmetic, with a C/VM CPU meaning for checks.
-// Products use Apple's Coax matrix primitives; the remaining kernels use
-// f32 arithmetic. This is a tolerance-qualified device profile, not the
+// Products use Apple's Coax matrix primitives (wd_linear); the remaining
+// kernels are kernels.coax's plain f32, which the CUDA profile (cuda.coax)
+// shares. This is a tolerance-qualified device profile, not the
 // compensated-binary64 CPU profile. The host only binds and launches these.
 #load "../whisper/device.coax";
-
-#test "Parakeet device convolution respects channels, padding and depthwise groups" {
- x:=[12]f32.[1,2,3,4,5,6,7,8,9,10,11,12];w:=[18]f32.[1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2];b:=[2]f32.[0,1];y:[12]f32;
- for i:0..<12 {pkd_conv(i,2,3,2,2,2,3,1,1,x[..],w[..],b[..],y[..]);}
- #assert y[0]==12 && y[1]==21 && y[2]==16 && y[6]==73 && y[7]==115 && y[8]==81;
-}
-#test "Parakeet device features and channel-major subsampling become frame rows" {
- x:=[6]f32.[1,2,3,4,5,6];y:[6]f32;z:[6]f32;
- for i:0..<6 {pkd_feature(i,3,2,x[..],y[..]);}
- #assert y[0]==1 && y[1]==4 && y[2]==2 && y[3]==5;
- for i:0..<6 {pkd_gather(i,3,1,2,x[..],z[..]);}
- for i:0..<6 {#assert z[i]==y[i];}
-}
-#test "Parakeet device gated convolution keeps the two projection halves distinct" {
- x:=[8]f32.[2,4,0,0,6,8,0,0];out:[4]f32;
- for i:0..<4 {pkd_glu(i,2,x[..],out[..]);}
- #assert out[0]==1 && out[1]==2 && out[2]==3 && out[3]==4;
-}
-#test "Parakeet device relative attention uses query minus key positions" {
- q:=[4]f32.[1,0,0,1];k:=[4]f32.[1,0,0,1];v:=[4]f32.[2,4,6,8];p:[6]f32;w:[4]f32;out:[4]f32;
- for i:0..<2 {pkd_attend(i,2,2,1,0,2,q[..],k[..],v[..],p[..],w[..],out[..]);}
- a:=exp(1/sqrt(2.0));lo:=(2*a+6)/(a+1);hi:=(2+6*a)/(a+1);
- #assert abs(f64(out[0])-lo)<0.00001 && abs(f64(out[2])-hi)<0.00001;
- // A positive relative offset contributes only to query1/key0.
- p[0]=3;p[1]=3;for i:0..<2 {pkd_attend(i,2,2,1,0,2,q[..],k[..],v[..],p[..],w[..],out[..]);}
- #assert out[2]<f32(hi) && abs(f64(out[0])-lo)<0.00001;
-}
-
-pkd_feature :: (item:int,frames:int,mels:int,x:[]f32,y:[]f32) #export_c {t:=item/mels;m:=item%mels;y[item]=x[m*frames+t];}
-pkd_conv :: (item:int,ih:int,iw:int,ic:int,oc:int,groups:int,k:int,stride:int,pad:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c {
- oh:=(ih+2*pad-k)/stride+1;ow:=(iw+2*pad-k)/stride+1;o:=item/(oh*ow);r:=item/ow%oh;c:=item%ow;per:=ic/groups;group:=o/(oc/groups);sum:=b[o];
- for ch:0..<per {for kr:0..<k {for kc:0..<k {
-  yr:=r*stride+kr-pad;yc:=c*stride+kc-pad;if yr>=0 && yr<ih && yc>=0 && yc<iw {sum+=x[((group*per+ch)*ih+yr)*iw+yc]*w[((o*per+ch)*k+kr)*k+kc];}
- }}}y[item]=sum;
-}
-pkd_relu :: (item:int,x:[]f32) #export_c {v:=x[item];x[item]=ifx v>0 then v else 0;}
-pkd_gather :: (item:int,tokens:int,freq:int,channels:int,x:[]f32,y:[]f32) #export_c {wide:=channels*freq;t:=item/wide;c:=item/freq%channels;f:=item%freq;y[item]=x[(c*tokens+t)*freq+f];}
-pkd_silu :: (item:int,x:[]f32) #export_c {v:=x[item];x[item]=v/(1+wd_expf(-v));}
-pkd_add :: (item:int,scale:f32,x:[]f32,y:[]f32) #export_c {y[item]+=scale*x[item];}
-pkd_glu :: (item:int,d:int,x:[]f32,y:[]f32) #export_c {row:=item/d;c:=item%d;at:=row*2*d;y[item]=x[at+c]/(1+wd_expf(-x[at+d+c]));}
-pkd_dwbn :: (item:int,tokens:int,d:int,k:int,x:[]f32,w:[]f32,b:[]f32,bn:[]f32,y:[]f32) #export_c {
- t:=item/d;c:=item%d;v:=b[c];for j:0..<k {at:=t+j-(k-1)/2;if at>=0 && at<tokens {v+=x[at*d+c]*w[c*k+j];}}
- v=(v-bn[c])/sqrt(bn[d+c]+0.00001)*bn[2*d+c]+bn[3*d+c];y[item]=v/(1+wd_expf(-v));
-}
-// Online stable softmax, one item per(head,query). Relative positions are
-// exactly NeMo's shifted table: row n-1-i+j represents position i-j.
-pkd_attend :: (item:int,n:int,d:int,heads:int,u:int,vbias:int,q:[]f32,k:[]f32,v:[]f32,p:[]f32,w:[]f32,out:[]f32) #export_c {
- hd:=d/heads;h:=item/n;i:=item%n;at:=h*hd;acc:[128]f32;best:f32= -3.0e38;sum:f32=0;scale:=1/sqrt(f32(hd));
- for j:0..<n {
-  score:f32=0;rel:=n-1-i+j;for m:0..<hd {c:=at+m;score+=(q[i*d+c]+w[u+c])*k[j*d+c]+(q[i*d+c]+w[vbias+c])*p[rel*d+c];}score*=scale;
-  if score>best {factor:=wd_expf(best-score);sum*=factor;for m:0..<hd {acc[m]*=factor;}best=score;}
-  prob:=wd_expf(score-best);sum+=prob;for m:0..<hd {acc[m]+=prob*v[j*d+at+m];}
- }
- for m:0..<hd {out[i*d+at+m]=acc[m]/sum;}
-}
-pkd_scale :: (item:int,scale:f32,x:[]f32) #export_c {x[item]*=scale;}
-pkd_copy :: (item:int,x:[]f32,y:[]f32) #export_c {y[item]=x[item];}
+#load "kernels.coax";

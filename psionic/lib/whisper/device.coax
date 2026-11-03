@@ -10,22 +10,11 @@
 //
 // Checks: coax test psionic/lib/whisper/device.coax --library
 #load "../../../coax/lib/compute/apple.coax";
+// WD_THREADS, wd_expf and wd_norm: plain f32, shared with CUDA.
+#load "device-common.coax";
 
-WD_THREADS :: 128;
 WD_HEAD :: 64;
 
-// e^x in f32, as engine.coax's we_expf: n = round(x log2(e)), the remainder
-// in two parts, a degree-6 polynomial and 2^n from the exponent bits.
-wd_expf :: (x: f32) -> f32 {
-  if x < -87 { return 0; }
-  y := x; if y > 88 { y = 88; }
-  t := y * 1.442695041;
-  n: s32 = 0; if t >= 0 { n = cast(s32) (t + 0.5); } else { n = cast(s32) (t - 0.5); }  // |n| < 128
-  fn := cast(f32) n;
-  r := (y - fn * 0.693145752) - fn * 0.00000142860677;
-  p := 1 + r * (1 + r * (0.5 + r * (0.1666666667 + r * (0.04166666667 + r * (0.008333333333 + r * 0.001388888889)))));
-  return p * f32_from_bits(cast(u32) (n + 127) << 23);
-}
 // GELU as engine.coax's we_gelu.
 wd_gelu :: (x: f32) -> f32 {
   u := 0.7978845608 * (x + 0.044715 * x * x * x);
@@ -572,32 +561,6 @@ wd_rules_join :: (item: int, V: int, beg: int, k: int, rec: [] f64, top: [] f32)
       top[T] = cast(f32) n;
       for j: 0..<5 { if j < n { top[T + 1 + 2 * j] = ui[WD_RJ * j]; top[T + 2 + 2 * j] = uv[WD_RJ * j]; } }
     }
-  }
-}
-// LayerNorm of row item of x (d values) into y, as engine.coax's we_norm
-// but in f32: (x - mean) / sqrt(var + 1e-5) * g + b.
-wd_norm :: (item: int, d: int, x: [] f32, g: [] f32, b: [] f32, y: [] f32) #export_c {
-  part: [128] f32;
-  xr := x[item * d..<x.count]; yr := y[item * d..<y.count];  // the row, so each index is small
-  per := (d + WD_THREADS - 1) / WD_THREADS;
-  for thread: 0..<WD_THREADS {
-    z: f32 = 0;
-    for u: 0..<per { i := thread + WD_THREADS * u; if i < d { z += xr[i]; } }
-    part[thread] = z;
-  }
-  total: f32 = 0;
-  for i: 0..<WD_THREADS { total += part[i]; }
-  mean := total / cast(f32) d;
-  for thread: 0..<WD_THREADS {
-    z: f32 = 0;
-    for u: 0..<per { i := thread + WD_THREADS * u; if i < d { e := xr[i] - mean; z += e * e; } }
-    part[thread] = z;
-  }
-  sq: f32 = 0;
-  for i: 0..<WD_THREADS { sq += part[i]; }
-  inv := 1 / sqrt(sq / cast(f32) d + 0.00001);
-  for thread: 0..<WD_THREADS {
-    for u: 0..<per { i := thread + WD_THREADS * u; if i < d { yr[i] = (xr[i] - mean) * inv * g[i] + b[i]; } }
   }
 }
 // ka[i] and va[i] into kb[i] and vb[i]: a row's keys and values into its

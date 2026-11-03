@@ -6,7 +6,7 @@
 # verse/platform/voice.c is the C face over it. The client also links
 # Aethyr's spoken-request gate (aethyr/voice.coax). Every host links Psionic's
 # resident Parakeet (libpsionic-parakeet.a from psionic/platform/parakeet-build.sh;
-# Metal on macOS, the CPU elsewhere). On macOS libcurl comes from the SDK and
+# Metal on macOS; on Linux CUDA, opened at run time, or the CPU). On macOS libcurl comes from the SDK and
 # the psionic provider links Psionic's Whisper (whisper-build.sh) and Metal;
 # Whisper does not build on Linux yet, so a Linux host is built without it
 # (OA_VOICE_NO_WHISPER) and takes libcurl and OpenSSL from the system, or
@@ -43,13 +43,14 @@ else
     netlib=(-L "${paths[2]}/lib" -L "${paths[3]}/lib" -Wl,-rpath,"${paths[2]}/lib" -Wl,-rpath,"${paths[3]}/lib")
   fi
   sysflags+=(${netinc[@]+"${netinc[@]}"})
-  hostlibs=(${netlib[@]+"${netlib[@]}"} -lcurl -lcrypto)
+  hostlibs=(${netlib[@]+"${netlib[@]}"} -lcurl -lcrypto -ldl)
   defs=(-DOA_VOICE_NO_WHISPER)
 fi
 engine=()
 shopt -s nullglob
-# The engine, plus the host's own reply-path decisions (voice-host/voice-reply.coax).
-for src in verse/voice*.coax verse/voice-host/*.coax; do
+# The engine, plus the host's own reply-path decisions (voice-host/voice-reply.coax);
+# voice-host/parakeet-check.coax is a check tool, not part of the host.
+for src in verse/voice*.coax verse/voice-host/voice-*.coax; do
   name="$(basename "$src" .coax)"                                    # voice-wire
   base="$(printf '%s' "$name" | awk -F- '{for(i=1;i<=NF;i++) printf toupper(substr($i,1,1)) substr($i,2)}')"  # VoiceWire
   # voice.coax -> VoiceEngine.h: "Voice.h" would be voice.h on a case-insensitive disk.

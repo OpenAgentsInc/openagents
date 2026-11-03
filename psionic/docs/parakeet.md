@@ -1,8 +1,8 @@
 # Local Parakeet TDT v3
 
 Psionic reads NVIDIA's original `parakeet-tdt-0.6b-v3` safetensors checkpoint
-and recognizes bounded utterances through its own Coax frontend, Metal
-FastConformer encoder and CPU token-and-duration decoder. The model and
+and recognizes bounded utterances through its own Coax frontend, Metal or
+CUDA FastConformer encoder and CPU token-and-duration decoder. The model and
 vocabulary stay resident between calls. Python, NeMo and Torch are independent
 verification tools; none is a runtime dependency.
 
@@ -51,10 +51,27 @@ apps/openagents-cli/build/openagents transcribe clip.wav --model-dir "$PARAKEET_
 
 The Coax build tool accepts an output directory and optional source root;
 its shell entry only executes the tool. On macOS it compiles Coax-generated
-Metal and links Metal/Foundation. Linux builds the explicit CPU backend.
-GPU inference currently means Apple Metal; it refuses on an unsupported host
-rather than falling back. Coax owns every kernel and launch sequence. No
-handwritten kernels, MPS, Accelerate, cuBLAS or cuDNN execute production math.
+Metal and links Metal/Foundation. On Linux it emits Coax-generated CUDA C
+(`coax cuda psionic/lib/parakeet/cuda.coax`) and links the CUDA effects; the
+NVIDIA driver and NVRTC are opened with `dlopen` when the engine opens with
+`--gpu`, so the build needs no CUDA toolkit. Both GPU profiles share
+`fast.coax`'s schedule and `kernels.coax`. `--gpu` refuses on a host without
+the backend rather than falling back. Coax owns every kernel and launch
+sequence. No handwritten kernels, MPS, Accelerate, cuBLAS or cuDNN execute
+production math.
+
+### Supported hardware
+
+| Host | `--gpu` | Status |
+| --- | --- | --- |
+| Apple silicon Mac | Metal | Qualified (`verification/parakeet-2026-11-02/`) |
+| Linux, NVIDIA GPU with a CUDA 12/13 driver and NVRTC 13 | CUDA | Qualified on an RTX 4080 ([record](verification/parakeet-cuda-2026-11-02/README.md)): real-time factor 0.045 over 29 clips |
+| Linux without an NVIDIA GPU, or without the driver or NVRTC | refused | No GPU path. `--cpu` works but takes 8 to 15 times the audio's length: correct, not interactive, and not a production profile |
+| Intel Mac, Windows, AMD or Intel GPUs on Linux | none | Not supported |
+
+The CUDA profile needs 2.4 GB of device memory for the encoder weights plus
+the work arenas. NVRTC is found through `PSIONIC_NVRTC`, `$CUDA_HOME/lib`,
+`~/cuda-13.2/lib` or the loader path.
 
 The public CLI defaults to the cache path above; `OPENAGENTS_PARAKEET_MODEL`
 or `--model-dir DIR` selects another copy of the same pinned model.
@@ -74,7 +91,7 @@ model data.
 
 [psionic-parakeet.h](../platform/psionic-parakeet.h) is independent of the
 existing Whisper header and library. Link `libpsionic-parakeet.a`, `libm` and
-pthread, plus Metal and Foundation on macOS.
+pthread, plus Metal and Foundation on macOS or `libdl` on Linux.
 
 ```jai
 char error[512], text[8192];
@@ -124,7 +141,7 @@ valid; silence admission/VAD is the caller's separate responsibility.
 `psionic_parakeet_clear(engine)` explicitly discards the live resident audio,
 feature, decoder, text and inspection buffers after a call. It invalidates
 last-result inspection while retaining the authenticated weights, vocabulary,
-Metal pipelines and decoder workers. Coder uses it after both successful and
+Metal pipelines or CUDA kernels and decoder workers. Coder uses it after both successful and
 failed recognition. Caller-owned copies and in-flight audio remain their
 owners' responsibility; this is not a forensic erasure claim.
 
@@ -136,7 +153,7 @@ STFT physically stores one more. Valid columns are compacted before the
 encoder. A recorded official-model probe proves that this preserves its valid
 encoded outputs, including an eight-frame boundary.
 
-The encoder uses tolerance-qualified f32 Metal math; the TDT decoder keeps
+The encoder uses tolerance-qualified f32 Metal or CUDA math; the TDT decoder keeps
 compensated binary64 sums and f32 storage. The legacy exact CPU teaching path
 and its original four-clip observations remain in the chapter under their own
 profile. The current profile's finite target/corpus qualification is in the

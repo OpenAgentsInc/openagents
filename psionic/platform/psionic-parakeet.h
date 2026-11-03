@@ -11,8 +11,13 @@
 typedef struct psionic_parakeet psionic_parakeet;
 typedef struct { int64_t samples,feature_frames,encoded_frames,tokens,text_bytes; int gpu; double inference_ms; } psionic_parakeet_info;
 /* DIR contains exact pinned model.safetensors and tokenizer.json. gpu=1
- * requires Metal; absence/failure is an error, never a silent CPU fallback. */
+ * requires the build's GPU backend: Metal on Apple, CUDA (an NVIDIA driver
+ * and NVRTC, opened at run time) on Linux. Absence/failure is an error,
+ * never a silent CPU fallback. */
 psionic_parakeet *psionic_parakeet_open(const char *dir,int gpu,char *err,size_t errcap);
+/* The device the open engine's encoder runs on: 0 CPU, 1 Apple Metal,
+ * 2 NVIDIA CUDA; -1 for an invalid handle. */
+int psionic_parakeet_device(psionic_parakeet *s);
 /* 16kHz mono f32 in [-1,1], 320..327520 samples (20ms minimum). OUT includes a NUL byte.
  * Success1/failure0. On failure OUT and the last successful snapshot stay
  * unchanged. Model/vocabulary are loaded once and reused across calls. */

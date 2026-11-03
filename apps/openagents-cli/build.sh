@@ -7,7 +7,8 @@
 # Network.framework on macOS; on Linux the system's OpenSSL 3, else OpenSSL from Nix).
 # The dictation host links the shared dictation controller
 # (apps/shared/dictation.coax, its own C unit) and Psionic's resident Parakeet
-# (psionic/platform/parakeet-build.sh: Metal on macOS, the CPU elsewhere), plus
+# (psionic/platform/parakeet-build.sh: Metal on macOS; on Linux CUDA, whose
+# driver and NVRTC it opens at run time, or the CPU), plus
 # CoreAudio and AVFoundation on macOS. It is its own program because the
 # engine's generated C and the CLI's signing code export the same names.
 set -euo pipefail
@@ -17,7 +18,7 @@ coax="${COAX:-$repo/coax/bin/coax}"
 if [[ "$(uname -s)" == Darwin ]]; then
   cc=(/usr/bin/clang -D_DARWIN_C_SOURCE); libs=(-framework Security -framework CoreFoundation)
   dlibs=(-framework AVFoundation -framework AudioToolbox -framework CoreAudio -framework Metal -framework Foundation); dmac=("$here/dictate-mac.m" -fobjc-arc)
-else cc=("${CC:-gcc}" -D_DEFAULT_SOURCE); libs=(-lpthread); dlibs=(); dmac=(); fi
+else cc=("${CC:-gcc}" -D_DEFAULT_SOURCE); libs=(-lpthread); dlibs=(-ldl); dmac=(); fi
 . "$p/tls-env.sh"
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > "$work/entropy.c"

@@ -225,7 +225,12 @@ tool_main :: () -> int #export_c {
     if has("gpu-linux", only) || only == "" {
       ok := run(cli, "--capture|fixture|--json|--device|gpu", bar(kb[..], fixture, stop, mdir, ""), false, "", -1, r[..]);
       out = cast(string) r[0].out[0..<r[0].out_n];
-      check(t[..], "gpu-linux: a named GPU never falls back to the CPU", r[..], ok && (tool_os() == TOOL_MAC || (r[0].status == 1 && has(out, "\"error\":\"model\",\"message\":\"this build has no Apple Metal backend\""))));
+      // Linux: CUDA recognizes the clip exactly, or, with no NVIDIA driver or
+      // NVRTC, the GPU is refused by name; it never falls back to the CPU.
+      gpu_ok := r[0].status == 0 && has(out, "\"type\":\"final\",\"text\":\"Wait, stop.\",\"exit\":0,\"samples\":44800,") && has(out, "\"device\":\"gpu\"");
+      gpu_refused := r[0].status == 1 && has(out, "\"error\":\"model\",\"message\":\"NVIDIA CUDA is unavailable");
+      check(t[..], "gpu-linux: a named GPU never falls back to the CPU", r[..], ok && (tool_os() == TOOL_MAC || gpu_ok || gpu_refused));
+      if gpu_ok { print("  %", out); }
     }
     if tool_os() != TOOL_MAC {
       pb: [8192] u8; pb2: [8192] u8; path := join2("PATH=", ndir, pb[..]);

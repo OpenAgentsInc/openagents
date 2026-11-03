@@ -1,0 +1,30 @@
+// The names a Parakeet result reports for the device that recognized it.
+// The host passes the device it actually ran on; an unknown device has no
+// name, so its output is refused rather than mislabelled.
+#authority;
+
+PK_DEVICE_CPU :: 0;    // the compensated binary64 CPU encoder
+PK_DEVICE_METAL :: 1;  // Apple Metal, tolerance-qualified f32
+PK_DEVICE_CUDA :: 2;   // NVIDIA CUDA, PARAKEET-CUDA-F32-v1
+
+#test "Parakeet devices have stable backend and device names, and unknown devices none" {
+ #assert pk_backend_name(PK_DEVICE_CPU)=="cpu-exact" && pk_device_name(PK_DEVICE_CPU)=="cpu";
+ #assert pk_backend_name(PK_DEVICE_METAL)=="metal" && pk_device_name(PK_DEVICE_METAL)=="apple-metal";
+ #assert pk_backend_name(PK_DEVICE_CUDA)=="cuda" && pk_device_name(PK_DEVICE_CUDA)=="nvidia-cuda";
+ for bad:[4]int.[-1,3,4,1000] {#assert pk_backend_name(bad)=="" && pk_device_name(bad)=="" && !pk_device_known(bad);}
+ for good:0..<3 {#assert pk_device_known(good);}
+}
+
+pk_device_known :: (device:int)->bool {return device>=PK_DEVICE_CPU && device<=PK_DEVICE_CUDA;}
+pk_backend_name :: (device:int)->string {
+ if device==PK_DEVICE_CPU {return "cpu-exact";}
+ if device==PK_DEVICE_METAL {return "metal";}
+ if device==PK_DEVICE_CUDA {return "cuda";}
+ return "";
+}
+pk_device_name :: (device:int)->string {
+ if device==PK_DEVICE_CPU {return "cpu";}
+ if device==PK_DEVICE_METAL {return "apple-metal";}
+ if device==PK_DEVICE_CUDA {return "nvidia-cuda";}
+ return "";
+}

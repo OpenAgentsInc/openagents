@@ -2,6 +2,7 @@
 // not model state. Cue times are TDT emission bounds, not word alignment.
 #load "../whisper/wav.coax";
 #load "../whisper/segments.coax";
+#load "backend.coax";
 #authority;
 
 PKFILE_MIN :: 320;
@@ -78,17 +79,25 @@ PkFileOptions :: struct {ok:bool;gpu:bool;format:int;dump:int= -1;}
 }
 #test "Parakeet file JSON framing preserves the legacy single-window snapshots" {
  out:[4096]u8;table:[WV_TABLE]f64;#assert pkfile_table(table[..]) && !pkfile_table(table[0..<1]);
- n:=pkfile_begin(2,320,true,out[..]);#assert cast(string)out[0..<n]=="WEBVTT\n\n";
- #assert pkfile_begin(0,320,false,out[..])==0 && pkfile_begin(3,320,true,out[..])>0;
- #assert pkfile_begin(3,320,false,out[0..<1])== -1;
+ n:=pkfile_begin(2,320,PK_DEVICE_METAL,out[..]);#assert cast(string)out[0..<n]=="WEBVTT\n\n";
+ #assert pkfile_begin(0,320,PK_DEVICE_CPU,out[..])==0 && pkfile_begin(3,320,PK_DEVICE_METAL,out[..])>0;
+ #assert pkfile_begin(3,320,PK_DEVICE_CPU,out[0..<1])== -1;
  n=pkfile_json_text("a\"b",true,out[..]);#assert cast(string)out[0..<n]==" a\\\"b";
  #assert pkfile_json_text("",false,out[..])==0 && pkfile_json_text("x",false,out[0..<1])== -1;
  tok:=[1]int.[7];frames:=[1]int.[0];n=pkfile_json_tail(320,2,1,tok[..],frames[..],out[..]);
  #assert cast(string)out[0..<n]=="\",\"feature_frames\":2,\"encoded_frames\":1,\"token_count\":1,\"tokens\":[7],\"frames\":[0],\"complete\":true}\n";
  n=pkfile_json_tail(327521,2,1,tok[..],frames[..],out[..]);#assert cast(string)out[0..<n]=="\",\"complete\":true}\n";
  #assert pkfile_json_tail(320,2,1,tok[..],frames[..],out[0..<1])== -1;
- #assert pkfile_begin(-1,320,true,out[..])== -1 && pkfile_begin(4,320,true,out[..])== -1 && pkfile_begin(0,319,true,out[..])== -1;
+ #assert pkfile_begin(-1,320,PK_DEVICE_METAL,out[..])== -1 && pkfile_begin(4,320,PK_DEVICE_METAL,out[..])== -1 && pkfile_begin(0,319,PK_DEVICE_METAL,out[..])== -1;
  n=pkfile_json_middle(out[..]);#assert cast(string)out[0..<n]=="],\"text\":\"";
+}
+#test "Parakeet file JSON names the device that ran, and refuses an unknown one" {
+ out:[4096]u8;head:="{\"schema\":\"openagents.parakeet.file.v1\",\"model\":\"nvidia/parakeet-tdt-0.6b-v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"backend\":";
+ tail:=",\"sample_rate\":16000,\"samples\":320,\"timing\":\"TDT emission frames:1280 samples; not acoustic word alignment\",\"segments\":[";
+ names:=[3]string.["\"cpu-exact\",\"device\":\"cpu\"","\"metal\",\"device\":\"apple-metal\"","\"cuda\",\"device\":\"nvidia-cuda\""];
+ for device:0..<3 {n:=pkfile_begin(3,320,device,out[..]);#assert n==head.count+names[device].count+tail.count;
+  #assert cast(string)out[0..<head.count]==head && cast(string)out[head.count..<head.count+names[device].count]==names[device] && cast(string)out[n-tail.count..<n]==tail;}
+ for bad:[3]int.[-1,3,7] {for format:0..<4 {#assert pkfile_begin(format,320,bad,out[..])== -1;}}
 }
 #test "Parakeet file global resampling phase equals the existing full-file oracle" {
  file:[4140]u8;mono:[1024]f32;full:[1024]f32;part:[251]f32;table:[WV_TABLE]f64;wv_table(table[..]);
@@ -173,13 +182,14 @@ pkfile_publish :: (completed:int,expected:int,cancelled:bool)->bool #export_c {r
 pkfile_cues :: (prior:int,text:string)->int #export_c {return prior+ifx text=="" then 0 else 1;}
 pkfile_dumps :: (parts:int,dump:int)->bool #export_c {return dump<0 || parts==1;}
 
-pkfile_begin :: (format:int,total:int,gpu:bool,out:[]u8)->int #export_c {
- if format<0 || format>3 || pkfile_chunks(total)<1 {return -1;}
+// device is PK_DEVICE_CPU, _METAL or _CUDA: the one the engine actually ran on.
+pkfile_begin :: (format:int,total:int,device:int,out:[]u8)->int #export_c {
+ if format<0 || format>3 || pkfile_chunks(total)<1 || !pk_device_known(device) {return -1;}
  w:[1]WsOut;w[0].buf=out;
  if format==2 {wsg_put(w[..],"WEBVTT\n\n");}
  else if format==3 {
-  wsg_put(w[..],"{\"schema\":\"openagents.parakeet.file.v1\",\"model\":\"nvidia/parakeet-tdt-0.6b-v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"backend\":");wsg_quoted(w[..],ifx gpu then "metal" else "cpu-exact");
-  wsg_put(w[..],",\"device\":");wsg_quoted(w[..],ifx gpu then "apple-metal" else "cpu");wsg_put(w[..],",\"sample_rate\":16000,\"samples\":");wsg_digits(w[..],total,1);wsg_put(w[..],",\"timing\":\"TDT emission frames:1280 samples; not acoustic word alignment\",\"segments\":[");
+  wsg_put(w[..],"{\"schema\":\"openagents.parakeet.file.v1\",\"model\":\"nvidia/parakeet-tdt-0.6b-v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"backend\":");wsg_quoted(w[..],pk_backend_name(device));
+  wsg_put(w[..],",\"device\":");wsg_quoted(w[..],pk_device_name(device));wsg_put(w[..],",\"sample_rate\":16000,\"samples\":");wsg_digits(w[..],total,1);wsg_put(w[..],",\"timing\":\"TDT emission frames:1280 samples; not acoustic word alignment\",\"segments\":[");
  }
  return ifx w[0].full then -1 else w[0].n;
 }

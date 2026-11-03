@@ -1,0 +1,89 @@
+// Parakeet's FastConformer encoder on an NVIDIA GPU: the kernels `coax cuda`
+// compiles for psionic/platform/parakeet-cuda.c. Every kernel but the
+// product is shared with the Metal profile (kernels.coax, and Whisper's
+// device-common.coax for the row norm). The product here is plain f32 SIMT
+// arithmetic: no tensor-core primitive, no BF16 rounding of the original f32
+// weights, no cuBLAS. fast.coax's pkf_encode schedules both profiles; only
+// the host's kernel table differs.
+//
+// Profile PARAKEET-CUDA-F32-v1: each product y = b + sum_k x[k] w[k] adds
+// its terms in f32 in ascending k, one rounding per operation
+// (--fmad=false), then adds the bias. The C build of this file is therefore
+// bit-identical to the device, and both are compared with the compensated
+// binary64 CPU encoder within the Metal profile's tolerance.
+//
+// Checks: coax test psionic/lib/parakeet/cuda.coax --library
+#load "kernels.coax";
+
+PKC_THREADS :: 128;
+PKC_ROWS :: 64;   // rows of x in one work item
+PKC_COLS :: 32;   // outputs in one work item
+PKC_STEP :: 32;   // inputs staged per step
+
+// Work items of pkc_linear: the same 64-row by 32-output tiling as
+// wd_linear, so fast.coax's launch counts serve both profiles.
+pkc_linear_items :: (rows:int,n_out:int)->int {return ((rows+PKC_ROWS-1)/PKC_ROWS)*((n_out+PKC_COLS-1)/PKC_COLS);}
+
+// y[r][o] = b[o] (when bias is 1) + sum_i x[r][i] w[o][i]. Item i is rows
+// 64 (i / tiles) and outputs 32 (i % tiles), tiles = ceil(n_out / 32).
+// Each step stages 32 inputs of the 64 rows input-major (xs[q*64+r]) and of
+// the 32 weight rows output-major (ws[c*32+q], read whole rows so the
+// weight stream is coalesced), zero past the edges. Warp w (threads
+// 32w..32w+31) owns outputs 8w..8w+7 and lane l owns rows l and l+32: the
+// lanes read consecutive xs elements and one shared ws element.
+pkc_linear :: (item:int,rows:int,n_in:int,n_out:int,bias:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c {
+ tiles:=(n_out+PKC_COLS-1)/PKC_COLS;r0:=item/tiles*PKC_ROWS;o0:=item%tiles*PKC_COLS;
+ xs:[2048]f32;ws:[1024]f32;acc:[2048]f32;
+ for thread:0..<PKC_THREADS {for c:0..<16 {acc[thread*16+c]=0;}}
+ for s:0..<(n_in+PKC_STEP-1)/PKC_STEP {
+  k0:=s*PKC_STEP;
+  for thread:0..<PKC_THREADS {
+   for i:0..<16 {e:=thread+PKC_THREADS*i;q:=e/PKC_ROWS;r:=e%PKC_ROWS;v:f32=0;if r0+r<rows && k0+q<n_in {v=x[(r0+r)*n_in+k0+q];}xs[thread+PKC_THREADS*i]=v;}
+   for i:0..<8 {e:=thread+PKC_THREADS*i;c:=e/PKC_STEP;q:=e%PKC_STEP;v:f32=0;if o0+c<n_out && k0+q<n_in {v=w[(o0+c)*n_in+k0+q];}ws[thread+PKC_THREADS*i]=v;}
+  }
+  for thread:0..<PKC_THREADS {
+   lane:=thread%32;warp:=thread/32;
+   for q:0..<PKC_STEP {
+    lo:=xs[q*PKC_ROWS+lane];hi:=xs[q*PKC_ROWS+lane+32];
+    for j:0..<8 {wv:=ws[(warp*8+j)*PKC_STEP+q];acc[thread*16+j]+=lo*wv;acc[thread*16+8+j]+=hi*wv;}
+   }
+  }
+ }
+ for thread:0..<PKC_THREADS {
+  lane:=thread%32;warp:=thread/32;
+  for half:0..<2 {for j:0..<8 {
+   r:=r0+lane+32*half;c:=o0+warp*8+j;
+   if r<rows && c<n_out {v:=acc[thread*16+8*half+j];if bias==1 {v+=b[c];}y[r*n_out+c]=v;}
+  }}
+ }
+}
+
+#test "the CUDA product adds every term in ascending order, then the bias, on ragged tiles" #steps 400000000 {
+ // 70 rows by 45 inputs by 37 outputs: both tilings clip at every edge.
+ rows:=70;ni:=45;no:=37;x:[3150]f32;w:[1665]f32;b:[37]f32;y:[2591]f32;
+ for i:0..<3150 {x[i]=f32((i*7)%19-9)*0.137;}
+ for i:0..<1665 {w[i]=f32((i*5)%23-11)*0.0731;}
+ for i:0..<37 {b[i]=f32(i%7)-3.5;}
+ for bias:0..<2 {
+  for i:0..<2591 {y[i]= -777;}
+  #assert pkc_linear_items(rows,no)==4;
+  for item:0..<pkc_linear_items(rows,no) {pkc_linear(item,rows,ni,no,bias,x[..],w[..],b[..],y[..]);}
+  for r:0..<rows {for o:0..<no {
+   s:f32=0;exact:f64=0;for k:0..<ni {s+=x[r*ni+k]*w[o*ni+k];exact+=f64(x[r*ni+k])*f64(w[o*ni+k]);}
+   if bias==1 {s+=b[o];exact+=f64(b[o]);}
+   #assert y[r*no+o]==s;
+   #assert abs(f64(y[r*no+o])-exact)<0.0001;
+  }}
+  #assert y[2590]== -777;
+ }
+}
+#test "the CUDA product writes nothing past its rows and outputs" #steps 400000000 {
+ rows:=3;ni:=33;no:=5;x:[99]f32;w:[165]f32;b:[5]f32;y:[24]f32;
+ for i:0..<99 {x[i]=f32(i%5)-2;}
+ for i:0..<165 {w[i]=f32(i%3)-1;}
+ for i:0..<24 {y[i]=12345;}
+ #assert pkc_linear_items(rows,no)==1 && pkc_linear_items(64,32)==1 && pkc_linear_items(65,32)==2 && pkc_linear_items(64,33)==2 && pkc_linear_items(129,1024)==96;
+ pkc_linear(0,rows,ni,no,1,x[..],w[..],b[..],y[..]);
+ for r:0..<rows {for o:0..<no {s:f32=0;for k:0..<ni {s+=x[r*ni+k]*w[o*ni+k];}#assert y[r*no+o]==s+b[o];}}
+ for i:15..<24 {#assert y[i]==12345;}
+}

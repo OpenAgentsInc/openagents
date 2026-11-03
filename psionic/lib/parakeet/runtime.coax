@@ -5,6 +5,7 @@
 #load "text.coax";
 #load "parallel.coax";
 #load "../whisper/wav.coax";
+#load "backend.coax";
 pkrt_layout :: (file:[]u8,nodes:[]JvNode,offsets:[]int)->PkRtStatus #export_c {
  if !pkmp_model_size(file.count) {return PkRtStatus.file;}base:=pkrt_header(file);if base<0 {return PkRtStatus.header;}
  status:=pkmp_layout(cast(string)file[8..<base],file.count-base,tdt_parakeet(),nodes,offsets);if status!=PkRtStatus.ok {return status;}for i:0..<723 {offsets[i]+=base;}return PkRtStatus.ok;
@@ -50,17 +51,22 @@ pkrt_wav :: (file:[]u8,mono:[]f32,out:[]f32)->int #export_c {
  info:=wv_info(file);if info.status!=WvStatus.ok || mono.count<info.frames {return -1;}if wv_mono(file,info,mono)<0 {return -1;}table:[WV_TABLE]f64;wv_table(table[..]);return wv_resample(mono[0..<info.frames],info.rate,table[..],out);
 }
 // Format metadata and token/frame snapshots in Coax; the host only writes it.
-pkrt_json :: (text:string,gpu:bool,samples:int,stats:[]int,tokens:[]int,frames:[]int,out:[]u8)->int #export_c {
- if stats.count<4 || stats[1]<0 || stats[1]>tokens.count || stats[1]>frames.count {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);
+// device is PK_DEVICE_CPU, _METAL or _CUDA (backend.coax): the one that ran.
+pkrt_json :: (text:string,device:int,samples:int,stats:[]int,tokens:[]int,frames:[]int,out:[]u8)->int #export_c {
+ if !pk_device_known(device) || stats.count<4 || stats[1]<0 || stats[1]>tokens.count || stats[1]>frames.count {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);
  jo_key(o[..],"text");jo_str(o[..],text);jo_key(o[..],"model");jo_str(o[..],"nvidia/parakeet-tdt-0.6b-v3");jo_key(o[..],"revision");jo_str(o[..],TDT_PINNED_REVISION);
- jo_key(o[..],"backend");jo_str(o[..],ifx gpu then "metal" else "cpu-exact");jo_key(o[..],"device");jo_str(o[..],ifx gpu then "apple-metal" else "cpu");jo_key(o[..],"samples");jo_int(o[..],samples);
+ jo_key(o[..],"backend");jo_str(o[..],pk_backend_name(device));jo_key(o[..],"device");jo_str(o[..],pk_device_name(device));jo_key(o[..],"samples");jo_int(o[..],samples);
  jo_key(o[..],"feature_frames");jo_int(o[..],stats[2]);jo_key(o[..],"encoded_frames");jo_int(o[..],stats[3]);jo_key(o[..],"token_count");jo_int(o[..],stats[1]);
  jo_key(o[..],"tokens");jo_arr(o[..]);for i:0..<stats[1] {jo_int(o[..],tokens[i]);}jo_end(o[..]);jo_key(o[..],"frames");jo_arr(o[..]);for i:0..<stats[1] {jo_int(o[..],frames[i]);}jo_end(o[..]);jo_end(o[..]);if o[0].bad {return -1;}return o[0].n;
 }
 #test "Parakeet runtime JSON escapes text and records exact token frame metadata" {
- out:[2048]u8;stats:=[4]int.[4,2,11,2];tokens:=[2]int.[7,9];frames:=[2]int.[0,1];n:=pkrt_json("x\"\ny",true,1600,stats[..],tokens[..],frames[..],out[..]);#assert n>0;
+ out:[2048]u8;stats:=[4]int.[4,2,11,2];tokens:=[2]int.[7,9];frames:=[2]int.[0,1];n:=pkrt_json("x\"\ny",PK_DEVICE_METAL,1600,stats[..],tokens[..],frames[..],out[..]);#assert n>0;
  nodes:[64]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]);#assert jv_int(d[0],jv_path(d[0],0,"tokens[1]"),-1)==9 && jv_int(d[0],jv_path(d[0],0,"frames[1]"),-1)==1;
- #assert pkrt_json("x",false,1,stats[..],tokens[..],frames[..],out[0..<4])== -1;
+ #assert pkrt_json("x",PK_DEVICE_CPU,1,stats[..],tokens[..],frames[..],out[0..<4])== -1;
+ names:=[3]string.["\"backend\":\"cpu-exact\",\"device\":\"cpu\"","\"backend\":\"metal\",\"device\":\"apple-metal\"","\"backend\":\"cuda\",\"device\":\"nvidia-cuda\""];
+ for device:0..<3 {n=pkrt_json("x",device,1600,stats[..],tokens[..],frames[..],out[..]);#assert n>0;found:=false;s:=cast(string)out[0..<n];
+  for at:0..<n-names[device].count {if s[at..<at+names[device].count]==names[device] {found=true;}}#assert found;}
+ #assert pkrt_json("x",3,1600,stats[..],tokens[..],frames[..],out[..])== -1 && pkrt_json("x",-1,1600,stats[..],tokens[..],frames[..],out[..])== -1;
 }
 
 pkrt_audio_count :: (samples:int)->bool #export_c {return pk_front_plan(samples).ok;}
