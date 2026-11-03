@@ -9,21 +9,25 @@
 //   - F8 puts the desk in the world: on the screen the realm stands for it (the Grid's, a few metres
 //     ahead), drawn where the realm says that screen is this frame, so it moves as you walk.
 //     There the keyboard stays the realm's (you walk up to it); the pointer over it is the desk's.
+//   - F7 is your voice: pressed, the session listens; pressed again, what you said is typed into the
+//     desk's focused program (the agent you opened with T) and sent.
 //   - While the desk shows docked or flat, the keyboard is the desk's (the toggles excepted); the
 //     pointer is the desk's over the panel and the realm's elsewhere.
 // Library: vk-realm.c calls these through the C the Coax compiler makes (verse-panel.h).
 
 PANEL_CLOSED :: 0; PANEL_DOCKED :: 1; PANEL_FLAT :: 2; PANEL_WORLD :: 3;
+PANEL_KEY_VOICE :: 65;   // evdev KEY_F7: talk to the desk's focused program (an agent), pressed again to send
 PANEL_KEY_WORLD :: 66;   // evdev KEY_F8
 PANEL_KEY_DOCK :: 67;    // evdev KEY_F9
 PANEL_KEY_FLAT :: 68;    // evdev KEY_F10
-PANEL_TO_REALM :: 0; PANEL_TO_DESK :: 1; PANEL_TOGGLE :: 2;
+PANEL_TO_REALM :: 0; PANEL_TO_DESK :: 1; PANEL_TOGGLE :: 2; PANEL_VOICE :: 3;
 // the constants, for the host (a header carries procedures, not constants)
 verse_panel_closed :: () -> int #export_c { return PANEL_CLOSED; }
 verse_panel_flat :: () -> int #export_c { return PANEL_FLAT; }
 verse_panel_world :: () -> int #export_c { return PANEL_WORLD; }
 verse_panel_toggle :: () -> int #export_c { return PANEL_TOGGLE; }
 verse_panel_to_desk :: () -> int #export_c { return PANEL_TO_DESK; }
+verse_panel_voice :: () -> int #export_c { return PANEL_VOICE; }
 
 // The mode after a key press (evdev code), and whether that key was a toggle.
 verse_panel_next :: (mode: int, code: int) -> int #export_c {
@@ -34,6 +38,7 @@ verse_panel_next :: (mode: int, code: int) -> int #export_c {
 }
 // Where a key goes: the toggles are the panel's own, the rest the desk's while it shows.
 verse_panel_key_to :: (mode: int, code: int) -> int #export_c {
+  if code == PANEL_KEY_VOICE { return PANEL_VOICE; }   // in every mode: your voice to the desk
   if code == PANEL_KEY_DOCK || code == PANEL_KEY_FLAT || code == PANEL_KEY_WORLD { return PANEL_TOGGLE; }
   return ifx mode == PANEL_CLOSED || mode == PANEL_WORLD then PANEL_TO_REALM else PANEL_TO_DESK;
 }
@@ -51,6 +56,8 @@ verse_panel_key_to :: (mode: int, code: int) -> int #export_c {
   #assert verse_panel_key_to(PANEL_FLAT, 1) == PANEL_TO_DESK && verse_panel_key_to(PANEL_CLOSED, PANEL_KEY_DOCK) == PANEL_TOGGLE;
   #assert verse_panel_key_to(PANEL_FLAT, PANEL_KEY_FLAT) == PANEL_TOGGLE;
   #assert verse_panel_key_to(PANEL_WORLD, 17) == PANEL_TO_REALM && verse_panel_key_to(PANEL_WORLD, PANEL_KEY_WORLD) == PANEL_TOGGLE;
+  #assert verse_panel_key_to(PANEL_CLOSED, PANEL_KEY_VOICE) == PANEL_VOICE && verse_panel_key_to(PANEL_FLAT, PANEL_KEY_VOICE) == PANEL_VOICE;
+  #assert verse_panel_next(PANEL_DOCKED, PANEL_KEY_VOICE) == PANEL_DOCKED;
 }
 
 // The panel's rectangle on a W x H screen for a DW x DH desk, in whole pixels, as x0 y0 x1 y1 (k 0..3):

@@ -215,6 +215,12 @@ static int vkdesk_key(int code, int pressed) {
     if (pressed) { d->mode = verse_panel_next(d->mode, code); fprintf(stderr, "vk-realm: the desk is %s\n", d->mode == PANEL_CLOSED ? "closed" : d->mode == PANEL_FLAT ? "flat" : d->mode == PANEL_WORLD ? "in the world" : "docked"); }
     return 1;
   }
+  if (to == verse_panel_voice()) {
+    // the session listens and types what it heard (os/verse-session.coax "voice"); a press each way
+    const char *run = getenv("VERSE_RUN");
+    if (pressed && run) { char path[1100]; snprintf(path, sizeof path, "%s/requests", run); FILE *f = fopen(path, "a"); if (f) { fputs("voice\n", f); fclose(f); } fprintf(stderr, "vk-realm: voice\n"); }
+    return 1;
+  }
   if (to != PANEL_TO_DESK) return 0;
   char cmd[64];
   snprintf(cmd, sizeof cmd, "keydown %d %d\n", code, pressed ? 1 : 0);
