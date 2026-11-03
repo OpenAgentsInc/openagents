@@ -1,9 +1,32 @@
 # Everglade map gap analysis
 
-Status: spec, November 3, 2026. Compares the previous engine's illustrated
+Status: in progress since wave 1, November 3, 2026. Compares the previous engine's illustrated
 Everglade map with the Everglade that runs today at
 https://openagents.com/worlds/everglade, and orders the work to close the
 gaps.
+
+## Progress
+
+Wave 1 (November 3, 2026) covers step 1, most of steps 2 and 3, and a
+first pass at steps 5 and 7:
+
+- The world is 352 m across. The walk bound is 168 m from the middle, so
+  the clearing is about 272 m wide inside the trees. The river moved out
+  with the edge.
+- The palisade stays as the old town centre. Outside it, an inner Commons
+  Loop and its roundabouts join the gates to eight districts: the Great Lawn,
+  Main Street, Stoop Lane, the Foundry, the Makers' Quarter, the
+  Scholars' Quarter, the Lantern Quarter and Brownstone Row.
+- Lantern Pond (22 m across) and the Reed Pond lie on the great lawn with
+  park trees and a boathouse. The Thinking Pond and the Fern Pond moved
+  out to Walden Woods and Fernhollow.
+- 44 district buildings from the Quaternius kits: a landmark for each
+  district and rows of houses. Their doors open onto dark halls. They have
+  no rooms yet.
+- Six new townsfolk live and work in the districts.
+
+Steps 4, 6, 8 and 9 are still open, as are interiors for the district
+buildings and a generator for many more houses (step 7).
 
 ## Sources
 

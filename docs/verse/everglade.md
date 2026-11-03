@@ -42,8 +42,14 @@ python3 verse/everglade/map.py --times
 - Metres. North is +z and the fountain is the origin. The axes are the
   engine's (yaw 0 faces +z, a quarter turn faces +x), so +x is **west**:
   seen from above with north up, +x is to the left, as on the map.
-- The ground is 208 m square (104 cells of 2 m); you may walk 200 m of it.
-- The palisade encloses 127 m east to west and 115 m north to south. Its
+- The ground is 352 m square (176 cells of 2 m); you may walk 336 m of it
+  (`EG_BOUND`, 168 m from the fountain). Wave 1 of the expansion
+  (2026-11-03) grew it from 208 m, as the previous engine's first expansion
+  doubled its clearing.
+- The town is open ground 280 m square with its corners rounded to 40 m
+  (`EG_TOWN`, `everglade_in_town`); the woods ring it out to the edge.
+- The palisade, round the old town in the middle, encloses 127 m east to
+  west and 115 m north to south. Its
   timber walls are 4.5 m high and 0.8 m thick; the gate towers are 7 to
   7.5 m.
 - Streets and trails are 3 m wide. Buildings keep at least 2 m from each
@@ -84,6 +90,30 @@ python3 verse/everglade/map.py --times
 | **The crypt** | North-west, off the North Trail's fork | 8 × 6 m | A crypt door; a dungeon later (the Haunted House is the first one a quest can send you to). |
 | **The river crossing** | West, past the West Gate | a 4 m river and a bridge | The ferryman on the far bank. The river runs the length of the world in a carved bed; you cross by the bridge, or wade and swim across in the glade beside it. |
 | Houses | Six plots round the streets | 8 to 10 m a side | Homes for the city's people (eg-people), filler that keeps the streets streets. |
+
+### Outside the palisade (wave 1)
+
+The old town stays the walled centre. Its four gates open onto the
+**Commons Loop**, a ring road round the walls with six roundabouts, and the
+districts stand outside it. Their 44 houses (`EG_DHOUSE`) are the same kit
+walls and roofs as the old town's, one storey or two, plaster or brick.
+Each has a door that opens (`DOOR_DHOUSE + h`) on a dark hall, as the
+crypt's does; you can't go into them yet.
+
+| Place | Where | What is there |
+| --- | --- | --- |
+| **The Great Lawn** (`#lawn`) | South of the South Gate, inside the loop | Open grass with 20 park trees, the Reed Pond and Lantern Pond, and the boathouse on Lantern Pond's north bank; the boatwright. |
+| **Main Street** (`#main-street`) | North from the north roundabout | Five shops (Bakery, Bookshop, Grocer, Tailor, Chandler) and the Market Hall; the market warden. |
+| **Stoop Lane** (`#stoop-lane`) | West off Main Street | Six row houses. |
+| **The Foundry** (`#foundry`) | East, on Foundry Road | The Foundry Barn and six workshops; the foundry master. |
+| **Makers' Quarter** (`#makers`) | North-east, on Studio Road | The Makers' Hall, the Boardwalk and four studios; a woodcarver. |
+| **Scholars' Quarter** (`#scholars`) | South-east, on Library Way | The Stacks, the Old College and four houses; the librarian. |
+| **Lantern Quarter** (`#lantern-quarter`) | West, across the bridge on Lantern Road | The Music Hall, the Fiddle, the Snug, the Lamplighter and the Meeting Hall; a fiddler. |
+| **Brownstone Row** (`#brownstone-row`) | South-west, off Lantern Road | Three brownstones and three row houses. |
+
+The trails' ends moved out with the edge: the deep wood's waystone to
+(-149, 20), the ruins to (22, 152), the crypt to (66, 152), and two ponds
+(Thinking Pond and Fern Pond) to clearings in the far corners.
 
 ## Walking times
 
@@ -386,7 +416,7 @@ What differs from the old Everglade, and why:
 
 ## The forest
 
-Past a 6 m apron of open grass round the palisade, everything is woods
+Past the open town (`everglade_in_town`), everything is woods
 (`everglade_in_woods` in `plan.coax`) but the trails, 3 m either side of
 their middle, and six clearings where they end: the stables, where you
 arrive on the road in, the deep wood's waystone, the ruins, the crypt and
@@ -399,7 +429,7 @@ invisible wall stands short of visible geometry (the reach check,
 `everglade_unreached`, fills from the spawn over the whole map and its test
 fails on any patch of open ground left over).
 
-- **The edge:** 100 m from the middle (`EG_BOUND`) a thicket runs all the
+- **The edge:** 168 m from the middle (`EG_BOUND`) a thicket runs all the
   way round, two rows of `Bush_Common_Flowers` whose leaves reach the bound
   and a row of close-set trees behind them, with rocks across the river
   where it runs out (`plant_thicket`). You stop at the brush.
@@ -437,11 +467,16 @@ The checks (`plan.coax`):
 
 - **Nothing overlaps:** buildings keep 2 m apart and from the palisade,
   props 1 m; only the stables stand outside the walls; the palisade's pieces
-  meet without overlapping.
+  meet without overlapping. The districts' houses keep 2 m from each other,
+  the buildings and the palisade, stand inside the open town and outside
+  the walls, have whole 2 m wall modules, and keep their doors' spots 1 m
+  out and clear of the ponds' carved beds. The lawn's trees keep off every
+  path, pond and solid.
 - **The streets keep clear:** every link of the path graph keeps 0.5 m
   clear of every solid on either side of its 3 m strip.
 - **The paths connect:** one network from the South Gate; a link runs
-  through the middle of every gate; the river trail crosses on the bridge.
+  through the middle of every gate; the river trail crosses on the bridge;
+  each of the Commons Loop's six roundabouts joins three ways or more.
 - **Everything is reachable on foot:** a half-metre grid of the world, each
   solid widened by a walker's radius, filled from the road in, reaches every
   door, every character, every path node, every gate, the quest board, the
@@ -454,10 +489,13 @@ The checks (`plan.coax`):
   deck and off it within the trails' slope.
 - **The palisade keeps you in** but for its four gates.
 - **The woods keep you to the trails:** no cell in the woods is reachable,
-  straight out from each wall the forest stops you inside the apron, the
-  far bank is reached by the bridge and every trail stays open to its end.
-- **The ground** is level under each building and square, rises into the
-  forest, and no street or trail climbs steeper than 1 in 5.
+  the open town is reachable to its edge (the lawn, the districts, the far
+  bank), past it the forest stops you between the trails, and every trail
+  stays open to its end.
+- **The ground** is level under each building, house and square, rises
+  into the forest, and no street or trail climbs steeper than 1 in 5. A row
+  of houses whose flats meet stands on one level, so no later flat tilts an
+  earlier house.
 
 ## The buildings
 

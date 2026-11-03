@@ -1,26 +1,27 @@
 # Everglade
 
-Everglade, the forest city, at https://openagents.com/worlds/everglade. The whole city at its real size, built from art kits: timber and plaster houses with tiled roofs inside a log palisade, standing in a forest of kit trees. Seven of its buildings can be walked into. The plan is https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/everglade.md and its map https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/everglade-map.svg.
+Everglade, the forest city, at https://openagents.com/worlds/everglade. The whole city at its real size, built from art kits: an old town of timber and plaster houses with tiled roofs inside a log palisade, new districts round it, and a forest of kit trees all round. Seven of its buildings can be walked into. The plan is https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/everglade.md and its map https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/everglade-map.svg.
 
 ## What is here
 
-- The road in from the south, past the stables, to the South Gate in a timber palisade. Three more gates lead out: east to the deep wood, west to the river crossing, north to the ruins and the crypt.
+- The road in from the south, past the stables, to the South Gate in a timber palisade round the old town. Its four gates open onto the Commons Loop, a ring road round the walls.
+- Outside the walls: the Great Lawn to the south with Lantern Pond, the Reed Pond and the boathouse; Main Street to the north with its shops, the Market Hall and Stoop Lane; the Foundry to the east; the Makers' Quarter to the north-east; the Scholars' Quarter to the south-east with the Stacks and the Old College; and across the bridge, the Lantern Quarter with its Music Hall and Brownstone Row. Their houses' doors open, but you can't go in yet.
 - The commons in the middle: the fountain and the town crier.
 - The market to the west: six stalls, the general store, the smithy and the alchemist.
 - The inn on Inn Street, between the gate and the commons.
 - Rooms you can walk into: the inn (tables, a hearth, a stair), the general store, the smithy, the alchemist, the fighters' hall, the rangers' lodge and the temple. Their doors open and shut with E.
 - Guild Row to the east: the fighters' hall and the rangers' lodge; the mages' tower stands to the north-east.
 - Temple Hill to the north: the temple and the observatory.
-- The forest all round: past a strip of open grass outside the walls the trees stand too thick to walk into, so the only ways out are the trails, to clearings at the stables, the deep wood's waystone, the ruins, the crypt and the river's far bank, and the river's glade by the bridge. Bushes, ferns and rocks line the trees' edge.
-- The river past the West Gate runs the length of the world in a carved bed. Cross by the bridge, or wade and swim across in the glade beside it: half speed in the water, the current carries you, hold C to dive. Under water you hold your breath for a minute; then you tire, and if you stay down too long you come to on the bank. Ducks and lily pads float on it.
+- The forest all round the town: past its edge the trees stand too thick to walk into, so the only ways out are the trails, to clearings at the deep wood's waystone, the ruins, the crypt and two far ponds. Bushes, ferns and rocks line the trees' edge.
+- The river west of the walls runs the length of the world in a carved bed. Cross by the bridge, or wade and swim across in the glade beside it: half speed in the water, the current carries you, hold C to dive. Under water you hold your breath for a minute; then you tire, and if you stay down too long you come to on the bank. Ducks and lily pads float on it.
 - You walk as the Ranger, the hooded green ranger you were in the previous Everglade, with its walk, run, jump and idle.
-- The city's people, as plain figures, and three cats: the gate guards Bram and Tilda, Pip the stable hand, Oswin the crier, Marta at the inn, Hollis at the general store, the stallholders Fern, Ada and Quill, Garrick the smith, Isolde the alchemist, Rook and Sable of the guilds, Elowen the archmage, Brother Anselm at the temple, Vega the astronomer, Moss the woodwarden, Old Tam the ferryman, Corin among the ruins, and the cats Pebble, Soot and Wisp.
+- The city's people, as plain figures, and three cats: the gate guards Bram and Tilda, Pip the stable hand, Oswin the crier, Marta at the inn, Hollis at the general store, the stallholders Fern, Ada and Quill, Garrick the smith, Isolde the alchemist, Rook and Sable of the guilds, Elowen the archmage, Brother Anselm at the temple, Vega the astronomer, Moss the woodwarden, Old Tam the ferryman, Corin among the ruins, and in the districts Warden Hale at the Market Hall, Lark the fiddler, Mistress Wren at the Stacks, Dunstan at the Foundry, Tamsin the woodcarver and Old Haddon the boatwright, and the cats Pebble, Soot and Wisp.
 
 ## Talking to people
 
 Walk up to anyone and press E (on a phone, tap TALK). Type what you want to say and press Enter; they answer as themselves. Esc or BYE ends it. They remember you: tell Marta your name or what you like, come back another day, and she can bring it up. What you say to one of them is kept for that one only, against this browser's player key (the same one the Haunted House uses).
 
-Names float over each place as you come near. The city is about 130 metres across inside its walls: half a minute's walk from the South Gate to the temple.
+Names float over each place as you come near. The old town is about 130 metres across inside its walls: half a minute's walk from the South Gate to the temple. The whole town is 280 metres across.
 
 ## Playing with others
 
@@ -35,7 +36,7 @@ Names float over each place as you come near. The city is about 130 metres acros
 - Phone: your left thumb walks, your right thumb turns the camera, a tap jumps, MAP at the top right shows the city from above.
 - A reload puts you back where you were, facing the same way, inside or out. Logged in, the same place follows you to another device. A link with a place in it (`#commons`, `#in-inn`) starts you there instead.
 - A link can start you beside someone, near enough to talk: `#marta`, `#old-tam`, `#pebble` and so on, by their name.
-- A link can start you at a place: `#commons`, `#market`, `#guilds`, `#temple`, `#observatory`, `#inn`, `#road`, `#deep-wood`, `#ruins`, `#crypt`, `#river`, `#gate`, `#north-gate`; inside a building: `#in-inn`, `#in-store`, `#in-smithy`, `#in-alchemist`, `#in-fighters`, `#in-rangers`, `#in-temple`, `#in-mages`, `#in-observatory`, `#in-stables`, `#in-house-1` to `#in-house-6`; `#above` opens on the map.
+- A link can start you at a place: `#commons`, `#market`, `#guilds`, `#temple`, `#observatory`, `#inn`, `#road`, `#deep-wood`, `#ruins`, `#crypt`, `#river`, `#gate`, `#north-gate`, `#lawn`, `#main-street`, `#stoop-lane`, `#foundry`, `#makers`, `#scholars`, `#lantern-quarter`, `#brownstone-row`; inside a building: `#in-inn`, `#in-store`, `#in-smithy`, `#in-alchemist`, `#in-fighters`, `#in-rangers`, `#in-temple`, `#in-mages`, `#in-observatory`, `#in-stables`, `#in-house-1` to `#in-house-6`; `#above` opens on the map.
 - Players can't change Everglade. An admin logged in at /login gets EDIT by MAP (B): a hotbar of crates, barrels, benches, fences and stalls (1 to 5), a click or tap picks a placed thing to move (arrows), turn (R), resize (+ and -) or delete, or one of the city's people or cats to delete, with UNDO (Z), REDO (Y), ORIGINAL (the designed city back, everyone in it) and DONE. An admin also gets TALK, left of EDIT (hold V, or press and hold on a phone) and edits by voice: "put two barrels here", "remove that", "remove these crates", "remove Marta", "undo". Everyone sees the edits.
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
