@@ -1,0 +1,825 @@
+// Copyright (c) 2009-2010 Satoshi Nakamoto
+// Copyright (c) 2009-present The Bitcoin Core developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
+#ifndef BITCOIN_COINS_H
+#define BITCOIN_COINS_H
+
+#include <attributes.h>
+#include <compressor.h>
+#include <core_memusage.h>
+#include <crypto/siphash.h>
+#include <memusage.h>
+#include <primitives/transaction.h>
+#include <primitives/transaction_identifier.h>
+#include <serialize.h>
+#include <support/allocators/pool.h>
+#include <uint256.h>
+#include <util/check.h>
+#include <util/log.h>
+#include <util/not_null.h>
+#include <util/overflow.h>
+
+#include <atomic>
+#include <cassert>
+#include <cstdint>
+#include <functional>
+#include <future>
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+class CBlock;
+class ThreadPool;
+
+/**
+ * A UTXO entry.
+ *
+ * Serialized format:
+ * - VARINT((height << 1) | (coinbase ? 1 : 0))
+ * - the non-spent CTxOut (via TxOutCompression)
+ */
+class Coin
+{
+public:
+    //! unspent transaction output
+    CTxOut out;
+
+    //! whether containing transaction was a coinbase
+    bool fCoinBase : 1;
+
+    //! at which height this containing transaction was included in the active block chain
+    uint32_t nHeight : 31;
+
+    //! construct a Coin from a CTxOut and height/coinbase information.
+    Coin(CTxOut&& outIn, int nHeightIn, bool fCoinBaseIn) : out(std::move(outIn)), fCoinBase(fCoinBaseIn), nHeight(nHeightIn) {}
+    Coin(const CTxOut& outIn, int nHeightIn, bool fCoinBaseIn) : out(outIn), fCoinBase(fCoinBaseIn),nHeight(nHeightIn) {}
+
+    void Clear() {
+        out.SetNull();
+        fCoinBase = false;
+        nHeight = 0;
+    }
+
+    //! empty constructor
+    Coin() : fCoinBase(false), nHeight(0) { }
+
+    bool IsCoinBase() const {
+        return fCoinBase;
+    }
+
+    template<typename Stream>
+    void Serialize(Stream &s) const {
+        assert(!IsSpent());
+        uint32_t code{(uint32_t{nHeight} << 1) | uint32_t{fCoinBase}};
+        ::Serialize(s, VARINT(code));
+        ::Serialize(s, Using<TxOutCompression>(out));
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream &s) {
+        uint32_t code = 0;
+        ::Unserialize(s, VARINT(code));
+        nHeight = code >> 1;
+        fCoinBase = code & 1;
+        ::Unserialize(s, Using<TxOutCompression>(out));
+    }
+
+    /** Either this coin never existed (see e.g. coinEmpty in coins.cpp), or it
+      * did exist and has been spent.
+      */
+    bool IsSpent() const {
+        return out.IsNull();
+    }
+
+    size_t DynamicMemoryUsage() const {
+        return memusage::DynamicUsage(out.scriptPubKey);
+    }
+};
+
+struct CCoinsCacheEntry;
+using CoinsCachePair = std::pair<const COutPoint, CCoinsCacheEntry>;
+
+/**
+ * A Coin in one level of the coins database caching hierarchy.
+ *
+ * A coin can either be:
+ * - unspent or spent (in which case the Coin object will be nulled out - see Coin.Clear())
+ * - DIRTY or not DIRTY
+ * - FRESH or not FRESH
+ *
+ * Out of these 2^3 = 8 states, only some combinations are valid:
+ * - unspent, FRESH, DIRTY (e.g. a new coin created in the cache)
+ * - unspent, not FRESH, DIRTY (e.g. a coin changed in the cache during a reorg)
+ * - unspent, not FRESH, not DIRTY (e.g. an unspent coin fetched from the parent cache)
+ * - spent, not FRESH, DIRTY (e.g. a coin is spent and spentness needs to be flushed to the parent)
+ */
+struct CCoinsCacheEntry
+{
+private:
+    /**
+     * These are used to create a doubly linked list of flagged entries.
+     * They are set in SetDirty, SetFresh, and unset in SetClean.
+     * A flagged entry is any entry that is either DIRTY, FRESH, or both.
+     *
+     * DIRTY entries are tracked so that only modified entries can be passed to
+     * the parent cache for batch writing. This is a performance optimization
+     * compared to giving all entries in the cache to the parent and having the
+     * parent scan for only modified entries.
+     */
+    CoinsCachePair* m_prev{nullptr};
+    CoinsCachePair* m_next{nullptr};
+    uint8_t m_flags{0};
+
+    //! Adding a flag requires a reference to the sentinel of the flagged pair linked list.
+    static void AddFlags(uint8_t flags, CoinsCachePair& pair, CoinsCachePair& sentinel) noexcept
+    {
+        Assume(flags & (DIRTY | FRESH));
+        if (!pair.second.m_flags) {
+            Assume(!pair.second.m_prev && !pair.second.m_next);
+            pair.second.m_prev = sentinel.second.m_prev;
+            pair.second.m_next = &sentinel;
+            sentinel.second.m_prev = &pair;
+            pair.second.m_prev->second.m_next = &pair;
+        }
+        Assume(pair.second.m_prev && pair.second.m_next);
+        pair.second.m_flags |= flags;
+    }
+
+public:
+    Coin coin; // The actual cached data.
+
+    enum Flags {
+        /**
+         * DIRTY means the CCoinsCacheEntry is potentially different from the
+         * version in the parent cache. Failure to mark a coin as DIRTY when
+         * it is potentially different from the parent cache will cause a
+         * consensus failure, since the coin's state won't get written to the
+         * parent when the cache is flushed.
+         */
+        DIRTY = (1 << 0),
+        /**
+         * FRESH means the parent cache does not have this coin or that it is a
+         * spent coin in the parent cache. If a FRESH coin in the cache is
+         * later spent, it can be deleted entirely and doesn't ever need to be
+         * flushed to the parent. This is a performance optimization. Marking a
+         * coin as FRESH when it exists unspent in the parent cache will cause a
+         * consensus failure, since it might not be deleted from the parent
+         * when this cache is flushed.
+         */
+        FRESH = (1 << 1),
+    };
+
+    CCoinsCacheEntry() noexcept = default;
+    explicit CCoinsCacheEntry(Coin&& coin_) noexcept : coin(std::move(coin_)) {}
+    ~CCoinsCacheEntry()
+    {
+        SetClean();
+    }
+
+    static void SetDirty(CoinsCachePair& pair, CoinsCachePair& sentinel) noexcept { AddFlags(DIRTY, pair, sentinel); }
+    static void SetFresh(CoinsCachePair& pair, CoinsCachePair& sentinel) noexcept { AddFlags(FRESH, pair, sentinel); }
+
+    void SetClean() noexcept
+    {
+        if (!m_flags) return;
+        m_next->second.m_prev = m_prev;
+        m_prev->second.m_next = m_next;
+        m_flags = 0;
+        m_prev = m_next = nullptr;
+    }
+    bool IsDirty() const noexcept { return m_flags & DIRTY; }
+    bool IsFresh() const noexcept { return m_flags & FRESH; }
+
+    //! Only call Next when this entry is DIRTY, FRESH, or both
+    CoinsCachePair* Next() const noexcept
+    {
+        Assume(m_flags);
+        return m_next;
+    }
+
+    //! Only call Prev when this entry is DIRTY, FRESH, or both
+    CoinsCachePair* Prev() const noexcept
+    {
+        Assume(m_flags);
+        return m_prev;
+    }
+
+    //! Only use this for initializing the linked list sentinel
+    void SelfRef(CoinsCachePair& pair) noexcept
+    {
+        Assume(&pair.second == this);
+        m_prev = &pair;
+        m_next = &pair;
+        // Set sentinel to DIRTY so we can call Next on it
+        m_flags = DIRTY;
+    }
+};
+
+/**
+ * SipHash-1-3-UJ based hasher for the coins cache and related coins containers.
+ *
+ * Retained entries identify real transaction outputs, so their keys contain computed txids.
+ * Missing-input lookups may contain arbitrary claimed prevouts, but FetchCoin() immediately
+ * erases their temporary entries when the backend lookup fails, so non-hash keys cannot
+ * accumulate.
+ *
+ * The assumeutxo loader assumes snapshot txids are valid while loading and verifies the
+ * complete snapshot's content hash before activation.
+ *
+ * Hash values are process-local and must not be persisted, serialized, or compared across
+ * processes.
+ *
+ * Having the hash noexcept lets libstdc++ recalculate it during rehash instead of storing it in
+ * each node.
+ */
+class SaltedCoinsCacheHasher
+{
+    const SipHasher13UJ m_hasher;
+
+public:
+    SaltedCoinsCacheHasher(bool deterministic = false);
+
+    /** Hash a transaction ID, itself a cryptographic hash, as one jumbo block. */
+    size_t operator()(const Txid& id) const noexcept
+    {
+        return m_hasher.Hash(id.ToUint256());
+    }
+
+    /** Hash an outpoint as its txid jumbo block followed by the zero-extended index as one normal block. */
+    size_t operator()(const COutPoint& id) const noexcept
+    {
+        return m_hasher.Hash(id.hash.ToUint256(), uint64_t{id.n});
+    }
+};
+
+/**
+ * PoolAllocator's MAX_BLOCK_SIZE_BYTES parameter here uses sizeof the data, and adds the size
+ * of 4 pointers. We do not know the exact node size used in the std::unordered_node implementation
+ * because it is implementation defined. Most implementations have an overhead of 1 or 2 pointers,
+ * so nodes can be connected in a linked list, and in some cases the hash value is stored as well.
+ * Using an additional sizeof(void*)*4 for MAX_BLOCK_SIZE_BYTES should thus be sufficient so that
+ * all implementations can allocate the nodes from the PoolAllocator.
+ */
+using CCoinsMap = std::unordered_map<COutPoint,
+                                     CCoinsCacheEntry,
+                                     SaltedCoinsCacheHasher,
+                                     std::equal_to<COutPoint>,
+                                     PoolAllocator<CoinsCachePair,
+                                                   sizeof(CoinsCachePair) + sizeof(void*) * 4>>;
+
+using CCoinsMapMemoryResource = CCoinsMap::allocator_type::ResourceType;
+
+/** Cursor for iterating over CoinsView state */
+class CCoinsViewCursor
+{
+public:
+    CCoinsViewCursor(const uint256& in_block_hash) : block_hash(in_block_hash) {}
+    virtual ~CCoinsViewCursor() = default;
+
+    virtual bool GetKey(COutPoint &key) const = 0;
+    virtual bool GetValue(Coin &coin) const = 0;
+
+    virtual bool Valid() const = 0;
+    virtual void Next() = 0;
+
+    //! Get best block at the time this cursor was created
+    const uint256& GetBestBlock() const { return block_hash; }
+private:
+    uint256 block_hash;
+};
+
+/**
+ * Cursor for iterating over the linked list of flagged entries in CCoinsViewCache.
+ *
+ * This is a helper struct to encapsulate the diverging logic between a non-erasing
+ * CCoinsViewCache::Sync and an erasing CCoinsViewCache::Flush. This allows the receiver
+ * of CCoinsView::BatchWrite to iterate through the flagged entries without knowing
+ * the caller's intent.
+ *
+ * However, the receiver can still call CoinsViewCacheCursor::WillErase to see if the
+ * caller will erase the entry after BatchWrite returns. If so, the receiver can
+ * perform optimizations such as moving the coin out of the CCoinsCachEntry instead
+ * of copying it.
+ */
+struct CoinsViewCacheCursor
+{
+    //! If will_erase is not set, iterating through the cursor will erase spent coins from the map,
+    //! and other coins will be unflagged (removing them from the linked list).
+    //! If will_erase is set, the underlying map and linked list will not be modified,
+    //! as the caller is expected to wipe the entire map anyway.
+    //! This is an optimization compared to erasing all entries as the cursor iterates them when will_erase is set.
+    //! Calling CCoinsMap::clear() afterwards is faster because a CoinsCachePair cannot be coerced back into a
+    //! CCoinsMap::iterator to be erased, and must therefore be looked up again by key in the CCoinsMap before being erased.
+    CoinsViewCacheCursor(size_t& dirty_count LIFETIMEBOUND,
+                         CoinsCachePair& sentinel LIFETIMEBOUND,
+                         CCoinsMap& map LIFETIMEBOUND,
+                         bool will_erase) noexcept
+        : m_dirty_count(dirty_count), m_sentinel(sentinel), m_map(map), m_will_erase(will_erase) {}
+
+    inline CoinsCachePair* Begin() const noexcept { return m_sentinel.second.Next(); }
+    inline CoinsCachePair* End() const noexcept { return &m_sentinel; }
+
+    //! Return the next entry after current, possibly erasing current
+    inline CoinsCachePair* NextAndMaybeErase(CoinsCachePair& current) noexcept
+    {
+        const auto next_entry{current.second.Next()};
+        Assume(TrySub(m_dirty_count, current.second.IsDirty()));
+        // If we are not going to erase the cache, we must still erase spent entries.
+        // Otherwise, clear the state of the entry.
+        if (!m_will_erase) {
+            if (current.second.coin.IsSpent()) {
+                assert(current.second.coin.DynamicMemoryUsage() == 0); // scriptPubKey was already cleared in SpendCoin
+                m_map.erase(current.first);
+            } else {
+                current.second.SetClean();
+            }
+        }
+        return next_entry;
+    }
+
+    inline bool WillErase(CoinsCachePair& current) const noexcept { return m_will_erase || current.second.coin.IsSpent(); }
+    size_t GetDirtyCount() const noexcept { return m_dirty_count; }
+    size_t GetTotalCount() const noexcept { return m_map.size(); }
+private:
+    size_t& m_dirty_count;
+    CoinsCachePair& m_sentinel;
+    CCoinsMap& m_map;
+    bool m_will_erase;
+};
+
+/** Pure abstract view on the open txout dataset. */
+class CCoinsView
+{
+public:
+    //! As we use CCoinsViews polymorphically, have a virtual destructor
+    virtual ~CCoinsView() = default;
+
+    //! Retrieve the Coin (unspent transaction output) for a given outpoint.
+    //! May populate the cache. Use PeekCoin() to perform a non-caching lookup.
+    virtual std::optional<Coin> GetCoin(const COutPoint& outpoint) const = 0;
+
+    //! Retrieve the Coin (unspent transaction output) for a given outpoint, without caching results.
+    //! Does not populate the cache. Use GetCoin() to cache the result.
+    virtual std::optional<Coin> PeekCoin(const COutPoint& outpoint) const = 0;
+
+    //! Just check whether a given outpoint is unspent.
+    //! May populate the cache. Use PeekCoin() to perform a non-caching lookup.
+    virtual bool HaveCoin(const COutPoint& outpoint) const = 0;
+
+    //! Retrieve the block hash whose state this CCoinsView currently represents
+    virtual uint256 GetBestBlock() const = 0;
+
+    //! Retrieve the range of blocks that may have been only partially written.
+    //! If the database is in a consistent state, the result is the empty vector.
+    //! Otherwise, a two-element vector is returned consisting of the new and
+    //! the old block hash, in that order.
+    virtual std::vector<uint256> GetHeadBlocks() const = 0;
+
+    //! Do a bulk modification (multiple Coin changes + BestBlock change).
+    //! The passed cursor is used to iterate through the coins.
+    virtual void BatchWrite(CoinsViewCacheCursor& cursor, const uint256& block_hash) = 0;
+
+    //! Estimate database size
+    virtual size_t EstimateSize() const = 0;
+};
+
+/** Noop coins view. */
+class CoinsViewEmpty : public CCoinsView
+{
+protected:
+    CoinsViewEmpty() = default;
+
+public:
+    static CoinsViewEmpty& Get();
+
+    CoinsViewEmpty(const CoinsViewEmpty&) = delete;
+    CoinsViewEmpty& operator=(const CoinsViewEmpty&) = delete;
+
+    std::optional<Coin> GetCoin(const COutPoint&) const override { return {}; }
+    std::optional<Coin> PeekCoin(const COutPoint& outpoint) const override { return GetCoin(outpoint); }
+    bool HaveCoin(const COutPoint& outpoint) const override { return !!GetCoin(outpoint); }
+    uint256 GetBestBlock() const override { return {}; }
+    std::vector<uint256> GetHeadBlocks() const override { return {}; }
+    void BatchWrite(CoinsViewCacheCursor& cursor, const uint256&) override
+    {
+        for (auto it{cursor.Begin()}; it != cursor.End(); it = cursor.NextAndMaybeErase(*it)) { }
+    }
+    size_t EstimateSize() const override { return 0; }
+};
+
+/** CCoinsView backed by another CCoinsView */
+class CCoinsViewBacked : public CCoinsView
+{
+protected:
+    CCoinsView* base;
+
+public:
+    explicit CCoinsViewBacked(CCoinsView* in_view) : base{Assert(in_view)} {}
+
+    void SetBackend(CCoinsView& in_view) { base = &in_view; }
+
+    std::optional<Coin> GetCoin(const COutPoint& outpoint) const override { return base->GetCoin(outpoint); }
+    std::optional<Coin> PeekCoin(const COutPoint& outpoint) const override { return base->PeekCoin(outpoint); }
+    bool HaveCoin(const COutPoint& outpoint) const override { return base->HaveCoin(outpoint); }
+    uint256 GetBestBlock() const override { return base->GetBestBlock(); }
+    std::vector<uint256> GetHeadBlocks() const override { return base->GetHeadBlocks(); }
+    void BatchWrite(CoinsViewCacheCursor& cursor, const uint256& block_hash) override { base->BatchWrite(cursor, block_hash); }
+    size_t EstimateSize() const override { return base->EstimateSize(); }
+};
+
+
+/** CCoinsView that adds a memory cache for transactions to another CCoinsView */
+class CCoinsViewCache : public CCoinsViewBacked
+{
+private:
+    const bool m_deterministic;
+
+    //! Force a reallocation of the cache map. This is required when downsizing
+    //! the cache because the map's allocator may be hanging onto a lot of
+    //! memory despite having called .clear().
+    //!
+    //! See: https://stackoverflow.com/questions/42114044/how-to-release-unordered-map-memory
+    void ReallocateCache();
+
+    /**
+     * @note this is marked const, but may actually append to `cacheCoins`, increasing
+     * memory usage.
+     */
+    CCoinsMap::iterator FetchCoin(const COutPoint &outpoint) const;
+
+protected:
+    /**
+     * Make mutable so that we can "fill the cache" even from Get-methods
+     * declared as "const".
+     */
+    mutable uint256 m_block_hash;
+    mutable CCoinsMapMemoryResource m_cache_coins_memory_resource{};
+    /* The starting sentinel of the flagged entry circular doubly linked list. */
+    mutable CoinsCachePair m_sentinel;
+    mutable CCoinsMap cacheCoins;
+
+    /* Cached dynamic memory usage for the inner Coin objects. */
+    mutable size_t cachedCoinsUsage{0};
+    /* Running count of dirty Coin cache entries. */
+    mutable size_t m_dirty_count{0};
+
+    /**
+     * Discard all modifications made to this cache without flushing to the base view.
+     * This can be used to efficiently reuse a cache instance across multiple operations.
+     */
+    virtual void Reset() noexcept;
+
+    /* Fetch the coin from base. Used for cache misses in FetchCoin. */
+    virtual std::optional<Coin> FetchCoinFromBase(const COutPoint& outpoint) const;
+
+public:
+    CCoinsViewCache(CCoinsView* in_base, bool deterministic = false);
+
+    /**
+     * By deleting the copy constructor, we prevent accidentally using it when one intends to create a cache on top of a base cache.
+     */
+    CCoinsViewCache(const CCoinsViewCache &) = delete;
+
+    // Standard CCoinsView methods
+    std::optional<Coin> GetCoin(const COutPoint& outpoint) const override;
+    std::optional<Coin> PeekCoin(const COutPoint& outpoint) const override;
+    bool HaveCoin(const COutPoint& outpoint) const override;
+    uint256 GetBestBlock() const override;
+    void SetBestBlock(const uint256& block_hash);
+    void BatchWrite(CoinsViewCacheCursor& cursor, const uint256& block_hash) override;
+
+    /**
+     * Check if we have the given utxo already loaded in this cache.
+     * The semantics are the same as HaveCoin(), but no calls to
+     * the backing CCoinsView are made.
+     */
+    bool HaveCoinInCache(const COutPoint &outpoint) const;
+
+    /**
+     * Return a reference to Coin in the cache, or coinEmpty if not found. This is
+     * more efficient than GetCoin.
+     *
+     * Generally, do not hold the reference returned for more than a short scope.
+     * While the current implementation allows for modifications to the contents
+     * of the cache while holding the reference, this behavior should not be relied
+     * on! To be safe, best to not hold the returned reference through any other
+     * calls to this cache.
+     */
+    const Coin& AccessCoin(const COutPoint &output) const;
+
+    /**
+     * Add a coin. Set possible_overwrite to true if an unspent version may
+     * already exist in the cache.
+     */
+    void AddCoin(const COutPoint& outpoint, Coin&& coin, bool possible_overwrite);
+
+    /**
+     * Emplace a coin into cacheCoins without performing any checks, marking
+     * the emplaced coin as dirty.
+     *
+     * NOT FOR GENERAL USE. Used only when loading coins from a UTXO snapshot.
+     * @sa ChainstateManager::PopulateAndValidateSnapshot()
+     */
+    void EmplaceCoinInternalDANGER(const COutPoint& outpoint, Coin&& coin);
+
+    /**
+     * Spend a coin. Pass moveto in order to get the deleted data.
+     * If no unspent output exists for the passed outpoint, this call
+     * has no effect.
+     */
+    bool SpendCoin(const COutPoint &outpoint, Coin* moveto = nullptr);
+
+    /**
+     * Push the modifications applied to this cache to its base and wipe local state.
+     * Failure to call this method or Sync() before destruction will cause the changes
+     * to be forgotten.
+     * If reallocate_cache is false, the cache will retain the same memory footprint
+     * after flushing and should be destroyed to deallocate.
+     */
+    virtual void Flush(bool reallocate_cache = true);
+
+    /**
+     * Push the modifications applied to this cache to its base while retaining
+     * the contents of this cache (except for spent coins, which we erase).
+     * Failure to call this method or Flush() before destruction will cause the changes
+     * to be forgotten.
+     */
+    void Sync();
+
+    /**
+     * Removes the UTXO with the given outpoint from the cache, if it is
+     * not modified.
+     */
+    void Uncache(const COutPoint &outpoint);
+
+    //! Size of the cache (in number of transaction outputs)
+    unsigned int GetCacheSize() const;
+
+    //! Number of dirty cache entries (transaction outputs)
+    size_t GetDirtyCount() const noexcept { return m_dirty_count; }
+
+    //! Calculate the size of the cache (in bytes)
+    size_t DynamicMemoryUsage() const;
+
+    //! Check whether all prevouts of the transaction are present in the UTXO set represented by this view
+    bool HaveInputs(const CTransaction& tx) const;
+
+    //! Run an internal sanity check on the cache data structure. */
+    void SanityCheck() const;
+
+    class ResetGuard
+    {
+    private:
+        friend CCoinsViewCache;
+        CCoinsViewCache& m_cache;
+        explicit ResetGuard(CCoinsViewCache& cache LIFETIMEBOUND) noexcept : m_cache{cache} {}
+
+    public:
+        ResetGuard(const ResetGuard&) = delete;
+        ResetGuard& operator=(const ResetGuard&) = delete;
+        ResetGuard(ResetGuard&&) = delete;
+        ResetGuard& operator=(ResetGuard&&) = delete;
+
+        ~ResetGuard() { m_cache.Reset(); }
+    };
+
+    //! Create a scoped guard that will call `Reset()` on this cache when it goes out of scope.
+    [[nodiscard]] ResetGuard CreateResetGuard() noexcept { return ResetGuard{*this}; }
+};
+
+/**
+ * CCoinsViewCache subclass that asynchronously fetches most block input prevouts in parallel during ConnectBlock
+ * without mutating the base cache. This is achieved by fetching coins from the base view using PeekCoin() instead of
+ * GetCoin(), so intermediate CCoinsViewCache layers are not filled.
+ *
+ * Used during ConnectBlock() as an ephemeral, resettable top-level view that is flushed only on success, so invalid
+ * blocks don't pollute the underlying cache.
+ *
+ * While this class uses threads internally to fetch coins, externally it is only safe to call its methods from a
+ * single "main" thread. It assumes StartFetching, StopFetching, FetchCoinFromBase, Flush and Reset will all only be
+ * called from the main thread.
+ *
+ * When a block is passed to StartFetching, the inputs of the block are flattened into a vector of InputToFetch
+ * objects. StartFetching then submits worker tasks to a ThreadPool and keeps the returned futures alive until fetching
+ * is stopped.
+ *
+ * ProcessInput() atomically fetches and increments m_input_head, so each thread can only access a single element of the
+ * m_inputs vector at a time. Workers race to claim inputs, so they may fetch elements in any order. If the fetched
+ * index is greater than or equal to the size of m_inputs, no more inputs can be fetched and false is returned.
+ *
+ * The worker claims the InputToFetch at this index, fetches the coin with base->PeekCoin() and moves it into the
+ * InputToFetch object. The ready flag is then set with a release memory order. This allows the ready flag to be
+ * used as a memory fence, guaranteeing the coin being written to the object will have happened before another
+ * thread tests the flag with an acquire memory order.
+ * This assumes all base->PeekCoin() paths are safe for concurrent readers.
+ *
+ * The main thread is the only consumer of the fetched coins. FetchCoinFromBase is called when a coin is requested on
+ * the main thread and is not already in the cache. It checks whether the next unconsumed entry in m_inputs has the
+ * requested outpoint. On a match, m_input_tail is advanced and the entry's ready flag is waited on with an acquire
+ * memory order until a worker has finished fetching it. The coin is then moved out and returned.
+ *
+ * StopFetching() is called in Flush() and in Reset() (the per-block teardown) so workers stop before the block they
+ * reference goes away. It stops fetching by moving m_input_head to the end of m_inputs (so workers quickly exit),
+ * then waits for all futures to complete and clears the per-block state (m_inputs and the head/tail counters).
+ *
+ *       Workers advance m_input_head to fetch inputs. Main thread advances m_input_tail to consume.
+ *
+ *       Before workers start:
+ *
+ *                 m_input_head
+ *                 m_input_tail
+ *                      │
+ *                      ▼
+ *                 ┌─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┐
+ *       m_inputs: │ waiting │ waiting │ waiting │ waiting │ waiting │ waiting │ waiting │ waiting │ waiting │
+ *                 │         │         │         │         │         │         │         │         │         │
+ *                 └─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘
+ *
+ *       After workers start:
+ *
+ *                                       Worker 2            Worker 0  Worker 3  Worker 1  m_input_head
+ *                                          │                   │         │         │         │
+ *                                          ▼                   ▼         ▼         ▼         ▼
+ *                 ┌─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┐
+ *       m_inputs: │  ready  │  ready  │fetching │  ready  │fetching │fetching │fetching │ waiting │ waiting │
+ *                 │consumed │    ✓    │    ●    │    ✓    │    ●    │    ●    │    ●    │         │         │
+ *                 └─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘
+ *                                ▲
+ *                                │
+ *                           m_input_tail
+ */
+class CoinsViewOverlay : public CCoinsViewCache
+{
+private:
+    //! The latest input not yet being fetched. Workers atomically increment this when fetching.
+    std::atomic_uint32_t m_input_head{0};
+    //! The latest input not yet accessed by a consumer. Only the main thread increments this.
+    mutable uint32_t m_input_tail{0};
+
+    //! The inputs of the block which is being fetched.
+    struct InputToFetch {
+        //! Workers set this after setting the coin. The main thread tests this before reading the coin.
+        std::atomic_flag ready{};
+        //! The outpoint of the input to fetch.
+        const COutPoint& outpoint;
+        //! The coin that workers will fetch and main thread will insert into cache.
+        //! Mutable so it can be moved in FetchCoinFromBase.
+        mutable std::optional<Coin> coin{std::nullopt};
+
+        explicit InputToFetch(const COutPoint& o LIFETIMEBOUND) noexcept : outpoint{o} {}
+
+        //! Move ctor is required for resizing m_inputs in StartFetching. Elements will never move once parallel tasks
+        //! are started, so we can assert that coin is nullopt and ready is false.
+        InputToFetch(InputToFetch&& other) noexcept : outpoint{other.outpoint}
+        {
+            Assert(!other.coin);
+            Assert(!other.ready.test(std::memory_order_relaxed));
+        }
+    };
+    //! Must only be mutated when m_futures is empty. Elements may be mutated when m_futures is not empty.
+    std::vector<InputToFetch> m_inputs{};
+
+    /**
+     * Claim and fetch the next input in the queue.
+     *
+     * @return true if an input prevout was fetched
+     * @return false if there are no more input prevouts in the queue to fetch
+     */
+    bool ProcessInput() noexcept
+    {
+        const auto i{m_input_head.fetch_add(1, std::memory_order_relaxed)};
+        if (i >= m_inputs.size()) return false;
+
+        auto& input{m_inputs[i]};
+        input.coin = base->PeekCoin(input.outpoint);
+        // Use release so writing coin above happens before the main thread acquires.
+        Assert(!input.ready.test_and_set(std::memory_order_release));
+        input.ready.notify_one();
+        return true;
+    }
+
+    //! Stop all worker threads and clear fetching data.
+    //! Calling this is idempotent, and may safely be called if not fetching.
+    void StopFetching() noexcept
+    {
+        if (m_futures.empty()) {
+            Assert(m_inputs.empty());
+            Assert(m_input_head.load(std::memory_order_relaxed) == 0);
+            Assert(m_input_tail == 0);
+            return;
+        }
+        // Skip fetching the rest of the inputs by moving the head to the end.
+        m_input_head.store(m_inputs.size(), std::memory_order_relaxed);
+        // Wait for all threads to stop.
+        for (auto& future : m_futures) future.wait();
+        m_futures.clear();
+        m_inputs.clear();
+        m_input_head.store(0, std::memory_order_relaxed);
+        m_input_tail = 0;
+    }
+
+    std::optional<Coin> FetchCoinFromBase(const COutPoint& outpoint) const override
+    {
+        // This assumes ConnectBlock accesses all inputs in the same order as
+        // they are added to m_inputs in StartFetching.
+        if (m_input_tail < m_inputs.size() && m_inputs[m_input_tail].outpoint == outpoint) {
+            // We advance the tail since the input is cached and not accessed through this method again.
+            auto& input{m_inputs[m_input_tail++]};
+            // Wait until the coin is ready to be read. We need acquire so we match the worker thread's release.
+            input.ready.wait(/*old=*/false, std::memory_order_acquire);
+            // We can move the coin since we won't access this input again.
+            return std::move(input.coin);
+        }
+
+        // We will only get here for BIP30 checks, an invalid block, or if the threadpool has not been started.
+        return base->PeekCoin(outpoint);
+    }
+
+    /// May have zero workers when input fetching is disabled.
+    util::NotNullSharedPtr<ThreadPool> m_thread_pool;
+    std::vector<std::future<void>> m_futures{};
+
+protected:
+    //! StopFetching must be called here for two reasons: InputToFetch objects hold references to the
+    //! block's outpoints, so they must not outlive the block being connected; and when connecting a
+    //! block fails, workers must not keep fetching inputs for the block that was abandoned.
+    void Reset() noexcept override
+    {
+        StopFetching();
+        CCoinsViewCache::Reset();
+    }
+
+public:
+    explicit CoinsViewOverlay(CCoinsView* in_base, util::NotNullSharedPtr<ThreadPool> thread_pool,
+                              bool deterministic = false) noexcept
+        : CCoinsViewCache{in_base, deterministic}, m_thread_pool{std::move(thread_pool)}
+    {
+    }
+
+    ~CoinsViewOverlay() noexcept override { StopFetching(); }
+
+    //! Start fetching inputs from block.
+    [[nodiscard]] ResetGuard StartFetching(const CBlock& block LIFETIMEBOUND) noexcept;
+
+    void Flush(bool reallocate_cache = true) override
+    {
+        if (!Assume(AllInputsConsumed())) {
+            LogWarning("Block %s input prevout prefetch queue was not fully consumed; inputs were accessed out of order, so prefetching degraded to serial lookups for this block.", GetBestBlock().ToString());
+        }
+        StopFetching();
+        CCoinsViewCache::Flush(reallocate_cache);
+    }
+
+    //! Swapping the backend or writing through to it with Sync() is not supported while fetching.
+    void SetBackend(CCoinsView&) = delete;
+    void Sync() = delete;
+
+    //! Verify that all parallel fetched input prevouts have been consumed.
+    bool AllInputsConsumed() const noexcept { return m_input_tail == m_inputs.size(); }
+};
+
+//! Utility function to add all of a transaction's outputs to a cache.
+//! When check is false, this assumes that overwrites are only possible for coinbase transactions.
+//! When check is true, the underlying view may be queried to determine whether an addition is
+//! an overwrite.
+// TODO: pass in a boolean to limit these possible overwrites to known
+// (pre-BIP34) cases.
+void AddCoins(CCoinsViewCache& cache, const CTransaction& tx, int nHeight, bool check = false);
+
+//! Utility function to find any unspent output with a given txid.
+//! This function can be quite expensive because in the event of a transaction
+//! which is not found in the cache, it can cause up to MAX_OUTPUTS_PER_BLOCK
+//! lookups to database, so it should be used with care.
+const Coin& AccessByTxid(const CCoinsViewCache& cache, const Txid& txid);
+
+/**
+ * This is a minimally invasive approach to shutdown on LevelDB read errors from the
+ * chainstate, while keeping user interface out of the common library, which is shared
+ * between bitcoind, and bitcoin-qt and non-server tools.
+ *
+ * Writes do not need similar protection, as failure to write is handled by the caller.
+*/
+class CCoinsViewErrorCatcher final : public CCoinsViewBacked
+{
+public:
+    explicit CCoinsViewErrorCatcher(CCoinsView* view) : CCoinsViewBacked(view) {}
+
+    void AddReadErrCallback(std::function<void()> f) {
+        m_err_callbacks.emplace_back(std::move(f));
+    }
+
+    std::optional<Coin> GetCoin(const COutPoint& outpoint) const override;
+    bool HaveCoin(const COutPoint& outpoint) const override;
+    std::optional<Coin> PeekCoin(const COutPoint& outpoint) const override;
+
+private:
+    /** A list of callbacks to execute upon leveldb read error. */
+    std::vector<std::function<void()>> m_err_callbacks;
+
+};
+
+#endif // BITCOIN_COINS_H

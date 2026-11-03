@@ -1200,16 +1200,25 @@
   {
    "number": 56,
    "title": "The UTXO set and MuHash3072",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch056-the-utxo-set-and-muhash3072.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     2,
+    4,
     11,
+    17,
     34
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/muhash.coax",
+    "coax/lib/bitcoin/coins.coax",
+    "bitcoin/examples/utxo-set.coax",
+    "bitcoin/examples/checks/utxo-set.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

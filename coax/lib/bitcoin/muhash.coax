@@ -1,0 +1,492 @@
+// MuHash3072 (Bitcoin chapter 56): the rolling set hash behind Bitcoin
+// Core's gettxoutsetinfo "muhash" and its coinstatsindex. A set's hash is
+// the product, modulo the prime 2^3072 - 1103717, of one 3072-bit number per
+// element, then SHA-256 of that product's 384 little-endian bytes. Adding
+// an element multiplies it in; removing one multiplies it into a separate
+// denominator, and the final step divides once.
+//
+// It follows Bitcoin Core's crypto/muhash.cpp: 48 limbs of 64 bits, its
+// Multiply with two reductions, its FullReduce and IsOverflow, and its
+// ToNum3072 (SHA-256 of the element, then 384 bytes of ChaCha20 keystream
+// under that key with a zero nonce). Core inverts with safegcd; this file
+// inverts by Fermat's little theorem, a^(p - 2), with the repunit chain
+// Core used before safegcd. Both give the one inverse.
+//
+// Elements are public data (unspent outputs), so everything here runs in
+// variable time and every procedure that decides ends in _vartime
+// (Bitcoin chapter 3).
+#load "../crypto/chacha20.coax";
+#load "../crypto/sha256.coax";
+#authority;
+
+// book:begin codes
+MUHASH_OK :: 0;
+MUHASH_CAPACITY :: 1;   // a view is not the size the call needs
+MUHASH_BAD_STATE :: 2;  // a serialized state is not 768 bytes
+
+MH_LIMBS :: 48;                      // 48 limbs of 64 bits: 3072 bits
+MH_BYTES :: 384;                     // one number, little-endian
+MH_STATE_BYTES :: 768;               // numerator, then denominator
+MH_DIFF :: cast(u64) 1103717;        // the modulus is 2^3072 - MH_DIFF
+// book:end codes
+
+// book:begin types
+// A number below 2^3072, limb 0 least significant. Most are below the
+// modulus; IsOverflow says when one is not.
+Num3072 :: struct { limb: [48] u64; }
+// A set: the product of what was inserted over the product of what was
+// removed.
+MuHash3072 :: struct { numerator: Num3072; denominator: Num3072; }
+// book:end types
+
+// ---- checks
+mh_small :: (v: u64) -> Num3072 { r: Num3072; r.limb[0] = v; return r; }
+mh_top :: () -> Num3072 {
+  r: Num3072;
+  for i: 0..<MH_LIMBS { r.limb[i] = 0xffffffffffffffff; }
+  return r;
+}
+// The modulus itself, 2^3072 - 1103717, as limbs.
+mh_modulus :: () -> Num3072 {
+  r := mh_top();
+  r.limb[0] = 0xffffffffffffffff - MH_DIFF + 1;
+  return r;
+}
+mh_same :: (a: Num3072, b: Num3072) -> bool {
+  for i: 0..<MH_LIMBS { if a.limb[i] != b.limb[i] { return false; } }
+  return true;
+}
+mh_unhex :: (text: string, out: [] u8) -> [] u8 {
+  for i: 0..<text.count/2 { out[i] = cast(u8) (mh_nibble(text[2*i])*16 + mh_nibble(text[2*i+1])); }
+  return out[0..<text.count/2];
+}
+mh_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+// Is the digest, reversed, the hex Core prints (uint256's GetHex)?
+mh_shown_is :: (digest: [] u8, text: string) -> bool {
+  if digest.count * 2 != text.count { return false; }
+  for i: 0..<digest.count {
+    if cast(int) digest[digest.count-1-i] != mh_nibble(text[2*i])*16 + mh_nibble(text[2*i+1]) { return false; }
+  }
+  return true;
+}
+// Are the bytes, in order, this hex (HexStr)?
+mh_hex_is :: (digest: [] u8, text: string) -> bool {
+  if digest.count * 2 != text.count { return false; }
+  for i: 0..<digest.count { if cast(int) digest[i] != mh_nibble(text[2*i])*16 + mh_nibble(text[2*i+1]) { return false; } }
+  return true;
+}
+// crypto_tests.cpp's FromInt(i): the set holding the 32 bytes {i, 0, ..., 0}.
+mh_from_int :: (i: u8) -> MuHash3072 {
+  b: [32] u8; b[0] = i;
+  return muhash_insert_vartime(muhash_new(), b[..]);
+}
+#test "the check helpers notice every difference" {
+  b: [4] u8;
+  #assert mh_shown_is(mh_unhex("09af", b[..]), "af09") && !mh_shown_is(b[0..<2], "09af") && !mh_shown_is(b[0..<2], "af0");
+  #assert mh_hex_is(b[0..<2], "09af") && !mh_hex_is(b[0..<2], "af09") && !mh_hex_is(b[0..<2], "09a");
+  #assert mh_same(mh_small(3), mh_small(3)) && !mh_same(mh_small(3), mh_small(4));
+  x := mh_small(3); x.limb[47] = 1;
+  #assert !mh_same(x, mh_small(3));
+  #assert mh_modulus().limb[0] == 0xffffffffffef289b && mh_modulus().limb[1] == 0xffffffffffffffff;
+}
+#test "one column step: a * b added to three limbs with carries" {
+  m := cast(u64) 0xffffffffffffffff;
+  c := [3] u64.[m, m, 0];
+  mh_muladd3(c[..], 1, 1);
+  #assert c[0] == 0 && c[1] == 0 && c[2] == 1;
+  c = [3] u64.[0, 0, 0];
+  mh_muladd3(c[..], m, m);
+  #assert c[0] == 1 && c[1] == 0xfffffffffffffffe && c[2] == 0;
+  mh_muladd3(c[..], m, m);
+  #assert c[0] == 2 && c[1] == 0xfffffffffffffffc && c[2] == 1;
+  d := [3] u64.[5, 0, 0];
+  e := [3] u64.[m, 2, 1];
+  mh_mulnadd3(d[..], e[..], 3);
+  #assert d[0] == 2 && d[1] == 9 && d[2] == 3;
+  f := [3] u64.[0x8000000000000000, 1, 0];
+  mh_muln2(f[..], 4);
+  #assert f[0] == 0 && f[1] == 6;
+  g := [3] u64.[m, m, 0];
+  #assert mh_addnextract2(g[..], 1) == 0 && g[0] == 0 && g[1] == 1;
+  h := [3] u64.[7, 9, 0];
+  #assert mh_addnextract2(h[..], 1) == 8 && h[0] == 9 && h[1] == 0;
+  k := [3] u64.[4, 5, 6];
+  #assert mh_extract3(k[..]) == 4 && k[0] == 5 && k[1] == 6 && k[2] == 0;
+}
+#test "overflow: exactly the numbers from the modulus to 2^3072 - 1" {
+  p := mh_modulus();
+  #assert mh_is_overflow(p) && mh_is_overflow(mh_top()) && !mh_is_overflow(mh_small(5));
+  below := p; below.limb[0] -= 1;
+  #assert !mh_is_overflow(below);
+  low := mh_top(); low.limb[20] = 0;
+  #assert !mh_is_overflow(low);
+  #assert mh_same(mh_full_reduce(p), mh_small(0));
+  #assert mh_same(mh_full_reduce(mh_top()), mh_small(MH_DIFF - 1));
+}
+#test "small products, and products that wrap past the modulus" {
+  #assert mh_same(mh_multiply(mh_small(6), mh_small(7)), mh_small(42));
+  sq := mh_multiply(mh_small(0xffffffffffffffff), mh_small(0xffffffffffffffff));
+  #assert sq.limb[0] == 1 && sq.limb[1] == 0xfffffffffffffffe && sq.limb[2] == 0;
+  // 2^3071 * 2 = 2^3072, which is 1103717 modulo p.
+  half: Num3072; half.limb[47] = 0x8000000000000000;
+  #assert mh_same(mh_multiply(half, mh_small(2)), mh_small(MH_DIFF));
+  // (p - 1)^2 = 1, and (p - 1) * 2 = p - 2.
+  m1 := mh_modulus(); m1.limb[0] -= 1;
+  #assert mh_same(mh_multiply(m1, m1), mh_small(1));
+  m2 := mh_modulus(); m2.limb[0] -= 2;
+  #assert mh_same(mh_multiply(m1, mh_small(2)), m2);
+  // An input above the modulus still multiplies as its residue.
+  #assert mh_same(mh_multiply(mh_top(), mh_small(1)), mh_small(MH_DIFF - 1));
+  #assert mh_same(mh_multiply(mh_modulus(), mh_top()), mh_small(0));
+}
+#test "bytes round-trip little-endian" {
+  b: [384] u8;
+  for i: 0..<384 { b[i] = cast,trunc(u8) (i * 7 + 1); }
+  n := mh_from_bytes(b[..]);
+  #assert n.limb[0] == 0x322b241d160f0801 && n.limb[1] == 0x6a635c554e474039;
+  out: [385] u8; out[384] = 165;
+  #assert mh_to_bytes(n, out[0..<384]) == MUHASH_OK && out[384] == 165;
+  for i: 0..<384 { #assert out[i] == b[i]; }
+  #assert mh_to_bytes(n, out[..]) == MUHASH_CAPACITY;
+}
+#test "the inverse of 2, of 1 and of p - 1" #steps 2000000000 {
+  i2 := mh_inverse(mh_small(2));
+  #assert mh_same(mh_multiply(i2, mh_small(2)), mh_small(1));
+  // 1/2 = (p + 1) / 2: the top limb is 0x7fff..., limb 0 is (2^64 - 1103716) / 2 + 2^63.
+  #assert i2.limb[47] == 0x7fffffffffffffff && i2.limb[0] == 0xfffffffffff7944e;
+  #assert mh_same(mh_inverse(mh_small(1)), mh_small(1));
+}
+#test "Core's vector: FromInt(0) * FromInt(1) / FromInt(2)" #steps 2000000000 {
+  out: [32] u8;
+  acc := mh_from_int(0);
+  acc = muhash_combine(acc, mh_from_int(1));
+  acc = muhash_divide(acc, mh_from_int(2));
+  #assert muhash_finalize_vartime(acc, out[..]) == MUHASH_OK;
+  #assert mh_shown_is(out[..], "10d312b100cbd32ada024a6646e40d3482fcff103668d2625f10002a607d5863");
+}
+#test "Core's vector again, through Insert and Remove" #steps 2000000000 {
+  out: [32] u8; one: [32] u8; two: [32] u8; one[0] = 1; two[0] = 2;
+  acc := mh_from_int(0);
+  acc = muhash_insert_vartime(acc, one[..]);
+  acc = muhash_remove_vartime(acc, two[..]);
+  #assert muhash_finalize_vartime(acc, out[..]) == MUHASH_OK;
+  #assert mh_shown_is(out[..], "10d312b100cbd32ada024a6646e40d3482fcff103668d2625f10002a607d5863");
+}
+#test "Core's serialization of FromInt(1) * FromInt(2)" {
+  s: [769] u8; s[768] = 165; w: [768] u8;
+  acc := muhash_combine(mh_from_int(1), mh_from_int(2));
+  #assert muhash_serialize(acc, s[0..<768]) == MUHASH_OK && s[768] == 165;
+  want := mh_unhex(MH_CORE_SERIALIZED, w[..]);
+  for i: 0..<768 { #assert s[i] == want[i]; }
+  back := muhash_deserialize(s[0..<768]);
+  #assert back.code == MUHASH_OK && mh_same(back.state.numerator, acc.numerator) && mh_same(back.state.denominator, mh_small(1));
+  #assert muhash_serialize(acc, s[0..<767]) == MUHASH_CAPACITY && muhash_deserialize(s[0..<767]).code == MUHASH_BAD_STATE;
+}
+#test "Core's overflow vector: a numerator of 2^3072 - 1" {
+  s: [768] u8; out: [32] u8;
+  for i: 0..<384 { s[i] = 0xff; }
+  s[384] = 1;
+  st := muhash_deserialize(s[..]);
+  #assert st.code == MUHASH_OK && mh_is_overflow(st.state.numerator);
+  #assert muhash_finalize_vartime(st.state, out[..]) == MUHASH_OK;
+  // crypto_tests.cpp compares HexStr(out4), the bytes in hash order.
+  #assert mh_hex_is(out[..], "3a31e6903aff0de9f62f9a9f7f8b861de76ce2cda09822b90014319ae5dc2271");
+}
+#test "the empty set, and insertion order does not matter" {
+  out: [32] u8; again: [32] u8; data: [3] u8;
+  #assert muhash_finalize_vartime(muhash_new(), out[..]) == MUHASH_OK;
+  one: [384] u8; one[0] = 1;
+  h: [32] u8;
+  #assert sha256_hash_checked(one[..], h[..], false) == SHA_OK;
+  for i: 0..<32 { #assert out[i] == h[i]; }
+  a := muhash_new(); b := muhash_new();
+  for k: 0..<3 { data[0] = cast(u8) k; a = muhash_insert_vartime(a, data[..]); }
+  for k: 0..<3 { data[0] = cast(u8) (2 - k); b = muhash_insert_vartime(b, data[..]); }
+  #assert muhash_finalize_vartime(a, out[..]) == MUHASH_OK && muhash_finalize_vartime(b, again[..]) == MUHASH_OK;
+  for i: 0..<32 { #assert out[i] == again[i]; }
+  #assert muhash_finalize_vartime(a, out[0..<31]) == MUHASH_CAPACITY;
+}
+#test "an element is SHA-256 then ChaCha20's keystream" {
+  empty: [1] u8;
+  e := mh_element_vartime(empty[0..<0]);
+  // SHA-256 of nothing is e3b0c442..., the ChaCha20 key; keystream block 5
+  // read little-endian is limbs 40 to 47.
+  key: [32] u8; nonce: [12] u8; block: [64] u8;
+  #assert sha256_hash_checked(empty[0..<0], key[..], false) == SHA_OK && key[0] == 0xe3;
+  #assert chacha20_block_checked(key[..], nonce[..], 5, block[..], false).error == CC_OK;
+  #assert e.limb[40] == cb_load_le64(block[..], 0).value && e.limb[47] == cb_load_le64(block[..], 56).value;
+}
+#test "the byte interface: insert, remove, finalize, and refusals" #steps 2000000000 {
+  s: [768] u8; out: [32] u8; one: [32] u8; one[0] = 1;
+  #assert muhash_new_bytes(s[..]) == MUHASH_OK && muhash_update_bytes_vartime(s[..], one[..], false) == MUHASH_OK;
+  #assert muhash_update_bytes_vartime(s[..], one[..], true) == MUHASH_OK;
+  #assert muhash_finalize_bytes_vartime(s[..], out[..]) == MUHASH_OK;
+  empty: [32] u8;
+  #assert muhash_finalize_vartime(muhash_new(), empty[..]) == MUHASH_OK;
+  for i: 0..<32 { #assert out[i] == empty[i]; }
+  #assert muhash_update_bytes_vartime(s[0..<767], one[..], false) == MUHASH_BAD_STATE;
+  #assert muhash_finalize_bytes_vartime(s[0..<767], out[..]) == MUHASH_BAD_STATE;
+  #assert muhash_new_bytes(s[0..<767]) == MUHASH_CAPACITY;
+}
+// The serialization crypto_tests.cpp expects for FromInt(1) * FromInt(2).
+MH_CORE_SERIALIZED :: "1fa093295ea30a6a3acdc7b3f770fa538eff537528e990e2910e40bbcfd7f6696b1256901929094694b56316de342f593303dd12ac43e06dce1be1ff8301c845beb15468fff0ef002dbf80c29f26e6452bccc91b5cb9437ad410d2a67ea847887fa3c6a6553309946880fe20db2c73fe0641adbd4e86edfee0d9f8cd0ee1230898873dc13ed8ddcaf045c80faa082774279007a2253f8922ee3ef361d378a6af3ddaf180b190ac97e556888c36b3d1fb1c85aab9ccd46e3deaeb7b7cf5db067a7e9ff86b658cf3acd6662bbcce37232daa753c48b794356c020090c831a8304416e2aa7ad633c0ddb2f11be1be316a81be7f7e472071c042cb68faef549c221ebff209273638b741aba5a81675c45a5fa92fea4ca821d7a324cb1e1a2ccd3b76c4228ec8066dad2a5df6e1bd0de45c7dd5de8070bdb46db6c554cf9aefc9b7b2bbf9f75b1864d9f95005314593905c0109b71f703d49944ae94477b51dac10a816bb6d1c700bafabc8bd86fac8df24be519a2f2836b16392e18036cb13e48c5c010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+// book:begin columns
+// A running column sum is three limbs c[0], c[1], c[2], c[0] least
+// significant, held in a view so each step updates it in place.
+// c += a * b. mul_wide gives the 128-bit product as two limbs; each carry
+// is "did the addition wrap", a sum smaller than what was added.
+mh_muladd3 :: (c: [] u64, a: u64, b: u64) {
+  t := mul_wide(a, b);
+  c[0] = add_wrap(c[0], t.lo);
+  th := t.hi + (ifx c[0] < t.lo then cast(u64) 1 else 0);   // t.hi <= 2^64 - 2: no overflow
+  c[1] = add_wrap(c[1], th);
+  c[2] += ifx c[1] < th then cast(u64) 1 else 0;
+}
+// c += n * d, with c[2] zero on entry (Core's mulnadd3).
+mh_mulnadd3 :: (c: [] u64, d: [] u64, n: u64) {
+  t := mul_wide(d[0], n);
+  c[0] = add_wrap(t.lo, c[0]);
+  hi := t.hi + (ifx c[0] < t.lo then cast(u64) 1 else 0);
+  u := mul_wide(d[1], n);
+  lo := add_wrap(u.lo, hi);
+  top := u.hi + (ifx lo < hi then cast(u64) 1 else 0);
+  c[1] = add_wrap(lo, c[1]);
+  top += ifx c[1] < lo then cast(u64) 1 else 0;
+  c[2] = top + d[2] * n;
+}
+// [c0, c1] *= n, keeping two limbs (Core's muln2).
+mh_muln2 :: (c: [] u64, n: u64) {
+  t := mul_wide(c[0], n);
+  c[0] = t.lo;
+  c[1] = add_wrap(mul_wrap(c[1], n), t.hi);
+}
+// Shift the sum down one limb and return the limb that falls out (Core's
+// extract3).
+mh_extract3 :: (c: [] u64) -> u64 {
+  n := c[0];
+  c[0] = c[1]; c[1] = c[2]; c[2] = 0;
+  return n;
+}
+// [c0, c1] += a, then the low limb falls out and the rest shifts down one
+// limb (Core's addnextract2).
+mh_addnextract2 :: (c: [] u64, a: u64) -> u64 {
+  c0 := add_wrap(c[0], a); c1 := c[1]; c2 := cast(u64) 0;
+  if c0 < a {
+    c1 = add_wrap(c1, 1);
+    if c1 == 0 { c2 = 1; }
+  }
+  c[0] = c1; c[1] = c2;
+  return c0;
+}
+// book:end columns
+
+// book:begin reduce
+// Is a at least the modulus? Only 1103717 numbers below 2^3072 are: every
+// limb all ones except limb 0, which is at least 2^64 - 1103717.
+mh_overflows :: (a: [] u64) -> bool {
+  if a[0] <= 0xffffffffffffffff - MH_DIFF { return false; }
+  for i: 1..<MH_LIMBS { if a[i] != 0xffffffffffffffff { return false; } }
+  return true;
+}
+// a - p in place, for an a at least p: add 1103717 and drop the carry out
+// of the top limb, which is 2^3072.
+mh_reduce :: (a: [] u64) {
+  c := [3] u64.[MH_DIFF, 0, 0];
+  for i: 0..<MH_LIMBS { a[i] = mh_addnextract2(c[..], a[i]); }
+}
+// book:end reduce
+
+// book:begin multiply
+// out = a * b mod p, Core's Num3072::Multiply. out may be a or b. The full
+// product has 96 limbs; limb 48 + j counts 2^3072 times as much as limb j,
+// and 2^3072 is 1103717 mod p. So column j adds 1103717 times column 48 + j
+// as it goes (the first reduction). What carries past limb 47 is reduced
+// once more, and a result still at least p is reduced a last time.
+mh_mul_into :: (a: [] u64, b: [] u64, out: [] u64) {
+  tmp: [48] u64; c: [3] u64; d: [3] u64;
+  // Columns 0..46, each with its high partner folded in.
+  for j: 0..<MH_LIMBS-1 {
+    d[0] = 0; d[1] = 0; d[2] = 0;
+    for i: j+1..<MH_LIMBS { mh_muladd3(d[..], a[i], b[MH_LIMBS + j - i]); }
+    mh_mulnadd3(c[..], d[..], MH_DIFF);
+    for i: 0..<j+1 { mh_muladd3(c[..], a[i], b[j - i]); }
+    tmp[j] = mh_extract3(c[..]);
+  }
+  // Column 47 has no high partner.
+  #assert c[2] == 0;
+  for i: 0..<MH_LIMBS { mh_muladd3(c[..], a[i], b[MH_LIMBS - 1 - i]); }
+  tmp[MH_LIMBS-1] = mh_extract3(c[..]);
+  // The second reduction: what carried past limb 47, times 1103717, back in.
+  mh_muln2(c[..], MH_DIFF);
+  for j: 0..<MH_LIMBS { out[j] = mh_addnextract2(c[..], tmp[j]); }
+  #assert c[1] == 0 && (c[0] == 0 || c[0] == 1);
+  if mh_overflows(out) { mh_reduce(out); }
+  if c[0] != 0 { mh_reduce(out); }
+}
+// The same on values.
+mh_multiply :: (a: Num3072, b: Num3072) -> Num3072 {
+  x := a; y := b; r: Num3072;
+  mh_mul_into(x.limb[..], y.limb[..], r.limb[..]);
+  return r;
+}
+mh_is_overflow :: (a: Num3072) -> bool { x := a; return mh_overflows(x.limb[..]); }
+mh_full_reduce :: (a: Num3072) -> Num3072 { r := a; mh_reduce(r.limb[..]); return r; }
+// book:end multiply
+
+// book:begin inverse
+// a = a^(2^n) * m in place: n squarings, then one multiplication.
+mh_square_n_mul :: (a: [] u64, n: int, m: [] u64) {
+  for k: 0..<n { mh_mul_into(a, a, a); }
+  mh_mul_into(a, m, a);
+}
+// 1 / a mod p as a^(p - 2) (Fermat). In binary, p - 2 is 3051 ones, then
+// 0 1111 00 1 0 1 000 1 00 11 00 1. Write r(k) for a^(2^k - 1), a run of k
+// ones: r(2k) = r(k)^(2^k) * r(k), and r(j + k) = r(j)^(2^k) * r(k). The
+// table holds r(1), r(2), r(4), ..., r(2048): 2047 squarings. Then r(3051)
+// = r(2048 + 512 + 256 + 128 + 64 + 32 + 8 + 2 + 1), and each tail run
+// shifts in its zeros and multiplies in its ones. 3071 squarings and 25
+// multiplications in all. a = 0 gives 0, which has no inverse.
+mh_inverse :: (a: Num3072) -> Num3072 {
+  p: [12 * 48] u64;
+  for i: 0..<MH_LIMBS { p[i] = a.limb[i]; }
+  for i: 0..<11 {
+    for k: 0..<MH_LIMBS { p[48*(i+1) + k] = p[48*i + k]; }
+    mh_square_n_mul(p[48*(i+1)..<48*(i+2)], 1 << i, p[48*i..<48*(i+1)]);
+  }
+  r: Num3072;
+  for k: 0..<MH_LIMBS { r.limb[k] = p[48*11 + k]; }
+  x := r.limb[..];
+  mh_square_n_mul(x, 512, p[48*9..<48*10]);
+  mh_square_n_mul(x, 256, p[48*8..<48*9]);
+  mh_square_n_mul(x, 128, p[48*7..<48*8]);
+  mh_square_n_mul(x, 64, p[48*6..<48*7]);
+  mh_square_n_mul(x, 32, p[48*5..<48*6]);
+  mh_square_n_mul(x, 8, p[48*3..<48*4]);
+  mh_square_n_mul(x, 2, p[48*1..<48*2]);
+  mh_square_n_mul(x, 1, p[0..<48]);       // r(3051)
+  mh_square_n_mul(x, 5, p[48*2..<48*3]);  // 0 1111
+  mh_square_n_mul(x, 3, p[0..<48]);       // 00 1
+  mh_square_n_mul(x, 2, p[0..<48]);       // 0 1
+  mh_square_n_mul(x, 4, p[0..<48]);       // 000 1
+  mh_square_n_mul(x, 4, p[48..<96]);      // 00 11
+  mh_square_n_mul(x, 3, p[0..<48]);       // 00 1
+  return r;
+}
+// book:end inverse
+
+// book:begin bytes
+// 384 bytes, little-endian, to a number and back. No reduction: Core
+// stores and reads limbs as they are, even at or above the modulus.
+mh_from_bytes :: (b: [] u8) -> Num3072 {
+  r: Num3072;
+  if b.count != MH_BYTES { return r; }
+  for i: 0..<MH_LIMBS { r.limb[i] = cb_load_le64(b, 8 * i).value; }
+  return r;
+}
+mh_to_bytes :: (a: Num3072, out: [] u8) -> int {
+  if out.count != MH_BYTES { return MUHASH_CAPACITY; }
+  for i: 0..<MH_LIMBS { #assert cb_store_le64(out, 8 * i, a.limb[i]); }
+  return MUHASH_OK;
+}
+// book:end bytes
+
+// book:begin element
+// One element's number (Core's ToNum3072): SHA-256 of the bytes is a
+// ChaCha20 key; its keystream from counter 0 with a zero nonce, six 64-byte
+// blocks, read little-endian, is the number.
+mh_element_vartime :: (data: [] u8) -> Num3072 {
+  key: [32] u8; nonce: [12] u8; stream: [384] u8;
+  #assert sha256_hash_checked(data, key[..], false) == SHA_OK;
+  for k: 0..<6 {
+    #assert chacha20_block_checked(key[..], nonce[..], cast(u32) k, stream[64*k..<64*k+64], false).error == CC_OK;
+  }
+  return mh_from_bytes(stream[..]);
+}
+// book:end element
+
+// book:begin set
+// The empty set: 1 / 1.
+muhash_new :: () -> MuHash3072 {
+  r: MuHash3072;
+  r.numerator.limb[0] = 1; r.denominator.limb[0] = 1;
+  return r;
+}
+// Insert multiplies the element into the numerator; Remove multiplies it
+// into the denominator. Neither divides, so both cost one multiplication.
+muhash_insert_vartime :: (m: MuHash3072, data: [] u8) -> MuHash3072 {
+  r := m;
+  r.numerator = mh_multiply(r.numerator, mh_element_vartime(data));
+  return r;
+}
+muhash_remove_vartime :: (m: MuHash3072, data: [] u8) -> MuHash3072 {
+  r := m;
+  r.denominator = mh_multiply(r.denominator, mh_element_vartime(data));
+  return r;
+}
+// Core's operator*= (the union of two disjoint sets) and operator/= (one
+// set taken out of another): fractions multiplied and divided.
+muhash_combine :: (m: MuHash3072, other: MuHash3072) -> MuHash3072 {
+  return MuHash3072.{numerator = mh_multiply(m.numerator, other.numerator),
+    denominator = mh_multiply(m.denominator, other.denominator)};
+}
+muhash_divide :: (m: MuHash3072, other: MuHash3072) -> MuHash3072 {
+  return MuHash3072.{numerator = mh_multiply(m.numerator, other.denominator),
+    denominator = mh_multiply(m.denominator, other.numerator)};
+}
+// book:end set
+
+// book:begin finalize
+// The 32-byte hash, in hash order (Core prints it reversed): numerator /
+// denominator, reduced below p, as 384 little-endian bytes, then SHA-256.
+// The one inversion happens here. A denominator of 1 needs none, and its
+// inverse is 1, so skipping it changes nothing.
+muhash_finalize_vartime :: (m: MuHash3072, out: [] u8) -> int {
+  if out.count != 32 { return MUHASH_CAPACITY; }
+  n := m.numerator; d := m.denominator;
+  if mh_is_overflow(n) { n = mh_full_reduce(n); }
+  if mh_is_overflow(d) { d = mh_full_reduce(d); }
+  one: Num3072; one.limb[0] = 1;
+  same := true;
+  for i: 0..<MH_LIMBS { if d.limb[i] != one.limb[i] { same = false; } }
+  if !same { n = mh_multiply(n, mh_inverse(d)); }
+  if mh_is_overflow(n) { n = mh_full_reduce(n); }
+  b: [384] u8;
+  #assert mh_to_bytes(n, b[..]) == MUHASH_OK;
+  #assert sha256_hash_checked(b[..], out, false) == SHA_OK;
+  return MUHASH_OK;
+}
+// book:end finalize
+
+// book:begin state
+// Core's serialization: the numerator's 384 bytes, then the denominator's.
+muhash_serialize :: (m: MuHash3072, out: [] u8) -> int {
+  if out.count != MH_STATE_BYTES { return MUHASH_CAPACITY; }
+  #assert mh_to_bytes(m.numerator, out[0..<MH_BYTES]) == MUHASH_OK;
+  #assert mh_to_bytes(m.denominator, out[MH_BYTES..<MH_STATE_BYTES]) == MUHASH_OK;
+  return MUHASH_OK;
+}
+MuHashRead :: struct { code: int; state: MuHash3072; }
+muhash_deserialize :: (b: [] u8) -> MuHashRead {
+  r: MuHashRead;
+  if b.count != MH_STATE_BYTES { r.code = MUHASH_BAD_STATE; return r; }
+  r.state.numerator = mh_from_bytes(b[0..<MH_BYTES]);
+  r.state.denominator = mh_from_bytes(b[MH_BYTES..<MH_STATE_BYTES]);
+  return r;
+}
+// book:end state
+
+// The C interface: a state is its 768 serialized bytes. Update inserts
+// data, or removes it when take_out is true; finalize writes the 32-byte hash.
+muhash_update_bytes_vartime :: (state: [] u8, data: [] u8, take_out: bool) -> int #export_c {
+  s := muhash_deserialize(state);
+  if s.code != MUHASH_OK { return s.code; }
+  m := ifx take_out then muhash_remove_vartime(s.state, data) else muhash_insert_vartime(s.state, data);
+  return muhash_serialize(m, state);
+}
+muhash_finalize_bytes_vartime :: (state: [] u8, out: [] u8) -> int #export_c {
+  s := muhash_deserialize(state);
+  if s.code != MUHASH_OK { return s.code; }
+  return muhash_finalize_vartime(s.state, out);
+}
+muhash_new_bytes :: (state: [] u8) -> int #export_c { return muhash_serialize(muhash_new(), state); }

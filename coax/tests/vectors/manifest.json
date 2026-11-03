@@ -673,7 +673,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-transactions",
-        "bitcoin-v2-transport"
+        "bitcoin-v2-transport",
+        "bitcoin-utxo-set"
       ],
       "retrieved": "2026-11-02",
       "sha256": "9acb4bab2fe63ef351429b19d6ed75a9e719705060999c4e5dba78ce7c08db6f",
@@ -2317,6 +2318,240 @@
       "retrieved": "2026-11-03",
       "sha256": "ce87f506fc0db48f9cdb74e58a7ee396261b543fe9a7f423ec8eab1f2f82aa7a",
       "bytes": 1525
+    },
+    {
+      "path": "upstream/bitcoin-core/muhash.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/crypto/muhash.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "4dc2a5440ab0060b20f0f598e9fd738b963d252befb51d6cd97fcef71de6838c",
+      "bytes": 22464
+    },
+    {
+      "path": "upstream/bitcoin-core/muhash.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/crypto/muhash.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "41819366201e3694eebc62c675771faf7b3eaa102657b27347d50794be0e45aa",
+      "bytes": 4985
+    },
+    {
+      "path": "upstream/bitcoin-core/crypto_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/crypto_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "6eefd34081d99a0ca68ce357a7eeef15864439a566b8563031c0df1fc2ffaa40",
+      "bytes": 110009
+    },
+    {
+      "path": "upstream/bitcoin-core/compressor.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/compressor.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "9d6a07d3b4b69a2e0580e5ba795725455b19e7a1e29490a186d79cb3a4d9e301",
+      "bytes": 5455
+    },
+    {
+      "path": "upstream/bitcoin-core/compressor.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/compressor.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "c203dba72780287682396607cc60a71631aa1fee5f6c35ac87853a206ea86aa4",
+      "bytes": 3818
+    },
+    {
+      "path": "upstream/bitcoin-core/compress_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/compress_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "dba41e6bea1fc0c19d1611bb27d87964da75399b8d7edfa73df1c31433a4ded6",
+      "bytes": 5986
+    },
+    {
+      "path": "upstream/bitcoin-core/coins.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/coins.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "dcda5f551c4aad640b2d8c2105f66ba40a1fc51e7c416a0088568fd4a6ae86a0",
+      "bytes": 35254
+    },
+    {
+      "path": "upstream/bitcoin-core/coinstats.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/kernel/coinstats.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "c64eebd7291bbe78f7dd5f63e95c0ca04fa3bf7c6f3bf10b32ac3d3267367540",
+      "bytes": 6029
+    },
+    {
+      "path": "upstream/bitcoin-core/txdb.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/txdb.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "fcd265ad7d8a6b77cc121f37c6541df860e1a9d24725e6158ff1a83e722faef3",
+      "bytes": 10267
+    },
+    {
+      "path": "upstream/bitcoin-core/utxo_snapshot.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/utxo_snapshot.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "9da2c30d41e8ed13a8f96eba826324dec3cc4b0e8398b665561c07400cfb16f7",
+      "bytes": 5279
+    },
+    {
+      "path": "upstream/bitcoin-core/miner.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/miner.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "13fee188aaf49b13545d583b334b04517dad04bf43fa62691528a8abbcf0d559",
+      "bytes": 14225
+    },
+    {
+      "path": "upstream/bitcoin-core/feature_utxo_set_hash.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/feature_utxo_set_hash.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "39882a860fc1bfaaf135bc82067542486c18beaf79397c749edfbe77bde835bc",
+      "bytes": 3063
+    },
+    {
+      "path": "upstream/bitcoin-core/rpc_dumptxoutset.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/rpc_dumptxoutset.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "78005ac31b4df70964714dcc407fb5571a89350a9fc8d78381d2a8b979dba487",
+      "bytes": 4010
+    },
+    {
+      "path": "upstream/bitcoin-core/muhash.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/crypto/muhash.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "af45c2451c06abd530ae7d65f8778f7e1ebb76f7b68dcded3459fdcee376405c",
+      "bytes": 2106
+    },
+    {
+      "path": "upstream/bitcoin-core/chacha20.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/crypto/chacha20.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "c0b383e8c1ee47cd3d0cb02630ad316cd8e915b857fa19193a7111d79cbe4878",
+      "bytes": 7574
+    },
+    {
+      "path": "upstream/bitcoin-core/wallet.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/wallet.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "6787e3d41e80676260692946aaa448de71de0c772d6b7bb1d85fbf6c9535fbe4",
+      "bytes": 21486
+    },
+    {
+      "path": "upstream/bitcoin-core/address.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/address.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "10ff2a6ad2cb58200741fd345163d36315fe57b2583da0e919e72bdd825346d3",
+      "bytes": 8313
+    },
+    {
+      "path": "upstream/bitcoin-core/test_node.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/test_node.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-utxo-set"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "e00688c4aa2fe2991376c4835941804421ca21fe05700052b2118286a1e92a20",
+      "bytes": 49789
     }
   ]
 }

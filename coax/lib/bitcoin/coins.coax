@@ -1,0 +1,630 @@
+// The UTXO set's records (Bitcoin chapter 56): outpoints and coins, the
+// compact form Bitcoin Core stores them in, and the two hashes
+// gettxoutsetinfo gives of the whole set.
+//
+// A coin is an unspent output: its value, its scriptPubKey, the height of
+// the block that made it, and whether a coinbase made it. Core's chainstate
+// stores one record per coin under the key 'C' + txid + VARINT(n) (txdb.cpp)
+// with the value Coin::Serialize (coins.h): VARINT(height * 2 + coinbase),
+// the amount through CompressAmount, and the script through
+// ScriptCompression (compressor.h and compressor.cpp). VARINT is serialize.h's
+// MSB base-128 form, not the CompactSize of transactions.
+//
+// gettxoutsetinfo's hash_serialized_3 is SHA-256d over every coin's TxOutSer
+// (kernel/coinstats.cpp) in key order; its muhash is MuHash3072 over the same
+// records, each inserted on its own. TxOutSer is not the compressed form: it
+// is the outpoint, a 4-byte height * 2 + coinbase, and the output as a
+// transaction holds it.
+//
+// Coins are public, so everything here runs in variable time and every
+// procedure that decides ends in _vartime (Bitcoin chapter 3).
+#load "muhash.coax";
+#load "tx.coax";
+#load "../crypto/secp_encode.coax";
+#load "../../tests/bitcoin/utxo_vectors.coax";
+#authority;
+
+// book:begin codes
+// Refusal codes. Core throws std::ios_base::failure with the message in
+// quotes.
+COIN_OK :: 0;
+COIN_TRUNCATED :: 1;       // the bytes end inside a field: "end of data"
+COIN_VARINT_LARGE :: 2;    // a VARINT above its type: "ReadVarInt(): size too large"
+COIN_CAPACITY :: 3;        // the caller's output is too small
+COIN_BAD_AMOUNT :: 4;      // an amount above MAX_MONEY to compress (Core's precondition)
+COIN_BAD_HEIGHT :: 5;      // a height that does not fit in 31 bits
+COIN_BAD_KEY :: 6;         // a chainstate key that is not 'C', 32 bytes and a VARINT
+
+COIN_MAX_MONEY :: cast(u64) 2100000000000000;   // 21,000,000 BTC in satoshis
+COIN_MAX_SCRIPT :: 10000;                        // script.h MAX_SCRIPT_SIZE
+COIN_SPECIAL :: 6;                               // ScriptCompression::nSpecialScripts
+COIN_KEY_PREFIX :: 'C';                          // txdb.cpp DB_COIN
+// book:end codes
+
+// book:begin types
+// One unspent output. The scriptPubKey travels beside it as a byte view.
+Coin :: struct { value: u64; height: int; coinbase: bool; }
+// A VARINT read: its value, where reading goes on, and a refusal.
+CoinNum :: struct { value: u64; next: int; code: int; }
+// A coin record read: the coin, its script's length in the caller's
+// output, and where the record ended. bad_key is Core's silent case: a
+// compressed uncompressed key (kinds 4 and 5) whose x is on no point
+// decompresses to an empty script.
+CoinRead :: struct { code: int; next: int; coin: Coin; script_n: int; bad_key: bool; }
+// A chainstate key read: the output index and the txid's position.
+CoinKey :: struct { code: int; n: int; txid: int; }
+// book:end types
+
+// ---- checks
+cn_unhex :: (text: string, out: [] u8) -> [] u8 {
+  for i: 0..<text.count/2 { out[i] = cast(u8) (cn_nibble(text[2*i])*16 + cn_nibble(text[2*i+1])); }
+  return out[0..<text.count/2];
+}
+cn_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+cn_hex_is :: (a: [] u8, text: string) -> bool {
+  if a.count * 2 != text.count { return false; }
+  for i: 0..<a.count { if cast(int) a[i] != cn_nibble(text[2*i])*16 + cn_nibble(text[2*i+1]) { return false; } }
+  return true;
+}
+// The VARINT of v, as hex.
+cn_varint_is :: (v: u64, text: string) -> bool {
+  b: [10] u8;
+  n := coin_varint_write_vartime(b[..], 0, v);
+  return n == coin_varint_size(v) && cn_hex_is(b[0..<n], text);
+}
+#test "the check helpers notice every difference" {
+  b: [4] u8;
+  #assert cn_hex_is(cn_unhex("09af", b[..]), "09af") && !cn_hex_is(b[0..<2], "09ae") && !cn_hex_is(b[0..<2], "09a");
+  #assert cn_varint_is(0, "00") && !cn_varint_is(0, "01") && !cn_varint_is(1, "0100");
+}
+#test "VARINT: serialize.h's examples and the boundaries" {
+  // The table in serialize.h's comment above WriteVarInt.
+  #assert cn_varint_is(0, "00") && cn_varint_is(1, "01") && cn_varint_is(127, "7f");
+  #assert cn_varint_is(128, "8000") && cn_varint_is(255, "807f") && cn_varint_is(256, "8100");
+  #assert cn_varint_is(16383, "fe7f") && cn_varint_is(16384, "ff00") && cn_varint_is(16511, "ff7f");
+  #assert cn_varint_is(65535, "82fe7f") && cn_varint_is(4294967296, "8efefeff00");
+  #assert cn_varint_is(0xffffffffffffffff, "80fefefefefefefefe7f") && coin_varint_size(0xffffffffffffffff) == 10;
+  b: [10] u8;
+  #assert coin_varint_write_vartime(b[0..<1], 0, 128) == -1 && coin_varint_write_vartime(b[..], 9, 128) == -1;
+  for v: [8] u64.[0, 1, 127, 128, 16511, 16512, 0xffffffff, 0xffffffffffffffff] {
+    n := coin_varint_write_vartime(b[..], 0, v);
+    r := coin_varint_read_vartime(b[0..<n], 0, 0xffffffffffffffff);
+    #assert r.code == COIN_OK && r.value == v && r.next == n;
+  }
+}
+#test "VARINT refusals: the end of the data and a value above its type" {
+  b: [12] u8;
+  #assert coin_varint_read_vartime(b[0..<0], 0, 0xffffffff).code == COIN_TRUNCATED;
+  #assert coin_varint_read_vartime(cn_unhex("80", b[..]), 0, 0xffffffff).code == COIN_TRUNCATED;
+  // 2^32 - 1 fits a uint32; 2^32 does not.
+  #assert coin_varint_read_vartime(cn_unhex("8efefefe7f", b[..]), 0, 0xffffffff).value == 0xffffffff;
+  #assert coin_varint_read_vartime(cn_unhex("8efefeff00", b[..]), 0, 0xffffffff).code == COIN_VARINT_LARGE;
+  #assert coin_varint_read_vartime(cn_unhex("8efefeff00", b[..]), 0, 0xffffffffffffffff).value == 0x100000000;
+  // Six continuation bytes cannot fit 32 bits however they end.
+  #assert coin_varint_read_vartime(cn_unhex("808080808000", b[..]), 0, 0xffffffff).code == COIN_VARINT_LARGE;
+  // 2^64 - 1 fits a uint64; one more, or a longer form, does not.
+  #assert coin_varint_read_vartime(cn_unhex("80fefefefefefefefe7f", b[..]), 0, 0xffffffffffffffff).value == 0xffffffffffffffff;
+  #assert coin_varint_read_vartime(cn_unhex("80fefefefefefefeff00", b[..]), 0, 0xffffffffffffffff).code == COIN_VARINT_LARGE;
+  #assert coin_varint_read_vartime(cn_unhex("80fefefefefefefefeff00", b[..]), 0, 0xffffffffffffffff).code == COIN_VARINT_LARGE;
+}
+#test "compress_amounts: Core's pairs" {
+  #assert coin_compress_amount(0) == 0 && coin_decompress_amount(0) == 0;
+  #assert coin_compress_amount(1) == 1 && coin_decompress_amount(1) == 1;
+  #assert coin_compress_amount(1000000) == 7 && coin_decompress_amount(7) == 1000000;
+  #assert coin_compress_amount(100000000) == 9 && coin_decompress_amount(9) == 100000000;
+  #assert coin_compress_amount(5000000000) == 0x32 && coin_decompress_amount(0x32) == 5000000000;
+  #assert coin_compress_amount(COIN_MAX_MONEY) == 0x1406f40 && coin_decompress_amount(0x1406f40) == COIN_MAX_MONEY;
+}
+#forall "compress_amounts: every amount below 10,000 and every multiple of a cent" i: 1..<10001 #steps 100000000 {
+  #assert coin_decompress_amount(coin_compress_amount(cast(u64) i)) == cast(u64) i;
+  #assert coin_decompress_amount(coin_compress_amount(cast(u64) i * 1000000)) == cast(u64) i * 1000000;
+  #assert coin_decompress_amount(coin_compress_amount(cast(u64) i * 100000000)) == cast(u64) i * 100000000;
+}
+#forall "compress_amounts: decompress then compress is the identity" x: 0..<20000 #steps 100000000 {
+  #assert coin_compress_amount(coin_decompress_amount(cast(u64) x)) == cast(u64) x;
+}
+#test "DecompressAmount wraps as Core's uint64_t does" {
+  // 2^64 - 1 decodes to a huge mantissa and exponent 4: Core multiplies by ten
+  // four times in uint64_t and keeps the low 64 bits (utxo.py agrees).
+  #assert coin_decompress_amount(0xffffffffffffffff) == 0x1c71c71c71c72520;
+}
+#test "the six script forms, and scripts that are almost one" {
+  out: [40] u8; s: [80] u8; back: [80] u8;
+  // P2PKH: kind 0 and the 20-byte hash.
+  p2pkh := cn_unhex("76a914751e76e8199196d454941c45d1b3a323f1433bd688ac", s[..]);
+  n := coin_compress_script_vartime(p2pkh, out[..]);
+  #assert n == 21 && out[0] == 0 && cn_hex_is(out[1..<21], "751e76e8199196d454941c45d1b3a323f1433bd6");
+  #assert coin_decompress_script_vartime(0, out[1..<21], back[..]) == 25 && cn_hex_is(back[0..<25], "76a914751e76e8199196d454941c45d1b3a323f1433bd688ac");
+  // P2SH: kind 1.
+  p2sh := cn_unhex("a914b472a266d0bd89c13706a4132ccfb16f7c3b9fcb87", s[..]);
+  #assert coin_compress_script_vartime(p2sh, out[..]) == 21 && out[0] == 1;
+  #assert coin_decompress_script_vartime(1, out[1..<21], back[..]) == 23 && cn_hex_is(back[0..<23], "a914b472a266d0bd89c13706a4132ccfb16f7c3b9fcb87");
+  // P2PK with the generator's compressed key: kind 2 (its y is even).
+  g := cn_unhex("210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ac", s[..]);
+  #assert coin_compress_script_vartime(g, out[..]) == 33 && out[0] == 2;
+  #assert coin_decompress_script_vartime(2, out[1..<33], back[..]) == 35 && cn_hex_is(back[0..<35], "210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ac");
+  // P2PK with the generator uncompressed: kind 4 | (y & 1) = 4; and back.
+  gu := cn_unhex(CN_G_UNCOMPRESSED_P2PK, s[..]);
+  #assert coin_compress_script_vartime(gu, out[..]) == 33 && out[0] == 4;
+  #assert coin_decompress_script_vartime(4, out[1..<33], back[..]) == 67 && cn_hex_is(back[0..<67], CN_G_UNCOMPRESSED_P2PK);
+  // Almost: P2WPKH, a P2PKH with OP_EQUAL at the end, and a compressed key
+  // with prefix 04.
+  #assert coin_compress_script_vartime(cn_unhex("0014751e76e8199196d454941c45d1b3a323f1433bd6", s[..]), out[..]) == 0;
+  #assert coin_compress_script_vartime(cn_unhex("76a914751e76e8199196d454941c45d1b3a323f1433bd68887", s[..]), out[..]) == 0;
+  #assert coin_compress_script_vartime(cn_unhex("210479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ac", s[..]), out[..]) == 0;
+  // An uncompressed key off the curve stays uncompressed (y changed).
+  bad := cn_unhex(CN_G_UNCOMPRESSED_P2PK, s[..]); bad[65] ^= 1;
+  #assert coin_compress_script_vartime(bad, out[..]) == 0;
+  // An x with no point decompresses to nothing (compress_p2pk_scripts_not_on_curve):
+  // x = 5 has no y on y^2 = x^3 + 7.
+  x5: [32] u8; x5[31] = 5;
+  #assert coin_decompress_script_vartime(4, x5[..], back[..]) == 0 && coin_decompress_script_vartime(5, x5[..], back[..]) == 0;
+  #assert coin_decompress_script_vartime(6, x5[..], back[..]) == -1 && coin_decompress_script_vartime(0, x5[0..<19], back[..]) == -1;
+  #assert coin_compress_script_vartime(p2pkh, out[0..<20]) == -1;
+}
+CN_G_UNCOMPRESSED_P2PK :: "410479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8ac";
+#test "a coin record: a regtest coinbase, written and read back" {
+  out: [64] u8; script: [32] u8; back: [70] u8;
+  s := cn_unhex("76a9142b6a3e4c9ec15e4d4a38c17d6d8d8a9a7bce3ae188ac", script[..]);
+  c := Coin.{value = 5000000000, height = 100, coinbase = true};
+  n := coin_write_vartime(c, s, out[..]);
+  // VARINT(201), VARINT(50), kind 0 and the hash.
+  #assert n == 24 && cn_hex_is(out[0..<4], "80493200");
+  r := coin_read_vartime(out[0..<n], 0, back[..]);
+  #assert r.code == COIN_OK;
+  #assert r.next == n;
+  #assert r.coin.value == c.value;
+  #assert r.coin.height == 100 && r.coin.coinbase;
+  #assert r.script_n == 25 && cn_hex_is(back[0..<25], "76a9142b6a3e4c9ec15e4d4a38c17d6d8d8a9a7bce3ae188ac") && !r.bad_key;
+  #assert coin_write_vartime(c, s, out[0..<23]) == -COIN_CAPACITY;
+  #assert coin_write_vartime(Coin.{value = COIN_MAX_MONEY + 1}, s, out[..]) == -COIN_BAD_AMOUNT;
+  #assert coin_write_vartime(Coin.{height = 0x80000000}, s, out[..]) == -COIN_BAD_HEIGHT;
+  // Every cut of the record is "end of data".
+  for k: 0..<n { #assert coin_read_vartime(out[0..<k], 0, back[..]).code == COIN_TRUNCATED; }
+}
+#test "a coin record with a raw script, an empty one and an oversized one" {
+  out: [64] u8; back: [16] u8; script: [4] u8;
+  s := cn_unhex("6a0102", script[..]);
+  n := coin_write_vartime(Coin.{value = 0, height = 7}, s, out[..]);
+  // VARINT(14), VARINT(0), VARINT(3 + 6), the script.
+  #assert n == 6 && cn_hex_is(out[0..<n], "0e00096a0102");
+  r := coin_read_vartime(out[0..<n], 0, back[..]);
+  #assert r.code == COIN_OK && r.script_n == 3 && !r.coin.coinbase && r.coin.height == 7;
+  #assert coin_read_vartime(out[0..<n], 0, back[0..<2]).code == COIN_CAPACITY;
+  n = coin_write_vartime(Coin.{value = 1, height = 1}, s[0..<0], out[..]);
+  #assert n == 3 && cn_hex_is(out[0..<3], "020106");
+  // nSize 10007 means a 10,001-byte script: Core keeps OP_RETURN and skips
+  // the bytes, which must still be there.
+  big: [10010] u8;
+  big[0] = 0; big[1] = 0; big[2] = 0xcd; big[3] = 0x17;
+  r = coin_read_vartime(big[0..<10005], 0, back[..]);
+  #assert r.code == COIN_OK && r.next == 10005 && r.script_n == 1 && back[0] == 0x6a;
+  #assert coin_read_vartime(big[0..<10004], 0, back[..]).code == COIN_TRUNCATED;
+  // A code above 32 bits refuses.
+  #assert coin_read_vartime(cn_unhex("8efefeff00", out[..]), 0, back[..]).code == COIN_VARINT_LARGE;
+}
+#test "a record whose compressed key has no point reads as Core reads it: an empty script" {
+  rec: [40] u8; back: [70] u8;
+  rec[0] = 2; rec[1] = 1; rec[2] = 4; rec[34] = 5;
+  r := coin_read_vartime(rec[0..<35], 0, back[..]);
+  #assert r.code == COIN_OK && r.script_n == 0 && r.bad_key && r.next == 35;
+}
+#test "chainstate keys: 'C', the txid, VARINT(n)" {
+  txid: [32] u8; out: [40] u8;
+  for i: 0..<32 { txid[i] = cast(u8) i; }
+  n := coin_key_write_vartime(txid[..], 300, out[..]);
+  #assert n == 35 && out[0] == 'C' && out[1] == 0 && out[32] == 31 && cn_hex_is(out[33..<35], "812c");
+  k := coin_key_read_vartime(out[0..<n]);
+  #assert k.code == COIN_OK && k.n == 300 && k.txid == 1;
+  #assert coin_key_read_vartime(out[0..<34]).code == COIN_BAD_KEY;
+  out[0] = 'c';
+  #assert coin_key_read_vartime(out[0..<n]).code == COIN_BAD_KEY;
+  out[0] = 'C';
+  #assert coin_key_write_vartime(txid[..], 300, out[0..<34]) == -1 && coin_key_write_vartime(txid[0..<31], 1, out[..]) == -1;
+  // Trailing bytes after the VARINT, or a VARINT above 32 bits, are not a key.
+  out[35] = 0;
+  #assert coin_key_read_vartime(out[0..<36]).code == COIN_BAD_KEY;
+}
+#test "TxOutSer: the outpoint, height * 2 + coinbase, then the output" {
+  txid: [32] u8; out: [80] u8; script: [4] u8;
+  txid[0] = 0xaa;
+  s := cn_unhex("51", script[..]);
+  n := coin_txout_ser_vartime(txid[..], 2, Coin.{value = 1000, height = 3, coinbase = true}, s, out[..]);
+  #assert n == 50 && out[0] == 0xaa && cn_hex_is(out[32..<50], "0200000007000000e8030000000000000151");
+  #assert coin_txout_ser_vartime(txid[..], 2, Coin.{}, s, out[0..<49]) == -1;
+}
+#test "the order of keys is txid, then the index as a number" {
+  a: [32] u8; b: [32] u8;
+  #assert utxo_order_vartime(a[..], 0, b[..], 0) == 0 && utxo_order_vartime(a[..], 1, b[..], 0) > 0;
+  #assert utxo_order_vartime(a[..], 127, b[..], 128) < 0 && utxo_order_vartime(a[..], 300, b[..], 2) > 0;
+  b[0] = 1;
+  #assert utxo_order_vartime(a[..], 5, b[..], 0) < 0 && utxo_order_vartime(b[..], 0, a[..], 5) > 0;
+  a[31] = 9;
+  #assert utxo_order_vartime(a[..], 5, b[..], 0) < 0;
+}
+// One vector's txid and script into the caller's buffers; the script.
+cn_vector :: (v: UtxoVector, txid: [] u8, script: [] u8) -> [] u8 {
+  t := cn_unhex(v.txid, txid);
+  return cn_unhex(v.script, script);
+}
+cn_coin :: (v: UtxoVector) -> Coin { return Coin.{value = v.value, height = v.height, coinbase = v.coinbase}; }
+#test "rpc_dumptxoutset.py: hash_serialized_3 of 100 regtest coinbases" #steps 200000000 {
+  st: [112] u8; out: [32] u8; txid: [32] u8; sb: [40] u8;
+  #assert utxo_hash_init(st[..]);
+  for i: 0..<UTXO_DUMP_COUNT {
+    s := cn_vector(UTXO_DUMP[i], txid[..], sb[..]);
+    #assert utxo_hash_add_vartime(st[..], txid[..], UTXO_DUMP[i].n, cn_coin(UTXO_DUMP[i]), s);
+  }
+  #assert utxo_hash_final(st[..], out[..]) && mh_shown_is(out[..], UTXO_DUMP_TXOUTSET_HASH);
+  #assert !utxo_hash_final(st[..], out[0..<31]);
+}
+// dumptxoutset's file: the metadata (magic, version 2, regtest's message
+// start, the base block, the coin count), then per txid the txid, the
+// number of its coins, and each coin's index and record.
+#test "rpc_dumptxoutset.py: the dumptxoutset file's SHA-256, coins in Core's compressed form" #steps 200000000 {
+  file: [6000] u8; txid: [32] u8; sb: [40] u8; out: [32] u8; tip: [32] u8;
+  head := [11] u8.['u', 't', 'x', 'o', 0xff, 2, 0, 0xfa, 0xbf, 0xb5, 0xda];
+  for i: 0..<11 { file[i] = head[i]; }
+  t := cn_unhex(UTXO_DUMP_TIP, tip[..]);
+  for i: 0..<32 { file[11+i] = t[i]; }
+  #assert cb_store_le64(file[..], 43, cast(u64) UTXO_DUMP_COUNT);
+  at := 51;
+  for i: 0..<UTXO_DUMP_COUNT {
+    s := cn_vector(UTXO_DUMP[i], txid[..], sb[..]);
+    for k: 0..<32 { file[at+k] = txid[k]; }
+    at = tx_compact_write_vartime(file[..], at + 32, 1);
+    at = tx_compact_write_vartime(file[..], at, UTXO_DUMP[i].n);
+    n := coin_write_vartime(cn_coin(UTXO_DUMP[i]), s, file[at..<file.count]);
+    #assert n == 23 || n == 24;
+    at += n;
+  }
+  #assert at == 5788 && sha256_hash_checked(file[0..<at], out[..], false) == SHA_OK && mh_hex_is(out[..], UTXO_DUMP_FILE_SHA256);
+  #assert mh_shown_is(t, UTXO_DUMP_BASE_HASH);
+}
+#test "feature_utxo_set_hash.py: hash_serialized_3 and muhash of 101 regtest coins" #steps 1000000000 {
+  st: [112] u8; out: [32] u8; txid: [32] u8; sb: [40] u8;
+  #assert utxo_hash_init(st[..]);
+  m := muhash_new();
+  for i: 0..<UTXO_SET_COUNT {
+    s := cn_vector(UTXO_SET[i], txid[..], sb[..]);
+    #assert utxo_hash_add_vartime(st[..], txid[..], UTXO_SET[i].n, cn_coin(UTXO_SET[i]), s);
+    m = utxo_muhash_apply_vartime(m, txid[..], UTXO_SET[i].n, cn_coin(UTXO_SET[i]), s, false);
+  }
+  #assert utxo_hash_final(st[..], out[..]) && mh_shown_is(out[..], UTXO_SET_HASH_SERIALIZED);
+  #assert muhash_finalize_vartime(m, out[..]) == MUHASH_OK && mh_shown_is(out[..], UTXO_SET_MUHASH);
+}
+#test "spending a coin removes it: the hash of the set without it" #steps 2000000000 {
+  txid: [32] u8; sb: [40] u8; a: [32] u8; b: [32] u8;
+  m := muhash_new(); without := muhash_new();
+  for i: 0..<3 {
+    s := cn_vector(UTXO_SET[i], txid[..], sb[..]);
+    m = utxo_muhash_apply_vartime(m, txid[..], UTXO_SET[i].n, cn_coin(UTXO_SET[i]), s, false);
+    if i != 1 { without = utxo_muhash_apply_vartime(without, txid[..], UTXO_SET[i].n, cn_coin(UTXO_SET[i]), s, false); }
+  }
+  s := cn_vector(UTXO_SET[1], txid[..], sb[..]);
+  m = utxo_muhash_apply_vartime(m, txid[..], UTXO_SET[1].n, cn_coin(UTXO_SET[1]), s, true);
+  #assert muhash_finalize_vartime(m, a[..]) == MUHASH_OK && muhash_finalize_vartime(without, b[..]) == MUHASH_OK;
+  for i: 0..<32 { #assert a[i] == b[i]; }
+}
+#test "the C interface" {
+  out: [64] u8; script: [4] u8; back: [70] u8; f: [7] u64; txid: [32] u8;
+  #assert coin_compress_amount_c(5000000000) == 0x32 && coin_decompress_amount_c(0x32) == 5000000000;
+  s := cn_unhex("6a0102", script[..]);
+  n := coin_write_c(7, 3, true, s, out[..]);
+  #assert n == 6 && coin_read_c(out[0..<n], back[..], f[..]) == COIN_OK;
+  #assert f[1] == 6 && f[2] == 7 && f[3] == 3 && f[4] == 1 && f[5] == 3 && f[6] == 0;
+  #assert coin_read_c(out[0..<n], back[..], f[0..<6]) == -1 && coin_read_c(out[0..<2], back[..], f[..]) == COIN_TRUNCATED;
+  #assert coin_varint_write_c(out[..], 300) == 2 && coin_varint_c(out[0..<2], 0xffffffff, f[..]) == COIN_OK && f[0] == 300 && f[1] == 2;
+  #assert coin_varint_c(out[0..<2], 0xffffffff, f[0..<1]) == -1;
+  #assert coin_compress_script_c(s, out[..]) == 0;
+  #assert coin_txout_ser_c(txid[..], 1, 7, 3, true, s, out[..]) == 52 && out[36] == 7;
+}
+
+// book:begin varint
+// serialize.h's VARINT: big-endian groups of 7 bits, every byte but the
+// last with its top bit set. Each continuation also subtracts one, so every
+// number has exactly one encoding: 127 is 7f, 128 is 80 00 (not 81 00).
+coin_varint_size :: (v: u64) -> int {
+  n := 1; x := v;
+  while x > 0x7f { x = (x >> 7) - 1; n += 1; }
+  return n;
+}
+// Writes VARINT(v) into out at at; where writing goes on, or -1 when it
+// does not fit.
+coin_varint_write_vartime :: (out: [] u8, at: int, v: u64) -> int {
+  size := coin_varint_size(v);
+  if at < 0 || size > out.count - at { return -1; }
+  x := v;
+  for k: 0..<size {
+    low := cast(u8) (x & 0x7f);
+    out[at + size - 1 - k] = ifx k == 0 then low else low | 0x80;
+    x = (x >> 7) - (ifx k < size - 1 then cast(u64) 1 else 0);
+  }
+  return at + size;
+}
+// ReadVarInt for a type whose largest value is max (0xffffffff for
+// uint32_t, all ones for uint64_t). Core refuses before a shift would lose
+// a bit, and before the plus one would pass max.
+coin_varint_read_vartime :: (b: [] u8, at: int, max: u64) -> CoinNum {
+  n := cast(u64) 0; i := at;
+  while true {
+    if i >= b.count { return CoinNum.{next = at, code = COIN_TRUNCATED}; }
+    byte := b[i]; i += 1;
+    if n > (max >> 7) { return CoinNum.{next = at, code = COIN_VARINT_LARGE}; }
+    n = (n << 7) | cast(u64) (byte & 0x7f);
+    if (byte & 0x80) == 0 { return CoinNum.{value = n, next = i}; }
+    if n == max { return CoinNum.{next = at, code = COIN_VARINT_LARGE}; }
+    n += 1;
+  }
+  return CoinNum.{};
+}
+// book:end varint
+
+// book:begin amount
+// CompressAmount: strip up to nine trailing decimal zeros into e. Below
+// nine, the last digit d (1-9) is kept apart: 1 + 10 * (9 * n + d - 1) + e.
+// With nine zeros: 1 + 10 * (n - 1) + 9. Zero is 0. Round amounts, the
+// usual case, become small numbers: 50 BTC is 0x32.
+coin_compress_amount :: (amount: u64) -> u64 {
+  if amount == 0 { return 0; }
+  n := amount; e := cast(u64) 0;
+  while n % 10 == 0 && e < 9 { n /= 10; e += 1; }
+  if e < 9 {
+    d := n % 10;
+    n /= 10;
+    return 1 + (n * 9 + d - 1) * 10 + e;
+  }
+  return 1 + (n - 1) * 10 + 9;
+}
+// DecompressAmount, the inverse. It reads any uint64_t, as Core does, and
+// a number no compressed amount gives can wrap past 2^64 the way Core's
+// uint64_t does.
+coin_decompress_amount :: (compressed: u64) -> u64 {
+  if compressed == 0 { return 0; }
+  x := compressed - 1;
+  e := x % 10;
+  x /= 10;
+  n := cast(u64) 0;
+  if e < 9 {
+    d := x % 9 + 1;
+    x /= 9;
+    n = add_wrap(mul_wrap(x, 10), d);
+  } else {
+    n = x + 1;
+  }
+  while e > 0 { n = mul_wrap(n, 10); e -= 1; }
+  return n;
+}
+// book:end amount
+
+// book:begin script
+// CompressScript: the three script shapes worth a short form, each written
+// as a kind byte and the bytes that vary. Kind 0 is P2PKH (the 20-byte key
+// hash), 1 is P2SH (the script hash), 2 and 3 are P2PK with a compressed key
+// (the prefix is the kind, then x), and 4 and 5 are P2PK with an
+// uncompressed key on the curve (4 plus y's low bit, then x). Writes 21 or
+// 33 bytes into out and returns that, 0 for any other script, or -1 when
+// out is under 33 bytes.
+coin_compress_script_vartime :: (s: [] u8, out: [] u8) -> int {
+  if out.count < 33 { return -1; }
+  if s.count == 25 && s[0] == 0x76 && s[1] == 0xa9 && s[2] == 20 && s[23] == 0x88 && s[24] == 0xac {
+    out[0] = 0; for i: 0..<20 { out[1+i] = s[3+i]; }
+    return 21;
+  }
+  if s.count == 23 && s[0] == 0xa9 && s[1] == 20 && s[22] == 0x87 {
+    out[0] = 1; for i: 0..<20 { out[1+i] = s[2+i]; }
+    return 21;
+  }
+  if s.count == 35 && s[0] == 33 && s[34] == 0xac && (s[1] == 2 || s[1] == 3) {
+    for i: 0..<33 { out[i] = s[1+i]; }
+    return 33;
+  }
+  // An uncompressed key must be a point: off the curve it has no short form.
+  if s.count == 67 && s[0] == 65 && s[66] == 0xac && s[1] == 4 && se_decode(s[1..<66]).ok {
+    out[0] = 4 | (s[65] & 1);
+    for i: 0..<32 { out[1+i] = s[2+i]; }
+    return 33;
+  }
+  return 0;
+}
+// DecompressScript: kind and its 20 or 32 bytes back to the script in out.
+// Returns the script's length; 0 for kinds 4 and 5 when x is on no point
+// (Core leaves the script empty); -1 for a kind above 5, data of the wrong
+// size or an out under 67 bytes.
+coin_decompress_script_vartime :: (kind: int, data: [] u8, out: [] u8) -> int {
+  if kind < 0 || kind >= COIN_SPECIAL || data.count != coin_special_size(kind) || out.count < 67 { return -1; }
+  if kind == 0 {
+    out[0] = 0x76; out[1] = 0xa9; out[2] = 20;
+    for i: 0..<20 { out[3+i] = data[i]; }
+    out[23] = 0x88; out[24] = 0xac;
+    return 25;
+  }
+  if kind == 1 {
+    out[0] = 0xa9; out[1] = 20;
+    for i: 0..<20 { out[2+i] = data[i]; }
+    out[22] = 0x87;
+    return 23;
+  }
+  if kind == 2 || kind == 3 {
+    out[0] = 33; out[1] = cast(u8) kind;
+    for i: 0..<32 { out[2+i] = data[i]; }
+    out[34] = 0xac;
+    return 35;
+  }
+  // Kinds 4 and 5: the compressed key with prefix kind - 2, decompressed.
+  key: [33] u8; full: [65] u8;
+  key[0] = cast(u8) (kind - 2);
+  for i: 0..<32 { key[1+i] = data[i]; }
+  if se_recode(key[..], SE_UNCOMPRESSED, full[..]) != SE_UNCOMPRESSED { return 0; }
+  out[0] = 65;
+  for i: 0..<65 { out[1+i] = full[i]; }
+  out[66] = 0xac;
+  return 67;
+}
+// GetSpecialScriptSize: 20 bytes for kinds 0 and 1, 32 for 2 to 5.
+coin_special_size :: (kind: int) -> int { return ifx kind < 2 then 20 else 32; }
+// book:end script
+
+// book:begin record
+// Coin::Serialize into out: VARINT(height * 2 + coinbase), VARINT of the
+// compressed amount, then the script: its short form, or VARINT(length + 6)
+// and the bytes. Returns the length, or minus a refusal code; a refusal
+// may leave out partly written.
+coin_write_vartime :: (c: Coin, script: [] u8, out: [] u8) -> int {
+  if c.value > COIN_MAX_MONEY { return -COIN_BAD_AMOUNT; }
+  if c.height < 0 || c.height > 0x7fffffff { return -COIN_BAD_HEIGHT; }
+  code := cast(u64) c.height * 2 + (ifx c.coinbase then cast(u64) 1 else 0);
+  at := coin_varint_write_vartime(out, 0, code);
+  if at < 0 { return -COIN_CAPACITY; }
+  at = coin_varint_write_vartime(out, at, coin_compress_amount(c.value));
+  if at < 0 { return -COIN_CAPACITY; }
+  short: [33] u8;
+  k := coin_compress_script_vartime(script, short[..]);
+  if k > 0 {
+    if k > out.count - at { return -COIN_CAPACITY; }
+    for i: 0..<k { out[at+i] = short[i]; }
+    return at + k;
+  }
+  at = coin_varint_write_vartime(out, at, cast(u64) (script.count + COIN_SPECIAL));
+  if at < 0 || script.count > out.count - at { return -COIN_CAPACITY; }
+  for i: 0..<script.count { out[at+i] = script[i]; }
+  return at + script.count;
+}
+// Coin::Unserialize from b at at, the script into script_out (10,000 bytes
+// hold any). A script longer than MAX_SCRIPT_SIZE reads as one OP_RETURN
+// with its bytes skipped, as Core's ScriptCompression::Unser does.
+coin_read_vartime :: (b: [] u8, at: int, script_out: [] u8) -> CoinRead {
+  r: CoinRead;
+  code := coin_varint_read_vartime(b, at, 0xffffffff);
+  if code.code != COIN_OK { r.code = code.code; return r; }
+  amount := coin_varint_read_vartime(b, code.next, 0xffffffffffffffff);
+  if amount.code != COIN_OK { r.code = amount.code; return r; }
+  size := coin_varint_read_vartime(b, amount.next, 0xffffffff);
+  if size.code != COIN_OK { r.code = size.code; return r; }
+  r.coin.height = cast(int) (code.value >> 1);
+  r.coin.coinbase = (code.value & 1) == 1;
+  r.coin.value = coin_decompress_amount(amount.value);
+  at2 := size.next;
+  if size.value < cast(u64) COIN_SPECIAL {
+    kind := cast(int) size.value;
+    need := coin_special_size(kind);
+    if need > b.count - at2 { r.code = COIN_TRUNCATED; return r; }
+    if script_out.count < 67 { r.code = COIN_CAPACITY; return r; }
+    k := coin_decompress_script_vartime(kind, b[at2..<at2+need], script_out);
+    r.script_n = k; r.bad_key = k == 0; r.next = at2 + need;
+    return r;
+  }
+  n := cast(int) (size.value - cast(u64) COIN_SPECIAL);
+  if n > b.count - at2 { r.code = COIN_TRUNCATED; return r; }
+  if n > COIN_MAX_SCRIPT {
+    if script_out.count < 1 { r.code = COIN_CAPACITY; return r; }
+    script_out[0] = 0x6a; r.script_n = 1; r.next = at2 + n;
+    return r;
+  }
+  if n > script_out.count { r.code = COIN_CAPACITY; return r; }
+  for i: 0..<n { script_out[i] = b[at2+i]; }
+  r.script_n = n; r.next = at2 + n;
+  return r;
+}
+// book:end record
+
+// book:begin key
+// The chainstate key of an outpoint: 'C', the txid in hash order, VARINT(n).
+// Returns the length, or -1 when out is too small or txid is not 32 bytes.
+coin_key_write_vartime :: (txid: [] u8, n: int, out: [] u8) -> int {
+  if txid.count != 32 || n < 0 || n > 0xffffffff || out.count < 33 { return -1; }
+  out[0] = COIN_KEY_PREFIX;
+  for i: 0..<32 { out[1+i] = txid[i]; }
+  return coin_varint_write_vartime(out, 33, cast(u64) n);
+}
+// A whole key back: the prefix, 32 bytes and a VARINT that ends the key.
+coin_key_read_vartime :: (b: [] u8) -> CoinKey {
+  if b.count < 34 || b[0] != COIN_KEY_PREFIX { return CoinKey.{code = COIN_BAD_KEY}; }
+  v := coin_varint_read_vartime(b, 33, 0xffffffff);
+  if v.code != COIN_OK || v.next != b.count { return CoinKey.{code = COIN_BAD_KEY}; }
+  return CoinKey.{n = cast(int) v.value, txid = 1};
+}
+// The order of the chainstate, and of both hashes: txid bytes as stored
+// (hash order), then the output index as a number. Negative, zero or
+// positive as a sorts before, with or after b.
+utxo_order_vartime :: (a_txid: [] u8, a_n: int, b_txid: [] u8, b_n: int) -> int {
+  for i: 0..<32 {
+    if a_txid[i] != b_txid[i] { return ifx a_txid[i] < b_txid[i] then -1 else 1; }
+  }
+  return ifx a_n < b_n then -1 else ifx a_n > b_n then 1 else 0;
+}
+// book:end key
+
+// book:begin txoutser
+// TxOutSer (kernel/coinstats.cpp): the record both set hashes read. The
+// outpoint (txid, 4-byte n), a 4-byte height * 2 + coinbase, the 8-byte
+// value, then the script with its CompactSize length. All little-endian.
+// Returns the length, or -1 when out is too small.
+coin_txout_ser_vartime :: (txid: [] u8, n: int, c: Coin, script: [] u8, out: [] u8) -> int {
+  size := 32 + 4 + 4 + 8 + tx_compact_size_vartime(script.count) + script.count;
+  if txid.count != 32 || out.count < size { return -1; }
+  for i: 0..<32 { out[i] = txid[i]; }
+  code := c.height * 2 + (ifx c.coinbase then 1 else 0);
+  for i: 0..<4 { out[32+i] = cast(u8) ((n >> (8*i)) & 255); out[36+i] = cast(u8) ((code >> (8*i)) & 255); }
+  #assert cb_store_le64(out, 40, c.value);
+  at := tx_compact_write_vartime(out, 48, script.count);
+  for i: 0..<script.count { out[at+i] = script[i]; }
+  return size;
+}
+// book:end txoutser
+
+// book:begin hashes
+// hash_serialized_3: one SHA-256 stream over every coin's TxOutSer in
+// chainstate order, then SHA-256 of that (HashWriter's GetHash). state is a
+// SHA-256 state of SHA_STATE_BYTES.
+utxo_hash_init :: (state: [] u8) -> bool {
+  return sha256_init(state) == SHA_OK;
+}
+utxo_hash_add_vartime :: (state: [] u8, txid: [] u8, n: int, c: Coin, script: [] u8) -> bool {
+  rec: [10100] u8;
+  k := coin_txout_ser_vartime(txid, n, c, script, rec[..]);
+  return k > 0 && sha256_update_checked(state, rec[0..<k], false) == SHA_OK;
+}
+utxo_hash_final :: (state: [] u8, out: [] u8) -> bool {
+  once: [32] u8;
+  if out.count != 32 || sha256_final_checked(state, once[..], false) != SHA_OK { return false; }
+  return sha256_hash_checked(once[..], out, false) == SHA_OK;
+}
+// muhash: each coin's TxOutSer is one element. Adding a block's new coins
+// and removing its spent ones keeps the hash current without the set.
+utxo_muhash_apply_vartime :: (m: MuHash3072, txid: [] u8, n: int, c: Coin, script: [] u8, spend: bool) -> MuHash3072 {
+  rec: [10100] u8;
+  k := coin_txout_ser_vartime(txid, n, c, script, rec[..]);
+  #assert k > 0;
+  return ifx spend then muhash_remove_vartime(m, rec[0..<k]) else muhash_insert_vartime(m, rec[0..<k]);
+}
+// book:end hashes
+
+// The C interface, in plain integers and byte views.
+coin_compress_amount_c :: (amount: u64) -> u64 #export_c { return coin_compress_amount(amount); }
+coin_decompress_amount_c :: (x: u64) -> u64 #export_c { return coin_decompress_amount(x); }
+coin_write_c :: (value: u64, height: int, coinbase: bool, script: [] u8, out: [] u8) -> int #export_c {
+  return coin_write_vartime(Coin.{value = value, height = height, coinbase = coinbase}, script, out);
+}
+// Reads one record; fields[0..5] get code, next, value, height, coinbase,
+// script length and bad_key.
+coin_read_c :: (b: [] u8, script_out: [] u8, fields: [] u64) -> int #export_c {
+  if fields.count < 7 { return -1; }
+  r := coin_read_vartime(b, 0, script_out);
+  fields[0] = cast(u64) r.code; fields[1] = cast(u64) r.next; fields[2] = r.coin.value;
+  fields[3] = cast(u64) r.coin.height; fields[4] = ifx r.coin.coinbase then cast(u64) 1 else 0;
+  fields[5] = cast(u64) r.script_n; fields[6] = ifx r.bad_key then cast(u64) 1 else 0;
+  return r.code;
+}
+coin_varint_c :: (b: [] u8, max: u64, fields: [] u64) -> int #export_c {
+  if fields.count < 2 { return -1; }
+  r := coin_varint_read_vartime(b, 0, max);
+  fields[0] = r.value; fields[1] = cast(u64) r.next;
+  return r.code;
+}
+coin_varint_write_c :: (out: [] u8, v: u64) -> int #export_c { return coin_varint_write_vartime(out, 0, v); }
+coin_compress_script_c :: (s: [] u8, out: [] u8) -> int #export_c { return coin_compress_script_vartime(s, out); }
+// TxOutSer of one coin, for the harness to hash both ways.
+coin_txout_ser_c :: (txid: [] u8, n: int, value: u64, height: int, coinbase: bool, script: [] u8, out: [] u8) -> int #export_c {
+  return coin_txout_ser_vartime(txid, n, Coin.{value = value, height = height, coinbase = coinbase}, script, out);
+}

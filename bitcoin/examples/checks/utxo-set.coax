@@ -1,0 +1,56 @@
+// The checks of utxo-set.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/utxo-set.coax
+#load "../utxo-set.coax";
+
+// book:begin check
+// Every coin of both regtest sets survives a write and a read: the record,
+// the key and the TxOutSer all come back to the same coin.
+utxo_round_trip_ok :: (v: UtxoVector) -> bool {
+  txid: [32] u8; sb: [80] u8; rec: [64] u8; back: [80] u8; key: [40] u8;
+  script := vector(v, txid[..], sb[..]);
+  c := coin_of(v);
+  n := coin_write_vartime(c, script, rec[..]);
+  if n <= 0 { return false; }
+  r := coin_read_vartime(rec[0..<n], 0, back[..]);
+  if r.code != COIN_OK || r.next != n || r.coin.value != c.value { return false; }
+  if r.coin.height != c.height || r.coin.coinbase != c.coinbase { return false; }
+  if r.script_n != script.count { return false; }
+  for i: 0..<script.count { if back[i] != script[i] { return false; } }
+  k := coin_key_write_vartime(txid[..], v.n, key[..]);
+  kr := coin_key_read_vartime(key[0..<k]);
+  if kr.code != COIN_OK || kr.n != v.n { return false; }
+  for i: 0..<32 { if key[kr.txid + i] != txid[i] { return false; } }
+  return true;
+}
+#forall "rpc_dumptxoutset.py's coins round-trip" i: 0..<UTXO_DUMP_COUNT #steps 20000000 {
+  #assert utxo_round_trip_ok(UTXO_DUMP[i]);
+}
+#forall "feature_utxo_set_hash.py's coins round-trip" i: 0..<UTXO_SET_COUNT #steps 20000000 {
+  #assert utxo_round_trip_ok(UTXO_SET[i]);
+}
+// MuHash ignores order: inserting the coins backwards gives Core's value.
+#test "feature_utxo_set_hash.py's muhash, coins in reverse order" #steps 4000000000 {
+  txid: [32] u8; sb: [80] u8; out: [32] u8;
+  set := muhash_new();
+  for j: 0..<UTXO_SET_COUNT {
+    v := UTXO_SET[UTXO_SET_COUNT - 1 - j];
+    s := vector(v, txid[..], sb[..]);
+    set = utxo_muhash_apply_vartime(set, txid[..], v.n, coin_of(v), s, false);
+  }
+  #assert muhash_finalize_vartime(set, out[..]) == MUHASH_OK;
+  #assert mh_shown_is(out[..], UTXO_SET_MUHASH);
+}
+// hash_serialized_3 depends on order: swapping the first two coins changes it.
+#test "hash_serialized_3 depends on key order" #steps 400000000 {
+  txid: [32] u8; sb: [80] u8; out: [32] u8; st: [112] u8;
+  #assert utxo_hash_init(st[..]);
+  for j: 0..<UTXO_DUMP_COUNT {
+    i := ifx j == 0 then 1 else ifx j == 1 then 0 else j;
+    s := vector(UTXO_DUMP[i], txid[..], sb[..]);
+    #assert utxo_hash_add_vartime(st[..], txid[..], UTXO_DUMP[i].n, coin_of(UTXO_DUMP[i]), s);
+  }
+  #assert utxo_hash_final(st[..], out[..]);
+  #assert !mh_shown_is(out[..], UTXO_DUMP_TXOUTSET_HASH);
+}
+// book:end check

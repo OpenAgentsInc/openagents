@@ -1,0 +1,49 @@
+A coin
+  txid: 3fa99e31ecb8219c50d67ac45bdcf3441b0c5f09d58fba1135f6dd6596ebc55b
+  output 0, height 100, coinbase true, value 5000000000 sat
+  scriptPubKey: 76a9142b4569203694fc997e13f2c0a1383b9e16c77a0d88ac
+  chainstate key: 435bc5eb9665ddf63511ba8fd5095f0c1b44f3dc5bc47ad6509c21b8ec319ea93f00
+  record: 804932002b4569203694fc997e13f2c0a1383b9e16c77a0d
+  24 bytes: VARINT(201) = 8049, VARINT(50) = 32, kind 00, the key hash
+  TxOutSer: 5bc5eb9665ddf63511ba8fd5095f0c1b44f3dc5bc47ad6509c21b8ec319ea93f00000000c900000000f2052a010000001976a9142b4569203694fc997e13f2c0a1383b9e16c77a0d88ac
+VARINT
+  0: 00
+  127: 7f
+  128: 8000
+  300: 812c
+  16511: ff7f
+  16512: 808000
+Compressed amounts
+  0 sat -> 0 -> 0
+  1 sat -> 1 -> 1
+  1000000 sat -> 7 -> 1000000
+  100000000 sat -> 9 -> 100000000
+  5000000000 sat -> 50 -> 5000000000
+  2100000000000000 sat -> 21000000 -> 2100000000000000
+  123456789 sat -> 1111111101 -> 123456789
+Compressed scripts
+  P2PKH: 25 bytes -> 21 bytes, kind 0
+  P2SH: 23 bytes -> 21 bytes, kind 1
+  P2PK, compressed key: 35 bytes -> 33 bytes, kind 2
+  P2PK, uncompressed key: 67 bytes -> 33 bytes, kind 4
+  P2WPKH: 22 bytes, no short form
+  P2TR: 34 bytes, no short form
+rpc_dumptxoutset.py: 100 coins
+  hash_serialized_3: 771d773b5c27b6f35f598ce764652a2cf28fbc268341eb1827844e416c629c7d
+  Core's txoutset_hash matches: true
+feature_utxo_set_hash.py: 101 coins
+  hash_serialized_3: 396058cfd7f3b4c05dcdfaf360be9986d859d2c8315082d3aadda6d2d16add25
+  Core's matches: true
+  muhash: 97f341d4226cb4451dd9da2856759fb97659cfc238a0b8d5452e64af6032bd3d
+  Core's matches: true
+Spend one coin, then restore it
+  without it: f71eabc81159aac9a1b1f759939e3f66acbd6542fcfba12afc659e6301a95658
+  with it again: 97f341d4226cb4451dd9da2856759fb97659cfc238a0b8d5452e64af6032bd3d
+  restored: true
+Core's MuHash3072 vector
+  {0} + {1} - {2}: 10d312b100cbd32ada024a6646e40d3482fcff103668d2625f10002a607d5863
+Refusals
+  the record cut one byte short: end of data
+  a height code of 2^32: size too large
+  a value above 21,000,000 BTC: bad amount
+  a key with an index above 2^32 - 1: -1

@@ -1,0 +1,1032 @@
+#!/usr/bin/env python3
+# Copyright (c) 2017-present The Bitcoin Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+"""Class for bitcoind node under test"""
+
+import contextlib
+import decimal
+import errno
+from enum import Enum
+import json
+import logging
+import os
+import platform
+import re
+import subprocess
+import tempfile
+import time
+import urllib.parse
+import collections
+import sys
+from collections.abc import Iterable
+from pathlib import Path
+
+from .authproxy import (
+    AuthServiceProxy,
+    JSONRPCException,
+    serialization_fallback,
+)
+from . import coverage
+from .messages import NODE_P2P_V2
+from .p2p import P2P_SERVICES, P2P_SUBVERSION
+from .util import (
+    MAX_NODES,
+    assert_equal,
+    assert_not_equal,
+    append_config,
+    delete_cookie_file,
+    get_auth_cookie,
+    rpc_port,
+    wait_until_helper_internal,
+    p2p_port,
+    tor_port,
+)
+from .signet import SIGNET_DEFAULT_CHALLENGE, message_start
+
+BITCOIND_PROC_WAIT_TIMEOUT = 60
+# The size of the blocks xor key
+# from InitBlocksdirXorKey::xor_key.size()
+NUM_XOR_BYTES = 8
+# Many systems have a 128kB limit for a command size. Depending on the
+# platform, this limit may be larger or smaller. Moreover, when using the
+# 'bitcoin' command, it may internally insert more args, which must be
+# accounted for. There is no need to pick the largest possible value here
+# anyway and it should be fine to set it to 1kB in tests.
+TEST_CLI_MAX_ARG_SIZE = 1024
+
+# The null blocks key (all 0s)
+NULL_BLK_XOR_KEY = bytes([0] * NUM_XOR_BYTES)
+BITCOIN_PID_FILENAME_DEFAULT = "bitcoind.pid"
+
+if sys.platform.startswith("linux"):
+    UNIX_PATH_MAX = 108          # includes the trailing NUL
+elif sys.platform.startswith(("darwin", "freebsd", "netbsd", "openbsd")):
+    UNIX_PATH_MAX = 104
+else:                            # safest portable value
+    UNIX_PATH_MAX = 92
+
+
+class FailedToStartError(Exception):
+    """Raised when a node fails to start correctly."""
+
+
+class ErrorMatch(Enum):
+    FULL_TEXT = 1
+    FULL_REGEX = 2
+    PARTIAL_REGEX = 3
+
+
+RPCConnectionType = Enum("RPCConnectionType", ["AUTO", "AUTHPROXY", "CLI"])
+
+
+class TestNode():
+    """A class for representing a bitcoind node under test.
+
+    This class contains:
+
+    - state about the node (whether it's running, etc)
+    - a Python subprocess.Popen object representing the running process
+    - an RPC connection to the node
+    - one or more P2P connections to the node
+
+
+    To make things easier for the test writer, any unrecognised messages will
+    be dispatched to the RPC connection."""
+
+    def __init__(
+        self,
+        i,
+        datadir_path,
+        *,
+        chain,
+        rpchost,
+        timewait,
+        timeout_factor,
+        binaries,
+        coverage_dir,
+        cwd,
+        extra_conf=None,
+        extra_args=None,
+        use_cli=False,
+        version=None,
+        v2transport=False,
+        uses_wallet=False,
+        ipcbind=False,
+        use_gui=False,
+    ):
+        self.index = i
+        self.datadir_path = datadir_path
+        self.bitcoinconf = self.datadir_path / "bitcoin.conf"
+        self.stdout_dir = self.datadir_path / "stdout"
+        self.stderr_dir = self.datadir_path / "stderr"
+        self.chain = chain
+        self.rpchost = rpchost
+        self.rpc_timeout = timewait  # Already multiplied by timeout_factor
+        self.timeout_factor = timeout_factor
+        self.binaries = binaries
+        self.coverage_dir = coverage_dir
+        self.cwd = cwd
+        self.use_gui = use_gui
+        self.has_explicit_bind = False
+        if extra_conf is not None:
+            append_config(self.datadir_path, extra_conf)
+            # Remember if there is bind=... in the config file.
+            self.has_explicit_bind = any(e.startswith("bind=") for e in extra_conf)
+        # Most callers will just need to add extra args to the standard list below.
+        # For those callers that need more flexibility, they can just set the args property directly.
+        # Note that common args are set in the config file (see initialize_datadir)
+        self.extra_args = extra_args
+        self.version = version
+        # Configuration for logging is set as command-line args rather than in the bitcoin.conf file.
+        # This means that starting a bitcoind using the temp dir to debug a failed test won't
+        # spam debug.log.
+        self.args = self.binaries.node_argv(need_ipc=ipcbind, use_gui=use_gui) + [
+            f"-datadir={self.datadir_path}",
+            "-logtimemicros",
+            "-debug",
+            "-debugexclude=leveldb",
+            "-debugexclude=rand",
+            "-uacomment=testnode%d" % i,  # required for subversion uniqueness across peers
+        ]
+        if use_gui:
+            self.args.append("-lang=nl_NL")  # Set language to try to trigger translation bugs
+        if uses_wallet is not None and not uses_wallet:
+            self.args.append("-disablewallet")
+
+        self.ipc_tmp_dir = None
+        if ipcbind:
+            self.ipc_socket_path = self.chain_path / "node.sock"
+            if len(os.fsencode(self.ipc_socket_path)) < UNIX_PATH_MAX:
+                self.args.append("-ipcbind=unix")
+            else:
+                # Work around default CI path exceeding maximum socket path length.
+                self.ipc_tmp_dir = tempfile.TemporaryDirectory(prefix="test-ipc-")
+                self.ipc_socket_path = Path(self.ipc_tmp_dir.name) / "node.sock"
+                self.args.append(f"-ipcbind=unix:{self.ipc_socket_path}")
+
+        if self.version_is_at_least(190000):
+            self.args.append("-logthreadnames")
+        if self.version_is_at_least(219900):
+            self.args.append("-logsourcelocations")
+        if self.version_is_at_least(239000):
+            self.args.append("-loglevel=trace")
+        if self.version_is_at_least(290100):
+            self.args.append("-nologratelimit")
+
+        # Default behavior from global -v2transport flag is added to args to persist it over restarts.
+        # May be overwritten in individual tests, using extra_args.
+        self.default_to_v2 = v2transport
+        if self.version_is_at_least(260000):
+            # 26.0 and later support v2transport
+            if v2transport:
+                self.args.append("-v2transport=1")
+            else:
+                self.args.append("-v2transport=0")
+        # if v2transport is requested via global flag but not supported for node version, ignore it
+
+        self.cli = None
+        self.use_cli = use_cli
+
+        self.running = False
+        self.process = None
+        self.rpc_connected = False
+        self._rpc = None # Should usually not be accessed directly in tests to allow for --usecli mode
+        self.reuse_http_connections = True # Must be set before create_new_rpc_connection(), i.e. before restarting node
+        self.url = None
+        self.log = logging.getLogger('TestFramework.node%d' % i)
+
+        self.p2ps = []
+
+        self.mocktime = None
+
+    AddressKeyPair = collections.namedtuple('AddressKeyPair', ['address', 'key'])
+    PRIV_KEYS = [
+            # address , privkey
+            AddressKeyPair('mjTkW3DjgyZck4KbiRusZsqTgaYTxdSz6z', 'cVpF924EspNh8KjYsfhgY96mmxvT6DgdWiTYMtMjuM74hJaU5psW'),
+            AddressKeyPair('msX6jQXvxiNhx3Q62PKeLPrhrqZQdSimTg', 'cUxsWyKyZ9MAQTaAhUQWJmBbSvHMwSmuv59KgxQV7oZQU3PXN3KE'),
+            AddressKeyPair('mnonCMyH9TmAsSj3M59DsbH8H63U3RKoFP', 'cTrh7dkEAeJd6b3MRX9bZK8eRmNqVCMH3LSUkE3dSFDyzjU38QxK'),
+            AddressKeyPair('mqJupas8Dt2uestQDvV2NH3RU8uZh2dqQR', 'cVuKKa7gbehEQvVq717hYcbE9Dqmq7KEBKqWgWrYBa2CKKrhtRim'),
+            AddressKeyPair('msYac7Rvd5ywm6pEmkjyxhbCDKqWsVeYws', 'cQDCBuKcjanpXDpCqacNSjYfxeQj8G6CAtH1Dsk3cXyqLNC4RPuh'),
+            AddressKeyPair('n2rnuUnwLgXqf9kk2kjvVm8R5BZK1yxQBi', 'cQakmfPSLSqKHyMFGwAqKHgWUiofJCagVGhiB4KCainaeCSxeyYq'),
+            AddressKeyPair('myzuPxRwsf3vvGzEuzPfK9Nf2RfwauwYe6', 'cQMpDLJwA8DBe9NcQbdoSb1BhmFxVjWD5gRyrLZCtpuF9Zi3a9RK'),
+            AddressKeyPair('mumwTaMtbxEPUswmLBBN3vM9oGRtGBrys8', 'cSXmRKXVcoouhNNVpcNKFfxsTsToY5pvB9DVsFksF1ENunTzRKsy'),
+            AddressKeyPair('mpV7aGShMkJCZgbW7F6iZgrvuPHjZjH9qg', 'cSoXt6tm3pqy43UMabY6eUTmR3eSUYFtB2iNQDGgb3VUnRsQys2k'),
+            AddressKeyPair('mq4fBNdckGtvY2mijd9am7DRsbRB4KjUkf', 'cN55daf1HotwBAgAKWVgDcoppmUNDtQSfb7XLutTLeAgVc3u8hik'),
+            AddressKeyPair('mpFAHDjX7KregM3rVotdXzQmkbwtbQEnZ6', 'cT7qK7g1wkYEMvKowd2ZrX1E5f6JQ7TM246UfqbCiyF7kZhorpX3'),
+            AddressKeyPair('mzRe8QZMfGi58KyWCse2exxEFry2sfF2Y7', 'cPiRWE8KMjTRxH1MWkPerhfoHFn5iHPWVK5aPqjW8NxmdwenFinJ'),
+    ]
+
+    def get_deterministic_priv_key(self):
+        """Return a deterministic priv key in base58, that only depends on the node's index"""
+        assert_equal(len(self.PRIV_KEYS), MAX_NODES)
+        return self.PRIV_KEYS[self.index]
+
+    def _node_msg(self, msg: str) -> str:
+        """Return a modified msg that identifies this node by its index as a debugging aid."""
+        return "[node %d] %s" % (self.index, msg)
+
+    def _raise_assertion_error(self, msg: str):
+        """Raise an AssertionError with msg modified to identify this node."""
+        raise AssertionError(self._node_msg(msg))
+
+    def __del__(self):
+        # Ensure that we don't leave any bitcoind processes lying around after
+        # the test ends
+        if self.process:
+            # Should only happen on test failure
+            # Avoid using logger, as that may have already been shutdown when
+            # this destructor is called.
+            print(self._node_msg("Cleaning up leftover process"), file=sys.stderr)
+            self.process.kill()
+
+    def __getattr__(self, name):
+        """Dispatches any unrecognised messages to the RPC connection or a CLI instance."""
+        if self.use_cli:
+            return getattr(self.cli, name)
+        else:
+            assert self.rpc_connected and self._rpc is not None, self._node_msg("Error: no RPC connection")
+            return getattr(self._rpc, name)
+
+    def start(self, extra_args=None, *, cwd=None, stdout=None, stderr=None, env=None, **kwargs):
+        """Start the node."""
+        if extra_args is None:
+            extra_args = self.extra_args
+
+        # If listening and no -bind is given, then bitcoind would bind P2P ports on
+        # 0.0.0.0:P and 127.0.0.1:P+1 (for incoming Tor connections), where P is
+        # a unique port chosen by the test framework and configured as port=P in
+        # bitcoin.conf. To avoid collisions, change it to 127.0.0.1:tor_port().
+        will_listen = all(e != "-nolisten" and e != "-listen=0" for e in extra_args)
+        has_explicit_bind = self.has_explicit_bind or any(e.startswith("-bind=") for e in extra_args)
+        if will_listen and not has_explicit_bind:
+            extra_args.append(f"-bind=0.0.0.0:{p2p_port(self.index)}")
+            extra_args.append(f"-bind=127.0.0.1:{tor_port(self.index)}=onion")
+
+        self.use_v2transport = "-v2transport=1" in extra_args or (self.default_to_v2 and "-v2transport=0" not in extra_args)
+
+        # Add a new stdout and stderr file each time bitcoind is started
+        if stderr is None:
+            stderr = tempfile.NamedTemporaryFile(dir=self.stderr_dir, delete=False)
+        if stdout is None:
+            stdout = tempfile.NamedTemporaryFile(dir=self.stdout_dir, delete=False)
+        self.stderr = stderr
+        self.stdout = stdout
+
+        if cwd is None:
+            cwd = self.cwd
+
+        # Delete any existing cookie file -- if such a file exists (eg due to
+        # unclean shutdown), it will get overwritten anyway by bitcoind, and
+        # potentially interfere with our attempt to authenticate
+        delete_cookie_file(self.datadir_path, self.chain_dir)
+
+        # add environment variable LIBC_FATAL_STDERR_=1 so that libc errors are written to stderr and not the terminal
+        subp_env = dict(os.environ, LIBC_FATAL_STDERR_="1")
+        if self.use_gui:
+            subp_env.setdefault("QT_QPA_PLATFORM", "minimal")
+            if platform.system() == "Darwin":
+                # QMacStyle assumes a Cocoa platform window, which the minimal platform
+                # does not provide. In particular, painting a QGroupBox can make Qt call
+                # addSubview: on an invalid native object (QTBUG-49686).
+                subp_env.setdefault("QT_STYLE_OVERRIDE", "fusion")
+            if platform.system() == "OpenBSD":
+                # The system Qt packages are built with GLib support, so Qt uses
+                # QEventDispatcherGlib, which pushes/pops the GLib thread-default
+                # main context in each thread. On OpenBSD the pop can run during
+                # thread exit after GLib's per-thread context stack has already
+                # been torn down, so shutdown emits messages like
+                #   (process:NNN): GLib-CRITICAL **: g_main_context_pop_thread_default:
+                #   assertion 'stack != NULL' failed
+                # on stderr, which the test framework treats as a failure.
+                # Fall back to Qt's poll-based event dispatcher instead.
+                subp_env.setdefault("QT_NO_GLIB", "1")
+            subp_env.setdefault("LC_ALL", "C.UTF-8")  # Qt prints a warning to stderr if the locale is not UTF-8
+            if sys.platform.startswith("linux") and "XDG_RUNTIME_DIR" not in subp_env:
+                # Qt prints warnings to stderr when XDG_RUNTIME_DIR is unset or has wrong
+                # permissions (e.g. in CI environments without a desktop session), which
+                # would cause tests to fail due to unexpected stderr output. The two
+                # warnings are:
+                #   "QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'"
+                #   "QStandardPaths: wrong permissions on runtime directory /path, 0755 instead of 0700"
+                # Use a dedicated subdirectory with the required 0700 permissions.
+                xdg_runtime_dir = self.datadir_path / "xdg_runtime"
+                xdg_runtime_dir.mkdir(mode=0o700, exist_ok=True)
+                subp_env["XDG_RUNTIME_DIR"] = str(xdg_runtime_dir)
+        if env is not None:
+            subp_env.update(env)
+
+        self.process = subprocess.Popen(self.args + extra_args, env=subp_env, stdout=stdout, stderr=stderr, cwd=cwd, **kwargs)
+
+        self.running = True
+        self.log.debug("bitcoind started, waiting for RPC to come up")
+
+    def create_new_rpc_connection(self, *, mode="AUTO", client_timeout=None):
+        """Create an additional RPC connection, likely to be used in a new thread."""
+        mode = RPCConnectionType[mode]
+        if mode == RPCConnectionType.AUTO:
+            mode = RPCConnectionType.CLI if self.use_cli else RPCConnectionType.AUTHPROXY
+        client_timeout = client_timeout or (self.rpc_timeout // 2)  # Shorter timeout to allow for one retry in case of ETIMEDOUT
+        host = "127.0.0.1"
+        port = rpc_port(self.index)
+        if self.rpchost:
+            parts = self.rpchost.split(":")
+            if len(parts) == 2:
+                host, port = parts
+            else:
+                host = self.rpchost
+        if mode == RPCConnectionType.AUTHPROXY:
+            rpc_u, rpc_p = get_auth_cookie(self.datadir_path, self.chain_dir)
+            url = f"http://{rpc_u}:{rpc_p}@{host}:{port}"
+            proxy = AuthServiceProxy(url, timeout=int(client_timeout))
+            coverage_logfile = coverage.get_filename(self.coverage_dir, self.index) if self.coverage_dir else None
+            rpc = coverage.AuthServiceProxyWrapper(proxy, url, coverage_logfile)
+            rpc.auth_service_proxy_instance.reuse_http_connections = self.reuse_http_connections
+            return rpc
+        else:  # mode==CLI
+            extra_args = [arg for arg in self.extra_args if arg.startswith("-signetchallenge")]
+            return TestNodeCLI(self.binaries)(
+                f"-datadir={self.datadir_path}",
+                f"-rpcclienttimeout={client_timeout}",
+                f"-rpcconnect={host}",
+                f"-rpcport={port}",
+                *extra_args
+            )
+
+    def wait_for_rpc_connection(self, *, wait_for_full_init=True):
+        """Sets up an RPC connection to the bitcoind process. Returns False if unable to connect."""
+        # Poll at a rate of twenty times per second
+        poll_per_s = 20
+
+        suppressed_errors = collections.defaultdict(int)
+        latest_error = None
+        def suppress_error(category: str, e: Exception):
+            suppressed_errors[category] += 1
+            return (category, repr(e))
+
+        stop_time = time.monotonic() + self.rpc_timeout
+        while time.monotonic() <= stop_time:
+            if self.process.poll() is not None:
+                # Attach abrupt shutdown error/s to the exception message
+                self.stderr.seek(0)
+                str_error = ''.join(line.decode('utf-8') for line in self.stderr)
+                str_error += "************************\n" if str_error else ''
+
+                raise FailedToStartError(self._node_msg(
+                    f'bitcoind exited with status {self.process.returncode} during initialization. {str_error}'))
+            try:
+                rpc = self.create_new_rpc_connection(mode="AUTHPROXY")
+                rpc.getblockcount()
+                # If the call to getblockcount() succeeds then the RPC connection is up
+                if self.version_is_at_least(190000) and wait_for_full_init:
+                    # getmempoolinfo.loaded is available since commit
+                    # bb8ae2c (version 0.19.0)
+                    self.wait_until(lambda: rpc.getmempoolinfo()['loaded'])
+                    self.wait_for_index_sync(rpc=rpc)
+                    # Wait for the node to finish reindex, block import, and
+                    # loading the mempool and indexes. Usually importing happens fast or
+                    # even "immediate" when the node is started. However, there
+                    # is no guarantee and sometimes ImportBlocks might finish
+                    # later. This is going to cause intermittent test failures,
+                    # because generally the tests assume the node is fully
+                    # ready after being started.
+                    #
+                    # For example, the node will reject block messages from p2p
+                    # when it is still importing with the error "Unexpected
+                    # block message received"
+                    #
+                    # The wait is done here to make tests as robust as possible
+                    # and prevent racy tests and intermittent failures as much
+                    # as possible. Some tests might not need this, but the
+                    # overhead is trivial, and the added guarantees are worth
+                    # the minimal performance cost.
+                self.log.debug("RPC successfully started")
+                # Set rpc_connected even if we are in use_cli mode so that we know we can call self.stop() if needed.
+                self.rpc_connected = True
+                self.url = rpc.rpc_url
+                self.cli = self.create_new_rpc_connection(mode="CLI")
+                if self.use_cli:
+                    return
+                self._rpc = rpc
+                return
+            except JSONRPCException as e:
+                # Suppress these as they are expected during initialization.
+                # -28 RPC in warmup
+                # -342 Service unavailable, could be starting up or shutting down
+                if e.error['code'] not in [-28, -342]:
+                    raise  # unknown JSON RPC exception
+                latest_error = suppress_error(f"JSONRPCException {e.error['code']}", e)
+            except OSError as e:
+                error_num = e.errno
+                if error_num is None:
+                    # Work around issue where socket timeouts don't have errno set.
+                    # https://github.com/python/cpython/issues/109601
+                    if isinstance(e, TimeoutError):
+                        error_num = errno.ETIMEDOUT
+                    # http.client.RemoteDisconnected inherits from this type and
+                    # doesn't specify errno.
+                    elif isinstance(e, ConnectionResetError):
+                        error_num = errno.ECONNRESET
+                    # Windows can raise this while bitcoind shuts down during startup.
+                    elif isinstance(e, ConnectionAbortedError):
+                        error_num = errno.ECONNABORTED
+
+                # Suppress similarly to the above JSONRPCException errors.
+                if error_num not in [
+                    errno.ECONNABORTED, # Treat identical to ECONNRESET
+                    errno.ECONNRESET,   # This might happen when the RPC server is in warmup,
+                                        # but shut down before the call to getblockcount succeeds.
+                    errno.ETIMEDOUT,    # Treat identical to ECONNRESET
+                    errno.ECONNREFUSED  # Port not yet open?
+                ]:
+                    raise  # unknown OS error
+                latest_error = suppress_error(f"OSError {errno.errorcode[error_num]}", e)
+            except ValueError as e:
+                # Suppress if cookie file isn't generated yet and no rpcuser or rpcpassword; bitcoind may be starting.
+                if "No RPC credentials" not in str(e):
+                    raise
+                latest_error = suppress_error("missing_credentials", e)
+            time.sleep(1.0 / poll_per_s)
+        self._raise_assertion_error(f"Unable to connect to bitcoind after {self.rpc_timeout}s (ignored errors: {dict(suppressed_errors)!s}{'' if latest_error is None else f', latest: {latest_error[0]!r}/{latest_error[1]}'})")
+
+    def wait_for_cookie_credentials(self):
+        """Ensures auth cookie credentials can be read, e.g. for testing CLI with -rpcwait before RPC connection is up."""
+        self.log.debug("Waiting for cookie credentials")
+        # Poll at a rate of four times per second.
+        poll_per_s = 4
+        for _ in range(poll_per_s * self.rpc_timeout):
+            try:
+                get_auth_cookie(self.datadir_path, self.chain_dir)
+                self.log.debug("Cookie credentials successfully retrieved")
+                return
+            except ValueError:  # cookie file not found and no rpcuser or rpcpassword; bitcoind is still starting
+                pass            # so we continue polling until RPC credentials are retrieved
+            time.sleep(1.0 / poll_per_s)
+        self._raise_assertion_error("Unable to retrieve cookie credentials after {}s".format(self.rpc_timeout))
+
+    def generate(self, nblocks, maxtries=1000000, **kwargs):
+        self.log.debug("TestNode.generate() dispatches `generate` call to `generatetoaddress`")
+        return self.generatetoaddress(nblocks=nblocks, address=self.get_deterministic_priv_key().address, maxtries=maxtries, **kwargs)
+
+    def generateblock(self, *args, called_by_framework, **kwargs):
+        assert called_by_framework, "Direct call of this mining RPC is discouraged. Please use one of the self.generate* methods on the test framework, which sync the nodes to avoid intermittent test issues. You may use sync_fun=self.no_op to disable the sync explicitly."
+        return self.__getattr__('generateblock')(*args, **kwargs)
+
+    def generatetoaddress(self, *args, called_by_framework, **kwargs):
+        assert called_by_framework, "Direct call of this mining RPC is discouraged. Please use one of the self.generate* methods on the test framework, which sync the nodes to avoid intermittent test issues. You may use sync_fun=self.no_op to disable the sync explicitly."
+        return self.__getattr__('generatetoaddress')(*args, **kwargs)
+
+    def generatetodescriptor(self, *args, called_by_framework, **kwargs):
+        assert called_by_framework, "Direct call of this mining RPC is discouraged. Please use one of the self.generate* methods on the test framework, which sync the nodes to avoid intermittent test issues. You may use sync_fun=self.no_op to disable the sync explicitly."
+        return self.__getattr__('generatetodescriptor')(*args, **kwargs)
+
+    def setmocktime(self, timestamp):
+        """Wrapper for setmocktime RPC, sets self.mocktime"""
+        if timestamp == 0:
+            # setmocktime(0) resets to system time.
+            self.mocktime = None
+        else:
+            self.mocktime = timestamp
+        return self.__getattr__('setmocktime')(timestamp)
+
+    def get_wallet_rpc(self, wallet_name):
+        if self.use_cli:
+            return self.cli("-rpcwallet={}".format(wallet_name))
+        else:
+            assert self.rpc_connected and self._rpc, self._node_msg("RPC not connected")
+            wallet_path = "wallet/{}".format(urllib.parse.quote(wallet_name))
+            return self._rpc / wallet_path
+
+    def version_is_at_least(self, ver):
+        return self.version is None or self.version >= ver
+
+    def stop_node(self, expected_stderr='', *, wait=0, wait_until_stopped=True):
+        """Stop the node."""
+        if not self.running:
+            return
+        assert self.rpc_connected, self._node_msg(
+            "Should only call stop_node() on a running node after wait_for_rpc_connection() succeeded. "
+            f"Did you forget to call the latter after start()? Not connected to process: {self.process.pid}")
+        self.log.debug("Stopping node")
+        # Do not use wait argument when testing older nodes, e.g. in wallet_backwards_compatibility.py
+        if self.version_is_at_least(180000):
+            self.stop(wait=wait)
+        else:
+            self.stop()
+
+        del self.p2ps[:]
+
+        assert (not expected_stderr) or wait_until_stopped  # Must wait to check stderr
+        if wait_until_stopped:
+            self.wait_until_stopped(expected_stderr=expected_stderr)
+
+    def is_node_stopped(self, *, expected_stderr="", expected_ret_code=0):
+        """Checks whether the node has stopped.
+
+        Returns True if the node has stopped. False otherwise.
+
+        If the process has exited, asserts that the exit code matches
+        `expected_ret_code` (which may be a single value or an iterable of values),
+        and that stderr matches `expected_stderr` exactly or, if a regex pattern is
+        provided, contains the pattern.
+
+        This method is responsible for freeing resources (self.process)."""
+        if not self.running:
+            return True
+        return_code = self.process.poll()
+        if return_code is None:
+            return False
+
+        # process has stopped. Assert that it didn't return an error code.
+        if not isinstance(expected_ret_code, Iterable):
+            expected_ret_code = (expected_ret_code,)
+        assert return_code in expected_ret_code, self._node_msg(
+            f"Node returned unexpected exit code ({return_code}) vs ({expected_ret_code}) when stopping")
+        # Check that stderr is as expected
+        self.stderr.seek(0)
+        stderr = self.stderr.read().decode('utf-8').strip()
+        if isinstance(expected_stderr, re.Pattern):
+            if not expected_stderr.search(stderr):
+                raise AssertionError(f"Unexpected stderr {stderr!r} does not contain {expected_stderr.pattern!r}")
+        elif stderr != expected_stderr:
+            raise AssertionError("Unexpected stderr {} != {}".format(stderr, expected_stderr))
+
+        self.stdout.close()
+        self.stderr.close()
+
+        self.running = False
+        self.process = None
+        self.rpc_connected = False
+        self._rpc = None
+        self.log.debug("Node stopped")
+        return True
+
+    def wait_until_stopped(self, *, timeout=BITCOIND_PROC_WAIT_TIMEOUT, expect_error=False, **kwargs):
+        if "expected_ret_code" not in kwargs:
+            kwargs["expected_ret_code"] = 1 if expect_error else 0  # Whether node shutdown return EXIT_FAILURE or EXIT_SUCCESS
+        self.wait_until(lambda: self.is_node_stopped(**kwargs), timeout=timeout)
+
+    def kill_process(self):
+        self.process.kill()
+        self.wait_until_stopped(expected_ret_code=1 if platform.system() == "Windows" else -9)
+        assert self.is_node_stopped()
+
+    def replace_in_config(self, replacements):
+        """
+        Perform replacements in the configuration file.
+        The substitutions are passed as a list of search-replace-tuples, e.g.
+            [("old", "new"), ("foo", "bar"), ...]
+        """
+        with open(self.bitcoinconf, 'r') as conf:
+            conf_data = conf.read()
+        for replacement in replacements:
+            assert_equal(len(replacement), 2)
+            old, new = replacement[0], replacement[1]
+            conf_data = conf_data.replace(old, new)
+        with open(self.bitcoinconf, 'w') as conf:
+            conf.write(conf_data)
+
+    @property
+    def chain_path(self) -> Path:
+        return self.datadir_path / self.chain_dir
+
+    @property
+    def chain_dir(self) -> str:
+        if self.chain == "main":
+            return ""
+        if self.chain != "signet":
+            return self.chain
+        for arg in self.extra_args:
+            if not arg.startswith("-signetchallenge"):
+                continue
+            signetchallenge = arg.split('=')[1]
+            if signetchallenge.lower() == SIGNET_DEFAULT_CHALLENGE:
+                return self.chain
+            suffix = message_start(signetchallenge)
+            return f"signet_{suffix}"
+        return self.chain
+
+    @property
+    def debug_log_path(self) -> Path:
+        return self.chain_path / 'debug.log'
+
+    @property
+    def blocks_path(self) -> Path:
+        return self.chain_path / "blocks"
+
+    @property
+    def blocks_key_path(self) -> Path:
+        return self.blocks_path / "xor.dat"
+
+    def read_xor_key(self) -> bytes:
+        with open(self.blocks_key_path, "rb") as xor_f:
+            return xor_f.read(NUM_XOR_BYTES)
+
+    @property
+    def wallets_path(self) -> Path:
+        return self.chain_path / "wallets"
+
+    def debug_log_size(self, **kwargs) -> int:
+        with open(self.debug_log_path, **kwargs) as dl:
+            dl.seek(0, 2)
+            return dl.tell()
+
+    @contextlib.contextmanager
+    def assert_debug_log(self, expected_msgs, unexpected_msgs=None, *, timeout=0):
+        if unexpected_msgs is None:
+            unexpected_msgs = []
+        assert_equal(type(expected_msgs), list)
+        assert_equal(type(unexpected_msgs), list)
+        remaining_expected = list(expected_msgs)
+
+        time_end = time.time() + timeout * self.timeout_factor
+        prev_size = self.debug_log_size(encoding="utf-8")  # Must use same encoding that is used to read() below
+
+        def join_log(log):
+            return " - " + "\n - ".join(log.splitlines())
+
+        yield
+
+        while True:
+            with open(self.debug_log_path, encoding="utf-8", errors="replace") as dl:
+                dl.seek(prev_size)
+                log = dl.read()
+            for unexpected_msg in unexpected_msgs:
+                if unexpected_msg in log:
+                    self._raise_assertion_error(f'Unexpected message "{unexpected_msg}" '
+                                                f'found in log:\n\n{join_log(log)}\n\n')
+            while remaining_expected and remaining_expected[-1] in log:
+                remaining_expected.pop()
+            if not remaining_expected:
+                return
+            if time.time() >= time_end:
+                break
+            time.sleep(0.05)
+        remaining_expected = [e for e in remaining_expected if e not in log]
+        self._raise_assertion_error(f'Expected message(s) {remaining_expected!s} '
+                                    f'not found in log:\n\n{join_log(log)}\n\n')
+
+    @contextlib.contextmanager
+    def busy_wait_for_debug_log(self, expected_msgs, timeout=60):
+        """
+        Block until we see a particular debug log message fragment or until we exceed the timeout.
+        """
+        time_end = time.time() + timeout * self.timeout_factor
+        prev_size = self.debug_log_size(mode="rb")  # Must use same mode that is used to read() below
+        remaining_expected = list(expected_msgs)
+
+        yield
+
+        while True:
+            with open(self.debug_log_path, "rb") as dl:
+                dl.seek(prev_size)
+                log = dl.read()
+
+            while remaining_expected and remaining_expected[-1] in log:
+                remaining_expected.pop()
+            if not remaining_expected:
+                return
+
+            if time.time() >= time_end:
+                print_log = " - " + "\n - ".join(log.decode("utf8", errors="replace").splitlines())
+                break
+
+            # No sleep here because we want to detect the message fragment as fast as
+            # possible.
+
+        remaining_expected = [e for e in remaining_expected if e not in log]
+        self._raise_assertion_error(f'Expected message(s) {remaining_expected!s} '
+                                    f'not found in log:\n\n{print_log}\n\n')
+
+    @contextlib.contextmanager
+    def wait_for_new_peer(self, timeout=5):
+        """
+        Wait until the node is connected to at least one new peer. We detect this
+        by watching for an increased highest peer id, using the `getpeerinfo` RPC call.
+        Note that the simpler approach of only accounting for the number of peers
+        suffers from race conditions, as disconnects from unrelated previous peers
+        could happen anytime in-between.
+        """
+        def get_highest_peer_id():
+            peer_info = self.getpeerinfo()
+            return peer_info[-1]["id"] if peer_info else -1
+
+        initial_peer_id = get_highest_peer_id()
+        yield
+        self.wait_until(lambda: get_highest_peer_id() > initial_peer_id, timeout=timeout)
+
+    def assert_start_raises_init_error(self, extra_args=None, expected_msg=None, match=ErrorMatch.FULL_TEXT, *args, **kwargs):
+        """Attempt to start the node and expect it to raise an error.
+
+        extra_args: extra arguments to pass through to bitcoind
+        expected_msg: regex that stderr should match when bitcoind fails
+
+        Will raise if bitcoind starts without an error.
+        Will raise if an expected_msg is provided and it does not match bitcoind's stdout."""
+        assert not self.running
+        with tempfile.NamedTemporaryFile(dir=self.stderr_dir, delete=False) as log_stderr, \
+             tempfile.NamedTemporaryFile(dir=self.stdout_dir, delete=False) as log_stdout:
+            assert_msg = None
+            try:
+                self.start(extra_args, stdout=log_stdout, stderr=log_stderr, *args, **kwargs)
+                ret = self.process.wait(timeout=self.rpc_timeout)
+                self.log.debug(self._node_msg(f'bitcoind exited with status {ret} during initialization'))
+                assert_not_equal(ret, 0) # Exit code must indicate failure
+                self.running = False
+                self.process = None
+                # Check stderr for expected message
+                if expected_msg is not None:
+                    log_stderr.seek(0)
+                    stderr = log_stderr.read().decode('utf-8').strip()
+                    if match == ErrorMatch.PARTIAL_REGEX:
+                        if re.search(expected_msg, stderr, flags=re.MULTILINE) is None:
+                            self._raise_assertion_error(
+                                'Expected message "{}" does not partially match stderr:\n"{}"'.format(expected_msg, stderr))
+                    elif match == ErrorMatch.FULL_REGEX:
+                        if re.fullmatch(expected_msg, stderr) is None:
+                            self._raise_assertion_error(
+                                'Expected message "{}" does not fully match stderr:\n"{}"'.format(expected_msg, stderr))
+                    elif match == ErrorMatch.FULL_TEXT:
+                        if expected_msg != stderr:
+                            self._raise_assertion_error(
+                                'Expected message "{}" does not fully match stderr:\n"{}"'.format(expected_msg, stderr))
+            except subprocess.TimeoutExpired as e:
+                self.process.kill()
+                self.running = False
+                self.process = None
+                assert_msg = f'bitcoind should have exited within {self.rpc_timeout}s '
+                if expected_msg is None:
+                    assert_msg += "with an error"
+                else:
+                    assert_msg += "with expected error " + expected_msg
+                assert_msg += f" (cmd: {e.cmd})"
+
+            # Raise assertion outside of except-block above in order for it not to be treated as a knock-on exception.
+            if assert_msg:
+                self._raise_assertion_error(assert_msg)
+
+    def add_p2p_connection(self, p2p_conn, *, wait_for_verack=True, send_version=True, supports_v2_p2p=None, wait_for_v2_handshake=True, expect_success=True, **kwargs):
+        """Add an inbound p2p connection to the node.
+
+        This method adds the p2p connection to the self.p2ps list and also
+        returns the connection to the caller.
+
+        When self.use_v2transport is True, TestNode advertises NODE_P2P_V2 service flag
+
+        An inbound connection is made from TestNode <------ P2PConnection
+        - if TestNode doesn't advertise NODE_P2P_V2 service, P2PConnection sends version message and v1 P2P is followed
+        - if TestNode advertises NODE_P2P_V2 service, (and if P2PConnections supports v2 P2P)
+                P2PConnection sends ellswift bytes and v2 P2P is followed
+        """
+        if 'dstport' not in kwargs:
+            kwargs['dstport'] = p2p_port(self.index)
+        if 'dstaddr' not in kwargs:
+            kwargs['dstaddr'] = '127.0.0.1'
+        if supports_v2_p2p is None:
+            supports_v2_p2p = self.use_v2transport
+
+        if self.use_v2transport:
+            kwargs['services'] = kwargs.get('services', P2P_SERVICES) | NODE_P2P_V2
+        supports_v2_p2p = self.use_v2transport and supports_v2_p2p
+        p2p_conn.peer_connect(**kwargs, send_version=send_version, net=self.chain, timeout_factor=self.timeout_factor, supports_v2_p2p=supports_v2_p2p)()
+
+        self.p2ps.append(p2p_conn)
+        if not expect_success:
+            return p2p_conn
+        p2p_conn.wait_until(lambda: p2p_conn.is_connected, check_connected=False)
+        if supports_v2_p2p and wait_for_v2_handshake:
+            p2p_conn.wait_until(lambda: p2p_conn.v2_state.tried_v2_handshake)
+        if send_version:
+            p2p_conn.wait_until(lambda: not p2p_conn.on_connection_send_msg)
+        if wait_for_verack:
+            # Wait for the node to send us the version and verack
+            p2p_conn.wait_for_verack()
+            # At this point we have sent our version message and received the version and verack, however the full node
+            # has not yet received the verack from us (in reply to their version). So, the connection is not yet fully
+            # established (fSuccessfullyConnected).
+            #
+            # This shouldn't lead to any issues when sending messages, since the verack will be in-flight before the
+            # message we send. However, it might lead to races where we are expecting to receive a message. E.g. a
+            # transaction that will be added to the mempool as soon as we return here.
+            #
+            # So syncing here is redundant when we only want to send a message, but the cost is low (a few milliseconds)
+            # in comparison to the upside of making tests less fragile and unexpected intermittent errors less likely.
+            p2p_conn.sync_with_ping()
+
+            # Consistency check that the node received our user agent string.
+            # Find our connection in getpeerinfo by our address:port and theirs, as this combination is unique.
+            sockname = p2p_conn._transport.get_extra_info("socket").getsockname()
+            our_addr_and_port = f"{sockname[0]}:{sockname[1]}"
+            dst_addr_and_port = f"{p2p_conn.dstaddr}:{p2p_conn.dstport}"
+            info = [peer for peer in self.getpeerinfo() if peer["addr"] == our_addr_and_port and peer["addrbind"] == dst_addr_and_port]
+            assert_equal(len(info), 1)
+            assert_equal(info[0]["subver"], P2P_SUBVERSION)
+
+        return p2p_conn
+
+    def add_outbound_p2p_connection(self, p2p_conn, *, wait_for_verack=True, wait_for_disconnect=False, p2p_idx, connection_type="outbound-full-relay", supports_v2_p2p=None, advertise_v2_p2p=None, **kwargs):
+        """Add an outbound p2p connection from node. Must be an
+        "outbound-full-relay", "block-relay-only", "addr-fetch", "feeler" or "manual" connection.
+
+        This method adds the p2p connection to the self.p2ps list and returns
+        the connection to the caller.
+
+        p2p_idx must be different for simultaneously connected peers. When reusing it for the next peer
+        after disconnecting the previous one, it is necessary to wait for the disconnect to finish to avoid
+        a race condition.
+
+        Parameters:
+            supports_v2_p2p: whether p2p_conn supports v2 P2P or not
+            advertise_v2_p2p: whether p2p_conn is advertised to support v2 P2P or not
+
+        An outbound connection is made from TestNode -------> P2PConnection
+            - if P2PConnection doesn't advertise_v2_p2p, TestNode sends version message and v1 P2P is followed
+            - if P2PConnection both supports_v2_p2p and advertise_v2_p2p, TestNode sends ellswift bytes and v2 P2P is followed
+            - if P2PConnection doesn't supports_v2_p2p but advertise_v2_p2p,
+                TestNode sends ellswift bytes and P2PConnection disconnects,
+                TestNode reconnects by sending version message and v1 P2P is followed
+        """
+
+        def addconnection_callback(address, port):
+            self.log.debug("Connecting to %s:%d %s" % (address, port, connection_type))
+            self.addconnection('%s:%d' % (address, port), connection_type, advertise_v2_p2p)
+
+        if supports_v2_p2p is None:
+            supports_v2_p2p = self.use_v2transport
+        if advertise_v2_p2p is None:
+            advertise_v2_p2p = self.use_v2transport
+
+        if advertise_v2_p2p:
+            kwargs['services'] = kwargs.get('services', P2P_SERVICES) | NODE_P2P_V2
+            assert self.use_v2transport  # only a v2 TestNode could make a v2 outbound connection
+
+        # if P2PConnection is advertised to support v2 P2P when it doesn't actually support v2 P2P,
+        # reconnection needs to be attempted using v1 P2P by sending version message
+        reconnect = advertise_v2_p2p and not supports_v2_p2p
+        # P2PConnection needs to be advertised to support v2 P2P so that ellswift bytes are sent instead of msg_version
+        supports_v2_p2p = supports_v2_p2p and advertise_v2_p2p
+        p2p_conn.peer_accept_connection(connect_cb=addconnection_callback, connect_id=p2p_idx + 1, net=self.chain, timeout_factor=self.timeout_factor, supports_v2_p2p=supports_v2_p2p, reconnect=reconnect, **kwargs)()
+
+        if reconnect:
+            p2p_conn.wait_for_reconnect()
+
+        if connection_type == "feeler" or wait_for_disconnect:
+            # feeler connections are closed as soon as the node receives a `version` message
+            p2p_conn.wait_until(lambda: p2p_conn.message_count["version"] == 1, check_connected=False)
+            p2p_conn.wait_until(lambda: not p2p_conn.is_connected, check_connected=False)
+        else:
+            p2p_conn.wait_for_connect()
+            self.p2ps.append(p2p_conn)
+
+            if supports_v2_p2p:
+                p2p_conn.wait_until(lambda: p2p_conn.v2_state.tried_v2_handshake)
+            p2p_conn.wait_until(lambda: not p2p_conn.on_connection_send_msg)
+            if wait_for_verack:
+                p2p_conn.wait_for_verack()
+                p2p_conn.sync_with_ping()
+
+        return p2p_conn
+
+    def num_test_p2p_connections(self):
+        """Return number of test framework p2p connections to the node."""
+        return len([peer for peer in self.getpeerinfo() if peer['subver'] == P2P_SUBVERSION])
+
+    def disconnect_p2ps(self):
+        """Close all p2p connections to the node.
+        The state of the peers (such as txrequests) may not be fully cleared
+        yet, even after this method returns."""
+        for p in self.p2ps:
+            p.peer_disconnect()
+        del self.p2ps[:]
+
+        self.wait_until(lambda: self.num_test_p2p_connections() == 0)
+
+    def is_connected_to(self, other):
+        assert isinstance(other, TestNode)
+        other_subver = other.getnetworkinfo()["subversion"]
+        return any(peer["subver"] == other_subver for peer in self.getpeerinfo())
+
+    def bumpmocktime(self, seconds):
+        """Fast forward using setmocktime to self.mocktime + seconds. Requires setmocktime to have
+        been called at some point in the past."""
+        assert self.mocktime
+        self.mocktime += seconds
+        self.setmocktime(self.mocktime)
+
+    def wait_until(self, test_function, *, timeout=60, check_interval=0.05):
+        return wait_until_helper_internal(test_function, timeout=timeout, timeout_factor=self.timeout_factor, check_interval=check_interval)
+
+    def wait_for_index_sync(self, *, rpc=None, **kwargs):
+        """Wait for every enabled index to reach this node's chain tip."""
+        if not self.version_is_at_least(210000):
+            return  # getindexinfo is not available in earlier versions
+
+        rpc = rpc or self
+
+        def indexes_are_synced():
+            indexes = rpc.getindexinfo().values()
+            height = rpc.getblockcount()
+            return all(index["synced"] and index["best_block_height"] == height for index in indexes)
+
+        self.wait_until(indexes_are_synced, **kwargs)
+
+class TestNodeCLIAttr:
+    def __init__(self, cli, command):
+        self.cli = cli
+        self.command = command
+
+    def __call__(self, *args, **kwargs):
+        return self.cli.send_cli(self.command, *args, **kwargs)
+
+    def get_request(self, *args, **kwargs):
+        return lambda: self(*args, **kwargs)
+
+
+def arg_to_cli(arg):
+    if isinstance(arg, bool):
+        return str(arg).lower()
+    elif arg is None:
+        return 'null'
+    elif isinstance(arg, dict) or isinstance(arg, list) or isinstance(arg, tuple):
+        return json.dumps(arg, default=serialization_fallback)
+    else:
+        return str(arg)
+
+
+class TestNodeCLI():
+    """Interface to bitcoin-cli for an individual node"""
+    def __init__(self, binaries):
+        self.options = []
+        self.binaries = binaries
+        self.input = None
+        self.log = logging.getLogger('TestFramework.bitcoincli')
+
+    def __call__(self, *options, input=None):
+        # TestNodeCLI is callable with bitcoin-cli command-line options
+        cli = TestNodeCLI(self.binaries)
+        cli.options = self.options + [str(o) for o in options]
+        cli.input = input
+        return cli
+
+    def __getattr__(self, command):
+        return TestNodeCLIAttr(self, command)
+
+    def batch(self, requests):
+        results = []
+        for request in requests:
+            try:
+                results.append(dict(result=request()))
+            except JSONRPCException as e:
+                results.append(dict(error=e))
+        return results
+
+    def send_cli(self, clicommand=None, *args, **kwargs):
+        """Run bitcoin-cli command. Deserializes returned string as python object."""
+        pos_args = [arg_to_cli(arg) for arg in args]
+        named_args = [key + "=" + arg_to_cli(value) for (key, value) in kwargs.items() if value is not None]
+        p_args = self.binaries.rpc_argv() + self.options
+        if named_args:
+            p_args += ["-named"]
+        base_arg_pos = len(p_args)
+        if clicommand is not None:
+            p_args += [clicommand]
+        p_args += pos_args + named_args
+
+        # TEST_CLI_MAX_ARG_SIZE is set low enough that checking the string
+        # length is enough and encoding to bytes is not needed before
+        # calculating the sum.
+        sum_arg_size = sum(len(arg) for arg in p_args)
+        stdin_data = self.input
+        if sum_arg_size >= TEST_CLI_MAX_ARG_SIZE:
+            self.log.debug(f"Cli: Command size {sum_arg_size} too large, using stdin")
+            rpc_args = "\n".join([arg for arg in p_args[base_arg_pos:]])
+            if stdin_data is not None:
+                stdin_data += "\n" + rpc_args
+            else:
+                stdin_data = rpc_args
+            p_args = p_args[:base_arg_pos] + ['-stdin']
+
+        self.log.debug("Running bitcoin-cli {}".format(p_args[2:]))
+        process = subprocess.Popen(p_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        cli_stdout, cli_stderr = process.communicate(input=stdin_data)
+        returncode = process.poll()
+        if returncode:
+            match = re.match(r'error code: ([-0-9]+)\nerror message:\n(.*)', cli_stderr)
+            if match:
+                code, message = match.groups()
+                raise JSONRPCException(dict(code=int(code), message=message))
+            match = re.match(r'error: Server response: (.*)\n?$', cli_stderr)
+            if match:
+                message = match.group(1)
+                raise JSONRPCException(dict(
+                    code=-342,
+                    message=f"non-JSON HTTP response with '503 Service Unavailable' from server: {message}",
+                ), http_status=503)
+            # Ignore cli_stdout, raise with cli_stderr
+            raise subprocess.CalledProcessError(returncode, p_args, output=cli_stderr)
+        try:
+            if not cli_stdout.strip():
+                return None
+            return json.loads(cli_stdout, parse_float=decimal.Decimal)
+        except (json.JSONDecodeError, decimal.InvalidOperation):
+            return cli_stdout.rstrip("\n")

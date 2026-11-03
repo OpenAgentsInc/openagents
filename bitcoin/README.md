@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-52 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+53 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -90,14 +90,15 @@ chapter 34's.
 
 Everything Nostr used is built, and so are the five address types and the
 Taproot key tweak, key path, script trees and signature hashes (chapters
-41 to 43). Bitcoin
+41 to 43). Merkle trees with the duplicate-leaf flaw are built in chapter 46
+(`coax/lib/bitcoin/merkle.coax`), compact targets in chapter 47
+(`coax/lib/bitcoin/pow.coax`), retargeting and chainwork in chapter 48
+(`coax/lib/bitcoin/retarget.coax`), and MuHash3072 with the UTXO set's
+coin record and hashes in chapter 56 (`coax/lib/bitcoin/muhash.coax`,
+`coax/lib/bitcoin/coins.coax`). Bitcoin
 and Lightning also need:
 
 - Batch Schnorr verification and tapscript.
-- MuHash3072. Merkle trees with the duplicate-leaf flaw are built in
-  chapter 46 (`coax/lib/bitcoin/merkle.coax`), compact targets in chapter
-  47 (`coax/lib/bitcoin/pow.coax`), and retargeting and chainwork in
-  chapter 48 (`coax/lib/bitcoin/retarget.coax`).
 - Golomb-coded block filters. (ElligatorSwift and the BIP-324 transport are
   built in chapters 66 and 67.)
 - MuSig2, FROST, adaptor signatures and silent payments.

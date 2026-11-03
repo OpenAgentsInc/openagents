@@ -80,6 +80,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [50. Chain parameters: mainnet, testnet4, signet and regtest](ch050-chain-parameters-mainnet-testnet4-signet-and-regtest.md) — implemented
 - [51. Header rules: time, versions and deployments](ch051-header-rules-time-versions-and-deployments.md) — implemented
 - [52. Transaction checks outside script](ch052-transaction-checks-outside-script.md) — implemented
+- [56. The UTXO set and MuHash3072](ch056-the-utxo-set-and-muhash3072.md) — implemented
 
 **XI. The network**
 

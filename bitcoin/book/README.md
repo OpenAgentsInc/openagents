@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 52 are implemented and 72 are planned. The 52 implemented
+Of the 124 chapters, 53 are implemented and 71 are planned. The 53 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 43, 46, 47, 48, 50, 51, 52, 65, 66, 67 and 68 are new.
+39, 40, 41, 42, 43, 46, 47, 48, 50, 51, 52, 56, 65, 66, 67 and 68 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -214,7 +214,7 @@ Merkle trees, headers and proof of work, the chain parameters, every consensus r
 | 53. Sigops, weight and block limits | Planned | Legacy, P2SH and witness signature-operation costs of pinned transactions and blocks match Bitcoin Core. A block over 4,000,000 weight units or 80,000 sigop cost refuses. |
 | 54. The subsidy and the coinbase | Planned | The subsidy at every halving matches, and is zero from height 6,930,000. A coinbase that claims one satoshi more than subsidy plus fees refuses, and so does a coinbase without its BIP-34 height after activation. |
 | 55. Script flags by height and their exceptions | Planned | The script verification flags for every block of a pinned mainnet range match Bitcoin Core's, including the BIP-16 and Taproot exception blocks, and the two blocks exempt from BIP-30 are handled as Core handles them. |
-| 56. The UTXO set and MuHash3072 | Planned | MuHash3072 of pinned UTXO sets matches Bitcoin Core's `gettxoutsetinfo muhash`. Adding then removing an element restores the hash. |
+| [56. The UTXO set and MuHash3072](ch056-the-utxo-set-and-muhash3072.md) | Runnable: native C | Core's coin record (VARINT, `CompressAmount` and the six special scripts), the chainstate key, `TxOutSer`, `hash_serialized_3` and MuHash3072 with insert, remove and a modular inverse. Both hashes of the coins of Core's `feature_utxo_set_hash.py` and `rpc_dumptxoutset.py` match the values those tests publish, and adding then removing a coin restores the MuHash. Checked against Core's `crypto_tests.cpp` and `compress_tests.cpp` vectors and Core's own Python `muhash.py`. |
 | 57. Validate a block: every consensus rule | Planned | Pinned mainnet, testnet4 and signet blocks, among them every soft-fork activation block, validate against the outputs they spend. A crafted block for each consensus rule refuses with Bitcoin Core's reject reason, and the chapter's rule table names the chapter that checks every rule. |
 
 ### Part X. Chain state and storage (chapters 58–64)

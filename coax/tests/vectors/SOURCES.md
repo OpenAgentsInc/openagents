@@ -339,6 +339,20 @@ that a maliciously replaced manifest is authentic.
   mempool.space's raw bytes of default-signet blocks 1 (`…533b53`, the
   coinbase alone) and 19,990 (`…539466`, four transactions), retrieved
   2026-11-03; each header hashes to its block hash.
+- **The UTXO set and MuHash3072 (Bitcoin chapter 56):** Bitcoin Core's
+  `crypto/muhash.cpp` and `muhash.h`, `test/crypto_tests.cpp` (the
+  `muhash_tests` vectors), `compressor.cpp`, `compressor.h` and
+  `test/compress_tests.cpp`, `coins.h` (the coin record), `serialize.h`
+  (VARINT), `kernel/coinstats.cpp` (`TxOutSer`, `hash_serialized_3` and
+  `muhash`), `txdb.cpp` (the `'C'` key), `node/utxo_snapshot.h` (the
+  `dumptxoutset` header) and `node/miner.cpp` (the coinbase layout), all at
+  the same revision, retrieved 2026-11-03. The functional tests
+  `feature_utxo_set_hash.py` and `rpc_dumptxoutset.py` publish the hashes the
+  chapter matches; `coax/tests/bitcoin/utxo.py` reads those values from the
+  pinned text and rebuilds both regtest chains with the pinned
+  `test_framework/wallet.py`, `address.py` and `test_node.py` (the mock
+  time). It runs Core's own `test_framework/crypto/muhash.py` and
+  `chacha20.py` from the pins as the independent MuHash. All are MIT.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -556,4 +570,22 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/bip324.cpp`](upstream/bitcoin-core/bip324.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/bip324.cpp) | `58aaf7d2a2ab98679bbb1e1d4c40d0c3e4021822fd1f628099c1a178e4494685` |
 | [`upstream/bitcoin-core/script.py`](upstream/bitcoin-core/script.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/script.py) | `82e250fadd393b972ae9d5d508f458fc872ea0dd947ca162693a006c3e488bbf` |
 | [`upstream/bitcoin-core/protocol_version.h`](upstream/bitcoin-core/protocol_version.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/protocol_version.h) | `ce87f506fc0db48f9cdb74e58a7ee396261b543fe9a7f423ec8eab1f2f82aa7a` |
+| [`upstream/bitcoin-core/muhash.cpp`](upstream/bitcoin-core/muhash.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/crypto/muhash.cpp) | `4dc2a5440ab0060b20f0f598e9fd738b963d252befb51d6cd97fcef71de6838c` |
+| [`upstream/bitcoin-core/muhash.h`](upstream/bitcoin-core/muhash.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/crypto/muhash.h) | `41819366201e3694eebc62c675771faf7b3eaa102657b27347d50794be0e45aa` |
+| [`upstream/bitcoin-core/crypto_tests.cpp`](upstream/bitcoin-core/crypto_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/crypto_tests.cpp) | `6eefd34081d99a0ca68ce357a7eeef15864439a566b8563031c0df1fc2ffaa40` |
+| [`upstream/bitcoin-core/compressor.cpp`](upstream/bitcoin-core/compressor.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/compressor.cpp) | `9d6a07d3b4b69a2e0580e5ba795725455b19e7a1e29490a186d79cb3a4d9e301` |
+| [`upstream/bitcoin-core/compressor.h`](upstream/bitcoin-core/compressor.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/compressor.h) | `c203dba72780287682396607cc60a71631aa1fee5f6c35ac87853a206ea86aa4` |
+| [`upstream/bitcoin-core/compress_tests.cpp`](upstream/bitcoin-core/compress_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/compress_tests.cpp) | `dba41e6bea1fc0c19d1611bb27d87964da75399b8d7edfa73df1c31433a4ded6` |
+| [`upstream/bitcoin-core/coins.h`](upstream/bitcoin-core/coins.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/coins.h) | `dcda5f551c4aad640b2d8c2105f66ba40a1fc51e7c416a0088568fd4a6ae86a0` |
+| [`upstream/bitcoin-core/coinstats.cpp`](upstream/bitcoin-core/coinstats.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/kernel/coinstats.cpp) | `c64eebd7291bbe78f7dd5f63e95c0ca04fa3bf7c6f3bf10b32ac3d3267367540` |
+| [`upstream/bitcoin-core/txdb.cpp`](upstream/bitcoin-core/txdb.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/txdb.cpp) | `fcd265ad7d8a6b77cc121f37c6541df860e1a9d24725e6158ff1a83e722faef3` |
+| [`upstream/bitcoin-core/utxo_snapshot.h`](upstream/bitcoin-core/utxo_snapshot.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/utxo_snapshot.h) | `9da2c30d41e8ed13a8f96eba826324dec3cc4b0e8398b665561c07400cfb16f7` |
+| [`upstream/bitcoin-core/miner.cpp`](upstream/bitcoin-core/miner.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/miner.cpp) | `13fee188aaf49b13545d583b334b04517dad04bf43fa62691528a8abbcf0d559` |
+| [`upstream/bitcoin-core/feature_utxo_set_hash.py`](upstream/bitcoin-core/feature_utxo_set_hash.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/feature_utxo_set_hash.py) | `39882a860fc1bfaaf135bc82067542486c18beaf79397c749edfbe77bde835bc` |
+| [`upstream/bitcoin-core/rpc_dumptxoutset.py`](upstream/bitcoin-core/rpc_dumptxoutset.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/rpc_dumptxoutset.py) | `78005ac31b4df70964714dcc407fb5571a89350a9fc8d78381d2a8b979dba487` |
+| [`upstream/bitcoin-core/muhash.py`](upstream/bitcoin-core/muhash.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/crypto/muhash.py) | `af45c2451c06abd530ae7d65f8778f7e1ebb76f7b68dcded3459fdcee376405c` |
+| [`upstream/bitcoin-core/chacha20.py`](upstream/bitcoin-core/chacha20.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/crypto/chacha20.py) | `c0b383e8c1ee47cd3d0cb02630ad316cd8e915b857fa19193a7111d79cbe4878` |
+| [`upstream/bitcoin-core/wallet.py`](upstream/bitcoin-core/wallet.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/wallet.py) | `6787e3d41e80676260692946aaa448de71de0c772d6b7bb1d85fbf6c9535fbe4` |
+| [`upstream/bitcoin-core/address.py`](upstream/bitcoin-core/address.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/address.py) | `10ff2a6ad2cb58200741fd345163d36315fe57b2583da0e919e72bdd825346d3` |
+| [`upstream/bitcoin-core/test_node.py`](upstream/bitcoin-core/test_node.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/test_node.py) | `e00688c4aa2fe2991376c4835941804421ca21fe05700052b2118286a1e92a20` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

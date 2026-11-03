@@ -485,6 +485,17 @@
       ]
     },
     {
+      "source": "bitcoin/examples/utxo-set.coax",
+      "chapter": "bitcoin/book/ch056-the-utxo-set-and-muhash3072.md",
+      "stdout": "bitcoin/fixtures/utxo-set.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
       "source": "bitcoin/examples/p2p-messages.coax",
       "chapter": "bitcoin/book/ch065-p2p-messages-and-checksums.md",
       "stdout": "bitcoin/fixtures/p2p-messages.out",

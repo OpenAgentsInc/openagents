@@ -1,0 +1,137 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/coins.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+CODES :: [7] string.["ok", "end of data", "size too large", "capacity", "bad amount", "bad height", "bad key"];
+// Bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [400] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// A hash as Core prints it: the digest reversed.
+show_id :: (label: string, digest: [] u8) {
+  shown: [32] u8;
+  for i: 0..<32 { shown[i] = digest[31 - i]; }
+  show(label, shown[..]);
+}
+// One vector's txid and script into the caller's buffers; the script.
+vector :: (v: UtxoVector, txid: [] u8, script: [] u8) -> [] u8 {
+  t := cn_unhex(v.txid, txid);
+  return cn_unhex(v.script, script);
+}
+coin_of :: (v: UtxoVector) -> Coin { return Coin.{value = v.value, height = v.height, coinbase = v.coinbase}; }
+// A script and its compressed form.
+squeeze :: (label: string, hex: string) {
+  s: [80] u8; out: [33] u8;
+  script := cn_unhex(hex, s[..]);
+  n := coin_compress_script_vartime(script, out[..]);
+  if n == 0 { print("%: % bytes, no short form\n", label, script.count); return; }
+  print("%: % bytes -> % bytes, kind %\n", label, script.count, n, out[0]);
+}
+
+main :: () {
+  txid: [32] u8; sb: [40] u8; rec: [64] u8; key: [40] u8; ser: [80] u8; out: [32] u8;
+
+  // One coin: the coinbase of regtest block 100 in rpc_dumptxoutset.py's chain.
+  print("A coin\n");
+  v := UTXO_DUMP[0];
+  for i: 0..<UTXO_DUMP_COUNT { if UTXO_DUMP[i].height == 100 { v = UTXO_DUMP[i]; } }
+  script := vector(v, txid[..], sb[..]);
+  show_id("  txid", txid[..]);
+  print("  output %, height %, coinbase %, value % sat\n", v.n, v.height, v.coinbase, v.value);
+  show("  scriptPubKey", script);
+  k := coin_key_write_vartime(txid[..], v.n, key[..]);
+  show("  chainstate key", key[0..<k]);
+  n := coin_write_vartime(coin_of(v), script, rec[..]);
+  show("  record", rec[0..<n]);
+  print("  % bytes: VARINT(201) = 8049, VARINT(50) = 32, kind 00, the key hash\n", n);
+  m := coin_txout_ser_vartime(txid[..], v.n, coin_of(v), script, ser[..]);
+  show("  TxOutSer", ser[0..<m]);
+
+  print("VARINT\n");
+  for x: [6] u64.[0, 127, 128, 300, 16511, 16512] {
+    b: [10] u8;
+    w := coin_varint_write_vartime(b[..], 0, x);
+    text: [20] u8;
+    r := hex_encode_checked(cast(string) b[0..<w], text[..], false);
+    print("  %: %\n", x, cast(string) text[0..<r.written]);
+  }
+
+  print("Compressed amounts\n");
+  for a: [7] u64.[0, 1, 1000000, 100000000, 5000000000, 2100000000000000, 123456789] {
+    c := coin_compress_amount(a);
+    print("  % sat -> % -> %\n", a, c, coin_decompress_amount(c));
+  }
+
+  print("Compressed scripts\n");
+  squeeze("  P2PKH", "76a914751e76e8199196d454941c45d1b3a323f1433bd688ac");
+  squeeze("  P2SH", "a914b472a266d0bd89c13706a4132ccfb16f7c3b9fcb87");
+  squeeze("  P2PK, compressed key", "210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ac");
+  squeeze("  P2PK, uncompressed key", CN_G_UNCOMPRESSED_P2PK);
+  squeeze("  P2WPKH", "0014751e76e8199196d454941c45d1b3a323f1433bd6");
+  squeeze("  P2TR", "51202b6a3e4c9ec15e4d4a38c17d6d8d8a9a7bce3ae1751e76e8199196d454941c45");
+
+  // The two hashes of rpc_dumptxoutset.py's 100 coins.
+  print("rpc_dumptxoutset.py: 100 coins\n");
+  st: [112] u8;
+  #assert utxo_hash_init(st[..]);
+  for i: 0..<UTXO_DUMP_COUNT {
+    s := vector(UTXO_DUMP[i], txid[..], sb[..]);
+    #assert utxo_hash_add_vartime(st[..], txid[..], UTXO_DUMP[i].n, coin_of(UTXO_DUMP[i]), s);
+  }
+  #assert utxo_hash_final(st[..], out[..]);
+  show_id("  hash_serialized_3", out[..]);
+  print("  Core's txoutset_hash matches: %\n", mh_shown_is(out[..], UTXO_DUMP_TXOUTSET_HASH));
+
+  // feature_utxo_set_hash.py's 101 coins: both hashes.
+  print("feature_utxo_set_hash.py: 101 coins\n");
+  #assert utxo_hash_init(st[..]);
+  set := muhash_new();
+  for i: 0..<UTXO_SET_COUNT {
+    s := vector(UTXO_SET[i], txid[..], sb[..]);
+    #assert utxo_hash_add_vartime(st[..], txid[..], UTXO_SET[i].n, coin_of(UTXO_SET[i]), s);
+    set = utxo_muhash_apply_vartime(set, txid[..], UTXO_SET[i].n, coin_of(UTXO_SET[i]), s, false);
+  }
+  #assert utxo_hash_final(st[..], out[..]);
+  show_id("  hash_serialized_3", out[..]);
+  print("  Core's matches: %\n", mh_shown_is(out[..], UTXO_SET_HASH_SERIALIZED));
+  #assert muhash_finalize_vartime(set, out[..]) == MUHASH_OK;
+  show_id("  muhash", out[..]);
+  print("  Core's matches: %\n", mh_shown_is(out[..], UTXO_SET_MUHASH));
+
+  // Spend the self-transfer's output, then add it back.
+  print("Spend one coin, then restore it\n");
+  last := UTXO_SET[0];
+  for i: 0..<UTXO_SET_COUNT { if !UTXO_SET[i].coinbase { last = UTXO_SET[i]; } }
+  s := vector(last, txid[..], sb[..]);
+  spent := utxo_muhash_apply_vartime(set, txid[..], last.n, coin_of(last), s, true);
+  #assert muhash_finalize_vartime(spent, out[..]) == MUHASH_OK;
+  show_id("  without it", out[..]);
+  back := utxo_muhash_apply_vartime(spent, txid[..], last.n, coin_of(last), s, false);
+  #assert muhash_finalize_vartime(back, out[..]) == MUHASH_OK;
+  show_id("  with it again", out[..]);
+  print("  restored: %\n", mh_shown_is(out[..], UTXO_SET_MUHASH));
+
+  // crypto_tests.cpp: FromInt(0) * FromInt(1) / FromInt(2).
+  print("Core's MuHash3072 vector\n");
+  one: [32] u8; two: [32] u8; zero: [32] u8; one[0] = 1; two[0] = 2;
+  acc := muhash_insert_vartime(muhash_new(), zero[..]);
+  acc = muhash_insert_vartime(acc, one[..]);
+  acc = muhash_remove_vartime(acc, two[..]);
+  #assert muhash_finalize_vartime(acc, out[..]) == MUHASH_OK;
+  show_id("  {0} + {1} - {2}", out[..]);
+
+  // Broken records.
+  print("Refusals\n");
+  n = coin_write_vartime(coin_of(v), script, rec[..]);
+  r := coin_read_vartime(rec[0..<n-1], 0, sb[..]);
+  print("  the record cut one byte short: %\n", CODES[r.code]);
+  big := [6] u8.[0x8e, 0xfe, 0xfe, 0xff, 0x00, 0x00];
+  r = coin_read_vartime(big[..], 0, sb[..]);
+  print("  a height code of 2^32: %\n", CODES[r.code]);
+  print("  a value above 21,000,000 BTC: %\n", CODES[-coin_write_vartime(Coin.{value = 2100000000000001}, script, rec[..])]);
+  print("  a key with an index above 2^32 - 1: %\n", coin_key_write_vartime(txid[..], 0x100000000, key[..]));
+}
+// book:end example
