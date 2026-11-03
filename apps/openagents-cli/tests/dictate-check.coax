@@ -7,8 +7,9 @@
 //   coax/web/tool.sh apps/openagents-cli/tests/dictate-check.coax [MODEL_DIR [CASE]]
 // Without MODEL_DIR only the cases that need no model run (a stand-in
 // recognizer answers, and the output says "fixture"). With it, the recorder
-// cases load the model, and "parakeet" recognizes a recorded clip on the CPU
-// (slow on Linux: 8-15x real time). CASE runs the cases whose name contains it.
+// cases load the model, "gpu-linux" recognizes a recorded clip on the GPU
+// (CUDA on Linux) and "parakeet" the same clip on the CPU (slow on Linux:
+// 8-15x real time). CASE runs the cases whose name contains it.
 #import "Basic";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";

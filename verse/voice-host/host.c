@@ -1811,13 +1811,10 @@ int main(int argc, char **argv) {
     logf_("%s does not synthesize speech; choose --synthesizer google or local", one_name(g_synth));
     return 2;
   }
-  if (!parakeet_device_set) {
-#ifdef __APPLE__
-    g_speech.parakeet_gpu = 1;   // Metal
-#else
-    g_speech.parakeet_gpu = 0;   // Parakeet's GPU path is Metal only; elsewhere the CPU, chosen explicitly
-#endif
-  }
+  // The GPU unless --parakeet-device cpu: Metal on macOS, CUDA on Linux
+  // (GitHub #12672). Without one the host refuses to start rather than run
+  // the slow CPU path unasked.
+  if (!parakeet_device_set) g_speech.parakeet_gpu = 1;
   if (g_recognizer == PROVIDER_PARAKEET) {
     char err[512];
     uint64_t t0 = now_ms();

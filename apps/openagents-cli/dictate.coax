@@ -359,7 +359,7 @@ dictate_main :: (a: [] Args, r: [] Rep) -> int {
   if d[0].capture == DC_UNKNOWN { return fail(r, EXIT_USAGE, "--capture is pipewire, pulse or alsa on Linux, coreaudio on macOS"); }
   if d[0].capture == DC_ELSEWHERE { return fail(r, EXIT_USAGE, "that capture backend is not available on this system"); }
   if d[0].capture == DC_NO_FIXTURE { return fail(r, EXIT_USAGE, "--capture fixture is for checks and needs OPENAGENTS_DICTATE_FIXTURE=FILE.wav"); }
-  d[0].gpu = dc_device(args_value(a, "--device", ""), mac);
+  d[0].gpu = dc_device(args_value(a, "--device", ""));
   if d[0].gpu < 0 { return fail(r, EXIT_USAGE, "--device is gpu or cpu; a GPU failure never silently selects the CPU"); }
   d[0].seconds = dc_seconds(args_value(a, "--seconds", ""));
   if d[0].seconds < 0 { return fail(r, EXIT_USAGE, "--seconds is a whole number from 1 to 60"); }

@@ -14,8 +14,9 @@
 //     its transcript is never delivered, and the next turn's is;
 //   a realm that cancelled on its own: the host's late transcript is refused
 //     as stale by Aethyr's gate.
-// Each run is a whole-model decision on original weights; on a Linux host it
-// is the CPU path. Run it to qualify a change, not as a routine check.
+// Each run is a whole-model decision on original weights, on the GPU (Metal
+// on macOS, CUDA on Linux; about two minutes). Run it to qualify a change,
+// not as a routine check.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";

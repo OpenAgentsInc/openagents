@@ -50,20 +50,19 @@ dc_capture_name :: (kind: int) -> string {
 }
 
 // ---- recognition device ----
-// "" is the system's own: Metal on macOS, the CPU elsewhere (Parakeet's GPU
-// path is Metal only). A named device is never swapped for the other.
-dc_device :: (name: string, mac: bool) -> int {
-  if name == "gpu" { return 1; }
+// "" is the GPU everywhere: Metal on macOS, CUDA on Linux (GitHub #12672).
+// The CPU is slow there (8 to 15 times the audio's length) and is used only
+// when named. A named device is never swapped for the other, so a Linux
+// computer without an NVIDIA GPU refuses the default and says so.
+dc_device :: (name: string) -> int {
+  if name == "gpu" || name == "" { return 1; }
   if name == "cpu" { return 0; }
-  if name == "" { return ifx mac then 1 else 0; }
   return -1;
 }
 
-#test "the recognition device is named or the system's own, never substituted" {
-  #assert dc_device("gpu", false) == 1 && dc_device("gpu", true) == 1;
-  #assert dc_device("cpu", false) == 0 && dc_device("cpu", true) == 0;
-  #assert dc_device("", false) == 0 && dc_device("", true) == 1;
-  for name: [4] string.["GPU", "metal", "cuda", "auto"] { #assert dc_device(name, false) == -1 && dc_device(name, true) == -1; }
+#test "the recognition device is named or the GPU, never substituted" {
+  #assert dc_device("gpu") == 1 && dc_device("") == 1 && dc_device("cpu") == 0;
+  for name: [5] string.["GPU", "metal", "cuda", "auto", "CPU"] { #assert dc_device(name) == -1; }
 }
 
 // ---- duration ----

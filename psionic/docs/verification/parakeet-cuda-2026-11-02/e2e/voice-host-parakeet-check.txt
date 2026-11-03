@@ -1,0 +1,31 @@
+long turn: 343627 samples (21476 ms)
+host ready on port 38707 in 9333 ms: listening on 127.0.0.1:38707 provider=parakeet+local agent=echo
+ok   Hello Foreman. What are we building today?
+     exact match "Hello Foreman. What are we building today?"
+     voice-host: s1-da92e714: t1 parakeet final: 1 of 1 window(s), 60800 samples, inference 52 ms, recognition 121 ms after TURN_END
+     latency final_ms=121 first_audio_ms=122 (from TURN_END)
+ok   Build a small red house next to a tall tree.
+     exact match "Build a small red house next to a tall tree."
+     voice-host: s2-87feac1d: t1 parakeet final: 1 of 1 window(s), 103680 samples, inference 71 ms, recognition 110 ms after TURN_END
+     latency final_ms=110 first_audio_ms=112 (from TURN_END)
+ok   Let's take the long way through the garden, then pick a door.
+     exact match "Let's take the long way through the garden, then pick a door."
+     voice-host: s3-d740cb8a: t1 parakeet final: 1 of 1 window(s), 77120 samples, inference 60 ms, recognition 88 ms after TURN_END
+     latency final_ms=88 first_audio_ms=89 (from TURN_END)
+ok   Wait, stop.
+     exact match "Wait, stop."
+     voice-host: s4-a0b037ac: t1 parakeet final: 1 of 1 window(s), 38400 samples, inference 48 ms, recognition 76 ms after TURN_END
+     latency final_ms=76 first_audio_ms=77 (from TURN_END)
+ok   a 21.5 s turn is two bounded calls, never one
+ok   the long turn's recorded transcript, exactly, across the cut
+     voice-host: s5-605032d7: t1 parakeet final: 2 of 2 window(s), 343680 samples, inference 241 ms, recognition 297 ms after TURN_END
+     exact match "Hello Foreman, what are we building today? Build a small red house next to a tall tree. Let's take the long way through the garden. Then pick a door. Wait, stop."
+ok   silence is no speech, decided without a model call
+ok   cancel: the first transcript is never delivered, the next is
+     voice-host: s7-d12ebd6f: t1 parakeet cancelled: 0 of 1 window(s), 60800 samples, inference 0 ms, recognition 36 ms after TURN_END
+ok   barge-in: the first transcript is stale, the next is delivered
+     voice-host: s8-12931b6a: t1 parakeet stale: 0 of 1 window(s), 60800 samples, inference 0 ms, recognition 53 ms after TURN_END
+ok   a late transcript after the realm cancelled is refused as stale
+     aethyr offer t1 request=1 epoch=0 STALE
+     aethyr record applied=1 duplicate=1 stale=1 unknown=0 steps=4 replay=matched
+all Parakeet voice-host cases passed

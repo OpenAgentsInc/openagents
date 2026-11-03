@@ -292,6 +292,7 @@ Each phase ends with its checks passing and a measurement committed.
 - **D0. `openagents dictate`.** Implemented (#12667), with Parakeet instead of
   Whisper, `--wait-for-enter` and `--events` instead of `--stream`, no
   `--words` yet, and Linux capture through PipeWire/PulseAudio/ALSA recorders.
+  On Linux it recognizes on CUDA by default (#12672).
   The original plan: C capture on macOS through `AudioQueue`,
   `verse/voice.coax` for resampling and levels, `apps/shared/dictation.coax`
   for the timeline and gates, `psionic-stt.h` for recognition. Flags:

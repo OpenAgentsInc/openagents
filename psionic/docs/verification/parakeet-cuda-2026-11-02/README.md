@@ -157,6 +157,80 @@ A warm call, split (`6930-75918-0011`, 3.2 s): encoder 33 ms, decoder 1.5 ms,
 CPU frontend about 9 ms. On the decoder-only run the decoder takes 4 to 24 ms
 per clip, against 60 to 295 ms on 8 CPU threads.
 
+## Piece 3: dictation and the voice host, end to end
+
+### Capture on Linux
+
+`openagents dictate` captures through a recorder program that writes mono
+32-bit float at 48 kHz to a pipe. It was chosen in #12667 and is kept here:
+
+| `--capture` | Program | Package | Notes |
+| --- | --- | --- | --- |
+| `pipewire` (default) | `pw-record --raw --rate 48000 --channels 1 --format f32 --latency 20ms --media-category Capture` | PipeWire (`pipewire`) | `--input` becomes `--target` with `node.dont-fallback`, so a missing input is an error, never the default |
+| `pulse` | `parec --raw --format=float32le --rate=48000 --channels=1` | PulseAudio utilities | for systems without PipeWire |
+| `alsa` | `arecord -q -t raw -f FLOAT_LE -r 48000 -c 1` | `alsa-utils` | for systems without a sound server |
+
+The build needs none of them, and nothing links an audio library: the C host
+only spawns the program, reads the pipe and kills it. coderos-4080 has
+`pw-record` (PipeWire) and neither `parec` nor `arecord`. Every decision is
+shared Coax:
+
+- `apps/openagents-cli/dictate-rules.coax` (`#authority`): which backend and
+  its exact argv, input names, stalled input, endings and exit codes.
+- `apps/shared/dictation.coax` (Coder for Mac's controller, unchanged): the
+  timeline, admission, resampling to 16 kHz, segmentation and text join.
+
+The voice host's own capture is the browser or app client over its
+WebSocket; it opens no microphone itself.
+
+### Defaults
+
+The recognition device now defaults to the GPU on Linux too:
+
+- `openagents dictate`: `dc_device` in `dictate-rules.coax`; 254 of 254
+  mutants killed.
+- The voice host: `--parakeet-device`.
+
+A Linux computer without CUDA refuses with `NVIDIA CUDA is unavailable`
+rather than silently running the CPU path, which takes 8 to 15 times the
+audio's length. `--device cpu` and `--parakeet-device cpu` still select it
+explicitly.
+
+### Evidence (recorded audio only; no microphone opened, no sound played)
+
+- **`openagents dictate`** ([dictate-check.txt](e2e/dictate-check.txt)): 26
+  of 26 cases through the real CLI with the pinned model.
+  - The recorded clip on CUDA (`gpu-linux`, `--device gpu`) and on the CPU
+    (`parakeet`) both give exactly `Wait, stop.` (44,800 samples).
+  - Faults: permission (4), device (6), recorder missing (8), a stalled input,
+    a recorder that ends (device loss), and format and recognition failures.
+  - Cancel by Escape, SIGINT and script; each run then exits and the next
+    starts clean.
+  - The 450 ms pre-roll, the `--seconds` stop, and the 60 s cap's three exact
+    segments.
+- **Voice host and Aethyr's gate**
+  ([voice-host-parakeet-check.txt](e2e/voice-host-parakeet-check.txt)): every
+  case passes on CUDA, the new default.
+  - The four fixtures come back exactly, 76–121 ms after the end of the turn
+    (48–71 ms of inference).
+  - The 21.5 s turn is two bounded calls and comes back exactly in 297 ms. On
+    this machine's CPU it took 207–285 s.
+  - Silence makes no model call.
+  - Cancel and barge-in: the first transcript is never delivered and the next
+    turn's is (rearm).
+  - A late transcript after the realm cancels is refused as stale.
+
+The host opens the model and CUDA in 9.3 s; the CLI's whole `gpu-linux`
+process takes 13 s, almost all of it the model open.
+
+### Not covered here
+
+- A real microphone on Linux: an owner action in `NEEDS_OWNER.md`. The
+  agent never opens the owner's microphone.
+- Hardware other than this RTX 4080 is untested. See the supported-hardware
+  table in `psionic/docs/parakeet.md`.
+- The frontend still runs on the CPU (about 9 ms for a 3.2 s clip).
+
 ### Reproduce
 
 ```shell
@@ -183,3 +257,10 @@ python3 -I psionic/tests/parakeet_reference_native.py "$PARAKEET_MODEL" /tmp/pk/
 `INPUTS.tsv` names the four LibriSpeech clips in `psionic/fixtures/parakeet/`
 and the 25 FLEURS clips in `psionic/fixtures/parakeet-reference/`, in the
 reference record's order.
+
+End to end, after `apps/openagents-cli/build.sh` and `verse/voice-host/build.sh`:
+
+```shell
+coax/web/tool.sh apps/openagents-cli/tests/dictate-check.coax "$PARAKEET_MODEL"
+coax/web/tool.sh verse/voice-host/parakeet-check.coax "$PARAKEET_MODEL"
+```

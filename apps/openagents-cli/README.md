@@ -357,9 +357,12 @@ openagents dictate --device cpu --capture alsa --input hw:1   # Linux: name the 
 - Controls: Enter, Escape, Ctrl-C (or SIGINT/SIGTERM from a parent). On a
   terminal the keys are read without echo; other keys and end of input do
   nothing. `--seconds N` (1 to 60) stops by itself.
-- Recognition device: `--device gpu|cpu`; the default is the GPU (Metal) on
-  macOS and the CPU on Linux. A named device never falls back to the other.
-  Parakeet on a Linux CPU takes about 8 to 15 times the audio's length.
+- Recognition device: `--device gpu|cpu`; the default is the GPU: Metal on
+  macOS, CUDA on Linux with an NVIDIA GPU (about 50 ms for a 3 s clip on an
+  RTX 4080). A computer without one refuses the default with
+  `NVIDIA CUDA is unavailable`; `--device cpu` then works, at about 8 to 15
+  times the audio's length. A named device never falls back to the other.
+  Supported hardware: [psionic/docs/parakeet.md](../../psionic/docs/parakeet.md#supported-hardware).
 - Capture: CoreAudio on macOS (`--input UID` names one input; a missing one
   is an error, never the default instead). On Linux the command runs a
   recorder that writes mono 32-bit float to a pipe: `pw-record` (PipeWire,

@@ -618,13 +618,16 @@ CoreAudio and AVFoundation) could not be compiled on Linux.
       ~/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99` and
       add its lines (Metal) to [the record](docs/verification/dictate-cli-2026-11-02/README.md).
 - [ ] On a Linux desktop with PipeWire: `openagents dictate --seconds 10`,
-      speak, and confirm the text. On CPU it takes about 8 to 15 times the
-      audio's length. Try `--capture alsa` (or `pulse`) if PipeWire is absent.
+      speak, and confirm the text. It now recognizes on CUDA by default
+      (#12672; about 50 ms for a 3 s clip on coderos-4080's RTX 4080);
+      `--device cpu` takes about 8 to 15 times the audio's length. Try
+      `--capture alsa` (or `pulse`) if PipeWire is absent, and unplug the
+      input while listening: expect a capture error and no text.
 
 ### Verse voice host: Parakeet recognition on the Mac (#12669)
 
 The Parakeet recognizer (`verse/voice-host --recognizer parakeet`) was built and
-qualified on coderos-4080 (Linux, CPU path; Parakeet's GPU path is Metal only).
+qualified on coderos-4080 (Linux; first the CPU path, now CUDA by default, #12672).
 The Mac was not available to the agent:
 
 - [ ] On the Mac, run `verse/voice-host/build.sh`. It now links both
