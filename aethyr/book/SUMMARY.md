@@ -22,7 +22,7 @@
 **III. Seeing it**
 
 - [11. The WGSL renderer](ch011-the-wgsl-renderer.md)
-- [12. Materials](ch012-materials.md) — design draft
+- [12. Materials](ch012-materials.md) — partly implemented
 - [13. Light and shadow](ch013-light-and-shadow.md) — design draft
 - [14. Figures and animation](ch014-figures-and-animation.md) — design draft
 - [15. UI and the HUD](ch015-ui-and-the-hud.md) — partly implemented

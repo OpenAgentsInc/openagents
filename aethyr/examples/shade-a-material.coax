@@ -1,0 +1,60 @@
+// Book chapter 12: a realm's material table admitted whole, one refused, and a grass material
+// shaded with the painterly preset at noon. The fixture realm's own fragment code
+// (apps/openagents-web/gpu/fixture.coax), run here on the CPU, gives the same colours.
+#load "../../verse/style-preset.coax";
+#load "../../apps/openagents-web/gpu/fixture.coax";
+#import "Basic";
+
+// book:begin example
+// Colours rounded to four places: the cooling takes a pow, which each platform's libm rounds in
+// its own last bit.
+r4 :: (x: f32) -> f32 { return cast(f32) floor(x * 10000 + 0.5) / 10000; }
+LAYERS :: 4;   // the realm's texture layers
+STYLES :: 1 << MATERIAL_PAINTERLY;   // it draws only the painterly style
+
+main :: () {
+  table := [3] Material.[
+    Material.{r = 0.21, g = 0.29, b = 0.08, layer = 0, style = MATERIAL_PAINTERLY, outline = 1},   // grass
+    Material.{r = 0.42, g = 0.40, b = 0.36, layer = 1, style = MATERIAL_PAINTERLY, outline = 1},   // stone
+    Material.{r = 0.9, g = 0.8, b = 0.5, style = MATERIAL_PAINTERLY, outline = 1, er = 2, eg = 1.6, eb = 0.8}];   // a lantern
+  r := material_admit(table[..], LAYERS, STYLES);
+  print("table of %: refused %, index %\n", table.count, material_reason_name(r.reason), r.index);
+  print("ink: grass %, lantern %\n", material_ink(table[0], 0.8), material_ink(table[2], 0.8));
+
+  roof := table; roof[1].layer = 4;   // a fifth layer the realm doesn't have
+  r = material_admit(roof[..], LAYERS, STYLES);
+  print("with layer 4 of %: refused %, index %\n", LAYERS, material_reason_name(r.reason), r.index);
+  flat := table; flat[2].style = MATERIAL_FLAT;
+  r = material_admit(flat[..], LAYERS, STYLES);
+  print("with a flat lantern: refused %, index %\n", material_reason_name(r.reason), r.index);
+
+  // The painterly preset at noon, where the fixture's shader reads it: 156 floats in.
+  u: [156 + STYLE_FLOATS] f32;
+  if !verse_style_at(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.5, u[156..<156 + STYLE_FLOATS]) { print("no preset\n"); return; }
+  s := u[156..<156 + STYLE_FLOATS];
+  print("bands: edges % and %, softness %, mid %; cool %\n", s[SU_BANDS], s[SU_BANDS + 1], s[SU_BANDS + 2], s[SU_BANDS + 3], s[SU_SHADOW + 3]);
+  // A level patch of grass (its normal straight up) under the noon key.
+  ny := 1.0f32;
+  amb := mat_rgb(verse_style_ambient(ny, s[SU_SKY_AMB], s[SU_GROUND_AMB], s[SU_SKY_AMB + 3]),
+                 verse_style_ambient(ny, s[SU_SKY_AMB + 1], s[SU_GROUND_AMB + 1], s[SU_SKY_AMB + 3]),
+                 verse_style_ambient(ny, s[SU_SKY_AMB + 2], s[SU_GROUND_AMB + 2], s[SU_SKY_AMB + 3]));
+  tint := mat_rgb(s[SU_TINT], s[SU_TINT + 1], s[SU_TINT + 2]);
+  k := s[SU_KEY + 3];
+  dark := mat_rgb(tint.r * amb.r, tint.g * amb.g, tint.b * amb.b);
+  bright := mat_rgb(s[SU_KEY] * k + amb.r, s[SU_KEY + 1] * k + amb.g, s[SU_KEY + 2] * k + amb.b);
+  print("noon: bright % % %, dark % % %\n", bright.r, bright.g, bright.b, dark.r, dark.g, dark.b);
+  g := table[0];
+  a := mat_rgb(g.r, g.g, g.b);
+  same := true;
+  for i: 0..<3 {
+    lit := ifx i == 2 then 0.0f32 else 1.0f32;   // the last in the key's cast shadow
+    ndl := ifx i == 0 then 0.5f32 else 1.0f32;
+    band := material_band(ndl, lit, s[SU_BANDS], s[SU_BANDS + 1], s[SU_BANDS + 2], s[SU_BANDS + 3]);
+    c := material_banded(a, dark, bright, tint, s[SU_SHADOW + 3], band);
+    print("n.l %, lit %: band %, colour % % %\n", ndl, lit, r4(band), r4(c.r), r4(c.g), r4(c.b));
+    f := fixture_banded(v3(a.r, a.g, a.b), v3(dark.r, dark.g, dark.b), v3(bright.r, bright.g, bright.b), band, u[..]);
+    same = same && f.x == c.r && f.y == c.g && f.z == c.b;
+  }
+  print("the fixture's fragment code gives the same colours, bit for bit: %\n", same);
+}
+// book:end example

@@ -1,0 +1,10 @@
+table of 3: refused none, index -1
+ink: grass 0.8, lantern 0.0
+with layer 4 of 4: refused layer, index 1
+with a flat lantern: refused style, index 2
+bands: edges 0.2 and 0.58, softness 0.06, mid 0.55; cool 1.5
+noon: bright 1.3025 1.313 1.312, dark 0.1573 0.21054001 0.39732
+n.l 0.5, lit 1.0: band 0.8833, colour 0.2448 0.3434 0.0993
+n.l 1.0, lit 1.0: band 1.0, colour 0.2735 0.3808 0.105
+n.l 1.0, lit 0.0: band 0.0, colour 0.0276 0.0602 0.0565
+the fixture's fragment code gives the same colours, bit for bit: true
