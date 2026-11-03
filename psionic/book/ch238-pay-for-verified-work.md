@@ -52,17 +52,28 @@ coax/bin/coax mutate psionic/lib/peer/pay.coax --root-only
 A job is named by its receipt digest: the SHA-256 of chapter 195's receipt
 text, 64 lowercase hex digits. The ledger keeps at most 16 jobs, the payment
 intents released so far, the owner's cap as chapter 180's account, and the
-total withheld.
+total withheld. It copies each receipt digest and payee into its own
+storage. A string argument only borrows the caller's bytes, and a caller
+that writes the next digest into the same buffer would otherwise rename
+every job already held, along with its payment intent and the wallet's key.
 
 <!-- source: psionic/lib/peer/pay.coax types -->
 ```jai
 VP_JOBS :: 16;
 VpState :: enum u8 {none;held;paid;withheld;review;}
+// The ledger keeps its own copy of every receipt digest and payee. A string
+// argument only borrows the caller's bytes, and a caller may reuse them for
+// the next job; a stored borrow would then rename a held job, its intent and
+// the wallet's idempotency key. VP_TEXT bytes hold a 64-digit digest or a
+// hex public key, packed eight to a word, the first byte lowest.
+VP_TEXT :: 64;
+VpText :: struct {n:int;w:[VP_TEXT/8]u64;}
 // One job: the receipt digest that names it, who is paid, the quote held
 // for it and, once decided, the amount owed.
-VpJob :: struct {receipt:string;payee:string;quote:int;amount:int;state:VpState;}
-// What a wallet is asked to pay, keyed by the receipt digest.
-VpIntent :: struct {key:string;payee:string;msat:int;}
+VpJob :: struct {receipt:VpText;payee:VpText;quote:int;amount:int;state:VpState;}
+// What a wallet is asked to pay: at is the paid job's index, whose receipt
+// digest is the key and whose payee is paid.
+VpIntent :: struct {at:int;msat:int;}
 // trust_unsampled: work the checker did not sample is paid without review.
 // payout_cap: a single payment above it waits for the owner.
 VpPolicy :: struct {trust_unsampled:bool;payout_cap:int;}
@@ -81,12 +92,33 @@ Chapter 180's `bl_admit` keeps `held + spent <= budget` on every hold.
 ## Hold before the work runs
 
 A hold names the receipt digest, the payee, the quote and its unit. The
-unit is `msat` or `sat`, and a sat is 1000 msat. Any other unit, such as
+payee is 1 to 64 bytes, room for a hex public key. The unit is `msat` or `sat`, and a sat is 1000 msat. Any other unit, such as
 `usdt`, is not a Bitcoin amount and is refused. The checks run in a fixed
 order, and the first one that fails names the refusal.
 
 <!-- source: psionic/lib/peer/pay.coax hold -->
 ```jai
+// Copy at most VP_TEXT bytes; callers refuse anything longer first.
+vp_text :: (s:string)->VpText {
+    t:VpText;
+    for i:0..<s.count {t.w[i/8]=t.w[i/8]|(cast(u64)s[i]<<((i%8)*8));}
+    t.n=s.count;
+    return t;
+}
+vp_byte :: (t:VpText,i:int)->u8 {return cast(u8)((t.w[i/8]>>((i%8)*8))&255);}
+vp_same :: (a:VpText,b:VpText)->bool {
+    if a.n!=b.n {return false;}
+    for j:0..<VP_TEXT/8 {if a.w[j]!=b.w[j] {return false;}}
+    return true;
+}
+vp_is :: (t:VpText,s:string)->bool {return s.count<=VP_TEXT && vp_same(t,vp_text(s));}
+// Write the kept bytes to out for a caller to read: the count, or -1 when
+// out is too small.
+vp_bytes :: (t:VpText,out:[]u8)->int {
+    if out.count<t.n {return -1;}
+    for i:0..<t.n {out[i]=vp_byte(t,i);}
+    return t.n;
+}
 // A receipt digest is 64 lowercase hex digits, as audit-run.coax writes it.
 vp_digest_ok :: (s:string)->bool {
     if s.count!=64 {return false;}
@@ -97,7 +129,9 @@ vp_digest_ok :: (s:string)->bool {
     return true;
 }
 vp_find :: (l:VpLedger,receipt:string)->int {
-    for i:0..<l.n {if l.jobs[i].receipt==receipt {return i;}}
+    if receipt.count>VP_TEXT {return -1;}
+    r:=vp_text(receipt);
+    for i:0..<l.n {if vp_same(l.jobs[i].receipt,r) {return i;}}
     return -1;
 }
 // Hold a quote before the work runs. unit is "msat" or "sat"; anything else
@@ -106,7 +140,7 @@ vp_hold :: (l:VpLedger,receipt:string,payee:string,quote:int,unit:string)->VpSte
     r:=VpStep.{refuse=VpRefuse.receipt,ledger=l};
     if !vp_digest_ok(receipt) {return r;}
     r.refuse=VpRefuse.payee;
-    if payee.count==0 {return r;}
+    if payee.count==0 || payee.count>VP_TEXT {return r;}
     r.refuse=VpRefuse.unit;
     if unit!="msat" && unit!="sat" {return r;}
     most:=BL_MSAT_MOST;scale:=1;
@@ -121,7 +155,7 @@ vp_hold :: (l:VpLedger,receipt:string,payee:string,quote:int,unit:string)->VpSte
     a:=bl_admit(l.account,BlPrice.{msat=q});
     r.refuse=VpRefuse.budget;
     if a.cause!=BlCause.none {return r;}
-    n:=l;n.jobs[n.n]=VpJob.{receipt=receipt,payee=payee,quote=q,state=VpState.held};n.n+=1;n.account=a.account;
+    n:=l;n.jobs[n.n]=VpJob.{receipt=vp_text(receipt),payee=vp_text(payee),quote=q,state=VpState.held};n.n+=1;n.account=a.account;
     return VpStep.{state=VpState.held,ledger=n};
 }
 ```
@@ -152,7 +186,7 @@ vp_end :: (l:VpLedger,k:int,amount:int,to:VpState)->VpStep {
         n.withheld+=amount;return VpStep.{state=to,ledger=n};
     }
     n.account.spent+=amount;
-    n.intents[n.m]=VpIntent.{key=l.jobs[k].receipt,payee=l.jobs[k].payee,msat=amount};n.m+=1;
+    n.intents[n.m]=VpIntent.{at=k,msat=amount};n.m+=1;
     return VpStep.{state=to,ledger=n};
 }
 // The checker's verdict on a held job. amount is the work's actual price,
@@ -249,7 +283,7 @@ The first check walks a smaller ledger the same way, with chapter 180's
     // The checker agrees with A: 2202 leaves escrow, 1732 is owed, one intent.
     t:=vp_decide(l,p,VPT_A,1732,true,vpt_agree());
     #assert t.refuse==VpRefuse.none && t.state==VpState.paid && t.ledger.account.held==4404 && t.ledger.account.spent==1732;
-    #assert t.ledger.m==1 && t.ledger.intents[0].key==VPT_A && t.ledger.intents[0].msat==1732 && t.ledger.intents[0].payee=="alpha";
+    #assert t.ledger.m==1 && t.ledger.intents[0].at==0 && t.ledger.intents[0].msat==1732;
     // B disagrees: its hold is released and nothing is owed.
     t=vp_decide(t.ledger,p,VPT_B,1732,true,vpt_verdict(PkVerdict.disagree));
     #assert t.state==VpState.withheld && t.ledger.account.held==2202 && t.ledger.account.spent==1732 && t.ledger.withheld==1732 && t.ledger.m==1;
@@ -258,10 +292,10 @@ The first check walks a smaller ledger the same way, with chapter 180's
     #assert t.state==VpState.review && t.ledger.account.held==2202 && t.ledger.jobs[2].amount==1732 && t.ledger.m==1;
     // The owner pays C.
     t=vp_review(t.ledger,VPT_C,true);
-    #assert t.state==VpState.paid && t.ledger.account.held==0 && t.ledger.account.spent==3464 && t.ledger.m==2 && t.ledger.intents[1].key==VPT_C;
+    #assert t.state==VpState.paid && t.ledger.account.held==0 && t.ledger.account.spent==3464 && t.ledger.m==2 && t.ledger.intents[1].at==2;
     // The wallet boundary: 1732 msat is a Lightning amount, not a whole sat.
     i:=vp_invoice(t.ledger,VPT_A,"lightning");
-    #assert i.refuse==VpRefuse.none && i.rail==VpRail.lightning && i.msat==1732 && i.sat==0 && i.key==VPT_A && i.payee=="alpha";
+    #assert i.refuse==VpRefuse.none && i.rail==VpRail.lightning && i.msat==1732 && i.sat==0 && vp_is(i.key,VPT_A) && vp_is(i.payee,"alpha");
     #assert vp_invoice(t.ledger,VPT_A,"spark").refuse==VpRefuse.fraction;
 }
 ```
@@ -364,20 +398,21 @@ the recount refuses it there with `settled`.
 // refused for Spark rather than rounded. Any other rail is refused. key is
 // the idempotency key the wallet records, so a retried intent pays once.
 VpRail :: enum u8 {lightning;spark;}
-VpInvoice :: struct {refuse:VpRefuse;rail:VpRail;msat:int;sat:int;key:string;payee:string;}
+VpInvoice :: struct {refuse:VpRefuse;rail:VpRail;msat:int;sat:int;key:VpText;payee:VpText;}
 
 vp_invoice :: (l:VpLedger,key:string,rail:string)->VpInvoice #export_c {
-    k:=-1;
-    for i:0..<l.m {if l.intents[i].key==key {k=i;}}
     r:=VpInvoice.{refuse=VpRefuse.unknown};
+    if key.count>VP_TEXT {return r;}
+    want:=vp_text(key);k:=-1;
+    for i:0..<l.m {if vp_same(l.jobs[l.intents[i].at].receipt,want) {k=i;}}
     if k<0 {return r;}
-    t:=l.intents[k];
-    if rail=="lightning" {return VpInvoice.{rail=VpRail.lightning,msat=t.msat,key=t.key,payee=t.payee};}
+    t:=l.intents[k];j:=l.jobs[t.at];
+    if rail=="lightning" {return VpInvoice.{rail=VpRail.lightning,msat=t.msat,key=j.receipt,payee=j.payee};}
     r.refuse=VpRefuse.rail;
     if rail!="spark" {return r;}
     r.refuse=VpRefuse.fraction;
     if t.msat%1000!=0 {return r;}
-    return VpInvoice.{rail=VpRail.spark,msat=t.msat,sat=t.msat/1000,key=t.key,payee=t.payee};
+    return VpInvoice.{rail=VpRail.spark,msat=t.msat,sat=t.msat/1000,key=j.receipt,payee=j.payee};
 }
 ```
 
@@ -438,7 +473,7 @@ accepted events that reproduces the ledger exactly.
 // oracle tracks each receipt's state and three sums by hand; the ledger
 // must match it after every step, conserve the cap, never pay a receipt
 // twice, leave itself unchanged on a refusal, and recount to the same sums.
-#forall "the ledger against a brute-force oracle" o1: 0..<14, o2: 0..<14, o3: 0..<14, trust: bool {
+#forall "the ledger against a brute-force oracle" trust: bool, o1: 0..<14, o2: 0..<14, o3: 0..<14 #steps 200000000 {
     quote:=[2]int.[300,500];owe:=[2]int.[200,500];key:=[2]string.[VPT_A,VPT_B];
     p:=VpPolicy.{trust_unsampled=trust,payout_cap=400};
     l:=VpLedger.{account=BlAccount.{budget=750}};
@@ -481,7 +516,7 @@ accepted events that reproduces the ledger exactly.
     // is the sum of the intents; each receipt has at most one intent.
     esc:=0;sum:=0;
     for j:0..<l.n {if l.jobs[j].state==VpState.held || l.jobs[j].state==VpState.review {esc+=l.jobs[j].quote;}}
-    for i:0..<l.m {sum+=l.intents[i].msat;for k:0..<i {#assert l.intents[k].key!=l.intents[i].key;}}
+    for i:0..<l.m {sum+=l.intents[i].msat;for k:0..<i {#assert l.intents[k].at!=l.intents[i].at;}}
     #assert esc==held && sum==spent;
     for r:0..<2 {k:=vp_find(l,key[r]);#assert (k<0)==(st[r]==VpState.none) && (k<0 || l.jobs[k].state==st[r]);}
     c:=vp_recount(750,p,ev[0..<ne]);#assert c.refuse==VpRefuse.none && vpt_same(c.ledger,l);
@@ -489,12 +524,15 @@ accepted events that reproduces the ledger exactly.
 ```
 
 Further checks pin every hold refusal in order, the digest format at each
-character boundary, the verdict, policy and payout-cap rules, amounts at 21
+character boundary, the ledger's own copy of each receipt and payee when
+the caller writes the next job into the same buffers, the 64-byte payee
+bound, the verdict, policy and payout-cap rules, amounts at 21
 million bitcoin in both units, the withheld total's bound, the Spark
 whole-sat rule and the recount's refusals.
 
-`peer/pay.coax` is an `#authority` file. `coax mutate --root-only` changes
-each of its 170 mutation sites in turn, and the checks kill all 170. Run it
+`peer/pay.coax` is an `#authority` file. `coax mutate` changes each of the
+536 mutation sites its checks reach, in this file and the ones it loads, in
+turn, and the checks kill all 536. Run it
 with the other Psionic units:
 
 ```shell

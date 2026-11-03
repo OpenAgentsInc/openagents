@@ -661,7 +661,11 @@ main :: () {
     print("job 3, three questions: %, nothing sent\n",sv_code_name(ad.code));
     print("meter: % requests, % tokens in, % msat quoted, % msat billed by the peer\n",metrics.requests,metrics.tokens_in,metrics.quoted,metrics.charged);
     print("ledger: escrow % msat, owed % msat, withheld % msat\n",l.account.held,l.account.spent,l.withheld);
-    for i:0..<l.m {v:=vp_invoice(l,l.intents[i].key,"lightning");print("  intent %... % msat to %...: lightning invoice for % msat (not paid)\n",v.key[0..<12],v.msat,v.payee[0..<12],v.msat);}
+    for i:0..<l.m {
+        kb:[VP_TEXT]u8;pb:[VP_TEXT]u8;id:=cast(string)kb[0..<vp_bytes(l.jobs[l.intents[i].at].receipt,kb[..])];
+        v:=vp_invoice(l,id,"lightning");payee:=cast(string)pb[0..<vp_bytes(v.payee,pb[..])];
+        print("  intent %... % msat to %...: lightning invoice for % msat (not paid)\n",id[0..<12],v.msat,payee[0..<12],v.msat);
+    }
 
     print("refusals:\n");
     m=ml_request(PROBE,"psionic-toy",ex_pools(ex[..]),req[..]);

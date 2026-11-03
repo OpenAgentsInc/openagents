@@ -69,8 +69,8 @@ main :: () {
     print("ledger: % jobs, escrow % msat, owed % msat, withheld % msat, cap left % msat\n",l.n,l.account.held,l.account.spent,l.withheld,l.account.budget-l.account.held-l.account.spent);
     print("payment intents (not executed):\n");
     for i:0..<l.m {
-        t:=l.intents[i];ln:=vp_invoice(l,t.key,"lightning");sp:=vp_invoice(l,t.key,"spark");
-        print("  % % msat to %: lightning invoice for % msat; spark %\n",ex_short(t.key),t.msat,t.payee,ln.msat,vp_refuse_name(sp.refuse));
+        t:=l.intents[i];paid:=l.jobs[t.at];kb:[VP_TEXT]u8;pb:[VP_TEXT]u8;key:=cast(string)kb[0..<vp_bytes(paid.receipt,kb[..])];ln:=vp_invoice(l,key,"lightning");sp:=vp_invoice(l,key,"spark");
+        print("  % % msat to %: lightning invoice for % msat; spark %\n",ex_short(key),t.msat,cast(string)pb[0..<vp_bytes(paid.payee,pb[..])],ln.msat,vp_refuse_name(sp.refuse));
     }
     print("refusals:\n");
     other:=VPT_C;
