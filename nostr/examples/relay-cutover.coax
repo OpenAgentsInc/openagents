@@ -1,3 +1,6 @@
+// The libraries this program loads build their secp256k1 tables and tag
+// hashes at compile time in about 90,000 steps, near the default 100,000.
+#run_steps 1000000;
 // book:begin example
 // Chapter 103: a rehearsal of replacing relay.openagents.com, offline. A
 // six-line export (five events from the recorded 2026-10-28 capture and one

@@ -1,3 +1,6 @@
+// The libraries this program loads build their secp256k1 tables and tag
+// hashes at compile time in about 90,000 steps, near the default 100,000.
+#run_steps 1000000;
 // The checks of differential.coax. They live apart so that running the
 // example doesn't also run them.
 // Checks: coax test nostr/examples/checks/differential.coax

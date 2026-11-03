@@ -1,3 +1,6 @@
+// The libraries this program loads build their secp256k1 tables and tag
+// hashes at compile time in about 90,000 steps, near the default 100,000.
+#run_steps 1000000;
 // Chapter 98: a project folded from its signed events, and a captured relay folded and compared.
 #load "../../apps/openagents-web/project-fold.coax";
 #load "../../coax/lib/nostr/event.coax";

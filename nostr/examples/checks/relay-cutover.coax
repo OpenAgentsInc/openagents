@@ -1,3 +1,6 @@
+// The libraries this program loads build their secp256k1 tables and tag
+// hashes at compile time in about 90,000 steps, near the default 100,000.
+#run_steps 1000000;
 // The checks of relay-cutover.coax. They live apart so that running the
 // example doesn't also run them. They verify BIP-340 signatures at compile
 // time, so they take about a minute.

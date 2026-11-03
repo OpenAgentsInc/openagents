@@ -1,3 +1,6 @@
+// The libraries this program loads build their secp256k1 tables and tag
+// hashes at compile time in about 90,000 steps, near the default 100,000.
+#run_steps 1000000;
 // Chapter 83: an attested endpoint checked against its release head, and a
 // sealed vault object opened through a key slot. Key 1 publishes a release
 // (3202) and a release head (30202) for the vault workload; key 3, the
