@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 36 are implemented and 88 are planned. The 36
-implemented chapters have runnable examples, qualified on native CPU, and 31
-of them on Wasm. Fifteen of them are the cryptography Nostr already used;
-chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 34, 36, 37,
-46, 47 and 48 are new.
+Of the 124 chapters, 37 are implemented and 87 are planned. The 37 implemented
+chapters have runnable examples, qualified on native CPU, and 31 of them on
+Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
+7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 34, 35, 36, 37, 46, 47 and
+48 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -179,7 +179,7 @@ Transactions, their IDs, the script interpreter, signature hashes, timelocks and
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [34. Transactions and their serialization](ch034-transactions-and-their-serialization.md) | Runnable: native C and wasm | Every transaction in Bitcoin Core's `tx_valid.json` and `tx_invalid.json` and six pinned mainnet transactions read with Core's rules and write back byte for byte, with and without witnesses, with their txids, wtxids and weights, checked against a Python transliteration of Core natively and in Wasm. Non-canonical CompactSizes, counts above `MAX_SIZE`, unknown flags, empty witnesses and trailing bytes refuse with their own codes, and bytes that read both ways decode as Core's `DecodeTx` decodes them. |
-| 35. Txids, wtxids and malleability | Planned | Txids and wtxids of pinned segwit transactions match. Changing a witness changes the wtxid and leaves the txid. |
+| [35. Txids, wtxids and malleability](ch035-txids-wtxids-and-malleability.md) | Runnable: native C | Ten forms of the 2011 spend `23b397ed`, Core's four changed forms rebuilt byte for byte among them, give ten txids: another DER encoding, `n − s`, `OP_PUSHDATA1`, another `CHECKMULTISIG` dummy and an extra item, each named with the rule that refuses it (BIP-66, low-S, `MINIMALDATA`, BIP-147, `CLEANSTACK`). The P2WPKH spend `f5864806` verifies against its BIP-143 digest, and its high-S twin changes only the wtxid; a signer's two signatures of BIP-143's P2SH-P2WPKH example share a txid. Checked against Python natively. |
 | [36. The script interpreter](ch036-the-script-interpreter.md) | Runnable: native C and wasm | Bitcoin Core's `EvalScript` and `VerifyScript` for legacy script, P2SH and segwit v0, with Core's error numbers. All 1,256 runnable rows of `script_tests.json` and all 4,532 flag sets of `tx_valid.json` and `tx_invalid.json` give Core's result, checked against a Python transliteration of Core on 16,178 cases natively and in Wasm. The 7 tapscript rows wait for chapter 44, and a Taproot output refuses instead of running. |
 | [37. Legacy signature hashes](ch037-legacy-signature-hashes.md) | Runnable: native C and wasm | The legacy signature hash of chapter 36's interpreter, field by field: what each of the six hash types signs, found by changing one byte at a time, the `SIGHASH_SINGLE` bug, FindAndDelete and `OP_CODESEPARATOR` in the scriptCode, undefined hash types, and quadratic hashing (1.87 GB for a 1,000,000-byte transaction of 6,756 inputs). All 500 rows of `sighash.json` match, 488 of them with undefined types, and the example agrees with a Python transliteration of Core. |
 | 38. Segwit v0 signature hashes | Planned | BIP-143's examples give their digests for every hash type. |

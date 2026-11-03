@@ -1,0 +1,179 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/malleability.coax";
+#load "../../coax/lib/bitcoin/sighash.coax";
+#load "../../coax/lib/bitcoin/hash160.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/tests/bitcoin/tx_core_vectors.coax";
+#load "../../coax/tests/bitcoin/spent_vectors.coax";
+#import "Basic";
+
+show :: (label: string, bytes: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+equal_bytes :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// A txid or wtxid as explorers show it: the digest reversed.
+shown :: (digest: [] u8, out: [] u8) -> [] u8 {
+  #assert bitcoin_reverse32(digest, out[0..<32]) == SHA_OK;
+  return out[0..<32];
+}
+// Both IDs and the weight of a transaction, read with witnesses allowed.
+Ids :: struct { txid: [32] u8; wtxid: [32] u8; weight: int; }
+ids :: (b: [] u8) -> Ids {
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem; r: Ids;
+  t := tx_read_vartime(b, true, ins[..], outs[..], items[..]);
+  #assert tx_txid_vartime(b, t, r.txid[..]) && tx_wtxid_vartime(b, t, r.wtxid[..]);
+  r.weight = tx_weight_vartime(t);
+  return r;
+}
+// Print one form of a transaction: its txid as shown, and whether the
+// signature passes BIP-66 and the low-S rule. Returns the txid.
+form :: (label: string, b: [] u8, sig: [] u8) -> [32] u8 {
+  d := ids(b); x: [32] u8;
+  print("%\n", label);
+  show("  txid", shown(d.txid[..], x[..]));
+  print("  strict DER %, low S %\n", der_check_vartime(sig) == DER_OK, der_low_s_vartime(sig));
+  return d.txid;
+}
+// Add id to the first count of seen unless it is there; the new count.
+note :: (seen: [] [32] u8, count: int, given: [32] u8) -> int {
+  id := given;
+  for i: 0..<count { if equal_bytes(seen[i][..], id[..]) { return count; } }
+  seen[count] = id;
+  return count + 1;
+}
+// The 23b397ed spend with a new scriptSig: dummy (1 or 2 bytes), then sig
+// pushed in the shortest form or with OP_PUSHDATA1, after an extra OP_0
+// when extra is true.
+spend :: (s: [] u8, dummy: [] u8, sig: [] u8, minimal: bool, extra: bool, out: [] u8) -> [] u8 {
+  script: [80] u8; at := 0;
+  if extra { script[0] = 0x00; at = 1; }
+  for i: 0..<dummy.count { script[at+i] = dummy[i]; }
+  at = mal_push_vartime(sig, minimal, script[..], at + dummy.count);
+  n := mal_replace_vartime(s, 41, script[0..<at], out);
+  #assert n > 0;
+  return out[0..<n];
+}
+
+main :: () {
+  b: [512] u8; o: [600] u8; x: [32] u8; y: [32] u8;
+  seen: [16] [32] u8; count := 0;
+  op0 := [1] u8.[0x00]; op1 := [1] u8.[0x51];
+
+  // ---- third parties, before segwit: one legacy spend, many txids
+  print("23b397ed: a 1-of-2 bare multisig spend, as mined in 2011\n");
+  s := decode(TX_MAINNET[0].tx, b[..]);
+  sig := s[44..<44+71];                         // after OP_0 and the push byte 0x47
+  count = note(seen[..], count, form("as mined", s, sig));
+  core := [4] string.["a byte stuffed into the signature", "dummy 0x01ff instead of OP_0", "dummy OP_1", "dummy OP_1NEGATE"];
+  print("tx_valid.json's four changed forms, valid without BIP-66 and NULLDUMMY\n");
+  for k: 1..<5 {
+    c: [512] u8; t := decode(TX_CORE[k].tx, c[..]);
+    d := ids(t);
+    print("  %\n", core[k-1]);
+    show("    txid", shown(d.txid[..], x[..]));
+    count = note(seen[..], count, d.txid);
+  }
+  strict_sig: [80] u8; low: [80] u8; w: [600] u8;
+  ns := mal_reencode_vartime(sig, false, strict_sig[..]);
+  nl := mal_reencode_vartime(sig, true, low[..]);
+  print("built here from the mined form\n");
+  count = note(seen[..], count, form("strict DER, the same s", spend(s, op0[..], strict_sig[0..<ns], true, false, o[..]), strict_sig[0..<ns]));
+  count = note(seen[..], count, form("strict DER, s replaced by n - s: the canonical form", spend(s, op0[..], low[0..<nl], true, false, o[..]), low[0..<nl]));
+  count = note(seen[..], count, form("canonical, dummy OP_1", spend(s, op1[..], low[0..<nl], true, false, o[..]), low[0..<nl]));
+  count = note(seen[..], count, form("canonical, the signature pushed with OP_PUSHDATA1", spend(s, op0[..], low[0..<nl], false, false, o[..]), low[0..<nl]));
+  count = note(seen[..], count, form("canonical, an extra OP_0 first", spend(s, op0[..], low[0..<nl], true, true, o[..]), low[0..<nl]));
+  print("% forms, % different txids\n", 10, count);
+
+  // ---- third parties after segwit: a P2WPKH spend
+  m := TX_MAINNET[3]; spent := TX_SPENT[0];
+  print("f5864806: a P2WPKH spend\n");
+  s = decode(m.tx, b[..]);
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  sig = s[items[0].at..<items[0].at+items[0].n];
+  key := s[items[1].at..<items[1].at+items[1].n];
+  // The BIP-143 digest: the stripped transaction, the P2PKH script code of
+  // the key hash in the spent output, and the spent value.
+  n := tx_write_vartime(s, t, ins[..], outs[..], items[..], false, w[..]);
+  bt := bt_tx_read(w[0..<n]);
+  spk: [40] u8; p2pkh: [25] u8; h: [32] u8;
+  hash := decode(spent.scripts[0], spk[..])[2..<22];
+  p2pkh[0] = 0x76; p2pkh[1] = 0xa9; p2pkh[2] = 0x14; p2pkh[23] = 0x88; p2pkh[24] = 0xac;
+  for i: 0..<20 { p2pkh[3+i] = hash[i]; }
+  #assert bt_sighash_v0(w[0..<n], bt, 0, p2pkh[..], spent.values[0], BT_ALL, h[..]);
+  print("spends % satoshis; BIP-143 digest computed\n", spent.values[0]);
+  print("signature: % bytes, verifies %, low S %\n", sig.count, der_checksig_vartime(h[..], key, sig), der_low_s_vartime(sig));
+  high: [80] u8;
+  nh := mal_reencode_vartime(sig, true, high[..]);
+  print("s replaced by n - s: % bytes, verifies %, low S %\n", nh, der_checksig_vartime(h[..], key, high[0..<nh]), der_low_s_vartime(high[0..<nh]));
+  before := ids(s);
+  n = mal_replace_vartime(s, items[0].at - 1, high[0..<nh], o[..]);
+  after := ids(o[0..<n]);
+  show("  txid ", shown(after.txid[..], x[..]));
+  show("  wtxid", shown(after.wtxid[..], y[..]));
+  print("  txid unchanged %, wtxid unchanged %, weight % -> %\n", equal_bytes(before.txid[..], after.txid[..]),
+    equal_bytes(before.wtxid[..], after.wtxid[..]), before.weight, after.weight);
+  n = mal_replace_vartime(s, ins[0].script - 1, op0[..], o[..]);
+  after = ids(o[0..<n]);
+  print("OP_0 in the empty scriptSig: txid unchanged %; BIP-141 requires it empty\n", equal_bytes(before.txid[..], after.txid[..]));
+
+  // ---- the signer: BIP-143's P2SH-P2WPKH example, signed twice
+  v := BT_V143[1];
+  print("BIP-143's P2SH-P2WPKH example, signed twice with its published key\n");
+  u := decode(v.tx, b[..]);
+  #assert tx_read_vartime(u, false, ins[..], outs[..], items[..]).code == TX_OK;
+  prefix := ins[0].script - 1;              // the scriptSig's length byte
+  bu := bt_tx_read(u);
+  kb: [32] u8; c: [32] u8; pub: [33] u8; kh: [20] u8;
+  k := decode(v.key, kb[..]);
+  code := decode(v.code, c[..])[1..<26];
+  #assert se_encode(smb_multiply_web(sc_load(k).value), SE_COMPRESSED, pub[..]) == SE_COMPRESSED;
+  #assert hash160_checked(pub[..], kh[..], false) == RMD_OK;
+  print("the key's HASH160 is the script code's: %\n", equal_bytes(kh[..], code[3..<23]));
+  types := [2] int.[BT_ALL, BT_ALL | BT_ANYONE];
+  names := [2] string.["SIGHASH_ALL", "SIGHASH_ALL|ANYONECANPAY"];
+  sigs: [2] [80] u8; lens: [2] int; wtx: [2] Ids; legacy: [2] Ids;
+  for i: 0..<2 {
+    d: [32] u8; rs: [64] u8; wk: [1] EcdsaWork; e: [80] u8;
+    #assert bt_sighash_v0(u, bu, 0, code, v.amount, types[i], d[..]);
+    #assert ecdsa_sign(k, d[..], wk[..], rs[..], false);
+    lens[i] = ecdsa_der(rs[..], sigs[i][..]) + 1;
+    sigs[i][lens[i]-1] = cast(u8) types[i];
+    one := sigs[i][0..<lens[i]];
+    print("%: % bytes, verifies %", names[i], lens[i], der_checksig_vartime(d[..], pub[..], one));
+    if i == 0 { print(", BIP-143's signature %", equal_bytes(one[0..<lens[i]-1], decode(v.sig, e[..]))); }
+    print("\n");
+    // As P2SH-P2WPKH: the scriptSig pushes the redeem script 0014<hash>;
+    // the witness is the signature and the key.
+    redeem: [22] u8; script: [24] u8; stack: [120] u8; p: [600] u8;
+    redeem[0] = 0x00; redeem[1] = 0x14;
+    for j: 0..<20 { redeem[2+j] = kh[j]; }
+    q := mal_replace_vartime(u, prefix, script[0..<mal_push_vartime(redeem[..], true, script[..], 0)], p[..]);
+    r := tx_read_vartime(p[0..<q], false, ins[..], outs[..], items[..]);
+    stack[0] = 2; at := mal_push_vartime(one, true, stack[..], 1); at = mal_push_vartime(pub[..], true, stack[..], at);
+    wn := mal_add_witness_vartime(p[0..<q], r, stack[0..<at], w[..]);
+    wtx[i] = ids(w[0..<wn]);
+    // As if the coin were P2PKH: the signature and the key in the scriptSig.
+    at = mal_push_vartime(one, true, stack[..], 0); at = mal_push_vartime(pub[..], true, stack[..], at);
+    q = mal_replace_vartime(u, prefix, stack[0..<at], p[..]);
+    legacy[i] = ids(p[0..<q]);
+  }
+  print("as P2SH-P2WPKH\n");
+  for i: 0..<2 { show("  txid ", shown(wtx[i].txid[..], x[..])); show("  wtxid", shown(wtx[i].wtxid[..], y[..])); }
+  print("  same txid %, same wtxid %\n", equal_bytes(wtx[0].txid[..], wtx[1].txid[..]), equal_bytes(wtx[0].wtxid[..], wtx[1].wtxid[..]));
+  print("as if the coin were P2PKH\n");
+  for i: 0..<2 { show("  txid ", shown(legacy[i].txid[..], x[..])); }
+  print("  same txid %\n", equal_bytes(legacy[0].txid[..], legacy[1].txid[..]));
+}
+// book:end example

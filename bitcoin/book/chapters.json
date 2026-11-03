@@ -776,14 +776,20 @@
   {
    "number": 35,
    "title": "Txids, wtxids and malleability",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch035-txids-wtxids-and-malleability.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     34
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/malleability.coax",
+    "bitcoin/examples/malleability.coax",
+    "bitcoin/examples/checks/malleability.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

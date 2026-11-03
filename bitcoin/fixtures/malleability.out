@@ -1,0 +1,52 @@
+23b397ed: a 1-of-2 bare multisig spend, as mined in 2011
+as mined
+  txid: 23b397edccd3740a74adb603c9756370fafcde9bcc4483eb271ecad09a94dd63
+  strict DER false, low S false
+tx_valid.json's four changed forms, valid without BIP-66 and NULLDUMMY
+  a byte stuffed into the signature
+    txid: fcabc409d8e685da28536e1e5ccc91264d755cd4c57ed4cae3dbaa4d3b93e8ed
+  dummy 0x01ff instead of OP_0
+    txid: c9aa95f2c48175fdb70b34c23f1c3fc44f869b073a6f79b1343fbce30c3cb575
+  dummy OP_1
+    txid: da94fda32b55deb40c3ed92e135d69df7efc4ee6665e0beb07ef500f407c9fd2
+  dummy OP_1NEGATE
+    txid: f76f897b206e4f78d60fe40f2ccb542184cfadc34354d3bb9bdc30cc2f432b86
+built here from the mined form
+strict DER, the same s
+  txid: cf75b86dc018b6221f6737911e2ef18683a54c41faee1dd8bf53923e5702971f
+  strict DER true, low S false
+strict DER, s replaced by n - s: the canonical form
+  txid: fd4b7c3593d43a831471b34958dd0da9a7ca50c0a4b2c1667d4baddbaae175a1
+  strict DER true, low S true
+canonical, dummy OP_1
+  txid: 77013068c90bcce4969df420774c108d6a1a2adcd1d6e37f8616584f1232703d
+  strict DER true, low S true
+canonical, the signature pushed with OP_PUSHDATA1
+  txid: 34bf28fcc1adcd52987f7a06976a431c8b970ee3af400b76ef101f0ab147e080
+  strict DER true, low S true
+canonical, an extra OP_0 first
+  txid: 6b6e7dbf7eca76ab49c9b6c6222201f0b5d68e1d1a36419ae32cc7403d5a155e
+  strict DER true, low S true
+10 forms, 10 different txids
+f5864806: a P2WPKH spend
+spends 511884 satoshis; BIP-143 digest computed
+signature: 72 bytes, verifies true, low S true
+s replaced by n - s: 73 bytes, verifies true, low S false
+  txid : f5864806e3565c34d1b41e716f72609d00b55ea5eac5b924c9719a842ef42206
+  wtxid: 0e9d5bd032d7fbe4cf95cd47821ce9226a54036d3385c2276176d3eb9b4b03a6
+  txid unchanged true, wtxid unchanged false, weight 442 -> 443
+OP_0 in the empty scriptSig: txid unchanged false; BIP-141 requires it empty
+BIP-143's P2SH-P2WPKH example, signed twice with its published key
+the key's HASH160 is the script code's: true
+SIGHASH_ALL: 71 bytes, verifies true, BIP-143's signature true
+SIGHASH_ALL|ANYONECANPAY: 72 bytes, verifies true
+as P2SH-P2WPKH
+  txid : ef48d9d0f595052e0f8cdcf825f7a5e50b6a388a81f206f3f4846e5ecd7a0c23
+  wtxid: 680f483b2bf6c5dcbf111e69e885ba248a41a5e92070cfb0afec3cfc49a9fabb
+  txid : ef48d9d0f595052e0f8cdcf825f7a5e50b6a388a81f206f3f4846e5ecd7a0c23
+  wtxid: 5d2328c642651bbd0eda310233363cc05c72854de0e19cb2c2083bc66bbbdebe
+  same txid true, same wtxid false
+as if the coin were P2PKH
+  txid : 81dcdd3729126c5cbf3a08ce8270c9944ae961f0b9ae80e6e88772ef21af3f36
+  txid : 92b61525d296494d2850b401ce2cfaadd078f2f03a201525794056048d5a117f
+  same txid false

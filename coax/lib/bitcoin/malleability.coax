@@ -1,0 +1,195 @@
+// Txids, wtxids and malleability (Bitcoin chapter 35): the edits a third
+// party or a signer can make to a signed transaction without making it
+// invalid, built as byte operations so that the chapter can show which ID
+// each one changes.
+//
+// Chapter 34 (tx.coax) reads a transaction and computes its txid and
+// wtxid; chapter 21 (der.coax) checks a script signature's encoding and
+// reads it with Bitcoin Core's lax parser. This file adds four edits:
+// writing a signature again in strict DER, with s or with n - s; replacing
+// a length-prefixed field (a scriptSig or a witness item); pushing data
+// onto a script in the shortest form or not; and giving a legacy
+// transaction witnesses. What the edited transaction means is for the
+// script interpreter (chapter 36).
+//
+// Transactions and signatures are public, so everything here runs in
+// variable time and every procedure ends in _vartime (Bitcoin chapter 3).
+#load "../crypto/ecdsa_sign.coax";   // ecdsa_der, chapter 20's strict DER writer
+#load "der.coax";
+#load "tx.coax";
+#authority;
+
+// ---- checks
+// The signature in the scriptSig of 23b397ed (TX_MAINNET[0]): OP_0, then
+// a push of 71 bytes at byte 44. Its s, ddc15ecd..., has its top bit set
+// and no 0x00 before it, so strict DER reads it as negative.
+MAL_SIG_AT :: 44;
+MAL_SIG_N :: 71;
+#test "re-encoding: strict DER with the same s, with n - s, and back" {
+  b: [512] u8; o: [80] u8; p: [80] u8; q: [80] u8;
+  s := tx_unhex(TX_MAINNET[0].tx, b[..]);
+  sig := s[MAL_SIG_AT..<MAL_SIG_AT+MAL_SIG_N];
+  #assert der_check_vartime(sig) == DER_S_NEGATIVE && sig[MAL_SIG_N-1] == 0x01;
+  n := mal_reencode_vartime(sig, false, o[..]);              // s gains its 0x00
+  #assert n == 72 && der_check_vartime(o[0..<n]) == DER_OK && !der_low_s_vartime(o[0..<n]) && o[n-1] == 0x01;
+  #assert o[3] == 0x20 && o[37] == 0x21 && o[38] == 0 && o[39] == 0xdd;
+  m := mal_reencode_vartime(sig, true, p[..]);               // n - s is low and needs no 0x00
+  #assert m == 71 && der_check_vartime(p[0..<m]) == DER_OK && der_low_s_vartime(p[0..<m]) && p[m-1] == 0x01;
+  #assert tx_hex_is(p[38..<70], "223ea13203caf853b71e97e5cc149f65547d1d7ab98c96353d0d8318934e7716");
+  // Flipping twice gives the strict form with the original s.
+  k := mal_reencode_vartime(p[0..<m], true, q[..]);
+  #assert k == n;
+  for i: 0..<n { #assert q[i] == o[i]; }
+  // A strict signature with low s re-encodes to itself.
+  k = mal_reencode_vartime(p[0..<m], false, q[..]);
+  #assert k == m;
+  for i: 0..<m { #assert q[i] == p[i]; }
+}
+#test "re-encoding refuses what the lax parser can't read, r or s of zero, and a short out" {
+  b: [16] u8; o: [80] u8; c: [80] u8;
+  #assert mal_reencode_vartime(tx_unhex("01", b[..]), false, o[..]) == -1;
+  #assert mal_reencode_vartime(tx_unhex("300401", b[..]), false, o[..]) == -1;
+  #assert mal_reencode_vartime(tx_unhex("300602010002010101", b[..]), false, o[..]) == -1;   // r = 0
+  #assert mal_reencode_vartime(tx_unhex("300602010102010001", b[..]), true, o[..]) == -1;    // s = 0
+  #assert mal_reencode_vartime(tx_unhex("300602010102010101", b[..]), false, o[0..<72]) == -1;
+  n := mal_reencode_vartime(tx_unhex("300602010102010183", b[..]), false, c[..]);
+  #assert n == 9 && tx_hex_is(c[0..<n], "300602010102010183");
+}
+#test "replacing a field: same bytes, longer, shorter, and refusals" {
+  b: [512] u8; o: [600] u8; p: [600] u8; d: [32] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := tx_unhex(TX_MAINNET[3].tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  at := items[0].at - 1;                                     // the length byte of the signature item
+  n := mal_replace_vartime(s, at, s[items[0].at..<items[0].at+items[0].n], o[..]);
+  #assert n == s.count;
+  for i: 0..<n { #assert o[i] == s[i]; }
+  x := [3] u8.[1, 2, 3];
+  n = mal_replace_vartime(s, at, x[..], o[..]);
+  #assert n == s.count - 69 && o[at] == 3 && o[at+1] == 1 && o[at+3] == 3 && o[at+4] == 0x21;
+  u := tx_read_vartime(o[0..<n], true, ins[..], outs[..], items[..]);
+  #assert u.code == TX_OK && items[0].n == 3 && tx_txid_vartime(o[0..<n], u, d[..]);
+  // The scriptSig: from empty to one byte, and the txid moves.
+  y := [1] u8.[0];
+  n = mal_replace_vartime(s, ins[0].script - 1, y[..], o[..]);
+  #assert n == s.count + 1 && o[ins[0].script - 1] == 1 && o[ins[0].script] == 0;
+  // A field of 253 bytes takes a 3-byte length.
+  big: [253] u8;
+  n = mal_replace_vartime(s, at, big[..], p[..]);
+  #assert n == s.count - 73 + 3 + 253 && p[at] == 0xfd && p[at+1] == 253 && p[at+2] == 0;
+  #assert mal_replace_vartime(s, at, big[..], p[0..<n-1]) == -1;
+  z := [3] u8.[5, 1, 2];
+  #assert mal_replace_vartime(z[..], 0, y[..], o[..]) == -1;           // a field past the end
+  #assert mal_replace_vartime(s[0..<0], 0, y[..], o[..]) == -1;        // no length at all
+}
+#test "pushes: the shortest form, OP_PUSHDATA1, and too long" {
+  o: [300] u8; d: [256] u8;
+  #assert mal_push_vartime(d[0..<0], true, o[..], 0) == 1 && o[0] == 0x00;
+  #assert mal_push_vartime(d[0..<0], false, o[..], 0) == 2 && o[0] == 0x4c && o[1] == 0;
+  d[0] = 7;
+  #assert mal_push_vartime(d[0..<1], true, o[..], 3) == 5 && o[3] == 1 && o[4] == 7;
+  #assert mal_push_vartime(d[0..<75], true, o[..], 0) == 76 && o[0] == 75;
+  #assert mal_push_vartime(d[0..<76], true, o[..], 0) == 78 && o[0] == 0x4c && o[1] == 76;
+  #assert mal_push_vartime(d[0..<71], false, o[..], 0) == 73 && o[0] == 0x4c && o[1] == 71;
+  #assert mal_push_vartime(d[0..<255], true, o[..], 0) == 257 && o[1] == 255;
+  #assert mal_push_vartime(d[0..<256], true, o[..], 0) == -1;
+  #assert mal_push_vartime(d[0..<75], true, o[0..<75], 0) == -1;
+}
+#test "witnesses: the stripped P2WPKH spend and its stack give the mainnet bytes" {
+  b: [512] u8; w: [512] u8; o: [600] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := tx_unhex(TX_MAINNET[3].tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  n := tx_write_vartime(s, t, ins[..], outs[..], items[..], false, w[..]);
+  stripped := w[0..<n];
+  l := tx_read_vartime(stripped, false, ins[..], outs[..], items[..]);
+  stack := s[t.witness..<t.locktime];
+  m := mal_add_witness_vartime(stripped, l, stack, o[..]);
+  #assert m == s.count;
+  for i: 0..<m { #assert o[i] == s[i]; }
+  #assert mal_add_witness_vartime(stripped, l, stack, o[0..<m-1]) == -1;
+  #assert mal_add_witness_vartime(s, t, stack, o[..]) == -1;           // it has witnesses already
+  #assert mal_add_witness_vartime(stripped, Tx.{code=TX_TRUNCATED}, stack, o[..]) == -1;
+}
+
+// book:begin reencode
+// A script signature (DER, read by Core's lax parser, then the sighash
+// byte) written again in strict DER: with the same r and s, or with s
+// replaced by n - s when flip is true. Both forms verify for the same key
+// and digest. Returns the new length, or -1 when the lax parser can't read
+// the signature, r or s is zero, or out has fewer than 73 bytes.
+mal_reencode_vartime :: (sig: [] u8, flip: bool, out: [] u8) -> int #export_c {
+  compact: [64] u8;
+  if sig.count < 2 || out.count < 73 || !der_read_lax_vartime(sig[0..<sig.count-1], compact[..]) { return -1; }
+  if flip {
+    s := sc_load(compact[32..<64]);
+    #assert sc_store(sc_negate(s.value), compact[32..<64]);
+  }
+  n := ecdsa_der(compact[..], out);
+  if n < 0 { return -1; }
+  out[n] = sig[sig.count-1];
+  return n + 1;
+}
+// book:end reencode
+
+// book:begin replace
+// Replace a length-prefixed field of b, a scriptSig or one witness item,
+// whose CompactSize length starts at byte prefix, with new. Writes the
+// result to out, which must not overlap b, and returns its size, or -1
+// when the length doesn't read, the field runs past the end, or out is too
+// small. Nothing else changes: a scriptSig still has its input, an item
+// its stack.
+mal_replace_vartime :: (b: [] u8, prefix: int, new: [] u8, out: [] u8) -> int #export_c {
+  c := tx_compact_read_vartime(b, prefix);
+  if c.code != TX_OK || c.value > b.count - c.next { return -1; }
+  after := c.next + c.value;                     // the first byte after the old field
+  size := prefix + tx_compact_size_vartime(new.count) + new.count + b.count - after;
+  if size > out.count { return -1; }
+  for i: 0..<prefix { out[i] = b[i]; }
+  at := tx_compact_write_vartime(out, prefix, new.count);
+  for i: 0..<new.count { out[at+i] = new[i]; }
+  at += new.count;
+  for i: after..<b.count { out[at+i-after] = b[i]; }
+  return size;
+}
+// book:end replace
+
+// book:begin push
+// Push data (0 to 255 bytes) onto a script at out[at]. When minimal is
+// true the push takes its shortest form: OP_0 for no bytes, one length
+// byte for 1 to 75 (the opcode is the length), else OP_PUSHDATA1 (0x4c)
+// and a length byte. When minimal is false it always uses OP_PUSHDATA1.
+// Pushing 1 to 16 or 0x81 with OP_1..OP_16 and OP_1NEGATE is also
+// shortest; chapter 36's interpreter checks that. Returns where writing
+// ends, or -1.
+mal_push_vartime :: (data: [] u8, minimal: bool, out: [] u8, at: int) -> int #export_c {
+  if data.count > 255 { return -1; }
+  head := ifx minimal && data.count <= 75 then 1 else 2;
+  if at + head + data.count > out.count { return -1; }
+  if head == 1 { out[at] = cast(u8) data.count; }
+  else { out[at] = 0x4c; out[at+1] = cast(u8) data.count; }
+  for i: 0..<data.count { out[at+head+i] = data[i]; }
+  return at + head + data.count;
+}
+// book:end push
+
+// book:begin witness
+// Give a legacy transaction t, read from b without witnesses, the
+// witness form: the marker 0x00 and flag 0x01 after the version, and
+// stacks, one serialized stack per input in order, before the locktime.
+// Returns the new size, or -1 when t is not a read legacy transaction or
+// out is too small. Chapter 34's reader checks the result.
+mal_add_witness_vartime :: (b: [] u8, t: Tx, stacks: [] u8, out: [] u8) -> int #export_c {
+  if t.code != TX_OK || t.segwit { return -1; }
+  size := t.total + 2 + stacks.count;
+  if size > out.count { return -1; }
+  for i: 0..<4 { out[i] = b[i]; }
+  out[4] = 0x00; out[5] = 0x01;
+  for i: 4..<t.locktime { out[i+2] = b[i]; }
+  at := t.locktime + 2;
+  for i: 0..<stacks.count { out[at+i] = stacks[i]; }
+  at += stacks.count;
+  for i: 0..<4 { out[at+i] = b[t.locktime+i]; }
+  return size;
+}
+// book:end witness

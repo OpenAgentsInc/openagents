@@ -597,7 +597,8 @@
       "covers": [
         "sha256d-txid",
         "bitcoin-transactions",
-        "bitcoin-script-interpreter"
+        "bitcoin-script-interpreter",
+        "bitcoin-malleability"
       ],
       "retrieved": "2026-11-02",
       "sha256": "0abeb1a6e4b942e4e43ef8d49b7356c1f6204bcb14163f24153f4d0ec5418011",
@@ -731,7 +732,8 @@
       "revision": "static: a confirmed mainnet transaction from mempool.space's API; its bytes are fixed by its txid, pinned by sha256",
       "license": "Public Bitcoin blockchain data",
       "covers": [
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-malleability"
       ],
       "retrieved": "2026-11-02",
       "sha256": "4d9ba5d97cdb82847551d6a487e3479958b97b1c5cc9549c932c9bc261a2bf8e",
@@ -744,7 +746,8 @@
       "revision": "static: mempool.space's API record of a confirmed mainnet transaction (txid, size, weight, block); pinned by sha256",
       "license": "Public Bitcoin blockchain data",
       "covers": [
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-malleability"
       ],
       "retrieved": "2026-11-02",
       "sha256": "66d8bb646ababf838e207b78a0c6878c0d136709ea768b71d5ef78dc2a642f51",
@@ -1221,7 +1224,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bip66-strict-der",
-        "bitcoin-script-interpreter"
+        "bitcoin-script-interpreter",
+        "bitcoin-malleability"
       ],
       "retrieved": "2026-11-02",
       "sha256": "57a6f328c7e6202f499e48366a86eb26e09c8ebb78e92eef7e839207230be333",

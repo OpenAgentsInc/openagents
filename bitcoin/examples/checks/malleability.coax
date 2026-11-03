@@ -1,0 +1,71 @@
+// The checks of malleability.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/malleability.coax --run-steps 250000000
+#load "../malleability.coax";
+
+// book:begin check
+// tx_valid.json's four changed forms of 23b397ed are the mined form with a
+// new scriptSig: a byte before the sighash byte, or another dummy.
+#test "Core's changed forms, rebuilt from the mined one" #steps 100000000 {
+  b: [512] u8; c: [512] u8; o: [600] u8; e: [80] u8;
+  s := decode(TX_MAINNET[0].tx, b[..]);
+  sig := s[44..<44+71];
+  for i: 0..<70 { e[i] = sig[i]; }
+  e[70] = 0xab; e[71] = 0x01;
+  op0 := [1] u8.[0x00]; ff := [2] u8.[0x01, 0xff]; op1 := [1] u8.[0x51]; neg := [1] u8.[0x4f];
+  #assert equal_bytes(spend(s, op0[..], e[0..<72], true, false, o[..]), decode(TX_CORE[1].tx, c[..]));
+  #assert equal_bytes(spend(s, ff[..], sig, true, false, o[..]), decode(TX_CORE[2].tx, c[..]));
+  #assert equal_bytes(spend(s, op1[..], sig, true, false, o[..]), decode(TX_CORE[3].tx, c[..]));
+  #assert equal_bytes(spend(s, neg[..], sig, true, false, o[..]), decode(TX_CORE[4].tx, c[..]));
+  #assert equal_bytes(spend(s, op0[..], sig, true, false, o[..]), s);
+}
+// Each form built here has its own txid, and none is the mined one. A
+// legacy transaction's wtxid is its txid.
+#test "every form of 23b397ed has its own txid" #steps 200000000 {
+  b: [512] u8; o: [600] u8; low: [80] u8; same: [80] u8; seen: [8] [32] u8;
+  s := decode(TX_MAINNET[0].tx, b[..]);
+  sig := s[44..<44+71];
+  nl := mal_reencode_vartime(sig, true, low[..]); ns := mal_reencode_vartime(sig, false, same[..]);
+  #assert der_signature_check_vartime(low[0..<nl], SCRIPT_DERSIG | SCRIPT_LOW_S | SCRIPT_STRICTENC) == SIG_OK;
+  #assert der_signature_check_vartime(same[0..<ns], SCRIPT_DERSIG) == SIG_OK && der_signature_check_vartime(same[0..<ns], SCRIPT_LOW_S) == SIG_HIGH_S;
+  #assert der_signature_check_vartime(sig, SCRIPT_DERSIG) == SIG_DER;
+  op0 := [1] u8.[0x00]; op1 := [1] u8.[0x51];
+  count := note(seen[..], 0, ids(s).txid);
+  count = note(seen[..], count, ids(spend(s, op0[..], same[0..<ns], true, false, o[..])).txid);
+  count = note(seen[..], count, ids(spend(s, op0[..], low[0..<nl], true, false, o[..])).txid);
+  count = note(seen[..], count, ids(spend(s, op1[..], low[0..<nl], true, false, o[..])).txid);
+  count = note(seen[..], count, ids(spend(s, op0[..], low[0..<nl], false, false, o[..])).txid);
+  d := ids(spend(s, op0[..], low[0..<nl], true, true, o[..]));
+  count = note(seen[..], count, d.txid);
+  #assert count == 6 && equal_bytes(d.txid[..], d.wtxid[..]);
+}
+// The P2WPKH spend: its signature verifies, and so does the high-S form,
+// which only the low-S policy refuses. The high-S form moves the wtxid and
+// the weight by one; a byte in the scriptSig moves the txid.
+#test "f5864806: n - s moves the wtxid, a scriptSig byte the txid" #steps 1000000000 {
+  b: [512] u8; w: [600] u8; o: [600] u8; spk: [40] u8; code: [25] u8; h: [32] u8; high: [80] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := decode(TX_MAINNET[3].tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  sig := s[items[0].at..<items[0].at+items[0].n]; key := s[items[1].at..<items[1].at+items[1].n];
+  n := tx_write_vartime(s, t, ins[..], outs[..], items[..], false, w[..]);
+  hash := decode(TX_SPENT[0].scripts[0], spk[..])[2..<22];
+  code[0] = 0x76; code[1] = 0xa9; code[2] = 0x14; code[23] = 0x88; code[24] = 0xac;
+  for i: 0..<20 { code[3+i] = hash[i]; }
+  #assert bt_sighash_v0(w[0..<n], bt_tx_read(w[0..<n]), 0, code[..], TX_SPENT[0].values[0], BT_ALL, h[..]);
+  #assert der_checksig_vartime(h[..], key, sig) && der_signature_check_vartime(sig, SCRIPT_DERSIG | SCRIPT_LOW_S | SCRIPT_STRICTENC) == SIG_OK;
+  h[0] ^= 1;
+  #assert !der_checksig_vartime(h[..], key, sig);
+  h[0] ^= 1;
+  nh := mal_reencode_vartime(sig, true, high[..]);
+  #assert nh == 73 && der_checksig_vartime(h[..], key, high[0..<nh]) && der_signature_check_vartime(high[0..<nh], SCRIPT_LOW_S) == SIG_HIGH_S;
+  before := ids(s);
+  m := mal_replace_vartime(s, items[0].at - 1, high[0..<nh], o[..]);
+  after := ids(o[0..<m]);
+  #assert equal_bytes(before.txid[..], after.txid[..]) && !equal_bytes(before.wtxid[..], after.wtxid[..]) && after.weight == before.weight + 1;
+  op0 := [1] u8.[0x00];
+  m = mal_replace_vartime(s, ins[0].script - 1, op0[..], o[..]);
+  after = ids(o[0..<m]);
+  #assert !equal_bytes(before.txid[..], after.txid[..]) && after.weight == before.weight + 4;
+}
+// book:end check
