@@ -112,12 +112,15 @@ g compute url-maps import "$map" --global --source "$tmp" 2>&1 | grep -E "ERROR"
 # The checks join everglade rooms, which need seat tickets (room-ticket.coax): they sign their own
 # with the key, which stays in this process's environment and is never printed.
 OA_ROOM_TICKET_KEY="$(g secrets versions access latest --secret oa-room-ticket-key)"; export OA_ROOM_TICKET_KEY
+# load.coax signs its own tickets for /api/room/relay, so every room it opens lands on shard 1:
+# it loads one shard with 32 players (two rooms, the directory's rooms_cap), and fanout-check.coax
+# is the load across shards through the directory.
 # Every shard answers its own health through the site's address (the load balancer's /api/room/sK/).
 shards_ok() { for k in $(seq 1 "$shards"); do [[ "$(curl -s -m 20 "https://openagents.com/api/room/s$k/health")" == ok*"shard $k,"* ]] || return 1; done; }
 # Through the site's address (the rule takes a minute or two to reach every edge).
 for try in 1 2 3 4 5 6 7 8 9 10; do
   "$here/../tool.sh" "$here/load.coax" wss://openagents.com 4 10 && "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com &&
-    "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com slow && "$here/../tool.sh" "$here/sim-check.coax" wss://openagents.com && "$here/../tool.sh" "$here/load.coax" everglade wss://openagents.com 64 20 &&
+    "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com slow && "$here/../tool.sh" "$here/sim-check.coax" wss://openagents.com && "$here/../tool.sh" "$here/load.coax" everglade wss://openagents.com 32 20 &&
     [[ "$(curl -s -m 20 https://openagents.com/api/playtest/rooms/everglade)" == '{"realm":"everglade"'* ]] &&
     shards_ok &&
     "$here/../tool.sh" "$here/fanout-check.coax" https://openagents.com 17 5 &&
