@@ -1,0 +1,149 @@
+// The Cursor client against the Agent Client Protocol's documented
+// exchange: requests byte for byte, a scrubbed session replayed, approvals
+// declined unless the host answers, questions and plans answered so a turn
+// cannot block.
+//
+// Checks: coax test coax/lib/agent/cursor/tests.coax --library
+
+#load "cursor.coax";
+#load "../../../../coder/tui/ceiling.coax";
+
+CuTest :: struct { line: [8] u8; arena: [65536] u8; out: [16384] u8; }
+
+cu_test_client :: (c: [] CuClient, b: [] CuTest) { cu_init(c[..], b[0].line[..], b[0].arena[..], b[0].out[..]); }
+
+#test "cursor: the requests are the ACP exchange" {
+  c: [1] CuClient; b: [1] CuTest; cu_test_client(c[..], b[..]);
+  #assert cu_initialize(c[..], "Coder", "0.1.0") == 1;
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false},\"clientInfo\":{\"name\":\"Coder\",\"version\":\"0.1.0\"}}}\n";
+  cu_outbox_clear(c[..]);
+  #assert cu_authenticate(c[..]) == 2;
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"authenticate\",\"params\":{\"methodId\":\"cursor_login\"}}\n";
+  cu_outbox_clear(c[..]);
+  #assert cu_session_new(c[..], "/tmp/demo") == 3;
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/new\",\"params\":{\"cwd\":\"/tmp/demo\",\"mcpServers\":[]}}\n";
+  cu_outbox_clear(c[..]);
+  c[0].session_n = cu_keep(c[0].session[..], "sess-1");
+  #assert cu_session_prompt(c[..], "hi \"there\"") == 4;
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"sess-1\",\"prompt\":[{\"type\":\"text\",\"text\":\"hi \\\"there\\\"\"}]}}\n";
+  cu_outbox_clear(c[..]);
+  cu_session_cancel(c[..]);
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"session/cancel\",\"params\":{\"sessionId\":\"sess-1\"}}\n";
+  cu_outbox_clear(c[..]);
+  #assert cu_session_load(c[..], "sess-1", "/tmp/demo") == 5;
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"session/load\",\"params\":{\"sessionId\":\"sess-1\",\"cwd\":\"/tmp/demo\",\"mcpServers\":[]}}\n";
+  cu_outbox_clear(c[..]);
+  #assert cu_set_mode(c[..], "plan") == 6;
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"session/set_mode\",\"params\":{\"sessionId\":\"sess-1\",\"modeId\":\"plan\"}}\n";
+  cu_outbox_clear(c[..]);
+  #assert cu_set_config(c[..], "model", "composer") == 7;
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"session/set_config_option\",\"params\":{\"sessionId\":\"sess-1\",\"configId\":\"model\",\"value\":\"composer\"}}\n";
+}
+
+#test "cursor: a scrubbed session replays, and a command permission is declined" {
+  c: [1] CuClient; b: [1] CuTest;
+  big: [65536] u8;
+  cu_init(c[..], b[0].line[..], b[0].arena[..], big[..]);
+  #assert cu_initialize(c[..], "Coder", "0.1.0") == 1;
+  #assert cu_authenticate(c[..]) == 2;
+  #assert cu_session_new(c[..], "/tmp/demo") == 3;
+  ev := cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1}}");
+  #assert ev.kind == CuEventKind.initialized && c[0].initialized;
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}");
+  #assert ev.kind == CuEventKind.answered && ev.of == CU_AUTHENTICATE;
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"sessionId\":\"sess-1\",\"modes\":{\"availableModes\":[{\"id\":\"agent\"},{\"id\":\"plan\"}]},\"configOptions\":[{\"id\":\"model\",\"category\":\"model\",\"options\":[{\"value\":\"composer\"}]},{\"id\":\"thought\",\"category\":\"thought_level\",\"options\":[{\"value\":\"low\"},{\"value\":\"high\"}]}]}}");
+  #assert ev.kind == CuEventKind.answered && ev.of == CU_SESSION_NEW && cu_session_id(c[..]) == "sess-1";
+  #assert cu_mode_has(ev.result, "plan", c[0].ar[..]) && !cu_mode_has(ev.result, "ask", c[0].ar[..]);
+  #assert cu_config_id(ev.result, "model", "composer", c[0].ar[..]) == "model";
+  #assert cu_config_id(ev.result, "thought_level", "high", c[0].ar[..]) == "thought";
+  #assert cu_config_id(ev.result, "model", "missing", c[0].ar[..]) == "";
+  cu_outbox_clear(c[..]);
+  #assert cu_session_prompt(c[..], "Read the file") == 4;
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"sess-1\",\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"content\":{\"type\":\"text\",\"text\":\"hidden\"}}}}");
+  #assert ev.kind == CuEventKind.notification && cl_str(c[0].ar[..], ev.params, "update.sessionUpdate") == "agent_thought_chunk";
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"sess-1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"I will read it.\"}}}}");
+  #assert cl_str(c[0].ar[..], ev.params, "update.content.text") == "I will read it.";
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"sess-1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"call-1\",\"title\":\"Read README.md\",\"kind\":\"read\",\"locations\":[{\"path\":\"/tmp/demo/README.md\"}]}}}");
+  #assert cl_str(c[0].ar[..], ev.params, "update.kind") == "read";
+  #assert cl_str(c[0].ar[..], ev.params, "update.title") == "Read README.md";
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"sess-1\",\"toolCall\":{\"toolCallId\":\"call-2\",\"title\":\"Run touch\",\"kind\":\"execute\",\"rawInput\":{\"cwd\":\"/tmp/demo/../x\"}},\"options\":[{\"optionId\":\"allow-once\",\"kind\":\"allow_once\",\"name\":\"Allow\"},{\"optionId\":\"allow-always\",\"kind\":\"allow_always\",\"name\":\"Always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\",\"name\":\"Reject\"}]}}");
+  #assert ev.kind == CuEventKind.permission;
+  #assert cu_kind_effect(cl_str(c[0].ar[..], ev.params, "toolCall.kind")) == CU_EFFECT_RUN;
+  #assert cu_tool_outside(cl_raw(ev.params, "toolCall"), c[0].ar[..]);
+  cu_outbox_clear(c[..]);
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"stopReason\":\"end_turn\"}}");
+  #assert c[0].asking == 0;
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"reject-once\"}}}\n";
+  #assert ev.kind == CuEventKind.answered && ev.of == CU_SESSION_PROMPT;
+  #assert cl_str(c[0].ar[..], ev.result, "stopReason") == "end_turn";
+  #assert c[0].npend == 0;
+}
+
+#test "cursor: y, a and n select the offered option, and a missing allow is a refusal" {
+  c: [1] CuClient; b: [1] CuTest; cu_test_client(c[..], b[..]);
+  ev := cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"sess-1\",\"toolCall\":{\"kind\":\"read\",\"locations\":[{\"path\":\"/tmp/demo/a\"}]},\"options\":[{\"optionId\":\"allow-once\",\"kind\":\"allow_once\",\"name\":\"Allow\"},{\"optionId\":\"allow-always\",\"kind\":\"allow_always\",\"name\":\"Always\"},{\"optionId\":\"reject-once\",\"kind\":\"reject_once\",\"name\":\"Reject\"}]}}");
+  #assert ev.kind == CuEventKind.permission && !cu_tool_outside(cl_raw(ev.params, "toolCall"), c[0].ar[..]);
+  #assert cu_choice(c[..], 'y') == "allow-once" && cu_choice(c[..], 'a') == "allow-always" && cu_choice(c[..], 'n') == "reject-once";
+  #assert cu_allow_option(c[..]) == "allow-once";
+  cu_permit(c[..], cu_choice(c[..], 'y'));
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"allow-once\"}}}\n";
+  cu_outbox_clear(c[..]);
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"session/request_permission\",\"params\":{\"options\":[{\"optionId\":\"reject-once\",\"kind\":\"reject_once\",\"name\":\"Reject\"}],\"toolCall\":{\"kind\":\"edit\"}}}");
+  #assert cu_allow_option(c[..]) == "";
+  cu_permit(c[..], "");
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":10,\"result\":{\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"reject-once\"}}}\n";
+}
+
+#test "cursor: a question is skipped and a plan is accepted or rejected" {
+  c: [1] CuClient; b: [1] CuTest; cu_test_client(c[..], b[..]);
+  ev := cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"cursor/ask_question\",\"params\":{\"toolCallId\":\"q1\",\"questions\":[{\"id\":\"q1\",\"prompt\":\"Which mode?\"}]}}");
+  #assert ev.kind == CuEventKind.question && cl_str(c[0].ar[..], ev.params, "questions.0.prompt") == "Which mode?";
+  cu_question(c[..], true);
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":8,\"result\":{\"outcome\":{\"outcome\":\"skipped\"}}}\n";
+  cu_outbox_clear(c[..]);
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"cursor/create_plan\",\"params\":{\"name\":\"Do it\",\"plan\":\"1. Read.\"}}");
+  #assert ev.kind == CuEventKind.plan;
+  cu_plan(c[..], true);
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":11,\"result\":{\"outcome\":{\"outcome\":\"accepted\"}}}\n";
+  cu_outbox_clear(c[..]);
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"cursor/create_plan\",\"params\":{\"plan\":\"no\"}}");
+  cu_plan(c[..], false);
+  #assert cu_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":12,\"result\":{\"outcome\":{\"outcome\":\"rejected\",\"reason\":\"declined\"}}}\n";
+  cu_outbox_clear(c[..]);
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"method\":\"cursor/task\",\"params\":{\"description\":\"Explore\"}}");
+  #assert ev.kind == CuEventKind.notification && ev.method == "cursor/task";
+  cu_outbox_clear(c[..]);
+  #assert cu_authenticate(c[..]) == 1;
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"not logged in\"}}");
+  #assert ev.kind == CuEventKind.refused && ev.of == CU_AUTHENTICATE && ev.message == "not logged in";
+  ev = cu_feed(c[..], "not json");
+  #assert ev.kind == CuEventKind.invalid;
+}
+
+#test "cursor: kinds, dotdot paths, and chapter 5's verdicts" {
+  #assert cu_kind_effect("read") == CU_EFFECT_READ && cu_kind_effect("search") == CU_EFFECT_READ;
+  #assert cu_kind_effect("fetch") == CU_EFFECT_NETWORK;
+  #assert cu_kind_effect("edit") == CU_EFFECT_WRITE && cu_kind_effect("delete") == CU_EFFECT_WRITE && cu_kind_effect("move") == CU_EFFECT_WRITE;
+  #assert cu_kind_effect("execute") == CU_EFFECT_RUN && cu_kind_effect("think") == CU_EFFECT_RUN && cu_kind_effect("") == CU_EFFECT_RUN;
+  #assert cu_has_dotdot("/tmp/demo/../x") && cu_has_dotdot("../x") && cu_has_dotdot("a/..");
+  #assert !cu_has_dotdot("/tmp/demo/a") && !cu_has_dotdot("..hidden") && !cu_has_dotdot("");
+  p: [1] CdPolicy;
+  #assert cd_policy_args(p[..], "read", "read", "") == "";
+  why: [256] u8;
+  #assert cd_policy_decide(p[..], cu_kind_effect("read"), true, why[..]) == CD_VERDICT_RUN;
+  #assert cd_policy_decide(p[..], cu_kind_effect("edit"), true, why[..]) == CD_VERDICT_REFUSE;
+  #assert cd_policy_args(p[..], "run", "run", "") == "";
+  #assert cd_policy_decide(p[..], cu_kind_effect("execute"), true, why[..]) == CD_VERDICT_RUN;
+  #assert cd_policy_decide(p[..], cu_kind_effect("execute"), false, why[..]) == CD_VERDICT_ASK;
+  #assert !cd_inside(p[..], "/tmp/demo", "/tmp/demo/../x");
+}
+
+#test "cursor: the shim is rejected, a grok agent is skipped, and the newer build wins" {
+  #assert cu_reject_text("Error: No Cursor IDE installation found. Use 'cursor agent'");
+  #assert !cu_reject_text("cursor-agent-sea");
+  #assert cu_skip_agent_path("/Users/me/.grok/bin/agent") && !cu_skip_agent_path("/Users/me/.local/bin/agent");
+  #assert cu_accept_agent_text("#!/bin/sh\nexec cursor-agent \"$@\"") && !cu_accept_agent_text("grok agent");
+  #assert cu_version_newer("2026.10.14-941492e", "2026.10.01-e373342");
+  #assert cu_version_newer("2026.10.14-941492e", "2026.06.24-00-45-58-9f61de7");
+  #assert !cu_version_newer("2026.10.01-e373342", "2026.10.14-941492e");
+}

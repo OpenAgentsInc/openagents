@@ -1,0 +1,70 @@
+// Live smoke against the installed Cursor CLI, on the person's own login
+// (no API key reaches the child) with no browser: initialize, authenticate,
+// a session in a scratch folder, one turn that reads a file, then a turn
+// whose command the host declines. Run it with smoke.sh.
+
+#import "Basic";
+#load "cursor.coax";
+
+main :: () {
+  line: [262144] u8; arena: [262144] u8; out: [262144] u8;
+  program: [4096] u8; pn := cl_getenv("SMOKE_CURSOR", program[..]).count;
+  dir: [4096] u8; dn := cl_getenv("SMOKE_DIR", dir[..]).count;
+  c: [1] CuClient; cu_init(c[..], line[..], arena[..], out[..]);
+  p: [1] ClProcess;
+  l: [1] CuLaunch; l[0].program = cast(string) program[0..<pn]; l[0].cwd = cast(string) dir[0..<dn];
+  why := cu_start(c[..], p[..], l[0]);
+  if why.count > 0 { print("start: %\n", why); print("smoke: failed\n"); return; }
+  defer cu_close_process(p[..]);
+  r := cu_initialize(c[..], "Coder", "0.1.0");
+  stage := 0; asked := 0; chunks := 0;
+  while true {
+    ev := cu_poll(c[..], p[..], 1000);
+    if ev.kind == CuEventKind.idle { continue; }
+    if ev.kind == CuEventKind.end || ev.kind == CuEventKind.failed { print("ended: %\n", cu_error(c[..])); print("smoke: failed\n"); return; }
+    if ev.kind == CuEventKind.invalid { continue; }
+    if ev.kind == CuEventKind.initialized { print("initialize: ok\n"); r = cu_authenticate(c[..]); continue; }
+    if ev.kind == CuEventKind.refused {
+      print("refused: %\n", ev.message);
+      if ev.of == CU_AUTHENTICATE { print("not logged in\n"); }
+      print("smoke: failed\n"); return;
+    }
+    if ev.kind == CuEventKind.question { cu_question(c[..], true); continue; }
+    if ev.kind == CuEventKind.plan { cu_plan(c[..], false); continue; }
+    if ev.kind == CuEventKind.permission {
+      asked += 1;
+      print("permission: % -> decline\n", cl_str(c[0].ar[..], ev.params, "toolCall.title"));
+      cu_decline(c[..]);
+      continue;
+    }
+    if ev.kind == CuEventKind.answered && ev.of == CU_AUTHENTICATE {
+      print("authenticated\n");
+      r = cu_session_new(c[..], l[0].cwd);
+      continue;
+    }
+    if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_NEW {
+      print("session: %\n", cu_session_id(c[..]));
+      r = cu_session_prompt(c[..], "Read hello.txt and reply with only its text. Do not change files.");
+      stage = 1;
+      continue;
+    }
+    if ev.kind == CuEventKind.notification && cl_str(c[0].ar[..], ev.params, "update.sessionUpdate") == "agent_message_chunk" {
+      chunks += 1;
+      continue;
+    }
+    if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_PROMPT {
+      reason := cl_str(c[0].ar[..], ev.result, "stopReason");
+      print("turn: % (% chunks)\n", reason, chunks);
+      if stage == 1 {
+        if reason != "end_turn" { print("smoke: failed\n"); return; }
+        chunks = 0;
+        r = cu_session_prompt(c[..], "Run exactly this shell command and nothing else: touch smoke-denied.txt");
+        stage = 2;
+        continue;
+      }
+      if asked < 1 { print("no permission was asked\n"); print("smoke: failed\n"); return; }
+      print("smoke: ok\n");
+      return;
+    }
+  }
+}

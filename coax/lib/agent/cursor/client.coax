@@ -1,0 +1,378 @@
+// A client of `agent acp` (JSON-RPC 2.0, one JSON object a line, on the
+// CLI's stdin and stdout) as a state machine over lines. cu_feed takes one
+// stdout line and returns what it was. A request the host must answer (a
+// permission, a question, a plan) is an event; the host answers it before
+// the next line. One left unanswered is declined, never allowed.
+//
+// What a CuEvent borrows lives in the client's line and arena and is valid
+// until the next cu_feed. The options of a permission are copied, so the
+// host can answer after that line has been replaced.
+
+#load "../claude/transport.coax";
+
+CU_PENDING :: 16;
+CU_ID :: 128;
+CU_OPTS :: 8192;
+
+CU_INITIALIZE :: 1; CU_AUTHENTICATE :: 2; CU_SESSION_NEW :: 3; CU_SESSION_PROMPT :: 4;
+CU_SESSION_LOAD :: 5; CU_SESSION_CANCEL :: 6; CU_SESSION_SET_MODE :: 7; CU_SESSION_SET_CONFIG :: 8;
+CU_OTHER :: 9;
+
+CU_ASK_PERMISSION :: 1; CU_ASK_QUESTION :: 2; CU_ASK_PLAN :: 3;
+
+CU_EFFECT_READ :: 0; CU_EFFECT_NETWORK :: 1; CU_EFFECT_WRITE :: 2; CU_EFFECT_RUN :: 3;
+
+CuEventKind :: enum u8 {
+  none;
+  initialized;    // initialize was answered
+  answered;       // a request the host sent was answered: ev.of, ev.result
+  refused;        // ... with an error: ev.of, ev.message
+  notification;   // ev.method, ev.params
+  permission;     // session/request_permission; answer with cu_permit
+  question;       // cursor/ask_question; answer with cu_question
+  plan;           // cursor/create_plan; answer with cu_plan
+  invalid;
+  failed;
+  end;
+  idle;
+}
+
+CuEvent :: struct {
+  kind: CuEventKind;
+  of: int;
+  method: string;
+  params: string;
+  result: string;
+  message: string;
+  line: string;
+}
+
+CuClient :: struct {
+  line: [] u8; line_len: int;
+  ar: [1] ClArena;
+  out: [1] ClOut;
+  next_id: int;
+  pend_id: [CU_PENDING] int; pend_of: [CU_PENDING] int; npend: int;
+  initialized: bool;
+  init_wait: bool;
+  init_since: int;
+  session: [CU_ID] u8; session_n: int;
+  asking: int;
+  ask_id: [CU_ID] u8; ask_id_n: int;
+  ask_opts: [CU_OPTS] u8; ask_opts_n: int;
+  completed: bool;
+  error: [512] u8; error_len: int;
+}
+
+cu_init :: (c: [] CuClient, line: [] u8, arena: [] u8, out: [] u8) {
+  c[0].line = line; c[0].ar[0].buf = arena; c[0].out[0].buf = out;
+  c[0].next_id = 1;
+}
+cu_session_id :: (c: [] CuClient) -> string { return cast(string) c[0].session[0..<c[0].session_n]; }
+cu_error :: (c: [] CuClient) -> string { return cast(string) c[0].error[0..<c[0].error_len]; }
+cu_outbox :: (c: [] CuClient) -> string { return cast(string) c[0].out[0].buf[0..<c[0].out[0].len]; }
+cu_outbox_clear :: (c: [] CuClient) { c[0].out[0].len = 0; c[0].out[0].failed = false; }
+
+cu_fail :: (c: [] CuClient, a: string, b: string) -> CuEvent {
+  n := cl_copy(c[0].error[..], a);
+  n += cl_copy(c[0].error[n..<c[0].error.count], b);
+  c[0].error_len = n; c[0].completed = true;
+  return CuEvent.{kind = CuEventKind.failed};
+}
+
+cu_keep :: (dst: [] u8, s: string) -> int { return cl_copy(dst, s); }
+
+// ---------------------------------------------------------------- effects and options
+
+// ACP tool kind to Coder's effect order: read, network, write, run.
+// read and search read; fetch uses the network; edit, delete and move
+// write; execute and any kind Coder does not know run.
+cu_kind_effect :: (kind: string) -> int {
+  if kind == "read" || kind == "search" { return CU_EFFECT_READ; }
+  if kind == "fetch" { return CU_EFFECT_NETWORK; }
+  if kind == "edit" || kind == "delete" || kind == "move" { return CU_EFFECT_WRITE; }
+  return CU_EFFECT_RUN;
+}
+
+// A path part that is "..".
+cu_has_dotdot :: (path: string) -> bool {
+  for i: 0..<path.count - 1 {
+    if path[i] == '.' && path[i + 1] == '.' && (i == 0 || path[i - 1] == '/') && (i + 2 == path.count || path[i + 2] == '/') { return true; }
+  }
+  return false;
+}
+
+// The optionId whose kind is wanted, or "".
+cu_option_id :: (options: string, kind: string, ar: [] ClArena) -> string {
+  if options.count == 0 || kind.count == 0 { return ""; }
+  n := cl_count(options);
+  for i: 0..<n {
+    item := cl_json(options, cl_item(options, i));
+    if cl_str(ar, item, "kind") == kind { return cl_str(ar, item, "optionId"); }
+  }
+  return "";
+}
+
+// y allow once, a allow always, n reject once. "" when that kind was not offered.
+cu_choice :: (c: [] CuClient, letter: int) -> string {
+  kind := "reject_once";
+  if letter == 'y' || letter == 'Y' { kind = "allow_once"; }
+  else if letter == 'a' || letter == 'A' { kind = "allow_always"; }
+  return cu_option_id(cast(string) c[0].ask_opts[0..<c[0].ask_opts_n], kind, c[0].ar[..]);
+}
+
+// allow_once when it was offered, else allow_always. "" when neither was.
+cu_allow_option :: (c: [] CuClient) -> string {
+  opts := cast(string) c[0].ask_opts[0..<c[0].ask_opts_n];
+  id := cu_option_id(opts, "allow_once", c[0].ar[..]);
+  if id.count > 0 { return id; }
+  return cu_option_id(opts, "allow_always", c[0].ar[..]);
+}
+
+// True when any location or rawInput path, file_path or cwd contains "..".
+cu_tool_outside :: (tool: string, ar: [] ClArena) -> bool {
+  locs := cl_raw(tool, "locations");
+  n := cl_count(locs);
+  for i: 0..<n {
+    item := cl_json(locs, cl_item(locs, i));
+    if cu_has_dotdot(cl_str(ar, item, "path")) { return true; }
+  }
+  raw := cl_raw(tool, "rawInput");
+  if cu_has_dotdot(cl_str(ar, raw, "path")) { return true; }
+  if cu_has_dotdot(cl_str(ar, raw, "file_path")) { return true; }
+  if cu_has_dotdot(cl_str(ar, raw, "cwd")) { return true; }
+  return false;
+}
+
+// configOptions entry of category whose select options include value. Its id, or "".
+cu_config_id :: (result: string, category: string, value: string, ar: [] ClArena) -> string {
+  if value.count == 0 { return ""; }
+  opts := cl_raw(result, "configOptions");
+  n := cl_count(opts);
+  for i: 0..<n {
+    item := cl_json(opts, cl_item(opts, i));
+    if cl_str(ar, item, "category") != category { continue; }
+    choices := cl_raw(item, "options");
+    m := cl_count(choices);
+    for j: 0..<m {
+      choice := cl_json(choices, cl_item(choices, j));
+      if cl_str(ar, choice, "value") == value { return cl_str(ar, item, "id"); }
+    }
+  }
+  return "";
+}
+
+// True when session/new or session/load advertised this mode id.
+cu_mode_has :: (result: string, mode: string, ar: [] ClArena) -> bool {
+  modes := cl_raw(result, "modes.availableModes");
+  n := cl_count(modes);
+  for i: 0..<n {
+    item := cl_json(modes, cl_item(modes, i));
+    if cl_str(ar, item, "id") == mode { return true; }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- requests
+
+cu_open :: (c: [] CuClient, of: int, method: string) -> int {
+  id := c[0].next_id; c[0].next_id += 1;
+  if c[0].npend < CU_PENDING { c[0].pend_id[c[0].npend] = id; c[0].pend_of[c[0].npend] = of; c[0].npend += 1; }
+  o := c[0].out[..];
+  cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put_int(o, id);
+  cl_put(o, ",\"method\":"); cl_put_string(o, method); cl_put(o, ",\"params\":");
+  return id;
+}
+cu_close :: (c: [] CuClient) { cl_put(c[0].out[..], "}\n"); }
+
+cu_initialize :: (c: [] CuClient, name: string, version: string) -> int {
+  id := cu_open(c, CU_INITIALIZE, "initialize");
+  o := c[0].out[..];
+  cl_put(o, "{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":false,\"writeTextFile\":false},\"terminal\":false},\"clientInfo\":{\"name\":");
+  cl_put_string(o, name); cl_put(o, ",\"version\":"); cl_put_string(o, version); cl_put(o, "}}");
+  cu_close(c);
+  c[0].init_wait = true;
+  return id;
+}
+
+cu_authenticate :: (c: [] CuClient) -> int {
+  id := cu_open(c, CU_AUTHENTICATE, "authenticate");
+  cl_put(c[0].out[..], "{\"methodId\":\"cursor_login\"}");
+  cu_close(c);
+  return id;
+}
+
+cu_session_new :: (c: [] CuClient, cwd: string) -> int {
+  id := cu_open(c, CU_SESSION_NEW, "session/new");
+  o := c[0].out[..];
+  cl_put(o, "{\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":[]}");
+  cu_close(c);
+  return id;
+}
+
+cu_session_load :: (c: [] CuClient, session: string, cwd: string) -> int {
+  id := cu_open(c, CU_SESSION_LOAD, "session/load");
+  o := c[0].out[..];
+  cl_put(o, "{\"sessionId\":"); cl_put_string(o, session);
+  cl_put(o, ",\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":[]}");
+  cu_close(c);
+  return id;
+}
+
+cu_session_prompt :: (c: [] CuClient, text: string) -> int {
+  id := cu_open(c, CU_SESSION_PROMPT, "session/prompt");
+  o := c[0].out[..];
+  cl_put(o, "{\"sessionId\":"); cl_put_string(o, cu_session_id(c));
+  cl_put(o, ",\"prompt\":[{\"type\":\"text\",\"text\":"); cl_put_string(o, text); cl_put(o, "}]}");
+  cu_close(c);
+  return id;
+}
+
+// A notification: the turn should stop. Pending permissions are cancelled by the host.
+cu_session_cancel :: (c: [] CuClient) {
+  o := c[0].out[..];
+  cl_put(o, "{\"jsonrpc\":\"2.0\",\"method\":\"session/cancel\",\"params\":{\"sessionId\":");
+  cl_put_string(o, cu_session_id(c)); cl_put(o, "}}\n");
+}
+
+cu_set_mode :: (c: [] CuClient, mode: string) -> int {
+  id := cu_open(c, CU_SESSION_SET_MODE, "session/set_mode");
+  o := c[0].out[..];
+  cl_put(o, "{\"sessionId\":"); cl_put_string(o, cu_session_id(c));
+  cl_put(o, ",\"modeId\":"); cl_put_string(o, mode); cl_put(o, "}");
+  cu_close(c);
+  return id;
+}
+
+cu_set_config :: (c: [] CuClient, config_id: string, value: string) -> int {
+  id := cu_open(c, CU_SESSION_SET_CONFIG, "session/set_config_option");
+  o := c[0].out[..];
+  cl_put(o, "{\"sessionId\":"); cl_put_string(o, cu_session_id(c));
+  cl_put(o, ",\"configId\":"); cl_put_string(o, config_id);
+  cl_put(o, ",\"value\":"); cl_put_string(o, value); cl_put(o, "}");
+  cu_close(c);
+  return id;
+}
+
+// ---------------------------------------------------------------- answers
+
+cu_respond :: (c: [] CuClient, result: string) {
+  o := c[0].out[..];
+  cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(o, cast(string) c[0].ask_id[0..<c[0].ask_id_n]);
+  cl_put(o, ",\"result\":"); cl_put(o, result); cl_put(o, "}\n");
+  c[0].asking = 0; c[0].ask_opts_n = 0;
+}
+
+// Select an option the request offered. An empty id declines.
+cu_permit :: (c: [] CuClient, option_id: string) {
+  if c[0].asking != CU_ASK_PERMISSION { return; }
+  if option_id.count == 0 { cu_decline(c); return; }
+  o := c[0].out[..];
+  cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(o, cast(string) c[0].ask_id[0..<c[0].ask_id_n]);
+  cl_put(o, ",\"result\":{\"outcome\":{\"outcome\":\"selected\",\"optionId\":");
+  cl_put_string(o, option_id); cl_put(o, "}}}\n");
+  c[0].asking = 0; c[0].ask_opts_n = 0;
+}
+
+cu_decline :: (c: [] CuClient) {
+  if c[0].asking == 0 { return; }
+  if c[0].asking == CU_ASK_QUESTION { cu_respond(c, "{\"outcome\":{\"outcome\":\"skipped\"}}"); return; }
+  if c[0].asking == CU_ASK_PLAN { cu_respond(c, "{\"outcome\":{\"outcome\":\"rejected\",\"reason\":\"declined\"}}"); return; }
+  opts := cast(string) c[0].ask_opts[0..<c[0].ask_opts_n];
+  id := cu_option_id(opts, "reject_once", c[0].ar[..]);
+  if id.count == 0 { id = cu_option_id(opts, "reject_always", c[0].ar[..]); }
+  if id.count == 0 { cu_respond(c, "{\"outcome\":{\"outcome\":\"cancelled\"}}"); return; }
+  cu_permit(c, id);
+}
+
+cu_question :: (c: [] CuClient, skipped: bool) {
+  if c[0].asking != CU_ASK_QUESTION { return; }
+  if skipped { cu_respond(c, "{\"outcome\":{\"outcome\":\"skipped\"}}"); return; }
+  cu_respond(c, "{\"outcome\":{\"outcome\":\"cancelled\"}}");
+}
+
+cu_plan :: (c: [] CuClient, accept: bool) {
+  if c[0].asking != CU_ASK_PLAN { return; }
+  if accept { cu_respond(c, "{\"outcome\":{\"outcome\":\"accepted\"}}"); return; }
+  cu_respond(c, "{\"outcome\":{\"outcome\":\"rejected\",\"reason\":\"declined\"}}");
+}
+
+cu_settle :: (c: [] CuClient) { if c[0].asking != 0 { cu_decline(c); } }
+
+// ---------------------------------------------------------------- the CLI's lines
+
+cu_take_pending :: (c: [] CuClient, id: int) -> int {
+  for k: 0..<c[0].npend {
+    if c[0].pend_id[k] == id {
+      of := c[0].pend_of[k];
+      for j: k..<c[0].npend - 1 { c[0].pend_id[j] = c[0].pend_id[j + 1]; c[0].pend_of[j] = c[0].pend_of[j + 1]; }
+      c[0].npend -= 1;
+      return of;
+    }
+  }
+  return 0;
+}
+
+cu_remember_session :: (c: [] CuClient, result: string) {
+  t := cl_str(c[0].ar[..], result, "sessionId");
+  if t.count > 0 && t.count < CU_ID { c[0].session_n = cu_keep(c[0].session[..], t); }
+}
+
+cu_ask :: (c: [] CuClient, kind: int, id_json: string, options: string) -> bool {
+  if id_json.count == 0 || id_json.count > CU_ID { return false; }
+  c[0].asking = kind;
+  c[0].ask_id_n = cu_keep(c[0].ask_id[..], id_json);
+  c[0].ask_opts_n = 0;
+  if options.count > 0 && options.count < CU_OPTS { c[0].ask_opts_n = cu_keep(c[0].ask_opts[..], options); }
+  return true;
+}
+
+cu_feed :: (c: [] CuClient, line: string) -> CuEvent {
+  cu_settle(c);
+  c[0].ar[0].at = 0; c[0].ar[0].full = false;
+  root := cl_root(line);
+  if !root.ok || root.tok != JSON_OBJECT { return CuEvent.{kind = CuEventKind.invalid, line = line}; }
+  ar := c[0].ar[..];
+  m := cl_find(line, "method");
+  idv := cl_find(line, "id");
+  if m.ok && m.tok == JSON_STRING {
+    method := cl_text(ar, line, m);
+    params := cl_raw(line, "params");
+    if !idv.ok { return CuEvent.{kind = CuEventKind.notification, method = method, params = params, line = line}; }
+    id_json := cl_json(line, idv);
+    if method == "session/request_permission" {
+      if !cu_ask(c, CU_ASK_PERMISSION, id_json, cl_raw(line, "params.options")) { return CuEvent.{kind = CuEventKind.invalid, line = line}; }
+      return CuEvent.{kind = CuEventKind.permission, method = method, params = params, line = line};
+    }
+    if method == "cursor/ask_question" {
+      if !cu_ask(c, CU_ASK_QUESTION, id_json, "") { return CuEvent.{kind = CuEventKind.invalid, line = line}; }
+      return CuEvent.{kind = CuEventKind.question, method = method, params = params, line = line};
+    }
+    if method == "cursor/create_plan" {
+      if !cu_ask(c, CU_ASK_PLAN, id_json, "") { return CuEvent.{kind = CuEventKind.invalid, line = line}; }
+      return CuEvent.{kind = CuEventKind.plan, method = method, params = params, line = line};
+    }
+    buf: [160] u8; n := cl_copy(buf[..], "unsupported method: "); n += cl_copy(buf[n..<buf.count], method);
+    o := c[0].out[..];
+    cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(o, id_json);
+    cl_put(o, ",\"error\":{\"code\":-32601,\"message\":"); cl_put_string(o, cast(string) buf[0..<n]); cl_put(o, "}}\n");
+    return CuEvent.{kind = CuEventKind.none, method = method, line = line};
+  }
+  if !idv.ok || (idv.tok != JSON_NUMBER && idv.tok != JSON_STRING) { return CuEvent.{kind = CuEventKind.invalid, line = line}; }
+  idn := 0;
+  if idv.tok == JSON_NUMBER { idn = json_int(line[idv.from..<idv.to]).value; }
+  of := cu_take_pending(c, idn);
+  e := cl_find(line, "error");
+  if e.ok && e.tok == JSON_OBJECT {
+    msg := cl_text(ar, line, cl_member(line, e, "message"));
+    if of == CU_INITIALIZE { return cu_fail(c, "initialize: ", msg); }
+    if of == 0 { return CuEvent.{kind = CuEventKind.none, line = line}; }
+    return CuEvent.{kind = CuEventKind.refused, of = of, message = msg, line = line};
+  }
+  r := cl_find(line, "result");
+  result := cl_json(line, r);
+  if of == CU_INITIALIZE { c[0].initialized = true; c[0].init_wait = false; return CuEvent.{kind = CuEventKind.initialized, of = of, result = result, line = line}; }
+  if of == CU_SESSION_NEW || of == CU_SESSION_LOAD { cu_remember_session(c, result); }
+  if of == 0 { return CuEvent.{kind = CuEventKind.none, line = line}; }
+  return CuEvent.{kind = CuEventKind.answered, of = of, result = result, line = line};
+}

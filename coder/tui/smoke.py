@@ -14,6 +14,7 @@ One key (the default engine, with the reason in the log).
     python3 coder/tui/smoke.py --live         # two turns on the claude engine (your Claude Code login)
     python3 coder/tui/smoke.py --live codex   # the same on the codex engine (your Codex login)
     python3 coder/tui/smoke.py --live microcoder   # ... on Microcoder (keys under ~/work/.secrets)
+    python3 coder/tui/smoke.py --live cursor  # the same on the cursor engine (your Cursor login)
 
 Test-only harness; the program under test is Coax.
 """
@@ -65,7 +66,7 @@ def live(engine):
         read_until("\x00never", 0.2)
     steps.append(("second turn ended", out.count("└ finished".encode()) >= 2))
     os.write(fd, b"\x1b[Z")                 # Shift-Tab: the other agent
-    after = {"claude": "Agent: Codex", "codex": "Agent: Microcoder", "microcoder": "Agent: Claude Code"}[engine]
+    after = {"claude": "Agent: Codex", "codex": "Agent: Cursor", "cursor": "Agent: Microcoder", "microcoder": "Agent: Claude Code"}[engine]
     steps.append(("Shift-Tab switches agent", read_until(after, 5)))
     for _ in range(3):                      # stop, clear, quit: whichever applies
         os.write(fd, b"\x03")
@@ -828,9 +829,9 @@ def verbs(check):
         trigger("$ sleep 60", "--thread", "ci")
         r2 = router()
         w2 = r2[0].get("session", "") if r2 else ""
-        for _ in range(100):                # the Worker writes its session file a moment after it starts
+        for _ in range(100):                # the Worker writes its session file a moment after it starts; wait for the command, not only the session line
             head = subprocess.run([coder, "log", w2, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
-            if head.returncode == 0 and head.stdout.strip():
+            if head.returncode == 0 and "$ sleep 60" in head.stdout:
                 break
             time.sleep(0.2)
         check("router: a later event on the thread goes to its worker", len(r2) == 1 and r2[0]["fate"] == "passed to its thread's worker"
@@ -1468,6 +1469,8 @@ def main():
     send(b"\x1b[9;2u")                 # Shift-Tab, kitty
     check("Shift-Tab to Codex", read_until("Agent: Codex", 5))
     check("hint names the agent", read_until("codex · ", 5))
+    send(b"\x1b[Z")
+    check("Shift-Tab to Cursor", read_until("Agent: Cursor", 5) and read_until("cursor · ", 5))
     send(b"\x1b[Z")
     check("Shift-Tab to Microcoder", read_until("Agent: Microcoder", 5) and read_until("microcoder · ", 5))
     send(b"\x1b[A")

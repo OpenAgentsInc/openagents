@@ -1,0 +1,10 @@
+// The Coax Cursor client: `agent acp` over JSON-RPC 2.0 on stdio,
+// pull-based like the Codex client (../codex), tracking the Cursor CLI
+// build named below (see PARITY.md). Load this file and link
+// coax/platform/process-native.c.
+
+#load "transport.coax";
+
+// The standalone CLI build this client was written against. The directory
+// name is the version the install keeps under ~/.local/share/cursor-agent.
+CU_UPSTREAM_CURSOR_VERSION :: "2026.10.14-941492e";

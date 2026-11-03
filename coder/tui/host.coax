@@ -651,8 +651,8 @@ hs_serve :: (args: [] Args) -> int {
   h[0].nrelay = hs_set(h[0].relay[..], relay);
   gb: [64] u8; engine := args_value(args, "--engine", proc_getenv("CODER_HOST_ENGINE", gb[..]));
   if engine.count == 0 { engine = "claude"; }
-  engines := [5] string.["claude", "codex", "micro", "psionic", "echo"];
-  if hb_index(engines[..], engine) < 0 { tool_errln("coder host: --engine is claude, codex, micro, psionic or echo"); return 2; }
+  engines := [6] string.["claude", "codex", "cursor", "micro", "psionic", "echo"];
+  if hb_index(engines[..], engine) < 0 { tool_errln("coder host: --engine is claude, codex, cursor, micro, psionic or echo"); return 2; }
   h[0].nengine = hs_set(h[0].engine[..], engine);
   for_s := hs_atoi(args_value(args, "--for", "0"));
   if for_s < 0 { tool_errln("coder host: --for takes whole seconds"); return 2; }
@@ -878,7 +878,7 @@ hs_cmd_call :: (args: [] Args, op_name: string) -> int {
   return 3;
 }
 
-HS_USAGE :: "usage: coder host [serve] [--relay URL] [--engine claude|codex|micro|psionic|echo] [--for SECONDS]\n       coder host list [--json] | allow ID | deny ID | forget ID | key\n       coder host call OP --host KEY --browser-key FILE [--label L] [--request ID] [--text T --realm R] [--thread T] [--after N] [--grant G --epoch E]\nA browser on openagents.com pairs with this computer over the relay (wss://relay.openagents.com, or $OPENAGENTS_NIP_HOST_RELAY);\nonly you allow it, here. An allowed browser runs realm jobs on your engine: read access and the realm tools, no shell, no writes.";
+HS_USAGE :: "usage: coder host [serve] [--relay URL] [--engine claude|codex|cursor|micro|psionic|echo] [--for SECONDS]\n       coder host list [--json] | allow ID | deny ID | forget ID | key\n       coder host call OP --host KEY --browser-key FILE [--label L] [--request ID] [--text T --realm R] [--thread T] [--after N] [--grant G --epoch E]\nA browser on openagents.com pairs with this computer over the relay (wss://relay.openagents.com, or $OPENAGENTS_NIP_HOST_RELAY);\nonly you allow it, here. An allowed browser runs realm jobs on your engine: read access and the realm tools, no shell, no writes.";
 
 tool_main :: () -> int #export_c {
   args_b: [1] Args; args := args_b[..];

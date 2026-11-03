@@ -1,0 +1,344 @@
+// The cursor engine: the installed Cursor CLI on the person's own login,
+// driven as `agent acp` over JSON-RPC by coax/lib/agent/cursor, one session
+// for the conversation. The reply streams, tool calls show as rows, and
+// file changes show as diffs. Tools run without asking; with --ask each
+// permission comes to the y/a/n prompt. Under a policy the tool kind is
+// the effect (read, search, fetch, edit, delete, move, execute).
+
+#load "../../coax/lib/agent/cursor/cursor.coax";
+
+cd_cursor_program :: (out: [] u8) -> string {
+  pb: [8192] u8; path := cl_getenv("PATH", pb[..]);
+  hb: [4096] u8; home := cl_getenv("HOME", hb[..]);
+  return cu_find(path, home, out);
+}
+
+cd_cursor_open :: (a: [] App) {
+  if a[0].cu_live { return; }
+  fresh: CuClient; a[0].cu[0] = fresh;
+  cu_init(a[0].cu, a[0].cu_line, a[0].cu_arena, a[0].cu_outb);
+  prog: [4096] u8; program := cd_cursor_program(prog[..]);
+  if program.count == 0 {
+    why := "Cursor's agent was not found. Install it from cursor.com/install, or put cursor-agent on PATH.";
+    if a[0].running { cd_finish(a, END_FAILED, why); } else { cd_commit(a, TUI_RED, "  Cursor: the agent was not found."); }
+    return;
+  }
+  l: [1] CuLaunch; l[0].program = program; l[0].cwd = a[0].cwd;
+  why := cu_start(a[0].cu, a[0].cup, l[0]);
+  if why.count > 0 {
+    if a[0].running { cd_finish(a, END_FAILED, why); } else { cd_commit_prefixed(a, TUI_RED, "  Cursor: ", "  ", why); }
+    return;
+  }
+  a[0].cu_live = true; a[0].cu_ready = false; a[0].cu_replay = false; a[0].cu_hold = 0;
+  r := cu_initialize(a[0].cu, "Coder", CODER_VERSION);
+}
+
+cd_cursor_send :: (a: [] App, msg: string) {
+  if a[0].cu_live && a[0].cu_ready && a[0].cu_hold == 0 {
+    r := cu_session_prompt(a[0].cu, msg);
+    return;
+  }
+  a[0].npending = cd_cat(a[0].pending[..], 0, msg);
+  cd_cursor_open(a);
+}
+
+cd_cursor_close :: (a: [] App) {
+  if !a[0].cu_live { return; }
+  cu_close_process(a[0].cup);
+  a[0].cu_live = false; a[0].cu_ready = false; a[0].cu_replay = false; a[0].cu_hold = 0;
+}
+
+cd_cursor_lines :: (text: string) -> int {
+  if text.count == 0 { return 0; }
+  n := 1;
+  for c: text { if c == 10 { n += 1; } }
+  if text[text.count - 1] == 10 { n -= 1; }
+  return n;
+}
+
+cd_cursor_unified :: (out: [] u8, old: string, newt: string) -> int {
+  tb: [16] u8;
+  n := cd_cat(out, 0, "@@ -1,"); n = cd_cat(out, n, cd_itoa(cd_cursor_lines(old), tb[..]));
+  n = cd_cat(out, n, " +1,"); n = cd_cat(out, n, cd_itoa(cd_cursor_lines(newt), tb[..])); n = cd_cat(out, n, " @@\n");
+  at := 0;
+  while at < old.count && n + 4 < out.count {
+    e := at; while e < old.count && old[e] != 10 { e += 1; }
+    n = cd_cat(out, n, "-"); n = cd_cat(out, n, cast(string) old[at..<e]); n = cd_cat(out, n, "\n");
+    at = ifx e < old.count then e + 1 else e;
+  }
+  at = 0;
+  while at < newt.count && n + 4 < out.count {
+    e := at; while e < newt.count && newt[e] != 10 { e += 1; }
+    n = cd_cat(out, n, "+"); n = cd_cat(out, n, cast(string) newt[at..<e]); n = cd_cat(out, n, "\n");
+    at = ifx e < newt.count then e + 1 else e;
+  }
+  return n;
+}
+
+cd_cursor_show_diff :: (a: [] App, path: string, old: string, newt: string) {
+  if old.count == 0 { df_unified(a, path, "add", newt); return; }
+  if newt.count == 0 { df_unified(a, path, "delete", ""); return; }
+  if old.count > 6000 || newt.count > 6000 {
+    nb: [1200] u8; nn := cd_cat(nb[..], 0, "Edited "); nn = cd_cat(nb[..], nn, df_rel(a, path));
+    cd_commit(a, TUI_DIM, cast(string) nb[0..<nn]);
+    return;
+  }
+  buf: [14000] u8; n := cd_cursor_unified(buf[..], old, newt);
+  df_unified(a, path, "update", cast(string) buf[0..<n]);
+}
+
+cd_cursor_path_ok :: (a: [] App, path: string) -> bool {
+  if path.count == 0 { return true; }
+  return cd_inside(a[0].pol[..], a[0].cwd, path);
+}
+
+cd_cursor_inside :: (a: [] App, tool: string) -> bool {
+  if cu_tool_outside(tool, a[0].cu[0].ar[..]) { return false; }
+  locs := cl_raw(tool, "locations");
+  n := cl_count(locs);
+  for i: 0..<n {
+    item := cl_json(locs, cl_item(locs, i));
+    if !cd_cursor_path_ok(a, cl_str(a[0].cu[0].ar[..], item, "path")) { return false; }
+  }
+  raw := cl_raw(tool, "rawInput");
+  if !cd_cursor_path_ok(a, cl_str(a[0].cu[0].ar[..], raw, "path")) { return false; }
+  if !cd_cursor_path_ok(a, cl_str(a[0].cu[0].ar[..], raw, "file_path")) { return false; }
+  if !cd_cursor_path_ok(a, cl_str(a[0].cu[0].ar[..], raw, "cwd")) { return false; }
+  return true;
+}
+
+cd_cursor_note :: (a: [] App, text: string) {
+  cd_commit(a, TUI_FAINT, text);
+  cs_text(a, "note", "text", text);
+}
+
+cd_cursor_remember :: (a: [] App) {
+  id := cu_session_id(a[0].cu);
+  if id.count == 0 || a[0].nengine_sid > 0 { return; }
+  a[0].nengine_sid = cd_cat(a[0].engine_sid[..], 0, id);
+  cs_engine_session(a, "cursor", id);
+}
+
+cd_cursor_configure :: (a: [] App, result: string) {
+  a[0].cu_hold = 0;
+  model := ifx a[0].model_engine == ENGINE_CURSOR then a[0].model else "";
+  if model.count > 0 {
+    id := cu_config_id(result, "model", model, a[0].cu[0].ar[..]);
+    if id.count == 0 { cd_cursor_note(a, "  --model was not applied: this Cursor session did not advertise it."); }
+    else { r := cu_set_config(a[0].cu, id, model); a[0].cu_hold += 1; }
+  }
+  effort := cd_effort(a);
+  if effort.count > 0 {
+    id := cu_config_id(result, "thought_level", effort, a[0].cu[0].ar[..]);
+    if id.count == 0 { cd_cursor_note(a, "  --effort was not applied: this Cursor session did not advertise a thought level."); }
+    else { r := cu_set_config(a[0].cu, id, effort); a[0].cu_hold += 1; }
+  }
+}
+
+cd_cursor_prompt_pending :: (a: [] App) {
+  if a[0].cu_hold > 0 || a[0].npending == 0 || !a[0].running { return; }
+  r := cu_session_prompt(a[0].cu, cast(string) a[0].pending[0..<a[0].npending]);
+  a[0].npending = 0;
+}
+
+cd_cursor_content :: (a: [] App, update: string) {
+  content := cl_raw(update, "content");
+  n := cl_count(content);
+  status := cl_str(a[0].cu[0].ar[..], update, "status");
+  shown := false;
+  for i: 0..<n {
+    item := cl_json(content, cl_item(content, i));
+    ty := cl_str(a[0].cu[0].ar[..], item, "type");
+    if ty == "diff" {
+      path := cl_str(a[0].cu[0].ar[..], item, "path");
+      old := cl_str(a[0].cu[0].ar[..], item, "oldText");
+      newt := cl_str(a[0].cu[0].ar[..], item, "newText");
+      cd_cursor_show_diff(a, path, old, newt);
+      shown = true;
+    } else if ty == "content" {
+      text := cl_str(a[0].cu[0].ar[..], item, "content.text");
+      if text.count > 0 { cd_result_line(a, text, status == "failed"); shown = true; }
+    }
+  }
+  if !shown && status == "failed" { cd_result_line(a, "failed", true); }
+}
+
+cd_cursor_answer :: (a: [] App, c: int) {
+  if a[0].cu[0].asking == CU_ASK_PLAN { cu_plan(a[0].cu, c == 'y' || c == 'Y' || c == 'a' || c == 'A'); return; }
+  id := cu_choice(a[0].cu, c);
+  if id.count == 0 { cu_decline(a[0].cu); } else { cu_permit(a[0].cu, id); }
+}
+
+cd_cursor_stop :: (a: [] App) {
+  if a[0].ask {
+    if a[0].cu[0].asking == CU_ASK_PERMISSION { cu_respond(a[0].cu, "{\"outcome\":{\"outcome\":\"cancelled\"}}"); }
+    else { cu_decline(a[0].cu); }
+    a[0].ask = false;
+  }
+  if a[0].cu_live && a[0].cu_ready && !a[0].stopping && a[0].cu[0].session_n > 0 {
+    cu_session_cancel(a[0].cu);
+    a[0].stopping = true;
+    a[0].stop_ms = cd_now(a);
+    return;
+  }
+  cd_cursor_close(a);
+  a[0].stopping = false;
+  cd_finish(a, END_STOPPED, "");
+}
+
+cd_cursor_finish_turn :: (a: [] App, result: string) {
+  reason := cl_str(a[0].cu[0].ar[..], result, "stopReason");
+  rb: [64] u8; rn := cd_cat(rb[..], 0, reason);
+  reason = cast(string) rb[0..<rn];
+  a[0].stopping = false;
+  if reason == "end_turn" || reason == "end" || reason.count == 0 { cd_finish(a, END_FINISHED, ""); return; }
+  if reason == "cancelled" { cd_finish(a, END_STOPPED, ""); return; }
+  wb: [160] u8; wn := cd_cat(wb[..], 0, "Cursor ended the turn: "); wn = cd_cat(wb[..], wn, reason);
+  cd_finish(a, END_FAILED, cast(string) wb[0..<wn]);
+}
+
+// One poll of the CLI; true when something changed.
+cd_cursor_poll :: (a: [] App) -> bool {
+  if !a[0].cu_live || a[0].ask { return false; }
+  c := a[0].cu; p := a[0].cup;
+  changed := false;
+  for guard: 0..<64 {
+    ev := cu_poll(c, p, 0);
+    if ev.kind == CuEventKind.idle { break; }
+    changed = true;
+    if ev.kind == CuEventKind.end || ev.kind == CuEventKind.failed {
+      eb: [2048] u8; why := cu_error(c);
+      if why.count == 0 { why = cl_stderr(p, eb[..]); }
+      if why.count == 0 { why = "Cursor exited."; }
+      wb: [2600] u8; wn := cd_cat(wb[..], 0, why);
+      cd_cursor_close(a);
+      if a[0].running && a[0].engine == ENGINE_CURSOR { cd_finish(a, END_FAILED, cast(string) wb[0..<wn]); }
+      else if a[0].engine == ENGINE_CURSOR { cd_commit_prefixed(a, TUI_RED, "  Cursor: ", "  ", cast(string) wb[0..<wn]); }
+      return true;
+    }
+    if ev.kind == CuEventKind.initialized { r := cu_authenticate(c); continue; }
+    if ev.kind == CuEventKind.answered && ev.of == CU_AUTHENTICATE {
+      if a[0].ncursor_resume > 0 {
+        a[0].cu_replay = true;
+        r := cu_session_load(c, cast(string) a[0].cursor_resume[0..<a[0].ncursor_resume], a[0].cwd);
+        a[0].ncursor_resume = 0;
+      } else { r := cu_session_new(c, a[0].cwd); }
+      continue;
+    }
+    if ev.kind == CuEventKind.refused && ev.of == CU_AUTHENTICATE {
+      cd_cursor_close(a);
+      if a[0].running { cd_finish(a, END_FAILED, "Cursor is not logged in. Run agent login."); }
+      else { cd_commit(a, TUI_RED, "  Cursor is not logged in. Run agent login."); }
+      return true;
+    }
+    if ev.kind == CuEventKind.refused && ev.of == CU_SESSION_LOAD {
+      a[0].cu_replay = false; a[0].ncursor_resume = 0;
+      cd_cursor_note(a, "  The Cursor session could not be resumed. Starting a new one.");
+      r := cu_session_new(c, a[0].cwd);
+      continue;
+    }
+    if ev.kind == CuEventKind.refused {
+      mb: [1024] u8; mn := cd_cat(mb[..], 0, ev.message);
+      if ev.of == CU_SESSION_SET_CONFIG { a[0].cu_hold -= 1; cd_cursor_note(a, "  A Cursor setting was not applied."); cd_cursor_prompt_pending(a); continue; }
+      if a[0].running && ev.of == CU_SESSION_PROMPT { cd_finish(a, END_FAILED, cast(string) mb[0..<mn]); a[0].stopping = false; }
+      else if ev.of == CU_SESSION_NEW {
+        cd_cursor_close(a);
+        if a[0].running { cd_finish(a, END_FAILED, cast(string) mb[0..<mn]); }
+        else { cd_commit_prefixed(a, TUI_RED, "  Cursor: ", "  ", cast(string) mb[0..<mn]); }
+        return true;
+      }
+      continue;
+    }
+    if ev.kind == CuEventKind.answered && (ev.of == CU_SESSION_NEW || ev.of == CU_SESSION_LOAD) {
+      a[0].cu_ready = true; a[0].cu_replay = false;
+      cd_cursor_remember(a);
+      cd_cursor_configure(a, ev.result);
+      cd_cursor_prompt_pending(a);
+      continue;
+    }
+    if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_SET_CONFIG {
+      if a[0].cu_hold > 0 { a[0].cu_hold -= 1; }
+      cd_cursor_prompt_pending(a);
+      continue;
+    }
+    if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_PROMPT && a[0].running && a[0].engine == ENGINE_CURSOR {
+      cd_cursor_finish_turn(a, ev.result);
+      continue;
+    }
+    if ev.kind == CuEventKind.question {
+      if a[0].cu_replay { cu_question(c, true); continue; }
+      qb: [400] u8; qn := cd_cat(qb[..], 0, cl_str(c[0].ar[..], ev.params, "questions.0.prompt"));
+      if qn == 0 { qn = cd_cat(qb[..], 0, "Cursor asked a question"); }
+      qn = cd_cat(qb[..], qn, " (skipped)");
+      cd_commit(a, TUI_FAINT, cast(string) qb[0..<qn]);
+      cu_question(c, true);
+      continue;
+    }
+    if ev.kind == CuEventKind.plan {
+      if a[0].cu_replay { cu_plan(c, false); continue; }
+      if !a[0].ask_first && !a[0].pol[0].on { cu_plan(c, true); continue; }
+      a[0].nask = cd_cat(a[0].ask_text[..], 0, "Accept this plan?");
+      a[0].ask = true;
+      return true;
+    }
+    if ev.kind == CuEventKind.permission {
+      if a[0].cu_replay { cu_decline(c); continue; }
+      tool := cl_raw(ev.params, "toolCall");
+      kb: [32] u8; kn := cd_cat(kb[..], 0, cl_str(c[0].ar[..], tool, "kind"));
+      tb: [400] u8; tn := cd_cat(tb[..], 0, cl_str(c[0].ar[..], tool, "title"));
+      title := cast(string) tb[0..<tn];
+      if tn == 0 { title = cast(string) kb[0..<kn]; }
+      effect := cu_kind_effect(cast(string) kb[0..<kn]);
+      inside := cd_cursor_inside(a, tool);
+      if !a[0].pol[0].on && !a[0].ask_first {
+        id := cu_allow_option(c);
+        if id.count == 0 { cu_decline(c); cd_approval_note(a, title, effect, inside, CD_VERDICT_REFUSE, "no allow option was offered"); }
+        else { cu_permit(c, id); cd_approval_note(a, title, effect, inside, CD_VERDICT_RUN, "the session trusts this agent"); }
+        continue;
+      }
+      if a[0].pol[0].on {
+        pw: [256] u8;
+        verdict := cd_policy_decide(a[0].pol[..], effect, inside, pw[..]);
+        k := 0; while k < pw.count && pw[k] != 0 { k += 1; }
+        cd_approval_note(a, title, effect, inside, verdict, cast(string) pw[0..<k]);
+        if verdict == CD_VERDICT_REFUSE { cu_decline(c); continue; }
+        if verdict == CD_VERDICT_RUN {
+          id := cu_allow_option(c);
+          if id.count == 0 { cu_decline(c); } else { cu_permit(c, id); }
+          continue;
+        }
+      }
+      a[0].nask = cd_cat(a[0].ask_text[..], 0, "Allow ");
+      a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, title);
+      a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, "?");
+      a[0].ask = true;
+      return true;
+    }
+    if ev.kind != CuEventKind.notification { continue; }
+    if a[0].engine != ENGINE_CURSOR || !a[0].running || a[0].cu_replay { continue; }
+    update := cl_raw(ev.params, "update");
+    kind := cl_str(c[0].ar[..], update, "sessionUpdate");
+    if ev.method == "cursor/task" {
+      db: [400] u8; dn := cd_cat(db[..], 0, "  task: "); dn = cd_cat(db[..], dn, cl_str(c[0].ar[..], ev.params, "description"));
+      cd_commit(a, TUI_FAINT, cast(string) db[0..<dn]);
+      continue;
+    }
+    if kind == "agent_thought_chunk" || kind == "user_message_chunk" { continue; }
+    if kind == "agent_message_chunk" {
+      text := cl_str(c[0].ar[..], update, "content.text");
+      if text.count > 0 { cd_reply_add(a, text); cd_reply_commit(a, false); }
+      continue;
+    }
+    if kind == "tool_call" {
+      title := cl_str(c[0].ar[..], update, "title");
+      if title.count == 0 { title = cl_str(c[0].ar[..], update, "kind"); }
+      cd_reply_commit(a, true); a[0].rep_lines = 0; a[0].nrep = 0; a[0].rep_done = 0;
+      cd_commit_prefixed(a, TUI_DIM, "  ⏺ ", "    ", title);
+      a[0].ncur = cd_cat(a[0].cur[..], 0, title);
+      a[0].steps += 1;
+      continue;
+    }
+    if kind == "tool_call_update" { cd_cursor_content(a, update); continue; }
+  }
+  return changed;
+}

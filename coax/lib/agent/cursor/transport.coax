@@ -1,0 +1,166 @@
+// The process transport: `agent acp` as a child in its own process group,
+// JSON-RPC on stdin and stdout, stderr kept. The effects are
+// coax/platform/process-native.c, shared with the Claude SDK
+// (../claude/transport.coax: cxproc_*, cl_push, ClProcess).
+
+#load "client.coax";
+#load "../../sys/fs.coax";
+
+CU_ENV :: 8;
+CuLaunch :: struct {
+  program: string;                 // a path the host found; "" is looked up
+  env: [CU_ENV] string; env_n: int;
+  unset: [CU_ENV] string; unset_n: int;
+  cwd: string;
+}
+
+// The installer's shim, which exits unless a Cursor IDE binary is on PATH.
+cu_reject_text :: (text: string) -> bool {
+  needle := "No Cursor IDE installation found";
+  if text.count < needle.count { return false; }
+  for i: 0..<text.count - needle.count + 1 {
+    if cast(string) text[i..<i + needle.count] == needle { return true; }
+  }
+  return false;
+}
+
+// Another product's `agent` (the Grok CLI lives under ~/.grok).
+cu_skip_agent_path :: (path: string) -> bool {
+  needle := "/.grok/";
+  if path.count < needle.count { return false; }
+  for i: 0..<path.count - needle.count + 1 {
+    if cast(string) path[i..<i + needle.count] == needle { return true; }
+  }
+  return false;
+}
+
+cu_accept_agent_text :: (text: string) -> bool {
+  if cu_reject_text(text) { return false; }
+  marks := [3] string.["cursor-agent", "Cursor Agent", "Cursor CLI"];
+  for m: marks {
+    if text.count < m.count { continue; }
+    for i: 0..<text.count - m.count + 1 {
+      if cast(string) text[i..<i + m.count] == m { return true; }
+    }
+  }
+  return false;
+}
+
+// Lexicographic order matches the install's timestamped directory names.
+cu_version_newer :: (a: string, b: string) -> bool {
+  n := ifx a.count < b.count then a.count else b.count;
+  for i: 0..<n {
+    if a[i] != b[i] { return a[i] > b[i]; }
+  }
+  return a.count > b.count;
+}
+
+cu_head :: (path: string, buf: [] u8) -> string {
+  n := fs_read(path, buf);
+  if n < 0 { return ""; }
+  return cast(string) buf[0..<n];
+}
+
+cu_on_path :: (path_env: string, name: string, out: [] u8) -> string {
+  at := 0;
+  while at <= path_env.count {
+    e := at; while e < path_env.count && path_env[e] != ':' { e += 1; }
+    if e > at {
+      dir := cast(string) path_env[at..<e];
+      joined := fs_join(dir, name, out);
+      if joined.count > 0 && fs_exists(joined) { return joined; }
+    }
+    at = e + 1;
+  }
+  return "";
+}
+
+// cursor-agent on PATH when it is not the IDE shim, else `agent` on PATH
+// when its text names Cursor, else the newest
+// ~/.local/share/cursor-agent/versions/*/cursor-agent-sea. "" when none.
+cu_find :: (path_env: string, home: string, out: [] u8) -> string {
+  head: [512] u8;
+  found := cu_on_path(path_env, "cursor-agent", out);
+  if found.count > 0 && !cu_reject_text(cu_head(found, head[..])) { return found; }
+  agent := cu_on_path(path_env, "agent", out);
+  if agent.count > 0 && !cu_skip_agent_path(agent) && cu_accept_agent_text(cu_head(agent, head[..])) { return agent; }
+  if home.count == 0 || home.count > 4000 { return ""; }
+  rootb: [4200] u8;
+  rn := cl_copy(rootb[..], home);
+  rn += cl_copy(rootb[rn..<rootb.count], "/.local/share/cursor-agent/versions");
+  root := cast(string) rootb[0..<rn];
+  list: [1] FsList;
+  if fs_list(root, list[..]) < 0 { return ""; }
+  best: [256] u8; nbest := 0;
+  for i: 0..<list[0].n {
+    name := fs_entry(list[..], i);
+    if name == "." || name == ".." { continue; }
+    if nbest > 0 && !cu_version_newer(name, cast(string) best[0..<nbest]) { continue; }
+    sea: [4600] u8;
+    sn := cl_copy(sea[..], root); sn += cl_copy(sea[sn..<sea.count], "/"); sn += cl_copy(sea[sn..<sea.count], name);
+    sn += cl_copy(sea[sn..<sea.count], "/cursor-agent-sea");
+    if fs_exists(cast(string) sea[0..<sn]) { nbest = cl_copy(best[..], name); }
+  }
+  if nbest == 0 { return ""; }
+  n := cl_copy(out, root); n += cl_copy(out[n..<out.count], "/"); n += cl_copy(out[n..<out.count], cast(string) best[0..<nbest]);
+  n += cl_copy(out[n..<out.count], "/cursor-agent-sea");
+  if n >= out.count { return ""; }
+  return cast(string) out[0..<n];
+}
+
+// Spawn `agent acp`. The child never gets CURSOR_API_KEY or CURSOR_AUTH_TOKEN
+// (the person's `agent login` is used) and never opens a browser.
+// Returns what went wrong, or "".
+cu_start :: (c: [] CuClient, p: [] ClProcess, l: CuLaunch) -> string {
+  h := cxproc_new();
+  if h < 0 { return "no process slot is free"; }
+  program := l.program;
+  if program.count == 0 { program = "agent"; }
+  ok := cl_push(h, CL_FIELD_ARG, program) && cl_push(h, CL_FIELD_ARG, "acp");
+  ok = ok && cl_push(h, CL_FIELD_UNSET, "CURSOR_API_KEY") && cl_push(h, CL_FIELD_UNSET, "CURSOR_AUTH_TOKEN");
+  for i: 0..<l.unset_n { ok = ok && cl_push(h, CL_FIELD_UNSET, l.unset[i]); }
+  ok = ok && cl_push(h, CL_FIELD_ENV, "BROWSER=/usr/bin/true") && cl_push(h, CL_FIELD_ENV, "NO_OPEN_BROWSER=1");
+  for i: 0..<l.env_n { ok = ok && cl_push(h, CL_FIELD_ENV, l.env[i]); }
+  if l.cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, l.cwd); }
+  if !ok { r := cxproc_release(h); return "an argument holds a zero byte or does not fit"; }
+  e := cxproc_spawn(h);
+  if e != 0 { r := cxproc_release(h); return ifx e == 2 then "cursor agent executable not found" else "failed to spawn cursor agent"; }
+  p[0].handle = h; p[0].pid = cxproc_pid(h);
+  c[0].completed = false;
+  return "";
+}
+
+cu_flush :: (c: [] CuClient, p: [] ClProcess) -> bool {
+  out := cu_outbox(c);
+  if out.count == 0 { return true; }
+  if c[0].out[0].failed { cu_outbox_clear(c); return false; }
+  for b: out { if cxproc_write(p[0].handle, cast(int) b) != 0 { cu_outbox_clear(c); return false; } }
+  cu_outbox_clear(c);
+  return cxproc_flush(p[0].handle) == 0;
+}
+
+CU_INIT_TIMEOUT_MS :: 60000;
+
+cu_poll :: (c: [] CuClient, p: [] ClProcess, timeout_ms: int) -> CuEvent {
+  cu_settle(c);
+  if !cu_flush(c, p) { return cu_fail(c, "failed to write to cursor agent: ", "broken pipe"); }
+  if c[0].completed { return CuEvent.{kind = CuEventKind.end}; }
+  if c[0].init_wait && c[0].init_since == 0 { c[0].init_since = cxproc_now_ms(); }
+  if c[0].init_wait && cxproc_now_ms() - c[0].init_since > CU_INIT_TIMEOUT_MS { return cu_fail(c, "cursor agent did not answer initialize", ""); }
+  n := cxproc_read_line(p[0].handle, ifx timeout_ms < 0 then 0 else timeout_ms);
+  if n == CL_TIMEOUT { return CuEvent.{kind = CuEventKind.idle}; }
+  if n == CL_EOF { c[0].completed = true; return CuEvent.{kind = CuEventKind.end}; }
+  if n == CL_TOO_LONG || n > c[0].line.count { return CuEvent.{kind = CuEventKind.invalid}; }
+  if n < 0 { return cu_fail(c, "failed to read from cursor agent", ""); }
+  for i: 0..<n { c[0].line[i] = cast(u8) cxproc_line_byte(p[0].handle, i); }
+  c[0].line_len = n;
+  return cu_feed(c, cast(string) c[0].line[0..<n]);
+}
+
+cu_close_process :: (p: [] ClProcess) {
+  if p[0].handle < 0 { return; }
+  k := cxproc_kill(p[0].handle, CL_SIGKILL);
+  w := cxproc_wait(p[0].handle, 2000);
+  r := cxproc_release(p[0].handle);
+  p[0].handle = -1;
+}
