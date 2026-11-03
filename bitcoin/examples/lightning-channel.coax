@@ -1,0 +1,170 @@
+// book:begin example
+#load "../../coax/lib/lightning/channel.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex, and a txid in its usual reversed order.
+show :: (b: [] u8) {
+  text: [2048] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+show_txid :: (h: [] u8) { r: [32] u8; for i: 0..<32 { r[i] = h[31 - i]; } show(r[..]); }
+// Chapter 36's interpreter with the standard flags: input 0 of tx spends
+// amount satoshis locked by spk.
+FLAGS :: SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_LOW_S
+  | SCRIPT_VERIFY_NULLDUMMY | SCRIPT_VERIFY_MINIMALDATA | SCRIPT_VERIFY_CLEANSTACK | SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY
+  | SCRIPT_VERIFY_CHECKSEQUENCEVERIFY | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_MINIMALIF | SCRIPT_VERIFY_NULLFAIL
+  | SCRIPT_VERIFY_WITNESS_PUBKEYTYPE;
+runs :: (tx: [] u8, spk: [] u8, amount: int) -> string {
+  ins: [1] TxIn; outs: [LNC_MAX_OUTPUTS] TxOut; items: [8] TxItem; w: [1] ScriptWork;
+  t := tx_read_vartime(tx, true, ins[..], outs[..], items[..]);
+  if t.code != TX_OK { return "unreadable"; }
+  sp := ScriptSpend.{b=tx, t=t, ins=ins[0..<t.nin], outs=outs[0..<t.nout], items=items[0..<t.nitems], index=0, amount=amount, spk=spk};
+  return SCRIPT_ERR_NAMES[script_verify_vartime(sp, FLAGS, w[..])];
+}
+CODES :: [20] string.["OK", "UNKNOWN", "TRUNCATED", "WRONG_STATE", "WRONG_CHANNEL", "BAD_PARAMS", "BAD_SIGNATURE",
+                      "BAD_SECRET", "BAD_ID", "BAD_PREIMAGE", "BAD_AMOUNT", "TOO_MANY", "NO_CHANGES", "HTLC_COUNT",
+                      "SHUTTING", "BAD_FEE", "WAITING", "PENDING", "BEHIND", "FULL"];
+message_name :: (type: int) -> string {
+  if type == LNH_OPEN { return "open_channel"; }
+  if type == LNH_ACCEPT { return "accept_channel"; }
+  if type == LNH_FUNDING_CREATED { return "funding_created"; }
+  if type == LNH_FUNDING_SIGNED { return "funding_signed"; }
+  if type == LNH_READY { return "channel_ready"; }
+  if type == LNH_SHUTDOWN { return "shutdown"; }
+  if type == LNH_CLOSING_SIGNED { return "closing_signed"; }
+  if type == LNH_ADD { return "update_add_htlc"; }
+  if type == LNH_FULFILL { return "update_fulfill_htlc"; }
+  if type == LNH_FAIL { return "update_fail_htlc"; }
+  if type == LNH_COMMIT { return "commitment_signed"; }
+  if type == LNH_REVOKE { return "revoke_and_ack"; }
+  if type == LNH_REESTABLISH { return "channel_reestablish"; }
+  return "unknown";
+}
+// One message from one node to the other: its type, length and the start
+// of its SHA-256, and the receiver's answer if it refuses.
+step :: (from: [] LnhNode, to: [] LnhNode, names: string) {
+  m: [LNH_MSG] u8; h: [32] u8;
+  d := lnh_deliver(from, to, m[..]);
+  lnh_sha(m[0..<d.n], h[..]);
+  print("  % %, % bytes, sha256 ", names, message_name(d.type), d.n); show(h[0..<4]);
+  if d.code != LNH_OK { print(": refused, %", CODES[d.code]); }
+  print("\n");
+}
+// Every message both ways, Alice's first.
+pump :: (a: [] LnhNode, b: [] LnhNode) {
+  while a[0].out_n > 0 || b[0].out_n > 0 {
+    while a[0].out_n > 0 { step(a, b, "Alice -> Bob:"); }
+    while b[0].out_n > 0 { step(b, a, "Bob -> Alice:"); }
+  }
+}
+// A node's latest commitment: its txid and outputs.
+commitment :: (n: [] LnhNode, name: string) {
+  b := lnh_build(n, true, n[0].local_number, LNH_NOW);
+  u: [LNC_TX] u8; txid: [32] u8;
+  k := lnc_unsigned_vartime(b.c, b.cm, u[..]); lnc_txid_vartime(u[0..<k], txid[..]);
+  print("  %'s commitment %: ", name, n[0].local_number); show_txid(txid[..]); print("\n   ");
+  for i: 0..<b.cm.n {
+    o := b.cm.out[i];
+    print(" % %", LNC_KINDS[o.kind], o.sat);
+    if o.kind == LNC_OFFERED || o.kind == LNC_RECEIVED { print(" (expiry %)", o.expiry); }
+  }
+  print(", fee %\n", b.cm.fee);
+}
+both :: (a: [] LnhNode, b: [] LnhNode) { commitment(a, "Alice"); commitment(b, "Bob"); }
+refused :: (what: string, code: int) { print("  %: %\n", what, CODES[code]); }
+
+main :: () {
+  a: [1] LnhNode; b: [1] LnhNode; txid: [32] u8; m: [LNH_MSG] u8;
+  p0: [32] u8; h0: [32] u8; p1: [32] u8; h1: [32] u8; p2: [32] u8; h2: [32] u8;
+  lnh_preimage(1, p0[..], h0[..]); lnh_preimage(2, p1[..], h1[..]); lnh_preimage(3, p2[..], h2[..]);
+  lnh_pair(a[..], b[..]);
+
+  print("Open: Alice funds 1,000,000 satoshis and pushes 200,000 to Bob\n");
+  #assert lnh_open(a[..]) == LNH_OK;
+  pump(a[..], b[..]);
+  t := tx_unhex(LNH_FUNDING_TXID, txid[..]);
+  print("  Alice's wallet funds "); show_txid(txid[..]); print(":0\n");
+  #assert lnh_fund(a[..], txid[..], 0) == LNH_OK;
+  pump(a[..], b[..]);
+  print("  channel_id "); show(a[0].channel_id[..]); print("\n");
+  print("  the funding transaction is 3 blocks deep\n");
+  #assert lnh_confirmed(a[..]) == LNH_OK && lnh_confirmed(b[..]) == LNH_OK;
+  pump(a[..], b[..]);
+  print("  state: Alice %, Bob %\n", LNH_STATES[a[0].state], LNH_STATES[b[0].state]);
+  both(a[..], b[..]);
+
+  print("Alice offers two HTLCs: 50,000 and 20,000 satoshis\n");
+  #assert lnh_add(a[..], 50000000, h0[..], 500) == LNH_OK && lnh_add(a[..], 20000000, h1[..], 510) == LNH_OK;
+  #assert lnh_commit(a[..]) == LNH_OK;
+  pump(a[..], b[..]);
+  #assert lnh_commit(b[..]) == LNH_OK;
+  pump(a[..], b[..]);
+  both(a[..], b[..]);
+
+  print("Bob fulfills the first and fails the second\n");
+  #assert lnh_fulfill(b[..], 0, p0[..]) == LNH_OK && lnh_fail(b[..], 1) == LNH_OK;
+  #assert lnh_commit(b[..]) == LNH_OK;
+  pump(a[..], b[..]);
+  #assert lnh_commit(a[..]) == LNH_OK;
+  pump(a[..], b[..]);
+  both(a[..], b[..]);
+
+  print("Bob offers 30,000 satoshis; his commitment_signed is lost\n");
+  #assert lnh_add(b[..], 30000000, h2[..], 600) == LNH_OK && lnh_commit(b[..]) == LNH_OK;
+  step(b[..], a[..], "Bob -> Alice:");
+  k := lnh_take(b[..], m[..]);
+  print("  lost: %\n", message_name(ln_u16(m[..], 0)));
+  lnh_disconnect(a[..]); lnh_disconnect(b[..]);
+  print("  reconnected: Alice forgot the add; HTLCs held: Alice %, Bob %\n", a[0].n_htlcs, b[0].n_htlcs);
+  #assert lnh_reestablish(a[..]) == LNH_OK && lnh_reestablish(b[..]) == LNH_OK;
+  pump(a[..], b[..]);
+  #assert lnh_commit(a[..]) == LNH_OK;
+  pump(a[..], b[..]);
+  print("Alice fulfills it\n");
+  #assert lnh_fulfill(a[..], 0, p2[..]) == LNH_OK && lnh_commit(a[..]) == LNH_OK;
+  pump(a[..], b[..]);
+  #assert lnh_commit(b[..]) == LNH_OK;
+  pump(a[..], b[..]);
+  both(a[..], b[..]);
+
+  print("Messages and commands out of order\n");
+  x: [1] LnhNode; y: [1] LnhNode; x[0] = a[0]; y[0] = b[0];
+  #assert lnh_add(x[..], 10000000, h0[..], 700) == LNH_OK;
+  k = lnh_take(x[..], m[..]); m[41] = 9;
+  refused("update_add_htlc with id 9, not 2", lnh_receive(y[..], m[0..<k]));
+  m[41] = 2;
+  refused("Alice signs twice", ifx lnh_receive(y[..], m[0..<k]) == LNH_OK && lnh_commit(x[..]) == LNH_OK then lnh_commit(x[..]) else -1);
+  refused("Alice signs with nothing to sign", lnh_commit(a[..]));
+  refused("Bob fulfills an HTLC both have not yet signed", lnh_fulfill(y[..], 1, p1[..]));
+  refused("Alice offers 775,000 satoshis, into her reserve", lnh_add(a[..], 775000000, h0[..], 700));
+  for i: 0..<k { m[i] = 0; }
+  m[1] = LNH_REVOKE; for i: 0..<32 { m[2 + i] = a[0].channel_id[i]; }
+  q := lnh_my_point(b[..], 9); for i: 0..<33 { m[66 + i] = q.bytes[i]; }
+  refused("revoke_and_ack with no commitment outstanding", lnh_receive(a[..], m[0..<99]));
+  m[1] = LNH_CLOSING_SIGNED;
+  refused("closing_signed before shutdown", lnh_receive(a[..], m[0..<106]));
+  m[1] = LNH_OPEN;
+  refused("open_channel on an open channel", lnh_receive(b[..], m[0..<321]));
+
+  print("Bob could close alone with his latest commitment\n");
+  c := lnh_build(b[..], true, b[0].local_number, LNH_NOW);
+  d: [32] u8; mine: [LNC_DER] u8; theirs: [LNC_DER] u8; tx: [LNC_TX] u8; ws: [73] u8; fund: [34] u8;
+  #assert lnc_sighash_vartime(c.c, c.cm, d[..]);
+  mn := lnc_sign(b[0].funding_secret[..], d[..], mine[..]);
+  tn := ecdsa_der(b[0].local_sig[..], theirs[..]);
+  n := lnc_signed_vartime(c.c, c.cm, mine[0..<mn], theirs[0..<tn], tx[..]);
+  wn := lnc_funding_script_vartime(c.c.local_funding[..], c.c.remote_funding[..], ws[..]);
+  fn := p2wsh_script_vartime(ws[0..<wn], fund[..]);
+  print("  it spends the funding output: %, % bytes\n", runs(tx[0..<n], fund[0..<fn], c.c.funding_sat), n);
+
+  print("Close: Alice wants a 700-satoshi fee, Bob 300 to 600\n");
+  #assert lnh_shutdown(a[..]) == LNH_OK;
+  pump(a[..], b[..]);
+  print("  closing fee %, state: Alice %, Bob %\n", a[0].close_sent, LNH_STATES[a[0].state], LNH_STATES[b[0].state]);
+  #assert lnh_same(a[0].closing[0..<a[0].closing_n], b[0].closing[0..<b[0].closing_n]);
+  print("  closing transaction "); show(a[0].closing[0..<a[0].closing_n]); print("\n");
+  print("  it spends the funding output: %\n", runs(a[0].closing[0..<a[0].closing_n], fund[0..<fn], c.c.funding_sat));
+}
+// book:end example

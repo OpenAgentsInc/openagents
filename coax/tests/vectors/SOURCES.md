@@ -545,6 +545,14 @@ that a maliciously replaced manifest is authentic.
   `coax/tests/lightning/bolt3_tx.py`, an independent Python builder and
   RFC 6979 signer, rebuilds every one, and
   `coax/tests/lightning/commitment.py` is the cross-check.
+- **Open, update and close a channel (Bitcoin chapter 109):** BOLT 2
+  (`02-peer-protocol.md`) at the same lightning/bolts revision,
+  CC-BY-4.0, retrieved 2026-11-03: the message fields and rules of
+  channel establishment v1, normal operation, message retransmission and
+  the `closing_signed` close. BOLT 2 has no test vectors, so
+  `coax/tests/lightning/channel.py`, an independent Python model of the
+  protocol built on `bolt3_tx.py`, computes every line of the example;
+  the closing transaction follows the pinned BOLT 3.
 - **Onion routing and blinded paths (Bitcoin chapter 111):** BOLT 4
   (`04-onion-routing.md`) and its five vector files in `bolt04/` at the
   same lightning/bolts revision, CC-BY-4.0, retrieved 2026-11-03:
@@ -882,6 +890,7 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip157/bip-0157.mediawiki`](upstream/bip157/bip-0157.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0157.mediawiki) | `5405acbf04ebd8a1b92ae2b7188022f4c14723ed8a0ae0d077d12a1e6908da9a` |
 | [`upstream/bolts/01-messaging.md`](upstream/bolts/01-messaging.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/01-messaging.md) | `5801219aabcf854cf0a6dd4e98759b4351cbca238588061c680574912f6ef918` |
 | [`upstream/bolts/09-features.md`](upstream/bolts/09-features.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/09-features.md) | `39ead9fa5743104a3e66e0f6c342e34d64966dc943dcbcc337969e543e3e3cbe` |
+| [`upstream/bolts/02-peer-protocol.md`](upstream/bolts/02-peer-protocol.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/02-peer-protocol.md) | `75391608469812c1839d0149edb1a626420011ba2b8373135584f5afb7034245` |
 | [`upstream/bolts/03-transactions.md`](upstream/bolts/03-transactions.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/03-transactions.md) | `27ffbf1ae436f257bff3f255b4d1e4d4bbf8597fb1e2533d7ff9b66f4fe38d43` |
 | [`upstream/bolts/08-transport.md`](upstream/bolts/08-transport.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/08-transport.md) | `85a1d6402adb653416c5a48f3b4c8eac2d8964621c41cb1bb6e09b8e06fbde46` |
 | [`upstream/bitcoin-core/addrman.cpp`](upstream/bitcoin-core/addrman.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/addrman.cpp) | `d4b7ae941920c48731fc04a6bfbefb11c65d829b1a81b45ff1084581dd7fee0a` |

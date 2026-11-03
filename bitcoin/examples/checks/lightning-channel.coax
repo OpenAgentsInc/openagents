@@ -1,0 +1,52 @@
+// The checks of lightning-channel.coax. They live apart so that running
+// the example doesn't also run them. The example runs one scenario; these
+// check properties over several.
+// Checks: coax test bitcoin/examples/checks/lightning-channel.coax
+#load "../lightning-channel.coax";
+
+// book:begin check
+// Either side offers an HTLC, both sides sign it, and the receiver
+// fulfills or fails it. Afterwards both nodes agree on the balances, the
+// amount moved only when fulfilled, and each commitment's outputs and
+// fee spend the whole funding output. Each run is its own check: one
+// check may visit only so many values at compile time.
+payment :: (k: int) {
+  a: [1] LnhNode; b: [1] LnhNode; p: [32] u8; h: [32] u8;
+  lnh_open_pair(a[..], b[..]);
+  lnh_preimage(10 + k, p[..], h[..]);
+  amount := (k + 1) * 15000000;
+  alice_offers := k % 2 == 0; fulfilled := k < 2;
+  x := ifx alice_offers then a[..] else b[..]; y := ifx alice_offers then b[..] else a[..];
+  #assert lnh_add(x, amount, h[..], 500 + k) == LNH_OK && lnh_dance(x, y) == LNH_OK;
+  #assert a[0].n_htlcs == 1 && b[0].n_htlcs == 1;
+  code := ifx fulfilled then lnh_fulfill(y, 0, p[..]) else lnh_fail(y, 0);
+  #assert code == LNH_OK && lnh_dance(y, x) == LNH_OK;
+  #assert a[0].n_htlcs == 0 && b[0].n_htlcs == 0;
+  moved := ifx fulfilled then amount else 0;
+  alice := 800000000 - (ifx alice_offers then moved else -moved);
+  #assert lnh_agree(a[..], b[..], alice, 1000000000 - alice);
+  c := lnh_build(a[..], true, a[0].local_number, LNH_NOW);
+  #assert c.cm.n == 2 && c.cm.out[0].sat + c.cm.out[1].sat + c.cm.fee == 1000000;
+}
+#test "Alice pays Bob" #steps 8000000000 { payment(0); }
+#test "Bob pays Alice" #steps 8000000000 { payment(1); }
+#test "Alice's HTLC fails" #steps 8000000000 { payment(2); }
+#test "Bob's HTLC fails" #steps 8000000000 { payment(3); }
+// A commitment_signed with one byte of its signature changed is refused
+// and changes nothing: the real one is accepted afterwards.
+forged :: (k: int) {
+  a: [1] LnhNode; b: [1] LnhNode; p: [32] u8; h: [32] u8; m: [LNH_MSG] u8;
+  lnh_open_pair(a[..], b[..]);
+  lnh_preimage(20 + k, p[..], h[..]);
+  #assert lnh_add(a[..], 25000000, h[..], 500) == LNH_OK && lnh_commit(a[..]) == LNH_OK;
+  #assert lnh_deliver(a[..], b[..], m[..]).code == LNH_OK;      // the add
+  n := lnh_take(a[..], m[..]);
+  m[34 + 17 * k] ^= 1;
+  #assert lnh_receive(b[..], m[0..<n]) == LNH_BAD_SIGNATURE && b[0].local_number == 0 && b[0].out_n == 0;
+  m[34 + 17 * k] ^= 1;
+  #assert lnh_receive(b[..], m[0..<n]) == LNH_OK && b[0].local_number == 1;
+  #assert lnh_flush(a[..], b[..]) == LNH_OK && !a[0].waiting;
+}
+#test "a forged commitment signature is refused: r" #steps 8000000000 { forged(0); }
+#test "a forged commitment signature is refused: s" #steps 8000000000 { forged(3); }
+// book:end check

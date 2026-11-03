@@ -3041,6 +3041,19 @@
       "bytes": 17565
     },
     {
+      "path": "upstream/bolts/02-peer-protocol.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/02-peer-protocol.md",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "lightning-channel"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "75391608469812c1839d0149edb1a626420011ba2b8373135584f5afb7034245",
+      "bytes": 174574
+    },
+    {
       "path": "upstream/bolts/03-transactions.md",
       "kind": "upstream",
       "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/03-transactions.md",
@@ -3049,7 +3062,8 @@
       "covers": [
         "lightning-shachain",
         "lightning-keys",
-        "lightning-commitment"
+        "lightning-commitment",
+        "lightning-channel"
       ],
       "retrieved": "2026-11-03",
       "sha256": "27ffbf1ae436f257bff3f255b4d1e4d4bbf8597fb1e2533d7ff9b66f4fe38d43",

@@ -844,6 +844,18 @@
         "release"
       ],
       "timeout": 120
+    },
+    {
+      "source": "bitcoin/examples/lightning-channel.coax",
+      "chapter": "bitcoin/book/ch109-open-update-and-close-a-channel.md",
+      "stdout": "bitcoin/fixtures/lightning-channel.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 300
     }
   ]
 }

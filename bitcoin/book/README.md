@@ -43,13 +43,13 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 77 are implemented and 47 are planned. The 77 implemented
+Of the 124 chapters, 78 are implemented and 46 are planned. The 78 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62, 65, 66,
-67, 68, 69, 70, 71, 73, 74, 81, 94, 95, 100, 101, 104, 105, 106, 107, 108, 111,
-112, 114 and 115 are new.
+39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62, 65, 66, 67,
+68, 69, 70, 71, 73, 74, 81, 94, 95, 100, 101, 104, 105, 106, 107, 108, 109,
+111, 112, 114 and 115 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
 `coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -325,7 +325,7 @@ Lightning built in Coax on our node: messages, the Noise handshake, channels, on
 | [106. Commitment keys and revocation](ch106-commitment-keys-and-revocation.md) | Runnable: native C | BOLT 3's key derivation: per-commitment points, localpubkey and the HTLC and delayed keys with their private keys, remotepubkey under option_static_remotekey, and the revocation key that needs both peers' secrets. Every BOLT 3 key vector gives its result, and every line agrees with an independent Python derivation. |
 | [107. Shachain](ch107-shachain.md) | Runnable: native C | BOLT 3's per-commitment secrets: generation from one seed over 2^48 indices by bit flips and SHA-256, and the receiver's 49-slot store with its insert check and lookup. Every BOLT 3 generation and storage vector gives its result, and every line agrees with an independent Python store. |
 | [108. Commitment and HTLC transactions](ch108-commitment-and-htlc-transactions.md) | Runnable: native C | BOLT 3's transactions: the sorted 2-of-2 funding output, the commitment with its obscured number, `to_local`, `to_remote`, offered and received HTLC outputs and `option_anchors`' anchors, fees by expected weight, dust trimming and BIP-69 order with the expiry tiebreak, and the HTLC-timeout and HTLC-success transactions, signed `SIGHASH_SINGLE` and `ANYONECANPAY` under anchors. Every BOLT 3 funding, commitment and HTLC transaction vector matches byte for byte, and every line agrees with an independent Python builder. |
-| 109. Open, update and close a channel | Planned | Two Coax nodes open, update and close a channel on regtest. The state machine refuses every out-of-order message BOLT 2 names. |
+| [109. Open, update and close a channel](ch109-open-update-and-close-a-channel.md) | Runnable: native C | BOLT 2's peer protocol as a pure state machine between two in-process nodes: `open_channel` to `channel_ready`, HTLC adds, fulfills and fails with `commitment_signed` and `revoke_and_ack`, `channel_reestablish` after a lost message, and `shutdown` with the `closing_signed` fee negotiation. Every commitment is checked with chapter 108's builder, and every line agrees with an independent Python model. |
 | 110. Watch the chain | Planned | A revoked commitment broadcast on regtest is swept by the penalty transaction, and an expired HTLC times out, with our node as the only chain source. |
 | [111. Onion routing and blinded paths](ch111-onion-routing-and-blinded-paths.md) | Runnable: native C | BOLT 4's Sphinx packet: shared secrets, blinding factors, the rho, mu, um, pad and ammag keys, the ChaCha20 stream, the filler and the HMAC chain over 1,300 bytes of TLV hop payloads; error onions and their decryption by the payer; and route blinding with `encrypted_recipient_data` and path keys. Every BOLT 4 onion, error and blinded-path vector gives its result, and every line agrees with an independent Python Sphinx. |
 | [112. Gossip and the channel graph](ch112-gossip-and-the-channel-graph.md) | Runnable: native C | BOLT 7's gossip: short channel IDs, `channel_announcement` with four signatures over the double SHA-256 after them, `node_announcement` with BOLT 1's restricted UTF-8 alias and address descriptors, `channel_update` with its direction and disable bits, timestamps, fees, CLTV delta and CRC32C checksum, the query messages in the plain encoding with zlib refused, and a channel graph that keeps only what checks. BOLT 7's vectors give their stated results, and every line agrees with an independent Python reader and writer. |

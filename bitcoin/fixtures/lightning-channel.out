@@ -1,0 +1,79 @@
+Open: Alice funds 1,000,000 satoshis and pushes 200,000 to Bob
+  Alice -> Bob: open_channel, 325 bytes, sha256 7acc816c
+  Bob -> Alice: accept_channel, 276 bytes, sha256 f03850b5
+  Alice's wallet funds bef67e4e2fb9ddeeb3461973cd4c62abb35050b1add772995b820b584a488489:0
+  Alice -> Bob: funding_created, 132 bytes, sha256 424bcee1
+  Bob -> Alice: funding_signed, 98 bytes, sha256 354824d9
+  channel_id 8984484a580b825b9972d7adb15050b3ab624ccd731946b3eeddb92f4e7ef6be
+  the funding transaction is 3 blocks deep
+  Alice -> Bob: channel_ready, 67 bytes, sha256 1e6833ff
+  Bob -> Alice: channel_ready, 67 bytes, sha256 06811499
+  state: Alice normal, Bob normal
+  Alice's commitment 0: 33b9376d6af5312c0b0390e47331a73bd705741cc0ed776108a28415350088b4
+    to_remote 200000 to_local 798190, fee 1810
+  Bob's commitment 0: 70264411b144fbb1b513f70803cf2226153c0ea541f9554af298849fac1f088a
+    to_local 200000 to_remote 798190, fee 1810
+Alice offers two HTLCs: 50,000 and 20,000 satoshis
+  Alice -> Bob: update_add_htlc, 1452 bytes, sha256 7dea08cb
+  Alice -> Bob: update_add_htlc, 1452 bytes, sha256 2be2bfac
+  Alice -> Bob: commitment_signed, 228 bytes, sha256 56ef7cfc
+  Bob -> Alice: revoke_and_ack, 99 bytes, sha256 8c421e99
+  Bob -> Alice: commitment_signed, 228 bytes, sha256 27572f4a
+  Alice -> Bob: revoke_and_ack, 99 bytes, sha256 f9b96998
+  Alice's commitment 1: 10ffae2e0894f5558b0058197bf1fc72b411c2ebfb90d4a65df633288e10ca18
+    offered 20000 (expiry 510) offered 50000 (expiry 500) to_remote 200000 to_local 727330, fee 2670
+  Bob's commitment 1: 054fa46f1f27e352a40602bedd13a44faf41f387f2794524676e8cad64562c31
+    received 20000 (expiry 510) received 50000 (expiry 500) to_local 200000 to_remote 727330, fee 2670
+Bob fulfills the first and fails the second
+  Bob -> Alice: update_fulfill_htlc, 74 bytes, sha256 9b1f88bb
+  Bob -> Alice: update_fail_htlc, 44 bytes, sha256 a675d799
+  Bob -> Alice: commitment_signed, 100 bytes, sha256 7fb37c62
+  Alice -> Bob: revoke_and_ack, 99 bytes, sha256 fc075b32
+  Alice -> Bob: commitment_signed, 100 bytes, sha256 bba99bce
+  Bob -> Alice: revoke_and_ack, 99 bytes, sha256 bdaa1f57
+  Alice's commitment 2: fea492cdef40c353fb89aa9256ee883f95d3383608d217559ca47214edea49aa
+    to_remote 250000 to_local 748190, fee 1810
+  Bob's commitment 2: 1845ccdd5ca22d9b7299d6cda252a9fd18e16af056efe1563553d24fb2437c7c
+    to_local 250000 to_remote 748190, fee 1810
+Bob offers 30,000 satoshis; his commitment_signed is lost
+  Bob -> Alice: update_add_htlc, 1452 bytes, sha256 bff94c38
+  lost: commitment_signed
+  reconnected: Alice forgot the add; HTLCs held: Alice 0, Bob 1
+  Alice -> Bob: channel_reestablish, 115 bytes, sha256 517a7719
+  Bob -> Alice: channel_reestablish, 115 bytes, sha256 cfc93ce4
+  Bob -> Alice: update_add_htlc, 1452 bytes, sha256 bff94c38
+  Bob -> Alice: commitment_signed, 164 bytes, sha256 d9a7cdbc
+  Alice -> Bob: revoke_and_ack, 99 bytes, sha256 2f206c0f
+  Alice -> Bob: commitment_signed, 164 bytes, sha256 e51faebf
+  Bob -> Alice: revoke_and_ack, 99 bytes, sha256 74ce7e18
+Alice fulfills it
+  Alice -> Bob: update_fulfill_htlc, 74 bytes, sha256 805100e4
+  Alice -> Bob: commitment_signed, 100 bytes, sha256 80815bf2
+  Bob -> Alice: revoke_and_ack, 99 bytes, sha256 5b796fc5
+  Bob -> Alice: commitment_signed, 100 bytes, sha256 b312e5ca
+  Alice -> Bob: revoke_and_ack, 99 bytes, sha256 a0884783
+  Alice's commitment 4: 693a70e5e694de25e299d729742b087edb6fbc09c30cfcb85b07b8437854a48d
+    to_remote 220000 to_local 778190, fee 1810
+  Bob's commitment 4: 043d6749c521b0455c62a3e4e39fae27c6faa356ea05ea5425255839e3ac2636
+    to_local 220000 to_remote 778190, fee 1810
+Messages and commands out of order
+  update_add_htlc with id 9, not 2: BAD_ID
+  Alice signs twice: WAITING
+  Alice signs with nothing to sign: NO_CHANGES
+  Bob fulfills an HTLC both have not yet signed: BAD_ID
+  Alice offers 775,000 satoshis, into her reserve: BAD_AMOUNT
+  revoke_and_ack with no commitment outstanding: WRONG_STATE
+  closing_signed before shutdown: WRONG_STATE
+  open_channel on an open channel: WRONG_STATE
+Bob could close alone with his latest commitment
+  it spends the funding output: OK, 347 bytes
+Close: Alice wants a 700-satoshi fee, Bob 300 to 600
+  Alice -> Bob: shutdown, 58 bytes, sha256 172a9570
+  Bob -> Alice: shutdown, 58 bytes, sha256 c18262e4
+  Alice -> Bob: closing_signed, 106 bytes, sha256 8bf23739
+  Bob -> Alice: closing_signed, 106 bytes, sha256 58dcd132
+  Alice -> Bob: closing_signed, 106 bytes, sha256 c4542295
+  Bob -> Alice: closing_signed, 106 bytes, sha256 377a1f17
+  closing fee 600, state: Alice closed, Bob closed
+  closing transaction 020000000001018984484a580b825b9972d7adb15050b3ab624ccd731946b3eeddb92f4e7ef6be0000000000ffffffff02605b030000000000160014bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb88e40b0000000000160014aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0400483045022100d4eba6a09044945f613f1c5b6a648f4ce9e09afc10121d7bdc7e379bd6cf45d802207b257633fc512d5028e3feb7ed6f9768cfa604794e8f2657212efc8a95a07e230147304402207aca9930733b910b73e4ab0fe6221b30f28a206c1484285ebd55fea5d70c67c402201a25fdd909b41ccaa688329f22206272ed12ac554e4666fcf3f7e87074435aa20147522102380d1bce745fca652a82bf961ff104200d940461f65c2500fe60f9634c8518b121032c21c626ef3912f30e2ee43b8c0002d2ccc7e431a676033a0e940e731cafcdf752ae00000000
+  it spends the funding output: OK

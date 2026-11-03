@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: reads the BOLTs' published test vectors outside Coax)
-"""The pinned BOLT texts for Bitcoin chapters 104 to 108, 111, 112, 114 and 115, read and checked.
+"""The pinned BOLT texts for Bitcoin chapters 104 to 109, 111, 112, 114 and 115, read and checked.
 
 The BOLTs at lightning/bolts revision 19146282 are pinned in
 coax/tests/vectors/upstream/bolts/. Every read checks the file's SHA-256
@@ -15,6 +15,7 @@ HERE = Path(__file__).resolve().parent
 UP = HERE.parent / 'vectors/upstream/bolts'
 PINS = {
     '01-messaging.md': '5801219aabcf854cf0a6dd4e98759b4351cbca238588061c680574912f6ef918',
+    '02-peer-protocol.md': '75391608469812c1839d0149edb1a626420011ba2b8373135584f5afb7034245',
     '03-transactions.md': '27ffbf1ae436f257bff3f255b4d1e4d4bbf8597fb1e2533d7ff9b66f4fe38d43',
     '04-onion-routing.md': '79f4e06d334a200f62b6053cc891f2c4dd710e7a43e1c7b3691848dc4c460070',
     'bolt04/blinded-onion-message-onion-test.json': 'e5e8ac8a42d3d0ce3bb70c12c5bbd76408e022a63322dcf32b00ddd97d051f96',
