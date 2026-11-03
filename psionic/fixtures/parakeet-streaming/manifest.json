@@ -1,8 +1,8 @@
 {
   "schema": "psionic.incremental-checkpoint-plan.v1",
   "issue": 12673,
-  "status": "original-files-verified; implementation-and-reference-inference-pending",
-  "profile": "psionic-nemotron-streaming-en-v1-candidate",
+  "status": "qualified-linux-cuda",
+  "profile": "psionic-nemotron-streaming-en-v1",
   "repository": "nvidia/nemotron-speech-streaming-en-0.6b",
   "revision": "ebe59e5a817142986528bbbee5dba8db7b38ed50",
   "license_metadata": "nvidia-open-model-license",
@@ -44,7 +44,36 @@
     "weights_location": "outside Git; ~/.cache/openagents/models/parakeet/nemotron-streaming-en-0.6b-ebe59e5a",
     "pickle_or_repository_code_executed": false
   },
-  "planned_profile": {
+  "reference_contract": {
+    "repository": "huggingface/transformers",
+    "revision": "9719c27f4e04e8d10ed1f908bdb3712d16fef73c",
+    "implementation": "NemotronAsrStreamingForRNNT and NemotronAsrStreamingProcessor, no trust_remote_code",
+    "same_original_files_and_lookahead": true,
+    "reference_inference_recorded": true,
+    "token_comparison": "exact token IDs and final text against same-profile streaming reference; no chapter-153 full-context equivalence claim",
+    "feature_encoder_tolerance": "abs <= 0.001 + 0.001 * abs(reference), all admitted valid elements",
+    "audio_partitions": "regular 160 ms, single-sample and ragged pushes, exact start/end and short final tail",
+    "state_tests": [
+      "preemphasis and STFT carry",
+      "subsampling alignment",
+      "per-layer attention/convolution cache continuity",
+      "RNNT hidden/cell and last-token carry",
+      "bounded memory independent of utterance duration",
+      "partial/final ordering",
+      "reset/cancel and media epochs",
+      "duplicate/gap/stale refusal leaves current stream intact"
+    ],
+    "quality": "Report WER/CER, first/last-word errors and no-speech false positives on frozen public English corpus; exact reference parity is not a population-accuracy claim. Retain original source/split identities; no multilingual claim.",
+    "latency": "Measured replay first partial, per-chunk and final-call p50/p99 on coderos-4080; startup, pacing, physical microphone and UI delivery are separate.",
+    "adapter": "Pinned Transformers mask factory converts additive 0/negative-limit masks to boolean allowed masks before padding-row detection and attention. See the independent reference harness and its failure record."
+  },
+  "qualified_targets": [
+    "linux-cuda-rtx4080"
+  ],
+  "adopted_by": [
+    "psionic/platform/incremental-cli.c"
+  ],
+  "operating_profile": {
     "language": "English",
     "recognizer_identity": "new explicit profile; does not replace Parakeet TDT v3",
     "sample_rate": 16000,
@@ -66,31 +95,12 @@
     "decoder_width": 640,
     "blank_id": 1024,
     "max_symbols_per_step": 10,
-    "compute": "F32; TF32 disabled in reference"
+    "compute": "Original F32 weights; encoder/RNNT F32; frontend F32 preemphasis/tables with F64 FFT/reductions; TF32 disabled in reference"
   },
-  "reference_contract": {
-    "repository": "huggingface/transformers",
-    "revision": "9719c27f4e04e8d10ed1f908bdb3712d16fef73c",
-    "implementation": "NemotronAsrStreamingForRNNT and NemotronAsrStreamingProcessor, no trust_remote_code",
-    "same_original_files_and_lookahead": true,
-    "reference_inference_recorded": false,
-    "token_comparison": "exact token IDs and final text against same-profile streaming reference; no chapter-153 full-context equivalence claim",
-    "feature_encoder_tolerance": "abs <= 0.001 + 0.001 * abs(reference), all admitted valid elements",
-    "audio_partitions": "regular 160 ms, single-sample and ragged pushes, exact start/end and short final tail",
-    "state_tests": [
-      "preemphasis and STFT carry",
-      "subsampling alignment",
-      "per-layer attention/convolution cache continuity",
-      "RNNT hidden/cell and last-token carry",
-      "bounded memory independent of utterance duration",
-      "partial/final ordering",
-      "reset/cancel and media epochs",
-      "duplicate/gap/stale refusal leaves current stream intact"
-    ],
-    "quality": "Report WER/CER, first/last-word errors and no-speech false positives on frozen public English corpus; exact reference parity is not a population-accuracy claim. Retain original source/split identities; no multilingual claim.",
-    "latency": "Measure p50/p99 first partial, per-chunk compute, finalization and memory on named CUDA/Metal hosts; no acceptance number claimed before measurements."
-  },
-  "next_gate": "Record safe original-weight reference features, encoder/cache and RNNT transitions for this profile before implementing/integrating production streaming.",
-  "qualified_targets": [],
-  "adopted_by": []
+  "evidence": "docs/verification/incremental-asr-2026-11-03/README.md",
+  "further_adoption": [
+    "Mac/Metal backend qualification",
+    "live microphone/UI partials and default voice-host wiring",
+    "separate multilingual, vocabulary or changed-lookahead profile"
+  ]
 }

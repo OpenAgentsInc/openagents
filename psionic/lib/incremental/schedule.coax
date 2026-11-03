@@ -1,0 +1,126 @@
+// GPU launch sequence and every range belong to Coax. Original F32 weights
+// retain their published offsets. All work/state extents are fixed.
+#load "model.coax";
+IAS_WORK :: 800000;
+IAS_CACHE_BASE :: 26000;
+IAS_LAYER_STATE :: 297984; // (70 K + 70 V + 8 convolution + 143 positions)*1024
+IAS_DEC_STATE :: 7177616;
+IAS_STATE :: 7181616;
+IAS_A :: 0;
+IAS_B :: 200000;
+IAS_GATHER :: 400000;
+IAS_H :: 410000;
+IAS_N :: 412048;
+IAS_WIDE :: 414096;
+IAS_TMP :: 422288;
+IAS_Q :: 424336;
+IAS_K :: 426384;
+IAS_V :: 500112;
+IAS_HISTORY :: 573840;
+IAS_DW :: 584080;
+IAS_GLU :: 586128;
+IAS_TWO :: 588176;
+IAS_PROJ :: 592272;
+IAS_DX :: 594000;
+IAS_G1 :: 594640;
+IAS_G2 :: 597200;
+IAS_POS :: 600000;
+IAS_FEATURES :: 750000;
+IAS_JOINT :: 753000;
+IAS_LOGITS :: 754000;
+IasExtents :: struct {weights:int;header:int;work:int;state:int;encoded:int;projected:int;}
+ias_extents :: ()->IasExtents #export_c {return IasExtents.{weights=IAS_WEIGHT_COUNT,header=IAS_HEADER_BYTES,work=IAS_WORK,state=IAS_STATE,encoded=IAS_H,projected=IAS_PROJ};}
+
+ias_launch :: (kind:int,items:int,n0:int,n1:int,n2:int,n3:int,n4:int,n5:int,scale:f32,a:[]f32,b:[]f32,c:[]f32,d:[]f32,e:[]f32,f:[]f32)->bool #foreign;
+ias_upload :: (x:[]f32)->bool #foreign;
+ias_read :: (x:[]f32,out:[]f32)->bool #foreign;
+
+ias_dense :: (rows:int,ni:int,no:int,bias:bool,x:[]f32,w:[]f32,at:int,bt:int,y:[]f32)->bool {
+ return ias_launch(0,rows*((no+3)/4),rows,ni,no,ifx bias then 1 else 0,0,0,0,x,w[at..<at+ni*no],w[bt..<bt+ifx bias then no else 0],y,y,y);
+}
+ias_norm :: (rows:int,d:int,x:[]f32,w:[]f32,at:int,bt:int,y:[]f32)->bool {return ias_launch(1,rows,d,0,0,0,0,0,0,x,w[at..<at+d],w[bt..<bt+d],y,y,y);}
+ias_copy :: (x:[]f32,y:[]f32)->bool {return ias_launch(11,x.count,0,0,0,0,0,0,0,x,y,y,y,y,y);}
+ias_zero :: (x:[]f32)->bool {return ias_launch(12,x.count,0,0,0,0,0,0,0,x,x,x,x,x,x);}
+ias_add :: (x:[]f32,y:[]f32,scale:f32)->bool {return ias_launch(10,x.count,0,0,0,0,0,0,scale,x,y,y,y,y,y);}
+ias_silu :: (x:[]f32)->bool {return ias_launch(8,x.count,0,0,0,0,0,0,0,x,x,x,x,x,x);}
+ias_relu :: (x:[]f32)->bool {return ias_launch(9,x.count,0,0,0,0,0,0,0,x,x,x,x,x,x);}
+ias_ff :: (w:[]f32,a:[]int,ng:int,nb:int,w1:int,w2:int,work:[]f32)->bool {
+ h:=work[IAS_H..<IAS_H+2048];n:=work[IAS_N..<IAS_N+2048];wide:=work[IAS_WIDE..<IAS_WIDE+8192];tmp:=work[IAS_TMP..<IAS_TMP+2048];
+ return ias_norm(2,1024,h,w,a[ng],a[nb],n) && ias_dense(2,1024,4096,false,n,w,a[w1],0,wide) && ias_silu(wide) && ias_dense(2,4096,1024,false,wide,w,a[w2],0,tmp) && ias_add(tmp,h,0.5);
+}
+
+ias_device_prepare :: (w:[]f32,work:[]f32,state:[]f32)->bool #export_c {
+ if w.count!=IAS_WEIGHT_COUNT || work.count<IAS_WORK || state.count<IAS_STATE {return false;}
+ // The same relative offsets are used by every chunk; projection is once
+ // per model open, not repeated for the retained attention context.
+ for r:0..<143 {for j:0..<512 {
+  frequency:=f32(1/pow(10000.0,f64(2*j)/1024));angle:=f32(71-r)*frequency;
+  work[IAS_POS+r*1024+2*j]=f32(sin(f64(angle)));work[IAS_POS+r*1024+2*j+1]=f32(cos(f64(angle)));
+ }}
+ if !ias_upload(work[IAS_POS..<IAS_POS+146432]) || !ias_zero(state) {return false;}
+ for layer:0..<24 {base:=IAS_CACHE_BASE+layer*IAS_LAYER_STATE+151552;a:=IAS_LAYERS[layer];
+  if !ias_dense(143,1024,1024,false,work[IAS_POS..<IAS_POS+146432],w,a[24],0,state[base..<base+146432]) {return false;}
+ }
+ return true;
+}
+ias_device_reset :: (state:[]f32)->bool #export_c {
+ if state.count<IAS_STATE {return false;}
+ if !ias_zero(state[0..<26000]) || !ias_zero(state[IAS_DEC_STATE..<IAS_STATE]) {return false;}
+ for layer:0..<24 {base:=IAS_CACHE_BASE+layer*IAS_LAYER_STATE;if !ias_zero(state[base..<base+151552]) {return false;}}
+ return true;
+}
+ias_encode :: (w:[]f32,work:[]f32,state:[]f32,chunk:int)->bool #export_c {
+ first:=ifx chunk==0 then 1 else 0;frames:=ifx first==1 then 9 else 16;
+ h1:=(frames+first)/2;h2:=(h1+first)/2;h3:=(h2+first)/2;
+ a:=work[IAS_A..<IAS_A+200000];b:=work[IAS_B..<IAS_B+200000];x:=work[IAS_FEATURES..<IAS_FEATURES+frames*128];sub:=IAS_SUB;
+ if !ias_upload(x) {return false;}
+ if !ias_launch(2,256*h1*65,frames,128,1,256,1,first,0,x,state[0..<128],w[sub[0]..<sub[0]+2304],w[sub[1]..<sub[1]+256],a,a) || !ias_launch(3,128,frames,128,0,0,0,0,0,x,state[0..<128],a,a,a,a) || !ias_relu(a[0..<256*h1*65]) {return false;}
+ if !ias_launch(2,256*h2*33,h1,65,256,256,256,first,0,a,state[128..<16768],w[sub[2]..<sub[2]+2304],w[sub[3]..<sub[3]+256],b,b) || !ias_launch(3,16640,h1,65,0,0,0,0,0,a,state[128..<16768],a,a,a,a) {return false;}
+ if !ias_launch(4,256*h2*33,h2,33,256,256,0,0,0,b,w[sub[4]..<sub[4]+65536],w[sub[5]..<sub[5]+256],a,a,a) || !ias_relu(a[0..<256*h2*33]) {return false;}
+ if !ias_launch(2,256*h3*17,h2,33,256,256,256,first,0,a,state[16768..<25216],w[sub[6]..<sub[6]+2304],w[sub[7]..<sub[7]+256],b,b) || !ias_launch(3,8448,h2,33,0,0,0,0,0,a,state[16768..<25216],a,a,a,a) {return false;}
+ if !ias_launch(4,256*h3*17,h3,17,256,256,0,0,0,b,w[sub[8]..<sub[8]+65536],w[sub[9]..<sub[9]+256],a,a,a) || !ias_relu(a[0..<256*h3*17]) {return false;}
+ gather:=work[IAS_GATHER..<IAS_GATHER+8704];h:=work[IAS_H..<IAS_H+2048];n:=work[IAS_N..<IAS_N+2048];tmp:=work[IAS_TMP..<IAS_TMP+2048];
+ if !ias_launch(5,8704,2,17,256,0,0,0,0,a,gather,gather,gather,gather,gather) || !ias_dense(2,4352,1024,true,gather,w,sub[10],sub[11],h) {return false;}
+ cached:=ifx chunk<35 then chunk*2 else 70;keys:=(cached+2)*1024;keep:=ifx cached<70 then cached+2 else 70;
+ for layer:0..<24 {
+  at:=IAS_LAYERS[layer];base:=IAS_CACHE_BASE+layer*IAS_LAYER_STATE;q:=work[IAS_Q..<IAS_Q+2048];k:=work[IAS_K..<IAS_K+keys];v:=work[IAS_V..<IAS_V+keys];
+  if !ias_ff(w,at[..],12,11,5,6,work) || !ias_norm(2,1024,h,w,at[18],at[17],n) {return false;}
+  if cached>0 {if !ias_copy(state[base..<base+cached*1024],k[0..<cached*1024]) || !ias_copy(state[base+71680..<base+71680+cached*1024],v[0..<cached*1024]) {return false;}}
+  if !ias_dense(2,1024,1024,false,n,w,at[23],0,q) || !ias_dense(2,1024,1024,false,n,w,at[21],0,k[cached*1024..<keys]) || !ias_dense(2,1024,1024,false,n,w,at[25],0,v[cached*1024..<keys]) {return false;}
+  if !ias_launch(13,16,cached,1024,8,0,0,0,0,q,k,v,state[base+151552..<base+297984],w[at[19]..<at[19]+2048],tmp) || !ias_dense(2,1024,1024,false,tmp,w,at[22],0,n) || !ias_add(n,h,1) {return false;}
+  two:=work[IAS_TWO..<IAS_TWO+4096];glu:=work[IAS_GLU..<IAS_GLU+2048];history:=work[IAS_HISTORY..<IAS_HISTORY+10240];dw:=work[IAS_DW..<IAS_DW+2048];
+  if !ias_norm(2,1024,h,w,at[10],at[9],n) || !ias_dense(2,1024,2048,false,n,w,at[3],0,two) || !ias_launch(6,2048,1024,0,0,0,0,0,0,two,glu,glu,glu,glu,glu) {return false;}
+  if !ias_copy(state[base+143360..<base+151552],history[0..<8192]) || !ias_copy(glu,history[8192..<10240]) || !ias_launch(7,2048,1024,0,0,0,0,0,0,history,w[at[0]..<at[0]+9216],dw,dw,dw,dw) {return false;}
+  if !ias_norm(2,1024,dw,w,at[2],at[1],n) || !ias_silu(n) || !ias_dense(2,1024,1024,false,n,w,at[4],0,tmp) || !ias_add(tmp,h,1) || !ias_ff(w,at[..],14,13,7,8,work) || !ias_norm(2,1024,h,w,at[16],at[15],n) || !ias_copy(n,h) {return false;}
+  start:=(cached+2-keep)*1024;
+  if !ias_copy(k[start..<keys],state[base..<base+keep*1024]) || !ias_copy(v[start..<keys],state[base+71680..<base+71680+keep*1024]) || !ias_copy(history[2048..<10240],state[base+143360..<base+151552]) {return false;}
+ }
+ dec:=IAS_DEC;return ias_dense(2,1024,640,true,h,w,dec[0],dec[1],work[IAS_PROJ..<IAS_PROJ+1280]);
+}
+ias_predict :: (w:[]f32,work:[]f32,state:[]f32,token:int)->bool {
+ d:=IAS_DEC;x:=work[IAS_DX..<IAS_DX+640];g1:=work[IAS_G1..<IAS_G1+2560];g2:=work[IAS_G2..<IAS_G2+2560];
+ if !ias_copy(w[d[2]+token*640..<d[2]+(token+1)*640],x) {return false;}
+ for layer:0..<2 {
+  base:=IAS_DEC_STATE+layer*1280;h:=state[base..<base+640];c:=state[base+640..<base+1280];i:=3+layer*4;
+  if !ias_dense(1,640,2560,true,x,w,d[i],d[i+1],g1) || !ias_dense(1,640,2560,true,h,w,d[i+2],d[i+3],g2) || !ias_add(g2,g1,1) || !ias_launch(14,640,640,0,0,0,0,0,0,g1,c,h,h,h,h) || !ias_copy(h,x) {return false;}
+ }
+ return ias_dense(1,640,640,true,x,w,d[11],d[12],state[IAS_DEC_STATE+2560..<IAS_DEC_STATE+3200]);
+}
+ias_decode_chunk :: (w:[]f32,work:[]f32,state:[]f32,chunk:int,tokens:[]int,positions:[]int)->int #export_c {
+ d:=IAS_DEC;if chunk==0 {if !ias_predict(w,work,state,1024) {return -1;}}
+ count:=0;logits:[1025]f32;
+ for t:0..<2 {for step:0..<10 {
+  joint:=work[IAS_JOINT..<IAS_JOINT+640];pred:=state[IAS_DEC_STATE+2560..<IAS_DEC_STATE+3200];output:=work[IAS_LOGITS..<IAS_LOGITS+1025];
+  if !ias_copy(work[IAS_PROJ+t*640..<IAS_PROJ+(t+1)*640],joint) || !ias_add(pred,joint,1) || !ias_relu(joint) || !ias_dense(1,640,1025,true,joint,w,d[13],d[14],output) || !ias_read(output,logits[..]) {return -1;}
+  pick:=0;for i:0..<1025 {if (f32_bits(logits[i])&0x7f800000)==0x7f800000 {return -1;}if logits[i]>logits[pick] {pick=i;}}
+  if pick==1024 {break;}if count>=tokens.count || count>=positions.count {return -1;}
+  tokens[count]=pick;positions[count]=chunk*2+t;count+=1;
+  if !ias_predict(w,work,state,pick) {return -1;}
+ }}return count;
+}
+ias_cache_snapshot :: (state:[]f32,chunks:int,layer:int,keys:[]f32,conv:[]f32)->int #export_c {
+ if chunks<1 || layer<0 || layer>=24 || state.count<IAS_STATE {return -1;}
+ n:=ifx chunks<35 then chunks*2 else 70;if keys.count<n*1024 || conv.count<8192 {return -1;}
+ base:=IAS_CACHE_BASE+layer*IAS_LAYER_STATE;
+ if !ias_read(state[base..<base+n*1024],keys) || !ias_read(state[base+143360..<base+151552],conv) {return -1;}return n;
+}

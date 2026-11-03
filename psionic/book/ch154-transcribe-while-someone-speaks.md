@@ -1,25 +1,14 @@
 # 154. Transcribe while someone speaks
 
-> **Status: partly implemented.** Chapter 152's encoder runs as a stream on
-> the CPU with seeded weights: feature frames arrive in numbered chunks, each
-> layer reads a limited left context from per-layer caches and its
-> depthwise convolution reads only the past, greedy CTC decoding emits
-> partial hypotheses that only grow, the end of turn flushes and closes the
-> utterance, and each final hypothesis carries its latency in audio time.
-> The stream matches a whole-utterance reference bit for bit, and with the
-> whole utterance in one chunk it matches chapter 152's encoder bit for bit.
-> Still to do: streaming a real model (Parakeet was trained with full attention
-> and centred convolutions, so it is not a cache-aware streaming model), streaming the
-> a real transducer decoder, computing features from audio as it arrives,
-> taking end of turn and barge-in from the voice engine through
-> `verse/platform/voice.h`, and wall-clock latency at P50 and P99 on a named
-> host.
-
-The [original-weight follow-up profile](../docs/parakeet.md#incremental-follow-up-12673)
-now pins NVIDIA's separate cache-aware Nemotron/Parakeet-family English RNNT
-checkpoint and its reference contract. Its files have been verified on Linux;
-no original-weight streaming inference or consumer adoption is qualified yet.
-The seeded implementation and examples below retain their existing profile.
+> **Status: implemented for two named profiles.** The seeded CPU
+> `psionic-listen-v1` tutorial below remains unchanged. The separate original-
+> weight `psionic-nemotron-streaming-en-v1` runs on Linux CUDA: incremental
+> 16 kHz features, causal subsampling, bounded attention/convolution caches,
+> persistent RNNT state, append-only partials, finalization and current-epoch
+> cancellation. It is qualified on recorded public speech against the pinned
+> independent reference. See [the original-weight section](#original-weight-streaming-on-linux)
+> and [the evidence](../../docs/verification/incremental-asr-2026-11-03/README.md).
+> Mac/Metal streaming effects and live microphone/UI adoption are future work.
 
 [Chapter 152](ch152-a-speech-encoder.md) encodes a whole utterance at once.
 Every frame attends to every other frame, and every depthwise convolution
@@ -35,7 +24,7 @@ frame's value is final as soon as its chunk has arrived, and each layer only
 has to keep the keys, values and convolution inputs of the frames that later
 chunks can still read.
 
-Everything here is in [`listen.coax`](../lib/listen.coax). It reuses
+The seeded tutorial is in [`listen.coax`](../lib/listen.coax). It reuses
 chapter 152's pieces (subsampling, layer norm, feed-forward modules,
 position sinusoids, softmax, CTC head) and chapter 153's edit distance. The
 profile is chapter 152's, `psionic-conformer-v1` (f32 storage, binary64
@@ -45,7 +34,7 @@ chunk and 256 frames of attention context.
 
 ## What streams, and what does not
 
-The encoder in this chapter is a synthetic, seeded one: two layers, width 8,
+The tutorial encoder below is a synthetic, seeded one: two layers, width 8,
 16 mels, three causal convolution taps, and three word classes plus the
 blank. Its input is seeded feature frames, not audio. Its transcripts are
 sequences of three made-up words, " ba", " de" and " ko". Nothing here
@@ -56,11 +45,11 @@ result.
 Parakeet, chapter 153's model, cannot be streamed this way:
 
 - its width is 1,024; chapter 153 now runs that full width offline, while
-  this chapter's qualified stream remains the small seeded profile;
+  the tutorial stream below retains its small seeded profile;
 - it was trained with full attention and centred depthwise convolutions, so
   restricting it to past context gives a different model, not a streaming
   copy of the same one. The separately trained cache-aware RNNT candidate is
-  pinned in the follow-up manifest, but has not been run by this chapter;
+  qualified separately in the original-weight section below;
 - its decoder is chapter 153's TDT transducer, which this chapter does not
   stream. The stream here decodes with chapter 152's CTC head.
 
@@ -676,34 +665,77 @@ utterance 1 ending with no frames: length
 The checks go further: each refusal is followed by the chunk that should
 have come, and the utterance decodes exactly as an undisturbed one does.
 
-## What remains
+## Original-weight streaming on Linux
 
-- **A real streaming model.** Offline Parakeet TDT v3 does not fit chapter
-  152's bounds and is not cache-aware. The separate original-weight candidate
-  is pinned in [the follow-up manifest](../fixtures/parakeet-streaming/manifest.json).
-  An encoder/cache implementation that admits its width and recorded reference
-  transitions are still needed before any real transcript can be streamed.
-- **The transducer.** The pinned candidate uses RNNT, so its prediction-network
-  state and last emitted token must persist across chunks. Chapter 153's
-  separate TDT decoder jumps ahead by predicted
-  durations; streaming it means carrying its prediction-network state and
-  stopping a jump at the chunk's end. Here the stream decodes with CTC.
-- **Features from audio.** Chapter 151's whole-utterance normalization cannot
-  publish stable incremental features. The candidate uses no such
-  normalization; it needs preemphasis/STFT carry and explicit first/final
-  padding with bounded lookahead. Uncentred interior windows with overlap
-  must reproduce the pinned frontend's centred reference frames.
-- **The voice engine.** End of turn arrives here as a flag on the last chunk.
-  [`verse/voice.coax`](../../verse/voice.coax) decides end of turn and
-  barge-in, but it cannot be loaded into the same Coax program as these
-  units (both define top-level names such as `down` and `cut`), so the
-  events would come through
-  [`verse/platform/voice.h`](../../verse/platform/voice.h). Barge-in is not
-  handled. Nothing here changes the voice engine's consent or floor rules.
-- **Wall-clock latency.** The latency here is in audio time. Compute time per
-  chunk at P50 and P99 on a named host is not measured.
-- **Other models.** Voxtral-Mini-4B-Realtime (Apache-2.0) was a candidate in
-  the plan; it is not used.
+The original-weight path is in [`incremental/`](../lib/incremental/). It uses
+NVIDIA's hash-pinned cache-aware Nemotron/Parakeet-family English 0.6B model,
+with a 24-layer width-1024 FastConformer and a two-layer width-640 RNNT
+prediction network. It is a separate model and numerical profile from chapter
+153's multilingual offline TDT v3. Existing chapter-153 evidence is preserved.
+
+[`front.coax`](../lib/incremental/front.coax) keeps 512 preemphasized samples,
+waits for each frame's bounded right context and publishes unnormalized
+128-mel features. The first model chunk has nine feature frames; later ones
+have sixteen. A short final chunk is zero-padded in feature space as the
+qualified reference requires. The padding is not recorded audio. Every chunk
+encodes two 80 ms rows. Emission positions are encoder coordinates, not
+acoustically aligned word timestamps.
+
+[`schedule.coax`](../lib/incremental/schedule.coax) carries one input row at
+each causal subsampling stage, seventy K/V rows and eight convolution rows
+per encoder layer, and both LSTM hidden/cell states. Relative-position
+projections are computed once when the model opens. The native CUDA host
+binds views and moves bytes; every kernel, launch order and decode decision
+is Coax. A shared GPU may retain a bounded weight prefix and transfer other
+original F32 views through two fixed buffers. Precision and arithmetic do not
+change. Model, scratch, caches, token and text capacities are fixed;
+exhaustion refuses instead of growing with the utterance.
+
+[`policy.coax`](../lib/incremental/policy.coax) owns the current stream epoch,
+exact push sequence and 60-second cap. The whole push is validated before any
+sample is consumed. Old/duplicate/gap input refuses unchanged; cancellation
+clears the owner and work histories. A device failure terminates that epoch.
+A reset requires a newer epoch. [`voice.coax`](../lib/incremental/voice.coax)
+adds media/turn ownership: partials are display-only, and a final is eligible
+once. It accepts the existing voice protocol's initial media epoch zero.
+
+Build and run the actual original-weight consumer:
+
+```shell
+coax/web/tool.sh psionic/platform/incremental-build.coax
+psionic/build/incremental/psionic-incremental "$STREAMING_MODEL" \
+  psionic/fixtures/parakeet/6930-75918-0011.pcm
+```
+
+The [Coax example](../examples/transcribe-incremental.coax) feeds a public
+recording incrementally through the resident C API, prints real partials and
+offers exactly one final through Aethyr's existing question/answer replay
+gate. It checks cancellation, stale media/turns and late answers without
+opening a microphone. Library callers use
+[`psionic-incremental.h`](../platform/psionic-incremental.h); ordinary offline
+Parakeet transcription retains its existing model and API.
+
+The reference uses pinned original weights and Transformers source. The
+published eager module and its generic mask factory disagree about additive
+versus boolean masks; the independent harness explicitly adapts mask
+representation before both padding-row detection and attention. Without the
+adapter the initial chunk is nonfinite, or an attention-only adaptation
+zeros convolution input and emits all blanks. The adapter, failed observations
+and actual tensor/token/cache comparisons are recorded in the evidence; no
+reference numerical weights or attention permissions were changed.
+
+## Further adoption
+
+- The qualified original-weight backend is Linux CUDA. Metal effects and
+  other hardware need their own native qualification.
+- The file-backed example exercises actual incremental recognition and
+  Aethyr final admission. The default Mac/TUI dictation and deployed Verse
+  voice host retain their existing final-only paths; live microphone/UI
+  partials need explicit adoption rather than a silent provider substitution.
+- The new model is English only. A multilingual checkpoint, vocabulary
+  rescoring, alternative decoder or changed lookahead is a separate profile.
+- Recorded finite accuracy and latency are observations on the named host,
+  not a population-quality or hard real-time guarantee.
 
 ## Sources
 

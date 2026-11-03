@@ -3425,6 +3425,42 @@ qualify the named offline Metal profile, not population accuracy, a complete
 CPU encoder, true streaming or key-release latency. Evidence:
 `psionic/docs/verification/parakeet-2026-11-02/README.md`.
 
+## Incremental speech owns a separate model and current stream epoch
+
+`psionic-nemotron-streaming-en-v1` is the hash-pinned original English RNNT
+checkpoint, separate from the multilingual offline TDT profile. Coax owns its
+incremental features, causal subsampling, fixed attention/convolution histories,
+LSTM state, GPU arithmetic/schedule and append-only hypotheses. The C host
+performs file, memory, mutex and CUDA transport effects. Linux CUDA is the
+qualified backend; absence refuses rather than selecting a different model.
+
+`psionic/lib/incremental/policy.coax` (`#authority`) admits one nonzero local
+epoch, strictly increasing resets and exact push sequences. Samples are finite
+mono F32 at 16 kHz in [-1,1], at most 16,384 per push and 960,000 per stream.
+Zero length is final-only. Whole-push validation precedes consumption;
+stale/duplicate/gap/extent/audio refusals preserve the current stream. A backend
+failure invalidates text/inspection histories and requires reset. Cancellation
+clears host and mutable device histories; final/cancelled streams accept no
+further audio. Snapshots copy only under a current live/final epoch and sufficient
+capacity. Fixed token/text exhaustion fails the epoch. Backing weights/tokenizer
+remain immutable while mapped; fixed inference storage excludes OS file cache
+and driver/JIT allocations. A bounded transfer mode changes byte residency only.
+
+`incremental/voice.coax` (`#authority`) binds local tickets to existing voice
+media/turn identities (including initial media epoch zero). Partials are display
+only; one final is eligible for the current turn. The file-backed original-weight
+consumer uses the actual Aethyr question/answer gate, revokes tickets on
+barge-in/cancel and refuses late answers. It does not replace a default provider.
+
+Checks: 58/58 stream/model-admission mutants and 33/33 voice mutants killed;
+frontend/kernel hand checks, native API/refusal/sanitizer consumer, and thirteen
+original-weight reference cases including exact partials, token positions,
+features, caches, ragged pushes and a continuous 30.46 s stream. The explicit
+Transformers mask-representation adapter, finite quality, latency, fixed-memory
+observations and remaining platform/UI adoption are recorded in
+`docs/verification/incremental-asr-2026-11-03/README.md`. Chapter 153's offline
+profile/evidence remains unchanged.
+
 ## File transcription defaults to bounded local Parakeet
 
 The ordinary `openagents transcribe FILE` selects the pinned Parakeet model;

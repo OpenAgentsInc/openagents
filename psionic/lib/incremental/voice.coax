@@ -1,0 +1,26 @@
+// Existing voice phase numbers: PARTIAL=2, FINAL=3. A partial is display
+// only; one final may answer the current turn. No new protocol identity.
+#authority;
+IasVoice :: struct {media:u64;turn:u64;ticket:u64;phase:int;}
+#test "streaming voice binds media turn and monotonic local ticket" {
+ s:=ias_voice_start(IasVoice.{},3,7);#assert s.media==3 && s.turn==7 && s.ticket==1 && s.phase==1;
+ #assert ias_voice_event(s,3,7,1,2) && ias_voice_event(s,3,7,1,3);
+ #assert !ias_voice_event(s,2,7,1,3) && !ias_voice_event(s,3,6,1,3) && !ias_voice_event(s,3,7,0,3);
+ #assert !ias_voice_event(s,3,7,1,1) && !ias_voice_event(s,3,7,1,4);
+ #assert ias_voice_start(s,3,7).ticket==1 && ias_voice_start(s,2,8).ticket==1;
+ s=ias_voice_start(s,3,8);#assert s.ticket==2 && s.turn==8 && !ias_voice_event(s,3,7,1,3);
+ s=ias_voice_stop(s);#assert s.phase==3 && !ias_voice_event(s,3,8,2,2) && !ias_voice_event(s,3,8,2,3);
+ s=ias_voice_start(s,4,1);#assert s.ticket==3 && s.media==4 && s.turn==1;
+ s=ias_voice_finish(s);#assert s.phase==2 && !ias_voice_event(s,4,1,3,3);
+}
+#test "streaming voice accepts the protocol's initial zero media epoch and refuses zero turns" {
+ s:IasVoice;#assert ias_voice_start(s,0,1).phase==1 && ias_voice_start(s,1,0).phase==0;
+ s.ticket=18446744073709551615;#assert ias_voice_start(s,1,1).phase==0;
+}
+ias_voice_start :: (s:IasVoice,media:u64,turn:u64)->IasVoice {
+ if turn==0 || media<s.media || (media==s.media && turn<=s.turn) || s.ticket==18446744073709551615 {return s;}
+ return IasVoice.{media=media,turn=turn,ticket=s.ticket+1,phase=1};
+}
+ias_voice_event :: (s:IasVoice,media:u64,turn:u64,ticket:u64,phase:int)->bool {return s.phase==1 && s.media==media && s.turn==turn && s.ticket==ticket && (phase==2 || phase==3);}
+ias_voice_stop :: (s:IasVoice)->IasVoice {r:=s;r.phase=3;return r;}
+ias_voice_finish :: (s:IasVoice)->IasVoice {r:=s;r.phase=2;return r;}

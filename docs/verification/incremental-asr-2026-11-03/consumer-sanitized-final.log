@@ -1,0 +1,13 @@
+partial at 9280 samples: I
+partial at 11840 samples: I am
+partial at 16960 samples: I am convinced
+partial at 24640 samples: I am convinced of
+partial at 27200 samples: I am convinced of what
+partial at 29760 samples: I am convinced of what I
+partial at 32320 samples: I am convinced of what I say
+partial at 40000 samples: I am convinced of what I say, said
+partial at 42560 samples: I am convinced of what I say, said the
+partial at 50240 samples: I am convinced of what I say, said the Count
+final: I am convinced of what I say, said the Count
+first partial wall ms: 126, total wall ms: 974
+ABI refusals, media/turn ownership, partial-only display, one final and stale/barge-in refusal PASS

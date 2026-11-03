@@ -104,3 +104,10 @@ separately for each realm (`everglade`, `deadgears`) and mode (`debug`,
 show how sanitizer builds reuse admitted debug C. These are required companion
 checks when their source closures change; ordinary imported authority checks
 still run before emission.
+
+The separate original-weight Linux CUDA streaming consumer,
+[`psionic/examples/transcribe-incremental.coax`](../psionic/examples/transcribe-incremental.coax),
+feeds real partials from recorded audio and admits one final through the same
+voice replay gate. Partials never enter the realm record; cancellation revokes
+late answers. The default voice host remains final-only.
+[Qualification](../docs/verification/incremental-asr-2026-11-03/README.md).

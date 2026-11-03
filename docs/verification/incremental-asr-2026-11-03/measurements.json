@@ -1,0 +1,70 @@
+{
+  "schema": "psionic.incremental-measurements.v1",
+  "percentile_rule": "sorted nearest-index round((N-1)*p); no interpolation",
+  "quality": {
+    "speech_cases": 7,
+    "words": 205,
+    "word_errors": 7,
+    "characters": 1099,
+    "character_errors": 9,
+    "first_word_exact": 6,
+    "last_word_exact": 7,
+    "no_speech_cases": 2,
+    "no_speech_false_positives": 0
+  },
+  "timings": {
+    "expanded": {
+      "open_seconds": 8.628633316024207,
+      "gpu_allocated_bytes": [
+        1073741824,
+        40000000,
+        3200000,
+        28726464
+      ],
+      "chunks": 460,
+      "chunk_p50_ms": 168.5724839917384,
+      "chunk_p99_ms": 182.0710450410843,
+      "first_partial_replay_wall_p50_ms": 759.8898900323547,
+      "first_partial_replay_wall_p99_ms": 1123.1189519749023,
+      "first_partial_audio_p50_s": 0.9,
+      "first_partial_audio_p99_s": 1.38,
+      "long_replay_seconds": 32.05395218398189
+    },
+    "resident": {
+      "open_seconds": 8.419914604979567,
+      "gpu_allocated_bytes": [
+        2472339460,
+        0,
+        3200000,
+        28726464
+      ],
+      "chunks": 460,
+      "chunk_p50_ms": 61.24433997320011,
+      "chunk_p99_ms": 61.81218003621325,
+      "first_partial_replay_wall_p50_ms": 85.01528401393443,
+      "first_partial_replay_wall_p99_ms": 146.66765299625695,
+      "first_partial_audio_p50_s": 0.9,
+      "first_partial_audio_p99_s": 1.38,
+      "long_replay_seconds": 10.944575308007188
+    },
+    "final": {
+      "open_seconds": 8.501203333958983,
+      "gpu_allocated_bytes": [
+        2472339460,
+        0,
+        3200000,
+        28726464
+      ],
+      "chunks": 460,
+      "chunk_p50_ms": 61.19195802602917,
+      "chunk_p99_ms": 61.79980596061796,
+      "first_partial_replay_wall_p50_ms": 84.916693973355,
+      "first_partial_replay_wall_p99_ms": 146.56826597638428,
+      "first_partial_audio_p50_s": 0.9,
+      "first_partial_audio_p99_s": 1.38,
+      "long_replay_seconds": 10.93883887300035,
+      "final_call_p50_ms": 28.82946201134473,
+      "final_call_p99_ms": 61.35817902395502
+    }
+  }
+}

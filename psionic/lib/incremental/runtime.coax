@@ -1,0 +1,83 @@
+// One resident model, one current media epoch and bounded incremental state.
+#load "policy.coax";
+#load "front.coax";
+#load "schedule.coax";
+IasStream :: struct {gate:IasGate;front:[1]IasFront;features:[2048]f32;filled:int;chunks:int;tokens:[4096]int;positions:[4096]int;count:int;text:[8000]u8;text_n:int;}
+
+ias_text :: (pieces:[]string,tokens:[]int,out:[]u8)->int {
+ n:=0;for token:tokens {if token<0 || token>=1024 || token>=pieces.count {return -1;}if token==0 {continue;}
+  piece:=pieces[token];i:=0;while i<piece.count {
+   if i+3<=piece.count && piece[i..<i+3]=="▁" {i+=3;if n>0 {if n>=out.count {return -1;}out[n]=' ';n+=1;}}
+   else {if n>=out.count {return -1;}out[n]=piece[i];n+=1;i+=1;}
+  }
+ }return n;
+}
+#test "incremental tokenizer publishes literal metaspace text and skips unknown controls" {
+ pieces:[1024]string;pieces[0]="<unk>";pieces[1]="▁hello";pieces[2]="world";pieces[3]="▁";out:[32]u8;
+ ids:=[4]int.[0,1,3,2];n:=ias_text(pieces[..],ids[..],out[..]);#assert n==11 && cast(string)out[0..<n]=="hello world";
+ #assert ias_text(pieces[..],ids[..],out[0..<10])== -1;
+ bad:=[1]int.[1024];#assert ias_text(pieces[..],bad[..],out[..])== -1;bad[0]= -1;#assert ias_text(pieces[..],bad[..],out[..])== -1;
+}
+#test "incremental snapshots refuse stale cancelled and short outputs before writing" {
+ s:[1]IasStream;s[0].gate=IasGate.{epoch=4,phase=1};s[0].text[0]='a';s[0].text[1]='b';s[0].text[2]='c';s[0].text_n=3;
+ out:=[4]u8.[9,9,9,9];#assert ias_stream_text(s[..],3,out[..])== -1 && out[0]==9;
+ #assert ias_stream_text(s[..],4,out[0..<2])== -1 && out[0]==9;
+ #assert ias_stream_text(s[..],4,out[..])==3 && cast(string)out[0..<3]=="abc" && out[3]==9;
+ for phase:0..<5 {s[0].gate.phase=phase;#assert (ias_stream_text(s[..],4,out[..])==3)==(phase==1 || phase==2);}
+}
+#test "incremental backend loss invalidates all prior text and inspection histories" {
+ s:[1]IasStream;s[0].gate=IasGate.{epoch=7,phase=1,sequence=3,samples=480};s[0].text_n=1;s[0].text[0]='x';s[0].chunks=2;s[0].count=1;
+ ias_stream_backend_failure(s[..]);out:[1]u8;
+ #assert s[0].gate.epoch==7 && s[0].gate.phase==4 && s[0].gate.sequence==3 && s[0].gate.samples==480;
+ #assert s[0].chunks==0 && s[0].count==0 && s[0].text_n==0 && s[0].text[0]==0 && ias_stream_text(s[..],7,out[..])== -1;
+}
+ias_stream_backend_failure :: (s:[]IasStream) #export_c {
+ if s.count!=1 {return;}g:=ias_fault(s[0].gate);s[0]=IasStream.{};s[0].gate=g;
+}
+ias_stream_reset :: (s:[]IasStream,epoch:u64,work:[]f32,state:[]f32)->bool #export_c {
+ if s.count!=1 || epoch==0 || epoch<=s[0].gate.epoch {return false;}
+ if !ias_device_reset(state) || !ias_zero(work) {ias_stream_backend_failure(s);return false;}
+ for i:0..<work.count {work[i]=0;}
+ g:=ias_begin(s[0].gate,epoch);s[0]=IasStream.{};s[0].gate=g;return true;
+}
+ias_stream_cancel :: (s:[]IasStream,epoch:u64,work:[]f32,state:[]f32)->bool #export_c {
+ if s.count!=1 || epoch!=s[0].gate.epoch {return false;}
+ g:=ias_cancel(s[0].gate,epoch);s[0]=IasStream.{};s[0].gate=g;for i:0..<work.count {work[i]=0;}return ias_device_reset(state) && ias_zero(work);
+}
+ias_stream_chunk :: (s:[]IasStream,w:[]f32,work:[]f32,state:[]f32)->bool {
+ need:=ifx s[0].chunks==0 then 9 else 16;
+ for i:0..<need*128 {work[IAS_FEATURES+i]=s[0].features[i];}
+ if !ias_encode(w,work,state,s[0].chunks) {return false;}
+ n:=ias_decode_chunk(w,work,state,s[0].chunks,s[0].tokens[s[0].count..<4096],s[0].positions[s[0].count..<4096]);
+ if n<0 {return false;}s[0].count+=n;s[0].filled=0;s[0].chunks+=1;return true;
+}
+ias_stream_frames :: (s:[]IasStream,final:bool,w:[]f32,work:[]f32,state:[]f32,bank:[]f64,window:[]f64)->bool {
+ while ias_front_ready(s[0].front[..],final) {
+  at:=s[0].filled*128;ias_front_frame(s[0].front[..],bank,window,s[0].features[at..<at+128]);s[0].filled+=1;
+  if s[0].filled==(ifx s[0].chunks==0 then 9 else 16) {if !ias_stream_chunk(s,w,work,state) {return false;}}
+ }return true;
+}
+// Status: 0 admitted, 1 epoch/order/extent refusal, 2 nonfinite/audio refusal,
+// 3 backend/capacity failure (terminal until reset). Validate the whole push
+// before changing state. Final-only zero mel padding never becomes PCM.
+ias_stream_push :: (s:[]IasStream,epoch:u64,sequence:u64,source:[]f32,final:bool,w:[]f32,work:[]f32,state:[]f32,bank:[]f64,window:[]f64,pieces:[]string)->int #export_c {
+ if s.count!=1 || !ias_admit(s[0].gate,epoch,sequence,source.count,final) {return 1;}
+ for value:source {if !(value>= -1 && value<=1) {return 2;}}
+ ok:=true;
+ for value:source {ias_front_sample(s[0].front[..],value);if !ias_stream_frames(s,false,w,work,state,bank,window) {ok=false;break;}}
+ if ok && final {
+  ok=ias_stream_frames(s,true,w,work,state,bank,window);
+  if ok && s[0].filled>0 {need:=ifx s[0].chunks==0 then 9 else 16;for i:s[0].filled*128..<need*128 {s[0].features[i]=0;}ok=ias_stream_chunk(s,w,work,state);}
+ }
+ if ok {n:=ias_text(pieces,s[0].tokens[0..<s[0].count],s[0].text[..]);if n<0 {ok=false;}else {s[0].text_n=n;}}
+ if !ok {ias_stream_backend_failure(s);return 3;}
+ s[0].gate=ias_commit(s[0].gate,source.count,final);return 0;
+}
+ias_stream_text :: (s:[]IasStream,epoch:u64,out:[]u8)->int #export_c {
+ if s.count!=1 || !ias_can_publish(s[0].gate,epoch) || out.count<s[0].text_n {return -1;}
+ n:=s[0].text_n;for i:0..<n {out[i]=s[0].text[i];}return n;
+}
+ias_feature_snapshot :: (s:[]IasStream,work:[]f32,out:[]f32)->int #export_c {
+ if s.count!=1 || s[0].chunks<1 {return 0;}n:=ifx s[0].chunks==1 then 9 else 16;
+ if work.count<IAS_FEATURES+n*128 || out.count<n*128 {return -1;}for i:0..<n*128 {out[i]=work[IAS_FEATURES+i];}return n;
+}

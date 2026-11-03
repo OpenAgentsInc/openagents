@@ -1,0 +1,116 @@
+{
+  "schema": "psionic.incremental-qualification.v1",
+  "profile": "psionic-nemotron-streaming-en-v1",
+  "date": "2026-11-03",
+  "host": "coderos-4080",
+  "platform": "Linux-6.18.49-x86_64-with-glibc2.42",
+  "base_commit": "e1e427275f0c76bc3dcd4d5a6702410a94a0f2c4",
+  "source_sha256": {
+    "aethyr/voice.coax": "f86a0fe302ad3a64190c554fc4dfa155c6193830de7ad369bd1864ed2459b854",
+    "psionic/examples/transcribe-incremental.coax": "858d25d009e73102f08d4df76da75828b48bcb50974f24861ac22edbe894aa82",
+    "psionic/lib/incremental/front.coax": "454d2838489b225408b8799e7d027f756b06406a300e97d8e470d65f78c70ba8",
+    "psionic/lib/incremental/kernels.coax": "86e49d3f84fa7d47b736f42d70b68f93f4ae5fc786726a649bb71c4cd808c714",
+    "psionic/lib/incremental/model.coax": "320f71b9b2172d24dc1e7029f41da1235299d511c3055d98368eec3d49411650",
+    "psionic/lib/incremental/policy.coax": "c97783a640147dd197571fc62cc43a966cd7559523d4569988699c9d1d61be40",
+    "psionic/lib/incremental/runtime.coax": "41990b3f00e73b89d39d3037f9332fc573f1fc7ba5af236bf1fa1d1805e730c1",
+    "psionic/lib/incremental/schedule.coax": "491d1a428b16d4289996b458d3cc0c1f8b0d49592b41eade3fca428ccb3cacb7",
+    "psionic/lib/incremental/voice.coax": "1bc36b9cb4e0b7382583cd2ddd3e8b59907b57a03e374d1542db0178718131b5",
+    "psionic/lib/parakeet.coax": "eeede0238558b34f2dc60e307800f807150100b64de1f2e815f20c2bfb44f65e",
+    "psionic/lib/whisper/device-common.coax": "17456fed9c0177236237a01c9f903b2d2bed9dd6319007fffaaf909041f82b4d",
+    "psionic/platform/cuda-host.c": "212c2b82e55715704e06333ce3e9d1741324216051221fac273883872ac2aa3e",
+    "psionic/platform/cuda-host.h": "d716ee86132c72c107eea731493bdce67b95bc49c4eb37fdb972dbc9abdef2a5",
+    "psionic/platform/incremental-build.coax": "b43f8dfff11f1044ba8fc13f0bea809d03fbbcefccaf4dfef3153318319d347f",
+    "psionic/platform/incremental-cli.c": "596cf7e98536bd0b46c1d85f906f8051921c1a50e3e806253767770aae57f3ce",
+    "psionic/platform/incremental-native.c": "38f7a3b195921590a88d4329fb685d094d6338d2ff8881f37a29a601e82e22ba",
+    "psionic/platform/psionic-incremental.h": "4409cf17867aea97881839550bb0cfb31f3599257abec82c8295cbb2fb1fcaf3",
+    "psionic/tests/incremental_asr_compare.py": "1e55c9b377171d32d9b1f00ab4b847220f25a41bb345206417253573009757f6",
+    "psionic/tests/incremental_asr_reference.py": "a1209ac3f17e53cff023bc2b06ff616a1e82bca2f73df292c3e3df114236ad74"
+  },
+  "toolchain": {
+    "coax_binary_sha256": "54308753598854075405f995a04eb94f64eeb85f231ee6840a42e77afe6d2e80",
+    "cc": "gcc 15.2.0",
+    "nvrtc": "13.2.51",
+    "normal_bootstrap_release_qualification": false
+  },
+  "artifacts": {
+    "psionic/build/incremental/libpsionic-incremental.so": "bb37553455f68cc38bdce1c0585133a6b8d3df972476e6ca952173573adaf458",
+    "psionic/build/incremental/psionic-incremental": "15d4d13063dfc9f9ee9ae548a482e6f6c52a62e4b0a8414328c34553e2d0ebf2",
+    "psionic/build/incremental-sanitized/psionic-incremental": "ad6b2a8965774d9febfeae3af5a4238d4580edf5845b583c8961fc20faf0b3b5"
+  },
+  "checks": {
+    "runtime_initial": "250/250, before size/snapshot/backend-loss additions; runtime-checks.log",
+    "kernel_hand_checks": "6/6 observed during implementation; generated CUDA then qualified on original-reference stages",
+    "later_checks": [
+      "policy-debug.log",
+      "policy-release.log",
+      "voice-debug.log",
+      "voice-release.log",
+      "snapshot-check.log",
+      "backend-failure-check.log"
+    ],
+    "mutants": {
+      "stream_model_policy": {
+        "killed": 58,
+        "survived": 0
+      },
+      "voice_policy": {
+        "killed": 33,
+        "survived": 0
+      }
+    },
+    "native_normal": "consumer.log: exit 0",
+    "native_sanitized": "consumer-sanitized-final.log: exit 0; checked generated CPU code plus C effects, ASan/UBSan, actual CUDA inference",
+    "sanitizer_scope": "host memory/undefined behavior; CUDA device arithmetic checked separately by reference, no compute-sanitizer or leak-sanitizer claim",
+    "books": [
+      "book-psionic.log",
+      "book-aethyr.log"
+    ],
+    "check_sh": "bash -n passes; two authorities registered for future focused gates; prior passing mutations reused",
+    "tools_check": "tools-check-final.log: existing unrelated missing headers and port-list inconsistency; both new oracle headers accepted",
+    "regular_160ms_push": "comparison-160ms.json: exact partial/final/tokens/positions and tensor/cache tolerances pass"
+  },
+  "sanitizer_environment": {
+    "ASAN_OPTIONS": "detect_leaks=0:protect_shadow_gap=0",
+    "UBSAN_OPTIONS": "halt_on_error=1",
+    "LD_LIBRARY_PATH": "/home/christopherdavid/cuda-13.2/lib:/run/opengl-driver/lib"
+  },
+  "oracle_environment": {
+    "python": "/tmp/psionic-parakeet-reference-env/bin/python",
+    "source": "/tmp/incremental-asr-ref/transformers",
+    "LD_LIBRARY_PATH": "/nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib:/run/opengl-driver/lib"
+  },
+  "failures": [
+    {
+      "record": "consumer-sanitized.log",
+      "result": "CUDA cuInit error 2 with default ASan shadow gap; minimal CUDA probe passes protect_shadow_gap=0"
+    },
+    {
+      "record": "consumer-sanitized-fixed.log",
+      "result": "NVRTC companion library not found; explicit CUDA library directory fixes it"
+    },
+    {
+      "record": "/tmp/incremental-asr-ref/reference-before-factory-adapter",
+      "result": "attention-only mask adaptation yielded all blanks; replaced by factory representation adapter after original first-chunk nonfinite observation"
+    }
+  ],
+  "book_evidence_review": "Reviewed native-library inventory addition and chapter-154 status. Refreshed only examples/SUMMARY hashes in existing bounded execution/GPU claims; their marked prose and other evidence scopes remain unchanged.",
+  "preserved_offline_sources": {
+    "psionic/lib/parakeet.coax": "unchanged",
+    "psionic/book/ch153-transcribe-with-parakeet.md": "unchanged",
+    "psionic/docs/verification/parakeet-2026-11-02/": "unchanged"
+  },
+  "limits": [
+    "Linux CUDA RTX4080 named profile only",
+    "English RNNT, one lookahead token, 60 second stream cap",
+    "explicit file-backed Aethyr consumer; no default provider or live microphone/UI adoption",
+    "no microphone/device/TCC/owner physical qualification",
+    "finite public corpus; no population quality or hard real-time claim"
+  ],
+  "rebase": {
+    "upstream": "eac8e9be11",
+    "inference_sources_unchanged": true,
+    "source_hashes_rechecked": true,
+    "global_book_checks": "After rebase both stop on upstream stale coax.wgsl.current evidence binding for verse/everglade/gpu.bindings. Prior base book checks passed with these same ASR sources. Retained rebased logs.",
+    "tools_check": "tools-check-rebased.log: 1745 tracked tools; six unrelated missing Firm reason headers. Both new oracle headers accepted."
+  }
+}

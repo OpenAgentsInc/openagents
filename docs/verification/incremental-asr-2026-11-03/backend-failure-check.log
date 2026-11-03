@@ -1,0 +1,3 @@
+ok   #test incremental backend loss invalidates all prior text and inspection histories (1 case, 37688 steps, 1 ms)
+1 of 253 checks (--only 'incremental backend loss'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

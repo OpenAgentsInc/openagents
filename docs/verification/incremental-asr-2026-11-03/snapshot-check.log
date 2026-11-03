@@ -1,0 +1,3 @@
+ok   #test incremental snapshots refuse stale cancelled and short outputs before writing (1 case, 19379 steps, 0 ms)
+1 of 253 checks (--only 'incremental snapshots'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

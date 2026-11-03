@@ -1,0 +1,60 @@
+// Runnable file-backed live stream: real incremental partials, then one
+// final answer through Aethyr's existing replay/event gate. Capture is an
+// explicit caller effect; this example never opens a microphone.
+#import "Basic";
+#load "../lib/incremental/voice.coax";
+#load "../../aethyr/voice.coax";
+iasi_open :: (directory:[]u8)->int #foreign;
+iasi_close :: (handle:int) #foreign;
+iasi_reset :: (handle:int,epoch:u64)->bool #foreign;
+iasi_push :: (handle:int,epoch:u64,sequence:u64,samples:[]f32,final:bool)->int #foreign;
+iasi_cancel :: (handle:int,epoch:u64)->bool #foreign;
+iasi_text :: (handle:int,epoch:u64,out:[]u8)->int #foreign;
+iasi_info :: (handle:int,out:[]int)->bool #foreign;
+iasi_pcm :: (path:[]u8,out:[]s16)->int #foreign;
+iasi_now :: ()->int #foreign;
+
+// This is also the native ABI/lifecycle check. It uses only injected data
+// and the pinned resident model; refusal cases never start recognition.
+iasi_boundaries :: (h:int)->bool {
+ audio:[16385]f32;out:=[4]u8.[7,7,7,7];info:[6]int;
+ if !iasi_reset(h,1) || iasi_reset(h,1) || iasi_push(h,2,0,audio[0..<160],false)!=1 || iasi_push(h,1,1,audio[0..<160],false)!=1 || iasi_push(h,1,0,audio[..],false)!=1 {return false;}
+ zero:f32=0;audio[0]=zero/zero;if iasi_push(h,1,0,audio[0..<1],false)!=2 {return false;}audio[0]=0;
+ if !iasi_info(h,info[..]) || info[1]!=0 || info[5]!=0 || iasi_text(h,2,out[..])!= -1 || out[0]!=7 {return false;}
+ if !iasi_cancel(h,1) || iasi_text(h,1,out[..])!= -1 || iasi_push(h,1,0,audio[0..<1],false)!=1 || !iasi_reset(h,2) || iasi_cancel(h,1) {return false;}
+ if iasi_push(h,2,0,audio[0..<0],true)!=0 || iasi_push(h,2,1,audio[0..<1],false)!=1 || iasi_text(h,2,out[..])!=0 {return false;}
+ return true;
+}
+
+iasi_main :: (args:[]string)->int #export_c {
+ if args.count!=2 {print("usage: psionic-incremental MODEL_DIRECTORY MONO_16KHZ_S16LE_PCM\n");return 2;}
+ path:[4096]u8;if args[0].count>4096 || args[1].count>4096 {return 2;}for i:0..<args[0].count {path[i]=args[0][i];}
+ h:=iasi_open(path[0..<args[0].count]);if h==0 {return 3;}defer {iasi_close(h);}
+ if !iasi_boundaries(h) {print("incremental ABI boundary check failed\n");return 4;}
+ for i:0..<args[1].count {path[i]=args[1][i];}
+ pcm:[960000]s16;n:=iasi_pcm(path[0..<args[1].count],pcm[..]);if n<1 || n>960000 {print("PCM input refused\n");return 2;}
+ r:[1]VoiceRealm;aethyr_voice_init(r[..],12673);verdict:=aethyr_voice_control(r[..],VOICE_PRESS);took:=aethyr_voice_step(r[..]);
+ q:=aethyr_voice_holding(r[..]);media:=aethyr_voice_epoch(r[..]);owner:=ias_voice_start(IasVoice.{ticket=2},cast(u64)media,cast(u64)q);
+ if !iasi_reset(h,owner.ticket) {return 3;}
+ at:=0;sequence:u64=0;last:=0;audio:[320]f32;text:[8000]u8;started:=iasi_now();first:= -1;
+ while at<n {
+  count:=ifx n-at<320 then n-at else 320;for i:0..<count {audio[i]=f32(pcm[at+i])/32768;}
+  if iasi_push(h,owner.ticket,sequence,audio[0..<count],false)!=0 {return 3;}
+  sequence+=1;at+=count;got:=iasi_text(h,owner.ticket,text[..]);if got<0 {return 3;}
+  if got!=last && ias_voice_event(owner,cast(u64)media,cast(u64)q,owner.ticket,2) {
+   if first<0 {first=iasi_now()-started;}print("partial at % samples: %\n",at,cast(string)text[0..<got]);last=got;
+  }
+  if r[0].applied!=0 {return 5;}
+ }
+ if iasi_push(h,owner.ticket,sequence,audio[0..<0],true)!=0 {return 3;}
+ got:=iasi_text(h,owner.ticket,text[..]);if got<0 || !ias_voice_event(owner,cast(u64)media,cast(u64)q,owner.ticket,3) {return 5;}
+ verdict=aethyr_voice_offer(r[..],q,media,cast(string)text[0..<got]);if verdict!=REPLAY_ACCEPTED {return 5;}
+ owner=ias_voice_finish(owner);if ias_voice_event(owner,cast(u64)media,cast(u64)q,owner.ticket,3) {return 5;}
+ took=aethyr_voice_step(r[..]);if took!=1 || r[0].applied!=1 {return 5;}
+ print("final: %\nfirst partial wall ms: %, total wall ms: %\n",cast(string)text[0..<got],first,iasi_now()-started);
+ // Barge-in/realm cancellation revokes both the native stream ticket and
+ // the realm's pending answer epoch, while partials never enter the record.
+ verdict=aethyr_voice_control(r[..],VOICE_CANCEL);took=aethyr_voice_step(r[..]);owner=ias_voice_stop(owner);
+ if !iasi_cancel(h,owner.ticket) || iasi_text(h,owner.ticket,text[..])!= -1 || aethyr_voice_offer(r[..],q,media,"late")!=REPLAY_STALE {return 5;}
+ print("ABI refusals, media/turn ownership, partial-only display, one final and stale/barge-in refusal PASS\n");return 0;
+}

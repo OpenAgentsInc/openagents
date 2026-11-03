@@ -72,7 +72,7 @@ tests were used for this pass.
 #12665, #12667, #12668, #12669, #12670 and #12672 are now closed: Linux
 evaluation/optimizations, microphone CLI, terminal insertion, Verse/Aethyr
 recognition, CLI vocabulary/formatting and Linux CUDA support have landed.
-#12673 remains open. The [epic](https://github.com/OpenAgentsInc/openagents/issues/12614)
+#12673 now has the separate Linux streaming qualification below. The [epic](https://github.com/OpenAgentsInc/openagents/issues/12614)
 has been reconciled with those issue states.
 
 The Mac host now consumes #12694's silence-padding plan. A separate Mac
@@ -85,4 +85,11 @@ Coder for Mac still needs vocabulary/code-formatting adoption, CPU rescoring
 measurements and actual release-to-composer timing. Physical microphone,
 permission/device and terminal acceptance remain in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
 The separate [incremental checkpoint/profile](../../psionic/docs/parakeet.md#incremental-follow-up-12673)
-is pinned for #12673; no original-weight streaming inference is qualified yet.
+is implemented and qualified for #12673 on Linux CUDA: real incremental
+features, persistent FastConformer/RNNT state, partials, finalization and
+reset/cancel/order refusal. The explicit file-backed Coax consumer admits only
+one final through Aethyr's existing media/turn gate. Thirteen original-weight
+cases and the bounded native API are recorded in the
+[incremental qualification](../verification/incremental-asr-2026-11-03/README.md).
+Mac/Metal streaming and live microphone/UI adoption remain engineering work;
+this changes neither the default dictation provider nor chapter 153's profile.

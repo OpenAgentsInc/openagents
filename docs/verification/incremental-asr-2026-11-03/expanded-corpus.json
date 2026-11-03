@@ -1,0 +1,83 @@
+[
+  {
+    "id": "clean-78",
+    "source_id": "1320-122617-0000",
+    "set": "clean-speaker",
+    "file": "/home/christopherdavid/.cache/openagents/corpus/dictation-12665/librispeech/clean-78.wav",
+    "sha256": "27e4cf2998ad8b13279721d2d5e21c6a2f9c232b4882a75f7857f760a6899453",
+    "reference": "notwithstanding the high resolution of hawkeye he fully comprehended all the difficulties and danger he was about to incur",
+    "source": "openslr/librispeech_asr@71cacbfb7e2354c4226d01e70d77d5fca3d04ba1 clean/test row 78"
+  },
+  {
+    "id": "clean-137",
+    "source_id": "5639-40744-0000",
+    "set": "clean-speaker",
+    "file": "/home/christopherdavid/.cache/openagents/corpus/dictation-12665/librispeech/clean-137.wav",
+    "sha256": "8069fd8ee2a120f435d682a8e27a9435fa6b80122b5d8843779178d19a3c1c2a",
+    "reference": "eleven o'clock had struck it was a fine clear night they were the only persons on the road and they sauntered leisurely along to avoid paying the price of fatigue for the recreation provided for the toledans in their valley or on the banks of their river",
+    "source": "openslr/librispeech_asr@71cacbfb7e2354c4226d01e70d77d5fca3d04ba1 clean/test row 137"
+  },
+  {
+    "id": "other-0",
+    "source_id": "7902-96591-0000",
+    "set": "other-speaker",
+    "file": "/home/christopherdavid/.cache/openagents/corpus/dictation-12665/librispeech/other-0.wav",
+    "sha256": "9d66592b32f4b6895ea06ed7c23b973142a652b6088d822366d27668c916456e",
+    "reference": "i am from the cutter lying off the coast",
+    "source": "openslr/librispeech_asr@71cacbfb7e2354c4226d01e70d77d5fca3d04ba1 other/test row 0"
+  },
+  {
+    "id": "other-135",
+    "source_id": "7018-75788-0000",
+    "set": "other-speaker",
+    "file": "/home/christopherdavid/.cache/openagents/corpus/dictation-12665/librispeech/other-135.wav",
+    "sha256": "69f91a81e8945ece564445bad7f50f85df4e7270ece206be8f0eb95d77c44126",
+    "reference": "then i took up a great stone from among the trees and coming up to him smote him therewith on the head with all my might and crushed in his skull as he lay dead drunk",
+    "source": "openslr/librispeech_asr@71cacbfb7e2354c4226d01e70d77d5fca3d04ba1 other/test row 135"
+  },
+  {
+    "id": "clean-55",
+    "source_id": "6930-81414-0005",
+    "set": "short",
+    "file": "/home/christopherdavid/.cache/openagents/corpus/dictation-12665/librispeech/clean-55.wav",
+    "sha256": "0a6dca0fecf51c3627ef8a249141708596e7e7ae940049c34ed86d85327f0a0f",
+    "reference": "what was that",
+    "source": "openslr/librispeech_asr@71cacbfb7e2354c4226d01e70d77d5fca3d04ba1 clean/test row 55"
+  },
+  {
+    "id": "clean-180",
+    "source_id": "260-123440-0001",
+    "set": "short",
+    "file": "/home/christopherdavid/.cache/openagents/corpus/dictation-12665/librispeech/clean-180.wav",
+    "sha256": "917e999926de7ce449b486ae6623fc43818f4dba873406754c534752a8e34130",
+    "reference": "poor alice",
+    "source": "openslr/librispeech_asr@71cacbfb7e2354c4226d01e70d77d5fca3d04ba1 clean/test row 180"
+  },
+  {
+    "id": "silence-1s",
+    "source_id": "silence-1s",
+    "set": "no-speech",
+    "file": "/tmp/incremental-asr-ref/silence-1s.pcm",
+    "sha256": "0c92bddb4e96f3ea9ec9f0f64a668255a6c15527ac09f6f119cafde60c7c4a39",
+    "reference": "",
+    "source": "deterministic synthetic evaluation signal; seed 12673, signed16le 16 kHz"
+  },
+  {
+    "id": "noise-1s",
+    "source_id": "noise-1s",
+    "set": "no-speech",
+    "file": "/tmp/incremental-asr-ref/noise-1s.pcm",
+    "sha256": "4f4946cb28c2e6c0c54379a4f05d30c2ea9c66457c591d57a793eee69f7477fe",
+    "reference": "",
+    "source": "deterministic synthetic evaluation signal; seed 12673, signed16le 16 kHz"
+  },
+  {
+    "id": "long",
+    "source_id": "seam-1320-122612 first three rows",
+    "set": "long",
+    "file": "/tmp/parakeet-seams-linux/long.pcm",
+    "sha256": "0ede7e2076519c509c842c8ed665912df99d6c27c744c6e9e1a8b3eca38356ad",
+    "reference": "since the period of our tale the active spirit of the country has surrounded it with a belt of rich and thriving settlements though none but the hunter or the savage is ever known even now to penetrate its wild recesses\nthe dews were suffered to exhale and the sun had dispersed the mists and was shedding a strong and clear light in the forest when the travelers resumed their journey\nafter proceeding a few miles the progress of hawkeye who led the advance became more deliberate and watchful",
+    "source": "dictation-eval-v1 clean-120/121/122 concatenated, 487360 samples; corpus manifest retains provenance"
+  }
+]

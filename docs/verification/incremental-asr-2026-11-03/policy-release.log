@@ -1,0 +1,5 @@
+ok   #test incremental stream gate owns exact epochs sequences and finite sample bounds (1 case, 773 steps, 0 ms)
+ok   #test incremental reset cancel final and failure preserve ownership (1 case, 746 steps, 0 ms)
+ok   #forall incremental model trust requires both exact file extents and both digests (16 cases, 512 steps, 0 ms)
+ok   #test incremental pinned data admits exact lengths only (1 case, 183 steps, 0 ms)
+4 checks, 4 passed, 0 failed

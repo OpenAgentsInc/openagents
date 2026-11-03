@@ -71,6 +71,13 @@ consent and explicit grants, never by the words spoken.
 8. **Privacy as stated.** The host keeps no audio after a turn. TLS to the
    server is not end-to-end between players, and the realm's UI says so.
 
+The separate [incremental Coax consumer](../../psionic/examples/transcribe-incremental.coax)
+uses this same gate with original-weight Linux CUDA recognition: recorded
+16 kHz audio produces display-only partials and exactly one admitted final.
+Cancel/barge-in invalidates the stream ticket and realm media epoch, so a late
+answer refuses. The [qualification](../../docs/verification/incremental-asr-2026-11-03/README.md)
+does not claim microphone/UI adoption or a change to the default voice host.
+
 ## A spoken request, as it runs
 
 Aethyrforge's forge bar is HOLD TO TALK. A press is a player control (a

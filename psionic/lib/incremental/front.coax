@@ -1,0 +1,42 @@
+// 16 kHz F32 -> original unnormalized log-mel frames[0]. Only 512 emphasized
+// samples survive. A frame waits for 256 samples of right context; final
+// zero padding is after preemphasis[0]. No utterance statistics are computed.
+#load "../spectral.coax";
+IasFront :: struct {ring:[512]f64;previous:f32;samples:int;frame:int;}
+
+#test "incremental preemphasis retains the previous sample and exactly 512 values" {
+ s:[1]IasFront;ias_front_sample(s[..],0.5);ias_front_sample(s[..],0.25);
+ #assert s[0].samples==2 && s[0].ring[0]==0.5 && s[0].ring[1]==f64(f32(0.25-f32(0.97*0.5)));
+ for i:0..<512 {ias_front_sample(s[..],0);}
+ #assert s[0].samples==514 && s[0].ring[1]==0 && s[0].previous==0;
+}
+#test "incremental spectral lookahead and final valid frame count are explicit" {
+ s:[1]IasFront;#assert !ias_front_ready(s[..],false) && !ias_front_ready(s[..],true);
+ s[0].samples=255;#assert !ias_front_ready(s[..],false) && ias_front_ready(s[..],true);
+ s[0].samples=256;#assert ias_front_ready(s[..],false);
+ s[0].frame=1;#assert !ias_front_ready(s[..],false) && !ias_front_ready(s[..],true);
+ s[0].samples=416;#assert ias_front_ready(s[..],false) && ias_front_ready(s[..],true);
+}
+#test "incremental silence uses original log guard and final padding creates no extra frame" #steps 100000000 {
+ s:[1]IasFront;bank:[32896]f64;window:[512]f64;out:[128]f32;
+ ias_front_tables(bank[..],window[..]);for i:0..<320 {ias_front_sample(s[..],0);}
+ for frame:0..<2 {#assert ias_front_ready(s[..],true);ias_front_frame(s[..],bank[..],window[..],out[..]);for v:out {#assert abs(f64(v)-log(SF_LOG_GUARD))<0.00001;}}
+ #assert s[0].frame==2 && !ias_front_ready(s[..],true);
+}
+ias_front_sample :: (s:[]IasFront,v:f32) {
+ value:=v;if s[0].samples>0 {value=v-f32(0.97*s[0].previous);}
+ s[0].ring[s[0].samples%512]=f64(value);s[0].previous=v;s[0].samples+=1;
+}
+ias_front_ready :: (s:[]IasFront,final:bool)->bool {return ifx final then s[0].frame<s[0].samples/160 else s[0].samples>=s[0].frame*160+256;}
+ias_front_tables :: (bank:[]f64,window:[]f64) #export_c {
+ spec:=sf_nemo_spec();r:=sf_mel_bank(spec,bank);sf_place(spec,window);
+ for i:0..<32896 {bank[i]=f64(f32(bank[i]));}for i:0..<512 {window[i]=f64(f32(window[i]));}
+}
+ias_front_frame :: (s:[]IasFront,bank:[]f64,window:[]f64,out:[]f32) {
+ re:[512]f64;im:[512]f64;
+ for j:0..<512 {at:=s[0].frame*160-256+j;if at>=0 && at<s[0].samples {re[j]=s[0].ring[at%512]*window[j];}}
+ sf_forward(re[..],im[..]);power:[257]f64;
+ for k:0..<257 {power[k]=re[k]*re[k]+im[k]*im[k];}
+ for m:0..<128 {sum:PsionicAccumulator;for k:0..<257 {sum=psionic_ops_accumulate(sum,bank[m*257+k]*power[k]);}out[m]=f32(log(psionic_ops_total(sum)+SF_LOG_GUARD));}
+ s[0].frame+=1;
+}

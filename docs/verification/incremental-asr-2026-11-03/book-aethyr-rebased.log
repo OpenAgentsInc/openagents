@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/home/christopherdavid/oa-incremental-asr/psionic/tests/book.py", line 416, in <module>
+    main()
+    ~~~~^^
+  File "/home/christopherdavid/oa-incremental-asr/psionic/tests/book.py", line 410, in main
+    examples = check(args.book)
+  File "/home/christopherdavid/oa-incremental-asr/psionic/tests/book.py", line 111, in check
+    assert not errors, "reviewed capability claims: " + "; ".join(errors)
+           ^^^^^^^^^^
+AssertionError: reviewed capability claims: coax.wgsl.current: evidence changed; review verse/everglade/gpu.bindings

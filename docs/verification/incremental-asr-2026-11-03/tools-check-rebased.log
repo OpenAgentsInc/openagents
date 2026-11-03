@@ -1,0 +1,7 @@
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/room/room-catalog.py
+new non-Coax tool with no Firm reason: line and not on the port list: verse/tools/fivemmo_hotbar.py
+new non-Coax tool with no Firm reason: line and not on the port list: verse/tools/humans/face_rig.py
+new non-Coax tool with no Firm reason: line and not on the port list: verse/tools/humans/metahuman.py
+new non-Coax tool with no Firm reason: line and not on the port list: verse/tools/humans/outfits.py
+new non-Coax tool with no Firm reason: line and not on the port list: verse/tools/humans/pack_human.py
+tools-check: 1745 tracked tool files (35 of them vendored upstream vectors), 6 new without a reason

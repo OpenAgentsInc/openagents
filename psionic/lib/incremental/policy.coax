@@ -1,0 +1,51 @@
+// Current-epoch streaming admission. Refused input leaves the owner intact;
+// device failure closes it until an explicit reset into a newer epoch.
+#authority;
+IasGate :: struct {epoch:u64;sequence:u64;samples:int;phase:int;}
+IAS_SAMPLES_MAX :: 960000;
+IAS_PUSH_MAX :: 16384;
+
+#test "incremental stream gate owns exact epochs sequences and finite sample bounds" {
+ g:=ias_begin(IasGate.{},1);#assert g.phase==1 && g.epoch==1 && g.sequence==0;
+ #assert ias_admit(g,1,0,1,false) && ias_admit(g,1,0,16384,false) && ias_admit(g,1,0,0,true);
+ #assert !ias_admit(g,0,0,1,false) && !ias_admit(g,2,0,1,false) && !ias_admit(g,1,1,1,false);
+ #assert !ias_admit(g,1,0,0,false) && !ias_admit(g,1,0,-1,true) && !ias_admit(g,1,0,16385,true);
+ g=ias_commit(g,160,false);#assert g.samples==160 && g.sequence==1 && g.phase==1;
+ #assert !ias_admit(g,1,0,160,false) && ias_admit(g,1,1,0,true);
+ g.samples=959999;#assert ias_admit(g,1,1,1,true) && !ias_admit(g,1,1,2,false);
+ g.samples=960000;#assert ias_admit(g,1,1,0,true) && !ias_admit(g,1,1,1,true);
+ g.sequence=18446744073709551615;#assert !ias_admit(g,1,g.sequence,0,true);
+ g.sequence=18446744073709551614;#assert ias_admit(g,1,g.sequence,0,true);
+}
+#test "incremental reset cancel final and failure preserve ownership" {
+ g:=ias_begin(IasGate.{},0);#assert g.phase==0;
+ g=ias_begin(g,7);#assert g.phase==1;
+ old:=ias_commit(g,160,false);#assert ias_begin(old,7).sequence==1 && ias_begin(old,7).samples==160;
+ #assert ias_begin(g,7).phase==1 && ias_begin(g,6).epoch==7;
+ #assert ias_cancel(g,6).phase==1 && ias_cancel(g,7).phase==3;
+ final:=ias_commit(g,320,true);#assert final.phase==2 && final.samples==320 && final.sequence==1;
+ for phase:0..<5 {q:=g;q.phase=phase;#assert ias_admit(q,7,0,1,false)==(phase==1);}
+ #assert ias_cancel(final,7).phase==3;
+ fresh:=ias_begin(final,8);#assert fresh.epoch==8 && fresh.phase==1 && fresh.samples==0 && fresh.sequence==0;
+ fresh=ias_fault(fresh);#assert fresh.phase==4 && !ias_admit(fresh,8,0,1,false);
+ #assert ias_begin(fresh,9).phase==1;
+ #assert ias_can_publish(g,7) && ias_can_publish(final,7) && !ias_can_publish(final,8);
+ for phase:0..<5 {q:=g;q.phase=phase;#assert ias_can_publish(q,7)==(phase==1 || phase==2);}
+}
+#forall "incremental model trust requires both exact file extents and both digests" a:0..<2,b:0..<2,c:0..<2,d:0..<2 {
+ #assert ias_identity(a==1,b==1,c==1,d==1)==(a==1 && b==1 && c==1 && d==1);
+}
+#test "incremental pinned data admits exact lengths only" {
+ for n:[5]int.[-1,0,2472413603,2472413604,2472413605] {#assert ias_sizes(n,400216)==(n==2472413604);}
+ for n:[5]int.[-1,0,400215,400216,400217] {#assert ias_sizes(2472413604,n)==(n==400216);}
+}
+ias_begin :: (g:IasGate,epoch:u64)->IasGate {if epoch==0 || epoch<=g.epoch {return g;}return IasGate.{epoch=epoch,phase=1};}
+ias_admit :: (g:IasGate,epoch:u64,sequence:u64,count:int,final:bool)->bool {
+ return g.phase==1 && epoch==g.epoch && sequence==g.sequence && sequence<18446744073709551615 && count>=0 && count<=IAS_PUSH_MAX && (count>0 || final) && count<=IAS_SAMPLES_MAX-g.samples;
+}
+ias_commit :: (g:IasGate,count:int,final:bool)->IasGate {r:=g;r.sequence+=1;r.samples+=count;if final {r.phase=2;}return r;}
+ias_cancel :: (g:IasGate,epoch:u64)->IasGate {r:=g;if epoch==g.epoch {r.phase=3;}return r;}
+ias_fault :: (g:IasGate)->IasGate {r:=g;r.phase=4;return r;}
+ias_can_publish :: (g:IasGate,epoch:u64)->bool {return epoch==g.epoch && (g.phase==1 || g.phase==2);}
+ias_identity :: (file_size:bool,token_size:bool,model_digest:bool,token_digest:bool)->bool {return file_size && token_size && model_digest && token_digest;}
+ias_sizes :: (file:int,json:int)->bool {return file==2472413604 && json==400216;}

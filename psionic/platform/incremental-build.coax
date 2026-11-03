@@ -1,0 +1,40 @@
+// Build the Coax streaming engine and file-backed Aethyr consumer. Each
+// subprocess is bounded; no CUDA toolkit or Python is a runtime dependency.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+IabPaths :: struct {data:[32768]u8;n:int;}
+iab_path :: (p:[]IabPaths,a:string,b:string)->string {at:=p[0].n;for c:a {p[0].data[p[0].n]=c;p[0].n+=1;}p[0].data[p[0].n]='/';p[0].n+=1;for c:b {p[0].data[p[0].n]=c;p[0].n+=1;}return cast(string)p[0].data[at..<p[0].n];}
+iab_run :: (args:[]string,out:[]u8,deadline:int)->int {
+ left:=deadline-proc_now_ms();if left<=0 {tool_errln("incremental build exceeded fourteen minutes");return -1;}
+ err:[65536]u8;r:=proc_run(args,ifx left<180000 then left else 180000,out,err[..]);
+ if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return -1;}return r.out_n;
+}
+tool_main :: ()->int #export_c {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])>2 {return 2;}
+ if tool_os()!=TOOL_LINUX {tool_errln("incremental ASR is qualified for Linux CUDA only");return 2;}
+ dir:=ifx args_count(args[..])>0 then args_at(args[..],0) else "psionic/build/incremental";
+ sanitize:=args_count(args[..])==2 && args_at(args[..],1)=="--sanitize";if dir.count<1 || dir.count>512 {return 2;}
+ p:[1]IabPaths;env:[4096]u8;coax:=proc_getenv("COAX",env[..]);if coax=="" {coax="coax/bin/coax";}
+ out:[16777216]u8;deadline:=proc_now_ms()+840000;mk:=[3]string.["mkdir","-p",dir];if iab_run(mk[..],out[..],deadline)<0 {return 1;}
+ runtime:=iab_path(p[..],dir,"incremental-runtime.c");header:=iab_path(p[..],dir,"incremental-runtime.h");cli:=iab_path(p[..],dir,"incremental-cli.c");clih:=iab_path(p[..],dir,"incremental-cli.h");cu:=iab_path(p[..],dir,"incremental.cu");cuh:=iab_path(p[..],dir,"incremental-cuda-source.h");
+ a:=[7]string.[coax,"c","psionic/lib/incremental/runtime.coax",ifx sanitize then "--library" else "--release","--library","--header",header];n:=iab_run(a[..],out[..],deadline);if n<0 || !fs_write(runtime,cast(string)out[0..<n]) {return 1;}
+ b:=[7]string.[coax,"c","psionic/examples/transcribe-incremental.coax",ifx sanitize then "--library" else "--release","--library","--header",clih];n=iab_run(b[..],out[..],deadline);if n<0 || !fs_write(cli,cast(string)out[0..<n]) {return 1;}
+ c:=[4]string.[coax,"cuda","psionic/lib/incremental/kernels.coax","--release"];n=iab_run(c[..],out[..],deadline);if n<0 || !fs_write(cu,cast(string)out[0..<n]) {return 1;}
+ xxd:=[5]string.["xxd","-i","-n","incremental_cuda_source",cu];n=iab_run(xxd[..],out[..],deadline);if n<0 || !fs_write(cuh,cast(string)out[0..<n]) {return 1;}
+ objects:[3]string;units:=[3]string.[runtime,"psionic/platform/incremental-native.c","psionic/platform/cuda-host.c"];
+ for i:0..<3 {
+  names:=[3]string.["incremental-runtime.o","incremental-native.o","cuda-host.o"];objects[i]=iab_path(p[..],dir,names[i]);
+  f:=[20]string.["cc","-std=c11","-O2","-g","-ffp-contract=off","-fno-fast-math","-fPIC","-I",dir,"-Ipsionic/platform","-c",units[i],"-o",objects[i],"-Wno-unused-function","-Wno-unused-variable", "-fsanitize=address,undefined","-fno-sanitize-recover=all","-fno-omit-frame-pointer","-O1"];
+  if iab_run(f[0..<ifx sanitize then 20 else 16],out[..],deadline)<0 {return 1;}
+ }
+ archive:=iab_path(p[..],dir,"libpsionic-incremental.a");if fs_exists(archive) {removed:=fs_remove(archive);}
+ ar:=[6]string.["ar","rcs",archive,objects[0],objects[1],objects[2]];if iab_run(ar[..],out[..],deadline)<0 {return 1;}
+ so:=iab_path(p[..],dir,"libpsionic-incremental.so");link:=[11]string.["cc","-shared",objects[0],objects[1],objects[2],"-ldl","-lpthread","-lm","-o",so,"-fsanitize=address,undefined"];
+ if iab_run(link[0..<ifx sanitize then 11 else 10],out[..],deadline)<0 {return 1;}
+ bin:=iab_path(p[..],dir,"psionic-incremental");command:=[17]string.["cc","-std=c11","-O2","-I",dir,"-Ipsionic/platform",cli,"psionic/platform/incremental-cli.c",archive,"-ldl","-lpthread","-lm","-o",bin,"-fsanitize=address,undefined","-fno-sanitize-recover=all","-fno-omit-frame-pointer"];
+ if iab_run(command[0..<ifx sanitize then 17 else 14],out[..],deadline)<0 {return 1;}
+ print("%\n",bin);return 0;
+}

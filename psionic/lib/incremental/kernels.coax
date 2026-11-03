@@ -1,0 +1,109 @@
+// Original-weight cache-aware FastConformer primitives. Coax is the CPU
+// meaning and the source of CUDA kernels; the native host only binds views.
+#load "../whisper/device-common.coax";
+
+#test "incremental dense rows cover ragged outputs and optional bias" {
+ x:=[6]f32.[1,2,3,4,5,6];w:[15]f32;b:=[5]f32.[1,2,3,4,5];out:[11]f32;
+ for i:0..<15 {w[i]=f32(i%3+1);}
+ for bias:0..<2 {for i:0..<11 {out[i]=99;}
+  for i:0..<4 {ias_k_dense(i,2,3,5,bias,x[..],w[..],b[..],out[..]);}
+  for r:0..<2 {for o:0..<5 {#assert out[r*5+o]==f32(14+18*r)+ifx bias==1 then b[o] else 0;}}
+  #assert out[10]==99;
+ }
+}
+#test "causal subsampling uses initial zeros then the preceding row" {
+ x:=[9]f32.[1,2,3,4,5,6,7,8,9];old:[3]f32;w:=[9]f32.[1,1,1,1,1,1,1,1,1];b:[1]f32;out:[4]f32;
+ for i:0..<4 {ias_k_sub(i,3,3,1,1,1,1,x[..],old[..],w[..],b[..],out[..]);}
+ #assert out[0]==1 && out[1]==6 && out[2]==12 && out[3]==45;
+ next:=[6]f32.[10,11,12,13,14,15];old=[3]f32.[7,8,9];
+ for i:0..<2 {ias_k_sub(i,2,3,1,1,1,0,next[..],old[..],w[..],b[..],out[..]);}
+ #assert out[0]==30 && out[1]==99;
+}
+#test "causal depthwise convolution includes all eight past frames" {
+ x:=[10]f32.[1,2,3,4,5,6,7,8,9,10];w:=[9]f32.[1,1,1,1,1,1,1,1,1];out:[2]f32;
+ ias_k_dw(0,1,x[..],w[..],out[..]);ias_k_dw(1,1,x[..],w[..],out[..]);
+ #assert out[0]==45 && out[1]==54;
+}
+#test "stream attention includes both current frames and all cached keys" {
+ q:[4]f32;k:[8]f32;v:=[8]f32.[1,2,3,4,5,6,7,8];p:[286]f32;bias:[4]f32;out:[4]f32;
+ for i:0..<2 {ias_k_attend(i,2,2,1,q[..],k[..],v[..],p[..],bias[..],out[..]);}
+ #assert out[0]==4 && out[1]==5 && out[2]==4 && out[3]==5;
+}
+#test "channel-first saved rows pointwise maps and gathering retain exact positions" {
+ x:=[8]f32.[1,2,3,4,5,6,7,8];saved:[4]f32;rows:[8]f32;w:=[2]f32.[2,3];b:=[1]f32.[1];y:[4]f32;
+ for i:0..<4 {ias_k_save_sub(i,2,2,x[..],saved[..]);ias_k_point(i,2,2,2,1,x[..],w[..],b[..],y[..]);}
+ #assert saved[0]==3 && saved[1]==4 && saved[2]==7 && saved[3]==8;
+ #assert y[0]==18 && y[1]==23 && y[2]==28 && y[3]==33;
+ for i:0..<8 {ias_k_gather(i,2,2,2,x[..],rows[..]);}
+ #assert rows[0]==1 && rows[2]==5 && rows[4]==3 && rows[7]==8;
+}
+#test "gates activations copies and residuals preserve independent cell state" {
+ gates:[8]f32;cell:=[2]f32.[1,-1];hidden:[2]f32;
+ for i:0..<2 {ias_k_cell(i,2,gates[..],cell[..],hidden[..]);}
+ #assert cell[0]==0.5 && cell[1]== -0.5 && abs(f64(hidden[0])-0.23105857863000488)<0.000001 && hidden[1]== -hidden[0];
+ x:=[4]f32.[2,4,0,0];out:[2]f32;for i:0..<2 {ias_k_glu(i,2,x[..],out[..]);}
+ #assert out[0]==1 && out[1]==2;
+ for i:0..<2 {ias_k_copy(i,cell[..],out[..]);ias_k_add(i,2,cell[..],out[..]);}
+ #assert out[0]==1.5 && out[1]== -1.5;
+ for i:0..<2 {ias_k_silu(i,out[..]);}#assert out[0]>1 && out[1]<0;
+ for i:0..<2 {ias_k_relu(i,out[..]);}#assert out[1]==0;
+ for i:0..<2 {ias_k_zero(i,out[..]);}#assert out[0]==0 && out[1]==0;
+}
+
+// Four output rows per 128-thread group, one warp per output; columns in
+// lane order. Every input time row gets its own groups. Bias is explicit.
+ias_k_dense :: (item:int,rows:int,ni:int,no:int,bias:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c {
+ groups:=(no+3)/4;t:=item/groups;o0:=item%groups*4;part:[128]f32;
+ for thread:0..<128 {
+  o:=o0+thread/32;lane:=thread%32;v:f32=0;
+  if t<rows && o<no {for j:0..<(ni+31)/32 {c:=lane+j*32;if c<ni {v+=w[o*ni+c]*x[t*ni+c];}}}
+  part[thread]=v;
+ }
+ for thread:0..<128 {o:=o0+thread/32;if thread%32==0 && t<rows && o<no {
+  v:f32=0;if bias==1 {v=b[o];}for j:0..<32 {v+=part[thread+j];}y[t*no+o]=v;
+ }}
+}
+// Three-tap stride-two time/frequency convolution. Time padding is two on
+// the first chunk, one cached row afterward. Frequency always pads (2,1).
+ias_k_sub :: (item:int,frames:int,iw:int,ic:int,oc:int,groups:int,first:int,x:[]f32,old:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c {
+ oh:=(frames+first)/2;ow:=iw/2+1;o:=item/(oh*ow);t:=item/ow%oh;f:=item%ow;per:=ic/groups;group:=o/(oc/groups);v:=b[o];
+ for c:0..<per {for kt:0..<3 {for kf:0..<3 {
+  ti:=t*2+kt-1-first;fi:=f*2+kf-2;ch:=group*per+c;value:f32=0;
+  if fi>=0 && fi<iw {
+   if ti>=0 && ti<frames {value=x[(ch*frames+ti)*iw+fi];}
+   else if ti== -1 && first==0 {value=old[ch*iw+fi];}
+  }
+  v+=value*w[((o*per+c)*3+kt)*3+kf];
+ }}}y[item]=v;
+}
+ias_k_save_sub :: (item:int,frames:int,iw:int,x:[]f32,y:[]f32) #export_c {c:=item/iw;f:=item%iw;y[item]=x[(c*frames+frames-1)*iw+f];}
+ias_k_point :: (item:int,frames:int,iw:int,ic:int,oc:int,x:[]f32,w:[]f32,b:[]f32,y:[]f32) #export_c {
+ o:=item/(frames*iw);at:=item%(frames*iw);v:=b[o];for c:0..<ic {v+=w[o*ic+c]*x[c*frames*iw+at];}y[item]=v;
+}
+ias_k_gather :: (item:int,frames:int,iw:int,channels:int,x:[]f32,y:[]f32) #export_c {t:=item/(channels*iw);c:=item/iw%channels;f:=item%iw;y[item]=x[(c*frames+t)*iw+f];}
+ias_k_glu :: (item:int,d:int,x:[]f32,y:[]f32) #export_c {t:=item/d;c:=item%d;y[item]=x[t*2*d+c]/(1+wd_expf(-x[t*2*d+d+c]));}
+ias_k_dw :: (item:int,d:int,x:[]f32,w:[]f32,y:[]f32) #export_c {t:=item/d;c:=item%d;v:f32=0;for j:0..<9 {v+=x[(t+j)*d+c]*w[c*9+j];}y[item]=v;}
+ias_k_silu :: (item:int,x:[]f32) #export_c {v:=x[item];x[item]=v/(1+wd_expf(-v));}
+ias_k_relu :: (item:int,x:[]f32) #export_c {x[item]=ifx x[item]>0 then x[item] else 0;}
+ias_k_add :: (item:int,scale:f32,x:[]f32,y:[]f32) #export_c {y[item]+=scale*x[item];}
+ias_k_copy :: (item:int,x:[]f32,y:[]f32) #export_c {y[item]=x[item];}
+ias_k_zero :: (item:int,x:[]f32) #export_c {x[item]=0;}
+// Two current rows, at most seventy old rows. The projected position table
+// is fixed at offsets +71..-71, precomputed once for each original layer.
+ias_k_attend :: (item:int,cached:int,d:int,heads:int,q:[]f32,k:[]f32,v:[]f32,p:[]f32,bias:[]f32,y:[]f32) #export_c {
+ hd:=d/heads;head:=item/2;t:=item%2;n:=cached+2;at:=head*hd;acc:[128]f32;best:f32= -3.0e38;total:f32=0;
+ for j:0..<n {
+  score:f32=0;rel:=71-cached-t+j;
+  for c:0..<hd {a:=at+c;score+=(q[t*d+a]+bias[a])*k[j*d+a]+(q[t*d+a]+bias[d+a])*p[rel*d+a];}
+  score/=sqrt(f32(hd));
+  if score>best {factor:=wd_expf(best-score);total*=factor;for c:0..<hd {acc[c]*=factor;}best=score;}
+  prob:=wd_expf(score-best);total+=prob;for c:0..<hd {acc[c]+=prob*v[j*d+at+c];}
+ }
+ for c:0..<hd {y[t*d+at+c]=acc[c]/total;}
+}
+// F32 LSTM gates, with a stable logistic. Each unit writes disjoint state.
+ias_sigmoid :: (v:f32)->f32 {return ifx v>=0 then 1/(1+wd_expf(-v)) else wd_expf(v)/(1+wd_expf(v));}
+ias_tanh :: (v:f32)->f32 {a:=wd_expf(-2*abs(v));r:=(1-a)/(1+a);return ifx v>=0 then r else -r;}
+ias_k_cell :: (item:int,d:int,g:[]f32,c:[]f32,h:[]f32) #export_c {
+ j:=item;v:=ias_sigmoid(g[d+j])*c[j]+ias_sigmoid(g[j])*ias_tanh(g[2*d+j]);c[j]=v;h[j]=ias_sigmoid(g[3*d+j])*ias_tanh(v);
+}

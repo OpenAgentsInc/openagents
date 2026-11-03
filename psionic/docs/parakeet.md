@@ -217,41 +217,57 @@ The CPU path (Metal profile) works but has not been measured for latency.
 
 ## Incremental follow-up (#12673)
 
-The first original-weight cache-aware candidate is
-[NVIDIA Nemotron Speech Streaming English 0.6B](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b/tree/ebe59e5a817142986528bbbee5dba8db7b38ed50),
-whose encoder belongs to the Parakeet/FastConformer family. It is an English
-RNNT checkpoint with a different decoder, tokenizer and provider identity;
-it does not replace the qualified multilingual TDT v3 profile above. The
-multitalker checkpoint additionally requires speaker/diarization inputs and
-is not the first single-speaker dictation target.
+`psionic-nemotron-streaming-en-v1` is a separate, original-weight **English
+RNNT** streaming profile, qualified on Linux CUDA (RTX 4080). It uses NVIDIA's
+[Nemotron Speech Streaming English 0.6B](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b/tree/ebe59e5a817142986528bbbee5dba8db7b38ed50),
+with a cache-aware Parakeet/FastConformer encoder. The multilingual offline
+TDT v3 engine and chapter 153 retain their existing identities and evidence.
 
-[The candidate manifest](../fixtures/parakeet-streaming/manifest.json) pins
-revision `ebe59e5a817142986528bbbee5dba8db7b38ed50`, all five downloaded
-original-file SHA-256 values and a same-profile reference contract. On
-coderos-4080 the complete 2,472,413,604-byte safetensors file matched SHA-256
-`bddd8a7300826efd19cf7e01f1c7db8402bed6786fc4c7739632894f69c71473`;
-its header describes 651 F32 tensors with disjoint complete payload coverage.
-Only data was downloaded/read; no pickle or repository code was executed.
-Weights stay outside Git. These are provenance observations, not a production
-model loader or a completed inference qualification.
+The [manifest](../fixtures/parakeet-streaming/manifest.json) pins the original
+five files. The native loader authenticates the complete original F32 model
+and tokenizer before exposing state; weights remain outside Git. Coax owns
+preemphasis/STFT overlap, unnormalized 128-mel features, causal subsampling,
+24 layers of bounded attention/convolution caches, the two-layer RNNT
+prediction state and greedy emission. One lookahead token gives nominal
+160 ms chunks: nine first feature frames, sixteen thereafter. Finalization
+pads only the last feature chunk. It never reruns independent offline windows.
 
-The planned initial profile uses one lookahead token (160 ms chunks), the
-original 128-mel, 512-FFT/400-window/160-hop frontend without utterance-wide
-normalization, the 24-layer width-1024 cache-aware encoder and the two-layer
-width-640 RNNT decoder. Audio preprocessing must retain preemphasis and STFT
-overlap across arbitrary input pushes. Centred first/final windows require
-explicit bounded lookahead and padding; changing them silently to uncentred
-windows would change the reference. The fixed
-[Transformers frontend](https://github.com/huggingface/transformers/blob/9719c27f4e04e8d10ed1f908bdb3712d16fef73c/src/transformers/models/nemotron_asr_streaming/feature_extraction_nemotron_asr_streaming.py)
-documents that boundary.
+```sh
+coax/web/tool.sh psionic/platform/incremental-build.coax
+psionic/build/incremental/psionic-incremental "$STREAMING_MODEL" \
+  psionic/fixtures/parakeet/6930-75918-0011.pcm
+```
 
-**Next gate:** record original-weight reference features, encoder caches and
-RNNT transitions at the pinned profile, then implement and check the Coax
-stream against those records. Require exact reference tokens/final text,
-stated tensor tolerances, partition-independent state continuity, bounded
-memory and refusal/reset/cancel tests. Report corpus WER/CER, first/last-word
-behavior and measured first-partial/chunk/final p50/p99 separately. Final
-transcript admission must retain the consumer's current ticket/media epoch.
-No streaming engine, real partial transcript, consumer adoption, target
-qualification or latency/accuracy result is claimed yet. Chapter 154's seeded
-CTC foundation and chapter 153's offline evidence remain as recorded.
+The reusable [C API](../platform/psionic-incremental.h) accepts arbitrary
+finite mono 16 kHz F32 pushes (1..16,384 samples, or zero only for final),
+with one strictly increasing nonzero local epoch and exact sequence numbers.
+A stream lasts at most 60 seconds, with fixed token/text/device capacities.
+A whole malformed push refuses before consuming audio. Reset/cancel discards
+histories; backend failure terminates the epoch. Text snapshots are copied
+and a cancelled/stale epoch cannot publish. Original backing files must stay
+immutable while mapped. Close releases the engine and its resources.
+
+The [Coax consumer](../examples/transcribe-incremental.coax) prints actual
+append-only partials from a public recording and admits one final through
+Aethyr's existing media-epoch/replay gate. Partials are display-only; barge-in
+and cancellation revoke the native ticket and realm answer. This file-backed
+consumer opens no microphone. Mac/TUI dictation and the default Verse voice
+host retain their final-only paths; live microphone/UI partials and Metal
+streaming effects require explicit adoption and qualification.
+
+[Qualification and reproduction](../../docs/verification/incremental-asr-2026-11-03/README.md)
+retain thirteen original-weight cases, exact reference tokens/text/positions,
+per-chunk partials and tolerance-checked features/encoder/cache snapshots,
+including a 30.46-second continuous stream and single-sample/ragged pushes.
+The pinned Transformers oracle needs an explicit additive-to-boolean mask
+representation adapter; its initial nonfinite/all-blank failures and corrected
+reference are recorded. No unmodified-NeMo streaming equivalence is claimed.
+
+The expanded frozen speech slice has 7 word errors / 205 reference words
+(3.41% WER), 9 / 1,099 character errors (0.82% CER), first-word equality 6/7,
+last-word equality 7/7, and no text on either no-speech fixture. The differing
+first word is the contraction “I'm” versus “I am”. These are finite English
+observations, with no invented population-quality threshold. Separate
+resident-weight and bounded-transfer CUDA timings and allocations are in the
+record; a busy shared GPU can be slower than real time. Microphone, pacing,
+model startup, UI insertion and acoustic word alignment are separate.

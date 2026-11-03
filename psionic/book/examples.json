@@ -3677,6 +3677,16 @@
         "psionic/fixtures/fit/pooled-cnn/experiment.json",
         "psionic/fixtures/fit/pooled-cnn/run-v2/stdout.log"
       ]
+    },
+    {
+      "source": "psionic/examples/transcribe-incremental.coax",
+      "kind": "native-library",
+      "chapter": "psionic/book/ch154-transcribe-while-someone-speaks.md",
+      "consumer": "psionic/platform/incremental-cli.c",
+      "evidence": [
+        "docs/verification/incremental-asr-2026-11-03/README.md",
+        "docs/verification/incremental-asr-2026-11-03/consumer.log"
+      ]
     }
   ]
 }
