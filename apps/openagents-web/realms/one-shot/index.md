@@ -41,7 +41,7 @@ If other devices can't reach the table, everyone plays on the GM's device. On **
 
 - `apps/openagents-web/oneshot-table.coax` holds the campaigns and the table: the starter adventure, the builder's edits, joining, initiative and turns on the SRD engine (`aethyr/rules/srd/`), the dice, the session log with its hidden lines, and the frames sent between pages. Its checks cover each of them.
 - `apps/openagents-web/oneshot.coax` draws the five screens and carries the table between pages through the room server's relay (`coax/web/room/room-relay.coax`). The GM's page decides everything; the other pages send what their player asked for. `oneshot-face.c` binds it for the browser.
-- `oneshot.wgsl` (from `gpu/oneshot.coax`) reuses 5E Lab's glade shader (`gpu/fivelab.coax`) for the 3D scene.
+- `oneshot.wgsl` (from `gpu/oneshot.coax`) draws the 3D scene with `gpu/oneshot-glade.coax`, a copy of 5E Lab's glade with its capsule figures.
 - Campaigns you write are your own content. They are kept apart from the SRD and saved with `srd: false`.
 
 This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
