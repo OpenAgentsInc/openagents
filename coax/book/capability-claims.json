@@ -117,7 +117,7 @@
         },
         {
           "path": "psionic/lib/autodiff.coax",
-          "sha256": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88"
+          "sha256": "c764208efffd024749d54b8919b7ed4c85613bb4530c5099010bbe5aa414362e"
         },
         {
           "path": "docs/verification/psionic-ch71-2026-10-29.md",
@@ -129,7 +129,7 @@
         },
         {
           "path": "psionic/book/ch107-transform-functions-not-just-tensors.md",
-          "sha256": "5b2d7dc9d6ba962378552dd1ed135b2e092a4c4105f139aba3288fb038905ffd"
+          "sha256": "5159630b22dbc1c5bd774d85e4bb02cd6370b1ce49fc8719cc58951d6e3acf1d"
         },
         {
           "path": "psionic/lib/function-linearize.coax",
@@ -182,7 +182,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "df5fd42cc2d74ddf794a7ca93f5467c3bc839e2e7582818a0c7014aef10671f2"
+          "sha256": "5f8fc9160f5abc200a8fccc82d91df2164c44b9d32c1fc5e591453c842d41769"
         },
         {
           "path": "docs/verification/psionic-ch10-2026-10-29.md",
@@ -214,7 +214,7 @@
         },
         {
           "path": "psionic/book/ch107-transform-functions-not-just-tensors.md",
-          "sha256": "5b2d7dc9d6ba962378552dd1ed135b2e092a4c4105f139aba3288fb038905ffd"
+          "sha256": "5159630b22dbc1c5bd774d85e4bb02cd6370b1ce49fc8719cc58951d6e3acf1d"
         },
         {
           "path": "psionic/lib/function-linearize.coax",
@@ -267,7 +267,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "df5fd42cc2d74ddf794a7ca93f5467c3bc839e2e7582818a0c7014aef10671f2"
+          "sha256": "5f8fc9160f5abc200a8fccc82d91df2164c44b9d32c1fc5e591453c842d41769"
         },
         {
           "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",
@@ -333,7 +333,7 @@
       "evidence": [
         {
           "path": "psionic/lib/tensor-ir.coax",
-          "sha256": "1a276ceabe0cd50b4165e3bfe3be309e710c42a94da60b5224f1d945e432d258"
+          "sha256": "31acb22427b51b8df9fd6578581ec0f08da06f797365499ac86c576a195cbcea"
         },
         {
           "path": "psionic/lib/tensor-template.coax",
@@ -345,7 +345,7 @@
         },
         {
           "path": "psionic/lib/autodiff.coax",
-          "sha256": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88"
+          "sha256": "c764208efffd024749d54b8919b7ed4c85613bb4530c5099010bbe5aa414362e"
         },
         {
           "path": "coax/lib/compiler/wgsl.coax",
