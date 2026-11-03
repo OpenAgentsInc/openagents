@@ -892,15 +892,23 @@
   {
    "number": 41,
    "title": "The key tweak and the key path",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch041-the-key-tweak-and-the-key-path.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     5,
     24
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/taproot.coax",
+    "coax/lib/bitcoin/address.coax",
+    "coax/lib/bitcoin/sighash.coax",
+    "bitcoin/examples/taproot-key-path.coax",
+    "bitcoin/examples/checks/taproot-key-path.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

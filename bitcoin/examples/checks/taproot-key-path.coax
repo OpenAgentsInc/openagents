@@ -1,0 +1,38 @@
+// The checks of taproot-key-path.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/taproot-key-path.coax --only key-path
+#load "../taproot-key-path.coax";
+
+// book:begin check
+// The secret and public tweaks agree: d' = d + t (with d negated for an odd
+// y) has d'G = Q, the output key the public tweak gives, for every key-path
+// input of BIP-341's vectors.
+#forall "key-path: the tweaked secret key's public key is the output key" i: 0..<7 #steps 2000000000 {
+  v := BT_V341[i]; k: [32] u8; m: [32] u8; th: [32] u8; w: [1] BtTapWork; p: [32] u8; q: [32] u8; e: [32] u8;
+  bt_internal(bt_unhex(v.key, k[..]), bt_unhex(v.merkle, m[..]), w[..], th[..]);
+  #assert bt_hex_is(th[..], v.tweak) && bt_tweak(th[..], w[..]) && w[0].valid == 1;
+  #assert bt_same(w[0].internal[..], bt_unhex(v.internal, p[..]));
+  #assert taproot_output_key_vartime(p[..], bt_unhex(v.merkle, m[..]), q[..]) >= 0;
+  d: [1] SignScalar; dq: [1] SignPoint; x: [32] u8;
+  #assert ss_key(w[0].tweaked[..], d[..], false) && sp_base(d[0].safe, dq[..]) && sp_x(dq[..], x[..]);
+  #assert bt_same(x[..], q[..]) && bt_hex_is(w[0].tweaked[..], v.tweaked);
+  #assert !bt_tap_clear(w[..]) && w[0].tweaked[0] == 0;
+}
+// Q commits to the root: with one bit of vector 3's root flipped (bit k
+// of byte 4k, for k from 0 to 7), Q changes.
+#forall "key-path: one bit of the Merkle root changes Q" bit: 0..<8 #steps 2500000000 {
+  v := TR_SPK[3]; p: [32] u8; m: [32] u8; q: [32] u8; q2: [32] u8;
+  pk := bt_unhex(v.internal, p[..]); root := bt_unhex(v.root, m[..]);
+  #assert taproot_output_key_vartime(pk, root, q[..]) >= 0 && bt_hex_is(q[..], v.tweaked);
+  root[bit * 4] ^= cast(u8) (1 << bit);
+  #assert taproot_output_key_vartime(pk, root, q2[..]) >= 0 && !bt_same(q[..], q2[..]);
+}
+// The no-script-tree tweak is the general one with an empty root, and
+// differs from committing to a root of 32 zero bytes.
+#test "key-path: an empty root is not a zero root" #steps 600000000 {
+  p: [32] u8; z: [32] u8; a: [32] u8; b: [32] u8; c: [32] u8;
+  pk := bt_unhex("cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115", p[..]);
+  #assert taproot_tweak_vartime(pk, a[..]) == 1 && taproot_output_key_vartime(pk, z[0..<0], b[..]) == 1 && bt_same(a[..], b[..]);
+  #assert taproot_output_key_vartime(pk, z[..], c[..]) >= 0 && !bt_same(a[..], c[..]);
+}
+// book:end check

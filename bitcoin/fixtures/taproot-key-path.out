@@ -1,0 +1,46 @@
+no script tree: BIP-86 m/86'/0'/0'/0/0
+  internal key P: cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115
+  t = H_TapTweak(P || root): 2ca01ed85cf6b6526f73d39a1111cd80333bfdc00ce98992859848a90a6f0258
+  Q = P + tG, x: a60869f0dbcf1dc659c9cecbaf8050135ea9e8cdc487053f1dc6880949dc684c
+  Q's y odd
+  scriptPubKey: 5120a60869f0dbcf1dc659c9cecbaf8050135ea9e8cdc487053f1dc6880949dc684c
+  address: bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr
+BIP-341 scriptPubKey vectors
+  vector 0: no script tree, Q's y odd, scriptPubKey matches, address matches
+  vector 1: 1 leaf, Q's y odd, scriptPubKey matches, address matches
+  vector 2: 1 leaf, Q's y even, scriptPubKey matches, address matches
+  vector 3: 2 leaves, Q's y even, scriptPubKey matches, address matches
+  vector 4: 2 leaves, Q's y odd, scriptPubKey matches, address matches
+  vector 5: 3 leaves, Q's y even, scriptPubKey matches, address matches
+  vector 6: 3 leaves, Q's y odd, scriptPubKey matches, address matches
+the commitment: vector 3 with its root, then one bit of the root changed
+  t = H_TapTweak(P || root): 9e0517edc8259bb3359255400b23ca9507f2a91cd1e4250ba068b4eafceba4a9
+  Q = P + tG, x: 712447206d7a5238acc7ff53fbe94a3b64539ad291c7cdbc490b7577e4b17df5
+  Q's y even
+  t = H_TapTweak(P || root): 1270e8aae02b2b67d7baef387fe07ceb5b6026beb6009a33098df7c850e19c60
+  Q = P + tG, x: c695f0de0cd4b9b9575334e12582e380276eec8110419c2df012f457e5d42a93
+  Q's y odd
+the tweaked secret key
+  input 0: dG has an even y, so keep d; d' = d + t matches BIP-341
+  input 1: dG has an even y, so keep d; d' = d + t matches BIP-341
+  input 3: dG has an odd y, so negate d; d' = d + t matches BIP-341
+  input 4: dG has an even y, so keep d; d' = d + t matches BIP-341
+  input 6: dG has an odd y, so negate d; d' = d + t matches BIP-341
+  input 7: dG has an even y, so keep d; d' = d + t matches BIP-341
+  input 8: dG has an odd y, so negate d; d' = d + t matches BIP-341
+key-path spends of BIP-341's transaction
+  input 0 (hash type 0x03), 65 bytes: witness matches, verifies with Q true, with P false
+  input 1 (hash type 0x83), 65 bytes: witness matches, verifies with Q true, with P false
+  input 3 (hash type 0x01), 65 bytes: witness matches, verifies with Q true, with P false
+  input 4 (hash type 0x00), 64 bytes: witness matches, verifies with Q true, with P false
+  input 6 (hash type 0x02), 65 bytes: witness matches, verifies with Q true, with P false
+  input 7 (hash type 0x82), 65 bytes: witness matches, verifies with Q true, with P false
+  input 8 (hash type 0x81), 65 bytes: witness matches, verifies with Q true, with P false
+refusals
+  t = n: bad tweak
+  P = G, t = n - 1, so Q is infinity: bad tweak
+  a 31-byte root: bad root
+  x = 5, not on the curve: bad key
+  the secret tweak with t = 2^256 - 1: refused
+  a 65-byte signature ending in 0x00: hash type -2
+  a 63-byte signature: hash type -1

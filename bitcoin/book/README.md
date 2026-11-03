@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 39 are implemented and 85 are planned. The 39 implemented
+Of the 124 chapters, 40 are implemented and 84 are planned. The 40 implemented
 chapters have runnable examples, qualified on native CPU, and 31 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
-7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 33, 34, 35, 36, 37, 40, 46,
-47 and 48 are new.
+7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 33, 34, 35, 36, 37, 40, 41,
+46, 47 and 48 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -192,7 +192,7 @@ The key tweak, script trees, the Taproot signature hash and tapscript.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 41. The key tweak and the key path | Planned | BIP-341's `wallet-test-vectors.json` key-path tweaks and signatures match. |
+| [41. The key tweak and the key path](ch041-the-key-tweak-and-the-key-path.md) | Runnable: native C | BIP-341's tweak on both sides: the output key Q = P + H_TapTweak(P ‖ root)G with its parity, and the tweaked secret key (d or n − d, plus t). All seven scriptPubKey vectors give their key, scriptPubKey and address, and all seven key-path inputs give their tweaked key and published witness, which verifies against Q and not P. t ≥ n and Q at infinity refuse, and the example's 46 lines agree with BIP-341's own Python, pinned. |
 | 42. Script trees: tapleaves and tapbranches | Planned | BIP-341's script-tree vectors give every leaf hash, Merkle root and output key. |
 | 43. Taproot signature hashes | Planned | Every BIP-341 key-path and script-path signature hash vector matches, for every hash type. |
 | 44. Tapscript | Planned | Bitcoin Core's Taproot script tests (`script_assets_test.json`) give their expected results. |

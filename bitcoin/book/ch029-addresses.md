@@ -242,7 +242,8 @@ script tree, which BIP-86 specifies for single-key wallets:
    (chapter 5). With a script tree, the tree's Merkle root would follow x
    in the hash.
 3. Q = P + t·G. BIP-341 refuses t ≥ n and Q at infinity; no known key
-   reaches either.
+   reaches either. Chapter 41 builds this step,
+   `taproot_output_key_vartime`, for any Merkle root.
 4. The output key is Q's x coordinate, and the scriptPubKey is
    `OP_1 <32>` with it.
 
@@ -255,25 +256,11 @@ returns it. A key-path signature uses the private key tweaked the same way
 <!-- source: coax/lib/bitcoin/address.coax tweak -->
 ```jai
 // BIP-341's key-path tweak with no script tree: P = lift_x(internal),
-// t = H_TapTweak(internal) and Q = P + tG. Writes Q's x (32 bytes) and
-// returns Q's y parity, 0 or 1, which a script-path spend reveals in its
-// control block.
+// t = H_TapTweak(internal) and Q = P + tG, chapter 41's output key with an
+// empty Merkle root. Writes Q's x (32 bytes) and returns Q's y parity, 0
+// or 1, which a script-path spend reveals in its control block.
 taproot_tweak_vartime :: (internal: [] u8, output: [] u8) -> int #export_c {
-  if output.count < SE_XONLY { return AD_CAPACITY; }
-  if internal.count != SE_XONLY { return AD_BAD_KEY; }
-  p := se_decode_xonly(internal);
-  if !p.ok { return AD_BAD_KEY; }
-  t: [32] u8;
-  #assert bitcoin_tagged_checked(BH_TAPTWEAK, internal, t[..], false) == SHA_OK;
-  tweak := sc_load(t[..]);
-  // t >= n has probability below 2^-127, and Q = infinity needs tG = -P:
-  // no known key reaches either, but BIP-341 refuses both.
-  if !tweak.ok { return AD_BAD_TWEAK; }  // mutant: equivalent (unreachable for any known key)
-  q := ecmult_vartime(tweak.value, p.value, sc_small(1));   // tG + 1P
-  c: [33] u8;
-  if se_encode(q.value, SE_COMPRESSED, c[..]) != SE_COMPRESSED { return AD_BAD_TWEAK; }  // mutant: equivalent (as above)
-  for i: 0..<32 { output[i] = c[1 + i]; }
-  return cast(int) (c[0] & 1);
+  return taproot_output_key_vartime(internal, internal[0..<0], output);
 }
 // P2TR is version 1 with the tweaked key's x.
 p2tr_script_vartime :: (internal: [] u8, out: [] u8) -> int #export_c {
@@ -285,7 +272,8 @@ p2tr_script_vartime :: (internal: [] u8, out: [] u8) -> int #export_c {
 }
 ```
 
-All the inputs are public, so Q = t·G + 1·P is computed with
+`taproot_tweak_vartime` is chapter 41's output key with an empty Merkle
+root. All the inputs are public, so chapter 41 computes Q = t·G + 1·P with
 `ecmult_vartime`, the verifier's two-scalar multiplication. The tweak of a
 private key is a different procedure, because the key is secret.
 

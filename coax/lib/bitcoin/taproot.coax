@@ -1,0 +1,106 @@
+// Taproot (Bitcoin chapters 41-43, BIP-341).
+//
+// - Chapter 41, the key tweak and the key path: the output key is
+//   taproot_output_key_vartime in address.coax and the tweaked secret key
+//   is bt_tweak in sighash.coax. This file adds what a verifier does with
+//   a key-path witness: read its hash type and check its signature against
+//   the output key.
+//
+// Keys, scripts, signatures and hashes here are public, so the procedures
+// run in variable time and end in _vartime (chapter 3). The secret half of
+// the key path stays in sighash.coax.
+#load "address.coax";
+#load "sighash.coax";
+#load "../crypto/schnorr.coax";
+#load "../../tests/bitcoin/taproot_vectors.coax";
+#authority;
+
+// ---- checks
+tr_unhex :: (h: string, out: [] u8) -> [] u8 { return bt_unhex(h, out); }
+// SECP256K1's order n, and n - 1.
+TR_N :: "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
+TR_N1 :: "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140";
+TR_GX :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
+#forall "BIP-341's scriptPubKey vectors: the output key, its scriptPubKey and address" i: 0..<7 #steps 600000000 {
+  v := TR_SPK[i]; p: [32] u8; m: [32] u8; q: [33] u8; s: [34] u8; a: [90] u8;
+  for k: 0..<33 { q[k] = 0xa5; }
+  parity := taproot_output_key_vartime(tr_unhex(v.internal, p[..]), tr_unhex(v.root, m[..]), q[..]);
+  #assert (parity == 0 || parity == 1) && bt_hex_is(q[0..<32], v.tweaked) && q[32] == 0xa5;
+  #assert ad_witness_script(1, q[0..<32], s[..]) == 34 && bt_hex_is(s[..], v.spk);
+  n := address_encode_vartime(SW_MAINNET, s[..], a[..]);
+  #assert n > 0 && cast(string) a[0..<n] == v.address;
+  // With no script tree, chapter 29's tweak gives the same key.
+  if v.root.count == 0 { r: [32] u8; #assert taproot_tweak_vartime(p[..], r[..]) == parity && bt_same(r[..], q[0..<32]); }
+}
+#test "the output key's refusals: t >= n, Q at infinity, bad lengths" #steps 600000000 {
+  p: [32] u8; t: [33] u8; q: [33] u8; m: [33] u8;
+  for k: 0..<33 { q[k] = 0xa5; }
+  g := tr_unhex(TR_GX, p[..]);
+  #assert taproot_add_tweak_vartime(g, tr_unhex(TR_N, t[..]), q[..]) == AD_BAD_TWEAK;
+  for k: 0..<32 { t[k] = 0xff; }
+  #assert taproot_add_tweak_vartime(g, t[0..<32], q[..]) == AD_BAD_TWEAK;
+  // G + (n - 1)G is infinity, which has no x.
+  #assert taproot_add_tweak_vartime(g, tr_unhex(TR_N1, t[..]), q[..]) == AD_BAD_TWEAK && q[0] == 0xa5;
+  // t = 0 leaves P, whose y is even.
+  for k: 0..<32 { t[k] = 0; }
+  #assert taproot_add_tweak_vartime(g, t[0..<32], q[..]) == 0 && bt_same(q[0..<32], g);
+  // t = 1 gives 2G, whose y is even too.
+  t[31] = 1;
+  #assert taproot_add_tweak_vartime(g, t[0..<32], q[..]) == 0 && bt_hex_is(q[0..<32], "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5");
+  #assert taproot_add_tweak_vartime(g, t[0..<31], q[..]) == AD_BAD_KEY && taproot_add_tweak_vartime(g[0..<31], t[0..<32], q[..]) == AD_BAD_KEY;
+  #assert taproot_output_key_vartime(g, m[0..<31], q[..]) == AD_BAD_ROOT && taproot_output_key_vartime(g, m[..], q[..]) == AD_BAD_ROOT;
+  #assert taproot_output_key_vartime(g, m[0..<32], q[0..<31]) == AD_CAPACITY && taproot_add_tweak_vartime(g, t[0..<32], q[0..<31]) == AD_CAPACITY;
+  five: [32] u8; five[31] = 5;
+  #assert taproot_output_key_vartime(five[..], m[0..<0], q[..]) == AD_BAD_KEY && taproot_output_key_vartime(g[0..<31], m[0..<0], q[..]) == AD_BAD_KEY;
+}
+#test "a key-path signature's hash type" {
+  s: [66] u8;
+  #assert taproot_sig_hashtype_vartime(s[0..<64]) == BT_DEFAULT;
+  #assert taproot_sig_hashtype_vartime(s[0..<65]) == TR_BAD_HASHTYPE;
+  s[64] = 0x83; #assert taproot_sig_hashtype_vartime(s[0..<65]) == 0x83;
+  s[64] = 0x01; #assert taproot_sig_hashtype_vartime(s[0..<65]) == 0x01;
+  #assert taproot_sig_hashtype_vartime(s[0..<63]) == TR_BAD_SIZE && taproot_sig_hashtype_vartime(s[..]) == TR_BAD_SIZE;
+  #assert taproot_sig_hashtype_vartime(s[0..<0]) == TR_BAD_SIZE;
+}
+#forall "BIP-341's key-path spends verify against the spent output's key" i: 0..<7 #steps 3000000000 {
+  v := BT_V341[i]; b: [BT_TX] u8; e: [65] u8; h: [32] u8; spk: [9] BtScript; w: [1] BtTapWork;
+  s := bt_unhex(BT_V341_TX, b[..]); t := bt_tx_read(s);
+  amounts := BT_V341_AMOUNT; for k: 0..<9 { spk[k] = bt_script(BT_V341_SPK[k]); }
+  sig := bt_unhex(v.witness, e[..]);
+  ht := taproot_sig_hashtype_vartime(sig);
+  #assert ht == v.hashtype && bt_sighash_taproot(s, t, v.index, amounts[..], spk[..], ht, h[..]);
+  q := spk[v.index].b[2..<34];
+  #assert spk[v.index].n == 34 && taproot_key_path_verify_vartime(q, sig, h[..]);
+  // The internal key did not sign: a key-path signature is the tweaked key's.
+  ip: [32] u8;
+  #assert !taproot_key_path_verify_vartime(bt_unhex(v.internal, ip[..]), sig, h[..]);
+  // A wrong hash type byte, or one more byte, refuses.
+  #assert !taproot_key_path_verify_vartime(q, sig[0..<63], h[..]);
+  if sig.count == 65 { sig[64] = 0; #assert !taproot_key_path_verify_vartime(q, sig, h[..]); }
+  h[0] ^= 1; #assert !taproot_key_path_verify_vartime(q, sig[0..<64], h[..]);
+}
+
+// book:begin keypath
+TR_BAD_SIZE :: -1;          // a key-path signature that is neither 64 nor 65 bytes
+TR_BAD_HASHTYPE :: -2;      // 65 bytes ending in 0x00
+// The hash type of a key-path signature: 64 bytes sign with
+// SIGHASH_DEFAULT (0), and 65 bytes carry the type in the last byte. That
+// byte must not be 0x00, because SIGHASH_DEFAULT is written by leaving it
+// out: one hash type, one encoding.
+taproot_sig_hashtype_vartime :: (sig: [] u8) -> int {
+  if sig.count == 64 { return BT_DEFAULT; }
+  if sig.count != 65 { return TR_BAD_SIZE; }
+  if sig[64] == 0 { return TR_BAD_HASHTYPE; }
+  return cast(int) sig[64];
+}
+// A key-path spend: the witness is one signature, and its first 64 bytes
+// must be a BIP-340 signature of sighash by the output key Q (the 32 bytes
+// after OP_1 0x20 in the spent scriptPubKey). The caller computes sighash
+// with the hash type above (chapter 43), which refuses a type BIP-341
+// doesn't define.
+taproot_key_path_verify_vartime :: (output_key: [] u8, sig: [] u8, sighash: [] u8) -> bool {
+  if output_key.count != 32 || sighash.count != 32 || taproot_sig_hashtype_vartime(sig) < 0 { return false; }
+  return schnorr_verify_vartime(sighash, output_key, sig[0..<64]);
+}
+// book:end keypath

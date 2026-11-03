@@ -582,11 +582,44 @@
       "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
       "license": "BSD-3-Clause (declared in bip-0341.mediawiki)",
       "covers": [
-        "bip341-tagged-hashes"
+        "bip341-script-trees",
+        "bip341-sighash",
+        "bip341-tagged-hashes",
+        "bip341-taproot-keys"
       ],
       "retrieved": "2026-11-02",
       "sha256": "403e19fb81dd1f31e745699216308f61fb403774b2aafa87b631b8f7c042d37f",
       "bytes": 29296
+    },
+    {
+      "path": "upstream/bip341/bip-0341.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0341.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-3-Clause (declared in bip-0341.mediawiki)",
+      "covers": [
+        "bip341-taproot-keys",
+        "bip341-script-trees",
+        "bip341-sighash",
+        "bip341-reference-python"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "463690d4c409587759c0ff6e8b8fc3a2bf6cb2cdda0c06ff193d317e0ed898ec",
+      "bytes": 44162
+    },
+    {
+      "path": "upstream/bip340/reference.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0340/reference.py",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause OR MIT OR CC0-1.0 (bip-0340/LICENSE)",
+      "covers": [
+        "bip340-reference-python",
+        "bip341-reference-python"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "4b1d4ad9e60820df4a6d239733d52b014bc03e4c47afd757a2fe4d3b586d892c",
+      "bytes": 8016
     },
     {
       "path": "upstream/bitcoin-core/tx_valid.json",

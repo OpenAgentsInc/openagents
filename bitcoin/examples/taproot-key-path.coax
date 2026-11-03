@@ -1,0 +1,128 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/taproot.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [512] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Print one byte as two hex digits.
+hex_byte :: (v: int) {
+  b: [1] u8; text: [2] u8; b[0] = cast(u8) v;
+  r := hex_encode_checked(cast(string) b[..], text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+REFUSALS :: [9] string.["bad network", "wrong network", "no address", "bad key", "uncompressed key",
+                        "script too long", "bad tweak", "capacity", "bad root"];
+// A parity or one of address.coax's refusals.
+outcome :: (code: int) -> string {
+  if code == 0 { return "y even"; }
+  if code == 1 { return "y odd"; }
+  if code < 0 && code >= -9 { return REFUSALS[-code - 1]; }
+  return "?";
+}
+// P, t and Q for an internal key and a Merkle root (empty: no script tree).
+commit :: (internal: [] u8, merkle: [] u8) {
+  m: [64] u8; t: [32] u8; q: [32] u8;
+  for i: 0..<32 { m[i] = internal[i]; }
+  for i: 0..<merkle.count { m[32 + i] = merkle[i]; }
+  #assert bitcoin_tagged_checked(BH_TAPTWEAK, m[0..<32 + merkle.count], t[..], false) == SHA_OK;
+  show("  t = H_TapTweak(P || root)", t[..]);
+  parity := taproot_output_key_vartime(internal, merkle, q[..]);
+  show("  Q = P + tG, x", q[..]);
+  print("  Q's %\n", outcome(parity));
+}
+
+main :: () {
+  b1: [32] u8; b2: [32] u8; q: [32] u8; s: [34] u8; a: [90] u8;
+
+  // The key path with no script tree: BIP-86's first receiving key.
+  print("no script tree: BIP-86 m/86'/0'/0'/0/0\n");
+  internal := bt_unhex("cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115", b1[..]);
+  show("  internal key P", internal);
+  commit(internal, internal[0..<0]);
+  #assert taproot_output_key_vartime(internal, internal[0..<0], q[..]) >= 0 && ad_witness_script(1, q[..], s[..]) == 34;
+  show("  scriptPubKey", s[..]);
+  n := address_encode_vartime(SW_MAINNET, s[..], a[..]);
+  print("  address: %\n", cast(string) a[0..<n]);
+
+  // BIP-341's seven scriptPubKey vectors, from the given Merkle roots.
+  print("BIP-341 scriptPubKey vectors\n");
+  for i: 0..<TR_SPK.count {
+    v := TR_SPK[i];
+    p := bt_unhex(v.internal, b1[..]); root := bt_unhex(v.root, b2[..]);
+    parity := taproot_output_key_vartime(p, root, q[..]);
+    #assert ad_witness_script(1, q[..], s[..]) == 34;
+    n = address_encode_vartime(SW_MAINNET, s[..], a[..]);
+    print("  vector %: ", i);
+    if v.count == 0 { print("no script tree"); } else if v.count == 1 { print("1 leaf"); } else { print("% leaves", v.count); }
+    print(", Q's %, scriptPubKey %, address %\n", outcome(parity),
+          ifx bt_hex_is(s[..], v.spk) then "matches" else "differs",
+          ifx cast(string) a[0..<n] == v.address then "matches" else "differs");
+  }
+
+  // Q commits to the root: one bit of it changes Q.
+  print("the commitment: vector 3 with its root, then one bit of the root changed\n");
+  p := bt_unhex(TR_SPK[3].internal, b1[..]); root := bt_unhex(TR_SPK[3].root, b2[..]);
+  commit(p, root);
+  root[31] ^= 1;
+  commit(p, root);
+
+  // The tweaked secret key, for BIP-341's seven key-path inputs.
+  print("the tweaked secret key\n");
+  for i: 0..<BT_V341.count {
+    v := BT_V341[i]; k: [32] u8; m: [32] u8; th: [32] u8; w: [1] BtTapWork;
+    bt_internal(bt_unhex(v.key, k[..]), bt_unhex(v.merkle, m[..]), w[..], th[..]);
+    ok := bt_tweak(th[..], w[..]);
+    print("  input %: dG has %, so % d; d' = d + t ", v.index,
+          ifx (w[0].point[0].odd & 1) == 1 then "an odd y" else "an even y",
+          ifx (w[0].point[0].odd & 1) == 1 then "negate" else "keep");
+    print("%\n", ifx ok && ec_declassify(w[0].valid) && bt_hex_is(w[0].tweaked[..], v.tweaked) then "matches BIP-341" else "differs");
+    #assert !bt_tap_clear(w[..]);
+  }
+
+  // Sign each input with the tweaked key, and verify against the output
+  // key in the scriptPubKey it spends.
+  print("key-path spends of BIP-341's transaction\n");
+  tx: [BT_TX] u8; spk: [9] BtScript;
+  raw := bt_unhex(BT_V341_TX, tx[..]); t := bt_tx_read(raw);
+  amounts := BT_V341_AMOUNT;
+  for k: 0..<9 { spk[k] = bt_script(BT_V341_SPK[k]); }
+  for i: 0..<BT_V341.count {
+    v := BT_V341[i]; k: [32] u8; m: [32] u8; h: [32] u8; aux: [32] u8; w: [1] BtTapWork; sig: [65] u8; e: [65] u8;
+    #assert bt_sighash_taproot(raw, t, v.index, amounts[..], spk[..], v.hashtype, h[..]);
+    #assert bt_taproot_sign(bt_unhex(v.key, k[..]), bt_unhex(v.merkle, m[..]), h[..], aux[..], w[..], sig[0..<64], false);
+    sig[64] = cast(u8) v.hashtype;
+    signed := sig[0..<ifx v.hashtype == 0 then 64 else 65];
+    q2 := spk[v.index].b[2..<34];
+    print("  input % (hash type 0x", v.index);
+    hex_byte(v.hashtype);
+    print("), % bytes: witness %, verifies with Q %, with P %\n", signed.count,
+          ifx bt_same(signed, bt_unhex(v.witness, e[..])) then "matches" else "differs",
+          taproot_key_path_verify_vartime(q2, signed, h[..]),
+          taproot_key_path_verify_vartime(bt_unhex(v.internal, b1[..]), signed, h[..]));
+  }
+
+  // What BIP-341 refuses.
+  print("refusals\n");
+  g := bt_unhex("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", b1[..]);
+  tw := bt_unhex("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", b2[..]);
+  print("  t = n: %\n", outcome(taproot_add_tweak_vartime(g, tw, q[..])));
+  tw[31] = 0x40;
+  print("  P = G, t = n - 1, so Q is infinity: %\n", outcome(taproot_add_tweak_vartime(g, tw, q[..])));
+  print("  a 31-byte root: %\n", outcome(taproot_output_key_vartime(g, tw[0..<31], q[..])));
+  five: [32] u8; five[31] = 5;
+  print("  x = 5, not on the curve: %\n", outcome(taproot_output_key_vartime(five[..], five[0..<0], q[..])));
+  k: [32] u8; w: [1] BtTapWork; th: [32] u8; k[31] = 1;
+  bt_internal(k[..], k[0..<0], w[..], th[..]);
+  for i: 0..<32 { th[i] = 0xff; }
+  print("  the secret tweak with t = 2^256 - 1: %\n", ifx bt_tweak(th[..], w[..]) then "accepted" else "refused");
+  #assert !bt_tap_clear(w[..]);
+  sig: [65] u8;
+  print("  a 65-byte signature ending in 0x00: hash type %\n", taproot_sig_hashtype_vartime(sig[..]));
+  print("  a 63-byte signature: hash type %\n", taproot_sig_hashtype_vartime(sig[0..<63]));
+}
+// book:end example

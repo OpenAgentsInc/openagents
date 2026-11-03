@@ -63,6 +63,10 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [37. Legacy signature hashes](ch037-legacy-signature-hashes.md) — implemented
 - [40. Weight, vsize and fees](ch040-weight-vsize-and-fees.md) — implemented
 
+**VIII. Taproot**
+
+- [41. The key tweak and the key path](ch041-the-key-tweak-and-the-key-path.md) — implemented
+
 **IX. Blocks and consensus**
 
 - [46. Merkle trees and the duplicate-leaf flaw](ch046-merkle-trees-and-the-duplicate-leaf-flaw.md) — implemented

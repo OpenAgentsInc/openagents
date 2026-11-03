@@ -23,7 +23,9 @@ interpreter, [`script.coax`](../coax/lib/bitcoin/script.coax), runs the
 scripts every later chapter checks, from legacy script through segwit v0.
 Chapter 37 explains its legacy signature hash. Chapter 33's
 [`path.coax`](../coax/lib/bitcoin/path.coax) reads derivation paths and
-makes the standard BIP-44, 49, 84 and 86 addresses.
+makes the standard BIP-44, 49, 84 and 86 addresses. Chapter 41's
+[`taproot.coax`](../coax/lib/bitcoin/taproot.coax) holds Taproot: the key
+tweak and the key path first.
 
 ```sh
 python3 psionic/tests/book.py --book bitcoin                     # structure and registry
@@ -66,7 +68,7 @@ chapter 34's.
 ## Cryptography still to build
 
 Everything Nostr used is built, and so are the five address types and the
-Taproot key-path tweak. Bitcoin and Lightning also need:
+Taproot key tweak and key path (chapter 41). Bitcoin and Lightning also need:
 
 - Batch Schnorr verification, Taproot script trees and tapscript.
 - MuHash3072. Merkle trees with the duplicate-leaf flaw are built in
