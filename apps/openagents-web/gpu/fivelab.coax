@@ -188,20 +188,22 @@ fivelab_trace :: (ro:V3,rd:V3,u:[]f32,shadow:bool)->FivelabHit {
   h:FivelabHit;
   h.t=1000000000.0f32; h.n=v3(0.0f32,1.0f32,0.0f32); h.m=-1.0f32; h.who=-1.0f32;
   // the ground
+  clear:bool=false;
   if (rd.y<(-0.0001f32)) {
     tg:f32=(-ro.y)/rd.y;
-    if (!shadow) { h.t=tg; h.m=0.0f32; }
+    if (!shadow) {
+      h.t=tg; h.m=0.0f32;
+      // a ray down onto the clearing sees the battle: no tree stands in its way (the trees stay
+      // where they are, round the clearing; one between the eye and the grid is seen through there)
+      g:V3=add3(ro,scale3(rd,tg));
+      clear=(abs(g.x)<(u[FIVELAB_BOUNDS]+1.0f32))&&(abs(g.z)<(u[FIVELAB_BOUNDS+1]+1.0f32));
+    }
   }
-  {
+  if (!clear) {
     i:int=0;
     while i<FIVELAB_TREES {
       tr:V4=fivelab_tree(i,u);
-      // the trees on the camera's side of the clearing stand aside, so they never hide the battle
-      ex:V2=v2(u[16],u[18]);
-      front:f32=((tr.x*ex.x)+(tr.z*ex.y))/fmax(wg_length2(v2(tr.x,tr.z))*wg_length2(ex),0.001f32);
-      if (front>0.45f32) { tr.y=-1.0f32; }
       k:f32=tr.w;
-      if (tr.y<0.0f32) { k=0.0f32; }
       c1:V3=v3(tr.x,4.6f32*k,tr.z);
       tc:f32=fivelab_sphere(ro,rd,c1,2.7f32*k);
       if ((tc>0.0f32)&&(tc<h.t)) { h.t=tc; h.n=normalize3(sub3(add3(ro,scale3(rd,tc)),c1)); h.m=2.0f32; h.who=cast(f32)i; }
@@ -246,7 +248,10 @@ fivelab_sky :: (rd:V3,sun:V3,t:f32)->V3 {
   return c;
 }
 // The grass at (x, z): two greens broken up by noise, dabbed, the grid painted on in the clearing.
-fivelab_grass :: (x:f32,z:f32,u:[]f32,t:f32)->V3 {
+// fp: the ground one pixel covers there (m). The grid's lines are 3 cm wide: past a pixel's width
+// they widen to a pixel and fade a little, and they fade out before the squares shrink to a few
+// pixels, so they never alias into bands that slide as the camera zooms.
+fivelab_grass :: (x:f32,z:f32,u:[]f32,t:f32,fp:f32)->V3 {
   n1:f32=verse_style_noise(x*0.35f32,z*0.35f32);
   n2:f32=verse_style_noise((x*1.7f32)+5.0f32,(z*1.7f32)+2.0f32);
   dab:f32=verse_style_noise(x*6.0f32,z*6.0f32);
@@ -259,7 +264,9 @@ fivelab_grass :: (x:f32,z:f32,u:[]f32,t:f32)->V3 {
   gx:f32=(x+hw)/sq; gz:f32=(z+hd)/sq;
   lx:f32=abs(fract(gx+0.5f32)-0.5f32)*sq;
   lz:f32=abs(fract(gz+0.5f32)-0.5f32)*sq;
-  line:f32=1.0f32-smoothstep(0.012f32,0.045f32,fmin(lx,lz));
+  lw:f32=fmax(0.03f32,fp);
+  line:f32=1.0f32-smoothstep(lw*0.4f32,lw*1.5f32,fmin(lx,lz));
+  line=line*fmin(1.0f32,sqrt(0.03f32/fmax(fp,0.0001f32)))*(1.0f32-smoothstep(sq*0.12f32,sq*0.3f32,fp));
   c=mix3(c,v3(0.55f32,0.6f32,0.36f32),line*inside*0.5f32);
   return c;
 }
@@ -281,7 +288,7 @@ fivelab_glade :: (p:V2,u:[]f32,frame:[]f32)->V4 {
   albedo:V3=v3(0.5f32,0.5f32,0.5f32);
   glow:V3=v3(0.0f32,0.0f32,0.0f32);
   if (h.m<0.5f32) {
-    albedo=fivelab_grass(pos.x,pos.z,u,t);
+    albedo=fivelab_grass(pos.x,pos.z,u,t,h.t/(f*fmax(abs(rd.y),0.08f32)));
     // the spells' areas on the ground
     {
       i:int=0;

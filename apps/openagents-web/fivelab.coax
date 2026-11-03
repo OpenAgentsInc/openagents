@@ -3268,3 +3268,29 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   m := draw_sliders(s[..], hud[..], draw_player(s[..], hud[..], draw_top(s[..], hud[..], draw_panel(s[..], hud[..], 0, 1), 1600, 1, 0), 1), 1);
   #assert m > 1000 && m < HUD_VERTS - 100;
 }
+
+#test "the grid and the trees stand still through a battle's turns, its zooms and the next battle" #steps 2000000000 {
+  s: [1] Lab; s[0].heroes = 40; s[0].skeletons = 200;
+  lab_start(s[..]);
+  #assert s[0].cols > COLS;   // a grid grown for them
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := lab_frame(s[..], out[..], u[..], 1600, 1000, 1, 0.05, false);
+  #assert n > 0;
+  // the shader's trees stand round the clearing at U_BOUNDS's half sizes (gpu/fivelab.coax
+  // fivelab_tree): these four, and nothing else of the battle, place them and the grid's lines
+  first: [4] f32; for k: 0..<4 { first[k] = u[U_BOUNDS + k]; }
+  #assert first[0] == f32(s[0].cols) * f32(SQ) / 2 && first[1] == f32(s[0].rows) * f32(SQ) / 2 && first[2] == f32(SQ);
+  cols := s[0].cols; rows := s[0].rows;
+  r0 := s[0].round;
+  turns := 0;
+  for f: 0..<4 {
+    // a second and more of the battle's turns, a zoom, and a frame
+    for q: 0..<24 { step(s[..], f32(STEP)); }
+    cam_zoom(s[..], ifx f % 2 == 0 then 0.6 else 1.5);
+    n = lab_frame(s[..], out[..], u[..], 1600, 1000, 1, 0.05, false);
+    for k: 0..<4 { #assert u[U_BOUNDS + k] == first[k]; }
+    #assert s[0].cols == cols && s[0].rows == rows;
+  }
+  // the battle ran its turns, or ended and the next began at the same size
+  #assert bt(s[..])[0].clock > 4 * 24 * f32(STEP) * 0.99 || s[0].round > r0;
+}
