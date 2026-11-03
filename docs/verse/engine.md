@@ -39,3 +39,7 @@ systems. Native CPU layout, GPU layout, protocol encoding and reload/save
 migration remain separate. Keep working native code and platform shims until
 actual Coax consumer parity is demonstrated; no whole-engine rewrite is
 claimed here.
+
+Characters: [MetaHuman support](metahuman-support.md) is the design for
+loading, animating and drawing private Epic MetaHuman characters in Aethyr,
+with a first plan for 5E Lab's figures.
