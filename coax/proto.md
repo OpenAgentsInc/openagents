@@ -212,7 +212,15 @@ user-file line numbers past EOF.
 The actual parser/generator is now checked Coax, not a second model of a C++
 implementation. It uses bounded, host-owned views for messages, fields, enum
 values, groups, names and source buffers. Coax's exported `D_capacities` defines
-those scratch allocations; the host allocates from that contract. File-read
+those scratch allocations; the host allocates from that contract. The scratch
+arena starts at `D_arena_first(input bytes)`, 1 MiB plus 64 bytes per
+descriptor byte (`owned.pb` uses 42), not the 128 MiB ceiling. An import that
+runs out of scratch runs again at the ceiling when `D_arena_retry` says so.
+Generation is the same until scratch runs out, so the first size changes the
+cost of an import, never its source or diagnostic. Generated names go in an
+open-addressed hash table with twice as many slots as the 32,768-name budget:
+each name is compared with the few names beside it, in the same order and with
+the same collision and budget diagnostics as the old every-pair check. File-read
 bounds come from Coax limits; the host enforces them while doing I/O. Output
 envelope bounds and formatting are enforced by the Coax fingerprint module.
 Descriptor validation retains first-error diagnostics; failed imports publish
@@ -290,14 +298,17 @@ The sanitized native importer check imports every descriptor in
 `proto/descriptors/` and `coax/tests/proto/types.pb` unchanged, plus a fixed
 subset of a seeded sweep: random inputs of 0-63 bytes and every 64th size to
 1023, and 8 of the 64 bit-flip mutants of each descriptor, one per bit
-position. That is 295 imports, about 22 s on a 28-core Linux machine at
-73 ms per import, and the test prints its count and cost.
+position. That is 295 imports, about 17 s on a 28-core Linux machine at
+59 ms per import, and the test prints its count and cost.
 `COAX_PROTO_SANITIZER_FULL=1 python3 coax/tests/proto_import.py` runs the
 full sweep, all 1024 random inputs and all 64 mutants of each descriptor
-(about 2,600 imports, 3 to 4 minutes). Most of the sanitized cost is ASan's
+(about 2,600 imports, about 3 minutes). Most of the sanitized cost is ASan's
 stack-use-after-return fake stack, which GCC 15 turns on by default (about
-3.3x on `owned.pb`), and the generated-name collision check, which compares
-each of `owned.pb`'s 4,960 generated names with every earlier one.
+3.3x on `owned.pb`). The generated-name check once compared each of
+`owned.pb`'s 4,960 names with every earlier one, and every import allocated
+the 128 MiB arena up front; #12685 replaced both (a hashed name table and an
+arena sized from the input), taking a sanitized `owned.pb` import from 1.1 s
+to 0.7 s and a rejected input from 8 ms to 3 ms.
 
 
 The legacy declaration-characterization suite pins the pre-voice `owned.pb`

@@ -415,6 +415,22 @@ main :: () {a:[4] u8;b:[4] u8;
         path.write_bytes(b(1,b(1,b'test.proto')+b(4,b(1,b'Item'))+b(4,b(1,b'Item_Option'))+b(12,b'proto3')))
         r=run([COAX,'check',src]);self.assertIn(b'E0502',r.stderr)
 
+    def test_small_descriptor_with_large_source_retries_scratch(self):
+        # 2,048 one-letter string fields: about 25 KB of descriptor and 4 MB of
+        # source, more than the first arena (1 MiB plus 64 bytes per input
+        # byte, D_arena_first), so the import runs again at the ceiling (#12685).
+        def name(i):
+            s='';i+=1
+            while i:i-=1;s+=chr(97+i%26);i//=26
+            return s.encode()
+        messages=b''.join(b(4,b(1,b'M%d'%m)+b''.join(b(2,b(1,name(i))+v(3,i+1)+v(4,1)+v(5,9)) for i in range(256))) for m in range(8))
+        path=self.d/'wide.pb';path.write_bytes(b(1,b(1,b'wide.proto')+messages+b(12,b'proto3')))
+        out=self.d/'wide.coax'
+        r=run([COAX,'proto',path,'--prefix','W','-o',out]);self.assertEqual(r.returncode,0,r.stderr.decode())
+        source=out.read_bytes()
+        self.assertGreater(len(source),1048576+64*path.stat().st_size)
+        self.assertEqual(source.count(b'\nW_M7_set_vi :: '),1)
+
     def test_native_descriptor_bounds_and_cli_diagnostics(self):
         def descriptor(message):return b(1,b(1,b'test.proto')+b(4,message)+b(12,b'proto3'))
         cases=[descriptor(b(1,b'M'*257)),v(99,0)*40001,

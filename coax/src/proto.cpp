@@ -22,25 +22,35 @@ static Result import_descriptor(View raw,const std::string &prefix,const std::st
   try {
     const auto caps=D_capacities();
     const auto limits=F_capacities();
-    std::vector<coax_t_D_Type> types((size_t)caps.types), enums((size_t)caps.types);
-    std::vector<coax_t_D_Field> fields((size_t)caps.fields);
-    std::vector<coax_t_D_Value> values((size_t)caps.values);
-    std::vector<coax_string> groups((size_t)caps.groups), files((size_t)caps.files), deps((size_t)caps.deps), symbols((size_t)caps.symbols);
-    // Allocate without clearing: Coax writes every byte before exposing it.
-    std::unique_ptr<uint8_t[]> arena(new uint8_t[(size_t)caps.arena]), output(new uint8_t[(size_t)caps.output]);
+    std::vector<coax_t_D_Type> types, enums;
+    std::vector<coax_t_D_Field> fields;
+    std::vector<coax_t_D_Value> values;
+    std::vector<coax_string> groups, files, deps, symbols;
+    std::unique_ptr<uint8_t[]> arena, output(new uint8_t[(size_t)caps.output]);
     coax_t_D_State state{};
-    state.types={types.data(),(int64_t)types.size()};state.enums={enums.data(),(int64_t)enums.size()};
-    state.fields={fields.data(),(int64_t)fields.size()};state.values={values.data(),(int64_t)values.size()};
-    state.groups={groups.data(),(int64_t)groups.size()};state.files={files.data(),(int64_t)files.size()};
-    state.deps={deps.data(),(int64_t)deps.size()};state.symbols={symbols.data(),(int64_t)symbols.size()};
-    state.arena={arena.get(),caps.arena};state.output={output.get(),caps.output};
     std::unique_ptr<uint8_t[]> runtime(new uint8_t[(size_t)limits.runtime]), final_source(new uint8_t[(size_t)limits.source]);
     const auto runtime_result=F_runtime({PROTO_CORE_SOURCE,sizeof(PROTO_CORE_SOURCE)-1},
         {PROTO_MEMORY_SOURCE,sizeof(PROTO_MEMORY_SOURCE)-1},{runtime.get(),limits.runtime});
     if(runtime_result.error.count) {result.error.assign(runtime_result.error.data,(size_t)runtime_result.error.count);return result;}
     const coax_string runtime_input={(const char*)runtime.get(),runtime_result.written};
     const coax_string raw_input={raw.data(),(int64_t)raw.size()}, prefix_input={prefix.data(),(int64_t)prefix.size()};
-    int64_t count=G_generate({&state,1},raw_input,prefix_input,runtime_input);
+    // Coax sizes the scratch arena: D_arena_first from the input, then
+    // D_arena_retry says whether to run the import again with a larger one.
+    int64_t count=0;
+    for(int64_t arena_size=D_arena_first(raw_input.count);arena_size;arena_size=D_arena_retry(state.error,arena_size)) {
+      types.assign((size_t)caps.types,{});enums.assign((size_t)caps.types,{});fields.assign((size_t)caps.fields,{});
+      values.assign((size_t)caps.values,{});groups.assign((size_t)caps.groups,{});files.assign((size_t)caps.files,{});
+      deps.assign((size_t)caps.deps,{});symbols.assign((size_t)caps.symbols,{});
+      // Allocate without clearing: Coax writes every byte before exposing it.
+      arena.reset();arena.reset(new uint8_t[(size_t)arena_size]);
+      state=coax_t_D_State{};
+      state.types={types.data(),(int64_t)types.size()};state.enums={enums.data(),(int64_t)enums.size()};
+      state.fields={fields.data(),(int64_t)fields.size()};state.values={values.data(),(int64_t)values.size()};
+      state.groups={groups.data(),(int64_t)groups.size()};state.files={files.data(),(int64_t)files.size()};
+      state.deps={deps.data(),(int64_t)deps.size()};state.symbols={symbols.data(),(int64_t)symbols.size()};
+      state.arena={arena.get(),arena_size};state.output={output.get(),caps.output};
+      count=G_generate({&state,1},raw_input,prefix_input,runtime_input);
+    }
     if(state.error.count) {result.error.assign(state.error.data,(size_t)state.error.count);return result;}
     const auto packaged=F_package(raw_input,prefix_input,{compiler.data(),(int64_t)compiler.size()},runtime_input,
         {PROTO_IMPORTER_SOURCE,sizeof(PROTO_IMPORTER_SOURCE)-1},

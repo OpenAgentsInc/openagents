@@ -22,7 +22,7 @@ D_State :: struct {
 }
 #test "all admission policy endpoints" {
   c:=D_capacities();
-  #assert c.types==256 && c.fields==2048 && c.values==8192 && c.groups==65536 && c.files==256 && c.deps==8192 && c.symbols==32768 && c.arena==134217728 && c.output==8388608;
+  #assert c.types==256 && c.fields==2048 && c.values==8192 && c.groups==65536 && c.files==256 && c.deps==8192 && c.symbols==65536 && c.arena==134217728 && c.output==8388608;
   #assert D_input(8388608,"P") && !D_input(8388609,"P") && !D_input(0,"bad-");
   #assert D_type_count(0) && D_type_count(255) && !D_type_count(256) && !D_type_count(-1);
   #assert D_depth(0) && D_depth(31) && !D_depth(32) && !D_depth(-1);
@@ -39,10 +39,38 @@ D_State :: struct {
   parts:=[1] string.["abcdef"];#assert G_cat(state[..],parts[..])=="abcdef" && state[0].error=="";
   state[0].used=0;x:=G_fmt(state[..],"$:",parts[..]);#assert state[0].error=="invalid source template";
   state[0].error="";a:[10] string;x=G_value(state[..],D_Field.{kind=10},a[..]);#assert state[0].error=="unimplemented descriptor scalar";
-  state[0].error="";G_write(state[..],"A_9 ::\n// skip\nz ::\nA_9 ::");G_collisions(state[..]);#assert state[0].error!="";
-  #assert state[0].ns==2 && symbols[0]=="A_9" && symbols[1]=="z";
+  state[0].error="";G_write(state[..],"A_9 ::\n// skip\nz ::\nA_9 ::");G_collisions(state[..]);#assert state[0].error=="generated name collision; use narrower profiles";
+  #assert state[0].ns==2 && symbols[0]=="A_9" && symbols[1]=="z" && symbols[2]=="" && symbols[3]=="";
   state[0].error="";state[0].ns=0;state[0].written=0;G_write(state[..],"A");G_collisions(state[..]);#assert state[0].error=="" && state[0].ns==0;
-  state[0].error="";state[0].ns=4;D_symbol(state[..],"another");#assert state[0].error!="";
+  state[0].error="";state[0].ns=4;D_symbol(state[..],"another");#assert state[0].error=="generated symbol budget";
+}
+#test "generated names hash to FNV-1a slots and probe forward" {
+  #assert D_hash("")==14695981039346656037 && D_hash("a")==12638187200555641996 && D_hash("foobar")==9625390261332436968;
+  // Four slots hold two names. D and H both hash to slot 3; H wraps to slot 0.
+  symbols:[4] string;state:=[1] D_State.[D_State.{symbols=symbols[..]}];
+  D_symbol(state[..],"D");D_symbol(state[..],"H");
+  #assert state[0].error=="" && state[0].ns==2 && symbols[3]=="D" && symbols[0]=="H" && symbols[1]=="" && symbols[2]=="";
+  // A repeat is found past other names, and reported before the full budget.
+  D_symbol(state[..],"H");#assert state[0].error=="generated name collision; use narrower profiles" && state[0].ns==2;
+  state[0].error="";D_symbol(state[..],"x");#assert state[0].error=="generated symbol budget" && state[0].ns==2 && symbols[1]=="";
+  D_forget(state[..]);#assert state[0].ns==0 && symbols[0]=="" && symbols[1]=="" && symbols[2]=="" && symbols[3]=="";
+  state[0].error="";D_symbol(state[..],"H");#assert state[0].error=="" && state[0].ns==1 && symbols[3]=="H";
+  // Eight slots hold four names.
+  wide:[8] string;state[0].symbols=wide[..];state[0].ns=0;
+  D_symbol(state[..],"A");D_symbol(state[..],"B");D_symbol(state[..],"C");D_symbol(state[..],"D");
+  #assert state[0].error=="" && state[0].ns==4 && wide[4]=="A" && wide[5]=="B" && wide[2]=="C" && wide[3]=="D";
+  D_symbol(state[..],"E");#assert state[0].error=="generated symbol budget" && state[0].ns==4 && wide[0]=="";
+  // No slots: no name fits.
+  state[0].error="";state[0].symbols=wide[0..<0];state[0].ns=0;D_symbol(state[..],"A");
+  #assert state[0].error=="generated symbol budget" && state[0].ns==0;
+}
+#test "the scratch arena starts from the input size and retries once at the ceiling" {
+  #assert D_arena_first(0)==1048576 && D_arena_first(1)==1048640 && D_arena_first(55952)==4629504;
+  #assert D_arena_first(1048576)==68157440 && D_arena_first(1048577)==134217728 && D_arena_first(8388608)==134217728;
+  #assert D_arena_retry("importer scratch budget",1048576)==134217728 && D_arena_retry("importer scratch budget",134217727)==134217728;
+  #assert D_arena_retry("importer scratch budget",134217728)==0 && D_arena_retry("generated source budget",1048576)==0 && D_arena_retry("",1048576)==0;
+  arena:[2] u8;state:=[1] D_State.[D_State.{arena=arena[..]}];parts:=[1] string.["abc"];
+  x:=G_cat(state[..],parts[..]);#assert x=="" && D_arena_retry(state[0].error,state[0].arena.count)==134217728;
 }
 #test "native span independent text and work ceilings" {
   state:[1] D_State;bytes:[16385] u8;for i:0..<16385 {bytes[i]=65;}
@@ -135,9 +163,20 @@ D_field_number :: (n:u64)->bool {return D_wire_number(n) && !(n>=19000 && n<=199
 G_output_room :: (written:int,size:int,capacity:int)->bool {return size<=capacity-written && size<=D_MAX_BYTES-written;}
 D_input :: (count:int,prefix:string)->bool {return D_small(count,D_MAX_BYTES) && D_identifier(prefix);}
 D_Capacities :: struct {types:int;fields:int;values:int;groups:int;files:int;deps:int;symbols:int;arena:int;output:int;}
+// symbols is the generated-name table: twice as many slots as the 32768-name
+// budget (D_symbol). arena is the scratch ceiling; the host starts smaller.
 D_capacities :: ()->D_Capacities #export_c {
-  return D_Capacities.{types=256,fields=2048,values=8192,groups=65536,files=256,deps=8192,symbols=32768,arena=134217728,output=D_MAX_BYTES};
+  return D_Capacities.{types=256,fields=2048,values=8192,groups=65536,files=256,deps=8192,symbols=65536,arena=D_ARENA_MAX,output=D_MAX_BYTES};
 }
+D_ARENA_MAX :: 134217728;
+D_SCRATCH_EXHAUSTED :: "importer scratch budget";
+// The host's first scratch arena for an import: 1 MiB plus 64 bytes per
+// descriptor byte, and the ceiling past 1 MiB of input. owned.pb uses 42 bytes
+// per input byte. An import that runs out is run again at the ceiling
+// (D_arena_retry). Generation is the same until scratch runs out, so the first
+// size changes only the cost of an import, never its source or diagnostic.
+D_arena_first :: (input:int)->int #export_c {if input>1048576 {return D_ARENA_MAX;}return 1048576+input*64;}
+D_arena_retry :: (error:string,size:int)->int #export_c {if error==D_SCRATCH_EXHAUSTED && size<D_ARENA_MAX {return D_ARENA_MAX;}return 0;}
 D_fail :: (s:[] D_State,message:string) {if s[0].error=="" {s[0].error=message;}}
 D_alpha :: (c:u8)->bool {return (c>=65 && c<=90) || (c>=97 && c<=122) || c==95;}
 D_digit :: (c:u8)->bool {return c>=48 && c<=57;}
@@ -206,7 +245,7 @@ D_utf8 :: (t:string)->bool {
 }
 G_cat :: (s:[] D_State,parts:[] string)->string {
   start:=s[0].used;
-  for p:parts {if p.count>s[0].arena.count-s[0].used {D_fail(s,"importer scratch budget");return "";}
+  for p:parts {if p.count>s[0].arena.count-s[0].used {D_fail(s,D_SCRATCH_EXHAUSTED);return "";}
     for c:p {s[0].arena[s[0].used]=c;s[0].used+=1;}}
   return cast(string)s[0].arena[start..<s[0].used];
 }
@@ -332,12 +371,24 @@ D_parse :: (s:[] D_State,raw:string,prefix:string) {
     }
   }
   for i:0..<s[0].ne {D_symbol(s,s[0].enums[i].name);if s[0].error!="" {return;}}
-  s[0].ns=0;
+  D_forget(s);
 }
+// Generated names live in an open-addressed table: symbols has twice as many
+// slots as names fit (ns), and an empty string marks a free slot. A name starts
+// at its FNV-1a hash and probes forward to itself or a free slot, so it meets
+// the few names beside it rather than every earlier one (#12685). The table is
+// never more than half full, so the probe always reaches a free slot.
+D_hash :: (t:string)->u64 {h:u64=14695981039346656037;for c:t {h=mul_wrap(h^cast(u64)c,1099511628211);}return h;}
 D_symbol :: (s:[] D_State,name:string) {
-  for i:0..<s[0].ns {if s[0].symbols[i]==name {D_fail(s,"generated name collision; use narrower profiles");return;}}
-  if !D_storage(s[0].ns,s[0].symbols.count) {D_fail(s,"generated symbol budget");return;}s[0].symbols[s[0].ns]=name;s[0].ns+=1;
+  slots:=s[0].symbols.count;if slots==0 {D_fail(s,"generated symbol budget");return;}
+  at:=cast(int)(D_hash(name)%cast(u64)slots);
+  while s[0].symbols[at].count!=0 {
+    if s[0].symbols[at]==name {D_fail(s,"generated name collision; use narrower profiles");return;}
+    at=(at+1)%slots;
+  }
+  if !D_storage(s[0].ns,slots/2) {D_fail(s,"generated symbol budget");return;}s[0].symbols[at]=name;s[0].ns+=1;
 }
+D_forget :: (s:[] D_State) {for i:0..<s[0].symbols.count {s[0].symbols[i]="";}s[0].ns=0;}
 // Template slots: 0 runtime prefix, 1 message, 2 field, 3 type, 4 option,
 // 5 field number, 6 wire type, 7 decoded value, 8 oneof, 9 method/extra.
 G_fmt :: (s:[] D_State,text:string,args:[] string)->string {
