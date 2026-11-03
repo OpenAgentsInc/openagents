@@ -140,7 +140,7 @@ td_you :: (s: [] Everglade) {
   w := watch_w(s);
   you := ab_you(s);
   inside := d[0].on && d[0].mode == TD_WHIRL && s[0].water >= WATER_SWIMMING && flat_gap(you, d[0].at) <= f32(TD_WHIRL_R);
-  if inside && !w[0].dead && (!d[0].whirl_in || d[0].time >= d[0].whirl_next) {
+  if inside && !watch_you(w[..])[0].dead && (!d[0].whirl_in || d[0].time >= d[0].whirl_next) {
     d[0].whirl_next = d[0].time + f32(FR_ROUND);
     took := srd_creature_takes(w[0].dice[..], SRD_RANGER_5, SrdDamage.{amount = srd_sum(s[0].sp.dice[..], 2, 8), kind = DMG_BLUDGEONING, amount2 = 0, kind2 = DMG_NONE}, SAVE_STR, ON_SAVE_HALF, TD_DC);
     watch_hurt_you_thrown(w, took, you, s[0].face, v3(0, 0, 0));

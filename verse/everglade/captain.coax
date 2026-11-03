@@ -91,9 +91,9 @@ cap_way :: (dx: f32, dz: f32) -> string {
 // up: you are out of a sword's reach above them (levitating, on a roof).
 cap_request :: (out: [] u8, w: [] Watch, you: Point, up: bool, asked: [] int, n: int) -> int {
   floating := up;
-  moving := length(w[0].you_v) > 1.0;
+  moving := length(watch_you(w[..])[0].you_v) > 1.0;
   b := json_raw(out, 0, "{\"model\":\"elephant-1\",\"state\":\"The town watch are hunting a lawbreaker. WANTED level ");
-  b = json_write_int(out, b, clamp_w(w[0].level, 1, WANTED_LEVELS));
+  b = json_write_int(out, b, clamp_w(watch_you(w[..])[0].level, 1, WANTED_LEVELS));
   b = json_raw(out, b, " of 5. The lawbreaker is ");
   b = json_raw(out, b, ifx floating then "floating out of sword reach" else "on the ground");
   b = json_raw(out, b, ifx moving then " and moving." else " and standing still.");
@@ -265,7 +265,7 @@ cap_drop :: (c: [] Captain) { c[0].phase = 0; c[0].send = false; }
 // Once a frame: a new hunt fences what is out; an expired request is dropped; a new one starts
 // when it may. The rehearsal answers at once.
 cap_frame :: (c: [] Captain, w: [] Watch, you: Point, up: bool, now_ms: int, out: [] u8) {
-  hunting := w[0].on && w[0].wanted && !w[0].dead;
+  hunting := w[0].on && watch_you(w[..])[0].wanted && !watch_you(w[..])[0].dead;
   if !hunting && c[0].hunting { c[0].episode += 1; c[0].hunt_attempts = 0; if c[0].phase != 0 { c[0].refused += 1; cap_drop(c); } }
   c[0].hunting = hunting;
   if c[0].phase != 0 && now_ms >= c[0].expires_ms { c[0].timeouts += 1; cap_drop(c); }
@@ -325,7 +325,7 @@ cap_test_hunt :: (w: [] Watch, heights: [] f32, you: Point) {
     watch_alarm(w, i, you, you);
     w[0].actors[i].x = you.x - 12 + f32(k) * 1.5; w[0].actors[i].z = you.z - 10;
   }
-  w[0].wanted = true; w[0].hp = 100000; w[0].max = 100000;
+  watch_you(w[..])[0].wanted = true; watch_you(w[..])[0].hp = 100000; watch_you(w[..])[0].max = 100000;
 }
 cap_answer :: (out: [] u8, roles: [] int) -> int {
   b := json_raw(out, 0, "{\"model\":\"elephant-1\",\"answers\":{");
@@ -482,7 +482,7 @@ cap_answer :: (out: [] u8, roles: [] int) -> int {
       #assert w[0].actors[i].role == ROLE_PRESS;
       #assert w[0].actors[i].x == base[0].actors[i].x && w[0].actors[i].z == base[0].actors[i].z && w[0].actors[i].mode == base[0].actors[i].mode;
     }
-    #assert w[0].level == base[0].level && w[0].spawned == base[0].spawned && w[0].spear_hits == base[0].spear_hits;
+    #assert watch_you(w[..])[0].level == watch_you(base[..])[0].level && w[0].spawned == base[0].spawned && watch_you(w[..])[0].spear_hits == watch_you(base[..])[0].spear_hits;
   }
 }
 
@@ -499,10 +499,10 @@ cap_answer :: (out: [] u8, roles: [] int) -> int {
   for k: 1..<CAP_HUNT + 3 { cap_frame(c[..], w[..], you, false, k * CAP_EVERY, cap_buf[..]); cap_drop(c[..]); }
   #assert c[0].attempts == CAP_HUNT;
   // the hunt ends and another starts: a fresh budget, and the old answer is fenced
-  w[0].wanted = false; cap_frame(c[..], w[..], you, false, 1000000, cap_buf[..]); w[0].wanted = true;
+  watch_you(w[..])[0].wanted = false; cap_frame(c[..], w[..], you, false, 1000000, cap_buf[..]); watch_you(w[..])[0].wanted = true;
   cap_frame(c[..], w[..], you, false, 1000001, cap_buf[..]); #assert c[0].phase == 1 && c[0].hunt_attempts == 1;
   seq := c[0].sequence;
-  w[0].wanted = false; cap_frame(c[..], w[..], you, false, 1000002, cap_buf[..]); w[0].wanted = true;
+  watch_you(w[..])[0].wanted = false; cap_frame(c[..], w[..], you, false, 1000002, cap_buf[..]); watch_you(w[..])[0].wanted = true;
   out: [CAP_BODY] u8; roles := [4] int.[ROLE_FLANK_L, ROLE_FLANK_R, ROLE_CALL, ROLE_UNDER];
   m := cap_answer(out[..], roles[..]);
   cap_reply(c[..], w[..], seq, 1000003, "200\n", cast(string) out[0..<m]);

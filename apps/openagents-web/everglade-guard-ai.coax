@@ -27,7 +27,7 @@ everglade_guard_tick :: (s:[]Everglade,you:Point,c:FolkClock) {
   o:=GaObservation.{calm=a.ready && a.mode==WM_CALM && !a.body.on && a.shout<0,
     alive=a.hp>0 && a.hp==a.max,near=flat_gap(v3(a.x,0,a.z),you)<8,
     visible=!eg_gone(s[0].ev.edits,0) && !s[0].folk[0].indoors,
-    safe=!w[0].dead && w[0].hp>0 && !w[0].wanted && s[0].talk<0 && !s[0].board && !s[0].ev.editing && s[0].sp.casting<0 && s[0].sp.armed<0,
+    safe=!watch_you(w[..])[0].dead && watch_you(w[..])[0].hp>0 && !watch_you(w[..])[0].wanted && s[0].talk<0 && !s[0].board && !s[0].ev.editing && s[0].sp.casting<0 && s[0].sp.armed<0,
     playable=s[0].wv.started && w[0].on && !c.still && !s[0].above && !s[0].warp && !s[0].paint_only && !s[0].guard_ai.input.blocked,
     day=clamp_i(cast(int)(c.day*4),0,3),weather=weather};
   s[0].guard_ai.input.observation=o;
@@ -65,7 +65,7 @@ everglade_captain_frame :: (s:[]Everglade,you:Point) {
       }
       if best>=0 {watch_alarm(w,best,you,you);}
     }
-    w[0].wanted=true;w[0].unseen=0;
+    watch_you(w[..])[0].wanted=true;watch_you(w[..])[0].unseen=0;
   }
 }
 // out: the face's buffer the request is written into.

@@ -104,10 +104,10 @@ e5_staged :: (s: [] Everglade, v: [] E5) {
   f := v[0].force;
   if f == 0 { return; }
   w := watch_w(s);
-  if w[0].dead { return; }
-  if (f & E5_FORCE_HELD) != 0 && w[0].held_t < 1 { w[0].held_t = 3; w[0].held_saves = 0; }
-  if (f & E5_FORCE_BOUND) != 0 { w[0].bound_kept = true; if w[0].bound_t < 5 { w[0].bound_t = 60; } }
-  if (f & E5_FORCE_SLOW) != 0 && w[0].slow_t < 1 { w[0].slow_t = 6; }
+  if watch_you(w[..])[0].dead { return; }
+  if (f & E5_FORCE_HELD) != 0 && watch_you(w[..])[0].held_t < 1 { watch_you(w[..])[0].held_t = 3; watch_you(w[..])[0].held_saves = 0; }
+  if (f & E5_FORCE_BOUND) != 0 { watch_you(w[..])[0].bound_kept = true; if watch_you(w[..])[0].bound_t < 5 { watch_you(w[..])[0].bound_t = 60; } }
+  if (f & E5_FORCE_SLOW) != 0 && watch_you(w[..])[0].slow_t < 1 { watch_you(w[..])[0].slow_t = 6; }
   if (f & E5_FORCE_COOL) != 0 && v[0].pend_n == 0 && v[0].bar_ok { e5_pend(v, SP_METEOR, -100, -100); }
 }
 e5_before :: (s: [] Everglade, v: [] E5, bar: [] f32, bar_n: int, hero: [] f32, hero_n: int, now: f32) #export_c {
@@ -121,19 +121,19 @@ e5_before :: (s: [] Everglade, v: [] E5, bar: [] f32, bar_n: int, hero: [] f32, 
   if v[0].hero_ok {
     // your Hit Points and Armor Class are the engine's caster's: a new life starts at its most
     hmax := cast(int) v[0].hero[1];
-    if w[0].max != hmax && hmax > 0 { w[0].hp = ifx w[0].hp >= w[0].max then hmax else hi_int(lo_int(w[0].hp, hmax), 1); w[0].max = hmax; }
-    w[0].ac = cast(int) v[0].hero[3];
+    if watch_you(w[..])[0].max != hmax && hmax > 0 { watch_you(w[..])[0].hp = ifx watch_you(w[..])[0].hp >= watch_you(w[..])[0].max then hmax else hi_int(lo_int(watch_you(w[..])[0].hp, hmax), 1); watch_you(w[..])[0].max = hmax; }
+    watch_you(w[..])[0].ac = cast(int) v[0].hero[3];
   }
   // in a room your Hit Points are the server's (everglade-net.coax): its player entity for you
   hp := net_self_hp(s); most := net_self_max(s);
-  if hp >= 0 && most > 0 { w[0].max = most; w[0].hp = lo_int(hp, most); w[0].temp = 0; }
+  if hp >= 0 && most > 0 { watch_you(w[..])[0].max = most; watch_you(w[..])[0].hp = lo_int(hp, most); watch_you(w[..])[0].temp = 0; }
   for i: 0..<WATCH_ACTORS {
     a := w[0].actors[i];
     v[0].hp0[i] = a.hp; v[0].temp0[i] = a.temp; v[0].mode0[i] = a.mode; v[0].t0[i] = a.t; v[0].after0[i] = a.after; v[0].body0[i] = a.body;
     v[0].here0[i] = watch_here(w, i);
     s[0].wv.seen[i].on = false;
   }
-  v[0].you_hp0 = w[0].hp; v[0].you_temp0 = w[0].temp; v[0].you_dead0 = w[0].dead; v[0].you_body0 = w[0].you_body; v[0].you_hurt0 = w[0].hurt_t;
+  v[0].you_hp0 = watch_you(w[..])[0].hp; v[0].you_temp0 = watch_you(w[..])[0].temp; v[0].you_dead0 = watch_you(w[..])[0].dead; v[0].you_body0 = watch_you(w[..])[0].you_body; v[0].you_hurt0 = watch_you(w[..])[0].hurt_t;
   s[0].wv.seen_you.on = false;
 }
 
@@ -163,10 +163,10 @@ e5_after :: (s: [] Everglade, v: [] E5) #export_c {
       }
       if !bar_harm && v[0].hurt_n < E5_HURTS { v[0].hurt_who[v[0].hurt_n] = i; v[0].hurt_amt[v[0].hurt_n] = lost; v[0].hurt_n += 1; }
     }
-    lost := (v[0].you_hp0 + v[0].you_temp0) - (w[0].hp + w[0].temp);
+    lost := (v[0].you_hp0 + v[0].you_temp0) - (watch_you(w[..])[0].hp + watch_you(w[..])[0].temp);
     if lost > 0 {
-      w[0].hp = v[0].you_hp0; w[0].temp = v[0].you_temp0;
-      if w[0].dead && !v[0].you_dead0 { w[0].dead = false; w[0].dead_t = 0; w[0].you_fall = 0; w[0].you_body = v[0].you_body0; }
+      watch_you(w[..])[0].hp = v[0].you_hp0; watch_you(w[..])[0].temp = v[0].you_temp0;
+      if watch_you(w[..])[0].dead && !v[0].you_dead0 { watch_you(w[..])[0].dead = false; watch_you(w[..])[0].dead_t = 0; watch_you(w[..])[0].you_fall = 0; watch_you(w[..])[0].you_body = v[0].you_body0; }
       if v[0].hurt_n < E5_HURTS { v[0].hurt_who[v[0].hurt_n] = -1; v[0].hurt_amt[v[0].hurt_n] = lost; v[0].hurt_n += 1; }
     }
   }
@@ -236,7 +236,7 @@ e5_me :: (s: [] Everglade, out: [] f32) -> int #export_c {
   if !s[0].started || out.count < 5 { return 0; }
   w := watch_w(s);
   you := ab_you(s);
-  out[0] = you.x; out[1] = you.z; out[2] = f32(w[0].hp); out[3] = f32(w[0].temp); out[4] = ifx w[0].dead then 1.0f32 else 0.0f32;
+  out[0] = you.x; out[1] = you.z; out[2] = f32(watch_you(w[..])[0].hp); out[3] = f32(watch_you(w[..])[0].temp); out[4] = ifx watch_you(w[..])[0].dead then 1.0f32 else 0.0f32;
   return 5;
 }
 // Everglade's people, E5_FOLK_FLOATS each: here, x, z, Hit Points, Temporary Hit Points, most, AC,
@@ -293,12 +293,12 @@ e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_
     // you
     eh := cast(int) out[0]; et := cast(int) out[1];
     v[0].cond[0] = cast(int) out[2];
-    lost := ifx net_live(s) then 0 else (w[0].hp + w[0].temp) - (eh + et);   // in a room the server's (e5_before)
-    if lost > 0 && !w[0].dead {
+    lost := ifx net_live(s) then 0 else (watch_you(w[..])[0].hp + watch_you(w[..])[0].temp) - (eh + et);   // in a room the server's (e5_before)
+    if lost > 0 && !watch_you(w[..])[0].dead {
       watch_hurt_you(w, lost);
-      watch_pop(s, add(you, v3(0, 2.1, 0)), lost, lost * 4 >= hi_int(w[0].max, 1) || lost >= 25);
-    } else if lost < 0 && !w[0].dead {
-      w[0].hp = lo_int(eh, w[0].max); w[0].temp = et;
+      watch_pop(s, add(you, v3(0, 2.1, 0)), lost, lost * 4 >= hi_int(watch_you(w[..])[0].max, 1) || lost >= 25);
+    } else if lost < 0 && !watch_you(w[..])[0].dead {
+      watch_you(w[..])[0].hp = lo_int(eh, watch_you(w[..])[0].max); watch_you(w[..])[0].temp = et;
     }
     for i: 0..<lo_int(n - 1, WATCH_ACTORS) {
       o := (1 + i) * E5_OUT_FLOATS;
@@ -318,7 +318,7 @@ e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_
     }
     // Everglade's pops are off; what it saw is now
     for i: 0..<WATCH_ACTORS { s[0].wv.seen[i].life = w[0].actors[i].hp + w[0].actors[i].temp; }
-    s[0].wv.seen_you.life = w[0].hp + w[0].temp;
+    s[0].wv.seen_you.life = watch_you(w[..])[0].hp + watch_you(w[..])[0].temp;
   }
   // a cast the engine took: the line under the bar (Everglade's report of its own dice) is the engine's
   if v[0].used_now {
@@ -460,11 +460,11 @@ E5_LINE :: 48;
 e5_holds :: (s: [] Everglade, v: [] E5, lines: [] u8, sizes: [] int, tone: [] int) -> int {
   if !s[0].wv.started { return 0; }
   w := watch_w(s);
-  if w[0].dead { return 0; }
+  if watch_you(w[..])[0].dead { return 0; }
   c := 0;
-  if watch_held(w) && c < E5_HOLDS { sizes[c] = e5_hold_line(lines[c * E5_LINE..<(c + 1) * E5_LINE], "HELD · HOLD PERSON · ", w[0].held_t); tone[c] = 0; c += 1; }
-  if watch_bound(w) && c < E5_HOLDS { sizes[c] = e5_hold_line(lines[c * E5_LINE..<(c + 1) * E5_LINE], "BOUND · EARTHBIND · ", w[0].bound_t); tone[c] = 1; c += 1; }
-  if w[0].slow_t > 0 && c < E5_HOLDS { sizes[c] = e5_hold_line(lines[c * E5_LINE..<(c + 1) * E5_LINE], "SLOWED · RAY OF FROST · ", w[0].slow_t); tone[c] = 2; c += 1; }
+  if watch_held(w) && c < E5_HOLDS { sizes[c] = e5_hold_line(lines[c * E5_LINE..<(c + 1) * E5_LINE], "HELD · HOLD PERSON · ", watch_you(w[..])[0].held_t); tone[c] = 0; c += 1; }
+  if watch_bound(w) && c < E5_HOLDS { sizes[c] = e5_hold_line(lines[c * E5_LINE..<(c + 1) * E5_LINE], "BOUND · EARTHBIND · ", watch_you(w[..])[0].bound_t); tone[c] = 1; c += 1; }
+  if watch_you(w[..])[0].slow_t > 0 && c < E5_HOLDS { sizes[c] = e5_hold_line(lines[c * E5_LINE..<(c + 1) * E5_LINE], "SLOWED · RAY OF FROST · ", watch_you(w[..])[0].slow_t); tone[c] = 2; c += 1; }
   // the engine's conditions on you (none of Everglade's: Blinded and Deafened have their own words)
   ec := cast(int) v[0].hero[11];
   if c < E5_HOLDS && ec != 0 {
@@ -494,7 +494,7 @@ e5_status :: (s: [] Everglade, v: [] E5, out: [] f32, u: [] f32, at: int) -> int
   cap := 7 * k;
   // watch_hud: MAP is 38 high at the top, HP 28 under it, WANTED 37 under that
   y := gutter + 38 * k + 10 * k + 28 * k + 8 * k;
-  if watch_w(s)[0].wanted { y += 9 * k + 28 * k; }
+  if watch_you(watch_w(s))[0].wanted { y += 9 * k + 28 * k; }
   x1 := s[0].width - gutter;
   for q: 0..<c {
     t := cast(string) lines[q * E5_LINE..<q * E5_LINE + sizes[q]];

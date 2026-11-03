@@ -71,12 +71,12 @@ everglade_guide_observe :: (s:[]Everglade,you:Point,still:bool) {
   s[0].guide.facts=GgpFacts.{followed=q,stage=stage,guard=0,
     help_requested=s[0].guide.help_requested,find_work=s[0].guide.find_work,
     gameplay=s[0].wv.started && w[0].on && !s[0].paint_only && !s[0].guide.golden,
-    foreground=!s[0].guard_ai.input.suspended,player_alive=!w[0].dead && w[0].hp>0,
+    foreground=!s[0].guard_ai.input.suspended,player_alive=!watch_you(w[..])[0].dead && watch_you(w[..])[0].hp>0,
     guard_calm=a.ready && a.mode==WM_CALM && !a.body.on && a.shout<0,
     guard_alive=a.hp>0,guard_full_health=a.hp==a.max,
     guard_visible=!eg_gone(s[0].ev.edits,0) && !s[0].folk[0].indoors,
     guard_near=flat_gap(v3(a.x,0,a.z),you)<8,
-    combat=w[0].wanted,talking=s[0].talk>=0 || s[0].chat.typing,board=s[0].board,
+    combat=watch_you(w[..])[0].wanted,talking=s[0].talk>=0 || s[0].chat.typing,board=s[0].board,
     editing=s[0].ev.editing,casting=s[0].sp.casting>=0 || s[0].sp.armed>=0,
     map=s[0].above,warp=s[0].warp,world_known=s[0].guide.world_parsed,
     edit_count=things,gone=0,hidden=hidden,
@@ -139,7 +139,7 @@ everglade_guide_probe :: (s:[]Everglade,field:int)->int #export_c {
   if field==240 {return cast(int)s[0].guide.button.x0;}if field==241 {return cast(int)s[0].guide.button.y0;}
   if field==242 {return cast(int)s[0].guide.button.x1;}if field==243 {return cast(int)s[0].guide.button.y1;}
   if field==244 {return s[0].guide.offered;}if field==245 {return s[0].guide.drawn;}
-  if field==250 {return ifx s[0].wt[0].dead then 1 else 0;}
+  if field==250 {return ifx watch_you(s[0].wt[..])[0].dead then 1 else 0;}
   if field==251 {return s[0].guard_ai.input.epoch;}if field==252 {return s[0].guard_ai.generation;}
   if field==246 {return s[0].guide.observation.goal;}if field==247 {return ifx s[0].guide.observation.eligible then 1 else 0;}return -1;
 }

@@ -157,11 +157,11 @@ st_su_at :: (s: [] Everglade, at: Point) {
       hurt += 1; total += took;
     }
     if hurt > 0 { ci_crime(s, at, f32(ST_HEAR_SU)); }
-    if !w[0].dead && length(sub(add(you, v3(0, 0.9, 0)), at)) <= R {
+    if !watch_you(w[..])[0].dead && length(sub(add(you, v3(0, 0.9, 0)), at)) <= R {
       amount := srd_sum(d, 12, 6);
       ok := st_con(s);
       wd_hurt_you(s, ifx ok then amount / 2 else amount, ifx ok then "SUNBURST · YOU ARE IN IT" else "SUNBURST · YOU ARE BLINDED");
-      if !ok && !w[0].dead { v[0].you_blind = f32(ST_SU_BLIND); v[0].you_blind_next = v[0].time + f32(ST_ROUND); }
+      if !ok && !watch_you(w[..])[0].dead { v[0].you_blind = f32(ST_SU_BLIND); v[0].you_blind_next = v[0].time + f32(ST_ROUND); }
     }
   }
   if hurt > 0 { sp_say(s, "SUNBURST · 12D6 RADIANT", total, ifx blinded > 0 then "· BLINDED OR BURNT" else "DAMAGE"); }
@@ -189,7 +189,7 @@ st_su_frame :: (s: [] Everglade, dt: f32) {
   }
   if v[0].you_blind > 0 {
     v[0].you_blind = hi(v[0].you_blind - dt, 0);
-    if w[0].dead { v[0].you_blind = 0; }
+    if watch_you(w[..])[0].dead { v[0].you_blind = 0; }
     else if v[0].time >= v[0].you_blind_next {
       v[0].you_blind_next = v[0].time + f32(ST_ROUND);
       if st_con(s) { v[0].you_blind = 0; sp_say(s, "YOU CAN SEE AGAIN", -1, ""); }
@@ -252,7 +252,7 @@ st_sv_round :: (s: [] Everglade) {
   if hurt > 0 { ci_crime(s, c, f32(ST_HEAR_SV)); }
   what := ifx r == 1 then "STORM OF VENGEANCE · 2D6 THUNDER" else ifx r == 2 then "ACID RAIN · 4D6 ACID" else ifx r == 4 then "HAIL · 2D6 BLUDGEONING" else "FREEZING RAIN · 1D6 COLD";
   if hurt > 0 { sp_say(s, what, total, "DAMAGE"); } else if r == 1 { sp_say(s, "STORM OF VENGEANCE", -1, ""); }
-  if w[0].dead || !st_under(s, you) { return; }
+  if watch_you(w[..])[0].dead || !st_under(s, you) { return; }
   if r == 1 {
     if !st_con(s) { v[0].you_deaf = true; wd_hurt_you(s, srd_sum(d, 2, 6), "THE THUNDER · YOU ARE DEAFENED"); }
     return;
@@ -304,7 +304,7 @@ st_sv_bolts :: (s: [] Everglade) {
     if hurt > 0 { ci_crime(s, c, f32(ST_HEAR_SV)); }
     by := false;
     for q: 0..<v[0].bolt_n { if flat_gap(you, v[0].bolts[q]) <= R && abs(you.y - v[0].bolts[q].y) < 3 { by = true; } }
-    if !w[0].dead && by {
+    if !watch_you(w[..])[0].dead && by {
       amount := srd_sum(d, 10, 6);
       wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "A BOLT BY YOU · 10D6 LIGHTNING");
     }
@@ -344,7 +344,7 @@ st_sv_frame :: (s: [] Everglade, dt: f32) {
 
 st_sc_on :: (s: [] Everglade) {
   v := st_of(s);
-  if !watch_on(s) || watch_w(s)[0].dead { return; }
+  if !watch_on(s) || watch_you(watch_w(s))[0].dead { return; }
   v[0].sc_on = true; v[0].sc_t = 0;
   ci_take_shape(s, CI_FORM_MAMMOTH, AB_SHAPECHANGE, true);
   sp_say(s, "SHAPECHANGE · A MAMMOTH", CI_FORM_HP[CI_FORM_MAMMOTH], "TEMPORARY HIT POINTS");
@@ -369,10 +369,10 @@ st_sc_frame :: (s: [] Everglade, dt: f32) {
   if v[0].sc_t >= f32(ST_SC_LIFE) { v[0].sc_on = false; ci_leave_shape(s); sp_say(s, "SHAPECHANGE ENDS", -1, ""); }
 }
 st_wild_shape :: (s: [] Everglade) {
-  if !watch_on(s) || watch_w(s)[0].dead { return; }
+  if !watch_on(s) || watch_you(watch_w(s))[0].dead { return; }
   if ci_of(s)[0].form != CI_FORM_NONE { return; }
   ci_take_shape(s, CI_FORM_WOLF, AB_RESURGENCE, false);
-  watch_w(s)[0].temp = ST_DRUID;
+  watch_you(watch_w(s))[0].temp = ST_DRUID;
   sp_say(s, "WILD RESURGENCE · A SPELL SLOT FOR WILD SHAPE · A WOLF", ST_DRUID, "TEMPORARY HIT POINTS");
 }
 
@@ -383,10 +383,10 @@ st_wild_shape :: (s: [] Everglade) {
 st_long_rest :: (s: [] Everglade) -> bool {
   if !watch_on(s) { return false; }
   w := watch_w(s);
-  if w[0].dead { return false; }
+  if watch_you(w[..])[0].dead { return false; }
   v := st_of(s);
-  w[0].hp = w[0].max;
-  w[0].held_t = 0; w[0].held_saves = 0; w[0].slow_t = 0; w[0].marked = false;
+  watch_you(w[..])[0].hp = watch_you(w[..])[0].max;
+  watch_you(w[..])[0].held_t = 0; watch_you(w[..])[0].held_saves = 0; watch_you(w[..])[0].slow_t = 0; watch_you(w[..])[0].marked = false;
   v[0].you_blind = 0; v[0].you_deaf = false;
   wd_of(s)[0].you_lit = false;
   f := fr_of(s);
@@ -397,7 +397,7 @@ st_long_rest :: (s: [] Everglade) -> bool {
     if c[0].form_by == AB_SHAPECHANGE { v[0].sc_on = false; }
     ci_leave_shape(s);
   }
-  w[0].temp = 0;
+  watch_you(w[..])[0].temp = 0;
   return true;
 }
 

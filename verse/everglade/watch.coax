@@ -278,11 +278,13 @@ Actor :: struct {
   role: int; role_t: f32;         // the captain's plan for a hunting guard (ROLE_*, verse/everglade/captain.coax) and how long it holds
 }
 
-Watch :: struct {
-  on: bool;                       // the ruleset is the SRD's and the page is not still
-  actors: [WATCH_ACTORS] Actor;
+// What the watch keeps of each player it answers (the page has one, yous[0]; the room server one
+// for each of its WATCH_YOUS seats): their Hit Points, death, the blows at them, WANTED, the spells
+// that hold or slow them. The watch's code reads the one `me` names (watch_you), so the server steps
+// each player in turn with me set to its seat.
+WATCH_YOUS :: 16;
+WatchYou :: struct {
   wanted: bool; unseen: f32;      // seconds no hunter has seen you
-  peace: bool; unhurt: bool;      // the realm's switches: no one gives chase (guards off); nothing hurts you
   hp: int; max: int; ac: int;     // you
   dead: bool; dead_t: f32;        // you fell, and the seconds since
   respawn: bool;                  // the realm puts you at the Road In (taken once)
@@ -291,6 +293,27 @@ Watch :: struct {
   spear_hits: int; spear_misses: int;   // and spears
   spell_hits: int; spell_misses: int; heals: int;   // and the casters' spells
   crimes: int;
+  you_body: Tumble;               // your body, thrown by what killed you
+  you_fall: f32;                  // s since you fell (your topple)
+  // the heat
+  level: int; heat: int;          // the WANTED level (0 none) and what has raised it
+  held_t: f32; held_saves: int;   // Hold Person: how long more, the saves made
+  slow_t: f32;                    // Ray of Frost
+  marked: bool;                   // Guiding Bolt: the next attack at you has advantage
+  temp: int;                      // your Temporary Hit Points (a beast's shape: Wild Shape, Polymorph, Shapechange), lost first
+  knock: Point; knocked: bool;    // a hunter's spell's throw for your living body (the realm takes it)
+  face: f32;                      // your facing, for a body thrown
+  you_last: Point; you_v: Point; you_seen: bool;   // where you were last frame, how you move (for their lead)
+  bound_t: f32; bound_by: int;    // Earthbind: how long more, and who keeps it
+  bound_said: int;                // for the page: 1 bound, 2 resisted (it says so once and clears it)
+  darts_hit: int;                 // for the checks
+  bound_kept: bool;               // a staged Earthbind (a page's check): it lasts though no caster keeps it
+}
+Watch :: struct {
+  on: bool;                       // the ruleset is the SRD's and the page is not still
+  actors: [WATCH_ACTORS] Actor;
+  yous: [WATCH_YOUS] WatchYou; me: int;   // the players, and the one the code reads now
+  peace: bool; unhurt: bool;      // the realm's switches: no one gives chase (guards off); nothing hurts you
   dice: [1] SrdDice;
   day: f32;                       // the town's clock as last read, for the dawn
   beats: [WATCH_NEW] Route; beats_ok: bool;
@@ -301,30 +324,17 @@ Watch :: struct {
   fences: [WATCH_FENCES * 5] f32; fence_n: int;
   deck: f32;                      // the bridge's deck (plan.coax everglade_deck): where its walkers' feet are
   spears: [SPEARS] Spear;
-  you_body: Tumble;               // your body, thrown by what killed you
-  you_fall: f32;                  // s since you fell (your topple)
-  // the heat
-  level: int; heat: int;          // the WANTED level (0 none) and what has raised it
   enemy_fire: bool;               // a hunter's spell is hurting people now: no heat for it
   waves: int; spawned: int;       // for the checks
   missiles: [MISSILES] Missile;
-  held_t: f32; held_saves: int;   // Hold Person: how long more, the saves made
-  slow_t: f32;                    // Ray of Frost
-  marked: bool;                   // Guiding Bolt: the next attack at you has advantage
-  temp: int;                      // your Temporary Hit Points (a beast's shape: Wild Shape, Polymorph, Shapechange), lost first
-  knock: Point; knocked: bool;    // a hunter's spell's throw for your living body (the realm takes it)
-  face: f32;                      // your facing, for a body thrown
-  you_last: Point; you_v: Point; you_seen: bool;   // where you were last frame, how you move (for their lead)
-  bound_t: f32; bound_by: int;    // Earthbind: how long more, and who keeps it
   aa_cool: f32;                   // till the company's next Magic Missile or Earthbind (AA_GAP)
-  bound_said: int;                // for the page: 1 bound, 2 resisted (it says so once and clears it)
-  darts_hit: int;                 // for the checks
-  bound_kept: bool;               // a staged Earthbind (a page's check): it lasts though no caster keeps it
   call_cool: f32;                 // till a guard may call for help again (ROLE_CALL)
   // what a thrown body comes down onto besides the ground (aethyr/stand.coax: the roofs and rubble round
   // the bodies in flight, the realm's to set each frame), in the world
   floors: [WATCH_FLOORS * STAND_FLOATS] f32; floor_n: int;
 }
+// The player the watch's code reads now (Watch.me).
+watch_you :: (w: [] Watch) -> [] WatchYou { k := clamp_w(w[0].me, 0, WATCH_YOUS - 1); return w[0].yous[k..<k + 1]; }
 WATCH_FLOORS :: 96;
 WATCH_SPELL_FENCES :: 12;   // four Walls of Stone of two panels each, the Wall of Fire and the Wall of Thorns
 WATCH_FENCES :: WATCH_SPELL_FENCES + 64;   // and the things an admin placed (edits.coax EG_EDIT_MAX)
@@ -348,22 +358,22 @@ watch_stats :: (w: [] Watch, i: int) -> SrdCreature { if watch_is_rein(i) { retu
 watch_caster :: (w: [] Watch, i: int) -> bool { return watch_is_rein(i) && RANK_CASTER[watch_rank(w, i)]; }
 
 watch_start :: (w: [] Watch, heights: [] f32) {
-  w[0].wanted = false; w[0].unseen = 0;
-  w[0].max = SRD_RANGER_5.hp; w[0].hp = w[0].max; w[0].ac = SRD_RANGER_5.ac;
-  w[0].dead = false; w[0].dead_t = 0; w[0].respawn = false; w[0].hurt_t = 100;
+  watch_you(w[..])[0].wanted = false; watch_you(w[..])[0].unseen = 0;
+  watch_you(w[..])[0].max = SRD_RANGER_5.hp; watch_you(w[..])[0].hp = watch_you(w[..])[0].max; watch_you(w[..])[0].ac = SRD_RANGER_5.ac;
+  watch_you(w[..])[0].dead = false; watch_you(w[..])[0].dead_t = 0; watch_you(w[..])[0].respawn = false; watch_you(w[..])[0].hurt_t = 100;
   w[0].dice[0] = srd_dice(20261030);
   w[0].day = -1;
   w[0].solid_n = everglade_solids(w[0].solids[..]);
   w[0].fence_n = 0;
   w[0].deck = everglade_deck(heights);
   for k: 0..<SPEARS { w[0].spears[k].live = false; }
-  w[0].you_body.on = false; w[0].you_body.settle = -1; w[0].you_fall = 0;
-  w[0].level = 0; w[0].heat = 0; w[0].enemy_fire = false; w[0].waves = 0; w[0].spawned = 0;
+  watch_you(w[..])[0].you_body.on = false; watch_you(w[..])[0].you_body.settle = -1; watch_you(w[..])[0].you_fall = 0;
+  watch_you(w[..])[0].level = 0; watch_you(w[..])[0].heat = 0; w[0].enemy_fire = false; w[0].waves = 0; w[0].spawned = 0;
   for k: 0..<MISSILES { w[0].missiles[k].live = false; }
-  w[0].held_t = 0; w[0].held_saves = 0; w[0].slow_t = 0; w[0].marked = false; w[0].knocked = false; w[0].temp = 0;
+  watch_you(w[..])[0].held_t = 0; watch_you(w[..])[0].held_saves = 0; watch_you(w[..])[0].slow_t = 0; watch_you(w[..])[0].marked = false; watch_you(w[..])[0].knocked = false; watch_you(w[..])[0].temp = 0;
   w[0].call_cool = 0;
-  w[0].you_seen = false; w[0].you_v = v3(0, 0, 0); w[0].bound_t = 0; w[0].bound_by = -1; w[0].bound_said = 0; w[0].darts_hit = 0; w[0].aa_cool = 0;
-  w[0].bound_kept = false;
+  watch_you(w[..])[0].you_seen = false; watch_you(w[..])[0].you_v = v3(0, 0, 0); watch_you(w[..])[0].bound_t = 0; watch_you(w[..])[0].bound_by = -1; watch_you(w[..])[0].bound_said = 0; watch_you(w[..])[0].darts_hit = 0; w[0].aa_cool = 0;
+  watch_you(w[..])[0].bound_kept = false;
   for i: 0..<WATCH_ACTORS { w[0].actors[i].homed = false; w[0].actors[i].rank = RANK_GUARD; watch_revive(w, i); }
   for k: 0..<WATCH_NEW { watch_beat_route(w[0].beats[k..<k + 1], w[0].solids[..], w[0].solid_n, k, heights); }
   w[0].beats_ok = heights.count >= EG_GROUND_POINTS;
@@ -614,16 +624,16 @@ watch_stride :: (w: [] Watch, a: [] Actor, to: f32, step: f32) -> bool {
 // they cancel.
 watch_roll_at_you :: (w: [] Watch, i: int, bonus: int, c: SrdCreature) -> SrdAttack {
   b := c; b.attack = bonus;
-  roll := srd_attack(w[0].dice[..], b, w[0].ac);
+  roll := srd_attack(w[0].dice[..], b, watch_you(w[..])[0].ac);
   blind := i >= 0 && i < WATCH_ACTORS && w[0].actors[i].blind;
-  if w[0].marked {
-    w[0].marked = false;
+  if watch_you(w[..])[0].marked {
+    watch_you(w[..])[0].marked = false;
     if !blind {
-      other := srd_attack(w[0].dice[..], b, w[0].ac);
+      other := srd_attack(w[0].dice[..], b, watch_you(w[..])[0].ac);
       if other.roll > roll.roll { roll = other; }
     }
   } else if blind {
-    other := srd_attack(w[0].dice[..], b, w[0].ac);
+    other := srd_attack(w[0].dice[..], b, watch_you(w[..])[0].ac);
     if other.roll < roll.roll { roll = other; }
   }
   return roll;
@@ -677,13 +687,13 @@ watch_wind :: (kind: int) -> f32 {
 watch_choose :: (w: [] Watch, i: int, gap: f32, up: f32) -> int {
   a := w[0].actors[i..<i + 1];
   r := watch_rank(w, i);
-  if up > f32(AIR_UP) && w[0].level >= AIR_LEVEL && (r == RANK_MAGE || r == RANK_ARCHMAGE) && w[0].aa_cool <= 0 {
-    if w[0].level >= 5 && a[0].bind_cool <= 0 && w[0].bound_t <= 0 { a[0].bind_cool = BIND_EVERY; w[0].aa_cool = AA_GAP; return MS_EARTHBIND; }
+  if up > f32(AIR_UP) && watch_you(w[..])[0].level >= AIR_LEVEL && (r == RANK_MAGE || r == RANK_ARCHMAGE) && w[0].aa_cool <= 0 {
+    if watch_you(w[..])[0].level >= 5 && a[0].bind_cool <= 0 && watch_you(w[..])[0].bound_t <= 0 { a[0].bind_cool = BIND_EVERY; w[0].aa_cool = AA_GAP; return MS_EARTHBIND; }
     if a[0].mm_cool <= 0 { a[0].mm_cool = MM_EVERY; w[0].aa_cool = AA_GAP; return MS_MAGIC_MISSILE; }
   }
   if r == RANK_MAGE {
     if a[0].fireball_cool <= 0 && gap > f32(FIREBALL_R) + 1 { a[0].fireball_cool = 14; return MS_FIREBALL; }
-    if a[0].hold_cool <= 0 && w[0].held_t <= 0 { a[0].hold_cool = 18; return MS_HOLD; }
+    if a[0].hold_cool <= 0 && watch_you(w[..])[0].held_t <= 0 { a[0].hold_cool = 18; return MS_HOLD; }
     return ifx srd_roll(w[0].dice[..], 2) == 1 then MS_FIRE_BOLT else MS_FROST;
   }
   if r == RANK_PRIEST {
@@ -710,7 +720,7 @@ watch_choose :: (w: [] Watch, i: int, gap: f32, up: f32) -> int {
 // How many darts caster i's Magic Missile has (1st level three, one more a slot level up).
 watch_darts :: (w: [] Watch, i: int) -> int {
   if watch_rank(w, i) == RANK_ARCHMAGE { return 5; }
-  return ifx w[0].level >= 5 then 4 else 3;
+  return ifx watch_you(w[..])[0].level >= 5 then 4 else 3;
 }
 // A free missile slot (the oldest if none).
 watch_missile_slot :: (w: [] Watch) -> int {
@@ -727,9 +737,9 @@ watch_cast :: (w: [] Watch, i: int, kind: int, feet: f32, you: Point, heights: [
   hand := v3(a.x + sin(a.yaw) * 0.35, feet + 1.45, a.z + cos(a.yaw) * 0.35);
   aim := add(you, v3(0, 1.0, 0));
   if kind == MS_MAGIC_MISSILE { watch_darts_cast(w, i, hand, aim); return; }
-  if w[0].level >= AIR_LEVEL && (kind == MS_FIRE_BOLT || kind == MS_GUIDING || kind == MS_LIGHTNING) {
+  if watch_you(w[..])[0].level >= AIR_LEVEL && (kind == MS_FIRE_BOLT || kind == MS_GUIDING || kind == MS_LIGHTNING) {
     // where you will be when it gets there
-    aim = add(aim, times(w[0].you_v, length(sub(aim, hand)) / f32(MS_SPEED)));
+    aim = add(aim, times(watch_you(w[..])[0].you_v, length(sub(aim, hand)) / f32(MS_SPEED)));
   }
   k := watch_missile_slot(w);
   m := Missile.{live = true, kind = kind, caster = i, ax = hand.x, ay = hand.y, az = hand.z, bx = aim.x, by = aim.y, bz = aim.z,
@@ -800,7 +810,7 @@ watch_dart_step :: (w: [] Watch, k: int, dt: f32, you: Point) {
     if length(sub(to, p)) <= f32(MM_HIT) {
       m[0].hit = true; m[0].bx = p.x; m[0].by = p.y; m[0].bz = p.z;
       m[0].flight = hi(m[0].t, 0.001);   // spent: its burst shows, then it is gone
-      if !w[0].dead { w[0].spell_hits += 1; w[0].darts_hit += 1; watch_hurt_you(w, m[0].damage); }
+      if !watch_you(w[..])[0].dead { watch_you(w[..])[0].spell_hits += 1; watch_you(w[..])[0].darts_hit += 1; watch_hurt_you(w, m[0].damage); }
       return;
     }
     speed := lo(length(v) + 30 * h, f32(MM_SPEED));
@@ -813,7 +823,7 @@ watch_dart_step :: (w: [] Watch, k: int, dt: f32, you: Point) {
   }
 }
 // Whether you are Earthbound (you can't rise, and you sink 60 feet a round).
-watch_bound :: (w: [] Watch) -> bool { return w[0].bound_t > 0 && !w[0].dead; }
+watch_bound :: (w: [] Watch) -> bool { return watch_you(w[..])[0].bound_t > 0 && !watch_you(w[..])[0].dead; }
 // Whether your body (feet at `you`) is within `pad` of the point p.
 watch_near_you :: (you: Point, p: Point, pad: f32) -> bool {
   flat := flat_gap(you, p);
@@ -837,29 +847,29 @@ watch_missiles_step :: (w: [] Watch, dt: f32, you: Point, heights: [] f32) {
 // Missile k gets there.
 watch_arrive :: (w: [] Watch, k: int, you: Point, heights: [] f32) {
   m := w[0].missiles[k];
-  if w[0].dead { return; }
+  if watch_you(w[..])[0].dead { return; }
   at := v3(m.bx, m.by, m.bz);
   from := v3(m.ax, m.ay, m.az);
   if m.kind == MS_FIRE_BOLT || m.kind == MS_GUIDING || m.kind == MS_FROST {
     if m.hit && watch_near_you(you, at, f32(MS_DODGE)) {
-      w[0].spell_hits += 1;
+      watch_you(w[..])[0].spell_hits += 1;
       push := times(unit_or(v3(at.x - from.x, 0, at.z - from.z), v3(0, 0, 1)), 2.5);
       watch_hit_you(w, m.damage, you, add(push, v3(0, 1.5, 0)));
-      if m.kind == MS_FROST { w[0].slow_t = f32(FROST_FOR); }
-      if m.kind == MS_GUIDING { w[0].marked = true; }
-    } else { w[0].spell_misses += 1; }
+      if m.kind == MS_FROST { watch_you(w[..])[0].slow_t = f32(FROST_FOR); }
+      if m.kind == MS_GUIDING { watch_you(w[..])[0].marked = true; }
+    } else { watch_you(w[..])[0].spell_misses += 1; }
     return;
   }
   if m.kind == MS_HOLD {
     // Hold Person: a Wisdom save (the Ranger's +1) against their DC, or held
-    if !srd_save(w[0].dice[..], 1, m.dc).success { w[0].held_t = f32(HOLD_FOR); w[0].held_saves = 0; w[0].spell_hits += 1; } else { w[0].spell_misses += 1; }
+    if !srd_save(w[0].dice[..], 1, m.dc).success { watch_you(w[..])[0].held_t = f32(HOLD_FOR); watch_you(w[..])[0].held_saves = 0; watch_you(w[..])[0].spell_hits += 1; } else { watch_you(w[..])[0].spell_misses += 1; }
     return;
   }
   if m.kind == MS_EARTHBIND {
     // Earthbind: a Strength save, or bound while its caster keeps it
     if !srd_save(w[0].dice[..], YOU_STR_SAVE, m.dc).success {
-      w[0].bound_t = f32(BIND_FOR); w[0].bound_by = m.caster; w[0].bound_said = 1; w[0].spell_hits += 1;
-    } else { w[0].bound_said = 2; w[0].spell_misses += 1; }
+      watch_you(w[..])[0].bound_t = f32(BIND_FOR); watch_you(w[..])[0].bound_by = m.caster; watch_you(w[..])[0].bound_said = 1; watch_you(w[..])[0].spell_hits += 1;
+    } else { watch_you(w[..])[0].bound_said = 2; watch_you(w[..])[0].spell_misses += 1; }
     return;
   }
   if m.kind == MS_FIREBALL {
@@ -873,9 +883,9 @@ watch_arrive :: (w: [] Watch, k: int, you: Point, heights: [] f32) {
       took := ifx s.success then dmg.amount / 2 else dmg.amount;
       d := flat_gap(you, at);
       kk := clamp01(1 - d / (f32(FIREBALL_R) + f32(BLAST_PAD)));
-      w[0].spell_hits += 1;
+      watch_you(w[..])[0].spell_hits += 1;
       watch_hit_you(w, took, you, watch_kick(at, add(you, v3(0, f32(TUMBLE_PELVIS), 0)), 12 * (0.45 + 0.55 * kk)));
-    } else { w[0].spell_misses += 1; }
+    } else { watch_you(w[..])[0].spell_misses += 1; }
     return;
   }
   if m.kind == MS_LIGHTNING {
@@ -887,9 +897,9 @@ watch_arrive :: (w: [] Watch, k: int, you: Point, heights: [] f32) {
     if along >= 0 && along <= f32(LIGHTNING_LONG) && off <= f32(LIGHTNING_WIDE) * 0.5 + 0.9 {
       dmg := srd_sum(w[0].dice[..], 8, 6);
       s := srd_save(w[0].dice[..], SRD_RANGER_5.dex, m.dc);
-      w[0].spell_hits += 1;
+      watch_you(w[..])[0].spell_hits += 1;
       watch_hit_you(w, ifx s.success then dmg / 2 else dmg, you, add(times(v3(d.x, 0, d.z), 9), v3(0, 3, 0)));
-    } else { w[0].spell_misses += 1; }
+    } else { watch_you(w[..])[0].spell_misses += 1; }
     return;
   }
   if m.kind == MS_COLD {
@@ -901,9 +911,9 @@ watch_arrive :: (w: [] Watch, k: int, you: Point, heights: [] f32) {
     if along > 0 && along <= f32(CONE_LONG) && off <= along * 0.5 + 0.4 {
       dmg := srd_sum(w[0].dice[..], 8, 8);
       s := srd_save(w[0].dice[..], 2, m.dc);
-      w[0].spell_hits += 1;
+      watch_you(w[..])[0].spell_hits += 1;
       watch_hit_you(w, ifx s.success then dmg / 2 else dmg, you, add(times(d, 7), v3(0, 2.5, 0)));
-    } else { w[0].spell_misses += 1; }
+    } else { watch_you(w[..])[0].spell_misses += 1; }
     return;
   }
   if m.kind == MS_HEAL {
@@ -912,7 +922,7 @@ watch_arrive :: (w: [] Watch, k: int, you: Point, heights: [] f32) {
     to := w[0].actors[c].heal_to;
     if to < 0 || to >= WATCH_ACTORS || w[0].actors[to].mode == WM_DEAD { return; }
     w[0].actors[to].hp = clamp_w(w[0].actors[to].hp + m.damage, 0, w[0].actors[to].max);
-    w[0].heals += 1;
+    watch_you(w[..])[0].heals += 1;
   }
 }
 // The Spiritual Weapon: it hangs by you and strikes every WEAPON_EVERY (+5, 1d8 + 3 force).
@@ -920,21 +930,21 @@ watch_weapon_step :: (w: [] Watch, k: int, dt: f32, you: Point) {
   m := w[0].missiles[k..<k + 1];
   m[0].bx = you.x + 0.9; m[0].by = you.y + 1.7; m[0].bz = you.z + 0.4;
   m[0].next -= dt;
-  if m[0].next > 0 || w[0].dead { return; }
+  if m[0].next > 0 || watch_you(w[..])[0].dead { return; }
   m[0].next = f32(WEAPON_EVERY);
   roll := watch_roll_at_you(w, m[0].caster, 5, SRD_PRIEST);
-  if roll.hit { w[0].spell_hits += 1; watch_hurt_you(w, srd_sum(w[0].dice[..], ifx roll.crit then 2 else 1, 8) + 3); } else { w[0].spell_misses += 1; }
+  if roll.hit { watch_you(w[..])[0].spell_hits += 1; watch_hurt_you(w, srd_sum(w[0].dice[..], ifx roll.crit then 2 else 1, 8) + 3); } else { watch_you(w[..])[0].spell_misses += 1; }
 }
 // A hunter's spell hits you for `amount`, throwing you at v: alive, the realm adds it to your
 // velocity (watch_take_knock); dead, your body flies.
 watch_hit_you :: (w: [] Watch, amount: int, you: Point, v: Point) {
-  watch_hurt_you_thrown(w, amount, you, w[0].face, v);
-  if !w[0].dead { w[0].knock = add(w[0].knock, times(v, 0.6)); w[0].knocked = true; }
+  watch_hurt_you_thrown(w, amount, you, watch_you(w[..])[0].face, v);
+  if !watch_you(w[..])[0].dead { watch_you(w[..])[0].knock = add(watch_you(w[..])[0].knock, times(v, 0.6)); watch_you(w[..])[0].knocked = true; }
 }
 // Whether you are held (Hold Person: you can't move or act).
-watch_held :: (w: [] Watch) -> bool { return w[0].held_t > 0 && !w[0].dead; }
+watch_held :: (w: [] Watch) -> bool { return watch_you(w[..])[0].held_t > 0 && !watch_you(w[..])[0].dead; }
 // Your pace's share (Ray of Frost slows you).
-watch_pace :: (w: [] Watch) -> f32 { return ifx w[0].slow_t > 0 then f32(FROST_PACE) else 1.0f32; }
+watch_pace :: (w: [] Watch) -> f32 { return ifx watch_you(w[..])[0].slow_t > 0 then f32(FROST_PACE) else 1.0f32; }
 
 // How far apart two bodies are up and down: one's span from `feet` to BODY_TALL over them, yours from `you_y`.
 watch_span_gap :: (feet: f32, you_y: f32) -> f32 {
@@ -947,9 +957,9 @@ watch_spear :: (w: [] Watch, i: int, feet: f32, to: Point, dist: f32) {
   for q: 0..<SPEARS { if k < 0 && !w[0].spears[q].live { k = q; } }
   if k < 0 { return; }
   a := w[0].actors[i];
-  roll := srd_attack(w[0].dice[..], watch_stats(w, i), w[0].ac);
+  roll := srd_attack(w[0].dice[..], watch_stats(w, i), watch_you(w[..])[0].ac);
   if dist > f32(SPEAR_NEAR) || a.blind {
-    other := srd_attack(w[0].dice[..], watch_stats(w, i), w[0].ac);
+    other := srd_attack(w[0].dice[..], watch_stats(w, i), watch_you(w[..])[0].ac);
     if other.roll < roll.roll { roll = other; }
   }
   from := v3(a.x + sin(a.yaw) * 0.3, feet + 1.7, a.z + cos(a.yaw) * 0.3);
@@ -970,7 +980,7 @@ watch_spears_step :: (w: [] Watch, dt: f32) {
   for k: 0..<SPEARS {
     sp := w[0].spears[k];
     if !sp.live || sp.t < sp.flight || sp.t - dt >= sp.flight { continue; }
-    if sp.hit { w[0].spear_hits += 1; watch_hurt_you(w, sp.damage); } else { w[0].spear_misses += 1; }
+    if sp.hit { watch_you(w[..])[0].spear_hits += 1; watch_hurt_you(w, sp.damage); } else { watch_you(w[..])[0].spear_misses += 1; }
   }
 }
 // Where spear k is now (its flight's arc, a little up in the middle) and the way it points; past its
@@ -1019,9 +1029,9 @@ watch_scared_mode :: (i: int, a: Actor, you: Point) -> int {
 // at where they saw you (or at the blast, heard), and the townsfolk who see it run. How many guards
 // turned.
 watch_crime :: (w: [] Watch, at: Point, heard: f32, you: Point, boxes: [] f32, nb: int, heights: [] f32) -> int {
-  if !w[0].on || w[0].dead { return 0; }
-  w[0].crimes += 1;
-  w[0].heat += HEAT_CRIME;
+  if !w[0].on || watch_you(w[..])[0].dead { return 0; }
+  watch_you(w[..])[0].crimes += 1;
+  watch_you(w[..])[0].heat += HEAT_CRIME;
   turned := 0;
   chest := add(you, v3(0, 1.2, 0));
   mark := add(at, v3(0, 0.3, 0));
@@ -1046,7 +1056,7 @@ watch_crime :: (w: [] Watch, at: Point, heard: f32, you: Point, boxes: [] f32, n
   }
   for i: 0..<WATCH_ACTORS {
     a := w[0].actors[i];
-    if a.mode == WM_CHASE || (a.mode == WM_DOWN && a.after == WM_CHASE) { w[0].wanted = true; w[0].unseen = 0; }
+    if a.mode == WM_CHASE || (a.mode == WM_DOWN && a.after == WM_CHASE) { watch_you(w[..])[0].wanted = true; watch_you(w[..])[0].unseen = 0; }
   }
   return turned;
 }
@@ -1206,42 +1216,42 @@ watch_harm :: (w: [] Watch, i: int, amount: int, you: Point) {
   hunter := watch_is_guard(i) && !w[0].enemy_fire && amount > 0;
   if a[0].hp <= 0 {
     a[0].hp = 0; a[0].mode = WM_DEAD; a[0].t = 0; a[0].shout = -1;
-    if hunter { w[0].heat += HEAT_KILL; }
+    if hunter { watch_you(w[..])[0].heat += HEAT_KILL; }
     return;
   }
-  if hunter { w[0].heat += HEAT_DOWN; }
+  if hunter { watch_you(w[..])[0].heat += HEAT_DOWN; }
   a[0].after = watch_scared_mode(i, a[0], you);
   a[0].mode = WM_DOWN; a[0].t = 0;
 }
 
 // You take a blow: at 0 you fall (you topple: watch_you_fall), and the town stands down.
 watch_hurt_you :: (w: [] Watch, amount: int) {
-  if w[0].dead || w[0].unhurt { return; }
-  took := lo_w(w[0].temp, hi_w(amount, 0));
-  w[0].temp -= took;
-  w[0].hp -= amount - took; w[0].hurt_t = 0;
-  if w[0].hp <= 0 { w[0].hp = 0; w[0].temp = 0; w[0].dead = true; w[0].dead_t = 0; w[0].you_fall = 0; w[0].you_body.on = false; w[0].you_body.settle = -1; }
+  if watch_you(w[..])[0].dead || w[0].unhurt { return; }
+  took := lo_w(watch_you(w[..])[0].temp, hi_w(amount, 0));
+  watch_you(w[..])[0].temp -= took;
+  watch_you(w[..])[0].hp -= amount - took; watch_you(w[..])[0].hurt_t = 0;
+  if watch_you(w[..])[0].hp <= 0 { watch_you(w[..])[0].hp = 0; watch_you(w[..])[0].temp = 0; watch_you(w[..])[0].dead = true; watch_you(w[..])[0].dead_t = 0; watch_you(w[..])[0].you_fall = 0; watch_you(w[..])[0].you_body.on = false; watch_you(w[..])[0].you_body.settle = -1; }
 }
 // You take a blast's `amount`, your feet at `feet`, thrown at v if it kills you: your body tumbles as the
 // town's do and lies where it comes down.
 watch_hurt_you_thrown :: (w: [] Watch, amount: int, feet: Point, face: f32, v: Point) {
-  if w[0].dead { return; }
+  if watch_you(w[..])[0].dead { return; }
   watch_hurt_you(w, amount);
-  if !w[0].dead { return; }
-  b := w[0].you_body;
+  if !watch_you(w[..])[0].dead { return; }
+  b := watch_you(w[..])[0].you_body;
   b.x = feet.x; b.y = feet.y + f32(TUMBLE_PELVIS); b.z = feet.z; b.pitch = 0; b.yaw = face;
-  w[0].you_body = tumble_kicked(b, v);
+  watch_you(w[..])[0].you_body = tumble_kicked(b, v);
 }
 // Your fall, not thrown: you topple over backwards from your feet as a stick falls (no clip of the
 // Ranger's is a death), and lie there through YOU DIED. How far over you are (0 standing, -pi/2 lying).
 WATCH_TOPPLE :: 0.75;     // s to the ground
 watch_you_fall :: (w: [] Watch) -> f32 {
-  if !w[0].dead { return 0; }
-  u := clamp01(w[0].you_fall / f32(WATCH_TOPPLE));
+  if !watch_you(w[..])[0].dead { return 0; }
+  u := clamp01(watch_you(w[..])[0].you_fall / f32(WATCH_TOPPLE));
   // falling faster as it goes, and a small bounce as it lands
   over := u * u;
   bounce := ifx u >= 1 then 0.0f32 else 0.0f32;
-  late := w[0].you_fall - f32(WATCH_TOPPLE);
+  late := watch_you(w[..])[0].you_fall - f32(WATCH_TOPPLE);
   if late > 0 && late < 0.25 { bounce = 0.12 * sin(late / 0.25 * f32(PI)); }
   return -f32(PI) * 0.5 * (over - bounce);
 }
@@ -1279,66 +1289,66 @@ watch_off :: (w: [] Watch, i: int) -> bool { return w[0].actors[i].ready && w[0]
 // The whole town for dt seconds, you at you; the town's clock's time of day, for the dawn.
 watch_tick :: (w: [] Watch, dt: f32, you: Point, day: f32, boxes: [] f32, nb: int, heights: [] f32) {
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
-  w[0].hurt_t += t;
-  if w[0].peace && (w[0].wanted || w[0].heat > 0 || w[0].level > 0) { watch_stand_down(w); }
+  watch_you(w[..])[0].hurt_t += t;
+  if w[0].peace && (watch_you(w[..])[0].wanted || watch_you(w[..])[0].heat > 0 || watch_you(w[..])[0].level > 0) { watch_stand_down(w); }
   // the dawn stands the dead up again
   if w[0].day >= 0 && w[0].day < 0.25 && day >= 0.25 && day < 0.5 { _ := watch_restore(w); }
   w[0].day = day;
   watch_spears_step(w, t);
   watch_missiles_step(w, t, you, heights);
-  if w[0].held_t > 0 {
-    w[0].held_t -= t;
+  if watch_you(w[..])[0].held_t > 0 {
+    watch_you(w[..])[0].held_t -= t;
     // the end of a round held: another Wisdom save, or held again
-    if w[0].held_t <= 0 {
-      w[0].held_t = 0;
-      if w[0].held_saves < HOLD_SAVES && !srd_save(w[0].dice[..], 1, 14).success { w[0].held_t = f32(HOLD_FOR); }
-      w[0].held_saves += 1;
+    if watch_you(w[..])[0].held_t <= 0 {
+      watch_you(w[..])[0].held_t = 0;
+      if watch_you(w[..])[0].held_saves < HOLD_SAVES && !srd_save(w[0].dice[..], 1, 14).success { watch_you(w[..])[0].held_t = f32(HOLD_FOR); }
+      watch_you(w[..])[0].held_saves += 1;
     }
   }
-  if w[0].slow_t > 0 { w[0].slow_t = hi(w[0].slow_t - t, 0); }
+  if watch_you(w[..])[0].slow_t > 0 { watch_you(w[..])[0].slow_t = hi(watch_you(w[..])[0].slow_t - t, 0); }
   w[0].aa_cool -= t;
   w[0].call_cool -= t;
   // how you move, for their lead (a warp is no motion)
   if t > 0 {
-    if w[0].you_seen && length(sub(you, w[0].you_last)) < 4 {
-      v := times(sub(you, w[0].you_last), 1 / t);
+    if watch_you(w[..])[0].you_seen && length(sub(you, watch_you(w[..])[0].you_last)) < 4 {
+      v := times(sub(you, watch_you(w[..])[0].you_last), 1 / t);
       if length(v) > f32(LEAD_MOST) { v = times(unit_or(v, v3(0, 0, 0)), f32(LEAD_MOST)); }
-      w[0].you_v = mix(w[0].you_v, v, clamp01(t * 6));
-    } else { w[0].you_v = v3(0, 0, 0); }
-    w[0].you_last = you; w[0].you_seen = true;
+      watch_you(w[..])[0].you_v = mix(watch_you(w[..])[0].you_v, v, clamp01(t * 6));
+    } else { watch_you(w[..])[0].you_v = v3(0, 0, 0); }
+    watch_you(w[..])[0].you_last = you; watch_you(w[..])[0].you_seen = true;
   }
   // Earthbind lasts while its caster keeps it: down, dead or gone, it ends
-  if w[0].bound_t > 0 {
-    w[0].bound_t = hi(w[0].bound_t - t, 0);
-    c := w[0].bound_by;
-    if !w[0].bound_kept && (c < 0 || c >= WATCH_ACTORS || !w[0].actors[c].homed || w[0].actors[c].mode != WM_CHASE || !w[0].wanted) { w[0].bound_t = 0; }
+  if watch_you(w[..])[0].bound_t > 0 {
+    watch_you(w[..])[0].bound_t = hi(watch_you(w[..])[0].bound_t - t, 0);
+    c := watch_you(w[..])[0].bound_by;
+    if !watch_you(w[..])[0].bound_kept && (c < 0 || c >= WATCH_ACTORS || !w[0].actors[c].homed || w[0].actors[c].mode != WM_CHASE || !watch_you(w[..])[0].wanted) { watch_you(w[..])[0].bound_t = 0; }
   }
-  if w[0].dead { w[0].held_t = 0; w[0].slow_t = 0; w[0].bound_t = 0; w[0].bound_kept = false; }
-  if w[0].dead { w[0].you_fall += t; w[0].you_body = tumble_stepped(w, w[0].you_body, t, heights); }
-  if w[0].dead {
-    w[0].dead_t += t;
-    if w[0].dead_t >= f32(DEATH_FADE) + f32(DEATH_HOLD) && !w[0].respawn {
-      w[0].respawn = true;
-      w[0].hp = w[0].max; w[0].dead = false; w[0].dead_t = 0; w[0].hurt_t = 100;
+  if watch_you(w[..])[0].dead { watch_you(w[..])[0].held_t = 0; watch_you(w[..])[0].slow_t = 0; watch_you(w[..])[0].bound_t = 0; watch_you(w[..])[0].bound_kept = false; }
+  if watch_you(w[..])[0].dead { watch_you(w[..])[0].you_fall += t; watch_you(w[..])[0].you_body = tumble_stepped(w, watch_you(w[..])[0].you_body, t, heights); }
+  if watch_you(w[..])[0].dead {
+    watch_you(w[..])[0].dead_t += t;
+    if watch_you(w[..])[0].dead_t >= f32(DEATH_FADE) + f32(DEATH_HOLD) && !watch_you(w[..])[0].respawn {
+      watch_you(w[..])[0].respawn = true;
+      watch_you(w[..])[0].hp = watch_you(w[..])[0].max; watch_you(w[..])[0].dead = false; watch_you(w[..])[0].dead_t = 0; watch_you(w[..])[0].hurt_t = 100;
       watch_stand_down(w);
-      w[0].dead_t = -f32(RISE_FADE);   // the view comes back
+      watch_you(w[..])[0].dead_t = -f32(RISE_FADE);   // the view comes back
     }
-  } else if w[0].dead_t < 0 { w[0].dead_t = lo(w[0].dead_t + t, 0); }
+  } else if watch_you(w[..])[0].dead_t < 0 { watch_you(w[..])[0].dead_t = lo(watch_you(w[..])[0].dead_t + t, 0); }
   seen := false;
   for i: 0..<WATCH_ACTORS {
     if !watch_here(w, i) { continue; }
     watch_step(w, i, t, you, boxes, nb, heights);
     if w[0].actors[i].mode == WM_CHASE && w[0].actors[i].sees { seen = true; }
   }
-  if w[0].wanted {
-    w[0].unseen = ifx seen then 0.0f32 else w[0].unseen + t;
-    if w[0].unseen >= watch_lose_after(w) { watch_stand_down(w); }
+  if watch_you(w[..])[0].wanted {
+    watch_you(w[..])[0].unseen = ifx seen then 0.0f32 else watch_you(w[..])[0].unseen + t;
+    if watch_you(w[..])[0].unseen >= watch_lose_after(w) { watch_stand_down(w); }
   }
-  if w[0].peace && w[0].wanted { watch_stand_down(w); }
+  if w[0].peace && watch_you(w[..])[0].wanted { watch_stand_down(w); }
   // the heat rises: each level reached sends its wave
-  if w[0].wanted && !w[0].dead {
-    to := watch_level_for(w[0].heat);
-    while w[0].level < to { w[0].level += 1; _ := watch_wave(w, w[0].level, you); }
+  if watch_you(w[..])[0].wanted && !watch_you(w[..])[0].dead {
+    to := watch_level_for(watch_you(w[..])[0].heat);
+    while watch_you(w[..])[0].level < to { watch_you(w[..])[0].level += 1; _ := watch_wave(w, watch_you(w[..])[0].level, you); }
   }
 }
 // The level `heat` reaches (at least 1: you are wanted).
@@ -1348,7 +1358,7 @@ watch_level_for :: (heat: int) -> int {
   return l;
 }
 // How long out of every hunter's sight clears it: WANTED_LOSE, and half again for each level past 1.
-watch_lose_after :: (w: [] Watch) -> f32 { return f32(WANTED_LOSE) * (1 + 0.5 * f32(hi_w(w[0].level - 1, 0))); }
+watch_lose_after :: (w: [] Watch) -> f32 { return f32(WANTED_LOSE) * (1 + 0.5 * f32(hi_w(watch_you(w[..])[0].level - 1, 0))); }
 hi_w :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 lo_w :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 // How many hunt you now (alive and after you).
@@ -1409,9 +1419,9 @@ watch_wave :: (w: [] Watch, l: int, you: Point) -> int {
 }
 // You are wanted no more: the hunters walk back to their beats, the brave stand down.
 watch_stand_down :: (w: [] Watch) {
-  w[0].wanted = false; w[0].unseen = 0;
+  watch_you(w[..])[0].wanted = false; watch_you(w[..])[0].unseen = 0;
   // the heat clears: the reinforcements go back out of their gate, the fallen are carried off
-  w[0].level = 0; w[0].heat = 0; w[0].marked = false; w[0].bound_t = 0;
+  watch_you(w[..])[0].level = 0; watch_you(w[..])[0].heat = 0; watch_you(w[..])[0].marked = false; watch_you(w[..])[0].bound_t = 0;
   for k: 0..<MISSILES { if w[0].missiles[k].kind == MS_WEAPON || w[0].missiles[k].kind == MS_MAGIC_MISSILE { w[0].missiles[k].live = false; } }
   for i: WATCH_FIRST_REIN..<WATCH_ACTORS {
     if w[0].actors[i].mode == WM_DEAD || w[0].actors[i].mode == WM_DOWN { w[0].actors[i].homed = false; }
@@ -1460,7 +1470,7 @@ watch_role_goal :: (w: [] Watch, i: int, you: Point, up: f32) -> RoleGoal {
   if r == ROLE_FLANK_L || r == ROLE_FLANK_R {
     // your sides by the way you face; a flanker there comes in (on the ground) or stays (you up)
     side := ifx r == ROLE_FLANK_L then -1.0f32 else 1.0f32;
-    at := v3(you.x + cos(w[0].face) * side * f32(FLANK_OUT), 0, you.z - sin(w[0].face) * side * f32(FLANK_OUT));
+    at := v3(you.x + cos(watch_you(w[..])[0].face) * side * f32(FLANK_OUT), 0, you.z - sin(watch_you(w[..])[0].face) * side * f32(FLANK_OUT));
     if up <= 0.3 && flat_gap(v3(a.x, 0, a.z), at) < f32(FLANK_IN) { w[0].actors[i].role = ROLE_PRESS; w[0].actors[i].role_t = 0; return RoleGoal.{}; }
     if !watch_open(w, at.x, at.z) { return RoleGoal.{}; }
     return RoleGoal.{on = true, at = at, stop = 0.3};
@@ -1475,7 +1485,7 @@ watch_role_goal :: (w: [] Watch, i: int, you: Point, up: f32) -> RoleGoal {
     return RoleGoal.{on = true, at = at, stop = 0.5};
   }
   if r == ROLE_UNDER && up > 0.3 {
-    at := v3(you.x + w[0].you_v.x * f32(UNDER_LEAD), 0, you.z + w[0].you_v.z * f32(UNDER_LEAD));
+    at := v3(you.x + watch_you(w[..])[0].you_v.x * f32(UNDER_LEAD), 0, you.z + watch_you(w[..])[0].you_v.z * f32(UNDER_LEAD));
     if !watch_open(w, at.x, at.z) { at = v3(you.x, 0, you.z); }
     return RoleGoal.{on = true, at = at, stop = 0.3};
   }
@@ -1545,7 +1555,7 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
     a[0].clip = PEOPLE_DIE; a[0].hold = true;
     if watch_is_guard(i) && !watch_is_rein(i) && a[0].t >= f32(GUARD_BACK) {
       watch_revive(w, i);
-      if w[0].wanted && !w[0].dead { a[0].mode = WM_CHASE; a[0].shout = 2; a[0].shout_t = 0; }
+      if watch_you(w[..])[0].wanted && !watch_you(w[..])[0].dead { a[0].mode = WM_CHASE; a[0].shout = 2; a[0].shout_t = 0; }
     }
     return;
   }
@@ -1553,7 +1563,7 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
     if a[0].t < f32(PRONE_SECONDS_W) { a[0].clip = PEOPLE_KNOCK; a[0].hold = true; return; }
     if a[0].t < f32(PRONE_SECONDS_W) + f32(RISE) { a[0].clip = PEOPLE_IDLE; a[0].hold = false; return; }
     next := a[0].after;
-    if (next == WM_CHASE || next == WM_FIGHT) && (!w[0].wanted || w[0].dead) { next = WM_BACK; }
+    if (next == WM_CHASE || next == WM_FIGHT) && (!watch_you(w[..])[0].wanted || watch_you(w[..])[0].dead) { next = WM_BACK; }
     if next == WM_CALM { next = WM_BACK; }
     a[0].mode = next; a[0].t = 0;
     return;
@@ -1567,7 +1577,7 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
     reach3 := sqrt(gap * gap + up * up);
     a[0].sees = watch_sees(boxes, nb, a[0].x, a[0].z, eye, add(you, v3(0, 1.2, 0)), f32(WATCH_SIGHT));
     if a[0].sees { a[0].seen_x = you.x; a[0].seen_z = you.z; }
-    if w[0].dead { a[0].mode = WM_BACK; a[0].t = 0; a[0].swing = -1; a[0].casting = -1; return; }
+    if watch_you(w[..])[0].dead { a[0].mode = WM_BACK; a[0].t = 0; a[0].swing = -1; a[0].casting = -1; return; }
     if watch_caster(w, i) { watch_cast_step(w, i, dt, you, feet, gap, reach3, toward, heights); return; }
     every := ifx guard then f32(SWING_EVERY) else f32(PUNCH_EVERY);
     strike := ifx guard then f32(STRIKE_AT) else f32(PUNCH_AT);
@@ -1591,7 +1601,7 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
           // Multiattack: a Veteran's or a Knight's two blows, a Gladiator's three
           for q: 0..<RANK_ATTACKS[watch_rank(w, i)] {
             roll := watch_roll_at_you(w, i, watch_stats(w, i).attack, watch_stats(w, i));
-            if roll.hit { w[0].hits += 1; watch_hurt_you(w, roll.damage); } else { w[0].misses += 1; }
+            if roll.hit { watch_you(w[..])[0].hits += 1; watch_hurt_you(w, roll.damage); } else { watch_you(w[..])[0].misses += 1; }
           }
         }
       }
@@ -1651,8 +1661,8 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
   }
   if m == WM_COWER {
     a[0].clip = PEOPLE_COWER;
-    if gap < f32(COWER_NEAR) && !w[0].dead { a[0].mode = WM_FLEE; a[0].t = 0; return; }
-    if (!w[0].wanted || w[0].dead) && a[0].t >= f32(CALM_AFTER) { a[0].mode = WM_BACK; a[0].t = 0; }
+    if gap < f32(COWER_NEAR) && !watch_you(w[..])[0].dead { a[0].mode = WM_FLEE; a[0].t = 0; return; }
+    if (!watch_you(w[..])[0].wanted || watch_you(w[..])[0].dead) && a[0].t >= f32(CALM_AFTER) { a[0].mode = WM_BACK; a[0].t = 0; }
     return;
   }
   // WM_BACK: walk to where their day has them now, then go on with it
@@ -1681,12 +1691,12 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
 
 // How dark the view is for your fall, 0 to 1 (0.92 at most, held while YOU DIED shows).
 watch_dark :: (w: [] Watch) -> f32 {
-  if w[0].dead { return 0.92 * clamp01(w[0].dead_t / f32(DEATH_FADE)); }
-  if w[0].dead_t < 0 { return 0.92 * clamp01(-w[0].dead_t / f32(RISE_FADE)); }
+  if watch_you(w[..])[0].dead { return 0.92 * clamp01(watch_you(w[..])[0].dead_t / f32(DEATH_FADE)); }
+  if watch_you(w[..])[0].dead_t < 0 { return 0.92 * clamp01(-watch_you(w[..])[0].dead_t / f32(RISE_FADE)); }
   return 0;
 }
 // Whether YOU DIED shows.
-watch_died_shown :: (w: [] Watch) -> bool { return w[0].dead && w[0].dead_t >= f32(DEATH_FADE) * 0.6; }
+watch_died_shown :: (w: [] Watch) -> bool { return watch_you(w[..])[0].dead && watch_you(w[..])[0].dead_t >= f32(DEATH_FADE) * 0.6; }
 
 // ---- checks
 
@@ -1753,9 +1763,9 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   // a bolt (heard to 60 m) 20 m north of Bram's post, in the open on the road
   you := v3(EG_SPOT[0] + 6, 0, EG_SPOT[1] - 6);
   at := v3(EG_SPOT[0], 0, EG_SPOT[1] - 20);
-  #assert w[0].actors[bram].mode == WM_CALM && !w[0].wanted;
+  #assert w[0].actors[bram].mode == WM_CALM && !watch_you(w[..])[0].wanted;
   turned := watch_crime(w[..], at, WATCH_HEAR[1], you, nob[..], 0, heights[..]);
-  #assert turned >= 1 && w[0].actors[bram].mode == WM_CHASE && w[0].wanted && w[0].actors[bram].shout >= 0;
+  #assert turned >= 1 && w[0].actors[bram].mode == WM_CHASE && watch_you(w[..])[0].wanted && w[0].actors[bram].shout >= 0;
   // the guard on the North Gate's lane is 130 m off: they neither see nor hear it
   #assert w[0].actors[EG_SPOTS + 5].mode == WM_CALM;
   // with a building between, a guard too far to hear sees nothing
@@ -1763,14 +1773,14 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   watch_test_town(w2[..], heights[..]);
   wall := [6] f32.[EG_SPOT[0] - 5, -10, EG_SPOT[1] - 12, EG_SPOT[0] + 5, 20, EG_SPOT[1] - 11];
   quiet := watch_crime(w2[..], at, 1.0, v3(at.x, 0, at.z - 2), wall[..], 1, heights[..]);
-  #assert w2[0].actors[bram].mode == WM_CALM && quiet == 0 && !w2[0].wanted;
+  #assert w2[0].actors[bram].mode == WM_CALM && quiet == 0 && !watch_you(w2[..])[0].wanted;
   // and the townsfolk who see it run (the stable hand by the road)
   #assert w[0].actors[2].mode == WM_FLEE;
   // a still page has no crime
   w3: [1] Watch;
   watch_test_town(w3[..], heights[..]);
   w3[0].on = false;
-  #assert watch_crime(w3[..], at, 100, you, nob[..], 0, heights[..]) == 0 && !w3[0].wanted;
+  #assert watch_crime(w3[..], at, 100, you, nob[..], 0, heights[..]) == 0 && !watch_you(w3[..])[0].wanted;
 }
 
 #test "a hostile guard runs to you and its blows resolve under the SRD: d20 + 3 against your AC 15, 1d6 + 1" #steps 272000000 {
@@ -1789,19 +1799,19 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   moved := start - flat_gap(v3(w[0].actors[g].x, 0, w[0].actors[g].z), you);
   #assert moved > 3.5 && moved < 5.5 && w[0].actors[g].clip == PEOPLE_RUN;
   // in reach, they swing: every blow is an attack roll; the hits take 2 to 7 (13 on a crit) off you
-  w[0].hp = 100000; w[0].max = 100000;
+  watch_you(w[..])[0].hp = 100000; watch_you(w[..])[0].max = 100000;
   for f: 0..<60 * 120 {
-    before := w[0].hp;
+    before := watch_you(w[..])[0].hp;
     watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]);
-    took := before - w[0].hp;
+    took := before - watch_you(w[..])[0].hp;
     #assert took == 0 || (took >= 2 && took <= 26);
   }
   #assert flat_gap(v3(w[0].actors[g].x, 0, w[0].actors[g].z), you) <= f32(REACH) + 0.01;
-  blows := w[0].hits + w[0].misses;
+  blows := watch_you(w[..])[0].hits + watch_you(w[..])[0].misses;
   // the guards swing every 1.9 s; with Bram and the stable hand's fright about, at least Tilda's 60
   #assert blows >= 55;
   // 12 or better on the d20 (45%)
-  #assert w[0].hits * 100 / blows > 30 && w[0].hits * 100 / blows < 62;
+  #assert watch_you(w[..])[0].hits * 100 / blows > 30 && watch_you(w[..])[0].hits * 100 / blows < 62;
 }
 
 #test "you die at 0 HP: the view fades, YOU DIED, then you stand at the Road In whole and wanted no more" #steps 39000000 {
@@ -1812,20 +1822,20 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   watch_test_town(w[..], heights[..]);
   you := v3(EG_SPOT[3], 0, EG_SPOT[4] - 8);
   _ := watch_crime(w[..], v3(EG_SPOT[3] + 20, 0, EG_SPOT[4]), WATCH_HEAR[0], you, nob[..], 0, heights[..]);
-  #assert w[0].wanted && w[0].hp == 44;
+  #assert watch_you(w[..])[0].wanted && watch_you(w[..])[0].hp == 44;
   watch_hurt_you(w[..], 40);
-  #assert !w[0].dead && w[0].hp == 4;
+  #assert !watch_you(w[..])[0].dead && watch_you(w[..])[0].hp == 4;
   watch_hurt_you(w[..], 7);
-  #assert w[0].dead && w[0].hp == 0;
+  #assert watch_you(w[..])[0].dead && watch_you(w[..])[0].hp == 0;
   #assert watch_dark(w[..]) == 0;
   for f: 0..<6 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
   #assert watch_dark(w[..]) > 0.3 && watch_dark(w[..]) < 0.6;
   for f: 0..<14 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
-  #assert w[0].dead && watch_died_shown(w[..]) && !w[0].respawn;
+  #assert watch_you(w[..])[0].dead && watch_died_shown(w[..]) && !watch_you(w[..])[0].respawn;
   // the hunters stand down while you lie there
   for i: 0..<WATCH_ACTORS { #assert w[0].actors[i].mode != WM_CHASE; }
   for f: 0..<16 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
-  #assert w[0].respawn && !w[0].dead && w[0].hp == w[0].max && !w[0].wanted;
+  #assert watch_you(w[..])[0].respawn && !watch_you(w[..])[0].dead && watch_you(w[..])[0].hp == watch_you(w[..])[0].max && !watch_you(w[..])[0].wanted;
   #assert watch_dark(w[..]) > 0.5;
   for f: 0..<10 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
   #assert watch_dark(w[..]) == 0;
@@ -1839,20 +1849,20 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   watch_test_town(w[..], heights[..]);
   you := v3(EG_SPOT[3], 0, EG_SPOT[4] - 8);
   _ := watch_crime(w[..], v3(EG_SPOT[3] + 20, 0, EG_SPOT[4]), WATCH_HEAR[0], you, nob[..], 0, heights[..]);
-  #assert w[0].wanted;
+  #assert watch_you(w[..])[0].wanted;
   // switched off mid-chase: the town stands down and no wave comes
   w[0].peace = true;
   for f: 0..<20 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
-  #assert !w[0].wanted && w[0].level == 0 && w[0].heat == 0;
+  #assert !watch_you(w[..])[0].wanted && watch_you(w[..])[0].level == 0 && watch_you(w[..])[0].heat == 0;
   for i: 0..<WATCH_ACTORS { #assert w[0].actors[i].mode != WM_CHASE || !watch_here(w[..], i); }
   // invincible: a blow that would kill you does nothing
   w[0].unhurt = true;
-  hp := w[0].hp;
+  hp := watch_you(w[..])[0].hp;
   watch_hurt_you(w[..], 500);
-  #assert !w[0].dead && w[0].hp == hp;
+  #assert !watch_you(w[..])[0].dead && watch_you(w[..])[0].hp == hp;
   w[0].unhurt = false;
   watch_hurt_you(w[..], 500);
-  #assert w[0].dead;
+  #assert watch_you(w[..])[0].dead;
 }
 
 #test "a blast hurts or kills the townsfolk and the watch; R or the dawn stands them up; a fallen guard is replaced" #steps 44000000 {
@@ -1888,10 +1898,10 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert w[0].actors[10].mode == WM_CALM;
   // a guard who falls is back on their beat GUARD_BACK s on, hunting you while you are wanted
   g := EG_SPOTS + 2;
-  w[0].wanted = true;
+  watch_you(w[..])[0].wanted = true;
   watch_harm(w[..], g, 100, you);
   #assert w[0].actors[g].mode == WM_DEAD;
-  for f: 0..<cast(int) (f32(GUARD_BACK) * 10) + 2 { w[0].unseen = 0; watch_tick(w[..], 0.1, v3(EG_SPOT[3], 0, EG_SPOT[4]), 0.5, nob[..], 0, heights[..]); }
+  for f: 0..<cast(int) (f32(GUARD_BACK) * 10) + 2 { watch_you(w[..])[0].unseen = 0; watch_tick(w[..], 0.1, v3(EG_SPOT[3], 0, EG_SPOT[4]), 0.5, nob[..], 0, heights[..]); }
   #assert w[0].actors[g].mode == WM_CHASE && w[0].actors[g].hp == SRD_GUARD.hp;
 }
 
@@ -1903,12 +1913,12 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   watch_test_town(w[..], heights[..]);
   you := v3(EG_SPOT[0], 0, EG_SPOT[1] - 8);
   _ := watch_crime(w[..], you, WATCH_HEAR[1], you, nob[..], 0, heights[..]);
-  #assert w[0].wanted;
+  #assert watch_you(w[..])[0].wanted;
   // a wall between you and everyone
   wall := [6] f32.[-200, -10, EG_SPOT[1] - 3, 200, 50, EG_SPOT[1] - 2.5];
   far := v3(EG_SPOT[0], 0, EG_SPOT[1] - 60);
   for f: 0..<cast(int) (f32(WANTED_LOSE) * 10) + 5 { watch_tick(w[..], 0.1, far, 0.5, wall[..], 1, heights[..]); }
-  #assert !w[0].wanted;
+  #assert !watch_you(w[..])[0].wanted;
   for i: 0..<WATCH_ACTORS { #assert w[0].actors[i].mode != WM_CHASE; }
   #assert w[0].actors[0].mode == WM_BACK || w[0].actors[0].mode == WM_CALM;
   for f: 0..<1200 { watch_tick(w[..], 0.1, far, 0.5, wall[..], 1, heights[..]); }
@@ -1931,10 +1941,10 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
     you := v3(yx, 0, br[3] + 5);
     you.y = watch_feet_y(w[..], heights[..], you.x, you.z);
     w[0].actors[g].seen_x = you.x; w[0].actors[g].seen_z = you.z;
-    w[0].wanted = true;
+    watch_you(w[..])[0].wanted = true;
     crossed := false; on_deck := 0;
     for f: 0..<60 * 30 {
-      w[0].unseen = 0;
+      watch_you(w[..])[0].unseen = 0;
       watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]);
       a := w[0].actors[g];
       if a.x >= br[0] && a.x <= br[2] {
@@ -1964,20 +1974,20 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   ground := watch_feet_y(w[..], heights[..], x, z);
   you := v3(x, ground + 6, z);
   _ := watch_crime(w[..], v3(x, ground, z - 3), WATCH_HEAR[0], you, nob[..], 0, heights[..]);
-  w[0].hp = 100000; w[0].max = 100000;
+  watch_you(w[..])[0].hp = 100000; watch_you(w[..])[0].max = 100000;
   shouted := false;
   for f: 0..<60 * 40 {
     watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]);
     if w[0].actors[g].shout == UP_SHOUT { shouted = true; }
   }
-  #assert w[0].hits == 0 && w[0].misses == 0;
-  #assert w[0].spear_hits + w[0].spear_misses >= 8 && shouted;
+  #assert watch_you(w[..])[0].hits == 0 && watch_you(w[..])[0].misses == 0;
+  #assert watch_you(w[..])[0].spear_hits + watch_you(w[..])[0].spear_misses >= 8 && shouted;
   // Tilda stands under you
   #assert flat_gap(v3(w[0].actors[g].x, 0, w[0].actors[g].z), you) < f32(REACH) + 0.5;
   // you come down: the sword lands
   you.y = ground;
   for f: 0..<60 * 30 { watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]); }
-  #assert w[0].hits > 0;
+  #assert watch_you(w[..])[0].hits > 0;
   #assert watch_span_gap(0, 6) > 4 && watch_span_gap(0, 1.0) == 0 && watch_span_gap(5, 0) > 3;
 }
 
@@ -2093,7 +2103,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   you := v3(0, watch_feet_y(w[..], heights[..], 0, -30), -30);
   #assert watch_you_fall(w[..]) == 0;
   watch_hurt_you(w[..], 100);
-  #assert w[0].dead && watch_you_fall(w[..]) == 0;
+  #assert watch_you(w[..])[0].dead && watch_you_fall(w[..]) == 0;
   for f: 0..<6 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
   #assert watch_you_fall(w[..]) < -0.3 && watch_you_fall(w[..]) > -1.5;
   for f: 0..<14 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
@@ -2101,13 +2111,13 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   w2: [1] Watch;
   watch_test_town(w2[..], heights[..]);
   watch_hurt_you_thrown(w2[..], 10, you, 0, v3(0, 5, 6));
-  #assert !w2[0].dead && !w2[0].you_body.on;
+  #assert !watch_you(w2[..])[0].dead && !watch_you(w2[..])[0].you_body.on;
   watch_hurt_you_thrown(w2[..], 100, you, 0, v3(0, 5, 6));
-  #assert w2[0].dead && w2[0].you_body.on;
+  #assert watch_you(w2[..])[0].dead && watch_you(w2[..])[0].you_body.on;
   for f: 0..<60 * 3 { watch_tick(w2[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]); }
-  #assert !w2[0].you_body.on;
-  #assert w2[0].you_body.z > you.z + 2;
-  #assert w2[0].you_body.pitch == -f32(PI) * 0.5;
+  #assert !watch_you(w2[..])[0].you_body.on;
+  #assert watch_you(w2[..])[0].you_body.z > you.z + 2;
+  #assert watch_you(w2[..])[0].you_body.pitch == -f32(PI) * 0.5;
 }
 
 #test "the heat: crimes and fallen hunters raise WANTED 1 to 5; each level's wave comes in at the gate nearest you; never over 12 hunting" #steps 47000000 {
@@ -2120,19 +2130,19 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert watch_level_for(0) == 1 && watch_level_for(7) == 1 && watch_level_for(8) == 2 && watch_level_for(18) == 3 && watch_level_for(32) == 4 && watch_level_for(50) == 5 && watch_level_for(999) == 5;
   _ := watch_crime(w[..], v3(EG_SPOT[0], 0, EG_SPOT[1] - 20), WATCH_HEAR[1], you, nob[..], 0, heights[..]);
   watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
-  #assert w[0].wanted && w[0].level == 1 && w[0].heat == HEAT_CRIME && w[0].waves == 0;
+  #assert watch_you(w[..])[0].wanted && watch_you(w[..])[0].level == 1 && watch_you(w[..])[0].heat == HEAT_CRIME && w[0].waves == 0;
   // you cut down a hunter: the heat rises by a kill; one a hunter's own spell fells adds nothing
   g := 0;
   watch_harm(w[..], g, 100, you);
-  #assert w[0].heat == HEAT_CRIME + HEAT_KILL;
+  #assert watch_you(w[..])[0].heat == HEAT_CRIME + HEAT_KILL;
   w[0].enemy_fire = true; watch_harm(w[..], 1, 1, you); w[0].enemy_fire = false;
-  #assert w[0].heat == HEAT_CRIME + HEAT_KILL;
+  #assert watch_you(w[..])[0].heat == HEAT_CRIME + HEAT_KILL;
   watch_harm(w[..], 1, 1, you);
-  #assert w[0].heat == HEAT_CRIME + HEAT_KILL + HEAT_DOWN;
+  #assert watch_you(w[..])[0].heat == HEAT_CRIME + HEAT_KILL + HEAT_DOWN;
   // 8: level 2, two guards and two Veterans in by the South Gate (nearest you)
-  w[0].heat = 8;
+  watch_you(w[..])[0].heat = 8;
   watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
-  #assert w[0].level == 2 && w[0].waves == 1 && w[0].spawned == 4;
+  #assert watch_you(w[..])[0].level == 2 && w[0].waves == 1 && w[0].spawned == 4;
   vets := 0;
   for i: WATCH_FIRST_REIN..<WATCH_ACTORS {
     a := w[0].actors[i];
@@ -2142,9 +2152,9 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   }
   #assert vets == 2;
   // all the way to 5: the Mages', Knights' and Priest's, and the Archmage's company, as far as the cap allows
-  w[0].heat = 60;
+  watch_you(w[..])[0].heat = 60;
   watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
-  #assert w[0].level == 5 && w[0].waves == 4 && watch_hunters(w[..]) <= HUNTERS_MAX && watch_hunters(w[..]) >= 10;
+  #assert watch_you(w[..])[0].level == 5 && w[0].waves == 4 && watch_hunters(w[..]) <= HUNTERS_MAX && watch_hunters(w[..]) >= 10;
   mages := 0; archmage := 0;
   for i: WATCH_FIRST_REIN..<WATCH_ACTORS {
     b := w[0].actors[i];
@@ -2158,19 +2168,19 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   _ = watch_crime(w3[..], you, 100, you, nob[..], 0, heights[..]);
   for i: EG_SPOTS..<WATCH_FIRST_REIN { w3[0].actors[i].mode = WM_CHASE; }
   for i: 0..<EG_SPOTS { if watch_is_guard(i) { w3[0].actors[i].mode = WM_CHASE; } }
-  w3[0].heat = 60;
+  watch_you(w3[..])[0].heat = 60;
   watch_tick(w3[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
   top := 0;
   for i: WATCH_FIRST_REIN..<WATCH_ACTORS { b := w3[0].actors[i]; if b.homed && b.mode == WM_CHASE && b.rank >= RANK_KNIGHT { top += 1; } }
-  #assert w3[0].level == 5 && watch_hunters(w3[..]) <= HUNTERS_MAX && top >= 3;
+  #assert watch_you(w3[..])[0].level == 5 && watch_hunters(w3[..]) <= HUNTERS_MAX && top >= 3;
   // and nearer the East Gate, a wave comes in there
   w2: [1] Watch;
   watch_test_town(w2[..], heights[..]);
   east := v3(55, 0, 2);
   _ = watch_crime(w2[..], east, 100, east, nob[..], 0, heights[..]);
-  w2[0].heat = 8;
+  watch_you(w2[..])[0].heat = 8;
   watch_tick(w2[..], 0.1, east, 0.5, nob[..], 0, heights[..]);
-  #assert w2[0].level == 2 && flat_gap(v3(w2[0].actors[WATCH_FIRST_REIN].x, 0, w2[0].actors[WATCH_FIRST_REIN].z), v3(59, 0, 0)) < 3;
+  #assert watch_you(w2[..])[0].level == 2 && flat_gap(v3(w2[0].actors[WATCH_FIRST_REIN].x, 0, w2[0].actors[WATCH_FIRST_REIN].z), v3(59, 0, 0)) < 3;
 }
 
 #test "the heat clears out of sight (longer the higher it is) or when you die; the reinforcements walk back out of their gate" #steps 115000000 {
@@ -2181,16 +2191,16 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   watch_test_town(w[..], heights[..]);
   you := v3(EG_SPOT[0], 0, EG_SPOT[1] - 8);
   _ := watch_crime(w[..], you, WATCH_HEAR[1], you, nob[..], 0, heights[..]);
-  w[0].heat = 18;
+  watch_you(w[..])[0].heat = 18;
   watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
-  #assert w[0].level == 3 && watch_lose_after(w[..]) == f32(WANTED_LOSE) * 2;
+  #assert watch_you(w[..])[0].level == 3 && watch_lose_after(w[..]) == f32(WANTED_LOSE) * 2;
   wall := [6] f32.[-200, -10, EG_SPOT[1] - 3, 200, 50, EG_SPOT[1] - 2.5];
   far := v3(EG_SPOT[0], 0, EG_SPOT[1] - 60);
   // past level 1's 18 s it holds; past level 3's 36 s it clears
   for f: 0..<cast(int) (f32(WANTED_LOSE) * 10) + 20 { watch_tick(w[..], 0.1, far, 0.5, wall[..], 1, heights[..]); }
-  #assert w[0].wanted && w[0].level == 3;
+  #assert watch_you(w[..])[0].wanted && watch_you(w[..])[0].level == 3;
   for f: 0..<cast(int) (f32(WANTED_LOSE) * 10) { watch_tick(w[..], 0.1, far, 0.5, wall[..], 1, heights[..]); }
-  #assert !w[0].wanted && w[0].level == 0 && w[0].heat == 0;
+  #assert !watch_you(w[..])[0].wanted && watch_you(w[..])[0].level == 0 && watch_you(w[..])[0].heat == 0;
   for i: WATCH_FIRST_REIN..<WATCH_ACTORS { if w[0].actors[i].homed { #assert w[0].actors[i].mode == WM_BACK; } }
   for f: 0..<600 { watch_tick(w[..], 0.1, far, 0.5, wall[..], 1, heights[..]); }
   for i: WATCH_FIRST_REIN..<WATCH_ACTORS { #assert !w[0].actors[i].homed; }
@@ -2198,18 +2208,18 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   w2: [1] Watch;
   watch_test_town(w2[..], heights[..]);
   _ = watch_crime(w2[..], you, WATCH_HEAR[1], you, nob[..], 0, heights[..]);
-  w2[0].heat = 32;
+  watch_you(w2[..])[0].heat = 32;
   watch_tick(w2[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
-  #assert w2[0].level == 4;
+  #assert watch_you(w2[..])[0].level == 4;
   watch_hurt_you(w2[..], 999);
   for f: 0..<40 { watch_tick(w2[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
-  #assert !w2[0].dead && w2[0].level == 0 && !w2[0].wanted;
+  #assert !watch_you(w2[..])[0].dead && watch_you(w2[..])[0].level == 0 && !watch_you(w2[..])[0].wanted;
 }
 
 // A town with caster rank r put 12 m from you on open ground (the commons), hunting you.
 watch_test_caster :: (w: [] Watch, heights: [] f32, r: int, you: Point) -> int {
   watch_test_town(w, heights);
-  w[0].wanted = true; w[0].level = 5; w[0].heat = 999;
+  watch_you(w[..])[0].wanted = true; watch_you(w[..])[0].level = 5; watch_you(w[..])[0].heat = 999;
   i := WATCH_FIRST_REIN;
   a := w[0].actors[i..<i + 1];
   a[0].rank = r; a[0].home_x = you.x + 12; a[0].home_z = you.z; a[0].home_yaw = 0;
@@ -2227,31 +2237,31 @@ watch_test_caster :: (w: [] Watch, heights: [] f32, r: int, you: Point) -> int {
   you := v3(0, 0, 9);
   you.y = watch_feet_y(w[..], heights[..], you.x, you.z);
   i := watch_test_caster(w[..], heights[..], RANK_MAGE, you);
-  w[0].hp = 100000; w[0].max = 100000;
+  watch_you(w[..])[0].hp = 100000; watch_you(w[..])[0].max = 100000;
   #assert watch_caster(w[..], i) && w[0].actors[i].hp == SRD_MAGE.hp;
   // they stand off and cast at you
   for f: 0..<300 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
-  #assert w[0].spell_hits + w[0].spell_misses >= 5 && w[0].hp < w[0].max;
+  #assert watch_you(w[..])[0].spell_hits + watch_you(w[..])[0].spell_misses >= 5 && watch_you(w[..])[0].hp < watch_you(w[..])[0].max;
   g := flat_gap(v3(w[0].actors[i].x, 0, w[0].actors[i].z), you);
   #assert g >= f32(CAST_NEAR) - 0.6 && g <= f32(CAST_FAR) + 0.6;
   // a Fireball on you: 8d6 fire (a save for half) and it throws you back and up
-  w[0].knocked = false; w[0].knock = v3(0, 0, 0);
-  before := w[0].hp;
+  watch_you(w[..])[0].knocked = false; watch_you(w[..])[0].knock = v3(0, 0, 0);
+  before := watch_you(w[..])[0].hp;
   watch_cast(w[..], i, MS_FIREBALL, watch_feet_y(w[..], heights[..], w[0].actors[i].x, w[0].actors[i].z), you, heights[..]);
   for f: 0..<20 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
-  #assert w[0].hp < before && before - w[0].hp <= 48 && w[0].knocked && w[0].knock.y > 0;
+  #assert watch_you(w[..])[0].hp < before && before - watch_you(w[..])[0].hp <= 48 && watch_you(w[..])[0].knocked && watch_you(w[..])[0].knock.y > 0;
   // a Fire Bolt you step away from misses you
-  hits := w[0].spell_hits;
+  hits := watch_you(w[..])[0].spell_hits;
   w[0].actors[i].cast_cool = 1000; w[0].actors[i].casting = -1;
   for q: 0..<MISSILES { w[0].missiles[q].live = false; }
   watch_cast(w[..], i, MS_FIRE_BOLT, watch_feet_y(w[..], heights[..], w[0].actors[i].x, w[0].actors[i].z), you, heights[..]);
   away := v3(you.x, you.y, you.z + 4);
   for f: 0..<20 { watch_tick(w[..], 0.1, away, 0.5, nob[..], 0, heights[..]); }
-  #assert w[0].spell_hits == hits;
+  #assert watch_you(w[..])[0].spell_hits == hits;
   // Ray of Frost slows you; Hold Person holds you (you can't move) and you break free within its saves
-  w[0].slow_t = 0;
-  for q: 0..<12 { if w[0].slow_t <= 0 { watch_cast(w[..], i, MS_FROST, 0, you, heights[..]); for f: 0..<3 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); } } }
-  #assert w[0].slow_t > 0 && watch_pace(w[..]) < 1;
+  watch_you(w[..])[0].slow_t = 0;
+  for q: 0..<12 { if watch_you(w[..])[0].slow_t <= 0 { watch_cast(w[..], i, MS_FROST, 0, you, heights[..]); for f: 0..<3 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); } } }
+  #assert watch_you(w[..])[0].slow_t > 0 && watch_pace(w[..]) < 1;
   held := false;
   for q: 0..<20 {
     if watch_held(w[..]) { held = true; break; }
@@ -2272,36 +2282,36 @@ watch_test_caster :: (w: [] Watch, heights: [] f32, r: int, you: Point) -> int {
   you := v3(0, 0, 9);
   you.y = watch_feet_y(w[..], heights[..], you.x, you.z);
   i := watch_test_caster(w[..], heights[..], RANK_PRIEST, you);
-  w[0].hp = 100000; w[0].max = 100000;
+  watch_you(w[..])[0].hp = 100000; watch_you(w[..])[0].max = 100000;
   // a hurt guard near the priest: healed 2d8 + 3
   g := EG_SPOTS + 1;
   w[0].actors[g].x = w[0].actors[i].x + 3; w[0].actors[g].z = w[0].actors[i].z;
   w[0].actors[g].mode = WM_CHASE; w[0].actors[g].hp = 2;
   w[0].actors[i].cast_cool = 0;
   for f: 0..<20 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
-  #assert w[0].heals >= 1 && w[0].actors[g].hp >= 2 + 5;
+  #assert watch_you(w[..])[0].heals >= 1 && w[0].actors[g].hp >= 2 + 5;
   // Guiding Bolt: the next attack at you has advantage, then the mark is spent
-  w[0].marked = true;
+  watch_you(w[..])[0].marked = true;
   _ := watch_roll_at_you(w[..], -1, 3, SRD_GUARD);
-  #assert !w[0].marked;
+  #assert !watch_you(w[..])[0].marked;
   // the Archmage: a Lightning Bolt down a line through you, a Cone of Cold on you; both throw you
   w2: [1] Watch;
   j := watch_test_caster(w2[..], heights[..], RANK_ARCHMAGE, you);
-  w2[0].hp = 100000; w2[0].max = 100000;
+  watch_you(w2[..])[0].hp = 100000; watch_you(w2[..])[0].max = 100000;
   feet := watch_feet_y(w2[..], heights[..], w2[0].actors[j].x, w2[0].actors[j].z);
-  before := w2[0].hp;
+  before := watch_you(w2[..])[0].hp;
   watch_cast(w2[..], j, MS_LIGHTNING, feet, you, heights[..]);
   for f: 0..<3 { watch_tick(w2[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
-  #assert w2[0].hp < before && before - w2[0].hp <= 48 && w2[0].knocked;
-  before = w2[0].hp; w2[0].knocked = false;
+  #assert watch_you(w2[..])[0].hp < before && before - watch_you(w2[..])[0].hp <= 48 && watch_you(w2[..])[0].knocked;
+  before = watch_you(w2[..])[0].hp; watch_you(w2[..])[0].knocked = false;
   watch_cast(w2[..], j, MS_COLD, feet, you, heights[..]);
   for f: 0..<3 { watch_tick(w2[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
-  #assert w2[0].hp < before && before - w2[0].hp <= 64 && w2[0].knocked;
+  #assert watch_you(w2[..])[0].hp < before && before - watch_you(w2[..])[0].hp <= 64 && watch_you(w2[..])[0].knocked;
   // out of the line, the bolt misses
-  before = w2[0].hp;
+  before = watch_you(w2[..])[0].hp;
   watch_cast(w2[..], j, MS_LIGHTNING, feet, you, heights[..]);
   for f: 0..<3 { watch_tick(w2[..], 0.1, v3(you.x, you.y, you.z + 8), 0.5, nob[..], 0, heights[..]); }
-  #assert w2[0].hp == before;
+  #assert watch_you(w2[..])[0].hp == before;
 }
 
 #test "WANTED 5, you levitating 18 m up out of reach: the Archmage's Magic Missile darts turn after you and strike; Earthbind pulls you down" #steps 39000000 {
@@ -2312,7 +2322,7 @@ watch_test_caster :: (w: [] Watch, heights: [] f32, r: int, you: Point) -> int {
   you := v3(0, 0, 9);
   you.y = watch_feet_y(w[..], heights[..], you.x, you.z) + 18;
   i := watch_test_caster(w[..], heights[..], RANK_ARCHMAGE, you);
-  w[0].hp = 100000; w[0].max = 100000;
+  watch_you(w[..])[0].hp = 100000; watch_you(w[..])[0].max = 100000;
   feet := watch_feet_y(w[..], heights[..], w[0].actors[i].x, w[0].actors[i].z);
   up := watch_span_gap(feet, you.y);
   // out of reach: Earthbind first, then Magic Missile (its five darts), before any bolt
@@ -2325,18 +2335,18 @@ watch_test_caster :: (w: [] Watch, heights: [] f32, r: int, you: Point) -> int {
   // on the ground the old choices stand
   #assert watch_choose(w[..], i, 12, 0) != MS_MAGIC_MISSILE;
   // the darts: you fly on sideways at 6 m/s and they turn after you; each hits for 1d4 + 1
-  before := w[0].hp;
+  before := watch_you(w[..])[0].hp;
   watch_cast(w[..], i, MS_MAGIC_MISSILE, feet, you, heights[..]);
   w[0].actors[i].cast_cool = 1000;
   for f: 0..<40 { you.x += 0.3; watch_tick(w[..], 0.05, you, 0.5, nob[..], 0, heights[..]); }
-  #assert w[0].darts_hit == 5 && before - w[0].hp >= 10 && before - w[0].hp <= 25;
+  #assert watch_you(w[..])[0].darts_hit == 5 && before - watch_you(w[..])[0].hp >= 10 && before - watch_you(w[..])[0].hp <= 25;
   // Earthbind: until a Strength save fails, then you are bound while the caster stands
   for q: 0..<30 {
     if watch_bound(w[..]) { break; }
     watch_cast(w[..], i, MS_EARTHBIND, feet, you, heights[..]);
     for f: 0..<5 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
   }
-  #assert watch_bound(w[..]) && w[0].bound_by == i;
+  #assert watch_bound(w[..]) && watch_you(w[..])[0].bound_by == i;
   // knocked down, they lose it
   watch_harm(w[..], i, 1, you);
   watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]);

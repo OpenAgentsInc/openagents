@@ -269,7 +269,7 @@ fr_in_cylinder :: (c: Point, r: f32, h: f32, p: Point, pad: f32) -> bool {
 // save (half on a success, or none), and what it says. What you took, -1 out of reach or no watch.
 fr_hurt_you :: (s: [] Everglade, dmg: SrdDamage, on_save: int) -> int {
   w := watch_w(s);
-  if !w[0].on || w[0].dead { return -1; }
+  if !w[0].on || watch_you(w[..])[0].dead { return -1; }
   took := srd_creature_takes(w[0].dice[..], SRD_RANGER_5, dmg, SAVE_DEX, on_save, SAVE_DC_W);
   watch_hurt_you_thrown(w, took, ab_you(s), s[0].face, v3(0, 1.5, 0));
   if took > 0 { sp_say(s, "YOU ARE CAUGHT IN IT", took, "DAMAGE"); }
@@ -282,7 +282,7 @@ fr_people :: (s: [] Everglade) {
   if !watch_on(s) { return; }
   w := watch_w(s);
   you := ab_you(s);
-  if !w[0].dead {
+  if !watch_you(w[..])[0].dead {
     on_feet := s[0].feet.y < 0.35 && s[0].water < WATER_SWIMMING;
     // the sleet: coming into it, and each round in it
     inside := f[0].sleet_on && fr_in_cylinder(f[0].sleet_at, f32(FR_SLEET_R), f32(FR_SLEET_H), you, 0);

@@ -53,7 +53,7 @@ everglade_place_fix :: (s: [] Everglade, p: Place) -> Place #export_c {
 // Where you are, as the place to keep: the watch's respawn wins while they
 // hunt you or you lie dead (the Road In, facing up the road, the camera as it is).
 everglade_place_here :: (s: [] Everglade, here: Place) -> Place #export_c {
-  if !here.ok || !s[0].wv.started || !s[0].wt[0].on || !(s[0].wt[0].wanted || s[0].wt[0].dead) { return here; }
+  if !here.ok || !s[0].wv.started || !s[0].wt[0].on || !(watch_you(s[0].wt[..])[0].wanted || watch_you(s[0].wt[..])[0].dead) { return here; }
   p := here;
   p.x = f32(EG_SPAWN_X); p.y = 0; p.z = f32(EG_SPAWN_Z); p.face = 0; p.yaw = 0; p.room = -1;
   return p;
@@ -118,12 +118,12 @@ everglade_place_camera :: (s: [] Everglade, p: Place) #export_c {
   #assert everglade_place_here(g[..], here).x == 30;
   g[0].wv.started = true; g[0].wt[0].on = true;
   #assert everglade_place_here(g[..], here).x == 30;
-  g[0].wt[0].wanted = true;
+  watch_you(g[0].wt[..])[0].wanted = true;
   rw := everglade_place_here(g[..], here);
   #assert rw.x == f32(EG_SPAWN_X) && rw.z == f32(EG_SPAWN_Z) && rw.zoom == 6 && rw.at == 1000;
-  g[0].wt[0].wanted = false; g[0].wt[0].dead = true;
+  watch_you(g[0].wt[..])[0].wanted = false; watch_you(g[0].wt[..])[0].dead = true;
   #assert everglade_place_here(g[..], here).z == f32(EG_SPAWN_Z);
-  g[0].wt[0].dead = false; g[0].wv.started = false; g[0].wt[0].on = false;
+  watch_you(g[0].wt[..])[0].dead = false; g[0].wv.started = false; g[0].wt[0].on = false;
   // the camera as kept, at those feet
   everglade_place_camera(g[..], q);
   #assert g[0].orbit.yaw == 1.25 && g[0].orbit.want == 6 && g[0].feet.x == q.x && !g[0].above;

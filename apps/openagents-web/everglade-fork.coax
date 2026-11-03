@@ -178,9 +178,9 @@ fork_frame :: (s: [] Everglade, dt: f32) {
   }
   // hostile waves: the watch comes in from the gate nearest you, a level higher each time
   ww := watch_w(s);
-  if fork_rule(s, FK_WAVES) && ww[0].on && !ww[0].dead {
+  if fork_rule(s, FK_WAVES) && ww[0].on && !watch_you(ww)[0].dead {
     s[0].fk[0].wave_t += dt;
-    first := ww[0].waves == 0 && !ww[0].wanted;
+    first := ww[0].waves == 0 && !watch_you(ww)[0].wanted;
     if s[0].fk[0].wave_t >= ifx first then f32(FK_WAVE_FIRST) else f32(FK_WAVE_EVERY) {
       s[0].fk[0].wave_t = 0;
       fk_wave(ww);
@@ -189,10 +189,10 @@ fork_frame :: (s: [] Everglade, dt: f32) {
 }
 // A wave: you are wanted at the next level, whose wave the watch sends on its next step.
 fk_wave :: (w: [] Watch) {
-  next := ifx w[0].level + 1 < 2 then 2 else ifx w[0].level + 1 > WANTED_LEVELS then WANTED_LEVELS else w[0].level + 1;
-  w[0].wanted = true; w[0].unseen = 0;
-  if w[0].heat < HEAT_AT[next] { w[0].heat = HEAT_AT[next]; }
-  if w[0].level >= WANTED_LEVELS { w[0].level = WANTED_LEVELS - 1; }   // at the top, the top wave again
+  next := ifx watch_you(w[..])[0].level + 1 < 2 then 2 else ifx watch_you(w[..])[0].level + 1 > WANTED_LEVELS then WANTED_LEVELS else watch_you(w[..])[0].level + 1;
+  watch_you(w[..])[0].wanted = true; watch_you(w[..])[0].unseen = 0;
+  if watch_you(w[..])[0].heat < HEAT_AT[next] { watch_you(w[..])[0].heat = HEAT_AT[next]; }
+  if watch_you(w[..])[0].level >= WANTED_LEVELS { watch_you(w[..])[0].level = WANTED_LEVELS - 1; }   // at the top, the top wave again
 }
 
 // ---- answers
@@ -500,5 +500,5 @@ fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
   w := watch_w(f[..]);
   w[0].on = true;
   fork_frame(f[..], f32(FK_WAVE_FIRST) + 0.1);
-  #assert w[0].wanted && w[0].heat >= HEAT_AT[2];
+  #assert watch_you(w[..])[0].wanted && watch_you(w[..])[0].heat >= HEAT_AT[2];
 }

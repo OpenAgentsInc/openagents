@@ -110,7 +110,7 @@ eg_watch_floors :: (s: [] Everglade, w: [] Watch) -> int {
     b := w[0].actors[i].body;
     if b.on { n = eg_floors_round(s, b.x, b.z, f32(EG_TUMBLE_REACH), 0, w[0].floors[..], n); }
   }
-  if w[0].you_body.on { n = eg_floors_round(s, w[0].you_body.x, w[0].you_body.z, f32(EG_TUMBLE_REACH), 0, w[0].floors[..], n); }
+  if watch_you(w[..])[0].you_body.on { n = eg_floors_round(s, watch_you(w[..])[0].you_body.x, watch_you(w[..])[0].you_body.z, f32(EG_TUMBLE_REACH), 0, w[0].floors[..], n); }
   return n;
 }
 

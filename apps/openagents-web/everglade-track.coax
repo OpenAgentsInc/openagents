@@ -28,7 +28,7 @@ everglade_track :: (s: [] Everglade, w: [] EgSeen, t: [] Track, x: f32, z: f32) 
   if !t[0].ready { return; }
   egt_w := s[0].wt[..];
   if !w[0].started {
-    w[0].started = true; w[0].x = x; w[0].z = z; w[0].level = egt_w[0].level; w[0].talk = s[0].talk;
+    w[0].started = true; w[0].x = x; w[0].z = z; w[0].level = watch_you(egt_w)[0].level; w[0].talk = s[0].talk;
     for q: 0..<EG_QUESTS { w[0].stages[q] = s[0].stages[q]; }
     for i: 0..<WATCH_ACTORS { w[0].dead_n[i] = egt_w[0].actors[i].mode == WM_DEAD; }
     w[0].lit = s[0].sp.fi[0].lit; w[0].broke = s[0].sp.broke; w[0].pushed = s[0].sp.pushed; w[0].undos = s[0].ev.undo_n;
@@ -47,9 +47,9 @@ everglade_track :: (s: [] Everglade, w: [] EgSeen, t: [] Track, x: f32, z: f32) 
   egt_room := everglade_room_at(s, x, z);
   if egt_room >= 0 { track_area(t, EG_BUILDING_NAME[egt_room]); }
   // the watch
-  if egt_w[0].level != w[0].level { track_act_n(t, "wanted", "", egt_w[0].level); w[0].level = egt_w[0].level; }
-  if egt_w[0].dead && !w[0].dead { track_tally(t, "death", ""); }
-  w[0].dead = egt_w[0].dead;
+  if watch_you(egt_w)[0].level != w[0].level { track_act_n(t, "wanted", "", watch_you(egt_w)[0].level); w[0].level = watch_you(egt_w)[0].level; }
+  if watch_you(egt_w)[0].dead && !w[0].dead { track_tally(t, "death", ""); }
+  w[0].dead = watch_you(egt_w)[0].dead;
   for i: 0..<WATCH_ACTORS {
     egt_dead := egt_w[0].actors[i].mode == WM_DEAD;
     if egt_dead && !w[0].dead_n[i] { track_tally(t, "kill", ifx watch_is_guard(i) then "guard" else "folk"); }

@@ -247,7 +247,7 @@ gv_mb_frame :: (s: [] Everglade, dt: f32) {
     gv_crime(s, c, f32(GV_HEAR));
     sp_say(s, "MOONBEAM · 2D10 RADIANT", total, ifx hurt == 1 then "· 1 CAUGHT" else "· CAUGHT IN IT");
   }
-  inside := !w[0].dead && gv_in_beam(c, you);
+  inside := !watch_you(w[..])[0].dead && gv_in_beam(c, you);
   if inside && (!v[0].you_in || v[0].time >= v[0].you_next) {
     v[0].you_next = v[0].time + f32(FR_ROUND);
     amount := srd_sum(d, 2, 10);

@@ -136,7 +136,7 @@ wd_you_down :: (s: [] Everglade) -> bool { you := ab_you(s); return you.y - grou
 wd_hurt_you :: (s: [] Everglade, took: int, text: string) {
   if took <= 0 || !watch_on(s) { return; }
   w := watch_w(s);
-  if w[0].dead { return; }
+  if watch_you(w[..])[0].dead { return; }
   watch_hurt_you_thrown(w, took, ab_you(s), s[0].face, v3(0, 0, 0));
   sp_say(s, text, took, "DAMAGE");
 }
@@ -175,7 +175,7 @@ wd_ff_at :: (s: [] Everglade, at: Point) {
       v[0].lit[i] = true; n += 1;
     }
     w := watch_w(s);
-    if !w[0].dead && wd_in_cube(c, ab_you(s), side) && !srd_save(w[0].dice[..], SP_DEX, GV_DC).success { v[0].you_lit = true; }
+    if !watch_you(w[..])[0].dead && wd_in_cube(c, ab_you(s), side) && !srd_save(w[0].dice[..], SP_DEX, GV_DC).success { v[0].you_lit = true; }
   }
   if tried > 0 { gv_crime(s, c, f32(WD_HEAR_FF)); }
   if v[0].you_lit { sp_say(s, "FAERIE FIRE · YOU ARE OUTLINED", -1, ""); }
@@ -194,7 +194,7 @@ wd_ff_frame :: (s: [] Everglade, dt: f32) {
   if v[0].ff_t >= f32(WD_FF_LIFE) { wd_ff_end(s); sp_say(s, "FAERIE FIRE ENDS", -1, ""); return; }
   for i: 0..<WATCH_ACTORS { if v[0].lit[i] && !ab_person_ok(s, i) { v[0].lit[i] = false; } }
   // outlined, the watch's next blow at you has Advantage, every one while it lasts
-  if v[0].you_lit && watch_on(s) { watch_w(s)[0].marked = true; }
+  if v[0].you_lit && watch_on(s) { watch_you(watch_w(s))[0].marked = true; }
 }
 
 // ---- Healing Word
@@ -219,9 +219,9 @@ wd_hw_on :: (s: [] Everglade, who: int) {
     a[0].hp += got;
     sp_say(s, "HEALING WORD", got, "HIT POINTS");
   } else {
-    if w[0].dead { return; }
-    got := lo_i(w[0].max, w[0].hp + amount) - w[0].hp;
-    w[0].hp += got;
+    if watch_you(w[..])[0].dead { return; }
+    got := lo_i(watch_you(w[..])[0].max, watch_you(w[..])[0].hp + amount) - watch_you(w[..])[0].hp;
+    watch_you(w[..])[0].hp += got;
     sp_say(s, "HEALING WORD · YOU", got, "HIT POINTS");
   }
   v[0].hw_t = 0; v[0].hw_who = who;
@@ -277,7 +277,7 @@ wd_sg_frame :: (s: [] Everglade, dt: f32) {
   }
   if hurt > 0 { gv_crime(s, v[0].sg_at, f32(WD_HEAR_SG)); sp_say(s, "SPIKE GROWTH · 2D4 PIERCING", total, "DAMAGE"); }
   // you, on foot in it
-  inside := !w[0].dead && wd_you_down(s) && flat_gap(you, v[0].sg_at) <= R;
+  inside := !watch_you(w[..])[0].dead && wd_you_down(s) && flat_gap(you, v[0].sg_at) <= R;
   if inside && v[0].you_was {
     step := flat_gap(you, v3(v[0].you_x, 0, v[0].you_z));
     if step < 2 { v[0].you_walk += step; }
@@ -331,7 +331,7 @@ wd_cl_strike :: (s: [] Everglade, to: Point) {
       hurt += 1; total += took;
     }
     if hurt > 0 { gv_crime(s, to, f32(WD_HEAR_CL)); }
-    if !w[0].dead && flat_gap(you, to) <= r && abs(you.y - to.y) < 3 {
+    if !watch_you(w[..])[0].dead && flat_gap(you, to) <= r && abs(you.y - to.y) < 3 {
       amount := srd_sum(d, 3, 10);
       wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "CALL LIGHTNING STRIKES YOU");
     }
@@ -390,7 +390,7 @@ wd_wf_at :: (s: [] Everglade, at: Point, ahead: Point) {
       hurt += 1; total += took;
     }
     if hurt > 0 { gv_crime(s, at, f32(WD_HEAR_WF)); }
-    if !w[0].dead && wd_wf_where(s, you) == 1 {
+    if !watch_you(w[..])[0].dead && wd_wf_where(s, you) == 1 {
       v[0].you_wf_next = v[0].time + f32(WD_ROUND);
       amount := srd_sum(d, 5, 8);
       wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "WALL OF FIRE · YOU ARE IN IT");
@@ -444,7 +444,7 @@ wd_wf_frame :: (s: [] Everglade, dt: f32) {
   }
   if hurt > 0 { gv_crime(s, mix(v[0].wf_a, v[0].wf_b, 0.5), f32(WD_HEAR_WF)); sp_say(s, "WALL OF FIRE · 5D8 FIRE", total, "DAMAGE"); }
   // you: walking into it burns at once, standing by its burning side as a round ends
-  spot := ifx w[0].dead then 0 else wd_wf_where(s, you);
+  spot := ifx watch_you(w[..])[0].dead then 0 else wd_wf_where(s, you);
   if spot == 2 && v[0].you_wf_next == 0 { v[0].you_wf_next = v[0].time + f32(WD_ROUND); }
   else if spot != 0 && v[0].time >= v[0].you_wf_next {
     v[0].you_wf_next = v[0].time + f32(WD_ROUND);
@@ -556,7 +556,7 @@ wd_fires_frame :: (s: [] Everglade, dt: f32) {
     hurt += 1; at = p;
   }
   if hurt > 0 { gv_crime(s, at, f32(WD_HEAR_FIRE)); }
-  if !w[0].dead && v[0].time >= v[0].you_fire_next && wd_you_down(s) && wd_in_fire(s, you) {
+  if !watch_you(w[..])[0].dead && v[0].time >= v[0].you_fire_next && wd_you_down(s) && wd_in_fire(s, you) {
     v[0].you_fire_next = v[0].time + f32(WD_ROUND);
     wd_hurt_you(s, srd_sum(d, 1, 4), "YOU ARE BURNING · 1D4 FIRE");
   }

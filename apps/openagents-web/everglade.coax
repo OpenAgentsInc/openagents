@@ -2985,7 +2985,7 @@ wildlife :: (s: [] Everglade, you: Point, still: bool) {
 // idle's first pose, so every shot of it is the same to the pixel however long the page ran first.
 figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airborne: bool, dt: f32, still: bool) {
   rig := ranger_rig(s[0].rig[..]);
-  dead := s[0].wv.started && s[0].wt[0].dead;
+  dead := s[0].wv.started && watch_you(s[0].wt[..])[0].dead;
   motion := rangers_you_clip(s, ifx dead then SKIN_IDLE else skin_motion(speed, airborne), airborne, dead, dt);   // the swing as you cast
   skin_advance(rig, s[0].skin[..], motion, speed, dt);
   fade := ifx s[0].skin[0].fade > 0 then s[0].skin[0].fade else f32(SKIN_FADE);
@@ -3001,7 +3001,7 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
     // dead: thrown by what killed you, your body where it flew; else you topple over backwards from your
     // feet (watch.coax watch_you_fall) and lie there through YOU DIED
     w := s[0].wt[..];
-    b := w[0].you_body;
+    b := watch_you(w[..])[0].you_body;
     if b.on || b.settle >= 0 {
       b.settle = -1;   // the Ranger has no lying clip: the rigid turn holds
       if !b.on { b.pitch = -f32(PI) * 0.5; }

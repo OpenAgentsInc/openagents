@@ -182,9 +182,9 @@ ci_take_shape :: (s: [] Everglade, form: int, k: int, fresh: bool) {
   v := ci_of(s);
   if !watch_on(s) { return; }
   w := watch_w(s);
-  if w[0].dead { return; }
+  if watch_you(w[..])[0].dead { return; }
   v[0].form = form; v[0].form_by = k; v[0].form_last = ab_you(s); v[0].form_walk = 0; v[0].form_move = 0;
-  if fresh { w[0].temp = CI_FORM_HP[form]; }
+  if fresh { watch_you(w[..])[0].temp = CI_FORM_HP[form]; }
   v[0].shift_t = 0; v[0].shift_at = ab_you(s);
   s[0].sp.armed = SP_SLOTS + k;
 }
@@ -193,7 +193,7 @@ ci_leave_shape :: (s: [] Everglade) {
   if v[0].form == CI_FORM_NONE { return; }
   if s[0].sp.armed == SP_SLOTS + v[0].form_by { s[0].sp.armed = -1; }
   v[0].form = CI_FORM_NONE; v[0].form_by = -1;
-  if watch_on(s) { watch_w(s)[0].temp = 0; }
+  if watch_on(s) { watch_you(watch_w(s))[0].temp = 0; }
   v[0].shift_t = 0; v[0].shift_at = ab_you(s);
 }
 // The shape's bite (and a bear's claw) at whoever the click shows in reach.
@@ -238,11 +238,11 @@ ci_form_frame :: (s: [] Everglade, dt: f32) {
   w := watch_w(s);
   // you fell, or Polymorph's shape's Hit Points are spent: you stand in your own again (Wild Shape and
   // Shapechange only lend theirs as Temporary ones; the shape holds when they are gone)
-  if w[0].dead || (w[0].temp <= 0 && v[0].form_by == AB_POLYMORPH) {
+  if watch_you(w[..])[0].dead || (watch_you(w[..])[0].temp <= 0 && v[0].form_by == AB_POLYMORPH) {
     name := v[0].form;
     if v[0].form_by == AB_POLYMORPH { v[0].pm_on = false; }
     ci_leave_shape(s);
-    if !w[0].dead { sp_say(s, ifx name == CI_FORM_WOLF then "THE WOLF'S SHAPE IS SPENT" else "THE BEAR'S SHAPE IS SPENT", -1, ""); }
+    if !watch_you(w[..])[0].dead { sp_say(s, ifx name == CI_FORM_WOLF then "THE WOLF'S SHAPE IS SPENT" else "THE BEAR'S SHAPE IS SPENT", -1, ""); }
   }
 }
 
@@ -315,7 +315,7 @@ ci_ca_frame :: (s: [] Everglade, dt: f32) {
     v[0].ca_near[i] = close;
   }
   if hurt > 0 { sp_say(s, "CONJURE ANIMALS · 3D10 SLASHING", total, ifx hurt == 1 then "· 1 TORN" else "· TORN"); }
-  if w[0].dead { return; }
+  if watch_you(w[..])[0].dead { return; }
   close := flat_gap(you, v[0].ca_at) <= reach && abs(you.y - v[0].ca_at.y) < 3;
   if close && v[0].time >= v[0].you_ca_next {
     v[0].you_ca_next = v[0].time + f32(CI_ROUND);
@@ -359,7 +359,7 @@ ci_pm_on :: (s: [] Everglade, who: int) {
   w := watch_w(s);
   if v[0].pm_on { ci_pm_end(s); }
   if who < 0 {
-    if w[0].dead { return; }
+    if watch_you(w[..])[0].dead { return; }
     v[0].pm_on = true; v[0].pm_t = 0; v[0].pm_who = -1;
     ci_take_shape(s, CI_FORM_BEAR, AB_POLYMORPH, true);
     sp_say(s, "POLYMORPH · YOU ARE A BROWN BEAR", CI_FORM_HP[CI_FORM_BEAR], "TEMPORARY HIT POINTS");
@@ -412,7 +412,7 @@ ci_mc_at :: (s: [] Everglade, at: Point) {
   // the six nearest its middle, you among them
   gaps: [CI_MC_MOST] f32;
   you := ab_you(s);
-  if !w[0].dead && flat_gap(you, c) <= R { v[0].mc_who[0] = -1; gaps[0] = flat_gap(you, c); v[0].mc_n = 1; }
+  if !watch_you(w[..])[0].dead && flat_gap(you, c) <= R { v[0].mc_who[0] = -1; gaps[0] = flat_gap(you, c); v[0].mc_n = 1; }
   for i: 0..<WATCH_ACTORS {
     if !ab_person_ok(s, i) { continue; }
     g := flat_gap(wd_feet(s, i), c);
@@ -426,7 +426,7 @@ ci_mc_at :: (s: [] Everglade, at: Point) {
   for q: 0..<v[0].mc_n {
     i := v[0].mc_who[q];
     amount := srd_sum(d, 5, 8) + GV_WIS;
-    if i < 0 { h := lo_i(w[0].max, w[0].hp + amount) - w[0].hp; w[0].hp += h; got += h; continue; }
+    if i < 0 { h := lo_i(watch_you(w[..])[0].max, watch_you(w[..])[0].hp + amount) - watch_you(w[..])[0].hp; watch_you(w[..])[0].hp += h; got += h; continue; }
     a := w[0].actors[i..<i + 1];
     h := lo_i(a[0].max, a[0].hp + amount) - a[0].hp;
     a[0].hp += h; got += h;
@@ -540,7 +540,7 @@ ci_wt_at :: (s: [] Everglade, at: Point, ahead: Point) {
       hurt += 1; total += took;
     }
     if hurt > 0 { ci_crime(s, at, f32(CI_HEAR_WT)); }
-    if !w[0].dead && ci_wt_where(s, you) == 1 {
+    if !watch_you(w[..])[0].dead && ci_wt_where(s, you) == 1 {
       v[0].you_wt_next = v[0].time + f32(CI_ROUND);
       amount := srd_sum(d, 7, 8);
       wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "WALL OF THORNS · YOU ARE IN IT");
@@ -584,7 +584,7 @@ ci_wt_frame :: (s: [] Everglade, dt: f32) {
     hurt += 1; total += took;
   }
   if hurt > 0 { ci_crime(s, mix(v[0].wt_a, v[0].wt_b, 0.5), f32(CI_HEAR_WT)); sp_say(s, "WALL OF THORNS · 7D8 SLASHING", total, "DAMAGE"); }
-  if !w[0].dead && ci_wt_where(s, you) == 1 && v[0].time >= v[0].you_wt_next {
+  if !watch_you(w[..])[0].dead && ci_wt_where(s, you) == 1 && v[0].time >= v[0].you_wt_next {
     v[0].you_wt_next = v[0].time + f32(CI_ROUND);
     amount := srd_sum(d, 7, 8);
     wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "THE THORNS · 7D8 SLASHING");
@@ -665,7 +665,7 @@ ci_fs_burn :: (s: [] Everglade) -> CiHurt {
   }
   inside := false;
   for q: 0..<CI_FS_N { if ci_in_cube(v[0].fs_c[q], you) { inside = true; } }
-  if !w[0].dead && inside && v[0].time >= v[0].you_fs_next {
+  if !watch_you(w[..])[0].dead && inside && v[0].time >= v[0].you_fs_next {
     v[0].you_fs_next = v[0].time + f32(CI_ROUND);
     amount := srd_sum(d, 7, 10);
     wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "FIRE STORM · YOU ARE IN IT");
@@ -739,7 +739,7 @@ ci_draw :: (s: [] Everglade) {
     moving := pl.walking || watch_busy(s, i);
     ci_beast(s, CI_FORM_FROG, feet, pl.face, t * 2.2, ifx moving then 1.0f32 else 0.0f32, false, 1);
   }
-  if v[0].form != CI_FORM_NONE && !(watch_on(s) && watch_w(s)[0].dead) {
+  if v[0].form != CI_FORM_NONE && !(watch_on(s) && watch_you(watch_w(s))[0].dead) {
     ci_beast(s, v[0].form, ab_you(s), s[0].face, v[0].form_walk, v[0].form_move, false, 1);
   }
   // a shape changing: a swirl of violet light

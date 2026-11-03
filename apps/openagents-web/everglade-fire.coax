@@ -297,7 +297,7 @@ fi_people :: (s: [] Everglade) {
     v[0].next[i] = v[0].time + f32(FI_ROUND);
     watch_harm(w, i, srd_sum(d, FI_PEOPLE_DICE, FI_PEOPLE_SIDES), you);
   }
-  if !w[0].dead && v[0].time >= v[0].you_next && fi_by_fire(s, you) {
+  if !watch_you(w[..])[0].dead && v[0].time >= v[0].you_next && fi_by_fire(s, you) {
     v[0].you_next = v[0].time + f32(FI_ROUND);
     wd_hurt_you(s, srd_sum(d, FI_PEOPLE_DICE, FI_PEOPLE_SIDES), "THE FIRE BURNS YOU · 1D10 FIRE");
   }
@@ -438,7 +438,7 @@ fi_dome_frame :: (s: [] Everglade, dt: f32) {
         sh.struck = true;
       }
       you := ab_you(s);
-      if !sh.struck && !ww[0].dead && flat_gap(you, sh.at) <= reach && sh.at.y > you.y - 0.3 && sh.at.y < you.y + f32(BODY_TALL) + 0.3 {
+      if !sh.struck && !watch_you(ww)[0].dead && flat_gap(you, sh.at) <= reach && sh.at.y > you.y - 0.3 && sh.at.y < you.y + f32(BODY_TALL) + 0.3 {
         wd_hurt_you(s, srd_sum(s[0].sp.dice[..], 2, 6), "THE DOME FALLS ON YOU · 2D6 BLUDGEONING");
         sh.struck = true;
       }

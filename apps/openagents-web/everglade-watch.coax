@@ -89,7 +89,7 @@ watch_on :: (s: [] Everglade) -> bool { return s[0].wt[0].on; }
 // Whether person i (a spot, or EG_SPOTS + a new guard) is off their day.
 watch_busy :: (s: [] Everglade, i: int) -> bool { return s[0].wv.started && watch_off(watch_w(s), i); }
 // You lie dead: you stand still.
-watch_down :: (s: [] Everglade) -> bool { return s[0].wv.started && s[0].wt[0].dead; }
+watch_down :: (s: [] Everglade) -> bool { return s[0].wv.started && watch_you(s[0].wt[..])[0].dead; }
 
 watch_page_start :: (s: [] Everglade) {
   everglade_guard_invalidate(s); s[0].guard_ai.generation += 1;
@@ -113,34 +113,34 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
   w[0].on = sp_on(s) && !c.still;
   if !w[0].on { return; }
   watch_pops_frame(s, dt);
-  w[0].face = s[0].face;
+  watch_you(w[..])[0].face = s[0].face;
   // the realm's switches (realm_rights rows): guards who give chase, and its owner's own invincibility
   e := s[0].ev.ed[..];
   w[0].peace = !redit_row_on(e, "guards");
   w[0].unhurt = redit_may(e) && redit_row(e, "invincible") >= 0 && redit_row_on(e, "invincible");   // the owner's and admins' own, off unless switched on
   if w[0].peace { s[0].wv.want = 0; }
   if s[0].wv.want > 0 {
-    w[0].wanted = true; w[0].unseen = 0; w[0].heat = hi_w(w[0].heat, HEAT_AT[clamp_w(s[0].wv.want, 1, WANTED_LEVELS)]);
+    watch_you(w[..])[0].wanted = true; watch_you(w[..])[0].unseen = 0; watch_you(w[..])[0].heat = hi_w(watch_you(w[..])[0].heat, HEAT_AT[clamp_w(s[0].wv.want, 1, WANTED_LEVELS)]);
     s[0].wv.want = 0;
   }
   everglade_captain_frame(s, you);   // the guard captain's plan (everglade-guard-ai.coax)
   w[0].floor_n = eg_watch_floors(s, w);   // what the bodies in flight come down onto (everglade-stand.coax)
   watch_tick(w, dt, you, c.day, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
   // a hunter's spell threw you: the face adds it to your velocity
-  if w[0].bound_said == 1 { sp_say(s, "EARTHBIND", -1, ""); }
-  if w[0].bound_said == 2 { sp_say(s, "YOU RESIST EARTHBIND", -1, ""); }
-  w[0].bound_said = 0;
-  if w[0].knocked { s[0].wv.knock = add(s[0].wv.knock, w[0].knock); s[0].wv.knocked = true; w[0].knocked = false; w[0].knock = v3(0, 0, 0); }
-  if w[0].respawn {
+  if watch_you(w[..])[0].bound_said == 1 { sp_say(s, "EARTHBIND", -1, ""); }
+  if watch_you(w[..])[0].bound_said == 2 { sp_say(s, "YOU RESIST EARTHBIND", -1, ""); }
+  watch_you(w[..])[0].bound_said = 0;
+  if watch_you(w[..])[0].knocked { s[0].wv.knock = add(s[0].wv.knock, watch_you(w[..])[0].knock); s[0].wv.knocked = true; watch_you(w[..])[0].knocked = false; watch_you(w[..])[0].knock = v3(0, 0, 0); }
+  if watch_you(w[..])[0].respawn {
     everglade_guard_invalidate(s);
-    w[0].respawn = false;
+    watch_you(w[..])[0].respawn = false;
     s[0].spawn = v3(f32(EG_SPAWN_X), 0, f32(EG_SPAWN_Z)); s[0].spawn_face = 0;
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     s[0].sp.armed = -1; s[0].sp.casting = -1;
     watch_end_effects(s);
   }
   if s[0].talk >= 0 && watch_off(w, s[0].talk) { end_talk(s); }
-  if w[0].dead && s[0].talk >= 0 { end_talk(s); }
+  if watch_you(w[..])[0].dead && s[0].talk >= 0 { end_talk(s); }
 }
 
 // You stand again: every effect on you ends (Levitate, Feather Fall, Reverse Gravity's hold, the gust that
@@ -155,7 +155,7 @@ watch_end_effects :: (s: [] Everglade) {
   for k: 0..<AB_N { a[0].keys[k] = false; }
   s[0].wv.knocked = false; s[0].wv.knock = v3(0, 0, 0);
   w := watch_w(s);
-  w[0].you_body.on = false; w[0].you_body.settle = -1; w[0].you_fall = 0;
+  watch_you(w[..])[0].you_body.on = false; watch_you(w[..])[0].you_body.settle = -1; watch_you(w[..])[0].you_fall = 0;
   fr_you_reset(s);
   td_you_reset(s);
 }
@@ -322,7 +322,7 @@ watch_spell :: (s: [] Everglade, at: Point, slot: int) {
 // you as it throws the town: alive, the face adds the throw to your velocity; dead, your body flies.
 watch_spell_you :: (s: [] Everglade, at: Point, radius: f32, power: f32) {
   w := watch_w(s);
-  if !w[0].on || w[0].dead { return; }
+  if !w[0].on || watch_you(w[..])[0].dead { return; }
   if s[0].wv.you_slot == s[0].sp.casting + 1000 && s[0].time - s[0].wv.you_t < 2.5 { return; }
   you := ab_you(s);
   flat := flat_gap(you, at);
@@ -334,7 +334,7 @@ watch_spell_you :: (s: [] Everglade, at: Point, radius: f32, power: f32) {
   k := clamp01(1 - d / (radius + f32(BLAST_PAD)));
   kick := watch_kick(at, add(you, v3(0, f32(TUMBLE_PELVIS), 0)), power * (0.45 + 0.55 * k));
   watch_hurt_you_thrown(w, took, you, s[0].face, kick);
-  if !w[0].dead { s[0].wv.knock = add(s[0].wv.knock, times(kick, 0.6)); s[0].wv.knocked = true; }
+  if !watch_you(w[..])[0].dead { s[0].wv.knock = add(s[0].wv.knock, times(kick, 0.6)); s[0].wv.knocked = true; }
   if took > 0 { sp_say(s, "YOU ARE CAUGHT IN IT", took, "DAMAGE"); }
 }
 
@@ -470,7 +470,7 @@ watch_missiles_draw :: (s: [] Everglade) {
 watch_on_you_draw :: (s: [] Everglade) {
   if !s[0].wv.started { return; }
   w := watch_w(s);
-  if w[0].dead { return; }
+  if watch_you(w[..])[0].dead { return; }
   you := ab_you(s);
   t := f32(s[0].time);
   if watch_held(w) {
@@ -503,7 +503,7 @@ watch_on_you_draw :: (s: [] Everglade) {
     }
     sp_fx(s, FX_RING, v3(you.x, you.y + 0.05, you.z), 0.66, v3(0.7, 0.42, 0.14), 0, v3(0, 0, 0), t * 0.1);
   }
-  if w[0].slow_t > 0 {
+  if watch_you(w[..])[0].slow_t > 0 {
     for j: 0..<8 {
       ph := (t * 0.5 + f32(j) * 0.125) - floor(t * 0.5 + f32(j) * 0.125);
       ang := f32(j) * 2.4 + t * 1.3;
@@ -577,10 +577,10 @@ watch_pops_frame :: (s: [] Everglade, dt: f32) {
     }
     s[0].wv.seen[i].life = life; s[0].wv.seen[i].on = here;
   }
-  life := w[0].hp + w[0].temp;
+  life := watch_you(w[..])[0].hp + watch_you(w[..])[0].temp;
   was := s[0].wv.seen_you;
-  if was.on && life < was.life { watch_pop(s, add(ab_you(s), v3(0, 2.1, 0)), was.life - life, (was.life - life) * 4 >= hi_i(w[0].max, 1) || was.life - life >= 25); }
-  s[0].wv.seen_you = WatchSeen.{life = life, on = !w[0].dead};
+  if was.on && life < was.life { watch_pop(s, add(ab_you(s), v3(0, 2.1, 0)), was.life - life, (was.life - life) * 4 >= hi_i(watch_you(w[..])[0].max, 1) || was.life - life >= 25); }
+  s[0].wv.seen_you = WatchSeen.{life = life, on = !watch_you(w[..])[0].dead};
 }
 // The numbers, in screen space over where they rose to: red, outlined in their own darker glow.
 watch_pops_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
@@ -624,14 +624,14 @@ watch_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int
   gutter := 16 * k;
   bw := 168 * k; bh := 28 * k;
   b := Box.{x0 = wd - gutter - bw, y0 = top, x1 = wd - gutter, y1 = top + bh};
-  plate(s, u, b, 0.82, ifx w[0].hurt_t < 0.35 then 2.0f32 else 0.0f32);
+  plate(s, u, b, 0.82, ifx watch_you(w[..])[0].hurt_t < 0.35 then 2.0f32 else 0.0f32);
   ls := 7 * k;
   n = draw_text(out, n, "HP", b.x0 + 12 * k, b.y1 - 10 * k, ls, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
   bx0 := b.x0 + 40 * k; bx1 := b.x1 - 14 * k; by := (b.y0 + b.y1) / 2;
   if lit(out, n, bx0, by, bx1, by, 3 * k, 0.22, 0.5 * k, 0.5, 0.42, 0.36, 0) { n += 6; }
-  share := clamp01(f32(w[0].hp) / f32(hi_i(w[0].max, 1)));
+  share := clamp01(f32(watch_you(w[..])[0].hp) / f32(hi_i(watch_you(w[..])[0].max, 1)));
   if share > 0 && lit(out, n, bx0, by, bx0 + (bx1 - bx0) * share, by, 3 * k, 0.95, 2.2 * k, WATCH_RED_R, WATCH_RED_G, WATCH_RED_B, 0) { n += 6; }
-  if w[0].wanted {
+  if watch_you(w[..])[0].wanted {
     // WANTED, and its level as five stars, lit up to it (watch.coax HEAT_AT)
     cap := 9 * k;
     word := "WANTED";
@@ -643,7 +643,7 @@ watch_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int
     cy := (wb.y0 + wb.y1) / 2;
     for q: 0..<5 {
       cx := wb.x1 - 14 * k - sr - f32(4 - q) * (sr * 2 + 3 * k);
-      on := q < w[0].level;
+      on := q < watch_you(w[..])[0].level;
       for e: 0..<5 {
         a0 := f32(PI) * (-0.5 + 0.8 * f32(e)); a1 := f32(PI) * (-0.5 + 0.8 * f32(e + 1));
         if lit(out, n, cx + cos(a0) * sr, cy + sin(a0) * sr, cx + cos(a1) * sr, cy + sin(a1) * sr, ifx on then 1.6 * k else 0.9 * k,
@@ -700,7 +700,7 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
     cap := 26 * k;
     word := "YOU DIED";
     tw := text_width(word, cap);
-    light := clamp01((w[0].dead_t - f32(DEATH_FADE) * 0.6) / 0.6);
+    light := clamp01((watch_you(w[..])[0].dead_t - f32(DEATH_FADE) * 0.6) / 0.6);
     n = draw_text(out, n, word, (wd - tw) / 2, ht / 2 + cap / 2, cap, GAP, SPACE, ink(k, 0.95 * light, WATCH_RED_R, WATCH_RED_G * 0.8, WATCH_RED_B * 0.8), false, false);
   }
   return n;
@@ -757,7 +757,7 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   everglade_start(g[..]);
   watch_page_start(g[..]);
   w := watch_w(g[..]);
-  w[0].wanted = true; w[0].level = 5; w[0].heat = 40;
+  watch_you(w[..])[0].wanted = true; watch_you(w[..])[0].level = 5; watch_you(w[..])[0].heat = 40;
   _ := watch_rebuilt(g[..]);
-  #assert !w[0].wanted && w[0].level == 0 && w[0].heat == 0;
+  #assert !watch_you(w[..])[0].wanted && watch_you(w[..])[0].level == 0 && watch_you(w[..])[0].heat == 0;
 }
