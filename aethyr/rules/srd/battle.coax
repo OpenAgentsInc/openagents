@@ -228,7 +228,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
     return;
   }
   if r.conc_dc > 0 && b[0].c[j].conc >= 0 {
-    roll := rs_roll(b[0].dice[..], 20); total := roll + rs_save_bonus(b[0].c[j], RS_CON);
+    roll := rs_roll(b[0].dice[..], 20); total := roll + rs_save_in(b, j, RS_CON);
     if total < r.conc_dc {
       l: [1] RsLine;
       rs_add_text(l[..], " (Con save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], r.conc_dc); rs_add_text(l[..], ")");
@@ -519,7 +519,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       dc := rs_dc(b, i);
       fails := rs_helpless(b[0].c[j]) && (st.a == RS_STR || st.a == RS_DEX);
       d := rs_d20(b[0].dice[..], rs_save_edge(b, j, st.a));
-      total := d.roll + rs_save_bonus(b[0].c[j], st.a);
+      total := d.roll + rs_save_in(b, j, st.a);
       insp := ifx fails then 0 else rs_inspired_roll(b, j, total, dc);
       total += insp;
       saved = !fails && total >= dc;
@@ -814,7 +814,7 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
     e := b[0].c[i].eff[k];
     if e.kind == EF_NONE || e.save < 0 || b[0].c[i].dead || !b[0].turn.new_round { continue; }
     d := rs_d20(b[0].dice[..], 0);
-    total := d.roll + rs_save_bonus(b[0].c[i], e.save);
+    total := d.roll + rs_save_in(b, i, e.save);
     total += rs_inspired_roll(b, i, total, e.dc);
     ok := total >= e.dc;
     l: [1] RsLine;
@@ -1081,7 +1081,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   if cut > 0 && amount - cut <= 0 && b[0].c[j].focus > 0 && rs_up(b[0].c[j]) && rs_up(b[0].c[i]) {
     b[0].c[j].focus -= 1;
     sd := rs_d20(b[0].dice[..], rs_save_edge(b, i, RS_DEX));
-    st := sd.roll + rs_save_bonus(b[0].c[i], RS_DEX);
+    st := sd.roll + rs_save_in(b, i, RS_DEX);
     dc := rs_focus_dc(b[0].c[j]);
     rl: [1] RsLine;
     rs_add_name(rl[..], b, j); rs_add_text(rl[..], " redirects the blow: "); rs_add_name(rl[..], b, i);
@@ -1131,6 +1131,19 @@ rs_attack :: (b: [] RsBattle, i: int, j: int, reckless: bool, cleave_to: int) ->
   }
   return true;
 }
+// A saving throw's bonus in the battle: the creature's own, and Aura of Protection (p. 55): a
+// Paladin's Charisma modifier (at least +1) to itself and its allies within 10 feet, unless it is
+// Incapacitated; only the best aura counts.
+rs_aura :: (b: [] RsBattle, j: int) -> int {
+  best := 0;
+  for k: 0..<b[0].n {
+    p := b[0].c[k];
+    if !p.aura || p.team != b[0].c[j].team || !rs_can_act(p) || rs_has(p, RS_INCAPACITATED) || rs_feet_to(b, k, j) > 10 { continue; }
+    best = rs_max(best, rs_max(rs_mod(p.score[RS_CHA]), 1));
+  }
+  return best;
+}
+rs_save_in :: (b: [] RsBattle, j: int, ability: int) -> int { return rs_save_bonus(b[0].c[j], ability) + rs_aura(b, j); }
 // Whether a creature fails Strength and Dexterity saves outright: Paralyzed, Stunned or Unconscious.
 rs_helpless :: (c: RsCreature) -> bool { return rs_has(c, RS_UNCONSCIOUS) || rs_has(c, RS_PARALYZED) || rs_has(c, RS_STUNNED); }
 // Stunning Strike (p. 51): once a turn, on a hit with an Unarmed Strike or a Monk weapon, 1 Focus
@@ -1143,7 +1156,7 @@ rs_stunning_strike :: (b: [] RsBattle, i: int, j: int) {
   b[0].turn.stunned = true; b[0].c[i].focus -= 1;
   dc := rs_focus_dc(me);
   d := rs_d20(b[0].dice[..], rs_save_edge(b, j, RS_CON));
-  total := d.roll + rs_save_bonus(b[0].c[j], RS_CON);
+  total := d.roll + rs_save_in(b, j, RS_CON);
   total += rs_inspired_roll(b, j, total, dc);
   ok := total >= dc;
   until := rs_before_next_turn(b, i) + 0.01;
@@ -1182,7 +1195,7 @@ rs_cunning_effect :: (b: [] RsBattle, i: int, j: int, plan: int) {
   ability := ifx plan == CS_TRIP then RS_DEX else RS_CON;
   dc := 8 + rs_mod(me.score[RS_DEX]) + rs_proficiency(me.level);
   d := rs_d20(b[0].dice[..], rs_save_edge(b, j, ability));
-  total := d.roll + rs_save_bonus(b[0].c[j], ability);
+  total := d.roll + rs_save_in(b, j, ability);
   total += rs_inspired_roll(b, j, total, dc);
   ok := total >= dc;
   if plan == CS_POISON && (b[0].c[j].immune_cond & RS_POISONED) != 0 { ok = true; }
@@ -1244,7 +1257,7 @@ rs_open_hand :: (b: [] RsBattle, i: int, j: int, how: int) {
   dc := rs_focus_dc(b[0].c[i]);
   fails := rs_helpless(b[0].c[j]);
   d := rs_d20(b[0].dice[..], rs_save_edge(b, j, ab));
-  total := d.roll + rs_save_bonus(b[0].c[j], ab);
+  total := d.roll + rs_save_in(b, j, ab);
   saved := !fails && total >= dc;
   rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " "); rs_add_text(l[..], RS_ABBR[ab]); rs_add_text(l[..], " save ");
   rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
@@ -1352,7 +1365,7 @@ rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
     c := b[0].c[j];
     if !c.undead || !rs_up(c) || c.team == b[0].c[i].team || rs_feet_to(b, i, j) > 30 { continue; }
     d := rs_d20(b[0].dice[..], rs_save_edge(b, j, RS_WIS));
-    total := d.roll + rs_save_bonus(c, RS_WIS);
+    total := d.roll + rs_save_in(b, j, RS_WIS);
     ok := total >= dc;
     l: [1] RsLine;
     rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " WIS save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
@@ -1476,7 +1489,7 @@ rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
     c := b[0].c[j];
     if c.team == b[0].c[i].team || !rs_up(c) || rs_feet(tx, ty, c.x, c.y) > 10 { continue; }
     d := rs_d20(b[0].dice[..], rs_save_edge(b, j, RS_CON));
-    total := d.roll + rs_save_bonus(c, RS_CON);
+    total := d.roll + rs_save_in(b, j, RS_CON);
     total += rs_inspired_roll(b, j, total, dc);
     ok := total >= dc;
     amount := rs_sum(b[0].dice[..], n6, 6);
@@ -2386,4 +2399,21 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   b[0].c[m].hp = 5; rs_fresh(b[..], m);
   #assert rs_wholeness(b[..], m) && b[0].c[m].hp >= 5 + 3 && b[0].c[m].hp <= 5 + 10 && b[0].c[m].uses[RS_USE_WHOLE] == 1;
   #assert !rs_wholeness(b[..], m);
+}
+
+#test "a level 6 Devotion Paladin: Strength 18, Extra Attack, two 2nd-level slots, and Aura of Protection" {
+  c := rs_paladin("Ulf", 1, 6);
+  #assert c.score[RS_STR] == 18 && rs_weapon_attack(c, c.weapon) == 7 && c.extra_attack == 1 && c.slots_max[1] == 4 && c.slots_max[2] == 2;
+  #assert c.aura && c.steed && !rs_paladin("Ulf", 1, 5).aura && c.uses_max[RS_USE_LAY] == 30 && c.hp_max == 10 + 1 + 5 * (6 + 1);
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 6; b[0].dice[0].state = 2;
+  p := rs_add(b[..], c, 2, 2);
+  f := rs_add(b[..], rs_fighter("Garr", 1, 3), 4, 2);
+  g := rs_add(b[..], rs_fighter("Hild", 1, 3), 10, 2);
+  e := rs_add(b[..], rs_skeleton("Skeleton", 2), 12, 2);
+  // Charisma 14: +2 to its own saves and a friend's 10 feet off; nothing 40 feet off, or to a foe
+  #assert rs_aura(b[..], p) == 2 && rs_aura(b[..], f) == 2 && rs_aura(b[..], g) == 0 && rs_aura(b[..], e) == 0;
+  #assert rs_save_in(b[..], f, RS_WIS) == rs_save_bonus(b[0].c[f], RS_WIS) + 2;
+  // inactive while it is Incapacitated
+  b[0].c[p].cond = RS_INCAPACITATED;
+  #assert rs_aura(b[..], f) == 0;
 }

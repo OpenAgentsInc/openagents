@@ -214,6 +214,7 @@ RsCreature :: struct {
   // Points; a battle here starts fresh, so it changes nothing), Slow Fall (falls only), Stunning
   // Strike (stun_ready: the deciding routine wants it on its next hit), Empowered Strikes; a Stunning
   // Strike saved against halves Speed until (halved_until)
+  aura: bool; steed: bool;          // Aura of Protection; Faithful Steed (Find Steed, a summoning this engine doesn't model)
   metabolism: bool; slow_fall: bool; stunning: bool; stun_ready: bool; empowered: bool; halved_until: f32;
   // Paladin: Sacred Weapon (Channel Divinity) until; Ranger: the Hunter's Colossus Slayer
   sacred_until: f32; colossus: bool;
@@ -549,6 +550,11 @@ rs_fighter :: (name: string, team: int, level: int) -> RsCreature {
 rs_paladin :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_hero(name, team, level, RS_PALADIN, [6] int.[16, 10, 13, 8, 12, 14], RS_WIS, RS_CHA, 10);
+  // an Ability Score Improvement at 4 (the feat, p. 87): Strength +2; Extra Attack and Faithful Steed
+  // at 5, Aura of Protection at 6 (p. 55)
+  if level >= 4 { c[0].score[RS_STR] = rs_min(c[0].score[RS_STR] + 2, 20); }
+  if level >= 5 { c[0].extra_attack = 1; c[0].steed = true; }
+  c[0].aura = level >= 6;
   c[0].ac = 16 + 2;
   c[0].spell_ability = RS_CHA; c[0].weapon = W_LONGSWORD; c[0].masteries = 1 << M_SAP;
   rs_half_slots(c[..], level);
