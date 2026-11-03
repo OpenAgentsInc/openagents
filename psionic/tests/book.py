@@ -37,7 +37,10 @@ WALL_FACTOR = 10
 # A number in a transcript, for fixtures that differ by platform.
 NUMBER = re.compile(r"-?(?:\d+\.\d*|\.\d+|\d+)(?:e[-+]?\d+)?")
 # coax/src/main.cpp capacity_text: the one stderr line a clean run may print.
-NEAR_LIMIT = re.compile(r"coax: note\[E[0-9]{4}\]: [a-z -]+: [0-9]+ of [0-9]+ used \([0-9]+%\), above three quarters of the limit; more than [0-9]+ fails with E[0-9]{4}")
+# Only the source-graph note (E0603) is accepted: its limits are fixed, so a
+# deep load chain can only be restructured. A compile-time step note (E0400)
+# fails, because the entry file can declare its budget with #run_steps N;.
+NEAR_LIMIT = re.compile(r"coax: note\[E0603\]: [a-z -]+: [0-9]+ of [0-9]+ used \([0-9]+%\), above three quarters of the limit; more than [0-9]+ fails with E0603")
 BOOKS = {
     # book directory, example programs, project README, least source listings
     "psionic": ("psionic/book", "psionic/examples", "psionic/README.md", 3),
@@ -355,15 +358,18 @@ def run_one(compiler, item, mode):
     # raises the soft limit and then execs the run. Raising it in a preexec_fn
     # fails on macOS: the kernel must grow the calling process's own stack
     # region, cannot in a forked Python process, and setrlimit returns EINVAL.
+    # macOS caps the hard limit at 65,520 KiB, just under a 64 MiB request; the
+    # shell then asks for the hard limit (a real shortfall still overflows).
     stack = item.get("stack_kib")
     if stack:
-        cmd = ["/bin/sh", "-c", 'ulimit -S -s "$1" && shift && exec "$@"', "sh", str(stack)] + cmd
+        script = 'n=$1; shift; h=$(ulimit -H -s); if [ "$h" != unlimited ] && [ "$h" -lt "$n" ]; then n=$h; fi; ulimit -S -s "$n" && exec "$@"'
+        cmd = ["/bin/sh", "-c", script, "sh", str(stack)] + cmd
     # A program that loads the whole signer compiles for longer than a minute.
     budget = item.get("timeout", CPU_BUDGET)
     status, stdout, stderr, used = execute(cmd, budget)
     assert status == item["exit_status"], f"exit status: {cmd}\n{stderr.decode()}"
-    # The compiler's near-limit report (a use above three quarters of a capacity
-    # limit) is advisory, not a diagnostic; it is collected and printed once.
+    # The source-graph near-limit report is advisory, not a diagnostic; it is
+    # collected and printed once. Any other stderr, including a step note, fails.
     lines = stderr.decode().splitlines()
     notes = [line for line in lines if NEAR_LIMIT.fullmatch(line)]
     assert len(notes) == len(lines), f"unexpected diagnostics: {cmd}\n{stderr.decode()}"
