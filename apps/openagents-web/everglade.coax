@@ -313,6 +313,12 @@ THICKET_ROW :: 272;    // brush a row a side, 1.3 m apart
 THICKET_BRUSH :: 4 * 2 * THICKET_ROW;
 THICKET_TREES :: 141;  // and its trees a side, 2.5 m apart
 THICKET_NEAR :: 22.0;  // metres: its brush nearer than this is drawn, the nearest first
+// forest_bodies' grid (#12717): FG_N by FG_N cells of FG_CELL m from FG_WEST, each listing the trunks,
+// rocks and brush (as list * FG_LIST + index, in their lists' order) a point in it may be near; built
+// once, since they stand where they were planted. The room server steps every seat 30 times a second
+// and scanned all 7000 of them for each step.
+FG_N :: 52; FG_CELL :: 8.0; FG_WEST :: -208.0; FG_LIST :: 8192;
+FG_ENTS :: (TREES + SMALLS + THICKET_BRUSH) * 6;
 FOUNTAIN_RADIUS :: 3.32;   // the plinth's (everglade.wgsl lathe_point's basin)
 BOXES :: 256;          // the camera's boxes (camera.coax BOX numbers each)
 TREES :: 3400;         // the forest: x, z, size, yaw, kind each
@@ -390,6 +396,7 @@ Everglade :: struct {
   boxes: [BOXES * 6] f32; box_n: int;
   trees: [TREES * TREE_FLOATS] f32; tree_n: int;
   smalls: [SMALLS * TREE_FLOATS] f32; small_n: int;
+  fg_start: [FG_N * FG_N + 1] int; fg_ent: [FG_ENTS] int; fg_built: bool; fg_ok: bool;   // forest_bodies' grid
   // the pack: its meshes' indices, its identity indices for the shapes, how it streams
   kit_first: [KIT_MESHES] int; kit_count: [KIT_MESHES] int;
   canopy_rgb: [KIT_TREES * 3] f32;   // each kind's leaves' mean colour from the catalog (0 until it says)
@@ -800,6 +807,7 @@ plant_forest :: (s: [] Everglade) {
     }
   }
   s[0].small_n = m;
+  s[0].fg_built = false;
 }
 
 // The world's edge (plan.coax EG_BOUND), shown before you reach it: a front row of brush whose
@@ -842,6 +850,7 @@ plant_thicket :: (s: [] Everglade) {
     }
   }
   s[0].tree_n = n;
+  s[0].fg_built = false;
 }
 
 // Keeps you inside the world's edge (plan.coax EG_BOUND), where the thicket stands: a step past
@@ -874,24 +883,76 @@ girth_of :: (x: f32, z: f32, size: f32, yaw: f32, kind: int) -> Girth {
 
 // The trunks and rocks within FOREST_NEAR of (x, z) as round bodies after the others, the
 // nearest first: a rock only while it is drawn (the pack in, the undergrowth on).
+// The cell of forest_bodies' grid (x, z) is in, or -1 outside it.
+fg_cell_of :: (x: f32, z: f32) -> int {
+  if !(x == x) || !(z == z) { return -1; }
+  i := floor((x - f32(FG_WEST)) / f32(FG_CELL)); j := floor((z - f32(FG_WEST)) / f32(FG_CELL));
+  if i < 0 || j < 0 || i >= f32(FG_N) || j >= f32(FG_N) { return -1; }
+  return cast(int) j * FG_N + cast(int) i;
+}
+// The girth of entry t of list `list` as planted (forest_bodies' order: the trees, the undergrowth, the brush).
+fg_planted :: (s: [] Everglade, list: int, t: int) -> Girth {
+  return ifx list == 0 then tree_girth(s, s[0].trees[..], t) else ifx list == 1 then tree_girth(s, s[0].smalls[..], t) else brush_girth(t);
+}
+fg_count :: (s: [] Everglade, list: int) -> int { return ifx list == 0 then s[0].tree_n else ifx list == 1 then s[0].small_n else THICKET_BRUSH; }
+// Each entry goes in every cell its square of reach (its girth and FOREST_NEAR each way, as
+// forest_bodies tests it) touches: a point within that reach lies in one of them. A trunk that fell
+// only loses girth (tf_girth), so the planted girth's cells hold it still.
+fg_build :: (s: [] Everglade) {
+  s[0].fg_built = true; s[0].fg_ok = false;
+  for c: 0..<FG_N * FG_N + 1 { s[0].fg_start[c] = 0; }
+  for pass: 0..<2 {
+    if pass == 1 {
+      // the counts into where each cell's entries start; filled again from those
+      sum := 0;
+      for c: 0..<FG_N * FG_N { k := s[0].fg_start[c]; s[0].fg_start[c] = sum; sum += k; }
+      s[0].fg_start[FG_N * FG_N] = sum;
+      if sum > FG_ENTS { return; }
+    }
+    for list: 0..<3 {
+      for t: 0..<fg_count(s, list) {
+        g := fg_planted(s, list, t);
+        if g.r <= 0 { continue; }
+        reach := g.r + f32(FOREST_NEAR);
+        i0 := hi_i(cast(int) floor((g.x - reach - f32(FG_WEST)) / f32(FG_CELL)), 0); i1 := lo_i(cast(int) floor((g.x + reach - f32(FG_WEST)) / f32(FG_CELL)), FG_N - 1);
+        j0 := hi_i(cast(int) floor((g.z - reach - f32(FG_WEST)) / f32(FG_CELL)), 0); j1 := lo_i(cast(int) floor((g.z + reach - f32(FG_WEST)) / f32(FG_CELL)), FG_N - 1);
+        for j: j0..<j1 + 1 {
+          for i: i0..<i1 + 1 {
+            c := j * FG_N + i;
+            if pass == 0 { s[0].fg_start[c] += 1; }
+            else { s[0].fg_ent[s[0].fg_start[c]] = list * FG_LIST + t; s[0].fg_start[c] += 1; }
+          }
+        }
+      }
+    }
+  }
+  // each cell's start was moved on to its end: back by one cell
+  for c: 0..<FG_N * FG_N { q := FG_N * FG_N - 1 - c; s[0].fg_start[q + 1] = s[0].fg_start[q]; }
+  s[0].fg_start[0] = 0;
+  s[0].fg_ok = true;
+}
 forest_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int {
   pick: [64] Girth; far: [64] f32; n := 0;
   rocks := s[0].pack_ready && redit_row_on(s[0].ev.ed[..], "undergrowth");
-  for list: 0..<3 {
-    count := ifx list == 0 then s[0].tree_n else ifx list == 1 then s[0].small_n else THICKET_BRUSH;
+  if !s[0].fg_built { fg_build(s); }
+  cell := ifx s[0].fg_ok then fg_cell_of(x, z) else -1;
+  // in the grid, the cell's entries (in the lists' order); outside it, every one
+  total := ifx cell >= 0 then s[0].fg_start[cell + 1] - s[0].fg_start[cell] else s[0].tree_n + s[0].small_n + THICKET_BRUSH;
+  for e: 0..<total {
+    list := 0; t := e;
+    if cell >= 0 { en := s[0].fg_ent[s[0].fg_start[cell] + e]; list = en / FG_LIST; t = en % FG_LIST; }
+    else if t >= s[0].tree_n { t -= s[0].tree_n; list = 1; if t >= s[0].small_n { t -= s[0].small_n; list = 2; } }
     if list > 0 && !rocks { continue; }
-    for t: 0..<count {
-      g := ifx list == 0 then tf_girth(s, t, tree_girth(s, s[0].trees[..], t)) else ifx list == 1 then tree_girth(s, s[0].smalls[..], t) else brush_girth(t);
-      if g.r <= 0 { continue; }
-      dx := g.x - x; dz := g.z - z; reach := g.r + f32(FOREST_NEAR);
-      if abs(dx) > reach || abs(dz) > reach { continue; }
-      d := sqrt(dx * dx + dz * dz) - g.r;
-      if d > f32(FOREST_NEAR) { continue; }
-      // keep the nearest 64, then the nearest FOREST_BODIES of them
-      if n < 64 { pick[n] = g; far[n] = d; n += 1; continue; }
-      worst := 0; for k: 1..<64 { if far[k] > far[worst] { worst = k; } }
-      if d < far[worst] { pick[worst] = g; far[worst] = d; }
-    }
+    g := ifx list == 0 then tf_girth(s, t, tree_girth(s, s[0].trees[..], t)) else fg_planted(s, list, t);
+    if g.r <= 0 { continue; }
+    dx := g.x - x; dz := g.z - z; reach := g.r + f32(FOREST_NEAR);
+    if abs(dx) > reach || abs(dz) > reach { continue; }
+    d := sqrt(dx * dx + dz * dz) - g.r;
+    if d > f32(FOREST_NEAR) { continue; }
+    // keep the nearest 64, then the nearest FOREST_BODIES of them
+    if n < 64 { pick[n] = g; far[n] = d; n += 1; continue; }
+    worst := 0; for k: 1..<64 { if far[k] > far[worst] { worst = k; } }
+    if d < far[worst] { pick[worst] = g; far[worst] = d; }
   }
   kept := 0;
   while kept < FOREST_BODIES && kept < n && (at + kept + 1) * 7 <= out.count {
@@ -4179,6 +4240,31 @@ everglade_store_cap :: (k: int) -> int #export_c {
   cw := 0.0f32; cx := 0.0f32; cy := 0.0f32;
   for i: 0..<4 { cx += u[U_VIEW + i] * p[i]; cy += u[U_VIEW + 4 + i] * p[i]; cw += u[U_VIEW + 12 + i] * p[i]; }
   #assert cw > 0 && abs(cx / cw) < 1 && abs(cy / cw) < 1;
+}
+
+#test "forest_bodies' grid finds what the whole scan finds, in the same order (#12717)" #steps 4000000000 {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  g[0].pack_ready = true;   // the rocks and brush too
+  a: [FOREST_BODIES * 7 + TF_BODIES * 7] f32; b: [FOREST_BODIES * 7 + TF_BODIES * 7] f32;
+  #assert !g[0].fg_built || g[0].fg_ok;
+  _ := forest_bodies(g[..], a[..], 0, 0, 0);
+  #assert g[0].fg_built && g[0].fg_ok;
+  found := 0;
+  for k: 0..<400 {
+    // over the walkable square and its thicket, on a lattice that crosses the cells' edges
+    x := -170.0f32 + f32((k * 37) % 400) * 0.85; z := -170.0f32 + f32((k * 91) % 400) * 0.85;
+    if k % 7 == 0 { x = f32(FG_WEST) + f32(FG_CELL) * f32(5 + k % 42); }   // on a cell's edge
+    g[0].fg_ok = true;
+    na := forest_bodies(g[..], a[..], 0, x, z);
+    g[0].fg_ok = false;
+    nb := forest_bodies(g[..], b[..], 0, x, z);
+    #assert na == nb;
+    for q: 0..<na * 7 { #assert a[q] == b[q]; }
+    found += na;
+  }
+  g[0].fg_ok = true;
+  #assert found > 100;
 }
 
 #test "the trees fill the woods: off the trails and out of the city, a metre clear of the open ground" #steps 690000000 {

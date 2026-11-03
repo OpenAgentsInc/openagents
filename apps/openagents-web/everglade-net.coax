@@ -681,17 +681,24 @@ net_input :: (s: [] Everglade, input: EgMoveIn, dive: bool) -> int #export_c {
 net_fix_due :: (s: [] Everglade) -> bool #export_c { return net_live(s) && net_of(s)[0].fix_due && net_of(s)[0].fix.ok; }
 net_fix :: (s: [] Everglade) -> NetFix #export_c { return net_of(s)[0].fix; }
 // The inputs after the server's, oldest first: how many, and the k-th (as the wire carried it, so the
-// re-run steps what the server steps).
+// re-run steps what the server steps). Only steps (I) count: a cast, an end or a rebuild takes a
+// sequence number too, and the server steps nothing for it (a re-run of it as a still step moved you
+// back of the server, and its next word pulled you on: #12731).
 net_replay_n :: (s: [] Everglade) -> int #export_c {
   n := net_of(s);
-  return clamp_i(n[0].seq - n[0].fix.ack, 0, NET_HIST - 1);
+  c := 0; first := n[0].fix.ack + 1; last := n[0].seq;
+  for q: first..<last + 1 { if q > last - NET_HIST && n[0].inputs[q % NET_HIST].seq == q { c += 1; } }
+  return c;
 }
 net_replay_input :: (s: [] Everglade, k: int) -> EgMoveIn #export_c {
   n := net_of(s);
-  q := n[0].fix.ack + 1 + k;
-  i := n[0].inputs[q % NET_HIST];
-  if i.seq != q { return EgMoveIn.{}; }
-  return net_as_sent(i.input);
+  c := 0; first := n[0].fix.ack + 1; last := n[0].seq;
+  for q: first..<last + 1 {
+    if q <= last - NET_HIST || n[0].inputs[q % NET_HIST].seq != q { continue; }
+    if c == k { return net_as_sent(n[0].inputs[q % NET_HIST].input); }
+    c += 1;
+  }
+  return EgMoveIn.{};
 }
 // An input as the wire carries it (whole hundredths), so the page steps what the server steps.
 net_as_sent :: (m: EgMoveIn) -> EgMoveIn #export_c {
@@ -1174,7 +1181,8 @@ net_self_max :: (s: [] Everglade) -> int {
 // 16 the server's summoned creatures here, 17 their Hit Points together, 18 hits heard on them, 19
 // their deaths heard, 20 the server's y for you (cm), 21 your feet's y as the face gives it, 22 the
 // floor's height under you, 23 the town's people heard (f), 24 your WANTED level (w, -1 none), 25 the
-// people drawn off their day, 26 breaks heard (e break), 27 fires heard (e burn), 28 the pieces down.
+// people drawn off their day, 26 breaks heard (e break), 27 fires heard (e burn), 28 the pieces down,
+// 29 your act as this frame drew you, 30 the clip your body plays.
 // 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
 // summoned creature, else 3 m ahead of you: 1 when it went out.
 net_probe :: (s: [] Everglade, field: int) -> int #export_c {
@@ -1217,8 +1225,8 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 19 { return n[0].creature_deaths; }
   // you as this frame drew you: the controller's act (aethyr/walk.coax Act: 3 airborne) and the clip
   // your body plays (aethyr/skin.coax SKIN_*: 3 the jump), for a check that the jump's pose ends
-  if field == 23 { return s[0].act; }
-  if field == 24 { return s[0].skin[0].clip; }
+  if field == 29 { return s[0].act; }
+  if field == 30 { return s[0].skin[0].clip; }
   if field >= 200 && field < 200 + SP_SLOTS + AB_N {
     you := ab_you(s);
     at := add(you, times(ab_forward(s), 3));
@@ -1515,6 +1523,20 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert net_test_hear(a[..], 2, net_test_frame(room[..])) && net_fix_due(a[..]) && net_replay_n(a[..]) == 0;
   net_fixed(a[..], 10, 0, 0);
   #assert abs(net_offset(a[..], 0.016).x) < 0.001;
+}
+#test "net: a cast between steps takes a number but is no step: the re-run steps only the inputs (#12731)" {
+  a: [1] Everglade; na: [1] EgNet; room: [1] NetTestRoom;
+  #assert net_test_page(a[..], na[..], 2, "pa", 100) && net_test_hear(a[..], 2, "y 3 1 5000100");
+  s1 := net_input(a[..], EgMoveIn.{key_y = 1, run = true}, false);
+  s2 := net_input(a[..], EgMoveIn.{key_y = 0.5}, false);
+  na[0].seq += 1;   // a cast (C) between, as net_cast numbers it
+  s4 := net_input(a[..], EgMoveIn.{key_x = 1}, false);
+  #assert s4 == s2 + 2;
+  net_test_tick(room[..], 5, s1);
+  net_test_p(room[..], WireP.{ss = 3, x = 1, z = 1, g = WG_GROUND, hp = 40, max = 57});
+  #assert net_test_hear(a[..], 2, net_test_frame(room[..])) && net_fix_due(a[..]);
+  #assert net_replay_n(a[..]) == 2;
+  #assert abs(net_replay_input(a[..], 0).key_y - 0.5) < 0.001 && abs(net_replay_input(a[..], 1).key_x - 1) < 0.001;
 }
 #test "net: the server's states two at once, late: another player walking is drawn moving every frame (no stall)" {
   a: [1] Everglade; na: [1] EgNet; room: [1] NetTestRoom;

@@ -3,9 +3,9 @@
 // headless Chrome. It changes nothing the page does. It notes:
 //   - every frame the page draws (coaxial_frame): when it started, how long the Coax frame took,
 //     where you stand (coaxial_probe, to 10 cm), your body as the frame drew it (coaxial_field_probe:
-//     the drawn feet in mm, the controller's act, the clip playing, the last re-run's move), and the
-//     net client's facts (coaxial_net_probe: the first other player as drawn, in cm; re-runs; your feet
-//     and the floor);
+//     the drawn feet in mm, the last re-run's move), and the net client's facts (coaxial_net_probe:
+//     the first other player as drawn, in cm; re-runs; your feet and the floor; your act and clip,
+//     29 and 30);
 //   - every room frame in and out of the page's everglade socket (wire v2, everglade-wire.coax):
 //     y (your seat), D (state: its arrival, players' place, act and ground bits, names), e cast,
 //     e hit, e die, w (WANTED), c and x (creatures), the t ping and its answer, and your I inputs.
@@ -46,8 +46,11 @@
         const p = ex.coaxial_probe(state);
         const pz = p % 10000, px = (p - pz) / 10000;
         const fp = (f) => (ex.coaxial_field_probe ? ex.coaxial_field_probe(state, f) : -1);
+        // your act and clip: net_probe 29 and 30 (everglade-net.coax), else, on a page from before
+        // they had their own numbers, the field probe's 3 and 4
+        const np = (f, old) => { const v = ex.coaxial_net_probe(state, f); return v >= 0 ? v : fp(old); };
         if (E.fr.length < 40000) E.fr.push([t, ms, px - 5000, pz - 5000, ex.coaxial_net_probe(state, 8), ex.coaxial_net_probe(state, 9),
-          ex.coaxial_net_probe(state, 14), ex.coaxial_net_probe(state, 21), ex.coaxial_net_probe(state, 22), fp(0), fp(2), fp(3), fp(4), fp(7), E.pageT]);
+          ex.coaxial_net_probe(state, 14), ex.coaxial_net_probe(state, 21), ex.coaxial_net_probe(state, 22), fp(0), fp(2), np(29, 3), np(30, 4), fp(7), E.pageT]);
       }
       return n;
     };
