@@ -1,0 +1,278 @@
+// The ceiling: Coder's approval policy as pure decisions (Coder book
+// chapters 10, 11 and 20). approvals.coax notes each verdict in the session
+// log and answers the engines; this file decides, and nothing else.
+//
+// A policy is data: the strongest effect a session may ever use (the
+// ceiling), the effect that runs without asking (allow), and the roots: the
+// folders a tool may touch without asking. Each permission request from
+// Claude Code, Codex or Microcoder becomes a tool, an effect and a room, and
+// the policy gives one verdict:
+//
+// - refuse: the effect is above the ceiling. No one is asked.
+// - run: the effect is at or below allow, and every path is inside a root.
+// - ask: anything else. The terminal UI asks the person; a job with no one
+//   to ask refuses.
+//
+// The effect comes from the tool's exact name, a bounded enum; a tool Coder
+// doesn't know takes the strongest effect. A path with a ".." part counts as
+// outside. A command's room is the working directory, so the ceiling is what
+// bounds a command.
+//
+// A browser's job (`coder host`, host_grants.coax hs_job_argv) runs with
+// --ceiling read --allow read --realm-tools: it reads, and the openagents
+// MCP server's realm tools run; nothing else does. Codex's sandbox follows
+// the ceiling (cd_codex_sandbox), so a read ceiling is a read-only sandbox.
+//   coax/bin/coax test coder/tui/ceiling.coax --library
+//   coax/bin/coax mutate coder/tui/ceiling.coax --library
+#authority;
+
+CD_EFFECTS :: [4] string.["read", "network", "write", "run"];
+CD_EFFECT_READ :: 0;
+CD_EFFECT_NETWORK :: 1;
+CD_EFFECT_WRITE :: 2;
+CD_EFFECT_RUN :: 3;
+
+CD_VERDICT_REFUSE :: 0;
+CD_VERDICT_RUN :: 1;
+CD_VERDICT_ASK :: 2;
+CD_VERDICTS :: [3] string.["refuse", "run", "ask"];
+
+CdPolicy :: struct {
+  on: bool;
+  allow: int;                     // runs without asking at or below this
+  ceiling: int;                   // never above this
+  roots: [4096] u8; nroots: int;  // folders, one per line; the working directory is always one
+  realm: bool;                    // --realm-tools: the realm tools run whatever the ceiling (coder host's jobs)
+}
+
+CD_REALM_TOOL :: "mcp__openagents__realm_";   // the openagents MCP server's realm tools (cd_claude_realm_tools)
+
+// s after out[0..<n], cut to out; the new length.
+ce_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+
+// -1 when name isn't an effect.
+cd_effect_index :: (name: string) -> int {
+  effects := CD_EFFECTS;
+  for e, i: effects { if e == name { return i; } }
+  return -1;
+}
+
+// The effect of a Claude Code tool, by its exact name.
+cd_effect_of :: (tool: string) -> int {
+  reads := [9] string.["Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite", "TodoRead", "Task", "ToolSearch"];   // ToolSearch only loads a tool's schema
+  for r: reads { if r == tool { return CD_EFFECT_READ; } }
+  if tool == "WebFetch" || tool == "WebSearch" { return CD_EFFECT_NETWORK; }
+  writes := [4] string.["Edit", "Write", "MultiEdit", "NotebookEdit"];
+  for w: writes { if w == tool { return CD_EFFECT_WRITE; } }
+  return CD_EFFECT_RUN;           // Bash, and any tool Coder doesn't know
+}
+
+// Whether tool is one of the realm tools: the prefix and a verb after it.
+cd_realm_tool :: (tool: string) -> bool {
+  return tool.count > CD_REALM_TOOL.count && cast(string) tool[0..<CD_REALM_TOOL.count] == CD_REALM_TOOL;
+}
+
+// The verdict for one Claude Code tool call. With --realm-tools the realm
+// tools run under any ceiling: a job a browser starts through `coder host`
+// has --ceiling read, so it reads and edits realms and does nothing else.
+cd_policy_tool :: (p: [] CdPolicy, tool: string, inside: bool, why: [] u8) -> int {
+  if p[0].realm && cd_realm_tool(tool) {
+    n := ce_cat(why, 0, "a realm tool (--realm-tools)");
+    return CD_VERDICT_RUN;
+  }
+  return cd_policy_decide(p, cd_effect_of(tool), inside, why);
+}
+
+// Whether path is under root (or is root).
+cd_under :: (path: string, root: string) -> bool {
+  r := root; while r.count > 1 && r[r.count - 1] == '/' { r = cast(string) r[0..<r.count - 1]; }
+  if r.count == 0 || path.count < r.count || cast(string) path[0..<r.count] != r { return false; }
+  return path.count == r.count || path[r.count] == '/' || r == "/";
+}
+
+// Whether a part of path is "..".
+cd_has_dotdot :: (path: string) -> bool {
+  for i: 0..<path.count - 1 {
+    if path[i] == '.' && path[i + 1] == '.' && (i == 0 || path[i - 1] == '/') && (i + 2 == path.count || path[i + 2] == '/') { return true; }
+  }
+  return false;
+}
+
+// Whether one path is inside the policy's roots or the working directory;
+// a relative path is under the working directory.
+cd_inside :: (p: [] CdPolicy, cwd: string, path: string) -> bool {
+  if path.count == 0 { return true; }
+  if cd_has_dotdot(path) { return false; }
+  if path[0] != '/' { return true; }
+  if cd_under(path, cwd) { return true; }
+  // each root ends with a newline; a root cut short by a full buffer counts for nothing
+  roots := cast(string) p[0].roots[0..<p[0].nroots];
+  start := 0;
+  for c, i: roots {
+    if c == 10 {
+      if cd_under(path, cast(string) roots[start..<i]) { return true; }
+      start = i + 1;
+    }
+  }
+  return false;
+}
+
+// The verdict for an effect in a room; why says which rule decided.
+cd_policy_decide :: (p: [] CdPolicy, effect: int, inside: bool, why: [] u8) -> int {
+  effects := CD_EFFECTS;
+  if effect > p[0].ceiling {
+    n := ce_cat(why, 0, effects[effect]); n = ce_cat(why, n, " is above the ceiling, ");
+    n = ce_cat(why, n, effects[p[0].ceiling]);
+    return CD_VERDICT_REFUSE;
+  }
+  if !inside { k := ce_cat(why, 0, "outside the roots"); return CD_VERDICT_ASK; }
+  if effect <= p[0].allow { m := ce_cat(why, 0, effects[effect]); m = ce_cat(why, m, " inside the roots"); return CD_VERDICT_RUN; }
+  n := ce_cat(why, 0, effects[effect]); n = ce_cat(why, n, " is above what runs freely, ");
+  n = ce_cat(why, n, effects[p[0].allow]);
+  return CD_VERDICT_ASK;
+}
+
+// Reads --allow, --ceiling and --root; "" when they are fine, else why not.
+cd_policy_args :: (p: [] CdPolicy, allow: string, ceiling: string, roots: string) -> string {
+  p[0] = CdPolicy.{};             // allow read
+  p[0].ceiling = CD_EFFECT_RUN;
+  if allow.count == 0 && ceiling.count == 0 && roots.count == 0 { return ""; }
+  p[0].on = true;
+  if allow.count > 0 { p[0].allow = cd_effect_index(allow); if p[0].allow < 0 { return "coder: --allow is read, network, write or run"; } }
+  if ceiling.count > 0 { p[0].ceiling = cd_effect_index(ceiling); if p[0].ceiling < 0 { return "coder: --ceiling is read, network, write or run"; } }
+  if p[0].allow > p[0].ceiling { return "coder: --allow can't be above --ceiling"; }
+  // --root A,B: absolute folders
+  start := 0; n := 0;
+  for i: 0..<roots.count + 1 {
+    if i == roots.count || roots[i] == ',' {
+      r := cast(string) roots[start..<i];
+      if r.count > 0 {
+        if r[0] != '/' { return "coder: --root takes absolute folders"; }
+        n = ce_cat(p[0].roots[..], n, r); n = ce_cat(p[0].roots[..], n, "\n");
+      }
+      start = i + 1;
+    }
+  }
+  p[0].nroots = n;
+  return "";
+}
+
+// Codex's sandbox under a policy: below write, read-only (a browser's job
+// can't write even inside its folder); otherwise its folder, with asks.
+// asked: --ask, a policy or a tool_call hook; none of them, full access.
+cd_codex_sandbox :: (p: [] CdPolicy, asked: bool) -> string {
+  if p[0].on && p[0].ceiling < CD_EFFECT_WRITE { return "read-only"; }
+  if asked || p[0].on { return "workspace-write"; }
+  return "danger-full-access";
+}
+
+// The verdict and exactly the words why gives (a fresh buffer: what's after them is zero).
+ce_decides :: (p: [] CdPolicy, effect: int, inside: bool, verdict: int, words: string) -> bool {
+  why: [256] u8;
+  v := cd_policy_decide(p, effect, inside, why[..]);
+  return v == verdict && cast(string) why[0..<words.count] == words && why[words.count] == 0;
+}
+ce_tool :: (p: [] CdPolicy, tool: string, inside: bool, verdict: int, words: string) -> bool {
+  why: [256] u8;
+  v := cd_policy_tool(p, tool, inside, why[..]);
+  return v == verdict && cast(string) why[0..<words.count] == words && why[words.count] == 0;
+}
+
+#test "ceiling: effects come from exact tool names; unknown tools take the strongest" {
+  #assert cd_effect_of("Read") == CD_EFFECT_READ && cd_effect_of("Grep") == CD_EFFECT_READ && cd_effect_of("Glob") == CD_EFFECT_READ;
+  #assert cd_effect_of("LS") == CD_EFFECT_READ && cd_effect_of("NotebookRead") == CD_EFFECT_READ && cd_effect_of("TodoWrite") == CD_EFFECT_READ;
+  #assert cd_effect_of("TodoRead") == CD_EFFECT_READ && cd_effect_of("Task") == CD_EFFECT_READ && cd_effect_of("ToolSearch") == CD_EFFECT_READ;
+  #assert cd_effect_of("WebFetch") == CD_EFFECT_NETWORK && cd_effect_of("WebSearch") == CD_EFFECT_NETWORK;
+  #assert cd_effect_of("Edit") == CD_EFFECT_WRITE && cd_effect_of("Write") == CD_EFFECT_WRITE;
+  #assert cd_effect_of("MultiEdit") == CD_EFFECT_WRITE && cd_effect_of("NotebookEdit") == CD_EFFECT_WRITE;
+  #assert cd_effect_of("Bash") == CD_EFFECT_RUN && cd_effect_of("mcp__x__y") == CD_EFFECT_RUN && cd_effect_of("read") == CD_EFFECT_RUN && cd_effect_of("") == CD_EFFECT_RUN;
+  #assert cd_effect_index("read") == 0 && cd_effect_index("network") == 1 && cd_effect_index("write") == 2 && cd_effect_index("run") == 3;
+  #assert cd_effect_index("") == -1 && cd_effect_index("Run") == -1;
+}
+
+#test "ceiling: rooms are under the working directory or a root, never through .." {
+  p: [1] CdPolicy;
+  #assert cd_policy_args(p[..], "write", "", "/data/shared,,/opt/x/") == "";
+  #assert cast(string) p[0].roots[0..<p[0].nroots] == "/data/shared\n/opt/x/\n" && p[0].on && p[0].allow == CD_EFFECT_WRITE && p[0].ceiling == CD_EFFECT_RUN;
+  #assert cd_inside(p[..], "/w/repo", "/w/repo/src/a.c") && cd_inside(p[..], "/w/repo", "/w/repo");
+  #assert cd_inside(p[..], "/w/repo", "src/a.c") && cd_inside(p[..], "/w/repo", "");
+  #assert !cd_inside(p[..], "/w/repo", "/w/repo2/a.c") && !cd_inside(p[..], "/w/repo", "/w/rep");
+  #assert !cd_inside(p[..], "/w/repo", "/w/repo/../x") && !cd_inside(p[..], "/w/repo", "../x") && !cd_inside(p[..], "/w/repo", "a/..");
+  #assert cd_inside(p[..], "/w/repo", "/w/repo/..x/a") && cd_inside(p[..], "/w/repo", "/w/repo/x../a") && cd_inside(p[..], "/w/repo", "/w/repo/.a");
+  #assert cd_inside(p[..], "/w/repo", "/data/shared/x") && cd_inside(p[..], "/w/repo", "/opt/x/y") && cd_inside(p[..], "/w/repo", "/opt/x");
+  #assert cd_inside(p[..], "/", "/etc/passwd") && cd_inside(p[..], "/w/repo", "/data/shared");
+  #assert !cd_inside(p[..], "/w/repo", "/etc/passwd") && !cd_inside(p[..], "", "/w/repo/a") && !cd_inside(p[..], "/w/repo", "/data/sharedx");
+  #assert cd_under("/a/b", "/") && cd_under("/a", "/a//") && cd_under("/x", "//") && !cd_under("/a", "") && !cd_under("/", "/a");
+  #assert cd_has_dotdot("..") && cd_has_dotdot("/a/../b") && cd_has_dotdot("a/..") && cd_has_dotdot("../a");
+  #assert !cd_has_dotdot("/a/.../b") && !cd_has_dotdot("/a/.b") && !cd_has_dotdot("") && !cd_has_dotdot(".") && !cd_has_dotdot("a..") && !cd_has_dotdot("..a") && !cd_has_dotdot("/a../");
+  // a root cut short by a full buffer counts for nothing
+  big: [5000] u8; for i: 0..<big.count { big[i] = 'a'; } big[0] = '/';
+  #assert cd_policy_args(p[..], "", "", cast(string) big[..]) == "" && p[0].nroots == 4096;
+  #assert !cd_inside(p[..], "/w", cast(string) big[0..<4096]) && !cd_inside(p[..], "/w", "/aaa");
+}
+
+#test "ceiling: refuse above the ceiling, run within allow inside, else ask; each says why" {
+  p: [1] CdPolicy;
+  p[0].realm = true; p[0].nroots = 3;
+  #assert cd_policy_args(p[..], "", "", "") == "" && !p[0].on && !p[0].realm && p[0].nroots == 0 && p[0].allow == CD_EFFECT_READ && p[0].ceiling == CD_EFFECT_RUN;
+  #assert cd_policy_args(p[..], "write", "write", "") == "" && p[0].on && p[0].nroots == 0;
+  #assert ce_decides(p[..], CD_EFFECT_RUN, true, CD_VERDICT_REFUSE, "run is above the ceiling, write");
+  #assert ce_decides(p[..], CD_EFFECT_WRITE, true, CD_VERDICT_RUN, "write inside the roots");
+  #assert ce_decides(p[..], CD_EFFECT_READ, false, CD_VERDICT_ASK, "outside the roots");
+  #assert ce_decides(p[..], CD_EFFECT_RUN, false, CD_VERDICT_REFUSE, "run is above the ceiling, write");
+  #assert cd_policy_args(p[..], "read", "", "") == "" && p[0].ceiling == CD_EFFECT_RUN;
+  #assert ce_decides(p[..], CD_EFFECT_WRITE, true, CD_VERDICT_ASK, "write is above what runs freely, read");
+  #assert ce_decides(p[..], CD_EFFECT_READ, true, CD_VERDICT_RUN, "read inside the roots");
+  #assert cd_policy_args(p[..], "", "network", "") == "" && p[0].on && p[0].allow == CD_EFFECT_READ && p[0].ceiling == CD_EFFECT_NETWORK;
+  #assert ce_decides(p[..], CD_EFFECT_NETWORK, true, CD_VERDICT_ASK, "network is above what runs freely, read");
+  #assert ce_decides(p[..], CD_EFFECT_WRITE, true, CD_VERDICT_REFUSE, "write is above the ceiling, network");
+  #assert cd_policy_args(p[..], "", "", "/r") == "" && p[0].on;
+  #assert cd_policy_args(p[..], "run", "write", "") == "coder: --allow can't be above --ceiling";
+  #assert cd_policy_args(p[..], "all", "", "") == "coder: --allow is read, network, write or run";
+  #assert cd_policy_args(p[..], "x", "", "") == "coder: --allow is read, network, write or run";
+  #assert cd_policy_args(p[..], "", "most", "") == "coder: --ceiling is read, network, write or run";
+  #assert cd_policy_args(p[..], "", "x", "") == "coder: --ceiling is read, network, write or run";
+  #assert cd_policy_args(p[..], "", "", "relative") == "coder: --root takes absolute folders";
+  #assert cd_policy_args(p[..], "", "", "/a,b") == "coder: --root takes absolute folders";
+  #assert cd_policy_args(p[..], "", "", "/a,") == "" && cast(string) p[0].roots[0..<p[0].nroots] == "/a\n";
+  #assert cd_policy_args(p[..], "", "", ",/b") == "" && cast(string) p[0].roots[0..<p[0].nroots] == "/b\n";
+  // the checks' own helper: the verdict and the words must both match, and nothing more was said
+  #assert !ce_decides(p[..], CD_EFFECT_READ, false, CD_VERDICT_RUN, "outside the roots") && !ce_decides(p[..], CD_EFFECT_READ, false, CD_VERDICT_ASK, "outside the roots!");
+  #assert !ce_decides(p[..], CD_EFFECT_READ, false, CD_VERDICT_ASK, "outside");
+}
+
+#test "ceiling: under --realm-tools the realm tools run below a read ceiling; nothing else does" {
+  p: [1] CdPolicy;
+  #assert cd_policy_args(p[..], "read", "read", "") == "";
+  #assert ce_tool(p[..], "mcp__openagents__realm_apply", true, CD_VERDICT_REFUSE, "run is above the ceiling, read");
+  p[0].realm = true;
+  #assert ce_tool(p[..], "mcp__openagents__realm_apply", true, CD_VERDICT_RUN, "a realm tool (--realm-tools)");
+  #assert ce_tool(p[..], "mcp__openagents__realm_show", false, CD_VERDICT_RUN, "a realm tool (--realm-tools)");
+  #assert ce_tool(p[..], "mcp__openagents__realm_x", true, CD_VERDICT_RUN, "a realm tool (--realm-tools)");
+  #assert ce_tool(p[..], "Read", true, CD_VERDICT_RUN, "read inside the roots");
+  #assert ce_tool(p[..], "Read", false, CD_VERDICT_ASK, "outside the roots");
+  #assert ce_tool(p[..], "Bash", true, CD_VERDICT_REFUSE, "run is above the ceiling, read");
+  #assert ce_tool(p[..], "Write", true, CD_VERDICT_REFUSE, "write is above the ceiling, read");
+  #assert ce_tool(p[..], "Edit", true, CD_VERDICT_REFUSE, "write is above the ceiling, read");
+  #assert ce_tool(p[..], "WebFetch", true, CD_VERDICT_REFUSE, "network is above the ceiling, read");
+  #assert ce_tool(p[..], "mcp__openagents__forum_post", true, CD_VERDICT_REFUSE, "run is above the ceiling, read");
+  #assert ce_tool(p[..], "mcp__openagents__realm_", true, CD_VERDICT_REFUSE, "run is above the ceiling, read");
+  #assert ce_tool(p[..], "mcp__openagents__realm", true, CD_VERDICT_REFUSE, "run is above the ceiling, read");
+  #assert ce_tool(p[..], "mcp__other__realm_apply", true, CD_VERDICT_REFUSE, "run is above the ceiling, read");
+  #assert ce_tool(p[..], "xmcp__openagents__realm_apply", true, CD_VERDICT_REFUSE, "run is above the ceiling, read");
+  #assert !ce_tool(p[..], "Bash", true, CD_VERDICT_RUN, "run is above the ceiling, read") && !ce_tool(p[..], "Bash", true, CD_VERDICT_REFUSE, "run is above the ceiling, read!");
+  #assert !ce_tool(p[..], "Bash", true, CD_VERDICT_REFUSE, "run");
+  #assert cd_realm_tool("mcp__openagents__realm_a") && !cd_realm_tool("mcp__openagents__realm_") && !cd_realm_tool("");
+}
+
+#test "ceiling: Codex's sandbox follows the ceiling" {
+  p: [1] CdPolicy;
+  #assert cd_policy_args(p[..], "", "", "") == "" && cd_codex_sandbox(p[..], false) == "danger-full-access" && cd_codex_sandbox(p[..], true) == "workspace-write";
+  #assert cd_policy_args(p[..], "read", "read", "") == "" && cd_codex_sandbox(p[..], false) == "read-only" && cd_codex_sandbox(p[..], true) == "read-only";
+  #assert cd_policy_args(p[..], "", "network", "") == "" && cd_codex_sandbox(p[..], true) == "read-only";
+  #assert cd_policy_args(p[..], "", "write", "") == "" && cd_codex_sandbox(p[..], false) == "workspace-write";
+  #assert cd_policy_args(p[..], "", "", "/r") == "" && cd_codex_sandbox(p[..], false) == "workspace-write";
+  // a policy that is off never makes the sandbox read-only
+  off: [1] CdPolicy; off[0].ceiling = CD_EFFECT_READ;
+  #assert cd_codex_sandbox(off[..], false) == "danger-full-access";
+}

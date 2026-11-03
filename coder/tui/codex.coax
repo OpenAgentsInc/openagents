@@ -3,7 +3,8 @@
 // thread for the conversation. Like the claude engine it streams the reply,
 // shows each command and its output, and shows file changes as diffs.
 // Commands run without asking (approval policy never, full access); with
-// --ask each approval comes to the y/a/n prompt instead.
+// --ask each approval comes to the y/a/n prompt instead. Under a policy the
+// sandbox follows its ceiling (cd_codex_sandbox): read-only below write.
 
 #load "../../coax/lib/agent/codex/codex.coax";
 
@@ -13,8 +14,11 @@ cd_codex_settings :: (a: [] App) -> CxSettings {
   st.cwd = a[0].cwd;
   if a[0].model_engine == ENGINE_CODEX { st.model = a[0].model; }
   st.effort = cd_effort(a);       // low, medium or high: the same words Codex takes
-  if a[0].ask_first || a[0].pol[0].on || cd_has_hook(a, "tool_call") { st.approval_policy = "untrusted"; st.sandbox = "workspace-write"; st.ask_person = true; }
-  else { st.approval_policy = "never"; st.sandbox = "danger-full-access"; }
+  asked := a[0].ask_first || a[0].pol[0].on || cd_has_hook(a, "tool_call");
+  // the sandbox follows the ceiling (ceiling.coax): a read ceiling is a read-only sandbox
+  st.sandbox = cd_codex_sandbox(a[0].pol[..], asked);
+  if asked { st.approval_policy = "untrusted"; st.ask_person = true; }
+  else { st.approval_policy = "never"; }
   return st;
 }
 

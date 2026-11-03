@@ -43,6 +43,7 @@
 #load "plugins.coax";
 #load "router.coax";
 #load "mcp.coax";
+#load "ceiling.coax";
 #load "approvals.coax";
 #load "term.coax";
 #load "acp.coax";

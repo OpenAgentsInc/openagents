@@ -1,0 +1,487 @@
+// coder host's grants: which browsers may use this computer, decided here
+// and nowhere else (NIP-HOST "Browser device grants"; Coder book chapter 20,
+// "A browser uses this computer"). host.coax keeps the record in state.json
+// and serves the relay; every rule it applies to a browser is in this file.
+//
+// - A browser asks (browser.request): its pairing waits ten minutes. One
+//   waits per key (asking again replaces it) and at most eight wait.
+// - Only the person at the computer allows it (`coder host allow`): a grant
+//   for observe and operate, seven days, at the key's current epoch.
+//   `coder host deny` refuses it.
+// - Forget (`coder host forget`, or the browser's own browser.forget)
+//   revokes every grant of the key and moves its epoch, so an older grant is
+//   stale even after its record is gone.
+// - A browser reads its pairing's state (browser.status) only with the key
+//   that asked: allowed while a grant lasts, denied once revoked, expired after.
+// - Every thread call is admitted by admit.coax against hs_records first; a
+//   refusal names its code (hs_refusal). A thread is read or stopped only by
+//   the key that started it, and at most two run at once.
+// - A job runs under the read ceiling with the realm tools (hs_job_argv;
+//   ceiling.coax decides each tool call).
+//
+// It trusts what it is given: the verified signer, ids and Unix seconds on
+// the host's clock.
+//   coax/bin/coax test coder/tui/host_grants.coax --library
+//   coax/bin/coax mutate coder/tui/host_grants.coax --library
+#authority;
+#load "../../coax/lib/nostr/host/admit.coax";
+
+HG_WAIT :: 600;             // a pairing request waits ten minutes (browser.coax HB_PAIRING_WAIT)
+HG_WAITING_MAX :: 8;        // at most eight wait (HB_PAIRING_MAX)
+HG_LIFETIME :: 604800;      // a browser grant lasts seven days (HB_GRANT_LIFETIME)
+HG_RUNNING_MAX :: 2;        // browser jobs running at once
+// a pairing's state (browser.coax HB_ASKED ...)
+HG_ASKED :: 0; HG_ALLOWED :: 1; HG_DENIED :: 2; HG_EXPIRED :: 3;   // asked is 0: a fresh pairing is asked
+
+HS_PAIRINGS :: 32; HS_GRANTS :: 64; HS_EPOCHS :: 64; HS_THREADS :: 128;
+
+HsPairing :: struct { id: [64] u8; key: [64] u8; label: [80] u8; nlabel: int; at: int; state: int; }
+HsGrant :: struct { grant: [64] u8; device: [64] u8; label: [80] u8; nlabel: int; epoch: int; issued: int; expires: int; revoked: bool; }
+HsEpoch :: struct { device: [64] u8; epoch: int; }
+HsThread :: struct { thread: [32] u8; request: [64] u8; device: [64] u8; session: [40] u8; nsession: int; realm: [64] u8; nrealm: int; at: int; }
+HsState :: struct {
+  np: int; pairings: [HS_PAIRINGS] HsPairing;
+  ng: int; grants: [HS_GRANTS] HsGrant;
+  ne: int; epochs: [HS_EPOCHS] HsEpoch;
+  nt: int; threads: [HS_THREADS] HsThread;
+}
+// What browser.status answers: a refusal code, or the pairing's state and the grant (-1 none).
+HsStatus :: struct { code: string; state: int; grant: int; }
+// A thread call's refusal: its code, and the right missing for missing_right.
+HsRefusal :: struct { code: string; missing: string; }
+
+// A field of fixed bytes set from s (cut to the field); its length.
+hs_set :: (dst: [] u8, s: string) -> int { n := 0; for c: s { if n < dst.count { dst[n] = c; n += 1; } } return n; }
+// 64 lowercase hex digits: a grant id.
+hs_hex64 :: (s: string) -> bool {
+  if s.count != 64 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+hs_label :: (p: [] HsPairing, i: int) -> string { return cast(string) p[i].label[0..<p[i].nlabel]; }
+
+// A pairing is waiting while asked and younger than ten minutes.
+hs_waiting :: (p: HsPairing, now: int) -> bool { return p.state == HG_ASKED && now - p.at < HG_WAIT; }
+hs_state_of :: (p: HsPairing, now: int) -> int { return ifx p.state == HG_ASKED && !hs_waiting(p, now) then HG_EXPIRED else p.state; }
+hs_epoch_of :: (st: [] HsState, device: string) -> int {
+  for i: 0..<st[0].ne { if cast(string) st[0].epochs[i].device[..] == device { return st[0].epochs[i].epoch; } }
+  return 0;
+}
+// A grant is current while unrevoked, unexpired and at its device's epoch.
+hs_current :: (st: [] HsState, i: int, now: int) -> bool {
+  g := st[0].grants[i];
+  dev := g.device;
+  return !g.revoked && now < g.expires && g.epoch == hs_epoch_of(st, cast(string) dev[..]);
+}
+// The device's newest current grant, or -1.
+hs_grant_of :: (st: [] HsState, device: string, now: int) -> int {
+  k := -1;
+  for i: 0..<st[0].ng {
+    if cast(string) st[0].grants[i].device[..] == device && hs_current(st, i, now) && (k < 0 || st[0].grants[i].issued >= st[0].grants[k].issued) { k = i; }
+  }
+  return k;
+}
+hs_pairing_find :: (st: [] HsState, id: string) -> int {
+  for i: 0..<st[0].np { if cast(string) st[0].pairings[i].id[..] == id { return i; } }
+  return -1;
+}
+hs_thread_find :: (st: [] HsState, thread: string) -> int {
+  for i: 0..<st[0].nt { if cast(string) st[0].threads[i].thread[..] == thread { return i; } }
+  return -1;
+}
+hs_thread_by_request :: (st: [] HsState, request: string) -> int {
+  for i: 0..<st[0].nt { if cast(string) st[0].threads[i].request[..] == request { return i; } }
+  return -1;
+}
+// The thread a browser may read or stop: one it started. -1 for another key's or none.
+hs_thread_of :: (st: [] HsState, thread: string, signer: string) -> int {
+  t := hs_thread_find(st, thread);
+  if t < 0 || cast(string) st[0].threads[t].device[..] != signer { return -1; }
+  return t;
+}
+
+hs_pairing_drop :: (st: [] HsState, i: int) {
+  for j: i..<st[0].np - 1 { st[0].pairings[j] = st[0].pairings[j + 1]; }
+  st[0].np -= 1;
+}
+// Adds a waiting pairing. The same key's waiting request goes; when the
+// record is full the oldest settled one makes room. -1 when eight already wait.
+hs_pairing_add :: (st: [] HsState, id: string, key: string, label: string, now: int) -> int {
+  w := 0; i := 0;
+  while i < st[0].np {
+    p := st[0].pairings[i];
+    pk := p.key;
+    if p.state == HG_ASKED && cast(string) pk[..] == key { hs_pairing_drop(st, i); continue; }
+    if hs_waiting(p, now) { w += 1; }
+    i += 1;
+  }
+  if w >= HG_WAITING_MAX { return -1; }
+  if st[0].np == HS_PAIRINGS {
+    // fewer than eight wait, so a settled one is there
+    k := -1;
+    for j: 0..<st[0].np { if !hs_waiting(st[0].pairings[j], now) && (k < 0 || st[0].pairings[j].at < st[0].pairings[k].at) { k = j; } }
+    hs_pairing_drop(st, k);
+  }
+  n := st[0].np; fresh: HsPairing; st[0].pairings[n] = fresh;
+  a := hs_set(st[0].pairings[n].id[..], id); b := hs_set(st[0].pairings[n].key[..], key);
+  st[0].pairings[n].nlabel = hs_set(st[0].pairings[n].label[..], label);
+  st[0].pairings[n].at = now;    // fresh, so HG_ASKED
+  st[0].np += 1;
+  return n;
+}
+
+// Allows a waiting pairing: a browser grant (observe and operate, seven
+// days) at the device's current epoch. The grant's index, or -1.
+hs_allow :: (st: [] HsState, i: int, grant_id: string, now: int) -> int {
+  if i < 0 || i >= st[0].np || !hs_waiting(st[0].pairings[i], now) || !hs_hex64(grant_id) { return -1; }
+  if st[0].ng == HS_GRANTS {
+    // the grant that no longer admits anything and ended first makes room
+    k := -1;
+    for j: 0..<st[0].ng { if !hs_current(st, j, now) && (k < 0 || st[0].grants[j].expires < st[0].grants[k].expires) { k = j; } }
+    if k < 0 { return -1; }
+    for j: k..<st[0].ng - 1 { st[0].grants[j] = st[0].grants[j + 1]; }
+    st[0].ng -= 1;
+  }
+  p := st[0].pairings[i];
+  pk := p.key; pl := p.label;
+  n := st[0].ng; fresh: HsGrant; st[0].grants[n] = fresh;
+  a := hs_set(st[0].grants[n].grant[..], grant_id); b := hs_set(st[0].grants[n].device[..], cast(string) pk[..]);
+  st[0].grants[n].nlabel = hs_set(st[0].grants[n].label[..], cast(string) pl[0..<p.nlabel]);
+  st[0].grants[n].epoch = hs_epoch_of(st, cast(string) pk[..]);
+  st[0].grants[n].issued = now; st[0].grants[n].expires = now + HG_LIFETIME;
+  st[0].ng += 1;
+  st[0].pairings[i].state = HG_ALLOWED;
+  return n;
+}
+// Refuses a waiting pairing; false when it isn't waiting.
+hs_deny :: (st: [] HsState, i: int, now: int) -> bool {
+  if i < 0 || i >= st[0].np || !hs_waiting(st[0].pairings[i], now) { return false; }
+  st[0].pairings[i].state = HG_DENIED;
+  return true;
+}
+// Revokes every grant of a device and advances its epoch (admit.coax's
+// host_revoke over the host's record). The new epoch, or -1 when the epoch table is full.
+hs_revoke :: (st: [] HsState, device: string) -> int {
+  for i: 0..<st[0].ng { if cast(string) st[0].grants[i].device[..] == device { st[0].grants[i].revoked = true; } }
+  for i: 0..<st[0].ne { if cast(string) st[0].epochs[i].device[..] == device { st[0].epochs[i].epoch += 1; return st[0].epochs[i].epoch; } }
+  if st[0].ne == HS_EPOCHS { return -1; }
+  n := st[0].ne; a := hs_set(st[0].epochs[n].device[..], device); st[0].epochs[n].epoch = 1; st[0].ne += 1;
+  return 1;
+}
+// browser.forget: the key's grants are revoked and its waiting requests denied. The new epoch, or -1.
+hs_forget :: (st: [] HsState, key: string) -> int {
+  e := hs_revoke(st, key);
+  for i: 0..<st[0].np { if cast(string) st[0].pairings[i].key[..] == key && st[0].pairings[i].state == HG_ASKED { st[0].pairings[i].state = HG_DENIED; } }
+  return e;
+}
+hs_thread_add :: (st: [] HsState, thread: string, request: string, device: string, session: string, realm: string, now: int) {
+  if st[0].nt == HS_THREADS { for j: 0..<st[0].nt - 1 { st[0].threads[j] = st[0].threads[j + 1]; } st[0].nt -= 1; }
+  n := st[0].nt; fresh: HsThread; st[0].threads[n] = fresh;
+  a := hs_set(st[0].threads[n].thread[..], thread); b := hs_set(st[0].threads[n].request[..], request); c := hs_set(st[0].threads[n].device[..], device);
+  st[0].threads[n].nsession = hs_set(st[0].threads[n].session[..], session);
+  st[0].threads[n].nrealm = hs_set(st[0].threads[n].realm[..], realm);
+  st[0].threads[n].at = now;
+  st[0].nt += 1;
+}
+
+// The host's record as admit.coax reads it: every grant observe and operate. The strings view st.
+hs_records :: (st: [] HsState, g: [] HostGrantRecord, e: [] HostEpoch) {
+  for i: 0..<st[0].ng {
+    g[i].grant = cast(string) st[0].grants[i].grant[..]; g[i].device = cast(string) st[0].grants[i].device[..];
+    g[i].epoch = st[0].grants[i].epoch; g[i].issued_at = st[0].grants[i].issued; g[i].expires_at = st[0].grants[i].expires;
+    g[i].rights = (1 << HA_OBSERVE) | (1 << HA_OPERATE); g[i].revoked = st[0].grants[i].revoked;
+  }
+  for i: 0..<st[0].ne { e[i].device = cast(string) st[0].epochs[i].device[..]; e[i].epoch = st[0].epochs[i].epoch; }
+}
+
+// browser.status for pairing, asked by signer: only the key that asked reads
+// it. Allowed once and no current grant: denied when revoked, else expired.
+hs_status :: (st: [] HsState, pairing: string, signer: string, now: int) -> HsStatus {
+  r: HsStatus; r.grant = -1;
+  i := hs_pairing_find(st, pairing);
+  if i < 0 { r.code = "unavailable"; return r; }
+  if cast(string) st[0].pairings[i].key[..] != signer { r.code = "forbidden"; return r; }
+  r.state = hs_state_of(st[0].pairings[i], now);
+  if r.state != HG_ALLOWED { return r; }
+  r.grant = hs_grant_of(st, signer, now);
+  if r.grant >= 0 { return r; }
+  r.state = HG_EXPIRED;
+  for j: 0..<st[0].ng { if cast(string) st[0].grants[j].device[..] == signer && st[0].grants[j].revoked { r.state = HG_DENIED; } }
+  return r;
+}
+
+// The refusal for an admit.coax verdict other than HA_OK, HA_RETRY and HA_SILENT.
+// Not admitted under the signer's own grant is a missing right; else forbidden.
+hs_refusal :: (st: [] HsState, verdict: u32, grant: string, signer: string, right: int) -> HsRefusal {
+  r: HsRefusal; r.code = "forbidden";
+  if verdict == HA_MALFORMED || verdict == HA_EARLY { r.code = "malformed"; }
+  if verdict == HA_REVOKED { r.code = "revoked"; }
+  if verdict == HA_EXPIRED { r.code = "expired"; }
+  if verdict == HA_STALE { r.code = "stale"; }
+  if verdict == HA_CONFLICT { r.code = "conflict"; }
+  if verdict == HA_NOT_ADMITTED {
+    for i: 0..<st[0].ng {
+      if cast(string) st[0].grants[i].grant[..] == grant && cast(string) st[0].grants[i].device[..] == signer {
+        r.code = "missing_right"; r.missing = ifx right == HA_OBSERVE then "observe" else "operate";
+      }
+    }
+  }
+  return r;
+}
+
+// Whether another browser job may start while running ones run.
+hs_may_run :: (running: int) -> bool { return running < HG_RUNNING_MAX; }
+
+// The job's argv: `coder run PROMPT --detach --json` on the engine, under the
+// read ceiling with the realm tools, in its own folder.
+hs_job_argv :: (coder_sh: string, prompt: string, engine: string, cwd: string, argv: [] string) -> int {
+  a := [14] string.[coder_sh, "run", prompt, "--detach", "--json", "--engine", engine, "--ceiling", "read", "--allow", "read", "--realm-tools", "--cwd", cwd];
+  for s, i: a { argv[i] = s; }
+  return a.count;
+}
+
+// ---------------------------------------------------------------- checks
+
+HST_A :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+HST_B :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+HST_P1 :: "1111111111111111111111111111111111111111111111111111111111111111";
+HST_P2 :: "2222222222222222222222222222222222222222222222222222222222222222";
+HST_G1 :: "3333333333333333333333333333333333333333333333333333333333333333";
+HST_G2 :: "4444444444444444444444444444444444444444444444444444444444444444";
+HST_T0 :: 1790000000;
+
+// A grant id: 62 zeros and i in two hex digits.
+hst_id :: (i: int, out: [] u8) -> string {
+  hex := "0123456789abcdef";
+  for j: 0..<64 { out[j] = '0'; }
+  out[62] = hex[i >> 4]; out[63] = hex[i & 15];
+  return cast(string) out[0..<64];
+}
+// A 64-character key or id made of one character.
+hst_key :: (c: u8, out: [] u8) -> string { for j: 0..<64 { out[j] = c; } return cast(string) out[0..<64]; }
+
+#test "host grants: small rules" {
+  b: [3] u8; idb: [64] u8;
+  #assert hst_id(31, idb[..]) == "000000000000000000000000000000000000000000000000000000000000001f";
+  #assert hs_set(b[..], "abcdef") == 3 && cast(string) b[..] == "abc" && hs_set(b[..], "") == 0;
+  #assert hs_hex64(HST_A) && hs_hex64(HST_G1) && !hs_hex64("zz") && !hs_hex64("");
+  k: [64] u8;
+  #assert hs_hex64(hst_key('0', k[..])) && hs_hex64(hst_key('9', k[..])) && hs_hex64(hst_key('a', k[..])) && hs_hex64(hst_key('f', k[..]));
+  #assert !hs_hex64(hst_key('g', k[..])) && !hs_hex64(hst_key('A', k[..])) && !hs_hex64(hst_key('/', k[..])) && !hs_hex64(hst_key(':', k[..])) && !hs_hex64(hst_key('`', k[..]));
+  #assert !hs_hex64(cast(string) HST_A[0..<63]);
+  #assert hs_may_run(0) && hs_may_run(1) && !hs_may_run(2) && !hs_may_run(3);
+  argv: [16] string;
+  n := hs_job_argv("/r/coder/tui/coder.sh", "P", "claude", "/h/work", argv[..]);
+  #assert n == 14 && argv[0] == "/r/coder/tui/coder.sh" && argv[1] == "run" && argv[2] == "P" && argv[3] == "--detach" && argv[4] == "--json";
+  #assert argv[5] == "--engine" && argv[6] == "claude" && argv[7] == "--ceiling" && argv[8] == "read" && argv[9] == "--allow" && argv[10] == "read";
+  #assert argv[11] == "--realm-tools" && argv[12] == "--cwd" && argv[13] == "/h/work";
+}
+
+#test "host grants: a pairing waits ten minutes, eight at most, one per key" {
+  st: [1] HsState;
+  #assert hs_pairing_add(st[..], HST_P1, HST_A, "Chrome", HST_T0) == 0 && st[0].np == 1 && st[0].pairings[0].at == HST_T0 && st[0].pairings[0].state == HG_ASKED;
+  #assert hs_label(st[0].pairings[..], 0) == "Chrome" && cast(string) st[0].pairings[0].key[..] == HST_A;
+  // the same key asking again replaces its waiting request
+  #assert hs_pairing_add(st[..], HST_P2, HST_A, "Chrome", HST_T0 + 5) == 0 && st[0].np == 1 && cast(string) st[0].pairings[0].id[..] == HST_P2;
+  #assert hs_state_of(st[0].pairings[0], HST_T0 + 5 + 599) == HG_ASKED && hs_state_of(st[0].pairings[0], HST_T0 + 5 + 600) == HG_EXPIRED;
+  #assert hs_waiting(st[0].pairings[0], HST_T0 + 5 + 599) && !hs_waiting(st[0].pairings[0], HST_T0 + 5 + 600);
+  // eight waiting from other keys, then a ninth is refused
+  k: [64] u8;
+  for i: 0..<7 { #assert hs_pairing_add(st[..], HST_P1, hst_key(cast(u8) ('a' + i), k[..]), "x", HST_T0 + 10) == i + 1; }
+  #assert st[0].np == 8 && hs_pairing_add(st[..], HST_P1, HST_B, "late", HST_T0 + 10) == -1 && st[0].np == 8;
+  // after ten minutes the old ones no longer count
+  #assert hs_pairing_add(st[..], HST_P1, HST_B, "later", HST_T0 + 700) == 8;
+  #assert hs_label(st[0].pairings[..], 8) == "later" && hs_pairing_find(st[..], HST_P2) == 0 && hs_pairing_find(st[..], HST_G1) == -1;
+  // an allowed pairing is not replaced by its key asking again
+  st2: [1] HsState;
+  i := hs_pairing_add(st2[..], HST_P1, HST_A, "one", HST_T0);
+  #assert hs_allow(st2[..], i, HST_G1, HST_T0) == 0;
+  #assert hs_pairing_add(st2[..], HST_P2, HST_A, "two", HST_T0 + 1) == 1 && st2[0].np == 2 && st2[0].pairings[0].state == HG_ALLOWED;
+  // a denied one stays denied
+  #assert hs_deny(st2[..], 1, HST_T0 + 2) && st2[0].pairings[1].state == HG_DENIED && hs_state_of(st2[0].pairings[1], HST_T0 + 9999) == HG_DENIED;
+  #assert !hs_deny(st2[..], 1, HST_T0 + 2) && !hs_deny(st2[..], 0, HST_T0 + 2) && !hs_deny(st2[..], -1, HST_T0) && !hs_deny(st2[..], 2, HST_T0);
+  #assert hs_pairing_add(st2[..], HST_P1, HST_B, "three", HST_T0 + 3) == 2;
+  #assert hs_deny(st2[..], 2, HST_T0 + 3 + 599) && !hs_deny(st2[..], 2, HST_T0 + 3 + 600);
+  // what lies past the record's count is not a pairing, even when it looks like a waiting one
+  st2[0].pairings[3] = st2[0].pairings[1]; st2[0].pairings[3].state = HG_ASKED; st2[0].pairings[3].at = HST_T0 + 10;
+  #assert hs_waiting(st2[0].pairings[3], HST_T0 + 11) && !hs_deny(st2[..], 3, HST_T0 + 11) && hs_allow(st2[..], 3, HST_G2, HST_T0 + 11) == -1;
+}
+
+#test "host grants: a full record drops the oldest settled pairing" {
+  st: [1] HsState; k: [64] u8; id: [64] u8;
+  // 32 settled (expired) pairings, the oldest second, and two of the same age at the end
+  for i: 0..<HS_PAIRINGS {
+    at := ifx i == 1 then HST_T0 else ifx i >= 30 then HST_T0 + 1 else HST_T0 + 100 + i;
+    #assert hs_pairing_add(st[..], hst_key(cast(u8) (65 + i), id[..]), hst_key(cast(u8) (65 + i), k[..]), "x", at) == i;
+    #assert hs_deny(st[..], i, at);
+  }
+  #assert st[0].np == HS_PAIRINGS;
+  #assert hs_pairing_add(st[..], HST_P1, HST_A, "new", HST_T0 + 5000) == HS_PAIRINGS - 1;
+  #assert st[0].np == HS_PAIRINGS && hs_pairing_find(st[..], hst_key(66, id[..])) == -1 && hs_pairing_find(st[..], hst_key(65, id[..])) == 0;
+  #assert hs_pairing_find(st[..], hst_key(67, id[..])) == 1;
+  // the next goes: of the two the same age, the first
+  #assert hs_pairing_add(st[..], HST_P2, HST_B, "new", HST_T0 + 5000) == HS_PAIRINGS - 1;
+  #assert hs_pairing_find(st[..], hst_key(65 + 30, id[..])) == -1 && hs_pairing_find(st[..], hst_key(65 + 31, id[..])) == 29;
+  // the oldest first in the record; a short id leaves nothing of the one before in its field
+  first: [1] HsState;
+  for i: 0..<HS_PAIRINGS {
+    #assert hs_pairing_add(first[..], hst_key(cast(u8) (65 + i), id[..]), hst_key(cast(u8) (65 + i), k[..]), "x", HST_T0 + i) == i;
+    #assert hs_deny(first[..], i, HST_T0 + i);
+  }
+  #assert hs_pairing_add(first[..], "p", HST_A, "new", HST_T0 + 5000) == HS_PAIRINGS - 1;
+  #assert hs_pairing_find(first[..], hst_key(65, id[..])) == -1 && hs_pairing_find(first[..], hst_key(66, id[..])) == 0;
+  #assert first[0].pairings[HS_PAIRINGS - 1].id[0] == 'p' && first[0].pairings[HS_PAIRINGS - 1].id[1] == 0 && first[0].pairings[HS_PAIRINGS - 1].state == HG_ASKED;
+  #assert first[0].pairings[HS_PAIRINGS - 2].at == HST_T0 + 31;
+  // waiting ones never make room
+  st2: [1] HsState;
+  for i: 0..<HS_PAIRINGS {
+    #assert hs_pairing_add(st2[..], hst_key(cast(u8) (65 + i), id[..]), hst_key(cast(u8) (65 + i), k[..]), "x", HST_T0 + 5000) == i;
+    if i >= 7 { #assert hs_deny(st2[..], i, HST_T0 + 5000); }
+  }
+  #assert st2[0].np == HS_PAIRINGS && hs_pairing_add(st2[..], HST_P1, HST_A, "y", HST_T0 + 5001) == HS_PAIRINGS - 1;
+  for i: 0..<7 { #assert hs_pairing_find(st2[..], hst_key(cast(u8) (65 + i), id[..])) == i; }
+  #assert hs_pairing_find(st2[..], hst_key(65 + 7, id[..])) == -1;
+}
+
+#test "host grants: allow issues a seven-day grant; forget revokes it and moves the epoch" {
+  st: [1] HsState;
+  i := hs_pairing_add(st[..], HST_P1, HST_A, "Chrome", HST_T0);
+  #assert hs_allow(st[..], i, "zz", HST_T0) == -1 && hs_allow(st[..], -1, HST_G1, HST_T0) == -1 && hs_allow(st[..], 1, HST_G1, HST_T0) == -1;
+  // an expired request can't be allowed
+  #assert hs_allow(st[..], i, HST_G1, HST_T0 + 600) == -1 && st[0].ng == 0;
+  g := hs_allow(st[..], i, HST_G1, HST_T0 + 1);
+  #assert g == 0 && st[0].ng == 1 && st[0].pairings[i].state == HG_ALLOWED && st[0].grants[0].expires == HST_T0 + 1 + HG_LIFETIME && st[0].grants[0].issued == HST_T0 + 1;
+  #assert st[0].grants[0].epoch == 0 && cast(string) st[0].grants[0].grant[..] == HST_G1 && cast(string) st[0].grants[0].device[..] == HST_A;
+  #assert cast(string) st[0].grants[0].label[0..<st[0].grants[0].nlabel] == "Chrome" && !st[0].grants[0].revoked;
+  // allowed once: it isn't waiting any more
+  #assert hs_allow(st[..], i, HST_G2, HST_T0 + 2) == -1;
+  #assert hs_grant_of(st[..], HST_A, HST_T0 + 2) == 0 && hs_grant_of(st[..], HST_B, HST_T0 + 2) == -1;
+  #assert hs_grant_of(st[..], HST_A, HST_T0 + HG_LIFETIME) == 0 && hs_grant_of(st[..], HST_A, HST_T0 + 1 + HG_LIFETIME) == -1;
+  #assert hs_epoch_of(st[..], HST_A) == 0;
+  #assert hs_revoke(st[..], HST_A) == 1 && st[0].grants[0].revoked && hs_grant_of(st[..], HST_A, HST_T0 + 2) == -1 && hs_epoch_of(st[..], HST_A) == 1;
+  #assert hs_revoke(st[..], HST_A) == 2 && st[0].ne == 1 && hs_revoke(st[..], HST_B) == 1 && st[0].ne == 2 && hs_epoch_of(st[..], HST_B) == 1;
+  // pairing again issues a grant at the new epoch
+  j := hs_pairing_add(st[..], HST_P2, HST_A, "Chrome", HST_T0 + 20);
+  #assert hs_allow(st[..], j, HST_G2, HST_T0 + 20) == 1 && st[0].grants[1].epoch == 2 && hs_grant_of(st[..], HST_A, HST_T0 + 21) == 1;
+  // a grant at an old epoch isn't current though unrevoked
+  st[0].grants[1].epoch = 1; #assert !hs_current(st[..], 1, HST_T0 + 21); st[0].grants[1].epoch = 2;
+  // of two current grants, the newer; of two issued together, the later
+  k := hs_pairing_add(st[..], HST_P1, HST_A, "again", HST_T0 + 30);
+  #assert hs_allow(st[..], k, HST_G1, HST_T0 + 20) == 2 && hs_grant_of(st[..], HST_A, HST_T0 + 31) == 2;
+  st[0].grants[1].issued = HST_T0 + 25; #assert hs_grant_of(st[..], HST_A, HST_T0 + 31) == 1;
+  // the newest first in the record
+  two: [1] HsState;
+  a := hs_pairing_add(two[..], HST_P1, HST_A, "a", HST_T0);
+  #assert hs_allow(two[..], a, HST_G1, HST_T0 + 9) == 0;
+  b := hs_pairing_add(two[..], HST_P2, HST_A, "b", HST_T0);
+  #assert hs_allow(two[..], b, HST_G2, HST_T0 + 5) == 1 && hs_grant_of(two[..], HST_A, HST_T0 + 10) == 0;
+  // the epoch table full: no revocation
+  full: [1] HsState; key: [64] u8;
+  for e: 0..<HS_EPOCHS { #assert hs_revoke(full[..], hst_key(cast(u8) (48 + e), key[..])) == 1; }
+  #assert full[0].ne == HS_EPOCHS && hs_revoke(full[..], HST_A) == -1 && hs_revoke(full[..], hst_key(48, key[..])) == 2;
+}
+
+#test "host grants: a full grant table drops the grant that ended first, never a current one" {
+  st: [1] HsState; id: [64] u8; key: [64] u8;
+  for i: 0..<HS_GRANTS {
+    p := hs_pairing_add(st[..], HST_P1, hst_key(cast(u8) (48 + i), key[..]), "x", HST_T0 + i);
+    #assert hs_allow(st[..], p, hst_id(i, id[..]), HST_T0 + i) == i;
+  }
+  later := HST_T0 + 20;
+  p := hs_pairing_add(st[..], HST_P1, HST_A, "y", later);
+  #assert hs_allow(st[..], p, HST_G1, later) == -1 && st[0].ng == HS_GRANTS;
+  // revoked ones: the one that ends first goes, whatever its place; of two that end together, the first
+  e1 := hs_revoke(st[..], hst_key(48 + 9, key[..])); e2 := hs_revoke(st[..], hst_key(48 + 4, key[..])); e3 := hs_revoke(st[..], hst_key(48 + 63, key[..]));
+  st[0].grants[9].expires = st[0].grants[4].expires;
+  #assert hs_allow(st[..], p, HST_G1, later) == HS_GRANTS - 1 && st[0].ng == HS_GRANTS;
+  // the new grant is not revoked though the slot held a revoked one; the rest moved down in order
+  #assert !st[0].grants[HS_GRANTS - 1].revoked && cast(string) st[0].grants[HS_GRANTS - 2].grant[..] == hst_id(63, id[..]) && st[0].grants[HS_GRANTS - 2].revoked;
+  #assert cast(string) st[0].grants[4].grant[..] == hst_id(5, id[..]) && cast(string) st[0].grants[8].grant[..] == hst_id(9, id[..]);
+  #assert cast(string) st[0].grants[HS_GRANTS - 1].grant[..] == HST_G1 && cast(string) st[0].grants[3].grant[..] == hst_id(3, id[..]);
+  // after seven days every old one has ended: the first goes
+  q := hs_pairing_add(st[..], HST_P2, HST_B, "z", HST_T0 + HG_LIFETIME + 5);
+  #assert hs_allow(st[..], q, HST_G2, HST_T0 + HG_LIFETIME + 5) == HS_GRANTS - 1 && cast(string) st[0].grants[0].grant[..] == hst_id(1, id[..]);
+}
+
+#test "host grants: forget revokes and denies what waits; status reads the pairing for its own key" {
+  st: [1] HsState;
+  i := hs_pairing_add(st[..], HST_P1, HST_A, "Chrome", HST_T0);
+  s := hs_status(st[..], HST_P1, HST_A, HST_T0 + 1);
+  #assert s.code == "" && s.state == HG_ASKED && s.grant == -1;
+  s = hs_status(st[..], HST_P1, HST_B, HST_T0 + 1); #assert s.code == "forbidden" && s.grant == -1;
+  s = hs_status(st[..], HST_P2, HST_A, HST_T0 + 1); #assert s.code == "unavailable" && s.grant == -1;
+  s = hs_status(st[..], HST_P1, HST_A, HST_T0 + 600); #assert s.code == "" && s.state == HG_EXPIRED;
+  #assert hs_allow(st[..], i, HST_G1, HST_T0 + 2) == 0;
+  s = hs_status(st[..], HST_P1, HST_A, HST_T0 + 3); #assert s.code == "" && s.state == HG_ALLOWED && s.grant == 0;
+  // the grant ended: expired
+  s = hs_status(st[..], HST_P1, HST_A, HST_T0 + 2 + HG_LIFETIME); #assert s.state == HG_EXPIRED && s.grant == -1;
+  // another key's revoked grant doesn't make it denied
+  j := hs_pairing_add(st[..], HST_P2, HST_B, "Other", HST_T0 + 4);
+  #assert hs_allow(st[..], j, HST_G2, HST_T0 + 4) == 1 && hs_revoke(st[..], HST_B) == 1;
+  s = hs_status(st[..], HST_P1, HST_A, HST_T0 + 2 + HG_LIFETIME); #assert s.state == HG_EXPIRED;
+  // a waiting request from the same key, then forget: revoked and denied
+  k := hs_pairing_add(st[..], HST_G1, HST_A, "Chrome 2", HST_T0 + 5);
+  #assert hs_forget(st[..], HST_A) == 1 && st[0].grants[0].revoked && st[0].pairings[k].state == HG_DENIED && st[0].pairings[i].state == HG_ALLOWED;
+  #assert st[0].pairings[j].state == HG_ALLOWED;
+  s = hs_status(st[..], HST_P1, HST_A, HST_T0 + 6); #assert s.code == "" && s.state == HG_DENIED && s.grant == -1;
+  s = hs_status(st[..], HST_G1, HST_A, HST_T0 + 6); #assert s.state == HG_DENIED;
+  // the first in the record is denied too
+  one: [1] HsState;
+  #assert hs_pairing_add(one[..], HST_P1, HST_B, "x", HST_T0) == 0 && hs_forget(one[..], HST_B) == 1 && one[0].pairings[0].state == HG_DENIED;
+}
+
+#test "host grants: admit.coax admits a thread call under a grant; each refusal names its code" {
+  st: [1] HsState;
+  i := hs_pairing_add(st[..], HST_P1, HST_A, "Chrome", HST_T0);
+  g := hs_allow(st[..], i, HST_G1, HST_T0 + 1);
+  ga: [HS_GRANTS] HostGrantRecord; ea: [HS_EPOCHS] HostEpoch; r1: [1] HostRetained;
+  hs_records(st[..], ga[..], ea[..]);
+  #assert ga[0].grant == HST_G1 && ga[0].device == HST_A && ga[0].epoch == 0 && ga[0].issued_at == HST_T0 + 1 && ga[0].expires_at == HST_T0 + 1 + HG_LIFETIME;
+  #assert ga[0].rights == 3 && !ga[0].revoked;
+  q := HostRequest.{request = HST_P2, event = HST_P2, signer = HST_A, grant = HST_G1, epoch = 0, issued_at = HST_T0 + 10, expires_at = HST_T0 + 70, right = HA_OPERATE};
+  #assert host_admit(ga[0..<st[0].ng], ea[0..<st[0].ne], r1[0..<0], q, HST_T0 + 10) == HA_OK;
+  q.right = HA_OBSERVE; #assert host_admit(ga[0..<st[0].ng], ea[0..<st[0].ne], r1[0..<0], q, HST_T0 + 10) == HA_OK;
+  q.right = HA_TERMINAL; #assert host_admit(ga[0..<st[0].ng], ea[0..<st[0].ne], r1[0..<0], q, HST_T0 + 10) == HA_NOT_ADMITTED;
+  q.right = HA_OPERATE; q.signer = HST_B; #assert host_admit(ga[0..<st[0].ng], ea[0..<st[0].ne], r1[0..<0], q, HST_T0 + 10) == HA_NOT_ADMITTED;
+  q.signer = HST_A;
+  #assert hs_revoke(st[..], HST_A) == 1;
+  hs_records(st[..], ga[..], ea[..]);
+  #assert ga[0].revoked && ea[0].device == HST_A && ea[0].epoch == 1;
+  #assert host_admit(ga[0..<st[0].ng], ea[0..<st[0].ne], r1[0..<0], q, HST_T0 + 10) == HA_REVOKED;
+  j := hs_pairing_add(st[..], HST_P1, HST_A, "again", HST_T0 + 20);
+  #assert hs_allow(st[..], j, HST_G2, HST_T0 + 20) == 1;
+  hs_records(st[..], ga[..], ea[..]);
+  #assert ga[1].epoch == 1 && ga[1].grant == HST_G2 && !ga[1].revoked;
+  // the codes
+  r := hs_refusal(st[..], HA_MALFORMED, HST_G1, HST_A, HA_OPERATE); #assert r.code == "malformed" && r.missing == "";
+  r = hs_refusal(st[..], HA_EARLY, HST_G1, HST_A, HA_OPERATE); #assert r.code == "malformed";
+  r = hs_refusal(st[..], HA_REVOKED, HST_G1, HST_A, HA_OPERATE); #assert r.code == "revoked";
+  r = hs_refusal(st[..], HA_EXPIRED, HST_G1, HST_A, HA_OPERATE); #assert r.code == "expired";
+  r = hs_refusal(st[..], HA_STALE, HST_G1, HST_A, HA_OPERATE); #assert r.code == "stale";
+  r = hs_refusal(st[..], HA_CONFLICT, HST_G1, HST_A, HA_OPERATE); #assert r.code == "conflict";
+  r = hs_refusal(st[..], HA_NOT_ADMITTED, HST_G1, HST_A, HA_OPERATE); #assert r.code == "missing_right" && r.missing == "operate";
+  r = hs_refusal(st[..], HA_NOT_ADMITTED, HST_G1, HST_A, HA_OBSERVE); #assert r.code == "missing_right" && r.missing == "observe";
+  // another key's grant, or no such grant: forbidden, nothing named
+  r = hs_refusal(st[..], HA_NOT_ADMITTED, HST_G1, HST_B, HA_OPERATE); #assert r.code == "forbidden" && r.missing == "";
+  r = hs_refusal(st[..], HA_NOT_ADMITTED, HST_P2, HST_A, HA_OPERATE); #assert r.code == "forbidden" && r.missing == "";
+  r = hs_refusal(st[..], HA_OK, HST_G1, HST_A, HA_OPERATE); #assert r.code == "forbidden";
+}
+
+#test "host grants: a thread is read or stopped only by the key that started it; the oldest goes when full" {
+  st: [1] HsState;
+  hs_thread_add(st[..], "44444444444444444444444444444444", HST_P2, HST_A, "20261102-120000-001", "garden", HST_T0 + 3);
+  #assert st[0].nt == 1 && st[0].threads[0].at == HST_T0 + 3 && cast(string) st[0].threads[0].session[0..<st[0].threads[0].nsession] == "20261102-120000-001";
+  #assert cast(string) st[0].threads[0].realm[0..<st[0].threads[0].nrealm] == "garden" && cast(string) st[0].threads[0].device[..] == HST_A;
+  #assert hs_thread_find(st[..], "44444444444444444444444444444444") == 0 && hs_thread_by_request(st[..], HST_P2) == 0;
+  #assert hs_thread_find(st[..], "x") == -1 && hs_thread_by_request(st[..], HST_P1) == -1;
+  #assert hs_thread_of(st[..], "44444444444444444444444444444444", HST_A) == 0;
+  #assert hs_thread_of(st[..], "44444444444444444444444444444444", HST_B) == -1 && hs_thread_of(st[..], "x", HST_A) == -1;
+  hs_thread_add(st[..], "55555555555555555555555555555555", HST_P1, HST_B, "s2", "pine", HST_T0 + 4);
+  #assert hs_thread_of(st[..], "55555555555555555555555555555555", HST_B) == 1 && hs_thread_by_request(st[..], HST_P1) == 1;
+  for i: 2..<HS_THREADS { hs_thread_add(st[..], "66666666666666666666666666666666", HST_G1, HST_A, "session", "r", HST_T0 + i); }
+  #assert st[0].nt == HS_THREADS;
+  hs_thread_add(st[..], "77777777777777777777777777777777", "r", HST_A, "s", "r", HST_T0 + 999);
+  #assert st[0].threads[HS_THREADS - 2].at == HST_T0 + HS_THREADS - 1 && st[0].threads[HS_THREADS - 1].request[1] == 0 && st[0].threads[HS_THREADS - 1].session[1] == 0;
+  #assert st[0].nt == HS_THREADS && hs_thread_find(st[..], "44444444444444444444444444444444") == -1 && hs_thread_find(st[..], "55555555555555555555555555555555") == 0;
+  #assert hs_thread_find(st[..], "77777777777777777777777777777777") == HS_THREADS - 1;
+}
