@@ -64,17 +64,20 @@ static_assert((uint8_t)Tok::bang == COAX_LX_Kind_k_bang, "lexer token ABI: bang"
 static_assert((uint8_t)Tok::dollar == COAX_LX_Kind_k_dollar, "lexer token ABI: dollar");
 static_assert((uint8_t)Tok::question == COAX_LX_Kind_k_question, "lexer token ABI: question");
 const char *tok_name(Tok kind) {return LX_name((uint32_t)kind).data;}
-bool lex(Arena *arena,const Source *src,std::vector<Token> *out) {
+// Every bad token is reported, up to the frontend's report limit (error_limit).
+bool lex(Arena *arena,const Source *src,std::vector<Token> *out,std::vector<Loc> *errors) {
   const auto input=coax_string{src->text.data(),(int64_t)src->text.size()};
   const auto caps=LX_capacities(input.count);
   std::unique_ptr<uint8_t[]> decoded(new uint8_t[(size_t)caps.decoded]), message(new uint8_t[(size_t)caps.diagnostic]);
-  auto state=LX_begin(input.count);const int32_t errors_before=g_error_count;
+  auto state=LX_begin(input.count);bool failed=false;
   for (;;) {
     const auto item=LX_next(input,{&state,1},{decoded.get(),caps.decoded},{message.get(),caps.diagnostic});
     if(item.diagnostic.code.count) {
-      const auto &d=item.diagnostic;
+      const auto &d=item.diagnostic;failed=true;
       const std::string code(d.code.data,(size_t)d.code.count);
-      error_at(src,{(int32_t)d.loc.line,(int32_t)d.loc.column,(int32_t)d.loc.offset},code.c_str(),
+      const Loc at{(int32_t)d.loc.line,(int32_t)d.loc.column,(int32_t)d.loc.offset};
+      if(errors) errors->push_back(at);
+      if(!error_limit()) error_at(src,at,code.c_str(),
           std::string(d.message.data,(size_t)d.message.count),std::string(d.fix.data ? d.fix.data : "",(size_t)d.fix.count));
     }
     if(!item.has_token) continue;
@@ -90,6 +93,6 @@ bool lex(Arena *arena,const Source *src,std::vector<Token> *out) {
     }
     out->push_back(token);if(token.kind==Tok::eof) break;
   }
-  return g_error_count==errors_before;
+  return !failed;
 }
 } // namespace coax

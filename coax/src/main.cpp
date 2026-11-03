@@ -244,6 +244,28 @@ void error_at(const Source *src, Loc loc, const char *code, const std::string &m
   if (!fix.empty()) fprintf(stderr, "  fix: %s\n", fix.c_str());
 }
 
+void error_after(const Source *src, Loc loc, const char *code, const std::string &message, const std::string &fix,
+                 const Source *cause_src, Loc cause) {
+  const auto point = source_point(cause_src, cause);
+  const std::string note = "this may follow from the error at " + point.path + ":" + std::to_string(point.loc.line) + ":" +
+                           std::to_string(point.loc.col) + "; fix that one first";
+  diagnostic_note(cause_src, cause, true, note);
+  error_at(src, loc, code, message, fix);
+  if (!g_quiet_errors && !g_json_errors) fprintf(stderr, "  note: %s\n", note.c_str());
+}
+
+bool error_limit() {
+  static bool said = false;
+  if (g_error_count < PS_report_limit()) return false;
+  if (!said && !g_quiet_errors && (g_diagnostics_json || !g_json_errors)) {
+    const std::string text = "stopped after " + std::to_string(g_error_count) + " errors; fix these and check again";
+    if (g_diagnostics_json) diagnostic_json("note", "", text, "null", "", "[]");
+    else fprintf(stderr, "coax: %s\n", text.c_str());
+  }
+  said = true;
+  return true;
+}
+
 void show_source(FILE *out, const Source *src, Loc loc) {
   loc = diagnostic_loc(src, loc);
   const std::string *text = &(src->original_text.empty() ? src->text : src->original_text);

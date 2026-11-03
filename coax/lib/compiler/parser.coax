@@ -797,6 +797,132 @@ PS_parse_build :: (source:string,t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,
   if s[0].code=="" {PS_meta_types(n,s,out,root);PS_wide_type(n,s,out,root);}
   return PS_Result.{ok=s[0].code=="",root=root};
 }
+// Recovery after a syntax error. The first error is reported exactly as
+// before; the driver then parses again from the next top-level declaration
+// that starts a line (column 1) after the failure: a name followed by '::',
+// or #import, #assert, #test, #forall, #run_steps or #authority. Each attempt
+// reports at most one error, a compile at most PS_REPORT_LIMIT in all.
+// A later error is labelled a likely cascade when a lexer error lies in its
+// declaration (cause), or when it lies in the first declaration after a
+// skipped region whose brackets do not balance, so the restart was a guess
+// (follows). Each attempt still freezes its cursor and diagnostic.
+PS_REPORT_LIMIT :: 20;
+PS_report_limit :: ()->int #export_c {return PS_REPORT_LIMIT;}
+PS_Recovery :: struct {start:int;next:int;balanced:bool;cause:int;follows:bool;}
+// i is before the EOF token, so t[i+1] exists.
+PS_top :: (t:[] PS_Token,i:int)->bool {
+  v:=t[i];if v.loc.column!=1 {return false;}
+  if v.kind==1 {return t[i+1].kind==17;}
+  if v.kind!=6 {return false;}
+  return v.text=="import" || v.text=="assert" || v.text=="test" || v.text=="forall" || v.text=="run_steps" || v.text=="authority";
+}
+// from: the failed attempt's first token; failed: its cursor at the error;
+// lexed: byte offsets of this unit's lexer errors; guessed: the attempt began
+// after an unbalanced skip. t ends with EOF, as PS_parse requires, and
+// from<=failed<=t.count-1 (a parse cursor never passes EOF). start is
+// the failed declaration's first token, next where the next attempt begins
+// (the EOF token when none is left).
+PS_recover :: (t:[] PS_Token,from:int,failed:int,lexed:[] int,guessed:bool)->PS_Recovery #export_c {
+  last:=t.count-1;r:=PS_Recovery.{start=from,next=last,balanced=true,cause=-1};
+  if from<0 || from>=last {return r;}
+  at:=failed;
+  for i:from..<at {if PS_top(t,i) {r.start=i;}}
+  i:=at;if i==from {i+=1;}
+  while i<last && !PS_top(t,i) {i+=1;}
+  r.next=i;depth:=0;
+  for j:r.start..<r.next {k:=t[j].kind;if k==8 || k==10 || k==12 {depth+=1;}if k==9 || k==11 || k==13 {depth-=1;}}
+  r.balanced=depth==0;r.follows=guessed && r.start==from;
+  begin:=t[r.start].loc.offset;stop:=t[at].loc.offset;
+  for j:0..<lexed.count {if lexed[j]>=begin && lexed[j]<=stop {r.cause=j;}}
+  return r;
+}
+PS_rt :: (kind:u32,line:int,column:int,offset:int,text:string)->PS_Token {
+  return PS_Token.{kind=kind,text=text,raw_count=text.count,loc=PS_Loc.{line=line,column=column,offset=offset}};
+}
+#test "recovery resumes at the declaration the failure ran into" {
+  // a :: 1 / b :: 2;   fails at b, which starts the next declaration
+  t:=[8] PS_Token.[PS_rt(1,1,1,0,"a"),PS_rt(17,1,3,2,"::"),PS_rt(3,1,6,5,"1"),PS_rt(1,2,1,7,"b"),PS_rt(17,2,3,9,"::"),PS_rt(3,2,6,12,"2"),PS_rt(15,2,7,13,";"),PS_rt(0,3,1,15,"")];
+  none:[] int;
+  r:=PS_recover(t[..],0,3,none,false);
+  #assert r.start==0 && r.next==3 && r.balanced && r.cause==-1 && !r.follows;
+  nodes:[64] PS_Node;message:[512] u8;state:[1] PS_State;
+  p:=PS_parse("",t[..],nodes[..],state[..],message[..]);
+  #assert !p.ok && state[0].code=="E0201" && state[0].pos==3;
+  q:=PS_parse("",t[r.next..<8],nodes[..],state[..],message[..]);
+  #assert q.ok;
+}
+#test "recovery skips indented and non-declaration tokens to the next column-1 declaration" {
+  // f :: () { / x :: 1; / #assert / } / z = / #test (column 2) / #load / #test "t"
+  t:=[18] PS_Token.[PS_rt(1,1,1,0,"f"),PS_rt(17,1,3,2,"::"),PS_rt(8,1,6,5,"("),PS_rt(9,1,7,6,")"),PS_rt(10,1,9,8,"{"),
+    PS_rt(1,2,3,12,"x"),PS_rt(17,2,5,14,"::"),PS_rt(3,2,8,17,"1"),PS_rt(15,2,9,18,";"),PS_rt(6,3,3,22,"assert"),
+    PS_rt(11,4,1,40,"}"),PS_rt(1,5,1,42,"z"),PS_rt(23,5,3,44,"="),PS_rt(6,6,2,50,"test"),PS_rt(6,7,1,60,"load"),
+    PS_rt(6,8,1,70,"test"),PS_rt(5,8,7,76,"t"),PS_rt(0,9,1,80,"")];
+  none:[] int;
+  r:=PS_recover(t[..],0,5,none,false);
+  #assert r.start==0 && r.next==15 && r.balanced && r.cause==-1;
+  // Failing at the attempt's first token still moves forward.
+  s:=PS_recover(t[..],15,15,none,false);
+  #assert s.start==15 && s.next==17;
+  // ... even when the very next token starts a declaration.
+  b:=[6] PS_Token.[PS_rt(9,1,1,0,")"),PS_rt(1,2,1,2,"b"),PS_rt(17,2,3,4,"::"),PS_rt(3,2,6,7,"1"),PS_rt(15,2,7,8,";"),PS_rt(0,3,1,10,"")];
+  f:=PS_recover(b[..],0,0,none,false);
+  #assert f.start==0 && f.next==1 && !f.balanced;
+  // An EOF-only tail has nothing to resume; a bad start is returned as is.
+  z:=PS_recover(t[..],17,17,none,false);
+  #assert z.start==17 && z.next==17 && z.balanced && z.cause==-1;
+  n:=PS_recover(t[..],-1,0,none,false);
+  #assert n.start==-1 && n.next==17;
+}
+#test "every top-level directive restarts; other directives and names do not" {
+  words:=[8] string.["import","assert","test","forall","run_steps","authority","load","if"];
+  for w,i:words {
+    t:=[3] PS_Token.[PS_rt(6,1,1,0,w),PS_rt(15,1,9,8,";"),PS_rt(0,2,1,10,"")];
+    #assert PS_top(t[..],0)==(i<6);
+    t[0].loc.column=2;#assert !PS_top(t[..],0);
+  }
+  u:=[3] PS_Token.[PS_rt(1,1,1,0,"x"),PS_rt(18,1,3,2,":="),PS_rt(0,2,1,10,"")];
+  #assert !PS_top(u[..],0);u[1].kind=17;#assert PS_top(u[..],0);
+  u[0].kind=2;#assert !PS_top(u[..],0);
+}
+#test "every bracket kind counts toward balance" {
+  t:=[9] PS_Token.[PS_rt(1,1,1,0,"a"),PS_rt(17,1,3,2,"::"),PS_rt(1,1,6,5,"x"),PS_rt(1,1,8,7,"y"),PS_rt(1,2,1,10,"b"),PS_rt(17,2,3,12,"::"),PS_rt(3,2,6,15,"1"),PS_rt(15,2,7,16,";"),PS_rt(0,3,1,18,"")];
+  none:[] int;
+  #assert PS_recover(t[..],0,4,none,false).balanced;
+  for open:0..<3 {
+    o:=cast(u32)(8+2*open);
+    t[2].kind=o;t[3].kind=o+1;#assert PS_recover(t[..],0,4,none,false).balanced;
+    t[3].kind=1;#assert !PS_recover(t[..],0,4,none,false).balanced;
+    t[2].kind=1;t[3].kind=o+1;#assert !PS_recover(t[..],0,4,none,false).balanced;
+  }
+}
+#test "an unclosed region guesses the restart, and the next error follows it" {
+  // f :: () { / x := ([1 / g :: () { y } / h :: 1;
+  t:=[22] PS_Token.[PS_rt(1,1,1,0,"f"),PS_rt(17,1,3,2,"::"),PS_rt(8,1,6,5,"("),PS_rt(9,1,7,6,")"),PS_rt(10,1,9,8,"{"),
+    PS_rt(1,2,3,12,"x"),PS_rt(18,2,5,14,":="),PS_rt(8,2,8,17,"("),PS_rt(12,2,9,18,"["),PS_rt(3,2,10,19,"1"),
+    PS_rt(1,3,1,22,"g"),PS_rt(17,3,3,24,"::"),PS_rt(8,3,6,27,"("),PS_rt(9,3,7,28,")"),PS_rt(10,3,9,30,"{"),PS_rt(1,3,11,32,"y"),PS_rt(11,3,13,34,"}"),
+    PS_rt(1,4,1,40,"h"),PS_rt(17,4,3,42,"::"),PS_rt(3,4,6,45,"1"),PS_rt(15,4,7,46,";"),PS_rt(0,5,1,50,"")];
+  none:[] int;
+  r:=PS_recover(t[..],0,10,none,false);
+  #assert r.start==0 && r.next==10 && !r.balanced && !r.follows;
+  // The error in g, the first declaration after the guess, follows it.
+  g:=PS_recover(t[..],10,15,none,true);
+  #assert g.start==10 && g.next==17 && g.balanced && g.follows;
+  #assert !PS_recover(t[..],10,15,none,false).follows;
+  // An error in a later declaration of that attempt does not.
+  h:=PS_recover(t[..],10,19,none,true);
+  #assert h.start==17 && h.next==21 && !h.follows;
+}
+#test "a lexer error in the failed declaration is its likely cause" {
+  t:=[8] PS_Token.[PS_rt(1,1,1,0,"a"),PS_rt(17,1,3,2,"::"),PS_rt(3,1,6,5,"1"),PS_rt(1,2,1,7,"b"),PS_rt(17,2,3,9,"::"),PS_rt(3,2,6,12,"2"),PS_rt(3,2,8,14,"3"),PS_rt(0,3,1,16,"")];
+  // b's declaration runs from offset 7 to the failure at '3' (offset 14).
+  lexed:=[6] int.[1,6,7,10,14,15];
+  for k:0..<6 {
+    one:=[1] int.[lexed[k]];
+    #assert PS_recover(t[..],3,6,one[..],false).cause==ifx k>=2 && k<=4 then 0 else -1;
+  }
+  #assert PS_recover(t[..],3,6,lexed[..],false).cause==4;
+  #assert PS_report_limit()==20;
+}
 // Source import syntax/admission belongs to the parser; native code reads files.
 PS_Import :: struct {path:string;prefix:string;loc:PS_Loc;end:int;}
 PS_Imports :: struct {count:int;code:string;message:string;loc:PS_Loc;}

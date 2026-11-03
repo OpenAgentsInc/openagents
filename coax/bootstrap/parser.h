@@ -25,6 +25,7 @@ typedef struct coax_t_PS_Node coax_t_PS_Node;
 typedef struct coax_t_PS_State coax_t_PS_State;
 typedef struct coax_t_PS_Result coax_t_PS_Result;
 typedef struct coax_t_PS_Caps coax_t_PS_Caps;
+typedef struct coax_t_PS_Recovery coax_t_PS_Recovery;
 typedef struct coax_t_PS_Import coax_t_PS_Import;
 typedef struct coax_t_PS_Imports coax_t_PS_Imports;
 #ifdef COAX_coax_t_PS_Caps_DEFINED
@@ -203,6 +204,24 @@ typedef struct { coax_t_PS_State *data; int64_t count; } coax_v_t_PS_State;
 #define COAX_SCHEMA_coax_v_u8_31343a636f61782d632d747970652d7631343a76696577393a636f61785f765f7538323a3136313a38373a75696e74385f74
 typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
 #endif
+#ifdef COAX_coax_t_PS_Recovery_DEFINED
+#ifndef COAX_SCHEMA_coax_t_PS_Recovery_31343a636f61782d632d747970652d7631363a73747275637431383a636f61785f745f50535f5265636f76657279323a3430313a38313a35353a7374617274373a696e7436345f74313a30343a6e657874373a696e7436345f74313a38383a62616c616e636564353a5f426f6f6c323a3136353a6361757365373a696e7436345f74323a3234373a666f6c6c6f7773353a5f426f6f6c323a3332
+#error "incompatible Coax C type coax_t_PS_Recovery"
+#endif
+#else
+#define COAX_coax_t_PS_Recovery_DEFINED
+#define COAX_SCHEMA_coax_t_PS_Recovery_31343a636f61782d632d747970652d7631363a73747275637431383a636f61785f745f50535f5265636f76657279323a3430313a38313a35353a7374617274373a696e7436345f74313a30343a6e657874373a696e7436345f74313a38383a62616c616e636564353a5f426f6f6c323a3136353a6361757365373a696e7436345f74323a3234373a666f6c6c6f7773353a5f426f6f6c323a3332
+struct coax_t_PS_Recovery { int64_t start; int64_t next; _Bool balanced; int64_t cause; _Bool follows; };
+#endif
+#ifdef COAX_coax_v_s64_DEFINED
+#ifndef COAX_SCHEMA_coax_v_s64_31343a636f61782d632d747970652d7631343a7669657731303a636f61785f765f733634323a3136313a38373a696e7436345f74
+#error "incompatible Coax C type coax_v_s64"
+#endif
+#else
+#define COAX_coax_v_s64_DEFINED
+#define COAX_SCHEMA_coax_v_s64_31343a636f61782d632d747970652d7631343a7669657731303a636f61785f765f733634323a3136313a38373a696e7436345f74
+typedef struct { int64_t *data; int64_t count; } coax_v_s64;
+#endif
 #ifdef COAX_coax_t_PS_Imports_DEFINED
 #ifndef COAX_SCHEMA_coax_t_PS_Imports_31343a636f61782d632d747970652d7631363a73747275637431373a636f61785f745f50535f496d706f727473323a3634313a38313a34353a636f756e74373a696e7436345f74313a30343a636f646531313a636f61785f737472696e67313a38373a6d65737361676531313a636f61785f737472696e67323a3234333a6c6f6331333a636f61785f745f50535f4c6f63323a3430
 #error "incompatible Coax C type coax_t_PS_Imports"
@@ -286,6 +305,12 @@ COAX_LAYOUT(sizeof(coax_t_PS_Caps) == 24 && COAX_ALIGNOF(coax_t_PS_Caps) == 8, "
 COAX_LAYOUT(offsetof(coax_t_PS_Caps, nodes) == 0, "offset of PS_Caps.nodes");
 COAX_LAYOUT(offsetof(coax_t_PS_Caps, message) == 8, "offset of PS_Caps.message");
 COAX_LAYOUT(offsetof(coax_t_PS_Caps, imports) == 16, "offset of PS_Caps.imports");
+COAX_LAYOUT(sizeof(coax_t_PS_Recovery) == 40 && COAX_ALIGNOF(coax_t_PS_Recovery) == 8, "layout of PS_Recovery");
+COAX_LAYOUT(offsetof(coax_t_PS_Recovery, start) == 0, "offset of PS_Recovery.start");
+COAX_LAYOUT(offsetof(coax_t_PS_Recovery, next) == 8, "offset of PS_Recovery.next");
+COAX_LAYOUT(offsetof(coax_t_PS_Recovery, balanced) == 16, "offset of PS_Recovery.balanced");
+COAX_LAYOUT(offsetof(coax_t_PS_Recovery, cause) == 24, "offset of PS_Recovery.cause");
+COAX_LAYOUT(offsetof(coax_t_PS_Recovery, follows) == 32, "offset of PS_Recovery.follows");
 COAX_LAYOUT(sizeof(coax_t_PS_Import) == 64 && COAX_ALIGNOF(coax_t_PS_Import) == 8, "layout of PS_Import");
 COAX_LAYOUT(offsetof(coax_t_PS_Import, path) == 0, "offset of PS_Import.path");
 COAX_LAYOUT(offsetof(coax_t_PS_Import, prefix) == 16, "offset of PS_Import.prefix");
@@ -300,6 +325,8 @@ COAX_LAYOUT(offsetof(coax_t_PS_Imports, loc) == 40, "offset of PS_Imports.loc");
 coax_t_PS_Caps PS_caps(int64_t tokens, int64_t source);
 coax_t_PS_Result PS_parse(coax_string source, coax_v_t_PS_Token t, coax_v_t_PS_Node n, coax_v_t_PS_State s, coax_v_u8 out);
 coax_t_PS_Result PS_parse_build(coax_string source, coax_v_t_PS_Token t, coax_v_t_PS_Node n, coax_v_t_PS_State s, coax_v_u8 out, _Bool development);
+int64_t PS_report_limit(void);
+coax_t_PS_Recovery PS_recover(coax_v_t_PS_Token t, int64_t from, int64_t failed, coax_v_s64 lexed, _Bool guessed);
 coax_t_PS_Imports PS_imports(coax_v_t_PS_Token t, coax_v_t_PS_Import out, _Bool metal);
 
 #ifdef __cplusplus

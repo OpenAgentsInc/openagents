@@ -1804,10 +1804,27 @@ that digest to `coax/bin/source-digest`. When a command exits nonzero and the
 compiler runs from `ROOT/coax/bin/coax`, it compares the digest with `ROOT`'s
 sources and, when they differ, prints that the compiler is out of date and
 that `ROOT/coax/build.sh` rebuilds it. A successful command does not compare.
+After an error the frontend keeps going so one check reports as much as
+it safely can. The lexer reports every bad token, and the parser then
+reads what it produced. After a syntax error the parser parses again from
+the next top-level declaration that starts a line (`name ::`, or `#import`,
+`#assert`, `#test`, `#forall`, `#run_steps` or `#authority` in column 1),
+so it reports at most one error per declaration. The source loader reports
+each `#load` that fails, and the syntax errors of a unit the lexer refused,
+then tries the next `#load` (not after a graph budget error), and reports
+every composition error of one kind before stopping. A later error that may
+follow from an earlier one (a lexer error in its declaration, or a restart
+after a declaration whose brackets do not balance) carries a note naming
+that error. The first error and the exit status are those of a compiler
+that stops there. The lexer and parser report at most 20 errors, then print
+`coax: stopped after 20 errors; fix these and check again` (a `note` with
+no span in `--diagnostics json`). A file with any syntax error is never
+checked; the checker reports every error it finds, and compile-time
+evaluation stops at its first failure.
 `--keep-c` retains generated source for inspection; `--json` prints
 diagnostics as JSON lines for tools and agents. `--diagnostics json` prints
 each diagnostic on stderr as one `coax.diagnostic.v1` object with the keys
-`schema`, `severity` (`error`, or `note` for the stale-compiler message),
+`schema`, `severity` (`error`, or `note` for the stale-compiler and error-limit messages),
 `code`, `message`, `span`, `notes` and `fixes`. A span is `file`, 1-based
 `line` and `column`, the byte `offset` into that file and the `length` of the
 name, number or string that starts there (one byte otherwise, zero at a

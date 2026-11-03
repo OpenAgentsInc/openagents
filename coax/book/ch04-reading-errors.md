@@ -175,15 +175,18 @@ say which stage found the problem:
 
 | Codes | Stage | What it does | After an error |
 | --- | --- | --- | --- |
-| `E01xx` | Lexer | Turns characters into tokens | Reports every bad token, then stops before parsing |
-| `E02xx` | Parser | Turns tokens into a syntax tree | Stops at the first error |
+| `E01xx` | Lexer | Turns characters into tokens | Reports every bad token, then lets the parser report its errors too |
+| `E02xx` | Parser | Turns tokens into a syntax tree | Reports one error per top-level declaration |
 | `E03xx` | Checker | Names, types, returns, formats | Reports everything it finds |
 | `E04xx` | Compile-time evaluation | Runs `#run` and `#assert` (Chapter 9) | Stops at the first failure |
 | `E05xx` | Descriptor imports | Reads protobuf descriptors (Chapter 18) | Stops at the first failure |
-| `E06xx` | Source loading | Admits the source graph and physical units (Chapter 10) | Stops at the first failure |
+| `E06xx` | Source loading | Admits the source graph and physical units (Chapter 10) | Reports each `#load` that fails, and keeps loading the rest |
 
-A stage only runs if the ones before it succeeded. You can see this with
-a program that has a bad character and a missing semicolon:
+The checker and everything after it only run if loading, lexing and
+parsing succeeded. The first error a stage reports is always the same
+one it would report alone, and the exit status is the same. You can see
+how far each stage goes with a program that has a bad character and a
+missing semicolon:
 
 Filename: stages.coax
 
@@ -201,21 +204,42 @@ $ coax check stages.coax
 stages.coax:3:10: error[E0108]: unexpected character '$'
     x := 1 $ 2;
            ^
-1 error
+stages.coax:3:9: error[E0201]: expected ';' after the declaration, found integer
+    x := 1 $ 2;
+          ^
+  fix: add ';'
+  note: this may follow from the error at stages.coax:3:10; fix that one first
 ```
 
-Only the lexer's error appears. Fix the `$` and the parser runs and
-reports the missing `;` on line 4. So a short error list doesn't always
-mean you're nearly done. It may mean the compiler hasn't got that far
-yet.
+The lexer drops the `$` and reports it. The parser then reads what is
+left, `x := 1 2;`, and reports that too, with a note: the error may
+follow from the lexer's, so fix that one first. Here it does. Delete the
+`$` and the line is fine.
 
-The parser stops at its first error on purpose. After a missing brace or
-semicolon, a parser that keeps going has to guess where the next
-statement starts, and when it guesses wrong it reports errors that
-aren't real. Chasing those wastes time, and an agent fixing errors in a
-loop can waste a lot of it. The checker is the opposite. By the time it
-runs, the shape of the program is known, so each type error it finds is
-a real one, and you want them all at once.
+The missing `;` on line 4 isn't reported yet. After a syntax error, the
+parser doesn't try to guess where the next statement in the same
+procedure starts. When it guesses wrong it reports errors that aren't
+real, and chasing those wastes time; an agent fixing errors in a loop
+can waste a lot of it. Instead it skips to the next top-level
+declaration, a line that starts with `name ::` or with `#import`,
+`#assert`, `#test`, `#forall`, `#run_steps` or `#authority` in the first
+column, and parses again from there. So you get at most one syntax error
+per declaration, and errors in other declarations at once. Fix the `$`
+here and the parser reports the missing `;` on line 4.
+
+So a short error list doesn't always mean you're nearly done. It may
+mean the compiler hasn't got that far yet.
+
+When a skipped declaration doesn't close its braces, the parser's guess
+of where the next declaration starts may be wrong, so the first error
+after it gets the same kind of note. A note means "probably not a
+separate problem": fix the error it names, then check again. The lexer
+and the parser report at most 20 errors in all, then say
+`coax: stopped after 20 errors`.
+
+The checker is the opposite of the parser. By the time it runs, the
+shape of the program is known, so each type error it finds is a real
+one, and you want them all at once.
 
 The checker also avoids a different kind of cascade. When it can't work
 out a variable's type because of an earlier error, it stays quiet about
@@ -264,8 +288,9 @@ pantry.coax:2:15: error[E0201]: expected ';' after the declaration, found 'eaten
 1 error
 ```
 
-One error, from the parser, which stopped there. Look at where the caret
-is: right after `12` on line 2, even though the parser only noticed
+One error. The parser reports at most one per top-level declaration,
+and both syntax mistakes in this file are in `main`, so the second one
+waits for the next round. Look at where the caret is: right after `12` on line 2, even though the parser only noticed
 something was wrong when it reached `eaten` on line 3. A missing `;` is
 reported where the `;` belongs. The message still tells you what it
 found instead (`found 'eaten'`), which helps when the real problem is
@@ -284,7 +309,8 @@ pantry.coax:6:16: error[E0216]: ranges are half-open: write '..<'
 1 error
 ```
 
-The parser got further this time and stopped at the next problem. As we
+The parser got further into `main` this time and reported the next
+problem. As we
 saw in Chapter 3, Coax has only half-open ranges. We meant 0 to 3, so
 the loop becomes `for people: 0..<4 {`.
 

@@ -81,6 +81,34 @@ std::vector<coax_t_PS_Token> parser_tokens(const std::vector<Token> &tokens) {
   return input;
 }
 }
+// Reports a failed parse: its first error exactly as before, then one error
+// per later attempt, each parsed again from the next top-level declaration
+// (PS_recover owns where, and which errors are likely cascades), until the
+// tokens run out or error_limit. lexed: where this unit's lexer errors are.
+static void parse_report(const Source *src,const std::vector<coax_t_PS_Token> &input,const coax_t_PS_State &first,
+                         const std::string &first_message,const std::vector<Loc> &lexed,bool development) {
+  std::vector<int64_t> offsets;for(const auto &l:lexed) offsets.push_back(l.offset);
+  const coax_v_t_PS_Token tokens{(coax_t_PS_Token*)input.data(),(int64_t)input.size()};
+  const coax_v_s64 causes{offsets.data(),(int64_t)offsets.size()};
+  const auto caps=PS_caps((int64_t)input.size(),(int64_t)src->text.size());
+  zvec<coax_t_PS_Node> nodes((size_t)caps.nodes);zvec<uint8_t> message((size_t)caps.message);
+  coax_t_PS_State state=first;std::string text=first_message;
+  auto at=PS_recover(tokens,0,first.pos,causes,false);Loc previous{};
+  for(int64_t from=0;;) {
+    const std::string code(state.code.data,(size_t)state.code.count),fix(state.fix.data?state.fix.data:"",(size_t)state.fix.count);
+    if(at.cause>=0) error_after(src,parser_loc(state.loc),code.c_str(),text,fix,src,lexed[(size_t)at.cause]);
+    else if(at.follows) error_after(src,parser_loc(state.loc),code.c_str(),text,fix,src,previous);
+    else error_at(src,parser_loc(state.loc),code.c_str(),text,fix);
+    previous=parser_loc(state.loc);
+    if(at.next>=tokens.count-1 || error_limit()) return;
+    from=at.next;state={};std::fill(nodes.begin(),nodes.end(),coax_t_PS_Node{});
+    const auto result=PS_parse_build({src->text.data(),(int64_t)src->text.size()},{tokens.data+from,tokens.count-from},
+        {nodes.data(),(int64_t)nodes.size()},{&state,1},{message.data(),(int64_t)message.size()},development);
+    if(result.ok) return;
+    text=std::string((char*)message.data(),(size_t)state.length);
+    at=PS_recover(tokens,from,from+state.pos,causes,!at.balanced);
+  }
+}
 // #run_steps N; is the budget of the compile whose entry file declares it. A
 // loaded file's well-formed declaration is dropped here, before the parser
 // sees it, so a library declares what it needs when it is checked alone and
@@ -118,10 +146,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
   coax_t_PS_State state{};
   const auto result=PS_parse_build({src->text.data(),(int64_t)src->text.size()},{input.data(),(int64_t)input.size()},
       {nodes.data(),(int64_t)nodes.size()},{&state,1},{message.data(),(int64_t)message.size()},development);
-  if(!result.ok) {
-    error_at(src,parser_loc(state.loc),std::string(state.code.data,(size_t)state.code.count).c_str(),
-        std::string((char*)message.data(),(size_t)state.length),std::string(state.fix.data?state.fix.data:"",(size_t)state.fix.count));return false;
-  }
+  if(!result.ok) {parse_report(src,input,state,std::string((char*)message.data(),(size_t)state.length),{},development);return false;}
   std::vector<void*> objects((size_t)state.used+1,nullptr);
   // Allocate first so all subsequent reference copies are independent of order.
   for(int64_t id=1;id<=state.used;id++) {

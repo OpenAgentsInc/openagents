@@ -2,3 +2,8 @@ tests/diagnostics/lexer.coax:2:8: error[E0106]: string is never closed
     s := "never closed;
          ^
   fix: add '"' before the end of the line
+tests/diagnostics/lexer.coax:2:22: error[E0201]: expected ';' after the declaration, found '}'
+    s := "never closed;
+                       ^
+  fix: add ';'
+  note: this may follow from the error at tests/diagnostics/lexer.coax:2:8; fix that one first

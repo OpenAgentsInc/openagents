@@ -7,6 +7,11 @@ inside its file with a line and column that agree with its byte offset. An
 "add 'X'" fix carries an edit, and applying the parser's makes the file check.
 `coax mutate` gives each surviving mutant (E0414) and each procedure no check
 reaches (E0415) as an object too.
+After the first error the lexer, parser and source loader keep going: the
+parser again from the next top-level declaration, the loader with the next
+#load. The first error and the exit status are what the compiler printed
+before it recovered (`NAME.before.txt`); a later error that may follow from
+an earlier one carries a note naming it, and reporting stops at 20 errors.
 Without the flag, the text is byte-identical to the `.txt` recorded with the
 release before the flag existed.
 """
@@ -23,7 +28,10 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 COMPILER = Path(os.environ.get("COAX_BIN", ROOT / "bin/coax"))
 CASES = ROOT / "tests/diagnostics"
-FAMILIES = {"lexer": "check", "parser": "check", "checker": "check", "test-failure": "test"}
+FAMILIES = {"lexer": "check", "parser": "check", "checker": "check", "test-failure": "test",
+            "recovery": "check", "cascade": "check"}
+RECOVERED = ["lexer", "recovery", "cascade"]
+NOTE = "this may follow from the error at "
 KEYS = ["schema", "severity", "code", "message", "span", "notes", "fixes"]
 
 
@@ -125,6 +133,74 @@ class DiagnosticsJson(unittest.TestCase):
                     self.assertEqual(timeless(result.stdout + result.stderr) if name == "test-failure" else result.stderr,
                                      timeless((CASES / f"{name}.txt").read_text()) if name == "test-failure"
                                      else (CASES / f"{name}.txt").read_text())
+
+    def test_the_first_error_and_exit_status_are_unchanged(self):
+        for name in RECOVERED:
+            with self.subTest(family=name):
+                before = (CASES / f"{name}.before.txt").read_text()
+                first = re.sub(r"\d+ errors?\n$", "", before)
+                result = coax("check", f"tests/diagnostics/{name}.coax")
+                self.assertEqual(result.returncode, 1)
+                self.assertTrue(result.stderr.startswith(first), result.stderr)
+                self.assertGreater(result.stderr.count(": error[E0"), before.count(": error[E0"))
+
+    def test_each_declaration_reports_its_own_syntax_error(self):
+        records = [json.loads(line) for line in self.diagnostics("recovery").splitlines()]
+        self.assertEqual([(r["code"], r["span"]["line"]) for r in records], [("E0201", 3), ("E0201", 5), ("E0201", 10)])
+        self.assertEqual([r["notes"] for r in records], [[], [], []])
+        self.assertTrue(coax("check", "tests/diagnostics/recovery.coax").stderr.endswith("\n3 errors\n"))
+
+    def test_likely_cascades_name_the_error_they_may_follow(self):
+        # A lexer error in the declaration: the parser's error after it.
+        lexer = [json.loads(line) for line in self.diagnostics("lexer").splitlines()]
+        self.assertEqual([r["code"] for r in lexer], ["E0106", "E0201"])
+        [note] = lexer[1]["notes"]
+        self.assertEqual(note["message"], NOTE + "tests/diagnostics/lexer.coax:2:8; fix that one first")
+        self.assertEqual(note["span"], lexer[0]["span"])
+        # An unclosed '{': the restart was a guess, so the next declaration's
+        # error may follow it; the one after that stands on its own.
+        cascade = [json.loads(line) for line in self.diagnostics("cascade").splitlines()]
+        self.assertEqual([(r["code"], r["span"]["line"]) for r in cascade], [("E0206", 6), ("E0201", 6), ("E0201", 7)])
+        self.assertEqual([len(r["notes"]) for r in cascade], [0, 1, 0])
+        self.assertEqual(cascade[1]["notes"][0]["span"]["column"], 7)
+        self.assertIn("  note: " + NOTE + "tests/diagnostics/cascade.coax:6:7; fix that one first\n",
+                      coax("check", "tests/diagnostics/cascade.coax").stderr)
+
+    def test_reporting_stops_at_twenty_errors(self):
+        with tempfile.TemporaryDirectory(prefix="coax-diagnostics-") as d:
+            path = Path(d) / "many.coax"
+            path.write_text("".join(f"c{i} :: {i}\n" for i in range(25)))
+            text = coax("check", str(path))
+            self.assertEqual(text.returncode, 1)
+            self.assertEqual(text.stderr.count(": error[E0201]"), 20)
+            self.assertTrue(text.stderr.endswith("coax: stopped after 20 errors; fix these and check again\n20 errors\n"),
+                            text.stderr[-200:])
+            records = [json.loads(line) for line in coax("check", "--diagnostics", "json", str(path)).stderr.splitlines()]
+            self.assertEqual([r["severity"] for r in records], ["error"] * 20 + ["note"])
+            self.assertEqual(records[-1]["message"], "stopped after 20 errors; fix these and check again")
+            # The lexer stops at the same limit.
+            path.write_text("main :: () {\n" + "  $\n" * 25 + "}\n")
+            text = coax("check", str(path))
+            self.assertEqual((text.returncode, text.stderr.count(": error[E0108]")), (1, 20))
+            self.assertIn("coax: stopped after 20 errors", text.stderr)
+
+    def test_the_loader_tries_every_load(self):
+        with tempfile.TemporaryDirectory(prefix="coax-diagnostics-") as d:
+            root = Path(d)
+            (root / "main.coax").write_text('#load "missing-one.coax";\n#load "badlex.coax";\n#load "missing-two.coax";\nmain :: () { }\n')
+            (root / "badlex.coax").write_text("helper :: () -> int {\n  return 1 $ 2;\n}\nother :: 4\n")
+            result = coax("check", "--diagnostics", "json", str(root / "main.coax"))
+            self.assertEqual(result.returncode, 1)
+            records = [json.loads(line) for line in result.stderr.splitlines()]
+            self.assertEqual([(r["code"], Path(r["span"]["file"]).name, r["span"]["line"]) for r in records],
+                             [("E0601", "main.coax", 1), ("E0108", "badlex.coax", 2), ("E0201", "badlex.coax", 2),
+                              ("E0201", "badlex.coax", 4), ("E0601", "main.coax", 3)])
+            self.assertEqual([len(r["notes"]) for r in records], [0, 0, 1, 0, 0])
+            # A unit that failed is finished, not a cycle, when loaded again.
+            (root / "main.coax").write_text('#load "badlex.coax";\n#load "again.coax";\nmain :: () { }\n')
+            (root / "again.coax").write_text('#load "badlex.coax";\n')
+            result = coax("check", "--diagnostics", "json", str(root / "main.coax"))
+            self.assertEqual([json.loads(line)["code"] for line in result.stderr.splitlines()], ["E0108", "E0201", "E0201"])
 
     def test_an_unknown_format_is_refused(self):
         self.assertNotEqual(coax("check", "--diagnostics", "xml", "tests/diagnostics/checker.coax").returncode, 0)

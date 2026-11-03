@@ -1,0 +1,8 @@
+#import "Basic";
+open :: () {
+  if true {
+    print("x\n");
+}
+after :: () -> int { return 1 }
+later :: 2
+main :: () { }

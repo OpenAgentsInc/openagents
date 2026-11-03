@@ -1,0 +1,11 @@
+#import "Basic";
+half :: (n: int) -> int {
+  return n / 2
+}
+count :: 3
+main :: () {
+  print("%\n", half(count));
+}
+#test "half rounds down" {
+  #assert half(5) == 2
+}

@@ -1,0 +1,5 @@
+tests/diagnostics/recovery.coax:3:15: error[E0201]: expected ';' after the return, found '}'
+    return n / 2
+                ^
+  fix: add ';'
+1 error

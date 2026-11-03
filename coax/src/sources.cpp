@@ -49,12 +49,13 @@ std::string declaration_id(const Source *src, uint8_t kind, Str name, Loc loc) {
   return n < 0 ? "" : std::string((const char *)out, (size_t)n);
 }
 
-// Validate complete physical units with the existing Coax grammar kernel.
+// Validate complete physical units with the existing Coax grammar kernel, and
+// report the syntax errors of a unit the lexer refused (lexed: where).
 // Source/proto directives are already parsed by their checked Coax scanners;
 // this bridge removes only those token spans, never parses declarations itself.
 static bool source_unit_syntax(const Source *source,const std::vector<Token> &tokens,
                                const std::vector<coax_t_SU_Load> &loads,int64_t load_count,const coax_t_SU_Scan &unit,
-                               const std::vector<coax_t_SU_Export> &exports,int64_t export_count) {
+                               const std::vector<coax_t_SU_Export> &exports,int64_t export_count,const std::vector<Loc> &lexed) {
   auto input=parser_tokens(tokens);auto caps=PS_caps((int64_t)input.size(),(int64_t)source->text.size());
   std::vector<coax_t_PS_Import> imports((size_t)caps.imports);
   auto scan=PS_imports({input.data(),(int64_t)input.size()},{imports.data(),(int64_t)imports.size()},false);
@@ -75,10 +76,7 @@ static bool source_unit_syntax(const Source *source,const std::vector<Token> &to
   zvec<coax_t_PS_Node> nodes((size_t)caps.nodes);zvec<uint8_t> message((size_t)caps.message);coax_t_PS_State state{};
   auto parsed=PS_parse({source->text.data(),(int64_t)source->text.size()},{input.data(),(int64_t)input.size()},
                        {nodes.data(),(int64_t)nodes.size()},{&state,1},{message.data(),(int64_t)message.size()});
-  if(!parsed.ok) {
-    error_at(source,parser_loc(state.loc),std::string(state.code.data,(size_t)state.code.count).c_str(),
-             std::string((char*)message.data(),(size_t)state.length),std::string(state.fix.data?state.fix.data:"",(size_t)state.fix.count));
-  }
+  if(!parsed.ok) parse_report(source,input,state,std::string((char*)message.data(),(size_t)state.length),lexed,true);
   return parsed.ok;
 }
 
@@ -93,6 +91,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
   std::vector<std::shared_ptr<Unit>> units;
   int64_t total = 0;
   bool composition = false;
+  bool exhausted = false;  // E0603: no further load can fit, so loading stops
   std::vector<int64_t> finished; // units in the order their loads completed
   src->path = path;
   std::function<bool(const std::string &, int64_t, const Source *, Loc, int64_t)> visit;
@@ -119,7 +118,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     auto bytes = std::filesystem::file_size(canonical,ec);
     if (ec || bytes > INT64_MAX || !SU_admit((int64_t)units.size(),depth,total,(int64_t)bytes)) {
       error_at(parent,directive,"E0603","source graph exceeds its unit, depth or byte budget");
-      return false;
+      exhausted=true;return false;
     }
     auto u = std::make_shared<Unit>();u->source=std::make_shared<SourceUnit>();
     u->source->path=display;u->source->canonical=key;
@@ -128,7 +127,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     char buffer[65536];size_t n;
     while ((n=fread(buffer,1,sizeof buffer,f))>0) {
       if (!SU_admit((int64_t)units.size(),depth,total,(int64_t)u->source->text.size()+(int64_t)n)) {
-        fclose(f);error_at(parent,directive,"E0603","source bytes grew beyond the graph budget");return false;
+        fclose(f);error_at(parent,directive,"E0603","source bytes grew beyond the graph budget");exhausted=true;return false;
       }
       u->source->text.append(buffer,n);
     }
@@ -136,11 +135,13 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     if (!read_ok) {error_at(parent,directive,"E0601","failed reading source unit '"+display+"'");return false;}
     total+=(int64_t)u->source->text.size();units.push_back(u);
     const int64_t self=(int64_t)units.size()-1;
+    // A unit that fails is finished, not active: a later load of it is no cycle.
+    auto stop=[&]{u->state=2;return false;};
     if (from>=0) u->loaders.push_back({from,directive.offset});
     if (from>=0) units[(size_t)from]->source->loads.push_back((int32_t)self);
     Source local;local.path=display;local.text=u->source->text;
     std::vector<Token> tokens;
-    if (!lex(arena,&local,&tokens)) return false;
+    std::vector<Loc> lexed;const bool lexed_ok=lex(arena,&local,&tokens,&lexed);
     std::vector<coax_t_SU_Token> records;
     for (const auto &t : tokens) {
       const auto text=t.kind==Tok::string_lit?t.string_value:t.text;
@@ -156,7 +157,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
       else if (scan.error==6) error_at(&local,at,"E0609","an aliased #load names a .coax file path; package search is not supported","write the relative path: #load \"lib/hud.coax\" as hud;");
       else if (scan.error==3) error_at(&local,at,"E0605","#module requires one top-level lowercase dotted ID string followed by ';'","write #module \"engine.hud\"; once, at file scope");
       else error_at(&local,at,scan.error==2?"E0603":"E0600",scan.error==2?"too many source loads in one unit":"#load requires a top-level nonempty NUL-free string path followed by ';'");
-      return false;
+      return stop();
     }
     if (scan.claims) {
       std::vector<coax_string> claims;
@@ -167,7 +168,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
       if (prior>=0) {
         Loc at{1,1,(int32_t)scan.owner_begin};for(const auto &t:tokens)if(t.loc.offset==at.offset){at=t.loc;break;}
         error_at(&local,at,"E0606","logical module '"+id+"' is already claimed by '"+units[(size_t)prior]->source->path+"'");
-        return false;
+        return stop();
       }
       u->source->claims=true;u->source->module=id;
     }
@@ -180,14 +181,16 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
       for (const auto &t:tokens) if (t.loc.offset==at.offset) {at=t.loc;break;}
       if (list.error==3) error_at(&local,at,"E0614","an export list names this module's own declarations; reexports are not supported","export the declaration from the module that declares it");
       else error_at(&local,at,"E0613",list.error==2?"too many exported names in one unit":"#export requires file-scope identifiers separated by ',' and followed by ';'","#export hud_slot, HudRect;");
-      return false;
+      return stop();
     }
+    // After lexer errors the unit's syntax errors are still reported, then it stops.
+    if (!lexed_ok) {source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count,lexed);return stop();}
     u->source->authority=scan.authority;u->balanced=scan.balanced;u->masked=local.text;
     composition=composition || scan.count!=0;
     if (composition && !u->balanced) {
-      error_at(&local,{1,1,0},"E0604","source delimiters must balance within a unit and fit depth 128");return false;
+      error_at(&local,{1,1,0},"E0604","source delimiters must balance within a unit and fit depth 128");return stop();
     }
-    if (composition && !source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count)) return false;
+    if (composition && !source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count,lexed)) return stop();
     for (int64_t i=0;i<list.count;i++) {
       const auto &e=exported[(size_t)i];Loc at{1,1,(int32_t)e.at};
       for (const auto &t:tokens) if (t.loc.offset==at.offset) {at=t.loc;break;}
@@ -196,16 +199,18 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     }
     if (scan.claims) for (int64_t at=scan.owner_begin;at<scan.owner_end;at++) if (u->masked[(size_t)at]!='\n' && u->masked[(size_t)at]!='\r')u->masked[(size_t)at]=' ';
     // Keep the original bytes for diagnostics; only the compiler's flat input is blanked.
+    // A load that fails is reported and the next one is still tried.
+    bool loaded=true;
     for (int64_t i=0;i<scan.count;i++) {
       const auto &r=loads[(size_t)i];
       for (int64_t at=r.begin;at<r.end;at++) if (u->masked[(size_t)at]!='\n' && u->masked[(size_t)at]!='\r')u->masked[(size_t)at]=' ';
       std::filesystem::path next(std::string(r.path.data,(size_t)r.path.count));
       if (next.is_relative()) next=std::filesystem::path(display).parent_path()/next;
       Loc at{1,1,(int32_t)r.begin};for(const auto &t:tokens)if(t.loc.offset==at.offset){at=t.loc;break;}
-      if (!visit(next.lexically_normal().string(),depth+1,&local,at,self)) return false;
+      if (!visit(next.lexically_normal().string(),depth+1,&local,at,self)) {loaded=false;if (exhausted || error_limit()) break;continue;}
       if (r.alias.count) u->source->aliases.push_back({std::string(r.alias.data,(size_t)r.alias.count),u->source->loads.back(),(int32_t)r.alias_begin});
     }
-    u->state=2;finished.push_back(self);return true;
+    u->state=2;finished.push_back(self);return loaded;
   };
   if (!visit(path,0,src,{1,1,0},-1)) return false;
   int32_t line=1;
@@ -221,6 +226,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
   // claim owns itself; an unclaimed member joins its loaders' owners, which
   // SU_owner_join keeps independent of load and traversal order.
   std::vector<int64_t> owner(units.size(),-1);
+  bool owned=true;
   for (auto it=finished.rbegin();it!=finished.rend();++it) {
     const auto &u=units[(size_t)*it];
     if (u->source->claims) {owner[(size_t)*it]=*it;continue;}
@@ -235,11 +241,12 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
         error_at(src,at,"E0607","source unit '"+u->source->path+"' has no #module of its own and is loaded under two logical modules, '"+
                  units[(size_t)before]->source->module+"' and '"+units[(size_t)owner[(size_t)edge.first]]->source->module+"'",
                  "give the shared unit its own #module, or load it under one module only");
-        return false;
+        owned=false;joined=-1;break;
       }
     }
     owner[(size_t)*it]=joined;
   }
+  if (!owned) return false;
   for (size_t i=0;i<units.size();i++) if (owner[i]>=0) units[i]->source->module=units[(size_t)owner[i]]->source->module;
   // An alias names the loaded unit's own claim, so it binds to that logical
   // module's declaration IDs and never to a path. Within one module an alias
@@ -249,30 +256,34 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     for (int32_t i=0;i<at.offset;i++) if (src->text[(size_t)i]=='\n') {at.line++;at.col=1;} else at.col++;
     return at;
   };
+  bool homed=true;
   for (const auto &u:units) if (!u->source->exports.empty() && u->source->module.empty()) {
     const auto &e=u->source->exports.front();
     error_at(src,{u->source->first_line+e.loc.line-1,e.loc.col,u->source->begin+e.loc.offset},"E0615",
              "#export in '"+u->source->path+"', which belongs to no logical module",
              "claim one with #module \"some.id\"; or load this file from a unit that does");
-    return false;
+    homed=false;
   }
+  if (!homed) return false;
+  bool aliased=true;
   std::vector<std::pair<const SourceUnit*,const SourceUnit::Alias*>> seen;
   for (const auto &u:units) for (const auto &a:u->source->aliases) {
     const auto &target=units[(size_t)a.target]->source;
     if (!target->claims) {
       error_at(src,alias_loc(u->source.get(),a.offset),"E0610","alias '"+a.name+"' names '"+target->path+"', which has no #module of its own",
                "add #module \"some.id\"; to that file, or load it without an alias");
-      return false;
+      aliased=false;continue;
     }
+    bool clash=false;
     for (const auto &[from,b]:seen) {
       if (b->name==a.name && from->module==u->source->module && units[(size_t)b->target]->source->module!=target->module) {
         error_at(src,alias_loc(u->source.get(),a.offset),"E0611","alias '"+a.name+"' already names module '"+units[(size_t)b->target]->source->module+"' here",
                  "pick another alias");
-        return false;
+        aliased=false;clash=true;break;
       }
     }
-    seen.push_back({u->source.get(),&a});
+    if (!clash) seen.push_back({u->source.get(),&a});
   }
-  return true;
+  return aliased;
 }
 } // namespace coax

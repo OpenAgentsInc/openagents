@@ -65,7 +65,10 @@ All source-backed strings retain their source/compile-arena owner.
 
 `PS_parse` owns grammar, precedence, balanced procedure lookahead, check
 bindings, label trimming and diagnostics. Its first failure freezes cursor and
-diagnostic; partial storage is unspecified and must never be admitted. Active
+diagnostic; partial storage is unspecified and must never be admitted.
+`PS_recover` owns error recovery: where the driver parses again (the next
+column-1 top-level declaration), which later errors are likely cascades, and
+the report limit; the driver only loops and prints. Active
 recursive grammar entries are bounded at 128, with E0221 on exhaustion. Native
 tests exercise actual C output at storage limits and on deep syntax, independently
 of the evaluator's own recursion budget. `PS_imports` also owns source proto

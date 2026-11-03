@@ -366,8 +366,9 @@ A few decisions in the grammar are worth knowing about when you read
 - Recursion is bounded. At most 128 grammar rules can be active at once;
   deeper nesting reports E0221 instead of exhausting the host stack.
 
-The parser stops at the first error. Let's see that. If we delete the
-semicolon after `return x * x` in Listing 27-1 and check the file:
+The parser reports one error per top-level declaration. Let's see that.
+If we delete the semicolon after `return x * x` in Listing 27-1 and check
+the file:
 
 ```shell
 $ coax check tiny.coax
@@ -383,10 +384,25 @@ the `}` on the next line where the parser noticed. The parser keeps each
 token's raw spelling length, so it can place the caret right after the
 previous token even when that token was a string with escapes in it.
 
-Why stop at one? After a syntax error, the parser's idea of where it is in
-the program may be wrong, and errors reported from a wrong position are
-noise. The first error freezes the parser's cursor and message, and the
-partial tree is thrown away. The checker, as we'll see, takes the opposite
+Why only one per declaration? After a syntax error, the parser's idea of
+where it is in the program may be wrong, and errors reported from a wrong
+position are noise. The first error freezes the parser's cursor and
+message, and the partial tree is thrown away. Then `PS_recover` picks a
+place it can trust again: the next top-level declaration that starts a
+line, a name followed by `::` or one of `#import`, `#assert`, `#test`,
+`#forall`, `#run_steps` and `#authority` in column 1. The bridge parses
+again from that token, with a fresh tree, and reports that attempt's
+first error too, until the tokens run out or 20 errors have been
+reported (`PS_report_limit`). None of these trees is ever admitted: a
+file with a syntax error is not checked.
+
+`PS_recover` also decides which later errors are likely cascades. An
+error is labelled with a note naming an earlier one when a lexer error
+lies in its declaration (the lexer dropped or cut a token there), or
+when it is in the first declaration after a skipped region whose
+brackets don't balance, which means the restart point was a guess. The
+first error never gets a note, so it reads exactly as it did when the
+parser stopped there. The checker, as we'll see, takes the opposite
 approach.
 
 ## The bridge into C++
@@ -559,8 +575,10 @@ tiny.coax:10:5: error[E0404]: compile-time execution cannot perform output or ho
 1 error
 ```
 
-The evaluator stops at its first error, like the parser. Once evaluation
-has failed, the values it would compute next can't be trusted.
+The evaluator stops at its first error. Once evaluation has failed, the
+values it would compute next can't be trusted: a later constant or
+`#assert` may depend on the one that failed, so there is no safe place to
+resume the way the parser resumes at the next declaration.
 
 When a constant or a `#run` succeeds, the evaluator *freezes* the result:
 it replaces the expression in the tree with the value. From then on, the

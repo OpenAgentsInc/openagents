@@ -1,0 +1,5 @@
+tests/diagnostics/cascade.coax:6:7: error[E0206]: local constants, procedures and types are not supported by coax0 yet
+  after :: () -> int { return 1 }
+        ^
+  fix: move it to the top level
+1 error

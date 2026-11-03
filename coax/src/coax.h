@@ -153,6 +153,13 @@ extern bool g_json_errors;
 extern bool g_diagnostics_json;
 // A note for the next error_at's JSON diagnostic: where (when has_loc) and what.
 void diagnostic_note(const Source *src, Loc loc, bool has_loc, const std::string &message);
+// error_at for a later error that may come from an earlier one at cause: a
+// note names that error ("  note: ..." in text, a note in --diagnostics json).
+void error_after(const Source *src, Loc loc, const char *code, const std::string &message, const std::string &fix,
+                 const Source *cause_src, Loc cause);
+// True once the lexer and parser have reported PS_report_limit() errors; says
+// once that reporting stopped there.
+bool error_limit();
 
 // Explanations for every error code, shared by `coax explain` and the book.
 struct ErrorInfo {
@@ -185,7 +192,8 @@ struct Token {
   Str string_value;    // string literal after escapes
 };
 
-bool lex(Arena *arena, const Source *src, std::vector<Token> *out);
+// errors, when given, receives where each lexer error is.
+bool lex(Arena *arena, const Source *src, std::vector<Token> *out, std::vector<Loc> *errors = nullptr);
 const char *tok_name(Tok t);
 
 // ---- Types ----
