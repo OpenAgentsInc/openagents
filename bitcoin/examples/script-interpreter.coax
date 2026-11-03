@@ -19,19 +19,18 @@ spend_of :: (s: [] Spend, tx: string, spk: string, index: int, amount: int) -> S
 }
 // The name of a result.
 name :: (error: int) -> string {
-  if error == SCRIPT_TAPROOT_UNBUILT { return "TAPROOT_UNBUILT"; }
   if error == SCRIPT_BAD_FLAGS { return "BAD_FLAGS"; }
   return SCRIPT_ERR_NAMES[error];
 }
 // Runs one library case and prints its label and result.
 show_case :: (s: [] Spend, w: [] ScriptWork, label: string) {
-  for c: SI_CASES {
-    if c.label != label { continue; }
-    error := script_verify_vartime(spend_of(s, c.tx, c.spk, 0, c.amount), c.flags, w);
-    print("  %: %\n", label, name(error));
-    return;
-  }
+  for c: SI_CASES { if c.label == label { show(s, w, c); return; } }
+  for c: SI_TAPROOT { if c.label == label { show(s, w, c); return; } }
   #assert false;
+}
+show :: (s: [] Spend, w: [] ScriptWork, c: SiCase) {
+  error := script_verify_vartime(spend_of(s, c.tx, c.spk, 0, c.amount), c.flags, w);
+  print("  %: %\n", c.label, name(error));
 }
 
 main :: () {
@@ -83,8 +82,8 @@ main :: () {
     total += rows[e]; good += passed[e];
   }
   print("  all: % of % rows give the expected result\n", good, total);
-  print("  not run: % rows that need Taproot (chapter 44):", SCRIPT_SKIPPED.count);
-  for r: SCRIPT_SKIPPED { print(" %", r.line); }
+  print("  of them Taproot (chapter 44):");
+  for l: SCRIPT_TAPROOT_LINES { print(" %", l); }
   print("\n");
 
   // tx_valid.json and tx_invalid.json: every input of every transaction,

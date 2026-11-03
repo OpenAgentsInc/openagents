@@ -12,7 +12,7 @@
 // expected error, Core's number.
 // curve: how many signatures reached the curve arithmetic (Python decides).
 ScriptRow :: struct { line: int; tx: string; spk: string; amount: int; flags: int; error: int; curve: int; }
-SCRIPT_ROWS :: [1256] ScriptRow.[
+SCRIPT_ROWS :: [1263] ScriptRow.[
   ScriptRow.{line=6, tx="0100000001dc3e1270bc983b5fc117d86201475c85dbac7647c663e275f730cc87200f7a920000000000ffffffff0100000000000000000000000000", spk="740087", amount=0, flags=3, error=0, curve=0},
   ScriptRow.{line=7, tx="0100000001dc3e1270bc983b5fc117d86201475c85dbac7647c663e275f730cc87200f7a920000000000ffffffff0100000000000000000000000000", spk="740087", amount=0, flags=3, error=0, curve=0},
   ScriptRow.{line=8, tx="0100000001dc3e1270bc983b5fc117d86201475c85dbac7647c663e275f730cc87200f7a920000000000ffffffff0100000000000000000000000000", spk="740087", amount=0, flags=3, error=0, curve=0},
@@ -1255,6 +1255,13 @@ SCRIPT_ROWS :: [1256] ScriptRow.[
   ScriptRow.{line=1292, tx="010000000001014f607e4b730e2d56d1abebd5f7243d2d5df5681f7a0e6fbfe55619c233146d620000000023220020f913eacf2e38a5d6fc3a8311d72ae704cb83866350a984dd3e5eb76d2a8c28e8ffffffff010100000000000000000201000364516800000000", spk="a914dbb7d1c0a56b7a9c423300c8cca6e6e065baf1dc87", amount=1, flags=10241, error=31, curve=0},
   ScriptRow.{line=1293, tx="010000000001014f607e4b730e2d56d1abebd5f7243d2d5df5681f7a0e6fbfe55619c233146d620000000023220020f913eacf2e38a5d6fc3a8311d72ae704cb83866350a984dd3e5eb76d2a8c28e8ffffffff01010000000000000000010364516800000000", spk="a914dbb7d1c0a56b7a9c423300c8cca6e6e065baf1dc87", amount=1, flags=2049, error=18, curve=0},
   ScriptRow.{line=1294, tx="010000000001014f607e4b730e2d56d1abebd5f7243d2d5df5681f7a0e6fbfe55619c233146d620000000023220020f913eacf2e38a5d6fc3a8311d72ae704cb83866350a984dd3e5eb76d2a8c28e8ffffffff01010000000000000000010364516800000000", spk="a914dbb7d1c0a56b7a9c423300c8cca6e6e065baf1dc87", amount=1, flags=10241, error=18, curve=0},
+  ScriptRow.{line=1296, tx="0100000000010190341053fae748397e554efe4d9fbadd876f028b62333a3fd81549a8f7a6444d0000000000ffffffff0101000000000000000004071ffe123456789001000caa76a77576756baa76756b6c21c179be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000", spk="51207af8597d10f0ca32faef355ccd08485054adb8825055199e808d3d9b0526a5c4", amount=1, flags=133121, error=0, curve=0},
+  ScriptRow.{line=1297, tx="010000000001012744ae4d3ee71322377f0b62d9afd6985192e5bc82b8d62458f5db4b877c48950000000000ffffffff010100000000000000000303abcdef0a5163a868827c7501208721c079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000", spk="512033e83c7ab9e7f0cfce53ea65031caca12ea29b5d112e00ab4ff95ac8cc6daa04", amount=1, flags=133121, error=0, curve=0},
+  ScriptRow.{line=1298, tx="01000000000101f05317469c6a6ce3c4dd73f2b7f9b80152f86c36e291f00ad36c4065f80b6c230000000000ffffffff010100000000000000000303abcdef0a0063a868827c7501208721c079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000", spk="512040614251f29c7fc6ec4a3c82076ffc824907c63d40e947ea54d5b35b2be0aa97", amount=1, flags=133121, error=2, curve=0},
+  ScriptRow.{line=1299, tx="0100000000010143b94f25b4ab4a3fd0ccac69db9e269f5946da7c37105bc41ef92ff900b867e60000000000ffffffff010100000000000000000501aa01bb01cc05876375756821c079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000", spk="5120e6051eaa084349a0ada21a34d01831b21892b59e130bdfafee533d9463d10ef4", amount=1, flags=133121, error=0, curve=0},
+  ScriptRow.{line=1300, tx="01000000000101d67884a221869696457d01e4b0859014299b8f4db3fc6962ab525dac0b2f24e60000000000ffffffff010100000000000000000301000363516821c179be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000", spk="512099d279444666e0e37d590c645c0264c4dedd3b56fa73e0c4c811b035c71b8a99", amount=1, flags=133121, error=51, curve=0},
+  ScriptRow.{line=1301, tx="010000000001016b46508be08ba56fa2766afc4df61b7d1bf19592ec84f25dea5d95acd6bf95160000000000ffffffff010100000000000000000301000364516821c079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000", spk="5120581b1824f6ee1cf51bf9734ea48987f000fdf8e36b494f517a02195bc54d353d", amount=1, flags=133121, error=51, curve=0},
+  ScriptRow.{line=1302, tx="01000000000101131b7f0927b1e6a2d6c753c70ed4d245f54a78c70b00a720cd990398b84518c10000000000ffffffff010100000000000000000301aa0200ac21c079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800000000", spk="5120af8791aa8578c9060e92962b7e87b553589548e13d4bb389ddbede42b75f5ab4", amount=1, flags=133121, error=52, curve=0},
   ScriptRow.{line=1304, tx="01000000014301d98e7c1dbff0a188cbf868d45e86b5a8bd2478746d9feb90aa3c1176eb2f0000000015000000000000000000000000000000000000000000ffffffff0100000000000000000000000000", spk="011451515151515151515151515151515151515151510114ae91", amount=0, flags=4, error=0, curve=0},
   ScriptRow.{line=1305, tx="01000000014301d98e7c1dbff0a188cbf868d45e86b5a8bd2478746d9feb90aa3c1176eb2f0000000015000000000000000000000000000000000000000000ffffffff0100000000000000000000000000", spk="011451515151515151515151515151515151515151510114ae91", amount=0, flags=16388, error=0, curve=0},
   ScriptRow.{line=1306, tx="01000000014301d98e7c1dbff0a188cbf868d45e86b5a8bd2478746d9feb90aa3c1176eb2f0000000015510000000000000000000000000000000000000000ffffffff0100000000000000000000000000", spk="011451515151515151515151515151515151515151510114ae91", amount=0, flags=16388, error=0, curve=0},
@@ -1270,18 +1277,9 @@ SCRIPT_ROWS :: [1256] ScriptRow.[
   ScriptRow.{line=1320, tx="01000000014a372ae77b7197ae33cbce40c15b92ce93d724b78b824137ea1e9bba3db8ff92000000000400020001ffffffff0100000000000000000000000000", spk="020001755121038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f5150851ae", amount=0, flags=65536, error=54, curve=0},
   ScriptRow.{line=1321, tx="0100000001dbcc22efcb49b63b35085bbfc1b6c65a2a6b0ada581ec38f55a0fdc193ce43480000000003020001ffffffff0100000000000000000000000000", spk="0200017521038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508ac91", amount=0, flags=0, error=0, curve=1},
 ];
-// The rows not run: each needs a Taproot output key or control block that
-// script_tests.cpp builds from its own keys (chapter 44).
-ScriptSkipped :: struct { line: int; expected: string; comment: string; }
-SCRIPT_SKIPPED :: [7] ScriptSkipped.[
-  ScriptSkipped.{line=1296, expected="OK", comment="TAPSCRIPT Tests testing tapscript with many different op codes including ALTSTACK interactions"},
-  ScriptSkipped.{line=1297, expected="OK", comment="TAPSCRIPT Test IF conditional when true"},
-  ScriptSkipped.{line=1298, expected="EVAL_FALSE", comment="TAPSCRIPT Test IF conditional when false"},
-  ScriptSkipped.{line=1299, expected="OK", comment="TAPSCRIPT Test that DROP operations do not execute inside of a false IF conditional"},
-  ScriptSkipped.{line=1300, expected="TAPSCRIPT_MINIMALIF", comment="TAPSCRIPT Test that OP_IF with 1-byte vector 0x00 must fail with TAPSCRIPT_MINIMALIF"},
-  ScriptSkipped.{line=1301, expected="TAPSCRIPT_MINIMALIF", comment="TAPSCRIPT Test that OP_NOTIF with 1-byte vector 0x00 must fail with TAPSCRIPT_MINIMALIF"},
-  ScriptSkipped.{line=1302, expected="TAPSCRIPT_EMPTY_PUBKEY", comment="TAPSCRIPT: OP_CHECKSIG with empty pubkey must fail"},
-];
+// The Taproot rows: their leaf script, control block and output key are
+// built as script_tests.cpp builds them (chapter 44).
+SCRIPT_TAPROOT_LINES :: [7] int.[1296, 1297, 1298, 1299, 1300, 1301, 1302];
 // tx_valid.json (valid) and tx_invalid.json rows other than BADTX: the
 // transaction and, for input k, SCRIPT_PREVS[first + k], the scriptPubKey
 // and amount it spends (0 when the row gives none).

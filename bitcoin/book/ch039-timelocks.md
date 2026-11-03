@@ -88,6 +88,10 @@ SCRIPT_SEQUENCE_FINAL :: 0xffffffff;
 SCRIPT_SEQUENCE_DISABLE :: 1 << 31;
 SCRIPT_SEQUENCE_TYPE :: 1 << 22;
 SCRIPT_SEQUENCE_MASK :: 0xffff;
+// Tapscript's budget (script/script.h): each signature checked costs 50,
+// from 50 plus the witness's serialized size.
+SCRIPT_WEIGHT_PER_SIGOP :: 50;   // VALIDATION_WEIGHT_PER_SIGOP_PASSED
+SCRIPT_WEIGHT_OFFSET :: 50;      // VALIDATION_WEIGHT_OFFSET
 ```
 
 The lock time is the last height, or the last time, at which the

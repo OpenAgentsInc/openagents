@@ -979,15 +979,22 @@
   {
    "number": 44,
    "title": "Tapscript",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch044-tapscript.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     36,
     43
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "bitcoin/examples/tapscript.coax",
+    "bitcoin/examples/checks/tapscript.coax",
+    "coax/lib/bitcoin/script.coax",
+    "coax/lib/bitcoin/sighash.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

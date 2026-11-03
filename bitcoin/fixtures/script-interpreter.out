@@ -22,7 +22,7 @@ scripts
   P2SH: OK
   P2WSH, MINIMALIF: MINIMALIF
   CSV, more: UNSATISFIED_LOCKTIME
-  v1 of 32 bytes, Taproot on: TAPROOT_UNBUILT
+  v1 of 32 bytes, Taproot on: SCHNORR_SIG_SIZE
 signed spends
   legacy 1 of 2, a hybrid key, CODESEPARATOR, FindAndDelete: OK
     with the locktime changed: EVAL_FALSE
@@ -31,8 +31,8 @@ signed spends
   legacy CHECKSIGVERIFY and 4 of 4, keys 02 to 07, a high s: OK
     with the locktime changed: NULLFAIL
 Bitcoin Core script_tests.json
-  OK: 685 of 685
-  EVAL_FALSE: 81 of 81
+  OK: 688 of 688
+  EVAL_FALSE: 82 of 82
   OP_RETURN: 5 of 5
   SCRIPTNUM: 67 of 67
   SCRIPT_SIZE: 1 of 1
@@ -72,10 +72,12 @@ Bitcoin Core script_tests.json
   WITNESS_MALLEATED_P2SH: 1 of 1
   WITNESS_UNEXPECTED: 3 of 3
   WITNESS_PUBKEYTYPE: 11 of 11
+  TAPSCRIPT_MINIMALIF: 2 of 2
+  TAPSCRIPT_EMPTY_PUBKEY: 1 of 1
   OP_CODESEPARATOR: 2 of 2
   SIG_FINDANDDELETE: 2 of 2
-  all: 1256 of 1256 rows give the expected result
-  not run: 7 rows that need Taproot (chapter 44): 1296 1297 1298 1299 1300 1301 1302
+  all: 1263 of 1263 rows give the expected result
+  of them Taproot (chapter 44): 1296 1297 1298 1299 1300 1301 1302
 Bitcoin Core tx_valid.json and tx_invalid.json
   206 transactions, 268 inputs run, 206 verdicts as Core's
 Bitcoin Core sighash.json

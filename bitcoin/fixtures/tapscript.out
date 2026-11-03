@@ -1,0 +1,55 @@
+Bitcoin Core script_tests.json, the Taproot rows
+  line 1296: OK, Core expects OK
+  line 1297: OK, Core expects OK
+  line 1298: EVAL_FALSE, Core expects EVAL_FALSE
+  line 1299: OK, Core expects OK
+  line 1300: TAPSCRIPT_MINIMALIF, Core expects TAPSCRIPT_MINIMALIF
+  line 1301: TAPSCRIPT_MINIMALIF, Core expects TAPSCRIPT_MINIMALIF
+  line 1302: TAPSCRIPT_EMPTY_PUBKEY, Core expects TAPSCRIPT_EMPTY_PUBKEY
+the key path
+  key path, SIGHASH_DEFAULT: OK
+  key path, SINGLE|ANYONECANPAY: OK
+  key path, a spoiled signature: SCHNORR_SIG
+  key path, hash type 0 written out: SCHNORR_SIG_HASHTYPE
+  key path, 63 bytes: SCHNORR_SIG_SIZE
+  key path, signed without the annex it carries: SCHNORR_SIG
+the script path
+  script path, a leaf that leaves 1: OK
+  script path, the parity bit flipped: WITNESS_PROGRAM_MISMATCH
+  script path, the path hash changed: WITNESS_PROGRAM_MISMATCH
+  script path, a control block of 34 bytes: TAPROOT_WRONG_CONTROL_SIZE
+  script path, leaf version 0xc2: OK
+  script path, leaf version 0xc2, discouraged: DISCOURAGE_UPGRADABLE_TAPROOT_VERSION
+  script path, with an annex: OK
+signatures in tapscript
+  CHECKSIG, a valid signature: OK
+  CHECKSIG, the wrong key signed: SCHNORR_SIG
+  CHECKSIG, an empty signature: EVAL_FALSE
+  CHECKSIG NOT, an empty signature: OK
+  CHECKSIG, an empty key: TAPSCRIPT_EMPTY_PUBKEY
+  CHECKSIG, a 33-byte key, any signature: OK
+  CODESEPARATOR, signed at its position: OK
+  CODESEPARATOR, signed with none: SCHNORR_SIG
+  CHECKSIGADD, 2 of 3, keys 1 and 3: OK
+  CHECKSIGADD, 2 of 3, one signature: EVAL_FALSE
+  CHECKSIGADD, 2 of 3, a spoiled one: SCHNORR_SIG
+  CHECKMULTISIG: TAPSCRIPT_CHECKMULTISIG
+the validation-weight budget
+  the budget: 6 checks, a 1-byte signature: OK
+  the budget: 7 checks, a 1-byte signature: TAPSCRIPT_VALIDATION_WEIGHT
+  the budget: 7 checks, a 14-byte signature: OK
+  the budget: 8 checks, a 1-byte signature: TAPSCRIPT_VALIDATION_WEIGHT
+the rest of tapscript
+  tapscript, MINIMALIF, 0x02: TAPSCRIPT_MINIMALIF
+  tapscript, OP_SUCCESS 0x50 after RETURN: OK
+  tapscript, OP_SUCCESS 0x50, discouraged: DISCOURAGE_OP_SUCCESS
+  tapscript, OP_SUCCESS then a bad push: OK
+  tapscript, a bad push, no OP_SUCCESS: BAD_OPCODE
+  tapscript, 300 NOPs: OK
+  tapscript, a script of 10,001 bytes: OK
+  tapscript, 1,001 stack elements: STACK_SIZE
+  tapscript, an element of 521 bytes: PUSH_SIZE
+  tapscript, 2,000 SHA256s: OK
+  tapscript, 900 SHA256s kept, then 200 more: OK
+all 83 of 83 Taproot cases give the expected result
+OP_SUCCESSx opcodes: 87

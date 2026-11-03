@@ -185,26 +185,40 @@ bt_annex_hash :: (annex:[]u8,out:[]u8) {
 // types 0 (SIGHASH_DEFAULT), 1, 2, 3 and 0x81 to 0x83; SIGHASH_SINGLE
 // needs an output at index.
 bt_sigmsg_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int {t:=tp;
+  if !t.ok || index<0 || index>=t.nin || amounts.count!=t.nin || spk.count!=t.nin || m.count<BT_SIGMSG {return -1;}
+  // A hash type that doesn't exist refuses before any hashing.
+  if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) || ((hashtype&3)==BT_SINGLE && index>=t.nout) {return -1;}
+  h:[5][32]u8;if !bt_tap_hashes(b,t,amounts,spk,h[..]) {return -1;}
+  single:=b[0..<0];if index<t.nout {single=b[t.out_at[index]..<t.out_at[index]+t.out_n[index]];}
+  return bt_sigmsg_taproot_parts(h[..],t.version[..],t.locktime[..],index,t.inputs[index].prev[..],amounts[index],
+    spk[index].b[0..<spk[index].n],t.inputs[index].seq[..],single,hashtype,annex,leaf,codesep,m);
+}
+// The same message from its parts, for a verifier that reads the
+// transaction where it lies and has the five hashes already (Bitcoin
+// Core's PrecomputedTransactionData; chapter 44's interpreter): h holds
+// sha_prevouts, sha_amounts, sha_scriptpubkeys, sha_sequences and
+// sha_outputs; version, locktime, prev (the outpoint) and seq are the
+// transaction's bytes; amount and spk are the spent output's; single is the
+// output at index, serialized, or empty when there is none.
+bt_sigmsg_taproot_parts :: (h:[][32]u8,version:[]u8,locktime:[]u8,index:int,prev:[]u8,amount:int,spk:[]u8,seq:[]u8,single:[]u8,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int {
   base:=hashtype&3;anyone:=(hashtype&BT_ANYONE)!=0;
   if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) {return -1;}
-  if !t.ok || index<0 || index>=t.nin || amounts.count!=t.nin || spk.count!=t.nin || m.count<BT_SIGMSG {return -1;}
-  if base==BT_SINGLE && index>=t.nout {return -1;}
+  if m.count<BT_SIGMSG || amount<0 || (base==BT_SINGLE && single.count==0) {return -1;}
   if (annex.count>0 && annex[0]!=BT_ANNEX_TAG) || (leaf.count!=0 && leaf.count!=32) || codesep<0 || codesep>BT_NO_CODESEP {return -1;}
-  h:[5][32]u8;if !bt_tap_hashes(b,t,amounts,spk,h[..]) {return -1;}
   m[0]=0;m[1]=cast(u8)hashtype;                               // epoch 0, then hash_type
-  n:=bt_put(m,2,t.version[..]);n=bt_put(m,n,t.locktime[..]);
+  n:=bt_put(m,2,version);n=bt_put(m,n,locktime);
   if !anyone {for k:0..<4 {n=bt_put(m,n,h[k][..]);}}          // sha_prevouts to sha_sequences
   if base!=BT_SINGLE && base!=BT_NONE {n=bt_put(m,n,h[4][..]);} // sha_outputs: ALL and DEFAULT
   ext:=0;if leaf.count==32 {ext=1;}
   present:=0;if annex.count>0 {present=1;}
   m[n]=cast(u8)(ext*2+present);n+=1;                          // spend_type
   if anyone {
-    n=bt_put(m,n,t.inputs[index].prev[..]);n=bt_le(m,n,amounts[index],8);
-    n=bt_var_put(m,n,spk[index].n);n=bt_put(m,n,spk[index].b[0..<spk[index].n]);
-    n=bt_put(m,n,t.inputs[index].seq[..]);
+    n=bt_put(m,n,prev);n=bt_le(m,n,amount,8);
+    n=bt_var_put(m,n,spk.count);n=bt_put(m,n,spk);
+    n=bt_put(m,n,seq);
   } else {n=bt_le(m,n,index,4);}
   if present==1 {bt_annex_hash(annex,m[n..<n+32]);n+=32;}      // sha_annex
-  if base==BT_SINGLE {bt_sha(b[t.out_at[index]..<t.out_at[index]+t.out_n[index]],m[n..<n+32]);n+=32;}
+  if base==BT_SINGLE {bt_sha(single,m[n..<n+32]);n+=32;}
   if ext==1 {n=bt_put(m,n,leaf);m[n]=0;n+=1;n=bt_le(m,n,codesep,4);}
   return n;
 }

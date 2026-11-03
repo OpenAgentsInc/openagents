@@ -251,7 +251,7 @@ class Script(unittest.TestCase):
             for c in self.cases:
                 self.assertEqual(self.native(lib, c), c["want"], f"{label}: {json.dumps(c)[:300]}")
         verify = sum(1 for c in self.cases if "spk" in c)
-        named = {(R.ERRORS[k] if k < len(R.ERRORS) else {100: "TAPROOT_UNBUILT", 101: "BAD_FLAGS"}[k]): v
+        named = {(R.ERRORS[k] if k < len(R.ERRORS) else {101: "BAD_FLAGS"}[k]): v
                  for k, v in sorted(results.items())}
         print(f"\n{verify} VerifyScript cases, {len(self.cases) - verify} signature hashes, "
               f"{sum(1 for c in self.cases if c.get('monotone'))} with flags removed; results {named}", file=sys.stderr)

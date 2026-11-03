@@ -7,13 +7,12 @@ P2SH and segwit version 0, with every opcode, every limit and every
 verification flag Core has for them. Each failure is one of Core's
 `ScriptError` codes, with Core's number.
 
-It runs all 1,256 runnable rows of Bitcoin Core's `script_tests.json`
+It runs all 1,263 rows of Bitcoin Core's `script_tests.json`
 under their flags, every input of the 206 script transactions in
 `tx_valid.json` and `tx_invalid.json` under 4,532 flag sets, and checks
 the interpreter against a Python transliteration of Core, natively and in
-Wasm. Tapscript, the script of Taproot's script path, is chapter 44; here
-a version 1 witness program under the `TAPROOT` flag refuses rather than
-runs.
+Wasm. Taproot spends and tapscript, the script of Taproot's script path,
+are [chapter 44](ch044-tapscript.md), which extends this interpreter.
 
 ## What this chapter teaches
 
@@ -71,7 +70,7 @@ variable time and every procedure that decides ends in `_vartime`
 
 A result is `SCRIPT_ERR_OK` or a failure, numbered as in Core's
 `script_error.h`. Codes 35 to 37 and 45 to 52 are Taproot's and
-tapscript's; this chapter never returns them. Two results are not Core's:
+tapscript's, which chapter 44 returns. One result is not Core's:
 
 <!-- source: coax/lib/bitcoin/script.coax errors -->
 ```jai
@@ -112,20 +111,29 @@ SCRIPT_ERR_MINIMALIF :: 31;
 SCRIPT_ERR_SIG_NULLFAIL :: 32;
 SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS :: 33;
 SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM :: 34;
-SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH :: 38;     // 35 to 37: Taproot's DISCOURAGE codes
+SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION :: 35;
+SCRIPT_ERR_DISCOURAGE_OP_SUCCESS :: 36;
+SCRIPT_ERR_DISCOURAGE_UPGRADABLE_PUBKEYTYPE :: 37;
+SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH :: 38;
 SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY :: 39;
 SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH :: 40;
 SCRIPT_ERR_WITNESS_MALLEATED :: 41;
 SCRIPT_ERR_WITNESS_MALLEATED_P2SH :: 42;
 SCRIPT_ERR_WITNESS_UNEXPECTED :: 43;
 SCRIPT_ERR_WITNESS_PUBKEYTYPE :: 44;
-SCRIPT_ERR_OP_CODESEPARATOR :: 53;                 // 45 to 52: Taproot and tapscript
+SCRIPT_ERR_SCHNORR_SIG_SIZE :: 45;
+SCRIPT_ERR_SCHNORR_SIG_HASHTYPE :: 46;
+SCRIPT_ERR_SCHNORR_SIG :: 47;
+SCRIPT_ERR_TAPROOT_WRONG_CONTROL_SIZE :: 48;
+SCRIPT_ERR_TAPSCRIPT_VALIDATION_WEIGHT :: 49;
+SCRIPT_ERR_TAPSCRIPT_CHECKMULTISIG :: 50;
+SCRIPT_ERR_TAPSCRIPT_MINIMALIF :: 51;
+SCRIPT_ERR_TAPSCRIPT_EMPTY_PUBKEY :: 52;
+SCRIPT_ERR_OP_CODESEPARATOR :: 53;
 SCRIPT_ERR_SIG_FINDANDDELETE :: 54;
 SCRIPT_ERR_COUNT :: 55;                            // SCRIPT_ERR_ERROR_COUNT
-// Not Core's: a v1 witness program under TAPROOT (chapters 43 and 44), and
-// a flag set Core's VerifyScript asserts against (CLEANSTACK without
-// WITNESS and P2SH, or WITNESS without P2SH).
-SCRIPT_TAPROOT_UNBUILT :: 100;
+// Not Core's: a flag set Core's VerifyScript asserts against (CLEANSTACK
+// without WITNESS and P2SH, or WITNESS without P2SH).
 SCRIPT_BAD_FLAGS :: 101;
 ```
 
@@ -164,7 +172,10 @@ SCRIPT_VERIFY_NULLFAIL :: 1 << 14;            // policy
 SCRIPT_VERIFY_WITNESS_PUBKEYTYPE :: 1 << 15;  // policy
 SCRIPT_VERIFY_CONST_SCRIPTCODE :: 1 << 16;    // policy
 SCRIPT_VERIFY_TAPROOT :: 1 << 17;             // BIP-341 and BIP-342
-SCRIPT_VERIFY_FLAG_BITS :: 21;                // three more: Taproot's DISCOURAGE flags
+SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION :: 1 << 18;  // policy: unknown leaf versions
+SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS :: 1 << 19;                  // policy: OP_SUCCESSx
+SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE :: 1 << 20;       // policy: keys not of 0 or 32 bytes
+SCRIPT_VERIFY_FLAG_BITS :: 21;
 ```
 
 A flag only adds refusals. A script that passes under a set of flags
@@ -360,25 +371,36 @@ SRC_TX :: 0; SRC_SPK :: 1; SRC_ARENA :: 2;
 ScriptItem :: struct { src: int; at: int; n: int; }
 // The input being checked (Core's checker): the spending transaction as
 // chapter 34's tx_read_vartime read it, which input, the value and the
-// scriptPubKey of the output it spends.
+// scriptPubKey of the output it spends. A Taproot signature signs every
+// input's spent output, so spent lists them all, in input order; it may
+// be empty when the transaction has one input, whose output is amount and
+// spk.
+ScriptSpent :: struct { amount: int; spk: [] u8; }
 ScriptSpend :: struct {
   b: [] u8; t: Tx; ins: [] TxIn; outs: [] TxOut; items: [] TxItem;
-  index: int; amount: int; spk: [] u8;
+  index: int; amount: int; spk: [] u8; spent: [] ScriptSpent;
 }
 // Room for the stack: 1,000 elements and the three an opcode may add
 // before the size check, or the top SCRIPT_ROOM of a larger witness stack
 // with the rest counted in hidden.
 SCRIPT_ROOM :: 1100;
 SCRIPT_CAP :: 1104;
-// Each run of EvalScript computes at most 201 values of at most 32 bytes,
-// and VerifyScript runs it at most four times.
+// Each run of EvalScript before tapscript computes at most 201 values of
+// at most 32 bytes, and VerifyScript runs it at most four times. Tapscript
+// has no opcode limit, so when the arena fills, the values still on the
+// stacks, at most 1,003 of at most 32 bytes, move down (si_compact).
 SCRIPT_ARENA :: 32768;
 ScriptWork :: struct {
   stack: [SCRIPT_CAP] ScriptItem; depth: int; hidden: int;
   alt: [SCRIPT_CAP] ScriptItem; alt_depth: int;
   saved: [SCRIPT_CAP] ScriptItem; saved_depth: int;
-  arena: [SCRIPT_ARENA] u8; used: int;
+  arena: [SCRIPT_ARENA] u8; used: int; spare: [SCRIPT_ARENA] u8;
   code: [SCRIPT_MAX_SIZE] u8; code_n: int;   // the scriptCode a signature hash signs
+  // Core's ScriptExecutionData for a Taproot spend: the annex (n = 0 for
+  // none), the leaf hash, the last OP_CODESEPARATOR's opcode position,
+  // the validation weight left, and the five sha_ hashes once computed.
+  annex: ScriptItem; leaf: [32] u8; codesep: int; weight: int;
+  tap: [5][32] u8; tap_ready: bool;
 }
 ```
 
@@ -406,18 +428,21 @@ runs the opcode if its branch is running:
 // together may hold 1,000 elements.
 si_eval :: (sp: ScriptSpend, w: [] ScriptWork, script: ScriptItem, flags: int, version: int) -> int {
   s := si_bytes(sp, w, script);
-  if s.count > SCRIPT_MAX_SIZE { return SCRIPT_ERR_SCRIPT_SIZE; }
+  tapscript := version == SCRIPT_TAPSCRIPT;
+  if !tapscript && s.count > SCRIPT_MAX_SIZE { return SCRIPT_ERR_SCRIPT_SIZE; }
   w[0].alt_depth = 0;
+  w[0].codesep = BT_NO_CODESEP;
   minimal := (flags & SCRIPT_VERIFY_MINIMALDATA) != 0;
   cond := ScriptCond.{first_false=-1};
-  ops := 0; pc := 0; begin := 0;
+  ops := 0; pc := 0; begin := 0; position := -1;
   while pc < s.count {
     running := cond.first_false < 0;
+    position += 1;                     // opcodes read so far, for codesep_pos
     o := script_op_vartime(s, pc);
     if !o.ok { return SCRIPT_ERR_BAD_OPCODE; }
     pc = o.next; op := o.op;
     if o.n > SCRIPT_MAX_ELEMENT { return SCRIPT_ERR_PUSH_SIZE; }
-    if op > OP_16 { ops += 1; if ops > SCRIPT_MAX_OPS { return SCRIPT_ERR_OP_COUNT; } }
+    if op > OP_16 && !tapscript { ops += 1; if ops > SCRIPT_MAX_OPS { return SCRIPT_ERR_OP_COUNT; } }
     if si_disabled(op) { return SCRIPT_ERR_DISABLED_OPCODE; }
     if op == OP_CODESEPARATOR && version == SCRIPT_BASE && (flags & SCRIPT_VERIFY_CONST_SCRIPTCODE) != 0 { return SCRIPT_ERR_OP_CODESEPARATOR; }
     error := SCRIPT_ERR_OK;
@@ -430,6 +455,8 @@ si_eval :: (sp: ScriptSpend, w: [] ScriptWork, script: ScriptItem, flags: int, v
         if running {
           if si_size(w) < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
           top := si_bytes(sp, w, si_top(w, 1));
+          // Tapscript: 0 or 1 exactly, as consensus.
+          if tapscript && (top.count > 1 || (top.count == 1 && top[0] != 1)) { return SCRIPT_ERR_TAPSCRIPT_MINIMALIF; }
           if version == SCRIPT_V0 && (flags & SCRIPT_VERIFY_MINIMALIF) != 0 && (top.count > 1 || (top.count == 1 && top[0] != 1)) { return SCRIPT_ERR_MINIMALIF; }
           value = script_bool_vartime(top) != (op == OP_NOTIF);
           si_pop(w, 1);
@@ -440,11 +467,12 @@ si_eval :: (sp: ScriptSpend, w: [] ScriptWork, script: ScriptItem, flags: int, v
         cond = ifx op == OP_ELSE then si_cond_toggle(cond) else si_cond_pop(cond);
       } else { return SCRIPT_ERR_BAD_OPCODE; }               // OP_VERIF, OP_VERNOTIF
     } else if running && (op == OP_CHECKMULTISIG || op == OP_CHECKMULTISIGVERIFY) {
+      if tapscript { return SCRIPT_ERR_TAPSCRIPT_CHECKMULTISIG; }
       step := si_checkmultisig(sp, w, s, begin, op, flags, version, ops);
       error = step.error; ops += step.keys;
     } else if running {
       error = si_run(sp, w, s, begin, op, flags, version);
-      if op == OP_CODESEPARATOR { begin = pc; }
+      if op == OP_CODESEPARATOR { begin = pc; w[0].codesep = position; }
     }
     if error != SCRIPT_ERR_OK { return error; }
     if si_size(w) + w[0].alt_depth > SCRIPT_MAX_STACK { return SCRIPT_ERR_STACK_SIZE; }
@@ -503,8 +531,9 @@ si_run :: (sp: ScriptSpend, w: [] ScriptWork, s: [] u8, begin: int, op: int, fla
   }
   if (op >= OP_1ADD && op <= OP_0NOTEQUAL && op != 0x8d && op != 0x8e) || (op >= OP_ADD && op <= OP_WITHIN) { return si_numeric(sp, w, op, minimal); }  // mutant: equivalent (0x8d and 0x8e are disabled, and 0x93 is OP_ADD)
   if op >= OP_RIPEMD160 && op <= OP_HASH256 { return si_hash(sp, w, op); }  // mutant: equivalent (0xab is OP_CODESEPARATOR, handled above)
+  if version == SCRIPT_TAPSCRIPT && (op == OP_CHECKSIG || op == OP_CHECKSIGVERIFY || op == OP_CHECKSIGADD) { return si_checksig_tapscript(sp, w, op, flags); }
   if op == OP_CHECKSIG || op == OP_CHECKSIGVERIFY { return si_checksig(sp, w, s, begin, op, flags, version); }
-  return SCRIPT_ERR_BAD_OPCODE;      // OP_RESERVED, OP_VER, OP_RESERVED1/2, OP_CHECKSIGADD, 0xbb and up
+  return SCRIPT_ERR_BAD_OPCODE;      // OP_RESERVED, OP_VER, OP_RESERVED1/2, OP_CHECKSIGADD before tapscript, 0xbb and up
 }
 ```
 
@@ -638,8 +667,8 @@ HASH160, and SHA-1:
 // and HASH256 32.
 si_hash :: (sp: ScriptSpend, w: [] ScriptWork, op: int) -> int {
   if si_size(w) < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
-  input := si_bytes(sp, w, si_top(w, 1));
   el := si_new(w, ifx op <= OP_SHA1 || op == OP_HASH160 then 20 else 32);
+  input := si_bytes(sp, w, si_top(w, 1));
   out := w[0].arena[el.at..<el.at+el.n];
   if op == OP_RIPEMD160 { #assert ripemd160_hash_checked(input, out, false) == RMD_OK; }
   else if op == OP_SHA1 { #assert sha1_hash(cast(string) input, out); }
@@ -715,7 +744,7 @@ scriptPubKey in a transaction built the way Core's tests build theirs:
 | P2SH | a push of `51` (`OP_1`) | `HASH160 <hash of 51> EQUAL` | `P2SH` | `OK` |
 | P2WSH, MINIMALIF | | v0 program of `IF 1 ENDIF`, witness `02` | `P2SH,WITNESS,MINIMALIF` | `MINIMALIF` |
 | CSV, more | | `11 CHECKSEQUENCEVERIFY`, sequence 10 | `CHECKSEQUENCEVERIFY` | `UNSATISFIED_LOCKTIME` |
-| v1 of 32 bytes, Taproot on | | `OP_1` and 32 bytes | `P2SH,WITNESS,TAPROOT` | `TAPROOT_UNBUILT` |
+| v1 of 32 bytes, Taproot on | | `OP_1` and 32 bytes, witness `01` | `P2SH,WITNESS,TAPROOT` | `SCHNORR_SIG_SIZE` |
 
 In the `NULLDUMMY` case, `0 0 CHECKMULTISIG` has no keys and no
 signatures, so it pops the two counts and then the extra element below
@@ -1085,8 +1114,8 @@ script, its SHA-256 must be the program, and it runs on the other items.
 Either way the script must leave exactly one element, and it must be
 true. Any other length fails.
 
-Version 1 with 32 bytes, outside P2SH, is Taproot under its flag (chapters
-43 and 44), and `TAPROOT_UNBUILT` here. Every other version and length
+Version 1 with 32 bytes, outside P2SH, is Taproot under its flag, which
+[chapter 44](ch044-tapscript.md) runs. Every other version and length
 succeeds, so that later soft forks can give them meaning, unless policy's
 `DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM` refuses them. The two-byte
 program `4e73` of version 1 is pay-to-anchor (P2A), which policy keeps.
@@ -1110,17 +1139,31 @@ script_p2sh_vartime :: (s: [] u8) -> bool #export_c {
 
 <!-- source: coax/lib/bitcoin/script.coax witness -->
 ```jai
-// ExecuteWitnessScript for SigVersion::WITNESS_V0: the witness items
-// (count of them) become the stack, none may exceed 520 bytes, the script
-// runs, and it must leave exactly one element, which must be true. A
-// stack larger than SCRIPT_ROOM keeps its top SCRIPT_ROOM elements and
-// counts the rest.
-si_execute_witness :: (sp: ScriptSpend, w: [] ScriptWork, count: int, script: ScriptItem, flags: int) -> int {
+// ExecuteWitnessScript: the witness items (count of them) become the
+// stack, none may exceed 520 bytes, the script runs, and it must leave
+// exactly one element, which must be true. Tapscript first reads the
+// whole script: an OP_SUCCESSx anywhere makes the spend valid at once
+// (chapter 44), and a push that runs past the end fails. Its stack may
+// start with at most 1,000 elements. A witness v0 stack larger than
+// SCRIPT_ROOM keeps its top SCRIPT_ROOM elements and counts the rest.
+si_execute_witness :: (sp: ScriptSpend, w: [] ScriptWork, count: int, script: ScriptItem, flags: int, version: int) -> int {
+  if version == SCRIPT_TAPSCRIPT {
+    s := si_bytes(sp, w, script); pc := 0;
+    while pc < s.count {
+      o := script_op_vartime(s, pc);
+      if !o.ok { return SCRIPT_ERR_BAD_OPCODE; }
+      if script_op_success_vartime(o.op) {
+        return ifx (flags & SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS) != 0 then SCRIPT_ERR_DISCOURAGE_OP_SUCCESS else SCRIPT_ERR_OK;
+      }
+      pc = o.next;
+    }
+    if count > SCRIPT_MAX_STACK { return SCRIPT_ERR_STACK_SIZE; }
+  }
   for k: 0..<count { if si_witness(sp, k).n > SCRIPT_MAX_ELEMENT { return SCRIPT_ERR_PUSH_SIZE; } }
   w[0].hidden = ifx count > SCRIPT_ROOM then count - SCRIPT_ROOM else 0;
   w[0].depth = 0;
   for k: w[0].hidden..<count { si_push(w, si_witness(sp, k)); }
-  error := si_eval(sp, w, script, flags, SCRIPT_V0);
+  error := si_eval(sp, w, script, flags, version);
   if error != SCRIPT_ERR_OK { return error; }
   if si_size(w) != 1 { return SCRIPT_ERR_CLEANSTACK; }
   if !script_bool_vartime(si_bytes(sp, w, si_top(w, 1))) { return SCRIPT_ERR_EVAL_FALSE; }
@@ -1130,9 +1173,9 @@ si_execute_witness :: (sp: ScriptSpend, w: [] ScriptWork, count: int, script: Sc
 // version 0 with 32 bytes is P2WSH, whose last witness item is the script
 // and must hash to the program; 20 bytes is P2WPKH, whose two items run
 // against DUP HASH160 <program> EQUALVERIFY CHECKSIG; any other length
-// refuses. Version 1 with 32 bytes outside P2SH is Taproot (chapter 43)
-// when its flag is set; the 2-byte anchor 4e73 (P2A) and every other
-// version and length succeed, unless policy discourages them.
+// refuses. Version 1 with 32 bytes outside P2SH is Taproot (chapter 44,
+// si_taproot) when its flag is set; the 2-byte anchor 4e73 (P2A) and
+// every other version and length succeed, unless policy discourages them.
 si_witness_program :: (sp: ScriptSpend, w: [] ScriptWork, version: int, program: ScriptItem, flags: int, p2sh: bool) -> int {
   prog := si_bytes(sp, w, program);
   count := sp.ins[sp.index].count;
@@ -1142,17 +1185,17 @@ si_witness_program :: (sp: ScriptSpend, w: [] ScriptWork, version: int, program:
     hash: [32] u8;
     #assert sha256_hash_checked(si_bytes(sp, w, script), hash[..], false) == SHA_OK;
     if !si_same(hash[..], prog) { return SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH; }
-    return si_execute_witness(sp, w, count - 1, script, flags);
+    return si_execute_witness(sp, w, count - 1, script, flags, SCRIPT_V0);
   }
   if version == 0 && prog.count == 20 {
     if count != 2 { return SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH; }
     script := si_new(w, 25);
     script_p2wpkh_code_vartime(prog, w[0].arena[script.at..<script.at+25]);
-    return si_execute_witness(sp, w, 2, script, flags);
+    return si_execute_witness(sp, w, 2, script, flags, SCRIPT_V0);
   }
   if version == 0 { return SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH; }
   if version == 1 && prog.count == 32 && !p2sh {
-    return ifx (flags & SCRIPT_VERIFY_TAPROOT) != 0 then SCRIPT_TAPROOT_UNBUILT else SCRIPT_ERR_OK;
+    return ifx (flags & SCRIPT_VERIFY_TAPROOT) != 0 then si_taproot(sp, w, prog, flags) else SCRIPT_ERR_OK;
   }
   if version == 1 && prog.count == 2 && prog[0] == 0x4e && prog[1] == 0x73 && !p2sh { return SCRIPT_ERR_OK; }
   if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) != 0 { return SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM; }
@@ -1235,19 +1278,18 @@ spend_of :: (s: [] Spend, tx: string, spk: string, index: int, amount: int) -> S
 }
 // The name of a result.
 name :: (error: int) -> string {
-  if error == SCRIPT_TAPROOT_UNBUILT { return "TAPROOT_UNBUILT"; }
   if error == SCRIPT_BAD_FLAGS { return "BAD_FLAGS"; }
   return SCRIPT_ERR_NAMES[error];
 }
 // Runs one library case and prints its label and result.
 show_case :: (s: [] Spend, w: [] ScriptWork, label: string) {
-  for c: SI_CASES {
-    if c.label != label { continue; }
-    error := script_verify_vartime(spend_of(s, c.tx, c.spk, 0, c.amount), c.flags, w);
-    print("  %: %\n", label, name(error));
-    return;
-  }
+  for c: SI_CASES { if c.label == label { show(s, w, c); return; } }
+  for c: SI_TAPROOT { if c.label == label { show(s, w, c); return; } }
   #assert false;
+}
+show :: (s: [] Spend, w: [] ScriptWork, c: SiCase) {
+  error := script_verify_vartime(spend_of(s, c.tx, c.spk, 0, c.amount), c.flags, w);
+  print("  %: %\n", c.label, name(error));
 }
 
 main :: () {
@@ -1299,8 +1341,8 @@ main :: () {
     total += rows[e]; good += passed[e];
   }
   print("  all: % of % rows give the expected result\n", good, total);
-  print("  not run: % rows that need Taproot (chapter 44):", SCRIPT_SKIPPED.count);
-  for r: SCRIPT_SKIPPED { print(" %", r.line); }
+  print("  of them Taproot (chapter 44):");
+  for l: SCRIPT_TAPROOT_LINES { print(" %", l); }
   print("\n");
 
   // tx_valid.json and tx_invalid.json: every input of every transaction,
@@ -1370,7 +1412,7 @@ scripts
   P2SH: OK
   P2WSH, MINIMALIF: MINIMALIF
   CSV, more: UNSATISFIED_LOCKTIME
-  v1 of 32 bytes, Taproot on: TAPROOT_UNBUILT
+  v1 of 32 bytes, Taproot on: SCHNORR_SIG_SIZE
 signed spends
   legacy 1 of 2, a hybrid key, CODESEPARATOR, FindAndDelete: OK
     with the locktime changed: EVAL_FALSE
@@ -1379,8 +1421,8 @@ signed spends
   legacy CHECKSIGVERIFY and 4 of 4, keys 02 to 07, a high s: OK
     with the locktime changed: NULLFAIL
 Bitcoin Core script_tests.json
-  OK: 685 of 685
-  EVAL_FALSE: 81 of 81
+  OK: 688 of 688
+  EVAL_FALSE: 82 of 82
   OP_RETURN: 5 of 5
   SCRIPTNUM: 67 of 67
   SCRIPT_SIZE: 1 of 1
@@ -1420,10 +1462,12 @@ Bitcoin Core script_tests.json
   WITNESS_MALLEATED_P2SH: 1 of 1
   WITNESS_UNEXPECTED: 3 of 3
   WITNESS_PUBKEYTYPE: 11 of 11
+  TAPSCRIPT_MINIMALIF: 2 of 2
+  TAPSCRIPT_EMPTY_PUBKEY: 1 of 1
   OP_CODESEPARATOR: 2 of 2
   SIG_FINDANDDELETE: 2 of 2
-  all: 1256 of 1256 rows give the expected result
-  not run: 7 rows that need Taproot (chapter 44): 1296 1297 1298 1299 1300 1301 1302
+  all: 1263 of 1263 rows give the expected result
+  of them Taproot (chapter 44): 1296 1297 1298 1299 1300 1301 1302
 Bitcoin Core tx_valid.json and tx_invalid.json
   206 transactions, 268 inputs run, 206 verdicts as Core's
 Bitcoin Core sighash.json
@@ -1432,13 +1476,14 @@ Bitcoin Core sighash.json
 
 What the output shows:
 
-- Every one of the 1,256 rows gives Core's expected result, counted by
-  that result. 685 succeed; the most common failures are
-  `INVALID_STACK_OPERATION` (104), `BAD_OPCODE` (89), `EVAL_FALSE` (81) and
+- Every one of the 1,263 rows gives Core's expected result, counted by
+  that result. 688 succeed; the most common failures are
+  `INVALID_STACK_OPERATION` (104), `BAD_OPCODE` (89), `EVAL_FALSE` (82) and
   `SCRIPTNUM` (67).
-- Seven rows are not run. Lines 1296 to 1302 of `script_tests.json` build
-  a Taproot output or control block inside the test (`#TAPROOTOUTPUT#`,
-  `#SCRIPT#`, `#CONTROLBLOCK#`) and run tapscript, which is chapter 44's.
+- Seven rows, lines 1296 to 1302 of `script_tests.json`, build a Taproot
+  output and control block inside the test (`#TAPROOTOUTPUT#`, `#SCRIPT#`,
+  `#CONTROLBLOCK#`) and run tapscript. Chapter 44 added them; they run here
+  with the rest.
 - The transaction files hold 206 transactions with prevouts and flags,
   after the 9 `BADTX` rows, which fail `CheckTransaction` (chapter 52)
   before any script runs. A valid transaction must pass under every flag
@@ -1477,11 +1522,13 @@ one or two signatures, and every row of `sighash.json`. The example and
 // curve gives exactly the error Core's test expects. The rows that verify
 // a signature run in the example, natively, where a verification takes
 // microseconds rather than seconds. One workspace serves every row, since
-// VerifyScript resets it.
+// VerifyScript resets it. The seven Taproot rows tweak a key, which is
+// curve work too; tapscript.coax's checks run them.
 #test "script_tests.json rows without curve work" #steps 100000000 {
   s: [1] Spend; w: [1] ScriptWork;
   for r: SCRIPT_ROWS {
-    if r.curve == 0 { #assert script_verify_vartime(spend_of(s[..], r.tx, r.spk, 0, r.amount), r.flags, w[..]) == r.error; }
+    taproot := false; for l: SCRIPT_TAPROOT_LINES { if r.line == l { taproot = true; } }
+    if r.curve == 0 && !taproot { #assert script_verify_vartime(spend_of(s[..], r.tx, r.spk, 0, r.amount), r.flags, w[..]) == r.error; }
   }
 }
 // One row in sixteen of those that verify signatures, to keep the
@@ -1501,14 +1548,18 @@ one or two signatures, and every row of `sighash.json`. The example and
   script_sighash_legacy_vartime(sp, tx_unhex(r.code, c[..]), r.hashtype, h[..]);
   #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK && tx_hex_is(h[..], r.hash);
 }
-// The rows not run are the seven that need Taproot, and each names it.
-#test "the rows not run" {
-  #assert SCRIPT_SKIPPED.count == 7 && SCRIPT_ROWS.count + SCRIPT_SKIPPED.count == 1263;
-  for r: SCRIPT_SKIPPED { #assert r.comment.count > 9 && r.comment[0..<9] == "TAPSCRIPT"; }
+// Every row runs: the seven Taproot rows too, since chapter 44.
+#test "every row runs, the seven Taproot rows among them" {
+  #assert SCRIPT_ROWS.count == 1263 && SCRIPT_TAPROOT_LINES.count == 7;
+  for l: SCRIPT_TAPROOT_LINES {
+    found := 0;
+    for r: SCRIPT_ROWS { if r.line == l { found += 1; #assert (r.flags & SCRIPT_VERIFY_TAPROOT) != 0 && r.spk.count == 68; } }
+    #assert found == 1;
+  }
 }
-// The example's names for the two errors that are not Core's.
+// The example's names for an error that is not Core's, and for success.
 #test "the example's names" {
-  #assert name(SCRIPT_TAPROOT_UNBUILT) == "TAPROOT_UNBUILT" && name(SCRIPT_BAD_FLAGS) == "BAD_FLAGS" && name(SCRIPT_ERR_OK) == "OK";
+  #assert name(SCRIPT_BAD_FLAGS) == "BAD_FLAGS" && name(SCRIPT_ERR_OK) == "OK";
 }
 ```
 
@@ -1553,7 +1604,7 @@ coax/bin/coax test coax/lib/bitcoin/script.coax
 coax/bin/coax mutate coax/lib/bitcoin/script.coax --root-only
 ```
 
-On 2026-11-03 `coax test` runs 174 checks, all passing, in about 34 seconds of CPU time.
+On 2026-11-03 `coax test` runs 439 checks, with those of the files `script.coax` loads, all passing, in about 5 minutes of CPU time; chapter 44's 83 Taproot cases take about 2 of them.
 Root-only mutation of an earlier version made 2,009 mutants and killed 1,848.
 For the 161 that survived, this version adds the cases above and simplifies three lines.
 It marks each survivor that no test can kill `// mutant: equivalent` with the reason.
@@ -1599,14 +1650,13 @@ wasm32 and runs every case in Node.
 python3 coax/tests/bitcoin/script.py
 ```
 
-On 2026-11-02, 16,178 cases agree with Python in native checked and release builds and in Wasm checked and release builds: 15,350 runs of `VerifyScript` and 828 signature hashes. Among them are 44 different results: every one this chapter can return except `UNKNOWN_ERROR`, which no path returns, and `TAPROOT_UNBUILT`, which the library's checks cover. 1,370 runs repeat a passing row with flags removed, and all of them pass. The run takes about 2 minutes of CPU time.
+On 2026-11-02, 16,178 cases agree with Python in native checked and release builds and in Wasm checked and release builds: 15,350 runs of `VerifyScript` and 828 signature hashes. Among them are 44 different results: every one this chapter could return except `UNKNOWN_ERROR`, which no path returns, and `TAPROOT_UNBUILT`, which the library's checks covered. Chapter 44 removed `TAPROOT_UNBUILT`. 1,370 runs repeat a passing row with flags removed, and all of them pass. The run takes about 2 minutes of CPU time.
 
 ## What this chapter leaves out
 
 - Taproot and tapscript: the key path, the control block, `OP_SUCCESS`,
-  `CHECKSIGADD` and the validation weight budget are chapters 43 and 44.
-  The seven rows they need are not run, and a v1 program under `TAPROOT`
-  refuses.
+  `CHECKSIGADD` and the validation weight budget are
+  [chapter 44](ch044-tapscript.md).
 - The signature hashes in detail: chapters
   [37 (legacy)](ch037-legacy-signature-hashes.md) and
   [38 (BIP-143)](ch038-segwit-v0-signature-hashes.md).

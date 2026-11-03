@@ -1,0 +1,80 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/script.coax";
+#load "../../coax/tests/bitcoin/script_vectors.coax";
+#import "Basic";
+
+// The transaction, its inputs, outputs and witness items, and the bytes of
+// the scriptPubKey the input spends: room for the largest case.
+Spend :: struct {
+  b: [16384] u8; spk: [128] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [1100] TxItem;
+}
+// Reads hex into the spend and returns the input-0 view of it. Each
+// transaction here has one input, so its spent output is amount and spk.
+spend_of :: (s: [] Spend, tx: string, spk: string, amount: int) -> ScriptSpend {
+  b := tx_unhex(tx, s[0].b[..]);
+  t := tx_read_vartime(b, true, s[0].ins[..], s[0].outs[..], s[0].items[..]);
+  #assert t.code == TX_OK;
+  return ScriptSpend.{b=b, t=t, ins=s[0].ins[0..<t.nin], outs=s[0].outs[0..<t.nout], items=s[0].items[0..<t.nitems],
+    index=0, amount=amount, spk=tx_unhex(spk, s[0].spk[..])};
+}
+name :: (error: int) -> string { return ifx error == SCRIPT_BAD_FLAGS then "BAD_FLAGS" else SCRIPT_ERR_NAMES[error]; }
+// Runs the library's Taproot case with this label and prints its result.
+show :: (s: [] Spend, w: [] ScriptWork, label: string) {
+  for c: SI_TAPROOT {
+    if c.label != label { continue; }
+    print("  %: %\n", label, name(script_verify_vartime(spend_of(s, c.tx, c.spk, c.amount), c.flags, w)));
+    return;
+  }
+  #assert false;
+}
+
+main :: () {
+  s: [1] Spend; w: [1] ScriptWork;
+
+  // The seven rows of script_tests.json that chapter 36 could not run.
+  print("Bitcoin Core script_tests.json, the Taproot rows\n");
+  for l: SCRIPT_TAPROOT_LINES {
+    for r: SCRIPT_ROWS {
+      if r.line != l { continue; }
+      error := script_verify_vartime(spend_of(s[..], r.tx, r.spk, r.amount), r.flags, w[..]);
+      print("  line %: %, Core expects %\n", l, name(error), name(r.error));
+    }
+  }
+
+  print("the key path\n");
+  for l: [6] string.["key path, SIGHASH_DEFAULT", "key path, SINGLE|ANYONECANPAY", "key path, a spoiled signature",
+    "key path, hash type 0 written out", "key path, 63 bytes", "key path, signed without the annex it carries"] { show(s[..], w[..], l); }
+
+  print("the script path\n");
+  for l: [7] string.["script path, a leaf that leaves 1", "script path, the parity bit flipped", "script path, the path hash changed",
+    "script path, a control block of 34 bytes", "script path, leaf version 0xc2", "script path, leaf version 0xc2, discouraged",
+    "script path, with an annex"] { show(s[..], w[..], l); }
+
+  print("signatures in tapscript\n");
+  for l: [12] string.["CHECKSIG, a valid signature", "CHECKSIG, the wrong key signed", "CHECKSIG, an empty signature",
+    "CHECKSIG NOT, an empty signature", "CHECKSIG, an empty key", "CHECKSIG, a 33-byte key, any signature",
+    "CODESEPARATOR, signed at its position", "CODESEPARATOR, signed with none", "CHECKSIGADD, 2 of 3, keys 1 and 3",
+    "CHECKSIGADD, 2 of 3, one signature", "CHECKSIGADD, 2 of 3, a spoiled one", "CHECKMULTISIG"] { show(s[..], w[..], l); }
+
+  print("the validation-weight budget\n");
+  for l: [4] string.["the budget: 6 checks, a 1-byte signature", "the budget: 7 checks, a 1-byte signature",
+    "the budget: 7 checks, a 14-byte signature", "the budget: 8 checks, a 1-byte signature"] { show(s[..], w[..], l); }
+
+  print("the rest of tapscript\n");
+  for l: [11] string.["tapscript, MINIMALIF, 0x02", "tapscript, OP_SUCCESS 0x50 after RETURN", "tapscript, OP_SUCCESS 0x50, discouraged",
+    "tapscript, OP_SUCCESS then a bad push", "tapscript, a bad push, no OP_SUCCESS", "tapscript, 300 NOPs",
+    "tapscript, a script of 10,001 bytes", "tapscript, 1,001 stack elements", "tapscript, an element of 521 bytes",
+    "tapscript, 2,000 SHA256s", "tapscript, 900 SHA256s kept, then 200 more"] { show(s[..], w[..], l); }
+
+  // Every Taproot case of the library, against script_reference.py's result.
+  good := 0;
+  for c: SI_TAPROOT {
+    if script_verify_vartime(spend_of(s[..], c.tx, c.spk, c.amount), c.flags, w[..]) == c.error { good += 1; }
+  }
+  print("all % of % Taproot cases give the expected result\n", good, SI_TAPROOT.count);
+  count := 0;
+  for op: 0..<256 { if script_op_success_vartime(op) { count += 1; } }
+  print("OP_SUCCESSx opcodes: %\n", count);
+}
+// book:end example

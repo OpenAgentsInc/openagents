@@ -255,9 +255,8 @@ b322_input :: (x: [] B322Work, n: int) -> int {
 
 ## Taproot
 
-Chapter 36's interpreter stops at Taproot: a version 1 program returns
-`SCRIPT_TAPROOT_UNBUILT`. Chapters 44 and 45 will build tapscript and
-script-path spends in full. Until then this chapter checks Taproot
+[Chapter 44](ch044-tapscript.md) runs Taproot spends inside chapter
+36's interpreter. This chapter was written before it and checks Taproot
 inputs itself.
 
 A key path is one signature of 64 bytes, or 65 ending in

@@ -10,7 +10,7 @@ SR_Room :: struct { ins: [SR_INS] TxIn; outs: [SR_INS] TxOut; items: [SR_ITEMS] 
 
 // Reads tx with witnesses and runs VerifyScript for input index, which
 // spends spk holding amount satoshis, under flags.
-// Returns Core's error number, SCRIPT_TAPROOT_UNBUILT or SCRIPT_BAD_FLAGS;
+// Returns Core's error number or SCRIPT_BAD_FLAGS;
 // -1 when the transaction does not read or index is out of range.
 script_report_vartime :: (tx: [] u8, spk: [] u8, index: int, amount: int, flags: int) -> int #export_c {
   room: [1] SR_Room;

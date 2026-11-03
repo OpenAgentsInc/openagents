@@ -773,9 +773,8 @@ chain_signet_check_vartime :: (p: ChainParams, b: [] u8, ins: [] TxIn, outs: [] 
 ```
 
 The flags are P2SH, WITNESS, DERSIG and NULLDUMMY, so a solution can be a
-legacy, P2SH or segwit v0 spend. A Taproot challenge would need chapter
-44's tapscript; chapter 36's interpreter refuses a v1 program with
-`SCRIPT_TAPROOT_UNBUILT`, so such a signet does not validate here yet.
+legacy, P2SH or segwit v0 spend. TAPROOT is not among them, so, as in
+Core, a version 1 challenge passes without its signature being checked.
 Core's CheckBlock calls this check, and a failure is "bad-signet-blksig".
 A block without a solution is checked with an empty scriptSig and witness,
 which passes only a challenge such as `OP_TRUE`.

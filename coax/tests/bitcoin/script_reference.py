@@ -17,9 +17,14 @@ coax/tests/vectors/upstream/bitcoin-core/ (revision ddea9196):
 It shares no code with the Coax library. The DER rules, the lax parser and
 the curve arithmetic come from der_reference.py (chapter 21's reference),
 the transaction reader from tx_reference.py (chapter 34's). Errors are
-Core's ScriptError numbers; a v1 witness program under TAPROOT is
-TAPROOT_UNBUILT (100), and a flag set Core asserts against is BAD_FLAGS
-(101), as in coax/lib/bitcoin/script.coax.
+Core's ScriptError numbers, and a flag set Core asserts against is
+BAD_FLAGS (101), as in coax/lib/bitcoin/script.coax.
+
+Taproot (Bitcoin chapter 44) adds the key path and tapscript: the
+SigVersions TAPROOT and TAPSCRIPT, OP_SUCCESSx, OP_CHECKSIGADD, the
+validation-weight budget and the Schnorr checker. The signature message is
+Bitcoin Core's TaprootSignatureMsg and the verifier and commitment check
+BIP-340's and BIP-341's reference code, all through taproot_reference.py.
 """
 import hashlib
 from pathlib import Path
@@ -46,7 +51,7 @@ ERRORS = ["OK", "UNKNOWN_ERROR", "EVAL_FALSE", "OP_RETURN", "SCRIPTNUM", "SCRIPT
           "TAPSCRIPT_VALIDATION_WEIGHT", "TAPSCRIPT_CHECKMULTISIG", "TAPSCRIPT_MINIMALIF",
           "TAPSCRIPT_EMPTY_PUBKEY", "OP_CODESEPARATOR", "SIG_FINDANDDELETE"]
 E = {name: k for k, name in enumerate(ERRORS)}
-TAPROOT_UNBUILT, BAD_FLAGS = 100, 101
+BAD_FLAGS = 101
 FLAGS = ["P2SH", "STRICTENC", "DERSIG", "LOW_S", "NULLDUMMY", "SIGPUSHONLY", "MINIMALDATA",
          "DISCOURAGE_UPGRADABLE_NOPS", "CLEANSTACK", "CHECKLOCKTIMEVERIFY", "CHECKSEQUENCEVERIFY",
          "WITNESS", "DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM", "MINIMALIF", "NULLFAIL",
@@ -296,15 +301,52 @@ def verify_ecdsa(sig, q, digest):
     return R is not None and R[0] % D.N == r
 
 
-BASE, V0 = 0, 1
+BASE, V0, TAPROOT, TAPSCRIPT = 0, 1, 2, 3
 
 
 class Checker:
     """TransactionSignatureChecker for input n_in of tx (a tx_reference dict)."""
 
-    def __init__(self, tx, n_in, amount):
+    def __init__(self, tx, n_in, amount, spent=None):
         self.tx, self.n_in, self.amount = tx, n_in, amount
+        self.spent = spent   # every input's (amount, scriptPubKey), for Taproot
+        self.spk = None      # this input's, set by verify_script
         self.curve = 0   # signatures that reached the curve arithmetic
+        self.schnorrs = 0  # of them, Schnorr signatures
+
+    def schnorr(self, sig, key, version, ex):
+        """CheckSchnorrSignature: raises Fail, returns on success."""
+        import taproot_reference as TR
+        if len(sig) not in (64, 65): raise Fail(E['SCHNORR_SIG_SIZE'])
+        hashtype = 0
+        if len(sig) == 65:
+            hashtype, sig = sig[64], sig[:64]
+            if hashtype == 0: raise Fail(E['SCHNORR_SIG_HASHTYPE'])
+        msg = self.sigmsg(hashtype, version, ex)
+        if msg is None: raise Fail(E['SCHNORR_SIG_HASHTYPE'])
+        self.curve += 1
+        self.schnorrs += 1
+        if not TR.R.schnorr_verify(TR.R.tagged_hash('TapSighash', msg), key, sig): raise Fail(E['SCHNORR_SIG'])
+
+    def sigmsg(self, hashtype, version, ex):
+        """SignatureHashSchnorr's message by Core's TaprootSignatureMsg, or
+        None where SignatureHashSchnorr refuses."""
+        import taproot_reference as TR
+        import types
+        spent = self.spent
+        if spent is None and len(self.tx['ins']) == 1: spent = [(self.amount, self.spk)]
+        if spent is None or len(spent) != len(self.tx['ins']): return None
+        if hashtype not in (0, 1, 2, 3, 0x81, 0x82, 0x83): return None
+        if hashtype & 3 == 3 and self.n_in >= len(self.tx['outs']): return None
+        tx = types.SimpleNamespace(version=int.from_bytes(self.tx['version'], 'little'),
+                                   nLockTime=int.from_bytes(self.tx['locktime'], 'little'),
+                                   vin=[TR._In(i['prevout'], int.from_bytes(i['sequence'], 'little')) for i in self.tx['ins']],
+                                   vout=[TR._Out(o['value'] + T.compact(len(o['script'])) + o['script']) for o in self.tx['outs']])
+        utxos = [TR._Utxo(a, k) for a, k in spent]
+        if version == TAPROOT:
+            return TR.CORE.TaprootSignatureMsg(tx, utxos, hashtype, self.n_in, annex=ex['annex'])
+        return TR.CORE.TaprootSignatureMsg(tx, utxos, hashtype, self.n_in, scriptpath=True, leaf_script=ex['script'],
+                                           codeseparator_pos=ex['codesep'], annex=ex['annex'])
 
     def ecdsa(self, sig, key, code, version):
         q = parse_pubkey(key)
@@ -365,11 +407,33 @@ def key_encoding(key, flags, version):
 DISABLED = {0x7e, 0x7f, 0x80, 0x81, 0x83, 0x84, 0x85, 0x86, 0x8d, 0x8e, 0x95, 0x96, 0x97, 0x98, 0x99}
 
 
-def eval_script(stack, script, flags, checker, version):
+def is_op_success(op):
+    """IsOpSuccess (script.cpp)."""
+    return op == 80 or op == 98 or 126 <= op <= 129 or 131 <= op <= 134 or 137 <= op <= 138 or \
+        141 <= op <= 142 or 149 <= op <= 153 or 187 <= op <= 254
+
+
+def checksig_tapscript(sig, key, flags, checker, ex):
+    """EvalChecksigTapscript: the check's result, or Fail."""
+    success = len(sig) > 0
+    if success:
+        ex['weight'] -= 50
+        if ex['weight'] < 0: raise Fail(E['TAPSCRIPT_VALIDATION_WEIGHT'])
+    if len(key) == 0: raise Fail(E['TAPSCRIPT_EMPTY_PUBKEY'])
+    if len(key) == 32:
+        if success: checker.schnorr(sig, key, TAPSCRIPT, ex)
+    elif flags & F['DISCOURAGE_UPGRADABLE_PUBKEYTYPE']:
+        raise Fail(E['DISCOURAGE_UPGRADABLE_PUBKEYTYPE'])
+    return success
+
+
+def eval_script(stack, script, flags, checker, version, ex=None):
     """EvalScript: changes stack in place; raises Fail."""
-    if len(script) > 10000: raise Fail(E['SCRIPT_SIZE'])
+    if version != TAPSCRIPT and len(script) > 10000: raise Fail(E['SCRIPT_SIZE'])
     minimal = bool(flags & F['MINIMALDATA'])
     vexec, alt, ops, pc, begin = [], [], 0, 0, 0
+    pos = -1
+    if ex is not None: ex['codesep'] = 0xffffffff
 
     def top(i):
         if len(stack) < i: raise Fail(E['INVALID_STACK_OPERATION'])
@@ -380,10 +444,11 @@ def eval_script(stack, script, flags, checker, version):
 
     while pc < len(script):
         fexec = False not in vexec
+        pos += 1
         ok, op, data, pc = get_op(script, pc)
         if not ok: raise Fail(E['BAD_OPCODE'])
         if len(data) > 520: raise Fail(E['PUSH_SIZE'])
-        if op > 0x60:
+        if op > 0x60 and version != TAPSCRIPT:
             ops += 1
             if ops > 201: raise Fail(E['OP_COUNT'])
         if op in DISABLED: raise Fail(E['DISABLED_OPCODE'])
@@ -411,6 +476,8 @@ def eval_script(stack, script, flags, checker, version):
                 value = False
                 if fexec:
                     v = top(1)
+                    if version == TAPSCRIPT and (len(v) > 1 or (len(v) == 1 and v[0] != 1)):
+                        raise Fail(E['TAPSCRIPT_MINIMALIF'])
                     if version == V0 and flags & F['MINIMALIF']:
                         if len(v) > 1 or (len(v) == 1 and v[0] != 1): raise Fail(E['MINIMALIF'])
                     value = cast_bool(v) != (op == 0x64)
@@ -510,6 +577,23 @@ def eval_script(stack, script, flags, checker, version):
                 stack.pop(); stack.append(h)
             elif op == 0xab:
                 begin = pc
+                if ex is not None: ex['codesep'] = pos
+            elif op in (0xac, 0xad) and version == TAPSCRIPT:
+                need(2)
+                success = checksig_tapscript(stack[-2], stack[-1], flags, checker, ex)
+                del stack[-2:]
+                stack.append(b'\x01' if success else b'')
+                if op == 0xad:
+                    if not success: raise Fail(E['CHECKSIGVERIFY'])
+                    stack.pop()
+            elif op == 0xba and version == TAPSCRIPT:
+                need(3)
+                n = num(stack[-2], minimal)
+                success = checksig_tapscript(stack[-3], stack[-1], flags, checker, ex)
+                del stack[-3:]
+                stack.append(num_serialize(n + (1 if success else 0)))
+            elif op in (0xae, 0xaf) and version == TAPSCRIPT:
+                raise Fail(E['TAPSCRIPT_CHECKMULTISIG'])
             elif op in (0xac, 0xad):
                 need(2)
                 sig, key = stack[-2], stack[-1]
@@ -581,10 +665,19 @@ def witness_program(s):
     return (0 if s[0] == 0 else s[0] - 0x50), s[2:]
 
 
-def execute_witness(stack, script, flags, checker):
+def execute_witness(stack, script, flags, checker, version=V0, ex=None):
+    if version == TAPSCRIPT:
+        pc = 0
+        while pc < len(script):
+            ok, op, _, pc = get_op(script, pc)
+            if not ok: raise Fail(E['BAD_OPCODE'])
+            if is_op_success(op):
+                if flags & F['DISCOURAGE_OP_SUCCESS']: raise Fail(E['DISCOURAGE_OP_SUCCESS'])
+                return
+        if len(stack) > 1000: raise Fail(E['STACK_SIZE'])
     for el in stack:
         if len(el) > 520: raise Fail(E['PUSH_SIZE'])
-    eval_script(stack, script, flags, checker, V0)
+    eval_script(stack, script, flags, checker, version, ex)
     if len(stack) != 1: raise Fail(E['CLEANSTACK'])
     if not cast_bool(stack[-1]): raise Fail(E['EVAL_FALSE'])
 
@@ -603,10 +696,37 @@ def verify_witness_program(witness, version, program, flags, checker, p2sh):
             return execute_witness(stack, script, flags, checker)
         raise Fail(E['WITNESS_PROGRAM_WRONG_LENGTH'])
     if version == 1 and len(program) == 32 and not p2sh:
-        if flags & F['TAPROOT']: raise Fail(TAPROOT_UNBUILT)
-        return
+        if not flags & F['TAPROOT']: return
+        return verify_taproot(witness, program, flags, checker)
     if not p2sh and version == 1 and program == b'\x4e\x73': return
     if flags & F['DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM']: raise Fail(E['DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM'])
+
+
+def witness_size(witness):
+    """GetSerializeSize of a witness stack."""
+    return len(T.compact(len(witness))) + sum(len(T.compact(len(w))) + len(w) for w in witness)
+
+
+def verify_taproot(witness, program, flags, checker):
+    """VerifyWitnessProgram's BIP-341 branch."""
+    import taproot_reference as TR
+    stack = list(witness)
+    if not stack: raise Fail(E['WITNESS_PROGRAM_WITNESS_EMPTY'])
+    ex = dict(annex=None)
+    if len(stack) >= 2 and stack[-1] and stack[-1][0] == 0x50:
+        ex['annex'] = stack.pop()
+    if len(stack) == 1:
+        checker.schnorr(stack[0], program, TAPROOT, ex)
+        return
+    control, script = stack.pop(), stack.pop()
+    rule = TR.verify_commitment(control, script, program)
+    if rule == 'size': raise Fail(E['TAPROOT_WRONG_CONTROL_SIZE'])
+    if rule is not None: raise Fail(E['WITNESS_PROGRAM_MISMATCH'])
+    if control[0] & 0xfe == 0xc0:
+        ex['script'] = script
+        ex['weight'] = witness_size(witness) + 50
+        return execute_witness(stack, script, flags, checker, TAPSCRIPT, ex)
+    if flags & F['DISCOURAGE_UPGRADABLE_TAPROOT_VERSION']: raise Fail(E['DISCOURAGE_UPGRADABLE_TAPROOT_VERSION'])
 
 
 def is_p2sh(s):
@@ -617,6 +737,7 @@ def verify_script(script_sig, spk, witness, flags, checker):
     """VerifyScript: the error number, 0 for success."""
     if flags & F['WITNESS'] and not flags & F['P2SH']: return BAD_FLAGS
     if flags & F['CLEANSTACK'] and not flags & F['WITNESS']: return BAD_FLAGS
+    if checker.spk is None: checker.spk = spk
     try:
         had_witness = False
         if flags & F['SIGPUSHONLY'] and not push_only(script_sig): raise Fail(E['SIG_PUSHONLY'])
@@ -724,18 +845,26 @@ def amount_from_value(v):
 def script_rows():
     """Every test row of script_tests.json: dicts with the spending
     transaction's bytes, the scriptPubKey, the amount, the flags as written
-    and as run, the expected error, the comment, and runnable (False for
-    rows that need a Taproot output or control block built by the test)."""
+    and as run, the expected error, the comment, and taproot (True for the
+    rows whose leaf script, control block and output the test builds, as
+    script_tests.cpp does: one tapscript leaf at depth 0 under the internal
+    key of secret 1, G's x)."""
     import json
+    import taproot_reference as TR
     rows = []
+    gx = TR.R.bytes_from_int(TR.R.x(TR.R.G))
     for k, test in enumerate(json.loads((UPSTREAM/'script_tests.json').read_text())):
         if len(test) < 4: continue
-        pos, witness, value, runnable = 0, [], 0, True
+        pos, witness, value, taproot, output = 0, [], 0, False, None
         if isinstance(test[0], list):
             for el in test[0][:-1]:
-                if el.startswith('#SCRIPT#') or el == '#CONTROLBLOCK#':
-                    runnable = False
-                    witness.append(b'')
+                if el.startswith('#SCRIPT#'):
+                    taproot = True
+                    witness.append(parse_script(el[len('#SCRIPT#'):]))
+                elif el == '#CONTROLBLOCK#':
+                    leaf = TR.R.tagged_hash('TapLeaf', bytes([0xc0]) + TR.ser_script(witness[-1]))
+                    parity, output = TR.R.taproot_tweak_pubkey(gx, leaf)
+                    witness.append(bytes([0xc0 | parity]) + gx)
                 else:
                     witness.append(bytes.fromhex(el))
             value = amount_from_value(test[0][-1])
@@ -745,8 +874,7 @@ def script_rows():
         flags_text, expected = test[pos + 2], test[pos + 3]
         comment = test[pos + 4] if len(test) > pos + 4 else ''
         if spk_text == '0x51 0x20 #TAPROOTOUTPUT#':
-            runnable = False
-            spk = b''
+            spk = b'\x51\x20' + output
         else:
             spk = parse_script(spk_text)
         sig = parse_script(sig_text)
@@ -755,7 +883,7 @@ def script_rows():
         credit = crediting(spk, value)
         spend = spending(sig, witness, credit)
         rows.append(dict(line=k, sig=sig, spk=spk, witness=witness, amount=value, flags_text=flags_text,
-                         flags=run_flags, expected=expected, comment=comment, runnable=runnable,
+                         flags=run_flags, expected=expected, comment=comment, taproot=taproot, runnable=True,
                          tx=T.serialize(spend, True), sig_text=sig_text, spk_text=spk_text))
     return rows
 

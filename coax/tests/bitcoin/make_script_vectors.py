@@ -11,8 +11,9 @@ script_vectors.coax (the example and its checks):
   that script_tests.cpp builds for it (BuildCreditingTransaction and
   BuildSpendingTransaction), the scriptPubKey, the amount, the flags it
   runs under and the error it expects, all copied or rebuilt as Core's
-  test does. The 7 rows that need a Taproot output or control block built
-  by the test are listed apart, with their expected results;
+  test does. The 7 Taproot rows get the leaf script, control block and
+  output key script_tests.cpp builds for them (chapter 44), and their
+  lines are listed apart;
 - every row of tx_valid.json and tx_invalid.json except the BADTX ones
   (CheckTransaction, chapter 52): the transaction, each input's spent
   scriptPubKey and amount, and the flag sets transaction_tests.cpp runs it
@@ -63,9 +64,9 @@ def text(s):
 # ---- script_tests.json
 rows = R.script_rows()
 assert len(rows) == 1263
-run = [r for r in rows if r['runnable']]
-skipped = [r for r in rows if not r['runnable']]
-assert len(skipped) == 7 and all(r['flags'] & R.F['TAPROOT'] for r in skipped)
+run = rows
+taproot_lines = [r['line'] for r in rows if r['taproot']]
+assert len(taproot_lines) == 7 and all(r['flags'] & R.F['TAPROOT'] for r in rows if r['taproot'])
 for r in run:
     checker = R.Checker(T.unserialize(r['tx'], True), 0, r['amount'])
     got = R.run_row(r, checker=checker)
@@ -145,6 +146,7 @@ UNCOMPRESSED = '0x41 0x04' + '22' * 64    # the right shape for STRICTENC, not a
 SIG11 = '0x09 0x300602010102010101'       # DER r = 1, s = 1, SIGHASH_ALL
 HIGH_S = '0x29 0x3026020101022100' + format(D.N - 1, '064x') + '01'
 lib = []
+schnorr = []   # the Taproot spends that reach the curve (a signature or the commitment), run apart for their cost
 
 
 def case(label, sig, spk, flags='', witness=(), amount=0, **tx):
@@ -152,8 +154,9 @@ def case(label, sig, spk, flags='', witness=(), amount=0, **tx):
     spk_b = P(spk) if isinstance(spk, str) else spk
     s = spend(sig_b, list(witness), spk_b, amount, **tx)
     flags_n = R.parse_flags(flags)
-    error = R.verify_script(sig_b, spk_b, list(witness), flags_n, R.Checker(s, 0, amount))
-    lib.append(dict(label=label, tx=T.serialize(s, True), spk=spk_b, amount=amount, flags=flags_n, error=error))
+    checker = R.Checker(s, 0, amount)
+    error = R.verify_script(sig_b, spk_b, list(witness), flags_n, checker)
+    (schnorr if checker.schnorrs or (flags_n & R.F['TAPROOT'] and spk_b[:2] == b'\x51\x20' and witness) else lib).append(dict(label=label, tx=T.serialize(s, True), spk=spk_b, amount=amount, flags=flags_n, error=error))
 
 
 # Values and branches.
@@ -608,6 +611,170 @@ for label, s, spk, amount, flags in [('legacy 1 of 2, a hybrid key, CODESEPARATO
     assert error == 0, label
     signed.append(dict(label=label, tx=T.serialize(s, True), spk=spk, amount=amount, flags=flags_n, error=0))
 
+# ---- Taproot and tapscript (chapter 44)
+import taproot_reference as TR  # noqa: E402
+WT = W + ',TAPROOT'
+
+
+def tkey(n):
+    return key('Bitcoin chapter 44 test key %d' % n)
+
+
+def xonly(d):
+    return TR.R.pubkey_gen(d.to_bytes(32, 'big'))
+
+
+def leaf_hash(script, version=0xc0):
+    return TR.R.tagged_hash('TapLeaf', bytes([version]) + TR.ser_script(script))
+
+
+def branch(a, b):
+    return TR.R.tagged_hash('TapBranch', a + b if a < b else b + a)
+
+
+INTERNAL = tkey(0)
+SIBLING = leaf_hash(P('1'))                      # a second leaf, for a path of one hash
+
+
+class Sig:
+    """A Schnorr signature made once the transaction is known: by key d
+    (or the tweaked internal key, d None, for the key path), with a hash
+    type, at a codesep position, and optionally spoiled."""
+    def __init__(self, d=None, hashtype=0, codesep=0xffffffff, bad=False, annex='same', tail=None):
+        self.d, self.hashtype, self.codesep, self.bad, self.annex, self.tail = d, hashtype, codesep, bad, annex, tail
+
+    def make(self, s, spk, amount, script, annex, root):
+        checker = R.Checker(s, 0, amount)
+        checker.spk = spk
+        a = annex if self.annex == 'same' else self.annex
+        if self.d is None:
+            msg = checker.sigmsg(self.hashtype, R.TAPROOT, dict(annex=a))
+            d = TR.R.taproot_tweak_seckey(INTERNAL.to_bytes(32, 'big'), root)
+        else:
+            msg = checker.sigmsg(self.hashtype, R.TAPSCRIPT, dict(annex=a, script=script, codesep=self.codesep))
+            d = self.d.to_bytes(32, 'big')
+        sig = TR.R.schnorr_sign(TR.R.tagged_hash('TapSighash', msg), d, bytes(32))
+        if self.bad: sig = sig[:63] + bytes([sig[63] ^ 1])
+        if self.hashtype: sig += bytes([self.hashtype])
+        if self.tail is not None: sig += self.tail
+        return sig
+
+
+def tap(label, script, items, flags=WT, version=0xc0, annex=None, path=True, control=None, amount=0, key_path=False):
+    """A Taproot spend: by the key path (items is the signature alone) or by
+    script, a leaf of version under the internal key, with a sibling leaf
+    when path is set. control edits the control block."""
+    if key_path:
+        root = b''
+    else:
+        leaf = leaf_hash(script, version)
+        root = branch(leaf, SIBLING) if path else leaf
+    parity, q = TR.R.taproot_tweak_pubkey(xonly(INTERNAL), root)
+    spk = b'\x51\x20' + q
+    cb = bytes([version | parity]) + xonly(INTERNAL) + (SIBLING if path else b'')
+    if control: cb = control(cb)
+    tail = [] if key_path else [script, cb]
+    if annex is not None: tail.append(annex)
+    blank = spend(b'', [b'' if isinstance(i, Sig) else i for i in items] + tail, spk, amount)
+    witness = [i.make(blank, spk, amount, script, annex, root) if isinstance(i, Sig) else i for i in items] + tail
+    case(label, '', spk, flags, witness, amount)
+
+
+K1, K2, K3 = tkey(1), tkey(2), tkey(3)
+X1, X2, X3 = xonly(K1), xonly(K2), xonly(K3)
+CS = lambda x: P('0x20 0x' + x.hex() + ' CHECKSIG')
+ANNEX = b'\x50\x01\x02'
+# The key path.
+tap('key path, SIGHASH_DEFAULT', None, [Sig()], key_path=True)
+tap('key path, SIGHASH_ALL', None, [Sig(hashtype=1)], key_path=True)
+tap('key path, SINGLE|ANYONECANPAY', None, [Sig(hashtype=0x83)], key_path=True, amount=5000)
+tap('key path, a spoiled signature', None, [Sig(bad=True)], key_path=True)
+tap('key path, hash type 0 written out', None, [Sig(tail=b'\x00')], key_path=True)
+tap('key path, hash type 4', None, [Sig(tail=b'\x04')], key_path=True)
+tap('key path, hash type 0x80', None, [Sig(tail=b'\x80')], key_path=True)
+tap('key path, 63 bytes', None, [bytes(63)], key_path=True)
+tap('key path, an empty signature', None, [b''], key_path=True)
+tap('key path, with an annex', None, [Sig()], key_path=True, annex=ANNEX)
+tap('key path, signed without the annex it carries', None, [Sig(annex=None)], key_path=True, annex=ANNEX)
+tap('key path, Taproot off', None, [b''], key_path=True, flags=W)
+case('Taproot, an empty witness', '', b'\x51\x20' + X1, WT, [])
+# The script path: the commitment.
+tap('script path, a leaf that leaves 1', P('1'), [])
+tap('script path, a lone leaf', P('1'), [], path=False)
+tap('script path, the parity bit flipped', P('1'), [], control=lambda c: bytes([c[0] ^ 1]) + c[1:])
+tap('script path, the path hash changed', P('1'), [], control=lambda c: c[:40] + bytes([c[40] ^ 1]) + c[41:])
+tap('script path, a control block of 34 bytes', P('1'), [], control=lambda c: c[:34])
+tap('script path, a control block of 32 bytes', P('1'), [], control=lambda c: c[:32])
+tap('script path, an internal key off the curve', P('1'), [], control=lambda c: c[:1] + bytes(32) + c[33:])
+tap('script path, leaf version 0xc2', P('RETURN'), [], version=0xc2)
+tap('script path, leaf version 0xc2, discouraged', P('RETURN'), [], version=0xc2, flags=WT + ',DISCOURAGE_UPGRADABLE_TAPROOT_VERSION')
+tap('script path, with an annex', P('1'), [], annex=ANNEX)
+tap('script path, an annex of 0x50 alone', P('1'), [], annex=b'\x50')
+# Tapscript: signatures.
+tap('CHECKSIG, a valid signature', CS(X1), [Sig(K1)])
+tap('CHECKSIG, SINGLE|ANYONECANPAY, an annex', CS(X1), [Sig(K1, 0x83)], annex=ANNEX)
+tap('CHECKSIG, the wrong key signed', CS(X1), [Sig(K2)])
+tap('CHECKSIG, a spoiled signature', CS(X1), [Sig(K1, bad=True)])
+tap('CHECKSIG, an empty signature', CS(X1), [b''])
+tap('CHECKSIG NOT, an empty signature', CS(X1) + P('NOT'), [b''])
+tap('CHECKSIGVERIFY, an empty signature', P('0x20 0x' + X1.hex() + ' CHECKSIGVERIFY 1'), [b''])
+tap('CHECKSIG, 65 bytes ending 0', CS(X1), [Sig(K1, tail=b'\x00')])
+tap('CHECKSIG, a 1-byte signature', CS(X1), [b'\x01'])
+tap('CHECKSIG, an empty key', P('0 CHECKSIG'), [b''])
+tap('CHECKSIG, a 33-byte key, any signature', P('0x21 0x02' + '11' * 32 + ' CHECKSIG'), [b'\x01'])
+tap('CHECKSIG, a 33-byte key, discouraged', P('0x21 0x02' + '11' * 32 + ' CHECKSIG'), [b'\x01'],
+    flags=WT + ',DISCOURAGE_UPGRADABLE_PUBKEYTYPE')
+tap('CHECKSIG, a 33-byte key, an empty signature', P('0x21 0x02' + '11' * 32 + ' CHECKSIG NOT'), [b''])
+tap('CHECKSIG, a key off the curve', P('0x20 0x' + '00' * 32 + ' CHECKSIG'), [Sig(K1)])
+tap('CODESEPARATOR, signed at its position', P('CODESEPARATOR') + CS(X1), [Sig(K1, codesep=0)])
+tap('CODESEPARATOR, signed with none', P('CODESEPARATOR') + CS(X1), [Sig(K1)])
+tap('CODESEPARATOR unexecuted, signed with none', P('0 IF CODESEPARATOR ENDIF') + CS(X1), [Sig(K1)])
+tap('two CODESEPARATORs, the last at opcode 3', P('CODESEPARATOR 1 DROP CODESEPARATOR') + CS(X1), [Sig(K1, codesep=3)])
+multi = P('0x20 0x' + X1.hex() + ' CHECKSIG 0x20 0x' + X2.hex() + ' 0xba 0x20 0x' + X3.hex() + ' 0xba 2 NUMEQUAL')
+tap('CHECKSIGADD, 2 of 3, keys 1 and 3', multi, [Sig(K3), b'', Sig(K1)])
+tap('CHECKSIGADD, 2 of 3, one signature', multi, [b'', b'', Sig(K1)])
+tap('CHECKSIGADD, 2 of 3, a spoiled one', multi, [Sig(K3, bad=True), b'', Sig(K1)])
+tap('CHECKSIGADD, a 5-byte number', P('0x05 0x0000000001 0x20 0x' + X1.hex() + ' 0xba'), [b''])
+tap('CHECKSIGADD, a non-minimal number, MINIMALDATA', P('0x02 0x0100 0x20 0x' + X1.hex() + ' 0xba'), [b''],
+    flags=WT + ',MINIMALDATA')
+tap('CHECKSIGADD, a non-minimal number', P('0x02 0x0100 0x20 0x' + X1.hex() + ' 0xba 1 NUMEQUAL'), [b''])
+tap('CHECKSIGADD, two arguments', P('0x20 0x' + X1.hex() + ' 0xba'), [])
+case('CHECKSIGADD outside tapscript', '', wsh(P('0 0 0 0xba')), W, [P('0 0 0 0xba')])
+tap('CHECKMULTISIG', P('0 0 0 CHECKMULTISIG'), [])
+tap('CHECKMULTISIG unexecuted', P('0 IF CHECKMULTISIG ENDIF 1'), [])
+tap('CHECKMULTISIGVERIFY', P('0 0 0 CHECKMULTISIGVERIFY 1'), [])
+# The budget: each signature checked costs 50 of 50 + the witness size.
+unknown = P('DUP 0x21 0x02' + '11' * 32 + ' CHECKSIGVERIFY')
+for n, pad in [(6, 0), (7, 0), (7, 1), (7, 13), (7, 14), (8, 0), (8, 30)]:
+    script = unknown * n + P('DROP 1')
+    sig = b'\x01' * (1 + pad)
+    tap('the budget: %d checks, a %d-byte signature' % (n, len(sig)), script, [sig], path=False)
+# Tapscript: everything else.
+for label, script, items in [('MINIMALIF, 0x02', P('IF 1 ENDIF 1'), [b'\x02']), ('MINIMALIF, 0x01', P('IF 1 ENDIF'), [b'\x01']),
+                             ('MINIMALIF, empty', P('IF 0 ENDIF 1'), [b'']), ('MINIMALIF, 0x0100', P('NOTIF 0 ENDIF 1'), [b'\x01\x00']),
+                             ('OP_SUCCESS 0x50 after RETURN', P('RETURN') + b'\x50', []),
+                             ('OP_SUCCESS 0xbb', b'\xbb', []), ('OP_SUCCESS 0xfe unexecuted', P('0 IF') + b'\xfe' + P('ENDIF'), []),
+                             ('OP_SUCCESS CAT', P('CAT'), []), ('OP_SUCCESS then a bad push', b'\x50\x4c\x05', []),
+                             ('a bad push, no OP_SUCCESS', b'\x51\x4c\x05', []), ('0xff executed', P('1') + b'\xff', []),
+                             ('VERIF', P('0 IF VERIF ENDIF 1'), []), ('EVAL_FALSE', P('0'), []), ('CLEANSTACK', P('1 1'), []),
+                             ('300 NOPs', P('NOP') * 300 + P('1'), []), ('202 ops then CHECKSIG', P('NOP') * 202 + CS(X1), [Sig(K1)]),
+                             ('a script of 10,001 bytes', P('0x4d 0x0802 0x' + '00' * 520 + ' DROP') * 19 + b'\x2a' + bytes(42) + P('DROP 1'), []),
+                             ('1,000 stack elements', P('2DROP') * 500 + P('1'), [b''] * 1000),
+                             ('1,001 stack elements', P('1'), [b''] * 1001),
+                             ('an element of 521 bytes', P('DROP 1'), [bytes(521)]),
+                             ('1,001 elements after an opcode', P('1'), [b''] * 1000)]:
+    tap('tapscript, ' + label, script, items)
+tap('tapscript, OP_SUCCESS 0x50, discouraged', b'\x50', [], flags=WT + ',DISCOURAGE_OP_SUCCESS')
+# 2,000 SHA-256s: 64,000 bytes of results, twice the workspace's arena.
+chain = b'\x07'
+for _ in range(2000): chain = hashlib.sha256(chain).digest()
+tap('tapscript, 2,000 SHA256s', P('SHA256') * 2000 + P('0x20 0x' + chain.hex() + ' EQUAL'), [b'\x07'])
+tap('tapscript, 2,000 SHA256s, wrong', P('SHA256') * 2000 + P('0x20 0x' + bytes(32).hex() + ' EQUAL'), [b'\x07'])
+hs = [b'\x07']
+for _ in range(1100): hs.append(hashlib.sha256(hs[-1]).digest())
+tap('tapscript, 900 SHA256s kept, then 200 more', P('DUP SHA256') * 900 + P('SHA256') * 200 + P('DEPTH 901 EQUALVERIFY 0x20 0x' + hs[1100].hex()
+    + ' EQUALVERIFY 0x20 0x' + hs[899].hex() + ' EQUALVERIFY') + P('2DROP') * 449 + P('0x01 0x07 EQUAL'), [b'\x07'])
+
 # Legacy sighash rows for the library: one per kind.
 picks = []
 for want in [lambda r, tx: r[3] & 0x1f == 1 and not r[3] & 0x80 and b'\xab' not in bytes.fromhex(r[1]),
@@ -671,11 +838,9 @@ main = ['// Generated by make_script_vectors.py from Bitcoin Core\'s script_test
 main += render_rows('SCRIPT_ROWS', 'ScriptRow', run, [
     lambda r: f'line={r["line"]}', lambda r: 'tx=' + hexes(r['tx']), lambda r: 'spk=' + hexes(r['spk']),
     lambda r: f'amount={r["amount"]}', lambda r: f'flags={r["flags"]}', lambda r: f'error={R.E[r["expected"]]}', lambda r: f'curve={r["curve"]}'])
-main += ['// The rows not run: each needs a Taproot output key or control block that',
-         '// script_tests.cpp builds from its own keys (chapter 44).',
-         'ScriptSkipped :: struct { line: int; expected: string; comment: string; }']
-main += render_rows('SCRIPT_SKIPPED', 'ScriptSkipped', skipped, [
-    lambda r: f'line={r["line"]}', lambda r: f'expected="{r["expected"]}"', lambda r: f'comment="{text(r["comment"])}"'])
+main += ['// The Taproot rows: their leaf script, control block and output key are',
+         '// built as script_tests.cpp builds them (chapter 44).',
+         'SCRIPT_TAPROOT_LINES :: [%d] int.[%s];' % (len(taproot_lines), ', '.join(map(str, taproot_lines)))]
 main += ['// tx_valid.json (valid) and tx_invalid.json rows other than BADTX: the',
          '// transaction and, for input k, SCRIPT_PREVS[first + k], the scriptPubKey',
          '// and amount it spends (0 when the row gives none).',
@@ -705,10 +870,13 @@ small = ['// Generated by make_script_vectors.py for the checks of',
          '// script_tests.cpp builds its own (some with another version, locktime or',
          '// sequence), with the error script_reference.py decides. SI_SIGNED: three',
          '// spends signed by make_script_vectors.py with test keys, which pass.',
+         '// SI_TAPROOT: the Taproot spends that reach the curve, a Schnorr',
+         '// verification or the commitment check (chapter 44), signed with test',
+         '// keys, each with its decided error.',
          '// SI_SIGHASH: ten rows of Core\'s sighash.json, one per kind of hash type',
          '// and position.',
          'SiCase :: struct { label: string; tx: string; spk: string; amount: int; flags: int; error: int; }']
-for name, items in (('SI_CASES', lib), ('SI_SIGNED', signed)):
+for name, items in (('SI_CASES', lib), ('SI_SIGNED', signed), ('SI_TAPROOT', schnorr)):
     small += render_rows(name, 'SiCase', items, [
         lambda c: f'label="{text(c["label"])}"', lambda c: 'tx=' + hexes(c['tx']), lambda c: 'spk=' + hexes(c['spk']),
         lambda c: f'amount={c["amount"]}', lambda c: f'flags={c["flags"]}', lambda c: f'error={c["error"]}'])
@@ -726,5 +894,5 @@ small += render_rows('SI_SIGHASH_V0', 'SiSighashV0', picks_v0, [
 (HERE/'script_lib_vectors.coax').write_text('\n'.join(small) + '\n')
 counts = {}
 for c in lib: counts[c['error']] = counts.get(c['error'], 0) + 1
-print(f'{len(run)} script rows, {len(skipped)} skipped, {len(txs)} transactions, {len(cases)} flag cases, '
-      f'{len(sighash)} sighash rows; {len(lib)} library cases, errors {sorted(counts.items())}')
+print(f'{len(run)} script rows, {len(taproot_lines)} of them Taproot, {len(txs)} transactions, {len(cases)} flag cases, '
+      f'{len(sighash)} sighash rows; {len(lib)} library cases, {len(schnorr)} Taproot cases, errors {sorted(counts.items())}')

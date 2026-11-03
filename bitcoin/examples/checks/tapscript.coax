@@ -1,0 +1,33 @@
+// The checks of tapscript.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/tapscript.coax --only tapscript:
+#load "../tapscript.coax";
+
+// book:begin check
+// The seven Taproot rows of script_tests.json give Core's results.
+#test "tapscript: script_tests.json's Taproot rows" #steps 2000000000 {
+  s: [1] Spend; w: [1] ScriptWork; ran := 0;
+  for l: SCRIPT_TAPROOT_LINES {
+    for r: SCRIPT_ROWS {
+      if r.line != l { continue; }
+      #assert script_verify_vartime(spend_of(s[..], r.tx, r.spk, r.amount), r.flags, w[..]) == r.error;
+      ran += 1;
+    }
+  }
+  #assert ran == 7;
+}
+// The budget is 50 plus the witness's size, and seven checks cost 350, so
+// the witness needs 300 bytes: a 2-byte filler signature leaves it short,
+// and a 14-byte one, which costs the same 50, makes room.
+#test "tapscript: the budget follows the witness's size" #steps 400000000 {
+  s: [1] Spend; w: [1] ScriptWork;
+  for c: SI_TAPROOT {
+    if c.label == "the budget: 7 checks, a 2-byte signature" {
+      #assert script_verify_vartime(spend_of(s[..], c.tx, c.spk, c.amount), c.flags, w[..]) == SCRIPT_ERR_TAPSCRIPT_VALIDATION_WEIGHT;
+    }
+    if c.label == "the budget: 7 checks, a 14-byte signature" {
+      #assert script_verify_vartime(spend_of(s[..], c.tx, c.spk, c.amount), c.flags, w[..]) == SCRIPT_ERR_OK;
+    }
+  }
+}
+// book:end check
