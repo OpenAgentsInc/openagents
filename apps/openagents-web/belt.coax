@@ -33,7 +33,7 @@
 #load "lockroom.coax";
 #load "belt-net.coax";
 #load "../../aethyr/budget.coax";
-#load "../../aethyr/loop.coax";      // the lockstep ticks' clock (belt-net.coax)
+#load "../../aethyr/loop.coax";      // the lockstep ticks' clock (belt-net.coax) and the battle's (tac_clock)
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 90000;
@@ -198,6 +198,8 @@ Belt :: struct {
   track: [1] Track;
   stage: int; stage_t: f64; stage_ship: int;   // a staged moment (?stage=NAME), its real seconds, its ship
   tac: [1] Tac; tac_fast: bool;   // the tactical view (belt-tactical.coax), up while a battle is on
+  // the battle's steps on Aethyr's clock, in battle time: TAC_STEP each, at most TAC_CATCH_UP a frame
+  tac_clock: FrameClock = FrameClock.{step_ns = TAC_STEP_NS, max_frame_ns = TAC_MAX_FRAME_NS, max_steps = TAC_CATCH_UP};
   // a game for two over the room server (belt-net.coax, lockroom.coax)
   lock: [1] Lock; net_applying: bool; net_clock: FrameClock = FrameClock.{step_ns = NET_STEP_NS, max_frame_ns = 100000000, max_steps = NET_CATCH_UP}; net_nudge: bool; net_nudge_t: f64;
   snap: [NET_SNAP] u8;
@@ -1092,6 +1094,9 @@ HULL_FLY :: 0.5;            // a ship of ours under this stays in the yard
 HULL_REPAIR :: 0.05;        // a day, docked at home
 REPAIR_METAL :: 200.0;      // t of metal a whole hull
 TAC_RATE :: 12.0;           // battle seconds a real second (four times that, faster)
+TAC_STEP_NS :: 100000000;   // TAC_STEP (belt-tactical.coax) in nanoseconds of battle time
+TAC_MAX_FRAME_NS :: 4800000000;   // the longest frame, 0.1 s, at the fastest rate (4 TAC_RATE): 4.8 battle seconds
+TAC_CATCH_UP :: 8;         // steps a frame may run (aethyr/budget.coax): 1X keeps its pace down to 15 FPS, 4X to 60
 tac_begin :: (s: [] Belt, i: int, j: int, t: f64) {
   tac_clear(s[0].tac[..], cast(u64) (i * 977 + j * 131 + safe_int(t / 60.0) % 100000 + 1));
   a := ship_state(s, i, t); b := ship_state(s, j, t);   // flying, or (met at a rock or the Unknown) parked
@@ -1109,6 +1114,7 @@ tac_begin :: (s: [] Belt, i: int, j: int, t: f64) {
   }
   tac_face(s[0].tac[..]);
   s[0].tac[0].on = true; s[0].tac_fast = false;
+  s[0].tac_clock.carry_ns = 0;   // a battle starts owing no time
   s[0].follow = -1;
 }
 // What the battle cost, back on the map: hulls, the crew lost with them, a crippled ship's cargo,
@@ -2782,8 +2788,12 @@ belt_step :: (s: [] Belt, dt: f32) {
   if lr_on(s[0].lock[..]) { net_frame(s, real); game = 0.0; }
   if s[0].tac[0].on && !lr_on(s[0].lock[..]) {
     game = 0.0;
-    bt := real * TAC_RATE * (ifx s[0].tac_fast then 4.0 else 1.0);
-    while bt > 0.0 && s[0].tac[0].end == TAC_FIGHTING { tac_step(s[0].tac[..], TAC_STEP); bt -= TAC_STEP; }
+    // Aethyr's clock in battle time (aethyr/loop.coax): the frame's battle seconds are owed and
+    // whole TAC_STEPs run; a battle that ends leaves the rest unpaid.
+    c := loop_accept(s[0].tac_clock, real * TAC_RATE * (ifx s[0].tac_fast then 4.0 else 1.0));
+    ran := 0;
+    while ran < loop_due(c) && s[0].tac[0].end == TAC_FIGHTING { tac_step(s[0].tac[..], TAC_STEP); ran += 1; }
+    s[0].tac_clock = loop_ran_some(c, ran);
   }
   while game > 0.0 && !s[0].tac[0].on {
     piece := fmin(game, 2.0 * DAY);
@@ -3445,6 +3455,42 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   people := s[0].station[0].people;
   tac_apply(s[..]);
   #assert s[0].station[0].people == people;
+}
+
+#test "a battle steps on Aethyr's clock in battle time: 1X and 4X, a stalled frame, no time" #steps 200000000 {
+  s: [1] Belt;
+  belt_start(s[..]);
+  tac_begin(s[..], 2, 3, s[0].t);
+  #assert s[0].tac[0].on && s[0].tac_clock.step_ns == TAC_STEP_NS && s[0].tac_clock.carry_ns == 0;
+  // 1X: a 60 FPS frame is 0.2 battle seconds, two steps, nothing owed
+  t0 := s[0].tac[0].t;
+  belt_step(s[..], 1.0 / 60.0);
+  #assert s[0].tac_clock.ran == 2 && s[0].tac_clock.carry_ns < 100 && s[0].tac[0].t > t0;
+  // a stalled frame counts as 0.1 s: 1.2 battle seconds at 1X, 12 steps owed, TAC_CATCH_UP run, the rest dropped
+  k := s[0].tac_clock.ticks;
+  owed := s[0].tac_clock.carry_ns;
+  belt_step(s[..], 3.0);
+  #assert s[0].tac[0].end == TAC_FIGHTING;   // still fought: the whole frame ran
+  #assert s[0].tac_clock.ran == TAC_CATCH_UP && s[0].tac_clock.ticks == k + TAC_CATCH_UP && s[0].tac_clock.stalls == 1;
+  // every nanosecond fed is stepped, owed or dropped
+  #assert owed + loop_ns(f64(0.1f32) * TAC_RATE) == TAC_CATCH_UP * TAC_STEP_NS + s[0].tac_clock.carry_ns + s[0].tac_clock.dropped_ns;
+  // 4X at 60 FPS: 0.8 battle seconds, TAC_CATCH_UP steps, nothing dropped
+  s[0].tac_fast = true;
+  dropped := s[0].tac_clock.dropped_ns;
+  belt_step(s[..], 1.0 / 60.0);
+  #assert s[0].tac[0].end == TAC_FIGHTING;
+  #assert s[0].tac_clock.ran == TAC_CATCH_UP && s[0].tac_clock.dropped_ns == dropped;
+  // no time runs no step
+  k = s[0].tac_clock.ticks;
+  belt_step(s[..], 0.0);
+  #assert s[0].tac_clock.ticks == k;
+  // a battle that ends runs no step past its end, and the next one starts owing nothing
+  _ := tac_resolve(s[0].tac[..]);
+  k = s[0].tac_clock.ticks;
+  belt_step(s[..], 0.1);
+  #assert s[0].tac_clock.ticks == k && s[0].tac_clock.ran == 0;
+  tac_begin(s[..], 2, 3, s[0].t);
+  #assert s[0].tac_clock.carry_ns == 0;
 }
 
 #test "a tactical battle: engaging opens it, it resolves, and BACK TO THE MAP applies the losses" #steps 50000000 {

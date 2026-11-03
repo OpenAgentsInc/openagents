@@ -43,10 +43,10 @@ Lines :: struct { b: [1048576] u8; n: int; count: int; }
 }
 #test "build.sh's wasm.sh lines, continuations joined" {
   store: [8192] u8; ar: [1] Arena; ar[0].b = store[..]; es: [4] Engine;
-  t := "x\n\"$here/../../coax/web/wasm.sh\" \"$here/a.coax\" \"$here/a-face.c\" \"$here/build/a.wasm\" \\\n   \"$m/p.coax\" &\nCOAXIAL_RUN_STEPS=9 \"$here/../../coax/web/wasm.sh\" \"$here/b.coax\" \"$here/f.c\" \"$here/build/b.wasm\"\n";
+  t := "x\n\"$here/../../coax/web/wasm.sh\" \"$here/a.coax\" \"$here/a-face.c\" \"$here/build/a.wasm\" \\\n   \"$m/p.coax\" \"$a/q.coax\" &\nCOAXIAL_RUN_STEPS=9 \"$here/../../coax/web/wasm.sh\" \"$here/b.coax\" \"$here/f.c\" \"$here/build/b.wasm\"\n";
   n := sd_engines(t, "/r", ar[..], es[..]);
   #assert n == 2 && es[0].name == "a" && es[0].coax == "/r/apps/openagents-web/a.coax" && es[0].face == "/r/apps/openagents-web/a-face.c";
-  #assert es[0].wasm == "/r/apps/openagents-web/build/a.wasm" && es[0].nlibs == 1 && es[0].libs[0] == "/r/verse/p.coax" && es[0].steps == "";
+  #assert es[0].wasm == "/r/apps/openagents-web/build/a.wasm" && es[0].nlibs == 2 && es[0].libs[0] == "/r/verse/p.coax" && es[0].libs[1] == "/r/aethyr/q.coax" && es[0].steps == "";
   #assert es[1].name == "b" && es[1].steps == "9" && es[1].nlibs == 0;
 }
 #test "a face's plan" {
@@ -124,7 +124,7 @@ li_has_prefix :: (l: [] Lines, head: string) -> bool {
 }
 
 // A build.sh word as a path: quotes dropped, $here/../.. the repo, $here
-// the web app, $m Verse.
+// the web app, $m Verse, $a Aethyr.
 sd_here :: (a: [] Arena, w: string, root: string) -> string {
   q: [4096] u8; n := 0;
   for c: w { if c != '"' && n < q.count { q[n] = c; n += 1; } }
@@ -132,6 +132,7 @@ sd_here :: (a: [] Arena, w: string, root: string) -> string {
   if sd_starts(s, 0, "$here/../..") { p := [2] string.[root, s[11..<s.count]]; return ar_cat(a, p[..]); }
   if sd_starts(s, 0, "$here") { p := [3] string.[root, "/apps/openagents-web", s[5..<s.count]]; return ar_cat(a, p[..]); }
   if sd_starts(s, 0, "$m") { p := [3] string.[root, "/verse", s[2..<s.count]]; return ar_cat(a, p[..]); }
+  if sd_starts(s, 0, "$a/") { p := [3] string.[root, "/aethyr", s[2..<s.count]]; return ar_cat(a, p[..]); }
   return ar_one(a, s);
 }
 // build.sh's wasm.sh lines (with their continuations): the engines, into es.
@@ -331,6 +332,9 @@ sd_run :: (argv: [] string, out: [] u8, why: [] Lines, what: string) -> int {
 }
 SD_CC :: "cc";
 sd_loose :: () -> string { return ifx tool_os() == TOOL_MAC then "-Wl,-undefined,dynamic_lookup" else "-Wl,--unresolved-symbols=ignore-all"; }
+// Linux: a position-independent program with an unresolved call fails to load ("unexpected PLT
+// reloc type 0x00"), though the call never runs; a fixed-position one loads.
+sd_fixed :: () -> string { return ifx tool_os() == TOOL_MAC then "" else "-no-pie"; }
 
 // The native default of a type: its unit's coax_init, as bytes (hex printed by a small program).
 sd_native :: (a: [] Arena, work: string, unit: string, type: string, out: [] u8, why: [] Lines) -> int {
@@ -349,9 +353,9 @@ sd_native :: (a: [] Arena, work: string, unit: string, type: string, out: [] u8,
   bp := [2] string.[dir, "/main"]; bin := ar_cat(a, bp[..]);
   if !fs_write(mainf, main_c) { return -1; }
   ip := [2] string.["-I", sd_dir(unit)];
-  argv := [13] string.[SD_CC, "-std=c11", "-O1", "-w", "-ffp-contract=off", ar_cat(a, ip[..]), mainf, "-o", bin, "-lm", sd_loose(), "", ""];
+  argv := [13] string.[SD_CC, "-std=c11", "-O1", "-w", "-ffp-contract=off", ar_cat(a, ip[..]), mainf, "-o", bin, "-lm", sd_loose(), sd_fixed(), ""];
   hex: [4194304] u8;
-  if sd_run(argv[0..<11], hex[..], why, ar2(a, "cc ", unit)) < 0 { return -1; }
+  if sd_run(argv[0..<ifx tool_os() == TOOL_MAC then 11 else 12], hex[..], why, ar2(a, "cc ", unit)) < 0 { return -1; }
   run := [1] string.[bin];
   n := sd_run(run[..], hex[..], why, bin);
   if n < 0 { return -1; }

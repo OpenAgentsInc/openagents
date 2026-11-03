@@ -64,8 +64,9 @@ Gears' `ecs_clock_frame`, Orbit League's step cap, `verse/demolish.coax`,
 Hold the Stair's solo and co-op clocks, the 0.1 s clamps in five page
 faces, Ice Cream Man's 1/30 s rules steps, the realm template
 ([verse/realm-template/starcatch.coax](../../verse/realm-template/starcatch.coax),
-which every new realm copies), Watchtower and the Verse landing's orbs. Each of
-the last four has a check that a stalled frame runs no more than its cap of
+which every new realm copies), Watchtower, the Verse landing's orbs,
+Everglade's river floats, Fairy Forest's lily pads and Belt 2200's tactical
+battle. Each of the last seven has a check that a stalled frame runs no more than its cap of
 at most 8 steps
 ([one-clock invariant](../../INVARIANTS.md#a-realms-frame-time-is-what-its-clock-counts-and-no-frame-runs-past-8-steps)).
 This is evidence of adoption, not completion of `ec-migrate`. Belt's network

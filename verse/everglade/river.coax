@@ -53,6 +53,7 @@
 
 #load "../water-look.coax";
 #load "../water-wade.coax";
+#load "../../aethyr/loop.coax";   // the floats' fixed steps: Aethyr's one clock (aethyr/book ch001)
 
 RIVER_X :: 88.0;          // the plan's river runs along x = 88 (EG_RIVER_X)
 RIVER_NORTH :: 104.0;     // from the north edge of the ground, flowing south
@@ -124,6 +125,7 @@ FLOAT_HOME :: [18] f64.[
   86.6, -22.5,   89.2, -38.5,   89.4, -24.0,   86.7, 4.5,   89.3, 7.0,   86.9, -36.5
 ];
 FLOAT_STEP :: 1.0 / 120.0;
+FLOAT_STEP_NS :: 8333333;    // FLOAT_STEP in whole nanoseconds, for the floats' FrameClock
 // The weir and its plunge pool (plan.coax EG_WEIR_Z, EG_POOL_*): white water
 // down the drop and churning in the pool.
 WEIR_Z :: -30.0;
@@ -156,7 +158,7 @@ River :: struct {
   // the floats
   floats: [FLOATS] RigidBody; colliders: [FLOATS] Collider; pushes: [FLOATS * 2] Push;
   homes: [FLOATS * 3] f64; kinds: [FLOATS] int; float_n: int;   // each one's home x, z and yaw
-  float_tick: u64; float_carry: f64;
+  float_tick: u64; float_clock: FrameClock;   // the floats' steps: 1/120 s, 0.25 s frames at most, 8 steps
   // the rowboat you sit in (a float's index, -1 none), the stroke's clock and what you ask of it
   aboard: int; oar_t: f32; row_on: f32; row_ahead: f32; row_turn: f32; oar_wet: bool;
   // the wakes: each mover's trail (x, z, when, speed; the newest first), and when it last laid a point
@@ -609,7 +611,7 @@ floats_start :: (r: [] River) {
     r[0].floats[i] = rigid_body(mass, inertia, d3(x, y + 0.02, z), dq_y(yaw));
     r[0].colliders[i] = Collider.{body = i, shape = shape};
   }
-  r[0].float_tick = 0; r[0].float_carry = 0.0;
+  r[0].float_tick = 0; r[0].float_clock = loop_clock(FLOAT_STEP_NS);
 }
 
 
@@ -619,11 +621,10 @@ floats_start :: (r: [] River) {
 // into `out`.
 everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
   if !r[0].ready { return 0; }
-  if dt == dt && dt > 0 { r[0].float_carry += fmin(f64(dt), 0.25); }
-  steps := 0;
+  c := loop_accept(r[0].float_clock, f64(dt));   // a time that is none steps nothing
   every: [1] bool;
   gravity := d3(0.0, -9.81, 0.0);
-  while r[0].float_carry >= FLOAT_STEP && steps < 8 {
+  for k: 0..<loop_due(c) {
     w := rigid_world(FLOAT_STEP, r[0].floats[0..<r[0].float_n]);
     w.tick = r[0].float_tick;
     n := water_apply(w, r[0].colliders[0..<r[0].float_n], r[0].set, w.tick, FLOAT_STEP, water_settings(), every[0..<0], r[0].pushes[..]);
@@ -635,10 +636,8 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
     w = rigid_step(w, gravity);
     boat_shore(r, r[0].aboard);
     r[0].float_tick = w.tick;
-    r[0].float_carry -= FLOAT_STEP;
-    steps += 1;
   }
-  if r[0].float_carry >= FLOAT_STEP { r[0].float_carry = 0.0; }
+  r[0].float_clock = loop_ran(c);
   count := 0;
   for i: 0..<r[0].float_n {
     if (count + 1) * 8 > out.count { break; }
@@ -1454,6 +1453,27 @@ test_ground :: (heights: [] f32, levels: [] f32) {
     #assert sqrt((x - hx) * (x - hx) + (z - hz) * (z - hz)) < 4;
     #assert out[i * 8 + 7] == ifx i < DUCKS then 0.0f32 else 1.0f32;
   }
+}
+
+#test "the floats step on Aethyr's clock: 1/120 s steps, a stalled frame runs 8, no time runs none" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  levels: [TEST_N + 1] f32;
+  test_ground(heights[..], levels[..]);
+  r: [1] River;
+  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -104, -104);
+  out: [FLOATS * 8] f32;
+  #assert r[0].float_clock.step_ns == FLOAT_STEP_NS && r[0].float_clock.max_steps == 8 && r[0].float_clock.max_frame_ns == 250000000;
+  _ := everglade_river_floats(r[..], 1.0 / 60.0, out[..]);
+  #assert r[0].float_tick == 2 && r[0].float_clock.ran == 2;
+  _ = everglade_river_floats(r[..], 3.0, out[..]);   // a stalled tab: 0.25 s counts, 8 steps run
+  #assert r[0].float_tick == 10 && r[0].float_clock.ran == 8 && r[0].float_clock.stalls == 1 && r[0].float_clock.overlong == 1;
+  // every nanosecond fed is stepped, owed or dropped
+  #assert r[0].float_clock.carry_ns >= 0 && r[0].float_clock.carry_ns < FLOAT_STEP_NS;
+  #assert r[0].float_clock.dropped_ns + r[0].float_clock.carry_ns + 10 * FLOAT_STEP_NS == 250000000 + loop_ns(f64(1.0f32 / 60.0f32));
+  // a still frame, a negative one and one that is not a number step nothing
+  zero := 0.0f32;
+  stills := [3] f32.[0.0, -1.0, zero / zero];
+  for k: 0..<3 { dt := stills[k]; _ = everglade_river_floats(r[..], dt, out[..]); #assert r[0].float_tick == 10 && r[0].float_clock.ran == 0; }
 }
 
 #test "a pond: still water over its bowl, waded at its shallows, swum in its middle, a bank to come to past its rim" {

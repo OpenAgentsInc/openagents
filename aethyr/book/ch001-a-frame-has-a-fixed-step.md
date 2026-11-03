@@ -480,6 +480,15 @@ Before this module, each realm kept its own accumulator:
 - The Verse landing's orbs
   ([apps/openagents-web/verse.coax](../../apps/openagents-web/verse.coax)):
   f32, 1/60 s, at most 0.1 s owed.
+- The floats on Everglade's river
+  ([verse/everglade/river.coax](../../verse/everglade/river.coax)) and Fairy
+  Forest's lily pads
+  ([verse/fairy-forest/stream.coax](../../verse/fairy-forest/stream.coax)):
+  f64, 1/120 s, 0.25 s, eight steps, and the whole backlog thrown away at
+  the cap.
+- Belt 2200's tactical battle: 0.1 s battle steps, run until the frame's
+  battle time (12 battle seconds a real second, 48 at 4X) was used up, with
+  the last step overrunning it and no cap, so a 0.1 s frame at 4X ran 48.
 
 All of them now step on `aethyr/loop.coax`. Dead Gears' clock keeps its
 1/60 s step as 16,666,666 ns, rounded down, so 0.05 s is still three steps
@@ -500,11 +509,16 @@ No frame runs more steps than a realm's budget of 8
 | The realm template and Watchtower | 1/60 s | 0.1 s | 6 (it was 16) |
 | Ice Cream Man's rules | 1/30 s | 0.1 s | 4 |
 | The Verse landing's orbs | 1/60 s | 0.1 s | 6 |
+| Everglade's floats and Fairy Forest's pads | 1/120 s | 0.25 s | 8 |
+| Belt 2200's battle | 0.1 s of battle | 0.1 s of play times the rate | 8 (it was 48) |
 
-At 8x, Hold the Stair runs at full speed down to 60 FPS. Below that, and in
-Orbit League below 15 FPS, the time past the cap is dropped and counted on
-the clock. Everglade runs two clocks a frame, the player's and the debris',
-so a stalled frame there runs up to 14 steps in all.
+At 8x, Hold the Stair runs at full speed down to 60 FPS, and so does Belt
+2200's battle at 4X (at 1X, down to 15 FPS). Below that, and in Orbit League
+below 15 FPS, the time past the cap is dropped and counted on the clock.
+Belt's battle clock counts battle time, not real time: the frame's real time
+is clamped to 0.1 s first, then multiplied by the rate. Everglade runs three
+clocks a frame, the player's, the debris' and the river's floats', so a
+stalled frame there runs up to 22 steps in all, no clock more than 8.
 
 Each of these realms has a check that feeds it a stalled 3 s frame and
 asserts it runs no more than its cap. Ice Cream Man's cap keeps the part of a
