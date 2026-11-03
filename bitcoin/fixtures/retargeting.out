@@ -1,0 +1,81 @@
+interval 2016 blocks, timespan 1209600 seconds, clamp 302400 to 4838400
+block 2016: blocks 0 to 2015 took 2055491 seconds, 23.8 days
+  nBits 1d00ffff
+  target × time / two weeks: 00000001b30495e6ce6ce6ce6ce6ce6ce6ce6ce6ce6ce6ce6ce6ce6ce6ce6ce6
+  above powLimit: capped
+  encoded and decoded: 00000000ffff0000000000000000000000000000000000000000000000000000
+  new nBits 1d00ffff, block 2016 has 1d00ffff, difficulty × 1.0000
+block 32256: blocks 30240 to 32255 took 1022578 seconds, 11.8 days
+  nBits 1d00ffff
+  target × time / two weeks: 00000000d86a528bc8bc8bc8bc8bc8bc8bc8bc8bc8bc8bc8bc8bc8bc8bc8bc8b
+  encoded and decoded: 00000000d86a0000000000000000000000000000000000000000000000000000
+  new nBits 1d00d86a, block 32256 has 1d00d86a, difficulty × 1.1828
+block 68544: blocks 66528 to 68543 took 289434 seconds, 3.3 days
+  under a quarter of two weeks: clamped to 302400
+  nBits 1c05a3f4
+  target × time / two weeks: 000000000168fd00000000000000000000000000000000000000000000000000
+  encoded and decoded: 000000000168fd00000000000000000000000000000000000000000000000000
+  new nBits 1c0168fd, block 68544 has 1c0168fd, difficulty × 4.0000
+block 689472: blocks 687456 to 689471 took 1678665 seconds, 19.4 days
+  nBits 170e1ef9
+  target × time / two weeks: 0000000000000000001398ce3ce5fe5fe5fe5fe5fe5fe5fe5fe5fe5fe5fe5fe5
+  encoded and decoded: 0000000000000000001398ce0000000000000000000000000000000000000000
+  new nBits 171398ce, block 689472 has 171398ce, difficulty × 0.7205
+block 901152: blocks 899136 to 901151 took 1215064 seconds, 14.1 days
+  nBits 17023774
+  target × time / two weeks: 000000000000000000023a043438ff4bb076c327ee3a9f65b216dd298e54a105
+  encoded and decoded: 000000000000000000023a040000000000000000000000000000000000000000
+  new nBits 17023a04, block 901152 has 17023a04, difficulty × 0.9955
+block 969696: blocks 967680 to 969695 took 1209975 seconds, 14.0 days
+  nBits 17021ec5
+  target × time / two weeks: 000000000000000000021ef013b2cb2cb2cb2cb2cb2cb2cb2cb2cb2cb2cb2cb2
+  encoded and decoded: 000000000000000000021ef00000000000000000000000000000000000000000
+  new nBits 17021ef0, block 969696 has 17021ef0, difficulty × 0.9996
+block 971712: blocks 969696 to 971711 took 1141962 seconds, 13.2 days
+  nBits 17021ef0
+  target × time / two weeks: 000000000000000000020093e48d159e26af37c048d159e26af37c048d159e26
+  encoded and decoded: 0000000000000000000200930000000000000000000000000000000000000000
+  new nBits 17020093, block 971712 has 17020093, difficulty × 1.0592
+block 973728: blocks 971712 to 973727 took 1146119 seconds, 13.3 days
+  nBits 17020093
+  target × time / two weeks: 00000000000000000001e5ac7f60c3ea1c7fa5d83b6193f71d4fb2d90b6e94c7
+  encoded and decoded: 00000000000000000001e5ac0000000000000000000000000000000000000000
+  new nBits 1701e5ac, block 973728 has 1701e5ac, difficulty × 1.0553
+mainnet retargets to block 973728: 483 of 483 match the chain
+  difficulty rose 358 times, fell 110 times, stayed 15 times
+chainwork at block 966143
+  ours: 000000000000000000000000000000000000000145ec036acc5ba740052af1a0
+  nMinimumChainWork: 000000000000000000000000000000000000000145ec036acc5ba740052af1a0
+2,016 blocks ten minutes apart measure 1209000 seconds: 1c05a3f4 becomes 1c05a33c, difficulty × 1.0004
+time warp from block 900,000's nBits, at a constant hash rate
+  period 0: took 14.0 days, measured 14.0 days, next nBits 17023774
+  period 1: took 14.0 days, measured 28.0 days, next nBits 17046ebf
+  period 2: took 7.0 days, measured 35.0 days, next nBits 170b1450
+  period 3: took 2.8 days, measured 37.8 days, next nBits 171de811
+  period 4: took 1.0 days, measured 38.8 days, next nBits 1752ef5f
+  period 5: took 9.0 hours, measured 39.2 days, next nBits 1800e82f
+  period 6: took 3.2 hours, measured 39.3 days, next nBits 18028c2b
+  period 7: took 1.1 hours, measured 39.4 days, next nBits 180729e2
+  period 8: took 24.4 minutes, measured 39.4 days, next nBits 1814268d
+  period 9: took 8.7 minutes, measured 39.4 days, next nBits 1838af56
+  period 10: took 3.1 minutes, measured 39.4 days, next nBits 19009f73
+  period 11: took 1.1 minutes, measured 39.4 days, next nBits 1901c07c
+  24192 blocks in 39.4 days; on time it would be 5676 blocks
+  with BIP-54's rule, after three periods: 17023ad9
+testnet
+  20 minutes and 1 second after the last block: 1d00ffff
+  20 minutes after, past three minimum blocks: 1c05a3f4
+  mainnet keeps the last block's: 1d00ffff
+  a period whose last block used the minimum: testnet3 1d00ffde, testnet4 1c05a33c
+permitted at block 68,544 after 1c05a3f4
+  1c0168fd: ok
+  1c0168fc: not permitted
+  1c168fd0: ok
+  1c168fd1: not permitted
+  1c05a3f4: ok
+  block 68,545 changing it: not permitted
+refusals
+  block 32,256 claiming 1d00ffff: bad-diffbits
+  block 32,256 claiming 1d00d86a: ok
+  a view one block short: not the period
+  a timespan that is not whole blocks: bad parameters

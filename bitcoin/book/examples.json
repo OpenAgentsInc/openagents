@@ -369,6 +369,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "bitcoin/examples/retargeting.coax",
+      "chapter": "bitcoin/book/ch048-compact-targets-retargeting-and-chainwork.md",
+      "stdout": "bitcoin/fixtures/retargeting.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

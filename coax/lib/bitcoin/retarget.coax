@@ -1,0 +1,481 @@
+// Compact targets, retargeting and chainwork (Bitcoin chapter 48): the
+// target every 2,016 blocks from the time they took, Bitcoin Core's
+// GetNextWorkRequired and CalculateNextWorkRequired with the factor-of-four
+// clamp, the rounding through the compact form and the powLimit cap,
+// testnet's minimum-difficulty rule and BIP-94's first-block nBits,
+// PermittedDifficultyTransition for headers presync, and chainwork, the
+// sum of every header's work.
+//
+// The numbers, the compact form and the work of one header are chapter
+// 47's (pow.coax); this file adds Core's multiplication by a 32-bit word.
+// The chain parameters of each network are chapter 50's; the fields
+// retargeting reads are here so that the rules can be tested. The
+// timestamp rules, including testnet4's timewarp rule, are chapter 51's.
+//
+// Headers and targets are public, so everything here runs in variable time
+// and every procedure that decides ends in _vartime (Bitcoin chapter 3).
+#load "pow.coax";
+#load "../../tests/bitcoin/retarget_vectors.coax";
+#authority;
+
+// book:begin codes
+// Result codes.
+RETARGET_OK :: 0;
+RETARGET_BAD_DIFFBITS :: 1;   // nBits is not what the rule requires: Core's "bad-diffbits"
+RETARGET_NOT_PERMITTED :: 2;  // presync: a change of more than four times, or off a boundary
+RETARGET_PERIOD :: 3;         // the view is not the current period's blocks, or a height is negative
+RETARGET_PARAMS :: 4;         // the parameters fail Core's sanity checks
+// book:end codes
+
+// book:begin params
+// The fields of Core's Consensus::Params that retargeting reads.
+RetargetParams :: struct {
+  pow_limit: U256;           // powLimit: the easiest target
+  spacing: int;              // nPowTargetSpacing: seconds per block
+  timespan: int;             // nPowTargetTimespan: seconds per period
+  allow_min_difficulty: bool; // fPowAllowMinDifficultyBlocks: testnet3, testnet4
+  bip94: bool;               // enforce_BIP94: testnet4
+  no_retargeting: bool;      // fPowNoRetargeting: regtest
+}
+TWO_WEEKS :: 14 * 24 * 60 * 60;
+RETARGET_MAINNET :: RetargetParams.{pow_limit=POW_LIMIT_MAINNET, spacing=600, timespan=TWO_WEEKS};
+RETARGET_TESTNET3 :: RetargetParams.{pow_limit=POW_LIMIT_MAINNET, spacing=600, timespan=TWO_WEEKS, allow_min_difficulty=true};
+RETARGET_TESTNET4 :: RetargetParams.{pow_limit=POW_LIMIT_MAINNET, spacing=600, timespan=TWO_WEEKS, allow_min_difficulty=true, bip94=true};
+// Regtest: powLimit 2^255 - 1, a one-day timespan, and no retargeting.
+RETARGET_REGTEST :: RetargetParams.{pow_limit=U256.{limb=[8]u32.[0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0x7fffffff]}, spacing=600, timespan=24 * 60 * 60, allow_min_difficulty=true, no_retargeting=true};
+// book:end params
+
+// book:begin mul
+// Core's operator*=(uint32_t): each limb times the word plus the carry.
+// The carry out of the top limb is lost, so the product wraps at 2^256.
+u256_mul32 :: (a: U256, b: u32) -> U256 #export_c {
+  r: U256; carry := cast(u64) 0;
+  for i: 0..<8 {
+    wide := cast(u64) a.limb[i] * cast(u64) b + carry;
+    r.limb[i] = cast,trunc(u32) wide; carry = wide >> 32;
+  }
+  return r;
+}
+// Division by a word, from the top limb down, as by hand: each step
+// divides the remainder and one limb, a 64-bit number, by d. Core divides
+// by the timespan with its general operator/= (chapter 47's shift and
+// subtract); the quotient is the same, in eight steps instead of about
+// two hundred. A zero divisor is not ok.
+u256_div32_vartime :: (a: U256, d: u32) -> U256Quotient #export_c {
+  r: U256Quotient;
+  if d == 0 { return r; }
+  r.ok = true;
+  rem := cast(u64) 0;
+  for k: 0..<8 {
+    i := 7 - k;
+    cur := (rem << 32) | cast(u64) a.limb[i];
+    r.q.limb[i] = cast,trunc(u32) (cur / cast(u64) d);
+    rem = cur % cast(u64) d;
+  }
+  return r;
+}
+// book:end mul
+
+// book:begin sanity
+// The checks Core's test/pow_tests.cpp makes on every network's parameters
+// (sanity_check_chainparams) that concern retargeting: the timespan is a
+// whole number of blocks, and four times the largest target still fits in
+// 256 bits after the multiplication. Core multiplies by a uint32_t, so
+// four timespans must fit one.
+retarget_params_check_vartime :: (p: RetargetParams) -> int #export_c {
+  if p.spacing <= 0 || p.timespan <= 0 || p.timespan % p.spacing != 0 { return RETARGET_PARAMS; }
+  if u256_is_zero(p.pow_limit) || p.timespan > 0xffffffff / 4 { return RETARGET_PARAMS; }
+  if !p.no_retargeting {
+    q := u256_div32_vartime(u256_not(U256.{}), cast(u32) (p.timespan * 4));
+    if u256_compare_vartime(p.pow_limit, q.q) >= 0 { return RETARGET_PARAMS; }
+  }
+  return RETARGET_OK;
+}
+// Core's DifficultyAdjustmentInterval: 2,016 on mainnet.
+retarget_interval :: (p: RetargetParams) -> int #export_c {
+  return ifx p.spacing > 0 then p.timespan / p.spacing else 0;
+}
+// book:end sanity
+
+// book:begin calculate
+// The time and nBits of one block: what retargeting reads of a header.
+BlockStamp :: struct { time: u32; bits: u32; }
+// Core's CalculateNextWorkRequired, for parameters that pass the sanity
+// check. last is the period's last block, first its first: the block
+// interval - 1 heights earlier, so the period spans interval - 1 gaps
+// between blocks, not interval. The time they took is clamped to between
+// a quarter and four times the timespan; the target is multiplied by it,
+// divided by the timespan, capped at powLimit and encoded, which rounds it
+// down to three bytes of mantissa. BIP-94 starts from the first block's
+// nBits instead of the last's.
+retarget_calculate_vartime :: (p: RetargetParams, last: BlockStamp, first: BlockStamp) -> u32 #export_c {
+  if p.no_retargeting { return last.bits; }
+  actual := cast(int) last.time - cast(int) first.time;
+  if actual < p.timespan / 4 { actual = p.timespan / 4; }    // mutant: equivalent (at the bound both give a quarter)
+  if actual > p.timespan * 4 { actual = p.timespan * 4; }    // mutant: equivalent (at the bound both give four times)
+  start := ifx p.bip94 then first.bits else last.bits;
+  target := pow_compact_decode_vartime(start).target;
+  target = u256_mul32(target, cast,trunc(u32) actual);
+  q := u256_div32_vartime(target, cast(u32) p.timespan);
+  #assert q.ok;    // the sanity check makes the timespan positive
+  target = q.q;
+  if u256_compare_vartime(target, p.pow_limit) > 0 { target = p.pow_limit; }    // mutant: equivalent (>= assigns the same number)
+  return pow_compact_encode_vartime(target, false);
+}
+// book:end calculate
+
+// book:begin next
+// The nBits a block must have: Core's GetNextWorkRequired. period holds
+// the blocks of the current period, oldest first: from the last height
+// that is a multiple of the interval up to the last block, last_height.
+// new_time is the new block's time, which only testnet's rule reads.
+//
+// - Off a boundary, nBits stays the last block's. On testnet3 and
+//   testnet4 a block more than twice the spacing after the last may use
+//   powLimit, and otherwise takes the nBits of the last block that did not:
+//   the walk back stops at the period's first block.
+// - On a boundary, the period's first and last blocks give the new target.
+Retarget :: struct { code: int; bits: u32; }
+retarget_next_bits_vartime :: (p: RetargetParams, period: [] BlockStamp, last_height: int, new_time: u32) -> Retarget #export_c {
+  r: Retarget;
+  r.code = retarget_params_check_vartime(p);
+  if r.code != RETARGET_OK { return r; }
+  interval := retarget_interval(p);
+  if last_height < 0 || period.count != last_height % interval + 1 { r.code = RETARGET_PERIOD; return r; }
+  last := period[period.count - 1];
+  if (last_height + 1) % interval != 0 {
+    r.bits = last.bits;
+    if p.allow_min_difficulty {
+      limit := pow_compact_encode_vartime(p.pow_limit, false);
+      if cast(int) new_time > cast(int) last.time + p.spacing * 2 { r.bits = limit; return r; }
+      i := period.count - 1;
+      while i > 0 && period[i].bits == limit { i -= 1; }
+      r.bits = period[i].bits;
+    }
+    return r;
+  }
+  r.bits = retarget_calculate_vartime(p, last, period[0]);
+  return r;
+}
+// Core's ContextualCheckBlockHeader, its first rule: a header whose nBits
+// is not the required one is refused as "bad-diffbits".
+retarget_check_vartime :: (p: RetargetParams, period: [] BlockStamp, last_height: int, header: BlockStamp) -> int #export_c {
+  r := retarget_next_bits_vartime(p, period, last_height, header.time);
+  if r.code != RETARGET_OK { return r.code; }
+  if header.bits != r.bits { return RETARGET_BAD_DIFFBITS; }
+  return RETARGET_OK;
+}
+// book:end next
+
+// book:begin permitted
+// Core's PermittedDifficultyTransition, used while headers are presynced
+// (chapter 72), before the timestamps of a whole period are known. At a
+// boundary, new nBits must lie between the old target times a quarter and
+// times four, each capped and rounded through the compact form as the
+// retarget rounds; elsewhere nBits must not change. Testnet allows
+// anything, because a minimum-difficulty block can come at any height.
+retarget_permitted_vartime :: (p: RetargetParams, height: int, old_bits: u32, new_bits: u32) -> int #export_c {
+  code := retarget_params_check_vartime(p);
+  if code != RETARGET_OK { return code; }
+  if height < 0 { return RETARGET_PERIOD; }
+  if p.allow_min_difficulty { return RETARGET_OK; }
+  if height % retarget_interval(p) != 0 {
+    return ifx old_bits == new_bits then RETARGET_OK else RETARGET_NOT_PERMITTED;
+  }
+  observed := pow_compact_decode_vartime(new_bits).target;
+  old := pow_compact_decode_vartime(old_bits).target;
+  spans := [2] int.[p.timespan * 4, p.timespan / 4];
+  for k: 0..<2 {
+    t := u256_div32_vartime(u256_mul32(old, cast(u32) spans[k]), cast(u32) p.timespan).q;
+    if u256_compare_vartime(t, p.pow_limit) > 0 { t = p.pow_limit; }    // mutant: equivalent (>= assigns the same number)
+    bound := pow_compact_decode_vartime(pow_compact_encode_vartime(t, false)).target;    // mutant: equivalent (the target read back ignores the sign bit)
+    side := u256_compare_vartime(observed, bound);
+    if (k == 0 && side > 0) || (k == 1 && side < 0) { return RETARGET_NOT_PERMITTED; }
+  }
+  return RETARGET_OK;
+}
+// book:end permitted
+
+// book:begin chainwork
+// Chainwork: the work of every header from genesis, Core's nChainWork and
+// the chainwork getblockheader prints. Each block adds GetBitsProof of its
+// nBits; this adds count blocks that share one nBits, as a mainnet period
+// does. The sum wraps at 2^256, as Core's does; it would take 2^256 hashes.
+retarget_chain_work_vartime :: (total: U256, bits: u32, count: u32) -> U256 #export_c {
+  return u256_add(total, u256_mul32(pow_work_vartime(bits), count));
+}
+// book:end chainwork
+
+// ---- checks
+rt_number :: (text: string) -> U256 { return pw_number(text); }
+rt_same :: (a: U256, b: U256) -> bool { return u256_compare_vartime(a, b) == 0; }
+// A period of count blocks: every block at the same nBits, the first at
+// first_time and the others at last_time.
+rt_period :: (out: [] BlockStamp, count: int, first_time: u32, last_time: u32, bits: u32) -> [] BlockStamp {
+  for i: 0..<count { out[i] = BlockStamp.{time=ifx i == 0 then first_time else last_time, bits=bits}; }
+  return out[0..<count];
+}
+
+#test "multiplication by a word carries and wraps" {
+  #assert rt_same(u256_mul32(u256_small(0xffffffff), 0xffffffff), u256_small(0xfffffffe00000001));
+  #assert rt_same(u256_mul32(u256_small(7), 0), U256.{}) && rt_same(u256_mul32(u256_small(7), 1), u256_small(7));
+  all := u256_not(U256.{});
+  // (2^256 - 1) * 2 wraps to 2^256 - 2.
+  #assert rt_same(u256_mul32(all, 2), u256_sub(all, u256_small(1)));
+  // A carry through every limb: (2^224 - 1) * 2^16 is 2^240 - 2^16.
+  m := u256_mul32(POW_LIMIT_MAINNET, 0x10000);
+  #assert m.limb[0] == 0xffff0000 && m.limb[7] == 0xffff && m.limb[3] == 0xffffffff;
+  x := rt_number("00000000d86a0000000000000000000000000000000000000000000000000000");
+  #assert rt_same(u256_div_vartime(u256_mul32(x, 1209600), u256_small(1209600)).q, x);
+  top := U256.{}; top.limb[7] = 0x80000000;
+  #assert rt_same(u256_mul32(top, 2), U256.{}) && rt_same(u256_mul32(top, 3), top);
+}
+#forall "division by a word agrees with chapter 47's division" s: 0..<64 #steps 100000000 {
+  // Dividends of every size against divisors small and near 2^32.
+  a := u256_add(u256_shl_vartime(rt_number("9e3779b97f4a7c15f39cc0605cedc8341082276bf3a27251f86c6a11d0c18e95"), s * 4 - 32), u256_small(cast(u64) s));
+  ds := [4] u32.[1, 1209600, cast(u32) (s * 7919 + 3), 0xffffffff];
+  for j: 0..<4 {
+    q := u256_div32_vartime(a, ds[j]);
+    #assert q.ok && rt_same(q.q, u256_div_vartime(a, u256_small(cast(u64) ds[j])).q);
+  }
+  #assert !u256_div32_vartime(a, 0).ok;
+}
+#test "the parameters' sanity checks" {
+  #assert retarget_params_check_vartime(RETARGET_MAINNET) == RETARGET_OK;
+  #assert retarget_params_check_vartime(RETARGET_TESTNET3) == RETARGET_OK;
+  #assert retarget_params_check_vartime(RETARGET_TESTNET4) == RETARGET_OK;
+  #assert retarget_params_check_vartime(RETARGET_REGTEST) == RETARGET_OK;
+  #assert retarget_interval(RETARGET_MAINNET) == 2016 && retarget_interval(RETARGET_REGTEST) == 144;
+  p := RETARGET_MAINNET;
+  p.spacing = 0;
+  #assert retarget_params_check_vartime(p) == RETARGET_PARAMS && retarget_interval(p) == 0;
+  p.spacing = -600;
+  #assert retarget_params_check_vartime(p) == RETARGET_PARAMS;
+  p = RETARGET_MAINNET; p.timespan = 0;
+  #assert retarget_params_check_vartime(p) == RETARGET_PARAMS;
+  p.timespan = -TWO_WEEKS;
+  #assert retarget_params_check_vartime(p) == RETARGET_PARAMS;
+  p.timespan = TWO_WEEKS + 1;
+  #assert retarget_params_check_vartime(p) == RETARGET_PARAMS;
+  p = RETARGET_MAINNET; p.pow_limit = U256.{};
+  #assert retarget_params_check_vartime(p) == RETARGET_PARAMS;
+  // Four timespans must fit a uint32_t: 0x3fffffff is the largest timespan.
+  p = RETARGET_REGTEST; p.spacing = 1; p.timespan = 0x3fffffff;
+  #assert retarget_params_check_vartime(p) == RETARGET_OK;
+  p.timespan = 0x40000000;
+  #assert retarget_params_check_vartime(p) == RETARGET_PARAMS;
+  // A network that does not retarget still needs a positive timespan, and
+  // the smallest, one second per one-second block, is allowed.
+  p = RETARGET_REGTEST; p.timespan = 0;
+  #assert retarget_params_check_vartime(p) == RETARGET_PARAMS;
+  p.spacing = 1; p.timespan = 1;
+  #assert retarget_params_check_vartime(p) == RETARGET_OK && retarget_interval(p) == 1;
+  // Regtest's limit would overflow the multiplication; it does not retarget.
+  p = RETARGET_REGTEST; p.no_retargeting = false;
+  #assert retarget_params_check_vartime(p) == RETARGET_PARAMS;
+  // The largest limit allowed is one below (2^256 - 1) / (4 * timespan).
+  q := u256_div_vartime(u256_not(U256.{}), u256_small(4 * TWO_WEEKS)).q;
+  p = RETARGET_MAINNET; p.pow_limit = q;
+  #assert retarget_params_check_vartime(p) == RETARGET_PARAMS;
+  p.pow_limit = u256_sub(q, u256_small(1));
+  #assert retarget_params_check_vartime(p) == RETARGET_OK;
+}
+
+// book:begin core-tests
+#test "Core's pow_tests: CalculateNextWorkRequired and its permitted range" {
+  for i: 0..<RT_CORE_COUNT {
+    last := BlockStamp.{time=cast(u32) RT_CORE_LAST_TIME[i], bits=cast(u32) RT_CORE_LAST_BITS[i]};
+    first := BlockStamp.{time=cast(u32) RT_CORE_FIRST_TIME[i]};
+    want := cast(u32) RT_CORE_EXPECTED[i];
+    #assert retarget_calculate_vartime(RETARGET_MAINNET, last, first) == want;
+    #assert retarget_permitted_vartime(RETARGET_MAINNET, RT_CORE_HEIGHT[i] + 1, last.bits, want) == RETARGET_OK;
+  }
+  // get_next_work_lower_limit_actual and get_next_work_upper_limit_actual:
+  // one step past the permitted range is refused.
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, 68544, 0x1c05a3f4, 0x1c0168fd - 1) == RETARGET_NOT_PERMITTED;
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, 46368, 0x1c387f6f, 0x1d00e1fd + 1) == RETARGET_NOT_PERMITTED;
+  // Near powLimit the upper bound is the cap: four times the genesis
+  // target is not permitted, only powLimit's own encoding.
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, 2016, 0x1d00ffff, 0x1d00ffff) == RETARGET_OK;
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, 2016, 0x1d00ffff, 0x1d010000) == RETARGET_NOT_PERMITTED;
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, 2016, 0x1d00ffff, 0x1d03fffc) == RETARGET_NOT_PERMITTED;
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, 2016, 0x1d00ffff, 0x1c3fffc0) == RETARGET_OK;
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, 2016, 0x1d00ffff, 0x1c3fffbf) == RETARGET_NOT_PERMITTED;
+  // permitted_difficulty_transition_no_retarget: off a boundary nBits stays.
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, 2017, 0x1c05a3f4, 0x1c05a3f4) == RETARGET_OK;
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, 2017, 0x1c05a3f4, 0x1c05a3f4 - 1) == RETARGET_NOT_PERMITTED;
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, 2017, 0x1c05a3f4, 0x1c05a3f4 + 1) == RETARGET_NOT_PERMITTED;
+}
+#test "Core's get_next_work_first_block_time: the first block's time, not its median" {
+  b: [2016] BlockStamp;
+  for i: 0..<2016 { b[i] = BlockStamp.{time=cast(u32) (1269211443 + (2016 + i) * 600), bits=0x1c05a3f4}; }
+  r := retarget_next_bits_vartime(RETARGET_MAINNET, b[..], 4031, 0);
+  #assert r.code == RETARGET_OK && r.bits == 0x1c05a33c;
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, 4032, 0x1c05a3f4, 0x1c05a33c) == RETARGET_OK;
+}
+// book:end core-tests
+
+#test "off a boundary nBits stays; the view must be the period" {
+  b: [2016] BlockStamp;
+  view := rt_period(b[..], 6, 1262150000, 1262152000, 0x1d00ffff);
+  r := retarget_next_bits_vartime(RETARGET_MAINNET, view, 32261, 0);
+  #assert r.code == RETARGET_OK && r.bits == 0x1d00ffff;
+  #assert retarget_check_vartime(RETARGET_MAINNET, view, 32261, BlockStamp.{bits=0x1d00ffff}) == RETARGET_OK;
+  #assert retarget_check_vartime(RETARGET_MAINNET, view, 32261, BlockStamp.{bits=0x1d00fffe}) == RETARGET_BAD_DIFFBITS;
+  // A view one block short or long, or a negative height, is refused.
+  #assert retarget_next_bits_vartime(RETARGET_MAINNET, view, 32260, 0).code == RETARGET_PERIOD;
+  #assert retarget_next_bits_vartime(RETARGET_MAINNET, view, 32262, 0).code == RETARGET_PERIOD;
+  #assert retarget_next_bits_vartime(RETARGET_MAINNET, view, -1, 0).code == RETARGET_PERIOD;
+  #assert retarget_check_vartime(RETARGET_MAINNET, view, -1, BlockStamp.{bits=0x1d00ffff}) == RETARGET_PERIOD;
+  // The genesis block alone is a period of one.
+  g := rt_period(b[..], 1, 1231006505, 1231006505, 0x1d00ffff);
+  #assert retarget_next_bits_vartime(RETARGET_MAINNET, g, 0, 1231469665).bits == 0x1d00ffff;
+  // Parameters are checked first.
+  bad := RETARGET_MAINNET; bad.timespan = 0;
+  #assert retarget_next_bits_vartime(bad, view, 32261, 0).code == RETARGET_PARAMS;
+  #assert retarget_check_vartime(bad, view, 32261, BlockStamp.{bits=0x1d00ffff}) == RETARGET_PARAMS;
+  #assert retarget_permitted_vartime(bad, 2016, 0x1d00ffff, 0x1d00ffff) == RETARGET_PARAMS;
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, -1, 0x1d00ffff, 0x1d00ffff) == RETARGET_PERIOD;
+  #assert retarget_permitted_vartime(RETARGET_MAINNET, 0, 0x1d00ffff, 0x1d00ffff) == RETARGET_OK;
+}
+#test "the clamps, the cap and the rounding" {
+  t := cast(u32) TWO_WEEKS;
+  last := BlockStamp.{time=t * 10, bits=0x1c05a3f4};
+  // On time: the target stays, as near as the compact form shows.
+  #assert retarget_calculate_vartime(RETARGET_MAINNET, last, BlockStamp.{time=last.time - t}) == 0x1c05a3f4;
+  // Twice as long: twice the target. Half as long: half.
+  #assert retarget_calculate_vartime(RETARGET_MAINNET, last, BlockStamp.{time=last.time - 2*t}) == 0x1c0b47e8;
+  #assert retarget_calculate_vartime(RETARGET_MAINNET, last, BlockStamp.{time=last.time - t/2}) == 0x1c02d1fa;
+  // Four times and more give four times; a quarter or less, a quarter.
+  four := retarget_calculate_vartime(RETARGET_MAINNET, last, BlockStamp.{time=last.time - 4*t});
+  #assert four == 0x1c168fd0 && retarget_calculate_vartime(RETARGET_MAINNET, last, BlockStamp.{time=last.time - 9*t}) == four;
+  #assert retarget_calculate_vartime(RETARGET_MAINNET, last, BlockStamp.{time=last.time - 4*t + 1}) != four;
+  quarter := retarget_calculate_vartime(RETARGET_MAINNET, last, BlockStamp.{time=last.time - t/4});
+  #assert quarter == 0x1c0168fd && retarget_calculate_vartime(RETARGET_MAINNET, last, BlockStamp.{time=last.time}) == quarter;
+  #assert retarget_calculate_vartime(RETARGET_MAINNET, last, BlockStamp.{time=last.time + 5*t}) == quarter;
+  // One second past the clamp rounds to the same nBits; ten minutes does not.
+  #assert retarget_calculate_vartime(RETARGET_MAINNET, last, BlockStamp.{time=last.time - t/4 - 1}) == quarter;
+  #assert retarget_calculate_vartime(RETARGET_MAINNET, last, BlockStamp.{time=last.time - t/4 - 600}) != quarter;
+  // The cap: four times the genesis target is powLimit, encoded.
+  g := BlockStamp.{time=last.time, bits=0x1d00ffff};
+  #assert retarget_calculate_vartime(RETARGET_MAINNET, g, BlockStamp.{time=last.time - 4*t}) == 0x1d00ffff;
+  #assert retarget_calculate_vartime(RETARGET_MAINNET, g, BlockStamp.{time=last.time - t - 1}) == 0x1d00ffff;
+  // Rounding: the product's bytes past the mantissa are dropped, never
+  // rounded up. 0x1c05a3f4 * 1209601 / 1209600 keeps 0x05a3f4.
+  #assert retarget_calculate_vartime(RETARGET_MAINNET, last, BlockStamp.{time=last.time - t - 1}) == 0x1c05a3f4;
+  // Regtest never retargets; testnet4 starts from the first block's nBits.
+  #assert retarget_calculate_vartime(RETARGET_REGTEST, last, BlockStamp.{time=0, bits=0x207fffff}) == 0x1c05a3f4;
+  #assert retarget_calculate_vartime(RETARGET_TESTNET4, last, BlockStamp.{time=last.time - t, bits=0x1c0b47e8}) == 0x1c0b47e8;
+  #assert retarget_calculate_vartime(RETARGET_TESTNET3, last, BlockStamp.{time=last.time - t, bits=0x1c0b47e8}) == 0x1c05a3f4;
+}
+#test "the off-by-one: 2,016 blocks on time measure 2,015 gaps" {
+  b: [2016] BlockStamp;
+  // Every block exactly ten minutes after the one before: the period
+  // measures 2015 * 600 seconds, so the target shrinks by 1/2016.
+  view := rt_period(b[..], 2016, 1000000, cast(u32) (1000000 + 2015 * 600), 0x1c05a3f4);
+  r := retarget_next_bits_vartime(RETARGET_MAINNET, view, 2016 * 30 - 1, 0);
+  old := pow_compact_decode_vartime(0x1c05a3f4).target;
+  want := pow_compact_encode_vartime(u256_div_vartime(u256_mul32(old, 2015 * 600), u256_small(TWO_WEEKS)).q, false);
+  #assert r.code == RETARGET_OK && r.bits == want && r.bits == 0x1c05a33c;
+  // With 2,016 gaps it would not have changed.
+  view[0].time = cast(u32) (1000000 - 600);
+  #assert retarget_next_bits_vartime(RETARGET_MAINNET, view, 2016 * 30 - 1, 0).bits == 0x1c05a3f4;
+}
+#test "testnet: the 20-minute rule and the walk back" {
+  b: [2016] BlockStamp;
+  limit := cast(u32) 0x1d00ffff;
+  // A period at nBits 1c05a3f4 whose last three blocks used the minimum.
+  view := rt_period(b[..], 10, 5000, 6000, 0x1c05a3f4);
+  for i: 7..<10 { view[i].bits = limit; }
+  for k: 0..<3 {
+    p := ifx k == 0 then RETARGET_TESTNET3 else ifx k == 1 then RETARGET_TESTNET4 else RETARGET_MAINNET;
+    // 1,201 seconds after the last block: powLimit on testnet.
+    r := retarget_next_bits_vartime(p, view, 2016 * 7 + 9, 6000 + 1201);
+    #assert r.code == RETARGET_OK && r.bits == limit;
+    // 1,200 seconds: testnet walks back to block 6's nBits; mainnet keeps
+    // the last block's.
+    r = retarget_next_bits_vartime(p, view, 2016 * 7 + 9, 6000 + 1200);
+    #assert r.bits == (ifx k < 2 then cast(u32) 0x1c05a3f4 else limit);
+  }
+  // Late after a block at the real target: still powLimit.
+  view[9].bits = 0x1c05a3f4;
+  #assert retarget_next_bits_vartime(RETARGET_TESTNET3, view, 2016 * 7 + 9, 6000 + 1201).bits == limit;
+  #assert retarget_next_bits_vartime(RETARGET_TESTNET3, view, 2016 * 7 + 9, 6000 + 1200).bits == 0x1c05a3f4;
+  // The walk stops at the period's first block even when it used the minimum.
+  for i: 0..<10 { view[i].bits = limit; }
+  #assert retarget_next_bits_vartime(RETARGET_TESTNET3, view, 2016 * 7 + 9, 6000).bits == limit;
+  view[0].bits = 0x1c05a3f4;
+  #assert retarget_next_bits_vartime(RETARGET_TESTNET3, view, 2016 * 7 + 9, 6000).bits == 0x1c05a3f4;
+  #assert retarget_next_bits_vartime(RETARGET_TESTNET3, view[0..<1], 2016 * 7, 6000).bits == 0x1c05a3f4;
+  // Testnet allows any transition.
+  #assert retarget_permitted_vartime(RETARGET_TESTNET3, 2017, 0x1c05a3f4, limit) == RETARGET_OK;
+  #assert retarget_permitted_vartime(RETARGET_TESTNET4, 2016, 0x1c05a3f4, 0x1b000001) == RETARGET_OK;
+}
+#test "testnet3's storm and BIP-94's fix" {
+  b: [2016] BlockStamp;
+  // A period at 1c05a3f4 that took two weeks, whose last block came more
+  // than 20 minutes late and so used the minimum, powLimit.
+  view := rt_period(b[..], 2016, 1000000, cast(u32) (1000000 + TWO_WEEKS), 0x1c05a3f4);
+  view[2015].bits = 0x1d00ffff;
+  r3 := retarget_next_bits_vartime(RETARGET_TESTNET3, view, 2016 * 9 - 1, 0);
+  r4 := retarget_next_bits_vartime(RETARGET_TESTNET4, view, 2016 * 9 - 1, 0);
+  // Testnet3 starts the next period from powLimit; testnet4 from the
+  // period's first block.
+  #assert r3.bits == 0x1d00ffff && r4.bits == 0x1c05a3f4;
+}
+
+// book:begin mainnet
+#test "every mainnet retarget to the pinned height" #steps 100000000 {
+  for k: 1..<RT_PERIODS + 1 {
+    last := BlockStamp.{time=cast(u32) RT_LAST_TIME[k-1], bits=cast(u32) RT_BITS[k-1]};
+    first := BlockStamp.{time=cast(u32) RT_FIRST_TIME[k-1], bits=cast(u32) RT_BITS[k-1]};
+    want := cast(u32) RT_BITS[k];
+    #assert retarget_calculate_vartime(RETARGET_MAINNET, last, first) == want;
+    #assert retarget_permitted_vartime(RETARGET_MAINNET, 2016 * k, last.bits, want) == RETARGET_OK;
+    // nBits round-trips through the compact form.
+    #assert pow_compact_encode_vartime(pow_compact_decode_vartime(want).target, false) == want;
+  }
+}
+#test "chainwork to block 966,143 is Core's nMinimumChainWork" #steps 50000000 {
+  total := U256.{};
+  for k: 0..<RT_ASSUME_VALID_HEIGHT / 2016 { total = retarget_chain_work_vartime(total, cast(u32) RT_BITS[k], 2016); }
+  k := RT_ASSUME_VALID_HEIGHT / 2016;
+  total = retarget_chain_work_vartime(total, cast(u32) RT_BITS[k], cast(u32) (RT_ASSUME_VALID_HEIGHT % 2016 + 1));
+  #assert rt_same(total, rt_number(RT_MIN_CHAIN_WORK));
+  // One block fewer, or one more, is not.
+  #assert !rt_same(retarget_chain_work_vartime(total, cast(u32) RT_BITS[k], 1), rt_number(RT_MIN_CHAIN_WORK));
+}
+// book:end mainnet
+
+#test "chainwork of chapter 47's eleven headers" {
+  total := retarget_chain_work_vartime(U256.{}, 0x1d00ffff, 6);
+  total = retarget_chain_work_vartime(total, 0x1d00d86a, 5);
+  #assert rt_same(total, pw_number(PW_CHAIN_WORK));
+  #assert rt_same(retarget_chain_work_vartime(total, 0x1d00ffff, 0), total);
+  // Work that is zero adds nothing.
+  #assert rt_same(retarget_chain_work_vartime(total, 0x1d80ffff, 2016), total);
+  // The sum wraps.
+  #assert rt_same(retarget_chain_work_vartime(u256_not(U256.{}), 0x2100ffff, 1), U256.{});
+}
+#test "pinned mainnet boundaries: headers, links and retargets" #steps 100000000 {
+  hb: [80 * 3] u8; hash: [32] u8;
+  for i: 0..<RT_BOUNDARY_COUNT {
+    h := pw_unhex(RT_BOUNDARY_HEADERS[i], hb[..]);
+    first := h[0..<80]; last := h[80..<160]; next := h[160..<240];
+    for j: 0..<3 { #assert pow_header_check_vartime(h[80*j..<80*j+80], POW_LIMIT_MAINNET) == POW_OK; }
+    #assert pow_links_vartime(next, last) && !pow_links_vartime(next, first);
+    #assert pow_block_hash_vartime(next, hash[..]) == POW_OK && pw_shown_is(hash[..], RT_BOUNDARY_NEXT_HASH[i]);
+    a := pow_header_read_vartime(first); b := pow_header_read_vartime(last); c := pow_header_read_vartime(next);
+    #assert a.bits == b.bits;
+    period := RT_BOUNDARY_HEIGHT[i] / 2016 - 1;
+    #assert a.time == cast(u32) RT_FIRST_TIME[period] && b.time == cast(u32) RT_LAST_TIME[period];
+    #assert b.bits == cast(u32) RT_BITS[period] && c.bits == cast(u32) RT_BITS[period + 1];
+    got := retarget_calculate_vartime(RETARGET_MAINNET, BlockStamp.{time=b.time, bits=b.bits}, BlockStamp.{time=a.time, bits=a.bits});
+    #assert got == c.bits;
+  }
+  // Block 966,143, Core's defaultAssumeValid.
+  h := pw_unhex(RT_ASSUME_VALID_HEADER, hb[..]);
+  #assert pow_header_check_vartime(h[0..<80], POW_LIMIT_MAINNET) == POW_OK;
+  #assert pow_block_hash_vartime(h[0..<80], hash[..]) == POW_OK && pw_shown_is(hash[..], RT_ASSUME_VALID_HASH);
+  #assert pow_header_read_vartime(h[0..<80]).bits == cast(u32) RT_BITS[RT_ASSUME_VALID_HEIGHT / 2016];
+}

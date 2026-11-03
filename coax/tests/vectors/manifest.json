@@ -1108,6 +1108,19 @@
       "bytes": 210483
     },
     {
+      "path": "upstream/mainnet/retarget-boundaries.txt",
+      "kind": "upstream",
+      "url": "https://mempool.space/api/v1/blocks/32256",
+      "revision": "static: mainnet headers assembled from mempool.space's /api/v1/blocks/{height} records (this URL is one of them) at every multiple of 2016 up to 973,728 and at 966,143; each line's 80 bytes hash to its block hash; pinned by sha256",
+      "license": "Public Bitcoin blockchain data",
+      "covers": [
+        "bitcoin-retarget"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "06c7e555e0812abb2a12246ea1326ec79f6c0c379cc88a83bb31a5c6fb297a2e",
+      "bytes": 225433
+    },
+    {
       "path": "derived/catalog.json",
       "kind": "derived",
       "url": "local:make_catalog.py",

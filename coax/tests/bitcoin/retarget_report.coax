@@ -1,0 +1,78 @@
+// A flat test-only C entry point over coax/lib/bitcoin/retarget.coax for
+// coax/tests/bitcoin/retarget.py: it runs one operation and writes what it
+// found as numbers, so Python can compare every field with its own
+// transliteration of Bitcoin Core. No retargeting logic lives here.
+#load "../../lib/bitcoin/retarget.coax";
+
+// Parameters arrive as 56 bytes: powLimit (32 little-endian bytes), the
+// spacing and the timespan (8 bytes each, signed), and flags (bit 0 allows
+// minimum difficulty, bit 1 is BIP-94, bit 2 no retargeting). Every result
+// is written as 8 little-endian bytes, every U256 as 32. Each operation
+// returns the bytes written, or -1 when the input is the wrong size.
+// op 0: parameters, last height, new time, new nBits, then the period as
+// 8-byte stamps (time, nBits). Writes the code, nBits and the check's code.
+// op 1: parameters, the last stamp, the first stamp. Writes nBits.
+// op 2: parameters, height, old nBits, new nBits. Writes the code.
+// op 3: parameters. Writes the sanity check's code and the interval.
+// op 4: a (32 bytes), a word, nBits, a count. Writes a times the word, the
+// division by the word (ok, quotient) and a plus count blocks of work.
+retarget_report_vartime :: (op: int, b: [] u8, out: [] u8) -> int #export_c {
+  if out.count < 256 { return -1; }
+  if op == 4 {
+    if b.count != 44 { return -1; }
+    a := u256_from_hash_vartime(b[0..<32]);
+    w := rr_u32(b, 32);
+    at := rr_number(out, 0, u256_mul32(a, w));
+    q := u256_div32_vartime(a, w);
+    at = rr_put(out, at, ifx q.ok then 1 else 0); at = rr_number(out, at, q.q);
+    return rr_number(out, at, retarget_chain_work_vartime(a, rr_u32(b, 36), rr_u32(b, 40)));
+  }
+  if b.count < 56 { return -1; }
+  p: RetargetParams;
+  p.pow_limit = u256_from_hash_vartime(b[0..<32]);
+  p.spacing = rr_int(b, 32); p.timespan = rr_int(b, 40);
+  flags := rr_int(b, 48);
+  p.allow_min_difficulty = (flags & 1) != 0; p.bip94 = (flags & 2) != 0; p.no_retargeting = (flags & 4) != 0;
+  if op == 3 {
+    if b.count != 56 { return -1; }
+    at := rr_put(out, 0, retarget_params_check_vartime(p));
+    return rr_put(out, at, retarget_interval(p));
+  }
+  if op == 1 {
+    if b.count != 72 || retarget_params_check_vartime(p) != RETARGET_OK { return -1; }
+    last := BlockStamp.{time=rr_u32(b, 56), bits=rr_u32(b, 60)};
+    first := BlockStamp.{time=rr_u32(b, 64), bits=rr_u32(b, 68)};
+    return rr_put(out, 0, cast(int) retarget_calculate_vartime(p, last, first));
+  }
+  if op == 2 {
+    if b.count != 72 { return -1; }
+    return rr_put(out, 0, retarget_permitted_vartime(p, rr_int(b, 56), rr_u32(b, 64), rr_u32(b, 68)));
+  }
+  if op == 0 {
+    if b.count < 80 || (b.count - 80) % 8 != 0 || b.count > 80 + 8 * 2016 { return -1; }
+    stamps: [2016] BlockStamp;
+    n := (b.count - 80) / 8;
+    for i: 0..<n { stamps[i] = BlockStamp.{time=rr_u32(b, 80 + 8*i), bits=rr_u32(b, 84 + 8*i)}; }
+    height := rr_int(b, 56);
+    r := retarget_next_bits_vartime(p, stamps[0..<n], height, rr_u32(b, 64));
+    at := rr_put(out, 0, r.code); at = rr_put(out, at, cast(int) r.bits);
+    return rr_put(out, at, retarget_check_vartime(p, stamps[0..<n], height, BlockStamp.{time=rr_u32(b, 64), bits=rr_u32(b, 72)}));
+  }
+  return -1;
+}
+rr_u32 :: (b: [] u8, at: int) -> u32 {
+  return cast(u32) b[at] | (cast(u32) b[at+1] << 8) | (cast(u32) b[at+2] << 16) | (cast(u32) b[at+3] << 24);
+}
+rr_int :: (b: [] u8, at: int) -> int {
+  v := 0;
+  for i: 0..<8 { v = v | (cast(int) b[at+i] << (8 * i)); }
+  return v;
+}
+rr_put :: (out: [] u8, at: int, v: int) -> int {
+  for i: 0..<8 { out[at+i] = cast,trunc(u8) (v >> (8 * i)); }
+  return at + 8;
+}
+rr_number :: (out: [] u8, at: int, a: U256) -> int {
+  #assert u256_to_hash_vartime(a, out[at..<at+32]);
+  return at + 32;
+}

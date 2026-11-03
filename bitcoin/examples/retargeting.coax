@@ -1,0 +1,173 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/retarget.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// A 256-bit number as 64 hex digits, most significant first, the way
+// Core's GetHex prints it.
+show_number :: (label: string, a: U256) {
+  b: [32] u8; shown: [32] u8; text: [64] u8;
+  #assert u256_to_hash_vartime(a, b[..]);
+  for i: 0..<32 { shown[i] = b[31-i]; }
+  r := hex_encode_checked(cast(string) shown[..], text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// A 32-bit number as 8 hex digits.
+put32 :: (v: u32) {
+  b: [4] u8; text: [8] u8;
+  for i: 0..<4 { b[i] = cast,trunc(u8) (v >> (8 * cast(u32) (3 - i))); }
+  r := hex_encode_checked(cast(string) b[..], text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+// Seconds as days, to a tenth.
+put_days :: (seconds: int) {
+  tenths := (seconds * 10 + 43200) / 86400;
+  print("%.% days", tenths / 10, tenths % 10);
+}
+// Decode hex into out; every literal here is valid lowercase hex.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+CODES :: [5] string.["ok", "bad-diffbits", "not permitted", "not the period", "bad parameters"];
+// The ratio of two targets, old over new, to four places, rounded down:
+// how many times harder the new one is.
+put_ratio :: (old: u32, new: u32) {
+  a := pow_compact_decode_vartime(old).target; b := pow_compact_decode_vartime(new).target;
+  q := u256_div_vartime(u256_mul32(a, 10000), b).q;
+  v := cast(int) u256_low64(q);
+  print("%.", v / 10000);
+  for d: 0..<4 { print("%", (v / (ifx d == 0 then 1000 else ifx d == 1 then 100 else ifx d == 2 then 10 else 1)) % 10); }
+}
+// A span of time in days, hours or minutes, to a tenth.
+put_span :: (seconds: int) {
+  if seconds >= 86400 { put_days(seconds); return; }
+  unit := ifx seconds >= 3600 then 3600 else 60;
+  tenths := (seconds * 10 + unit / 2) / unit;
+  print("%.% %", tenths / 10, tenths % 10, ifx unit == 3600 then "hours" else "minutes");
+}
+// One boundary from the pinned headers: what the period took and the
+// target that follows, step by step.
+explain :: (i: int) {
+  hb: [240] u8;
+  h := decode(RT_BOUNDARY_HEADERS[i], hb[..]);
+  first := pow_header_read_vartime(h[0..<80]); last := pow_header_read_vartime(h[80..<160]);
+  next := pow_header_read_vartime(h[160..<240]);
+  height := RT_BOUNDARY_HEIGHT[i];
+  actual := cast(int) last.time - cast(int) first.time;
+  print("block %: blocks % to % took % seconds, ", height, height - 2016, height - 1, actual);
+  put_days(actual); print("\n");
+  clamped := actual;
+  if clamped < TWO_WEEKS / 4 { clamped = TWO_WEEKS / 4; print("  under a quarter of two weeks: clamped to %\n", clamped); }
+  if clamped > TWO_WEEKS * 4 { clamped = TWO_WEEKS * 4; print("  over four times two weeks: clamped to %\n", clamped); }
+  old := pow_compact_decode_vartime(last.bits).target;
+  raw := u256_div32_vartime(u256_mul32(old, cast(u32) clamped), TWO_WEEKS).q;
+  print("  nBits "); put32(last.bits); print("\n");
+  show_number("  target × time / two weeks", raw);
+  if u256_compare_vartime(raw, POW_LIMIT_MAINNET) > 0 { print("  above powLimit: capped\n"); }
+  bits := retarget_calculate_vartime(RETARGET_MAINNET, BlockStamp.{time=last.time, bits=last.bits}, BlockStamp.{time=first.time, bits=first.bits});
+  show_number("  encoded and decoded", pow_compact_decode_vartime(bits).target);
+  print("  new nBits "); put32(bits); print(", block % has ", height); put32(next.bits);
+  print(", difficulty × "); put_ratio(last.bits, bits); print("\n");
+}
+
+main :: () {
+  print("interval % blocks, timespan % seconds, clamp % to %\n", retarget_interval(RETARGET_MAINNET), TWO_WEEKS, TWO_WEEKS / 4, TWO_WEEKS * 4);
+
+  // Pinned boundaries, header by header.
+  for i: 0..<RT_BOUNDARY_COUNT { explain(i); }
+
+  // Every retarget from 2,016 to the pinned height.
+  agree := 0; up := 0; down := 0; same := 0;
+  for k: 1..<RT_PERIODS + 1 {
+    last := BlockStamp.{time=cast(u32) RT_LAST_TIME[k-1], bits=cast(u32) RT_BITS[k-1]};
+    first := BlockStamp.{time=cast(u32) RT_FIRST_TIME[k-1], bits=cast(u32) RT_BITS[k-1]};
+    bits := retarget_calculate_vartime(RETARGET_MAINNET, last, first);
+    if bits == cast(u32) RT_BITS[k] && retarget_permitted_vartime(RETARGET_MAINNET, 2016 * k, last.bits, bits) == RETARGET_OK { agree += 1; }
+    side := u256_compare_vartime(pow_compact_decode_vartime(bits).target, pow_compact_decode_vartime(last.bits).target);
+    if side < 0 { up += 1; } else if side > 0 { down += 1; } else { same += 1; }
+  }
+  print("mainnet retargets to block %: % of % match the chain\n", 2016 * RT_PERIODS, agree, RT_PERIODS);
+  print("  difficulty rose % times, fell % times, stayed % times\n", up, down, same);
+
+  // Chainwork to Core's assumed-valid block.
+  total := U256.{};
+  for k: 0..<RT_ASSUME_VALID_HEIGHT / 2016 { total = retarget_chain_work_vartime(total, cast(u32) RT_BITS[k], 2016); }
+  k := RT_ASSUME_VALID_HEIGHT / 2016;
+  total = retarget_chain_work_vartime(total, cast(u32) RT_BITS[k], cast(u32) (RT_ASSUME_VALID_HEIGHT % 2016 + 1));
+  print("chainwork at block %\n", RT_ASSUME_VALID_HEIGHT);
+  show_number("  ours", total);
+  show_number("  nMinimumChainWork", pw_number(RT_MIN_CHAIN_WORK));
+
+  // The off-by-one: blocks exactly ten minutes apart.
+  b: [2016] BlockStamp;
+  for i: 0..<2016 { b[i] = BlockStamp.{time=cast(u32) (1000000 + 600 * i), bits=0x1c05a3f4}; }
+  r := retarget_next_bits_vartime(RETARGET_MAINNET, b[..], 2016 * 34 - 1, 0);
+  print("2,016 blocks ten minutes apart measure % seconds: ", cast(int) b[2015].time - cast(int) b[0].time);
+  put32(0x1c05a3f4); print(" becomes "); put32(r.bits); print(", difficulty × "); put_ratio(0x1c05a3f4, r.bits); print("\n");
+
+  // The time warp: every block's time as low as the median rule allows,
+  // except each period's last, which shows the real time.
+  print("time warp from block 900,000's nBits, at a constant hash rate\n");
+  start := cast(u32) 0x17023774;
+  t0 := pow_compact_decode_vartime(start).target;
+  bits := start; real := 0; low := 0; blocks := 0;
+  for period: 0..<12 {
+    t := pow_compact_decode_vartime(bits).target;
+    seconds := cast(int) u256_low64(u256_div_vartime(u256_mul32(t0, TWO_WEEKS), t).q);
+    real += seconds; blocks += 2016;
+    next := retarget_calculate_vartime(RETARGET_MAINNET, BlockStamp.{time=cast(u32) real, bits=bits}, BlockStamp.{time=cast(u32) low, bits=bits});
+    print("  period %: took ", period); put_span(seconds); print(", measured "); put_span(real - low);
+    print(", next nBits "); put32(next); print("\n");
+    bits = next; low += 2016 / 6;
+  }
+  print("  % blocks in ", blocks); put_days(real); print("; on time it would be % blocks\n", real / 600);
+  // BIP-54's rule: a period's first block is at most two hours before the
+  // last block of the period before. Then the measured time is the real one.
+  bits = start; real = 0; low = 0;
+  for period: 0..<3 {
+    t := pow_compact_decode_vartime(bits).target;
+    real += cast(int) u256_low64(u256_div_vartime(u256_mul32(t0, TWO_WEEKS), t).q);
+    bits = retarget_calculate_vartime(RETARGET_MAINNET, BlockStamp.{time=cast(u32) real, bits=bits}, BlockStamp.{time=cast(u32) low, bits=bits});
+    low = real - 7200;
+  }
+  print("  with BIP-54's rule, after three periods: "); put32(bits); print("\n");
+
+  // Testnet: the 20-minute rule, the walk back, and the storm BIP-94 ends.
+  print("testnet\n");
+  view := b[0..<10];
+  for i: 0..<10 { view[i] = BlockStamp.{time=cast(u32) (5000 + 600 * i), bits=ifx i < 7 then cast(u32) 0x1c05a3f4 else 0x1d00ffff}; }
+  r = retarget_next_bits_vartime(RETARGET_TESTNET3, view, 2016 * 7 + 9, view[9].time + 1201);
+  print("  20 minutes and 1 second after the last block: "); put32(r.bits); print("\n");
+  r = retarget_next_bits_vartime(RETARGET_TESTNET3, view, 2016 * 7 + 9, view[9].time + 1200);
+  print("  20 minutes after, past three minimum blocks: "); put32(r.bits); print("\n");
+  r = retarget_next_bits_vartime(RETARGET_MAINNET, view, 2016 * 7 + 9, view[9].time + 1201);
+  print("  mainnet keeps the last block's: "); put32(r.bits); print("\n");
+  for i: 0..<2016 { b[i] = BlockStamp.{time=cast(u32) (1000000 + 600 * i), bits=0x1c05a3f4}; }
+  b[2015].bits = 0x1d00ffff;
+  r3 := retarget_next_bits_vartime(RETARGET_TESTNET3, b[..], 2016 * 9 - 1, 0);
+  r4 := retarget_next_bits_vartime(RETARGET_TESTNET4, b[..], 2016 * 9 - 1, 0);
+  print("  a period whose last block used the minimum: testnet3 "); put32(r3.bits);
+  print(", testnet4 "); put32(r4.bits); print("\n");
+
+  // Headers presync: the range PermittedDifficultyTransition allows at 68,544.
+  print("permitted at block 68,544 after 1c05a3f4\n");
+  tries := [5] u32.[0x1c0168fd, 0x1c0168fc, 0x1c168fd0, 0x1c168fd1, 0x1c05a3f4];
+  for i: 0..<5 {
+    print("  "); put32(tries[i]);
+    print(": %\n", CODES[retarget_permitted_vartime(RETARGET_MAINNET, 68544, 0x1c05a3f4, tries[i])]);
+  }
+  print("  block 68,545 changing it: %\n", CODES[retarget_permitted_vartime(RETARGET_MAINNET, 68545, 0x1c0168fd, 0x1c0168fe)]);
+
+  // The refusals.
+  print("refusals\n");
+  for i: 0..<2016 { b[i] = BlockStamp.{time=cast(u32) RT_LAST_TIME[15], bits=0x1d00ffff}; }
+  b[0].time = cast(u32) RT_FIRST_TIME[15];
+  print("  block 32,256 claiming 1d00ffff: %\n", CODES[retarget_check_vartime(RETARGET_MAINNET, b[..], 32255, BlockStamp.{bits=0x1d00ffff})]);
+  print("  block 32,256 claiming 1d00d86a: %\n", CODES[retarget_check_vartime(RETARGET_MAINNET, b[..], 32255, BlockStamp.{bits=0x1d00d86a})]);
+  print("  a view one block short: %\n", CODES[retarget_check_vartime(RETARGET_MAINNET, b[0..<2015], 32255, BlockStamp.{bits=0x1d00d86a})]);
+  bad := RETARGET_MAINNET; bad.timespan = TWO_WEEKS + 1;
+  print("  a timespan that is not whole blocks: %\n", CODES[retarget_check_vartime(bad, b[..], 32255, BlockStamp.{bits=0x1d00d86a})]);
+}
+// book:end example

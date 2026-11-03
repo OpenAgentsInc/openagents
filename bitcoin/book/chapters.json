@@ -986,14 +986,21 @@
   {
    "number": 48,
    "title": "Compact targets, retargeting and chainwork",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch048-compact-targets-retargeting-and-chainwork.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
     47
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/retarget.coax",
+    "bitcoin/examples/retargeting.coax",
+    "bitcoin/examples/checks/retargeting.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {

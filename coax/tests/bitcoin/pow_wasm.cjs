@@ -3,7 +3,8 @@
 // every case of the fixture and prints how many reports match, with the
 // output buffer past each report untouched. Each case is {op, input (hex),
 // index, report (hex)}. For coax/tests/bitcoin/pow.py:
-//   node pow_wasm.cjs MODULE FIXTURE
+//   node pow_wasm.cjs MODULE FIXTURE [CAPACITY]
+// (chapter 48's retarget.py passes a larger capacity for whole periods)
 const fs = require('node:fs');
 const { WASI } = require('node:wasi');
 (async () => {
@@ -12,7 +13,7 @@ const { WASI } = require('node:wasi');
   const {instance} = await WebAssembly.instantiate(fs.readFileSync(process.argv[2]), {env: {memory}, wasi_snapshot_preview1: wasi.wasiImport});
   wasi.initialize(instance);
   const x = instance.exports, base = Number(x.__heap_base.value) + 1024;
-  const IN = base, CAP = 4096, OUT = IN + CAP;
+  const IN = base, CAP = Number(process.argv[4] || 4096), OUT = IN + CAP;
   const view = () => new Uint8Array(memory.buffer);
   const cases = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
   let agree = 0;

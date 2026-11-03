@@ -238,6 +238,21 @@ that a maliciously replaced manifest is authentic.
   hex, for the genesis block, blocks 32,250 to 32,260 (the first change of
   target, at 32,256) and block 900,000, retrieved 2026-11-02; each hashes to
   the block hash in its file name, so the bytes cannot change.
+- **Retargeting and chainwork (Bitcoin chapter 48):** Bitcoin Core's
+  `pow.cpp` (`GetNextWorkRequired`, `CalculateNextWorkRequired`,
+  `PermittedDifficultyTransition`), `test/pow_tests.cpp` (the retarget
+  cases), `kernel/chainparams.cpp` (`nMinimumChainWork`,
+  `defaultAssumeValid`) and `consensus/consensus.h` (`MAX_TIMEWARP`), all
+  pinned above at `ddea9196`. `mainnet/retarget-boundaries.txt` holds 968
+  mainnet headers, one per line as height, block hash and the 80 bytes in
+  hex: the genesis block, heights 2016k - 1 and 2016k for every k from 1 to
+  483, and block 966,143. They were assembled on 2026-11-02 from
+  mempool.space's `/api/v1/blocks/{height}` records, fetched at each
+  multiple of 2,016 and at 966,143; each line's 80 bytes hash to its block
+  hash, so the bytes cannot change. The file is not one download, so
+  `check_vectors.py --fetch` cannot re-read it from its URL;
+  `make_retarget_vectors.py` checks every header's hash and proof of work
+  instead.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -405,4 +420,5 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/interpreter.h`](upstream/bitcoin-core/interpreter.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/interpreter.h) | `e22719ed2cdd2cd381ae183bb0b16c8204d7b8b1da103435d0f2e084fa809e96` |
 | [`upstream/bitcoin-core/transaction_utils.cpp`](upstream/bitcoin-core/transaction_utils.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/util/transaction_utils.cpp) | `d90dcb4affb043b6b738c673c507318821f3d1252bfe6665680af7594efc977f` |
 | [`upstream/bitcoin-core/sighash.json`](upstream/bitcoin-core/sighash.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/sighash.json) | `52cf23c2076e7f129c71d5508631d3e5ae3be1b1cb0585c0e23bbb4bb373e924` |
+| [`upstream/mainnet/retarget-boundaries.txt`](upstream/mainnet/retarget-boundaries.txt) | [mempool.space API](https://mempool.space/api/v1/blocks/32256), assembled | `06c7e555e0812abb2a12246ea1326ec79f6c0c379cc88a83bb31a5c6fb297a2e` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

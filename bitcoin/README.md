@@ -66,8 +66,9 @@ Taproot key-path tweak. Bitcoin and Lightning also need:
 
 - Batch Schnorr verification, Taproot script trees and tapscript.
 - MuHash3072. Merkle trees with the duplicate-leaf flaw are built in
-  chapter 46 (`coax/lib/bitcoin/merkle.coax`), and compact targets and
-  chainwork in chapter 47 (`coax/lib/bitcoin/pow.coax`).
+  chapter 46 (`coax/lib/bitcoin/merkle.coax`), compact targets in chapter
+  47 (`coax/lib/bitcoin/pow.coax`), and retargeting and chainwork in
+  chapter 48 (`coax/lib/bitcoin/retarget.coax`).
 - ElligatorSwift and the BIP-324 transport, Golomb-coded block filters.
 - MuSig2, FROST, adaptor signatures and silent payments.
 - Lightning: BOLT 1 TLVs, the BOLT 8 Noise handshake, BOLT 3 keys,

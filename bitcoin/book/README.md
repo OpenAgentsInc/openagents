@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 35 are implemented and 89 are planned. The 35
-implemented chapters have runnable examples, qualified on native CPU, and 30
+Of the 124 chapters, 36 are implemented and 88 are planned. The 36
+implemented chapters have runnable examples, qualified on native CPU, and 31
 of them on Wasm. Fifteen of them are the cryptography Nostr already used;
 chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 34, 36, 37,
-46 and 47 are new.
+46, 47 and 48 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -206,7 +206,7 @@ Merkle trees, headers and proof of work, the chain parameters, every consensus r
 | --- | --- | --- |
 | [46. Merkle trees and the duplicate-leaf flaw](ch046-merkle-trees-and-the-duplicate-leaf-flaw.md) | Runnable: native C and wasm | Merkle roots of blocks 100,000, 514,999 and 413,567 match their headers, with Core's `mutated` flag on every equal pair. A block with its last transaction repeated keeps its header and is refused as mutated (CVE-2012-2459). Branches build and verify for SPV proofs, the witness root reaches block 514,999's commitment, and a 64-byte transaction shows why a proof needs the true count; checked against a Python transliteration of Core natively and in Wasm. |
 | [47. Block headers and proof of work](ch047-block-headers-and-proof-of-work.md) | Runnable: native C and wasm | The genesis header, blocks 32,250 to 32,260 across the first retarget and blocks 100,000, 514,999 and 900,000 hash below their targets and link, and any one of their 640 header bits changed fails. `nBits` decodes and encodes as Bitcoin Core's `SetCompact` and `GetCompact` on all of Core's cases, refusals come in Core's order, and the work of each header is `2^256 / (target + 1)`; checked against a Python transliteration of Core natively and in Wasm. |
-| 48. Compact targets, retargeting and chainwork | Planned | `nBits` round-trips for every mainnet retarget to a pinned height, computed retargets match the chain, and chainwork matches Bitcoin Core's `getblockheader`. |
+| [48. Compact targets, retargeting and chainwork](ch048-compact-targets-retargeting-and-chainwork.md) | Runnable: native C and wasm | All 483 mainnet retargets from block 2,016 to block 973,728 match the chain and round-trip through `nBits`, including the factor-of-four clamp at 68,544 and the `powLimit` cap of 2009. The chainwork to block 966,143 equals Bitcoin Core's `nMinimumChainWork`. Core's `pow_tests.cpp` retarget cases, `PermittedDifficultyTransition`, testnet's 20-minute rule, BIP-94 and a time-warp simulation; checked against a Python transliteration of Core natively and in Wasm. |
 | 49. The witness commitment | Planned | The coinbase commitments of pinned segwit blocks match their computed witness roots. |
 | 50. Chain parameters: mainnet, testnet4, signet and regtest | Planned | Each network's genesis block hashes to its published hash, and its message start, default port, address prefixes and deployment heights match Bitcoin Core's `chainparams.cpp` at the pinned release. A signet block whose solution fails the network's challenge refuses. |
 | 51. Header rules: time, versions and deployments | Planned | Median time past and the two-hour future limit decide pinned headers as Bitcoin Core does, and testnet4's timewarp rule refuses its counterexample. The buried deployments (BIP-34, BIP-65, BIP-66, CSV, segwit and Taproot) activate at the chain parameters' heights, and a header whose version is below an active deployment's minimum refuses. |
