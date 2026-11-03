@@ -1,0 +1,82 @@
+groups
+  250.1.1.1: 01fa01
+  10.0.0.1: 00 (unroutable)
+  127.0.0.1: 00 (unroutable)
+  2001:470:1234::1 (he.net): 02200104701f
+  2a01:e::1: 022a01000e
+  2002:fa01:0101::1 (6to4): 01fa01
+  2001:0::0506:fefe (Teredo): 01faf9
+  ::ffff:250.1.1.1 (v1 form): 01fa01
+  fc00::1 (CJDNS): 05fc0f
+  I2P: 04af
+  Tor v3: 03ff
+buckets with SHA-256d(1) as the key
+  250.1.1.1:8333 tried bucket 40, with key 2: 191, port 9999: 113
+  250.1.2.1:8333 from itself: new bucket 786, with key 2: 852, port 9999: 786
+  tried buckets for 255 addresses in one /16: 8; in 255 /16s: 160
+  new buckets for 1,020 addresses from one source group: 63; one address from 255 source groups: 221; one /16 from itself: 1
+new table collisions (deterministic key 1)
+  sizes after adding 250.1.1.1 to .24: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 22 23
+  check: 0
+tried table collisions
+  Good for 250.1.1.1 to .37: 1111111111111111111111111111111111101
+  collision with: 250.1.1.19:0
+  after ResolveCollisions, 19 still recent: [::]:0
+  250.1.1.36 stays in new: tried=False, multiplicity 1
+test-before-evict
+  Good(250.1.1.36): False, colliding with 250.1.1.19:0
+  19 last succeeded at 1 s and was tried 61 s ago: 36 tried=True, 19 tried=False
+  Good(250.1.1.19): False, colliding with 250.1.1.36:0
+  4 hours later, untested: 19 tried=True, 36 tried=False, check 0
+multiplicity
+  19 sources, same time: 1; 399 sources, newer each time: 8; size 1
+getaddr
+  five addresses: 5 returned, 23% gives 1
+  size 2006 (1762 new, 244 tried), 23% gives 461, check 0
+  first five: 213.5.1.23:0 165.6.1.23:0 32.7.1.23:0 5.1.1.23:0 138.2.1.23:0
+select
+  3 new, 4 tried
+  any: 250.3.3.3:9999 250.3.3.3:9999 250.3.1.1:8333 250.4.6.6:8333 250.3.2.2:9999 250.4.4.4:8333 250.3.3.3:9999 250.4.4.4:8333 250.4.5.5:7777 250.1.1.1:8333 250.1.1.1:8333 250.3.2.2:9999
+  new only: 250.3.3.3:9999 250.3.2.2:9999 250.3.3.3:9999 250.3.1.1:8333 250.3.3.3:9999 250.3.2.2:9999
+  I2P only: net4:a0ce38ce2224d2cecaf9929388f73379259c0c27e0debdbd7ca4cd085b55e25a:0; CJDNS only: [::]:0
+  chance of 250.1.1.1 after a failed attempt 30 s ago: 1 in 152
+terrible
+  tried 30 s ago: False
+  11 minutes in the future: True
+  31 days old: True
+  3 attempts, never a success: True
+  10 failures in 8 days: True
+  9 failures in 8 days: False
+  fresh: False
+eclipse: one source group sends 20,000 addresses
+  kept 3945 of 20000 in 62 of 1024 new buckets
+  1,000 honest addresses from 1,000 groups: 910 kept; of 400 selections 38 are the attacker's, check 0
+peers.dat
+  4583 bytes, SHA-256 2e2826f2ca723f6744a50b9ef353c085940c39d49c951fb6656c324c939be244
+  read back: 7 new, 2 tried, same places: True
+  a flipped byte: refused
+  the last byte missing: refused
+  another network: refused
+  20 entries claimed, one present: refused (end of data)
+  four entries, two made invalid: 2 remain
+addr relay
+  1,001 addresses: misbehaving
+  1,000 after our getaddr: 1000 processed, 0 rate-limited, 251 added, 0 to relay
+  1,000 more 10 s later: 2 processed, 998 rate-limited
+  1,000 from a peer with the addr permission: 1000 processed, 0 rate-limited
+  10 fresh addresses an hour later: 10 processed, 10 to relay
+  11 fresh addresses: 11 processed, 0 to relay, 0 rate-limited
+  no services, an ancient time, a private address, Tor: 3 processed, 1 added; the ancient time became now - 122 h
+  relay 250.1.1.1:8333 to: [8, 6], next day: [5, 4]
+  unreachable Tor address to: [6, 1]
+getaddr replies
+  inbound: 45 addresses, cache until +81813 s
+  again on that connection: ignored: repeated
+  from an outbound peer: ignored: outbound
+  another inbound an hour later: same answer True
+  after the cache expires: same answer False
+DNS seeds
+  0 known addresses: wait 0 s, then query 9 of 9
+  500 known addresses: wait 11 s, then query 3 of 9
+  5000 known addresses: wait 300 s, then query 3 of 9
+  5000 known addresses, -forcednsseed: wait 0 s, then query 9 of 9

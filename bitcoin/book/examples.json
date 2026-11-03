@@ -659,6 +659,18 @@
         "release"
       ],
       "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/addrman.coax",
+      "chapter": "bitcoin/book/ch069-addresses-and-the-address-manager.md",
+      "stdout": "bitcoin/fixtures/addrman.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300,
+      "timeout_reason": "the eclipse case adds 20,000 addresses, each hashed with SHA-256d"
     }
   ]
 }

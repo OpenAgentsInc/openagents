@@ -1,0 +1,73 @@
+// The checks of addrman.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/addrman.coax
+#load "../addrman.coax";
+
+// book:begin check
+// Every address of every BIP-155 network survives addrv2 and comes back
+// from the wire as itself; a v1 message refuses the ones it can't carry.
+#forall "every network survives addrv2" k: 0..<60 #steps 400000000 {
+  nets := [5] int.[AM_NET_IPV4, AM_NET_IPV6, AM_NET_ONION, AM_NET_I2P, AM_NET_CJDNS];
+  sizes := [5] int.[4, 16, 32, 32, 16];
+  net := nets[k % 5];
+  a := AmAddr.{net=net, n=sizes[k % 5], port=k * 1009 % 65536};
+  for i: 0..<a.n { a.ip[i] = cast,trunc(u8) (k * 31 + i * 17 + 1); }
+  if net == AM_NET_CJDNS { a.ip[0] = 0xfc; }
+  if net == AM_NET_IPV6 { a.ip[0] = 0x2a; }
+  recs := [1] AmRecord.[AmRecord.{addr=a, services=cast(u64) k, time=NOW - k}];
+  buf: [128] u8; got: [1] P2pAddress;
+  n := am_wire_write_vartime(recs[..], true, buf[..]);
+  l := p2p_addr_read_vartime(buf[0..<n], true, got[..]);
+  #assert l.code == P2P_OK && l.count == 1 && am_same(am_from_wire(buf[0..<n], got[0], true), a);
+  #assert (am_wire_write_vartime(recs[..], false, buf[..]) > 0) == (net == AM_NET_IPV4 || net == AM_NET_IPV6);
+}
+// The token bucket: whatever the gaps between messages, a peer without
+// the addr permission never gets more addresses processed than one
+// token to start, plus 0.1 a second, plus what our getaddr granted.
+#forall "the token bucket bounds what a peer gets processed" k: 0..<40 #steps 400000000 {
+  m: [1] AddrMan; rng: [1] AmRng; seed: [32] u8; seed[0] = cast,trunc(u8) k;
+  rng[0] = am_rng(seed[..]);
+  recs: [200] AmRecord; out: [16] AmAddr;
+  for i: 0..<200 { recs[i] = AmRecord.{addr=am_v4(30, i, k, 1, 8333), services=GOOD_SERVICES, time=NOW}; }
+  peer := [1] AmPeer.[AmPeer.{stamp=NOW}];
+  now := NOW; total := 0;
+  for step: 0..<6 {
+    now += (k * 7 + step * 13) % 90;
+    r := am_process_addrs(m[..], peer[..], recs[0..<10 + (k + step) % 190], am_v4(99, 1, 1, 1, 8333), now, rng[..], false, 0, 0, out[..]);
+    total += r.processed;
+    #assert peer[0].tokens >= 0.0 && peer[0].tokens <= cast(f64) AM_MAX_ADDR && r.added == 0;
+  }
+  #assert cast(f64) total <= 1.0 + cast(f64) (now - NOW) * AM_ADDR_RATE + 0.000001;
+}
+// Select with a network mask returns only that network's entries, or
+// none when that network has none.
+#forall "Select keeps to the networks asked for" k: 0..<12 #steps 4000000000 {
+  new_t: [65536] int; tried_t: [16384] int; info: [64] AmInfo; random: [64] int; index: [128] int; rng: [1] AmRng; m: [1] AddrMan;
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  raw: [32] u8; raw[0] = cast,trunc(u8) k;
+  i2p := am_bytes(AM_NET_I2P, raw[..], 0);
+  ok := add1(m[..], am_v4(250, k, 1, 1, 8333), NOW, v4(252, 2, 2, 2));
+  ok = add1(m[..], i2p, NOW, v4(252, 2, 2, 2));
+  if k % 2 == 1 { g := am_good(m[..], i2p, NOW); }
+  for n: [3] int.[AM_NET_IPV4, AM_NET_I2P, AM_NET_ONION] {
+    e := am_select(m[..], false, 1 << n, NOW);
+    #assert (e < 0) == (n == AM_NET_ONION) && (e < 0 || am_network(m[0].info[e].addr) == n);
+  }
+}
+// The getaddr cache lives between 21 and 27 hours, and every inbound
+// requester inside that window gets the same answer.
+#forall "the getaddr cache lives 21 to 27 hours" k: 0..<8 #steps 4000000000 {
+  new_t: [65536] int; tried_t: [16384] int; info: [64] AmInfo; random: [64] int; index: [128] int; rng: [1] AmRng; m: [1] AddrMan;
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  for i: 1..<20 { ok := add1(m[..], am_v4(250, i, 1, 1, 8333), NOW, v4(251, i, 1, 1)); }
+  seed: [32] u8; seed[1] = cast,trunc(u8) k; cr := [1] AmRng.[am_rng(seed[..])];
+  cache: [1] AmCache; recs: [32] AmRecord;
+  p := [1] AmPeer.[AmPeer.{}]; q := [1] AmPeer.[AmPeer.{}];
+  us := NOW * 1000000;
+  r := am_getaddr_reply(m[..], p[..], true, cache[..], recs[..], us, cr[..]);
+  e := cache[0].expires;
+  #assert r.n == 4 && e >= us + 21 * 3600 * 1000000 && e < us + 27 * 3600 * 1000000;
+  r = am_getaddr_reply(m[..], q[..], true, cache[..], recs[..], e - 1, cr[..]);
+  #assert r.n == 4 && cache[0].expires == e;
+}
+// book:end check

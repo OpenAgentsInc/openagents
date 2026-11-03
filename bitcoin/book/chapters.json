@@ -1462,16 +1462,23 @@
   {
    "number": 69,
    "title": "Addresses and the address manager",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch069-addresses-and-the-address-manager.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     5,
+    10,
     65,
     68
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/addrman.coax",
+    "bitcoin/examples/addrman.coax",
+    "bitcoin/examples/checks/addrman.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

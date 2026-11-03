@@ -369,6 +369,16 @@ that a maliciously replaced manifest is authentic.
   `siphash256`; `make_cmpct_vectors.py` builds the messages with them from
   `block413567.raw` and Core's test blocks, and `cmpct.py` transliterates
   the rules over mainnet block 514,999 as the cross-check's oracle.
+- **Addresses and the address manager (Bitcoin chapter 69):** Bitcoin
+  Core's `addrman.h`, `addrman_impl.h` and `addrman.cpp` (`AddrManImpl`:
+  buckets, `Add`, `Good`, `Select`, `GetAddr`, test-before-evict and the
+  `peers.dat` format), `netgroup.h` and `netgroup.cpp` (`GetGroup`),
+  `random.h` (`FastRandomContext`) and `test/addrman_tests.cpp`, the cases
+  the library ports, all at revision `ddea9196`. `net_processing.cpp`
+  (`ProcessAddrs`, `RelayAddress`, the `getaddr` handler), `net.cpp` (the
+  `getaddr` cache, `ThreadDNSAddressSeed`), `netaddress.h`,
+  `netaddress.cpp`, `protocol.h` and `chacha20.py`, pinned above, give the
+  rest. `addrman.py` transliterates them as the cross-check's oracle.
 - **Chain parameters (Bitcoin chapter 50):** Bitcoin Core's
   `kernel/chainparams.cpp` (every network's class), `kernel/signet.h`
   (`SIGNET_DEFAULT_CHALLENGE`, `GetSignetMessageStart`), `signet.cpp`
@@ -692,4 +702,11 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bolts/01-messaging.md`](upstream/bolts/01-messaging.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/01-messaging.md) | `5801219aabcf854cf0a6dd4e98759b4351cbca238588061c680574912f6ef918` |
 | [`upstream/bolts/09-features.md`](upstream/bolts/09-features.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/09-features.md) | `39ead9fa5743104a3e66e0f6c342e34d64966dc943dcbcc337969e543e3e3cbe` |
 | [`upstream/bolts/08-transport.md`](upstream/bolts/08-transport.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/08-transport.md) | `85a1d6402adb653416c5a48f3b4c8eac2d8964621c41cb1bb6e09b8e06fbde46` |
+| [`upstream/bitcoin-core/addrman.cpp`](upstream/bitcoin-core/addrman.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/addrman.cpp) | `d4b7ae941920c48731fc04a6bfbefb11c65d829b1a81b45ff1084581dd7fee0a` |
+| [`upstream/bitcoin-core/addrman.h`](upstream/bitcoin-core/addrman.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/addrman.h) | `198cbe03201d36dd95398dcaa8b0ca7ec7dc52faaf37e3f08367f7a868a1ff44` |
+| [`upstream/bitcoin-core/addrman_impl.h`](upstream/bitcoin-core/addrman_impl.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/addrman_impl.h) | `a5eadae6360c12ddcb416dcef42642ae8af07b0d35f5472c18be0161b8204c40` |
+| [`upstream/bitcoin-core/addrman_tests.cpp`](upstream/bitcoin-core/addrman_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/addrman_tests.cpp) | `c42ee5f8f1d7756b18c1d52f6ce66223669f83a1551a359ddcf420f7eef084f1` |
+| [`upstream/bitcoin-core/netgroup.cpp`](upstream/bitcoin-core/netgroup.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/netgroup.cpp) | `81d2a13a3801dae67f48ae45fc604c10358c4360a9dc11eccd7b6e535d162c60` |
+| [`upstream/bitcoin-core/netgroup.h`](upstream/bitcoin-core/netgroup.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/netgroup.h) | `e4a239b35db4d01d2e5e78ce7188e1d0e8b4ba3a4bba1f096b41319d5e0f1aa9` |
+| [`upstream/bitcoin-core/random.h`](upstream/bitcoin-core/random.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/random.h) | `5459198b3ae7962176537041ae01a8f74f7fa0a02e5b363ce378e6f5ac7ac430` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

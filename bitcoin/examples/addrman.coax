@@ -1,0 +1,430 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/addrman.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+NOW :: 1700000000;
+MAINNET_MAGIC :: [4] u8.[0xf9, 0xbe, 0xb4, 0xd9];
+GOOD_SERVICES :: HS_NODE_NETWORK | HS_NODE_WITNESS;
+IPV4_IPV6 :: (1 << AM_NET_IPV4) | (1 << AM_NET_IPV6);
+
+// Decode hex into out and return the filled part.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+print_hex :: (bytes: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+tf :: (b: bool) -> string { return ifx b then "True" else "False"; }
+v4 :: (a: int, b: int, c: int, d: int) -> AmAddr { return am_v4(a, b, c, d, 0); }
+// An IPv6 address as its 16 bytes, read the way addr v1 reads them.
+v6 :: (text: string) -> AmAddr { raw: [16] u8; return am_legacy(decode(text, raw[..]), 0); }
+one_record :: (a: AmAddr, services: u64, time: int) -> [1] AmRecord {
+  return [1] AmRecord.[AmRecord.{addr=a, services=services, time=time}];
+}
+add1 :: (m: [] AddrMan, a: AmAddr, time: int, src: AmAddr) -> bool {
+  r := one_record(a, 0, time);
+  return am_add(m, r[..], src, 0, NOW) == 1;
+}
+show :: (a: AmAddr) {
+  if a.net == AM_NET_IPV4 { print("%.%.%.%:%", a.ip[0], a.ip[1], a.ip[2], a.ip[3], a.port); return; }
+  ip := a.ip; print("net%:", a.net); print_hex(ip[0..<a.n]); print(":%", a.port);
+}
+// An entry's address, or Core's empty CService for none.
+show_entry :: (m: [] AddrMan, e: int) {
+  if e < 0 { print("[::]:0"); } else { show(m[0].info[e].addr); }
+}
+// A manager with Core's deterministic key (1) and a seed-0 RNG.
+start :: (m: [] AddrMan, rng: [] AmRng, new_t: [] int, tried_t: [] int, info: [] AmInfo, random: [] int, index: [] int) {
+  zero: [32] u8; one: [32] u8; one[0] = 1;
+  rng[0] = am_rng(zero[..]);
+  #assert am_init(m, one[..], rng, new_t, tried_t, info, random, index);
+}
+// SHA-256d of a 32-bit little-endian number: Core's test keys.
+test_key :: (n: u32, out: [] u8) -> [] u8 {
+  b: [4] u8; stored := cb_store_le32(b[..], 0, n);
+  #assert sha256d_checked(b[..], out, false) == SHA_OK;
+  return out[0..<32];
+}
+// How many entries of a set of up-to-1,024 buckets are marked.
+marked :: (seen: [] bool) -> int { n := 0; for s: seen { if s { n += 1; } } return n; }
+
+groups :: () {
+  print("groups\n");
+  i2p: [32] u8; tor: [32] u8; cj: [16] u8; raw: [16] u8; g: [24] u8;
+  tor[0] = 0xf2;
+  labels := [11] string.["250.1.1.1", "10.0.0.1", "127.0.0.1", "2001:470:1234::1 (he.net)", "2a01:e::1",
+    "2002:fa01:0101::1 (6to4)", "2001:0::0506:fefe (Teredo)", "::ffff:250.1.1.1 (v1 form)", "fc00::1 (CJDNS)", "I2P", "Tor v3"];
+  addrs: [11] AmAddr;
+  addrs[0] = v4(250, 1, 1, 1); addrs[1] = v4(10, 0, 0, 1); addrs[2] = v4(127, 0, 0, 1);
+  addrs[3] = v6("20010470123400000000000000000001");
+  addrs[4] = v6("2a01000e000000000000000000000001");
+  addrs[5] = v6("2002fa01010100000000000000000001");
+  addrs[6] = v6("2001000000000000000000000506fefe");
+  addrs[7] = v6("00000000000000000000fffffa010101");
+  addrs[8] = am_bytes(AM_NET_CJDNS, decode("fc000000000000000000000000000001", cj[..]), 0);
+  addrs[9] = am_bytes(AM_NET_I2P, decode("a0ce38ce2224d2cecaf9929388f73379259c0c27e0debdbd7ca4cd085b55e25a", i2p[..]), 0);
+  addrs[10] = am_bytes(AM_NET_ONION, tor[..], 0);
+  for i: 0..<11 {
+    print("  %: ", labels[i]); print_hex(am_group(addrs[i], g[..]));
+    print("%\n", ifx am_routable(addrs[i]) then "" else " (unroutable)");
+  }
+}
+
+buckets :: () {
+  print("buckets with SHA-256d(1) as the key\n");
+  b1: [32] u8; b2: [32] u8;
+  k1 := test_key(1, b1[..]); k2 := test_key(2, b2[..]);
+  a1 := am_v4(250, 1, 1, 1, 8333); a2 := am_v4(250, 1, 1, 1, 9999);
+  print("  250.1.1.1:8333 tried bucket %, with key 2: %, port 9999: %\n", am_tried_bucket(k1, a1), am_tried_bucket(k2, a1), am_tried_bucket(k1, a2));
+  b := am_v4(250, 1, 2, 1, 8333); s := v4(250, 1, 2, 1);
+  print("  250.1.2.1:8333 from itself: new bucket %, with key 2: %, port 9999: %\n",
+    am_new_bucket(k1, b, s), am_new_bucket(k2, b, s), am_new_bucket(k1, am_v4(250, 1, 2, 1, 9999), s));
+  same16: [1024] bool; diff16: [1024] bool;
+  for i: 0..<255 { same16[am_tried_bucket(k1, v4(250, 1, 1, i))] = true; diff16[am_tried_bucket(k1, v4(250, i, 1, 1))] = true; }
+  print("  tried buckets for 255 addresses in one /16: %; in 255 /16s: %\n", marked(same16[..]), marked(diff16[..]));
+  one_src: [1024] bool; many_src: [1024] bool; same_grp: [1024] bool;
+  for j: 0..<4 * 255 { one_src[am_new_bucket(k1, v4(250 + j / 255, j % 256, 1, 1), v4(251, 4, 1, 1))] = true; }
+  for p: 0..<255 { many_src[am_new_bucket(k1, v4(250, 1, 1, 1), v4(250, p, 1, 1))] = true; }
+  for i: 0..<255 { same_grp[am_new_bucket(k1, v4(250, 1, 1, i), v4(250, 1, 1, i))] = true; }
+  print("  new buckets for 1,020 addresses from one source group: %; one address from 255 source groups: %; one /16 from itself: %\n",
+    marked(one_src[..]), marked(many_src[..]), marked(same_grp[..]));
+}
+
+collisions :: () {
+  new_t: [65536] int; tried_t: [16384] int; info: [64] AmInfo; random: [64] int; index: [128] int; rng: [1] AmRng; m: [1] AddrMan;
+  scratch: [64] int;
+  src := v4(252, 2, 2, 2);
+  print("new table collisions (deterministic key 1)\n");
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  print("  sizes after adding 250.1.1.1 to .24:");
+  for i: 1..<25 { ok := add1(m[..], v4(250, 1, 1, i), AM_TIME_INIT, src); print(" %", am_size(m[..], -1, -1)); }
+  print("\n  check: %\n", am_check(m[..], scratch[..]));
+
+  print("tried table collisions\n");
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  print("  Good for 250.1.1.1 to .37: ");
+  for i: 1..<38 {
+    a := v4(250, 1, 1, i);
+    ok := add1(m[..], a, AM_TIME_INIT, src);
+    print("%", ifx am_good(m[..], a, NOW) then "1" else "0");
+  }
+  print("\n  collision with: "); show_entry(m[..], am_select_tried_collision(m[..]));
+  am_resolve_collisions(m[..], NOW);
+  print("\n  after ResolveCollisions, 19 still recent: "); show_entry(m[..], am_select_tried_collision(m[..]));
+  p := am_find_entry(m[..], v4(250, 1, 1, 36));
+  print("\n  250.1.1.36 stays in new: tried=%, multiplicity %\n", tf(p.tried), p.multiplicity);
+
+  print("test-before-evict\n");
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  for i: 1..<36 { a := v4(250, 1, 1, i); ok := add1(m[..], a, AM_TIME_INIT, src); g := am_good(m[..], a, NOW); }
+  a36 := v4(250, 1, 1, 36); a19 := v4(250, 1, 1, 19);
+  ok := add1(m[..], a36, AM_TIME_INIT, src);
+  print("  Good(250.1.1.36): %, colliding with ", tf(am_good(m[..], a36, NOW))); show_entry(m[..], am_select_tried_collision(m[..]));
+  g := am_good(m[..], a19, 1);
+  am_attempt(m[..], a19, false, NOW - 61);
+  am_resolve_collisions(m[..], NOW);
+  print("\n  19 last succeeded at 1 s and was tried 61 s ago: 36 tried=%, 19 tried=%\n",
+    tf(am_find_entry(m[..], a36).tried), tf(am_find_entry(m[..], a19).tried));
+  print("  Good(250.1.1.19): %, colliding with ", tf(am_good(m[..], a19, NOW))); show_entry(m[..], am_select_tried_collision(m[..]));
+  am_resolve_collisions(m[..], NOW + 4 * 3600);
+  print("\n  4 hours later, untested: 19 tried=%, 36 tried=%, check %\n",
+    tf(am_find_entry(m[..], a19).tried), tf(am_find_entry(m[..], a36).tried), am_check(m[..], scratch[..]));
+
+  print("multiplicity\n");
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  a := am_v4(253, 3, 3, 3, 8333);
+  for i: 1..<20 { ok = add1(m[..], a, NOW, v4(i % 256, i >> 8, 1, 1)); }
+  first := am_find_entry(m[..], a).multiplicity;
+  for i: 1..<400 { r := one_record(a, 0, NOW + i); n := am_add(m[..], r[..], v4(i % 256, i >> 8, 1, 1), 0, NOW + 400); }
+  print("  19 sources, same time: %; 399 sources, newer each time: %; size %\n", first, am_find_entry(m[..], a).multiplicity, am_size(m[..], -1, -1));
+}
+
+getaddr :: () {
+  new_t: [65536] int; tried_t: [16384] int; info: [4096] AmInfo; random: [4096] int; index: [8192] int; rng: [1] AmRng; m: [1] AddrMan;
+  scratch: [4096] int; got: [2500] int;
+  print("getaddr\n");
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  first: [5] AmRecord;
+  first[0] = AmRecord.{addr=am_v4(250, 250, 2, 1, 8333), time=NOW};
+  first[1] = AmRecord.{addr=am_v4(250, 251, 2, 2, 9999), time=NOW};
+  first[2] = AmRecord.{addr=am_v4(251, 252, 2, 3, 8333), time=NOW};
+  first[3] = AmRecord.{addr=am_v4(252, 253, 3, 4, 8333), time=NOW};
+  first[4] = AmRecord.{addr=am_v4(252, 254, 4, 5, 8333), time=NOW};
+  from1 := [3] AmRecord.[first[0], first[2], first[4]];
+  from2 := [2] AmRecord.[first[1], first[3]];
+  n := am_add(m[..], from1[..], v4(250, 1, 2, 1), 0, NOW);
+  n = am_add(m[..], from2[..], v4(250, 2, 3, 3), 0, NOW);
+  all := am_get_addr(m[..], 0, 0, -1, true, NOW, got[..]);
+  print("  five addresses: % returned, 23% gives %\n", all, "%", am_get_addr(m[..], 2500, 23, -1, true, NOW, got[..]));
+  g := am_good(m[..], first[0].addr, NOW); g = am_good(m[..], first[1].addr, NOW);
+  for i: 1..<8 * 256 {
+    a := v4(i % 256, i >> 8, 1, 23);
+    ok := add1(m[..], a, NOW, a);
+    if i % 8 == 0 { g = am_good(m[..], a, NOW); }
+  }
+  k := am_get_addr(m[..], 2500, 23, -1, true, NOW, got[..]);
+  print("  size % (% new, % tried), 23% gives %, check %\n", am_size(m[..], -1, -1), am_size(m[..], -1, 1), am_size(m[..], -1, 0), "%", k, am_check(m[..], scratch[..]));
+  print("  first five:");
+  for i: 0..<5 { print(" "); show_entry(m[..], got[i]); }
+  print("\n");
+}
+
+select :: () {
+  new_t: [65536] int; tried_t: [16384] int; info: [64] AmInfo; random: [64] int; index: [128] int; rng: [1] AmRng; m: [1] AddrMan;
+  print("select\n");
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  adds := [7] AmAddr.[am_v4(250, 1, 1, 1, 8333), am_v4(250, 3, 1, 1, 8333), am_v4(250, 3, 2, 2, 9999), am_v4(250, 3, 3, 3, 9999),
+                       am_v4(250, 4, 4, 4, 8333), am_v4(250, 4, 5, 5, 7777), am_v4(250, 4, 6, 6, 8333)];
+  srcs := [7] AmAddr.[v4(252, 2, 2, 2), v4(250, 3, 1, 1), v4(250, 3, 1, 1), v4(250, 4, 1, 1), v4(250, 3, 2, 2), v4(250, 3, 2, 2), v4(250, 1, 1, 3)];
+  for i: 0..<7 { ok := add1(m[..], adds[i], NOW, srcs[i]); }
+  for i: [4] int.[0, 4, 5, 6] { g := am_good(m[..], adds[i], NOW - 3600); }
+  print("  % new, % tried\n  any:", am_size(m[..], -1, 1), am_size(m[..], -1, 0));
+  for i: 0..<12 { print(" "); show_entry(m[..], am_select(m[..], false, 0, NOW)); }
+  print("\n  new only:");
+  for i: 0..<6 { print(" "); show_entry(m[..], am_select(m[..], true, 0, NOW)); }
+  raw: [32] u8;
+  i2p := am_bytes(AM_NET_I2P, decode("a0ce38ce2224d2cecaf9929388f73379259c0c27e0debdbd7ca4cd085b55e25a", raw[..]), 0);
+  ok := add1(m[..], i2p, NOW, v4(252, 2, 2, 2));
+  print("\n  I2P only: "); show_entry(m[..], am_select(m[..], false, 1 << AM_NET_I2P, NOW));
+  print("; CJDNS only: "); show_entry(m[..], am_select(m[..], false, 1 << AM_NET_CJDNS, NOW));
+  am_attempt(m[..], adds[0], true, NOW - 30);
+  c := am_chance(m[0].info[am_find(m[..], adds[0])], NOW);
+  print("\n  chance of 250.1.1.1 after a failed attempt 30 s ago: 1 in %\n", cast(int) (1.0 / c + 0.5));
+}
+
+terrible :: () {
+  print("terrible\n");
+  labels := [7] string.["tried 30 s ago", "11 minutes in the future", "31 days old", "3 attempts, never a success",
+    "10 failures in 8 days", "9 failures in 8 days", "fresh"];
+  for k: 0..<7 {
+    x := AmInfo.{addr=v4(250, 1, 1, 1), source=v4(252, 2, 2, 2), time=NOW};
+    if k == 0 { x.last_try = NOW - 30; x.time = 0; }
+    if k == 1 { x.time = NOW + 660; }
+    if k == 2 { x.time = NOW - 31 * 86400; }
+    if k == 3 { x.attempts = 3; }
+    if k == 4 || k == 5 { x.attempts = 14 - k; x.last_success = NOW - 8 * 86400; }
+    print("  %: %\n", labels[k], tf(am_terrible(x, NOW)));
+  }
+}
+
+eclipse :: () {
+  new_t: [65536] int; tried_t: [16384] int; info: [8192] AmInfo; random: [8192] int; index: [16384] int; rng: [1] AmRng; m: [1] AddrMan;
+  scratch: [8192] int;
+  print("eclipse: one source group sends 20,000 addresses\n");
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  for i: 0..<20000 {
+    ok := add1(m[..], am_v4(1 + i % 200, (i / 200) % 250, i % 7, 9 + i % 11, 8333), NOW, v4(66, 66, i % 250, 1 + i % 5));
+  }
+  used := 0;
+  for b: 0..<AM_NEW_BUCKETS {
+    any := false;
+    for i: 0..<AM_BUCKET_SIZE { if new_t[b * AM_BUCKET_SIZE + i] >= 0 { any = true; } }
+    if any { used += 1; }
+  }
+  print("  kept % of 20000 in % of 1024 new buckets\n", am_size(m[..], -1, -1), used);
+  honest := 0;
+  for i: 0..<1000 {
+    if add1(m[..], am_v4(100 + i % 50, i / 50, 7, 7, 8333), NOW, v4(150 + i % 50, i / 50 + 30, 1, 1)) { honest += 1; }
+  }
+  theirs := 0;
+  for i: 0..<400 { e := am_select(m[..], true, 0, NOW); if m[0].info[e].addr.ip[2] != 7 { theirs += 1; } }
+  print("  1,000 honest addresses from 1,000 groups: % kept; of 400 selections % are the attacker's, check %\n", honest, theirs, am_check(m[..], scratch[..]));
+}
+
+// Read data into a fresh manager: the result code, and its size.
+Back :: struct { code: int; size: int; }
+read_back :: (data: [] u8, magic: [4] u8) -> Back {
+  new_t: [65536] int; tried_t: [16384] int; info: [32] AmInfo; random: [32] int; index: [64] int; rng: [1] AmRng; scratch: [32] int;
+  back: [1] AddrMan;
+  start(back[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  code := am_read_vartime(back[..], data, magic, scratch[..]);
+  return Back.{code=code, size=am_size(back[..], -1, -1)};
+}
+same_places :: (m: [] AddrMan, data: [] u8) -> bool {
+  new_t: [65536] int; tried_t: [16384] int; info: [32] AmInfo; random: [32] int; index: [64] int; rng: [1] AmRng; scratch: [32] int;
+  back: [1] AddrMan;
+  start(back[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  #assert am_read_vartime(back[..], data, MAINNET_MAGIC, scratch[..]) == AM_OK;
+  print("  read back: % new, % tried, ", am_size(back[..], -1, 1), am_size(back[..], -1, 0));
+  same := true;
+  for x: m[0].info {
+    if !x.used { continue; }
+    p := am_find_entry(m, x.addr); q := am_find_entry(back[..], x.addr);
+    if p.found != q.found || p.tried != q.tried || p.multiplicity != q.multiplicity || p.bucket != q.bucket || p.position != q.position { same = false; }
+  }
+  return same;
+}
+peers_dat :: () {
+  new_t: [65536] int; tried_t: [16384] int; info: [32] AmInfo; random: [32] int; index: [64] int; rng: [1] AmRng; m: [1] AddrMan;
+  scratch: [32] int; data: [8192] u8; digest: [32] u8; bad: [8192] u8;
+  print("peers.dat\n");
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  for i: 1..<9 { r := one_record(am_v4(250, 7, i, 1, 8333), 9, NOW - i); n := am_add(m[..], r[..], v4(252, 5, 1, 1), 0, NOW); }
+  g := am_good(m[..], am_v4(250, 7, 1, 1, 8333), NOW); g = am_good(m[..], am_v4(250, 7, 2, 1, 8333), NOW);
+  raw: [32] u8;
+  i2p := am_bytes(AM_NET_I2P, decode("a0ce38ce2224d2cecaf9929388f73379259c0c27e0debdbd7ca4cd085b55e25a", raw[..]), 0);
+  r := one_record(i2p, 1024 | 8, NOW); n := am_add(m[..], r[..], v4(252, 5, 1, 1), 0, NOW);
+  size := am_write_vartime(m[..], MAINNET_MAGIC, scratch[..], data[..]);
+  #assert sha256_hash_checked(data[0..<size], digest[..], false) == SHA_OK;
+  print("  % bytes, SHA-256 ", size); print_hex(digest[..]); print("\n");
+  print("same places: %\n", tf(same_places(m[..], data[0..<size])));
+  labels := [3] string.["a flipped byte", "the last byte missing", "another network"];
+  for k: 0..<3 {
+    for i: 0..<size { bad[i] = data[i]; }
+    cut := size;
+    magic := MAINNET_MAGIC;
+    if k == 0 { bad[60] ^= 1; }
+    if k == 1 { cut -= 1; }
+    if k == 2 { magic = [4] u8.[0x0b, 0x11, 0x09, 0x07]; }
+    print("  %: %\n", labels[k], ifx read_back(bad[0..<cut], magic).code == AM_OK then "read" else "refused");
+  }
+  // Core's load_addrman_corrupted: 10 new and 10 tried claimed, one entry present.
+  body: [200] u8; at := 0;
+  for i: 0..<4 { body[i] = MAINNET_MAGIC[i]; }
+  body[4] = 1; body[5] = 32; body[6] = 1; at = 38;
+  stored := cb_store_le32(body[..], at, 10); stored = cb_store_le32(body[..], at + 4, 10);
+  stored = cb_store_le32(body[..], at + 8, cast(u32) (AM_NEW_BUCKETS ^ (1 << 30))); at += 12;
+  stored = cb_store_le32(body[..], at + 4, cast(u32) AM_TIME_INIT); at += 16;
+  for i: 0..<2 {
+    for j: 0..<16 { body[at+j] = AM_V4_PREFIX[j]; }
+    body[at+12] = 252; body[at+13] = cast(u8) (1 + i); body[at+14] = cast(u8) (1 + i); body[at+15] = cast(u8) (1 + i);
+    at += 16;
+    if i == 0 { body[at] = cast(u8) (7777 >> 8); body[at+1] = cast,trunc(u8) 7777; at += 2; }
+  }
+  at += 12;
+  #assert sha256d_checked(body[0..<at], body[at..<at+32], false) == SHA_OK;
+  code := read_back(body[0..<at+32], MAINNET_MAGIC).code;
+  print("  20 entries claimed, one present: %\n", ifx code == AM_CORRUPT then "refused (end of data)" else "read");
+  // Core's remove_invalid: two entries rewritten as 0.0.0.0 and 255.255.255.255 are dropped.
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  four: [4] AmRecord;
+  four[0] = AmRecord.{addr=v4(5, 5, 5, 5), time=AM_TIME_INIT}; four[1] = AmRecord.{addr=v4(7, 7, 7, 7), time=AM_TIME_INIT};
+  four[2] = AmRecord.{addr=v4(6, 6, 6, 6), time=AM_TIME_INIT}; four[3] = AmRecord.{addr=v4(8, 8, 8, 8), time=AM_TIME_INIT};
+  n = am_add(m[..], four[..], am_none(), 0, NOW);
+  g = am_good(m[..], v4(7, 7, 7, 7), NOW); g = am_good(m[..], v4(8, 8, 8, 8), NOW);
+  size = am_write_vartime(m[..], MAINNET_MAGIC, scratch[..], data[..]) - 32;
+  for k: 0..<2 {
+    from := cast(u8) (6 + 2 * k); to := ifx k == 0 then cast(u8) 0 else cast(u8) 255;
+    for i: 0..<size - 3 {
+      if data[i] == from && data[i+1] == from && data[i+2] == from && data[i+3] == from {
+        for j: 0..<4 { data[i+j] = to; }
+        break;
+      }
+    }
+  }
+  #assert sha256d_checked(data[0..<size], data[size..<size+32], false) == SHA_OK;
+  b := read_back(data[0..<size+32], MAINNET_MAGIC);
+  print("  four entries, two made invalid: % remain\n", ifx b.code == AM_OK then b.size else -1);
+}
+
+// n records base.(i/250).(i%250).1:8333.
+batch :: (n: int, base: int, time: int, out: [] AmRecord) -> [] AmRecord {
+  for i: 0..<n { out[i] = AmRecord.{addr=am_v4(base, i / 250, i % 250, 1, 8333), services=GOOD_SERVICES, time=time}; }
+  return out[0..<n];
+}
+relay :: () {
+  new_t: [65536] int; tried_t: [16384] int; info: [4096] AmInfo; random: [4096] int; index: [8192] int; rng: [1] AmRng; m: [1] AddrMan;
+  records: [1001] AmRecord; out: [16] AmAddr; shuffle: [1] AmRng; seed: [32] u8;
+  print("addr relay\n");
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  for i: 0..<32 { seed[i] = 7; }
+  shuffle[0] = am_rng(seed[..]);
+  peer := [1] AmPeer.[AmPeer.{stamp=NOW}];
+  src := am_v4(99, 1, 1, 1, 8333);
+  r := am_process_addrs(m[..], peer[..], batch(1001, 20, NOW, records[..]), src, NOW, shuffle[..], false, 0, IPV4_IPV6, out[..]);
+  print("  1,001 addresses: %\n", ifx r.code == AM_MISBEHAVING then "misbehaving" else "ok");
+  peer[0].tokens += 1000.0;
+  r = am_process_addrs(m[..], peer[..], batch(1000, 21, NOW - 3600, records[..]), src, NOW + 1, shuffle[..], false, 0, IPV4_IPV6, out[..]);
+  print("  1,000 after our getaddr: % processed, % rate-limited, % added, % to relay\n", r.processed, r.limited, r.added, r.relay);
+  r = am_process_addrs(m[..], peer[..], batch(1000, 22, NOW - 3600, records[..]), src, NOW + 11, shuffle[..], false, 0, IPV4_IPV6, out[..]);
+  print("  1,000 more 10 s later: % processed, % rate-limited\n", r.processed, r.limited);
+  r = am_process_addrs(m[..], peer[..], batch(1000, 23, NOW - 3600, records[..]), src, NOW + 11, shuffle[..], true, 0, IPV4_IPV6, out[..]);
+  print("  1,000 from a peer with the addr permission: % processed, % rate-limited\n", r.processed, r.limited);
+  peer[0] = AmPeer.{stamp=NOW};
+  r = am_process_addrs(m[..], peer[..], batch(10, 30, NOW + 3540, records[..]), src, NOW + 3600, shuffle[..], false, 0, IPV4_IPV6, out[..]);
+  print("  10 fresh addresses an hour later: % processed, % to relay\n", r.processed, r.relay);
+  r = am_process_addrs(m[..], peer[..], batch(11, 31, NOW + 3540, records[..]), src, NOW + 3600, shuffle[..], false, 0, IPV4_IPV6, out[..]);
+  print("  11 fresh addresses: % processed, % to relay, % rate-limited\n", r.processed, r.relay, r.limited);
+  peer[0] = AmPeer.{stamp=NOW - 100};
+  zero: [32] u8;
+  tor := am_bytes(AM_NET_ONION, zero[..], 9050);
+  mixed := [4] AmRecord.[AmRecord.{addr=am_v4(40, 1, 1, 1, 8333), time=NOW},
+                         AmRecord.{addr=am_v4(40, 1, 1, 2, 8333), services=HS_NODE_NETWORK_LIMITED, time=50},
+                         AmRecord.{addr=am_v4(10, 1, 1, 3, 8333), services=HS_NODE_NETWORK, time=NOW},
+                         AmRecord.{addr=tor, services=HS_NODE_NETWORK, time=NOW}];
+  r = am_process_addrs(m[..], peer[..], mixed[..], src, NOW, shuffle[..], false, 0, IPV4_IPV6, out[..]);
+  t := m[0].info[am_find(m[..], am_v4(40, 1, 1, 2, 8333))].time;
+  print("  no services, an ancient time, a private address, Tor: % processed, % added; the ancient time became now - % h\n", r.processed, r.added, (NOW - t) / 3600);
+  ids := [8] int.[1, 2, 3, 4, 5, 6, 7, 8];
+  eligible := [8] bool.[true, true, false, true, true, true, true, true];
+  to: [2] int;
+  a := am_v4(250, 1, 1, 1, 8333);
+  k := am_relay_targets(11, 22, a, true, NOW, ids[..], eligible[..], to[..]);
+  print("  relay 250.1.1.1:8333 to: [%, %], ", to[0], to[1]);
+  k = am_relay_targets(11, 22, a, true, NOW + 86400, ids[..], eligible[..], to[..]);
+  print("next day: [%, %]\n", to[0], to[1]);
+  k = am_relay_targets(11, 22, tor, false, NOW, ids[..], eligible[..], to[..]);
+  print("  unreachable Tor address to:");
+  for i: 0..<k { print("%", ifx i == 0 then " [" else ", "); print("%", to[i]); }
+  print("]\n");
+}
+
+REASONS :: [3] string.["", "outbound", "repeated"];
+replies :: () {
+  new_t: [65536] int; tried_t: [16384] int; info: [256] AmInfo; random: [256] int; index: [512] int; rng: [1] AmRng; m: [1] AddrMan;
+  records: [1000] AmRecord; first: [1000] AmRecord; seed: [32] u8; cr: [1] AmRng;
+  print("getaddr replies\n");
+  start(m[..], rng[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  for i: 1..<200 { r := one_record(am_v4(250, i, 1, 1, 8333), 9, NOW); n := am_add(m[..], r[..], v4(251, i, 1, 1), 0, NOW); }
+  cache: [1] AmCache;
+  for i: 0..<32 { seed[i] = 9; }
+  cr[0] = am_rng(seed[..]);
+  p1 := [1] AmPeer.[AmPeer.{stamp=NOW}]; p2 := [1] AmPeer.[AmPeer.{stamp=NOW}]; p3 := [1] AmPeer.[AmPeer.{stamp=NOW}];
+  us := NOW * 1000000;
+  r1 := am_getaddr_reply(m[..], p1[..], true, cache[..], records[..], us, cr[..]);
+  for i: 0..<r1.n { first[i] = records[i]; }
+  print("  inbound: % addresses, cache until +% s\n", r1.n, (cache[0].expires - us) / 1000000);
+  r := am_getaddr_reply(m[..], p1[..], true, cache[..], records[..], us, cr[..]);
+  print("  again on that connection: ignored: %\n", REASONS[r.reason]);
+  r = am_getaddr_reply(m[..], p3[..], false, cache[..], records[..], us, cr[..]);
+  print("  from an outbound peer: ignored: %\n", REASONS[r.reason]);
+  r = am_getaddr_reply(m[..], p2[..], true, cache[..], records[..], us + 3600 * 1000000, cr[..]);
+  print("  another inbound an hour later: same answer %\n", tf(r.n == r1.n && same_records(records[0..<r.n], first[0..<r1.n])));
+  p3[0] = AmPeer.{stamp=NOW};
+  r = am_getaddr_reply(m[..], p3[..], true, cache[..], records[..], cache[0].expires + 1, cr[..]);
+  print("  after the cache expires: same answer %\n", tf(r.n == r1.n && same_records(records[0..<r.n], first[0..<r1.n])));
+}
+same_records :: (a: [] AmRecord, b: [] AmRecord) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if !am_same(a[i].addr, b[i].addr) { return false; } }
+  return true;
+}
+
+seeds :: () {
+  print("DNS seeds\n");
+  sizes := [4] int.[0, 500, 5000, 5000];
+  for k: 0..<4 {
+    p := am_seed_plan(sizes[k], k == 3, 9);
+    print("  % known addresses%: wait % s, then query % of 9\n", sizes[k], ifx k == 3 then ", -forcednsseed" else "", p.wait, p.query);
+  }
+}
+
+main :: () {
+  groups();
+  buckets();
+  collisions();
+  getaddr();
+  select();
+  terrible();
+  eclipse();
+  peers_dat();
+  relay();
+  replies();
+  seeds();
+}
+// book:end example
