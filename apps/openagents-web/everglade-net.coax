@@ -605,6 +605,13 @@ net_folk :: (s: [] Everglade, i: int) -> NetFolk {
 // In a room whose server runs the town (it has said your WANTED level, w): its townsfolk and guards
 // are the ones drawn, and the page's own watch is still (everglade-watch.coax watch_net_frame).
 net_town :: (s: [] Everglade) -> bool { return net_live(s) && net_of(s)[0].wanted >= 0; }
+// Your conditions' bits as the server has them (p's COND, WC_*), 0 with none heard.
+net_cond :: (s: [] Everglade) -> int {
+  if !net_live(s) { return 0; }
+  n := net_of(s);
+  k := net_ent(n, n[0].seat, false);
+  return ifx k >= 0 then n[0].ents[k].p1 else 0;
+}
 net_wanted :: (s: [] Everglade) -> int { return ifx net_on(s) then hi_int(net_of(s)[0].wanted, 0) else 0; }
 NetWhere :: struct { ok: bool; x: f32; y: f32; z: f32; }
 // Where entity id is drawn (you where you are), its feet's world height.

@@ -16,7 +16,7 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
 float world_ground(int k, float x, float z);
 /* The town (everglade-watch.coax everglade_room_town, GitHub #12713). */
 #define WORLD_FOLK 38          /* watch.coax WATCH_ACTORS, everglade5e-rules.coax E5R_FOLK */
-#define WORLD_SEAT_TOWN 6      /* a seat for the town: X Y Z LIVE HP MAX */
+#define WORLD_SEAT_TOWN 7      /* a seat for the town: X Y Z LIVE HP MAX COND */
 #define WORLD_PEOPLE 8         /* a person for the rules: HERE X Z HP TEMP MAX AC BLOCK */
 #define WORLD_VIEW 7           /* a person for the pages: X Z YAW CLIP MODE HP SHOWN */
 /* Person j's Hit Points as the rules have them, harmed by seat `by` (-1 none). */
@@ -31,6 +31,8 @@ int world_people(int k, float out[WORLD_FOLK * WORLD_PEOPLE]);
 /* Person i for the pages; seat s's WANTED level. */
 bool world_view(int k, int i, float out[WORLD_VIEW]);
 int world_wanted(int k, int s);
+/* Seat s's conditions from the watch (wire WC_*: Hold Person's hold, Ray of Frost's slow). */
+int world_cond(int k, int s);
 /* The town's pieces: a strike of Everglade's four spells from seat `by`; dt of the strikes landing and
    fire, the count of its events; event q: KIND PIECE A B C X Z (KIND 1 a break thrown at A B C m/s, 2
    alight: A 1 on); the rebuild. */

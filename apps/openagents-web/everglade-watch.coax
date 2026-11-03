@@ -54,7 +54,9 @@ WatchView :: struct {
   // the room server's pieces: what stood and what burnt when the pages last heard, and what they hear
   room_stood: [DEMO_PIECES] bool; room_burnt: [DEMO_PIECES] bool; room_known: bool;
   room_ev: [EG_ROOM_EVENTS * EG_ROOM_EV_FLOATS] f32; room_ev_n: int;
-  room_hit: Point; room_by: int;   // where the last strike fell (a break is thrown out from it), and whose
+  room_hit: Point; room_by: int;
+  server: bool;                    // this is the room server's world (everglade_room_town)
+  room_cond: [WATCH_YOUS] int;     // each seat's conditions in the rules (WC_*)   // where the last strike fell (a break is thrown out from it), and whose
 }
 
 watch_cap :: (group: int) -> int {
@@ -171,10 +173,28 @@ watch_end_effects :: (s: [] Everglade) {
   td_you_reset(s);
 }
 // Ray of Frost's slow on your pace, and Hold Person's hold (you can't move), for the face.
-everglade_slow :: (s: [] Everglade) -> f32 #export_c { return (ifx s[0].wv.started then watch_pace(watch_w(s)) else 1.0f32) * ci_pace(s); }   // and a beast's Speed (everglade-circle.coax)
-everglade_held :: (s: [] Everglade) -> bool #export_c { return s[0].wv.started && watch_held(watch_w(s)); }
+// In a room the server's (your COND bits: net_cond); on the room server, the seat being stepped's
+// (everglade_room_seat: the watch's own and the rules' conditions on them).
+everglade_slow :: (s: [] Everglade) -> f32 #export_c {
+  pace := ifx s[0].wv.started then watch_pace(watch_w(s)) else 1.0f32;
+  if net_town(s) { pace = ifx (net_cond(s) & WC_SLOWED) != 0 then f32(FROST_PACE) else 1.0f32; }
+  return pace * ci_pace(s);   // and a beast's Speed (everglade-circle.coax)
+}
+everglade_held :: (s: [] Everglade) -> bool #export_c {
+  if net_town(s) { return (net_cond(s) & WC_STOPPED) != 0; }
+  if s[0].wv.server { return (watch_held(watch_w(s)) || (s[0].wv.room_cond[clamp_w(s[0].wt[0].me, 0, WATCH_YOUS - 1)] & WC_STOPPED) != 0); }
+  return s[0].wv.started && watch_held(watch_w(s));
+}
 // A blast's throw for your living body, taken once by the face (everglade-face.c adds it to your velocity).
 everglade_knock :: (s: [] Everglade) -> Point #export_c {
+  if s[0].wv.server && s[0].wv.started {
+    // the room server's seat being stepped: the watch's throw of them, once
+    y := watch_you(s[0].wt[..]);
+    if !y[0].knocked || y[0].dead { y[0].knocked = false; y[0].knock = v3(0, 0, 0); return v3(0, 0, 0); }
+    k := y[0].knock;
+    y[0].knocked = false; y[0].knock = v3(0, 0, 0);
+    return k;
+  }
   if !s[0].wv.knocked { return v3(0, 0, 0); }
   s[0].wv.knocked = false;
   return s[0].wv.knock;
@@ -779,7 +799,7 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
 // WANTED. The room's SRD 5e rules (everglade5e-room-rules.coax) keep Hit Points, the seats' and the
 // people's; this town takes them back each tick, and hands the rules where the people are and the
 // damage its guards deal the seats.
-EG_ROOM_SEAT_FLOATS :: 6;      // a seat as the host hands it: X Y Z LIVE HP MAX (LIVE 2 just sat; HP 0: dead)
+EG_ROOM_SEAT_FLOATS :: 7;      // a seat as the host hands it: X Y Z LIVE HP MAX COND (LIVE 2 just sat; HP 0: dead; COND WC_*)
 EG_ROOM_VIEW_FLOATS :: 7;      // a person as a page hears them (wire f): X Z YAW CLIP MODE HP SHOWN
 EG_ROOM_HEAR :: 60.0;          // m a crime carries (the bolt's: everglade-spells.coax WATCH_HEAR)
 
@@ -791,6 +811,7 @@ everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: 
   if !s[0].wv.started { watch_page_start(s); }
   w := watch_w(s);
   w[0].on = true; w[0].peace = false; w[0].unhurt = false;
+  s[0].wv.server = true;
   c := FolkClock.{day = 0.5, length = f32(STYLE_CYCLE_SECONDS), world = world, turning = false, still = false};
   m := lo_w(lo_w(n, WATCH_YOUS), seats.count / EG_ROOM_SEAT_FLOATS);
   at: [WATCH_YOUS] Point; live: [WATCH_YOUS] bool; hp: [WATCH_YOUS] int;
@@ -800,6 +821,7 @@ everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: 
     at[p] = v3(seats[o], seats[o + 1], seats[o + 2]);
     live[p] = seats[o + 3] > 0.5;
     hp[p] = cast(int) seats[o + 4];
+    s[0].wv.room_cond[p] = cast(int) seats[o + 6];
     w[0].me = p;
     if live[p] && (!s[0].wv.room_live[p] || seats[o + 3] > 1.5) { watch_start_you(w); s[0].wv.room_dead[p] = false; }   // a new player: whole, unwanted
     s[0].wv.room_live[p] = live[p]; s[0].wv.room_at[p] = at[p];
@@ -842,7 +864,7 @@ everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: 
       }
       took[WATCH_YOUS + p] = f32(by);
     }
-    y[0].knocked = false; y[0].knock = v3(0, 0, 0); y[0].bound_said = 0;
+    y[0].bound_said = 0;   // a throw stays for the seat's next step (everglade_knock)
   }
   w[0].me = me;
 }
@@ -1066,4 +1088,14 @@ everglade_room_fresh :: (s: [] Everglade) #export_c {
     s[0].sp.bolt.live = false; s[0].sp.orb_live = false;
     _ := sp_restore(s, -1); eg_room_known(s);
   }
+}
+// The room server steps seat p's movement next (room-world.c world_step): the conditions, the slow and
+// the throw everglade_move_world reads are theirs.
+everglade_room_seat :: (s: [] Everglade, p: int) #export_c { s[0].wt[0].me = clamp_w(p, 0, WATCH_YOUS - 1); }
+// Seat p's conditions from the watch (WC_*): Hold Person's hold, Ray of Frost's slow.
+everglade_room_cond :: (s: [] Everglade, p: int) -> int #export_c {
+  if !s[0].wv.started || p < 0 || p >= WATCH_YOUS { return 0; }
+  y := s[0].wt[0].yous[p];
+  if y.dead { return 0; }
+  return (ifx y.held_t > 0 then WC_PARALYZED else 0) | (ifx y.slow_t > 0 then WC_SLOWED else 0);
 }

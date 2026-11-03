@@ -58,6 +58,7 @@ EgSeat :: struct {
   heard_w: [EG_SEATS] int;                            // the WANTED level it last heard of each seat, plus 1 (0 nothing)
   full: bool;                                         // its next D is a snapshot
   fresh: bool;                                        // just sat: the world's watch meets a new player
+  wcond: int;                                         // the world's conditions on it (WC_*), with the rules' in p's COND
 }
 EgCast :: struct { on: bool; seat: int; slot: int; x: f32; y: f32; z: f32; tgt: int; due: int; }
 EgRoom :: struct {
@@ -439,17 +440,17 @@ rm_eg_fresh :: (v: [] RmServer, k: int) -> bool #export_c {
   v[0].eg[k].fresh = false;
   return true;
 }
-// Seat s for the world: X Y Z LIVE HP MAX (everglade-watch.coax EG_ROOM_SEAT_FLOATS; LIVE 2 just sat).
+// Seat s for the world: X Y Z LIVE HP MAX COND (everglade-watch.coax EG_ROOM_SEAT_FLOATS; LIVE 2 just sat).
 rm_eg_seat_town :: (v: [] RmServer, k: int, s: int, out: [] f32) #export_c {
-  if out.count < 6 { return; }
-  for q: 0..<6 { out[q] = 0; }
+  if out.count < 7 { return; }
+  for q: 0..<7 { out[q] = 0; }
   if !rm_eg_seat_live(v, k, s) || !v[0].eg[k].seat[s].placed { return; }
   o: [E5RR_OUT_FLOATS] f32;
   e5rr_seat_out(v[0].eg[k].rules[..], s, o[..]);
   p := v[0].eg[k].seat[s].pose;
   out[0] = p.x; out[1] = p.y; out[2] = p.z; out[3] = ifx v[0].eg[k].seat[s].fresh then 2.0f32 else 1.0f32;   // 2: new
   v[0].eg[k].seat[s].fresh = false;
-  out[4] = ifx o[4] > 0.5 then 0.0f32 else o[0]; out[5] = o[1];
+  out[4] = ifx o[4] > 0.5 then 0.0f32 else o[0]; out[5] = o[1]; out[6] = o[3];
 }
 // The people where the world has them (E5R_FOLK_FLOATS each, n of them), for the rules.
 rm_eg_people :: (v: [] RmServer, k: int, folk: [] f32, n: int) #export_c { if rm_eg_live(v, k) { e5rr_people(v[0].eg[k].rules[..], folk, n); } }
@@ -515,6 +516,7 @@ rm_eg_folk :: (v: [] RmServer, k: int, i: int, at: [] f32) #export_c {
   for q: 0..<EG_FOLK_FLOATS { v[0].eg[k].folk[i * EG_FOLK_FLOATS + q] = at[q]; }
   v[0].eg[k].folk_on = true;
 }
+rm_eg_cond :: (v: [] RmServer, k: int, s: int, bits: int) #export_c { if rm_eg_seat_live(v, k, s) { v[0].eg[k].seat[s].wcond = bits; } }
 rm_eg_wanted :: (v: [] RmServer, k: int, s: int, level: int) #export_c { if rm_eg_seat_live(v, k, s) { v[0].eg[k].wanted[s] = level; } }
 
 // ---- what a seat hears
@@ -581,7 +583,7 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
     p := other.pose;
     g := p.g | (ifx out[4] > 0.5 then WG_DEAD else 0) | (ifx v[0].mono_ms - other.heard_ms > WIRE_AWAY_MS then WG_AWAY else 0);
     n := wire_put_p(e[..], 0, WireP.{ss = q, x = p.x, y = p.y, z = p.z, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, g = g, clip = p.clip,
-                                     hp = cast(int) out[0], max = cast(int) out[1], temp = cast(int) out[2], cond = cast(int) out[3],
+                                     hp = cast(int) out[0], max = cast(int) out[1], temp = cast(int) out[2], cond = cast(int) out[3] | other.wcond,
                                      form = 0, carry = f32(p.carry) / 10000.0});
     h := eg_hash(cast(string) e[0..<n]);
     // your own every frame: its ACK is where your page replays from

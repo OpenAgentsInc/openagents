@@ -63,6 +63,7 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
   /* in: SEQ KX KY PX PY THETA B (cm-scaled sticks, centiradians, bits 1 run 2 jump 4 dive) */
   coax_t_EgMoveIn input = {(float)in[1] / 100.0f, (float)in[2] / 100.0f, (float)in[3] / 100.0f, (float)in[4] / 100.0f,
                            (in[6] & 1) != 0, (in[6] & 2) != 0, (float)in[5] / 100.0f};
+  everglade_room_seat(at(k), s);   /* its conditions, slow and throw are what the step reads */
   coax_t_EgMoveWorld mw = everglade_move_world(at(k), p.pos.x, p.pos.y, p.pos.z, 0, 1.0f, 0, 0, false, 0, 0, 0, (coax_v_f32){NULL, 0});
   p = eg_step_begin(p, input, mw, dt);
   coax_t_EgBody before = eg_step_body(p);
@@ -88,6 +89,7 @@ int world_people(int k, float out[WORLD_FOLK * WORLD_PEOPLE]) {
 }
 bool world_view(int k, int i, float out[WORLD_VIEW]) { return world_of(k) && everglade_room_view(at(k), i, (coax_v_f32){out, WORLD_VIEW}); }
 int world_wanted(int k, int s) { return world_of(k) ? (int)everglade_room_wanted(at(k), s) : 0; }
+int world_cond(int k, int s) { return world_of(k) ? (int)everglade_room_cond(at(k), s) : 0; }
 
 void world_strike(int k, int by, int slot, const float from[3], const float to[3], int seed) {
   if (world_of(k)) everglade_room_strike(at(k), by, slot, from[0], from[1], from[2], to[0], to[1], to[2], seed);

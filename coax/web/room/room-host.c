@@ -137,6 +137,7 @@ static void everglade_town(int k) {
     if (seats[s * WORLD_SEAT_TOWN + 3] < 0.5f) continue;
     rm_eg_hurt(view(), k, s, (int64_t)took[s], (int64_t)took[WORLD_SEATS + s]);
     rm_eg_wanted(view(), k, s, world_wanted(k, s));
+    rm_eg_cond(view(), k, s, world_cond(k, s));
   }
   /* the town's pieces: the rebuild, the strikes cast since, then what broke and caught for every page */
   if (rm_eg_rebuild(view(), k)) world_rebuild(k);

@@ -33,7 +33,7 @@
 //                                  2 more of this tick follows, else 0; entries a ';' apart:
 //     p SS X Y Z YAW VX VY VZ G CLIP HP MAX TEMP COND FORM CARRY
 //                                  a player: G bits (1 on ground, 2 swimming, 4 in a boat, 8 dead), CLIP the
-//                                  controller's act, COND the conditions' bits, FORM (0 you, 1-4 a beast),
+//                                  controller's act, COND the conditions' bits (WC_*), FORM (0 you, 1-4 a beast),
 //                                  CARRY the controller's leftover step time in tenths of a ms
 //     n SS ID LOOK CLASS FLAGS NAME  who a seat is ("-" none yet)
 //     f I X Z YAW CLIP MODE HP     a townsperson or guard (watch actor I)
@@ -63,6 +63,11 @@ WK_LINE :: 23;             // a wall of wind or fire: P1 the ability (AB_*), P2 
 WK_ZONE :: 24;             // a lingering zone (Moonbeam, Sleet Storm, Fog Cloud...): P1 the ability, P2 its radius
 // a player's G bits
 WG_GROUND :: 1; WG_SWIM :: 2; WG_BOAT :: 4; WG_DEAD :: 8; WG_AWAY :: 16;   // AWAY: nothing heard from that seat's page for WIRE_AWAY_MS
+// a player's COND bits: the SRD's conditions (aethyr/rules/srd/engine.coax RS_*: 256 Paralyzed is Hold
+// Person's hold), and Everglade's own past them
+WC_PARALYZED :: 256; WC_PETRIFIED :: 512; WC_PRONE :: 2048; WC_RESTRAINED :: 4096; WC_STUNNED :: 8192; WC_UNCONSCIOUS :: 16384;
+WC_SLOWED :: 65536;        // Ray of Frost's slow (the watch's casters)
+WC_STOPPED :: WC_PARALYZED | WC_PETRIFIED | WC_RESTRAINED | WC_STUNNED | WC_UNCONSCIOUS;   // can't move
 // an input's B bits
 WB_RUN :: 1; WB_JUMP :: 2; WB_DIVE :: 4;
 // an interaction's KIND
