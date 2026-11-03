@@ -21,6 +21,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <signal.h>
@@ -44,12 +45,13 @@
 #define HTTP_REQUEST_MAX 65536 // inline take64 query; live/build messages keep REQ_MAX
 
 typedef struct { int fd; bool ws; size_t n; char buf[HTTP_REQUEST_MAX]; } client;
-typedef struct { char path[1024]; struct timespec mtime; } watched;
+typedef struct { char path[PATH_MAX + 1024]; struct timespec mtime; } watched;
 
 static client clients[MAX_CLIENTS];
 static watched files[MAX_WATCH];
 static int file_count;
-static char app_dir[1024], host_dir[1024], build_cmd[2048];
+// realpath's buffers are PATH_MAX: glibc's _FORTIFY_SOURCE (on by default under Nix) aborts a smaller one.
+static char app_dir[PATH_MAX], host_dir[PATH_MAX], build_cmd[PATH_MAX + 64];
 static bool static_mode;
 static char cache_control[64] = "public, max-age=300";
 
@@ -114,7 +116,7 @@ static void respond(int fd, int status, const char *reason, const char *type, co
 // else from the app directory; a directory ("/", "/projects/coax") is its
 // index.html, as the bucket serves it. No "..", no dotfiles.
 static bool resolve(const char *url, char *out, size_t cap) {
-  char path[1024];
+  char path[PATH_MAX + 1024];
   size_t i = 0;
   for (; url[i] && url[i] != '?' && url[i] != '#' && i + 1 < sizeof path; i++) path[i] = url[i];
   path[i] = 0;
@@ -135,7 +137,7 @@ static bool resolve(const char *url, char *out, size_t cap) {
 
 // An unknown path gets the app's 404.html, if it has one, with a 404 status.
 static void not_found(int fd) {
-  char path[2048];
+  char path[PATH_MAX + 1024];
   static char page[1 << 16];
   snprintf(path, sizeof path, "%s/404.html", app_dir);
   FILE *f = fopen(path, "rb");
@@ -146,7 +148,7 @@ static void not_found(int fd) {
 }
 
 static void serve_file(int fd, const char *url) {
-  char path[2048];
+  char path[PATH_MAX + 1024];
   if (!resolve(url, path, sizeof path)) { not_found(fd); return; }
   FILE *f = fopen(path, "rb");
   struct stat st;
@@ -221,7 +223,7 @@ static void scan_dir(const char *dir, bool add) {
   struct dirent *e;
   while ((e = readdir(d))) {
     if (e->d_name[0] == '.' || !watched_kind(e->d_name)) continue;
-    char path[1024];
+    char path[PATH_MAX + 1024];
     snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
     if (add && file_count < MAX_WATCH) {
       struct stat st;
@@ -318,7 +320,7 @@ int main(int argc, char **argv) {
     if (!realpath(hosts, host_dir)) { fprintf(stderr, "serve: no host directory %s\n", hosts); return 2; }
   } else {
     // The binary lives in coax/web/build/; the host files in coax/web/.
-    char self[1024];
+    char self[PATH_MAX];
     if (!realpath(argv[0], self)) { fprintf(stderr, "serve: cannot find itself\n"); return 2; }
     char *slash = strrchr(self, '/'); *slash = 0;
     slash = strrchr(self, '/'); *slash = 0;

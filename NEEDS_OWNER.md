@@ -14,21 +14,6 @@ out faster after a wall. Look at the pairs. If the look is right, refresh
 staging. If not, say what to tune: distance, spring or ease.
 
 
-## Made realm's accessible layer, lifecycle and controller: run on a real GPU (#12629, 2026-11-02)
-
-`coax/web/forge-access.coax` drives a made realm in muted headless Chrome:
-keyboard only through the accessible layer (MOVE, TURN IT, SAVE, UNDO, REDO,
-a row's checkbox), the names, roles and live region a screen reader reads,
-leave and reopen with an unsaved change, freeze and resume, and a guest's W
-key and a stand-in controller. Since #12678 it runs on coderos-4080's RTX
-4080 (headless Chromium, Vulkan, no device loss): 11 checks passed and 12
-failed there on 2026-11-02, the failures in the realm itself (the board's
-checkbox rows missing, SAVE not reaching the server's next revision, the
-guest's page not opening), not the GPU; see the comment on #12629. Whoever
-picks up #12629 runs `COAX=... coax/web/api/realm-gate.sh --page` with a full
-`apps/openagents-web/build.sh` build to tell a realm bug from a partial build.
-Not blocking.
-
 ## iOS Metal host onto the render admission ledger (#12628, 2026-11-02)
 
 Move the iOS Metal host (`apps/openagents-ios` `HomeRenderer.swift`) onto

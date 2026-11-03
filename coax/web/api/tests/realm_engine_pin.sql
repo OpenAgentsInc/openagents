@@ -171,10 +171,11 @@ BEGIN
   out := verse.realm_publish_pinned('engine-pin', '{"rev":2}', 'engine-pin-player-key-0001', false, false, NULL);
   IF out->>'status' <> '200' OR out->'engine' <> 'null'::jsonb OR verse.realm_published_of('engine-pin')->>'status' <> '404' THEN RAISE EXCEPTION 'dev publish: %', out; END IF;
   page := verse.builder_page('engine-pin', 'https://openagents.com');
-  IF strpos(page, 'data-engine=') > 0 OR strpos(page, 'fetch("/realms/built"') = 0 OR strpos(verse.edit_spec('engine-pin', 'engine-pin-player-key-0001', false), E'\nengine ') > 0 THEN
+  IF strpos(page, 'data-engine=') > 0 OR strpos(page, 'fetch("/worlds/built"') = 0 OR strpos(verse.edit_spec('engine-pin', 'engine-pin-player-key-0001', false), E'\nengine ') > 0 THEN
     RAISE EXCEPTION 'unpinned: today''s engine';
   END IF;
-  IF verse.builder_page_rev() <> 2 THEN RAISE EXCEPTION 'pages are written again'; END IF;
+  -- 0107 wrote no page again; 0110 (realms are worlds, /worlds/built) did, once.
+  IF verse.builder_page_rev() <> 3 THEN RAISE EXCEPTION 'pages are written again'; END IF;
 END $$;
 SELECT 'ok without a bucket a publish is unpinned and the page plays today''s engine';
 SELECT 'done 6';

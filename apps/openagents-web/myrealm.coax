@@ -275,6 +275,7 @@ MyRealm :: struct {
   req_url: [URL] u8; req_url_n: int; req_body: [BODY] u8; req_body_n: int; req_flags: int;
   req_ready: bool; req_id: int; req_what: int; req_at: f32;
   spec_due: bool;
+  press_due: int;          // an owner's press (BTN_UNDO, REDO, SAVE, PUBLISH, FORK) made while a request was out: it goes next
   outbox: [OUTBOX] u8; out_n: int; action: int;
   ed: [1] RealmEdit; ed_seen: int;   // the shared edit layer, and its version this realm laid out
   acc: [1] Access;                    // GET /api/playtest/access, asked once (access.coax)
@@ -518,11 +519,20 @@ forge_take :: (s: [] MyRealm, sp: [] ForgeDoc) {
 kept_text :: (s: [] MyRealm, out: [] u8) -> int {
   n := put(out, 0, "forge "); n = put(out, n, slug_text(s)); n = put(out, n, " "); n = put_int(out, n, s[0].fd[0].rev); n = put(out, n, "\n");
   if !forge_dirty(s[0].fd[..]) || s[0].fd[0].saved != 0 { return n; }
+  // the page's own steps are its things': a move is "op KEY X Z" (as it always was); a turn, size or
+  // removal (0109) is "shape KEY AT X Z YAW SCALE GONE", the thing as that step left it
   for i: 0..<s[0].fd[0].done {
     o := s[0].fd[0].ops[i];
-    if o.kind != FORGE_ENTITY || !o.a.at || n + FORGE_KEY + 32 > out.count { return n; }   // the page's own steps are moves
-    n = put(out, n, "op "); n = put(out, n, cast(string) o.key[0..<o.key_n]); n = put(out, n, " ");
-    n = put_int(out, n, o.a.x); n = put(out, n, " "); n = put_int(out, n, o.a.z); n = put(out, n, "\n");
+    if o.kind != FORGE_ENTITY || n + FORGE_KEY + 64 > out.count { return n; }
+    a := o.a; b := o.b;
+    if a.at && a.yaw == b.yaw && a.scale == b.scale && a.gone == b.gone {
+      n = put(out, n, "op "); n = put(out, n, cast(string) o.key[0..<o.key_n]); n = put(out, n, " ");
+      n = put_int(out, n, a.x); n = put(out, n, " "); n = put_int(out, n, a.z); n = put(out, n, "\n");
+      continue;
+    }
+    n = put(out, n, "shape "); n = put(out, n, cast(string) o.key[0..<o.key_n]); n = put(out, n, ifx a.at then " 1 " else " 0 ");
+    n = put_int(out, n, a.x); n = put(out, n, " "); n = put_int(out, n, a.z); n = put(out, n, " "); n = put_int(out, n, a.yaw);
+    n = put(out, n, " "); n = put_int(out, n, a.scale); n = put(out, n, ifx a.gone then " 1\n" else " 0\n");
   }
   return n;
 }
@@ -534,7 +544,16 @@ kept_restore :: (s: [] MyRealm) {
   i := e + 1; made := 0;
   while i < text.count {
     e = line_end(text, i); line := text[i..<e]; i = e + 1;
-    if word_of(line, 0) != "op" { continue; }
+    what := word_of(line, 0);
+    if what == "shape" {
+      sh := ForgeShape.{at = word_of(line, 2) == "1", gone = word_of(line, 7) == "1"};
+      v: [4] int; bad := false;
+      for k: 0..<4 { at: [1] int; at[0] = 0; w := word_of(line, 3 + k); v[k] = int_at(w, at[..]); if at[0] != w.count { bad = true; } }
+      sh.x = v[0]; sh.z = v[1]; sh.yaw = v[2]; sh.scale = v[3];
+      if bad || (word_of(line, 2) != "0" && !sh.at) || (word_of(line, 7) != "0" && !sh.gone) || !forge_reshape(s[0].fd[..], word_of(line, 1), sh) { break; }
+      made += 1; continue;
+    }
+    if what != "op" { continue; }
     at: [1] int; at[0] = word_end(line, 3);
     x := int_at(line, at[..]); if at[0] < 0 { break; }
     z := int_at(line, at[..]); if at[0] < 0 { break; }
@@ -703,7 +722,7 @@ undo_press :: (s: [] MyRealm) {
     if forge_undo(s[0].fd[..]) { relay(s); set_note(s, "Undone."); s[0].kept_due = true; }
     return;
   }
-  if !may_undo(s) || busy(s) { return; }
+  if !may_undo(s) || held(s, BTN_UNDO) { return; }
   n := put(s[0].req_body[..], 0, "{\"rev\":"); n = put_int(s[0].req_body[..], n, s[0].server_rev); n = put(s[0].req_body[..], n, "}");
   ask(s, REQ_UNDO, "/undo", n, true);
 }
@@ -716,24 +735,24 @@ redo_press :: (s: [] MyRealm) {
     if forge_redo(s[0].fd[..]) { relay(s); set_note(s, "Redone."); s[0].kept_due = true; }
     return;
   }
-  if !may_redo(s) || busy(s) { return; }
+  if !may_redo(s) || held(s, BTN_REDO) { return; }
   n := put(s[0].req_body[..], 0, "{\"rev\":"); n = put_int(s[0].req_body[..], n, s[0].server_rev); n = put(s[0].req_body[..], n, "}");
   ask(s, REQ_REDO, "/redo", n, true);
 }
 save_press :: (s: [] MyRealm) {
-  if !forge_owner(s) || busy(s) || !forge_dirty(s[0].fd[..]) { return; }
+  if !forge_owner(s) || !forge_dirty(s[0].fd[..]) || held(s, BTN_SAVE) { return; }
   n := forge_save_body(s[0].fd[..], s[0].req_body[..]);
   if n <= 0 { set_note(s, "Too many moves to save."); return; }
   s[0].moving = -1;
   ask(s, REQ_SAVE, "/save", n, true);
 }
 publish_press :: (s: [] MyRealm) {
-  if !may_publish(s) || busy(s) { return; }
+  if !may_publish(s) || held(s, BTN_PUBLISH) { return; }
   n := put(s[0].req_body[..], 0, "{\"rev\":"); n = put_int(s[0].req_body[..], n, s[0].fd[0].rev); n = put(s[0].req_body[..], n, "}");
   ask(s, REQ_PUBLISH, "/publish", n, true);
 }
 fork_press :: (s: [] MyRealm) {
-  if !may_fork(s) || busy(s) { return; }
+  if !may_fork(s) || held(s, BTN_FORK) { return; }
   ask(s, REQ_FORK, "/fork?as=lines", put(s[0].req_body[..], 0, "{}"), true);
 }
 // A whole number after "NAME": in a JSON answer, or -1.
@@ -800,6 +819,15 @@ forge_answered :: (s: [] MyRealm, what: int, status: int, body: string) {
 // ---- requests
 
 busy :: (s: [] MyRealm) -> bool { return s[0].req_ready || s[0].req_id >= 0; }
+// A press while a request is out (an owner's watch has the spec out most of every half second)
+// waits for its answer and then goes, its conditions read again then: a tap is never dropped. The
+// newest such press waits.
+held :: (s: [] MyRealm, b: int) -> bool { if !busy(s) { return false; } s[0].press_due = b; return true; }
+press_due_go :: (s: [] MyRealm) {
+  b := s[0].press_due; s[0].press_due = 0;
+  if b == BTN_UNDO { undo_press(s); } if b == BTN_REDO { redo_press(s); } if b == BTN_SAVE { save_press(s); }
+  if b == BTN_PUBLISH { publish_press(s); } if b == BTN_FORK { fork_press(s); }
+}
 // The face asks GET /api/playtest/access once (access.coax) and says the id its answer comes under.
 realm_access_wants :: (s: [] MyRealm) -> bool #export_c { return access_wants(s[0].acc[..]); }
 realm_access_sent :: (s: [] MyRealm, id: int) #export_c { access_sent(s[0].acc[..], id); }
@@ -823,6 +851,7 @@ ask_spec :: (s: [] MyRealm) { if s[0].slug_n > 0 { s[0].spec_due = true; } }
 // the next request, when none is in flight
 next_request :: (s: [] MyRealm) {
   if busy(s) { return; }
+  if s[0].press_due != 0 { press_due_go(s); if busy(s) { return; } }
   if s[0].ask_due && s[0].talk_p >= 0 {
     s[0].ask_due = false;
     n := talk_body(s, s[0].req_body[..]);
@@ -3602,6 +3631,39 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   #assert !s[0].shown[BTN_UNDO] && !s[0].shown[BTN_SAVE];
 }
 
+#test "a press while the owner's watch reads the spec waits for its answer, then goes: SAVE, then UNDO" #steps 40000000 {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "forge-court", FORGED);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  s[0].yaw = 0; #assert stand_clear(s[..]);
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  m := frame_of(s[..], t[..], 2560, 1600);
+  #assert forge_dirty(s[0].fd[..]) && s[0].shown[BTN_SAVE];
+  // the watch (every half second for an owner) has the spec out
+  s[0].spec_due = true; m = frame_of(s[..], t[..], 2560, 1600);
+  realm_requested(s[..], 7);
+  #assert busy(s[..]) && s[0].req_what == REQ_SPEC;
+  tap_box(s[..], t[..], s[0].boxes[BTN_SAVE]);
+  #assert s[0].req_what == REQ_SPEC && s[0].press_due == BTN_SAVE;   // not dropped: waiting
+  spec: [512] u8; sn := put(spec[..], 0, "200\n"); sn = put(spec[..], sn, FORGED);
+  realm_message(s[..], t[..], HTTP_ANSWER_KIND + 7, cast(string) spec[0..<sn]);
+  m = frame_of(s[..], t[..], 2560, 1600);
+  #assert url_is(s[..], "/api/playtest/realms/forge-court/save") && s[0].req_what == REQ_SAVE && s[0].press_due == 0;
+  answered(s[..], t[..], 5, "200\n{\"rev\": 4, \"sha256\": \"ab\"}");
+  #assert !forge_dirty(s[0].fd[..]) && s[0].server_rev == 4 && may_undo(s[..]);
+  // the watch reads the spec again after the save; UNDO waits for it too, then asks the server
+  s[0].spec_due = true; m = frame_of(s[..], t[..], 2560, 1600);
+  realm_requested(s[..], 6);
+  #assert busy(s[..]) && s[0].req_what == REQ_SPEC;
+  undo_press(s[..]);
+  #assert s[0].req_what == REQ_SPEC && s[0].press_due == BTN_UNDO;
+  sn = put(spec[..], 0, "200\n"); sn = put(spec[..], sn, FORGED[0..<FORGED.count - 27]); sn = put(spec[..], sn, "rev 4\npublished 0\nlisted 0\nundo 1\n");
+  realm_message(s[..], t[..], HTTP_ANSWER_KIND + 6, cast(string) spec[0..<sn]);
+  m = frame_of(s[..], t[..], 2560, 1600);
+  #assert url_is(s[..], "/api/playtest/realms/forge-court/undo") && body_is(s[..], "{\"rev\":4}") && s[0].press_due == 0;
+}
+
 #test "SAVE names the revision it was read at; then PUBLISH that revision; FORK goes to the fork" #steps 40000000 {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "forge-court", FORGED);
@@ -3861,6 +3923,36 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   got := false;
   for i: 0..<4 { if !got && realm_action(s[..]) == ACT_KEEP { got = true; } }
   #assert got && cast(string) s[0].outbox[0..<s[0].out_n] == "forge forge-court 4\n";
+}
+
+#test "an unsaved turn, size and removal are kept in this browser too, and come back with the moves" #steps 50000000 {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "forge-court", FORGED);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]); s[0].yaw = 0; #assert stand_clear(s[..]); tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  moved := forge_move_key(s[0].fd[..], 0);
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);   // picks the nearest again: turned and made bigger where it stands
+  #assert s[0].moving >= 0 && a11y_pick(s[..], 0) && a11y_pick(s[..], 1);
+  b: [32] u8; turned := ent_key(s[..], s[0].moving, b[..]);
+  #assert a11y_pick(s[..], 4);
+  gone := -1;
+  for e: 0..<s[0].ent_n { kb: [32] u8; if gone < 0 && ent_laid(s[..], e) && ent_key(s[..], e, kb[..]) != turned && ent_key(s[..], e, kb[..]) != moved { gone = e; } }
+  s[0].moving = gone; #assert a11y_pick(s[..], 3);
+  gb: [32] u8; gk := ent_key(s[..], gone, gb[..]);
+  for i: 0..<6 { if realm_action(s[..]) == ACT_KEEP { break; } m := frame_of(s[..], t[..], 2560, 1600); }
+  kept: [OUTBOX] u8; kn := copy_into(kept[..], cast(string) s[0].outbox[0..<s[0].out_n]);
+  #assert starts(cast(string) kept[0..<kn], "forge forge-court 3\nop ");
+  want := forge_shape_of(s[0].fd[..], turned); wg := forge_shape_of(s[0].fd[..], gk); wm := forge_shape_of(s[0].fd[..], moved);
+  #assert want.yaw == A11Y_TURN && want.scale == 100 + A11Y_SIZE && wg.gone;
+  // the page again, at the same revision: every step is back, and each undoes
+  r: [1] MyRealm; q: [1] Track;
+  realm_message(r[..], q[..], MSG_KEPT, cast(string) kept[0..<kn]);
+  opened(r[..], q[..], "forge-court", FORGED);
+  got := forge_shape_of(r[0].fd[..], turned); gg := forge_shape_of(r[0].fd[..], gk); gm := forge_shape_of(r[0].fd[..], moved);
+  #assert forge_dirty(r[0].fd[..]) && forge_same_shape(got, want) && forge_same_shape(gg, wg) && forge_same_shape(gm, wm) && note_is(r[..], "Your unsaved changes are back.");
+  #assert r[0].fd[0].done == s[0].fd[0].done;
+  for i: 0..<r[0].fd[0].done { #assert forge_undo(r[0].fd[..]); }
+  #assert !forge_dirty(r[0].fd[..]);
 }
 
 #test "unsaved moves made on a revision the server moved on from without touching the moves save from the new one" #steps 40000000 {

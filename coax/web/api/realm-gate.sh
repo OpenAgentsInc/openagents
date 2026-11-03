@@ -9,7 +9,9 @@
 #   coax/web/forge-access.coax (with --page)           keyboard, screen reader, lifecycle, guest and
 #                                                      controller in muted headless Chrome; needs
 #                                                      apps/openagents-web/build/myrealm.wasm
-#   coax/web/api/realm-gate.sh [--page]
+#   coax/web/api/realm-gate.sh [--page [--require-hardware]]
+# --require-hardware is handed to forge-access: the page must get a GPU's WebGPU adapter.
+# REALM_GATE_PAGE_ONLY=1 skips the database checks (the page alone, after they passed).
 # COAX names the compiler (default coax/bin/coax). Nothing is kept: the database, the API and the
 # site server stop when it ends.
 set -euo pipefail
@@ -48,17 +50,20 @@ OA_API_DATABASE="$db" OA_API_ORIGIN="http://127.0.0.1:$api_port" OA_ENGINE_TEMPL
 for _ in $(seq 100); do curl -s "http://127.0.0.1:$api_port/api/playtest/health" >/dev/null && break; sleep 0.2; done
 cd "$repo"
 export PGURL="$db" PSQL="$pg/psql" COAX="$coax"
-for f in realm_engine_pin realm_shapes realm_edit_log; do
-  PIN_SQL="coax/web/api/tests/$f.sql" coax/web/tool.sh coax/web/api/tests/realm_engine_pin.coax | tail -1
-done
-mkdir -p "$work/walk"
-WORK="$work/walk" coax/web/tool.sh coax/web/api/tests/realm_walkthrough.coax | tail -1
-CLI="$cli" API="http://127.0.0.1:$api_port" PINNED=1 coax/web/tool.sh coax/web/api/tests/realm_cli_api.coax | tail -1
+if [[ -z "${REALM_GATE_PAGE_ONLY:-}" ]]; then
+  for f in realm_engine_pin realm_shapes realm_edit_log; do
+    PIN_SQL="coax/web/api/tests/$f.sql" coax/web/tool.sh coax/web/api/tests/realm_engine_pin.coax | tail -1
+  done
+  mkdir -p "$work/walk"
+  WORK="$work/walk" coax/web/tool.sh coax/web/api/tests/realm_walkthrough.coax | tail -1
+  CLI="$cli" API="http://127.0.0.1:$api_port" PINNED=1 coax/web/tool.sh coax/web/api/tests/realm_cli_api.coax | tail -1
+fi
 if [[ "${1:-}" == --page ]]; then
   [[ -s apps/openagents-web/build/myrealm.wasm ]] || { echo "realm-gate: build apps/openagents-web/build/myrealm.wasm first" >&2; exit 2; }
   site_port=$((58000 + RANDOM % 1000))
   coax/web/serve.sh apps/openagents-web --static --listen 127.0.0.1:$site_port >"$work/site.log" 2>&1 & site_pid=$!
-  for _ in $(seq 50); do curl -s "http://127.0.0.1:$site_port/realms/built" >/dev/null && break; sleep 0.2; done
-  SITE="http://127.0.0.1:$site_port" API="http://127.0.0.1:$api_port" coax/web/tool.sh forge-access
+  for _ in $(seq 50); do curl -s "http://127.0.0.1:$site_port/worlds/built" >/dev/null && break; sleep 0.2; done
+  curl -sf "http://127.0.0.1:$site_port/worlds/built" >/dev/null || { echo "realm-gate: the site server didn't answer:" >&2; cat "$work/site.log" >&2; exit 1; }
+  SITE="http://127.0.0.1:$site_port" API="http://127.0.0.1:$api_port" coax/web/tool.sh forge-access "${@:2}"
 fi
 echo "realm-gate: passed"

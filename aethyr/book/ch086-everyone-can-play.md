@@ -104,16 +104,20 @@ checks with real text in that script.
   first button through `aethyr/input.coax` (its dead zone, a junk number
   counted as no push, a held button one press).
 - [coax/web/host.js](../../coax/web/host.js) `a11yMirror` and `padPoll`: the
-  host only mirrors. It keeps the module's order, keeps focus in the toolbar
-  when a control goes, lets Tab, Enter and Space be the browser's in it, and
-  hides the toolbar until something in it has focus.
+  host only mirrors. It keeps the module's order, moving only a control that
+  is out of place (a control moved in the DOM loses focus, so the one being
+  pressed keeps it while the layer changes), keeps focus in the toolbar when
+  a control goes, lets Tab, Enter and Space be the browser's in it, and hides
+  the toolbar until something in it has focus.
+- An owner's press (UNDO, REDO, SAVE, PUBLISH, FORK) made while a request is
+  out, such as the half-second read of the spec, waits for its answer and
+  then goes; and what this browser keeps of unsaved work holds turns, sizes
+  and removals as well as moves (`apps/openagents-web/myrealm.coax`).
 - [coax/web/forge-access.coax](../../coax/web/forge-access.coax): the check in
   muted headless Chrome (keyboard only, names and roles, the live region,
-  lifecycle, a guest's keys and a stand-in controller). On coderos-4080 it
-  runs only on SwiftShader, whose WebGPU device Chrome destroys every few
-  seconds, so the run stops when the host gives up after four losses in a
-  minute: its keyboard and accessibility steps passed there; the whole run
-  needs a machine whose Chrome has a real GPU (NEEDS_OWNER.md).
+  lifecycle, a guest's keys and a stand-in controller), run by
+  `coax/web/api/realm-gate.sh --page --require-hardware`. On coderos-4080's
+  RTX 4080 all 24 of its checks pass (#12629).
 - [docs/research/game-engine-systems.md](../../docs/research/game-engine-systems.md),
   section 42: the inventory this chapter draws from.
 

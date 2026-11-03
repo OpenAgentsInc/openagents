@@ -1650,7 +1650,7 @@ function a11yMirror(now) {
     a11y.status.setAttribute("role", "status"); a11y.status.setAttribute("aria-live", "polite");
     document.body.prepend(a11y.root, a11y.status);   // first in the tab order
   }
-  const seen = new Set();
+  const seen = new Set(), order = [];
   let say = "";
   for (const line of text.split("\n")) {
     const m = /^(\d+) (button|checkbox|status) ([01-]) (.*)$/.exec(line);
@@ -1663,13 +1663,17 @@ function a11yMirror(now) {
     if (role === "checkbox") { b.setAttribute("role", "checkbox"); b.setAttribute("aria-checked", state === "1" ? "true" : "false"); b.removeAttribute("aria-pressed"); }
     else { b.removeAttribute("role"); b.removeAttribute("aria-checked"); if (state === "-") b.removeAttribute("aria-pressed"); else b.setAttribute("aria-pressed", state === "1" ? "true" : "false"); }
     if (b.textContent !== label) b.textContent = label;
-    a11y.root.append(b);   // in the module's order
+    order.push(b);
   }
   for (const [id, b] of a11y.nodes) if (!seen.has(id)) {
     const had = document.activeElement === b;
     b.remove(); a11y.nodes.delete(id);
-    if (had) a11y.root.querySelector("button")?.focus();   // focus stays in the layer
+    if (had) (order[0] ?? a11y.root.querySelector("button"))?.focus();   // focus stays in the layer
   }
+  // In the module's order, moving only what is out of place: a control moved in the DOM loses
+  // focus, so the one being pressed, which stays where it was, keeps it (forge-access checks).
+  let at = a11y.root.firstChild;
+  for (const b of order) { if (b === at) at = at.nextSibling; else a11y.root.insertBefore(b, at); }
   if (a11y.status.textContent !== say) a11y.status.textContent = say;
 }
 let frameCost = 0;   // ms of main thread the drawing itself takes, smoothed: socket events get what's left
