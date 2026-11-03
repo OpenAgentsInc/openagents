@@ -1,6 +1,7 @@
 // Chapter 38: a bounded, typed straight-line tensor IR and buffer plan.
 #load "tensor-ops-contract.coax";
 #load "tensor-placement.coax";
+#load "../tests/tensor-ir-checks.coax";  // the checks' programs and launch-record comparison
 #authority;
 TI_NODES :: 32;
 // book:begin types
@@ -86,10 +87,190 @@ TiResult :: struct {status:TiStatus;written:int;workspace:int;}
     #assert ti_pool(TiOp.avgpool2d) && ti_pool(TiOp.maxpool2d) && !ti_pool(TiOp.conv2d) && !ti_pool(TiOp.relu);
 }
 
-ti_input :: (shape:TvShape,base:int)->TiNode #export_c {
-    n:=tv_elements(shape);owner:=tv_owner(1,1,n.elements).storage;v:=tv_contiguous(owner,shape,false).view;
-    return TiNode.{shape=shape,strides=v.strides,storage=n.elements,input_base=base};
+#test "inputs carry row-major strides, and none for an empty or malformed shape" {
+    n:=ti_input(tic_shape(2,2,3,0,0),5);#assert n.storage==6 && n.input_base==5 && n.strides[0]==3 && n.strides[1]==1 && n.strides[2]==0 && n.strides[3]==0;
+    s:=ti_strides(tic_shape(3,2,3,4,0));#assert s[0]==12 && s[1]==4 && s[2]==1 && s[3]==0;
+    s=ti_strides(tic_shape(1,1,0,0,0));#assert s[0]==1;
+    s=ti_strides(tic_shape(4,2,1,3,2));#assert s[0]==6 && s[1]==6 && s[2]==2 && s[3]==1;
+    for bad:[3]TvShape.[tic_shape(2,3,0,0,0),tic_shape(5,1,1,1,1),tic_shape(0,0,0,0,0)] {s=ti_strides(bad);#assert s[0]==0 && s[1]==0 && s[2]==0 && s[3]==0;}
+    #assert ti_input(tic_shape(2,3,0,0,0),0).storage==0;
 }
+#test "operation and placement tags from C are admitted only when they name one" {
+    for tag:0..<20 {#assert ti_op_known(cast(u8)tag)==(tag<=9 || (tag>=11 && tag<=14));#assert ti_placement_known(cast(u8)tag)==(tag<4);}
+}
+#test "every IR operation names its tensor-ops request" {
+    ops:=[14]TiOp.[TiOp.input,TiOp.matmul,TiOp.add,TiOp.multiply,TiOp.relu,TiOp.sum,TiOp.layernorm,TiOp.view,TiOp.reshape,TiOp.gather,TiOp.registered,TiOp.conv2d,TiOp.avgpool2d,TiOp.maxpool2d];
+    want:=[14]ToOp.[ToOp.relu,ToOp.matmul,ToOp.add,ToOp.multiply,ToOp.relu,ToOp.sum,ToOp.relu,ToOp.relu,ToOp.relu,ToOp.take,ToOp.relu,ToOp.conv2d,ToOp.avgpool2d,ToOp.maxpool2d];
+    for k:0..<14 {r:=ti_request(TiNode.{op=ops[k],axis=k});#assert r.op==want[k] && r.axis==k;}
+    #assert !ti_shape_equal(tic_shape(1,4,0,0,0),tic_shape(2,4,0,0,0)) && ti_shape_equal(tic_shape(2,4,1,0,0),tic_shape(2,4,1,0,0)) && !ti_shape_equal(tic_shape(2,4,1,0,0),tic_shape(2,4,2,0,0));
+}
+#test "node count, output and budget limits admit their last value and refuse the next" {
+    #assert ti_compile(tic_chain(1),TiTarget.{},true).status==TiStatus.ok && ti_compile(tic_chain(32),TiTarget.{},true).status==TiStatus.ok;
+    p:=tic_chain(1);p.count=0;p.output=-1;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.capacity;
+    p=ti_fixture();p.output=-1;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.capacity;
+    p.output=10;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.capacity;
+    p.output=0;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.ok;
+    #assert ti_compile(ti_fixture(),TiTarget.{budget=1073741824},true).status==TiStatus.ok;
+    // A dtype fault behind each budget: only the budget check may answer first.
+    p=ti_fixture();p.nodes[3].dtype=TdDtype.f16;
+    #assert ti_compile(p,TiTarget.{budget=0},true).status==TiStatus.dtype;
+    #assert ti_compile(p,TiTarget.{budget=-1},true).status==TiStatus.budget && ti_compile(p,TiTarget.{budget=1073741825},true).status==TiStatus.budget;
+    #assert ti_compile(ti_fixture(),TiTarget.{budget=1073741825},true).status==TiStatus.budget;
+    plan:=ti_compile(ti_fixture(),TiTarget.{},true);#assert plan.bytes==3316 && plan.flag_elements==36;
+    #assert ti_compile(ti_fixture(),TiTarget.{budget=3316},true).status==TiStatus.ok && ti_compile(ti_fixture(),TiTarget.{budget=3315},true).status==TiStatus.budget;
+}
+#test "declared placement must name the target device" {
+    for d:0..<3 {for q:1..<4 {p:=ti_fixture();p.nodes[6].placement=cast(TiPlacement)q;want:=TiStatus.device;if q-1==d {want=TiStatus.ok;}
+        #assert ti_compile(p,TiTarget.{device=cast(TdDevice)d},true).status==want;}}
+}
+#test "input storage and base stay inside the element limit" {
+    p:=tic_chain(2);p.nodes[0].input_base=TV_LIMIT-1;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.ok;
+    p.nodes[0].input_base=TV_LIMIT;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.capacity;
+    p.nodes[0].input_base=-1;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.capacity;
+    p=tic_chain(2);p.nodes[0].storage=-1;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.capacity;
+    p.nodes[0].storage=TV_LIMIT+1;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.capacity;
+}
+#test "operands must come earlier, on both sides of a binary node" {
+    x:=tic_shape(1,4,0,0,0);
+    #assert ti_compile(tic_two(x,x,TiNode.{op=TiOp.add,a=1,b=0}),TiTarget.{},true).status==TiStatus.ok;
+    #assert ti_compile(tic_two(x,x,TiNode.{op=TiOp.add,a=0,b=1}),TiTarget.{},true).status==TiStatus.ok;
+    for b:[3]int.[-1,2,3] {#assert ti_compile(tic_two(x,x,TiNode.{op=TiOp.add,a=0,b=b}),TiTarget.{},true).status==TiStatus.dependency;}
+    for a:[3]int.[-1,2,3] {#assert ti_compile(tic_two(x,x,TiNode.{op=TiOp.relu,a=a}),TiTarget.{},true).status==TiStatus.dependency;}
+}
+#test "registered nodes admit an operator slot, one optional index and finite matching operands" {
+    x:=tic_shape(1,4,0,0,0);ok:=TiNode.{op=TiOp.registered,a=0,b=1,epsilon=1};
+    plan:=ti_compile(tic_two(x,x,ok),TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.work==4 && plan.naive==4;
+    n:=ok;n.axis=31;n.index_count=1;#assert ti_compile(tic_two(x,x,n),TiTarget.{},true).status==TiStatus.ok;
+    // A check cannot hold a non-finite f32, so these cases leave the epsilon finite.
+    for k:0..<5 {n=ok;if k==0 {n.axis=-1;}else if k==1 {n.axis=32;}else if k==2 {n.index_count=-1;}else if k==3 {n.index_count=2;}
+        y:=x;if k==4 {y=tic_shape(2,4,1,0,0);}
+        #assert ti_compile(tic_two(x,y,n),TiTarget.{},true).status==TiStatus.shape;}
+    l:=ti_lower(plan,0);#assert tic_plain(l,[8]int.[11,0,0,1,4,0,0,0],[11]int.[0,0,1,4,0,0,0,1,0,0,0],[11]int.[0,4,1,4,0,0,0,1,0,0,0],0,0) && l.items==4 && l.epsilon==1;
+}
+#test "layer norm needs a nonempty last axis and a positive finite epsilon" {
+    one:=tic_shape(1,0,0,0,0);
+    shapes:=[4]TvShape.[tic_shape(2,2,3,0,0),tic_shape(1,1,0,0,0),tic_shape(2,2,1,0,0),tic_shape(3,2,3,5,0)];work:=[4]int.[42,3,6,330];
+    for k:0..<4 {shape:=shapes[k];want:=work[k];
+        plan:=ti_compile(tic_two(shape,one,TiNode.{op=TiOp.layernorm,a=0,epsilon=0.5}),TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.work==want;}
+    for k:0..<3 {shape:=tic_shape(2,2,3,0,0);eps:=0.5f32;
+        if k==0 {shape=tic_shape(0,0,0,0,0);}else if k==1 {shape=tic_shape(2,3,0,0,0);}else {eps=-1;}
+        #assert ti_compile(tic_two(shape,one,TiNode.{op=TiOp.layernorm,a=0,epsilon=eps}),TiTarget.{},true).status==TiStatus.shape;}
+    // 2^19 values with an inner extent of 2^20+1 cannot fit the work limit.
+    #assert ti_compile(tic_two(tic_shape(1,524288,0,0,0),one,TiNode.{op=TiOp.layernorm,a=0,epsilon=1}),TiTarget.{},true).status==TiStatus.limit;
+}
+#test "gathers take zero to sixteen indices" {
+    x:=tic_shape(2,2,3,0,0);one:=tic_shape(1,0,0,0,0);
+    g:=TiNode.{op=TiOp.gather,a=0,axis=1,index_count=16,indices=[16]int.[2,1,0,2,1,0,2,1,0,2,1,0,2,1,0,2]};
+    plan:=ti_compile(tic_two(x,one,g),TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.output_elements==32;
+    g.index_count=0;#assert ti_compile(tic_two(x,one,g),TiTarget.{},true).status==TiStatus.ok;
+    g.index_count=17;#assert ti_compile(tic_two(x,one,g),TiTarget.{},true).status==TiStatus.index;
+    g.index_count=-1;#assert ti_compile(tic_two(x,one,g),TiTarget.{},true).status==TiStatus.index;
+}
+#test "only a convolution reports its own work limit; other inference faults are shapes" {
+    conv:=TiNode.{op=TiOp.conv2d,a=0,b=1};
+    plan:=ti_compile(tic_two(tic_shape(4,1,1,3,3),tic_shape(4,1,1,2,2),conv),TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.output_elements==4;
+    #assert ti_compile(tic_two(tic_shape(4,1,1,1024,1023),tic_shape(4,2,1,1,1),conv),TiTarget.{},true).status==TiStatus.limit;
+    #assert ti_compile(tic_two(tic_shape(4,1,1,3,3),tic_shape(4,1,2,2,2),conv),TiTarget.{},true).status==TiStatus.shape;
+    #assert ti_compile(tic_two(tic_shape(3,1,3,3,0),tic_shape(4,1,1,2,2),conv),TiTarget.{},true).status==TiStatus.shape;
+    #assert ti_compile(tic_two(tic_shape(2,1024,1,0,0),tic_shape(2,1,2048,0,0),TiNode.{op=TiOp.matmul,a=0,b=1}),TiTarget.{},true).status==TiStatus.shape;
+}
+#test "work and element totals admit their limit and refuse one more" {
+    // Two sums over 2^19 values make 2^20 work; one more element is over.
+    p:TiProgram;p.count=3;p.output=2;p.nodes[0]=ti_input(tic_shape(2,1,524288,0,0),0);p.nodes[1]=TiNode.{op=TiOp.sum,a=0,axis=1};p.nodes[2]=TiNode.{op=TiOp.sum,a=0,axis=1};
+    plan:=ti_compile(p,TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.work==TV_LIMIT && plan.naive==2;
+    p.count=4;p.output=3;p.nodes[3]=TiNode.{op=TiOp.add,a=1,b=2};#assert ti_compile(p,TiTarget.{},true).status==TiStatus.limit;
+    // Fresh values plus the output's staging copy.
+    plan=ti_compile(tic_pair(TV_LIMIT-4,2),TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.naive==TV_LIMIT-2 && plan.output_elements==2 && plan.flag_elements==TV_LIMIT && plan.input_elements==TV_LIMIT-2;
+    #assert ti_compile(tic_pair(TV_LIMIT-1,1),TiTarget.{},true).status==TiStatus.limit;
+}
+#test "the feed-forward fixture lowers every word of every launch" {
+    plan:=ti_compile(ti_fixture(),TiTarget.{},true);z:[11]int;
+    x:=[11]int.[0,0,2,2,3,0,0,3,1,0,0];w1:=[11]int.[0,6,2,3,4,0,0,4,1,0,0];b1:=[11]int.[0,18,1,4,0,0,0,1,0,0,0];w2:=[11]int.[0,22,2,4,2,0,0,2,1,0,0];b2:=[11]int.[0,30,1,2,0,0,0,1,0,0,0];
+    l:=ti_lower(plan,0);#assert tic_plain(l,[8]int.[1,0,0,2,2,4,0,0],x,w1,3,0) && l.items==8 && l.epsilon==0.00001;
+    l=ti_lower(plan,1);#assert tic_plain(l,[8]int.[2,8,8,2,2,4,0,0],[11]int.[1,0,2,2,4,0,0,4,1,0,0],b1,0,0) && l.items==8;
+    l=ti_lower(plan,2);#assert tic_plain(l,[8]int.[4,0,16,2,2,4,0,0],[11]int.[1,8,2,2,4,0,0,4,1,0,0],z,0,0) && l.items==8;
+    l=ti_lower(plan,3);#assert tic_plain(l,[8]int.[1,8,24,2,2,2,0,0],[11]int.[1,0,2,2,4,0,0,4,1,0,0],w2,4,0) && l.items==4;
+    l=ti_lower(plan,4);#assert tic_plain(l,[8]int.[2,0,28,2,2,2,0,0],[11]int.[1,8,2,2,2,0,0,2,1,0,0],b2,0,0) && l.items==4;
+    l=ti_lower(plan,5);#assert tic_plain(l,[8]int.[10,0,32,2,2,2,0,0],[11]int.[1,0,2,2,2,0,0,2,1,0,0],z,0,0) && l.items==4 && l.epsilon==0;
+    #assert ti_lower(plan,6).status==TiStatus.state && ti_lower(plan,-1).status==TiStatus.state;
+    failed:=plan;failed.status=TiStatus.limit;#assert ti_lower(failed,0).status==TiStatus.state;
+}
+#test "sums, gathers and layer norms lower their axis, indices and inner extent" {
+    plan:=ti_compile(tic_gathered(),TiTarget.{},true);z:[11]int;
+    #assert plan.status==TiStatus.ok && plan.work==372 && plan.naive==63 && plan.workspace==63 && plan.input_elements==25 && plan.flag_elements==93 && plan.bytes==2613 && plan.launches==4;
+    #assert plan.values[1].base==1 && plan.values[2].base==0 && plan.values[3].base==3 && plan.values[4].base==33;
+    #assert plan.last[0]==3 && plan.last[1]==1 && plan.last[2]==2 && plan.last[3]==4 && plan.last[4]==5;
+    n:=[11]int.[1,3,3,2,3,5,0,15,5,1,0];
+    #assert tic_plain(ti_lower(plan,0),[8]int.[5,0,0,1,3,0,0,0],[11]int.[0,13,2,3,4,0,0,4,1,0,0],z,4,1) && ti_lower(plan,0).items==3;
+    #assert tic_launch(ti_lower(plan,1),[8]int.[9,3,3,3,2,3,5,0],[11]int.[0,1,3,2,3,4,0,12,4,1,0],z,0,2,[16]int.[3,0,2,1,3,0,0,0,0,0,0,0,0,0,0,0],5,[3]int.[0,0,0]);
+    l:=ti_lower(plan,2);#assert tic_plain(l,[8]int.[6,33,33,3,2,3,5,0],n,z,5,0) && l.epsilon==0.25 && l.items==30;
+    n[1]=33;l=ti_lower(plan,3);#assert tic_plain(l,[8]int.[10,0,63,3,2,3,5,0],n,z,0,0) && l.items==30;
+    // Only the last index differs: every index is lowered.
+    p:=tic_gathered();p.nodes[3].index_count=16;p.nodes[3].indices[15]=2;
+    #assert ti_lower(ti_compile(p,TiTarget.{},true),1).meta[47]==2;
+}
+#test "slots go to the smallest free fit, the first on a tie" {
+    p:=tic_reuse();plan:=ti_compile(p,TiTarget.{},true);
+    #assert plan.status==TiStatus.ok && plan.slot_count==3 && plan.workspace==20 && plan.naive==40;
+    base:=[7]int.[0,0,4,12,0,4,12];last:=[7]int.[5,3,3,4,6,6,7];
+    for i:0..<7 {#assert plan.last[i]==last[i];if i>0 {#assert plan.values[i].base==base[i];}}
+    fresh:=ti_compile(p,TiTarget.{},false);#assert fresh.workspace==40 && fresh.slot_count==6 && fresh.values[6].base==32;
+}
+#test "views read their root's slot at their own offset" {
+    plan:=ti_compile(tic_viewed(),TiTarget.{},true);z:[11]int;
+    #assert plan.status==TiStatus.ok && plan.workspace==27 && plan.naive==31 && plan.slot_count==4;
+    base:=[8]int.[0,0,8,8,8,16,24,8];last:=[8]int.[2,7,6,3,4,7,6,8];
+    for i:0..<8 {#assert plan.last[i]==last[i];if i>0 {#assert plan.values[i].base==base[i];}}
+    #assert tic_plain(ti_lower(plan,2),[8]int.[4,16,16,2,4,2,0,0],[11]int.[1,8,2,4,2,0,0,1,4,0,0],z,0,0);
+    #assert tic_plain(ti_lower(plan,3),[8]int.[4,24,24,1,3,0,0,0],[11]int.[1,9,1,3,0,0,0,2,0,0,0],z,0,0);
+    #assert tic_plain(ti_lower(plan,4),[8]int.[1,8,27,2,2,2,0,0],[11]int.[1,0,2,2,4,0,0,4,1,0,0],[11]int.[1,16,2,4,2,0,0,2,1,0,0],4,0);
+    // A broadcast view repeats elements of a computed root; it is read-only, so it is admitted.
+    q:TiProgram;q.count=4;q.output=3;q.nodes[0]=ti_input(tic_shape(1,4,0,0,0),0);q.nodes[1]=TiNode.{op=TiOp.relu,a=0};
+    q.nodes[2]=TiNode.{op=TiOp.view,a=1,shape=tic_shape(2,2,4,0,0),strides=[4]int.[0,1,0,0]};q.nodes[3]=TiNode.{op=TiOp.relu,a=2};
+    #assert ti_compile(q,TiTarget.{},true).status==TiStatus.ok;
+    // A contiguous computed value reshapes; its new strides are row-major.
+    r:TiProgram;r.count=4;r.output=3;r.nodes[0]=ti_input(tic_shape(2,2,3,0,0),0);r.nodes[1]=TiNode.{op=TiOp.relu,a=0};
+    r.nodes[2]=TiNode.{op=TiOp.reshape,a=1,shape=tic_shape(2,3,2,0,0)};r.nodes[3]=TiNode.{op=TiOp.relu,a=2};
+    plan=ti_compile(r,TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.values[2].view.strides[0]==2 && plan.values[2].view.strides[1]==1;
+    #assert tic_plain(ti_lower(plan,1),[8]int.[4,6,6,2,3,2,0,0],[11]int.[1,0,2,3,2,0,0,2,1,0,0],z,0,0);
+    r.nodes[2].shape=tic_shape(2,4,2,0,0);#assert ti_compile(r,TiTarget.{},true).status==TiStatus.layout;
+    r.nodes[2].shape=tic_shape(2,-6,-1,0,0);#assert ti_compile(r,TiTarget.{},true).status==TiStatus.layout;
+}
+#test "plan bytes count every buffer, and at least one element of an empty one" {
+    p:TiProgram;p.count=2;p.output=1;p.nodes[0]=ti_input(tic_shape(1,3,0,0,0),0);p.nodes[1]=TiNode.{op=TiOp.view,a=0,shape=tic_shape(1,3,0,0,0),strides=[4]int.[1,0,0,0]};
+    plan:=ti_compile(p,TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.workspace==0 && plan.launches==1 && plan.bytes==543;
+    p.nodes[0]=ti_input(tic_shape(1,0,0,0,0),0);p.nodes[1].shape=tic_shape(1,0,0,0,0);
+    plan=ti_compile(p,TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.input_elements==0 && plan.bytes==525;
+    #assert ti_nonzero(0)==1 && ti_nonzero(1)==1 && ti_nonzero(7)==7;
+}
+#test "node identity compares each operand and every index" {
+    a:=TiNode.{op=TiOp.gather,a=1,b=2,axis=1,index_count=16};for k:0..<16 {a.indices[k]=k;}
+    #assert ti_node_equal(a,a);
+    for k:0..<4 {b:=a;if k==0 {b.a=0;}else if k==1 {b.b=0;}else if k==2 {b.indices[0]=9;}else {b.indices[15]=9;}#assert !ti_node_equal(a,b) && !ti_node_equal(b,a);}
+}
+#test "a cached plan matches only its own status, program and target" {
+    p:=ti_fixture();t:=TiTarget.{};plan:=ti_compile(p,t,true);
+    forged:=plan;forged.status=TiStatus.budget;#assert !ti_cache_matches(forged,p,t);
+    q:=p;q.count=11;#assert !ti_cache_matches(plan,q,t);
+    q=p;q.output=8;#assert !ti_cache_matches(plan,q,t);
+    u:=t;u.budget=t.budget+1;#assert !ti_cache_matches(plan,p,u);
+    u=t;u.operators[1]=1;#assert !ti_cache_matches(plan,p,u);
+    for n:[2]int.[1,32] {c:=tic_chain(n);plan=ti_compile(c,t,true);#assert plan.status==TiStatus.ok && ti_cache_matches(plan,c,t);}
+    // A plan forged with an impossible node count never matches, and never reads past the nodes.
+    for n:[2]int.[0,33] {forged=ti_compile(ti_fixture(),t,true);forged.program.count=n;q=ti_fixture();q.count=n;#assert !ti_cache_matches(forged,q,t);}
+}
+
+ti_input :: (shape:TvShape,base:int)->TiNode #export_c {
+    n:=tv_elements(shape);return TiNode.{shape=shape,strides=ti_strides(shape),storage=n.elements,input_base=base};
+}
+// Row-major strides, as tv_contiguous lays them out: all zero for an empty or
+// malformed shape, so the strides alone never claim storage the shape lacks.
+ti_strides :: (shape:TvShape)->[4]int {
+    strides:[4]int;if tv_elements(shape).elements>0 {step:=1;i:=shape.rank;while i>0 {i-=1;strides[i]=step;step*=shape.dims[i];}}return strides;
+}
+// Tags arrive from C as bytes: 10 is the copy command's tag, never an IR operation.
+ti_op_known :: (tag:u8)->bool {return tag<=14 && tag!=10;}
+ti_placement_known :: (tag:u8)->bool {return tag<4;}
 // book:begin fixture
 ti_fixture :: ()->TiProgram #export_c {
     p:TiProgram;p.count=10;p.output=9;
@@ -117,8 +298,8 @@ ti_compile :: (p:TiProgram,t:TiTarget,reuse:bool)->TiPlan #export_c {
     if !td_device_known(cast(u8)t.device) {return TiPlan.{status=TiStatus.device};}if t.budget<0 || t.budget>1073741824 {return TiPlan.{status=TiStatus.budget};}
     plan:=TiPlan.{program=p,target=t,reuse=reuse};
     for i:0..<p.count {
-        n:=p.nodes[i];if cast(u8)n.op>14 || cast(u8)n.op==10 {return TiPlan.{status=TiStatus.operation};}
-        if n.dtype!=TdDtype.f32 {return TiPlan.{status=TiStatus.dtype};}if cast(u8)n.placement>3 {return TiPlan.{status=TiStatus.device};}
+        n:=p.nodes[i];if !ti_op_known(cast(u8)n.op) {return TiPlan.{status=TiStatus.operation};}
+        if n.dtype!=TdDtype.f32 {return TiPlan.{status=TiStatus.dtype};}if !ti_placement_known(cast(u8)n.placement) {return TiPlan.{status=TiStatus.device};}
         if n.placement!=TiPlacement.target && int(cast(u8)n.placement)-1!=int(cast(u8)t.device) {return TiPlan.{status=TiStatus.device};}
         // The first convolution profile is CPU-only, NCHW/OIHW, valid padding
         // and implicit stride one. Command tags 10 (copy) and 11 stay unchanged.
@@ -129,41 +310,47 @@ ti_compile :: (p:TiProgram,t:TiTarget,reuse:bool)->TiPlan #export_c {
             owner:=tv_owner(i+1,1,n.storage);if owner.status!=TvStatus.ok || n.input_base<0 || n.input_base>TV_LIMIT-n.storage {return TiPlan.{status=TiStatus.capacity};}
             v=TiValue.{view=TvView.{identity=i+1,epoch=1,shape=n.shape,strides=n.strides,offset=n.offset},root=i,storage=n.storage,base=n.input_base,external=true};
             if tv_layout(owner.storage,v.view).status!=TvStatus.ok {return TiPlan.{status=TiStatus.layout};}
-            end:=n.input_base+n.storage;if end>plan.input_elements {plan.input_elements=end;}
+            // A branchless maximum: a tie has one answer.
+            end:=n.input_base+n.storage;plan.input_elements=(end+plan.input_elements+tv_magnitude(end-plan.input_elements))/2;
         }else {
             if n.a<0 || n.a>=i || (ti_binary(n.op) && (n.b<0 || n.b>=i)) {return TiPlan.{status=TiStatus.dependency};}
             a:=plan.values[n.a];shape:=a.view.shape;
+            // Nodes run in order, so the latest reader of a root is its last use.
+            plan.last[a.root]=i;if ti_binary(n.op) {plan.last[plan.values[n.b].root]=i;}
             if n.op==TiOp.view || n.op==TiOp.reshape {
                 v=a;v.view.shape=n.shape;
                 if n.op==TiOp.view {v.view.strides=n.strides;v.view.offset=n.offset;}
-                else {owner:=tv_owner(a.root+1,1,a.storage).storage;if !tv_layout(owner,a.view).contiguous || tv_elements(n.shape).status!=TvStatus.ok || tv_elements(n.shape).elements!=tv_elements(shape).elements {return TiPlan.{status=TiStatus.layout};}v.view.strides=tv_contiguous(owner,n.shape,false).view.strides;}
+                else {owner:=tv_owner(a.root+1,1,a.storage).storage;if !tv_layout(owner,a.view).contiguous || tv_elements(n.shape).status!=TvStatus.ok || tv_elements(n.shape).elements!=tv_elements(shape).elements {return TiPlan.{status=TiStatus.layout};}v.view.strides=ti_strides(n.shape);}
                 if tv_layout(tv_owner(a.root+1,1,a.storage).storage,v.view).status!=TvStatus.ok {return TiPlan.{status=TiStatus.layout};}
             }else {
                 inner:=1;
                 if n.op==TiOp.registered {if n.axis<0 || n.axis>=32 || n.index_count<0 || n.index_count>1 || !tv_finite(n.epsilon) || !ti_shape_equal(shape,plan.values[n.b].view.shape) {return TiPlan.{status=TiStatus.shape};}}
                 else if n.op==TiOp.layernorm {if shape.rank<1 || shape.dims[shape.rank-1]<1 || !tv_finite(n.epsilon) || n.epsilon<=0 {return TiPlan.{status=TiStatus.shape};}inner=shape.dims[shape.rank-1]*2+1;}
-                else {b:=TvShape.{rank=1};if ti_binary(n.op) {b=plan.values[n.b].view.shape;}index_count:=0;if n.op==TiOp.gather {index_count=n.index_count;if index_count<0 || index_count>16 {return TiPlan.{status=TiStatus.index};}}
-                    if n.op==TiOp.conv2d && (shape.rank!=4 || b.rank!=4) {return TiPlan.{status=TiStatus.shape};}
+                else {b:=TvShape.{rank=4};if ti_binary(n.op) {b=plan.values[n.b].view.shape;}index_count:=0;if n.op==TiOp.gather {index_count=n.index_count;if index_count<0 || index_count>16 {return TiPlan.{status=TiStatus.index};}}
+                    // to_plan refuses a convolution unless both operands have rank four.
                     if ti_pool(n.op) && shape.rank!=4 {return TiPlan.{status=TiStatus.shape};}
                     inferred:=to_plan(ti_request(n),shape,b,index_count);if inferred.status!=ToStatus.ok {if n.op==TiOp.conv2d && inferred.status==ToStatus.limit {return TiPlan.{status=TiStatus.limit};}return TiPlan.{status=TiStatus.shape};}shape=inferred.shape;inner=inferred.inner;
                     if n.op==TiOp.gather {bound:=a.view.shape.dims[n.axis];for j:0..<n.index_count {if n.indices[j]<0 || n.indices[j]>=bound {return TiPlan.{status=TiStatus.index};}}}
                 }
-                count:=tv_elements(shape);if count.status!=TvStatus.ok || !to_work_fits(count.elements,inner) {return TiPlan.{status=TiStatus.limit};}work:=count.elements*inner;
-                if plan.work>TV_LIMIT-work || plan.naive>TV_LIMIT-count.elements {return TiPlan.{status=TiStatus.limit};}plan.work+=work;plan.naive+=count.elements;
+                // The shape is admitted, and work is at most 2^20 x (2^21+1): no overflow.
+                count:=tv_elements(shape);work:=count.elements*inner;
+                if plan.work>TV_LIMIT-work {return TiPlan.{status=TiStatus.limit};}plan.work+=work;plan.naive+=count.elements;
                 owner:=tv_owner(i+1,1,count.elements).storage;v=TiValue.{view=tv_contiguous(owner,shape,false).view,root=i,storage=count.elements};
                 plan.commands[plan.launches]=i;plan.launches+=1;
             }
         }
         plan.values[i]=v;plan.last[i]=i;
     }
-    for i:0..<p.count {n:=p.nodes[i];if n.op!=TiOp.input {root:=plan.values[n.a].root;if plan.last[root]<i {plan.last[root]=i;}if ti_binary(n.op) {root=plan.values[n.b].root;if plan.last[root]<i {plan.last[root]=i;}}}}
     root:=plan.values[p.output].root;plan.last[root]=p.count;plan.output_elements=tv_elements(plan.values[p.output].view.shape).elements;
+    // naive only grows and each node adds at most 2^20, so this one check bounds
+    // every partial sum, and the workspace below, which is never more than naive.
     if plan.naive>TV_LIMIT-plan.output_elements {return TiPlan.{status=TiStatus.limit};}plan.flag_elements=plan.naive+plan.output_elements;
-    for i:0..<p.count {
+    // Node 0 is always an input: a computed node needs an earlier operand.
+    for i:1..<p.count {
         if ti_material(p.nodes[i].op) {
             n:=plan.values[i].storage;selected:=-1;
             if reuse {for slot:0..<plan.slot_count {candidate:=plan.slots[slot];if candidate.until<i && candidate.capacity>=n {if selected<0 || candidate.capacity<plan.slots[selected].capacity {selected=slot;}}}}
-            if selected<0 {selected=plan.slot_count;plan.slot_count+=1;plan.slots[selected]=TiSlot.{base=plan.workspace,capacity=n};if plan.workspace>TV_LIMIT-n {return TiPlan.{status=TiStatus.limit};}plan.workspace+=n;}
+            if selected<0 {selected=plan.slot_count;plan.slot_count+=1;plan.slots[selected]=TiSlot.{base=plan.workspace,capacity=n};plan.workspace+=n;}
             plan.values[i].base=plan.slots[selected].base;plan.slots[selected].until=plan.last[i];
         }else if p.nodes[i].op!=TiOp.input {plan.values[i].base=plan.values[plan.values[i].root].base;}
     }
