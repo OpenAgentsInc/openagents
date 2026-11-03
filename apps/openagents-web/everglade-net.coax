@@ -81,6 +81,9 @@ EgNet :: struct {
   state: int; sock: int = -1; tries: int; retry: int;
   url: [NET_URL] u8; url_n: int;
   code: [NET_CODE] u8; code_n: int;
+  // the realm the room is an instance of (the ticket asks the API's directory, #12717, for the
+  // instance and its oa-room shard), and how much of url is the host (wss://HOST)
+  realm: [NET_CODE] u8; realm_n: int; host_n: int;
   // the seat ticket the socket opens with (?t=, #12712): asked of the API before each open, used once;
   // free: a local relay (?relay=ws://localhost:PORT), which joins without one
   ticket: [NET_TICKET] u8; ticket_n: int; ticket_asked: bool; free: bool;
@@ -184,6 +187,8 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   // a page on this machine can sit in production's rooms (a two-browser check against the live server)
   local := url.count > 16 && (url[0..<17] == "http://localhost:" || (url.count > 17 && url[0..<17] == "http://127.0.0.1:"));
   if local && relay == "wss://openagents.com" { m = wire_put(n[0].url[..], 0, relay); }
+  n[0].host_n = m;
+  n[0].realm_n = ifx net_code_ok(room) && room.count <= 20 then net_copy(n[0].realm[..], room) else 0;
   m = wire_put(n[0].url[..], m, "/api/room/relay/");
   m = wire_put(n[0].url[..], m, NET_GAME);
   m = wire_put(n[0].url[..], m, "/");
@@ -227,6 +232,7 @@ net_ticket :: (s: [] Everglade, answer: string) #export_c {
       if e < answer.count && e - i - key.count > 0 && e - i - key.count <= NET_TICKET {
         n[0].ticket_n = net_copy(n[0].ticket[..], answer[i + key.count..<e]);
         had_look := (n[0].restored && n[0].saved_look_n > 0) || net_json_field(answer, "look").count > 0;
+        net_placed(n, net_json_field(answer, "room"), net_number(net_json_field(answer, "shard")));
         net_restore(s, n, answer);
         jn_ticketed(s, n, answer, had_look);   // a first visit: CHARACTER before you join
         return;
@@ -235,6 +241,22 @@ net_ticket :: (s: [] Everglade, answer: string) #export_c {
   }
   n[0].ticket_n = 0;
   net_down(n);
+}
+// Where the API's directory put you (#12717): the instance and the oa-room shard that holds it. The
+// socket opens on that shard's path, wss://HOST/api/room/sK/relay/everglade/INSTANCE, which the load
+// balancer sends to shard K (a shard seats only its own tickets); the next open asks for the same
+// instance, so a reconnect sits where it was. A local relay keeps its own address.
+net_placed :: (n: [] EgNet, room: string, shard: int) {
+  if n[0].free || !net_code_ok(room) || shard < 1 || shard > 99 { return; }
+  n[0].code_n = net_copy(n[0].code[..], room);
+  m := n[0].host_n;
+  m = wire_put(n[0].url[..], m, "/api/room/s");
+  digits := "0123456789";
+  if shard >= 10 { m = wire_put(n[0].url[..], m, digits[shard / 10..<shard / 10 + 1]); }
+  m = wire_put(n[0].url[..], m, digits[shard % 10..<shard % 10 + 1]);
+  m = wire_put(n[0].url[..], m, "/relay/"); m = wire_put(n[0].url[..], m, NET_GAME); m = wire_put(n[0].url[..], m, "/");
+  m = wire_put(n[0].url[..], m, room);
+  n[0].url_n = m;
 }
 // What the ticket's answer brings back (#12715), once a page: your WANTED level (kept 5 minutes; the
 // watch takes it as a "+wantedN" start) and your look (the hello sends it). The HP is the server's.
@@ -670,9 +692,10 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
       k := wire_put(u[..], 0, cast(string) n[0].url[0..<n[0].url_n]); k = wire_put(u[..], k, "?t="); k = wire_put(u[..], k, cast(string) n[0].ticket[0..<n[0].ticket_n]);
       if pipe_open(n[0].pipe[..], cast(string) u[0..<k]) { n[0].state = NET_OPENING; n[0].sock = -1; n[0].ticket_n = 0; }
     } else if !n[0].ticket_asked {
-      // the path, then a line, then the body: the name a guest asks for (everglade-join.coax)
-      t: [160] u8;
+      // the path (?realm=: the directory places you, #12717), then a line, then the body: the name a guest asks for (everglade-join.coax)
+      t: [192] u8;
       k := wire_put(t[..], 0, "/api/playtest/room-ticket/"); k = wire_put(t[..], k, cast(string) n[0].code[0..<n[0].code_n]);
+      if n[0].realm_n > 0 { k = wire_put(t[..], k, "?realm="); k = wire_put(t[..], k, cast(string) n[0].realm[0..<n[0].realm_n]); }
       k = wire_put(t[..], k, "\n"); k += jn_ticket_body(n, t[k..<t.count]);
       if pipe_put(n[0].pipe[..], NET_PIPE_TICKET, -1, cast(string) t[0..<k]) { n[0].ticket_asked = true; }
     }
@@ -1238,7 +1261,7 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   everglade_attach_net(a[..], na[..]);
   net_facts(a[..], "url=https://openagents.com/worlds/everglade?room=pair-a\nplayer=pa\nnow=5000000\nnav=0\n", "everglade", false);
   net_step(a[..], 100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
-  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-a\n{\"name\":\"");
+  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-a?realm=everglade\n{\"name\":\"");
   pipe_drained(na[0].pipe[..]);
   net_step(a[..], 116, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   #assert na[0].pipe[0].n == 0;   // asked once
@@ -1258,6 +1281,35 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert na[0].pipe[0].n == 0 && net_probe(a[..], 0) == NET_DOWN;
   net_step(a[..], 300000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET;
+}
+#test "net: the directory's instance and shard: the socket opens on the shard's path, and the next ticket asks for that instance (#12717)" {
+  a: [1] Everglade; na: [1] EgNet;
+  everglade_attach_net(a[..], na[..]);
+  net_facts(a[..], "url=https://openagents.com/worlds/everglade?room=pair-b\nplayer=pa\nnow=5000000\nnav=0\n", "everglade", false);
+  net_step(a[..], 100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-b?realm=everglade\n");
+  pipe_drained(na[0].pipe[..]);
+  net_ticket(a[..], "200\n{\"ticket\":\"v3.p-1.0.-.pair-b.2.9.-.ab\",\"id\":\"p-1\",\"room\":\"pair-b\",\"shard\":2}");
+  #assert net_room(a[..], "everglade") == "pair-b";
+  net_step(a[..], 132, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert pipe_bytes(na[0].pipe[..], 0) == "wss://openagents.com/api/room/s2/relay/everglade/pair-b?t=v3.p-1.0.-.pair-b.2.9.-.ab";
+  pipe_drained(na[0].pipe[..]);
+  net_opened(a[..], 0);
+  #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "");
+  net_step(a[..], 140000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-b?realm=everglade\n");
+  pipe_drained(na[0].pipe[..]);
+  // an answer without a placement (an API from before the directory) keeps the path as it was
+  net_ticket(a[..], "200\n{\"ticket\":\"v2.x\",\"id\":\"p-1\"}");
+  net_step(a[..], 300000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert pipe_bytes(na[0].pipe[..], 0) == "wss://openagents.com/api/room/s2/relay/everglade/pair-b?t=v2.x";
+  // a local relay keeps its own address
+  b: [1] Everglade; nb: [1] EgNet;
+  everglade_attach_net(b[..], nb[..]);
+  net_facts(b[..], "url=http://localhost:8787/worlds/everglade?relay=ws://localhost:8830\nplayer=p1\n", "everglade", false);
+  was: [NET_URL] u8; wn := nb[0].url_n; for i: 0..<wn { was[i] = nb[0].url[i]; }
+  net_placed(nb[..], "everglade-3", 2);
+  #assert cast(string) nb[0].url[0..<nb[0].url_n] == cast(string) was[0..<wn] && cast(string) was[0..<20] == "ws://localhost:8830/";
 }
 #test "net: the ticket's answer brings back your WANTED and look; a changed WANTED is saved while you play" {
   a: [1] Everglade; na: [1] EgNet;

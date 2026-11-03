@@ -3,6 +3,7 @@
 // page joins with it as ?t=TICKET (or &t=). The text is
 //
 //   v2.PID.ACCT.NAME64.ROOM.EXPIRES.HP.MAC
+//   v3.PID.ACCT.NAME64.ROOM.SHARD.EXPIRES.HP.MAC     (#12717: the API's directory placed ROOM on SHARD)
 //
 // PID the player id (p-<16 hex>), ACCT 1 when the player has an account, NAME64
 // the display name in unpadded base64url ("-" none), ROOM the relay code,
@@ -11,7 +12,8 @@
 // everything before ".MAC" under OA_ROOM_TICKET_KEY (Secret Manager
 // oa-room-ticket-key). A room joins only with a ticket for itself that has not
 // expired and whose MAC checks; the seat then carries the ticket's id, name and
-// account bit, so a page cannot claim another player's id.
+// account bit, so a page cannot claim another player's id. SHARD (1 to 99) is the oa-room service that
+// holds the room (room-relay.coax: a shard seats only its own tickets); a v2 ticket is shard 1's.
 #load "../../lib/crypto/hmac.coax";
 
 TICKET_KEY :: 128;        // the key's most bytes
@@ -28,6 +30,7 @@ Ticket :: struct {
   name: [TICKET_NAME] u8; name_n: int;
   expires: int;
   hp: int = -1;           // the HP it brings back (-1 none)
+  shard: int = 1;         // the oa-room shard it was signed for (v2: 1)
 }
 
 // The t= value in the request line's query ("" none).
@@ -96,22 +99,32 @@ tk_mac :: (key: string, text: string, out: [] u8) -> bool {
 tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   t := Ticket.{};
   if key.count < 32 || ticket.count == 0 || ticket.count > TICKET_TEXT { return t; }
-  // the eight fields
-  at: [9] int; n := 1; at[0] = 0;
+  // the eight fields (v2), or nine (v3: the shard after the room)
+  at: [10] int; n := 1; at[0] = 0;
   for i: 0..<ticket.count {
     if ticket[i] == '.' {
-      if n >= 8 { return t; }
+      if n >= 9 { return t; }
       at[n] = i + 1; n += 1;
     }
   }
-  if n != 8 { return t; }
-  at[8] = ticket.count + 1;
+  at[n] = ticket.count + 1;
+  g: [9] string;
+  for i: 0..<n { g[i] = ticket[at[i]..<at[i + 1] - 1]; }
+  shard := 1;
+  if n == 9 && g[0] == "v3" {
+    if g[5].count == 0 || g[5].count > 2 || g[5][0] == '0' { return t; }
+    shard = 0;
+    for c: g[5] { if c < '0' || c > '9' { return t; } shard = shard * 10 + cast(int) (c - '0'); }
+  } else if n != 8 || g[0] != "v2" { return t; }
+  // the fields as v2 has them
   f: [8] string;
-  for i: 0..<8 { f[i] = ticket[at[i]..<at[i + 1] - 1]; }
-  if f[0] != "v2" || f[4] != room || f[7].count != 64 { return t; }
+  for i: 0..<5 { f[i] = g[i]; }
+  d := ifx n == 9 then 1 else 0;
+  for i: 5..<8 { f[i] = g[i + d]; }
+  if f[4] != room || f[7].count != 64 { return t; }
   // the MAC, compared in constant time
   want: [64] u8;
-  if !tk_mac(key, ticket[0..<at[7] - 1], want[..]) { return t; }
+  if !tk_mac(key, ticket[0..<at[n - 1] - 1], want[..]) { return t; }
   diff := 0;
   for i: 0..<64 { diff = diff | cast(int) (want[i] ^ f[7][i]); }
   if diff != 0 { return t; }
@@ -143,6 +156,7 @@ tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   t.account = f[2] == "1";
   t.expires = ends;
   t.hp = hp;
+  t.shard = shard;
   t.ok = true;
   return t;
 }
@@ -154,9 +168,14 @@ tk_add :: (b: [] u8, n: int, s: string) -> int {
 }
 // A ticket as the API signs it (for tests and the deploy checks): its count in out, 0 if it did not fit.
 tk_sign :: (key: string, pid: string, account: bool, name: string, room: string, expires: int, hp: int, out: [] u8) -> int {
+  return tk_sign_on(key, pid, account, name, room, 0, expires, hp, out);
+}
+// The same for one shard (v3; shard 0: a v2 ticket, which shard 1 takes).
+tk_sign_on :: (key: string, pid: string, account: bool, name: string, room: string, shard: int, expires: int, hp: int, out: [] u8) -> int {
   a := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   b: [TICKET_TEXT] u8; n := 0;
-  n = tk_add(b[..], n, "v2."); n = tk_add(b[..], n, pid); n = tk_add(b[..], n, ifx account then ".1." else ".0.");
+  if shard < 0 || shard > 99 { return 0; }
+  n = tk_add(b[..], n, ifx shard > 0 then "v3." else "v2."); n = tk_add(b[..], n, pid); n = tk_add(b[..], n, ifx account then ".1." else ".0.");
   if name.count == 0 { n = tk_add(b[..], n, "-"); }
   i := 0;
   while i < name.count && n + 4 < b.count {
@@ -169,7 +188,13 @@ tk_sign :: (key: string, pid: string, account: bool, name: string, room: string,
     i += 3;
   }
   n = tk_add(b[..], n, "."); n = tk_add(b[..], n, room); n = tk_add(b[..], n, ".");
-  d: [20] u8; dn := 0; e := expires;
+  d: [20] u8; dn := 0; e := shard;
+  if shard > 0 {
+    while e > 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
+    for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
+    n = tk_add(b[..], n, ".");
+  }
+  dn = 0; e = expires;
   if e <= 0 { return 0; }
   while e > 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
   for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
@@ -220,6 +245,28 @@ tk_sign :: (key: string, pid: string, account: bool, name: string, room: string,
   #assert t.ok && t.hp == 7;
   n = tk_sign(key, "p-ffeeddccbbaa9988", false, "", "dawn", 1000000, 0, b[..]);
   #assert tk_check(key, cast(string) b[0..<n], "dawn", 999999).hp == 0;
+}
+#test "ticket: a v3 ticket carries its shard, signed; a v2 ticket is shard 1's (#12717)" {
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  b: [256] u8;
+  n := tk_sign_on(key, "p-00112233aabbccdd", false, "Ash", "everglade-17", 2, 1000000, 9, b[..]);
+  #assert n > 0 && cast(string) b[0..<3] == "v3.";
+  t := tk_check(key, cast(string) b[0..<n], "everglade-17", 990000);
+  #assert t.ok && t.shard == 2 && t.hp == 9 && cast(string) t.name[0..<t.name_n] == "Ash";
+  #assert !tk_check(key, cast(string) b[0..<n], "everglade-1", 990000).ok;
+  // the shard changed: the MAC no longer checks
+  f: [256] u8; for i: 0..<n { f[i] = b[i]; }
+  s := 0; dots := 0;
+  for i: 0..<n { if f[i] == '.' { dots += 1; if dots == 5 { s = i + 1; break; } } }
+  #assert f[s] == '2';
+  f[s] = '1';
+  #assert !tk_check(key, cast(string) f[0..<n], "everglade-17", 990000).ok;
+  // shard 0, a leading zero, or three digits: refused
+  n = tk_sign_on(key, "p-00112233aabbccdd", false, "", "dawn", 0, 1000000, -1, b[..]);
+  #assert cast(string) b[0..<3] == "v2." && tk_check(key, cast(string) b[0..<n], "dawn", 990000).shard == 1;
+  #assert tk_sign_on(key, "p-1", false, "", "dawn", 100, 1000000, -1, b[..]) == 0;
+  #assert !tk_check(key, "v3.p-1.0.-.dawn.02.1000000.-.0000000000000000000000000000000000000000000000000000000000000000", "dawn", 990000).ok;
+  #assert !tk_check(key, "v2.p-1.0.-.dawn.2.1000000.-.0000000000000000000000000000000000000000000000000000000000000000", "dawn", 990000).ok;
 }
 #test "ticket: t= comes out of the request line's query" {
   #assert tk_query("GET /api/room/relay/everglade/dawn?t=abc HTTP/1.1\r\n") == "abc";
