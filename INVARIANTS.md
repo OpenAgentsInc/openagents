@@ -3219,7 +3219,12 @@ WebSocket binary message, encoded and decoded only by the generated Coax codec
   and its composer window are active. Audio stays in memory on this computer;
   no speech provider, audio file or telemetry receives it. Focus/consent loss
   stops capture and invalidates the request. Loaded model residency is separate
-  from microphone admission.
+  from microphone admission. `openagents dictate` is a third, per-command
+  opt-in: running it is the consent for one dictation. Its microphone opens
+  only after the local model is ready and closes once the clip is captured;
+  Enter, Escape, Ctrl-C, `--seconds` or the 60-second cap end it. It prints
+  the final text (or one JSON result) and never pastes, types, sends or writes
+  audio. A named input or recognition device never falls back to another.
 
 Coder dictation's `apps/shared/dictation-policy.coax` is `#authority`: it gates
 readiness/consent, 450 ms pre-roll, 300 ms minimum hold, 200 ms tail, a 60-second
@@ -3236,6 +3241,11 @@ generation, clear audio and cancel pending insertion. The shared
 and exact supported rates, channels and planar/interleaved strides; late callbacks
 cannot enter a replacement generation. Checks and explicit
 hardware limits: `docs/verification/coder-dictation-2026-11-02/README.md`.
+The CLI links the same controller unchanged; its own choices (backends,
+devices, duration, keys, a stalled input, results and exit codes) are the
+`#authority` `apps/openagents-cli/dictate-rules.coax`. Its checks inject
+recorded audio through a test capture backend and never open a microphone:
+`docs/verification/dictate-cli-2026-11-02/README.md`.
 
 Model-boundary exception: Debug builds accept `-OAVoiceFixture` (a bundled
 recording through the same uplink path as the microphone) and

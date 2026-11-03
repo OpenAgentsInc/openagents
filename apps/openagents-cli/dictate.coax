@@ -1,0 +1,428 @@
+// openagents dictate (GitHub #12667): your microphone to local Parakeet text.
+// This is the dictation host, apps/openagents-cli/build/openagents-dictate
+// (dictate-host.coax): `openagents dictate` replaces itself with it
+// (dictate-launch.coax), because Psionic's resident engine and the CLI's
+// signing code are separate C programs that may not share one link.
+// One dictation: load the pinned model, open the input, listen until Enter,
+// Escape, --seconds or the 60-second cap, recognize the clip in exact bounded
+// segments on this computer, then print the final text (or one JSON result).
+// Nothing is pasted, typed, sent, uploaded or written to disk.
+//
+// The shared controller (apps/shared/dictation.coax, dictation-policy.coax)
+// owns the timeline, Verse's resampler and VAD, silence admission, tickets,
+// cancellation and segmentation, exactly as Coder for Mac uses it.
+// dictate-rules.coax owns this command's choices; dictate-native.c the effects.
+//
+// A recorded-audio capture backend (`--capture fixture`) exists for checks:
+// it needs OPENAGENTS_DICTATE_FIXTURE=FILE.wav, runs on a virtual clock and
+// never opens a device. OPENAGENTS_DICTATE_FIXTURE_CONTROL ("start@MS",
+// "stop@MS", "cancel@MS", comma-separated, virtual ms after the input opens),
+// OPENAGENTS_DICTATE_FIXTURE_FAULT (permission, device, program, stall,
+// ended, format, recognition) and OPENAGENTS_DICTATE_FIXTURE_TEXT (a
+// stand-in recognizer, reported as "fixture", never as Parakeet) shape it.
+// The controller is its own C library unit (Verse's voice engine names would
+// collide with this program's); its policy constants are loaded here.
+#load "../shared/dictation-policy.coax";
+#load "dictate-rules.coax";
+
+cxdict_now_ms :: () -> int #foreign;
+cxdict_control_open :: () -> int #foreign;
+cxdict_control_poll :: (timeout_ms: int) -> int #foreign;
+cxdict_control_close :: () -> int #foreign;
+cxdict_arg :: (a: [] u8) -> int #foreign;
+cxdict_capture_spawn :: () -> int #foreign;
+cxdict_capture_read :: (out: [] f32, timeout_ms: int) -> int #foreign;
+cxdict_capture_rate :: () -> int #foreign;
+cxdict_capture_close :: () -> int #foreign;
+cxdict_mac_permission :: () -> int #foreign;
+cxdict_mac_devices :: () -> int #foreign;
+cxdict_mac_device_uid :: (i: int, out: [] u8) -> int #foreign;
+cxdict_mac_default :: () -> int #foreign;
+cxdict_mac_open :: (i: int) -> int #foreign;
+cxdict_model_open :: (dir: [] u8, gpu: int, err: [] u8) -> int #foreign;
+cxdict_model_start :: (samples: [] f32) -> int #foreign;
+cxdict_model_poll :: (out: [] u8, timeout_ms: int) -> int #foreign;
+cxdict_model_clear :: () -> int #foreign;
+cxdict_model_close :: () -> int #foreign;
+cxdict_dct_reset :: () -> int #foreign;
+cxdict_dct_clear :: () -> int #foreign;
+cxdict_dct_start :: (now: int) -> int #foreign;
+cxdict_dct_end :: (now: int) -> int #foreign;
+cxdict_dct_abort :: () -> int #foreign;
+cxdict_dct_failed :: (reason: int) -> int #foreign;
+cxdict_dct_feed :: (x: [] f32, rate: int, start: int) -> int #foreign;
+cxdict_dct_clock :: (now: int) -> int #foreign;
+cxdict_dct_phase :: () -> int #foreign;
+cxdict_dct_outcome :: () -> int #foreign;
+cxdict_dct_fault :: () -> int #foreign;
+cxdict_dct_samples :: () -> int #foreign;
+cxdict_dct_text_n :: () -> int #foreign;
+cxdict_dct_copy :: (offset: int, out: [] f32) -> int #foreign;
+cxdict_dct_segment :: (offset: int) -> int #foreign;
+cxdict_dct_decode :: (ticket: int) -> int #foreign;
+cxdict_dct_add :: (ticket: int, text: [] u8) -> int #foreign;
+cxdict_dct_complete :: (ticket: int, ok: int) -> int #foreign;
+cxdict_dct_words :: (out: [] u8) -> int #foreign;
+cxdict_dct_device :: (wanted: [] u8, observed: [] u8, is_default: int) -> int #foreign;
+
+
+DC_OUT_TEXT :: 0; DC_OUT_JSON :: 1; DC_OUT_EVENTS :: 2;
+DC_FX_PCM :: 1440000;
+DictFixture :: struct {
+  pcm: [DC_FX_PCM] f32; n: int; rate: int; at: int; ms: int;
+  fault: string; control: string; text: string; recognizer: bool;
+}
+Dict :: struct {
+  out: int; capture: int; gpu: int; seconds: int; wait: bool; input: string; model: string;
+  tty: bool; opened: int; anchor: int; delivered: int; rate: int; last_audio: int; any: bool;
+  segments: int; limited: bool; samples: int;
+  error: int; message: [600] u8; message_n: int; reason: string;
+}
+
+// ---- output ----
+dict_note :: (d: [] Dict, e: int, message: string) {
+  d[0].error = e; n := ifx message.count > 600 then 600 else message.count;
+  for i: 0..<n { d[0].message[i] = message[i]; }
+  d[0].message_n = n;
+}
+dict_set_error :: (d: [] Dict, e: int, message: string) -> int { dict_note(d, e, message); return DC_ERROR; }
+dict_json_head :: (r: [] Rep, kind: string) {
+  r[0].n = 0; r[0].bad = false;
+  rep_put(r, "{\"schema\":\"openagents.dictation.v1\",\"type\":"); rep_quoted(r, kind);
+}
+dict_json_str :: (r: [] Rep, key: string, v: string) { rep_byte(r, ','); rep_quoted(r, key); rep_byte(r, ':'); rep_quoted(r, v); }
+dict_json_int :: (r: [] Rep, key: string, v: int) { t: [24] u8; rep_byte(r, ','); rep_quoted(r, key); rep_byte(r, ':'); rep_put(r, int_text(v, t[..])); }
+dict_json_bool :: (r: [] Rep, key: string, v: bool) { rep_byte(r, ','); rep_quoted(r, key); rep_byte(r, ':'); rep_put(r, ifx v then "true" else "false"); }
+dict_json_end :: (r: [] Rep) { rep_put(r, "}\n"); print("%", cast(string) r[0].buf[0..<r[0].n]); }
+
+// A status event: what the command is doing, never words heard.
+dict_status :: (d: [] Dict, state: string, human: string) {
+  if d[0].out == DC_OUT_EVENTS { r: [1] Rep; dict_json_head(r[..], "status"); dict_json_str(r[..], "state", state); dict_json_end(r[..]); }
+  else if d[0].out == DC_OUT_TEXT && d[0].tty { tool_err("openagents: "); tool_errln(human); }
+}
+
+dict_finish :: (d: [] Dict, result: int, text: string) -> int {
+  code := dc_exit(result, d[0].error);
+  recognizer := ifx d[0].model == "" then "fixture" else "parakeet";
+  if d[0].out == DC_OUT_TEXT {
+    if result == DC_FINAL { print("%\n", text); }
+    else if result == DC_NO_SPEECH { tool_err("openagents: no speech detected ("); tool_err(d[0].reason); tool_errln(")"); }
+    else if result == DC_CANCELLED { tool_errln("openagents: dictation cancelled"); }
+    else { tool_err("openagents: dictation "); tool_err(dc_error_name(d[0].error)); tool_err(" error: "); tool_errln(cast(string) d[0].message[0..<d[0].message_n]); }
+    return code;
+  }
+  r: [1] Rep;
+  kind := ifx result == DC_FINAL then "final" else ifx result == DC_NO_SPEECH then "no_speech" else ifx result == DC_CANCELLED then "cancelled" else "error";
+  dict_json_head(r[..], kind);
+  if result == DC_FINAL { dict_json_str(r[..], "text", text); }
+  if result == DC_NO_SPEECH { dict_json_str(r[..], "reason", d[0].reason); }
+  if result == DC_ERROR { dict_json_str(r[..], "error", dc_error_name(d[0].error)); dict_json_str(r[..], "message", cast(string) d[0].message[0..<d[0].message_n]); }
+  dict_json_int(r[..], "exit", code);
+  if result == DC_FINAL || result == DC_NO_SPEECH {
+    dict_json_int(r[..], "samples", d[0].samples); dict_json_int(r[..], "audio_ms", d[0].samples / 16);
+    dict_json_int(r[..], "segments", d[0].segments); dict_json_bool(r[..], "limited", d[0].limited);
+  }
+  dict_json_str(r[..], "recognizer", recognizer);
+  dict_json_str(r[..], "model", "parakeet-tdt-0.6b-v3"); dict_json_str(r[..], "revision", "541d1f99c6b0c3cd0b11a95167540bb8edefd82b");
+  dict_json_str(r[..], "device", ifx d[0].gpu == 1 then "gpu" else "cpu");
+  dict_json_str(r[..], "capture", dc_capture_name(d[0].capture));
+  dict_json_end(r[..]);
+  return code;
+}
+
+// ---- the recorded-audio backend ----
+dict_env :: (name: string, out: [] u8) -> string { return proc_getenv(name, out); }
+// A RIFF/WAVE file of 16-bit PCM: channel 0's samples as f32, and its rate.
+dict_fixture_load :: (path: string, f: [] DictFixture) -> bool {
+  file: [4000000] u8;
+  n := fs_read(path, file[..]);
+  if n < 44 || cast(string) file[0..<4] != "RIFF" || cast(string) file[8..<12] != "WAVE" { return false; }
+  channels := 0; bits := 0; i := 12;
+  while i + 8 <= n {
+    size := cast(int) file[i + 4] | (cast(int) file[i + 5] << 8) | (cast(int) file[i + 6] << 16) | (cast(int) file[i + 7] << 24);
+    id := cast(string) file[i..<i + 4];
+    if id == "fmt " && i + 24 <= n {
+      if (cast(int) file[i + 8] | (cast(int) file[i + 9] << 8)) != 1 { return false; }
+      channels = cast(int) file[i + 10] | (cast(int) file[i + 11] << 8);
+      f[0].rate = cast(int) file[i + 12] | (cast(int) file[i + 13] << 8) | (cast(int) file[i + 14] << 16);
+      bits = cast(int) file[i + 22] | (cast(int) file[i + 23] << 8);
+    }
+    if id == "data" {
+      if channels < 1 || bits != 16 { return false; }
+      k := i + 8; stride := 2 * channels; end := ifx i + 8 + size < n then i + 8 + size else n;
+      while k + 1 < end && f[0].n < DC_FX_PCM {
+        v := cast(int) file[k] | (cast(int) file[k + 1] << 8);
+        if v >= 32768 { v -= 65536; }
+        f[0].pcm[f[0].n] = f32(v) / 32768.0; f[0].n += 1; k += stride;
+      }
+      return f[0].n > 0;
+    }
+    i += 8 + size + (size & 1);
+  }
+  return false;
+}
+// The time of the named control event in the fixture script, or -1.
+dict_fixture_at :: (script: string, name: string) -> int {
+  i := 0;
+  while i < script.count {
+    j := i; while j < script.count && script[j] != ',' { j += 1; }
+    item := script[i..<j];
+    if item.count > name.count + 1 && item[0..<name.count] == name && item[name.count] == '@' { return text_int(item[name.count + 1..<item.count]); }
+    i = j + 1;
+  }
+  return -1;
+}
+#test "fixture control scripts name each event's virtual time" {
+  #assert dict_fixture_at("start@500,stop@3000", "start") == 500 && dict_fixture_at("start@500,stop@3000", "stop") == 3000;
+  #assert dict_fixture_at("stop@3000", "start") == -1 && dict_fixture_at("cancel@0", "cancel") == 0 && dict_fixture_at("", "stop") == -1;
+  #assert dict_fixture_at("stopper@1,stop@2", "stop") == 2 && dict_fixture_at("stop@x", "stop") == -1;
+}
+
+// The pinned model's directory: OPENAGENTS_PARAKEET_MODEL, else the cache
+// path `openagents transcribe` uses (psionic/docs/parakeet.md).
+dict_model_dir :: (out: [] u8) -> string {
+  env: [1024] u8; s := proc_getenv("OPENAGENTS_PARAKEET_MODEL", env[..]);
+  if s != "" { n := copy(s, out); return ifx n < 0 then "" else cast(string) out[0..<n]; }
+  h: [1024] u8; return fs_join(home(h[..]), ".cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99", out);
+}
+
+// ---- the session ----
+dict_now :: (d: [] Dict, f: [] DictFixture) -> int { return ifx d[0].capture == DC_FIXTURE then 1000 + f[0].ms else cxdict_now_ms(); }
+
+// The next control key: the fixture script's (on its virtual clock), else
+// a byte or signal from the terminal.
+dict_key :: (d: [] Dict, f: [] DictFixture, started: bool, fired: [] bool) -> int {
+  if d[0].capture == DC_FIXTURE {
+    names := [3] string.["start", "stop", "cancel"]; keys := [3] int.[DC_KEY_START, DC_KEY_STOP, DC_KEY_CANCEL];
+    for k: 0..<3 { at := dict_fixture_at(f[0].control, names[k]); if !fired[k] && at >= 0 && f[0].ms >= at { fired[k] = true; return keys[k]; } }
+  }
+  while true {
+    b := cxdict_control_poll(0);
+    if b == -1 || b == -2 { return DC_KEY_NONE; }
+    k := dc_key(b, started);
+    if k != DC_KEY_NONE { return k; }
+  }
+  return DC_KEY_NONE;
+}
+
+// Up to one buffer of mono samples: >0 read, 0 none yet, -1 the input ended.
+dict_read :: (d: [] Dict, f: [] DictFixture, out: [] f32) -> int {
+  if d[0].capture != DC_FIXTURE { return cxdict_capture_read(out, 10); }
+  chunk := f[0].rate / 50; past := f[0].at >= f[0].n;
+  if past && f[0].fault == "ended" { return -1; }
+  if past && f[0].fault == "stall" { f[0].ms += 20; return 0; }
+  for i: 0..<chunk { out[i] = ifx f[0].at + i < f[0].n then f[0].pcm[f[0].at + i] else 0; }
+  f[0].at += chunk;
+  return chunk;
+}
+dict_feed :: (d: [] Dict, f: [] DictFixture, x: [] f32, now: int) {
+  rate := ifx d[0].capture == DC_FIXTURE then f[0].rate else cxdict_capture_rate();
+  if d[0].capture == DC_FIXTURE && f[0].fault == "format" { rate = 8000; }
+  if !d[0].any { d[0].anchor = ifx d[0].capture == DC_FIXTURE then now else now - x.count * 1000 / rate; d[0].rate = rate; }
+  start := d[0].anchor + d[0].delivered * 1000 / d[0].rate;
+  q := cxdict_dct_feed(x, rate, start);
+  d[0].delivered += x.count; d[0].any = true; d[0].last_audio = now;
+  if d[0].capture == DC_FIXTURE { f[0].ms += 20; }
+}
+
+// Opens the input. 0 or a DC_E_* failure (with its message set).
+dict_open_input :: (d: [] Dict, f: [] DictFixture) -> int {
+  if d[0].capture == DC_FIXTURE {
+    if f[0].fault == "permission" { dict_note(d, DC_E_PERMISSION, "microphone access is denied for this terminal (fixture)"); return DC_E_PERMISSION; }
+    if f[0].fault == "device" { dict_note(d, DC_E_DEVICE, "the selected input is not connected (fixture)"); return DC_E_DEVICE; }
+    if f[0].fault == "program" { dict_note(d, DC_E_PROGRAM, "the recorder program is not installed (fixture)"); return DC_E_PROGRAM; }
+    return 0;
+  }
+  if d[0].capture == DC_COREAUDIO {
+    p := cxdict_mac_permission();
+    if p != 0 { dict_note(d, DC_E_PERMISSION, "microphone access is denied: allow your terminal in System Settings > Privacy & Security > Microphone"); return DC_E_PERMISSION; }
+    count := cxdict_mac_devices(); def := cxdict_mac_default(); pick := -1;
+    for i: 0..<ifx count > 0 then count else 0 {
+      uid: [600] u8; n := cxdict_mac_device_uid(i, uid[..]);
+      want: [300] u8; w := copy(d[0].input, want[..]);
+      if n > 0 && w >= 0 && pick < 0 && cxdict_dct_device(want[0..<w], uid[0..<n], ifx i == def then 1 else 0) == 1 { pick = i; }
+    }
+    if pick < 0 { dict_note(d, DC_E_DEVICE, ifx d[0].input == "" then "no default microphone is available" else "the selected input is not connected; nothing else is used instead"); return DC_E_DEVICE; }
+    st := cxdict_mac_open(pick);
+    if st == 5 { dict_note(d, DC_E_FORMAT, "the input's audio format is not supported"); return DC_E_FORMAT; }
+    if st != 0 { dict_note(d, DC_E_CAPTURE, "cannot start CoreAudio capture"); return DC_E_CAPTURE; }
+    return 0;
+  }
+  argv: [DC_ARGS] string; argc := dc_recorder(d[0].capture, d[0].input, argv[..]);
+  for i: 0..<argc { b: [1024] u8; k := copy(argv[i], b[..]); if k < 0 || cxdict_arg(b[0..<k]) != 0 { dict_note(d, DC_E_CAPTURE, "recorder arguments too long"); return DC_E_CAPTURE; } }
+  st := cxdict_capture_spawn();
+  if st == 7 { dict_note(d, DC_E_PROGRAM, argv[0]); return DC_E_PROGRAM; }
+  if st != 0 { dict_note(d, DC_E_CAPTURE, "cannot start the recorder"); return DC_E_CAPTURE; }
+  return 0;
+}
+
+// Listening, from an open input to a frozen clip (-1) or an ending.
+dict_listen :: (d: [] Dict, f: [] DictFixture, ticket: [] int) -> int {
+  buf: [16384] f32; fired: [3] bool;
+  started := false; release := -1;
+  now := dict_now(d, f); d[0].opened = now;
+  if d[0].wait { dict_status(d, "ready", "press Enter to start listening, Esc to cancel"); }
+  while true {
+    now = dict_now(d, f);
+    key := dict_key(d, f, started, fired[..]);
+    if key == DC_KEY_CANCEL { q := cxdict_dct_abort(); return DC_CANCELLED; }
+    if !started && (!d[0].wait || key == DC_KEY_START) {
+      ticket[0] = cxdict_dct_start(now);
+      if ticket[0] == 0 { return dict_set_error(d, DC_E_CAPTURE, "dictation could not start"); }
+      started = true; release = now + d[0].seconds * 1000;
+      dict_status(d, "listening", "listening: press Enter to stop, Esc to cancel");
+    } else if started && key == DC_KEY_STOP && cxdict_dct_phase() == DCT_HELD {
+      q := cxdict_dct_end(now); dict_status(d, "finishing", "finishing");
+    }
+    n := dict_read(d, f, buf[..]);
+    if n < 0 { q := cxdict_dct_failed(3); return dict_set_error(d, DC_E_CAPTURE, "the input stopped delivering audio"); }
+    if n > 0 { dict_feed(d, f, buf[0..<n], now); }
+    else if dc_input_stalled(now, d[0].opened, d[0].last_audio, d[0].any) {
+      q := cxdict_dct_failed(3);
+      if !d[0].any { return dict_set_error(d, DC_E_DEVICE, "no audio arrived from the input"); }
+      return dict_set_error(d, DC_E_CAPTURE, "the input paused for more than a second");
+    }
+    if cxdict_dct_outcome() == DCT_ERROR {
+      fault := cxdict_dct_fault();
+      return dict_set_error(d, fault, ifx fault == DC_E_FORMAT then "the input's sample rate or samples are not supported" else "the input's clock or audio stalled");
+    }
+    if started && cxdict_dct_phase() == DCT_HELD && now >= release { q := cxdict_dct_end(now); dict_status(d, "finishing", "finishing"); }
+    if started { q := cxdict_dct_clock(dict_now(d, f)); }
+    phase := cxdict_dct_phase(); outcome := cxdict_dct_outcome();
+    if started && phase == DCT_CLIP { d[0].limited = outcome == DCT_LIMIT; d[0].samples = cxdict_dct_samples(); return -1; }
+    if started && phase != DCT_HELD && phase != DCT_TAIL {
+      result := dc_result(outcome);
+      if result == DC_NO_SPEECH { d[0].reason = dc_no_speech_reason(outcome); return DC_NO_SPEECH; }
+      if result == DC_ERROR { return dict_set_error(d, cxdict_dct_fault(), "the input's clock or audio stalled"); }
+      return dict_set_error(d, DC_E_CAPTURE, "dictation stopped unexpectedly");
+    }
+  }
+  return DC_ERROR;
+}
+
+// Recognizes the frozen clip, segment by segment, into the controller's
+// ticketed text; the model's utterance work is cleared after every call.
+dict_recognize :: (d: [] Dict, f: [] DictFixture, t: int, words: [] u8) -> int {
+  audio: [960000] f32; reply: [8200] u8; fired: [3] bool;
+  n := cxdict_dct_samples();
+  if n < 1 || n > 960000 || cxdict_dct_copy(0, audio[0..<n]) != n || cxdict_dct_decode(t) != 1 {
+    q := cxdict_dct_failed(4); return dict_set_error(d, DC_E_RECOGNITION, "the clip could not be handed to recognition");
+  }
+  dict_status(d, "recognizing", ifx d[0].gpu == 1 then "recognizing on this computer (GPU)" else "recognizing on this computer (CPU)");
+  offset := 0;
+  while true {
+    m := cxdict_dct_segment(offset);
+    if m == 0 { break; }
+    got := 0; reason := 0;
+    if d[0].model == "" {
+      if f[0].fault == "recognition" { got = -2; } else { got = copy(f[0].text, reply[..]); }
+    } else {
+      if cxdict_model_start(audio[offset..<offset + m]) != 0 { got = -2; }
+      else {
+        got = -1;
+        while got == -1 {
+          got = cxdict_model_poll(reply[..], 50);
+          if dict_key(d, f, true, fired[..]) == DC_KEY_CANCEL { for i: 0..<n { audio[i] = 0; } q := cxdict_dct_abort(); return DC_CANCELLED; }
+        }
+        if got <= -2 { reason = -got - 2; }
+        if cxdict_model_clear() != 0 && got >= 0 { got = -2; }
+      }
+    }
+    if got < 0 {
+      for i: 0..<n { audio[i] = 0; }
+      q := cxdict_dct_complete(t, 0);
+      return dict_set_error(d, DC_E_RECOGNITION, ifx reason > 0 then cast(string) reply[0..<reason] else "Parakeet recognition failed");
+    }
+    if cxdict_dct_add(t, reply[0..<got]) != 1 {
+      for i: 0..<n { audio[i] = 0; }
+      q := cxdict_dct_abort();
+      return dict_set_error(d, DC_E_TOO_LONG, "the transcript exceeds 8000 bytes; it is refused, not cut");
+    }
+    for i: 0..<got { reply[i] = 0; }
+    offset += m; d[0].segments += 1;
+  }
+  for i: 0..<n { audio[i] = 0; }
+  if offset != n { q := cxdict_dct_failed(4); return dict_set_error(d, DC_E_RECOGNITION, "segments did not cover the clip exactly"); }
+  if cxdict_dct_complete(t, 1) != 1 { d[0].reason = "silence"; return DC_NO_SPEECH; }
+  if cxdict_dct_words(words) < 0 { return dict_set_error(d, DC_E_RECOGNITION, "the transcript could not be copied"); }
+  return DC_FINAL;
+}
+
+dictate_main :: (a: [] Args, r: [] Rep) -> int {
+  d: [1] Dict; f: [1] DictFixture;
+  if positional(a, 0) != "" { return fail(r, EXIT_USAGE, "dictate takes no file: it listens to the microphone (openagents transcribe FILE reads a file)"); }
+  events := args_has(a, "--events");
+  d[0].out = ifx events then DC_OUT_EVENTS else ifx r[0].json then DC_OUT_JSON else DC_OUT_TEXT;
+  mac := tool_os() == TOOL_MAC;
+  fx: [1024] u8; fixture := dict_env("OPENAGENTS_DICTATE_FIXTURE", fx[..]);
+  d[0].capture = dc_capture(args_value(a, "--capture", ""), mac, fixture != "");
+  if d[0].capture == DC_UNKNOWN { return fail(r, EXIT_USAGE, "--capture is pipewire, pulse or alsa on Linux, coreaudio on macOS"); }
+  if d[0].capture == DC_ELSEWHERE { return fail(r, EXIT_USAGE, "that capture backend is not available on this system"); }
+  if d[0].capture == DC_NO_FIXTURE { return fail(r, EXIT_USAGE, "--capture fixture is for checks and needs OPENAGENTS_DICTATE_FIXTURE=FILE.wav"); }
+  d[0].gpu = dc_device(args_value(a, "--device", ""), mac);
+  if d[0].gpu < 0 { return fail(r, EXIT_USAGE, "--device is gpu or cpu; a GPU failure never silently selects the CPU"); }
+  d[0].seconds = dc_seconds(args_value(a, "--seconds", ""));
+  if d[0].seconds < 0 { return fail(r, EXIT_USAGE, "--seconds is a whole number from 1 to 60"); }
+  d[0].input = args_value(a, "--input", "");
+  if !dc_input(d[0].input) { return fail(r, EXIT_USAGE, "--input is a printable device name or UID of at most 256 bytes"); }
+  if d[0].capture == DC_FIXTURE && d[0].input != "" { return fail(r, EXIT_USAGE, "--input names a real device; the fixture backend has none"); }
+  for flag: [4] string.["--words", "--prompt", "--language", "--model"] {
+    if args_has(a, flag) { return fail(r, EXIT_USAGE, "Parakeet dictation detects its language and has no vocabulary bias yet; --words, --prompt, --language and --model are not dictation options"); }
+  }
+  d[0].wait = args_has(a, "--wait-for-enter");
+  d[0].tty = cxcli_isatty(2) == 1;
+  fc: [512] u8; ff: [64] u8; ft: [1024] u8;
+  if d[0].capture == DC_FIXTURE {
+    if !dict_fixture_load(fixture, f[..]) { return fail(r, EXIT_USAGE, "OPENAGENTS_DICTATE_FIXTURE must be a 16-bit PCM WAV file"); }
+    f[0].control = dict_env("OPENAGENTS_DICTATE_FIXTURE_CONTROL", fc[..]);
+    f[0].fault = dict_env("OPENAGENTS_DICTATE_FIXTURE_FAULT", ff[..]);
+    f[0].text = dict_env("OPENAGENTS_DICTATE_FIXTURE_TEXT", ft[..]);
+    f[0].recognizer = f[0].text != "" || f[0].fault == "recognition";
+  }
+
+  // The model first: the microphone opens only once recognition is ready.
+  mb: [1200] u8; model := args_value(a, "--model-dir", "");
+  if model == "" { model = dict_model_dir(mb[..]); }
+  if !f[0].recognizer {
+    d[0].model = model;
+    a1: [1300] u8; a2: [1300] u8;
+    if fs_kind(model) != FS_DIR || fs_kind(fs_join(model, "model.safetensors", a1[..])) != FS_FILE || fs_kind(fs_join(model, "tokenizer.json", a2[..])) != FS_FILE {
+      dict_note(d[..], DC_E_MODEL_MISSING, "the pinned Parakeet model is not installed: see psionic/docs/parakeet.md, or use --model-dir DIR");
+      return dict_finish(d[..], DC_ERROR, "");
+    }
+    dict_status(d[..], "loading_model", ifx d[0].gpu == 1 then "loading Parakeet (GPU)" else "loading Parakeet (CPU)");
+    db: [1300] u8; k := copy(model, db[..]); err: [512] u8;
+    got := ifx k > 0 then cxdict_model_open(db[0..<k], d[0].gpu, err[..]) else -1;
+    if got != 0 {
+      dict_note(d[..], DC_E_MODEL, ifx got < -1 then cast(string) err[0..<-got - 1] else "the model could not be opened");
+      return dict_finish(d[..], DC_ERROR, "");
+    }
+  }
+
+  dict_status(d[..], "opening_input", "opening the microphone");
+  if cxdict_control_open() < 0 { dict_note(d[..], DC_E_CAPTURE, "cannot watch the keyboard"); result := dict_finish(d[..], DC_ERROR, ""); m := cxdict_model_close(); return result; }
+  if dict_open_input(d[..], f[..]) != 0 {
+    c := cxdict_control_close(); m := cxdict_model_close();
+    return dict_finish(d[..], DC_ERROR, "");
+  }
+
+  if cxdict_dct_reset() != 0 {
+    c := cxdict_capture_close(); c = cxdict_control_close(); m := cxdict_model_close();
+    dict_note(d[..], DC_E_CAPTURE, "out of memory for the 60-second clip");
+    return dict_finish(d[..], DC_ERROR, "");
+  }
+  ticket: [1] int;
+  result := dict_listen(d[..], f[..], ticket[..]);
+  c := cxdict_capture_close();   // the microphone closes as soon as the clip is frozen
+  words: [8000] u8; text := "";
+  if result == -1 {
+    result = dict_recognize(d[..], f[..], ticket[0], words[..]);
+    if result == DC_FINAL { text = cast(string) words[0..<cxdict_dct_text_n()]; }
+  }
+  c = cxdict_control_close();
+  code := dict_finish(d[..], result, text);
+  for i: 0..<words.count { words[i] = 0; }
+  c = cxdict_dct_clear();   // clears the clip, the warm ring and the text
+  m := cxdict_model_close();
+  return code;
+}

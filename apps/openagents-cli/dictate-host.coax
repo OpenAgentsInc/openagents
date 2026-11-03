@@ -1,0 +1,24 @@
+// The dictation host: `openagents dictate` runs this program
+// (apps/openagents-cli/build/openagents-dictate). Its own process, because it
+// links Psionic's resident Parakeet engine, whose generated C shares
+// exported names with the CLI's signing code. See dictate.coax.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "rules.coax";
+#load "out.coax";
+#load "dictate-launch.coax";
+#load "dictate.coax";
+
+cxcli_isatty :: (fd: int) -> int #foreign;
+cxcli_exe_path :: (out: [] u8) -> int #foreign;
+cxproc_exec :: (h: int) -> int #foreign;
+
+tool_main :: () -> int #export_c {
+  a: [1] Args; r: [1] Rep;
+  if !args_load(a[..]) { tool_errln("openagents dictate: arguments too long"); return EXIT_USAGE; }
+  r[0].json = args_has(a[..], "--json");
+  if args_has(a[..], "--help") || args_has(a[..], "-h") { dictate_usage(); return EXIT_OK; }
+  return dictate_main(a[..], r[..]);
+}

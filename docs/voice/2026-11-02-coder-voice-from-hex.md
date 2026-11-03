@@ -14,6 +14,13 @@ links `libpsionic-parakeet.a`, and only final text is inserted. D0/D1 and
 D3/D4 are not completed by the Mac integration; the proposed latency targets
 are still targets. [Checks and limits](../verification/coder-dictation-2026-11-02/README.md).
 
+D0 is implemented as `openagents dictate` (GitHub #12667): the same shared
+controller and resident Parakeet, final-only, with Enter/Escape/Ctrl-C,
+`--seconds`, `--wait-for-enter`, `--json` and `--events` (status lines, no
+partials). No speech exits 9, not 4: the CLI already uses 4 for "forbidden",
+which is what a denied microphone returns. Real-microphone acceptance is in
+`NEEDS_OWNER.md`; [CLI record](../verification/dictate-cli-2026-11-02/README.md).
+
 The default `openagents transcribe FILE` now also selects local Parakeet.
 [CLI setup and limits](../../psionic/docs/parakeet.md) are separate from
 D0 microphone capture; bounded long-file text/JSON/SRT/VTT is implemented,
@@ -282,7 +289,10 @@ machine, model and build, as coax-native-voice.md requires.
 
 Each phase ends with its checks passing and a measurement committed.
 
-- **D0. `openagents dictate`.** C capture on macOS through `AudioQueue`,
+- **D0. `openagents dictate`.** Implemented (#12667), with Parakeet instead of
+  Whisper, `--wait-for-enter` and `--events` instead of `--stream`, no
+  `--words` yet, and Linux capture through PipeWire/PulseAudio/ALSA recorders.
+  The original plan: C capture on macOS through `AudioQueue`,
   `verse/voice.coax` for resampling and levels, `apps/shared/dictation.coax`
   for the timeline and gates, `psionic-stt.h` for recognition. Flags:
   `--model`, `--words`, `--seconds`, `--stream` (JSON lines: `partial`,

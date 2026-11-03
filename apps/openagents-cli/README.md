@@ -334,6 +334,58 @@ openagents transcribe fetch medium --backend psionic   # explicit legacy Whisper
   [the transcription record](../../psionic/docs/transcribe.md).
 - Status/errors go to stderr; only successful transcript output goes to stdout.
 
+## Dictate
+
+```shell
+openagents dictate                       # listen now; Enter stops, Esc or Ctrl-C cancels; prints the text
+openagents dictate --seconds 10 --json   # stop by itself after 10 s; one JSON result
+openagents dictate --wait-for-enter      # load and open first, then Enter starts and Enter stops
+openagents dictate --events              # JSON lines: status events, then one result
+openagents dictate --device cpu --capture alsa --input hw:1   # Linux: name the recognizer device, recorder and input
+```
+
+- Your microphone to text on this computer, with the same pinned Parakeet
+  model as `transcribe` (`--model-dir DIR` or `OPENAGENTS_PARAKEET_MODEL`;
+  nothing is downloaded). The model loads first; the microphone opens only
+  when recognition is ready and closes as soon as the clip is captured.
+- Nothing is pasted, typed, sent or saved: the text goes to stdout, and the
+  audio stays in memory and is cleared after recognition. The shared
+  controller from Coder for Mac decides the timeline (450 ms pre-roll with
+  `--wait-for-enter`, 300 ms minimum, 200 ms tail, 60 s cap), silence,
+  tickets and the exact model segments (at most 3 calls of up to 327,520
+  samples); the resident engine's utterance buffers are cleared after each call.
+- Controls: Enter, Escape, Ctrl-C (or SIGINT/SIGTERM from a parent). On a
+  terminal the keys are read without echo; other keys and end of input do
+  nothing. `--seconds N` (1 to 60) stops by itself.
+- Recognition device: `--device gpu|cpu`; the default is the GPU (Metal) on
+  macOS and the CPU on Linux. A named device never falls back to the other.
+  Parakeet on a Linux CPU takes about 8 to 15 times the audio's length.
+- Capture: CoreAudio on macOS (`--input UID` names one input; a missing one
+  is an error, never the default instead). On Linux the command runs a
+  recorder that writes mono 32-bit float to a pipe: `pw-record` (PipeWire,
+  the default), `parec` (`--capture pulse`) or `arecord` (`--capture alsa`);
+  `--input` is its target, and PipeWire is told not to fall back.
+- `--json` prints one object, `"schema":"openagents.dictation.v1"`, with
+  `"type"` `final` (`text`, `samples`, `audio_ms`, `segments`, `limited`),
+  `no_speech` (`reason`: `silence` or `too_short`), `cancelled` or `error`
+  (`error`: `permission`, `model_missing`, `model`, `device`, `program`,
+  `capture`, `format`, `recognition` or `too_long`, and a `message`), plus
+  `exit`, `recognizer`, `model`, `revision`, `device` and `capture`.
+  `--events` prints `"type":"status"` lines first (`loading_model`,
+  `opening_input`, `ready`, `listening`, `finishing`, `recognizing`): they
+  carry a state, never words. There are no partial transcripts yet; the one
+  `final` is the whole clip's text.
+- Exit codes: 0 text, 9 no speech, 130 cancelled, 4 microphone permission
+  denied, 6 model or input not found, 8 recorder program missing, 1 any other
+  failure, 2 usage. In text mode only the final text goes to stdout.
+- `openagents dictate` runs `build/openagents-dictate` beside it (built by
+  `build.sh`): the dictation host links Psionic's engine, whose generated C
+  exports names the CLI's signing code also exports.
+- Checks use recorded audio through a test capture backend (`--capture
+  fixture` with `OPENAGENTS_DICTATE_FIXTURE=FILE.wav`), never your microphone:
+  `coax/web/tool.sh apps/openagents-cli/tests/dictate-check.coax [MODEL_DIR]`.
+  [Record](../../docs/verification/dictate-cli-2026-11-02/README.md).
+
 ## Labs
 
 `labs` makes files from pages, cut lists and games, the same way every time
@@ -372,7 +424,8 @@ openagents labs playtest icecream --set walk=3 --against base.json
 Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
 0 done, 1 failed, 2 usage, 3 no identity or key, 4 forbidden, 5 conflict
 (changed since), 6 not found, 7 slow down, 8 a needed program (Chrome,
-ffmpeg, whisper-cli) is missing.
+ffmpeg, whisper-cli, pw-record) is missing. `dictate` adds 9 no speech and
+130 cancelled, and prints its own JSON result (see Dictate).
 
 ## Files
 
@@ -403,10 +456,16 @@ ffmpeg, whisper-cli) is missing.
 | `rules.coax` | `#authority`: profile names, the stored key's format, words as typed, hex, exit codes, the Pylon log's facts |
 | `transcribe.coax` | the `transcribe` domain: fetch a model, decode with ffmpeg, run the backend, print the transcript |
 | `transcribe-rules.coax` | model names and files, formats, whisper.cpp's segment lines ([segments.coax](../../psionic/lib/whisper/segments.coax) writes text, SRT, WebVTT and JSON) |
+| `dictate-launch.coax` | the `dictate` domain: its usage, and running `build/openagents-dictate` |
+| `dictate-host.coax` | the dictation host's `tool_main` |
+| `dictate.coax` | one dictation: model, input, listening through the shared controller ([dictation.coax](../shared/dictation.coax)), segments, the text or JSON result; the recorded-audio test backend |
+| `dictate-rules.coax` | `#authority`: capture backends, the device, `--seconds`, input names, recorder arguments, control keys, a stalled input, results and exit codes |
+| `dictate-native.c` | effects: the terminal and signals, the recorder pipe, the shared controller's C face, the resident Parakeet engine on a worker thread |
+| `dictate-mac.m` | effects on macOS: microphone permission, CoreAudio inputs and an AudioQueue |
 | `labs.coax` | the `labs` domain: shot, clip, deck, frames, compare, cut, board and playtest, with Chrome ([media.coax](../../coax/lib/media/media.coax)) and ffmpeg |
 | `labs-rules.coax` | the `.cut` and `.board` formats and their checks, cut.v1 JSON, sizes and qualities, times, the playtest summary, Ice Cream Man's headless run |
 | `cli-native.c` | effects: Keychain, 0600 files, stdin without echo, the clock, the host name, process liveness, the executable's path |
-| `build.sh` | compiles `main.coax` to C and links it with the host, sockets and TLS |
+| `build.sh` | compiles `main.coax` to C and links it with the host, sockets and TLS; links the dictation host with the controller and Psionic Parakeet |
 
 A new domain goes in its own file with a `DOMAIN_main` dispatch, one
 `#load` and one line in `main.coax`, and its value flags on their own line of
@@ -422,6 +481,9 @@ coax/bin/coax mutate apps/openagents-cli/project-rules.coax --library    # 750 m
 coax/bin/coax test apps/openagents-cli/account_rules.coax --library
 coax/bin/coax test apps/openagents-cli/transcribe-rules.coax --library
 coax/bin/coax test apps/openagents-cli/labs-rules.coax --library
+coax/bin/coax test apps/openagents-cli/dictate-rules.coax --library
+coax/bin/coax mutate apps/openagents-cli/dictate-rules.coax --library    # 256 mutants, 0 survivors (2026-11-02)
+coax/web/tool.sh apps/openagents-cli/tests/dictate-check.coax [MODEL_DIR]   # the real CLI on recorded audio
 coax/bin/coax mutate apps/openagents-cli/account_rules.coax --library   # 0 survivors (2026-11-01)
 coax/web/api/cli-auth-test.sh https://staging.openagents.com     # the server side of login, as a Coax program
 ```

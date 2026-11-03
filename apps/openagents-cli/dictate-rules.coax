@@ -1,0 +1,252 @@
+// `openagents dictate` decisions (GitHub #12667): which capture backend and
+// recognition device a request names, how long it may listen, what each
+// control key means, when an input has gone quiet, which recorder runs, and
+// how every ending becomes a result kind and an exit code. Timing, silence,
+// tickets and segmentation are the shared controller's
+// (apps/shared/dictation-policy.coax); this file never decides those again.
+// Nothing here pastes, types, sends or writes audio.
+//   coax/bin/coax test apps/openagents-cli/dictate-rules.coax --library
+//   coax/bin/coax mutate apps/openagents-cli/dictate-rules.coax
+#authority;
+
+// ---- capture backends ----
+DC_PIPEWIRE :: 1; DC_PULSE :: 2; DC_ALSA :: 3; DC_COREAUDIO :: 4; DC_FIXTURE :: 5;
+DC_UNKNOWN :: -1; DC_ELSEWHERE :: -2; DC_NO_FIXTURE :: -3;
+
+// The named backend on this system. "" is the system's own: PipeWire on
+// Linux, CoreAudio on macOS. The recorded-audio backend exists only when a
+// test names its fixture (OPENAGENTS_DICTATE_FIXTURE); it never opens a device.
+dc_capture :: (name: string, mac: bool, fixture: bool) -> int {
+  if name == "fixture" { return ifx fixture then DC_FIXTURE else DC_NO_FIXTURE; }
+  if name == "" { return ifx mac then DC_COREAUDIO else DC_PIPEWIRE; }
+  if name == "coreaudio" { return ifx mac then DC_COREAUDIO else DC_ELSEWHERE; }
+  linux := ifx name == "pipewire" then DC_PIPEWIRE else ifx name == "pulse" then DC_PULSE else ifx name == "alsa" then DC_ALSA else DC_UNKNOWN;
+  if linux == DC_UNKNOWN { return DC_UNKNOWN; }
+  return ifx mac then DC_ELSEWHERE else linux;
+}
+
+dc_capture_name :: (kind: int) -> string {
+  if kind == DC_PIPEWIRE { return "pipewire"; }
+  if kind == DC_PULSE { return "pulse"; }
+  if kind == DC_ALSA { return "alsa"; }
+  if kind == DC_COREAUDIO { return "coreaudio"; }
+  if kind == DC_FIXTURE { return "fixture"; }
+  return "";
+}
+
+#test "each system names only its own capture backends" {
+  for mac: [2] bool.[false, true] { for fixture: [2] bool.[false, true] {
+    #assert dc_capture("", mac, fixture) == (ifx mac then DC_COREAUDIO else DC_PIPEWIRE);
+    #assert dc_capture("coreaudio", mac, fixture) == (ifx mac then DC_COREAUDIO else DC_ELSEWHERE);
+    #assert dc_capture("pipewire", mac, fixture) == (ifx mac then DC_ELSEWHERE else DC_PIPEWIRE);
+    #assert dc_capture("pulse", mac, fixture) == (ifx mac then DC_ELSEWHERE else DC_PULSE);
+    #assert dc_capture("alsa", mac, fixture) == (ifx mac then DC_ELSEWHERE else DC_ALSA);
+    #assert dc_capture("fixture", mac, fixture) == (ifx fixture then DC_FIXTURE else DC_NO_FIXTURE);
+    for name: [5] string.["Pipewire", "jack", "auto", "default", "fixtures"] { #assert dc_capture(name, mac, fixture) == DC_UNKNOWN; }
+  }}
+  #assert dc_capture_name(DC_PIPEWIRE) == "pipewire" && dc_capture_name(DC_PULSE) == "pulse" && dc_capture_name(DC_ALSA) == "alsa";
+  #assert dc_capture_name(DC_COREAUDIO) == "coreaudio" && dc_capture_name(DC_FIXTURE) == "fixture";
+  #assert dc_capture_name(0) == "" && dc_capture_name(6) == "" && dc_capture_name(-1) == "";
+}
+
+// ---- recognition device ----
+// "" is the system's own: Metal on macOS, the CPU elsewhere (Parakeet's GPU
+// path is Metal only). A named device is never swapped for the other.
+dc_device :: (name: string, mac: bool) -> int {
+  if name == "gpu" { return 1; }
+  if name == "cpu" { return 0; }
+  if name == "" { return ifx mac then 1 else 0; }
+  return -1;
+}
+
+#test "the recognition device is named or the system's own, never substituted" {
+  #assert dc_device("gpu", false) == 1 && dc_device("gpu", true) == 1;
+  #assert dc_device("cpu", false) == 0 && dc_device("cpu", true) == 0;
+  #assert dc_device("", false) == 0 && dc_device("", true) == 1;
+  for name: [4] string.["GPU", "metal", "cuda", "auto"] { #assert dc_device(name, false) == -1 && dc_device(name, true) == -1; }
+}
+
+// ---- duration ----
+// Seconds of listening before dictation stops by itself: 1 through 60 (the
+// controller's complete capture cap). "" is the whole 60.
+DC_SECONDS :: 60;
+dc_seconds :: (text: string) -> int {
+  if text == "" { return DC_SECONDS; }
+  if text.count > 2 { return -1; }
+  v := 0;
+  for c: text { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  if v < 1 || v > DC_SECONDS { return -1; }
+  return v;
+}
+
+#test "the listening bound is one to sixty whole seconds" {
+  #assert dc_seconds("") == 60 && dc_seconds("1") == 1 && dc_seconds("60") == 60 && dc_seconds("09") == 9 && dc_seconds("30") == 30;
+  for bad: [12] string.["0", "00", "61", "99", "100", "-1", "1.5", "a", " 5", "060", "1:", ":"] { #assert dc_seconds(bad) == -1; }
+}
+
+// ---- input device names ----
+// An explicit input is a CoreAudio UID or a recorder's target name: printable,
+// at most 256 bytes, and never a flag. "" is the system default.
+dc_input :: (name: string) -> bool {
+  if name.count > 256 || (name.count > 0 && name[0] == '-') { return false; }
+  for c: name { if c < 32 || c == 127 { return false; } }
+  return true;
+}
+
+#test "input names are printable bounded and never flags" {
+  #assert dc_input("") && dc_input("alsa_input.usb-Blue-00.analog-stereo") && dc_input("BuiltInMicrophoneDevice");
+  #assert !dc_input("-") && !dc_input("-x") && !dc_input("--target") && !dc_input("a\nb") && !dc_input("a\tb");
+  del: [1] u8; del[0] = 127; #assert !dc_input(cast(string) del[..]);
+  ctl: [1] u8; ctl[0] = 31; #assert !dc_input(cast(string) ctl[..]); ctl[0] = 32; #assert dc_input(cast(string) ctl[..]);
+  #assert dc_input("a-b") && dc_input(" ") && dc_input("~");
+  long: [257] u8; for i: 0..<257 { long[i] = 'x'; }
+  #assert dc_input(cast(string) long[0..<256]) && !dc_input(cast(string) long[..]);
+}
+
+// ---- the recorder a Linux backend runs ----
+// Mono 32-bit float at 48 kHz on stdout, nothing on disk. An explicit
+// target never falls back to another input (PipeWire's node.dont-fallback;
+// parec and arecord fail on a missing device by themselves). Returns argc,
+// or 0 for a backend with no recorder program.
+DC_RATE :: 48000; DC_ARGS :: 17;
+dc_recorder :: (kind: int, input: string, out: [] string) -> int {
+  if out.count < DC_ARGS { return 0; }
+  n := 0;
+  if kind == DC_PIPEWIRE {
+    a := [11] string.["pw-record", "--raw", "--rate", "48000", "--channels", "1", "--format", "f32", "--latency", "20ms", "--media-category"];
+    for s: a { out[n] = s; n += 1; }
+    out[n] = "Capture"; n += 1;
+    if input != "" { out[n] = "-P"; out[n + 1] = "{ node.dont-fallback = true }"; out[n + 2] = "--target"; out[n + 3] = input; n += 4; }
+    out[n] = "-"; n += 1;
+    return n;
+  }
+  if kind == DC_PULSE {
+    a := [5] string.["parec", "--raw", "--format=float32le", "--rate=48000", "--channels=1"];
+    for s: a { out[n] = s; n += 1; }
+    if input != "" { out[n] = "-d"; out[n + 1] = input; n += 2; }
+    return n;
+  }
+  if kind == DC_ALSA {
+    a := [9] string.["arecord", "-q", "-t", "raw", "-f", "FLOAT_LE", "-r", "48000", "-c"];
+    for s: a { out[n] = s; n += 1; }
+    out[n] = "1"; n += 1;
+    if input != "" { out[n] = "-D"; out[n + 1] = input; n += 2; }
+    return n;
+  }
+  return 0;
+}
+
+#test "recorders capture mono float at 48 kHz to stdout and pin an explicit input" {
+  a: [17] string;
+  n := dc_recorder(DC_PIPEWIRE, "", a[..]);
+  #assert n == 13 && a[0] == "pw-record" && a[1] == "--raw" && a[3] == "48000" && a[5] == "1" && a[7] == "f32" && a[9] == "20ms" && a[11] == "Capture" && a[12] == "-";
+  n = dc_recorder(DC_PIPEWIRE, "mic", a[..]);
+  #assert n == 17 && a[12] == "-P" && a[13] == "{ node.dont-fallback = true }" && a[14] == "--target" && a[15] == "mic" && a[16] == "-";
+  n = dc_recorder(DC_PULSE, "", a[..]);
+  #assert n == 5 && a[0] == "parec" && a[2] == "--format=float32le" && a[3] == "--rate=48000" && a[4] == "--channels=1";
+  n = dc_recorder(DC_PULSE, "src", a[..]);
+  #assert n == 7 && a[5] == "-d" && a[6] == "src";
+  n = dc_recorder(DC_ALSA, "", a[..]);
+  #assert n == 10 && a[0] == "arecord" && a[1] == "-q" && a[3] == "raw" && a[5] == "FLOAT_LE" && a[7] == "48000" && a[8] == "-c" && a[9] == "1";
+  n = dc_recorder(DC_ALSA, "hw:1", a[..]);
+  #assert n == 12 && a[10] == "-D" && a[11] == "hw:1";
+  #assert dc_recorder(DC_COREAUDIO, "", a[..]) == 0 && dc_recorder(DC_FIXTURE, "", a[..]) == 0 && dc_recorder(0, "", a[..]) == 0;
+  small: [16] string; #assert dc_recorder(DC_PIPEWIRE, "", small[..]) == 0;
+}
+
+// ---- control keys ----
+// Enter starts (when waiting for it) and then stops; Escape, Ctrl-C and a
+// signal cancel. End of input and every other byte change nothing: words
+// and other keys are never commands.
+DC_KEY_NONE :: 0; DC_KEY_START :: 1; DC_KEY_STOP :: 2; DC_KEY_CANCEL :: 3;
+DC_POLL_SIGNAL :: -3;
+dc_key :: (byte: int, started: bool) -> int {
+  if byte == 10 || byte == 13 { return ifx started then DC_KEY_STOP else DC_KEY_START; }
+  if byte == 27 || byte == 3 || byte == DC_POLL_SIGNAL { return DC_KEY_CANCEL; }
+  return DC_KEY_NONE;
+}
+
+#forall "only Enter Escape Ctrl-C and a signal mean anything" b: -4..<257, s: 0..<2 {
+  k := dc_key(b, s == 1);
+  if b == 10 || b == 13 { #assert k == (ifx s == 1 then DC_KEY_STOP else DC_KEY_START); }
+  else if b == 27 || b == 3 || b == -3 { #assert k == DC_KEY_CANCEL; }
+  else { #assert k == DC_KEY_NONE; }
+}
+
+// ---- a quiet input ----
+// Audio must arrive within 2 s of opening the input and never pause for
+// more than 1 s after that; otherwise the input has failed (a missing
+// device, a stalled recorder), not gone silent: silence still arrives.
+DC_FIRST_AUDIO_MS :: 2000; DC_GAP_MS :: 1000;
+dc_input_stalled :: (now: int, opened: int, last_audio: int, any: bool) -> bool {
+  if !any { return now - opened > DC_FIRST_AUDIO_MS; }
+  return now - last_audio > DC_GAP_MS;
+}
+
+#test "an input stalls after two quiet seconds at first and one after audio" {
+  #assert !dc_input_stalled(3000, 1000, 0, false) && dc_input_stalled(3001, 1000, 0, false);
+  #assert !dc_input_stalled(3000, 1000, 2000, true) && dc_input_stalled(3001, 1000, 2000, true);
+  #assert !dc_input_stalled(2500, 1000, 2400, true) && !dc_input_stalled(1000, 1000, 0, false);
+}
+
+// ---- results and exit codes ----
+// The four endings. Output and exit code depend only on these.
+DC_FINAL :: 0; DC_NO_SPEECH :: 1; DC_CANCELLED :: 2; DC_ERROR :: 3;
+// What failed. The first five are the controller's fault reasons.
+DC_E_PERMISSION :: 1; DC_E_MODEL :: 2; DC_E_CAPTURE :: 3; DC_E_RECOGNITION :: 4; DC_E_FORMAT :: 5;
+DC_E_DEVICE :: 6; DC_E_PROGRAM :: 7; DC_E_MODEL_MISSING :: 8; DC_E_TOO_LONG :: 9;
+
+dc_error_name :: (e: int) -> string {
+  if e == DC_E_PERMISSION { return "permission"; }
+  if e == DC_E_MODEL { return "model"; }
+  if e == DC_E_RECOGNITION { return "recognition"; }
+  if e == DC_E_FORMAT { return "format"; }
+  if e == DC_E_DEVICE { return "device"; }
+  if e == DC_E_PROGRAM { return "program"; }
+  if e == DC_E_MODEL_MISSING { return "model_missing"; }
+  if e == DC_E_TOO_LONG { return "too_long"; }
+  return "capture";
+}
+
+DC_EXIT_OK :: 0; DC_EXIT_FAIL :: 1; DC_EXIT_FORBIDDEN :: 4; DC_EXIT_NOT_FOUND :: 6;
+DC_EXIT_MISSING :: 8; DC_EXIT_NO_SPEECH :: 9; DC_EXIT_CANCELLED :: 130;
+dc_exit :: (result: int, e: int) -> int {
+  if result == DC_FINAL { return DC_EXIT_OK; }
+  if result == DC_NO_SPEECH { return DC_EXIT_NO_SPEECH; }
+  if result == DC_CANCELLED { return DC_EXIT_CANCELLED; }
+  if e == DC_E_PERMISSION { return DC_EXIT_FORBIDDEN; }
+  if e == DC_E_DEVICE || e == DC_E_MODEL_MISSING { return DC_EXIT_NOT_FOUND; }
+  if e == DC_E_PROGRAM { return DC_EXIT_MISSING; }
+  return DC_EXIT_FAIL;
+}
+
+#test "every ending has one stable exit code and error name" {
+  for e: 0..<11 {
+    #assert dc_exit(DC_FINAL, e) == 0 && dc_exit(DC_NO_SPEECH, e) == 9 && dc_exit(DC_CANCELLED, e) == 130;
+    want := ifx e == 1 then 4 else ifx e == 6 || e == 8 then 6 else ifx e == 7 then 8 else 1;
+    #assert dc_exit(DC_ERROR, e) == want;
+  }
+  names := [11] string.["capture", "permission", "model", "capture", "recognition", "format", "device", "program", "model_missing", "too_long", "capture"];
+  for e: 0..<11 { #assert dc_error_name(e) == names[e]; }
+}
+
+// The controller's outcome (dictation-policy.coax) once a capture is over:
+// success is final text; silence and a tap are no speech; a cancel is
+// cancelled; an error is an error. -1 while it is still listening or the
+// clip is waiting for recognition (no outcome, or the duration cap).
+dc_result :: (outcome: int) -> int {
+  if outcome == 5 { return DC_FINAL; }
+  if outcome == 1 || outcome == 2 { return DC_NO_SPEECH; }
+  if outcome == 3 { return DC_CANCELLED; }
+  if outcome == 4 { return DC_ERROR; }
+  return -1;
+}
+// No speech says why: a hold under 300 ms, or nothing loud and voiced.
+dc_no_speech_reason :: (outcome: int) -> string { return ifx outcome == 1 then "too_short" else "silence"; }
+
+#test "controller outcomes map to the four endings" {
+  wants := [8] int.[-1, 1, 1, 2, 3, 0, -1, -1];
+  for o: 0..<8 { #assert dc_result(o) == wants[o]; }
+  #assert dc_result(-1) == -1;
+  #assert dc_no_speech_reason(1) == "too_short" && dc_no_speech_reason(2) == "silence" && dc_no_speech_reason(5) == "silence";
+}

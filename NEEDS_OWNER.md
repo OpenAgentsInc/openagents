@@ -596,6 +596,31 @@ open the microphone or request permission. In OpenAgents for Mac:
 An unavailable explicit selection must show as unavailable rather than silently
 using another input. [Software record](docs/verification/coder-dictation-devices-2026-11-02/README.md).
 
+### `openagents dictate`: a real microphone on the Mac and on Linux (#12667)
+
+The command was built and checked on coderos-4080 with recorded audio only:
+a test capture backend, and a stand-in `pw-record` that writes zeros. No
+microphone was opened. The macOS capture file (`apps/openagents-cli/dictate-mac.m`,
+CoreAudio and AVFoundation) could not be compiled on Linux.
+
+- [ ] On the Mac: `apps/openagents-cli/build.sh`. Confirm it compiles
+      `dictate-mac.m` and links `build/openagents-dictate` with Metal.
+- [ ] Run `apps/openagents-cli/build/openagents dictate` in Terminal. macOS
+      asks for microphone access for Terminal once; allow it, say a sentence,
+      press Enter. Confirm the text prints, and that the microphone indicator
+      goes off as soon as recognition starts.
+- [ ] Deny access (System Settings > Privacy & Security > Microphone), run it
+      again: confirm exit 4 and the message naming that setting. Re-allow it.
+- [ ] `openagents dictate --input NOT-A-UID`: confirm exit 6, and that no
+      other microphone is used. Unplug the selected input while listening:
+      confirm a capture error and no text.
+- [ ] Run `coax/web/tool.sh apps/openagents-cli/tests/dictate-check.coax
+      ~/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99` and
+      add its lines (Metal) to [the record](docs/verification/dictate-cli-2026-11-02/README.md).
+- [ ] On a Linux desktop with PipeWire: `openagents dictate --seconds 10`,
+      speak, and confirm the text. On CPU it takes about 8 to 15 times the
+      audio's length. Try `--capture alsa` (or `pulse`) if PipeWire is absent.
+
 ### Verse voice host: Parakeet recognition on the Mac (#12669)
 
 The Parakeet recognizer (`verse/voice-host --recognizer parakeet`) was built and

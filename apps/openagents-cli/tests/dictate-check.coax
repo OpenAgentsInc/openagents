@@ -1,0 +1,263 @@
+// `openagents dictate` through the real CLI (GitHub #12667): every case runs
+// apps/openagents-cli/build/openagents dictate, which runs the dictation host.
+// No microphone is opened and no sound is played: audio comes from the
+// recorded-audio capture backend (verse/voice-host/fixtures), or, for the
+// Linux recorder path, from a stand-in `pw-record` on PATH that writes zeros
+// or ends at once. Run from the repository root after apps/openagents-cli/build.sh:
+//   coax/web/tool.sh apps/openagents-cli/tests/dictate-check.coax [MODEL_DIR [CASE]]
+// Without MODEL_DIR only the cases that need no model run (a stand-in
+// recognizer answers, and the output says "fixture"). With it, the recorder
+// cases load the model, and "parakeet" recognizes a recorded clip on the CPU
+// (slow on Linux: 8-15x real time). CASE runs the cases whose name contains it.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../aethyr/audio/wav.coax";
+
+Run :: struct { out: [131072] u8; out_n: int; err: [16384] u8; err_n: int; status: int; ms: int; }
+
+has :: (hay: string, needle: string) -> bool {
+  i := 0;
+  while i + needle.count <= hay.count { if hay[i..<i + needle.count] == needle { return true; } i += 1; }
+  return false;
+}
+count :: (hay: string, needle: string) -> int {
+  n := 0; i := 0;
+  while i + needle.count <= hay.count { if hay[i..<i + needle.count] == needle { n += 1; } i += 1; }
+  return n;
+}
+
+// Adds each "|"-separated item as an argument (or an environment entry).
+each :: (h: int, items: string, env: bool) -> bool {
+  i := 0; ok := true;
+  while i < items.count {
+    j := i; while j < items.count && items[j] != '|' { j += 1; }
+    item := items[i..<j];
+    ok = ok && (ifx env then proc_env(h, item) else proc_arg(h, item));
+    i = j + 1;
+  }
+  return ok;
+}
+// Joins up to four strings with "|" (empty ones left out).
+Buf :: struct { b: [8192] u8; }
+bar :: (out: [] Buf, a: string, b: string, c: string, d: string) -> string {
+  n := 0; parts := [4] string.[a, b, c, d];
+  for p: parts {
+    if p == "" { continue; }
+    if n > 0 { out[0].b[n] = '|'; n += 1; }
+    for i: 0..<p.count { out[0].b[n] = p[i]; n += 1; }
+  }
+  return cast(string) out[0].b[0..<n];
+}
+
+// Runs the CLI with args and env ("K=V" entries). stdin: closed at once
+// unless keep_stdin; send is written first; signal_ms >= 0 sends SIGINT then.
+run :: (cli: string, args_text: string, env_text: string, keep_stdin: bool, send: string, signal_ms: int, r: [] Run) -> bool {
+  r[0].out_n = 0; r[0].err_n = 0; r[0].status = -1;
+  t0 := proc_now_ms();
+  h := proc_new(); ok := proc_arg(h, cli) && proc_arg(h, "dictate");
+  ok = ok && each(h, args_text, false) && each(h, env_text, true);
+  if !ok || proc_start(h) != 0 { d := proc_release(h); return false; }
+  if send != "" { s := proc_send(h, send); }
+  if !keep_stdin { c := proc_close_stdin(h); }
+  if signal_ms >= 0 { proc_sleep(signal_ms); k := proc_kill(h, 2); }
+  line: [65536] u8;
+  while true {
+    n := proc_line(h, 840000, line[..]);
+    if n < 0 { break; }
+    for i: 0..<n { if r[0].out_n < r[0].out.count { r[0].out[r[0].out_n] = line[i]; r[0].out_n += 1; } }
+    if r[0].out_n < r[0].out.count { r[0].out[r[0].out_n] = '\n'; r[0].out_n += 1; }
+  }
+  r[0].status = proc_wait(h, 30000);
+  r[0].err_n = proc_stderr(h, r[0].err[..]).count;
+  d := proc_release(h);
+  r[0].ms = proc_now_ms() - t0;
+  return true;
+}
+
+join2 :: (a: string, b: string, out: [] u8) -> string {
+  if a.count + b.count > out.count { return ""; }
+  for i: 0..<a.count { out[i] = a[i]; }
+  for i: 0..<b.count { out[a.count + i] = b[i]; }
+  return cast(string) out[0..<a.count + b.count];
+}
+
+Tally :: struct { pass: int; fail: int; }
+check :: (t: [] Tally, name: string, r: [] Run, ok: bool) {
+  print("% % (exit %, % ms)\n", ifx ok then "ok  " else "FAIL", name, r[0].status, r[0].ms);
+  if ok { t[0].pass += 1; return; }
+  t[0].fail += 1;
+  print("  stdout: %\n", cast(string) r[0].out[0..<r[0].out_n]);
+  print("  stderr: %\n", cast(string) r[0].err[0..<r[0].err_n]);
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) > 2 { tool_errln("usage: dictate-check [MODEL_DIR [CASE]]"); return 2; }
+  model := ifx args_count(a[..]) >= 1 then args_at(a[..], 0) else "";
+  only := ifx args_count(a[..]) >= 2 then args_at(a[..], 1) else "";
+  cw: [4096] u8; root := fs_cwd(cw[..]);
+  cb: [4200] u8; cli := fs_join(root, "apps/openagents-cli/build/openagents", cb[..]);
+  if fs_kind(cli) != FS_FILE { tool_errln("build the CLI first: apps/openagents-cli/build.sh"); return 2; }
+  wb: [4200] u8; wav := fs_join(root, "verse/voice-host/fixtures/wait-stop.wav", wb[..]);
+  tb: [1024] u8; tmp := fs_temp("dictate-check", tb[..]);
+  if tmp == "" { tool_errln("no temporary directory"); return 2; }
+  // 1.5 s of digital silence, as a recorded input.
+  sb: [1100] u8; quiet := fs_join(tmp, "silence.wav", sb[..]);
+  pcm: [24000] int; bytes: [48100] u8; w := wav_write(pcm[..], 1, 16000, bytes[..]);
+  if w < 0 || !fs_write(quiet, cast(string) bytes[0..<w]) { tool_errln("cannot write the silence fixture"); return 2; }
+  // An installed-looking model directory whose files are empty.
+  eb: [1100] u8; empty := fs_join(tmp, "empty-model", eb[..]); mk := fs_mkdir(empty);
+  e1: [1200] u8; e2: [1200] u8;
+  okm := fs_write(fs_join(empty, "model.safetensors", e1[..]), "") && fs_write(fs_join(empty, "tokenizer.json", e2[..]), "");
+  // Stand-in recorders on PATH: one writes zeros (silence) forever, one ends at once.
+  zb: [1100] u8; zdir := fs_join(tmp, "zeros", zb[..]); mk = fs_mkdir(zdir);
+  xb: [1100] u8; xdir := fs_join(tmp, "ends", xb[..]); mk = fs_mkdir(xdir);
+  nb: [1100] u8; ndir := fs_join(tmp, "none", nb[..]); mk = fs_mkdir(ndir);
+  z1: [1200] u8; zrec := fs_join(zdir, "pw-record", z1[..]);
+  x1: [1200] u8; xrec := fs_join(xdir, "pw-record", x1[..]);
+  okr := fs_write(zrec, "#!/bin/sh\nexec cat /dev/zero\n") && fs_write(xrec, "#!/bin/sh\nexit 3\n");
+  o: [256] u8; e: [256] u8; chmod := [4] string.["chmod", "+x", zrec, xrec]; cr := proc_run(chmod[..], 10000, o[..], e[..]);
+  if !okm || !okr || cr.status != 0 { tool_errln("cannot prepare stand-in files"); return 2; }
+
+  fx: [4300] u8; fixture := join2("OPENAGENTS_DICTATE_FIXTURE=", wav, fx[..]);
+  fq: [1300] u8; fixture_quiet := join2("OPENAGENTS_DICTATE_FIXTURE=", quiet, fq[..]);
+  text := "OPENAGENTS_DICTATE_FIXTURE_TEXT=Wait, stop.";
+  stop := "OPENAGENTS_DICTATE_FIXTURE_CONTROL=stop@2600";
+  t: [1] Tally; r: [1] Run; jb: [1] Buf; kb: [1] Buf;
+  out := ""; err := "";
+
+  if has("final-json", only) || only == "" {
+    ok := run(cli, "--capture|fixture|--json", bar(kb[..], fixture, text, stop, ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    check(t[..], "final-json: one final object, exact bytes, ticketed text", r[..], ok && r[0].status == 0 && count(out, "\n") == 1
+      && has(out, "{\"schema\":\"openagents.dictation.v1\",\"type\":\"final\",\"text\":\"Wait, stop.\",\"exit\":0,\"samples\":44800,\"audio_ms\":2800,\"segments\":1,\"limited\":false,\"recognizer\":\"fixture\""));
+  }
+  if has("final-text", only) || only == "" {
+    ok := run(cli, "--capture|fixture", bar(kb[..], fixture, text, stop, ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    check(t[..], "final-text: stdout is only the text", r[..], ok && r[0].status == 0 && out == "Wait, stop.\n");
+  }
+  if has("events", only) || only == "" {
+    ok := run(cli, "--capture|fixture|--events", bar(kb[..], fixture, text, stop, ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    // Status lines carry a state and never words; exactly one terminal result.
+    check(t[..], "events: status lines then one final, no partial text", r[..], ok && r[0].status == 0
+      && has(out, "\"type\":\"status\",\"state\":\"opening_input\"}\n{\"schema\":\"openagents.dictation.v1\",\"type\":\"status\",\"state\":\"listening\"}\n{\"schema\":\"openagents.dictation.v1\",\"type\":\"status\",\"state\":\"finishing\"}\n{\"schema\":\"openagents.dictation.v1\",\"type\":\"status\",\"state\":\"recognizing\"}\n{\"schema\":\"openagents.dictation.v1\",\"type\":\"final\",\"text\":\"Wait, stop.\"")
+      && count(out, "\"type\":\"status\"") == 4 && count(out, "\"text\"") == 1 && count(out, "\n") == 5);
+  }
+  if has("seconds", only) || only == "" {
+    ok := run(cli, "--capture|fixture|--json|--seconds|1", bar(kb[..], fixture, text, "", ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    check(t[..], "seconds: --seconds 1 stops by itself, with the 200 ms tail", r[..], ok && r[0].status == 0 && has(out, "\"type\":\"final\"") && has(out, "\"samples\":19200,") && has(out, "\"limited\":false"));
+  }
+  if has("cap", only) || only == "" {
+    ok := run(cli, "--capture|fixture|--json", bar(kb[..], fixture, "OPENAGENTS_DICTATE_FIXTURE_TEXT=part", "", ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    check(t[..], "cap: 60 s cap, three exact segments, joined once each", r[..], ok && r[0].status == 0 && has(out, "\"text\":\"part part part\"") && has(out, "\"samples\":952800,") && has(out, "\"segments\":3,\"limited\":true"));
+  }
+  if has("silence", only) || only == "" {
+    ok := run(cli, "--capture|fixture|--json", bar(kb[..], fixture_quiet, text, stop, ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    check(t[..], "silence: no speech, no recognition call, exit 9", r[..], ok && r[0].status == 9 && has(out, "\"type\":\"no_speech\",\"reason\":\"silence\",\"exit\":9") && has(out, "\"segments\":0"));
+  }
+  if has("tap", only) || only == "" {
+    ok := run(cli, "--capture|fixture", bar(kb[..], fixture, text, "OPENAGENTS_DICTATE_FIXTURE_CONTROL=stop@200", ""), false, "", -1, r[..]);
+    err = cast(string) r[0].err[0..<r[0].err_n];
+    check(t[..], "tap: a 200 ms hold is too short, nothing on stdout", r[..], ok && r[0].status == 9 && r[0].out_n == 0 && has(err, "no speech detected (too_short)"));
+  }
+  if has("cancel-script", only) || only == "" {
+    ok := run(cli, "--capture|fixture|--json", bar(kb[..], fixture, text, "OPENAGENTS_DICTATE_FIXTURE_CONTROL=cancel@1500", ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    check(t[..], "cancel-script: cancelled, no text, exit 130", r[..], ok && r[0].status == 130 && has(out, "\"type\":\"cancelled\",\"exit\":130") && !has(out, "\"text\""));
+  }
+  if has("cancel-escape", only) || only == "" {
+    esc: [1] u8; esc[0] = 27;
+    ok := run(cli, "--capture|fixture|--wait-for-enter", bar(kb[..], fixture, text, "", ""), true, cast(string) esc[..], -1, r[..]);
+    check(t[..], "cancel-escape: Escape on stdin cancels while waiting for Enter", r[..], ok && r[0].status == 130 && r[0].out_n == 0);
+  }
+  if has("cancel-signal", only) || only == "" {
+    ok := run(cli, "--capture|fixture|--wait-for-enter", bar(kb[..], fixture, text, "", ""), true, "", 500, r[..]);
+    check(t[..], "cancel-signal: SIGINT cancels, exit 130", r[..], ok && r[0].status == 130 && r[0].out_n == 0);
+  }
+  if has("start-enter", only) || only == "" {
+    ok := run(cli, "--capture|fixture|--json|--wait-for-enter|--seconds|2", bar(kb[..], fixture, text, "OPENAGENTS_DICTATE_FIXTURE_CONTROL=start@1000", ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    // Started 1 s in: the warm ring's 450 ms pre-roll, 2 s, and the 200 ms tail (2650 ms).
+    check(t[..], "start-enter: explicit start keeps a 450 ms pre-roll", r[..], ok && r[0].status == 0 && has(out, "\"type\":\"final\",\"text\":\"Wait, stop.\",\"exit\":0,\"samples\":42400,"));
+  }
+  faults := [8] string.["permission", "device", "program", "stall", "ended", "format", "recognition", ""];
+  names := [8] string.["\"error\":\"permission\"", "\"error\":\"device\"", "\"error\":\"program\"", "\"error\":\"capture\"", "\"error\":\"capture\"", "\"error\":\"format\"", "\"error\":\"recognition\"", ""];
+  codes := [8] int.[4, 6, 8, 1, 1, 1, 1, 0];
+  for k: 0..<7 {
+    cb2: [64] u8; cn := join2("fault-", faults[k], cb2[..]);
+    if !has(cn, only) && only != "" { continue; }
+    fe: [128] u8; f := join2("OPENAGENTS_DICTATE_FIXTURE_FAULT=", faults[k], fe[..]);
+    ok := run(cli, "--capture|fixture|--json", bar(kb[..], fixture, text, stop, f), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    check(t[..], cn, r[..], ok && r[0].status == codes[k] && has(out, "\"type\":\"error\",") && has(out, names[k]) && !has(out, "\"text\""));
+  }
+  if has("model-missing", only) || only == "" {
+    ok := run(cli, "--capture|fixture|--json|--model-dir|/nonexistent/parakeet", bar(kb[..], fixture, stop, "", ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    check(t[..], "model-missing: exit 6 before any input opens", r[..], ok && r[0].status == 6 && has(out, "\"error\":\"model_missing\"") && !has(out, "status"));
+  }
+  if has("model-bad", only) || only == "" {
+    ok := run(cli, bar(jb[..], "--capture|fixture|--json|--device|cpu|--model-dir", empty, "", ""), bar(kb[..], fixture, stop, "", ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    check(t[..], "model-bad: an unreadable model is a model error, exit 1", r[..], ok && r[0].status == 1 && has(out, "\"error\":\"model\",\"message\":\"cannot map model.safetensors\""));
+  }
+  if has("usage", only) || only == "" {
+    ok := run(cli, "--capture|fixture|--seconds|0", bar(kb[..], fixture, "", "", ""), false, "", -1, r[..]);
+    a1 := ok && r[0].status == 2;
+    ok = run(cli, "--capture|coreaudio", bar(kb[..], fixture, "", "", ""), false, "", -1, r[..]);
+    a2 := ok && r[0].status == 2;
+    ok = run(cli, "--capture|fixture", "OPENAGENTS_DICTATE_FIXTURE=", false, "", -1, r[..]);
+    a3 := ok && r[0].status == 2;
+    ok = run(cli, "--capture|fixture|--words|Coax", bar(kb[..], fixture, "", "", ""), false, "", -1, r[..]);
+    a4 := ok && r[0].status == 2;
+    ok = run(cli, "--capture|fixture|clip.wav", bar(kb[..], fixture, "", "", ""), false, "", -1, r[..]);
+    check(t[..], "usage: bad seconds, foreign backend, no fixture, Whisper options and a file are refused", r[..], a1 && a2 && a3 && a4 && ok && r[0].status == 2);
+  }
+  if model != "" {
+    md: [1300] u8; mdir := join2("OPENAGENTS_PARAKEET_MODEL=", model, md[..]);
+    if has("gpu-linux", only) || only == "" {
+      ok := run(cli, "--capture|fixture|--json|--device|gpu", bar(kb[..], fixture, stop, mdir, ""), false, "", -1, r[..]);
+      out = cast(string) r[0].out[0..<r[0].out_n];
+      check(t[..], "gpu-linux: a named GPU never falls back to the CPU", r[..], ok && (tool_os() == TOOL_MAC || (r[0].status == 1 && has(out, "\"error\":\"model\",\"message\":\"this build has no Apple Metal backend\""))));
+    }
+    if tool_os() != TOOL_MAC {
+      pb: [8192] u8; pb2: [8192] u8; path := join2("PATH=", ndir, pb[..]);
+      if has("recorder-missing", only) || only == "" {
+        ok := run(cli, "--json|--device|cpu|--capture|pipewire", bar(kb[..], mdir, path, "", ""), false, "", -1, r[..]);
+        out = cast(string) r[0].out[0..<r[0].out_n];
+        check(t[..], "recorder-missing: no pw-record is exit 8", r[..], ok && r[0].status == 8 && has(out, "\"error\":\"program\",\"message\":\"pw-record\""));
+      }
+      if has("recorder-ends", only) || only == "" {
+        path = join2("PATH=", xdir, pb[..]);
+        ok := run(cli, "--json|--device|cpu|--seconds|1", bar(kb[..], mdir, path, "", ""), false, "", -1, r[..]);
+        out = cast(string) r[0].out[0..<r[0].out_n];
+        check(t[..], "recorder-ends: a recorder that exits is a capture error", r[..], ok && r[0].status == 1 && has(out, "\"error\":\"capture\"") && has(out, "\"capture\":\"pipewire\""));
+      }
+      if has("recorder-zeros", only) || only == "" {
+        // The stand-in runs the system's cat: its directory goes first on the usual PATH.
+        sp: [4096] u8; zb2: [8192] u8; path = join2("PATH=", join2(zdir, join2(":", proc_getenv("PATH", sp[..]), zb2[..]), pb2[..]), pb[..]);
+        ok := run(cli, "--json|--device|cpu|--seconds|1", bar(kb[..], mdir, path, "", ""), false, "", -1, r[..]);
+        out = cast(string) r[0].out[0..<r[0].out_n];
+        check(t[..], "recorder-zeros: the pipe path delivers silence as no speech", r[..], ok && r[0].status == 9 && has(out, "\"type\":\"no_speech\",\"reason\":\"silence\"") && has(out, "\"recognizer\":\"parakeet\""));
+      }
+    }
+    if has("parakeet", only) || only == "" {
+      ok := run(cli, "--capture|fixture|--json|--device|cpu", bar(kb[..], fixture, stop, mdir, ""), false, "", -1, r[..]);
+      out = cast(string) r[0].out[0..<r[0].out_n];
+      // The recorded reference (docs/verification/verse-parakeet-2026-11-02): "Wait, stop."
+      check(t[..], "parakeet: the recorded clip through the resident model, exactly", r[..], ok && r[0].status == 0
+        && has(out, "\"type\":\"final\",\"text\":\"Wait, stop.\",\"exit\":0,\"samples\":44800,\"audio_ms\":2800,\"segments\":1,\"limited\":false,\"recognizer\":\"parakeet\""));
+      print("  %", out);
+    }
+  }
+  rm := fs_remove(tmp);
+  print("% passed, % failed\n", t[0].pass, t[0].fail);
+  return ifx t[0].fail == 0 then 0 else 1;
+}

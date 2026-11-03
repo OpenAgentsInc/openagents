@@ -12,7 +12,8 @@
 // pylon.coax (start, stop, status, logs, around scripts/join-pylon.sh), and
 // project.coax (the project queue: list, show, plan, claim, note, done,
 // publish; with project-rules.coax, project-write.coax, project-publish.coax
-// and project-review.coax), transcribe.coax (speech to text), and coder.coax (Coder, the coding
+// and project-review.coax), transcribe.coax (speech to text), dictate-launch.coax
+// (your microphone to text: it runs build/openagents-dictate, dictate-host.coax), and coder.coax (Coder, the coding
 // agent: it runs coder/tui/coder.sh).
 #import "Basic";
 // Signing needs the secp256k1 generator tables, built at compile time: far
@@ -35,6 +36,7 @@
 #load "realm-play.coax";
 #load "admin.coax";
 #load "transcribe.coax";
+#load "dictate-launch.coax";
 #load "labs.coax";
 #load "coder.coax";
 #load "mcp.coax";
@@ -68,6 +70,7 @@ usage :: () {
   realm_usage();
   admin_usage();
   transcribe_usage();
+  dictate_usage();
   labs_usage();
   coder_usage();
   mcp_usage();
@@ -122,6 +125,7 @@ cli_dispatch :: (a: [] Args, r: [] Rep, profile: string, domain: string, verb: s
   if domain == "realm" { return realm_main(a, r, profile, verb); }
   if domain == "admin" { return admin_main(a, r, profile, verb); }
   if domain == "transcribe" { return transcribe_main(a, r, verb); }
+  if domain == "dictate" { return dictate_launch(a, r); }
   if domain == "coder" { return coder_main(a, r); }
   if domain == "labs" { return labs_main(a, r, profile, verb); }
   if domain == "mcp" { return mcp_main(a, r, profile); }

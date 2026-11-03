@@ -1,0 +1,36 @@
+// `openagents dictate` (GitHub #12667): the CLI replaces itself with the
+// dictation host beside it (build/openagents-dictate, dictate-host.coax and
+// dictate.coax), passing every argument after "dictate". The host links
+// Psionic's resident Parakeet engine and the microphone effects; the CLI
+// itself links neither.
+
+dictate_usage :: () {
+  print("%\n", "Dictate (your microphone to text, on this computer):");
+  print("%\n", "  dictate [--seconds N] [--wait-for-enter] [--json|--events] [--device gpu|cpu]");
+  print("%\n", "          [--capture pipewire|pulse|alsa|coreaudio] [--input ID] [--model-dir DIR]");
+  print("%\n", "                                     Enter stops, Esc or Ctrl-C cancels; at most 60 s; pinned local Parakeet v3");
+  print("%\n", "                                     prints the final text; nothing is pasted, typed, sent or saved");
+  print("%\n", "                                     exit 0 text, 9 no speech, 130 cancelled, 4 microphone permission denied,");
+  print("%\n", "                                     6 model or input not found, 8 recorder program missing, 1 failed");
+}
+
+dictate_launch :: (a: [] Args, r: [] Rep) -> int {
+  exe: [4096] u8; en := cxcli_exe_path(exe[..]);
+  if en <= 0 { return fail(r, EXIT_NOT_FOUND, "cannot find this program's own path"); }
+  cut := en; while cut > 0 && exe[cut - 1] != '/' { cut -= 1; }
+  hb: [4200] u8; host := fs_join(cast(string) exe[0..<cut], "openagents-dictate", hb[..]);
+  if fs_kind(host) != FS_FILE { return fail(r, EXIT_NOT_FOUND, "openagents-dictate is not beside openagents: build both with apps/openagents-cli/build.sh"); }
+  h := proc_new();
+  ok := proc_arg(h, host);
+  past := false; i := 0;
+  while i < args_count(a) {
+    s := args_at(a, i);
+    i += 1;
+    if !past { if s == "dictate" { past = true; } else if s == "--json" { ok = ok && proc_arg(h, s); } continue; }
+    if s == "--profile" { i += 1; continue; }
+    ok = ok && proc_arg(h, s);
+  }
+  if !ok { return fail(r, EXIT_USAGE, "arguments too long"); }
+  e := cxproc_exec(h);
+  return fail(r, EXIT_FAIL, "could not run openagents-dictate");
+}
