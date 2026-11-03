@@ -276,7 +276,7 @@ e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #e
   }
   if a.tg == FB_SELF { foe = -1; tx = b[0].c[me].x; ty = b[0].c[me].y; }
   ally := e5rr_most_hurt(r, s);
-  if a.tg == FB_ALLY { foe = ifx tgt >= E5RR_TGT_SEAT then e5rr_of_tgt(tgt) else ally; }
+  if a.tg == FB_ALLY { foe = ifx tgt > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, tgt) else ifx tgt >= E5RR_TGT_SEAT then e5rr_of_tgt(tgt) else ally; }
   // a harmful roll: the other players step out of the battle while it is rolled
   helps := e5rr_helps(a);
   kept_x: [E5RR_SEATS] int; kept_y: [E5RR_SEATS] int;

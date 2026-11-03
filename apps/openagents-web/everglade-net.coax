@@ -10,7 +10,8 @@
 //
 // The face (everglade5e-face.c) opens one WebSocket,
 //   wss://HOST/api/room/relay/everglade/CODE      (?relay=ws://localhost:PORT a room server on this
-//                                                 machine; ?room=pair-x a room of a test's own)
+//                                                 machine, ?relay=wss://openagents.com production's from a
+//                                                 page on this machine; ?room=pair-x a room of a test's own)
 // carries this file's frames out through its Pipe (socket.coax) and hands it every event (net_event).
 // What it keeps:
 //   - the server clock: your monotonic ms plus an offset, first the page's wall clock, then the y
@@ -104,6 +105,7 @@ EgNet :: struct {
   pipe: [1] Pipe;
   out: [WIRE_FRAME] u8;
   frames_in: int; frames_out: int; played: int; hits: int; replays: int;
+  creature_hits: int; creature_deaths: int;   // hits on and deaths of the server's creatures heard
 }
 
 everglade_attach_net :: (s: [] Everglade, n: [] EgNet) #export_c { s[0].net = n; }
@@ -173,6 +175,9 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
     for c: relay[15..<relay.count] { if c < '0' || c > '9' { ok = false; } }
     if ok { m = wire_put(n[0].url[..], 0, relay); n[0].free = true; }
   }
+  // a page on this machine can sit in production's rooms (a two-browser check against the live server)
+  local := url.count > 16 && (url[0..<17] == "http://localhost:" || (url.count > 17 && url[0..<17] == "http://127.0.0.1:"));
+  if local && relay == "wss://openagents.com" { m = wire_put(n[0].url[..], 0, relay); }
   m = wire_put(n[0].url[..], m, "/api/room/relay/");
   m = wire_put(n[0].url[..], m, NET_GAME);
   m = wire_put(n[0].url[..], m, "/");
@@ -447,6 +452,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     h := wire_read_hit(t, r[..]);
     if !r[0].ok { return; }
     n[0].hits += 1;
+    if h.who >= 2000 { n[0].creature_hits += 1; }
     if h.amt <= 0 || !s[0].started { return; }
     at := net_where(s, n, net_who(h.who));
     if at.ok { watch_pop(s, v3(at.x, at.y + 2.1, at.z), h.amt, h.amt >= 25); }
@@ -461,6 +467,12 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     m := sqrt(ix * ix + iy * iy + iz * iz);
     from := ifx m > 0.01 then sub(c0, v3(ix / m, iy / m, iz / m)) else sub(c0, v3(0, 1, 0));
     demo_break(sp_dm(s), pc, from, hi(m, 2));
+    return;
+  }
+  if wire_is(t, "e die") {
+    r[0] = wire_rd(t, 5);
+    who := wire_num(t, r[..]);
+    if r[0].ok && who >= 2000 { n[0].creature_deaths += 1; }
     return;
   }
   if t == "e rebuild" { if sp_on(s) { _ := sp_restore(s, -1); } return; }
@@ -627,8 +639,23 @@ net_cast :: (s: [] Everglade, b: int, at: Point, target: int) -> bool #export_c 
   if !net_live(s) { return false; }
   n := net_of(s);
   n[0].seq += 1;
-  net_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].seq, slot = b, ax = at.x, ay = at.y, az = at.z, tgt = target}));
+  // aimed at (or by) a server creature, the cast names it: the server aims it where the creature is
+  tgt := ifx target >= 0 then target else net_creature_at(n, at, NET_PICK);
+  net_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].seq, slot = b, ax = at.x, ay = at.y, az = at.z, tgt = tgt}));
   return true;
+}
+// The TGT code (2000 + EID) of the summoned creature nearest the point within `reach` m, -1 none.
+NET_PICK :: 1.6;
+net_creature_at :: (n: [] EgNet, at: Point, reach: f32) -> int {
+  best := -1; bd := reach * reach;
+  for e: 0..<NET_ENTS {
+    en := n[0].ents[e];
+    if !en.live || en.kind != WK_BEAST || en.ring_n == 0 || en.hp <= 0 { continue; }
+    dx := en.shown.x - at.x; dz := en.shown.z - at.z;
+    d := dx * dx + dz * dz;
+    if d <= bd { bd = d; best = 2000 + en.eid - NET_MADE_ID; }
+  }
+  return best;
 }
 net_end :: (s: [] Everglade, b: int) -> bool {
   if !net_live(s) { return false; }
@@ -737,8 +764,35 @@ net_draw :: (s: [] Everglade) {
     else if en.kind == WK_THORNS { net_draw_thorns(s, en, age, few); }
     else if en.kind == WK_ZONE { net_draw_zone(s, en, age); }
     else if en.kind == WK_LINE { net_draw_line(s, en, age); }
-    else if en.kind == WK_BEAST { ci_beast(s, clamp_i(en.p1, 1, CI_FORMS - 1), v3(en.shown.x, en.shown.y, en.shown.z), en.shown.yaw, en.run, ifx abs(en.shown.vx) + abs(en.shown.vz) > 0.2 then 1.0f32 else 0.0f32, true, clamp(age / 0.6, 0, 1)); }
+    // a summoned creature is a beast of flesh now (the room's battle has its stat block), not a spirit
+    else if en.kind == WK_BEAST { ci_beast(s, clamp_i(en.p1, 1, CI_FORMS - 1), v3(en.shown.x, en.shown.y, en.shown.z), en.shown.yaw, en.run, ifx abs(en.shown.vx) + abs(en.shown.vz) > 0.2 then 1.0f32 else 0.0f32, false, clamp(age / 0.6, 0, 1)); }
   }
+}
+// Each summoned creature's Hit Points as a bar over it (red on a dark track), once it is near
+// enough to see: its share of P2, its most.
+NET_BEAST_HEAD :: 1.25;    // m over a wolf's feet
+NET_BAR_NEAR :: 40.0;      // m
+net_bars :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  n := at;
+  if !net_live(s) || !sp_on(s) || s[0].above { return n; }
+  nt := net_of(s);
+  k := hi(s[0].dpr, 0.5);
+  you := ab_you(s);
+  for e: 0..<NET_ENTS {
+    en := nt[0].ents[e];
+    if !en.live || en.kind != WK_BEAST || en.ring_n == 0 || en.p2 <= 0 { continue; }
+    p := v3(en.shown.x, en.shown.y + NET_BEAST_HEAD * (ifx en.p1 == CI_FORM_BEAR then 1.35f32 else ifx en.p1 == CI_FORM_MAMMOTH then 2.5f32 else 1.0f32), en.shown.z);
+    gap := flat_gap(p, you);
+    if gap > f32(NET_BAR_NEAR) { continue; }
+    sc := on_screen(u, p, s[0].width, s[0].height);
+    if !sc.ok { continue; }
+    far := clamp01(1 - gap / f32(NET_BAR_NEAR));
+    half := (18 + 14 * far) * k;
+    share := clamp01(f32(en.hp) / f32(en.p2));
+    if lit(out, n, sc.x - half, sc.y, sc.x + half, sc.y, 2.5 * k, 0.3, 0.4 * k, 0.1, 0.08, 0.07, 0) { n += 6; }
+    if share > 0 && lit(out, n, sc.x - half, sc.y, sc.x - half + 2 * half * share, sc.y, 2.5 * k, 0.95, 1.4 * k, WATCH_RED_R, WATCH_RED_G, WATCH_RED_B, 0) { n += 6; }
+  }
+  return n;
 }
 // Conjure Animals' pack: four spectral wolves pacing their small rounds about its middle (ci_wolf's).
 net_draw_pack :: (s: [] Everglade, en: NetEnt, t: f32) {
@@ -943,7 +997,10 @@ net_self_max :: (s: [] Everglade) -> int {
 // For a headless check (everglade5e-face.c coaxial_net_probe): 0 the socket's state, 1 your seat, 2 the
 // other players, 3 creatures and zones, 4 all entities, 5 the clock's source, 6 frames in, 7 frames
 // out, 8 and 9 the first other player's x and z in cm, 10 effects played, 11 the jitter buffer's delay
-// ms, 12 your last acked input, 13 hits heard, 14 re-runs from the server's word, 15 inputs sent.
+// ms, 12 your last acked input, 13 hits heard, 14 re-runs from the server's word, 15 inputs sent,
+// 16 the server's summoned creatures here, 17 their Hit Points together, 18 hits heard on them, 19
+// their deaths heard. 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
+// summoned creature, else 3 m ahead of you: 1 when it went out.
 net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if !net_on(s) { return -1; }
   n := net_of(s);
@@ -966,6 +1023,25 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 13 { return n[0].hits; }
   if field == 14 { return n[0].replays; }
   if field == 15 { return n[0].seq; }
+  if field == 16 || field == 17 {
+    c := 0; hp := 0;
+    for e: 0..<NET_ENTS { en := n[0].ents[e]; if en.live && en.kind == WK_BEAST { c += 1; hp += en.hp; } }
+    return ifx field == 16 then c else hp;
+  }
+  if field == 18 { return n[0].creature_hits; }
+  if field == 19 { return n[0].creature_deaths; }
+  if field >= 200 && field < 200 + SP_SLOTS + AB_N {
+    you := ab_you(s);
+    at := add(you, times(ab_forward(s), 3));
+    bd := 1000000.0f32;
+    for e: 0..<NET_ENTS {
+      en := n[0].ents[e];
+      if !en.live || en.kind != WK_BEAST || en.hp <= 0 { continue; }
+      d := flat_gap(v3(en.shown.x, 0, en.shown.z), you);
+      if d < bd { bd = d; at = v3(en.shown.x, en.shown.y, en.shown.z); }
+    }
+    return ifx net_cast(s, field - 200, at, -1) then 1 else 0;
+  }
   return -1;
 }
 // The pipe's commands, for the face to carry out.
@@ -1189,6 +1265,32 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert net_count(a[..], -1) == 0 && net_count(b[..], -1) == 0 && !net_holds(a[..], AB_CONJURE);
   // a refusal says why
   #assert net_test_hear(a[..], 0, "r 9 range") && cast(string) na[0].said[0..<na[0].said_n] == "CAN'T · RANGE";
+}
+#test "net: a cast aimed at the server's wolf names it (TGT 2000 + EID); one aimed away names none" {
+  a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet; room: [1] NetTestRoom;
+  #assert net_test_pair(a[..], na[..], b[..], nb[..], room[..]);
+  // A's wolf (eid 7, 11 Hit Points of 11) at (4, 7), on B's page too
+  net_test_tick(room[..], 1, 0);
+  net_test_c(room[..], WireC.{eid = 7, kind = WK_BEAST, owner = 0, x = 4, z = 7, hp = 11, p1 = CI_FORM_WOLF, p2 = 11});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  out: [WIRE_FRAME] u8;
+  // B aims Starry Wisp a metre off it: the cast names wolf 7
+  #assert net_cast(b[..], 22, v3(4.8, 0, 7.5), -1);
+  t := net_test_sent(nb[..], 'C', out[..]);
+  r: [1] WireRd; r[0] = wire_rd(t, 1);
+  c := wire_read_cast(t, r[..]);
+  #assert r[0].ok && c.slot == 22 && c.tgt == 2007;
+  // aimed 5 m off, it names none
+  #assert net_cast(b[..], 22, v3(9, 0, 7), -1);
+  t = net_test_sent(nb[..], 'C', out[..]);
+  r[0] = wire_rd(t, 1); c = wire_read_cast(t, r[..]);
+  #assert r[0].ok && c.tgt == -1;
+  // the server says it took 6: both pages have 5 left
+  net_test_tick(room[..], 2, 0);
+  net_test_c(room[..], WireC.{eid = 7, kind = WK_BEAST, owner = 0, x = 4, z = 7, hp = 5, p1 = CI_FORM_WOLF, p2 = 11});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  ka := net_ent(na[..], NET_MADE_ID + 7, false); kb := net_ent(nb[..], NET_MADE_ID + 7, false);
+  #assert ka >= 0 && kb >= 0 && na[0].ents[ka].hp == 5 && nb[0].ents[kb].hp == 5 && nb[0].ents[kb].p2 == 11;
 }
 #test "net: the page's facts name the socket: ?room=, ?relay= on this machine, and none for a golden page" {
   s: [1] Everglade; n: [1] EgNet;

@@ -3655,6 +3655,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   n = draw_text(out, n, word, mb.x0 + 16 * k, mb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   n = fork_hud(s, out, u, n, title_box);   // FORK and its pane (everglade-fork.coax)
   if !eg_pane_open(s) { n = watch_hud(s, out, u, n, mb.y1 + 10 * k); }   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
+  n = net_bars(s, out, u, n);   // the room's summoned creatures' Hit Points (everglade-net.coax)
   n = st_hud(s, out, u, n);   // Blinded, Deafened; what the beasts say (everglade-storm.coax Speak with Animals)
   s[0].guide.button=Box.{};s[0].guide.drawn=0;
   s[0].talk_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
