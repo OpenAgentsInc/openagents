@@ -19,6 +19,19 @@
 //     /tmp/myrealm.wasm verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
 //   CODER_HOME=/tmp/host-home BROWSER=/usr/bin/true coax/web/tool.sh computer-flow ws://localhost:7777 /tmp/myrealm.wasm [SHOTS_DIR]
 //
+// --local SITE SPEC runs it with nothing remote (#12640): the page is this checkout's, served at
+// SITE (http://127.0.0.1:PORT) by `coax/web/tool.sh local-origin --module MYREALM.wasm`, and every
+// /api request is answered here: the page is /realms/built#pine-test, and that realm's spec
+// (/api/playtest/realms/pine-test) is the file SPEC with
+// the owner's lines after it, read again on every request; other reads are 404 and writes 204. With
+// `coder host --engine claude` and a stand-in `claude` (coder/tui/claude_standin.coax) that edits
+// SPEC as the realm tool would, it also checks that the realm reloads when the job's edit lands
+// (the page's rev, realm_probe 2, reaches the spec's), and that STOP stops a long job while it runs.
+// --require-hardware fails unless the page's WebGPU adapter is a GPU's.
+//
+//   CODER_HOME=H BROWSER=/usr/bin/true coax/web/tool.sh computer-flow ws://localhost:7777 --local \
+//     http://127.0.0.1:47999 SPEC [SHOTS_DIR] [--require-hardware]
+//
 // Run it from the repository's root (it runs coder/tui/coder.sh from there). Exit 0 when every check
 // passed, 1 when one failed, 2 for a usage error.
 #import "Basic";
@@ -58,7 +71,9 @@ Flow :: struct {
   label: [256] u8; label_n: int; ask: [128] u8; ask_n: int;
   served_wasm: int; served_spec: int; held_posts: int;
   failed: int; bad: bool;
+  local: bool; site: [256] u8; site_n: int; specf: [1024] u8; specf_n: int;   // --local
 }
+FL_LOCAL_SPEC :: "/api/playtest/realms/pine-test";   // the page is /realms/built#pine-test
 
 // ---- text (pure) -------------------------------------------------------------
 
@@ -199,6 +214,7 @@ fl_message :: (c: [] Cdp, f: [] Flow) {
   url := ifx un > 0 then cast(string) ub[0..<un] else "";
   verb := ifx vn > 0 then cast(string) mb[0..<vn] else "";
   path := fl_path(url);
+  if f[0].local { fl_local(c, f, req, verb, path); return; }
   if jv_get(d, p, "responseStatusCode") >= 0 {
     // the response stage: only the spec stops here
     if path == FL_SPEC && jv_int(d, jv_get(d, p, "responseStatusCode"), 0) == 200 {
@@ -232,6 +248,22 @@ fl_message :: (c: [] Cdp, f: [] Flow) {
     return;
   }
   s5 := fl_on(c, "Fetch.continueRequest", req);
+}
+// --local: an /api request answered here (the spec from its file, other reads 404, writes 204); anything else goes on.
+fl_local :: (c: [] Cdp, f: [] Flow, req: string, verb: string, path: string) {
+  if !fl_starts(path, "/api/") { s1 := fl_on(c, "Fetch.continueRequest", req); return; }
+  if verb != "GET" && verb != "HEAD" {
+    f[0].held_posts += 1;
+    if !fl_fulfill(c, f, req, 204, "text/plain", "") { f[0].bad = true; }
+    return;
+  }
+  if path != FL_LOCAL_SPEC { if !fl_fulfill(c, f, req, 404, "text/plain", "") { f[0].bad = true; } return; }
+  m := fs_read(cast(string) f[0].specf[0..<f[0].specf_n], f[0].spec[..]);
+  owner := "role owner\nowner 1\n";
+  if m <= 0 || m + owner.count > FL_SPEC_MAX { f[0].bad = true; m = 0; }
+  for i: 0..<owner.count { f[0].spec[m + i] = owner[i]; }
+  if !fl_fulfill(c, f, req, 200, "text/plain; charset=utf-8", cast(string) f[0].spec[0..<m + owner.count]) { f[0].bad = true; }
+  f[0].served_spec += 1;
 }
 // Reads messages for ms, answering the page's requests.
 fl_pump :: (c: [] Cdp, f: [] Flow, ms: int) {
@@ -278,6 +310,21 @@ fl_probe :: (c: [] Cdp, f: [] Flow, field: int) -> int {
   return ifx v >= 0 then jv_int(cdp_doc(c), v, -1) else -1;
 }
 fl_view :: (c: [] Cdp, f: [] Flow) -> int { return fl_probe(c, f, FP_VIEW); }
+// The realm's own probe field (myrealm.coax realm_probe: 2 the server's rev, 64 the entities laid), or -1.
+fl_realm :: (c: [] Cdp, f: [] Flow, field: int) -> int {
+  b: [1] FlBuf; fl_put(b[..], "globalThis.coaxial && coaxial.ready ? coaxial.guardProbe("); fl_int(b[..], field); fl_put(b[..], ") : -1");
+  v := fl_eval(c, f, fl_text(b[..]));
+  return ifx v >= 0 then jv_int(cdp_doc(c), v, -1) else -1;
+}
+fl_wait_realm :: (c: [] Cdp, f: [] Flow, field: int, lo: int, ms: int) -> bool {
+  deadline := proc_now_ms() + ms;
+  while true {
+    if fl_realm(c, f, field) >= lo { return true; }
+    if proc_now_ms() >= deadline { return false; }
+    fl_pump(c, f, 250);
+  }
+  return false;
+}
 // Waits up to ms for lo <= probe(field) <= hi.
 fl_wait :: (c: [] Cdp, f: [] Flow, field: int, lo: int, hi: int, ms: int) -> bool {
   deadline := proc_now_ms() + ms;
@@ -330,6 +377,8 @@ fl_size :: (c: [] Cdp, f: [] Flow, w: int, h: int, mobile: bool) -> bool {
 }
 // Opens the realm and its COMPUTER pane.
 fl_open :: (c: [] Cdp, f: [] Flow) -> bool {
+  // the local page's URL ends in #pine-test: navigating to it again would only move to the hash, not reload
+  if f[0].local { x := fl_call(c, f, "Page.navigate", "{\"url\":\"about:blank\"}"); fl_pump(c, f, 300); }
   b: [1024] u8; o: [1] Jo; jo_start(o[..], b[..]);
   jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], cast(string) f[0].page[0..<f[0].page_n]); jo_end(o[..]);
   if fl_call(c, f, "Page.navigate", jo_text(o[..])) < 0 { return false; }
@@ -400,14 +449,27 @@ tool_main :: () -> int #export_c {
   a: [1] Args;
   loaded := args_load(a[..]);
   relay := args_at(a[..], 0); module := args_at(a[..], 1); shots := args_at(a[..], 2);
-  if !loaded || !fl_relay_ok(relay) || module.count == 0 {
-    tool_errln("usage: coax/web/tool.sh computer-flow ws://localhost:PORT MYREALM.wasm [SHOTS_DIR]   (CODER_HOME: the running host's)");
+  local := module == "--local";
+  site := ""; specf := "";
+  if local { site = args_at(a[..], 2); specf = args_at(a[..], 3); shots = args_at(a[..], 4); if fl_starts(shots, "--") { shots = ""; } }
+  hard := args_has(a[..], "--require-hardware");
+  site_ok := fl_starts(site, "http://127.0.0.1:") && site.count < 64;
+  if !loaded || !fl_relay_ok(relay) || module.count == 0 || (local && (!site_ok || !fs_exists(specf) || specf.count > 1000)) {
+    tool_errln("usage: coax/web/tool.sh computer-flow ws://localhost:PORT (MYREALM.wasm | --local http://127.0.0.1:PORT SPEC) [SHOTS_DIR] [--require-hardware]   (CODER_HOME: the running host's)");
     return 2;
   }
   f: [1] Flow;
-  f[0].wasm_n = fs_read(module, f[0].wasm[..]);
-  if f[0].wasm_n <= 0 { tool_err("computer-flow: can't read the module (at most 4 MiB): "); tool_errln(module); return 2; }
-  u: [1] FlBuf; fl_put(u[..], FL_HERE); fl_put(u[..], FL_PAGE); fl_put(u[..], relay);
+  f[0].local = local;
+  if local {
+    for i: 0..<site.count { f[0].site[i] = site[i]; } f[0].site_n = site.count;
+    for i: 0..<specf.count { f[0].specf[i] = specf[i]; } f[0].specf_n = specf.count;
+  } else {
+    f[0].wasm_n = fs_read(module, f[0].wasm[..]);
+    if f[0].wasm_n <= 0 { tool_err("computer-flow: can't read the module (at most 4 MiB): "); tool_errln(module); return 2; }
+  }
+  here := ifx local then site else FL_HERE;
+  u: [1] FlBuf; fl_put(u[..], here); fl_put(u[..], ifx local then "/realms/built?relay=" else FL_PAGE); fl_put(u[..], relay);
+  if local { fl_put(u[..], "#pine-test"); }
   for i: 0..<u[0].n { f[0].page[i] = u[0].b[i]; } f[0].page_n = u[0].n;
   cwd: [1024] u8;
   root := fs_cwd(cwd[..]);
@@ -432,14 +494,15 @@ tool_main :: () -> int #export_c {
   if !cdp_launch(c[..], 1440, 900, "coax-computer-flow-") { tool_err("computer-flow: "); tool_errln(cdp_error(c[..])); return 1; }
   ck: [1024] u8; o: [1] Jo; jo_start(o[..], ck[..]);
   jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "verse-automation"); jo_key(o[..], "value"); jo_str(o[..], "computer-flow");
-  jo_key(o[..], "url"); jo_str(o[..], FL_HERE); jo_end(o[..]);
+  jo_key(o[..], "url"); jo_str(o[..], here); jo_end(o[..]);
   armed := fl_call(c[..], f[..], "Network.setCookie", jo_text(o[..])) >= 0;
-  patterns := "{\"patterns\":[{\"urlPattern\":\"*/api/playtest/realms/pine-forest*\",\"requestStage\":\"Response\"},{\"urlPattern\":\"*\",\"requestStage\":\"Request\"}]}";
+  patterns := ifx local then "{\"patterns\":[{\"urlPattern\":\"*/api/*\",\"requestStage\":\"Request\"}]}"
+    else "{\"patterns\":[{\"urlPattern\":\"*/api/playtest/realms/pine-forest*\",\"requestStage\":\"Response\"},{\"urlPattern\":\"*\",\"requestStage\":\"Request\"}]}";
   armed = armed && fl_call(c[..], f[..], "Fetch.enable", patterns) >= 0;
   // the test relay is on this machine (FL_LNA)
   for perm: FL_LNA {
     pb: [512] u8; po: [1] Jo; jo_start(po[..], pb[..]);
-    jo_obj(po[..]); jo_key(po[..], "permissions"); jo_arr(po[..]); jo_str(po[..], perm); jo_end(po[..]); jo_key(po[..], "origin"); jo_str(po[..], FL_HERE); jo_end(po[..]);
+    jo_obj(po[..]); jo_key(po[..], "permissions"); jo_arr(po[..]); jo_str(po[..], perm); jo_end(po[..]); jo_key(po[..], "origin"); jo_str(po[..], here); jo_end(po[..]);
     g := fl_call(c[..], f[..], "Browser.grantPermissions", jo_text(po[..]));   // a name this Chrome lacks is refused: fine
   }
   if !armed { tool_errln("computer-flow: the browser refused the request interception"); cdp_close(c[..]); return 1; }
@@ -447,6 +510,10 @@ tool_main :: () -> int #export_c {
   v := 0;
   sz := fl_size(c[..], f[..], 1440, 900, false);
   fl_check(f[..], "the owner opens EDIT > COMPUTER", fl_open(c[..], f[..]), fl_probe(c[..], f[..], FP_PANE));
+  gpu: [256] u8; adapter := cdp_adapter(c[..], gpu[..]);
+  print("  WebGPU adapter: %\n", adapter);
+  if hard { fl_check(f[..], "the page has a hardware WebGPU adapter (--require-hardware)", cdp_adapter_hardware(adapter), 0); }
+  rev0 := fl_realm(c[..], f[..], 2);
   v = fl_view(c[..], f[..]);
   fl_check(f[..], "unpaired, it asks for the computer's key", v == RV_UNPAIRED_V, v);
   fl_shot(c[..], f[..], shots, "1-unpaired.png");
@@ -470,11 +537,32 @@ tool_main :: () -> int #export_c {
   fl_check(f[..], "SEND makes it a job", fl_wait(c[..], f[..], FP_VIEW, RV_RUNNING_V, RV_DONE_V, 8000), fl_view(c[..], f[..]));
   ended := fl_wait(c[..], f[..], FP_VIEW, RV_STOPPED_V, RV_DONE_V, 60000);
   v = fl_view(c[..], f[..]);
-  fl_check(f[..], "its steps come in and the job ends", ended && (v == RV_DONE_V || v == RV_FAILED_V), v);
+  fl_check(f[..], "its steps come in and the job ends", ended && (v == RV_DONE_V || (!local && v == RV_FAILED_V)), v);
   fl_shot(c[..], f[..], shots, "4-job.png");
+  if local {
+    // the job's realm edit landed in the spec: the page reads it again by itself and lays the realm out anew
+    landed := fl_wait_realm(c[..], f[..], 2, rev0 + 1, 15000);
+    fl_check(f[..], "the realm reloads with the job's edit (its rev goes up by one)", rev0 > 0 && landed, fl_realm(c[..], f[..], 2));
+    fl_shot(c[..], f[..], shots, "4b-edit-landed.png");
+  }
 
   r1 := fl_open(c[..], f[..]);
   fl_check(f[..], "a reload keeps the pairing", fl_wait(c[..], f[..], FP_VIEW, RV_ALLOWED_V, RV_ALLOWED_V, 15000), fl_view(c[..], f[..]));
+  if local {
+    // a long job, stopped from the page while it runs
+    t9 := fl_tap(c[..], f[..], FB_CMAIN);
+    t10 := fl_type(c[..], f[..], "tidy the paths, slowly");
+    t11 := fl_tap(c[..], f[..], FB_CMAIN);
+    running := fl_wait(c[..], f[..], FP_VIEW, RV_RUNNING_V, RV_RUNNING_V, 15000);
+    fl_pump(c[..], f[..], 4000);
+    still := fl_view(c[..], f[..]) == RV_RUNNING_V;
+    fl_check(f[..], "a long job runs", running && still, fl_view(c[..], f[..]));
+    fl_shot(c[..], f[..], shots, "4c-running.png");
+    t12 := fl_tap(c[..], f[..], FB_CMAIN);                  // STOP
+    fl_check(f[..], "STOP stops it while it runs", fl_wait(c[..], f[..], FP_VIEW, RV_STOPPED_V, RV_STOPPED_V, 30000), fl_view(c[..], f[..]));
+    fl_shot(c[..], f[..], shots, "4d-stopped.png");
+    r2 := fl_open(c[..], f[..]);
+  }
 
   sz = fl_size(c[..], f[..], 390, 844, true);
   phone := fl_open(c[..], f[..]) && fl_wait(c[..], f[..], FP_VIEW, RV_ALLOWED_V, RV_ALLOWED_V, 15000);

@@ -1,0 +1,322 @@
+// A stand-in `claude` for checking a browser's job end to end (#12640): it
+// speaks enough of Claude Code's stream-json control protocol for Coder's
+// claude engine, so `coder host` runs a realm job with no Claude login and
+// no model. Put it on PATH as `claude` (coder/tui/host_e2e.coax does).
+//
+// It reads the realm from the job's prompt (host.coax hs_prompt: `the realm
+// "SLUG"`) and asks for four tool calls, each first through Coder's
+// PreToolUse hook and then, when the hook lets it, as a permission request
+// (can_use_tool), the way Claude Code does:
+//
+//   mcp__openagents__realm_show   {slug}                  a realm tool: the spec is the answer
+//   Bash                          {command: touch MARK}   must be refused by a read ceiling
+//   Write                         {file_path: CWD/note.txt}   must be refused too
+//   mcp__openagents__realm_place  {slug, thing: crate, x: 4, z: -2}
+//
+// What a call is allowed to do, it does: realm_place is the realm tool's
+// write as the server keeps it (the spec's rev goes up by one and a
+// `placed crate 4 -2 0` line is added to $CLAUDE_STANDIN_SPEC); Bash
+// touches $CLAUDE_STANDIN_MARK; Write writes the file. Each decision is a
+// JSON line in $CLAUDE_STANDIN_OUT. A prompt with "slowly" in it makes no
+// calls and works for $CLAUDE_STANDIN_SECONDS (default 60), a line a second,
+// until Coder interrupts it.
+//
+//   coax/web/tool.sh coder/tui/claude_standin.coax    (the harness links its build as `claude`)
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/json/json.coax";
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign;
+cxterm_write :: (s: [] u8) -> int #foreign;
+
+SI_LINE :: 262144;
+St :: struct {
+  line: [SI_LINE] u8; n: int; eof: bool;
+  hook: [128] u8; nhook: int;
+  prompt: [16384] u8; nprompt: int;
+  cwd: [1024] u8; ncwd: int;
+  out: [1024] u8; nout: int;
+  ids: int;
+}
+
+si_send :: (text: string) {
+  b: [SI_LINE + 1] u8; n := 0;
+  for c: text { if n < SI_LINE { b[n] = c; n += 1; } }
+  b[n] = 10;
+  r := cxterm_write(b[0..<n + 1]);
+}
+// The next line from Coder within ms (-1: wait); "" on timeout or the end.
+si_read :: (s: [] St, ms: int) -> string {
+  s[0].n = 0;
+  deadline := proc_now_ms() + ms;
+  while true {
+    left := ifx ms < 0 then -1 else deadline - proc_now_ms();
+    if ms >= 0 && left <= 0 && s[0].n == 0 { return ""; }
+    b := cxterm_byte(ifx ms < 0 then -1 else (ifx left > 0 then left else 1));
+    if b == -2 { s[0].eof = true; return ""; }
+    if b == -1 { if ms >= 0 && s[0].n == 0 { return ""; } continue; }
+    if b == 10 { if s[0].n > 0 { return cast(string) s[0].line[0..<s[0].n]; } continue; }
+    if s[0].n < SI_LINE { s[0].line[s[0].n] = cast(u8) b; s[0].n += 1; }
+  }
+  return "";
+}
+si_note :: (s: [] St, text: string) {
+  if s[0].nout == 0 { return; }
+  ok := fs_append(cast(string) s[0].out[0..<s[0].nout], text) && fs_append(cast(string) s[0].out[0..<s[0].nout], "\n");
+}
+si_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+// The realm named in the job's prompt: `the realm "SLUG"`.
+si_slug :: (prompt: string, out: [] u8) -> string {
+  key := "the realm \"";
+  for i: 0..<prompt.count - key.count + 1 {
+    if i >= 0 && prompt[i..<i + key.count] == key {
+      e := i + key.count; n := 0;
+      while e < prompt.count && prompt[e] != '"' && n < out.count { out[n] = prompt[e]; n += 1; e += 1; }
+      return cast(string) out[0..<n];
+    }
+  }
+  return "";
+}
+#test "stand-in: the realm in the prompt" {
+  b: [64] u8;
+  #assert si_slug("A request from the realm builder on openagents.com, for the realm \"built\". Use", b[..]) == "built";
+  #assert si_slug("no realm here", b[..]) == "" && si_has("work slowly", "slowly") && !si_has("slow", "slowly");
+}
+
+// A control request and Coder's answer to it (its response object's raw JSON, or "").
+si_ask :: (s: [] St, subtype: string, body: string, out: [] u8) -> string {
+  s[0].ids += 1;
+  ib: [32] u8; o: [1] Jo; jb: [65536] u8; jo_start(o[..], jb[..]);
+  idb: [1] Jo; jo_start(idb[..], ib[..]); jo_put(idb[..], "standin-"); jo_int(idb[..], s[0].ids);
+  id := jo_text(idb[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "control_request"); jo_key(o[..], "request_id"); jo_str(o[..], id);
+  // body is the request's other fields as an object: {"subtype":S, then its members
+  jo_key(o[..], "request"); jo_put(o[..], "{\"subtype\":"); jo_quoted(o[..], subtype); jo_put(o[..], ","); jo_put(o[..], body[1..<body.count]);
+  jo_end(o[..]);
+  si_send(jo_text(o[..]));
+  while true {
+    line := si_read(s, 60000);
+    if line.count == 0 { return ""; }
+    nodes: [4096] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], line, nodes[..]) { continue; }
+    tb: [32] u8; tn := jv_str(d[0], jv_get(d[0], 0, "type"), tb[..]);
+    if tn <= 0 { continue; }
+    if cast(string) tb[0..<tn] == "control_request" { x := si_control(s, d[0]); continue; }
+    if cast(string) tb[0..<tn] != "control_response" { continue; }
+    r := jv_path(d[0], 0, "response.response");
+    raw := jv_raw(d[0], r);
+    n := 0; for c: raw { if n < out.count { out[n] = c; n += 1; } }
+    return cast(string) out[0..<n];
+  }
+  return "";
+}
+// Answers Coder's own control requests: initialize (its PreToolUse hook's id is kept), interrupt.
+// True for an interrupt.
+si_control :: (s: [] St, d: Jv) -> bool {
+  rb: [128] u8; rn := jv_str(d, jv_get(d, 0, "request_id"), rb[..]);
+  sb: [64] u8; sn := jv_str(d, jv_path(d, 0, "request.subtype"), sb[..]);
+  sub := ifx sn > 0 then cast(string) sb[0..<sn] else "";
+  if sub == "initialize" {
+    pre := jv_path(d, 0, "request.hooks.PreToolUse");
+    if jv_len(d, pre) > 0 {
+      ids := jv_get(d, jv_at(d, pre, 0), "hookCallbackIds");
+      if jv_len(d, ids) > 0 { s[0].nhook = jv_str(d, jv_at(d, ids, 0), s[0].hook[..]); if s[0].nhook < 0 { s[0].nhook = 0; } }
+    }
+  }
+  o: [1] Jo; b: [1024] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "control_response");
+  jo_key(o[..], "response"); jo_obj(o[..]); jo_key(o[..], "subtype"); jo_str(o[..], "success");
+  jo_key(o[..], "request_id"); jo_str(o[..], cast(string) rb[0..<ifx rn > 0 then rn else 0]);
+  jo_key(o[..], "response"); jo_obj(o[..]);
+  if sub == "initialize" { jo_key(o[..], "commands"); jo_arr(o[..]); jo_end(o[..]); jo_key(o[..], "models"); jo_arr(o[..]); jo_end(o[..]); }
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  si_send(jo_text(o[..]));
+  return sub == "interrupt";
+}
+
+si_assistant :: (kind: string, id: string, name: string, input: string, text: string) {
+  if kind == "text" {
+    // streamed first, as Claude Code does with --include-partial-messages: Coder's reply comes from these
+    e: [1] Jo; eb: [8192] u8; jo_start(e[..], eb[..]);
+    jo_obj(e[..]); jo_key(e[..], "type"); jo_str(e[..], "stream_event");
+    jo_key(e[..], "event"); jo_obj(e[..]); jo_key(e[..], "type"); jo_str(e[..], "content_block_delta"); jo_key(e[..], "index"); jo_int(e[..], 0);
+    jo_key(e[..], "delta"); jo_obj(e[..]); jo_key(e[..], "type"); jo_str(e[..], "text_delta");
+    tb: [4096] u8; tn := si_put(tb[..], 0, text); tn = si_put(tb[..], tn, "\n");
+    jo_key(e[..], "text"); jo_str(e[..], cast(string) tb[0..<tn]); jo_end(e[..]); jo_end(e[..]);
+    jo_key(e[..], "parent_tool_use_id"); jo_null(e[..]); jo_key(e[..], "uuid"); jo_str(e[..], "12345678-1234-1234-1234-123456789012");
+    jo_key(e[..], "session_id"); jo_str(e[..], "standin"); jo_end(e[..]);
+    si_send(jo_text(e[..]));
+  }
+  o: [1] Jo; b: [70000] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "assistant");
+  jo_key(o[..], "message"); jo_obj(o[..]); jo_key(o[..], "id"); jo_str(o[..], id); jo_key(o[..], "role"); jo_str(o[..], "assistant");
+  jo_key(o[..], "content"); jo_arr(o[..]); jo_obj(o[..]);
+  jo_key(o[..], "type"); jo_str(o[..], kind);
+  if kind == "tool_use" { jo_key(o[..], "id"); jo_str(o[..], id); jo_key(o[..], "name"); jo_str(o[..], name); jo_key(o[..], "input"); jo_raw(o[..], input); }
+  else { jo_key(o[..], "text"); jo_str(o[..], text); }
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "parent_tool_use_id"); jo_null(o[..]); jo_key(o[..], "uuid"); jo_str(o[..], id); jo_key(o[..], "session_id"); jo_str(o[..], "standin");
+  jo_end(o[..]);
+  si_send(jo_text(o[..]));
+}
+si_result_of :: (id: string, text: string, error: bool) {
+  o: [1] Jo; b: [70000] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "user");
+  jo_key(o[..], "message"); jo_obj(o[..]); jo_key(o[..], "role"); jo_str(o[..], "user");
+  jo_key(o[..], "content"); jo_arr(o[..]); jo_obj(o[..]);
+  jo_key(o[..], "type"); jo_str(o[..], "tool_result"); jo_key(o[..], "tool_use_id"); jo_str(o[..], id);
+  jo_key(o[..], "content"); jo_str(o[..], text); jo_key(o[..], "is_error"); jo_bool(o[..], error);
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "parent_tool_use_id"); jo_null(o[..]); jo_key(o[..], "uuid"); jo_str(o[..], "r-"); jo_key(o[..], "session_id"); jo_str(o[..], "standin");
+  jo_end(o[..]);
+  si_send(jo_text(o[..]));
+}
+si_result :: (ok: bool, text: string) {
+  o: [1] Jo; b: [4096] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "result"); jo_key(o[..], "subtype"); jo_str(o[..], ifx ok then "success" else "error_during_execution");
+  jo_key(o[..], "is_error"); jo_bool(o[..], !ok); jo_key(o[..], "result"); jo_str(o[..], text);
+  jo_key(o[..], "uuid"); jo_str(o[..], "u-result"); jo_key(o[..], "session_id"); jo_str(o[..], "standin");
+  jo_key(o[..], "num_turns"); jo_int(o[..], 1); jo_key(o[..], "duration_ms"); jo_int(o[..], 1); jo_key(o[..], "duration_api_ms"); jo_int(o[..], 1);
+  jo_key(o[..], "total_cost_usd"); jo_raw(o[..], "0.0");
+  jo_key(o[..], "usage"); jo_raw(o[..], "{\"input_tokens\":1,\"output_tokens\":1}"); jo_key(o[..], "modelUsage"); jo_raw(o[..], "{}");
+  jo_key(o[..], "permission_denials"); jo_raw(o[..], "[]");
+  jo_end(o[..]);
+  si_send(jo_text(o[..]));
+}
+
+si_put :: (o: [] u8, m: int, s: string) -> int { k := m; for c: s { if k < o.count { o[k] = c; k += 1; } } return k; }
+// The realm tool's write, as the server would keep it: rev + 1 and a crate placed.
+si_place :: (spec_path: string) -> bool {
+  b: [262144] u8; n := fs_read(spec_path, b[..]);
+  if n <= 0 { return false; }
+  o: [262144 + 128] u8; m := 0; at := 0; text := cast(string) b[0..<n];
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := text[at..<e];
+    if line.count > 4 && line[0..<4] == "rev " {
+      v := 0; for c: line[4..<line.count] { if c >= '0' && c <= '9' { v = v * 10 + cast(int) (c - '0'); } }
+      jb: [1] Jo; nb: [32] u8; jo_start(jb[..], nb[..]); jo_put(jb[..], "rev "); jo_int(jb[..], v + 1);
+      m = si_put(o[..], m, jo_text(jb[..]));
+    } else { m = si_put(o[..], m, line); }
+    m = si_put(o[..], m, "\n");
+    at = e + 1;
+  }
+  m = si_put(o[..], m, "placed crate 4 -2 0\n");
+  return fs_write(spec_path, cast(string) o[0..<m]);
+}
+
+// One tool call: the hook, then the permission request; the call is made when both let it.
+si_call :: (s: [] St, k: int, name: string, input: string, spec: string) {
+  ib: [32] u8; o: [1] Jo; jo_start(o[..], ib[..]); jo_put(o[..], "toolu_standin"); jo_int(o[..], k);
+  id := jo_text(o[..]);
+  si_assistant("tool_use", id, name, input, "");
+  verdict := "allow"; why := "";
+  ab: [8192] u8;
+  if s[0].nhook > 0 {
+    q: [1] Jo; qb: [70000] u8; jo_start(q[..], qb[..]);
+    jo_obj(q[..]); jo_key(q[..], "callback_id"); jo_str(q[..], cast(string) s[0].hook[0..<s[0].nhook]);
+    jo_key(q[..], "input"); jo_obj(q[..]); jo_key(q[..], "hook_event_name"); jo_str(q[..], "PreToolUse");
+    jo_key(q[..], "tool_name"); jo_str(q[..], name); jo_key(q[..], "tool_input"); jo_raw(q[..], input); jo_end(q[..]);
+    jo_key(q[..], "tool_use_id"); jo_str(q[..], id); jo_end(q[..]);
+    got := si_ask(s, "hook_callback", cast(string) qb[0..<q[0].n], ab[..]);
+    if si_has(got, "\"permissionDecision\":\"deny\"") { verdict = "deny"; why = "hook"; }
+  }
+  if verdict == "allow" {
+    q: [1] Jo; qb: [70000] u8; jo_start(q[..], qb[..]);
+    jo_obj(q[..]); jo_key(q[..], "tool_name"); jo_str(q[..], name); jo_key(q[..], "input"); jo_raw(q[..], input); jo_key(q[..], "tool_use_id"); jo_str(q[..], id); jo_end(q[..]);
+    got := si_ask(s, "can_use_tool", cast(string) qb[0..<q[0].n], ab[..]);
+    if !si_has(got, "\"behavior\":\"allow\"") { verdict = "deny"; why = "permission"; }
+  }
+  nb: [1] Jo; nbuf: [1024] u8; jo_start(nb[..], nbuf[..]);
+  jo_obj(nb[..]); jo_key(nb[..], "tool"); jo_str(nb[..], name); jo_key(nb[..], "verdict"); jo_str(nb[..], verdict); jo_key(nb[..], "by"); jo_str(nb[..], why); jo_end(nb[..]);
+  si_note(s, jo_text(nb[..]));
+  if verdict != "allow" { si_result_of(id, "Refused by Coder's policy.", true); return; }
+  if name == "mcp__openagents__realm_show" { sb: [65536] u8; sn := fs_read(spec, sb[..]); si_result_of(id, ifx sn > 0 then cast(string) sb[0..<sn] else "", sn <= 0); return; }
+  if name == "mcp__openagents__realm_place" { si_result_of(id, ifx si_place(spec) then "Placed a crate at 4, -2." else "could not place", false); return; }
+  mb: [1024] u8;
+  if name == "Bash" { ok := fs_write(proc_getenv("CLAUDE_STANDIN_MARK", mb[..]), "ran\n"); si_result_of(id, "", false); return; }
+  if name == "Write" { pb: [1100] u8; n := 0; for c: cast(string) s[0].cwd[0..<s[0].ncwd] { pb[n] = c; n += 1; } for c: "/note.txt" { pb[n] = c; n += 1; } ok := fs_write(cast(string) pb[0..<n], "hi\n"); si_result_of(id, "written", false); return; }
+}
+
+tool_main :: () -> int #export_c {
+  av: [1] Args;
+  if args_load(av[..]) && args_has(av[..], "--version") { si_send("0.0.0 (a stand-in claude for Coder's checks)"); return 0; }
+  s_b: [1] St; s := s_b[..];
+  ob: [1024] u8; o := proc_getenv("CLAUDE_STANDIN_OUT", ob[..]);
+  for c: o { s[0].out[s[0].nout] = c; s[0].nout += 1; }
+  cb: [1024] u8; cwd := fs_cwd(cb[..]);
+  for c: cwd { s[0].cwd[s[0].ncwd] = c; s[0].ncwd += 1; }
+  // until the user's message: answer initialize
+  while !s[0].eof {
+    line := si_read(s, -1);
+    if line.count == 0 { continue; }
+    nodes: [4096] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], line, nodes[..]) { continue; }
+    tb: [32] u8; tn := jv_str(d[0], jv_get(d[0], 0, "type"), tb[..]);
+    if tn <= 0 { continue; }
+    t := cast(string) tb[0..<tn];
+    if t == "control_request" { x := si_control(s, d[0]); continue; }
+    if t == "user" {
+      c := jv_path(d[0], 0, "message.content");
+      // the content is a string, or a list whose first item has text
+      at := ifx jv_kind(d[0], c) == JV_STRING then c else jv_get(d[0], jv_at(d[0], c, 0), "text");
+      s[0].nprompt = jv_str(d[0], at, s[0].prompt[..]); if s[0].nprompt < 0 { s[0].nprompt = 0; }
+      break;
+    }
+  }
+  if s[0].eof { return 0; }
+  si_send("{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"standin\",\"cwd\":\"\",\"tools\":[],\"model\":\"standin\"}");
+  prompt := cast(string) s[0].prompt[0..<s[0].nprompt];
+  sb: [64] u8; slug := si_slug(prompt, sb[..]);
+  pb: [1024] u8; spec := proc_getenv("CLAUDE_STANDIN_SPEC", pb[..]);
+  if si_has(prompt, "slowly") {
+    eb: [16] u8; secs := 0; for c: proc_getenv("CLAUDE_STANDIN_SECONDS", eb[..]) { if c >= '0' && c <= '9' { secs = secs * 10 + cast(int) (c - '0'); } }
+    if secs <= 0 { secs = 60; }
+    for i: 0..<secs {
+      tb: [1] Jo; tbuf: [128] u8; jo_start(tb[..], tbuf[..]); jo_put(tb[..], "Working on it, step "); jo_int(tb[..], i + 1); jo_put(tb[..], ".");
+      mid: [1] Jo; mbuf: [32] u8; jo_start(mid[..], mbuf[..]); jo_put(mid[..], "m-work-"); jo_int(mid[..], i);
+      si_assistant("text", jo_text(mid[..]), "", "", jo_text(tb[..]));
+      // a second, answering Coder meanwhile; an interrupt ends the turn
+      deadline := proc_now_ms() + 1000;
+      while proc_now_ms() < deadline {
+        line := si_read(s, deadline - proc_now_ms());
+        if s[0].eof { return 0; }
+        if line.count == 0 { continue; }
+        nodes: [4096] JvNode; d: [1] Jv;
+        tb2: [32] u8; tn2 := ifx jv_parse(d[..], line, nodes[..]) then jv_str(d[0], jv_get(d[0], 0, "type"), tb2[..]) else -1;
+        if tn2 == 15 && cast(string) tb2[0..<15] == "control_request" && si_control(s, d[0]) {
+          si_note(s, "{\"interrupted\":true}");
+          si_result(false, "interrupted");
+          while !s[0].eof { x := si_read(s, -1); }
+          return 0;
+        }
+      }
+    }
+    si_result(true, "done working");
+  } else {
+    q: [1] Jo; qb: [512] u8; jo_start(q[..], qb[..]); jo_obj(q[..]); jo_key(q[..], "slug"); jo_str(q[..], slug); jo_end(q[..]);
+    show := jo_text(q[..]);
+    si_call(s, 1, "mcp__openagents__realm_show", show, spec);
+    mb: [1024] u8; mark := proc_getenv("CLAUDE_STANDIN_MARK", mb[..]);
+    cmd: [1100] u8; cn := si_put(cmd[..], 0, "touch "); cn = si_put(cmd[..], cn, mark);
+    bq: [1] Jo; bb: [2048] u8; jo_start(bq[..], bb[..]); jo_obj(bq[..]); jo_key(bq[..], "command"); jo_str(bq[..], cast(string) cmd[0..<cn]); jo_end(bq[..]);
+    si_call(s, 2, "Bash", jo_text(bq[..]), spec);
+    wq: [1] Jo; wb: [2048] u8; jo_start(wq[..], wb[..]); jo_obj(wq[..]); jo_key(wq[..], "file_path"); jo_str(wq[..], "note.txt"); jo_key(wq[..], "content"); jo_str(wq[..], "hi"); jo_end(wq[..]);
+    si_call(s, 3, "Write", jo_text(wq[..]), spec);
+    pq: [1] Jo; pqb: [512] u8; jo_start(pq[..], pqb[..]); jo_obj(pq[..]); jo_key(pq[..], "slug"); jo_str(pq[..], slug);
+    jo_key(pq[..], "thing"); jo_str(pq[..], "crate"); jo_key(pq[..], "x"); jo_int(pq[..], 4); jo_key(pq[..], "z"); jo_int(pq[..], -2); jo_end(pq[..]);
+    si_call(s, 4, "mcp__openagents__realm_place", jo_text(pq[..]), spec);
+    si_assistant("text", "m-done", "", "", "I placed a crate at 4, -2. Coder refused the shell command and the file write.");
+    si_result(true, "I placed a crate at 4, -2.");
+  }
+  // Coder closes stdin when it is done with us
+  while !s[0].eof { x := si_read(s, -1); }
+  return 0;
+}

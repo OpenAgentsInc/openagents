@@ -499,7 +499,8 @@ The thread operations map onto Coder jobs:
   web. `--realm-tools` lets the realm tools (`mcp__openagents__realm_*`,
   from `openagents mcp`) run anyway, so the job can read and edit realms
   and do nothing else. The realm tools reach Claude Code only, so a job on
-  another engine can only read. At most two browser jobs run at once.
+  another engine can only read; on Codex the read ceiling is also a
+  read-only sandbox. At most two browser jobs run at once.
 - `thread.read {thread, after}` returns the job's steps after a sequence
   number. A step is one line of the session log (user, tool, result,
   reply, diff, approval or end), its sequence is the line number, and its
@@ -523,10 +524,29 @@ that Coax computes at compile time, so its build takes about 90 seconds,
 and `coax/web/tool.sh` reads its `// tool.sh: run-steps` line to raise the
 compile-time budget. Coder's own build stays as fast as before.
 
+Every rule a browser meets is in two `#authority` files, each checked by
+`coax mutate` with no mutant left alive.
+[host_grants.coax](../../coder/tui/host_grants.coax) holds the grant
+record: pairing waits and limits, allow, deny, forget and epochs, what
+`browser.status` answers, the refusal code for each admission verdict, that
+only the key that started a thread may read or stop it, the two-job limit,
+and the job's arguments. [ceiling.coax](../../coder/tui/ceiling.coax) holds
+the approval policy every engine answers by: each tool's effect, the
+verdicts, the roots, the `--realm-tools` exception, and Codex's sandbox.
+
 `coder host call OP --host KEY --browser-key FILE ...` is a stand-in
 browser: it sends one request and prints the reply's body. The smoke,
 [host_smoke.coax](../../coder/tui/host_smoke.coax), runs the relay and
-`coder host` as child processes and plays the browser with it.
+`coder host` as child processes and plays the browser with it. It runs a
+job on the echo engine first. Then it serves the same host on the claude
+engine, with [claude_standin.coax](../../coder/tui/claude_standin.coax)
+first on `PATH` as `claude`. The stand-in speaks Claude Code's stream-json
+control protocol with no login and no model. Its realm job calls
+`realm_show`, a shell command, a file write and `realm_place`. The smoke
+checks that the realm tools run and the edit reaches the realm's spec,
+that the ceiling refuses the command and the write and the browser's steps
+say so, and that nothing refused ran. It then starts a long job and stops
+it with `thread.stop` while it runs.
 
 ## Checks
 

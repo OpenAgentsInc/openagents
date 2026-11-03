@@ -6,6 +6,31 @@ Redeploy the agent runner to pick up file-tool hardening
 (`coax/web/agent/deploy.sh`, staging first). Until then the running image
 has the old engines.
 
+## Your own Coder builds your realm: the first real try (#12640, 2026-11-03)
+
+Checked locally with test keys, a local relay and a stand-in `claude`.
+Your Claude or Codex login and relay.openagents.com were not used. Try it
+for real when you can. It takes about five minutes:
+
+1. On your Mac, from an up-to-date checkout: `coder/tui/coder.sh host`
+   (the first run builds for about 90 seconds). It prints your computer's
+   key as an `npub` and connects to wss://relay.openagents.com. Leave it
+   running.
+2. In Chrome, open one of your made realms on openagents.com after the next
+   release. Open EDIT > COMPUTER, paste the `npub` and press PAIR.
+3. In the terminal, `coder host list` shows the browser waiting. Allow it
+   with `coder host allow ID`, using the ID that list prints.
+4. In the pane, type a request ("add a crate by the pines") and SEND. The
+   job runs on your Claude Code login with read access and the realm tools
+   only. Its steps stream in the pane, and the realm reloads by itself when
+   the edit lands. A refused shell command or file write shows as a step.
+5. Send a longer request and press STOP while it runs. Then press FORGET
+   THIS COMPUTER, or run `coder host forget ID`.
+
+Say whether each step did what it says. If one didn't, say which and what
+you saw. The job needs the openagents CLI built (`apps/openagents-cli/build.sh`)
+for the realm tools, and your CLI login (`openagents login`) for the realm.
+
 ## Coax relay cutover: parity, the checkpoint's home, the export and the rehearsals (#12631, 2026-11-03)
 
 Built and checked offline, with test keys and synthetic data only: the

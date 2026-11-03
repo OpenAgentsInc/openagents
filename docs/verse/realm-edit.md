@@ -275,3 +275,25 @@ page's writes in the browser, and reads the pane through `coaxial.guardProbe(240
     COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/myrealm.coax apps/openagents-web/myrealm-face.c \
       /tmp/myrealm.wasm verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
     CODER_HOME=/tmp/host-home BROWSER=/usr/bin/true coax/web/tool.sh computer-flow ws://localhost:7777 /tmp/myrealm.wasm [SHOTS_DIR]
+
+`--local` runs the same flow with nothing remote (#12640). This checkout's page is served by
+`local-origin`, and the flow answers every `/api` request itself. The realm's spec is a local file,
+read again on every request, with the owner's lines after it. Other reads get 404 and writes get
+204. With `coder host --engine claude` and a stand-in `claude` (`coder/tui/claude_standin.coax`,
+which edits that file the way the realm tool does), it also checks two things. The realm reloads
+when the job's edit lands: the page's revision, `realm_probe` 2, goes up by one. And STOP stops a
+long job while it runs. No Claude or Codex login is used:
+
+    coax/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
+    printf '#!/bin/sh\nexec %s/coax/web/tool.sh %s/coder/tui/claude_standin.coax "$@"\n' "$PWD" "$PWD" > /tmp/bin/claude && chmod 755 /tmp/bin/claude
+    printf 'realm\nname Pine Test\nground forest\ntime day\nrev 1\nfeature trees pine 6\n' > /tmp/spec.txt
+    PATH=/tmp/bin:$PATH CLAUDE_STANDIN_SPEC=/tmp/spec.txt OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 \
+      CODER_HOME=/tmp/host-home coder/tui/coder.sh host --engine claude
+    coax/web/tool.sh local-origin --listen 47999 --api http://127.0.0.1:9 --module /tmp/myrealm.wasm
+    CODER_HOME=/tmp/host-home BROWSER=/usr/bin/true coax/web/tool.sh computer-flow ws://localhost:7777 \
+      --local http://127.0.0.1:47999 /tmp/spec.txt [SHOTS_DIR] [--require-hardware]
+
+What a job from the browser may do is decided on the computer. `coder/tui/host_grants.coax`
+holds the grants. `coder/tui/ceiling.coax` holds the read ceiling with the realm tools, under which
+a shell command or a file write is refused, and the refusal shows as a step. Both are `#authority`
+with no surviving mutants. On Codex the ceiling is also a read-only sandbox.

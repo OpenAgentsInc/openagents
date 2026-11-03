@@ -3,8 +3,12 @@
 // coax/lib/nostr/host/browser.coax) asks to pair, is refused a thread before
 // it is allowed, is allowed with `coder host allow`, reads its grant from
 // browser.status, runs a thread on the echo engine, reads its steps and
-// stops it. An unpaired key is refused, a forgotten key is refused revoked,
-// and browser.status keeps answering for the pairing (allowed, then denied).
+// stops it. Then the same host serves on the claude engine with a stand-in
+// `claude` (coder/tui/claude_standin.coax, no login, no model): a realm job
+// reads and edits the realm through the realm tools while the read ceiling
+// refuses its shell command and its file write, and a long job is stopped
+// while it runs. An unpaired key is refused, a forgotten key is refused
+// revoked, and browser.status keeps answering for the pairing (allowed, then denied).
 // The relay and `coder host` run as child processes (coax/lib/sys/proc.coax).
 //
 //   coax/web/tool.sh coder/tui/host_smoke.coax      from the repository root; exit 0 when every check passes
@@ -24,7 +28,7 @@
 
 cxterm_write :: (s: [] u8) -> int #foreign;
 
-SM_ENVS :: 6;
+SM_ENVS :: 11;
 Sm :: struct {
   repo: [1024] u8; nrepo: int;
   coder: [1100] u8; ncoder: int;
@@ -175,6 +179,42 @@ sm_mode :: (s: [] Sm, path: string, out: [] u8) -> string {
   n := sm_cat(out, 0, sm_text(rp_b[..]));
   return cast(string) out[0..<n];
 }
+// Serves `coder host` with ARGS until it says it listens; its handle, or -1.
+sm_serve :: (s: [] Sm, args: [] string) -> int {
+  argv: [8] string; argv[0] = sm_str(s[0].coder[..], s[0].ncoder); argv[1] = "host"; n := 2;
+  for a: args { argv[n] = a; n += 1; }
+  h := sm_spawn(s, argv[0..<n], false);
+  line: [4096] u8;
+  while h >= 0 {
+    k := proc_line(h, 300000, line[..]);
+    if k < 0 { return -1; }
+    if sm_has(cast(string) line[0..<k], "Listening") { return h; }
+  }
+  return -1;
+}
+sm_stop :: (h: int) { if h >= 0 { k := proc_kill(h, PROC_SIGTERM); w := proc_wait(h, 10000); d := proc_release(h); } }
+// thread.read until the job leaves running (at most about a minute); the last reply in rp.
+sm_follow :: (s: [] Sm, rp: [] Rp, key_file: string, args: [] string) -> bool {
+  for attempt: 0..<60 {
+    sm_call(s, rp, "thread.read", key_file, args);
+    if rp_good(rp) && !rp_is(rp, "result.outcome.state", "running") { return true; }
+    proc_sleep(1000);
+  }
+  return false;
+}
+// The steps' kinds and texts, one "kind: text" a line.
+sm_steps :: (rp: [] Rp, out: [] u8) -> string {
+  n := 0; count := rp_count(rp, "result.outcome.steps");
+  for i: 0..<(ifx count > 0 then count else 0) {
+    pb: [64] u8; ib: [8] u8; base := sm_cat(pb[..], 0, "result.outcome.steps."); base = sm_cat(pb[..], base, sm_itoa(i, ib[..]));
+    kp: [80] u8; kn := sm_cat(kp[..], 0, cast(string) pb[0..<base]); kn = sm_cat(kp[..], kn, ".kind");
+    tp: [80] u8; tn := sm_cat(tp[..], 0, cast(string) pb[0..<base]); tn = sm_cat(tp[..], tn, ".text");
+    kb: [32] u8; tb: [4096] u8;
+    n = sm_cat(out, n, rp_s(rp, cast(string) kp[0..<kn], kb[..])); n = sm_cat(out, n, ": ");
+    n = sm_cat(out, n, rp_s(rp, cast(string) tp[0..<tn], tb[..])); n = sm_cat(out, n, "\n");
+  }
+  return cast(string) out[0..<n];
+}
 sm_env :: (s: [] Sm, i: int, name: string, value: string) {
   n := sm_cat(s[0].env[i][..], 0, name); n = sm_cat(s[0].env[i][..], n, "="); s[0].nenv[i] = sm_cat(s[0].env[i][..], n, value);
 }
@@ -311,6 +351,62 @@ tool_main :: () -> int #export_c {
     }
   }
   sm_check(s, head_echo, "the job ran on the host's engine");
+
+  // The claude engine, with a stand-in `claude` first on PATH: a realm job under the read ceiling.
+  sm_stop(serve); serve = -1;
+  binb: [1100] u8; bin := sm_in_tmp(s, "bin", binb[..]); ok = fs_mkdir(bin);
+  clb: [1200] u8; claude := sm_in_tmp(s, "bin/claude", clb[..]);
+  wr: [4096] u8; wn := sm_cat(wr[..], 0, "#!/bin/sh\nexec "); wn = sm_cat(wr[..], wn, sm_repo(s)); wn = sm_cat(wr[..], wn, "/coax/web/tool.sh ");
+  wn = sm_cat(wr[..], wn, sm_repo(s)); wn = sm_cat(wr[..], wn, "/coder/tui/claude_standin.coax \"$@\"\n");
+  chm := [3] string.["chmod", "755", claude];
+  ok = fs_write(claude, cast(string) wr[0..<wn]); sm_exec(s, rp, chm[..], 10000);
+  // built now, so the job doesn't wait on its first build
+  pre2 := [3] string.["coax/web/tool.sh", "coder/tui/claude_standin.coax", "--version"]; sm_exec(s, rp, pre2[..], 600000);
+  specb: [1100] u8; spec := sm_in_tmp(s, "spec.txt", specb[..]);
+  ok = fs_write(spec, "realm\nname Smoke Realm\nground forest\ntime day\nrev 1\nfeature trees pine 6\n");
+  outb: [1100] u8; sout := sm_in_tmp(s, "standin.jsonl", outb[..]);
+  markb: [1100] u8; mark := sm_in_tmp(s, "ran-a-command", markb[..]);
+  pathb: [8192] u8; path0: [8192] u8; pp := sm_cat(pathb[..], 0, bin); pp = sm_cat(pathb[..], pp, ":"); pp = sm_cat(pathb[..], pp, proc_getenv("PATH", path0[..]));
+  sm_env(s, 6, "PATH", cast(string) pathb[0..<pp]); sm_env(s, 7, "CLAUDE_STANDIN_SPEC", spec);
+  sm_env(s, 8, "CLAUDE_STANDIN_OUT", sout); sm_env(s, 9, "CLAUDE_STANDIN_MARK", mark); sm_env(s, 10, "CLAUDE_STANDIN_SECONDS", "90");
+  cargs := [6] string.["--engine", "claude", "--for", "300", "--relay", url];
+  serve = sm_serve(s, cargs[..]);
+  sm_check(s, serve >= 0, "coder host serves on the claude engine (a stand-in claude, no login)");
+  r1 := [8] string.["--text", "Add a crate by the pines", "--realm", "built", "--grant", grant, "--epoch", epoch];
+  sm_call(s, rp, "thread.run", bk, r1[..]);
+  rth: [64] u8; rts := rp_s(rp, "result.outcome.reference", rth[..]); rt_b: [64] u8; rtn := sm_cat(rt_b[..], 0, rts); rthread := cast(string) rt_b[0..<rtn];
+  sm_check(s, rp_good(rp) && rtn == 32, "a realm request starts a job on the claude engine");
+  r2 := [8] string.["--thread", rthread, "--after", "0", "--grant", grant, "--epoch", epoch];
+  done := sm_follow(s, steps, bk, r2[..]);
+  sb2: [65536] u8; st2 := sm_steps(steps, sb2[..]);
+  sm_check2(s, done && rp_is(steps, "result.outcome.state", "finished"), "the realm job finishes", rp_s(steps, "result.outcome.state", b1[..]));
+  sm_check(s, sm_has(st2, "tool: mcp__openagents__realm_show") && sm_has(st2, "tool: mcp__openagents__realm_place"), "its steps show the realm tools it called");
+  sm_check(s, sm_has(st2, "approval: mcp__openagents__realm_place: run"), "the ceiling lets the realm edit run (--realm-tools)");
+  sm_check(s, sm_has(st2, "approval: Bash(touch") && sm_has(st2, "): refuse") && sm_has(st2, "approval: Write(note.txt): refuse"), "the ceiling refuses its shell command and its file write, and the browser sees it");
+  spb: [4096] u8; spn := fs_read(spec, spb[..]); spt := ifx spn > 0 then cast(string) spb[0..<spn] else "";
+  sm_check(s, sm_has(spt, "rev 2\n") && sm_has(spt, "placed crate 4 -2 0"), "the realm's spec has the edit (rev 2, a crate placed)");
+  nwb: [1200] u8;
+  sm_check(s, !fs_exists(mark) && !fs_exists(sm_in_home(s, ".openagents/coder/host/work/note.txt", nwb[..])), "nothing it was refused ran: no command, no file");
+  // a long job, stopped while it runs
+  r3 := [8] string.["--text", "Tidy the paths, slowly", "--realm", "built", "--grant", grant, "--epoch", epoch];
+  sm_call(s, rp, "thread.run", bk, r3[..]);
+  lth: [64] u8; lts := rp_s(rp, "result.outcome.reference", lth[..]); lt_b: [64] u8; ltn := sm_cat(lt_b[..], 0, lts); lthread := cast(string) lt_b[0..<ltn];
+  r4 := [8] string.["--thread", lthread, "--after", "0", "--grant", grant, "--epoch", epoch];
+  working := false;
+  for attempt: 0..<40 {
+    sm_call(s, rp, "thread.read", bk, r4[..]);
+    if rp_is(rp, "result.outcome.state", "running") && attempt >= 2 { working = true; break; }
+    proc_sleep(1000);
+  }
+  sm_check(s, working, "a long job runs");
+  r5 := [6] string.["--thread", lthread, "--grant", grant, "--epoch", epoch];
+  sm_call(s, rp, "thread.stop", bk, r5[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.operation", "thread.stop"), "thread.stop on the running job answers dispatched");
+  stopped := sm_follow(s, steps, bk, r4[..]);
+  sm_check2(s, stopped && rp_is(steps, "result.outcome.state", "stopped"), "the job stops", rp_s(steps, "result.outcome.state", b1[..]));
+  sm_check(s, sm_has(sm_steps(steps, sb2[..]), "Working on it"), "what it said before it stopped comes in as a step");
+  sob: [8192] u8; son := fs_read(sout, sob[..]);
+  sm_check(s, son > 0 && sm_has(cast(string) sob[0..<son], "\"interrupted\":true"), "the engine was interrupted, not left running");
   sm_call(s, rp, "thread.read", other, e5[..]);
   sm_check2(s, rp_refused(rp, "forbidden"), "an unpaired key is refused", rp_s(rp, "result.code", b1[..]));
   sm_call(s, rp, "browser.status", bk, e2[..]);

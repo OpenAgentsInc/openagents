@@ -1629,8 +1629,14 @@ then retention.
 [`coder host`](../../../coder/tui/host.coax) is a host for them. Only the
 person at the computer allows a pairing, the browser grant has `observe` and
 `operate` for seven days, and `thread.run` starts a Coder job that reads and
-uses the realm tools only. `coder/tui/host_smoke.coax` runs it against a local
-relay with a stand-in browser key. The direct-channel binding, CAP/CJ,
+uses the realm tools only. The grant rules are
+[`coder/tui/host_grants.coax`](../../../coder/tui/host_grants.coax) and the
+job's ceiling is [`coder/tui/ceiling.coax`](../../../coder/tui/ceiling.coax),
+both `#authority` with no surviving mutants. `coder/tui/host_smoke.coax` runs
+it against a local relay with a stand-in browser key, and on the claude
+engine with a stand-in `claude`.
+`coax/web/computer-flow.coax --local` plays the browser side in headless
+Chrome with nothing remote. The direct-channel binding, CAP/CJ,
 connect codes, iroh enrollment, the operator socket, and the `task.*`,
 `terminal.*`, `device.*` and `spend.*` operations are not in Coax yet.
 
