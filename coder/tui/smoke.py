@@ -1316,7 +1316,7 @@ def verbs(check):
               and mine[0]["description"].startswith("finished") and "via-mcp" in read["result"]["contents"][0]["text"]
               and miss["error"]["code"] == -32002)
         check("mcp: initialize, the tool list, a run started and its log read through tools",
-              init["result"]["serverInfo"]["name"] == "coder" and len(tools) == 11 and "coder_remember" in tools and not started["isError"]
+              init["result"]["serverInfo"]["name"] == "coder" and len(tools) == 12 and "coder_session_read" in tools and "coder_remember" in tools and not started["isError"]
               and "    └ via-mcp" in logged and unknown["error"]["code"] == -32602)
         # coder mcp --http: the same server over Streamable HTTP on 127.0.0.1
         import urllib.request, urllib.error

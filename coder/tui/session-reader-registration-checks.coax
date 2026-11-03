@@ -1,0 +1,19 @@
+#load "coder.coax";
+
+#test "session reader: Claude SDK advertises the shared registered tool" {
+  options: [1] ClOptions; cd_claude_coder_server(options[..]);
+  found := false;
+  for i: 0..<options[0].server_count {
+    for j: 0..<options[0].servers[i].tool_count { if options[0].servers[i].tools[j].name == "coder_session_read" { found = true; } }
+  }
+  #assert found;
+}
+
+#test "session reader: typed requests reject wrong types and argument injection" {
+  out: [CSR_OUTPUT_MAX] u8;
+  bad := [12] string.["[]", "{\"source\":1}", "{\"action\":true}", "{\"ref\":[]}", "{\"cwd\":null}", "{\"max_turns\":0}", "{\"before\":-1}", "{\"max_tool_chars\":1025}", "{\"within_min\":1.5}", "{\"max_turns\":\"2\"}", "{\"extra\":\"--on cloud\"}", "{\"action\":\"exec\"}"];
+  for request: bad { got := csr_request(request, out[..]); #assert cl_raw(got, "error").count > 0; }
+  #assert cl_raw(csr_request("{\"source\":\"codex\"}", out[..]), "error") == "\"unsupported_source\"";
+  #assert cl_raw(csr_request("{\"action\":\"list\",\"ref\":\"x\"}", out[..]), "error") == "\"invalid_arguments\"";
+  #assert cl_raw(csr_request("{\"action\":\"exec\",\"action\":\"list\"}", out[..]), "error") == "\"invalid_arguments\"";
+}

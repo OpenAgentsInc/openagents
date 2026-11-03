@@ -1,0 +1,300 @@
+// Read-only filesystem and CLI adapter for coax/lib/agent/session-reader.coax.
+// Every reply is JSON, including errors. The MCP catalog calls this same verb.
+#load "../../coax/lib/agent/session-reader.coax";
+
+CSR_DIRS :: 256;
+CSR_FILES :: 512;
+CSR_SESSIONS :: 128;
+CSR_SCAN_BYTES :: 33554432;
+CsrSummary :: struct {
+  id: [128] u8; nid: int; path: [2048] u8; npath: int;
+  cwd: [1024] u8; ncwd: int; title: [256] u8; ntitle: int;
+  branch: [256] u8; nbranch: int; modified: int;
+}
+CsrScan :: struct { rows: [CSR_SESSIONS] CsrSummary; n: int; incomplete: bool; bytes: int; }
+
+csr_keep :: (out: [] u8, text: string) -> int {
+  s := csr_cut(text, out.count); for c, i: s { out[i] = c; } return s.count;
+}
+csr_suffix :: (s: string, suffix: string) -> bool {
+  return s.count >= suffix.count && cast(string) s[s.count - suffix.count..<s.count] == suffix;
+}
+csr_slug :: (cwd: string, out: [] u8) -> string {
+  if cwd.count > out.count { return ""; }
+  for c, i: cwd { out[i] = ifx (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') then c else cast(u8) '-'; }
+  return cast(string) out[0..<cwd.count];
+}
+csr_root :: (out: [] u8) -> string {
+  eb: [2048] u8; value := cl_getenv("CLAUDE_CONFIG_DIR", eb[..]);
+  if value.count == 0 {
+    hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+    if home.count == 0 { return ""; }
+    pb: [2048] u8; value = fs_join(home, ".claude", pb[..]);
+    n := csr_keep(out, value); return cast(string) out[0..<n];
+  }
+  if value.count > 1 && value[0] == '~' && value[1] == '/' {
+    hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+    pb: [2048] u8; value = fs_join(home, cast(string) value[2..<value.count], pb[..]);
+    n := csr_keep(out, value); return cast(string) out[0..<n];
+  }
+  n := csr_keep(out, value); return cast(string) out[0..<n];
+}
+csr_fold :: (text: string, out: [] u8) -> string {
+  n := 0; space := false;
+  for c: text {
+    if c == ' ' || c == 9 || c == 10 || c == 13 { space = n > 0; continue; }
+    if space && n < out.count { out[n] = ' '; n += 1; } space = false;
+    if n >= out.count { break; }
+    out[n] = ifx c >= 'A' && c <= 'Z' then c + 32 else c; n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+csr_same_dir :: (a: string, b: string) -> bool {
+  if a == b { return true; }
+  ab: [2048] u8; bb: [2048] u8; aa := fs_realpath(a, ab[..]); bbv := fs_realpath(b, bb[..]);
+  return aa.count > 0 && aa == bbv;
+}
+csr_under :: (path: string, root: string) -> bool {
+  pb: [2048] u8; rb: [2048] u8; p := fs_realpath(path, pb[..]); r := fs_realpath(root, rb[..]);
+  return r.count > 0 && p.count > r.count && cast(string) p[0..<r.count] == r && p[r.count] == '/';
+}
+csr_direct_file :: (path: string, dir: string) -> bool {
+  pb: [2048] u8; db: [2048] u8; p := fs_realpath(path, pb[..]); d := fs_realpath(dir, db[..]);
+  return p.count > 0 && d.count > 0 && fs_dir(p) == d && fs_base(p) == fs_base(path);
+}
+csr_age :: (modified: int, within: int) -> bool {
+  if within == 0 { return true; }
+  age := cxproc_wall_us() - modified / 1000;
+  return age >= 0 && age <= within * 60000000;
+}
+
+// A bounded metadata read. The head ends at a complete JSONL record, and the
+// tail begins after its first newline. No partial JSON record is interpreted.
+csr_summary :: (path: string, id: string, row: [] CsrSummary, scan: [] CsrScan) -> bool {
+  size := fs_size(path); if size <= 0 { return false; }
+  before := fs_mtime_ns(path);
+  want := ifx size < 262144 then size else 262144;
+  if scan[0].bytes + want + 65536 > CSR_SCAN_BYTES { scan[0].incomplete = true; return false; }
+  hb: [262144] u8; n := fs_read_at(path, 0, hb[0..<want]); scan[0].bytes += want;
+  if n != want { scan[0].incomplete = true; return false; }
+  if n < size { while n > 0 && hb[n - 1] != 10 { n -= 1; } }
+  g: [1] CsrGraph; csr_parse(g[..], cast(string) hb[0..<n]);
+  fallback: [256] u8; nf := 0;
+  if g[0].cwd.count == 0 || g[0].n == 0 { scan[0].incomplete = true; return false; }
+  for i: 0..<g[0].n {
+    if g[0].nodes[i].kind != 1 { continue; }
+    ar: [1] ClArena; ab: [262144] u8; ar[0].buf = ab[..]; r := g[0].nodes[i].record;
+    meta := cl_bool(r, "isMeta"); compact := cl_bool(r, "isCompactSummary");
+    if (meta.ok && meta.value) || (compact.ok && compact.value) { continue; }
+    t := cl_str(ar[..], r, "message.content");
+    if t.count == 0 { t = cl_str(ar[..], r, "message.content.0.text"); }
+    if !csr_meta_text(t) { nf = csr_keep(fallback[..], t); break; }
+  }
+  // Copy head metadata before parsing the tail (which may compact the graph).
+  row[0].ncwd = csr_keep(row[0].cwd[..], g[0].cwd);
+  row[0].nbranch = csr_keep(row[0].branch[..], g[0].branch);
+  row[0].ntitle = csr_keep(row[0].title[..], ifx g[0].title.count > 0 then g[0].title else cast(string) fallback[0..<nf]);
+  title_rank := g[0].title_rank;
+  if size > want {
+    tail: [65536] u8; offset := ifx size > tail.count then size - tail.count else 0;
+    tn := fs_read_at(path, offset, tail[..]); scan[0].bytes += 65536;
+    if tn < 0 { scan[0].incomplete = true; return false; }
+    begin := 0; if offset > 0 { while begin < tn && tail[begin] != 10 { begin += 1; } begin += 1; }
+    if begin < tn {
+      csr_parse(g[..], cast(string) tail[begin..<tn]);
+      if g[0].title.count > 0 && g[0].title_rank >= title_rank { row[0].ntitle = csr_keep(row[0].title[..], g[0].title); }
+      if g[0].branch.count > 0 { row[0].nbranch = csr_keep(row[0].branch[..], g[0].branch); }
+    }
+  }
+  if fs_mtime_ns(path) != before || fs_size(path) != size { scan[0].incomplete = true; return false; }
+  row[0].nid = csr_keep(row[0].id[..], id); row[0].npath = csr_keep(row[0].path[..], path); row[0].modified = before;
+  if path.count > row[0].path.count || id.count > row[0].id.count { scan[0].incomplete = true; return false; }
+  return true;
+}
+csr_scan_dir :: (scan: [] CsrScan, dir: string, cwd: string, within: int) {
+  entries: [1] FsList; count := fs_list(dir, entries[..]);
+  if count < 0 { return; }
+  if entries[0].full || count > CSR_FILES { scan[0].incomplete = true; }
+  count = ifx count > CSR_FILES then CSR_FILES else count;
+  for i: 0..<count {
+    name := fs_entry(entries[..], i);
+    if !csr_suffix(name, ".jsonl") { continue; }
+    id := cast(string) name[0..<name.count - 6]; if !csr_uuid(id) { continue; }
+    pb: [2048] u8; path := fs_join(dir, name, pb[..]);
+    if !csr_direct_file(path, dir) { continue; }
+    if !csr_age(fs_mtime_ns(path), within) { continue; }
+    row: [1] CsrSummary; if !csr_summary(path, id, row[..], scan) { continue; }
+    if !csr_same_dir(cast(string) row[0].cwd[0..<row[0].ncwd], cwd) { continue; }
+    // Keep a stable newest-first top K. Duplicate IDs choose the newest file.
+    duplicate := -1; for j: 0..<scan[0].n { if cast(string) scan[0].rows[j].id[0..<scan[0].rows[j].nid] == id { duplicate = j; } }
+    if duplicate >= 0 {
+      if scan[0].rows[duplicate].modified >= row[0].modified { continue; }
+      for j: duplicate..<scan[0].n - 1 { scan[0].rows[j] = scan[0].rows[j + 1]; } scan[0].n -= 1;
+    }
+    pos := 0; while pos < scan[0].n && scan[0].rows[pos].modified > row[0].modified { pos += 1; }
+    if pos >= CSR_SESSIONS { scan[0].incomplete = true; continue; }
+    if scan[0].n == CSR_SESSIONS { scan[0].n -= 1; scan[0].incomplete = true; }
+    j := scan[0].n; while j > pos { scan[0].rows[j] = scan[0].rows[j - 1]; j -= 1; }
+    scan[0].rows[pos] = row[0]; scan[0].n += 1;
+  }
+}
+csr_discover :: (scan: [] CsrScan, projects: string, cwd: string, within: int) {
+  scan[0] = CsrScan.{};
+  sb: [1024] u8; pb: [2048] u8;
+  expected := fs_join(projects, csr_slug(cwd, sb[..]), pb[..]);
+  // The directory encoding is the ordinary discovery scope. Native UUID lookup
+  // below also searches other project directories without decoding their logs.
+  if csr_under(expected, projects) { csr_scan_dir(scan, expected, cwd, within); }
+  cb: [1024] u8; canonical := fs_realpath(cwd, cb[..]);
+  if canonical.count > 0 && canonical != cwd {
+    db: [2048] u8; sb2: [1024] u8; dir := fs_join(projects, csr_slug(canonical, sb2[..]), db[..]);
+    if dir != expected && csr_under(dir, projects) { csr_scan_dir(scan, dir, cwd, within); }
+  }
+}
+csr_row_json :: (row_in: CsrSummary, out: [] u8, at: int) -> int {
+  row := row_in;
+  n := json_raw(out, at, "{\"session_id\":"); n = json_write_string(out, n, cast(string) row.id[0..<row.nid]);
+  n = json_raw(out, n, ",\"path\":"); n = json_write_string(out, n, cast(string) row.path[0..<row.npath]);
+  n = json_raw(out, n, ",\"title\":"); n = json_write_string(out, n, cast(string) row.title[0..<row.ntitle]);
+  n = json_raw(out, n, ",\"cwd\":"); n = json_write_string(out, n, cast(string) row.cwd[0..<row.ncwd]);
+  n = json_raw(out, n, ",\"branch\":"); n = json_write_string(out, n, cast(string) row.branch[0..<row.nbranch]);
+  n = json_raw(out, n, ",\"updated_at_ns\":"); n = json_write_int(out, n, row.modified);
+  return json_raw(out, n, "}");
+}
+csr_error :: (code: string, message: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"error\":");
+  n = json_write_string(out, n, code); n = json_raw(out, n, ",\"message\":"); n = json_write_string(out, n, message); n = json_raw(out, n, "}");
+  return ifx n < 0 then "{\"error\":\"output_buffer\"}" else cast(string) out[0..<n];
+}
+csr_named_path :: (projects: string, sid: string, out: [] u8, incomplete: [] bool) -> string {
+  dirs: [1] FsList; count := fs_list(projects, dirs[..]); found := 0; n := 0;
+  if count < 0 { return ""; }
+  if dirs[0].full || count > CSR_DIRS { incomplete[0] = true; }
+  count = ifx count > CSR_DIRS then CSR_DIRS else count;
+  nb: [140] u8; nn := csr_keep(nb[..], sid);
+  for i: 0..<nn { if nb[i] >= 'A' && nb[i] <= 'F' { nb[i] += 32; } }
+  nn = json_raw(nb[..], nn, ".jsonl");
+  for i: 0..<count {
+    db: [2048] u8; pb: [2048] u8; dir := fs_join(projects, fs_entry(dirs[..], i), db[..]);
+    path := fs_join(dir, cast(string) nb[0..<nn], pb[..]);
+    if fs_kind(path) == FS_FILE && csr_under(dir, projects) && csr_direct_file(path, dir) { found += 1; n = csr_keep(out, path); }
+  }
+  if found > 1 { incomplete[0] = true; return ""; }
+  return ifx found == 1 then cast(string) out[0..<n] else "";
+}
+csr_read_file :: (path: string, sid: string, max_turns: int, before: int, max_tool: int, out: [] u8) -> string {
+  size := fs_size(path);
+  if size <= 0 { return csr_error("not_found", "No readable nonempty transcript at that path.", out); }
+  if size > CSR_FILE_MAX { return csr_error("file_limit", "Transcript exceeds the 32 MiB reader limit; no partial branch was selected.", out); }
+  modified := fs_mtime_ns(path); data: [CSR_FILE_MAX] u8;
+  n := fs_read_at(path, 0, data[0..<size]);
+  if n != size || fs_size(path) != size || fs_mtime_ns(path) != modified { return csr_error("file_changed", "Transcript changed while reading; retry the request.", out); }
+  g: [1] CsrGraph; csr_parse(g[..], cast(string) data[0..<n]);
+  if g[0].warnings[2] > 0 || g[0].warnings[3] > 0 { return csr_error("record_limit", "Transcript metadata exceeds the reader budget; no partial branch was selected.", out); }
+  csr_select(g[..]);
+  if before > g[0].norder { return csr_error("invalid_before", "before is outside this conversation.", out); }
+  return csr_show(g[..], sid, path, max_turns, before, max_tool, out);
+}
+// Typed request validation is shared by CLI JSON requests and the MCP tool.
+csr_request :: (request: string, out: [] u8) -> string {
+  nb: [256] JvNode; d: [1] Jv;
+  if !cl_root(request).ok || !jv_parse(d[..], request, nb[..]) || jv_kind(d[0], 0) != JV_OBJECT { return csr_error("invalid_arguments", "Request must be a JSON object.", out); }
+  fields := [8] string.["source", "action", "ref", "cwd", "within_min", "max_turns", "before", "max_tool_chars"];
+  seen: [8] bool;
+  for i: 0..<jv_len(d[0], 0) {
+    key := jv_key(d[0], jv_at(d[0], 0, i)); known := false;
+    for f, k: fields { if key == f { if seen[k] { return csr_error("invalid_arguments", "Duplicate request field.", out); } seen[k] = true; known = true; } }
+    if !known { return csr_error("invalid_arguments", "Unknown request field.", out); }
+  }
+  strings := [4] string.["source", "action", "ref", "cwd"];
+  string_limits := [4] int.[6, 4, 2048, 1024]; decoded: [2049] u8;
+  for f, i: strings {
+    v := jv_get(d[0], 0, f);
+    if v < 0 { continue; }
+    count := jv_str(d[0], v, decoded[..]);
+    if count < 0 || count > string_limits[i] { return csr_error("invalid_arguments", "String arguments have an invalid type or exceed their byte limits.", out); }
+  }
+  nums := [4] string.["within_min", "max_turns", "before", "max_tool_chars"];
+  defaults := [4] int.[0, 64, 0, 300]; limits := [4] int.[525600, 256, CSR_NODES, 1024]; values: [4] int;
+  for f, i: nums {
+    node := jv_get(d[0], 0, f); value := ifx node < 0 then defaults[i] else jv_int(d[0], node, -1);
+    if value < 0 || value > limits[i] || ((i == 1 || i == 3) && value == 0) { return csr_error("invalid_arguments", "Numeric arguments are outside the documented integer ranges.", out); }
+    values[i] = value;
+  }
+  ar: [1] ClArena; ab: [8192] u8; ar[0].buf = ab[..];
+  source := cl_str(ar[..], request, "source"); action := cl_str(ar[..], request, "action"); ref := cl_str(ar[..], request, "ref");
+  cwd := cl_str(ar[..], request, "cwd");
+  if source.count > 0 && source != "claude" { return csr_error("unsupported_source", "This reader supports Claude Code transcripts.", out); }
+  if action.count == 0 { action = "show"; }
+  if action != "list" && action != "show" { return csr_error("invalid_action", "action is list or show.", out); }
+  if action == "list" && ref.count > 0 { return csr_error("invalid_arguments", "list does not take a session reference.", out); }
+  cb: [1024] u8; if cwd.count == 0 { cwd = fs_cwd(cb[..]); }
+  if cwd.count > 1024 || ref.count > 2048 || !fs_path_ok(cwd) { return csr_error("invalid_arguments", "cwd or reference exceeds its path budget.", out); }
+  if ref.count > 0 && ref != "latest" && fs_kind(ref) == FS_FILE {
+    if !csr_suffix(ref, ".jsonl") { return csr_error("invalid_path", "A Claude transcript path ends in .jsonl.", out); }
+    base := fs_base(ref); return csr_read_file(ref, cast(string) base[0..<base.count - 6], values[1], values[2], values[3], out);
+  }
+  rb: [2048] u8; pb: [2048] u8; root := csr_root(rb[..]); projects := fs_join(root, "projects", pb[..]);
+  if root.count == 0 { return csr_error("not_found", "No Claude configuration directory.", out); }
+  if csr_uuid(ref) {
+    found: [2048] u8; incomplete: [1] bool;
+    path := csr_named_path(projects, ref, found[..], incomplete[..]);
+    if incomplete[0] { return csr_error("discovery_limit", "Native ID discovery was incomplete or found duplicate files; specify an exact path.", out); }
+    if path.count == 0 { return csr_error("not_found", "No transcript for that native session ID.", out); }
+    base := fs_base(path); return csr_read_file(path, cast(string) base[0..<base.count - 6], values[1], values[2], values[3], out);
+  }
+  scan: [1] CsrScan; csr_discover(scan[..], projects, cwd, values[0]);
+  if action == "list" {
+    n := json_raw(out, 0, "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"sessions\":["); count := 0;
+    for i: 0..<scan[0].n {
+      row: [8192] u8; rn := csr_row_json(scan[0].rows[i], row[..], 0);
+      if rn < 0 || n + rn + 256 >= out.count { scan[0].incomplete = true; break; }
+      if count > 0 { n = json_raw(out, n, ","); } n = json_raw(out, n, cast(string) row[0..<rn]); count += 1;
+    }
+    n = json_raw(out, n, ifx scan[0].incomplete then "],\"warnings\":[{\"code\":\"discovery_limit\"}]}" else "],\"warnings\":[]}");
+    return ifx n < 0 then csr_error("output_buffer", "Output buffer too small.", out) else cast(string) out[0..<n];
+  }
+  if scan[0].incomplete { return csr_error("discovery_limit", "Discovery was incomplete; use a native session ID or transcript path.", out); }
+  matches: [CSR_SESSIONS] int; nm := 0;
+  if ref.count == 0 || ref == "latest" { if scan[0].n > 0 { matches[0] = 0; nm = 1; } }
+  else {
+    qb: [2048] u8; query := csr_fold(ref, qb[..]);
+    for i: 0..<scan[0].n { tb: [256] u8; title := csr_fold(cast(string) scan[0].rows[i].title[0..<scan[0].rows[i].ntitle], tb[..]); if csr_has(title, query) { matches[nm] = i; nm += 1; } }
+  }
+  if nm == 0 { return csr_error("not_found", "No matching Claude conversation for this working directory.", out); }
+  if nm > 1 {
+    n := json_raw(out, 0, "{\"schema\":\"coder.session-reader.v1\",\"inert\":true,\"error\":\"ambiguous_reference\",\"matches\":[");
+    for i: 0..<nm {
+      row: [8192] u8; rn := csr_row_json(scan[0].rows[matches[i]], row[..], 0);
+      if rn < 0 || n + rn + 128 > out.count { break; }
+      if i > 0 { n = json_raw(out, n, ","); } n = json_raw(out, n, cast(string) row[0..<rn]);
+    }
+    n = json_raw(out, n, "]}"); return cast(string) out[0..<n];
+  }
+  row := scan[0].rows[matches[0]];
+  return csr_read_file(cast(string) row.path[0..<row.npath], cast(string) row.id[0..<row.nid], values[1], values[2], values[3], out);
+}
+
+cd_cmd_session_read :: (args: [] Args) -> int {
+  request := args_value(args, "--request", ""); rb: [8192] u8;
+  if request.count == 0 {
+    action := cd_positional(args, 1); if action.count == 0 { action = "show"; }
+    n := json_raw(rb[..], 0, "{\"source\":\"claude\",\"action\":"); n = json_write_string(rb[..], n, action);
+    ref := cd_positional(args, 2); if ref.count > 0 { n = json_raw(rb[..], n, ",\"ref\":"); n = json_write_string(rb[..], n, ref); }
+    cwd := args_value(args, "--cwd", ""); if cwd.count > 0 { n = json_raw(rb[..], n, ",\"cwd\":"); n = json_write_string(rb[..], n, cwd); }
+    flags := [4] string.["--within-min", "--max-turns", "--before", "--max-tool-chars"];
+    names := [4] string.["within_min", "max_turns", "before", "max_tool_chars"];
+    for f, i: flags {
+      value := args_value(args, f, "");
+      if value.count > 0 {
+        for c: value { if c < '0' || c > '9' { tool_errln("session-read: numeric flags take decimal integers"); return 2; } }
+        n = json_raw(rb[..], n, ",\""); n = json_raw(rb[..], n, names[i]); n = json_raw(rb[..], n, "\":"); n = json_raw(rb[..], n, value);
+      }
+      else if args_has(args, f) { tool_errln("session-read: a numeric flag needs its value"); return 2; }
+    }
+    n = json_raw(rb[..], n, "}"); if n < 0 { tool_errln("session-read: arguments too long"); return 2; }
+    request = cast(string) rb[0..<n];
+  }
+  out: [CSR_OUTPUT_MAX] u8; result := csr_request(request, out[..]); cd_outln(result);
+  return ifx cl_raw(result, "error").count > 0 then 2 else 0;
+}

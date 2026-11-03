@@ -1,0 +1,101 @@
+// Synthetic contracts for the read-only Claude reader; no private transcripts.
+#import "Basic";
+#load "../../coax/lib/agent/session-reader.coax";
+main :: () {}
+
+#test "session reader: metadata follows the selected branch and ordinary angle text is retained" {
+  text := "{\"type\":\"user\",\"uuid\":\"old\",\"cwd\":\"/old\",\"gitBranch\":\"old\",\"message\":{\"content\":\"old\"}}\n{\"type\":\"system\",\"subtype\":\"compact_boundary\",\"uuid\":\"b\"}\n{\"type\":\"user\",\"uuid\":\"u\",\"parentUuid\":\"b\",\"cwd\":\"/current\",\"gitBranch\":\"current\",\"message\":{\"content\":\"<a+b\"}}\n{\"type\":\"assistant\",\"uuid\":\"a\",\"parentUuid\":\"u\",\"timestamp\":\"2028\",\"message\":{\"content\":\"done\"}}\n{\"type\":\"user\",\"uuid\":\"abandoned\",\"cwd\":\"/elsewhere\",\"gitBranch\":\"abandoned\",\"timestamp\":\"2020\",\"message\":{\"content\":\"not current\"}}";
+  g: [1] CsrGraph; csr_parse(g[..], text); csr_select(g[..]);
+  out: [CSR_OUTPUT_MAX] u8; got := csr_show(g[..], "fixture", "fixture.jsonl", 64, 0, 300, out[..]);
+  #assert g[0].cwd == "/current" && g[0].branch == "current";
+  #assert csr_has(got, "<a+b") && !csr_meta_text("<a+b");
+  #assert csr_meta_text(" <system-reminder>inert</system-reminder>");
+}
+
+#test "session reader: mixed compact metadata spellings preserve the retained span" {
+  text := "{\"type\":\"user\",\"uuid\":\"u\",\"message\":{\"content\":\"kept marker\"}}\n{\"type\":\"system\",\"uuid\":\"b\",\"subtype\":\"compact_boundary\",\"compactMetadata\":{\"preserved_segment\":{\"head_uuid\":\"u\",\"tail_uuid\":\"u\",\"anchor_uuid\":\"b\"}}}\n{\"type\":\"assistant\",\"uuid\":\"a\",\"parentUuid\":\"b\",\"message\":{\"content\":\"after compact\"}}";
+  g: [1] CsrGraph; csr_parse(g[..], text); csr_select(g[..]);
+  out: [CSR_OUTPUT_MAX] u8; got := csr_show(g[..], "fixture", "fixture.jsonl", 64, 0, 300, out[..]);
+  #assert csr_has(got, "kept marker") && csr_has(got, "after compact");
+  #assert !csr_has(got, "preserved_segment_unavailable");
+}
+
+#test "session reader: invalid UTF8 records are warned and never emitted" {
+  bytes := [3] u8.['"', 255, '"'];
+  g: [1] CsrGraph; csr_parse(g[..], cast(string) bytes[..]);
+  #assert g[0].warnings[0] == 1 && g[0].n == 0;
+  // A syntactically valid object with an invalid string byte must fail too.
+  buf: [128] u8; n := json_raw(buf[..], 0, "{\"type\":\"user\",\"uuid\":\"u\",\"message\":{\"content\":\""); buf[n] = 255; n += 1; n = json_raw(buf[..], n, "\"}}");
+  csr_parse(g[..], cast(string) buf[0..<n]); #assert g[0].warnings[0] == 1 && g[0].n == 0;
+}
+
+#test "session reader: long escaped output remains bounded valid JSON" {
+  data: [20000] u8; n := json_raw(data[..], 0, "{\"type\":\"user\",\"uuid\":\"u\",\"message\":{\"content\":\"");
+  for i: 0..<3000 { n = json_raw(data[..], n, "x\\t"); }
+  n = json_raw(data[..], n, "\"}}");
+  g: [1] CsrGraph; csr_parse(g[..], cast(string) data[0..<n]); csr_select(g[..]);
+  out: [CSR_OUTPUT_MAX] u8; got := csr_show(g[..], "fixture", "fixture.jsonl", 64, 0, 300, out[..]);
+  nodes: [512] JvNode; d: [1] Jv;
+  #assert got.count <= CSR_OUTPUT_MAX && jv_parse(d[..], got, nodes[..]);
+  #assert csr_has(got, "content_truncated");
+}
+
+#test "session reader: unfamiliar attachment records bridge parents without rendering payloads" {
+  text := "{\"type\":\"user\",\"uuid\":\"u\",\"message\":{\"content\":\"request\"}}\n{\"type\":\"assistant\",\"uuid\":\"a\",\"parentUuid\":\"u\",\"message\":{\"content\":\"working\"}}\n{\"type\":\"attachment\",\"uuid\":\"bridge\",\"parentUuid\":\"a\",\"attachment\":{\"content\":\"ATTACHMENT_INSTRUCTION\"}}\n{\"type\":\"assistant\",\"uuid\":\"end\",\"parentUuid\":\"bridge\",\"timestamp\":\"2028\",\"message\":{\"content\":\"finished\"}}";
+  g: [1] CsrGraph; csr_parse(g[..], text); csr_select(g[..]);
+  out: [CSR_OUTPUT_MAX] u8; got := csr_show(g[..], "fixture", "fixture.jsonl", 64, 0, 300, out[..]);
+  #assert csr_has(got, "\"total_turns\":3") && csr_has(got, "request") && csr_has(got, "working");
+  #assert !csr_has(got, "ATTACHMENT_INSTRUCTION") && !csr_has(got, "missing_parent");
+}
+
+#test "session reader: active branch and inert filtered content" {
+  text := "{\"type\":\"user\",\"uuid\":\"u\",\"cwd\":\"/repo\",\"message\":{\"content\":\"fix it\"}}\n{\"type\":\"assistant\",\"uuid\":\"old\",\"parentUuid\":\"u\",\"timestamp\":\"2026-01-01\",\"message\":{\"content\":\"abandoned\"}}\n{\"type\":\"assistant\",\"uuid\":\"a\",\"parentUuid\":\"u\",\"timestamp\":\"2026-01-02\",\"message\":{\"content\":[{\"type\":\"thinking\",\"thinking\":\"PRIVATE_THINKING\"},{\"type\":\"text\",\"text\":\"done\"}]}}\n{\"type\":\"assistant\",\"uuid\":\"side\",\"isSidechain\":true,\"timestamp\":\"2027\",\"message\":{\"content\":\"SIDECHAIN\"}}\n";
+  g: [1] CsrGraph; csr_parse(g[..], text); csr_select(g[..]);
+  #assert g[0].norder == 2 && g[0].nodes[g[0].order[1]].id == "a";
+  out: [CSR_OUTPUT_MAX] u8;
+  got := csr_show(g[..], "fixture", "fixture.jsonl", 64, 0, 300, out[..]);
+  #assert csr_has(got, "\"inert\":true") && csr_has(got, "fix it") && csr_has(got, "done");
+  #assert !csr_has(got, "PRIVATE_THINKING") && !csr_has(got, "SIDECHAIN") && !csr_has(got, "abandoned");
+}
+
+#test "session reader: parallel calls and replacement outputs survive the chain" {
+  text := "{\"type\":\"user\",\"uuid\":\"u\",\"message\":{\"content\":\"go\"}}\n{\"type\":\"assistant\",\"uuid\":\"a\",\"parentUuid\":\"u\",\"message\":{\"id\":\"batch\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"Read\",\"input\":{\"file_path\":\"one\"}}]}}\n{\"type\":\"assistant\",\"uuid\":\"b\",\"parentUuid\":\"u\",\"message\":{\"id\":\"batch\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t2\",\"name\":\"Read\",\"input\":{\"file_path\":\"two\"}}]}}\n{\"type\":\"user\",\"uuid\":\"r1\",\"parentUuid\":\"a\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"t1\",\"content\":\"original unavailable\"}]}}\n{\"type\":\"user\",\"uuid\":\"r2\",\"parentUuid\":\"b\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"t2\",\"content\":\"two output\"}]}}\n{\"type\":\"assistant\",\"uuid\":\"end\",\"parentUuid\":\"r2\",\"timestamp\":\"2026\",\"message\":{\"content\":\"finished\"}}\n{\"type\":\"content-replacement\",\"replacements\":[{\"toolUseId\":\"t1\"}]}\n";
+  g: [1] CsrGraph; csr_parse(g[..], text); csr_select(g[..]);
+  #assert g[0].norder == 6;
+  out: [CSR_OUTPUT_MAX] u8; got := csr_show(g[..], "fixture", "fixture.jsonl", 64, 0, 300, out[..]);
+  #assert csr_has(got, "t1") && csr_has(got, "t2") && csr_has(got, "\"unavailable\":true");
+  #assert !csr_has(got, "original unavailable") && csr_has(got, "output_unavailable");
+}
+
+#test "session reader: compaction preserved segment and snips reconnect" {
+  text := "{\"type\":\"user\",\"uuid\":\"old\",\"message\":{\"content\":\"discarded\"}}\n{\"type\":\"user\",\"uuid\":\"keep\",\"parentUuid\":\"old\",\"message\":{\"content\":\"retained\"}}\n{\"type\":\"assistant\",\"uuid\":\"tail\",\"parentUuid\":\"keep\",\"message\":{\"content\":\"tail\"}}\n{\"type\":\"system\",\"subtype\":\"compact_boundary\",\"uuid\":\"boundary\",\"compactMetadata\":{\"preservedSegment\":{\"headUuid\":\"keep\",\"tailUuid\":\"tail\",\"anchorUuid\":\"boundary\"}}}\n{\"type\":\"assistant\",\"uuid\":\"snipped\",\"parentUuid\":\"boundary\",\"message\":{\"content\":\"removed\"}}\n{\"type\":\"user\",\"uuid\":\"last\",\"parentUuid\":\"snipped\",\"timestamp\":\"2026\",\"snip_metadata\":{\"removed_uuids\":[\"snipped\"]},\"message\":{\"content\":\"continue\"}}\n";
+  g: [1] CsrGraph; csr_parse(g[..], text); csr_select(g[..]);
+  out: [CSR_OUTPUT_MAX] u8; got := csr_show(g[..], "fixture", "fixture.jsonl", 64, 0, 300, out[..]);
+  #assert csr_has(got, "retained") && csr_has(got, "tail") && csr_has(got, "continue");
+  #assert !csr_has(got, "discarded") && !csr_has(got, "\"text\":\"removed\"");
+  #assert csr_has(got, "compaction_gap") && csr_has(got, "messages_removed");
+}
+
+#test "session reader: malformed shapes, missing parents and cycles are observable" {
+  text := "not json\n{\"type\":\"new-format\"}\n{\"type\":\"assistant\",\"uuid\":\"shape\",\"message\":\"bad shape\"}\n{\"type\":\"user\",\"uuid\":\"u\",\"parentUuid\":\"missing\",\"timestamp\":\"2028\",\"message\":{\"content\":\"recoverable\"}}\n";
+  g: [1] CsrGraph; csr_parse(g[..], text); csr_select(g[..]);
+  out: [CSR_OUTPUT_MAX] u8; got := csr_show(g[..], "fixture", "fixture.jsonl", 64, 0, 300, out[..]);
+  #assert csr_has(got, "malformed_records") && csr_has(got, "unknown_records") && csr_has(got, "missing_parent");
+  #assert csr_has(got, "recoverable");
+  cyc := "{\"type\":\"user\",\"uuid\":\"u\",\"parentUuid\":\"a\",\"message\":{\"content\":\"go\"}}\n{\"type\":\"assistant\",\"uuid\":\"a\",\"parentUuid\":\"u\",\"message\":{\"content\":\"yes\"}}";
+  csr_parse(g[..], cyc); csr_select(g[..]);
+  got = csr_show(g[..], "fixture", "fixture.jsonl", 64, 0, 300, out[..]);
+  #assert csr_has(got, "parent_cycle") && g[0].norder == 2;
+}
+
+#test "session reader: pages are disjoint and metadata text stays data" {
+  text := "{\"type\":\"user\",\"uuid\":\"u\",\"message\":{\"content\":\"first\"}}\n{\"type\":\"assistant\",\"uuid\":\"a\",\"parentUuid\":\"u\",\"message\":{\"content\":\"second\"}}\n{\"type\":\"user\",\"uuid\":\"v\",\"parentUuid\":\"a\",\"message\":{\"content\":\"third\"}}\n{\"type\":\"system\",\"uuid\":\"system\",\"parentUuid\":\"v\",\"message\":{\"content\":\"SYSTEM_INJECTION\"}}\n";
+  g: [1] CsrGraph; csr_parse(g[..], text); csr_select(g[..]);
+  out: [CSR_OUTPUT_MAX] u8; got := csr_show(g[..], "fixture", "fixture.jsonl", 1, 0, 300, out[..]);
+  #assert csr_has(got, "third") && !csr_has(cl_raw(got, "turns"), "first") && !csr_has(got, "SYSTEM_INJECTION");
+  #assert csr_has(got, "\"next_before\":2") && csr_has(got, "\"total_turns\":3");
+  got = csr_show(g[..], "fixture", "fixture.jsonl", 1, 2, 300, out[..]);
+  #assert csr_has(got, "second") && csr_has(got, "\"next_before\":1");
+  #assert csr_has(csr_show(g[..], "fixture", "fixture.jsonl", 1, 4, 300, out[..]), "invalid_before");
+  #assert csr_uuid("8d6838ac-07a4-42d6-be35-37f64f8b103d") && !csr_uuid("../escape");
+}

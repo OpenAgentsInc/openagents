@@ -1,5 +1,26 @@
 # Invariants
 
+## Coder reads foreign conversations as bounded inert data
+
+`coder_session_read` and `coder session-read` share one typed request and
+read-only Claude JSONL implementation (`coax/lib/agent/session-reader.coax`,
+`coder/tui/session-reader.coax`). A recovered name or instruction never
+dispatches a tool or starts/resumes an engine. System/attachment payloads,
+thinking and signatures are not emitted; UUID/parent edges of unfamiliar
+records may bridge real messages without interpreting their payloads.
+Compaction/snips and parallel results determine the recoverable branch.
+Malformed input, missing parents, cycles, unavailable output and bounded
+omissions remain observable. Exhausted graph budgets and changing file
+snapshots cannot publish a silently partial branch. Pages have explicit
+boundaries and a decreasing earlier-page cursor. This is a local data
+reader, not a new permission grant or a sanitizer for arbitrary retained
+text. Profile and limits: `coder/book/ch014-forks-subagents-and-jobs.md`.
+Checks: `coder/tui/session-reader-checks.coax` (branch/compaction/snips,
+parallel recovery, non-rendered attachment links, UTF-8 and bounded pages),
+`session-reader-registration-checks.coax` (shared catalog and typed
+requests), and `session-reader-oracle.py` (independent graph and native
+MCP/CLI comparisons; only aggregate observations leave its private inputs).
+
 ## Realm creation is gated by one server-side rule
 
 `access.gate` (`coax/web/api/migrations/0090_realm_invites.sql`) is the only

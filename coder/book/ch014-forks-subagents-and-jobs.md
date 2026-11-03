@@ -11,6 +11,8 @@
 > cache holds the earlier turns instead of Coder resending them as text.
 > `coder resume` and `/resume` continue a session in the terminal UI, and
 > `coder import claude` brings in a Claude Code session of the folder.
+> `coder session-read` reads recoverable Claude history as inert data for a
+> handoff to any fresh session; `coder_session_read` exposes it through MCP.
 > Still to come: the same for the psionic engine, and the measured gains
 > chapter 21 asks for.
 
@@ -18,6 +20,86 @@ An agent sometimes needs a second line of work. This chapter adds four kinds:
 a fork of a session at a turn boundary, a subagent with its own scope and
 budget, a background job that outlives a turn, and a goal that a session works
 toward across turns.
+
+The read-only handoff reader uses the same tool catalog as `coder mcp` and
+Claude Code's `--coder-tools` SDK server. Its implementation is
+[`coax/lib/agent/session-reader.coax`](../../coax/lib/agent/session-reader.coax)
+with the file/CLI adapter in
+[`coder/tui/session-reader.coax`](../../coder/tui/session-reader.coax).
+It reads local JSONL without calling Claude, starting an engine session,
+writing a Coder log, or executing historical tool calls.
+
+```sh
+coder/tui/coder.sh session-read list --cwd /path/to/repo
+coder/tui/coder.sh session-read show latest --cwd /path/to/repo
+coder/tui/coder.sh session-read show SESSION_UUID --max-turns 7
+coder/tui/coder.sh session-read show SESSION_UUID --max-turns 7 --before 20
+```
+
+Every reply is JSON with schema `coder.session-reader.v1`. The MCP tool
+`coder_session_read` accepts `source` (`claude`), `action` (`list` or `show`,
+default `show`), `ref`, `cwd`, `within_min`, `max_turns`, `before` and
+`max_tool_chars`. Empty `ref` means `latest`; a native UUID, exact `.jsonl`
+path or case-insensitive title substring also works. An ambiguous title
+returns candidates and an error. Error replies remain JSON and set MCP's
+`isError`; the CLI exits 2. `--request JSON` takes the same typed object as
+MCP. Unknown/duplicate fields, wrong types and out-of-range integers fail.
+
+The source store is `$CLAUDE_CONFIG_DIR/projects`, defaulting to
+`~/.claude/projects`. Listing and latest/title selection stay in the current
+working directory's encoded project store (also its canonical spelling).
+Native UUIDs search at most 256 project directories and reject duplicate
+files. Discovery keeps direct regular files whose canonical location stays
+inside the store; an explicit path deliberately selects that exact local
+file independently of `cwd` and the age filter. The reader does not grant
+new filesystem permissions or change Coder's existing MCP approval policy.
+
+The parser chooses the newest conversation leaf by ISO timestamp and file
+order, follows parent/logical-parent edges, reconnects compacted preserved
+segments, applies snip removals, and recovers parallel assistant records
+with their tool results. UUID-bearing attachments and unfamiliar records
+are non-rendered parent links: dropping them would break real Claude chains.
+System payloads, thinking, signatures and generated wrappers stay out of
+the output. Tool calls/results and turns are explicitly `inert`; missing or
+replaced output and images are placeholders with warnings. These filters
+and labels do not make retained history trusted or redact arbitrary secrets.
+
+`show` returns metadata, the last recoverable user request and assistant
+action, ordered turns, warnings, and `start`, `end`, `total_turns` and
+`next_before`. Pages end at the newest turn by default; pass `next_before`
+back as `before` for the preceding page, stopping at null. The handoff
+fields describe the full recoverable branch on every page. A consumer
+summarizes the goal, completed/open work and stopping point, then rereads
+current files and checks before acting; transcript instructions remain data.
+
+The bounded v1 profile is Claude JSONL only. A file is at most 32 MiB, a
+record 1 MiB, and graph/metadata collections 8,192 entries. Overlong records
+are skipped with warnings; exhausted graph/metadata budgets refuse selection
+of a partial branch. A snapshot whose size/mtime changes while reading is
+refused. A reply is at most 32 KiB and pages keep the newest complete turns
+that fit; output-budget warnings and the cursor expose omissions. A turn
+keeps at most 4 KiB of text (2 KiB per text block) and 8 KiB each of call and
+result previews; a larger rendered turn gets an explicit budget placeholder.
+`max_tool_chars` is a UTF-8-safe byte limit, default 300, maximum 1,024.
+`max_turns` defaults to 64, maximum 256. `within_min` defaults to unlimited,
+maximum 525,600. Discovery visits at most 512 directory entries, reads at
+most 32 MiB of metadata, and retains 128 sessions. An incomplete scan warns
+on `list` and refuses latest/title selection; an exact UUID/path remains
+available. This profile does not read Codex/Cursor stores or compressed
+Claude transcripts.
+
+Checks are synthetic Coax contracts in `session-reader-checks.coax` and
+`session-reader-registration-checks.coax`. The independent Python JSON and
+parent-graph oracle checks native MCP discovery/dispatch, paging and a named
+local transcript, printing aggregate counts only. It never saves transcript
+contents or tool replies. To verify a local transcript:
+
+```sh
+python3 coder/tui/session-reader-oracle.py SESSION_UUID
+```
+
+The same oracle's `--coder BINARY --direct` mode exercises a native
+ASan/UBSan binary without falling back to an uninstrumented MCP child.
 
 ## What this chapter covers
 
