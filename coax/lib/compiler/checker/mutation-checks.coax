@@ -123,6 +123,22 @@
  #assert t==0 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0903" && errors[0].loc.line==13 && errors[0].loc.column==8;
 }
 
+// checker/expressions.coax
+#forall "a struct literal needs a value for each field it names and an initializer for each it omits" named:bool {
+ nodes:[12]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=9,type_count=18}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ // S :: struct {u: U;} where the union U has no default alternative
+ types[16]=CK_Type.{kind=CK_Kind.struct_,name="S",decl=2,size=8,alignment=8};types[17]=CK_Type.{kind=CK_Kind.union_,name="U",decl=5,size=8,alignment=4,bits=32,sum_default= -1};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="S",type=16,head=3,mark=2,next=5};nodes[3]=CK_Node.{kind=CK_Tag.field,name="u",type=17};
+ nodes[5]=CK_Node.{kind=CK_Tag.union_,name="U",type=17,mark=2};
+ // S.{} or S.{u}: the field is named but given no value
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_struct,d=7,loc=CK_Loc.{line=70,column=8}};nodes[7]=CK_Node.{kind=CK_Tag.type_named,name="S"};
+ nodes[8]=CK_Node.{kind=CK_Tag.field_init,name="u",field_index= -1,loc=CK_Loc.{line=70,column=11}};if named {nodes[6].head=8;nodes[6].tail=8;}
+ t:=CK_value(c,6,CK_Hint.{});
+ #assert !state[0].fatal && state[0].error_count==1 && t==(ifx named then 0 else 16);
+ if named {#assert errors[0].code=="E0901" && errors[0].loc.column==11;}else {#assert errors[0].code=="E0902" && errors[0].loc.line==70 && errors[0].loc.column==8;}
+}
+
 // checker/generics.coax
 #test "a cloned sum constructor is rebuilt as constructor syntax for its specialization" {
  nodes:[12]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=4,type_count=17}];
@@ -243,4 +259,77 @@
  nodes[1]=CK_Node.{kind=CK_Tag.proc,name="f",type=16};
  CK_defaults(c,2);
  #assert state[0].current==1 && state[0].error_count==1 && errors[0].code=="E0905" && errors[0].loc.line==54 && errors[0].loc.column==17;
+}
+
+// literal-projection-cache.coax
+#test "the literal projection cache hits in one unit of work and keeps two blocks first in, first out" {
+ nodes:[48]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=47,type_count=17}];work:[1]CB_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=1};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],literal_cache=true};
+ // L (node 40) lists fields 9 down to 0 as nodes 11 down to 2: field k is node k+2,
+ // and a scan to field k visits 10-k initializers. M (node 41) has one field, node 20.
+ for k:0..<10 {nodes[k+2]=CK_Node.{kind=CK_Tag.field_init,field_index=k,next=ifx k==0 then 0 else k+1};}
+ nodes[40]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=11};nodes[41]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=20};nodes[20]=CK_Node.{kind=CK_Tag.field_init,field_index=0};
+ // literal, field, the initializer found, the work it costs
+ steps:=[36]int.[40,1,3,9, 40,1,3,1, 40,9,11,1, 40,0,2,10, 40,0,2,1, 41,0,20,1, 40,0,2,10, 40,8,10,2, 40,8,10,1];
+ for i:0..<9 {
+  before:=work[0].work;got:=CB_literal_field(b,steps[4*i],steps[4*i+1]);
+  #assert got==steps[4*i+2] && work[0].work-before==steps[4*i+3] && !state[0].fatal;
+ }
+ #assert work[0].literal_current.id==40 && work[0].literal_current.block==1 && work[0].literal_previous.id==40 && work[0].literal_previous.block==0;
+}
+#test "the literal projection cache is off for a negative field and when disabled" {
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=17}];work:[1]CB_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=1};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],literal_cache=false};
+ nodes[2]=CK_Node.{kind=CK_Tag.field_init,field_index=1,next=3};nodes[3]=CK_Node.{kind=CK_Tag.field_init,field_index=0};nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=2};
+ for i:0..<2 {before:=work[0].work;#assert CB_literal_field(b,10,0)==3 && work[0].work-before==2;}
+ #assert work[0].literal_current.id==0 && work[0].literal_previous.id==0;
+ b.literal_cache=true;
+ for i:0..<2 {before:=work[0].work;#assert CB_literal_field(b,10,-1)==0 && work[0].work-before==2;}
+ #assert work[0].literal_current.id==0 && work[0].literal_previous.id==0;
+}
+#test "the literal projection cache keys a block by its literal, not only its fields" {
+ nodes:[48]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=47,type_count=17}];work:[1]CB_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=1};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],literal_cache=true};
+ // nodes 40 and 42 are two literals over the same initializers: field 1 is node 3, after node 2
+ nodes[2]=CK_Node.{kind=CK_Tag.field_init,field_index=0,next=3};nodes[3]=CK_Node.{kind=CK_Tag.field_init,field_index=1};
+ nodes[40]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=2};nodes[42]=nodes[40];
+ before:=work[0].work;#assert CB_literal_field(b,40,1)==3 && work[0].work-before==2;
+ before=work[0].work;#assert CB_literal_field(b,42,1)==3 && work[0].work-before==2;
+ before=work[0].work;#assert CB_literal_field(b,40,1)==3 && work[0].work-before==1;
+ #assert work[0].literal_current.id==42 && work[0].literal_previous.id==40;
+}
+
+// query-index.coax
+#test "the query index bucket mixes the origin kind with every step's kind and index" {
+ path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_ELEMENT,index=5};
+ // ((1<<1) ^ 2 ^ 5) & 7 is 5; then ((5<<1) ^ 1 ^ 6) & 7 is 13 & 7, 5
+ #assert CB_index_bucket(1,path)==5 && CB_index_bucket(1,BS_Path.{})==1 && CB_index_bucket(5,BS_Path.{})==5;
+ path.count=2;path.steps[1]=BS_Step.{kind=BS_FIELD,index=6};
+ #assert CB_index_bucket(1,path)==5;
+ path.steps[1].index=0;#assert CB_index_bucket(1,path)==3;
+}
+#forall "the query index admits origin kinds 1 to 3 and 5 only" kind:0..<7 {
+ nodes:[8]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7}];work:[1]CB_State;queries:[2]CK_BorrowQuery;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],queries=queries[..]};
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=61,column=2}};work[0].queries=1;
+ queries[0]=CK_BorrowQuery.{kind=cast(u8)kind,decl=5,status=1};
+ CB_index_probe(b,5,1);
+ refused:=kind==0 || kind==4 || kind==6;
+ #assert state[0].fatal==refused && work[0].work==1;
+ if refused {#assert errors[0].code=="E0381" && errors[0].loc.line==61;}
+}
+#forall "a published query index snapshot head outside its chain is refused" bad:0..<3 {
+ // bad 0: the bucket's head is the chain's head, 1: past it, 2: negative
+ nodes:[8]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7}];work:[1]CB_State;queries:[2]CK_BorrowQuery;rw:[16]int;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=rw[..]};b:=CB_Context.{c=c,state=work[..],queries=queries[..]};
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=62,column=2}};work[0].queries=1;
+ queries[0]=CK_BorrowQuery.{kind=1,decl=5,status=1};
+ // the snapshot for head 1 is published (marker 1); bucket 1 holds the link under test
+ rw[9]=1;rw[1]=1;if bad==1 {rw[1]=2;}if bad==2 {rw[1]= -1;}
+ link:=CB_index_start(b,5,1,1);
+ #assert state[0].fatal==(bad!=0) && link==rw[1];
+ if bad!=0 {#assert errors[0].code=="E0381" && errors[0].loc.line==62;}
 }

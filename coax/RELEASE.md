@@ -165,6 +165,20 @@ worktree and agent on the machine.
   719 mutants, load average about 50 on 28 cores): 86,365 check runs and
   511 s without the file, 719 check runs and 202 s with it, most of that the
   baseline run of all 1,217 checks.
+- **The checker gate in parts** (#12646, #12638, 2026-11-03, load average 35
+  to 170 on 28 cores, other agents' work). Cold, without the file, one 1/256
+  shard (`--shard 1/256`, 49 mutants, 23,133 check runs) takes 486 s with 28
+  jobs, and stage0 and the installed compiler take the same time (562 and 564
+  s side by side, 14 jobs each). The sum of those shards, the cold gate, is
+  about 256 × 486 s, some 35 hours at that load; a 1/64 shard does not fit in
+  15 minutes. `--unit` runs of each part are complete runs, so each writes the
+  part's killers; `expressions`, `borrow`, `retain` and most policy modules
+  need `--unit` with `--shard` and a merge to stay under 15 minutes. Warm,
+  after a trivial change to a part, with that part's killers: `--unit
+  checker/types.coax`, 1,910 mutants, takes 1,910 check runs and 212 s with 14
+  jobs (the installed compiler), most of it the baseline. A survivor still
+  runs every check, about 180 s of one core each, so each survivor left costs
+  a cold schedule on every run.
 
 The build log prints each gate's time, or `reused` with its command.
 `COAX_BUILD_FRESH=1` ignores both caches. A cached gate result is a record

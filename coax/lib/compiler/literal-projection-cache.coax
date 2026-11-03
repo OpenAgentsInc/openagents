@@ -7,8 +7,9 @@ CB_LiteralBlock :: struct {id:int;type:int;head:int;used:int;types:int;block:int
 CB_literal_same :: (p:CB_LiteralBlock,id:int,type:int,head:int,used:int,types:int,block:int)->bool {
  return p.id==id && p.type==type && p.head==head && p.used==used && p.types==types && p.block==block;
 }
-CB_literal_stageable :: (enabled:bool,index:int,block:int)->bool {
- return enabled && index>=0 && index/8==block;
+// Staging when the cache is off is harmless: only an enabled lookup keeps a block.
+CB_literal_stageable :: (index:int,block:int)->bool {
+ return index>=0 && index/8==block;
 }
 CB_literal_keep :: (b:CB_Context,p:CB_LiteralBlock) {
  if CB_literal_same(b.state[0].literal_current,p.id,p.type,p.head,p.used,p.types,p.block) {b.state[0].literal_current=p;return;}
@@ -32,7 +33,7 @@ CB_literal_field :: (b:CB_Context,id:int,index:int)->int {
   if !CB_tick(b,e.loc) {return field;}f:=b.c.nodes[field];
   // Stage only the actually visited prefix. First occurrence wins even for
   // a supplied duplicate graph; no later initializer or value is inspected.
-  if CB_literal_stageable(enabled,f.field_index,block) {slot:=f.field_index%8;if staged.fields[slot]==0 {staged.fields[slot]=field;}}
+  if CB_literal_stageable(f.field_index,block) {slot:=f.field_index%8;if staged.fields[slot]==0 {staged.fields[slot]=field;}}
   if f.field_index==index {if enabled {CB_literal_keep(b,staged);}return field;}
   field=f.next;
  }return 0; // No negative/default cache, and no publication after failed scan.
