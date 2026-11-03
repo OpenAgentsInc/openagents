@@ -1,0 +1,54 @@
+// The checks of chain-params.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/chain-params.coax
+#load "../chain-params.coax";
+#load "../../../coax/lib/crypto/bip32.coax";
+
+// book:begin check
+// Each network's prefixes are the ones chapters 26, 28, 29 and 32 encode:
+// Base58 versions, the bech32 human-readable part, and the BIP-32
+// versions. A P2WPKH address for the network starts with its part and "1".
+#forall "prefixes agree with the encoding chapters" chain: 1..<6 #steps 100000000 {
+  p := chain_params(chain);
+  main := p.chain == CHAIN_MAIN;
+  #assert p.pubkey_prefix == B58_VERSIONS[ifx main then B58_MAIN_P2PKH else B58_TEST_P2PKH];
+  #assert p.script_prefix == B58_VERSIONS[ifx main then B58_MAIN_P2SH else B58_TEST_P2SH];
+  #assert p.secret_prefix == B58_VERSIONS[ifx main then B58_MAIN_WIF else B58_TEST_WIF];
+  #assert p.xpub == cast(u32) (ifx main then BIP32_XPUB else BIP32_TPUB) && p.xprv == cast(u32) (ifx main then BIP32_XPRV else BIP32_TPRV);
+  #assert SW_HRPS[p.network] == p.hrp;
+  s: [22] u8; text: [100] u8;
+  s[0] = 0; s[1] = 20;
+  for i: 2..<22 { s[i] = cast(u8) i; }
+  n := address_encode_vartime(p.network, s[..], text[..]);
+  #assert n > p.hrp.count + 1 && text[p.hrp.count] == '1';
+  for i: 0..<p.hrp.count { #assert text[i] == p.hrp[i]; }
+}
+// Mainnet's minimum chain work and assumed-valid height are the ones
+// chapter 48 summed the chainwork to; each network's retargeting fields
+// pass Core's sanity checks; every genesis block checks.
+#test "chapter 48's numbers and each genesis" #steps 100000000 {
+  #assert CHAIN_MAINNET_PARAMS.min_chain_work == RT_MIN_CHAIN_WORK && CHAIN_MAINNET_PARAMS.assume_valid_height == RT_ASSUME_VALID_HEIGHT;
+  for chain: 1..<6 {
+    p := chain_params(chain);
+    #assert retarget_params_check_vartime(p.retarget) == RETARGET_OK;
+    #assert chain_genesis_check_vartime(p) == CHAIN_OK;
+    // Each genesis block claims the easiest target its network allows:
+    // its nBits is powLimit in compact form, rounded down.
+    #assert pow_compact_encode_vartime(p.retarget.pow_limit, false) == p.genesis.bits;
+  }
+  #assert CHAIN_MAINNET_PARAMS.assume_valid == RT_ASSUME_VALID_HASH;
+}
+// The two signet blocks pass, each changed byte the example shows refuses,
+// and a signet with another challenge has other magic.
+#test "signet's challenge" #steps 1000000000 {
+  b: [1000] u8; ins: [8] TxIn; outs: [8] TxOut; items: [16] TxItem; ids: [96 * 8] u8; s: [2048] u8; w: [1] ScriptWork;
+  n := cp_unhex(SIGNET_BLOCK_1, b[..]);
+  #assert chain_signet_check_vartime(CHAIN_SIGNET_PARAMS, b[0..<n], ins[..], outs[..], items[..], ids[..], s[..], w[..]).code == SIGNET_OK;
+  b[231] ^= 0x80;
+  #assert chain_signet_check_vartime(CHAIN_SIGNET_PARAMS, b[0..<n], ins[..], outs[..], items[..], ids[..], s[..], w[..]).code == SIGNET_INVALID;
+  custom := chain_signet_custom_vartime(SIGNET_DEFAULT_CHALLENGE);
+  #assert custom.magic[0] == CHAIN_SIGNET_PARAMS.magic[0] && custom.magic[3] == CHAIN_SIGNET_PARAMS.magic[3];
+  other := chain_signet_custom_vartime("52");
+  #assert other.magic[0] != CHAIN_SIGNET_PARAMS.magic[0] || other.magic[1] != CHAIN_SIGNET_PARAMS.magic[1];
+}
+// book:end check

@@ -1,0 +1,84 @@
+main: magic f9beb4d9, port 8333
+  Base58 versions P2PKH 0, P2SH 5, WIF 128; BIP-32 0488b21e and 0488ade4; bech32 "bc"
+  genesis 000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f: 285 bytes, time 1231006505, nonce 2083236893, nBits 1d00ffff: ok
+    Merkle root 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b
+  powLimit 00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+  600 s a block, 1209600 s a period (2016 blocks); minimum-difficulty blocks no, BIP-94 no, retargeting yes
+  the subsidy halves every 210000 blocks
+  heights: BIP-34 227931, BIP-65 388381, BIP-66 363725, CSV 419328, segwit 481824
+    BIP-34 block 000000000000024b89b42a942fe0d9fea3bb44ab7bd1b19115dd6a759c0808b8
+    verified with no flags: 00000000000002dc756eebf4f49723ed8d30cc28a5f108eb94b1ba88ac4f9c22
+    verified with P2SH and WITNESS only: 0000000000000000000f14c35b2d841e986ab5441de8c585d5ffe55ea1e395ad
+  minimum chain work 0x000000000000000000000000000000000000000145ec036acc5ba740052af1a0
+  assumed valid: block 966143 (00000000000000000000748969ec33043c0e52a763c6dd5193861f559f2c72e3)
+test: magic 0b110907, port 18333
+  Base58 versions P2PKH 111, P2SH 196, WIF 239; BIP-32 043587cf and 04358394; bech32 "tb"
+  genesis 000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943: 285 bytes, time 1296688602, nonce 414098458, nBits 1d00ffff: ok
+    Merkle root 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b
+  powLimit 00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+  600 s a block, 1209600 s a period (2016 blocks); minimum-difficulty blocks yes, BIP-94 no, retargeting yes
+  the subsidy halves every 210000 blocks
+  heights: BIP-34 21111, BIP-65 581885, BIP-66 330776, CSV 770112, segwit 834624
+    BIP-34 block 0000000023b3a96d3484e5abb3755c413e7d41500f8e2a5c3f0dd01299cd8ef8
+    verified with no flags: 00000000dd30457c001f4095d208cc1296b0eed002427aa599874af7a432b105
+  minimum chain work 0x0000000000000000000000000000000000000000000017f49f702147f10c0eb6
+  assumed valid: block 5128859 (00000000b318a3703d14a844c55ef507f4c2fc8f8766e24271fd43c180c51637)
+testnet4: magic 1c163f28, port 48333
+  Base58 versions P2PKH 111, P2SH 196, WIF 239; BIP-32 043587cf and 04358394; bech32 "tb"
+  genesis 00000000da84f2bafbbc53dee25a72ae507ff4914b867c565be350b0da8bf043: 261 bytes, time 1714777860, nonce 393743547, nBits 1d00ffff: ok
+    Merkle root 7aa0a7ae1e223414cb807e40cd57e667b718e42aaf9306db9102fe28912b7b4e
+  powLimit 00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+  600 s a block, 1209600 s a period (2016 blocks); minimum-difficulty blocks yes, BIP-94 yes, retargeting yes
+  the subsidy halves every 210000 blocks
+  heights: BIP-34 1, BIP-65 1, BIP-66 1, CSV 1, segwit 1
+  minimum chain work 0x000000000000000000000000000000000000000000000e346a558455ade8eca9
+  assumed valid: block 151604 (0000000021df65b91665a342e26ceb05e54826ad7d8fcd40316230058fa3b865)
+signet: magic 0a03cf40, port 38333
+  Base58 versions P2PKH 111, P2SH 196, WIF 239; BIP-32 043587cf and 04358394; bech32 "tb"
+  genesis 00000008819873e925422c1ff0f99f7cc9bbb232af63a077a480a3633bee1ef6: 285 bytes, time 1598918400, nonce 52613770, nBits 1e0377ae: ok
+    Merkle root 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b
+  powLimit 00000377ae000000000000000000000000000000000000000000000000000000
+  600 s a block, 1209600 s a period (2016 blocks); minimum-difficulty blocks no, BIP-94 no, retargeting yes
+  the subsidy halves every 210000 blocks
+  heights: BIP-34 1, BIP-65 1, BIP-66 1, CSV 1, segwit 1
+  minimum chain work 0x00000000000000000000000000000000000000000000000000001090e9dc1520
+  assumed valid: block 321295 (00000002a5e0ba0498f1e9f4591af0b66b63c654665efe65206fd0ae7bbaf923)
+regtest: magic fabfb5da, port 18444
+  Base58 versions P2PKH 111, P2SH 196, WIF 239; BIP-32 043587cf and 04358394; bech32 "bcrt"
+  genesis 0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206: 285 bytes, time 1296688602, nonce 2, nBits 207fffff: ok
+    Merkle root 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b
+  powLimit 7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+  600 s a block, 86400 s a period (144 blocks); minimum-difficulty blocks yes, BIP-94 no, retargeting no
+  the subsidy halves every 150 blocks
+  heights: BIP-34 1, BIP-65 1, BIP-66 1, CSV 1, segwit 0
+  no minimum chain work, no assumed-valid block
+the mainnet genesis coinbase, 204 bytes:
+  01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000
+  scriptSig: push 4 ffff001d (486604799), push 1 04, push 69 "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
+testnet4's message is 76 bytes, so its push is OP_PUSHDATA1 76: 4c4c; its output pays a key of 33 zero bytes
+signet's challenge, 71 bytes: OP_1 <03ad5e0edad18cb1f0fc0d28a3d4f1f3e445640337489abb10404f2d1e086be430>
+  <0359ef5021964fe22d6f8e05b2463c9540ce96883fe3b278760f048f5189f2e6c4> OP_2 OP_CHECKMULTISIG
+  magic: the first 4 bytes of SHA-256d(47 || challenge) = 0a03cf40
+block 1 (00000086d6b2636cb2a392d45edc4ec544a10024d30141c9adf4bfd9de533b53): 329 bytes, 1 transaction
+  commitment in output 1, 119 bytes; the solution is 75 bytes after ecc7daa2
+  scriptSig 73 bytes: OP_0 and a 71 byte signature; 0 witness items
+  cleared, the commitment is 43 bytes, ending 04ecc7daa2
+  default signet: ok
+block 19990 (0000008448acc419d5f54a777cf1fe519cb6a2e0998bedc9322978a276539466): 996 bytes, 4 transactions
+  commitment in output 1, 119 bytes; the solution is 75 bytes after ecc7daa2
+  scriptSig 73 bytes: OP_0 and a 71 byte signature; 0 witness items
+  cleared, the commitment is 43 bytes, ending 04ecc7daa2
+  default signet: ok
+block 1 changed:
+  one bit of the signature's r: solution invalid (EVAL_FALSE)
+  one bit of the time: solution invalid (EVAL_FALSE)
+  a scriptSig length one too long: solution does not read
+  ecc7daa3, so no solution: solution invalid (INVALID_STACK_OPERATION)
+  a signet whose challenge is OP_TRUE has magic 54d26fbd
+  ecc7daa3 on that signet: ok
+  ab21a9ed, so no commitment: no witness commitment
+  unchanged, on the OP_TRUE signet: ok
+network for magic: f9beb4d9 main; 0b110907 test; 1c163f28 testnet4; 0a03cf40 signet; fabfb5da regtest; 54d26fbd none
+BIP-30: block 91842 repeats the coinbase of block 91812
+BIP-30: block 91880 repeats the coinbase of block 91722
+BIP-30 is checked again from height 1983702

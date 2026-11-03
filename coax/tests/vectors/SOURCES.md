@@ -274,6 +274,15 @@ that a maliciously replaced manifest is authentic.
   gives the annotated hexdumps of a `verack` header and of the `getblocks`,
   `headers`, `inv`, `addr`, `addrv2`, `feefilter`, `ping` and `version`
   payloads; `make_p2p_vectors.py` reads them from the pinned bytes.
+- **Chain parameters (Bitcoin chapter 50):** Bitcoin Core's
+  `kernel/chainparams.cpp` (every network's class), `kernel/signet.h`
+  (`SIGNET_DEFAULT_CHALLENGE`, `GetSignetMessageStart`), `signet.cpp`
+  (`SignetTxs::Create`, `CheckSignetBlockSolution`), `consensus/params.h`
+  (the buried deployments) and `validation.cpp` (`IsBIP30Repeat`,
+  `IsBIP30Unspendable`), all at revision `ddea9196`. The `signet/` files are
+  mempool.space's raw bytes of default-signet blocks 1 (`…533b53`, the
+  coinbase alone) and 19,990 (`…539466`, four transactions), retrieved
+  2026-11-03; each header hashes to its block hash.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -364,6 +373,11 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip340/reference.py`](upstream/bip340/reference.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0340/reference.py) | `4b1d4ad9e60820df4a6d239733d52b014bc03e4c47afd757a2fe4d3b586d892c` |
 | [`upstream/bitcoin-core/tx_valid.json`](upstream/bitcoin-core/tx_valid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/tx_valid.json) | `0abeb1a6e4b942e4e43ef8d49b7356c1f6204bcb14163f24153f4d0ec5418011` |
 | [`upstream/bitcoin-core/chainparams.cpp`](upstream/bitcoin-core/chainparams.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/kernel/chainparams.cpp) | `cfadf1478377c32625280520655b598674e6d487f08d7f7a80ac69252104b5e1` |
+| [`upstream/bitcoin-core/kernel_signet.h`](upstream/bitcoin-core/kernel_signet.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/kernel/signet.h) | `8a0b9207b16dfad04214f42ac1ccc70f252025ed2a6f7ad2a5163b2a1c2fb118` |
+| [`upstream/bitcoin-core/signet.cpp`](upstream/bitcoin-core/signet.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/signet.cpp) | `58f92d2bbcae1f609016e05ddf4be0b5eec1b1e126e3910ed2c5c49e7e914908` |
+| [`upstream/bitcoin-core/params.h`](upstream/bitcoin-core/params.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/params.h) | `21bc0a1421ca71b057325fac96ef1a7297b737a47c3231a6c7c7ff8e0598e2f0` |
+| [`upstream/signet/00000086d6b2636cb2a392d45edc4ec544a10024d30141c9adf4bfd9de533b53.raw`](upstream/signet/00000086d6b2636cb2a392d45edc4ec544a10024d30141c9adf4bfd9de533b53.raw) | [mempool.space API](https://mempool.space/signet/api/block/00000086d6b2636cb2a392d45edc4ec544a10024d30141c9adf4bfd9de533b53/raw) | `85b2a673710c23cb88dd37c6b742900627bb0a7a4df65a2f44d0c91a2b45f50d` |
+| [`upstream/signet/0000008448acc419d5f54a777cf1fe519cb6a2e0998bedc9322978a276539466.raw`](upstream/signet/0000008448acc419d5f54a777cf1fe519cb6a2e0998bedc9322978a276539466.raw) | [mempool.space API](https://mempool.space/signet/api/block/0000008448acc419d5f54a777cf1fe519cb6a2e0998bedc9322978a276539466/raw) | `7f1098495673b86ddc983431f9e00c29a949b7cd733da0c514118852b7dfbb1f` |
 | [`upstream/bitcoin-core/script_tests.json`](upstream/bitcoin-core/script_tests.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/script_tests.json) | `ccfadc13f9b06888faf57a4a2f86dd8feff35c80aa710cbf3eb421f326b8d8b7` |
 | [`upstream/bitcoin-core/base58_encode_decode.json`](upstream/bitcoin-core/base58_encode_decode.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/base58_encode_decode.json) | `20d51011f49339714c28b9244cc5238f4c78bb9206dc8fc61500aed6fc2682ca` |
 | [`upstream/bitcoin-core/key_io_valid.json`](upstream/bitcoin-core/key_io_valid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/key_io_valid.json) | `90bd1d35d12763e0d00c5400b2c9fe551e532a821e1e466c20cad3aced70a7fe` |

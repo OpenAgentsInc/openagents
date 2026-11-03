@@ -470,6 +470,17 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "bitcoin/examples/chain-params.coax",
+      "chapter": "bitcoin/book/ch050-chain-parameters-mainnet-testnet4-signet-and-regtest.md",
+      "stdout": "bitcoin/fixtures/chain-params.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 480
     }
   ]
 }

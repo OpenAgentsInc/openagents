@@ -1179,47 +1179,6 @@
       "bytes": 225433
     },
     {
-      "path": "derived/catalog.json",
-      "kind": "derived",
-      "url": "local:make_catalog.py",
-      "revision": "adapter:source-index-v1",
-      "retrieved": "2026-10-28",
-      "license": "Apache-2.0 (OpenAgents source index; upstream input licenses unchanged)",
-      "sha256": "eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27",
-      "bytes": 6722,
-      "covers": [
-        "source-index"
-      ],
-      "generator": "make_catalog.py",
-      "generator_sha256": "280444035ce58c559bf9c2b2724dd9a2e9df6e755376b6bff2bf6a8515e662ba",
-      "inputs": [
-        {
-          "path": "upstream/bip340/test-vectors.csv",
-          "sha256": "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d"
-        },
-        {
-          "path": "upstream/nip44/nip44.vectors.json",
-          "sha256": "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040"
-        },
-        {
-          "path": "upstream/wycheproof/ecdh_secp256k1_test.json",
-          "sha256": "049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae"
-        },
-        {
-          "path": "upstream/nist/SHA256ShortMsg.rsp",
-          "sha256": "75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c"
-        },
-        {
-          "path": "upstream/nist/SHA256LongMsg.rsp",
-          "sha256": "6fac36f37360bcf74ffcf4465c18e30d6d5a04cc90885b901fc3130c16060974"
-        },
-        {
-          "path": "upstream/nips/44.md",
-          "sha256": "b5f89374e4e1dbdee7881e8573b4313b6a89430a9c8d518471599ae0660cf0e2"
-        }
-      ]
-    },
-    {
       "path": "upstream/bitcoin-core/util_tests.cpp",
       "kind": "upstream",
       "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/util_tests.cpp",
@@ -1925,6 +1884,112 @@
       "retrieved": "2026-11-03",
       "sha256": "6284673665cdf619238a828d1df15cffbe35f8ab1026583a280fb81a105ac379",
       "bytes": 215267
+    },
+    {
+      "path": "upstream/bitcoin-core/kernel_signet.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/kernel/signet.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-chain-params"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "8a0b9207b16dfad04214f42ac1ccc70f252025ed2a6f7ad2a5163b2a1c2fb118",
+      "bytes": 1199
+    },
+    {
+      "path": "upstream/bitcoin-core/signet.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/signet.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-chain-params"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "58f92d2bbcae1f609016e05ddf4be0b5eec1b1e126e3910ed2c5c49e7e914908",
+      "bytes": 5838
+    },
+    {
+      "path": "upstream/bitcoin-core/params.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/params.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-chain-params"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "21bc0a1421ca71b057325fac96ef1a7297b737a47c3231a6c7c7ff8e0598e2f0",
+      "bytes": 6262
+    },
+    {
+      "path": "upstream/signet/00000086d6b2636cb2a392d45edc4ec544a10024d30141c9adf4bfd9de533b53.raw",
+      "kind": "upstream",
+      "url": "https://mempool.space/signet/api/block/00000086d6b2636cb2a392d45edc4ec544a10024d30141c9adf4bfd9de533b53/raw",
+      "revision": "static: mempool.space's raw bytes of a confirmed default-signet block; its header hashes to the block hash; pinned by sha256",
+      "license": "Public Bitcoin signet blockchain data",
+      "covers": [
+        "bitcoin-chain-params"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "85b2a673710c23cb88dd37c6b742900627bb0a7a4df65a2f44d0c91a2b45f50d",
+      "bytes": 329
+    },
+    {
+      "path": "upstream/signet/0000008448acc419d5f54a777cf1fe519cb6a2e0998bedc9322978a276539466.raw",
+      "kind": "upstream",
+      "url": "https://mempool.space/signet/api/block/0000008448acc419d5f54a777cf1fe519cb6a2e0998bedc9322978a276539466/raw",
+      "revision": "static: mempool.space's raw bytes of a confirmed default-signet block; its header hashes to the block hash; pinned by sha256",
+      "license": "Public Bitcoin signet blockchain data",
+      "covers": [
+        "bitcoin-chain-params"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "7f1098495673b86ddc983431f9e00c29a949b7cd733da0c514118852b7dfbb1f",
+      "bytes": 996
+    },
+    {
+      "path": "derived/catalog.json",
+      "kind": "derived",
+      "url": "local:make_catalog.py",
+      "revision": "adapter:source-index-v1",
+      "retrieved": "2026-10-28",
+      "license": "Apache-2.0 (OpenAgents source index; upstream input licenses unchanged)",
+      "sha256": "eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27",
+      "bytes": 6722,
+      "covers": [
+        "source-index"
+      ],
+      "generator": "make_catalog.py",
+      "generator_sha256": "280444035ce58c559bf9c2b2724dd9a2e9df6e755376b6bff2bf6a8515e662ba",
+      "inputs": [
+        {
+          "path": "upstream/bip340/test-vectors.csv",
+          "sha256": "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d"
+        },
+        {
+          "path": "upstream/nip44/nip44.vectors.json",
+          "sha256": "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040"
+        },
+        {
+          "path": "upstream/wycheproof/ecdh_secp256k1_test.json",
+          "sha256": "049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae"
+        },
+        {
+          "path": "upstream/nist/SHA256ShortMsg.rsp",
+          "sha256": "75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c"
+        },
+        {
+          "path": "upstream/nist/SHA256LongMsg.rsp",
+          "sha256": "6fac36f37360bcf74ffcf4465c18e30d6d5a04cc90885b901fc3130c16060974"
+        },
+        {
+          "path": "upstream/nips/44.md",
+          "sha256": "b5f89374e4e1dbdee7881e8573b4313b6a89430a9c8d518471599ae0660cf0e2"
+        }
+      ]
     }
   ]
 }

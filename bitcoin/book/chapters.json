@@ -1069,17 +1069,23 @@
   {
    "number": 50,
    "title": "Chain parameters: mainnet, testnet4, signet and regtest",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch050-chain-parameters-mainnet-testnet4-signet-and-regtest.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     5,
     36,
     47,
     48
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/chainparams.coax",
+    "bitcoin/examples/chain-params.coax",
+    "bitcoin/examples/checks/chain-params.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

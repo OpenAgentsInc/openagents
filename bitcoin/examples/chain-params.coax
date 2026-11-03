@@ -1,0 +1,142 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/chainparams.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+put_hex :: (b: [] u8) {
+  text: [512] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+// A hash in hash order, shown reversed as explorers show it.
+put_shown :: (digest: [] u8) {
+  r: [32] u8;
+  for i: 0..<32 { r[i] = digest[31-i]; }
+  put_hex(r[..]);
+}
+put32 :: (v: u32) {
+  b: [4] u8;
+  for i: 0..<4 { b[i] = cast,trunc(u8) (v >> (8 * cast(u32) (3 - i))); }
+  put_hex(b[..]);
+}
+put_number :: (a: U256) {
+  b: [32] u8;
+  #assert u256_to_hash_vartime(a, b[..]);
+  put_shown(b[..]);
+}
+yes :: (b: bool) -> string { return ifx b then "yes" else "no"; }
+decode :: (text: string, out: [] u8) -> [] u8 {
+  n := cp_unhex(text, out);
+  #assert n >= 0;
+  return out[0..<n];
+}
+GENESIS_CODES :: [5] string.["ok", "wrong hash", "wrong Merkle root", "high-hash", "does not build"];
+SIGNET_CODES :: [6] string.["ok", "no witness commitment", "solution does not read", "solution invalid", "block does not read", "capacity"];
+
+// One network's parameters, and its genesis block built and checked.
+show :: (params: ChainParams) {
+  p := params;
+  print("%: magic ", CHAIN_NAMES[p.chain]); put_hex(p.magic[..]); print(", port %\n", p.port);
+  print("  Base58 versions P2PKH %, P2SH %, WIF %; BIP-32 ", p.pubkey_prefix, p.script_prefix, p.secret_prefix);
+  put32(p.xpub); print(" and "); put32(p.xprv); print("; bech32 \"%\"\n", p.hrp);
+  b: [CHAIN_GENESIS_MAX] u8; hash: [32] u8;
+  n := chain_genesis_block_vartime(p.genesis, b[..]);
+  #assert pow_block_hash_vartime(b[0..<80], hash[..]) == POW_OK;
+  print("  genesis "); put_shown(hash[..]); print(": % bytes, time %, nonce %, nBits ", n, p.genesis.time, p.genesis.nonce);
+  put32(p.genesis.bits); print(": %\n", GENESIS_CODES[chain_genesis_check_vartime(p)]);
+  print("    Merkle root "); put_shown(b[36..<68]); print("\n");
+  print("  powLimit "); put_number(p.retarget.pow_limit); print("\n");
+  print("  % s a block, % s a period (% blocks); minimum-difficulty blocks %, BIP-94 %, retargeting %\n",
+    p.retarget.spacing, p.retarget.timespan, retarget_interval(p.retarget), yes(p.retarget.allow_min_difficulty),
+    yes(p.retarget.bip94), yes(!p.retarget.no_retargeting));
+  print("  the subsidy halves every % blocks\n", p.halving);
+  print("  heights: BIP-34 %, BIP-65 %, BIP-66 %, CSV %, segwit %\n", p.bip34_height, p.bip65_height,
+    p.bip66_height, p.csv_height, p.segwit_height);
+  if p.bip34_hash != "" { print("    BIP-34 block %\n", p.bip34_hash); }
+  if p.bip16_exception != "" { print("    verified with no flags: %\n", p.bip16_exception); }
+  if p.taproot_exception != "" { print("    verified with P2SH and WITNESS only: %\n", p.taproot_exception); }
+  if p.min_chain_work == "" { print("  no minimum chain work, no assumed-valid block\n"); }
+  else {
+    print("  minimum chain work 0x"); put_number(chain_number_vartime(p.min_chain_work)); print("\n");
+    print("  assumed valid: block % (%)\n", p.assume_valid_height, p.assume_valid);
+  }
+}
+
+// What the signet check decides for a block, with the parameters p.
+check :: (label: string, p: ChainParams, b: [] u8) {
+  ins: [8] TxIn; outs: [8] TxOut; items: [16] TxItem; ids: [96 * 8] u8; s: [2048] u8; w: [1] ScriptWork;
+  r := chain_signet_check_vartime(p, b, ins[..], outs[..], items[..], ids[..], s[..], w[..]);
+  print("  %: %", label, SIGNET_CODES[r.code]);
+  if r.code == SIGNET_INVALID { print(" (%)", SCRIPT_ERR_NAMES[r.error]); }
+  print("\n");
+}
+
+main :: () {
+  for chain: CHAIN_MAIN..<CHAIN_REGTEST + 1 { show(chain_params(chain)); }
+
+  // The mainnet genesis coinbase, byte by byte.
+  b: [CHAIN_GENESIS_MAX] u8;
+  n := chain_genesis_block_vartime(CHAIN_MAINNET_PARAMS.genesis, b[..]);
+  print("the mainnet genesis coinbase, % bytes:\n  ", n - 81); put_hex(b[81..<n]); print("\n");
+  print("  scriptSig: push 4 ffff001d (486604799), push 1 04, push 69 \"%\"\n", CHAIN_MAINNET_PARAMS.genesis.message);
+  t := chain_genesis_block_vartime(CHAIN_TESTNET4_PARAMS.genesis, b[..]);
+  print("testnet4's message is 76 bytes, so its push is OP_PUSHDATA1 76: ");
+  put_hex(b[81+42+7..<81+42+9]); print("; its output pays a key of 33 zero bytes\n");
+
+  // Signet: the challenge, its magic, and the solutions of two blocks.
+  c: [100] u8; m: [4] u8;
+  challenge := decode(SIGNET_DEFAULT_CHALLENGE, c[..]);
+  #assert chain_signet_magic_vartime(challenge, m[..]);
+  print("signet's challenge, % bytes: OP_1 <", challenge.count); put_hex(challenge[2..<35]); print(">\n  <");
+  put_hex(challenge[36..<69]); print("> OP_2 OP_CHECKMULTISIG\n");
+  print("  magic: the first 4 bytes of SHA-256d(47 || challenge) = "); put_hex(m[..]); print("\n");
+  blocks := [2] string.[SIGNET_BLOCK_1, SIGNET_BLOCK_19990];
+  heights := [2] int.[1, 19990];
+  k: [1000] u8; cleared: [100] u8; hash: [32] u8;
+  for i: 0..<2 {
+    blk := decode(blocks[i], k[..]);
+    ins: [8] TxIn; outs: [8] TxOut; items: [16] TxItem; ids: [32 * 8] u8; wids: [32 * 8] u8;
+    count := merkle_block_ids_vartime(blk, false, ins[..], outs[..], items[..], ids[..], wids[..]).count;
+    cb := blk[81..<blk.count];
+    tx := tx_parse_vartime(cb, true, ins[..], outs[..], items[..]);
+    o := chain_commitment_index_vartime(cb, tx, outs[..]);
+    f := chain_signet_fetch_vartime(cb[outs[o].script..<outs[o].script+outs[o].script_n], cleared[..]);
+    #assert pow_block_hash_vartime(blk[0..<80], hash[..]) == POW_OK;
+    print("block % (", heights[i]); put_shown(hash[..]);
+    print("): % bytes, % %\n", blk.count, count, ifx count == 1 then "transaction" else "transactions");
+    print("  commitment in output %, % bytes; the solution is % bytes after ecc7daa2\n", o, outs[o].script_n, f.n);
+    sol := cb[outs[o].script+f.at..<outs[o].script+f.at+f.n];
+    print("  scriptSig % bytes: OP_0 and a % byte signature; % witness items\n", sol[0], sol[2], sol[sol.count-1]);
+    print("  cleared, the commitment is % bytes, ending ", f.length); put_hex(cleared[f.length-5..<f.length]); print("\n");
+    check("default signet", CHAIN_SIGNET_PARAMS, blk);
+  }
+
+  // Refusals, on block 1.
+  print("block 1 changed:\n");
+  blk := decode(SIGNET_BLOCK_1, k[..]);
+  blk[230] ^= 1; check("one bit of the signature's r", CHAIN_SIGNET_PARAMS, blk); blk[230] ^= 1;
+  blk[68] ^= 1; check("one bit of the time", CHAIN_SIGNET_PARAMS, blk); blk[68] ^= 1;
+  blk[216] = 0x4a; check("a scriptSig length one too long", CHAIN_SIGNET_PARAMS, blk); blk[216] = 0x49;
+  blk[215] ^= 1; check("ecc7daa3, so no solution", CHAIN_SIGNET_PARAMS, blk);
+  op_true := chain_signet_custom_vartime("51");
+  print("  a signet whose challenge is OP_TRUE has magic "); put_hex(op_true.magic[..]); print("\n");
+  check("ecc7daa3 on that signet", op_true, blk); blk[215] ^= 1;
+  blk[174] ^= 1; check("ab21a9ed, so no commitment", CHAIN_SIGNET_PARAMS, blk); blk[174] ^= 1;
+  check("unchanged, on the OP_TRUE signet", op_true, blk);
+
+  // Which network a message is for.
+  print("network for magic:");
+  for chain: CHAIN_MAIN..<CHAIN_REGTEST + 1 {
+    p := chain_params(chain);
+    print(" "); put_hex(p.magic[..]); print(" %;", CHAIN_NAMES[chain_from_magic_vartime(p.magic[..])]);
+  }
+  print(" "); put_hex(op_true.magic[..]); print(" %\n", ifx chain_from_magic_vartime(op_true.magic[..]) == 0 then "none" else "?");
+
+  // BIP-30's blocks, from validation.cpp: 91,842 repeats 91,812's
+  // coinbase, and 91,880 repeats 91,722's.
+  for i: 0..<2 {
+    print("BIP-30: block % repeats the coinbase of block %\n", CHAIN_BIP30_REPEAT_HEIGHTS[i], CHAIN_BIP30_UNSPENDABLE_HEIGHTS[1-i]);
+  }
+  print("BIP-30 is checked again from height %\n", CHAIN_BIP34_IMPLIES_BIP30_LIMIT);
+}
+// book:end example

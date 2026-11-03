@@ -1,0 +1,756 @@
+// Chain parameters (Bitcoin chapter 50): Bitcoin Core's CChainParams for
+// mainnet, testnet3, testnet4, signet and regtest. Each network's genesis
+// block, built and hashed; its message start, default port, Base58
+// prefixes and bech32 human-readable part; its retargeting fields; the
+// buried deployment heights; the script flag exception blocks; the
+// minimum chain work and assumed-valid block; the BIP-30 exception blocks
+// of validation.cpp; and signet's block solution (BIP-325), checked with
+// chapter 36's script interpreter.
+//
+// Every value comes from kernel/chainparams.cpp, kernel/signet.h,
+// signet.cpp and validation.cpp at the pinned revision ddea9196, and
+// coax/tests/bitcoin/chainparams.py checks each one against those files.
+// The retargeting fields are chapter 48's RetargetParams; the rules that
+// read the deployment heights and the time fields are chapters 51 and 55.
+//
+// Chain parameters, blocks and solutions are public, so everything here
+// runs in variable time and every procedure that decides ends in _vartime
+// (Bitcoin chapter 3).
+#load "retarget.coax";
+#load "merkle.coax";
+#load "script.coax";
+#load "address.coax";
+#load "../../tests/bitcoin/chainparams_vectors.coax";
+#authority;
+
+// book:begin codes
+// Result codes. Core's reject reason, where there is one, is in quotes.
+CHAIN_OK :: 0;
+CHAIN_BAD_GENESIS :: 1;      // the built genesis block does not hash to the published hash
+CHAIN_BAD_MERKLE :: 2;       // its coinbase does not hash to the published Merkle root
+CHAIN_HIGH_HASH :: 3;        // the genesis hash does not meet its nBits under powLimit: "high-hash"
+CHAIN_CAPACITY :: 4;         // a buffer is too small, or a parameter does not decode
+// Signet's block solution: Core's CheckSignetBlockSolution fails, and
+// CheckBlock refuses the block as "bad-signet-blksig".
+SIGNET_OK :: 0;
+SIGNET_NO_COMMITMENT :: 1;   // the coinbase has no witness commitment
+SIGNET_BAD_SOLUTION :: 2;    // the solution does not read as a scriptSig and a witness, or has extra bytes
+SIGNET_INVALID :: 3;         // the solution does not satisfy the challenge; error says why
+SIGNET_BAD_BLOCK :: 4;       // the block's bytes don't read, or it has no transactions
+SIGNET_CAPACITY :: 5;        // a caller's buffer is too small: a limit of ours, not Core's
+// book:end codes
+
+// book:begin chains
+// The networks, in the order of Core's ChainType. Testnet3 is still in
+// the pinned Core; it is reset from time to time and testnet4 replaces it.
+CHAIN_MAIN :: 1; CHAIN_TESTNET3 :: 2; CHAIN_TESTNET4 :: 3; CHAIN_SIGNET :: 4; CHAIN_REGTEST :: 5;
+CHAIN_NAMES :: [6] string.["", "main", "test", "testnet4", "signet", "regtest"];
+// Core's BuriedDeployment: soft forks whose activation height is fixed in
+// the code (BIP-90). P2SH and Taproot are not here: Core enforces them from
+// genesis, except in the script flag exception blocks.
+DEP_HEIGHTINCB :: 1; DEP_CLTV :: 2; DEP_DERSIG :: 3; DEP_CSV :: 4; DEP_SEGWIT :: 5;
+// book:end chains
+
+// book:begin params
+// A genesis block's fields: CreateGenesisBlock's arguments, and the two
+// hashes Core asserts, as explorers show them.
+ChainGenesis :: struct {
+  message: string;       // pszTimestamp, pushed in the coinbase's scriptSig
+  script: string;        // the coinbase output's scriptPubKey, in hex
+  time: u32; nonce: u32; bits: u32; version: u32;
+  reward: int;           // satoshis
+  hash: string;          // hashGenesisBlock
+  merkle_root: string;   // hashMerkleRoot
+}
+// The fields of Core's CChainParams and Consensus::Params a node reads.
+// Hashes are hex as explorers show them; "" is Core's null uint256.
+ChainParams :: struct {
+  chain: int;
+  magic: [4] u8;         // pchMessageStart: the first bytes of every P2P message
+  port: int;             // nDefaultPort
+  pubkey_prefix: int;    // base58Prefixes: P2PKH, P2SH and WIF version bytes
+  script_prefix: int;
+  secret_prefix: int;
+  xpub: u32; xprv: u32;  // BIP-32 versions, EXT_PUBLIC_KEY and EXT_SECRET_KEY
+  hrp: string;           // bech32_hrp
+  network: int;          // the SW_* network chapters 28 and 29 encode addresses for
+  genesis: ChainGenesis;
+  retarget: RetargetParams;  // chapter 48's powLimit, spacing, timespan and flags
+  halving: int;          // nSubsidyHalvingInterval
+  bip34_height: int; bip34_hash: string;
+  bip65_height: int; bip66_height: int; csv_height: int; segwit_height: int;
+  min_bip9_warning: int; // MinBIP9WarningHeight
+  bip16_exception: string;   // script_flag_exceptions: verified with no flags
+  taproot_exception: string; // verified with P2SH and WITNESS only
+  min_chain_work: string;    // nMinimumChainWork, 64 hex digits
+  assume_valid: string;      // defaultAssumeValid
+  assume_valid_height: int;  // the height chainparams.cpp's comment gives it
+  signet: bool;              // signet_blocks
+  challenge: string;         // signet_challenge, in hex
+}
+// book:end params
+
+// book:begin genesis
+// The first two pushes of every genesis coinbase's scriptSig: Core writes
+// CScript() << 486604799 << CScriptNum(4). 486,604,799 is 0x1d00ffff,
+// four bytes little-endian; CScriptNum(4) is the one byte 04.
+CHAIN_GENESIS_PREFIX :: "04ffff001d0104";
+SATOSHI_GENESIS_MESSAGE :: "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks";
+SATOSHI_GENESIS_SCRIPT :: "4104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac";
+SATOSHI_MERKLE_ROOT :: "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b";
+CHAIN_COIN :: 100000000;
+// book:end genesis
+
+// book:begin networks
+CHAIN_MAINNET_PARAMS :: ChainParams.{
+  chain=CHAIN_MAIN, magic=[4]u8.[0xf9, 0xbe, 0xb4, 0xd9], port=8333,
+  pubkey_prefix=0, script_prefix=5, secret_prefix=128, xpub=0x0488b21e, xprv=0x0488ade4,
+  hrp="bc", network=SW_MAINNET,
+  genesis=ChainGenesis.{message=SATOSHI_GENESIS_MESSAGE, script=SATOSHI_GENESIS_SCRIPT,
+    time=1231006505, nonce=2083236893, bits=0x1d00ffff, version=1, reward=50 * CHAIN_COIN,
+    hash="000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f", merkle_root=SATOSHI_MERKLE_ROOT},
+  retarget=RETARGET_MAINNET, halving=210000,
+  bip34_height=227931, bip34_hash="000000000000024b89b42a942fe0d9fea3bb44ab7bd1b19115dd6a759c0808b8",
+  bip65_height=388381, bip66_height=363725, csv_height=419328, segwit_height=481824, min_bip9_warning=711648,
+  bip16_exception="00000000000002dc756eebf4f49723ed8d30cc28a5f108eb94b1ba88ac4f9c22",
+  taproot_exception="0000000000000000000f14c35b2d841e986ab5441de8c585d5ffe55ea1e395ad",
+  min_chain_work="000000000000000000000000000000000000000145ec036acc5ba740052af1a0",
+  assume_valid="00000000000000000000748969ec33043c0e52a763c6dd5193861f559f2c72e3", assume_valid_height=966143};
+CHAIN_TESTNET3_PARAMS :: ChainParams.{
+  chain=CHAIN_TESTNET3, magic=[4]u8.[0x0b, 0x11, 0x09, 0x07], port=18333,
+  pubkey_prefix=111, script_prefix=196, secret_prefix=239, xpub=0x043587cf, xprv=0x04358394,
+  hrp="tb", network=SW_TESTNET,
+  genesis=ChainGenesis.{message=SATOSHI_GENESIS_MESSAGE, script=SATOSHI_GENESIS_SCRIPT,
+    time=1296688602, nonce=414098458, bits=0x1d00ffff, version=1, reward=50 * CHAIN_COIN,
+    hash="000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943", merkle_root=SATOSHI_MERKLE_ROOT},
+  retarget=RETARGET_TESTNET3, halving=210000,
+  bip34_height=21111, bip34_hash="0000000023b3a96d3484e5abb3755c413e7d41500f8e2a5c3f0dd01299cd8ef8",
+  bip65_height=581885, bip66_height=330776, csv_height=770112, segwit_height=834624, min_bip9_warning=2013984,
+  bip16_exception="00000000dd30457c001f4095d208cc1296b0eed002427aa599874af7a432b105", taproot_exception="",
+  min_chain_work="0000000000000000000000000000000000000000000017f49f702147f10c0eb6",
+  assume_valid="00000000b318a3703d14a844c55ef507f4c2fc8f8766e24271fd43c180c51637", assume_valid_height=5128859};
+CHAIN_TESTNET4_PARAMS :: ChainParams.{
+  chain=CHAIN_TESTNET4, magic=[4]u8.[0x1c, 0x16, 0x3f, 0x28], port=48333,
+  pubkey_prefix=111, script_prefix=196, secret_prefix=239, xpub=0x043587cf, xprv=0x04358394,
+  hrp="tb", network=SW_TESTNET,
+  genesis=ChainGenesis.{message="03/May/2024 000000000000000000001ebd58c244970b3aa9d783bb001011fbe8ea8e98e00e",
+    script="21000000000000000000000000000000000000000000000000000000000000000000ac",
+    time=1714777860, nonce=393743547, bits=0x1d00ffff, version=1, reward=50 * CHAIN_COIN,
+    hash="00000000da84f2bafbbc53dee25a72ae507ff4914b867c565be350b0da8bf043",
+    merkle_root="7aa0a7ae1e223414cb807e40cd57e667b718e42aaf9306db9102fe28912b7b4e"},
+  retarget=RETARGET_TESTNET4, halving=210000,
+  bip34_height=1, bip34_hash="", bip65_height=1, bip66_height=1, csv_height=1, segwit_height=1, min_bip9_warning=0,
+  bip16_exception="", taproot_exception="",
+  min_chain_work="000000000000000000000000000000000000000000000e346a558455ade8eca9",
+  assume_valid="0000000021df65b91665a342e26ceb05e54826ad7d8fcd40316230058fa3b865", assume_valid_height=151604};
+// Signet's powLimit is 0x00000377ae followed by 54 zero digits: the
+// target of nBits 0x1e0377ae, its genesis block's.
+POW_LIMIT_SIGNET :: U256.{limb=[8]u32.[0, 0, 0, 0, 0, 0, 0xae000000, 0x00000377]};
+RETARGET_SIGNET :: RetargetParams.{pow_limit=POW_LIMIT_SIGNET, spacing=600, timespan=TWO_WEEKS};
+// The default signet challenge: a bare 1-of-2 multisig,
+// OP_1 <key> <key> OP_2 OP_CHECKMULTISIG.
+SIGNET_DEFAULT_CHALLENGE :: "512103ad5e0edad18cb1f0fc0d28a3d4f1f3e445640337489abb10404f2d1e086be430210359ef5021964fe22d6f8e05b2463c9540ce96883fe3b278760f048f5189f2e6c452ae";
+CHAIN_SIGNET_PARAMS :: ChainParams.{
+  chain=CHAIN_SIGNET, magic=[4]u8.[0x0a, 0x03, 0xcf, 0x40], port=38333,
+  pubkey_prefix=111, script_prefix=196, secret_prefix=239, xpub=0x043587cf, xprv=0x04358394,
+  hrp="tb", network=SW_TESTNET,
+  genesis=ChainGenesis.{message=SATOSHI_GENESIS_MESSAGE, script=SATOSHI_GENESIS_SCRIPT,
+    time=1598918400, nonce=52613770, bits=0x1e0377ae, version=1, reward=50 * CHAIN_COIN,
+    hash="00000008819873e925422c1ff0f99f7cc9bbb232af63a077a480a3633bee1ef6", merkle_root=SATOSHI_MERKLE_ROOT},
+  retarget=RETARGET_SIGNET, halving=210000,
+  bip34_height=1, bip34_hash="", bip65_height=1, bip66_height=1, csv_height=1, segwit_height=1, min_bip9_warning=0,
+  bip16_exception="", taproot_exception="",
+  min_chain_work="00000000000000000000000000000000000000000000000000001090e9dc1520",
+  assume_valid="00000002a5e0ba0498f1e9f4591af0b66b63c654665efe65206fd0ae7bbaf923", assume_valid_height=321295,
+  signet=true, challenge=SIGNET_DEFAULT_CHALLENGE};
+CHAIN_REGTEST_PARAMS :: ChainParams.{
+  chain=CHAIN_REGTEST, magic=[4]u8.[0xfa, 0xbf, 0xb5, 0xda], port=18444,
+  pubkey_prefix=111, script_prefix=196, secret_prefix=239, xpub=0x043587cf, xprv=0x04358394,
+  hrp="bcrt", network=SW_REGTEST,
+  genesis=ChainGenesis.{message=SATOSHI_GENESIS_MESSAGE, script=SATOSHI_GENESIS_SCRIPT,
+    time=1296688602, nonce=2, bits=0x207fffff, version=1, reward=50 * CHAIN_COIN,
+    hash="0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206", merkle_root=SATOSHI_MERKLE_ROOT},
+  retarget=RETARGET_REGTEST, halving=150,
+  bip34_height=1, bip34_hash="", bip65_height=1, bip66_height=1, csv_height=1, segwit_height=0, min_bip9_warning=0,
+  bip16_exception="", taproot_exception="", min_chain_work="", assume_valid="", assume_valid_height=0};
+// book:end networks
+
+// book:begin lookup
+// The parameters of a network, 1 to 5; anything else is mainnet's with
+// chain 0, which no procedure accepts as a network.
+chain_params :: (chain: int) -> ChainParams #export_c {
+  if chain == CHAIN_MAIN { return CHAIN_MAINNET_PARAMS; }
+  if chain == CHAIN_TESTNET3 { return CHAIN_TESTNET3_PARAMS; }
+  if chain == CHAIN_TESTNET4 { return CHAIN_TESTNET4_PARAMS; }
+  if chain == CHAIN_SIGNET { return CHAIN_SIGNET_PARAMS; }
+  if chain == CHAIN_REGTEST { return CHAIN_REGTEST_PARAMS; }
+  p := CHAIN_MAINNET_PARAMS; p.chain = 0;
+  return p;
+}
+// Core's DeploymentHeight: the height from which a buried deployment's
+// rules apply. Core's DeploymentActiveAt is height >= this.
+chain_deployment_height :: (p: ChainParams, dep: int) -> int #export_c {
+  if dep == DEP_HEIGHTINCB { return p.bip34_height; }
+  if dep == DEP_CLTV { return p.bip65_height; }
+  if dep == DEP_DERSIG { return p.bip66_height; }
+  if dep == DEP_CSV { return p.csv_height; }
+  if dep == DEP_SEGWIT { return p.segwit_height; }
+  return -1;
+}
+chain_deployment_active :: (p: ChainParams, dep: int, height: int) -> bool #export_c {
+  h := chain_deployment_height(p, dep);
+  return h >= 0 && height >= h;
+}
+// book:end lookup
+
+// ---- hex and hashes
+cp_nibble :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  return -1;
+}
+// Lowercase hex into out; -1 for odd length, another digit or no room.
+cp_unhex :: (text: string, out: [] u8) -> int {
+  if text.count % 2 != 0 || text.count / 2 > out.count { return -1; }
+  for i: 0..<text.count/2 {
+    hi := cp_nibble(text[2*i]); lo := cp_nibble(text[2*i+1]);
+    if hi < 0 || lo < 0 { return -1; }
+    out[i] = cast(u8) (hi * 16 + lo);
+  }
+  return text.count / 2;
+}
+// Is the digest, in hash order, the hash an explorer shows? Core's null
+// uint256, "", is never a block's hash.
+chain_hash_is_vartime :: (digest: [] u8, shown: string) -> bool #export_c {
+  if digest.count != 32 || shown.count != 64 { return false; }
+  for i: 0..<32 {
+    hi := cp_nibble(shown[2*i]); lo := cp_nibble(shown[2*i+1]);
+    if hi < 0 || lo < 0 || cast(int) digest[31-i] != hi * 16 + lo { return false; }
+  }
+  return true;
+}
+// A 256-bit number from 64 hex digits as Core's uint256 prints it; "" is
+// zero.
+chain_number_vartime :: (shown: string) -> U256 #export_c {
+  b: [32] u8; r: [32] u8;
+  if shown.count != 64 || cp_unhex(shown, b[..]) != 32 { return U256.{}; }
+  for i: 0..<32 { r[i] = b[31-i]; }
+  return u256_from_hash_vartime(r[..]);
+}
+
+// ---- the genesis block
+// book:begin push
+// CScript's operator<< for bytes: the shortest of a direct push (to 75
+// bytes), OP_PUSHDATA1, OP_PUSHDATA2 and OP_PUSHDATA4. It never uses OP_0
+// or OP_1 to OP_16; those are opcodes, not pushed bytes. Writes at at and
+// returns where writing goes on, or -1 with no room.
+chain_push_vartime :: (out: [] u8, at: int, data: [] u8) -> int #export_c {
+  n := data.count;
+  width := ifx n < OP_PUSHDATA1 then 0 else ifx n <= 0xff then 1 else ifx n <= 0xffff then 2 else 4;
+  if at < 0 || 1 + width + n > out.count - at { return -1; }
+  out[at] = cast(u8) (ifx width == 0 then n else ifx width == 1 then cast(int) OP_PUSHDATA1 else ifx width == 2 then cast(int) OP_PUSHDATA2 else cast(int) OP_PUSHDATA4);
+  for i: 0..<width { out[at+1+i] = cast(u8) ((n >> (8 * i)) & 255); }
+  for i: 0..<n { out[at+1+width+i] = data[i]; }
+  return at + 1 + width + n;
+}
+// book:end push
+cp_le :: (out: [] u8, at: int, value: int, width: int) -> int {
+  for i: 0..<width { out[at+i] = cast(u8) ((value >> (8 * i)) & 255); }
+  return at + width;
+}
+cp_put :: (out: [] u8, at: int, b: [] u8) -> int {
+  for i: 0..<b.count { out[at+i] = b[i]; }
+  return at + b.count;
+}
+// book:begin build
+// CreateGenesisBlock: the 80-byte header, a count of one, and the coinbase:
+// version 1, one input with the null outpoint (32 zero bytes, index
+// 0xffffffff), the scriptSig 486604799, 4 and the message, sequence
+// 0xffffffff; one output of the reward to the genesis script; locktime 0.
+// The Merkle root of one transaction is its txid. Returns the block's
+// length, or -1 when out is too small or a field does not decode.
+CHAIN_GENESIS_MAX :: 512;
+chain_genesis_block_vartime :: (g: ChainGenesis, out: [] u8) -> int #export_c {
+  if out.count < CHAIN_GENESIS_MAX || g.message.count > 255 || g.script.count > 2 * 100 { return -1; }
+  sig: [300] u8; spk: [100] u8; prefix: [7] u8; message: [255] u8;
+  #assert cp_unhex(CHAIN_GENESIS_PREFIX, prefix[..]) == 7;
+  for i: 0..<7 { sig[i] = prefix[i]; }
+  for i: 0..<g.message.count { message[i] = g.message[i]; }
+  sig_n := chain_push_vartime(sig[..], 7, message[0..<g.message.count]);
+  spk_n := cp_unhex(g.script, spk[..]);
+  if spk_n < 0 { return -1; }
+  // The coinbase, after the header and the count.
+  at := 81;
+  at = cp_le(out, at, 1, 4);
+  out[at] = 1; at += 1;
+  for i: 0..<32 { out[at+i] = 0; }
+  at = cp_le(out, at + 32, 0xffffffff, 4);
+  at = tx_compact_write_vartime(out, at, sig_n);
+  at = cp_put(out, at, sig[0..<sig_n]);
+  at = cp_le(out, at, 0xffffffff, 4);
+  out[at] = 1; at += 1;
+  at = cp_le(out, at, g.reward, 8);
+  at = tx_compact_write_vartime(out, at, spk_n);
+  at = cp_put(out, at, spk[0..<spk_n]);
+  at = cp_le(out, at, 0, 4);
+  // The header: version, a null previous hash, the root, time, bits, nonce.
+  root: [32] u8;
+  #assert sha256d_checked(out[81..<at], root[..], false) == SHA_OK;
+  h := cp_le(out, 0, cast(int) g.version, 4);
+  for i: 0..<32 { out[h+i] = 0; }
+  h = cp_put(out, h + 32, root[..]);
+  h = cp_le(out, h, cast(int) g.time, 4);
+  h = cp_le(out, h, cast(int) g.bits, 4);
+  h = cp_le(out, h, cast(int) g.nonce, 4);
+  out[80] = 1;
+  return at;
+}
+// Builds the genesis block and checks it as Core's asserts do: the Merkle
+// root, then the hash; then the hash meets the block's nBits under the
+// network's powLimit, as every block must.
+chain_genesis_check_vartime :: (p: ChainParams) -> int #export_c {
+  b: [CHAIN_GENESIS_MAX] u8; hash: [32] u8;
+  n := chain_genesis_block_vartime(p.genesis, b[..]);
+  if n < 0 { return CHAIN_CAPACITY; }
+  if !chain_hash_is_vartime(b[36..<68], p.genesis.merkle_root) { return CHAIN_BAD_MERKLE; }
+  #assert pow_block_hash_vartime(b[0..<80], hash[..]) == POW_OK;
+  if !chain_hash_is_vartime(hash[..], p.genesis.hash) { return CHAIN_BAD_GENESIS; }
+  if pow_check_vartime(hash[..], p.genesis.bits, p.retarget.pow_limit) != POW_OK { return CHAIN_HIGH_HASH; }
+  return CHAIN_OK;
+}
+// book:end build
+
+// ---- message start
+// book:begin magic
+// GetSignetMessageStart (BIP-325): the first four bytes of SHA-256d of
+// the challenge serialized as a script, its length first. Every signet
+// with another challenge has other magic bytes, so its peers find each
+// other and nobody else.
+chain_signet_magic_vartime :: (challenge: [] u8, out: [] u8) -> bool #export_c {
+  if out.count != 4 || challenge.count > SCRIPT_MAX_SIZE { return false; }
+  s: [SCRIPT_MAX_SIZE + 3] u8; digest: [32] u8;
+  at := tx_compact_write_vartime(s[..], 0, challenge.count);
+  at = cp_put(s[..], at, challenge);
+  #assert sha256d_checked(s[0..<at], digest[..], false) == SHA_OK;
+  for i: 0..<4 { out[i] = digest[i]; }
+  return true;
+}
+// Core's GetNetworkForMagic: which network a message's first four bytes
+// name, or 0. Signet means the default signet.
+chain_from_magic_vartime :: (magic: [] u8) -> int #export_c {
+  if magic.count != 4 { return 0; }
+  for chain: CHAIN_MAIN..<CHAIN_REGTEST + 1 {
+    p := chain_params(chain);
+    same := true;
+    for i: 0..<4 { if magic[i] != p.magic[i] { same = false; } }
+    if same { return chain; }
+  }
+  return 0;
+}
+// SigNetParams with a custom challenge (-signetchallenge), given in hex:
+// its own magic, and no minimum chain work or assumed-valid block. chain
+// is 0 when the challenge does not decode.
+chain_signet_custom_vartime :: (challenge: string) -> ChainParams #export_c {
+  p := CHAIN_SIGNET_PARAMS;
+  p.challenge = challenge; p.min_chain_work = ""; p.assume_valid = ""; p.assume_valid_height = 0;
+  b: [SCRIPT_MAX_SIZE] u8;
+  n := cp_unhex(challenge, b[..]);
+  if n < 0 { p.chain = 0; return p; }
+  #assert chain_signet_magic_vartime(b[0..<n], p.magic[..]);
+  return p;
+}
+// book:end magic
+
+// ---- exceptions
+// book:begin exceptions
+// script_flag_exceptions: the flags a block's scripts are verified with
+// when Core's default would refuse it, or -1 for every other block. The
+// BIP-16 exception (mainnet block 170,060, and one testnet3 block) spends
+// an output of the P2SH form that P2SH would refuse; the Taproot exception
+// (mainnet block 692,261) spends a witness v1 output before Taproot.
+chain_script_exception_vartime :: (p: ChainParams, hash: [] u8) -> int #export_c {
+  if chain_hash_is_vartime(hash, p.bip16_exception) { return 0; }
+  if chain_hash_is_vartime(hash, p.taproot_exception) { return SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS; }
+  return -1;
+}
+// validation.cpp's BIP-30 blocks. Two coinbases of 2010 have the txids of
+// earlier ones (blocks 91,722 and 91,812), so the earlier outputs could
+// never be spent. IsBIP30Repeat names the blocks that repeated them, which
+// ConnectBlock lets through; IsBIP30Unspendable the blocks whose outputs
+// were overwritten, which DisconnectBlock skips.
+CHAIN_BIP30_REPEAT_HEIGHTS :: [2] int.[91842, 91880];
+CHAIN_BIP30_REPEAT_HASHES :: [2] string.["00000000000a4d0a398161ffc163c503763b1f4360639393e0e4c8e300e0caec",
+  "00000000000743f190a18c5577a3c2d2a1f610ae9601ac046a38084ccb7cd721"];
+CHAIN_BIP30_UNSPENDABLE_HEIGHTS :: [2] int.[91722, 91812];
+CHAIN_BIP30_UNSPENDABLE_HASHES :: [2] string.["00000000000271a2dc26e7667f8419f2e15416dc6955e5a6c6cdf3f2574dd08e",
+  "00000000000af0aed4792b1acee3d966af36cf5def14935db8de83d6f9306f2f"];
+// From this height the BIP-34 height in a coinbase no longer prevents a
+// repeat: a coinbase of block 1,983,702 could match an early coinbase's
+// scriptSig, so ConnectBlock checks BIP-30 again from there.
+CHAIN_BIP34_IMPLIES_BIP30_LIMIT :: 1983702;
+chain_bip30_repeat_vartime :: (height: int, hash: [] u8) -> bool #export_c {
+  for i: 0..<2 { if height == CHAIN_BIP30_REPEAT_HEIGHTS[i] && chain_hash_is_vartime(hash, CHAIN_BIP30_REPEAT_HASHES[i]) { return true; } }
+  return false;
+}
+chain_bip30_unspendable_vartime :: (height: int, hash: [] u8) -> bool #export_c {
+  for i: 0..<2 { if height == CHAIN_BIP30_UNSPENDABLE_HEIGHTS[i] && chain_hash_is_vartime(hash, CHAIN_BIP30_UNSPENDABLE_HASHES[i]) { return true; } }
+  return false;
+}
+// book:end exceptions
+
+// ---- signet's block solution
+// book:begin commitment
+// GetWitnessCommitmentIndex: the last coinbase output whose scriptPubKey
+// has at least 38 bytes and starts OP_RETURN, a push of 36 and aa21a9ed.
+// -1 when there is none. Chapter 49 checks the commitment itself.
+SIGNET_COMMITMENT_HEADER :: [6] u8.[0x6a, 0x24, 0xaa, 0x21, 0xa9, 0xed];
+chain_commitment_index_vartime :: (b: [] u8, t: Tx, outs: [] TxOut) -> int #export_c {
+  found := -1;
+  for o: 0..<t.nout {
+    s := b[outs[o].script..<outs[o].script+outs[o].script_n];
+    if s.count < 38 { continue; }
+    same := true;
+    for i: 0..<6 { if s[i] != SIGNET_COMMITMENT_HEADER[i] { same = false; } }
+    if same { found = o; }
+  }
+  return found;
+}
+// book:end commitment
+
+// book:begin fetch
+// FetchAndClearCommitmentSection: the first push in the commitment script
+// longer than four bytes that starts ecc7daa2 holds the solution after
+// those four bytes. The script is rewritten op by op, every push with
+// CScript's operator<<, and that push keeps only the four bytes. An empty
+// push is written as its opcode alone. Reading stops at an op that runs
+// past the end, as Core's loop does. Writes the new script into out and
+// returns its length; at and n locate the solution in s, n = -1 when there
+// is none (then the script is unchanged).
+SIGNET_HEADER :: [4] u8.[0xec, 0xc7, 0xda, 0xa2];
+SignetFetch :: struct { length: int; at: int; n: int; }
+chain_signet_fetch_vartime :: (s: [] u8, out: [] u8) -> SignetFetch #export_c {
+  r := SignetFetch.{n=-1};
+  w := 0; pc := 0;
+  while pc < s.count {
+    op := script_op_vartime(s, pc);
+    if !op.ok { break; }
+    if op.n > 0 {
+      data := s[op.at..<op.at+op.n];
+      if r.n < 0 && op.n > 4 && data[0] == SIGNET_HEADER[0] && data[1] == SIGNET_HEADER[1] && data[2] == SIGNET_HEADER[2] && data[3] == SIGNET_HEADER[3] {
+        r.at = op.at + 4; r.n = op.n - 4;
+        data = data[0..<4];
+      }
+      w = chain_push_vartime(out, w, data);
+    } else {
+      if w >= out.count { w = -1; }
+      else { out[w] = cast(u8) op.op; w += 1; }
+    }
+    if w < 0 { return SignetFetch.{length=-1, n=-1}; }
+    pc = op.next;
+  }
+  if r.n < 0 {
+    if s.count > out.count { return SignetFetch.{length=-1, n=-1}; }
+    for i: 0..<s.count { out[i] = s[i]; }
+    w = s.count;
+  }
+  r.length = w;
+  return r;
+}
+// book:end fetch
+
+// A transaction's legacy serialization with output o's scriptPubKey
+// replaced: what Core hashes for the txid of the modified coinbase.
+cp_stripped_with :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, o: int, spk: [] u8, out: [] u8) -> int {
+  at := cp_put(out, 0, b[0..<4]);
+  at = tx_compact_write_vartime(out, at, t.nin);
+  for k: 0..<t.nin {
+    i := ins[k];
+    at = cp_put(out, at, b[i.outpoint..<i.outpoint+36]);
+    at = tx_compact_write_vartime(out, at, i.script_n);
+    at = cp_put(out, at, b[i.script..<i.script+i.script_n]);
+    at = cp_put(out, at, b[i.sequence..<i.sequence+4]);
+  }
+  at = tx_compact_write_vartime(out, at, t.nout);
+  for k: 0..<t.nout {
+    v := outs[k];
+    at = cp_put(out, at, b[v.value..<v.value+8]);
+    script := ifx k == o then spk else b[v.script..<v.script+v.script_n];
+    at = tx_compact_write_vartime(out, at, script.count);
+    at = cp_put(out, at, script);
+  }
+  return cp_put(out, at, b[t.locktime..<t.locktime+4]);
+}
+// The upper bound on the bytes cp_stripped_with writes for a transaction
+// read from size bytes, with a replacement no longer than the original.
+cp_room :: (size: int) -> int { return size + 9; }
+
+// book:begin signet
+// What CheckSignetBlockSolution decided: a SIGNET_ code and, for
+// SIGNET_INVALID, the script interpreter's error.
+SignetCheck :: struct { code: int; error: int; }
+// The script flags Core verifies a signet solution with.
+SIGNET_FLAGS :: SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_NULLDUMMY;
+// CheckSignetBlockSolution (BIP-325) for a serialized block. The genesis
+// block passes. Otherwise the solution in the coinbase's witness
+// commitment is a scriptSig and a witness stack that must spend a virtual
+// output whose scriptPubKey is the challenge:
+//
+//   to_spend: version 0, one input with the null outpoint, the scriptSig
+//     OP_0 and a push of the block's version, previous hash, a Merkle root
+//     and time (72 bytes), sequence 0; one output of 0 to the challenge;
+//     locktime 0. The root is the block's, with the coinbase's txid taken
+//     after the solution is cleared from it, since the solution cannot sign
+//     itself.
+//   to_sign: version 0, one input spending to_spend's output 0 with the
+//     solution, sequence 0; one output of 0 to OP_RETURN; locktime 0.
+//
+// ins, outs and items must hold the block's largest transaction; ids
+// holds 96 bytes per transaction; scratch holds the coinbase, the
+// challenge or the solution with 200 bytes to spare.
+chain_signet_check_vartime :: (p: ChainParams, b: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, ids: [] u8, scratch: [] u8, w: [] ScriptWork) -> SignetCheck #export_c {
+  hash: [32] u8; root: [32] u8; spend_id: [32] u8;
+  if b.count < 80 { return SignetCheck.{code=SIGNET_BAD_BLOCK}; }
+  #assert pow_block_hash_vartime(b[0..<80], hash[..]) == POW_OK;
+  if chain_hash_is_vartime(hash[..], p.genesis.hash) { return SignetCheck.{}; }
+  challenge: [SCRIPT_MAX_SIZE] u8;
+  cn := cp_unhex(p.challenge, challenge[..]);
+  if cn < 0 { return SignetCheck.{code=SIGNET_CAPACITY}; }
+  // The block's transactions and their txids.
+  count := tx_compact_read_vartime(b, 80);
+  if count.code != TX_OK || count.value == 0 { return SignetCheck.{code=SIGNET_BAD_BLOCK}; }
+  if ids.count < 96 * count.value { return SignetCheck.{code=SIGNET_CAPACITY}; }
+  n := count.value;
+  k := merkle_block_ids_vartime(b, false, ins, outs, items, ids[0..<32*n], ids[32*n..<64*n]);
+  if k.code == MERKLE_CAPACITY { return SignetCheck.{code=SIGNET_CAPACITY}; }
+  if k.code != MERKLE_OK { return SignetCheck.{code=SIGNET_BAD_BLOCK}; }
+  // The coinbase and its commitment.
+  cb := b[count.next..<b.count];
+  t := tx_parse_vartime(cb, true, ins, outs, items);
+  cidx := chain_commitment_index_vartime(cb, t, outs);
+  if cidx < 0 { return SignetCheck.{code=SIGNET_NO_COMMITMENT}; }
+  if scratch.count < cp_room(t.total) + 200 || scratch.count < cn + 200 { return SignetCheck.{code=SIGNET_CAPACITY}; }
+  spk := cb[outs[cidx].script..<outs[cidx].script+outs[cidx].script_n];
+  cleared: [SCRIPT_MAX_SIZE] u8;
+  if spk.count > SCRIPT_MAX_SIZE { return SignetCheck.{code=SIGNET_CAPACITY}; }
+  f := chain_signet_fetch_vartime(spk, cleared[..]);
+  #assert f.length >= 0;
+  // The solution: a scriptSig, then a witness stack, then nothing.
+  sig_at := 0; sig_n := 0; wit_at := 0; wit_n := 0;
+  if f.n >= 0 {
+    base := outs[cidx].script + f.at;   // the solution's place in the coinbase
+    sol := cb[base..<base+f.n];
+    s := tx_span_vartime(sol, 0);
+    if s.code != TX_OK { return SignetCheck.{code=SIGNET_BAD_SOLUTION}; }
+    items_n := tx_compact_read_vartime(sol, s.next);
+    if items_n.code != TX_OK { return SignetCheck.{code=SIGNET_BAD_SOLUTION}; }
+    at := items_n.next;
+    for j: 0..<items_n.value {
+      item := tx_span_vartime(sol, at);
+      if item.code != TX_OK { return SignetCheck.{code=SIGNET_BAD_SOLUTION}; }
+      at = item.next;
+    }
+    if at != sol.count { return SignetCheck.{code=SIGNET_BAD_SOLUTION}; }
+    sig_at = base + s.at; sig_n = s.n;
+    wit_at = base + s.next; wit_n = ifx items_n.value == 0 then 0 else sol.count - s.next;
+  }
+  // The modified coinbase's txid replaces the first leaf.
+  m := cp_stripped_with(cb, t, ins, outs, cidx, cleared[0..<f.length], scratch);
+  #assert sha256d_checked(scratch[0..<m], ids[0..<32], false) == SHA_OK;
+  #assert merkle_root_vartime(ids[0..<32*n], ids[64*n..<96*n], root[..]).code == MERKLE_OK;
+  // to_spend, and its txid.
+  at := cp_le(scratch, 0, 0, 4);
+  scratch[at] = 1; at += 1;
+  for i: 0..<32 { scratch[at+i] = 0; }
+  at = cp_le(scratch, at + 32, 0xffffffff, 4);
+  scratch[at] = 74; scratch[at+1] = OP_0; scratch[at+2] = 72; at += 3;
+  at = cp_put(scratch, at, b[0..<36]);
+  at = cp_put(scratch, at, root[..]);
+  at = cp_put(scratch, at, b[68..<72]);
+  at = cp_le(scratch, at, 0, 4);
+  scratch[at] = 1; at += 1;
+  at = cp_le(scratch, at, 0, 8);
+  at = tx_compact_write_vartime(scratch, at, cn);
+  at = cp_put(scratch, at, challenge[0..<cn]);
+  at = cp_le(scratch, at, 0, 4);
+  #assert sha256d_checked(scratch[0..<at], spend_id[..], false) == SHA_OK;
+  // to_sign, with the witness form only when the stack has items.
+  room := 60 + sig_n + wit_n + 9;
+  if scratch.count < room { return SignetCheck.{code=SIGNET_CAPACITY}; }
+  at = cp_le(scratch, 0, 0, 4);
+  if wit_n > 0 { scratch[at] = 0; scratch[at+1] = 1; at += 2; }
+  scratch[at] = 1; at += 1;
+  at = cp_put(scratch, at, spend_id[..]);
+  at = cp_le(scratch, at, 0, 4);
+  at = tx_compact_write_vartime(scratch, at, sig_n);
+  at = cp_put(scratch, at, cb[sig_at..<sig_at+sig_n]);
+  at = cp_le(scratch, at, 0, 4);
+  scratch[at] = 1; at += 1;
+  at = cp_le(scratch, at, 0, 8);
+  scratch[at] = 1; scratch[at+1] = OP_RETURN; at += 2;
+  at = cp_put(scratch, at, cb[wit_at..<wit_at+wit_n]);
+  at = cp_le(scratch, at, 0, 4);
+  u := tx_read_vartime(scratch[0..<at], true, ins, outs, items);
+  if u.code == TX_CAPACITY { return SignetCheck.{code=SIGNET_CAPACITY}; }
+  if u.code != TX_OK { return SignetCheck.{code=SIGNET_BAD_SOLUTION}; }
+  sp := ScriptSpend.{b=scratch[0..<at], t=u, ins=ins[0..<u.nin], outs=outs[0..<u.nout], items=items[0..<u.nitems],
+    index=0, amount=0, spk=challenge[0..<cn]};
+  error := script_verify_vartime(sp, SIGNET_FLAGS, w);
+  if error != SCRIPT_ERR_OK { return SignetCheck.{code=SIGNET_INVALID, error=error}; }
+  return SignetCheck.{};
+}
+// book:end signet
+
+// ---- checks
+#test "each network's genesis block hashes to its published hash" {
+  for chain: CHAIN_MAIN..<CHAIN_REGTEST + 1 { #assert chain_genesis_check_vartime(chain_params(chain)) == CHAIN_OK; }
+  // One changed field fails, in Core's order: the root, then the hash,
+  // then the proof of work.
+  p := CHAIN_MAINNET_PARAMS;
+  p.genesis.nonce += 1; #assert chain_genesis_check_vartime(p) == CHAIN_BAD_GENESIS;
+  p = CHAIN_MAINNET_PARAMS; p.genesis.reward -= 1; #assert chain_genesis_check_vartime(p) == CHAIN_BAD_MERKLE;
+  p = CHAIN_MAINNET_PARAMS; p.genesis.message = "The Times 03/Jan/2009 Chancellor on brink of second bailout for bank"; #assert chain_genesis_check_vartime(p) == CHAIN_BAD_MERKLE;
+  p = CHAIN_SIGNET_PARAMS; p.retarget = RETARGET_MAINNET; #assert chain_genesis_check_vartime(p) == CHAIN_HIGH_HASH;
+  p = CHAIN_REGTEST_PARAMS; p.retarget = RETARGET_MAINNET; #assert chain_genesis_check_vartime(p) == CHAIN_HIGH_HASH;
+  p = CHAIN_MAINNET_PARAMS; p.genesis.script = "4"; #assert chain_genesis_check_vartime(p) == CHAIN_CAPACITY;
+  small: [CHAIN_GENESIS_MAX - 1] u8;
+  #assert chain_genesis_block_vartime(CHAIN_MAINNET_PARAMS.genesis, small[..]) == -1;
+}
+#test "pushes take the shortest form CScript writes" {
+  out: [70000] u8; data: [65536] u8;
+  #assert chain_push_vartime(out[..], 0, data[0..<0]) == 1 && out[0] == 0;
+  #assert chain_push_vartime(out[..], 0, data[0..<75]) == 76 && out[0] == 75;
+  #assert chain_push_vartime(out[..], 0, data[0..<76]) == 78 && out[0] == OP_PUSHDATA1 && out[1] == 76;
+  #assert chain_push_vartime(out[..], 0, data[0..<255]) == 257 && out[1] == 255;
+  #assert chain_push_vartime(out[..], 0, data[0..<256]) == 259 && out[0] == OP_PUSHDATA2 && out[1] == 0 && out[2] == 1;
+  #assert chain_push_vartime(out[..], 0, data[0..<65535]) == 65538 && out[1] == 0xff && out[2] == 0xff;
+  #assert chain_push_vartime(out[..], 0, data[0..<65536]) == 65541 && out[0] == OP_PUSHDATA4 && out[3] == 1;
+  #assert chain_push_vartime(out[0..<76], 0, data[0..<75]) == 76 && chain_push_vartime(out[0..<75], 0, data[0..<75]) == -1;
+  #assert chain_push_vartime(out[..], -1, data[0..<1]) == -1;
+}
+#test "message starts, and signet's from its challenge" {
+  m: [4] u8; c: [100] u8;
+  for chain: CHAIN_MAIN..<CHAIN_REGTEST + 1 { q := chain_params(chain); #assert chain_from_magic_vartime(q.magic[..]) == chain; }
+  n := cp_unhex(SIGNET_DEFAULT_CHALLENGE, c[..]);
+  #assert n == 71 && chain_signet_magic_vartime(c[0..<n], m[..]);
+  for i: 0..<4 { #assert m[i] == CHAIN_SIGNET_PARAMS.magic[i]; }
+  m[3] ^= 1; #assert chain_from_magic_vartime(m[..]) == 0 && chain_from_magic_vartime(m[0..<3]) == 0;
+  // OP_TRUE as a challenge: magic 54d26fbd.
+  t := chain_signet_custom_vartime("51");
+  #assert t.chain == CHAIN_SIGNET && t.magic[0] == 0x54 && t.magic[1] == 0xd2 && t.magic[2] == 0x6f && t.magic[3] == 0xbd;
+  #assert t.min_chain_work == "" && t.assume_valid == "" && chain_from_magic_vartime(t.magic[..]) == 0;
+  #assert chain_signet_custom_vartime("5").chain == 0 && chain_signet_custom_vartime("zz").chain == 0;
+  #assert !chain_signet_magic_vartime(c[0..<n], m[0..<3]);
+  #assert chain_params(6).chain == 0 && chain_params(0).chain == 0;
+}
+#test "deployment heights and their activation" {
+  p := CHAIN_MAINNET_PARAMS;
+  #assert chain_deployment_height(p, DEP_SEGWIT) == 481824 && !chain_deployment_active(p, DEP_SEGWIT, 481823) && chain_deployment_active(p, DEP_SEGWIT, 481824);
+  #assert chain_deployment_height(p, DEP_HEIGHTINCB) == 227931 && chain_deployment_height(p, DEP_CLTV) == 388381;
+  #assert chain_deployment_height(p, DEP_DERSIG) == 363725 && chain_deployment_height(p, DEP_CSV) == 419328;
+  #assert chain_deployment_height(p, 0) == -1 && !chain_deployment_active(p, 6, 1000000);
+  #assert chain_deployment_active(CHAIN_REGTEST_PARAMS, DEP_SEGWIT, 0) && !chain_deployment_active(CHAIN_REGTEST_PARAMS, DEP_CSV, 0);
+  for chain: CHAIN_MAIN..<CHAIN_REGTEST + 1 { #assert retarget_params_check_vartime(chain_params(chain).retarget) == RETARGET_OK; }
+}
+#test "exception blocks" {
+  h: [32] u8;
+  for i: 0..<32 { h[i] = 0; }
+  #assert !chain_hash_is_vartime(h[..], "") && chain_script_exception_vartime(CHAIN_TESTNET4_PARAMS, h[..]) == -1;
+  #assert cp_unhex("229c4fac88bab194eb08f1a528cc308ded2397f4f4eb6e75dc020000000000000", h[..]) == -1;
+  #assert cp_unhex("229c4fac88bab194eb08f1a528cc308ded2397f4f4eb6e75dc02000000000000", h[..]) == 32;
+  #assert chain_script_exception_vartime(CHAIN_MAINNET_PARAMS, h[..]) == 0 && chain_script_exception_vartime(CHAIN_TESTNET3_PARAMS, h[..]) == -1;
+  #assert cp_unhex("ad95e3a15ee5ffd585c5e81d44b56a981e842d5bc3140f000000000000000000", h[..]) == 32;
+  #assert chain_script_exception_vartime(CHAIN_MAINNET_PARAMS, h[..]) == SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS;
+  #assert cp_unhex("eccae000e3c8e4e093936360431f3b7603c563c1ff6181390a4d0a0000000000", h[..]) == 32;
+  #assert chain_bip30_repeat_vartime(91842, h[..]) && !chain_bip30_repeat_vartime(91880, h[..]) && !chain_bip30_unspendable_vartime(91842, h[..]);
+  #assert cp_unhex("8ed04d57f2f3cdc6a6e55569dc1654e1f219847f66e726dca271020000000000", h[..]) == 32;
+  #assert chain_bip30_unspendable_vartime(91722, h[..]) && !chain_bip30_unspendable_vartime(91723, h[..]);
+  #assert chain_number_vartime("").limb[0] == 0 && chain_number_vartime("00000000000000000000000000000000000000000000000000000000000000ff").limb[0] == 255;
+  #assert u256_is_zero(chain_number_vartime("0000000000000000000000000000000000000000000000000000000000000g"));
+}
+#test "the solution is cleared from the commitment as Core clears it" {
+  s: [200] u8; out: [200] u8; ref: [200] u8;
+  // A PUSHDATA1 of 79 bytes after the commitment becomes a direct push of 4.
+  n := cp_unhex("6a24aa21a9ed00000000000000000000000000000000000000000000000000000000000000004c06ecc7daa2abcd", s[..]);
+  f := chain_signet_fetch_vartime(s[0..<n], out[..]);
+  #assert f.n == 2 && s[f.at] == 0xab && f.length == n - 3;
+  m := cp_unhex("6a24aa21a9ed000000000000000000000000000000000000000000000000000000000000000004ecc7daa2", ref[..]);
+  #assert f.length == m;
+  for i: 0..<m { #assert out[i] == ref[i]; }
+  // Only the first such push counts; four bytes alone are no solution; an
+  // empty PUSHDATA1 is written as its opcode alone; reading stops at a
+  // push past the end.
+  n = cp_unhex("6a04ecc7daa205ecc7daa2010605ecc7daa20251", s[..]);
+  f = chain_signet_fetch_vartime(s[0..<n], out[..]);
+  #assert f.n == 1 && s[f.at] == 1 && f.length == n - 1;
+  n = cp_unhex("6a04ecc7daa24c00", s[..]);
+  f = chain_signet_fetch_vartime(s[0..<n], out[..]);
+  #assert f.n == -1 && f.length == n;
+  n = cp_unhex("6a4c0005ecc7daa2094c", s[..]);
+  f = chain_signet_fetch_vartime(s[0..<n], out[..]);
+  #assert f.n == 1 && f.length == 7 && out[1] == OP_PUSHDATA1 && out[2] == 4;
+  #assert chain_signet_fetch_vartime(s[0..<n], out[0..<3]).length == -1;
+}
+// Block 1 of the default signet: offsets of its witness commitment (172),
+// the solution's header (212), the solution's scriptSig length (216) and a
+// byte of the signature's r (230).
+cp_signet :: (p: ChainParams, b: [] u8, scratch: int) -> SignetCheck {
+  ins: [8] TxIn; outs: [8] TxOut; items: [16] TxItem; ids: [96 * 8] u8; s: [2048] u8; w: [1] ScriptWork;
+  return chain_signet_check_vartime(p, b, ins[..], outs[..], items[..], ids[..], s[0..<scratch], w[..]);
+}
+#test "signet blocks 1 and 19,990 pass, and so does the genesis block" #steps 1000000000 {
+  b: [1000] u8; g: [CHAIN_GENESIS_MAX] u8;
+  n := cp_unhex(SIGNET_BLOCK_19990, b[..]);
+  #assert cp_signet(CHAIN_SIGNET_PARAMS, b[0..<n], 2048).code == SIGNET_OK;
+  #assert cp_signet(CHAIN_SIGNET_PARAMS, b[0..<n], 400).code == SIGNET_CAPACITY;
+  #assert cp_signet(CHAIN_SIGNET_PARAMS, b[0..<n-1], 2048).code == SIGNET_BAD_BLOCK;
+  n = cp_unhex(SIGNET_BLOCK_1, b[..]);
+  #assert n == 329 && cp_signet(CHAIN_SIGNET_PARAMS, b[0..<n], 2048).code == SIGNET_OK;
+  // The genesis block passes without a solution; changed, it has no
+  // commitment.
+  m := chain_genesis_block_vartime(CHAIN_SIGNET_PARAMS.genesis, g[..]);
+  #assert cp_signet(CHAIN_SIGNET_PARAMS, g[0..<m], 2048).code == SIGNET_OK;
+  #assert cp_signet(CHAIN_SIGNET_PARAMS, g[0..<79], 2048).code == SIGNET_BAD_BLOCK;
+  g[0] ^= 1; #assert cp_signet(CHAIN_SIGNET_PARAMS, g[0..<m], 2048).code == SIGNET_NO_COMMITMENT;
+}
+// A changed signature, or a changed time, fails the challenge.
+#test "signet: a changed signature or time fails" #steps 1000000000 {
+  b: [1000] u8;
+  n := cp_unhex(SIGNET_BLOCK_1, b[..]);
+  b[230] ^= 1;
+  r := cp_signet(CHAIN_SIGNET_PARAMS, b[0..<n], 2048);
+  #assert r.code == SIGNET_INVALID && r.error == SCRIPT_ERR_EVAL_FALSE;
+  b[230] ^= 1; b[68] ^= 1;
+  r = cp_signet(CHAIN_SIGNET_PARAMS, b[0..<n], 2048);
+  #assert r.code == SIGNET_INVALID && r.error == SCRIPT_ERR_EVAL_FALSE;
+}
+// A solution that does not read; no solution, which OP_TRUE accepts and
+// the multisig does not; no witness commitment.
+#test "signet: solutions that do not read, or are missing" #steps 1000000000 {
+  b: [1000] u8;
+  n := cp_unhex(SIGNET_BLOCK_1, b[..]);
+  b[216] = 0x4a; #assert cp_signet(CHAIN_SIGNET_PARAMS, b[0..<n], 2048).code == SIGNET_BAD_SOLUTION;
+  b[216] = 0x49; b[215] ^= 1;
+  r := cp_signet(CHAIN_SIGNET_PARAMS, b[0..<n], 2048);
+  #assert r.code == SIGNET_INVALID && r.error == SCRIPT_ERR_INVALID_STACK_OPERATION;
+  #assert cp_signet(chain_signet_custom_vartime("51"), b[0..<n], 2048).code == SIGNET_OK;
+  b[215] ^= 1; b[174] ^= 1;
+  #assert cp_signet(CHAIN_SIGNET_PARAMS, b[0..<n], 2048).code == SIGNET_NO_COMMITMENT;
+  b[174] ^= 1;
+  #assert cp_signet(chain_signet_custom_vartime("00"), b[0..<n], 2048).code == SIGNET_INVALID;
+  #assert cp_signet(chain_signet_custom_vartime("5"), b[0..<n], 2048).code == SIGNET_CAPACITY;
+}
+#test "the modified coinbase keeps every other byte" {
+  b: [400] u8; s: [400] u8; ins: [2] TxIn; outs: [4] TxOut; items: [4] TxItem; id: [32] u8;
+  n := cp_unhex(SIGNET_BLOCK_1, b[..]);
+  cb := b[81..<n];
+  t := tx_parse_vartime(cb, true, ins[..], outs[..], items[..]);
+  o := chain_commitment_index_vartime(cb, t, outs[..]);
+  #assert o == 1;
+  spk := cb[outs[o].script..<outs[o].script+outs[o].script_n];
+  m := cp_stripped_with(cb, t, ins[..], outs[..], o, spk, s[..]);
+  #assert m == t.stripped && m <= cp_room(t.total);
+  #assert sha256d_checked(s[0..<m], id[..], false) == SHA_OK;
+  for i: 0..<32 { #assert id[i] == b[36+i]; }    // the only transaction: its txid is the root
+  t.nout = 1; #assert chain_commitment_index_vartime(cb, t, outs[..]) == -1;
+  t.nout = 2; outs[1].script_n = 37; #assert chain_commitment_index_vartime(cb, t, outs[..]) == -1;
+}
