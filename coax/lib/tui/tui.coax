@@ -567,7 +567,13 @@ tui_rows_editor :: (r: [] TuiRows, e: [] TuiEditor, prompt: string, cont: string
 // floor keeps the region's bottom on the screen's last row: when the
 // region gets shorter without text committed above it, blank rows above the
 // region take up the difference. rows is the screen height (0: not pinned).
-TuiLive :: struct { drawn: int; at: int; hidden: bool; floor: int; rows: int; cols: int; }
+// The drawn rows' widths (split, pad and w: the rows before the blank rows,
+// the blank rows, then every row's width without them) and the cursor's
+// column let a width change count the rows the terminal reflowed them into.
+TuiLive :: struct {
+  drawn: int; at: int; hidden: bool; floor: int; rows: int; cols: int;
+  split: int; pad: int; nw: int; w: [TUI_MAX_ROWS] int; ccol: int;
+}
 
 // Pins the live region to the bottom of a screen of `rows` rows: scrolls what
 // is on the screen into the scrollback and starts the region at the top of the
@@ -593,20 +599,63 @@ tui_live_resize :: (lv: [] TuiLive, rows: int) {
   if lv[0].floor > rows { lv[0].floor = rows; }
 }
 
+// The width of the region's row i as drawn (a blank row's is 0).
+tui_live_row_w :: (lv: [] TuiLive, i: int) -> int {
+  sp := lv[0].split; pd := lv[0].pad;
+  j := ifx i < sp then i else ifx i < sp + pd then -1 else i - pd;
+  return ifx j >= 0 && j < lv[0].nw then lv[0].w[j] else 0;
+}
+
+// The rows drawn row i of the region takes on the screen now. A terminal
+// that reflows (Ghostty, iTerm2, kitty, Terminal.app, tmux) wraps a row wider
+// than a narrowed screen onto more rows: a row of w columns on a screen of
+// cols takes ceil(w / cols) rows, at least one.
+tui_live_row_tall :: (lv: [] TuiLive, i: int) -> int {
+  w := tui_live_row_w(lv, i); c := lv[0].cols;
+  return ifx c > 0 && w > c then (w + c - 1) / c else 1;
+}
+
+// The rows from the region's top to the cursor's row: the rows above the
+// cursor's, as reflowed, and the rows the cursor's own line wrapped onto
+// before the cursor's cell.
+tui_live_above :: (lv: [] TuiLive) -> int {
+  up := 0;
+  for i: 0..<lv[0].at { up += tui_live_row_tall(lv, i); }
+  c := lv[0].cols;
+  if c > 0 && lv[0].ccol >= c { up += lv[0].ccol / c; }
+  return up;
+}
+
+// The rows the whole region takes on the screen now.
+tui_live_tall :: (lv: [] TuiLive) -> int {
+  t := 0;
+  for i: 0..<lv[0].drawn { t += tui_live_row_tall(lv, i); }
+  return t;
+}
+
 // Moves to the top of the live region and erases it and everything below.
+// After a width change the region's rows may have been reflowed onto more
+// rows: the move counts them, so no wrapped piece of an old row stays above
+// the new region, and a pinned region's floor grows to the rows they took, so
+// the new region still ends on the screen's last row.
 tui_live_erase :: (o: [] TuiOut, lv: [] TuiLive) {
   if lv[0].drawn > 0 {
-    if lv[0].at > 0 { tui_csi_n(o, lv[0].at, "A"); }
+    up := tui_live_above(lv);
+    if up > 0 { tui_csi_n(o, up, "A"); }
     tui_byte(o, 13); tui_csi(o, "J");
+    if lv[0].rows > 0 {
+      t := tui_live_tall(lv); if t > lv[0].rows { t = lv[0].rows; }
+      if lv[0].floor < t { lv[0].floor = t; }
+    }
   }
-  lv[0].drawn = 0; lv[0].at = 0;
+  lv[0].drawn = 0; lv[0].at = 0; lv[0].nw = 0; lv[0].split = 0; lv[0].pad = 0; lv[0].ccol = 0;
 }
 
 // Draws rows as the live region; the cursor ends where the rows place it.
 tui_live_draw :: (o: [] TuiOut, lv: [] TuiLive, r: [] TuiRows) {
   tui_csi(o, "?25l");
-  low := lv[0].floor;
   tui_live_erase(o, lv);
+  low := lv[0].floor;
   pad := ifx lv[0].rows > 0 && low > r[0].n then low - r[0].n else 0;
   // Rows before pad_at sit right under the scrollback (a reply as it
   // streams); the blank rows, then the rest, fill down to the last row.
@@ -625,6 +674,11 @@ tui_live_draw :: (o: [] TuiOut, lv: [] TuiLive, r: [] TuiRows) {
   lv[0].drawn = pad + r[0].n;
   lv[0].floor = ifx lv[0].rows > 0 then pad + r[0].n else 0;
   lv[0].at = ifx lv[0].drawn > 0 then lv[0].drawn - 1 else 0;
+  lv[0].split = split; lv[0].pad = pad; lv[0].nw = r[0].n;
+  for j: 0..<r[0].n { lv[0].w[j] = tui_text_width(cast(string) r[0].text[j][0..<r[0].len[j]]); }
+  // the cursor's cell: after the last row's text (its last column when the text fills the row)
+  last_w := tui_live_row_w(lv, lv[0].at);
+  lv[0].ccol = ifx lv[0].cols > 0 && last_w >= lv[0].cols then lv[0].cols - 1 else last_w;
   if r[0].cur_row >= 0 && r[0].cur_row < r[0].n {
     screen := ifx r[0].cur_row < split then r[0].cur_row else r[0].cur_row + pad;
     up := lv[0].drawn - 1 - screen;
@@ -632,6 +686,7 @@ tui_live_draw :: (o: [] TuiOut, lv: [] TuiLive, r: [] TuiRows) {
     tui_byte(o, 13);
     if r[0].cur_col > 0 { tui_csi_n(o, r[0].cur_col, "C"); }
     lv[0].at = screen;
+    lv[0].ccol = ifx lv[0].cols > 0 && r[0].cur_col >= lv[0].cols then lv[0].cols - 1 else r[0].cur_col;
     tui_csi(o, "?25h");
   }
 }
@@ -641,8 +696,10 @@ tui_live_draw :: (o: [] TuiOut, lv: [] TuiLive, r: [] TuiRows) {
 tui_live_commit :: (o: [] TuiOut, lv: [] TuiLive, style: int, s: string) {
   // The committed lines move the region down by the rows they take, counting
   // wrapped lines when the width is known; the blank rows they fill no longer
-  // need padding.
-  high := ifx lv[0].drawn > lv[0].floor then lv[0].drawn else lv[0].floor;
+  // need padding. The region counts the rows the terminal holds it on now,
+  // more than it drew after a narrowing reflow.
+  tall := tui_live_tall(lv); if lv[0].rows > 0 && tall > lv[0].rows { tall = lv[0].rows; }
+  high := ifx tall > lv[0].floor then tall else lv[0].floor;
   lines := 0; at := 0;
   for i: 0..<s.count + 1 {
     if i == s.count || s[i] == 10 {
@@ -1343,6 +1400,47 @@ tui_tb :: (s: string, out: [] u8) -> string {
   #assert first + pw.count <= t.count && last + cw.count <= t.count && first < last;
   unpinned_b: [1] TuiLive; tui_live_draw(o, unpinned_b[..], r);
   #assert unpinned_b[0].drawn == 2 && unpinned_b[0].floor == 0;
+}
+
+#test "a narrowed screen: the region erases the rows the terminal reflowed it onto and still ends on the last row" {
+  ob: [8192] u8; o_b: [1] TuiOut; o := o_b[..]; o[0].b = ob[..];
+  lv_b: [1] TuiLive; lv := lv_b[..];
+  r_b: [1] TuiRows; r := r_b[..];
+  tui_live_pin(o, lv, 10); tui_live_width(lv, 40);
+  lv[0].floor = 5;                                              // a long session: the transcript fills the rows above
+  wide: [39] u8; for i: 0..<39 { wide[i] = '='; }
+  w := cast(string) wide[..];
+  tui_rows_reset(r);
+  k := tui_rows_add(r, TUI_PLAIN, w);                           // the Working row, flush to the right edge
+  k = tui_rows_add(r, TUI_PLAIN, w);                            // a rule
+  k = tui_rows_add(r, TUI_PLAIN, "› "); r[0].cur_row = 2; r[0].cur_col = 2;
+  k = tui_rows_add(r, TUI_PLAIN, w); k = tui_rows_add(r, TUI_PLAIN, w);
+  tui_live_draw(o, lv, r);
+  #assert lv[0].drawn == 5 && lv[0].at == 2 && tui_live_above(lv) == 2 && tui_live_tall(lv) == 5;
+  // 40 columns to 20: the terminal wraps each 39-column row onto two
+  tui_live_width(lv, 20);
+  #assert tui_live_above(lv) == 4 && tui_live_tall(lv) == 9;
+  o[0].n = 0;
+  tui_live_draw(o, lv, r);
+  t := tui_text(o);
+  eb: [64] u8; e_b: [1] TuiOut; e := e_b[..]; e[0].b = eb[..];
+  tui_csi(e, "?25l"); tui_csi_n(e, 4, "A"); tui_byte(e, 13); tui_csi(e, "J");
+  up := tui_text(e);
+  #assert t.count > up.count && cast(string) t[0..<up.count] == up;   // up to the reflowed top, not the drawn one
+  #assert lv[0].drawn == 9 && lv[0].at == 6;                    // four blank rows above: the bottom stays on the last row
+  // and back to 40: rows drawn at 20 columns take one row each again
+  tui_live_width(lv, 40);
+  #assert tui_live_above(lv) == 6 && tui_live_tall(lv) == 9;
+  // a commit after a narrowing reflow counts the reflowed rows too
+  tui_live_width(lv, 10);
+  o[0].n = 0; tui_live_commit(o, lv, TUI_PLAIN, "done");
+  #assert lv[0].floor == 9 && lv[0].drawn == 0;                 // ten rows of region less the committed line
+  // the cursor's own row: past a narrowed width its cell is on a later row
+  c_b: [1] TuiLive; c := c_b[..]; tui_live_width(c, 40);
+  tui_rows_reset(r); k = tui_rows_add(r, TUI_PLAIN, "› abcdefghijklmnopqrstuvwxyz"); r[0].cur_row = 0; r[0].cur_col = 28;
+  o[0].n = 0; tui_live_draw(o, c, r);
+  tui_live_width(c, 10);
+  #assert tui_live_above(c) == 2;
 }
 
 // Renders md lines and strips the style sequences, for checks.

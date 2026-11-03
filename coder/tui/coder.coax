@@ -307,8 +307,19 @@ cd_status_join :: (left: string, right: string, cols: int, out: [] u8) -> string
   return cast(string) out[0..<n];
 }
 
+// A resize since the last look (SIGWINCH): the new size for the live region
+// and a running command's terminal. cd_draw looks too, right before it draws,
+// so a frame is not laid out for a width the terminal has already left.
+cd_resized :: (a: [] App) -> bool {
+  if cxterm_resized() == 0 { return false; }
+  cd_size(a); tui_live_resize(a[0].lv[..], a[0].rows); tui_live_width(a[0].lv[..], a[0].cols);
+  if a[0].cmd_h >= 0 { pr := cxproc_pty_resize(a[0].cmd_h, ifx a[0].cols > 8 then a[0].cols - 4 else 80, CD_PTY_ROWS); }
+  return true;
+}
+
 cd_draw :: (a: [] App) {
   if a[0].plain { return; }
+  x := cd_resized(a);
   r := a[0].rows_buf[..];
   tui_rows_reset(r);
   cols := a[0].cols - 1;
@@ -2691,10 +2702,7 @@ tool_main :: () -> int #export_c {
   while !a[0].quit {
     if cxterm_stopped() != 0 { break; }
     dirty := false;
-    if cxterm_resized() != 0 {
-      cd_size(a); tui_live_resize(a[0].lv[..], a[0].rows); tui_live_width(a[0].lv[..], a[0].cols); dirty = true;
-      if a[0].cmd_h >= 0 { pr := cxproc_pty_resize(a[0].cmd_h, ifx a[0].cols > 8 then a[0].cols - 4 else 80, CD_PTY_ROWS); }
-    }
+    if cd_resized(a) { dirty = true; }
     wait := ifx a[0].running then 10 else 40;
     if cd_read_keys(a, wait) { dirty = true; }
     if a[0].quit { break; }
