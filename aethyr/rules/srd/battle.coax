@@ -140,8 +140,14 @@ rs_drop_effect :: (b: [] RsBattle, j: int, k: int) {
 }
 rs_put_effect :: (b: [] RsBattle, j: int, e: RsEffect) {
   if (e.kind == EF_COND || e.kind == EF_TURNED) && (b[0].c[j].immune_cond & e.cond) != 0 { return; }
+  f := e;
+  // Mindless Rage (p. 30): Immunity to Charmed and Frightened while raging
+  if (f.kind == EF_COND || f.kind == EF_TURNED) && b[0].c[j].raging && b[0].c[j].mindless {
+    f.cond = f.cond & (32767 - RS_CHARMED - RS_FRIGHTENED);
+    if f.cond == 0 { return; }
+  }
   c: [1] RsCreature; c[0] = b[0].c[j];
-  rs_effect_add(c[..], e);
+  rs_effect_add(c[..], f);
   b[0].c[j] = c[0];
 }
 // Uses up EF_WEAK on i (its next attack roll has Disadvantage); true when there was one.
@@ -899,6 +905,13 @@ rs_rage :: (b: [] RsBattle, i: int) -> bool {
   b[0].turn.bonus = true;
   b[0].c[i].rages -= 1; b[0].c[i].raging = true; b[0].c[i].rage_kept = true;
   rs_end_concentration(b, i, " (Rage)");
+  // Mindless Rage: a Charmed or Frightened condition on it ends
+  if b[0].c[i].mindless {
+    for k: 0..<RS_EFFECTS {
+      ef := b[0].c[i].eff[k];
+      if (ef.kind == EF_COND || ef.kind == EF_TURNED) && (ef.cond & (RS_CHARMED | RS_FRIGHTENED)) != 0 { rs_drop_effect(b, i, k); }
+    }
+  }
   l: [1] RsLine;
   rs_add_name(l[..], b, i); rs_add_text(l[..], " enters a Rage");
   rs_tell(b, RS_EV_CONDITION, -1, i, i, 0, 0, l[..]);
@@ -2204,4 +2217,20 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
     if b[0].c[f].uses[RS_USE_WIND] == 0 { b[0].c[f].uses[RS_USE_WIND] = 3; }
   }
   #assert mind;
+}
+
+#test "a level 6 Berserker: Strength 18, Extra Attack, Fast Movement, four Rages, and Mindless Rage" {
+  c := rs_barbarian("Gorr", 1, 6);
+  #assert c.score[RS_STR] == 18 && rs_weapon_attack(c, c.weapon) == 7 && c.extra_attack == 1 && c.speed == 40 && c.rages == 4 && c.primal;
+  #assert c.hp_max == 12 + 2 + 5 * (7 + 2) && rs_barbarian("Gorr", 1, 5).mindless == false && c.mindless;
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].state = 4;
+  a := rs_add(b[..], c, 2, 2);
+  // Frightened before the Rage: entering it ends the condition
+  rs_put_effect(b[..], a, RsEffect.{kind = EF_COND, cond = RS_FRIGHTENED, by = -1, spell = -1, until = 100, save = -1, dc = 0});
+  #assert rs_has(b[0].c[a], RS_FRIGHTENED);
+  rs_fresh(b[..], a);
+  #assert rs_rage(b[..], a) && !rs_has(b[0].c[a], RS_FRIGHTENED);
+  // and while raging it can't be Charmed or Frightened; other conditions still land
+  rs_put_effect(b[..], a, RsEffect.{kind = EF_COND, cond = RS_CHARMED | RS_POISONED, by = -1, spell = -1, until = 100, save = -1, dc = 0});
+  #assert !rs_has(b[0].c[a], RS_CHARMED) && rs_has(b[0].c[a], RS_POISONED);
 }

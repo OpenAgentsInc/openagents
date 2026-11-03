@@ -204,6 +204,7 @@ RsCreature :: struct {
   crit_range: int; athlete: bool; archery: bool;
   extra_attack: int;               // Extra Attack: more attacks with the Attack action
   tactical: bool; shift: bool;     // Tactical Mind, Tactical Shift (Fighter)
+  primal: bool; mindless: bool;    // Primal Knowledge (skills only), Mindless Rage (Berserker)
   // Paladin: Sacred Weapon (Channel Divinity) until; Ranger: the Hunter's Colossus Slayer
   sacred_until: f32; colossus: bool;
   // Rogue: Sneak Attack dice (d6s), Cunning Action, Steady Aim
@@ -360,6 +361,12 @@ rs_barbarian :: (name: string, team: int, level: int) -> RsCreature {
   c[0].rages = rages[rs_min(rs_max(level, 1), 20)]; c[0].rages_max = c[0].rages;
   c[0].rage_bonus = ifx level >= 16 then 4 else ifx level >= 9 then 3 else 2;
   c[0].danger_sense = level >= 2; c[0].frenzy = level >= 3;
+  // Primal Knowledge at 3 (p. 29; skill checks only, none in a battle), an Ability Score Improvement
+  // at 4 (the feat, p. 87: Strength +2), Extra Attack and Fast Movement (+10 feet without Heavy
+  // armor) at 5, the Berserker's Mindless Rage at 6 (p. 30)
+  c[0].primal = level >= 3; c[0].mindless = level >= 6;
+  if level >= 4 { c[0].score[RS_STR] = rs_min(c[0].score[RS_STR] + 2, 20); }
+  if level >= 5 { c[0].extra_attack = 1; c[0].speed += 10; }
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }
