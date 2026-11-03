@@ -644,12 +644,24 @@ It holds no MetaHuman asset and draws with none.
   - Fantasy, CC0: the clothes Everglade's people and 5E Lab's classes wear)
   instead of the portrait's clothes, into its own pack (`human-NAME.pack`).
   `fantasy` is the ranger's tunic, trousers, boots, belt, bracers and
-  gloves; `hooded` adds the hood and pauldron, and leaves out the hair
-  under the hood; `robe` is the peasant's shirt, corset and shoes under a
-  long robe (`people.robe_mesh`, 48 by 18, cut 7 cm clear of the legs and
-  drawn in at the waist, dyed blue). The robe hides the legs whole: no
-  cloth without a simulation follows a stride, so a leg would poke through
-  its front. The portrait still gives the brows and hair. `verse/tools/humans/outfits.py` fits each garment in the
+  gloves; `hooded` adds the hood and a pauldron on each shoulder (the
+  outfit's one, for the left, mirrored, and dyed leather: its grey metal
+  read white), and keeps only the hair inside the hood (`outfits.clipped`:
+  a hair triangle stays when the line from the hood's middle to each of
+  its points crosses no hood triangle), so no bald scalp shows; `robe` is
+  the peasant's shirt, corset and ankle boots (their shafts cut 6 cm above
+  the hem) under a long wool skirt (`outfits.robe_skirt`, 96 by 30): close
+  round the waist and hips (1.5 cm off the body), an A-line below them
+  (9 cm out per metre down), 15 soft folds that deepen to 1.3 cm at the
+  hem, which ends 6 cm above the ankle so the boots show. Its wool is
+  generated (`outfits.robe_cloth`, CC0): a 2/2 twill with its own normal
+  map, a slow mottle and an ochre braid along the hem. Its weights split
+  between the thighs evenly by arc round it, so the stretch as the legs
+  part spreads over its front and back. The skirt hides the thighs: no
+  cloth without a simulation follows a stride, so a thigh would poke
+  through its front. The shins below the knee are drawn as dark stockings
+  (the under layer below), so a boot stepping out behind the hem has its
+  leg. The portrait still gives the brows and hair. `verse/tools/humans/outfits.py` fits each garment in the
   T pose: each joint's frame from the outfits' skeleton (the superhero
   female, which the clothes sit 4 mm off) to the body's, stretched along the
   bone by the bones' length ratio, the garment following its own skin;
@@ -673,7 +685,18 @@ It holds no MetaHuman asset and draws with none.
   garments' triangles (cloth from 1 cm inside the skin to 3 cm out, sharing
   a third of the point's weights): a body bulkier than the outfit's pokes
   through where the cloth is inside it, and a collar's edge doesn't cut the
-  neck above it. `pack_human.py standin
+  neck above it. The skin meant to be covered (no head, neck or hand
+  weight) within 10 cm of a garment is drawn as an under layer instead
+  (`outfits.under`): the colour of the garment nearest it, 40% darker,
+  0.8 cm inside the skin (2.5 cm under the skirt, whose hips move apart
+  from it). Where a pose parts the cloth (the back of a
+  sleeve as the arm comes down, a bulkier body between two pieces) that
+  layer shows, never skin and never a hole into the body. A peek check
+  (`outfits.peeks`) fails the build when skin still shows: in idle and
+  walk, from the front, back and both sides, the body and garments are
+  rasterized at 5 mm into a depth buffer, and skin that is nearest with
+  cloth on all four sides within 8 cm counts; more than 1 cm2 in any view
+  fails. `pack_human.py standin
   --outfit NAME` fits the same female outfits onto the male stand-in, a
   harder fit to judge by eye. In the lab, with a pack in, the body button
   (and G) shows the outfit and steps to the next: `?pack&outfit=fantasy`,

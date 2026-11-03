@@ -5,8 +5,8 @@ Fantasy (CC0; the clothes Everglade's people and 5E Lab's classes wear), fitted 
     python3 verse/tools/humans/pack_human.py standin --outfit fantasy
 
 Outfits (OUTFITS): fantasy (the ranger's tunic, trousers, boots, belt and bracers), hooded (the
-same with the hood and pauldron, and no hair under the hood) and robe (the peasant's shirt,
-corset and shoes under a long robe, people.robe_mesh(), which hides the legs).
+same with the hood, its hair clipped inside it, and a pauldron on each shoulder) and robe (the peasant's shirt,
+corset and shoes under a long wool skirt, robe_skirt(), which hides the legs).
 
 The clothes were made on the Universal Base Characters' superhero female (the outfits' own
 skeleton; their arms lie 4 mm off it), in its T pose. The target is any body in the people rig's
@@ -44,24 +44,34 @@ RANGER = ["Female_Ranger_Body", "Female_Ranger_Arms", "Female_Ranger_Arms_Bracer
           "Female_Ranger_Legs", "Female_Ranger_Feet"]
 OUTFITS = {
     "fantasy": {"parts": [("Female_Ranger", RANGER)], "hair": True},
-    "hooded": {"parts": [("Female_Ranger", RANGER + ["Female_Ranger_Head_Hood", "Female_Ranger_Acc_Pauldrons"])], "hair": False},
+    # the hood keeps the hair, clipped to it (clipped()); the pauldron, made for the left shoulder
+    # only, is mirrored onto the right and dyed leather (its grey metal reads white in the lab)
+    "hooded": {"parts": [("Female_Ranger", RANGER + ["Female_Ranger_Head_Hood", "Female_Ranger_Acc_Pauldrons"])], "hair": True,
+               "clip_hair": ["Female_Ranger_Head_Hood"], "mirror": ["Female_Ranger_Acc_Pauldrons"],
+               "tint": {"Female_Ranger_Acc_Pauldrons": (0.24, 0.15, 0.09)}},
     # the peasant's arms end in its own hands (the peasant's image has their skin): cut at the wrist
     # and the robe hides the legs (its own trousers too): no cloth can follow a stride, so a leg
     # would poke through its front; the shoes show under its hem
     "robe": {"parts": [("Female_Peasant", ["Female_Peasant_Arms", "Female_Peasant_Body", "Female_Peasant_Feet"])],
              "hair": True, "no_hands": True, "no_legs": True,
-             "robe": {"top": 1.0, "hem": 0.12, "flare": 0.2,
-                      "fit": [{"file": f"{OUTFITS_DIR}/Female_Peasant.gltf",
-                               "meshes": ["Female_Peasant_Body", "Female_Peasant_Legs", "Female_Peasant_Feet"]}]}},
+             # the peasant's boots reach the knee: under the skirt their shafts would poke out of
+             # its back in a stance, so they end this far (cm) above its hem
+             "cut": {"Female_Peasant_Feet": 6.0},
+             # a long skirt (robe_skirt): from just under the bodice's lower edge to a hand above
+             # the ankle, close round the hips and an A-line below them
+             "robe": {"top": 102.0, "hem": 6.0, "slope": 0.09}},
 }
 LICENCE = "Quaternius Modular Character Outfits - Fantasy|CC0 1.0"
 GAP_MIN = 0.3        # cm: the least cloth stands off the skin
 SPREAD_CM = 3.0      # how far a push spreads over the cloth round it
 SMALL_CM = 40.0      # a piece no bigger than this every way moves as one
-ROBE_SEGMENTS, ROBE_RINGS = 48, 18
-ROBE_MARGIN = 0.07   # metres clear of the legs (a crowd's robe: 0.035): mostly the pelvis's, it must clear a stride
+ROBE_SEGMENTS, ROBE_RINGS = 96, 30
+ROBE_MARGIN = 1.5    # cm off the body round the waist and hips (the cinch below draws its top edge in)
+ROBE_FOLDS = 15      # folds round the skirt, deepest at the hem
+ROBE_FOLD_CM = 1.3   # how far a fold stands in or out at the hem
 ROBE_CINCH_CM, ROBE_WAIST_CM = 14.0, 2.2   # the robe's top 14 cm drawn in to 2.2 cm off the skin at its top edge
-ROBE_DYE = (0.16, 0.2, 0.42)   # the robe's colour (its texel is pale cloth, which a crowd dyes per person)
+ROBE_WOOL = (92, 24, 30)       # the skirt's wool (sRGB), a wine red under the peasant's brown bodice
+ROBE_TRIM = (176, 132, 58)     # its hem's braid, an ochre
 ROBE_THIGH = 0.6     # the most of a robe point's weight on the thighs (the rest the pelvis's): from the knee down
 
 
@@ -161,6 +171,7 @@ def source(outfit, sex="female"):
     def verts(pr):
         return [{"x": scale(v["p"], 100.0), "n": v["n"], "uv": v["uv"],
                  "ws": [(j, w / 255.0) for j, w in zip(v["j"], v["w"]) if w > 0]} for v in pr["verts"]]
+    joints = [tuple(m[r][3] * 100.0 for r in range(3)) for m in sk.world]
     pieces = []
     for stem, meshes in spec["parts"]:
         path = f"{OUTFITS_DIR}/{stem}.gltf"
@@ -180,26 +191,38 @@ def source(outfit, sex="female"):
                     if len(tris) < len(pr["tris"]):
                         used = sorted({i for t in tris for i in t}); renum = {i: k for k, i in enumerate(used)}
                         pr = {**pr, "verts": [pr["verts"][i] for i in used], "tris": [tuple(renum[i] for i in t) for t in tris]}
+                if name in spec.get("cut", {}):
+                    top = (joints[lower.index("foot_l")][1] + spec["robe"]["hem"] + spec["cut"][name]) / 100.0
+                    tris = [t for t in pr["tris"] if max(pr["verts"][i]["p"][1] for i in t) <= top]
+                    used = sorted({i for t in tris for i in t}); renum = {i: k for k, i in enumerate(used)}
+                    pr = {**pr, "verts": [pr["verts"][i] for i in used], "tris": [tuple(renum[i] for i in t) for t in tris]}
                 m = mats[pr["material"]]; pbr = m.get("pbrMetallicRoughness", {})
-                pieces.append({"name": name, "material": pr["material"], "rgb": tuple(pbr.get("baseColorFactor", (1, 1, 1, 1))[:3]),
-                               "rough": pbr.get("roughnessFactor", 1.0),
-                               "images": (img(pbr.get("baseColorTexture")), img(m.get("normalTexture")), img(pbr.get("metallicRoughnessTexture"))),
-                               "verts": verts(pr), "tris": pr["tris"], "own_weights": False})
-    if "robe" in spec:
-        # finer than a crowd's robe (people.robe_mesh's 20 x 9): this one is seen close
-        keep = people.ROBE_SEGMENTS, people.ROBE_RINGS, people.ROBE_MARGIN
-        people.ROBE_SEGMENTS, people.ROBE_RINGS, people.ROBE_MARGIN = ROBE_SEGMENTS, ROBE_RINGS, ROBE_MARGIN
-        try:
-            robe = people.robe_mesh({"name": "robe", "body": "female", "robe": spec["robe"]}, skel, {})
-        finally:
-            people.ROBE_SEGMENTS, people.ROBE_RINGS, people.ROBE_MARGIN = keep
-        for pr in robe:
-            pieces.append({"name": "Robe", "material": pr["material"], "rgb": ROBE_DYE, "rough": 1.0,
-                           "images": (pr["image"], None, None), "verts": verts(pr), "tris": pr["tris"], "own_weights": True})
+                pc = {"name": name, "material": pr["material"],
+                      "rgb": spec.get("tint", {}).get(name, tuple(pbr.get("baseColorFactor", (1, 1, 1, 1))[:3])),
+                      "rough": pbr.get("roughnessFactor", 1.0),
+                      "images": (img(pbr.get("baseColorTexture")), img(m.get("normalTexture")), img(pbr.get("metallicRoughnessTexture"))),
+                      "verts": verts(pr), "tris": pr["tris"], "own_weights": False}
+                pieces.append(pc)
+                if name in spec.get("mirror", ()):
+                    pieces.append(mirrored(pc, lower))
     body = [v for pr in people.part_file({"name": "base", "body": "female"}, BASE, None, skel)
             if pr["material"].startswith("MI_Superhero") for v in verts(pr)]
-    joints = [tuple(m[r][3] * 100.0 for r in range(3)) for m in sk.world]
+    if "robe" in spec:
+        verts_, tris = robe_skirt(spec["robe"], [b["x"] for b in body], joints, lower)
+        base, normal = robe_cloth()
+        pieces.append({"name": "Robe", "material": "MI_Peasant", "rgb": (1.0, 1.0, 1.0), "rough": 0.92,
+                       "images": (base, normal, None), "verts": verts_, "tris": tris, "own_weights": True})
     return pieces, body, joints, sk.parent, lower
+
+
+def mirrored(pc, lower):
+    """A piece mirrored across the figure's middle (x to -x): its triangles turned to keep facing
+    out, its weights moved to the other side's joints."""
+    other = {k: lower.index(n[:-2] + ("_r" if n.endswith("_l") else "_l")) if n.endswith(("_l", "_r")) else k
+             for k, n in enumerate(lower)}
+    vs = [{**v, "x": (-v["x"][0], v["x"][1], v["x"][2]), "n": (-v["n"][0], v["n"][1], v["n"][2]),
+           "ws": [(other[j], w) for j, w in v["ws"]]} for v in pc["verts"]]
+    return {**pc, "name": pc["name"] + "_Mirrored", "verts": vs, "tris": [(t[0], t[2], t[1]) for t in pc["tris"]]}
 
 
 def welded(verts, tris):
@@ -319,19 +342,8 @@ def fit(outfit, target, log=print):
     pelvis = lower.index("pelvis")
     for pc in pieces:
         if pc["own_weights"]:
-            # the robe: from the pelvis at the waist, more and more the thighs' down to the knee
-            # (ROBE_THIGH of it), split between them smoothly across its whole width (so the
-            # stretch between the legs spreads round the robe instead of tearing its front)
-            J = target["joints"]
-            tl, tr_ = lower.index("thigh_l"), lower.index("thigh_r")
-            hip = J[tl][1]; knee = J[lower.index("calf_l")][1]
-            mid = (J[tl][0] + J[tr_][0]) / 2; zc = J[pelvis][2]
             for v in pc["verts"]:
-                x, y, z = v["x"][0] - mid, v["x"][1], v["x"][2] - zc
-                a = ROBE_THIGH * min(1.0, max(0.0, (hip + 4.0 - y) / (hip + 4.0 - knee)))
-                sd = 0.5 + 0.5 * x / max(math.hypot(x, z), 1.0)      # by its angle round the hips
-                ws = [(pelvis, 1.0 - a), (tl, a * sd), (tr_, a * (1.0 - sd))]
-                v["ws"] = sorted([(j, w) for j, w in ws if w > 1e-4], key=lambda kv: -kv[1])
+                v["ws"] = robe_weights(v["x"], target["joints"], lower)
             continue
         keys, nbr = welded(pc["verts"], pc["tris"])
         kw = [None] * len(nbr)
@@ -383,7 +395,156 @@ def fit(outfit, target, log=print):
             top = sorted(kw[k].items(), key=lambda kv: -kv[1])[:4]
             t = sum(w for _, w in top) or 1.0
             v["ws"] = [(j, w / t) for j, w in top]
+    for pc in pieces:
+        if pc["own_weights"]:
+            renormal(pc)
     return pieces
+
+
+def robe_weights(x, J, lower):
+    """A skirt point's weights: the pelvis's at the waist, more and more the thighs' down to the
+    knee (ROBE_THIGH of it), split between them smoothly by its angle round the hips (so the
+    stretch between the legs spreads round the skirt instead of tearing its front)."""
+    pelvis, tl, tr_ = lower.index("pelvis"), lower.index("thigh_l"), lower.index("thigh_r")
+    hip = J[tl][1]; knee = J[lower.index("calf_l")][1]
+    mid = (J[tl][0] + J[tr_][0]) / 2; zc = J[pelvis][2]
+    dx, y, dz = x[0] - mid, x[1], x[2] - zc
+    a = ROBE_THIGH * min(1.0, max(0.0, (hip + 4.0 - y) / (hip + 4.0 - knee)))
+    # the thigh_l (+x) side's share falls evenly round the skirt (by arc, not by x: the stretch
+    # between the legs as they part spreads over the whole front and back alike)
+    off = abs((math.atan2(dx, dz) - math.pi / 2 + math.pi) % (2 * math.pi) - math.pi)   # from the +x side
+    sd = 1.0 - off / math.pi
+    ws = [(pelvis, 1.0 - a), (tl, a * sd), (tr_, a * (1.0 - sd))]
+    return sorted([(j, w) for j, w in ws if w > 1e-4], key=lambda kv: -kv[1])
+
+
+def robe_skirt(rb, body, J, lower):
+    """A long skirt round the source body (cm, its T pose): ROBE_RINGS rings from rb["top"] down
+    to rb["hem"] above the ankle. Down to the widest ring (the hips) each ring is the body's
+    extent at its height plus ROBE_MARGIN; below, an A-line, rb["slope"] out per centimetre down.
+    ROBE_FOLDS soft folds stand out round it, none at the waist and ROBE_FOLD_CM deep at the hem,
+    whose edge rises and falls with them. Outside and inside faces; uv round it and down it."""
+    top, hem = rb["top"], J[lower.index("foot_l")][1] + rb["hem"]
+    R, S = ROBE_RINGS, ROBE_SEGMENTS
+    ys = [top + (hem - top) * (i / (R - 1)) for i in range(R)]
+    knee = J[lower.index("calf_l")][1]
+    ext = []
+    for y in ys:
+        band = [b for b in body if abs(b[1] - y) < 2.0 and abs(b[0]) < 35.0]
+        if not band and y > knee + 10.0:
+            raise SystemExit(f"outfits: no body at {y:.0f} cm for the skirt")
+        z0, z1 = (min(b[2] for b in band), max(b[2] for b in band)) if band else (0.0, 0.0)
+        ext.append((max(abs(b[0]) for b in band) if band else 0.0, (z1 - z0) / 2, (z0 + z1) / 2))
+    w = max((i for i in range(R) if ys[i] > knee + 10.0), key=lambda i: ext[i][0])
+    rings, rx, rz, cz = [], 0.0, 0.0, 0.0
+    for i, y in enumerate(ys):
+        if i <= w:
+            rx = max(rx, ext[i][0] + ROBE_MARGIN); rz = max(rz, ext[i][1] + ROBE_MARGIN); cz = ext[i][2]
+            rings.append((y, rx, rz, cz))
+        else:
+            d = ys[w] - y
+            rings.append((y, rx + rb["slope"] * d, rz + rb["slope"] * 1.2 * d, cz))
+    # the folds: two harmonics with fixed phases, so each fold differs a little from the next
+    def fold(a):
+        return 0.75 * math.cos(ROBE_FOLDS * a + 0.6) + 0.25 * math.cos((2 * ROBE_FOLDS - 3) * a + 2.1)
+    def depth(y):
+        t = min(1.0, max(0.0, (ys[w] - y) / max(ys[w] - hem, 1.0)))
+        return ROBE_FOLD_CM * t * t * (3 - 2 * t)
+    verts, tris = [], []
+    for face in (1, -1):
+        base = len(verts)
+        for i, (y, rx, rz, cz) in enumerate(rings):
+            for k in range(S + 1):                      # the seam's column twice, for its uv
+                a = 2 * math.pi * k / S
+                f = fold(a); dr = depth(y) * f
+                yy = y + (0.8 * f if i == R - 1 else 0.0)
+                x = (rx + dr) * math.sin(a); z = cz + (rz + dr) * math.cos(a)
+                p = (x, yy, z)
+                verts.append({"x": p, "n": (0.0, 0.0, 1.0), "uv": (k / S, i / (R - 1)),
+                              "ws": robe_weights(p, J, lower)})
+        for i in range(R - 1):
+            for k in range(S):
+                a = base + i * (S + 1) + k; b = a + 1; c = a + S + 1; d = c + 1
+                # seen from outside, (a, c, b) runs counter-clockwise: a round the skirt, c below it
+                tris += [(a, c, b), (b, c, d)] if face > 0 else [(a, b, c), (b, d, c)]
+    pc = {"verts": verts, "tris": tris}
+    renormal(pc)
+    # outside faces out: their normals point away from the axis
+    v0 = verts[(S + 1) * (R // 2)]
+    if v0["n"][2] * (v0["x"][2] - rings[R // 2][3]) + v0["n"][0] * v0["x"][0] < 0:
+        tris = [(t[0], t[2], t[1]) for t in tris]
+        pc["tris"] = tris
+        renormal(pc)
+    return verts, tris
+
+
+def renormal(pc):
+    """Each vertex's normal from its triangles (area weighted), the seam's twins shared."""
+    acc = {}
+    vs = pc["verts"]
+    key = [(round(v["x"][0], 3), round(v["x"][1], 3), round(v["x"][2], 3), i >= len(vs) // 2) for i, v in enumerate(vs)]
+    for t in pc["tris"]:
+        a, b, c = (vs[i]["x"] for i in t)
+        n = cross(sub(b, a), sub(c, a))
+        for i in t:
+            k = key[i]; o = acc.get(k, (0.0, 0.0, 0.0)); acc[k] = add(o, n)
+    for v, k in zip(vs, key):
+        v["n"] = unit(acc.get(k, (0.0, 0.0, 1.0)))
+
+
+def robe_cloth(size=2048):
+    """The skirt's wool (generated, CC0): a twill weave over a slow mottle, with an ochre braid
+    along the hem; and its normal map (green up) from the weave's height. Cached under
+    ~/.openagents/verse/build/cloth."""
+    from PIL import Image, ImageFilter
+    out = Path.home() / ".openagents/verse/build/cloth"
+    base, normal = out / f"robe-wool-{size}.png", out / f"robe-wool-{size}-normal.png"
+    if base.exists() and normal.exists():
+        return base, normal
+    out.mkdir(parents=True, exist_ok=True)
+    TW, TH = 16, 16                          # a tile: 4 threads each way, a 2/2 twill
+    hgt = [[0.0] * TW for _ in range(TH)]
+    for y in range(TH):
+        for x in range(TW):
+            tx, ty = x // 4, y // 4
+            warp = (tx - ty) % 4 < 2         # the warp thread is on top here
+            fx, fy = (x % 4 + 0.5) / 4, (y % 4 + 0.5) / 4
+            # a thread's round profile across it, over the one under it
+            hgt[y][x] = (0.6 + 0.4 * math.sin(math.pi * fx)) if warp else (0.6 + 0.4 * math.sin(math.pi * fy))
+            if not warp:
+                hgt[y][x] -= 0.25
+    tile_n = Image.new("RGB", (TW, TH)); tile_b = Image.new("L", (TW, TH))
+    for y in range(TH):
+        for x in range(TW):
+            gx = (hgt[y][(x + 1) % TW] - hgt[y][(x - 1) % TW]) * 0.5
+            gy = (hgt[(y + 1) % TH][x] - hgt[(y - 1) % TH][x]) * 0.5
+            k = 1.6
+            n = unit((-gx * k, gy * k, 1.0))     # green up: +y up the image
+            tile_n.putpixel((x, y), tuple(int(round(127.5 + 127.5 * c)) for c in n))
+            tile_b.putpixel((x, y), int(round(200 + 55 * hgt[y][x])))
+    nm = Image.new("RGB", (size, size)); shade = Image.new("L", (size, size))
+    for y in range(0, size, TH):
+        for x in range(0, size, TW):
+            nm.paste(tile_n, (x, y)); shade.paste(tile_b, (x, y))
+    mottle = Image.effect_noise((size // 32, size // 32), 40).resize((size, size), Image.BICUBIC).filter(ImageFilter.GaussianBlur(6))
+    grain = Image.effect_noise((size, size), 18).filter(ImageFilter.GaussianBlur(0.6))
+    wool = Image.new("RGB", (size, size), ROBE_WOOL)
+    px, sh, mo, gr = wool.load(), shade.load(), mottle.load(), grain.load()
+    trim0, trim1 = int(size * 0.955), int(size * 0.985)    # the braid, near the hem (v runs down)
+    for y in range(size):
+        braid = trim0 <= y < trim1
+        for x in range(size):
+            f = sh[x, y] / 255.0 * (1.0 + (mo[x, y] - 128) / 900.0 + (gr[x, y] - 128) / 1400.0)
+            if braid:
+                # a diamond chain on the braid
+                u = (x % 64) / 64.0; v = (y - trim0) / (trim1 - trim0)
+                on = abs(u - 0.5) + abs(v - 0.5) < 0.42
+                c = ROBE_TRIM if on else tuple(int(q * 0.55) for q in ROBE_TRIM)
+            else:
+                c = ROBE_WOOL
+            px[x, y] = tuple(min(255, int(q * f)) for q in c)
+    wool.save(base); nm.save(normal)
+    return base, normal
 
 
 def covered(body_x, body_n, body_w, pieces, out_cm=3.0, in_cm=1.0):
@@ -424,6 +585,225 @@ def covered(body_x, body_n, body_w, pieces, out_cm=3.0, in_cm=1.0):
             if i in out:
                 break
     return out
+
+
+PEEK_CELL = 0.5      # cm: the peek check's raster
+PEEK_REACH = 8.0     # cm: how far round a skin cell the check looks for cloth
+PEEK_MAX = 1.0       # cm2: the most skin a pose and view may show through the cloth (idle, walk)
+OPEN = ("head", "neck", "hand", "index", "middle", "ring", "pinky", "thumb")   # skin meant to show
+
+
+def peeks(body_x, body_w, body_tris, pieces, poses, lower, log=print, under_tris=()):
+    """Skin seen through the clothes, without drawing a frame: in each pose (idle and walk; poses as
+    clip_poses) and from the front, back and both sides, the body's kept triangles and the
+    garments are rasterized (PEEK_CELL, orthographic) into a depth buffer; a cell whose nearest
+    surface is skin meant to be covered (not the head's, neck's or hands': OPEN) and that has cloth
+    on all four sides within PEEK_REACH is skin peeking through a hole or poking out of the cloth.
+    Positions in cm (the pieces' "x" and body_x in the same bind); returns, per pose and view, the
+    area (cm2) and the joints it lies on most."""
+    open_j = {k for k, n in enumerate(lower) if n.split("_")[0] in OPEN}
+    meant = [sum(w for k, w in (ws.items() if isinstance(ws, dict) else ws) if k in open_j) < 0.2 for ws in body_w]
+    def skinned(x, ws, mats):
+        xm = tuple(c / 100.0 for c in x); q = (0.0, 0.0, 0.0)
+        for k, a in (ws.items() if isinstance(ws, dict) else ws):
+            A, c = mats[k]
+            q = add(q, tuple(v * a for v in add(mv(A, xm), c)))
+        return scale(q, 100.0)
+    views = {"front": (0, 1, 2, 1), "back": (0, 1, 2, -1), "left": (2, 1, 0, 1), "right": (2, 1, 0, -1)}
+    out = {}
+    for name, mats in poses:
+        if not name.startswith(("idle@0.33", "walk@0.25", "walk@0.75")):
+            continue
+        bx = [skinned(x, w, mats) for x, w in zip(body_x, body_w)]
+        cloth = []
+        for pc in pieces:
+            px = [skinned(v["x"], v["ws"], mats) for v in pc["verts"]]
+            cloth += [tuple(px[i] for i in t) for t in pc["tris"]]
+        tris = [(tuple(bx[i] for i in t), 1 if all(meant[i] for i in t) else 2, t[0]) for t in body_tris] + \
+               [(t, 0, -1) for t in cloth] + [(tuple(bx[i] for i in t), 0, -1) for t in under_tris]
+        for view, (ax, ay, az, sg) in views.items():
+            buf = {}
+            for (a, b, c), kind, src in tris:
+                pa, pb, pc_ = ((p[ax] / PEEK_CELL, p[ay] / PEEK_CELL, sg * p[az]) for p in (a, b, c))
+                x0, x1 = int(math.floor(min(pa[0], pb[0], pc_[0]))), int(math.ceil(max(pa[0], pb[0], pc_[0])))
+                y0, y1 = int(math.floor(min(pa[1], pb[1], pc_[1]))), int(math.ceil(max(pa[1], pb[1], pc_[1])))
+                den = (pb[1] - pc_[1]) * (pa[0] - pc_[0]) + (pc_[0] - pb[0]) * (pa[1] - pc_[1])
+                if abs(den) < 1e-9:
+                    continue
+                for gx in range(x0, x1 + 1):
+                    for gy in range(y0, y1 + 1):
+                        l1 = ((pb[1] - pc_[1]) * (gx - pc_[0]) + (pc_[0] - pb[0]) * (gy - pc_[1])) / den
+                        l2 = ((pc_[1] - pa[1]) * (gx - pc_[0]) + (pa[0] - pc_[0]) * (gy - pc_[1])) / den
+                        l3 = 1.0 - l1 - l2
+                        if l1 < -1e-6 or l2 < -1e-6 or l3 < -1e-6:
+                            continue
+                        z = l1 * pa[2] + l2 * pb[2] + l3 * pc_[2]
+                        o = buf.get((gx, gy))
+                        if o is None or z > o[0]:
+                            buf[(gx, gy)] = (z, kind, src)
+            reach = int(PEEK_REACH / PEEK_CELL)
+            def cloth_toward(gx, gy, dx, dy):
+                for k in range(1, reach + 1):
+                    o = buf.get((gx + dx * k, gy + dy * k))
+                    if o is None or o[1] == 2:
+                        return False
+                    if o[1] == 0:
+                        return True
+                return False
+            hits = [(g, o[2]) for g, o in buf.items() if o[1] == 1 and
+                    all(cloth_toward(*g, dx, dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))]
+            where = {}
+            for _, i in hits:
+                w = body_w[i]; k = max((w.items() if isinstance(w, dict) else w), key=lambda kv: kv[1])[0]
+                where[lower[k]] = where.get(lower[k], 0) + 1
+            area = len(hits) * PEEK_CELL * PEEK_CELL
+            out[(name, view)] = (area, sorted(where.items(), key=lambda kv: -kv[1])[:3])
+    worst = max(out.items(), key=lambda kv: kv[1][0]) if out else None
+    log("peeks (skin through the cloth, cm2 per pose and view): " +
+        "  ".join(f"{n}/{v} {a:.1f}" + (f" {j}" if a else "") for (n, v), (a, j) in out.items()))
+    return out
+
+
+UNDER_CM = 10.0      # skin meant to be covered this near a garment is drawn as cloth (under())
+UNDER_SHADE = 0.6    # the under layer is the garment's colour this much darker (cloth in its shadow)
+UNDER_INSET = 0.8    # cm it sits inside the skin, so a garment over it always shows in front
+UNDER_INSET_LOOSE = 2.5   # under a garment with its own weights (the skirt), whose hips move apart from it
+
+
+def under(body_x, body_w, skip, pieces, lower, force=()):
+    """The skin a garment should cover, as the cloth under it: the body points meant to be covered
+    (no head's, neck's or hand's weight: OPEN) within UNDER_CM of a garment, hidden or not (skip:
+    those left out whole, a robe's legs), are drawn as an under layer the colour of the garment
+    they are nearest. Where the cloth parts in a pose (the back of a sleeve as the arm comes down,
+    a bulkier body between two pieces) that layer shows, not skin and not a hole into the body.
+    force: points drawn so however far from a garment (a robe's shins, as stockings). Returns per
+    garment its colour (sRGB, its base image at the nearest points' uvs times its tint) and its
+    body points."""
+    from PIL import Image
+    open_j = {k for k, n in enumerate(lower) if n.split("_")[0] in OPEN}
+    gx = [(k, v) for k, pc in enumerate(pieces) for v in pc["verts"]]
+    near = Near([v["x"] for _, v in gx], cell=UNDER_CM)
+    images = {}
+    groups = {}
+    for i, (x, ws) in enumerate(zip(body_x, body_w)):
+        if i in skip or sum(w for k, w in (ws.items() if isinstance(ws, dict) else ws) if k in open_j) >= 0.2:
+            continue
+        found = near.nearest(x, UNDER_CM, 128.0)[:1] if i in force else near.within(x, UNDER_CM)
+        if not found:
+            continue
+        k, v = gx[found[0][1]]
+        groups.setdefault(k, ([], []))[0].append(i); groups[k][1].append(v["uv"])
+    out = []
+    for k, (pts, uvs) in groups.items():
+        pc = pieces[k]; img = pc["images"][0]
+        acc = [0.0, 0.0, 0.0]
+        if img is not None:
+            if img not in images:
+                images[img] = Image.open(img).convert("RGB")
+            im = images[img]; W, H = im.size
+            for u, v in uvs:
+                c = im.getpixel((min(W - 1, max(0, int(u % 1.0 * W))), min(H - 1, max(0, int(v % 1.0 * H)))))
+                acc = [a + q for a, q in zip(acc, c)]
+            acc = [a / len(uvs) for a in acc]
+        else:
+            acc = [255.0] * 3
+        rgb = tuple(int(round(min(255.0, a * t * UNDER_SHADE))) for a, t in zip(acc, pc["rgb"]))
+        out.append((pc["name"], rgb, set(pts), UNDER_INSET_LOOSE if pc["own_weights"] else UNDER_INSET))
+    return out
+
+
+def split_under(tris, groups, pos=lambda i: i):
+    """tris (a body's, by vertex; pos: a vertex's body point) split: those with all three points in
+    under groups (under()) go to the group most of them are in, the rest stay skin. Returns
+    (skin, [tris per group])."""
+    skin, out = [], [[] for _ in groups]
+    of = {}
+    for g, grp in enumerate(groups):
+        for q in grp[2]:
+            of[q] = g
+    for t in tris:
+        gs = [of.get(pos(i)) for i in t]
+        if None in gs:
+            skin.append(t)
+        else:
+            out[max(set(gs), key=gs.count)].append(t)
+    return skin, out
+
+
+def pack_under(pack, groups, verts, tris, materials, prefix="under"):
+    """Each under group's triangles (split_under) as a cloth piece of its colour; verts as packed."""
+    for (name, rgb, _, depth), ts in zip(groups, tris):
+        if not ts:
+            continue
+        used = sorted({i for t in ts for i in t}); renum = {i: k for k, i in enumerate(used)}
+        key = ((1.0, 1.0, 1.0), 0.9)
+        if key not in materials:
+            materials[key] = f"cloth{len(materials)}"
+            pack.tints[materials[key]] = (1.0, 1.0, 1.0, 0.9)
+        inset = [{**verts[i], "p": tuple(p - n * depth / 100.0 for p, n in zip(verts[i]["p"], verts[i]["n"]))} for i in used]
+        pack.piece(f"{prefix}/{name}", inset, [tuple(renum[i] for i in t) for t in ts],
+                   materials[key], solid(rgb))
+
+
+def solid(rgb):
+    """A small image of one colour (sRGB), for an under layer's base."""
+    from PIL import Image
+    out = Path.home() / ".openagents/verse/build/cloth"
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / ("solid-%02x%02x%02x.png" % rgb)
+    if not path.exists():
+        Image.new("RGB", (8, 8), rgb).save(path)
+    return path
+
+
+def clipped(hair_x, hair_tris, pieces, names):
+    """A hood's hair: the triangles of hair_x (cm, the pieces' pose) with every point inside the
+    named garments as seen from their middle (the segment from there to the point crosses none
+    of their triangles), so hair under a hood shows at its opening and never through it."""
+    tris = [tuple(pc["verts"][i]["x"] for i in t) for pc in pieces if pc["name"] in names for t in pc["tris"]]
+    if not tris:
+        return hair_tris
+    pts = [p for t in tris for p in t]
+    lo = [min(p[q] for p in pts) for q in range(3)]; hi = [max(p[q] for p in pts) for q in range(3)]
+    mid = ((lo[0] + hi[0]) / 2, lo[1] + 0.55 * (hi[1] - lo[1]), (lo[2] + hi[2]) / 2)
+    cell = 3.0
+    grid = {}
+    for k, (a, b, c) in enumerate(tris):
+        l = [int(math.floor(min(a[q], b[q], c[q]) / cell)) for q in range(3)]
+        h = [int(math.floor(max(a[q], b[q], c[q]) / cell)) for q in range(3)]
+        for x in range(l[0], h[0] + 1):
+            for y in range(l[1], h[1] + 1):
+                for z in range(l[2], h[2] + 1):
+                    grid.setdefault((x, y, z), []).append(k)
+    inside = []
+    for p in hair_x:
+        d = sub(p, mid); L = math.sqrt(dot(d, d))
+        if L < 1e-6:
+            inside.append(True); continue
+        u = scale(d, 1.0 / L); seen = set(); hit = False
+        steps = int(L / (cell * 0.5)) + 1
+        for s_ in range(steps + 1):
+            q = add(mid, scale(u, L * s_ / steps))
+            for k in grid.get(tuple(int(math.floor(c / cell)) for c in q), ()):
+                if k in seen:
+                    continue
+                seen.add(k)
+                t = ray_tri(mid, u, *tris[k])
+                if t is not None and 0.0 < t < L:
+                    hit = True; break
+            if hit:
+                break
+        inside.append(not hit)
+    return [t for t in hair_tris if all(inside[i] for i in t)]
+
+
+def thighs(leg, body_x, joints, lower, below=15.0):
+    """Of a robe's hidden leg points (legs()), the thighs' (from `below` cm under the hip joint down
+    to the knee): the under layer leaves those out, so no thigh pokes through the skirt in a
+    stride. It keeps the buttocks', under the skirt's waist, and the shins', as stockings from the
+    knee down: a boot stepping out behind the hem has its leg."""
+    hip = joints[lower.index("thigh_l")][1]; knee = joints[lower.index("calf_l")][1]
+    return {i for i in leg if knee < body_x[i][1] < hip - below}
 
 
 def legs(outfit, body_w, lower):

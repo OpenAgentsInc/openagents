@@ -380,7 +380,9 @@ def build(pack, export, outfit=None):
         if portrait.exists():
             dressed(pack, [portrait], down, (head, JH), W, p, P,
                     keep=lambda m: m == GROOM[1] or (hair and m == GROOM[0]))
-        covered = fitted(pack, outfit, down, (head, JH), M, W, p, P)
+        faces = obj(body / "body_lod0_mesh.obj")[3]
+        tris = [(f[0][0], f[k][0], f[k + 1][0]) for f in faces for k in range(1, len(f) - 1)]
+        covered = fitted(pack, outfit, down, (head, JH), M, W, p, P, tris)
     elif portrait.exists():
         covered = dressed(pack, [portrait] + [q for q in LOWER_GARMENTS(export) if q.exists()],
                           down, (head, JH), W, p, P)
@@ -390,9 +392,17 @@ def build(pack, export, outfit=None):
         path = src / f"{name}.obj"
         if not path.exists():
             continue
+        under = src is body and getattr(pack, "under", None)
         verts, tris = mesh(path, skin_file(src / f"{name}.skin.txt"), J, flip_v,
-                           hide=covered if src is body else None,
+                           hide=covered if src is body and not under else None,
                            posed=(down["x"], down["vn"]) if src is body else None)
+        if under:
+            # the skin meant to be covered as the cloth under the outfit (outfits.under), the rest
+            # of what the outfit covers left out
+            groups, materials = pack.under
+            tris, unders = outfits.split_under(tris, groups, pos=lambda i: verts[i]["pt"])
+            tris = [t for t in tris if not all(verts[i]["pt"] in covered for i in t)]
+            outfits.pack_under(pack, groups, verts, unders, materials)
         layers = skin.get(name) or (maps / base if base else None, maps / normal if normal else None, maps / rough if rough else None)
         if pack_human.MATERIALS[material] in pack_human.BLENDED:
             verts = pack_human.lid_coords(verts, tris)
@@ -849,7 +859,7 @@ def dressed(pack, sources, down, head, W, p, P, keep=None):
     return covered
 
 
-def fitted(pack, outfit, down, head, M, W, p, P):
+def fitted(pack, outfit, down, head, M, W, p, P, body_tris):
     """Packs a fantasy outfit (outfits.fit) fitted onto the body in the T pose, then moved into the
     pack's bind (the clothes' own pose, arms lowered) by its weights; checks its edges in the lab's
     clips; returns the body positions under it."""
@@ -893,13 +903,15 @@ def fitted(pack, outfit, down, head, M, W, p, P):
     bad = outfits.edges(pieces, poses, edge_check)
     if bad:
         raise SystemExit(f"metahuman: torn cloth (edge outliers) in {bad}")
-    names = outfits.packed(pack, pieces, {})
+    materials = {}
+    names = outfits.packed(pack, pieces, materials)
     want = sorted({n for stem, ms in outfits.OUTFITS[outfit]["parts"] for n in (ms or [])} |
                   ({"Robe"} if "robe" in outfits.OUTFITS[outfit] else set()))
     missing = [n for n in want if n not in names]
     if missing:
         raise SystemExit(f"metahuman: garments not packed: {missing}")
-    hide = outfits.covered(vd, nd, wb, pieces) | outfits.legs(outfit, wb, LOWER)
+    leg = outfits.legs(outfit, wb, LOWER)
+    hide = outfits.covered(vd, nd, wb, pieces) | leg
     # the ranger's gloves cover the palm, the fingers' roots and the thumb: the fingertips show
     tips = [i for i, w in enumerate(wb) if sum(v for k, v in w.items() if LOWER[k].split("_")[0] in HAND[1:5]
                                                and LOWER[k].split("_")[1] == "03") > 0.5]
@@ -907,6 +919,24 @@ def fitted(pack, outfit, down, head, M, W, p, P):
           f"fingertip positions shown: {sum(i not in hide for i in tips)} of {len(tips)}")
     if tips and sum(i not in hide for i in tips) < 0.9 * len(tips):
         raise SystemExit("metahuman: the fingers are hidden under cloth")
+    thigh = outfits.thighs(leg, vd, P, LOWER)
+    groups = outfits.under(vd, wb, thigh, pieces, LOWER, force=leg - thigh)
+    print("body positions drawn as the cloth under the outfit: " + ", ".join(f"{n} {len(q)}" for n, _, q, _ in groups))
+    kept, unders = outfits.split_under(body_tris, groups)
+    kept = [t for t in kept if not all(i in hide for i in t)]
+    seen = outfits.peeks(vd, wb, kept, pieces, poses, LOWER, under_tris=[t for ts in unders for t in ts])
+    bad = {k: v for k, v in seen.items() if v[0] > outfits.PEEK_MAX}
+    if bad:
+        raise SystemExit(f"metahuman: skin shows through the cloth: {bad}")
+    # a hood's hair: only what lies inside the hood
+    clip = outfits.OUTFITS[outfit].get("clip_hair")
+    if clip:
+        for pc in pack.pieces:
+            if pc["material"] == pack_human.MATERIALS["hair"]:
+                n0 = len(pc["tris"])
+                pc["tris"] = outfits.clipped([tuple(c * 100.0 for c in v["p"]) for v in pc["verts"]], pc["tris"], pieces, clip)
+                print(f"hair under the hood: {len(pc['tris'])} of {n0} triangles kept")
+    pack.under = (groups, materials)
     return hide
 
 

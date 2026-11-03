@@ -486,6 +486,9 @@ def standin(pack, outfit=None):
             b, n, r = maps[pr["material"]]
             if outfit and material == "skin":
                 pr["tris"] = dressed_standin(pack, outfit, pr, skel)
+            if outfit and material == "hair" and outfits.OUTFITS[outfit].get("clip_hair"):
+                pr["tris"] = outfits.clipped([tuple(c * 100.0 for c in v["p"]) for v in pr["verts"]], pr["tris"],
+                                             pack.outfit_pieces, outfits.OUTFITS[outfit]["clip_hair"])
             pack.piece(f"{path.stem}/{pr['material']}", pr["verts"], pr["tris"], material, b, n, r)
     pack.tints.update({"skin": (1.0, 1.0, 1.0, 1.0), "eye": (1.0, 1.0, 1.0, 0.4), "hair": (0.16, 0.1, 0.06, 0.55),
                        "brow": (0.16, 0.1, 0.06, 0.6), "cloth": (1.0, 1.0, 1.0, 1.0)})   # the outfit's cloths are in already
@@ -507,10 +510,24 @@ def dressed_standin(pack, outfit, body, skel):
     bad = outfits.edges(pieces, poses, metahuman.edge_check)
     if bad:
         raise SystemExit(f"standin: torn cloth (edge outliers) in {bad}")
-    outfits.packed(pack, pieces, {})
-    hide = outfits.covered(xs, target["n"], ws, pieces) | outfits.legs(outfit, ws, [n.lower() for n in skel.names])
-    print(f"standin: body points under the cloth: {len(hide)} of {len(xs)}")
-    return [t for t in body["tris"] if not all(i in hide for i in t)]
+    materials = {}
+    outfits.packed(pack, pieces, materials)
+    lower = [n.lower() for n in skel.names]
+    leg = outfits.legs(outfit, ws, lower)
+    hide = outfits.covered(xs, target["n"], ws, pieces) | leg
+    thigh = outfits.thighs(leg, xs, target["joints"], lower)
+    groups = outfits.under(xs, ws, thigh, pieces, lower, force=leg - thigh)
+    print(f"standin: body points under the cloth: {len(hide)} of {len(xs)}; drawn as the cloth under it: "
+          + ", ".join(f"{n} {len(p)}" for n, _, p, _ in groups))
+    kept, unders = outfits.split_under(body["tris"], groups)
+    kept = [t for t in kept if not all(i in hide for i in t)]
+    outfits.pack_under(pack, groups, body["verts"], unders, materials)
+    seen = outfits.peeks(xs, ws, kept, pieces, poses, lower, under_tris=[t for ts in unders for t in ts])
+    bad = {k: v for k, v in seen.items() if v[0] > outfits.PEEK_MAX}
+    if bad:
+        raise SystemExit(f"standin: skin shows through the cloth: {bad}")
+    pack.outfit_pieces = pieces
+    return kept
 
 
 def main(argv):
