@@ -24,11 +24,19 @@
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 40000;
-UNIFORM_FLOATS :: 260;
+UNIFORM_FLOATS :: 324;
 // The uniform block (gpu/metahumanlab.coax reads it at these float offsets).
 U_FLAGS :: 4; U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32;
 U_BOUND :: 36; U_HEAD :: 40; U_HEAD_F :: 44; U_HEAD_U :: 48; U_CAPS :: 52;
 CAPS :: 26;   // capsules, two vec4s each: (a, radius), (b, material)
+// The mesh's rows (a human pack): the figure's turn and place, the key's shadow box, eight
+// materials, and the light rig (fill, rim, the key's strength and the exposure).
+U_FIG :: 260; U_LIGHT :: 264; U_MAT :: 280; U_RIG :: 312;
+MATS :: 8;
+DRAWS_MAX :: 16;
+// The pack's assets in the page's list (realms.json "private:human"): its catalog, vertices,
+// indices and layers.
+PACK_CATALOG :: 0; PACK_PARTS :: 4;
 MAT_SUIT :: 1; MAT_SKIN :: 2; MAT_SHOE :: 3; MAT_HEAD :: 4;
 
 STEP :: 0.0166666667;
@@ -82,6 +90,14 @@ Lab :: struct {
   panning: bool; shift: bool;        // Shift held: a drag pans
   fingers: int; fing_id: [2] int; fing_x: [2] f32; fing_y: [2] f32;   // touches down, for a pinch
   eye: Point; fwd: Point; right: Point; up: Point; focal: f32; cx: f32; cy: f32;
+  // a human pack (verse/tools/humans/pack_human.py), when one has loaded: its joints' bind
+  // positions, its materials, its pieces as draws (u32 first, count, 0, 1) and the pose's
+  // palette for the vertex shader (three rows of four per joint)
+  mesh: bool; pack_in: int; pack_failed: bool; pack_body: int = -1;
+  bind: [MANNEQUIN_JOINTS] Point; binds: int;
+  mats: [MATS * 4] f32;
+  draws: [DRAWS_MAX * 4] u32; draw_n: int;
+  palette: [MANNEQUIN_JOINTS * 12] f32; pal_version: int;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
 }
 
@@ -112,6 +128,8 @@ turn_y :: (p: Point, yaw: f32) -> Point {
   return v3(p.x * c + p.z * sn, p.y, -p.x * sn + p.z * c);
 }
 rig :: (s: [] Lab) -> SkinRig { return people_rig(s[0].rig[..], s[0].female); }
+// Whether a human pack's mesh draws the figure (else the capsules do).
+mesh_on :: (s: [] Lab) -> bool { return s[0].mesh && s[0].draw_n > 0; }
 clip_name :: (c: int) -> string { return PEOPLE_CLIP_NAME[c]; }
 // A gait: a clip that travels (walk, run), at its own pace in m/s; 0 for the rest.
 gait_speed :: (c: int) -> f32 {
@@ -125,6 +143,7 @@ lab_start :: (s: [] Lab) {
   people_load(s[0].rig[..]);
   skin_advance(rig(s), s[0].skin[..], s[0].clip, 0, 0);
   pose(s);
+  for m: 0..<MATS { s[0].mats[m * 4] = 1; s[0].mats[m * 4 + 1] = 1; s[0].mats[m * 4 + 2] = 1; s[0].mats[m * 4 + 3] = 1; }
 }
 
 // ---- the figure
@@ -155,6 +174,7 @@ animate :: (s: [] Lab, dt: f32) {
   }
   skin_advance(rig(s), s[0].skin[..], s[0].clip, speed, dt);
   pose(s);
+  if mesh_on(s) { lab_palette(s); }
 }
 // The flying pivot: held keys ask for a speed along the camera's level forward and right (and
 // up), and the pivot eases to it, so it starts and stops without a jolt.
@@ -409,6 +429,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
     u[o] = c.a.x; u[o + 1] = c.a.y; u[o + 2] = c.a.z; u[o + 3] = c.r;
     u[o + 4] = c.b.x; u[o + 5] = c.b.y; u[o + 6] = c.b.z; u[o + 7] = f32(c.m);
   }
+  mesh_uniforms(s, u, mid, reach + 0.25);
   return n;
 }
 
@@ -421,7 +442,10 @@ leave_to :: (s: [] Lab, url: string) {
 }
 // The next clip, or the one before (by -1), round the twelve.
 cycle_clip :: (s: [] Lab, by: int) { s[0].clip = (s[0].clip + by + PEOPLE_CLIPS) % PEOPLE_CLIPS; }
-switch_body :: (s: [] Lab) { s[0].female = !s[0].female; pose(s); }
+switch_body :: (s: [] Lab) {
+  if mesh_on(s) { return; }   // a mesh is one body
+  s[0].female = !s[0].female; pose(s);
+}
 cam_reset :: (s: [] Lab) {
   s[0].yaw = 0; s[0].pitch = CAM_PITCH; s[0].dist = CAM_DIST;
   s[0].px = 0; s[0].py = CAM_Y; s[0].pz = 0; s[0].vx = 0; s[0].vy = 0; s[0].vz = 0;
@@ -541,6 +565,163 @@ lab_message :: (s: [] Lab, kind: int, t: string) #export_c { lab_start(s); }
 lab_golden :: (s: [] Lab, on: bool) #export_c { lab_start(s); s[0].golden = on; }
 lab_action :: (s: [] Lab) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
 lab_action_done :: (s: [] Lab) #export_c { s[0].out_n = 0; }
+
+// ---- the mesh: a human pack's skin on the people rig
+
+// The pack's catalog (pack_human.py has its lines): the body, each joint's bind position, the
+// materials and the pieces, a draw each.
+lab_catalog :: (s: [] Lab, text: string) #export_c {
+  lab_start(s);
+  s[0].draw_n = 0; s[0].binds = 0; s[0].pack_body = -1;
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    mesh_line(s, text[i..<e]);
+    i = e + 1;
+  }
+  if s[0].binds != MANNEQUIN_JOINTS || s[0].pack_body < 0 { s[0].draw_n = 0; return; }
+  if s[0].female != (s[0].pack_body == 1) { s[0].female = s[0].pack_body == 1; pose(s); }
+  mesh_ready(s);
+}
+// One of the pack's parts arrived (bytes > 0) or failed (0): the mesh draws once all four are in.
+lab_pack_part :: (s: [] Lab, i: int, bytes: int) #export_c {
+  if i < PACK_CATALOG || i >= PACK_CATALOG + PACK_PARTS { return; }
+  if bytes <= 0 { s[0].pack_failed = true; s[0].mesh = false; return; }
+  s[0].pack_in |= 1 << i;
+  mesh_ready(s);
+}
+mesh_ready :: (s: [] Lab) {
+  s[0].mesh = !s[0].pack_failed && s[0].pack_in == (1 << PACK_PARTS) - 1 && s[0].draw_n > 0;
+  if s[0].mesh { lab_palette(s); }
+}
+lab_draw_count :: (s: [] Lab) -> int #export_c { return ifx mesh_on(s) then s[0].draw_n else 0; }
+mh_word :: (line: string, from: int) -> int { e := from; while e < line.count && line[e] != ' ' { e += 1; } return e; }
+// An integer from at[0] (spaces before it skipped); at[0] is then past it, or -1 with none.
+mh_int :: (text: string, at: [] int) -> int {
+  i := at[0];
+  if i < 0 { return 0; }
+  while i < text.count && text[i] == ' ' { i += 1; }
+  neg := false; v := 0; digits := 0;
+  if i < text.count && text[i] == '-' { neg = true; i += 1; }
+  while i < text.count && text[i] >= '0' && text[i] <= '9' && digits < 9 { v = v * 10 + cast(int) (text[i] - '0'); i += 1; digits += 1; }
+  at[0] = ifx digits > 0 then i else -1;
+  return ifx neg then -v else v;
+}
+// A decimal ("-0.0434") from at[0], as mh_int.
+mh_dec :: (text: string, at: [] int) -> f32 {
+  i := at[0];
+  if i < 0 { return 0; }
+  while i < text.count && text[i] == ' ' { i += 1; }
+  neg := i < text.count && text[i] == '-';
+  if neg { i += 1; }
+  at[0] = i;
+  whole := mh_int(text, at);
+  if at[0] < 0 { return 0; }
+  v := cast(f32) whole;
+  i = at[0];
+  if i < text.count && text[i] == '.' {
+    i += 1; place: f32 = 0.1;
+    while i < text.count && text[i] >= '0' && text[i] <= '9' { v += place * cast(f32) (text[i] - '0'); place *= 0.1; i += 1; }
+    at[0] = i;
+  }
+  return ifx neg then -v else v;
+}
+mesh_line :: (s: [] Lab, line: string) {
+  if line.count < 3 { return; }
+  at: [1] int;
+  if line.count > 5 && line[0..<5] == "body " {
+    rest := line[5..<line.count];
+    s[0].pack_body = ifx rest == "female" then 1 else ifx rest == "male" then 0 else -1;
+    return;
+  }
+  if line[1] != ' ' { return; }
+  if line[0] == 'B' {
+    at[0] = 2; j := mh_int(line, at[..]);
+    x := mh_dec(line, at[..]); y := mh_dec(line, at[..]); z := mh_dec(line, at[..]);
+    if at[0] < 0 || j != s[0].binds || j >= MANNEQUIN_JOINTS { return; }
+    s[0].bind[j] = v3(x, y, z); s[0].binds = j + 1;
+    return;
+  }
+  if line[0] == 'M' {
+    at[0] = 2; m := mh_int(line, at[..]);
+    r := mh_int(line, at[..]); g := mh_int(line, at[..]); b := mh_int(line, at[..]); rough := mh_int(line, at[..]);
+    if at[0] < 0 || m < 1 || m > MATS { return; }
+    o := (m - 1) * 4;
+    s[0].mats[o] = f32(r) / 1000; s[0].mats[o + 1] = f32(g) / 1000; s[0].mats[o + 2] = f32(b) / 1000; s[0].mats[o + 3] = f32(rough) / 1000;
+    return;
+  }
+  if line[0] == 'P' {
+    at[0] = mh_word(line, 2);
+    first := mh_int(line, at[..]); count := mh_int(line, at[..]);
+    if at[0] < 0 || first < 0 || count <= 0 || s[0].draw_n >= DRAWS_MAX { return; }
+    o := s[0].draw_n * 4;
+    s[0].draws[o] = cast(u32) first; s[0].draws[o + 1] = cast(u32) count; s[0].draws[o + 2] = 0; s[0].draws[o + 3] = 1;
+    s[0].draw_n += 1;
+  }
+}
+
+// The pose's palette for the mesh: each joint's skinning matrix, three rows of four, taking the
+// pack's bind pose to the pose now. A joint's turn is the clip's change from the rig's rest (in the
+// figure's space, D = posed x rest^-1); its place is its parent's plus that parent's turn of its
+// bone in the bind pose (and of the clip's move of it, the pelvis's), so the pack keeps its own
+// bone lengths. On a pack bound at the rig's own rest this is aethyr/skin.coax's skin_palette.
+lab_palette :: (s: [] Lab) {
+  r := rig(s);
+  gq: [MANNEQUIN_JOINTS] Quat; rq: [MANNEQUIN_JOINTS] Quat; d: [MANNEQUIN_JOINTS] Quat;
+  gp: [MANNEQUIN_JOINTS] Point;
+  for j: 0..<MANNEQUIN_JOINTS {
+    l := s[0].skin[0].now[j];
+    rest := skin_rest(r, j);
+    p := r.parent[j];
+    if p < 0 || p >= j {
+      gq[j] = l.q; rq[j] = rest.q;
+      gp[j] = add(s[0].bind[j], sub(l.t, rest.t));
+    } else {
+      gq[j] = quat_unit(quat_mul(gq[p], l.q)); rq[j] = quat_unit(quat_mul(rq[p], rest.q));
+      bone := sub(s[0].bind[j], s[0].bind[p]);
+      gp[j] = add(add(gp[p], quat_rotate(d[p], bone)), quat_rotate(gq[p], sub(l.t, rest.t)));
+    }
+    d[j] = quat_unit(quat_mul(gq[j], Quat.{x = -rq[j].x, y = -rq[j].y, z = -rq[j].z, w = rq[j].w}));
+    ex := quat_rotate(d[j], v3(1, 0, 0)); ey := quat_rotate(d[j], v3(0, 1, 0)); ez := quat_rotate(d[j], v3(0, 0, 1));
+    bp := s[0].bind[j];
+    t := sub(gp[j], add(add(times(ex, bp.x), times(ey, bp.y)), times(ez, bp.z)));
+    b := j * 12;
+    s[0].palette[b] = ex.x; s[0].palette[b + 1] = ey.x; s[0].palette[b + 2] = ez.x; s[0].palette[b + 3] = t.x;
+    s[0].palette[b + 4] = ex.y; s[0].palette[b + 5] = ey.y; s[0].palette[b + 6] = ez.y; s[0].palette[b + 7] = t.y;
+    s[0].palette[b + 8] = ex.z; s[0].palette[b + 9] = ey.z; s[0].palette[b + 10] = ez.z; s[0].palette[b + 11] = t.z;
+  }
+  s[0].pal_version += 1;
+}
+// Where the mesh puts a bind-pose point now (a check's view of the vertex shader's skinning).
+palette_apply :: (m: [] f32, j: int, p: Point) -> Point {
+  b := j * 12;
+  return v3(m[b] * p.x + m[b + 1] * p.y + m[b + 2] * p.z + m[b + 3],
+            m[b + 4] * p.x + m[b + 5] * p.y + m[b + 6] * p.z + m[b + 7],
+            m[b + 8] * p.x + m[b + 9] * p.y + m[b + 10] * p.z + m[b + 11]);
+}
+
+// The mesh's rows: the figure's turn and place, the key's shadow box round the figure, the
+// materials and the light rig: a warm key from the sun's side, a cool fill from the other front
+// side and a rim from behind, a portrait's three lights.
+mesh_uniforms :: (s: [] Lab, u: [] f32, mid: Point, reach: f32) {
+  on := mesh_on(s);
+  u[U_FLAGS + 1] = ifx on then 1 else 0;
+  if !on { return; }
+  u[U_FIG] = cos(s[0].fyaw); u[U_FIG + 1] = sin(s[0].fyaw); u[U_FIG + 2] = s[0].fx; u[U_FIG + 3] = s[0].fz;
+  sun := unit_or(v3(u[U_SUN], u[U_SUN + 1], u[U_SUN + 2]), v3(0, 1, 0));
+  side := unit_or(cross(v3(0, 1, 0), sun), v3(1, 0, 0));
+  lift := cross(sun, side);
+  half := hi(reach, 0.5);
+  u[U_LIGHT] = mid.x; u[U_LIGHT + 1] = mid.y; u[U_LIGHT + 2] = mid.z; u[U_LIGHT + 3] = 1.0 / half;
+  u[U_LIGHT + 4] = side.x; u[U_LIGHT + 5] = side.y; u[U_LIGHT + 6] = side.z;
+  u[U_LIGHT + 8] = lift.x; u[U_LIGHT + 9] = lift.y; u[U_LIGHT + 10] = lift.z;
+  u[U_LIGHT + 12] = sun.x; u[U_LIGHT + 13] = sun.y; u[U_LIGHT + 14] = sun.z; u[U_LIGHT + 15] = 0.0015;
+  for k: 0..<MATS * 4 { u[U_MAT + k] = s[0].mats[k]; }
+  fill := unit_or(v3(-0.75, 0.3, 0.6), v3(0, 0, 1)); rim := unit_or(v3(-0.2, 0.45, -0.85), v3(0, 0, -1));
+  u[U_RIG] = fill.x; u[U_RIG + 1] = fill.y; u[U_RIG + 2] = fill.z; u[U_RIG + 3] = 0.9;
+  u[U_RIG + 4] = rim.x; u[U_RIG + 5] = rim.y; u[U_RIG + 6] = rim.z; u[U_RIG + 7] = 2.2;
+  u[U_RIG + 8] = 3.4; u[U_RIG + 9] = 1.0;
+}
 
 coaxial_lab_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
 coaxial_lab_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
@@ -726,4 +907,104 @@ frame_u :: (s: [] Lab, u: [] f32) -> int {
   b := s[0].back;
   ok = lab_pointer(s[..], b.x0 + 2, b.y0 + 2, 0, 0, 1); ok = lab_pointer(s[..], b.x0 + 2, b.y0 + 2, 2, 0, 1);
   #assert lab_action(s[..]) == ACT_NAVIGATE;
+}
+
+// A pack's catalog bound at the people rig's male rest: every joint where the rig's rest puts it.
+rest_catalog :: (s: [] Lab, out: [] u8) -> int {
+  r := rig(s);
+  gq: [MANNEQUIN_JOINTS] Quat; gt: [MANNEQUIN_JOINTS] Point;
+  n := put(out, 0, "human test\nbody male\n");
+  for j: 0..<MANNEQUIN_JOINTS {
+    l := skin_rest(r, j); p := r.parent[j];
+    if p < 0 { gq[j] = l.q; gt[j] = l.t; } else { gq[j] = quat_unit(quat_mul(gq[p], l.q)); gt[j] = add(gt[p], quat_rotate(gq[p], l.t)); }
+    n = put(out, n, "B "); n = put_int(out, n, j);
+    for k: 0..<3 {
+      v := ifx k == 0 then gt[j].x else ifx k == 1 then gt[j].y else gt[j].z;
+      n = put(out, n, " "); if v < 0 { n = put(out, n, "-"); }
+      m := cast(int) (abs(v) * 1000000 + 0.5);
+      n = put_int(out, n, m / 1000000); n = put(out, n, ".");
+      f := m % 1000000; d := 100000;
+      while d > 0 { n = put_digit(out, n, (f / d) % 10); d /= 10; }
+    }
+    n = put(out, n, "\n");
+  }
+  n = put(out, n, "M 1 900 800 700 1000\nP body/skin 0 300 1\nP hair 300 60 3\n");
+  return n;
+}
+pack_in :: (s: [] Lab) {
+  text: [8192] u8;
+  n := rest_catalog(s, text[..]);
+  lab_catalog(s, cast(string) text[0..<n]);
+  for i: 0..<PACK_PARTS { lab_pack_part(s, i, 100); }
+}
+
+#test "with no pack the capsules draw the figure: no mesh draws, the mesh flag off" #steps 2000000000 {
+  s: [1] Lab;
+  u: [UNIFORM_FLOATS] f32;
+  n := frame_u(s[..], u[..]);
+  #assert lab_draw_count(s[..]) == 0 && u[U_FLAGS + 1] == 0 && u[U_CAPS + 3] > 0;
+  // a pack that fails (absent: the page is public, or nothing is built) leaves it so
+  for i: 0..<PACK_PARTS { lab_pack_part(s[..], i, 0); }
+  n = frame_u(s[..], u[..]);
+  #assert lab_draw_count(s[..]) == 0 && u[U_FLAGS + 1] == 0 && !s[0].mesh;
+}
+
+#test "a pack's catalog: the bind pose, materials and pieces; it draws once all four parts are in" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  text: [8192] u8;
+  t := rest_catalog(s[..], text[..]);
+  lab_catalog(s[..], cast(string) text[0..<t]);
+  #assert s[0].binds == MANNEQUIN_JOINTS && s[0].draw_n == 2 && s[0].pack_body == 0;
+  #assert s[0].draws[4] == 300 && s[0].draws[5] == 60 && s[0].draws[7] == 1;
+  #assert abs(s[0].mats[0] - 0.9) < 0.0001 && abs(s[0].mats[2] - 0.7) < 0.0001 && s[0].mats[4] == 1;
+  #assert s[0].bind[MQ_PELVIS].z < -0.04 && s[0].bind[MQ_PELVIS].y > 0.9;   // a negative decimal reads as one
+  #assert lab_draw_count(s[..]) == 0;
+  for i: 0..<3 { lab_pack_part(s[..], i, 100); }
+  #assert lab_draw_count(s[..]) == 0;
+  lab_pack_part(s[..], 3, 100);
+  #assert lab_draw_count(s[..]) == 2 && s[0].mesh;
+  // G keeps the pack's body
+  #assert lab_key(s[..], 'g', 0) && !s[0].female;
+  u: [UNIFORM_FLOATS] f32;
+  n := frame_u(s[..], u[..]);
+  #assert u[U_FLAGS + 1] == 1 && u[U_FIG] == 1 && u[U_LIGHT + 3] > 0 && abs(u[U_MAT] - 0.9) < 0.0001 && u[U_RIG + 9] > 0;
+}
+
+#test "the mesh's palette: bound at the rig's rest it is the rig's own skinning, in every clip" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  pack_in(s[..]);
+  r := rig(s[..]);
+  want: [MANNEQUIN_JOINTS * 12] f32;
+  for c: 0..<PEOPLE_CLIPS {
+    s[0].clip = c;
+    for i: 0..<25 { lab_step(s[..], f32(STEP)); }
+    skin_palette(r, s[0].skin[..], want[..]);
+    worst: f32 = 0;
+    for k: 0..<MANNEQUIN_JOINTS * 12 { worst = hi(worst, abs(want[k] - s[0].palette[k])); }
+    #assert worst < 0.0005;
+  }
+}
+
+#test "a pack with its own bone lengths keeps them: a longer forearm reaches further, the shoulder stays" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  pack_in(s[..]);
+  s[0].clip = PEOPLE_WALK;
+  for i: 0..<30 { lab_step(s[..], f32(STEP)); }
+  shoulder := palette_apply(s[0].palette[..], MQ_UPPERARM_L, s[0].bind[MQ_UPPERARM_L]);
+  elbow := palette_apply(s[0].palette[..], MQ_LOWERARM_L, s[0].bind[MQ_LOWERARM_L]);
+  hand := palette_apply(s[0].palette[..], MQ_HAND_L, s[0].bind[MQ_HAND_L]);
+  // the hand's joint goes where the hand of the rig goes
+  #assert length(sub(hand, sub(s[0].joint[MQ_HAND_L], v3(s[0].fx, 0, s[0].fz)))) < 0.2;
+  fore := length(sub(hand, elbow));
+  // stretch the forearm and everything past it by 10 cm along the bind's forearm
+  along := unit_or(sub(s[0].bind[MQ_HAND_L], s[0].bind[MQ_LOWERARM_L]), v3(1, 0, 0));
+  for j: MQ_HAND_L..<MQ_THUMB_03_L + 2 { s[0].bind[j] = add(s[0].bind[j], times(along, 0.1)); }
+  lab_palette(s[..]);
+  hand2 := palette_apply(s[0].palette[..], MQ_HAND_L, s[0].bind[MQ_HAND_L]);
+  elbow2 := palette_apply(s[0].palette[..], MQ_LOWERARM_L, s[0].bind[MQ_LOWERARM_L]);
+  #assert abs(length(sub(hand2, elbow2)) - (fore + 0.1)) < 0.002;
+  #assert length(sub(elbow2, elbow)) < 0.0005 && length(sub(palette_apply(s[0].palette[..], MQ_UPPERARM_L, s[0].bind[MQ_UPPERARM_L]), shoulder)) < 0.0005;
 }

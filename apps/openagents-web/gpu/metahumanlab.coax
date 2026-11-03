@@ -2,6 +2,7 @@
 // from this with coax/web/wgsl-module.coax (metahumanlab.module and metahumanlab.bindings beside it).
 #load "../../../verse/gpu/wgsl.coax";
 #load "../../../verse/style.coax";
+#load "../../../aethyr/render/sampling.coax";
 
 // bg_fs traces each pixel against the scene: a studio floor (a soft grey with a metre grid, fading
 // into the backdrop) and the figure, a capsule per bone posed from the skeleton (the ray tests the
@@ -193,14 +194,7 @@ mhlab_shade :: (eye:V3,rd:V3,h:MhlabHit,u:[]f32,figure:bool)->V3 {
   return mix3(c,mhlab_sky(rd,sun),fog);
 }
 
-mhlab_scene :: (p:V2,u:[]f32)->V3 {
-  eye:V3=wg_at3(u,16);
-  f:f32=fmax(u[19],1.0f32);
-  fwd:V3=wg_at3(u,20);
-  right:V3=wg_at3(u,24);
-  up:V3=wg_at3(u,28);
-  rd:V3=normalize3(add3(fwd,add3(scale3(right,(p.x-u[23])/f),scale3(up,(u[27]-p.y)/f))));
-  h:MhlabHit=mhlab_trace(eye,rd,u,false,true);
+mhlab_scene_hit :: (eye:V3,rd:V3,h:MhlabHit,u:[]f32)->V3 {
   c:V3=mhlab_shade(eye,rd,h,u,true);
   // the skeleton overlay: the body as glass over what is behind it
   if ((u[4]>0.5f32)&&(h.m>0.5f32)) {
@@ -211,13 +205,284 @@ mhlab_scene :: (p:V2,u:[]f32)->V3 {
   return c;
 }
 
-mhlab_bg_fs :: (pos:V4,u:[]f32)->V4 {
+// What a pixel shows on the screen: with a mesh, ACES filmic and the sRGB curve over linear light
+// (the mesh's own look, as Unreal's); without one, the capsule bench's soft tone as before.
+mhlab_out :: (c:V3,u:[]f32)->V3 {
+  if (u[5]>0.5f32) {
+    return v3(mhlab_srgb(mhlab_aces(c.x*u[321])),mhlab_srgb(mhlab_aces(c.y*u[321])),mhlab_srgb(mhlab_aces(c.z*u[321])));
+  }
+  return v3(verse_style_tone(c.x,1.2f32),verse_style_tone(c.y,1.2f32),verse_style_tone(c.z,1.2f32));
+}
+// The HUD's strip along the top and the key line's along the bottom: dark glass, so their text reads.
+mhlab_strips :: (p:V2,c:V3,u:[]f32)->V3 {
+  if ((p.y<u[6])||(p.y>(u[1]-u[7]))) { return add3(scale3(c,0.22f32),v3(0.01f32,0.012f32,0.016f32)); }
+  return c;
+}
+// A traced point's depth in the mesh's depth buffer (mhlab_project's): z along the view, from
+// MHLAB_NEAR to MHLAB_FAR; the backdrop is at the far plane.
+MHLAB_NEAR :: 0.05f32;
+MHLAB_FAR :: 400.0f32;
+mhlab_depth :: (z:f32)->f32 {
+  if (z<=MHLAB_NEAR) { return 0.0f32; }
+  return fmin((MHLAB_FAR*(z-MHLAB_NEAR))/((MHLAB_FAR-MHLAB_NEAR)*z),1.0f32);
+}
+MhlabBg :: struct {c:V4; depth:f32 #depth; }
+mhlab_bg_fs :: (pos:V4,u:[]f32)->MhlabBg {
   p:V2=v2(pos.x,pos.y);
-  c:V3=mhlab_scene(p,u);
-  c=v3(verse_style_tone(c.x,1.2f32),verse_style_tone(c.y,1.2f32),verse_style_tone(c.z,1.2f32));
-  // the HUD's strip along the top and the key line's along the bottom: dark glass, so their text reads
-  if ((p.y<u[6])||(p.y>(u[1]-u[7]))) { c=add3(scale3(c,0.22f32),v3(0.01f32,0.012f32,0.016f32)); }
+  eye:V3=wg_at3(u,16);
+  f:f32=fmax(u[19],1.0f32);
+  fwd:V3=wg_at3(u,20);
+  rd:V3=normalize3(add3(fwd,add3(scale3(wg_at3(u,24),(p.x-u[23])/f),scale3(wg_at3(u,28),(u[27]-p.y)/f))));
+  mesh:bool=u[5]>0.5f32;
+  // with a mesh the figure's capsules only cast its shadow: the mesh draws the figure itself
+  h:MhlabHit=mhlab_trace(eye,rd,u,false,!mesh);
+  c:V3=mhlab_scene_hit(eye,rd,h,u);
+  // the bench's colours are picked by eye on the screen: with a mesh they go back to linear light
+  if (mesh) { c=scale3(v3(pow(fmax(c.x,0.0f32),2.2f32),pow(fmax(c.y,0.0f32),2.2f32),pow(fmax(c.z,0.0f32),2.2f32)),0.95f32); }
+  depth:f32=1.0f32;
+  if (h.m>=0.0f32) { depth=mhlab_depth(h.t*dot3(rd,fwd)); }
+  c=mhlab_strips(p,mhlab_out(c,u),u);
+  return MhlabBg.{c=v4(c.x,c.y,c.z,1.0f32),depth=depth};
+}
+// ---- the mesh (a human pack, verse/tools/humans/pack_human.py): GPU skinning by four joints of
+// the pose (metahumanlab.coax lab_palette: three rows of four per joint), drawn into the depth
+// buffer bg_fs has written the floor into, lit by the key (with its shadow map), a fill, a rim
+// and the sky. MhlabU's mesh rows (floats):
+//   260: the figure's turn (cos, sin) and place (x, z)
+//   264: the shadow's box: centre xyz, 1 / half its size; 268: its right; 272: its up; 276: toward the key, bias
+//   280: eight materials (rgb tint, roughness scale), by material number less one
+//   312: the fill's direction xyz, strength; 316: the rim's, strength; 320: the key's strength, exposure
+// A vertex, 8 words (pack_human.py vertex): x y (unorm16 each), z (unorm16) | material << 16 |
+// the bitangent's sign << 31, the normal and the tangent (octahedral unorm16 pairs), uv (unorm16
+// pair), four joints (u8), four weights (unorm8), the layers base | normal << 8 | rough << 16.
+MHLAB_SPAN :: 2.5f32;
+MHLAB_LOW :: -0.25f32;
+mhlab_octa :: (w:u32)->V3 {
+  e:V2=wg_unpack2x16unorm(w);
+  x:f32=(e.x*2.0f32)-1.0f32;
+  y:f32=(e.y*2.0f32)-1.0f32;
+  z:f32=(1.0f32-abs(x))-abs(y);
+  if (z<0.0f32) {
+    ox:f32=x;
+    sx:f32=1.0f32; if (ox<0.0f32) { sx=-1.0f32; }
+    sy:f32=1.0f32; if (y<0.0f32) { sy=-1.0f32; }
+    x=(1.0f32-abs(y))*sx;
+    y=(1.0f32-abs(ox))*sy;
+  }
+  return normalize3(v3(x,y,z));
+}
+mhlab_srgb :: (x:f32)->f32 {
+  c:f32=saturate(x);
+  if (c<=0.0031308f32) { return c*12.92f32; }
+  return (1.055f32*pow(c,1.0f32/2.4f32))-0.055f32;
+}
+// ACES filmic (Narkowicz's fit), the curve Unreal's tonemapper is built on.
+mhlab_aces :: (x:f32)->f32 {
+  return saturate((x*((2.51f32*x)+0.03f32))/((x*((2.43f32*x)+0.59f32))+0.14f32));
+}
+// A figure-space point moved to the floor: the figure's turn about +y, then its place.
+mhlab_place :: (p:V3,u:[]f32)->V3 {
+  c:f32=u[260]; sn:f32=u[261];
+  return v3((p.x*c)+(p.z*sn)+u[262],p.y,((-p.x)*sn)+(p.z*c)+u[263]);
+}
+mhlab_turn :: (n:V3,u:[]f32)->V3 {
+  c:f32=u[260]; sn:f32=u[261];
+  return v3((n.x*c)+(n.z*sn),n.y,((-n.x)*sn)+(n.z*c));
+}
+// The camera's projection of a world point, as bg_fs's rays: the eye's frame and focal length,
+// depth along the view from MHLAB_NEAR to MHLAB_FAR.
+mhlab_project :: (w:V3,u:[]f32)->V4 {
+  rel:V3=sub3(w,wg_at3(u,16));
+  z:f32=dot3(rel,wg_at3(u,20));
+  x:f32=dot3(rel,wg_at3(u,24));
+  y:f32=dot3(rel,wg_at3(u,28));
+  f:f32=fmax(u[19],1.0f32);
+  cx:f32=(((2.0f32*u[23])/u[0])-1.0f32)*z+((2.0f32*f*x)/u[0]);
+  cy:f32=((1.0f32-((2.0f32*u[27])/u[1]))*z)+((2.0f32*f*y)/u[1]);
+  cz:f32=(MHLAB_FAR*(z-MHLAB_NEAR))/(MHLAB_FAR-MHLAB_NEAR);
+  return v4(cx,cy,cz,z);
+}
+// Where a world point falls in the key's shadow map: uv and depth.
+mhlab_light :: (w:V3,u:[]f32)->V3 {
+  rel:V3=sub3(w,wg_at3(u,264));
+  k:f32=u[267];
+  x:f32=dot3(rel,wg_at3(u,268))*k;
+  y:f32=dot3(rel,wg_at3(u,272))*k;
+  z:f32=0.5f32-(dot3(rel,wg_at3(u,276))*k*0.5f32);
+  return v3(x,y,z);
+}
+MhlabSkin :: struct {p:V3; n:V3; t:V3; sign:f32; uv:V2; layers:u32; material:u32; }
+mhlab_skin :: (id:u32,vertices:[]u32,pose:[]V4)->MhlabSkin {
+  b:u32=mul_wrap(id,8);
+  xy:V2=wg_unpack2x16unorm(vertices[cast(int)b]);
+  w1:u32=vertices[cast(int)add_wrap(b,1)];
+  at:V4=v4((xy.x*MHLAB_SPAN)-(MHLAB_SPAN*0.5f32),(xy.y*MHLAB_SPAN)+MHLAB_LOW,((cast(f32)(w1&0xffff))/65535.0f32*MHLAB_SPAN)-(MHLAB_SPAN*0.5f32),1.0f32);
+  nw:V3=mhlab_octa(vertices[cast(int)add_wrap(b,2)]);
+  tw:V3=mhlab_octa(vertices[cast(int)add_wrap(b,3)]);
+  j:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);
+  wt:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,6)]);
+  o:MhlabSkin;
+  o.p=v3(0.0f32,0.0f32,0.0f32); o.n=v3(0.0f32,0.0f32,0.0f32); o.t=v3(0.0f32,0.0f32,0.0f32);
+  k:int=0;
+  while k<4 {
+    jk:f32=j.x; wk:f32=wt.x;
+    if (k==1) { jk=j.y; wk=wt.y; }
+    if (k==2) { jk=j.z; wk=wt.z; }
+    if (k==3) { jk=j.w; wk=wt.w; }
+    if (wk>0.0f32) {
+      r:int=cast(int)((jk*255.0f32)+0.5f32)*3;
+      a:V4=pose[r]; c:V4=pose[r+1]; e:V4=pose[r+2];
+      o.p=add3(o.p,scale3(v3(dot4(a,at),dot4(c,at),dot4(e,at)),wk));
+      o.n=add3(o.n,scale3(v3(dot3(v3(a.x,a.y,a.z),nw),dot3(v3(c.x,c.y,c.z),nw),dot3(v3(e.x,e.y,e.z),nw)),wk));
+      o.t=add3(o.t,scale3(v3(dot3(v3(a.x,a.y,a.z),tw),dot3(v3(c.x,c.y,c.z),tw),dot3(v3(e.x,e.y,e.z),tw)),wk));
+    }
+    k+=1;
+  }
+  o.sign=1.0f32; if ((w1>>31)==1) { o.sign=-1.0f32; }
+  o.uv=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);
+  w7:u32=vertices[cast(int)add_wrap(b,7)];
+  o.layers=w7&0xffffff;
+  o.material=w7>>24;
+  return o;
+}
+MhlabS :: struct {pos:V4; world:V3; normal:V3; tangent:V4; uv:V2; layers:u32 #flat; material:u32 #flat; }
+mhlab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,pose:[]V4)->MhlabS {
+  v:MhlabSkin=mhlab_skin(id,vertices,pose);
+  o:MhlabS;
+  o.world=mhlab_place(v.p,u);
+  o.normal=mhlab_turn(v.n,u);
+  t:V3=mhlab_turn(v.t,u);
+  o.tangent=v4(t.x,t.y,t.z,v.sign);
+  o.uv=v.uv;
+  o.layers=v.layers;
+  o.material=v.material;
+  o.pos=mhlab_project(o.world,u);
+  return o;
+}
+MhlabShadow :: struct {pos:V4; uv:V2; layers:u32 #flat; material:u32 #flat; }
+mhlab_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,pose:[]V4)->MhlabShadow {
+  v:MhlabSkin=mhlab_skin(id,vertices,pose);
+  q:V3=mhlab_light(mhlab_place(v.p,u),u);
+  o:MhlabShadow;
+  o.pos=v4(q.x,q.y,q.z,1.0f32);
+  o.uv=v.uv; o.layers=v.layers; o.material=v.material;
+  return o;
+}
+mhlab_shadow_fs :: (v:MhlabShadow,sheets:Tex2DArray,sheet:Sampler) {
+  // the eyes' wet layer casts nothing
+  if (v.material==7) { gpu_demote_helper(); }
+}
+// A layer's texel (255: none, the fallback colour instead).
+// The uv's derivatives come from the top of scene_fs (uniform control flow), so a layer can be
+// read under a branch.
+mhlab_layer :: (sheets:Tex2DArray,sheet:Sampler,uv:V2,dx:V2,dy:V2,layer:u32,none:V4)->V4 {
+  if (layer==255) { return none; }
+  return render_sample_layer8_grad(sheets,sheet,uv,cast,trunc(s32)(layer),dx,dy,0.0f32);
+}
+// How much of the key reaches a world point: the shadow map's comparison, four bilinear taps
+// round it (16 texels) blended.
+mhlab_lit :: (w:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->f32 {
+  q:V3=mhlab_light(add3(w,scale3(n,0.006f32)),u);
+  uv:V2=v2((q.x*0.5f32)+0.5f32,0.5f32-(q.y*0.5f32));
+  if ((uv.x<0.0f32)||(uv.x>1.0f32)||(uv.y<0.0f32)||(uv.y>1.0f32)) { return 1.0f32; }
+  texel:f32=1.0f32/cast(f32)gpu_depth_width(shadow_map);
+  s:f32=0.0f32;
+  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(-texel,-texel)),q.z-u[279]);
+  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(texel,-texel)),q.z-u[279]);
+  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(-texel,texel)),q.z-u[279]);
+  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(texel,texel)),q.z-u[279]);
+  return s*0.25f32;
+}
+// GGX: the normal distribution and the visibility term (Smith, height-correlated, Karis's fit).
+mhlab_ggx :: (nh:f32,a:f32)->f32 {
+  a2:f32=a*a;
+  d:f32=((nh*nh)*(a2-1.0f32))+1.0f32;
+  return a2/(3.14159265f32*d*d);
+}
+mhlab_vis :: (nl:f32,nv:f32,a:f32)->f32 {
+  return 0.5f32/fmax((nl*(nv*(1.0f32-a)+a))+(nv*(nl*(1.0f32-a)+a)),0.0001f32);
+}
+// One light's share: diffuse (skin wraps and reddens where the light turns away, the scatter a
+// pre-integrated skin BRDF gives), and specular (skin: two GGX lobes, as Unreal's dual specular).
+mhlab_light_one :: (n:V3,v:V3,l:V3,albedo:V3,rough:f32,material:u32,colour:V3)->V3 {
+  nl:f32=dot3(n,l);
+  nv:f32=fmax(dot3(n,v),0.001f32);
+  diff:V3=scale3(albedo,saturate(nl)/3.14159265f32);
+  if (material==1) {
+    // scatter: red light wraps furthest round the terminator, blue least
+    w:V3=v3(saturate((nl+0.42f32)/1.42f32),saturate((nl+0.18f32)/1.18f32),saturate((nl+0.1f32)/1.1f32));
+    w=v3(w.x*w.x,w.y*w.y,w.z*w.z);
+    diff=v3(albedo.x*w.x,albedo.y*w.y,albedo.z*w.z);
+    diff=scale3(diff,1.0f32/3.14159265f32);
+  }
+  spec:f32=0.0f32;
+  if (nl>0.0f32) {
+    h:V3=normalize3(add3(l,v));
+    nh:f32=saturate(dot3(n,h));
+    vh:f32=saturate(dot3(v,h));
+    f0:f32=0.04f32;
+    if (material==1) { f0=0.028f32; }
+    fr:f32=f0+((1.0f32-f0)*pow(1.0f32-vh,5.0f32));
+    a:f32=fmax(rough*rough,0.002f32);
+    lobe:f32=mhlab_ggx(nh,a)*mhlab_vis(nl,nv,a);
+    if (material==1) {
+      a2:f32=fmax((rough*1.4f32)*(rough*1.4f32),0.002f32);
+      a1:f32=fmax((rough*0.75f32)*(rough*0.75f32),0.002f32);
+      lobe=(0.85f32*mhlab_ggx(nh,a1)*mhlab_vis(nl,nv,a1))+(0.15f32*mhlab_ggx(nh,a2)*mhlab_vis(nl,nv,a2));
+    }
+    spec=fr*lobe*nl;
+  }
+  return v3(colour.x*(diff.x+spec),colour.y*(diff.y+spec),colour.z*(diff.z+spec));
+}
+mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+  dx:V2=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));
+  dy:V2=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));
+  // the skeleton overlay: the body as stippled glass, so the bones read through it
+  if ((u[4]>0.5f32)&&(((cast(int)(s.pos.x)+cast(int)(s.pos.y))%2)==0)) { gpu_demote_helper(); }
+  m:u32=s.material;
+  mat:V4=wg_at4(u,280+(cast(int)(clamp_u(m,1,8))-1)*4);
+  base:V4=mhlab_layer(sheets,sheet,s.uv,dx,dy,s.layers&255,v4(0.5f32,0.5f32,0.5f32,1.0f32));
+  if (base.w<0.35f32) { gpu_demote_helper(); }
+  albedo:V3=v3(base.x*mat.x,base.y*mat.y,base.z*mat.z);
+  ng:V3=normalize3(s.normal);
+  if (!front) { ng=scale3(ng,-1.0f32); }
+  n:V3=ng;
+  nm:V4=mhlab_layer(sheets,sheet,s.uv,dx,dy,(s.layers>>8)&255,v4(0.5f32,0.5f32,1.0f32,1.0f32));
+  if (((s.layers>>8)&255)!=255) {
+    // the layer is sRGB-decoded on the way in; a normal map is raw numbers, so encode it back
+    tn:V3=v3((mhlab_srgb(nm.x)*2.0f32)-1.0f32,(mhlab_srgb(nm.y)*2.0f32)-1.0f32,(mhlab_srgb(nm.z)*2.0f32)-1.0f32);
+    t:V3=normalize3(sub3(v3(s.tangent.x,s.tangent.y,s.tangent.z),scale3(ng,dot3(ng,v3(s.tangent.x,s.tangent.y,s.tangent.z)))));
+    bt:V3=scale3(cross3(ng,t),s.tangent.w);
+    n=normalize3(add3(add3(scale3(t,tn.x),scale3(bt,tn.y)),scale3(ng,fmax(tn.z,0.05f32))));
+  }
+  rough:f32=0.6f32;
+  if (((s.layers>>16)&255)!=255) {
+    rough=mhlab_srgb(mhlab_layer(sheets,sheet,s.uv,dx,dy,(s.layers>>16)&255,v4(0.6f32,0.6f32,0.6f32,1.0f32)).y);
+  }
+  rough=clampf(rough*mat.w,0.04f32,1.0f32);
+  v:V3=normalize3(sub3(wg_at3(u,16),s.world));
+  key:V3=normalize3(wg_at3(u,276));
+  sh:f32=mhlab_lit(s.world,ng,u,shadow_map,shadow_cmp);
+  c:V3=mhlab_light_one(n,v,key,albedo,rough,m,scale3(v3(1.0f32,0.95f32,0.88f32),u[320]*sh));
+  c=add3(c,mhlab_light_one(n,v,normalize3(wg_at3(u,312)),albedo,rough,m,scale3(v3(0.75f32,0.82f32,1.0f32),u[315])));
+  c=add3(c,mhlab_light_one(n,v,normalize3(wg_at3(u,316)),albedo,rough,m,scale3(v3(0.9f32,0.95f32,1.0f32),u[319])));
+  // the sky and the floor's bounce, an ambient from above and below; the cavities darker
+  sky:f32=(0.5f32+(0.5f32*n.y));
+  amb:V3=add3(scale3(v3(0.36f32,0.4f32,0.48f32),sky*0.55f32),scale3(v3(0.22f32,0.2f32,0.18f32),(1.0f32-sky)*0.35f32));
+  c=add3(c,v3(albedo.x*amb.x,albedo.y*amb.y,albedo.z*amb.z));
+  // the eye's wet gloss: the sky's reflection on the cornea
+  if (m==2) {
+    r:V3=reflect3(scale3(v,-1.0f32),n);
+    c=add3(c,scale3(v3(0.7f32,0.75f32,0.8f32),0.06f32+(0.25f32*saturate(r.y))));
+  }
+  c=mhlab_out(c,u);
+  c=mhlab_strips(v2(s.pos.x,s.pos.y),c,u);
   return v4(c.x,c.y,c.z,1.0f32);
+}
+clamp_u :: (x:u32,a:u32,b:u32)->u32 {
+  if (x<a) { return a; }
+  if (x>b) { return b; }
+  return x;
 }
 MhlabV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
 mhlab_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }

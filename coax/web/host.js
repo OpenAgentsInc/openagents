@@ -114,6 +114,11 @@
 //                 streamed, that stands for four assets in its place, its catalog (data), vertices
 //                 (storage), indices (index) and texture layers (layers), and adds its sounds by name.
 //                 While it streams the app hears message 605, "LOADED TOTAL" bytes. One pack a page.
+//   private:NAME  a private pack (a MetaHuman's, docs/verse/metahuman-support.md) that never ships: only on
+//                 a local address whose URL asks for it (?pack, or ?pack=OTHER for another), never in a
+//                 golden, /private/NAME.pack from coax/web/serve.c's private builds; its four parts as
+//                 pack:'s. Not asked for, absent or broken, its parts fail quietly (bytes 0, no error, the
+//                 world loads on), so the page draws what it has without it.
 //   message 608     a claimed realm's maker's display name (oa-api /api/playtest/makers/<realm>), to draw "Made by <name>" and TIP
 //   mesh:URL      a traced page's mesh (Orbit League's roadster, verse/tools/mesh-bvh.coax): its bytes as
 //                 a read-only storage buffer at group 0 binding 1, for a WGSL that declares
@@ -1136,6 +1141,11 @@ function parseAssets(text) {
     const k = entry.indexOf(":"), kind = entry.slice(0, k), rest = entry.slice(k + 1), i = list.length;
     if (kind === "sound") { const e = rest.indexOf("="); list.push({ i, kind, name: rest.slice(0, e), url: rest.slice(e + 1) }); }
     else if (kind === "pack") { const pack = { url: rest }; for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack }); }
+    else if (kind === "private") {
+      const pick = dev && !golden ? new URLSearchParams(location.search).get("pack") : null, name = pick || rest;
+      const pack = { url: `/private/${name}.pack`, quiet: true, away: pick === null || !/^[a-z0-9-]{1,64}$/.test(name) };
+      for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack });
+    }
     else list.push({ i, kind, url: rest, urls: rest.split("|") });
   }
   return list;
@@ -1146,7 +1156,8 @@ async function loadPack(pack) {
   const parts = assets.filter((a) => a.pack === pack);
   let entries = null;
   try {
-    const r = await fetch(pack.url);
+    if (pack.away) throw new Error("private");
+    const r = await fetch(pack.url, pack.quiet ? { cache: "no-store" } : undefined);
     if (!r.ok || !r.body) throw new Error(`${pack.url}: ${r.status}`);
     const reader = r.body.getReader(), chunks = [];
     let loaded = 0, total = Number(r.headers.get("content-length")) || 0, told = 0;
@@ -1178,12 +1189,12 @@ async function loadPack(pack) {
     if (images.length) { layers.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;if (gpu.renderer) gpu.renderer.layerTexture = layers.texture;layers.size = images.length; }
     else layers.failed = true;
     for (const e of of(PACK_SOUND)) if (!assets.some((a) => a.kind === "sound" && a.name === e.name)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
-  } catch (e) { for (const a of parts) a.failed = true; say(`${app}: ${e.message}`, true); }
+  } catch (e) { for (const a of parts) a.failed = true; if (!pack.quiet) say(`${app}: ${e.message}`, true); }
   pack.fetching = false;pack.done = true;
   if (!parts.every(currentAsset)) return;
   for (const a of parts) { a.done = true; deliver(a); }
   bindScene();
-  loading.assetDone(parts[0].failed && `WORLD FAILED TO LOAD: ${pack.url.split("/").pop()}`);
+  loading.assetDone(parts[0].failed && !pack.quiet && `WORLD FAILED TO LOAD: ${pack.url.split("/").pop()}`);
 }
 // The pack's entries: its header and table checked against its length; nothing outside it is read.
 function unpack(bytes) {

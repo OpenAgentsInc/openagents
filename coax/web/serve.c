@@ -123,6 +123,14 @@ static bool resolve(const char *url, char *out, size_t cap) {
   if (path[0] != '/' || strstr(path, "..") || strstr(path, "/.")) return false;
   if (!strcmp(path, "/")) return snprintf(out, cap, "%s/index.html", app_dir) < (int)cap;
   if (!strncmp(path, "/coaxial/", 9)) return snprintf(out, cap, "%s/%s", host_dir, path + 9) < (int)cap;
+  // /private/* (watching only, never --static): private builds outside the repo, such as a MetaHuman
+  // pack (docs/verse/metahuman-support.md), from ~/.openagents/verse/private-build/web/. A deploy never
+  // has them: the host asks for one only on a local address (coax/web/host.js "private:").
+  if (!strncmp(path, "/private/", 9)) {
+    const char *home = getenv("HOME");
+    if (static_mode || !home || !path[9]) return false;
+    return snprintf(out, cap, "%s/.openagents/verse/private-build/web/%s", home, path + 9) < (int)cap;
+  }
   // /worlds and /worlds/* are the app's realms/, as the load balancer serves them (coax/web/api/lb.sh)
   if (!strcmp(path, "/worlds") || !strncmp(path, "/worlds/", 8)) {
     if (snprintf(out, cap, "%s/realms%s", app_dir, path + 7) >= (int)cap) return false;

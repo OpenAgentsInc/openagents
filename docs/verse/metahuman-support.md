@@ -484,24 +484,40 @@ It holds no MetaHuman asset and draws with none.
   into the hand, and -1 for anything else (the compiler's nearest kept
   ancestor rule).
 
-### How a private pack plugs in next
+### Skinned meshes and private packs
 
-1. The pack compiler (`verse/tools/humans/pack_human.coax`, not built)
-   reads a MetaHuman body's joints and calls `mannequin_fold` on each name,
-   so the pack's skin weights land on the people rig's 65 joints. The
-   world's clips then play on it unchanged, because the joint order and
-   names are the same.
-2. The pack is written outside the repository and loaded only through the
-   private path: a gitignored local file on the owner's machine, or the
-   `verse-assets` broker for a granted reader key. MetaHuman Lab gets a
-   body source next to the two public bodies. When no pack is admitted,
-   that source is absent and the capsule body draws.
-3. A skinned mesh needs the raster pass the "rendering change" for 5E Lab
-   describes (`verse/gpu/human.coax`). The capsules stay as the fallback
-   and as the shadow and picking shapes.
-4. Renders of a private pack are never committed, used as goldens or
-   training data, or read by agents. The world's public golden shows the
-   capsule body only.
+- **The raster pass.** A human pack's mesh draws in the scene pass
+  (`gpu/metahumanlab.coax` `scene_vs`, `scene_fs`, `shadow_vs`): each vertex
+  is skinned on the GPU by four joints of the pose's palette (store 0,
+  `lab_palette`), drawn into the depth buffer `bg_fs` writes the traced floor
+  into, and lit by a three-light portrait rig: a warm key with a 2048 shadow
+  map (16-texel PCF), a cool fill and a rim, plus a sky and floor ambient.
+  Skin wraps and reddens past the terminator (a pre-integrated scatter) and
+  takes two GGX lobes; base, normal and roughness maps come from the pack;
+  output is ACES filmic and the sRGB curve. The capsules stay: they cast the
+  figure's shadow on the floor and draw the figure when no mesh is in.
+- **Bone lengths.** `lab_palette` turns each joint by the clip's change from
+  the rig's rest and places it by its parent's turn of its own bind-pose bone,
+  so a pack keeps its proportions. Bound at the rig's rest it equals
+  `skin_palette` (a check runs every clip).
+- **The pack.** `verse/tools/humans/pack_human.py` writes one VPK1 file:
+  the catalog (body, 65 bind positions, materials, pieces), 32-byte vertices
+  (position, octahedral normal and tangent, uv, four joints and weights, the
+  layers its material reads), u32 indices and the texture layers. Weights
+  must sum to 255 and joints stay under 65, or it refuses.
+  `pack_human.py standin` builds a CC0 stand-in (the Quaternius superhero
+  male with eyes, brows and hair, on the rig already) for checking the look.
+  `pack_human.py metahuman EXPORT_DIR` is the MetaHuman source.
+- **Private loading.** The world's assets are `private:human`. `host.js` asks
+  for `/private/NAME.pack` only on a local address whose URL has `?pack`
+  (`?pack=standin` for the stand-in), never in a golden; `serve.c` serves
+  `/private/` from `~/.openagents/verse/private-build/web/` and only while
+  watching. Anywhere else, or with no file, the four parts fail quietly and
+  the capsule body draws. The deploy's asset rewrite never matches
+  `private:human`, so no release carries a pack.
+- Renders of a private pack are never committed, used as goldens or
+  training data, or read by agents. The world's golden shows the capsule
+  body only.
 
 ## 5E Lab
 

@@ -379,7 +379,7 @@
         "module": "metahumanlab",
         "slot": "metahuman-lab",
         "golden": { "lit": 0.2, "settle": 3000, "blocks": 6 },
-        "assets": []
+        "assets": ["private:human"]
       } }
   ]
 }
