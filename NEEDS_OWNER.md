@@ -1023,6 +1023,12 @@ The Mac was not available to the agent:
 - [ ] Hold to talk with the real microphone in Aethyrforge once its forge bar
       uses the local host; the checks use recorded fixtures only.
 
+### Coder terminal: leading file paths
+
+- [ ] Restart an already running Coder terminal to load the path-input fix.
+      Paths such as `/Users/me/project/file.coax fix this` now go to the
+      agent as messages; only registered slash command names are intercepted.
+
 ### Coder terminal: model and reasoning controls
 
 - [ ] After updating the checkout, restart `openagents coder` or

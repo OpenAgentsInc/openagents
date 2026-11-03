@@ -1,0 +1,29 @@
+#load "coder.coax";
+main :: () {}
+
+#test "terminal input: paths and unregistered slash text are messages" {
+  pl: [1] PlRegistry;
+  messages := [12] string.["/Users/me/project/file.coax fix this", "/tmp/file", "/file.coax", "/new-file", "/", "/help/file.coax explain this", "/model/config.json", "/tmp/a b/file.coax\nfix this", "./file.coax fix this", "../file.coax", "~/file.coax", "/unregistered explain this"];
+  for msg: messages {
+    #assert !cd_is_slash_command(pl[..], msg);
+  }
+}
+
+#test "terminal input: registered builtins and plugin commands still dispatch" {
+  pl: [1] PlRegistry;
+  commands := [15] string.["/help", "/clear", "/engine echo", "/quit", "/exit", "/plugins", "/plugin enable demo", "/find text", "/resume", "/theme none", "/dictation off", "/usage", "/model", "/effort high", "/engine invalid"];
+  for msg: commands { #assert cd_is_slash_command(pl[..], msg); }
+  pl[0].ncmds = 1;
+  pl[0].cmds[0].nname = cd_cat(pl[0].cmds[0].name[..], 0, "demo");
+  #assert cd_is_slash_command(pl[..], "/demo args");
+  #assert !cd_is_slash_command(pl[..], "/demo/file.coax args");
+  #assert !cd_is_slash_command(pl[..], "/help.coax");
+  #assert !cd_is_slash_command(pl[..], "");
+  #assert !cd_is_slash_command(pl[..], "plain text");
+  a: [1] App; logs: [1] CsLog;
+  a[0].log = logs[..]; a[0].pl = pl[..]; logs[0].json = true; a[0].plain = true; a[0].cols = 80;
+  tui_ed_set(a[0].ed[..], "/help"); cd_submit(a[..]);
+  #assert a[0].starts == 0 && cd_holds(cast(string) a[0].hist[0..<a[0].nhist], "/help      this list");
+  tui_ed_set(a[0].ed[..], "/quit"); cd_submit(a[..]);
+  #assert a[0].quit && a[0].starts == 0;
+}

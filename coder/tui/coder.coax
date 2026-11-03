@@ -1123,6 +1123,17 @@ cd_poll :: (a: [] App) -> bool {
 
 HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), microcoder (OpenAgents' own loop),\n           psionic (Microcoder on a model server on this machine), echo (offline) or auto (System One picks at the first message)\n/find TEXT the transcript's lines that hold TEXT\n/usage     how much of Claude Code's and Codex's plan limits is used, and when each resets\n/resume    this folder's sessions; /resume ID continues one, /resume claude this folder's newest Claude Code session\n/theme T   dark, light (for a light background) or none (no colors)\n/plugins   plugins and their states; /plugin enable|disable NAME; /NAME runs a plugin's command\n/dictation on|off  local dictation: Ctrl+Space (or --dictation-key) starts and stops listening, Esc cancels;\n           the words go into the draft at the cursor and are never sent; Ctrl+Z takes them back\nShift-Tab  switch agent: claude, codex, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
 
+// Only registered command names reserve a leading slash. Absolute paths,
+// including paths that do not exist yet, remain ordinary message text.
+cd_is_slash_command :: (pl: [] PlRegistry, msg: string) -> bool {
+  if msg.count == 0 || msg[0] != '/' { return false; }
+  w := 1; while w < msg.count && msg[w] != ' ' { w += 1; }
+  name := cast(string) msg[1..<w];
+  builtins := [14] string.["quit", "exit", "help", "clear", "resume", "engine", "theme", "plugins", "dictation", "usage", "find", "plugin", "model", "effort"];
+  for command: builtins { if name == command { return true; } }
+  return pl_find_cmd(pl, name) >= 0;
+}
+
 cd_submit :: (a: [] App) {
   a[0].submits += 1;
   text := tui_ed_text(a[0].ed[..]);
@@ -1135,7 +1146,7 @@ cd_submit :: (a: [] App) {
   msg := cast(string) mb[0..<mn];
   tui_ed_remember(a[0].ed[..], msg);
   tui_ed_clear(a[0].ed[..]);
-  if msg[0] == '/' {
+  if cd_is_slash_command(a[0].pl, msg) {
     cd_commit_prefixed(a, TUI_DIM, "› ", "  ", msg);
     if msg == "/quit" || msg == "/exit" { a[0].quit = true; return; }
     if msg == "/help" { cd_commit_prefixed(a, TUI_DIM, "  ", "  ", HELP); cd_commit_prefixed(a, TUI_DIM, "  ", "  ", CODEX_HELP); return; }
