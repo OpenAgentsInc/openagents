@@ -12,7 +12,8 @@
 // and a clock ping a second. Passes when every socket opened, every player hears >= 28 state frames
 // (D) a second, sees every other seat's player, its ACK never goes back and in the end is its last
 // input, and an input is acknowledged within 120 ms at the 95th percentile on this machine (a tick's
-// wait) or, through wss:// (the load balancer), within 50 ms past the median ping's round trip (#12731).
+// wait) or, through wss:// (the load balancer), within 50 ms past the ping's round trip at the 95th
+// percentile (#12731).
 //   coax/web/tool.sh coax/web/room/load.coax everglade [ws://localhost:8830] [players=64] [seconds=20] [stamp] [pings a second=1] [shards=0]
 // shards 0: every room through /api/room/relay/ (shard 1, as before the directory); N: the rooms as
 // the directory packs them (#12717), two to a shard, shard 1 first, up to N shards, each room's
@@ -398,10 +399,12 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   jo_end(o[..]);
   print("%\n", jo_text(o[..]));
   // on this machine an input waits a tick at most (its D goes out the tick it is stepped); through the
-  // load balancer an ACK is a round trip, so there the median ping's round trip comes off it first and
-  // the rest is held to 50 ms at the 95th percentile (#12731; the spec's goal 3 was 250 ms)
+  // load balancer an ACK is a round trip, so there the ping's round trip at the same percentile comes
+  // off it and the rest, what the server adds, is held to 50 ms at the 95th percentile (#12731; the
+  // spec's goal 3 was 250 ms past the median). The network's own spread (ping p95 against its median,
+  // 60 ms and more from a busy machine) is not the server's.
   local := rs_starts(base, "ws://localhost");
-  timely := ifx local then p95 >= 0 && p95 < 120 else p95 >= 0 && rtt >= 0 && p95 - rtt <= 50;
+  timely := ifx local then p95 >= 0 && p95 < 120 else p95 >= 0 && rtt95 >= 0 && p95 - rtt95 <= 50;
   ok := open == players && alive == players && sends_failed == 0 && blind == 0 && back == 0 && behind == 0 && slowest >= 280 && dropped == 0 && timely;
   print("%\n", ifx ok then "holds" else "fails");
   for i: 0..<players { if c[i].h >= 0 { r := relay_conn_close(c[i..<i + 1], 200); } }
