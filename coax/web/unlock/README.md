@@ -52,3 +52,11 @@ set, pages ship without the gate. `coax serve` doesn't inject unlocks.
 nostr-effect's `nip59` module leaves the nonce out of the NIP-44 MAC, so its
 wraps don't open with spec NIP-44 or NIP-07 signers; `lib.ts` builds the seal
 and wrap from nostr-effect's `nip44` and `pure` instead.
+
+With `COAXIAL_UNLOCK_SIGNER=coax` at deploy, the opener runs its Nostr steps
+in Coax instead: `unlock-nostr.coax`, built to Wasm by `deploy.sh`. These are
+its public key, its NIP-42 AUTH, the wrap's and the seal's signatures, the
+artifact's id, and the NIP-44 v2 openings of the wrap, the seal and the
+artifact. `sealDeck` uses the same `nostr` when one is installed. Unset, it's
+nostr-effect: the rollback. `bun test` checks the module against the
+upstream NIP-44 vectors and against nostr-effect.

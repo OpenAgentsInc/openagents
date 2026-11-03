@@ -8,12 +8,15 @@
 // signing, not its nip59 module: that module's NIP-44 leaves the nonce out of
 // the MAC, so its wraps don't open with spec NIP-44 or a NIP-07 signer.
 //
-// The opener's signing and verifying (its public key, its NIP-42 AUTH, the
-// wrap's and the seal's signatures and the artifact's id) go through `nostr`:
-// nostr-effect by default, or Coax (unlock-nostr.coax as Wasm, coaxNostr) once
-// useNostr installs it, as page.ts does when the deploy set
-// COAXIAL_UNLOCK_SIGNER=coax. Unset, the opener is as it was: the rollback.
-// NIP-44 and the sealer (sealDeck, publish) stay on nostr-effect.
+// The opener's signing, verifying and NIP-44 (its public key, its NIP-42
+// AUTH, the wrap's and the seal's signatures, the artifact's id, and opening
+// the wrap, the seal and the artifact) go through `nostr`: nostr-effect by
+// default, or Coax (unlock-nostr.coax as Wasm, coaxNostr) once useNostr
+// installs it, as page.ts does when the deploy set COAXIAL_UNLOCK_SIGNER=coax.
+// sealDeck makes the artifact, the seal and the wrap through `nostr` too (the
+// rumor's id hash and the throwaway key stay nostr-effect's). Unset, both are
+// as they were: the rollback. A NIP-07 signer decrypts with its own NIP-44, and
+// publish signs its AUTH with nostr-effect.
 import { getConversationKey, encrypt as nip44Encrypt, decrypt as nip44Decrypt } from "nostr-effect/nip44"
 import { finalizeEvent, generateSecretKey, getEventHash, getPublicKey, verifyEvent, type Event, type EventTemplate } from "nostr-effect/pure"
 import { sha256 } from "@noble/hashes/sha256"
@@ -38,6 +41,12 @@ export interface Nostr {
   verifyEvent(event: Event): boolean
   /** The id is the hash of the fields (a NIP-59 rumor is unsigned). */
   idMatches(event: Omit<Event, "sig">): boolean
+  /** NIP-44 v2: the conversation key of a secret and a peer's public key (hex). */
+  conversationKey(secret: Uint8Array, peer: string): Uint8Array
+  /** NIP-44 v2: a payload; the nonce is 32 fresh random bytes unless given (test vectors). */
+  encrypt(plaintext: string, conversationKey: Uint8Array, nonce?: Uint8Array): string
+  /** NIP-44 v2: the plaintext, or a throw for a payload whose MAC doesn't hold. */
+  decrypt(payload: string, conversationKey: Uint8Array): string
 }
 export const effectNostr: Nostr = {
   name: "nostr-effect",
@@ -45,6 +54,9 @@ export const effectNostr: Nostr = {
   finalizeEvent,
   verifyEvent: (event) => verifyEvent(event),
   idMatches: (event) => getEventHash(event) === event.id,
+  conversationKey: getConversationKey,
+  encrypt: (plaintext, key, nonce) => nonce ? nip44Encrypt(plaintext, key, nonce) : nip44Encrypt(plaintext, key),
+  decrypt: nip44Decrypt,
 }
 let nostr: Nostr = effectNostr
 /** Installs the opener's Nostr (null: back to nostr-effect); returns it. */
@@ -76,6 +88,16 @@ export async function coaxNostr(wasm: BufferSource): Promise<Nostr> {
     try { new Uint8Array(memory.buffer, x.un_secret(), 32).set(secret); return f() } finally { x.un_wipe() }
   }
   const hex = (b: Uint8Array) => [...b].map((v) => v.toString(16).padStart(2, "0")).join("")
+  const withKey = <T>(key: Uint8Array, f: () => T): T => {
+    if (key.length !== 32) throw new Error("a conversation key is 32 bytes")
+    try { new Uint8Array(memory.buffer, x.un_ck(), 32).set(key); return f() } finally { x.un_wipe() }
+  }
+  // the payload's bytes, or the Coax refusal's name (nip44.coax's codes)
+  const NIP44 = ["ok", "version", "payload", "base64", "MAC", "padding", "length", "capacity", "key", "output", "alias", "profile", "internal", "peer", "secret"]
+  const payload = (n: number, what: string) => {
+    if (n <= 0) throw new Error(`NIP-44 refused ${what}: ${NIP44[-n] ?? -n}`)
+    return new Uint8Array(memory.buffer, x.un_out(), n)
+  }
   return {
     name: "coax",
     getPublicKey: (secret) => withSecret(secret, () => {
@@ -91,6 +113,20 @@ export async function coaxNostr(wasm: BufferSource): Promise<Nostr> {
     }),
     verifyEvent: (event) => x.un_verify(put(0, JSON.stringify(event))) === UN_OK,
     idMatches: (event) => x.un_id_matches(put(0, JSON.stringify({ ...event, sig: "0".repeat(128) }))) === 1,
+    conversationKey: (secret, peer) => withSecret(secret, () => {
+      if (!/^[0-9a-f]{64}$/.test(peer)) throw new Error("not a public key")
+      new Uint8Array(memory.buffer, x.un_in(0), 32).set(peer.match(/../g)!.map((h) => parseInt(h, 16)))
+      const r = x.un_conversation_key() as number
+      if (r !== 0) throw new Error(`NIP-44 refused the keys: ${NIP44[r] ?? r}`)
+      return new Uint8Array(memory.buffer, x.un_out(), 32).slice()
+    }),
+    encrypt: (plaintext, key, nonce) => withKey(key, () => {
+      const n = new Uint8Array(memory.buffer, x.un_nonce(), 32)
+      if (nonce && nonce.length !== 32) throw new Error("a nonce is 32 bytes")
+      nonce ? n.set(nonce) : crypto.getRandomValues(n)
+      return dec.decode(payload(x.un_encrypt(put(0, plaintext)), "the plaintext"))
+    }),
+    decrypt: (text, key) => withKey(key, () => dec.decode(payload(x.un_decrypt(put(0, text)), "the payload"))),
   }
 }
 
@@ -105,7 +141,7 @@ export function localOpener(secret: Uint8Array): Opener {
   const pubkey = nostr.getPublicKey(secret)
   return {
     pubkey,
-    decrypt: async (peer, ciphertext) => nip44Decrypt(ciphertext, getConversationKey(secret, peer)),
+    decrypt: async (peer, ciphertext) => nostr.decrypt(ciphertext, nostr.conversationKey(secret, peer)),
     sign: async (template) => nostr.finalizeEvent(template, secret),
   }
 }
@@ -194,18 +230,19 @@ export function sealDeck(deck: Deck, author: Uint8Array, recipient: string, now 
     issued_at: now,
     retain_until: now + 365 * 86400,
   }
-  const content = nip44Encrypt(JSON.stringify(envelope), getConversationKey(author, recipient))
-  const pubkey = getPublicKey(author)
+  const toRecipient = nostr.conversationKey(author, recipient)
+  const content = nostr.encrypt(JSON.stringify(envelope), toRecipient)
+  const pubkey = nostr.getPublicKey(author)
   const unsigned = { kind: ARTIFACT_KIND, pubkey, created_at: now, content,
     tags: [["p", recipient], ["h", bytesToHex(randomBytes(32))], ["t", "oa:artifact:v1"]] }
   const rumor = { ...unsigned, id: getEventHash(unsigned) }   // unsigned: the seal authenticates it
   // NIP-59: seal and wrap times are randomized up to two days back
   const jitter = () => now - Math.floor(Math.random() * 2 * 86400)
-  const seal = finalizeEvent({ kind: SEAL_KIND, created_at: jitter(), tags: [],
-    content: nip44Encrypt(JSON.stringify(rumor), getConversationKey(author, recipient)) }, author)
+  const seal = nostr.finalizeEvent({ kind: SEAL_KIND, created_at: jitter(), tags: [],
+    content: nostr.encrypt(JSON.stringify(rumor), toRecipient) }, author)
   const once = generateSecretKey()
-  return finalizeEvent({ kind: WRAP_KIND, created_at: jitter(), tags: [["p", recipient]],
-    content: nip44Encrypt(JSON.stringify(seal), getConversationKey(once, recipient)) }, once)
+  return nostr.finalizeEvent({ kind: WRAP_KIND, created_at: jitter(), tags: [["p", recipient]],
+    content: nostr.encrypt(JSON.stringify(seal), nostr.conversationKey(once, recipient)) }, once)
 }
 
 /** Opens a gift wrap with this device's opener: verifies the wrap and seal

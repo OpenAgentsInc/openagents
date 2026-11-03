@@ -1,7 +1,8 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test"
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, type Event } from "nostr-effect/pure"
 import { getConversationKey, decrypt, encrypt } from "nostr-effect/nip44"
-import { mkdtempSync } from "node:fs"
+import { sha256 } from "@noble/hashes/sha256"
+import { mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DECK_SCHEMA, coaxNostr, currentNostr, deckLines, effectNostr, jcs, localOpener, openDeck, parseDeck, sealDeck, useNostr,
@@ -175,5 +176,127 @@ describe("the opener on Coax", () => {
     await expect(openDeck(rewrap(reseal), opener)).rejects.toThrow("the artifact's id doesn't match it")
     // untouched, the same layers open
     expect((await openDeck(rewrap(seal), opener)).author).toBe(getPublicKey(author))
+  })
+})
+
+// NIP-44 v2 on Coax: the upstream vectors (paulmillr/nip44, pinned in
+// coax/tests/vectors/upstream/nip44), round trips with nostr-effect both ways,
+// and the gift wrap and seal made and opened through the Coax module.
+// Test keys only.
+const vectors = JSON.parse(readFileSync(join(import.meta.dir, "../../tests/vectors/upstream/nip44/nip44.vectors.json"), "utf8")).v2
+const bytes = (h: string) => Uint8Array.from(Buffer.from(h, "hex"))
+const sha = (s: string) => Buffer.from(sha256(new TextEncoder().encode(s))).toString("hex")
+describe("NIP-44 on Coax", () => {
+  let coax: Nostr
+  beforeAll(async () => {
+    let wasm = process.env.UNLOCK_NOSTR_WASM
+    if (!wasm) {
+      wasm = join(mkdtempSync(join(tmpdir(), "unlock-nostr-")), "unlock-nostr.wasm")
+      const built = Bun.spawnSync([join(import.meta.dir, "../wasm.sh"), join(import.meta.dir, "unlock-nostr.coax"),
+        join(import.meta.dir, "unlock-nostr-face.c"), wasm], { stderr: "inherit" })
+      if (built.exitCode !== 0) throw new Error("wasm.sh failed")
+    }
+    coax = await coaxNostr(await Bun.file(wasm).arrayBuffer())
+  }, 600_000)
+  afterEach(() => { useNostr(null) })
+  const md = "# Hello\n- one\n---\n# Two"
+  const flip = (s: string, at: number) => s.slice(0, at) + (s[at] === "A" ? "B" : "A") + s.slice(at + 1)
+
+  test("the conversation keys: 35 valid rows equal; 8 invalid keys refused, as nostr-effect refuses them", () => {
+    expect(vectors.valid.get_conversation_key.length).toBe(35)
+    for (const r of vectors.valid.get_conversation_key)
+      expect(Buffer.from(coax.conversationKey(bytes(r.sec1), r.pub2)).toString("hex")).toBe(r.conversation_key)
+    expect(vectors.invalid.get_conversation_key.length).toBe(8)
+    for (const r of vectors.invalid.get_conversation_key) {
+      expect(() => coax.conversationKey(bytes(r.sec1), r.pub2)).toThrow("NIP-44 refused the keys")
+      expect(() => getConversationKey(bytes(r.sec1), r.pub2)).toThrow()
+    }
+  })
+  test("the payloads: 10 rows and 3 long ones, byte for byte; nostr-effect opens each", () => {
+    expect(vectors.valid.encrypt_decrypt.length).toBe(10)
+    for (const r of vectors.valid.encrypt_decrypt) {
+      const ck = bytes(r.conversation_key)
+      expect(Buffer.from(coax.conversationKey(bytes(r.sec1), getPublicKey(bytes(r.sec2)))).toString("hex")).toBe(r.conversation_key)
+      expect(coax.encrypt(r.plaintext, ck, bytes(r.nonce))).toBe(r.payload)
+      expect(coax.decrypt(r.payload, ck)).toBe(r.plaintext)
+      expect(decrypt(coax.encrypt(r.plaintext, ck), ck)).toBe(r.plaintext)
+    }
+    expect(vectors.valid.encrypt_decrypt_long_msg.length).toBe(3)
+    for (const r of vectors.valid.encrypt_decrypt_long_msg) {
+      const plaintext = r.pattern.repeat(r.repeat), ck = bytes(r.conversation_key)
+      expect(sha(plaintext)).toBe(r.plaintext_sha256)
+      const payload = coax.encrypt(plaintext, ck, bytes(r.nonce))
+      expect(sha(payload)).toBe(r.payload_sha256)
+      expect(coax.decrypt(payload, ck)).toBe(plaintext)
+    }
+  })
+  test("the refusals: 12 invalid payloads and 4 invalid lengths, refused by both", () => {
+    const why: string[] = []
+    for (const r of vectors.invalid.decrypt) {
+      const ck = bytes(r.conversation_key)
+      expect(() => decrypt(r.payload, ck)).toThrow()
+      try { coax.decrypt(r.payload, ck); why.push("opened") } catch (e) { why.push((e as Error).message.replace("NIP-44 refused the payload: ", "")) }
+    }
+    expect(why).toEqual(["version", "version", "base64", "MAC", "MAC", "padding", "padding", "padding", "payload", "payload", "payload", "payload"])
+    const ck = bytes(vectors.valid.encrypt_decrypt[0].conversation_key)
+    expect(vectors.invalid.encrypt_msg_lengths).toEqual([0, 65536, 100000, 10000000])
+    for (const n of vectors.invalid.encrypt_msg_lengths) {
+      expect(() => coax.encrypt("x".repeat(n), ck)).toThrow()
+      expect(() => encrypt("x".repeat(n), ck)).toThrow()
+    }
+    expect(coax.encrypt("x".repeat(65535), ck).length).toBe(87472)
+  })
+  test("round trips with test keys, both ways, and a changed byte or another key refused", () => {
+    const a = testKey(21), b = testKey(22), c = testKey(23)
+    const ab = coax.conversationKey(a, getPublicKey(b))
+    expect(Buffer.from(ab).equals(Buffer.from(coax.conversationKey(b, getPublicKey(a))))).toBe(true)
+    expect(Buffer.from(ab).equals(Buffer.from(getConversationKey(a, getPublicKey(b))))).toBe(true)
+    for (const text of ["a", "x".repeat(32), "x".repeat(33), "ünïcode \"q\" \\ \n 🦄", "y".repeat(65535)]) {
+      expect(decrypt(coax.encrypt(text, ab), ab)).toBe(text)
+      expect(coax.decrypt(encrypt(text, ab), ab)).toBe(text)
+    }
+    const p = coax.encrypt("the deck", ab)
+    expect(coax.encrypt("the deck", ab)).not.toBe(p)   // a fresh nonce each time
+    expect(() => coax.decrypt(flip(p, 80), ab)).toThrow("NIP-44 refused the payload: MAC")
+    expect(() => decrypt(flip(p, 80), ab)).toThrow()
+    expect(() => coax.decrypt(p, coax.conversationKey(c, getPublicKey(b)))).toThrow("NIP-44 refused the payload: MAC")
+    expect(() => coax.conversationKey(a, "zz".repeat(32))).toThrow("not a public key")
+    expect(() => coax.decrypt(p, new Uint8Array(31))).toThrow()
+  })
+  test("a deck sealed through Coax opens with nostr-effect, and one sealed by nostr-effect opens through Coax", async () => {
+    const author = testKey(24), me = testKey(25), deck = parseDeck(md)
+    useNostr(coax)
+    const byCoax = sealDeck(deck, author, getPublicKey(me))
+    expect(verifyEvent({ ...byCoax })).toBe(true)
+    useNostr(null)
+    expect(await openDeck(byCoax, localOpener(me))).toEqual({ deck, author: getPublicKey(author) })
+    const byEffect = sealDeck(deck, author, getPublicKey(me))
+    const calls: string[] = []
+    useNostr({ ...coax, decrypt: (payload, key) => (calls.push("decrypt"), coax.decrypt(payload, key)),
+      conversationKey: (s, peer) => (calls.push("key"), coax.conversationKey(s, peer)) })
+    expect(await openDeck(byEffect, localOpener(me))).toEqual({ deck, author: getPublicKey(author) })
+    expect(calls).toEqual(["key", "decrypt", "key", "decrypt", "key", "decrypt"])   // the wrap, the seal, the artifact
+  })
+  test("a wrap or seal whose ciphertext changed under a valid signature, or sealed to another key, is refused", async () => {
+    const author = testKey(26), me = testKey(27), once = testKey(28), other = testKey(29)
+    useNostr(coax)
+    const opener = localOpener(me)
+    const wrap = sealDeck(parseDeck(md), author, getPublicKey(me))
+    const toMe = (inner: object) => finalizeEvent({ kind: 1059, created_at: wrap.created_at, tags: [["p", getPublicKey(me)]],
+      content: coax.encrypt(JSON.stringify(inner), coax.conversationKey(once, getPublicKey(me))) }, once)
+    // the wrap: its content changed by one character and signed again by its throwaway key
+    const resigned = finalizeEvent({ kind: 1059, created_at: wrap.created_at, tags: wrap.tags, content: flip(wrap.content, 100) }, once)
+    await expect(openDeck(resigned, opener)).rejects.toThrow("NIP-44 refused the payload: MAC")
+    // the seal: its content changed and signed again by the author, inside a valid wrap
+    const seal = JSON.parse(coax.decrypt(wrap.content, coax.conversationKey(me, wrap.pubkey))) as Event
+    const badSeal = finalizeEvent({ kind: 13, created_at: seal.created_at, tags: [], content: flip(seal.content, 100) }, author)
+    await expect(openDeck(toMe(badSeal), opener)).rejects.toThrow("NIP-44 refused the payload: MAC")
+    // the seal's rumor encrypted to another key: a valid seal and wrap, but not for this conversation
+    const rumor = coax.decrypt(seal.content, coax.conversationKey(me, getPublicKey(author)))
+    const elsewhere = finalizeEvent({ kind: 13, created_at: seal.created_at, tags: [],
+      content: coax.encrypt(rumor, coax.conversationKey(author, getPublicKey(other))) }, author)
+    await expect(openDeck(toMe(elsewhere), opener)).rejects.toThrow("NIP-44 refused the payload: MAC")
+    // untouched, every layer opens
+    expect((await openDeck(toMe(seal), opener)).author).toBe(getPublicKey(author))
   })
 })

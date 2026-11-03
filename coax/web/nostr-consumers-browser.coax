@@ -32,6 +32,18 @@
 //                               Authorization is checked with the API's own NIP-98 check
 //                               (coax/web/api/nip98.coax), and with one byte changed and for
 //                               another URL, refused
+//   unlock URL MODE             the hidden-presentation opener (coax/web/unlock) on a page
+//                               staged by inject.ts with COAXIAL_UNLOCK_SIGNER=coax and one
+//                               entry, NB_PHRASE, sealed to test key 25 on a local relay
+//                               (URL: http://127.0.0.1:PORT/). A wrong phrase, the phrase, a
+//                               wrong key, then the key. MODE:
+//                               control  the deck opens, and its AUTH, both signatures, the
+//                                        artifact's id and all three NIP-44 openings were the
+//                                        Coax module's
+//                               tamper   the gift wrap's EVENT frame has one content character
+//                                        changed on its way in: refused as a gift wrap, nothing
+//                                        decrypted, no deck
+//                               (no --frames needed)
 //
 // --require-hardware fails a run whose page has no hardware WebGPU adapter. The relay
 // frames are changed in the page (a WebSocket wrapper the run adds before the page
@@ -327,6 +339,130 @@ nb_project :: (c: [] Cdp, s: [] NbSeen, url: string, relay: string, mode: int, e
   return heard;
 }
 
+// ---- the unlock opener ----------------------------------------------------------
+
+// A staged page with hidden presentations (coax/web/unlock/inject.ts, with
+// COAXIAL_UNLOCK_SIGNER=coax and its Coax module) whose one entry is NB_PHRASE, sealed
+// to test key NB_RECIPIENT on a local relay. The page's Coax UI is stood in for by a
+// recorder of what the gate and the opener send it (coaxial.send); the codes and the
+// key it would send are dispatched as its "coaxial" events. The gate, the opener, lib.ts
+// and the Coax module are as staged. The run counts each call into the module's un_*
+// exports, keeps each socket's and resource's URL, and, in the tamper run, changes one
+// content character of the gift wrap's EVENT frame on its way in.
+NB_PHRASE :: "coax opener test";
+NB_RECIPIENT :: 25;   // the test key 31 zero bytes, then 25
+NB_UNLOCK_A :: "(()=>{const R=globalThis.__oaRun={sent:[],calls:{},urls:[],changed:0,tamper:";
+NB_UNLOCK_B :: "};globalThis.coaxial={ready:true,send(k,t){R.sent.push([k,t??''])}};const I=WebAssembly.instantiate;WebAssembly.instantiate=async function(...a){const r=await I.apply(WebAssembly,a);const n=r.instance??r;const x={};for(const[k,v]of Object.entries(n.exports))x[k]=typeof v==='function'&&k.startsWith('un_')?(...b)=>{R.calls[k]=(R.calls[k]||0)+1;return v(...b)}:v;const w={exports:x};return r.instance?{module:r.module,instance:w}:w};const W=globalThis.WebSocket;class S extends W{constructor(u,p){R.urls.push(String(u));super(u,p)}set onmessage(f){super.onmessage=f&&((m)=>{const d=m.data;if(R.tamper&&typeof d==='string'&&d.startsWith('[\"EVENT\"')){const k=d.indexOf('\"content\":\"')+11;if(k>10){R.changed++;return f.call(this,new MessageEvent('message',{data:d.slice(0,k)+(d[k]==='A'?'B':'A')+d.slice(k+1)}))}}return f.call(this,m)})}get onmessage(){return super.onmessage}}globalThis.WebSocket=S})()";
+// ui.coax's codes (gate.ts, page.ts): what the page sends, and what it is sent.
+NB_ACT_CODE :: 16; NB_ACT_KEY :: 17;
+NB_MSG_ARMED :: 16; NB_MSG_REFUSED :: 17; NB_MSG_GRANTED :: 18; NB_MSG_KEY_NEEDED :: 19; NB_MSG_KEY_WRONG :: 20;
+NB_MSG_LOADING :: 21; NB_MSG_DECK :: 22; NB_MSG_NOTICE :: 23;
+
+NbUnlock :: struct {
+  refused: bool; granted: bool; asked: bool; wrong: bool; loading: bool; deck: bool; notice: bool;
+  bad_wrap: bool;        // the notice is lib.ts's "not a valid gift wrap"
+  changed: int;          // EVENT frames the tamper run changed
+  local: bool;           // every socket and resource URL was this machine's
+  pubkey: int; sign: int; verify: int; id: int; key: int; decrypt: int;   // calls into the Coax module
+}
+// control: a wrong phrase refused, the right one granted, a wrong key refused, the right key
+// opens the deck, and every Nostr step on the way was the Coax module's: the AUTH signed, the
+// wrap and the seal verified, the artifact's id checked, and three NIP-44 openings (the wrap,
+// the seal, the artifact), each with its conversation key. tamper: the same up to the key; the
+// changed wrap is refused as a gift wrap, before anything is decrypted, and no deck is shown.
+nb_unlock_passed :: (tamper: bool, r: NbUnlock) -> bool {
+  common := r.local && r.refused && r.granted && r.asked && r.wrong && r.loading && r.pubkey >= 1 && r.sign == 1;
+  if !tamper { return common && r.deck && !r.notice && r.changed == 0 && r.verify == 2 && r.id == 1 && r.key == 3 && r.decrypt == 3; }
+  return common && !r.deck && r.notice && r.bad_wrap && r.changed >= 1 && r.verify == 1 && r.id == 0 && r.decrypt == 0;
+}
+#test "the opener's runs pass only on what they claim" {
+  c: NbUnlock;
+  c.local = true; c.refused = true; c.granted = true; c.asked = true; c.wrong = true; c.loading = true; c.deck = true;
+  c.pubkey = 2; c.sign = 1; c.verify = 2; c.id = 1; c.key = 3; c.decrypt = 3;
+  #assert nb_unlock_passed(false, c) && !nb_unlock_passed(true, c);
+  c.decrypt = 2; #assert !nb_unlock_passed(false, c); c.decrypt = 3;
+  c.key = 0; #assert !nb_unlock_passed(false, c); c.key = 3;
+  c.local = false; #assert !nb_unlock_passed(false, c); c.local = true;
+  c.wrong = false; #assert !nb_unlock_passed(false, c); c.wrong = true;
+  c.notice = true; #assert !nb_unlock_passed(false, c); c.notice = false;
+  t: NbUnlock;
+  t.local = true; t.refused = true; t.granted = true; t.asked = true; t.wrong = true; t.loading = true;
+  t.notice = true; t.bad_wrap = true; t.changed = 1; t.pubkey = 2; t.sign = 1; t.verify = 1;
+  #assert nb_unlock_passed(true, t) && !nb_unlock_passed(false, t);
+  t.decrypt = 1; #assert !nb_unlock_passed(true, t); t.decrypt = 0;
+  t.deck = true; #assert !nb_unlock_passed(true, t); t.deck = false;
+  t.changed = 0; #assert !nb_unlock_passed(true, t); t.changed = 1;
+  t.bad_wrap = false; #assert !nb_unlock_passed(true, t);
+}
+// The test key k as 64 hex digits.
+nb_test_key :: (k: int, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<62 { out[i] = '0'; }
+  out[62] = digits[(k >> 4) & 15]; out[63] = digits[k & 15];
+  return cast(string) out[0..<64];
+}
+#test "test keys as hex" {
+  b: [64] u8;
+  #assert nb_test_key(25, b[..]) == "0000000000000000000000000000000000000000000000000000000000000019";
+  #assert nb_test_key(26, b[..])[60..<64] == "001a";
+}
+// One "coaxial" action, as the page's Coax UI raises it.
+nb_act :: (c: [] Cdp, s: [] NbSeen, code: int, text: string) -> bool {
+  d: [4] u8; dn := 0; v := code;
+  if v >= 10 { d[dn] = cast(u8) (48 + v / 10); dn += 1; }
+  d[dn] = cast(u8) (48 + v % 10); dn += 1;
+  b: [512] u8;
+  parts := [5] string.["(dispatchEvent(new CustomEvent('coaxial',{detail:{code:", cast(string) d[0..<dn], ",text:'", text, "'}})),true)"];
+  return nb_true(c, s, nb_cat(b[..], parts[..]));
+}
+// Whether the page was sent code (as a JS test), waiting up to ms.
+nb_sent :: (c: [] Cdp, s: [] NbSeen, code: int, ms: int) -> bool {
+  d: [4] u8; dn := 0; v := code;
+  if v >= 10 { d[dn] = cast(u8) (48 + v / 10); dn += 1; }
+  d[dn] = cast(u8) (48 + v % 10); dn += 1;
+  b: [256] u8;
+  parts := [3] string.["globalThis.__oaRun.sent.some((m)=>m[0]===", cast(string) d[0..<dn], ")"];
+  return nb_until(c, s, nb_cat(b[..], parts[..]), ms);
+}
+nb_calls :: (c: [] Cdp, s: [] NbSeen, name: string) -> int {
+  b: [256] u8; parts := [3] string.["(globalThis.__oaRun.calls['", name, "'] ?? 0)"];
+  return nb_int(c, s, nb_cat(b[..], parts[..]));
+}
+nb_unlock :: (c: [] Cdp, s: [] NbSeen, url: string, tamper: bool, r: [] NbUnlock) -> bool {
+  wrap: [4096] u8;
+  parts := [3] string.[NB_UNLOCK_A, ifx tamper then "true" else "false", NB_UNLOCK_B];
+  if !nb_param(c, s, "Page.addScriptToEvaluateOnNewDocument", "source", nb_cat(wrap[..], parts[..])) { return false; }
+  if !nb_param(c, s, "Page.navigate", "url", url) { return false; }
+  print("nostr-consumers-browser: open % (the opener, %)\n", url, ifx tamper then "the wrap's frame changed on its way in" else "every frame as sent");
+  if !nb_sent(c, s, NB_MSG_ARMED, NB_WAIT_MS) { print("nostr-consumers-browser: the gate never armed (no unlocks on this page?)\n"); return false; }
+  kb: [64] u8;
+  ok := nb_act(c, s, NB_ACT_CODE, "not the phrase");
+  r[0].refused = nb_sent(c, s, NB_MSG_REFUSED, 30000);
+  ok = nb_act(c, s, NB_ACT_CODE, NB_PHRASE);
+  r[0].granted = nb_sent(c, s, NB_MSG_GRANTED, 30000);
+  r[0].asked = nb_sent(c, s, NB_MSG_KEY_NEEDED, 30000);
+  ok = nb_act(c, s, NB_ACT_KEY, nb_test_key(NB_RECIPIENT + 1, kb[..]));
+  r[0].wrong = nb_sent(c, s, NB_MSG_KEY_WRONG, 30000);
+  ok = nb_act(c, s, NB_ACT_KEY, nb_test_key(NB_RECIPIENT, kb[..]));
+  r[0].loading = nb_sent(c, s, NB_MSG_LOADING, 30000);
+  done := nb_until(c, s, "globalThis.__oaRun.sent.some((m)=>m[0]===22||m[0]===23)", 30000);
+  r[0].deck = nb_true(c, s, "globalThis.__oaRun.sent.some((m)=>m[0]===22)");
+  r[0].notice = nb_true(c, s, "globalThis.__oaRun.sent.some((m)=>m[0]===23)");
+  r[0].bad_wrap = nb_true(c, s, "globalThis.__oaRun.sent.some((m)=>m[0]===23&&m[1]==='not a valid gift wrap')");
+  r[0].changed = nb_int(c, s, "globalThis.__oaRun.changed");
+  r[0].local = nb_true(c, s, "[location.href,...globalThis.__oaRun.urls,...performance.getEntriesByType('resource').map((e)=>e.name)].every((u)=>/^(https?|wss?):\\/\\/127\\.0\\.0\\.1:/.test(u))");
+  r[0].pubkey = nb_calls(c, s, "un_pubkey"); r[0].sign = nb_calls(c, s, "un_sign"); r[0].verify = nb_calls(c, s, "un_verify");
+  r[0].id = nb_calls(c, s, "un_id_matches"); r[0].key = nb_calls(c, s, "un_conversation_key"); r[0].decrypt = nb_calls(c, s, "un_decrypt");
+  said: [4096] u8; at := nb_eval(c, s, "JSON.stringify(globalThis.__oaRun.sent.map((m)=>m[0]===22?[22,m[1].split('\\n')[0]]:m))");
+  sn := ifx at >= 0 then jv_str(c[0].doc[0], at, said[..]) else -1;
+  print("nostr-consumers-browser: the page was sent (code, text; a deck by its first line) %\n", ifx sn > 0 then cast(string) said[0..<sn] else "?");
+  print("nostr-consumers-browser: calls into the Coax module: pubkey % sign % verify % id % conversation key % decrypt %; frames changed %; every URL local %\n",
+    r[0].pubkey, r[0].sign, r[0].verify, r[0].id, r[0].key, r[0].decrypt, r[0].changed, r[0].local);
+  kept := nb_true(c, s, "new Promise((r)=>{const q=indexedDB.open('coaxial-unlock',1);q.onerror=()=>r(false);q.onsuccess=()=>{try{const g=q.result.transaction('keys').objectStore('keys').getAll();g.onsuccess=()=>r(g.result.some((v)=>typeof v==='string'&&/^[0-9a-f]{64}$/.test(v)));g.onerror=()=>r(false)}catch{r(false)}}})");
+  print("nostr-consumers-browser: the key is kept in this profile's IndexedDB (coaxial-unlock/keys) as 64 hex digits: %\n", kept);
+  return done;
+}
+
 // ---- sign-in ------------------------------------------------------------------
 
 // The API's own NIP-98 check (oa-api runs nip98.coax as nip98.generated.c).
@@ -350,6 +486,18 @@ tool_main :: () -> int #export_c {
   ok := args_load(a[..]);
   verb := args_at(a[..], 0);
   hardware := args_has(a[..], "--require-hardware");
+  umode := args_at(a[..], 2);
+  if ok && verb == "unlock" && nb_local(args_at(a[..], 1)) && (umode == "control" || umode == "tamper") {
+    c: [1] Cdp; s: [1] NbSeen; gpu: [256] u8; r: [1] NbUnlock;
+    if !nb_launch(c[..], s[..]) { tool_err("nostr-consumers-browser: "); tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 1; }
+    ran := nb_unlock(c[..], s[..], args_at(a[..], 1), umode == "tamper", r[..]);
+    adapter := nb_adapter(c[..], gpu[..]);
+    cdp_close(c[..]);
+    passed := ran && nb_unlock_passed(umode == "tamper", r[0]);
+    print("% unlock opener, %\n", ifx passed then "pass" else "FAIL", umode);
+    if hardware && !cdp_adapter_hardware(adapter) { tool_errln("nostr-consumers-browser: --require-hardware: no hardware WebGPU adapter"); return 1; }
+    return ifx passed then 0 else 1;
+  }
   e: [1] NbEvents;
   fi := args_find(a[..], "--frames");
   frames: [8388608] u8; fn := ifx fi > 0 then fs_read(args_at(a[..], fi + 1), frames[..]) else -1;
@@ -373,7 +521,7 @@ tool_main :: () -> int #export_c {
   project := ok && verb == "project" && nb_local(args_at(a[..], 1)) && nb_local_ws(args_at(a[..], 2)) && nb_mode(args_at(a[..], 3)) >= 0;
   signin := ok && verb == "signin" && nb_local(args_at(a[..], 1));
   if !project && !signin {
-    tool_errln("usage: coax/web/tool.sh coax/web/nostr-consumers-browser.coax export OUT.jsonl | project URL ws://127.0.0.1:PORT control|sync|live | signin URL  --frames CAPTURE.jsonl [--require-hardware]");
+    tool_errln("usage: coax/web/tool.sh coax/web/nostr-consumers-browser.coax export OUT.jsonl | project URL ws://127.0.0.1:PORT control|sync|live | signin URL  --frames CAPTURE.jsonl [--require-hardware]  |  unlock URL control|tamper [--require-hardware]");
     return 2;
   }
   c: [1] Cdp; s: [1] NbSeen; gpu: [256] u8;

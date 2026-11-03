@@ -455,6 +455,37 @@ Details: `docs/verification/2026-11-01-nostr-book-chapters-11-104.md`.
    Pylon and the coder host, and the file path the Pylon's `--key-file`
    would read once real Pylon keys are approved (item "Real Pylon keys"
    below). Say A, B or C; nothing is built until then.
+   **Also the hosted runner and the unlock opener (2026-11-03, fourth pass,
+   `docs/verification/2026-11-03-nostr-consumers-4.md`).**
+   - **The hosted runner.** Its key comes from Secret Manager
+     (`oa-agent-runner-key`), and Cloud Run delivers it as the environment
+     variable `OA_RUNNER_KEY` (`coax/web/agent/deploy.sh`). `runner.c` copies
+     it and calls `unsetenv`, and no child process gets it in its
+     environment. But the bytes stay in the runner's initial environment
+     block. With a test key, `/proc/<pid>/environ` of the running `oa-agent`
+     still showed `OA_RUNNER_KEY=` and the whole key, so any process running
+     as the same user can read it. `ANTHROPIC_API_KEY` and `OA_CHAT_SEAL_KEY`
+     arrive the same way. Choose one:
+     - **R-A.** Mount the secret as a file
+       (`--set-secrets /secrets/runner/key=oa-agent-runner-key:latest`, as
+       the deploy keys already are), and have the runner read it once. It
+       never enters the environment, but the file stays readable while the
+       instance runs.
+     - **R-B.** Keep the variable, and at start have the runner overwrite the
+       original `NAME=value` bytes of all three secrets before the
+       `unsetenv`. It's small and `deploy.sh` doesn't change.
+       `/proc/<pid>/environ` then shows zeros.
+     - **R-C.** Have the runner fetch the secret from the Secret Manager API
+       with its service account. Neither the environment nor the filesystem
+       holds it, but it's more code, and any process running as the same user
+       can use that account too.
+
+     Recommendation: R-B now, then R-A or R-C with the encrypted-storage
+     decision above. Nothing is built until you choose.
+   - **The unlock opener.** A recipient key pasted into the opener is kept in
+     the site's IndexedDB (`coaxial-unlock`) as hex, in the clear
+     (`coax/web/unlock/page.ts`), like web sign-in's entropy. It falls under
+     the same browser-storage decision.
 8. **iOS profile run (#12630).** The `ios-app` consumer (Keychain storage,
    libsecp256k1 signing in `NostrKey.swift`) needs a run on the Mac: build
    with `apps/openagents-ios/build.sh`, sign in with a phone key on the
@@ -462,12 +493,15 @@ Details: `docs/verification/2026-11-01-nostr-book-chapters-11-104.md`.
    machine is Linux and can't run it.
 9. **The unlock opener's Coax signer (#12630).** The hidden-presentation
    opener can sign its NIP-42 AUTH, verify the gift wrap's and the seal's
-   signatures and check the artifact's id with `coax/web/unlock/unlock-nostr.coax`
-   (Wasm) instead of nostr-effect: deploy with `COAXIAL_UNLOCK_SIGNER=coax`
-   (`coax/web/deploy.sh` builds the module; unset is the rollback). Checked
-   with test keys only (`docs/verification/2026-11-03-nostr-consumers-3.md`).
-   It signs with the recipient's key, so switching production is yours: say
-   when, and the next deploy sets it. NIP-44 stays nostr-effect's either way.
+   signatures, check the artifact's id, and (since the fourth pass) open the
+   NIP-44 payloads of the wrap, the seal and the artifact with
+   `coax/web/unlock/unlock-nostr.coax` (Wasm) instead of nostr-effect. To
+   switch, deploy with `COAXIAL_UNLOCK_SIGNER=coax`; `coax/web/deploy.sh`
+   builds the module, and unsetting the variable is the rollback. Checked with
+   test keys only: `docs/verification/2026-11-03-nostr-consumers-3.md`, and
+   `-4.md` for NIP-44 against the upstream vectors and a headless browser
+   run. The opener signs and decrypts with the recipient's key, so switching
+   production is yours: say when, and the next deploy sets it.
 
 ## Nostr chapter 103: export, shadow period, cutover and rollback rehearsal for relay.openagents.com (2026-11-01)
 

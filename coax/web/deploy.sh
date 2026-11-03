@@ -132,7 +132,7 @@ secrets="${COAXIAL_UNLOCKS_FILE:-$HOME/work/.secrets/coaxial-unlocks.env}"
 if [[ -z "${COAXIAL_UNLOCKS:-}" && -f "$secrets" ]]; then set -a; source "$secrets"; set +a; fi
 if [[ -n "${COAXIAL_UNLOCKS:-}" ]]; then
   [[ -d "$here/unlock/node_modules" ]] || (cd "$here/unlock" && bun install --silent)
-  # COAXIAL_UNLOCK_SIGNER=coax: the opener signs and verifies with unlock-nostr.coax (#12630);
+  # COAXIAL_UNLOCK_SIGNER=coax: the opener signs, verifies and opens NIP-44 with unlock-nostr.coax (#12630);
   # unset, nostr-effect as before (the rollback).
   if [[ "${COAXIAL_UNLOCK_SIGNER:-}" == coax ]]; then
     export COAXIAL_UNLOCK_NOSTR_WASM="$(mktemp -d)/unlock-nostr.wasm"

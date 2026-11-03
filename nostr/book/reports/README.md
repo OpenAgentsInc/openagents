@@ -35,3 +35,4 @@ decisions in [NEEDS_OWNER.md](../../../NEEDS_OWNER.md).
 | [consumers-2026-11-03.md](consumers-2026-11-03.md) ([JSON](consumers-2026-11-03.json)) | see the report | 0 of 10 |
 | [consumers-2026-11-03-2.md](consumers-2026-11-03-2.md) ([JSON](consumers-2026-11-03-2.json)) | see the report | 2 of 10 (the API's NIP-98 check, the homepage) |
 | [consumers-2026-11-03-3.md](consumers-2026-11-03-3.md) ([JSON](consumers-2026-11-03-3.json)) | see the report | 3 of 10 (the API's NIP-98 check, the homepage, the project page) |
+| [consumers-2026-11-03-4.md](consumers-2026-11-03-4.md) ([JSON](consumers-2026-11-03-4.json)) | see the report | 3 of 10 (the same three); the runner's and the opener's transport recorded, on a compiler bootstrapped from this tree |

@@ -1,0 +1,362 @@
+// The hosted runner's transport, end to end on this machine, with a TEST key (#12630): the real
+// oa-agent (runner.c, with runner-sign.coax's C as deploy.sh builds it) is started here, woken,
+// and meets this tool as its oa-api on 127.0.0.1. Every request it sends (next, state, status,
+// event, end, note) is checked with the API's own NIP-98 check, nip98_check_coax
+// (coax/web/api/nip98.coax, what oa-api runs as nip98.generated.c), for its exact URL, method and
+// body, and its signer must be the test key's public key. `next` hands out one turn, then none.
+// The engine is the runner checks' stand-in (coax/web/agent/test-engine.py), so no model runs.
+//
+//   coax/web/tool.sh coax/web/agent/runner-transport.coax --runner OA_AGENT --work DIR [--port PORT] [--signer coax|libsecp256k1] [--engine PATH]
+//       the run: one wake, one turn; a line per request, then a summary. --signer coax sets
+//       OA_RUNNER_SIGNER=coax; libsecp256k1 leaves it unset (the default and the rollback).
+//       --engine: the stand-in engine's command, when python3 isn't on the engine's fixed PATH
+//       (/usr/local/bin:/usr/bin:/bin, as on NixOS): a script that runs test-engine.py.
+//   coax/web/tool.sh coax/web/agent/runner-transport.coax --capture FILE --origin https://127.0.0.1:PORT
+//       one request as a TLS server wrote it out after decrypting it (openssl s_server): its
+//       Authorization checked the same way, for its URL on that origin.
+//
+// The key is SHA-256 of a fixed public label (runner_sign_check.c's): never a real key, and it
+// is never printed. Besides the requests, the run reads /proc/PID/environ of the runner after it
+// has started (it unsets OA_RUNNER_KEY) and says whether the key's hex is still in its initial
+// environment block, and it reads the engine's own report of its environment from the turn's end
+// ("runner:no": OA_RUNNER_KEY was not in the engine's environment). Loopback only. Run it from the
+// repository's root.
+// tool.sh: tls
+// tool.sh: run-steps 250000000
+#import "Basic";
+#load "../../lib/net/http.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/crypto/sha256-memory.coax";
+#load "../../lib/crypto/bip32.coax";
+#load "../api/nip98.coax";
+
+RT_LABEL :: "openagents runner-sign test key";
+cxproc_wall_us :: () -> int #foreign;   // process-native.c: CLOCK_REALTIME, for NIP-98's created_at window
+rt_unix :: () -> int { return cxproc_wall_us() / 1000000; }
+RT_SLUG :: "transport-check";
+RT_REQ_MAX :: 65536;
+RT_OPS :: 7;
+RT_OP_NAMES :: [RT_OPS] string.["next", "state", "status", "event", "end", "note", "other"];
+
+RtBuf :: struct { b: [8192] u8; n: int; bad: bool; }
+rt_put :: (o: [] RtBuf, s: string) {
+  if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<s.count { o[0].b[o[0].n + k] = s[k]; }
+  o[0].n += s.count;
+}
+rt_int :: (o: [] RtBuf, v: int) {
+  if v < 0 { rt_put(o, "-"); rt_int(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; rt_put(o, cast(string) e[..]); }
+}
+rt_text :: (o: [] RtBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+rt_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+rt_find :: (s: string, p: string) -> int {
+  if p.count == 0 { return 0; }
+  if p.count > s.count { return -1; }
+  for i: 0..<s.count - p.count + 1 { if s[i..<i + p.count] == p { return i; } }
+  return -1;
+}
+rt_count :: (s: string, p: string) -> int {
+  n := 0; at := 0;
+  while at < s.count {
+    i := rt_find(s[at..<s.count], p);
+    if i < 0 { break; }
+    n += 1; at += i + p.count;
+  }
+  return n;
+}
+rt_hex :: (bytes: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<bytes.count { out[2 * i] = digits[bytes[i] >> 4]; out[2 * i + 1] = digits[bytes[i] & 15]; }
+  return cast(string) out[0..<2 * bytes.count];
+}
+
+// A request's head (through its blank line): method, target, Content-Length, and where the body starts.
+RtReq :: struct { ok: bool; method: string; target: string; head_n: int; length: int; }
+rt_head :: (text: string) -> RtReq {
+  r: RtReq;
+  e := rt_find(text, "\r\n\r\n");
+  if e < 0 { return r; }
+  r.head_n = e + 4;
+  sp := 0; while sp < e && text[sp] != ' ' { sp += 1; }
+  sp2 := sp + 1; while sp2 < e && text[sp2] != ' ' { sp2 += 1; }
+  if sp == 0 || sp2 >= e || sp2 == sp + 1 { return r; }
+  r.method = text[0..<sp]; r.target = text[sp + 1..<sp2];
+  if r.target[0] != '/' { return r; }
+  l := http_header(text[0..<r.head_n], "content-length");
+  for ch: l { if ch < '0' || ch > '9' { return r; } r.length = r.length * 10 + cast(int) (ch - '0'); }
+  r.ok = r.length <= RT_REQ_MAX;
+  return r;
+}
+// Which oa-api op a target is: /api/private/<slug>/<op>[?query]. RT_OPS - 1 for anything else.
+rt_op :: (target: string, slug: string) -> int {
+  base := "/api/private/";
+  if !rt_starts(target, base) { return RT_OPS - 1; }
+  rest := target[base.count..<target.count];
+  if !rt_starts(rest, slug) || rest.count <= slug.count || rest[slug.count] != '/' { return RT_OPS - 1; }
+  op := rest[slug.count + 1..<rest.count];
+  q := rt_find(op, "?");
+  if q >= 0 { op = op[0..<q]; }
+  for i: 0..<RT_OPS - 1 { if op == RT_OP_NAMES[i] { return i; } }
+  return RT_OPS - 1;
+}
+#test "runner transport: a request's head, and which op it is" {
+  r := rt_head("POST /api/private/transport-check/next HTTP/1.1\r\nHost: 127.0.0.1:1\r\nAuthorization: Nostr eyJ9\r\nContent-Length: 2\r\n\r\n{}");
+  #assert r.ok && r.method == "POST" && r.target == "/api/private/transport-check/next" && r.length == 2;
+  #assert !rt_head("GET /x HTTP/1.1\r\nHost: h\r\n").ok && !rt_head("GET x HTTP/1.1\r\n\r\n").ok;
+  #assert !rt_head("POST /x HTTP/1.1\r\nContent-Length: 1x\r\n\r\n").ok && !rt_head("POST /x HTTP/1.1\r\nContent-Length: 99999999\r\n\r\n").ok;
+  #assert rt_op("/api/private/transport-check/next", RT_SLUG) == 0 && rt_op("/api/private/transport-check/state?n=1-2", RT_SLUG) == 1;
+  #assert rt_op("/api/private/transport-check/end", RT_SLUG) == 4 && rt_op("/api/private/transport-check/note", RT_SLUG) == 5;
+  #assert rt_op("/api/private/other/next", RT_SLUG) == 6 && rt_op("/api/private/transport-checkx/next", RT_SLUG) == 6;
+  #assert rt_op("/api/private/transport-check/nextx", RT_SLUG) == 6 && rt_op("/wake", RT_SLUG) == 6;
+  #assert rt_count("a,b,a", "a") == 2 && rt_find("abc", "c") == 2 && rt_find("ab", "abc") == -1;
+}
+
+// The test key, its hex and its x-only public key's hex.
+RtKey :: struct { key: [32] u8; hex: [64] u8; pub: [64] u8; ok: bool; }
+rt_key :: () -> RtKey {
+  k: RtKey;
+  label: [64] u8; for i: 0..<RT_LABEL.count { label[i] = RT_LABEL[i]; }
+  if sha256_hash(label[0..<RT_LABEL.count], k.key[..]) != SHA_OK { return k; }
+  pub: [33] u8;
+  if !bip32_public(k.key[..], pub[..]) { return k; }
+  h := rt_hex(k.key[..], k.hex[..]);
+  p := rt_hex(pub[1..<33], k.pub[..]);
+  k.ok = true;
+  return k;
+}
+
+// One verdict: N98_OK and the signer's pubkey hex, or the refusal's code.
+RtVerdict :: struct { error: int; signer: [64] u8; }
+rt_check :: (auth: string, method: string, url: string, body: string, now: int) -> RtVerdict {
+  v: RtVerdict;
+  work: [N98_WORK] u8; out: [N98_OUT] u8;
+  b: [RT_REQ_MAX] u8; for i: 0..<body.count { b[i] = body[i]; }
+  r := nip98_check_coax(auth, method, url, b[0..<body.count], now, work[..], out[..]);
+  v.error = r.error;
+  if r.error == N98_OK { for i: 0..<64 { v.signer[i] = out[64 + i]; } }
+  return v;
+}
+
+Rt :: struct {
+  req: [RT_REQ_MAX] u8;
+  origin: [256] u8; origin_n: int;
+  answer: [4096] u8;
+  turns_given: int;
+  ops: [RT_OPS] int; ok: [RT_OPS] int; refused: int; other_signer: int;
+  ended: bool; engine_clean: bool; engine_key: bool; events: int;
+  first_auth: [8192] u8; first_auth_n: int; first_url: [1024] u8; first_url_n: int;
+}
+
+rt_send :: (h: int, bytes: string) -> bool {
+  for b: bytes { if cxsock_write(h, cast(int) b) != 0 { return false; } }
+  return cxsock_flush(h, 10000) == 0;
+}
+rt_reply :: (h: int, code: int, body: string) -> bool {
+  o: [1] RtBuf;
+  rt_put(o[..], "HTTP/1.1 "); rt_int(o[..], code); rt_put(o[..], ifx code == 200 then " OK" else " Unauthorized");
+  rt_put(o[..], "\r\nContent-Type: application/json\r\nContent-Length: "); rt_int(o[..], body.count);
+  rt_put(o[..], "\r\nConnection: close\r\n\r\n"); rt_put(o[..], body);
+  return !o[0].bad && rt_send(h, rt_text(o[..]));
+}
+// The stand-in oa-api's answer to an op that passed the check.
+rt_answer :: (op: int, turns_given: int) -> string {
+  if op == 0 {
+    if turns_given == 0 { return "{\"turn\":{\"id\":7001,\"kind\":\"ask\",\"text\":\"Mark the deck done\"},\"history\":[],\"version\":3,\"spent\":0,\"cap\":10}"; }
+    return "{\"turn\":null}";
+  }
+  if op == 1 { return "{\"version\":3,\"milestones\":[{\"id\":\"m1\",\"status\":\"todo\"}]}"; }
+  if op == 3 { return "{\"ok\":true,\"stop\": false}"; }
+  return "{\"ok\":true}";
+}
+#test "runner transport: one turn from next, then none" {
+  #assert rt_find(rt_answer(0, 0), "\"id\":7001") > 0 && rt_answer(0, 1) == "{\"turn\":null}";
+  #assert rt_find(rt_answer(1, 0), "\"version\":3") > 0 && rt_answer(4, 0) == "{\"ok\":true}";
+}
+
+// One connection: read the request, check it, record it, answer it.
+rt_serve :: (f: [] Rt, h: int, key_in: RtKey, quiet: bool) {
+  key := key_in;
+  used := 0; r: RtReq;
+  deadline := proc_now_ms() + 10000;
+  while true {
+    if r.ok && used >= r.head_n + r.length { break; }
+    if proc_now_ms() >= deadline { return; }
+    n := cxsock_read(h, proc_left(deadline, proc_now_ms()));
+    if n <= 0 || used + n > RT_REQ_MAX { return; }
+    for k: 0..<n { f[0].req[used + k] = cast,trunc(u8) cxsock_byte(h, k); }
+    used += n;
+    if !r.ok { r = rt_head(cast(string) f[0].req[0..<used]); }
+  }
+  head := cast(string) f[0].req[0..<r.head_n];
+  body := cast(string) f[0].req[r.head_n..<r.head_n + r.length];
+  auth := http_header(head, "authorization");
+  op := rt_op(r.target, RT_SLUG);
+  url: [1]RtBuf; rt_put(url[..], cast(string) f[0].origin[0..<f[0].origin_n]); rt_put(url[..], r.target);
+  v := rt_check(auth, r.method, rt_text(url[..]), body, rt_unix());
+  signer_ok := v.error == N98_OK && cast(string) v.signer[..] == cast(string) key.pub[..];
+  f[0].ops[op] += 1;
+  if signer_ok { f[0].ok[op] += 1; } else if v.error == N98_OK { f[0].other_signer += 1; } else { f[0].refused += 1; }
+  if !quiet {
+    print("  % % %: %\n", r.method, RT_OP_NAMES[op], r.length, ifx signer_ok then "ok, the test key" else ifx v.error == N98_OK then "ok, ANOTHER signer" else nip98_error_text(v.error));
+  }
+  // the first signed GET (state) is kept for the tampering checks
+  if signer_ok && op == 1 && f[0].first_auth_n == 0 && auth.count <= 8192 {
+    for i: 0..<auth.count { f[0].first_auth[i] = auth[i]; } f[0].first_auth_n = auth.count;
+    u := rt_text(url[..]); for i: 0..<u.count { f[0].first_url[i] = u[i]; } f[0].first_url_n = u.count;
+  }
+  if signer_ok && op == 3 { f[0].events += rt_count(body, "\"type\":"); }
+  if signer_ok && op == 4 {
+    f[0].ended = true;
+    if !quiet { print("    the end: %\n", body); }
+    f[0].engine_clean = rt_find(body, "runner:no") >= 0;
+    f[0].engine_key = rt_find(body, "key:yes") >= 0;
+  }
+  if !signer_ok { ok := rt_reply(h, 401, "{\"error\":\"unauthorized\"}"); return; }
+  a := rt_answer(op, f[0].turns_given);
+  if op == 0 && f[0].turns_given == 0 { f[0].turns_given = 1; }
+  ok := rt_reply(h, 200, a);
+}
+
+// Whether the runner's initial environment block (/proc/PID/environ) still holds the key's hex.
+RtEnv :: struct { read: bool; key_hex: bool; name: bool; }
+rt_environ :: (pid: int, key_in: RtKey) -> RtEnv {
+  key := key_in;
+  e: RtEnv;
+  p: [1] RtBuf; rt_put(p[..], "/proc/"); rt_int(p[..], pid); rt_put(p[..], "/environ");
+  buf: [262144] u8;
+  n := fs_read(rt_text(p[..]), buf[..]);
+  if n <= 0 { return e; }
+  e.read = true;
+  text := cast(string) buf[0..<n];
+  e.key_hex = rt_find(text, cast(string) key.hex[..]) >= 0;
+  e.name = rt_find(text, "OA_RUNNER_KEY=") >= 0;
+  return e;
+}
+
+rt_run :: (runner: string, engine: string, work: string, port: int, coax_signer: bool) -> int {
+  key := rt_key();
+  if !key.ok { tool_errln("runner-transport: the test key failed"); return 1; }
+  f: [1] Rt;
+  origin: [1] RtBuf; rt_put(origin[..], "http://127.0.0.1:"); rt_int(origin[..], port);
+  o := rt_text(origin[..]); for i: 0..<o.count { f[0].origin[i] = o[i]; } f[0].origin_n = o.count;
+  l := cxsock_listen(port);
+  if l < 0 { tool_errln("runner-transport: the port is taken"); return 1; }
+  h := proc_new();
+  listen: [1] RtBuf; rt_put(listen[..], "127.0.0.1:"); rt_int(listen[..], port + 1);
+  e1: [1] RtBuf; rt_put(e1[..], "OA_API_ORIGIN="); rt_put(e1[..], o);
+  e2: [1] RtBuf; rt_put(e2[..], "OA_RUNNER_KEY="); rt_put(e2[..], cast(string) key.hex[..]);
+  e3: [1] RtBuf; rt_put(e3[..], "OA_AGENT_WORK="); rt_put(e3[..], work);
+  // the stand-in engine by its full path: the runner starts it in the turn's own directory
+  cwd: [4096] u8; e4: [1] RtBuf; rt_put(e4[..], "OA_AGENT_ENGINE=");
+  if engine.count > 0 { rt_put(e4[..], engine); } else { rt_put(e4[..], fs_cwd(cwd[..])); rt_put(e4[..], "/coax/web/agent/test-engine.py"); }
+  ok := proc_arg(h, runner) && proc_arg(h, "--listen") && proc_arg(h, rt_text(listen[..]))
+     && proc_env(h, rt_text(e1[..])) && proc_env(h, rt_text(e2[..])) && proc_env(h, rt_text(e3[..]))
+     && proc_env(h, rt_text(e4[..])) && proc_env(h, "OA_AGENT_REPOS=")
+     && proc_env(h, "ANTHROPIC_API_KEY=test-anthropic-not-a-key") && proc_env(h, "OA_AGENT_MODEL=stand-in")
+     && proc_unset(h, "OA_CHAT_SEAL_KEY") && proc_unset(h, "OA_RUNNER_SIGNER");
+  if coax_signer { ok = ok && proc_env(h, "OA_RUNNER_SIGNER=coax"); }
+  if !ok || proc_start(h) != 0 { tool_errln("runner-transport: the runner didn't start"); r := proc_release(h); return 1; }
+  pid := proc_pid(h);
+  print("runner-transport: oa-agent (pid %) signing with %, its oa-api %\n", pid, ifx coax_signer then "Coax (OA_RUNNER_SIGNER=coax)" else "libsecp256k1 (OA_RUNNER_SIGNER unset)", o);
+  // the runner's own port answers once it has loaded its key
+  hw: [1] HttpWork; ans: [4096] u8;
+  base: [1] RtBuf; rt_put(base[..], "http://127.0.0.1:"); rt_int(base[..], port + 1);
+  hs := [1] string.["Content-Type: application/json"];
+  up := false; t0 := proc_now_ms();
+  while !up && proc_now_ms() - t0 < 10000 {
+    g := http_do(hw[..], "GET", rt_text(base[..]), hs[0..<0], "", 1000, 0, ans[..]);
+    up = g.error == 0 && g.code == 200;
+    if !up { proc_sleep(100); }
+  }
+  if !up { tool_errln("runner-transport: the runner never listened"); proc_stderr_dump(h); r := proc_release(h); return 1; }
+  env := rt_environ(pid, key);
+  wake: [1] RtBuf; rt_put(wake[..], rt_text(base[..])); rt_put(wake[..], "/wake");
+  started := proc_now_ms();
+  w := http_do(hw[..], "POST", rt_text(wake[..]), hs[..], "{\"slug\":\"transport-check\"}", 5000, 0, ans[..]);
+  print("  POST /wake: %\n", w.code);
+  ended_at := 0;
+  while proc_now_ms() - started < 60000 {
+    c := cxsock_accept(l, 500);
+    if c >= 0 { rt_serve(f[..], c, key, false); x := cxsock_close(c); }
+    if f[0].ended && ended_at == 0 { ended_at = proc_now_ms(); }
+    // after the end, the loop asks next once more and gets no turn; then it is quiet
+    if ended_at > 0 && proc_now_ms() - ended_at > 1500 { break; }
+  }
+  k := proc_kill(h, PROC_SIGTERM);
+  st := proc_wait(h, 3000);
+  r := proc_release(h);
+  x := cxsock_close(l);
+  total := 0; for i: 0..<RT_OPS { total += f[0].ops[i]; }
+  print("runner-transport: % requests in % ms; signer %...% (the test key)\n", total, ended_at - started, cast(string) key.pub[0..<8], cast(string) key.pub[56..<64]);
+  for i: 0..<RT_OPS { if f[0].ops[i] > 0 { print("  %: % sent, % passed the API's check as the test key\n", RT_OP_NAMES[i], f[0].ops[i], f[0].ok[i]); } }
+  print("  refused: %, another signer: %, events carried: %\n", f[0].refused, f[0].other_signer, f[0].events);
+  print("  the turn ended: %; the engine had the model's key: %, and not the runner's: %\n", f[0].ended, f[0].engine_key, f[0].engine_clean);
+  print("  /proc/%/environ read: %; OA_RUNNER_KEY= still there: %; the key's hex still there: %\n", pid, env.read, env.name, env.key_hex);
+  // tampering, on the first signed state request: one base64 byte changed, and the same header for another URL
+  tampered_refused := false; other_url_refused := false;
+  if f[0].first_auth_n > 0 {
+    a: [8192] u8; n := f[0].first_auth_n;
+    for i: 0..<n { a[i] = f[0].first_auth[i]; }
+    url := cast(string) f[0].first_url[0..<f[0].first_url_n];
+    now := rt_unix();
+    same := rt_check(cast(string) a[0..<n], "GET", url, "", now);
+    at := n / 2; a[at] = ifx a[at] == 'A' then 'B' else 'A';
+    tampered_refused = rt_check(cast(string) a[0..<n], "GET", url, "", now).error != N98_OK;
+    a[at] = f[0].first_auth[at];
+    other: [1] RtBuf; rt_put(other[..], o); rt_put(other[..], "/api/private/transport-check/end");
+    other_url_refused = rt_check(cast(string) a[0..<n], "GET", rt_text(other[..]), "", now).error == N98_URL;
+    print("  the kept state header: as sent %; one base64 byte changed: %; for another URL: %\n",
+      ifx same.error == N98_OK then "ok" else nip98_error_text(same.error), ifx tampered_refused then "refused" else "ACCEPTED", ifx other_url_refused then "refused (the u tag)" else "NOT refused");
+  }
+  all := total > 0 && f[0].refused == 0 && f[0].other_signer == 0 && f[0].ended && f[0].engine_clean && tampered_refused && other_url_refused;
+  print("runner-transport: %\n", ifx all then "pass" else "FAIL");
+  return ifx all then 0 else 1;
+}
+proc_stderr_dump :: (h: int) { b: [4096] u8; s := proc_stderr(h, b[..]); tool_errln(s); }
+
+// One request as openssl s_server printed it after decrypting it.
+rt_capture :: (file: string, origin: string) -> int {
+  key := rt_key();
+  buf: [RT_REQ_MAX] u8;
+  n := fs_read(file, buf[..]);
+  if n <= 0 { tool_errln("runner-transport: no capture"); return 1; }
+  text := cast(string) buf[0..<n];
+  at := rt_find(text, "POST /api/");
+  g := rt_find(text, "GET /api/");
+  if at < 0 || (g >= 0 && g < at) { at = g; }
+  if at < 0 { tool_errln("runner-transport: no request in the capture"); return 1; }
+  r := rt_head(text[at..<n]);
+  if !r.ok || at + r.head_n + r.length > n { tool_errln("runner-transport: the request is cut"); return 1; }
+  head := text[at..<at + r.head_n];
+  body := text[at + r.head_n..<at + r.head_n + r.length];
+  url: [1] RtBuf; rt_put(url[..], origin); rt_put(url[..], r.target);
+  v := rt_check(http_header(head, "authorization"), r.method, rt_text(url[..]), body, rt_unix());
+  mine := v.error == N98_OK && cast(string) v.signer[..] == cast(string) key.pub[..];
+  print("runner-transport: % % (% body bytes) over TLS: %\n", r.method, RT_OP_NAMES[rt_op(r.target, RT_SLUG)], r.length,
+    ifx mine then "the API's check passes, signer the test key" else ifx v.error == N98_OK then "ANOTHER signer" else nip98_error_text(v.error));
+  return ifx mine then 0 else 1;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  loaded := args_load(a[..]);
+  capture := args_value(a[..], "--capture", "");
+  if loaded && capture.count > 0 { return rt_capture(capture, args_value(a[..], "--origin", "")); }
+  runner := args_value(a[..], "--runner", "");
+  work := args_value(a[..], "--work", "");
+  port := args_whole(args_value(a[..], "--port", "48720"));
+  signer := args_value(a[..], "--signer", "coax");
+  if !loaded || runner.count == 0 || work.count == 0 || port <= 0 || port > 65534 || (signer != "coax" && signer != "libsecp256k1") {
+    tool_errln("usage: coax/web/tool.sh coax/web/agent/runner-transport.coax --runner OA_AGENT --work DIR [--port PORT] [--signer coax|libsecp256k1]");
+    tool_errln("       coax/web/tool.sh coax/web/agent/runner-transport.coax --capture FILE --origin https://127.0.0.1:PORT");
+    return 2;
+  }
+  return rt_run(runner, args_value(a[..], "--engine", ""), work, port, signer == "coax");
+}

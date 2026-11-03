@@ -71,8 +71,22 @@ Qualify complete named consumer profiles on the native and browser targets
 they will use. `coax/lib/nostr/consumers.coax` now names ten consumers and,
 for each, how it signs, verifies, keeps keys and carries events, in which
 file and with which record; dated reports generated from it are in
-[reports/](reports/README.md). The latest, consumers-2026-11-03-3, finds 3 of
-the ten complete: the API's NIP-98 check, the homepage and the project page. A Wasm arithmetic run, an iOS compile or an external NIP-07
+[reports/](reports/README.md). The latest, consumers-2026-11-03-4, finds 3 of
+the ten complete: the API's NIP-98 check, the homepage and the project page.
+It was generated with a compiler bootstrapped from this tree.
+
+- **The hosted runner.** Its transport is recorded: libcurl over OpenSSL,
+  with TLS 1.3 and a verified certificate. Its Coax signer ran end to end
+  against the API's own check.
+- **The unlock opener.** It opens its gift wrap, seal and artifact with
+  NIP-44 in Coax behind its switch, checked against the upstream vectors,
+  and it opened a deck that way in headless Chrome. Its transport is
+  recorded too.
+- **What still blocks both:** the production signer switch and key storage,
+  which are the owner's (NEEDS_OWNER.md, Nostr book follow-ups, items 7
+  and 9).
+
+A Wasm arithmetic run, an iOS compile or an external NIP-07
 signer does not qualify the complete phone-signer or browser client profile.
 The signer source audit has completed, but real Pylon keys still require the
 owner decision and a safe host key-file path: `psionic/lib/pylon/run.coax`

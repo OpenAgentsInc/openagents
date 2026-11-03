@@ -69,8 +69,8 @@ CP_COMPILER :: [CP_CONSUMERS] string.[
   "coax/web/wasm.sh: coax c then clang --target=wasm32",
   "coax/web/wasm.sh: coax c then clang --target=wasm32",
   "coax/web/wasm.sh: coax c then clang --target=wasm32",
-  "gcc -O2 runner.c with libsecp256k1, libcrypto, libcurl (no Coax)",
-  "bun bundle of TypeScript with nostr-effect (no Coax)",
+  "gcc -O2 runner.c and runner-sign.coax's C (coax c) with libsecp256k1, libcrypto, libcurl",
+  "bun bundle of TypeScript with nostr-effect; COAXIAL_UNLOCK_SIGNER=coax adds unlock-nostr.coax by coax/web/wasm.sh",
   "xcodebuild arm64: Swift with vendored libsecp256k1",
   "coax/web/tool.sh: coax c (C11) then cc, OpenSSL 3 TLS (tls-env.sh)"];
 
@@ -83,8 +83,8 @@ CP_STATE :: [CP_CONSUMERS * CP_AXES] u8.[
   0, 1, 0, 2,    // homepage: verifies in Wasm; the browser's WebSocket
   0, 1, 0, 2,    // project-page: each live EVENT frame verified in Coax before it is stored (project-verify.coax), in the browser too
   1, 0, 4, 2,    // web-signin: Coax signs in Wasm and the browser's fetch carries it (both recorded); entropy kept as hex in browser storage (NEEDS_OWNER item 7)
-  3, 0, 4, 2,    // hosted-runner: libsecp256k1 by default; OA_RUNNER_SIGNER=coax signs in Coax (runner-sign.coax), not yet the production default
-  3, 3, 0, 2,    // unlock-opener: nostr-effect by default; COAXIAL_UNLOCK_SIGNER=coax signs and verifies with unlock-nostr.coax (Wasm), not yet the default
+  3, 0, 4, 2,    // hosted-runner: libsecp256k1 by default (OA_RUNNER_SIGNER=coax signs in Coax, not the production default); the key is an env var; libcurl over OpenSSL TLS (recorded)
+  3, 3, 4, 2,    // unlock-opener: nostr-effect by default (COAXIAL_UNLOCK_SIGNER=coax signs, verifies and does NIP-44 in unlock-nostr.coax, not the default); a pasted key kept as hex in IndexedDB; the browser's WebSocket (recorded)
   3, 0, 2, 2,    // ios-app: libsecp256k1 signs; Keychain; URLSession
   1, 1, 4, 1];   // coder-host: Coax; the host key is a mode 600 file
 CP_SOURCE :: [CP_CONSUMERS * CP_AXES] string.[
@@ -95,7 +95,7 @@ CP_SOURCE :: [CP_CONSUMERS * CP_AXES] string.[
   "", "apps/openagents-web/project-live.coax", "", "coax/web/host.js",
   "coax/lib/nostr/weblogin.coax", "", "apps/openagents-web/private.coax", "coax/web/host.js",
   "coax/web/agent/runner.c", "", "coax/web/agent/runner.c", "coax/web/agent/runner.c",
-  "coax/web/unlock/lib.ts", "coax/web/unlock/lib.ts", "", "coax/web/unlock/lib.ts",
+  "coax/web/unlock/lib.ts", "coax/web/unlock/lib.ts", "coax/web/unlock/page.ts", "coax/web/unlock/lib.ts",
   "apps/openagents-ios/OpenAgents/SignIn/NostrKey.swift", "", "apps/openagents-ios/OpenAgents/SignIn/NostrKey.swift", "apps/openagents-ios/OpenAgents/SignIn/PhoneSignIn.swift",
   "coder/tui/host.coax", "apps/openagents-cli/relay.coax", "coder/tui/host.coax", "coax/lib/net/relay_conn.coax"];
 CP_SYMBOL :: [CP_CONSUMERS * CP_AXES] string.[
@@ -106,7 +106,7 @@ CP_SYMBOL :: [CP_CONSUMERS * CP_AXES] string.[
   "", "project_frame_verified", "", "new WebSocket(",
   "weblogin_sign", "", "localStorage", "fetch(",
   "secp256k1_schnorrsig_sign32", "", "OA_RUNNER_KEY", "curl_easy_init",
-  "finalizeEvent", "verifyEvent", "", "fetchEvent",
+  "finalizeEvent", "verifyEvent", "coaxial-unlock", "fetchEvent",
   "oa_nostr_sign", "", "kSecClassGenericPassword", "URLSession",
   "nostr_event_sign_step", "rl_read(", "hs_write_private", "relay_conn_open"];
 // A record: a file in the repository that shows this axis running on this
@@ -118,11 +118,11 @@ CP_RECORD :: [CP_CONSUMERS * CP_AXES] string.[
   "", "docs/verification/2026-10-30-newland-coax-nostr.md", "", "docs/verification/2026-11-03-nostr-consumers-2.md",
   "", "docs/verification/2026-11-03-nostr-consumers-3.md", "", "docs/verification/2026-11-03-nostr-consumers-2.md",
   "docs/verification/2026-11-03-nostr-consumers-3.md", "", "", "docs/verification/2026-11-03-nostr-consumers-3.md",
-  "", "", "", "",
-  "", "", "", "",
+  "", "", "", "docs/verification/2026-11-03-nostr-consumers-4.md",
+  "", "", "", "docs/verification/2026-11-03-nostr-consumers-4.md",
   "", "", "", "",
   "docs/verification/2026-11-03-nostr-consumers.md", "docs/verification/2026-11-03-nostr-consumers.md", "", "docs/verification/2026-11-03-nostr-consumers.md"];
-CP_KEYS :: [CP_CONSUMERS] u8.[2, 2, 1, 1, 1, 2, 0, 0, 0, 2];
+CP_KEYS :: [CP_CONSUMERS] u8.[2, 2, 1, 1, 1, 2, 2, 2, 0, 2];
 
 cp_ok_consumer :: (c: int) -> bool { return c >= 0 && c < CP_CONSUMERS; }
 cp_ok_axis :: (a: int) -> bool { return a >= 0 && a < CP_AXES; }
@@ -193,7 +193,7 @@ cp_complete :: (c: int, found: u32) -> bool #export_c { return cp_ok_consumer(c)
   #assert cp_name(4) == "project-page" && cp_name(5) == "web-signin" && cp_name(6) == "hosted-runner";
   #assert cp_name(7) == "unlock-opener" && cp_name(8) == "ios-app" && cp_name(9) == "coder-host";
   targets := [10] string.["native-c11-linux-x86_64", "native-c11-linux-x86_64", "native-c11-linux-x86_64", "wasm32-browser", "wasm32-browser", "wasm32-browser", "native-c11-linux-x86_64", "browser-js", "ios-arm64", "native-c11-linux-x86_64"];
-  keys := [10] string.["test-keys", "test-keys", "public-events", "public-events", "public-events", "test-keys", "none", "none", "none", "test-keys"];
+  keys := [10] string.["test-keys", "test-keys", "public-events", "public-events", "public-events", "test-keys", "test-keys", "test-keys", "none", "test-keys"];
   for c: 0..<10 {
     #assert cp_target(c) == targets[c] && cp_keys(c) == keys[c];
     #assert cp_build(c) == CP_BUILD[c] && cp_compiler(c) == CP_COMPILER[c];
@@ -208,7 +208,7 @@ cp_complete :: (c: int, found: u32) -> bool #export_c { return cp_ok_consumer(c)
 }
 
 #test "each axis: its state, and a file and symbol exactly when it is used" {
-  states := [40] int.[1, 1, 4, 1, 1, 1, 5, 1, 0, 1, 0, 2, 0, 1, 0, 2, 0, 1, 0, 2, 1, 0, 4, 2, 3, 0, 4, 2, 3, 3, 0, 2, 3, 0, 2, 2, 1, 1, 4, 1];
+  states := [40] int.[1, 1, 4, 1, 1, 1, 5, 1, 0, 1, 0, 2, 0, 1, 0, 2, 0, 1, 0, 2, 1, 0, 4, 2, 3, 0, 4, 2, 3, 3, 4, 2, 3, 0, 2, 2, 1, 1, 4, 1];
   for c: 0..<10 {
     for a: 0..<4 {
       st := cp_state(c, a);
@@ -235,12 +235,12 @@ cp_complete :: (c: int, found: u32) -> bool #export_c { return cp_ok_consumer(c)
 
 #test "each consumer is blocked where the registry says" {
   // with every named record found
-  blockers := [10] u32.[4, 4, 0, 0, 0, 4, 13, 11, 13, 4];
+  blockers := [10] u32.[4, 4, 0, 0, 0, 4, 5, 7, 13, 4];
   for c: 0..<10 {
     #assert cp_blockers(c, cp_named(c)) == blockers[c];
     #assert cp_complete(c, cp_named(c)) == (c >= 2 && c <= 4) && cp_complete(c, 15) == (c >= 2 && c <= 4);
   }
-  named := [10] u32.[11, 11, 10, 10, 10, 9, 0, 0, 0, 11];
+  named := [10] u32.[11, 11, 10, 10, 10, 9, 8, 8, 0, 11];
   for c: 0..<10 { #assert cp_named(c) == named[c]; }
   #assert cp_done(0) && !cp_done(1) && !cp_done(8);
 }
@@ -270,6 +270,10 @@ cp_complete :: (c: int, found: u32) -> bool #export_c { return cp_ok_consumer(c)
   #assert cp_blockers(5, 8) == 5 && cp_blockers(5, 1) == 12;
   // the unlock opener and the iOS app sign with code outside Coax
   #assert (cp_blockers(7, 15) & 1) != 0 && (cp_blockers(8, 15) & 1) != 0;
+  // the hosted runner's key is an environment variable, and the opener keeps a pasted key in the clear
+  #assert cp_blockers(6, 15) == 5 && cp_blockers(7, 15) == 7;
+  // without their transport records, the runner and the opener are blocked on transport too
+  #assert cp_blockers(6, 0) == 13 && cp_blockers(7, 0) == 15;
 }
 
 #test "the rule on states no consumer has today" {
