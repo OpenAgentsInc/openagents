@@ -252,9 +252,17 @@ MKT_RAIL_LIGHTNING :: 0; MKT_RAIL_ONCHAIN :: 1; MKT_RAIL_ZAP :: 2;   // any othe
 
 <!-- source: coax/lib/nostr/mkt/order.coax record -->
 ```jai
+// The market keeps its own copy of every string it stores. A string
+// argument only borrows the caller's bytes, and a caller may read the next
+// record into the same buffer; a stored borrow would then change a quote's
+// terms, the order, or the invoice's payment hash after the step checked
+// them. MKT_TEXT bytes hold a 64-hex ID or key or a "sha256:" digest,
+// packed eight to a word, the first byte lowest.
+MKT_TEXT :: 72;
+MktKept :: struct {n:int;w:[MKT_TEXT/8]u64;}
 MktOffering :: struct {provider:string;valid_until:int;profiles:int;networks:int;}
 MktTerms :: struct {
-  quote_id:string;digest:string;worker:string;reviewer:string;
+  quote_id:MktKept;digest:MktKept;worker:MktKept;reviewer:MktKept;
   price_msat:int;fee_limit_msat:int;profile:int;network:int;
   quote_expires_at:int;order_confirm_by:int;delivery_due_at:int;
   review_due_at:int;payment_due_at:int;retain_until:int;
@@ -263,13 +271,48 @@ MktTerms :: struct {
 MktMarket :: struct {
   market:string;buyer:string;provider:string;offering:MktOffering;
   stage:int;price_limit:int;response_due_at:int;
-  quotes:int;order:int=-1;order_id:string;     // order indexes the quotes
+  quotes:int;order:int=-1;order_id:MktKept;     // order indexes the quotes
   submitted:bool;submitted_at:int;verdict:int=-1;
   accepted:bool;amount_due:int=-1;
-  obligation:string;amount_msat:int;payment_hash:string;expires_at:int;
+  obligation:MktKept;amount_msat:int;payment_hash:MktKept;expires_at:int;
   attempts:int;payment:int;paid_msat:int;
 }
 MktProof :: struct {rail:int;state:int;amount_msat:int;preimage:string;}
+```
+
+Every string the market keeps is a `MktKept`, the market's own copy of up
+to 72 bytes. A quote's terms are built with `mkt_kept`, and the steps copy
+the order ID, the obligation and the payment hash when they store them. A
+string argument only borrows the caller's bytes. Without the copy, a caller
+that reads each record into one buffer would change the stored order, or
+the payment hash that `mkt_result` checks the preimage against, when it
+read the next record. A longer string refuses as `malformed`. `mkt_bytes`
+gives the kept bytes back to a caller, for example the payment hash a
+wallet pays.
+
+<!-- source: coax/lib/nostr/mkt/order.coax kept -->
+```jai
+// A copy of s, or n=-1 when s is longer than MKT_TEXT: no step stores that.
+mkt_kept :: (s:string)->MktKept {
+  t:MktKept;t.n=-1;
+  if s.count>MKT_TEXT {return t;}
+  for i:0..<s.count {t.w[i/8]=t.w[i/8]|(cast(u64)s[i]<<((i%8)*8));}
+  t.n=s.count;
+  return t;
+}
+mkt_same :: (a:MktKept,b:MktKept)->bool {
+  if a.n!=b.n {return false;}
+  for j:0..<MKT_TEXT/8 {if a.w[j]!=b.w[j] {return false;}}
+  return true;
+}
+mkt_is :: (t:MktKept,s:string)->bool {return mkt_same(t,mkt_kept(s));}
+// Write the kept bytes to out for a caller to read: the count, or -1 when
+// out is too small.
+mkt_bytes :: (t:MktKept,out:[]u8)->int {
+  if out.count<t.n {return -1;}
+  for i:0..<t.n {out[i]=cast(u8)((t.w[i/8]>>((i%8)*8))&255);}
+  return t.n;
+}
 ```
 
 A quote's terms are MKT's `openagents.market-terms.v1` artifact. Prices
@@ -320,7 +363,7 @@ mkt_rfq :: (m:[]MktMarket,o:MktOffering,signer:string,price_limit:int,response_d
   if o.provider!=m[0].provider {return MKT_IDENTITY;}
   if now>=o.valid_until {return MKT_STALE;}
   if price_limit<0 || response_due_at<=now || retain_until<=response_due_at {return MKT_MALFORMED;}
-  m[0].offering=o;m[0].price_limit=price_limit;m[0].response_due_at=response_due_at;m[0].stage=MKT_ASKED;
+  m[0].offering=o;m[0].offering.provider=m[0].provider;m[0].price_limit=price_limit;m[0].response_due_at=response_due_at;m[0].stage=MKT_ASKED;
   return MKT_OK;
 }
 
@@ -328,12 +371,13 @@ mkt_quote :: (m:[]MktMarket,q:[]MktTerms,t:MktTerms,signer:string,now:int)->int 
   if signer!=m[0].provider {return MKT_NOT_ADMITTED;}
   if m[0].stage!=MKT_ASKED {return MKT_CONFLICT;}
   if now>m[0].response_due_at {return MKT_STALE;}
+  if t.quote_id.n<=0 || t.digest.n<=0 || t.worker.n<=0 || t.reviewer.n<=0 {return MKT_MALFORMED;}   // empty, or too long to keep
   for i:0..<m[0].quotes {
-    if q[i].quote_id==t.quote_id {return ifx q[i].digest==t.digest then MKT_OK else MKT_IDEMPOTENCY;}
+    if mkt_same(q[i].quote_id,t.quote_id) {return ifx mkt_same(q[i].digest,t.digest) then MKT_OK else MKT_IDEMPOTENCY;}
   }
   if t.quote_expires_at<=now || t.order_confirm_by<t.quote_expires_at || t.delivery_due_at<=t.order_confirm_by
      || t.review_due_at<=t.delivery_due_at || t.payment_due_at<=t.review_due_at || t.retain_until<=t.payment_due_at {return MKT_MALFORMED;}
-  if t.reviewer==m[0].provider || t.reviewer==t.worker {return MKT_MALFORMED;}
+  if mkt_is(t.reviewer,m[0].provider) || mkt_same(t.reviewer,t.worker) {return MKT_MALFORMED;}
   if (t.profile!=MKT_FREE && t.profile!=MKT_LIGHTNING) || (m[0].offering.profiles&t.profile)==0 {return MKT_UNSUPPORTED;}
   if t.profile==MKT_FREE {
     if t.price_msat!=0 || t.fee_limit_msat!=0 || t.network!=0 {return MKT_MALFORMED;}
@@ -351,12 +395,13 @@ mkt_quote :: (m:[]MktMarket,q:[]MktTerms,t:MktTerms,signer:string,now:int)->int 
 mkt_order :: (m:[]MktMarket,q:[]MktTerms,signer:string,quote_id:string,terms_digest:string,order_id:string,now:int)->int {
   if signer!=m[0].buyer {return MKT_NOT_ADMITTED;}
   if m[0].stage!=MKT_ASKED {return MKT_CONFLICT;}
+  if order_id.count>MKT_TEXT {return MKT_MALFORMED;}
   for i:0..<m[0].quotes {
-    if q[i].quote_id==quote_id {
-      if q[i].digest!=terms_digest {return MKT_IDENTITY;}
+    if mkt_is(q[i].quote_id,quote_id) {
+      if !mkt_is(q[i].digest,terms_digest) {return MKT_IDENTITY;}
       if q[i].consumed {return MKT_QUOTE_CONSUMED;}
       if now>q[i].quote_expires_at {return MKT_QUOTE_EXPIRED;}
-      q[i].consumed=true;m[0].order=i;m[0].order_id=order_id;m[0].stage=MKT_ORDERED;
+      q[i].consumed=true;m[0].order=i;m[0].order_id=mkt_kept(order_id);m[0].stage=MKT_ORDERED;
       return MKT_OK;
     }
   }
@@ -368,7 +413,7 @@ mkt_order :: (m:[]MktMarket,q:[]MktTerms,signer:string,quote_id:string,terms_dig
 mkt_ack :: (m:[]MktMarket,q:[]MktTerms,signer:string,confirm:bool,now:int)->int {
   if signer!=m[0].provider {return MKT_NOT_ADMITTED;}
   if m[0].stage!=MKT_ORDERED {return MKT_CONFLICT;}
-  if !confirm {m[0].stage=MKT_ASKED;m[0].order=-1;m[0].order_id="";return MKT_OK;}
+  if !confirm {m[0].stage=MKT_ASKED;m[0].order=-1;m[0].order_id=MktKept.{};return MKT_OK;}
   if now>q[m[0].order].order_confirm_by {return MKT_CONFIRMATION_EXPIRED;}
   m[0].stage=MKT_CONFIRMED;
   return MKT_OK;
@@ -393,7 +438,7 @@ and the worker is the execution role.
 // refuses, the provider's included.
 mkt_submit :: (m:[]MktMarket,q:[]MktTerms,signer:string,now:int)->int {
   if m[0].stage!=MKT_CONFIRMED {return MKT_CONFLICT;}
-  if signer!=q[m[0].order].worker {return MKT_NOT_ADMITTED;}
+  if !mkt_is(q[m[0].order].worker,signer) {return MKT_NOT_ADMITTED;}
   if m[0].submitted {return MKT_CONFLICT;}
   m[0].submitted=true;m[0].submitted_at=now;
   return MKT_OK;
@@ -401,7 +446,7 @@ mkt_submit :: (m:[]MktMarket,q:[]MktTerms,signer:string,now:int)->int {
 
 mkt_verify :: (m:[]MktMarket,q:[]MktTerms,signer:string,verdict:int)->int {
   if m[0].stage!=MKT_CONFIRMED || !m[0].submitted {return MKT_CONFLICT;}
-  if signer!=q[m[0].order].reviewer {return MKT_NOT_ADMITTED;}
+  if !mkt_is(q[m[0].order].reviewer,signer) {return MKT_NOT_ADMITTED;}
   if verdict<MKT_PASSED || verdict>MKT_NOT_RUN {return MKT_MALFORMED;}
   if m[0].verdict!=-1 {return MKT_CONFLICT;}
   m[0].verdict=verdict;
@@ -450,18 +495,18 @@ mkt_instruct :: (m:[]MktMarket,q:[]MktTerms,signer:string,obligation:string,amou
   t:=q[m[0].order];
   if t.profile!=MKT_LIGHTNING || t.network!=MKT_BITCOIN {return MKT_UNSUPPORTED;}
   if !m[0].accepted {return MKT_NOT_ACCEPTED;}
-  if m[0].obligation!="" {return MKT_CONFLICT;}   // one earned-price obligation per order
+  if m[0].obligation.n!=0 {return MKT_CONFLICT;}   // one earned-price obligation per order
   if amount_msat!=m[0].amount_due || x402_bolt11_msat(invoice)!=amount_msat {return MKT_AMOUNT;}
-  if !x402_is_hex64(payment_hash) || obligation=="" {return MKT_MALFORMED;}
+  if !x402_is_hex64(payment_hash) || obligation=="" || obligation.count>MKT_TEXT {return MKT_MALFORMED;}
   if expires_at<=now {return MKT_STALE;}
-  m[0].obligation=obligation;m[0].amount_msat=amount_msat;m[0].payment_hash=payment_hash;m[0].expires_at=expires_at;
+  m[0].obligation=mkt_kept(obligation);m[0].amount_msat=amount_msat;m[0].payment_hash=mkt_kept(payment_hash);m[0].expires_at=expires_at;
   return MKT_OK;
 }
 
 // The buyer persists attempt number n before it calls its wallet.
 mkt_attempt :: (m:[]MktMarket,q:[]MktTerms,signer:string,n:int,fee_limit_msat:int,now:int)->int {
   if signer!=m[0].buyer {return MKT_NOT_ADMITTED;}
-  if m[0].obligation=="" {return MKT_NOT_ACCEPTED;}
+  if m[0].obligation.n==0 {return MKT_NOT_ACCEPTED;}
   if m[0].payment==MKT_PAY_CONFIRMED {return MKT_PAID;}
   if m[0].payment==MKT_PAY_PENDING || m[0].payment==MKT_PAY_UNKNOWN {return MKT_PENDING;}
   if n!=m[0].attempts+1 || fee_limit_msat!=q[m[0].order].fee_limit_msat {return MKT_MALFORMED;}
@@ -480,7 +525,8 @@ mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int {
   if p.state==MKT_PAY_UNKNOWN || p.state==MKT_PAY_FAILED {m[0].payment=p.state;return MKT_OK;}
   if p.state!=MKT_PAY_CONFIRMED {return MKT_MALFORMED;}
   if p.amount_msat!=m[0].amount_msat {return MKT_AMOUNT;}
-  if !x402_preimage_matches(p.preimage,m[0].payment_hash) {return MKT_PROOF;}
+  h:[MKT_TEXT]u8;k:=mkt_bytes(m[0].payment_hash,h[..]);
+  if !x402_preimage_matches(p.preimage,cast(string)h[0..<k]) {return MKT_PROOF;}
   m[0].payment=MKT_PAY_CONFIRMED;m[0].paid_msat=p.amount_msat;
   return MKT_OK;
 }
@@ -649,7 +695,7 @@ CJ_WORDS :: [8]string.["answers the request","refused: the event does not verify
 
 say :: (at:int,what:string,r:int) {print("T0 + %: %: %\n",at,what,MKT_WORDS[r]);}
 quote_terms :: (id:string,digest:string,price:int)->MktTerms {
-  t:MktTerms;t.quote_id=id;t.digest=digest;t.worker=WORKER;t.reviewer=REVIEWER;
+  t:MktTerms;t.quote_id=mkt_kept(id);t.digest=mkt_kept(digest);t.worker=mkt_kept(WORKER);t.reviewer=mkt_kept(REVIEWER);
   t.price_msat=price;t.fee_limit_msat=1000;t.profile=MKT_LIGHTNING;t.network=MKT_BITCOIN;
   t.quote_expires_at=T0+600;t.order_confirm_by=T0+900;t.delivery_due_at=T0+3600;
   t.review_due_at=T0+7200;t.payment_due_at=T0+86400;t.retain_until=T0+30*86400;return t;
@@ -902,7 +948,10 @@ network, a full quote table, a used and an expired quote, a refused
 confirmation, the worker, reviewer and buyer roles, each verdict, late and
 impossible receipts, each wrong amount, a second obligation, attempt
 numbering and fee limits, unknown and failed results, every rail and a
-wrong preimage.
+wrong preimage. One check reads every record into two reused buffers and
+overwrites them after each step: the stored provider, terms, order ID,
+obligation and payment hash stay the same, and the preimage still checks
+against the payment hash the provider sent.
 
 ```shell
 coax/bin/coax test coax/lib/nostr/cj/result.coax --library
@@ -915,7 +964,9 @@ On 2026-11-01, `result.coax` passed its checks (204 with `tags.coax`,
 `event.coax` and their own) and `coax mutate --root-only` killed all 105
 mutants; `order.coax` passed its checks (84 with `settle.coax`'s and
 SHA-256's) and killed all 391. None survived and none is marked
-equivalent. The full mutation run (`COAX_MUTATION_FULL=1`) and cross-target
+equivalent. On 2026-11-03, after the market began keeping its own copy of
+each string (#12692), `order.coax` passed 86 checks and `coax mutate
+--root-only` killed all 460 mutants, none marked equivalent. The full mutation run (`COAX_MUTATION_FULL=1`) and cross-target
 runs were not done.
 
 ## Summary

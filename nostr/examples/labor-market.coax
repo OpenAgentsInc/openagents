@@ -34,7 +34,7 @@ CJ_WORDS :: [8]string.["answers the request","refused: the event does not verify
 
 say :: (at:int,what:string,r:int) {print("T0 + %: %: %\n",at,what,MKT_WORDS[r]);}
 quote_terms :: (id:string,digest:string,price:int)->MktTerms {
-  t:MktTerms;t.quote_id=id;t.digest=digest;t.worker=WORKER;t.reviewer=REVIEWER;
+  t:MktTerms;t.quote_id=mkt_kept(id);t.digest=mkt_kept(digest);t.worker=mkt_kept(WORKER);t.reviewer=mkt_kept(REVIEWER);
   t.price_msat=price;t.fee_limit_msat=1000;t.profile=MKT_LIGHTNING;t.network=MKT_BITCOIN;
   t.quote_expires_at=T0+600;t.order_confirm_by=T0+900;t.delivery_due_at=T0+3600;
   t.review_due_at=T0+7200;t.payment_due_at=T0+86400;t.retain_until=T0+30*86400;return t;

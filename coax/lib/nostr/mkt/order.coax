@@ -76,9 +76,17 @@ MKT_RAIL_LIGHTNING :: 0; MKT_RAIL_ONCHAIN :: 1; MKT_RAIL_ZAP :: 2;   // any othe
 // book:end states
 
 // book:begin record
+// The market keeps its own copy of every string it stores. A string
+// argument only borrows the caller's bytes, and a caller may read the next
+// record into the same buffer; a stored borrow would then change a quote's
+// terms, the order, or the invoice's payment hash after the step checked
+// them. MKT_TEXT bytes hold a 64-hex ID or key or a "sha256:" digest,
+// packed eight to a word, the first byte lowest.
+MKT_TEXT :: 72;
+MktKept :: struct {n:int;w:[MKT_TEXT/8]u64;}
 MktOffering :: struct {provider:string;valid_until:int;profiles:int;networks:int;}
 MktTerms :: struct {
-  quote_id:string;digest:string;worker:string;reviewer:string;
+  quote_id:MktKept;digest:MktKept;worker:MktKept;reviewer:MktKept;
   price_msat:int;fee_limit_msat:int;profile:int;network:int;
   quote_expires_at:int;order_confirm_by:int;delivery_due_at:int;
   review_due_at:int;payment_due_at:int;retain_until:int;
@@ -87,14 +95,38 @@ MktTerms :: struct {
 MktMarket :: struct {
   market:string;buyer:string;provider:string;offering:MktOffering;
   stage:int;price_limit:int;response_due_at:int;
-  quotes:int;order:int=-1;order_id:string;     // order indexes the quotes
+  quotes:int;order:int=-1;order_id:MktKept;     // order indexes the quotes
   submitted:bool;submitted_at:int;verdict:int=-1;
   accepted:bool;amount_due:int=-1;
-  obligation:string;amount_msat:int;payment_hash:string;expires_at:int;
+  obligation:MktKept;amount_msat:int;payment_hash:MktKept;expires_at:int;
   attempts:int;payment:int;paid_msat:int;
 }
 MktProof :: struct {rail:int;state:int;amount_msat:int;preimage:string;}
 // book:end record
+
+// book:begin kept
+// A copy of s, or n=-1 when s is longer than MKT_TEXT: no step stores that.
+mkt_kept :: (s:string)->MktKept {
+  t:MktKept;t.n=-1;
+  if s.count>MKT_TEXT {return t;}
+  for i:0..<s.count {t.w[i/8]=t.w[i/8]|(cast(u64)s[i]<<((i%8)*8));}
+  t.n=s.count;
+  return t;
+}
+mkt_same :: (a:MktKept,b:MktKept)->bool {
+  if a.n!=b.n {return false;}
+  for j:0..<MKT_TEXT/8 {if a.w[j]!=b.w[j] {return false;}}
+  return true;
+}
+mkt_is :: (t:MktKept,s:string)->bool {return mkt_same(t,mkt_kept(s));}
+// Write the kept bytes to out for a caller to read: the count, or -1 when
+// out is too small.
+mkt_bytes :: (t:MktKept,out:[]u8)->int {
+  if out.count<t.n {return -1;}
+  for i:0..<t.n {out[i]=cast(u8)((t.w[i/8]>>((i%8)*8))&255);}
+  return t.n;
+}
+// book:end kept
 
 // book:begin negotiate
 mkt_bit :: (x:int)->bool {return x==1 || x==2 || x==4;}
@@ -105,7 +137,7 @@ mkt_rfq :: (m:[]MktMarket,o:MktOffering,signer:string,price_limit:int,response_d
   if o.provider!=m[0].provider {return MKT_IDENTITY;}
   if now>=o.valid_until {return MKT_STALE;}
   if price_limit<0 || response_due_at<=now || retain_until<=response_due_at {return MKT_MALFORMED;}
-  m[0].offering=o;m[0].price_limit=price_limit;m[0].response_due_at=response_due_at;m[0].stage=MKT_ASKED;
+  m[0].offering=o;m[0].offering.provider=m[0].provider;m[0].price_limit=price_limit;m[0].response_due_at=response_due_at;m[0].stage=MKT_ASKED;
   return MKT_OK;
 }
 
@@ -113,12 +145,13 @@ mkt_quote :: (m:[]MktMarket,q:[]MktTerms,t:MktTerms,signer:string,now:int)->int 
   if signer!=m[0].provider {return MKT_NOT_ADMITTED;}
   if m[0].stage!=MKT_ASKED {return MKT_CONFLICT;}
   if now>m[0].response_due_at {return MKT_STALE;}
+  if t.quote_id.n<=0 || t.digest.n<=0 || t.worker.n<=0 || t.reviewer.n<=0 {return MKT_MALFORMED;}   // empty, or too long to keep
   for i:0..<m[0].quotes {
-    if q[i].quote_id==t.quote_id {return ifx q[i].digest==t.digest then MKT_OK else MKT_IDEMPOTENCY;}
+    if mkt_same(q[i].quote_id,t.quote_id) {return ifx mkt_same(q[i].digest,t.digest) then MKT_OK else MKT_IDEMPOTENCY;}
   }
   if t.quote_expires_at<=now || t.order_confirm_by<t.quote_expires_at || t.delivery_due_at<=t.order_confirm_by
      || t.review_due_at<=t.delivery_due_at || t.payment_due_at<=t.review_due_at || t.retain_until<=t.payment_due_at {return MKT_MALFORMED;}
-  if t.reviewer==m[0].provider || t.reviewer==t.worker {return MKT_MALFORMED;}
+  if mkt_is(t.reviewer,m[0].provider) || mkt_same(t.reviewer,t.worker) {return MKT_MALFORMED;}
   if (t.profile!=MKT_FREE && t.profile!=MKT_LIGHTNING) || (m[0].offering.profiles&t.profile)==0 {return MKT_UNSUPPORTED;}
   if t.profile==MKT_FREE {
     if t.price_msat!=0 || t.fee_limit_msat!=0 || t.network!=0 {return MKT_MALFORMED;}
@@ -136,12 +169,13 @@ mkt_quote :: (m:[]MktMarket,q:[]MktTerms,t:MktTerms,signer:string,now:int)->int 
 mkt_order :: (m:[]MktMarket,q:[]MktTerms,signer:string,quote_id:string,terms_digest:string,order_id:string,now:int)->int {
   if signer!=m[0].buyer {return MKT_NOT_ADMITTED;}
   if m[0].stage!=MKT_ASKED {return MKT_CONFLICT;}
+  if order_id.count>MKT_TEXT {return MKT_MALFORMED;}
   for i:0..<m[0].quotes {
-    if q[i].quote_id==quote_id {
-      if q[i].digest!=terms_digest {return MKT_IDENTITY;}
+    if mkt_is(q[i].quote_id,quote_id) {
+      if !mkt_is(q[i].digest,terms_digest) {return MKT_IDENTITY;}
       if q[i].consumed {return MKT_QUOTE_CONSUMED;}
       if now>q[i].quote_expires_at {return MKT_QUOTE_EXPIRED;}
-      q[i].consumed=true;m[0].order=i;m[0].order_id=order_id;m[0].stage=MKT_ORDERED;
+      q[i].consumed=true;m[0].order=i;m[0].order_id=mkt_kept(order_id);m[0].stage=MKT_ORDERED;
       return MKT_OK;
     }
   }
@@ -153,7 +187,7 @@ mkt_order :: (m:[]MktMarket,q:[]MktTerms,signer:string,quote_id:string,terms_dig
 mkt_ack :: (m:[]MktMarket,q:[]MktTerms,signer:string,confirm:bool,now:int)->int {
   if signer!=m[0].provider {return MKT_NOT_ADMITTED;}
   if m[0].stage!=MKT_ORDERED {return MKT_CONFLICT;}
-  if !confirm {m[0].stage=MKT_ASKED;m[0].order=-1;m[0].order_id="";return MKT_OK;}
+  if !confirm {m[0].stage=MKT_ASKED;m[0].order=-1;m[0].order_id=MktKept.{};return MKT_OK;}
   if now>q[m[0].order].order_confirm_by {return MKT_CONFIRMATION_EXPIRED;}
   m[0].stage=MKT_CONFIRMED;
   return MKT_OK;
@@ -165,7 +199,7 @@ mkt_ack :: (m:[]MktMarket,q:[]MktTerms,signer:string,confirm:bool,now:int)->int 
 // refuses, the provider's included.
 mkt_submit :: (m:[]MktMarket,q:[]MktTerms,signer:string,now:int)->int {
   if m[0].stage!=MKT_CONFIRMED {return MKT_CONFLICT;}
-  if signer!=q[m[0].order].worker {return MKT_NOT_ADMITTED;}
+  if !mkt_is(q[m[0].order].worker,signer) {return MKT_NOT_ADMITTED;}
   if m[0].submitted {return MKT_CONFLICT;}
   m[0].submitted=true;m[0].submitted_at=now;
   return MKT_OK;
@@ -173,7 +207,7 @@ mkt_submit :: (m:[]MktMarket,q:[]MktTerms,signer:string,now:int)->int {
 
 mkt_verify :: (m:[]MktMarket,q:[]MktTerms,signer:string,verdict:int)->int {
   if m[0].stage!=MKT_CONFIRMED || !m[0].submitted {return MKT_CONFLICT;}
-  if signer!=q[m[0].order].reviewer {return MKT_NOT_ADMITTED;}
+  if !mkt_is(q[m[0].order].reviewer,signer) {return MKT_NOT_ADMITTED;}
   if verdict<MKT_PASSED || verdict>MKT_NOT_RUN {return MKT_MALFORMED;}
   if m[0].verdict!=-1 {return MKT_CONFLICT;}
   m[0].verdict=verdict;
@@ -201,18 +235,18 @@ mkt_instruct :: (m:[]MktMarket,q:[]MktTerms,signer:string,obligation:string,amou
   t:=q[m[0].order];
   if t.profile!=MKT_LIGHTNING || t.network!=MKT_BITCOIN {return MKT_UNSUPPORTED;}
   if !m[0].accepted {return MKT_NOT_ACCEPTED;}
-  if m[0].obligation!="" {return MKT_CONFLICT;}   // one earned-price obligation per order
+  if m[0].obligation.n!=0 {return MKT_CONFLICT;}   // one earned-price obligation per order
   if amount_msat!=m[0].amount_due || x402_bolt11_msat(invoice)!=amount_msat {return MKT_AMOUNT;}
-  if !x402_is_hex64(payment_hash) || obligation=="" {return MKT_MALFORMED;}
+  if !x402_is_hex64(payment_hash) || obligation=="" || obligation.count>MKT_TEXT {return MKT_MALFORMED;}
   if expires_at<=now {return MKT_STALE;}
-  m[0].obligation=obligation;m[0].amount_msat=amount_msat;m[0].payment_hash=payment_hash;m[0].expires_at=expires_at;
+  m[0].obligation=mkt_kept(obligation);m[0].amount_msat=amount_msat;m[0].payment_hash=mkt_kept(payment_hash);m[0].expires_at=expires_at;
   return MKT_OK;
 }
 
 // The buyer persists attempt number n before it calls its wallet.
 mkt_attempt :: (m:[]MktMarket,q:[]MktTerms,signer:string,n:int,fee_limit_msat:int,now:int)->int {
   if signer!=m[0].buyer {return MKT_NOT_ADMITTED;}
-  if m[0].obligation=="" {return MKT_NOT_ACCEPTED;}
+  if m[0].obligation.n==0 {return MKT_NOT_ACCEPTED;}
   if m[0].payment==MKT_PAY_CONFIRMED {return MKT_PAID;}
   if m[0].payment==MKT_PAY_PENDING || m[0].payment==MKT_PAY_UNKNOWN {return MKT_PENDING;}
   if n!=m[0].attempts+1 || fee_limit_msat!=q[m[0].order].fee_limit_msat {return MKT_MALFORMED;}
@@ -231,7 +265,8 @@ mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int {
   if p.state==MKT_PAY_UNKNOWN || p.state==MKT_PAY_FAILED {m[0].payment=p.state;return MKT_OK;}
   if p.state!=MKT_PAY_CONFIRMED {return MKT_MALFORMED;}
   if p.amount_msat!=m[0].amount_msat {return MKT_AMOUNT;}
-  if !x402_preimage_matches(p.preimage,m[0].payment_hash) {return MKT_PROOF;}
+  h:[MKT_TEXT]u8;k:=mkt_bytes(m[0].payment_hash,h[..]);
+  if !x402_preimage_matches(p.preimage,cast(string)h[0..<k]) {return MKT_PROOF;}
   m[0].payment=MKT_PAY_CONFIRMED;m[0].paid_msat=p.amount_msat;
   return MKT_OK;
 }
@@ -253,9 +288,9 @@ mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int {
 #forall "a network is one of three bits" x:-1..<9 {#assert mkt_bit(x)==(x==1 || x==2 || x==4);}
 #test "one job from request to paid, in msats" {
   m:[1]MktMarket;q:[4]MktTerms;mk_instructed(m[..],q[..]);
-  #assert m[0].stage==MKT_CONFIRMED && m[0].order==0 && m[0].order_id=="order-1" && q[0].consumed;
+  #assert m[0].stage==MKT_CONFIRMED && m[0].order==0 && mkt_is(m[0].order_id,"order-1") && q[0].consumed;
   #assert m[0].submitted_at==MK_T0+950 && m[0].verdict==MKT_PASSED && m[0].accepted && m[0].amount_due==50000;
-  #assert m[0].obligation=="ob-1" && m[0].amount_msat==50000 && m[0].payment_hash==X402_FIX_HASH && m[0].expires_at==MK_T0+5000;
+  #assert mkt_is(m[0].obligation,"ob-1") && m[0].amount_msat==50000 && mkt_is(m[0].payment_hash,X402_FIX_HASH) && m[0].expires_at==MK_T0+5000;
   #assert mkt_attempt(m[..],q[..],MK_BUYER,1,1000,MK_T0+1500)==MKT_OK && m[0].attempts==1 && m[0].payment==MKT_PAY_PENDING;
   #assert mkt_result(m[..],MK_BUYER,mk_proof(MKT_RAIL_LIGHTNING,MKT_PAY_CONFIRMED,50000,X402_FIX_PREIMAGE))==MKT_OK;
   #assert m[0].payment==MKT_PAY_CONFIRMED && m[0].paid_msat==50000;
@@ -264,6 +299,58 @@ mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int {
   #assert mkt_result(m[..],MK_BUYER,mk_proof(MKT_RAIL_LIGHTNING,MKT_PAY_CONFIRMED,50000,X402_FIX_PREIMAGE))==MKT_PAID;
   #assert mkt_instruct(m[..],q[..],MK_PROVIDER,"ob-2",50000,X402_FIX_INVOICE,X402_FIX_HASH,MK_T0+5000,MK_T0+1600)==MKT_CONFLICT;
   #assert m[0].attempts==1 && m[0].paid_msat==50000;
+}
+#test "the market keeps its own copy of every string it stores" {
+  m:[1]MktMarket;q:[2]MktTerms;d:[72]u8;w:[73]u8;
+  // The caller reads each record into d and w and reuses them.
+  m[0]=mk_market();o:=mk_offering();o.provider=mk_put(d[..],MK_PROVIDER);
+  #assert mkt_rfq(m[..],o,MK_BUYER,60000,MK_T0+300,MK_T0+40*86400,MK_T0)==MKT_OK;
+  t:=mk_terms("A",50000);t.digest=mkt_kept(mk_put(d[..],MK_DIGEST));t.worker=mkt_kept(mk_put(d[..],MK_WORKER));
+  #assert mkt_quote(m[..],q[..],t,MK_PROVIDER,MK_T0+100)==MKT_OK;
+  #assert mkt_order(m[..],q[..],MK_BUYER,mk_put(d[..],"A"),MK_DIGEST,mk_put(w[..],"order-1"),MK_T0+300)==MKT_OK;
+  x:=mk_put(d[..],MK_OTHER);x=mk_put(w[..],"order-2");
+  #assert m[0].offering.provider==MK_PROVIDER && mkt_is(m[0].order_id,"order-1") && mkt_is(q[0].worker,MK_WORKER) && mkt_is(q[0].digest,MK_DIGEST);
+  #assert mkt_ack(m[..],q[..],MK_PROVIDER,true,MK_T0+350)==MKT_OK && mkt_submit(m[..],q[..],MK_WORKER,MK_T0+950)==MKT_OK;
+  #assert mkt_verify(m[..],q[..],MK_REVIEWER,MKT_PASSED)==MKT_OK && mkt_accept(m[..],q[..],MK_BUYER,MK_T0+1000,MK_T0+1300)==MKT_OK;
+  #assert mkt_instruct(m[..],q[..],MK_PROVIDER,mk_put(w[..],"ob-1"),50000,X402_FIX_INVOICE,mk_put(d[..],X402_FIX_HASH),MK_T0+5000,MK_T0+1400)==MKT_OK;
+  x=mk_put(w[..],"ob-2");x=mk_put(d[..],MK_ZERO);
+  #assert mkt_is(m[0].obligation,"ob-1") && mkt_is(m[0].payment_hash,X402_FIX_HASH);
+  out:[73]u8;
+  #assert mkt_bytes(m[0].payment_hash,out[..])==64 && cast(string)out[0..<64]==X402_FIX_HASH && mkt_bytes(m[0].payment_hash,out[0..<63])==-1;
+  // The proof is checked against the hash the provider sent, not the buffer's.
+  #assert mkt_attempt(m[..],q[..],MK_BUYER,1,1000,MK_T0+1500)==MKT_OK;
+  #assert mkt_result(m[..],MK_BUYER,mk_proof(MKT_RAIL_LIGHTNING,MKT_PAY_CONFIRMED,50000,X402_FIX_PREIMAGE))==MKT_OK && m[0].paid_msat==50000;
+  // 72 bytes is the longest kept; 73 refuses as malformed.
+  for k:0..<73 {w[k]='a';}
+  long:=cast(string)w[..];most:=cast(string)w[0..<72];
+  #assert mkt_kept(long).n==-1 && mkt_kept(most).n==72 && mkt_bytes(mkt_kept(most),out[0..<72])==72 && mkt_bytes(mkt_kept(most),out[0..<71])==-1;
+  n:[1]MktMarket;mk_quoted(n[..],q[..]);
+  // So does an empty ID, digest or key.
+  for f:0..<8 {
+    v:=mkt_kept(ifx f<4 then long else "");
+    b:=mk_terms("B",50000);if f%4==0 {b.quote_id=v;}if f%4==1 {b.digest=v;}if f%4==2 {b.worker=v;}if f%4==3 {b.reviewer=v;}
+    #assert mkt_quote(n[..],q[..],b,MK_PROVIDER,MK_T0+100)==MKT_MALFORMED;
+  }
+  // One byte to 72 bytes are kept.
+  b:=mk_terms("B",50000);b.quote_id=mkt_kept(most);b.digest=mkt_kept("d");b.worker=mkt_kept("w");b.reviewer=mkt_kept("r");
+  #assert mkt_quote(n[..],q[..],b,MK_PROVIDER,MK_T0+100)==MKT_OK && n[0].quotes==2;
+  #assert mkt_order(n[..],q[..],MK_BUYER,"A",MK_DIGEST,long,MK_T0+300)==MKT_MALFORMED && n[0].stage==MKT_ASKED;
+  #assert mkt_order(n[..],q[..],MK_BUYER,long,MK_DIGEST,"order-1",MK_T0+300)==MKT_UNAVAILABLE;
+  #assert mkt_order(n[..],q[..],MK_BUYER,"A",MK_DIGEST,most,MK_T0+300)==MKT_OK && mkt_is(n[0].order_id,most);
+  #assert mkt_ack(n[..],q[..],MK_PROVIDER,true,MK_T0+350)==MKT_OK && mkt_submit(n[..],q[..],MK_WORKER,MK_T0+950)==MKT_OK;
+  #assert mkt_verify(n[..],q[..],MK_REVIEWER,MKT_PASSED)==MKT_OK && mkt_accept(n[..],q[..],MK_BUYER,MK_T0+1000,MK_T0+1300)==MKT_OK;
+  #assert mkt_instruct(n[..],q[..],MK_PROVIDER,long,50000,X402_FIX_INVOICE,X402_FIX_HASH,MK_T0+5000,MK_T0+1400)==MKT_MALFORMED && n[0].obligation.n==0;
+  #assert mkt_instruct(n[..],q[..],MK_PROVIDER,most,50000,X402_FIX_INVOICE,X402_FIX_HASH,MK_T0+5000,MK_T0+1400)==MKT_OK && mkt_is(n[0].obligation,most);
+  // A copy compares equal to exactly the string it was made from.
+  a:=mkt_kept("alpha");
+  #assert mkt_is(a,"alpha") && !mkt_is(a,"alph") && !mkt_is(a,"alphb") && !mkt_is(a,"alphaa") && !mkt_is(a,"blpha") && mkt_is(mkt_kept(""),"") && !mkt_is(mkt_kept(""),"a");
+  #assert mkt_bytes(a,out[0..<5])==5 && cast(string)out[0..<5]=="alpha" && mkt_bytes(mkt_kept(""),out[0..<0])==0;
+  z:=[2]u8.['a',0];#assert !mkt_same(mkt_kept("a"),mkt_kept(cast(string)z[..]));
+  // Every byte value at every position survives the packing.
+  e:[72]u8;for k:0..<72 {e[k]=cast(u8)(k*3+7);}
+  y:=mkt_kept(cast(string)e[..]);#assert mkt_bytes(y,out[..])==72;
+  for k:0..<72 {#assert out[k]==e[k];}
+  for v:[3]u8.[0,128,255] {e[9]=v;#assert mkt_is(mkt_kept(cast(string)e[..]),cast(string)e[..]) && !mkt_is(y,cast(string)e[..]);}
 }
 #test "rfq: the buyer, once, against a fresh offering from this provider" {
   m:=[1]MktMarket.[mk_market()];o:=mk_offering();
@@ -281,7 +368,7 @@ mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int {
 }
 #test "quote: the provider, by the response deadline, within the limit" {
   m:[1]MktMarket;q:[2]MktTerms;mk_quoted(m[..],q[..]);
-  #assert m[0].quotes==1 && q[0].quote_id=="A" && q[0].price_msat==50000 && !q[0].consumed;
+  #assert m[0].quotes==1 && mkt_is(q[0].quote_id,"A") && q[0].price_msat==50000 && !q[0].consumed;
   b:=m[0];
   #assert mkt_quote(m[..],q[..],mk_terms("B",50000),MK_BUYER,MK_T0+100)==MKT_NOT_ADMITTED;
   #assert mkt_quote(m[..],q[..],mk_terms("B",50000),MK_PROVIDER,MK_T0+301)==MKT_STALE;
@@ -289,9 +376,9 @@ mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int {
   #assert mk_same(m[0],b);
   // A retransmission is accepted without change; other bytes under its ID are not.
   #assert mkt_quote(m[..],q[..],mk_terms("A",50000),MK_PROVIDER,MK_T0+300)==MKT_OK && m[0].quotes==1;
-  y:=mk_terms("A",40000);y.digest=MK_DIGEST_B;
+  y:=mk_terms("A",40000);y.digest=mkt_kept(MK_DIGEST_B);
   #assert mkt_quote(m[..],q[..],y,MK_PROVIDER,MK_T0+100)==MKT_IDEMPOTENCY && q[0].price_msat==50000;
-  c:=mk_terms("B",60000);c.digest=MK_DIGEST_B;c.consumed=true;
+  c:=mk_terms("B",60000);c.digest=mkt_kept(MK_DIGEST_B);c.consumed=true;
   #assert mkt_quote(m[..],q[..],c,MK_PROVIDER,MK_T0+300)==MKT_OK && m[0].quotes==2 && !q[1].consumed && q[1].price_msat==60000;
   #assert mkt_quote(m[..],q[..],mk_terms("C",1),MK_PROVIDER,MK_T0+100)==MKT_LIMIT && m[0].quotes==2;
   // The retransmission of the second quote is found after the first.
@@ -309,9 +396,9 @@ mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int {
   bad[3].review_due_at=MK_T0+3600;
   bad[4].payment_due_at=MK_T0+7200;
   bad[5].retain_until=MK_T0+86400;
-  bad[6].reviewer=MK_WORKER;
+  bad[6].reviewer=mkt_kept(MK_WORKER);
   for i:0..<7 {#assert mkt_quote(m[..],q[..],bad[i],MK_PROVIDER,MK_T0+100)==MKT_MALFORMED;}
-  r:=mk_terms("D",50000);r.reviewer=MK_PROVIDER;
+  r:=mk_terms("D",50000);r.reviewer=mkt_kept(MK_PROVIDER);
   #assert mkt_quote(m[..],q[..],r,MK_PROVIDER,MK_T0+100)==MKT_MALFORMED && m[0].quotes==1;
   // Each one second later is admitted.
   e:=mk_terms("E",50000);e.quote_expires_at=MK_T0+101;e.order_confirm_by=MK_T0+101;e.delivery_due_at=MK_T0+102;
@@ -322,9 +409,9 @@ mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int {
   m:[1]MktMarket;q:[8]MktTerms;mk_quoted(m[..],q[..]);
   f:=mk_terms("F",0);f.profile=MKT_FREE;f.fee_limit_msat=0;f.network=0;
   #assert mkt_quote(m[..],q[..],f,MK_PROVIDER,MK_T0+100)==MKT_OK && m[0].quotes==2;
-  g:=f;g.quote_id="G";g.price_msat=1;#assert mkt_quote(m[..],q[..],g,MK_PROVIDER,MK_T0+100)==MKT_MALFORMED;
-  g=f;g.quote_id="G";g.fee_limit_msat=1;#assert mkt_quote(m[..],q[..],g,MK_PROVIDER,MK_T0+100)==MKT_MALFORMED;
-  g=f;g.quote_id="G";g.network=MKT_BITCOIN;#assert mkt_quote(m[..],q[..],g,MK_PROVIDER,MK_T0+100)==MKT_MALFORMED;
+  g:=f;g.quote_id=mkt_kept("G");g.price_msat=1;#assert mkt_quote(m[..],q[..],g,MK_PROVIDER,MK_T0+100)==MKT_MALFORMED;
+  g=f;g.quote_id=mkt_kept("G");g.fee_limit_msat=1;#assert mkt_quote(m[..],q[..],g,MK_PROVIDER,MK_T0+100)==MKT_MALFORMED;
+  g=f;g.quote_id=mkt_kept("G");g.network=MKT_BITCOIN;#assert mkt_quote(m[..],q[..],g,MK_PROVIDER,MK_T0+100)==MKT_MALFORMED;
   l:=mk_terms("L",0);#assert mkt_quote(m[..],q[..],l,MK_PROVIDER,MK_T0+100)==MKT_MALFORMED;
   l=mk_terms("L",1);l.fee_limit_msat=-1;#assert mkt_quote(m[..],q[..],l,MK_PROVIDER,MK_T0+100)==MKT_MALFORMED;
   l=mk_terms("L",1);l.fee_limit_msat=0;#assert mkt_quote(m[..],q[..],l,MK_PROVIDER,MK_T0+100)==MKT_OK;
@@ -334,7 +421,7 @@ mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int {
   // An offering without Lightning, or without the free profile.
   m[0].offering.profiles=MKT_FREE;
   #assert mkt_quote(m[..],q[..],mk_terms("Q",1),MK_PROVIDER,MK_T0+100)==MKT_UNSUPPORTED;
-  m[0].offering.profiles=MKT_LIGHTNING;f.quote_id="R";
+  m[0].offering.profiles=MKT_LIGHTNING;f.quote_id=mkt_kept("R");
   #assert mkt_quote(m[..],q[..],f,MK_PROVIDER,MK_T0+100)==MKT_UNSUPPORTED;
   m[0].offering.networks=MKT_BITCOIN|MKT_REGTEST;l=mk_terms("S",1);l.network=MKT_REGTEST;
   #assert mkt_quote(m[..],q[..],l,MK_PROVIDER,MK_T0+100)==MKT_OK && m[0].quotes==4;
@@ -347,14 +434,14 @@ mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int {
   #assert mkt_order(m[..],q[..],MK_BUYER,"A",MK_DIGEST,"order-1",MK_T0+601)==MKT_QUOTE_EXPIRED;
   #assert mk_same(m[0],b) && !q[0].consumed;
   #assert mkt_order(m[..],q[..],MK_BUYER,"A",MK_DIGEST,"order-1",MK_T0+600)==MKT_OK;
-  #assert m[0].stage==MKT_ORDERED && m[0].order==0 && m[0].order_id=="order-1" && q[0].consumed;
+  #assert m[0].stage==MKT_ORDERED && m[0].order==0 && mkt_is(m[0].order_id,"order-1") && q[0].consumed;
   #assert mkt_order(m[..],q[..],MK_BUYER,"A",MK_DIGEST,"order-2",MK_T0+600)==MKT_CONFLICT;
   // The provider refuses: the negotiation is open again, the quote is spent.
   #assert mkt_ack(m[..],q[..],MK_PROVIDER,false,MK_T0+601)==MKT_OK;
-  #assert m[0].stage==MKT_ASKED && m[0].order==-1 && m[0].order_id=="";
+  #assert m[0].stage==MKT_ASKED && m[0].order==-1 && m[0].order_id.n==0;
   #assert mkt_order(m[..],q[..],MK_BUYER,"A",MK_DIGEST,"order-2",MK_T0+500)==MKT_QUOTE_CONSUMED;
   // The second quote, found after the first.
-  c:=mk_terms("B",55000);c.digest=MK_DIGEST_B;#assert mkt_quote(m[..],q[..],c,MK_PROVIDER,MK_T0+200)==MKT_OK;
+  c:=mk_terms("B",55000);c.digest=mkt_kept(MK_DIGEST_B);#assert mkt_quote(m[..],q[..],c,MK_PROVIDER,MK_T0+200)==MKT_OK;
   #assert mkt_order(m[..],q[..],MK_BUYER,"B",MK_DIGEST_B,"order-2",MK_T0+500)==MKT_OK && m[0].order==1;
 }
 #test "ack: the provider confirms by order_confirm_by" {
@@ -433,7 +520,7 @@ mkt_result :: (m:[]MktMarket,signer:string,p:MktProof)->int {
   #assert mkt_instruct(m[..],q[..],MK_PROVIDER,"ob-1",50000,X402_FIX_INVOICE,X402_FIX_HASH,MK_T0+1400,MK_T0+1400)==MKT_STALE;
   #assert mk_same(m[0],b);
   #assert mkt_instruct(m[..],q[..],MK_PROVIDER,"ob-1",50000,X402_FIX_INVOICE,X402_FIX_HASH,MK_T0+1401,MK_T0+1400)==MKT_OK;
-  #assert m[0].obligation=="ob-1" && m[0].expires_at==MK_T0+1401;
+  #assert mkt_is(m[0].obligation,"ob-1") && m[0].expires_at==MK_T0+1401;
   #assert mkt_instruct(m[..],q[..],MK_PROVIDER,"ob-1",50000,X402_FIX_INVOICE,X402_FIX_HASH,MK_T0+5000,MK_T0+1400)==MKT_CONFLICT;
   #assert mkt_instruct(m[..],q[..],MK_PROVIDER,"ob-2",50000,X402_FIX_INVOICE,X402_FIX_HASH,MK_T0+5000,MK_T0+1400)==MKT_CONFLICT;
   #assert m[0].expires_at==MK_T0+1401;

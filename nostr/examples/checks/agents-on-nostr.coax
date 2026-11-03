@@ -107,7 +107,7 @@ sig_of :: (event: string) -> string { return event[event.count - 130..<event.cou
 instructed :: (m: [] MktMarket, q: [] MktTerms) {
   o := MktOffering.{provider = PY_AGENT, valid_until = T0 + 86400, profiles = MKT_LIGHTNING, networks = MKT_BITCOIN};
   m[0] = MktMarket.{market = "m-1", buyer = PY_BUYER, provider = PY_AGENT};
-  t: MktTerms; t.quote_id = "A"; t.digest = TERMS; t.worker = PY_AGENT; t.reviewer = PY_REVIEWER;
+  t: MktTerms; t.quote_id = mkt_kept("A"); t.digest = mkt_kept(TERMS); t.worker = mkt_kept(PY_AGENT); t.reviewer = mkt_kept(PY_REVIEWER);
   t.price_msat = 50000; t.fee_limit_msat = 1000; t.profile = MKT_LIGHTNING; t.network = MKT_BITCOIN;
   t.quote_expires_at = T0 + 600; t.order_confirm_by = T0 + 900; t.delivery_due_at = T0 + 3600;
   t.review_due_at = T0 + 7200; t.payment_due_at = T0 + 86400; t.retain_until = T0 + 30 * 86400;
