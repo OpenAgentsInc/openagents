@@ -195,7 +195,17 @@ fivelab_trace :: (ro:V3,rd:V3,u:[]f32,shadow:bool)->FivelabHit {
     i:int=0;
     while i<FIVELAB_TOKENS {
       tk:V4=wg_at4(u,36+(i*8));
-      if (tk.z>(-0.5f32)) {
+      // a cheap bound first: a sphere round the whole figure, standing or down; a ray that misses it,
+      // or meets it only past what it has already hit, skips the figure's capsules
+      bo:V3=sub3(ro,v3(tk.x,0.95f32,tk.y));
+      bb:f32=dot3(bo,rd);
+      bh:f32=(bb*bb)-(dot3(bo,bo)-2.25f32);
+      near:bool=false;
+      if (bh>0.0f32) {
+        bs:f32=sqrt(bh);
+        near=(((-bb)+bs)>0.0f32)&&(((-bb)-bs)<h.t);
+      }
+      if ((tk.z>(-0.5f32))&&near) {
         bd:FivelabBody=fivelab_body(u,i);
         t1:f32=fivelab_capsule(ro,rd,bd.a,bd.b,bd.r);
         if ((t1>0.0f32)&&(t1<h.t)) { h.t=t1; h.n=fivelab_capsule_n(add3(ro,scale3(rd,t1)),bd.a,bd.b); h.m=3.0f32; h.who=cast(f32)i; }

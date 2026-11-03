@@ -576,6 +576,11 @@ fn coax_p_fivelab_trace(p_ro: vec3f, p_rd: vec3f, p_shadow: bool) -> coax_t13 {
   var l_tt: f32;
   var l_i_18: i32;
   var l_tk: vec4f;
+  var l_bo: vec3f;
+  var l_bb: f32;
+  var l_bh: f32;
+  var l_near: bool;
+  var l_bs: f32;
   var l_bd: coax_t14;
   var l_t1: f32;
   var l_t2: f32;
@@ -646,7 +651,16 @@ fn coax_p_fivelab_trace(p_ro: vec3f, p_rd: vec3f, p_shadow: bool) -> coax_t13 {
     while ((l_i_18 < 104i))
     {
       l_tk = coax_p_wg_at4((36i + (l_i_18 * 8i)));
-      if ((l_tk.z > (-0x1.000000p-1f)))
+      l_bo = coax_p_sub3(l_ro, coax_p_v3(l_tk.x, 0x1.e66666p-1f, l_tk.y));
+      l_bb = dot(l_bo, l_rd);
+      l_bh = ((l_bb * l_bb) - (dot(l_bo, l_bo) - 0x1.200000p1f));
+      l_near = false;
+      if ((l_bh > 0.0f))
+      {
+        l_bs = sqrt(l_bh);
+        l_near = ((((-l_bb) + l_bs) > 0.0f) && (((-l_bb) - l_bs) < l_h.x));
+      }
+      if (((l_tk.z > (-0x1.000000p-1f)) && l_near))
       {
         l_bd = coax_p_fivelab_body(l_i_18);
         l_t1 = coax_p_fivelab_capsule(l_ro, l_rd, l_bd.x, l_bd.y, l_bd.z);
