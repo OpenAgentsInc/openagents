@@ -400,6 +400,7 @@
         "description": "Everglade Classic, a Verse world in the browser: the forest city as it was before its spells rolled on the SRD 5e rules, with the quest board and its quests out to the deep wood, the ruins and the river crossing.",
         "share": "The forest city as it was before the SRD 5e rules: take quests from the board out to the deep wood, the ruins and the river. In your browser.",
         "alt": "Everglade Classic, the forest city: take a quest from the board",
+        "card": "/worlds/everglade/og.jpg",
         "voice": "everglade",
         "ruleset": "srd5",
         "module": "everglade",
