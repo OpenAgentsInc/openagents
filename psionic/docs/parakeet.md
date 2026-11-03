@@ -214,3 +214,44 @@ replacements. With no vocabulary nothing runs, and chapter 153's 29/29 parity
 holds. Measurements are in the
 [vocabulary record](../../docs/verification/dictation-vocab-2026-11-03/README.md).
 The CPU path (Metal profile) works but has not been measured for latency.
+
+## Incremental follow-up (#12673)
+
+The first original-weight cache-aware candidate is
+[NVIDIA Nemotron Speech Streaming English 0.6B](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b/tree/ebe59e5a817142986528bbbee5dba8db7b38ed50),
+whose encoder belongs to the Parakeet/FastConformer family. It is an English
+RNNT checkpoint with a different decoder, tokenizer and provider identity;
+it does not replace the qualified multilingual TDT v3 profile above. The
+multitalker checkpoint additionally requires speaker/diarization inputs and
+is not the first single-speaker dictation target.
+
+[The candidate manifest](../fixtures/parakeet-streaming/manifest.json) pins
+revision `ebe59e5a817142986528bbbee5dba8db7b38ed50`, all five downloaded
+original-file SHA-256 values and a same-profile reference contract. On
+coderos-4080 the complete 2,472,413,604-byte safetensors file matched SHA-256
+`bddd8a7300826efd19cf7e01f1c7db8402bed6786fc4c7739632894f69c71473`;
+its header describes 651 F32 tensors with disjoint complete payload coverage.
+Only data was downloaded/read; no pickle or repository code was executed.
+Weights stay outside Git. These are provenance observations, not a production
+model loader or a completed inference qualification.
+
+The planned initial profile uses one lookahead token (160 ms chunks), the
+original 128-mel, 512-FFT/400-window/160-hop frontend without utterance-wide
+normalization, the 24-layer width-1024 cache-aware encoder and the two-layer
+width-640 RNNT decoder. Audio preprocessing must retain preemphasis and STFT
+overlap across arbitrary input pushes. Centred first/final windows require
+explicit bounded lookahead and padding; changing them silently to uncentred
+windows would change the reference. The fixed
+[Transformers frontend](https://github.com/huggingface/transformers/blob/9719c27f4e04e8d10ed1f908bdb3712d16fef73c/src/transformers/models/nemotron_asr_streaming/feature_extraction_nemotron_asr_streaming.py)
+documents that boundary.
+
+**Next gate:** record original-weight reference features, encoder caches and
+RNNT transitions at the pinned profile, then implement and check the Coax
+stream against those records. Require exact reference tokens/final text,
+stated tensor tolerances, partition-independent state continuity, bounded
+memory and refusal/reset/cancel tests. Report corpus WER/CER, first/last-word
+behavior and measured first-partial/chunk/final p50/p99 separately. Final
+transcript admission must retain the consumer's current ticket/media epoch.
+No streaming engine, real partial transcript, consumer adoption, target
+qualification or latency/accuracy result is claimed yet. Chapter 154's seeded
+CTC foundation and chapter 153's offline evidence remain as recorded.

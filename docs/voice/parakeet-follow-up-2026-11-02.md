@@ -1,5 +1,9 @@
 # Parakeet: the bounded follow-up pass
 
+This is the historical 2026-11-02 stopping-point record. The later status is
+below; the earlier statements about work outside this pass are not a current
+list of open issues.
+
 The owner limited this pass to three issues, then a stop: default local
 transcription (#12666), bounded long-file transcription and subtitles
 (#12620), and Mac input-device selection (#12671). The broader
@@ -62,3 +66,23 @@ All implementation workers stopped. Their worktrees are Git-clean. The managed
 archive tool refused cleanup of pinned/protected worker worktrees; no pin was
 changed and that protection was not bypassed. No main-checkout edits, builds or
 tests were used for this pass.
+
+## Subsequent status, 2026-11-03
+
+#12665, #12667, #12668, #12669, #12670 and #12672 are now closed: Linux
+evaluation/optimizations, microphone CLI, terminal insertion, Verse/Aethyr
+recognition, CLI vocabulary/formatting and Linux CUDA support have landed.
+#12673 remains open. The [epic](https://github.com/OpenAgentsInc/openagents/issues/12614)
+has been reconciled with those issue states.
+
+The Mac host now consumes #12694's silence-padding plan. A separate Mac
+worktree was built and checked over SSH: exact payload/cancellation and native
+sanitizer checks, an original-weight 30.46 s recording, and the actual rebuilt
+app's offscreen insertion/Undo/no-send fixture pass. See the
+[Mac consumer record](../verification/dictation-eval-2026-11-02/README.md#mac-consumer-adoption-2026-11-03).
+
+Coder for Mac still needs vocabulary/code-formatting adoption, CPU rescoring
+measurements and actual release-to-composer timing. Physical microphone,
+permission/device and terminal acceptance remain in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
+The separate [incremental checkpoint/profile](../../psionic/docs/parakeet.md#incremental-follow-up-12673)
+is pinned for #12673; no original-weight streaming inference is qualified yet.

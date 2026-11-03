@@ -1,0 +1,96 @@
+{
+  "schema": "psionic.incremental-checkpoint-plan.v1",
+  "issue": 12673,
+  "status": "original-files-verified; implementation-and-reference-inference-pending",
+  "profile": "psionic-nemotron-streaming-en-v1-candidate",
+  "repository": "nvidia/nemotron-speech-streaming-en-0.6b",
+  "revision": "ebe59e5a817142986528bbbee5dba8db7b38ed50",
+  "license_metadata": "nvidia-open-model-license",
+  "files": [
+    {
+      "name": "model.safetensors",
+      "bytes": 2472413604,
+      "sha256": "bddd8a7300826efd19cf7e01f1c7db8402bed6786fc4c7739632894f69c71473"
+    },
+    {
+      "name": "config.json",
+      "bytes": 1284,
+      "sha256": "dffe850bc79ad2b0f8117804502b24d2c4a445aafbed4c1e40f8d78e0cb44065"
+    },
+    {
+      "name": "processor_config.json",
+      "bytes": 525,
+      "sha256": "cf35efc9abdd0963db7e96967f8a91d9c8243803b9f6bbd900aa936ee3ce42f3"
+    },
+    {
+      "name": "tokenizer.json",
+      "bytes": 400216,
+      "sha256": "60dc0361763fa3cd62df60f34fca3e61134676a939967853931db5f3869b2db2"
+    },
+    {
+      "name": "generation_config.json",
+      "bytes": 192,
+      "sha256": "6ce531b39df8046cc8dbbe29dc64458b72972011d4717e160e6efb2c1af198d1"
+    }
+  ],
+  "acquisition": {
+    "date": "2026-11-03",
+    "host": "coderos-4080",
+    "whole_files_downloaded_and_sha256_verified": true,
+    "safetensors_header_bytes": 74136,
+    "tensor_count": 651,
+    "tensor_dtype": "F32",
+    "payload_extents": "contiguous, disjoint, complete",
+    "weights_location": "outside Git; ~/.cache/openagents/models/parakeet/nemotron-streaming-en-0.6b-ebe59e5a",
+    "pickle_or_repository_code_executed": false
+  },
+  "planned_profile": {
+    "language": "English",
+    "recognizer_identity": "new explicit profile; does not replace Parakeet TDT v3",
+    "sample_rate": 16000,
+    "channels": 1,
+    "fft": 512,
+    "window": 400,
+    "hop": 160,
+    "mels": 128,
+    "preemphasis": 0.97,
+    "utterance_normalization": false,
+    "encoder_layers": 24,
+    "encoder_width": 1024,
+    "encoder_heads": 8,
+    "subsampling": 8,
+    "lookahead_tokens": 1,
+    "nominal_chunk_ms": 160,
+    "decoder": "RNNT, not TDT or CTC",
+    "decoder_layers": 2,
+    "decoder_width": 640,
+    "blank_id": 1024,
+    "max_symbols_per_step": 10,
+    "compute": "F32; TF32 disabled in reference"
+  },
+  "reference_contract": {
+    "repository": "huggingface/transformers",
+    "revision": "9719c27f4e04e8d10ed1f908bdb3712d16fef73c",
+    "implementation": "NemotronAsrStreamingForRNNT and NemotronAsrStreamingProcessor, no trust_remote_code",
+    "same_original_files_and_lookahead": true,
+    "reference_inference_recorded": false,
+    "token_comparison": "exact token IDs and final text against same-profile streaming reference; no chapter-153 full-context equivalence claim",
+    "feature_encoder_tolerance": "abs <= 0.001 + 0.001 * abs(reference), all admitted valid elements",
+    "audio_partitions": "regular 160 ms, single-sample and ragged pushes, exact start/end and short final tail",
+    "state_tests": [
+      "preemphasis and STFT carry",
+      "subsampling alignment",
+      "per-layer attention/convolution cache continuity",
+      "RNNT hidden/cell and last-token carry",
+      "bounded memory independent of utterance duration",
+      "partial/final ordering",
+      "reset/cancel and media epochs",
+      "duplicate/gap/stale refusal leaves current stream intact"
+    ],
+    "quality": "Report WER/CER, first/last-word errors and no-speech false positives on frozen public English corpus; exact reference parity is not a population-accuracy claim. Retain original source/split identities; no multilingual claim.",
+    "latency": "Measure p50/p99 first partial, per-chunk compute, finalization and memory on named CUDA/Metal hosts; no acceptance number claimed before measurements."
+  },
+  "next_gate": "Record safe original-weight reference features, encoder/cache and RNNT transitions for this profile before implementing/integrating production streaming.",
+  "qualified_targets": [],
+  "adopted_by": []
+}

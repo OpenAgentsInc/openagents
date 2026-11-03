@@ -10,10 +10,16 @@
 > whole utterance in one chunk it matches chapter 152's encoder bit for bit.
 > Still to do: streaming a real model (Parakeet was trained with full attention
 > and centred convolutions, so it is not a cache-aware streaming model), streaming the
-> TDT decoder of chapter 153, computing features from audio as it arrives,
+> a real transducer decoder, computing features from audio as it arrives,
 > taking end of turn and barge-in from the voice engine through
 > `verse/platform/voice.h`, and wall-clock latency at P50 and P99 on a named
 > host.
+
+The [original-weight follow-up profile](../docs/parakeet.md#incremental-follow-up-12673)
+now pins NVIDIA's separate cache-aware Nemotron/Parakeet-family English RNNT
+checkpoint and its reference contract. Its files have been verified on Linux;
+no original-weight streaming inference or consumer adoption is qualified yet.
+The seeded implementation and examples below retain their existing profile.
 
 [Chapter 152](ch152-a-speech-encoder.md) encodes a whole utterance at once.
 Every frame attends to every other frame, and every depthwise convolution
@@ -53,8 +59,8 @@ Parakeet, chapter 153's model, cannot be streamed this way:
   this chapter's qualified stream remains the small seeded profile;
 - it was trained with full attention and centred depthwise convolutions, so
   restricting it to past context gives a different model, not a streaming
-  copy of the same one. NeMo publishes separately trained cache-aware
-  checkpoints; none is pinned in this book yet;
+  copy of the same one. The separately trained cache-aware RNNT candidate is
+  pinned in the follow-up manifest, but has not been run by this chapter;
 - its decoder is chapter 153's TDT transducer, which this chapter does not
   stream. The stream here decodes with chapter 152's CTC head.
 
@@ -672,16 +678,21 @@ have come, and the utterance decodes exactly as an undisturbed one does.
 
 ## What remains
 
-- **A real streaming model.** Parakeet does not fit chapter 152's bounds and
-  is not a streaming model. A pinned cache-aware checkpoint, an encoder bound
-  that admits its width, and recorded reference tensors are needed before
-  any real transcript can be streamed.
-- **The transducer.** Chapter 153's TDT decoder jumps ahead by predicted
+- **A real streaming model.** Offline Parakeet TDT v3 does not fit chapter
+  152's bounds and is not cache-aware. The separate original-weight candidate
+  is pinned in [the follow-up manifest](../fixtures/parakeet-streaming/manifest.json).
+  An encoder/cache implementation that admits its width and recorded reference
+  transitions are still needed before any real transcript can be streamed.
+- **The transducer.** The pinned candidate uses RNNT, so its prediction-network
+  state and last emitted token must persist across chunks. Chapter 153's
+  separate TDT decoder jumps ahead by predicted
   durations; streaming it means carrying its prediction-network state and
   stopping a jump at the chunk's end. Here the stream decodes with CTC.
-- **Features from audio.** Chapter 151's features centre each window and
-  normalize over the whole utterance; streaming needs uncentred windows and
-  no utterance-wide normalization.
+- **Features from audio.** Chapter 151's whole-utterance normalization cannot
+  publish stable incremental features. The candidate uses no such
+  normalization; it needs preemphasis/STFT carry and explicit first/final
+  padding with bounded lookahead. Uncentred interior windows with overlap
+  must reproduce the pinned frontend's centred reference frames.
 - **The voice engine.** End of turn arrives here as a flag on the last chunk.
   [`verse/voice.coax`](../../verse/voice.coax) decides end of turn and
   barge-in, but it cannot be loaded into the same Coax program as these
