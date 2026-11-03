@@ -17,6 +17,13 @@ relay; inside the sandbox there is no network but loopback.
     coax/tests/nostr/rust_relay_sandbox.sh run python3 -I coax/tests/nostr/relay_rust_differential.py
 
 (coax/tests/nostr/rust_relay_differential.sh does all of that.) Tooling only.
+
+The R2 refresh (issue #12631, 2026-11-03) adds the operations wired since
+R1, with their refusals: COUNT, search, NIP-09 deletion by id and by
+address and a deleted event sent again, NIP-62 vanish, NIP-70 protected
+events, NIP-77 syncs (negentropy_ref.py's client) and their NEG-ERR cases,
+NIP-86 management over NIP-98 (both relays started with the test key as
+their admin), and reads of gift wraps and app data by someone else.
 """
 import json
 import os
@@ -38,7 +45,8 @@ KNOWN = {
         'intentional: Rust adds a third element ["finish"] to EOSE; ours is the plain NIP-01 EOSE '
         '(R1 record, differential section)',
     'nip11 supported_nips':
-        'intentional: Rust advertises 14 NIPs and 9 extensions; R1 advertises 1, 11, 40, 42 (R2 adds the rest)',
+        'intentional: Rust advertises 1, 9, 11, 40, 45, 50, 65, 67, 77, 94, 17, 42, 59, 70 (and 86, 98 with a management key); '
+        'Coax advertises what it wires (docs/verification/2026-11-03-coax-relay-parity.md); dropping any is the owner\'s call',
     'nip11 limitation extras':
         'intentional: Rust also states max_event_tags, created_at_upper_limit, default_limit, '
         'max_not_before_delta and due_delivery_mode; R1 enforces the first three without stating them',
@@ -49,8 +57,22 @@ KNOWN = {
         'intentional: nip42.coax requires exactly one relay and one challenge tag (R1 record, AUTH policy)',
     'EVENT malformed (no object)':
         'intentional: a malformed EVENT gets a NOTICE; Rust answers OK with an id hint (R1 record, Known differences)',
-    'COUNT':
-        'intentional: NIP-45 COUNT is R2; ours answers CLOSED "error: COUNT is not supported by this relay"',
+    'vanish: the author\'s note after a kind 62':
+        'intentional: NIP-62 is a Coax extension the Rust relay never had; an imported kind 62 is reviewed by the owner',
+    'NEG-OPEN over more events than a REQ returns':
+        'intentional: Coax reconciles up to 100,000 matching events (RR_NEG_MAX); Rust refuses a sync whose filter '
+        'matches more than one REQ returns (NEG-ERR blocked: incomplete)',
+    'protected by another key':
+        'intentional: NIP-70 refuses an event from anyone but its authenticated author; Coax answers restricted: '
+        'to a connection authenticated as someone else, Rust auth-required:',
+    'NEG-OPEN bad hex':
+        'intentional: NIP-77 answers a bad NEG-OPEN with NEG-ERR, as Coax does; Rust sends CLOSED',
+    'NEG-OPEN not Negentropy':
+        'intentional: both refuse; Rust says blocked: incomplete, Coax invalid: (the message does not read)',
+    'NIP-86 an unknown method, u as http':
+        'intentional: u as http is refused by Coax (the owner question on the u tag decides)',
+    'NIP-86 by a key that is not the admin, u as ws':
+        'intentional: Rust refuses u as ws:// first (401); Coax reads it and refuses the key (403)',
 }
 
 # Differences the owner decides (NEEDS_OWNER.md, Coax relay). Reported, not failed.
@@ -64,6 +86,23 @@ OWNER = {
         '(ceil(127/n) each); R1 answers filter by filter, each with its own limit',
     'REQ two-filters':
         'owner: as above, Rust orders a multi-filter REQ newest first across filters; R1 keeps filter order',
+    'REQ gift wrap, not its recipient':
+        'owner: Rust serves kind 1059 only to its authenticated single p recipient; Coax serves it to anyone '
+        '(parity record, private reads: blocks cutover)',
+    'REQ app data 30078, not its author':
+        'owner: Rust serves kind 30078 only to its authenticated author; Coax serves it to anyone (parity record)',
+    'search a word inside others':
+        'owner: Rust matches a search term anywhere in the content (n1 finds n10 to n19); Coax matches whole words',
+    'NIP-86 supportedmethods, u as ws':
+        'owner: NIP-86 says the u tag is "the relay URL": Coax takes the ws:// URL, Rust the http:// one with a slash',
+    'NIP-86 supportedmethods, u as http':
+        'owner: as above; the method lists also differ (parity record)',
+    'NIP-86 banpubkey, u as ws':
+        'owner: the u tag form, as above',
+    'NIP-86 banpubkey, u as http':
+        'owner: the u tag form, as above',
+    'NIP-86 an unknown method, u as ws':
+        'owner: the u tag form, as above (Coax 400 with an error, Rust 401)',
 }
 
 failures = []
@@ -79,7 +118,7 @@ def free_port():
     return p
 
 
-def start_rust(log):
+def start_rust(log, admin):
     port = free_port()
     env = {**os.environ, 'NOSTR_RELAY_PORT': str(port), 'NOSTR_RELAY_BIND_ADDR': '127.0.0.1',
            'NOSTR_RELAY_URL': 'ws://127.0.0.1:%d' % port,
@@ -88,7 +127,9 @@ def start_rust(log):
            # rate limits are R2: lift them so they never decide a verdict here
            'NOSTR_RELAY_RATE_EVENTS_PER_MIN_IP': '1000000', 'NOSTR_RELAY_RATE_EVENTS_PER_MIN_PUBKEY': '1000000',
            'NOSTR_RELAY_RATE_REQ_PER_MIN_IP': '1000000', 'NOSTR_RELAY_MAX_CONNECTIONS_PER_IP': '1000',
-           'NOSTR_RELAY_LOG_LEVEL': 'warn'}
+           'NOSTR_RELAY_LOG_LEVEL': 'warn',
+           # NIP-86 with the test key, as Coax's --admin
+           'NOSTR_RELAY_MANAGEMENT_PUBKEY': admin}
     p = subprocess.Popen([os.environ['RUST_RELAY']], stdout=subprocess.PIPE, stderr=log, text=True, env=env)
     line = p.stdout.readline()
     if 'nostr-relay listening' not in line:
@@ -381,6 +422,7 @@ def script(port, ev, extra):
     note('close 1000 answered', None if f is None else [f[0], f[1][:2].hex()])
     d.close()
     a.close(); b.close()
+    r2(port, ev, note)
     # kind-specific structure (NIP-34, NIP-22) last, so what one relay stores
     # and the other refuses changes no query above
     e = Ws(port)
@@ -390,6 +432,154 @@ def script(port, ev, extra):
     e.close()
     note('eose frame', sorted(eose))
     return obs
+
+
+OTHER_KEY = 'coax relay r2 diff other key'
+VANISH_KEY = 'coax relay r2 diff vanish key'
+
+
+def neg_open(ws, sub, flt, items):
+    """NEG-OPEN with negentropy_ref's client over items; the frames up to the
+    first answer, and the ids it says the client has and needs."""
+    import negentropy_ref as nr
+    c = nr.Side(items, True)
+    ws.send(['NEG-OPEN', sub, flt, c.initiate().hex()])
+    m = ws.recv(5)
+    if isinstance(m, list) and m[:2] == ['NEG-MSG', sub]:
+        nxt, have, need = c.reconcile(bytes.fromhex(m[2]))
+        return ['NEG-MSG', sub, 'done' if nxt is None else 'more', sorted(h.hex() for h in have), sorted(n.hex() for n in need)]
+    return m
+
+
+def r2_events(now, pk):
+    """The R2 session's events, signed once so both relays see the same ids."""
+    import base64
+    T = now - 300
+    other, = rs.sign([{"kind": 1, "created_at": T, "tags": [], "content": "the other key"}], OTHER_KEY)
+    opk = other['pubkey']
+    x, = rs.sign([{"kind": 1, "created_at": T + 1, "tags": [["t", "r2"]], "content": "to be deleted"}])
+    # a structurally valid NIP-44 v2 payload (version 2, nonce, 34 bytes, MAC): random bytes, no key behind them
+    wrapped = base64.b64encode(bytes([2]) + os.urandom(32 + 34 + 32)).decode()
+    r = rs.sign([
+        {"kind": 5, "created_at": T + 2, "tags": [["e", x['id']]], "content": ""},
+        {"kind": 5, "created_at": T + 3, "tags": [["e", other['id']]], "content": ""},
+        {"kind": 5, "created_at": T + 4, "tags": [["a", "30617:%s:tie" % pk]], "content": ""},
+        {"kind": 30617, "created_at": T + 200, "tags": [["d", "tie"]], "content": "after the deletion"},
+        {"kind": 1, "created_at": T + 5, "tags": [["-"]], "content": "protected"},
+        {"kind": 1, "created_at": T + 6, "tags": [["-"]], "content": "p2"},
+        {"kind": 1059, "created_at": T + 7, "tags": [["p", opk]], "content": wrapped},
+        {"kind": 30078, "created_at": T + 8, "tags": [["d", "settings"]], "content": "{\"theme\":\"dark\"}"}])
+    o = rs.sign([{"kind": 1, "created_at": T + 9, "tags": [["-"]], "content": "protected, other"},
+                 {"kind": 1, "created_at": T + 250, "tags": [], "content": "after the ban"}], OTHER_KEY)
+    v1, = rs.sign([{"kind": 1, "created_at": T + 10, "tags": [], "content": "before vanishing"}], VANISH_KEY)
+    names = ['d_e', 'd_other', 'd_a', 'a_after', 'prot', 'prot_noauth', 'wrap', 'app']
+    e = dict(zip(names, r))
+    e.update(other=other, x=x, prot_other=o[0], banned_later=o[1], v1=v1, wrapped=wrapped, T=T)
+    return e
+
+
+def per_relay(frames):
+    """An OK for an event signed per relay (it names the relay's URL), compared without its id."""
+    return [['OK', '<per-relay id>'] + m[2:] if isinstance(m, list) and m and m[0] == 'OK' else m for m in frames]
+
+
+def r2(port, ev, note):
+    """The operations wired since R1, with their refusals (#12631)."""
+    pk = ev['first']['pubkey']
+    e = ev['r2']
+    opk, vpk = e['other']['pubkey'], e['v1']['pubkey']
+    url = 'ws://127.0.0.1:%d' % port
+    g, h = Ws(port), Ws(port)
+    g.auth()
+    note('r2 other key note', publish(g, e['other']))
+
+    # NIP-45
+    for sub, *flts in [('c-kind1', {'kinds': [1]}), ('c-two', {'kinds': [1621]}, {'kinds': [1111]}),
+                       ('c-author', {'authors': [pk], 'kinds': [30617]}), ('c-none', {'authors': ['0' * 64]}),
+                       ('c-ids', {'ids': [ev['issue']['id']]})]:
+        g.send(['COUNT', sub] + list(flts))
+        note('COUNT %s' % sub, [short(m) for m in until(g, ('COUNT', 'CLOSED'), 5.0)])
+    g.send(['COUNT', 'c-bad', {'kinds': [1], 'foo': 1}])
+    note('COUNT unknown field', [short(m) for m in until(g, ('COUNT', 'CLOSED'), 5.0)])
+    g.send(['COUNT', 'c-hex', {'#e': ['abc']}])
+    note('COUNT #e not hex', [short(m) for m in until(g, ('COUNT', 'CLOSED'), 5.0)])
+
+    # NIP-50
+    note('search issue', req(g, 'q1', {'search': 'issue'}))
+    note('search a word inside others', req(g, 'q2', {'search': 'n1', 'kinds': [1], 'limit': 5}))
+    note('search nothing', req(g, 'q3', {'search': 'zzqqxx'}))
+
+    # NIP-09
+    note('deletion: target stored', publish(g, e['x']))
+    note('deletion by id stored', publish(g, e['d_e']))
+    note('deletion: target gone', req(g, 'de', {'ids': [e['x']['id']]}))
+    note('deletion: target sent again', publish(g, e['x']))
+    note('deletion of another key\'s note stored', publish(g, e['d_other']))
+    note('deletion of another key\'s note: it stays', req(g, 'do', {'ids': [e['other']['id']]}))
+    note('deletion by address stored', publish(g, e['d_a']))
+    note('deletion by address: versions gone', req(g, 'da', {'kinds': [30617], '#d': ['tie']}))
+    note('deletion by address: an older version again', publish(g, ev['a_older']))
+    note('deletion by address: a later version', publish(g, e['a_after']))
+    note('REQ the requests', req(g, 'dk', {'kinds': [5], 'authors': [pk]}))
+
+    # NIP-62 (the request names this relay's URL, so it is signed per relay)
+    gv = Ws(port)
+    gv.auth(gv.auth_event(label=VANISH_KEY))
+    note('vanish: the author\'s note', publish(gv, e['v1']))
+    v62, = rs.sign([{"kind": 62, "created_at": e['T'] + 11, "tags": [["relay", url]], "content": ""}], VANISH_KEY)
+    note('vanish: kind 62 stored', per_relay(publish(gv, v62)))
+    note('vanish: the author\'s note after a kind 62', req(g, 'van', {'authors': [vpk], 'kinds': [1]}))
+    gv.close()
+
+    # NIP-70
+    note('protected by its author', publish(g, e['prot']))
+    note('protected by another key', publish(g, e['prot_other']))
+    note('protected without AUTH', publish(h, e['prot_noauth']))
+
+    # private reads
+    note('gift wrap stored', publish(g, e['wrap']))
+    note('REQ gift wrap, not its recipient', req(h, 'gw', {'kinds': [1059]}))
+    note('search gift wrap content', req(h, 'gws', {'search': e['wrapped'][4:12]}))
+    note('app data stored', publish(g, e['app']))
+    note('REQ app data 30078, not its author', req(h, 'ad', {'kinds': [30078]}))
+
+    # NIP-77 over the project page's issues (fewer than any limit)
+    issues = [m for m in req(g, 'iss', {'kinds': [1621]}) if m[0] == 'EVENT']
+    full = {x['id']: x for x in [ev['issue']]}
+    items = sorted((full[m[2]]['created_at'], bytes.fromhex(m[2])) for m in issues if m[2] in full)
+    note('NEG-OPEN equal sets', neg_open(g, 'n-eq', {'kinds': [1621]}, items))
+    note('NEG-OPEN client lacks one', neg_open(g, 'n-lack', {'kinds': [1621]}, []))
+    note('NEG-OPEN client has 2 extra', neg_open(g, 'n-extra', {'kinds': [1621]}, items + [(1, b'\x01' * 32), (2, b'\x02' * 32)]))
+    g.send(['NEG-CLOSE', 'n-eq'])
+    g.send(['NEG-MSG', 'n-none', '61'])
+    note('NEG-MSG with no sync open', [short(m) for m in until(g, ('NEG-ERR', 'NEG-MSG'), 5.0)])
+    g.send(['NEG-OPEN', 'n-hex', {'kinds': [1621]}, '6g'])
+    note('NEG-OPEN bad hex', [short(m) for m in until(g, ('NEG-ERR', 'NEG-MSG', 'CLOSED'), 3.0)])
+    g.send(['NEG-OPEN', 'n-not', {'kinds': [1621]}, '00'])
+    note('NEG-OPEN not Negentropy', [short(m) for m in until(g, ('NEG-ERR', 'NEG-MSG'), 5.0)])
+    g.send(['NEG-OPEN', 'n-big', {'kinds': [1]}, '6100000200'])
+    note('NEG-OPEN over more events than a REQ returns', [short(m)[:2] if isinstance(m, list) else m for m in until(g, ('NEG-ERR', 'NEG-MSG'), 5.0)])
+
+    # NIP-86 over NIP-98: the relay URL as ws://, then as http://.../
+    forms = (('ws', url), ('http', 'http://127.0.0.1:%d/' % port))
+    for form, u in forms:
+        body = '{"method":"supportedmethods","params":[]}'
+        code, got = rs.post(port, body, rs.nip98(port, body, url=u))
+        note('NIP-86 supportedmethods, u as %s' % form, [code, sorted(got.get('result') or []) if isinstance(got, dict) else 'not JSON'])
+    for form, u in forms:
+        body = '{"method":"listbannedpubkeys","params":[]}'
+        code, got = rs.post(port, body, rs.nip98(port, body, url=u, label=OTHER_KEY))
+        note('NIP-86 by a key that is not the admin, u as %s' % form, [code, sorted(got) if isinstance(got, dict) else 'not JSON'])
+    for form, u in forms:
+        body = '{"method":"banpubkey","params":["%s","spam"]}' % opk
+        code, got = rs.post(port, body, rs.nip98(port, body, url=u))
+        note('NIP-86 banpubkey, u as %s' % form, [code, got.get('result') if isinstance(got, dict) else 'not JSON'])
+    for form, u in forms:
+        body = '{"method":"nosuchmethod","params":[]}'
+        code, got = rs.post(port, body, rs.nip98(port, body, url=u))
+        note('NIP-86 an unknown method, u as %s' % form, [code, sorted(got) if isinstance(got, dict) else 'not JSON'])
+    note('a banned key publishes', publish(g, e['banned_later']))
+    g.close(); h.close()
 
 
 def templates(now):
@@ -454,6 +644,7 @@ def sign_all(now):
     ev['bad_sig'] = dict(ev['after_close']); ev['bad_sig']['sig'] = bad['sig']
     forged = dict(ev['first']); forged['content'] = 'changed'
     ev['bad_id'] = forged
+    ev['r2'] = r2_events(now, pk)
     for k in ('k3', 'k10002', 'a'):
         x, y = ev[k + '_a'], ev[k + '_b']
         ev[k + '_hi'], ev[k + '_lo'] = (x, y) if x['id'] > y['id'] else (y, x)
@@ -477,6 +668,8 @@ def verdicts(value):
             m = m[:2] + [prefix(m[2])]
         elif isinstance(m, list) and m and m[0] == 'NOTICE' and len(m) == 2:
             m = ['NOTICE', prefix(m[1])]
+        elif isinstance(m, list) and m and m[0] == 'NEG-ERR' and len(m) == 3:
+            m = m[:2] + [prefix(m[2])]
         out.append(m)
     return out
 
@@ -518,8 +711,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix='relay-rust-diff-') as tmp:
         d = Path(tmp)
         with open(d / 'rust.err', 'w') as rlog, open(d / 'coax.err', 'w') as clog:
-            rp, rport = start_rust(rlog)
-            cp, cport = rs.start(Path(exe), clog)
+            rp, rport = start_rust(rlog, ev['first']['pubkey'])
+            cp, cport = rs.start(Path(exe), clog, extra=['--admin', ev['first']['pubkey']])
             try:
                 for name, port in (('rust', rport), ('coax', cport)):
                     t0 = time.monotonic()

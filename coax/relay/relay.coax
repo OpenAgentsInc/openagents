@@ -23,8 +23,15 @@
 // without it, chapter 35's size; 128 to 1,048,576 records at 2 KiB each);
 // a --store file larger than the store refuses to start, unchanged. A crash's partial last write
 // is cut on restart; other damage to FILE stops the relay before it listens
-// (store_recover.coax, #966b). Not trusted freshness: an older copy of FILE
-// replays as an older store. TLS: with --tls-cert and
+// (store_recover.coax, #966b). Freshness (store_fresh.coax, #12631): with
+// --checkpoint CP the relay keeps FILE's and FILE.nip86's length and SHA-256
+// in CP, checks them before replay and rewrites CP after every commit, so an
+// older copy, a forked copy or a deleted FILE refuses to start (CP must live
+// where the store's backups don't reach; durable.coax). Without it an older
+// copy of FILE replays as an older store. --import EXPORT writes a new FILE
+// from a JSON-lines export (relay_import.coax decides, durable.coax reads)
+// and exits; --check-store replays and exits; both print the served set's
+// digest (relay_equal.coax). TLS: with --tls-cert and
 // --tls-key the host makes every connection TLS (tls-native.c's server mode,
 // under socket-server-native.c), so this file reads and writes the same
 // plaintext bytes; only the default relay URL's scheme (wss://) and the
@@ -97,6 +104,11 @@
 #load "../lib/nostr/nip29.coax";
 // message_server.coax's frames agree with message.coax's (#6015).
 #load "../lib/nostr/message_agree.coax";
+// The freshness checkpoint, the import and the served-set digest (#12631).
+#load "../lib/nostr/store_fresh.coax";
+#load "../lib/nostr/relay_import.coax";
+#load "../lib/nostr/relay_equal.coax";
+#load "durable.coax";
 
 // relay_route.coax's mirrored codes are its sources' codes.
 #assert RR_MS_OK == MS_OK && RR_MS_VERB == MS_VERB && RR_MS_SUB == MS_SUB && RR_MS_TOO_MANY == MS_TOO_MANY;
@@ -196,6 +208,7 @@ RyWork :: struct {
   groups_on: bool;                 // --groups
   journal: bool;                   // --store: policy changes go to FILE.nip86
   groups: [RR_GROUPS] G29Group;    // NIP-29 groups (exists marks a live slot)
+  fresh: [1] RyFresh;              // --checkpoint (durable.coax)
 }
 
 ry_send_raw :: (c: [] RyConn, bytes: string) -> bool {
@@ -268,6 +281,7 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
   reason := r.reason;
   if reason == RS_ACCEPT {
     reason = rd_admit(store, r, event);
+    if store[0].saved { ry_fresh_grew(w[0].fresh[..], RY_STORE_FILE, cxstore_size(), event); }
   }
   prefix := ifx rr_store_extra(reason) then rr_store_prefix(reason) else rs_prefix(reason);
   why := ifx rr_store_extra(reason) then rr_store_text(reason) else rs_text(reason);
@@ -493,7 +507,7 @@ ry_admin :: (c: [] RyConn, w: [] RyWork, p: RrPost) {
     if q[0].seen_n > before { w[0].admin_last = now; }
     rq := n86_request(body);
     shape := ifx r.code == N86_OK && rq.error == N86_OK then N86_SHAPES[rq.method] else 0;
-    if !w[0].journal || !rr_admin_saves(shape, r.code, body) || ry_journal_save(body) {
+    if !w[0].journal || !rr_admin_saves(shape, r.code, body) || ry_journal_save(w, body) {
       pol[0] = q[0];
       n = wss_http_write(rr_http_status(r.http), N86_TYPE, cast(string) w[0].http[0..<r.n], w[0].out[..]);
     } else {
@@ -508,13 +522,15 @@ ry_admin :: (c: [] RyConn, w: [] RyWork, p: RrPost) {
   ry_shut(c);
 }
 // Appends body's frame (store_file.coax's framing) to FILE.nip86 and syncs
-// it: whether it is there.
-ry_journal_save :: (body: string) -> bool {
+// it: whether it is there. The checkpoint follows it.
+ry_journal_save :: (w: [] RyWork, body: string) -> bool {
   head: [4] u8;
   if !ns_file_header(body.count, head[..]) { return false; }
   for i: 0..<4 { if ry_journal_put(cast(int) head[i]) != 0 { return false; } }
   for x: body { if ry_journal_put(cast(int) x) != 0 { return false; } }
-  return ry_journal_commit() == 0;
+  if ry_journal_commit() != 0 { return false; }
+  ry_fresh_grew(w[0].fresh[..], RY_JOURNAL_FILE, w[0].fresh[0].journal_n + 4 + body.count, body);
+  return true;
 }
 // The policy rebuilt from FILE.nip86: each frame's fate is store_recover.coax's
 // (a crash's partial last append is cut; other damage refuses), and a whole
@@ -685,24 +701,37 @@ ry_store_tags :: (events: int) -> int #export_c { return events * RS_MAX_TAGS; }
 main :: () { print("relay: start the relay with the host that coax/relay/build.sh builds\n"); }
 // The relay, over the store's arrays, which the host allocated zeroed at
 // ry_store_events records (count_out and count_seen: one COUNT's slots).
-ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time: [] int, tag_key: [] int, tag_rec: [] int, count_out: [] int, count_seen: [] u8) #export_c {
-  if cxsrv_listen(ry_host_port()) != 0 { print("relay: cannot listen\n"); return; }
+// items: the served set's slots (durable.coax's ry_served), as many as records.
+ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time: [] int, tag_key: [] int, tag_rec: [] int, count_out: [] int, count_seen: [] u8, items: [] NegItem) #export_c {
+  mode := ry_host_mode();
+  // --import and --check-store don't listen; their clock is --now (the
+  // wall clock without it, for --check-store), and the relay URL that kind
+  // 62 requests name is --url as given.
+  now := ifx ry_host_now_flag() >= 0 then ry_host_now_flag() else cxsrv_now_s();
+  if mode == RY_SERVE && cxsrv_listen(ry_host_port()) != 0 { print("relay: cannot listen\n"); return; }
   conns: [RY_CONNS] RyConn;
   w: [1] RyWork;
-  url: [512] u8; u := ry_url(cxsrv_bound_port(), url[..]);
+  url: [512] u8; u := -1;
+  if mode == RY_SERVE { u = ry_url(cxsrv_bound_port(), url[..]); }
+  else if ry_host_url_count() > 0 && ry_host_url_count() <= url.count {
+    u = ry_host_url_count(); for i: 0..<u { url[i] = cast(u8) ry_host_url_byte(i); }
+  }
   if u < 0 || nip42_init(w[0].n42[..], cast(string) url[0..<u]) != N42_OK {
-    print("relay: NIP-42 needs a ws:// (wss:// with TLS) relay URL without brackets: pass --url\n"); return;
+    print("relay: NIP-42 needs a ws:// (wss:// with TLS) relay URL without brackets: pass --url\n"); ry_host_exit(2); return;
   }
   tombs: [RD_TOMBS] NsdTomb; work: [RD_WORK] NsdTomb;
   store: [1] RdStore;
   rd_init(store[..], arena, recs, by_id, by_ak, by_time, tag_key, tag_rec, tombs[..], work[..], cast(string) url[0..<u], ry_host_store() == 1);
   w[0].count[0].big_out = count_out; w[0].count[0].big_seen = count_seen;
   w[0].groups_on = ry_host_groups() == 1;
+  if mode == RY_IMPORT { ry_import(w[..], store[..], items, now); return; }
   if ry_host_store() == 1 {
+    t0 := ry_host_ns();
+    if !ry_fresh_check(w[0].fresh[..]) { ry_host_exit(3); return; }
     text: [NS_FRAME_MAX_ORIGINAL] u8;
-    rp := rd_replay(store[..], cxsrv_now_s(), text[..], w[0].scratch[..]);
-    if rp.refused { print("relay: refusing to start: the --store file is damaged at byte % (reason %); it was not changed\n", rp.at, rp.reason); return; }
-    if !rp.ok { print("relay: cannot open, lock or read the --store file\n"); return; }
+    rp := rd_replay(store[..], now, text[..], w[0].scratch[..]);
+    if rp.refused { print("relay: refusing to start: the --store file is damaged at byte % (reason %); it was not changed\n", rp.at, rp.reason); ry_host_exit(3); return; }
+    if !rp.ok { print("relay: cannot open, lock or read the --store file\n"); ry_host_exit(3); return; }
     print("relay: replayed % saved events: % stored, % duplicates or replaced%\n", rp.frames, rp.stored, rp.kept, ifx rp.cut then ", a partial last write cut" else "");
     w[0].journal = true;
     jp := ry_journal_replay(w[0].admin[..], text[0..<RR_POST_BODY], w[0].http[..]);
@@ -713,7 +742,16 @@ ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time
       gp := ry_groups_replay(w[..], cxsrv_now_s(), text[..]);
       print("relay: rebuilt groups from % stored group events (% changed a group)\n", gp.events, gp.kept);
     }
+    if w[0].fresh[0].on && !ry_fresh_after(w[0].fresh[..]) { print("relay: refusing to start: the checkpoint can't be written\n"); ry_host_exit(3); return; }
+    // what a check prints, and a start with --checkpoint (a start without
+    // it prints as it always has, for the tools that read its first lines)
+    if mode == RY_CHECK || w[0].fresh[0].on {
+      if !w[0].fresh[0].on { print("relay: no --checkpoint: an older copy of the --store file would replay as an older store\n"); }
+      print("relay: the --store file replayed in % ms; peak memory % KiB\n", ry_ms(ry_host_ns() - t0), ry_host_peak_kib());
+      served := ry_served(store[..], items, now);
+    }
   }
+  if mode == RY_CHECK { return; }
   w[0].rate = ry_rate();
   for i: 0..<u { w[0].url[i] = url[i]; }
   w[0].url_n = u;

@@ -1,9 +1,11 @@
 # 103. Replace relay.openagents.com
 
-> **Status: partly implemented.** The importer, the equality check, the
-> shadow comparer and the runbook exist and are checked offline. The
-> export, the shadow period, the DNS cutover and the rollback rehearsal
-> need the owner's sign-off and have not happened (NEEDS_OWNER.md).
+> **Status: partly implemented.** The importer (now the relay's own
+> `--import`, writing a store it can start from), the freshness checkpoint,
+> the equality check, the shadow comparer and the runbook exist and are
+> checked offline, with synthetic data. The export, the shadow period, the
+> DNS cutover and the rollback rehearsal need the owner's sign-off and have
+> not happened (NEEDS_OWNER.md, "Coax relay cutover").
 
 relay.openagents.com still runs the Rust relay from before the reset. This
 chapter builds the tools for phase R3 of coax/nostr.md section 17, moving
@@ -38,6 +40,9 @@ differing answer, and a runbook for the cutover and the rollback.
 | [coax/lib/nostr/relay_shadow.coax](../../coax/lib/nostr/relay_shadow.coax) | `#authority`: the shadow replay and its four classes |
 | [coax/lib/nostr/fixtures/relay_export.coax](../../coax/lib/nostr/fixtures/relay_export.coax) | The six-line export, written by [relay_export_fixture.py](../../coax/tests/nostr/relay_export_fixture.py) from the 2026-10-28 capture |
 | [nostr/examples/relay-cutover.coax](../examples/relay-cutover.coax) | The rehearsal: import, a shadow store that missed a write, equality, the shadow and the gate |
+| [coax/lib/nostr/store_fresh.coax](../../coax/lib/nostr/store_fresh.coax) | `#authority`: the freshness checkpoint: when a store and its policy journal are fresh, rolled back or forked against it, when a start may go on, and its one-line text |
+| [coax/relay/durable.coax](../../coax/relay/durable.coax) | The relay's `--import`, `--check-store` and `--checkpoint`: hashing, reading the export, printing the counts and the served set's digest |
+| [coax/tests/nostr/relay_scale.coax](../../coax/tests/nostr/relay_scale.coax) | Import and restart at scale against [relay_scale_oracle.py](../../coax/tests/nostr/relay_scale_oracle.py), an independent oracle, and three restores the checkpoint refuses |
 
 The store is chapter 35's (`store.coax`, `store_core.coax`), the admission
 is chapter 34's (`rs_admit_read`, `rs_admit_verified`), and the filters
@@ -87,7 +92,10 @@ RI_EMPTY :: RS_REASONS;          // an empty line
 RI_LONG :: RS_REASONS + 1;       // a line over RI_LINE_MAX bytes
 RI_CUT :: RS_REASONS + 2;        // the last line has no "\n": the export was cut
 RI_EPHEMERAL :: RS_REASONS + 3;  // kinds 20000-29999 are never stored, so never exported
-RI_OUTCOMES :: RS_REASONS + 4;
+// With deletion (the relay's --import, store_delete.coax through rd_admit):
+RI_DELETED :: RS_REASONS + 4;    // an earlier line's deletion or vanish covers it: the old relay disagreed
+RI_NO_TOMBS :: RS_REASONS + 5;   // no room for a deletion's tombstones (the relay's RD_TOMBS)
+RI_OUTCOMES :: RS_REASONS + 6;
 // What one import did: lines read, each outcome's count, and the first
 // refused line (1-based, 0 when none).
 RiReport :: struct { lines: int; count: [RI_OUTCOMES] int; first_refused: int; }
@@ -160,11 +168,13 @@ forged line in its export means its database or the copy was changed.
 
 <!-- source: coax/lib/nostr/relay_import.coax verdict -->
 ```jai
-// The verdict: incomplete when the store can't hold what the export holds,
-// refused when any line was refused, clean otherwise. Expired events are
-// dropped on purpose (the old relay no longer serves them either).
+// The verdict: incomplete when the store can't hold what the export holds
+// (events or tombstones), refused when any line was refused (a line an
+// earlier deletion covers is refused: the old relay kept it), clean
+// otherwise. Expired events are dropped on purpose (the old relay no longer
+// serves them either).
 ri_verdict :: (rep: RiReport) -> int {
-  if rep.count[RI_CUT] > 0 || rep.count[RI_LONG] > 0 || rep.count[RS_FULL] > 0 { return RI_INCOMPLETE; }
+  if rep.count[RI_CUT] > 0 || rep.count[RI_LONG] > 0 || rep.count[RS_FULL] > 0 || rep.count[RI_NO_TOMBS] > 0 { return RI_INCOMPLETE; }
   kept := rep.count[RS_ACCEPT] + rep.count[RS_DUP] + rep.count[RS_SUPERSEDED] + rep.count[RS_EXPIRED];
   if kept != rep.lines { return RI_REFUSED; }
   return RI_CLEAN;
@@ -484,7 +494,13 @@ Nothing in this chapter has run any of them.
 
 1. The relay modules in the next section that the Rust relay's NIP-11
    document advertises are wired into `coax/relay/relay.coax`, or the
-   owner decides which advertised NIPs are dropped (R2).
+   owner decides which advertised NIPs are dropped (R2). The parity table
+   is [2026-11-03-coax-relay-parity.md](../../docs/verification/2026-11-03-coax-relay-parity.md):
+   NIP-77 and NIP-86 are wired, NIP-29 up to the relay key, NIP-43 needs
+   the key; 17, 59, 65, 67, 94 and 98 are not wired, and the Rust relay's
+   private-kind read rules (gift wraps only to their recipient, OpenAgents'
+   private kinds only to their owner) block cutover until the owner
+   decides.
 2. The Coax store holds the whole export. By default it holds 2,048
    records and 4 MiB (`RSD_MAX`, `RSD_ARENA`); an export larger than the
    store imports as `RI_INCOMPLETE` (`relay_import.coax` checks this), and
@@ -511,9 +527,22 @@ Nothing in this chapter has run any of them.
    approved export still needs measured count, original-byte, tombstone,
    memory and startup budgets, and a larger configured store alone does
    not establish them.
-3. An import command writes the relay's `--store` file: `ri_line` with
-   `rsd_admit_saved` in place of `rsd_admit`, so the relay starts from the
-   imported events and verifies them all again on its first replay.
+3. The import command writes the relay's `--store` file:
+   `relay --import EXPORT --now T --url wss://relay.openagents.com --store FILE
+   --checkpoint CP --store-capacity N` reads every line as `ri_line` does,
+   admits it through deletion and vanish (`rd_admit`, so the export's kind 5
+   and kind 62 requests become tombstones), writes the file with one sync
+   at the end, and writes the checkpoint last. It refuses a FILE or CP that
+   already exists. It prints every refused line, each outcome's count
+   (`import outcome CODE COUNT`), what it stored by class, the tombstones,
+   the served set's size and digest at T, and its time, verification time
+   and peak memory. Exit 0 is clean, 1 refused lines, 3 incomplete.
+   `relay --check-store` with the same flags is a restart without
+   listening: it checks the checkpoint, replays every frame, and prints the
+   same served-set line, which must be identical.
+   [relay_scale.coax](../../coax/tests/nostr/relay_scale.coax) runs both on a
+   synthetic export from an independent oracle and checks every count and
+   the digest (records in the [scale record](../../docs/verification/2026-11-03-coax-relay-import-restart.md)).
 
 ### Export (owner)
 
@@ -535,14 +564,31 @@ Nothing in this chapter has run any of them.
 
    Record the line count, the file's SHA-256 and the newest `created_at`;
    that time is the import's `now`.
+   In the same transaction, count what an event export can't carry, for
+   the owner's decision (NEEDS_OWNER, "Coax relay cutover", question 4):
+
+   ```text
+   SELECT tombstone_type, count(*) FROM deletion_tombstone t
+     WHERE NOT EXISTS (SELECT 1 FROM nostr_event e WHERE e.id = t.deletion_event_id)
+     GROUP BY tombstone_type;
+   SELECT (SELECT count(*) FROM relay_blocked_pubkey), (SELECT count(*) FROM relay_blocked_kind),
+          (SELECT count(*) FROM relay_allowed_pubkey), (SELECT count(*) FROM relay_allowed_kind),
+          (SELECT count(*) FROM relay_member_pubkey), (SELECT count(*) FROM nostr_event WHERE kind = 62);
+   ```
 
 ### Import and compare
 
-7. Import with re-verification. A verdict of incomplete stops here. A
-   verdict of refused lists every refused line for the owner, who decides
-   before the cutover continues.
-8. Start the Coax relay from the imported store on a tailnet address, with
-   `--store`.
+7. Import with re-verification (step 3's command, `--now` the newest
+   `created_at`, `--store-capacity` above the line count, CP on the
+   checkpoint's chosen home). A verdict of incomplete stops here. A verdict
+   of refused lists every refused line for the owner, who decides before
+   the cutover continues; so does every kind 62 the import applied (its
+   "vanish requests retired N records"), because the Rust relay never
+   applied them. Keep the import's output: its served-set line is the
+   reference for steps 8 and 9.
+8. `relay --check-store` with the same flags, then start the Coax relay
+   from the imported store on a tailnet address, with `--store` and
+   `--checkpoint`. Both must print the import's served-set line.
 9. Compare the event sets: the Coax store against the restored Rust
    database, through the sandboxed Rust relay's NIP-77 endpoint. The
    result must be equal, or every difference must be one the owner
@@ -578,10 +624,19 @@ Nothing in this chapter has run any of them.
     through it each time.
 18. To roll back for real: point relay.openagents.com back at the Rust
     relay and make it writable again.
+    Rehearse the Coax side's own restores too: an older copy of the store,
+    a forked copy and a store without its checkpoint must each refuse to
+    start (exit 3, "refused: ..."), as relay_scale.coax checks offline; a
+    deliberate restore is started once with `--adopt`, and the owner
+    records why.
 19. Events written to the Coax relay after the cutover aren't in the Rust
     database. Export them from the Coax store (its `--store` file, every
     event verified again on replay) and import them into the Rust relay
-    with its own `import-jsonl`, then compare the event sets.
+    with its own `import-jsonl`, then compare the event sets. The Coax
+    relay has no `--export` yet: the store file's frames are each
+    original's exact bytes (chapter 35), so the export is the frames after
+    the cutover's byte offset, one per line, and writing that command is
+    open work before this rehearsal.
 20. The rollback rehearsal passes when service is restored from the Rust
     relay and the final equality check is equal.
 
@@ -670,8 +725,14 @@ The R1 differential and flood records describe the earlier bounded relay:
 and
 [2026-10-30-coax-relay-r1-tailnet-flood.md](../../docs/verification/2026-10-30-coax-relay-r1-tailnet-flood.md).
 They are not production-capacity evidence for a larger configured store.
-The Rust differential must also be refreshed for the COUNT, search and
-NIP-11 wiring added since its run. The [completion route](COMPLETION.md#3-finish-the-relay-and-its-production-migration)
+Run on 2026-11-03 ([record](../../docs/verification/2026-11-03-coax-relay-import-restart.md)):
+the import, restart and checkpoint at 3,000, 30,000 and 60,000 synthetic
+lines against an independent oracle (every count and the served-set digest
+equal; three restores refused), which also shows admission costs
+O(records) per event, so import and restart grow with the square of the
+count; and the Rust differential refreshed for COUNT, search, deletion,
+vanish, protected events, NIP-77 and NIP-86 (163 observations, none
+unexplained). The [completion route](COMPLETION.md#3-finish-the-relay-and-its-production-migration)
 keeps that qualification separate from the owner-approved migration.
 
 ## Summary

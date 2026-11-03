@@ -28,6 +28,7 @@ static int64_t loaded_n;
 static unsigned char pending[CXSTORE_PENDING];
 static int64_t pending_n;
 static int broken;
+static int bulk;   /* cxstore_bulk: commits skip the fsync until cxstore_sync */
 
 int cxstore_set_path(const char *path) {
   size_t n = strlen(path);
@@ -104,7 +105,7 @@ int64_t cxstore_commit(void) {
     if (w <= 0) break;
     done += w;
   }
-  if (done == n && fsync(fd) == 0) return 0;
+  if (done == n && (bulk || fsync(fd) == 0)) return 0;
   /* Cut the failed append back. If even that fails, stop writing: a later
      append after a partial frame would put damage in the middle of the file,
      which replay refuses (store_recover.coax). */
@@ -117,6 +118,14 @@ int64_t cxstore_truncate(int64_t n) {
   if (ftruncate(fd, (off_t)n) != 0 || fsync(fd) != 0) return -1;
   if (n < loaded_n) loaded_n = n;
   return 0;
+}
+
+void cxstore_bulk(int64_t on) { bulk = on != 0; }
+int64_t cxstore_sync(void) { return fd >= 0 && !broken && fsync(fd) == 0 ? 0 : -1; }
+int64_t cxstore_size(void) {
+  struct stat st;
+  if (fd < 0 || fstat(fd, &st) != 0) return -1;
+  return (int64_t)st.st_size;
 }
 
 /* ---- general file effects for Coax tools (store-file-native.h) ---- */

@@ -10,8 +10,9 @@
 // this file is the glue to the C effects in coax/platform/store-file-native.c
 // (the host calls cxstore_set_path first, and holds an exclusive lock on the
 // file). Crash recovery is store_recover.coax's (#966b, the relay's part): a
-// partial last append is cut, any other damage refuses to start. Not trusted
-// freshness: an older copy of the file replays as a valid, older store.
+// partial last append is cut, any other damage refuses to start. Freshness
+// is not decided here: by itself an older copy of the file replays as a
+// valid, older store. The relay's --checkpoint (store_fresh.coax) refuses one.
 #load "store.coax";
 #load "store_file.coax";
 #load "store_recover.coax";

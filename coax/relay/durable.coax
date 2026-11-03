@@ -1,0 +1,247 @@
+// The relay's durable paths (issue #12631; chapter 103's runbook steps 3,
+// 7 and 8): the freshness checkpoint around the --store file and its
+// FILE.nip86 journal, the import that writes a new --store file from an
+// export, and the served-set digest a restart is compared by. relay.coax
+// #loads this; the decisions are store_fresh.coax's (when a start is
+// fresh, the checkpoint's line) and relay_import.coax's (what a line's
+// result counts as, the verdict), both #authority. This file hashes, reads
+// and prints; relay-host.c does the file effects.
+
+cxstore_size :: () -> int #foreign;
+cxstore_bulk :: (on: int) #foreign;
+cxstore_sync :: () -> int #foreign;
+ry_host_mode :: () -> int #foreign;
+ry_host_now_flag :: () -> int #foreign;
+ry_host_adopt :: () -> int #foreign;
+ry_host_exit :: (code: int) #foreign;
+ry_host_ns :: () -> int #foreign;
+ry_host_peak_kib :: () -> int #foreign;
+ry_import_load :: () -> int #foreign;
+ry_import_byte :: (i: int) -> int #foreign;
+ry_host_fresh :: () -> int #foreign;
+ry_fresh_load :: () -> int #foreign;
+ry_fresh_byte :: (i: int) -> int #foreign;
+ry_fresh_put :: (b: int) -> int #foreign;
+ry_fresh_commit :: () -> int #foreign;
+
+RY_SERVE :: 0; RY_IMPORT :: 1; RY_CHECK :: 2;
+RY_STORE_FILE :: 0; RY_JOURNAL_FILE :: 1;
+
+#assert RI_NSD_DELETED == NSD_DELETED && RI_NSD_NO_ROOM == NSD_NO_ROOM;
+
+// The checkpoint's state: whether --checkpoint is on, the last checkpoint
+// written or read (had), and a running SHA-256 of each file's bytes so far.
+RyFresh :: struct {
+  on: bool; had: bool; cp: NfcCheckpoint; warned: bool;
+  store_st: [SHA_STATE_BYTES] u8; store_n: int;
+  journal_st: [SHA_STATE_BYTES] u8; journal_n: int;
+}
+
+ry_file_byte :: (which: int, i: int) -> int { return ifx which == RY_STORE_FILE then cxstore_byte(i) else ry_journal_byte(i); }
+// Adds bytes [from, to) of the loaded file which to st.
+ry_hash_file :: (st: [] u8, which: int, from: int, to: int) {
+  buf: [65536] u8; at := from;
+  while at < to {
+    k := 0;
+    while k < buf.count && at + k < to { buf[k] = cast(u8) ry_file_byte(which, at + k); k += 1; }
+    #assert sha256_update_checked(st, buf[0..<k], false) == SHA_OK;
+    at += k;
+  }
+}
+// The digest of everything added to st so far (st itself goes on).
+ry_hash_now :: (st: [] u8, out: [] u8) {
+  copy: [SHA_STATE_BYTES] u8;
+  for i: 0..<SHA_STATE_BYTES { copy[i] = st[i]; }
+  #assert sha256_final_checked(copy[..], out, false) == SHA_OK;
+}
+// Whether the loaded file which, size bytes long, begins with p's bytes
+// (false when it is shorter: nfc_file calls that rolled back anyway).
+ry_prefix_is :: (which: int, size: int, p: NfcPoint) -> bool {
+  if size < p.size { return false; }
+  st: [SHA_STATE_BYTES] u8; d: [32] u8;
+  #assert sha256_init(st[..]) == SHA_OK;
+  ry_hash_file(st[..], which, 0, p.size);
+  ry_hash_now(st[..], d[..]);
+  want := p.digest;
+  return cast(string) d[..] == cast(string) want[..];
+}
+NFC_SAY :: [7] string.["fresh", "a first start: no checkpoint and empty files", "adopted: no checkpoint, the files taken as they are (--adopt)",
+  "refused: there is no checkpoint but the files are not empty (pass --adopt only for files you just imported or restored on purpose)",
+  "refused: the files are older than the checkpoint (an older copy, or a deleted file)",
+  "refused: the files are not the history the checkpoint names", "refused: the checkpoint can't be read"];
+// Before replay: the checkpoint against the --store file and its journal as
+// they are on disk. Whether the relay may start; it says why not.
+ry_fresh_check :: (f: [] RyFresh) -> bool {
+  f[0] = RyFresh.{on = ry_host_fresh() == 1};
+  if !f[0].on { return true; }
+  sz := ry_fresh_load();
+  have := NFC_NONE; cp: [1] NfcCheckpoint;
+  if sz == -2 || sz >= 0 {
+    t: [NFC_LINE] u8;
+    ok := sz == NFC_LINE;
+    if ok { for i: 0..<NFC_LINE { t[i] = cast(u8) ry_fresh_byte(i); } }
+    have = ifx ok && nfc_read(cast(string) t[..], cp[..]) then NFC_READ else NFC_BAD_FILE;
+  }
+  sn := cxstore_load(); jn := ry_journal_load();
+  if sn < 0 || jn < 0 { print("relay: cannot open, lock or read the --store file or its .nip86 journal\n"); return false; }
+  sv := NFC_FRESH; jv := NFC_FRESH;
+  if have == NFC_READ {
+    sv = nfc_file(cp[0].store, sn, ry_prefix_is(RY_STORE_FILE, sn, cp[0].store));
+    jv = nfc_file(cp[0].journal, jn, ry_prefix_is(RY_JOURNAL_FILE, jn, cp[0].journal));
+  }
+  d := nfc_start(have, sv, jv, sn, jn, ry_host_adopt() == 1);
+  if have == NFC_READ { print("relay: checkpoint: store % of % bytes, journal % of % bytes: %\n", cp[0].store.size, sn, cp[0].journal.size, jn, NFC_SAY[d]); }
+  else { print("relay: checkpoint: %\n", NFC_SAY[d]); }
+  f[0].had = have == NFC_READ;
+  if f[0].had { f[0].cp = cp[0]; }
+  return nfc_starts(d);
+}
+// Writes the checkpoint for the bytes hashed so far: whether it was written
+// (a failed write is said once; the relay goes on, and a restart finds the
+// files longer than the checkpoint, which is still fresh).
+ry_fresh_save :: (f: [] RyFresh) -> bool {
+  nw: NfcCheckpoint;
+  nw.store.size = f[0].store_n; ry_hash_now(f[0].store_st[..], nw.store.digest[..]);
+  nw.journal.size = f[0].journal_n; ry_hash_now(f[0].journal_st[..], nw.journal.digest[..]);
+  if !nfc_advance(f[0].cp, nw, f[0].had) { print("relay: refusing to move the checkpoint back\n"); return false; }
+  out: [NFC_LINE] u8;
+  ok := nfc_write(nw, out[..]);
+  if ok { for b: out { if ry_fresh_put(cast(int) b) != 0 { ok = false; } } }
+  if !ok || ry_fresh_commit() != 0 {
+    if !f[0].warned { print("relay: cannot write the --checkpoint file; rollback detection is behind the store\n"); }
+    f[0].warned = true;
+    return false;
+  }
+  f[0].cp = nw; f[0].had = true;
+  return true;
+}
+// After replay: hashes both files as they are now (after any cut) and
+// writes the checkpoint. Whether it was written (true without --checkpoint).
+ry_fresh_after :: (f: [] RyFresh) -> bool {
+  if !f[0].on { return true; }
+  sn := cxstore_load(); jn := ry_journal_load();
+  if sn < 0 || jn < 0 { return false; }
+  #assert sha256_init(f[0].store_st[..]) == SHA_OK && sha256_init(f[0].journal_st[..]) == SHA_OK;
+  ry_hash_file(f[0].store_st[..], RY_STORE_FILE, 0, sn); f[0].store_n = sn;
+  ry_hash_file(f[0].journal_st[..], RY_JOURNAL_FILE, 0, jn); f[0].journal_n = jn;
+  return ry_fresh_save(f);
+}
+// After a commit to file which: its new bytes must be body's frame; they
+// are hashed and the checkpoint written. size is the file's size now.
+ry_fresh_grew :: (f: [] RyFresh, which: int, size: int, body: string) {
+  if !f[0].on { return; }
+  was := ifx which == RY_STORE_FILE then f[0].store_n else f[0].journal_n;
+  if size == was { return; }
+  head: [4] u8;
+  if size != was + 4 + body.count || !ns_file_header(body.count, head[..]) {
+    print("relay: the file grew by % bytes, not one frame; the checkpoint stops here\n", size - was);
+    f[0].on = false; return;
+  }
+  st := ifx which == RY_STORE_FILE then f[0].store_st[..] else f[0].journal_st[..];
+  #assert sha256_update_checked(st, head[..], false) == SHA_OK;
+  buf: [4096] u8; at := 0;
+  while at < body.count {
+    k := 0; while k < buf.count && at + k < body.count { buf[k] = body[at + k]; k += 1; }
+    #assert sha256_update_checked(st, buf[0..<k], false) == SHA_OK;
+    at += k;
+  }
+  if which == RY_STORE_FILE { f[0].store_n = size; } else { f[0].journal_n = size; }
+  ok := ry_fresh_save(f);
+}
+
+// The served set at now (relay_equal.coax's re_items and re_digest): how
+// many, and its digest, printed in the form the runbook compares.
+ry_served :: (store: [] RdStore, items: [] NegItem, now: int) -> int {
+  t0 := ry_host_ns();
+  n := re_items(rd_store(store), now, items);
+  d: [32] u8; re_digest(items[0..<n], d[..]);
+  hex: [64] u8; h := "0123456789abcdef";
+  for k: 0..<32 { hex[2 * k] = h[cast(int) (d[k] >> 4)]; hex[2 * k + 1] = h[cast(int) (d[k] & 15)]; }
+  print("relay: served set at %: % events, digest % (% ms)\n", now, n, cast(string) hex[..], (ry_host_ns() - t0) / 1000000);
+  return n;
+}
+ry_ms :: (ns: int) -> int { return ns / 1000000; }
+
+// What an import read, beyond the outcome counts.
+RyInventory :: struct { bytes: int; regular: int; replaceable: int; addressable: int; deletions: int; vanishes: int; expiring: int; retired: int; }
+ry_outcome_name :: (o: int) -> string {
+  if o == RI_EMPTY { return "empty line"; }
+  if o == RI_LONG { return "line over 131072 bytes"; }
+  if o == RI_CUT { return "last line not ended (the export was cut)"; }
+  if o == RI_EPHEMERAL { return "ephemeral kind"; }
+  if o == RI_DELETED { return "covered by an earlier deletion or vanish"; }
+  if o == RI_NO_TOMBS { return "no room for its tombstones"; }
+  if o == RS_ACCEPT { return "stored"; }
+  return rs_text(o);
+}
+RY_VERDICT :: [3] string.["clean", "refused lines: the owner reviews them", "incomplete: never serve this store"];
+// --import EXPORT: every line read and verified again as a live EVENT, then
+// admitted through deletion and written to the new --store file
+// (relay_import.coax decides what each result counts as). now is the
+// export's time (--now). Prints every refused line (up to 50), the counts,
+// the inventory, the served set, the checkpoint and the times; the exit
+// code is 0 clean, 1 refused, 3 incomplete, 2 when it can't run.
+ry_import :: (w: [] RyWork, store: [] RdStore, items: [] NegItem, now: int) {
+  t0 := ry_host_ns();
+  f: [1] RyFresh; f[0].on = ry_host_fresh() == 1;
+  if cxstore_load() != 0 || ry_journal_load() != 0 { print("relay: --import writes a new --store file: FILE (and FILE.nip86) must be empty or absent\n"); ry_host_exit(2); return; }
+  if f[0].on && ry_fresh_load() != -1 { print("relay: --import starts a new checkpoint: the --checkpoint file must not exist\n"); ry_host_exit(2); return; }
+  total := ry_import_load();
+  if total < 0 { print("relay: cannot read the export\n"); ry_host_exit(2); return; }
+  // One sync at the end instead of one per event: until the checkpoint is
+  // written last, a crashed import's store is refused (no checkpoint).
+  cxstore_bulk(1);
+  rep: [1] RiReport; inv: RyInventory;
+  text: [RI_LINE_MAX + 1] u8;
+  verify_ns := 0; store_ns := 0; shown := 0;
+  at := 0;
+  while at < total {
+    to := at; while to < total && ry_import_byte(to) != 10 { to += 1; }
+    n := to - at; ended := to < total;
+    m := ifx n > RI_LINE_MAX then RI_LINE_MAX + 1 else n;
+    for i: 0..<m { text[i] = cast(u8) ry_import_byte(at + i); }
+    line := cast(string) text[0..<m];
+    o := ri_frame(line, ended);
+    if o == RS_ACCEPT {
+      t1 := ry_host_ns();
+      r := rs_admit_read(line, now, false, false, w[0].scratch[..]);
+      if r.reason == RS_ACCEPT { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
+      t2 := ry_host_ns(); verify_ns += t2 - t1;
+      o = ri_check(r);
+      if o == RS_ACCEPT {
+        o = ri_stored(rd_admit(store, r, line));
+        store_ns += ry_host_ns() - t2;
+        if o == RS_ACCEPT {
+          if r.kclass == RS_REPLACEABLE { inv.replaceable += 1; } else if r.kclass == RS_ADDRESSABLE { inv.addressable += 1; } else { inv.regular += 1; }
+          if r.e.kind == 5 { inv.deletions += 1; inv.retired += store[0].tb[0].last; }
+          if r.e.kind == 62 { inv.vanishes += 1; inv.retired += store[0].tb[0].last; }
+          if r.expiration >= 0 { inv.expiring += 1; }
+        }
+      }
+    }
+    ri_tally(rep[..], o);
+    inv.bytes += n + ifx ended then 1 else 0;
+    if !ri_kept(o) && o != RS_EXPIRED && shown < 50 { print("relay: import line %: %\n", rep[0].lines, ry_outcome_name(o)); shown += 1; }
+    at = to + 1;
+  }
+  cxstore_bulk(0);
+  synced := cxstore_sync() == 0;
+  if !synced { print("relay: cannot sync the --store file\n"); }
+  v := ri_verdict(rep[0]);
+  if !synced { v = RI_INCOMPLETE; }
+  print("relay: import read % lines, % bytes; verdict: %\n", rep[0].lines, inv.bytes, RY_VERDICT[v]);
+  for o: 0..<RI_OUTCOMES { if rep[0].count[o] > 0 { print("relay: import outcome % % (%)\n", o, rep[0].count[o], ry_outcome_name(o)); } }
+  print("relay: import stored % regular, % replaceable, % addressable; % deletion requests and % vanish requests retired % records; % stored events expire\n",
+    inv.regular, inv.replaceable, inv.addressable, inv.deletions, inv.vanishes, inv.retired, inv.expiring);
+  s := rd_store(store);
+  print("relay: import tombstones %\n", store[0].tb[0].n);
+  print("relay: store holds % records (% live); the --store file is % bytes\n", s[0].n, s[0].live, cxstore_size());
+  served := ry_served(store, items, now);
+  if f[0].on && synced {
+    ok := ry_fresh_after(f[..]);
+    print("relay: checkpoint %\n", ifx ok then "written" else "NOT written");
+    if !ok { v = RI_INCOMPLETE; }
+  }
+  print("relay: import took % ms (verification % ms, store and file % ms); peak memory % KiB\n", ry_ms(ry_host_ns() - t0), ry_ms(verify_ns), ry_ms(store_ns), ry_host_peak_kib());
+  ry_host_exit(ifx v == RI_CLEAN then 0 else ifx v == RI_REFUSED then 1 else 3);
+}

@@ -7,6 +7,7 @@
      relay --listen 127.0.0.1 --port 7447 [--url ws://name:7447] [--store FILE]
            [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem]
            [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]... [--groups]
+           [--checkpoint FILE [--adopt]] [--import EXPORT --now T | --check-store [--now T]]
    (port 0 picks a free one). --url is the relay URL NIP-42 AUTH events
    must name; without it the relay uses ws://ADDRESS:PORT, or
    wss://ADDRESS:PORT with TLS. --tls-cert and --tls-key (both, PEM) make
@@ -23,7 +24,14 @@
    NIP-29 groups. With --store FILE the NIP-86 policy's changes go to
    FILE.nip86 (ry_journal_*: the same effects as store-file-native.c's,
    for a second file, created only at the first change); relay.coax frames
-   and replays it. Effects only; every relay decision is Coax. */
+   and replays it. --checkpoint FILE keeps the freshness checkpoint
+   (store_fresh.coax) in FILE: read on start, replaced after every commit
+   (written to FILE.tmp, synced, renamed, the folder synced); --adopt lets
+   a start without one take the files as they are. --import EXPORT (with
+   --store, --url and --now) writes a new --store file from a JSON-lines
+   export and exits; --check-store replays the store (and checks the
+   checkpoint) and exits without listening; --now T is the clock for both.
+   Effects only; every relay decision is Coax. */
 #define _DEFAULT_SOURCE /* getentropy */
 #include "socket-server-native.h"
 #include "store-file-native.h"
@@ -37,7 +45,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/file.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 #if defined(__APPLE__)
 #include <sys/random.h>
@@ -57,6 +67,13 @@ static long long pow_bits = -1;
 static const char *admins[8];
 static int admin_n = 0;
 static int groups = 0;
+static int mode = 0;               /* 0 serve, 1 --import, 2 --check-store */
+static long long now_flag = -1;    /* --now */
+static int adopt = 0;
+static int exit_code = 0;
+static const char *import_path = NULL;
+static char fresh_path[4200];
+static coax_v_t_NegItem items;
 
 int64_t ry_host_port(void) { return port; }
 int64_t ry_host_url_count(void) { return (int64_t)strlen(url); }
@@ -172,6 +189,113 @@ int64_t ry_journal_truncate(int64_t n) {
   return 0;
 }
 
+/* ---- modes, the clock and the process's measurements ---- */
+int64_t ry_host_mode(void) { return mode; }
+int64_t ry_host_now_flag(void) { return (int64_t)now_flag; }
+int64_t ry_host_adopt(void) { return adopt; }
+void ry_host_exit(int64_t code) { exit_code = (int)code; }
+/* Monotonic nanoseconds. */
+int64_t ry_host_ns(void) {
+  struct timespec t;
+  if (clock_gettime(CLOCK_MONOTONIC, &t) != 0) return 0;
+  return (int64_t)t.tv_sec * 1000000000 + t.tv_nsec;
+}
+/* The process's peak resident memory so far, in KiB (getrusage). */
+int64_t ry_host_peak_kib(void) {
+  struct rusage u;
+  if (getrusage(RUSAGE_SELF, &u) != 0) return -1;
+#if defined(__APPLE__)
+  return (int64_t)u.ru_maxrss / 1024;
+#else
+  return (int64_t)u.ru_maxrss;
+#endif
+}
+/* ---- --import EXPORT: read whole ---- */
+static unsigned char *import_data;
+static int64_t import_n;
+/* Reads the export: its size, or -1. */
+int64_t ry_import_load(void) {
+  if (!import_path) return -1;
+  int f = open(import_path, O_RDONLY | O_CLOEXEC);
+  if (f < 0) return -1;
+  struct stat st;
+  if (fstat(f, &st) != 0 || st.st_size < 0) { close(f); return -1; }
+  free(import_data); import_n = 0;
+  import_data = malloc(st.st_size > 0 ? (size_t)st.st_size : 1);
+  if (!import_data) { close(f); return -1; }
+  int64_t got = 0;
+  while (got < st.st_size) {
+    ssize_t r = pread(f, import_data + got, (size_t)(st.st_size - got), got);
+    if (r < 0 && errno == EINTR) continue;
+    if (r <= 0) { close(f); return -1; }
+    got += r;
+  }
+  close(f);
+  import_n = got;
+  return got;
+}
+int64_t ry_import_byte(int64_t i) { return i >= 0 && i < import_n ? import_data[i] : -1; }
+/* ---- --checkpoint FILE ---- */
+int64_t ry_host_fresh(void) { return fresh_path[0] != 0; }
+#define RY_FRESH_MAX 4096
+static unsigned char fresh_in[RY_FRESH_MAX], fresh_out[RY_FRESH_MAX];
+static int64_t fresh_in_n, fresh_out_n;
+/* Reads the checkpoint: its size (at most RY_FRESH_MAX bytes are kept; a
+   longer one reads as that size), -1 when it doesn't exist, -2 when it
+   can't be read. */
+int64_t ry_fresh_load(void) {
+  fresh_in_n = 0;
+  int f = open(fresh_path, O_RDONLY | O_CLOEXEC);
+  if (f < 0) return errno == ENOENT ? -1 : -2;
+  struct stat st;
+  if (fstat(f, &st) != 0 || !S_ISREG(st.st_mode)) { close(f); return -2; }
+  int64_t got = 0;
+  while (got < RY_FRESH_MAX) {
+    ssize_t r = read(f, fresh_in + got, (size_t)(RY_FRESH_MAX - got));
+    if (r < 0 && errno == EINTR) continue;
+    if (r < 0) { close(f); return -2; }
+    if (r == 0) break;
+    got += r;
+  }
+  close(f);
+  fresh_in_n = got;
+  return st.st_size > got ? (int64_t)st.st_size : got;
+}
+int64_t ry_fresh_byte(int64_t i) { return i >= 0 && i < fresh_in_n ? fresh_in[i] : -1; }
+int64_t ry_fresh_put(int64_t b) {
+  if (b < 0 || b > 255 || fresh_out_n >= RY_FRESH_MAX) return -1;
+  fresh_out[fresh_out_n++] = (unsigned char)b;
+  return 0;
+}
+/* Replaces the checkpoint with the buffered bytes: FILE.tmp written and
+   synced, renamed over FILE, the folder synced. 0, or -1 (FILE unchanged). */
+int64_t ry_fresh_commit(void) {
+  int64_t n = fresh_out_n;
+  fresh_out_n = 0;
+  char tmp[sizeof fresh_path + 8];
+  snprintf(tmp, sizeof tmp, "%s.tmp", fresh_path);
+  int f = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+  if (f < 0) return -1;
+  int64_t done = 0;
+  while (done < n) {
+    ssize_t w = write(f, fresh_out + done, (size_t)(n - done));
+    if (w < 0 && errno == EINTR) continue;
+    if (w <= 0) { close(f); unlink(tmp); return -1; }
+    done += w;
+  }
+  if (fsync(f) != 0) { close(f); unlink(tmp); return -1; }
+  if (close(f) != 0 || rename(tmp, fresh_path) != 0) { unlink(tmp); return -1; }
+  char dir[sizeof fresh_path];
+  memcpy(dir, fresh_path, sizeof dir);
+  char *slash = strrchr(dir, '/');
+  if (!slash) { dir[0] = '.'; dir[1] = 0; } else if (slash == dir) dir[1] = 0; else *slash = 0;
+  int d = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (d < 0) return -1;
+  int r = fsync(d);
+  close(d);
+  return r == 0 ? 0 : -1;
+}
+
 int64_t ry_host_random(void) {
   unsigned char b;
   return getentropy(&b, 1) == 0 ? b : -1;
@@ -179,7 +303,7 @@ int64_t ry_host_random(void) {
 
 static void *run(void *arg) {
   (void)arg;
-  ry_main(arena, (coax_v_t_RsdRec){recs, events}, by_id, by_ak, by_time, tag_key, tag_rec, count_out, count_seen);
+  ry_main(arena, (coax_v_t_RsdRec){recs, events}, by_id, by_ak, by_time, tag_key, tag_rec, count_out, count_seen, items);
   return NULL;
 }
 /* n zeroed int64 slots, or a view with no data. */
@@ -210,6 +334,18 @@ int main(int argc, char **argv) {
       if (sscanf(argv[++i], "%lld%c", &pow_bits, &tail) != 1) { fprintf(stderr, "relay: --pow takes a number of bits\n"); return 2; }
     }
     else if (!strcmp(argv[i], "--groups")) groups = 1;
+    else if (!strcmp(argv[i], "--adopt")) adopt = 1;
+    else if (!strcmp(argv[i], "--check-store")) mode = mode ? -1 : 2;
+    else if (!strcmp(argv[i], "--import") && i + 1 < argc) { import_path = argv[++i]; mode = mode ? -1 : 1; }
+    else if (!strcmp(argv[i], "--checkpoint") && i + 1 < argc) {
+      const char *cp = argv[++i];
+      if (!cp[0] || strlen(cp) + 5 > sizeof fresh_path) { fprintf(stderr, "relay: bad --checkpoint path\n"); return 2; }
+      snprintf(fresh_path, sizeof fresh_path, "%s", cp);
+    }
+    else if (!strcmp(argv[i], "--now") && i + 1 < argc) {
+      char tail = 0;
+      if (sscanf(argv[++i], "%lld%c", &now_flag, &tail) != 1 || now_flag < 0) { fprintf(stderr, "relay: --now takes a time in seconds\n"); return 2; }
+    }
     else if (!strcmp(argv[i], "--admin") && i + 1 < argc) {
       if (admin_n == 8) { fprintf(stderr, "relay: too many --admin keys\n"); return 2; }
       admins[admin_n++] = argv[++i];
@@ -224,8 +360,11 @@ int main(int argc, char **argv) {
       snprintf(journal_path, sizeof journal_path, "%s.nip86", sp);
       store = 1;
     }
-    else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]... [--groups]\n"); return 2; }
+    else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]... [--groups] [--checkpoint FILE [--adopt]] [--import EXPORT --now T | --check-store [--now T]]\n"); return 2; }
   }
+  if (mode < 0) { fprintf(stderr, "relay: --import and --check-store don't go together\n"); return 2; }
+  if (mode != 0 && !store) { fprintf(stderr, "relay: --import and --check-store need --store\n"); return 2; }
+  if (mode == 1 && now_flag < 0) { fprintf(stderr, "relay: --import needs --now (the export's time)\n"); return 2; }
   if ((cert == NULL) != (key == NULL)) { fprintf(stderr, "relay: --tls-cert and --tls-key go together\n"); return 2; }
   if (cert != NULL) {
     int64_t e = cxtls_server_load(cert, key);
@@ -242,7 +381,8 @@ int main(int argc, char **argv) {
   by_id = ints(events); by_ak = ints(events); by_time = ints(events);
   tag_key = ints(tags); tag_rec = ints(tags); count_out = ints(events);
   count_seen = (coax_v_u8){calloc((size_t)events, 1), events};
-  if (!arena.data || !recs || !by_id.data || !by_ak.data || !by_time.data || !tag_key.data || !tag_rec.data || !count_out.data || !count_seen.data) {
+  items = (coax_v_t_NegItem){calloc((size_t)events, sizeof(coax_t_NegItem)), events};
+  if (!arena.data || !recs || !by_id.data || !by_ak.data || !by_time.data || !tag_key.data || !tag_rec.data || !count_out.data || !count_seen.data || !items.data) {
     fprintf(stderr, "relay: cannot allocate a store of %lld events\n", (long long)events); return 1;
   }
   pthread_attr_t attr;
@@ -251,5 +391,5 @@ int main(int argc, char **argv) {
   pthread_t t;
   if (pthread_create(&t, &attr, run, NULL) != 0) { fprintf(stderr, "relay: no thread\n"); return 1; }
   pthread_join(t, NULL);
-  return 0;
+  return exit_code;
 }

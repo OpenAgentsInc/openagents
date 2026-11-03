@@ -174,7 +174,7 @@ def start(exe, log, store=None, rate='1000,1000,1000', extra=()):
                               'UBSAN_OPTIONS': 'print_stacktrace=1:halt_on_error=1'})
     STARTED.clear()
     line = p.stdout.readline()
-    while store and (line.startswith('relay: replayed') or line.startswith('relay: rebuilt')):
+    while store and line.startswith('relay: ') and 'listening on port' not in line:
         STARTED.append(line.strip())
         line = p.stdout.readline()
     if 'listening on port' not in line:
@@ -778,6 +778,43 @@ def persistence(exe, log, d):
           'persistence: a whole journal record the relay would not have saved refuses to start, the file unchanged')
 
 
+def checkpoint(exe, log, d):
+    """--checkpoint (store_fresh.coax through durable.coax, #12631): a first start, the checkpoint following a stored event
+    and a NIP-86 change, a fresh restart, and a rolled-back policy journal refused before the relay listens."""
+    store, journal, cp = d / 'fresh.log', d / 'fresh.log.nip86', d / 'fresh.cp'
+    me = sign([{"kind": 1, "created_at": 1, "tags": [], "content": ""}])[0]['pubkey']
+    other = sign([{"kind": 1, "created_at": 1, "tags": [], "content": ""}], 'coax relay r1 second test key')[0]['pubkey']
+    extra = ['--admin', me, '--checkpoint', str(cp)]
+    p, port = start(exe, log, store, extra=extra)
+    try:
+        check(any('a first start' in l for l in STARTED), 'checkpoint: a first start with empty files (%r)' % STARTED[:1])
+        w = Ws(port)
+        e = sign([{"kind": 1, "created_at": int(time.time()) - 5, "tags": [], "content": "checkpointed"}])[0]
+        check(w.auth()[2] is True and publish(w, e)[2] is True, 'checkpoint: an event is stored')
+        w.close()
+        ban = '{"method":"banpubkey","params":["%s","spam"]}' % other
+        check(post(port, ban, nip98(port, ban)) == (200, {'result': True}), 'checkpoint: a NIP-86 change is saved')
+        line = cp.read_text()
+        sb, jb = store.read_bytes(), journal.read_bytes()
+        want = 'coax-relay-fresh 1 %018d %s %018d %s\n' % (len(sb), hashlib.sha256(sb).hexdigest(), len(jb), hashlib.sha256(jb).hexdigest())
+        check(line == want, 'checkpoint: it names both files, sizes and SHA-256, after each commit (%r)' % line[:60])
+    finally:
+        p.terminate(); p.wait(10)
+    p, port = start(exe, log, store, extra=extra)
+    p.terminate(); p.wait(10)
+    check(any(': fresh' in l for l in STARTED), 'checkpoint: the restart is fresh (%r)' % STARTED[:1])
+    whole = journal.read_bytes()
+    journal.write_bytes(b'')
+    r = subprocess.run([str(exe), '--listen', '127.0.0.1', '--port', '0', '--store', str(store)] + extra, capture_output=True,
+                       text=True, timeout=60, env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
+    check(r.returncode == 3 and 'older than the checkpoint' in r.stdout and 'listening' not in r.stdout and journal.read_bytes() == b'',
+          'checkpoint: an emptied policy journal (the ban rolled back) refuses to start (%r)' % r.stdout.strip()[:120])
+    journal.write_bytes(whole)
+    p, port = start(exe, log, store, extra=extra)
+    p.terminate(); p.wait(10)
+    check(any(': fresh' in l for l in STARTED), 'checkpoint: the journal put back starts fresh again')
+
+
 def proof_of_work(exe, log):
     """NIP-13 (nip13.coax): --pow 8 asks for 8 leading zero bits and a nonce committing to 8."""
     refused_start(exe, ['--pow', '257'], 'a difficulty over 256', '0 to 256')
@@ -1011,6 +1048,7 @@ def main():
             admin(exe, log)
             groups(exe, log)
             persistence(exe, log, d)
+            checkpoint(exe, log, d)
             if tls:
                 tls_cases(exe, d, log, store, client)
         err = (d / 'relay.err').read_text()

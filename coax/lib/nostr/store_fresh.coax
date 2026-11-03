@@ -1,0 +1,252 @@
+// The relay's freshness checkpoint (#966b's open half; issue #12631): a
+// record kept outside the --store file that says how long the store file and
+// its FILE.nip86 policy journal were, and the SHA-256 of each, the last time
+// the relay committed to either. Both files are append-only, so a later
+// state of a file always begins with every earlier state of it. On start
+// the relay compares each file with its checkpointed length and digest:
+//
+// - the file is at least that long and its prefix has that digest: fresh
+//   (anything after the prefix is a later append, or a crash's partial
+//   append that store_recover.coax cuts);
+// - the file is shorter: an older copy, or a deleted file. Rolled back;
+// - the file is as long but its prefix differs: another history. Forked.
+//
+// A missing checkpoint is accepted only for a first start (both files empty)
+// or when the operator says to adopt the files (--adopt, after an import);
+// an unreadable one never is. After every commit the relay writes a new
+// checkpoint, and never one shorter than the last (nfc_advance).
+//
+// What this does not do by itself: if the checkpoint is restored from the
+// same old backup as the store, the two agree and nothing can tell. The
+// checkpoint is rollback-resistant only when it lives where the store's
+// backups don't reach it (a second machine, a TPM counter, a versioned
+// object with a retention lock). Which one is the owner's choice
+// (NEEDS_OWNER.md); this file decides, the C host only reads and writes it.
+#authority;
+
+// The checkpoint's text: one line of exactly NFC_LINE bytes, written and
+// read only in this form (sizes as 18 decimal digits, zero-padded; digests
+// as 64 lowercase hex digits):
+//   coax-relay-fresh 1 STORE_BYTES STORE_SHA256 JOURNAL_BYTES JOURNAL_SHA256\n
+NFC_MAGIC :: "coax-relay-fresh 1 ";
+NFC_LINE :: 187;                       // 19 + 2 * (18 + 1 + 64 + 1)
+NFC_SIZE_MAX :: 1000000000000000000;   // 18 digits
+
+NfcPoint :: struct { size: int; digest: [32] u8; }
+NfcCheckpoint :: struct { store: NfcPoint; journal: NfcPoint; }
+
+// One file against its checkpointed point.
+NFC_FRESH :: 0;        // the file holds the checkpointed prefix
+NFC_ROLLED_BACK :: 1;  // the file is shorter: an older copy, or deleted
+NFC_FORKED :: 2;       // as long, but the prefix differs: another history
+
+// Whether a checkpoint was found: none, read, or there but unreadable.
+NFC_NONE :: 0; NFC_READ :: 1; NFC_BAD_FILE :: 2;
+
+// The start decision.
+NFC_START :: 0;     // both files are fresh: start, then checkpoint
+NFC_NEW :: 1;       // no checkpoint and both files empty: a first start
+NFC_ADOPT :: 2;     // no checkpoint, files present, --adopt given: start and checkpoint them
+NFC_MISSING :: 3;   // no checkpoint, files present: refuse (it was lost, or the files were copied in)
+NFC_STALE :: 4;     // a file was rolled back: refuse
+NFC_FORK :: 5;      // a file was forked: refuse
+NFC_BAD :: 6;       // the checkpoint can't be read: refuse
+
+// ---- test helpers ------------------------------------------------------------
+
+nfc_t_point :: (size: int, b: u8) -> NfcPoint { p: NfcPoint; p.size = size; for k: 0..<32 { p.digest[k] = b; } p.digest[31] = cast(u8) (b + 1); return p; }
+NFC_T_LINE :: "coax-relay-fresh 1 000000000000001234 0101010101010101010101010101010101010101010101010101010101010102 000000000000000000 abababababababababababababababababababababababababababababababac\n";
+
+// ---- one file --------------------------------------------------------------------
+
+#test "a file is fresh, rolled back or forked against its point" {
+  p := nfc_t_point(100, 7);
+  #assert nfc_file(p, 100, true) == NFC_FRESH && nfc_file(p, 101, true) == NFC_FRESH;
+  #assert nfc_file(p, 99, true) == NFC_ROLLED_BACK && nfc_file(p, 99, false) == NFC_ROLLED_BACK && nfc_file(p, 0, false) == NFC_ROLLED_BACK;
+  #assert nfc_file(p, 100, false) == NFC_FORKED && nfc_file(p, 5000, false) == NFC_FORKED;
+  z := nfc_t_point(0, 0);
+  #assert nfc_file(z, 0, true) == NFC_FRESH && nfc_file(z, 9, true) == NFC_FRESH && nfc_file(z, 9, false) == NFC_FORKED;
+}
+// The verdict on a file of size bytes whose first p.size bytes hash to
+// p.digest exactly when prefix_same (the caller hashes them only when the
+// file is long enough; a shorter file is rolled back whatever it says).
+nfc_file :: (p: NfcPoint, size: int, prefix_same: bool) -> int {
+  if size < p.size { return NFC_ROLLED_BACK; }
+  if !prefix_same { return NFC_FORKED; }
+  return NFC_FRESH;
+}
+
+// ---- the start decision ----------------------------------------------------------
+
+#test "with a checkpoint, both files must be fresh; rolled back outranks forked" {
+  #assert nfc_start(NFC_READ, NFC_FRESH, NFC_FRESH, 10, 0, false) == NFC_START;
+  #assert nfc_start(NFC_READ, NFC_FRESH, NFC_FRESH, 10, 3, true) == NFC_START;
+  #assert nfc_start(NFC_READ, NFC_ROLLED_BACK, NFC_FRESH, 10, 0, false) == NFC_STALE;
+  #assert nfc_start(NFC_READ, NFC_FRESH, NFC_ROLLED_BACK, 10, 0, true) == NFC_STALE;
+  #assert nfc_start(NFC_READ, NFC_FORKED, NFC_FRESH, 10, 0, true) == NFC_FORK;
+  #assert nfc_start(NFC_READ, NFC_FRESH, NFC_FORKED, 10, 0, false) == NFC_FORK;
+  #assert nfc_start(NFC_READ, NFC_FORKED, NFC_ROLLED_BACK, 10, 0, false) == NFC_STALE;
+  #assert nfc_start(NFC_READ, NFC_ROLLED_BACK, NFC_FORKED, 10, 0, false) == NFC_STALE;
+  // an empty store against a checkpoint is a verdict on the files, not a first start
+  #assert nfc_start(NFC_READ, NFC_ROLLED_BACK, NFC_FRESH, 0, 0, true) == NFC_STALE;
+}
+#test "without a checkpoint: a first start, adoption, or a refusal" {
+  #assert nfc_start(NFC_NONE, NFC_FRESH, NFC_FRESH, 0, 0, false) == NFC_NEW;
+  #assert nfc_start(NFC_NONE, NFC_FRESH, NFC_FRESH, 0, 0, true) == NFC_NEW;
+  #assert nfc_start(NFC_NONE, NFC_FRESH, NFC_FRESH, 1, 0, false) == NFC_MISSING;
+  #assert nfc_start(NFC_NONE, NFC_FRESH, NFC_FRESH, 0, 1, false) == NFC_MISSING;
+  #assert nfc_start(NFC_NONE, NFC_FRESH, NFC_FRESH, 1, 0, true) == NFC_ADOPT;
+  #assert nfc_start(NFC_NONE, NFC_FRESH, NFC_FRESH, 0, 1, true) == NFC_ADOPT;
+  // the file verdicts mean nothing without a checkpoint
+  #assert nfc_start(NFC_NONE, NFC_FORKED, NFC_ROLLED_BACK, 0, 0, false) == NFC_NEW;
+}
+#test "an unreadable checkpoint is never adopted over" {
+  #assert nfc_start(NFC_BAD_FILE, NFC_FRESH, NFC_FRESH, 0, 0, true) == NFC_BAD;
+  #assert nfc_start(NFC_BAD_FILE, NFC_FRESH, NFC_FRESH, 5, 5, true) == NFC_BAD;
+  #assert nfc_start(3, NFC_FRESH, NFC_FRESH, 0, 0, true) == NFC_BAD && nfc_start(-1, NFC_FRESH, NFC_FRESH, 0, 0, true) == NFC_BAD;
+}
+#test "which decisions start the relay" {
+  #assert nfc_starts(NFC_START) && nfc_starts(NFC_NEW) && nfc_starts(NFC_ADOPT);
+  #assert !nfc_starts(NFC_MISSING) && !nfc_starts(NFC_STALE) && !nfc_starts(NFC_FORK) && !nfc_starts(NFC_BAD) && !nfc_starts(-1) && !nfc_starts(7);
+}
+// have is NFC_NONE, NFC_READ or NFC_BAD_FILE; store_v and journal_v are
+// nfc_file's verdicts (read only with a checkpoint); store_len and
+// journal_len are the files' sizes; adopt is --adopt.
+nfc_start :: (have: int, store_v: int, journal_v: int, store_len: int, journal_len: int, adopt: bool) -> int {
+  if have == NFC_NONE {
+    if store_len == 0 && journal_len == 0 { return NFC_NEW; }
+    return ifx adopt then NFC_ADOPT else NFC_MISSING;
+  }
+  if have != NFC_READ { return NFC_BAD; }
+  if store_v == NFC_ROLLED_BACK || journal_v == NFC_ROLLED_BACK { return NFC_STALE; }
+  if store_v != NFC_FRESH || journal_v != NFC_FRESH { return NFC_FORK; }
+  return NFC_START;
+}
+// Whether decision d lets the relay start.
+nfc_starts :: (d: int) -> bool { return d == NFC_START || d == NFC_NEW || d == NFC_ADOPT; }
+
+// ---- advancing -------------------------------------------------------------------
+
+#test "a checkpoint never moves back" {
+  old: NfcCheckpoint; old.store = nfc_t_point(100, 1); old.journal = nfc_t_point(20, 2);
+  nw := old;
+  #assert nfc_advance(old, nw, true);
+  nw.store.size = 101; #assert nfc_advance(old, nw, true);
+  nw.journal.size = 21; #assert nfc_advance(old, nw, true);
+  nw.store.size = 99; #assert !nfc_advance(old, nw, true);
+  nw.store.size = 100; nw.journal.size = 19; #assert !nfc_advance(old, nw, true);
+  // with no earlier checkpoint anything goes
+  #assert nfc_advance(old, nw, false);
+}
+// Whether nw may replace old (had says there was an old one): neither file
+// gets shorter.
+nfc_advance :: (old: NfcCheckpoint, nw: NfcCheckpoint, had: bool) -> bool {
+  if !had { return true; }
+  return nw.store.size >= old.store.size && nw.journal.size >= old.journal.size;
+}
+
+// ---- the text ----------------------------------------------------------------------
+
+#test "a checkpoint writes as one line and reads back" {
+  c: NfcCheckpoint; c.store = nfc_t_point(1234, 1); c.journal = nfc_t_point(0, 0xab);
+  out: [NFC_LINE] u8;
+  #assert nfc_write(c, out[..]) && cast(string) out[..] == NFC_T_LINE;
+  got: [1] NfcCheckpoint;
+  #assert nfc_read(NFC_T_LINE, got[..]) && got[0].store.size == 1234 && got[0].journal.size == 0;
+  for k: 0..<32 { #assert got[0].store.digest[k] == c.store.digest[k] && got[0].journal.digest[k] == c.journal.digest[k]; }
+  big: NfcCheckpoint; big.store = nfc_t_point(NFC_SIZE_MAX - 1, 0xfe); big.journal = nfc_t_point(987654321, 0x10);
+  #assert nfc_write(big, out[..]) && nfc_read(cast(string) out[..], got[..]);
+  #assert got[0].store.size == NFC_SIZE_MAX - 1 && got[0].journal.size == 987654321 && got[0].store.digest[31] == 0xff && got[0].journal.digest[31] == 0x11;
+  // no room, or a size out of range: nothing written
+  out[0] = 7;
+  #assert !nfc_write(c, out[0..<NFC_LINE - 1]) && out[0] == 7;
+  neg := c; neg.store.size = -1; #assert !nfc_write(neg, out[..]) && out[0] == 7;
+  neg = c; neg.journal.size = NFC_SIZE_MAX; #assert !nfc_write(neg, out[..]) && out[0] == 7;
+  neg = c; neg.journal.size = -1; #assert !nfc_write(neg, out[..]) && out[0] == 7;
+  neg = c; neg.store.size = NFC_SIZE_MAX; #assert !nfc_write(neg, out[..]) && out[0] == 7;
+}
+#test "anything but the exact line is unreadable" {
+  got: [1] NfcCheckpoint; b: [NFC_LINE + 1] u8;
+  for i: 0..<NFC_LINE { b[i] = NFC_T_LINE[i]; }
+  n := NFC_LINE;
+  #assert nfc_read(cast(string) b[0..<n], got[..]);
+  #assert !nfc_read(cast(string) b[0..<n - 1], got[..]) && !nfc_read("", got[..]);
+  b[n] = '\n'; #assert !nfc_read(cast(string) b[0..<n + 1], got[..]);
+  // each separator, the magic, and the newline
+  for at: [6] int.[17, 18, 37, 102, 121, 186] {
+    keep := b[at]; b[at] = 'x'; #assert !nfc_read(cast(string) b[0..<n], got[..]); b[at] = keep;
+  }
+  // every digit position of both sizes, and the edges of '0' to '9'
+  for at: 19..<37 { keep := b[at]; b[at] = '/'; #assert !nfc_read(cast(string) b[0..<n], got[..]); b[at] = ':'; #assert !nfc_read(cast(string) b[0..<n], got[..]); b[at] = keep; }
+  for at: 103..<121 { keep := b[at]; b[at] = '/'; #assert !nfc_read(cast(string) b[0..<n], got[..]); b[at] = ':'; #assert !nfc_read(cast(string) b[0..<n], got[..]); b[at] = keep; }
+  b[19] = '9'; #assert nfc_read(cast(string) b[0..<n], got[..]) && got[0].store.size == 900000000000001234; b[19] = '0';
+  b[120] = '9'; #assert nfc_read(cast(string) b[0..<n], got[..]) && got[0].journal.size == 9; b[120] = '0';
+  // every hex position of both digests, and the edges of 0-9 and a-f
+  for at: 38..<102 { keep := b[at]; b[at] = 'g'; #assert !nfc_read(cast(string) b[0..<n], got[..]); b[at] = keep; }
+  for at: 122..<186 { keep := b[at]; b[at] = '`'; #assert !nfc_read(cast(string) b[0..<n], got[..]); b[at] = keep; }
+  edges := "/:`g@GA"; for e: 0..<edges.count { b[39] = edges[e]; #assert !nfc_read(cast(string) b[0..<n], got[..]); }
+  b[39] = '9'; #assert nfc_read(cast(string) b[0..<n], got[..]) && got[0].store.digest[0] == 0x09;
+  b[39] = 'f'; #assert nfc_read(cast(string) b[0..<n], got[..]) && got[0].store.digest[0] == 0x0f;
+  b[39] = 'a'; #assert nfc_read(cast(string) b[0..<n], got[..]) && got[0].store.digest[0] == 0x0a;
+  b[39] = '0'; #assert nfc_read(cast(string) b[0..<n], got[..]) && got[0].store.digest[0] == 0x00;
+  b[38] = 'e'; #assert nfc_read(cast(string) b[0..<n], got[..]) && got[0].store.digest[0] == 0xe0;
+  // a refused line leaves out as it was
+  got[0].store.size = 77; b[38] = 'G'; #assert !nfc_read(cast(string) b[0..<n], got[..]) && got[0].store.size == 77;
+}
+NFC_HEX :: "0123456789abcdef";
+// c's line into out[0..<NFC_LINE]: false, writing nothing, when a size is
+// out of range or out is short.
+nfc_write :: (c: NfcCheckpoint, out: [] u8) -> bool {
+  if out.count < NFC_LINE || !nfc_size_ok(c.store.size) || !nfc_size_ok(c.journal.size) { return false; }
+  for i: 0..<NFC_MAGIC.count { out[i] = NFC_MAGIC[i]; }
+  nfc_put_point(out, 19, c.store); out[102] = ' ';
+  nfc_put_point(out, 103, c.journal); out[186] = '\n';
+  return true;
+}
+nfc_size_ok :: (size: int) -> bool { return size >= 0 && size < NFC_SIZE_MAX; }
+// "SIZE HEX" at out[at..at + 83].
+nfc_put_point :: (out: [] u8, at: int, p: NfcPoint) {
+  v := p.size;
+  for k: 0..<18 { out[at + 17 - k] = cast(u8) (48 + v % 10); v /= 10; }
+  out[at + 18] = ' ';
+  for k: 0..<32 { out[at + 19 + 2 * k] = NFC_HEX[cast(int) (p.digest[k] >> 4)]; out[at + 20 + 2 * k] = NFC_HEX[cast(int) (p.digest[k] & 15)]; }
+}
+// Reads text, which must be exactly one line as nfc_write writes it, into
+// out[0]: whether it was.
+nfc_read :: (text: string, out: [] NfcCheckpoint) -> bool {
+  if text.count != NFC_LINE { return false; }
+  c: NfcCheckpoint;
+  ok := text[0..<19] == NFC_MAGIC && text[102] == ' ' && text[186] == '\n';
+  ok = nfc_get_point(text, 19, c.store.digest[..], ok);
+  ok = nfc_get_point(text, 103, c.journal.digest[..], ok);
+  c.store.size = nfc_digits(text, 19); c.journal.size = nfc_digits(text, 103);
+  if !ok { return false; }
+  out[0] = c;
+  return true;
+}
+// Whether ok holds and text[at..at + 83] is 18 digits, a space and 64 hex
+// digits (written to digest).
+nfc_get_point :: (text: string, at: int, digest: [] u8, ok: bool) -> bool {
+  good := ok && nfc_digits(text, at) >= 0 && text[at + 18] == ' ';
+  for k: 0..<32 {
+    hi := nfc_nibble(text[at + 19 + 2 * k]); lo := nfc_nibble(text[at + 20 + 2 * k]);
+    good = good && hi >= 0 && lo >= 0;
+    if good { digest[k] = cast(u8) (hi * 16 + lo); }
+  }
+  return good;
+}
+// The 18 digits at text[at..]: their value, or -1 when one isn't a digit.
+nfc_digits :: (text: string, at: int) -> int {
+  v := 0;
+  for k: 0..<18 {
+    c := text[at + k];
+    if c < '0' || c > '9' { return -1; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+nfc_nibble :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  return -1;
+}

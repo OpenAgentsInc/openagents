@@ -27,7 +27,10 @@ RI_EMPTY :: RS_REASONS;          // an empty line
 RI_LONG :: RS_REASONS + 1;       // a line over RI_LINE_MAX bytes
 RI_CUT :: RS_REASONS + 2;        // the last line has no "\n": the export was cut
 RI_EPHEMERAL :: RS_REASONS + 3;  // kinds 20000-29999 are never stored, so never exported
-RI_OUTCOMES :: RS_REASONS + 4;
+// With deletion (the relay's --import, store_delete.coax through rd_admit):
+RI_DELETED :: RS_REASONS + 4;    // an earlier line's deletion or vanish covers it: the old relay disagreed
+RI_NO_TOMBS :: RS_REASONS + 5;   // no room for a deletion's tombstones (the relay's RD_TOMBS)
+RI_OUTCOMES :: RS_REASONS + 6;
 // What one import did: lines read, each outcome's count, and the first
 // refused line (1-based, 0 when none).
 RiReport :: struct { lines: int; count: [RI_OUTCOMES] int; first_refused: int; }
@@ -38,7 +41,19 @@ RI_INCOMPLETE :: 2;  // the store doesn't hold the export (cut, too long, full):
 // book:end outcomes
 
 #test "outcomes extend the relay's reasons" {
-  #assert RI_EMPTY == 27 && RI_CUT == 29 && RI_OUTCOMES == 31 && RS_ACCEPT == 0;
+  #assert RI_EMPTY == 27 && RI_CUT == 29 && RI_DELETED == 31 && RI_OUTCOMES == 33 && RS_ACCEPT == 0;
+}
+// store_delete.coax's NSD_DELETED and NSD_NO_ROOM (the relay checks they agree).
+RI_NSD_DELETED :: 30; RI_NSD_NO_ROOM :: 31;
+#test "the deleting store's results become import outcomes" {
+  #assert ri_stored(RI_NSD_DELETED) == RI_DELETED && ri_stored(RI_NSD_NO_ROOM) == RI_NO_TOMBS;
+  for r: 0..<RS_REASONS { #assert ri_stored(r) == r; }
+}
+// The outcome of a store result r (a relay reason, or store_delete.coax's two).
+ri_stored :: (r: int) -> int {
+  if r == RI_NSD_DELETED { return RI_DELETED; }
+  if r == RI_NSD_NO_ROOM { return RI_NO_TOMBS; }
+  return r;
 }
 
 // book:begin frame
@@ -105,11 +120,13 @@ ri_tally :: (rep: [] RiReport, o: int) {
 }
 
 // book:begin verdict
-// The verdict: incomplete when the store can't hold what the export holds,
-// refused when any line was refused, clean otherwise. Expired events are
-// dropped on purpose (the old relay no longer serves them either).
+// The verdict: incomplete when the store can't hold what the export holds
+// (events or tombstones), refused when any line was refused (a line an
+// earlier deletion covers is refused: the old relay kept it), clean
+// otherwise. Expired events are dropped on purpose (the old relay no longer
+// serves them either).
 ri_verdict :: (rep: RiReport) -> int {
-  if rep.count[RI_CUT] > 0 || rep.count[RI_LONG] > 0 || rep.count[RS_FULL] > 0 { return RI_INCOMPLETE; }
+  if rep.count[RI_CUT] > 0 || rep.count[RI_LONG] > 0 || rep.count[RS_FULL] > 0 || rep.count[RI_NO_TOMBS] > 0 { return RI_INCOMPLETE; }
   kept := rep.count[RS_ACCEPT] + rep.count[RS_DUP] + rep.count[RS_SUPERSEDED] + rep.count[RS_EXPIRED];
   if kept != rep.lines { return RI_REFUSED; }
   return RI_CLEAN;
@@ -131,7 +148,10 @@ ri_verdict :: (rep: RiReport) -> int {
   r.lines = 4; r.count[RI_CUT] = 1; #assert ri_verdict(r) == RI_INCOMPLETE;
   r.count[RI_CUT] = 0; r.count[RI_LONG] = 1; #assert ri_verdict(r) == RI_INCOMPLETE;
   r.count[RI_LONG] = 0; r.count[RS_FULL] = 1; #assert ri_verdict(r) == RI_INCOMPLETE;
-  r.count[RS_FULL] = 0; #assert ri_verdict(r) == RI_CLEAN;
+  r.count[RS_FULL] = 0; r.count[RI_NO_TOMBS] = 1; #assert ri_verdict(r) == RI_INCOMPLETE;
+  r.count[RI_NO_TOMBS] = 0; #assert ri_verdict(r) == RI_CLEAN;
+  r.lines = 5; r.count[RI_DELETED] = 1; #assert ri_verdict(r) == RI_REFUSED;
+  rep: [1] RiReport; ri_tally(rep[..], RS_ACCEPT); ri_tally(rep[..], RI_DELETED); #assert rep[0].first_refused == 2 && rep[0].count[RI_DELETED] == 1;
   #assert ri_kept(RS_ACCEPT) && ri_kept(RS_DUP) && ri_kept(RS_SUPERSEDED) && !ri_kept(RS_EXPIRED) && !ri_kept(RS_BAD_SIG) && !ri_kept(RI_CUT);
 }
 

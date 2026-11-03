@@ -22,6 +22,14 @@ int64_t cxstore_put(int64_t b);
 int64_t cxstore_commit(void);
 /* Cuts the file to n bytes and fsyncs: 0, or -1. */
 int64_t cxstore_truncate(int64_t n);
+/* The open file's size now (after commits and cuts), or -1. */
+int64_t cxstore_size(void);
+/* A bulk load (the relay's --import): with on set, commits write but don't
+   fsync, so nothing is durable until cxstore_sync returns 0. The caller
+   marks the load complete only after that (a checkpoint written last). */
+void cxstore_bulk(int64_t on);
+/* fsyncs the file: 0, or -1. */
+int64_t cxstore_sync(void);
 /* General file effects for Coax tools (coax/lib/sys/fs.coax). Paths and
    every decision are Coax; these only touch the file system. Build a path
    with cxfs_path_push (bytes, at most CXFS_PATH_MAX); each call below takes

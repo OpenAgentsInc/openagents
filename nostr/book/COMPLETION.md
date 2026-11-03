@@ -77,10 +77,14 @@ well as the target-specific compiler and host evidence each consumer needs.
 ## 3. Finish the relay and its production migration
 
 The running Coax relay now uses indexes, deletion, rate limits, COUNT, search,
-protected events and optional proof of work. NIP-77, NIP-86, NIP-43 and NIP-29
-remain unwired. Finish required parity, or record the owner's decision about
-which previously advertised features survive. Do not advertise a library
-module merely because its chapter is implemented.
+protected events, optional proof of work, NIP-77, NIP-86 (with `--admin`) and
+NIP-29 (with `--groups`, short of relay-signed group state). NIP-43 and the
+rest of NIP-29 wait for the owner's relay-key decision. The 2026-11-03
+[parity table](../../docs/verification/2026-11-03-coax-relay-parity.md) lists
+what the Rust relay advertises that the Coax relay doesn't (17, 59, 65, 67,
+94, 98) and its private-kind read rules, which block cutover until the owner
+decides. Do not advertise a library module merely because its chapter is
+implemented.
 
 `--store-capacity EVENTS` now selects host-allocated arrays. The default is
 still 2,048 records and 4 MiB; it is no longer a hard maximum. The recorded
@@ -91,9 +95,14 @@ restart (`fae56496a0`). Preserve that bounded improvement rather than treating
 the earlier 3,000-event example as the latest measurement. Neither profile
 qualifies the production event set, total original bytes, tombstones,
 production memory/restart budgets or traffic. Select and measure those
-budgets against an approved restored-backup export. Replay verification time,
-the durable import command and a rollback-resistant freshness checkpoint
-remain separate work.
+budgets against an approved restored-backup export. The durable import
+(`relay --import`), the restart check (`relay --check-store`) and the
+freshness checkpoint (`--checkpoint`, `store_fresh.coax`) now exist and are
+measured on synthetic exports against an independent oracle
+([record](../../docs/verification/2026-11-03-coax-relay-import-restart.md)).
+That record also shows admission is linear in the store's size, so import
+and restart grow with the square of the event count; production's count
+decides whether that must change before cutover.
 
 Then follow [chapter 103's runbook](ch103-replace-relay-openagents-com.md#the-runbook):
 import with every signature checked, compare the served event sets, shadow

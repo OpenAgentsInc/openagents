@@ -1,5 +1,48 @@
 # Owner actions
 
+## Coax relay cutover: parity, the checkpoint's home, the export and the rehearsals (#12631, 2026-11-03)
+
+Built and checked offline, with test keys and synthetic data only: the
+relay's `--import` (every line verified again, deletions and vanish
+applied, one sync, a freshness checkpoint written last), `--check-store`
+(a restart that checks the checkpoint, replays and prints the served set's
+digest), and `--checkpoint FILE` (the store's and policy journal's length
+and SHA-256, checked on start, rewritten after every commit). Parity table:
+`docs/verification/2026-11-03-coax-relay-parity.md`. Runbook:
+`nostr/book/ch103-replace-relay-openagents-com.md`. Nothing here touched
+relay.openagents.com, its database, DNS or a secret. Yours, each yes or no
+unless it says otherwise:
+
+1. **Private reads (blocks cutover).** The Rust relay serves gift wraps
+   (1059, 21059) and OpenAgents' private kinds only to the authenticated
+   owner or single recipient, and never serves 39604 to 39613, 39620, 39650
+   or 30179. The Coax relay serves all of them to anyone. Port the Rust
+   relay's read rules whole, port a subset (name it), or accept the change.
+2. **Advertisement.** Rust advertises 17, 59, 65, 67, 94 and 98, which the
+   Coax relay doesn't. For each: wire it before cutover, or drop it from
+   the advertisement. Nothing was changed.
+3. **Where the checkpoint lives.** `--checkpoint` refuses an older copy, a
+   forked copy or a deleted store, but only if the checkpoint itself isn't
+   restored with them. Pick its home: a second machine, a TPM counter, or a
+   versioned object with a retention lock (replaces the 2026-10-30 question
+   under "Coax relay: which NIPs survive").
+4. **What an event export can't carry.** Rust tombstones whose deletion
+   event NIP-40 already removed, and the NIP-86 policy tables
+   (`relay_blocked_*`, `relay_allowed_*`, `relay_member_pubkey`), have no
+   signature to verify again. Carry them (event tombstones as NIP-86 bans in
+   `FILE.nip86`; address tombstones have no carrier yet), or drop them.
+   Count them on the restored copy first (runbook step 6).
+5. **Export a restored backup (runbook steps 4 to 7).** Approve restoring the
+   newest backup unit into a throwaway Postgres off the production host and
+   exporting it, then `relay --import` with `--checkpoint`. Every refused
+   line, and every kind 62 the import applies, comes back to you.
+6. **Shadow period (steps 10 to 12).** Approve the proxy that sends every
+   write to both relays and replays readers' REQs, and set its length.
+7. **Rollback rehearsal (steps 17 to 20).** Approve the rehearsal on a
+   staging name, including the export of post-cutover writes back to the
+   Rust relay.
+8. **Cutover (steps 13 to 16).** A separate sign-off, only after 1 to 7.
+
 ## Dictation in Coder's terminal composer: a real microphone (#12668, 2026-11-03)
 
 Coder's terminal dictation passes 14 recorded-audio cases in a headless pty,
@@ -592,8 +635,9 @@ Decided 2026-10-29: the old Rust relay may be built and run inside a sandbox
 for the comparison; the Coax relay aims for full NIP support, starting with
 what the website uses. Still yours: the R3 migration and DNS cutover.
 
-Open 2026-10-30: **a rollback-resistant checkpoint for the relay's store
-(#966b).** Crash recovery is done (`092c3e44a4`,
+Open 2026-10-30, mechanism built 2026-11-03 (`--checkpoint`; its home is
+question 3 of "Coax relay cutover" above): **a rollback-resistant checkpoint
+for the relay's store (#966b).** Crash recovery is done (`092c3e44a4`,
 [record](docs/verification/2026-10-30-nostr-store-recovery.md)). A torn tail
 is cut, and any other damage stops the relay with the file unchanged. But an
 older copy of the whole file, or a deleted file, still replays as a valid

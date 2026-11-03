@@ -1,0 +1,208 @@
+// The relay's import and restart at scale (issue #12631; chapter 103's
+// runbook steps 3, 7 and 8, on synthetic data). It
+//
+// 1. builds coax/relay (unless --relay names a build);
+// 2. has relay_scale_oracle.py (an independent oracle) write a signed
+//    export of --events lines and what an import of it must do;
+// 3. imports it (relay --import, every signature verified again, deletion
+//    and vanish applied, the store file synced once, the checkpoint
+//    written last) and checks every line of the oracle's expectation in the
+//    relay's own output: lines read, each outcome's count, tombstones, the
+//    served set's size and digest;
+// 4. restarts from the store (relay --check-store: the checkpoint checked,
+//    every frame replayed and verified again) and checks the served set is
+//    the same;
+// 5. rehearses three restores the checkpoint must refuse: an older copy
+//    (the store's first half), a forked copy (one byte changed), and the
+//    store without its checkpoint.
+//
+// Prints the relay's measurements (time, verification, peak memory, file
+// size) and "relay_scale: holds", exit 0; or what differs and exit 1.
+// Everything runs under DIR, which must be outside the repository; nothing
+// touches a network.
+//   coax/web/tool.sh coax/tests/nostr/relay_scale.coax --dir DIR [--events N] [--relay PATH] [--now T] [--url U]
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/sys/fs.coax";
+
+RX_OUT :: 1048576;   // one run's stdout
+
+#test "an expected line is found only whole" {
+  out := "relay: import read 3000 lines, 9 bytes; verdict: clean\nrelay: import outcome 0 2870 (stored)\nrelay: served set at 5: 2 events, digest ab (1 ms)";
+  #assert rx_has(out, "import read 3000 lines") && rx_has(out, "import outcome 0 2870") && rx_has(out, "served set at 5: 2 events, digest ab");
+  #assert !rx_has(out, "import read 300 lines") && !rx_has(out, "import outcome 0 287") && !rx_has(out, "import outcome 0 28700");
+  #assert !rx_has(out, "outcome 0 2870") && !rx_has(out, "") && rx_has("relay: x", "x") && !rx_has("relay: x1", "x");
+  #assert rx_has("a\nrelay: x 1\nb", "x 1") && !rx_has("relay: x 12", "x 1");
+}
+#test "a line by its start" {
+  out := "relay: a 1\nrelay: served set at 5: 2 events\nrelay: b";
+  #assert rx_line(out, "served set") == "relay: served set at 5: 2 events" && rx_line(out, "b") == "relay: b" && rx_line(out, "c") == "";
+  #assert rx_served("relay: served set at 5: 2 events, digest ab (17 ms)") == "served set at 5: 2 events, digest ab";
+  #assert rx_served("relay: served set at 5") == "relay: served set at 5" && rx_served("") == "";
+}
+#test "numbers" {
+  b: [32] u8;
+  #assert rx_int(b[..], 0) == "0" && rx_int(b[..], 250000) == "250000" && rx_num("12631") == 12631 && rx_num("x") == -1 && rx_num("") == -1;
+}
+// Whether out has a line "relay: " + want, followed by its end or anything
+// but a digit.
+rx_has :: (out: string, want: string) -> bool {
+  if want.count == 0 { return false; }
+  at := 0;
+  while at < out.count {
+    to := at; while to < out.count && out[to] != '\n' { to += 1; }
+    l := out[at..<to];
+    k := 7 + want.count;
+    if l.count >= k && l[0..<7] == "relay: " && l[7..<k] == want && (l.count == k || l[k] < '0' || l[k] > '9') { return true; }
+    at = to + 1;
+  }
+  return false;
+}
+// The first line of out that starts "relay: " + start, or "".
+rx_line :: (out: string, start: string) -> string {
+  at := 0;
+  while at < out.count {
+    to := at; while to < out.count && out[to] != '\n' { to += 1; }
+    l := out[at..<to];
+    if l.count >= 7 + start.count && l[0..<7] == "relay: " && l[7..<7 + start.count] == start { return l; }
+    at = to + 1;
+  }
+  return "";
+}
+// A served-set line without "relay: " and its timing: what two runs must share.
+rx_served :: (l: string) -> string {
+  k := l.count - 1;
+  while k > 0 && l[k] != '(' { k -= 1; }
+  if k < 9 { return l; }
+  return l[7..<k - 1];
+}
+rx_int :: (out: [] u8, v: int) -> string {
+  d: [20] u8; n := 0; x := v;
+  while true { d[n] = cast(u8) (48 + x % 10); n += 1; x /= 10; if x == 0 { break; } }
+  for i: 0..<n { out[i] = d[n - 1 - i]; }
+  return cast(string) out[0..<n];
+}
+rx_num :: (s: string) -> int {
+  if s.count == 0 { return -1; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+
+RxRun :: struct { status: int; out: string; }
+rx_run :: (argv: [] string, minutes: int, out: [] u8) -> RxRun {
+  err: [8192] u8;
+  r := proc_run(argv, minutes * 60000, out, err[..]);
+  if r.started != 0 || r.timed_out { print("relay_scale: % % %\n", argv[0], ifx r.timed_out then "ran out of time" else "did not start", cast(string) err[0..<r.err_n]); }
+  if r.err_n > 0 && r.status != 0 { print("relay_scale: % said: %\n", argv[0], cast(string) err[0..<r.err_n]); }
+  return RxRun.{status = ifx r.started != 0 || r.timed_out then -1 else r.status, out = cast(string) out[0..<r.out_n]};
+}
+rx_check :: (failures: [] int, ok: bool, what: string) {
+  print("relay_scale: % %\n", ifx ok then "ok  " else "FAIL", what);
+  if !ok { failures[0] += 1; }
+}
+// Copies the first n bytes of from to to (n -1: all), with the byte at flip
+// (unless -1) changed: whether it worked.
+rx_copy :: (from: string, to: string, n: int, flip: int) -> bool {
+  if fs_exists(to) && !fs_remove(to) { return false; }
+  if !fs_write(to, "") { return false; }
+  size := fs_size(from);
+  end := ifx n < 0 || n > size then size else n;
+  buf: [1048576] u8; at := 0;
+  while at < end {
+    k := fs_read_at(from, at, buf[0..<ifx end - at < buf.count then end - at else buf.count]);
+    if k <= 0 { return false; }
+    if flip >= at && flip < at + k { buf[flip - at] = buf[flip - at] ^ 1; }
+    if !fs_append(to, cast(string) buf[0..<k]) { return false; }
+    at += k;
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("relay_scale: bad arguments"); return 2; }
+  dir := args_value(a[..], "--dir", "");
+  events := rx_num(args_value(a[..], "--events", "250000"));
+  now := args_value(a[..], "--now", "1793220000");
+  url := args_value(a[..], "--url", "wss://relay.openagents.com");
+  if dir.count == 0 || events < 1 || events > 1000000 || rx_num(now) < 0 {
+    tool_errln("usage: coax/web/tool.sh coax/tests/nostr/relay_scale.coax --dir DIR [--events 1..1000000] [--relay PATH] [--now T] [--url U]"); return 2;
+  }
+  if !fs_exists(dir) && !fs_mkdir(dir) { tool_errln("relay_scale: cannot make --dir"); return 2; }
+  failures: [1] int;
+  out: [RX_OUT] u8; out2: [RX_OUT] u8;
+  p0: [1024] u8; p1: [1024] u8; p2: [1024] u8; p3: [1024] u8; p4: [1024] u8; p5: [1024] u8; p6: [1024] u8; p7: [1024] u8;
+  relay := args_value(a[..], "--relay", "");
+  if relay.count == 0 {
+    relay = fs_join(dir, "relay", p0[..]);
+    b := [2] string.["coax/relay/build.sh", relay];
+    r := rx_run(b[..], 10, out[..]);
+    if r.status != 0 { print("relay_scale: the relay did not build\n"); return 1; }
+  }
+  nb: [32] u8; n := rx_int(nb[..], events);
+  o := [10] string.["python3", "coax/tests/nostr/relay_scale_oracle.py", "--events", n, "--now", now, "--url", url, "--out", dir];
+  t0 := proc_now_ms();
+  r := rx_run(o[..], 14, out[..]);
+  print("%\n", r.out);
+  if r.status != 0 { print("relay_scale: the oracle failed\n"); return 1; }
+  print("relay_scale: oracle and signing took % s\n", (proc_now_ms() - t0) / 1000);
+  expbuf: [65536] u8;
+  en := fs_read(fs_join(dir, "expected.txt", p1[..]), expbuf[..]);
+  if en <= 0 { print("relay_scale: no expected.txt\n"); return 1; }
+  expected := cast(string) expbuf[0..<en];
+
+  store := fs_join(dir, "store", p2[..]); cp := fs_join(dir, "store.checkpoint", p3[..]);
+  journal: [1100] u8; jn := 0; for c: store { journal[jn] = c; jn += 1; } for c: ".nip86" { journal[jn] = c; jn += 1; }
+  for p: [3] string.[store, cp, cast(string) journal[0..<jn]] { if fs_exists(p) { gone := fs_remove(p); } }
+  cb: [32] u8; cap := rx_int(cb[..], events + 10000);
+  export := fs_join(dir, "export.jsonl", p4[..]);
+  im := [13] string.[relay, "--import", export, "--now", now, "--url", url, "--store", store, "--checkpoint", cp, "--store-capacity", cap];
+  ri := rx_run(im[..], 14, out[..]);
+  // the export holds forged lines on purpose: the verdict is "refused" (exit 1)
+  rx_check(failures[..], ri.status == 1, "the import ends with refused lines for the owner (exit 1)");
+  at := 0;
+  while at < expected.count {
+    to := at; while to < expected.count && expected[to] != '\n' { to += 1; }
+    want := expected[at..<to];
+    if want.count > 0 { rx_check(failures[..], rx_has(ri.out, want), want); }
+    at = to + 1;
+  }
+  for l: [5] string.["import read", "import stored", "store holds", "checkpoint", "import took"] { print("  %\n", rx_line(ri.out, l)); }
+  served := rx_served(rx_line(ri.out, "served set"));
+
+  ck := [12] string.[relay, "--check-store", "--now", now, "--url", url, "--store", store, "--checkpoint", cp, "--store-capacity", cap];
+  rc := rx_run(ck[..], 14, out2[..]);
+  rx_check(failures[..], rc.status == 0 && rx_has(rc.out, "checkpoint: store") && rx_line(rc.out, "checkpoint: store").count > 0 && rx_has(rc.out, served),
+    "restart: the checkpoint is fresh, every frame replays, and the served set is the same");
+  for l: [4] string.["checkpoint:", "replayed ", "the --store file replayed", "served set"] { print("  %\n", rx_line(rc.out, l)); }
+
+  size := fs_size(store);
+  old := fs_join(dir, "old.store", p5[..]);
+  if rx_copy(store, old, size / 2, -1) {
+    ck[7] = old;
+    rr := rx_run(ck[..], 14, out2[..]);
+    rx_check(failures[..], rr.status == 3 && rx_has(rr.out, "checkpoint: store") && rx_line(rr.out, "checkpoint:").count > 0 && rx_has_word(rr.out, "older than the checkpoint"), "an older copy (the first half) is refused");
+  } else { rx_check(failures[..], false, "copy the store's first half"); }
+  fork := fs_join(dir, "fork.store", p6[..]);
+  if rx_copy(store, fork, -1, size / 2) {
+    ck[7] = fork;
+    rr := rx_run(ck[..], 14, out2[..]);
+    rx_check(failures[..], rr.status == 3 && rx_has_word(rr.out, "not the history the checkpoint names"), "a forked copy (one byte changed) is refused");
+  } else { rx_check(failures[..], false, "copy the store with one byte changed"); }
+  ck[7] = store; ck[9] = fs_join(dir, "absent.checkpoint", p7[..]);
+  rr := rx_run(ck[..], 14, out2[..]);
+  rx_check(failures[..], rr.status == 3 && rx_has_word(rr.out, "there is no checkpoint"), "the store without its checkpoint is refused");
+  for p: [2] string.[old, fork] { if fs_exists(p) { gone := fs_remove(p); } }
+
+  print("relay_scale: %\n", ifx failures[0] == 0 then "holds" else "fails");
+  return ifx failures[0] == 0 then 0 else 1;
+}
+// Whether some line of out contains word.
+rx_has_word :: (out: string, word: string) -> bool {
+  if word.count == 0 { return false; }
+  for i: 0..<out.count - word.count + 1 { if out[i..<i + word.count] == word { return true; } }
+  return false;
+}
