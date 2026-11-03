@@ -13,7 +13,7 @@
 //
 // A page with its own og:image, og.jpg or card.jpg, or a realm with a "card" in
 // realms.json, keeps it: nothing here touches a hand-made card.
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { MAX_BYTES, renderedCard, size } from "./og"
@@ -65,14 +65,36 @@ const port = 4700 + Math.floor(Math.random() * 200)
 const server = Bun.spawn(["bun", join(here, "golden-serve.ts"), site, String(port)], { stdout: "ignore", stderr: "ignore" })
 const base = `http://golden.localhost:${port}`
 const work = mkdtempSync(join(tmpdir(), "og-render-"))
-const shot = (url: string, out: string, wh: string, wait: number) => run([join(here, "tool.sh"), "shot", url, out, wh, String(wait)])
-// PNG to a JPEG under 300 KB, sized to w x h (sips: macOS).
+// On Linux, headless Chrome gets the GPU's WebGPU adapter only with software compositing, which
+// leaves a WebGPU canvas out of a screenshot (#12678); there a picture is golden-frames.coax's
+// (#12684): the frame read back from the GPU, on the hardware adapter, as one page --update writes.
+// Its pages are at most 1600x1000, so a larger still is shot smaller (its crop scaled with it).
+const linux = process.platform === "linux"
+const fit = (w: number) => (linux && w > 1600 ? 1600 / w : 1)
+let shots = 0
+const shot = (path: string, out: string, wh: string, wait: number) => {
+  if (!linux) return run([join(here, "tool.sh"), "shot", base + path, out, wh, String(wait)])
+  const [w, h] = wh.split("x").map(Number), f = fit(w), name = `shot-${shots++}`
+  const table = join(work, `${name}.table`)
+  writeFileSync(table, [name, path, "0", String(wait), "0", String(Math.round(w * f)), String(Math.round(h * f)), "0"].join("\t") + "\n")
+  run([join(here, "tool.sh"), "golden-frames", base, table, "--dir", work, "--update", "--require-hardware"])
+  renameSync(join(work, `${name}.png`), out)
+}
+// PNG to a JPEG under 300 KB, sized to w x h (sips on macOS, ffmpeg elsewhere).
 const jpeg = (png: string, out: string, w: number, h: number) => {
   mkdirSync(dirname(out), { recursive: true })
   for (const q of [82, 74, 66, 58]) {
-    run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", String(q), "-z", String(h), String(w), png, "--out", out])
+    if (linux) run(["ffmpeg", "-y", "-loglevel", "error", "-i", png, "-vf", `scale=${w}:${h}:flags=lanczos`, "-q:v", String(Math.round((100 - q) / 6)), out])
+    else run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", String(q), "-z", String(h), String(w), png, "--out", out])
     if (statSync(out).size <= MAX_BYTES) return
   }
+}
+// The part [x, y, w, h] of a PNG, in place.
+const crop = (png: string, [x, y, cw, ch]: number[]) => {
+  if (!linux) return run(["sips", "-c", String(ch), String(cw), "--cropOffset", String(y), String(x), png, "--out", png])
+  const cut = png.replace(/\.png$/, "-cut.png")
+  run(["ffmpeg", "-y", "-loglevel", "error", "-i", png, "-vf", `crop=${cw}:${ch}:${x}:${y}`, cut])
+  renameSync(cut, png)
 }
 try {
   for (let i = 0; i < 100; i++) { try { await fetch(base + "/og/pages.txt"); break } catch { await Bun.sleep(100) } }
@@ -90,14 +112,14 @@ try {
           "--seconds", "0.034", "--fps", "30", "--skip", String(how.skip), "--frames", frames])
         run(["cp", join(frames, "f00000.png"), png])
       } else {
-        shot(`${base}${path}${how.query ?? "?golden"}`, png, `${w}x${h}`, Math.max(6000, (realm?.golden?.settle ?? 0) + 5000))
+        shot(`${path}${how.query ?? "?golden"}`, png, `${w}x${h}`, Math.max(6000, (realm?.golden?.settle ?? 0) + 5000))
       }
       // the part of the shot clear of the realm's HUD, then fitted to the card's 1200x456 band
-      if (how.crop) { const [x, y, cw, ch] = how.crop; run(["sips", "-c", String(ch), String(cw), "--cropOffset", String(y), String(x), png, "--out", png]) }
+      if (how.crop) { const f = how.skip === undefined ? fit(w) : 1; crop(png, how.crop.map((v) => Math.round(v * f))) }
       jpeg(png, join(site, `og/stills/${slug}.jpg`), 1200, 456)
     }
     const png = join(work, `card-${n}.png`)
-    shot(`${base}/og#card=${path}`, png, "1200x630", kind === "realm" ? 3500 : 2500)
+    shot(`/og#card=${path}`, png, "1200x630", kind === "realm" ? 3500 : 2500)
     jpeg(png, card, 1200, 630)
     const s = size(new Uint8Array(readFileSync(card)))
     console.log(`  ${path.padEnd(32)} ${renderedCard(dirOf(path))}  ${s?.w}x${s?.h}  ${Math.round(statSync(card).size / 1024)} KB`)
@@ -105,7 +127,7 @@ try {
   }
   if (wantDefault) {
     const png = join(work, "default.png")
-    shot(`${base}/og#card=default`, png, "1200x630", 2500)
+    shot("/og#card=default", png, "1200x630", 2500)
     jpeg(png, join(app, "og/default.jpg"), 1200, 630)
     console.log(`  (default)                        /og/default.jpg  ${Math.round(statSync(join(app, "og/default.jpg")).size / 1024)} KB`)
   }

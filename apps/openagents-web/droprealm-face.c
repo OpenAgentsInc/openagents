@@ -25,8 +25,13 @@ EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uin
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_droprealm_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_droprealm_uniform_floats(); }
 
+// Golden mode (host.js coaxial_golden): droprealm.coax holds its effects still.
+static bool golden;
+EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
+
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float width, float height, float dpr, float dt, uint32_t still) {
+  realm_golden(at(state), golden);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_droprealm_max_vertices() * coaxial_droprealm_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_droprealm_uniform_floats()};
   int64_t n = realm_frame(at(state), out, u, width, height, dpr, dt, still != 0);

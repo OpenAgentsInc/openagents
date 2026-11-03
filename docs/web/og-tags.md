@@ -67,7 +67,9 @@ committed in `apps/openagents-web/og/`):
   page made since the last render.
 
 Each card is `/og#card=PATH` (the workbench's own app, `og.coax`, drawing one
-page's card at 1200x630) captured headless and saved as a JPEG under 300 KB.
+page's card at 1200x630) captured headless and saved as a JPEG under 300 KB. On Linux the picture is
+golden-frames.coax's (the frame read back from the GPU on the hardware adapter, #12684, since a
+screenshot there leaves a WebGPU canvas out) and ffmpeg makes the JPEG; on the Mac, shot and sips.
 
 ## Realms players make (`/realms/new`)
 

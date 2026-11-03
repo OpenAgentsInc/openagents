@@ -10,6 +10,29 @@ should pass unchanged: the oracles no longer touch libm, and the Coax side
 compares within 1e-12. Both oracles need Python 3.12 or later. If either
 fails, comment on #12695.
 
+## MetaHuman packers: port them, or name a Firm reason (#12693, 2026-11-03)
+
+`verse/tools/humans/metahuman.py` (453 lines) and `pack_human.py` (301)
+have no `Firm reason:` line, so `coax/web/tool.sh tools-check` reports them.
+None of the six reasons holds: they are packers with real logic (OBJ and
+skin parsing, joint folding, A-pose to T-pose posing, vertex packing, and
+JPEG and PNG layers through Pillow), not a thin wrapper or a Python-only
+SDK. They can't go on `coax/tools-port.txt` either: tools-check refuses a
+path that wasn't tracked at the list's base commit. Porting them means
+porting what they import too (`verse/tools/people.py`'s glTF loader and
+skeleton, `pack_realm.py`'s container) plus a JPEG encoder in Coax, which is
+larger than a release-blocker fix. Decide: port them (and with them
+`people.py`), or accept them as an exception some other way.
+
+## Drop's Mac golden in golden mode (#12693, 2026-11-03)
+
+Drop now holds its ember pulse, lamp flicker and star twinkle in golden
+mode (`droprealm.coax`). The Linux golden matched three walks in a row with
+0 blocks changed and 0 moving. On the Mac, an agent with goldens.ts should
+walk Drop once (`bun coax/web/goldens.ts BASE --only drop`) and, if it
+differs, refresh `coax/web/goldens/drop.png` with `--update`. Mac-only:
+coderos-4080 can't run it.
+
 ## Ice Cream Man's camera on Aethyr's follow: approve the look (#12609, 2026-11-02)
 
 Ice Cream Man's boom camera now runs on `aethyr/follow.coax`, one step per
