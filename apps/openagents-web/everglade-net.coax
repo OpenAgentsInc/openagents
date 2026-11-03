@@ -264,7 +264,8 @@ net_json_field :: (t: string, name: string) -> string {
 // While you play in a room: a WANTED level or look that changed is saved (at most every NET_STATE_EVERY).
 net_save_state :: (s: [] Everglade, n: [] EgNet) {
   if n[0].free || !net_live(s) || n[0].mono - n[0].saved_at < NET_STATE_EVERY { return; }
-  level := ifx s[0].wt[0].wanted then s[0].wt[0].level else 0;
+  you := watch_you(s[0].wt[..]);
+  level := ifx you[0].wanted then you[0].level else 0;
   if level < 0 { level = 0; }
   if level > 5 { level = 5; }
   look := cast(string) n[0].look[0..<n[0].look_n];
@@ -1196,11 +1197,11 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   net_opened(a[..], 0);
   #assert net_event(a[..], SOCKET_KIND + SOCKET_OPENED, "") && net_test_hear(a[..], 0, "y 0 1 5000100") && net_live(a[..]);
   // the same as saved: nothing goes; a new level does, once
-  a[0].wt[0].wanted = true; a[0].wt[0].level = 3;
+  watch_you(a[0].wt[..])[0].wanted = true; watch_you(a[0].wt[..])[0].level = 3;
   net_step(a[..], 3000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   for k: 0..<na[0].pipe[0].n { #assert na[0].pipe[0].op[k] != NET_PIPE_STATE; }
   pipe_drained(na[0].pipe[..]);
-  a[0].wt[0].level = 4;
+  watch_you(a[0].wt[..])[0].level = 4;
   net_step(a[..], 6000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   got := "";
   for k: 0..<na[0].pipe[0].n { if na[0].pipe[0].op[k] == NET_PIPE_STATE { got = pipe_bytes(na[0].pipe[..], k); } }
