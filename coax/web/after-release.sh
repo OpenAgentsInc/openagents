@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (a thin wrapper: runs the report checks and copies their output to the bucket)
 # Reports on a release that is already live (release.sh starts it in the
 # background). Nothing here stops or rolls back a release. Each report goes to
 # gs://openagentsgemini-openagents-web/releases/STAMP/:

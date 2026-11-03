@@ -1,3 +1,4 @@
+# Firm reason: 5 (a thin wrapper: the release lock as one gcloud object, and the compiler cache around coax/provenance.sh)
 # Shared by release.sh, after-release.sh and pin.sh (sourced).
 #
 # The release lock: one object in the production bucket, gs://BUCKET/release.lock,
