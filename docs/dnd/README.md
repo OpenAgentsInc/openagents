@@ -319,3 +319,8 @@ of the Land's polar list.
   pre-built character, as Everglade's druid and Hold the Stair's party do?
 - Progression in shared worlds: do levels and XP persist per player across
   sessions and worlds?
+
+## Related
+
+- [2026-11-03-dnd-campaign-creator-spec.md](2026-11-03-dnd-campaign-creator-spec.md):
+  the campaign creator and table for game masters, built on this system.
