@@ -1,0 +1,184 @@
+// ECDSA public key recovery on secp256k1 (Bitcoin chapter 22): the public
+// key that a signature (r, s) of a 32-byte hash verifies under, given the
+// recovery ID that names which of up to four nonce points R was used.
+// Bitcoin Core's signed messages carry the ID in the header byte of a
+// 65-byte compact signature (coax/lib/bitcoin/signmessage.coax).
+//
+// The ID is 0 to 3. Bit 0 is the parity of y(R). Bit 1 says that x(R) was
+// at least n, so that r = x(R) - n; then x(R) = r + n, which must stay
+// below p. Q = r^-1 · (s·R - z·G).
+//
+// Recovery reads only public data: the hash, the signature and the ID. It
+// runs in variable time, and its names end in _vartime (Bitcoin chapter 3).
+// Each refusal has its own code, and a refusal writes nothing.
+#load "secp_mult.coax";
+#load "secp_encode.coax";
+#load "ecdsa_verify.coax";
+
+// Refusals.
+ER_BAD_LENGTH :: -1;   // the hash is not 32 bytes or the signature not 64
+ER_BAD_ID :: -2;       // a recovery ID outside 0 to 3
+ER_BAD_SCALAR :: -3;   // r or s is 0 or at least n
+ER_NO_X :: -4;         // ID 2 or 3, and r + n is at least p: no field element
+ER_NO_POINT :: -5;     // no curve point has that x
+ER_INFINITY :: -6;     // the recovered key is the point at infinity
+ER_BAD_FORM :: -7;     // the output form is not 33 or 65 bytes, or out is short
+
+ErResult :: struct { key: SgPoint; code: int; }
+
+// n and p - n, big-endian.
+ER_N :: [32] u8.[0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfe,
+                 0xba,0xae,0xdc,0xe6,0xaf,0x48,0xa0,0x3b,0xbf,0xd2,0x5e,0x8c,0xd0,0x36,0x41,0x41];
+ER_P_MINUS_N :: [32] u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0x01,
+                         0x45,0x51,0x23,0x19,0x50,0xb7,0x5f,0xc4,0x40,0x2d,0xa1,0x72,0x2f,0xc9,0xba,0xee];
+
+// ---- checks
+// The libsecp256k1 v0.8.0 recovery module's edge cases (src/modules/recovery/
+// tests_impl.h, pinned in coax/tests/vectors/upstream/secp256k1/) and
+// Wycheproof tcId 346. Expected keys from libsecp256k1's secp256k1_ecdsa_recover.
+ER_T_MSG :: "546869732069732061207665727920736563726574206d6573736167652e2e2e";   // "This is a very secret message..."
+ER_T_SIG :: "67cb285f9cd194e840d629397af5569662fde44649995963179a7dd17bd235324b1b7df34ce1f68e694ff6f11ac751dd7dd73e387ee4fc866e1be8ecc7dd9557";
+ER_T_FOUR :: "00000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000004";
+ER_T_ONE :: "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001";
+er_recovers :: (hash: string, signature: string, id: int, want: string) -> bool {
+  h: [32] u8; s: [64] u8; out: [66] u8; out[33] = 7;
+  n := ecdsa_recover_vartime(ev_unhex(hash, h[..]), ev_unhex(signature, s[..]), id, SE_COMPRESSED, out[..]);
+  if n != SE_COMPRESSED || out[33] != 7 { return false; }
+  w: [33] u8;
+  return se_t_same(out[0..<33], ev_unhex(want, w[..]));
+}
+er_refuses :: (hash: string, signature: string, id: int) -> int {
+  h: [32] u8; s: [64] u8; out: [65] u8; out[0] = 7;
+  n := ecdsa_recover_vartime(ev_unhex(hash, h[..]), ev_unhex(signature, s[..]), id, SE_COMPRESSED, out[..]);
+  #assert out[0] == 7;
+  return n;
+}
+#test "libsecp256k1's edge cases: infinity, r + n past p, and every ID of (4, 4)" #steps 2000000000 {
+  // Signed with the invalid key 0: the true R gives infinity, the other parity a key.
+  #assert er_refuses(ER_T_MSG, ER_T_SIG, 0) == ER_INFINITY;
+  #assert er_recovers(ER_T_MSG, ER_T_SIG, 1, "0386874a6b24a754627116560e7ae15cd69eb33e73b4d8c81033b27c2fa9cf5d1c");
+  #assert er_refuses(ER_T_MSG, ER_T_SIG, 2) == ER_NO_X && er_refuses(ER_T_MSG, ER_T_SIG, 3) == ER_NO_X;
+  #assert !er_recovers(ER_T_MSG, ER_T_SIG, 2, "000000000000000000000000000000000000000000000000000000000000000000");
+  // r = 4: x = 4 and x = 4 + n both lie on the curve.
+  #assert er_recovers(ER_T_MSG, ER_T_FOUR, 0, "038a3d70c0410468e4573939af01b99ea7b20649106d55acf9f558eba28ed59a2e");
+  #assert er_recovers(ER_T_MSG, ER_T_FOUR, 1, "023e990254a50d659926c928ef8b54181ee67e27ffbf63eb69294b9ab6d27ba225");
+  #assert er_recovers(ER_T_MSG, ER_T_FOUR, 2, "027e1524fa06bafd6eb9c02f279e131314be9305700fc69e80d54d29ab36063f23");
+  #assert er_recovers(ER_T_MSG, ER_T_FOUR, 3, "03b337c9b74ca99ea963c6560d2558cdf09c7301208409649a8a6d1fb10e1cb946");
+  // r = 1: x = 1 + n is below p, but no point has it.
+  #assert er_recovers(ER_T_MSG, ER_T_ONE, 0, "023001eb9298bf474ed7f345dff18c31f92977de1718e7d35258c357c80273a584");
+  #assert er_refuses(ER_T_MSG, ER_T_ONE, 2) == ER_NO_POINT && er_refuses(ER_T_MSG, ER_T_ONE, 3) == ER_NO_POINT;
+}
+#test "Wycheproof tcId 346: x(R) at least n, recovered with ID 2" #steps 2000000000 {
+  // r = p - n - 3, so x = r + n = p - 3. The key is the test group's.
+  sig := "000000000000000000000000000000014551231950b75fc4402da1722fc9baeb0000000000000000000000000000000000000000000000000000000000000003";
+  #assert er_recovers(EV_T_W_HASH, sig, 2, "0207310f90a9eae149a08402f54194a0f7b4ac427bf8d9bd6c7681071dc47dc362");
+  #assert er_recovers(EV_T_W_HASH, sig, 0, "02342a6cc87b69ec24d0f3324e7abd068c47ca4110b9e0b0c93ca28bdeaa78da01");
+}
+#test "x = r + n: below p - n adds, at p - n and above refuses" {
+  r: [32] u8; x: [33] u8;
+  #assert ev_unhex("000000000000000000000000000000014551231950b75fc4402da1722fc9baed", r[..]).count == 32;
+  #assert er_x_vartime(r[..], 2, x[..]) && x[0] == 2;
+  want: [32] u8;                                                          // r + n = p - 1
+  #assert se_t_same(x[1..<33], ev_unhex("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2e", want[..]));
+  #assert ev_unhex("000000000000000000000000000000014551231950b75fc4402da1722fc9baee", r[..]).count == 32;   // p - n
+  #assert !er_x_vartime(r[..], 3, x[..]);
+  r[15] = 2; #assert !er_x_vartime(r[..], 2, x[..]);    // a higher byte alone
+  r[15] = 1; r[31] = 0xed; #assert er_x_vartime(r[..], 3, x[..]) && x[0] == 3;
+  r[15] = 0; r[16] = 0xff; #assert er_x_vartime(r[..], 1, x[..]) && x[0] == 3 && x[17] == 0xff && x[1] == 0;
+  r[16] = 0; r[0] = 0xff; #assert er_x_vartime(r[..], 0, x[..]) && x[0] == 2 && x[1] == 0xff;
+  #assert !er_x_vartime(r[..], 2, x[..]);                // the top byte alone decides
+  #assert !er_x_vartime(r[0..<31], 0, x[..]) && !er_x_vartime(x[0..<33], 0, x[..]);
+}
+#test "refusals: lengths, IDs, scalars and forms" #steps 1000000000 {
+  h: [32] u8; s: [64] u8; out: [65] u8;
+  sig := ev_unhex(ER_T_FOUR, s[..]);
+  #assert ecdsa_recover_vartime(h[0..<31], sig, 0, SE_COMPRESSED, out[..]) == ER_BAD_LENGTH;
+  #assert ecdsa_recover_vartime(h[..], sig[0..<63], 0, SE_COMPRESSED, out[..]) == ER_BAD_LENGTH;
+  #assert ecdsa_recover_vartime(h[..], sig, 4, SE_COMPRESSED, out[..]) == ER_BAD_ID;
+  #assert ecdsa_recover_vartime(h[..], sig, -1, SE_COMPRESSED, out[..]) == ER_BAD_ID;
+  #assert ecdsa_recover_vartime(h[..], sig, 0, SE_XONLY, out[..]) == ER_BAD_FORM;
+  #assert ecdsa_recover_vartime(h[..], sig, 0, SE_UNCOMPRESSED, out[0..<64]) == ER_BAD_FORM;
+  #assert ecdsa_recover_vartime(h[..], sig, 0, SE_COMPRESSED, out[0..<32]) == ER_BAD_FORM;
+  #assert ecdsa_recover_vartime(h[..], sig, 0, SE_UNCOMPRESSED, out[..]) == SE_UNCOMPRESSED && out[0] == 4;
+  #assert ecdsa_recover_vartime(h[..], sig, 0, SE_COMPRESSED, out[0..<33]) == SE_COMPRESSED;
+  zero := "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001";
+  #assert er_refuses(ER_T_MSG, zero, 0) == ER_BAD_SCALAR;
+  big := "0000000000000000000000000000000000000000000000000000000000000001fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
+  #assert er_refuses(ER_T_MSG, big, 0) == ER_BAD_SCALAR;
+}
+#test "the signer's key comes back from its own signature" #steps 2000000000 {
+  // Key 1 and SHA-256("Satoshi Nakamoto"), ID 1 from ecdsa_sign_recoverable's
+  // check: the generator. The other parity gives another key.
+  #assert er_recovers(EV_T_HASH, EV_T_SIG, 1, "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert !er_recovers(EV_T_HASH, EV_T_SIG, 0, "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  // n - s, the high half, recovers the same key with the other parity:
+  // recovery has no low-S rule.
+  high := "934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d8dbbd3162d46e9f9bef7feb87c16dc13b4f6568a87f4e83f728e2443ba586675c";
+  #assert er_recovers(EV_T_HASH, high, 0, "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+}
+
+// ---- R from r and the ID
+// book:begin x
+// R in compressed form into x (33 bytes): the prefix 02 or 03 from bit 0
+// of the ID, then x(R), which is r, or r + n when bit 1 is set. False when
+// r is not 32 bytes, or when r + n would reach p, exactly when r >= p - n.
+er_x_vartime :: (r: [] u8, id: int, x: [] u8) -> bool {
+  if r.count != 32 { return false; }
+  if (id & 2) != 0 && !er_below_vartime(r, ER_P_MINUS_N) { return false; }
+  x[0] = cast(u8) (2 | (id & 1));
+  carry := 0;
+  for j: 0..<32 {
+    i := 31 - j;
+    sum := cast(int) r[i] + carry;
+    if (id & 2) != 0 { sum += cast(int) ER_N[i]; }
+    x[1 + i] = cast(u8) (sum & 255);
+    carry = sum >> 8;
+  }
+  return true;   // r < p - n, so r + n < p < 2^256: no carry is left
+}
+// a < b for two 32-byte big-endian numbers: the first differing byte decides.
+er_below_vartime :: (a: [] u8, b: [32] u8) -> bool {
+  for i: 0..<32 {
+    if a[i] < b[i] { return true; }
+    if a[i] > b[i] { return false; }
+  }
+  return false;                                          // equal
+}
+// book:end x
+
+// ---- the recovery
+// book:begin recover
+// The key Q with s·R = z·G + r·Q, for the hash z and the R that the ID
+// names: Q = r^-1 · (s·R - z·G) = u1·G + u2·R with u1 = -z/r, u2 = s/r.
+er_recover_vartime :: (hash: [] u8, signature: [] u8, id: int) -> ErResult {
+  if hash.count != 32 || signature.count != 64 { return ErResult.{code=ER_BAD_LENGTH}; }
+  if id < 0 || id > 3 { return ErResult.{code=ER_BAD_ID}; }
+  scalars := ev_scalars_vartime(signature);              // r and s in [1, n-1] (chapter 19)
+  if !scalars.ok { return ErResult.{code=ER_BAD_SCALAR}; }
+  x: [33] u8;
+  if !er_x_vartime(signature[0..<32], id, x[..]) { return ErResult.{code=ER_NO_X}; }
+  big_r := se_decode(x[..]);                             // lift_x and the parity (chapter 17)
+  if !big_r.ok { return ErResult.{code=ER_NO_POINT}; }
+  z := sc_reduce_bytes(hash).value;                      // a hash at least n is reduced
+  rinv := sc_inverse(scalars.r).value;
+  u1 := sc_negate(sc_mul(z, rinv)); u2 := sc_mul(scalars.s, rinv);
+  q := ecmult_vartime(u1, big_r.value, u2);              // u1·G + u2·R (chapter 16)
+  if sg_to_affine(q.value).value.infinity != 0 { return ErResult.{code=ER_INFINITY}; }
+  return ErResult.{key=q.value};
+}
+// book:end recover
+
+// ---- the entry
+// book:begin entry
+// The public key that the compact signature r || s of a 32-byte hash
+// recovers to with the ID, written to out in form (SE_COMPRESSED, 33
+// bytes, or SE_UNCOMPRESSED, 65). Returns the bytes written, or one of the
+// ER_ refusals, which write nothing. Any recovered key verifies the
+// signature; whether it is the right key is the caller's question.
+ecdsa_recover_vartime :: (hash: [] u8, signature: [] u8, id: int, form: int, out: [] u8) -> int #export_c {
+  if (form != SE_COMPRESSED && form != SE_UNCOMPRESSED) || out.count < form { return ER_BAD_FORM; }
+  result := er_recover_vartime(hash, signature, id);
+  if result.code != 0 { return result.code; }
+  return se_encode(result.key, form, out);
+}
+// book:end entry

@@ -7,6 +7,7 @@
 # report is at the signer's one declared decision, the ec_declassify line
 # (the validity of key, nonce, r and s), bound by line number, not by
 # function name. A control program that branches on the key must be flagged.
+# The probe signs with ecdsa_sign and with ecdsa_sign_recoverable (chapter 22).
 #
 #   coax/tests/bitcoin/ecdsa_sign_secret_probe.sh              # on Linux with nix
 #   coax/tests/bitcoin/ecdsa_sign_secret_probe.sh --host HOST  # generate here, run on HOST over ssh
@@ -51,6 +52,7 @@ else
 fi
 echo "probe: $(cat "$d/out.txt")"
 grep -q "^signed 1 " "$d/out.txt" || { echo "FAIL the probe did not sign";head -20 "$d/err.txt";exit 1; }
+grep -q "^recoverable 1 id [0-3] same 1" "$d/out.txt" || { echo "FAIL the probe did not sign recoverably";head -20 "$d/err.txt";exit 1; }
 echo "reports: $(grep -c 'depends on uninitialised\|Use of uninitialised' "$d/err.txt" || true)"
 # The first frame of each report: function and line in the generated C.
 sites="$(grep -A1 'depends on uninitialised\|Use of uninitialised' "$d/err.txt" | grep ' at \| by ' | sed -E 's/.*: (coax_p_)?([A-Za-z0-9_.]+) \(release\.c:([0-9]+)\)/\2 \3/' | sed 's/\.constprop[^ ]*//;s/\.isra[^ ]*//' | sort | uniq -c | sort -rn || true)"

@@ -4,7 +4,9 @@
    reported. The hash is public. Only the signature in out and the call's
    result are declassified, after the call. Inside the call the signer
    reveals one fact, the validity bit at ec_declassify; the script accepts
-   reports only at that line. A report anywhere else is a key-dependent
+   reports only at that line. It signs twice: with ecdsa_sign and with
+   chapter 22's ecdsa_sign_recoverable, whose recovery ID is computed from
+   the nonce point with masks. A report anywhere else is a key-dependent
    branch or address in the compiled signer.
    Run: coax/tests/bitcoin/ecdsa_sign_secret_probe.sh */
 #include "es.h"
@@ -13,7 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-static uint8_t key[32], hash[32], out[64];
+static uint8_t key[32], hash[32], out[64], rec[65];
 static coax_t_EcdsaWork work;
 int main(int argc, char **argv) {
   /* A test key (tiny-secp256k1's row 4) and SHA-256("Satoshi Nakamoto"). */
@@ -30,5 +32,11 @@ int main(int argc, char **argv) {
   VALGRIND_MAKE_MEM_DEFINED(&ok, sizeof ok);
   VALGRIND_MAKE_MEM_DEFINED(out, 64);
   printf("signed %d sig %02x%02x..%02x%02x\n", ok, out[0], out[1], out[62], out[63]);
-  return ok ? 0 : 1;
+  /* Chapter 22's recoverable signer: the same signer, a 65th byte. */
+  coax_v_u8 rv = {rec, 65};
+  bool rok = ecdsa_sign_recoverable(kv, hv, wv, rv, false);
+  VALGRIND_MAKE_MEM_DEFINED(&rok, sizeof rok);
+  VALGRIND_MAKE_MEM_DEFINED(rec, 65);
+  printf("recoverable %d id %d same %d\n", rok, rec[64], memcmp(rec, out, 64) == 0);
+  return ok && rok ? 0 : 1;
 }

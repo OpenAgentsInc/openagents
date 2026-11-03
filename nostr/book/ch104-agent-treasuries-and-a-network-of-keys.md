@@ -782,12 +782,10 @@ replaces *s* by *n* − *s* with a mask when 2*s* ≥ *n*:
 
 <!-- source: coax/lib/crypto/ecdsa_sign.coax ecdsa -->
 ```jai
-// The low-S ECDSA signature r || s (32 bytes each) of a 32-byte message
-// hash under a 32-byte key, with RFC 6979's nonce. Views are stable and
-// disjoint (overlap is the host's truthful observation). out is written
-// only when the result is true; the workspace is cleared either way.
-ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
-  if !ec_views(key, hash, w, out, overlap) { return false; }
+// The signature of a 32-byte message hash under a 32-byte key, with RFC
+// 6979's nonce, into out: r || s (32 bytes each, s in the low half), then
+// the recovery ID when out has 65 bytes. The caller checks the views.
+ec_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
   #assert ss_key(key, w[0].key[..], false);              // d, or 1 with valid = 0
   ec_candidates(key, hash, w);
   ec_pick(w);                                            // k
@@ -795,13 +793,23 @@ ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bo
   w[0].r = sc_reduce_bytes(w[0].x[..]).value;            // r = x(kG) mod n
   z := sc_reduce_bytes(hash).value;                      // z = h mod n
   w[0].kinv = sc_inverse(w[0].k).value;
-  w[0].s = ec_low(sc_mul(w[0].kinv, sc_add(z, sc_mul(w[0].r, w[0].key[0].safe))));   // s = (z + r*d) / k, low half
+  w[0].s = sc_mul(w[0].kinv, sc_add(z, sc_mul(w[0].r, w[0].key[0].safe)));   // s = (z + r*d) / k
+  w[0].high = ec_high(w[0].s);
+  w[0].s = sc_select(w[0].high, sc_negate(w[0].s), w[0].s);                // the low half
   valid := w[0].key[0].valid & w[0].valid & w[0].point[0].finite & ec_nonzero(w[0].r) & ec_nonzero(w[0].s);
   if !ec_declassify(valid) { return ec_clear(w); }      // the one fact the signer reveals
   for i: 0..<8 {
     #assert cb_store_be32(out, 28-4*i, w[0].r.limbs[i]) && cb_store_be32(out, 60-4*i, w[0].s.limbs[i]);
   }
+  if out.count == 65 { out[64] = ec_recid(w); }         // a public length decides
   return !ec_clear(w);
+}
+// The low-S ECDSA signature r || s (32 bytes each). Views are stable and
+// disjoint (overlap is the host's truthful observation). out is written
+// only when the result is true; the workspace is cleared either way.
+ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
+  if !ec_views(key, hash, w, out, overlap, 64) { return false; }
+  return ec_sign(key, hash, w, out);
 }
 ```
 

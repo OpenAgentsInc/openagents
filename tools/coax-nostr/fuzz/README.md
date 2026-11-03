@@ -35,7 +35,8 @@ byte/inventory on reuse. It then invokes the host C compiler directly on exactly
 - `src/precomputed_ecmult_gen.c`
 - our `oracle.c`
 
-Only ECDH, extrakeys and Schnorr optional modules are enabled. Table geometry is
+Only the ECDH, extrakeys, Schnorr and recovery optional modules are enabled
+(recovery for Bitcoin chapter 22's cross-check). Table geometry is
 explicit (`ECMULT_WINDOW_SIZE=15`, `COMB_BLOCKS=11`, `COMB_TEETH=6`). No upstream
 configure, CMake, installer, shell generator or package script is executed.
 `.cache/build/build.json` records source-tree/adapter/unit/artifact identities,

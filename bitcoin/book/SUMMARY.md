@@ -38,6 +38,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [19. Verify ECDSA](ch019-verify-ecdsa.md) — implemented
 - [20. Sign with ECDSA](ch020-sign-with-ecdsa.md) — implemented
 - [21. Strict DER](ch021-strict-der.md) — implemented
+- [22. Public key recovery and signed messages](ch022-public-key-recovery-and-signed-messages.md) — implemented
 - [23. Verify a Schnorr signature](ch023-verify-a-schnorr-signature.md) — implemented
 - [24. Sign with Schnorr](ch024-sign-with-schnorr.md) — implemented
 

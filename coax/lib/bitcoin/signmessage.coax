@@ -1,0 +1,217 @@
+// Bitcoin Core's signed messages (Bitcoin chapter 22): signmessage and
+// verifymessage. The message hash is SHA-256d over the magic text
+// "Bitcoin Signed Message:\n" and the message, each after its compact-size
+// length. The signature is 65 bytes, a header byte and r || s, in base64:
+// the header is 27 + the recovery ID, plus 4 when the key is compressed.
+// A verifier recovers the key (coax/lib/crypto/ecdsa_recover.coax),
+// hashes it in the form the header names and compares the hash with a
+// P2PKH address (chapter 26).
+//
+// Signing uses ecdsa_sign_recoverable (chapter 20's signer) and keeps its
+// constant-time rules. Verification reads only public data and runs in
+// variable time. BIP-137's headers for segwit addresses and BIP-322's
+// generic signed messages are not implemented.
+#load "../crypto/ecdsa_sign.coax";
+#load "../crypto/ecdsa_recover.coax";
+#load "../nostr/base64.coax";
+#load "base58.coax";
+#load "hash160.coax";
+#authority;
+
+SM_MAGIC :: "Bitcoin Signed Message:\n";
+SM_SIGNATURE_BYTES :: 65;
+SM_SIGNATURE_TEXT :: 88;   // 65 bytes in base64
+
+// Results. SM_OK and the first five refusals are Bitcoin Core's
+// MessageVerificationResult; the others are this verifier's own.
+SM_OK :: 0;
+SM_INVALID_ADDRESS :: -1;       // not a Base58 address of this network (Core: ERR_INVALID_ADDRESS)
+SM_ADDRESS_NO_KEY :: -2;        // a P2SH address: it names no key (Core: ERR_ADDRESS_NO_KEY)
+SM_MALFORMED_SIGNATURE :: -3;   // not canonical padded base64 (Core: ERR_MALFORMED_SIGNATURE)
+SM_NOT_RECOVERED :: -4;         // no key recovers from the signature (Core: ERR_PUBKEY_NOT_RECOVERED)
+SM_NOT_SIGNED :: -5;            // a key recovers, but not the address's key (Core: ERR_NOT_SIGNED)
+SM_BAD_LENGTH :: -6;            // the base64 holds other than 65 bytes (Core: ERR_PUBKEY_NOT_RECOVERED)
+SM_BAD_HEADER :: -7;            // a header byte outside 27 to 34 (Core masks it instead; see the chapter)
+SM_BAD_KEY :: -8;               // signing: the key is 0 or at least n, or a view is wrong
+SM_CAPACITY :: -9;              // the output buffer is too small
+
+// ---- checks
+SM_T_KEY :: "d97f5108f11cda6eeebaaa420fef0726b1f898060b98489fa3098463c0032866";
+SM_T_SIG :: "IPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=";
+SM_T_ADDRESS :: "15CRxFdyRpGZLW9w8HnHvVduizdL5jKNbs";
+#test "the message hash: magic, compact sizes, SHA-256d" {
+  // Python's hashlib over 18 'Bitcoin Signed Message:\n' 0c 'Trust no one'.
+  out: [33] u8; out[32] = 7;
+  #assert signed_message_hash("Trust no one", out[0..<32]) && out[32] == 7;
+  #assert bt_hex_is(out[0..<32], "aa8215d723ecd2f14867eeb7e19f192be7bc15a2352a24b991d4f5870cbaf6e8");
+  #assert signed_message_hash("", out[0..<32]) && bt_hex_is(out[0..<32], "80e795d4a4caadd7047af389d9f7f220562feb6196032e2131e10563352c4bcc");
+  #assert !signed_message_hash("", out[0..<31]) && !signed_message_hash("", out[..]);
+  // 253 bytes: the length prefix is fd fd 00.
+  long: [253] u8; for i: 0..<253 { long[i] = 'a'; }
+  #assert signed_message_hash(cast(string) long[..], out[0..<32]) && bt_hex_is(out[0..<32], "df167ad249ff5837e6acada677118b2ecc6757ab4cdade39caead99ef0220230");
+}
+#test "compact sizes at every boundary" {
+  b: [9] u8;
+  #assert sm_compact_size(0, b[..]) == 1 && b[0] == 0;
+  #assert sm_compact_size(0xfc, b[..]) == 1 && b[0] == 0xfc;
+  #assert sm_compact_size(0xfd, b[..]) == 3 && bt_hex_is(b[0..<3], "fdfd00");
+  #assert sm_compact_size(0xffff, b[..]) == 3 && bt_hex_is(b[0..<3], "fdffff");
+  #assert sm_compact_size(0x10000, b[..]) == 5 && bt_hex_is(b[0..<5], "fe00000100");
+  #assert sm_compact_size(0xffffffff, b[..]) == 5 && bt_hex_is(b[0..<5], "feffffffff");
+  #assert sm_compact_size(0x100000000, b[..]) == 9 && bt_hex_is(b[0..<9], "ff0000000001000000");
+  #assert sm_compact_size(0x0102030405060708, b[..]) == 9 && bt_hex_is(b[0..<9], "ff0807060504030201");
+}
+#test "Bitcoin Core's message_sign case signs byte for byte" #steps 2000000000 {
+  // src/test/util_tests.cpp, message_sign (pinned in coax/tests/vectors/upstream/bitcoin-core/).
+  k: [32] u8; w: [1] EcdsaWork; out: [89] u8; out[88] = 7;
+  #assert signed_message_sign(bt_unhex(SM_T_KEY, k[..]), true, "Trust no one", w[..], out[0..<88]) == 88;
+  #assert cast(string) out[0..<88] == SM_T_SIG && out[88] == 7 && w[0].high == 0;
+  #assert signed_message_sign(k[..], true, "Trust no one", w[..], out[0..<87]) == SM_CAPACITY;
+  // The uncompressed form changes only the header: 32 becomes 28.
+  #assert signed_message_sign(k[..], false, "Trust no one", w[..], out[0..<88]) == 88;
+  #assert cast(string) out[0..<88] == "HPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=";
+  z: [32] u8; out[0] = 7;
+  #assert signed_message_sign(z[..], true, "Trust no one", w[..], out[0..<88]) == SM_BAD_KEY && out[0] == 7;
+  #assert signed_message_sign(k[0..<31], true, "Trust no one", w[..], out[0..<88]) == SM_BAD_KEY;
+}
+#test "Bitcoin Core's message_verify cases" #steps 2000000000 {
+  #assert verify_message_vartime("invalid address", "signature should be irrelevant", "message too", false) == SM_INVALID_ADDRESS;
+  #assert verify_message_vartime("3B5fQsEXEaV8v6U3ejYc8XaKXAkyQj2MjV", "signature should be irrelevant", "message too", false) == SM_ADDRESS_NO_KEY;
+  #assert verify_message_vartime("1KqbBpLy5FARmTPD4VZnDDpYjkUvkr82Pm", "invalid signature, not in base64 encoding", "message should be irrelevant", false) == SM_MALFORMED_SIGNATURE;
+  // Core: ERR_PUBKEY_NOT_RECOVERED. Its header byte is 0, which this verifier refuses first.
+  zeros := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+  #assert verify_message_vartime("1KqbBpLy5FARmTPD4VZnDDpYjkUvkr82Pm", zeros, "message should be irrelevant", false) == SM_BAD_HEADER;
+  #assert verify_message_vartime(SM_T_ADDRESS, SM_T_SIG, "I never signed this", false) == SM_NOT_SIGNED;
+  #assert verify_message_vartime(SM_T_ADDRESS, SM_T_SIG, "Trust no one", false) == SM_OK;
+  #assert verify_message_vartime("11canuhp9X2NocwCq7xNrQYTmUgZAnLK3", "IIcaIENoYW5jZWxsb3Igb24gYnJpbmsgb2Ygc2Vjb25kIGJhaWxvdXQgZm9yIGJhbmtzIAaHRtbCeDZINyavx14=", "Trust me", false) == SM_OK;
+}
+#test "networks, lengths, headers and recovery refusals" #steps 2000000000 {
+  // The mainnet address on a test network is invalid there.
+  #assert verify_message_vartime(SM_T_ADDRESS, SM_T_SIG, "Trust no one", true) == SM_INVALID_ADDRESS;
+  #assert verify_message_vartime("mpLQjfK79b7CCV4VMJWEWAj5Mpx8Up5zxB", SM_T_SIG, "Trust no one", false) == SM_INVALID_ADDRESS;
+  #assert verify_message_vartime("2MyK4SVW4pMoiYobfMnLfkF56u2UjcZ7YTi", SM_T_SIG, "Trust no one", true) == SM_ADDRESS_NO_KEY;
+  // The same key's testnet address.
+  #assert verify_message_vartime("mjiPFJixEqhp7cdYqrkfkQrEazE32GnXma", SM_T_SIG, "Trust no one", true) == SM_OK;
+  #assert verify_message_vartime(SM_T_ADDRESS, "AAAA", "Trust no one", false) == SM_BAD_LENGTH;
+  #assert verify_message_vartime(SM_T_ADDRESS, "", "Trust no one", false) == SM_BAD_LENGTH;
+  #assert verify_message_vartime(SM_T_ADDRESS, "IPoj", "Trust no one", false) == SM_BAD_LENGTH;
+  // The same r || s behind the headers 26 and 35, one step outside each end.
+  #assert verify_message_vartime(SM_T_ADDRESS, "GvojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=", "Trust no one", false) == SM_BAD_HEADER;
+  #assert verify_message_vartime(SM_T_ADDRESS, "I/ojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=", "Trust no one", false) == SM_BAD_HEADER;
+  // Header 34 (ID 3: x(R) is not at least n) recovers nothing.
+  #assert verify_message_vartime(SM_T_ADDRESS, "IvojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=", "Trust no one", false) == SM_NOT_RECOVERED;
+  // Header 28: the same ID with the compressed flag off. The uncompressed
+  // key hashes to another address.
+  #assert verify_message_vartime(SM_T_ADDRESS, "HPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=", "Trust no one", false) == SM_NOT_SIGNED;
+  // r = 0 behind a good header.
+  #assert verify_message_vartime(SM_T_ADDRESS, "IAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "Trust no one", false) == SM_NOT_RECOVERED;
+}
+#test "the recovered key comes back in the header's form" #steps 2000000000 {
+  key: [66] u8; key[33] = 7;
+  #assert signed_message_recover_vartime(SM_T_SIG, "Trust no one", key[..]) == 33 && key[33] == 7;
+  #assert bt_hex_is(key[0..<33], "03d2be3dddb497c7c4388cfcb941e14a222cf3e26fe5e2cc260da1821e60d26022");   // the key's d·G
+  #assert signed_message_recover_vartime(SM_T_SIG, "Trust no one", key[0..<32]) == SM_CAPACITY;
+  #assert signed_message_recover_vartime("HPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=", "Trust no one", key[..]) == 65 && key[0] == 4;
+  #assert signed_message_recover_vartime("not base64!", "Trust no one", key[..]) == SM_MALFORMED_SIGNATURE;
+  // Headers 27 and 31, ID 0 at each end of the ranges: another key, in each form.
+  #assert signed_message_recover_vartime("G/ojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=", "Trust no one", key[..]) == 65;
+  #assert signed_message_recover_vartime("H/ojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=", "Trust no one", key[..]) == 33;
+  #assert verify_message_vartime(SM_T_ADDRESS, "H/ojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=", "Trust no one", false) == SM_NOT_SIGNED;
+}
+
+// ---- the message hash
+// book:begin hash
+// Bitcoin's compact size: n in one byte below 0xfd, else the byte fd, fe
+// or ff and n in 2, 4 or 8 little-endian bytes. Returns the bytes written.
+sm_compact_size :: (n: int, out: [] u8) -> int {
+  size := 9; first := 0xff;
+  if n < 0xfd { out[0] = cast(u8) n; return 1; }
+  if n <= 0xffff { size = 3; first = 0xfd; }
+  else if n <= 0xffffffff { size = 5; first = 0xfe; }
+  out[0] = cast(u8) first;
+  for i: 1..<size { out[i] = cast(u8) ((n >> (8 * (i - 1))) & 255); }
+  return size;
+}
+// Absorb the bytes of text, one at a time (SHA-256 buffers them). True
+// when every update succeeds.
+sm_absorb :: (state: [] u8, text: string) -> bool {
+  one: [1] u8; ok := true;
+  for i: 0..<text.count {
+    one[0] = text[i];
+    ok = ok && sha256_update_checked(state, one[..], false) == SHA_OK;
+  }
+  return ok;
+}
+// The hash a signed message signs: SHA-256d of compact_size(24), the magic,
+// compact_size(len(message)) and the message, into out (32 bytes).
+signed_message_hash :: (message: string, out: [] u8) -> bool #export_c {
+  if out.count != 32 { return false; }
+  state: [SHA_STATE_BYTES] u8; magic: [9] u8; length: [9] u8; first: [32] u8;
+  m := sm_compact_size(SM_MAGIC.count, magic[..]);
+  l := sm_compact_size(message.count, length[..]);
+  ok := sha256_init(state[..]) == SHA_OK;
+  ok = ok && sha256_update_checked(state[..], magic[0..<m], false) == SHA_OK && sm_absorb(state[..], SM_MAGIC);
+  ok = ok && sha256_update_checked(state[..], length[0..<l], false) == SHA_OK && sm_absorb(state[..], message);
+  ok = ok && sha256_final_checked(state[..], first[..], false) == SHA_OK;
+  return ok && sha256_hash_checked(first[..], out, false) == SHA_OK;
+}
+// book:end hash
+
+// ---- signing
+// book:begin sign
+// signmessage: the base64 signature (88 characters) of message under a
+// 32-byte key, into out. compressed says which form of the key the
+// address hashes; it sets bit 2 of the header. Returns 88 or a refusal.
+signed_message_sign :: (key: [] u8, compressed: bool, message: string, w: [] EcdsaWork, out: [] u8) -> int #export_c {
+  if out.count < SM_SIGNATURE_TEXT { return SM_CAPACITY; }
+  hash: [32] u8; signed: [65] u8; compact: [65] u8;
+  ok := signed_message_hash(message, hash[..]) && ecdsa_sign_recoverable(key, hash[..], w, signed[..], false);
+  if !ok { return SM_BAD_KEY; }
+  flag := 0; if compressed { flag = 4; }
+  compact[0] = cast(u8) (27 + cast(int) signed[64] + flag);   // the header: 27 + ID + 4·compressed
+  for i: 0..<64 { compact[1 + i] = signed[i]; }
+  return base64_encode_checked(cast(string) compact[..], out[0..<SM_SIGNATURE_TEXT], false).written;
+}
+// book:end sign
+
+// ---- verification
+// book:begin recover
+// The key a base64 signature recovers for message, in the form its header
+// names (33 bytes compressed, 65 uncompressed), into out. Returns the
+// bytes written or a refusal.
+signed_message_recover_vartime :: (signature: string, message: string, out: [] u8) -> int #export_c {
+  bytes: [65] u8;
+  decoded := base64_decode_checked(signature, bytes[..], false);   // canonical padded base64 (chapter 1)
+  if decoded.error == NC_INVALID { return SM_MALFORMED_SIGNATURE; }
+  if decoded.error != NC_OK || decoded.written != SM_SIGNATURE_BYTES { return SM_BAD_LENGTH; }
+  header := cast(int) bytes[0];
+  if header < 27 || header > 34 { return SM_BAD_HEADER; }
+  form := ifx header >= 31 then SE_COMPRESSED else SE_UNCOMPRESSED;
+  if out.count < form { return SM_CAPACITY; }
+  hash: [32] u8;
+  ok := signed_message_hash(message, hash[..]);
+  n := ecdsa_recover_vartime(hash[..], bytes[1..<65], (header - 27) & 3, form, out);
+  if !ok || n != form { return SM_NOT_RECOVERED; }
+  return form;
+}
+// book:end recover
+// book:begin verify
+// verifymessage: does signature sign message under the key of address, a
+// P2PKH address of mainnet, or of the test networks when testnet is set?
+// Returns SM_OK or the first refusal, in Bitcoin Core's order.
+verify_message_vartime :: (address: string, signature: string, message: string, testnet: bool) -> int #export_c {
+  want: [20] u8;
+  kind := base58_address_decode_vartime(address, want[..]);   // chapter 26
+  p2pkh := ifx testnet then B58_TEST_P2PKH else B58_MAIN_P2PKH;
+  p2sh := ifx testnet then B58_TEST_P2SH else B58_MAIN_P2SH;
+  if kind == p2sh { return SM_ADDRESS_NO_KEY; }
+  if kind != p2pkh { return SM_INVALID_ADDRESS; }
+  key: [65] u8;
+  n := signed_message_recover_vartime(signature, message, key[..]);
+  if n < SE_COMPRESSED { return n; }                     // a refusal
+  got: [20] u8;
+  ok := hash160_checked(key[0..<n], got[..], false) == RMD_OK;   // chapter 6
+  if !ok || cb_ct_equal(got[..], want[..]) != CB_MAX64 { return SM_NOT_SIGNED; }
+  return SM_OK;
+}
+// book:end verify

@@ -16,6 +16,8 @@
     "src/secp256k1.c": "c9eff089d8cd7c5b3a843bf5ca1cc9d3fdac3a4a84b7d446e5a53e2bbd0d712a",
     "src/util.h": "1ae020ca4feba019413b549de263e7c07c656fa1f9edd6b63cc563943ae4097b",
     "src/modules/ecdh/main_impl.h": "36646341e69ae46be9d1fd67860eea3819f00c7f8707020d1bc89ed3f1f88e3a",
-    "include/secp256k1_schnorrsig.h": "9b72c2199046d815df533d61a0287c1f4ca73cdef2195666c0c57d284e0c84cc"
+    "include/secp256k1_schnorrsig.h": "9b72c2199046d815df533d61a0287c1f4ca73cdef2195666c0c57d284e0c84cc",
+    "include/secp256k1_recovery.h": "3b2efb3ccf53e9f1bce93a4afae31946585958d5cba3b38fdfb1eea4c6ce2622",
+    "src/modules/recovery/main_impl.h": "fbec2358a560b669d85720108b0b1a8f653c91531a88ded0a1da339445266cc9"
   }
 }

@@ -1,0 +1,76 @@
+// The checks of signed-messages.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/signed-messages.coax --run-steps 250000000
+#load "../signed-messages.coax";
+
+// book:begin check
+// On the toy curve, for every key d and nonce k, the signature and its ID
+// recover d·G, and every other ID recovers another point or none. Pairs
+// where r = 0 or s = 0 are not signatures.
+#forall "toy: the right ID recovers the key, the others don't" d: 1..<TOY_N #steps 400000000 {
+  solved := 0; above := 0;
+  for k: 1..<TOY_N {
+    t := toy_sign(5, d, k); want := toy_times(d, TOY_G);
+    if t.r == 0 || t.s == 0 { continue; }
+    back := toy_recover(5, t);
+    #assert back.x == want.x && back.y == want.y;
+    for other: 0..<4 {
+      if other == t.id { continue; }
+      wrong := toy_recover(5, ToySig.{r=t.r,s=t.s,id=other});
+      #assert wrong.x != want.x || wrong.y != want.y;
+    }
+    solved += 1;
+    if t.id >= 2 { above += 1; }
+  }
+  #assert solved > 25 && above > 0;
+}
+// The first 20 pinned rows in the interpreter: the published ID from the
+// recoverable signer, and the row's key from recovery. The example covers
+// every 20th row; the native harness covers all 2,020.
+#forall "tiny-secp256k1 rows: the ID and the key" i: 0..<20 #steps 4000000000 {
+  c := ES_CASES[i]; kb: [32] u8; mb: [32] u8; sb: [64] u8; got: [65] u8; mine: [33] u8; theirs: [33] u8; w: [1] EcdsaWork;
+  dk := decode(c.d, kb[..]); m := decode(c.m, mb[..]);
+  #assert ecdsa_sign_recoverable(dk, m, w[..], got[..], false) && got[64] == ER_IDS[i];
+  #assert bytes_same(got[0..<64], decode(c.sig, sb[..]));
+  #assert ecdsa_recover_vartime(m, got[0..<64], cast(int) ER_IDS[i], SE_COMPRESSED, mine[..]) == SE_COMPRESSED;
+  #assert bytes_same(mine[..], compressed_key(dk, theirs[..]));
+}
+// tiny-secp256k1's 8 recovery refusals, each with its own reason.
+#test "the pinned refusals give their codes" #steps 600000000 {
+  want := [8] int.[ER_BAD_SCALAR, ER_BAD_SCALAR, ER_BAD_SCALAR, ER_BAD_SCALAR, ER_BAD_SCALAR, ER_NO_X, ER_NO_POINT, ER_BAD_LENGTH];
+  for i: 0..<8 {
+    c := ER_REFUSE[i]; mb: [33] u8; sb: [64] u8; out: [33] u8; out[0] = 7;
+    #assert ecdsa_recover_vartime(decode(c.m, mb[..]), decode(c.sig, sb[..]), c.id, SE_COMPRESSED, out[..]) == want[i] && out[0] == 7;
+  }
+}
+// Every case of Core's message_verify, mapped to this verifier's codes.
+#test "Bitcoin Core's message cases give Core's results" #steps 2000000000 {
+  for i: 0..<SM_CORE_VERIFY.count {
+    c := SM_CORE_VERIFY[i];
+    got := verify_message_vartime(c.address, c.sig, c.message, false);
+    // The all-zero signature: Core recovers nothing; this verifier stops at its header byte 0.
+    expected := ifx got == SM_BAD_HEADER then "ERR_PUBKEY_NOT_RECOVERED" else message_name(got);
+    #assert expected == c.result;
+  }
+  ck: [32] u8; w: [1] EcdsaWork; text: [88] u8;
+  #assert signed_message_sign(decode(SM_CORE_SIGN[0], ck[..]), true, SM_CORE_SIGN[1], w[..], text[..]) == 88;
+  #assert cast(string) text[..] == SM_CORE_SIGN[2];
+}
+#test "the functional test's key, signature and addresses" #steps 2000000000 {
+  wif_work: [WIF_WORK_BYTES] u8; fk: [32] u8; w: [1] EcdsaWork; text: [88] u8;
+  #assert wif_decode_ct(SM_CORE_FUNCTIONAL[0], wif_work[..], fk[..]) == B58_TEST_WIF_COMPRESSED;
+  #assert signed_message_sign(fk[..], true, SM_CORE_FUNCTIONAL[1], w[..], text[..]) == 88;
+  #assert cast(string) text[..] == SM_CORE_FUNCTIONAL[2];
+  #assert verify_message_vartime(SM_CORE_FUNCTIONAL[3], SM_CORE_FUNCTIONAL[2], SM_CORE_FUNCTIONAL[1], true) == SM_OK;
+  #assert verify_message_vartime("2MyK4SVW4pMoiYobfMnLfkF56u2UjcZ7YTi", SM_CORE_FUNCTIONAL[2], SM_CORE_FUNCTIONAL[1], true) == SM_ADDRESS_NO_KEY;
+  #assert verify_message_vartime("invalid_addr", SM_CORE_FUNCTIONAL[2], SM_CORE_FUNCTIONAL[1], true) == SM_INVALID_ADDRESS;
+  #assert verify_message_vartime(SM_CORE_FUNCTIONAL[3], "invalid_sig", SM_CORE_FUNCTIONAL[1], true) == SM_MALFORMED_SIGNATURE;
+}
+#test "every result has its own name" {
+  #assert recover_name(ER_BAD_LENGTH) != recover_name(ER_BAD_ID) && recover_name(ER_NO_X) != recover_name(ER_NO_POINT);
+  #assert recover_name(ER_INFINITY) != recover_name(ER_BAD_FORM) && recover_name(ER_BAD_SCALAR) != recover_name(SE_COMPRESSED);
+  #assert recover_name(SE_COMPRESSED) == "recovered" && recover_name(ER_BAD_FORM) == "bad output form";
+  #assert message_name(SM_OK) == "OK" && message_name(SM_CAPACITY) == "capacity" && message_name(SM_BAD_KEY) == "bad key";
+  #assert message_name(SM_BAD_LENGTH) != message_name(SM_BAD_HEADER) && message_name(SM_NOT_SIGNED) != message_name(SM_NOT_RECOVERED);
+}
+// book:end check

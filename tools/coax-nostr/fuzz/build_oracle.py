@@ -63,7 +63,7 @@ def build(archive, cache, reviewed, sanitize=False):
     out=target/('libsecp_oracle'+extension)
     flags=['-std=c11','-O2','-fPIC','-shared','-Wall','-Wextra','-Werror','-Wno-unused-function',
            '-DECMULT_WINDOW_SIZE=15','-DCOMB_BLOCKS=11','-DCOMB_TEETH=6',
-           '-DENABLE_MODULE_ECDH','-DENABLE_MODULE_EXTRAKEYS','-DENABLE_MODULE_SCHNORRSIG',
+           '-DENABLE_MODULE_ECDH','-DENABLE_MODULE_EXTRAKEYS','-DENABLE_MODULE_SCHNORRSIG','-DENABLE_MODULE_RECOVERY',
            '-I'+str(source/'include'),'-I'+str(source/'src')]
     if sanitize: flags+=['-g','-fsanitize=address,undefined','-fno-omit-frame-pointer']
     units=[source/'src/secp256k1.c',source/'src/precomputed_ecmult.c',source/'src/precomputed_ecmult_gen.c',HERE/'oracle.c']

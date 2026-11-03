@@ -64,8 +64,25 @@ that a maliciously replaced manifest is authentic.
   that libsecp256k1 makes with RFC 6979 and low-S; its 4 `invalid.sign`
   rows are keys that must refuse. Chapter 20 signs every `valid` row byte
   for byte. The `extraEntropy` rows (libsecp256k1's `ndata`) and the
-  `verify` and `recover` rows are not claimed. RFC 6979's own appendix
-  vectors have no secp256k1 case.
+  `verify` rows are not claimed. RFC 6979's own appendix vectors have no
+  secp256k1 case. Bitcoin chapter 22 claims each `valid` row's
+  `recoveryId` (0 or 1): recovery with it gives the row's key, and
+  recoverable signing gives it. Its 8 `invalid.recover` rows must refuse.
+- **ECDSA public key recovery:** libsecp256k1's recovery module tests
+  (`src/modules/recovery/tests_impl.h`) at release `v0.8.0` (the oracle's
+  pinned commit `6e2c8bc4`), with its `COPYING`, retrieved 2026-11-02 for
+  Bitcoin chapter 22. Its edge cases are claimed: a signature by the
+  invalid key 0, whose true R recovers to infinity and whose IDs 2 and 3
+  put r + n past p; `(r, s) = (4, 4)`, which recovers with all four IDs;
+  and `(1, 1)`, `(0, 1)` and `(1, 0)`. Its DER-parsing checks are not.
+- **Bitcoin signed messages:** Bitcoin Core's `src/test/util_tests.cpp`
+  (the `message_sign`, `message_verify` and `message_hash` cases) and
+  `test/functional/rpc_signmessagewithprivkey.py`, both at the revision of
+  the other Bitcoin Core files, retrieved 2026-11-02 for Bitcoin chapter 22.
+  Every signature, address and expected result in those cases is claimed,
+  except that the all-zero signature of `message_verify` refuses at its
+  header byte here, where Core reports `ERR_PUBKEY_NOT_RECOVERED`. The
+  rest of `util_tests.cpp` is not claimed.
 - **BIP-340:** all 19 official CSV rows, including invalid signatures and
   message lengths 0, 1, 17 and 100. The associated license is retained.
 - **RIPEMD-160:** the authors' paper (Dobbertin, Bosselaers and Preneel,
@@ -305,4 +322,8 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/mainnet/33e794d097969002ee05d336686fc03c9e15a597c1b9827669460fac98799036.json`](upstream/mainnet/33e794d097969002ee05d336686fc03c9e15a597c1b9827669460fac98799036.json) | [mempool.space API](https://mempool.space/api/tx/33e794d097969002ee05d336686fc03c9e15a597c1b9827669460fac98799036) | `49f1314013f8bffd9c13f8a45d54983a5f9b317c96d4b8dba1330e11a353a63b` |
 | [`upstream/mainnet/37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8.hex`](upstream/mainnet/37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8.hex) | [mempool.space API](https://mempool.space/api/tx/37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8/hex) | `2098bb60eb4f47c230213ba7bd72a0b00dfcd6d295b59469b64ef1de8d72640d` |
 | [`upstream/mainnet/37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8.json`](upstream/mainnet/37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8.json) | [mempool.space API](https://mempool.space/api/tx/37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8) | `8a9d44ab04ac3e4cf22472446690fcc5fad2b69ef9fb2d8711809338c51270b1` |
+| [`upstream/bitcoin-core/util_tests.cpp`](upstream/bitcoin-core/util_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/util_tests.cpp) | `ff05ad11d27d2444a7ced5a31c933fa2793ac5f8d4d3cc52b5f17fdefbc6cca7` |
+| [`upstream/bitcoin-core/rpc_signmessagewithprivkey.py`](upstream/bitcoin-core/rpc_signmessagewithprivkey.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/rpc_signmessagewithprivkey.py) | `56e6f567ff363e884b27c03baee123deb9600ee2f62825317257a3e133fdd30b` |
+| [`upstream/secp256k1/recovery/tests_impl.h`](upstream/secp256k1/recovery/tests_impl.h) | [pinned source](https://raw.githubusercontent.com/bitcoin-core/secp256k1/6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d/src/modules/recovery/tests_impl.h) | `fc23430ea6e87f8f37bbf641236e71ead587e5438cf3d34f93de7ef39ebf3978` |
+| [`upstream/secp256k1/COPYING`](upstream/secp256k1/COPYING) | [pinned source](https://raw.githubusercontent.com/bitcoin-core/secp256k1/6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d/COPYING) | `a735999c7e5649df6fcda6fb06ab97435851c392b1b93494ae8725f37441632f` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

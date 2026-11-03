@@ -1,0 +1,63 @@
+toy curve y^2 = x^3 + 7 mod 43, n = 31, G = (2, 12)
+d = 7, k = 10, z = 5: (r, s) = (11, 2), R = 10G = (42, 7), ID 3
+x = r + n = 42, y odd, Q = (25, 18) = 7G: true
+all keys and nonces: 870 recover their key, 406 with x(R) >= n
+secp256k1, key 1, SHA-256("Satoshi Nakamoto")
+ecdsa_sign_recoverable: true, ID 1
+r || s: 934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d82442ce9d2b916064108014783e923ec36b49743e2ffa1c4496f01a512aafd9e5
+R (ID 1: x = r, y odd): 03934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d8
+u1 = -z/r: fd6baba07ef1b6f8beb07d943afa20404b4acf04fe1c76a29711b0bde5445636
+u2 = s/r: 938432d275e07c34023c426ed09444d50b73edd6714dafbbd7e4fc6767c287e3
+Q, ID 0: recovered: 0354d58835e07b996d6378eafa930ae9d2211e767381f1d52aedc67f48c8886f0b
+Q, ID 1: recovered: 0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+Q, ID 2: r + n is at least p
+Q, ID 3: r + n is at least p
+(r, n - s) with ID 0 gives G too: true
+tiny-secp256k1 ecdsa.json, every 20th row
+101 of 101 give the published ID, 101 recover the signing key
+refusals
+Invalid r, s values (== 0): r or s not in [1, n-1]
+Invalid r value (== 0): r or s not in [1, n-1]
+Invalid s value (== 0): r or s not in [1, n-1]
+Invalid r value (>= n): r or s not in [1, n-1]
+Invalid s value (>= n): r or s not in [1, n-1]
+Invalid r value for r (should be less than p - order): r + n is at least p
+Invalid X coordinate value for r: no point has that x
+Invalid hash length: bad length
+signed by key 0, ID 0: the key is infinity
+signed by key 0, ID 1: recovered
+signed by key 0, ID 2: r + n is at least p
+signed by key 0, ID 3: r + n is at least p
+signed by key 0, ID 4: recovery ID out of range
+(4, 4), ID 0: recovered
+(4, 4), ID 1: recovered
+(4, 4), ID 2: recovered
+(4, 4), ID 3: recovered
+(4, 4), ID 4: recovery ID out of range
+(1, 1), ID 0: recovered
+(1, 1), ID 1: recovered
+(1, 1), ID 2: no point has that x
+(1, 1), ID 3: no point has that x
+(1, 1), ID 4: recovery ID out of range
+Wycheproof tcId 346, ID 2: 0207310f90a9eae149a08402f54194a0f7b4ac427bf8d9bd6c7681071dc47dc362
+signed messages
+message hash of "Trust no one": aa8215d723ecd2f14867eeb7e19f192be7bc15a2352a24b991d4f5870cbaf6e8
+signmessage: IPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=
+equals Core's message_sign: true
+verify message too (Core: ERR_INVALID_ADDRESS): ERR_INVALID_ADDRESS
+verify message too (Core: ERR_ADDRESS_NO_KEY): ERR_ADDRESS_NO_KEY
+verify message should be irrelevant (Core: ERR_MALFORMED_SIGNATURE): ERR_MALFORMED_SIGNATURE
+verify message should be irrelevant (Core: ERR_PUBKEY_NOT_RECOVERED): bad header byte
+verify I never signed this (Core: ERR_NOT_SIGNED): ERR_NOT_SIGNED
+verify Trust no one (Core: OK): OK
+verify Trust me (Core: OK): OK
+WIF: testnet compressed true
+signmessagewithprivkey equals Core's: true
+verify with mpLQjfK79b7CCV4VMJWEWAj5Mpx8Up5zxB: OK
+verify with 2MyK4SVW4pMoiYobfMnLfkF56u2UjcZ7YTi: ERR_ADDRESS_NO_KEY
+verify with invalid_addr: ERR_INVALID_ADDRESS
+verify invalid_sig: ERR_MALFORMED_SIGNATURE
+on mainnet: ERR_INVALID_ADDRESS
+header 26: bad header byte
+header 35: bad header byte
+64 bytes: bad length

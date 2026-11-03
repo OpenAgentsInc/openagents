@@ -205,7 +205,8 @@
       "revision": "git:e1fd7a77bb0ca87fb4726fb1fd4f424f30a04db9",
       "license": "MIT",
       "covers": [
-        "ecdsa-secp256k1-sign-rfc6979"
+        "ecdsa-secp256k1-sign-rfc6979",
+        "ecdsa-secp256k1-recovery"
       ],
       "retrieved": "2026-11-02",
       "sha256": "b830aa30d0ab3b6c51440caffac9206b24ae5450a387a2db73789f5ce795595d",
@@ -1008,6 +1009,58 @@
           "sha256": "b5f89374e4e1dbdee7881e8573b4313b6a89430a9c8d518471599ae0660cf0e2"
         }
       ]
+    },
+    {
+      "path": "upstream/bitcoin-core/util_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/util_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-signed-message"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "ff05ad11d27d2444a7ced5a31c933fa2793ac5f8d4d3cc52b5f17fdefbc6cca7",
+      "bytes": 83841
+    },
+    {
+      "path": "upstream/bitcoin-core/rpc_signmessagewithprivkey.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/rpc_signmessagewithprivkey.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-signed-message"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "56e6f567ff363e884b27c03baee123deb9600ee2f62825317257a3e133fdd30b",
+      "bytes": 3158
+    },
+    {
+      "path": "upstream/secp256k1/recovery/tests_impl.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin-core/secp256k1/6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d/src/modules/recovery/tests_impl.h",
+      "revision": "git:6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d",
+      "license": "MIT",
+      "covers": [
+        "ecdsa-secp256k1-recovery"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "fc23430ea6e87f8f37bbf641236e71ead587e5438cf3d34f93de7ef39ebf3978",
+      "bytes": 18154
+    },
+    {
+      "path": "upstream/secp256k1/COPYING",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin-core/secp256k1/6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d/COPYING",
+      "revision": "git:6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d",
+      "license": "MIT",
+      "covers": [
+        "license"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "a735999c7e5649df6fcda6fb06ab97435851c392b1b93494ae8725f37441632f",
+      "bytes": 1057
     },
     {
       "path": "upstream/bitcoin-core/interpreter.cpp",

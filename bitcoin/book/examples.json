@@ -221,6 +221,18 @@
       "timeout": 420
     },
     {
+      "source": "bitcoin/examples/signed-messages.coax",
+      "chapter": "bitcoin/book/ch022-public-key-recovery-and-signed-messages.md",
+      "stdout": "bitcoin/fixtures/signed-messages.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 420
+    },
+    {
       "source": "bitcoin/examples/schnorr-verify.coax",
       "chapter": "bitcoin/book/ch023-verify-a-schnorr-signature.md",
       "stdout": "bitcoin/fixtures/schnorr-verify.out",

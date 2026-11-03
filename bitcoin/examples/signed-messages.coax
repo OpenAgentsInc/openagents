@@ -1,0 +1,225 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/signmessage.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/tests/bitcoin/ecdsa_sign_vectors.coax";
+#load "../../coax/tests/bitcoin/ecdsa_recover_vectors.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [160] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+show_scalar :: (label: string, s: ScScalar) {
+  b: [32] u8;
+  if sc_store(s, b[..]) { show(label, b[..]); }
+}
+// Decode hex into out and return the filled part. Every literal here and
+// in the vector tables is valid hex, so a decoding error stops the program.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+bytes_same :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// The compressed public key d·G.
+compressed_key :: (d: [] u8, out: [] u8) -> [] u8 {
+  #assert se_encode(smb_multiply_web(sc_load(d).value), SE_COMPRESSED, out) == SE_COMPRESSED;
+  return out[0..<33];
+}
+// The name of a recovery or signed-message result.
+recover_name :: (code: int) -> string {
+  if code == ER_BAD_LENGTH { return "bad length"; }
+  if code == ER_BAD_ID { return "recovery ID out of range"; }
+  if code == ER_BAD_SCALAR { return "r or s not in [1, n-1]"; }
+  if code == ER_NO_X { return "r + n is at least p"; }
+  if code == ER_NO_POINT { return "no point has that x"; }
+  if code == ER_INFINITY { return "the key is infinity"; }
+  if code == ER_BAD_FORM { return "bad output form"; }
+  return "recovered";
+}
+message_name :: (code: int) -> string {
+  if code == SM_OK { return "OK"; }
+  if code == SM_INVALID_ADDRESS { return "ERR_INVALID_ADDRESS"; }
+  if code == SM_ADDRESS_NO_KEY { return "ERR_ADDRESS_NO_KEY"; }
+  if code == SM_MALFORMED_SIGNATURE { return "ERR_MALFORMED_SIGNATURE"; }
+  if code == SM_NOT_RECOVERED { return "ERR_PUBKEY_NOT_RECOVERED"; }
+  if code == SM_NOT_SIGNED { return "ERR_NOT_SIGNED"; }
+  if code == SM_BAD_LENGTH { return "bad length"; }
+  if code == SM_BAD_HEADER { return "bad header byte"; }
+  if code == SM_BAD_KEY { return "bad key"; }
+  return "capacity";
+}
+
+// ---- the toy curve of chapters 19 and 20: y^2 = x^3 + 7 over F_43, 31
+// points, n = 31 < p = 43, so x(R) >= n happens for 12 of the 43 values of x.
+TOY_P :: 43;
+TOY_N :: 31;
+Toy :: struct { x: int; y: int; }
+TOY_G :: Toy.{x=2,y=12};
+TOY_INFINITY :: Toy.{x=-1,y=-1};
+toy_mod :: (a: int, m: int) -> int { r := a % m; return ifx r < 0 then r + m else r; }
+toy_inverse :: (a: int, m: int) -> int {
+  r := 1;
+  for i: 0..<m-2 { r = toy_mod(r * a, m); }
+  return r;
+}
+toy_add :: (a: Toy, b: Toy) -> Toy {
+  if a.x < 0 { return b; }
+  if b.x < 0 { return a; }
+  if a.x == b.x && toy_mod(a.y + b.y, TOY_P) == 0 { return TOY_INFINITY; }
+  slope := ifx a.x == b.x then toy_mod(3 * a.x * a.x * toy_inverse(2 * a.y, TOY_P), TOY_P)
+           else toy_mod((b.y - a.y) * toy_inverse(toy_mod(b.x - a.x, TOY_P), TOY_P), TOY_P);
+  x := toy_mod(slope * slope - a.x - b.x, TOY_P);
+  return Toy.{x=x,y=toy_mod(slope * (a.x - x) - a.y, TOY_P)};
+}
+toy_times :: (k: int, p: Toy) -> Toy {
+  r := TOY_INFINITY;
+  for i: 0..<toy_mod(k, TOY_N) { r = toy_add(r, p); }
+  return r;
+}
+ToySig :: struct { r: int; s: int; id: int; }
+// A signature with its recovery ID: bit 0 is y(R) odd, bit 1 is x(R) >= n.
+// (No low-S on the toy curve.)
+toy_sign :: (z: int, d: int, k: int) -> ToySig {
+  big_r := toy_times(k, TOY_G);
+  r := big_r.x % TOY_N;
+  id := (big_r.y % 2) + 2 * (ifx big_r.x >= TOY_N then 1 else 0);
+  return ToySig.{r=r,s=toy_mod(toy_inverse(k, TOY_N) * (z + r * d), TOY_N),id=id};
+}
+// Q = r^-1 (s·R - z·G) for the R the ID names, or infinity when no point fits.
+toy_recover :: (z: int, sig: ToySig) -> Toy {
+  x := sig.r + TOY_N * (sig.id / 2);
+  if x >= TOY_P { return TOY_INFINITY; }
+  for y: 0..<TOY_P {
+    if y % 2 != sig.id % 2 || toy_mod(y * y - x * x * x - 7, TOY_P) != 0 { continue; }
+    big_r := Toy.{x=x,y=y};
+    minus_z := toy_times(toy_mod(-z, TOY_N), TOY_G);
+    return toy_times(toy_inverse(sig.r, TOY_N), toy_add(toy_times(sig.s, big_r), minus_z));
+  }
+  return TOY_INFINITY;
+}
+
+// libsecp256k1's edge cases (ecdsa_recover.coax's checks), ID 4 included.
+EDGE_SIGS :: [3] string.[ER_T_SIG, ER_T_FOUR, ER_T_ONE];
+EDGE_NAMES :: [3] string.["signed by key 0", "(4, 4)", "(1, 1)"];
+KEY_ONE :: "0000000000000000000000000000000000000000000000000000000000000001";
+SATOSHI_HASH :: "a0dc65ffca799873cbea0ac274015b9526505daaaed385155425f7337704883e";
+
+main :: () {
+  // The toy curve: every key comes back from its signature and ID.
+  print("toy curve y^2 = x^3 + 7 mod 43, n = 31, G = (2, 12)\n");
+  sig := toy_sign(5, 7, 10);
+  q := toy_recover(5, sig);
+  print("d = 7, k = 10, z = 5: (r, s) = (%, %), R = 10G = (42, 7), ID %\n", sig.r, sig.s, sig.id);
+  print("x = r + n = %, y odd, Q = (%, %) = 7G: %\n", sig.r + TOY_N, q.x, q.y, q.x == toy_times(7, TOY_G).x && q.y == toy_times(7, TOY_G).y);
+  high := 0; recovered := 0;
+  for d: 1..<TOY_N { for k: 1..<TOY_N {
+    t := toy_sign(5, d, k);
+    if t.r == 0 || t.s == 0 { continue; }
+    if t.id >= 2 { high += 1; }
+    back := toy_recover(5, t); want := toy_times(d, TOY_G);
+    if back.x == want.x && back.y == want.y { recovered += 1; }
+  }}
+  print("all keys and nonces: % recover their key, % with x(R) >= n\n", recovered, high);
+
+  // secp256k1: the signature of chapter 20's worked example, by hand.
+  print("secp256k1, key 1, SHA-256(\"Satoshi Nakamoto\")\n");
+  key: [32] u8; hash: [32] u8; w: [1] EcdsaWork; signed: [65] u8;
+  d := decode(KEY_ONE, key[..]); h := decode(SATOSHI_HASH, hash[..]);
+  print("ecdsa_sign_recoverable: %, ID %\n", ecdsa_sign_recoverable(d, h, w[..], signed[..], false), signed[64]);
+  show("r || s", signed[0..<64]);
+  x: [33] u8;
+  #assert er_x_vartime(signed[0..<32], 1, x[..]);
+  show("R (ID 1: x = r, y odd)", x[..]);
+  scalars := ev_scalars_vartime(signed[0..<64]);
+  rinv := sc_inverse(scalars.r).value; z := sc_reduce_bytes(h).value;
+  show_scalar("u1 = -z/r", sc_negate(sc_mul(z, rinv)));
+  show_scalar("u2 = s/r", sc_mul(scalars.s, rinv));
+  for id: 0..<4 {
+    out: [33] u8;
+    n := ecdsa_recover_vartime(h, signed[0..<64], id, SE_COMPRESSED, out[..]);
+    print("Q, ID %: ", id);
+    if n > 0 { show(recover_name(n), out[..]); } else { print("%\n", recover_name(n)); }
+  }
+  // n - s: the other half of the signature recovers the same key with the
+  // other parity. Recovery has no low-S rule.
+  flipped: [64] u8; back: [33] u8; g: [33] u8;
+  for i: 0..<32 { flipped[i] = signed[i]; }
+  #assert sc_store(sc_negate(scalars.s), flipped[32..<64]);
+  #assert ecdsa_recover_vartime(h, flipped[..], 0, SE_COMPRESSED, back[..]) == SE_COMPRESSED;
+  print("(r, n - s) with ID 0 gives G too: %\n", bytes_same(back[..], compressed_key(d, g[..])));
+
+  // Every 20th pinned row: the signer gives the published ID, and recovery
+  // with it gives d·G. A recovery costs about ten signatures.
+  print("tiny-secp256k1 ecdsa.json, every 20th row\n");
+  ids := 0; keys := 0; tried := 0;
+  for i: 0..<ES_CASES.count {
+    if i % 20 != 0 { continue; }
+    c := ES_CASES[i]; kb: [32] u8; mb: [32] u8; got: [65] u8; mine: [33] u8; theirs: [33] u8;
+    dk := decode(c.d, kb[..]); m := decode(c.m, mb[..]);
+    #assert ecdsa_sign_recoverable(dk, m, w[..], got[..], false);
+    tried += 1;
+    if got[64] == ER_IDS[i] { ids += 1; }
+    if ecdsa_recover_vartime(m, got[0..<64], cast(int) ER_IDS[i], SE_COMPRESSED, mine[..]) == SE_COMPRESSED &&
+       bytes_same(mine[..], compressed_key(dk, theirs[..])) { keys += 1; }
+  }
+  print("% of % give the published ID, % recover the signing key\n", ids, tried, keys);
+
+  // The pinned refusals and libsecp256k1's edge cases, with their codes.
+  print("refusals\n");
+  for i: 0..<ER_REFUSE.count {
+    c := ER_REFUSE[i]; mb: [33] u8; sb: [64] u8; out: [33] u8;
+    print("%: %\n", c.why, recover_name(ecdsa_recover_vartime(decode(c.m, mb[..]), decode(c.sig, sb[..]), c.id, SE_COMPRESSED, out[..])));
+  }
+  for which: 0..<3 {
+    text := EDGE_SIGS[which]; name := EDGE_NAMES[which];
+    mb: [32] u8; sb: [64] u8;
+    for id: 0..<5 {
+      out: [33] u8;
+      n := ecdsa_recover_vartime(decode(ER_T_MSG, mb[..]), decode(text, sb[..]), id, SE_COMPRESSED, out[..]);
+      print("%, ID %: %\n", name, id, recover_name(n));
+    }
+  }
+  // Wycheproof tcId 346: r = p - n - 3, so ID 2 puts x(R) = p - 3.
+  wh: [32] u8; ws: [64] u8; wk: [33] u8;
+  wsig := "000000000000000000000000000000014551231950b75fc4402da1722fc9baeb0000000000000000000000000000000000000000000000000000000000000003";
+  #assert ecdsa_recover_vartime(decode(EV_T_W_HASH, wh[..]), decode(wsig, ws[..]), 2, SE_COMPRESSED, wk[..]) == SE_COMPRESSED;
+  show("Wycheproof tcId 346, ID 2", wk[..]);
+
+  // Bitcoin Core's signed messages.
+  print("signed messages\n");
+  mh: [32] u8;
+  #assert signed_message_hash("Trust no one", mh[..]);
+  show("message hash of \"Trust no one\"", mh[..]);
+  ck: [32] u8; text: [88] u8;
+  n := signed_message_sign(decode(SM_CORE_SIGN[0], ck[..]), true, SM_CORE_SIGN[1], w[..], text[..]);
+  print("signmessage: %\n", cast(string) text[0..<n]);
+  print("equals Core's message_sign: %\n", cast(string) text[0..<n] == SM_CORE_SIGN[2]);
+  for i: 0..<SM_CORE_VERIFY.count {
+    c := SM_CORE_VERIFY[i];
+    print("verify % (Core: %): %\n", c.message, c.result, message_name(verify_message_vartime(c.address, c.sig, c.message, false)));
+  }
+  // The functional test, on a test network, from a WIF key (chapter 26).
+  wif_work: [WIF_WORK_BYTES] u8; fk: [32] u8;
+  kind := wif_decode_ct(SM_CORE_FUNCTIONAL[0], wif_work[..], fk[..]);
+  print("WIF: testnet compressed %\n", kind == B58_TEST_WIF_COMPRESSED);
+  n = signed_message_sign(fk[..], kind == B58_TEST_WIF_COMPRESSED, SM_CORE_FUNCTIONAL[1], w[..], text[..]);
+  print("signmessagewithprivkey equals Core's: %\n", cast(string) text[0..<n] == SM_CORE_FUNCTIONAL[2]);
+  print("verify with %: %\n", SM_CORE_FUNCTIONAL[3], message_name(verify_message_vartime(SM_CORE_FUNCTIONAL[3], SM_CORE_FUNCTIONAL[2], SM_CORE_FUNCTIONAL[1], true)));
+  // Its P2SH-P2WPKH address, from HASH160(00 14 HASH160(key)).
+  print("verify with 2MyK4SVW4pMoiYobfMnLfkF56u2UjcZ7YTi: %\n", message_name(verify_message_vartime("2MyK4SVW4pMoiYobfMnLfkF56u2UjcZ7YTi", SM_CORE_FUNCTIONAL[2], SM_CORE_FUNCTIONAL[1], true)));
+  print("verify with invalid_addr: %\n", message_name(verify_message_vartime("invalid_addr", SM_CORE_FUNCTIONAL[2], SM_CORE_FUNCTIONAL[1], true)));
+  print("verify invalid_sig: %\n", message_name(verify_message_vartime(SM_CORE_FUNCTIONAL[3], "invalid_sig", SM_CORE_FUNCTIONAL[1], true)));
+  print("on mainnet: %\n", message_name(verify_message_vartime(SM_CORE_FUNCTIONAL[3], SM_CORE_FUNCTIONAL[2], SM_CORE_FUNCTIONAL[1], false)));
+  // One header byte outside 27 to 34 at each end, and a short signature.
+  print("header 26: %\n", message_name(verify_message_vartime(SM_T_ADDRESS, "GvojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=", "Trust no one", false)));
+  print("header 35: %\n", message_name(verify_message_vartime(SM_T_ADDRESS, "I/ojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=", "Trust no one", false)));
+  print("64 bytes: %\n", message_name(verify_message_vartime(SM_T_ADDRESS, "+iN+tfZ18+cfbpR6B9sZBAut0rzjgOUernXnv8/qHntbK5L9CyX6H9ZJUYMXgxSLitZKzBbfyiKYNh801QFQ6Q==", "Trust no one", false)));
+}
+// book:end example

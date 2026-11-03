@@ -50,7 +50,8 @@ it. This chapter audits it, teaches it and adds its vectors and checks.
 | [ecdsa_sign.coax](../../coax/lib/crypto/ecdsa_sign.coax) | `ecdsa_sign(key, hash, w, out, overlap)` | signs a 32-byte hash into the compact `r \|\| s` (`#authority`) |
 | | `ec_candidates`, `ec_step`, `ec_next`, `ec_hmac` | RFC 6979's HMAC-SHA256 generator: the first two nonce candidates |
 | | `ec_pick` | the first candidate in `[1, n-1]`, chosen with a mask |
-| | `ec_low` | `n - s` when `s` is in the high half, chosen with a mask |
+| | `ec_sign` | the signer body that `ecdsa_sign` and chapter 22's `ecdsa_sign_recoverable` share |
+| | `ec_high`, `ec_low` | whether `s` is in the high half, and `n - s` then, chosen with a mask |
 | | `ec_declassify`, `ec_clear` | the one revealed fact, and the workspace erasure |
 | | `ecdsa_der(sig, out)` | a minimal DER encoder for the public result |
 | [hmac.coax](../../coax/lib/crypto/hmac.coax) | `hmac_sha256_checked` | HMAC-SHA256 (chapter 8) |
@@ -191,14 +192,17 @@ borrow means `2s >= n`. It computes `n - s` either way and selects:
 
 <!-- source: coax/lib/crypto/ecdsa_sign.coax low -->
 ```jai
-// n - s when s > (n-1)/2. For s < n, that holds exactly when 2s >= n, so
-// compute 2s in nine limbs, subtract n, and select on the borrow.
-ec_low :: (s: ScScalar) -> ScScalar {
+// 1 when s > (n-1)/2, else 0. For s < n, that holds exactly when 2s >= n,
+// so compute 2s in nine limbs, subtract n, and read the borrow.
+ec_high :: (s: ScScalar) -> u64 {
   wide: [9] u32; carry: u32;
   for i: 0..<8 { wide[i] = (s.limbs[i] << 1) | carry; carry = s.limbs[i] >> 31; }
   wide[8] = carry;
-  high := sc_subtract_n(wide).borrow ^ 1;
-  return sc_select(high, sc_negate(s), s);
+  return sc_subtract_n(wide).borrow ^ 1;
+}
+// n - s when s is in the high half, selected on that bit.
+ec_low :: (s: ScScalar) -> ScScalar {
+  return sc_select(ec_high(s), sc_negate(s), s);
 }
 ```
 
@@ -211,12 +215,10 @@ example below is high.
 
 <!-- source: coax/lib/crypto/ecdsa_sign.coax ecdsa -->
 ```jai
-// The low-S ECDSA signature r || s (32 bytes each) of a 32-byte message
-// hash under a 32-byte key, with RFC 6979's nonce. Views are stable and
-// disjoint (overlap is the host's truthful observation). out is written
-// only when the result is true; the workspace is cleared either way.
-ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
-  if !ec_views(key, hash, w, out, overlap) { return false; }
+// The signature of a 32-byte message hash under a 32-byte key, with RFC
+// 6979's nonce, into out: r || s (32 bytes each, s in the low half), then
+// the recovery ID when out has 65 bytes. The caller checks the views.
+ec_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
   #assert ss_key(key, w[0].key[..], false);              // d, or 1 with valid = 0
   ec_candidates(key, hash, w);
   ec_pick(w);                                            // k
@@ -224,13 +226,23 @@ ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bo
   w[0].r = sc_reduce_bytes(w[0].x[..]).value;            // r = x(kG) mod n
   z := sc_reduce_bytes(hash).value;                      // z = h mod n
   w[0].kinv = sc_inverse(w[0].k).value;
-  w[0].s = ec_low(sc_mul(w[0].kinv, sc_add(z, sc_mul(w[0].r, w[0].key[0].safe))));   // s = (z + r*d) / k, low half
+  w[0].s = sc_mul(w[0].kinv, sc_add(z, sc_mul(w[0].r, w[0].key[0].safe)));   // s = (z + r*d) / k
+  w[0].high = ec_high(w[0].s);
+  w[0].s = sc_select(w[0].high, sc_negate(w[0].s), w[0].s);                // the low half
   valid := w[0].key[0].valid & w[0].valid & w[0].point[0].finite & ec_nonzero(w[0].r) & ec_nonzero(w[0].s);
   if !ec_declassify(valid) { return ec_clear(w); }      // the one fact the signer reveals
   for i: 0..<8 {
     #assert cb_store_be32(out, 28-4*i, w[0].r.limbs[i]) && cb_store_be32(out, 60-4*i, w[0].s.limbs[i]);
   }
+  if out.count == 65 { out[64] = ec_recid(w); }         // a public length decides
   return !ec_clear(w);
+}
+// The low-S ECDSA signature r || s (32 bytes each). Views are stable and
+// disjoint (overlap is the host's truthful observation). out is written
+// only when the result is true; the workspace is cleared either way.
+ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
+  if !ec_views(key, hash, w, out, overlap, 64) { return false; }
+  return ec_sign(key, hash, w, out);
 }
 ```
 
@@ -238,7 +250,10 @@ ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bo
 an invalid key costs the same work as a valid one. `valid` is the AND of
 five masks: the key, the nonce, a finite `R`, and nonzero `r` and `s`.
 `ec_declassify` turns it into the call's result. The `#assert` lines check
-only view lengths, which are public.
+only view lengths, which are public. The body keeps the low-S decision as
+the bit `high`, and writes a 65th byte only for
+[chapter 22](ch022-public-key-recovery-and-signed-messages.md)'s
+`ecdsa_sign_recoverable`, which calls the same body.
 
 ### Secrets in the code
 
@@ -790,9 +805,10 @@ coax/bin/coax test coax/lib/crypto/ecdsa_sign.coax --run-steps 250000000
 coax/bin/coax mutate coax/lib/crypto/ecdsa_sign.coax --root-only --run-steps 250000000
 ```
 
-On 2026-11-02, `coax test` ran 154 checks, including the loaded files',
-and root-only mutation killed all 227 mutants of `ecdsa_sign.coax`, with
-none marked equivalent.
+On 2026-11-02, `coax test` ran 157 checks, including the loaded files',
+and root-only mutation killed all 283 mutants of `ecdsa_sign.coax`, with
+none marked equivalent. The count includes chapter 22's recoverable
+signer and its checks.
 
 ### tiny-secp256k1, libsecp256k1 and Python, natively and in Wasm
 
@@ -847,7 +863,8 @@ PLANT=1 coax/tests/bitcoin/ecdsa_sign_secret_probe.sh --host HOST   # must FAIL
 
 On 2026-11-02, on a NixOS x86-64 host with Valgrind 3.26.0 and GCC
 15.2.0, the probe signed and Memcheck reported one site, the `ec_declassify`
-branch in `ecdsa_sign`. The control program's branch on the key was
+branch in `ec_sign`, the body that `ecdsa_sign` calls. The probe also signs
+with chapter 22's `ecdsa_sign_recoverable`. The control program's branch on the key was
 flagged. With `PLANT=1`, which adds one branch on a key bit right after the
 nonce derivation, Memcheck reported the planted line as well, and the probe
 failed, as it must. Valgrind 3.26.0's default suppressions file doesn't
