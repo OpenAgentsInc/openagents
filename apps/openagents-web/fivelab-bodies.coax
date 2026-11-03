@@ -15,7 +15,8 @@
 // a sword's swing for a blow, the spell clip for a cast or a shot; a knock back when it is hurt;
 // down, it falls and lies; dead, it falls, lies a few seconds and fades away (in the Horde a fresh
 // Skeleton takes its square at once, so the body is handed to a corpse of its own to finish).
-// Far figures leave off their hair (bd_build's LOD), and figures out of view are not drawn.
+// Far figures leave off their hair (bd_build's LOD); the farthest, a few pixels tall, are 13 blocks
+// on the same bones, 156 triangles for some 10,000; figures out of view are not drawn.
 //   coax/bin/coax test --library apps/openagents-web/fivelab-bodies.coax
 
 #module "openagents.fivelab.bodies";
@@ -45,6 +46,8 @@ BD_LIE :: 3.5;            // seconds the dead lie once fallen
 BD_GONE :: 1.0;           // and then fade away over
 BD_SPELL_FOR :: 1.1;      // seconds the spell clip plays for a cast or a shot
 BD_FAR_PX :: 70.0;        // a figure shorter than this on the screen leaves off its hair
+BD_BLOCK_PX :: 30.0;      // and one shorter than this is drawn as 13 blocks on its bones (gpu/fivelab.coax fivelab_block_vs)
+BD_BLOCK_VERTS :: 468;    // 13 blocks of 12 triangles
 
 // The pack's parts (people-rig.coax PEOPLE_PART_NAME's order).
 BP_MALE_PEASANT :: 0; BP_MALE_RANGER :: 1; BP_MALE_HOOD :: 2;
@@ -163,8 +166,9 @@ Bodies :: struct {
   top: int;                 // 1 + the highest slot put since the last fresh start: the loops stop there
   corpse: [BD_CORPSES] BdAnim; corpse_at: int;
   now: f32;
-  draws: [64] u32; draw_n: int;
+  draws: [68] u32; draw_n: int;  // a draw a part worn, and one of the blocks
   shown: int;               // figures drawn this frame
+  blocks: int;              // of them, drawn as blocks
 }
 
 // ---- the pack's catalog (verse/tools/pack_realm.py): "C NAME FIRST COUNT K WORD VERTICES JOINTS" a part
@@ -375,16 +379,17 @@ bd_record :: (a: BdAnim, l: BdLook, word: int, far: bool, now: f32, out: [] f32,
 // Every figure in view, a record a part it wears, grouped by part; the draws (one a part worn, its
 // index range and its run of instances). The count of records.
 bd_build :: (b: [] Bodies, c: BdCam, out: [] f32) -> int {
-  b[0].draw_n = 0; b[0].shown = 0;
+  b[0].draw_n = 0; b[0].shown = 0; b[0].blocks = 0;
   if !b[0].ready { return 0; }
   now := b[0].now;
-  counts: [16] int; total := 0;
+  counts: [16] int; total := 0; blocks := 0; block_base := 0; block_used := 0;
   // two passes over the figures: count each part's instances, then write them in its run
   for pass: 0..<2 {
     base: [16] int; used: [16] int;
     if pass == 1 {
       at := 0;
       for k: 0..<PEOPLE_PARTS { base[k] = at; at += counts[k]; used[k] = 0; }
+      block_base = at;
     }
     for q: 0..<b[0].top + BD_CORPSES {
       i := ifx q < b[0].top then q else BD_SLOTS + q - b[0].top;
@@ -394,6 +399,17 @@ bd_build :: (b: [] Bodies, c: BdCam, out: [] f32) -> int {
       tall := bd_seen(c, a.x, a.z);
       if tall <= 0 { continue; }
       l := bd_look(a.look, a.v);
+      if tall < f32(BD_BLOCK_PX) {
+        if pass == 0 {
+          if total + 1 > BD_RECORDS { continue; }
+          blocks += 1; total += 1; b[0].shown += 1; b[0].blocks += 1;
+        } else if block_used < blocks {
+          bd_record(a, l, 0, true, now, out, block_base + block_used);
+          out[(block_base + block_used) * BD_REC_FLOATS + 15] += 4;
+          block_used += 1;
+        }
+        continue;
+      }
       far := tall < f32(BD_FAR_PX);
       parts: [BD_PARTS_MAX] int;
       n := bd_parts(l, far, parts[..]);
@@ -425,7 +441,14 @@ bd_build :: (b: [] Bodies, c: BdCam, out: [] f32) -> int {
     }
     at += counts[k];
   }
-  return at;
+  if blocks > 0 {
+    // not indexed (the top bit of its first instance, host.js): the blocks' vertices are made in the shader
+    d := b[0].draw_n * 4;
+    b[0].draws[d] = 0; b[0].draws[d + 1] = cast(u32) BD_BLOCK_VERTS;
+    b[0].draws[d + 2] = cast(u32) at | 0x80000000; b[0].draws[d + 3] = cast(u32) blocks;
+    b[0].draw_n += 1;
+  }
+  return at + blocks;
 }
 
 // ---- checks
@@ -567,4 +590,23 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
   // a new battle (its clock begun again) starts everyone afresh
   bd_frame(b[..], 0);
   #assert !b[0].slot[50].on;
+}
+
+#test "a figure a few pixels tall is one record of blocks, drawn without the pack's indices" {
+  b: [1] Bodies;
+  bd_catalog(b[..], BD_CATALOG);
+  out: [BD_REC_FLOATS * 64] f32;
+  bd_put(b[..], 0, true, 4, 0, 0, 0, 0, 0, 0, 0);     // a skeleton near
+  bd_put(b[..], 1, true, 4, 0, 0, 100, 0, 0, 0, 0);   // and one far off, some 20 px tall
+  bd_frame(b[..], 0.1);
+  #assert bd_seen(BD_CAM, 0, 100) > 0 && bd_seen(BD_CAM, 0, 100) < f32(BD_BLOCK_PX);
+  n := bd_build(b[..], BD_CAM, out[..]);
+  p0: [BD_PARTS_MAX] int;
+  nr := bd_parts(bd_look(4, 0), false, p0[..]);
+  #assert b[0].shown == 2 && b[0].blocks == 1 && n == nr + 1;
+  last := (b[0].draw_n - 1) * 4;
+  #assert b[0].draws[last + 1] == cast(u32) BD_BLOCK_VERTS && b[0].draws[last + 3] == 1;
+  #assert (b[0].draws[last + 2] & 0x80000000) != 0 && (b[0].draws[last + 2] & 0x7fffffff) == cast(u32) nr;
+  // its record says blocks (4) and bones (1)
+  #assert cast(int) out[nr * BD_REC_FLOATS + 15] == 7;
 }

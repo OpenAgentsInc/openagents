@@ -137,6 +137,22 @@ rs_difficult :: (b: [] RsBattle, x: int, y: int) -> bool {
 }
 // A hostile creature within 5 feet that can act: ranged attacks have Disadvantage then.
 rs_threatened :: (b: [] RsBattle, i: int) -> bool {
+  // a big battle reads the squares next to it (one creature a square, as rs_at reads them); a
+  // square the index has wrong, or a small battle, scans them all
+  if b[0].n > 64 && rs_indexed(b) {
+    stale := false;
+    for dy: -1..<2 {
+      for dx: -1..<2 {
+        x := b[0].c[i].x + dx; y := b[0].c[i].y + dy;
+        if x < 0 || y < 0 || x >= b[0].w || y >= b[0].h { continue; }
+        j := b[0].occ[y * b[0].w + x] - 1;
+        if j < 0 || j == i { continue; }
+        if j >= b[0].n || b[0].c[j].x != x || b[0].c[j].y != y { stale = true; continue; }
+        if b[0].c[j].team != b[0].c[i].team && rs_can_act(b[0].c[j]) { return true; }
+      }
+    }
+    if !stale { return false; }
+  }
   for j: 0..<b[0].n {
     if j != i && b[0].c[j].team != b[0].c[i].team && rs_can_act(b[0].c[j]) && rs_feet_to(b, i, j) <= 5 { return true; }
   }

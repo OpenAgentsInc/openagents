@@ -473,8 +473,84 @@ fivelab_gaunt :: (p:V3)->V3 {
   }
   return q;
 }
+// A far figure as 13 blocks on its bones (fivelab-bodies.coax BD_BLOCK_PX): hips, chest, head, the
+// arms' two halves, thighs, shins and feet, each a box in the bind pose (the male body's joints,
+// people-rig.coax PEOPLE_BIND_M) carried by its one joint, 36 vertices a box, none indexed. Per
+// box: its joint, middle, half sizes and what it is (0 skin, 1 cloth, 2 the cloth's darker half,
+// 3 boots).
+fivelab_block_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,bake:[]V4)->FivelabS {
+  boxes:[104]f32=[104]f32.[
+    1.0f32,0.0f32,0.95f32,-0.04f32,0.16f32,0.09f32,0.11f32,1.0f32,
+    4.0f32,0.0f32,1.3f32,-0.03f32,0.17f32,0.2f32,0.11f32,1.0f32,
+    6.0f32,0.0f32,1.66f32,-0.01f32,0.095f32,0.12f32,0.11f32,0.0f32,
+    8.0f32,0.317f32,1.456f32,-0.069f32,0.126f32,0.05f32,0.05f32,1.0f32,
+    9.0f32,0.563f32,1.456f32,-0.07f32,0.12f32,0.04f32,0.04f32,2.0f32,
+    32.0f32,-0.317f32,1.456f32,-0.069f32,0.126f32,0.05f32,0.05f32,1.0f32,
+    33.0f32,-0.563f32,1.456f32,-0.07f32,0.12f32,0.04f32,0.04f32,2.0f32,
+    55.0f32,0.091f32,0.756f32,-0.036f32,0.075f32,0.215f32,0.075f32,1.0f32,
+    56.0f32,0.091f32,0.314f32,-0.05f32,0.06f32,0.228f32,0.06f32,2.0f32,
+    57.0f32,0.091f32,0.05f32,0.0f32,0.055f32,0.05f32,0.12f32,3.0f32,
+    60.0f32,-0.091f32,0.756f32,-0.036f32,0.075f32,0.215f32,0.075f32,1.0f32,
+    61.0f32,-0.091f32,0.314f32,-0.05f32,0.06f32,0.228f32,0.06f32,2.0f32,
+    62.0f32,-0.091f32,0.05f32,0.0f32,0.055f32,0.05f32,0.12f32,3.0f32];
+  corner_a:[6]f32=[6]f32.[-1.0f32,1.0f32,1.0f32,-1.0f32,1.0f32,-1.0f32];
+  corner_b:[6]f32=[6]f32.[-1.0f32,-1.0f32,1.0f32,-1.0f32,1.0f32,1.0f32];
+  v:int=cast(int)id;
+  q:int=(v/36)*8;
+  k:int=v%36;
+  face:int=k/6;
+  axis:int=face/2;
+  side:f32=ifx (face%2)==0 then -1.0f32 else 1.0f32;
+  ca:f32=corner_a[k%6]; cb:f32=corner_b[k%6];
+  bones:bool=wg_fmod(m.d.w,2.0f32)>0.5f32;
+  thin:f32=1.0f32;
+  if bones { thin=ifx q==16 then 0.85f32 else 0.55f32; }
+  h:V3=v3(boxes[q+4]*thin,boxes[q+5],boxes[q+6]*thin);
+  // the face's two other axes: (y, z) on x, (z, x) on y, (x, y) on z
+  c:V3=v3(ca,cb,side); nl:V3=v3(0.0f32,0.0f32,side);
+  if (axis==0) { c=v3(side,ca,cb); nl=v3(side,0.0f32,0.0f32); }
+  if (axis==1) { c=v3(cb,side,ca); nl=v3(0.0f32,side,0.0f32); }
+  local:V3=add3(v3(boxes[q+1],boxes[q+2],boxes[q+3]),mul3(c,h));
+  at4:V4=v4(local.x,local.y,local.z,1.0f32);
+  joint:u32=cast(u32)(cast(int)boxes[q]);
+  r:u32=add_wrap(wg_u32_f(m.b.x),mul_wrap(joint,3));
+  ra:V4=bake[cast(int)r]; rc:V4=bake[cast(int)add_wrap(r,1)]; re:V4=bake[cast(int)add_wrap(r,2)];
+  p:V3=v3(wg_dot4(ra,at4),wg_dot4(rc,at4),wg_dot4(re,at4));
+  n:V3=v3(dot3(v3(ra.x,ra.y,ra.z),nl),dot3(v3(rc.x,rc.y,rc.z),nl),dot3(v3(re.x,re.y,re.z),nl));
+  if (m.b.z>0.001f32) {
+    r2:u32=add_wrap(wg_u32_f(m.b.y),mul_wrap(joint,3));
+    sa:V4=bake[cast(int)r2]; sc:V4=bake[cast(int)add_wrap(r2,1)]; se:V4=bake[cast(int)add_wrap(r2,2)];
+    p=mix3(p,v3(wg_dot4(sa,at4),wg_dot4(sc,at4),wg_dot4(se,at4)),m.b.z);
+    n=mix3(n,v3(dot3(v3(sa.x,sa.y,sa.z),nl),dot3(v3(sc.x,sc.y,sc.z),nl),dot3(v3(se.x,se.y,se.z),nl)),m.b.z);
+  }
+  cs:f32=cos(m.a.w); sn:f32=sin(m.a.w);
+  w:V3=v3((p.x*cs)+(p.z*sn)+m.a.x,p.y+m.a.y,((-p.x)*sn)+(p.z*cs)+m.a.z);
+  o:FivelabS;
+  o.pos=fivelab_project(w,u);
+  o.world=w;
+  o.normal=v3((n.x*cs)+(n.z*sn),n.y,((-n.x)*sn)+(n.z*cs));
+  o.uv=v2(0.5f32,0.5f32);
+  o.local=local;
+  o.who=instance;
+  o.slice=0;
+  // the cloth: the class's dye on a plain brown, as fivelab_dye dyes the outfit
+  what:f32=boxes[q+7];
+  cloth:V3=mix3(v3(0.42f32,0.34f32,0.24f32),v3(m.e.x,m.e.y,m.e.z),clampf(m.e.w,0.0f32,1.0f32));
+  t:V3=cloth;
+  if (what<0.5f32) { t=v3(m.c.x,m.c.y,m.c.z); }
+  if ((what>1.5f32)&&(what<2.5f32)) { t=scale3(cloth,0.75f32); }
+  if (what>2.5f32) { t=v3(0.2f32,0.14f32,0.09f32); }
+  if bones {
+    t=v3(0.62f32,0.58f32,0.47f32);
+    if ((q==0)||(q==8)) { t=v3(0.08f32,0.07f32,0.06f32); }
+  }
+  o.tint=t;
+  o.dye=v4(0.0f32,0.0f32,0.0f32,10.0f32);
+  return o;
+}
 fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {
   m:FivelabObj=objects[cast(int)instance];
+  if (wg_fmod(m.d.w,8.0f32)>3.5f32) { return fivelab_block_vs(id,instance,m,u,bake); }
   b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,6));
   xy:V2=wg_unpack2x16unorm(vertices[cast(int)b]);
   zw:u32=vertices[cast(int)add_wrap(b,1)];
@@ -544,7 +620,9 @@ fivelab_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:T
   t:f32=u[2];
   albedo:V3=mul3(fivelab_dye(v3(tex.x,tex.y,tex.z),s.dye),s.tint);
   glow:V3=v3(0.0f32,0.0f32,0.0f32);
-  if (s.dye.w>7.5f32) {
+  // a far figure's blocks: their own colour, no texture
+  if (s.dye.w>9.5f32) { albedo=s.tint; }
+  if ((s.dye.w>7.5f32)&&(s.dye.w<9.5f32)) {
     // a skeleton: old bone, its rags near black, the ribs open to the light between them, and an
     // ember in each socket
     l:f32=verse_style_luma(tex.x,tex.y,tex.z);

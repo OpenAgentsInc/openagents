@@ -801,6 +801,8 @@ lab_start :: (s: [] Lab) {
 // in order, as it always has, so its rolls come out the same.
 NEAR_SCAN :: 400;
 NEAR_MAX :: 3721;   // the squares within 150 feet (61 by 61): the farthest any routine here asks
+NEAR_5 :: 9;    // the squares within 5 ft, and within 20 ft: foe_at_hand's and foes_near's few (a buffer is zeroed a call)
+NEAR_20 :: 81;
 BLK :: 8;
 BLK_MAX :: 1152;    // (384 / 8) by (192 / 8) blocks
 // The creatures within `feet` of square (x, y), the dead too (the asker decides), into ids: a small
@@ -811,7 +813,8 @@ near_ids :: (s: [] Lab, x: int, y: int, feet: int, ids: [] int) -> int {
   r := feet / RS_SQUARE;
   if b[0].n <= NEAR_SCAN || !rs_indexed(b) || r > 30 {
     for j: 0..<b[0].n {
-      if rs_feet(x, y, b[0].c[j].x, b[0].c[j].y) <= feet && n < ids.count { ids[n] = j; n += 1; }
+      // one a square on the grid (off it, a creature is not in the battle): ids holds the squares in reach
+      if b[0].c[j].x >= 0 && b[0].c[j].y >= 0 && rs_feet(x, y, b[0].c[j].x, b[0].c[j].y) <= feet && n < ids.count { ids[n] = j; n += 1; }
     }
     return n;
   }
@@ -937,7 +940,7 @@ walk :: (s: [] Lab, i: int, foe: int, least: int, want: int) {
 }
 foes_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
   n := 0;
-  ids: [NEAR_MAX] int; m := near_ids(s, x, y, feet, ids[..]);
+  ids: [NEAR_20] int; m := near_ids(s, x, y, feet, ids[..]);
   for q: 0..<m {
     j := ids[q]; c := s[0].battle[0].c[j];
     if c.team != s[0].battle[0].c[i].team && rs_up(c) && rs_feet(x, y, c.x, c.y) <= feet { n += 1; }
@@ -946,7 +949,7 @@ foes_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
 }
 friends_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
   n := 0;
-  ids: [NEAR_MAX] int; m := near_ids(s, x, y, feet, ids[..]);
+  ids: [NEAR_20] int; m := near_ids(s, x, y, feet, ids[..]);
   for q: 0..<m {
     j := ids[q]; c := s[0].battle[0].c[j];
     if c.team == s[0].battle[0].c[i].team && !c.dead && rs_feet(x, y, c.x, c.y) <= feet { n += 1; }
@@ -1030,7 +1033,7 @@ pact_turn :: (s: [] Lab, i: int) {
 foe_at_hand :: (s: [] Lab, i: int, but: int) -> int {
   b := bt(s);
   best := -1; bv := 100000;
-  ids: [NEAR_MAX] int; m := near_ids(s, b[0].c[i].x, b[0].c[i].y, 5, ids[..]);
+  ids: [NEAR_5] int; m := near_ids(s, b[0].c[i].x, b[0].c[i].y, 5, ids[..]);
   for q: 0..<m {
     j := ids[q];
     c := b[0].c[j];
@@ -1108,7 +1111,7 @@ monk_turn :: (s: [] Lab, i: int) {
   ok := rs_attack(b, i, j, false, -1);
   if b[0].c[i].hp * 5 < b[0].c[i].hp_max * 2 { ok = rs_wholeness(b, i); }
   brute := false;
-  ids3: [NEAR_MAX] int; m3 := near_ids(s, b[0].c[i].x, b[0].c[i].y, 5, ids3[..]);
+  ids3: [NEAR_5] int; m3 := near_ids(s, b[0].c[i].x, b[0].c[i].y, 5, ids3[..]);
   for q3: 0..<m3 {
     k := ids3[q3];
     c := b[0].c[k];
