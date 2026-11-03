@@ -103,7 +103,7 @@
 - [72. Effects made of particles](ch072-effects-made-of-particles.md) — partly implemented
 - [73. Things that break](ch073-things-that-break.md) — design draft
 - [74. Wheels on the ground](ch074-wheels-on-the-ground.md) — design draft
-- [75. Creatures that follow and watch](ch075-creatures-that-follow-and-watch.md) — design draft
+- [75. Creatures that follow and watch](ch075-creatures-that-follow-and-watch.md) — partly implemented
 - [76. Find a way through](ch076-find-a-way-through.md) — design draft
 - [77. People who talk back](ch077-people-who-talk-back.md) — design draft
 - [78. Cinematics and close-ups](ch078-cinematics-and-close-ups.md) — design draft

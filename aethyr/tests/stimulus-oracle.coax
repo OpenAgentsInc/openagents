@@ -1,0 +1,67 @@
+// An independent line of sight for aethyr/ai/stimulus.coax's checks: walk the segment from the
+// eye to the target in 1,000 even samples and ask whether any sample is strictly inside a box.
+// It shares no code with query_ray. A case is judged only when the boxes grown by 5 cm and shrunk
+// by 5 cm give the same answer, so a line that grazes an edge doesn't decide anything.
+
+so_next :: (x: int) -> int { return (x * 1103515245 + 12345) & 2147483647; }
+so_unit :: (x: int) -> f32 { return f32(x % 100000) / 100000.0; }
+
+so_inside :: (boxes: [] f32, p: WorldPoint, grow: f32) -> bool {
+  for b: 0..<boxes.count / 6 {
+    k := b * 6;
+    if p.x > boxes[k] - grow && p.x < boxes[k + 3] + grow && p.y > boxes[k + 1] - grow && p.y < boxes[k + 4] + grow
+        && p.z > boxes[k + 2] - grow && p.z < boxes[k + 5] + grow { return true; }
+  }
+  return false;
+}
+so_blocked :: (boxes: [] f32, eye: WorldPoint, target: WorldPoint, grow: f32) -> bool {
+  for i: 0..<1000 {
+    t := f32(i) / 1000.0;
+    p := world_point(eye.x + (target.x - eye.x) * t, eye.y + (target.y - eye.y) * t, eye.z + (target.z - eye.z) * t);
+    if so_inside(boxes, p, grow) { return true; }
+  }
+  return false;
+}
+
+// Case k: three boxes, a creature and a target, all drawn from k.
+SoCase :: struct { boxes: [18] f32; feet: WorldPoint; target: WorldPoint; }
+so_case :: (k: int) -> SoCase {
+  out: SoCase; r := so_next(k * 7919 + 17);
+  for b: 0..<3 {
+    r = so_next(r); x := -8 + 16 * so_unit(r); r = so_next(r); z := -8 + 16 * so_unit(r);
+    r = so_next(r); w := 0.1 + 3 * so_unit(r); r = so_next(r); d := 0.1 + 3 * so_unit(r);
+    r = so_next(r); h := 0.3 + 2.5 * so_unit(r);
+    out.boxes[b * 6] = x; out.boxes[b * 6 + 1] = 0; out.boxes[b * 6 + 2] = z;
+    out.boxes[b * 6 + 3] = x + w; out.boxes[b * 6 + 4] = h; out.boxes[b * 6 + 5] = z + d;
+  }
+  r = so_next(r); fx := -10 + 20 * so_unit(r); r = so_next(r); fz := -10 + 20 * so_unit(r);
+  r = so_next(r); tx := -10 + 20 * so_unit(r); r = so_next(r); tz := -10 + 20 * so_unit(r);
+  r = so_next(r); ty := 0.2 + 2 * so_unit(r);
+  out.feet = world_point(fx, 0, fz); out.target = world_point(tx, ty, tz);
+  return out;
+}
+
+// 1 when sense_sight and the brute force agree, 0 when they don't, 2 when the case grazes.
+stimulus_oracle_case :: (k: int) -> int {
+  c := so_case(k); s: Senses; col: Colliders; col.ground = -100; col.boxes = c.boxes[..];
+  eye := world_point(c.feet.x, c.feet.y + s.eye, c.feet.z);
+  wide := so_blocked(c.boxes[..], eye, c.target, 0.05);
+  narrow := so_blocked(c.boxes[..], eye, c.target, -0.05);
+  if wide != narrow { return 2; }
+  got := sense_sight(s, col, c.feet, c.target, 1, 0);
+  if got.status == SenseStatus.invalid || got.status == SenseStatus.out_of_range { return 0; }
+  return ifx (got.status == SenseStatus.hidden) == wide then 1 else 0;
+}
+stimulus_oracle_agrees :: (k: int) -> bool { return stimulus_oracle_case(k) != 0; }
+
+#test "the brute-force cases decide 292 of 300, both ways" #steps 400000000 {
+  judged := 0; hidden := 0; seen := 0;
+  for k: 0..<300 {
+    if stimulus_oracle_case(k) == 2 { continue; }
+    judged += 1;
+    c := so_case(k);
+    eye := world_point(c.feet.x, c.feet.y + 1.6, c.feet.z);
+    if so_blocked(c.boxes[..], eye, c.target, 0) { hidden += 1; } else { seen += 1; }
+  }
+  #assert judged == 292 && hidden == 39 && seen == 253;   // 8 graze; both answers are tested
+}

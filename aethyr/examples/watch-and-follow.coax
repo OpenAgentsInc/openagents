@@ -1,0 +1,119 @@
+// Book chapter 75: a guard watches you walk past a wall while a dog follows you, both on the
+// realm's fixed step (aethyr/loop.coax, 1/64 s). The guard senses with aethyr/ai/stimulus.coax and
+// decides from its memory; the dog steps with aethyr/follower.coax. The same 480 ticks are played
+// at 30, 60 and 144 frames a second and with uneven frames, and their digests are compared. Then
+// the flock (aethyr/flock.coax), which keeps its own f32 accumulator, is played at 30, 60 and 144.
+#load "../ai/stimulus.coax";
+#load "../follower.coax";
+#load "../flock.coax";
+#load "../loop.coax" as clock;
+#load "../ground.coax" as mesh;
+#import "Basic";
+
+TICKS :: 480;            // 7.5 s
+WALK :: 0.046875;        // metres a tick: 3 m/s at 64 ticks a second
+YOU :: 1;                // your entity number
+
+// book:begin example
+// FNV-1a over 32-bit words, kept in 32 bits.
+mix32 :: (h: int, v: int) -> int { return ((h ^ (v & 4294967295)) * 16777619) & 4294967295; }
+mixf :: (h: int, x: f32) -> int { return mix32(h, cast(int) f32_bits(x)); }
+
+Scene :: struct {
+  senses: Senses; memory: Memory; seen: bool; known: bool;
+  dog: Follower; tick: int;
+}
+you_at :: (k: int) -> WorldPoint { return world_point(-12 + f32(WALK) * f32(k), 0, 20); }
+
+// One fixed step: you walk, the guard looks (and on tick 300 hears you knock a crate over), the
+// dog follows. `say` prints what changes.
+step :: (s: Scene, c: Colliders, g: mesh.Ground, h: [] f32, wall: [] f32, say: bool) -> Scene {
+  n := s; n.tick = s.tick + 1; k := n.tick;
+  feet := you_at(k); chest := world_point(feet.x, 1.2, feet.z);
+  look := sense_sight(n.senses, c, world_point(0, 0, 0), chest, YOU, k);
+  if look.status == SenseStatus.sensed { n.memory = memory_note(n.memory, n.senses, look.stimulus).memory; }
+  else { n.memory = memory_forget(n.memory, n.senses, k); }
+  if k == 300 {
+    heard := sense_sound(n.senses, world_point(0, 0, 0), feet, 22, YOU, k);
+    n.memory = memory_note(n.memory, n.senses, heard.stimulus).memory;
+    if say { print("tick 300: a crate falls at x = %; heard: %\n", feet.x, heard.status == SenseStatus.sensed); }
+  }
+  seen := look.status == SenseStatus.sensed;
+  r := memory_recall(n.memory, n.senses, YOU, k);
+  if say && seen != s.seen { print("tick %: you at x = %, %\n", k, feet.x, ifx seen then "seen" else "hidden by the wall"); }
+  if say && r.known != s.known {
+    if r.known { print("tick %: the guard knows where you are (%)\n", k, ifx r.kind == StimulusKind.sight then "sight" else "sound"); }
+    else { print("tick %: the guard has forgotten you\n", k); }
+  }
+  if say && k == 200 { print("tick 200: the guard would go to x = % (% ticks old); you are at x = %\n", r.at.x, r.age, feet.x); }
+  n.seen = seen; n.known = r.known;
+  empty: [1] f32; links: [1] int;
+  d := follower_step(n.dog, follower_profile(), g, h, empty[0..<0], links[0..<0], 0.9, v3(feet.x, 0, feet.z), f32(FOLLOW_STOP), wall, f32(DOG_BODY));
+  if d.status == FollowerStatus.ok { n.dog = d.follower; }
+  return n;
+}
+
+digest :: (s: Scene) -> int {
+  h := 2166136261;
+  h = mixf(h, s.dog.pos.x); h = mixf(h, s.dog.pos.y); h = mixf(h, s.dog.pos.z);
+  h = mixf(h, s.dog.vel.x); h = mixf(h, s.dog.vel.z); h = mixf(h, s.dog.face);
+  for i: 0..<s.memory.count {
+    one := s.memory.items[i];
+    h = mix32(h, cast(int) one.kind); h = mix32(h, one.tick); h = mixf(h, one.at.x); h = mixf(h, one.at.z);
+  }
+  return mix32(mix32(h, s.memory.refused), s.memory.forgotten);
+}
+
+// Plays the ticks with frames of `a` and `b` seconds in turn; returns the digest after tick 480.
+play :: (a: f64, b: f64, say: bool) -> int {
+  wall := [6] f32.[-3, 0, 9, 3, 3, 10]; c: Colliders; c.boxes = wall[..];
+  g := mesh.Ground.{n = 1, cell = 100, west = -50, south = -50}; h: [4] f32;
+  s: Scene; s.dog = verse_follower_place(g, h[..], -8, 24, 0);
+  t: clock.FrameClock; frames := 0;
+  while s.tick < TICKS {
+    f := clock.loop_frame(t, ifx frames % 2 == 0 then a else b); t = f.clock; frames += 1;
+    for i: 0..<f.steps { if s.tick < TICKS { s = step(s, c, g, h[..], wall[..], say); } }
+  }
+  if say { print("after % ticks (% frames): the dog at (%, %), the guard remembers % stimulus\n", s.tick, frames, s.dog.pos.x, s.dog.pos.z, s.memory.count); }
+  return digest(s);
+}
+// book:end example
+
+// book:begin refused
+refusals :: () {
+  s: Senses; m: Memory;
+  for i: 0..<SENSE_MEMORY { m = memory_note(m, s, Stimulus.{kind = StimulusKind.sound, source = 10 + i, tick = 5}).memory; }
+  full := memory_note(m, s, Stimulus.{kind = StimulusKind.sound, source = 99, tick = 5});
+  print("a ninth source on tick 5: %, % refused, % kept\n", full.status, full.memory.refused, full.memory.count);
+  stale := memory_note(full.memory, s, Stimulus.{kind = StimulusKind.sound, source = 10, tick = 4});
+  print("a stamp of tick 4 after tick 5: %, % refused\n", stale.status, stale.memory.refused);
+  nan := 0.0f32; nan = nan / nan;
+  c: Colliders;
+  print("sight of a target at x = NaN: %\n", sense_sight(s, c, world_point(0, 0, 0), world_point(nan, 1, 1), YOU, 6).status);
+  bad := s; bad.forget = 0;
+  print("senses that forget after 0 ticks: %\n", sense_sound(bad, world_point(0, 0, 0), world_point(1, 0, 0), 5, YOU, 6).status);
+}
+// book:end refused
+
+// The flock follows you walking at 3 m/s; it reads where you are once a frame.
+flock_birds :: (fps: f32) -> Flock {
+  f: [1] Flock;
+  for i: 0..<cast(int) (2 * fps) + 1 { flock_frame(f[..], v3(3 * f32(i) / fps, 0, 0), 0, 1 / fps); }
+  return f[0];
+}
+
+main :: () {
+  at60 := play(1.0 / 60.0, 1.0 / 60.0, true);
+  at30 := play(1.0 / 30.0, 1.0 / 30.0, false);
+  at144 := play(1.0 / 144.0, 1.0 / 144.0, false);
+  uneven := play(0.005, 0.025, false);
+  print("digest at 60 FPS: %\n", at60);
+  print("the same at 30 and 144 FPS and with 5 and 25 ms frames: %\n", at30 == at60 && at144 == at60 && uneven == at60);
+  refusals();
+  rates := [3] f32.[30, 60, 144];
+  b := flock_birds(60);
+  for r: rates {
+    a := flock_birds(r);
+    print("the flock after 2 s at % FPS: % s flown, bird 0 at x = %, the same as at 60: %\n", r, a.time, a.pos[0].x, a.pos[0].x == b.pos[0].x && a.pos[0].z == b.pos[0].z && a.time == b.time);
+  }
+}

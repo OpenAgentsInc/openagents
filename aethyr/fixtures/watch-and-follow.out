@@ -1,0 +1,18 @@
+tick 1: you at x = -11.953125, seen
+tick 1: the guard knows where you are (sight)
+tick 114: you at x = -6.65625, hidden by the wall
+tick 200: the guard would go to x = -6.703125 (87 ticks old); you are at x = -2.625
+tick 242: the guard has forgotten you
+tick 300: a crate falls at x = 2.0625; heard: true
+tick 300: the guard knows where you are (sound)
+tick 399: you at x = 6.703125, seen
+after 480 ticks (450 frames): the dog at (5.5974574, 20.035662), the guard remembers 1 stimulus
+digest at 60 FPS: 475816136
+the same at 30 and 144 FPS and with 5 and 25 ms frames: true
+a ninth source on tick 5: full, 1 refused, 8 kept
+a stamp of tick 4 after tick 5: stale, 2 refused
+sight of a target at x = NaN: invalid
+senses that forget after 0 ticks: invalid
+the flock after 2 s at 30.0 FPS: 1.9999982 s flown, bird 0 at x = 5.167675, the same as at 60: false
+the flock after 2 s at 60.0 FPS: 1.9999982 s flown, bird 0 at x = 5.1427135, the same as at 60: true
+the flock after 2 s at 144.0 FPS: 1.9999982 s flown, bird 0 at x = 5.138543, the same as at 60: false

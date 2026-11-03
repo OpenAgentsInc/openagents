@@ -1,0 +1,358 @@
+// What a creature senses and what it knows (book chapter 75). A creature senses on the realm's
+// fixed step (aethyr/loop.coax's ticks, 1/64 s each), never on frame time, so it senses the same
+// at any frame rate. Each sense gives a typed stimulus: sight (a flat range, an eye height above
+// the feet and a line of sight through chapter 7's query_ray, so boxes, capsules and heightfields
+// all hide), sound (a flat range per source, as the watch's WATCH_HEAR) and touch (a flat reach).
+// What it senses goes into its Memory, a fixed number of stimuli forgotten a stated number of
+// ticks after they were sensed. A decision reads the memory, not the world: what a creature
+// "knows" about someone is its newest remembered stimulus of them. Nothing here changes the
+// colliders. A memory refuses what it can't hold and counts it.
+//   coax/bin/coax test aethyr/ai/stimulus.coax --library
+//   coax/bin/coax mutate aethyr/ai/stimulus.coax --library
+
+#module "aethyr.ai.stimulus";
+#authority;
+#load "../query.coax";
+#load "../tests/stimulus-oracle.coax";   // the checks' brute-force line of sight
+
+// book:begin senses
+SENSE_MEMORY :: 8;             // stimuli one creature remembers at most
+SENSE_REACH :: 1000.0;         // metres: a longer range is not one
+SENSE_EYE_MAX :: 100.0;        // metres: and a higher eye
+SENSE_FORGET_MAX :: 230400;    // ticks: an hour at 64 a second
+
+StimulusKind :: enum u8 { none; sight; sound; touch; }
+SenseStatus :: enum u8 { sensed; out_of_range; hidden; invalid; }
+NoteStatus :: enum u8 { noted; refreshed; invalid; stale; full; }
+
+// One creature's senses. The defaults are the Everglade watch's: WATCH_SIGHT and WATCH_EYE.
+Senses :: struct {
+  sight: f32 = 34;     // metres, flat, it sees
+  eye: f32 = 1.6;      // metres its eyes are above its feet
+  touch: f32 = 0.6;    // metres, flat, that counts as a touch
+  forget: int = 128;   // ticks a stimulus is remembered: 2 s
+}
+// What was sensed: what kind, of whom (the realm's entity number), where, and on which tick.
+Stimulus :: struct { kind: StimulusKind; source: int; at: WorldPoint; tick: int; }
+Sensed :: struct { status: SenseStatus; stimulus: Stimulus; }
+// book:end senses
+
+sense_finite :: (a: f32) -> bool { return a == a && a < QUERY_TOO_BIG && a > -QUERY_TOO_BIG; }
+sense_point_ok :: (p: WorldPoint) -> bool { return sense_finite(p.x) && sense_finite(p.y) && sense_finite(p.z); }
+sense_flat :: (a: WorldPoint, b: WorldPoint) -> f32 { dx := a.x - b.x; dz := a.z - b.z; return sqrt(dx * dx + dz * dz); }
+sense_range_ok :: (r: f32) -> bool { return r == r && r >= 0 && r <= SENSE_REACH; }
+
+senses_ok :: (s: Senses) -> bool {
+  return sense_range_ok(s.sight) && s.eye == s.eye && s.eye >= 0 && s.eye <= SENSE_EYE_MAX
+      && sense_range_ok(s.touch) && s.forget >= 1 && s.forget <= SENSE_FORGET_MAX;
+}
+
+// book:begin sight
+// Whether a creature standing at `feet` sees `target` (a point on someone, such as their chest)
+// on tick `now`: near enough on the flat, and nothing between its eyes and the point. A query the
+// colliders refuse (too many heightfields, a broken mesh) senses nothing and says so.
+sense_sight :: (s: Senses, c: Colliders, feet: WorldPoint, target: WorldPoint, source: int, now: int) -> Sensed {
+  out: Sensed;
+  if !senses_ok(s) || !sense_point_ok(feet) || !sense_point_ok(target) || now < 0 { out.status = SenseStatus.invalid; return out; }
+  if sense_flat(feet, target) > s.sight { out.status = SenseStatus.out_of_range; return out; }
+  eye := world_point(feet.x, feet.y + s.eye, feet.z);
+  hit := query_ray(c, eye, world_sub(target, eye), 1);
+  if hit.status != QueryStatus.ok { out.status = SenseStatus.invalid; return out; }
+  if hit.hit && hit.t < 1 { out.status = SenseStatus.hidden; return out; }
+  out.stimulus = Stimulus.{kind = StimulusKind.sight, source = source, at = target, tick = now};
+  return out;
+}
+// book:end sight
+
+// book:begin sound
+// Whether a creature at `feet` hears a sound made at `at` that carries `range` metres. Walls don't
+// stop a sound here, as they don't in the watch.
+sense_sound :: (s: Senses, feet: WorldPoint, at: WorldPoint, range: f32, source: int, now: int) -> Sensed {
+  out: Sensed;
+  if !senses_ok(s) || !sense_point_ok(feet) || !sense_point_ok(at) || !sense_range_ok(range) || now < 0 { out.status = SenseStatus.invalid; return out; }
+  if sense_flat(feet, at) > range { out.status = SenseStatus.out_of_range; return out; }
+  out.stimulus = Stimulus.{kind = StimulusKind.sound, source = source, at = at, tick = now};
+  return out;
+}
+// book:end sound
+
+// Whether someone whose feet are at `at` touches a creature at `feet`.
+sense_touch :: (s: Senses, feet: WorldPoint, at: WorldPoint, source: int, now: int) -> Sensed {
+  out: Sensed;
+  if !senses_ok(s) || !sense_point_ok(feet) || !sense_point_ok(at) || now < 0 { out.status = SenseStatus.invalid; return out; }
+  if sense_flat(feet, at) > s.touch { out.status = SenseStatus.out_of_range; return out; }
+  out.stimulus = Stimulus.{kind = StimulusKind.touch, source = source, at = at, tick = now};
+  return out;
+}
+
+// book:begin memory
+// What one creature knows: at most SENSE_MEMORY stimuli, one per source and kind, each forgotten
+// `forget` ticks after it was sensed. Stamps never go back: `latest` is the newest tick noted.
+Memory :: struct {
+  items: [SENSE_MEMORY] Stimulus;
+  count: int;
+  latest: int = -1;
+  refused: int;        // stimuli it could not take: broken, out of order, or no room
+  forgotten: int;      // stimuli it has let go
+}
+Noted :: struct { memory: Memory; status: NoteStatus; }
+
+// The memory on tick `now`, with every stimulus older than `forget` ticks gone. The rest keep
+// their order. A tick before the newest one noted changes nothing.
+memory_forget :: (m: Memory, s: Senses, now: int) -> Memory {
+  if now < m.latest || !senses_ok(s) { return m; }
+  out := m; out.count = 0;
+  for i: 0..<m.count {
+    if now - m.items[i].tick > s.forget { out.forgotten += 1; continue; }
+    out.items[out.count] = m.items[i]; out.count += 1;
+  }
+  return out;
+}
+
+// The memory with one more stimulus. One of the same kind from the same source is refreshed in
+// place; a new one goes at the end, after the old ones are forgotten. Refused, and counted, when
+// it is broken, stamped before the newest tick, or there is no room.
+memory_note :: (m: Memory, s: Senses, st: Stimulus) -> Noted {
+  out := Noted.{memory = m};
+  if st.kind == StimulusKind.none || !sense_point_ok(st.at) || st.tick < 0 || !senses_ok(s) {
+    out.memory.refused += 1; out.status = NoteStatus.invalid; return out;
+  }
+  if st.tick < m.latest { out.memory.refused += 1; out.status = NoteStatus.stale; return out; }
+  out.memory = memory_forget(m, s, st.tick);
+  out.memory.latest = st.tick;
+  for i: 0..<out.memory.count {
+    if out.memory.items[i].kind == st.kind && out.memory.items[i].source == st.source {
+      out.memory.items[i] = st; out.status = NoteStatus.refreshed; return out;
+    }
+  }
+  if out.memory.count >= SENSE_MEMORY { out.memory.refused += 1; out.status = NoteStatus.full; return out; }
+  out.memory.items[out.memory.count] = st; out.memory.count += 1;
+  return out;
+}
+// book:end memory
+
+// book:begin recall
+// What the creature knows of `source` on tick `now`: its newest remembered stimulus of them (on a
+// tie, sight before sound before touch), and how many ticks old it is. A decision reads this, not
+// where the source really is.
+Recall :: struct { known: bool; kind: StimulusKind; at: WorldPoint; age: int; }
+memory_recall :: (m: Memory, s: Senses, source: int, now: int) -> Recall {
+  out: Recall;
+  if now < m.latest || !senses_ok(s) { return out; }
+  best := -1;
+  for i: 0..<m.count {
+    one := m.items[i];
+    if one.source != source || now - one.tick > s.forget { continue; }
+    if best < 0 || one.tick > m.items[best].tick || (one.tick == m.items[best].tick && cast(int) one.kind < cast(int) m.items[best].kind) { best = i; }
+  }
+  if best < 0 { return out; }
+  return Recall.{known = true, kind = m.items[best].kind, at = m.items[best].at, age = now - m.items[best].tick};
+}
+// book:end recall
+
+// ---- checks
+
+sense_wall :: () -> [6] f32 { return [6] f32.[-3, 0, 9, 3, 3, 10]; }
+
+#test "sight: in range and clear is seen; behind the wall is hidden; past the range is not" {
+  w := sense_wall(); c: Colliders; c.boxes = w[..];
+  s: Senses;
+  a := sense_sight(s, c, world_point(0, 0, 0), world_point(-12, 1.2, 20), 7, 5);
+  #assert a.status == SenseStatus.sensed && a.stimulus.kind == StimulusKind.sight && a.stimulus.source == 7;
+  #assert a.stimulus.tick == 5 && a.stimulus.at.x == -12 && a.stimulus.at.y == 1.2 && a.stimulus.at.z == 20;
+  #assert sense_sight(s, c, world_point(0, 0, 0), world_point(0, 1.2, 20), 7, 5).status == SenseStatus.hidden;
+  #assert sense_sight(s, c, world_point(0, 0, 0), world_point(0, 1.2, 34), 7, 5).status == SenseStatus.hidden;
+  #assert sense_sight(s, c, world_point(0, 0, 0), world_point(30, 1.2, 20), 7, 5).status == SenseStatus.out_of_range;
+  // the range is flat: a point high above at 34 m is still in it, at 34.01 m it isn't
+  open: Colliders; open.ground = -10;
+  #assert sense_sight(s, open, world_point(0, 0, 0), world_point(34, 50, 0), 1, 0).status == SenseStatus.sensed;
+  #assert sense_sight(s, open, world_point(0, 0, 0), world_point(34.01, 1, 0), 1, 0).status == SenseStatus.out_of_range;
+  // the eye is `eye` above the feet: over a 1.5 m wall it sees, with its eye at 1.4 m it doesn't
+  low := [6] f32.[-3, 0, 4, 3, 1.5, 5]; lc: Colliders; lc.boxes = low[..];
+  #assert sense_sight(s, lc, world_point(0, 0, 0), world_point(0, 1.6, 9), 1, 0).status == SenseStatus.sensed;
+  s.eye = 1.4;
+  #assert sense_sight(s, lc, world_point(0, 0, 0), world_point(0, 1.6, 9), 1, 0).status == SenseStatus.hidden;
+}
+
+#test "sight: a target on the wall's face is seen; its eye inside the wall sees nothing" {
+  w := sense_wall(); c: Colliders; c.boxes = w[..]; s: Senses;
+  #assert sense_sight(s, c, world_point(0, 0, 0), world_point(0, 1.6, 9), 1, 0).status == SenseStatus.sensed;
+  #assert sense_sight(s, c, world_point(0, 0, 9.5), world_point(0, 1.6, 20), 1, 0).status == SenseStatus.hidden;
+}
+
+#forall "sight refuses what isn't a number, a broken sense and a refused query" k: 0..<10 {
+  c: Colliders; s: Senses; feet := world_point(0, 0, 0); at := world_point(1, 1, 1); now := 3;
+  nan := 0.0f32; nan = nan / nan;
+  hf: [17] QueryHeightfield;
+  if k == 0 { feet.x = nan; }
+  if k == 1 { at.z = nan; }
+  if k == 2 { now = -1; }
+  if k == 3 { s.sight = -1; }
+  if k == 4 { s.eye = nan; }
+  if k == 5 { s.forget = 0; }
+  if k == 6 { c.heightfields = hf[..]; }
+  if k == 7 { s.eye = -0.5; }
+  if k == 8 { feet.y = 2000000; }
+  if k == 9 { at = world_point(0, 1.6, 0); }   // the eye itself: a ray of no length
+  #assert sense_sight(s, c, feet, at, 1, now).status == SenseStatus.invalid;
+}
+
+#test "senses: the limits are kept, inclusive at each end" {
+  s: Senses;
+  #assert senses_ok(s);
+  s.sight = 1000; s.touch = 0; s.eye = 100; s.forget = 230400; #assert senses_ok(s);
+  s.sight = 1000.0001; #assert !senses_ok(s);
+  s = Senses.{}; s.touch = 1000.0001; #assert !senses_ok(s);
+  s = Senses.{}; s.touch = -0.0001; #assert !senses_ok(s);
+  s = Senses.{}; s.eye = 100.001; #assert !senses_ok(s);
+  s = Senses.{}; s.eye = 0; s.sight = 0; #assert senses_ok(s);
+  s = Senses.{}; s.forget = 230401; #assert !senses_ok(s);
+  s = Senses.{}; s.forget = 1; #assert senses_ok(s);
+  nan := 0.0f32; nan = nan / nan;
+  s = Senses.{}; s.touch = nan; #assert !senses_ok(s);
+  s = Senses.{}; s.sight = nan; #assert !senses_ok(s);
+  #assert sense_finite(999999) && !sense_finite(1000000) && !sense_finite(-1000000) && sense_finite(-999999);
+}
+
+#test "sound carries its range through walls; touch is a flat reach" {
+  s: Senses;
+  h := sense_sound(s, world_point(0, 0, 0), world_point(2.0625, 0, 20), 22, 7, 300);
+  #assert h.status == SenseStatus.sensed && h.stimulus.kind == StimulusKind.sound && h.stimulus.tick == 300 && h.stimulus.source == 7;
+  #assert h.stimulus.at.x == 2.0625 && h.stimulus.at.z == 20;
+  #assert sense_sound(s, world_point(0, 0, 0), world_point(0, 9, 22), 22, 7, 0).status == SenseStatus.sensed;
+  #assert sense_sound(s, world_point(0, 0, 0), world_point(0, 0, 22.01), 22, 7, 0).status == SenseStatus.out_of_range;
+  #assert sense_sound(s, world_point(0, 0, 0), world_point(0, 0, 1), -1, 7, 0).status == SenseStatus.invalid;
+  #assert sense_sound(s, world_point(0, 0, 0), world_point(0, 0, 1), 1001, 7, 0).status == SenseStatus.invalid;
+  #assert sense_sound(s, world_point(0, 0, 0), world_point(0, 0, 1), 5, 7, -1).status == SenseStatus.invalid;
+  #assert sense_sound(s, world_point(0, 0, 3000000), world_point(0, 0, 1), 5, 7, 0).status == SenseStatus.invalid;
+  #assert sense_sound(s, world_point(0, 0, 0), world_point(0, 3000000, 1), 5, 7, 0).status == SenseStatus.invalid;
+  bad := s; bad.forget = 0;
+  #assert sense_sound(bad, world_point(0, 0, 0), world_point(0, 0, 1), 5, 7, 0).status == SenseStatus.invalid;
+  t := sense_touch(s, world_point(0, 0, 0), world_point(0.6, 5, 0), 4, 9);
+  #assert t.status == SenseStatus.sensed && t.stimulus.kind == StimulusKind.touch && t.stimulus.source == 4 && t.stimulus.tick == 9 && t.stimulus.at.x == 0.6;
+  #assert sense_touch(s, world_point(0, 0, 0), world_point(0.61, 0, 0), 4, 9).status == SenseStatus.out_of_range;
+  #assert sense_touch(s, world_point(0, 0, 0), world_point(0.1, 0, 0), 4, -1).status == SenseStatus.invalid;
+  #assert sense_touch(bad, world_point(0, 0, 0), world_point(0.1, 0, 0), 4, 0).status == SenseStatus.invalid;
+  #assert sense_touch(s, world_point(0, 3000000, 0), world_point(0.1, 0, 0), 4, 0).status == SenseStatus.invalid;
+  #assert sense_touch(s, world_point(0, 0, 0), world_point(0.1, 3000000, 0), 4, 0).status == SenseStatus.invalid;
+}
+
+sense_stim :: (kind: StimulusKind, source: int, x: f32, tick: int) -> Stimulus {
+  return Stimulus.{kind = kind, source = source, at = world_point(x, 0, 0), tick = tick};
+}
+
+#test "the memory notes, refreshes in place, and forgets after `forget` ticks" {
+  s: Senses; m: Memory;
+  n := memory_note(m, s, sense_stim(StimulusKind.sight, 7, 1, 10));
+  #assert n.status == NoteStatus.noted && n.memory.count == 1 && n.memory.latest == 10;
+  n = memory_note(n.memory, s, sense_stim(StimulusKind.sound, 7, 2, 20));
+  #assert n.status == NoteStatus.noted && n.memory.count == 2;
+  n = memory_note(n.memory, s, sense_stim(StimulusKind.sight, 7, 3, 30));
+  #assert n.status == NoteStatus.refreshed && n.memory.count == 2 && n.memory.items[0].at.x == 3 && n.memory.items[0].tick == 30;
+  #assert n.memory.items[1].kind == StimulusKind.sound && n.memory.latest == 30;
+  // the sound (tick 20) is kept through tick 148 and gone on 149
+  #assert memory_forget(n.memory, s, 148).count == 2;
+  f := memory_forget(n.memory, s, 149);
+  #assert f.count == 1 && f.items[0].kind == StimulusKind.sight && f.forgotten == 1;
+  #assert memory_forget(n.memory, s, 159).count == 0 && memory_forget(n.memory, s, 159).forgotten == 2;
+  // a tick before the newest noted forgets nothing; nor does a broken sense
+  #assert memory_forget(n.memory, s, 29).count == 2 && memory_forget(n.memory, s, 29).forgotten == 0;
+  bad := s; bad.forget = 0;
+  #assert memory_forget(n.memory, bad, 1000).count == 2;
+  #assert memory_forget(n.memory, s, 30).count == 2;
+  // noting forgets first: a new stimulus at 149 leaves the sight and itself
+  n = memory_note(n.memory, s, sense_stim(StimulusKind.touch, 3, 0, 149));
+  #assert n.status == NoteStatus.noted && n.memory.count == 2 && n.memory.items[0].kind == StimulusKind.sight && n.memory.items[1].source == 3;
+  // the same kind from another source is another stimulus
+  n = memory_note(n.memory, s, sense_stim(StimulusKind.touch, 4, 0, 149));
+  #assert n.status == NoteStatus.noted && n.memory.count == 3;
+}
+
+#test "the memory refuses broken, out-of-order and over-full stimuli, and counts them" {
+  s: Senses; m: Memory;
+  for i: 0..<SENSE_MEMORY { m = memory_note(m, s, sense_stim(StimulusKind.sound, i, 0, 5)).memory; }
+  #assert m.count == SENSE_MEMORY && m.refused == 0;
+  full := memory_note(m, s, sense_stim(StimulusKind.sound, 99, 0, 5));
+  #assert full.status == NoteStatus.full && full.memory.count == SENSE_MEMORY && full.memory.refused == 1 && full.memory.latest == 5;
+  // a refresh still fits when full
+  #assert memory_note(m, s, sense_stim(StimulusKind.sound, 3, 1, 6)).status == NoteStatus.refreshed;
+  stale := memory_note(m, s, sense_stim(StimulusKind.sound, 3, 0, 4));
+  #assert stale.status == NoteStatus.stale && stale.memory.refused == 1 && stale.memory.items[3].tick == 5;
+  #assert memory_note(m, s, sense_stim(StimulusKind.sound, 3, 0, 5)).status == NoteStatus.refreshed;
+  none := memory_note(m, s, sense_stim(StimulusKind.none, 3, 0, 9));
+  #assert none.status == NoteStatus.invalid && none.memory.refused == 1 && none.memory.latest == 5;
+  nan := 0.0f32; nan = nan / nan;
+  #assert memory_note(m, s, sense_stim(StimulusKind.sight, 3, nan, 9)).status == NoteStatus.invalid;
+  #assert memory_note(m, s, sense_stim(StimulusKind.sight, 3, 0, -1)).status == NoteStatus.invalid;
+  bad := s; bad.forget = 0;
+  #assert memory_note(m, bad, sense_stim(StimulusKind.sight, 3, 0, 9)).status == NoteStatus.invalid;
+  // once the old ones are forgotten there is room again
+  late := memory_note(m, s, sense_stim(StimulusKind.sound, 99, 0, 134));
+  #assert late.status == NoteStatus.noted && late.memory.count == 1 && late.memory.forgotten == SENSE_MEMORY;
+  #assert memory_note(m, s, sense_stim(StimulusKind.sound, 99, 0, 133)).status == NoteStatus.full;
+  m0: Memory;
+  #assert memory_note(m0, s, sense_stim(StimulusKind.sight, 1, 0, 0)).status == NoteStatus.noted;
+}
+
+#test "recall gives the newest stimulus of that source, sight first on a tie, and its age" {
+  s: Senses; m: Memory;
+  m = memory_note(m, s, sense_stim(StimulusKind.sound, 7, 2, 20)).memory;
+  m = memory_note(m, s, sense_stim(StimulusKind.sight, 8, 9, 20)).memory;
+  m = memory_note(m, s, sense_stim(StimulusKind.touch, 7, 4, 20)).memory;
+  m = memory_note(m, s, sense_stim(StimulusKind.sight, 7, 3, 20)).memory;
+  r := memory_recall(m, s, 7, 25);
+  #assert r.known && r.kind == StimulusKind.sight && r.at.x == 3 && r.age == 5;
+  m = memory_note(m, s, sense_stim(StimulusKind.sound, 7, 6, 21)).memory;
+  r = memory_recall(m, s, 7, 25);
+  #assert r.known && r.kind == StimulusKind.sound && r.at.x == 6 && r.age == 4;
+  // forgotten on recall too, without a forget pass: the sound at 21 is known through 149
+  #assert memory_recall(m, s, 7, 149).known && memory_recall(m, s, 7, 149).age == 128;
+  #assert !memory_recall(m, s, 7, 150).known;
+  #assert !memory_recall(m, s, 5, 25).known;
+  #assert !memory_recall(m, s, 7, 20).known;   // before the newest tick noted (21)
+  bad := s; bad.forget = 0;
+  #assert !memory_recall(m, bad, 7, 25).known;
+  // two of one source at one tick: the kind decides, whichever came first
+  t: Memory;
+  t = memory_note(t, s, sense_stim(StimulusKind.touch, 1, 1, 3)).memory;
+  t = memory_note(t, s, sense_stim(StimulusKind.sound, 1, 2, 3)).memory;
+  #assert memory_recall(t, s, 1, 3).kind == StimulusKind.sound && memory_recall(t, s, 1, 3).at.x == 2;
+}
+
+#test "away from the origin: ranges are flat distances between the two points" {
+  s: Senses; open: Colliders; open.ground = -10;
+  #assert sense_sight(s, open, world_point(10, 0, -10), world_point(44, 1, -10), 1, 0).status == SenseStatus.sensed;
+  #assert sense_sight(s, open, world_point(10, 0, -10), world_point(10, 1, 24), 1, 0).status == SenseStatus.sensed;
+  #assert sense_sight(s, open, world_point(10, 0, -10), world_point(-24.5, 1, -10), 1, 0).status == SenseStatus.out_of_range;
+  #assert sense_sight(s, open, world_point(10, 0, -10), world_point(10, 1, -44.5), 1, 0).status == SenseStatus.out_of_range;
+  #assert sense_sound(s, world_point(-5, 0, 5), world_point(-5, 0, -16), 22, 1, 0).status == SenseStatus.sensed;
+  #assert sense_sound(s, world_point(-5, 0, 5), world_point(-5, 0, 27.5), 22, 1, 0).status == SenseStatus.out_of_range;
+  #assert sense_touch(s, world_point(3, 0, 3), world_point(3.5, 0, 3), 1, 0).status == SenseStatus.sensed;
+  #assert sense_touch(s, world_point(3, 0, 3), world_point(-3.5, 0, 3), 1, 0).status == SenseStatus.out_of_range;
+}
+
+#test "forgetting keeps the rest in order, and honours the senses it is given" {
+  s: Senses; m: Memory;
+  m = memory_note(m, s, sense_stim(StimulusKind.sight, 1, 1, 10)).memory;
+  m = memory_note(m, s, sense_stim(StimulusKind.sight, 2, 2, 100)).memory;
+  f := memory_forget(m, s, 139);
+  #assert f.count == 1 && f.items[0].source == 2 && f.items[0].tick == 100;
+  short := s; short.forget = 5;
+  g := memory_forget(m, short, 100);   // on the newest tick itself
+  #assert g.count == 1 && g.items[0].source == 2 && g.forgotten == 1;
+}
+
+#test "recall: a later sound doesn't hide a sight of the same tick, and a full tie keeps the first" {
+  s: Senses; m: Memory;
+  m = memory_note(m, s, sense_stim(StimulusKind.sight, 1, 1, 3)).memory;
+  m = memory_note(m, s, sense_stim(StimulusKind.sound, 1, 2, 3)).memory;
+  #assert memory_recall(m, s, 1, 3).kind == StimulusKind.sight && memory_recall(m, s, 1, 3).at.x == 1;
+  // a memory value written by hand with the same kind and tick twice: the first is recalled
+  d: Memory; d.count = 2; d.latest = 3;
+  d.items[0] = sense_stim(StimulusKind.sight, 1, 5, 3); d.items[1] = sense_stim(StimulusKind.sight, 1, 6, 3);
+  #assert memory_recall(d, s, 1, 3).at.x == 5;
+}
+
+#forall "sight agrees with a brute-force line of sight over random walls" k: 0..<300 #steps 400000000 {
+  #assert stimulus_oracle_agrees(k);
+}

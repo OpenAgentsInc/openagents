@@ -350,6 +350,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/watch-and-follow.coax",
+      "chapter": "aethyr/book/ch075-creatures-that-follow-and-watch.md",
+      "stdout": "aethyr/fixtures/watch-and-follow.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
