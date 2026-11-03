@@ -133,8 +133,10 @@ hs_path :: (name: string, out: [] u8) -> string {
   if name.count > 0 { n = hs_cat(out, n, "/"); n = hs_cat(out, n, name); }
   return cast(string) out[0..<n];
 }
+// chmod where the system keeps it: /bin/chmod, else the first on PATH (NixOS has no /bin/chmod).
+hs_chmod_program :: () -> string { return ifx fs_exists("/bin/chmod") then "/bin/chmod" else "chmod"; }
 hs_chmod :: (mode: string, path: string) -> bool {
-  av := [3] string.["/bin/chmod", mode, path]; o: [256] u8; e: [256] u8;
+  av := [3] string.[hs_chmod_program(), mode, path]; o: [256] u8; e: [256] u8;
   r := proc_run(av[..], 10000, o[..], e[..]);
   return r.started == 0 && r.status == 0;
 }

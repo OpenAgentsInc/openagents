@@ -24,6 +24,10 @@
 // is never sent (dictate.coax, GitHub #12668). Ctrl+Z takes it back.
 
 #import "Basic";
+// Signed plugins (plugins.coax) load coax/lib/nostr/event.coax, whose secp256k1
+// field and Schnorr constants take about 89,300 compile-time steps on their own;
+// Coder's own constants take about 600. The default 100,000 left 10% (GitHub #12700).
+#run_steps 1000000;
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/tui/tui.coax";
@@ -516,7 +520,10 @@ cd_screen :: (a: [] App, output: string) -> string {
 }
 
 cd_command_event :: (a: [] App, cmd: string, exit: int, timed_out: bool, output_raw: string) {
-  output := cd_screen(a, output_raw);
+  // no trailing blank lines, as vt_text gives: the same text whether or not the terminal echoed a control byte
+  screen := cd_screen(a, output_raw);
+  on := screen.count; while on > 0 && screen[on - 1] == 10 { on -= 1; }
+  output := cast(string) screen[0..<on];
   cd_reply_commit(a, true);
   sb: [4096] u8; n := 0; tb: [16] u8;
   n = cd_cat(sb[..], n, "  $ "); n = cd_cat(sb[..], n, cmd);

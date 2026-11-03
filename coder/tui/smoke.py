@@ -1278,7 +1278,8 @@ def verbs(check):
         bad = cmd("policy", "add", "x", "--mode", "loud")
         check("policy: rm removes a source; an unknown mode is refused", "local" not in json.loads(cmd("policy", "list", "--json").stdout) and bad.returncode == 2)
         # no --engine and no System One key: the default engine, and the log says why
-        bare = dict(env, PATH="/usr/bin:/bin")
+        # only the system's own tools (NixOS keeps bash and the rest in /run/current-system/sw/bin, not /bin)
+        bare = dict(env, PATH="/usr/bin:/bin" + (":/run/current-system/sw/bin" if os.path.isdir("/run/current-system/sw/bin") else ""))
         for k in ("BASETEN_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "VERTEX_ACCESS_TOKEN"):
             bare.pop(k, None)
         routed = subprocess.run([coder, "run", "hi", "--json"], cwd=REPO, env=bare, capture_output=True, text=True, timeout=120)
