@@ -16,7 +16,6 @@ import os
 import json
 from pathlib import Path
 import re
-import resource
 import subprocess
 from urllib.parse import unquote, urlparse
 
@@ -268,11 +267,16 @@ def run_one(compiler, item, mode):
     # A program whose compile-time tables need more than the default budget.
     if "run_steps" in item:
         cmd += ["--run-steps", str(item["run_steps"])]
-    # A program whose fixed state is larger than the default 8 MiB stack.
+    # A program whose fixed state is larger than the default 8 MiB stack. The
+    # main thread's stack is sized from RLIMIT_STACK at exec, so a small shell
+    # raises the soft limit and then execs the run. Raising it in a preexec_fn
+    # fails on macOS: the kernel must grow the calling process's own stack
+    # region, cannot in a forked Python process, and setrlimit returns EINVAL.
     stack = item.get("stack_kib")
-    limit = (lambda: resource.setrlimit(resource.RLIMIT_STACK, (stack * 1024, resource.getrlimit(resource.RLIMIT_STACK)[1]))) if stack else None
+    if stack:
+        cmd = ["/bin/sh", "-c", 'ulimit -S -s "$1" && shift && exec "$@"', "sh", str(stack)] + cmd
     # A program that loads the whole signer compiles for longer than a minute.
-    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=item.get("timeout", 60), preexec_fn=limit)
+    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=item.get("timeout", 60))
     assert result.returncode == item["exit_status"], f"exit status: {cmd}\n{result.stderr.decode()}"
     # The compiler's near-limit report (a use above three quarters of a capacity
     # limit) is advisory, not a diagnostic; it is collected and printed once.
