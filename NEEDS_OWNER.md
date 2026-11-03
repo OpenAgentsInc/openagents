@@ -84,6 +84,27 @@ porting what they import too (`verse/tools/people.py`'s glTF loader and
 skeleton, `pack_realm.py`'s container) plus a JPEG encoder in Coax, which is
 larger than a release-blocker fix. Decide: port them (and with them
 `people.py`), or accept them as an exception some other way.
+Since then, two more MetaHuman Lab tools without a `Firm reason:` line have
+landed, and tools-check reports them too: `verse/tools/humans/face_rig.py`
+(234 lines, 58a1c8741d, the face rig's tables and a Python evaluation after
+OpenRigLogic's) and `pack_checks.py` (181, 1487a7c576, headless frame checks
+of a pack). They belong in the same decision (noted by #12702).
+
+## 5E MMO's hotbar art tool: port it, or name a Firm reason (#12702, 2026-11-03)
+
+`verse/tools/fivemmo_hotbar.py` (209 lines, 088fd5f0af) is the same case and
+tools-check reports it beside the MetaHuman packers. It draws 5E MMO's
+hotbar icons, key tabs and cards and writes `fivemmo-hotbar.coax`. None of
+the six reasons holds: it parses `aethyr/rules/srd/spells.coax` with
+regular expressions, cuts the SRD text to whole sentences and writes a Coax
+table, and it draws through `verse/tools/everglade_hotbar.py`. That file is
+on `coax/tools-port.txt` and uses Pillow to set text in Paper Mono, tint and
+composite, and encode JPEG, with `rsvg-convert` to rasterize the SVG icons.
+It can't go on the port list (it wasn't tracked at the list's base commit).
+A Coax port has to port `everglade_hotbar.py`'s drawing as well: text,
+SVG coverage and a JPEG encoder. That is larger than #12702. Decide with the
+MetaHuman packers: port the hotbar tools together, or allow them an
+exception.
 
 ## Drop's Mac golden in golden mode (#12693, 2026-11-03)
 
