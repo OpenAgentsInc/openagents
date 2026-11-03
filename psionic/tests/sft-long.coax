@@ -1,3 +1,6 @@
+// The units this program loads evaluate about 75,500 compile-time steps,
+// just past three quarters of the default 100,000.
+#run_steps 1000000;
 #load "sft-drive.coax";
 // Chapter 136's recorded run (release only; psionic/tests/check_sft.sh
 // compares its transcript with psionic/fixtures/sft/long.out): 600 base steps

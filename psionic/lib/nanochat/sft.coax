@@ -12,6 +12,9 @@
 // step. Evaluation asks held-out questions through chapter 126's engine, runs
 // the calculator when a reply stops as `tool`, and scores the call and the
 // final answer. The acceptance rule is frozen here, before any run.
+// The units this program loads evaluate about 75,500 compile-time steps,
+// just past three quarters of the default 100,000.
+#run_steps 1000000;
 #load "pretrain.coax";
 #load "engine.coax";
 #load "../../tests/sft-helpers.coax";

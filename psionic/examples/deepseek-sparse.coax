@@ -1,3 +1,6 @@
+// The units this program loads evaluate about 75,000 compile-time steps,
+// three quarters of the default 100,000.
+#run_steps 1000000;
 #import "Basic";
 #load "../lib/deepseek/sparse-chunk.coax";
 // book:begin example

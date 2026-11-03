@@ -1,3 +1,6 @@
+// The units this program loads evaluate about 75,500 compile-time steps,
+// just past three quarters of the default 100,000.
+#run_steps 1000000;
 #load "../tests/sft-drive.coax";
 // book:begin example
 // The short run: 16 base steps of 4 equation windows, then 24 tuning steps

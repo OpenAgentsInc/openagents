@@ -1,3 +1,6 @@
+// The units this program loads evaluate about 75,500 compile-time steps,
+// just past three quarters of the default 100,000.
+#run_steps 1000000;
 #load "prefer-drive.coax";
 // Chapter 138's recorded run (release only; psionic/tests/check_prefer.sh
 // compares its transcript with psionic/fixtures/prefer/long.out): chapter

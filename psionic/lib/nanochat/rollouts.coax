@@ -13,6 +13,9 @@
 // tokens, then clips, schedules and applies AdamW as chapter 128 does. A step
 // refuses rollouts sampled from another policy version. The acceptance rule
 // is frozen here, before any run.
+// The units this program loads evaluate about 75,500 compile-time steps,
+// just past three quarters of the default 100,000.
+#run_steps 1000000;
 #load "prefer.coax";
 #load "../../tests/rollouts-helpers.coax";
 #authority;

@@ -14,6 +14,9 @@
 // the frozen original with each reply's summed log-probability over its
 // supervised targets. Both use chapter 127's masked gradient, chapter 128's
 // schedule and AdamW. The acceptance rules are frozen here, before any run.
+// The units this program loads evaluate about 75,500 compile-time steps,
+// just past three quarters of the default 100,000.
+#run_steps 1000000;
 #load "sft.coax";
 #load "../../tests/prefer-helpers.coax";
 #authority;
