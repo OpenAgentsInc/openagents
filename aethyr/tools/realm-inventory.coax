@@ -1,0 +1,201 @@
+// Which of Aethyr's shared modules each realm runs on (Aethyr book chapter 64, ec-migrate): for
+// every realm below, its engine's units (the module and the libraries beside it, as
+// apps/openagents-web/build.sh builds them), each unit's #load closure from `coax deps`, and the
+// shared modules in it. Each realm has the modules it is recorded to run on (INV_REALMS); a realm that no longer
+// loads one of them has gone back to a private copy, or lost the shared one, and fails. A realm
+// that loads more than its record says so, so the record can be raised.
+//   coax/web/tool.sh aethyr/tools/realm-inventory.coax         (from the repository root)
+//   coax/bin/coax test aethyr/tools/realm-inventory.coax --library
+// Prints one line a realm and exits 0 when every realm keeps its record, 1 when one doesn't, 2
+// when a unit can't be read.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+// book:begin modules
+// The shared modules counted, by their path under aethyr/: one bit each, in this order.
+INV_MODULES :: 13;
+INV_NAMES :: [13] string.["loop", "input", "replay", "rand", "entity", "query", "ground", "walk",
+  "player", "follow", "camera", "flight", "quality"];
+// book:end modules
+
+// book:begin record
+// Each realm: its page, the units its engine is built from (the module and the libraries beside
+// it, as apps/openagents-web/build.sh builds them; the Grid's as coax/web/project/build-home.sh
+// does), and the shared modules it is recorded to run on.
+InvRealm :: struct { slug: string; want: string; units: string; }
+INV_REALMS :: [15] InvRealm.[
+  InvRealm.{slug = "the-grid", want = "loop input replay rand query ground walk follow flight",
+    units = "apps/openagents-web/newland.coax verse/gridwalk.coax"},
+  InvRealm.{slug = "made realms", want = "input",
+    units = "apps/openagents-web/myrealm.coax verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax"},
+  InvRealm.{slug = "haunted-house", want = "loop input query ground walk player follow flight",
+    units = "apps/openagents-web/realm.coax verse/haunt.coax verse/haunt-buffer.coax aethyr/player.coax verse/grid.coax aethyr/particles.coax aethyr/cinematic.coax verse/setpiece.coax"},
+  InvRealm.{slug = "garden", want = "loop input query ground walk player follow camera flight",
+    units = "apps/openagents-web/garden.coax aethyr/player.coax verse/grid.coax"},
+  InvRealm.{slug = "everglade", want = "loop input query ground walk player follow camera flight quality",
+    units = "apps/openagents-web/everglade5e.coax apps/openagents-web/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax apps/openagents-web/everglade5e-rules.coax"},
+  InvRealm.{slug = "everglade-classic", want = "loop input query ground walk player follow camera flight quality",
+    units = "apps/openagents-web/everglade.coax apps/openagents-web/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax"},
+  InvRealm.{slug = "dead-gears", want = "loop input entity query ground walk follow flight",
+    units = "apps/openagents-web/deadgears.coax"},
+  InvRealm.{slug = "ice-cream-man", want = "loop input query ground follow",
+    units = "apps/openagents-web/icecream.coax verse/icecream/scene.coax"},
+  InvRealm.{slug = "hecates-cemetery", want = "loop input query ground walk player follow camera flight",
+    units = "apps/openagents-web/villa.coax aethyr/player.coax verse/grid.coax apps/openagents-web/villafig.coax"},
+  InvRealm.{slug = "fairy-forest", want = "loop input query ground walk player follow camera flight",
+    units = "apps/openagents-web/fairy.coax aethyr/player.coax verse/grid.coax verse/fairy-forest/stream.coax coax/lib/qr/qr-memory.coax"},
+  InvRealm.{slug = "orbit-league", want = "loop",
+    units = "apps/openagents-web/orbitleague.coax"},
+  InvRealm.{slug = "belt-2200", want = "loop",
+    units = "apps/openagents-web/belt.coax"},
+  InvRealm.{slug = "hold-the-stair", want = "loop",
+    units = "apps/openagents-web/stair.coax"},
+  InvRealm.{slug = "watchtower", want = "loop",
+    units = "apps/openagents-web/watchtower.coax"},
+  InvRealm.{slug = "drop", want = "",
+    units = "apps/openagents-web/droprealm.coax"}
+];
+// book:end record
+
+// book:begin masks
+// Word k of a list of words split by single spaces ("loop input"), or "" past the last. The end
+// of the list ends its last word as a space does.
+inv_word :: (s: string, k: int) -> string {
+  n := 0; from := 0;
+  for i: 0..<s.count + 1 {
+    if i == s.count || s[i] == ' ' {
+      if n == k { return s[from..<i]; }
+      n += 1; from = i + 1;
+    }
+  }
+  return "";
+}
+// The modules named in a list of words; -1 when a word names none.
+inv_words :: (s: string) -> int {
+  mask := 0; k := 0;
+  while true {
+    w := inv_word(s, k);
+    if w.count == 0 { return mask; }
+    bit := 0;
+    for m: 0..<INV_MODULES { if w == INV_NAMES[m] { bit = 1 << m; } }
+    if bit == 0 { return -1; }
+    mask |= bit; k += 1;
+  }
+  return mask;
+}
+// Where pattern first starts in text, or -1.
+inv_find :: (text: string, pattern: string) -> int {
+  for i: 0..<text.count - pattern.count + 1 { if text[i..<i + pattern.count] == pattern { return i; } }
+  return -1;
+}
+// The modules in `coax deps`'s JSON: those named by a path in its "sources" array, as
+// ".../aethyr/NAME.coax"; -1 with no such array.
+inv_sources :: (json: string) -> int {
+  key := "\"sources\":[";
+  at := inv_find(json, key);
+  if at == -1 { return -1; }
+  rest := json[at + key.count..<json.count];
+  close := inv_find(rest, "]");
+  list := ifx close == -1 then rest else rest[0..<close];
+  mask := 0;
+  for k: 0..<INV_MODULES {
+    p: [64] u8; n := 0;
+    parts := [3] string.["/aethyr/", INV_NAMES[k], ".coax\""];
+    for part: parts { for c: part { p[n] = c; n += 1; } }
+    if inv_find(list, cast(string) p[0..<n]) != -1 { mask |= 1 << k; }
+  }
+  return mask;
+}
+// What a realm's record wants that it doesn't load (a private copy back, or the shared one lost),
+// and what it loads past its record.
+inv_lost :: (have: int, want: int) -> int { return want ^ (want & have); }
+inv_gained :: (have: int, want: int) -> int { return have ^ (have & want); }
+// book:end masks
+
+
+// ---- checks
+
+#test "words name modules; an unknown word refuses the list" {
+  #assert inv_words("") == 0 && inv_words("loop") == 1 && inv_words("loop input") == 3 && inv_words("input camera") == 2 | 1 << 10;
+  #assert inv_words("input loop") == 3 && inv_words("quality") == 1 << 12 && inv_words("loop loop") == 1;
+  #assert inv_words("loop lop") == -1 && inv_words("lo") == -1 && inv_words("loopinput") == -1 && inv_words("lop loop") == -1;
+  // every record names only known modules
+  for r: INV_REALMS { #assert inv_words(r.want) >= 0; }
+  #assert inv_words(INV_REALMS[0].want) == (1 | 2 | 4 | 8 | 32 | 64 | 128 | 512 | 2048);   // the Grid
+}
+
+#test "the sources of a deps record, and a record with none" {
+  j := "{\"schema_version\":1,\"sources\":[\"/r/apps/x.coax\",\"/r/aethyr/loop.coax\",\"/r/aethyr/walk.coax\"],\"x\":[\"/r/aethyr/input.coax\"]}";
+  #assert inv_sources(j) == (1 | 1 << 7);
+  #assert inv_sources("{\"sources\":[]}") == 0 && inv_sources("{\"source\":[\"/a/aethyr/loop.coax\"]}") == -1 && inv_sources("") == -1;
+  #assert inv_sources("\"sources\":[\"/a/aethyr/loop.coax\"") == 1 && inv_sources("\"sources\":[") == 0;
+  #assert inv_sources("\"sources\":[\"/a/aethyr/input.coax\", \"/a/aethyr/loop.coax\"]") == 3;
+  #assert inv_sources("\"sources\":[\"/a/aethyr/loop.coax.bak\",\"/a/aethyr/myloop.coax\",\"/a/aethyr/render/loop.coax\"]") == 0;
+  #assert inv_sources("\"sources\":[\"/a/aethyr/quality.coax\"]") == 1 << 12 && inv_sources("x\"sources\":[\"/a/aethyr/camera.coax\"]") == 1 << 10;
+  #assert inv_find("abcabc", "ca") == 2 && inv_find("abc", "bc") == 1 && inv_find("abc", "abc") == 0 && inv_find("ab", "abc") == -1 && inv_find("abc", "x") == -1;
+  #assert inv_find("abc", "c") == 2 && inv_find("", "a") == -1;
+  #assert inv_sources("\"sources\":[\"/a/myaethyr/loop.coax\",\"/a/aethyrloop.coax\"]") == 0;
+  // every module by its own name, and no other
+  for k: 0..<INV_MODULES {
+    p: [96] u8; n := 0;
+    parts := [3] string.["\"sources\":[\"/r/aethyr/", INV_NAMES[k], ".coax\"]"];
+    for part: parts { for c: part { p[n] = c; n += 1; } }
+    #assert inv_sources(cast(string) p[0..<n]) == 1 << k;
+  }
+}
+
+#test "lost is what the record wants and the realm doesn't load; gained, the other way" {
+  #assert inv_lost(3, 1) == 0 && inv_lost(1, 3) == 2 && inv_lost(0, 0) == 0 && inv_lost(5, 6) == 2;
+  #assert inv_gained(3, 1) == 2 && inv_gained(1, 3) == 0 && inv_gained(5, 6) == 1;
+}
+
+#test "words: split by single spaces, and every record's units are files" {
+  #assert inv_word("a bc d", 0) == "a" && inv_word("a bc d", 1) == "bc" && inv_word("a bc d", 2) == "d" && inv_word("a bc d", 3) == "";
+  #assert inv_word("", 0) == "" && inv_word("abc", 0) == "abc" && inv_word("abc", 1) == "" && inv_word("abc", 5) == "";
+  #assert inv_word(" a", 0) == "" && inv_word(" a", 1) == "a" && inv_word("a ", 0) == "a" && inv_word("a ", 1) == "" && inv_word("ab cd", 1) == "cd" && inv_word("ab cd", 0) == "ab";
+  for r: INV_REALMS { #assert inv_word(r.units, 0).count > 0; }
+}
+
+// ---- running it
+
+inv_deps :: (unit: string) -> int {
+  out: [262144] u8; err: [4096] u8;
+  // a unit that loads the secp256k1 tables needs more compile-time steps (build.sh: COAXIAL_RUN_STEPS)
+  argv := [5] string.["coax/bin/coax", "deps", unit, "--run-steps", "250000000"];
+  r := proc_run(argv[..], 600000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut { print("realm-inventory: coax deps % failed: %\n", unit, cast(string) err[0..<r.err_n]); return -1; }
+  return inv_sources(cast(string) out[0..<r.out_n]);
+}
+inv_list :: (mask: int, out: [] u8) -> string {
+  n := 0;
+  for k: 0..<INV_MODULES {
+    if (mask & (1 << k)) == 0 { continue; }
+    name := INV_NAMES[k];
+    if n > 0 && n < out.count { out[n] = ' '; n += 1; }
+    for c: name { if n < out.count { out[n] = c; n += 1; } }
+  }
+  return ifx n == 0 then "none" else cast(string) out[0..<n];
+}
+
+tool_main :: () -> int #export_c {
+  failed := 0;
+  for r: INV_REALMS {
+    have := 0; n := 0;
+    while inv_word(r.units, n).count > 0 {
+      m := inv_deps(inv_word(r.units, n));
+      if m < 0 { return 2; }
+      have |= m; n += 1;
+    }
+    want := inv_words(r.want);
+    lost := inv_lost(have, want); gained := inv_gained(have, want);
+    a: [256] u8; b: [256] u8; c: [256] u8;
+    print("% % (% unit%): %", ifx lost == 0 then "ok  " else "FAIL", r.slug, n, ifx n == 1 then "" else "s", inv_list(have, a[..]));
+    if lost != 0 { print("; no longer loads %", inv_list(lost, b[..])); failed += 1; }
+    if gained != 0 { print("; past its record: %", inv_list(gained, c[..])); }
+    print("\n");
+  }
+  print("realm-inventory: % of % realms keep their record\n", INV_REALMS.count - failed, INV_REALMS.count);
+  return ifx failed == 0 then 0 else 1;
+}

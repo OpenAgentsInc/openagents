@@ -1,11 +1,22 @@
 # 64. Every realm runs on Aethyr
 
-> **Status: unimplemented — design draft.** Engine-core task: `ec-migrate`
-> (#12609). Shared clocks, walking, ground/collision and camera modules are
-> already adopted on named paths. This chapter's complete migration,
-> per-realm replay corpus and check against private copies returning are
-> still to do. Its inventory distinguishes those remaining adapters from
-> the shared modules that already run.
+> **Status: partly implemented.** Engine-core task: `ec-migrate` (#12609,
+> #12650). Every realm with fixed steps steps them on
+> [aethyr/loop.coax](../../aethyr/loop.coax), and every walking realm walks
+> on [aethyr/walk.coax](../../aethyr/walk.coax) with its own declared
+> collision profile. Dead Gears' entities are
+> [aethyr/entity.coax](../../aethyr/entity.coax)'s, and Ice Cream Man's
+> camera is [aethyr/follow.coax](../../aethyr/follow.coax), stepped with its
+> rules. The engine modules moved from `verse/` to `aethyr/`.
+> [aethyr/tools/realm-inventory.coax](../tools/realm-inventory.coax) reads
+> each realm engine's `#load` closure and fails a realm that no longer loads
+> a shared module it is recorded to run on. The cross-realm checks hold the
+> camera, the feet and replay to one rule in all seven walking realms. The
+> example below runs natively in debug and release. Not done: made realms
+> still walk on their own per-frame step, the space games and Hold the
+> Stair have their own cameras and input, iOS's Metal host allocates on its
+> own, and no recorded session per realm replays in the browser yet. See
+> [Still to do](#still-to-do).
 
 The book ends where the engine-core milestone does: the Grid, made realms,
 Everglade, Dead Gears, Ice Cream Man, Hecate's Cemetery, Fairy Forest and the
@@ -15,116 +26,317 @@ its rules and its look, and nothing else.
 
 ## What this chapter teaches
 
-- How to migrate a running realm without changing what players see except
+- How to migrate a running realm without changing what players see, except
   where a fix is visible.
-- An inventory of private copies, and a check that keeps them from coming
-  back.
+- How to keep an inventory of what each realm runs on, generated from the
+  code, and how a check keeps private copies from coming back.
 - The order: foundations first, then the smallest realm, then the largest.
 
 ## The method
 
-Migration is per realm and per subsystem, each step a commit with the realm's
-own checks, its golden and the 60 FPS rule passing:
+Migration is per realm and per subsystem. Each step is a commit with the
+realm's own checks, its golden and the 60 FPS rule passing:
 
-1. Inventory the realm's private loop, camera follow, input path and ground
+1. Find the realm's private loop, camera follow, input path or ground
    logic.
-2. Replace each with the Aethyr module (chapters 1, 2, 4, 7 and 10), keeping
-   the realm's tuning as data.
-3. Record a session before and after; differences are allowed only where a
-   bug is fixed, and each is named.
+2. Replace it with the Aethyr module (chapters 1, 2, 4, 6, 7, 9 and 10),
+   keeping the realm's tuning as data.
+3. Check that it behaves the same at every frame rate, step by step. Where
+   the old code was frame-rate dependent, the difference is the fix, and it
+   is named.
 4. Delete the private copy.
 
-The order follows risk: the Grid ([chapter 56](ch056-the-grid.md)), whose
-seams are most visible; Hecate's Cemetery and Fairy Forest, which already use
-the shared controller and orbit; made realms; Ice Cream Man and Dead Gears,
-whose rule steps and entities must keep their traces and checks; Everglade;
-then the space games.
+The commits on `main` follow this method:
 
-A planned check reads each realm module's load list and its exported symbols and
-fails if a realm defines its own frame loop, follow camera, input mapping or
-ground query instead of loading Aethyr's.
-
-## What exists today
-
-| Realm | Shared baseline already in use | Remaining migration |
+| Realm | What moved | Commit |
 | --- | --- | --- |
-| The Grid | `verse/gridwalk.coax` owns the recorded session, typed input and fixed-step walking; chapter 2 checks native avatar spatial boundaries. | Broader world/entity/render contracts and the complete no-private-copies gate. Do not restore the old face-owned stepping path. |
-| Made realms | Declared frame budgets and typed move/undo operations in `myrealm.coax`; shared player paths where adopted. | Camera modes, side-view collision, the drop realm's walk/follow and one document/edit/publication model. |
-| Everglade | Shared walking ground/collision and follow camera; debris on `aethyr/loop.coax`; its face uses the player's counted frame time. | Forest-specific spatial/body adapters, edge hold, effect plumbing and a complete recorded realm session. |
-| Dead Gears | `ecs_clock_frame` delegates scheduling to `aethyr/loop.coax`; walking uses the shared controller. | Rule/input adapters and arena spatial representation (its entities are `aethyr/entity.coax`'s). The wrapper's name does not imply a second clock implementation. |
-| Ice Cream Man | Declared frame budget, existing rule-trace checks, its 1/30 s rules steps on `aethyr/loop.coax` (`ice_run`, at most 4 a frame), and its keys and thumb through `aethyr/input.coax` (one dead zone; the stick decides past it). | Its own action controls (sprint, fire, use, tools). Its camera is `aethyr/follow.coax`, stepped with the rules (`verse/icecream/camera.coax` `cam_track`); the new look waits for the owner (NEEDS_OWNER.md). |
-| Hecate's Cemetery | Shared walking/camera and paid-step fetch in the actual villa face. | Flight/boat handover, special controls and the remaining floor-relative adapters. |
-| Fairy Forest | Shared walking/camera and counted frame time. | Flight in `fairy-face.c` and its recorded-session integration. |
-| Space games | Orbit League's 120 Hz steps and Belt 2200's lockstep ticks (20 a second, at most 6 a frame; a tick waiting on the partner stays owed through `loop_ran_some`) use `aethyr/loop.coax`; both games have existing simulation/network checks. | Space-camera/world-frame adapters and shared session/profile integration. |
-| Anime Lab | The new Coax stage and generated shaders are present on main. | Shared renderer adoption and a complete engine-subsystem inventory remain open; its existing renderer is explicitly tracked in `aethyr/render/adoption.coax`. |
+| All | Player, camera, terrain, figure, sticks and 17 more modules from `verse/` to `aethyr/`, with every `#load` and build line | 2df3c484bf |
+| Belt 2200 | Its lockstep ticks onto a `FrameClock` of 50 ms steps, at most 6 a frame. A tick waiting on the partner stays owed (`loop_ran_some`) | 5c8606795a |
+| Ice Cream Man | Keys and thumb to one `Intent` through `aethyr/input.coax`, with one dead zone | 43e396014d |
+| Fairy Forest | Flight from `fairy-face.c` to `aethyr/flight.coax`, a per-step hook in the walker, so a glide is the same at 30 and 144 FPS | f2a8d11368 |
+| Hecate's Cemetery | Its free orbit eases once a fixed step, not once a frame | 8fd86f5423 |
+| Dead Gears | Its entity store replaced by `aethyr/entity.coax`'s, with a despawn that cancels a waiting spawn. The fight is the same at every step at 30, 60, 120 and 144 FPS | a97d85dab4 |
+| Ice Cream Man | Its private boom camera replaced by `aethyr/follow.coax`, stepped with the 1/30 s rules | 6796c59c32 |
+| Everglade, Fairy Forest, Belt 2200 | River floats and lily pads on a `FrameClock`. Belt's tactical battle capped at 8 steps a frame | 8330d80b8b |
+| All walkers | The cross-realm checks: camera, feet and replay in all seven walking profiles, and the Grid's floor lattice | b3c05f3c1d |
 
-Clock migration already moved these paths onto `aethyr/loop.coax`
-([chapter 1](ch001-a-frame-has-a-fixed-step.md), "What it replaced"): Dead
-Gears' `ecs_clock_frame`, Orbit League's step cap, `verse/demolish.coax`,
-Hold the Stair's solo and co-op clocks, the 0.1 s clamps in five page
-faces, Ice Cream Man's 1/30 s rules steps, the realm template
-([verse/realm-template/starcatch.coax](../../verse/realm-template/starcatch.coax),
-which every new realm copies), Watchtower, the Verse landing's orbs,
-Everglade's river floats, Fairy Forest's lily pads and Belt 2200's tactical
-battle. Each of the last seven has a check that a stalled frame runs no more than its cap of
-at most 8 steps
-([one-clock invariant](../../INVARIANTS.md#a-realms-frame-time-is-what-its-clock-counts-and-no-frame-runs-past-8-steps)).
-This is evidence of adoption, not completion of `ec-migrate`. Belt's network
-commits and game-time ticks need an explicit session integration. Keep that
-scope distinct from the shared walking and rigid-game clocks.
+The renderer has its own path: every catalogue realm's WGSL is generated by
+Coax, and chapter 11's shared `Render*` facade and GPU ledger
+([registry.coax](../render/registry.coax)) draw the browser Grid and the
+native Vulkan host (#12628).
 
-Every page face now exports `coaxial_state_init`, and
-[`coax/web/host.js`](../../coax/web/host.js) calls it unconditionally
-([chapter 3](ch003-state-starts-from-its-defaults.md)).
+## The inventory
 
-The renderer migration also has a working baseline: all catalogue realms
-have Coax-generated WGSL and the native Vulkan port's recorded checks
-([native-GPU status](../../docs/verse/native-gpu.md#status)). Chapter 11 still
-owns common frame/pass/binding admission and the full CPU-reference profile.
-Do not count that future consolidation as another shader-source port.
-Its first [CPU metadata component](../render/README.md) is now used by
-`verse_grid_view` through `verse/grid-render.coax`, before the native matrix
-output is written. The browser Grid now renders through chapter 11's shared `Render*` facade
-([route record](../../docs/verification/aethyr-grid-playable-route-2026-11-02.md)).
-Its GPU objects are owned through the shared ledger
-([registry.coax](../render/registry.coax)) in the browser and in the native
-Vulkan host. The iOS Metal host (`HomeRenderer.swift`) still allocates and
-submits on its own. That, the remaining realms' subsystems and the
-no-private-copies gate keep `ec-migrate` open. Anime Lab is newer than
-the retained sixteen-realm shader inventory; its explicit legacy route must
-not be counted as shared renderer adoption.
+A realm runs on a shared module when that module is in its engine's `#load`
+closure. `coax deps FILE` prints the closure as JSON. The inventory tool
+counts thirteen modules:
 
-The engine modules that lived in `verse/` moved to `aethyr/` in one scripted
-commit: player, camera, figure, contact, terrain, stand, sticks, motion,
-skin, rigid, gravity, thrust, vehicle, particles, particle-motion,
-cinematic, spacecam, throw, arrange, flock, orbit and command, with
-`verse/space.coax` becoming [aethyr/points.coax](../points.coax) beside the
-typed spaces. Every `#load`, build line and mention moved with them; module
-names and C symbols did not change. `verse/` keeps realm content.
+<!-- source: aethyr/tools/realm-inventory.coax modules -->
+```jai
+// The shared modules counted, by their path under aethyr/: one bit each, in this order.
+INV_MODULES :: 13;
+INV_NAMES :: [13] string.["loop", "input", "replay", "rand", "entity", "query", "ground", "walk",
+  "player", "follow", "camera", "flight", "quality"];
+```
 
-Shared modules already in use: [aethyr/player.coax](../../aethyr/player.coax),
-[camera.coax](../../aethyr/camera.coax),
-[terrain.coax](../../aethyr/terrain.coax),
-[particles.coax](../../aethyr/particles.coax),
-[cinematic.coax](../../aethyr/cinematic.coax). The task list is
-`apps/openagents-web/projects/verse/work/engine-core.json`.
+Each realm lists the units its engine is built from, as
+`apps/openagents-web/build.sh` builds them (the module, then the libraries
+built beside it), and the modules it is recorded to run on:
 
-## What it builds
+<!-- source: aethyr/tools/realm-inventory.coax record -->
+```jai
+// Each realm: its page, the units its engine is built from (the module and the libraries beside
+// it, as apps/openagents-web/build.sh builds them; the Grid's as coax/web/project/build-home.sh
+// does), and the shared modules it is recorded to run on.
+InvRealm :: struct { slug: string; want: string; units: string; }
+INV_REALMS :: [15] InvRealm.[
+  InvRealm.{slug = "the-grid", want = "loop input replay rand query ground walk follow flight",
+    units = "apps/openagents-web/newland.coax verse/gridwalk.coax"},
+  InvRealm.{slug = "made realms", want = "input",
+    units = "apps/openagents-web/myrealm.coax verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax"},
+  InvRealm.{slug = "haunted-house", want = "loop input query ground walk player follow flight",
+    units = "apps/openagents-web/realm.coax verse/haunt.coax verse/haunt-buffer.coax aethyr/player.coax verse/grid.coax aethyr/particles.coax aethyr/cinematic.coax verse/setpiece.coax"},
+  InvRealm.{slug = "garden", want = "loop input query ground walk player follow camera flight",
+    units = "apps/openagents-web/garden.coax aethyr/player.coax verse/grid.coax"},
+  InvRealm.{slug = "everglade", want = "loop input query ground walk player follow camera flight quality",
+    units = "apps/openagents-web/everglade5e.coax apps/openagents-web/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax apps/openagents-web/everglade5e-rules.coax"},
+  InvRealm.{slug = "everglade-classic", want = "loop input query ground walk player follow camera flight quality",
+    units = "apps/openagents-web/everglade.coax apps/openagents-web/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax"},
+  InvRealm.{slug = "dead-gears", want = "loop input entity query ground walk follow flight",
+    units = "apps/openagents-web/deadgears.coax"},
+  InvRealm.{slug = "ice-cream-man", want = "loop input query ground follow",
+    units = "apps/openagents-web/icecream.coax verse/icecream/scene.coax"},
+  InvRealm.{slug = "hecates-cemetery", want = "loop input query ground walk player follow camera flight",
+    units = "apps/openagents-web/villa.coax aethyr/player.coax verse/grid.coax apps/openagents-web/villafig.coax"},
+  InvRealm.{slug = "fairy-forest", want = "loop input query ground walk player follow camera flight",
+    units = "apps/openagents-web/fairy.coax aethyr/player.coax verse/grid.coax verse/fairy-forest/stream.coax coax/lib/qr/qr-memory.coax"},
+  InvRealm.{slug = "orbit-league", want = "loop",
+    units = "apps/openagents-web/orbitleague.coax"},
+  InvRealm.{slug = "belt-2200", want = "loop",
+    units = "apps/openagents-web/belt.coax"},
+  InvRealm.{slug = "hold-the-stair", want = "loop",
+    units = "apps/openagents-web/stair.coax"},
+  InvRealm.{slug = "watchtower", want = "loop",
+    units = "apps/openagents-web/watchtower.coax"},
+  InvRealm.{slug = "drop", want = "",
+    units = "apps/openagents-web/droprealm.coax"}
+];
+```
 
-- Each realm on `aethyr/`; the private copies above deleted.
-- The no-private-copies check, run with every realm's tests.
+The tool reads each unit's closure and compares it with the record. A realm
+that no longer loads a recorded module fails. Either it went back to a
+private copy, or it lost the shared one. A realm that loads more than its
+record says so, so that the record can be raised:
+
+<!-- source: aethyr/tools/realm-inventory.coax masks -->
+```jai
+// Word k of a list of words split by single spaces ("loop input"), or "" past the last. The end
+// of the list ends its last word as a space does.
+inv_word :: (s: string, k: int) -> string {
+  n := 0; from := 0;
+  for i: 0..<s.count + 1 {
+    if i == s.count || s[i] == ' ' {
+      if n == k { return s[from..<i]; }
+      n += 1; from = i + 1;
+    }
+  }
+  return "";
+}
+// The modules named in a list of words; -1 when a word names none.
+inv_words :: (s: string) -> int {
+  mask := 0; k := 0;
+  while true {
+    w := inv_word(s, k);
+    if w.count == 0 { return mask; }
+    bit := 0;
+    for m: 0..<INV_MODULES { if w == INV_NAMES[m] { bit = 1 << m; } }
+    if bit == 0 { return -1; }
+    mask |= bit; k += 1;
+  }
+  return mask;
+}
+// Where pattern first starts in text, or -1.
+inv_find :: (text: string, pattern: string) -> int {
+  for i: 0..<text.count - pattern.count + 1 { if text[i..<i + pattern.count] == pattern { return i; } }
+  return -1;
+}
+// The modules in `coax deps`'s JSON: those named by a path in its "sources" array, as
+// ".../aethyr/NAME.coax"; -1 with no such array.
+inv_sources :: (json: string) -> int {
+  key := "\"sources\":[";
+  at := inv_find(json, key);
+  if at == -1 { return -1; }
+  rest := json[at + key.count..<json.count];
+  close := inv_find(rest, "]");
+  list := ifx close == -1 then rest else rest[0..<close];
+  mask := 0;
+  for k: 0..<INV_MODULES {
+    p: [64] u8; n := 0;
+    parts := [3] string.["/aethyr/", INV_NAMES[k], ".coax\""];
+    for part: parts { for c: part { p[n] = c; n += 1; } }
+    if inv_find(list, cast(string) p[0..<n]) != -1 { mask |= 1 << k; }
+  }
+  return mask;
+}
+// What a realm's record wants that it doesn't load (a private copy back, or the shared one lost),
+// and what it loads past its record.
+inv_lost :: (have: int, want: int) -> int { return want ^ (want & have); }
+inv_gained :: (have: int, want: int) -> int { return have ^ (have & want); }
+```
+
+`coax/web/tool.sh aethyr/tools/realm-inventory.coax`, on 2026-11-03 (about
+2 minutes):
+
+```text
+ok   the-grid (2 units): loop input replay rand query ground walk follow flight
+ok   made realms (3 units): input
+ok   haunted-house (8 units): loop input query ground walk player follow flight
+ok   garden (3 units): loop input query ground walk player follow camera flight
+ok   everglade (6 units): loop input query ground walk player follow camera flight quality
+ok   everglade-classic (5 units): loop input query ground walk player follow camera flight quality
+ok   dead-gears (1 unit): loop input entity query ground walk follow flight
+ok   ice-cream-man (2 units): loop input query ground follow
+ok   hecates-cemetery (4 units): loop input query ground walk player follow camera flight
+ok   fairy-forest (5 units): loop input query ground walk player follow camera flight
+ok   orbit-league (1 unit): loop
+ok   belt-2200 (1 unit): loop
+ok   hold-the-stair (1 unit): loop
+ok   watchtower (1 unit): loop
+ok   drop (1 unit): none
+realm-inventory: 15 of 15 realms keep their record
+```
+
+Read across, the gaps are the remaining migration. Every walker loads
+`flight.coax`, because the walker owns the per-step flight hook, and Fairy
+Forest is the only realm whose profile turns it on. Made realms load only
+the input rules: `realm_step` in `apps/openagents-web/myrealm.coax` clamps
+the frame to 0.1 s and moves you once a frame with its own `walk_to`. The
+space games, Hold the Stair and Watchtower have the clock and nothing else.
+Drop's realm has no fixed steps.
+
+The tool counts what is loaded, not what is called. A realm could load the
+walker and still keep its own step beside it. That is why each migration
+above also has a step-by-step check at several frame rates: the inventory
+keeps a module from going away, and the frame-rate checks show that the
+module is what runs.
+
+## One walker in every walking realm
+
+The seven walking realms step the same `aethyr/walk.coax`, each by the name
+its collision profile is declared under. The example,
+[aethyr/examples/one-walk-every-realm.coax](../examples/one-walk-every-realm.coax),
+plays one session in each, at 60 FPS and again at 30:
+
+<!-- source: aethyr/examples/one-walk-every-realm.coax example -->
+```jai
+#load "../walk.coax";
+#import "Basic";
+
+cm :: (m: f32) -> int { return cast(int) (m * 100 + ifx m < 0 then -0.5f32 else 0.5f32); }
+
+// The seven walking realms, by the names their collision profiles are declared under
+// (aethyr/collision-profiles.coax), each stepping the one walker, aethyr/walk.coax, on the one
+// clock, aethyr/loop.coax. The same 300 frames in each, close to the session that
+// aethyr/tests/cross-realm.coax plays: walk, run from frame 44, jump at 60, run onto a 0.4 m step
+// and off it, jump again at 200, walk, stop. Then the same at 30 FPS, which takes the same steps.
+REALMS :: [7] string.["the-grid", "haunted-house", "garden", "fairy-forest", "everglade", "hecates-cemetery", "dead-gears"];
+
+walk :: (realm: string, frames: int, frame: f32) -> Player {
+  walls := [6] f32.[-2, 0, 9, 2, 0.4, 13];   // the step: min x, y, z, max x, y, z
+  none: [1] f32;
+  p := walk_place(0, 0, 0, 0);
+  per := cast(int) (frame * 60 + 0.5);       // sixtieths of a second a frame
+  for f: 0..<frames {
+    t := f * per;                            // the frame's time in sixtieths
+    p = walk_input(p, 0, ifx t < 260 then 1 else 0, 0, 0, t >= 44 && t < 230, t == 60 || t == 200, 0, 0);
+    p = walk_advance_in_realm(p, frame, none[0..<0], walls[..], none[0..<0], realm);
+  }
+  return p;
+}
+
+main :: () {
+  for realm: REALMS {
+    p := walk(realm, 300, 1.0 / 60.0);
+    q := walk(realm, 150, 1.0 / 30.0);
+    same := p.clock.ticks == q.clock.ticks && p.pos.x == q.pos.x && p.pos.y == q.pos.y && p.pos.z == q.pos.z;
+    print("%: % steps, % jumps, feet at (% cm, % cm, % cm), collision %; at 30 FPS the same: %\n", realm,
+          p.clock.ticks, p.jumps.taken, cm(p.pos.x), cm(p.pos.y), cm(p.pos.z), walk_collision_status(p), same);
+  }
+}
+```
+
+```text
+the-grid: 320 steps, 2 jumps, feet at (0 cm, 0 cm, 2759 cm), collision 0; at 30 FPS the same: true
+haunted-house: 320 steps, 2 jumps, feet at (0 cm, 0 cm, 2759 cm), collision 0; at 30 FPS the same: true
+garden: 320 steps, 2 jumps, feet at (0 cm, 0 cm, 2759 cm), collision 0; at 30 FPS the same: true
+fairy-forest: 320 steps, 2 jumps, feet at (0 cm, 0 cm, 2759 cm), collision 0; at 30 FPS the same: true
+everglade: 320 steps, 2 jumps, feet at (0 cm, 0 cm, 2759 cm), collision 0; at 30 FPS the same: true
+hecates-cemetery: 320 steps, 2 jumps, feet at (0 cm, 0 cm, 2759 cm), collision 0; at 30 FPS the same: true
+dead-gears: 320 steps, 2 jumps, feet at (0 cm, 0 cm, 2759 cm), collision 0; at 30 FPS the same: true
+```
+
+300 frames of 1/60 s are 5 s, and 5 s of 1/64 s steps are 320 steps. Every
+realm's walk is the same: every declared profile is the same capsule
+(0.3 m radius, 1.8 m tall, a 0.55 m step up), and this session has no
+bodies and no presses in the air, which only Fairy Forest's flight would
+take. In play, what differs is each realm's own bodies, walls and floors,
+handed to the same step. At 30 FPS, 150 frames of 1/30 s
+take the same 320 steps to the same feet, bit for bit, because the controls
+change only on frames both rates share (frame 44, 60, 200, 230 and 260 in
+sixtieths). [aethyr/tests/cross-realm.coax](../tests/cross-realm.coax)
+holds the camera, the drawn feet and replay to one rule in the same seven
+profiles.
+
+## Checks
+
+- `coax/bin/coax test aethyr/tools/realm-inventory.coax --library`: 12 of
+  12 (the word lists, a deps record's sources, and what's lost or gained).
+- `coax/bin/coax mutate aethyr/tools/realm-inventory.coax --library
+  --root-only`: 74 mutants, 74 killed.
+- `coax/web/tool.sh aethyr/tools/realm-inventory.coax`: 15 of 15 realms
+  keep their record (shown above).
+- Cited, not rerun here: `aethyr/tests/cross-realm.coax` 272 of 272 and
+  `cross-realm-floor.coax` 65 of 65 (b3c05f3c1d), and each migration
+  commit's own checks.
+
+## Still to do
+
+| Realm | Remaining migration |
+| --- | --- |
+| The Grid | Other people as chapter 6 entities, and the Grid's content apart from the homepage's scene ([chapter 56](ch056-the-grid.md)). |
+| Made realms | Walking on `aethyr/walk.coax` and `aethyr/loop.coax` in place of `realm_step`'s per-frame move. Then camera modes, side-view collision and the drop realm's walk and follow. |
+| Everglade | Forest-specific spatial and body adapters, the edge hold, effect plumbing and a complete recorded session. The owner is changing it now (#12705–#12718), so it is left alone here. |
+| Dead Gears | Rule and input adapters, and the arena's spatial representation. |
+| Ice Cream Man | Its own action controls (sprint, fire, use, tools). Approving its new camera look waits for the owner (NEEDS_OWNER.md). |
+| Hecate's Cemetery | The flight in from space handed over through the shared camera, and the remaining floor-relative adapters. |
+| Fairy Forest | Its recorded-session integration. |
+| Space games | Space-camera and world-frame adapters. Belt's network commits and game-time ticks need an explicit session integration. |
+| Hold the Stair, Watchtower | Input and camera on the shared modules. |
+| Anime Lab | Shared renderer adoption. Its existing renderer is tracked in `aethyr/render/adoption.coax`. |
+| iOS | `HomeRenderer.swift` allocates and submits on its own, outside the GPU ledger. |
+
+Across every realm: a recorded session per realm that replays bit for bit
+natively and in the browser (the Grid's does: `coax/web/tool.sh
+replay-hosts grid`), and a check that calls, not only loads, the shared
+step.
 
 ## Acceptance checks and oracles
 
 From `ec-migrate`:
 
 - No realm keeps a private loop, camera follow, input path or ground logic.
-- Goldens change only where a fix is visible; the 60 FPS checks hold.
+  Not yet: see the table above. The inventory keeps what has moved from
+  moving back.
+- Goldens change only where a fix is visible, and the 60 FPS checks hold.
+  Each migration commit above ran its realm's goldens or frame-rate checks.
+  `coax/web/realm-perf.coax` measures every realm
+  ([chapter 83](ch083-inspect-and-profile-a-running-realm.md)).
 - The Grid's floor is one consistent world-space grid from any position.
+  Holds: `cross-realm-floor.coax`, from 121 positions.
 
-And from the chapters it depends on: each realm's own tests
-(`verse/deadgears/test.sh`, `verse/icecream/test.sh`, the modules'
-`#test`s), a recorded session per realm replaying bit-identically natively
+From the chapters it depends on: each realm's own tests
+(`verse/deadgears/test.sh`, `verse/icecream/test.sh` and the modules'
+`#test`s), a recorded session per realm that replays bit for bit natively
 and in the browser, and every realm declaring its budgets.
 
 ## Dependencies

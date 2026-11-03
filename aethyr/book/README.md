@@ -242,7 +242,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [61. Hecate's Cemetery](ch061-hecates-cemetery.md) | Unimplemented: design draft | The moonlit memorial garden rebuilt: the arrival flight handing the camera over smoothly, a dog that follows by the paths, the moon in its real phase, and scanned pet memorials. |
 | [62. Fairy Forest](ch062-fairy-forest.md) | Unimplemented: design draft | The bloom-and-roots story on saved state, with flight moved from the face into the shared controller, so a full session replays and flies the same at any frame rate. |
 | [63. The space games](ch063-the-space-games.md) | Unimplemented: design draft | Orbit League and Belt 2200 on Aethyr's physics and spacecraft chapters, with `space.md`'s checks, transfers within their stated error and lockstep games that replay to the same hashes. |
-| [64. Every realm runs on Aethyr](ch064-every-realm-runs-on-aethyr.md) | Unimplemented: design draft (`ec-migrate`) | The `ec-migrate` plan: an inventory of each realm's private copies, a migration order, a check that no private loop, camera, input path or ground logic comes back, and goldens and 60 FPS held throughout. |
+| [64. Every realm runs on Aethyr](ch064-every-realm-runs-on-aethyr.md) | Partly implemented: native C (every realm's shared modules from its #load closure; one walker in seven realms) (`ec-migrate`) | The `ec-migrate` plan: an inventory of each realm's private copies, a migration order, a check that no private loop, camera, input path or ground logic comes back, and goldens and 60 FPS held throughout. |
 
 ### VIII. Hearing it
 

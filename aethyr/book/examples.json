@@ -300,6 +300,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/one-walk-every-realm.coax",
+      "chapter": "aethyr/book/ch064-every-realm-runs-on-aethyr.md",
+      "stdout": "aethyr/fixtures/one-walk-every-realm.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
