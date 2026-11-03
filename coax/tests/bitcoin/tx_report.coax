@@ -1,0 +1,40 @@
+// A flat test-only C entry point over coax/lib/bitcoin/tx.coax for
+// coax/tests/bitcoin/tx.py: it reads one transaction and writes what it
+// found as numbers and bytes, so Python can compare every field with its
+// own reader. No parsing or policy lives here.
+#load "../../lib/bitcoin/tx.coax";
+
+TR_MAX :: 256;    // the most inputs, outputs or witness items a caller may ask room for
+// Reads b with witnesses (mode 0), without (mode 1) or as Core's DecodeTx
+// (mode 2), with room for nin inputs, nout outputs and nitems witness
+// items (each at most TR_MAX). Writes 8-byte little-endian numbers: code
+// and at; then, when the code is TX_OK, segwit, nin, nout, nitems,
+// stripped, total, weight, vsize, version and locktime; the txid and the
+// wtxid (hash order); the stripped serialization; and the full one.
+// Returns the bytes written, or -1 when out is too short or a room is
+// out of range.
+tx_report_vartime :: (b: [] u8, mode: int, nin: int, nout: int, nitems: int, out: [] u8) -> int #export_c {
+  if nin < 0 || nin > TR_MAX || nout < 0 || nout > TR_MAX || nitems < 0 || nitems > TR_MAX || out.count < 16 { return -1; }
+  ins: [TR_MAX] TxIn; outs: [TR_MAX] TxOut; items: [TR_MAX] TxItem;
+  t: Tx;
+  if mode == 2 { t = tx_decode_vartime(b, ins[0..<nin], outs[0..<nout], items[0..<nitems]); }
+  else { t = tx_read_vartime(b, mode == 0, ins[0..<nin], outs[0..<nout], items[0..<nitems]); }
+  at := tr_put(out, 0, t.code); at = tr_put(out, at, t.at);
+  if t.code != TX_OK { return at; }
+  if out.count < 160 + t.stripped + t.total { return -1; }
+  values := [10] int.[ifx t.segwit then 1 else 0, t.nin, t.nout, t.nitems, t.stripped, t.total,
+    tx_weight_vartime(t), tx_vsize_vartime(t), tx_le_vartime(b, 0, 4), tx_le_vartime(b, t.locktime, 4)];
+  for v: values { at = tr_put(out, at, v); }
+  #assert tx_txid_vartime(b, t, out[at..<at+32]) && tx_wtxid_vartime(b, t, out[at+32..<at+64]);
+  at += 64;
+  n := tx_write_vartime(b, t, ins[0..<nin], outs[0..<nout], items[0..<nitems], false, out[at..<at+t.stripped]);
+  #assert n == t.stripped;
+  at += n;
+  n = tx_write_vartime(b, t, ins[0..<nin], outs[0..<nout], items[0..<nitems], true, out[at..<at+t.total]);
+  #assert n == t.total;
+  return at + n;
+}
+tr_put :: (out: [] u8, at: int, v: int) -> int {
+  for i: 0..<8 { out[at+i] = cast(u8) ((v >> (8 * i)) & 255); }
+  return at + 8;
+}

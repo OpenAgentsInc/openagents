@@ -281,6 +281,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "bitcoin/examples/transactions.coax",
+      "chapter": "bitcoin/book/ch034-transactions-and-their-serialization.md",
+      "stdout": "bitcoin/fixtures/transactions.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

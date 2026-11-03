@@ -53,7 +53,8 @@ and the NIP-06 seed path (chapter 46). The Bitcoin halves of Nostr chapter 46
 (BIP-39 and BIP-32) and chapter 104 (PSBTs, descriptors, signature hashes
 and multisig) are chapters 31–32, 94 and 100. Chapter 31 (BIP-39) is
 written; the rest are planned, with the existing code named in the
-[plan](book/PLAN.md). Chapter 104's ECDSA signer is chapter 20.
+[plan](book/PLAN.md). Chapter 104's ECDSA signer is chapter 20, and its transaction reader is
+chapter 34's.
 
 ## Cryptography still to build
 

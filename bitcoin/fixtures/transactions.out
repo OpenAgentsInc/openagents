@@ -1,0 +1,90 @@
+a legacy transaction, 23b397edccd3740a74adb603c9756370fafcde9bcc4483eb271ecad09a94dd63
+version 1, inputs 1, outputs 1, locktime 0
+input 0 spends txid: 60a20bd93aa49ab4b28d514ec10b06e1829ce6818ec06cd3aabd013ebcdc4bb1
+  output index 0, scriptSig 73 bytes at byte 42
+  sequence: ffffffff
+output 0: 1000000 satoshis
+  scriptPubKey: 76a914660d4ef3a743e3e696ad990364e555c271ad504b88ac
+158 bytes, weight 632, vsize 158
+txid in hash order: 63dd949ad0ca1e27eb8344cc9bdefcfa706375c903b6ad740a74d3cced97b323
+txid as shown: 23b397edccd3740a74adb603c9756370fafcde9bcc4483eb271ecad09a94dd63
+matches tx_valid.json: true
+CompactSize
+  0: 1 bytes, ok: 00
+  252: 1 bytes, ok: fc
+  253: 3 bytes, ok: fdfd00
+  65535: 3 bytes, ok: fdffff
+  65536: 5 bytes, ok: fe00000100
+  33554432: 5 bytes, ok: fe00000002
+  4294967296: 9 bytes, size too large: ff0000000001000000
+  fdfc00: non-canonical CompactSize
+  feffff0000: non-canonical CompactSize
+  ffffffffff00000000: non-canonical CompactSize
+  fe01000002: size too large
+  fdfd: truncated
+  ff0000000001000000: size too large
+a segwit transaction, f5864806e3565c34d1b41e716f72609d00b55ea5eac5b924c9719a842ef42206
+marker 0, flag 1, inputs 1, outputs 1, witness stacks from byte 81 to 189
+  input 0 stack, item sizes: 72 33
+stripped 83, total 193, weight 442 (published 442), vsize 111
+txid : f5864806e3565c34d1b41e716f72609d00b55ea5eac5b924c9719a842ef42206
+wtxid: 80b7d8a82d5d5bf92905b06f2014dd699e03837ca172e3a59d51426ebbe3e7f5
+txid matches: true, wtxid matches: true
+a segwit transaction, 33e794d097969002ee05d336686fc03c9e15a597c1b9827669460fac98799036
+marker 0, flag 1, inputs 1, outputs 2, witness stacks from byte 150 to 216
+  input 0 stack, item sizes: 64
+stripped 152, total 220, weight 676 (published 676), vsize 169
+txid : 33e794d097969002ee05d336686fc03c9e15a597c1b9827669460fac98799036
+wtxid: af2fdc4c54270adfb2a65987a79ed2f0e771a779ea48bb0ef06095b48395f74d
+txid matches: true, wtxid matches: true
+a segwit transaction, 37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8
+marker 0, flag 1, inputs 2, outputs 1, witness stacks from byte 121 to 354
+  input 0 stack, item sizes: 64
+  input 1 stack, item sizes: 64 34 65
+stripped 123, total 358, weight 727 (published 727), vsize 182
+txid : 37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8
+wtxid: 2fb9e9ff2c166ffbd48406f7b9362125b665da2a760540065250188417f048c2
+txid matches: true, wtxid matches: true
+stripped: 0200000001595895ea20179de87052b4046dfe6fd515860505d6511a9004cf12a1f93cac7c0100000000ffffffff01deb807000000000017a9140f3444e271620c736808aa7b33e370bd87cb5a078700000000
+SHA-256d of it is the txid: true
+refusals
+  the first 3 bytes: truncated at byte 0
+  the first 20 bytes: truncated at byte 5
+  the first 45 bytes: truncated at byte 43
+  the first 52 bytes: truncated at byte 48
+  the first 60 bytes: truncated at byte 58
+  a byte after the locktime: trailing bytes at byte 62
+  input count 1 in three bytes: non-canonical CompactSize at byte 4
+  input count 0x03000000: size too large at byte 4
+  flag 2: unknown flag at byte 5
+  flag 1, every stack empty: witness flag, no witnesses at byte 60
+  item count 0 in three bytes: non-canonical CompactSize at byte 60
+  4 witness items into room for 3: capacity at byte 288
+zero inputs
+no inputs, no outputs
+  with witnesses: ok, scripts parse true
+  without: ok, scripts parse true
+  Core keeps: inputs 0, outputs 0, segwit false
+legacy, no inputs, one output
+  with witnesses: truncated, scripts parse false
+  without: ok, scripts parse true
+  Core keeps: inputs 0, outputs 1, segwit false
+extended, no inputs, no witness
+  with witnesses: witness flag, no witnesses, scripts parse false
+  without: trailing bytes, scripts parse false
+  Core keeps neither: witness flag, no witnesses
+both read, both sane
+  with witnesses: ok, scripts parse true
+  without: ok, scripts parse true
+  Core keeps: inputs 1, outputs 1, segwit true
+both read, legacy sane
+  with witnesses: ok, scripts parse false
+  without: ok, scripts parse true
+  Core keeps: inputs 0, outputs 1, segwit false
+both read, neither sane
+  with witnesses: ok, scripts parse false
+  without: ok, scripts parse false
+  Core keeps: inputs 1, outputs 1, segwit true
+Bitcoin Core tx_valid.json and tx_invalid.json
+215 of 215 read (122 of tx_valid.json), 41 with witnesses
+215 write back byte for byte, 215 stripped and read back with the same txid

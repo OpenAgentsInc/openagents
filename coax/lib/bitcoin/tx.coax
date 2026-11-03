@@ -1,0 +1,685 @@
+// Transactions and their serialization (Bitcoin chapter 34): CompactSize
+// integers, Bitcoin Core's transaction reader with and without the BIP-144
+// witness form, the serializer, txids and wtxids, sizes and weight, and the
+// way Core decodes bytes that read both ways.
+//
+// The reader follows Bitcoin Core's UnserializeTransaction
+// (primitives/transaction.h) and ReadCompactSize (serialize.h) and gives each
+// of Core's failures its own refusal code. It copies nothing: a read
+// transaction is a Tx plus positions in the caller's arrays of TxIn, TxOut
+// and TxItem, each pointing into the bytes it was read from. What the
+// scripts and witnesses mean is for chapter 36 and later.
+//
+// Transactions are public, so everything here runs in variable time and
+// every procedure that decides ends in _vartime (Bitcoin chapter 3).
+#load "hash.coax";
+#load "../../tests/bitcoin/tx_vectors.coax";
+#authority;
+
+// book:begin codes
+// Refusal codes of the reader. Core throws std::ios_base::failure with the
+// message in quotes; the trailing-bytes check is DecodeTx's.
+TX_OK :: 0;
+TX_TRUNCATED :: 1;       // the bytes end inside a field: "end of data"
+TX_NONCANONICAL :: 2;    // a CompactSize longer than it needs: "non-canonical ReadCompactSize()"
+TX_SIZE_TOO_LARGE :: 3;  // a count or length above MAX_SIZE: "ReadCompactSize(): size too large"
+TX_UNKNOWN_FLAG :: 4;    // a flag other than 0x01: "Unknown transaction optional data"
+TX_NO_WITNESS :: 5;      // the witness flag with every stack empty: "Superfluous witness record"
+TX_TRAILING :: 6;        // bytes after the locktime
+TX_CAPACITY :: 7;        // more inputs, outputs or witness items than the caller's arrays hold
+
+TX_MAX_SIZE :: 0x02000000;   // serialize.h MAX_SIZE: no count or length is larger
+TX_SCALE :: 4;               // consensus.h WITNESS_SCALE_FACTOR
+// book:end codes
+TX_MAX_SCRIPT :: 10000;      // script.h MAX_SCRIPT_SIZE
+TX_MAX_ELEMENT :: 520;       // script.h MAX_SCRIPT_ELEMENT_SIZE
+TX_MAX_OPCODE :: 0xb9;       // script.h MAX_OPCODE, OP_NOP10
+
+// book:begin layout
+// One input: the outpoint (a txid in hash order, then a 4-byte output
+// index), the scriptSig and the sequence, as positions in the bytes; and
+// its witness, items[first..<first+count] of the item array.
+TxIn :: struct { outpoint: int; script: int; script_n: int; sequence: int; first: int; count: int; }
+// One output: an 8-byte signed value in satoshis, then the scriptPubKey.
+TxOut :: struct { value: int; script: int; script_n: int; }
+// One witness item: n bytes at at.
+TxItem :: struct { at: int; n: int; }
+// A read transaction. code is TX_OK or a refusal found at byte at. The
+// version is at byte 0; the witness stacks, when segwit, run from witness
+// to locktime. total is the full size, stripped the size without the
+// marker, the flag and the witnesses.
+Tx :: struct {
+  code: int; at: int; segwit: bool;
+  nin: int; nout: int; nitems: int;
+  witness: int; locktime: int; total: int; stripped: int;
+}
+// book:end layout
+// A CompactSize or one step of the reader: the value or count, where
+// reading goes on, and the refusal with its position.
+TxCompact :: struct { value: int; next: int; code: int; }
+TxStep :: struct { at: int; code: int; count: int; }
+// Length-prefixed bytes: n bytes at at, then next; or a refusal at fail.
+TxSpan :: struct { at: int; n: int; next: int; code: int; fail: int; }
+
+// ---- checks
+tx_unhex :: (text: string, out: [] u8) -> [] u8 {
+  for i: 0..<text.count/2 { out[i] = cast(u8) (tx_nibble(text[2*i])*16 + tx_nibble(text[2*i+1])); }
+  return out[0..<text.count/2];
+}
+tx_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+tx_hex_is :: (a: [] u8, text: string) -> bool {
+  if a.count * 2 != text.count { return false; }
+  for i: 0..<a.count { if cast(int) a[i] != tx_nibble(text[2*i])*16 + tx_nibble(text[2*i+1]) { return false; } }
+  return true;
+}
+#test "the check helpers notice every difference" {
+  b: [4] u8;
+  #assert tx_hex_is(tx_unhex("09af", b[..]), "09af") && b[0] == 9 && b[1] == 0xaf;
+  #assert !tx_hex_is(b[0..<2], "09ae") && !tx_hex_is(b[0..<2], "19af") && !tx_hex_is(b[0..<2], "09a") && !tx_hex_is(b[0..<1], "09af");
+}
+// A compact size from hex: the value, next and code.
+tx_compact_is :: (text: string, value: int, next: int, code: int) -> bool {
+  b: [16] u8;
+  c := tx_compact_read_vartime(tx_unhex(text, b[..]), 0);
+  return c.value == value && c.next == next && c.code == code;
+}
+#test "tx_compact_is tells a wrong result from a right one" {
+  #assert tx_compact_is("fd3412", 0x1234, 3, TX_OK);
+  #assert !tx_compact_is("fd3412", 0x1235, 3, TX_OK) && !tx_compact_is("fd3412", 0x1234, 4, TX_OK) && !tx_compact_is("fd3412", 0x1234, 3, TX_TRUNCATED);
+}
+#test "CompactSize: each width at its edges, and Core's refusals" {
+  #assert tx_compact_is("00", 0, 1, TX_OK) && tx_compact_is("fc", 0xfc, 1, TX_OK);
+  #assert tx_compact_is("fdfd00", 0xfd, 3, TX_OK) && tx_compact_is("fd3412", 0x1234, 3, TX_OK) && tx_compact_is("fdffff", 0xffff, 3, TX_OK);
+  #assert tx_compact_is("fdfc00", 0, 0, TX_NONCANONICAL) && tx_compact_is("fd0000", 0, 0, TX_NONCANONICAL);
+  #assert tx_compact_is("fe00000100", 0x10000, 5, TX_OK) && tx_compact_is("fe78563412", 0, 0, TX_SIZE_TOO_LARGE);
+  #assert tx_compact_is("feffff0000", 0, 0, TX_NONCANONICAL);
+  #assert tx_compact_is("fe00000002", TX_MAX_SIZE, 5, TX_OK) && tx_compact_is("fe01000002", 0, 0, TX_SIZE_TOO_LARGE);
+  #assert tx_compact_is("ff0000000001000000", 0, 0, TX_SIZE_TOO_LARGE);      // 2^32, the smallest canonical 9-byte form
+  #assert tx_compact_is("ffffffffff00000000", 0, 0, TX_NONCANONICAL);        // 2^32 - 1
+  #assert tx_compact_is("ff0000000000000080", 0, 0, TX_SIZE_TOO_LARGE);
+  #assert tx_compact_is("ff00000000000000", 0, 0, TX_TRUNCATED) && tx_compact_is("fe000001", 0, 0, TX_TRUNCATED);
+  #assert tx_compact_is("fdfd", 0, 0, TX_TRUNCATED) && tx_compact_is("", 0, 0, TX_TRUNCATED);
+  b: [8] u8; f := tx_unhex("01fdfd00", b[..]); #assert f.count == 4;
+  c := tx_compact_read_vartime(b[0..<4], 1); #assert c.value == 0xfd && c.next == 4 && c.code == TX_OK;
+  c = tx_compact_read_vartime(b[0..<4], 4); #assert c.code == TX_TRUNCATED && c.next == 4;
+  c = tx_compact_read_vartime(b[0..<3], 1); #assert c.code == TX_TRUNCATED && c.next == 1;
+}
+#test "CompactSize: the writer picks the shortest form, and reads back" {
+  o: [9] u8;
+  values := [10] int.[0, 0xfc, 0xfd, 0xffff, 0x10000, 0x1234567, TX_MAX_SIZE, 0xffffffff, 0x100000000, 0x7fffffffffffffff];
+  sizes := [10] int.[1, 1, 3, 3, 5, 5, 5, 5, 9, 9];
+  for i: 0..<10 {
+    #assert tx_compact_size_vartime(values[i]) == sizes[i];
+    #assert tx_compact_write_vartime(o[..], 0, values[i]) == sizes[i];
+    if values[i] <= TX_MAX_SIZE {
+      c := tx_compact_read_vartime(o[0..<sizes[i]], 0);
+      #assert c.code == TX_OK && c.value == values[i] && c.next == sizes[i];
+    }
+  }
+  #assert tx_compact_write_vartime(o[..], 0, 0x1234) == 3 && tx_hex_is(o[0..<3], "fd3412");
+  #assert tx_compact_write_vartime(o[..], 0, 0x12345678) == 5 && tx_hex_is(o[0..<5], "fe78563412");
+  #assert tx_compact_write_vartime(o[..], 0, 0x0102030405060708) == 9 && tx_hex_is(o[0..<9], "ff0807060504030201");
+  #assert tx_compact_write_vartime(o[..], 4, 0xfc) == 5 && o[4] == 0xfc;
+}
+#test "weight and vsize: three bytes outside the witness for each byte inside" {
+  #assert tx_weight_vartime(Tx.{stripped=83, total=193}) == 442 && tx_vsize_vartime(Tx.{stripped=83, total=193}) == 111;
+  for w: 0..<9 {
+    t := Tx.{stripped=0, total=w};
+    #assert tx_weight_vartime(t) == w && tx_vsize_vartime(t) == (w + 3) / 4;
+  }
+  #assert tx_vsize_vartime(Tx.{total=1}) == 1 && tx_vsize_vartime(Tx.{total=4}) == 1 && tx_vsize_vartime(Tx.{total=5}) == 2;
+}
+#test "little-endian fields" {
+  b: [8] u8; f := tx_unhex("0100000000000080", b[..]); #assert f.count == 8;
+  #assert tx_le_vartime(b[..], 0, 4) == 1 && tx_le_vartime(b[..], 4, 4) == 0x80000000;
+  #assert tx_le_vartime(b[..], 0, 8) == 1 - 0x7fffffffffffffff - 1;    // the value field is signed
+  #assert tx_le_vartime(b[..], 7, 1) == 0x80 && tx_le_vartime(b[..], 0, 0) == 0;
+}
+// A legacy mainnet transaction from tx_valid.json (23b397ed…): one input,
+// one output.
+#test "a legacy transaction, field by field" {
+  b: [256] u8; ins: [2] TxIn; outs: [2] TxOut; items: [2] TxItem;
+  s := tx_unhex(TX_MAINNET[0].tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && !t.segwit && t.nin == 1 && t.nout == 1 && t.nitems == 0;
+  #assert t.total == s.count && t.stripped == s.count && t.total == 158 && t.locktime == 154 && t.witness == 154;
+  #assert ins[0].outpoint == 5 && ins[0].script == 42 && ins[0].script_n == 73 && ins[0].sequence == 115 && ins[0].count == 0;
+  #assert outs[0].value == 120 && outs[0].script == 129 && outs[0].script_n == 25;
+  #assert tx_le_vartime(s, 0, 4) == 1 && tx_le_vartime(s, outs[0].value, 8) == 1000000 && tx_le_vartime(s, ins[0].sequence, 4) == 0xffffffff;
+  #assert tx_weight_vartime(t) == 632 && tx_vsize_vartime(t) == 158;
+}
+// Each pinned mainnet transaction: its txid and wtxid (displayed order),
+// sizes and weight.
+#forall "pinned mainnet transactions" i: 0..<6 #steps 200000000 {
+  m := TX_MAINNET[i];
+  b: [1024] u8; ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem; d: [32] u8; o: [1024] u8;
+  for k: 0..<1024 { o[k] = 0xa5; }
+  s := tx_unhex(m.tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && t.segwit == m.segwit && t.nin == m.nin && t.nout == m.nout;
+  #assert t.total == m.size && tx_weight_vartime(t) == m.weight && tx_vsize_vartime(t) == (m.weight + 3) / 4;
+  #assert tx_txid_vartime(s, t, d[..]) && bitcoin_reverse32(d[..], d[..]) == SHA_OK && tx_hex_is(d[..], m.txid);
+  #assert tx_wtxid_vartime(s, t, d[..]) && bitcoin_reverse32(d[..], d[..]) == SHA_OK && tx_hex_is(d[..], m.wtxid);
+  #assert tx_write_vartime(s, t, ins[..], outs[..], items[..], true, o[..]) == s.count;
+  for k: 0..<s.count { #assert o[k] == s[k]; }
+}
+// rust-bitcoin's segwit_transaction (mainnet f5864806…): the published
+// stripped size, (442 - 193) / 3 = 83.
+#test "a segwit transaction: marker, flag, stacks, and the stripped form" #steps 100000000 {
+  b: [256] u8; ins: [2] TxIn; outs: [2] TxOut; items: [4] TxItem; o: [256] u8; d: [32] u8; e: [32] u8;
+  s := tx_unhex(TX_MAINNET[3].tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  #assert t.segwit && t.stripped == 83 && t.witness == 81 && t.locktime == 189 && t.nitems == 2;
+  #assert ins[0].outpoint == 7 && ins[0].script_n == 0 && ins[0].first == 0 && ins[0].count == 2;
+  #assert items[0].at == 83 && items[0].n == 72 && items[1].at == 156 && items[1].n == 33;
+  n := tx_write_vartime(s, t, ins[..], outs[..], items[..], false, o[..]);
+  #assert n == 83 && o[4] == 1 && o[5] == s[7] && o[n-1] == s[s.count-1];
+  #assert sha256d_checked(o[0..<n], d[..], false) == SHA_OK && tx_txid_vartime(s, t, e[..]);
+  for k: 0..<32 { #assert d[k] == e[k]; }
+  // Read without witnesses, the same bytes are a transaction with no
+  // inputs whose output count is the flag: they refuse.
+  l := tx_read_vartime(s, false, ins[..], outs[..], items[..]);
+  #assert l.code == TX_TRUNCATED;
+  // The stripped form reads back legacy, with the same txid and wtxid.
+  u := tx_read_vartime(o[0..<n], true, ins[..], outs[..], items[..]);
+  #assert u.code == TX_OK && !u.segwit && u.total == 83 && tx_wtxid_vartime(o[0..<n], u, e[..]);
+  for k: 0..<32 { #assert d[k] == e[k]; }
+}
+// Each refusal, with the byte where it is found.
+tx_refuses :: (text: string, witness: bool, code: int, at: int) -> bool {
+  b: [256] u8; ins: [3] TxIn; outs: [3] TxOut; items: [3] TxItem;
+  t := tx_read_vartime(tx_unhex(text, b[..]), witness, ins[..], outs[..], items[..]);
+  return t.code == code && t.at == at;
+}
+// A legacy transaction: one input (a null outpoint, scriptSig 0x51), one
+// output (value 0, scriptPubKey 0x51), locktime 0. TX_SEGWIT_HEAD is the
+// same with the marker and flag, up to where the witness starts (byte 60).
+TX_LEGACY_OK :: "01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff010000000000000000015100000000";
+TX_SEGWIT_HEAD :: "010000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff0100000000000000000151";
+// The positions were checked against tx_reference.py.
+#test "tx_refuses tells a wrong result from a right one" {
+  #assert tx_refuses("01000000", true, TX_TRUNCATED, 4);
+  #assert !tx_refuses("01000000", true, TX_NONCANONICAL, 4) && !tx_refuses("01000000", true, TX_TRUNCATED, 5);
+}
+#test "each refusal, and where" {
+  #assert tx_refuses(TX_LEGACY_OK, true, TX_OK, 0) && tx_refuses(TX_LEGACY_OK, false, TX_OK, 0);
+  #assert tx_refuses("010000", true, TX_TRUNCATED, 0) && tx_refuses("01000000", true, TX_TRUNCATED, 4);
+  #assert tx_refuses("0100000001", true, TX_TRUNCATED, 5);                                    // the outpoint
+  #assert tx_refuses("010000000100000000000000000000000000000000000000000000000000000000000000ffffff", true, TX_TRUNCATED, 5);
+  #assert tx_refuses("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff", true, TX_TRUNCATED, 47);  // the output count
+  #assert tx_refuses("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff010000000000000000", true, TX_TRUNCATED, 56);  // the scriptPubKey's length
+  #assert tx_refuses("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff", true, TX_TRUNCATED, 41);
+  #assert tx_refuses("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0251", true, TX_TRUNCATED, 42);  // the scriptSig
+  #assert tx_refuses("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffff", true, TX_TRUNCATED, 43);  // the sequence
+  #assert tx_refuses("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff0100000000000000", true, TX_TRUNCATED, 48);  // the value
+  #assert tx_refuses("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff0100000000000000000251", true, TX_TRUNCATED, 57);  // the scriptPubKey
+  #assert tx_refuses("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff0100000000000000000151000000", true, TX_TRUNCATED, 58);  // the locktime
+  #assert tx_refuses("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff010000000000000000015100000000ab", true, TX_TRAILING, 62);
+  #assert tx_refuses("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff010000000000000000015100000000ab", false, TX_TRAILING, 62);
+  #assert tx_refuses("01000000fd010000", true, TX_NONCANONICAL, 4);                          // the input count
+  #assert tx_refuses("0100000001000000000000000000000000000000000000000000000000000000000000000000000000fd0100", true, TX_NONCANONICAL, 41);
+  #assert tx_refuses("01000000fe00000003", true, TX_SIZE_TOO_LARGE, 4);
+  #assert tx_refuses("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff010000000000000000ff0000000001000000", true, TX_SIZE_TOO_LARGE, 56);
+  #assert tx_refuses("01000000", false, TX_TRUNCATED, 4) && tx_refuses("0100000000", true, TX_TRUNCATED, 5);   // no flag byte
+  #assert tx_refuses("0100000000020000", true, TX_UNKNOWN_FLAG, 5);                         // flag 2: no inputs, no outputs, then refused
+  #assert tx_refuses("01000000000201", true, TX_TRUNCATED, 7);                              // a short read comes first
+  #assert tx_refuses("0100000000ff", true, TX_TRUNCATED, 6);
+  #assert tx_refuses("010000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff01000000000000000001510000000000", true, TX_NO_WITNESS, 60);
+  #assert tx_refuses("010000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff01000000000000000001510101ab00000000", true, TX_OK, 0);
+  #assert tx_refuses("010000000003010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff01000000000000000001510101ab00000000", true, TX_UNKNOWN_FLAG, 5);   // flag 3: witnesses, then refused
+  #assert tx_refuses("010000000003010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff010000000000000000015100", true, TX_NO_WITNESS, 60);
+  #assert tx_refuses("010000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff01000000000000000001510102ab", true, TX_TRUNCATED, 62);   // an item
+  #assert tx_refuses("010000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff0100000000000000000151fd0000", true, TX_NONCANONICAL, 60);
+  #assert tx_refuses(TX_SEGWIT_HEAD, true, TX_TRUNCATED, 60);
+  #assert tx_refuses("010000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff01000000000000000001510101ab000000", true, TX_TRUNCATED, 63);
+}
+#test "capacity: one element more than the arrays hold" {
+  b: [256] u8; ins: [1] TxIn; outs: [1] TxOut; items: [1] TxItem;
+  two_in := "010000000200000000000000000000000000000000000000000000000000000000000000000000000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000ffffffff0000000000";
+  t := tx_read_vartime(tx_unhex(two_in, b[..]), true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_CAPACITY && t.at == 46;
+  #assert tx_read_vartime(tx_unhex(two_in, b[..]), true, ins[0..<0], outs[..], items[..]).at == 5;
+  two_out := "010000000100000000000000000000000000000000000000000000000000000000000000000000000000ffffffff0200000000000000000000000000000000000000000000";
+  t = tx_read_vartime(tx_unhex(two_out, b[..]), true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_CAPACITY && t.at == 56;
+  two_items := "0100000000010100000000000000000000000000000000000000000000000000000000000000000000000000ffffffff0100000000000000000002000000000000";
+  t = tx_read_vartime(tx_unhex(two_items, b[..]), true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_CAPACITY && t.at == 60;
+  more: [2] TxItem;
+  t = tx_read_vartime(tx_unhex(two_items, b[..]), true, ins[..], outs[..], more[..]);
+  #assert t.code == TX_OK && t.nitems == 2 && ins[0].count == 2 && more[1].at == 61 && more[1].n == 0;
+}
+// Two inputs, the second with the witness: first and count place each
+// stack in the item array. An empty item is still a witness.
+#test "witness stacks: per input, and an empty item" {
+  b: [256] u8; ins: [2] TxIn; outs: [1] TxOut; items: [3] TxItem; o: [256] u8;
+  text := "0200000000010200000000000000000000000000000000000000000000000000000000000000000000000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000ffffffff010000000000000000000002010103aabbcc00000000";
+  s := tx_unhex(text, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && t.segwit && t.nitems == 2 && ins[0].count == 0 && ins[0].first == 0;
+  #assert ins[1].count == 2 && ins[1].first == 0 && items[0].at == 102 && items[0].n == 1 && items[1].at == 104 && items[1].n == 3 && s[items[1].at] == 0xaa;
+  #assert t.total == 111 && t.stripped == 101 && t.witness == 99 && t.locktime == 107;
+  #assert tx_write_vartime(s, t, ins[..], outs[..], items[..], true, o[..]) == 111 && tx_hex_is(o[0..<111], text);
+  e := tx_unhex("0200000000010100000000000000000000000000000000000000000000000000000000000000000000000000ffffffff01000000000000000000010000000000", b[..]);
+  t = tx_read_vartime(e, true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && t.nitems == 1 && ins[0].count == 1 && items[0].n == 0 && t.stripped == 60 && t.total == 64;
+}
+#test "the serializer: sizes, room and both forms" {
+  b: [256] u8; ins: [2] TxIn; outs: [2] TxOut; items: [4] TxItem; o: [256] u8;
+  s := tx_unhex(TX_MAINNET[3].tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  #assert tx_write_vartime(s, t, ins[..], outs[..], items[..], true, o[0..<193]) == 193;
+  #assert tx_write_vartime(s, t, ins[..], outs[..], items[..], true, o[0..<192]) == -1;
+  #assert tx_write_vartime(s, t, ins[..], outs[..], items[..], false, o[0..<83]) == 83;
+  #assert tx_write_vartime(s, t, ins[..], outs[..], items[..], false, o[0..<82]) == -1;
+  bad := t; bad.code = TX_TRAILING;
+  #assert tx_write_vartime(s, bad, ins[..], outs[..], items[..], true, o[..]) == -1;
+  d: [32] u8; #assert !tx_txid_vartime(s, bad, d[..]) && !tx_wtxid_vartime(s, bad, d[..]) && !tx_txid_vartime(s, t, d[0..<31]) && !tx_wtxid_vartime(s, t, d[0..<31]);
+  // A legacy transaction writes the same bytes either way.
+  l := tx_unhex(TX_LEGACY_OK, b[..]);
+  t = tx_read_vartime(l, true, ins[..], outs[..], items[..]);
+  #assert tx_write_vartime(l, t, ins[..], outs[..], items[..], true, o[..]) == 62 && tx_hex_is(o[0..<62], TX_LEGACY_OK);
+  #assert tx_write_vartime(l, t, ins[..], outs[..], items[..], false, o[..]) == 62 && tx_hex_is(o[0..<62], TX_LEGACY_OK);
+}
+// A transaction can be longer than one SHA-256 update takes (CB_MAX_BYTES,
+// 1 MiB), so the hash absorbs it in pieces. Small pieces here; tx.py
+// hashes a 1,048,645-byte transaction natively and in Wasm.
+#test "absorbing in pieces gives the one-shot digest" {
+  b: [200] u8; d: [32] u8; e: [32] u8;
+  for i: 0..<200 { b[i] = cast(u8) ((i * 7) & 255); }
+  #assert sha256_hash_checked(b[..], d[..], false) == SHA_OK;
+  for chunk: [4] int.[1, 3, 64, 199] {
+    state: [SHA_STATE_BYTES] u8;
+    #assert sha256_init(state[..]) == SHA_OK;
+    tx_absorb(state[..], b[0..<5], chunk); tx_absorb(state[..], b[5..<5], chunk); tx_absorb(state[..], b[5..<200], chunk);
+    #assert sha256_final_checked(state[..], e[..], false) == SHA_OK;
+    for k: 0..<32 { #assert d[k] == e[k]; }
+  }
+  #assert tx_piece(5, 3) == 3 && tx_piece(3, 5) == 3 && tx_piece(5, 5) == 5;
+  // The piece is the longest one update takes.
+  #assert sha256_update_limit(0, tx_hash_limit()) == SHA_OK && sha256_update_limit(0, tx_hash_limit() + 1) != SHA_OK;
+}
+// Core's DecodeTx: both readings, the script sanity check, and the
+// extended reading when neither or both pass.
+tx_decodes :: (text: string, code: int, segwit: bool, nin: int) -> bool {
+  b: [256] u8; ins: [2] TxIn; outs: [2] TxOut; items: [2] TxItem;
+  t := tx_decode_vartime(tx_unhex(text, b[..]), ins[..], outs[..], items[..]);
+  return t.code == code && t.segwit == segwit && t.nin == nin;
+}
+#test "tx_decodes tells a wrong result from a right one" {
+  #assert tx_decodes(TX_BOTH_SANE, TX_OK, true, 1);
+  #assert !tx_decodes(TX_BOTH_SANE, TX_TRAILING, true, 1) && !tx_decodes(TX_BOTH_SANE, TX_OK, false, 1) && !tx_decodes(TX_BOTH_SANE, TX_OK, true, 0);
+  // The arrays hold the reading returned: after a legacy attempt, the
+  // extended one is read again.
+  b: [256] u8; ins: [2] TxIn; outs: [2] TxOut; items: [2] TxItem;
+  t := tx_decode_vartime(tx_unhex(TX_NEITHER_SANE, b[..]), ins[..], outs[..], items[..]);
+  #assert t.segwit && ins[0].outpoint == 7 && outs[0].value == 49;
+  t = tx_decode_vartime(tx_unhex(TX_LEGACY_SANE, b[..]), ins[..], outs[..], items[..]);
+  #assert !t.segwit && t.nout == 1 && outs[0].value == 6;
+}
+#test "ambiguous bytes: which reading Core keeps" {
+  #assert tx_decodes(TX_BOTH_SANE, TX_OK, true, 1);
+  #assert tx_decodes(TX_LEGACY_SANE, TX_OK, false, 0);
+  #assert tx_decodes(TX_NEITHER_SANE, TX_OK, true, 1);
+  #assert tx_decodes(TX_ZERO_INPUTS, TX_OK, false, 0);            // the extended reading runs out of bytes
+  #assert tx_decodes("01000000000100e1f5050000000001ff00000000", TX_OK, false, 0);   // ...and the legacy one's script is not sane
+  #assert tx_decodes(TX_SEGWIT_NO_INPUTS, TX_NO_WITNESS, false, 0);   // neither reads; the extended refusal
+  #assert tx_decodes(TX_MAINNET[0].tx, TX_OK, false, 1) && tx_decodes(TX_MAINNET[3].tx, TX_OK, true, 1);
+  // The legacy reading of TX_SEGWIT_NO_INPUTS stops at trailing bytes.
+  #assert tx_refuses(TX_SEGWIT_NO_INPUTS, false, TX_TRAILING, 19) && tx_refuses(TX_SEGWIT_NO_INPUTS, true, TX_NO_WITNESS, 42);
+  // No inputs and no outputs: the flag byte 0 is the output count.
+  #assert tx_refuses("01000000000000000000", true, TX_OK, 0) && tx_decodes("01000000000000000000", TX_OK, false, 0);
+}
+tx_ops :: (text: string) -> bool { b: [600] u8; return tx_ops_valid_vartime(tx_unhex(text, b[..])); }
+#test "script ops: pushes, their lengths and the last opcode" {
+  #assert tx_ops("") && tx_ops("00") && tx_ops("0151") && tx_ops("02aabb51");
+  #assert !tx_ops("01") && !tx_ops("02aa") && tx_ops("4c00") && !tx_ops("4c") && tx_ops("4c01aa") && !tx_ops("4c02aa");
+  #assert tx_ops("4d0000") && !tx_ops("4d00") && tx_ops("4d0100aa") && !tx_ops("4d0200aa");
+  #assert tx_ops("4e00000000") && !tx_ops("4e000000") && tx_ops("4e01000000aa") && !tx_ops("4e00000001aa");
+  #assert tx_ops("b9") && !tx_ops("ba") && !tx_ops("ff") && tx_ops("4f50516aac") && !tx_ops("51ba51");
+  b: [600] u8;
+  b[0] = 0x4b; #assert tx_ops_valid_vartime(b[0..<76]) && !tx_ops_valid_vartime(b[0..<75]);   // 75 bytes, the longest direct push
+  b[0] = 0x4d; b[1] = 0x08; b[2] = 0x02;                          // 520 bytes: the longest push
+  #assert tx_ops_valid_vartime(b[0..<523]);
+  b[1] = 0x09; #assert !tx_ops_valid_vartime(b[0..<524]);
+}
+#test "script sanity: the size limit, and a coinbase's scriptSig" {
+  b: [10100] u8; ins: [1] TxIn; outs: [1] TxOut; items: [1] TxItem;
+  // A coinbase: the null outpoint, and a scriptSig of one 0xff byte,
+  // which is not checked.
+  s := tx_unhex("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff01ffffffffff010000000000000000015100000000", b[..]);
+  t := tx_read_vartime(s, false, ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && tx_coinbase_vartime(s, t, ins[..]) && tx_scripts_sane_vartime(s, t, ins[..], outs[..]);
+  places := [4] int.[5, 36, 37, 40];                               // the ends of the hash and of the index
+  for k: 0..<4 {
+    s[places[k]] ^= 1;
+    #assert !tx_coinbase_vartime(s, t, ins[..]) && !tx_scripts_sane_vartime(s, t, ins[..], outs[..]);
+    s[places[k]] ^= 1;
+  }
+  bad := t; bad.nin = 2; #assert !tx_coinbase_vartime(s, bad, ins[..]);
+  outs[0].script = 42; #assert !tx_scripts_sane_vartime(s, t, ins[..], outs[..]);   // the 0xff as an output script
+  // 10,000 bytes of OP_0 in a script pass; 10,001 do not.
+  for k: 0..<10001 { b[k] = 0; }
+  outs[0].script = 0; outs[0].script_n = 10000; #assert tx_scripts_sane_vartime(b[..], t, ins[..], outs[..]);
+  outs[0].script_n = 10001; #assert !tx_scripts_sane_vartime(b[..], t, ins[..], outs[..]);
+  ins[0].script = 0; ins[0].script_n = 10000; outs[0].script_n = 1;
+  #assert tx_scripts_sane_vartime(b[..], t, ins[..], outs[..]);       // all zeros: not a coinbase now
+  ins[0].script_n = 10001; #assert !tx_scripts_sane_vartime(b[..], t, ins[..], outs[..]);
+}
+
+// ---- CompactSize
+// book:begin compact
+// ReadCompactSize at b[at]: one byte below 0xfd; 0xfd, 0xfe or 0xff and
+// then 2, 4 or 8 bytes, little-endian. Each value has one encoding, the
+// shortest, and none is above MAX_SIZE. A refusal leaves next at at.
+tx_compact_read_vartime :: (b: [] u8, at: int) -> TxCompact #export_c {
+  if at >= b.count { return TxCompact.{next=at, code=TX_TRUNCATED}; }
+  first := cast(int) b[at];
+  if first < 0xfd { return TxCompact.{value=first, next=at+1}; }
+  width := ifx first == 0xfd then 2 else ifx first == 0xfe then 4 else 8;
+  if width > b.count - at - 1 { return TxCompact.{next=at, code=TX_TRUNCATED}; }
+  if width == 8 {
+    // Canonical from 2^32, which is above MAX_SIZE: refused either way,
+    // as non-canonical when the high four bytes are zero.
+    high := 0;
+    for i: 4..<8 { high |= cast(int) b[at+1+i]; }
+    return TxCompact.{next=at, code=ifx high == 0 then TX_NONCANONICAL else TX_SIZE_TOO_LARGE};
+  }
+  value := 0;
+  for i: 0..<width { value |= cast(int) b[at+1+i] << (8 * i); }
+  if value < (ifx width == 2 then 0xfd else 0x10000) { return TxCompact.{next=at, code=TX_NONCANONICAL}; }
+  if value > TX_MAX_SIZE { return TxCompact.{next=at, code=TX_SIZE_TOO_LARGE}; }
+  return TxCompact.{value=value, next=at+1+width};
+}
+// The bytes WriteCompactSize uses for value (at least 0).
+tx_compact_size_vartime :: (value: int) -> int #export_c {
+  if value < 0xfd { return 1; }
+  if value <= 0xffff { return 3; }
+  if value <= 0xffffffff { return 5; }
+  return 9;
+}
+// WriteCompactSize into out at at, which has room; where writing goes on.
+tx_compact_write_vartime :: (out: [] u8, at: int, value: int) -> int #export_c {
+  size := tx_compact_size_vartime(value);
+  if size == 1 { out[at] = cast(u8) value; return at + 1; }
+  out[at] = cast(u8) (ifx size == 3 then 0xfd else ifx size == 5 then 0xfe else 0xff);
+  for i: 0..<size-1 { out[at+1+i] = cast(u8) ((value >> (8 * i)) & 255); }
+  return at + size;
+}
+// book:end compact
+// A little-endian field of width bytes at b[at]; 8 bytes read as signed.
+tx_le_vartime :: (b: [] u8, at: int, width: int) -> int #export_c {
+  value := 0;
+  for i: 0..<width { value |= cast(int) b[at+i] << (8 * i); }
+  return value;
+}
+
+// ---- the reader
+// A CompactSize length, then that many bytes.
+tx_span_vartime :: (b: [] u8, at: int) -> TxSpan {
+  n := tx_compact_read_vartime(b, at);
+  if n.code != TX_OK { return TxSpan.{code=n.code, fail=at}; }
+  if n.value > b.count - n.next { return TxSpan.{code=TX_TRUNCATED, fail=n.next}; }
+  return TxSpan.{at=n.next, n=n.value, next=n.next+n.value};
+}
+// book:begin inputs
+// A count of inputs at b[start], then each input: 36 bytes of outpoint,
+// the scriptSig with its length, 4 bytes of sequence. Like Core, it reads
+// until the count is done or the bytes refuse, so a count larger than the
+// bytes can hold ends as TX_TRUNCATED, after at most one step per 41 bytes.
+tx_inputs_vartime :: (b: [] u8, start: int, ins: [] TxIn) -> TxStep {
+  n := tx_compact_read_vartime(b, start);
+  if n.code != TX_OK { return TxStep.{at=start, code=n.code}; }
+  at := n.next;
+  for k: 0..<n.value {
+    if k == ins.count { return TxStep.{at=at, code=TX_CAPACITY}; }
+    if b.count - at < 36 { return TxStep.{at=at, code=TX_TRUNCATED}; }
+    script := tx_span_vartime(b, at + 36);
+    if script.code != TX_OK { return TxStep.{at=script.fail, code=script.code}; }
+    if b.count - script.next < 4 { return TxStep.{at=script.next, code=TX_TRUNCATED}; }
+    ins[k] = TxIn.{outpoint=at, script=script.at, script_n=script.n, sequence=script.next};
+    at = script.next + 4;
+  }
+  return TxStep.{at=at, count=n.value};
+}
+// A count of outputs, then each output: 8 bytes of value, the
+// scriptPubKey with its length.
+tx_outputs_vartime :: (b: [] u8, start: int, outs: [] TxOut) -> TxStep {
+  n := tx_compact_read_vartime(b, start);
+  if n.code != TX_OK { return TxStep.{at=start, code=n.code}; }
+  at := n.next;
+  for k: 0..<n.value {
+    if k == outs.count { return TxStep.{at=at, code=TX_CAPACITY}; }
+    if b.count - at < 8 { return TxStep.{at=at, code=TX_TRUNCATED}; }
+    script := tx_span_vartime(b, at + 8);
+    if script.code != TX_OK { return TxStep.{at=script.fail, code=script.code}; }
+    outs[k] = TxOut.{value=at, script=script.at, script_n=script.n};
+    at = script.next;
+  }
+  return TxStep.{at=at, count=n.value};
+}
+// One witness stack per input: a count of items, then each item with its
+// length. count is the number of items in all the stacks.
+tx_witness_vartime :: (b: [] u8, start: int, ins: [] TxIn, items: [] TxItem) -> TxStep {
+  at := start; total := 0;
+  for k: 0..<ins.count {
+    n := tx_compact_read_vartime(b, at);
+    if n.code != TX_OK { return TxStep.{at=at, code=n.code}; }
+    at = n.next; ins[k].first = total; ins[k].count = n.value;
+    for j: 0..<n.value {
+      if total == items.count { return TxStep.{at=at, code=TX_CAPACITY}; }
+      item := tx_span_vartime(b, at);
+      if item.code != TX_OK { return TxStep.{at=item.fail, code=item.code}; }
+      items[total] = TxItem.{at=item.at, n=item.n};
+      total += 1; at = item.next;
+    }
+  }
+  return TxStep.{at=at, count=total};
+}
+// book:end inputs
+tx_refused :: (code: int, at: int) -> Tx { return Tx.{code=code, at=at}; }
+// book:begin read
+// UnserializeTransaction. With witness false it reads the legacy form:
+// version, inputs, outputs, locktime. With witness true, an input count of
+// zero is BIP-144's marker: the next byte is the flag, and a flag other
+// than zero is followed by the inputs, the outputs and, for flag 1, one
+// witness stack per input. A flag of zero is also what a legacy
+// transaction with no inputs and no outputs has there, its output count,
+// and reads the same. Bytes after the locktime are left for the caller.
+tx_parse_vartime :: (b: [] u8, witness: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> Tx #export_c {
+  if b.count < 4 { return tx_refused(TX_TRUNCATED, 0); }
+  vin := tx_inputs_vartime(b, 4, ins);
+  if vin.code != TX_OK { return tx_refused(vin.code, vin.at); }
+  vout: TxStep; at := vin.at; flags := 0;
+  if vin.count == 0 && witness {
+    if at == b.count { return tx_refused(TX_TRUNCATED, at); }
+    flags = cast(int) b[at]; at += 1;
+    if flags != 0 {
+      vin = tx_inputs_vartime(b, at, ins);
+      if vin.code != TX_OK { return tx_refused(vin.code, vin.at); }
+      vout = tx_outputs_vartime(b, vin.at, outs);
+      if vout.code != TX_OK { return tx_refused(vout.code, vout.at); }
+      at = vout.at;
+    }
+  } else {
+    vout = tx_outputs_vartime(b, at, outs);
+    if vout.code != TX_OK { return tx_refused(vout.code, vout.at); }
+    at = vout.at;
+  }
+  t := Tx.{nin=vin.count, nout=vout.count, witness=at};
+  if (flags & 1) != 0 {
+    flags ^= 1;
+    w := tx_witness_vartime(b, at, ins[0..<vin.count], items);
+    if w.code != TX_OK { return tx_refused(w.code, w.at); }
+    if w.count == 0 { return tx_refused(TX_NO_WITNESS, at); }     // every stack empty
+    t.segwit = true; t.nitems = w.count; at = w.at;
+  }
+  if flags != 0 { return tx_refused(TX_UNKNOWN_FLAG, 5); }
+  if b.count - at < 4 { return tx_refused(TX_TRUNCATED, at); }
+  t.locktime = at; t.total = at + 4;
+  t.stripped = ifx t.segwit then t.total - 2 - (t.locktime - t.witness) else t.total;
+  return t;
+}
+// One whole transaction: the bytes after the locktime refuse, as in
+// Core's DecodeTx. Inside a block, tx_parse_vartime reads one and the next
+// starts at its total.
+tx_read_vartime :: (b: [] u8, witness: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> Tx #export_c {
+  t := tx_parse_vartime(b, witness, ins, outs, items);
+  if t.code == TX_OK && t.total != b.count { return tx_refused(TX_TRAILING, t.total); }
+  return t;
+}
+// book:end read
+
+// ---- sizes and IDs
+// book:begin weight
+// BIP-141: weight = stripped size × 3 + total size, so a byte outside the
+// witness weighs 4 and a witness byte 1. The virtual size is weight / 4,
+// rounded up.
+tx_weight_vartime :: (t: Tx) -> int #export_c { return t.stripped * (TX_SCALE - 1) + t.total; }
+tx_vsize_vartime :: (t: Tx) -> int #export_c { return (tx_weight_vartime(t) + TX_SCALE - 1) / TX_SCALE; }
+// book:end weight
+// The longest piece one SHA-256 update takes.
+tx_hash_limit :: () -> int { return CB_MAX_BYTES; }
+// The next piece of remaining bytes: at most limit.
+tx_piece :: (remaining: int, limit: int) -> int {
+  return ifx remaining < limit then remaining else limit;   // mutant: equivalent (at remaining == limit both are limit)
+}
+// Absorbs b into a SHA-256 state, at most limit bytes at a time.
+tx_absorb :: (state: [] u8, b: [] u8, limit: int) {
+  at := 0;
+  while at < b.count {
+    n := tx_piece(b.count - at, limit);
+    #assert sha256_update_checked(state, b[at..<at+n], false) == SHA_OK;
+    at += n;
+  }
+}
+// SHA-256d of b[r[0]..<r[1]], b[r[2]..<r[3]] and b[r[4]..<r[5]] in turn,
+// into out (hash order).
+tx_hash :: (b: [] u8, r: [6] int, out: [] u8) {
+  state: [SHA_STATE_BYTES] u8; first: [32] u8;
+  #assert sha256_init(state[..]) == SHA_OK;
+  for k: 0..<3 { tx_absorb(state[..], b[r[2*k]..<r[2*k+1]], tx_hash_limit()); }
+  #assert sha256_final_checked(state[..], first[..], false) == SHA_OK;
+  #assert sha256_hash_checked(first[..], out, false) == SHA_OK;
+}
+// book:begin ids
+// The txid: SHA-256d of the stripped serialization. For a segwit
+// transaction that is the bytes without the marker and flag (4 and 5) and
+// without the stacks (witness to locktime). The wtxid is SHA-256d of all
+// the bytes; without witnesses the two are equal. Both are written in hash
+// order; bitcoin_reverse32 gives the order explorers and RPCs show.
+tx_txid_vartime :: (b: [] u8, t: Tx, out: [] u8) -> bool #export_c {
+  if t.code != TX_OK || out.count != 32 { return false; }
+  if t.segwit { tx_hash(b, [6] int.[0, 4, 6, t.witness, t.locktime, t.total], out); }
+  else { tx_hash(b, [6] int.[0, t.total, 0, 0, 0, 0], out); }
+  return true;
+}
+tx_wtxid_vartime :: (b: [] u8, t: Tx, out: [] u8) -> bool #export_c {
+  if t.code != TX_OK || out.count != 32 { return false; }
+  tx_hash(b, [6] int.[0, t.total, 0, 0, 0, 0], out);
+  return true;
+}
+// book:end ids
+
+// ---- the serializer
+tx_put :: (out: [] u8, at: int, b: [] u8) -> int {
+  for i: 0..<b.count { out[at+i] = b[i]; }
+  return at + b.count;
+}
+// book:begin write
+// SerializeTransaction of a read transaction into out: the extended form
+// when witness is true and some input has a witness, else the legacy form.
+// Counts and lengths are written in their shortest form. Returns the bytes
+// written, or -1 when t is a refusal or out is too short (nothing written).
+tx_write_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, witness: bool, out: [] u8) -> int #export_c {
+  extended := witness && t.segwit;
+  if t.code != TX_OK || out.count < (ifx extended then t.total else t.stripped) { return -1; }
+  at := tx_put(out, 0, b[0..<4]);
+  if extended { out[at] = 0; out[at+1] = 1; at += 2; }
+  at = tx_compact_write_vartime(out, at, t.nin);
+  for k: 0..<t.nin {
+    i := ins[k];
+    at = tx_put(out, at, b[i.outpoint..<i.outpoint+36]);
+    at = tx_compact_write_vartime(out, at, i.script_n);
+    at = tx_put(out, at, b[i.script..<i.script+i.script_n]);
+    at = tx_put(out, at, b[i.sequence..<i.sequence+4]);
+  }
+  at = tx_compact_write_vartime(out, at, t.nout);
+  for k: 0..<t.nout {
+    o := outs[k];
+    at = tx_put(out, at, b[o.value..<o.value+8]);
+    at = tx_compact_write_vartime(out, at, o.script_n);
+    at = tx_put(out, at, b[o.script..<o.script+o.script_n]);
+  }
+  if extended {
+    for k: 0..<t.nin {
+      at = tx_compact_write_vartime(out, at, ins[k].count);
+      for j: ins[k].first..<ins[k].first+ins[k].count {
+        at = tx_compact_write_vartime(out, at, items[j].n);
+        at = tx_put(out, at, b[items[j].at..<items[j].at+items[j].n]);
+      }
+    }
+  }
+  return tx_put(out, at, b[t.locktime..<t.total]);
+}
+// book:end write
+
+// ---- reading both ways
+// book:begin sanity
+// CScript::HasValidOps: every op parses, a push's length fits in the
+// script, no push is longer than 520 bytes, and no opcode is above
+// OP_NOP10 (0xb9).
+tx_ops_valid_vartime :: (s: [] u8) -> bool #export_c {
+  pc := 0;
+  while pc < s.count {
+    op := cast(int) s[pc]; pc += 1;
+    if op <= 0x4e {
+      width := ifx op < 0x4c then 0 else ifx op == 0x4c then 1 else ifx op == 0x4d then 2 else 4;
+      if width > s.count - pc { return false; }
+      size := ifx width == 0 then op else tx_le_vartime(s, pc, width);
+      pc += width;
+      if size > s.count - pc || size > TX_MAX_ELEMENT { return false; }
+      pc += size;
+    }
+    if op > TX_MAX_OPCODE { return false; }
+  }
+  return true;
+}
+// A coinbase has one input, whose outpoint is null: 32 zero bytes and
+// index 0xffffffff.
+tx_coinbase_vartime :: (b: [] u8, t: Tx, ins: [] TxIn) -> bool #export_c {
+  if t.nin != 1 { return false; }
+  at := ins[0].outpoint;
+  for i: 0..<32 { if b[at+i] != 0 { return false; } }
+  return tx_le_vartime(b, at + 32, 4) == 0xffffffff;
+}
+// CheckTxScriptsSanity: every scriptSig (not a coinbase's) and every
+// scriptPubKey has valid ops and at most 10,000 bytes.
+tx_scripts_sane_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut) -> bool #export_c {
+  if !tx_coinbase_vartime(b, t, ins) {
+    for k: 0..<t.nin {
+      if ins[k].script_n > TX_MAX_SCRIPT || !tx_ops_valid_vartime(b[ins[k].script..<ins[k].script+ins[k].script_n]) { return false; }
+    }
+  }
+  for k: 0..<t.nout {
+    if outs[k].script_n > TX_MAX_SCRIPT || !tx_ops_valid_vartime(b[outs[k].script..<outs[k].script+outs[k].script_n]) { return false; }
+  }
+  return true;
+}
+// book:end sanity
+// book:begin decode
+// Core's DecodeTx, as decoderawtransaction runs it: read with witnesses
+// and without, keep only readings that use every byte, and when both do,
+// prefer the one whose scripts parse, then the extended one. When neither
+// reads, the extended reading's refusal is returned (Core gives no reason).
+// The arrays hold the reading returned.
+tx_decode_vartime :: (b: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> Tx #export_c {
+  extended := tx_read_vartime(b, true, ins, outs, items);
+  if extended.code == TX_OK && tx_scripts_sane_vartime(b, extended, ins, outs) { return extended; }
+  legacy := tx_read_vartime(b, false, ins, outs, items);
+  if legacy.code == TX_OK && tx_scripts_sane_vartime(b, legacy, ins, outs) { return legacy; }
+  if extended.code == TX_OK { return tx_read_vartime(b, true, ins, outs, items); }
+  if legacy.code == TX_OK { return legacy; }
+  return extended;
+}
+// book:end decode

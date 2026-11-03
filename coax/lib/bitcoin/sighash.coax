@@ -1,7 +1,8 @@
 // Bitcoin transaction digests and the two signatures a segwit key agent
 // produces (chapter 104):
 //
-// - an unsigned transaction reader (version, inputs, outputs, locktime);
+// - an unsigned transaction reader (version, inputs, outputs, locktime),
+//   over Bitcoin chapter 34's tx.coax;
 // - the BIP-143 segwit v0 signature hash, every hash type;
 // - the BIP-341 Taproot key-path signature hash (SIGHASH_DEFAULT and every
 //   other hash type; no annex, no script path);
@@ -14,6 +15,7 @@
 #load "../crypto/ecdsa_sign.coax";
 #load "../crypto/schnorr_sign.coax";
 #load "hash.coax";
+#load "tx.coax";
 #load "../../tests/bitcoin/sighash_vectors.coax";
 #load "../../tests/bitcoin/support_tx.coax";
 #authority;
@@ -29,7 +31,6 @@ BtIn :: struct {prev:[36]u8;seq:[4]u8;}
 // length.
 BtTx :: struct {ok:bool;version:[4]u8;locktime:[4]u8;nin:int;nout:int;inputs:[BT_IO]BtIn;out_at:[BT_IO]int;out_n:[BT_IO]int;}
 BtScript :: struct {n:int;b:[BT_SPK]u8;}
-BtVar :: struct {ok:bool;value:int;next:int;}
 BtTapWork :: struct {key:[1]SignScalar;point:[1]SignPoint;internal:[32]u8;tweaked:[32]u8;sign:[1]SignWork;valid:u64;}
 
 // ---- checks
@@ -66,19 +67,13 @@ BtTapWork :: struct {key:[1]SignScalar;point:[1]SignPoint;internal:[32]u8;tweake
   w:=bt_unhex("0100000000010000",b[..]);#assert !bt_tx_read(w).ok;   // a witness marker
   #assert !bt_tx_read(b[0..<0]).ok && !bt_tx_read(b[0..<4]).ok;
 }
-#test "compact sizes: the one-, three- and five-byte forms, minimal only" {
-  b:=[9]u8.[0xfc,0xfd,0xfd,0x00,0xfe,0x00,0x00,0x01,0x00];
-  v:=bt_var(b[..],0);#assert v.ok && v.value==0xfc && v.next==1;
-  v=bt_var(b[..],1);#assert v.ok && v.value==0xfd && v.next==4;
-  v=bt_var(b[..],4);#assert v.ok && v.value==0x10000 && v.next==9;
-  #assert !bt_var(b[..],9).ok && !bt_var(b[..],-1).ok && !bt_var(b[0..<3],1).ok && !bt_var(b[0..<8],4).ok;
-  #assert bt_var(b[0..<4],1).ok && bt_var(b[0..<3],1).next==4 && bt_var(b[0..<3],1).value==0;
-  f:=[9]u8.[0xff,0,0,1,0,0,0,0,0];#assert !bt_var(f[..],0).ok && bt_var(f[..],0).next==10;
-  o:[4]u8;#assert bt_var_put(o[..],0,0xfc)==1 && o[0]==0xfc;
+#test "compact sizes: written in the shortest form, read back by chapter 34's reader" {
+  o:[9]u8;
+  #assert bt_var_put(o[..],0,0xfc)==1 && o[0]==0xfc;
   #assert bt_var_put(o[..],1,0xfd)==4 && o[1]==0xfd && o[2]==0xfd && o[3]==0;
   #assert bt_var_put(o[..],0,0x1234)==3 && o[0]==0xfd && o[1]==0x34 && o[2]==0x12;
-  c:=[5]u8.[0xfd,0xfc,0x00,0xff,0x00];#assert !bt_var(c[..],0).ok && !bt_var(c[..],3).ok;
-  d:=[5]u8.[0xfe,0xff,0xff,0x00,0x00];#assert !bt_var(d[..],0).ok;
+  #assert bt_var_put(o[..],0,0x10000)==5 && o[0]==0xfe && o[3]==1 && o[4]==0;
+  c:=tx_compact_read_vartime(o[0..<5],0);#assert c.code==TX_OK && c.value==0x10000 && c.next==5;
 }
 #forall "BIP-143's published sighashes, every hash type" i:0..<8 {
   v:=BT_V143[i];b:[BT_TX]u8;code:[512]u8;h:[32]u8;e:[32]u8;
@@ -168,44 +163,24 @@ BtTapWork :: struct {key:[1]SignScalar;point:[1]SignPoint;internal:[32]u8;tweake
 }
 
 // ---- the unsigned transaction
-// A compact size at b[at]: the one-, three- and five-byte forms, minimal.
-// A malformed one is not ok, has value 0 and points past the end of b, so
-// a reader that goes on from it fails its final length check.
-bt_var :: (b:[]u8,at:int)->BtVar {
-  bad:=BtVar.{next=b.count+1};
-  if at<0 || at>=b.count {return bad;}
-  f:=cast(int)b[at];
-  if f<0xfd {return BtVar.{ok=true,value=f,next=at+1};}
-  if f==0xff {return bad;}
-  n:=ifx f==0xfd then 2 else 4;
-  if at+1+n>b.count {return bad;}
-  v:=0;for k:0..<n {v|=cast(int)b[at+1+k]<<(8*k);}
-  if v<(ifx n==2 then 0xfd else 0x10000) {return bad;}
-  return BtVar.{ok=true,value=v,next=at+1+n};
-}
 // book:begin tx
 // An unsigned transaction without witness data: version, 1 to BT_IO inputs
 // (outpoint, scriptSig, sequence), 1 to BT_IO outputs, locktime, and
-// nothing after. Positions are found first; the bytes are copied only
-// after the length check at the end shows they are all inside b.
+// nothing after, read by Bitcoin chapter 34's tx_read_vartime in the legacy
+// form. A witness marker reads as zero inputs and refuses.
 bt_tx_read :: (b:[]u8)->BtTx {
   r:=[1]BtTx.[BtTx.{}];bad:BtTx;
   if b.count>BT_TX {return bad;}
-  ni:=bt_var(b,4);
-  if ni.value<1 || ni.value>BT_IO {return bad;}      // 0: malformed, or the witness marker
-  i:=ni.next;at:[BT_IO]int;seq:[BT_IO]int;
-  for k:0..<ni.value {at[k]=i;s:=bt_var(b,i+36);seq[k]=s.next+s.value;i=seq[k]+4;}
-  no:=bt_var(b,i);
-  if no.value<1 || no.value>BT_IO {return bad;}
-  i=no.next;
-  for k:0..<no.value {s:=bt_var(b,i+8);r[0].out_at[k]=i;r[0].out_n[k]=s.next+s.value-i;i=s.next+s.value;}
-  if i+4!=b.count {return bad;}
-  for k:0..<4 {r[0].version[k]=b[k];r[0].locktime[k]=b[i+k];}
-  for k:0..<ni.value {
-    for j:0..<36 {r[0].inputs[k].prev[j]=b[at[k]+j];}
-    for j:0..<4 {r[0].inputs[k].seq[j]=b[seq[k]+j];}
+  ins:[BT_IO]TxIn;outs:[BT_IO]TxOut;items:[1]TxItem;
+  t:=tx_read_vartime(b,false,ins[..],outs[..],items[0..<0]);
+  if t.code!=TX_OK || t.nin==0 || t.nout==0 {return bad;}
+  for k:0..<4 {r[0].version[k]=b[k];r[0].locktime[k]=b[t.locktime+k];}
+  for k:0..<t.nin {
+    for j:0..<36 {r[0].inputs[k].prev[j]=b[ins[k].outpoint+j];}
+    for j:0..<4 {r[0].inputs[k].seq[j]=b[ins[k].sequence+j];}
   }
-  r[0].nin=ni.value;r[0].nout=no.value;r[0].ok=true;
+  for k:0..<t.nout {r[0].out_at[k]=outs[k].value;r[0].out_n[k]=outs[k].script+outs[k].script_n-outs[k].value;}
+  r[0].nin=t.nin;r[0].nout=t.nout;r[0].ok=true;
   return r[0];
 }
 // book:end tx
@@ -213,11 +188,8 @@ bt_tx_read :: (b:[]u8)->BtTx {
 // ---- hashing helpers (public data)
 bt_put :: (out:[]u8,at:int,s:[]u8)->int {for k:0..<s.count {out[at+k]=s[k];}return at+s.count;}
 bt_le :: (out:[]u8,at:int,v:int,n:int)->int {for k:0..<n {out[at+k]=cast(u8)((v>>(8*k))&255);}return at+n;}
-// A compact size below 2^16.
-bt_var_put :: (out:[]u8,at:int,v:int)->int {
-  if v<0xfd {out[at]=cast(u8)v;return at+1;}
-  out[at]=0xfd;return bt_le(out,at+1,v,2);
-}
+// A compact size, by chapter 34's writer.
+bt_var_put :: (out:[]u8,at:int,v:int)->int {return tx_compact_write_vartime(out,at,v);}
 // SHA-256 and double SHA-256 into a 32-byte out; lengths here are always valid.
 bt_sha :: (b:[]u8,out:[]u8) {#assert sha256_hash_checked(b,out,false)==SHA_OK;}
 // Both come from hash.coax (Bitcoin chapter 5).

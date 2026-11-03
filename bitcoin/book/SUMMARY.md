@@ -50,3 +50,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 **VI. Keys from words**
 
 - [31. Seed phrases](ch031-seed-phrases.md) — implemented
+
+**VII. Transactions and script**
+
+- [34. Transactions and their serialization](ch034-transactions-and-their-serialization.md) — implemented

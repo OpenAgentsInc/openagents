@@ -43,17 +43,17 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 27 are implemented and 97 are planned. The 27
-implemented chapters have runnable examples, qualified on native CPU, and 22
+Of the 124 chapters, 28 are implemented and 96 are planned. The 28
+implemented chapters have runnable examples, qualified on native CPU, and 23
 of them on Wasm. Sixteen of them are the cryptography Nostr already used;
-chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 26 and 28 are new.
+chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 26, 28 and 34 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
 that later chapters will teach already exists in places: BIP-32
 (`bip32.coax`), and the BIP-143 and BIP-341 signature hashes
 (`coax/lib/bitcoin/sighash.coax`), written for Nostr chapter 104's agent
-treasuries.
+treasuries. Its transaction reader now runs on chapter 34's.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -177,7 +177,7 @@ Transactions, their IDs, the script interpreter, signature hashes, timelocks and
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 34. Transactions and their serialization | Planned | Every transaction in Bitcoin Core's `tx_valid.json` and `tx_invalid.json` parses, and serialization round-trips byte for byte with and without witnesses. |
+| [34. Transactions and their serialization](ch034-transactions-and-their-serialization.md) | Runnable: native C and wasm | Every transaction in Bitcoin Core's `tx_valid.json` and `tx_invalid.json` and six pinned mainnet transactions read with Core's rules and write back byte for byte, with and without witnesses, with their txids, wtxids and weights, checked against a Python transliteration of Core natively and in Wasm. Non-canonical CompactSizes, counts above `MAX_SIZE`, unknown flags, empty witnesses and trailing bytes refuse with their own codes, and bytes that read both ways decode as Core's `DecodeTx` decodes them. |
 | 35. Txids, wtxids and malleability | Planned | Txids and wtxids of pinned segwit transactions match. Changing a witness changes the wtxid and leaves the txid. |
 | 36. The script interpreter | Planned | Every case in Bitcoin Core's `script_tests.json` gives its expected result under its stated flags. |
 | 37. Legacy signature hashes | Planned | Every case in Bitcoin Core's `sighash.json` gives its digest, including `SIGHASH_SINGLE` with no matching output. |

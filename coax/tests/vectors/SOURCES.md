@@ -166,6 +166,23 @@ that a maliciously replaced manifest is authentic.
   ASCII-only English reader refuses them and that the seed is PBKDF2 of the
   phrase's bytes. `english.txt` has the SHA-256 that `bip39.coax` checks
   its inline copy against.
+- **Transactions (Bitcoin chapter 34):** Bitcoin Core's `tx_invalid.json`
+  beside `tx_valid.json`, and the sources the chapter transliterates, all at
+  the same revision: `primitives/transaction.h` (`UnserializeTransaction`,
+  `SerializeTransaction`), `serialize.h` (`ReadCompactSize`, `MAX_SIZE`),
+  `core_io.cpp` (`DecodeTx`, `CheckTxScriptsSanity`), `script/script.cpp`
+  and `script/script.h` (`HasValidOps`, `GetScriptOp` and their limits) and
+  `consensus/consensus.h` (`WITNESS_SCALE_FACTOR`). Every transaction of
+  the two JSON files (122 and 93) is read and written back; their prevouts,
+  scripts and flags are left to the script and consensus chapters.
+  rust-bitcoin's `transaction.rs` at tag `bitcoin-0.32.5` (commit
+  `17ce61c1`, CC0-1.0, license retained) publishes the P2WPKH transaction
+  `f5864806…` with its txid, wtxid, weight and vsize, and the zero-input
+  extended transaction of `tx_no_input_deserialization`. The `mainnet/`
+  files are mempool.space's raw bytes and JSON for that transaction, the
+  Taproot key-path spend `33e794d0…` and the script-path spend
+  `37777def…`, retrieved 2026-11-02; each raw file hashes to its txid, so
+  the bytes cannot change, and the chapter uses the JSON's size and weight.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -191,8 +208,9 @@ execution, fuzzing, secret handling and production review remain separate tasks.
 ## License and source notices
 
 BIP-340 is BSD-2-Clause OR MIT OR CC0-1.0; BIP-173 and BIP-350 declare BSD-2-Clause in their
-text, and BIP-341 declares BSD-3-Clause in its text. Bitcoin Core is MIT and
-btcd is ISC; their license files are retained. SipHash is CC0-1.0, MIT or
+text, and BIP-341 declares BSD-3-Clause in its text. Bitcoin Core is MIT,
+btcd is ISC and rust-bitcoin is CC0-1.0; their license files are retained. The
+mainnet transactions are public blockchain data. SipHash is CC0-1.0, MIT or
 Apache-2.0 with LLVM exception; its CC0 file is retained. The NIP-44 JavaScript subtree is Unlicense; Wycheproof is Apache-2.0;
 JSONTestSuite is MIT. Their provided license files are retained. `segwit_addr.py`
 carries its MIT notice in its own header. RFCs retain
@@ -206,7 +224,7 @@ index is OpenAgents Apache-2.0; it does not relicense upstream material.
 ## Inventory
 
 All dates below are retrieval dates (2026-10-28; the RIPEMD-160 and BIP-32
-files, the Bitcoin chapter 5, 17, 26 and 28 files and the SipHash files, 2026-11-02), not claims about
+files, the Bitcoin chapter 5, 17, 26, 28 and 34 files and the SipHash files, 2026-11-02), not claims about
 publication.
 The complete revision/license/archive fields are in `manifest.json`.
 
@@ -272,4 +290,19 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/pubkey.cpp`](upstream/bitcoin-core/pubkey.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/pubkey.cpp) | `13e59d462a35ba37f818538454228822718c3328d219a6a022e345d69c4b1d99` |
 | [`upstream/bip66/fixtures.json`](upstream/bip66/fixtures.json) | [pinned source](https://raw.githubusercontent.com/bitcoinjs/bip66/08169640fc2d9a5f4007f7a4493a2f4627c07cfc/test/fixtures.json) | `69b1504212b2596fdc62669e6193aebbb42c6e82ceec9f99ced205d557b7e83d` |
 | [`upstream/bip66/LICENSE`](upstream/bip66/LICENSE) | [pinned source](https://raw.githubusercontent.com/bitcoinjs/bip66/08169640fc2d9a5f4007f7a4493a2f4627c07cfc/LICENSE) | `51ad9defd71911dbe413daf277bcb2e1077743f5ee5ae48d0a3b90a5b7486f55` |
+| [`upstream/bitcoin-core/tx_invalid.json`](upstream/bitcoin-core/tx_invalid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/tx_invalid.json) | `0c02ce44ff3a880458f9569a25589315a07f924fcaadac828613d4615776ca52` |
+| [`upstream/bitcoin-core/transaction.h`](upstream/bitcoin-core/transaction.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/primitives/transaction.h) | `329c0f009edcda9dc2d3ff00e16066b1ff0f47d349a74c5cfb933aec4492c3fa` |
+| [`upstream/bitcoin-core/serialize.h`](upstream/bitcoin-core/serialize.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/serialize.h) | `9acb4bab2fe63ef351429b19d6ed75a9e719705060999c4e5dba78ce7c08db6f` |
+| [`upstream/bitcoin-core/core_io.cpp`](upstream/bitcoin-core/core_io.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/core_io.cpp) | `00ba5afda75e3505209f276b49b7934760ad19aed7cfdb55457533a2f74c6034` |
+| [`upstream/bitcoin-core/script.cpp`](upstream/bitcoin-core/script.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/script.cpp) | `210b1720acce295de54c6a08c76b97fa4cfe835f64e0ff7e0730c57ebebb8c55` |
+| [`upstream/bitcoin-core/script.h`](upstream/bitcoin-core/script.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/script.h) | `43e4eb10ee85ac31996e257d0c5dc45cbe3b29b2d61d1a72d101453ba64ded01` |
+| [`upstream/bitcoin-core/consensus.h`](upstream/bitcoin-core/consensus.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/consensus.h) | `aa55254b379a2cc5f1835b506e248f80b4f020120782d2780ce52ff7c8cb827d` |
+| [`upstream/rust-bitcoin/transaction.rs`](upstream/rust-bitcoin/transaction.rs) | [pinned source](https://raw.githubusercontent.com/rust-bitcoin/rust-bitcoin/17ce61c171905ec0a23155a1a31b0c67776ee436/bitcoin/src/blockdata/transaction.rs) | `2e5cd2614aa667a2cf9da4b87cfc7fd17fbf26fc610a1ba79c0dce6f2e70be8d` |
+| [`upstream/rust-bitcoin/LICENSE`](upstream/rust-bitcoin/LICENSE) | [pinned source](https://raw.githubusercontent.com/rust-bitcoin/rust-bitcoin/17ce61c171905ec0a23155a1a31b0c67776ee436/LICENSE) | `7179683e8000e6bdc9bbc60d85edf0a4ac8e76f951857f54fcb775d5886f1309` |
+| [`upstream/mainnet/f5864806e3565c34d1b41e716f72609d00b55ea5eac5b924c9719a842ef42206.hex`](upstream/mainnet/f5864806e3565c34d1b41e716f72609d00b55ea5eac5b924c9719a842ef42206.hex) | [mempool.space API](https://mempool.space/api/tx/f5864806e3565c34d1b41e716f72609d00b55ea5eac5b924c9719a842ef42206/hex) | `4d9ba5d97cdb82847551d6a487e3479958b97b1c5cc9549c932c9bc261a2bf8e` |
+| [`upstream/mainnet/f5864806e3565c34d1b41e716f72609d00b55ea5eac5b924c9719a842ef42206.json`](upstream/mainnet/f5864806e3565c34d1b41e716f72609d00b55ea5eac5b924c9719a842ef42206.json) | [mempool.space API](https://mempool.space/api/tx/f5864806e3565c34d1b41e716f72609d00b55ea5eac5b924c9719a842ef42206) | `66d8bb646ababf838e207b78a0c6878c0d136709ea768b71d5ef78dc2a642f51` |
+| [`upstream/mainnet/33e794d097969002ee05d336686fc03c9e15a597c1b9827669460fac98799036.hex`](upstream/mainnet/33e794d097969002ee05d336686fc03c9e15a597c1b9827669460fac98799036.hex) | [mempool.space API](https://mempool.space/api/tx/33e794d097969002ee05d336686fc03c9e15a597c1b9827669460fac98799036/hex) | `4864b8eda5c76a9ae3235130b6a0370f59533a4c20962c89ec1d4ce67d1fcecc` |
+| [`upstream/mainnet/33e794d097969002ee05d336686fc03c9e15a597c1b9827669460fac98799036.json`](upstream/mainnet/33e794d097969002ee05d336686fc03c9e15a597c1b9827669460fac98799036.json) | [mempool.space API](https://mempool.space/api/tx/33e794d097969002ee05d336686fc03c9e15a597c1b9827669460fac98799036) | `49f1314013f8bffd9c13f8a45d54983a5f9b317c96d4b8dba1330e11a353a63b` |
+| [`upstream/mainnet/37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8.hex`](upstream/mainnet/37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8.hex) | [mempool.space API](https://mempool.space/api/tx/37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8/hex) | `2098bb60eb4f47c230213ba7bd72a0b00dfcd6d295b59469b64ef1de8d72640d` |
+| [`upstream/mainnet/37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8.json`](upstream/mainnet/37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8.json) | [mempool.space API](https://mempool.space/api/tx/37777defed8717c581b4c0509329550e344bdc14ac38f71fc050096887e535c8) | `8a9d44ab04ac3e4cf22472446690fcc5fad2b69ef9fb2d8711809338c51270b1` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

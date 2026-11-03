@@ -174,7 +174,7 @@ there is a need.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| 34. Transactions and their serialization — planned | 1, 5 | Every transaction in Bitcoin Core's `tx_valid.json` and `tx_invalid.json` parses, and serialization round-trips byte for byte with and without witnesses. | BIP-144 |
+| [34. Transactions and their serialization](ch034-transactions-and-their-serialization.md) — implemented | 1, 3, 5 | Every transaction in Bitcoin Core's `tx_valid.json` and `tx_invalid.json` parses, and serialization round-trips byte for byte with and without witnesses. | BIP-144 |
 | 35. Txids, wtxids and malleability — planned | 34 | Txids and wtxids of pinned segwit transactions match. Changing a witness changes the wtxid and leaves the txid. | BIP-141 |
 | 36. The script interpreter — planned | 6, 19, 21, 34 | Every case in Bitcoin Core's `script_tests.json` gives its expected result under its stated flags. | Bitcoin Core `script_tests.json` |
 | 37. Legacy signature hashes — planned | 34, 36 | Every case in Bitcoin Core's `sighash.json` gives its digest, including `SIGHASH_SINGLE` with no matching output. | Bitcoin Core `sighash.json` |

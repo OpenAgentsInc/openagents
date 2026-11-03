@@ -1,0 +1,173 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/tx.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/tests/bitcoin/tx_core_vectors.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [400] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex into out and return the filled part. Every literal here and
+// in the vector tables is valid lowercase hex, so an error stops the program.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+equal_bytes :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// The name of each refusal code.
+CODES :: [8] string.["ok", "truncated", "non-canonical CompactSize", "size too large", "unknown flag",
+  "witness flag, no witnesses", "trailing bytes", "capacity"];
+// A txid or wtxid as explorers show it: the digest reversed.
+show_id :: (label: string, digest: [] u8) {
+  shown: [32] u8;
+  #assert bitcoin_reverse32(digest, shown[..]) == SHA_OK;
+  show(label, shown[..]);
+}
+// Is the displayed hex the reverse of digest?
+id_is :: (digest: [] u8, hex: string) -> bool {
+  want: [32] u8; shown: [32] u8;
+  #assert bitcoin_reverse32(digest, shown[..]) == SHA_OK;
+  return equal_bytes(shown[..], decode(hex, want[..]));
+}
+// Read hex both ways, as Core's DecodeTx does, and say what each gives.
+both_ways :: (label: string, hex: string) {
+  b: [256] u8; ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  s := decode(hex, b[..]);
+  e := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  sane_e := e.code == TX_OK && tx_scripts_sane_vartime(s, e, ins[..], outs[..]);
+  l := tx_read_vartime(s, false, ins[..], outs[..], items[..]);
+  sane_l := l.code == TX_OK && tx_scripts_sane_vartime(s, l, ins[..], outs[..]);
+  d := tx_decode_vartime(s, ins[..], outs[..], items[..]);
+  print("%\n  with witnesses: %, scripts parse %\n  without: %, scripts parse %\n", label, CODES[e.code], sane_e, CODES[l.code], sane_l);
+  if d.code != TX_OK { print("  Core keeps neither: %\n", CODES[d.code]); }
+  else { print("  Core keeps: inputs %, outputs %, segwit %\n", d.nin, d.nout, d.segwit); }
+}
+
+main :: () {
+  b: [4096] u8; o: [4096] u8; d: [32] u8; e: [32] u8;
+  ins: [16] TxIn; outs: [16] TxOut; items: [32] TxItem;
+
+  // A legacy mainnet transaction, field by field.
+  m := TX_MAINNET[0];
+  print("a legacy transaction, %\n", m.txid);
+  s := decode(m.tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  print("version %, inputs %, outputs %, locktime %\n", tx_le_vartime(s, 0, 4), t.nin, t.nout, tx_le_vartime(s, t.locktime, 4));
+  show_id("input 0 spends txid", s[ins[0].outpoint..<ins[0].outpoint+32]);
+  print("  output index %, scriptSig % bytes at byte %\n", tx_le_vartime(s, ins[0].outpoint + 32, 4), ins[0].script_n, ins[0].script);
+  show("  sequence", s[ins[0].sequence..<ins[0].sequence+4]);
+  print("output 0: % satoshis\n", tx_le_vartime(s, outs[0].value, 8));
+  show("  scriptPubKey", s[outs[0].script..<outs[0].script+outs[0].script_n]);
+  print("% bytes, weight %, vsize %\n", t.total, tx_weight_vartime(t), tx_vsize_vartime(t));
+  #assert tx_txid_vartime(s, t, d[..]);
+  show("txid in hash order", d[..]);
+  show_id("txid as shown", d[..]);
+  print("matches tx_valid.json: %\n", id_is(d[..], m.txid));
+
+  // CompactSize: the shortest form of each value, and what Core refuses.
+  print("CompactSize\n");
+  values := [7] int.[0, 252, 253, 0xffff, 0x10000, TX_MAX_SIZE, 0x100000000];
+  for v: values {
+    n := tx_compact_write_vartime(o[..], 0, v);
+    c := tx_compact_read_vartime(o[0..<n], 0);
+    print("  %: % bytes, ", v, n);
+    show(CODES[c.code], o[0..<n]);
+  }
+  bad := [6] string.["fdfc00", "feffff0000", "ffffffffff00000000", "fe01000002", "fdfd", "ff0000000001000000"];
+  for x: bad {
+    c := tx_compact_read_vartime(decode(x, b[..]), 0);
+    print("  %: %\n", x, CODES[c.code]);
+  }
+
+  // The pinned segwit transactions: marker, flag and witness, two IDs.
+  for i: 3..<6 {
+    m = TX_MAINNET[i];
+    s = decode(m.tx, b[..]);
+    t = tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+    print("a segwit transaction, %\n", m.txid);
+    print("marker %, flag %, inputs %, outputs %, witness stacks from byte % to %\n", s[4], s[5], t.nin, t.nout, t.witness, t.locktime);
+    for k: 0..<t.nin {
+      print("  input % stack, item sizes:", k);
+      for j: ins[k].first..<ins[k].first+ins[k].count { print(" %", items[j].n); }
+      print("\n");
+    }
+    print("stripped %, total %, weight % (published %), vsize %\n", t.stripped, t.total, tx_weight_vartime(t), m.weight, tx_vsize_vartime(t));
+    #assert tx_txid_vartime(s, t, d[..]) && tx_wtxid_vartime(s, t, e[..]);
+    show_id("txid ", d[..]);
+    show_id("wtxid", e[..]);
+    print("txid matches: %, wtxid matches: %\n", id_is(d[..], m.txid), id_is(e[..], m.wtxid));
+  }
+  // The stripped form of the P2WPKH spend: what the txid hashes.
+  s = decode(TX_MAINNET[3].tx, b[..]);
+  t = tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  n := tx_write_vartime(s, t, ins[..], outs[..], items[..], false, o[..]);
+  show("stripped", o[0..<n]);
+  #assert sha256d_checked(o[0..<n], d[..], false) == SHA_OK;
+  print("SHA-256d of it is the txid: %\n", id_is(d[..], TX_MAINNET[3].txid));
+
+  // One change to each part of a transaction, and what the reader says.
+  print("refusals\n");
+  legacy := TX_LEGACY_OK;
+  s = decode(legacy, b[..]);
+  for cut: [5] int.[3, 20, 45, 52, 60] {
+    r := tx_read_vartime(s[0..<cut], true, ins[..], outs[..], items[..]);
+    print("  the first % bytes: % at byte %\n", cut, CODES[r.code], r.at);
+  }
+  b[62] = 0xab;
+  r := tx_read_vartime(b[0..<63], true, ins[..], outs[..], items[..]);
+  print("  a byte after the locktime: % at byte %\n", CODES[r.code], r.at);
+  cases := [5] string.[
+    "01000000fd0100",
+    "01000000fe00000003",
+    "010000000002000000000000000000",
+    "010000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff01000000000000000001510000000000",
+    "010000000001010000000000000000000000000000000000000000000000000000000000000000ffffffff0151ffffffff0100000000000000000151fd0000"];
+  labels := [5] string.["input count 1 in three bytes", "input count 0x03000000", "flag 2",
+    "flag 1, every stack empty", "item count 0 in three bytes"];
+  for i: 0..<5 {
+    r = tx_read_vartime(decode(cases[i], b[..]), true, ins[..], outs[..], items[..]);
+    print("  %: % at byte %\n", labels[i], CODES[r.code], r.at);
+  }
+  s = decode(TX_MAINNET[5].tx, b[..]);
+  r = tx_read_vartime(s, true, ins[..], outs[..], items[0..<3]);
+  print("  % witness items into room for 3: % at byte %\n", 4, CODES[r.code], r.at);
+
+  // Bytes that read two ways.
+  print("zero inputs\n");
+  both_ways("no inputs, no outputs", "01000000000000000000");
+  both_ways("legacy, no inputs, one output", TX_ZERO_INPUTS);
+  both_ways("extended, no inputs, no witness", TX_SEGWIT_NO_INPUTS);
+  both_ways("both read, both sane", TX_BOTH_SANE);
+  both_ways("both read, legacy sane", TX_LEGACY_SANE);
+  both_ways("both read, neither sane", TX_NEITHER_SANE);
+
+  // Every transaction in Core's tx_valid.json and tx_invalid.json.
+  print("Bitcoin Core tx_valid.json and tx_invalid.json\n");
+  read := 0; segwit := 0; same := 0; stripped := 0; valid := 0;
+  for row: TX_CORE {
+    s = decode(row.tx, b[..]);
+    t = tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+    if t.code != TX_OK { continue; }
+    read += 1;
+    if row.valid { valid += 1; }
+    if t.segwit { segwit += 1; }
+    // Written back with witnesses: the same bytes.
+    if tx_write_vartime(s, t, ins[..], outs[..], items[..], true, o[..]) == s.count && equal_bytes(o[0..<s.count], s) { same += 1; }
+    // Written without: a legacy transaction with the same txid.
+    n = tx_write_vartime(s, t, ins[..], outs[..], items[..], false, o[..]);
+    u := tx_read_vartime(o[0..<n], false, ins[..], outs[..], items[..]);
+    #assert tx_txid_vartime(s, t, d[..]) && tx_txid_vartime(o[0..<n], u, e[..]);
+    if u.code == TX_OK && !u.segwit && u.total == t.stripped && equal_bytes(d[..], e[..]) { stripped += 1; }
+  }
+  print("% of % read (% of tx_valid.json), % with witnesses\n", read, TX_CORE.count, valid, segwit);
+  print("% write back byte for byte, % stripped and read back with the same txid\n", same, stripped);
+}
+// book:end example

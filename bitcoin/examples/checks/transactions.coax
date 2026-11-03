@@ -1,0 +1,78 @@
+// The checks of transactions.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/transactions.coax
+#load "../transactions.coax";
+
+// book:begin check
+// Every transaction in Bitcoin Core's tx_valid.json and tx_invalid.json
+// reads with witnesses allowed and uses every byte. Written back with
+// witnesses it is the same bytes; written without, it reads back as a
+// legacy transaction of the stripped size with the same txid, and writes
+// the same bytes again.
+#forall "Core's transactions read and round-trip" i: 0..<215 #steps 200000000 {
+  row := TX_CORE[i];
+  b: [4096] u8; o: [4096] u8; p: [4096] u8; d: [32] u8; e: [32] u8;
+  ins: [16] TxIn; outs: [16] TxOut; items: [32] TxItem;
+  s := decode(row.tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && t.total == s.count;
+  #assert tx_write_vartime(s, t, ins[..], outs[..], items[..], true, o[..]) == s.count && equal_bytes(o[0..<s.count], s);
+  n := tx_write_vartime(s, t, ins[..], outs[..], items[..], false, o[..]);
+  #assert n == t.stripped;
+  u := tx_read_vartime(o[0..<n], false, ins[..], outs[..], items[..]);
+  #assert u.code == TX_OK && !u.segwit && u.total == n && u.nin == t.nin && u.nout == t.nout;
+  #assert tx_write_vartime(o[0..<n], u, ins[..], outs[..], items[..], true, p[..]) == n && equal_bytes(p[0..<n], o[0..<n]);
+  #assert tx_txid_vartime(s, t, d[..]) && tx_txid_vartime(o[0..<n], u, e[..]) && equal_bytes(d[..], e[..]);
+  // Without witnesses, the txid is the wtxid and the weight is 4 bytes a byte.
+  #assert tx_wtxid_vartime(o[0..<n], u, e[..]) && equal_bytes(d[..], e[..]) && tx_weight_vartime(u) == 4 * n;
+  #assert tx_weight_vartime(t) == 3 * t.stripped + t.total && (tx_vsize_vartime(t) - 1) * 4 < tx_weight_vartime(t) && tx_vsize_vartime(t) * 4 >= tx_weight_vartime(t);
+}
+// The pinned mainnet transactions: published txids, wtxids and weights.
+#forall "mainnet transactions by txid" i: 0..<6 #steps 200000000 {
+  m := TX_MAINNET[i];
+  b: [1024] u8; d: [32] u8; ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := decode(m.tx, b[..]);
+  t := tx_decode_vartime(s, ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && t.segwit == m.segwit && tx_weight_vartime(t) == m.weight && t.total == m.size;
+  #assert tx_txid_vartime(s, t, d[..]) && id_is(d[..], m.txid) && tx_wtxid_vartime(s, t, d[..]) && id_is(d[..], m.wtxid);
+}
+// Changing a witness changes the wtxid and leaves the txid.
+#test "a witness byte moves the wtxid only" #steps 100000000 {
+  b: [1024] u8; d: [32] u8; e: [32] u8; ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := decode(TX_MAINNET[3].tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  s[items[0].at + 10] ^= 1;
+  #assert tx_txid_vartime(s, t, d[..]) && id_is(d[..], TX_MAINNET[3].txid);
+  #assert tx_wtxid_vartime(s, t, e[..]) && !id_is(e[..], TX_MAINNET[3].wtxid);
+  s[outs[0].value] ^= 1;
+  #assert tx_txid_vartime(s, t, d[..]) && !id_is(d[..], TX_MAINNET[3].txid);
+}
+// The refusals the example prints, each with its code and byte.
+#test "the example's refusals" {
+  b: [256] u8; ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  s := decode(TX_LEGACY_OK, b[..]);
+  cuts := [5] int.[3, 20, 45, 52, 60]; at := [5] int.[0, 5, 43, 48, 58];
+  for k: 0..<5 {
+    r := tx_read_vartime(s[0..<cuts[k]], true, ins[..], outs[..], items[..]);
+    #assert r.code == TX_TRUNCATED && r.at == at[k];
+  }
+  r := tx_read_vartime(decode("010000000002000000000000000000", b[..]), true, ins[..], outs[..], items[..]);
+  #assert r.code == TX_UNKNOWN_FLAG && r.at == 5 && CODES[r.code] == "unknown flag";
+  c := tx_compact_read_vartime(decode("fe01000002", b[..]), 0);
+  #assert c.code == TX_SIZE_TOO_LARGE && CODES[c.code] == "size too large";
+}
+// Each ambiguous case decodes as the example prints.
+#test "zero inputs: what Core keeps" {
+  b: [256] u8; ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  t := tx_decode_vartime(decode(TX_BOTH_SANE, b[..]), ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && t.segwit && t.nin == 1;
+  t = tx_decode_vartime(decode(TX_LEGACY_SANE, b[..]), ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && !t.segwit && t.nin == 0 && t.nout == 1;
+  t = tx_decode_vartime(decode(TX_NEITHER_SANE, b[..]), ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && t.segwit;
+  t = tx_decode_vartime(decode(TX_ZERO_INPUTS, b[..]), ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && !t.segwit && t.nout == 1;
+  t = tx_decode_vartime(decode(TX_SEGWIT_NO_INPUTS, b[..]), ins[..], outs[..], items[..]);
+  #assert t.code == TX_NO_WITNESS;
+}
+// book:end check
