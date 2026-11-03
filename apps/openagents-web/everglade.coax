@@ -1271,6 +1271,11 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 // finger is the face's (the sticks), so this says it isn't used.
 everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { everglade_start(s); }
+  // a slot's card shows only while a finger holds the slot (a long press): any finger lifted, or a
+  // new one down, closes it first, whichever handler then takes the touch
+  if kind != 0 && (phase >= 2 || phase == 0) && s[0].sp.slot_held >= 0 && (phase == 0 || id == s[0].sp.slot_finger || s[0].sp.slot_finger < 0) {
+    s[0].sp.slot_held = -1; s[0].sp.slot_finger = -1;
+  }
   if s[0].board { return board_pointer(s, x, y, phase, id); }
   // Aethyrforge's panels in edit mode: only they and edit mode's own presses (everglade-forge.coax)
   forge := forge_on(s);

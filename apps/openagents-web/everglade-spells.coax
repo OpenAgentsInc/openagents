@@ -2201,3 +2201,16 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
 
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+
+#test "phone: a slot's card shows only while a finger holds it; lifting it, or another finger down, closes the card" #steps 400000000 {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  g[0].sp.boxes[1] = Box.{x0 = 100, y0 = 900, x1 = 150, y1 = 950};
+  #assert everglade_pointer(g[..], 125, 925, 0, 1, 7) && g[0].sp.slot_held == 1;
+  #assert everglade_pointer(g[..], 600, 300, 2, 1, 7) || true;
+  #assert g[0].sp.slot_held == -1 && g[0].sp.slot_finger == -1;
+  #assert everglade_pointer(g[..], 125, 925, 0, 1, 8) && g[0].sp.slot_held == 1;
+  _ := everglade_pointer(g[..], 600, 300, 0, 1, 9);
+  #assert g[0].sp.slot_held == -1;
+}
