@@ -637,6 +637,17 @@
         "release"
       ],
       "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/lightning-messages.coax",
+      "chapter": "bitcoin/book/ch104-messages-and-tlvs.md",
+      "stdout": "bitcoin/fixtures/lightning-messages.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

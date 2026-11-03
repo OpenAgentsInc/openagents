@@ -1,0 +1,51 @@
+// The checks of lightning-messages.coax. They live apart so that running
+// the example doesn't also run them. The example runs every BOLT 1 vector;
+// these check the properties around them.
+// Checks: coax test bitcoin/examples/checks/lightning-messages.coax
+#load "../lightning-messages.coax";
+
+// book:begin check
+// Each side of every BigSize boundary, 2^k - 1 and 2^k, writes in the
+// fewest bytes and reads back.
+#forall "BigSize round-trips at every power of two" k: 0..<64 {
+  out: [9] u8; v := cast(u64) 1 << cast(u64) k;
+  for x: [2] u64.[v - 1, v] {
+    n := bigsize_write_vartime(out[..], 0, x);
+    got := bigsize_read_vartime(out[0..<n], 0);
+    #assert n == bigsize_size(x) && got.code == LN_OK && got.value == x && got.next == n;
+  }
+}
+// Any prefix of a valid record that cuts it short is refused.
+#forall "a cut record refuses" cut: 1..<51 #steps 200000000 {
+  b: [64] u8; s := ln_unhex(LN_TLV[50].stream, b[..]);
+  #assert s.count == 51 && ln_test_decode_vartime(s, 1).code == LN_OK;
+  #assert ln_test_decode_vartime(s[0..<cut], 1).code != LN_OK;
+}
+// BOLT 1: a valid stream followed by a valid stream of higher types is
+// still valid.
+#test "valid n1 streams in type order concatenate" {
+  b: [128] u8; good := [4] int.[41, 49, 50, 51];   // tlv1, tlv2, tlv3 and tlv4
+  for i: 0..<4 {
+    for j: i + 1..<4 {
+      a := ln_unhex(LN_TLV[good[i]].stream, b[..]); c := ln_unhex(LN_TLV[good[j]].stream, b[a.count..<128]);
+      #assert ln_test_decode_vartime(b[0..<a.count + c.count], 1).code == LN_OK;
+      // The other order repeats nothing but goes backwards.
+      c = ln_unhex(LN_TLV[good[j]].stream, b[..]); a = ln_unhex(LN_TLV[good[i]].stream, b[c.count..<128]);
+      #assert ln_test_decode_vartime(b[0..<a.count + c.count], 1).code == LN_ORDER;
+    }
+  }
+}
+// The odd rule for feature bits: a peer setting any one unknown bit is
+// refused exactly when the bit is even.
+#forall "unknown feature bits: even closes, odd is ignored" bit: 0..<128 {
+  f: [16] u8; put := ln_feature_put(f[..], bit); known := [1] int.[8];
+  refuse := ln_feature_refuse_vartime(f[..], known[..]);
+  if bit / 2 == 4 { #assert refuse == -1; }
+  else { #assert (refuse == bit) == (bit % 2 == 0) && (refuse == -1) == (bit % 2 == 1); }
+}
+// The odd rule for message types.
+#forall "unknown message types: even closes, odd is ignored" t: 0..<1024 {
+  d := ln_dispatch_vartime(t);
+  if !ln_known_vartime(t) { #assert (d.code == LN_UNKNOWN_EVEN) == (t % 2 == 0) && d.ignore == (t % 2 == 1); }
+}
+// book:end check

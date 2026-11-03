@@ -94,3 +94,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [68. The handshake and feature negotiation](ch068-the-handshake-and-feature-negotiation.md) — implemented
 - [73. Compact blocks](ch073-compact-blocks.md) — implemented
 - [74. Compact block filters](ch074-compact-block-filters.md) — implemented
+
+**XVII. Lightning**
+
+- [104. Messages and TLVs](ch104-messages-and-tlvs.md) — implemented

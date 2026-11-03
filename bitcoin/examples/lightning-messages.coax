@@ -1,0 +1,120 @@
+// book:begin example
+#load "../../coax/lib/lightning/bolt1.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex, at most 256 of them.
+show :: (b: [] u8) {
+  text: [512] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+// A stream's hex, shortened past 24 characters.
+short :: (s: string) -> string { return ifx s.count > 24 then s[0..<24] else s; }
+CODES :: [9] string.["ok", "truncated", "not minimal", "order", "unknown even", "length", "value", "capacity", "too large"];
+SPACES :: [3] string.["n1/n2", "n1", "n2"];
+// The mainnet chain_hash: the genesis block's hash in its internal byte order.
+MAINNET :: "6fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000";
+
+main :: () {
+  b: [400] u8; out: [400] u8;
+
+  // ---- BigSize: BOLT 1's Appendix A
+  print("bigsize\n");
+  written := 0; encodings := 0;
+  for row: LN_BIGSIZE {
+    got := bigsize_read_vartime(ln_unhex(row.bytes, b[..]), 0);
+    if got.code == LN_OK { print("  %: % -> %\n", row.name, row.bytes, got.value); }
+    else { print("  %: % -> %\n", row.name, row.bytes, CODES[got.code]); }
+    if row.encode {
+      encodings += 1;
+      n := bigsize_write_vartime(out[..], 0, row.value);
+      if ln_hex_is(out[0..<n], row.bytes) { written += 1; }
+    }
+  }
+  print("  encodings written byte for byte: % of %\n", written, encodings);
+
+  // ---- TLV streams: BOLT 1's Appendix B
+  print("tlv streams\n");
+  agree := 0;
+  for row: LN_TLV {
+    stream := ln_unhex(row.stream, b[..]);
+    first := ifx row.space == 2 then 2 else 1;
+    last := ifx row.space == 1 then 1 else 2;
+    print("  % %", SPACES[row.space], ifx row.stream.count == 0 then "(empty)" else short(row.stream));
+    if row.stream.count > 24 { print("..."); }
+    print(":");
+    ok := true;
+    for ns: first..<last + 1 {
+      got := ln_test_decode_vartime(stream, ns);
+      print(" %", CODES[got.code]);
+      if (got.code == LN_OK) != row.ok { ok = false; }
+      if row.ok && row.record > 0 {
+        if row.record == 1 { print(" amount_msat=%", got.amount); }
+        if row.record == 2 { print(" scid=%x%x%", got.scid >> 40, (got.scid >> 16) & 0xffffff, got.scid & 0xffff); }
+        if row.record == 3 { print(" amount_msat_1=% amount_msat_2=%", got.amount_1, got.amount_2); }
+        if row.record == 4 { print(" cltv_delta=%", got.cltv); }
+      }
+    }
+    if ok { agree += 1; }
+    print("\n");
+  }
+  print("  agree with BOLT 1: % of %\n", agree, LN_TLV.count);
+  // Appending: a valid stream then a refused one is refused.
+  refused := 0; pairs := 0;
+  for good: LN_TLV {
+    if good.ok && good.space == 1 {
+      for bad: LN_TLV {
+        if !bad.ok && bad.space != 2 {
+          g := ln_unhex(good.stream, b[..]); c := ln_unhex(bad.stream, b[g.count..<400]);
+          pairs += 1;
+          if ln_test_decode_vartime(b[0..<g.count + c.count], 1).code != LN_OK { refused += 1; }
+        }
+      }
+    }
+  }
+  print("  a valid n1 stream followed by a refused one: % of % refused\n", refused, pairs);
+
+  // ---- messages: BOLT 1's Appendix C, then our own
+  print("messages\n");
+  for row: LN_INIT_ROWS {
+    got := ln_init_read_vartime(ln_unhex(row.message, b[..]));
+    print("  init %: %", row.message, CODES[got.code]);
+    if got.code == LN_OK { print(", % unknown odd records skipped", got.ignored); }
+    print("\n");
+  }
+  f: [3] u8; chains: [32] u8;
+  for bit: [3] int.[8, 14, 17] { put := ln_feature_put(f[..], bit); }
+  hash := ln_unhex(MAINNET, chains[..]);
+  n := ln_init_write_vartime(f[..], hash, out[..]);
+  print("  our init, % bytes: ", n); show(out[0..<n]); print("\n");
+  r := ln_init_read_vartime(out[0..<n]);
+  all: [8] u8; c := ln_init_features_vartime(out[0..<n], r, all[..]);
+  print("  read back: %, % network, features", CODES[r.code], r.networks_n);
+  for bit: 0..<c * 8 {
+    if ln_feature_set(all[0..<c], bit) { print(" % (%, %)", bit, ln_feature_name(bit), ifx bit % 2 == 0 then "required" else "supported"); }
+  }
+  print("\n");
+  known := [3] int.[8, 14, 17];
+  for bit: [2] int.[101, 100] {
+    p: [13] u8; for i: 0..<3 { p[10 + i] = f[i]; } put := ln_feature_put(p[..], bit);
+    refuse := ln_feature_refuse_vartime(p[..], known[..]);
+    print("  a peer that sets bit %: %\n", bit, ifx refuse < 0 then "accept" else "close");
+  }
+  for t: [4] int.[18, 32768, 32769, 1] {
+    d := ln_dispatch_vartime(t);
+    print("  message type %: %\n", t, ifx d.code != LN_OK then "close" else ifx d.ignore then "ignore" else "read");
+  }
+  n = ln_ping_write_vartime(4, 2, out[..]);
+  print("  ping: "); show(out[0..<n]);
+  m := ln_pong_reply_vartime(ln_ping_read_vartime(out[0..<n]), b[..]);
+  print(", pong: "); show(b[0..<m]); print("\n");
+  n = ln_ping_write_vartime(65532, 0, out[..]);
+  print("  a ping asking for 65532 bytes: % reply bytes\n", ln_pong_reply_vartime(ln_ping_read_vartime(out[0..<n]), b[..]));
+  zero: [32] u8;
+  n = ln_error_write_vartime(LN_ERROR, zero, "internal error", out[..]);
+  e := ln_error_read_vartime(out[0..<n]);
+  print("  error: "); show(out[0..<n]); print("\n");
+  print("  read: %, every channel %, % bytes of data, printable %\n", CODES[e.code], e.all, e.data_n, e.printable);
+}
+// book:end example

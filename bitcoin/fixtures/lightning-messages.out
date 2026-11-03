@@ -1,0 +1,98 @@
+bigsize
+  zero: 00 -> 0
+  one byte high: fc -> 252
+  two byte low: fd00fd -> 253
+  two byte high: fdffff -> 65535
+  four byte low: fe00010000 -> 65536
+  four byte high: feffffffff -> 4294967295
+  eight byte low: ff0000000100000000 -> 4294967296
+  eight byte high: ffffffffffffffffff -> 18446744073709551615
+  two byte not canonical: fd00fc -> not minimal
+  four byte not canonical: fe0000ffff -> not minimal
+  eight byte not canonical: ff00000000ffffffff -> not minimal
+  two byte short read: fd00 -> truncated
+  four byte short read: feffff -> truncated
+  eight byte short read: ffffffffff -> truncated
+  one byte no read:  -> truncated
+  two byte no read: fd -> truncated
+  four byte no read: fe -> truncated
+  eight byte no read: ff -> truncated
+  encodings written byte for byte: 8 of 8
+tlv streams
+  n1/n2 fd: truncated truncated
+  n1/n2 fd01: truncated truncated
+  n1/n2 fd000100: not minimal not minimal
+  n1/n2 fd0101: truncated truncated
+  n1/n2 0ffd: truncated truncated
+  n1/n2 0ffd26: truncated truncated
+  n1/n2 0ffd2602: truncated truncated
+  n1/n2 0ffd000100: not minimal not minimal
+  n1/n2 0ffd02010000000000000000...: truncated truncated
+  n1/n2 1200: unknown even unknown even
+  n1/n2 fd010200: unknown even unknown even
+  n1/n2 fe0100000200: unknown even unknown even
+  n1/n2 ff010000000000000200: unknown even unknown even
+  n1 0109ffffffffffffffffff: length
+  n1 010100: not minimal
+  n1 01020001: not minimal
+  n1 0103000100: not minimal
+  n1 010400010000: not minimal
+  n1 01050001000000: not minimal
+  n1 0106000100000000: not minimal
+  n1 010700010000000000: not minimal
+  n1 01080001000000000000: not minimal
+  n1 020701010101010101: length
+  n1 0209010101010101010101: length
+  n1 0321023da092f6980e58d2c0...: length
+  n1 0329023da092f6980e58d2c0...: length
+  n1 0330023da092f6980e58d2c0...: length
+  n1 0331043da092f6980e58d2c0...: value
+  n1 0332023da092f6980e58d2c0...: length
+  n1 fd00fe00: length
+  n1 fd00fe0101: length
+  n1 fd00fe03010101: length
+  n1 0000: unknown even
+  n1/n2 (empty): ok ok
+  n1/n2 2100: ok ok
+  n1/n2 fd020100: ok ok
+  n1/n2 fd00fd00: ok ok
+  n1/n2 fd00ff00: ok ok
+  n1/n2 fe0200000100: ok ok
+  n1/n2 ff020000000000000100: ok ok
+  n1 0100: ok amount_msat=0
+  n1 010101: ok amount_msat=1
+  n1 01020100: ok amount_msat=256
+  n1 0103010000: ok amount_msat=65536
+  n1 010401000000: ok amount_msat=16777216
+  n1 01050100000000: ok amount_msat=4294967296
+  n1 0106010000000000: ok amount_msat=1099511627776
+  n1 010701000000000000: ok amount_msat=281474976710656
+  n1 01080100000000000000: ok amount_msat=72057594037927936
+  n1 02080000000000000226: ok scid=0x0x550
+  n1 0331023da092f6980e58d2c0...: ok amount_msat_1=1 amount_msat_2=2
+  n1 fd00fe020226: ok cltv_delta=550
+  n1 020800000000000002260101...: order
+  n1 020800000000000002310208...: order
+  n1 1f000f012a: order
+  n1 1f001f012a: order
+  n2 ffffffffffffffffff000000: order
+  agree with BOLT 1: 57 of 57
+  a valid n1 stream followed by a refused one: 444 of 444 refused
+messages
+  init 001000000000: ok, 0 unknown odd records skipped
+  init 001000000000c9012acb0104: ok, 2 unknown odd records skipped
+  init 00100000000001: truncated
+  init 001000000000ca012a: unknown even
+  init 001000000000c90101c90102: order
+  our init, 43 bytes: 00100000000302410001206fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000
+  read back: ok, 1 network, features 8 (var_onion_optin, required) 14 (payment_secret, required) 17 (basic_mpp, supported)
+  a peer that sets bit 101: accept
+  a peer that sets bit 100: close
+  message type 18: read
+  message type 32768: close
+  message type 32769: ignore
+  message type 1: read
+  ping: 0012000400020000, pong: 0013000400000000
+  a ping asking for 65532 bytes: 0 reply bytes
+  error: 00110000000000000000000000000000000000000000000000000000000000000000000e696e7465726e616c206572726f72
+  read: ok, every channel true, 14 bytes of data, printable true

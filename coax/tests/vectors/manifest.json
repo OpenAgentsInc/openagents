@@ -2876,6 +2876,32 @@
       "retrieved": "2026-11-03",
       "sha256": "3a10ff94f45a2fbef360731be48c468ec7c2ecc3da760fb2861b97721aeb5efb",
       "bytes": 17201
+    },
+    {
+      "path": "upstream/bolts/01-messaging.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/01-messaging.md",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "lightning-messages"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "5801219aabcf854cf0a6dd4e98759b4351cbca238588061c680574912f6ef918",
+      "bytes": 44481
+    },
+    {
+      "path": "upstream/bolts/09-features.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/09-features.md",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "lightning-messages"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "39ead9fa5743104a3e66e0f6c342e34d64966dc943dcbcc337969e543e3e3cbe",
+      "bytes": 10888
     }
   ]
 }

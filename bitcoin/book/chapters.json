@@ -1979,14 +1979,20 @@
   {
    "number": 104,
    "title": "Messages and TLVs",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch104-messages-and-tlvs.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     1
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/lightning/bolt1.coax",
+    "bitcoin/examples/lightning-messages.coax",
+    "bitcoin/examples/checks/lightning-messages.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

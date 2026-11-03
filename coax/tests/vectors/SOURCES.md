@@ -411,6 +411,16 @@ that a maliciously replaced manifest is authentic.
   `coax/tests/bitcoin/blockfilter.py` runs Core's two Python files as the
   independent element hash and SipHash, and generates
   `coax/tests/bitcoin/blockfilter_vectors.coax` from `testnet-19.json`.
+- **Lightning messages and TLVs (Bitcoin chapter 104):** BOLT 1
+  (`01-messaging.md`) and BOLT 9 (`09-features.md`) at lightning/bolts
+  revision `19146282`, CC-BY-4.0 as each text declares, retrieved
+  2026-11-03. BOLT 1's Appendix A gives 18 BigSize decodings and 8
+  encodings, Appendix B 57 TLV streams in its test namespaces `n1` and
+  `n2`, and Appendix C 5 `init` messages; BOLT 9's table names the
+  feature bits. `coax/tests/lightning/make_bolt1_vectors.py` reads them
+  into `coax/tests/lightning/bolt1_vectors.coax`, and
+  `coax/tests/lightning/bolt1.py` is the independent reader the
+  cross-check runs.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -442,7 +452,7 @@ mainnet transactions and blocks are public blockchain data. SipHash is CC0-1.0, 
 Apache-2.0 with LLVM exception; its CC0 file is retained. The NIP-44 JavaScript subtree is Unlicense; Wycheproof is Apache-2.0;
 JSONTestSuite is MIT. The Bitcoin developer reference
 (developer.bitcoin.org) is MIT, BIP-155 declares BSD-2-Clause in its text and BIP-324,
-with its test vectors and `reference.py`, declares BSD-3-Clause. Their provided license files are retained. `segwit_addr.py`
+with its test vectors and `reference.py`, declares BSD-3-Clause. The BOLTs declare CC-BY-4.0 in their text. Their provided license files are retained. `segwit_addr.py`
 carries its MIT notice in its own header. RFCs retain
 complete IETF/Internet Society copyright and redistribution notices (including
 the older RFC 4231 terms). NIST's U.S. Government archive supplies CAVS notices
@@ -670,4 +680,6 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip158/testnet-19.json`](upstream/bip158/testnet-19.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0158/testnet-19.json) | `d9049756f744e561b882a8eff507582fb7cd74ed9cf5542bdac58257449ee2a2` |
 | [`upstream/bip158/bip-0158.mediawiki`](upstream/bip158/bip-0158.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0158.mediawiki) | `93a560d966852e081f5e7894f43eddae55ac471ff8bcb99d93eae73f5a859954` |
 | [`upstream/bip157/bip-0157.mediawiki`](upstream/bip157/bip-0157.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0157.mediawiki) | `5405acbf04ebd8a1b92ae2b7188022f4c14723ed8a0ae0d077d12a1e6908da9a` |
+| [`upstream/bolts/01-messaging.md`](upstream/bolts/01-messaging.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/01-messaging.md) | `5801219aabcf854cf0a6dd4e98759b4351cbca238588061c680574912f6ef918` |
+| [`upstream/bolts/09-features.md`](upstream/bolts/09-features.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/09-features.md) | `39ead9fa5743104a3e66e0f6c342e34d64966dc943dcbcc337969e543e3e3cbe` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

@@ -43,15 +43,15 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 59 are implemented and 65 are planned. The 59 implemented
+Of the 124 chapters, 60 are implemented and 64 are planned. The 60 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 62, 65, 66, 67,
-68, 73 and 74 are new.
+68, 73, 74 and 104 are new.
 
-The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
-`bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
+The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
+`coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
 that later chapters will teach already exists in places: the BIP-143 and
 BIP-341 signature hashes (`coax/lib/bitcoin/sighash.coax`), written for Nostr
 chapter 104's agent treasuries. Its transaction reader now runs on chapter
@@ -319,7 +319,7 @@ Lightning built in Coax on our node: messages, the Noise handshake, channels, on
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 104. Messages and TLVs | Planned | BOLT 1's TLV vectors give their results. An unknown even type refuses. |
+| [104. Messages and TLVs](ch104-messages-and-tlvs.md) | Runnable: native C | BOLT 1's message framing with the "it's OK to be odd" rule, BigSize, TLV streams, truncated integers, `init` with BOLT 9's feature bits, `error`, `warning`, `ping` and `pong`. Every BigSize, TLV and `init` vector in BOLT 1 gives its result, and every line agrees with an independent Python reader. |
 | 105. The Noise handshake | Planned | BOLT 8's handshake and message vectors match byte for byte, including key rotation. |
 | 106. Commitment keys and revocation | Planned | BOLT 3's key-derivation vectors give every key. |
 | 107. Shachain | Planned | BOLT 3's per-commitment secret storage vectors pass, including the cases that must fail. |
