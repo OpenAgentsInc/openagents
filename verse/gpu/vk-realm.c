@@ -221,11 +221,12 @@ static void os_requests(void) {
   fprintf(stderr, "vk-realm: agent %d's transcript asked for\n", (int)a);
 }
 static float panel_draw_w, panel_draw_h;
-static int world_rect(int32_t r[4], uint32_t w, uint32_t h) {
+// the world's screen's four corners (the face's k 5..12), in the swapchain's pixels
+static int world_rect(int32_t c[8], uint32_t w, uint32_t h) {
   if (!coaxial_panel_rect || coaxial_panel_rect(H.state, 4) <= 0 || panel_draw_w <= 0) return 0;
   float sx = (float)w / panel_draw_w, sy = (float)h / panel_draw_h;
-  for (int k = 0; k < 4; k++) r[k] = (int32_t)(coaxial_panel_rect(H.state, k) * (k % 2 ? sy : sx));
-  return r[2] > r[0] && r[3] > r[1];
+  for (int k = 0; k < 8; k++) c[k] = (int32_t)(coaxial_panel_rect(H.state, 5 + k) * (k % 2 ? sy : sx));
+  return 1;
 }
 // The pointer to the desk first, in the screen's pixels: 1 when the desk took it.
 static int pointer_to_desk(float sx, float sy, int phase) { return vkdesk_pointer(sx, sy, phase == 0 ? 1 : phase == 2 ? 0 : -1); }

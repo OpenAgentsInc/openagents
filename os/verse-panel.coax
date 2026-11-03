@@ -111,3 +111,50 @@ verse_panel_point_in :: (x0: int, y0: int, x1: int, y1: int, dw: int, dh: int, x
   #assert verse_panel_point(PANEL_DOCKED, 2560, 1440, 1280, 720, 10, 700, 0) == -1;
   #assert verse_panel_point(PANEL_CLOSED, 2560, 1440, 1280, 720, 1280, 720, 0) == -1;
 }
+
+// ---- perspective: the desk on the world's screen as it slants (F8)
+// The screen's corners on the display, in whole pixels: c[0..8] = bottom-left x y, bottom-right x y,
+// top-right x y, top-left x y. The desk is drawn as N vertical strips, strip i of n covering this
+// (k 0..3: x0 y0 x1 y1) of the display, its source the desk's columns i/n to (i+1)/n: each fitted
+// between the screen's top and bottom edges where it stands, so the far side is shorter.
+panel_lerp :: (a: int, b: int, t_num: int, t_den: int) -> int { return a + ((b - a) * t_num) / t_den; }
+verse_panel_strip :: (blx: int, bly: int, brx: int, bry: int, trx: int, tyr: int, tlx: int, tly: int, i: int, n: int, k: int) -> int #export_c {
+  if n < 1 || i < 0 || i >= n || k < 0 || k > 3 { return 0; }
+  // the top and bottom edges at the strip's two sides
+  tx0 := panel_lerp(tlx, trx, i, n); ty0 := panel_lerp(tly, tyr, i, n); tx1 := panel_lerp(tlx, trx, i + 1, n); ty1 := panel_lerp(tly, tyr, i + 1, n);
+  bx0 := panel_lerp(blx, brx, i, n); by0 := panel_lerp(bly, bry, i, n); bx1 := panel_lerp(blx, brx, i + 1, n); by1 := panel_lerp(bly, bry, i + 1, n);
+  if k == 0 { return (tx0 + bx0) / 2; }
+  if k == 2 { return (tx1 + bx1) / 2; }
+  if k == 1 { return (ty0 + ty1) / 2; }
+  return (by0 + by1) / 2;
+}
+#test "strips: a square on, then a screen seen from its left" {
+  // square on: 0,100 .. 400,100 .. 400,0 .. 0,0 (y down: top is 0); strip 0 of 4 is x 0..100, y 0..100
+  #assert verse_panel_strip(0, 100, 400, 100, 400, 0, 0, 0, 0, 4, 0) == 0 && verse_panel_strip(0, 100, 400, 100, 400, 0, 0, 0, 0, 4, 2) == 100;
+  #assert verse_panel_strip(0, 100, 400, 100, 400, 0, 0, 0, 0, 4, 1) == 0 && verse_panel_strip(0, 100, 400, 100, 400, 0, 0, 0, 0, 4, 3) == 100;
+  // the right side further away: shorter (y 20..80); the last strip is shorter than the first
+  h0 := verse_panel_strip(0, 100, 400, 80, 400, 20, 0, 0, 0, 4, 3) - verse_panel_strip(0, 100, 400, 80, 400, 20, 0, 0, 0, 4, 1);
+  h3 := verse_panel_strip(0, 100, 400, 80, 400, 20, 0, 0, 3, 4, 3) - verse_panel_strip(0, 100, 400, 80, 400, 20, 0, 0, 3, 4, 1);
+  #assert h0 > h3 && h3 > 60 - 1;
+  #assert verse_panel_strip(0, 100, 400, 100, 400, 0, 0, 0, 4, 4, 0) == 0 && verse_panel_strip(0, 100, 400, 100, 400, 0, 0, 0, 0, 0, 0) == 0;
+}
+// A display point on the slanted screen in the desk's pixels (k 0 x, 1 y), or -1 off it: the strip it
+// falls in gives x, its place between that strip's top and bottom gives y.
+verse_panel_point_quad :: (blx: int, bly: int, brx: int, bry: int, trx: int, tyr: int, tlx: int, tly: int, n: int, dw: int, dh: int, x: int, y: int, k: int) -> int #export_c {
+  if n < 1 || dw < 1 || dh < 1 { return -1; }
+  for i: 0..<n {
+    x0 := verse_panel_strip(blx, bly, brx, bry, trx, tyr, tlx, tly, i, n, 0); x1 := verse_panel_strip(blx, bly, brx, bry, trx, tyr, tlx, tly, i, n, 2);
+    if x1 <= x0 || x < x0 || x >= x1 { continue; }
+    y0 := verse_panel_strip(blx, bly, brx, bry, trx, tyr, tlx, tly, i, n, 1); y1 := verse_panel_strip(blx, bly, brx, bry, trx, tyr, tlx, tly, i, n, 3);
+    if y1 <= y0 || y < y0 || y >= y1 { return -1; }
+    if k == 0 { return (i * dw) / n + ((x - x0) * dw) / (n * (x1 - x0)); }
+    return ((y - y0) * dh) / (y1 - y0);
+  }
+  return -1;
+}
+#test "a point on the slanted screen" {
+  #assert verse_panel_point_quad(0, 100, 400, 100, 400, 0, 0, 0, 4, 1280, 720, 200, 50, 0) == 640;
+  #assert verse_panel_point_quad(0, 100, 400, 100, 400, 0, 0, 0, 4, 1280, 720, 200, 50, 1) == 360;
+  #assert verse_panel_point_quad(0, 100, 400, 100, 400, 0, 0, 0, 4, 1280, 720, 500, 50, 0) == -1 && verse_panel_point_quad(0, 100, 400, 100, 400, 0, 0, 0, 4, 1280, 720, 200, 150, 0) == -1;
+  #assert verse_panel_point_quad(0, 100, 400, 80, 400, 20, 0, 0, 4, 1280, 720, 390, 10, 1) == -1;   // above the far, shorter side
+}
