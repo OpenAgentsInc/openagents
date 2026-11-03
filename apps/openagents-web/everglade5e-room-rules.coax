@@ -1,0 +1,378 @@
+// Everglade 5E's rules for a shared room (spec docs/verse/2026-11-03-everglade-multiplayer-spec.md,
+// sections 3.1 and 6): the room server's one SRD 5e battle for up to 16 players. Each seat is its
+// own creature (E5RR_SEAT + seat, Everglade's caster: fb_everglade_hero), with its own turn (an
+// FbSeat) and the realm's bar; Everglade's people are the creatures after the seats, as in
+// everglade5e-rules.coax, whose helpers and constants this file reuses. The page's own single-
+// caster unit stays as it is (everglade5e-face.c calls it); the room server links this one.
+// Players are one team, so lasting areas never hurt them; a damaging cast never touches another
+// player (PvP is off: the other seats step out of the battle for its roll), while a heal does.
+// Lasting areas (Moonbeam, Black Tentacles, Conjure Animals' pack, ...) are the room's zones,
+// E5RR_ZONES of them, in chunks of FB_ZONES for fivebar.coax's zone code.
+//   coax test --library apps/openagents-web/everglade5e-room-rules.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+#load "everglade5e-rules.coax";
+
+E5RR_SEATS :: 16;
+E5RR_SEAT :: 0;                              // seat s is creature s
+E5RR_FOLK0 :: E5RR_SEATS;                    // Everglade's person j is creature E5RR_FOLK0 + j
+E5RR_ZONES :: 32;                            // a multiple of FB_ZONES
+E5RR_EV_FLOATS :: 8;                         // kind, spell, by, to, amount, damage, x, z (metres)
+// who an event names, as the room's frames do (spec 3.6 TGT): a seat 1000 + s, a person their index
+E5RR_TGT_SEAT :: 1000;
+
+E5rRoom :: struct {
+  b: [1] RsBattle;
+  seat: [E5RR_SEATS] FbSeat;
+  live: [E5RR_SEATS] bool;
+  zones: [E5RR_ZONES] FbZone;
+  zone_id: [E5RR_ZONES] int;                 // each zone's id while on (0 off); ids count up from 1
+  zone_slot: [E5RR_ZONES] int;               // the bar slot that made it
+  next_id: int;
+  bar: [FB_EG_SLOTS] FbAb;
+  block: [E5R_FOLK] int;
+  seen: int;
+  started: bool;
+}
+
+e5rr_folk :: (j: int) -> int { return E5RR_FOLK0 + j; }
+// A creature's TGT code (spec 3.6), -1 for none.
+e5rr_tgt :: (i: int) -> int {
+  if i >= E5RR_SEAT && i < E5RR_SEAT + E5RR_SEATS { return E5RR_TGT_SEAT + i - E5RR_SEAT; }
+  if i >= E5RR_FOLK0 && i < E5RR_FOLK0 + E5R_FOLK { return i - E5RR_FOLK0; }
+  return -1;
+}
+// The creature a TGT code names, -1 for none.
+e5rr_of_tgt :: (t: int) -> int {
+  if t >= E5RR_TGT_SEAT && t < E5RR_TGT_SEAT + E5RR_SEATS { return E5RR_SEAT + t - E5RR_TGT_SEAT; }
+  if t >= 0 && t < E5R_FOLK { return E5RR_FOLK0 + t; }
+  return -1;
+}
+
+e5rr_start :: (r: [] E5rRoom, seed: int) #export_c {
+  b := r[0].b[..];
+  b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = E5R_SIDE; b[0].h = E5R_SIDE;
+  b[0].beat = f32(E5R_BEAT); b[0].recharge = f32(E5R_RECHARGE);
+  for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
+  b[0].dice[0].state = cast(u64) seed * 7919 + 3;
+  for s: 0..<E5RR_SEATS {
+    o := fb_everglade_hero("Player", 0);
+    o.hp = 0; o.dead = true;
+    _ := rs_add(b, o, E5R_AWAY, E5R_AWAY);
+    r[0].live[s] = false;
+  }
+  for j: 0..<E5R_FOLK {
+    _ := rs_add(b, fb_folk("Commoner", 1, 10, 4, e5r_scores(0)), E5R_AWAY, E5R_AWAY);
+    r[0].block[j] = -1;
+  }
+  rs_begin(b);
+  for s: 0..<E5RR_SEATS { r[0].seat[s] = FbSeat.{me = E5RR_SEAT + s}; }
+  for q: 0..<E5RR_ZONES { r[0].zones[q].on = false; r[0].zone_id[q] = 0; }
+  r[0].next_id = 1;
+  _ := fb_everglade(r[0].bar[..]);
+  r[0].seen = b[0].book[0].seq;
+  r[0].started = true;
+}
+
+// A player sits at seat s: a fresh caster, full Hit Points, at (x, z).
+e5rr_join :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c {
+  if !r[0].started || s < 0 || s >= E5RR_SEATS { return; }
+  b := r[0].b[..];
+  i := E5RR_SEAT + s;
+  t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
+  b[0].c[i] = fb_everglade_hero("Player", 0);
+  b[0].c[i].turn_at = hi_r(t, b[0].clock); b[0].c[i].round_at = ro;
+  b[0].c[i].x = e5r_sq(x); b[0].c[i].y = e5r_sq(z);
+  r[0].seat[s] = FbSeat.{me = i};
+  r[0].live[s] = true;
+}
+// The player at seat s left: its concentration (and so its zones) ends, and it leaves the battle.
+e5rr_leave :: (r: [] E5rRoom, s: int) #export_c {
+  if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] { return; }
+  b := r[0].b[..];
+  i := E5RR_SEAT + s;
+  if b[0].c[i].conc >= 0 { rs_end_concentration(b, i, " (left)"); }
+  b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY; b[0].c[i].dead = true; b[0].c[i].hp = 0;
+  r[0].live[s] = false;
+  e5rr_zones_check(r);
+}
+// Where seat s stands now (Everglade's metres).
+e5rr_place :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c {
+  if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] { return; }
+  i := E5RR_SEAT + s;
+  r[0].b[0].c[i].x = e5r_sq(x); r[0].b[0].c[i].y = e5r_sq(z);
+}
+// Everglade's people, E5R_FOLK_FLOATS each as e5r_sync takes them (here, x, z, hp, temp, max, ac,
+// block): the town's step owns where they are; the engine keeps their Hit Points once they are in.
+// A person seen for the first time (or with a new block) takes the given Hit Points.
+e5rr_people :: (r: [] E5rRoom, folk: [] f32, folk_n: int) #export_c {
+  if !r[0].started { return; }
+  b := r[0].b[..];
+  for j: 0..<E5R_FOLK {
+    i := e5rr_folk(j);
+    f := j * E5R_FOLK_FLOATS;
+    if j >= folk_n || folk[f] < 0.5 { b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY; continue; }
+    block := clamp_r(cast(int) folk[f + 7], 0, E5R_BLOCKS - 1);
+    fmax := rs_max(cast(int) folk[f + 5], 1);
+    if r[0].block[j] != block || b[0].c[i].hp_max != fmax {
+      r[0].block[j] = block;
+      t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
+      b[0].c[i] = fb_folk(E5R_BLOCK_NAME[block], 1, cast(int) folk[f + 6], fmax, e5r_scores(block));
+      b[0].c[i].hp = rs_min(rs_max(cast(int) folk[f + 3], 0), fmax);
+      b[0].c[i].dead = b[0].c[i].hp <= 0;
+      b[0].c[i].turn_at = t; b[0].c[i].round_at = ro;
+    }
+    b[0].c[i].x = e5r_sq(folk[f + 1]); b[0].c[i].y = e5r_sq(folk[f + 2]);
+  }
+}
+// The room's clock on to `clock` (seconds): turns, the saves people repeat and the zones' rounds.
+e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c {
+  if !r[0].started { return; }
+  b := r[0].b[..];
+  if clock - b[0].clock <= 0 { return; }
+  rs_tick(b, clock - b[0].clock);
+  for s: 0..<E5RR_SEATS { if r[0].live[s] { fb_seat_step(b, r[0].seat[s..<s + 1]); } }
+  for j: 0..<E5R_FOLK {
+    i := e5rr_folk(j);
+    c := b[0].c[i];
+    if c.dead || c.x == E5R_AWAY || c.turn_at > b[0].clock { continue; }
+    b[0].who = i; rs_start_turn(b, i); rs_end_turn(b, i); b[0].who = -1;
+  }
+  for k: 0..<E5RR_ZONES / FB_ZONES { _ := fb_zones_round(r[0].zones[k * FB_ZONES..<(k + 1) * FB_ZONES], b); }
+  e5rr_zones_check(r);
+}
+// A zone whose caster's concentration ended is off: its id goes.
+e5rr_zones_check :: (r: [] E5rRoom) {
+  b := r[0].b[..];
+  for q: 0..<E5RR_ZONES {
+    z := r[0].zones[q];
+    if z.on && (z.by < 0 || z.by >= b[0].n || b[0].c[z.by].conc != z.spell) { r[0].zones[q].on = false; }
+    if !r[0].zones[q].on { r[0].zone_id[q] = 0; }
+  }
+}
+// Whether slot a heals or helps (and so reaches other players), else it only harms.
+e5rr_helps :: (a: FbAb) -> bool {
+  if a.tg == FB_ALLY || a.tg == FB_ALLIES || a.tg == FB_SELF { return true; }
+  if a.kind != FB_SPELL { return false; }
+  s := rs_spell(a.sp);
+  for q: 0..<s.step_n { if s.steps[q].kind == RS_S_HEAL { return true; } }
+  return false;
+}
+// The one most hurt of seat s and the other players within 60 feet, for a heal.
+e5rr_most_hurt :: (r: [] E5rRoom, s: int) -> int {
+  b := r[0].b[..];
+  me := E5RR_SEAT + s;
+  best := me; most := b[0].c[me].hp_max - b[0].c[me].hp;
+  for o: 0..<E5RR_SEATS {
+    i := E5RR_SEAT + o;
+    c := b[0].c[i];
+    if o == s || !r[0].live[o] || c.dead || rs_feet_to(b, me, i) > 60 { continue; }
+    if c.hp_max - c.hp > most { most = c.hp_max - c.hp; best = i; }
+  }
+  return best;
+}
+// Seat s uses bar slot k, landing at (x, z), at the target tgt (a TGT code, -1 none: the person
+// nearest the point within 10 feet). The engine rolls it. False (nothing spent) when it can't: no
+// such slot, the seat is dead or can't act.
+e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #export_c {
+  if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] || k < 0 || k >= FB_EG_SLOTS { return false; }
+  b := r[0].b[..];
+  me := E5RR_SEAT + s;
+  a := r[0].bar[k];
+  if a.kind == FB_WORLD { return true; }
+  if b[0].c[me].dead || b[0].c[me].hp <= 0 || !rs_can_act(b[0].c[me]) { return false; }
+  // nothing on the bar runs out (everglade5e-rules.coax e5r_free): a fresh turn, every slot back
+  c := b[0].c[me..<me + 1];
+  for l: 0..<10 { c[0].slots[l] = c[0].slots_max[l]; }
+  for u: 0..<RS_USES { c[0].uses[u] = c[0].uses_max[u]; }
+  c[0].reacted = false;
+  r[0].seat[s].open = true;
+  r[0].seat[s].turn.action = false; r[0].seat[s].turn.bonus = false; r[0].seat[s].turn.slot_spent = false;
+  tx := e5r_sq(x); ty := e5r_sq(z);
+  foe := e5rr_of_tgt(tgt);
+  if foe >= 0 && foe < E5RR_FOLK0 && !e5rr_helps(a) { foe = -1; }   // PvP is off: no harm aimed at a player
+  if foe < 0 {
+    // the person nearest the point within 10 feet
+    bd := 11;
+    for j: 0..<E5R_FOLK {
+      i := e5rr_folk(j);
+      cc := b[0].c[i];
+      if cc.dead || cc.x == E5R_AWAY { continue; }
+      d := rs_feet(tx, ty, cc.x, cc.y);
+      if d < bd { bd = d; foe = i; }
+    }
+  }
+  if a.tg == FB_SELF { foe = -1; tx = b[0].c[me].x; ty = b[0].c[me].y; }
+  ally := e5rr_most_hurt(r, s);
+  if a.tg == FB_ALLY { foe = ifx tgt >= E5RR_TGT_SEAT then e5rr_of_tgt(tgt) else ally; }
+  // a harmful roll: the other players step out of the battle while it is rolled
+  helps := e5rr_helps(a);
+  kept_x: [E5RR_SEATS] int; kept_y: [E5RR_SEATS] int;
+  if !helps {
+    for o: 0..<E5RR_SEATS {
+      i := E5RR_SEAT + o;
+      kept_x[o] = b[0].c[i].x; kept_y[o] = b[0].c[i].y;
+      if o != s { b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY; }
+    }
+  }
+  before: [10] int;
+  for l: 0..<10 { before[l] = b[0].c[me].slots[l]; }
+  ok := fb_seat_use(b, r[0].seat[s..<s + 1], a, foe, tx, ty, ally);
+  if !helps { for o: 0..<E5RR_SEATS { if o != s { b[0].c[E5RR_SEAT + o].x = kept_x[o]; b[0].c[E5RR_SEAT + o].y = kept_y[o]; } } }
+  if ok && a.again >= 0 {
+    spent := 0;
+    for l: 1..<10 { if b[0].c[me].slots[l] < before[l] { spent = l; } }
+    // into the first chunk with a free zone (fb_zone_add takes the first free of its chunk)
+    chunk := -1;
+    for q: 0..<E5RR_ZONES { if !r[0].zones[q].on && chunk < 0 { chunk = q / FB_ZONES; } }
+    if chunk >= 0 {
+      zs := r[0].zones[chunk * FB_ZONES..<(chunk + 1) * FB_ZONES];
+      fb_zone_add(zs, b, me, a, rs_max(spent, a.lvl), tx, ty);
+      for q: chunk * FB_ZONES..<(chunk + 1) * FB_ZONES { if r[0].zones[q].on && r[0].zone_id[q] == 0 { r[0].zone_id[q] = r[0].next_id; r[0].zone_slot[q] = k; r[0].next_id += 1; } }
+    }
+  }
+  e5rr_zones_check(r);
+  return ok;
+}
+// Seat s ends what bar slot k holds up: its concentration, when that is k's spell.
+e5rr_end :: (r: [] E5rRoom, s: int, k: int) -> bool #export_c {
+  if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] || k < 0 || k >= FB_EG_SLOTS { return false; }
+  b := r[0].b[..];
+  i := E5RR_SEAT + s;
+  a := r[0].bar[k];
+  if a.kind != FB_SPELL || b[0].c[i].conc < 0 || b[0].c[i].conc != a.sp { return false; }
+  rs_end_concentration(b, i, " (ended)");
+  e5rr_zones_check(r);
+  return true;
+}
+// Damage the world dealt (a guard's sword, a spear, a fall): to creature `who` (a TGT code).
+e5rr_hurt :: (r: [] E5rRoom, who: int, amount: int) #export_c {
+  if !r[0].started || amount <= 0 { return; }
+  i := e5rr_of_tgt(who);
+  if i < 0 { return; }
+  rs_damage(r[0].b[..], i, i, amount, RS_BLUDGEONING, false, -1);
+}
+
+// ---- what the engine says
+
+// Creature i (seat or person): hp, max, temp, conditions, dead (0 or 1), concentration's spell (-1).
+E5RR_OUT_FLOATS :: 6;
+e5rr_creature :: (r: [] E5rRoom, i: int, out: [] f32) {
+  c := r[0].b[0].c[i];
+  out[0] = f32(c.hp); out[1] = f32(c.hp_max); out[2] = f32(c.temp); out[3] = f32(c.cond);
+  out[4] = ifx c.dead then 1.0f32 else 0.0f32; out[5] = f32(c.conc);
+}
+e5rr_seat_out :: (r: [] E5rRoom, s: int, out: [] f32) #export_c { if s >= 0 && s < E5RR_SEATS && out.count >= E5RR_OUT_FLOATS { e5rr_creature(r, E5RR_SEAT + s, out); } }
+e5rr_folk_out :: (r: [] E5rRoom, j: int, out: [] f32) #export_c { if j >= 0 && j < E5R_FOLK && out.count >= E5RR_OUT_FLOATS { e5rr_creature(r, e5rr_folk(j), out); } }
+// Zone q (0 to E5RR_ZONES): its id (0 when off), then into out: spell, by (a TGT code), x, z
+// (metres, the square's middle), radius (metres) and the bar slot that made it.
+E5RR_ZONE_FLOATS :: 6;
+e5rr_zone :: (r: [] E5rRoom, q: int, out: [] f32) -> int #export_c {
+  if q < 0 || q >= E5RR_ZONES || !r[0].zones[q].on || out.count < E5RR_ZONE_FLOATS { return 0; }
+  z := r[0].zones[q];
+  out[0] = f32(z.spell); out[1] = f32(e5rr_tgt(z.by));
+  out[2] = f32(E5R_X0) + (f32(z.cx) + 0.5) * f32(E5R_SQ); out[3] = f32(E5R_X0) + (f32(z.cy) + 0.5) * f32(E5R_SQ);
+  out[4] = f32(z.r_ft) * 0.3048; out[5] = f32(r[0].zone_slot[q]);
+  return r[0].zone_id[q];
+}
+// The engine's events since the last call, oldest first, E5RR_EV_FLOATS each (kind RS_EV_*, spell,
+// by and to as TGT codes, amount, damage type, the square's x and z in metres): how many.
+e5rr_events :: (r: [] E5rRoom, out: [] f32) -> int #export_c {
+  if !r[0].started { return 0; }
+  b := r[0].b[..];
+  fresh := rs_min(b[0].book[0].seq - r[0].seen, RS_EVENTS);
+  r[0].seen = b[0].book[0].seq;
+  n := 0;
+  q := fresh - 1;
+  while q >= 0 {
+    e := rs_recent_at(b[0].book[..], q);
+    q -= 1;
+    if (n + 1) * E5RR_EV_FLOATS > out.count { continue; }
+    o := n * E5RR_EV_FLOATS;
+    out[o] = f32(e.kind); out[o + 1] = f32(e.spell); out[o + 2] = f32(e5rr_tgt(e.by)); out[o + 3] = f32(e5rr_tgt(e.to));
+    out[o + 4] = f32(e.amount); out[o + 5] = f32(e.damage);
+    out[o + 6] = f32(E5R_X0) + (f32(e.x) + 0.5) * f32(E5R_SQ); out[o + 7] = f32(E5R_X0) + (f32(e.y) + 0.5) * f32(E5R_SQ);
+    n += 1;
+  }
+  return n;
+}
+
+// ---- checks
+
+// Two guards 3 m east of the origin and a commoner 30 m off, as everglade5e-rules.coax's test world.
+e5rr_test_people :: (r: [] E5rRoom) {
+  folk: [E5R_FOLK * E5R_FOLK_FLOATS] f32;
+  g := 0;
+  folk[g] = 1; folk[g + 1] = 3; folk[g + 2] = 0; folk[g + 3] = 11; folk[g + 5] = 11; folk[g + 6] = 16; folk[g + 7] = f32(E5R_GUARD);
+  g = E5R_FOLK_FLOATS;
+  folk[g] = 1; folk[g + 1] = 3; folk[g + 2] = 1.6; folk[g + 3] = 11; folk[g + 5] = 11; folk[g + 6] = 16; folk[g + 7] = f32(E5R_GUARD);
+  g = 2 * E5R_FOLK_FLOATS;
+  folk[g] = 1; folk[g + 1] = 30; folk[g + 2] = 0; folk[g + 3] = 4; folk[g + 5] = 4; folk[g + 6] = 10; folk[g + 7] = f32(E5R_COMMONER);
+  e5rr_people(r, folk[..], E5R_FOLK);
+}
+#test "Everglade 5E room: sixteen players, each its own caster; a blast hurts the town, never another player" #steps 2000000000 {
+  r: [1] E5rRoom;
+  e5rr_start(r[..], 7);
+  e5rr_test_people(r[..]);
+  for s: 0..<E5RR_SEATS { e5rr_join(r[..], s, 0, f32(s) * 0.2); }
+  out: [E5RR_OUT_FLOATS] f32;
+  e5rr_seat_out(r[..], 15, out[..]);
+  #assert out[0] == 57 && out[1] == 57 && out[4] == 0;
+  // seat 3 throws the Thunderbolt on the guards, with seats 0 to 15 standing round them
+  for s: 0..<E5RR_SEATS { e5rr_place(r[..], s, 3, 0.5); }
+  #assert e5rr_use(r[..], 3, 1, 3, 0.8, -1);
+  e5rr_folk_out(r[..], 0, out[..]); #assert out[0] == 0;
+  e5rr_folk_out(r[..], 1, out[..]); #assert out[0] == 0;
+  e5rr_folk_out(r[..], 2, out[..]); #assert out[0] == 4;
+  for s: 0..<E5RR_SEATS { e5rr_seat_out(r[..], s, out[..]); #assert out[0] == 57; }
+  // the events name the caster as seat 3 and the guards by their index
+  ev: [64 * E5RR_EV_FLOATS] f32;
+  n := e5rr_events(r[..], ev[..]);
+  hits := 0;
+  for q: 0..<n {
+    if ev[q * E5RR_EV_FLOATS] == f32(RS_EV_DAMAGE) { #assert ev[q * E5RR_EV_FLOATS + 2] == f32(E5RR_TGT_SEAT + 3); #assert ev[q * E5RR_EV_FLOATS + 3] < 2; hits += 1; }
+  }
+  #assert hits >= 2 && e5rr_events(r[..], ev[..]) == 0;
+  // aimed straight at another player, a harm is refused a target; a heal reaches them
+  e5rr_hurt(r[..], E5RR_TGT_SEAT + 5, 30);
+  e5rr_seat_out(r[..], 5, out[..]); #assert out[0] == 27;
+  #assert e5rr_use(r[..], 3, 28, 3, 0.5, E5RR_TGT_SEAT + 5);   // Healing Word on seat 5
+  e5rr_seat_out(r[..], 5, out[..]); #assert out[0] > 27;
+}
+#test "Everglade 5E room: a lasting area is the room's, with an id, and ends when its caster leaves" #steps 2000000000 {
+  r: [1] E5rRoom;
+  e5rr_start(r[..], 9);
+  e5rr_test_people(r[..]);
+  e5rr_join(r[..], 0, 0, 0); e5rr_join(r[..], 1, 1, 0);
+  #assert e5rr_use(r[..], 0, 32, 3, 0.8, -1);   // Conjure Animals at the guards
+  z: [E5RR_ZONE_FLOATS] f32;
+  id := 0; q0 := -1;
+  for q: 0..<E5RR_ZONES { got := e5rr_zone(r[..], q, z[..]); if got > 0 { id = got; q0 = q; } }
+  #assert id == 1 && z[0] == f32(SP_CONJURE_ANIMALS) && z[1] == f32(E5RR_TGT_SEAT) && abs(z[2] - 3) < 1 && z[4] > 2 && z[5] == 32;
+  // seat 1's Moonbeam is a second zone with the next id
+  #assert e5rr_use(r[..], 1, 20, 30, 0, -1);
+  ids := 0;
+  for q: 0..<E5RR_ZONES { if e5rr_zone(r[..], q, z[..]) > 0 { ids += 1; } }
+  #assert ids == 2;
+  // a round on, the pack bites the guards; never the players
+  e5rr_step(r[..], r[0].b[0].clock + 7);
+  out: [E5RR_OUT_FLOATS] f32;
+  e5rr_seat_out(r[..], 1, out[..]); #assert out[0] == 57;
+  // seat 0 leaves: its pack goes, seat 1's Moonbeam stays
+  e5rr_leave(r[..], 0);
+  #assert e5rr_zone(r[..], q0, z[..]) == 0;
+  ids = 0;
+  for q: 0..<E5RR_ZONES { if e5rr_zone(r[..], q, z[..]) > 0 { ids += 1; } }
+  #assert ids == 1;
+  #assert !e5rr_use(r[..], 0, 1, 3, 0, -1);
+  // seat 1 ends its Moonbeam (slot 20); ending a slot it doesn't hold up does nothing
+  #assert !e5rr_end(r[..], 1, 32);
+  #assert e5rr_end(r[..], 1, 20);
+  ids = 0;
+  for q: 0..<E5RR_ZONES { if e5rr_zone(r[..], q, z[..]) > 0 { ids += 1; } }
+  #assert ids == 0;
+}
