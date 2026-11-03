@@ -830,16 +830,43 @@ It holds no MetaHuman asset and draws with none.
   harder fit to judge by eye. In the lab, with a pack in, the body button
   (and G) shows the outfit and steps to the next: `?pack&outfit=fantasy`,
   `hooded`, `robe`, then the pack's own clothes (`?pack`).
-- **Her figure under the cloth.** The outfits were cut for the superhero
-  female, whose trunk is straighter than a woman's. Before the gap step,
-  `outfits.snug` draws the trunk's cloth (bodice, tunic, belt and the
-  skirt's top; not the hood, pauldrons, boots, bracers or sleeves) onto her
-  body: a point more than 0.5 cm off the skin goes 95% of the rest of the
-  way in along the skin's normal, from the shoulders down to the hips and
-  fading out over 12 cm below them. It measures against skin that faces
-  the same way as the cloth, so a vest bridging the bust's underside is
-  drawn in to the waist below it instead of to the bust. The moves are
-  smoothed over the cloth's neighbours.
+- **Her figure under the cloth.** The export's body is a medium build: a
+  waist nearly as wide as the ribs, a belly that stands well in front of the
+  spine and flat glutes, which read heavy and older under fitted cloth.
+  `shape.figure` sculpts the trunk before anything is fitted to it, moving
+  the DNA's bind and the arms-down pose vertex for vertex by smooth bands
+  along the height: the belly drawn back by up to 45% of its distance in
+  front of the spine at the navel, the waist's half-width drawn in by up to
+  13%, the widest hips let out by 3.5% and the glutes by 16%. A vertex moves
+  by its share of trunk and hip weight, so the arms, neck, head and lower
+  legs stay as they were. The pack's own garments follow the body points
+  near them (`shape.moved`, a Gaussian over the moves within 8 cm), so they
+  keep their distance from the skin.
+
+  The fantasy outfits were cut for the superhero female, whose trunk is
+  straighter than a woman's. Before the gap step, `outfits.snug` draws the
+  trunk's cloth (bodice, tunic, belt and the skirt's top; not the hood,
+  pauldrons, boots, bracers or sleeves) onto her body: a point goes to
+  0.5 cm off the skin plus 30% of how much further out it sat than the
+  piece's nearest point within 3 cm, so a piece's layers (a collar over a
+  bodice, a lace over a panel) stay in order instead of collapsing into one
+  surface. It works from the shoulders down to the hips, fading out over
+  12 cm below them, and measures against skin that faces the same way as
+  the cloth, so a vest bridging the bust's underside is drawn in to the
+  waist below it instead of to the bust. Pieces under 12,000 triangles are
+  split 1 to 4 first (`outfits.subdivided`), so the bust is a curve and not
+  a faceted cone; the moves are smoothed over the cloth's neighbours (more
+  passes on denser pieces), and the normals are recomputed with creases kept.
+- **Her own clothes.** The pack's own outfit (`?pack`) drops the film's gown
+  (robe, its lower skirt, hood and lining): it was cut round clasped hands
+  and tears into strips when the arms move. What stays is fitted with three
+  rules: cloth over the hands goes (triangles within 1.5 cm of a point mostly
+  weighted to a hand, and on the lower body's piece, which carries gloves,
+  anything within 3 cm of the arms or hands); the skirt's top is drawn in to
+  the hips between 74 and 92 cm, 1 cm off the skin; and the scalp under the
+  hair cards is painted the hair's colour (80% of the mean of its solid
+  texels) where four cards' solid texels lie within 1.6 cm, feathered, so
+  skin no longer shows between the strands.
 - **Her posture.** The people rig's clips were made on a stooped body, and
   the lab's retarget passes their global orientations straight to her, so
   the stoop showed. Per clip and joint the lab takes the mean local
@@ -847,12 +874,16 @@ It holds no MetaHuman asset and draws with none.
   inverse: on the trunk (pelvis to head) in every clip but die, knock and
   cower, half of it on the clavicles, and on the legs in the standing clips
   (idle, talk, nod, fold, lantern), so every clip starts from her own rest
-  pose: chest up, head over the shoulders, weight on both feet. The fingers
-  go 40% of the way from her rest pose to the clip's, so her hands hang
-  relaxed instead of in fists. The pelvis rises by however much the
-  correction moved the lowest foot joint, so she stays on the floor.
-  `metahuman.clip_poses` applies the same correction, so the pack's edge
-  and peek checks see the poses the lab draws.
+  pose. Her rest itself carries the head forward of the shoulders, so the
+  rest the clips are corrected to is leaned too: the upper spine 2 degrees
+  back, the neck 14 degrees back and the head 13 degrees forward again
+  (about the figure's side-to-side axis in each parent's frame), which
+  brings the head over the shoulders with the chin level. The fingers go
+  22% of the way from her rest pose to the clip's (70% in lantern and slash,
+  which grip), so her hands hang relaxed instead of in fists. The pelvis
+  rises by however much the correction moved the lowest foot joint, so she
+  stays on the floor. `metahuman.clip_poses` applies the same correction,
+  so the pack's edge and peek checks see the poses the lab draws.
 - **Which way v runs.** The DNA meshes' texture v runs up their images, as
   Maya's: the compiler flips it when the lips' vertices land on redder
   texels than the cheeks' that way (`metahuman.lips_v`). It used to decide
@@ -869,8 +900,15 @@ It holds no MetaHuman asset and draws with none.
 - **Hair and eyes.** Hair cards are lit along their strands (two shifted
   Kajiya-Kay highlights, after Marschner's R and TRT lobes), not by GGX, with
   the normal bent toward the way out from the head; their faintest texels go,
-  their solid ones stay, and a stable 4x4 dither fades the rest. Eyes add a
-  Fresnel sky reflection on the cornea and a sharp key glint.
+  their solid ones stay, and a stable 4x4 dither fades the rest (from 6%
+  coverage up, so fine strands at the edge of the hair still draw). Eyes add
+  a Fresnel sky reflection on the cornea and a sharp key glint.
+- **Skin and light.** The skin's albedo is graded before lighting: its
+  saturation raised 15% about its luma and tinted slightly warm (1.02,
+  0.97, 0.93), so it reads as living skin and not grey. The rig is a key of
+  3.6, a fill of 0.6 and a rim of 2.4 at an exposure of 1.1, with an ambient
+  of a cool sky above and a warm bounce below, so her face has a lit side
+  and a shadow side instead of flat light.
 - **Floor shadow.** With a pack in, the floor takes the figure's shadow from
   the mesh's own shadow map; the capsules no longer draw or cast.
 - **Private loading.** The world's assets are `private:human`. On

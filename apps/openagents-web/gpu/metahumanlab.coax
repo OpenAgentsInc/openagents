@@ -428,20 +428,27 @@ mhlab_layer :: (sheets:Tex2DArray,sheet:Sampler,uv:V2,dx:V2,dy:V2,layer:u32,none
   if (layer==255) { return none; }
   return render_sample_layer8_grad(sheets,sheet,uv,cast,trunc(s32)(layer),dx,dy,0.0f32);
 }
-// How much of the key reaches a world point: the shadow map's comparison, four bilinear taps
-// round it (16 texels) blended.
+// How much of the key reaches a world point: the shadow map's comparison at nine bilinear taps
+// over a disc about five texels across, blended, so a hand's or a sleeve's shadow on the cloth has
+// a soft edge instead of a stair-stepped one.
 mhlab_lit :: (w:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->f32 {
   q:V3=mhlab_light(add3(w,scale3(n,0.006f32)),u);
   uv:V2=v2((q.x*0.5f32)+0.5f32,0.5f32-(q.y*0.5f32));
   // outside the key's box (to its sides, or past its far side, as the floor far off) nothing casts
   if ((uv.x<0.0f32)||(uv.x>1.0f32)||(uv.y<0.0f32)||(uv.y>1.0f32)||(q.z>=0.999f32)||(q.z<=0.0f32)) { return 1.0f32; }
-  texel:f32=1.0f32/cast(f32)gpu_depth_width(shadow_map);
-  s:f32=0.0f32;
-  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(-texel,-texel)),q.z-u[279]);
-  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(texel,-texel)),q.z-u[279]);
-  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(-texel,texel)),q.z-u[279]);
-  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(texel,texel)),q.z-u[279]);
-  return s*0.25f32;
+  t:f32=1.0f32/cast(f32)gpu_depth_width(shadow_map);
+  a:f32=1.6f32*t; b:f32=2.6f32*t;
+  z:f32=q.z-u[279];
+  s:f32=gpu_compare(shadow_map,shadow_cmp,uv,z);
+  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(-a,-a)),z);
+  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(a,-a)),z);
+  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(-a,a)),z);
+  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(a,a)),z);
+  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(-b,0.0f32)),z);
+  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(b,0.0f32)),z);
+  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(0.0f32,-b)),z);
+  s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(0.0f32,b)),z);
+  return s*(1.0f32/9.0f32);
 }
 // GGX: the normal distribution and the visibility term (Smith, height-correlated, Karis's fit).
 mhlab_ggx :: (nh:f32,a:f32)->f32 {
@@ -516,7 +523,7 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   // between the two an ordered 4x4 dither fades them (a stable, sort-free stand-in for alpha to
   // coverage: the same pixels every frame); everything else cuts at 0.35
   if ((m==3)||(m==4)) {
-    if (base.w<(0.25f32+(0.5f32*mhlab_bayer(cast(int)(s.pos.x),cast(int)(s.pos.y))))) { gpu_demote_helper(); }
+    if (base.w<(0.06f32+(0.5f32*mhlab_bayer(cast(int)(s.pos.x),cast(int)(s.pos.y))))) { gpu_demote_helper(); }
   } else if (m!=1) {
     if (base.w<0.35f32) { gpu_demote_helper(); }
   }
@@ -524,6 +531,12 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   ao:f32=1.0f32;
   if (m==1) { ao=base.w; }
   albedo:V3=v3(base.x*mat.x,base.y*mat.y,base.z*mat.z);
+  // skin: the export's maps are a pale, flat grey-pink once lit; a young woman's skin reads warmer
+  // and fuller (the blood under it), so its colour is pushed away from grey and toward peach
+  if (m==1) {
+    lum:f32=(0.2126f32*albedo.x)+(0.7152f32*albedo.y)+(0.0722f32*albedo.z);
+    albedo=v3(fmax(lum+((albedo.x-lum)*1.15f32),0.0f32)*1.02f32,fmax(lum+((albedo.y-lum)*1.15f32),0.0f32)*0.97f32,fmax(lum+((albedo.z-lum)*1.15f32),0.0f32)*0.93f32);
+  }
   ng:V3=normalize3(s.normal);
   if (!front) { ng=scale3(ng,-1.0f32); }
   n:V3=ng;
@@ -557,7 +570,7 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   // the studio's light all round (its sky above, the floor's bounce below, as a low-order
   // spherical-harmonics irradiance would give), the cavities darker
   sky:f32=(0.5f32+(0.5f32*n.y));
-  amb:V3=add3(scale3(v3(0.36f32,0.4f32,0.48f32),sky*0.55f32),scale3(v3(0.22f32,0.2f32,0.18f32),(1.0f32-sky)*0.35f32));
+  amb:V3=add3(scale3(v3(0.38f32,0.39f32,0.42f32),sky*0.55f32),scale3(v3(0.26f32,0.22f32,0.19f32),(1.0f32-sky)*0.4f32));
   amb=add3(amb,scale3(v3(0.05f32,0.045f32,0.04f32),saturate(dot3(n,normalize3(wg_at3(u,276))))));
   c=add3(c,scale3(v3(albedo.x*amb.x,albedo.y*amb.y,albedo.z*amb.z),ao));
   // and its reflection: the sky's colour off the surface, by Fresnel and how smooth it is

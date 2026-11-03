@@ -223,10 +223,12 @@ head_axis :: (s: [] Lab, local: Point) -> Point { return turn_y(quat_rotate(s[0]
 // mean turn of the trunk's joints out (pelvis to head, half the clavicles'), so on average they
 // sit as the rig's upright rest and the clip's motion plays round that; standing clips do the
 // same with the legs (feet level, weight on both); every clip opens the fingers to
-// POSTURE_HAND of their curl. Clips that end on the ground (die, knock, cower) keep their trunk.
+// POSTURE_HAND of their curl (POSTURE_GRIP in a clip whose hand holds something). Clips that end on the ground (die, knock, cower) keep their trunk.
 // verse/tools/humans/metahuman.py clip_poses applies the same for its checks.
 POSTURE_SAMPLES :: 24;
-POSTURE_HAND :: 0.4;
+POSTURE_HAND :: 0.22;   // an empty hand: a relaxed curl, not a fist
+POSTURE_GRIP :: 0.7;    // a hand that holds (the lantern, the sword): most of the clip's grip
+posture_hand :: (c: int) -> f32 { return ifx c == PEOPLE_LANTERN || c == PEOPLE_SLASH then POSTURE_GRIP else POSTURE_HAND; }
 POSTURE_CLAVICLE :: 0.5;
 posture_kind :: (c: int, j: int) -> int {      // 0 none, 1 trunk, 2 clavicle, 3 leg, 4 finger
   if (j >= 11 && j <= 30) || (j >= 35 && j <= 54) { return 4; }
@@ -237,6 +239,33 @@ posture_kind :: (c: int, j: int) -> int {      // 0 none, 1 trunk, 2 clavicle, 3
   if standing && j >= 55 && j <= 64 { return 3; }
   return 0;
 }
+// And the trunk's rest itself stood straighter: the rig's rest carries the stoop's last few
+// degrees (a forward head on a forward neck, a sunk chest). Each lean turns a joint's rest about
+// the figure's left-right axis (degrees; less than 0 takes its top back): the chest a little up,
+// the neck back over the shoulders, and the head forward again by about as much, so the face
+// stays level (a little lifted).
+posture_lean :: (j: int) -> f32 {
+  if j == MQ_SPINE_03 { return -2; }
+  if j == MQ_NECK { return -14; }
+  if j == MQ_HEAD { return 13; }
+  return 0;
+}
+posture_rest :: (r: SkinRig, j: int) -> Quat {
+  q := skin_rest(r, j).q;
+  deg := posture_lean(j);
+  if deg == 0 { return q; }
+  // the parent's turn at rest, from the root down
+  chain: [PEOPLE_JOINTS] int; n := 0;
+  p := r.parent[j];
+  while p >= 0 && n < PEOPLE_JOINTS { chain[n] = p; n += 1; p = r.parent[p]; }
+  g := Quat.{};
+  for i: 0..<n { g = quat_unit(quat_mul(g, skin_rest(r, chain[n - 1 - i]).q)); }
+  h := deg * 0.5 * 3.14159265 / 180.0;
+  lean := Quat.{x = sin(h), y = 0, z = 0, w = cos(h)};
+  // the lean in the parent's frame: g^-1 lean g
+  gi := Quat.{x = -g.x, y = -g.y, z = -g.z, w = g.w};
+  return quat_unit(quat_mul(quat_mul(quat_mul(gi, lean), g), q));
+}
 posture_build :: (s: [] Lab) {
   r := rig(s);
   for c: 0..<PEOPLE_CLIPS {
@@ -244,7 +273,7 @@ posture_build :: (s: [] Lab) {
       k := posture_kind(c, j);
       s[0].post[c * PEOPLE_JOINTS + j] = Quat.{};
       if k == 0 || k == 4 { continue; }
-      rest := skin_rest(r, j).q;
+      rest := posture_rest(r, j);
       acc := Quat.{x = 0, y = 0, z = 0, w = 0};
       for i: 0..<POSTURE_SAMPLES {
         q := skin_sample(r, c, j, r.duration[c] * f32(i) / f32(POSTURE_SAMPLES)).q;
@@ -290,7 +319,7 @@ posture :: (s: [] Lab) {
     k := posture_kind(c, j);
     if k == 0 { continue; }
     q := s[0].skin[0].now[j].q;
-    if k == 4 { s[0].skin[0].now[j].q = slerp(skin_rest(r, j).q, q, POSTURE_HAND); continue; }
+    if k == 4 { s[0].skin[0].now[j].q = slerp(skin_rest(r, j).q, q, posture_hand(c)); continue; }
     fixed := quat_unit(quat_mul(s[0].post[c * PEOPLE_JOINTS + j], q));
     s[0].skin[0].now[j].q = ifx k == 2 then slerp(q, fixed, POSTURE_CLAVICLE) else fixed;
   }
@@ -980,9 +1009,9 @@ mesh_uniforms :: (s: [] Lab, u: [] f32, mid: Point, reach: f32) {
   u[U_LIGHT + 12] = sun.x; u[U_LIGHT + 13] = sun.y; u[U_LIGHT + 14] = sun.z; u[U_LIGHT + 15] = 0.0015;
   for k: 0..<MATS * 4 { u[U_MAT + k] = s[0].mats[k]; }
   fill := unit_or(v3(-0.75, 0.3, 0.6), v3(0, 0, 1)); rim := unit_or(v3(-0.2, 0.45, -0.85), v3(0, 0, -1));
-  u[U_RIG] = fill.x; u[U_RIG + 1] = fill.y; u[U_RIG + 2] = fill.z; u[U_RIG + 3] = 0.9;
-  u[U_RIG + 4] = rim.x; u[U_RIG + 5] = rim.y; u[U_RIG + 6] = rim.z; u[U_RIG + 7] = 2.2;
-  u[U_RIG + 8] = 3.4; u[U_RIG + 9] = 1.0;
+  u[U_RIG] = fill.x; u[U_RIG + 1] = fill.y; u[U_RIG + 2] = fill.z; u[U_RIG + 3] = 0.6;
+  u[U_RIG + 4] = rim.x; u[U_RIG + 5] = rim.y; u[U_RIG + 6] = rim.z; u[U_RIG + 7] = 2.4;
+  u[U_RIG + 8] = 3.6; u[U_RIG + 9] = 1.1;
 }
 
 // ---- the face rig

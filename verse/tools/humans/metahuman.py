@@ -29,6 +29,7 @@ import people
 import face_rig
 import outfits
 import pack_human
+import shape
 
 DUMP_DIR = Path.home() / ".openagents/verse/private-build/metahuman-dump"
 OUTFITS = "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits"
@@ -369,8 +370,17 @@ def build(pack, export, outfit=None):
     flip_v = lips_v(head / "head_lod0_mesh.obj", maps / "Head_Basecolor.png")
     portrait = export.parent / "latest/mh.neutral.glb"
     skin = skin_maps(portrait, maps) if portrait.exists() else {}
+    # her figure (shape.py): the trunk sculpted in both the bind and the arms-down pose
+    down_path = export.parent / "rig-body-down/body_lod0_mesh.obj"
+    old_down = obj(down_path)[0] if down_path.exists() else obj(body / "body_lod0_mesh.obj")[0]
+    wbind = folded_weights(skin_file(body / "body_lod0_mesh.skin.txt"), JB)
+    spine_z = JB.p[JB.of[LOWER.index("pelvis")]][2]
+    body, down_path, moves = shape.figure(body, down_path, wbind, LOWER, spine_z, obj, DUMP_DIR / "body-shaped")
+    old_near = Near(old_down)
+    garment_moved = lambda pts: shape.moved(pts, old_down, moves, old_near)
     # the bind pose: the clothes' own (the body with its arms lowered), each joint's motion to it
-    down = arms_down(body, JB, export.parent / "rig-body-down/body_lod0_mesh.obj", rest_parent)
+    down = arms_down(body, JB, down_path, rest_parent)
+    down["moved"] = garment_moved
     M = down["M"]
     covered = set()
     if outfit:
@@ -386,6 +396,9 @@ def build(pack, export, outfit=None):
     elif portrait.exists():
         covered = dressed(pack, [portrait] + [q for q in LOWER_GARMENTS(export) if q.exists()],
                           down, (head, JH), W, p, P)
+    if skin and any(pc["material"] == pack_human.MATERIALS["hair"] for pc in pack.pieces):
+        hb, hn, hr = skin["head_lod0_mesh"]
+        skin["head_lod0_mesh"] = (scalp(hb, head / "head_lod0_mesh.obj", pack, flip_v), hn, hr)
     for name, (material, base, normal, rough) in MESHES.items():
         src = body if name.startswith("body") else head
         J = JB if src is body else JH
@@ -461,6 +474,41 @@ def face(pack, head):
 # and teeth are the DNA's already; the strand-dense hair (1.5M vertices), the blended layers
 # (cornea, wet edges) and the skin patch at the waist wait.
 GROOM = ("groom_Hair_S_UpdoBuns", "groom_Eyebrows_M_Natural")
+# The film's open gown and its hood were cut round a caster with her hands clasped in front, the
+# sleeves' bell cuffs hanging round them: with the hands at her sides no weighting keeps them
+# whole (the cuffs stay by the thighs, the front tears where it met the hands), so the student
+# wears what is under it: the shirt, collar and tie, the sweater, the pleated skirt, tights and
+# shoes.
+GOWN = ("robe", "robe_lower", "hood", "hood_lining")
+HAND_CM = 1.5        # cloth this near the hands' skin is a glove's
+GLOVED = ("lower_body",)   # the film's body suit (tights), whose arms end in gloves
+GLOVE_CM = 3.0       # its cloth this near the arms' or hands' skin is left out
+# The pleated skirt was cut to hang from a gown's waist: from its top to the widest hips it is
+# drawn in to her (WAIST_CM off the skin at the waist, nothing by WAIST_LOW), so it sits on her
+# hips and flares from there instead of standing off them as a drum.
+WAISTED = ("skirt",)
+WAIST_CM, WAIST_TOP, WAIST_LOW = 1.0, 92.0, 74.0
+
+
+def waisted(pos, near, ref_x, ref_n, ref_arm):
+    out = []
+    for x in pos:
+        t = min(1.0, max(0.0, (x[1] - WAIST_LOW) / (WAIST_TOP - WAIST_LOW)))
+        t = t * t * (3.0 - 2.0 * t)
+        # the skin facing the cloth: the nearest trunk or hip point the cloth lies outside of (not
+        # an arm's: a hanging arm's inside faces the skirt too)
+        hit = None
+        for r in ((4.0, 8.0, 16.0, 24.0) if t > 0 else ()):
+            found = sorted((d, i) for d, i in near.within(x, r) if ref_arm[i] is None)
+            hit = next((i for d, i in found[:48] if dot(sub(x, ref_x[i]), ref_n[i]) > 0.3 * d), None)
+            if hit is not None:
+                break
+        if hit is None:
+            out.append(x); continue
+        n = ref_n[hit]; sd = dot(sub(x, ref_x[hit]), n)
+        want = sd + (WAIST_CM - sd) * t if sd > WAIST_CM else sd
+        out.append(add(x, tuple(c * (want - sd) for c in n)))
+    return out
 SKIP = ("draconia_skin", "mh_eye", "mh_cornea", "mh_wet", "mh_teeth", "mh_lashes", "draconia_hair", "draconia_brow",
         "draconia_body_skin")
 
@@ -518,6 +566,78 @@ def skin_maps(portrait, maps):
         Image.new("RGB", (64, 64), (255, g_mean, 0)).save(body_rough)
     return {"head_lod0_mesh": (head_base, normal, orm),
             "body_lod0_mesh": (body_base, maps / "Body_Normal.png", body_rough)}
+
+
+SCALP_CM = 1.6       # a head point with hair cards this near, outward, is scalp under the hair
+SCALP_CARDS = 4      # and at least this many card points (every third) that near: a lone strand over the brow isn't hair
+SCALP_COVER = 0.7    # how much of the hair's colour the scalp takes
+
+
+def scalp(base, head_obj, pack, flip_v):
+    """The head's base map with the scalp under the hair cards painted the hair's root colour, as
+    a groom's scalp is: between the cards the skin shows, and a pale scalp there reads as a shaved
+    head under thin stubble. The hair cards are rigid to the head and the head is the DNA's bind,
+    so both are in the same space. The occlusion in the alpha is kept."""
+    from PIL import Image, ImageDraw, ImageFilter
+    out = DUMP_DIR / "portrait" / "head_base_scalp.png"
+    vs, vts, vns, faces = obj(head_obj)
+    nrm = position_normals(vs, vns, faces)
+    # the hair's card points where its atlas is solid (a card's thin tips and its empty corners
+    # over the brow are not hair over the skin)
+    atlas = [pc for pc in pack.pieces if pc["material"] == pack_human.MATERIALS["hair"]]
+    src = pack.images[atlas[0]["layers"][0]][2] if atlas and atlas[0]["layers"][0] != pack_human.NONE else None
+    alpha = Image.open(src).convert("RGBA").getchannel("A").resize((512, 512)) if src else None
+    def solid(uv):
+        if alpha is None:
+            return True
+        x = min(511, max(0, int(uv[0] % 1.0 * 512))); y = min(511, max(0, int(uv[1] % 1.0 * 512)))
+        return alpha.getpixel((x, y)) > 128
+    # a card's corners sit on its transparent border, so the strands are sampled inside each
+    # triangle (six points of a barycentric grid), not at its vertices
+    BARY = [(a / 4.0, b / 4.0) for a in range(1, 4) for b in range(1, 4) if a + b <= 4]
+    hair = []
+    for pc in atlas:
+        vv = pc["verts"]
+        for t in pc["tris"]:
+            A, B, C = (vv[k] for k in t)
+            for a, b in BARY:
+                c = 1.0 - a - b
+                uv = tuple(a * A["uv"][i] + b * B["uv"][i] + c * C["uv"][i] for i in range(2))
+                if solid(uv):
+                    hair.append(tuple(100.0 * (a * A["p"][i] + b * B["p"][i] + c * C["p"][i]) for i in range(3)))
+    near = Near(hair[::3])
+    under = []
+    for x, n in zip(vs, nrm):
+        found = near.within(x, SCALP_CM)
+        under.append(sum(1 for d, i in found if d < SCALP_CM and dot(sub(hair[3 * i], x), n) > -0.3) >= SCALP_CARDS)
+    img = Image.open(base).convert("RGBA")
+    W, H = img.size
+    mask = Image.new("L", (W, H), 0)
+    draw = ImageDraw.Draw(mask)
+    for f in faces:
+        if sum(under[pi] for (pi, _, _) in f) * 2 >= len(f):
+            pts = []
+            for (_, ti, _) in f:
+                u, v = vts[ti]
+                v = 1.0 - v if flip_v else v
+                pts.append((u * W, v * H))
+            draw.polygon(pts, fill=255)
+    # shrunk from its edge and feathered, so the hairline fades into the skin
+    mask = mask.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(W / 200.0))
+    # the hair's colour under it: its atlas's solid texels' mean, a little darker (the roots)
+    root = (96, 82, 60)
+    if src:
+        a = Image.open(src).convert("RGBA").resize((256, 256))
+        px = [p for p in a.getdata() if p[3] > 160]
+        if px:
+            root = tuple(int(0.8 * sum(p[c] for p in px) / len(px)) for c in range(3))
+    r, g, b, ao = img.split()
+    tint = Image.new("RGB", (W, H), root)
+    k = mask.point(lambda m: int(m * SCALP_COVER))
+    rgb = Image.composite(tint, Image.merge("RGB", (r, g, b)), k)
+    Image.merge("RGBA", (*rgb.split(), ao)).save(out)
+    print(f"scalp: {sum(under)} of {len(vs)} head points under the hair, painted {root}")
+    return out
 
 
 def inv3(a):
@@ -664,6 +784,7 @@ def dressed(pack, sources, down, head, W, p, P, keep=None):
                 a[sd] += v
         ref_arm.append("l" if a["l"] > 0.5 else "r" if a["r"] > 0.5 else None)
     near = Near(ref_x)
+    ref_hand = [sum(v for k, v in w.items() if LOWER[k].split("_")[0] in HAND) > 0.5 for w in ref_w]
     head_joint = LOWER.index("head")
     cloth_ids, packed, wanted, garment_x, garment_w = {}, [], [], [], []
     report = []
@@ -684,7 +805,7 @@ def dressed(pack, sources, down, head, W, p, P, keep=None):
                 if mat["name"] in SKIP:
                     continue
                 prims.append((pr, mat))
-            if not prims or (keep and not keep(prims[0][1]["name"])):
+            if not prims or (keep and not keep(prims[0][1]["name"])) or node["name"] in GOWN:
                 continue
             wanted.append(node["name"])
             groom = prims[0][1]["name"] in GROOM
@@ -693,6 +814,10 @@ def dressed(pack, sources, down, head, W, p, P, keep=None):
             for pr, mat in prims:
                 a = pr["attributes"]
                 pos = [tuple(c * 100.0 for c in x) for x in g["acc"](a["POSITION"])]
+                if not groom and "moved" in down:
+                    pos = down["moved"](pos)   # cut on the old figure: moved as the skin under it
+                if node["name"] in WAISTED:
+                    pos = waisted(pos, near, ref_x, ref_n, ref_arm)
                 data.append((pr, mat, pos, g["acc"](a["NORMAL"]), g["acc"](a["TEXCOORD_0"]), g["acc"](pr["indices"])))
                 ks = []
                 for x in pos:
@@ -824,6 +949,17 @@ def dressed(pack, sources, down, head, W, p, P, keep=None):
                         garment_x.append(x); garment_w.append(dict(w))
                 tris = [tuple(idx[k:k + 3]) for k in range(0, len(idx), 3)]
                 if not groom:
+                    # cloth over the hands (the film's tights end in gloves the gown's cuffs hid):
+                    # her own hands show
+                    if node["name"] in GLOVED:
+                        # a body suit: all of it along the arms (its gloves' cuffs too) goes
+                        on_hand = [any(ref_arm[i] is not None for d, i in near.within(x, GLOVE_CM) if d < GLOVE_CM) for x in pos]
+                    else:
+                        on_hand = [any(ref_hand[i] for d, i in near.within(x, HAND_CM) if d < HAND_CM) for x in pos]
+                    n0 = len(tris)
+                    tris = [t for t in tris if not all(on_hand[i] for i in t)]
+                    if len(tris) < n0:
+                        print(f"{node['name']}: {n0 - len(tris)} triangles over the hands left out")
                     report.append((node["name"], edge_check(pos, fw, tris, poses)))
                 pack.piece(node["name"], verts, tris, material, image(pbr.get("baseColorTexture")),
                            image(mat.get("normalTexture")), image(pbr.get("metallicRoughnessTexture")))
@@ -1131,7 +1267,8 @@ def sleeves(kw, kw_core, cand, nbr, keys, arm_bones):
 
 # The lab's posture (metahumanlab.coax posture_kind and posture_build), the same numbers.
 PEOPLE_CLIP_NAMES = ["idle", "walk", "talk", "nod", "fold", "lantern", "spell", "slash", "run", "die", "knock", "cower"]
-POSTURE_SAMPLES, POSTURE_HAND, POSTURE_CLAVICLE = 24, 0.4, 0.5
+POSTURE_SAMPLES, POSTURE_HAND, POSTURE_GRIP, POSTURE_CLAVICLE = 24, 0.22, 0.7, 0.5
+POSTURE_LEAN = {"spine_03": -2.0, "neck_01": -14.0, "head": 13.0}   # degrees about the figure's x
 def posture_kind(c, j):
     """0 none, 1 trunk, 2 clavicle, 3 leg (standing clips), 4 finger."""
     if 11 <= j <= 30 or 35 <= j <= 54:
@@ -1193,6 +1330,20 @@ def clip_poses(binds, body):
             else:
                 gq.append(people.qunit(people.qmul(gq[par], L[j][1]))); gt.append(add(gt[par], rot(gq[par], L[j][0])))
         return min(gt[k][1] for k in (57, 58, 62, 63))
+    def lean_rest(j):
+        """metahumanlab.coax posture_rest: the rest turned by POSTURE_LEAN about the figure's x."""
+        deg = POSTURE_LEAN.get(sk.names[j].lower(), 0.0)
+        if not deg:
+            return sk.q[j]
+        g, p = (0.0, 0.0, 0.0, 1.0), sk.parent[j]
+        chain = []
+        while p >= 0:
+            chain.append(p); p = sk.parent[p]
+        for q in reversed(chain):
+            g = people.qunit(people.qmul(g, sk.q[q]))
+        h = math.radians(deg) * 0.5
+        lean = (math.sin(h), 0.0, 0.0, math.cos(h))
+        return people.qunit(people.qmul(people.qmul(people.qmul(conj(g), lean), g), sk.q[j]))
     def posture(name, c):
         """metahumanlab.coax posture_build: per joint its correction (trunk and standing legs: the
         rest times the clip's mean turn's inverse) and the pelvis's lift."""
@@ -1203,7 +1354,7 @@ def clip_poses(binds, body):
             k = posture_kind(n, j)
             if k not in (1, 2, 3):
                 continue
-            rest = sk.q[j]; acc = (0.0, 0.0, 0.0, 0.0)
+            rest = lean_rest(j); acc = (0.0, 0.0, 0.0, 0.0)
             for L in samples:
                 q = L[j][1]
                 if sum(a * b for a, b in zip(q, rest)) < 0:
@@ -1227,7 +1378,7 @@ def clip_poses(binds, body):
             k = posture_kind(n, j)
             lq = L[j][1]
             if k == 4:
-                L[j][1] = people.slerp(sk.q[j], lq, POSTURE_HAND)
+                L[j][1] = people.slerp(sk.q[j], lq, POSTURE_GRIP if name in ("lantern", "slash") else POSTURE_HAND)
             elif k in (1, 3):
                 L[j][1] = people.qunit(people.qmul(post[j], lq))
             elif k == 2:

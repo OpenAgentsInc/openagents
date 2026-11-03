@@ -65,6 +65,8 @@ LICENCE = "Quaternius Modular Character Outfits - Fantasy|CC0 1.0"
 GAP_MIN = 0.3        # cm: the least cloth stands off the skin
 SNUG_CM = 0.5        # cm: the most a bodice, tunic or skirt's top stands off the skin from the hips up
 SNUG_PULL = 0.95     # of the rest it is drawn in (snug()), so the cloth takes the body's waist and bust
+SNUG_LAYER = 0.3     # of a layer's height over the piece's innermost cloth near it that it keeps
+SNUG_NEAR = 3.0      # cm: how near that innermost cloth is looked for
 SNUG_SKIP = ("Hood", "Pauldron", "Feet", "Bracer", "Arms")   # pieces kept as cut: loose by design
 SPREAD_CM = 3.0      # how far a push spreads over the cloth round it
 SMALL_CM = 40.0      # a piece no bigger than this every way moves as one
@@ -205,6 +207,9 @@ def source(outfit, sex="female"):
                       "rough": pbr.get("roughnessFactor", 1.0),
                       "images": (img(pbr.get("baseColorTexture")), img(m.get("normalTexture")), img(pbr.get("metallicRoughnessTexture"))),
                       "verts": verts(pr), "tris": pr["tris"], "own_weights": False}
+                if not any(k in name for k in SNUG_SKIP):
+                    while len(pc["tris"]) < SUBDIVIDE_TRIS:
+                        pc = subdivided(pc)
                 pieces.append(pc)
                 if name in spec.get("mirror", ()):
                     pieces.append(mirrored(pc, lower))
@@ -216,6 +221,57 @@ def source(outfit, sex="female"):
         pieces.append({"name": "Robe", "material": "MI_Peasant", "rgb": (1.0, 1.0, 1.0), "rough": 0.92,
                        "images": (base, normal, None), "verts": verts_, "tris": tris, "own_weights": True})
     return pieces, body, joints, sk.parent, lower
+
+
+SUBDIVIDE_TRIS = 12000   # a trunk piece is split until it has at least this many triangles
+
+
+def subdivided(pc):
+    """A piece with each triangle split in four at its edges' middles (positions, normals, uv and
+    weights averaged; an edge's middle shared by the triangles on it, so the surface stays closed).
+    The outfits' bodices are a couple of thousand triangles: drawn onto a woman's bust and waist
+    (snug()) so few points make a faceted cone; split, they take the body's curve."""
+    vs = list(pc["verts"]); mid = {}
+    def middle(a, b):
+        k = (a, b) if a < b else (b, a)
+        if k not in mid:
+            va, vb = vs[a], vs[b]
+            ws = {}
+            for j, w in list(va["ws"]) + list(vb["ws"]):
+                ws[j] = ws.get(j, 0.0) + 0.5 * w
+            top = sorted(ws.items(), key=lambda kv: -kv[1])[:4]
+            t = sum(w for _, w in top) or 1.0
+            vs.append({"x": scale(add(va["x"], vb["x"]), 0.5), "n": unit(add(va["n"], vb["n"])),
+                       "uv": tuple(0.5 * (p + q) for p, q in zip(va["uv"], vb["uv"])),
+                       "ws": [(j, w / t) for j, w in top]})
+            mid[k] = len(vs) - 1
+        return mid[k]
+    tris = []
+    for a, b, c in pc["tris"]:
+        ab, bc, ca = middle(a, b), middle(b, c), middle(c, a)
+        tris += [(a, ab, ca), (ab, b, bc), (ca, bc, c), (ab, bc, ca)]
+    return {**pc, "verts": vs, "tris": tris}
+
+
+def creased_normals(pc):
+    """Each vertex's normal from the triangles round its position that face its own way (within
+    60 degrees): smooth across the piece, a crease or a cloth's two sides kept apart."""
+    vs = pc["verts"]
+    fn = []
+    by_pos = {}
+    for t in pc["tris"]:
+        a, b, c = (vs[i]["x"] for i in t)
+        n = cross(sub(b, a), sub(c, a))
+        fn.append(n)
+        for i in t:
+            by_pos.setdefault(tuple(round(q * 20) for q in vs[i]["x"]), []).append(len(fn) - 1)
+    for v in vs:
+        acc = (0.0, 0.0, 0.0)
+        for f in by_pos.get(tuple(round(q * 20) for q in v["x"]), ()):
+            if dot(unit(fn[f]), v["n"]) > 0.5:
+                acc = add(acc, fn[f])
+        if dot(acc, acc) > 1e-12:
+            v["n"] = unit(acc)
 
 
 def mirrored(pc, lower):
@@ -419,30 +475,44 @@ def snug(pieces, target, tnear, lower, log=print):
         if any(k in pc["name"] for k in SNUG_SKIP):
             continue
         keys, nbr = welded(pc["verts"], pc["tris"])
-        mv_ = [None] * len(nbr)
+        # per weld: how far it stands off the skin facing it, along that skin's normal
+        off = [None] * len(nbr); at = [None] * len(nbr); fade = [0.0] * len(nbr)
         for v, k in zip(pc["verts"], keys):
-            if mv_[k] is not None:
+            if at[k] is not None:
                 continue
+            at[k] = v["x"]
             y = v["x"][1]
-            f = 1.0 if y >= hip else max(0.0, 1.0 - (hip - y) / 12.0)
+            fade[k] = f = 1.0 if y >= hip else max(0.0, 1.0 - (hip - y) / 12.0)
             # skin facing the same way as the cloth (not the bust's underside the cloth bridges)
             found = []
             for r in ((2.0, 4.0, 8.0, 16.0) if f > 0 else ()):
                 found = [(d, i) for d, i in tnear.within(v["x"], r) if dot(tn[i], v["n"]) > 0.6][:4]
                 if found:
                     break
-            m = (0.0, 0.0, 0.0)
             if found:
                 n = unit(tuple(sum(tn[i][q] for _, i in found) for q in range(3)))
-                sd = sum(dot(sub(v["x"], tx[i]), n) for _, i in found) / len(found)
-                if sd > SNUG_CM:
-                    m = scale(n, -f * SNUG_PULL * (sd - SNUG_CM))
-            mv_[k] = m
-        for _ in range(4):
+                off[k] = (n, sum(dot(sub(v["x"], tx[i]), n) for _, i in found) / len(found))
+        # a piece's own layers (a bodice over a shirt) keep their order: the innermost cloth near
+        # a point goes to SNUG_CM, and a layer over it keeps SNUG_LAYER of its height above that,
+        # so two layers never meet (where they did, the shirt showed through the bodice in spots)
+        wnear = Near([x if o else (1e6, 1e6, 1e6) for x, o in zip(at, off)])
+        mv_ = []
+        for k in range(len(nbr)):
+            m = (0.0, 0.0, 0.0)
+            if off[k] is not None:
+                n, sd = off[k]
+                floor = min([off[i][1] for d, i in wnear.within(at[k], SNUG_NEAR) if off[i] is not None] or [sd])
+                want = SNUG_CM + max(0.0, sd - floor) * SNUG_LAYER
+                if sd > want:
+                    m = scale(n, -fade[k] * SNUG_PULL * (sd - want))
+            mv_.append(m)
+        # smoothed over about the same span of cloth however finely it was split
+        for _ in range(4 * max(1, round(math.sqrt(len(pc["tris"]) / 2500.0)))):
             mv_ = [scale(add(scale(m, 1.0), scale(tuple(sum(mv_[o][q] for o in nbr[i]) for q in range(3)), 1.0 / len(nbr[i]))), 0.5)
                    if nbr[i] else m for i, m in enumerate(mv_)]
         for v, k in zip(pc["verts"], keys):
             v["x"] = add(v["x"], mv_[k])
+        creased_normals(pc)
         moved += [math.sqrt(dot(m, m)) for m in mv_]
     if moved:
         ms = sorted(moved)
