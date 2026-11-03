@@ -1,7 +1,7 @@
 // SRD 5.2.1 spells as records (docs/dnd/README.md, "SRD content: data, not code"). Each holds the
 // SRD's fields and an effect program: a short list of typed steps from a closed set that
 // battle.coax runs for any world, so no world codes a spell's numbers. The first records are
-// low-level Druid spells and low-level Wizard necromancy; the import tool (aethyr/rules/srd/import.coax, planned) will generate
+// low-level Druid, Wizard and Warlock spells; the import tool (aethyr/rules/srd/import.coax, planned) will generate
 // every spell from the PDF in this shape. Texts are the SRD's, word for word.
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
@@ -37,6 +37,9 @@ RS_S_TIMED :: 14;     // condition bit a: b 1 until the end of the caster's next
 RS_S_ENFEEBLE :: 15;  // Ray of Enfeeblement: on a failed save, weakened for the duration (the Con save repeats at the end
                       // of each of its turns, ending the spell); on a success, Disadvantage on its next attack roll
                       // until the start of the caster's next turn
+RS_S_REPEAT :: 16;    // the program runs again for each ray or beam: a of them, b more for each slot level above the
+                      // spell's, times the Cantrip Upgrade's tier when c is 1 (its damage dice then don't grow)
+RS_S_HEX :: 17;       // Hex: the curse, with Disadvantage on checks of ability a
 RS_ON_SAVE_HALF :: 1; RS_ON_SAVE_NONE :: 0;
 
 RsStep :: struct { kind: int; a: int; b: int; c: int; d: int; }
@@ -59,7 +62,8 @@ RsSpell :: struct {
 SP_PRODUCE_FLAME :: 0; SP_FLAME_HURL :: 1; SP_STARRY_WISP :: 2; SP_POISON_SPRAY :: 3;
 SP_CURE_WOUNDS :: 4; SP_HEALING_WORD :: 5; SP_THUNDERWAVE :: 6; SP_ENTANGLE :: 7; SP_FAERIE_FIRE :: 8;
 SP_CHILL_TOUCH :: 9; SP_RAY_OF_SICKNESS :: 10; SP_FALSE_LIFE :: 11; SP_RAY_OF_ENFEEBLEMENT :: 12; SP_BLINDNESS :: 13;
-RS_SPELLS :: 14;
+SP_ELDRITCH_BLAST :: 14; SP_HEX :: 15; SP_HOLD_PERSON :: 16; SP_SCORCHING_RAY :: 17;
+RS_SPELLS :: 18;
 
 rs_step :: (kind: int, a: int, b: int, c: int, d: int) -> RsStep { return RsStep.{kind = kind, a = a, b = b, c = c, d = d}; }
 
@@ -124,6 +128,34 @@ rs_spell :: (i: int) -> RsSpell {
                  concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 114,
                  text = "One creature that you can see within range must succeed on a Constitution saving throw, or it has the Blinded or Deafened condition (your choice) for the duration. At the end of each of its turns, the target repeats the save, ending the spell on itself on a success. Using a Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 2."};
     s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_TIMED, RS_BLINDED, 2, RS_CON, 0); s.step_n = 2;
+  } else if i == SP_ELDRITCH_BLAST {
+    s = RsSpell.{id = "eldritch-blast", name = "Eldritch Blast", level = 0, school = "Evocation", classes = "Warlock",
+                 cast_time = RS_T_ACTION, range_ft = 120, components = "V, S", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 128,
+                 text = "You hurl a beam of crackling energy. Make a ranged spell attack against one creature or object in range. On a hit, the target takes 1d10 Force damage. Cantrip Upgrade. The spell creates two beams at level 5, three beams at level 11, and four beams at level 17. You can direct the beams at the same target or at different ones. Make a separate attack roll for each beam."};
+    s.steps[0] = rs_step(RS_S_REPEAT, 1, 0, 1, 0); s.steps[1] = rs_step(RS_S_ATTACK, 0, 0, 0, 0);
+    s.steps[2] = rs_step(RS_S_DAMAGE, 1, 10, RS_FORCE, 0); s.step_n = 3;
+  } else if i == SP_HEX {
+    s = RsSpell.{id = "hex", name = "Hex", level = 1, school = "Enchantment", classes = "Warlock",
+                 cast_time = RS_T_BONUS, range_ft = 90, components = "V, S, M (the petrified eye of a newt)", duration = "Concentration, up to 1 hour", duration_s = 3600,
+                 concentration = true, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 141,
+                 text = "You place a curse on a creature that you can see within range. Until the spell ends, you deal an extra 1d6 Necrotic damage to the target whenever you hit it with an attack roll. Also, choose one ability when you cast the spell. The target has Disadvantage on ability checks made with the chosen ability. If the target drops to 0 Hit Points before this spell ends, you can take a Bonus Action on a later turn to curse a new creature. Using a Higher-Level Spell Slot. Your Concentration can last longer with a spell slot of level 2 (up to 4 hours), 3–4 (up to 8 hours), or 5+ (24 hours)."};
+    s.steps[0] = rs_step(RS_S_HEX, RS_STR, 0, 0, 0); s.step_n = 1;
+  } else if i == SP_HOLD_PERSON {
+    // Upcast, it targets one more Humanoid a slot level above 2; the record holds one target.
+    s = RsSpell.{id = "hold-person", name = "Hold Person", level = 2, school = "Enchantment", classes = "Bard, Cleric, Druid, Sorcerer, Warlock, Wizard",
+                 cast_time = RS_T_ACTION, range_ft = 60, components = "V, S, M (a straight piece of iron)", duration = "Concentration, up to 1 minute", duration_s = 60,
+                 concentration = true, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 142,
+                 text = "Choose a Humanoid that you can see within range. The target must succeed on a Wisdom saving throw or have the Paralyzed condition for the duration. At the end of each of its turns, the target repeats the save, ending the spell on itself on a success. Using a Higher-Level Spell Slot. You can target one additional Humanoid for each spell slot level above 2."};
+    s.steps[0] = rs_step(RS_S_SAVE, RS_WIS, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_TIMED, RS_PARALYZED, 2, RS_WIS, 0); s.step_n = 2;
+  } else if i == SP_SCORCHING_RAY {
+    // On the Sorcerer and Wizard lists; a Fiend Patron Warlock always has it prepared from level 3.
+    s = RsSpell.{id = "scorching-ray", name = "Scorching Ray", level = 2, school = "Evocation", classes = "Sorcerer, Wizard",
+                 cast_time = RS_T_ACTION, range_ft = 120, components = "V, S", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 160,
+                 text = "You hurl three fiery rays. You can hurl them at one target within range or at several. Make a ranged spell attack for each ray. On a hit, the target takes 2d6 Fire damage. Using a Higher-Level Spell Slot. You create one additional ray for each spell slot level above 2."};
+    s.steps[0] = rs_step(RS_S_REPEAT, 3, 1, 0, 0); s.steps[1] = rs_step(RS_S_ATTACK, 0, 0, 0, 0);
+    s.steps[2] = rs_step(RS_S_DAMAGE, 2, 6, RS_FIRE, 0); s.step_n = 3;
   } else if i == SP_CURE_WOUNDS {
     s = RsSpell.{id = "cure-wounds", name = "Cure Wounds", level = 1, school = "Abjuration", classes = "Bard, Cleric, Druid, Paladin, Ranger",
                  cast_time = RS_T_ACTION, range_ft = 5, components = "V, S", duration = "Instantaneous", duration_s = 0,
@@ -180,5 +212,9 @@ rs_cantrip_tier :: (level: int) -> int {
   fl := rs_spell(SP_FALSE_LIFE); #assert fl.steps[0].a == 2 && fl.steps[0].b == 4 && fl.steps[0].c == 4 && fl.steps[0].d == 5;
   re := rs_spell(SP_RAY_OF_ENFEEBLEMENT); #assert re.level == 2 && re.concentration && re.steps[0].a == RS_CON;
   bd := rs_spell(SP_BLINDNESS); #assert bd.range_ft == 120 && !bd.concentration && bd.steps[1].a == RS_BLINDED && bd.steps[1].c == RS_CON;
+  eb := rs_spell(SP_ELDRITCH_BLAST); #assert eb.range_ft == 120 && eb.steps[0].kind == RS_S_REPEAT && eb.steps[0].c == 1 && eb.steps[2].b == 10 && eb.steps[2].c == RS_FORCE;
+  hx := rs_spell(SP_HEX); #assert hx.cast_time == RS_T_BONUS && hx.range_ft == 90 && hx.concentration && hx.level == 1;
+  hp := rs_spell(SP_HOLD_PERSON); #assert hp.level == 2 && hp.concentration && hp.steps[0].a == RS_WIS && hp.steps[1].a == RS_PARALYZED && hp.steps[1].c == RS_WIS;
+  sr := rs_spell(SP_SCORCHING_RAY); #assert sr.steps[0].a == 3 && sr.steps[0].b == 1 && sr.steps[2].a == 2 && sr.steps[2].b == 6;
   #assert rs_cantrip_tier(1) == 1 && rs_cantrip_tier(5) == 2 && rs_cantrip_tier(11) == 3 && rs_cantrip_tier(17) == 4;
 }

@@ -111,10 +111,12 @@ RS_CONDITION :: [15] string.["Blinded", "Charmed", "Deafened", "Exhaustion", "Fr
 // What a spell leaves on a creature for a time (docs/dnd/README.md, "effects that last"): a
 // condition it imposes (EF_COND, with its bit in `cond`), Ray of Enfeeblement's weakness
 // (EF_ENFEEBLED: Disadvantage on Strength tests, 1d8 off its damage rolls), Disadvantage on its
-// next attack roll (EF_WEAK) and Chill Touch's grip (EF_NOHEAL: it can't regain Hit Points). Each
+// next attack roll (EF_WEAK), Chill Touch's grip (EF_NOHEAL: it can't regain Hit Points) and Hex
+// (EF_HEX: 1d6 Necrotic more whenever its caster hits it with an attack roll, and Disadvantage on
+// checks with the ability in `cond`). Each
 // ends at `until` on the world's clock, or when the creature succeeds on the save it repeats at
 // the end of each of its turns (`save`, an ability, against `dc`; -1 for none).
-EF_NONE :: 0; EF_COND :: 1; EF_ENFEEBLED :: 2; EF_WEAK :: 3; EF_NOHEAL :: 4;
+EF_NONE :: 0; EF_COND :: 1; EF_ENFEEBLED :: 2; EF_WEAK :: 3; EF_NOHEAL :: 4; EF_HEX :: 5;
 RS_EFFECTS :: 6;
 RsEffect :: struct { kind: int; cond: int; by: int; spell: int; until: f32; save: int; dc: int; }
 
@@ -140,6 +142,12 @@ RsCreature :: struct {
   outlined_by: int;         // whose spell (a creature index)
   wisp_until: f32;          // Starry Wisp's Dim Light
   restrained_by: int;       // the zone that restrains it (-1 none)
+  // Warlock features: the cantrips Agonizing Blast and Repelling Blast were chosen for (-1 none),
+  // the Fiend's Dark One's Blessing, and Hex ready to move to a new creature after its target
+  // dropped (on the caster's turn after `hex_free_after`)
+  agonizing: int; repelling: int;
+  dark_blessing: bool;
+  hex_free: bool; hex_free_after: f32;
   // dropping to 0
   death_ok: int; death_fail: int; stable: bool; dead: bool;
   // where and when: grid squares, and its next turn on the clock
@@ -190,15 +198,14 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   c[0].slots_max[1] = slots1[l]; c[0].slots_max[2] = slots2[l];
   if level >= 5 { c[0].slots_max[3] = 2; }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }
 
 // The SRD 5.2.1 Wizard at a level, from its class table (Intelligence casting, Intelligence and
 // Wisdom saves, a d6 hit die: 6 + Con at level 1, then 4 + Con a level, the fixed value), with Mage
 // Armor cast before the fight from one of its 1st-level slots (AC 13 + Dex for 8 hours). Its scores
-// are the standard array, Intelligence first. A necromancer is a Wizard who favours the school of
-// Necromancy: the SRD has no necromancer class, so the world names it and picks its spells.
+// are the standard array, Intelligence first.
 rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   rs_set_name(c[..], name);
@@ -218,7 +225,38 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   if level >= 5 { c[0].slots_max[3] = 2; }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].slots[1] -= 1;   // Mage Armor
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  return c[0];
+}
+
+// The SRD 5.2.1 Warlock at a level, from its class table (Charisma casting, Wisdom and Charisma
+// saves, a d8 hit die: 8 + Con at level 1, then 5 + Con a level, the fixed value). Pact Magic: its
+// slots are all one level (1 slot of level 1 at level 1, 2 of level 1 at 2, 2 of level 2 at 3 and
+// 4, 2 of level 3 at 5). Its invocations at level 3 are Armor of Shadows (Mage Armor on itself
+// without a slot: AC 13 + Dex), and Agonizing Blast and Repelling Blast for `blast`, a damaging
+// Warlock cantrip; its patron is the Fiend (Dark One's Blessing). Its scores are the standard
+// array, Charisma first.
+rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
+  c: [1] RsCreature;
+  rs_set_name(c[..], name);
+  c[0].team = team; c[0].level = level;
+  c[0].score = [6] int.[8, 14, 13, 10, 12, 16];
+  c[0].save_prof[RS_WIS] = true; c[0].save_prof[RS_CHA] = true;
+  con := rs_mod(c[0].score[RS_CON]);
+  c[0].hp_max = 8 + con + (level - 1) * (5 + con);
+  c[0].hp = c[0].hp_max;
+  c[0].ac = 13 + rs_mod(c[0].score[RS_DEX]);
+  c[0].speed = 30;
+  c[0].spell_ability = RS_CHA;
+  count := [6] int.[0, 1, 2, 2, 2, 2];
+  at := [6] int.[0, 1, 1, 2, 2, 3];
+  l := rs_min(rs_max(level, 1), 5);
+  c[0].slots_max[at[l]] = count[l];
+  for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1;
+  c[0].agonizing = -1; c[0].repelling = -1;
+  if level >= 2 { c[0].agonizing = blast; c[0].repelling = blast; }
+  c[0].dark_blessing = level >= 3;
   return c[0];
 }
 
@@ -366,6 +404,14 @@ rs_death_save :: (d: [] RsDice, c: [] RsCreature) -> int {
   c := rs_wizard("Mordra", 1, 3);
   #assert c.hp_max == 6 + 1 + 2 * (4 + 1) && c.ac == 15 && rs_spell_attack(c) == 5 && rs_spell_dc(c) == 13;
   #assert c.slots[1] == 3 && c.slots[2] == 2;
+}
+#test "a level 3 Fiend Warlock: 21 HP, AC 15 (Armor of Shadows), spell attack +5, save DC 13, two level 2 pact slots" {
+  c := rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST);
+  #assert c.hp_max == 8 + 1 + 2 * (5 + 1) && c.ac == 15 && rs_spell_attack(c) == 5 && rs_spell_dc(c) == 13;
+  #assert c.slots[1] == 0 && c.slots[2] == 2 && c.save_prof[RS_WIS] && c.save_prof[RS_CHA] && !c.save_prof[RS_INT];
+  #assert c.agonizing == SP_ELDRITCH_BLAST && c.repelling == SP_ELDRITCH_BLAST && c.dark_blessing;
+  one := rs_warlock("Vesk", 1, 1, SP_ELDRITCH_BLAST); #assert one.slots[1] == 1 && one.agonizing < 0 && !one.dark_blessing;
+  five := rs_warlock("Vesk", 1, 5, SP_ELDRITCH_BLAST); #assert five.slots[3] == 2 && five.slots[2] == 0;
 }
 #test "Temporary Hit Points soak damage first; a grip that stops healing stops it" {
   c: [1] RsCreature; c[0] = rs_wizard("Mordra", 1, 3);

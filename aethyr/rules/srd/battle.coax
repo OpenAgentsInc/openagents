@@ -159,6 +159,27 @@ rs_end_concentration :: (b: [] RsBattle, i: int, why: string) {
   rs_add_name(l[..], b, i); rs_add_text(l[..], "'s "); rs_add_text(l[..], rs_spell(sp).name); rs_add_text(l[..], " ends"); rs_add_text(l[..], why);
   rs_tell(b, RS_EV_END, sp, i, -1, 0, 0, l[..]);
 }
+// What follows a creature dropping to 0: a Hex on it can move on a later turn, and a Fiend
+// Warlock who dropped it, or stands within 10 feet of it, has Dark One's Blessing.
+rs_dropped :: (b: [] RsBattle, by: int, j: int) {
+  for k: 0..<b[0].n {
+    c := b[0].c[k];
+    for e: 0..<RS_EFFECTS {
+      if b[0].c[j].eff[e].kind == EF_HEX && b[0].c[j].eff[e].by == k && c.conc == SP_HEX {
+        b[0].c[k].hex_free = true;
+        b[0].c[k].hex_free_after = ifx b[0].who == k then c.turn_at else c.turn_at - f32(RS_ROUND);
+      }
+    }
+    if !c.dark_blessing || !rs_up(c) || c.team == b[0].c[j].team { continue; }
+    if k != by && rs_feet_to(b, k, j) > 10 { continue; }
+    gain := rs_max(rs_mod(c.score[RS_CHA]) + c.level, 1);
+    if gain <= c.temp { continue; }
+    b[0].c[k].temp = gain;
+    l: [1] RsLine;
+    rs_add_name(l[..], b, k); rs_add_text(l[..], " has Dark One's Blessing: "); rs_add_int(l[..], gain); rs_add_text(l[..], " Temporary Hit Points");
+    rs_tell(b, RS_EV_HEAL, -1, k, k, gain, 0, l[..]);
+  }
+}
 // Damage, with dropping to 0 and the concentration save the SRD calls for.
 rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: bool, spell: int) {
   hurt: [1] RsCreature; hurt[0] = b[0].c[j];
@@ -169,6 +190,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
     rs_add_name(l[..], b, j); rs_add_text(l[..], ifx r.killed then " dies" else " drops to 0 Hit Points");
     rs_tell(b, ifx r.killed then RS_EV_DEATH else RS_EV_DOWN, spell, by, j, 0, 0, l[..]);
     rs_end_concentration(b, j, " (Unconscious)");
+    if r.dropped { rs_dropped(b, by, j); }
     return;
   }
   if r.conc_dc > 0 && b[0].c[j].conc >= 0 {
@@ -238,6 +260,16 @@ rs_cast :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target
     k := rs_emit(b[0].book[..], e);
   }
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_FLAME { b[0].c[i].flame_until = b[0].clock + s.duration_s; } }
+  // rays and beams: the program runs once for each, at the one target
+  reps := 1;
+  for k: 0..<s.step_n {
+    st := s.steps[k];
+    if st.kind == RS_S_REPEAT { reps = st.a + st.b * rs_max(slot - s.level, 0); if st.c == 1 { reps = st.a * rs_cantrip_tier(me.level); } }
+  }
+  if s.area == RS_A_NONE && reps > 1 {
+    for r: 0..<reps { if !b[0].c[target].dead { rs_affect(b, i, target, sp, slot, zone_at); } }
+    return true;
+  }
   // each creature it affects
   for j: 0..<b[0].n {
     if s.area == RS_A_NONE {
@@ -254,7 +286,8 @@ rs_cast :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target
 // The effect program on one creature.
 rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) {
   s := rs_spell(sp);
-  ran_save := false; saved := false; crit := false;
+  ran_save := false; saved := false; crit := false; attack_hit := false; tier_dice := true;
+  for k: 0..<s.step_n { if s.steps[k].kind == RS_S_REPEAT && s.steps[k].c == 1 { tier_dice = false; } }
   for k: 0..<s.step_n {
     st := s.steps[k];
     if st.kind == RS_S_ATTACK {
@@ -265,6 +298,8 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       if rs_has(b[0].c[i], RS_POISONED) { downs += 1; }
       if rs_has(b[0].c[i], RS_BLINDED) { downs += 1; }
       if rs_has(b[0].c[j], RS_BLINDED) { ups += 1; }
+      helpless := rs_has(b[0].c[j], RS_PARALYZED) || rs_has(b[0].c[j], RS_UNCONSCIOUS);
+      if helpless { ups += 1; }
       if rs_take_weak(b, i) { downs += 1; }
       melee := st.a == 1;
       if !melee && rs_threatened(b, i) { downs += 1; }
@@ -273,6 +308,9 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       total := d.roll + rs_spell_attack(b[0].c[i]);
       crit = d.roll == 20;
       hit := d.roll != 1 && (crit || total >= b[0].c[j].ac);
+      // a hit on a Paralyzed or Unconscious creature from within 5 feet is a Critical Hit
+      if hit && helpless && rs_feet_to(b, i, j) <= 5 { crit = true; }
+      attack_hit = hit;
       l: [1] RsLine;
       rs_add_text(l[..], "  attack "); rs_add_int(l[..], d.roll);
       if d.edge > 0 { rs_add_text(l[..], " (Advantage)"); }
@@ -285,7 +323,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
     } else if st.kind == RS_S_SAVE {
       ran_save = true;
       dc := rs_spell_dc(b[0].c[i]);
-      fails := rs_has(b[0].c[j], RS_UNCONSCIOUS) && (st.a == RS_STR || st.a == RS_DEX);
+      fails := (rs_has(b[0].c[j], RS_UNCONSCIOUS) || rs_has(b[0].c[j], RS_PARALYZED)) && (st.a == RS_STR || st.a == RS_DEX);
       edge := ifx st.a == RS_DEX && rs_has(b[0].c[j], RS_RESTRAINED) then -1 else 0;
       if st.a == RS_STR && rs_effect(b[0].c[j], EF_ENFEEBLED) { edge = -1; }
       d := rs_d20(b[0].dice[..], edge);
@@ -294,26 +332,44 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " ");
       rs_add_text(l[..], RS_ABBR[st.a]); rs_add_text(l[..], " save ");
-      if fails { rs_add_text(l[..], "fails (Unconscious)"); }
+      if fails { rs_add_text(l[..], ifx rs_has(b[0].c[j], RS_PARALYZED) then "fails (Paralyzed)" else "fails (Unconscious)"); }
       else { rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); rs_add_text(l[..], ifx saved then ": success" else ": failure"); }
       rs_tell(b, RS_EV_SAVE, sp, i, j, total, 0, l[..]);
     } else if st.kind == RS_S_DAMAGE {
       count := st.a;
-      if s.level == 0 { count = st.a * rs_cantrip_tier(b[0].c[i].level); }
+      if s.level == 0 && tier_dice { count = st.a * rs_cantrip_tier(b[0].c[i].level); }
       else { count += st.d * rs_max(slot - s.level, 0); }
       if crit { count *= 2; }
       amount := rs_sum(b[0].dice[..], count, st.b);
       if ran_save && saved { amount = ifx s.steps[0].kind == RS_S_SAVE && s.steps[0].b == RS_ON_SAVE_HALF then amount / 2 else 0; }
+      // Agonizing Blast: the Charisma modifier on the chosen cantrip's damage
+      agony := 0;
+      if s.level == 0 && b[0].c[i].agonizing == sp && sp != SP_PRODUCE_FLAME { agony = rs_mod(b[0].c[i].score[RS_CHA]); amount += agony; }
       weak := 0;
       if rs_effect(b[0].c[i], EF_ENFEEBLED) { weak = rs_roll(b[0].dice[..], 8); amount = rs_max(amount - weak, 0); }
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " takes "); rs_add_int(l[..], amount);
       rs_add_text(l[..], " "); rs_add_text(l[..], RS_DAMAGE[st.c]);
       rs_add_text(l[..], " ("); rs_add_int(l[..], count); rs_add_text(l[..], "d"); rs_add_int(l[..], st.b);
+      if agony != 0 { rs_add_text(l[..], " + "); rs_add_int(l[..], agony); }
       if weak > 0 { rs_add_text(l[..], ", -"); rs_add_int(l[..], weak); rs_add_text(l[..], " enfeebled"); }
       rs_add_text(l[..], ")");
       rs_tell(b, RS_EV_DAMAGE, sp, i, j, amount, st.c, l[..]);
+      // Hex: 1d6 Necrotic more when its caster hits the target with an attack roll
+      hexed := false;
+      if attack_hit {
+        for ek: 0..<RS_EFFECTS { if b[0].c[j].eff[ek].kind == EF_HEX && b[0].c[j].eff[ek].by == i { hexed = true; } }
+      }
       rs_damage(b, i, j, amount, st.c, crit, sp);
+      if hexed && !b[0].c[j].dead {
+        n6 := ifx crit then 2 else 1;
+        extra := rs_sum(b[0].dice[..], n6, 6);
+        h: [1] RsLine;
+        rs_add_text(h[..], "  "); rs_add_name(h[..], b, j); rs_add_text(h[..], " takes "); rs_add_int(h[..], extra);
+        rs_add_text(h[..], " Necrotic from Hex ("); rs_add_int(h[..], n6); rs_add_text(h[..], "d6)");
+        rs_tell(b, RS_EV_DAMAGE, SP_HEX, i, j, extra, RS_NECROTIC, h[..]);
+        rs_damage(b, i, j, extra, RS_NECROTIC, crit, SP_HEX);
+      }
     } else if st.kind == RS_S_HEAL {
       count := st.a + st.d * rs_max(slot - s.level, 0);
       amount := rs_sum(b[0].dice[..], count, st.b);
@@ -367,10 +423,13 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
     } else if st.kind == RS_S_NOHEAL {
       rs_put_effect(b, j, RsEffect.{kind = EF_NOHEAL, by = i, spell = sp, until = rs_after_next_turn(b, i), save = -1, dc = 0});
     } else if st.kind == RS_S_TIMED {
-      if ran_save && saved { continue; }
+      // saved: a one-target concentration spell has nothing to hold, and ends
+      if ran_save && saved { if s.concentration && s.area == RS_A_NONE && b[0].c[i].conc == sp { b[0].c[i].conc = -1; } continue; }
       e := RsEffect.{kind = EF_COND, cond = st.a, by = i, spell = sp, until = rs_after_next_turn(b, i), save = -1, dc = 0};
       if st.b == 2 { e.until = b[0].clock + s.duration_s; e.save = st.c; e.dc = rs_spell_dc(b[0].c[i]); }
       rs_put_effect(b, j, e);
+      // Paralyzed (and so Incapacitated) breaks the target's own concentration
+      if (st.a & (RS_PARALYZED | RS_INCAPACITATED | RS_STUNNED)) != 0 && b[0].c[j].conc >= 0 { rs_end_concentration(b, j, " (Incapacitated)"); }
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is "); rs_add_text(l[..], rs_condition_name(st.a));
       rs_add_text(l[..], ifx st.b == 1 then " until the end of " else " for up to a minute");
@@ -389,11 +448,54 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
         rs_add_text(l[..], " is enfeebled: 1d8 off its damage, Disadvantage on Strength");
       }
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
+    } else if st.kind == RS_S_HEX {
+      rs_put_effect(b, j, RsEffect.{kind = EF_HEX, cond = st.a, by = i, spell = sp, until = b[0].c[i].conc_until, save = -1, dc = 0});
+      b[0].c[i].hex_free = false;
+      l: [1] RsLine;
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is hexed: 1d6 Necrotic more from each of ");
+      rs_add_name(l[..], b, i); rs_add_text(l[..], "'s hits, Disadvantage on "); rs_add_text(l[..], RS_ABBR[st.a]); rs_add_text(l[..], " checks");
+      rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_GLOW {
       b[0].c[j].wisp_until = b[0].c[i].turn_at + f32(RS_ROUND);
       b[0].c[j].cond = rs_clear(b[0].c[j].cond, RS_INVISIBLE);
     }
   }
+  // Repelling Blast: a hit with the chosen cantrip pushes the target up to 10 feet straight away
+  if attack_hit && s.level == 0 && b[0].c[i].repelling == sp && sp != SP_PRODUCE_FLAME && !b[0].c[j].dead {
+    dx := rs_sign(b[0].c[j].x - b[0].c[i].x); dy := rs_sign(b[0].c[j].y - b[0].c[i].y);
+    moved := 0;
+    for n: 0..<2 {
+      nx := b[0].c[j].x + dx; ny := b[0].c[j].y + dy;
+      if nx < 0 || ny < 0 || nx >= b[0].w || ny >= b[0].h || rs_at(b, nx, ny) >= 0 { break; }
+      b[0].c[j].x = nx; b[0].c[j].y = ny; moved += 1;
+    }
+    if moved > 0 {
+      l: [1] RsLine;
+      rs_add_text(l[..], "  Repelling Blast pushes "); rs_add_name(l[..], b, j); rs_add_text(l[..], " "); rs_add_int(l[..], moved * RS_SQUARE); rs_add_text(l[..], " feet");
+      rs_tell(b, RS_EV_PUSH, sp, i, j, moved * RS_SQUARE, 0, l[..]);
+    }
+  }
+}
+
+// Hex moves to a new creature: a Bonus Action on a turn after the one its target dropped to 0 Hit
+// Points, while the caster still concentrates on it; no slot.
+rs_hex_move :: (b: [] RsBattle, i: int, j: int) -> bool {
+  if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) { return false; }
+  if b[0].c[i].conc != SP_HEX || !b[0].c[i].hex_free || b[0].c[i].turn_at <= b[0].c[i].hex_free_after { return false; }
+  if j < 0 || j >= b[0].n || !rs_up(b[0].c[j]) || rs_feet_to(b, i, j) > rs_spell(SP_HEX).range_ft { return false; }
+  ability := RS_STR;
+  for jj: 0..<b[0].n {
+    for k: 0..<RS_EFFECTS {
+      if b[0].c[jj].eff[k].kind == EF_HEX && b[0].c[jj].eff[k].by == i { ability = b[0].c[jj].eff[k].cond; rs_drop_effect(b, jj, k); }
+    }
+  }
+  b[0].turn.bonus = true;
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], " moves Hex to "); rs_add_name(l[..], b, j);
+  rs_tell(b, RS_EV_CAST, SP_HEX, i, j, 0, 0, l[..]);
+  rs_put_effect(b, j, RsEffect.{kind = EF_HEX, cond = ability, by = i, spell = SP_HEX, until = b[0].c[i].conc_until, save = -1, dc = 0});
+  b[0].c[i].hex_free = false;
+  return true;
 }
 
 // A Restrained creature's action against what holds it: a Strength (Athletics) check against the
@@ -470,6 +572,12 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
       rs_drop_effect(b, i, k);
       // a spell that ends on a success ends for its caster too (Ray of Enfeeblement)
       if e.kind == EF_ENFEEBLED && e.by >= 0 && b[0].c[e.by].conc == e.spell { rs_end_concentration(b, e.by, " (the target shook it off)"); }
+      // a concentration spell with no one left under it ends (Hold Person on one target)
+      if e.by >= 0 && b[0].c[e.by].conc == e.spell {
+        left := 0;
+        for jj: 0..<b[0].n { for kk: 0..<RS_EFFECTS { if b[0].c[jj].eff[kk].kind != EF_NONE && b[0].c[jj].eff[kk].by == e.by && b[0].c[jj].eff[kk].spell == e.spell { left += 1; } } }
+        if left == 0 { rs_end_concentration(b, e.by, " (no one left under it)"); }
+      }
     }
   }
   b[0].c[i].turn_at += f32(RS_ROUND);
@@ -655,4 +763,107 @@ rs_team_up :: (b: [] RsBattle, team: int) -> int {
   #assert rs_cast(b[..], a, SP_PRODUCE_FLAME, 0, 0, 0, a);
   #assert rs_cast(b[..], a, SP_FLAME_HURL, 0, 0, 0, e);
   #assert b[0].c[a].flame_until > b[0].clock;
+}
+#test "Eldritch Blast: 1d10 Force + Cha (Agonizing Blast), and a hit pushes 10 feet (Repelling Blast)" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 9;
+  a := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 1, 3);
+  t := rs_add(b[..], rs_druid("Rowan", 0, 3), 6, 3);
+  hit := false;
+  for k: 0..<30 {
+    b[0].c[t].hp = 21; b[0].c[t].x = 6; b[0].c[t].y = 3;
+    rs_start_turn(b[..], a);
+    #assert rs_cast(b[..], a, SP_ELDRITCH_BLAST, 0, 0, 0, t);
+    rs_end_turn(b[..], a);
+    if b[0].c[t].hp < 21 { hit = true; break; }
+  }
+  #assert hit && b[0].c[t].x == 8;
+  lost := 21 - b[0].c[t].hp;
+  #assert lost >= 1 + 3 && lost <= 20 + 3;
+  // one beam at level 3, two at 5: each its own attack
+  #assert rs_cantrip_tier(3) == 1;
+}
+#test "Hex: 1d6 Necrotic more on each hit; it moves on a later turn once its target drops" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 5;
+  a := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 1, 3);
+  t := rs_add(b[..], rs_druid("Rowan", 0, 3), 10, 3);
+  u := rs_add(b[..], rs_druid("Fern", 0, 3), 10, 6);
+  rs_start_turn(b[..], a);
+  #assert rs_cast(b[..], a, SP_HEX, 2, 0, 0, t) && b[0].c[a].conc == SP_HEX && b[0].c[a].slots[2] == 1;
+  #assert !rs_cast(b[..], a, SP_HOLD_PERSON, 2, 0, 0, u);   // one slot a turn
+  #assert rs_effect(b[0].c[t], EF_HEX);
+  extra := false;
+  for k: 0..<30 {
+    b[0].c[t].hp = 21; b[0].c[t].x = 10; b[0].c[t].y = 3; b[0].who = a; b[0].turn.action = false;
+    seq := b[0].book[0].seq;
+    #assert rs_cast(b[..], a, SP_ELDRITCH_BLAST, 0, 0, 0, t);
+    for e: 0..<(b[0].book[0].seq - seq) { ev := rs_recent(b[0].book[0], e); if ev.spell == SP_HEX && ev.kind == RS_EV_DAMAGE { extra = true; } }
+    if extra { break; }
+  }
+  #assert extra;
+  // it drops: not this turn, the next one
+  b[0].c[t].hp = 1; b[0].c[t].temp = 0;
+  rs_damage(b[..], a, t, 5, RS_FORCE, false, SP_ELDRITCH_BLAST);
+  #assert b[0].c[t].hp == 0 && b[0].c[a].hex_free;
+  #assert !rs_hex_move(b[..], a, u);
+  rs_end_turn(b[..], a);
+  rs_tick(b[..], b[0].c[a].turn_at - b[0].clock);
+  rs_start_turn(b[..], a);
+  #assert rs_hex_move(b[..], a, u) && rs_effect(b[0].c[u], EF_HEX) && !rs_effect(b[0].c[t], EF_HEX) && b[0].c[a].slots[2] == 1;
+}
+#test "Hold Person: Paralyzed on a failed Wis save; it fails Dex saves, and a hit from 5 feet is a Critical Hit" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 21;
+  a := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 1, 3);
+  t := rs_add(b[..], rs_druid("Rowan", 0, 3), 2, 3);
+  held := false;
+  for k: 0..<20 {
+    for e: 0..<RS_EFFECTS { b[0].c[t].eff[e].kind = EF_NONE; }
+    b[0].c[t].cond = 0; b[0].c[a].conc = -1; b[0].c[a].slots[2] = 2;
+    rs_start_turn(b[..], a);
+    #assert rs_cast(b[..], a, SP_HOLD_PERSON, 2, 0, 0, t);
+    rs_end_turn(b[..], a);
+    if rs_has(b[0].c[t], RS_PARALYZED) { held = true; break; }
+    #assert b[0].c[a].conc < 0;   // saved: nothing to hold
+  }
+  #assert held && !rs_can_act(b[0].c[t]) && b[0].c[a].conc == SP_HOLD_PERSON;
+  // a melee hit from 5 feet: a Critical Hit (two dice of Chill Touch)
+  crit := false;
+  for k: 0..<10 {
+    b[0].c[t].hp = 21; b[0].who = a; b[0].turn.action = false;
+    seq := b[0].book[0].seq;
+    #assert rs_cast(b[..], a, SP_CHILL_TOUCH, 0, 0, 0, t);
+    for e: 0..<(b[0].book[0].seq - seq) {
+      ev := rs_recent(b[0].book[0], e);
+      if ev.kind == RS_EV_ATTACK { crit = ev.text_n > 12 && cast(string) ev.text[(ev.text_n - 12)..<ev.text_n] == "critical hit"; #assert crit; }
+    }
+    if crit { break; }
+  }
+  #assert crit;
+  // its concentration ends: it can move again
+  rs_end_concentration(b[..], a, "");
+  #assert !rs_has(b[0].c[t], RS_PARALYZED);
+}
+#test "Scorching Ray: three rays, a ranged spell attack each, 2d6 Fire on a hit; four from a 3rd-level slot" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 2;
+  a := rs_add(b[..], rs_warlock("Vesk", 1, 5, SP_ELDRITCH_BLAST), 1, 3);
+  t := rs_add(b[..], rs_druid("Rowan", 0, 3), 10, 3);
+  b[0].c[t].hp = 200; b[0].c[t].hp_max = 200;
+  rs_start_turn(b[..], a);
+  seq := b[0].book[0].seq;
+  #assert rs_cast(b[..], a, SP_SCORCHING_RAY, 3, 0, 0, t);
+  rolls := 0;
+  for e: 0..<(b[0].book[0].seq - seq) { ev := rs_recent(b[0].book[0], e); if ev.kind == RS_EV_ATTACK || ev.kind == RS_EV_MISS { rolls += 1; } }
+  #assert rolls == 4;
+}
+#test "Dark One's Blessing: Cha + Warlock level Temporary Hit Points when it drops a foe, or one drops within 10 feet" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 4;
+  a := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 1, 3);
+  near := rs_add(b[..], rs_druid("Rowan", 0, 3), 3, 3);
+  far := rs_add(b[..], rs_druid("Fern", 0, 3), 12, 3);
+  ally := rs_add(b[..], rs_warlock("Ilse", 1, 3, SP_ELDRITCH_BLAST), 13, 6);
+  b[0].c[far].hp = 1;
+  rs_damage(b[..], ally, far, 4, RS_FORCE, false, -1);
+  #assert b[0].c[a].temp == 0 && b[0].c[ally].temp == 3 + 3;
+  b[0].c[near].hp = 1;
+  rs_damage(b[..], ally, near, 4, RS_FORCE, false, -1);
+  #assert b[0].c[a].temp == 6;
 }

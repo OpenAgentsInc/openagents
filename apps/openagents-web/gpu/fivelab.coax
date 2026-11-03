@@ -22,9 +22,10 @@
 //   right 24: right xyz, the image centre's y (px)
 //   up 28: up xyz, 0
 //   sun 32: toward the sun xyz, 0
-//   tokens 36: ten, two vec4s each: (x, z m, team (0 druid, 1 necromancer) or -1 for none, hit point share),
+//   tokens 36: ten, two vec4s each: (x, z m, team (0 druid, 1 warlock) or -1 for none, hit point share),
 //              (0 standing, 1 down, 2 dead; outlined; marks, a bit each: Restrained 1, Poisoned 2,
-//              Blinded 4, enfeebled 8, Temporary Hit Points 16; whose turn just ran 0..1)
+//              Blinded 4, enfeebled 8, Temporary Hit Points 16,
+//              Paralyzed 32, hexed 64; whose turn just ran 0..1)
 //   zones 116: eight, two vec4s each: (x0, z0, x1, z1 m), (1 Entangle, 2 Faerie Fire, 0 none; 0; 0; 0)
 //   bounds 180: the grid's half width and half depth (m), the square (m), 0
 FIVELAB_TOKENS :: 10;
@@ -311,16 +312,16 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
     who:int=cast(int)h.who;
     tk:V4=wg_at4(u,36+(who*8));
     ts:V4=wg_at4(u,40+(who*8));
-    necro:bool=tk.z>0.5f32;
+    pact:bool=tk.z>0.5f32;
     if (h.m<3.5f32) {
       albedo=v3(0.2f32,0.42f32,0.16f32);
-      // a necromancer's robe: grave-black, with a bone-pale hem and collar
-      if (necro) {
-        albedo=v3(0.07f32,0.05f32,0.1f32);
-        if ((pos.y<0.42f32)||(pos.y>1.3f32)) { albedo=v3(0.62f32,0.6f32,0.52f32); }
+      // a Fiend warlock's robe: ember crimson, with a gold hem and collar
+      if (pact) {
+        albedo=v3(0.32f32,0.04f32,0.05f32);
+        if ((pos.y<0.42f32)||(pos.y>1.3f32)) { albedo=v3(0.75f32,0.55f32,0.16f32); }
       }
       // a belt
-      if (abs(pos.y-0.82f32)<0.05f32) { albedo=v3(0.35f32,0.24f32,0.1f32); if (necro) { albedo=v3(0.4f32,0.08f32,0.1f32); } }
+      if (abs(pos.y-0.82f32)<0.05f32) { albedo=v3(0.35f32,0.24f32,0.1f32); if (pact) { albedo=v3(0.08f32,0.05f32,0.04f32); } }
       if (fivelab_mark(ts.z,0.0f32)) {
         vine:f32=fract((pos.y*7.0f32)+(wg_atan2(pos.z-tk.y,pos.x-tk.x)*1.2f32));
         if ((pos.y<0.9f32)&&(vine<0.3f32)) { albedo=v3(0.08f32,0.32f32,0.05f32); }
@@ -328,19 +329,19 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
     } else if (h.m<4.5f32) {
       albedo=v3(0.78f32,0.58f32,0.44f32);
       if (pos.y>(1.62f32)) { albedo=v3(0.24f32,0.16f32,0.09f32); }
-      if (necro) {
-        // pale, under a hood
-        albedo=v3(0.72f32,0.72f32,0.68f32);
-        if (pos.y>1.6f32) { albedo=v3(0.06f32,0.05f32,0.08f32); }
+      if (pact) {
+        // under a crimson hood
+        if (pos.y>1.6f32) { albedo=v3(0.26f32,0.03f32,0.04f32); }
       }
       // Blinded: a band of shadow over the eyes
       if (fivelab_mark(ts.z,2.0f32)&&(abs(pos.y-1.58f32)<0.045f32)) { albedo=v3(0.02f32,0.02f32,0.03f32); }
     } else {
       albedo=v3(0.4f32,0.28f32,0.14f32);
       if (pos.y>1.75f32) {
-        if (necro) { glow=add3(glow,v3(0.45f32,1.0f32,0.8f32)); } else { glow=add3(glow,v3(0.6f32,0.9f32,0.5f32)); }
+        if (pact) { glow=add3(glow,v3(0.85f32,0.35f32,1.0f32)); } else { glow=add3(glow,v3(0.6f32,0.9f32,0.5f32)); }
       }
-      if (necro) { albedo=v3(0.75f32,0.73f32,0.65f32); }
+      // a black iron rod, the pact's focus
+      if (pact) { albedo=v3(0.06f32,0.05f32,0.06f32); }
     }
     // Poisoned: a sick green cast; enfeebled: drained grey; Temporary Hit Points: a red ward at the rim
     if (fivelab_mark(ts.z,1.0f32)) { albedo=mix3(albedo,v3(0.4f32,0.55f32,0.08f32),0.45f32); }
@@ -348,6 +349,15 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
     if (fivelab_mark(ts.z,4.0f32)) {
       wr:f32=pow(1.0f32-saturate(dot3(n,scale3(rd,-1.0f32))),3.0f32);
       glow=add3(glow,scale3(v3(0.9f32,0.15f32,0.25f32),wr*0.9f32));
+    }
+    // Paralyzed: held stiff in a gold sheen; hexed: a violet curse flickering at the rim
+    if (fivelab_mark(ts.z,5.0f32)) {
+      albedo=mix3(albedo,v3(0.85f32,0.7f32,0.3f32),0.35f32);
+      glow=add3(glow,scale3(v3(1.0f32,0.8f32,0.35f32),pow(1.0f32-saturate(dot3(n,scale3(rd,-1.0f32))),2.0f32)*0.8f32));
+    }
+    if (fivelab_mark(ts.z,6.0f32)) {
+      hx:f32=pow(1.0f32-saturate(dot3(n,scale3(rd,-1.0f32))),4.0f32);
+      glow=add3(glow,scale3(v3(0.55f32,0.15f32,0.8f32),hx*(0.7f32+(0.3f32*sin((t*9.0f32)+pos.y*6.0f32)))));
     }
     if (ts.x>1.5f32) { albedo=scale3(v3(0.4f32,0.4f32,0.42f32),verse_style_luma(albedo.x,albedo.y,albedo.z)*2.2f32); }
     if (ts.y>0.5f32) {

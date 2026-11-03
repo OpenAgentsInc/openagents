@@ -40,10 +40,10 @@ KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6
 
 COLS :: 16; ROWS :: 10;
 FAST :: 4.0;
-// Five level 3 Druids against five level 3 Wizards of the Necromancy school (the SRD has no
-// necromancer class: they are Wizards in Mage Armor casting the Wizard list's necromancy).
+// Five level 3 Druids against five level 3 Warlocks of the Fiend Patron, with Armor of Shadows,
+// Agonizing Blast and Repelling Blast for Eldritch Blast.
 SIDE :: 5; PEOPLE :: 10;
-TEAM_NAME :: [2] string.["CIRCLE OF MOSS", "THE PALE SCHOOL"];
+TEAM_NAME :: [2] string.["CIRCLE OF MOSS", "THE EMBER PACT"];
 NAMES :: [10] string.["Rowan", "Briar", "Fern", "Hazel", "Alder", "Mordra", "Vesk", "Sallow", "Grimsby", "Ilse"];
 START_X :: [10] int.[2, 3, 2, 3, 2, 13, 12, 13, 12, 13];
 START_Y :: [10] int.[1, 3, 5, 7, 9, 0, 2, 4, 6, 8];
@@ -123,6 +123,10 @@ spell_col :: (sp: int) -> Col {
   if sp == SP_FALSE_LIFE { return Col.{r = 0.95, g = 0.25, b = 0.35}; }
   if sp == SP_RAY_OF_ENFEEBLEMENT { return Col.{r = 0.6, g = 0.55, b = 0.85}; }
   if sp == SP_BLINDNESS { return Col.{r = 0.4, g = 0.45, b = 1.0}; }
+  if sp == SP_ELDRITCH_BLAST { return Col.{r = 0.85, g = 0.35, b = 1.0}; }
+  if sp == SP_HEX { return Col.{r = 0.55, g = 0.2, b = 0.75}; }
+  if sp == SP_HOLD_PERSON { return GOLD; }
+  if sp == SP_SCORCHING_RAY { return Col.{r = 1.0, g = 0.4, b = 0.12}; }
   return WHITE;
 }
 
@@ -198,7 +202,7 @@ new_battle :: (s: [] Lab) {
   s[0].seed += 1;
   s[0].battle[0].dice[0].state = s[0].seed * 7919 + 17;
   for i: 0..<PEOPLE {
-    who := ifx i < SIDE then rs_druid(NAMES[i], 0, 3) else rs_wizard(NAMES[i], 1, 3);
+    who := ifx i < SIDE then rs_druid(NAMES[i], 0, 3) else rs_warlock(NAMES[i], 1, 3, SP_ELDRITCH_BLAST);
     j := rs_add(bt(s), who, START_X[i], START_Y[i]);
     s[0].dx[i] = f32(START_X[i]); s[0].dy[i] = f32(START_Y[i]); s[0].acted[i] = -10;
   }
@@ -211,7 +215,7 @@ new_battle :: (s: [] Lab) {
   l: [LINE_CAP] u8;
   n := put(l[..], 0, "Battle ");
   n = put_int(l[..], n, s[0].round);
-  n = put(l[..], n, ": five level 3 druids against five level 3 necromancers. Initiative:");
+  n = put(l[..], n, ": five level 3 druids against five level 3 warlocks. Initiative:");
   add_line(s, cast(string) l[0..<n], GOLD);
   for i: 0..<PEOPLE {
     m := put(l[..], 0, "  ");
@@ -289,51 +293,56 @@ friends_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
   return n;
 }
 
-// A necromancer's turn: armour itself in False Life when hurt, Chill Touch whoever is in its face,
-// Ray of Enfeeblement or Blindness/Deafness with its 2nd-level slots, Ray of Sickness with its 1st,
-// and Poison Spray from 30 feet when the slots are gone.
-necro_turn :: (s: [] Lab, i: int) {
+// A Warlock's turn: Hex with a pact slot (a Bonus Action), moved to a new foe when its target
+// drops, or Hold Person to open; with the other slot, Hold Person when it holds no spell, or
+// Scorching Ray when Hex is up;
+// Chill Touch on a Paralyzed foe at hand (a Critical Hit); else Eldritch Blast from range, at the
+// hexed foe first.
+pact_turn :: (s: [] Lab, i: int) {
   b := bt(s);
   if rs_has(b[0].c[i], RS_RESTRAINED) && rs_unit(dice(s)) < 0.5 { ok := rs_escape(b, i); }
   foe := nearest_foe(s, i);
   if foe < 0 { return; }
-  me := b[0].c[i];
-  s1 := free_slot(s, i, 1);
-  // hurt and unshielded: False Life
-  if !b[0].turn.action && me.temp == 0 && me.hp * 3 < me.hp_max * 2 && s1 > 0 && rs_unit(dice(s)) < 0.6 {
-    ok := rs_cast(b, i, SP_FALSE_LIFE, s1, 0, 0, i);
+  // Hex: moved on, or cast
+  if b[0].c[i].conc == SP_HEX && b[0].c[i].hex_free { ok := rs_hex_move(b, i, foe); }
+  if b[0].c[i].conc < 0 && b[0].c[i].slots[2] > 0 {
+    // some open with Hold Person instead
+    if rs_feet_to(b, i, foe) <= 60 && !rs_has(b[0].c[foe], RS_PARALYZED) && rs_unit(dice(s)) < 0.35 { ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe); }
+    else if rs_feet_to(b, i, foe) <= 90 { ok := rs_cast(b, i, SP_HEX, 2, 0, 0, foe); }
   }
-  // a foe in its face: the grave's chill (a melee spell attack, so no Disadvantage up close)
-  if !b[0].turn.action && rs_feet_to(b, i, foe) <= 5 && rs_unit(dice(s)) < 0.8 { ok := rs_cast(b, i, SP_CHILL_TOUCH, 0, 0, 0, foe); }
-  if !rs_has(b[0].c[i], RS_RESTRAINED) {
-    has_slot := !b[0].turn.slot_spent && free_slot(s, i, 1) > 0;
-    walk(s, i, foe, 10, ifx has_slot then 55 else 30);
+  // a Paralyzed foe within a walk: go and touch it
+  held := -1;
+  for j: 0..<b[0].n {
+    c := b[0].c[j];
+    if c.team != b[0].c[i].team && rs_up(c) && rs_has(c, RS_PARALYZED) && rs_feet_to(b, i, j) <= 30 { held = j; }
   }
+  if held >= 0 && !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, held, 0, 5); }
+  if held >= 0 && rs_feet_to(b, i, held) <= 5 { ok := rs_cast(b, i, SP_CHILL_TOUCH, 0, 0, 0, held); }
+  if b[0].turn.action { return; }
+  // keep its distance: Eldritch Blast reaches 120 feet
+  if !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, foe, 25, 60); }
   foe = nearest_foe(s, i);
-  if foe < 0 || b[0].turn.action { return; }
+  if foe < 0 { return; }
+  // the hexed foe first
+  for j: 0..<b[0].n {
+    for k: 0..<RS_EFFECTS {
+      if b[0].c[j].eff[k].kind == EF_HEX && b[0].c[j].eff[k].by == i && rs_up(b[0].c[j]) && rs_feet_to(b, i, j) <= 120 { foe = j; }
+    }
+  }
   d := rs_feet_to(b, i, foe);
-  s2 := ifx b[0].turn.slot_spent || b[0].c[i].slots[2] <= 0 then 0 else 2;
-  s1 = ifx b[0].turn.slot_spent then 0 else free_slot(s, i, 1);
-  roll := rs_unit(dice(s));
-  if s2 > 0 && b[0].c[i].conc < 0 && d <= 60 && roll < 0.35 && !rs_effect(b[0].c[foe], EF_ENFEEBLED) {
-    ok := rs_cast(b, i, SP_RAY_OF_ENFEEBLEMENT, 2, 0, 0, foe);
-  } else if s2 > 0 && d <= 120 && roll < 0.6 && !rs_has(b[0].c[foe], RS_BLINDED) {
-    ok := rs_cast(b, i, SP_BLINDNESS, 2, 0, 0, foe);
-  } else if s1 > 0 && s1 < 2 && d <= 60 && roll < 0.8 {
-    ok := rs_cast(b, i, SP_RAY_OF_SICKNESS, s1, 0, 0, foe);
+  if !b[0].turn.slot_spent && b[0].c[i].slots[2] > 0 {
+    if b[0].c[i].conc < 0 && d <= 60 && !rs_has(b[0].c[foe], RS_PARALYZED) { ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe); }
+    else if rs_unit(dice(s)) < 0.6 { ok := rs_cast(b, i, SP_SCORCHING_RAY, 2, 0, 0, foe); }
   }
-  if !b[0].turn.action {
-    if d <= 5 { ok := rs_cast(b, i, SP_CHILL_TOUCH, 0, 0, 0, foe); }
-    else if d <= 30 { ok := rs_cast(b, i, SP_POISON_SPRAY, 0, 0, 0, foe); }
-  }
+  if !b[0].turn.action { ok := rs_cast(b, i, SP_ELDRITCH_BLAST, 0, 0, 0, foe); }
 }
 
 lab_turn :: (s: [] Lab, i: int) {
   b := bt(s);
   rs_start_turn(b, i);
-  if rs_can_act(b[0].c[i]) && b[0].c[i].spell_ability == RS_INT {
+  if rs_can_act(b[0].c[i]) && b[0].c[i].spell_ability == RS_CHA {
     s[0].acted[i] = b[0].clock;
-    necro_turn(s, i);
+    pact_turn(s, i);
     rs_end_turn(b, i);
     return;
   }
@@ -789,6 +798,8 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
       if rs_has(cr, RS_BLINDED) { m = put(l[..], m, "  BLINDED"); }
       if rs_effect(cr, EF_ENFEEBLED) { m = put(l[..], m, "  ENFEEBLED"); }
       if rs_effect(cr, EF_NOHEAL) { m = put(l[..], m, "  CHILLED"); }
+      if rs_has(cr, RS_PARALYZED) { m = put(l[..], m, "  PARALYZED"); }
+      if rs_effect(cr, EF_HEX) { m = put(l[..], m, "  HEXED"); }
       if cr.conc >= 0 { m = put(l[..], m, "  CONC: "); m = put(l[..], m, rs_spell(cr.conc).name); }
     }
     t := cast(string) l[0..<m];
@@ -891,13 +902,16 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
     u[o + 3] = f32(cr.hp) / f32(rs_max(cr.hp_max, 1));
     u[o + 4] = ifx cr.dead then 2 else ifx cr.hp == 0 then 1 else 0;
     u[o + 5] = ifx cr.outlined_by >= 0 then 1 else 0;
-    // its marks, a bit each: Restrained 1, Poisoned 2, Blinded 4, enfeebled 8, Temporary Hit Points 16
+    // its marks, a bit each: Restrained 1, Poisoned 2, Blinded 4, enfeebled 8, Temporary Hit Points 16,
+    // Paralyzed 32, hexed 64
     marks := 0;
     if rs_has(cr, RS_RESTRAINED) { marks += 1; }
     if rs_has(cr, RS_POISONED) { marks += 2; }
     if rs_has(cr, RS_BLINDED) { marks += 4; }
     if rs_effect(cr, EF_ENFEEBLED) { marks += 8; }
     if cr.temp > 0 { marks += 16; }
+    if rs_has(cr, RS_PARALYZED) { marks += 32; }
+    if rs_effect(cr, EF_HEX) { marks += 64; }
     u[o + 6] = f32(marks);
     since := b.clock - s[0].acted[i];
     u[o + 7] = ifx since >= 0 && since < 1.2 then 1 - since / 1.2 else 0;
@@ -979,7 +993,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   return lab_frame(s, out[..], u[..], w, h, dpr, dt, false);
 }
 
-#test "two circles of druids fight a battle to its end on the SRD's rules" #steps 2000000000 {
+#test "druids and warlocks fight a battle to its end on the SRD's rules" #steps 2000000000 {
   s: [1] Lab;
   lab_start(s[..]);
   casts := 0; seen := 0;
@@ -990,6 +1004,27 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert s[0].over && s[0].winner >= 0;
   #assert rs_team_up(s[0].battle[..], 1 - s[0].winner) == 0;
   #assert s[0].line_n > 10;
+}
+#test "over three battles the warlocks cast all four of their spells, and no others" #steps 20000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  used: [RS_SPELLS] bool;
+  battles := 0; seen := s[0].battle[0].book[0].seq;
+  for i: 0..<(60 * 60 * 60) {
+    step(s[..], f32(STEP));
+    now := s[0].battle[0].book[0].seq;
+    for e: 0..<rs_min(now - seen, RS_EVENTS) {
+      k := (s[0].battle[0].book[0].head + s[0].battle[0].book[0].count - 1 - e) % RS_EVENTS;
+      if s[0].battle[0].book[0].ev[k].kind == RS_EV_CAST && s[0].battle[0].book[0].ev[k].spell >= 0 { used[s[0].battle[0].book[0].ev[k].spell] = true; }
+    }
+    seen = now;
+    if s[0].wins[0] + s[0].wins[1] >= 3 { break; }
+  }
+  #assert s[0].wins[0] + s[0].wins[1] >= 3;
+  #assert used[SP_HEX] && used[SP_HOLD_PERSON] && used[SP_SCORCHING_RAY] && used[SP_ELDRITCH_BLAST];
+  #assert !used[SP_FALSE_LIFE] && !used[SP_RAY_OF_SICKNESS] && !used[SP_BLINDNESS];
+  #assert s[0].wins[0] >= 1;
+  #assert s[0].wins[1] >= 1;
 }
 
 #test "a frame draws the grid, the tokens and the log on a desktop and on a 390 px phone" #steps 2000000000 {

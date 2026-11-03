@@ -1,6 +1,6 @@
 # 5E Lab
 
-A Verse world at https://openagents.com/worlds/5e-lab, not listed on the worlds page. It's the test bench for the shared SRD 5e rules engine: five level 3 druids (the Circle of Moss) fight five level 3 necromancers (the Pale School) on a grid of 5-foot squares, seen either in 3D in a painterly glade like Everglade's or as a bare flat grid. Every attack roll, saving throw, damage roll and death save comes from the engine, and the log shows each one.
+A Verse world at https://openagents.com/worlds/5e-lab, not listed on the worlds page. It's the test bench for the shared SRD 5e rules engine: five level 3 druids (the Circle of Moss) fight five level 3 warlocks (the Ember Pact) on a grid of 5-foot squares, seen either in 3D in a painterly glade like Everglade's or as a bare flat grid. Every attack roll, saving throw, damage roll and death save comes from the engine, and the log shows each one.
 
 ## Controls
 
@@ -13,17 +13,17 @@ A Verse world at https://openagents.com/worlds/5e-lab, not listed on the worlds 
 
 ## What you are watching
 
-- Each druid takes a turn every 6 seconds, in initiative order. In a turn it has one action, one Bonus Action, its Speed (30 feet) and one spell slot to spend.
-- The druids are the SRD's Druid class. The SRD has no necromancer class, so the necromancers are the SRD's Wizard class in Mage Armor (cast before the fight from a 1st-level slot), choosing the Wizard list's necromancy.
+- Each creature takes a turn every 6 seconds, in initiative order. In a turn it has one action, one Bonus Action, its Speed (30 feet) and one spell slot to spend.
+- The druids are the SRD's Druid class. The warlocks are the SRD's Warlock class with the Fiend Patron: Armor of Shadows (Mage Armor without a slot, AC 15), Agonizing Blast and Repelling Blast on Eldritch Blast, and Dark One's Blessing (Temporary Hit Points when a foe drops near them). Pact Magic gives them two level 2 slots for the whole battle.
 - The druids' spells: Produce Flame, Starry Wisp and Poison Spray (cantrips); Cure Wounds, Healing Word, Thunderwave, Entangle and Faerie Fire (level 1, cast with level 1 or level 2 slots).
-- The necromancers' spells: Chill Touch and Poison Spray (cantrips); Ray of Sickness and False Life (level 1); Ray of Enfeeblement and Blindness/Deafness (level 2).
-- A ring of light marks whoever just took a turn. Necromancers wear black robes with pale trim. A green tangle marks a Restrained creature, a green cast a Poisoned one, a dark band over the eyes a Blinded one, grey an enfeebled one, a red rim Temporary Hit Points, a violet ring an outlined one, a small flame a lit Produce Flame. The thin line under the hit-point bar is the spell it's concentrating on.
-- A druid at 0 Hit Points is Unconscious and makes a death saving throw at the start of each of its turns: green ticks are successes, red ticks failures.
+- The warlocks' spells: Eldritch Blast and Chill Touch (cantrips); Hex (level 1, cast with a level 2 slot); Hold Person (level 2); Scorching Ray (level 2, always prepared for the Fiend Patron). Hex adds 1d6 Necrotic to each of the caster's hits and moves to a new foe when its target drops.
+- A ring of light marks whoever just took a turn. Warlocks wear crimson robes with gold trim and carry an iron rod with a violet glow. A green tangle marks a Restrained creature, a green cast a Poisoned one, a dark band over the eyes a Blinded one, grey an enfeebled one, a red rim Temporary Hit Points, a gold sheen a Paralyzed one, a flickering violet rim a hexed one, a violet ring an outlined one, a small flame a lit Produce Flame. The thin line under the hit-point bar is the spell it's concentrating on.
+- A creature at 0 Hit Points is Unconscious and makes a death saving throw at the start of each of its turns: green ticks are successes, red ticks failures.
 - The battle ends when one side has nobody standing. A new one starts 6 seconds later.
 
 ## How it is made
 
 - `aethyr/rules/srd/` is the engine: `engine.coax` (dice, abilities, hit points, death saves), `spells.coax` (the spell records and their effect steps), and `battle.coax` (the grid, casting, concentration, conditions and the real-time turn clock). `docs/dnd/README.md` is the specification.
-- `apps/openagents-web/fivelab.coax` is the world: the druids' decisions, the drawing and its checks. `fivelab-face.c` binds it for the browser, and `fivelab.wgsl` (from `gpu/fivelab.coax`) draws either view: the flat grid, or the glade traced per pixel against its trees and druids and lit with the painterly style's functions (`verse/style.coax`).
+- `apps/openagents-web/fivelab.coax` is the world: the druids' and warlocks' decisions, the drawing and its checks. `fivelab-face.c` binds it for the browser, and `fivelab.wgsl` (from `gpu/fivelab.coax`) draws either view: the flat grid, or the glade traced per pixel against its trees and figures and lit with the painterly style's functions (`verse/style.coax`).
 
 This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
