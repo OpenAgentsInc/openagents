@@ -12,9 +12,9 @@
 //     localhost:PORT) at SLUG-1, since its list isn't on the page's server.
 // A refused socket (full, or gone) asks the list again.
 //
-// Who you are. A guest's name is two words from a fixed list (JN_ADJ, JN_NOUN), the same for a player
-// key every time, sent with the seat ticket's ask so the server's name, the one everyone sees, is it
-// (an account's name outranks it there). The look is the CHARACTER picker's: a skin tone and the
+// Who you are. The name is the server's (the ticket's answer: verse.player_name, which chat and
+// presence show too): an account's, else a guest's own (POST /api/playtest/player/name), else two words
+// the server makes from the player id, the same every time (coax/web/api/migrations/0116). The look is the CHARACTER picker's: a skin tone and the
 // Ranger's cloak and trim dyes ("ranger.SKIN.DYE.TRIM", everglade-rangers.coax look_parse). On a first
 // visit (no look comes back with the ticket, #12715) the picker opens before you join and the socket
 // waits for ENTER; after that CHARACTER opens it again. The class is the realm's druid: the 5E
@@ -31,10 +31,6 @@ JN_COPIED_MS :: 2000;      // ms INVITE says the link is copied
 JN_ARRIVE_MS :: 1600;      // ms the Grid's arrival takes to fade
 JN_SKINS :: 5;             // SKIN_TONE's rows (everglade-rangers.coax LOOK_SKINS)
 JN_DYES :: 12;             // LOOK_DYE's rows, 0 the Ranger's own
-JN_ADJ :: [16] string.["Mossy", "Amber", "Quiet", "Bright", "Swift", "Gentle", "Hollow", "Silver",
-                        "Rowan", "Dusky", "Misty", "Sunny", "Brave", "Merry", "Wild", "Ashen"];
-JN_NOUN :: [16] string.["Heron", "Wren", "Fox", "Otter", "Badger", "Fern", "Willow", "Hare",
-                         "Lark", "Finch", "Thrush", "Marten", "Owl", "Moth", "Birch", "Brook"];
 // the picker's rows and buttons (EgJoin.boxes)
 JB_CHARACTER :: 0; JB_INVITE :: 1; JB_ENTER :: 2; JB_PANE :: 3;
 JB_SWATCH :: 4;            // then JN_SKINS + 2 * JN_DYES swatches: skin, cloak, trim
@@ -175,19 +171,8 @@ jn_seated :: (n: [] EgNet) { n[0].join[0].refused = 0; }
 
 // ---- who you are
 
-// A guest's two words from the player id: the same id, the same name.
-jn_guest_name :: (pid: string, out: [] u8) -> int {
-  h := 2166136261;   // FNV-1a, 32 bits
-  for ch: pid { h = ((h ^ cast(int) ch) * 16777619) % 4294967296; }
-  a := h % 16; b := (h / 16) % 16;
-  k := jn_put(out, 0, JN_ADJ[a]); k = jn_put(out, k, " "); return jn_put(out, k, JN_NOUN[b]);
-}
-// The ticket's ask: its body, the name you ask for ({} when there is no player id yet).
-jn_ticket_body :: (n: [] EgNet, out: [] u8) -> int {
-  if n[0].pid_n == 0 { return jn_put(out, 0, "{}"); }
-  nm: [NET_NAME] u8; m := jn_guest_name(cast(string) n[0].pid[0..<n[0].pid_n], nm[..]);
-  k := jn_put(out, 0, "{\"name\":\""); k = jn_put(out, k, cast(string) nm[0..<m]); return jn_put(out, k, "\"}");
-}
+// The ticket's ask: its body. The server names you (no name is asked for).
+jn_ticket_body :: (n: [] EgNet, out: [] u8) -> int { return jn_put(out, 0, "{}"); }
 // The ticket came (net_ticket): the name everyone sees, and on a first visit the picker before you join.
 jn_ticketed :: (s: [] Everglade, n: [] EgNet, answer: string, had_look: bool) {
   j := n[0].join[..];
@@ -404,12 +389,13 @@ join_key :: (s: [] Everglade, key: int) -> bool {
   pipe_drained(n[0].pipe[..]);
   net_rooms(g[..], "200\n{\"realm\":\"everglade\",\"game\":\"everglade\",\"seats\":16,\"join\":\"everglade-3\",\"with\":\"everglade-3\",\"rooms\":[]}");
   #assert cast(string) n[0].code[0..<n[0].code_n] == "everglade-3" && cast(string) n[0].url[0..<n[0].url_n] == "wss://openagents.com/api/room/relay/everglade/everglade-3";
-  // then the ticket for that instance, asking for the guest's name
+  // then the ticket for that instance (the server names you)
   net_step(g[..], 200, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
   #assert n[0].pipe[0].n == 1 && n[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(n[0].pipe[..], 0), "/api/playtest/room-ticket/everglade-3");
-  b: [96] u8; nm: [40] u8;
-  body := cast(string) b[0..<jn_ticket_body(n, b[..])];
-  #assert jn_has(body, "{\"name\":\"") && jn_has(body, cast(string) nm[0..<jn_guest_name("p-me", nm[..])]);
+  b: [96] u8;
+  #assert cast(string) b[0..<jn_ticket_body(n, b[..])] == "{}";
+  net_ticket(g[..], "200\n{\"ticket\":\"v2.x\",\"id\":\"p-me\",\"account\":false,\"name\":\"Mossy Heron\",\"expires\":9}");
+  #assert cast(string) n[0].join[0].name[0..<n[0].join[0].name_n] == "Mossy Heron";
   // a bad answer: the lowest
   m: [1] Everglade; mn: [1] EgNet;
   everglade_attach_net(m[..], mn[..]);
@@ -495,7 +481,7 @@ join_key :: (s: [] Everglade, key: int) -> bool {
   #assert !join_picking(r[..]) && jn_ready(rn[..]) && rn[0].join[0].skin == 2 && rn[0].join[0].dye == 3;
   net_facts(r[..], "url=https://openagents.com/worlds/everglade?room=pair-zz\nplayer=p1\n", "everglade", false);
 }
-#test "join: INVITE copies the link to your instance; a guest's name is the same two words for the same key" {
+#test "join: INVITE copies the link to your instance" {
   g: [1] Everglade; nn: [1] EgNet;
   everglade_attach_net(g[..], nn[..]);
   net_facts(g[..], "url=https://openagents.com/worlds/everglade?with=p9#market\nplayer=p1\n", "everglade", false);
@@ -503,9 +489,4 @@ join_key :: (s: [] Everglade, key: int) -> bool {
   net_rooms(g[..], "200\n{\"join\":\"everglade-2\"}");
   jn_invite(g[..]);
   #assert g[0].action == JN_ACT_COPY && cast(string) g[0].outbox[0..<g[0].out_n] == "https://openagents.com/worlds/everglade?room=everglade-2";
-  a: [40] u8; b: [40] u8;
-  #assert cast(string) a[0..<jn_guest_name("p-1234", a[..])] == cast(string) b[0..<jn_guest_name("p-1234", b[..])];
-  x := cast(string) a[0..<jn_guest_name("p-1234", a[..])];
-  sp := 0; for ch: x { if ch == ' ' { sp += 1; } }
-  #assert sp == 1 && x.count >= 6;
 }

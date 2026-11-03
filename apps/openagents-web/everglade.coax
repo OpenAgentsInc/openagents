@@ -1295,6 +1295,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
   }
   if s[0].board { return board_pointer(s, x, y, phase, id); }
   if join_pointer(s, x, y, phase, id) { return true; }   // INVITE, CHARACTER and its picker (everglade-join.coax)
+  if md_pointer(s, x, y, phase, id) { return true; }   // a player's nameplate and its pane (everglade-moderate.coax)
   if eg_quality_pointer(s, x, y, phase, id) { return true; }   // the graphics tier, bottom right
   // Aethyrforge's panels in edit mode: only they and edit mode's own presses (everglade-forge.coax)
   forge := forge_on(s);
@@ -3294,7 +3295,7 @@ tag :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, text: string, p: Point,
 // would overlap a name already drawn (the owner, October 29: GUILD ROW over THE COMMONS at the market)
 // moves up a line, or is left out when that overlaps too, so the farther one gives way.
 LABELS_MAX :: EG_PLACES + EG_BUILDINGS + EG_SPOTS + ROOM_OTHERS;
-Label :: struct { text: string; p: Point; cap: f32; light: f32; gold: bool; d: f32; done: bool; person: bool; }
+Label :: struct { text: string; p: Point; cap: f32; light: f32; gold: bool; d: f32; done: bool; person: bool; who: string; }   // who: a player's id (their nameplate can be tapped)
 labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
   k := hi(s[0].dpr, 0.5);
   overview := s[0].lift > 0.5;
@@ -3358,6 +3359,7 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
     o := placed * 4;
     boxes[o] = x0; boxes[o + 1] = y - l.cap * 0.3; boxes[o + 2] = x1; boxes[o + 3] = y + l.cap * 1.3;
     placed += 1;
+    if l.who.count > 0 { md_plate(s, Box.{x0 = x0, y0 = y - l.cap * 1.3, x1 = x1, y1 = y + l.cap * 0.3}, l.who, l.text); }   // a tap opens BLOCK, REPORT, KICK (everglade-moderate.coax)
     r_ := ifx l.gold then f32(GOLD_R) else f32(PARCH_R);
     g_ := ifx l.gold then f32(GOLD_G) else f32(PARCH_G);
     b_ := ifx l.gold then f32(GOLD_B) else f32(PARCH_B);
@@ -3641,6 +3643,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   s[0].q_box = Box.{};
   st_blind_plate(s, u);   // Blinded: the world dark under the HUD (everglade-storm.coax)
   if forge_on(s) { s[0].map_button = Box.{}; return forge_hud(s, out, u, 0); }   // EDIT: Aethyrforge's panels alone (everglade-forge.coax)
+  md_plates_clear(s);
   n := ifx s[0].paint_only || eg_pane_open(s) then 0 else labels(s, out, u, 0, you);   // the feature list's pane open: no place names over it
   if !s[0].paint_only && s[0].talk < 0 && !(phone(s) && eg_pane_open(s)) { n = room_chat_draw(s, out, u, n); }   // the room's chat (everglade-room.coax)
   gutter := 16 * k;
@@ -3666,6 +3669,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   if fk_has(s) && s[0].fk[0].boxes[FB_OPEN].x1 > left { left = s[0].fk[0].boxes[FB_OPEN].x1; }
   n = join_hud(s, out, u, n, mb, left);
   join_arrive(s, u);   // from the Grid's gate: the veil lifting
+  n = md_draw(s, out, u, n, mb.y1 + 10 * k + join_drop(s));   // a tapped nameplate's BLOCK, REPORT, KICK (everglade-moderate.coax)
   if !eg_pane_open(s) { n = watch_hud(s, out, u, n, mb.y1 + 10 * k + join_drop(s)); }   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
   n = net_bars(s, out, u, n);   // the room's summoned creatures' Hit Points (everglade-net.coax)
   n = st_hud(s, out, u, n);   // Blinded, Deafened; what the beasts say (everglade-storm.coax Speak with Animals)

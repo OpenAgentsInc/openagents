@@ -125,6 +125,7 @@ rangers_you_look :: (s: [] Everglade, o: int) {
 RemoteBody :: struct {
   seat: int;
   name: string;               // "" a nameless figure
+  pid: string;                // their player id (a tap on the nameplate: everglade-moderate.coax)
   account: bool;              // a gold nameplate (a guest's is white)
   away: bool;                 // the server hasn't heard their page lately (WF_AWAY): drawn faded
   kind: int;                  // CLASS_*: their class, its gear
@@ -201,7 +202,9 @@ remote_bodies :: (s: [] Everglade, out: [] RemoteBody) -> int {
     if n >= out.count { break; }
     v := net_view(s, WK_PLAYER, k);
     if !v.ok { continue; }
-    out[n] = RemoteBody.{seat = v.eid, name = net_view_name(s, WK_PLAYER, k), account = v.account, away = v.away,
+    pid := net_view_id(s, WK_PLAYER, k);
+    if net_blocks(s, pid) { continue; }   // you block them: no body, no nameplate (#12714)
+    out[n] = RemoteBody.{seat = v.eid, name = net_view_name(s, WK_PLAYER, k), pid = pid, account = v.account, away = v.away,
                          kind = class_of(net_view_class(s, WK_PLAYER, k)),
                          p = v3(v.x, v.y, v.z), yaw = v.yaw, v = v3(v.vx, 0, v.vz),
                          air = v.air || v.act == 3, swim = v.swim, boat = v.boat, form = v.form, alive = v.alive,
@@ -386,7 +389,7 @@ rangers_labels :: (s: [] Everglade, ls: [] Label, c: int, you: Point, k: f32, rs
     d := flat_gap(p, you);
     if d > f32(REMOTE_PLATE_NEAR) { continue; }
     light := 0.85 * clamp01((f32(REMOTE_PLATE_NEAR) - d) / f32(REMOTE_PLATE_FADE)) * remote_plate_shown(s, e);
-    ls[m] = Label.{text = e.name, p = p, cap = 6.5 * k, light = light, gold = e.account, d = d, done = false, person = true}; m += 1;
+    ls[m] = Label.{text = e.name, p = p, cap = 6.5 * k, light = light, gold = e.account, d = d, done = false, person = true, who = e.pid}; m += 1;
   }
   return m;
 }

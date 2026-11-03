@@ -34,6 +34,7 @@
 #load "socket.coax";
 #load "everglade-wire.coax";
 #load "everglade-join.coax";   // which instance, who you are in it, INVITE (#12716)
+#load "everglade-moderate.coax";   // BLOCK, REPORT and KICK from a nameplate (#12714)
 
 NET_ENTS :: 256;
 NET_RING :: 8;            // a state's last few: 8 at 15 Hz hold 470 ms, past NET_HIGH
@@ -119,6 +120,7 @@ EgNet :: struct {
   creature_hits: int; creature_deaths: int;   // hits on and deaths of the server's creatures heard
   feet_y: f32;                                // your feet's height as the face last gave it (net_step's fy)
   join: [1] EgJoin;                           // the instance, the CHARACTER picker and INVITE (everglade-join.coax)
+  mod: [1] EgMod;                             // your blocks and the nameplate pane (everglade-moderate.coax)
 }
 
 everglade_attach_net :: (s: [] Everglade, n: [] EgNet) #export_c { s[0].net = n; }
@@ -236,6 +238,7 @@ net_ticket :: (s: [] Everglade, answer: string) #export_c {
         had_look := (n[0].restored && n[0].saved_look_n > 0) || net_json_field(answer, "look").count > 0;
         net_placed(n, net_json_field(answer, "room"), net_number(net_json_field(answer, "shard")));
         net_restore(s, n, answer);
+        md_ticket(n, answer);   // who you block (#12714)
         jn_ticketed(s, n, answer, had_look);   // a first visit: CHARACTER before you join
         return;
       }
@@ -1300,7 +1303,8 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   everglade_attach_net(a[..], na[..]);
   net_facts(a[..], "url=https://openagents.com/worlds/everglade?room=pair-a\nplayer=pa\nnow=5000000\nnav=0\n", "everglade", false);
   net_step(a[..], 100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
-  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-a?realm=everglade\n{\"name\":\"");
+  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-a?realm=everglade
+{}");
   pipe_drained(na[0].pipe[..]);
   net_step(a[..], 116, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   #assert na[0].pipe[0].n == 0;   // asked once
