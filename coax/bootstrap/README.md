@@ -26,16 +26,16 @@ coax/refresh-sources-seed.sh /absolute/path/to/trusted/coax
 coax/build.sh test
 ```
 
-The checker's mutation gate is the expensive one: 12,394 mutants under full
-scheduling. On 2026-11-03, at load average 35 to 170 on 28 cores, a 1/256
-shard took 486 s cold, so the cold gate is about 35 hours of such shards. A
-part's run with its killers is minutes: `checker/types.coax` took 212 s
-(`../RELEASE.md`, Build caches). Since the likely-killer order, a cold part
-also runs about 10 checks per killed mutant instead of about 140
-(`checker/records.coax`: 1,220 instead of 17,166). `refresh-checker-seed.sh` runs the whole gate in one command,
+The checker's mutation gate is the expensive one: 12,406 mutants under full
+scheduling, all killed at 74cdf11662. With the likely-killer order and no
+survivors left, a 1/32 shard takes about 64 s cold and 45 s with the
+complete killers file (28 cores, 13 jobs), so the whole gate is 24 to 34
+minutes of shards (`../RELEASE.md`, Build caches). Before that, with the old
+order and survivors, a 1/256 shard took 486 s cold. Each new survivor
+runs every check again. `refresh-checker-seed.sh` runs the whole gate in one command,
 so on a loaded machine run the checks, emit the seed with `coax c
 lib/compiler/checker.coax --library --header`, and run the gate in parts
-(`coax mutate --unit PART --shard I/N`, then `--merge`, with `--killers`).
+(`coax mutate --shard I/32`, then `--merge`, with `--killers`).
 
 Commit source and regenerated seed together. Each refresh command runs checks
 and mutation testing before replacing the seed. A previous compiler must be

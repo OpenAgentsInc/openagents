@@ -201,6 +201,29 @@ worktree and agent on the machine.
   identical between the two orders. Shard 1/6 finished in 783 s in the new
   order and hit the 890 s cap in source order. A survivor still runs every
   check, so the survivors left set the floor.
+- **The full checker gate at zero survivors** (#12646, #12638, 2026-11-03,
+  74cdf11662, 28 cores). Every part was brought to 0 survivors one unit at a
+  time, then the whole gate ran in 32 shards with the installed compiler,
+  two at a time with 13 jobs each: `coax mutate lib/compiler/checker.coax
+  --shard I/32 --jobs 13 --killers <a copy of the gate's file>`. All 12,406
+  mutants were killed. Each shard took 107 to 214 s (3,328 s in all, about
+  57 minutes of wall time) at load average 12 to 70 from other agents' work.
+  `--merge` of the 32 records with `--killers
+  ~/.cache/coax-gates/killers/<the gate's key>` wrote the gate's killers
+  file, which now names a killer for all 12,406 mutants. Shard 1/32 (388
+  mutants, 13 jobs, load average about 12) measured afterwards on the same
+  tree:
+
+  | Run | Check runs | Time |
+  | --- | --- | --- |
+  | Cold: no killers file, likely-killer order | 11,279 | 64 s |
+  | Warm: the complete killers file | 388 | 45 s |
+
+  Warm, every mutant's recorded killer fails first, so a shard costs its
+  baseline run of all 1,322 checks plus one check per mutant: the whole
+  gate is about 32 × 45 s, or 24 minutes of shards. Cold, it is about
+  32 × 64 s, or 34 minutes. A 1/32 shard stays far under the 15-minute limit
+  either way, even at load average 70.
 
 The build log prints each gate's time, or `reused` with its command.
 `COAX_BUILD_FRESH=1` ignores both caches. A cached gate result is a record
