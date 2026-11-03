@@ -227,7 +227,30 @@ staging. If not, say what to tune: distance, spring or ease.
 
 Move the iOS Metal host (`apps/openagents-ios` `HomeRenderer.swift`) onto
 the shared render admission ledger (`aethyr/render/registry.coax`). This
-needs an agent on the Mac with Xcode; coderos-4080 can't build the app.
+needs an agent on the Mac with Xcode; coderos-4080 can't build the app
+(no `xcodegen`, `xcodebuild` or iOS simulator SDK). It is the last open item
+of #12628; everything else in it is done on Linux.
+
+What the Mac agent does, following the native Vulkan host
+(`verse/native/render-host.c`, 491fbeb7e4), which uses the same exports:
+
+1. Add the ledger's C exports (`aethyr/render/host.coax`, over
+   `registry.coax`) to `apps/openagents-ios/generate.sh`; they aren't
+   compiled into the app today. Swift then calls
+   `aethyr_render_registry_storage`, `_open`, `_acquire`, `_release`,
+   `_live` and `_advance`.
+2. Acquire a handle before every `makeBuffer` and `makeTexture` in
+   `HomeRenderer.swift`: the Cast buffers and texture sheets, the Grid props'
+   vertex, face, line and identity buffers, the palette, the dot and line
+   buffers, the depth target and the offscreen target; and in
+   `HauntAssets.swift`, the house's vertex and index buffers, texture sheets
+   and per-frame instance and light buffers. Create nothing when
+   the ledger refuses. Release the handle when the object is freed.
+3. Each frame: advance the epoch, then refuse the frame before encoding
+   anything if a buffer or texture it uses isn't live.
+4. Check with `apps/openagents-ios/build.sh` and the simulator tests in
+   `apps/openagents-ios/README.md`, then record in #12628 the counts of live
+   handles while drawing and after close, as the Vulkan record does.
 
 ## Realm seats: release oa-api, the site and the runner (2026-11-02, #12655)
 

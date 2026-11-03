@@ -31,11 +31,11 @@ The following are part of the published profile, not hidden passing results:
 
 | Workload | Result |
 | --- | --- |
-| Retained Dead Gears complete image | **FAIL:** three RGB channels. |
+| Retained Dead Gears complete image | **FAIL:** three RGB channels, all at (42,76). Cause (2026-11-03): a one-float32-step depth tie between two faces of one box, which the GPUs' fixed-function depth resolves the other way; outside any CPU raster profile until a depth-tie profile is admitted. [Boundary record](aethyr-render-boundaries-2026-11-03.md). |
 | The same Dead Gears strict interior | **PASS:**229,764 channels;159 complete RGBA pixels/636 channels remain **UNQUALIFIED**. [Independent geometric envelope](aethyr-shared-edge-envelope-2026-11-02.json), [actual frame/source joins](aethyr-deadgears-retained-frame-join-2026-11-02.md), [admitted comparator and adversarial controls](aethyr-frame-interiors-2026-11-02.json). Nonfinite values fail everywhere. This is a declared conservative geometric exclusion, not a universal hardware-error bound. |
 | Everglade WebGPU runtime and stock golden | **PASS:** actual1280×800 ready frame, plus complete320×180 resource capture, and reviewed stock migration. |
 | Everglade current native Vulkan frame | **PASS:** complete190-row input, eight textures, zero validation errors/warnings. This records GPU execution, not colour agreement with a CPU image. |
-| Everglade complete CPU image | **UNQUALIFIED:** after the real boolean fix, the three-billion-step shadow budget refuses with zero published image writes. An unsuccessful20B experimental profile is retained and withdrawn; its API is not shipped. |
+| Everglade complete CPU image | **UNQUALIFIED:** after the real boolean fix, the three-billion-step shadow budget refuses with zero published image writes. An unsuccessful20B experimental profile is retained and withdrawn; its API is not shipped. Stays outside the profile until the CPU interpreter can resume a frame in bounded slices ([boundary record](aethyr-render-boundaries-2026-11-03.md), 2026-11-03). |
 
 The registered consumers are `coax/web/render.js` and
 `verse/native/render-host.c`, which execute shared Coax plans, and
