@@ -52,6 +52,9 @@ RsBattle :: struct {
   // of every creature: kept by rs_add, rs_place, rs_step_to and the pushes, and rebuilt at each
   // turn's start (rs_index) for whatever a world moved by hand.
   occ: [] int;
+  // The world moves creatures only through rs_add, rs_place and the engine's own steps and pushes, so
+  // the index stays right and a turn's start needn't rebuild it (5E Lab's crowds: 70,000 squares).
+  kept: bool;
   own: [RS_MAX] RsCreature; own_occ: [RS_SQUARES] int;   // the room a battle has of its own
 }
 // The battle's room: its own, unless a world gave it more (rs_use). Every way in that writes a
@@ -282,6 +285,9 @@ rs_end_concentration :: (b: [] RsBattle, i: int, why: string) {
 // Warlock who dropped it, or stands within 10 feet of it, has Dark One's Blessing.
 rs_dropped :: (b: [] RsBattle, by: int, j: int) {
   for k: 0..<b[0].n {
+    // only a Hex or a Hunter's Mark held, or Dark One's Blessing, has anything to do here (the
+    // look first, before a creature's copy: a big battle has thousands)
+    if !b[0].c[k].dark_blessing && b[0].c[k].conc != SP_HEX && b[0].c[k].conc != SP_HUNTERS_MARK { continue; }
     c := b[0].c[k];
     for e: 0..<RS_EFFECTS {
       ek := b[0].c[j].eff[e].kind;
@@ -483,6 +489,7 @@ rs_shield :: (b: [] RsBattle, j: int) -> bool {
 // only when the die could turn the hit (by `margin`, the roll over the AC). The amount taken off.
 rs_cutting_words :: (b: [] RsBattle, i: int, margin: int) -> int {
   for k: 0..<b[0].n {
+    if !b[0].c[k].cutting { continue; }
     c := b[0].c[k];
     if !c.cutting || c.team == b[0].c[i].team || c.reacted || !rs_can_act(c) || c.uses[RS_USE_INSPIRE] <= 0 { continue; }
     if margin >= c.insp_die || rs_feet_to(b, k, i) > 60 { continue; }
@@ -918,6 +925,7 @@ rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
 rs_guardians :: (b: [] RsBattle, j: int) {
   if b[0].guards <= 0 || !rs_up(b[0].c[j]) || b[0].c[j].guard_turn == b[0].turn_no { return; }
   for k: 0..<b[0].n {
+    if b[0].c[k].conc != SP_SPIRIT_GUARDIANS { continue; }
     g := b[0].c[k];
     if g.conc != SP_SPIRIT_GUARDIANS || g.team == b[0].c[j].team || rs_feet_to(b, k, j) > 15 { continue; }
     b[0].c[j].guard_turn = b[0].turn_no;
@@ -949,7 +957,7 @@ rs_guarded :: (b: [] RsBattle, i: int) -> bool {
 // The start of i's turn: what has run out ends, a creature at 0 makes its death saving throw, a
 // Prone one stands (half its Speed).
 rs_start_turn :: (b: [] RsBattle, i: int) {
-  rs_index(b);
+  if !b[0].kept { rs_index(b); }
   b[0].who = i;
   // a beat moves its share of a round's Speed (at least a square)
   // the Slow mastery: 10 feet less
@@ -1189,6 +1197,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   if me.sneak_dice > 0 && !b[0].turn.sneaked && (wp.finesse || !melee) && w != W_UNARMED {
     ally := false;
     for k: 0..<b[0].n {
+      if k == i || rs_feet_to(b, k, j) > 5 { continue; }
       c := b[0].c[k];
       if k != i && c.team == me.team && rs_up(c) && !rs_has(c, RS_INCAPACITATED) && rs_feet_to(b, k, j) <= 5 { ally = true; }
     }
@@ -1495,6 +1504,7 @@ rs_step_of_the_wind :: (b: [] RsBattle, i: int) -> bool {
 
 // Who i has turned (Turn Undead) is let go: i dropped, or is Incapacitated.
 rs_release_turned :: (b: [] RsBattle, i: int) {
+  if !b[0].c[i].turn_undead { return; }   // only Turn Undead turns (rs_turn_undead)
   for j: 0..<b[0].n {
     for k: 0..<RS_EFFECTS { if b[0].c[j].eff[k].kind == EF_TURNED && b[0].c[j].eff[k].by == i { rs_drop_effect(b, j, k); } }
   }
@@ -1562,6 +1572,7 @@ rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
   // Sear Undead: Wisdom-modifier d8s (at least one), rolled once, Radiant on each that fails
   sear := ifx b[0].c[i].sear then rs_sum(b[0].dice[..], rs_max(rs_mod(b[0].c[i].score[RS_WIS]), 1), 8) else 0;
   for j: 0..<b[0].n {
+    if !b[0].c[j].undead || rs_feet_to(b, i, j) > 30 { continue; }
     c := b[0].c[j];
     if !c.undead || !rs_up(c) || c.team == b[0].c[i].team || rs_feet_to(b, i, j) > 30 { continue; }
     d := rs_d20(b[0].dice[..], rs_save_edge(b, j, RS_WIS));

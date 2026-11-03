@@ -154,6 +154,8 @@ Lab :: struct {
   asked: [3] int;   // a number asked past a slider's most (the address or a key), shown in red; 0 none
   ms: f32;   // the frame's time, milliseconds, averaged with the frames a second
   unlabelled: int;   // labels this frame left off for want of room in the strokes (SCENE_VERTS)
+  blk_up: [BLK_MAX * TEAMS] int; blk_w: int; blk_h: int;   // the standing by block and side (blk_count)
+  due_t: [DUE_MAX] f32; due_i: [DUE_MAX] int; due_n: int;   // whose turn comes next (lab_due's heap)
   shown_n: int;   // the creatures the figures showed last frame (the slots past them are clear)
   pressing: int;
   // the glade's camera: an orbit round the clearing, and what it makes this frame
@@ -572,6 +574,7 @@ flood :: (s: [] Lab) {
       rs_place(b, i, x, y);   // its body's square comes free
       b[0].c[i].turn_at = b[0].clock + 0.2 + rs_unit(dice(s)) * rs_beat(b);
       b[0].c[i].round_at = b[0].c[i].turn_at;
+      due_push(s, i);
       s[0].dx[i] = f32(x); s[0].dy[i] = f32(y); s[0].acted[i] = b[0].clock; s[0].fell[i] = 0; s[0].fresh[i] = true;
       break;
     }
@@ -737,6 +740,8 @@ new_battle :: (s: [] Lab) {
   s[0].battle[0].clock = 0;
   if s[0].mode == MODE_ACTION { s[0].battle[0].beat = ACTION_BEAT; s[0].battle[0].recharge = ACTION_RECHARGE; }
   rs_begin(bt(s));
+  bt(s)[0].kept = true;   // every move here goes through rs_add and rs_place
+  due_all(s);
   s[0].seen = s[0].battle[0].book[0].seq;
   s[0].over = false; s[0].winner = -1;
   if s[0].player { pick_hero(s); }
@@ -787,16 +792,113 @@ lab_start :: (s: [] Lab) {
 
 // ---- how a druid decides (the world's; the rules are the engine's)
 
+// ---- who is near: a big battle asks the squares, not every creature
+//
+// Past NEAR_SCAN creatures a turn's questions ("which foes are within 60 feet?") look over the
+// squares round the asker through the battle's index (battle.coax occ) rather than over every
+// creature, and the nearest foe is found block by block (BLK squares a side, each block's
+// standing creatures counted by side once a step: blk_count). A small battle asks every creature
+// in order, as it always has, so its rolls come out the same.
+NEAR_SCAN :: 400;
+NEAR_MAX :: 3721;   // the squares within 150 feet (61 by 61): the farthest any routine here asks
+BLK :: 8;
+BLK_MAX :: 1152;    // (384 / 8) by (192 / 8) blocks
+// The creatures within `feet` of square (x, y), the dead too (the asker decides), into ids: a small
+// battle's in index order, a big one's by square. How many.
+near_ids :: (s: [] Lab, x: int, y: int, feet: int, ids: [] int) -> int {
+  b := bt(s);
+  n := 0;
+  r := feet / RS_SQUARE;
+  if b[0].n <= NEAR_SCAN || !rs_indexed(b) || r > 30 {
+    for j: 0..<b[0].n {
+      if rs_feet(x, y, b[0].c[j].x, b[0].c[j].y) <= feet && n < ids.count { ids[n] = j; n += 1; }
+    }
+    return n;
+  }
+  w := b[0].w;
+  y0 := rs_max(0, y - r); y1 := rs_min(b[0].h - 1, y + r);
+  x0 := rs_max(0, x - r); x1 := rs_min(w - 1, x + r);
+  row := y0;
+  while row <= y1 {
+    col := x0;
+    while col <= x1 {
+      k := b[0].occ[row * w + col] - 1;
+      if k >= 0 && k < b[0].n && b[0].c[k].x == col && b[0].c[k].y == row && n < ids.count { ids[n] = k; n += 1; }
+      col += 1;
+    }
+    row += 1;
+  }
+  return n;
+}
+// The blocks' counts of standing creatures by side, for nearest_foe_far: once a step, before the turns.
+blk_count :: (s: [] Lab) {
+  b := bt(s);
+  s[0].blk_w = 0; s[0].blk_h = 0;
+  if b[0].n <= NEAR_SCAN || !rs_indexed(b) { return; }
+  bw := (s[0].cols + BLK - 1) / BLK; bh := (s[0].rows + BLK - 1) / BLK;
+  if bw * bh > BLK_MAX { return; }
+  s[0].blk_w = bw; s[0].blk_h = bh;
+  for q: 0..<(bw * bh * TEAMS) { s[0].blk_up[q] = 0; }
+  for j: 0..<b[0].n {
+    if !rs_up(b[0].c[j]) || b[0].c[j].x < 0 || b[0].c[j].y < 0 { continue; }
+    q := ((b[0].c[j].y / BLK) * bw + b[0].c[j].x / BLK) * TEAMS + b[0].c[j].team;
+    s[0].blk_up[q] += 1;
+  }
+}
+// The nearest foe by blocks, rings of them outward from i's, each block holding a foe looked over
+// square by square; it stops once a ring is further off than the best found. -1: none counted.
+nearest_foe_far :: (s: [] Lab, i: int) -> int {
+  b := bt(s);
+  bw := s[0].blk_w; bh := s[0].blk_h;
+  x := b[0].c[i].x; y := b[0].c[i].y; team := b[0].c[i].team;
+  mon := b[0].c[i].klass == RS_MONSTER;
+  bx := x / BLK; by := y / BLK;
+  best := -1; bd := 100000;
+  far := rs_max(bw, bh);
+  for rg: 0..<far {
+    if rg > 0 && (rg - 1) * BLK * RS_SQUARE > bd { break; }
+    qy := by - rg;
+    while qy <= by + rg {
+      // the rg's top and bottom rows whole, its sides at their two ends
+      edge := qy == by - rg || qy == by + rg;
+      hop := ifx edge || rg == 0 then 1 else 2 * rg;
+      qx := bx - rg;
+      while qx <= bx + rg {
+        if qx >= 0 && qy >= 0 && qx < bw && qy < bh {
+          q := (qy * bw + qx) * TEAMS;
+          foes := 0;
+          for t: 0..<TEAMS { if t != team { foes += s[0].blk_up[q + t]; } }
+          if foes > 0 {
+            for sy: (qy * BLK)..<rs_min(qy * BLK + BLK, s[0].rows) {
+              for sx: (qx * BLK)..<rs_min(qx * BLK + BLK, s[0].cols) {
+                k := b[0].occ[sy * b[0].w + sx] - 1;
+                if k < 0 || k >= b[0].n || b[0].c[k].team == team || !rs_up(b[0].c[k]) || b[0].c[k].x != sx || b[0].c[k].y != sy { continue; }
+                d := rs_feet(x, y, sx, sy);
+                if b[0].c[k].klass == RS_MONSTER && !mon && d > 5 { d += 40; }
+                if d < bd || (d == bd && k < best) { bd = d; best = k; }
+              }
+            }
+          }
+        }
+        qx += hop;
+      }
+      qy += 1;
+    }
+  }
+  return best;
+}
+
 nearest_foe :: (s: [] Lab, i: int) -> int {
   // heroes count the Restless Dead 40 feet further off than they are: the rival side is their
   // quarrel, and the dead are fought when they come close
+  if s[0].blk_w > 0 { far := nearest_foe_far(s, i); if far >= 0 { return far; } }
+  b := bt(s);
   best := -1; bd := 100000;
-  me := s[0].battle[0].c[i];
-  for j: 0..<s[0].battle[0].n {
-    c := s[0].battle[0].c[j];
-    if c.team == me.team || !rs_up(c) { continue; }
-    d := rs_feet_to(bt(s), i, j);
-    if c.klass == RS_MONSTER && me.klass != RS_MONSTER && d > 5 { d += 40; }
+  team := b[0].c[i].team; mon := b[0].c[i].klass == RS_MONSTER;
+  for j: 0..<b[0].n {
+    if b[0].c[j].team == team || !rs_up(b[0].c[j]) { continue; }
+    d := rs_feet_to(b, i, j);
+    if b[0].c[j].klass == RS_MONSTER && !mon && d > 5 { d += 40; }
     if d < bd { bd = d; best = j; }
   }
   return best;
@@ -835,16 +937,18 @@ walk :: (s: [] Lab, i: int, foe: int, least: int, want: int) {
 }
 foes_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
   n := 0;
-  for j: 0..<s[0].battle[0].n {
-    c := s[0].battle[0].c[j];
+  ids: [NEAR_MAX] int; m := near_ids(s, x, y, feet, ids[..]);
+  for q: 0..<m {
+    j := ids[q]; c := s[0].battle[0].c[j];
     if c.team != s[0].battle[0].c[i].team && rs_up(c) && rs_feet(x, y, c.x, c.y) <= feet { n += 1; }
   }
   return n;
 }
 friends_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
   n := 0;
-  for j: 0..<s[0].battle[0].n {
-    c := s[0].battle[0].c[j];
+  ids: [NEAR_MAX] int; m := near_ids(s, x, y, feet, ids[..]);
+  for q: 0..<m {
+    j := ids[q]; c := s[0].battle[0].c[j];
     if c.team == s[0].battle[0].c[i].team && !c.dead && rs_feet(x, y, c.x, c.y) <= feet { n += 1; }
   }
   return n;
@@ -865,7 +969,9 @@ pact_turn :: (s: [] Lab, i: int) {
   if b[0].c[i].conc == SP_HEX && b[0].c[i].hex_free { ok := rs_hex_move(b, i, foe); }
   // a barbarian within 60 feet: Rage does nothing for a Wisdom save, so Hold Person it
   brute := -1;
-  for j: 0..<b[0].n {
+  ids1: [NEAR_MAX] int; m1 := near_ids(s, b[0].c[i].x, b[0].c[i].y, 60, ids1[..]);
+  for q1: 0..<m1 {
+    j := ids1[q1];
     c := b[0].c[j];
     if c.team != b[0].c[i].team && rs_up(c) && c.klass == RS_BARBARIAN && !rs_has(c, RS_PARALYZED) && rs_feet_to(b, i, j) <= 60 {
       if brute < 0 || rs_feet_to(b, i, j) < rs_feet_to(b, i, brute) { brute = j; }
@@ -878,7 +984,9 @@ pact_turn :: (s: [] Lab, i: int) {
   }
   // a Paralyzed foe within a walk: go and touch it
   held := -1;
-  for j: 0..<b[0].n {
+  ids2: [NEAR_MAX] int; m2 := near_ids(s, b[0].c[i].x, b[0].c[i].y, 30, ids2[..]);
+  for q2: 0..<m2 {
+    j := ids2[q2];
     c := b[0].c[j];
     if c.team != b[0].c[i].team && rs_up(c) && rs_has(c, RS_PARALYZED) && rs_feet_to(b, i, j) <= 30 { held = j; }
   }
@@ -891,12 +999,16 @@ pact_turn :: (s: [] Lab, i: int) {
   if foe < 0 { return; }
   // a raging barbarian next: Force isn't halved by Rage
   bd := 100000;
-  for j: 0..<b[0].n {
+  ids3: [NEAR_MAX] int; m3 := near_ids(s, b[0].c[i].x, b[0].c[i].y, 120, ids3[..]);
+  for q3: 0..<m3 {
+    j := ids3[q3];
     c := b[0].c[j];
     if c.team != b[0].c[i].team && rs_up(c) && c.klass == RS_BARBARIAN && rs_feet_to(b, i, j) <= 120 && rs_feet_to(b, i, j) < bd { bd = rs_feet_to(b, i, j); foe = j; }
   }
   // the hexed foe first
-  for j: 0..<b[0].n {
+  ids4: [NEAR_MAX] int; m4 := near_ids(s, b[0].c[i].x, b[0].c[i].y, 120, ids4[..]);
+  for q4: 0..<m4 {
+    j := ids4[q4];
     for k: 0..<RS_EFFECTS {
       if b[0].c[j].eff[k].kind == EF_HEX && b[0].c[j].eff[k].by == i && rs_up(b[0].c[j]) && rs_feet_to(b, i, j) <= 120 { foe = j; }
     }
@@ -918,7 +1030,9 @@ pact_turn :: (s: [] Lab, i: int) {
 foe_at_hand :: (s: [] Lab, i: int, but: int) -> int {
   b := bt(s);
   best := -1; bv := 100000;
-  for j: 0..<b[0].n {
+  ids: [NEAR_MAX] int; m := near_ids(s, b[0].c[i].x, b[0].c[i].y, 5, ids[..]);
+  for q: 0..<m {
+    j := ids[q];
     c := b[0].c[j];
     if j == but || c.team == b[0].c[i].team || !rs_up(c) || rs_feet_to(b, i, j) > 5 { continue; }
     v := c.hp; if c.spell_ability >= 0 { v -= 8; }
@@ -936,7 +1050,9 @@ barbarian_turn :: (s: [] Lab, i: int) {
   if foe < 0 { return; }
   // the casters behind the line, when a dash reaches them
   bd := 100000;
-  for j: 0..<b[0].n {
+  ids: [NEAR_MAX] int; m := near_ids(s, b[0].c[i].x, b[0].c[i].y, 60, ids[..]);
+  for q: 0..<m {
+    j := ids[q];
     c := b[0].c[j];
     if c.team == b[0].c[i].team || !rs_up(c) || c.spell_ability < 0 { continue; }
     d := rs_feet_to(b, i, j);
@@ -962,7 +1078,9 @@ monk_turn :: (s: [] Lab, i: int) {
   foe := nearest_foe(s, i);
   if foe < 0 { return; }
   bd := 100000;
-  for j: 0..<b[0].n {
+  ids1: [NEAR_MAX] int; m1 := near_ids(s, b[0].c[i].x, b[0].c[i].y, 80, ids1[..]);
+  for q1: 0..<m1 {
+    j := ids1[q1];
     c := b[0].c[j];
     if c.team == b[0].c[i].team || !rs_up(c) || c.spell_ability < 0 { continue; }
     d := rs_feet_to(b, i, j);
@@ -970,7 +1088,9 @@ monk_turn :: (s: [] Lab, i: int) {
   }
   // a Paralyzed foe within a dash comes first: every hit from 5 feet is a Critical Hit
   bd = 100000;
-  for j: 0..<b[0].n {
+  ids2: [NEAR_MAX] int; m2 := near_ids(s, b[0].c[i].x, b[0].c[i].y, 80, ids2[..]);
+  for q2: 0..<m2 {
+    j := ids2[q2];
     c := b[0].c[j];
     if c.team == b[0].c[i].team || !rs_up(c) || !rs_has(c, RS_PARALYZED) { continue; }
     d := rs_feet_to(b, i, j);
@@ -988,7 +1108,9 @@ monk_turn :: (s: [] Lab, i: int) {
   ok := rs_attack(b, i, j, false, -1);
   if b[0].c[i].hp * 5 < b[0].c[i].hp_max * 2 { ok = rs_wholeness(b, i); }
   brute := false;
-  for k: 0..<b[0].n {
+  ids3: [NEAR_MAX] int; m3 := near_ids(s, b[0].c[i].x, b[0].c[i].y, 5, ids3[..]);
+  for q3: 0..<m3 {
+    k := ids3[q3];
     c := b[0].c[k];
     if c.team != b[0].c[i].team && rs_can_act(c) && c.klass == RS_BARBARIAN && rs_feet_to(b, i, k) <= 5 { brute = true; }
   }
@@ -1028,7 +1150,9 @@ quarry :: (s: [] Lab, i: int, feet: int) -> int {
   b := bt(s);
   foe := nearest_foe(s, i);
   bd := 100000;
-  for j: 0..<b[0].n {
+  ids: [NEAR_MAX] int; m := near_ids(s, b[0].c[i].x, b[0].c[i].y, feet, ids[..]);
+  for q: 0..<m {
+    j := ids[q];
     c := b[0].c[j];
     if c.team == b[0].c[i].team || !rs_up(c) || c.spell_ability < 0 || c.klass == RS_MONSTER { continue; }
     d := rs_feet_to(b, i, j);
@@ -1047,7 +1171,9 @@ close_in :: (s: [] Lab, i: int, foe: int) {
 most_hurt :: (s: [] Lab, i: int, feet: int, share: f32) -> int {
   b := bt(s);
   best := -1; bv := share;
-  for j: 0..<b[0].n {
+  ids: [NEAR_MAX] int; m := near_ids(s, b[0].c[i].x, b[0].c[i].y, feet, ids[..]);
+  for q: 0..<m {
+    j := ids[q];
     c := b[0].c[j];
     if c.team != b[0].c[i].team || c.dead || c.stable || rs_feet_to(b, i, j) > feet { continue; }
     v := f32(c.hp) / f32(rs_max(c.hp_max, 1));
@@ -1058,7 +1184,9 @@ most_hurt :: (s: [] Lab, i: int, feet: int, share: f32) -> int {
 // The foe that i's effect of `kind` is on, within `feet`, or -1.
 marked_by :: (s: [] Lab, i: int, kind: int, feet: int) -> int {
   b := bt(s);
-  for j: 0..<b[0].n {
+  ids: [NEAR_MAX] int; m := near_ids(s, b[0].c[i].x, b[0].c[i].y, feet, ids[..]);
+  for q: 0..<m {
+    j := ids[q];
     if !rs_up(b[0].c[j]) || rs_feet_to(b, i, j) > feet { continue; }
     for k: 0..<RS_EFFECTS { if b[0].c[j].eff[k].kind == kind && b[0].c[j].eff[k].by == i { return j; } }
   }
@@ -1086,12 +1214,16 @@ burst_at :: (s: [] Lab, i: int, range: int, radius: int, spare: bool, least: int
   b := bt(s);
   best := -1; bv := least - 1; looked := 0;
   me := b[0].c[i];
-  for j: 0..<b[0].n {
+  ids: [NEAR_MAX] int; m := near_ids(s, me.x, me.y, range, ids[..]);
+  for q: 0..<m {
+    j := ids[q];
     c := b[0].c[j];
     if c.team == me.team || !rs_up(c) || rs_feet_to(b, i, j) > range || looked >= 40 { continue; }
     looked += 1;
     v := 0;
-    for k: 0..<b[0].n {
+    inn: [NEAR_MAX] int; mi := near_ids(s, c.x, c.y, radius, inn[..]);
+    for qi: 0..<mi {
+      k := inn[qi];
       o := b[0].c[k];
       if o.dead || rs_feet(c.x, c.y, o.x, o.y) > radius { continue; }
       if o.team != me.team { if rs_up(o) { v += 1; } } else if !spare || k == i { v -= 3; }
@@ -1194,7 +1326,9 @@ cleric_turn :: (s: [] Lab, i: int) {
   b := bt(s);
   if rs_has(b[0].c[i], RS_RESTRAINED) && rs_unit(dice(s)) < 0.5 { ok := rs_escape(b, i); }
   undead_near := 0; bloodied := 0;
-  for j: 0..<b[0].n {
+  ids: [NEAR_MAX] int; m := near_ids(s, b[0].c[i].x, b[0].c[i].y, 30, ids[..]);
+  for q: 0..<m {
+    j := ids[q];
     c := b[0].c[j];
     if rs_feet_to(b, i, j) > 30 { continue; }
     if c.undead && rs_up(c) && c.team != b[0].c[i].team && rs_turned_by(c) < 0 { undead_near += 1; }
@@ -1238,7 +1372,9 @@ bard_turn :: (s: [] Lab, i: int) {
     if sl > 0 { ok := rs_cast(b, i, SP_HEALING_WORD, sl, 0, 0, w); }
   }
   pick := -1; pd := 100000;
-  for j: 0..<b[0].n {
+  ids: [NEAR_MAX] int; m := near_ids(s, b[0].c[i].x, b[0].c[i].y, 60, ids[..]);
+  for q: 0..<m {
+    j := ids[q];
     c := b[0].c[j];
     if j == i || c.team != b[0].c[i].team || !rs_up(c) || c.inspired > 0 || c.klass == RS_MONSTER { continue; }
     d := rs_feet_to(b, i, j);
@@ -1623,6 +1759,51 @@ set_player :: (s: [] Lab, on: bool) {
   if on { pick_hero(s); } else { s[0].me = -1; s[0].target = -1; }
 }
 
+// ---- whose turn: battle.coax rs_due's choice (the earliest due, the lowest index on a tie), from a
+// heap of (turn, creature) rather than a look at every creature each turn. Every change of a turn's
+// time goes in (rs_begin's: due_all; a turn's end and a fresh Skeleton's: due_push); an entry whose
+// creature's time has moved on since, or who died, is passed over.
+DUE_MAX :: 34816;   // 2 * LAB_MAX: room for the stale; full, it is built again
+due_less :: (s: [] Lab, a: int, c: int) -> bool { return s[0].due_t[a] < s[0].due_t[c] || (s[0].due_t[a] == s[0].due_t[c] && s[0].due_i[a] < s[0].due_i[c]); }
+due_swap :: (s: [] Lab, a: int, c: int) {
+  t := s[0].due_t[a]; s[0].due_t[a] = s[0].due_t[c]; s[0].due_t[c] = t;
+  k := s[0].due_i[a]; s[0].due_i[a] = s[0].due_i[c]; s[0].due_i[c] = k;
+}
+due_push :: (s: [] Lab, i: int) {
+  if s[0].due_n >= DUE_MAX { due_all(s); return; }
+  q := s[0].due_n; s[0].due_n += 1;
+  s[0].due_t[q] = s[0].battle[0].c[i].turn_at; s[0].due_i[q] = i;
+  while q > 0 { up := (q - 1) / 2; if !due_less(s, q, up) { break; } due_swap(s, q, up); q = up; }
+}
+due_pop :: (s: [] Lab) {
+  s[0].due_n -= 1;
+  if s[0].due_n <= 0 { s[0].due_n = 0; return; }
+  s[0].due_t[0] = s[0].due_t[s[0].due_n]; s[0].due_i[0] = s[0].due_i[s[0].due_n];
+  q := 0;
+  while true {
+    l := 2 * q + 1; m := q;
+    if l < s[0].due_n && due_less(s, l, m) { m = l; }
+    if l + 1 < s[0].due_n && due_less(s, l + 1, m) { m = l + 1; }
+    if m == q { break; }
+    due_swap(s, q, m); q = m;
+  }
+}
+due_all :: (s: [] Lab) {
+  s[0].due_n = 0;
+  for i: 0..<s[0].battle[0].n { if !s[0].battle[0].c[i].dead { due_push(s, i); } }
+}
+// Whose turn is due on the clock, or -1 (the entry stays until its turn is taken: due_push after).
+lab_due :: (s: [] Lab) -> int {
+  b := bt(s);
+  while s[0].due_n > 0 {
+    i := s[0].due_i[0]; t := s[0].due_t[0];
+    if i >= b[0].n || b[0].c[i].dead || b[0].c[i].turn_at != t { due_pop(s); continue; }
+    if t > b[0].clock { return -1; }
+    due_pop(s);
+    return i;
+  }
+  return -1;
+}
 step :: (s: [] Lab, dt: f32) {
   b := bt(s);
   if s[0].over {
@@ -1631,14 +1812,16 @@ step :: (s: [] Lab, dt: f32) {
     return;
   }
   rs_tick(b, dt);
+  blk_count(s);
   // the turns due this step: at most 8, and more for a big battle (two thousand on a 1.5-second
   // beat is some 23 a step), so a crowd keeps its pace and the frame pays for it
   guard := 0; most := 8 + b[0].n / 40;
-  due := rs_due(b);
+  due := lab_due(s);
   while due >= 0 && guard < most {
     lab_turn(s, due);
+    due_push(s, due);
     guard += 1;
-    due = rs_due(b);
+    due = lab_due(s);
   }
   take_events(s);
   if s[0].horde { flood(s); }
