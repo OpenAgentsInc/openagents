@@ -391,6 +391,7 @@ int main(int argc, char **argv) {
   const char *desk_dir = NULL, *desk_size = NULL, *desk_mode = NULL, *hands_path = NULL;
   const char *net_dir = NULL, *origin = "openagents.com", *name = "everglade", *go = NULL, *keys = "";
   int page = 0;
+  int sample_capacity = MAX_FRAMES;
   for (int i = 3; i < argc; i++) {
     const char *a = argv[i], *val = i + 1 < argc ? argv[i + 1] : NULL;
     if (!strcmp(a, "--golden")) golden = 1;
@@ -410,6 +411,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--shot")) shot = val, i++;
     else if (!strcmp(a, "--shot-at")) shot_at = atof(val), i++;
     else if (!strcmp(a, "--headless")) headless = atoi(val), i++;
+    else if (!strcmp(a, "--stats-frames")) sample_capacity = (int)verse_panel_sample_capacity(atoi(val)), i++;
     else if (!strcmp(a, "--out")) out = val, i++;
     else if (!strcmp(a, "--raw-out")) raw_out = val, i++;
     else if (!strcmp(a, "--page")) page = atoi(val), i++;
@@ -425,6 +427,7 @@ int main(int argc, char **argv) {
     else { fprintf(stderr, "vk-realm: unknown argument %s\n", a); return 2; }
   }
   signal(SIGINT, on_signal);
+  if (!sample_capacity) { fprintf(stderr, "vk-realm: --stats-frames must be 64..100000\n"); return 2; }
   signal(SIGTERM, on_signal);
 
   // The realm: as realm-run starts it (the page's facts, the viewer, the pack's parts).
@@ -533,6 +536,7 @@ int main(int argc, char **argv) {
 
   static double stepped[MAX_FRAMES], took[MAX_FRAMES], presented[MAX_FRAMES];
   int frames = 0;
+  uint64_t live_frames = 0;
   const char *why = "its time was up";
   if (headless) {
     // every frame drawn and waited for: the realm's step, then the GPU's
@@ -605,7 +609,15 @@ int main(int argc, char **argv) {
     else fprintf(stderr, "vk-realm: on %ux%u at %.3f Hz, %d keyboards, %d mice; Escape held a second or %.0f s returns the screen\n", p.w, p.h, 1 / screen.period, keyboard_count,
             mice.count, seconds);
     double start = now_s(), prev = start;
-    while (frames < MAX_FRAMES) {
+    while (1) {
+      // The bounded timing sample is not a lifetime cap. Keep its recent half in order.
+      int keep = (int)verse_panel_sample_keep(frames, sample_capacity);
+      if (keep != frames) {
+        memmove(stepped, stepped + frames - keep, (size_t)keep * sizeof *stepped);
+        memmove(took, took + frames - keep, (size_t)keep * sizeof *took);
+        memmove(presented, presented + frames - keep, (size_t)keep * sizeof *presented);
+        frames = keep;
+      }
       double t = now_s();
       if (t - start >= seconds) break;
       if (stopping) { why = "a signal stopped it"; break; }
@@ -651,12 +663,14 @@ int main(int argc, char **argv) {
       stepped[frames] = t1 - t;
       took[frames] = p.waited;
       presented[frames++] = now_s();
+      live_frames++;
     }
     vkp_wait(&v, &p);
     if (shot && p.shot_ready) vkd_save_ppm(shot, &p);
   }
 
   // the realm's step and the GPU's time (headless) or the fence wait (on the screen), as medians and 99th percentiles
+  if (!headless) printf("vk-realm: lifetime %llu presented frames; timing sample %d frames\n", (unsigned long long)live_frames, frames);
   static double sorted[MAX_FRAMES];
   int skip = frames > 120 ? 60 : headless ? 1 : 0, n = frames - skip;
   if (n > 0) {

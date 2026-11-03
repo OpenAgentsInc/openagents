@@ -10,6 +10,24 @@
 #load "battlenet-policy.coax";
 #load "wow-display.coax";
 
+bn_configure_display :: (prefix: string, pixels: string) -> bool {
+  for variant: [3] string.["_classic_era_", "_classic_", "_retail_"] {
+    wb: [4096] u8; wp: [4096] u8; wq: [4096] u8;
+    base := fs_join(prefix, "drive_c/Program Files (x86)/World of Warcraft", wb[..]);
+    config := fs_join(fs_join(base, variant, wp[..]), "WTF/Config.wtf", wq[..]);
+    if fs_exists(config) {
+      before: [65536] u8; after: [65792] u8; count := fs_read(config, before[..]);
+      written := ifx count >= 0 then wow_display(cast(string) before[0..<count], pixels, after[..]) else -1;
+      next: [4096] u8; nn := 0;
+      if config.count > 4000 { return false; }
+      for c: config { next[nn] = c; nn += 1; } for c: ".verse-next" { next[nn] = c; nn += 1; }
+      path := cast(string) next[0..<nn];
+      if written < 0 || !fs_write(path, cast(string) after[0..<written]) || !fs_rename(path, config) { return false; }
+    }
+  }
+  return true;
+}
+
 tool_main :: () -> int #export_c {
   a: [1] Args; if !args_load(a[..]) { return 2; }
   b: [5] [4096] u8;
@@ -47,16 +65,7 @@ tool_main :: () -> int #export_c {
   jo_start(so[..], sizebytes[..]); jo_int(so[..], hh);
   for c: jo_text(so[..]) { sizeout[size_n] = c; size_n += 1; }
   pixels := cast(string) sizeout[0..<size_n];
-  for variant: [3] string.["_classic_era_", "_classic_", "_retail_"] {
-    wb: [4096] u8; wp: [4096] u8; wq: [4096] u8;
-    base := fs_join(prefix, "drive_c/Program Files (x86)/World of Warcraft", wb[..]);
-    config := fs_join(fs_join(base, variant, wp[..]), "WTF/Config.wtf", wq[..]);
-    if fs_exists(config) {
-      before: [65536] u8; after: [65792] u8; count := fs_read(config, before[..]);
-      written := ifx count >= 0 then wow_display(cast(string) before[0..<count], pixels, after[..]) else -1;
-      if written < 0 || !fs_write(config, cast(string) after[0..<written]) { tool_errln("Battle.net: could not set WoW's desk resolution"); return 1; }
-    }
-  }
+  if !bn_configure_display(prefix, pixels) { tool_errln("Battle.net: could not set WoW's desk resolution"); return 1; }
   lockbuf: [4096] u8; lock := fs_join(prefix, ".verse-launch.lock", lockbuf[..]);
   h := proc_new(); if h < 0 { return 1; }
   argv := [4] string.["flock", "--nonblock", lock, runner]; ok := true;
@@ -68,6 +77,14 @@ tool_main :: () -> int #export_c {
   if !ok || proc_start(h) != 0 { r := proc_release(h); tool_errln("Battle.net: the runner did not start"); return 1; }
   status := proc_wait(h, 1000); pid := proc_pid(h); r := proc_release(h);
   if status != PROC_RUNNING { print("Battle.net: runner exited % before startup\n", status); return 1; }
+  // The installed runner writes ordinary-window defaults before starting umu. Wait for that
+  // process boundary, then restore this desk's borderless window settings before Play.
+  ready := false; probe := [3] string.["pgrep", "-f", "umu.*Battle.net Launcher[.]exe"];
+  for attempt: 0..<100 {
+    seen := proc_run(probe[..], 500, out[..], err[..]);
+    if seen.status == 0 { ready = true; break; } proc_sleep(100);
+  }
+  if !ready || !bn_configure_display(prefix, pixels) { tool_errln("Battle.net: runner started but the desk display setup did not complete"); return 1; }
   print("Battle.net starting on DISPLAY %, runner pid %\n", display, pid);
   return 0;
 }

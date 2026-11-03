@@ -3,19 +3,22 @@
 #test "window resolution replaces duplicate mixed-case settings and preserves other bytes" {
   b: [256] u8;
   n := wow_display("SET sound \"0\"\r\nSET GxWindowedResolution \"831x693\"\r\nSET gxwindowedresolution \"1x1\"\nSET other \"yes\"", "2548x1428", b[..]);
-  #assert cast(string) b[0..<n] == "SET sound \"0\"\r\nSET other \"yes\"\nSET GxWindowedResolution \"2548x1428\"\n";
+  #assert cast(string) b[0..<n] == "SET sound \"0\"\r\nSET other \"yes\"\nSET GxWindowedResolution \"2548x1428\"\nSET gxMaximize \"1\"\n";
+  #assert wow_resolution_line("SET gxMaximize \"0\"") && wow_resolution_line("SET GXMAXIMIZE \"1\"");
   #assert wow_display("", "1x1", b[..]) == -1;
   #assert wow_display("abc\n", "64x64", b[0..<3]) == -1;
   #assert !wow_resolution_line("SET Other \"x\"") && !wow_resolution_line("SET GxWindowedResolutionOther \"x\"");
 }
 wow_resolution_line :: (line: string) -> bool {
-  key := "set gxwindowedresolution ";
-  if line.count < key.count { return false; }
-  for i: 0..<key.count {
-    c := line[i]; if c >= 'A' && c <= 'Z' { c += 32; }
-    if c != key[i] { return false; }
+  for key: [2] string.["set gxwindowedresolution ", "set gxmaximize "] {
+    if line.count < key.count { continue; } same := true;
+    for i: 0..<key.count {
+      c := line[i]; if c >= 'A' && c <= 'Z' { c += 32; }
+      if c != key[i] { same = false; }
+    }
+    if same { return true; }
   }
-  return true;
+  return false;
 }
 wow_display :: (original: string, size: string, out: [] u8) -> int {
   if desk_size(size).width == 0 { return -1; }
@@ -30,7 +33,7 @@ wow_display :: (original: string, size: string, out: [] u8) -> int {
     start = end + 1;
   }
   if n > 0 && out[n - 1] != '\n' { if n == out.count { return -1; } out[n] = '\n'; n += 1; }
-  for part: [3] string.["SET GxWindowedResolution \"", size, "\"\n"] {
+  for part: [4] string.["SET GxWindowedResolution \"", size, "\"\n", "SET gxMaximize \"1\"\n"] {
     if n + part.count > out.count { return -1; }
     for c: part { out[n] = c; n += 1; }
   }

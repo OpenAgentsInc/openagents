@@ -40,6 +40,15 @@ with `--desk-size 2548x1428`. The launcher rewrote only the saved window
 dimension settings in installed WoW variants before starting their container.
 The game mapped directly to a full 2548×1428 buffer and entered Coldridge
 Valley. The large black margin and stretched 831×693 image are gone.
+The game's Graphics page initially reported a 2487×1394 client viewport
+inside that window. Selected Windowed (Fullscreen), applied and confirmed:
+the page then reported 2548×1428 at 100% render scale. This final UI change
+removed the remaining edge margin. The host's existing runner forces ordinary
+windowed settings before starting umu. The launcher now waits for that process
+boundary and atomically restores the desk dimensions and `gxMaximize=1` before
+Play. A fresh launch retained 2548×1428 and borderless mode without repeating
+the UI change. This remains windowed fullscreen, not exclusive fullscreen.
+Final desktop capture: `/tmp/wow-native-borderless.png`.
 Desktop evidence: `/tmp/wow-native-full-desktop.png`; source capture:
 `/tmp/wow-native-world.png` (and its metadata sidecar).
 
@@ -59,3 +68,12 @@ Observation lesson: an immediately requested screenshot can precede the
 game's rendered reaction. Capture sequence is a desk capture identifier,
 not proof that the game applied the preceding input. Navigation must wait
 briefly and verify a visible postcondition before issuing the next action.
+
+The long visible trial exposed a separate lifetime bug: `vk-realm` exited
+when its timing array reached 100,000 frames, despite `--seconds 31536000`.
+It now retains the recent half of a bounded statistics window and counts
+lifetime presentations separately. A private Vulkan window with
+`--stats-frames 64 --seconds 4` presented 226 frames, retained 34 timing
+samples, exited on its requested time and reported zero live GPU objects.
+The visible session was restarted with that fix. Panel policy: eight checks
+passed; the native bundle was rebuilt and installed.

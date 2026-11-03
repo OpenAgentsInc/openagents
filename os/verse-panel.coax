@@ -21,6 +21,14 @@ PANEL_KEY_WORLD :: 66;   // evdev KEY_F8
 PANEL_KEY_DOCK :: 67;    // evdev KEY_F9
 PANEL_KEY_FLAT :: 68;    // evdev KEY_F10
 PANEL_TO_REALM :: 0; PANEL_TO_DESK :: 1; PANEL_TOGGLE :: 2; PANEL_VOICE :: 3;
+#test "frame statistics roll over without ending the session" {
+  #assert verse_panel_sample_capacity(64) == 64 && verse_panel_sample_capacity(100000) == 100000;
+  #assert verse_panel_sample_capacity(63) == 0 && verse_panel_sample_capacity(100001) == 0;
+  #assert verse_panel_sample_keep(63, 64) == 63 && verse_panel_sample_keep(64, 64) == 32;
+  #assert verse_panel_sample_keep(100000, 100000) == 50000;
+}
+verse_panel_sample_capacity :: (given: int) -> int #export_c { return ifx given >= 64 && given <= 100000 then given else 0; }
+verse_panel_sample_keep :: (samples: int, capacity: int) -> int #export_c { return ifx samples >= capacity then capacity / 2 else samples; }
 // the constants, for the host (a header carries procedures, not constants)
 verse_panel_closed :: () -> int #export_c { return PANEL_CLOSED; }
 verse_panel_flat :: () -> int #export_c { return PANEL_FLAT; }
