@@ -40,6 +40,7 @@ EG_SP_SLOTS :: 4;
 EG_FOLK_FLOATS :: 7;            // a townsperson as the world hands them (everglade-watch.coax EG_ROOM_VIEW_FLOATS)
 EG_CRIMES :: 16;
 EG_FOLK_STEP :: 0.3; EG_FOLK_TURN :: 0.15;   // m and radians a townsperson moves before a seat hears them again
+EG_REBUILD_QUIET :: 10; EG_REBUILD_EVERY :: 30;   // s: R stands the town up once no spell struck it for 10 s, once in 30 s at most
 EG_PIECES :: 4000;              // the town's pieces at most (verse/demolish.coax DEMO_PIECES)
 
 EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: int; }
@@ -82,6 +83,7 @@ EgRoom :: struct {
   // the rebuild asked for, and what is broken and burning now (a seat's snapshot names them)
   strikes: [EG_CASTS] EgStrike; strike_n: int;
   rebuild: bool;
+  broke_at: int = -100000; rebuilt_at: int = -100000;   // the ticks of the last spell on the town and the last rebuild (R's rules)
   fresh: bool;                   // a new room in this slot: the world's town starts whole
   broken: [EG_PIECES] bool; burning: [EG_PIECES] bool;
 }
@@ -141,6 +143,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     v[0].eg[q].ev_n = 0; v[0].eg[q].ev_bytes = 0;
     // the town as new: the world's (the host's) is made whole again on rm_eg_fresh
     v[0].eg[q].folk_on = false; v[0].eg[q].crime_n = 0; v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
+    v[0].eg[q].broke_at = -100000; v[0].eg[q].rebuilt_at = -100000;
     for s: 0..<EG_SEATS { v[0].eg[q].wanted[s] = 0; }
     for j: 0..<E5R_FOLK { v[0].eg[q].folk_by[j] = -1; }
     for c: 0..<EG_PIECES { v[0].eg[q].broken[c] = false; v[0].eg[q].burning[c] = false; }
@@ -214,7 +217,14 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
     return;
   }
   if c == 'R' {
-    // the world stands its pieces and people up (rm_eg_rebuild), the rules the people, every page hears it
+    // the world stands its pieces and people up (rm_eg_rebuild), the rules the people, every page hears it:
+    // if no spell struck the town in the last EG_REBUILD_QUIET s, and at most once every EG_REBUILD_EVERY s (spec 6.6)
+    rr: [1] WireRd; rr[0] = wire_rd(text, 1);
+    seq := wire_num(text, rr[..]);
+    now := v[0].eg[k].tick;
+    if now - v[0].eg[k].broke_at < EG_REBUILD_QUIET * EG_HZ { eg_refuse(v, k, seat, seq, "breaking"); return; }
+    if now - v[0].eg[k].rebuilt_at < EG_REBUILD_EVERY * EG_HZ { eg_refuse(v, k, seat, seq, "cooldown"); return; }
+    v[0].eg[k].rebuilt_at = now;
     v[0].eg[k].rebuild = true;
     e5rr_folk_restore(v[0].eg[k].rules[..]);
     for q: 0..<EG_PIECES { v[0].eg[k].broken[q] = false; v[0].eg[k].burning[q] = false; }
@@ -314,6 +324,8 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
   if slot < EG_SP_SLOTS && v[0].eg[k].strike_n < EG_CASTS {
     v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = seat, slot = slot, fx = me.x, fy = me.y + 1.6, fz = me.z, ax = ax, ay = ay, az = az, seed = seed};
     v[0].eg[k].strike_n += 1;
+    // a spell on the town holds R off; what the fire burns through and what falls with it don't (R puts the fire out)
+    v[0].eg[k].broke_at = v[0].eg[k].tick;
   }
   eg_event(v, k, cast(string) b[0..<n], ax, az, false);
 }

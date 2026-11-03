@@ -22,6 +22,7 @@ ScHeard :: struct {
   wanted: int; wanted_heard: bool;                       // its own WANTED level (w)
   other_wanted: int;                                     // the other's (w)
   breaks: int; break_sum: int; burns: int; rebuilt: bool; // the town's pieces (e break, e burn, e rebuild)
+  refused_breaking: bool; refused_n: int;                                // R too soon after a break (r SEQ breaking)
   bad: int;
 }
 sc_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
@@ -71,6 +72,7 @@ sc_entry :: (h: [] ScHeard, me: int, t: string) {
 }
 sc_hear :: (h: [] ScHeard, me: int, t: string) {
   if rs_starts(t, "W ") { h[0].w = true; return; }
+  if rs_starts(t, "r ") && rs_ends(t, "breaking") { h[0].refused_breaking = true; h[0].refused_n += 1; return; }
   if !rs_starts(t, "D ") { return; }
   h[0].d += 1;
   h[0].ack = rs_num(rs_field(t, 2));
@@ -168,6 +170,18 @@ tool_main :: () -> int #export_c {
   k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, cast(int) (h[1].near_z * 100)); k = rs_put(m[..], k, " -1");
   sent = relay_conn_send(c[1..<2], cast(string) m[0..<k]) && sent;
   sent = sc_steps(c[..], h[..], seq[..], 4000, false) && sent;
+  // R while the town still breaks is refused; once nothing broke for 10 s it stands the town up (spec 6.6)
+  k = rs_int(m[..], rs_put(m[..], 0, "R "), seq[1] + 1);
+  seq[1] += 1;
+  sent = relay_conn_send(c[1..<2], cast(string) m[0..<k]) && sent;
+  early := false;
+  quiet0 := rs_now();
+  // 10 s without a blow (what the fire burns through doesn't count): R puts the fire out and stands the town up
+  while rs_now() - quiet0 < 10500 {
+    sent = sc_steps(c[..], h[..], seq[..], 500, false) && sent;
+    early = early || h[0].rebuilt || h[1].rebuilt;
+  }
+  waited := rs_now() - quiet0;
   k = rs_int(m[..], rs_put(m[..], 0, "R "), seq[1] + 1);
   seq[1] += 1;
   sent = relay_conn_send(c[1..<2], cast(string) m[0..<k]) && sent;
@@ -182,7 +196,7 @@ tool_main :: () -> int #export_c {
         h[0].cast_seen && h[1].cast_seen && h[0].wolf_n == 4 && h[1].wolf_n == 4 && h[0].hits > 0 && h[1].hits > 0 &&
         sc_gone(h[0], wolf) && sc_gone(h[1], wolf) && h[1].gone_n == killed && killed < 4 && h[1].other_gone && rate > 12 &&
         h[0].folk_n >= 5 && h[1].folk_n >= 5 && h[0].wanted_heard && h[1].wanted_heard && h[1].wanted >= 1 && h[0].other_wanted >= 1 &&
-        h[0].breaks > 0 && h[0].breaks == h[1].breaks && h[0].break_sum == h[1].break_sum && h[0].rebuilt && h[1].rebuilt && h[0].bad + h[1].bad == 0;
+        h[0].breaks > 0 && h[0].breaks == h[1].breaks && h[0].break_sum == h[1].break_sum && h[0].rebuilt && h[1].rebuilt && !early && h[1].refused_breaking && h[0].bad + h[1].bad == 0;
   out: [2048] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
@@ -197,6 +211,10 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "b_casts"); jo_int(o[..], tries);
   jo_key(o[..], "hits_seen_a"); jo_int(o[..], h[0].hits);
   jo_key(o[..], "hits_seen_b"); jo_int(o[..], h[1].hits);
+  jo_key(o[..], "early_rebuild"); jo_bool(o[..], early);
+  jo_key(o[..], "refused_breaking"); jo_bool(o[..], h[1].refused_breaking);
+  jo_key(o[..], "refused_n"); jo_int(o[..], h[1].refused_n);
+  jo_key(o[..], "quiet_wait_ms"); jo_int(o[..], waited);
   jo_key(o[..], "wolf_killed"); jo_bool(o[..], sc_gone(h[0], wolf) && sc_gone(h[1], wolf));
   jo_key(o[..], "a_gone"); jo_bool(o[..], h[1].other_gone);
   jo_key(o[..], "wolves_gone_b"); jo_int(o[..], h[1].gone_n);

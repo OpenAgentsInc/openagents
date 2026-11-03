@@ -674,9 +674,11 @@ owners who want it. A duel invitation is a later phase.
   itself from that event; where a piece lands is cosmetic and need not match.
 - **Rebuild:** the 60 s regrow rule stays (a broken building stands again
   60 s after its last damage, once no player is within 30 m). **R** sends
-  `R`: the server rebuilds the whole town if nothing broke in the last 10 s,
-  at most once every 30 s a room, and sends `e rebuild` to everyone. An
-  admin's `R` always works.
+  `R`: the server rebuilds the whole town if no spell struck it in the last
+  10 s, at most once every 30 s a room, and sends `e rebuild` to everyone
+  (else `r SEQ breaking` or `r SEQ cooldown`). What a fire burns through and
+  what falls with it don't hold R off: a burning town would never be quiet
+  for 10 s, and R puts the fire out. An admin's `R` always works.
 - Destruction is never saved. A room that empties starts whole.
 
 ### 6.7 Weather, time of day and the flock
@@ -936,7 +938,7 @@ room host, no caster replication). Status as of the last edit of this file.
 | 2 | `GET /api/playtest/rooms/SLUG` and instance joining (3.4) | `room-relay.coax` `rm_rooms`, load balancer rule | **Built and deployed** (#12705) |
 | 3 | The 64-player load test (11.3) | `load.coax everglade` | **Built**; since the server became the world it sends inputs (I at 30 Hz, a cast every 5 s) and checks the state frames (D at 15 Hz), every seat seen, the ACKs and the input-to-ACK time |
 | 4 | The shared movement step: the controller and the face's movement glue in Coax, shared by page and server | `everglade-move.coax`, `everglade-step.coax` (#12706) | **Built** (0c52335252); the server runs it for every seat in `room-world.c` |
-| 5 | Everglade's headless world step for N players (town, watch, spells, creatures, zones, fire, destruction, rebuild) | `everglade.coax` linked headless in `oa-room` (`room-world.c`) | **Partly built**: each simulated room has its own headless Everglade (the city's ground, walls, bodies and floors; 2 MB, 0.2 s to build), and the seats walk in it. Summoned creatures are the server's: Conjure Animals' four Wolves with their stat blocks, run on the tick, fought by every player, dead and gone on the server. Not yet the server's: the river (a seat walks its bed where a page swims), the townsfolk and the watch (each page still runs its own), fire and destruction, and the per-player states the step reads (a blast's throw, held, slowed, the ice) |
+| 5 | Everglade's headless world step for N players (town, watch, spells, creatures, zones, fire, destruction, rebuild) | `everglade.coax` linked headless in `oa-room` (`room-world.c`, `everglade-watch.coax` `everglade_room_*`) | **Built**: each simulated room has its own headless Everglade, and the seats walk and swim in it with their own conditions (Hold Person, Ray of Frost, a blast's throw, the rules' Restrained and the rest). The town is the server's (#12713): everyone's day and the watch stepped against all 16 seats (`watch_tick_room`, each hunter after its own foe), a seat's harm to the town a crime for that seat, its WANTED level (`w`, every seat's), the guards' blows through the rules, the people as `f` within 120 m. So are Conjure Animals' Wolves (they set on a person only when their caster sends them), and the town's pieces: Everglade's four spells fall on the server's town from the cast's seed, fire burns and spreads there, pages hear `e break` and `e burn` (a snapshot names what is down), and R rebuilds under 6.6's rules. A new room starts its town whole. The river is the room's too: each seat swims, dives and is carried by the current as a page is (its own water, feet and breath; out of it on the bridge and in Part Water's trench), comes to on the bank at the sixth level of Exhaustion, and its `p` says so (G 2). Not yet the server's: the 60 s regrow, an admin's edits to the realm, the rain's rise on the river, Water Breathing, the boats |
 | 6 | `everglade5e-rules.coax` for 16 seats | `everglade5e-room-rules.coax` | **Built** (d2852ee336): one battle, each seat its own caster and turn, zones with ids, PvP off |
 | 7 | The room simulation: 30 Hz tick, intents, snapshot and deltas, interest (3.1, 3.6) | `coax/web/room/room-everglade.coax` | **Built**: wire v2 (`everglade-wire.coax`), 16 rooms of 16, inputs stepped one a step with at most 4 owed, casts checked and rolled, players, names, creatures and zones within 120 m, events, snapshots; `sim-check.coax` checks two sockets sharing one world |
 | 8 | Tickets: signed seat identity (4.4, 3.3 item 8) | API and `room` | Not built |

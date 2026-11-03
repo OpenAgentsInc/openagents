@@ -43,7 +43,7 @@
 //     e hit WHO BY AMT KIND        damage (WHO and BY as TGT codes)
 //     e heal WHO AMT | e die WHO | e break PIECE IX IY IZ | e burn PIECE ON | e rebuild | e edit VERSION
 //     w SS LEVEL                   a seat's WANTED level
-//   r SEQ REASON                   an intent of yours refused (range, sight, dead, cooldown, slot)
+//   r SEQ REASON                   an intent of yours refused (range, sight, dead, cooldown, slot; R: breaking)
 
 WIRE_VERSION :: 2;
 WIRE_FRAME :: 1024;        // a page's frame at most

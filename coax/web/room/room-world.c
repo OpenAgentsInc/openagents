@@ -11,6 +11,7 @@
    This file includes only the Everglade units' headers; room-host.c calls it with plain numbers. */
 #include "everglade.h"
 #include "everglade-step.h"
+#include "river.h"
 #include "room-world.h"
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +21,19 @@ static coax_t_DemoWorld *pieces[WORLD_ROOMS];
 extern const int room_catalog_n;               /* room-catalog.c (room-catalog.py): the pack's catalog */
 extern const unsigned char room_catalog[];
 static coax_t_Player seat_p[WORLD_ROOMS][WORLD_SEATS];
+/* The river (verse/everglade/river.coax): one a room, its water and current; each seat's own part of it
+   (the water it is in, its feet, its breath), swapped in while that seat swims, and the swim it left,
+   which its next step moves in as the page's does (everglade5e-face.c: the step, then the river). */
+static coax_t_River *river[WORLD_ROOMS];
+typedef struct { int64_t medium; float feet; bool afloat; double breath, out; int64_t levels; } seat_water;
+static seat_water seat_w[WORLD_ROOMS][WORLD_SEATS];
+static coax_t_Swim seat_swim[WORLD_ROOMS][WORLD_SEATS];
+static double river_now[WORLD_ROOMS];
+static coax_v_t_River rv_of(int k) { return (coax_v_t_River){river[k], 1}; }
+static void seat_dry(int k, int s) {
+  seat_w[k][s] = (seat_water){0, 0, false, 0, 0, 0};
+  seat_swim[k][s] = (coax_t_Swim){0}; seat_swim[k][s].pace = 1; seat_swim[k][s].breath = 1; seat_swim[k][s].surface = -1000;
+}
 
 static coax_v_t_Everglade at(int k) { return (coax_v_t_Everglade){world[k], 1}; }
 
@@ -31,6 +45,16 @@ static bool world_of(int k) {
     if (!world[k]) return false;
     (void)everglade_walls(at(k));   /* starts it: the ground, the town, the walls and bodies */
     /* its pieces, which break and burn as a page's (everglade-watch.coax everglade_room_spells_start) */
+    river[k] = calloc(1, sizeof *river[k]);
+    if (river[k]) {
+      coax_default_t_River(river[k]);
+      static float levels[105 + 16];
+      everglade_levels(at(k), (coax_v_f32){levels, 105 + 16});
+      everglade_river_start(rv_of(k), (coax_v_f32){world[k]->heights.e, 105 * 105}, (coax_v_f32){levels, 105 + 16}, 104, 2, -104, -104);
+      seat_water fresh = {0, 0, false, 0, 0, 0};
+      fresh.breath = river[k]->breath; fresh.out = river[k]->out; fresh.levels = river[k]->levels;
+      for (int s = 0; s < WORLD_SEATS; s++) { seat_dry(k, s); seat_w[k][s] = fresh; }
+    }
     pieces[k] = calloc(1, sizeof *pieces[k]);
     if (pieces[k])
       everglade_room_spells_start(at(k), (coax_v_t_DemoWorld){pieces[k], 1}, (coax_string){(const char *)room_catalog, room_catalog_n});
@@ -41,7 +65,7 @@ static bool world_of(int k) {
 static void pose_of(coax_t_Player p, bool moved, float out[WORLD_POSE]) {
   out[0] = p.pos.x; out[1] = p.pos.y; out[2] = p.pos.z; out[3] = verse_player_face(p);
   out[4] = p.vel.x; out[5] = p.vel.y; out[6] = p.vel.z;
-  out[7] = p.on_ground ? 1 : 0;            /* G: 1 on the ground (2 swimming, 4 in a boat: the river's, not yet) */
+  out[7] = p.on_ground ? 1 : 0;            /* G: 1 on the ground, 2 swimming (world_step adds it), 4 in a boat (not yet) */
   out[8] = (float)p.act;                   /* CLIP: the controller's act (aethyr/walk.coax Act) */
   out[9] = (float)(p.clock.carry_ns / 100000);   /* CARRY: the fixed step's leftover, tenths of a ms */
   (void)moved;
@@ -51,6 +75,7 @@ bool world_place(int k, int s, float out[WORLD_POSE]) {
   if (!world_of(k) || s < 0 || s >= WORLD_SEATS) return false;
   coax_t_Point spawn = everglade_spawn(at(k));
   seat_p[k][s] = verse_player_place(spawn.x, spawn.y, spawn.z, everglade_spawn_face(at(k)));
+  if (river[k]) { seat_dry(k, s); seat_w[k][s].breath = river[k]->breath; }
   pose_of(seat_p[k][s], false, out);
   return true;
 }
@@ -64,15 +89,36 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
   coax_t_EgMoveIn input = {(float)in[1] / 100.0f, (float)in[2] / 100.0f, (float)in[3] / 100.0f, (float)in[4] / 100.0f,
                            (in[6] & 1) != 0, (in[6] & 2) != 0, (float)in[5] / 100.0f};
   everglade_room_seat(at(k), s);   /* its conditions, slow and throw are what the step reads */
-  coax_t_EgMoveWorld mw = everglade_move_world(at(k), p.pos.x, p.pos.y, p.pos.z, 0, 1.0f, 0, 0, false, 0, 0, 0, (coax_v_f32){NULL, 0});
+  coax_t_Swim sw = seat_swim[k][s];
+  coax_t_EgMoveWorld mw = everglade_move_world(at(k), p.pos.x, p.pos.y, p.pos.z, sw.medium, sw.pace, sw.flow_x, sw.flow_z, false, 0, 0, 0, (coax_v_f32){NULL, 0});
   p = eg_step_begin(p, input, mw, dt);
   coax_t_EgBody before = eg_step_body(p);
   coax_v_f32 near = everglade_move_bodies(at(k));
   p = eg_step_advance(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){g->walls.e, mw.walls * 6}, (coax_v_f32){g->floors.e, mw.floors * 10}, frame);
   coax_t_EgBody moved = everglade_move_after(at(k), mw, before, eg_step_body(p), dt);
   p = eg_step_put(p, moved);
+  /* the river after the step: the water this seat is in now, for its next step */
+  if (river[k]) {
+    coax_t_River *r = river[k];
+    seat_water *me = &seat_w[k][s];
+    r->medium = me->medium; r->feet = me->feet; r->afloat = me->afloat; r->breath = me->breath; r->out = me->out; r->levels = me->levels;
+    r->gills = false; r->aboard = -1;
+    river_now[k] += dt;
+    if ((everglade_on_bridge(at(k), p.pos.x, p.pos.z) && sw.medium < 2) || everglade_parted(at(k), p.pos.x, p.pos.z)) {
+      seat_swim[k][s] = (coax_t_Swim){0}; seat_swim[k][s].pace = 1; seat_swim[k][s].breath = 1; seat_swim[k][s].surface = -1000;
+    } else {
+      seat_swim[k][s] = everglade_river_swim_over(rv_of(k), (coax_v_f32){g->heights.e, 105 * 105}, p.pos.x, p.pos.z,
+                                                  p.pos.y + everglade_ice_lift(at(k), p.pos.x, p.pos.z), (in[6] & 4) != 0, dt, river_now[k]);
+    }
+    if (seat_swim[k][s].defeated) {   /* the sixth level of Exhaustion: it comes to on the nearer bank */
+      p = verse_player_place(seat_swim[k][s].bank_x, 0, seat_swim[k][s].bank_z, verse_player_face(p));
+      seat_swim[k][s].medium = 0; seat_swim[k][s].pace = 1;
+    }
+    *me = (seat_water){r->medium, r->feet, r->afloat, r->breath, r->out, r->levels};
+  }
   seat_p[k][s] = p;
   pose_of(p, true, out);
+  if (seat_swim[k][s].medium >= 2 && seat_swim[k][s].medium <= 3) out[7] = (float)(((int)out[7]) | 2);   /* G: swimming */
   return true;
 }
 
