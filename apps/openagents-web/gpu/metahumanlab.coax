@@ -125,7 +125,7 @@ mhlab_floor :: (x:f32,z:f32)->V3 {
 }
 
 // The colour a ray from the eye sees after hitting h.
-mhlab_shade :: (eye:V3,rd:V3,h:MhlabHit,u:[]f32,figure:bool)->V3 {
+mhlab_shade :: (eye:V3,rd:V3,h:MhlabHit,u:[]f32,figure:bool,lit_in:f32)->V3 {
   sun:V3=normalize3(wg_at3(u,32));
   if (h.m<0.0f32) { return mhlab_sky(rd,sun); }
   pos:V3=add3(eye,scale3(rd,h.t));
@@ -173,7 +173,8 @@ mhlab_shade :: (eye:V3,rd:V3,h:MhlabHit,u:[]f32,figure:bool)->V3 {
   // the sun: a soft wrap, the shadow ray's answer folded in, a cool sky fill and a rim
   ndl:f32=dot3(n,sun);
   lit:f32=1.0f32;
-  if (ndl>0.0f32) {
+  if (lit_in>=0.0f32) { lit=lit_in; }
+  else if (ndl>0.0f32) {
     sh:MhlabHit=mhlab_trace(add3(pos,scale3(n,0.01f32)),sun,u,true,figure);
     if (sh.m>0.0f32) { lit=0.0f32; }
   }
@@ -194,12 +195,12 @@ mhlab_shade :: (eye:V3,rd:V3,h:MhlabHit,u:[]f32,figure:bool)->V3 {
   return mix3(c,mhlab_sky(rd,sun),fog);
 }
 
-mhlab_scene_hit :: (eye:V3,rd:V3,h:MhlabHit,u:[]f32)->V3 {
-  c:V3=mhlab_shade(eye,rd,h,u,true);
+mhlab_scene_hit :: (eye:V3,rd:V3,h:MhlabHit,u:[]f32,figure:bool,lit_in:f32)->V3 {
+  c:V3=mhlab_shade(eye,rd,h,u,figure,lit_in);
   // the skeleton overlay: the body as glass over what is behind it
   if ((u[4]>0.5f32)&&(h.m>0.5f32)) {
     back:MhlabHit=mhlab_trace(eye,rd,u,false,false);
-    behind:V3=mhlab_shade(eye,rd,back,u,false);
+    behind:V3=mhlab_shade(eye,rd,back,u,false,-1.0f32);
     c=mix3(behind,scale3(c,0.8f32),0.32f32);
   }
   return c;
@@ -209,7 +210,7 @@ mhlab_scene_hit :: (eye:V3,rd:V3,h:MhlabHit,u:[]f32)->V3 {
 // (the mesh's own look, as Unreal's); without one, the capsule bench's soft tone as before.
 mhlab_out :: (c:V3,u:[]f32)->V3 {
   if (u[5]>0.5f32) {
-    return v3(mhlab_srgb(mhlab_aces(c.x*u[353])),mhlab_srgb(mhlab_aces(c.y*u[353])),mhlab_srgb(mhlab_aces(c.z*u[353])));
+    return v3(mhlab_srgb(mhlab_aces(c.x*u[385])),mhlab_srgb(mhlab_aces(c.y*u[385])),mhlab_srgb(mhlab_aces(c.z*u[385])));
   }
   return v3(verse_style_tone(c.x,1.2f32),verse_style_tone(c.y,1.2f32),verse_style_tone(c.z,1.2f32));
 }
@@ -227,7 +228,7 @@ mhlab_depth :: (z:f32)->f32 {
   return fmin((MHLAB_FAR*(z-MHLAB_NEAR))/((MHLAB_FAR-MHLAB_NEAR)*z),1.0f32);
 }
 MhlabBg :: struct {c:V4; depth:f32 #depth; }
-mhlab_bg_fs :: (pos:V4,u:[]f32)->MhlabBg {
+mhlab_bg_fs :: (pos:V4,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->MhlabBg {
   p:V2=v2(pos.x,pos.y);
   eye:V3=wg_at3(u,16);
   f:f32=fmax(u[19],1.0f32);
@@ -236,12 +237,23 @@ mhlab_bg_fs :: (pos:V4,u:[]f32)->MhlabBg {
   mesh:bool=u[5]>0.5f32;
   // with a mesh the figure's capsules only cast its shadow: the mesh draws the figure itself
   h:MhlabHit=mhlab_trace(eye,rd,u,false,!mesh);
-  c:V3=mhlab_scene_hit(eye,rd,h,u);
+  // with a mesh the floor takes the figure's shadow from the mesh's own shadow map
+  at:V3=add3(eye,scale3(rd,fmax(h.t,0.0f32)));
+  mlit:f32=mhlab_lit(at,v3(0.0f32,1.0f32,0.0f32),u,shadow_map,shadow_cmp);
+  lit_in:f32=-1.0f32;
+  if (mesh&&(h.m>=0.0f32)&&(h.m<0.5f32)) { lit_in=mlit; }
+  c:V3=mhlab_scene_hit(eye,rd,h,u,!mesh,lit_in);
+  probe:f32=u[386];
   // the bench's colours are picked by eye on the screen: with a mesh they go back to linear light
   if (mesh) { c=scale3(v3(pow(fmax(c.x,0.0f32),2.2f32),pow(fmax(c.y,0.0f32),2.2f32),pow(fmax(c.z,0.0f32),2.2f32)),0.95f32); }
   depth:f32=1.0f32;
   if (h.m>=0.0f32) { depth=mhlab_depth(h.t*dot3(rd,fwd)); }
   c=mhlab_strips(p,mhlab_out(c,u),u);
+  if (probe>0.5f32) {
+    // a probe view: black, and on 3 magenta wherever a capsule of the figure would be drawn
+    c=v3(0.0f32,0.0f32,0.0f32);
+    if ((probe>2.5f32)&&(h.m>0.5f32)) { c=v3(1.0f32,0.0f32,1.0f32); }
+  }
   return MhlabBg.{c=v4(c.x,c.y,c.z,1.0f32),depth=depth};
 }
 // ---- the mesh (a human pack, verse/tools/humans/pack_human.py): GPU skinning by four joints of
@@ -250,8 +262,10 @@ mhlab_bg_fs :: (pos:V4,u:[]f32)->MhlabBg {
 // and the sky. MhlabU's mesh rows (floats):
 //   260: the figure's turn (cos, sin) and place (x, z)
 //   264: the shadow's box: centre xyz, 1 / half its size; 268: its right; 272: its up; 276: toward the key, bias
-//   280: sixteen materials (rgb tint, roughness scale), by material number less one
-//   344: the fill's direction xyz, strength; 348: the rim's, strength; 352: the key's strength, exposure
+//   280: 24 materials (rgb tint, roughness: the roughness map's scale), by material number less one
+//   376: the fill's direction xyz, strength; 380: the rim's, strength; 384: the key's strength, exposure
+//   386: the probe view (0: lit; 1: albedo, 2: uv and base layer, 3: capsules magenta), for scripts
+//        that check a frame without looking at it
 // A vertex, 8 words (pack_human.py vertex): x y (unorm16 each), z (unorm16) | material << 16 |
 // the bitangent's sign << 31, the normal and the tangent (octahedral unorm16 pairs), uv (unorm16
 // pair), four joints (u8), four weights (unorm8), the layers base | normal << 8 | rough << 16.
@@ -308,7 +322,7 @@ mhlab_light :: (w:V3,u:[]f32)->V3 {
   k:f32=u[267];
   x:f32=dot3(rel,wg_at3(u,268))*k;
   y:f32=dot3(rel,wg_at3(u,272))*k;
-  z:f32=0.5f32-(dot3(rel,wg_at3(u,276))*k*0.5f32);
+  z:f32=0.5f32-(dot3(rel,wg_at3(u,276))*k*0.25f32);
   return v3(x,y,z);
 }
 MhlabSkin :: struct {p:V3; n:V3; t:V3; sign:f32; uv:V2; layers:u32; material:u32; }
@@ -346,6 +360,12 @@ mhlab_skin :: (id:u32,vertices:[]u32,pose:[]V4)->MhlabSkin {
   return o;
 }
 MhlabS :: struct {pos:V4; world:V3; normal:V3; tangent:V4; uv:V2; layers:u32 #flat; material:u32 #flat; }
+// The traced floor reads the mesh's shadow map (bg_fs's group 2); a caster stage is how the host
+// hands bg_fs that map. It casts nothing (the page exports no caster count): the mesh's shadow_vs
+// fills the map.
+mhlab_caster_vs :: (v:u32,i:u32,u:[]f32)->V4 {
+  return v4(2.0f32,2.0f32,2.0f32,1.0f32);
+}
 mhlab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,pose:[]V4)->MhlabS {
   v:MhlabSkin=mhlab_skin(id,vertices,pose);
   o:MhlabS;
@@ -384,7 +404,8 @@ mhlab_layer :: (sheets:Tex2DArray,sheet:Sampler,uv:V2,dx:V2,dy:V2,layer:u32,none
 mhlab_lit :: (w:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->f32 {
   q:V3=mhlab_light(add3(w,scale3(n,0.006f32)),u);
   uv:V2=v2((q.x*0.5f32)+0.5f32,0.5f32-(q.y*0.5f32));
-  if ((uv.x<0.0f32)||(uv.x>1.0f32)||(uv.y<0.0f32)||(uv.y>1.0f32)) { return 1.0f32; }
+  // outside the key's box (to its sides, or past its far side, as the floor far off) nothing casts
+  if ((uv.x<0.0f32)||(uv.x>1.0f32)||(uv.y<0.0f32)||(uv.y>1.0f32)||(q.z>=0.999f32)||(q.z<=0.0f32)) { return 1.0f32; }
   texel:f32=1.0f32/cast(f32)gpu_depth_width(shadow_map);
   s:f32=0.0f32;
   s=s+gpu_compare(shadow_map,shadow_cmp,add2(uv,v2(-texel,-texel)),q.z-u[279]);
@@ -460,15 +481,18 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   // the skeleton overlay: the body as stippled glass, so the bones read through it
   if ((u[4]>0.5f32)&&(((cast(int)(s.pos.x)+cast(int)(s.pos.y))%2)==0)) { gpu_demote_helper(); }
   m:u32=s.material;
-  mat:V4=wg_at4(u,280+(cast(int)(clamp_u(m,1,16))-1)*4);
+  mat:V4=wg_at4(u,280+(cast(int)(clamp_u(m,1,24))-1)*4);
   base:V4=mhlab_layer(sheets,sheet,s.uv,dx,dy,s.layers&255,v4(1.0f32,1.0f32,1.0f32,1.0f32));
   // hair and brow cards fade by an ordered 4x4 dither (a static stand-in for alpha to coverage,
   // which needs no sorting); everything else cuts at 0.35
   if ((m==3)||(m==4)) {
     if (base.w<mhlab_bayer(cast(int)(s.pos.x),cast(int)(s.pos.y))) { gpu_demote_helper(); }
-  } else {
+  } else if (m!=1) {
     if (base.w<0.35f32) { gpu_demote_helper(); }
   }
+  // skin keeps its occlusion (cavities, the creases round the eyes and lips) in the base's alpha
+  ao:f32=1.0f32;
+  if (m==1) { ao=base.w; }
   albedo:V3=v3(base.x*mat.x,base.y*mat.y,base.z*mat.z);
   ng:V3=normalize3(s.normal);
   if (!front) { ng=scale3(ng,-1.0f32); }
@@ -483,21 +507,21 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
     bt:V3=scale3(cross3(ng,t),s.tangent.w);
     n=normalize3(add3(add3(scale3(t,tn.x),scale3(bt,tn.y)),scale3(ng,fmax(tn.z,0.05f32))));
   }
-  rough:f32=0.6f32;
+  rough:f32=1.0f32;
   if (((s.layers>>16)&255)!=255) {
-    rough=mhlab_srgb(mhlab_layer(sheets,sheet,s.uv,dx,dy,(s.layers>>16)&255,v4(0.6f32,0.6f32,0.6f32,1.0f32)).y);
+    rough=mhlab_srgb(mhlab_layer(sheets,sheet,s.uv,dx,dy,(s.layers>>16)&255,v4(1.0f32,1.0f32,1.0f32,1.0f32)).y);
   }
   rough=clampf(rough*mat.w,0.04f32,1.0f32);
   v:V3=normalize3(sub3(wg_at3(u,16),s.world));
   key:V3=normalize3(wg_at3(u,276));
   sh:f32=mhlab_lit(s.world,ng,u,shadow_map,shadow_cmp);
-  c:V3=mhlab_light_one(n,v,key,albedo,rough,m,scale3(v3(1.0f32,0.95f32,0.88f32),u[352]*sh),strand);
-  c=add3(c,mhlab_light_one(n,v,normalize3(wg_at3(u,344)),albedo,rough,m,scale3(v3(0.75f32,0.82f32,1.0f32),u[347]),strand));
-  c=add3(c,mhlab_light_one(n,v,normalize3(wg_at3(u,348)),albedo,rough,m,scale3(v3(0.9f32,0.95f32,1.0f32),u[351]),strand));
+  c:V3=mhlab_light_one(n,v,key,albedo,rough,m,scale3(v3(1.0f32,0.95f32,0.88f32),u[384]*sh),strand);
+  c=add3(c,mhlab_light_one(n,v,normalize3(wg_at3(u,376)),albedo,rough,m,scale3(v3(0.75f32,0.82f32,1.0f32),u[379]),strand));
+  c=add3(c,mhlab_light_one(n,v,normalize3(wg_at3(u,380)),albedo,rough,m,scale3(v3(0.9f32,0.95f32,1.0f32),u[383]),strand));
   // the sky and the floor's bounce, an ambient from above and below; the cavities darker
   sky:f32=(0.5f32+(0.5f32*n.y));
   amb:V3=add3(scale3(v3(0.36f32,0.4f32,0.48f32),sky*0.55f32),scale3(v3(0.22f32,0.2f32,0.18f32),(1.0f32-sky)*0.35f32));
-  c=add3(c,v3(albedo.x*amb.x,albedo.y*amb.y,albedo.z*amb.z));
+  c=add3(c,scale3(v3(albedo.x*amb.x,albedo.y*amb.y,albedo.z*amb.z),ao));
   // the eye's wet gloss: the sky's reflection on the cornea
   if (m==2) {
     // the cornea over it: a mirror-smooth coat on the eye's own shape (ng, not the iris's map) that
@@ -507,10 +531,14 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
     c=add3(c,scale3(v3(0.55f32,0.6f32,0.68f32),fr*(0.4f32+(0.6f32*saturate(r.y)))));
     hk:V3=normalize3(add3(key,v));
     glint:f32=mhlab_ggx(saturate(dot3(ng,hk)),0.02f32)*0.0025f32*sh;
-    c=add3(c,scale3(v3(1.0f32,0.96f32,0.9f32),glint*u[352]));
+    c=add3(c,scale3(v3(1.0f32,0.96f32,0.9f32),glint*u[384]));
   }
   c=mhlab_out(c,u);
   c=mhlab_strips(v2(s.pos.x,s.pos.y),c,u);
+  // the probe views a script reads: the albedo as the screen's sRGB, or uv and the base layer
+  if ((u[386]>0.5f32)&&(u[386]<1.5f32)) { c=v3(mhlab_srgb(albedo.x),mhlab_srgb(albedo.y),mhlab_srgb(albedo.z)); }
+  if ((u[386]>1.5f32)&&(u[386]<2.5f32)) { c=v3(fract(s.uv.x),fract(s.uv.y),cast(f32)(s.layers&255)/255.0f32); }
+  if (u[386]>2.5f32) { c=v3(0.0f32,0.0f32,0.0f32); }
   return v4(c.x,c.y,c.z,1.0f32);
 }
 clamp_u :: (x:u32,a:u32,b:u32)->u32 {

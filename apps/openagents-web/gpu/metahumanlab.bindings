@@ -1,8 +1,8 @@
 # MetaHuman Lab's bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS]), as
-# coax/web/host.js lays them out: group 0 the frame's uniforms (metahumanlab.coax's 356 floats); group 1
+# coax/web/host.js lays them out: group 0 the frame's uniforms (metahumanlab.coax's 388 floats); group 1
 # the scene (the human pack's vertices, the pose store, the pack's layers and their sampler); group 2
 # the shadow map.
-u 0 0 uniform 89
+u 0 0 uniform 97
 vertices 1 0
 pose 1 1
 sheets 1 2
