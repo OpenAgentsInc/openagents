@@ -35,6 +35,12 @@ static struct { float looks[PEOPLE_MAX * LOOK_FLOATS]; coax_t_Joint palette[PEOP
 #define palette store1.palette
 static uint32_t palette_bytes;
 
+// The globals' declared defaults (coax_default_T, from the compiler), before any call:
+// _initialize runs this in the browser, the loader natively.
+__attribute__((constructor)) static void coaxial_face_defaults(void) {
+  for (int i = 0; i < PEOPLE_MAX; i++) coax_default_t_Anim(&anims[i]);
+}
+
 static coax_t_GridCrowd *crowd(uint32_t state) { return (coax_t_GridCrowd *)(uintptr_t)state; }
 static coax_v_t_GridCrowd at(uint32_t state) { return (coax_v_t_GridCrowd){crowd(state), 1}; }
 

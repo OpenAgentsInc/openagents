@@ -59,6 +59,17 @@ static coax_v_t_Everglade at(uint32_t state) {
   return v;
 }
 
+// The globals' declared defaults (coax_default_T, from the compiler), before any call:
+// _initialize runs this in the browser, the loader natively.
+__attribute__((constructor)) static void coaxial_face_defaults(void) {
+  coax_default_t_Player(&player);
+  coax_default_t_Sticks(&sticks);
+  coax_default_t_Mb(&battle);
+  coax_default_t_Mmo(&view);
+  coax_default_t_River(&river);
+  coax_default_t_DemoWorld(&demo_world);
+}
+
 static void new_battle(uint32_t state) {
   mb_new(mb(), pick, 7 + (int64_t)frames);
   mmo_set_pick(mm(), pick);

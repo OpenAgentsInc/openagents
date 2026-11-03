@@ -806,4 +806,5 @@ __attribute__((constructor)) static void coaxial_face_defaults(void) {
   coax_default_t_GaSession(&guard_state);
   coax_default_t_River(&river);
   coax_default_t_E5r(&e5_rules);
+  coax_default_t_DemoWorld(&demo_world);
 }
