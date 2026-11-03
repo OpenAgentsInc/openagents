@@ -7,8 +7,10 @@
 > chapter 34's statistics in a JSON receipt, and a comparison of runs that
 > trained different things is refused. Bounded dynamic batch sizes through
 > chapter 39's guarded specialization, fusion of forward and backward
-> operations, the optimizer compiled into the program, and a compiled GPU
-> path are not here yet.
+> operations and the optimizer compiled into the program are not here yet.
+> A whole-step GPU program now exists for chapter 129's useful-scale
+> decoder, but it has not been compared with an eager path (see "A
+> compiled GPU step").
 
 Compilation must change speed and memory, not what the model learns. The
 way to show that is to train one model twice, once each way, under the same
@@ -511,6 +513,19 @@ Their [record](../../docs/verification/psionic-training-dense-2026-11-02/README.
 does not qualify a compiled GPU tensor program: lowering this chapter's
 compiled schedule, optimizer and recovery state to resident device execution
 remains open.
+
+## A compiled GPU step
+
+Chapter 129's 10.8M-parameter decoder trains as one precomputed program:
+`cg_step` writes the step's 336 launches, every address and stride
+resolved, once, and the host replays the same list every step; AdamW is one
+more launch after the decision. It is compiled in the sense of this chapter
+(no interpretation per step) and its activation memory is planned exactly
+(1,738,416,198 bytes, the driver's free memory falling by the same amount
+rounded to its granularity). It is checked against an independent PyTorch
+implementation rather than against an eager Psionic path, so this chapter's
+claim, that eager and compiled training agree bit for bit on the same
+model, is not yet made for the GPU.
 
 ## What remains
 

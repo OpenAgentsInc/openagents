@@ -137,3 +137,122 @@ v2 is v1 with one change: **750 steps** (warmup 100, cosine to 1e-4 at step
 resume rule, resource goals and everything else are unchanged. This choice
 used only the baseline's curve; no Coax full-size training had run. The
 Coax device path had run only the tiny oracle shape (3 steps) at this point.
+
+## Evidence (added after the freeze)
+
+All runs: one RTX 4080 (sm_89, driver 595.71.05, NVRTC 13.2), idle at
+146 MiB / 0% before and after (`v2/gpu-before.txt`, `v2/gpu-after.txt`);
+no other job was stopped. Build: `psionic/tests/char_gpt_build.sh`; kernel
+and library hashes in `v2/build.sha256`. Runs:
+`psionic/tests/char_gpt_acceptance.sh BUILD CORPUS OUT`.
+
+### What runs
+
+`psionic/lib/transformer/char-gpt-kernels.coax` holds 16 Coax kernels that
+`coax cuda` emits for NVRTC (`--fmad=false`): cooperative 64×64-tile FP32
+products (256 threads, register prefetch, three orientations; causal, inner-
+limited and head-sliced batched modes for attention), causal softmax and its
+backward, RMS norm and its backward, ids, embedding and both table
+gradients, ReLU², cross-entropy, a fixed-order two-pass sum, and AdamW. Every
+reduction has one written order and no atomics. `char-gpt.coax` writes a
+step as data (336 launches: two micro-batches of 32 rows, forward and
+backward each, then four reductions); `char_gpt_device.c` only replays them.
+Parameters, gradients, both moments and activations live in one device
+arena (1,738,416,198 bytes planned); each step uploads the 64 row offsets
+(512 B) and downloads two FP32 words (loss sum, squared gradient norm).
+`char-gpt-policy.coax` (`#authority`) decides admission, the schedule, the
+update constants, clipping, skips, the ledger and the checkpoint header;
+`coax mutate --root-only`: **244 of 244 mutants killed**. There is no CPU
+path in the device driver: a step that moved any other bytes or launched any
+other kernel fails `cgp_ledger`, checked after every step.
+
+### Independent numerical checks
+
+- **PyTorch float64 oracle, tiny shape** (`oracle/`): initial values of all
+  418,048 parameters are bit-identical; step-1 loss and gradient norm agree
+  to 3.5e-7 relative; every step-1 gradient value is within 4.1e-5 of the
+  oracle (scaled by |a|+|b|+1e-3·max; cosine 0.99999999999993); parameters
+  after three AdamW steps with clipping within 3.9e-5. The CPU (C build of
+  the same launches) and the device both pass.
+- **Native self-checks** (`char-gpt selfcheck`, 0 failures): every tensor's
+  first, middle and last gradient value against central differences of the
+  step's own loss; two micro-batches against one batch of four rows; the
+  AdamW launch against its formula; held-out windows; an infinite parameter
+  makes the step's numbers non-finite and the decision skips the update with
+  every parameter bit unchanged; the BF16 profile's gradient within cosine
+  0.9999 and 1% norm of FP32's.
+- **Coax checks**: 20 checks over the kernels (each product orientation and
+  mode against its definition bit for bit on ragged tiles, BF16 rounding by
+  hand, softmax/RMS/CE against binary64), the plan, init bits and row starts
+  computed independently in Python.
+- **Full shape against the baseline**: step losses 1–10 equal PyTorch's to
+  7–8 significant digits (`v2/fp32/log.jsonl` against
+  `baseline/v2-cuda.jsonl`); held-out at step 0 is 4.23626826 against
+  PyTorch's 4.23626824.
+- **Resume**: a run saved after 375 steps and resumed in a new process ends
+  with a checkpoint byte-identical to the uninterrupted run
+  (`v2/checkpoints.sha256`, `v2/resume.txt`): exact resume, no tolerance.
+
+### Acceptance: `char-gpt-shakespeare-v2` on the RTX 4080
+
+| | held-out 0 | 250 | 500 | **750** | tokens/s | step (median) |
+| --- | --- | --- | --- | --- | --- | --- |
+| PyTorch 2.12 CUDA FP32 (TF32 off), baseline | 4.2363 | 1.7911 | 1.5451 | **1.5283** | ≈150,000 (cuBLAS) | ≈0.11 s |
+| Coax, `fp32` | 4.2363 | 1.7860 | 1.5411 | **1.5171** | **108,122** | 0.150 s |
+| Coax, `fp32` resumed at 375 | — | 1.7860 | 1.5411 | **1.5171** | 107,633 / 108,191 | — |
+| Coax, `bf16` | 4.2362 | 1.7754 | 1.5362 | **1.5154** | 108,748 | 0.150 s |
+
+- **Quality:** 1.5171 ≤ 1.70, and |1.5171 − 1.5283| = 0.011 ≤ 0.03. The BF16
+  profile reaches 1.5154 (0.002 from FP32). No step was skipped; 51 (FP32)
+  and 47 (BF16) steps were clipped.
+- **Throughput:** 108,122 tokens/s end to end (every launch, upload,
+  download, decision and the per-step ledger; evaluation excluded) against
+  the 50,000 goal: met. 12,288,000 tokens in 113.6 s of steps, 119.4 s wall
+  including startup and four held-out passes (~0.33 s each). PyTorch with
+  cuBLAS is about 1.4× faster; the Coax products run at roughly 8 TFLOPS of
+  the card's FP32 rate without FMA.
+- **Memory:** the plan is 1,738,416,198 bytes; the driver's free memory
+  fell by 1,740,636,160 bytes; nvidia-smi peaked at 2,052 MiB for the whole
+  card (1,898 MiB for the process). Goal 8 GiB: met. PyTorch peaked at
+  3.50 GB allocated.
+- **Compile and startup:** NVRTC 0.03–2.4 s (driver cache warm or cold),
+  startup including corpus admission, tokenization, initialization and
+  upload 0.46–3.4 s. Goal 60 s: met.
+
+The BF16 profile is qualified numerically only: operands are rounded to
+BF16 (nearest even) as they enter shared memory and multiplied in FP32 SIMT
+arithmetic, not on tensor cores as the frozen text said, so it is not faster
+and stores nothing in BF16. That part of the frozen BF16 policy is **not
+met**. Loss scaling stays static 1, as frozen.
+
+### Profile (Nsight Systems, 10 steps and one held-out pass)
+
+`profile/kernels-10-steps.csv`: products take 93% of kernel time (nn 38%,
+tn 32%, nt 23%); ReLU² 2.7%, softmax 1.9%, RMS 1.3%, the token-table
+gradient 0.6%, AdamW 0.2%. One bottleneck was found and fixed during the
+work: rounding BF16 operands right after their global load (`failures/`)
+made the products wait on the load the register prefetch was meant to hide,
+and the **FP32** run fell to 77,957 tokens/s (0.209 s a step). Moving the
+rounding to the shared-memory store restored 108,122 tokens/s (0.150 s).
+
+### Failures and cost
+
+- v1 retired (baseline overfit), and the first CPU baseline attempt
+  abandoned under host load: see the amendment above.
+- A first full-size Coax run used a build still carrying v1's 2000-step
+  schedule; it is kept as the Coax side of v1 (`v1-coax/`): held-out 1.5344
+  at 750 and 2.8750 at 2000 against PyTorch's 1.5295 and 2.9090, 112,197
+  tokens/s, the same overfitting.
+- The BF16 rounding regression above.
+- Evaluator budget: the whole-step finite-difference check ran out of the
+  checker's 2·10⁹ steps, so it moved to the native `selfcheck`.
+- Total: about one hour of wall time from freeze to these results; GPU time
+  about 15 minutes (Coax runs about 12, PyTorch about 5).
+
+### What remains
+
+- BF16 on tensor cores (`cu_mma_bf16_16x8x16`), BF16 storage of weights and
+  activations, and a dynamic loss scale.
+- Faster products (larger register tiles, split-K for small outputs); the
+  baseline's cuBLAS step is 1.4× faster.
+- Distributed training (chapters 132–135) was not started.

@@ -94,13 +94,14 @@ static void run(coax_t_CgLaunch *ls, int64_t count) {
 
 int main(int argc, char **argv) {
     if (argc >= 2 && !strcmp(argv[1], "selfcheck")) {
-        int64_t g = cgn_gradients(), a = cgn_accumulate(), u = cgn_update();
-        printf("{\"gradients_failures\":%lld,\"accumulate_failures\":%lld,\"update_failures\":%lld}\n", (long long)g, (long long)a, (long long)u);
-        return g || a || u;
+        int64_t g = cgn_gradients(), a = cgn_accumulate(), u = cgn_update(), o = cgn_overflow();
+        printf("{\"gradients_failures\":%lld,\"accumulate_failures\":%lld,\"update_failures\":%lld,\"overflow_failures\":%lld}\n", (long long)g, (long long)a, (long long)u, (long long)o);
+        return g || a || u || o;
     }
     NEED(argc >= 7 && !strcmp(argv[1], "run"), "usage: char-gpt selfcheck | run cpu|gpu tiny|full CORPUS OUT [options]");
     gpu = !strcmp(argv[2], "gpu");
-    coax_t_CgShape s = !strcmp(argv[3], "full") ? cg_full() : cg_tiny();
+    coax_t_CgShape s = !strncmp(argv[3], "full", 4) ? cg_full() : cg_tiny();
+    if (strstr(argv[3], "-bf16")) s = cg_with_profile(s, 1);
     const char *corpus = argv[4], *out = argv[5], *cu = NULL;
     int64_t target = cg_steps(), dump = 0, every = 250; double budget = 780; int64_t memory = (int64_t)8 << 30;
     for (int i = 6; i + 1 < argc; i += 2) {
@@ -148,7 +149,7 @@ int main(int argc, char **argv) {
         NEED(cn == 128 + (size_t)np * 12, "checkpoint size differs");
         int64_t h[16]; memcpy(h, ck, 128); memcpy(p, ck + 128, (size_t)np * 12);
         uint64_t fnv = cg_fnv_f32(0xcbf29ce484222325ULL, (coax_v_f32){p, np * 3});
-        NEED(cgp_header_ok((coax_v_s64){h, 16}, 0, np, cg_steps(), (coax_v_s64){shape, 8}, fnv) == COAX_CgStatus_ok, "checkpoint refused");
+        NEED(cgp_header_ok((coax_v_s64){h, 16}, s.profile, np, cg_steps(), (coax_v_s64){shape, 8}, fnv) == COAX_CgStatus_ok, "checkpoint refused");
         step = h[4]; skipped = h[5]; free(ck);
         up(CG_P_ID, 0, p, np); up(CG_M_ID, 0, p + np, np); up(CG_V_ID, 0, p + 2 * np, np);
     } else {
@@ -205,7 +206,7 @@ int main(int argc, char **argv) {
         snprintf(path, sizeof path, "%s/params.f64", out); write_all(path, g, (size_t)np * 8, NULL, 0); free(g);
     } else {
         int64_t h[16]; uint64_t fnv = cg_fnv_f32(0xcbf29ce484222325ULL, (coax_v_f32){p, np * 3});
-        NEED(cgp_header((coax_v_s64){h, 16}, 0, np, step, skipped, (coax_v_s64){shape, 8}, fnv) == COAX_CgStatus_ok, "header");
+        NEED(cgp_header((coax_v_s64){h, 16}, s.profile, np, step, skipped, (coax_v_s64){shape, 8}, fnv) == COAX_CgStatus_ok, "header");
         snprintf(path, sizeof path, "%s/state.ckpt", out); write_all(path, h, 128, p, (size_t)np * 12);
     }
     fclose(log);

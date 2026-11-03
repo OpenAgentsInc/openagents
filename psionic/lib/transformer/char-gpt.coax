@@ -13,11 +13,14 @@
 #load "../counter-rng.coax";
 #load "../../tests/char-gpt-checks.coax";
 
-CgShape :: struct {vocab:int;d:int;layers:int;heads:int;context:int;hidden:int;rows:int;accumulate:int;}
+// profile 0 is FP32, 1 BF16 (every product's operands rounded to BF16).
+CgShape :: struct {vocab:int;d:int;layers:int;heads:int;context:int;hidden:int;rows:int;accumulate:int;profile:int;}
 // The frozen workload's model, a step of 64 rows as 2 micro-batches of 32.
 cg_full :: ()->CgShape #export_c {return CgShape.{vocab=65,d=384,layers=6,heads=6,context=256,hidden=1536,rows=32,accumulate=2};}
 // The oracle's tiny shape: the same code paths, small enough for the CPU.
 cg_tiny :: ()->CgShape #export_c {return CgShape.{vocab=65,d=128,layers=2,heads=2,context=64,hidden=512,rows=2,accumulate=2};}
+// The same shapes in the BF16 profile.
+cg_with_profile :: (s:CgShape,profile:int)->CgShape #export_c {t:=s;t.profile=profile;return t;}
 CG_STEPS :: 750;   // char-gpt-shakespeare-v2; v1 was 2000
 CG_WARMUP :: 100;
 cg_admit :: (s:CgShape)->CgStatus #export_c {return cgp_shape(s.vocab,s.d,s.layers,s.heads,s.context,s.hidden,s.rows,s.accumulate);}
@@ -150,6 +153,10 @@ cg_gemm :: (out:[]CgLaunch,at:int,kernel:int,batch:int,heads:int,m:int,n:int,k:i
         c.arg,cg_int(c.off),cg_int(c.rs),cg_int(c.hs),cg_int(c.is),cg_int(c.ks)];
     return cg_add(out,at,kernel,ck_mm_items(batch,m,n),x[..]);
 }
+// A product of the run's profile.
+cg_prod :: (s:CgShape,out:[]CgLaunch,at:int,kernel:int,batch:int,heads:int,m:int,n:int,k:int,mode:int,alpha:f32,acc:int,a:CgMat,b:CgMat,c:CgMat)->int {
+    return cg_gemm(out,at,kernel,batch,heads,m,n,k,mode+4*s.profile,alpha,acc,a,b,c);
+}
 // A plain row-major matrix of `cols` columns: one batch.
 cg_rm :: (arg:CgArg,cols:int)->CgMat {return cg_mat(arg,0,0,0,cols,1);}
 // Its transpose, read in place: element (i, k) is at k*cols + i.
@@ -167,20 +174,20 @@ cg_forward :: (s:CgShape,p:CgPlan,out:[]CgLaunch,at0:int,rows:int,first:int,loss
         h1:=cg_buf(p,cg_lb(l,CG_H1));qkv:=cg_buf(p,cg_lb(l,CG_QKVA));sc:=cg_buf(p,cg_lb(l,CG_S));o:=cg_buf(p,cg_lb(l,CG_OA));
         h2:=cg_buf(p,cg_lb(l,CG_H2));u:=cg_buf(p,cg_lb(l,CG_U));a:=cg_buf(p,cg_lb(l,CG_A));x:=cg_buf(p,CG_X);
         at=cg_add4(out,at,K_RMS,nt,cg_int(d),x,h1,cg_buf(p,cg_lb(l,CG_R1)));
-        at=cg_gemm(out,at,K_NN,1,1,nt,h3,d,0,1,0,cg_rm(h1,d),cg_rm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_QKV)),h3),cg_rm(qkv,h3));
+        at=cg_prod(s,out,at,K_NN,1,1,nt,h3,d,0,1,0,cg_rm(h1,d),cg_rm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_QKV)),h3),cg_rm(qkv,h3));
         // Scores of (row r, head h): Q K^T / sqrt(hd), causal tiles only.
-        at=cg_gemm(out,at,K_NT,rows*s.heads,s.heads,t,t,hd,1,scl,0,cg_mat(qkv,0,t*h3,hd,h3,1),cg_mat(qkv,d,t*h3,hd,1,h3),cg_mat(sc,0,s.heads*t*t,t*t,t,1));
+        at=cg_prod(s,out,at,K_NT,rows*s.heads,s.heads,t,t,hd,1,scl,0,cg_mat(qkv,0,t*h3,hd,h3,1),cg_mat(qkv,d,t*h3,hd,1,h3),cg_mat(sc,0,s.heads*t*t,t*t,t,1));
         at=cg_add2(out,at,K_SOFTMAX,rows*s.heads*t,cg_int(t),sc);
-        at=cg_gemm(out,at,K_NN,rows*s.heads,s.heads,t,hd,t,2,1,0,cg_mat(sc,0,s.heads*t*t,t*t,t,1),cg_mat(qkv,2*d,t*h3,hd,h3,1),cg_mat(o,0,t*d,hd,d,1));
-        at=cg_gemm(out,at,K_NN,1,1,nt,d,d,0,1,1,cg_rm(o,d),cg_rm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_O)),d),cg_rm(x,d));
+        at=cg_prod(s,out,at,K_NN,rows*s.heads,s.heads,t,hd,t,2,1,0,cg_mat(sc,0,s.heads*t*t,t*t,t,1),cg_mat(qkv,2*d,t*h3,hd,h3,1),cg_mat(o,0,t*d,hd,d,1));
+        at=cg_prod(s,out,at,K_NN,1,1,nt,d,d,0,1,1,cg_rm(o,d),cg_rm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_O)),d),cg_rm(x,d));
         at=cg_add4(out,at,K_RMS,nt,cg_int(d),x,h2,cg_buf(p,cg_lb(l,CG_R2)));
-        at=cg_gemm(out,at,K_NN,1,1,nt,s.hidden,d,0,1,0,cg_rm(h2,d),cg_rm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_UP)),s.hidden),cg_rm(u,s.hidden));
+        at=cg_prod(s,out,at,K_NN,1,1,nt,s.hidden,d,0,1,0,cg_rm(h2,d),cg_rm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_UP)),s.hidden),cg_rm(u,s.hidden));
         at=cg_add2(out,at,K_RELU2,nt*s.hidden,u,a);
-        at=cg_gemm(out,at,K_NN,1,1,nt,d,s.hidden,0,1,1,cg_rm(a,s.hidden),cg_rm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_DOWN)),d),cg_rm(x,d));
+        at=cg_prod(s,out,at,K_NN,1,1,nt,d,s.hidden,0,1,1,cg_rm(a,s.hidden),cg_rm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_DOWN)),d),cg_rm(x,d));
     }
     at=cg_add4(out,at,K_RMS,nt,cg_int(d),cg_buf(p,CG_X),cg_buf(p,CG_HF),cg_buf(p,CG_RF));
     head:=2+4*s.layers;
-    at=cg_gemm(out,at,K_NN,1,1,nt,s.vocab,d,0,1,0,cg_rm(cg_buf(p,CG_HF),d),cg_rm(cg_weight(p,s,CG_P,head),s.vocab),cg_rm(cg_buf(p,CG_LOGITS),s.vocab));
+    at=cg_prod(s,out,at,K_NN,1,1,nt,s.vocab,d,0,1,0,cg_rm(cg_buf(p,CG_HF),d),cg_rm(cg_weight(p,s,CG_P,head),s.vocab),cg_rm(cg_buf(p,CG_LOGITS),s.vocab));
     at=cg_add6(out,at,K_CE,nt,cg_int(s.vocab),cg_real(scale),cg_buf(p,CG_LOGITS),cg_buf(p,CG_TG),cg_part(p,CG_LOSS,loss_at,nt),cg_buf(p,CG_DLOG));
     return at;
 }
@@ -189,8 +196,8 @@ cg_forward :: (s:CgShape,p:CgPlan,out:[]CgLaunch,at0:int,rows:int,first:int,loss
 cg_backward :: (s:CgShape,p:CgPlan,out:[]CgLaunch,at0:int,acc:int)->int {
     at:=at0;t:=s.context;d:=s.d;rows:=s.rows;nt:=rows*t;hd:=d/s.heads;h3:=3*d;hid:=s.hidden;head:=2+4*s.layers;
     g:=cg_buf(p,CG_GRES);dh:=cg_buf(p,CG_DH);dlog:=cg_buf(p,CG_DLOG);hf:=cg_buf(p,CG_HF);
-    at=cg_gemm(out,at,K_TN,1,1,d,s.vocab,nt,0,1,acc,cg_cm(hf,d),cg_rm(dlog,s.vocab),cg_rm(cg_weight(p,s,CG_G,head),s.vocab));
-    at=cg_gemm(out,at,K_NT,1,1,nt,d,s.vocab,0,1,0,cg_rm(dlog,s.vocab),cg_cm(cg_weight(p,s,CG_P,head),s.vocab),cg_rm(dh,d));
+    at=cg_prod(s,out,at,K_TN,1,1,d,s.vocab,nt,0,1,acc,cg_cm(hf,d),cg_rm(dlog,s.vocab),cg_rm(cg_weight(p,s,CG_G,head),s.vocab));
+    at=cg_prod(s,out,at,K_NT,1,1,nt,d,s.vocab,0,1,0,cg_rm(dlog,s.vocab),cg_cm(cg_weight(p,s,CG_P,head),s.vocab),cg_rm(dh,d));
     at=cg_add6(out,at,K_RMS_BACK,nt,cg_int(d),cg_int(0),hf,cg_buf(p,CG_RF),dh,g);
     scl:=1/sqrt(f32(hd));
     for k:0..<s.layers {
@@ -199,23 +206,23 @@ cg_backward :: (s:CgShape,p:CgPlan,out:[]CgLaunch,at0:int,acc:int)->int {
         h2:=cg_buf(p,cg_lb(l,CG_H2));u:=cg_buf(p,cg_lb(l,CG_U));a:=cg_buf(p,cg_lb(l,CG_A));
         da:=cg_buf(p,CG_DA);dq:=cg_buf(p,CG_DQKV);dp:=cg_buf(p,CG_DP);dout:=cg_buf(p,CG_DO);
         // MLP: x += relu(h2 Wup)^2 Wdown.
-        at=cg_gemm(out,at,K_NT,1,1,nt,hid,d,0,1,0,cg_rm(g,d),cg_cm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_DOWN)),d),cg_rm(da,hid));
-        at=cg_gemm(out,at,K_TN,1,1,hid,d,nt,0,1,acc,cg_cm(a,hid),cg_rm(g,d),cg_rm(cg_weight(p,s,CG_G,cg_layer_tensor(l,CG_DOWN)),d));
+        at=cg_prod(s,out,at,K_NT,1,1,nt,hid,d,0,1,0,cg_rm(g,d),cg_cm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_DOWN)),d),cg_rm(da,hid));
+        at=cg_prod(s,out,at,K_TN,1,1,hid,d,nt,0,1,acc,cg_cm(a,hid),cg_rm(g,d),cg_rm(cg_weight(p,s,CG_G,cg_layer_tensor(l,CG_DOWN)),d));
         at=cg_add2(out,at,K_RELU2_BACK,nt*hid,u,da);
-        at=cg_gemm(out,at,K_NT,1,1,nt,d,hid,0,1,0,cg_rm(da,hid),cg_cm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_UP)),hid),cg_rm(dh,d));
-        at=cg_gemm(out,at,K_TN,1,1,d,hid,nt,0,1,acc,cg_cm(h2,d),cg_rm(da,hid),cg_rm(cg_weight(p,s,CG_G,cg_layer_tensor(l,CG_UP)),hid));
+        at=cg_prod(s,out,at,K_NT,1,1,nt,d,hid,0,1,0,cg_rm(da,hid),cg_cm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_UP)),hid),cg_rm(dh,d));
+        at=cg_prod(s,out,at,K_TN,1,1,d,hid,nt,0,1,acc,cg_cm(h2,d),cg_rm(da,hid),cg_rm(cg_weight(p,s,CG_G,cg_layer_tensor(l,CG_UP)),hid));
         at=cg_add6(out,at,K_RMS_BACK,nt,cg_int(d),cg_int(1),h2,cg_buf(p,cg_lb(l,CG_R2)),dh,g);
         // Attention: x += o Wo.
-        at=cg_gemm(out,at,K_NT,1,1,nt,d,d,0,1,0,cg_rm(g,d),cg_cm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_O)),d),cg_rm(dout,d));
-        at=cg_gemm(out,at,K_TN,1,1,d,d,nt,0,1,acc,cg_cm(o,d),cg_rm(g,d),cg_rm(cg_weight(p,s,CG_G,cg_layer_tensor(l,CG_O)),d));
+        at=cg_prod(s,out,at,K_NT,1,1,nt,d,d,0,1,0,cg_rm(g,d),cg_cm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_O)),d),cg_rm(dout,d));
+        at=cg_prod(s,out,at,K_TN,1,1,d,d,nt,0,1,acc,cg_cm(o,d),cg_rm(g,d),cg_rm(cg_weight(p,s,CG_G,cg_layer_tensor(l,CG_O)),d));
         bh:=rows*s.heads;st:=s.heads*t*t;
-        at=cg_gemm(out,at,K_NT,bh,s.heads,t,t,hd,1,1,0,cg_mat(dout,0,t*d,hd,d,1),cg_mat(qkv,2*d,t*h3,hd,1,h3),cg_mat(dp,0,st,t*t,t,1));
+        at=cg_prod(s,out,at,K_NT,bh,s.heads,t,t,hd,1,1,0,cg_mat(dout,0,t*d,hd,d,1),cg_mat(qkv,2*d,t*h3,hd,1,h3),cg_mat(dp,0,st,t*t,t,1));
         at=cg_add3(out,at,K_SOFTMAX_BACK,bh*t,cg_int(t),sc,dp);
-        at=cg_gemm(out,at,K_TN,bh,s.heads,t,hd,t,3,1,0,cg_mat(sc,0,st,t*t,1,t),cg_mat(dout,0,t*d,hd,d,1),cg_mat(dq,2*d,t*h3,hd,h3,1));
-        at=cg_gemm(out,at,K_NN,bh,s.heads,t,hd,t,2,scl,0,cg_mat(dp,0,st,t*t,t,1),cg_mat(qkv,d,t*h3,hd,h3,1),cg_mat(dq,0,t*h3,hd,h3,1));
-        at=cg_gemm(out,at,K_TN,bh,s.heads,t,hd,t,3,scl,0,cg_mat(dp,0,st,t*t,1,t),cg_mat(qkv,0,t*h3,hd,h3,1),cg_mat(dq,d,t*h3,hd,h3,1));
-        at=cg_gemm(out,at,K_NT,1,1,nt,d,h3,0,1,0,cg_rm(dq,h3),cg_cm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_QKV)),h3),cg_rm(dh,d));
-        at=cg_gemm(out,at,K_TN,1,1,d,h3,nt,0,1,acc,cg_cm(h1,d),cg_rm(dq,h3),cg_rm(cg_weight(p,s,CG_G,cg_layer_tensor(l,CG_QKV)),h3));
+        at=cg_prod(s,out,at,K_TN,bh,s.heads,t,hd,t,3,1,0,cg_mat(sc,0,st,t*t,1,t),cg_mat(dout,0,t*d,hd,d,1),cg_mat(dq,2*d,t*h3,hd,h3,1));
+        at=cg_prod(s,out,at,K_NN,bh,s.heads,t,hd,t,2,scl,0,cg_mat(dp,0,st,t*t,t,1),cg_mat(qkv,d,t*h3,hd,h3,1),cg_mat(dq,0,t*h3,hd,h3,1));
+        at=cg_prod(s,out,at,K_TN,bh,s.heads,t,hd,t,3,scl,0,cg_mat(dp,0,st,t*t,1,t),cg_mat(qkv,0,t*h3,hd,h3,1),cg_mat(dq,d,t*h3,hd,h3,1));
+        at=cg_prod(s,out,at,K_NT,1,1,nt,d,h3,0,1,0,cg_rm(dq,h3),cg_cm(cg_weight(p,s,CG_P,cg_layer_tensor(l,CG_QKV)),h3),cg_rm(dh,d));
+        at=cg_prod(s,out,at,K_TN,1,1,d,h3,nt,0,1,acc,cg_cm(h1,d),cg_rm(dq,h3),cg_rm(cg_weight(p,s,CG_G,cg_layer_tensor(l,CG_QKV)),h3));
         at=cg_add6(out,at,K_RMS_BACK,nt,cg_int(d),cg_int(1),h1,cg_buf(p,cg_lb(l,CG_R1)),dh,g);
     }
     at=cg_add6(out,at,K_EMBED_BACK,s.vocab*d,cg_int(d),cg_int(nt),cg_int(acc),cg_buf(p,CG_IDS),g,cg_weight(p,s,CG_G,0));

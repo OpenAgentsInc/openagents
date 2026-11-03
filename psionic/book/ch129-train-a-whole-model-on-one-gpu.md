@@ -1,15 +1,14 @@
 # 129. Train a whole model on one GPU
 
-> **Status: partly implemented.** Chapter 115's tiny decoder trains on the
-> RTX 4080 under chapter 118's trainer: each row's forward and backward
-> pass, the step's mean gradient, its norm, AdamW and the commit run in
-> Coax-generated kernels, all trainable state stays on the device between
-> steps, the run matches chapter 118's CPU run within a tolerance frozen
-> before the first device run, and it resumes bit for bit. An MLP and a CNN
-> on the device, a 10–50M-parameter decoder, BF16 storage, convolution
-> gradients, kernels that split one row's work across threads (this
-> chapter's device step is slower than the CPU) and a PyTorch baseline
-> remain.
+> **Status: partly implemented.** A 10,765,056-parameter decoder trains
+> whole-step on the RTX 4080 in Coax-generated cooperative kernels: 12.3M
+> tokens of Tiny Shakespeare at 108,122 tokens/s end to end, 1.7 GB of
+> device memory, held-out loss 1.5171 against an independent PyTorch
+> baseline's 1.5283 on the same frozen workload, exact resume, and a BF16
+> operand profile at 1.5154 (see "A useful-scale decoder" below). Chapter
+> 115's tiny decoder also trains on the device under chapter 118's trainer
+> (the rest of this chapter). An MLP and a CNN on the device, convolution
+> gradients, BF16 on tensor cores and BF16 storage remain.
 
 A separate [checked dense component](../lib/device/training-dense.coax),
 `training-dense-f32-v1`, now supplies cooperative `Y = XW`, `dX = dY Wᵀ`
@@ -22,6 +21,60 @@ this component has no optimizer or decoder integration. The
 [qualification record](../../docs/verification/psionic-training-dense-2026-11-02/README.md)
 keeps the earlier failures, exact scope and remaining work. The whole-step
 measurements below remain unchanged.
+
+## A useful-scale decoder
+
+The tiny decoder below proves the step's decisions; it does not prove that
+GPU training is useful. [#12627](https://github.com/OpenAgentsInc/openagents/issues/12627)
+asked for that with one frozen workload, written down before any kernel
+existed: [`char-gpt-shakespeare-v2`](../../docs/verification/psionic-train-shakespeare-2026-11-03/README.md). A byte-level pre-norm
+decoder (width 384, 6 layers of 6 heads, context 256, MLP 1536 with ReLU²,
+RMS norm without gains, learned positions) trains for 750 AdamW steps of 64
+rows on Tiny Shakespeare, with init and row order drawn from the counter RNG,
+so an independent PyTorch implementation of the same text starts from the
+same bits.
+
+[`char-gpt-kernels.coax`](../lib/transformer/char-gpt-kernels.coax) holds 16
+kernels. The products are 64×64 output tiles of 256 threads with a register
+prefetch, in three orientations (`x·W`, `dY·Wᵀ`, `Xᵀ·dY`); one batched,
+strided form also serves attention, with a causal mode that skips score
+tiles above the diagonal and inner limits for `P·V`, `Pᵀ·dO`, `dS·K` and
+`dSᵀ·Q`. Every reduction has one fixed order and there are no atomics, so a
+run is deterministic. [`char-gpt.coax`](../lib/transformer/char-gpt.coax)
+lays out one arena and writes a step as 336 launches (two micro-batches of
+32 rows accumulated, then four reductions); the C host replays them and
+reads back two FP32 words a step, the loss sum and the squared gradient
+norm. [`char-gpt-policy.coax`](../lib/transformer/char-gpt-policy.coax)
+(`#authority`, 244 of 244 mutants killed) makes every decision: admission,
+schedule, clipping, a skipped step for a non-finite norm, the checkpoint
+header, and a per-step transfer ledger that fails the run if a step moved
+any other bytes or launched any other kernel, so no step can fall back to
+the CPU.
+
+| On the RTX 4080 | held-out loss at step 750 | tokens/s | device memory |
+| --- | --- | --- | --- |
+| PyTorch CUDA FP32 baseline | 1.5283 | ≈150,000 | 3.5 GB |
+| Coax `fp32` | **1.5171** | **108,122** | 1.74 GB |
+| Coax `fp32`, saved at 375 and resumed | 1.5171, checkpoint byte-identical | 108,191 | 1.74 GB |
+| Coax `bf16` (operands rounded to BF16) | 1.5154 | 108,748 | 1.74 GB |
+
+The tiny shape of the same model matches a PyTorch float64 oracle on the CPU
+and on the device: identical initial bits, every step-1 gradient within
+4.1×10⁻⁵ (scaled), parameters after three AdamW steps within 3.9×10⁻⁵. A
+native self-check compares every tensor's gradients with central
+differences of the step's own loss. The [record](../../docs/verification/psionic-train-shakespeare-2026-11-03/README.md) keeps every
+attempt, including the first workload, retired because its own baseline
+overfit, and a 30% regression that chapter 130 traces. PyTorch's cuBLAS
+step is still about 1.4× faster, and the BF16 profile rounds operands but
+does not yet use tensor cores, so it is no faster.
+
+```shell
+psionic/tests/char_gpt_build.sh BUILD
+BUILD/char-gpt selfcheck
+psionic/tests/char_gpt_acceptance.sh BUILD ~/.cache/psionic/tinyshakespeare/input.txt OUT
+```
+
+## The tiny decoder on the device
 
 Inference needs only forward kernels. Training needs the gradients of
 every one of them, an optimizer that runs where the parameters live, and
@@ -531,12 +584,12 @@ chapters 66–70 do for inference; that is the next step, not this one.
 ## What is not here yet
 
 - An MLP and a CNN trained on the device, and convolution gradients.
-- A 10–50M-parameter decoder: the trainer's checkpoint holds at most 4096
-  parameters, and one thread per row is far too slow at that size.
-- BF16 storage and mixed precision; this chapter is binary64 throughout.
-- Kernels that split a row's work across threads, so that the device is
-  faster than the CPU, and a tokens-per-second comparison with an
-  independent PyTorch baseline.
+- The tiny decoder's own path still uses chapter 122's 4096-value
+  checkpoint and one thread per row; the useful-scale decoder above uses
+  its own checkpoint and cooperative kernels, not chapter 118's trainer.
+- BF16 on tensor cores, BF16 storage of weights and activations, and a
+  dynamic loss scale; the BF16 profile above rounds operands only.
+- Products as fast as cuBLAS (about 1.4× away).
 - Decay spans, SGD and multi-row micro-batches on the device: each is a
   refusal today.
 

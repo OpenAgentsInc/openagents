@@ -443,7 +443,7 @@ Chapters chapter 250 depends on (psionic/book/chapters.json): 23
   121  partly implemented  cpu             psionic-feed-v1 on psionic-pack-v1, bounded CPU
   122  implemented         cpu             psionic-resume-v1, bounded CPU
   124  implemented         cpu             cpu-adamw-v1, cpu-muon-v1
-  129  partly implemented  cpu,cuda        gpu-train-f64-v1, CPU and CUDA
+  129  partly implemented  cpu,cuda        gpu-train-f64-v1 and char-gpt-shakespeare-v2, CPU and CUDA
   130  partly implemented  cpu,cuda        tp-step-v1, CPU and CUDA
   131  partly implemented  cpu             train-compare-v1, bounded CPU
   133  partly implemented  cpu             shard-v1, bounded CPU logical devices

@@ -1,0 +1,6 @@
+{"device":"gpu","step":10,"steps_here":10,"skipped":0,"clipped_here":10,"train_seconds":1.513,"tokens_per_second":108272.6,"launches_per_step":336,"compile_seconds":0.199,"startup_seconds":2.434,"plan_bytes":1738416198,"driver_free_drop_bytes":1740636160,"wall_seconds":4.780}
+Collecting data...
+Generating '/tmp/nsys-report-8cf8.qdstrm'
+[1/1] [0%                          ] step.nsys-rep[1/1] [0%                          ] step.nsys-rep[1/1] [===23%                      ] step.nsys-rep[1/1] [===24%                      ] step.nsys-rep[1/1] [=========45%                ] step.nsys-rep[1/1] [==========49%               ] step.nsys-rep[1/1] [============54%             ] step.nsys-rep[1/1] [============55%             ] step.nsys-rep[1/1] [============56%             ] step.nsys-rep[1/1] [=============58%            ] step.nsys-rep[1/1] [================70%         ] step.nsys-rep[1/1] [==================78%       ] step.nsys-rep[1/1] [========================100%] step.nsys-rep[1/1] [========================100%] step.nsys-rep
+Generated:
+	/home/christopherdavid/.cache/psionic/char-gpt-runs/prof/step.nsys-rep

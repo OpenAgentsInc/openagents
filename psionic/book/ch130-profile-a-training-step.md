@@ -7,7 +7,9 @@
 > and its gap to the roof, all in a JSON receipt. The fix the profile
 > points to (splitting one row's work across threads) and its
 > before-and-after measurement, launch overhead apart from kernel time,
-> and per-buffer allocation lifetimes remain.
+> and per-buffer allocation lifetimes remain for that step. Chapter 129's
+> useful-scale decoder has a measured profile and one fixed bottleneck
+> (see "A useful-scale step").
 
 You cannot speed up a training step until you know where its time goes.
 [Chapter 129](ch129-train-a-whole-model-on-one-gpu.md) trains chapter
@@ -482,6 +484,26 @@ uses cooperative tiles and has its own
 It has not replaced `gk_rows` in this measured decoder step. No new step
 speedup, end-to-end throughput or before/after comparison follows from those
 kernel checks; the bottleneck and measurements in this chapter still stand.
+
+## A useful-scale step
+
+Chapter 129's 10.8M-parameter decoder was profiled with Nsight Systems over
+ten steps and one held-out pass
+([kernels](../../docs/verification/psionic-train-shakespeare-2026-11-03/profile/kernels-10-steps.csv)).
+The products take 93% of kernel time (the `x·W` orientation 38%, `Xᵀ·dY`
+32%, `dY·Wᵀ` 23%); ReLU² takes 2.7%, softmax 1.9%, RMS norm 1.3%, the
+token-table gradient 0.6% and AdamW 0.2%. Uploads and downloads are 512
+bytes and 8 bytes a step.
+
+One bottleneck was found and fixed with before-and-after receipts. Adding
+the BF16 profile first rounded each operand as soon as its global load
+returned. That made every product wait on the load that the register
+prefetch exists to hide, and even the FP32 run fell from 0.146 s to 0.209 s
+a step (77,957 tokens/s). Rounding as the value enters shared memory, after
+the load has landed, restored 0.150 s a step, 108,122 tokens/s; both
+receipts are in the [record](../../docs/verification/psionic-train-shakespeare-2026-11-03/README.md).
+The next bottleneck is the products themselves: about 8 TFLOPS of FP32
+without FMA, where cuBLAS makes PyTorch's step about 1.4× faster.
 
 ## What is not here yet
 

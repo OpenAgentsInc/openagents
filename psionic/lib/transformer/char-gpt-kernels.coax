@@ -42,6 +42,15 @@ ck_mm_items :: (batch:int,m:int,n:int)->int {return batch*((m+CK_TILE-1)/CK_TILE
 //   right, row-major source (bj == 1): e = kk*64 + jj
 //   right, column-major source (bk == 1): e = jj*16 + (kk ^ (jj % 16)), a
 //     swizzle that lets 16 consecutive columns read 16 different banks.
+// The BF16 profile (mode 4 and up): every operand is rounded to BF16 as it
+// enters shared memory (after its load has landed, so the prefetch still
+// overlaps), to nearest with ties to even; products and sums stay FP32. For a
+// finite value; an infinity stays infinite.
+ck_bf16 :: (v:f32)->f32 {b:=f32_bits(v);b=(b+0x7fff+((b>>16)&1))&0xffff0000;return f32_from_bits(b);}
+// Without a branch: keep is all ones (FP32: v unchanged) or 0xffff0000
+// (BF16: the rounding of ck_bf16).
+ck_mask :: (mode:int)->u32 {if mode>=4 {return 0xffff0000;}return 0xffffffff;}
+ck_keep :: (v:f32,keep:u32)->f32 {b:=f32_bits(v);b=(b+((0x7fff+((b>>16)&1))&(0xffffffff^keep)))&keep;return f32_from_bits(b);}
 ck_left :: (i:int,kk:int,m:int,k1:int,base:int,ai:int,ak:int,a:[]f32)->f32 {
     v:f32=0;if i<m && kk<k1 {v=a[base+i*ai+kk*ak];}return v;
 }
@@ -64,6 +73,7 @@ ck_stage_b :: (thread:int,q:int,rowmajor:bool,j0:int,kb:int,n:int,k1:int,base:in
 ck_at_a :: (rowmajor:bool,ii:int,kk:int)->int {if rowmajor {return ii*CK_STEP+kk;}return kk*CK_TILE+ii;}
 ck_at_b :: (rowmajor:bool,kk:int,jj:int)->int {if rowmajor {return kk*CK_TILE+jj;}return jj*CK_STEP+(kk^(jj%CK_STEP));}
 
+// mode % 4 is the causal mode above; mode >= 4 selects the BF16 profile.
 // C[bt](i,j) = alpha * sum_k A[bt](i,k) B[bt](k,j), or C plus that when acc
 // is 1. Batch bt = r*heads + h; the batch's operand starts at
 // off + r*rs + h*hs, and element (i,k) is at i*ai + k*ak (likewise B, C).
@@ -79,14 +89,14 @@ ck_mm_nn :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,
     tm:=(m+CK_TILE-1)/CK_TILE;tn:=(n+CK_TILE-1)/CK_TILE;per:=tm*tn;bt:=item/per;t:=item%per;
     i0:=t/tn*CK_TILE;j0:=t%tn*CK_TILE;r:=bt/heads;h:=bt%heads;
     abase:=ao+r*ar+h*ah;bbase:=bo+r*br+h*bh;cbase:=co+r*cr+h*ch;
-    k0:=ck_k0(mode,i0);k1:=ck_k1(mode,i0,k);steps:=ck_steps(mode,i0,j0,k);live:=ck_live(mode,i0,j0);
+    cm:=mode%4;rnd:=ck_mask(mode);k0:=ck_k0(cm,i0);k1:=ck_k1(cm,i0,k);steps:=ck_steps(cm,i0,j0,k);live:=ck_live(cm,i0,j0);
     xs:[1024]f32;ws:[1024]f32;acc_:[4096]f32;pre:[2048]f32;bq:[1024]f32;
     for thread:0..<CK_T {
         for x:0..<16 {acc_[thread*16+x]=0;}
         for q:0..<4 {pre[thread*8+q]=ck_stage_a(thread,q,true,i0,k0,m,k1,abase,ai,ak,a);pre[thread*8+4+q]=ck_stage_b(thread,q,true,j0,k0,n,k1,bbase,bk,bj,b);}
     }
     for s:0..<steps {
-        for thread:0..<CK_T {for q:0..<4 {xs[thread+CK_T*q]=pre[thread*8+q];ws[thread+CK_T*q]=pre[thread*8+4+q];}}
+        for thread:0..<CK_T {for q:0..<4 {xs[thread+CK_T*q]=ck_keep(pre[thread*8+q],rnd);ws[thread+CK_T*q]=ck_keep(pre[thread*8+4+q],rnd);}}
         for thread:0..<CK_T {
             if s+1<steps {kn:=k0+(s+1)*CK_STEP;
                 for q:0..<4 {pre[thread*8+q]=ck_stage_a(thread,q,true,i0,kn,m,k1,abase,ai,ak,a);pre[thread*8+4+q]=ck_stage_b(thread,q,true,j0,kn,n,k1,bbase,bk,bj,b);}}
@@ -109,14 +119,14 @@ ck_mm_nt :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,
     tm:=(m+CK_TILE-1)/CK_TILE;tn:=(n+CK_TILE-1)/CK_TILE;per:=tm*tn;bt:=item/per;t:=item%per;
     i0:=t/tn*CK_TILE;j0:=t%tn*CK_TILE;r:=bt/heads;h:=bt%heads;
     abase:=ao+r*ar+h*ah;bbase:=bo+r*br+h*bh;cbase:=co+r*cr+h*ch;
-    k0:=ck_k0(mode,i0);k1:=ck_k1(mode,i0,k);steps:=ck_steps(mode,i0,j0,k);live:=ck_live(mode,i0,j0);
+    cm:=mode%4;rnd:=ck_mask(mode);k0:=ck_k0(cm,i0);k1:=ck_k1(cm,i0,k);steps:=ck_steps(cm,i0,j0,k);live:=ck_live(cm,i0,j0);
     xs:[1024]f32;ws:[1024]f32;acc_:[4096]f32;pre:[2048]f32;bq:[1024]f32;
     for thread:0..<CK_T {
         for x:0..<16 {acc_[thread*16+x]=0;}
         for q:0..<4 {pre[thread*8+q]=ck_stage_a(thread,q,true,i0,k0,m,k1,abase,ai,ak,a);pre[thread*8+4+q]=ck_stage_b(thread,q,false,j0,k0,n,k1,bbase,bk,bj,b);}
     }
     for s:0..<steps {
-        for thread:0..<CK_T {for q:0..<4 {xs[thread+CK_T*q]=pre[thread*8+q];ws[thread+CK_T*q]=pre[thread*8+4+q];}}
+        for thread:0..<CK_T {for q:0..<4 {xs[thread+CK_T*q]=ck_keep(pre[thread*8+q],rnd);ws[thread+CK_T*q]=ck_keep(pre[thread*8+4+q],rnd);}}
         for thread:0..<CK_T {
             if s+1<steps {kn:=k0+(s+1)*CK_STEP;
                 for q:0..<4 {pre[thread*8+q]=ck_stage_a(thread,q,true,i0,kn,m,k1,abase,ai,ak,a);pre[thread*8+4+q]=ck_stage_b(thread,q,false,j0,kn,n,k1,bbase,bk,bj,b);}}
@@ -139,14 +149,14 @@ ck_mm_tn :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,
     tm:=(m+CK_TILE-1)/CK_TILE;tn:=(n+CK_TILE-1)/CK_TILE;per:=tm*tn;bt:=item/per;t:=item%per;
     i0:=t/tn*CK_TILE;j0:=t%tn*CK_TILE;r:=bt/heads;h:=bt%heads;
     abase:=ao+r*ar+h*ah;bbase:=bo+r*br+h*bh;cbase:=co+r*cr+h*ch;
-    k0:=ck_k0(mode,i0);k1:=ck_k1(mode,i0,k);steps:=ck_steps(mode,i0,j0,k);live:=ck_live(mode,i0,j0);
+    cm:=mode%4;rnd:=ck_mask(mode);k0:=ck_k0(cm,i0);k1:=ck_k1(cm,i0,k);steps:=ck_steps(cm,i0,j0,k);live:=ck_live(cm,i0,j0);
     xs:[1024]f32;ws:[1024]f32;acc_:[4096]f32;pre:[2048]f32;bq:[1024]f32;
     for thread:0..<CK_T {
         for x:0..<16 {acc_[thread*16+x]=0;}
         for q:0..<4 {pre[thread*8+q]=ck_stage_a(thread,q,false,i0,k0,m,k1,abase,ai,ak,a);pre[thread*8+4+q]=ck_stage_b(thread,q,true,j0,k0,n,k1,bbase,bk,bj,b);}
     }
     for s:0..<steps {
-        for thread:0..<CK_T {for q:0..<4 {xs[thread+CK_T*q]=pre[thread*8+q];ws[thread+CK_T*q]=pre[thread*8+4+q];}}
+        for thread:0..<CK_T {for q:0..<4 {xs[thread+CK_T*q]=ck_keep(pre[thread*8+q],rnd);ws[thread+CK_T*q]=ck_keep(pre[thread*8+4+q],rnd);}}
         for thread:0..<CK_T {
             if s+1<steps {kn:=k0+(s+1)*CK_STEP;
                 for q:0..<4 {pre[thread*8+q]=ck_stage_a(thread,q,false,i0,kn,m,k1,abase,ai,ak,a);pre[thread*8+4+q]=ck_stage_b(thread,q,true,j0,kn,n,k1,bbase,bk,bj,b);}}

@@ -1,0 +1,1 @@
+{"device":"gpu","step":750,"steps_here":750,"skipped":0,"clipped_here":51,"train_seconds":113.649,"tokens_per_second":108122.5,"launches_per_step":336,"compile_seconds":2.365,"startup_seconds":3.417,"plan_bytes":1738416198,"driver_free_drop_bytes":1740636160,"wall_seconds":119.430}
