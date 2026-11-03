@@ -124,6 +124,10 @@
 //   mesh:URL      a traced page's mesh (Orbit League's roadster, verse/tools/mesh-bvh.coax): its bytes as
 //                 a read-only storage buffer at group 0 binding 1, for a WGSL that declares
 //                 `var<storage, read> mesh` there; until it arrives the shader reads 16 zero bytes
+//   (a WGSL that declares `var<storage, read> frame` at group 0 binding 1 gets the frame store there
+//   instead: memory the app rewrites each frame, too big for the uniform block's 64 KB, seen by
+//   every stage; coaxial_frame_store_cap() bytes at most, coaxial_frame_store(state) and
+//   coaxial_frame_store_bytes(state) copied each frame; 16 zero bytes until the engine says)
 //   font:URL, icons:URL, licence:URL  GPUI's atlas (gpui.js, a WGSL with gpui_atlas): Geist's four
 //                 faces in weight order, Zeron's icons ({name: svg}), and the fonts' licence, served beside them
 // and each one that arrives (or fails, bytes 0) is told: coaxial_asset_ready(state, i, bytes), i its
@@ -864,6 +868,30 @@ function makeBuffers() {
   if (gpu.sans) useSans();
   if (gpu.gpuiOn) useGpui();
   if (gpu.meshOn) useMesh();
+  if (gpu.frameOn) useFrame();
+}
+// The frame store (a WGSL with `var<storage, read> frame`): group 0 is the uniforms and a storage
+// buffer the app's memory is copied into each frame (frameUpload), sized by coaxial_frame_store_cap.
+function useFrame() {
+  const { device } = gpu;
+  gpu.frameOn = true;
+  const both = GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT;
+  const cap = engine?.exports.coaxial_frame_store_cap?.() || 16;
+  if (!gpu.frameBuffer || gpu.frameBuffer.size !== align(cap, 16)) {
+    gpu.frameBuffer?.destroy();
+    gpu.frameBuffer = device.createBuffer({ size: align(cap, 16), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  }
+  gpu.layout = device.createBindGroupLayout({ entries: [
+    { binding: 0, visibility: both, buffer: {} },
+    { binding: 1, visibility: both, buffer: { type: "read-only-storage" } }] });
+  gpu.bindGroup = device.createBindGroup({ layout: gpu.layout, entries: [
+    { binding: 0, resource: { buffer: gpu.uniformBuffer } },
+    { binding: 1, resource: { buffer: gpu.frameBuffer } }] });
+}
+function frameUpload(x) {
+  if (!gpu.frameOn || !gpu.frameBuffer || !x.coaxial_frame_store) return;
+  const bytes = Math.min(x.coaxial_frame_store_bytes(arena.state), gpu.frameBuffer.size) & ~3;
+  if (bytes) gpu.device.queue.writeBuffer(gpu.frameBuffer, 0, memory.buffer, x.coaxial_frame_store(arena.state), bytes);
 }
 
 // The sans atlas: a page whose shader declares sans_atlas (binding 1) and
@@ -987,6 +1015,7 @@ async function loadShadersOnce() {
   if (/var\s+sans_atlas\b/.test(code)) useSans();
   if (/var\s+gpui_atlas\b/.test(code)) useGpui();
   if (/var<storage,\s*read>\s+mesh\b/.test(code)) useMesh();
+  if (/var<storage,\s*read>\s+frame\b/.test(code)) useFrame();
   const module = device.createShaderModule({ code });
   const info = await module.getCompilationInfo();
   const errors = info.messages.filter((m) => m.type === "error");
@@ -1732,6 +1761,7 @@ function draw(now) {
   const { device, context } = gpu;
   const x = engine.exports;
   device.queue.writeBuffer(gpu.uniformBuffer, 0, new Float32Array(memory.buffer, arena.uniforms, arena.uniformFloats));
+  frameUpload(x);
   if (n) device.queue.writeBuffer(gpu.vertexBuffer, 0, new Float32Array(memory.buffer, arena.vertices, n * arena.floats));
   const draws = gpu.scene && gpu.sceneGroup ? x.coaxial_draw_count(arena.state) : 0;
   if (draws) gpu.stores.forEach((buffer, k) => {

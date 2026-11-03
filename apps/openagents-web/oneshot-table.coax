@@ -283,7 +283,7 @@ OsTable :: struct {
   roll_seq: int;             // the last open roll, for the Table Display's banner
   changed: int;              // bumped on every change the other screens must hear
 }
-os_battle :: (t: [] OsTable) -> [] RsBattle { return t[0].b[..]; }
+os_battle :: (t: [] OsTable) -> [] RsBattle { rs_room(t[0].b[..]); return t[0].b[..]; }   // its room first: the table seats the party by hand
 os_text :: (l: [] OsLine, k: int) -> string { return cast(string) l[k].text[0..<l[k].n]; }
 
 // A new session for a campaign: the dice seeded (the engine's SplitMix64 stream), no one seated yet.

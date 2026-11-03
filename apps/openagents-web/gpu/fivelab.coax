@@ -28,17 +28,18 @@
 //   right 24: right xyz, the image centre's y (px)
 //   up 28: up xyz, 0
 //   sun 32: toward the sun xyz, 0
-//   tokens 36: up to 2048 (battle.coax RS_MAX), a vec4 each: (x, z m, 0 for none or 1 + its team +
-//              4 times its state (0 standing, 1 down, 2 dead), whose turn just ran 0..1)
-//   squares 8228: the grid's squares (up to 128 by 64), two to a float (each the token standing
-//              nearest its middle plus 1, 0 none; the even square low, a + 4096 b)
-//   zones 12324: eight, two vec4s each: (x0, z0, x1, z1 m), (1 Entangle, 2 Faerie Fire, 0 none; 0; 0; 0)
-//   bounds 12388: the grid's half width and half depth (m), the square (m), how much bigger than 40
+//   zones 36: eight, two vec4s each: (x0, z0, x1, z1 m), (1 Entangle, 2 Faerie Fire, 0 none; 0; 0; 0)
+//   bounds 100: the grid's half width and half depth (m), the square (m), how much bigger than 40
 //              by 20 the grid is (the haze thins by as much, so a big field still reads)
-FIVELAB_TOKENS :: 2048;
-FIVELAB_SQUARES :: 8228;
-FIVELAB_ZONES_AT :: 12324;
-FIVELAB_BOUNDS :: 12388;
+// The frame store (`frame`, a read-only storage buffer at group 0 binding 1, coax/web/host.js), floats:
+//   tokens 0: up to 17408 (fivelab.coax LAB_MAX), a vec4 each: (x, z: m in the glade, squares in the
+//              flat view; 0 for none or 1 + its team + 4 times its state (0 standing, 1 down, 2 dead,
+//              the flat view's only), whose turn just ran 0..1)
+//   squares 69632: the grid's squares (up to 384 by 192), each the token standing nearest its
+//              middle plus 1, 0 none
+FIVELAB_SQUARES :: 69632;
+FIVELAB_ZONES_AT :: 36;
+FIVELAB_BOUNDS :: 100;
 FIVELAB_ZONES :: 8;
 FIVELAB_TREES :: 16;
 
@@ -59,7 +60,56 @@ fivelab_lines :: (p:V2,u:[]f32)->f32 {
   major:f32=1.0f32-smoothstep(0.4f32,1.4f32,fmin(mx,my));
   return (line*0.6f32)+(major*0.4f32);
 }
-fivelab_flat :: (p:V2,u:[]f32)->V3 {
+// The flat view's tokens near pixel p: a ring in its side's colour (dimmed down, faint dead), a
+// white one fading round whose turn just ran; a dot when the squares are too small for a ring.
+fivelab_flat_tokens :: (p:V2,c0:V3,u:[]f32,frame:[]f32)->V3 {
+  c:V3=c0;
+  s:f32=fmax(u[6],1.0f32);
+  gx:f32=(p.x-u[4])/s; gy:f32=(p.y-u[5])/s;
+  cx:int=cast(int)floor(gx); cy:int=cast(int)floor(gy);
+  cols:int=cast(int)u[8]; rows:int=cast(int)u[9];
+  r:f32=s*0.34f32;
+  w:f32=fmin(fmax(s*0.06f32,1.0f32),2.6f32);
+  dy:int=-1;
+  while dy<=1 {
+    dx:int=-1;
+    while dx<=1 {
+      x:int=cx+dx; y:int=cy+dy;
+      if ((x>=0)&&(x<cols)&&(y>=0)&&(y<rows)) {
+        who:f32=frame[FIVELAB_SQUARES+(y*cols)+x];
+        if (who>0.5f32) {
+          at:int=(cast(int)who-1)*4;
+          tk:V4=v4(frame[at],frame[at+1],frame[at+2],frame[at+3]);
+          if (tk.z>0.5f32) {
+            code:f32=tk.z-1.0f32;
+            state:f32=floor(code/4.0f32);
+            tm:f32=code-(4.0f32*state);
+            col:V3=v3(0.45f32,0.95f32,0.55f32);
+            if (tm>0.5f32) { col=v3(0.62f32,0.85f32,1.0f32); }
+            if (tm>1.5f32) { col=v3(0.9f32,0.86f32,0.74f32); }
+            a:f32=0.95f32;
+            if (state>0.5f32) { col=v3(0.52f32,0.55f32,0.6f32); a=0.35f32; }
+            if (state>1.5f32) { col=v3(0.28f32,0.3f32,0.34f32); a=0.3f32; }
+            d:f32=wg_length2(v2(p.x-(u[4]+((tk.x+0.5f32)*s)),p.y-(u[5]+((tk.y+0.5f32)*s))));
+            cover:f32=0.0f32;
+            if (r<2.5f32) { cover=1.0f32-smoothstep(fmax(r,0.7f32),fmax(r,0.7f32)+0.8f32,d); }
+            else { cover=1.0f32-smoothstep(w*0.5f32,(w*0.5f32)+1.0f32,abs(d-r)); }
+            c=mix3(c,col,cover*a);
+            if ((tk.w>0.0f32)&&(state<0.5f32)&&(r>=2.5f32)) {
+              rt:f32=r*(1.25f32+((1.0f32-tk.w)*0.24f32));
+              ring:f32=1.0f32-smoothstep(0.7f32,1.7f32,abs(d-rt));
+              c=mix3(c,v3(0.9f32,0.92f32,0.96f32),ring*0.9f32*tk.w);
+            }
+          }
+        }
+      }
+      dx+=1;
+    }
+    dy+=1;
+  }
+  return c;
+}
+fivelab_flat :: (p:V2,u:[]f32,frame:[]f32)->V3 {
   q:V2=v2((p.x/u[0])-0.5f32,(p.y/u[1])-0.5f32);
   r:f32=wg_length2(q);
   c:V3=scale3(v3(0.03f32,0.034f32,0.04f32),1.0f32-fmin(r,1.0f32));
@@ -70,7 +120,7 @@ fivelab_flat :: (p:V2,u:[]f32)->V3 {
     inside=1.0f32;
     c=add3(c,v3(0.012f32,0.016f32,0.014f32));
   }
-  return add3(c,scale3(v3(0.2f32,0.23f32,0.22f32),fivelab_lines(p,u)*inside));
+  return fivelab_flat_tokens(p,add3(c,scale3(v3(0.2f32,0.23f32,0.22f32),fivelab_lines(p,u)*inside)),u,frame);
 }
 
 // ---- the glade's shapes
@@ -215,7 +265,7 @@ fivelab_grass :: (x:f32,z:f32,u:[]f32,t:f32)->V3 {
 }
 
 // The glade at pixel p: its colour, and in w the depth of what it hit (1 the sky).
-fivelab_glade :: (p:V2,u:[]f32)->V4 {
+fivelab_glade :: (p:V2,u:[]f32,frame:[]f32)->V4 {
   t:f32=u[2];
   eye:V3=wg_at3(u,16);
   f:f32=fmax(u[19],1.0f32);
@@ -267,11 +317,9 @@ fivelab_glade :: (p:V2,u:[]f32)->V4 {
           gx:int=cx+dx; gz:int=cz+dz;
           if ((gx>=0)&&(gx<cols)&&(gz>=0)&&(gz<rows)) {
             sqi:int=(gz*cols)+gx;
-            pair:f32=u[FIVELAB_SQUARES+(sqi/2)];
-            who:f32=pair-(4096.0f32*floor(pair/4096.0f32));
-            if ((sqi%2)==1) { who=floor(pair/4096.0f32); }
+            who:f32=frame[FIVELAB_SQUARES+sqi];
             if (who>0.5f32) {
-              tk:V4=wg_at4(u,36+((cast(int)who-1)*4));
+              tk:V4=wg_at4(frame,(cast(int)who-1)*4);
               if (tk.z>0.5f32) {
                 code:f32=tk.z-1.0f32;
                 state:f32=floor(code/4.0f32);
@@ -362,14 +410,14 @@ fivelab_project :: (w:V3,u:[]f32)->V4 {
 }
 
 FivelabBg :: struct {c:V4; depth:f32 #depth; }
-fivelab_bg_fs :: (pos:V4,u:[]f32)->FivelabBg {
+fivelab_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->FivelabBg {
   p:V2=v2(pos.x,pos.y);
   if (u[10]>0.5f32) {
-    g:V4=fivelab_glade(p,u);
+    g:V4=fivelab_glade(p,u,frame);
     c:V3=fivelab_finish(v3(g.x,g.y,g.z),p,u);
     return FivelabBg.{c=v4(c.x,c.y,c.z,1.0f32),depth=g.w};
   }
-  c:V3=fivelab_glass(fivelab_flat(p,u),p,u);
+  c:V3=fivelab_glass(fivelab_flat(p,u,frame),p,u);
   return FivelabBg.{c=v4(c.x,c.y,c.z,1.0f32),depth=1.0f32};
 }
 // ---- the figures: the pack's people parts (verse/tools/people.py's 24-byte vertex: x, y and z in

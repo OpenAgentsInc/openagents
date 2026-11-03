@@ -22,10 +22,10 @@
 
 #load "../../verse/everglade/people-rig.coax";
 
-BD_SLOTS :: 2048;         // the battle's creatures (aethyr/rules/srd/battle.coax RS_MAX)
+BD_SLOTS :: 17408;        // the battle's creatures (fivelab.coax LAB_MAX: 1024 heroes and 16384 of the dead)
 BD_CORPSES :: 128;        // bodies still lying after their square was taken
 BD_PARTS_MAX :: 5;        // a figure's parts: outfit, head, hair, a beard or a hood, robe
-BD_RECORDS :: 10880;      // instances at most: (2048 + 128) figures, five parts each (fivelab-face.c)
+BD_RECORDS :: 54912;      // instances at most: 16384 skeletons of three parts, 1024 heroes and 128 corpses of five (fivelab-face.c)
 BD_REC_FLOATS :: 24;      // gpu/fivelab.coax FivelabObj: six vec4s
 BD_FPS :: 30.0;
 // The clips baked, as people-rig.coax numbers them, and their frames (each its seconds at 30 a second).
@@ -160,6 +160,7 @@ Bodies :: struct {
   ready: bool;              // the catalog named every part
   part_first: [16] int; part_count: [16] int; part_word: [16] int;
   slot: [BD_SLOTS] BdAnim;
+  top: int;                 // 1 + the highest slot put since the last fresh start: the loops stop there
   corpse: [BD_CORPSES] BdAnim; corpse_at: int;
   now: f32;
   draws: [64] u32; draw_n: int;
@@ -250,6 +251,7 @@ clamp_int :: (v: int, a: int, b: int) -> int { if v < a { return a; } if v > b {
 // stands there (the Horde's next Skeleton).
 bd_put :: (b: [] Bodies, i: int, fresh: bool, look: int, v: int, x: f32, z: f32, state: int, marks: f32, outlined: f32, now: f32) {
   if i < 0 || i >= BD_SLOTS { return; }
+  if i >= b[0].top { b[0].top = i + 1; }
   a := b[0].slot[i];
   if fresh || !a.on {
     // the body lying here is handed to a corpse to finish its fall and fade
@@ -322,13 +324,14 @@ bd_whole :: (a: BdAnim, now: f32) -> f32 {
 bd_frame :: (b: [] Bodies, now: f32) {
   dt := now - b[0].now;
   if dt < 0 || !finite(dt) {
-    for i: 0..<BD_SLOTS { b[0].slot[i] = BdAnim.{}; }
+    for i: 0..<b[0].top { b[0].slot[i] = BdAnim.{}; }
+    b[0].top = 0;
     for i: 0..<BD_CORPSES { b[0].corpse[i] = BdAnim.{}; }
     dt = 0;
   }
   dt = lo(dt, 0.25);
   b[0].now = now;
-  for i: 0..<BD_SLOTS { if b[0].slot[i].on { bd_step(b[0].slot[i..<i + 1], now, dt); } }
+  for i: 0..<b[0].top { if b[0].slot[i].on { bd_step(b[0].slot[i..<i + 1], now, dt); } }
   for i: 0..<BD_CORPSES {
     if !b[0].corpse[i].on { continue; }
     bd_step(b[0].corpse[i..<i + 1], now, dt);
@@ -383,7 +386,8 @@ bd_build :: (b: [] Bodies, c: BdCam, out: [] f32) -> int {
       at := 0;
       for k: 0..<PEOPLE_PARTS { base[k] = at; at += counts[k]; used[k] = 0; }
     }
-    for i: 0..<BD_SLOTS + BD_CORPSES {
+    for q: 0..<b[0].top + BD_CORPSES {
+      i := ifx q < b[0].top then q else BD_SLOTS + q - b[0].top;
       a := ifx i < BD_SLOTS then b[0].slot[i] else b[0].corpse[i - BD_SLOTS];
       if !a.on || a.clip < 0 { continue; }
       if bd_whole(a, now) <= 0 { continue; }

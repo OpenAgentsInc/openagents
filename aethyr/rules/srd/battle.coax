@@ -12,11 +12,13 @@
 //   coax/bin/coax test --library aethyr/rules/srd/battle.coax
 #load "spells.coax";
 
-// Creatures in a battle at most: 5E Lab's army-size sliders go to 1024 heroes and 1024 of the dead
-// (1464 bytes a creature, 3 MB a battle). Worlds keep their RsBattle in their state, never on the
-// stack (rs_reset clears one in place).
-RS_MAX :: 2048;
-// Squares a grid indexes at most (rs_at's occupancy, 128 by 64); a larger grid scans its creatures.
+// Creatures a battle holds of its own (1464 bytes a creature). A world that fields more gives the
+// battle room of its own with rs_use (5E Lab's armies: 1024 heroes and 16384 of the dead), so the
+// other worlds' state stays small. Worlds keep their RsBattle in their state, never on the stack
+// (rs_reset clears one in place).
+RS_MAX :: 216;
+// Squares a battle indexes of its own (rs_at's occupancy, 128 by 64); rs_use gives more, and a
+// grid larger than the room scans its creatures.
 RS_SQUARES :: 8192;
 RS_ZONES :: 8;
 RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; round: bool; cx: int; cy: int; r_ft: int; }
@@ -28,7 +30,7 @@ RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; 
                    moved: bool; aimed: bool; anchored: bool; last_hit: int; last_crit: bool; sneaked: bool; colossus: bool;
                    leveled: bool; quickened: bool; stunned: bool; resurged: bool; }
 RsBattle :: struct {
-  c: [RS_MAX] RsCreature; n: int;
+  c: [] RsCreature; n: int;   // the creatures: own's room (rs_room), or a world's (rs_use)
   zone: [RS_ZONES] RsZone;
   dice: [1] RsDice;
   book: [1] RsLog;
@@ -49,8 +51,23 @@ RsBattle :: struct {
   // Who stands on each square (1 + the creature, 0 none), so rs_at is one look rather than a scan
   // of every creature: kept by rs_add, rs_place, rs_step_to and the pushes, and rebuilt at each
   // turn's start (rs_index) for whatever a world moved by hand.
-  occ: [RS_SQUARES] int;
+  occ: [] int;
+  own: [RS_MAX] RsCreature; own_occ: [RS_SQUARES] int;   // the room a battle has of its own
 }
+// The battle's room: its own, unless a world gave it more (rs_use). Every way in that writes a
+// creature or a square calls it first.
+rs_room :: (b: [] RsBattle) {
+  if b[0].c.count == 0 { b[0].c = b[0].own[..]; }
+  if b[0].occ.count == 0 { b[0].occ = b[0].own_occ[..]; }
+}
+// A world's own room for creatures and squares (kept in its state, beside the battle), for a
+// battle bigger than RS_MAX: it starts empty.
+rs_use :: (b: [] RsBattle, c: [] RsCreature, occ: [] int) {
+  b[0].c = c; b[0].occ = occ; b[0].n = 0;
+  rs_reset(b);
+}
+// The most creatures the battle can hold.
+rs_room_for :: (b: [] RsBattle) -> int { rs_room(b); return b[0].c.count; }
 rs_beat :: (b: [] RsBattle) -> f32 { return ifx b[0].beat > 0 then b[0].beat else f32(RS_ROUND); }
 
 rs_abs :: (v: int) -> int { return ifx v < 0 then -v else v; }
@@ -72,10 +89,11 @@ rs_at_scan :: (b: [] RsBattle, x: int, y: int) -> int {
   return -1;
 }
 // The grid is small enough to index (a battle without w and h set scans).
-rs_indexed :: (b: [] RsBattle) -> bool { return b[0].w > 0 && b[0].h > 0 && b[0].w * b[0].h <= RS_SQUARES; }
+rs_indexed :: (b: [] RsBattle) -> bool { return b[0].w > 0 && b[0].h > 0 && b[0].w * b[0].h <= b[0].occ.count; }
 // Rebuilds the squares' index from where every creature stands (the lowest index wins a square
 // two share, as the scan finds it).
 rs_index :: (b: [] RsBattle) {
+  rs_room(b);
   if !rs_indexed(b) { return; }
   for q: 0..<(b[0].w * b[0].h) { b[0].occ[q] = 0; }
   i := b[0].n - 1;
@@ -88,6 +106,7 @@ rs_index :: (b: [] RsBattle) {
 // Creature i to the square (x, y), keeping the index: a world's own moves (a fresh creature in a
 // slot, a placement) go through here.
 rs_place :: (b: [] RsBattle, i: int, x: int, y: int) {
+  rs_room(b);
   if rs_indexed(b) {
     ox := b[0].c[i].x; oy := b[0].c[i].y;
     if ox >= 0 && oy >= 0 && ox < b[0].w && oy < b[0].h && b[0].occ[oy * b[0].w + ox] == i + 1 { b[0].occ[oy * b[0].w + ox] = 0; }
@@ -95,8 +114,9 @@ rs_place :: (b: [] RsBattle, i: int, x: int, y: int) {
   }
   b[0].c[i].x = x; b[0].c[i].y = y;
 }
-// A battle cleared in place, for a new one: RsBattle is too big for a stack's copy at RS_MAX.
+// A battle cleared in place, for a new one: RsBattle is too big for a stack's copy. Its room stays.
 rs_reset :: (b: [] RsBattle) {
+  rs_room(b);
   blank: RsCreature;
   for i: 0..<b[0].n { b[0].c[i] = blank; }
   b[0].n = 0;
@@ -105,7 +125,7 @@ rs_reset :: (b: [] RsBattle) {
   b[0].book[0] = RsLog.{};
   b[0].clock = 0; b[0].w = 0; b[0].h = 0; b[0].turn_no = 0; b[0].guards = 0; b[0].aff_used = false; b[0].who = 0;
   b[0].turn = RsTurn.{}; b[0].beat = 0; b[0].recharge = 0;
-  for q: 0..<RS_SQUARES { b[0].occ[q] = 0; }
+  for q: 0..<b[0].occ.count { b[0].occ[q] = 0; }
 }
 rs_inside :: (z: RsZone, x: int, y: int) -> bool { return z.on && x >= z.x0 && x <= z.x1 && y >= z.y0 && y <= z.y1 && (!z.round || rs_feet(x, y, z.cx, z.cy) <= z.r_ft); }
 rs_difficult :: (b: [] RsBattle, x: int, y: int) -> bool {
@@ -168,7 +188,8 @@ RS_ORDINAL :: [10] string.["", "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", 
 // ---- creatures in the battle
 
 rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int {
-  if b[0].n >= RS_MAX { return -1; }
+  rs_room(b);
+  if b[0].n >= b[0].c.count { return -1; }
   i := b[0].n;
   b[0].c[i] = c; b[0].c[i].x = -1; b[0].c[i].y = -1;
   rs_place(b, i, x, y);
@@ -181,15 +202,22 @@ rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int {
 rs_begin :: (b: [] RsBattle) {
   rs_index(b);
   b[0].who = -1;
+  // each creature's rank: those with a higher initiative, then those before it with the same (a
+  // count of each initiative, so a big battle begins in one pass rather than every pair)
+  higher: [RS_INIT_SPAN] int; seen: [RS_INIT_SPAN] int;
+  for i: 0..<b[0].n { higher[rs_init_slot(b[0].c[i].initiative)] += 1; }
+  above := 0; v := RS_INIT_SPAN - 1;
+  while v >= 0 { here := higher[v]; higher[v] = above; above += here; v -= 1; }
   for i: 0..<b[0].n {
-    rank := 0;
-    for j: 0..<b[0].n {
-      if b[0].c[j].initiative > b[0].c[i].initiative || (b[0].c[j].initiative == b[0].c[i].initiative && j < i) { rank += 1; }
-    }
+    q := rs_init_slot(b[0].c[i].initiative);
+    rank := higher[q] + seen[q]; seen[q] += 1;
     b[0].c[i].turn_at = b[0].clock + 0.4 + f32(rank) * rs_beat(b) / f32(rs_max(b[0].n, 1));
     b[0].c[i].round_at = b[0].c[i].turn_at;
   }
 }
+// Initiatives counted by slot: -64 to 191 (a d20 and a modifier fall well inside).
+RS_INIT_SPAN :: 256;
+rs_init_slot :: (v: int) -> int { return rs_max(0, rs_min(RS_INIT_SPAN - 1, v + 64)); }
 // Whose turn is due on the clock, or -1.
 rs_due :: (b: [] RsBattle) -> int {
   best := -1;

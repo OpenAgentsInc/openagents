@@ -7,8 +7,9 @@
 // decides with a small routine here; the rules are all the engine's.
 // The army-size sliders (top left; Z X, Q E and K L nudge them; ?heroes=N&skeletons=M&stream=K in
 // the address) set the heroes, the dead on the field at once and, in the Horde, the dead that
-// stream in after them: from one figure to 1024 heroes and 1024 skeletons together (battle.coax
-// RS_MAX), the grid growing with them, so the frame's cost can be read off the FPS in the corner.
+// stream in after them: from one figure to 1024 heroes and 16384 skeletons together (LAB_MAX, room
+// the lab gives the battle of its own: battle.coax rs_use), the grid growing with them, so the
+// frame's cost can be read off the FPS in the corner.
 //
 // Two views, V switches them. The glade (the default): gpu/fivelab.coax's bg_fs traces the
 // battle in 3D in Everglade's painterly look, the druids standing on their squares in a
@@ -32,13 +33,20 @@
 #load "fivelab-bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
 
 VERTEX_FLOATS :: 16;
-MAX_VERTICES :: 250000;
-UNIFORM_FLOATS :: 12392;   // 3098 vec4s, under WebGPU's 64 KB uniform binding
-TOKENS3 :: 2048;   // the glade's tokens, every creature (gpu/fivelab.coax FIVELAB_TOKENS, battle.coax RS_MAX)
-U_SQUARES :: 8228;   // the grid's squares, the token on each (gpu/fivelab.coax FIVELAB_SQUARES)
+MAX_VERTICES :: 250000;   // 16 MB of strokes: the HUD, the log, labels near the camera (the tokens are bg_fs's)
+// The strokes' budget: the scene's labels and effects' text stop short of HUD_VERTS from the end, so
+// the HUD, the log and the sliders always draw; a label that finds no room is counted and said
+// (draw_sliders), never dropped quietly. LABEL_VERTS: the most one label takes.
+HUD_VERTS :: 150000; LABEL_VERTS :: 900;   // the HUD's text is most of it: the log and 48 heroes' lines
+SCENE_VERTS :: 100000;   // MAX_VERTICES - HUD_VERTS
+UNIFORM_FLOATS :: 104;   // 26 vec4s: the camera, the grid, the zones (gpu/fivelab.coax FivelabU)
+// The frame store (a read-only storage buffer, group 0 binding 1: coax/web/host.js frame store),
+// the tokens and squares bg_fs reads, too many for a uniform block's 64 KB: every creature's token
+// (4 floats), then every square's (the token standing nearest its middle plus 1, 0 none).
+F_SQUARES :: 69632;   // LAB_MAX * 4 (gpu/fivelab.coax FIVELAB_SQUARES)
+FRAME_FLOATS :: 143360;   // F_SQUARES + LAB_SQUARES
 U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
-U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 12324; U_BOUNDS :: 12388;
-SQ_RADIX :: 4096;   // two squares to a float: the even one low, a + 4096 b (exact in an f32)
+U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_ZONES :: 36; U_BOUNDS :: 100;
 SQ :: 1.524;   // a 5-foot square, metres
 HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
 DIST :: 40.0; PIVOT_Z :: 0.6; ZOOM_NEAR :: 6.0; ZOOM_FAR :: 140.0;   // the camera's orbit: start, and how near and far it zooms
@@ -57,8 +65,9 @@ ACT_NAVIGATE :: 1;
 KEY_SHIFT :: -13; KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
 
 // The grid grows with the armies (size_grid): 40 by 20 for the 208 the lab fields by default, about
-// four squares a figure past that, twice as wide as deep, at most 128 by 64 (battle.coax RS_SQUARES).
-COLS :: 40; ROWS :: 20; ROWS_MAX :: 64;
+// four squares a figure past that, twice as wide as deep, at most 384 by 192 (LAB_SQUARES).
+COLS :: 40; ROWS :: 20; ROWS_MAX :: 192;
+LAB_SQUARES :: 73728;   // 2 * ROWS_MAX * ROWS_MAX: the squares' index the lab gives the battle
 FAST :: 4.0;
 // Three sides. Twenty-four a side, all level 3, two of each of the twelve SRD 5e classes (the Circle
 // of Moss against the Ember Pact), and an army of 160 Skeletons (the SRD's stat block) in the middle
@@ -66,7 +75,8 @@ FAST :: 4.0;
 // The army-size sliders (and ?heroes=N&skeletons=M&dead=K) change the numbers: heroes come in
 // companies of 48, each side's 24 two of every class, and the dead fill the rest.
 SIDE :: 24; HEROES :: 48; SKELETONS :: 160; CASTERS :: 12; TEAMS :: 3;
-HEROES_MAX :: 1024; SKELETONS_MAX :: 1024;   // together battle.coax's RS_MAX
+HEROES_MAX :: 1024; SKELETONS_MAX :: 16384;
+LAB_MAX :: 17408;   // HEROES_MAX + SKELETONS_MAX: the room the lab gives its battle (25 MB of creatures)
 HORDE_MAX :: 20000;
 LABELS_ALL :: 400; NAMES_ALL :: 96;   // past these, labels only near the camera (draw_sliders says so)   // the dead the Horde can send in after its first wave
 LEVEL :: 6;
@@ -111,9 +121,12 @@ Lab :: struct {
   round: int;
   wins: [3] int;
   over: bool; over_t: f32; winner: int;
-  dx: [RS_MAX] f32; dy: [RS_MAX] f32;   // where each token is drawn, in squares
-  acted: [RS_MAX] f32;             // when each last took its turn
-  fell: [RS_MAX] f32;              // in the Horde, when each of the dead fell (0: standing)
+  army: [LAB_MAX] RsCreature; squares: [LAB_SQUARES] int;   // the battle's room (bt: rs_use)
+  frame: [FRAME_FLOATS] f32;       // the frame store: the tokens and squares bg_fs reads
+  records: [figs.BD_RECORDS * figs.BD_REC_FLOATS] f32;   // the figures' instances (fivelab-face.c's objects store)
+  dx: [LAB_MAX] f32; dy: [LAB_MAX] f32;   // where each token is drawn, in squares
+  acted: [LAB_MAX] f32;            // when each last took its turn
+  fell: [LAB_MAX] f32;             // in the Horde, when each of the dead fell (0: standing)
   pool: int; raised: int;          // the Horde: the dead still to come, and how many have come
   lines: [LOG_LINES] Line; line_n: int;
   fx: [FXS] Fx; fx_at: int;
@@ -140,6 +153,7 @@ Lab :: struct {
   sliders: [3] Rect; sliding: int = -1; want: [3] int;
   asked: [3] int;   // a number asked past a slider's most (the address or a key), shown in red; 0 none
   ms: f32;   // the frame's time, milliseconds, averaged with the frames a second
+  unlabelled: int;   // labels this frame left off for want of room in the strokes (SCENE_VERTS)
   shown_n: int;   // the creatures the figures showed last frame (the slots past them are clear)
   pressing: int;
   // the glade's camera: an orbit round the clearing, and what it makes this frame
@@ -153,7 +167,7 @@ Lab :: struct {
   fingers: int; fing_id: [2] int; fing_x: [2] f32; fing_y: [2] f32;   // touches down, for a pinch
   eye: P3; fwd: P3; right: P3; up: P3; focal: f32; cx: f32; cy: f32;
   // the figures (fivelab-bodies.coax): their playback, and the squares the Horde filled afresh
-  bodies: [1] figs.Bodies; fresh: [RS_MAX] bool;
+  bodies: [1] figs.Bodies; fresh: [LAB_MAX] bool;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
 }
 
@@ -167,7 +181,11 @@ text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE,
 in_rect :: (b: Rect, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 put :: (buf: [] u8, at: int, text: string) -> int { return rs_put(buf, at, text); }
 put_int :: (buf: [] u8, at: int, v: int) -> int { return rs_put_int(buf, at, v); }
-bt :: (s: [] Lab) -> [] RsBattle { return s[0].battle[..]; }
+// The battle, in the room the lab gives it (army and squares: more than a battle holds of its own).
+bt :: (s: [] Lab) -> [] RsBattle {
+  if s[0].battle[0].c.count != LAB_MAX { rs_use(s[0].battle[..], s[0].army[..], s[0].squares[..]); }
+  return s[0].battle[..];
+}
 dice :: (s: [] Lab) -> [] RsDice { return s[0].battle[0].dice[..]; }
 
 // A figure's look in the glade (gpu/fivelab.coax): its class's, plus 16 for each team past the first.
@@ -685,7 +703,7 @@ new_battle :: (s: [] Lab) {
   b[0].dice[0].state = s[0].seed * 7919 + 17;
   hs := rs_min(s[0].heroes, HEROES_MAX); sk := rs_min(s[0].skeletons, SKELETONS_MAX);
   // the heroes: a block mid-glade in the Horde, else each side in files on its own edge
-  cells: [RS_MAX] int;
+  cells: [HEROES_MAX] int;
   nb := ifx s[0].horde then hold_block(s, cells[..]) else 0;
   casters: [2] int; for i: 0..<hs { if hero_caster(i) { casters[hero_team(i)] += 1; } }
   seen_c: [2] int; seen_m: [2] int; inner := 0; outer := 0;
@@ -723,7 +741,7 @@ new_battle :: (s: [] Lab) {
   s[0].over = false; s[0].winner = -1;
   if s[0].player { pick_hero(s); }
   s[0].pool = ifx s[0].horde then rs_min(s[0].stream, HORDE_MAX) else 0; s[0].raised = sk;
-  for i: 0..<RS_MAX { s[0].fell[i] = 0; }
+  for i: 0..<LAB_MAX { s[0].fell[i] = 0; }
   s[0].round += 1;
   for i: 0..<FXS { s[0].fx[i].kind = 0; }
   l: [LINE_CAP] u8;
@@ -1842,29 +1860,31 @@ draw_zones :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
   return n;
 }
 
+// The flat view's tokens: bg_fs draws each one's ring from the frame store (every creature, however
+// many: gpu/fivelab.coax fivelab_flat_tokens); these are what a token wears besides, on squares big
+// enough to read them (TOKEN_MARKS_PX), and only the ones on the screen.
+TOKEN_MARKS_PX :: 12.0;
 draw_tokens :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
   n := at; c := s[0].cell;
   b := bt(s);
+  if c < f32(TOKEN_MARKS_PX) * k { return n; }
   for i: 0..<b[0].n {
     cr := b[0].c[i..<i + 1];   // in place, not a copy
     x := scr_x(s, s[0].dx[i]); y := scr_y(s, s[0].dy[i]);
+    if x < -c || y < -c || x > s[0].width + c || y > s[0].height + c { continue; }
+    if n + LABEL_VERTS > SCENE_VERTS { s[0].unlabelled += 1; continue; }
     col := TEAM_COL[cr[0].team];
     r := c * 0.34;
     if cr[0].dead {
       g := FAINT;
       n = seg(out, n, x - r * 0.6, y - r * 0.6, x + r * 0.6, y + r * 0.6, 2 * k, 0.5, g);
       n = seg(out, n, x - r * 0.6, y + r * 0.6, x + r * 0.6, y - r * 0.6, 2 * k, 0.5, g);
-      n = ring(out, n, x, y, r, 1 * k, 0.3, g);
       continue;
     }
     down := cr[0].hp == 0;
     light: f32 = ifx down then 0.35 else 0.95;
     if down { col = DIM; }
-    // whose turn just ran: a white ring that fades
-    since := b[0].clock - s[0].acted[i];
-    if since >= 0 && since < 1.2 { n = ring(out, n, x, y, r * (1.25 + since * 0.2), 1.4 * k, 0.9 * (1 - since / 1.2), WHITE); }
     if cr[0].outlined_by >= 0 { n = ring(out, n, x, y, r * 1.12, 2.2 * k, 0.55 + 0.25 * sin(t * 5), VIOLET); }
-    n = ring(out, n, x, y, r, 2.2 * k, light, col);
     if c >= 14 * k { n = ring(out, n, x, y, r * 0.55, 1.1 * k, light * 0.5, col); }
     if down {
       // Unconscious: the death saves, as ticks
@@ -1924,6 +1944,7 @@ draw_fx :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
       r.x0 -= grow; r.y0 -= grow; r.x1 += grow; r.y1 += grow;
       n = box_lines(out, n, r, 3 * k * (1 - a) + 0.5 * k, 1 - a, f.col);
     }
+    if n + LABEL_VERTS > SCENE_VERTS { s[0].unlabelled += 1; continue; }
     if f.kind == FX_TEXT {
       x := scr_x(s, f.ax) + c * 0.3; y := scr_y(s, f.ay) - c * 0.3 - a * c * 0.5;
       n = say_mid(out, n, cast(string) f.text[0..<f.n], x, y, lo(hi(c * 0.22, 11 * k), 20 * k), ink(k, 1 - a * 0.7, f.col));
@@ -1948,6 +1969,7 @@ draw_labels3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
     if !s[0].portrait && p.x > s[0].panel.x0 - 8 * k { continue; }   // never over the log
     col := ifx cr[0].dead then FAINT else ifx cr[0].hp == 0 then DIM else TEAM_COL[cr[0].team];
     if cr[0].klass == RS_MONSTER && cr[0].dead { continue; }
+    if n + LABEL_VERTS > SCENE_VERTS { s[0].unlabelled += 1; continue; }
     nm := cast(string) cr[0].name[0..<cr[0].name_n];
     if cr[0].klass != RS_MONSTER && (s[0].heroes <= NAMES_ALL || p.z < 16) { n = say_mid(out, n, nm, p.x, p.y - 8 * k, 10 * k, ink(k, 0.95, col)); }
     if cr[0].dead { continue; }
@@ -2003,6 +2025,7 @@ draw_fx3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     a := (now - f.t0) / f.life;
     if a < 0 || a > 1 { continue; }
     p := proj(s, wx(s, f.ax) + 0.4, 2.3 + a * 1.0, wz(s, f.ay));
+    if p.z > 0 && n + LABEL_VERTS > SCENE_VERTS { s[0].unlabelled += 1; continue; }
     if p.z > 0 && (s[0].portrait || p.x + 24 * k < s[0].panel.x0 - 8 * k) { n = say_mid(out, n, cast(string) f.text[0..<f.n], p.x + 24 * k, p.y - 14 * k, 15 * k, ink(k, 1 - a * 0.7, f.col)); }
   }
   return n;
@@ -2295,7 +2318,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   }
   t := s[0].clock;
   layout(s, width, height, k);
-  n := 0;
+  n := 0; s[0].unlabelled = 0;
   if s[0].view == VIEW_GLADE {
     n = draw_labels3(s, out, n, k, t);
     n = draw_fx3(s, out, n, k);
@@ -2322,24 +2345,27 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   u[U_UP] = s[0].up.x; u[U_UP + 1] = s[0].up.y; u[U_UP + 2] = s[0].up.z;
   u[U_SUN] = 0.45; u[U_SUN + 1] = 0.62; u[U_SUN + 2] = 0.38;
   b := bt(s);
-  // the tokens, for the ground's rings and contact shadows: where each stands, its side and state,
-  // and the square it is nearest
-  for i: 0..<rs_min(TOKENS3, b[0].n) {
-    o := U_TOKENS + i * 4;
-    if b[0].c[i].dead { continue; }
-    u[o] = wx(s, s[0].dx[i]); u[o + 1] = wz(s, s[0].dy[i]);
-    down := 0; if b[0].c[i].hp == 0 { down = 1; }
-    u[o + 2] = f32(1 + b[0].c[i].team + 4 * down);
-    since := b[0].clock - s[0].acted[i];
-    u[o + 3] = ifx since >= 0 && since < 1.2 then 1 - since / 1.2 else 0;
+  // the tokens (the frame store), for the ground's rings and contact shadows and the flat view's
+  // tokens: where each stands, its side and state, and the square it is nearest
+  fr := s[0].frame[..];
+  for i: 0..<(b[0].n * 4) { fr[i] = 0; }
+  for q: 0..<(s[0].cols * s[0].rows) { fr[F_SQUARES + q] = 0; }
+  for i: 0..<b[0].n {
+    o := i * 4;
+    if b[0].c[i].dead { if s[0].view == VIEW_FLAT { fr[o] = s[0].dx[i]; fr[o + 1] = s[0].dy[i]; fr[o + 2] = f32(1 + b[0].c[i].team + 8); } else { continue; } }
+    else {
+      // the glade's in metres; the flat view's in squares
+      fr[o] = ifx s[0].view == VIEW_FLAT then s[0].dx[i] else wx(s, s[0].dx[i]);
+      fr[o + 1] = ifx s[0].view == VIEW_FLAT then s[0].dy[i] else wz(s, s[0].dy[i]);
+      down := 0; if b[0].c[i].hp == 0 { down = 1; }
+      fr[o + 2] = f32(1 + b[0].c[i].team + 4 * down);
+      since := b[0].clock - s[0].acted[i];
+      fr[o + 3] = ifx since >= 0 && since < 1.2 then 1 - since / 1.2 else 0;
+    }
     gx := cast(int) floor(s[0].dx[i] + 0.5); gy := cast(int) floor(s[0].dy[i] + 0.5);
     if gx < 0 || gx >= s[0].cols || gy < 0 || gy >= s[0].rows { continue; }
-    sq := gy * s[0].cols + gx;
-    at := U_SQUARES + sq / 2;
-    pair := cast(int) u[at];
-    mine := ifx sq % 2 == 0 then pair % SQ_RADIX else pair / SQ_RADIX;
-    place := 1; if sq % 2 == 1 { place = SQ_RADIX; }
-    if mine == 0 { u[at] = f32(pair + (i + 1) * place); }
+    sq := F_SQUARES + gy * s[0].cols + gx;
+    if fr[sq] == 0 { fr[sq] = f32(i + 1); }
   }
   for z: 0..<RS_ZONES {
     o := U_ZONES + z * 8;
@@ -2448,8 +2474,13 @@ draw_sliders :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     hy := t0.y0 + f32(sl_count(s)) * 24 * k + 6 * k;
     n = say_at(out, n, hint, t0.x0, hy, 7 * k, ink(k, 0.45, FAINT));
     // the labels' own limits, said: past them the far ones go unlabelled
-    if bt(s)[0].n > LABELS_ALL { n = say_at(out, n, "PAST 400 FIGURES: BARS ONLY WITHIN 24 M", t0.x0, hy + 11 * k, 7 * k, ink(k, 0.8, GOLD)); hy += 11 * k; }
-    if s[0].heroes > NAMES_ALL { n = say_at(out, n, "PAST 96 HEROES: NAMES ONLY WITHIN 16 M", t0.x0, hy + 11 * k, 7 * k, ink(k, 0.8, GOLD)); }
+    if bt(s)[0].n > LABELS_ALL && s[0].view == VIEW_GLADE { n = say_at(out, n, "PAST 400 FIGURES: BARS ONLY WITHIN 24 M", t0.x0, hy + 11 * k, 7 * k, ink(k, 0.8, GOLD)); hy += 11 * k; }
+    if s[0].heroes > NAMES_ALL && s[0].view == VIEW_GLADE { n = say_at(out, n, "PAST 96 HEROES: NAMES ONLY WITHIN 16 M", t0.x0, hy + 11 * k, 7 * k, ink(k, 0.8, GOLD)); hy += 11 * k; }
+    if s[0].view == VIEW_FLAT && s[0].cell < f32(TOKEN_MARKS_PX) * k { n = say_at(out, n, "SQUARES UNDER 12 PX: TOKENS WITHOUT NAMES OR BARS", t0.x0, hy + 11 * k, 7 * k, ink(k, 0.8, GOLD)); hy += 11 * k; }
+    if s[0].unlabelled > 0 {
+      a: [64] u8; am := put_int(a[..], 0, s[0].unlabelled); am = put(a[..], am, " LABELS LEFT OFF: TOO MANY TO DRAW AT ONCE");
+      n = say_at(out, n, cast(string) a[0..<am], t0.x0, hy + 11 * k, 7 * k, ink(k, 0.95, RED));
+    }
   }
   return n;
 }
@@ -2695,6 +2726,8 @@ lab_action_done :: (s: [] Lab) #export_c { s[0].out_n = 0; }
 coaxial_lab_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
 coaxial_lab_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_lab_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+// The frame store's floats this frame: every token's room, then the grid's squares.
+coaxial_lab_frame_floats :: (s: [] Lab) -> int #export_c { return F_SQUARES + s[0].cols * s[0].rows; }
 
 // ---- checks
 
@@ -3001,10 +3034,11 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
     c := b[0].c[i];
     #assert c.team == hero_team(i) && (ifx c.team == 0 then c.x < s[0].cols / 2 - 8 else c.x > s[0].cols / 2 + 8);
   }
-  // the most: 1024 and 1024 on the field at once, the grid at 128 by 64 at most
-  #assert HEROES_MAX + SKELETONS_MAX == RS_MAX && TOKENS3 == RS_MAX && figs.BD_SLOTS == RS_MAX;
-  #assert U_TOKENS + TOKENS3 * 4 <= U_SQUARES && U_SQUARES + RS_SQUARES / 2 <= U_ZONES && U_BOUNDS + 4 == UNIFORM_FLOATS && UNIFORM_FLOATS * 4 <= 65536;
-  #assert 2 * ROWS_MAX * ROWS_MAX == RS_SQUARES;
+  // the most: 1024 and 16384 on the field at once, the grid at 384 by 192 at most
+  #assert HEROES_MAX + SKELETONS_MAX == LAB_MAX && figs.BD_SLOTS == LAB_MAX && rs_room_for(b) == LAB_MAX;
+  #assert F_SQUARES == LAB_MAX * 4 && F_SQUARES + LAB_SQUARES == FRAME_FLOATS && U_ZONES + RS_ZONES * 8 == U_BOUNDS && U_BOUNDS + 4 == UNIFORM_FLOATS;
+  #assert 2 * ROWS_MAX * ROWS_MAX == LAB_SQUARES && 2 * ROWS_MAX * ROWS_MAX * 13 >= LAB_MAX * 50;
+  #assert figs.BD_RECORDS == SKELETONS_MAX * 3 + (HEROES_MAX + figs.BD_CORPSES) * figs.BD_PARTS_MAX;
 }
 
 #test "the sliders: a drag shows the number and lets go into a new battle; the keys nudge; the address sets them" #steps 2000000000 {
@@ -3030,12 +3064,21 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   lab_message(s[..], HOST_PAGE, facts);
   #assert s[0].heroes == 6 && s[0].skeletons == 12 && s[0].stream == 30 && s[0].battle[0].n == 18;
   #assert url_number("?heroes=7&xheroes=9", "heroes") == 7 && url_number("?xheroes=9", "heroes") == -1 && url_number("?skeletons=99999", "skeletons") == 99999;
-  lab_message(s[..], HOST_PAGE, "url=http://x/worlds/5e-lab?skeletons=5000&heroes=0");
-  #assert s[0].skeletons == SKELETONS_MAX && s[0].heroes == 1;
   // past the most: said, in red, until a number under it is chosen; a key past the most says so too
-  #assert s[0].asked[SL_SKELETONS] == 5000 && s[0].asked[SL_HEROES] == 0;
-  ok = lab_key(s[..], 'x', 0); #assert s[0].heroes == 2 && s[0].asked[SL_SKELETONS] == 5000;
-  ok = lab_key(s[..], 'q', 0); #assert s[0].skeletons < SKELETONS_MAX && s[0].asked[SL_SKELETONS] == 0;
-  lab_message(s[..], HOST_PAGE, "url=http://x/worlds/5e-lab?skeletons=1024");
-  ok = lab_key(s[..], 'e', 0); #assert s[0].skeletons == SKELETONS_MAX && s[0].asked[SL_SKELETONS] == (SKELETONS_MAX * 5 + 3) / 4;
+  // (heroes here: a battle of the most skeletons is too big for the interpreter's checks)
+  lab_message(s[..], HOST_PAGE, "url=http://x/worlds/5e-lab?heroes=5000&skeletons=0");
+  #assert s[0].heroes == HEROES_MAX && s[0].skeletons == 0 && s[0].battle[0].n == HEROES_MAX;
+  #assert s[0].asked[SL_HEROES] == 5000 && s[0].asked[SL_SKELETONS] == 0;
+  ok = lab_key(s[..], 'e', 0); #assert s[0].skeletons == 1 && s[0].asked[SL_HEROES] == 5000;
+  ok = lab_key(s[..], 'z', 0); #assert s[0].heroes < HEROES_MAX && s[0].asked[SL_HEROES] == 0;
+  lab_message(s[..], HOST_PAGE, "url=http://x/worlds/5e-lab?heroes=1024&skeletons=0");
+  ok = lab_key(s[..], 'x', 0); #assert s[0].heroes == HEROES_MAX && s[0].asked[SL_HEROES] == (HEROES_MAX * 5 + 3) / 4;
+  // the skeletons' own: past 16384, the same
+  #assert !set_sizes(s[..], HEROES_MAX, 0, s[0].stream) && sl_most(SL_SKELETONS) == SKELETONS_MAX && sl_at(SL_SKELETONS, 1) == 16384;
+  // the HUD (the log, the top, the hotbar, the sliders) always has its room past the scene's strokes
+  #assert SCENE_VERTS + HUD_VERTS == MAX_VERTICES;
+  n = frame_at(s[..], 1600, 1000, 1, 0.016);
+  hud: [HUD_VERTS * VERTEX_FLOATS] f32;
+  m := draw_sliders(s[..], hud[..], draw_player(s[..], hud[..], draw_top(s[..], hud[..], draw_panel(s[..], hud[..], 0, 1), 1600, 1, 0), 1), 1);
+  #assert m > 1000 && m < HUD_VERTS - 100;
 }

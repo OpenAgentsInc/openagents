@@ -14,12 +14,12 @@
 
 static uint8_t inbox[4096];
 static bool golden;
-// The pack's catalog; the rig the clips are baked from, and the bake; the frame's instances.
+// The pack's catalog; the rig the clips are baked from, and the bake. The frame's instances (5 MB at
+// the most figures) are the Lab's records, in its state: the module's own memory stays under host.js's 8 MiB start.
 static uint8_t catalog[16384];
 static coax_t_People rig;
 static float bake[544440];        // fivelab-bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
-static float records[10880 * 24]; // BD_RECORDS instances of BD_REC_FLOATS
 static uint32_t frames;
 static int64_t draw_n;
 
@@ -48,7 +48,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   draw_n = 0;
   if (lab_at(state)->bodies.e[0].ready) {
     if (!baked) { lab_bake((coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}); baked = 1; }
-    draw_n = lab_scene(at(state), (coax_v_f32){records, sizeof records / sizeof records[0]});
+    draw_n = lab_scene(at(state), (coax_v_f32){lab_at(state)->records.e, sizeof lab_at(state)->records.e / sizeof(float)});
   }
   frames += 1;
   return n < 0 ? 0u : (uint32_t)n;
@@ -68,8 +68,12 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->bodies.e[0].draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 2; }
-EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return k == 0 ? (uint32_t)sizeof records : (uint32_t)sizeof bake; }
-EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { (void)state; return k == 0 ? (uint32_t)(uintptr_t)records : (uint32_t)(uintptr_t)bake; }
+// The frame store (host.js, group 0 binding 1): the tokens and squares bg_fs reads, every frame.
+EXPORT("coaxial_frame_store_cap") uint32_t coaxial_frame_store_cap(void) { return (uint32_t)sizeof(((coax_t_Lab *)0)->frame.e); }
+EXPORT("coaxial_frame_store") uint32_t coaxial_frame_store(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->frame.e; }
+EXPORT("coaxial_frame_store_bytes") uint32_t coaxial_frame_store_bytes(uint32_t state) { return (uint32_t)coaxial_lab_frame_floats(at(state)) * 4u; }
+EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return k == 0 ? (uint32_t)sizeof(((coax_t_Lab *)0)->records.e) : (uint32_t)sizeof bake; }
+EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { return k == 0 ? (uint32_t)(uintptr_t)lab_at(state)->records.e : (uint32_t)(uintptr_t)bake; }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) {
   (void)state;
   if (k == 0) { uint32_t n = 0; coax_t_Bodies *b = &lab_at(state)->bodies.e[0]; for (int64_t d = 0; d < b->draw_n; d++) n += b->draws.e[d * 4 + 3]; return n * 24u * 4u; }
