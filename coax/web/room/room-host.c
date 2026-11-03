@@ -240,34 +240,60 @@ static void frames(int i) {
   }
 }
 
-/* Players' HP between visits (room-vitals.coax, #12715): what rm_vitals_due wrote goes to the API
-   by a curl of its own (its config on stdin, so the MAC is not in any argument list); nothing waits
-   for it, and SIGCHLD is ignored, so it reaps itself. */
+/* Players' HP between visits (room-vitals.coax, #12715): what rm_vitals_due wrote goes to the API by
+   curl, its config on stdin (so the MAC is in no argument list). The curls are started by a small
+   poster process forked before the server's memory is taken (a fork of the full server can fail on
+   Cloud Run): the server writes each config to it down a pipe, "LEN\n" then the bytes, and never waits. */
+static int poster_fd = -1;
+static void poster_run(int in) {
+  static char cfg[16384];
+  FILE *f = fdopen(in, "r");
+  for (;;) {
+    long n;
+    if (!f || fscanf(f, "%ld", &n) != 1 || fgetc(f) != '\n' || n <= 0 || n >= (long)sizeof cfg) _exit(0);
+    if (fread(cfg, 1, (size_t)n, f) != (size_t)n) _exit(0);
+    int p[2];
+    if (pipe(p)) continue;
+    pid_t pid = fork();
+    if (pid == 0) {
+      dup2(p[0], 0);
+      for (int fd = 3; fd < 1024; fd++) close(fd);
+      execlp("curl", "curl", "-K", "-", (char *)NULL);
+      _exit(127);
+    }
+    close(p[0]);
+    if (pid > 0) { ssize_t w = write(p[1], cfg, (size_t)n); (void)w; }
+    else fprintf(stderr, "room: vitals: fork failed: %s\n", strerror(errno));
+    close(p[1]);
+  }
+}
+static void poster_start(void) {
+  int p[2];
+  if (pipe(p)) { perror("room: vitals pipe"); return; }
+  pid_t pid = fork();
+  if (pid == 0) { close(p[1]); poster_run(p[0]); _exit(0); }
+  close(p[0]);
+  if (pid < 0) { perror("room: vitals poster"); close(p[1]); return; }
+  poster_fd = p[1];
+}
 static void vitals_post(void) {
   int64_t n = rm_vitals_due(view());
-  if (n <= 0) return;
+  if (n <= 0 || poster_fd < 0) return;
   const char *url = getenv("OA_ROOM_VITALS_URL");
   if (!url || !*url) url = "https://openagents.com/api/playtest/room-vitals";
   static char cfg[2 * 4096 + 512];
-  size_t k = (size_t)snprintf(cfg, sizeof cfg, "url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\nheader = \"Content-Type: text/plain\"\nsilent\nmax-time = 10\noutput = \"/dev/null\"\ndata-binary = \"",
+  size_t k = (size_t)snprintf(cfg, sizeof cfg, "url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\nheader = \"Content-Type: text/plain\"\nsilent\nshow-error\nmax-time = 10\noutput = \"/dev/null\"\ndata-binary = \"",
                               url, (const char *)server->vit.mac.e);
   for (int64_t i = 0; i < n && k + 4 < sizeof cfg; i++) {
     char ch = (char)server->vit.out.e[i];
     if (ch == '\n') { cfg[k++] = '\\'; cfg[k++] = 'n'; } else cfg[k++] = ch;
   }
   k += (size_t)snprintf(cfg + k, sizeof cfg - k, "\"\n");
-  int p[2];
-  if (pipe(p)) return;
-  pid_t pid = fork();
-  if (pid == 0) {
-    dup2(p[0], 0);
-    for (int fd = 3; fd < 4096; fd++) close(fd);   /* the players' sockets stay the server's */
-    execlp("curl", "curl", "-K", "-", (char *)NULL);
-    _exit(127);
-  }
-  close(p[0]);
-  if (pid > 0) { ssize_t w = write(p[1], cfg, k); (void)w; }
-  close(p[1]);
+  char head[24]; int hn = snprintf(head, sizeof head, "%zu\n", k);
+  /* a blocking write: the poster reads at once, and a post is a few hundred bytes */
+  static char msg[sizeof cfg + 24];
+  memcpy(msg, head, (size_t)hn); memcpy(msg + hn, cfg, k);
+  if (write(poster_fd, msg, (size_t)hn + k) != (ssize_t)((size_t)hn + k)) fprintf(stderr, "room: vitals: post dropped\n");
 }
 
 int main(int argc, char **argv) {
@@ -281,6 +307,7 @@ int main(int argc, char **argv) {
   signal(SIGPIPE, SIG_IGN);
   signal(SIGCHLD, SIG_IGN);   /* vitals_post's curls reap themselves */
   setvbuf(stdout, NULL, _IOLBF, 0);
+  poster_start();   /* before the server's memory (vitals_post) */
   server = calloc(1, sizeof *server);
   if (!server) { fprintf(stderr, "room: out of memory\n"); return 1; }
   rm_init(view());
