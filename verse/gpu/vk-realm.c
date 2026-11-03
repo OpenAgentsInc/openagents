@@ -229,7 +229,7 @@ static int world_rect(int32_t c[8], uint32_t w, uint32_t h) {
   // what stands in front of the screen, from the realm (its k 13, 14 + 4i ..)
   int n = (int)coaxial_panel_rect(H.state, 13);
   desk.occ_n = 0;
-  for (int i = 0; i < n && i < 8; i++) {
+  for (int i = 0; i < n && i < 16; i++) {
     for (int j = 0; j < 4; j++) desk.occ[i][j] = (int32_t)(coaxial_panel_rect(H.state, 14 + 4 * i + j) * (j % 2 ? sy : sx));
     desk.occ_n++;
   }

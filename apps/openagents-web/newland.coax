@@ -2072,7 +2072,12 @@ land_begin :: (s: [] LandState, uniforms: [] f32, width: f32, height: f32, dpr: 
 land_scene :: (out: [] f32, at: int, s: [] LandState, c: Cam, look: Fv, p: Pen, t: f32, motion: f32) -> int {
   v := floor_grid(out, at, s, c, look, p);
   v = roads(out, v, s, c, p);
-  for k: 0..<s[0].plots { v = place(out, v, s, c, k, p); }
+  // each place, and on the Grid with a desk, whether it stands before the desk's screen (newland-local.coax)
+  if s[0].walking { s[0].local[0].occ_n = 0; }
+  for k: 0..<s[0].plots {
+    from := v; v = place(out, v, s, c, k, p);
+    if s[0].walking && s[0].local[0].desk { local_occlude(s, out, from, v, c, centre(s, -1), fv(s[0].plot[k].x, 0, s[0].plot[k].z)); }
+  }
   v = pylon_bay(out, v, s, c, p, t);
   v = xp_scene(out, v, s, c, p, t);
   // the people walking the Grid now; the simulated ones only while nobody is

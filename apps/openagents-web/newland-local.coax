@@ -16,7 +16,7 @@ LocalAgents :: struct {
   desk: bool; rect: [4] f32; rect_ok: bool;
   corner: [8] f32;                 // the four corners on the screen (x, y each: bottom-left, bottom-right, top-right, top-left)
   slide: f32; lift: f32;           // where you moved the screen to: metres along its width, and up
-  occ: [8] Box; occ_n: int;       // what stands between the camera and the desk's screen this frame
+  occ: [16] Box; occ_n: int;       // what stands between the camera and the desk's screen this frame
   label: Box; grab: bool; grab_x: f32; grab_y: f32; grab_slide: f32; grab_lift: f32;
   // where each agent's name was drawn (a click there asks for its transcript), and that ask
   head_x: [LOCAL_MAX] f32; head_y: [LOCAL_MAX] f32; head_ok: [LOCAL_MAX] bool;
@@ -121,7 +121,7 @@ local_desk :: (out: [] f32, at: int, s: [] LandState, c: Cam, mid: Fv, p: Pen) -
 // for the host, which leaves the desk out there (k 13, 14..).
 local_occlude :: (s: [] LandState, out: [] f32, from: int, to: int, c: Cam, mid: Fv, at: Fv) {
   l := s[0].local[..];
-  if !l[0].desk || to <= from || l[0].occ_n >= 8 { return; }
+  if !l[0].desk || to <= from || l[0].occ_n >= 16 { return; }
   a := local_desk_corner_at(0, l[0].slide, l[0].lift); b := local_desk_corner_at(2, l[0].slide, l[0].lift);
   dc := wk_at(mid, (a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5);
   d_obj := dot3(fv_sub(at, c.eye), fv_sub(at, c.eye)); d_desk := dot3(fv_sub(dc, c.eye), fv_sub(dc, c.eye));
@@ -144,7 +144,7 @@ local_occlude :: (s: [] LandState, out: [] f32, from: int, to: int, c: Cam, mid:
 // The rectangle for the host: k 0..3 x0 y0 x1 y1 in the realm's pixels, 4 whether it is on screen.
 // k 5..12: the corners, x then y, bottom-left, bottom-right, top-right, top-left (for perspective).
 coaxial_land_panel :: (s: [] LandState, k: int) -> f32 #export_c {
-  if s.count < 1 || k < 0 || k > 13 + 32 { return -1; }
+  if s.count < 1 || k < 0 || k > 13 + 64 { return -1; }
   l := s[0].local[..];
   // k 13: how many occluders; 14 + 4i ..: occluder i's x0 y0 x1 y1
   if k == 13 { return cast(f32) l[0].occ_n; }
