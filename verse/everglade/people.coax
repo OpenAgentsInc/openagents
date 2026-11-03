@@ -14,7 +14,7 @@ EG_WORLD :: "Everglade";
 EG_CONTROLS :: "W A S D or the arrows move you at a run, Shift walks, Space jumps, drag the mouse to look, the wheel zooms, M shows the city from above; on a phone the left thumb walks and the right looks. Walk up to someone and press E, or tap TALK, to talk to them; type and press Enter to say something, and Esc or BYE ends it. Players can't build or change the city.";
 
 // Each spot's person: the name they go by.
-EG_PERSON :: [22] string.[
+EG_PERSON :: [28] string.[
   "Bram", "Tilda", "Pip",
   "Oswin", "Pebble",
   "Marta", "Soot",
@@ -23,12 +23,13 @@ EG_PERSON :: [22] string.[
   "Rook", "Sable",
   "Elowen", "Wisp",
   "Brother Anselm", "Vega",
-  "Moss", "Old Tam", "Corin"
+  "Moss", "Old Tam", "Corin",
+  "Warden Hale", "Lark", "Mistress Wren", "Dunstan", "Tamsin", "Old Haddon"
 ];
 
 EG_CAT_ROLE :: "a cat. You talk as a cat would if cats could talk: a few words at a time, curious, a little aloof, now and then a purr or a mew";
 
-EG_ROLE :: [22] string.[
+EG_ROLE :: [28] string.[
   "a guard at Everglade's South Gate, east side of the road",
   "a guard at Everglade's South Gate, west side of the road",
   "the stable hand at the stables on the road in",
@@ -50,10 +51,16 @@ EG_ROLE :: [22] string.[
   "the astronomer at the observatory",
   "the woodwarden, who keeps the Deep Wood Trail by its waystone",
   "the ferryman, on the river's far bank by the bridge",
-  "a scholar who studies the ruins in the woods"
+  "a scholar who studies the ruins in the woods",
+  "the market warden, who keeps the Market Hall on Main Street",
+  "a fiddler who plays at the Music Hall in the Lantern Quarter, across the river",
+  "the librarian of the Stacks in the Scholars' Quarter",
+  "the foundry master, at the Foundry Barn's door on Foundry Road",
+  "a woodcarver at the Makers' Hall in the Makers' Quarter",
+  "the boatwright, at the boathouse on Lantern Pond's north bank"
 ];
 
-EG_GREET :: [22] string.[
+EG_GREET :: [28] string.[
   "Halt, traveller. Welcome to Everglade.",
   "Mind the road, friend. The gate's open.",
   "Oh! Hello. Don't mind the horses.",
@@ -75,11 +82,17 @@ EG_GREET :: [22] string.[
   "Have you looked up tonight? The sky is very clear.",
   "You've come a long way down the trail.",
   "Crossing? The water's calm today.",
-  "Careful where you step. These stones are older than the city."
+  "Careful where you step. These stones are older than the city.",
+  "Market's open. Mind your purse on Main Street.",
+  "Pull up a stool. The next tune's a good one.",
+  "Hush, please. People are reading.",
+  "Stand back from the doors. The furnace is lit.",
+  "Every piece of wood has a shape in it. You just cut away the rest.",
+  "Want a boat? The pond's calm this morning."
 ];
 
 // What every one of them knows of the city (docs/verse/everglade.md).
-EG_CITY :: "Everglade is a city in a forest, inside a log palisade with four gates; the South Gate faces the road in, past the stables. In the middle is the commons with its fountain and the quest board. East of it is the market with its stalls and the general store; west, on Inn Street, the inn; north-west, Guild Row with the fighters' and rangers' halls and the smithy and the alchemist; north-east, the mages' tower; north, the temple and, beyond it, the observatory. Trails lead out to the deep wood, the ruins, the crypt and the river crossing.";
+EG_CITY :: "Everglade is a city in a forest. Its old town stands inside a log palisade with four gates; the South Gate faces the road in, past the stables. In the middle of the old town is the commons with its fountain and the quest board. East of it is the market with its stalls and the general store; west, on Inn Street, the inn; north-west, Guild Row with the fighters' and rangers' halls and the smithy and the alchemist; north-east, the mages' tower; north, the temple and, beyond it, the observatory. Outside the palisade the Commons Loop runs all the way round the old town. South of it is the Great Lawn with the Reed and Lantern Ponds and the boathouse. North, Main Street has its shops and the Market Hall, with Stoop Lane off it. East, on Foundry Road, is the Foundry; north-east, on Studio Road, the Makers' Quarter; south-east, on Library Way, the Scholars' Quarter with the Stacks and the Old College. Across the bridge over the river, Lantern Road runs to the Lantern Quarter with its Music Hall, and to Brownstone Row. Trails lead out through the woods to the deep wood, the ruins, the crypt and the far ponds.";
 
 eg_is_cat :: (i: int) -> bool { return i >= 0 && i < EG_SPOTS && EG_SPOT_CAT[i]; }
 eg_role :: (i: int) -> string { return ifx eg_is_cat(i) then EG_CAT_ROLE else EG_ROLE[i]; }

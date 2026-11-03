@@ -54,7 +54,7 @@ FOLK_IN_WAY :: 1.1;       // metres: you this near ahead of someone walking, the
 // Each spot's look. Outfit: 0 the peasant's, 1 the ranger's. Hair: a part,
 // or -1 for none (a hood covers it). Variant: 1 wears the outfit's other
 // colourway (T_Peasant_2, T_Ranger_3). Stance: the clip they shift into.
-FOLK_FEMALE :: [22] bool.[
+FOLK_FEMALE :: [28] bool.[
   false, true, false,
   false, false,
   true, false,
@@ -63,9 +63,10 @@ FOLK_FEMALE :: [22] bool.[
   false, true,
   true, false,
   false, true,
-  false, false, false
+  false, false, false,
+  false, true, true, false, true, false
 ];
-FOLK_OUTFIT :: [22] int.[
+FOLK_OUTFIT :: [28] int.[
   1, 1, 0,
   0, 0,
   0, 0,
@@ -74,13 +75,15 @@ FOLK_OUTFIT :: [22] int.[
   1, 1,
   0, 0,
   0, 0,
-  1, 0, 0
+  1, 0, 0,
+  0, 0, 0, 0, 0, 0
 ];
-FOLK_HOOD :: [22] bool.[
+FOLK_HOOD :: [28] bool.[
   false, false, false,  false, false,  false, false,  false, false, false, false,
-  false, false,  false, true,  false, false,  false, false,  true, false, false
+  false, false,  false, true,  false, false,  false, false,  true, false, false,
+  false, false, false, false, false, false
 ];
-FOLK_HAIR :: [22] int.[
+FOLK_HAIR :: [28] int.[
   PART_HAIR_BUZZED, PART_HAIR_BUZZED_FEMALE, PART_HAIR_PARTED,
   PART_HAIR_PARTED, -1,
   PART_HAIR_BUNS, -1,
@@ -89,21 +92,25 @@ FOLK_HAIR :: [22] int.[
   PART_HAIR_BUZZED, -1,
   PART_HAIR_LONG, -1,
   PART_HAIR_BUZZED, PART_HAIR_LONG,
-  -1, PART_HAIR_BUZZED, PART_HAIR_PARTED
+  -1, PART_HAIR_BUZZED, PART_HAIR_PARTED,
+  PART_HAIR_PARTED, PART_HAIR_LONG, PART_HAIR_BUNS, PART_HAIR_BUZZED, PART_HAIR_BUZZED_FEMALE, PART_HAIR_BUZZED
 ];
-FOLK_BEARD :: [22] bool.[
+FOLK_BEARD :: [28] bool.[
   true, false, false,  true, false,  false, false,  true, false, false, false,
-  true, false,  true, false,  false, false,  false, false,  true, true, false
+  true, false,  true, false,  false, false,  false, false,  true, true, false,
+  true, false, false, true, false, true
 ];
 // Who wears a robe over their clothes, dyed with them: the archmage, the priest and the astronomer.
-FOLK_ROBE :: [22] bool.[
+FOLK_ROBE :: [28] bool.[
   false, false, false,  false, false,  false, false,  false, false, false, false,
-  false, false,  false, false,  true, false,  true, true,  false, false, false
+  false, false,  false, false,  true, false,  true, true,  false, false, false,
+  false, false, true, false, false, false
 ];
-FOLK_VARIANT :: [22] int.[
-  0, 0, 1,  0, 0,  0, 0,  1, 0, 0, 0,  1, 0,  1, 0,  1, 0,  0, 0,  1, 1, 0
+FOLK_VARIANT :: [28] int.[
+  0, 0, 1,  0, 0,  0, 0,  1, 0, 0, 0,  1, 0,  1, 0,  1, 0,  0, 0,  1, 1, 0,
+  1, 0, 1, 0, 1, 0
 ];
-FOLK_STANCE :: [22] int.[
+FOLK_STANCE :: [28] int.[
   PEOPLE_FOLD, PEOPLE_FOLD, PEOPLE_FOLD,
   PEOPLE_IDLE, PEOPLE_IDLE,
   PEOPLE_FOLD, PEOPLE_IDLE,
@@ -112,10 +119,11 @@ FOLK_STANCE :: [22] int.[
   PEOPLE_FOLD, PEOPLE_FOLD,
   PEOPLE_SPELL, PEOPLE_IDLE,
   PEOPLE_IDLE, PEOPLE_LANTERN,
-  PEOPLE_FOLD, PEOPLE_FOLD, PEOPLE_IDLE
+  PEOPLE_FOLD, PEOPLE_FOLD, PEOPLE_IDLE,
+  PEOPLE_FOLD, PEOPLE_TALK, PEOPLE_IDLE, PEOPLE_FOLD, PEOPLE_IDLE, PEOPLE_FOLD
 ];
 // Their resting clip: the crier calls out; the guards stand with folded arms.
-FOLK_REST :: [22] int.[
+FOLK_REST :: [28] int.[
   PEOPLE_FOLD, PEOPLE_FOLD, PEOPLE_IDLE,
   PEOPLE_TALK, PEOPLE_IDLE,
   PEOPLE_IDLE, PEOPLE_IDLE,
@@ -124,15 +132,17 @@ FOLK_REST :: [22] int.[
   PEOPLE_IDLE, PEOPLE_IDLE,
   PEOPLE_IDLE, PEOPLE_IDLE,
   PEOPLE_IDLE, PEOPLE_IDLE,
-  PEOPLE_IDLE, PEOPLE_IDLE, PEOPLE_IDLE
+  PEOPLE_IDLE, PEOPLE_IDLE, PEOPLE_IDLE,
+  PEOPLE_IDLE, PEOPLE_IDLE, PEOPLE_IDLE, PEOPLE_IDLE, PEOPLE_IDLE, PEOPLE_IDLE
 ];
 // Skin, a tint over the base bodies' skin (linear): fair, the bodies' own, tan, brown, deep.
 SKIN_TONE :: [15] f32.[1.12, 1.06, 1.02,   1, 1, 1,   0.86, 0.76, 0.66,   0.66, 0.52, 0.42,   0.46, 0.34, 0.27];
-FOLK_SKIN :: [22] int.[
-  2, 0, 1,  0, 0,  1, 0,  3, 0, 4, 2,  3, 0,  2, 1,  0, 0,  1, 0,  2, 2, 1
+FOLK_SKIN :: [28] int.[
+  2, 0, 1,  0, 0,  1, 0,  3, 0, 4, 2,  3, 0,  2, 1,  0, 0,  1, 0,  2, 2, 1,
+  1, 3, 0, 2, 4, 1
 ];
 // Hair, over the kit's pale hair (linear).
-FOLK_HAIR_RGB :: [66] f32.[
+FOLK_HAIR_RGB :: [84] f32.[
   0.06, 0.04, 0.03,   0.32, 0.12, 0.04,   0.2, 0.1, 0.04,
   0.62, 0.45, 0.2,    0, 0, 0,
   0.45, 0.13, 0.04,   0, 0, 0,
@@ -141,11 +151,12 @@ FOLK_HAIR_RGB :: [66] f32.[
   0.55, 0.55, 0.57,   0.2, 0.1, 0.04,
   0.88, 0.88, 0.92,   0, 0, 0,
   0.62, 0.62, 0.64,   0.86, 0.86, 0.92,
-  0.18, 0.1, 0.05,    0.6, 0.6, 0.62,     0.22, 0.12, 0.05
+  0.18, 0.1, 0.05,    0.6, 0.6, 0.62,     0.22, 0.12, 0.05,
+  0.35, 0.3, 0.28,    0.45, 0.13, 0.04,   0.1, 0.06, 0.04,    0.06, 0.04, 0.03,   0.62, 0.45, 0.2,   0.8, 0.8, 0.84
 ];
 // The dye on their cloth (linear) and how much of it takes: crimson guards,
 // the crier's blue, an indigo scholar, the priest's white ...
-FOLK_DYE :: [88] f32.[
+FOLK_DYE :: [112] f32.[
   0.32, 0.03, 0.025, 1,   0.32, 0.03, 0.025, 1,   0, 0, 0, 0,
   0.03, 0.08, 0.36, 1,    0, 0, 0, 0,
   0.1, 0.22, 0.06, 0.9,   0, 0, 0, 0,
@@ -154,7 +165,9 @@ FOLK_DYE :: [88] f32.[
   0, 0, 0, 0,             0.1, 0.16, 0.04, 0.8,
   0.03, 0.03, 0.26, 1,    0, 0, 0, 0,
   0.8, 0.78, 0.7, 1,      0.07, 0.03, 0.26, 1,
-  0.08, 0.13, 0.04, 1,    0, 0, 0, 0,             0.36, 0.22, 0.06, 0.9
+  0.08, 0.13, 0.04, 1,    0, 0, 0, 0,             0.36, 0.22, 0.06, 0.9,
+  0.2, 0.06, 0.04, 1,     0.4, 0.08, 0.2, 1,      0.05, 0.12, 0.3, 1,
+  0.12, 0.1, 0.09, 0.9,   0.3, 0.2, 0.06, 0.9,    0.05, 0.2, 0.25, 1
 ];
 
 // The parts person i wears, into out; how many.
@@ -335,7 +348,7 @@ folk_pose :: (r: SkinRig, f: [] Folk, sk: [] Skin, dt: f32, out: [] f32) {
     #assert FOLK_VARIANT[i] == 0 || FOLK_VARIANT[i] == 1;
     #assert folk_triangles(i) > 8000 && folk_triangles(i) < 22000;
   }
-  #assert dressed == 19;
+  #assert dressed == 25;
 }
 
 #test "the people's poses are the clips' as people.py sampled them, on both bodies" {
@@ -449,7 +462,7 @@ FOLK_AWAY :: Point.{x = 0, y = 0, z = 900};
   #assert nose.x > ahead.x + 0.03;
 }
 
-#test "on a turning day they walk their routine; talking stops them and turns them to you; let go, they catch up" #steps 35000000 {
+#test "on a turning day they walk their routine; talking stops them and turns them to you; let go, they catch up" #steps 170000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   f: [1] Folk;
@@ -484,7 +497,7 @@ FOLK_AWAY :: Point.{x = 0, y = 0, z = 900};
   #assert !f[0].indoors && f[0].x == EG_SPOT[i * 3] && f[0].z == EG_SPOT[i * 3 + 1];
 }
 
-#test "someone walking stops for you in their way, and walks on once you step aside" #steps 34000000 {
+#test "someone walking stops for you in their way, and walks on once you step aside" #steps 170000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   f: [1] Folk;

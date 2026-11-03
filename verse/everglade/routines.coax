@@ -68,7 +68,7 @@ FOLK_EXIT :: [12] f32.[
   8, 29.0, 8.0,
   9, 29.0, -8.0,
   10, 35.0, 8.0,
-  22 + 14, 42.0, -27.0
+  FOLK_DOOR + 14, 42.0, -27.0
 ];
 folk_exit :: (stop: int) -> int {
   for e: 0..<FOLK_EXITS { if cast(int) FOLK_EXIT[e * 3] == stop { return e; } }
@@ -76,42 +76,50 @@ folk_exit :: (stop: int) -> int {
 }
 
 // Who walks a beat all day (a via), or -1.
-FOLK_PATROL :: [22] int.[VIA_BRAM, VIA_TILDA, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1];
+FOLK_PATROL :: [EG_SPOTS] int.[VIA_BRAM, VIA_TILDA, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1];
 
 // Each person's day: FOLK_ROWS rows of (time of day 0 to 1, where, by way of: a via or -1),
 // sorted; a row at -1 is none. No rows: they stay at their spot.
 N_ :: -1.0;
-FOLK_DAY :: [264] f32.[
+FOLK_DAY :: [336] f32.[
   // the guards walk their beats (FOLK_PATROL)
   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
   // Pip: the stables by day, a swim at midday, the stables at night
-  0.24, 2, -1,   0.52, 2, 2,   0.78, 22 + 9, -1,   N_, 0, -1,
+  0.24, 2, -1,   0.52, 2, 2,   0.78, FOLK_DOOR + 9, -1,   N_, 0, -1,
   // Oswin and Pebble stay
   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
   // Marta keeps the inn's door till late; Soot stays
-  0.23, 5, -1,   0.9, 22 + 0, -1,   N_, 0, -1,   N_, 0, -1,
+  0.23, 5, -1,   0.9, FOLK_DOOR + 0, -1,   N_, 0, -1,   N_, 0, -1,
   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
   // Hollis, Fern, Ada and Quill: the store and the stalls by day, home at dusk
-  0.27, 7, -1,   0.74, 22 + 10, -1,   N_, 0, -1,   N_, 0, -1,
-  0.26, 8, -1,   0.72, 22 + 11, -1,   N_, 0, -1,   N_, 0, -1,
-  0.28, 9, -1,   0.73, 22 + 12, -1,   N_, 0, -1,   N_, 0, -1,
-  0.3, 10, -1,   0.6, 10, 5,   0.76, 22 + 13, -1,   N_, 0, -1,
+  0.27, 7, -1,   0.74, FOLK_DOOR + 10, -1,   N_, 0, -1,   N_, 0, -1,
+  0.26, 8, -1,   0.72, FOLK_DOOR + 11, -1,   N_, 0, -1,   N_, 0, -1,
+  0.28, 9, -1,   0.73, FOLK_DOOR + 12, -1,   N_, 0, -1,   N_, 0, -1,
+  0.3, 10, -1,   0.6, 10, 5,   0.76, FOLK_DOOR + 13, -1,   N_, 0, -1,
   // Garrick and Isolde: the smithy and the alchemist's
-  0.25, 11, -1,   0.77, 22 + 14, -1,   N_, 0, -1,   N_, 0, -1,
-  0.29, 12, -1,   0.75, 22 + 15, -1,   N_, 0, -1,   N_, 0, -1,
+  0.25, 11, -1,   0.77, FOLK_DOOR + 14, -1,   N_, 0, -1,   N_, 0, -1,
+  0.29, 12, -1,   0.75, FOLK_DOOR + 15, -1,   N_, 0, -1,   N_, 0, -1,
   // Rook and Sable go into their halls at night; Sable walks the commons of a morning
-  0.24, 13, -1,   0.8, 22 + 4, -1,   N_, 0, -1,   N_, 0, -1,
-  0.26, 14, -1,   0.36, 14, 3,   0.81, 22 + 5, -1,   N_, 0, -1,
+  0.24, 13, -1,   0.8, FOLK_DOOR + 4, -1,   N_, 0, -1,   N_, 0, -1,
+  0.26, 14, -1,   0.36, 14, 3,   0.81, FOLK_DOOR + 5, -1,   N_, 0, -1,
   // Elowen walks out after noon and goes up into her tower at night; Wisp stays
-  0.28, 15, -1,   0.55, 15, 4,   0.83, 22 + 6, -1,   N_, 0, -1,
+  0.28, 15, -1,   0.55, 15, 4,   0.83, FOLK_DOOR + 6, -1,   N_, 0, -1,
   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
   // Brother Anselm on the steps by day
-  0.24, 17, -1,   0.86, 22 + 7, -1,   N_, 0, -1,   N_, 0, -1,
+  0.24, 17, -1,   0.86, FOLK_DOOR + 7, -1,   N_, 0, -1,   N_, 0, -1,
   // Vega sleeps by day at Fern's and keeps the observatory at night
-  0.21, 22 + 11, -1,   0.7, 18, -1,   N_, 0, -1,   N_, 0, -1,
+  0.21, FOLK_DOOR + 11, -1,   0.7, 18, -1,   N_, 0, -1,   N_, 0, -1,
   // Moss, Old Tam and Corin, whom quests send you to, stay
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  // the districts' six (the market warden, the fiddler, the librarian, the foundry master, the
+  // woodcarver and the boatwright) stay at their work
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1
@@ -420,7 +428,7 @@ folk_wrap_r :: (a: f32) -> f32 {
 
 routines_ground :: (heights: [] f32) { #assert everglade_build_ground(heights); }
 
-#test "every day is sorted, starts and ends at a real stop, and each walk ends before the next row begins" #steps 50000000 {
+#test "every day is sorted, starts and ends at a real stop, and each walk ends before the next row begins" #steps 200000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   r: [1] Route;
@@ -451,7 +459,7 @@ routines_ground :: (heights: [] f32) { #assert everglade_build_ground(heights); 
   #assert walkers >= 12;
 }
 
-#test "every walk and every beat keeps to open ground: the streets, the squares, the clearings, never a wall or the woods" #steps 146000000 {
+#test "every walk and every beat keeps to open ground: the streets, the squares, the clearings, never a wall or the woods" #steps 330000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   solids: [EG_SOLIDS * EG_BOX] f32;
@@ -480,7 +488,7 @@ routines_ground :: (heights: [] f32) { #assert everglade_build_ground(heights); 
   }
 }
 
-#test "the stable hand wades into the Reed Pond and swims its middle at half pace, by the player's rules" #steps 36000000 {
+#test "the stable hand wades into the Reed Pond and swims its middle at half pace, by the player's rules" #steps 170000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   levels: [EG_PONDS] f32;
@@ -509,7 +517,7 @@ routines_ground :: (heights: [] f32) { #assert everglade_build_ground(heights); 
   #assert !q.walking && !q.indoors && near(q.x, EG_SPOT[pip * 3], 0.001) && near(q.z, EG_SPOT[pip * 3 + 1], 0.001);
 }
 
-#test "a day: at work by day, walking home at dusk, indoors at night, out again in the morning" #steps 35000000 {
+#test "a day: at work by day, walking home at dusk, indoors at night, out again in the morning" #steps 170000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   r: [1] Route;
@@ -537,7 +545,7 @@ routines_ground :: (heights: [] f32) { #assert everglade_build_ground(heights); 
   #assert !folk_moves(3) && !p.walking && p.x == EG_SPOT[9] && p.z == EG_SPOT[10];
 }
 
-#test "two people reading the same clock put a person in the same place; a guard walks the beat all day" #steps 543000000 {
+#test "two people reading the same clock put a person in the same place; a guard walks the beat all day" #steps 1200000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   a: [1] Route; b: [1] Route;
