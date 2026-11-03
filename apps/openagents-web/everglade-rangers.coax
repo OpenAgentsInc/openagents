@@ -54,10 +54,10 @@ REMOTE_PLATE_FADE :: 15.0;     // fading out over the last this many
 REMOTE_AWAY_SHOWN :: 0.35;     // how much of a body shows while the server hasn't heard its page (WF_AWAY)
 REMOTE_FADE_RATE :: 2.0;       // of that a second, out and back
 RANGER_LOD_NAME :: "player/male-ranger.lod";   // the far mesh's catalog line (verse/tools/pack_realm.py far_mesh)
-// A class's gear: everyone's class is the realm's druid today (spec 5.2), who carries a staff on their
-// back, its head in leaves. A class the page doesn't know is drawn as the druid.
-CLASS_DRUID :: 0;
-CLASS_NAME :: [1] string.["druid"];
+// A class's gear: the druid carries a staff on their back, its head in leaves; the Warlock a black
+// rod with a violet orb. A class the page doesn't know is drawn as the druid.
+CLASS_DRUID :: 0; CLASS_WARLOCK :: 1;   // the Warlock: a black rod, a violet orb at its head (everglade-warlock.coax)
+CLASS_NAME :: [2] string.["druid", "warlock"];
 STAFF_RGB :: [3] f32.[0.20, 0.12, 0.06];
 STAFF_LEAF_RGB :: [3] f32.[0.16, 0.36, 0.12];
 // The Ranger's joints the gear hangs from (verse/everglade/ranger.coax RANGER_PARENT): the spine's
@@ -140,7 +140,7 @@ RemoteBody :: struct {
 }
 
 // A body's gear in its own space (before its turn and place), from its pose: the staff's foot and head.
-Gear :: struct { on: bool; foot: Point; head: Point; }
+Gear :: struct { on: bool; foot: Point; head: Point; kind: int; }
 
 Rangers :: struct {
   seat: [REMOTE_BODIES] int;     // the seat each body poses, -1 none
@@ -240,7 +240,7 @@ ranger_gear :: (rig: SkinRig, sk: [] Skin, kind: int) -> Gear {
   back := times(unit_or(cross(up, right), v3(0, 0, 1)), -1);
   along := unit_or(sub(up, times(right, 0.55)), up);
   mid := add(chest, times(back, 0.14));
-  return Gear.{on = true, foot = sub(mid, times(along, 0.78)), head = add(mid, times(along, 0.82))};
+  return Gear.{on = true, foot = sub(mid, times(along, 0.78)), head = add(mid, times(along, 0.82)), kind = kind};
 }
 // A point of a body's own space in the world, by its object's rows.
 body_world :: (rows: [12] f32, p: Point) -> Point {
@@ -258,6 +258,14 @@ gear_draw :: (s: [] Everglade, g: Gear, rows: [12] f32) {
   side := unit_or(cross(ax, v3(0, 1, 0)), v3(1, 0, 0));
   third := cross(side, ax);
   w := 0.032f32;
+  if g.kind == CLASS_WARLOCK {
+    // the Warlock's rod: black, banded, a violet orb in a claw at its head
+    sp_shape(s, SHAPE_BOX, LOOK_WOOD, times(add(a, b), 0.5), times(side, w * 0.85), times(ax, l), times(third, w * 0.85), v3(0.025, 0.018, 0.03));
+    sp_shape(s, SHAPE_SPHERE, LOOK_MATTE, add(b, times(ax, 0.02)), times(side, 0.07), times(ax, 0.06), times(third, 0.07), v3(0.05, 0.03, 0.06));
+    sp_shape(s, SHAPE_SPHERE, LOOK_GLOW, add(b, times(ax, 0.1)), times(side, 0.075), times(ax, 0.075), times(third, 0.075), v3(0.6, 0.25, 1.0));
+    sp_glow(s, add(b, times(ax, 0.1)), 0.3, v3(0.2, 0.08, 0.35));
+    return;
+  }
   sp_shape(s, SHAPE_BOX, LOOK_WOOD, times(add(a, b), 0.5), times(side, w), times(ax, l), times(third, w), v3(STAFF_RGB[0], STAFF_RGB[1], STAFF_RGB[2]));
   sp_shape(s, SHAPE_SPHERE, LOOK_LEAVES, add(b, times(ax, 0.04)), times(side, 0.16), times(ax, 0.2), times(third, 0.16), v3(STAFF_LEAF_RGB[0], STAFF_LEAF_RGB[1], STAFF_LEAF_RGB[2]));
 }

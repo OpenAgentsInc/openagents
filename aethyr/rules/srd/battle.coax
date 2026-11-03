@@ -325,7 +325,19 @@ rs_dropped :: (b: [] RsBattle, by: int, j: int) {
 // Damage, with dropping to 0 and the concentration save the SRD calls for.
 rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: bool, spell: int) {
   hurt: [1] RsCreature; hurt[0] = b[0].c[j];
-  r := rs_hurt(hurt[..], amount, crit);
+  dealt := amount;
+  // Undead Fortitude (the Zombie, p. 343): damage that would reduce it to 0 Hit Points, unless Radiant
+  // or from a Critical Hit, calls for a Constitution save of DC 5 plus the damage; on a success it
+  // drops to 1 Hit Point instead
+  if hurt[0].fortitude && !hurt[0].dead && hurt[0].hp > 0 && amount >= hurt[0].hp + hurt[0].temp && kind != RS_RADIANT && !crit {
+    roll := rs_roll(b[0].dice[..], 20); total := roll + rs_save_in(b, j, RS_CON);
+    l: [1] RsLine;
+    rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " Undead Fortitude: Con save "); rs_add_int(l[..], total);
+    rs_add_text(l[..], " vs DC "); rs_add_int(l[..], 5 + amount);
+    if total >= 5 + amount { dealt = hurt[0].hp + hurt[0].temp - 1; rs_add_text(l[..], ": it drops to 1 Hit Point"); } else { rs_add_text(l[..], ": failure"); }
+    rs_tell(b, RS_EV_SAVE, -1, by, j, total, 0, l[..]);
+  }
+  r := rs_hurt(hurt[..], dealt, crit);
   b[0].c[j] = hurt[0];
   // Turn Undead ends early on a creature that takes any damage
   if r.taken > 0 {
@@ -449,6 +461,7 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
     k := rs_emit(b[0].book[..], e);
   }
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_FLAME { b[0].c[i].flame_until = b[0].clock + s.duration_s; } }
+  for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TELEPORT { rs_teleport(b, i, sp, tx, ty); return true; } }
   // rays and beams: the program runs once for each, at the one target
   reps := 1;
   for k: 0..<s.step_n {
@@ -480,6 +493,25 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
     if heals { got := rs_feature_heal(b, i, i, 2 + slot, "Blessed Healer", RS_FT_NONE); }
   }
   return true;
+}
+
+// Dimension Door (p. 123): the caster teleports to the square (tx, ty), within range. Arriving in a
+// space a creature fills, it takes 4d6 Force damage and the teleportation fails. (What objects fill
+// is the world's: it gives a point it can stand on.)
+rs_teleport :: (b: [] RsBattle, i: int, sp: int, tx: int, ty: int) {
+  l: [1] RsLine;
+  other := rs_at(b, tx, ty);
+  if tx < 0 || ty < 0 || tx >= b[0].w || ty >= b[0].h || (other >= 0 && other != i) {
+    amount := rs_sum(b[0].dice[..], 4, 6);
+    rs_add_text(l[..], "  the space is filled: "); rs_add_name(l[..], b, i); rs_add_text(l[..], " takes "); rs_add_int(l[..], amount);
+    rs_add_text(l[..], " Force (4d6) and stays");
+    rs_tell(b, RS_EV_DAMAGE, sp, i, i, amount, RS_FORCE, l[..]);
+    rs_damage(b, i, i, amount, RS_FORCE, false, sp);
+    return;
+  }
+  rs_place(b, i, tx, ty);
+  rs_add_text(l[..], "  "); rs_add_name(l[..], b, i); rs_add_text(l[..], " teleports");
+  rs_tell(b, RS_EV_PUSH, sp, i, i, 0, 0, l[..]);
 }
 
 // ---- attack rolls, and what can change one after the dice
@@ -681,7 +713,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       else { count += st.d * rs_max(slot - s.level, 0); }
       count += bane;
       if crit { count *= 2; }
-      amount := rs_sum(b[0].dice[..], count, st.b);
+      amount := rs_sum(b[0].dice[..], count, st.b) + s.plus;
       // Elemental Affinity: the Charisma modifier on one damage roll (an area's one roll is every target's)
       if b[0].c[i].affinity > 0 && b[0].c[i].affinity == st.c && (s.area != RS_A_NONE || !b[0].aff_used) {
         amount += rs_mod(b[0].c[i].score[RS_CHA]);
@@ -702,6 +734,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " takes "); rs_add_int(l[..], amount);
       rs_add_text(l[..], " "); rs_add_text(l[..], RS_DAMAGE[st.c]);
       rs_add_text(l[..], " ("); rs_add_int(l[..], count); rs_add_text(l[..], "d"); rs_add_int(l[..], st.b);
+      if s.plus != 0 { rs_add_text(l[..], " + "); rs_add_int(l[..], s.plus); }
       if agony != 0 { rs_add_text(l[..], " + "); rs_add_int(l[..], agony); }
       if weak > 0 { rs_add_text(l[..], ", -"); rs_add_int(l[..], weak); rs_add_text(l[..], " enfeebled"); }
       rs_add_text(l[..], ")");
@@ -714,6 +747,16 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       rs_damage(b, i, j, amount, st.c, crit, sp);
       // Hex and Hunter's Mark: 1d6 more when their caster hits the target with an attack roll
       if attack_hit { rs_curse_damage(b, i, j, crit); }
+    } else if st.kind == RS_S_RISE {
+      // a Humanoid this spell killed rises at the start of the caster's next turn as a Zombie that
+      // follows the caster's verbal orders (the world raises it: rise_by, rise_at)
+      if !b[0].c[j].dead || !b[0].c[j].humanoid || b[0].c[j].rise_by >= 0 { continue; }
+      b[0].c[j].rise_by = i;
+      b[0].c[j].rise_at = ifx b[0].who == i then b[0].c[i].turn_at + rs_beat(b) else b[0].c[i].turn_at;
+      l: [1] RsLine;
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " will rise as a Zombie at the start of ");
+      rs_add_name(l[..], b, i); rs_add_text(l[..], "'s next turn");
+      rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_HEAL {
       count := st.a + st.d * rs_max(slot - s.level, 0);
       amount := rs_sum(b[0].dice[..], count, st.b);
@@ -2880,4 +2923,78 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert rs_own_luck(b[..], w, 5, 30) == 0 && rs_own_luck(b[..], w, 20, 15) == 0 && b[0].c[w].uses[RS_USE_LUCK] == 4;
   luck := rs_own_luck(b[..], w, 12, 15);
   #assert luck >= 1 && luck <= 10 && b[0].c[w].uses[RS_USE_LUCK] == 3 && rs_saw(b[..], 0, "Own Luck");
+}
+#test "a level 17 Warlock: four 5th-level Pact slots, a Mystic Arcanum of each level 6 to 9, Charisma 20, four beams" {
+  c := rs_warlock("Vesk", 1, 17, SP_ELDRITCH_BLAST);
+  #assert c.slots_max[5] == 4 && c.slots_max[3] == 0 && c.slots_max[6] == 1 && c.slots_max[7] == 1 && c.slots_max[9] == 1;
+  #assert c.score[RS_CHA] == 20 && rs_spell_dc(c) == 8 + 6 + 5 && rs_cantrip_tier(c.level) == 4;
+  #assert rs_warlock("Ilse", 1, 6, SP_ELDRITCH_BLAST).slots_max[3] == 2 && rs_warlock("Ilse", 1, 11, SP_ELDRITCH_BLAST).slots_max[5] == 3;
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 9;
+  a := rs_add(b[..], c, 1, 3);
+  t := rs_add(b[..], rs_skeleton("Skeleton", 2), 9, 3);
+  b[0].c[t].hp_max = 500; b[0].c[t].hp = 500;
+  rs_start_turn(b[..], a);
+  seq := b[0].book[0].seq;
+  #assert rs_cast(b[..], a, SP_ELDRITCH_BLAST, 0, 0, 0, t);
+  attacks := 0;
+  for e: 0..<(b[0].book[0].seq - seq) { ev := rs_recent(b[0].book[0], e); if ev.kind == RS_EV_ATTACK || ev.kind == RS_EV_MISS { attacks += 1; } }
+  #assert attacks == 4;
+}
+#test "Circle of Death: 8d8 Necrotic in a 60-foot Sphere, Con half; 2d8 more a slot level above 6" {
+  cd := rs_spell(SP_CIRCLE_OF_DEATH);
+  #assert cd.level == 6 && cd.range_ft == 150 && cd.area == RS_A_SPHERE && cd.area_ft == 60 && cd.steps[0].a == RS_CON && cd.steps[1].a == 8 && cd.steps[1].b == 8 && cd.steps[1].c == RS_NECROTIC && cd.steps[1].d == 2;
+  b: [1] RsBattle; b[0].w = 60; b[0].h = 30; b[0].dice[0].state = 5;
+  a := rs_add(b[..], rs_warlock("Vesk", 1, 17, SP_ELDRITCH_BLAST), 1, 15);
+  near := rs_add(b[..], rs_skeleton("A", 2), 20, 15); edge := rs_add(b[..], rs_skeleton("B", 2), 31, 15); out := rs_add(b[..], rs_skeleton("C", 2), 34, 15);
+  for q: 0..<3 { b[0].c[q + 1].hp_max = 300; b[0].c[q + 1].hp = 300; }
+  rs_start_turn(b[..], a);
+  #assert rs_cast(b[..], a, SP_CIRCLE_OF_DEATH, 6, 20, 15, -1);
+  #assert b[0].c[near].hp < 300 && b[0].c[edge].hp < 300 && b[0].c[out].hp == 300 && b[0].c[a].slots[6] == 0;
+}
+#test "Finger of Death: 7d8 + 30 Necrotic, Con half; a Humanoid it kills rises as a Zombie at the start of the caster's next turn" {
+  fd := rs_spell(SP_FINGER_OF_DEATH);
+  #assert fd.level == 7 && fd.range_ft == 60 && fd.plus == 30 && fd.steps[1].a == 7 && fd.steps[1].b == 8 && fd.steps[2].kind == RS_S_RISE;
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 17;
+  a := rs_add(b[..], rs_warlock("Vesk", 1, 17, SP_ELDRITCH_BLAST), 1, 3);
+  t := rs_add(b[..], rs_druid("Rowan", 0, 3), 6, 3);
+  sk := rs_add(b[..], rs_skeleton("Skeleton", 2), 6, 5);
+  rs_start_turn(b[..], a);
+  #assert rs_cast(b[..], a, SP_FINGER_OF_DEATH, 7, 0, 0, t);
+  // at least 30 + 7 (or half of it): a level 3 druid's 24 Hit Points are gone, and its Massive Damage kills it
+  #assert b[0].c[t].hp == 0 && b[0].c[t].rise_by == a && b[0].c[t].rise_at > b[0].clock - 0.01;
+  rs_end_turn(b[..], a);
+  // not a Humanoid: no Zombie
+  b[0].c[a].slots[7] = 1; rs_start_turn(b[..], a);
+  b[0].c[sk].hp = 10;
+  #assert rs_cast(b[..], a, SP_FINGER_OF_DEATH, 7, 0, 0, sk);
+  #assert b[0].c[sk].dead && b[0].c[sk].rise_by < 0;
+}
+#test "the Zombie: AC 8, 15 Hit Points, Slam +3 for 1d8 + 1; Undead Fortitude keeps it at 1 Hit Point on a save" {
+  z := rs_zombie("Zombie", 1);
+  #assert z.ac == 8 && z.hp_max == 15 && z.speed == 20 && rs_weapon_attack(z, z.weapon) == 3 && z.undead && z.fortitude && rs_weapon(W_SLAM).sides == 8;
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 3;
+  i := rs_add(b[..], z, 2, 2);
+  kept := 0;
+  for k: 0..<30 { b[0].c[i].hp = 15; b[0].c[i].dead = false; rs_damage(b[..], -1, i, 15, RS_SLASHING, false, -1); if !b[0].c[i].dead { kept += 1; #assert b[0].c[i].hp == 1; } }
+  // DC 20 against Con +3: a 17 or more on the die, about one in five
+  #assert kept > 0 && kept < 15;
+  b[0].c[i].hp = 15; b[0].c[i].dead = false;
+  rs_damage(b[..], -1, i, 15, RS_RADIANT, false, -1);
+  #assert b[0].c[i].dead;
+}
+#test "Blight: 8d8 Necrotic, Con half, 1d8 more a slot level above 4; Dimension Door: to the point, or 4d6 Force where a creature stands" {
+  bl := rs_spell(SP_BLIGHT);
+  #assert bl.level == 4 && bl.range_ft == 30 && bl.steps[1].a == 8 && bl.steps[1].d == 1 && bl.steps[1].c == RS_NECROTIC;
+  dd := rs_spell(SP_DIMENSION_DOOR);
+  #assert dd.level == 4 && dd.range_ft == 500 && dd.components == "V" && dd.steps[0].kind == RS_S_TELEPORT;
+  b: [1] RsBattle; b[0].w = 120; b[0].h = 20; b[0].dice[0].state = 3;
+  a := rs_add(b[..], rs_warlock("Vesk", 1, 17, SP_ELDRITCH_BLAST), 1, 3);
+  o := rs_add(b[..], rs_skeleton("Skeleton", 2), 40, 3);
+  rs_start_turn(b[..], a);
+  #assert rs_cast(b[..], a, SP_DIMENSION_DOOR, 5, 90, 10, a);
+  #assert b[0].c[a].x == 90 && b[0].c[a].y == 10;
+  rs_end_turn(b[..], a); rs_start_turn(b[..], a);
+  hp := b[0].c[a].hp;
+  #assert rs_cast(b[..], a, SP_DIMENSION_DOOR, 5, 40, 3, a);
+  #assert b[0].c[a].x == 90 && b[0].c[a].hp < hp && b[0].c[a].hp >= hp - 24;
 }

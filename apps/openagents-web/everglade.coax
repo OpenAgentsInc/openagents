@@ -87,6 +87,7 @@
 #load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (aethyr/stand.coax)
 #load "everglade-track.coax";   // what players do, for analytics.coax
 #load "everglade-quality.coax";   // the graphics quality: tier, governor, knobs (aethyr/quality.coax)
+#load "everglade-warlock.coax";   // the Warlock's bar, spells and Zombies (CHARACTER: WARLOCK)
 #load "../../verse/style-preset.coax";
 #load "../../aethyr/budget.coax";
 
@@ -470,6 +471,7 @@ Everglade :: struct {
   lod: Lod;                                // the small pieces drawn near you (everglade-lod.coax)
   doors: Doors;                            // every door you open and close with E (everglade-doors.coax)
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
+  wl: Warlock;                             // the Warlock's bar and its spells' looks (everglade-warlock.coax)
   wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
   fk: [] EgFork;                           // FORK, and a fork's rules: the face holds it (everglade-fork.coax everglade_attach_fork)
   fg: EgForge;                             // Aethyrforge's panels in edit mode (everglade-forge.coax)
@@ -1220,6 +1222,8 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c {
   // "gate+float+captain": a staged hunt (docs/verse/everglade.md, the guard captain): you levitating,
   // the nearest guards after you, and the captain's plan rehearsed in the page (no request leaves it)
   if hash.count > 8 && hash[hash.count - 8..<hash.count] == "+captain" { s[0].guard_ai.cap_rehearse = true; s[0].guard_ai.stage_hunt = true; everglade_hash(s, hash[0..<hash.count - 8]); return; }
+  // "gate+warlock": you play the Warlock (everglade-warlock.coax), as CHARACTER: WARLOCK does
+  if hash.count > 8 && hash[hash.count - 8..<hash.count] == "+warlock" { wl_set(s, true); everglade_hash(s, hash[0..<hash.count - 8]); return; }
   if hash.count > 6 && hash[hash.count - 6..<hash.count] == "+float" { s[0].guard_ai.float_up = true; everglade_hash(s, hash[0..<hash.count - 6]); return; }
   // "commons+wanted5": you start wanted at that level (1 to 5), its waves called in (the anti-air check)
   if hash.count > 8 && hash[hash.count - 8..<hash.count - 1] == "+wanted" {
@@ -3222,7 +3226,7 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
   rangers_you_look(s, o);   // in the look you picked, as the others see you (everglade-rangers.coax)
   shadow(s, u, feet.x, feet.z, floor_under(s, feet.x, feet.z, feet.y), 0.45, 0.6);
   // your class's gear, as the others see on you (everglade-rangers.coax)
-  if ci_you_shown(s) && !you_inside(s) { gear_draw(s, ranger_gear(rig, s[0].skin[..], CLASS_DRUID), rows); }
+  if ci_you_shown(s) && !you_inside(s) { gear_draw(s, ranger_gear(rig, s[0].skin[..], ifx wl_on(s) then CLASS_WARLOCK else CLASS_DRUID), rows); }
 }
 
 NEAR :: 0.1; FAR :: 420.0;

@@ -51,6 +51,8 @@ RS_S_SMITE :: 20;     // part of the caster's melee weapon hit on the target thi
 RS_S_MARK :: 21;      // Hunter's Mark: 1d6 Force more whenever the caster hits the target with an attack roll
 RS_S_WARD :: 22;      // +a AC until the start of the caster's next turn, against the triggering attack too (Shield)
 RS_S_DAZE :: 23;      // on a failed save, condition bits a for the duration and Speed 0, ending if it takes damage (Hypnotic Pattern)
+RS_S_RISE :: 25;      // Finger of Death: a Humanoid the damage killed rises as a Zombie at the start of the caster's next turn
+RS_S_TELEPORT :: 26;  // Dimension Door: the caster teleports to the point; a filled space there is a 4d6 Force each and no teleport
 RS_S_GUARD :: 24;     // Spirit Guardians: an Emanation of area_ft round the caster; a creature it enters, or one that enters it
                       // or ends its turn there, makes a save of ability c once a turn, a dice of b sides Radiant, half on a
                       // success, d more a slot level above; Speed halved in it
@@ -71,6 +73,7 @@ RsSpell :: struct {
   part_of: int;               // a part of another spell (Produce Flame's hurl), -1 none
   humanoid_only: bool;        // its target must be a Humanoid
   burst: bool;                // an area that is there only as it's cast, though the spell lasts (Call Lightning)
+  plus: int;                  // a flat number added to its damage roll (Finger of Death's 7d8 + 30)
   srd: bool = true;           // the SRD's; false: a house rule (house.coax), not SRD content
   page: int;                  // the SRD 5.2.1 page
   text: string;

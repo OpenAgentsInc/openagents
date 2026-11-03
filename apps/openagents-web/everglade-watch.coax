@@ -1015,6 +1015,8 @@ eg_room_known :: (s: [] Everglade) {
 // It falls when the caster's cast bar is done (the press is when the server hears it), as on every page:
 // held until then (everglade-room-abilities.coax eg_ra_later).
 everglade_room_strike :: (s: [] Everglade, by: int, slot: int, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32, seed: int) #export_c {
+  // the Warlock's (everglade-warlock.coax): Eldritch Blast's beams, Fireball
+  if sp_on(s) && slot >= WL_SLOT0 && slot < WL_SLOT0 + WL_SLOTS { s[0].wv.net = true; wl_strike(s, by, slot - WL_SLOT0, v3(fx, fy, fz), v3(ax, ay, az), seed); return; }
   if !sp_on(s) || slot < 0 || slot >= SP_SLOTS { return; }
   eg_ra_later(s, EgRaStrike.{by = by, slot = slot, from = v3(fx, fy, fz), at = v3(ax, ay, az), seed = seed, t = srd_spell(SP_SPELL[slot]).bar});
 }
@@ -1038,6 +1040,7 @@ everglade_room_spells :: (s: [] Everglade, dt: f32) -> int #export_c {
   eg_ra_strikes_due(s, dt);   // the strikes whose cast bars are done fall now
   wt[0].me = clamp_w(s[0].wv.room_by, 0, WATCH_YOUS - 1);
   sp_strikes(s, dt);
+  wl_step(s, dt);   // the Warlock's strikes land (everglade-warlock.coax)
   fi_frame(s, dt);
   wt[0].me = me;
   if s[0].sp.walls_dirty { sp_open_walls(s); }

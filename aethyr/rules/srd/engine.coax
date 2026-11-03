@@ -144,6 +144,7 @@ RS_USES :: 11;
 RsWeapon :: struct { id: string; name: string; dice: int; sides: int; damage: int; finesse: bool; mastery: int; range_ft: int; long_ft: int; }
 W_UNARMED :: 0; W_GREATAXE :: 1; W_SHORTSWORD :: 2; W_SHORTBOW :: 3;
 W_GREATSWORD :: 4; W_LONGSWORD :: 5; W_MACE :: 6; W_LONGBOW :: 7; W_DAGGER :: 8;
+W_SLAM :: 9;   // the Zombie's Slam (a stat block's own: Str, 1d8 Bludgeoning)
 // mastery properties (p. 90-91)
 M_NONE :: 0; M_CLEAVE :: 1; M_GRAZE :: 2; M_SAP :: 3; M_VEX :: 4; M_SLOW :: 5; M_NICK :: 6;
 RS_EFFECTS :: 6;
@@ -246,6 +247,10 @@ RsCreature :: struct {
   x: int; y: int;
   initiative: int;
   turn_at: f32;
+  // Finger of Death (p. 131): a Humanoid it killed rises as a Zombie at the start of its caster's
+  // next turn (rise_by the caster, -1 none; rise_at that turn's start). The world raises it.
+  rise_by: int = -1; rise_at: f32;
+  fortitude: bool;          // Undead Fortitude (the Zombie's): a Con save to drop to 1 Hit Point instead of 0
 }
 rs_name :: (c: [] RsCreature) -> string { return cast(string) c[0].name[0..<c[0].name_n]; }
 rs_set_name :: (c: [] RsCreature, name: string) {
@@ -358,6 +363,10 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   c[0].score = [6] int.[8, 14, 13, 10, 12, 16];
   // an Ability Score Improvement at 4 (the feat, p. 87): Charisma +2
   if level >= 4 { c[0].score[RS_CHA] = rs_min(c[0].score[RS_CHA] + 2, 20); }
+  // and at 8 (Charisma to 20), 12 (Constitution +2) and 16 (Dexterity +2)
+  if level >= 8 { c[0].score[RS_CHA] = rs_min(c[0].score[RS_CHA] + 2, 20); }
+  if level >= 12 { c[0].score[RS_CON] += 2; }
+  if level >= 16 { c[0].score[RS_DEX] += 2; }
   c[0].save_prof[RS_WIS] = true; c[0].save_prof[RS_CHA] = true;
   con := rs_mod(c[0].score[RS_CON]);
   c[0].hp_max = 8 + con + (level - 1) * (5 + con);
@@ -369,6 +378,16 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   at := [6] int.[0, 1, 1, 2, 2, 3];
   l := rs_min(rs_max(level, 1), 5);
   c[0].slots_max[at[l]] = count[l];
+  // Pact Magic past level 6 (the Warlock table, p. 71): two 4th-level slots at 7, two 5th at 9, three at
+  // 11, four at 17; and the Mystic Arcanum (p. 73), one spell of each level once a Long Rest, at 11
+  // (level 6), 13 (7), 15 (8) and 17 (9): a slot of that level each here, which the bar spends only on
+  // its arcanum spell.
+  if level >= 7 {
+    c[0].slots_max[3] = 0;
+    pact := ifx level >= 9 then 5 else 4;
+    c[0].slots_max[pact] = ifx level >= 17 then 4 else ifx level >= 11 then 3 else 2;
+    for a: 6..<10 { if level >= 11 + 2 * (a - 6) { c[0].slots_max[a] = 1; } }
+  }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1;
   c[0].agonizing = -1; c[0].repelling = -1;
@@ -467,7 +486,27 @@ rs_skeleton :: (name: string, team: int) -> RsCreature {
   return c[0];
 }
 
+// The SRD 5.2.1 Zombie (p. 343): Medium Undead, AC 8, HP 15 (2d8 + 6), Speed 20 ft., Str 13 Dex 6
+// Con 16 Int 3 Wis 6 (save +0) Cha 5, Immunity to Poison and to the Exhaustion and Poisoned
+// conditions, CR 1/4 (PB +2); Undead Fortitude; Slam: +3, reach 5 ft., 5 (1d8 + 1) Bludgeoning.
+// Finger of Death raises one (it follows its caster's verbal orders).
+rs_zombie :: (name: string, team: int) -> RsCreature {
+  c: [1] RsCreature;
+  rs_set_name(c[..], name);
+  c[0].team = team; c[0].level = 1; c[0].klass = RS_MONSTER;
+  c[0].score = [6] int.[13, 6, 16, 3, 6, 5];
+  c[0].save_prof[RS_WIS] = true;
+  c[0].hp_max = 15; c[0].hp = 15; c[0].ac = 8; c[0].speed = 20;
+  c[0].spell_ability = -1;
+  c[0].weapon = W_SLAM; c[0].ranged = -1;
+  c[0].undead = true; c[0].fortitude = true;
+  c[0].immune = 1 << RS_POISON; c[0].immune_cond = RS_POISONED | RS_EXHAUSTION;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  return c[0];
+}
+
 rs_weapon :: (w: int) -> RsWeapon {
+  if w == W_SLAM { return RsWeapon.{id = "slam", name = "Slam", dice = 1, sides = 8, damage = RS_BLUDGEONING, finesse = false, mastery = M_NONE, range_ft = 5, long_ft = 5}; }
   if w == W_GREATAXE { return RsWeapon.{id = "greataxe", name = "Greataxe", dice = 1, sides = 12, damage = RS_SLASHING, finesse = false, mastery = M_CLEAVE, range_ft = 5, long_ft = 5}; }
   if w == W_SHORTSWORD { return RsWeapon.{id = "shortsword", name = "Shortsword", dice = 1, sides = 6, damage = RS_PIERCING, finesse = true, mastery = M_VEX, range_ft = 5, long_ft = 5}; }
   if w == W_SHORTBOW { return RsWeapon.{id = "shortbow", name = "Shortbow", dice = 1, sides = 6, damage = RS_PIERCING, finesse = false, mastery = M_VEX, range_ft = 80, long_ft = 320}; }
@@ -535,6 +574,10 @@ rs_bard :: (name: string, team: int, level: int) -> RsCreature {
   c[0] = rs_hero(name, team, level, RS_BARD, [6] int.[8, 14, 13, 10, 12, 16], RS_DEX, RS_CHA, 8);
   // an Ability Score Improvement at 4 (the feat, p. 87): Charisma +2
   if level >= 4 { c[0].score[RS_CHA] = rs_min(c[0].score[RS_CHA] + 2, 20); }
+  // and at 8 (Charisma to 20), 12 (Constitution +2) and 16 (Dexterity +2)
+  if level >= 8 { c[0].score[RS_CHA] = rs_min(c[0].score[RS_CHA] + 2, 20); }
+  if level >= 12 { c[0].score[RS_CON] += 2; }
+  if level >= 16 { c[0].score[RS_DEX] += 2; }
   c[0].ac = 11 + rs_mod(c[0].score[RS_DEX]);
   c[0].spell_ability = RS_CHA; c[0].weapon = W_DAGGER;
   rs_full_slots(c[..], level);
@@ -662,6 +705,10 @@ rs_sorcerer :: (name: string, team: int, level: int) -> RsCreature {
   c[0] = rs_hero(name, team, level, RS_SORCERER, [6] int.[8, 14, 13, 10, 12, 16], RS_CON, RS_CHA, 6);
   // an Ability Score Improvement at 4 (the feat, p. 87): Charisma +2
   if level >= 4 { c[0].score[RS_CHA] = rs_min(c[0].score[RS_CHA] + 2, 20); }
+  // and at 8 (Charisma to 20), 12 (Constitution +2) and 16 (Dexterity +2)
+  if level >= 8 { c[0].score[RS_CHA] = rs_min(c[0].score[RS_CHA] + 2, 20); }
+  if level >= 12 { c[0].score[RS_CON] += 2; }
+  if level >= 16 { c[0].score[RS_DEX] += 2; }
   c[0].ac = 10 + rs_mod(c[0].score[RS_DEX]);
   if level >= 3 { c[0].hp_max += 3 + (level - 3); c[0].hp = c[0].hp_max; c[0].ac += rs_mod(c[0].score[RS_CHA]); }
   c[0].spell_ability = RS_CHA; c[0].weapon = W_DAGGER;

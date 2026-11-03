@@ -535,6 +535,7 @@ static void e5_frame(uint32_t state) {
   for (int64_t q = 0; q < hn; q++) e5r_hurt(e5r(), (int64_t)e5_pass[q * 2], (int64_t)e5_pass[q * 2 + 1]);
   int64_t en = e5_ends(e5v(), (coax_v_f32){e5_pass, 64});
   for (int64_t q = 0; q < en; q++) e5r_end_conc(e5r(), (int64_t)e5_pass[q]);
+  e5r_class(e5r(), everglade_class(g));   /* the druid or the Warlock (everglade-warlock.coax) */
   e5r_step(e5r(), (float)now);
   int64_t dn = e5_due(e5v(), (coax_v_f32){e5_pass, 63});
   for (int64_t q = 0; q < dn; q++) {

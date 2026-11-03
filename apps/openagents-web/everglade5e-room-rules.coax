@@ -36,6 +36,7 @@ E5RR_BEASTS :: 32;                           // summoned creatures at once
 E5RR_BEAST0 :: E5RR_FOLK0 + E5R_FOLK;        // summoned creature q is creature E5RR_BEAST0 + q
 E5RR_PACK :: 4;                              // Conjure Animals' wolves (everglade-circle.coax CI_WOLVES)
 E5RR_FORM_WOLF :: 1;                         // its form, as everglade-circle.coax CI_FORM_WOLF
+E5RR_FORM_ZOMBIE :: 9;                       // a Humanoid Finger of Death killed, risen (everglade-warlock.coax WL_FORM_ZOMBIE)
 E5RR_BEAST_TEAM :: 2;                        // neither the players' (0) nor the town's (1): all can hurt it
 E5RR_RUN :: 9.0;                             // m/s a beast runs (everglade-circle.coax CI_CA_SPEED)
 E5RR_REACH :: 1.8;                           // m: a bite's 5 feet, from middle to middle
@@ -68,6 +69,9 @@ E5rRoom :: struct {
   zone_slot: [E5RR_ZONES] int;               // the bar slot that made it
   next_id: int;
   bar: [FB_EG_SLOTS] FbAb;
+  wbar: [FB_WL_SLOTS] FbAb;                  // the Warlock's bar: slots FB_WL0 + k
+  klass: [E5RR_SEATS] int;                   // each seat's class: 0 the druid, 1 the Warlock
+  last_foe: [E5RR_SEATS] int;                // the person each seat last aimed harm at (-1 none): its Zombies go for them
   block: [E5R_FOLK] int;
   folk_x: [E5R_FOLK] f32; folk_z: [E5R_FOLK] f32;   // where each person stands (metres)
   beasts: [E5RR_BEASTS] E5rBeast;
@@ -128,17 +132,25 @@ e5rr_start :: (r: [] E5rRoom, seed: int) #export_c {
   for q: 0..<E5RR_ZONES { r[0].zones[q].on = false; r[0].zone_id[q] = 0; }
   r[0].next_id = 1;
   _ := fb_everglade(r[0].bar[..]);
+  _ = fb_warlock_bar(r[0].wbar[..]);
+  for s: 0..<E5RR_SEATS { r[0].klass[s] = 0; r[0].last_foe[s] = -1; }
   r[0].seen = b[0].book[0].seq;
   r[0].started = true;
 }
 
 // A player sits at seat s: a fresh caster, full Hit Points, at (x, z).
-e5rr_join :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c {
+e5rr_join :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c { e5rr_join_as(r, s, x, z, 0); }
+// The same, as class klass (the H frame's CLASS): 0 Everglade's druid, 1 the level 17 Warlock.
+e5rr_join_as :: (r: [] E5rRoom, s: int, x: f32, z: f32, klass: int) #export_c {
   if !r[0].started || s < 0 || s >= E5RR_SEATS { return; }
   b := r[0].b[..];
   i := E5RR_SEAT + s;
   t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
-  b[0].c[i] = fb_everglade_hero("Player", 0);
+  r[0].klass[s] = ifx klass == 1 then 1 else 0;
+  r[0].last_foe[s] = -1;
+  b[0].c[i] = ifx klass == 1 then fb_warlock_hero("Player", 0) else fb_everglade_hero("Player", 0);
+  // the seat's last player's Zombies go with it
+  for q: 0..<E5RR_BEASTS { if r[0].beasts[q].id != 0 && r[0].beasts[q].by == s && r[0].beasts[q].form == E5RR_FORM_ZOMBIE { b[0].c[E5RR_BEAST0 + q].dead = true; } }
   b[0].c[i].turn_at = hi_r(t, b[0].clock); b[0].c[i].round_at = ro;
   b[0].c[i].x = e5r_sq(x); b[0].c[i].y = e5r_sq(z);
   r[0].seat[s] = FbSeat.{me = i};
@@ -157,6 +169,16 @@ e5rr_leave :: (r: [] E5rRoom, s: int) #export_c {
   r[0].live[s] = false;
   e5rr_zones_check(r);
   e5rr_beasts_check(r);
+}
+// Bar slot k's entry (the druid's bar, or the Warlock's from FB_WL0); e5r_has(k) first.
+e5rr_entry :: (r: [] E5rRoom, k: int) -> FbAb { return ifx k >= FB_WL0 then r[0].wbar[k - FB_WL0] else r[0].bar[k]; }
+// Where the engine has seat s (Everglade's metres, a square's middle) into out[0], out[1]: after a
+// Dimension Door, where it teleported to. False when the seat is empty.
+e5rr_seat_at :: (r: [] E5rRoom, s: int, out: [] f32) -> bool #export_c {
+  if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] || out.count < 2 { return false; }
+  c := r[0].b[0].c[E5RR_SEAT + s];
+  out[0] = f32(E5R_X0) + (f32(c.x) + 0.5) * f32(E5R_SQ); out[1] = f32(E5R_X0) + (f32(c.y) + 0.5) * f32(E5R_SQ);
+  return true;
 }
 // Where seat s stands now (Everglade's metres).
 e5rr_place :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c {
@@ -208,6 +230,7 @@ e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c {
     if r[0].beasts[q].id == 0 || c.dead || c.turn_at > b[0].clock { continue; }
     b[0].who = i; rs_start_turn(b, i); rs_end_turn(b, i); b[0].who = -1;
   }
+  e5rr_rise(r);
   e5rr_beasts_step(r, dt);
   for k: 0..<E5RR_ZONES / FB_ZONES { _ := fb_zones_round(r[0].zones[k * FB_ZONES..<(k + 1) * FB_ZONES], b); }
   e5rr_zones_check(r);
@@ -247,10 +270,10 @@ e5rr_most_hurt :: (r: [] E5rRoom, s: int) -> int {
 // nearest the point within 10 feet). The engine rolls it. False (nothing spent) when it can't: no
 // such slot, the seat is dead or can't act.
 e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #export_c {
-  if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] || k < 0 || k >= FB_EG_SLOTS { return false; }
+  if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] || !e5r_has(k) || (k >= FB_WL0) != (r[0].klass[s] == 1) { return false; }
   b := r[0].b[..];
   me := E5RR_SEAT + s;
-  a := r[0].bar[k];
+  a := e5rr_entry(r, k);
   if a.kind == FB_WORLD { return true; }
   if b[0].c[me].dead || b[0].c[me].hp <= 0 || !rs_can_act(b[0].c[me]) { return false; }
   if a.kind == FB_SPELL && a.sp == SP_CONJURE_ANIMALS { return e5rr_conjure(r, s, x, z); }
@@ -291,6 +314,8 @@ e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #e
   before: [10] int;
   for l: 0..<10 { before[l] = b[0].c[me].slots[l]; }
   ok := fb_seat_use(b, r[0].seat[s..<s + 1], a, foe, tx, ty, ally);
+  // a Warlock's harm aimed at a person sends its Zombies at them
+  if ok && !helps && foe >= E5RR_FOLK0 && foe < E5RR_FOLK0 + E5R_FOLK { e5rr_send(r, s, foe, x, z); }
   if !helps && !r[0].pvp { for o: 0..<E5RR_SEATS { if o != s { b[0].c[E5RR_SEAT + o].x = kept_x[o]; b[0].c[E5RR_SEAT + o].y = kept_y[o]; } } }
   if ok && a.again >= 0 {
     spent := 0;
@@ -309,10 +334,10 @@ e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #e
 }
 // Seat s ends what bar slot k holds up: its concentration, when that is k's spell.
 e5rr_end :: (r: [] E5rRoom, s: int, k: int) -> bool #export_c {
-  if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] || k < 0 || k >= FB_EG_SLOTS { return false; }
+  if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] || !e5r_has(k) { return false; }
   b := r[0].b[..];
   i := E5RR_SEAT + s;
-  a := r[0].bar[k];
+  a := e5rr_entry(r, k);
   if a.kind != FB_SPELL || b[0].c[i].conc < 0 || b[0].c[i].conc != a.sp { return false; }
   rs_end_concentration(b, i, " (ended)");
   e5rr_zones_check(r);
@@ -345,6 +370,52 @@ e5rr_wolf :: () -> RsCreature {
   c[0] = fb_folk("Wolf", E5RR_BEAST_TEAM, E5RR_WOLF_AC, E5RR_WOLF_HP, E5RR_WOLF_SCORES);
   c[0].humanoid = false; c[0].speed = 40;
   return c[0];
+}
+// Finger of Death (SRD 5.2.1 p. 131): a Humanoid it kills rises at the start of the caster's next turn
+// as a Zombie under the caster's command. The room raises each where the person fell, set on the one
+// its caster last aimed harm at. A Zombie stays until it drops to 0 Hit Points, its seat's player
+// leaves or another takes the seat, or the rebuild (R).
+e5rr_rise :: (r: [] E5rRoom) {
+  b := r[0].b[..];
+  for j: 0..<E5R_FOLK {
+    i := e5rr_folk(j);
+    by := b[0].c[i].rise_by;
+    if by < E5RR_SEAT || by >= E5RR_SEAT + E5RR_SEATS || b[0].c[i].rise_at > b[0].clock { continue; }
+    b[0].c[i].rise_by = -1;
+    s := by - E5RR_SEAT;
+    if !r[0].live[s] { continue; }
+    q := -1;
+    for o: 0..<E5RR_BEASTS { if q < 0 && r[0].beasts[o].id == 0 { q = o; } }
+    if q < 0 { continue; }
+    k := E5RR_BEAST0 + q;
+    t := b[0].c[k].turn_at; ro := b[0].c[k].round_at;
+    b[0].c[k] = rs_zombie("Zombie", E5RR_BEAST_TEAM);
+    b[0].c[k].turn_at = hi_r(t, b[0].clock); b[0].c[k].round_at = ro;
+    b[0].c[k].x = b[0].c[i].x; b[0].c[k].y = b[0].c[i].y;
+    foe := r[0].last_foe[s];
+    if foe >= 0 && (b[0].c[foe].dead || b[0].c[foe].x == E5R_AWAY) { foe = -1; }
+    x := r[0].folk_x[j]; z := r[0].folk_z[j];
+    r[0].beasts[q] = E5rBeast.{id = r[0].next_id, tag = r[0].next_id, by = s, spell = SP_FINGER_OF_DEATH, form = E5RR_FORM_ZOMBIE,
+                              x = x, z = z, goal_x = x, goal_z = z, foe = foe, bite_at = b[0].clock + rs_beat(b)};
+    r[0].next_id += 1;
+    l: [1] RsLine;
+    rs_add_text(l[..], "  "); rs_add_name(l[..], b, i); rs_add_text(l[..], " rises as a Zombie");
+    rs_tell(b, RS_EV_PUSH, SP_FINGER_OF_DEATH, by, k, 0, 0, l[..]);
+  }
+}
+// Seat s sends its Zombies at the person foe (a creature), last seen at (x, z).
+e5rr_send :: (r: [] E5rRoom, s: int, foe: int, x: f32, z: f32) {
+  r[0].last_foe[s] = foe;
+  for q: 0..<E5RR_BEASTS {
+    if r[0].beasts[q].id == 0 || r[0].beasts[q].by != s || r[0].beasts[q].form != E5RR_FORM_ZOMBIE { continue; }
+    r[0].beasts[q].foe = foe; r[0].beasts[q].goal_x = x; r[0].beasts[q].goal_z = z;
+  }
+}
+// The rebuild (R): every Zombie falls (the town's people stand up whole, e5rr_folk_restore).
+e5rr_zombies_clear :: (r: [] E5rRoom) #export_c {
+  if !r[0].started { return; }
+  for q: 0..<E5RR_BEASTS { if r[0].beasts[q].id != 0 && r[0].beasts[q].form == E5RR_FORM_ZOMBIE { r[0].b[0].c[E5RR_BEAST0 + q].dead = true; } }
+  e5rr_beasts_check(r);
 }
 // Seat s casts Conjure Animals at (x, z): the pack comes there, or, while it has one, runs there.
 // Either way it sets on the person within 10 feet of the point (the nearest), if any.
@@ -434,7 +505,7 @@ e5rr_beasts_step :: (r: [] E5rRoom, dt: f32) {
     d := sqrt(dx * dx + dz * dz);
     bt[0].moving = false;
     if d > stop {
-      step := f32(E5RR_RUN) * dt;
+      step := f32(E5RR_RUN) * dt * f32(b[0].c[i].speed) / 40.0;   // a Wolf's 40 feet, a Zombie's 20
       if step > d - stop { step = d - stop; }
       bt[0].x += dx / d * step; bt[0].z += dz / d * step;
       bt[0].moving = step > 0.001;
@@ -443,7 +514,7 @@ e5rr_beasts_step :: (r: [] E5rRoom, dt: f32) {
     b[0].c[i].x = e5r_sq(bt[0].x); b[0].c[i].y = e5r_sq(bt[0].z);
     if foe >= 0 && d <= E5RR_REACH && b[0].clock >= bt[0].bite_at && rs_can_act(b[0].c[i]) {
       bt[0].bite_at = b[0].clock + rs_beat(b);
-      e5rr_bite(r, q, foe);
+      if bt[0].form == E5RR_FORM_ZOMBIE { e5rr_slam(r, q, foe); } else { e5rr_bite(r, q, foe); }
     }
   }
 }
@@ -469,6 +540,20 @@ e5rr_bite :: (r: [] E5rRoom, q: int, j: int) {
   rs_damage(b, i, j, amount, RS_PIERCING, roll.crit, -1);
   if !b[0].c[j].dead { b[0].c[j].cond = b[0].c[j].cond | RS_PRONE; }
 }
+// Zombie q slams creature j (SRD 5.2.1 p. 343): +3, reach 5 ft., 5 (1d8 + 1) Bludgeoning.
+E5RR_ZOMBIE_HIT :: 3; E5RR_ZOMBIE_PLUS :: 1;
+e5rr_slam :: (r: [] E5rRoom, q: int, j: int) {
+  b := r[0].b[..];
+  i := E5RR_BEAST0 + q;
+  roll := rs_roll_attack(b, i, j, rs_attack_edge(b, i, j, true, true), E5RR_ZOMBIE_HIT, 20, false);
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], " slams "); rs_add_name(l[..], b, j); rs_add_text(l[..], ": "); rs_add_roll(l[..], roll, E5RR_ZOMBIE_HIT);
+  if !roll.hit { rs_add_text(l[..], ": miss"); rs_tell(b, RS_EV_MISS, -1, i, j, 0, 0, l[..]); return; }
+  amount := rs_roll(b[0].dice[..], 8) + (ifx roll.crit then rs_roll(b[0].dice[..], 8) else 0) + E5RR_ZOMBIE_PLUS;
+  rs_add_text(l[..], ifx roll.crit then ": critical hit, " else ": hit, "); rs_add_int(l[..], amount); rs_add_text(l[..], " Bludgeoning");
+  rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, RS_BLUDGEONING, l[..]);
+  rs_damage(b, i, j, amount, RS_BLUDGEONING, roll.crit, -1);
+}
 // A summoned creature at 0 Hit Points, or whose caster's Concentration on its spell ended, is gone.
 e5rr_beasts_check :: (r: [] E5rRoom) {
   b := r[0].b[..];
@@ -477,7 +562,7 @@ e5rr_beasts_check :: (r: [] E5rRoom) {
     if bt.id == 0 { continue; }
     i := E5RR_BEAST0 + q;
     me := E5RR_SEAT + bt.by;
-    held := b[0].c[me].conc == bt.spell;
+    held := b[0].c[me].conc == bt.spell || (bt.form == E5RR_FORM_ZOMBIE && r[0].live[bt.by]);
     if b[0].c[i].dead || b[0].c[i].hp <= 0 || !held {
       r[0].beasts[q].id = 0;
       b[0].c[i].dead = true; b[0].c[i].hp = 0; b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY;
@@ -687,4 +772,41 @@ e5rr_test_people :: (r: [] E5rRoom) {
   left = 0;
   for q: 0..<E5RR_BEASTS { if e5rr_beast(r[..], q, bf[..]) > 0 { left += 1; } }
   #assert left == 0;
+}
+#test "Everglade 5E room: a level 17 Warlock seat; Finger of Death's dead rise as its Zombies and go for whom it sends them at" #steps 4000000000 {
+  r: [1] E5rRoom;
+  e5rr_start(r[..], 5);
+  e5rr_test_people(r[..]);
+  e5rr_join_as(r[..], 0, 0, 0, 1); e5rr_join(r[..], 1, 1, 0);
+  #assert r[0].b[0].c[0].level == 17 && r[0].b[0].c[1].level != 17;
+  #assert !e5rr_use(r[..], 1, FB_WL0 + 4, 3, 0, 0);   // a druid has no Finger of Death
+  #assert !e5rr_use(r[..], 0, 1, 3, 0, 0);            // the Warlock no Thunderbolt
+  #assert e5rr_use(r[..], 0, FB_WL0 + 4, 3, 0, 0);    // Finger of Death at guard 0: 7d8 + 30
+  out: [E5RR_OUT_FLOATS] f32;
+  e5rr_folk_out(r[..], 0, out[..]); #assert out[4] == 1;
+  e5rr_seat_out(r[..], 1, out[..]); #assert out[0] == 57;   // never the other player
+  ev: [256 * E5RR_EV_FLOATS] f32;
+  bf: [E5RR_BEAST_FLOATS] f32;
+  t := r[0].b[0].clock;
+  zq := -1;
+  for k: 0..<120 { t += 1.0 / 30.0; e5rr_step(r[..], t); _ := e5rr_events(r[..], ev[..]); }
+  for q: 0..<E5RR_BEASTS { if e5rr_beast(r[..], q, bf[..]) > 0 && bf[7] == f32(E5RR_FORM_ZOMBIE) { zq = q; #assert bf[4] == 15 && bf[6] == 0; } }
+  #assert zq >= 0;
+  // sent at the commoner 30 m off: it shambles there (20 feet, half a Wolf's run) and slams
+  e5rr_send(r[..], 0, e5rr_folk(2), 30, 0);
+  slams := 0;
+  for k: 0..<900 {
+    t += 1.0 / 30.0;
+    e5rr_step(r[..], t);
+    m := e5rr_events(r[..], ev[..]);
+    for e: 0..<m { o := e * E5RR_EV_FLOATS; if ev[o + 2] > f32(E5RR_TGT_BEAST) && (ev[o] == f32(RS_EV_DAMAGE) || ev[o] == f32(RS_EV_MISS)) { #assert ev[o + 3] == 2; slams += 1; } }
+  }
+  #assert slams >= 1;
+  // Dimension Door: the engine's seat stands where it teleported
+  at: [2] f32;
+  #assert e5rr_use(r[..], 0, FB_WL0 + 5, 12, 0, -1);
+  #assert e5rr_seat_at(r[..], 0, at[..]) && abs(at[0] - 12) < 1.6 && abs(at[1]) < 1.6;
+  // the rebuild ends the Zombies; so does the player leaving
+  e5rr_zombies_clear(r[..]);
+  #assert e5rr_beast(r[..], zq, bf[..]) == 0;
 }

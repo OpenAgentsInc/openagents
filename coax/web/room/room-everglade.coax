@@ -50,6 +50,8 @@ EG_TGT_SEAT :: 1000;            // TGT codes (spec 3.6): 1000 + SS a seat, 2000 
 // ability (everglade-abilities.coax AB_*, everglade-circle.coax)
 EG_SLOT_STONE :: 10; EG_SLOT_TENTACLES :: 12; EG_SLOT_CONJURE :: 32; EG_SLOT_THORNS :: 36;
 EG_SP_SLOTS :: 4;
+// the Warlock's slots that the world plays (fivebar.coax FB_WL0 + k): Eldritch Blast, Fireball, Dimension Door
+EG_WL_BLAST :: 64; EG_WL_FIREBALL :: 65; EG_WL_DOOR :: 69;
 EG_FOLK_FLOATS :: 7;            // a townsperson as the world hands them (everglade-watch.coax EG_ROOM_VIEW_FLOATS)
 EG_CRIMES :: 16;
 EG_FOLK_STEP :: 0.3; EG_FOLK_TURN :: 0.15;   // m and radians a townsperson moves before a seat hears them again
@@ -249,6 +251,7 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
     v[0].eg[k].rebuilt_at = now;
     v[0].eg[k].rebuild = true;
     e5rr_folk_restore(v[0].eg[k].rules[..]);
+    e5rr_zombies_clear(v[0].eg[k].rules[..]);   // the Warlock's Zombies fall with it
     for q: 0..<EG_PIECES { v[0].eg[k].broken[q] = false; v[0].eg[k].burning[q] = false; }
     p := v[0].eg[k].seat[seat].pose;
     b: [32] u8;
@@ -282,6 +285,9 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   st := v[0].eg[k].seat[seat..<seat + 1];
   st[0].look_n = eg_word(h.look, st[0].look[..]);
   st[0].klass_n = eg_word(h.kind, st[0].klass[..]);
+  // CLASS warlock: the seat's caster is the level 17 Warlock (fivebar.coax fb_warlock_hero), else the druid
+  wl := ifx cast(string) st[0].klass[0..<st[0].klass_n] == "warlock" then 1 else 0;
+  if v[0].eg[k].rules[0].klass[seat] != wl { e5rr_join_as(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl); }
   st[0].flags = eg_clamp(h.flags, 0, 255);
   // the name: letters, digits, spaces, '-' and '_' ("-" none)
   m := 0;
@@ -314,9 +320,11 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
   if !r[0].ok || eg_fields(text) != 7 { return; }
   seq := wc.seq;
   slot := wc.slot;
-  if slot < 0 || slot >= FB_EG_SLOTS { eg_refuse(v, k, seat, seq, "slot"); return; }
+  // the druid's bar, or the Warlock's (FB_WL0 on) for a Warlock's seat
+  wl := v[0].eg[k].rules[0].klass[seat] == 1;
+  if !e5r_has(slot) || (slot >= FB_WL0) != wl { eg_refuse(v, k, seat, seq, "slot"); return; }
   st := v[0].eg[k].seat[seat..<seat + 1];
-  a := v[0].eg[k].rules[0].bar[slot];
+  a := e5rr_entry(v[0].eg[k].rules[..], slot);
   if a.kind == FB_WORLD { eg_refuse(v, k, seat, seq, "slot"); return; }
   if v[0].eg[k].tick - st[0].last_cast < EG_CAST_GAP { eg_refuse(v, k, seat, seq, "cooldown"); return; }
   o: [E5RR_OUT_FLOATS] f32;
@@ -351,7 +359,8 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
   seed := 1 + (v[0].eg[k].seed + v[0].eg[k].tick * 31 + seat * 977 + slot * 7) % 999983;
   n := wire_put_cast_e(b[..], 0, WireCastE.{ss = seat, slot = slot, ax = ax, ay = ay, az = az, seed = seed});
   // Everglade's own four fall on the world's town from the same seed the pages play them from
-  if slot < EG_SP_SLOTS && v[0].eg[k].strike_n < EG_CASTS {
+  // and the Warlock's that strike the town: Eldritch Blast's beams and Fireball
+  if (slot < EG_SP_SLOTS || slot == EG_WL_BLAST || slot == EG_WL_FIREBALL) && v[0].eg[k].strike_n < EG_CASTS {
     v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = seat, slot = slot, fx = me.x, fy = me.y + 1.6, fz = me.z, ax = ax, ay = ay, az = az, seed = seed};
     v[0].eg[k].strike_n += 1;
     // a spell on the town holds R off; what the fire burns through and what falls with it don't (R puts the fire out)
@@ -426,7 +435,15 @@ rm_eg_end :: (v: [] RmServer, k: int) #export_c {
     x := cs.x; z := cs.z;
     // a cast at a seat or a summoned creature lands where it stands now
     at := eg_where(v, k, cs.tgt, x, z); x = at.x; z = at.z;
-    _ := e5rr_use(v[0].eg[k].rules[..], cs.seat, cs.slot, x, z, cs.tgt);
+    ok := e5rr_use(v[0].eg[k].rules[..], cs.seat, cs.slot, x, z, cs.tgt);
+    // Dimension Door: the world puts the seat where the engine teleported it (a rooftop: the aim's height)
+    at2: [2] f32;
+    if ok && cs.slot == EG_WL_DOOR && v[0].eg[k].strike_n < EG_CASTS && e5rr_seat_at(v[0].eg[k].rules[..], cs.seat, at2[..]) {
+      me := v[0].eg[k].seat[cs.seat].pose;
+      ax := ifx abs(at2[0] - cs.x) < 1.6 then cs.x else at2[0]; az := ifx abs(at2[1] - cs.z) < 1.6 then cs.z else at2[1];
+      v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = cs.seat, slot = cs.slot, fx = me.x, fy = me.y, fz = me.z, ax = ax, ay = cs.y, az = az, seed = 1};
+      v[0].eg[k].strike_n += 1;
+    }
   }
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
   eg_engine_events(v, k);
@@ -858,6 +875,37 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   stepped := 0;
   for q: 0..<10 { was := v[0].eg[k].seat[0].ack; eg_test_tick(v[..], k); stepped += v[0].eg[k].seat[0].ack - was; }
   #assert stepped <= EG_BANK + 10;
+}
+
+#test "everglade room: a Warlock's seat casts the Warlock's bar and not the druid's; a druid's seat not the Warlock's; everyone hears the cast" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-warlock HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 1 ranger.0.0.0 warlock 0 -");
+  rm_heard(v[..], 1, "H 1 ranger.0.0.0 druid 0 -");
+  #assert v[0].eg[k].rules[0].klass[0] == 1 && v[0].eg[k].rules[0].klass[1] == 0;
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  // Eldritch Blast (slot 64) at (4, 7): within its 120 feet
+  rm_heard(v[..], 0, "C 1 64 400 0 700 -1");
+  for q: 0..<4 { eg_test_tick(v[..], k); }
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), ";e cast 0 64 400 0 700 ") && eg_test_has(eg_test_of(box[..], 1), ";e cast 0 64 400 0 700 ");
+  for q: 0..<10 { eg_test_tick(v[..], k); }
+  eg_test_drain(v[..], box[..]);
+  // the druid's Thunderbolt from the Warlock, and Eldritch Blast from the druid: refused
+  rm_heard(v[..], 0, "C 2 1 400 0 700 -1");
+  rm_heard(v[..], 1, "C 3 64 400 0 700 -1");
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), "r 2 slot") && eg_test_has(eg_test_of(box[..], 1), "r 3 slot");
+  // Blight's 30 feet: a cast 20 m off is out of range
+  rm_heard(v[..], 0, "C 4 66 2000 0 0 -1");
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), "r 4 range");
 }
 
 #test "everglade room: the wolves one seat conjures are in both seats' state and the other can kill one; a heal reaches the other; a joiner's snapshot has the pack; it outlasts its caster's leaving" #steps 4000000000 {

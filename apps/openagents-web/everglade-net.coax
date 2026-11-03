@@ -207,6 +207,7 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   wall := net_number(fact(facts, "now")); nav := net_number(fact(facts, "nav"));
   if wall > 0 && nav >= 0 && n[0].synced == 0 { n[0].offset = wall - nav; }
   if n[0].look_n == 0 { n[0].look_n = net_copy(n[0].look[..], "ranger.0.0.0"); }
+  if net_query(url, "class") == "warlock" { wl_set(s, true); }   // ?class=warlock: the Warlock (everglade-warlock.coax)
 }
 // A minted player (POST /api/playtest/player answered {"key":...,"id":"...",...}): its id for the hello.
 net_player :: (s: [] Everglade, record: string) #export_c {
@@ -544,7 +545,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
   if wire_is(t, "e cast") {
     r[0] = wire_rd(t, 6);
     ce := wire_read_cast_e(t, r[..]);
-    if !r[0].ok || ce.slot < 0 || ce.slot >= SP_REBUILD { return; }
+    if !r[0].ok || ce.slot < 0 || (ce.slot >= SP_REBUILD && (ce.slot < WL_SLOT0 || ce.slot >= WL_SLOT0 + WL_SLOTS)) { return; }
     k := net_ent(n, ce.ss, false);
     if k >= 0 { n[0].ents[k].cast_slot = ce.slot; n[0].ents[k].cast_at = n[0].tick_t; }
     for q: 0..<NET_FX {
@@ -782,13 +783,15 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
     if !fx.live || (ifx fx.caster == n[0].seat then now else rt) < fx.t { continue; }
     n[0].fx[q].live = false;
     if !sp_on(s) { continue; }
-    if fx.slot >= SP_SLOTS { net_flash(s, fx.slot - SP_SLOTS, fx.at); n[0].played += 1; continue; }
     from := add(fx.at, v3(0, 2, 0));
     if fx.caster == n[0].seat { from = v3(x, y + 1.6, z); }
     else {
       k := net_ent(n, fx.caster, false);
       if k >= 0 { c := n[0].ents[k].shown; from = v3(c.x, c.y + 1.6, c.z); }
     }
+    // the Warlock's (everglade-warlock.coax): its look, from the caster's hand
+    if fx.slot >= WL_SLOT0 { wl_play(s, fx.slot - WL_SLOT0, ifx fx.caster == n[0].seat then wl_hand(s) else sub(from, v3(0, 0.15, 0)), fx.at, fx.seed, fx.caster == n[0].seat); n[0].played += 1; continue; }
+    if fx.slot >= SP_SLOTS { net_flash(s, fx.slot - SP_SLOTS, fx.at); n[0].played += 1; continue; }
     net_play(s, fx.slot, from, fx.at, fx.seed);
     n[0].played += 1;
   }
@@ -796,7 +799,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
 net_hello :: (s: [] Everglade, n: [] EgNet) {
   n[0].hello_due = false;
   look := ifx n[0].look_n > 0 then cast(string) n[0].look[0..<n[0].look_n] else "ranger.0.0.0";
-  net_send(n, wire_put_hello(n[0].out[..], 0, WireHello.{look = look, kind = "druid", flags = (ifx s[0].touch then 1 else 0) | (ifx n[0].account then 2 else 0), name = ""}));
+  net_send(n, wire_put_hello(n[0].out[..], 0, WireHello.{look = look, kind = ifx wl_on(s) then "warlock" else "druid", flags = (ifx s[0].touch then 1 else 0) | (ifx n[0].account then 2 else 0), name = ""}));
 }
 // Your intents: a cast from bar slot b at the aim (target an entity, -1 none), the end of what slot b
 // holds up, the town rebuilt. False when there is no room to send them to.
@@ -945,6 +948,7 @@ net_draw :: (s: [] Everglade) {
     else if en.kind == WK_ZONE && en.p1 != AB_REVERSE { net_draw_zone(s, en, age); }   // (Reverse Gravity's is ab_draw's: net_follow)
     else if en.kind == WK_LINE { net_draw_line(s, en, age); }
     // a summoned creature is a beast of flesh now (the room's battle has its stat block), not a spirit
+    else if en.kind == WK_BEAST && en.p1 == WL_FORM_ZOMBIE { wl_zombie(s, en.eid, v3(en.shown.x, en.shown.y, en.shown.z), en.shown.yaw, en.run, ifx abs(en.shown.vx) + abs(en.shown.vz) > 0.2 then 1.0f32 else 0.0f32, clamp(age / 1.2, 0, 1)); }
     else if en.kind == WK_BEAST { ci_beast(s, clamp_i(en.p1, 1, CI_FORMS - 1), v3(en.shown.x, en.shown.y, en.shown.z), en.shown.yaw, en.run, ifx abs(en.shown.vx) + abs(en.shown.vz) > 0.2 then 1.0f32 else 0.0f32, false, clamp(age / 0.6, 0, 1)); }
   }
 }

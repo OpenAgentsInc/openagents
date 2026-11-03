@@ -21,8 +21,8 @@ chat 200000
 connect-pylon 80000
 deadgears 450000
 droprealm 180000
-everglade 1650000
-everglade5e 1660000
+everglade 1770000
+everglade5e 1830000
 fairy 660000
 fivelab 525000
 fivemmo 1430000

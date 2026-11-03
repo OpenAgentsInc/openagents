@@ -1,0 +1,261 @@
+// The Warlock's spells, as puffs (book chapter 72): the looks of the level 17 Warlock that Everglade
+// 5E plays and the 5E Lab inspects. puff.coax loads this file, so its recipes FXR_ELDRITCH to
+// FXR_PORTAL are under the same rule as the rest: a puff's place, size and light are a pure function
+// of the cause's seed, the puff's number and the cause's age. Everglade (everglade-warlock.coax) and
+// the Lab (fivelab.coax) start the same causes from the same casts, so they look alike in both.
+//
+// Each look follows what the spell does in the SRD 5.2.1:
+//   Eldritch Blast    a beam of crackling force (one cause a beam): a violet burst at the hand, the
+//                     beam jumping as it crackles, sparks and broken chips where it strikes
+//   Circle of Death   a ring of negative energy running out over the ground to its 60-foot radius,
+//                     a dark flash, ash withering and falling over the sphere
+//   Blight            the target's life drawn out: dark motes pulled from it, ash falling off it
+//   Finger of Death   a black-green ray on the target and green soul-fire burning up off it
+//   a Zombie rising   green soul-fire climbing out of the corpse, dust thrown up round it
+//   Dimension Door    a violet tear opening where the caster stood and closing on them, a puff of
+//                     violet smoke and sparks where they appear
+// Fireball is puff.coax's own FXR_FIREBALL.
+//   coax/bin/coax test --library aethyr/fx/puff.coax
+
+FXW_VIOLET :: FxV.{x = 0.72, y = 0.38, z = 1.0};
+FXW_NECRO :: FxV.{x = 0.45, y = 1.0, z = 0.42};
+FXW_ASH :: FxV.{x = 0.34, y = 0.36, z = 0.31};
+
+fxw_life :: (c: FxCause) -> f32 {
+  r := c.recipe;
+  if r == FXR_ELDRITCH { return fxp_flight(c, 60, 0.06, 0.3) + 0.7; }
+  if r == FXR_NECRO_RING { return 2.4; }
+  if r == FXR_BLIGHT { return 1.8; }
+  if r == FXR_SOULFIRE { return fxp_flight(c, 70, 0.05, 0.25) + 2.0; }
+  if r == FXR_RISE { return 2.2; }
+  if r == FXR_PORTAL { return 1.6; }
+  return 0;
+}
+fxw_emit :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  r := c.recipe;
+  if r == FXR_ELDRITCH { fxw_eldritch(p, c, t); }
+  if r == FXR_NECRO_RING { fxw_necro_ring(p, c, t); }
+  if r == FXR_BLIGHT { fxw_blight(p, c, t); }
+  if r == FXR_SOULFIRE { fxw_soulfire(p, c, t); }
+  if r == FXR_RISE { fxw_rise(p, c, t); }
+  if r == FXR_PORTAL { fxw_portal(p, c, t); }
+}
+
+// A beam of crackling force from → to: its twelve segments jump to fresh places thirty times a second.
+fxw_beam :: (p: [] FxPuffs, c: FxCause, t: f32, from: FxV, to: FxV, col: FxV, width: f32, fade: f32, head: f32, first: int) {
+  segs := 12;
+  tick := cast(int) floor(t * 30);
+  span := fxp_sub(to, from);
+  for i: 0..<segs {
+    a := f32(i) / f32(segs); b := f32(i + 1) / f32(segs);
+    if a > head { break; }
+    b = fxp_min(b, head);
+    ja := fxp_mul(fxp_dir(c.seed, first + i * 37 + tick, 41, false), 0.2 * width * sin(a * FX_PI) * 4);
+    jb := fxp_mul(fxp_dir(c.seed, first + (i + 1) * 37 + tick, 41, false), 0.2 * width * sin(b * FX_PI) * 4);
+    if i + 1 == segs { jb = fxp_v(0, 0, 0); }
+    pa := fxp_add(fxp_add(from, fxp_mul(span, a)), ja);
+    pb := fxp_add(fxp_add(from, fxp_mul(span, b)), jb);
+    mid := fxp_lerp(pa, pb, 0.5);
+    ok := fxp_put(p, PF_GLOW, mid, width, fxp_mul(col, fade * 1.3), 1.0, fxp_mul(fxp_sub(pb, pa), 0.5), c.seed + f32(i) * 0.03);
+    ok = fxp_glow(p, mid, width * 3.5, fxp_mul(col, fade * 0.3), 0.1, c.seed + f32(i) * 0.07);
+  }
+}
+
+fxw_eldritch :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fl := fxp_flight(c, 60, 0.06, 0.3);
+  sz := c.big;
+  col := FXW_VIOLET;
+  // the burst at the hand
+  f := fxp_through(t, 0, 0.25);
+  if f >= 0 {
+    ok := fxp_glow(p, c.from, 0.5 * sz * (0.6 + f), fxp_mul(col, (1 - f) * 1.4), 0.9, c.seed + 0.9);
+    fxp_burst_sparks(p, c, t, c.from, 6, 2.5, 0.25, fxp_mul(fxa_fwd(c), 0.8), col, 0);
+  }
+  fade := 1 - fxp_clamp((t - fl - 0.18) / 0.25, 0, 1);
+  if fade > 0 {
+    fxw_beam(p, c, t, c.from, c.to, col, 0.08 * sz, fade, fxp_min(t / fl, 1), 0);
+    ok := fxp_glow(p, fxp_lerp(c.from, c.to, fxp_min(t / fl, 1)), 0.35 * sz, fxp_mul(col, fade * 1.2), 0.95, c.seed);
+  }
+  if t < fl { return; }
+  at := t - fl;
+  // the strike: a flash, sparks off what it struck, chips of it and dust
+  g := fxp_through(at, 0, 0.3);
+  if g >= 0 { ok := fxp_glow(p, c.to, 0.9 * sz * (0.5 + g), fxp_mul(col, (1 - g) * 1.5), 0.9, c.seed + 0.4); }
+  back := fxp_mul(fxa_fwd(c), -0.6);
+  fxp_burst_sparks(p, c, at, c.to, 14, 5.5, 0.5, fxp_add(back, fxp_v(0, 0.4, 0)), fxp_v(0.85, 0.6, 1.0), 20);
+  for i: 0..<6 {
+    j := 40 + i;
+    l := 0.6 + 0.2 * fxp_h(c.seed, j, 1);
+    h := fxp_through(at, 0, l);
+    if h < 0 { continue; }
+    d := fxp_add(fxp_dir(c.seed, j, 2, true), back);
+    tt := h * l;
+    q := fxp_add(c.to, fxp_mul(d, 3.0 * tt));
+    q.y -= 4.9 * tt * tt;
+    ok := fxp_smoke(p, q, 0.06 * sz, fxp_v(0.22, 0.2, 0.2), 0.95 * (1 - h * h), c.seed + f32(j) * 0.11);
+  }
+  fxp_rise_smoke(p, c, at, c.to, 4, 0.5, 0.35 * sz, 1.0, fxp_v(0.42, 0.38, 0.4), 0.45, 60);
+}
+
+// Circle of Death at `to`, its radius `reach` metres.
+fxw_necro_ring :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  reach := fxp_max(c.reach, 1);
+  ground := fxp_v(c.to.x, c.to.y + 0.05, c.to.z);
+  for w: 0..<3 {
+    f := fxp_through(t, f32(w) * 0.14, 1.0);
+    if f < 0 { continue; }
+    ok := fxp_ring(p, ground, reach * (0.05 + 0.95 * fxp_ease(f)), fxp_mul(FXW_NECRO, (1 - f) * (1.3 - 0.3 * f32(w))), c.seed + f32(w) * 0.3);
+  }
+  // the dark heart: a sickly flash, then a pall
+  f := fxp_through(t, 0, 0.35);
+  if f >= 0 { ok := fxp_glow(p, fxp_add(ground, fxp_v(0, 1.2, 0)), reach * 0.25 * (0.5 + f), fxp_mul(FXW_NECRO, (1 - f) * 0.9), 0.4, c.seed); }
+  fxp_rise_smoke(p, c, t, fxp_add(ground, fxp_v(0, 0.3, 0)), 6, reach * 0.15, 1.2, 1.6, fxp_v(0.08, 0.1, 0.08), 0.7, 0);
+  // streaks running out with the ring
+  for i: 0..<18 {
+    f2 := fxp_through(t, 0, 0.8);
+    if f2 < 0 { continue; }
+    a := f32(i) * 2 * FX_PI / 18 + fxp_h(c.seed, i, 5);
+    d := fxp_v(cos(a), 0.05, sin(a));
+    q := fxp_add(fxp_add(ground, fxp_v(0, 0.6, 0)), fxp_mul(d, reach * fxp_ease(f2)));
+    ok := fxp_spark(p, q, 0.08, fxp_mul(FXW_NECRO, (1 - f2) * 1.2), fxp_mul(d, 0.8), c.seed + f32(i) * 0.05);
+  }
+  // ash: what the wave passes over withers, flakes falling slowly through the sphere
+  for i: 0..<30 {
+    j := 100 + i;
+    a := fxp_h(c.seed, j, 1) * 2 * FX_PI;
+    rr := reach * sqrt(fxp_h(c.seed, j, 2));
+    b := 0.2 + rr / reach * 0.8;   // after the ring has passed
+    f3 := fxp_through(t, b, 1.3);
+    if f3 < 0 { continue; }
+    q := fxp_v(ground.x + cos(a) * rr + sin(t * 2 + f32(i)) * 0.3, ground.y + 2.5 * (1 - f3) + 0.2, ground.z + sin(a) * rr);
+    ok := fxp_smoke(p, q, 0.25 + 0.2 * f3, FXW_ASH, 0.55 * (1 - f3), c.seed + f32(j) * 0.07);
+    if i % 3 == 0 { ok = fxp_glow(p, q, 0.06, fxp_mul(FXW_NECRO, (1 - f3) * 0.8), 0.6, c.seed + f32(j) * 0.09); }
+  }
+}
+
+// Blight on `to` (the target's feet): motes drawn out of it, it withers.
+fxw_blight :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  sz := c.big;
+  body := fxp_add(c.to, fxp_v(0, 1.0, 0));
+  for i: 0..<16 {
+    b := fxp_h(c.seed, i, 1) * 0.5;
+    f := fxp_through(t, b, 0.9);
+    if f < 0 { continue; }
+    d := fxp_dir(c.seed, i, 2, false);
+    q := fxp_add(body, fxp_mul(d, 0.3 + 1.4 * fxp_ease(f)));
+    q.y += f * 0.6;
+    ok := fxp_glow(p, q, 0.07 * sz, fxp_mul(FXW_NECRO, (1 - f) * 1.1), 0.5, c.seed + f32(i) * 0.05);
+  }
+  f := fxp_through(t, 0, 0.6);
+  if f >= 0 { ok := fxp_glow(p, body, 0.9 * sz, fxp_mul(fxp_v(0.25, 0.5, 0.2), (1 - f) * 0.8), 0.2, c.seed); }
+  // ash falling off it, and a dark pall
+  for i: 0..<10 {
+    j := 30 + i;
+    f2 := fxp_through(t, 0.2 + fxp_h(c.seed, j, 1) * 0.4, 1.1);
+    if f2 < 0 { continue; }
+    d := fxp_dir(c.seed, j, 2, false);
+    q := fxp_add(fxp_add(body, fxp_mul(d, 0.35)), fxp_v(0, -0.9 * f2, 0));
+    ok := fxp_smoke(p, q, 0.14 + 0.1 * f2, FXW_ASH, 0.7 * (1 - f2), c.seed + f32(j) * 0.07);
+  }
+  fxp_rise_smoke(p, c, t, body, 3, 0.4, 0.4 * sz, 1.2, fxp_v(0.06, 0.08, 0.06), 0.5, 60);
+}
+
+// Green soul-fire burning up off `at` for `life` seconds: count tongues, each born a little later.
+fxw_soul_fire :: (p: [] FxPuffs, c: FxCause, t: f32, at: FxV, count: int, height: f32, life: f32, first: int) {
+  for i: 0..<count {
+    j := first + i;
+    b := fxp_h(c.seed, j, 1) * life * 0.6;
+    l := 0.5 + 0.4 * fxp_h(c.seed, j, 2);
+    f := fxp_through(t, b, l);
+    if f < 0 { continue; }
+    a := fxp_h(c.seed, j, 3) * 2 * FX_PI;
+    r := 0.25 * (1 - f) + 0.1;
+    q := fxp_v(at.x + cos(a) * r, at.y + 0.2 + height * fxp_ease(f), at.z + sin(a) * r);
+    col := fxp_lerp(fxp_v(0.8, 1.0, 0.75), fxp_mul(FXW_NECRO, 0.6), f);
+    ok := fxp_put(p, PF_FIRE, q, (0.22 + 0.18 * fxp_h(c.seed, j, 4)) * (1 - 0.5 * f) * c.big, col, fxp_max(0, 1 - f * 2.5), fxp_v(1 - f * f, 0, 0), c.seed + f32(j) * 0.11);
+    ok = fxp_glow(p, q, 0.35 * (1 - f), fxp_mul(FXW_NECRO, (1 - f) * 0.5), 0.3, c.seed + f32(j) * 0.13);
+  }
+}
+
+// Finger of Death: a black-green ray from → to, then soul-fire burning up off the target.
+fxw_soulfire :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fl := fxp_flight(c, 70, 0.05, 0.25);
+  fade := 1 - fxp_clamp((t - fl - 0.1) / 0.3, 0, 1);
+  if fade > 0 {
+    fxw_beam(p, c, t, c.from, c.to, fxp_v(0.3, 0.9, 0.35), 0.05, fade, fxp_min(t / fl, 1), 0);
+    ok := fxp_glow(p, c.from, 0.3, fxp_mul(FXW_NECRO, fade), 0.7, c.seed + 0.2);
+  }
+  if t < fl { return; }
+  at := t - fl;
+  g := fxp_through(at, 0, 0.35);
+  if g >= 0 { ok := fxp_glow(p, fxp_add(c.to, fxp_v(0, 1, 0)), 1.4 * (0.4 + g), fxp_mul(FXW_NECRO, (1 - g) * 1.3), 0.6, c.seed + 0.4); }
+  fxw_soul_fire(p, c, at, c.to, 18, 2.2, 1.6, 20);
+  fxp_rise_smoke(p, c, at, fxp_add(c.to, fxp_v(0, 0.6, 0)), 4, 0.4, 0.4, 1.4, fxp_v(0.05, 0.07, 0.05), 0.5, 60);
+}
+
+// A Zombie rising at `to`: soul-fire climbs out of the corpse, dust thrown up round it.
+fxw_rise :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fxw_soul_fire(p, c, t, c.to, 22, 1.8, 1.8, 0);
+  for i: 0..<10 {
+    j := 40 + i;
+    f := fxp_through(t, 0, 0.9 + 0.3 * fxp_h(c.seed, j, 1));
+    if f < 0 { continue; }
+    a := (f32(i) + fxp_h(c.seed, j, 2) * 0.6) * 2 * FX_PI / 10;
+    rr := 0.3 + 1.1 * fxp_ease(f);
+    q := fxp_v(c.to.x + cos(a) * rr, c.to.y + 0.15 + f * 0.5, c.to.z + sin(a) * rr);
+    ok := fxp_smoke(p, q, 0.3 + 0.3 * f, fxp_v(0.42, 0.38, 0.32), 0.55 * (1 - f), c.seed + f32(j) * 0.17);
+  }
+  f := fxp_through(t, 0, 0.5);
+  if f >= 0 { ok := fxp_ring(p, fxp_add(c.to, fxp_v(0, 0.05, 0)), 0.4 + 1.2 * fxp_ease(f), fxp_mul(FXW_NECRO, (1 - f) * 1.1), c.seed); }
+}
+
+// Dimension Door: a violet tear where the caster stood (from), closing on them; a puff where they
+// appear (to).
+fxw_portal :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  col := FXW_VIOLET;
+  f := fxp_through(t, 0, 0.7);
+  if f >= 0 {
+    // the tear: an upright oval of glows, opening then closing, its motes swirling in
+    open := sin(fxp_clamp(f, 0, 1) * FX_PI);
+    mid := fxp_add(c.from, fxp_v(0, 1.1, 0));
+    side := fxa_fwd(c); across := fxp_v(-side.z, 0, side.x);
+    for i: 0..<20 {
+      a := f32(i) * 2 * FX_PI / 20 + t * 6;
+      q := fxp_add(mid, fxp_add(fxp_mul(across, cos(a) * 0.55 * open), fxp_v(0, sin(a) * 1.1 * open, 0)));
+      ok := fxp_spark(p, q, 0.05, fxp_mul(col, 1.4 * open), fxp_mul(fxp_v(-sin(a) * across.x, cos(a), -sin(a) * across.z), 0.12), c.seed + f32(i) * 0.03);
+    }
+    ok := fxp_glow(p, mid, 0.9 * open, fxp_mul(col, 0.8 * open), 0.2, c.seed);
+    ok = fxp_glow(p, mid, 0.3 * open, fxp_mul(fxp_v(0.05, 0.0, 0.1), 1.0), 0.0, c.seed + 0.3);
+  }
+  // where they appear: a burst of violet smoke and sparks, a ring on what they stand on
+  g := fxp_through(t, 0.15, 1.2);
+  if g >= 0 {
+    at := t - 0.15;
+    fxp_rise_smoke(p, c, at, fxp_add(c.to, fxp_v(0, 0.4, 0)), 8, 0.9, 0.45, 1.1, fxp_v(0.35, 0.22, 0.5), 0.6, 40);
+    fxp_burst_sparks(p, c, at, fxp_add(c.to, fxp_v(0, 0.9, 0)), 12, 3.5, 0.5, fxp_v(0, 0.3, 0), col, 60);
+    h := fxp_through(at, 0, 0.5);
+    if h >= 0 {
+      ok := fxp_ring(p, fxp_add(c.to, fxp_v(0, 0.05, 0)), 0.3 + 1.4 * fxp_ease(h), fxp_mul(col, (1 - h) * 1.2), c.seed + 0.6);
+      ok = fxp_glow(p, fxp_add(c.to, fxp_v(0, 1.0, 0)), 1.1 * (0.5 + h), fxp_mul(col, (1 - h) * 1.1), 0.7, c.seed + 0.8);
+    }
+  }
+}
+
+#test "the Warlock's looks: a beam reaches its target, the circle runs out to its radius, the door opens where you stood" #steps 2000000000 {
+  p: [1] FxPuffs;
+  c := FxCause.{recipe = FXR_ELDRITCH, seed = 2.5, t0 = 0, from = fxp_v(0, 1.5, 0), to = fxp_v(20, 1.5, 0), col = FXW_VIOLET, big = 1, reach = 1};
+  fxp_begin(p[..], 0, fxp_v(0, 10, 20)); fxp_emit(p[..], c, 0.35);
+  far: f32 = 0;
+  for i: 0..<p[0].n { far = fxp_max(far, p[0].stage[i * FX_PUFF_FLOATS]); }
+  #assert p[0].n > 20 && far > 18;
+  r := FxCause.{recipe = FXR_NECRO_RING, seed = 1.5, t0 = 0, from = fxp_v(0, 0, 0), to = fxp_v(0, 0, 0), col = FXW_NECRO, big = 1, reach = 18.3};
+  fxp_begin(p[..], 0, fxp_v(0, 10, 20)); fxp_emit(p[..], r, 1.0);
+  ring: f32 = 0;
+  for i: 0..<p[0].n { o := i * FX_PUFF_FLOATS; if floor(p[0].stage[o + 11]) == f32(PF_RING) { ring = fxp_max(ring, p[0].stage[o + 3]); } }
+  #assert ring > 15;
+  d := FxCause.{recipe = FXR_PORTAL, seed = 3.5, t0 = 0, from = fxp_v(-10, 0, 0), to = fxp_v(10, 6, 0), col = FXW_VIOLET, big = 1, reach = 1};
+  fxp_begin(p[..], 0, fxp_v(0, 10, 20)); fxp_emit(p[..], d, 0.3);
+  near_from := 0; near_to := 0;
+  for i: 0..<p[0].n { x := p[0].stage[i * FX_PUFF_FLOATS]; if x < -8 { near_from += 1; } if x > 8 { near_to += 1; } }
+  #assert near_from > 10 && near_to > 4;
+}

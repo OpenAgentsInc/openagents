@@ -21,6 +21,7 @@
 //   coax/bin/coax test --library aethyr/fx/puff.coax
 #load "../render/noise.coax";
 #load "abilities.coax";   // the class features' recipes (FXR_SURGE on) and the lasting looks
+#load "warlock.coax";     // the Warlock's spells (FXR_ELDRITCH on)
 
 FX_PUFF_FLOATS :: 12;
 PF_FIRE :: 0; PF_SMOKE :: 1; PF_GLOW :: 2; PF_RING :: 3;
@@ -75,7 +76,14 @@ FXR_STAR :: 39;         // Starry Wisp: a star flying from → to, a starburst
 FXR_GLIMMER :: 40;      // Guiding Bolt's glow: motes clinging to the outline of `to`
 FXR_BARRIER :: 41;      // Shield: a hexagonal barrier of light round `to`
 FXR_KINDLE :: 42;       // Produce Flame: a flame kindled in the hand at `to`
-FXR_KINDS :: 43;
+// The Warlock's spells (warlock.coax).
+FXR_ELDRITCH :: 43;     // Eldritch Blast: a beam of crackling force from → to, a burst and chips where it strikes
+FXR_NECRO_RING :: 44;   // Circle of Death: a ring of negative energy out to `reach` metres round `to`, ash falling
+FXR_BLIGHT :: 45;       // Blight: the life drawn out of `to`, ash falling off it
+FXR_SOULFIRE :: 46;     // Finger of Death: a black-green ray from → to, soul-fire burning up off it
+FXR_RISE :: 47;         // a Zombie rising at `to`: soul-fire out of the corpse
+FXR_PORTAL :: 48;       // Dimension Door: a tear closing at `from`, a puff at `to`
+FXR_KINDS :: 49;
 
 FxV :: struct { x: f32; y: f32; z: f32; }
 FxCause :: struct { recipe: int; seed: f32; t0: f32; from: FxV; to: FxV; col: FxV; big: f32 = 1; reach: f32 = 1; }
@@ -185,6 +193,7 @@ fxp_life :: (c: FxCause) -> f32 {
   if r == FXR_HALO { return 1.3; }
   if r == FXR_MARK { return 1.5; }
   if r == FXR_DUST { return 1.0; }
+  if r >= FXR_ELDRITCH { return fxw_life(c); }
   if r >= FXR_SURGE { return fxa_life(c); }
   return 0;
 }
@@ -295,7 +304,7 @@ fxp_emit :: (p: [] FxPuffs, c: FxCause, age: f32) {
   if r == FXR_HALO { fxp_halo(p, c, age); }
   if r == FXR_MARK { fxp_mark(p, c, age); }
   if r == FXR_DUST { fxp_dust(p, c, age); }
-  if r >= FXR_SURGE { fxa_emit(p, c, age); }
+  if r >= FXR_ELDRITCH { fxw_emit(p, c, age); } else if r >= FXR_SURGE { fxa_emit(p, c, age); }
 }
 
 // Sparks thrown from `at` in directions about `toward` (zero: all round), gravity pulling them down.

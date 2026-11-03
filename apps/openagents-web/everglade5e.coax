@@ -175,6 +175,8 @@ e5_after :: (s: [] Everglade, v: [] E5) #export_c {
   for q: 0..<s[0].sp.note_n {
     note := s[0].sp.notes[q];
     b := note / 2; pressed := note % 2 == 1;
+    // the Warlock's (everglade-warlock.coax): at the point it was cast
+    if b >= WL_SLOT0 && b < WL_SLOT0 + WL_SLOTS { if !pressed { e5_pend(v, b, s[0].wl.at.x, s[0].wl.at.z); } continue; }
     if b < 0 || b >= SP_REBUILD { continue; }
     if !pressed {
       at := ifx b < SP_SLOTS then s[0].sp.cast_at else ifx s[0].sp.aim_ok then s[0].sp.aim else ab_you(s);
@@ -191,7 +193,7 @@ e5_pend :: (v: [] E5, b: int, x: f32, z: f32) {
   if v[0].pend_n >= E5_PENDING { return; }
   q := v[0].pend_n;
   v[0].pend_slot[q] = b; v[0].pend_x[q] = x; v[0].pend_z[q] = z;
-  v[0].pend_due[q] = v[0].now + (ifx v[0].bar_ok then e5_slot_f(v, b, 4) else 0.0f32);
+  v[0].pend_due[q] = v[0].now + (ifx b >= WL_SLOT0 then WL_DELAY[clamp_i(b - WL_SLOT0, 0, WL_SLOTS - 1)] else ifx v[0].bar_ok then e5_slot_f(v, b, 4) else 0.0f32);
   v[0].pend_n += 1;
 }
 // The harm to hand the engine: who (-1 you, else one of Everglade's people) and how much, 2 floats each.

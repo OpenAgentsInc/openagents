@@ -462,6 +462,7 @@ sp_row_used :: (s: [] Everglade, r: int) -> int {
 }
 spells_key :: (s: [] Everglade, key: int, mods: int) -> bool {
   if !sp_on(s) || s[0].above || s[0].ev.editing { return false; }
+  if wl_key(s, key, mods) { return true; }   // the Warlock's bar (everglade-warlock.coax)
   p := sp_key_place(key, mods);
   b := ifx p >= 0 then sp_at_place(s, p) else -1;
   if b >= 0 && b < SP_SLOTS { sp_press(s, b); return true; }
@@ -525,6 +526,8 @@ spells_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: i
   if !sp_on(s) || s[0].above || s[0].ev.editing || s[0].talk >= 0 || s[0].board { return false; }
   k := hi(s[0].dpr, 0.5);
   if kind == 0 || phase == 0 { s[0].sp.px = x; s[0].sp.py = y; s[0].sp.seen = true; s[0].sp.mouse = kind == 0; }
+  if wl_pointer(s, x, y, phase, kind, id) { return true; }   // the Warlock's bar (everglade-warlock.coax)
+  if wl_on(s) { return false; }
   if ar_pointer(s, x, y, phase, kind, id) { return true; }   // a slot picked up, carried, put down
   if phase == 0 {
     for b: 0..<SP_BAR + 1 {
@@ -1249,6 +1252,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   aspect := s[0].width / hi(s[0].height, 1);
   s[0].sp.fy = clamp(aspect * 1.25, 0.95, 1.9); s[0].sp.fx = s[0].sp.fy / aspect;
   if s[0].sp.on && s[0].sp.armed >= 0 && (s[0].sp.seen || phone(s)) { sp_aim(s); }
+  wl_frame(s, dt);   // the Warlock's aim and casts on their way (everglade-warlock.coax)
   // the cast bar
   if s[0].sp.casting >= 0 {
     slot := s[0].sp.casting;
@@ -1308,6 +1312,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   if s[0].sp.on { ab_draw(s); net_draw(s); }   // and what others' spells left (everglade-net.coax)
   watch_on_you_draw(s);   // what holds you (everglade-watch.coax): Hold Person's rings, Earthbind's tendrils, frost
   chimney_smoke(s, s[0].smoke_still);   // the town's wood smoke (everglade-dress.coax)
+  wl_draw(s);   // the Warlock's spells' looks (everglade-warlock.coax, aethyr/fx/warlock.coax)
   sp_fx_close(s);
   if s[0].sp.news_t > 0 { s[0].sp.news_t = hi(s[0].sp.news_t - dt, 0); }
   s[0].sp.flash = hi(s[0].sp.flash - dt * 4, 0);
@@ -2098,6 +2103,7 @@ SpBarTop :: struct { n: int; top: f32; }
 // layout; a phone shows one row over the thumbs' sticks and the switcher at its end, which opens the
 // rest over it (sp_phone_per).
 sp_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
+  if wl_on(s) { return wl_bar(s, out, u, at); }   // the Warlock's own row (everglade-warlock.coax)
   ar_frame(s);
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;

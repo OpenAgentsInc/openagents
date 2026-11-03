@@ -35,6 +35,7 @@
 #load "../../aethyr/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
 #load "fivelab-bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
 #load "everglade-move-types.coax";   // what fivelab-face.c hands Everglade's movement step (everglade-step.coax)
+#load "fivelab-warlock.coax";   // Player mode's level 17 Warlock: its spells, their looks, its Zombies
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 250000;   // 16 MB of strokes: the HUD, the log, labels near the camera (the tokens are bg_fs's)
@@ -147,6 +148,7 @@ Lab :: struct {
   mode: int = MODE_ACTION;
   // Player mode (P): you play one hero of the Living, the class picked from the bar along the top
   player: bool; pick: int = 6; me: int = -1; act: int = ACT_ATTACK; target: int = -1;
+  lw_q: [LW_RISING] int; lw_n: int;   // Finger of Death's dead waiting to rise (fivelab-warlock.coax)
   pbtn: Rect; picks: [12] Rect; slots: [SLOTS] Rect; down_x: f32; down_y: f32;
   horde: bool = true;   // the Horde (the default): every hero on one side, the dead running in from the edges
   heroes: int = HEROES;   // the heroes' number
@@ -222,6 +224,7 @@ look_of :: (klass: int) -> int {
   return 0;
 }
 spell_col :: (sp: int) -> Col {
+  if lw_col(sp) { return lw_spell_col(sp); }   // the Warlock's necrotic green and violet (fivelab-warlock.coax)
   if sp == SP_PRODUCE_FLAME || sp == SP_FLAME_HURL { return Col.{r = 1.0, g = 0.55, b = 0.15}; }
   if sp == SP_STARRY_WISP { return Col.{r = 1.0, g = 0.95, b = 0.6}; }
   if sp == SP_POISON_SPRAY { return Col.{r = 0.6, g = 1.0, b = 0.3}; }
@@ -321,6 +324,7 @@ take_events :: (s: [] Lab) {
       rep_by = e.by; rep_spell = e.spell; rep_t = e.at;
     }
     cue_event(s, e);
+    lw_heard(s, e);
     fx_event(s, e, f32((book[0].seq - k) % 8192) * 0.37 + 0.11, e.at + ifx e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS then f32(rep_n) * 0.14 else 0);
   }
 }
@@ -417,6 +421,7 @@ fx_event :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
   hand := fx_spot(s, e.by, 1.5); hand.x += 0.3;
   aimed := e.to >= 0 && e.to < b[0].n && e.to != e.by;
   if e.feat != RS_FT_NONE && fx_feat(s, e, seed, t0) { return; }
+  if lw_fx(s, e, seed, t0) { return; }
   if (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && aimed {
     at := fx_spot(s, e.to, 1.1);
     if e.kind == RS_EV_MISS { at.x += fxp_sym(seed, 0, 0) * 0.9; at.z += fxp_sym(seed, 0, 1) * 0.9; at.y = 0.6; }
@@ -724,6 +729,7 @@ new_battle :: (s: [] Lab) {
   b := bt(s);
   rs_reset(b);
   b[0].w = s[0].cols; b[0].h = s[0].rows;
+  s[0].lw_n = 0;
   s[0].seed += 1;
   b[0].dice[0].state = s[0].seed * 7919 + 17;
   hs := rs_min(s[0].heroes, HEROES_MAX); sk := rs_min(s[0].skeletons, SKELETONS_MAX);
@@ -930,7 +936,7 @@ nearest_foe :: (s: [] Lab, i: int) -> int {
 }
 // The lowest free slot of at least level, or 0.
 free_slot :: (s: [] Lab, i: int, level: int) -> int {
-  for k: level..<10 { if s[0].battle[0].c[i].slots[k] > 0 { return k; } }
+  for k: level..<10 { if s[0].battle[0].c[i].slots[k] > 0 && !lw_arcanum_only(s, i, k, level) { return k; } }
   return 0;
 }
 // Walk square by square: toward the foe to `want` feet, or away when closer than `least`.
@@ -1634,7 +1640,7 @@ SLOTS :: 9;
 AB_ATTACK :: 0; AB_DASH :: 1; AB_SPELL :: 2; AB_RECKLESS :: 3; AB_RAGE :: 4; AB_FLURRY :: 5; AB_PATIENT :: 6;
 AB_WIND :: 7; AB_WHOLE :: 8; AB_SECOND :: 9; AB_SURGE :: 10; AB_LAY :: 11; AB_SACRED :: 12; AB_CDASH :: 13;
 AB_AIM :: 14; AB_INNATE :: 15; AB_INSPIRE :: 16; AB_TURN :: 17; AB_PRESERVE :: 18; AB_LANDS :: 19;
-TG_FOE :: 0; TG_POINT :: 1; TG_SELF :: 2; TG_ALLY :: 3;   // a spell's aim: your target, the ground under it, you, the friend most hurt
+TG_FOE :: 0; TG_POINT :: 1; TG_SELF :: 2; TG_ALLY :: 3; TG_BESIDE :: 4;   // a spell's aim: your target, the ground under it, you, the friend most hurt, the free square nearest your target
 Ab :: struct { kind: int; sp: int; lvl: int; tg: int; name: string; }
 mk_ab :: (kind: int, name: string) -> Ab { return Ab.{kind = kind, sp = -1, name = name}; }
 spell_ab :: (sp: int, lvl: int, tg: int) -> Ab { return Ab.{kind = AB_SPELL, sp = sp, lvl = lvl, tg = tg, name = rs_spell(sp).name}; }
@@ -1650,9 +1656,7 @@ abilities :: (kl: int, out: [] Ab) -> int {
     out[3] = spell_ab(SP_FALSE_LIFE, 1, TG_SELF); out[4] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[5] = spell_ab(SP_BLINDNESS, 2, TG_FOE);
     out[6] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[7] = mk_ab(AB_DASH, "DASH"); n = 8;
   } else if kl == RS_WARLOCK {
-    out[0] = spell_ab(SP_ELDRITCH_BLAST, 0, TG_FOE); out[1] = spell_ab(SP_CHILL_TOUCH, 0, TG_FOE); out[2] = spell_ab(SP_HEX, 1, TG_FOE);
-    out[3] = spell_ab(SP_HOLD_PERSON, 2, TG_FOE); out[4] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[5] = spell_ab(SP_FIREBALL, 3, TG_POINT);
-    out[6] = mk_ab(AB_DASH, "DASH"); n = 7;
+    n = lw_abilities(out);   // the Warlock you play is level 17 (fivelab-warlock.coax)
   } else if kl == RS_SORCERER {
     out[0] = spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[2] = spell_ab(SP_FIREBALL, 3, TG_POINT);
     out[3] = mk_ab(AB_INNATE, "INNATE SORCERY"); out[4] = mk_ab(AB_DASH, "DASH"); n = 5;
@@ -1747,6 +1751,7 @@ use_ab :: (s: [] Lab, i: int, a: Ab, foe: int) {
     if a.tg == TG_SELF { ok = rs_cast(b, i, a.sp, sl, 0, 0, i); }
     else if a.tg == TG_ALLY { w := most_hurt(s, i, 60, 0.99); ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx w >= 0 then w else i); }
     else if foe >= 0 && a.tg == TG_POINT { ok = rs_cast(b, i, a.sp, sl, b[0].c[foe].x, b[0].c[foe].y, -1); }
+    else if foe >= 0 && a.tg == TG_BESIDE { e := free_near(s, b[0].c[foe].x, b[0].c[foe].y); ok = rs_cast(b, i, a.sp, sl, e % s[0].cols, e / s[0].cols, i); }   // Dimension Door: you, to the point
     else if foe >= 0 { ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx a.sp == SP_DIVINE_SMITE && at >= 0 then at else foe); }
   }
   else if a.kind == AB_RECKLESS { if at >= 0 { ok = rs_attack(b, i, at, true, -1); } }
@@ -1773,7 +1778,7 @@ pick_hero :: (s: [] Lab) {
   b := bt(s);
   s[0].me = -1; s[0].target = -1;
   for i: 0..<rs_min(b[0].n, s[0].heroes) {
-    if b[0].c[i].team == 0 && b[0].c[i].klass == ROSTER[s[0].pick] && rs_up(b[0].c[i]) { s[0].me = i; return; }
+    if b[0].c[i].team == 0 && b[0].c[i].klass == ROSTER[s[0].pick] && rs_up(b[0].c[i]) { s[0].me = i; lw_raise(s); return; }
   }
 }
 set_player :: (s: [] Lab, on: bool) {
@@ -1981,6 +1986,7 @@ step :: (s: [] Lab, dt: f32) {
   }
   take_events(s);
   if s[0].horde { flood(s); }
+  lw_rise(s);
   // the last side standing wins (in the Horde, the dead stand while more are still to come)
   standing := 0; last := -1;
   for t: 0..<TEAMS { if rs_team_up(b, t) > 0 || (t == 2 && s[0].pool > 0) { standing += 1; last = t; } }
@@ -3377,7 +3383,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   e: RsEvent; e.at = b[0].clock; e.by = 0; e.to = 1;
   kinds := [10] int.[RS_EV_ZONE, RS_EV_ZONE, RS_EV_ATTACK, RS_EV_ATTACK, RS_EV_ATTACK, RS_EV_HEAL, RS_EV_DEATH, RS_EV_CAST, RS_EV_ZONE, RS_EV_ATTACK];
   spells := [10] int.[SP_FIREBALL, SP_THUNDERWAVE, SP_FIRE_BOLT, SP_ELDRITCH_BLAST, -1, -1, -1, SP_SACRED_FLAME, SP_CALL_LIGHTNING, -1];
-  want := [10] int.[FXR_FIREBALL, FXR_SHOCK, FXR_FIREBOLT, FXR_STREAK, FXR_HIT, FXR_HEAL, FXR_BONES, FXR_COLUMN, FXR_LIGHTNING, FXR_HIT];
+  want := [10] int.[FXR_FIREBALL, FXR_SHOCK, FXR_FIREBOLT, FXR_ELDRITCH, FXR_HIT, FXR_HEAL, FXR_BONES, FXR_COLUMN, FXR_LIGHTNING, FXR_HIT];
   for q: 0..<10 {
     fxp_clear(s[0].puffs[..]);
     e.kind = kinds[q]; e.spell = spells[q]; e.amount = 3; e.x = 10; e.y = 8; e.to = ifx q == 6 then sk else 1;

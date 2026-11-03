@@ -17,8 +17,8 @@
 // the server makes from the player id, the same every time (coax/web/api/migrations/0116). The look is the CHARACTER picker's: a skin tone and the
 // Ranger's cloak and trim dyes ("ranger.SKIN.DYE.TRIM", everglade-rangers.coax look_parse). On a first
 // visit (no look comes back with the ticket, #12715) the picker opens before you join and the socket
-// waits for ENTER; after that CHARACTER opens it again. The class is the realm's druid: the 5E
-// engine has one Everglade loadout today (spec 5.2), and the picker says so.
+// waits for ENTER; after that CHARACTER opens it again. The class is the druid or the level 17
+// Warlock (everglade-warlock.coax): the room hears it with the hello.
 //
 // INVITE copies the link to your instance (the page's own address with ?room=CODE). ?from=grid (the
 // Grid's gate) plays a short arrival as the page opens; the server's spawn is the road in at the South
@@ -34,7 +34,8 @@ JN_DYES :: 12;             // LOOK_DYE's rows, 0 the Ranger's own
 // the picker's rows and buttons (EgJoin.boxes)
 JB_CHARACTER :: 0; JB_INVITE :: 1; JB_ENTER :: 2; JB_PANE :: 3;
 JB_SWATCH :: 4;            // then JN_SKINS + 2 * JN_DYES swatches: skin, cloak, trim
-JB_N :: JB_SWATCH + JN_SKINS + 2 * JN_DYES;
+JB_CLASS :: JB_SWATCH + JN_SKINS + 2 * JN_DYES;   // then the two classes: the druid, the Warlock
+JB_N :: JB_CLASS + 2;
 
 EgJoin :: struct {
   base_n: int;               // the socket's URL up to the code (EgNet.url)
@@ -296,7 +297,17 @@ join_pick_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   v = draw_text(out, v, name, tx + 90 * k, y, 8 * k, GAP, SPACE, gold, false, false);
   y += 24 * k;
   v = draw_text(out, v, "CLASS", tx, y, 7 * k, GAP, SPACE, pale, false, false);
-  v = draw_text(out, v, "DRUID · EVERGLADE'S ONE CLASS FOR NOW", tx + 90 * k, y, 7 * k, GAP, SPACE, gold, false, false);
+  words := [2] string.["DRUID", "WARLOCK · LEVEL 17"];
+  qx := tx + 90 * k;
+  for c: 0..<2 {
+    cw := text_width(words[c], 7 * k) + 18 * k;
+    cb := Box.{x0 = qx - 8 * k, y0 = y - 12 * k, x1 = qx - 8 * k + cw, y1 = y + 10 * k};
+    j[0].boxes[JB_CLASS + c] = cb;
+    chosen := (c == 1) == wl_on(s);
+    v = draw_text(out, v, words[c], qx, y, 7 * k, GAP, SPACE, ifx chosen then gold else pale, false, false);
+    if chosen { v = jn_ring(out, v, cb, k); }
+    qx += cw + 10 * k;
+  }
   y += 24 * k;
   where: [64] u8; wn := jn_put(where[..], 0, "ROOM");
   v = draw_text(out, v, cast(string) where[0..<wn], tx, y, 7 * k, GAP, SPACE, pale, false, false);
@@ -361,6 +372,7 @@ join_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
   if p == JB_INVITE { jn_invite(s); }
   else if p == JB_CHARACTER { j[0].pick_open = true; }
   else if p == JB_ENTER { jn_enter(s); }
+  else if p >= JB_CLASS { wl_set(s, p == JB_CLASS + 1); }
   else if p >= JB_SWATCH {
     q := p - JB_SWATCH;
     if q < JN_SKINS { j[0].skin = q; }

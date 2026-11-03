@@ -388,6 +388,33 @@ def card(title, body, details, scale):
         y += line_h + gap
     return image
 
+# The Warlock's bar (CHARACTER: Warlock, fivebar.coax fb_warlock_bar), a level 17 Fiend Warlock's
+# SRD 5.2.1 spells: its cantrip, a 5th-level Pact Magic slot and its Mystic Arcanum.
+ELDRITCH = (0.78, 0.5, 1.0)
+NECROTIC = (0.62, 0.92, 0.55)
+WARLOCK = [
+    ("wl-eldritch-blast", "lorc/beam-wake.svg", ELDRITCH, "1", "Eldritch Blast",
+     "Four beams of crackling force at the creature or spot you choose, each its own ranged spell attack: 1d10 + 5 Force on a hit (Agonizing Blast). The beams break the walls and roofs they strike.",
+     [("Key 1", KEY), FREE, ("Cantrip · 120 ft", RULE)]),
+    ("wl-fireball", "lorc/fireball.svg", FIRE, "2", "Fireball",
+     "A bright streak bursts in a 20-foot-radius sphere at the point you choose: 10d6 Fire to each creature in it, half on a Dexterity save. It sets alight the flammable things it reaches.",
+     [("Key 2", KEY), FREE, ("5th-level slot · 150 ft", RULE)]),
+    ("wl-blight", "lorc/dust-cloud.svg", NECROTIC, "3", "Blight",
+     "Necromantic energy washes over one creature you choose within 30 feet: 9d8 Necrotic, half on a Constitution save.",
+     [("Key 3", KEY), FREE, ("5th-level slot · 30 ft", RULE)]),
+    ("wl-circle-of-death", "lorc/fire-ring.svg", NECROTIC, "4", "Circle of Death",
+     "Negative energy ripples out in a 60-foot-radius sphere from the point you choose: 8d8 Necrotic to each creature in it, half on a Constitution save.",
+     [("Key 4", KEY), FREE, ("Mystic Arcanum · 150 ft", RULE)]),
+    ("wl-finger-of-death", "lorc/spectre.svg", NECROTIC, "5", "Finger of Death",
+     "7d8 + 30 Necrotic to one creature you choose within 60 feet, half on a Constitution save. A Humanoid it kills rises at the start of your next turn as your Zombie, and goes for whoever you next aim harm at.",
+     [("Key 5", KEY), FREE, ("Mystic Arcanum · 60 ft", RULE)]),
+    ("wl-dimension-door", "lorc/vortex.svg", ELDRITCH, "6", "Dimension Door",
+     "You teleport to the spot you choose within 500 feet, a rooftop too.",
+     [("Key 6", KEY), FREE, ("5th-level slot · 500 ft", RULE)]),
+    ("wl-rebuild", "delapouite/house.svg", OIL, "R", "Rebuild and Long Rest",
+     "Stands every broken building in the town back up whole, and you take a long rest. The watch still wants you if it did.",
+     [("Key R", KEY)]),
+]
 
 # The keys' labels by place (row * 12 + column): the row's modifier and the column's key. A slot
 # moved on the bar (everglade-arrange.coax) takes the key of the place it is moved to.
@@ -411,6 +438,16 @@ def main():
             image = card(title, body, details, scale)
             image.save(OUT / f"{name}-card-{scale}x.jpg", quality=90, subsampling=0)
             cards.append(image.size)
+    wl_names, wl_cards = [], []
+    for name, svg, tint, key, title, body, details in WARLOCK:
+        wl_names.append(name)
+        for size in SIZES:
+            icon(name, svg, tint, key, size).save(OUT / f"{name}-{size}.jpg", quality=90, subsampling=0)
+        details = [d for d in details if d[1] is not KEY]
+        for scale in SCALES:
+            image = card(title, body, details, scale)
+            image.save(OUT / f"{name}-card-{scale}x.jpg", quality=90, subsampling=0)
+            wl_cards.append(image.size)
     for r, mark in enumerate(ROW_MARK):
         for c, k in enumerate(COL_KEY):
             for size in SIZES:
@@ -430,6 +467,11 @@ def main():
         "// A key's tab (key-R-C-SIZE.jpg, a moved slot's), px at each icon size: one character's, then two's.",
         f"HB_TAB_W :: [{len(tabs)}] f32.[{', '.join(str(w) for w, _ in tabs)}];",
         f"HB_TAB_H :: [{len(tabs)}] f32.[{', '.join(str(h) for _, h in tabs)}];",
+        "// The Warlock's bar (everglade-warlock.coax): its slots' names and cards, as above.",
+        f"WL_HB_SLOTS :: {len(wl_names)};",
+        f"WL_HB_NAME :: [{len(wl_names)}] string.[{', '.join(f'\"{x}\"' for x in wl_names)}];",
+        f"WL_HB_CARD_W :: [{len(wl_cards)}] f32.[{', '.join(str(w) for w, _ in wl_cards)}];",
+        f"WL_HB_CARD_H :: [{len(wl_cards)}] f32.[{', '.join(str(h) for _, h in wl_cards)}];",
         "",
     ]
     TABLE.write_text("\n".join(table))

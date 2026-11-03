@@ -25,7 +25,9 @@ SP_SPEAK_WITH_ANIMALS :: 50; SP_RAY_OF_FROST :: 51; SP_FOG_CLOUD :: 52; SP_CONE_
 SP_WIND_WALL :: 55; SP_LEVITATE :: 56; SP_FEATHER_FALL :: 57; SP_GUST_OF_WIND :: 58; SP_WALL_OF_STONE :: 59;
 SP_TELEKINESIS :: 60; SP_BLACK_TENTACLES :: 61; SP_WATER_WALK :: 62; SP_CONTROL_WATER :: 63; SP_CREATE_WATER :: 64;
 SP_WATER_BREATHING :: 65; SP_METEOR_SWARM :: 66;
-RS_MORE_END :: 67;
+// the Warlock's (a level 17 Fiend Warlock's bar: apps/openagents-web/fivebar.coax fb_warlock_bar)
+SP_BLIGHT :: 67; SP_CIRCLE_OF_DEATH :: 68; SP_FINGER_OF_DEATH :: 69; SP_DIMENSION_DOOR :: 70;
+RS_MORE_END :: 71;
 
 // A record's fields, the steps after.
 rs_more :: (id: string, name: string, level: int, school: string, classes: string, time: int, range_ft: int,
@@ -158,6 +160,29 @@ rs_more_spell :: (i: int) -> RsSpell {
     s = rs_more("meteor-swarm", "Meteor Swarm", 9, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 5280, "Instantaneous", 0, false, RS_A_SPHERE, 40);
     s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 20, 6, RS_FIRE, 0);
     s.steps[2] = rs_step(RS_S_DAMAGE, 20, 6, RS_BLUDGEONING, 0); s.step_n = 3;
+  } else if i == SP_BLIGHT {
+    // No Plant creature fights here; the plant it can wither instead (a tree) is the world's.
+    s = rs_more("blight", "Blight", 4, "Necromancy", "Druid, Sorcerer, Warlock, Wizard", RS_T_ACTION, 30, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.components = "V, S"; s.page = 113;
+    s.text = "A creature that you can see within range makes a Constitution saving throw, taking 8d8 Necrotic damage on a failed save or half as much damage on a successful one. A Plant creature automatically fails the save. Alternatively, target a nonmagical plant that isn't a creature, such as a tree or shrub. It doesn't make a save; it simply withers and dies. Using a Higher-Level Spell Slot. The damage increases by 1d8 for each spell slot level above 4.";
+    s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 8, 8, RS_NECROTIC, 1); s.step_n = 2;
+  } else if i == SP_CIRCLE_OF_DEATH {
+    s = rs_more("circle-of-death", "Circle of Death", 6, "Necromancy", "Sorcerer, Warlock, Wizard", RS_T_ACTION, 150, "Instantaneous", 0, false, RS_A_SPHERE, 60);
+    s.components = "V, S, M (the powder of a crushed black pearl worth 500+ GP)"; s.page = 115;
+    s.text = "Negative energy ripples out in a 60-foot-radius Sphere from a point you choose within range. Each creature in that area makes a Constitution saving throw, taking 8d8 Necrotic damage on a failed save or half as much damage on a successful one. Using a Higher-Level Spell Slot. The damage increases by 2d8 for each spell slot level above 6.";
+    s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 8, 8, RS_NECROTIC, 2); s.step_n = 2;
+  } else if i == SP_FINGER_OF_DEATH {
+    s = rs_more("finger-of-death", "Finger of Death", 7, "Necromancy", "Sorcerer, Warlock, Wizard", RS_T_ACTION, 60, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.components = "V, S"; s.page = 131; s.plus = 30;
+    s.text = "You unleash negative energy toward a creature you can see within range. The target makes a Constitution saving throw, taking 7d8 + 30 Necrotic damage on a failed save or half as much damage on a successful one. A Humanoid killed by this spell rises at the start of your next turn as a Zombie (see \"Monsters\") that follows your verbal orders.";
+    s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 7, 8, RS_NECROTIC, 0);
+    s.steps[2] = rs_step(RS_S_RISE, 0, 0, 0, 0); s.step_n = 3;
+  } else if i == SP_DIMENSION_DOOR {
+    // You alone: the willing creature it can bring along isn't offered here.
+    s = rs_more("dimension-door", "Dimension Door", 4, "Conjuration", "Bard, Sorcerer, Warlock, Wizard", RS_T_ACTION, 500, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.components = "V"; s.page = 123;
+    s.text = "You teleport to a location within range. You arrive at exactly the spot desired. It can be a place you can see, one you can visualize, or one you can describe by stating distance and direction, such as \"200 feet straight downward\" or \"300 feet upward to the northwest at a 45-degree angle.\" You can also teleport one willing creature. The creature must be within 5 feet of you when you teleport, and it teleports to a space within 5 feet of your destination space. If you, the other creature, or both would arrive in a space occupied by a creature or completely filled by one or more objects, you and any creature traveling with you each take 4d6 Force damage, and the teleportation fails.";
+    s.steps[0] = rs_step(RS_S_TELEPORT, 0, 0, 0, 0); s.step_n = 1;
   }
   return s;
 }

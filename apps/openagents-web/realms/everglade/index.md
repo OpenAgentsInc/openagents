@@ -27,7 +27,7 @@ Names float over each place as you come near. The old town is about 130 metres a
 
 - Everglade is one world for everyone in it: the room server runs it, and each instance holds up to 16 players. You join the lowest instance with room.
 - INVITE, top right, copies a link to your instance. A friend who opens it joins you there, or the next instance with room when yours is full. `?room=everglade-3` names an instance; `?with=PLAYER_ID` joins the instance that player is in.
-- CHARACTER, beside INVITE, picks your skin tone and the colours of your cloak and trim. On your first visit it opens before you enter. Everyone plays the druid for now. A guest gets a two-word name; [log in](/login) to use your account's name.
+- CHARACTER, beside INVITE, picks your skin tone and the colours of your cloak and trim. On your first visit it opens before you enter. Its class row picks the druid or the level 17 warlock (see [Playing the warlock](#playing-the-warlock)). A guest gets a two-word name; [log in](/login) to use your account's name.
 - The Everglade gate on [the Grid](/worlds/the-grid) brings you here, into the instance of the friend you walked there with.
 
 ## Controls
@@ -59,6 +59,26 @@ Names float over each place as you come near. The old town is about 130 metres a
 - A spell that lasts (Moonbeam, Black Tentacles, Call Lightning, Wall of Fire and others) runs again on whoever is in its area each 6-second round while you keep your concentration. Putting it away ends your concentration.
 - R stands the town up again, gives you a long rest and clears your WANTED stars.
 - The frame rate and frame time show small at the bottom right.
+
+## Playing the warlock
+
+Pick WARLOCK · LEVEL 17 in CHARACTER, or open `/worlds/everglade?class=warlock`. You are the SRD 5.2.1 Warlock at level 17 with the Fiend Patron: Charisma 20, spell save DC 19, Armor of Shadows (AC 13 + Dexterity), four 5th-level Pact Magic slots and a Mystic Arcanum of each level from 6 to 9. You carry a black rod with a violet orb, and your bar has one row:
+
+| Key | Spell | How it resolves |
+|---|---|---|
+| 1 | Eldritch Blast | Four beams (level 17), each a ranged spell attack, 1d10 + 5 Force with Agonizing Blast; 120 feet. Violet beams with a burst at your hand and debris where they strike. |
+| 2 | Fireball | The Fiend's spell from a 5th-level Pact slot: Dexterity save for half, 10d6 Fire in a 20-foot sphere; 150 feet. It sets the buildings it hits burning. |
+| 3 | Blight | From a 5th-level Pact slot: Constitution save for half, 9d8 Necrotic (8d8, and 1d8 for the slot above 4th); 30 feet. Dark motes drawn out of the target, and ash. |
+| 4 | Circle of Death | Your 6th-level Mystic Arcanum: Constitution save for half, 8d8 Necrotic to each creature in a 60-foot sphere; 150 feet. A necrotic ring runs out over the ground and ash falls. |
+| 5 | Finger of Death | Your 7th-level Mystic Arcanum: Constitution save for half, 7d8 + 30 Necrotic; 60 feet. A Humanoid it kills rises at the start of your next turn as an SRD Zombie that follows you and attacks the townsfolk and the guards you strike. Zombies rise in a room (the room server raises them); offline, Finger of Death kills but nobody rises. Green soul-fire burns off the target, and climbs out of the body as it rises. |
+| 6 | Dimension Door | From a 5th-level Pact slot: you teleport to the point, up to 500 feet away. A violet tear opens where you stood, and violet smoke puffs where you land. |
+| R | Rebuild | The town stands again, your Zombies fall, and you take a long rest. |
+
+- Click or tap where the spell goes; the ring under the pointer turns red when it is out of range. Hold a finger on a slot, or rest the pointer on it, for its card.
+- As with the druid, every spell can always be cast: the bar spends no slots or turns. A cast's icon dims from the bottom up until the spell strikes.
+- Breaking or burning a building and attacking people sets off WANTED, and the guards come for you as they do for the druid.
+- With others, the room server resolves every cast, breaks and burns the buildings, raises the Zombies and moves them, so everyone sees the same town. Each client draws the effects from the server's events, and Everglade's quality setting thins them on slower devices.
+- Two warlock spells are left out. Hunger of Hadar isn't in SRD 5.2.1, so it can't be one of its records. Create Undead takes 1 minute to cast and works only at night, which doesn't fit the bar.
 
 ## The spells
 

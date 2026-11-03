@@ -55,6 +55,8 @@ E5r :: struct {
   seat: [1] FbSeat;
   zones: [FB_ZONES] FbZone;
   bar: [FB_EG_SLOTS] FbAb;
+  wbar: [FB_WL_SLOTS] FbAb;  // the Warlock's bar (fivebar.coax fb_warlock_bar): slots FB_WL0 + k
+  warlock: bool;             // you play the Warlock (the CHARACTER picker): creature 0 is fb_warlock_hero
   block: [E5R_FOLK] int;     // the stat block each of the people was made from (-1 not yet)
   started: bool;
   seen: int;                 // the log's events read so far
@@ -86,8 +88,37 @@ e5r_start :: (r: [] E5r, seed: int) #export_c {
   fb_seat_step(b, r[0].seat[..]);
   for q: 0..<FB_ZONES { r[0].zones[q].on = false; }
   _ = fb_everglade(r[0].bar[..]);
+  _ = fb_warlock_bar(r[0].wbar[..]);
+  r[0].warlock = false;
   r[0].seen = b[0].book[0].seq;
   r[0].started = true;
+}
+// Your class (the CHARACTER picker, everglade-join.coax): the druid (0) or the Warlock (1). A change makes
+// you that class's caster, whole.
+e5r_class :: (r: [] E5r, klass: int) #export_c {
+  if !r[0].started || (klass == 1) == r[0].warlock { return; }
+  b := r[0].b[..];
+  r[0].warlock = klass == 1;
+  c := b[0].c[E5R_ME];
+  b[0].c[E5R_ME] = ifx r[0].warlock then fb_warlock_hero("Your warlock", 0) else fb_everglade_hero("Your druid", 0);
+  b[0].c[E5R_ME].x = c.x; b[0].c[E5R_ME].y = c.y; b[0].c[E5R_ME].turn_at = c.turn_at; b[0].c[E5R_ME].round_at = c.round_at;
+}
+// Bar slot k's entry: Everglade's bar (0 to FB_EG_SLOTS - 1), the Warlock's (FB_WL0 on); ok false for none.
+e5r_has :: (k: int) -> bool { return (k >= 0 && k < FB_EG_SLOTS) || (k >= FB_WL0 && k < FB_WL0 + FB_WL_SLOTS); }
+e5r_entry :: (r: [] E5r, k: int) -> FbAb { return ifx k >= FB_WL0 then r[0].wbar[k - FB_WL0] else r[0].bar[k]; }
+// The Humanoids Finger of Death killed that rise now, at the start of your next turn: their index
+// among Everglade's people (each once), into out; how many.
+e5r_risen :: (r: [] E5r, out: [] f32) -> int #export_c {
+  if !r[0].started { return 0; }
+  b := r[0].b[..];
+  n := 0;
+  for j: 0..<E5R_FOLK {
+    i := e5r_folk_at(j);
+    if b[0].c[i].rise_by != E5R_ME || b[0].c[i].rise_at > b[0].clock || n >= out.count { continue; }
+    b[0].c[i].rise_by = -1;
+    out[n] = f32(j); n += 1;
+  }
+  return n;
 }
 
 // Where everyone stands and their Hit Points, from the page: you (x, z, hp, temp, dead), Everglade's
@@ -201,6 +232,21 @@ e5r_bar :: (r: [] E5r, out: [] f32) -> int #export_c {
   }
   return n;
 }
+// The Warlock's bar the same way: its FB_WL_SLOTS slots (FB_WL0 + k on the wire).
+e5r_wbar :: (r: [] E5r, out: [] f32) -> int #export_c {
+  if !r[0].started { return 0; }
+  n := 0;
+  for k: 0..<FB_WL_SLOTS {
+    if (k + 1) * E5R_SLOT_FLOATS > out.count { break; }
+    a := r[0].wbar[k];
+    o := k * E5R_SLOT_FLOATS;
+    out[o] = f32(ifx r[0].warlock then e5r_can_of(r, a) else E5R_CANT);
+    out[o + 1] = -1; out[o + 2] = 0;
+    out[o + 3] = f32(e5r_cost_of(a)); out[o + 4] = a.delay; out[o + 5] = f32(a.lvl);
+    n += 1;
+  }
+  return n;
+}
 hi_r :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
 // You, E5R_HERO_FLOATS: hp, max, temp, AC, the spell held (-1 none), action, Bonus Action and slot
 // spent this turn (1 spent), seconds to your next turn, save DC, spell attack, conditions, then your
@@ -253,9 +299,9 @@ e5r_most_hurt :: (r: [] E5r) -> int {
 // most hurt. True when it was used (its action, slot and the rest spent); false and nothing spent when
 // it couldn't be (the turn spent, no slot left, you can't act).
 e5r_use :: (r: [] E5r, k: int, x: f32, z: f32) -> bool #export_c {
-  if !r[0].started || k < 0 || k >= FB_EG_SLOTS { return false; }
+  if !r[0].started || !e5r_has(k) || (k >= FB_WL0) != r[0].warlock { return false; }
   b := r[0].b[..];
-  a := r[0].bar[k];
+  a := e5r_entry(r, k);
   if a.kind == FB_WORLD { return true; }
   if e5r_can_of(r, a) != E5R_READY { return false; }
   e5r_free(r);
@@ -276,15 +322,15 @@ e5r_use :: (r: [] E5r, k: int, x: f32, z: f32) -> bool #export_c {
 }
 // Your concentration ends (Everglade's own spell put away: the tentacles end, the moonbeam goes out).
 e5r_end_conc :: (r: [] E5r, k: int) #export_c {
-  if !r[0].started || k < 0 || k >= FB_EG_SLOTS { return; }
+  if !r[0].started || !e5r_has(k) { return; }
   b := r[0].b[..];
-  a := r[0].bar[k];
+  a := e5r_entry(r, k);
   if a.kind == FB_SPELL && b[0].c[E5R_ME].conc == a.sp { rs_end_concentration(b, E5R_ME, " (put away)"); }
 }
 // The slot's spell is the one you hold.
 e5r_holds :: (r: [] E5r, k: int) -> bool #export_c {
-  if !r[0].started || k < 0 || k >= FB_EG_SLOTS { return false; }
-  a := r[0].bar[k];
+  if !r[0].started || !e5r_has(k) { return false; }
+  a := e5r_entry(r, k);
   return a.kind == FB_SPELL && a.sp >= 0 && r[0].b[0].c[E5R_ME].conc == a.sp;
 }
 // Damage the world dealt that no slot of yours did (a guard's sword, a spear, a fall, the river): to
@@ -335,8 +381,8 @@ e5r_lines :: (r: [] E5r, out: [] u8) -> int #export_c {
 // What slot k does under the rules, one line for the bar's card: its name, its level, how it
 // resolves, and whether it is a house rule.
 e5r_describe :: (r: [] E5r, k: int, out: [] u8) -> int #export_c {
-  if k < 0 || k >= FB_EG_SLOTS { return 0; }
-  a := r[0].bar[k];
+  if !e5r_has(k) { return 0; }
+  a := e5r_entry(r, k);
   n := 0;
   if a.kind == FB_WORLD { return 0; }
   if a.kind != FB_SPELL { return rs_put(out, 0, "Wild Resurgence: a spell slot for a use of Wild Shape, a Bonus Action"); }
@@ -348,7 +394,17 @@ e5r_describe :: (r: [] E5r, k: int, out: [] u8) -> int #export_c {
     st := s.steps[q];
     if st.kind == RS_S_ATTACK { n = rs_put(out, n, " · spell attack +"); n = rs_put_int(out, n, rs_spell_attack(r[0].b[0].c[E5R_ME])); }
     if st.kind == RS_S_SAVE { n = rs_put(out, n, " · "); n = rs_put(out, n, RS_ABILITY[clamp_r(st.a, 0, 5)]); n = rs_put(out, n, " save DC "); n = rs_put_int(out, n, rs_spell_dc(r[0].b[0].c[E5R_ME])); }
-    if st.kind == RS_S_DAMAGE { n = rs_put(out, n, " · "); n = rs_put_int(out, n, st.a); n = rs_put(out, n, "d"); n = rs_put_int(out, n, st.b); }
+    if st.kind == RS_S_DAMAGE {
+      // the dice it rolls as the bar casts it: a cantrip's by your level, a spell's by its slot
+      dice := ifx s.level == 0 then st.a * rs_cantrip_tier(r[0].b[0].c[E5R_ME].level) else st.a + st.d * rs_max(a.lvl - s.level, 0);
+      if s.level == 0 && q > 0 && s.steps[0].kind == RS_S_REPEAT { dice = st.a; }
+      n = rs_put(out, n, " · "); n = rs_put_int(out, n, dice); n = rs_put(out, n, "d"); n = rs_put_int(out, n, st.b);
+      if s.plus > 0 { n = rs_put(out, n, " + "); n = rs_put_int(out, n, s.plus); }
+      if s.level == 0 && r[0].b[0].c[E5R_ME].agonizing == a.sp { n = rs_put(out, n, " + "); n = rs_put_int(out, n, rs_mod(r[0].b[0].c[E5R_ME].score[RS_CHA])); n = rs_put(out, n, " (Agonizing Blast)"); }
+    }
+    if st.kind == RS_S_REPEAT { n = rs_put(out, n, " · "); n = rs_put_int(out, n, ifx st.c == 1 then st.a * rs_cantrip_tier(r[0].b[0].c[E5R_ME].level) else st.a); n = rs_put(out, n, " beams"); }
+    if st.kind == RS_S_RISE { n = rs_put(out, n, " · a Humanoid it kills rises as your Zombie"); }
+    if st.kind == RS_S_TELEPORT { n = rs_put(out, n, " · teleport up to 500 feet"); }
     if st.kind == RS_S_HEAL { n = rs_put(out, n, " · heals "); n = rs_put_int(out, n, st.a); n = rs_put(out, n, "d"); n = rs_put_int(out, n, st.b); }
   }
   if s.concentration { n = rs_put(out, n, " · concentration"); }
@@ -430,8 +486,37 @@ e5r_test_world :: (r: [] E5r) {
   n := e5r_describe(r[..], 2, line[..]);
   #assert n > 20 && line[n - 1] == 'e';   // "... house rule"
 }
+#test "Everglade 5E: the Warlock razes with SRD spells, and Finger of Death raises a Zombie" #steps 400000000 {
+  r: [1] E5r;
+  e5r_test_world(r[..]);
+  #assert !e5r_use(r[..], FB_WL0 + 3, 3, 0);   // the druid has no Circle of Death
+  e5r_class(r[..], 1);
+  b := r[0].b[..];
+  #assert b[0].c[E5R_ME].level == 17 && rs_spell_dc(b[0].c[E5R_ME]) == 19;
+  bar: [FB_WL_SLOTS * E5R_SLOT_FLOATS] f32;
+  #assert e5r_wbar(r[..], bar[..]) == FB_WL_SLOTS && bar[3 * E5R_SLOT_FLOATS] == f32(E5R_READY);
+  #assert !e5r_use(r[..], 1, 3, 0.8);   // and the Warlock no Thunderbolt
+  // Circle of Death on the guards: 8d8 Necrotic (a 6th-level arcanum) against 11 Hit Points
+  #assert e5r_use(r[..], FB_WL0 + 3, 3, 0.8);
+  out: [(1 + E5R_FOLK) * E5R_OUT_FLOATS] f32;
+  _ := e5r_out(r[..], out[..]);
+  #assert out[3 * E5R_OUT_FLOATS] == 4;   // the commoner 30 metres off is outside 60 feet
+  // Finger of Death (60 feet) on the commoner, come closer: 7d8 + 30 kills, and the commoner rises at your next turn
+  b[0].c[e5r_folk_at(2)].x = e5r_sq(9); b[0].c[e5r_folk_at(2)].y = e5r_sq(0);
+  #assert e5r_use(r[..], FB_WL0 + 4, 9, 0);
+  #assert b[0].c[e5r_folk_at(2)].dead && b[0].c[e5r_folk_at(2)].rise_by == E5R_ME;
+  risen: [8] f32;
+  e5r_step(r[..], b[0].clock + 20);
+  #assert e5r_risen(r[..], risen[..]) == 1 && risen[0] == 2;
+  #assert e5r_risen(r[..], risen[..]) == 0;
+  line: [300] u8;
+  n := e5r_describe(r[..], FB_WL0 + 4, line[..]);
+  #assert n > 30;
+  e5r_class(r[..], 0);
+  #assert b[0].c[E5R_ME].level != 17 || !r[0].warlock;
+}
 // Slot k's name for the room (its spell's, or the feature's).
 e5r_spell_name :: (r: [] E5r, k: int, out: [] u8) -> int #export_c {
-  if k < 0 || k >= FB_EG_SLOTS { return 0; }
-  return rs_put(out, 0, r[0].bar[k].name);
+  if !e5r_has(k) { return 0; }
+  return rs_put(out, 0, e5r_entry(r, k).name);
 }

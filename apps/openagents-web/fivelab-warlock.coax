@@ -1,0 +1,182 @@
+// The level 17 Warlock in the 5E Lab's Player mode (fivelab.coax loads this file): the same SRD 5.2.1
+// Warlock that Everglade plays (aethyr/rules/srd/engine.coax rs_warlock at level 17, the Fiend
+// Patron), its spells on the hotbar, their looks from aethyr/fx/warlock.coax (the same causes
+// Everglade starts), and Finger of Death's dead rising as Zombies. The rolls are the engine's and
+// go to the log like every other cast.
+//
+// The bar: Eldritch Blast (four beams, Agonizing Blast), Hex, Fireball, Blight and Dimension Door
+// with the four 5th-level Pact slots, Circle of Death (the 6th-level Mystic Arcanum) and Finger of
+// Death (the 7th), and Dash.
+
+LW_LEVEL :: 17;
+LW_RISING :: 8;   // the dead waiting to rise at once; Finger of Death kills one at a time
+
+// The Warlock's hotbar, in slot order (fivelab.coax abilities).
+lw_abilities :: (out: [] Ab) -> int {
+  out[0] = spell_ab(SP_ELDRITCH_BLAST, 0, TG_FOE); out[1] = spell_ab(SP_HEX, 1, TG_FOE);
+  out[2] = spell_ab(SP_FIREBALL, 5, TG_POINT); out[3] = spell_ab(SP_BLIGHT, 5, TG_FOE);
+  out[4] = spell_ab(SP_CIRCLE_OF_DEATH, 6, TG_POINT); out[5] = spell_ab(SP_FINGER_OF_DEATH, 7, TG_FOE);
+  out[6] = spell_ab(SP_DIMENSION_DOOR, 5, TG_BESIDE); out[7] = mk_ab(AB_DASH, "DASH");
+  return 8;
+}
+// The Warlock's spells' light in the Lab (its slots, flashes and bolts): Everglade's colours.
+lw_col :: (sp: int) -> bool { return sp == SP_BLIGHT || sp == SP_CIRCLE_OF_DEATH || sp == SP_FINGER_OF_DEATH || sp == SP_DIMENSION_DOOR; }
+lw_spell_col :: (sp: int) -> Col {
+  if sp == SP_DIMENSION_DOOR { return Col.{r = FXW_VIOLET.x, g = FXW_VIOLET.y, b = FXW_VIOLET.z}; }
+  return Col.{r = FXW_NECRO.x, g = FXW_NECRO.y, b = FXW_NECRO.z};
+}
+// A Mystic Arcanum slot (6th level and up) casts only its own spell, at its own level.
+lw_arcanum_only :: (s: [] Lab, i: int, k: int, level: int) -> bool {
+  return s[0].battle[0].c[i].klass == RS_WARLOCK && k >= 6 && k != level;
+}
+// The hero you play, when it is a Warlock: the level 17 one, in the same square with the same
+// turn, name and Hit Points lost (fivelab.coax pick_hero).
+lw_raise :: (s: [] Lab) {
+  i := s[0].me;
+  if i < 0 { return; }
+  b := bt(s);
+  if b[0].c[i].klass != RS_WARLOCK || b[0].c[i].level >= LW_LEVEL { return; }
+  o := b[0].c[i];
+  n: [1] RsCreature;
+  n[0] = rs_warlock("Warlock", o.team, LW_LEVEL, SP_ELDRITCH_BLAST);
+  n[0].name = o.name; n[0].name_n = o.name_n;
+  n[0].x = o.x; n[0].y = o.y; n[0].turn_at = o.turn_at; n[0].round_at = o.round_at;
+  n[0].hp = rs_max(1, n[0].hp_max - (o.hp_max - o.hp));
+  b[0].c[i] = n[0];
+}
+// A battle event the Warlock's spells look like (aethyr/fx/warlock.coax); true when it drew one.
+lw_fx :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) -> bool {
+  b := bt(s);
+  sp := e.spell;
+  if sp != SP_ELDRITCH_BLAST && sp != SP_BLIGHT && sp != SP_CIRCLE_OF_DEATH && sp != SP_FINGER_OF_DEATH && sp != SP_DIMENSION_DOOR { return false; }
+  hand := fx_spot(s, e.by, 1.5); hand.x += 0.3;
+  aimed := e.to >= 0 && e.to < b[0].n && e.to != e.by;
+  // a beam a roll: each of the four leaves its own way, so they don't run together
+  if sp == SP_ELDRITCH_BLAST && (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && aimed {
+    at := fx_spot(s, e.to, 1.1);
+    if e.kind == RS_EV_MISS { at.x += fxp_sym(seed, 0, 0) * 0.9; at.z += fxp_sym(seed, 0, 1) * 0.9; at.y = 0.6; }
+    fx_cause(s, FXR_ELDRITCH, seed, t0, hand, at, FXW_VIOLET, ifx e.damage == 1 then 1.6 else 1.2, 1);
+    return true;
+  }
+  if e.kind == RS_EV_CAST && aimed && sp == SP_BLIGHT { fx_cause(s, FXR_BLIGHT, seed, t0, hand, fx_spot(s, e.to, 1.1), FXW_NECRO, 1, 1); return true; }
+  if e.kind == RS_EV_CAST && aimed && sp == SP_FINGER_OF_DEATH { fx_cause(s, FXR_SOULFIRE, seed, t0, hand, fx_spot(s, e.to, 1.1), FXW_NECRO, 1, 1); return true; }
+  if e.kind == RS_EV_ZONE && sp == SP_CIRCLE_OF_DEATH {
+    mid := f32(e.amount - 1) / 2;
+    centre := fxp_v(wx(s, f32(e.x) + mid), 0.2, wz(s, f32(e.y) + mid));
+    fx_cause(s, FXR_NECRO_RING, seed, t0, centre, centre, FXW_NECRO, 1, f32(e.amount) * f32(SQ) / 2);
+    return true;
+  }
+  // Dimension Door: the tear where you stood (the figure's square on screen) to where you land
+  if e.kind == RS_EV_PUSH && sp == SP_DIMENSION_DOOR && e.to == e.by {
+    from := fxp_v(wx(s, s[0].dx[e.by]), 0, wz(s, s[0].dy[e.by]));
+    fx_cause(s, FXR_PORTAL, seed, t0, from, fx_spot(s, e.by, 0), FXW_VIOLET, 1, 1);
+    return true;
+  }
+  return false;
+}
+// Finger of Death's word that a Humanoid will rise: the dead waits in the rising list.
+lw_heard :: (s: [] Lab, e: RsEvent) {
+  if e.kind != RS_EV_CONDITION || e.spell != SP_FINGER_OF_DEATH || e.to < 0 || s[0].lw_n >= LW_RISING { return; }
+  for k: 0..<s[0].lw_n { if s[0].lw_q[k] == e.to { return; } }
+  s[0].lw_q[s[0].lw_n] = e.to; s[0].lw_n += 1;
+}
+// The dead whose time has come rise in their own square as SRD Zombies on their killer's side, and
+// take their turns like the rest of the dead (a body someone stands on rises beside it).
+lw_rise :: (s: [] Lab) {
+  if s[0].lw_n == 0 { return; }
+  b := bt(s);
+  k := 0;
+  while k < s[0].lw_n {
+    j := s[0].lw_q[k];
+    by := b[0].c[j].rise_by;
+    if j >= b[0].n || by < 0 || !b[0].c[j].dead {
+      s[0].lw_q[k] = s[0].lw_q[s[0].lw_n - 1]; s[0].lw_n -= 1; continue;
+    }
+    if b[0].clock < b[0].c[j].rise_at { k += 1; continue; }
+    o := b[0].c[j];
+    nm: [RS_NAME] u8; nn := put(nm[..], 0, "Zombie ");
+    for q: 0..<o.name_n { if nn < RS_NAME { nm[nn] = o.name[q]; nn += 1; } }
+    b[0].c[j] = rs_zombie(cast(string) nm[0..<nn], b[0].c[by].team);
+    b[0].c[j].x = o.x; b[0].c[j].y = o.y;
+    at := rs_at(b, o.x, o.y);
+    e := ifx at >= 0 && at != j then free_near(s, o.x, o.y) else o.y * s[0].cols + o.x;
+    rs_place(b, j, e % s[0].cols, e / s[0].cols);
+    b[0].c[j].turn_at = b[0].clock + 0.2;
+    b[0].c[j].round_at = b[0].c[j].turn_at;
+    due_push(s, j);
+    s[0].dx[j] = f32(b[0].c[j].x); s[0].dy[j] = f32(b[0].c[j].y); s[0].acted[j] = b[0].clock; s[0].fell[j] = 0; s[0].fresh[j] = true;
+    l: [LINE_CAP] u8; n := 0;
+    for q: 0..<nn { if n < LINE_CAP { l[n] = nm[q]; n += 1; } }
+    n = put(l[..], n, " rises (Finger of Death) and follows ");
+    for q: 0..<b[0].c[by].name_n { if n < LINE_CAP { l[n] = b[0].c[by].name[q]; n += 1; } }
+    add_line(s, cast(string) l[0..<n], VIOLET);
+    fx_cause(s, FXR_RISE, f32(j) * 0.37 + 0.19, b[0].clock, fx_spot(s, j, 0), fx_spot(s, j, 0), FXW_NECRO, 1, 1);
+    s[0].lw_q[k] = s[0].lw_q[s[0].lw_n - 1]; s[0].lw_n -= 1;
+  }
+}
+
+
+// The test's turn for the Warlock: 25 feet from its foe (within Blight's 30-foot range and every
+// other spell's, outside Fireball's 20-foot sphere), the hotbar slot used as player_turn uses it; true when the turn told
+// of spell sp, by its cast or a beam's roll.
+lw_test_turn :: (s: [] Lab, me: int, foe: int, a: Ab) -> bool {
+  b := bt(s);
+  b[0].c[me].hp = b[0].c[me].hp_max;
+  e := free_near(s, b[0].c[foe].x + ifx b[0].c[me].x < b[0].c[foe].x then -5 else 5, b[0].c[foe].y);
+  rs_place(b, me, e % s[0].cols, e / s[0].cols);
+  s[0].dx[me] = f32(b[0].c[me].x); s[0].dy[me] = f32(b[0].c[me].y);
+  book := b[0].book[..];
+  was := book[0].seq;
+  b[0].c[me].turn_at = b[0].clock;   // its turn now, whenever its turn was due
+  rs_start_turn(b, me);
+  use_ab(s, me, a, foe);
+  rs_end_turn(b, me);
+  fresh := rs_min(book[0].seq - was, book[0].count);
+  for k: 0..<fresh {
+    v := rs_recent_at(book, k);
+    if v.by == me && v.spell == a.sp && (v.kind == RS_EV_CAST || v.kind == RS_EV_ATTACK || v.kind == RS_EV_MISS) { return true; }
+  }
+  return false;
+}
+
+#test "Player mode's Warlock: level 17, every spell on its bar cast from its slots, and Finger of Death's dead rise" #steps 2000000000 {
+  s: [1] Lab; s[0].skeletons = 0; s[0].horde = false; ok: bool; n: int;
+  n = frame_at(s[..], 1600, 1000, 1, 0.016);
+  ok = lab_key(s[..], 'p', 0);
+  s[0].pick = 2; pick_hero(s[..]);
+  b := bt(s[..]);
+  me := s[0].me;
+  #assert me >= 0 && b[0].c[me].klass == RS_WARLOCK && b[0].c[me].level == LW_LEVEL;
+  #assert b[0].c[me].slots[5] == 4 && b[0].c[me].slots[6] == 1 && b[0].c[me].slots[7] == 1 && b[0].c[me].slots[3] == 0;
+  list: [SLOTS] Ab; nab := abilities(RS_WARLOCK, list[..]);
+  #assert nab == 8 && list[4].sp == SP_CIRCLE_OF_DEATH && list[5].sp == SP_FINGER_OF_DEATH && list[7].kind == AB_DASH;
+  // an Arcanum slot never pays for a Pact spell: Fireball waits for a Pact slot
+  #assert free_slot(s[..], me, 5) == 5 && free_slot(s[..], me, 6) == 6;
+  b[0].c[me].slots[5] = 0;
+  #assert free_slot(s[..], me, 5) == 0 && !ab_ready(s[..], me, list[2]) && ab_ready(s[..], me, list[4]);
+  b[0].c[me].slots[5] = 4;
+  // each slot in turn on the nearest foe; Hex, Fireball, Blight and Dimension Door take the four Pact slots
+  order := [6] int.[0, 1, 2, 3, 4, 6];
+  for q: 0..<6 {
+    k := order[q];
+    foe := nearest_foe(s[..], me);
+    #assert foe >= 0;
+    b[0].c[foe].hp = b[0].c[foe].hp_max;
+    #assert lw_test_turn(s[..], me, foe, list[k]);
+    if k == 6 { #assert rs_feet_to(b, me, foe) <= 5; }   // Dimension Door: beside the foe
+  }
+  #assert b[0].c[me].slots[5] == 0 && b[0].c[me].slots[6] == 0;
+  // Finger of Death on a foe it kills: the Humanoid rises as a Zombie on your side
+  foe := nearest_foe(s[..], me);
+  b[0].c[foe].hp = 1;
+  #assert lw_test_turn(s[..], me, foe, list[5]);
+  take_events(s[..]);
+  #assert b[0].c[me].slots[7] == 0 && b[0].c[foe].dead && b[0].c[foe].rise_by == me && s[0].lw_n == 1;
+  #assert b[0].c[foe].rise_at < b[0].clock + 3;
+  for q: 0..<400 { if s[0].lw_n == 0 { break; } step(s[..], f32(STEP)); }
+  #assert s[0].lw_n == 0;
+  #assert b[0].c[foe].klass == RS_MONSTER;
+  #assert !b[0].c[foe].dead;
+  #assert b[0].c[foe].team == b[0].c[me].team;
+  #assert b[0].c[foe].hp_max == 15 && b[0].c[foe].weapon == W_SLAM;
+}
