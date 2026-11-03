@@ -17,7 +17,9 @@ for mode in debug release;do
   ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 "$out/native-$mode-$kind"
  done
  "$coax" run psionic/examples/causal-decoder.coax "${flags[@]}" > "$out/example-$mode.out"
- cmp psionic/fixtures/causal-decoder.out "$out/example-$mode.out"
+ # One transcript per platform: the C library's sin, cos, exp and log differ (book.py, #12689).
+ fixture=psionic/fixtures/causal-decoder.out;if [[ $(uname) == Linux ]];then fixture=psionic/fixtures/causal-decoder.linux.out;fi
+ cmp "$fixture" "$out/example-$mode.out"
 done
 python3 -I psionic/tests/book.py
 echo 'Causal decoder: Python logits, decode = full, causal prefixes, every central difference, training, debug/release native plain/ASan/UBSan and exact example pass'

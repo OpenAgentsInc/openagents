@@ -16,10 +16,26 @@ import os
 import json
 from pathlib import Path
 import re
+import resource
+import signal
 import subprocess
+import sys
+import threading
+import time
 from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
+# A run's budget (#12690) is met when either its wall time or its CPU time is
+# within it. A loaded machine stretches the clock a run sees, not the work it
+# does; an idle one runs forked checks in parallel, so CPU time can pass wall
+# time. CPU time counts the compiler and every process it waits for (forked
+# checks, the C compiler, the program). An example's "timeout" raises the
+# budget, with its "timeout_reason". The clock stops a stalled run at
+# WALL_FACTOR times its budget.
+CPU_BUDGET = 60
+WALL_FACTOR = 10
+# A number in a transcript, for fixtures that differ by platform.
+NUMBER = re.compile(r"-?(?:\d+\.\d*|\.\d+|\d+)(?:e[-+]?\d+)?")
 # coax/src/main.cpp capacity_text: the one stderr line a clean run may print.
 NEAR_LIMIT = re.compile(r"coax: note\[E[0-9]{4}\]: [a-z -]+: [0-9]+ of [0-9]+ used \([0-9]+%\), above three quarters of the limit; more than [0-9]+ fails with E[0-9]{4}")
 BOOKS = {
@@ -166,7 +182,10 @@ def check(name="psionic"):
         steps = item.get("run_steps")
         assert steps is None or (type(steps) is int and 1 <= steps <= 250000000), f"run_steps is 1 to 250000000: {source}"
         limit = item.get("timeout")
-        assert limit is None or (type(limit) is int and 60 <= limit <= 600), f"timeout is 60 to 600 seconds: {source}"
+        assert limit is None or (type(limit) is int and 60 <= limit <= 600), f"timeout is 60 to 600 CPU seconds: {source}"
+        reason = item.get("timeout_reason")
+        assert reason is None or (limit and isinstance(reason, str) and reason), f"timeout_reason needs a timeout: {source}"
+        platform_fixtures(item)
     for item in libraries:
         source, chapter = path(item["source"]), path(item["chapter"])
         assert source in linked and chapter in linked, f"unlinked library/chapter: {source}"
@@ -175,6 +194,70 @@ def check(name="psionic"):
             path(evidence)
     print(f"{name} book structure: {len(examples)} programs, {len(libraries)} native libraries, {listings} source-linked listings, local links pass")
     return examples
+
+
+def platform_fixtures(item):
+    """A transcript recorded per platform (#12689), only for a program whose numbers
+    come from the host's C library (sin, exp, log), which glibc and macOS's libm round
+    differently: each transcript is exact on its platform, the default is the one
+    for every platform not named, and every number in one is within the stated
+    relative tolerance of the default's, with the same text around them."""
+    hosts, rule = item.get("platform_stdout"), item.get("platform_tolerance")
+    source = item["source"]
+    if hosts is None:
+        assert rule is None, f"platform_tolerance without platform_stdout: {source}"
+        return
+    assert isinstance(hosts, dict) and hosts and set(hosts) <= {"linux", "darwin"}, f"platform_stdout names linux or darwin: {source}"
+    assert isinstance(rule, dict) and set(rule) == {"relative", "reason"}, f"platform_tolerance is a relative bound and a reason: {source}"
+    assert type(rule["relative"]) is float and 0 < rule["relative"] <= 1e-9, f"platform tolerance is above 0 and at most 1e-9: {source}"
+    assert isinstance(rule["reason"], str) and rule["reason"], f"platform tolerance needs a reason: {source}"
+    base = path(item["stdout"]).read_text()
+    for name in hosts.values():
+        text = path(name).read_text()
+        assert text != base, f"{name} equals the default transcript"
+        assert NUMBER.sub("#", text) == NUMBER.sub("#", base), f"{name} differs from {item['stdout']} in more than numbers"
+        for a, b in zip(NUMBER.findall(base), NUMBER.findall(text)):
+            x, y = float(a), float(b)
+            assert abs(x - y) <= rule["relative"] * max(abs(x), abs(y)), f"{name}: {b} is not within {rule['relative']} of {a}"
+
+
+def expected_stdout(item):
+    return path(item.get("platform_stdout", {}).get(sys.platform, item["stdout"]))
+
+
+def execute(cmd, budget):
+    """Run cmd from the root; return its exit status, output, errors and CPU seconds.
+    Fails a run over its budget on both the clock and in CPU time."""
+    def limits():
+        # A process over the whole run's budget fails it: stop it there.
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+        resource.setrlimit(resource.RLIMIT_CPU, (budget, budget + 5))   # lowering a limit works on macOS too
+    run = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=limits, start_new_session=True)
+    streams = {}
+    readers = [threading.Thread(target=lambda k, f: streams.__setitem__(k, f.read()), args=(k, f)) for k, f in (("out", run.stdout), ("err", run.stderr))]
+    for reader in readers:
+        reader.start()
+    stalled = []
+
+    def stop():
+        stalled.append(True)
+        try:
+            os.killpg(run.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    clock = threading.Timer(budget * WALL_FACTOR, stop)
+    start = time.monotonic()
+    clock.start()
+    _, status, usage = os.wait4(run.pid, 0)   # the rusage counts every process it waited for
+    clock.cancel()
+    wall = time.monotonic() - start
+    for reader in readers:
+        reader.join()
+    run.returncode = os.waitstatus_to_exitcode(status)
+    cpu = usage.ru_utime + usage.ru_stime
+    assert not stalled, f"stalled: {budget * WALL_FACTOR} s on the clock, {cpu:.1f} CPU s: {cmd}"
+    assert min(cpu, wall) <= budget, f"over its {budget} s budget: {wall:.1f} s on the clock, {cpu:.1f} CPU s: {cmd}"
+    return run.returncode, streams["out"], streams["err"], min(cpu, wall)
 
 
 def excluded(rule):
@@ -276,25 +359,39 @@ def run_one(compiler, item, mode):
     if stack:
         cmd = ["/bin/sh", "-c", 'ulimit -S -s "$1" && shift && exec "$@"', "sh", str(stack)] + cmd
     # A program that loads the whole signer compiles for longer than a minute.
-    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=item.get("timeout", 60))
-    assert result.returncode == item["exit_status"], f"exit status: {cmd}\n{result.stderr.decode()}"
+    budget = item.get("timeout", CPU_BUDGET)
+    status, stdout, stderr, used = execute(cmd, budget)
+    assert status == item["exit_status"], f"exit status: {cmd}\n{stderr.decode()}"
     # The compiler's near-limit report (a use above three quarters of a capacity
     # limit) is advisory, not a diagnostic; it is collected and printed once.
-    lines = result.stderr.decode().splitlines()
+    lines = stderr.decode().splitlines()
     notes = [line for line in lines if NEAR_LIMIT.fullmatch(line)]
-    assert len(notes) == len(lines), f"unexpected diagnostics: {cmd}\n{result.stderr.decode()}"
-    assert result.stdout == path(item["stdout"]).read_bytes(), f"transcript drift: {cmd}\n{result.stdout.decode()}"
-    return [f"{item['source']}: {note}" for note in notes]
+    assert len(notes) == len(lines), f"unexpected diagnostics: {cmd}\n{stderr.decode()}"
+    assert stdout == expected_stdout(item).read_bytes(), f"transcript drift: {cmd}\n{stdout.decode()}"
+    # A run past three quarters of its budget is named, so a budget is raised before it fails.
+    close = [f"{item['source']} {mode}: {used:.0f} of {budget} s"] if used > budget * 3 / 4 else []
+    return [f"{item['source']}: {note}" for note in notes], close
 
 
 def run(compiler, examples, jobs=1):
     runs = [(item, mode) for item in examples for mode in item["modes"]]
+    notes, close, failures = {}, [], []
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        notes = {}
         for future in [pool.submit(run_one, compiler, item, mode) for item, mode in runs]:
-            notes.update(dict.fromkeys(future.result()))  # in inventory order: the first failure is reported
+            try:
+                found, near = future.result()
+            except AssertionError as failure:   # in inventory order; every failure is reported
+                failures.append(str(failure))
+                continue
+            notes.update(dict.fromkeys(found))
+            close += near
     for note in notes:
         print(f"near limit: {note}")
+    for run in close:
+        print(f"near its time budget: {run}")
+    for failure in failures:
+        print(f"FAIL {failure}")
+    assert not failures, f"{len(failures)} of {len(runs)} runs failed"
     print(f"book execution: {len(examples) * 2} runs match output and exit status")
 
 

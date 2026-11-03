@@ -1399,7 +1399,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 120,
+      "timeout_reason": "Four program families trained three ways, then admission of their traces: the debug build (checked arithmetic, -O0) runs about 35 CPU s, and the first compile adds its library checks: 48 CPU s with the check cache empty on a loaded machine (#12690)."
     },
     {
       "source": "psionic/examples/core-interface.coax",
@@ -1545,6 +1547,13 @@
       "source": "psionic/examples/causal-decoder.coax",
       "chapter": "psionic/book/ch113-differentiate-a-decoder.md",
       "stdout": "psionic/fixtures/causal-decoder.out",
+      "platform_stdout": {
+        "linux": "psionic/fixtures/causal-decoder.linux.out"
+      },
+      "platform_tolerance": {
+        "relative": 1e-10,
+        "reason": "The decoder's RoPE, softmax and loss call the host's sin, cos, exp and log, and chapter 129's device kernels restate them one for one, so they stay the C library's. macOS's libm gives sin(4) one step further from zero than glibc's, and the two round some exp and log results a step apart (#12689); 90 training steps carry that to the eleventh digit of the held-out loss (1.3e-11 relative)."
+      },
       "exit_status": 0,
       "modes": [
         "debug",
@@ -2069,7 +2078,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 120,
+      "timeout_reason": "Ten epochs of a spherical and a planar forecaster: the debug build (checked arithmetic, -O0) runs about 32 CPU s, and the first compile adds its library checks: 65 CPU s with the check cache empty on a loaded machine (#12690)."
     },
     {
       "source": "psionic/examples/field.coax",
@@ -2379,7 +2390,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 120,
+      "timeout_reason": "The first compile in each mode runs the #authority checks of the libraries it loads when the check cache holds none: about 45 CPU s with the cache empty and the whole book compiling at once on a loaded 28-thread machine (#12690)."
     },
     {
       "source": "psionic/examples/serve-split-refuse.coax",
@@ -3188,7 +3201,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 120,
+      "timeout_reason": "The first compile in each mode runs the #authority checks of the libraries it loads when the check cache holds none: about 45 CPU s with the cache empty and the whole book compiling at once on a loaded 28-thread machine (#12690)."
     },
     {
       "source": "psionic/examples/serve-saved-refuse.coax",
@@ -3198,7 +3213,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 120,
+      "timeout_reason": "The first compile in each mode runs the #authority checks of the libraries it loads when the check cache holds none: about 50 CPU s with the cache empty and the whole book compiling at once on a loaded 28-thread machine (#12690)."
     },
     {
       "source": "psionic/examples/mnist-classifier.coax",
@@ -3348,7 +3365,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 180,
+      "timeout_reason": "The first compile in each mode runs the #authority checks of the libraries it loads when the check cache holds none: 60 to 65 CPU s with the cache empty and the whole book compiling at once on a loaded 28-thread machine (#12690)."
     },
     {
       "source": "psionic/examples/stage-package-refuse.coax",
@@ -3358,7 +3377,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 180,
+      "timeout_reason": "The first compile in each mode runs the #authority checks of the libraries it loads when the check cache holds none: 59 to 64 CPU s with the cache empty and the whole book compiling at once on a loaded 28-thread machine (#12690)."
     },
     {
       "source": "psionic/examples/boundary-codec.coax",
@@ -3449,7 +3470,9 @@
         "debug",
         "release"
       ],
-      "run_steps": 40000000
+      "run_steps": 40000000,
+      "timeout": 180,
+      "timeout_reason": "The first compile in each mode runs the #authority checks of the libraries it loads when the check cache holds none: 59 to 64 CPU s with the cache empty and the whole book compiling at once on a loaded 28-thread machine (#12690)."
     },
     {
       "source": "psionic/examples/deepseek-flash-refuse.coax",
@@ -3460,7 +3483,9 @@
         "debug",
         "release"
       ],
-      "run_steps": 40000000
+      "run_steps": 40000000,
+      "timeout": 180,
+      "timeout_reason": "The first compile in each mode runs the #authority checks of the libraries it loads when the check cache holds none: 58 to 62 CPU s with the cache empty and the whole book compiling at once on a loaded 28-thread machine (#12690)."
     },
     {
       "source": "psionic/examples/deepseek-recipe.coax",
@@ -3470,7 +3495,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 120,
+      "timeout_reason": "The first compile in each mode runs the #authority checks of the libraries it loads when the check cache holds none: about 53 CPU s with the cache empty and the whole book compiling at once on a loaded 28-thread machine (#12690)."
     },
     {
       "source": "psionic/examples/deepseek-recipe-refuse.coax",
@@ -3532,7 +3559,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 240,
+      "timeout_reason": "The first compile in each mode runs the #authority checks of the libraries it loads when the check cache holds none: 94 to 98 CPU s with the cache empty and the whole book compiling at once on a loaded 28-thread machine (#12690)."
     },
     {
       "source": "psionic/examples/large4-mesh-refuse.coax",
@@ -3542,7 +3571,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 240,
+      "timeout_reason": "The first compile in each mode runs the #authority checks of the libraries it loads when the check cache holds none: 94 to 98 CPU s with the cache empty and the whole book compiling at once on a loaded 28-thread machine (#12690)."
     },
     {
       "source": "psionic/examples/chonk-mesh.coax",
@@ -3552,7 +3583,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 300,
+      "timeout_reason": "The first compile in each mode runs the #authority checks of chonk-mesh.coax and the mesh libraries it loads when the check cache holds none: about 160 CPU s in forked checks, 30 to 120 s on the clock on a loaded 28-thread machine (#12690). With the checks cached a run takes about 6 s."
     },
     {
       "source": "psionic/examples/chonk-mesh-refuse.coax",
@@ -3562,7 +3595,9 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 300,
+      "timeout_reason": "The first compile in each mode runs the #authority checks of chonk-mesh.coax and the mesh libraries it loads when the check cache holds none: about 160 CPU s in forked checks, 30 to 120 s on the clock on a loaded 28-thread machine (#12690). With the checks cached a run takes about 6 s."
     },
     {
       "source": "psionic/examples/weight-edit.coax",

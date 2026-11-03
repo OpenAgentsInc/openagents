@@ -1,5 +1,6 @@
 #import "Basic";
 #load "../lib/optim/muon.coax";
+#load "../lib/strict-math.coax";   // the data's sine and cosine, the same bits on every host (#12689)
 // book:begin example
 // A two-layer nanochat-shaped inventory (width 8, vocabulary 16): the planner
 // sorts it into setup_optimizer's groups. Then a 2x3 linear map and its bias
@@ -8,7 +9,7 @@ loss_and_gradient :: (p:[]f64,g:[]f64)->f64 {
     A:=[6]f64.[0.5,-1,0.25,1,0.5,-0.75];b:=[2]f64.[0.3,-0.2];loss:=0.0;
     for i:0..<8 {g[i]=0;}
     for k:0..<12 {
-        x:=[3]f64.[sin(f64(k)),cos(1.7*f64(k)),f64(k%3)-1];
+        x:=[3]f64.[psm_sin(f64(k)),psm_cos(1.7*f64(k)),f64(k%3)-1];
         for r:0..<2 {
             y:=p[6+r];want:=b[r];for c:0..<3 {y+=p[3*r+c]*x[c];want+=A[3*r+c]*x[c];}
             e:=y-want;loss+=e*e/12;g[6+r]+=2*e/12;for c:0..<3 {g[3*r+c]+=2*e*x[c]/12;}

@@ -446,7 +446,7 @@ loss_and_gradient :: (p:[]f64,g:[]f64)->f64 {
     A:=[6]f64.[0.5,-1,0.25,1,0.5,-0.75];b:=[2]f64.[0.3,-0.2];loss:=0.0;
     for i:0..<8 {g[i]=0;}
     for k:0..<12 {
-        x:=[3]f64.[sin(f64(k)),cos(1.7*f64(k)),f64(k%3)-1];
+        x:=[3]f64.[psm_sin(f64(k)),psm_cos(1.7*f64(k)),f64(k%3)-1];
         for r:0..<2 {
             y:=p[6+r];want:=b[r];for c:0..<3 {y+=p[3*r+c]*x[c];want+=A[3*r+c]*x[c];}
             e:=y-want;loss+=e*e/12;g[6+r]+=2*e/12;for c:0..<3 {g[3*r+c]+=2*e*x[c]/12;}
@@ -490,9 +490,17 @@ coax/bin/coax run psionic/examples/muon.coax
 psionic/check.sh --only muon
 ```
 
-The [transcript](../fixtures/muon.out) is exact for the named CPU build. The
-planner sorts a two-layer inventory into six AdamW and four Muon groups; the
-tall 32x8 group's rate doubles to 0.04. The fit's loss falls from 1.80 to
-8.8e-6 in 300 steps.
+The [transcript](../fixtures/muon.out) is exact, the same bits on Linux and
+macOS. The planner sorts a two-layer inventory into six AdamW and four Muon
+groups; the tall 32x8 group's rate doubles to 0.04. The fit's loss falls from
+1.80 to 7.1e-6 in 300 steps.
+
+The data's sines and cosines come from
+[Psionic's strict math](../lib/strict-math.coax), not the C library. That
+matters here: the last loss is at the fit's noise floor, where one changed
+step (ulp) in one input moves it anywhere from 5e-6 to 2.5e-5. macOS's libm
+gives sin(4) one step further from zero than glibc's, so with the C library's sine the two
+printed different losses
+([#12689](https://github.com/OpenAgentsInc/openagents/issues/12689)).
 [The verification record](../../docs/verification/psionic-ch124-muon-2026-10-31.md)
 records the checks, mutation and native evidence.

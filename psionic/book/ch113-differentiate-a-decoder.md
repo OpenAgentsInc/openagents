@@ -259,7 +259,14 @@ psionic/check.sh --only decoder
 ```
 
 The [transcript](../fixtures/causal-decoder.out) is exact for the named CPU
-build, in debug and release. `check_decoder.sh` also compiles the library to
+build, in debug and release, on macOS; Linux has
+[its own](../fixtures/causal-decoder.linux.out). RoPE, softmax and the loss
+call the C library's sin, cos, exp and log, and macOS's libm and glibc round a
+few of their results a step (ulp) apart: sin(4) first. Training carries that
+into the last digits of the losses, at most 1.3e-11 relative, and the book
+check holds each transcript within 1e-10 of the other
+([#12689](https://github.com/OpenAgentsInc/openagents/issues/12689)).
+`check_decoder.sh` also compiles the library to
 C and runs a native harness, plain and under ASan/UBSan, against the Python
 goldens, with central differences for every parameter. Compiling the backward
 pass (114) and training the whole decoder as a permanent regression (115)

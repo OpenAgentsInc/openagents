@@ -9,4 +9,4 @@ cpu-muon-v1: 22 tensors, 1998 elements, 10 groups, 630 second-moment entries, 96
   muon   8x8 x 8  lr 0.02 (applied 0.02) momentum 0.95 beta2 0.9 decay 0.28 ns 5
   muon   8x32 x 2  lr 0.02 (applied 0.02) momentum 0.95 beta2 0.9 decay 0.28 ns 5
   muon   32x8 x 2  lr 0.02 (applied 0.04) momentum 0.95 beta2 0.9 decay 0.28 ns 5
-fit: loss 1.7988099784027702 -> 8.777247781317451e-06 in 300 steps
+fit: loss 1.7988099784027702 -> 7.087766094362658e-06 in 300 steps

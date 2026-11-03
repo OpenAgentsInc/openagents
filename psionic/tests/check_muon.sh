@@ -17,7 +17,9 @@ for mode in debug release;do
   ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 "$out/native-$mode-$kind"
  done
 done
+# The example's data uses Psionic's strict sine and cosine (#12689).
+for mode in "" --release;do "$coax" test psionic/lib/strict-math.coax --library $mode;done
 "$coax" run psionic/examples/muon.coax > "$out/example.out";cmp psionic/fixtures/muon.out "$out/example.out"
 "$coax" run psionic/examples/muon.coax --release > "$out/example-release.out";cmp psionic/fixtures/muon.out "$out/example-release.out"
-if [[ $mutate == 1 ]];then "$coax" mutate psionic/lib/optim/muon.coax --root-only --jobs "$jobs";fi
+if [[ $mutate == 1 ]];then "$coax" mutate psionic/lib/optim/muon.coax --root-only --jobs "$jobs";"$coax" mutate psionic/lib/strict-math.coax --library --jobs "$jobs";fi
 python3 -I psionic/tests/book.py

@@ -1,0 +1,204 @@
+// Psionic's strict math: sine, cosine, e^x and ln x in binary64 with the same
+// bits on every host (GitHub #12689). Coax's sin, cos, exp and log call the
+// host's C library, and glibc and macOS's libm round some inputs differently:
+// sin(4) is -0x1.837b9dddc1eaep-1 with glibc (correctly rounded) and the next
+// double with macOS's libm, and each misses some exp and log results by one
+// step. A program that trains for many steps, or prints a loss to 17 digits,
+// then prints different numbers on the two. These use only +, -, *, /, floor
+// and the bits of a float, which IEEE 754 defines exactly (Coax emits C with
+// -ffp-contract=off, so nothing is fused). They are the FreeBSD msun (fdlibm)
+// algorithms and coefficients, the ones Java's StrictMath pins for the same
+// reason: within one step (ulp) of the true value, not correctly rounded.
+//
+// Measured against quad precision (libquadmath), 2,000,000 random inputs
+// each: sine and cosine at most 0.77 ulp off for |x| <= 1.6e6 (0.94 at the
+// doubles nearest n pi/2, every n up to 2^20), e^x 0.88 ulp for |x| <= 700,
+// ln x 0.84 ulp from e^-700 to e^700. The same C gives the same bits on Linux
+// (gcc) and macOS (clang), at -O0 and -O2.
+//
+// Sine and cosine reduce x to n pi/2 + r with pi/2 in three 33-bit pieces and a
+// tail: n <= 2^20, so every product with a piece is exact, x - n p1 is exact,
+// and the next subtraction keeps its rounding error (two-sum). Unlike fdlibm,
+// there are no branches.
+//
+// Every result is finite, so every path runs in the checks (the evaluator
+// refuses infinities and NaN, E0412). Where the C library would give one,
+// e^x past 709.78 saturates at the largest double and ln 0 is minus it; e^x
+// below -708.40, where results turn subnormal, is 0. A NaN, ln of a negative
+// number or of infinity, and sine or cosine of |x| > 1647099 trap.
+//   coax/bin/coax test psionic/lib/strict-math.coax --library
+//   coax/bin/coax mutate psionic/lib/strict-math.coax --library
+
+PSM_LIMIT :: 1647099.0;                       // the largest |x| for sine and cosine: n <= 2^20
+PSM_INVPIO2 :: 6.36619772367581382433e-01;    // 2/pi
+PSM_PIO2_1 :: 1.57079632673412561417e+00;     // pi/2's first 33 bits
+PSM_PIO2_2 :: 6.07710050630396597660e-11;     // its next 33
+PSM_PIO2_3 :: 2.02226624871116645580e-21;     // the 33 after those
+PSM_PIO2_3T :: 8.47842766036889956997e-32;    // pi/2 minus the three pieces
+PSM_LN2_HI :: 6.93147180369123816490e-01;     // ln 2's first 32 bits: k ln2_hi is exact
+PSM_LN2_LO :: 1.90821492927058770002e-10;     // ln 2 - PSM_LN2_HI
+PSM_INVLN2 :: 1.44269504088896338700e+00;     // 1/ln 2
+PSM_EXP_OVER :: 709.782712893383973096;       // past it, e^x overflows
+PSM_EXP_TINY :: -708.39641853226408;          // below it, e^x is subnormal: 0 here
+PSM_MAX :: 1.7976931348623157e308;            // the largest finite double
+// fdlibm's polynomial coefficients: sine, cosine, exp and log.
+PSM_S1 :: -1.66666666666666324348e-01; PSM_S2 :: 8.33333333332248946124e-03; PSM_S3 :: -1.98412698298579493134e-04;
+PSM_S4 :: 2.75573137070700676789e-06; PSM_S5 :: -2.50507602534068634195e-08; PSM_S6 :: 1.58969099521155010221e-10;
+PSM_C1 :: 4.16666666666666019037e-02; PSM_C2 :: -1.38888888888741095749e-03; PSM_C3 :: 2.48015872894767294178e-05;
+PSM_C4 :: -2.75573143513906633035e-07; PSM_C5 :: 2.08757232129817482790e-09; PSM_C6 :: -1.13596475577881948265e-11;
+PSM_P1 :: 1.66666666666666019037e-01; PSM_P2 :: -2.77777777770155933842e-03; PSM_P3 :: 6.61375632143793436117e-05;
+PSM_P4 :: -1.65339022054652515390e-06; PSM_P5 :: 4.13813679705723846039e-08;
+PSM_LG1 :: 6.666666666666735130e-01; PSM_LG2 :: 3.999999999940941908e-01; PSM_LG3 :: 2.857142874366239149e-01;
+PSM_LG4 :: 2.222219843214978396e-01; PSM_LG5 :: 1.818357216161805012e-01; PSM_LG6 :: 1.531383769920937332e-01;
+PSM_LG7 :: 1.479819860511658591e-01;
+
+// ---- checks. The pinned values are this file's own results, which the same C
+// gives on Linux and macOS; the comments mark the ones a step from the
+// correctly rounded value (quad precision), and how far.
+
+#test "sine and cosine: pinned values in every quarter turn" {
+    #assert psm_sin(0.5)==0.47942553860420301 && psm_cos(0.5)==0.87758256189037276;
+    #assert psm_sin(1)==0.8414709848078965 && psm_cos(1)==0.54030230586813977;
+    #assert psm_sin(-2)==-0.90929742682568171 && psm_cos(-2)==-0.41614683654714241;
+    // sin(4): glibc gives this too; macOS's libm the next double away from zero
+    #assert psm_sin(4)==-0.7568024953079282 && psm_cos(4)==-0.65364362086361194;
+    #assert psm_sin(0.3)==0.29552020666133955 && psm_cos(0.3)==0.95533648912560598;
+    #assert psm_sin(0.000000001)==0.000000001 && psm_cos(0.000000001)==1;
+    #assert psm_sin(2.4)==0.67546318055115095 && psm_cos(2.4)==-0.73739371554124544;
+    #assert psm_sin(5.5)==-0.70554032557039192 && psm_cos(5.5)==0.70866977429125999;
+    #assert psm_sin(7)==0.65698659871878906 && psm_cos(7)==0.7539022543433046;
+    #assert psm_sin(-100)==0.50636564110975879 && psm_cos(-100)==0.86231887228768389;
+    #assert psm_sin(1000000)==-0.34999350217129294 && psm_cos(1000000)==0.93675212753314474;
+}
+
+#test "sine and cosine near multiples of pi/2: the reduction keeps every bit" {
+    // the doubles nearest pi/2, pi and 3 pi/2: what is left is pi's rounding error
+    #assert psm_sin(1.5707963267948966)==1 && psm_cos(1.5707963267948966)==6.123233995736766e-17;
+    #assert psm_sin(3.141592653589793)==1.2246467991473532e-16 && psm_cos(3.141592653589793)==-1;
+    #assert psm_sin(4.71238898038469)==-1 && psm_cos(4.71238898038469)==-1.8369701987210297e-16;
+    #assert psm_sin(1545.6010613693607)==-0.062483467397689008 && psm_cos(1545.6010613693607)==0.99804599909120517;
+    #assert psm_sin(-1481.2606918496158)==0.99999997015436448 && psm_cos(-1481.2606918496158)==-0.00024431796928538148;
+    // where the remainder's tail decides the last bit
+    #assert psm_cos(411)==-0.85323582915263319 && psm_sin(670)==-0.74515336795838738;
+}
+
+#test "sine and cosine: the domain ends at 2^20 pi/2" {
+    #assert psm_sin(1647098.9)==-0.41611193049957335 && psm_cos(1647098.9)==0.90931340103174452;
+    #assert psm_sin(-1647098.9)==0.41611193049957335 && psm_cos(-1647098.9)==0.90931340103174452;
+    #assert psm_sin(PSM_LIMIT)==-0.32325324035307712 && psm_cos(-PSM_LIMIT)==0.94631249732909883;
+}
+
+#test "e^x: pinned values, saturation and the subnormal floor" {
+    #assert psm_exp(0)==1 && psm_exp(-1)==0.36787944117144233 && psm_exp(0.5)==1.6487212707001282;
+    #assert psm_exp(1)==2.7182818284590455;                  // one step off (0.674 ulp), as in Java's StrictMath
+    #assert psm_exp(0.0000000001)==1.0000000001 && psm_exp(10)==22026.465794806718;
+    #assert psm_exp(-0.34657359027997264)==0.70710678118654746;  // one step off (0.638 ulp)
+    #assert psm_exp(0.34657359027997264)==1.4142135623730949;
+    #assert psm_exp(-10)==0.000045399929762484847;           // one step off (0.611 ulp)
+    #assert psm_exp(100)==2.6881171418161356e+43 && psm_exp(-100)==3.7200759760208361e-44;
+    #assert psm_exp(709.5)==1.3549863193146328e+308;          // 2^1024 times a fraction
+    #assert psm_exp(PSM_EXP_OVER)==1.7976931348622732e+308;
+    #assert psm_exp(709.78271289338410)==PSM_MAX && psm_exp(1.0e300)==PSM_MAX;      // saturated
+    #assert psm_exp(PSM_EXP_TINY)==2.2250738585072626e-308;  // just above the smallest normal
+    #assert psm_exp(-708.39641853226419)==0 && psm_exp(-740)==0 && psm_exp(-1.0e300)==0;
+}
+
+#test "ln x: pinned values, subnormals and the edges" {
+    #assert psm_log(1)==0 && psm_log(2)==0.69314718055994529 && psm_log(0.5)==-0.69314718055994529;
+    #assert psm_log(10)==2.3025850929940459 && psm_log(0.7)==-0.35667494393873245 && psm_log(1.5)==0.40546510810816438;
+    #assert psm_log(1.4020647694643984)==0.33794598545144094;  // one step off (0.838 ulp)
+    #assert psm_log(3)==1.0986122886681096;                    // one step off (0.591 ulp)
+    #assert psm_log(1.0000000000000002)==2.2204460492503128e-16 && psm_log(0.99999999999999989)==-1.1102230246251565e-16;
+    // just under sqrt(2), where the mantissa is kept rather than halved
+    #assert psm_log(1.4142107697829696)==0.34657161561860816;
+    #assert psm_log(1.0e-300)==-690.77552789821368 && psm_log(2.2250738585072014e-308)==-708.39641853226408;
+    #assert psm_log(f64_from_bits(1))==-744.44007192138122 && psm_log(PSM_MAX)==709.78271289338397;
+    #assert psm_log(0)==-PSM_MAX && psm_log(-0.0)==-PSM_MAX;   // saturated
+}
+
+#forall "within 2 steps of the C library, and symmetric" k: 0..<96 {
+    x:=f64(k-48)*0.37+0.013;
+    for i:0..<4 {
+        a:=ifx i==0 then psm_sin(x) else ifx i==1 then psm_cos(x) else ifx i==2 then psm_exp(x) else psm_log(abs(x));
+        b:=ifx i==0 then sin(x) else ifx i==1 then cos(x) else ifx i==2 then exp(x) else log(abs(x));
+        #assert (a<0)==(b<0);
+        d:=cast(int) f64_bits(abs(a))-cast(int) f64_bits(abs(b));
+        #assert d>=-2 && d<=2;
+    }
+    #assert psm_sin(-x)==-psm_sin(x) && psm_cos(-x)==psm_cos(x);
+}
+
+// sin(x + y) for |x + y| <= pi/4, y the tail of x: fdlibm __kernel_sin.
+psm_ksin :: (x:f64,y:f64)->f64 {
+    z:=x*x;w:=z*z;v:=z*x;
+    r:=PSM_S2+z*(PSM_S3+z*PSM_S4)+z*w*(PSM_S5+z*PSM_S6);
+    return x-((z*(0.5*y-v*r)-y)-v*PSM_S1);
+}
+// cos(x + y) for |x + y| <= pi/4: fdlibm __kernel_cos.
+psm_kcos :: (x:f64,y:f64)->f64 {
+    z:=x*x;w:=z*z;
+    r:=z*(PSM_C1+z*(PSM_C2+z*PSM_C3))+w*w*(PSM_C4+z*(PSM_C5+z*PSM_C6));
+    hz:=0.5*z;v:=1-hz;
+    return v+(((1-v)-hz)+(z*r-x*y));
+}
+// x = n pi/2 + (y0 + y1), |y0 + y1| <= pi/4 (a hair more), for |x| <= PSM_LIMIT.
+PsmTurn :: struct {n:int;y0:f64;y1:f64;}
+psm_turn :: (x:f64)->PsmTurn {
+    n:=floor(x*PSM_INVPIO2+0.5);
+    r:=x-n*PSM_PIO2_1;                                       // exact
+    b:=-(n*PSM_PIO2_2);s:=r+b;bb:=s-r;e1:=(r-(s-bb))+(b-bb);  // s + e1 = r + b exactly
+    tail:=(e1-n*PSM_PIO2_3)-n*PSM_PIO2_3T;
+    y0:=s+tail;
+    return PsmTurn.{n=cast(int) n,y0=y0,y1=(s-y0)+tail};
+}
+psm_sin :: (x:f64)->f64 {
+    #assert abs(x)<=PSM_LIMIT;   // and not NaN
+    t:=psm_turn(x);q:=t.n&3;
+    if q==0 {return psm_ksin(t.y0,t.y1);}
+    if q==1 {return psm_kcos(t.y0,t.y1);}
+    if q==2 {return -psm_ksin(t.y0,t.y1);}
+    return -psm_kcos(t.y0,t.y1);
+}
+psm_cos :: (x:f64)->f64 {
+    #assert abs(x)<=PSM_LIMIT;
+    t:=psm_turn(x);q:=t.n&3;
+    if q==0 {return psm_kcos(t.y0,t.y1);}
+    if q==1 {return -psm_ksin(t.y0,t.y1);}
+    if q==2 {return -psm_kcos(t.y0,t.y1);}
+    return psm_ksin(t.y0,t.y1);
+}
+// 2^e for e in [-1022, 1023], from its bits.
+psm_two :: (e:int)->f64 {return f64_from_bits(cast(u64) (e+1023) << 52);}
+// e^x: x = k ln 2 + r, |r| <= ln 2 / 2, e^r by fdlibm's rational form, times 2^k.
+psm_exp :: (x:f64)->f64 {
+    if x>PSM_EXP_OVER {return PSM_MAX;}
+    if x<PSM_EXP_TINY {return 0;}
+    k:=floor(x*PSM_INVLN2+0.5);
+    hi:=x-k*PSM_LN2_HI;lo:=k*PSM_LN2_LO;r:=hi-lo;
+    t:=r*r;
+    c:=r-t*(PSM_P1+t*(PSM_P2+t*(PSM_P3+t*(PSM_P4+t*PSM_P5))));
+    y:=1-((lo-(r*c)/(2-c))-hi);
+    n:=cast(int) k;                                         // -1022 to 1024; a NaN x traps here
+    if n==1024 {return y*2*psm_two(1023);}
+    return y*psm_two(n);
+}
+// ln x: x = 2^k m, m in [sqrt(2)/2, sqrt(2)), f = m - 1, s = f/(2 + f), and
+// ln m = f - (f^2/2 - s (f^2/2 + R(s^2))) by fdlibm's polynomial R.
+psm_log :: (x:f64)->f64 {
+    #assert x>=0;          // not negative, not NaN
+    #assert x<=PSM_MAX;    // finite
+    if x==0 {return -PSM_MAX;}
+    bits:=f64_bits(x);e:=cast(int) (bits>>52);
+    if e==0 {bits=f64_bits(x*18014398509481984.0);e=cast(int) (bits>>52)-54;}   // a subnormal, times 2^54
+    k:=e-1023;
+    hx:=cast(int) ((bits>>32)&1048575);                      // the mantissa's top 20 bits
+    i:=(hx+614244)&1048576;                                 // 2^20 when m would pass sqrt(2): halve it
+    m:=f64_from_bits((cast(u64) (hx+(i^1072693248))<<32)+(bits&4294967295));
+    k+=i>>20;
+    f:=m-1;dk:=cast(f64) k;
+    s:=f/(2+f);z:=s*s;w:=z*z;
+    t1:=w*(PSM_LG2+w*(PSM_LG4+w*PSM_LG6));
+    t2:=z*(PSM_LG1+w*(PSM_LG3+w*(PSM_LG5+w*PSM_LG7)));
+    hfsq:=0.5*f*f;
+    return dk*PSM_LN2_HI-((hfsq-(s*(hfsq+(t2+t1))+dk*PSM_LN2_LO))-f);
+}
