@@ -1,0 +1,63 @@
+// Verse OS: the GPU's power ceiling, applied (docs/os/2026-11-02-verse-os.md, V5): reads the card's
+// limits from nvidia-smi and sets what os/gpu-limits-policy.coax (#authority) decides, as
+// os/cpu-limits.coax does for the CPU. Setting a limit needs root: the NixOS module runs it as a
+// unit at boot (os/nix/modules/verse-os.nix, verseos.gpuLimits); --dry-run says what it would do.
+//   gpu-limits [--serving] [--dry-run] [--smi PATH]
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/proc.coax";
+#load "gpu-limits-policy.coax";
+
+// One nvidia-smi csv row's watts ("320.00, 320.00, 150.00, 350.00": limit, default, min, max) as
+// whole watts into out[0..4]: whether it had four numbers.
+gl_row :: (row: string, out: [] int) -> bool {
+  n := 0; i := 0;
+  while i < row.count && n < 4 {
+    while i < row.count && (row[i] == ' ' || row[i] == ',') { i += 1; }
+    if i >= row.count || row[i] < '0' || row[i] > '9' { return false; }
+    v := 0; while i < row.count && row[i] >= '0' && row[i] <= '9' { v = v * 10 + cast(int) (row[i] - '0'); i += 1; }
+    if i < row.count && row[i] == '.' { i += 1; while i < row.count && row[i] >= '0' && row[i] <= '9' { i += 1; } }
+    out[n] = v; n += 1;
+    while i < row.count && row[i] == ' ' { i += 1; }
+    if i < row.count && row[i] != ',' && row[i] != '\n' { return false; }
+  }
+  return n == 4;
+}
+#test "nvidia-smi's row" {
+  w: [4] int;
+  #assert gl_row("320.00, 320.00, 150.00, 350.00\n", w[..]) && w[0] == 320 && w[1] == 320 && w[2] == 150 && w[3] == 350;
+  #assert !gl_row("[N/A], 320.00, 150.00, 350.00", w[..]) && !gl_row("320.00, 320.00", w[..]) && !gl_row("", w[..]);
+  #assert !gl_row("320.00x, 1, 2, 3", w[..]);
+}
+
+gl_text :: (n: int, out: [] u8) -> string {
+  d: [24] u8; k := 0; v := n;
+  while true { d[k] = cast,trunc(u8) ('0' + v % 10); k += 1; v = v / 10; if v == 0 { break; } }
+  for i: 0..<k { out[i] = d[k - 1 - i]; }
+  return cast(string) out[0..<k];
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("usage: gpu-limits [--serving] [--dry-run] [--smi PATH]"); return 2; }
+  smi := args_value(a[..], "--smi", "nvidia-smi");
+  serving := args_has(a[..], "--serving"); dry := args_has(a[..], "--dry-run");
+  argv := [4] string.[smi, "--query-gpu=power.limit,power.default_limit,power.min_limit,power.max_limit", "--format=csv,noheader,nounits", "-i=0"];
+  out: [4096] u8; err: [2048] u8;
+  r := proc_run(argv[..], 20000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 { print("no NVIDIA card to limit (nvidia-smi did not answer); leaving the GPU alone\n"); return 0; }
+  w: [4] int;
+  if !gl_row(cast(string) out[0..<r.out_n], w[..]) { print("nvidia-smi's limits did not read; leaving the GPU alone\n"); return 0; }
+  limit := gl_limit(serving, w[1], w[2], w[3]);
+  if limit == 0 { print("nothing to set (default %, % to %, the share under the minimum or the limits out of order); leaving the card alone\n", w[1], w[2], w[3]); return 0; }
+  b: [24] u8;
+  if dry || limit == w[0] { print("GPU power limit % W (now %, default %, % to %)%\n", limit, w[0], w[1], w[2], w[3], ifx dry then ", dry run" else ", already"); return 0; }
+  set := [3] string.[smi, "-i=0", ""];
+  pl: [32] u8; pn := 0; for c: "-pl=" { pl[pn] = c; pn += 1; } for c: gl_text(limit, b[..]) { pl[pn] = c; pn += 1; }
+  set[2] = cast(string) pl[0..<pn];
+  s := proc_run(set[..], 20000, out[..], err[..]);
+  if s.started != 0 || s.status != 0 { print("GPU power limit % W was refused (it needs root)\n", limit); return 1; }
+  print("GPU power limit % W applied (default %)\n", limit, w[1]);
+  return 0;
+}

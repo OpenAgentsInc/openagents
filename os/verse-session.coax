@@ -288,6 +288,9 @@ vs_pylon_run :: (p: [] VsPylon, verb: string) -> bool {
   d := proc_release(h);
   return status == 0;
 }
+// Whether the machine serves, for the GPU's ceiling (os/gpu-limits.coax, run as root by
+// verseos.gpuLimits when /run/verse-os/serving changes); nothing when there is no such directory.
+vs_serving :: (on: bool) { if fs_kind("/run/verse-os") == FS_DIR { r := fs_write("/run/verse-os/serving", ifx on then "1\n" else "0\n"); } }
 // Once a second: the time since your last input, the policy's word, and the command it asks for.
 vs_pylon_tick :: (p: [] VsPylon) {
   vs_agents_tick(p);
@@ -300,11 +303,11 @@ vs_pylon_tick :: (p: [] VsPylon) {
   since := ifx p[0].stopped_ms < 0 then -1 else (now - p[0].stopped_ms) / 1000;
   d := pylon_decide(p[0].allowed, p[0].running, idle, since);
   if d == PYLON_START {
-    if vs_pylon_run(p, "start") { p[0].running = true; print("verse-session: % s away; the Pylon serves the mesh\n", idle); vs_flush(); }
+    if vs_pylon_run(p, "start") { p[0].running = true; vs_serving(true); print("verse-session: % s away; the Pylon serves the mesh\n", idle); vs_flush(); }
     else { p[0].stopped_ms = now; print("verse-session: the Pylon did not start; trying again later\n"); vs_flush(); }
   }
   if d == PYLON_STOP {
-    r := vs_pylon_run(p, "stop"); p[0].running = false; p[0].stopped_ms = now;
+    r := vs_pylon_run(p, "stop"); p[0].running = false; p[0].stopped_ms = now; vs_serving(false);
     print("verse-session: you are back; the Pylon stopped%\n", ifx r then "" else " (its stop said no)"); vs_flush();
   }
 }
@@ -541,7 +544,7 @@ tool_main :: () -> int #export_c {
     if once {
       // the session ends: a Pylon it started stops with it
       if desk_h >= 0 { dr := proc_release(desk_h); }   // the desk ends with the session
-      if py[0].running { stopped := vs_pylon_run(py[..], "stop"); py[0].running = false; print("verse-session: the session ended; the Pylon stopped\n"); vs_flush(); }
+      if py[0].running { stopped := vs_pylon_run(py[..], "stop"); py[0].running = false; vs_serving(false); print("verse-session: the session ended; the Pylon stopped\n"); vs_flush(); }
       return ifx status == 0 then 0 else 1;
     }
     // a failure that comes back at once must not spin: a second before the next try

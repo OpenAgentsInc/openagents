@@ -1,0 +1,32 @@
+// Verse OS: the GPU's power ceiling (docs/os/2026-11-02-verse-os.md, V5), as os/cpu-limits-policy.coax
+// is the CPU's. It spends power, so it is #authority: os/gpu-limits.coax reads the card's limits
+// (nvidia-smi) and writes what this decides, nothing else.
+//   - While you play, the card's own default (the realm gets every frame it can).
+//   - While the machine serves the mesh as a Pylon (V5, nobody at it), 70% of that default: a
+//     model's throughput falls far less than its power, and the box stays cool and quiet.
+//   - A share under the card's minimum is not set: the card stays at what it has (0), as it does
+//     for a reading that makes no sense (a minimum over the maximum, a default outside them).
+#authority;
+
+GL_SERVING_PERCENT :: 70;
+
+// The limit to set, in whole watts, or 0 to leave the card alone.
+gl_limit :: (serving: bool, default_w: int, min_w: int, max_w: int) -> int {
+  if min_w <= 0 || max_w < min_w || default_w < min_w || default_w > max_w { return 0; }
+  w := ifx serving then (default_w * GL_SERVING_PERCENT) / 100 else default_w;
+  if w < min_w { return 0; }
+  return w;
+}
+#test "playing: the card's default; serving: 70% of it" {
+  #assert gl_limit(false, 320, 150, 350) == 320 && gl_limit(true, 320, 150, 350) == 224;
+}
+#test "never under the minimum: a share under it is not set" {
+  #assert gl_limit(true, 200, 150, 350) == 0 && gl_limit(true, 215, 150, 350) == 150 && gl_limit(true, 216, 150, 350) == 151;
+  #assert gl_limit(false, 350, 150, 350) == 350 && gl_limit(false, 150, 150, 150) == 150 && gl_limit(false, 100, 1, 200) == 100;
+}
+#test "a reading that makes no sense leaves the card alone" {
+  #assert gl_limit(false, 320, 0, 350) == 0 && gl_limit(false, 320, 400, 350) == 0 && gl_limit(true, 100, 150, 350) == 0;
+  #assert gl_limit(false, 360, 150, 350) == 0 && gl_limit(false, 320, -1, 350) == 0;
+}
+#test "the serving share" { #assert GL_SERVING_PERCENT == 70; }
+

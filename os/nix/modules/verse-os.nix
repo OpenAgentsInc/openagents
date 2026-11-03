@@ -74,6 +74,17 @@ in
       description = "The realm the Verse opens on: newland is the Grid.";
     };
 
+    gpuLimits = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Set the GPU's power ceiling with os/gpu-limits.coax (os/gpu-limits-policy.coax decides):
+        the card's default while you play, 70% of it while the session serves the mesh as a
+        Pylon. The session says which by writing 1 or 0 to /run/verse-os/serving; a path unit
+        runs the limit again as root when it changes. NVIDIA cards only (nvidia-smi).
+      '';
+    };
+
     stateDir = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -111,6 +122,23 @@ in
 
     # Vulkan: the loader finds the driver's ICD under /run/opengl-driver.
     hardware.graphics.enable = true;
+
+    # the GPU's ceiling (V5): set at boot, and again when the session starts or stops serving
+    systemd.tmpfiles.rules = lib.mkIf cfg.gpuLimits [ "d /run/verse-os 0755 ${cfg.user} users -" "f /run/verse-os/serving 0644 ${cfg.user} users - 0" ];
+    systemd.services.verse-gpu-limits = lib.mkIf cfg.gpuLimits {
+      description = "Verse OS: the GPU's power ceiling";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "systemd-tmpfiles-setup.service" ];
+      path = [ "/run/current-system/sw" ];
+      serviceConfig.Type = "oneshot";
+      script = ''
+        if [ "$(cat /run/verse-os/serving 2>/dev/null)" = 1 ]; then exec "${dir}/gpu-limits" --serving; else exec "${dir}/gpu-limits"; fi
+      '';
+    };
+    systemd.paths.verse-gpu-limits = lib.mkIf cfg.gpuLimits {
+      wantedBy = [ "multi-user.target" ];
+      pathConfig.PathChanged = "/run/verse-os/serving";
+    };
 
     programs.bash.loginShellInit = lib.mkAfter ''
       if [ "$(tty)" = "/dev/tty${tty}" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$USER" = "${cfg.user}" ] \

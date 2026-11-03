@@ -33,6 +33,8 @@ stdenv.mkDerivation {
        entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-session
      gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-transcript.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
        entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-transcript
+     gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. gpu-limits.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
+       entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../gpu-limits
      # the desk's headless compositor (os/compositor.coax), which vk-realm --desk runs
      gcc -std=c11 -O2 -D_DEFAULT_SOURCE -w -I. $(pkg-config --cflags libdrm) ../desk/compositor.c tool-native.c process-native.c store-file-native.c read-file-native.c \
        socket-native.c entropy-native.c entropy-foreign.c entropy.c wayland-native.c screen-native.c $(pkg-config --libs libdrm) -lpthread -lm -o ../desk/compositor)
@@ -66,7 +68,7 @@ stdenv.mkDerivation {
     runHook preInstall
     mkdir -p $out/share/verse-os $out/bin
     for r in $(cat realms); do cp -a $r $out/share/verse-os/; rm -f $out/share/verse-os/$r/*.o; done
-    cp net verse-session verse-transcript realms travel $out/share/verse-os/
+    cp net verse-session verse-transcript gpu-limits realms travel $out/share/verse-os/
     mkdir -p $out/share/verse-os/desk/launch
     cp desk/compositor desk/compositor-us.xkb $out/share/verse-os/desk/
     for n in start coder pane; do printf '#!/bin/sh\nexec ${foot}/bin/foot\n' > $out/share/verse-os/desk/launch/$n; chmod +x $out/share/verse-os/desk/launch/$n; done
