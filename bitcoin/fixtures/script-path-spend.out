@@ -1,0 +1,42 @@
+BIP-341's script trees, spent by each leaf
+  vector 1, leaf 0 (0xc0, 34 bytes): control block as BIP-341's, an empty signature: EVAL_FALSE
+  vector 2, leaf 0 (0xc0, 34 bytes): control block as BIP-341's, an empty signature: EVAL_FALSE
+  vector 3, leaf 0 (0xc0, 34 bytes): control block as BIP-341's, an empty signature: EVAL_FALSE
+  vector 3, leaf 1 (0xfa, 7 bytes): control block as BIP-341's, no stack: OK
+  vector 4, leaf 0 (0xc0, 34 bytes): control block as BIP-341's, an empty signature: EVAL_FALSE
+  vector 4, leaf 1 (0xc0, 8 bytes): control block as BIP-341's, no stack: OK
+  vector 5, leaf 0 (0xc0, 34 bytes): control block as BIP-341's, an empty signature: EVAL_FALSE
+  vector 5, leaf 1 (0xc0, 34 bytes): control block as BIP-341's, an empty signature: EVAL_FALSE
+  vector 5, leaf 2 (0xc0, 34 bytes): control block as BIP-341's, an empty signature: EVAL_FALSE
+  vector 6, leaf 0 (0xc0, 34 bytes): control block as BIP-341's, an empty signature: EVAL_FALSE
+  vector 6, leaf 1 (0xc0, 34 bytes): control block as BIP-341's, an empty signature: EVAL_FALSE
+  vector 6, leaf 2 (0xc0, 34 bytes): control block as BIP-341's, an empty signature: EVAL_FALSE
+  the parity bit flipped: 12 of 12 WITNESS_PROGRAM_MISMATCH
+  a path hash changed: 10 of 10 WITNESS_PROGRAM_MISMATCH
+a tree of our own
+  internal key P: 2c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991
+  leaf 0, depth 1, 34 bytes: <key 1> CHECKSIG
+  leaf 1, depth 2, 70 bytes: <key 2> CHECKSIG <key 3> CHECKSIGADD 2 NUMEQUAL
+  leaf 2, depth 2, 69 bytes: SHA256 <hash> EQUALVERIFY <key 2> CHECKSIG
+  root: 27213e44acb52ae3698fee9dd7429f61c34f7ea37a47796d0a5d1eede212668e
+  output key Q: 4f8fa2db924fd6bb33dbef42dd3bf806dbbe608896cdb4dbd82e4058c750c0a8
+  Q's y is odd
+spending it
+  leaf 0, 167 bytes of witness: OK
+    0340d11033a4d4c21a03f4fe6bfda22690f10231847f91908ecd057802e21d1f1b3c560c205af8e0969ec69f6fec69df6bd8bc218dc6c64b209cc4f629a186d9006c22204f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aaac41c12c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e6686809919d6a59c460a77716669730a8dffac91fc965511c9776e217b09e80f3ef3eede5
+  leaf 1, 300 bytes of witness: OK
+  leaf 1, key 2's signature alone: EVAL_FALSE
+  leaf 2, 253 bytes of witness: OK
+  leaf 2, the preimage cut short: EQUALVERIFY
+  leaf 0, signed SINGLE|ANYONECANPAY, 65 bytes: OK
+  leaf 0, with an annex it signs: OK
+  the same signature, the annex left off: SCHNORR_SIG
+what refuses
+  leaf 0, key 1 signed leaf 1's hash: SCHNORR_SIG
+  leaf 0 with leaf 1's control block: WITNESS_PROGRAM_MISMATCH
+  leaf 0, the parity bit flipped: WITNESS_PROGRAM_MISMATCH
+  leaf 1, its two path hashes swapped: WITNESS_PROGRAM_MISMATCH
+  leaf 1, its last path hash dropped: WITNESS_PROGRAM_MISMATCH
+  the witness builder, a 64-byte control block: refused
+  the witness builder, an annex starting 0x51: refused
+the key path, signed by P tweaked with the root: OK

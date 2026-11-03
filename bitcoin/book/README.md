@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 91 are implemented and 33 are planned. The 91 implemented
+Of the 124 chapters, 92 are implemented and 32 are planned. The 92 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
-38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62,
+38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62,
 65, 66, 67, 68, 69, 70, 71, 73, 74, 75, 77, 81, 94, 95, 96, 97, 100, 101, 102,
 103, 104, 105, 106, 107, 108, 109, 111, 112, 113, 114, 115, 116, 119, 121 and
 122 are new.
@@ -199,6 +199,7 @@ The key tweak, script trees, the Taproot signature hash and tapscript.
 | [42. Script trees: tapleaves and tapbranches](ch042-script-trees-tapleaves-and-tapbranches.md) | Runnable: native C | TapLeaf and TapBranch hashes, a tree's root and each leaf's path built from leaves with their depths, control blocks of 33 + 32m bytes, and BIP-341's commitment check. All six script trees in BIP-341's vectors give every leaf hash, root and control block, and every control block commits to its output key; a flipped parity bit, path bit, leaf version or script bit, a reordered or shortened path and a bad size refuse. The example's 48 lines agree with BIP-341's own Python, pinned. |
 | [43. Taproot signature hashes](ch043-taproot-signature-hashes.md) | Runnable: native C | BIP-341's signature message in full: every hash type, the annex, and BIP-342's script-path extension. BIP-341's seven key-path messages and hashes match byte for byte, and 30 annex and script-path messages match Bitcoin Core's TaprootSignatureMsg, pinned; 0x80, the other undefined hash types and SINGLE past the outputs refuse. The example's 57 lines agree with Core's Python. |
 | [44. Tapscript](ch044-tapscript.md) | Runnable: native C | BIP-341's key-path and script-path checks and BIP-342's tapscript in chapter 36's `VerifyScript`: `OP_CHECKSIGADD`, Schnorr signatures against 32-byte keys, unknown key types, `OP_SUCCESSx`, MINIMALIF and the validation-weight budget. The seven Taproot rows of `script_tests.json` give Core's results, and 83 more Taproot spends match a Python transliteration of Core. |
+| [45. Control blocks and script-path spends](ch045-control-blocks-and-script-path-spends.md) | Runnable: native C | The spender's side of a script path: a leaf's BIP-342 signature by its untweaked key, and the witness of stack, script, control block and annex. Every leaf of BIP-341's six script trees passes the commitment check with BIP-341's control block; a tree of three leaves spends by each leaf and by its key path, and a wrong parity, path or leaf refuses. BIP-341's and Core's code in Python print the example's 42 lines. |
 | 44. Tapscript | Planned | Bitcoin Core's Taproot script tests (`script_assets_test.json`) give their expected results. |
 | 45. Control blocks and script-path spends | Planned | Script-path spends from BIP-341's vectors verify. A control block with the wrong parity or path refuses. |
 

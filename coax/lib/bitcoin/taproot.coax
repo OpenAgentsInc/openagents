@@ -1,4 +1,4 @@
-// Taproot (Bitcoin chapters 41-43, BIP-341).
+// Taproot (Bitcoin chapters 41-43 and 45, BIP-341).
 //
 // - Chapter 41, the key tweak and the key path: the output key is
 //   taproot_output_key_vartime in address.coax and the tweaked secret key
@@ -12,6 +12,10 @@
 // - Chapter 43, signature hashes: bt_sigmsg_taproot and
 //   bt_sighash_taproot_ext in sighash.coax; this file checks them against
 //   BIP-341's published messages and Bitcoin Core's TaprootSignatureMsg.
+// - Chapter 45, script-path spends: a tapscript leaf's signature hash and
+//   signature, and the witness that carries the stack, the script, the
+//   control block and the annex. Chapter 44's VerifyScript in script.coax
+//   checks the result.
 //
 // Keys, scripts, signatures and hashes here are public, so the procedures
 // run in variable time and end in _vartime (chapter 3). The secret half of
@@ -376,4 +380,117 @@ tr_v341 :: (b: [] u8, spk: [] BtScript) -> BtTx {
   an[1] ^= 1; lf[31] ^= 1; #assert bt_sighash_taproot_ext(raw, t, 0, amounts[..], spk[..], 0, an[..], lf[..], 0, h2[..]) && !bt_same(h[..], h2[..]);
   lf[31] ^= 1; #assert bt_sighash_taproot_ext(raw, t, 0, amounts[..], spk[..], 0, an[..], lf[..], 1, h2[..]) && !bt_same(h[..], h2[..]);
   #assert bt_sighash_taproot_ext(raw, t, 0, amounts[..], spk[..], 0, an[..], lf[..], 0, h2[..]) && bt_same(h[..], h2[..]);
+}
+
+// ---- chapter 45: script-path spends
+// book:begin spend
+TR_BAD_ANNEX :: -8;         // an annex that doesn't start with 0x50
+// BIP-342's signature hash for a tapscript leaf (version 0xc0) of input
+// index of the unsigned transaction b: BIP-341's message with the annex,
+// if any, and the extension of the leaf hash, key version 0 and the
+// position of the last OP_CODESEPARATOR run before the signature check
+// (BT_NO_CODESEP for none). amounts and spent are every input's spent
+// output. False when the transaction doesn't read or the message refuses.
+taproot_script_sighash_vartime :: (b: [] u8, index: int, amounts: [] int, spent: [] BtScript, hashtype: int,
+                                   script: [] u8, annex: [] u8, codesep: int, out: [] u8) -> bool {
+  tp := bt_tx_read(b);
+  if !tp.ok { return false; }
+  leaf: [32] u8;
+  if taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, script, leaf[..]) != TR_OK { return false; }
+  return bt_sighash_taproot_ext(b, tp, index, amounts, spent, hashtype, annex, leaf[..], codesep, out);
+}
+// A tapscript signature: BIP-340 by key itself, not tweaked, since the
+// script names the key it checks, then the hash type as a 65th byte
+// unless it is SIGHASH_DEFAULT. Returns the length, 64 or 65, or 0.
+taproot_script_sign :: (key: [] u8, sighash: [] u8, aux: [] u8, hashtype: int, w: [] SignWork, out: [] u8) -> int {
+  n := ifx hashtype == BT_DEFAULT then 64 else 65;
+  if out.count < n || hashtype < 0 || hashtype > 255 { return 0; }
+  status := SIGN_REFUSED;
+  for k: 0..<6 { status = schnorr_sign_step(key, aux, sighash, w, out[0..<64], false); }
+  if status != SIGN_DONE { return 0; }
+  if n == 65 { out[64] = cast(u8) hashtype; }
+  return n;
+}
+// The witness of a script-path spend, serialized as one input's part of a
+// transaction's witness (chapter 34): the item count, then each item with
+// its compact size. The items are the stack the script starts with, its
+// bottom first, then the leaf script, the control block, and the annex
+// when there is one. Returns the length, TR_BAD_CONTROL_SIZE,
+// TR_BAD_ANNEX or TR_CAPACITY.
+taproot_script_witness_vartime :: (stack: [] [] u8, script: [] u8, control: [] u8, annex: [] u8, out: [] u8) -> int {
+  if control.count < 33 || control.count > TR_CONTROL_MAX || (control.count - 33) % 32 != 0 { return TR_BAD_CONTROL_SIZE; }
+  if annex.count > 0 && annex[0] != BT_ANNEX_TAG { return TR_BAD_ANNEX; }
+  count := stack.count + 2 + (ifx annex.count > 0 then 1 else 0);
+  size := tx_compact_size_vartime(count) + tr_sized(script) + tr_sized(control) + (ifx annex.count > 0 then tr_sized(annex) else 0);
+  for item: stack { size += tr_sized(item); }
+  if out.count < size { return TR_CAPACITY; }
+  at := tx_compact_write_vartime(out, 0, count);
+  for item: stack { at = tr_put(out, at, item); }
+  at = tr_put(out, at, script); at = tr_put(out, at, control);
+  if annex.count > 0 { at = tr_put(out, at, annex); }
+  return at;
+}
+tr_sized :: (item: [] u8) -> int { return tx_compact_size_vartime(item.count) + item.count; }
+tr_put :: (out: [] u8, at: int, item: [] u8) -> int {
+  p := tx_compact_write_vartime(out, at, item.count);
+  for i: 0..<item.count { out[p + i] = item[i]; }
+  return p + item.count;
+}
+// book:end spend
+// The witness's layout: the count, then each item with its compact size,
+// the annex last; an item of 300 bytes takes a 3-byte size.
+#test "a script-path witness: its items and their sizes" {
+  out: [400] u8; big: [300] u8; control: [65] u8; script := [2] u8.[0x51, 0x87]; annex := [2] u8.[0x50, 0x07];
+  a := [1] u8.[0xab]; nothing: [1] u8; stack: [2] [] u8; stack[0] = a[..]; stack[1] = nothing[0..<0];
+  control[0] = 0xc1; control[64] = 0x99;
+  n := taproot_script_witness_vartime(stack[..], script[..], control[0..<33], annex[..], out[..]);
+  #assert n == 1 + 2 + 1 + 3 + 34 + 3;
+  #assert out[0] == 5 && out[1] == 1 && out[2] == 0xab && out[3] == 0 && out[4] == 2 && out[5] == 0x51 && out[6] == 0x87;
+  #assert out[7] == 33 && out[8] == 0xc1 && out[41] == 2 && out[42] == 0x50 && out[43] == 0x07;
+  // No annex, no stack, a path of one hash.
+  n = taproot_script_witness_vartime(stack[0..<0], script[..], control[..], annex[0..<0], out[..]);
+  #assert n == 1 + 3 + 66 && out[0] == 2 && out[4] == 65 && out[69] == 0x99;
+  // An empty script is an item of size 0.
+  n = taproot_script_witness_vartime(stack[0..<0], script[0..<0], control[0..<33], annex[0..<0], out[..]);
+  #assert n == 1 + 1 + 34 && out[1] == 0 && out[2] == 33;
+  stack[0] = big[..];
+  n = taproot_script_witness_vartime(stack[0..<1], script[..], control[0..<33], annex[0..<0], out[..]);
+  #assert n == 1 + 303 + 3 + 34 && out[1] == 0xfd && out[2] == 0x2c && out[3] == 0x01;
+  #assert taproot_script_witness_vartime(stack[0..<1], script[..], control[0..<33], annex[0..<0], out[0..<n - 1]) == TR_CAPACITY;
+}
+#test "a script-path witness: what the builder refuses" {
+  out: [200] u8; control: [98] u8; script := [1] u8.[0x51]; annex := [1] u8.[0x51]; stack: [1] [] u8;
+  for size: [5] int.[0, 32, 34, 64, 98] {
+    #assert taproot_script_witness_vartime(stack[0..<0], script[..], control[0..<size], annex[0..<0], out[..]) == TR_BAD_CONTROL_SIZE;
+  }
+  #assert taproot_script_witness_vartime(stack[0..<0], script[..], control[0..<33], annex[..], out[..]) == TR_BAD_ANNEX;
+  annex[0] = 0x50;
+  #assert taproot_script_witness_vartime(stack[0..<0], script[..], control[0..<97], annex[..], out[..]) == 1 + 2 + 98 + 2;
+}
+// The leaf's signature hash is chapter 43's with the leaf hash, and a
+// signature by the leaf's key, untweaked, verifies against it.
+#test "a tapscript signature: its hash and its key" #steps 400000000 {
+  b: [BT_TX] u8; spk: [9] BtScript; h: [32] u8; g: [32] u8; leaf: [32] u8; sig: [65] u8; th: [32] u8;
+  t := tr_v341(b[..], spk[..]); amounts := BT_V341_AMOUNT; raw := b[0..<BT_V341_TX.count / 2];
+  script := [3] u8.[0x51, 0x75, 0x51]; annex := [2] u8.[0x50, 0x01]; aux: [32] u8; key: [32] u8;
+  #assert taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, script[..], leaf[..]) == TR_OK;
+  for ht: [3] int.[0, 0x01, 0x83] {
+    #assert taproot_script_sighash_vartime(raw, 1, amounts[..], spk[..], ht, script[..], annex[..], 2, h[..]);
+    #assert bt_sighash_taproot_ext(raw, t, 1, amounts[..], spk[..], ht, annex[..], leaf[..], 2, g[..]) && bt_same(h[..], g[..]);
+  }
+  #assert !taproot_script_sighash_vartime(raw, 1, amounts[..], spk[..], 0x80, script[..], annex[0..<0], BT_NO_CODESEP, h[..]);
+  #assert !taproot_script_sighash_vartime(raw[0..<raw.count - 1], 1, amounts[..], spk[..], 0, script[..], annex[0..<0], BT_NO_CODESEP, h[..]);
+  for i: 0..<32 { key[i] = 0x22; }
+  tw: [1] BtTapWork; bt_internal(key[..], key[0..<0], tw[..], th[..]);
+  sw: [1] SignWork;
+  #assert taproot_script_sighash_vartime(raw, 1, amounts[..], spk[..], 0, script[..], annex[0..<0], BT_NO_CODESEP, h[..]);
+  #assert taproot_script_sign(key[..], h[..], aux[..], BT_DEFAULT, sw[..], sig[..]) == 64;
+  #assert schnorr_verify_vartime(h[..], tw[0].internal[..], sig[0..<64]);
+  #assert taproot_script_sighash_vartime(raw, 1, amounts[..], spk[..], 0x83, script[..], annex[0..<0], BT_NO_CODESEP, h[..]);
+  #assert taproot_script_sign(key[..], h[..], aux[..], 0x83, sw[..], sig[..]) == 65 && sig[64] == 0x83;
+  #assert schnorr_verify_vartime(h[..], tw[0].internal[..], sig[0..<64]);
+  #assert taproot_script_sign(key[..], h[..], aux[..], 0x83, sw[..], sig[0..<64]) == 0;
+  #assert taproot_script_sign(key[..], h[..], aux[..], 256, sw[..], sig[..]) == 0;
+  for i: 0..<32 { key[i] = 0; }
+  #assert taproot_script_sign(key[..], h[..], aux[..], BT_DEFAULT, sw[..], sig[..]) == 0;
 }

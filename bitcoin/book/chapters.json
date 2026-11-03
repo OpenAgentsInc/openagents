@@ -1008,15 +1008,22 @@
   {
    "number": 45,
    "title": "Control blocks and script-path spends",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch045-control-blocks-and-script-path-spends.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     42,
     44
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "bitcoin/examples/script-path-spend.coax",
+    "bitcoin/examples/checks/script-path-spend.coax",
+    "coax/lib/bitcoin/taproot.coax",
+    "coax/lib/bitcoin/script.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

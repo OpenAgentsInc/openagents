@@ -1,0 +1,214 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/script.coax";
+#load "../../coax/lib/bitcoin/malleability.coax";
+#load "../../coax/lib/crypto/bip32.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// The unsigned transaction every spend here completes: version 2, one
+// input, one output of 90,000 satoshis to a P2WPKH script, locktime 0.
+// Its input spends AMOUNT satoshis from the Taproot output being tested.
+UNSIGNED :: "0200000001abababababababababababababababababababababababababababababababab0000000000ffffffff01905f010000000000160014111111111111111111111111111111111111111100000000";
+AMOUNT :: 100000;
+FLAGS :: SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT;
+PREIMAGE :: "Bitcoin chapter 45";
+AUX :: "0000000000000000000000000000000000000000000000000000000000000000";
+
+// Room for one spend: the unsigned and the signed transaction and their parts.
+Spend :: struct {
+  raw: [256] u8; tx: [4096] u8; spk: [34] u8;
+  ins: [2] TxIn; outs: [2] TxOut; items: [16] TxItem;
+}
+// Puts witness, one input's serialized witness, on the unsigned
+// transaction and runs VerifyScript for its input, which spends the
+// Taproot output with key program.
+verify :: (s: [] Spend, witness: [] u8, program: [] u8, w: [] ScriptWork) -> int {
+  raw := bt_unhex(UNSIGNED, s[0].raw[..]);
+  t := tx_read_vartime(raw, false, s[0].ins[..], s[0].outs[..], s[0].items[0..<0]);
+  n := mal_add_witness_vartime(raw, t, witness, s[0].tx[..]);
+  #assert t.code == TX_OK && n > 0;
+  u := tx_read_vartime(s[0].tx[0..<n], true, s[0].ins[..], s[0].outs[..], s[0].items[..]);
+  #assert u.code == TX_OK;
+  s[0].spk[0] = 0x51; s[0].spk[1] = 32; for i: 0..<32 { s[0].spk[2 + i] = program[i]; }
+  sp := ScriptSpend.{b=s[0].tx[0..<n], t=u, ins=s[0].ins[0..<u.nin], outs=s[0].outs[0..<u.nout],
+    items=s[0].items[0..<u.nitems], index=0, amount=AMOUNT, spk=s[0].spk[..]};
+  return script_verify_vartime(sp, FLAGS, w);
+}
+name :: (error: int) -> string { return ifx error == SCRIPT_BAD_FLAGS then "BAD_FLAGS" else SCRIPT_ERR_NAMES[error]; }
+// Prints a label, bytes as lowercase hex, and a line end.
+show :: (label: string, bytes: [] u8) {
+  text: [2048] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("% %\n", label, cast(string) text[0..<r.written]);
+}
+// x-only public key of a secret key: its compressed key without the prefix.
+xonly :: (secret: [] u8, out: [] u8) { p: [33] u8; #assert bip32_public(secret, p[..]); for i: 0..<32 { out[i] = p[1 + i]; } }
+// A push of 32 bytes at out[at], then op; returns the next position.
+push_key :: (out: [] u8, at: int, key: [] u8, op: int) -> int {
+  out[at] = 32; for i: 0..<32 { out[at + 1 + i] = key[i]; }
+  out[at + 33] = cast(u8) op;
+  return at + 34;
+}
+
+// The leaves of the tree this example builds, and what spends them.
+Tree :: struct {
+  secret: [4][32] u8; key: [4][32] u8;   // keys 1 to 3 sign in the leaves; key 0 is the internal key
+  script: [3][80] u8; size: [3] int; preimage: [18] u8;
+  tree: [1] TrTree; output: [32] u8; parity: int;
+  amounts: [1] int; spent: [1] BtScript;
+}
+// Leaf k's script.
+script_of :: (r: [] Tree, k: int) -> [] u8 { return r[0].script[k][0..<r[0].size[k]]; }
+// A tapscript signature of leaf k by key j, with a hash type and annex.
+sign :: (r: [] Tree, k: int, j: int, hashtype: int, annex: [] u8, out: [] u8) -> int {
+  raw: [256] u8; h: [32] u8; aux: [32] u8; sw: [1] SignWork;
+  b := bt_unhex(UNSIGNED, raw[..]);
+  #assert taproot_script_sighash_vartime(b, 0, r[0].amounts[..], r[0].spent[..], hashtype,
+    r[0].script[k][0..<r[0].size[k]], annex, BT_NO_CODESEP, h[..]);
+  return taproot_script_sign(r[0].secret[j][..], h[..], bt_unhex(AUX, aux[..]), hashtype, sw[..], out);
+}
+
+// Builds the tree: keys 1 to 3 sign in its leaves, key 0 is the internal
+// key; leaf 0 at depth 1, leaves 1 and 2 at depth 2.
+make_tree :: (r: [] Tree) {
+  hashes: [3][32] u8; depths := DEPTHS;
+  for j: 0..<4 { for i: 0..<32 { r[0].secret[j][i] = cast(u8) (0x11 * (ifx j == 0 then 4 else j)); } xonly(r[0].secret[j][..], r[0].key[j][..]); }
+  r[0].size[0] = push_key(r[0].script[0][..], 0, r[0].key[1][..], OP_CHECKSIG);
+  at := push_key(r[0].script[1][..], 0, r[0].key[2][..], OP_CHECKSIG);
+  at = push_key(r[0].script[1][..], at, r[0].key[3][..], OP_CHECKSIGADD);
+  r[0].script[1][at] = 0x52; r[0].script[1][at + 1] = OP_NUMEQUAL; r[0].size[1] = at + 2;
+  for i: 0..<18 { r[0].preimage[i] = PREIMAGE[i]; }
+  r[0].script[2][0] = OP_SHA256; r[0].script[2][1] = 32;
+  #assert sha256_hash_checked(r[0].preimage[..], r[0].script[2][2..<34], false) == SHA_OK;
+  r[0].script[2][34] = OP_EQUALVERIFY;
+  r[0].size[2] = push_key(r[0].script[2][..], 35, r[0].key[2][..], OP_CHECKSIG);
+  for k: 0..<3 { #assert taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, r[0].script[k][0..<r[0].size[k]], hashes[k][..]) == TR_OK; }
+  #assert taproot_tree_vartime(depths[..], hashes[..], r[0].tree[..]) == TR_OK;
+  r[0].parity = taproot_output_key_vartime(r[0].key[0][..], r[0].tree[0].root[..], r[0].output[..]);
+  r[0].amounts[0] = AMOUNT; r[0].spent[0].n = 34; r[0].spent[0].b[0] = 0x51; r[0].spent[0].b[1] = 32;
+  for i: 0..<32 { r[0].spent[0].b[2 + i] = r[0].output[i]; }
+}
+DEPTHS :: [3] int.[1, 2, 2];
+
+main :: () {
+  s: [1] Spend; w: [1] ScriptWork; c: [TR_CONTROL_MAX] u8; wit: [1024] u8; sc: [64] u8; p: [32] u8; q: [34] u8;
+  nothing: [1] u8; none := nothing[0..<0];
+
+  // Each leaf of BIP-341's script trees, spent through its control block.
+  print("BIP-341's script trees, spent by each leaf\n");
+  parity := 0; path := 0; leaves := 0; paths := 0;
+  for i: 1..<7 {
+    v := TR_SPK[i]; tree: [1] TrTree;
+    #assert tr_vector_tree(v, tree[..]) == TR_OK;
+    internal := bt_unhex(v.internal, p[..]); program := bt_unhex(v.spk, q[..])[2..<34];
+    for k: 0..<v.count {
+      leaf := TR_LEAVES[v.first + k]; script := bt_unhex(leaf.script, sc[..]);
+      n := taproot_control_block_vartime(tree[..], k, internal, leaf.version, c[..]);
+      // A leaf of one key and OP_CHECKSIG gets an empty signature: no one
+      // here holds the key, and the script then ends false.
+      keyed := script.count == 34 && script[0] == 32 && script[33] == OP_CHECKSIG;
+      stack: [1] [] u8; stack[0] = none;
+      m := taproot_script_witness_vartime(stack[0..<ifx keyed then 1 else 0], script, c[0..<n], none, wit[..]);
+      print("  vector %, leaf % (0x%, % bytes): control block %, %: %\n", i, k, ifx leaf.version == 0xc0 then "c0" else "fa",
+            script.count, ifx bt_hex_is(c[0..<n], leaf.control) then "as BIP-341's" else "differs",
+            ifx keyed then "an empty signature" else "no stack", name(verify(s[..], wit[0..<m], program, w[..])));
+      leaves += 1;
+      c[0] ^= 1;
+      m = taproot_script_witness_vartime(stack[0..<ifx keyed then 1 else 0], script, c[0..<n], none, wit[..]);
+      if verify(s[..], wit[0..<m], program, w[..]) == SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH { parity += 1; }
+      c[0] ^= 1;
+      if n > 33 {
+        paths += 1; c[40] ^= 1;
+        m = taproot_script_witness_vartime(stack[0..<ifx keyed then 1 else 0], script, c[0..<n], none, wit[..]);
+        if verify(s[..], wit[0..<m], program, w[..]) == SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH { path += 1; }
+        c[40] ^= 1;
+      }
+    }
+  }
+  print("  the parity bit flipped: % of % WITNESS_PROGRAM_MISMATCH\n", parity, leaves);
+  print("  a path hash changed: % of % WITNESS_PROGRAM_MISMATCH\n", path, paths);
+
+  // A tree of three leaves, with keys this example holds.
+  r: [1] Tree; make_tree(r[..]);
+  print("a tree of our own\n");
+  show("  internal key P:", r[0].key[0][..]);
+  labels := [3] string.["<key 1> CHECKSIG", "<key 2> CHECKSIG <key 3> CHECKSIGADD 2 NUMEQUAL", "SHA256 <hash> EQUALVERIFY <key 2> CHECKSIG"];
+  for k: 0..<3 { print("  leaf %, depth %, % bytes: %\n", k, DEPTHS[k], r[0].size[k], labels[k]); }
+  show("  root:", r[0].tree[0].root[..]);
+  show("  output key Q:", r[0].output[..]);
+  print("  Q's y is %\n", ifx r[0].parity == 1 then "odd" else "even");
+
+  // Spend it by each leaf: the script's stack, the script, the control block.
+  print("spending it\n");
+  sig: [3][65] u8; stack: [2] [] u8; ctl: [3][TR_CONTROL_MAX] u8; cn: [3] int;
+  for k: 0..<3 { cn[k] = taproot_control_block_vartime(r[0].tree[..], k, r[0].key[0][..], TR_LEAF_TAPSCRIPT, ctl[k][..]); }
+  n := sign(r[..], 0, 1, BT_DEFAULT, none, sig[0][..]);
+  stack[0] = sig[0][0..<n];
+  m := taproot_script_witness_vartime(stack[0..<1], script_of(r[..], 0), ctl[0][0..<cn[0]], none, wit[..]);
+  print("  leaf 0, % bytes of witness: %\n", m, name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+  show("   ", wit[0..<m]);
+  // Key 2's CHECKSIG runs first and takes the top item, so key 3's
+  // signature goes below it.
+  n2 := sign(r[..], 1, 2, BT_DEFAULT, none, sig[1][..]); n3 := sign(r[..], 1, 3, BT_DEFAULT, none, sig[2][..]);
+  stack[0] = sig[2][0..<n3]; stack[1] = sig[1][0..<n2];
+  m = taproot_script_witness_vartime(stack[..], script_of(r[..], 1), ctl[1][0..<cn[1]], none, wit[..]);
+  print("  leaf 1, % bytes of witness: %\n", m, name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+  stack[0] = none;
+  m = taproot_script_witness_vartime(stack[..], script_of(r[..], 1), ctl[1][0..<cn[1]], none, wit[..]);
+  print("  leaf 1, key 2's signature alone: %\n", name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+  n2 = sign(r[..], 2, 2, BT_DEFAULT, none, sig[1][..]);
+  stack[0] = sig[1][0..<n2]; stack[1] = r[0].preimage[..];
+  m = taproot_script_witness_vartime(stack[..], script_of(r[..], 2), ctl[2][0..<cn[2]], none, wit[..]);
+  print("  leaf 2, % bytes of witness: %\n", m, name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+  stack[1] = r[0].preimage[0..<17];
+  m = taproot_script_witness_vartime(stack[..], script_of(r[..], 2), ctl[2][0..<cn[2]], none, wit[..]);
+  print("  leaf 2, the preimage cut short: %\n", name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+
+  // A hash type and an annex, both signed.
+  n = sign(r[..], 0, 1, 0x83, none, sig[0][..]); stack[0] = sig[0][0..<n];
+  m = taproot_script_witness_vartime(stack[0..<1], script_of(r[..], 0), ctl[0][0..<cn[0]], none, wit[..]);
+  print("  leaf 0, signed SINGLE|ANYONECANPAY, % bytes: %\n", n, name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+  annex := [3] u8.[0x50, 0x04, 0x05];
+  n = sign(r[..], 0, 1, BT_DEFAULT, annex[..], sig[0][..]); stack[0] = sig[0][0..<n];
+  m = taproot_script_witness_vartime(stack[0..<1], script_of(r[..], 0), ctl[0][0..<cn[0]], annex[..], wit[..]);
+  print("  leaf 0, with an annex it signs: %\n", name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+  m = taproot_script_witness_vartime(stack[0..<1], script_of(r[..], 0), ctl[0][0..<cn[0]], none, wit[..]);
+  print("  the same signature, the annex left off: %\n", name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+
+  // What a verifier refuses.
+  print("what refuses\n");
+  n = sign(r[..], 1, 1, BT_DEFAULT, none, sig[0][..]); stack[0] = sig[0][0..<n];
+  m = taproot_script_witness_vartime(stack[0..<1], script_of(r[..], 0), ctl[0][0..<cn[0]], none, wit[..]);
+  print("  leaf 0, key 1 signed leaf 1's hash: %\n", name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+  n = sign(r[..], 0, 1, BT_DEFAULT, none, sig[0][..]); stack[0] = sig[0][0..<n];
+  m = taproot_script_witness_vartime(stack[0..<1], script_of(r[..], 0), ctl[1][0..<cn[1]], none, wit[..]);
+  print("  leaf 0 with leaf 1's control block: %\n", name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+  ctl[0][0] ^= 1;
+  m = taproot_script_witness_vartime(stack[0..<1], script_of(r[..], 0), ctl[0][0..<cn[0]], none, wit[..]);
+  print("  leaf 0, the parity bit flipped: %\n", name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+  ctl[0][0] ^= 1;
+  // Leaf 1's path is leaf 2's hash, then leaf 0's. In the other order it
+  // builds another root.
+  swapped: [TR_CONTROL_MAX] u8;
+  for i: 0..<33 { swapped[i] = ctl[1][i]; }
+  for i: 0..<32 { swapped[33 + i] = ctl[1][65 + i]; swapped[65 + i] = ctl[1][33 + i]; }
+  stack[0] = sig[2][0..<n3]; n2 = sign(r[..], 1, 2, BT_DEFAULT, none, sig[1][..]); stack[1] = sig[1][0..<n2];
+  m = taproot_script_witness_vartime(stack[..], script_of(r[..], 1), swapped[0..<cn[1]], none, wit[..]);
+  print("  leaf 1, its two path hashes swapped: %\n", name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+  m = taproot_script_witness_vartime(stack[..], script_of(r[..], 1), ctl[1][0..<cn[1] - 32], none, wit[..]);
+  print("  leaf 1, its last path hash dropped: %\n", name(verify(s[..], wit[0..<m], r[0].output[..], w[..])));
+  print("  the witness builder, a 64-byte control block: %\n",
+        ifx taproot_script_witness_vartime(stack[..], script_of(r[..], 1), ctl[1][0..<64], none, wit[..]) == TR_BAD_CONTROL_SIZE then "refused" else "built");
+  annex[0] = 0x51;
+  print("  the witness builder, an annex starting 0x51: %\n",
+        ifx taproot_script_witness_vartime(stack[..], script_of(r[..], 1), ctl[1][0..<cn[1]], annex[..], wit[..]) == TR_BAD_ANNEX then "refused" else "built");
+
+  // The same output by its key path: one signature by the tweaked key.
+  raw: [256] u8; h: [32] u8; aux: [32] u8; tw: [1] BtTapWork;
+  b := bt_unhex(UNSIGNED, raw[..]);
+  #assert bt_sighash_taproot(b, bt_tx_read(b), 0, r[0].amounts[..], r[0].spent[..], BT_DEFAULT, h[..]);
+  #assert bt_taproot_sign(r[0].secret[0][..], r[0].tree[0].root[..], h[..], bt_unhex(AUX, aux[..]), tw[..], sig[0][0..<64], false);
+  wit[0] = 1; wit[1] = 64; for i: 0..<64 { wit[2 + i] = sig[0][i]; }
+  print("the key path, signed by P tweaked with the root: %\n", name(verify(s[..], wit[0..<66], r[0].output[..], w[..])));
+}
+// book:end example

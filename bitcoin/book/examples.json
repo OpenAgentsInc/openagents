@@ -445,6 +445,18 @@
       "timeout": 420
     },
     {
+      "source": "bitcoin/examples/script-path-spend.coax",
+      "chapter": "bitcoin/book/ch045-control-blocks-and-script-path-spends.md",
+      "stdout": "bitcoin/fixtures/script-path-spend.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 420
+    },
+    {
       "source": "bitcoin/examples/timelocks.coax",
       "chapter": "bitcoin/book/ch039-timelocks.md",
       "stdout": "bitcoin/fixtures/timelocks.out",

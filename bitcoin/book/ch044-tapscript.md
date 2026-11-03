@@ -742,13 +742,15 @@ speed order).
 ## What this chapter leaves out
 
 - Building script-path spends: the control block a wallet writes and
-  BIP-341's script-path vectors. That is chapter 45.
+  BIP-341's script-path vectors. That is
+  [chapter 45](ch045-control-blocks-and-script-path-spends.md).
 - Core's `script_assets_test.json` and the cases of
   `feature_taproot.py`, which Core generates at test time and does not
   pin as data.
 - Which flags apply at which height: chapter 55. Mempool policy:
   chapter 81.
-- Batch verification of a block's Schnorr signatures: chapter 25.
+- Batch verification of a block's Schnorr signatures:
+  [chapter 25](ch025-batch-verification.md).
 
 ## Summary
 

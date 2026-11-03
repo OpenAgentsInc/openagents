@@ -73,6 +73,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [42. Script trees: tapleaves and tapbranches](ch042-script-trees-tapleaves-and-tapbranches.md) — implemented
 - [43. Taproot signature hashes](ch043-taproot-signature-hashes.md) — implemented
 - [44. Tapscript](ch044-tapscript.md) — implemented
+- [45. Control blocks and script-path spends](ch045-control-blocks-and-script-path-spends.md) — implemented
 
 **IX. Blocks and consensus**
 
