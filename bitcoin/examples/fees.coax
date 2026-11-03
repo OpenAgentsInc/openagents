@@ -1,0 +1,89 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/fees.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/tests/bitcoin/spent_vectors.coax";
+#import "Basic";
+
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+// A number of thousandths, printed with three decimals: 52306 is 52.306.
+milli :: (v: int) {
+  f := v % 1000;
+  print("%.", v / 1000);
+  if f < 100 { print("0"); }
+  if f < 10 { print("0"); }
+  print("%", f);
+}
+
+main :: () {
+  b: [1024] u8; ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+
+  // ---- weight and virtual size of chapter 34's six transactions
+  print("weight = 4 x stripped + witness bytes; vsize = weight / 4, rounded up\n");
+  for i: 0..<6 {
+    m := TX_MAINNET[i];
+    s := decode(m.tx, b[..]);
+    t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+    w := tx_weight_vartime(t);
+    print("%: % bytes, stripped %, witness %, weight % (published %), vsize %\n",
+      i, t.total, t.stripped, t.total - t.stripped, w, m.weight, tx_vsize_vartime(t));
+  }
+  print("the witness discount on f5864806\n");
+  s := decode(TX_MAINNET[3].tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  print("  % stripped bytes x 4 = %, plus % witness bytes x 1 = %: weight %\n",
+    t.stripped, 4 * t.stripped, t.total - t.stripped, t.total - t.stripped, tx_weight_vartime(t));
+  print("  at 4 units for every byte it would weigh % (vsize %)\n", 4 * t.total, t.total);
+
+  // ---- fees: the inputs' values minus the outputs'
+  print("fees\n");
+  for i: 0..<3 {
+    m := TX_MAINNET[3+i]; spent := TX_SPENT[i];
+    s = decode(m.tx, b[..]);
+    t = tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+    f := fee_vartime(s, t, outs[..], spent.values[0..<spent.nin]);
+    w := tx_weight_vartime(t); v := tx_vsize_vartime(t);
+    print("%: in %, out %, fee % (published %)\n", 3 + i, f.inputs, f.outputs, f.fee, spent.fee);
+    print("  vsize %: ", v); milli(fee_per_kvb_vartime(f.fee, v));
+    print(" sat/vB, % sat/kvB, % sat/kWU\n", fee_per_kvb_vartime(f.fee, v), fee_per_kwu_vartime(f.fee, w));
+    print("  sigop cost % (published): vsize with sigops %; it would grow at % sigops (% x 20 > %)\n",
+      spent.sigops, fee_vsize_sigops_vartime(w, spent.sigops, FEE_BYTES_PER_SIGOP), w / 20 + 1, w / 20 + 1, w);
+  }
+  print("sigops beyond weight / 20 set the vsize\n");
+  for c: [4] int.[1, 22, 23, 100] {
+    print("  weight 442, sigop cost %: vsize %\n", c, fee_vsize_sigops_vartime(442, c, FEE_BYTES_PER_SIGOP));
+  }
+  print("refusals\n");
+  s = decode(TX_MAINNET[3].tx, b[..]);
+  t = tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  short := [1] int.[506077]; two := [2] int.[511884, 0]; over := [1] int.[FEE_MAX_MONEY + 1];
+  print("  spent value 506077, one less than the output: ok %\n", fee_vartime(s, t, outs[..], short[..]).ok);
+  print("  two values for one input: ok %\n", fee_vartime(s, t, outs[..], two[..]).ok);
+  print("  a value above MAX_MONEY: ok %\n", fee_vartime(s, t, outs[..], over[..]).ok);
+
+  // ---- estimating before signing
+  print("estimates before signing, with the longest signatures\n");
+  print("  input weights: P2PKH %, P2WPKH %, P2TR key path %\n",
+    fee_input_weight_vartime(FEE_P2PKH), fee_input_weight_vartime(FEE_P2WPKH), fee_input_weight_vartime(FEE_P2TR));
+  p2wpkh := [1] int.[FEE_P2WPKH]; p2tr := [1] int.[FEE_P2TR];
+  print("  f5864806, one P2WPKH input to one P2SH output: estimate %, signed %\n",
+    fee_estimate_weight_vartime(p2wpkh[..], 1, fee_output_size_vartime(23)), TX_MAINNET[3].weight);
+  print("  33e794d0, one P2TR input to OP_RETURN and P2TR outputs: estimate %, signed %\n",
+    fee_estimate_weight_vartime(p2tr[..], 2, fee_output_size_vartime(49) + fee_output_size_vartime(34)), TX_MAINNET[4].weight);
+  pair := [2] int.[FEE_P2WPKH, FEE_P2WPKH];
+  w := fee_estimate_weight_vartime(pair[..], 2, 2 * fee_output_size_vartime(22));
+  v := (w + 3) / 4;
+  print("  two P2WPKH inputs to two P2WPKH outputs: weight %, vsize %\n", w, v);
+  for rate: [3] int.[1000, 10000, 52306] {
+    print("    at "); milli(rate); print(" sat/vB the fee is %\n", fee_for_rate_vartime(rate, v));
+  }
+
+  // ---- the block limit
+  print("a block holds % weight units: % stripped bytes at most\n", FEE_MAX_BLOCK_WEIGHT, FEE_MAX_BLOCK_WEIGHT / 4);
+  print("  % transactions the size of f5864806, or % at 4 units a byte\n", FEE_MAX_BLOCK_WEIGHT / 442, FEE_MAX_BLOCK_WEIGHT / (4 * 193));
+  print("  Core relays transactions up to % weight units (% vB)\n", FEE_MAX_STANDARD_WEIGHT, FEE_MAX_STANDARD_WEIGHT / 4);
+}
+// book:end example

@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 37 are implemented and 87 are planned. The 37 implemented
+Of the 124 chapters, 38 are implemented and 86 are planned. The 38 implemented
 chapters have runnable examples, qualified on native CPU, and 31 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
-7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 34, 35, 36, 37, 46, 47 and
-48 are new.
+7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 34, 35, 36, 37, 40, 46, 47
+and 48 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -184,7 +184,7 @@ Transactions, their IDs, the script interpreter, signature hashes, timelocks and
 | [37. Legacy signature hashes](ch037-legacy-signature-hashes.md) | Runnable: native C and wasm | The legacy signature hash of chapter 36's interpreter, field by field: what each of the six hash types signs, found by changing one byte at a time, the `SIGHASH_SINGLE` bug, FindAndDelete and `OP_CODESEPARATOR` in the scriptCode, undefined hash types, and quadratic hashing (1.87 GB for a 1,000,000-byte transaction of 6,756 inputs). All 500 rows of `sighash.json` match, 488 of them with undefined types, and the example agrees with a Python transliteration of Core. |
 | 38. Segwit v0 signature hashes | Planned | BIP-143's examples give their digests for every hash type. |
 | 39. Timelocks | Planned | The `CHECKLOCKTIMEVERIFY` and `CHECKSEQUENCEVERIFY` cases in `script_tests.json` and `tx_valid.json` pass, and BIP-68 sequence encodings round-trip. |
-| 40. Weight, vsize and fees | Planned | Weight and vsize of pinned transactions match Bitcoin Core's `decoderawtransaction`. |
+| [40. Weight, vsize and fees](ch040-weight-vsize-and-fees.md) | Runnable: native C | The fee as inputs minus outputs with Core's `MoneyRange` and in-below-out refusals, matching mempool.space for three segwit mainnet transactions; feerates in sat/vB, sat/kvB and sat/kWU and the fee for a rate, rounded up; Core's sigop-adjusted vsize (`GetVirtualTransactionSize`, 20 bytes per sigop); and pre-signing weights with the longest signatures (P2PKH 592, P2WPKH 272, key-path P2TR 230) that equal the signed weights of `f5864806` and `33e794d0`. Checked against Python natively. |
 
 ### Part VIII. Taproot (chapters 41–45)
 

@@ -180,7 +180,7 @@ there is a need.
 | [37. Legacy signature hashes](ch037-legacy-signature-hashes.md) — implemented | 34, 36 | Every case in Bitcoin Core's `sighash.json` gives its digest, including `SIGHASH_SINGLE` with no matching output. | Bitcoin Core `sighash.json` |
 | 38. Segwit v0 signature hashes — planned | 5, 34 | BIP-143's examples give their digests for every hash type. | BIP-143 |
 | 39. Timelocks — planned | 36 | The `CHECKLOCKTIMEVERIFY` and `CHECKSEQUENCEVERIFY` cases in `script_tests.json` and `tx_valid.json` pass, and BIP-68 sequence encodings round-trip. | BIP-65, BIP-68, BIP-112, BIP-113 |
-| 40. Weight, vsize and fees — planned | 34 | Weight and vsize of pinned transactions match Bitcoin Core's `decoderawtransaction`. | BIP-141 |
+| [40. Weight, vsize and fees](ch040-weight-vsize-and-fees.md) — implemented | 34 | Weight and vsize of the pinned mainnet transactions match their published values (mempool.space, rust-bitcoin), and their fees match mempool.space's. The sigop-adjusted vsize follows Bitcoin Core's `GetVirtualTransactionSize`, and pre-signing estimates of the pinned P2WPKH and key-path P2TR spends equal their signed weights. | BIP-141 |
 
 ### Part VIII. Taproot
 

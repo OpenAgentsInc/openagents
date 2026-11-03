@@ -598,7 +598,8 @@
         "sha256d-txid",
         "bitcoin-transactions",
         "bitcoin-script-interpreter",
-        "bitcoin-malleability"
+        "bitcoin-malleability",
+        "bitcoin-fees"
       ],
       "retrieved": "2026-11-02",
       "sha256": "0abeb1a6e4b942e4e43ef8d49b7356c1f6204bcb14163f24153f4d0ec5418011",
@@ -693,7 +694,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-fees"
       ],
       "retrieved": "2026-11-02",
       "sha256": "aa55254b379a2cc5f1835b506e248f80b4f020120782d2780ce52ff7c8cb827d",
@@ -733,7 +735,8 @@
       "license": "Public Bitcoin blockchain data",
       "covers": [
         "bitcoin-transactions",
-        "bitcoin-malleability"
+        "bitcoin-malleability",
+        "bitcoin-fees"
       ],
       "retrieved": "2026-11-02",
       "sha256": "4d9ba5d97cdb82847551d6a487e3479958b97b1c5cc9549c932c9bc261a2bf8e",
@@ -747,7 +750,8 @@
       "license": "Public Bitcoin blockchain data",
       "covers": [
         "bitcoin-transactions",
-        "bitcoin-malleability"
+        "bitcoin-malleability",
+        "bitcoin-fees"
       ],
       "retrieved": "2026-11-02",
       "sha256": "66d8bb646ababf838e207b78a0c6878c0d136709ea768b71d5ef78dc2a642f51",
@@ -760,7 +764,8 @@
       "revision": "static: a confirmed mainnet transaction from mempool.space's API; its bytes are fixed by its txid, pinned by sha256",
       "license": "Public Bitcoin blockchain data",
       "covers": [
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-fees"
       ],
       "retrieved": "2026-11-02",
       "sha256": "4864b8eda5c76a9ae3235130b6a0370f59533a4c20962c89ec1d4ce67d1fcecc",
@@ -773,7 +778,8 @@
       "revision": "static: mempool.space's API record of a confirmed mainnet transaction (txid, size, weight, block); pinned by sha256",
       "license": "Public Bitcoin blockchain data",
       "covers": [
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-fees"
       ],
       "retrieved": "2026-11-02",
       "sha256": "49f1314013f8bffd9c13f8a45d54983a5f9b317c96d4b8dba1330e11a353a63b",
@@ -786,7 +792,8 @@
       "revision": "static: a confirmed mainnet transaction from mempool.space's API; its bytes are fixed by its txid, pinned by sha256",
       "license": "Public Bitcoin blockchain data",
       "covers": [
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-fees"
       ],
       "retrieved": "2026-11-02",
       "sha256": "2098bb60eb4f47c230213ba7bd72a0b00dfcd6d295b59469b64ef1de8d72640d",
@@ -799,7 +806,8 @@
       "revision": "static: mempool.space's API record of a confirmed mainnet transaction (txid, size, weight, block); pinned by sha256",
       "license": "Public Bitcoin blockchain data",
       "covers": [
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-fees"
       ],
       "retrieved": "2026-11-02",
       "sha256": "8a9d44ab04ac3e4cf22472446690fcc5fad2b69ef9fb2d8711809338c51270b1",
@@ -1330,7 +1338,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-merkle"
+        "bitcoin-merkle",
+        "bitcoin-fees"
       ],
       "retrieved": "2026-11-02",
       "sha256": "7ffa54e839f78877c90ea59961995c38caf7015ad7280413cc49c37ab8c9a5cd",
@@ -1673,6 +1682,32 @@
       "retrieved": "2026-11-02",
       "sha256": "89ca08988ec28cc68f54e77972e8afb157c8ddc5d06a12ef545c5135a0d963cf",
       "bytes": 160
+    },
+    {
+      "path": "upstream/bitcoin-core/policy.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/policy/policy.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-fees"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "09dbc636d841d27a1d876bc179be3061c74d82fdd42a440d26738211637f40c2",
+      "bytes": 17307
+    },
+    {
+      "path": "upstream/bitcoin-core/amount.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/amount.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-fees"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "fbaf7f3186b066f911e74720117299e9b88132cf612a1b27dfe34ab55752a393",
+      "bytes": 1206
     }
   ]
 }

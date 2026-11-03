@@ -1,0 +1,200 @@
+// Weight, vsize and fees (Bitcoin chapter 40): the fee a transaction pays,
+// its feerate in sat/kvB and sat/kWU, Bitcoin Core's sigop-adjusted
+// virtual size, the fee for a target rate, and the weight of a spend
+// estimated before it is signed.
+//
+// Chapter 34 (tx.coax) gives a read transaction's weight and vsize. The
+// values of the coins it spends are not in its bytes: the caller passes
+// them, from the UTXO set or from a wallet. Sigop costs need the script
+// interpreter's counting rules (chapter 53), so the caller passes those
+// too.
+//
+// Fees and sizes are public, so everything here runs in variable time and
+// every procedure ends in _vartime (Bitcoin chapter 3).
+#load "tx.coax";
+#authority;
+
+// book:begin limits
+FEE_MAX_MONEY :: 2100000000000000;   // amount.h MAX_MONEY: 21,000,000 bitcoin of 100,000,000 satoshis
+FEE_MAX_BLOCK_WEIGHT :: 4000000;     // consensus.h MAX_BLOCK_WEIGHT
+FEE_MAX_STANDARD_WEIGHT :: 400000;   // policy.h MAX_STANDARD_TX_WEIGHT: the largest transaction Core relays
+FEE_BYTES_PER_SIGOP :: 20;           // policy.h DEFAULT_BYTES_PER_SIGOP
+// book:end limits
+
+// ---- checks
+#test "the fee of the P2WPKH spend, and every refusal" {
+  b: [512] u8; ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := tx_unhex(TX_MAINNET[3].tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  one := [1] int.[511884];
+  f := fee_vartime(s, t, outs[..], one[..]);
+  #assert f.ok && f.fee == 5806 && f.inputs == 511884 && f.outputs == 506078;
+  two := [2] int.[511884, 1];
+  #assert !fee_vartime(s, t, outs[..], two[..]).ok && !fee_vartime(s, t, outs[..], one[0..<0]).ok;
+  low := [1] int.[506077]; exact := [1] int.[506078]; neg := [1] int.[-1]; big := [1] int.[FEE_MAX_MONEY + 1];
+  #assert !fee_vartime(s, t, outs[..], low[..]).ok;                       // the outputs pay more than the inputs
+  f = fee_vartime(s, t, outs[..], exact[..]);
+  #assert f.ok && f.fee == 0;
+  #assert !fee_vartime(s, t, outs[..], neg[..]).ok && !fee_vartime(s, t, outs[..], big[..]).ok;
+  #assert !fee_vartime(s, Tx.{code=TX_TRUNCATED}, outs[..], one[..]).ok;
+  // The inputs' total may not pass MAX_MONEY even when each value is in range.
+  c := tx_unhex(TX_MAINNET[5].tx, b[..]);
+  u := tx_read_vartime(c, true, ins[..], outs[..], items[..]);
+  most := [2] int.[FEE_MAX_MONEY, 1]; both := [2] int.[491750, 491750];
+  #assert !fee_vartime(c, u, outs[..], most[..]).ok;
+  f = fee_vartime(c, u, outs[..], both[..]);
+  #assert f.ok && f.fee == 18200;
+  // An output above MAX_MONEY, or negative, refuses.
+  p := tx_unhex(TX_MAINNET[3].tx, b[..]);
+  hi := [1] int.[FEE_MAX_MONEY];
+  p[outs[0].value+7] = 0x80;                                               // the value's sign bit
+  #assert !fee_vartime(p, t, outs[..], hi[..]).ok;
+  p[outs[0].value+7] = 0x00; p[outs[0].value+6] = 0x08;                    // 2^51, above MAX_MONEY
+  #assert !fee_vartime(p, t, outs[..], hi[..]).ok;
+}
+#test "sigop-adjusted vsize, as GetVirtualTransactionSize" {
+  #assert fee_vsize_sigops_vartime(442, 1, FEE_BYTES_PER_SIGOP) == 111;
+  #assert fee_vsize_sigops_vartime(442, 22, FEE_BYTES_PER_SIGOP) == 111;    // 440 < 442
+  #assert fee_vsize_sigops_vartime(442, 23, FEE_BYTES_PER_SIGOP) == 115;    // 460 > 442
+  #assert fee_vsize_sigops_vartime(442, 0, 0) == 111 && fee_vsize_sigops_vartime(441, 0, 0) == 111 && fee_vsize_sigops_vartime(440, 0, 0) == 110;
+  #assert fee_vsize_sigops_vartime(0, 0, 20) == 0 && fee_vsize_sigops_vartime(1, 0, 20) == 1;
+  #assert fee_vsize_sigops_vartime(-1, 0, 20) == -1 && fee_vsize_sigops_vartime(1, -1, 20) == -1 && fee_vsize_sigops_vartime(1, 1, -1) == -1;
+  #assert fee_vsize_sigops_vartime(FEE_MAX_BLOCK_WEIGHT + 1, 0, 20) == -1 && fee_vsize_sigops_vartime(1, 80001, 20) == -1;
+  #assert fee_vsize_sigops_vartime(1, 80000, 20) == 400000;
+}
+#test "feerates: per kvB and per kWU, rounded down; the fee for a rate, rounded up" {
+  #assert fee_per_kvb_vartime(5806, 111) == 52306 && fee_per_kwu_vartime(5806, 442) == 13135;
+  #assert fee_per_kvb_vartime(18200, 182) == 100000 && fee_per_kwu_vartime(18200, 727) == 25034;
+  #assert fee_per_kvb_vartime(1, 0) == -1 && fee_per_kwu_vartime(1, 0) == -1 && fee_per_kvb_vartime(-1, 1) == -1 && fee_per_kwu_vartime(-1, 4) == -1;
+  #assert fee_per_kvb_vartime(FEE_MAX_MONEY + 1, 1) == -1 && fee_per_kwu_vartime(FEE_MAX_MONEY, 1) == FEE_MAX_MONEY * 1000;
+  #assert fee_for_rate_vartime(1000, 111) == 111 && fee_for_rate_vartime(1001, 111) == 112 && fee_for_rate_vartime(52306, 111) == 5806;
+  #assert fee_for_rate_vartime(0, 111) == 0 && fee_for_rate_vartime(999, 1) == 1 && fee_for_rate_vartime(1, 1000) == 1 && fee_for_rate_vartime(1, 1001) == 2;
+  #assert fee_for_rate_vartime(-1, 1) == -1 && fee_for_rate_vartime(1, -1) == -1;
+  #assert fee_for_rate_vartime(FEE_MAX_MONEY, FEE_MAX_BLOCK_WEIGHT) == FEE_MAX_MONEY * 4000;
+  #assert fee_for_rate_vartime(FEE_MAX_MONEY + 1, 1) == -1 && fee_for_rate_vartime(1, FEE_MAX_BLOCK_WEIGHT + 1) == -1;
+}
+#test "estimates before signing equal the signed weights of f5864806 and 33e794d0" {
+  #assert fee_input_weight_vartime(FEE_P2PKH) == 592 && fee_input_weight_vartime(FEE_P2WPKH) == 272 && fee_input_weight_vartime(FEE_P2TR) == 230;
+  #assert fee_input_weight_vartime(3) == -1 && fee_input_weight_vartime(-1) == -1;
+  #assert fee_output_size_vartime(23) == 32 && fee_output_size_vartime(34) == 43 && fee_output_size_vartime(253) == 264 && fee_output_size_vartime(-1) == -1;
+  p2wpkh := [1] int.[FEE_P2WPKH]; p2tr := [1] int.[FEE_P2TR];
+  #assert fee_estimate_weight_vartime(p2wpkh[..], 1, fee_output_size_vartime(23)) == 442;
+  #assert fee_estimate_weight_vartime(p2tr[..], 2, fee_output_size_vartime(49) + fee_output_size_vartime(34)) == 676;
+  // A legacy spend has no marker, flag or witness; a mixed one gives the
+  // P2PKH input an empty stack.
+  legacy := [1] int.[FEE_P2PKH]; mixed := [2] int.[FEE_P2PKH, FEE_P2WPKH];
+  #assert fee_estimate_weight_vartime(legacy[..], 1, 34) == 4 * (4 + 1 + 148 + 1 + 34 + 4);
+  #assert fee_estimate_weight_vartime(mixed[..], 1, 34) == 4 * (4 + 1 + 148 + 41 + 1 + 34 + 4) + 2 + 1 + 108;
+  bad := [1] int.[7];
+  #assert fee_estimate_weight_vartime(bad[..], 1, 34) == -1 && fee_estimate_weight_vartime(p2tr[..], -1, 34) == -1 && fee_estimate_weight_vartime(p2tr[..], 1, -1) == -1;
+  many: [253] int;
+  for i: 0..<253 { many[i] = FEE_P2TR; }
+  #assert fee_estimate_weight_vartime(many[..], 1, 43) == 253 * 230 + 4 * (4 + 3 + 1 + 43 + 4) + 2;
+}
+
+// book:begin fee
+// The fee of t, read from b with its outputs in outs: the values of the
+// coins its inputs spend, one per input in order, minus the values of its
+// outputs. Like Core's CheckTxInputs it refuses (ok is false) when a value
+// or a running total is outside 0..MAX_MONEY or the outputs pay more than
+// the inputs; it also refuses a count of values that isn't t's input count.
+FeeResult :: struct { ok: bool; fee: int; inputs: int; outputs: int; }
+fee_vartime :: (b: [] u8, t: Tx, outs: [] TxOut, values: [] int) -> FeeResult #export_c {
+  r: FeeResult; bad: FeeResult;
+  if t.code != TX_OK || values.count != t.nin { return bad; }
+  for i: 0..<values.count {
+    if values[i] < 0 || values[i] > FEE_MAX_MONEY { return bad; }
+    r.inputs += values[i];
+    if r.inputs > FEE_MAX_MONEY { return bad; }
+  }
+  for k: 0..<t.nout {
+    v := tx_le_vartime(b, outs[k].value, 8);     // signed, so a value of 2^63 or more is negative
+    if v < 0 || v > FEE_MAX_MONEY { return bad; }
+    r.outputs += v;
+    if r.outputs > FEE_MAX_MONEY { return bad; }
+  }
+  if r.outputs > r.inputs { return bad; }
+  r.fee = r.inputs - r.outputs; r.ok = true;
+  return r;
+}
+// book:end fee
+
+// book:begin rates
+// Core's GetVirtualTransactionSize: the larger of the weight and the sigop
+// cost times bytes_per_sigop, divided by 4 and rounded up. With a sigop
+// cost of 0 it is chapter 34's vsize. Returns -1 for a negative input, a
+// weight above a block's, a sigop cost above a block's 80,000, or
+// bytes_per_sigop above 1,000.
+fee_vsize_sigops_vartime :: (weight: int, sigop_cost: int, bytes_per_sigop: int) -> int #export_c {
+  if weight < 0 || weight > FEE_MAX_BLOCK_WEIGHT || sigop_cost < 0 || sigop_cost > 80000 || bytes_per_sigop < 0 || bytes_per_sigop > 1000 { return -1; }
+  w := weight;
+  if sigop_cost * bytes_per_sigop > w { w = sigop_cost * bytes_per_sigop; }
+  return (w + TX_SCALE - 1) / TX_SCALE;
+}
+// A feerate, rounded down: satoshis per 1,000 virtual bytes (sat/kvB,
+// Core's unit), or per 1,000 weight units (sat/kWU, LDK's and Lightning's
+// unit). 1 sat/vB is 1,000 sat/kvB and 250 sat/kWU. -1 for a fee outside
+// 0..MAX_MONEY or a size of 0 or less.
+fee_per_kvb_vartime :: (fee: int, vsize: int) -> int #export_c {
+  if fee < 0 || fee > FEE_MAX_MONEY || vsize <= 0 { return -1; }
+  return fee * 1000 / vsize;
+}
+fee_per_kwu_vartime :: (fee: int, weight: int) -> int #export_c {
+  if fee < 0 || fee > FEE_MAX_MONEY || weight <= 0 { return -1; }
+  return fee * 1000 / weight;
+}
+// The fee that pays at least rate sat/kvB for vsize virtual bytes:
+// rate × vsize / 1000, rounded up. The rate is split into its thousands
+// and the rest so that no product passes 2^63. -1 for a rate outside
+// 0..MAX_MONEY or a size outside 0..MAX_BLOCK_WEIGHT.
+fee_for_rate_vartime :: (rate: int, vsize: int) -> int #export_c {
+  if rate < 0 || rate > FEE_MAX_MONEY || vsize < 0 || vsize > FEE_MAX_BLOCK_WEIGHT { return -1; }
+  return (rate / 1000) * vsize + ((rate % 1000) * vsize + 999) / 1000;
+}
+// book:end rates
+
+// book:begin estimate
+// Input kinds the estimator knows, and the most each signature can take.
+FEE_P2PKH :: 0;              // a scriptSig of a signature and a compressed key
+FEE_P2WPKH :: 1;             // a witness of a signature and a compressed key
+FEE_P2TR :: 2;               // a key-path witness of one Schnorr signature
+FEE_SIG_MAX :: 72;           // DER with low s is at most 71 bytes, then the sighash byte
+FEE_KEY :: 33;               // a compressed public key
+FEE_SCHNORR :: 64;           // BIP-340, with SIGHASH_DEFAULT and no sighash byte
+FEE_INPUT_FIXED :: 32 + 4 + 4;   // every input's txid, output index and sequence
+// The weight one input adds, signed with the longest signature its kind
+// allows, or -1 for an unknown kind. A byte outside the witness weighs 4.
+fee_input_weight_vartime :: (kind: int) -> int #export_c {
+  if kind == FEE_P2PKH {
+    script := 1 + FEE_SIG_MAX + 1 + FEE_KEY;                    // two pushes: 107 bytes
+    return TX_SCALE * (FEE_INPUT_FIXED + tx_compact_size_vartime(script) + script);
+  }
+  empty := TX_SCALE * (FEE_INPUT_FIXED + 1);                    // a scriptSig of length 0
+  if kind == FEE_P2WPKH { return empty + 1 + 1 + FEE_SIG_MAX + 1 + FEE_KEY; }   // count, then two items
+  if kind == FEE_P2TR { return empty + 1 + 1 + FEE_SCHNORR; }   // count, then one item
+  return -1;
+}
+// The serialized size of an output whose scriptPubKey has script_n bytes.
+fee_output_size_vartime :: (script_n: int) -> int #export_c {
+  if script_n < 0 { return -1; }
+  return 8 + tx_compact_size_vartime(script_n) + script_n;
+}
+// The weight of a transaction that spends inputs of kinds to nout outputs
+// of output_bytes in all, before anyone signs it: the version, the counts,
+// the inputs, the outputs and the locktime; and with any segwit input the
+// marker and flag, and an empty stack for each P2PKH input. -1 for an
+// unknown kind or a negative count or size.
+fee_estimate_weight_vartime :: (kinds: [] int, nout: int, output_bytes: int) -> int #export_c {
+  if nout < 0 || output_bytes < 0 { return -1; }
+  w := TX_SCALE * (4 + tx_compact_size_vartime(kinds.count) + tx_compact_size_vartime(nout) + output_bytes + 4);
+  legacy := 0;
+  for i: 0..<kinds.count {
+    k := fee_input_weight_vartime(kinds[i]);
+    if k < 0 { return -1; }
+    w += k;
+    if kinds[i] == FEE_P2PKH { legacy += 1; }
+  }
+  if legacy < kinds.count { w += 2 + legacy; }
+  return w;
+}
+// book:end estimate

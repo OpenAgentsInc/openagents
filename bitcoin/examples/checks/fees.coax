@@ -1,0 +1,38 @@
+// The checks of fees.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/fees.coax
+#load "../fees.coax";
+
+// book:begin check
+// The three segwit mainnet transactions: the fee is the published one, the
+// published sigop cost leaves the vsize alone, and Core's
+// GetVirtualTransactionSize with no sigops is chapter 34's vsize.
+#forall "fees and vsizes of the segwit mainnet transactions" i: 0..<3 #steps 100000000 {
+  b: [1024] u8; ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  m := TX_MAINNET[3+i]; spent := TX_SPENT[i];
+  s := decode(m.tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  f := fee_vartime(s, t, outs[..], spent.values[0..<spent.nin]);
+  #assert f.ok && f.fee == spent.fee && tx_weight_vartime(t) == m.weight;
+  #assert fee_vsize_sigops_vartime(m.weight, 0, FEE_BYTES_PER_SIGOP) == tx_vsize_vartime(t);
+  #assert fee_vsize_sigops_vartime(m.weight, spent.sigops, FEE_BYTES_PER_SIGOP) == tx_vsize_vartime(t);
+  // The rate rounds down, so paying it for the vsize never exceeds the fee,
+  // and one sat/kvB more would.
+  rate := fee_per_kvb_vartime(f.fee, tx_vsize_vartime(t));
+  #assert fee_for_rate_vartime(rate, tx_vsize_vartime(t)) <= f.fee && fee_for_rate_vartime(rate + 1, tx_vsize_vartime(t)) > f.fee;
+}
+// The legacy ones weigh 4 units a byte, and their vsize is their size.
+#forall "legacy transactions: weight 4 x size" i: 0..<3 #steps 100000000 {
+  b: [1024] u8; ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  s := decode(TX_MAINNET[i].tx, b[..]);
+  t := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  #assert tx_weight_vartime(t) == 4 * s.count && tx_vsize_vartime(t) == s.count;
+}
+// The estimates before signing equal the signed weights of the P2WPKH and
+// key-path P2TR spends, whose signatures are the longest their kind allows.
+#test "estimates match the signed weights" {
+  p2wpkh := [1] int.[FEE_P2WPKH]; p2tr := [1] int.[FEE_P2TR];
+  #assert fee_estimate_weight_vartime(p2wpkh[..], 1, fee_output_size_vartime(23)) == TX_MAINNET[3].weight;
+  #assert fee_estimate_weight_vartime(p2tr[..], 2, fee_output_size_vartime(49) + fee_output_size_vartime(34)) == TX_MAINNET[4].weight;
+}
+// book:end check

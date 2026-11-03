@@ -1,0 +1,40 @@
+weight = 4 x stripped + witness bytes; vsize = weight / 4, rounded up
+0: 158 bytes, stripped 158, witness 0, weight 632 (published 632), vsize 158
+1: 225 bytes, stripped 225, witness 0, weight 900 (published 900), vsize 225
+2: 402 bytes, stripped 402, witness 0, weight 1608 (published 1608), vsize 402
+3: 193 bytes, stripped 83, witness 110, weight 442 (published 442), vsize 111
+4: 220 bytes, stripped 152, witness 68, weight 676 (published 676), vsize 169
+5: 358 bytes, stripped 123, witness 235, weight 727 (published 727), vsize 182
+the witness discount on f5864806
+  83 stripped bytes x 4 = 332, plus 110 witness bytes x 1 = 110: weight 442
+  at 4 units for every byte it would weigh 772 (vsize 193)
+fees
+3: in 511884, out 506078, fee 5806 (published 5806)
+  vsize 111: 52.306 sat/vB, 52306 sat/kvB, 13135 sat/kWU
+  sigop cost 1 (published): vsize with sigops 111; it would grow at 23 sigops (23 x 20 > 442)
+4: in 88480, out 67230, fee 21250 (published 21250)
+  vsize 169: 125.739 sat/vB, 125739 sat/kvB, 31434 sat/kWU
+  sigop cost 0 (published): vsize with sigops 169; it would grow at 34 sigops (34 x 20 > 676)
+5: in 983500, out 965300, fee 18200 (published 18200)
+  vsize 182: 100.000 sat/vB, 100000 sat/kvB, 25034 sat/kWU
+  sigop cost 0 (published): vsize with sigops 182; it would grow at 37 sigops (37 x 20 > 727)
+sigops beyond weight / 20 set the vsize
+  weight 442, sigop cost 1: vsize 111
+  weight 442, sigop cost 22: vsize 111
+  weight 442, sigop cost 23: vsize 115
+  weight 442, sigop cost 100: vsize 500
+refusals
+  spent value 506077, one less than the output: ok false
+  two values for one input: ok false
+  a value above MAX_MONEY: ok false
+estimates before signing, with the longest signatures
+  input weights: P2PKH 592, P2WPKH 272, P2TR key path 230
+  f5864806, one P2WPKH input to one P2SH output: estimate 442, signed 442
+  33e794d0, one P2TR input to OP_RETURN and P2TR outputs: estimate 676, signed 676
+  two P2WPKH inputs to two P2WPKH outputs: weight 834, vsize 209
+    at 1.000 sat/vB the fee is 209
+    at 10.000 sat/vB the fee is 2090
+    at 52.306 sat/vB the fee is 10932
+a block holds 4000000 weight units: 1000000 stripped bytes at most
+  9049 transactions the size of f5864806, or 5181 at 4 units a byte
+  Core relays transactions up to 400000 weight units (100000 vB)
