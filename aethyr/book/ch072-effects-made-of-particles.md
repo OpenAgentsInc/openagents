@@ -1,6 +1,6 @@
 # 72. Effects made of particles
 
-> **Status: in progress — the puff half is implemented.**
+> **Status: partly implemented.** The puff half is implemented.
 > [`aethyr/fx/puff.coax`](../../aethyr/fx/puff.coax) holds the puff record
 > and kinds, the budgets (`FX_LIVE` causes, `FX_PUFF_CAP` puffs a frame,
 > merges, push-outs and refusals counted), and seventeen recipes that

@@ -100,7 +100,7 @@
 
 - [70. Rivers, ponds and the sea](ch070-rivers-ponds-and-the-sea.md) — design draft
 - [71. Sky, weather and the time of day](ch071-sky-weather-and-the-time-of-day.md) — design draft
-- [72. Effects made of particles](ch072-effects-made-of-particles.md) — design draft
+- [72. Effects made of particles](ch072-effects-made-of-particles.md) — partly implemented
 - [73. Things that break](ch073-things-that-break.md) — design draft
 - [74. Wheels on the ground](ch074-wheels-on-the-ground.md) — design draft
 - [75. Creatures that follow and watch](ch075-creatures-that-follow-and-watch.md) — design draft
