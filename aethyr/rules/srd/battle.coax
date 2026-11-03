@@ -14,7 +14,7 @@
 
 RS_MAX :: 216;
 RS_ZONES :: 8;
-RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; }
+RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; round: bool; cx: int; cy: int; r_ft: int; }
 // A turn's economy and what has happened in it: moved (Steady Aim needs none), aimed (Steady Aim's
 // Advantage waiting) and anchored (its Speed 0 after), last_hit (1 + whom its last melee weapon
 // attack hit, 0 none: Divine Smite follows it) and last_crit, the once-a-turn Sneak Attack and
@@ -29,6 +29,8 @@ RsBattle :: struct {
   book: [1] RsLog;
   clock: f32;
   w: int; h: int;             // the grid, squares
+  turn_no: int;               // turns begun, for what happens once a turn
+  guards: int;                // Spirit Guardians cast and not yet ended
   who: int;                   // whose turn is running (-1 none)
   turn: RsTurn;
   // The time adapter. The SRD's: a turn every 6 seconds (beat 0 means RS_ROUND), slots and uses back
@@ -51,7 +53,7 @@ rs_at :: (b: [] RsBattle, x: int, y: int) -> int {
   for i: 0..<b[0].n { if b[0].c[i].x == x && b[0].c[i].y == y { return i; } }
   return -1;
 }
-rs_inside :: (z: RsZone, x: int, y: int) -> bool { return z.on && x >= z.x0 && x <= z.x1 && y >= z.y0 && y <= z.y1; }
+rs_inside :: (z: RsZone, x: int, y: int) -> bool { return z.on && x >= z.x0 && x <= z.x1 && y >= z.y0 && y <= z.y1 && (!z.round || rs_feet(x, y, z.cx, z.cy) <= z.r_ft); }
 rs_difficult :: (b: [] RsBattle, x: int, y: int) -> bool {
   for k: 0..<RS_ZONES { if b[0].zone[k].difficult && rs_inside(b[0].zone[k], x, y) { return true; } }
   return false;
@@ -76,6 +78,11 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone {
     if ox_ == 0 && oy_ == 0 { ox_ = 1; }
     z.x0 = ifx ox_ > 0 then cx + 1 else ifx ox_ < 0 then cx - k else cx - k / 2;
     z.y0 = ifx oy_ > 0 then cy + 1 else ifx oy_ < 0 then cy - k else cy - k / 2;
+  } else if sp.area == RS_A_SPHERE {
+    // a sphere: every square whose centre is within its radius of the point's
+    z.round = true; z.cx = tx; z.cy = ty; z.r_ft = sp.area_ft;
+    z.x0 = tx - k; z.y0 = ty - k; z.x1 = tx + k; z.y1 = ty + k;
+    return z;
   } else {
     z.x0 = tx - (k - 1) / 2; z.y0 = ty - (k - 1) / 2;
   }
@@ -139,10 +146,10 @@ rs_drop_effect :: (b: [] RsBattle, j: int, k: int) {
   b[0].c[j] = c[0];
 }
 rs_put_effect :: (b: [] RsBattle, j: int, e: RsEffect) {
-  if (e.kind == EF_COND || e.kind == EF_TURNED) && (b[0].c[j].immune_cond & e.cond) != 0 { return; }
+  if (e.kind == EF_COND || e.kind == EF_TURNED || e.kind == EF_DAZED) && (b[0].c[j].immune_cond & e.cond) != 0 { return; }
   f := e;
   // Mindless Rage (p. 30): Immunity to Charmed and Frightened while raging
-  if (f.kind == EF_COND || f.kind == EF_TURNED) && b[0].c[j].raging && b[0].c[j].mindless {
+  if (f.kind == EF_COND || f.kind == EF_TURNED || f.kind == EF_DAZED) && b[0].c[j].raging && b[0].c[j].mindless {
     f.cond = f.cond & (32767 - RS_CHARMED - RS_FRIGHTENED);
     if f.cond == 0 { return; }
   }
@@ -177,6 +184,7 @@ rs_end_concentration :: (b: [] RsBattle, i: int, why: string) {
       if b[0].c[j].eff[k].kind != EF_NONE && b[0].c[j].eff[k].by == i && b[0].c[j].eff[k].spell == sp { rs_drop_effect(b, j, k); }
     }
   }
+  if sp == SP_SPIRIT_GUARDIANS { b[0].guards = rs_max(b[0].guards - 1, 0); }
   b[0].c[i].conc = -1;
   l: [1] RsLine;
   rs_add_name(l[..], b, i); rs_add_text(l[..], "'s "); rs_add_text(l[..], rs_spell(sp).name); rs_add_text(l[..], " ends"); rs_add_text(l[..], why);
@@ -212,6 +220,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
   // Turn Undead ends early on a creature that takes any damage
   if r.taken > 0 {
     for k: 0..<RS_EFFECTS {
+      if b[0].c[j].eff[k].kind == EF_DAZED { rs_drop_effect(b, j, k); continue; }
       if b[0].c[j].eff[k].kind == EF_TURNED {
         rs_drop_effect(b, j, k);
         if !b[0].c[j].dead { l: [1] RsLine; rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is no longer turned"); rs_tell(b, RS_EV_END, -1, by, j, 0, 0, l[..]); }
@@ -266,6 +275,7 @@ rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> b
   if t == RS_T_ACTION && b[0].turn.action { return false; }
   if t == RS_T_BONUS && b[0].turn.bonus { return false; }
   if s.part_of == SP_PRODUCE_FLAME && b[0].c[i].flame_until <= b[0].clock { return false; }
+  if s.part_of == SP_CALL_LIGHTNING && b[0].c[i].conc != SP_CALL_LIGHTNING { return false; }
   if s.level > 0 {
     if b[0].turn.quickened { return false; }
     if slot == 0 {
@@ -320,7 +330,7 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
     area.spell = sp;
     area.until = b[0].clock + s.duration_s;
     for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TERRAIN { area.difficult = true; } }
-    if s.duration_s > 0 {
+    if s.duration_s > 0 && !s.burst {
       for k: 0..<RS_ZONES { if zone_at < 0 && !b[0].zone[k].on { zone_at = k; } }
       if zone_at >= 0 { b[0].zone[zone_at] = area; }
     }
@@ -339,12 +349,16 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
     return true;
   }
   // each creature it affects
+  sculpted := 0;
+  if sp == SP_SPIRIT_GUARDIANS { b[0].guards += 1; }
   for j: 0..<b[0].n {
     if s.area == RS_A_NONE {
       if j != target { continue; }
     } else {
       if !rs_inside(area, b[0].c[j].x, b[0].c[j].y) || b[0].c[j].dead { continue; }
       if j == i { continue; }   // "each creature (other than you)"; a cube from you starts beside you
+      // Sculpt Spells (Evoker, p. 82): up to 1 + the spell's level allies are spared an Evocation
+      if me.sculpt && s.school == "Evocation" && b[0].c[j].team == me.team && sculpted < 1 + s.level { sculpted += 1; continue; }
     }
     rs_affect(b, i, j, sp, slot, zone_at);
   }
@@ -534,7 +548,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       rs_tell(b, RS_EV_SAVE, sp, i, j, total, 0, l[..]);
     } else if st.kind == RS_S_DAMAGE {
       count := st.a;
-      if s.level == 0 && tier_dice { count = st.a * rs_cantrip_tier(b[0].c[i].level); }
+      if s.level == 0 && tier_dice && s.part_of != SP_CALL_LIGHTNING { count = st.a * rs_cantrip_tier(b[0].c[i].level); }
       else { count += st.d * rs_max(slot - s.level, 0); }
       count += bane;
       if crit { count *= 2; }
@@ -676,6 +690,14 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
     } else if st.kind == RS_S_SMITE {
       crit = b[0].turn.last_crit;
       if b[0].c[j].undead { bane = st.a; }
+    } else if st.kind == RS_S_DAZE {
+      rs_put_effect(b, j, RsEffect.{kind = EF_DAZED, cond = st.a, by = i, spell = sp, until = b[0].c[i].conc_until, save = -1, dc = 0});
+      l: [1] RsLine; rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is Charmed and Incapacitated, Speed 0");
+      rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
+    } else if st.kind == RS_S_GUARD {
+      b[0].c[i].guard_slot = slot;
+      l: [1] RsLine; rs_add_text(l[..], "  spirits circle "); rs_add_name(l[..], b, i); rs_add_text(l[..], " 15 feet round");
+      rs_tell(b, RS_EV_CONDITION, sp, i, i, 0, 0, l[..]);
     } else if st.kind == RS_S_MARK {
       rs_put_effect(b, j, RsEffect.{kind = EF_MARK, by = i, spell = sp, until = b[0].c[i].conc_until, save = -1, dc = 0});
       b[0].c[i].hex_free = false;
@@ -758,6 +780,7 @@ rs_escape :: (b: [] RsBattle, i: int) -> bool {
 // Whether a creature can move: up, and not Paralyzed, Petrified, Stunned, Unconscious, Grappled or
 // Restrained (an Incapacitated creature, a turned Undead, still moves).
 rs_can_move :: (c: RsCreature) -> bool {
+  for k: 0..<RS_EFFECTS { if c.eff[k].kind == EF_DAZED { return false; } }
   return rs_up(c) && (c.cond & (RS_PARALYZED | RS_PETRIFIED | RS_STUNNED | RS_UNCONSCIOUS | RS_GRAPPLED | RS_RESTRAINED)) == 0;
 }
 // One square of movement: 5 feet, 10 into Difficult Terrain; none while Restrained or at 0, or
@@ -770,7 +793,44 @@ rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
   if b[0].turn.move_left < cost { return false; }
   b[0].turn.move_left -= cost; b[0].turn.moved = true;
   b[0].c[i].x = x; b[0].c[i].y = y;
+  if b[0].guards > 0 {
+    // into someone's Spirit Guardians, or its own Emanation onto someone
+    rs_guardians(b, i);
+    if b[0].c[i].conc == SP_SPIRIT_GUARDIANS { for j: 0..<b[0].n { if j != i && rs_feet_to(b, i, j) <= 15 { rs_guardians(b, j); } } }
+  }
   return true;
+}
+// Spirit Guardians on creature j (p. 164): within 15 feet of a foe's casting, a Wisdom save once a
+// turn, 3d8 Radiant (1d8 more a slot level above 3rd) or half on a success. One save a turn covers
+// every caster's.
+rs_guardians :: (b: [] RsBattle, j: int) {
+  if b[0].guards <= 0 || !rs_up(b[0].c[j]) || b[0].c[j].guard_turn == b[0].turn_no { return; }
+  for k: 0..<b[0].n {
+    g := b[0].c[k];
+    if g.conc != SP_SPIRIT_GUARDIANS || g.team == b[0].c[j].team || rs_feet_to(b, k, j) > 15 { continue; }
+    b[0].c[j].guard_turn = b[0].turn_no;
+    dc := rs_dc(b, k);
+    d := rs_d20(b[0].dice[..], rs_save_edge(b, j, RS_WIS));
+    total := d.roll + rs_save_in(b, j, RS_WIS);
+    total += rs_inspired_roll(b, j, total, dc);
+    ok := total >= dc;
+    amount := rs_sum(b[0].dice[..], 3 + rs_max(g.guard_slot - 3, 0), 8);
+    if ok { amount = amount / 2; }
+    amount = rs_resisted(b, j, amount, RS_RADIANT);
+    l: [1] RsLine;
+    rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " meets "); rs_add_name(l[..], b, k); rs_add_text(l[..], "'s Spirit Guardians: WIS save ");
+    rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
+    rs_add_text(l[..], ifx ok then ": half, " else ": "); rs_add_int(l[..], amount); rs_add_text(l[..], " Radiant");
+    rs_tell(b, RS_EV_DAMAGE, SP_SPIRIT_GUARDIANS, k, j, amount, RS_RADIANT, l[..]);
+    rs_damage(b, k, j, amount, RS_RADIANT, false, SP_SPIRIT_GUARDIANS);
+    return;
+  }
+}
+// Whether a foe's Spirit Guardians reach creature i (its Speed is halved there).
+rs_guarded :: (b: [] RsBattle, i: int) -> bool {
+  if b[0].guards <= 0 { return false; }
+  for k: 0..<b[0].n { if b[0].c[k].conc == SP_SPIRIT_GUARDIANS && b[0].c[k].team != b[0].c[i].team && rs_feet_to(b, k, i) <= 15 { return true; } }
+  return false;
 }
 
 // The start of i's turn: what has run out ends, a creature at 0 makes its death saving throw, a
@@ -782,6 +842,8 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   speed := b[0].c[i].speed - (ifx b[0].c[i].slowed_until > b[0].clock then 10 else 0);
   // a Stunning Strike saved against: half its Speed
   if b[0].c[i].halved_until > b[0].clock { speed = speed / 2; }
+  if rs_guarded(b, i) { speed = speed / 2; }
+  b[0].turn_no += 1;
   squares := rs_max(cast(int) (f32(rs_max(speed, 0) / RS_SQUARE) * rs_beat(b) / f32(RS_ROUND) + 0.5), ifx speed > 0 then 1 else 0);
   b[0].turn = RsTurn.{action = false, bonus = false, slot_spent = false, move_left = squares};
   b[0].turn.new_round = b[0].c[i].turn_at >= b[0].c[i].round_at - 0.01;
@@ -809,6 +871,8 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   }
 }
 rs_end_turn :: (b: [] RsBattle, i: int) {
+  // ending its turn in a foe's Spirit Guardians
+  if b[0].guards > 0 { rs_guardians(b, i); }
   // the saves it repeats at the end of its turns
   for k: 0..<RS_EFFECTS {
     e := b[0].c[i].eff[k];
@@ -1137,8 +1201,9 @@ rs_attack :: (b: [] RsBattle, i: int, j: int, reckless: bool, cleave_to: int) ->
 rs_aura :: (b: [] RsBattle, j: int) -> int {
   best := 0;
   for k: 0..<b[0].n {
+    if !b[0].c[k].aura { continue; }
     p := b[0].c[k];
-    if !p.aura || p.team != b[0].c[j].team || !rs_can_act(p) || rs_has(p, RS_INCAPACITATED) || rs_feet_to(b, k, j) > 10 { continue; }
+    if p.team != b[0].c[j].team || !rs_can_act(p) || rs_has(p, RS_INCAPACITATED) || rs_feet_to(b, k, j) > 10 { continue; }
     best = rs_max(best, rs_max(rs_mod(p.score[RS_CHA]), 1));
   }
   return best;
@@ -2435,4 +2500,78 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
     for q: 0..<rs_max(ev.text_n - 6, 0) { if tx[q..<(q + 7)] == " vs AC " { rolls += 1; } }
   }
   #assert rolls == 2;
+}
+
+#test "Fireball: a 20-foot-radius sphere, Dex save, 8d6 Fire or half; a level 6 Evoker sculpts its allies out of it" {
+  c := rs_wizard("Vesk", 1, 6);
+  #assert c.score[RS_INT] == 18 && rs_spell_dc(c) == 8 + 3 + 4 && c.slots_max[3] == 3 && c.sculpt && c.ritual && c.memorize;
+  #assert rs_wizard("Vesk", 1, 5).slots_max[3] == 2 && !rs_wizard("Vesk", 1, 5).sculpt;
+  fb := rs_spell(SP_FIREBALL); #assert fb.level == 3 && fb.area == RS_A_SPHERE && fb.area_ft == 20 && fb.range_ft == 150 && fb.steps[1].a == 8 && fb.page == 131;
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 14; b[0].dice[0].state = 13;
+  w := rs_add(b[..], c, 1, 6);
+  f := rs_add(b[..], rs_fighter("Garr", 1, 3), 12, 6);   // an ally at the centre
+  near := rs_add(b[..], rs_skeleton("Skeleton", 2), 15, 6);   // 15 feet off the point: inside
+  edge := rs_add(b[..], rs_skeleton("Skeleton", 2), 16, 6);   // 20 feet: inside
+  out := rs_add(b[..], rs_skeleton("Skeleton", 2), 17, 6);    // 25 feet: outside
+  for k: 1..<4 { b[0].c[k + 1].hp = 200; b[0].c[k + 1].hp_max = 200; }
+  rs_fresh(b[..], w);
+  #assert rs_cast(b[..], w, SP_FIREBALL, 3, 12, 6, -1) && b[0].c[w].slots[3] == 2;
+  #assert b[0].c[f].hp == b[0].c[f].hp_max;   // Sculpt Spells
+  #assert b[0].c[near].hp < 200 && b[0].c[edge].hp < 200 && b[0].c[out].hp == 200;
+  #assert 200 - b[0].c[near].hp >= 4 && 200 - b[0].c[near].hp <= 48;
+}
+
+#test "Spirit Guardians: foes ending their turn within 15 feet save or take 3d8 Radiant, once a turn, at half Speed" {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 17;
+  c := rs_add(b[..], rs_cleric("Nyx", 0, 5), 4, 3);
+  s := rs_add(b[..], rs_skeleton("Skeleton", 2), 6, 3);
+  far := rs_add(b[..], rs_skeleton("Skeleton", 2), 12, 3);
+  b[0].c[s].hp = 200; b[0].c[s].hp_max = 200; b[0].c[far].hp = 200; b[0].c[far].hp_max = 200;
+  rs_start_turn(b[..], c);
+  #assert rs_cast(b[..], c, SP_SPIRIT_GUARDIANS, 3, 0, 0, c) && b[0].c[c].conc == SP_SPIRIT_GUARDIANS && b[0].guards == 1;
+  rs_end_turn(b[..], c);
+  rs_start_turn(b[..], s);
+  #assert rs_guarded(b[..], s) && !rs_guarded(b[..], far);
+  rs_end_turn(b[..], s);
+  hit := 200 - b[0].c[s].hp;
+  #assert hit >= 1 && hit <= 24;
+  // once a turn: a second check this turn does nothing
+  rs_guardians(b[..], s);
+  #assert 200 - b[0].c[s].hp == hit;
+  rs_start_turn(b[..], far); rs_end_turn(b[..], far);
+  #assert b[0].c[far].hp == 200;
+  // the far one walks in: it saves as it enters
+  rs_start_turn(b[..], far); b[0].turn.move_left = 6;
+  for k: 0..<5 { ok := rs_step_to(b[..], far, b[0].c[far].x - 1, 3); }
+  #assert b[0].c[far].x == 7 && b[0].c[far].hp < 200;
+  rs_end_concentration(b[..], c, "");
+  #assert b[0].guards == 0;
+}
+
+#test "Call Lightning: a 3d10 bolt within 5 feet of a point, and a Magic action for another while it lasts" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].state = 19;
+  d := rs_add(b[..], rs_druid("Rowan", 0, 5), 1, 3);
+  t := rs_add(b[..], rs_skeleton("Skeleton", 2), 15, 3);
+  u := rs_add(b[..], rs_skeleton("Skeleton", 2), 16, 3);
+  b[0].c[t].hp = 200; b[0].c[t].hp_max = 200; b[0].c[u].hp = 200; b[0].c[u].hp_max = 200;
+  rs_fresh(b[..], d);
+  #assert !rs_cast(b[..], d, SP_CALL_BOLT, 0, 15, 3, -1);   // not before the cloud
+  #assert rs_cast(b[..], d, SP_CALL_LIGHTNING, 3, 15, 3, -1) && b[0].c[d].conc == SP_CALL_LIGHTNING;
+  #assert b[0].c[t].hp < 200 && b[0].c[u].hp < 200;
+  for k: 0..<RS_ZONES { #assert !b[0].zone[k].on; }   // the bolt leaves nothing on the ground
+  th := b[0].c[t].hp;
+  rs_fresh(b[..], d);
+  #assert rs_cast(b[..], d, SP_CALL_BOLT, 0, 15, 3, -1) && b[0].c[t].hp < th && b[0].c[d].slots[3] == 1;
+}
+
+#test "Hypnotic Pattern: Charmed and Incapacitated at Speed 0 on a failed Wis save, ending when it takes damage" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 10; b[0].dice[0].state = 23;
+  a := rs_add(b[..], rs_bard("Lark", 0, 5), 1, 4);
+  b[0].c[a].score[RS_CHA] = 30;   // a DC no Skeleton makes
+  t := rs_add(b[..], rs_skeleton("Skeleton", 2), 12, 4);
+  rs_fresh(b[..], a);
+  #assert rs_cast(b[..], a, SP_HYPNOTIC_PATTERN, 3, 12, 4, -1);
+  #assert rs_has(b[0].c[t], RS_CHARMED) && rs_has(b[0].c[t], RS_INCAPACITATED) && !rs_can_act(b[0].c[t]) && !rs_can_move(b[0].c[t]);
+  rs_damage(b[..], a, t, 1, RS_FIRE, false, -1);
+  #assert !rs_has(b[0].c[t], RS_CHARMED) && rs_can_act(b[0].c[t]) && rs_can_move(b[0].c[t]);
 }

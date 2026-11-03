@@ -15,7 +15,7 @@
 RS_T_ACTION :: 0; RS_T_BONUS :: 1; RS_T_REACTION :: 2;
 RS_TIME :: [3] string.["Action", "Bonus Action", "Reaction"];
 // areas, in grid squares from the point (or from the caster, for a cube that originates there)
-RS_A_NONE :: 0; RS_A_CUBE_SELF :: 1; RS_A_SQUARE :: 2; RS_A_CUBE :: 3;
+RS_A_NONE :: 0; RS_A_CUBE_SELF :: 1; RS_A_SQUARE :: 2; RS_A_CUBE :: 3; RS_A_SPHERE :: 4;   // a sphere: area_ft its radius
 
 // The effect steps. A step after ATTACK applies only on a hit; after SAVE, DAMAGE is halved on a
 // success when the save says so, and CONDITION and PUSH apply only on a failure.
@@ -46,6 +46,10 @@ RS_S_SMITE :: 20;     // part of the caster's melee weapon hit on the target thi
                       // a more dice of b sides when the target is a Fiend or an Undead
 RS_S_MARK :: 21;      // Hunter's Mark: 1d6 Force more whenever the caster hits the target with an attack roll
 RS_S_WARD :: 22;      // +a AC until the start of the caster's next turn, against the triggering attack too (Shield)
+RS_S_DAZE :: 23;      // on a failed save, condition bits a for the duration and Speed 0, ending if it takes damage (Hypnotic Pattern)
+RS_S_GUARD :: 24;     // Spirit Guardians: an Emanation of area_ft round the caster; a creature it enters, or one that enters it
+                      // or ends its turn there, makes a save of ability c once a turn, a dice of b sides Radiant, half on a
+                      // success, d more a slot level above; Speed halved in it
 RS_ON_SAVE_HALF :: 1; RS_ON_SAVE_NONE :: 0;
 
 RsStep :: struct { kind: int; a: int; b: int; c: int; d: int; }
@@ -62,6 +66,7 @@ RsSpell :: struct {
   steps: [RS_STEPS] RsStep; step_n: int;
   part_of: int;               // a part of another spell (Produce Flame's hurl), -1 none
   humanoid_only: bool;        // its target must be a Humanoid
+  burst: bool;                // an area that is there only as it's cast, though the spell lasts (Call Lightning)
   page: int;                  // the SRD 5.2.1 page
   text: string;
 }
@@ -72,7 +77,8 @@ SP_CHILL_TOUCH :: 9; SP_RAY_OF_SICKNESS :: 10; SP_FALSE_LIFE :: 11; SP_RAY_OF_EN
 SP_ELDRITCH_BLAST :: 14; SP_HEX :: 15; SP_HOLD_PERSON :: 16; SP_SCORCHING_RAY :: 17;
 SP_VICIOUS_MOCKERY :: 18; SP_SACRED_FLAME :: 19; SP_GUIDING_BOLT :: 20; SP_DIVINE_SMITE :: 21;
 SP_HUNTERS_MARK :: 22; SP_FIRE_BOLT :: 23; SP_SHIELD :: 24;
-RS_SPELLS :: 25;
+SP_FIREBALL :: 25; SP_SPIRIT_GUARDIANS :: 26; SP_CALL_LIGHTNING :: 27; SP_CALL_BOLT :: 28; SP_HYPNOTIC_PATTERN :: 29;
+RS_SPELLS :: 30;
 
 rs_step :: (kind: int, a: int, b: int, c: int, d: int) -> RsStep { return RsStep.{kind = kind, a = a, b = b, c = c, d = d}; }
 
@@ -243,6 +249,32 @@ rs_spell :: (i: int) -> RsSpell {
                  concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 161,
                  text = "An imperceptible barrier of magical force protects you. Until the start of your next turn, you have a +5 bonus to AC, including against the triggering attack, and you take no damage from Magic Missile."};
     s.steps[0] = rs_step(RS_S_WARD, 5, 0, 0, 0); s.step_n = 1;
+  } else if i == SP_FIREBALL {
+    s = RsSpell.{id = "fireball", name = "Fireball", level = 3, school = "Evocation", classes = "Sorcerer, Wizard",
+                 cast_time = RS_T_ACTION, range_ft = 150, components = "V, S, M (a ball of bat guano and sulfur)", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_SPHERE, area_ft = 20, part_of = -1, page = 131,
+                 text = "A bright streak flashes from you to a point you choose within range and then blossoms with a low roar into a fiery explosion. Each creature in a 20-foot-radius Sphere centered on that point makes a Dexterity saving throw, taking 8d6 Fire damage on a failed save or half as much damage on a successful one. Flammable objects in the area that aren't being worn or carried start burning. Using a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 3."};
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 8, 6, RS_FIRE, 1); s.step_n = 2;
+  } else if i == SP_SPIRIT_GUARDIANS {
+    s = RsSpell.{id = "spirit-guardians", name = "Spirit Guardians", level = 3, school = "Conjuration", classes = "Cleric",
+                 cast_time = RS_T_ACTION, range_ft = 0, components = "V, S, M (a prayer scroll)", duration = "Concentration, up to 10 minutes", duration_s = 600,
+                 concentration = true, area = RS_A_NONE, area_ft = 15, part_of = -1, page = 164,
+                 text = "Protective spirits flit around you in a 15-foot Emanation for the duration. If you are good or neutral, their spectral form appears angelic or fey (your choice). If you are evil, they appear fiendish. When you cast this spell, you can designate creatures to be unaffected by it. Any other creature's Speed is halved in the Emanation, and whenever the Emanation enters a creature's space and whenever a creature enters the Emanation or ends its turn there, the creature must make a Wisdom saving throw. On a failed save, the creature takes 3d8 Radiant damage (if you are good or neutral) or 3d8 Necrotic damage (if you are evil). On a successful save, the creature takes half as much damage. A creature makes this save only once per turn. Using a Higher-Level Spell Slot. The damage increases by 1d8 for each spell slot level above 3."};
+    s.steps[0] = rs_step(RS_S_GUARD, 3, 8, RS_WIS, 1); s.step_n = 1;
+  } else if i == SP_CALL_LIGHTNING || i == SP_CALL_BOLT {
+    s = RsSpell.{id = "call-lightning", name = "Call Lightning", level = 3, school = "Conjuration", classes = "Druid",
+                 cast_time = RS_T_ACTION, range_ft = 120, components = "V, S", duration = "Concentration, up to 10 minutes", duration_s = 600,
+                 concentration = true, area = RS_A_SPHERE, area_ft = 5, part_of = -1, burst = true, page = 114,
+                 text = "A storm cloud appears at a point within range that you can see above yourself. It takes the shape of a Cylinder that is 10 feet tall with a 60-foot radius. When you cast the spell, choose a point you can see under the cloud. A lightning bolt shoots from the cloud to that point. Each creature within 5 feet of that point makes a Dexterity saving throw, taking 3d10 Lightning damage on a failed save or half as much damage on a successful one. Until the spell ends, you can take a Magic action to call down lightning in that way again, targeting the same point or a different one. If you're outdoors in a storm when you cast this spell, the spell gives you control over that storm instead of creating a new one. Under such conditions, the spell's damage increases by 1d10. Using a Higher-Level Spell Slot. The damage increases by 1d10 for each spell slot level above 3."};
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 3, 10, RS_LIGHTNING, 1); s.step_n = 2;
+    // the later bolts: a Magic action while it lasts, no slot (at a 3rd-level slot's damage)
+    if i == SP_CALL_BOLT { s.id = "call-lightning-bolt"; s.level = 0; s.part_of = SP_CALL_LIGHTNING; s.concentration = false; s.duration_s = 0; s.steps[1].d = 0; }
+  } else if i == SP_HYPNOTIC_PATTERN {
+    s = RsSpell.{id = "hypnotic-pattern", name = "Hypnotic Pattern", level = 3, school = "Illusion", classes = "Bard, Sorcerer, Warlock, Wizard",
+                 cast_time = RS_T_ACTION, range_ft = 120, components = "S, M (a pinch of confetti)", duration = "Concentration, up to 1 minute", duration_s = 60,
+                 concentration = true, area = RS_A_CUBE, area_ft = 30, part_of = -1, burst = true, page = 141,
+                 text = "You create a twisting pattern of colors in a 30-foot Cube within range. The pattern appears for a moment and vanishes. Each creature in the area who can see the pattern must succeed on a Wisdom saving throw or have the Charmed condition for the duration. While Charmed, the creature has the Incapacitated condition and a Speed of 0. The spell ends for an affected creature if it takes any damage or if someone else uses an action to shake the creature out of its stupor."};
+    s.steps[0] = rs_step(RS_S_SAVE, RS_WIS, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_DAZE, RS_CHARMED | RS_INCAPACITATED, 0, 0, 0); s.step_n = 2;
   }
   return s;
 }

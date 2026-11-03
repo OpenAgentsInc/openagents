@@ -179,6 +179,10 @@ spell_col :: (sp: int) -> Col {
   if sp == SP_HUNTERS_MARK { return Col.{r = 0.55, g = 0.95, b = 0.35}; }
   if sp == SP_FIRE_BOLT { return Col.{r = 1.0, g = 0.48, b = 0.1}; }
   if sp == SP_SHIELD { return CYAN; }
+  if sp == SP_FIREBALL { return Col.{r = 1.0, g = 0.5, b = 0.12}; }
+  if sp == SP_SPIRIT_GUARDIANS { return Col.{r = 1.0, g = 0.95, b = 0.7}; }
+  if sp == SP_CALL_LIGHTNING || sp == SP_CALL_BOLT { return Col.{r = 0.7, g = 0.85, b = 1.0}; }
+  if sp == SP_HYPNOTIC_PATTERN { return Col.{r = 0.95, g = 0.5, b = 1.0}; }
   if sp < 0 { return Col.{r = 0.5, g = 0.9, b = 0.4}; }
   return WHITE;
 }
@@ -666,6 +670,27 @@ hold_one :: (s: [] Lab, i: int, foe: int, chance: f32) {
   if rs_unit(dice(s)) < chance { ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe); }
 }
 
+// The foe whose square makes the best centre for a burst of `radius` feet within `range` of i: the
+// most foes caught, less three for each friend in it (none when `spare`: an Evoker sculpts them
+// out), or -1 when fewer than `least` foes would be caught. It looks at 40 foes at most.
+burst_at :: (s: [] Lab, i: int, range: int, radius: int, spare: bool, least: int) -> int {
+  b := bt(s);
+  best := -1; bv := least - 1; looked := 0;
+  me := b[0].c[i];
+  for j: 0..<b[0].n {
+    c := b[0].c[j];
+    if c.team == me.team || !rs_up(c) || rs_feet_to(b, i, j) > range || looked >= 40 { continue; }
+    looked += 1;
+    v := 0;
+    for k: 0..<b[0].n {
+      o := b[0].c[k];
+      if o.dead || rs_feet(c.x, c.y, o.x, o.y) > radius { continue; }
+      if o.team != me.team { if rs_up(o) { v += 1; } } else if !spare || k == i { v -= 3; }
+    }
+    if v > bv { bv = v; best = j; }
+  }
+  return best;
+}
 // A Fighter's turn: Second Wind when Bloodied, close in on the casters, the Greatsword (Graze on a
 // miss), then Action Surge for a second Attack action while a foe still stands beside it.
 fighter_turn :: (s: [] Lab, i: int) {
@@ -845,6 +870,11 @@ wizard_turn :: (s: [] Lab, i: int) {
   if !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, foe, 25, 60); }
   foe = nearest_foe(s, i);
   if foe < 0 { return; }
+  // Fireball (from level 5) where it catches three foes or more
+  if !b[0].turn.action && !b[0].turn.slot_spent && b[0].c[i].slots[3] > 0 {
+    fb := burst_at(s, i, 150, 20, b[0].c[i].sculpt, 3);
+    if fb >= 0 { ok := rs_cast(b, i, SP_FIREBALL, 3, b[0].c[fb].x, b[0].c[fb].y, -1); }
+  }
   hold_one(s, i, foe, 0.25);
   if !b[0].turn.action && !b[0].turn.slot_spent && b[0].c[i].slots[2] > 0 && rs_unit(dice(s)) < 0.5 { ok := rs_cast(b, i, SP_SCORCHING_RAY, 2, 0, 0, foe); }
   if !b[0].turn.action { ok := rs_cast(b, i, SP_FIRE_BOLT, 0, 0, 0, foe); }

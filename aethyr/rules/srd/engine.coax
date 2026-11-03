@@ -122,6 +122,8 @@ RS_CONDITION :: [15] string.["Blinded", "Charmed", "Deafened", "Exhaustion", "Fr
 // Vex mastery (EF_VEX: Advantage on its next attack roll against creature `cond`).
 EF_NONE :: 0; EF_COND :: 1; EF_ENFEEBLED :: 2; EF_WEAK :: 3; EF_NOHEAL :: 4; EF_HEX :: 5;
 EF_TURNED :: 6; EF_MARK :: 7; EF_EXPOSED :: 8; EF_VEX :: 9;
+// Hypnotic Pattern's stupor (EF_DAZED): Charmed and Incapacitated, Speed 0, ending when it takes damage
+EF_DAZED :: 10;
 
 // The classes a creature can be built as (-1 for a stat block).
 RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4; RS_MONSTER :: 5;
@@ -215,6 +217,9 @@ RsCreature :: struct {
   // Strike (stun_ready: the deciding routine wants it on its next hit), Empowered Strikes; a Stunning
   // Strike saved against halves Speed until (halved_until)
   explorer: bool; lore: bool; swim: int;   // the Ranger's Deft Explorer, Hunter's Lore (record), a swim Speed
+  ritual: bool; arcane_recovery: bool; scholar: bool; savant: bool; memorize: bool;   // the Wizard's, out of a battle's reach
+  sculpt: bool;                    // Sculpt Spells (Evoker)
+  guard_slot: int; guard_turn: int;   // Spirit Guardians: the slot it was cast with; the turn this creature last saved against one
   aura: bool; steed: bool;          // Aura of Protection; Faithful Steed (Find Steed, a summoning this engine doesn't model)
   metabolism: bool; slow_fall: bool; stunning: bool; stun_ready: bool; empowered: bool; halved_until: f32;
   // Paladin: Sacred Weapon (Channel Divinity) until; Ranger: the Hunter's Colossus Slayer
@@ -299,6 +304,8 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   c[0].team = team; c[0].level = level;
   c[0].klass = RS_WIZARD; c[0].humanoid = true; c[0].ranged = -1;
   c[0].score = [6] int.[8, 14, 13, 16, 12, 10];
+  // an Ability Score Improvement at 4 (the feat, p. 87): Intelligence +2
+  if level >= 4 { c[0].score[RS_INT] = rs_min(c[0].score[RS_INT] + 2, 20); }
   c[0].save_prof[RS_INT] = true; c[0].save_prof[RS_WIS] = true;
   con := rs_mod(c[0].score[RS_CON]);
   c[0].hp_max = 6 + con + (level - 1) * (4 + con);
@@ -310,12 +317,17 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   slots2 := [5] int.[0, 0, 0, 2, 3];
   l := rs_min(level, 4);
   c[0].slots_max[1] = slots1[l]; c[0].slots_max[2] = slots2[l];
-  if level >= 5 { c[0].slots_max[3] = 2; }
+  if level >= 5 { c[0].slots_max[3] = ifx level >= 6 then 3 else 2; }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].slots[1] -= 1;   // Mage Armor
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   // Shield prepared (p. 161), and the Evoker's Potent Cantrip at level 3 (p. 82)
   c[0].shield_spell = true; c[0].potent = level >= 3; c[0].weapon = W_DAGGER;
+  // Ritual Adept and Arcane Recovery at 1, Scholar at 2, Evocation Savant at 3, Memorize Spell at 5
+  // (p. 79-82: rituals, rests, skills and spellbook copying, none of which a battle reaches); Sculpt
+  // Spells at 6 (p. 82); Fireball prepared from 5
+  c[0].ritual = true; c[0].arcane_recovery = true; c[0].scholar = level >= 2; c[0].savant = level >= 3; c[0].memorize = level >= 5;
+  c[0].sculpt = level >= 6;
   return c[0];
 }
 
@@ -485,7 +497,7 @@ rs_full_slots :: (c: [] RsCreature, level: int) {
   slots2 := [5] int.[0, 0, 0, 2, 3];
   l := rs_min(rs_max(level, 1), 4);
   c[0].slots_max[1] = slots1[l]; c[0].slots_max[2] = slots2[l];
-  if level >= 5 { c[0].slots_max[3] = 2; }
+  if level >= 5 { c[0].slots_max[3] = ifx level >= 6 then 3 else 2; }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
 }
 rs_half_slots :: (c: [] RsCreature, level: int) {
@@ -638,14 +650,14 @@ rs_effect_add :: (c: [] RsCreature, e: RsEffect) {
   for k: 0..<RS_EFFECTS { if at < 0 && c[0].eff[k].kind == EF_NONE { at = k; } }
   if at < 0 { at = 0; }
   c[0].eff[at] = e;
-  if e.kind == EF_COND || e.kind == EF_TURNED { c[0].cond = c[0].cond | e.cond; }
+  if e.kind == EF_COND || e.kind == EF_TURNED || e.kind == EF_DAZED { c[0].cond = c[0].cond | e.cond; }
 }
 // Ends effect k on c; a condition it imposed goes unless another effect still imposes it.
 rs_effect_end :: (c: [] RsCreature, k: int) {
   e := c[0].eff[k];
   c[0].eff[k].kind = EF_NONE;
-  if e.kind != EF_COND && e.kind != EF_TURNED { return; }
-  for j: 0..<RS_EFFECTS { if (c[0].eff[j].kind == EF_COND || c[0].eff[j].kind == EF_TURNED) && (c[0].eff[j].cond & e.cond) != 0 { return; } }
+  if e.kind != EF_COND && e.kind != EF_TURNED && e.kind != EF_DAZED { return; }
+  for j: 0..<RS_EFFECTS { if (c[0].eff[j].kind == EF_COND || c[0].eff[j].kind == EF_TURNED || c[0].eff[j].kind == EF_DAZED) && (c[0].eff[j].cond & e.cond) != 0 { return; } }
   c[0].cond = rs_clear(c[0].cond, e.cond);
 }
 // The name of a condition bit.
