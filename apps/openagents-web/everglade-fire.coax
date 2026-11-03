@@ -21,7 +21,7 @@
 //
 // The observatory's dome (the engine's sphere on its tower, everglade-spells.coax sp_dome) is stone,
 // four Large sections' worth of hit points (SRD: Huge objects as Large sections): the spells' blasts,
-// the sledgehammer, rubble falling on it, its own fall, and fire (halved, stone) wear it down, and at
+// rubble falling on it, its own fall, and fire (halved, stone) wear it down, and at
 // none it breaks into curved slabs that fall and tumble; a slab still falling hard on someone hurts
 // them as rubble does (2d6 bludgeoning). R, or a long rest, puts it back with the town.
 
@@ -389,48 +389,6 @@ fi_dome_landed :: (s: [] Everglade, speed: f32) {
   feet := speed * speed / (2 * 9.81) / 0.3048;
   dice := cast(int) floor(feet / 10);
   if dice > 0 { fi_dome_hurt(s, srd_sum(s[0].sp.dice[..], dice, 6), v3(fi_dome_centre(s).x, -100, fi_dome_centre(s).z)); }
-}
-// The sledgehammer (everglade-hammer.coax): how far the dome's face is from you, in front of you within
-// reach, or -1.
-fi_dome_reach :: (s: [] Everglade, you: Point, chest: f32, fx: f32, fz: f32) -> f32 {
-  if fi_dome_gone(s) { return -1; }
-  c := fi_dome_centre(s);
-  to := sub(c, v3(you.x, chest, you.z));
-  d := length(to) - f32(SP_DOME_R);
-  if d > f32(HM_REACH) + f32(EG_RADIUS) { return -1; }
-  flat := sqrt(to.x * to.x + to.z * to.z);
-  if flat > 0.05 && (to.x * fx + to.z * fz) / flat < 0.5 { return -1; }
-  return hi(d, 0);
-}
-// A blow of the maul on the dome: d20 + 6 against its AC, 2d6 + 3 doubled (Wrecking).
-fi_dome_hammer :: (s: [] Everglade) {
-  o := fi_dome_object();
-  d := s[0].sp.dice[..];
-  roll := srd_roll(d, 20);
-  crit := roll == 20;
-  hit := roll != 1 && (crit || roll + HM_TO_HIT >= o.ac);
-  you := s[0].feet;
-  from := v3(you.x, walk_at(s, you.x, you.z) + you.y + 1.2, you.z);
-  amount := 0;
-  if hit {
-    dice := srd_sum(d, ifx crit then HM_DICE * 2 else HM_DICE, HM_SIDES);
-    amount = srd_object_damage(o, (dice + HM_BONUS) * 2, DMG_BLUDGEONING);
-    at := add(fi_dome_centre(s), times(unit_or(sub(from, fi_dome_centre(s)), v3(0, 0, 1)), f32(SP_DOME_R)));
-    sp_add_puff(s, at, v3(0, 0.4, 0), 0.6, 1.6, 0.66);
-    ww := watch_w(s);
-    if ww[0].on { _ := watch_crime(ww, at, HM_HEAR, ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
-    fi_dome_hurt(s, amount, from);
-  }
-  buf := s[0].sp.news[..];
-  n := sp_put(buf, 0, "HAMMER · ");
-  n = put_digits(buf, n, roll + HM_TO_HIT);
-  if !hit { n = sp_put(buf, n, " MISSES"); }
-  else {
-    n = sp_put(buf, n, ifx crit then " CRITICAL · " else " HITS · ");
-    n = put_digits(buf, n, amount); n = sp_put(buf, n, " BLUDGEONING");
-    if fi_dome_gone(s) { n = sp_put(buf, n, " · BROKE"); }
-  }
-  s[0].sp.news_n = n; s[0].sp.news_t = 3;
 }
 // Each frame: rubble striking the dome wears it; its slabs fall, tumble and come to rest, striking whoever they fall on.
 fi_dome_frame :: (s: [] Everglade, dt: f32) {

@@ -465,7 +465,10 @@ Each building is put together from its footprint in `plan.coax`, in
 - **Walls:** the kit's 2 m plaster modules (brick for the smithy, the
   temple, the mages' tower and the observatory), one or more 3.1 m storeys,
   with arched windows along each wall, timber corner posts and a door on the
-  side its door faces. Walk-in buildings' doors stand open.
+  side its door faces. Every door starts shut: near one and facing it, E
+  opens it and E again shuts it (`everglade-doors.coax`). The sixteen
+  buildings' doors lead into their rooms; the crypt's opens on solid stone.
+  E's order: a person, then a door, then the quest board, then a rowboat.
 - **Roofs:** `Roof_RoundTiles_6x8` stretched over the footprint with its
   ridge along the long side, and a brick-and-plaster gable at each end; the
   mages' tower has the tower roof and the observatory its dome.

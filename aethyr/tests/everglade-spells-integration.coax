@@ -1858,7 +1858,7 @@ aethyr_native_everglade_43 :: () #export_c {
   #assert !po_in_cone(you, v3(1, 0, 0), add(you, v3(-5, 0, 0))) && po_in_cone(you, v3(1, 0, 0), add(you, v3(10, 0, 3)));
 }
 
-// rubble: a falling chunk strikes the guard under it, a slow one doesn't; the blocks of a crumbled panel strike you
+// rubble: a falling chunk strikes the guard under it, a slow one doesn't; the blocks of a crumbled panel never strike you
 aethyr_native_everglade_44 :: () #export_c {
   g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
   who := au_ready(g[..], dm[..], out[..], u[..]);
@@ -1894,7 +1894,7 @@ aethyr_native_everglade_44 :: () #export_c {
   g[0].feet = v3(mid.x, 0, mid.z);
   you := ww[0].hp;
   for q: 0..<60 { rb_frame(g[..], 1.0 / 60); }
-  #assert ww[0].hp < you;
+  #assert ww[0].hp == you;
 }
 
 // audit: Meteor Swarm, the Thunderbolt and the Mega Thunderbolt blast the guard they strike; the Water Orb's splash too

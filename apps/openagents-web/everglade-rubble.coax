@@ -3,10 +3,10 @@
 //   - Whatever the town's debris throws or drops (a chunk of a broken wall, a toppled tower's stone, a
 //     loose barrel rolling) strikes whoever it meets moving 4 m/s or more: bludgeoning by the blow's
 //     energy, ½mv², 1d6 for a few hundred joules up to 4d10 for a falling block of masonry, a
-//     Dexterity save for half; once a second each. You too.
+//     Dexterity save for half; once a second each. Not you: the rubble never hurts the player.
 //   - A Wall of Stone's panels are objects (SRD 5.2.1: AC 15, 30 hit points an inch of thickness, so
 //     180 a 6-inch panel): the aimed spells' blasts, Fire Storm, Ice Storm's hail and Call Lightning's
-//     bolt reach them, the hammer strikes them (its attack against AC 15), and a heavy stone flying
+//     bolt reach them, and a heavy stone flying
 //     into one cracks it. At 0 a panel crumbles into blocks of granite that fall (and strike whoever
 //     is under them, by the rule above); the gap it leaves is open: your body, the watch's fences and
 //     the sight lines lose it.
@@ -24,13 +24,13 @@ RB_PER_PANEL :: 12;       // blocks a panel falls into, three across and four hi
 RbBlock :: struct { live: bool; at: Point; vel: Point; yaw: f32; spin: f32; t: f32; rest: bool; tone: f32; }
 Rubble :: struct {
   time: f32;
-  next: [WATCH_ACTORS] f32; you_next: f32;
+  next: [WATCH_ACTORS] f32;
   blocks: [RB_BLOCKS] RbBlock;
 }
 rb_of :: (s: [] Everglade) -> [] Rubble { return s[0].sp.rb[..]; }
 rb_start :: (s: [] Everglade) {
   v := rb_of(s);
-  v[0].time = 0; v[0].you_next = 0;
+  v[0].time = 0;
   for i: 0..<WATCH_ACTORS { v[0].next[i] = 0; }
   for q: 0..<RB_BLOCKS { v[0].blocks[q].live = false; }
 }
@@ -74,12 +74,6 @@ rb_strike :: (s: [] Everglade, at: Point, half: f32, vel: Point, kg: f32, feet: 
     v[0].next[i] = v[0].time + f32(RB_EVERY);
     took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, dd.n, dd.sides), kind = DMG_BLUDGEONING, amount2 = 0, kind2 = DMG_NONE}, SAVE_DEX, ON_SAVE_HALF, GV_DC);
     watch_harm(w, i, took, you);
-    hit += 1;
-  }
-  if !w[0].dead && v[0].time >= v[0].you_next && rb_meets(at, half, you) {
-    v[0].you_next = v[0].time + f32(RB_EVERY);
-    amount := srd_sum(d, dd.n, dd.sides);
-    wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "FALLING RUBBLE · BLUDGEONING");
     hit += 1;
   }
   return hit;
@@ -233,24 +227,4 @@ rb_panel_struck :: (s: [] Everglade, q2: int, kg: f32, speed: f32, at: Point) {
   if dd.n == 0 { return; }
   crumbled := rb_panel_hurt(s, q2, srd_sum(s[0].sp.dice[..], dd.n, dd.sides), at);
 }
-// The panel in reach in front of you for the hammer (as hm_target's pieces): q2, -1 none.
-rb_panel_reach :: (s: [] Everglade, most: f32) -> int {
-  if !sp_on(s) { return -1; }
-  a := ab_of(s);
-  you := s[0].feet;
-  fx := sin(s[0].face); fz := cos(s[0].face);
-  best := -1; near_ := most;
-  for q2: 0..<AB_STONES * 2 {
-    if !a[0].stones[q2 / 2].live { continue; }
-    st := ab_panel(a[0].stones[q2 / 2], q2 % 2);
-    if !st.live { continue; }
-    c := rb_panel_near(st, v3(you.x, st.base + 1, you.z));
-    dx := c.x - you.x; dz := c.z - you.z;
-    d := sqrt(dx * dx + dz * dz);
-    if d >= near_ || (d > 0.05 && (dx * fx + dz * fz) / d < 0.5) { continue; }
-    best = q2; near_ = d;
-  }
-  return best;
-}
-
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).

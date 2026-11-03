@@ -1,0 +1,290 @@
+// The doors (the owner, November 3: "when i press e at any door it needs to open"), loaded by
+// everglade.coax, so Everglade, Everglade 5E, 5E MMO and every fork have them.
+//
+//   - Every door in the town is one: each of the sixteen buildings' (the inn, the three shops, the
+//     two guild halls, the mages' tower, the temple, the observatory, the stables, the six houses;
+//     each leads into its room, everglade-interiors.coax) and the crypt's (it leads nowhere yet: the
+//     crypt is solid stone behind it). A building an admin hid has none.
+//   - Each starts shut. Near one (DOOR_REACH from the doorway's middle) and facing it, the prompt
+//     over the bar says E · OPEN THE DOOR (on a phone the button: OPEN THE DOOR); E opens it, and
+//     E again (E · CLOSE THE DOOR) shuts it. From inside a room as from the street.
+//   - The leaf swings on its hinge over DOOR_SWING, and its collision goes with it: two capsules
+//     along the leaf, at knee and chest height, in your way (everglade_bodies_near). Shut, it fills
+//     the doorway; open, it stands against the room's side of the wall, out of the way in.
+//   - E's order when several things are in reach: a person to talk to, then a door, then the quest
+//     board, then a rowboat (everglade.coax everglade_key, talk_pointer and talk_prompt).
+//   - A door broken by a spell (verse/demolish.coax) is the debris's: it has no prompt until R stands
+//     it again.
+//
+//   coax/bin/coax test apps/openagents-web/everglade.coax --only "doors"
+
+EG_DOORS :: EG_BUILDINGS + 1;   // the buildings' by number, then the crypt's
+DOOR_CRYPT :: EG_BUILDINGS;
+DOOR_REACH :: 2.2;              // m from you to the doorway's middle
+DOOR_FACING :: 0.35;            // the cosine you must face it within (about 70 degrees), unless you stand in the doorway
+DOOR_SWING :: 0.6;              // s a door takes to open or shut
+DOOR_LEAF :: 1.04;              // m from the hinge to the leaf's edge (the kit's Door_1_Round)
+DOOR_THICK :: 0.09;             // m: half the leaf's thickness, its capsules' radius
+DOOR_NEAR_BODIES :: 4;          // doors whose capsules are in your way at once
+DOOR_BODY_REACH :: 4.0;         // m from you a door's capsules count
+DOOR_BODIES :: DOOR_NEAR_BODIES * 2;
+
+EgDoor :: struct {
+  live: bool;                   // laid with the town (not an admin's hidden building)
+  inside: bool;                 // it leads into a room
+  hx: f32; hy: f32; hz: f32;    // the hinge, on the ground
+  mx: f32; mz: f32;             // the doorway's middle
+  shut: f32; swing: f32;        // the leaf's yaw shut, and the turn to open (a quarter, signed)
+  object: int;                  // its kit instance, -1 none
+  piece: int; looked: int;      // its piece in the town's demolition (-1 none), and the pieces there when looked for
+  open: bool;                   // where it is going
+  t: f32;                       // 0 shut, 1 open
+}
+Doors :: struct {
+  d: [EG_DOORS] EgDoor;
+  near: int;                    // the door E works now, -1 none
+}
+
+// The yaw that turns a kit piece's local +x to (dx, dz) (as kit3 turns it: x' = cos, z' = -sin).
+door_yaw :: (dx: f32, dz: f32) -> f32 { return atan2(-dz, dx); }
+
+// Laying the town: door `id`'s leaf hangs at the hinge (hx, y, hz), shut along (sx, sz), swinging
+// open toward (ix, iz); its doorway's middle at (mx, mz). Places the leaf as the door now stands.
+door_hang :: (s: [] Everglade, id: int, hx: f32, y: f32, hz: f32, sx: f32, sz: f32, ix: f32, iz: f32, mx: f32, mz: f32, inside: bool) {
+  if id < 0 || id >= EG_DOORS { return; }
+  d := s[0].doors.d[id..<id + 1];
+  d[0].live = true; d[0].inside = inside;
+  d[0].hx = hx; d[0].hy = y; d[0].hz = hz; d[0].mx = mx; d[0].mz = mz;
+  d[0].shut = door_yaw(sx, sz);
+  turn := door_yaw(ix, iz) - d[0].shut;
+  while turn > f32(PI) { turn -= 2 * f32(PI); }
+  while turn < -f32(PI) { turn += 2 * f32(PI); }
+  d[0].swing = turn;
+  g := group_of(M_DOOR);
+  used := s[0].kit_used[g];
+  d[0].object = ifx used < s[0].group_cap[g] then s[0].group_at[g] + used else -1;
+  d[0].piece = -1; d[0].looked = -1;
+  piece(s, M_DOOR, hx, y, hz, door_leaf_yaw(d[0]), 1, 1, 1);
+}
+// Before the town is laid again: no door until its building hangs it (open ones stay open).
+doors_unhang :: (s: [] Everglade) {
+  for i: 0..<EG_DOORS { s[0].doors.d[i].live = false; }
+  s[0].doors.near = -1;
+}
+
+door_ease :: (t: f32) -> f32 { k := clamp(t, 0, 1); return k * k * (3 - 2 * k); }
+door_leaf_yaw :: (d: EgDoor) -> f32 { return d.shut + d.swing * door_ease(d.t); }
+// The way the leaf runs from its hinge now.
+door_leaf_dir :: (d: EgDoor) -> Point { a := door_leaf_yaw(d); return v3(cos(a), 0, -sin(a)); }
+
+// Door i's piece in the town's demolition, -1 none (no demolition attached, or not one of its pieces).
+door_piece :: (s: [] Everglade, i: int) -> int {
+  if s[0].sp.dm.count < 1 { return -1; }
+  w := sp_dm(s);
+  d := s[0].doors.d[i..<i + 1];
+  if d[0].object < 0 { return -1; }
+  p := d[0].piece;
+  if p >= 0 && p < w[0].n && w[0].pieces[p].object == d[0].object { return p; }
+  if d[0].looked == w[0].n { return -1; }
+  d[0].looked = w[0].n; d[0].piece = -1;
+  for k: 0..<w[0].n { if w[0].pieces[k].object == d[0].object { d[0].piece = k; return k; } }
+  return -1;
+}
+// Whether door i stands to be used: laid, and not broken off its hinge by a spell.
+door_up :: (s: [] Everglade, i: int) -> bool {
+  if i < 0 || i >= EG_DOORS || !s[0].doors.d[i].live { return false; }
+  p := door_piece(s, i);
+  if p < 0 { return true; }
+  return sp_dm(s)[0].pieces[p].state == DP_STANDING;
+}
+
+// The door you are near and face (feet, facing yaw face), -1 none: the nearest within DOOR_REACH
+// of its doorway's middle, in front of you (or you stand in its doorway).
+door_near :: (s: [] Everglade, feet: Point, face: f32) -> int {
+  if s[0].water >= WATER_SWIMMING { return -1; }
+  fx := sin(face); fz := cos(face);
+  best := -1; most := f32(DOOR_REACH);
+  for i: 0..<EG_DOORS {
+    if !door_up(s, i) { continue; }
+    d := s[0].doors.d[i];
+    dx := d.mx - feet.x; dz := d.mz - feet.z;
+    gap := sqrt(dx * dx + dz * dz);
+    if gap >= most { continue; }
+    if gap > 0.6 && (dx * fx + dz * fz) / gap < f32(DOOR_FACING) { continue; }
+    best = i; most = gap;
+  }
+  return best;
+}
+
+door_prompt_on :: (s: [] Everglade) -> bool { return s[0].doors.near >= 0 && !s[0].above && s[0].talk < 0 && !s[0].board && !s[0].ev.editing; }
+door_prompt :: (s: [] Everglade) -> string {
+  i := s[0].doors.near;
+  open := i >= 0 && s[0].doors.d[i].open;
+  if phone(s) { return ifx open then "CLOSE THE DOOR" else "OPEN THE DOOR"; }
+  return ifx open then "E · CLOSE THE DOOR" else "E · OPEN THE DOOR";
+}
+// E (or the button) on door i: it opens, or shuts if it is open (or opening).
+door_use :: (s: [] Everglade, i: int) {
+  if !door_up(s, i) { return; }
+  s[0].doors.d[i].open = !s[0].doors.d[i].open;
+}
+
+// Each frame, after the town's pieces are posed (spells_frame): each door swings toward where it is
+// going, and its leaf's instance is where the swing has it.
+doors_frame :: (s: [] Everglade, dt: f32) {
+  step := ifx finite(dt) then clamp(dt, 0, 0.25) / f32(DOOR_SWING) else 0.0f32;
+  for i: 0..<EG_DOORS {
+    if !door_up(s, i) { continue; }
+    d := s[0].doors.d[i..<i + 1];
+    d[0].t = ifx d[0].open then lo(d[0].t + step, 1) else hi(d[0].t - step, 0);
+    if d[0].object < 0 { continue; }
+    a := door_leaf_yaw(d[0]);
+    c := cos(a); sn := sin(a);
+    o := d[0].object * OBJECT_FLOATS;
+    rows := [12] f32.[c, 0, sn, d[0].hx,   0, 1, 0, d[0].hy,   -sn, 0, c, d[0].hz];
+    for k: 0..<12 { s[0].objects[o + k] = rows[k]; }
+  }
+}
+
+// The leaves near (x, z) as capsules in your way (7 numbers each, as the page's bodies), from slot
+// `at` of out: two a door, at knee and chest height over its ground. How many.
+door_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int {
+  n := 0; doors := 0;
+  for i: 0..<EG_DOORS {
+    if doors >= DOOR_NEAR_BODIES || (at + n + 2) * 7 > out.count { break; }
+    if !door_up(s, i) { continue; }
+    d := s[0].doors.d[i];
+    dx := d.mx - x; dz := d.mz - z;
+    if dx * dx + dz * dz > f32(DOOR_BODY_REACH) * f32(DOOR_BODY_REACH) { continue; }
+    e := door_leaf_dir(d);
+    tx := d.hx + e.x * f32(DOOR_LEAF); tz := d.hz + e.z * f32(DOOR_LEAF);
+    for h: 0..<2 {
+      y := ifx h == 0 then 0.5f32 else 1.4f32;
+      put7(out, at + n, d.hx, y, d.hz, tx, y, tz, f32(DOOR_THICK));
+      n += 1;
+    }
+    doors += 1;
+  }
+  return n;
+}
+
+// #door-inn, #door-store, ... (a room's id without its "in-"), #door-crypt: start a metre and a half
+// out from that door, facing it. False for any other hash.
+door_hash :: (s: [] Everglade, hash: string) -> bool {
+  if hash.count < 6 || hash[0..<5] != "door-" { return false; }
+  name := hash[5..<hash.count];
+  id := -1;
+  if name == "crypt" { id = DOOR_CRYPT; }
+  for b: 0..<EG_BUILDINGS { if EG_ROOM_ID[b].count > 3 && EG_ROOM_ID[b][3..<EG_ROOM_ID[b].count] == name { id = b; } }
+  if id < 0 || !s[0].doors.d[id].live { return false; }
+  sp := door_spot(s, id);
+  s[0].spawn = sp.at; s[0].spawn_face = sp.face;
+  s[0].feet = v3(sp.at.x, ground_at(s, sp.at.x, sp.at.z), sp.at.z);
+  s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+  s[0].warp = true; s[0].above = false; s[0].lift = 0;
+  return true;
+}
+
+// ---- checks
+
+// Where to stand to use door i: a metre and a half out from its doorway, on the side away from its
+// leaf's swing (the street for a building), and the yaw that faces it.
+DoorSpot :: struct { at: Point; face: f32; }
+door_spot :: (s: [] Everglade, i: int) -> DoorSpot {
+  d := s[0].doors.d[i];
+  e := door_leaf_dir(EgDoor.{shut = d.shut + d.swing, swing = 0});   // the way it opens, into the room
+  at := v3(d.mx - e.x * 1.5, 0, d.mz - e.z * 1.5);
+  return DoorSpot.{at = at, face = atan2(d.mx - at.x, d.mz - at.z)};
+}
+
+#test "doors: every door in the town hangs shut, sixteen lead inside and the crypt's nowhere" #steps 600000000 {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  inside := 0;
+  for i: 0..<EG_DOORS {
+    d := g[0].doors.d[i];
+    #assert d.live && !d.open && d.t == 0 && d.object >= 0;
+    #assert abs(abs(d.swing) - f32(PI) / 2) < 0.001;   // a quarter turn
+    if d.inside { inside += 1; }
+    // the leaf's instance is the hinge's, turned shut
+    o := d.object * OBJECT_FLOATS;
+    #assert g[0].objects[o + 3] == d.hx && g[0].objects[o + 7] == d.hy && g[0].objects[o + 11] == d.hz;
+    // shut, the leaf runs across its doorway: its edge as far past the middle as the hinge is short of it
+    e := door_leaf_dir(d);
+    ex := d.hx + e.x * f32(DOOR_LEAF); ez := d.hz + e.z * f32(DOOR_LEAF);
+    #assert abs((d.hx + ex) / 2 - d.mx) < 0.1 && abs((d.hz + ez) / 2 - d.mz) < 0.1;
+  }
+  #assert inside == EG_BUILDINGS && !g[0].doors.d[DOOR_CRYPT].inside;
+  // #door-inn and #door-crypt start you at them
+  everglade_hash(g[..], "door-inn");
+  #assert everglade_warp(g[..]) && door_near(g[..], everglade_spawn(g[..]), everglade_spawn_face(g[..])) == EG_INN;
+  everglade_hash(g[..], "door-crypt");
+  #assert everglade_warp(g[..]) && door_near(g[..], everglade_spawn(g[..]), everglade_spawn_face(g[..])) == DOOR_CRYPT;
+  everglade_hash(g[..], "door-nowhere");
+  #assert !everglade_warp(g[..]);
+  #assert g[0].kit_used[group_of(M_DOOR)] == EG_DOORS;
+}
+
+#test "doors: E at each door opens it, E again shuts it, and nothing else happens" #steps 600000000 {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  g[0].width = 1280; g[0].dpr = 1;   // a computer's page: E's prompts
+  for i: 0..<EG_DOORS {
+    sp := door_spot(g[..], i);
+    #assert door_near(g[..], sp.at, sp.face) == i;
+    #assert door_near(g[..], sp.at, sp.face + f32(PI)) == -1;   // your back to it: not that door
+    g[0].near = -1; g[0].near_board = false; g[0].near_boat = -1;
+    g[0].doors.near = door_near(g[..], sp.at, sp.face);
+    #assert door_prompt_on(g[..]) && talk_prompt(g[..]) == "E · OPEN THE DOOR";
+    #assert !boat_prompt_on(g[..]);
+    #assert everglade_key(g[..], 'e', 0);
+    #assert g[0].doors.d[i].open && g[0].talk == -1 && !g[0].board && !g[0].boat_ask && !g[0].chat.typing;
+    for f: 0..<60 { doors_frame(g[..], 1.0 / 60); }
+    d := g[0].doors.d[i];
+    #assert d.t == 1 && talk_prompt(g[..]) == "E · CLOSE THE DOOR";
+    // the leaf turned the quarter: its instance, and its capsules, along the room's side now
+    o := d.object * OBJECT_FLOATS;
+    a := d.shut + d.swing;
+    #assert abs(g[0].objects[o] - cos(a)) < 0.0001 && abs(g[0].objects[o + 2] - sin(a)) < 0.0001;
+    body: [DOOR_BODIES * 7] f32;
+    #assert door_bodies(g[..], body[..], 0, d.mx, d.mz) >= 2;
+    e := door_leaf_dir(d);
+    found := false;
+    for b: 0..<DOOR_BODIES {
+      if body[b * 7] == d.hx && body[b * 7 + 2] == d.hz && abs(body[b * 7 + 3] - (d.hx + e.x * f32(DOOR_LEAF))) < 0.001 && abs(body[b * 7 + 5] - (d.hz + e.z * f32(DOOR_LEAF))) < 0.001 { found = true; }
+    }
+    #assert found;
+    #assert everglade_key(g[..], 'E', 0);
+    #assert !g[0].doors.d[i].open && g[0].talk == -1 && !g[0].board && !g[0].boat_ask;
+    for f: 0..<60 { doors_frame(g[..], 1.0 / 60); }
+    #assert g[0].doors.d[i].t == 0 && talk_prompt(g[..]) == "E · OPEN THE DOOR";
+    g[0].doors.near = -1;
+  }
+}
+
+#test "doors: a person near goes before a door; a door before the quest board and a rowboat" #steps 600000000 {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  g[0].width = 1280; g[0].dpr = 1;
+  sp := door_spot(g[..], 0);
+  g[0].doors.near = door_near(g[..], sp.at, sp.face);
+  g[0].near = 5;
+  #assert talk_prompt(g[..]) == "E · TALK TO Marta";
+  #assert everglade_key(g[..], 'e', 0) && g[0].talk == 5 && !g[0].doors.d[0].open;
+  end_talk(g[..]);
+  g[0].near = -1; g[0].near_board = true; g[0].near_boat = 0;
+  #assert talk_prompt(g[..]) == "E · OPEN THE DOOR" && !boat_prompt_on(g[..]);
+  #assert everglade_key(g[..], 'e', 0) && g[0].doors.d[0].open && !g[0].board && !g[0].boat_ask;
+}
+
+#test "camera: pulled in to your shoulders by a wall (in the crypt, a narrow room), your own body is left out" {
+  g: [1] Everglade;
+  g[0].orbit = verse_orbit_start(v3(0, 0, 0), 0);
+  far := verse_orbit_ray(g[0].orbit).far;
+  g[0].orbit.shown = far;
+  #assert far > 1 && !you_inside(g[..]);
+  g[0].orbit.shown = 0.4;   // scenery pulled the eye in (verse_orbit_limit)
+  #assert you_inside(g[..]);
+  g[0].lift = 1;            // the map takes the eye out again
+  #assert !you_inside(g[..]);
+}

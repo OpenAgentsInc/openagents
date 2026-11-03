@@ -73,7 +73,7 @@ everglade_guide_observe :: (s:[]Everglade,you:Point,still:bool) {
     guard_alive=a.hp>0,guard_full_health=a.hp==a.max,
     guard_visible=!eg_gone(s[0].ev.edits,0) && !s[0].folk[0].indoors,
     guard_near=flat_gap(v3(a.x,0,a.z),you)<8,
-    combat=w[0].wanted || hm_swinging(s),talking=s[0].talk>=0 || s[0].chat.typing,board=s[0].board,
+    combat=w[0].wanted,talking=s[0].talk>=0 || s[0].chat.typing,board=s[0].board,
     editing=s[0].ev.editing,casting=s[0].sp.casting>=0 || s[0].sp.armed>=0,
     map=s[0].above,warp=s[0].warp,world_known=s[0].guide.world_parsed,
     edit_count=things,gone=0,hidden=hidden,

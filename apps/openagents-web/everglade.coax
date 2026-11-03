@@ -76,7 +76,7 @@
 #load "everglade-items.coax";
 #load "everglade-dress.coax";
 #load "everglade-interiors.coax";
-#load "everglade-hammer.coax";
+#load "everglade-doors.coax";
 #load "everglade-lod.coax";
 #load "everglade-sky.coax";
 #load "everglade-room.coax";
@@ -373,7 +373,7 @@ Everglade :: struct {
   lathe_n: int;
   draws: [DRAWS * 4] u32;
   walls: [WALLS * 6] f32; wall_n: int;   // and after wall_n the bridge's two rails
-  bodies: [(BODIES + AB_STONES * 2 * AB_ST_BODIES + FOREST_BODIES + TF_BODIES) * 7] f32;   // and the Walls of Stone standing (everglade-abilities.coax), then the trunks and rocks round you, and the trunks lying (everglade-forest.coax)
+  bodies: [(BODIES + AB_STONES * 2 * AB_ST_BODIES + DOOR_BODIES + FOREST_BODIES + TF_BODIES) * 7] f32;   // and the Walls of Stone standing (everglade-abilities.coax), the doors' leaves near you (everglade-doors.coax), then the trunks and rocks round you, and the trunks lying (everglade-forest.coax)
   boxes: [BOXES * 6] f32; box_n: int;
   trees: [TREES * TREE_FLOATS] f32; tree_n: int;
   smalls: [SMALLS * TREE_FLOATS] f32; small_n: int;
@@ -445,7 +445,7 @@ Everglade :: struct {
   room: [1] RoomState;                     // the others in the realm's room and its chat (everglade-room.coax)
   chat: EgChat;
   lod: Lod;                                // the small pieces drawn near you (everglade-lod.coax)
-  hm: Hammer;                              // the sledgehammer (everglade-hammer.coax)
+  doors: Doors;                            // every door you open and close with E (everglade-doors.coax)
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
   wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
   fk: [] EgFork;                           // FORK, and a fork's rules: the face holds it (everglade-fork.coax everglade_attach_fork)
@@ -595,7 +595,7 @@ everglade_boat_start :: (s: [] Everglade) -> bool #export_c { a := s[0].boat_sta
 everglade_boat_take :: (s: [] Everglade) -> bool #export_c { a := s[0].boat_ask; s[0].boat_ask = false; return a; }
 // Whether a boat prompt shows: one near, or you sit in one, and no one else to talk to.
 boat_prompt_on :: (s: [] Everglade) -> bool {
-  return !s[0].above && s[0].talk < 0 && !s[0].board && s[0].near < 0 && !s[0].near_board && (s[0].near_boat >= 0 || s[0].water == WATER_BOAT);
+  return !s[0].above && s[0].talk < 0 && !s[0].board && s[0].near < 0 && !s[0].near_board && s[0].doors.near < 0 && (s[0].near_boat >= 0 || s[0].water == WATER_BOAT);
 }
 everglade_eye_at :: () -> int #export_c { return U_EYE; }
 // Whether this frame draws for a phone: the river's mesh is coarser there.
@@ -605,7 +605,7 @@ everglade_afloat :: (s: [] Everglade) -> bool #export_c { return s[0].water >= W
 
 everglade_start :: (s: [] Everglade) {
   s[0].started = true;
-  s[0].hm.t = -1; s[0].hm.target = -1; s[0].chat.finger = -1;
+  s[0].doors.near = -1; s[0].chat.finger = -1;
   s[0].clock = 0.5; s[0].day.mode = STYLE_CLOCK_FIXED; s[0].day.at = 0.5; s[0].day_from = 0;   // noon until the page says
   ok := everglade_build_ground(s[0].heights[..]);
   s[0].ground_gen += 1;
@@ -1081,6 +1081,7 @@ walk_toward :: (s: [] Everglade, from: Point, to: Point, steps: int) -> Point {
 everglade_bodies_near :: (s: [] Everglade, deck: bool, x: f32, z: f32) -> int #export_c {
   n := everglade_bodies_on(s, deck);
   if deck { return n; }
+  n += door_bodies(s, s[0].bodies[..], n, x, z);   // the doors' leaves near you (everglade-doors.coax)
   return n + forest_bodies(s, s[0].bodies[..], n, x, z);
 }
 everglade_spawn :: (s: [] Everglade) -> Point #export_c { if !s[0].started { everglade_start(s); } return s[0].spawn; }
@@ -1150,6 +1151,7 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c {
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     return;
   }
+  if door_hash(s, hash) { return; }   // #door-inn, #door-crypt: outside a shut door, facing it (everglade-doors.coax)
   for b: 0..<EG_BUILDINGS {
     if !EG_INTERIOR[b] || hash != EG_ROOM_ID[b] { continue; }
     r := room_of(s, b);
@@ -1235,10 +1237,11 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if everglade_voice_key(s, key, true) { return true; }
   if everglade_guide_key(s, key) { return true; }
   if spells_key(s, key, mods) { everglade_guard_invalidate(s); return true; }
-  if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
+  // E: a person first, then a door, then the quest board, then a rowboat (everglade-doors.coax)
   if (key == 'e' || key == 'E') && s[0].near >= 0 && !s[0].above { talk_to(s, s[0].near); return true; }
+  if (key == 'e' || key == 'E') && door_prompt_on(s) { door_use(s, s[0].doors.near); return true; }
+  if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
   if (key == 'e' || key == 'E') && boat_prompt_on(s) { s[0].boat_ask = true; return true; }
-  if (key == 'e' || key == 'E') && hm_prompt_on(s) && !s[0].above { _ := hm_swing(s); return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if key == 'm' || key == 'M' { everglade_guard_invalidate(s); s[0].above = !s[0].above; return true; }
@@ -1327,8 +1330,15 @@ everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export
 }
 
 // First person (zoomed in past the closest): the eye is in your head, so your body isn't drawn;
-// the map's lift takes the eye out again.
-you_inside :: (s: [] Everglade) -> bool { return verse_orbit_inside(s[0].orbit) && s[0].lift < 0.5; }
+// the map's lift takes the eye out again. And when scenery has pulled the eye in to your shoulders
+// (a crypt, a narrow room, a wall at your back: verse_orbit_limit), it would look out through your
+// own hood and cloak, so then too.
+EYE_IN_CLOAK :: 0.9;   // m along the camera's ray from your head
+you_inside :: (s: [] Everglade) -> bool {
+  o := s[0].orbit;
+  pulled := finite(o.shown) && o.shown < lo(f32(EYE_IN_CLOAK), verse_orbit_ray(o).far - 0.1);
+  return (verse_orbit_inside(o) || pulled) && s[0].lift < 0.5;
+}
 
 everglade_player_theta :: (s: [] Everglade) -> f32 #export_c { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
 
@@ -1602,10 +1612,10 @@ talk_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
   if id != s[0].talk_finger { return false; }
   if phase == 2 {
     if s[0].talk >= 0 && in_box(s[0].bye_button, x, y) { end_talk(s); }
-    else if s[0].talk < 0 && s[0].near_board && in_box(s[0].talk_button, x, y) { open_board(s); }
     else if s[0].talk < 0 && s[0].near >= 0 && in_box(s[0].talk_button, x, y) { talk_to(s, s[0].near); }
+    else if door_prompt_on(s) && in_box(s[0].talk_button, x, y) { door_use(s, s[0].doors.near); }
+    else if s[0].talk < 0 && s[0].near_board && in_box(s[0].talk_button, x, y) { open_board(s); }
     else if boat_prompt_on(s) && in_box(s[0].talk_button, x, y) { s[0].boat_ask = true; }
-    else if hm_prompt_on(s) && in_box(s[0].talk_button, x, y) { _ := hm_swing(s); }
   }
   if phase >= 2 { s[0].talk_finger = -1; }
   return true;
@@ -1956,10 +1966,8 @@ building :: (s: [] Everglade, b: int) {
         if f == 0 && window { window_box(s, b, w, i, cx, y, cz, q.nx, q.nz, q.yaw); }
         if f == 0 && !window && !is_door { ivy(s, b, w, i, cx, y, cz, q.nx, q.nz, q.yaw); }
         if is_door {
-          // The leaf hangs on the doorway's left post: shut, or swung in on a walk-in building.
-          hx := cx - ux * 0.53; hz := cz - uz * 0.53;
-          leaf := ifx open then q.yaw + f32(PI) / 2 else q.yaw;
-          piece(s, M_DOOR, hx, y, hz, leaf, 1, 1, 1);
+          // The leaf hangs on the doorway's left post, shut across it; E swings it in (everglade-doors.coax).
+          door_hang(s, b, cx - ux * 0.53, y, cz - uz * 0.53, ux, uz, -q.nx, -q.nz, cx, cz, open);
         }
       }
     }
@@ -2158,6 +2166,7 @@ stalls :: (s: [] Everglade) {
 
 build_town :: (s: [] Everglade) {
   s[0].inside.n = 0;
+  doors_unhang(s);
   palisade(s);
   for b: 0..<EG_BUILDINGS {
     if eg_hidden(s[0].ev.edits, b) { continue; }   // an admin took it away (everglade-items.coax)
@@ -2190,7 +2199,7 @@ crypt :: (s: [] Everglade) {
       cx := q.ax + ux * t - q.nx * f32(WALL_FACE); cz := q.az + uz * t - q.nz * f32(WALL_FACE);
       door := w == 0 && i == CRYPT_DOOR;
       piece(s, ifx door then M_BRICK_DOOR else M_BRICK, cx, g, cz, q.yaw, 1, 1, 1);
-      if door { piece(s, M_DOOR, cx + ux * 0.53, g, cz + uz * 0.53, q.yaw, 1, 1, 1); }   // shut (its hinge on the left seen from outside)
+      if door { door_hang(s, DOOR_CRYPT, cx + ux * 0.53, g, cz + uz * 0.53, -ux, -uz, -q.nx, -q.nz, cx, cz, false); }   // shut (its hinge on the left seen from outside); E swings it in (everglade-doors.coax)
     }
   }
   top := g + f32(STOREY);
@@ -2955,7 +2964,6 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
   rig := ranger_rig(s[0].rig[..]);
   dead := s[0].wv.started && s[0].wt[0].dead;
   motion := ifx dead then SKIN_IDLE else skin_motion(speed, airborne);
-  if !dead && hm_swinging(s) { motion = SKIN_SWING; }   // the sledgehammer (everglade-hammer.coax)
   skin_advance(rig, s[0].skin[..], motion, speed, dt);
   fade := ifx s[0].skin[0].fade > 0 then s[0].skin[0].fade else f32(SKIN_FADE);
   if still && motion == SKIN_IDLE && s[0].skin[0].clock - s[0].skin[0].changed >= fade {
@@ -3374,12 +3382,12 @@ join_into :: (out: [] u8, a: string, b: string) -> int {
   return n;
 }
 talk_prompt :: (s: [] Everglade) -> string {
+  if s[0].near < 0 && door_prompt_on(s) { return door_prompt(s); }
   if s[0].near_board { return ifx phone(s) then "READ THE QUEST BOARD" else "E · READ THE QUEST BOARD"; }
   if s[0].near < 0 && boat_prompt_on(s) {
     if s[0].water == WATER_BOAT { return ifx phone(s) then "STEP ASHORE" else "E · STEP ASHORE"; }
     return ifx phone(s) then "BOARD THE ROWBOAT" else "E · BOARD THE ROWBOAT";
   }
-  if s[0].near < 0 && hm_prompt_on(s) { return hm_prompt(s); }
   if s[0].near < 0 { return ""; }
   s[0].prompt_n = join_into(s[0].prompt[..], ifx phone(s) then "TALK TO " else "E · TALK TO ", EG_PERSON[s[0].near]);
   return cast(string) s[0].prompt[0..<s[0].prompt_n];
@@ -3672,7 +3680,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   lift := 0.0f32;
   if s[0].ev.admin { n = everglade_voice_hud(s, out, u, n, y1 - hs - 28 * k); lift = ifx voice_on(s) && ev_text(s).count > 0 then 50 * k else 0.0f32; }
   // Someone near: E (or TALK, on a phone) talks to them.
-  if (s[0].near >= 0 || s[0].near_board || boat_prompt_on(s) || hm_prompt_on(s)) && !s[0].above && !s[0].ev.editing {
+  if (s[0].near >= 0 || s[0].near_board || boat_prompt_on(s) || door_prompt_on(s)) && !s[0].above && !s[0].ev.editing {
     ask := talk_prompt(s);
     ts := 9 * k;
     aw := text_width(ask, ts) + 32 * k;
@@ -3739,9 +3747,9 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   kit_cats(s);
   in_glows(s, u, shot.eye);   // the hearths, candles, reagents and orbs indoors (everglade-interiors.coax)
   watch_arms(s);
-  hm_frame(s, t); hm_draw(s, shown);   // the sledgehammer (everglade-hammer.coax)
   rp_frame(s, t); rp_board(s);   // reply with a realm: its swarm and its sign (everglade-reply.coax)
   spells_frame(s, u, shot, t);
+  doors_frame(s, t);   // after the spells' pieces are posed: each door's leaf where its swing has it
   wildlife(s, shown, still);   // last: it takes only the shapes' slots left over
   first := cast(u32) hi_i(s[0].identity_first, 0);
   for kind: 0..<5 {
@@ -3854,6 +3862,9 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
       s[0].near_board = true; s[0].near = -1;
     }
   }
+  // a door in reach that you face, when no one is near (everglade-doors.coax): it goes before the board
+  s[0].doors.near = ifx s[0].above || s[0].talk >= 0 || s[0].board || s[0].near >= 0 || s[0].ev.editing then -1 else door_near(s, feet, s[0].face);
+  if s[0].doors.near >= 0 { s[0].near_board = false; }
   // a quest's place reached
   if !s[0].above {
     was: [EG_QUESTS] int;

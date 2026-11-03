@@ -67,7 +67,7 @@ streaming and frame time are decided.
 - The page: `everglade.coax` (4,643 lines) and its parts: forest, spells
   (`everglade-spells.coax`, drawn by `everglade-fx.wgsl` through
   [aethyr/particles.coax](../../aethyr/particles.coax)), storm, tide, frost,
-  interiors, the hammer and rubble, the fork pane and the edit mode.
+  interiors, the doors and rubble, the fork pane and the edit mode.
 - Walking on [aethyr/player.coax](../../aethyr/player.coax), with
   `forest_bodies` and `everglade_hold` at the edge; the asset pack from
   [verse/packs/everglade.json](../../verse/packs/everglade.json).
