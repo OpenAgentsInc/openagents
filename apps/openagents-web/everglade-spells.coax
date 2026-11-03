@@ -137,7 +137,7 @@ SP_FX_BUCKETS :: 48;      // the smoke and fire sorted far to near in these (sp_
 FX_FIRE :: 0; FX_SMOKE :: 1; FX_GLOW :: 2; FX_RING :: 3;
 SP_FLASHES :: 4;          // the blasts' light on what is round them, lamps that burn by day too (spells_lamps)
 
-SpMeteor :: struct { live: bool; from: Point; to: Point; t: f32; fall: f32; n: Point; }   // n: the face it is sent at (up on the ground)
+SpMeteor :: struct { live: bool; from: Point; to: Point; t: f32; fall: f32; n: Point; remote: bool; }   // n: the face it is sent at (up on the ground); remote: the room server's (everglade-net.coax)
 SpBlast :: struct { live: bool; at: Point; t: f32; radius: f32; kind: int; seed: f32; }   // kind: 0 fire, 1 lightning, 2 water
 SpScorch :: struct { live: bool; at: Point; t: f32; radius: f32; wet: bool; }
 SpPuff :: struct { live: bool; at: Point; vel: Point; t: f32; life: f32; size: f32; dark: f32; rise: f32; thick: f32; warm: f32; }   // rise: m/s² it climbs; thick: how opaque; warm: the fire's glow on it, 0 to 1
@@ -150,7 +150,8 @@ SpShock :: struct { live: bool; at: Point; t: f32; life: f32; radius: f32; colou
 // The bolt: from `top` in the clouds to `to`, jagged afresh every 0.05 s (sp_bolt_jag), its branches off the stroke at `root`.
 SpBolt :: struct { live: bool; t: f32; mega: bool; points: [SP_BOLT_POINTS] Point; branch: [SP_BOLT_BRANCHES * SP_BRANCH_POINTS] Point;
                    root: [SP_BOLT_BRANCHES] int; top: Point; to: Point; n: Point; seed: f32; jag: int;
-                   call: bool; }   // Call Lightning's (everglade-wild.coax wd_cl_strike)
+                   call: bool;     // Call Lightning's (everglade-wild.coax wd_cl_strike)
+                   remote: bool; } // the room server's (everglade-net.coax net_play)
 
 Spells :: struct {
   on: bool;                  // the ruleset says srd5
@@ -174,7 +175,7 @@ Spells :: struct {
   shot: Shot; fx: f32; fy: f32;
   casting: int; cast_t: f32; cast_at: Point; cast_n: Point; cast_from: Point;
   dmg: SrdDamage;
-  meteors: [SP_METEORS] SpMeteor;
+  meteors: [SP_METEORS * 2] SpMeteor;   // this page's, then the room server's (everglade-net.coax net_play)
   blasts: [SP_BLASTS] SpBlast;
   scorches: [SP_SCORCHES] SpScorch;
   puffs: [SP_PUFFS] SpPuff;
@@ -189,7 +190,10 @@ Spells :: struct {
   sparks: [SP_SPARKS] SpSpark;
   shocks: [SP_SHOCKS] SpShock;
   bolt: SpBolt;
-  orb_t: f32; orb_from: Point; orb_to: Point; orb_live: bool;
+  orb_t: f32; orb_from: Point; orb_to: Point; orb_live: bool; orb_remote: bool;
+  // the seed a cast's shape is drawn from (where its meteors fall, its bolt's top), sent with it so
+  // every page plays it alike; remote: the room server's effect is being played (its harm is the server's)
+  cast_seed: u64; remote: bool;
   flash: f32; flash_rgb: Point;
   shock: WaterShock;         // what the last bolt did to you through the water (water-spells.coax)
   white: f32;                // the strike's white-out over the view, a few frames
@@ -476,6 +480,7 @@ sp_slot_on :: (s: [] Everglade, b: int) -> bool {
 sp_broken :: (s: [] Everglade) -> bool { return s[0].sp.dm[0].broken_n > 0 || demo_chunks(sp_dm(s)) > 0; }
 // R: the town stands again, and you take a Long Rest (everglade-storm.coax st_long_rest).
 sp_rebuild :: (s: [] Everglade) {
+  if net_rebuild(s) { sp_say(s, "REBUILDING", -1, ""); return; }   // the room's server stands the town up
   n := sp_restore(s, -1);
   _ := watch_rebuilt(s);   // the fallen stand up too (everglade-watch.coax)
   for i: 0..<SP_SCORCHES { s[0].sp.scorches[i].live = false; }
@@ -600,14 +605,23 @@ sp_surface :: (s: [] Everglade, x: f32, z: f32, under: f32) -> f32 {
 sp_cast :: (s: [] Everglade) {
   slot := s[0].sp.armed;
   if slot < 0 || s[0].sp.casting >= 0 { return; }
+  if slot >= SP_SLOTS && net_shared(s, slot - SP_SLOTS) {
+    // the room's server casts it where you point (everglade-net.coax); what it makes comes back
+    if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND OR A BUILDING", -1, ""); return; }
+    egt_note(s, slot, false);
+    _ := net_cast(s, slot, s[0].sp.aim, -1);
+    return;
+  }
   if slot >= SP_SLOTS { egt_note(s, slot, false); ab_cast(s, slot - SP_SLOTS); return; }
   if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND OR A BUILDING", -1, ""); return; }
   if s[0].sp.far { sp_say(s, "TOO FAR · 140 M AT MOST", -1, ""); return; }
+  s[0].sp.cast_seed = (srd_next(s[0].sp.dice[..]) >> 34) | 1;   // under 2^30: it goes out as a whole number
   egt_note(s, slot, false);
   s[0].sp.casting = slot; s[0].sp.cast_t = 0; s[0].sp.cast_at = s[0].sp.aim; s[0].sp.cast_n = s[0].sp.aim_n;
   s[0].sp.cast_from = add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z) + 1.6, 0));
   s[0].sp.armed = -1;
-  if slot == SP_ORB { s[0].sp.orb_live = true; s[0].sp.orb_t = 0; }
+  if slot == SP_ORB { s[0].sp.orb_live = true; s[0].sp.orb_t = 0; s[0].sp.orb_remote = false; }
+  _ := net_cast(s, slot, s[0].sp.aim, -1);   // in a room the server rolls it and says where it falls (f)
 }
 // The cast bar ends: the damage is rolled once and the strike set going.
 sp_release :: (s: [] Everglade, slot: int) {
@@ -618,14 +632,20 @@ sp_release :: (s: [] Everglade, slot: int) {
   you := s[0].sp.cast_from;
   n := s[0].sp.cast_n;
   wall := sp_wall(n);
+  // its shape from its seed (in a room the server's, net_play), so it falls alike on every page
+  shape_dice: [1] SrdDice;
+  shape_dice[0] = srd_dice(s[0].sp.cast_seed);
+  dice := shape_dice[..];
+  if s[0].sp.cast_seed == 0 { dice = s[0].sp.dice[..]; }
   if slot == SP_METEOR {
+    first := ifx s[0].sp.remote then SP_METEORS else 0;
     along := sp_across(n); up_it := cross(n, along);   // across a wall's face
     for m: 0..<SP_METEORS {
-      a := f32(m) * f32(TAU) / f32(SP_METEORS) + srd_unit(s[0].sp.dice[..]) * 0.8;
-      r := ifx m == 0 then 0.0f32 else sp_ring_r(SP_METEOR, n) * (0.35 + 0.6 * srd_unit(s[0].sp.dice[..]));
+      a := f32(m) * f32(TAU) / f32(SP_METEORS) + srd_unit(dice) * 0.8;
+      r := ifx m == 0 then 0.0f32 else sp_ring_r(SP_METEOR, n) * (0.35 + 0.6 * srd_unit(dice));
       dest: Point; from: Point;
-      lean := f32(SP_TILT) * (0.65 + 0.7 * srd_unit(s[0].sp.dice[..]));
-      b := f32(TAU) * srd_unit(s[0].sp.dice[..]);
+      lean := f32(SP_TILT) * (0.65 + 0.7 * srd_unit(dice));
+      b := f32(TAU) * srd_unit(dice);
       if wall {
         // spread over the wall's face, and down from the sky a few metres out in front of it, so each
         // comes down the face and bursts on it
@@ -640,24 +660,25 @@ sp_release :: (s: [] Everglade, slot: int) {
         // from high over it, all but straight down, leaning a few metres to a side
         from = add(dest, v3(cos(b) * lean, f32(SP_HEIGHT), sin(b) * lean));
       }
-      s[0].sp.meteors[m] = SpMeteor.{live = true, from = from, to = dest, t = -(f32(m) * f32(SP_STAGGER) + 0.05 * srd_unit(s[0].sp.dice[..])), fall = f32(SP_FALL),
+      s[0].sp.meteors[first + m] = SpMeteor.{live = true, remote = s[0].sp.remote, from = from, to = dest, t = -(f32(m) * f32(SP_STAGGER) + 0.05 * srd_unit(dice)), fall = f32(SP_FALL),
                                      n = ifx wall then n else v3(0, 1, 0)};
     }
     return;
   }
   if slot == SP_BOLT || slot == SP_MEGA {
     b: SpBolt;
-    b.live = true; b.t = 0; b.mega = slot == SP_MEGA; b.to = to; b.n = ifx wall then n else v3(0, 1, 0);
+    b.live = true; b.t = 0; b.mega = slot == SP_MEGA; b.remote = s[0].sp.remote; b.to = to; b.n = ifx wall then n else v3(0, 1, 0);
     // from the clouds over it, or out in front of a wall
     b.top = ifx wall then add(to, add(times(n, 14), v3(0, f32(SP_BOLT_HEIGHT), 0)))
-            else add(to, v3((srd_unit(s[0].sp.dice[..]) - 0.5) * 8, f32(SP_BOLT_HEIGHT), (srd_unit(s[0].sp.dice[..]) - 0.5) * 8));
-    b.seed = 1 + 97 * srd_unit(s[0].sp.dice[..]); b.jag = -1;
+            else add(to, v3((srd_unit(dice) - 0.5) * 8, f32(SP_BOLT_HEIGHT), (srd_unit(dice) - 0.5) * 8));
+    b.seed = 1 + 97 * srd_unit(dice); b.jag = -1;
     s[0].sp.bolt = b;
     sp_bolt_jag(s);
     return;
   }
-  // the orb flies from over you to the point
-  s[0].sp.orb_from = sp_orb_rest(s); s[0].sp.orb_to = to; s[0].sp.orb_t = 0;
+  // the orb flies from over you (or the one who cast it) to the point
+  s[0].sp.orb_from = ifx s[0].sp.remote then s[0].sp.cast_from else sp_orb_rest(s); s[0].sp.orb_to = to; s[0].sp.orb_t = 0;
+  if s[0].sp.remote { s[0].sp.orb_live = true; s[0].sp.orb_remote = true; }
 }
 sp_orb_rest :: (s: [] Everglade) -> Point {
   f := v3(sin(s[0].face), 0, cos(s[0].face));
@@ -775,9 +796,12 @@ sp_orb_hit :: (s: [] Everglade, i: int, at: Point, c: Point, share: f32) {
   s[0].sp.pushed += 1;
 }
 sp_blast :: (s: [] Everglade, at: Point, slot: int) {
-  watch_spell(s, at, slot);   // who it hurts, and whether the watch calls it a crime (everglade-watch.coax)
   w := sp_dm(s);
   radius := SP_BLAST[slot];
+  // the room server's (everglade-net.coax net_play): its look alone. What it harms, breaks, sets alight
+  // or fells is the server's, and comes back as its entities and hits.
+  if s[0].sp.remote { sp_blast_look(s, at, slot, radius); return; }
+  watch_spell(s, at, slot);   // who it hurts, and whether the watch calls it a crime (everglade-watch.coax)
   // what it breaks is thrown out from it (verse/demolish.coax demo_blast_begin): along the ground, or
   // out of the wall it struck when it burst high on one
   if slot != SP_ORB {
@@ -848,6 +872,67 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
     // a meteor sets some of what it broke alight, a bolt a few: it burns as it flies and where it lands
     s[0].sp.burn[b] = ifx kind == 0 && sp_rand(s) < 0.45 then 2.5 + 3.5 * sp_rand(s) else ifx kind == 1 && sp_rand(s) < 0.5 then 2.0 + 3.0 * sp_rand(s) else 0.0f32;   // a bolt, some
   }
+  // (a splash bursts on what is under the point: the ground or a roof, not in the air against a wall)
+  floor_y := sp_surface(s, at.x, at.z, at.y + 0.5);
+  under := v3(at.x, floor_y, at.z);
+  sp_add_blast(s, ifx kind == 2 then under else at, radius, kind);
+  // on the water: steam and its splash, no mark
+  if !wet { sp_add_scorch(s, under, ifx kind == 0 then 1.4f32 else radius * 0.45, kind == 2); }
+  if kind != 2 {
+    // the old engine's meteor_explosion and thunderbolt_strike: sparks thrown out and falling, a
+    // shockwave racing along the ground, dust shoved out with it, a pall of smoke, and the camera shaken
+    // (a jolt only: no spell lifts, pulls or turns it)
+    low := at.y - floor_y < 2.5;
+    up := v3(0, 1, 0);
+    face := up;
+    if !low { face = unit_or(v3(at.x - s[0].sp.shot.eye.x, 0, at.z - s[0].sp.shot.eye.z), up); face = times(face, -1); }
+    lightning := kind == 1;
+    mega := lightning && radius > 4.5;
+    if lightning {
+      sp_burst(s, at, face, ifx mega then 50 else 36, 16, 1.3, 0.05, v3(0.9, 0.95, 1.0), v3(0.4, 0.52, 1.0), 9);
+      // arcs leaping off the strike: fast, short-lived streaks
+      sp_burst(s, at, face, 14, 70, 0.16, 0.05, v3(0.92, 0.96, 1.0), v3(0.7, 0.8, 1.0), 0);
+    } else {
+      sp_burst(s, at, face, 40, 18, 1.7, 0.06, v3(1.0, 0.85, 0.45), v3(0.95, 0.3, 0.04), 9);
+      sp_fireball(s, at, face, wet);
+    }
+    sp_add_shock(s, add(under, v3(0, 0.05, 0)), ifx mega then 13.0f32 else ifx lightning then 8.5f32 else 9.0f32, ifx lightning then 0.55f32 else 0.65f32,
+                 ifx lightning then v3(0.5, 0.62, 0.95) else v3(0.95, 0.62, 0.3));
+    for q: 0..<(ifx wet then 0 else 6) {
+      a := (f32(q) + sp_rand(s)) * f32(TAU) / 6;
+      out := v3(cos(a), 0, sin(a));
+      // dust: the ground's own colour, low and thin, shoved out with the wave and settling
+      sp_add_smoke(s, add(under, add(times(out, 1.4), v3(0, 0.3, 0))), add(times(out, 4.5 + 2.5 * sp_rand(s)), v3(0, 0.3, 0)), 0.9 + 0.4 * sp_rand(s), 1.8, 0.3, 0, 0.45, 0);
+    }
+    // a bolt's pall of smoke (a meteor's column climbs out of its fireball as it burns: sp_draw)
+    for q: 0..<(ifx wet || !lightning then 0 else 4) {
+      sp_add_smoke(s, add(at, v3((sp_rand(s) - 0.5) * 2, 0.8 + sp_rand(s), (sp_rand(s) - 0.5) * 2)),
+                   v3((sp_rand(s) - 0.5) * 1.2, 1.4 + 1.2 * sp_rand(s), (sp_rand(s) - 0.5) * 1.2),
+                   1.4 + sp_rand(s), 4.0, 0.3, 0.3, 0.6, 0.3);
+    }
+    eye := s[0].sp.shot.eye;
+    reach := clamp(1 - length(sub(at, eye)) / 65, 0, 1);
+    jolt := ifx mega then 1.0f32 else ifx lightning then 0.7f32 else 0.55f32 * reach;
+    s[0].sp.shake = lo(s[0].sp.shake + (ifx lightning then hi(jolt * reach, 0.3) else jolt), 1);
+  }
+  if kind == 2 {
+    for q: 0..<SP_DROPS {
+      a := f32(q) * f32(TAU) / f32(SP_DROPS);
+      s[0].sp.drops[q] = SpDrop.{live = true, at = add(at, v3(0, 0.5, 0)), vel = v3(cos(a) * 4, 5 + 3 * srd_unit(s[0].sp.dice[..]), sin(a) * 4), t = 0};
+    }
+  }
+  s[0].sp.flash = hi(s[0].sp.flash, ifx kind == 1 then 1.0f32 else 0.7f32);
+  if kind == 1 { s[0].sp.white = 1; }
+  s[0].sp.flash_rgb = ifx kind == 1 then v3(0.72, 0.8, 1.0) else ifx kind == 0 then v3(1.0, 0.62, 0.28) else v3(0.6, 0.8, 0.9);
+}
+// A blast's look alone (the room server's: net_play): its fire or lightning or water, its marks, sparks,
+// shockwave, smoke and flash, and the splash on water; nothing it harms or breaks.
+sp_blast_look :: (s: [] Everglade, at: Point, slot: int, radius: f32) {
+  kind := ifx slot == SP_ORB then 2 else ifx slot == SP_METEOR then 0 else 1;
+  lv := water_at(s, at.x, at.z);
+  wet := lv > f32(DEMO_DRY) + 1 && at.y <= lv + 0.4;
+  if wet { water_hit(s, at.x, at.z, water_spell_splash(srd_spell(SP_SPELL[slot])), radius); }
+  if slot == SP_ORB { s[0].sp.wave_at = at; s[0].sp.wave_t = 0; s[0].sp.wave_r = radius; }
   // (a splash bursts on what is under the point: the ground or a roof, not in the air against a wall)
   floor_y := sp_surface(s, at.x, at.z, at.y + 0.5);
   under := v3(at.x, floor_y, at.z);
@@ -1084,7 +1169,11 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
     slot := s[0].sp.casting;
     s[0].sp.cast_t += dt;
     if slot == SP_ORB { s[0].sp.orb_t += dt; }
-    if s[0].sp.cast_t >= srd_spell(SP_SPELL[slot]).bar { s[0].sp.casting = -1; sp_release(s, slot); }
+    if s[0].sp.cast_t >= srd_spell(SP_SPELL[slot]).bar {
+      s[0].sp.casting = -1;
+      // in a room the strike is the server's: it comes back as an effect (f) for every page alike
+      if !net_live(s) { sp_release(s, slot); } else if slot == SP_ORB && !s[0].sp.orb_remote { s[0].sp.orb_live = false; }
+    }
     // the cast gathering round you: embers rising for the meteors, a crackle of sparks for a bolt
     if slot != SP_ORB {
       hand := add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z) + 1.3, 0));
@@ -1105,14 +1194,17 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   }
   // the meteors fall
   last := false;
-  for m: 0..<SP_METEORS {
+  for m: 0..<SP_METEORS * 2 {
     if !s[0].sp.meteors[m].live { continue; }
     s[0].sp.meteors[m].t += dt;
     if s[0].sp.meteors[m].t >= s[0].sp.meteors[m].fall {
       s[0].sp.meteors[m].live = false;
       // on a wall its heart sits just off the face, as the old engine's did
       me := s[0].sp.meteors[m];
+      s[0].sp.remote = me.remote;
       sp_blast(s, ifx sp_wall(me.n) then add(me.to, times(me.n, 0.5)) else me.to, SP_METEOR);
+      s[0].sp.remote = false;
+      if me.remote { continue; }
       last = true;
       for o: 0..<SP_METEORS { if s[0].sp.meteors[o].live { last = false; } }
     }
@@ -1127,8 +1219,10 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
     if before < f32(SP_BOLT_LEAD) && b.t >= f32(SP_BOLT_LEAD) {
       if b.call { wd_cl_strike(s, b.to); } else {
         slot := ifx b.mega then SP_MEGA else SP_BOLT;
+        s[0].sp.remote = b.remote;
         sp_blast(s, ifx sp_wall(b.n) then add(b.to, times(b.n, 0.5)) else b.to, slot);
-        sp_report(s, slot);
+        s[0].sp.remote = false;
+        if !b.remote { sp_report(s, slot); }
       }
     }
     // its light flickers over the town while it is lit
@@ -1138,7 +1232,14 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   // the orb, once thrown
   if s[0].sp.orb_live && s[0].sp.casting != SP_ORB {
     s[0].sp.orb_t += dt;
-    if s[0].sp.orb_t >= 0.7 { s[0].sp.orb_live = false; sp_blast(s, s[0].sp.orb_to, SP_ORB); sp_report(s, SP_ORB); }
+    if s[0].sp.orb_t >= 0.7 {
+      s[0].sp.orb_live = false;
+      s[0].sp.remote = s[0].sp.orb_remote;
+      sp_blast(s, s[0].sp.orb_to, SP_ORB);
+      s[0].sp.remote = false;
+      if !s[0].sp.orb_remote { sp_report(s, SP_ORB); }
+      s[0].sp.orb_remote = false;
+    }
   }
   // the abilities' fields over the debris, the people they have up, you (everglade-abilities.coax)
   if s[0].sp.on { ab_frame(s, dt); } else { w[0].field_n = 0; }
@@ -1167,7 +1268,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
     if p.state == DP_STANDING && p.hp < p.max_hp { sp_tint(s, i, 0.3 + 0.7 * f32(p.hp) / f32(hi_int(p.max_hp, 1))); }
   }
   sp_draw(s, dt);
-  if s[0].sp.on { ab_draw(s); }
+  if s[0].sp.on { ab_draw(s); net_draw(s); }   // and what others' spells left (everglade-net.coax)
   watch_on_you_draw(s);   // what holds you (everglade-watch.coax): Hold Person's rings, Earthbind's tendrils, frost
   chimney_smoke(s, s[0].smoke_still);   // the town's wood smoke (everglade-dress.coax)
   sp_fx_close(s);
@@ -1376,7 +1477,7 @@ sp_draw :: (s: [] Everglade, dt: f32) {
   // off it into a trail, embers flung back and smoke left hanging along its fall (the old engine's
   // meteor_head and meteor_trail)
   eye := s[0].sp.shot.eye;
-  for m: 0..<SP_METEORS {
+  for m: 0..<SP_METEORS * 2 {
     me := s[0].sp.meteors[m];
     if !me.live || me.t < 0 { continue; }
     f := clamp(me.t / me.fall, 0, 1);
@@ -1654,7 +1755,7 @@ spells_lamps :: (s: [] Everglade, u: [] f32, cap: int) {
     f := 1 - bl.t / 1.4;
     k = sp_lamp(u, k, most, add(bl.at, v3(0, 1.6, 0)), bl.radius * 4.5, v3(1.0, 0.55, 0.22), ifx bl.t < 0.1 then 5.0f32 else 3 * f * f);
   }
-  for m: 0..<SP_METEORS {
+  for m: 0..<SP_METEORS * 2 {
     me := s[0].sp.meteors[m];
     if !me.live || me.t < 0 { continue; }
     f := clamp(me.t / me.fall, 0, 1);
@@ -1776,7 +1877,7 @@ spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) ->
     }
   }
   // each falling meteor's glare round its head and along its streak
-  for m: 0..<SP_METEORS {
+  for m: 0..<SP_METEORS * 2 {
     me := s[0].sp.meteors[m];
     if !me.live || me.t < 0 { continue; }
     f := clamp(me.t / me.fall, 0, 1);

@@ -9,8 +9,9 @@
 // engine, and the engine's Hit Points, conditions and log come back to the page (e5_after, e5r_*,
 // e5_take), which draws its HUD over Everglade's (e5_finish). No bar key or tap is ever held back.
 // While nothing moves you of your own (held, your pace taken to nothing) your body stands, and walking
-// into a wall it doesn't run in place (show_vx). The room is "everglade-5e", and each player's numbers go to it on
-// the chat (e5_sync_take). It decides nothing. Every pointer is an offset into the host's
+// into a wall it doesn't run in place (show_vx). The room is the realm's: its server's world comes
+// over one socket (everglade-net.coax), whose commands this face carries to the host (net_drain), and
+// the room's chat over HTTP (room_out). It decides nothing. Every pointer is an offset into the host's
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).
 //
 // Everglade's face, as it says of itself:
@@ -53,6 +54,10 @@
 #include <string.h>
 
 #define EXPORT(name) __attribute__((export_name(name)))
+#define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
+IMPORT("coaxial_socket_open") int32_t coaxial_socket_open(uint32_t url, uint32_t len);
+IMPORT("coaxial_socket_send") void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len);
+IMPORT("coaxial_socket_close") void coaxial_socket_close(int32_t id);
 
 static coax_t_Player player;
 static coax_t_Sticks sticks;
@@ -70,6 +75,7 @@ static int32_t ask_id = -1, mint_id = -1;
 static uint8_t world_url_buf[4][128];
 static uint32_t world_path(uint32_t state, int what);
 static coax_t_EgFork fork_state;   /* FORK's state (everglade-fork.coax everglade_attach_fork) */
+static coax_t_EgNet net_state;     /* the room server's world (everglade-net.coax everglade_attach_net) */
 #define WORLD_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[0], world_path(st, 0)
 #define RESET_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[1], world_path(st, 1)
 #define EDIT_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[2], world_path(st, 2)
@@ -156,14 +162,30 @@ static coax_v_t_Everglade at(uint32_t state) {
     everglade_attach_demolish(v, (coax_v_t_DemoWorld){&demo_world, 1});
     everglade_attach_media(v, (coax_v_u8){media_big, sizeof media_big});
     everglade_attach_fork(v, (coax_v_t_EgFork){&fork_state, 1});
+    everglade_attach_net(v, (coax_v_t_EgNet){&net_state, 1});
   }
   return v;
 }
+/* The room socket's commands (socket.coax's pipe) to the host, in order; then the pipe is empty. */
+static void net_drain(uint32_t state) {
+  coax_t_Pipe *p = &net_state.pipe.e[0];
+  int64_t n = p->n;
+  for (int64_t k = 0; k < n; k++) {
+    uint32_t from = (uint32_t)(uintptr_t)&p->buf.e[p->from.e[k]], len = (uint32_t)p->len.e[k];
+    int32_t id = (int32_t)p->id.e[k];
+    if (p->op.e[k] == 1) net_opened(at(state), coaxial_socket_open(from, len));
+    else if (p->op.e[k] == 2) coaxial_socket_send(id, from, len);
+    else if (p->op.e[k] == 3) coaxial_socket_close(id);
+  }
+  p->n = 0; p->used = 0;
+}
+/* For a headless check (globalThis.coaxial): everglade-net.coax net_probe's fields. */
+EXPORT("coaxial_net_probe") int32_t coaxial_net_probe(uint32_t state, int32_t field) { return (int32_t)net_probe(at(state), field); }
 static uint32_t world_path(uint32_t state, int what) {
   return (uint32_t)everglade_world_path(at(state), (coax_v_u8){world_url_buf[what], sizeof world_url_buf[what]}, what);
 }
 static void start(uint32_t state) {
-  if (!track_state.page_n) track_init(tr(), track_cstr("everglade-5e"));
+  if (!track_state.page_n) track_init(tr(), e5_realm(at(state)));
   if (placed) return;
   coax_t_Point spawn = everglade_spawn(at(state));
   player = verse_player_place(spawn.x, spawn.y, spawn.z, everglade_spawn_face(at(state)));
@@ -376,6 +398,18 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   n = everglade_finish_frame(at(state), out, u);
   e5_frame(state);
   n = e5_finish(at(state), e5v(), out, u, n);
+  {
+    /* the room's server (everglade-net.coax): your move out, the world where it is drawn; the
+       server's correction to where you are, eased in */
+    net_step(at(state), (int64_t)guard_now_ms(), feet.x, feet.y, feet.z, verse_player_face(player), show_vx, show_vz,
+             !player.on_ground, swim.medium, river.aboard >= 0, verse_player_act(player));
+    coax_t_Point fix = net_correction(at(state), dt);
+    if (fix.x != 0 || fix.y != 0 || fix.z != 0) {
+      player.pos.x += fix.x; player.pos.y += fix.y; player.pos.z += fix.z;
+      player.prev_pos.x += fix.x; player.prev_pos.y += fix.y; player.prev_pos.z += fix.z;
+    }
+    net_drain(state);
+  }
   if (n > 0) {
     // the river's uniform block, after the page's frame has written the rest
     int64_t at_water = everglade_water_at();
@@ -407,7 +441,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   track_frame(tr(), dt, w, h, scale);
   // world-enter and load-engine once it draws, like every realm (the analytics contract, analytics-contract.json)
   static bool entered;
-  if (n > 0 && !entered) { entered = true; track_world(tr(), track_cstr("everglade-5e")); track_loaded(tr(), track_cstr("load-engine")); }
+  if (n > 0 && !entered) { entered = true; track_world(tr(), e5_realm(at(state))); track_loaded(tr(), track_cstr("load-engine")); }
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
 }
@@ -523,11 +557,9 @@ static void room_out(uint32_t state, float dt) {
   if (mint_id >= 0 || !has_player) return;
   (void)dt;
   coax_string said = chat_id < 0 ? everglade_chat_take(at(state)) : (coax_string){"", 0};
-  bool numbers = false;   /* a player's numbers for the others (everglade5e.coax e5_sync_take) */
-  if (said.count == 0 && chat_id < 0) { said = e5_sync_take(at(state), e5v()); numbers = said.count > 0; }
   if (said.count > 0) {
-    if (!numbers) track_chat(tr(), track_cstr("room"), said.count);   // its length only
-    int64_t un = room_url(e5_room_name(), true, (coax_v_u8){(uint8_t *)chat_url_buf, sizeof chat_url_buf});
+    track_chat(tr(), track_cstr("room"), said.count);   // its length only
+    int64_t un = room_url(e5_room_name(at(state)), true, (coax_v_u8){(uint8_t *)chat_url_buf, sizeof chat_url_buf});
     coax_string sid = {(const char *)track_state.sid.e, track_state.sid_n};
     int64_t bn = room_chat_body(said, sid, (coax_v_u8){chat_body, sizeof chat_body});
     if (un > 0 && bn > 0) {
@@ -538,7 +570,7 @@ static void room_out(uint32_t state, float dt) {
   if (room_id >= 0 && now - room_asked_at < ROOM_WAIT_S) return;
   if (now - room_at < ROOM_EVERY_S) return;
   room_at = now;
-  int64_t un = room_url(e5_room_name(), false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
+  int64_t un = room_url(e5_room_name(at(state)), false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
   coax_t_Vec3 feet = verse_player_feet(player);
   float air = player.on_ground ? 0.0f : feet.y;
   int64_t bn = room_presence_body(feet.x, air, feet.z, verse_player_face(player), city(state)->room.e[0].last, (coax_v_u8){room_body, sizeof room_body});
@@ -623,6 +655,8 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
+  /* the room's socket (256 + 4 * id + event): the server's world (everglade-net.coax) */
+  if (kind >= 256 && kind < 512 && net_event(at(state), kind, (coax_string){(const char *)inbox, length})) { net_drain(state); return; }
   if (kind == 601 || kind == 603) { everglade_guard_message(at(state), kind, (coax_string){(const char *)inbox,length}); guard_out(state); }
   if (kind == 606) { guide_authenticated = ggp_viewer((coax_string){(const char *)inbox,length}); guide_out(state); }
   if (kind == 601 || kind == 603) guide_out(state);
@@ -649,6 +683,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     mint_id = -1;
     if (length > 4 && !memcmp(inbox, "200\n", 4)) {
       everglade_keep_player(at(state), (coax_string){(const char *)inbox + 4, length - 4});
+      net_player(at(state), (coax_string){(const char *)inbox + 4, length - 4});   /* its id for the room's hello */
       has_player = true;
     }
     return;
@@ -676,7 +711,6 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (room_id >= 0 && kind == 512 + room_id) {
     room_id = -1;
     int64_t st = room_take(rooms(state), (coax_string){(const char *)inbox, length});
-    e5_room_heard(at(state), e5v());
     if (st == 403 && has_player) { has_player = false; mint_tried = false; }
     return;
   }
@@ -688,6 +722,12 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     return;
   }
   everglade_message(at(state), kind, (coax_string){(const char *)inbox, length});
+  if (kind == 600) {
+    /* the realm (data-realm, a fork's slug) names the analytics page and the room; the room's socket */
+    track_init(tr(), e5_realm(at(state)));
+    net_facts(at(state), (coax_string){(const char *)inbox, length}, e5_realm(at(state)), golden);
+    net_drain(state);
+  }
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
 }
 

@@ -1,4 +1,4 @@
-// Everglade 5E, openagents.com/worlds/everglade-5e (unlisted): Everglade on the SRD 5e engine. The
+// Everglade 5E, openagents.com/worlds/everglade: Everglade on the SRD 5e engine. The
 // page is Everglade's (everglade.coax, loaded as it is): its city, its people and watch, its
 // character controller, its spell bar with the alike slots, pictures, keys and order, its spells'
 // fire, smoke and lightning, and its room. What changes is who decides: each slot of the bar is an
@@ -16,8 +16,9 @@
 //     numbers over heads); what the world deals otherwise (a guard's sword, a spear, the river) goes
 //     through the engine too, so it meets your Temporary Hit Points and your concentration;
 //   - your Hit Points and Armor Class are the engine's caster's (57 and 15);
-//   - the room is its own ("everglade-5e"), and each player's Hit Points and casts go to the others
-//     on the room's chat, in lines the chat panel doesn't show.
+//   - the room is the realm's (a fork's own, everglade-fork.coax fk_slug), and in it the room's server
+//     is the world (everglade-net.coax): your casts and abilities go to it as intents, it rolls them,
+//     and your Hit Points, the others', their creatures and zones are what it says.
 // The face (everglade5e-face.c) passes the numbers between this file and the rules each frame.
 //   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "Everglade 5E"
 //
@@ -28,7 +29,6 @@
 
 #load "everglade.coax";
 
-E5_ROOM :: "everglade-5e";
 E5_SLOTS :: 49;            // fivebar.coax FB_EG_SLOTS: Everglade's bar, slot for slot
 E5_SLOT_FLOATS :: 6;       // everglade5e-rules.coax E5R_SLOT_FLOATS
 E5_HERO_FLOATS :: 32;
@@ -38,9 +38,6 @@ E5_READY :: 0; E5_NO_SLOT :: 1; E5_SPENT :: 2; E5_CANT :: 3;
 E5_COST_NONE :: 0; E5_COST_ACTION :: 1; E5_COST_BONUS :: 2; E5_COST_REACTION :: 3;
 E5_PENDING :: 8; E5_HURTS :: 24; E5_ENDS :: 8;
 E5_LOG :: 5; E5_LOG_TEXT :: 96; E5_LOG_LIFE :: 12.0;
-E5_SYNC :: "[5E] ";        // the start of a player's line of numbers on the room's chat
-E5_SYNC_EVERY :: 2.5;      // s between a player's lines at most (the room takes 5 lines in 10 s)
-E5_SYNC_KEEP :: 2.0;       // s after the last a line goes out unchanged, so a newcomer hears it
 E5_WINDOW :: 2.0;          // s after a bar cast lands that the town's harm is the engine's
 E5_RED :: [3] f32.[0.95, 0.32, 0.26];
 E5_GREEN :: [3] f32.[0.45, 0.9, 0.42];
@@ -87,16 +84,13 @@ E5 :: struct {
   force: int;                // a hash's staged state (e5_hash): E5_FORCE_* bits
   fps: f32; ms: f32; fps_n: int; fps_t: f32;   // frames a second (e5_tick)
   card: [160] u8; card_n: int; card_slot: int;
-  // the room: your line out, and each other's numbers from theirs
-  sync_t: f32; sync_line: [96] u8; sync_n: int; sent: [96] u8; sent_n: int; out_ready: bool;
   cast_name: [40] u8; cast_name_n: int; cast_t: f32;
   used_now: bool;            // a cast the engine took this frame: its line under the bar is the engine's
-  oth_id: [ROOM_OTHERS * ROOM_ID] u8; oth_id_n: [ROOM_OTHERS] int;
-  oth_hp: [ROOM_OTHERS] int; oth_max: [ROOM_OTHERS] int; oth_cond: [ROOM_OTHERS] int; oth_t: [ROOM_OTHERS] f32;
-  oth_cast: [ROOM_OTHERS * 40] u8; oth_cast_n: [ROOM_OTHERS] int; oth_cast_t: [ROOM_OTHERS] f32;
 }
 
-e5_room_name :: () -> string #export_c { return E5_ROOM; }
+// The realm this page is (data-realm, or a fork's slug): its analytics name, and its room's.
+e5_realm :: (s: [] Everglade) -> string #export_c { return fk_slug(s); }
+e5_room_name :: (s: [] Everglade) -> string #export_c { return net_room(s, fk_slug(s)); }
 
 e5_slot_f :: (v: [] E5, k: int, f: int) -> f32 { return v[0].bar[k * E5_SLOT_FLOATS + f]; }
 // ---- each frame, before Everglade's
@@ -130,6 +124,9 @@ e5_before :: (s: [] Everglade, v: [] E5, bar: [] f32, bar_n: int, hero: [] f32, 
     if w[0].max != hmax && hmax > 0 { w[0].hp = ifx w[0].hp >= w[0].max then hmax else hi_int(lo_int(w[0].hp, hmax), 1); w[0].max = hmax; }
     w[0].ac = cast(int) v[0].hero[3];
   }
+  // in a room your Hit Points are the server's (everglade-net.coax): its player entity for you
+  hp := net_self_hp(s); most := net_self_max(s);
+  if hp >= 0 && most > 0 { w[0].max = most; w[0].hp = lo_int(hp, most); w[0].temp = 0; }
   for i: 0..<WATCH_ACTORS {
     a := w[0].actors[i];
     v[0].hp0[i] = a.hp; v[0].temp0[i] = a.temp; v[0].mode0[i] = a.mode; v[0].t0[i] = a.t; v[0].after0[i] = a.after; v[0].body0[i] = a.body;
@@ -148,6 +145,8 @@ e5_before :: (s: [] Everglade, v: [] E5, bar: [] f32, bar_n: int, hero: [] f32, 
 e5_after :: (s: [] Everglade, v: [] E5) #export_c {
   v[0].hurt_n = 0; v[0].end_n = 0;
   if !s[0].started { return; }
+  // in a room the server resolves every cast and every harm: this page's rules keep only your bar
+  if net_live(s) { v[0].pend_n = 0; return; }
   now := v[0].now;
   w := watch_w(s);
   if s[0].wv.started {
@@ -223,12 +222,11 @@ e5_due :: (v: [] E5, out: [] f32) -> int #export_c {
   v[0].pend_n = kept;
   return n;
 }
-// A cast the engine took: its name goes to the room with your next line.
+// A cast the engine took: its name for the line under the bar.
 e5_used :: (v: [] E5, b: int, name: string) #export_c {
   n := 0;
   for ch: name { if n >= 40 { break; } v[0].cast_name[n] = ch; n += 1; }
   v[0].cast_name_n = n; v[0].cast_t = v[0].now; v[0].used_now = true;
-  v[0].sync_t = -100;   // a cast goes out at once (within the room's limit)
 }
 
 // ---- where everyone is, for the rules
@@ -268,17 +266,14 @@ e5_block :: (name: string) -> int {
   if name == "Archmage" { return 6; } if name == "Gladiator" { return 7; }
   return 1;
 }
-// The others in the room: x, z, Hit Points, most (4 floats each), from their lines (none heard yet:
-// a full 57).
+// The others in the room: x, z, Hit Points, most (4 floats each), as the room's server has them.
 e5_others :: (s: [] Everglade, v: [] E5, out: [] f32) -> int #export_c {
   if !s[0].started { return 0; }
-  r := s[0].room[..];
   n := 0;
-  for i: 0..<r[0].others {
+  for i: 0..<net_count(s, WK_PLAYER) {
     if (n + 1) * 4 > out.count { break; }
-    q := e5_other_of(s, v, i);
-    out[n * 4] = r[0].at[i * 4]; out[n * 4 + 1] = r[0].at[i * 4 + 2];
-    out[n * 4 + 2] = f32(ifx q >= 0 then v[0].oth_hp[q] else 57); out[n * 4 + 3] = f32(ifx q >= 0 then v[0].oth_max[q] else 57);
+    o := net_view(s, WK_PLAYER, i);
+    out[n * 4] = o.x; out[n * 4 + 1] = o.z; out[n * 4 + 2] = f32(o.hp); out[n * 4 + 3] = f32(hi_int(o.max, 1));
     n += 1;
   }
   return n;
@@ -298,7 +293,7 @@ e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_
     // you
     eh := cast(int) out[0]; et := cast(int) out[1];
     v[0].cond[0] = cast(int) out[2];
-    lost := (w[0].hp + w[0].temp) - (eh + et);
+    lost := ifx net_live(s) then 0 else (w[0].hp + w[0].temp) - (eh + et);   // in a room the server's (e5_before)
     if lost > 0 && !w[0].dead {
       watch_hurt_you(w, lost);
       watch_pop(s, add(you, v3(0, 2.1, 0)), lost, lost * 4 >= hi_int(w[0].max, 1) || lost >= 25);
@@ -377,100 +372,6 @@ e5_starts :: (t: string, head: string) -> bool {
   for q: 0..<head.count { if t[q] != head[q] { return false; } }
   return true;
 }
-// The table entry for the other in room place i, -1 none heard from yet.
-e5_other_of :: (s: [] Everglade, v: [] E5, i: int) -> int {
-  id := room_other_id(s[0].room[..], i);
-  if id.count == 0 { return -1; }
-  for q: 0..<ROOM_OTHERS {
-    if v[0].oth_id_n[q] != id.count { continue; }
-    alike := true;
-    for c: 0..<id.count { if v[0].oth_id[q * ROOM_ID + c] != id[c] { alike = false; break; } }
-    if alike { return q; }
-  }
-  return -1;
-}
-// The numbers in a line after its start: "hp 45/57 c 2048 cast Moonbeam".
-e5_num_at :: (t: string, at: int) -> int {
-  n := 0; q := at;
-  while q < t.count && t[q] >= 48 && t[q] <= 57 { n = n * 10 + cast(int) (t[q] - 48); q += 1; }
-  return n;
-}
-e5_skip_num :: (t: string, at: int) -> int { q := at; while q < t.count && t[q] >= 48 && t[q] <= 57 { q += 1; } return q; }
-// The room's new lines: each player's numbers are kept for them and the line leaves the chat panel.
-e5_room_read :: (s: [] Everglade, v: [] E5) {
-  r := s[0].room[..];
-  drop_num: [ROOM_LINES] int; drop_from: [ROOM_LINES * ROOM_ID] u8; drop_from_n: [ROOM_LINES] int; drops := 0; theirs := 0;
-  for k: 0..<r[0].lines {
-    t := room_line_text(r, k);
-    if !e5_starts(t, E5_SYNC) { continue; }
-    from := room_line_from(r, k);
-    drop_num[drops] = room_line_num(r, k);
-    for c: 0..<lo_int(from.count, ROOM_ID) { drop_from[drops * ROOM_ID + c] = from[c]; }
-    drop_from_n[drops] = lo_int(from.count, ROOM_ID);
-    drops += 1;
-    if room_line_mine(r, k) || from.count == 0 { continue; }
-    theirs += 1;
-    // whose: the table entry with their id, else a free one
-    q := -1;
-    for e: 0..<ROOM_OTHERS {
-      if v[0].oth_id_n[e] != from.count { continue; }
-      alike := true;
-      for c: 0..<from.count { if v[0].oth_id[e * ROOM_ID + c] != from[c] { alike = false; break; } }
-      if alike { q = e; break; }
-    }
-    if q < 0 {
-      oldest := 0;
-      for e: 0..<ROOM_OTHERS { if v[0].oth_id_n[e] == 0 { oldest = e; break; } if v[0].oth_t[e] < v[0].oth_t[oldest] { oldest = e; } }
-      q = oldest;
-      for c: 0..<lo_int(from.count, ROOM_ID) { v[0].oth_id[q * ROOM_ID + c] = from[c]; }
-      v[0].oth_id_n[q] = lo_int(from.count, ROOM_ID);
-    }
-    // "[5E] hp 45/57 c 0" and maybe " cast Name"
-    at := E5_SYNC.count + 3;
-    v[0].oth_hp[q] = e5_num_at(t, at); at = e5_skip_num(t, at) + 1;
-    v[0].oth_max[q] = hi_int(e5_num_at(t, at), 1); at = e5_skip_num(t, at) + 3;
-    v[0].oth_cond[q] = e5_num_at(t, at); at = e5_skip_num(t, at);
-    v[0].oth_t[q] = v[0].now;
-    if at + 6 <= t.count && t[at + 1] == 'c' {
-      n := 0;
-      for c: at + 6..<t.count { if n >= 40 { break; } v[0].oth_cast[q * 40 + n] = t[c]; n += 1; }
-      v[0].oth_cast_n[q] = n; v[0].oth_cast_t[q] = v[0].now;
-    }
-  }
-  if drops == 0 { return; }
-  for d: 0..<drops { room_drop(r, drop_num[d], cast(string) drop_from[d * ROOM_ID..<d * ROOM_ID + drop_from_n[d]]); }
-  r[0].unread = hi_int(r[0].unread - theirs, 0);
-  // the chat panel wakes for a new line only when one is a line someone said
-  newest := 0;
-  for k: 0..<r[0].lines { newest = hi_int(newest, room_line_num(r, k)); }
-  if newest <= s[0].chat.seen { s[0].chat.seen = r[0].last; }
-}
-// The room answered (the face calls this after room_take): the players' numbers out of the chat.
-e5_room_heard :: (s: [] Everglade, v: [] E5) #export_c { if s[0].started { e5_room_read(s, v); } }
-// Your line to say on the room's chat, when there are others to hear it and your numbers changed (a
-// cast goes at once), at most one every E5_SYNC_EVERY seconds; none, "".
-e5_sync_take :: (s: [] Everglade, v: [] E5) -> string #export_c {
-  if !s[0].started || !s[0].wv.started { return ""; }
-  e5_room_read(s, v);
-  if s[0].room[0].others == 0 || v[0].now - v[0].sync_t < f32(E5_SYNC_EVERY) { return ""; }
-  w := watch_w(s);
-  n := e5_put(v[0].sync_line[..], 0, E5_SYNC);
-  n = e5_put(v[0].sync_line[..], n, "hp ");
-  n = put_digits(v[0].sync_line[..], n, hi_int(w[0].hp, 0));
-  n = e5_put(v[0].sync_line[..], n, "/");
-  n = put_digits(v[0].sync_line[..], n, w[0].max);
-  n = e5_put(v[0].sync_line[..], n, " c ");
-  n = put_digits(v[0].sync_line[..], n, v[0].cond[0]);
-  fresh := v[0].cast_t > v[0].sync_t && v[0].cast_name_n > 0;
-  if fresh { n = e5_put(v[0].sync_line[..], n, " cast "); n = e5_put(v[0].sync_line[..], n, cast(string) v[0].cast_name[0..<v[0].cast_name_n]); }
-  alike := n == v[0].sent_n;
-  if alike { for q: 0..<n { if v[0].sync_line[q] != v[0].sent[q] { alike = false; break; } } }
-  if alike && v[0].now - v[0].sync_t < 20 { return ""; }
-  for q: 0..<n { v[0].sent[q] = v[0].sync_line[q]; }
-  v[0].sent_n = n; v[0].sync_t = v[0].now;
-  return cast(string) v[0].sync_line[0..<n];
-}
-
 // ---- the HUD, over Everglade's
 
 e5_text :: (out: [] f32, n: int, t: string, x: f32, y: f32, cap: f32, k: f32, light: f32, rgb: [3] f32) -> int {
@@ -523,23 +424,18 @@ e5_play_hud :: (s: [] Everglade, v: [] E5, out: [] f32, u: [] f32, at: int) -> i
       n = e5_conds(out, n, v[0].cond[1 + i], sc.x - 30 * k, sc.y, cap * 0.85, k);
     }
   }
-  r := s[0].room[..];
-  for i: 0..<r[0].others {
-    q := e5_other_of(s, v, i);
-    if q < 0 { continue; }
-    p := v3(r[0].at[i * 4], walk_at(s, r[0].at[i * 4], r[0].at[i * 4 + 2]) + r[0].at[i * 4 + 1] + 2.7, r[0].at[i * 4 + 2]);
-    sc := on_screen(u, p, wd, ht);
+  // the other players' Hit Points over their heads, as the room's server has them
+  for i: 0..<net_count(s, WK_PLAYER) {
+    o := net_view(s, WK_PLAYER, i);
+    if !o.ok || o.max <= 0 { continue; }
+    sc := on_screen(u, v3(o.x, o.y + 2.7, o.z), wd, ht);
     if !sc.ok || sc.w > 60 { continue; }
-    ln = put_digits(line[..], 0, v[0].oth_hp[q]);
+    ln = put_digits(line[..], 0, hi_int(o.hp, 0));
     ln = e5_put(line[..], ln, " / ");
-    ln = put_digits(line[..], ln, v[0].oth_max[q]);
+    ln = put_digits(line[..], ln, o.max);
     ln = e5_put(line[..], ln, " HP");
-    if v[0].oth_cast_n[q] > 0 && v[0].now - v[0].oth_cast_t[q] < 4 {
-      ln = e5_put(line[..], ln, " · ");
-      ln = e5_put(line[..], ln, cast(string) v[0].oth_cast[q * 40..<q * 40 + v[0].oth_cast_n[q]]);
-    }
     t := cast(string) line[0..<ln];
-    n = e5_text(out, n, t, sc.x - text_width(t, cap) / 2, sc.y, cap, k, 0.9, ifx v[0].oth_hp[q] > 0 then E5_GREEN else E5_RED);
+    n = e5_text(out, n, t, sc.x - text_width(t, cap) / 2, sc.y, cap, k, 0.9, ifx o.hp > 0 && o.alive then E5_GREEN else E5_RED);
   }
   return n;
 }
@@ -735,17 +631,6 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
   t := "gate+held+slowed";
   for q: 0..<t.count { h[q] = t[q]; }
   #assert e5_hash(v[..], h[..], t.count) == 4 && v[0].force == E5_FORCE_HELD + E5_FORCE_SLOW;
-}
-#test "Everglade 5E: a player's numbers read back from their line" {
-  t := "[5E] hp 45/57 c 2048 cast Moonbeam";
-  at := E5_SYNC.count + 3;
-  #assert e5_num_at(t, at) == 45;
-  at = e5_skip_num(t, at) + 1;
-  #assert e5_num_at(t, at) == 57;
-  at = e5_skip_num(t, at) + 3;
-  #assert e5_num_at(t, at) == 2048;
-  #assert e5_starts(t, E5_SYNC) && !e5_starts("hello", E5_SYNC);
-  #assert e5_room_name() == "everglade-5e";
 }
 #test "Everglade 5E: EDIT is Aethyrforge's panels alone, the frame rate and the rest gone" #steps 337000000 {
   s: [1] Everglade; v: [1] E5;
