@@ -1,0 +1,98 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/descriptor.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+REFUSALS :: [25] string.["bad character", "checksum length", "bad checksum", "syntax", "unknown function",
+  "context", "bad key", "uncompressed", "private key", "bad origin", "bad step", "multipath",
+  "needs private", "threshold", "key count", "script too long", "bad hex", "bad address",
+  "wrong network", "taproot tree", "bad network", "bad index", "bad branch", "no output", "capacity"];
+refusal :: (code: int) -> string { return ifx code < 0 && code >= -25 then REFUSALS[-code - 1] else "?"; }
+// A descriptor with its checksum appended, into out.
+with_checksum :: (body: string, out: [] u8) -> string {
+  for i: 0..<body.count { out[i] = body[i]; }
+  out[body.count] = '#';
+  #assert descriptor_checksum_vartime(body, out[body.count + 1..<body.count + 9]) == 8;
+  return cast(string) out[0..<body.count + 9];
+}
+// One script of a descriptor, as hex and as its address when it has one.
+show :: (label: string, text: string, network: int, branch: int, index: int, nth: int) {
+  script: [DS_SCRIPT_MAX] u8; hex: [200] u8; addr: [90] u8;
+  n := descriptor_script_vartime(text, network, branch, index, nth, script[..]);
+  if n < 0 { print("%: %\n", label, refusal(n)); return; }
+  a := address_encode_vartime(network, script[0..<n], addr[..]);
+  if a > 0 { print("%: %\n", label, cast(string) addr[0..<a]); return; }
+  r := hex_encode_checked(cast(string) script[0..<n], hex[..], false);
+  print("%: %\n", label, cast(string) hex[0..<r.written]);
+}
+// Whether a descriptor parses, and its shape.
+describe :: (text: string) {
+  info := descriptor_info_vartime(text, SW_MAINNET);
+  if info.result < 0 { print("% -> %\n", text, refusal(info.result)); return; }
+  print("% -> ranged %, % branches, % outputs\n", text, info.ranged, info.branches, info.outputs);
+}
+
+// BIP-84's and BIP-86's account keys for the "abandon ... about" seed
+// (chapter 33), under its master fingerprint 73c5da0a.
+WALLET84 :: "wpkh([73c5da0a/84h/0h/0h]xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V/<0;1>/*)";
+WALLET86 :: "tr([73c5da0a/86h/0h/0h]xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ/0/*)";
+KEY :: "03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd";
+MULTI :: "wsh(sortedmulti(2,03669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0,0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600,0362a74e399c39ed5593852a30147f2959b56bb827dfa3e60e464b02ccf87dc5e8))";
+
+main :: () {
+  // The checksum: eight characters of a BCH code over the text.
+  print("Checksums\n");
+  text: [400] u8;
+  print("%\n", with_checksum("raw(deadbeef)", text[..]));
+  describe("raw(deadbeef)#89f8spxm");
+  describe("raw(deedbeef)#89f8spxm");
+  describe("raw(deadbeef)#89f8spx");
+
+  // A BIP-84 wallet in one line: receiving and change chains, every index.
+  print("A BIP-84 wallet\n");
+  full := with_checksum(WALLET84, text[..]);
+  print("%\n", full);
+  describe(full);
+  show("receive 0", full, SW_MAINNET, 0, 0, 0);
+  show("receive 1", full, SW_MAINNET, 0, 1, 0);
+  show("change 0", full, SW_MAINNET, 1, 0, 0);
+  show("branch 2", full, SW_MAINNET, 2, 0, 0);
+
+  // BIP-86: a Taproot key path from the account xpub.
+  print("A BIP-86 wallet\n");
+  describe(WALLET86);
+  show("receive 0", WALLET86, SW_MAINNET, 0, 0, 0);
+
+  // combo(): every script a single key can have.
+  print("combo()\n");
+  c: [100] u8;
+  combo := cast(string) c[0..<KEY.count + 7];
+  for i: 0..<6 { c[i] = "combo("[i]; }
+  for i: 0..<KEY.count { c[6 + i] = KEY[i]; }
+  c[KEY.count + 6] = ')';
+  describe(combo);
+  show("P2PK", combo, SW_MAINNET, 0, 0, 0);
+  show("P2PKH", combo, SW_MAINNET, 0, 0, 1);
+  show("P2WPKH", combo, SW_MAINNET, 0, 0, 2);
+  show("P2SH-P2WPKH", combo, SW_MAINNET, 0, 0, 3);
+  show("a fifth", combo, SW_MAINNET, 0, 0, 4);
+
+  // A 2-of-3 multisig: the key order doesn't matter in sortedmulti().
+  print("Multisig\n");
+  show("wsh(sortedmulti(2,...))", MULTI, SW_MAINNET, 0, 0, 0);
+  show("on testnet", MULTI, SW_TESTNET, 0, 0, 0);
+  show("raw()", "raw(6a0568656c6c6f)", SW_MAINNET, 0, 0, 0);
+
+  // Refusals.
+  print("Refusals\n");
+  describe("pkh(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)");
+  describe("pkh(xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V/0h)");
+  describe("wpkh(04a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235)");
+  describe("sh(sh(pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)))");
+  describe("multi(3,03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)");
+  describe("tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd,pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))");
+  describe("wpkh(xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V/<0;1>/<2;3>)");
+  describe("pkh([73c5da0a/<0;1>]03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)");
+  describe("and_v(v:pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd),older(144))");
+}
+// book:end example

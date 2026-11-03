@@ -680,15 +680,22 @@
   {
    "number": 30,
    "title": "Output descriptors and their checksum",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch030-output-descriptors-and-their-checksum.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     29,
-    32
+    32,
+    33
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/descriptor.coax",
+    "bitcoin/examples/descriptors.coax",
+    "bitcoin/examples/checks/descriptors.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

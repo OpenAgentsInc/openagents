@@ -1,0 +1,755 @@
+// Output descriptors (Bitcoin chapter 30): BIP-380's language for the
+// scriptPubKeys a wallet watches, its checksum, and the expansion of a
+// descriptor to its scripts.
+//
+// - descriptor_checksum_vartime: the eight checksum characters of a body.
+// - descriptor_info_vartime: whether a descriptor parses, and whether it is
+//   ranged, how many branches its multipath keys give and how many scripts
+//   each index gives.
+// - descriptor_script_vartime: the scriptPubKey of one branch, one index
+//   and one output.
+//
+// The functions are pk, pkh, wpkh, combo, sh, wsh, multi, sortedmulti, addr,
+// raw and tr with a key and no script tree (BIP-381 to BIP-386). Keys are
+// hex public keys, or an xpub or tpub with a path, an optional /* and an
+// optional <a;b> multipath step (BIP-389), each with an optional
+// [fingerprint/path] origin. A descriptor is public: private keys (WIF,
+// xprv, tprv) and hardened steps after an xpub, which need one, refuse.
+// Everything here is public, so the code branches on it. Each procedure
+// returns a count or one negative DS_* refusal, and a refusal writes
+// nothing.
+#load "path.coax";
+#authority;
+
+// book:begin codes
+DS_CHECKSUM_CHARS :: 8;       // the characters after '#'
+DS_SCRIPT_MAX :: 10000;       // the longest raw() script: BIP-141's witness script limit
+DS_MULTI_MAX :: 20;           // keys in multi(): Bitcoin Core's MAX_PUBKEYS_PER_MULTISIG
+DS_BARE_MULTI_MAX :: 3;       // keys in a bare multi(), outside sh() and wsh(): standardness
+DS_INNER_MAX :: 1400;         // a buffer for the script inside sh() or wsh()
+
+// Where an expression sits: a key's rules depend on it.
+DS_TOP :: 0; DS_P2SH :: 1; DS_P2WSH :: 2; DS_P2WPKH :: 3; DS_P2TR :: 4;
+
+// Refusals.
+DS_BAD_CHAR :: -1;            // a character outside BIP-380's input set
+DS_CHECKSUM_LENGTH :: -2;     // a '#' not followed by exactly 8 characters
+DS_BAD_CHECKSUM :: -3;        // a checksum that isn't the body's
+DS_SYNTAX :: -4;              // parentheses that don't pair, or text after the last ')'
+DS_UNKNOWN_FUNCTION :: -5;    // a name this chapter doesn't read, or no function at all
+DS_CONTEXT :: -6;             // a function where it isn't allowed: sh() in sh(), wpkh() in wsh()
+DS_BAD_KEY :: -7;             // not a public key, a hybrid key, a point off the curve
+DS_UNCOMPRESSED :: -8;        // an uncompressed key inside wpkh(), wsh() or tr()
+DS_PRIVATE_KEY :: -9;         // a WIF, xprv or tprv: descriptors here are public
+DS_BAD_ORIGIN :: -10;         // an origin without '[', with two ']' or a fingerprint not 8 hex
+DS_BAD_STEP :: -11;           // a path step that isn't a number below 2^31 with h or '
+DS_MULTIPATH :: -12;          // <a;b> in an origin, twice in a key, with one item or a repeat,
+                              // or keys whose multipath lengths differ
+DS_NEEDS_PRIVATE :: -13;      // a hardened step after an xpub, or /*h
+DS_THRESHOLD :: -14;          // a multi() threshold that isn't a number from 1 to the key count
+DS_KEY_COUNT :: -15;          // multi() with 0 or more than 20 keys, or a bare one with more than 3
+DS_SCRIPT_TOO_LONG :: -16;    // a P2SH script over 520 bytes, or raw() over 10,000
+DS_BAD_HEX :: -17;            // raw() that isn't hex
+DS_BAD_ADDRESS :: -18;        // addr() that isn't an address
+DS_WRONG_NETWORK :: -19;      // an xpub, tpub or address for another network
+DS_TAPROOT_TREE :: -20;       // tr() with a script tree: chapter 41
+DS_BAD_NETWORK :: -21;        // a network outside 1-3
+DS_BAD_INDEX :: -22;          // an index below 0 or of 2^31 or more
+DS_BAD_BRANCH :: -23;         // a branch below 0 or past the multipath items
+DS_NO_OUTPUT :: -24;          // an output past the descriptor's scripts (combo() has 2 or 4)
+DS_CAPACITY :: -25;           // an output buffer that is too small
+// Refusals from the chapters underneath keep their codes, offset:
+DS_BIP32 :: -40;              // plus chapter 32's BIP32_* code: -41 to -50
+DS_ADDRESS :: -60;            // plus chapter 29's AD_* code: -61 to -68
+
+// What descriptor_info_vartime finds.
+Ds_Info :: struct {
+  result: int;                // 0, or a refusal
+  ranged: bool;               // a key ends in /*: one script per index
+  branches: int;              // the multipath items, or 1
+  outputs: int;               // scripts per branch and index: 4 or 2 for combo(), else 1
+}
+// book:end codes
+
+// The state of one pass over a descriptor.
+Ds_Env :: struct {
+  network: int;
+  branch: int;
+  index: int;
+  expand: bool;               // false: check only; keys stand in for their children
+  branches: int;              // 0 until a key has a multipath step
+  ranged: bool;
+  outputs: int;
+}
+
+// ---- the checksum
+
+// book:begin checksum
+DS_INPUT :: "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ ";
+DS_CHECK :: "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+DS_GENERATOR :: [5] u64.[0xf5dee51989, 0xa9fdca3312, 0x1bab10e32d, 0x3706b1677a, 0x644d626ffd];
+// One step of the BCH code: shift in a 5-bit symbol, and reduce by the
+// generator for each of the five bits that fell off the top.
+ds_polymod :: (c: u64, symbol: u64) -> u64 {
+  top := c >> 35;
+  r := ((c & 0x7ffffffff) << 5) ^ symbol;
+  for i: 0..<5 { if ((top >> cast(u64) i) & 1) != 0 { r ^= DS_GENERATOR[i]; } }
+  return r;
+}
+// A character's place in the input set: 0 to 94, or -1.
+ds_position :: (c: u8) -> int {
+  for k: 0..<DS_INPUT.count { if DS_INPUT[k] == c { return k; } }
+  return -1;
+}
+// The eight checksum characters of a body into out. Each character gives
+// its place within its group of 32, and after every three characters one
+// more symbol gives the three groups.
+descriptor_checksum_vartime :: (body: string, out: [] u8) -> int #export_c {
+  if out.count < DS_CHECKSUM_CHARS { return DS_CAPACITY; }
+  c: u64 = 1; groups: u64 = 0; count := 0;
+  for ch: body {
+    p := ds_position(ch);
+    if p < 0 { return DS_BAD_CHAR; }
+    c = ds_polymod(c, cast(u64) (p & 31));
+    groups = groups * 3 + cast(u64) (p >> 5); count += 1;
+    if count == 3 { c = ds_polymod(c, groups); groups = 0; count = 0; }
+  }
+  if count > 0 { c = ds_polymod(c, groups); }
+  for k: 0..<8 { c = ds_polymod(c, 0); }
+  c ^= 1;
+  for j: 0..<8 { out[j] = DS_CHECK[cast(int) ((c >> cast(u64) (5 * (7 - j))) & 31)]; }
+  return DS_CHECKSUM_CHARS;
+}
+// The body of a descriptor: the text before '#', whose checksum must match
+// when there is one. Returns the body's length or a refusal.
+ds_body :: (text: string) -> int {
+  hash := -1;
+  for i: 0..<text.count { if text[i] == '#' && hash < 0 { hash = i; } }
+  if hash < 0 {
+    for ch: text { if ds_position(ch) < 0 { return DS_BAD_CHAR; } }
+    return text.count;
+  }
+  if text.count - hash - 1 != DS_CHECKSUM_CHARS { return DS_CHECKSUM_LENGTH; }
+  want: [8] u8;
+  r := descriptor_checksum_vartime(text[0..<hash], want[..]);
+  if r < 0 { return r; }
+  for j: 0..<8 { if want[j] != text[hash + 1 + j] { return DS_BAD_CHECKSUM; } }
+  return hash;
+}
+// book:end checksum
+
+// ---- reading text
+
+// book:begin text
+// The first c at or after from, or -1.
+ds_find :: (s: string, c: u8, from: int) -> int {
+  for i: from..<s.count { if s[i] == c { return i; } }
+  return -1;
+}
+// The ')' that closes the '(' at open, or -1.
+ds_close :: (s: string, open: int) -> int {
+  depth := 0;
+  for i: open..<s.count {
+    if s[i] == '(' { depth += 1; }
+    if s[i] == ')' { depth -= 1; if depth == 0 { return i; } }
+  }
+  return -1;
+}
+// The end of the argument that starts at from: the next ',' outside
+// parentheses, or the end of s.
+ds_arg_end :: (s: string, from: int) -> int {
+  depth := 0;
+  for i: from..<s.count {
+    if s[i] == '(' { depth += 1; }
+    if s[i] == ')' { depth -= 1; }
+    if s[i] == ',' && depth == 0 { return i; }
+  }
+  return s.count;
+}
+ds_hex_digit :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
+  return -1;
+}
+// Bitcoin Core's IsHex: an even number of hex digits, at least two, in
+// either case.
+ds_is_hex :: (s: string) -> bool {
+  if s.count == 0 || s.count % 2 != 0 { return false; }
+  for ch: s { if ds_hex_digit(ch) < 0 { return false; } }
+  return true;
+}
+ds_unhex :: (s: string, out: [] u8) {
+  for i: 0..<s.count / 2 { out[i] = cast(u8) (ds_hex_digit(s[2 * i]) * 16 + ds_hex_digit(s[2 * i + 1])); }
+}
+// A path step, or DS_BAD_STEP.
+ds_step :: (s: string) -> int {
+  r := path_step_vartime(s);
+  return ifx r < 0 then DS_BAD_STEP else r;
+}
+ds_is_multipath :: (s: string) -> bool { return s.count >= 2 && s[0] == '<' && s[s.count - 1] == '>'; }
+// book:end text
+
+// ---- keys
+
+// book:begin origin
+// A key origin's text between '[' and ']': 8 hex characters of fingerprint,
+// then /steps. It names where the key came from and changes no script, so
+// it is only checked. Returns 0 or a refusal.
+ds_origin :: (s: string) -> int {
+  slash := ds_find(s, '/', 0);
+  if slash < 0 { slash = s.count; }
+  if slash != 8 || !ds_is_hex(s[0..<8]) { return DS_BAD_ORIGIN; }
+  steps := 0; at := slash;
+  while at < s.count {
+    end := ds_find(s, '/', at + 1);
+    if end < 0 { end = s.count; }
+    step := s[at + 1..<end];
+    if ds_is_multipath(step) { return DS_MULTIPATH; }
+    if ds_step(step) < 0 { return DS_BAD_STEP; }
+    steps += 1;
+    if steps > DP_MAX_DEPTH { return DS_BIP32 + BIP32_BAD_DEPTH; }
+    at = end;
+  }
+  return 0;
+}
+// book:end origin
+
+// book:begin hexkey
+// A key written in hex, or a WIF. In tr() a key is its 32-byte x
+// coordinate. Returns the key's length or a refusal.
+ds_plain_key :: (s: string, ctx: int, key_out: [] u8) -> int {
+  if ds_is_hex(s) {
+    if s.count > 130 { return DS_BAD_KEY; }
+    b: [65] u8; n := s.count / 2;
+    ds_unhex(s, b[..]);
+    if n == SE_UNCOMPRESSED && (b[0] == 6 || b[0] == 7) { return DS_BAD_KEY; }   // hybrid
+    if (n == SE_COMPRESSED || n == SE_UNCOMPRESSED) && se_decode(b[0..<n]).ok {
+      if n == SE_UNCOMPRESSED && ctx != DS_TOP && ctx != DS_P2SH { return DS_UNCOMPRESSED; }
+      if ctx == DS_P2TR { for i: 0..<32 { key_out[i] = b[1 + i]; } return SE_XONLY; }
+      for i: 0..<n { key_out[i] = b[i]; }
+      return n;
+    }
+    if n == SE_XONLY && ctx == DS_P2TR && se_decode_xonly(b[0..<n]).ok {
+      for i: 0..<32 { key_out[i] = b[i]; }
+      return SE_XONLY;
+    }
+    return DS_BAD_KEY;
+  }
+  // A WIF is a private key. It is read with chapter 26's constant-time
+  // decoder only to refuse it, and the key is wiped.
+  work: [WIF_WORK_BYTES] u8; k: [32] u8;
+  r := wif_decode_ct(s, work[..], k[..]);
+  for i: 0..<32 { k[i] = 0; }
+  if r >= B58_MAIN_WIF { return DS_PRIVATE_KEY; }
+  return DS_BAD_KEY;
+}
+// book:end hexkey
+
+// book:begin extkey
+// An xpub or tpub, then /steps, an optional <a;b> step and an optional
+// final /*. Returns the child's key length or a refusal; with expand false
+// the xpub's own key stands in for the child.
+ds_ext_key :: (s: string, ctx: int, env: [] Ds_Env, key_out: [] u8) -> int {
+  kend := ds_find(s, '/', 0);
+  if kend < 0 { kend = s.count; }
+  node: [BIP32_NODE_BYTES] u8; work: [BIP32_WORK_BYTES] u8;
+  if kend != BIP32_TEXT || bip32_decode_ct(s[0..<kend], work[..], node[..]) < 0 { return DS_BAD_KEY; }
+  if node[HDK_KEY] == 0 { for i: 0..<BIP32_NODE_BYTES { node[i] = 0; } return DS_PRIVATE_KEY; }
+  mainnet := hdk_get32(node[..], HDK_VERSION) == BIP32_XPUB;
+  if mainnet != (env[0].network == SW_MAINNET) { return DS_WRONG_NETWORK; }
+  // The steps after the key. A last step of * takes the index.
+  steps: [DP_MAX_DEPTH] int; count := 0;
+  items: [DP_MAX_DEPTH] int; choices := 0; slot := -1;
+  hardened := false; star := -1;
+  at := kend;
+  while at < s.count {
+    end := ds_find(s, '/', at + 1);
+    if end < 0 { end = s.count; }
+    step := s[at + 1..<end];
+    if count == DP_MAX_DEPTH { return DS_BIP32 + BIP32_BAD_DEPTH; }
+    if end == s.count && step.count >= 1 && step[0] == '*' && (step.count == 1 || (step.count == 2 && (step[1] == 'h' || step[1] == '\''))) {
+      if step.count == 2 { hardened = true; }
+      star = count; steps[count] = 0;
+    } else if ds_is_multipath(step) {
+      if slot >= 0 { return DS_MULTIPATH; }
+      slot = count; steps[count] = 0;
+      list := step[1..<step.count - 1]; from := 0;
+      while true {
+        semi := ds_find(list, ';', from);
+        if semi < 0 { semi = list.count; }
+        if choices == DP_MAX_DEPTH { return DS_MULTIPATH; }
+        v := ds_step(list[from..<semi]);
+        if v < 0 { return v; }
+        for j: 0..<choices { if items[j] == v { return DS_MULTIPATH; } }
+        items[choices] = v; choices += 1;
+        if v >= BIP32_HARDENED { hardened = true; }
+        if semi == list.count { break; }
+        from = semi + 1;
+      }
+      if choices < 2 { return DS_MULTIPATH; }
+    } else {
+      v := ds_step(step);
+      if v < 0 { return v; }
+      if v >= BIP32_HARDENED { hardened = true; }
+      steps[count] = v;
+    }
+    count += 1; at = end;
+  }
+  if cast(int) node[HDK_DEPTH] + count > DP_MAX_DEPTH { return DS_BIP32 + BIP32_BAD_DEPTH; }
+  if hardened { return DS_NEEDS_PRIVATE; }
+  if slot >= 0 {
+    if env[0].branches == 0 { env[0].branches = choices; }
+    else if env[0].branches != choices { return DS_MULTIPATH; }
+    steps[slot] = ifx env[0].expand then items[env[0].branch] else items[0];
+  }
+  if star >= 0 { env[0].ranged = true; steps[star] = ifx env[0].expand then env[0].index else 0; }
+  if env[0].expand {
+    r := bip32_descend_ct(node[..], steps[0..<count], work[..], node[..]);
+    if r < 0 { return DS_BIP32 + r; }
+  }
+  if ctx == DS_P2TR { for i: 0..<32 { key_out[i] = node[HDK_KEY + 1 + i]; } return SE_XONLY; }
+  for i: 0..<SE_COMPRESSED { key_out[i] = node[HDK_KEY + i]; }
+  return SE_COMPRESSED;
+}
+// book:end extkey
+
+// book:begin key
+// A key expression: an optional [origin], then a hex key, a WIF or an
+// extended key. Returns the key's length or a refusal.
+ds_key :: (s: string, ctx: int, env: [] Ds_Env, key_out: [] u8) -> int {
+  close := -1;
+  for i: 0..<s.count { if s[i] == ']' { if close >= 0 { return DS_BAD_ORIGIN; } close = i; } }
+  rest := s;
+  if close >= 0 {
+    if s[0] != '[' { return DS_BAD_ORIGIN; }
+    r := ds_origin(s[1..<close]);
+    if r < 0 { return r; }
+    rest = s[close + 1..<s.count];
+  }
+  kend := ds_find(rest, '/', 0);
+  if kend < 0 { kend = rest.count; }
+  if kend == 0 || rest[0] == ' ' || rest[kend - 1] == ' ' { return DS_BAD_KEY; }
+  if kend == rest.count {
+    r := ds_plain_key(rest, ctx, key_out);
+    if r != DS_BAD_KEY { return r; }
+  }
+  return ds_ext_key(rest, ctx, env, key_out);
+}
+// book:end key
+
+// ---- scripts
+
+// book:begin multi
+// A push of a small number: OP_1 to OP_16, or one byte pushed.
+ds_number :: (n: int, out: [] u8, at: int) -> int {
+  if n <= 16 { out[at] = cast(u8) (0x50 + n); return at + 1; }
+  out[at] = 1; out[at + 1] = cast(u8) n; return at + 2;
+}
+// Whether key a sorts before key b, byte by byte (BIP-67).
+ds_before :: (keys: [] u8, lengths: [] int, a: int, b: int) -> bool {
+  la := lengths[a]; lb := lengths[b];
+  m := ifx la < lb then la else lb;
+  for i: 0..<m {
+    x := keys[a * 65 + i]; y := keys[b * 65 + i];
+    if x != y { return x < y; }
+  }
+  return la < lb;
+}
+// multi(k,KEY,...) and sortedmulti(): k OP_n keys OP_CHECKMULTISIG. Every
+// key is read before the counts are checked, as Bitcoin Core does.
+ds_multi :: (inner: string, ctx: int, sorted: bool, env: [] Ds_Env, out: [] u8) -> int {
+  e := ds_arg_end(inner, 0);
+  threshold := inner[0..<e];
+  if threshold.count == 0 { return DS_THRESHOLD; }
+  k := 0;
+  for ch: threshold {
+    if ch < '0' || ch > '9' { return DS_THRESHOLD; }
+    if k <= DS_MULTI_MAX { k = k * 10 + cast(int) (ch - '0'); }   // past 20 the value only has to stay too big
+  }
+  keys: [DS_MULTI_MAX * 65] u8; lengths: [DS_MULTI_MAX] int; one: [65] u8;
+  n := 0; at := e;
+  while at < inner.count {
+    end := ds_arg_end(inner, at + 1);
+    r := ds_key(inner[at + 1..<end], ctx, env, one[..]);
+    if r < 0 { return r; }
+    if n < DS_MULTI_MAX { for i: 0..<r { keys[n * 65 + i] = one[i]; } lengths[n] = r; }
+    n += 1; at = end;
+  }
+  if n == 0 || n > DS_MULTI_MAX { return DS_KEY_COUNT; }
+  if k < 1 || k > n { return DS_THRESHOLD; }
+  if ctx == DS_TOP && n > DS_BARE_MULTI_MAX { return DS_KEY_COUNT; }
+  order: [DS_MULTI_MAX] int;
+  for i: 0..<n { order[i] = i; }
+  if sorted {
+    for i: 1..<n {
+      j := i;
+      while j > 0 && ds_before(keys[..], lengths[..], order[j], order[j - 1]) {
+        t := order[j]; order[j] = order[j - 1]; order[j - 1] = t; j -= 1;
+      }
+    }
+  }
+  size := (ifx k <= 16 then 1 else 2) + (ifx n <= 16 then 1 else 2) + 1;
+  for i: 0..<n { size += lengths[i] + 1; }
+  if ctx == DS_P2SH && size > AD_REDEEM_MAX { return DS_SCRIPT_TOO_LONG; }
+  if out.count < size { return DS_CAPACITY; }
+  w := ds_number(k, out, 0);
+  for i: 0..<n {
+    key := order[i];
+    out[w] = cast(u8) lengths[key]; w += 1;
+    for b: 0..<lengths[key] { out[w] = keys[key * 65 + b]; w += 1; }
+  }
+  w = ds_number(n, out, w);
+  out[w] = 0xae;                                         // OP_CHECKMULTISIG
+  return w + 1;
+}
+// book:end multi
+
+// book:begin script
+// A chapter 29 script builder's refusal, offset.
+ds_address :: (n: int) -> int { return ifx n < 0 then DS_ADDRESS + n else n; }
+// <key> OP_CHECKSIG.
+ds_pk :: (key: [] u8, out: [] u8) -> int {
+  if out.count < key.count + 2 { return DS_CAPACITY; }
+  out[0] = cast(u8) key.count;
+  for i: 0..<key.count { out[1 + i] = key[i]; }
+  out[key.count + 1] = 0xac;
+  return key.count + 2;
+}
+// The script of the expression s, which sits in ctx. nth picks one of
+// combo()'s outputs.
+ds_script :: (s: string, ctx: int, env: [] Ds_Env, nth: int, out: [] u8) -> int {
+  open := ds_find(s, '(', 0);
+  if open < 0 { return DS_UNKNOWN_FUNCTION; }
+  if ds_close(s, open) != s.count - 1 { return DS_SYNTAX; }
+  name := s[0..<open]; inner := s[open + 1..<s.count - 1];
+  key: [65] u8;
+  if name == "pk" || name == "pkh" {
+    n := ds_key(inner, ctx, env, key[..]);
+    if n < 0 { return n; }
+    if name == "pk" { return ds_pk(key[0..<n], out); }
+    return ds_address(p2pkh_script_vartime(key[0..<n], out));
+  }
+  if name == "wpkh" {
+    if ctx != DS_TOP && ctx != DS_P2SH { return DS_CONTEXT; }
+    n := ds_key(inner, DS_P2WPKH, env, key[..]);
+    if n < 0 { return n; }
+    return ds_address(p2wpkh_script_vartime(key[0..<n], out));
+  }
+  if name == "combo" {
+    if ctx != DS_TOP { return DS_CONTEXT; }
+    n := ds_key(inner, DS_TOP, env, key[..]);
+    if n < 0 { return n; }
+    env[0].outputs = ifx n == SE_COMPRESSED then 4 else 2;   // no segwit for an uncompressed key
+    if nth >= env[0].outputs { return DS_NO_OUTPUT; }
+    if nth == 0 { return ds_pk(key[0..<n], out); }
+    if nth == 1 { return ds_address(p2pkh_script_vartime(key[0..<n], out)); }
+    if nth == 2 { return ds_address(p2wpkh_script_vartime(key[0..<n], out)); }
+    return ds_address(p2sh_p2wpkh_script_vartime(key[0..<n], out));
+  }
+  if name == "multi" || name == "sortedmulti" {
+    return ds_multi(inner, ctx, name == "sortedmulti", env, out);
+  }
+  if name == "sh" || name == "wsh" {
+    if name == "sh" && ctx != DS_TOP { return DS_CONTEXT; }
+    if name == "wsh" && ctx != DS_TOP && ctx != DS_P2SH { return DS_CONTEXT; }
+    buffer: [DS_INNER_MAX] u8;
+    n := ds_script(inner, ifx name == "sh" then DS_P2SH else DS_P2WSH, env, 0, buffer[..]);
+    if n < 0 { return n; }
+    if name == "sh" {
+      if n > AD_REDEEM_MAX { return DS_SCRIPT_TOO_LONG; }
+      return ds_address(p2sh_script_vartime(buffer[0..<n], out));
+    }
+    return ds_address(p2wsh_script_vartime(buffer[0..<n], out));
+  }
+  if name == "addr" {
+    if ctx != DS_TOP { return DS_CONTEXT; }
+    a := address_decode_vartime(env[0].network, inner, out);
+    if a.length == AD_WRONG_NETWORK { return DS_WRONG_NETWORK; }
+    if a.length == AD_CAPACITY { return DS_CAPACITY; }
+    if a.length < 0 { return DS_BAD_ADDRESS; }
+    return a.length;
+  }
+  if name == "raw" {
+    if ctx != DS_TOP { return DS_CONTEXT; }
+    if !ds_is_hex(inner) { return DS_BAD_HEX; }
+    if inner.count / 2 > DS_SCRIPT_MAX { return DS_SCRIPT_TOO_LONG; }
+    if out.count < inner.count / 2 { return DS_CAPACITY; }
+    ds_unhex(inner, out);
+    return inner.count / 2;
+  }
+  if name == "tr" {
+    if ctx != DS_TOP { return DS_CONTEXT; }
+    if ds_arg_end(inner, 0) != inner.count { return DS_TAPROOT_TREE; }
+    n := ds_key(inner, DS_P2TR, env, key[..]);
+    if n < 0 { return n; }
+    if !env[0].expand { return 34; }                      // the tweak waits for the real key
+    return ds_address(p2tr_script_vartime(key[0..<SE_XONLY], out));
+  }
+  return DS_UNKNOWN_FUNCTION;
+}
+// book:end script
+
+// ---- the entry points
+
+// book:begin entry
+// Whether text parses on network, and its shape. Keys aren't derived.
+descriptor_info_vartime :: (text: string, network: int) -> Ds_Info #export_c {
+  if network < SW_MAINNET || network > SW_REGTEST { return Ds_Info.{result = DS_BAD_NETWORK}; }
+  body := ds_body(text);
+  if body < 0 { return Ds_Info.{result = body}; }
+  env: [1] Ds_Env;
+  env[0] = Ds_Env.{network = network, expand = false, outputs = 1};
+  buffer: [DS_SCRIPT_MAX] u8;
+  r := ds_script(text[0..<body], DS_TOP, env[..], 0, buffer[..]);
+  if r < 0 { return Ds_Info.{result = r}; }
+  return Ds_Info.{result = 0, ranged = env[0].ranged,
+    branches = ifx env[0].branches == 0 then 1 else env[0].branches, outputs = env[0].outputs};
+}
+// The scriptPubKey for one branch (a multipath item, 0 without one), one
+// index (the /* child, ignored when there is none) and one output (0, or
+// 0 to 3 for combo()). Returns its length or a refusal.
+descriptor_script_vartime :: (text: string, network: int, branch: int, index: int, nth: int, out: [] u8) -> int #export_c {
+  info := descriptor_info_vartime(text, network);
+  if info.result < 0 { return info.result; }
+  if branch < 0 || branch >= info.branches { return DS_BAD_BRANCH; }
+  if index < 0 || index >= BIP32_HARDENED { return DS_BAD_INDEX; }
+  if nth < 0 || nth >= info.outputs { return DS_NO_OUTPUT; }
+  env: [1] Ds_Env;
+  env[0] = Ds_Env.{network = network, branch = branch, index = index, expand = true, outputs = 1};
+  buffer: [DS_SCRIPT_MAX] u8;
+  n := ds_script(text[0..<ds_body(text)], DS_TOP, env[..], nth, buffer[..]);
+  if n < 0 { return n; }
+  if out.count < n { return DS_CAPACITY; }
+  for i: 0..<n { out[i] = buffer[i]; }
+  return n;
+}
+// book:end entry
+
+// ---- checks
+DST_K :: "03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd";
+DST_U :: "04a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235";
+DST_X :: "a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd";
+DST_WIF :: "L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1";
+DST_XPRV :: "xprvA1RpRA33e1JQ7ifknakTFpgNXPmW2YvmhqLQYMmrj4xJXXWYpDPS3xz7iAxn8L39njGVyuoseXzU6rcxFLJ8HFsTjSyQbLYnMpCqE2VbFWc";
+DST_XPUB :: "xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL";
+DST_XPUB2 :: "xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y";
+DST_TPUB :: "tpubD6NzVbkrYhZ4XgiXtGrdW5XDAPFCL9h7we1vwNCpn8tGbBcgfVYjXyhWo4E1xkh56hjod1RhGjxbaTLV3X4FyWuejifB9jusQ46QzG87VKp";
+// A descriptor from a template: % is DST_K, & DST_U, ~ DST_X, ! DST_XPUB2,
+// ^ DST_XPUB, ? DST_WIF, | DST_XPRV and $ DST_TPUB.
+dst_fill :: (template: string, out: [] u8) -> string {
+  n := 0;
+  for ch: template {
+    part := "";
+    if ch == '%' { part = DST_K; } else if ch == '&' { part = DST_U; } else if ch == '~' { part = DST_X; }
+    else if ch == '!' { part = DST_XPUB2; } else if ch == '^' { part = DST_XPUB; } else if ch == '?' { part = DST_WIF; }
+    else if ch == '|' { part = DST_XPRV; } else if ch == '$' { part = DST_TPUB; }
+    else { out[n] = ch; n += 1; continue; }
+    for c: part { out[n] = c; n += 1; }
+  }
+  return cast(string) out[0..<n];
+}
+dst_same :: (bytes: [] u8, hex: string) -> bool {
+  if bytes.count * 2 != hex.count { return false; }
+  for i: 0..<bytes.count { if ds_hex_digit(hex[2 * i]) * 16 + ds_hex_digit(hex[2 * i + 1]) != cast(int) bytes[i] { return false; } }
+  return true;
+}
+// The script of one branch, index and output.
+dst_gives :: (text: string, network: int, branch: int, index: int, nth: int, hex: string) -> bool {
+  out: [DS_SCRIPT_MAX] u8;
+  n := descriptor_script_vartime(text, network, branch, index, nth, out[..]);
+  return n > 0 && dst_same(out[0..<n], hex);
+}
+// A refusal on mainnet from both entry points, with nothing written.
+dst_refuses :: (text: string, code: int) -> bool {
+  out: [64] u8;
+  for i: 0..<64 { out[i] = 0xa5; }
+  if descriptor_script_vartime(text, SW_MAINNET, 0, 0, 0, out[..]) != code { return false; }
+  for i: 0..<64 { if out[i] != 0xa5 { return false; } }
+  return descriptor_info_vartime(text, SW_MAINNET).result == code;
+}
+
+#test "BIP-380's checksum vectors and the character set" {
+  cs: [8] u8;
+  #assert descriptor_checksum_vartime("raw(deadbeef)", cs[..]) == 8 && cast(string) cs[..] == "89f8spxm";
+  #assert descriptor_checksum_vartime("raw(deadbeef)", cs[0..<7]) == DS_CAPACITY;
+  #assert ds_body("raw(deadbeef)#89f8spxm") == 13 && ds_body("raw(deadbeef)") == 13;
+  #assert ds_body("raw(deadbeef)#") == DS_CHECKSUM_LENGTH && ds_body("raw(deadbeef)#89f8spxmx") == DS_CHECKSUM_LENGTH;
+  #assert ds_body("raw(deadbeef)#89f8spx") == DS_CHECKSUM_LENGTH;
+  #assert ds_body("raw(deedbeef)#89f8spxm") == DS_BAD_CHECKSUM && ds_body("raw(deedbeef)##9f8spxm") == DS_BAD_CHECKSUM;
+  u: [8] u8; u[0] = 'r'; u[1] = 'a'; u[2] = 'w'; u[3] = '('; u[4] = 0xc3; u[5] = 0x9c; u[6] = ')'; u[7] = 0;
+  #assert ds_body(cast(string) u[0..<7]) == DS_BAD_CHAR && descriptor_checksum_vartime(cast(string) u[0..<7], cs[..]) == DS_BAD_CHAR;
+  // Each of the 95 characters has its own place; a case error changes the checksum.
+  for k: 0..<DS_INPUT.count { #assert ds_position(DS_INPUT[k]) == k; }
+  #assert ds_position('\t') == -1 && ds_position(0x7f) == -1 && ds_position(0) == -1;
+  #assert descriptor_checksum_vartime("RAW(deadbeef)", cs[..]) == 8 && cast(string) cs[..] != "89f8spxm";
+  #assert descriptor_checksum_vartime("", cs[..]) == 8;
+  #assert dst_gives("raw(deadbeef)#89f8spxm", SW_MAINNET, 0, 0, 0, "deadbeef");
+  #assert dst_refuses("raw(deadbeef)#89f8spxn", DS_BAD_CHECKSUM) && dst_refuses("raw(deadbeef)#", DS_CHECKSUM_LENGTH);
+}
+
+#test "raw() and addr(), and the shape of the text" #steps 200000000 {
+  #assert dst_gives("raw(DEADbeef)", SW_TESTNET, 0, 0, 0, "deadbeef");
+  #assert dst_gives("addr(3PUNyaW7M55oKWJ3kDukwk9bsKvryra15j)", SW_MAINNET, 0, 0, 0, "a914eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee87");
+  #assert dst_refuses("raw(asdf)", DS_BAD_HEX) && dst_refuses("raw()", DS_BAD_HEX) && dst_refuses("raw(abc)", DS_BAD_HEX);
+  #assert dst_refuses("addr(asdf)", DS_BAD_ADDRESS) && dst_refuses("addr(tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx)", DS_WRONG_NETWORK);
+  #assert dst_refuses("sh(raw(deadbeef))", DS_CONTEXT) && dst_refuses("wsh(addr(3PUNyaW7M55oKWJ3kDukwk9bsKvryra15j))", DS_CONTEXT);
+  #assert dst_refuses("raw(deadbeef", DS_SYNTAX) && dst_refuses("raw(deadbeef))", DS_SYNTAX) && dst_refuses("raw(de)x", DS_SYNTAX);
+  #assert dst_refuses("deadbeef", DS_UNKNOWN_FUNCTION) && dst_refuses("rawtr(deadbeef)", DS_UNKNOWN_FUNCTION) && dst_refuses("", DS_UNKNOWN_FUNCTION);
+  #assert dst_refuses("(deadbeef)", DS_UNKNOWN_FUNCTION) && dst_refuses("RAW(deadbeef)", DS_UNKNOWN_FUNCTION);
+  #assert descriptor_info_vartime("raw(00)", 0).result == DS_BAD_NETWORK && descriptor_info_vartime("raw(00)", 4).result == DS_BAD_NETWORK;
+  // 10,000 bytes is the most raw() takes.
+  big: [2 * DS_SCRIPT_MAX + 7] u8; big[0] = 'r'; big[1] = 'a'; big[2] = 'w'; big[3] = '(';
+  for i: 4..<2 * DS_SCRIPT_MAX + 4 { big[i] = '0'; }
+  big[2 * DS_SCRIPT_MAX + 4] = ')';
+  #assert descriptor_info_vartime(cast(string) big[0..<2 * DS_SCRIPT_MAX + 5], SW_MAINNET).result == 0;
+  big[2 * DS_SCRIPT_MAX + 4] = '0'; big[2 * DS_SCRIPT_MAX + 5] = '0'; big[2 * DS_SCRIPT_MAX + 6] = ')';
+  #assert dst_refuses(cast(string) big[..], DS_SCRIPT_TOO_LONG);
+  out: [4] u8;
+  #assert descriptor_script_vartime("raw(deadbeef00)", SW_MAINNET, 0, 0, 0, out[..]) == DS_CAPACITY;
+  #assert descriptor_script_vartime("raw(deadbeef)", SW_MAINNET, 1, 0, 0, out[..]) == DS_BAD_BRANCH;
+  #assert descriptor_script_vartime("raw(deadbeef)", SW_MAINNET, -1, 0, 0, out[..]) == DS_BAD_BRANCH;
+  #assert descriptor_script_vartime("raw(deadbeef)", SW_MAINNET, 0, -1, 0, out[..]) == DS_BAD_INDEX;
+  #assert descriptor_script_vartime("raw(deadbeef)", SW_MAINNET, 0, BIP32_HARDENED, 0, out[..]) == DS_BAD_INDEX;
+  #assert descriptor_script_vartime("raw(deadbeef)", SW_MAINNET, 0, 7, 1, out[..]) == DS_NO_OUTPUT;
+  #assert descriptor_script_vartime("raw(deadbeef)", SW_MAINNET, 0, 7, -1, out[..]) == DS_NO_OUTPUT;
+  #assert descriptor_script_vartime("raw(deadbeef)", SW_MAINNET, 0, BIP32_HARDENED - 1, 0, out[..]) == 4;
+}
+
+#test "single keys: BIP-381's and BIP-382's public vectors" #steps 2000000000 {
+  b: [400] u8;
+  #assert dst_gives(dst_fill("pk(%)", b[..]), SW_MAINNET, 0, 0, 0, "2103a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bdac");
+  #assert dst_gives(dst_fill("pkh([deadbeef/1/2'/3/4']%)", b[..]), SW_MAINNET, 0, 0, 0, "76a9149a1c78a507689f6f54b847ad1cef1e614ee23f1e88ac");
+  #assert dst_gives(dst_fill("pkh([deadbeef/1/2h/3/4h]%)", b[..]), SW_REGTEST, 0, 0, 0, "76a9149a1c78a507689f6f54b847ad1cef1e614ee23f1e88ac");
+  #assert dst_gives(dst_fill("pk(&)", b[..]), SW_MAINNET, 0, 0, 0, "4104a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235ac");
+  #assert dst_gives(dst_fill("pkh(&)", b[..]), SW_MAINNET, 0, 0, 0, "76a914b5bd079c4d57cc7fc28ecf8213a6b791625b818388ac");
+  #assert dst_gives(dst_fill("sh(pk(%))", b[..]), SW_MAINNET, 0, 0, 0, "a9141857af51a5e516552b3086430fd8ce55f7c1a52487");
+  #assert dst_gives(dst_fill("wpkh(%)", b[..]), SW_MAINNET, 0, 0, 0, "00149a1c78a507689f6f54b847ad1cef1e614ee23f1e");
+  #assert dst_gives(dst_fill("sh(wpkh(%))", b[..]), SW_MAINNET, 0, 0, 0, "a91484ab21b1b2fd065d4504ff693d832434b6108d7b87");
+  #assert dst_gives(dst_fill("wsh(pkh(%))", b[..]), SW_MAINNET, 0, 0, 0, "0020338e023079b91c58571b20e602d7805fb808c22473cbc391a41b1bd3a192e75b");
+  #assert dst_gives(dst_fill("sh(wsh(pkh(%)))", b[..]), SW_MAINNET, 0, 0, 0, "a914b61b92e2ca21bac1e72a3ab859a742982bea960a87");
+}
+
+#test "single keys: where each kind of key is refused" #steps 2000000000 {
+  b: [400] u8;
+  #assert dst_refuses(dst_fill("pk(?)", b[..]), DS_PRIVATE_KEY);
+  #assert dst_refuses(dst_fill("pk(|/0)", b[..]), DS_PRIVATE_KEY);
+  #assert dst_refuses(dst_fill("wpkh(&)", b[..]), DS_UNCOMPRESSED);
+  #assert dst_refuses(dst_fill("wsh(pk(&))", b[..]), DS_UNCOMPRESSED);
+  #assert dst_refuses(dst_fill("sh(wpkh(&))", b[..]), DS_UNCOMPRESSED);
+  #assert dst_refuses(dst_fill("tr(&)", b[..]), DS_UNCOMPRESSED);
+  #assert dst_refuses("pk(07a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235)", DS_BAD_KEY);
+  #assert dst_refuses("pk(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5)", DS_BAD_KEY);
+  #assert dst_refuses(dst_fill("pk(~)", b[..]), DS_BAD_KEY);      // x-only only in tr()
+  #assert dst_refuses(dst_fill("pk(%/0)", b[..]), DS_BAD_KEY);    // a hex key has no path
+  #assert dst_refuses(dst_fill("pk(?/0)", b[..]), DS_BAD_KEY);  // nor does a WIF
+  #assert dst_refuses(dst_fill("pk( %)", b[..]), DS_BAD_KEY) && dst_refuses("pk()", DS_BAD_KEY);
+  #assert dst_refuses(dst_fill("pk(pk(%))", b[..]), DS_BAD_KEY);
+  #assert dst_refuses(dst_fill("sh(%)", b[..]), DS_UNKNOWN_FUNCTION);
+  #assert dst_refuses(dst_fill("sh(sh(pkh(%)))", b[..]), DS_CONTEXT);
+  #assert dst_refuses(dst_fill("wsh(wpkh(%))", b[..]), DS_CONTEXT);
+  #assert dst_refuses(dst_fill("wsh(wsh(pkh(%)))", b[..]), DS_CONTEXT);
+  #assert dst_refuses(dst_fill("sh(combo(%))", b[..]), DS_CONTEXT);
+  #assert dst_refuses(dst_fill("wsh(tr(~))", b[..]), DS_CONTEXT);
+  #assert dst_refuses(dst_fill("tr(~,pk(%))", b[..]), DS_TAPROOT_TREE);
+  // Origins.
+  #assert dst_refuses(dst_fill("pkh(deadbeef/1]%)", b[..]), DS_BAD_ORIGIN);
+  #assert dst_refuses(dst_fill("pkh([deadbeef]/1/2'/3/4']%)", b[..]), DS_BAD_ORIGIN);
+  #assert dst_refuses(dst_fill("pkh([deadbef/0h]%)", b[..]), DS_BAD_ORIGIN);
+  #assert dst_refuses(dst_fill("pkh([deadbeeef]%)", b[..]), DS_BAD_ORIGIN);
+  #assert dst_refuses(dst_fill("pkh([gaaaaaaa]%)", b[..]), DS_BAD_ORIGIN);
+  #assert dst_refuses(dst_fill("pkh([deadbeef/0H]%)", b[..]), DS_BAD_STEP);
+  #assert dst_refuses(dst_fill("pkh([deadbeef/0h/]%)", b[..]), DS_BAD_STEP);
+  #assert dst_refuses(dst_fill("pkh([deadbeef/0h/*]%)", b[..]), DS_BAD_STEP);
+  #assert dst_refuses(dst_fill("pkh([deadbeef/<0;1>]%)", b[..]), DS_MULTIPATH);
+  #assert dst_refuses("pkh([deadbeef])", DS_BAD_KEY);
+}
+
+#test "multi() and sortedmulti(): BIP-383's public vectors and refusals" #steps 3000000000 {
+  b: [1200] u8;
+  multi := "512103a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd4104a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea23552ae";
+  #assert dst_gives(dst_fill("multi(1,%,&)", b[..]), SW_MAINNET, 0, 0, 0, multi);
+  #assert dst_gives(dst_fill("sortedmulti(01,&,%)", b[..]), SW_MAINNET, 0, 0, 0, multi);
+  #assert dst_refuses(dst_fill("multi(a,%,&)", b[..]), DS_THRESHOLD);
+  #assert dst_refuses(dst_fill("multi(0,%,&)", b[..]), DS_THRESHOLD);
+  #assert dst_refuses(dst_fill("multi(3,%,&)", b[..]), DS_THRESHOLD);
+  #assert dst_refuses(dst_fill("multi(99999999999,%)", b[..]), DS_THRESHOLD);
+  #assert dst_refuses(dst_fill("multi(,%)", b[..]), DS_THRESHOLD) && dst_refuses("multi()", DS_THRESHOLD);
+  #assert dst_refuses("multi(1)", DS_KEY_COUNT) && dst_refuses(dst_fill("multi(1,%,)", b[..]), DS_BAD_KEY);
+  #assert dst_refuses(dst_fill("multi(1,%,%,%,%)", b[..]), DS_KEY_COUNT);
+  #assert dst_refuses(dst_fill("sh(multi(1,&,&,&,&,&,&,&,&))", b[..]), DS_SCRIPT_TOO_LONG);
+  #assert descriptor_info_vartime(dst_fill("sh(multi(1,&,&,&,&,&,&,&))", b[..]), SW_MAINNET).result == 0;
+  #assert dst_refuses(dst_fill("tr(multi(1,%))", b[..]), DS_BAD_KEY);
+  #assert dst_refuses(dst_fill("wpkh(multi(1,%))", b[..]), DS_BAD_KEY);
+  #assert ds_number(17, b[..], 0) == 2 && b[0] == 1 && b[1] == 17 && ds_number(16, b[..], 0) == 1 && b[0] == 0x60;
+}
+
+#test "combo(): four scripts for a compressed key, two for an uncompressed one" #steps 2000000000 {
+  b: [400] u8;
+  c := dst_fill("combo(%)", b[..]);
+  i := descriptor_info_vartime(c, SW_MAINNET);
+  #assert i.result == 0 && i.outputs == 4 && !i.ranged && i.branches == 1;
+  #assert dst_gives(c, SW_MAINNET, 0, 0, 0, "2103a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bdac");
+  #assert dst_gives(c, SW_MAINNET, 0, 0, 1, "76a9149a1c78a507689f6f54b847ad1cef1e614ee23f1e88ac");
+  #assert dst_gives(c, SW_MAINNET, 0, 0, 2, "00149a1c78a507689f6f54b847ad1cef1e614ee23f1e");
+  #assert dst_gives(c, SW_MAINNET, 0, 0, 3, "a91484ab21b1b2fd065d4504ff693d832434b6108d7b87");
+  out: [64] u8;
+  #assert descriptor_script_vartime(c, SW_MAINNET, 0, 0, 4, out[..]) == DS_NO_OUTPUT;
+  u := dst_fill("combo(&)", b[..]);
+  #assert descriptor_info_vartime(u, SW_MAINNET).outputs == 2;
+  #assert dst_gives(u, SW_MAINNET, 0, 0, 1, "76a914b5bd079c4d57cc7fc28ecf8213a6b791625b818388ac");
+  #assert descriptor_script_vartime(u, SW_MAINNET, 0, 0, 2, out[..]) == DS_NO_OUTPUT;
+}
+
+#test "extended keys: paths, /*, <0;1> and the refusals" #steps 6000000000 {
+  b: [400] u8;
+  #assert dst_gives("pkh([bd16bee5/2147483647h]xpub69H7F5dQzmVd3vPuLKtcXJziMEQByuDidnX3YdwgtNsecY5HRGtAAQC5mXTt4dsv9RzyjgDjAQs9VGVV6ydYCHnprc9vvaA5YtqWyL6hyds/0)", SW_MAINNET, 0, 0, 0, "76a914ebdc90806a9c4356c1c88e42216611e1cb4c1c1788ac");
+  r := dst_fill("pk(!/<0;1>)", b[..]);
+  i := descriptor_info_vartime(r, SW_MAINNET);
+  #assert i.result == 0 && i.branches == 2 && !i.ranged && i.outputs == 1;
+  #assert dst_gives(r, SW_MAINNET, 0, 0, 0, "210379e45b3cf75f9c5f9befd8e9506fb962f6a9d185ac87001ec44a8d3df8d4a9e3ac");
+  #assert dst_gives(r, SW_MAINNET, 1, 0, 0, "21034f8d02282ac6786737d0f37f0df7655f49daa24843bc7de3f4ea88603d26d10aac");
+  out: [64] u8;
+  #assert descriptor_script_vartime(r, SW_MAINNET, 2, 0, 0, out[..]) == DS_BAD_BRANCH;
+  s := dst_fill("pk(!/*)", b[..]);
+  i = descriptor_info_vartime(s, SW_MAINNET);
+  #assert i.result == 0 && i.ranged && i.branches == 1;
+  #assert dst_gives(s, SW_MAINNET, 0, 1, 0, "21034f8d02282ac6786737d0f37f0df7655f49daa24843bc7de3f4ea88603d26d10aac");
+  // The refusals.
+  #assert dst_refuses(dst_fill("pk(!/0h)", b[..]), DS_NEEDS_PRIVATE);
+  #assert dst_refuses(dst_fill("pk(!/*h)", b[..]), DS_NEEDS_PRIVATE);
+  #assert dst_refuses(dst_fill("pk(!/*')", b[..]), DS_NEEDS_PRIVATE);
+  #assert dst_refuses(dst_fill("pk(!/<0;1h>)", b[..]), DS_NEEDS_PRIVATE);
+  #assert dst_refuses(dst_fill("pk(!/*H)", b[..]), DS_BAD_STEP);
+  #assert dst_refuses(dst_fill("pk(!/*/0)", b[..]), DS_BAD_STEP);
+  #assert dst_refuses(dst_fill("pk(!/2147483648)", b[..]), DS_BAD_STEP);
+  #assert dst_refuses(dst_fill("pk(!/1aa)", b[..]), DS_BAD_STEP);
+  #assert dst_refuses(dst_fill("pk(!/+1)", b[..]), DS_BAD_STEP);
+  #assert dst_refuses(dst_fill("pk(!/)", b[..]), DS_BAD_STEP);
+  #assert dst_refuses(dst_fill("pk(!/<0>)", b[..]), DS_MULTIPATH);
+  #assert dst_refuses(dst_fill("pk(!/<0;0>)", b[..]), DS_MULTIPATH);
+  #assert dst_refuses(dst_fill("pk(!/<0;1>/<2;3>)", b[..]), DS_MULTIPATH);
+  #assert dst_refuses(dst_fill("pk(!/<0;;1>)", b[..]), DS_BAD_STEP);
+  #assert dst_refuses(dst_fill("multi(1,!/<0;1>,^/<0;1;2>)", b[..]), DS_MULTIPATH);
+  #assert dst_refuses(dst_fill("pk(|)", b[..]), DS_PRIVATE_KEY);
+  #assert dst_refuses(dst_fill("pk($)", b[..]), DS_WRONG_NETWORK);
+  #assert descriptor_info_vartime(dst_fill("pk(!)", b[..]), SW_TESTNET).result == DS_WRONG_NETWORK;
+  #assert descriptor_info_vartime(dst_fill("pk($)", b[..]), SW_REGTEST).result == 0;
+  #assert dst_refuses("pk(xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Z)", DS_BAD_KEY);
+  // A path that would take the key past depth 255.
+  deep: [BIP32_TEXT + 4 + 2 * DP_MAX_DEPTH + 1] u8; n := 0;
+  for ch: "pk(" { deep[n] = ch; n += 1; }
+  for ch: DST_XPUB2 { deep[n] = ch; n += 1; }
+  for k: 0..<DP_MAX_DEPTH { deep[n] = '/'; deep[n + 1] = '0'; n += 2; }
+  deep[n] = ')'; n += 1;
+  #assert dst_refuses(cast(string) deep[0..<n], DS_BIP32 + BIP32_BAD_DEPTH);   // the xpub is at depth 1
+}
+
+#test "tr() with a key: BIP-386's x-only and compressed vectors" #steps 2000000000 {
+  b: [200] u8;
+  want := "512077aab6e066f8a7419c5ab714c12c67d25007ed55a43cadcacb4d7a970a093f11";
+  #assert dst_gives(dst_fill("tr(~)", b[..]), SW_MAINNET, 0, 0, 0, want);
+  #assert dst_gives(dst_fill("tr(%)", b[..]), SW_MAINNET, 0, 0, 0, want);
+  #assert dst_refuses(dst_fill("tr(?)", b[..]), DS_PRIVATE_KEY);
+  #assert dst_refuses("tr(0000000000000000000000000000000000000000000000000000000000000000)", DS_BAD_KEY);
+}

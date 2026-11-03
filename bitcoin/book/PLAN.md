@@ -160,7 +160,7 @@ there is a need.
 | [27. Bech32](ch027-bech32.md) — implemented | 1 | Every valid and invalid BIP-173 Bech32 vector in `coax/tests/vectors/upstream/bip173/bip-0173.mediawiki` gives its expected result. A Bech32m string refuses (BIP-350's strings, pinned for chapter 28). | — |
 | [28. Bech32m](ch028-bech32m.md) — implemented | 27 | Every valid and invalid BIP-350 vector gives its expected result, including the witness-version rules. | BIP-350 |
 | [29. Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR](ch029-addresses.md) — implemented | 6, 17, 26, 28 | Every BIP-173 and BIP-350 segwit address vector and pinned P2PKH and P2SH addresses map to their scriptPubKeys and back. | BIP-13, BIP-141, BIP-173, BIP-341, BIP-350 |
-| 30. Output descriptors and their checksum — planned | 29, 32 | The BIP-380 checksum vectors and the BIP-381–386 examples parse and give their stated scripts. | BIP-380 to BIP-386 |
+| [30. Output descriptors and their checksum](ch030-output-descriptors-and-their-checksum.md) — implemented | 29, 32, 33 | The BIP-380 checksum vectors and the BIP-381–386 examples parse and give their stated scripts. | BIP-380 to BIP-386 |
 
 ### Part VI. Keys from words
 

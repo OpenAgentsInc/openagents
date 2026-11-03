@@ -1,0 +1,70 @@
+// The checks of descriptors.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/descriptors.coax
+#load "../descriptors.coax";
+#load "../../../coax/tests/bitcoin/descriptor_vectors.coax";
+
+// book:begin check
+// One script of a descriptor, as hex, or the refusal code.
+dsc_hex :: (text: string, network: int, branch: int, index: int, nth: int, out: [] u8) -> string {
+  script: [DS_SCRIPT_MAX] u8;
+  n := descriptor_script_vartime(text, network, branch, index, nth, script[..]);
+  if n < 0 { return "refused"; }
+  r := hex_encode_checked(cast(string) script[0..<n], out, false);
+  return cast(string) out[0..<r.written];
+}
+// One script of a descriptor, as its address.
+dsc_address :: (text: string, network: int, branch: int, index: int, out: [] u8) -> string {
+  script: [DS_SCRIPT_MAX] u8;
+  n := descriptor_script_vartime(text, network, branch, index, 0, script[..]);
+  if n < 0 { return "refused"; }
+  a := address_encode_vartime(network, script[0..<n], out);
+  if a < 0 { return "no address"; }
+  return cast(string) out[0..<a];
+}
+
+// BIP-380's checksum vectors: the valid ones parse, the rest are refused.
+#forall "BIP-380 checksums" i: 0..<DSV_SUMS_COUNT #steps 20000000 {
+  v := DSV_SUMS[i];
+  #assert descriptor_info_vartime(v.text, SW_MAINNET).result == v.result;
+}
+// BIP-380's key expressions, each inside pk().
+#forall "BIP-380 key expressions" i: 0..<DSV_KEYS_COUNT #steps 200000000 {
+  v := DSV_KEYS[i];
+  #assert descriptor_info_vartime(v.text, SW_MAINNET).result == v.result;
+}
+// BIP-381 to BIP-386 and BIP-389: every published script, in groups of 15
+// so that each check stays within the evaluator's limits.
+dsc_script_ok :: (i: int) -> bool {
+  v := DSV_SCRIPTS[i];
+  hex: [2 * DS_SCRIPT_MAX] u8;
+  return dsc_hex(v.text, SW_MAINNET, v.branch, v.index, v.nth, hex[..]) == v.script;
+}
+#forall "published scripts 0 to 14" i: 0..<15 #steps 4000000000 { #assert dsc_script_ok(i); }
+#forall "published scripts 15 to 29" i: 15..<30 #steps 4000000000 { #assert dsc_script_ok(i); }
+#forall "published scripts 30 to 44" i: 30..<45 #steps 4000000000 { #assert dsc_script_ok(i); }
+#forall "published scripts 45 to 59" i: 45..<60 #steps 4000000000 { #assert dsc_script_ok(i); }
+#forall "published scripts 60 to 74" i: 60..<75 #steps 4000000000 { #assert dsc_script_ok(i); }
+#forall "published scripts 75 to 77" i: 75..<78 #steps 4000000000 { #assert dsc_script_ok(i); }
+#forall "published scripts 78 to 80" i: 78..<81 #steps 4000000000 { #assert dsc_script_ok(i); }
+#forall "published scripts 81 to 82" i: 81..<83 #steps 4000000000 { #assert dsc_script_ok(i); }
+#forall "published scripts 83 to 83" i: 83..<84 #steps 4000000000 { #assert dsc_script_ok(i); }
+#forall "published scripts 84 to 84" i: 84..<85 #steps 4000000000 { #assert dsc_script_ok(i); }
+#forall "published scripts 85 to 85" i: 85..<DSV_SCRIPTS_COUNT #steps 4000000000 { #assert dsc_script_ok(i); }
+// The descriptors those BIPs list as invalid.
+#forall "published refusals" i: 0..<DSV_REFUSED_COUNT #steps 200000000 {
+  v := DSV_REFUSED[i];
+  #assert descriptor_info_vartime(v.text, SW_MAINNET).result == v.result;
+  #assert v.result < 0;
+}
+// The example's wallets give BIP-84's and BIP-86's published addresses.
+#test "the example's wallets" #steps 8000000000 {
+  a: [90] u8;
+  #assert dsc_address(WALLET84, SW_MAINNET, 0, 0, a[..]) == "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu";
+  #assert dsc_address(WALLET84, SW_MAINNET, 0, 1, a[..]) == "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g";
+  #assert dsc_address(WALLET84, SW_MAINNET, 1, 0, a[..]) == "bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el";
+  #assert dsc_address(WALLET86, SW_MAINNET, 0, 0, a[..]) == "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr";
+  #assert dsc_address(WALLET86, SW_MAINNET, 0, 1, a[..]) == "bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh";
+  #assert dsc_address(WALLET86, SW_MAINNET, 1, 0, a[..]) == "refused";
+}
+// book:end check

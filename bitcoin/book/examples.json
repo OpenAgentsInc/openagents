@@ -328,6 +328,17 @@
       "timeout": 300
     },
     {
+      "source": "bitcoin/examples/descriptors.coax",
+      "chapter": "bitcoin/book/ch030-output-descriptors-and-their-checksum.md",
+      "stdout": "bitcoin/fixtures/descriptors.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
       "source": "bitcoin/examples/transactions.coax",
       "chapter": "bitcoin/book/ch034-transactions-and-their-serialization.md",
       "stdout": "bitcoin/fixtures/transactions.out",

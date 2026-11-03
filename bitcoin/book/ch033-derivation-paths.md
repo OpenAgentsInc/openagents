@@ -830,7 +830,7 @@ Mutation testing was not run for this chapter (owner speed order,
 ## What this chapter leaves out
 
 - Output descriptors, which carry a path in a key's origin and after an
-  `xpub`: [chapter 30](PLAN.md).
+  `xpub`: [chapter 30](ch030-output-descriptors-and-their-checksum.md).
 - BIP-48 multisig paths and BIP-87, which descriptors replaced.
 - Reading SLIP-132 keys as keys. The example reads one only to show that
   its 78 bytes are an `xpub`'s.

@@ -202,6 +202,13 @@ that a maliciously replaced manifest is authentic.
   chapter also reads BIP-86's account keys and BIP-84's and BIP-49's account
   and address keys from the files pinned for chapter 29, and NIP-06's first
   vector from `nostr/nips/official/06.md`.
+- **Output descriptors (Bitcoin chapter 30):** BIP-380 to BIP-386 and BIP-389
+  at the bips revision above, and Bitcoin Core's `src/test/descriptor_tests.cpp`
+  at the Core revision above, retrieved 2026-11-03. The BIPs are BSD-2-Clause;
+  Core's file is MIT. `coax/tests/bitcoin/descriptor.py` reads the BIPs' test
+  vectors and Core's `Check`, `CheckUnparsable` and `CheckMultipath` calls,
+  runs BIP-380's `descsum_create` and `descsum_check` from the pinned text, and
+  generates `coax/tests/bitcoin/descriptor_vectors.coax` from the BIPs.
 - **Transactions (Bitcoin chapter 34):** Bitcoin Core's `tx_invalid.json`
   beside `tx_valid.json`, and the sources the chapter transliterates, all at
   the same revision: `primitives/transaction.h` (`UnserializeTransaction`,
@@ -400,6 +407,15 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip86/bip-0086.mediawiki`](upstream/bip86/bip-0086.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0086.mediawiki) | `d8d01dee331da07c2562615bc1f064c1868ec3fce61184973da76d1196c7f5b0` |
 | [`upstream/bip84/bip-0084.mediawiki`](upstream/bip84/bip-0084.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0084.mediawiki) | `1900feec6cafca65b8c09906ca0658d2d742b4c9b44cb15678996985b6bfe627` |
 | [`upstream/bip44/bip-0044.mediawiki`](upstream/bip44/bip-0044.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0044.mediawiki) | `6a541c79f94077ac529941a8cbd373ce077a5d6e97b6dd8209b45ac10f737eaf` |
+| [`upstream/bip380/bip-0380.mediawiki`](upstream/bip380/bip-0380.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0380.mediawiki) | `34e6510bb2eba9445a68eacf3d24d5a4e5f24481477488d5552f674ac81dd5fe` |
+| [`upstream/bip381/bip-0381.mediawiki`](upstream/bip381/bip-0381.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0381.mediawiki) | `f0f6060332f82454f61015815c824eea4b7b6684ce4892ef42d23e4e782fa817` |
+| [`upstream/bip382/bip-0382.mediawiki`](upstream/bip382/bip-0382.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0382.mediawiki) | `6cd2574998ca0d2141d1c487e70da2dfab47abd6a2dfcc3680af2c241f01fe9d` |
+| [`upstream/bip383/bip-0383.mediawiki`](upstream/bip383/bip-0383.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0383.mediawiki) | `c46f75e5869386c1852dd187725293822b9e3b761342a966fbcf99adaa112aa2` |
+| [`upstream/bip384/bip-0384.mediawiki`](upstream/bip384/bip-0384.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0384.mediawiki) | `9d6b32a619e021f50f4b1a07ed8f9d08cfea599c8f484e6b1360ada9aae8541c` |
+| [`upstream/bip385/bip-0385.mediawiki`](upstream/bip385/bip-0385.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0385.mediawiki) | `8c4963492f1d5b492808e5ece8be75f7f66def37f35d091074fdbfa98a6ddd08` |
+| [`upstream/bip386/bip-0386.mediawiki`](upstream/bip386/bip-0386.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0386.mediawiki) | `770121b4b33a50bfadfebcd94931dd0ad04159b9fbc1d3b3c3ae17fc0cc16de8` |
+| [`upstream/bip389/bip-0389.mediawiki`](upstream/bip389/bip-0389.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0389.mediawiki) | `dfe2d4673bb008565bbb5bcd01438de1c568ba0f46b1dd3bf09ee5df3bd29284` |
+| [`upstream/bitcoin-core/descriptor_tests.cpp`](upstream/bitcoin-core/descriptor_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/descriptor_tests.cpp) | `823160973e3b91c52a75b265b22bd815cf826d76e29943b3509c166244b3254c` |
 | [`upstream/bip49/bip-0049.mediawiki`](upstream/bip49/bip-0049.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0049.mediawiki) | `307b62faf7b9927233b5112e93d591272ba0c48303b5dbb6f0bbfbaf2347e695` |
 | [`upstream/bitcoin-core/COPYING`](upstream/bitcoin-core/COPYING) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING) | `b028769f3852a9368ab10bd754ff01ebb741f84a2fa658c9aff82a631bc6ecfc` |
 | [`upstream/btcd/genesis_test.go`](upstream/btcd/genesis_test.go) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/chaincfg/genesis_test.go) | `e188c4fb27cccec22a0853be80f5c9b308e88045baccbf81a2058b01c7155452` |

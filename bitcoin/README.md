@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-46 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+47 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -24,7 +24,9 @@ scripts every later chapter checks, from legacy script through segwit v0.
 Chapters 37 and 38 explain its legacy and BIP-143 signature hashes, and
 chapter 39 its timelocks, with [`locktime.coax`](../coax/lib/bitcoin/locktime.coax). Chapter 33's
 [`path.coax`](../coax/lib/bitcoin/path.coax) reads derivation paths and
-makes the standard BIP-44, 49, 84 and 86 addresses. Chapter 41's
+makes the standard BIP-44, 49, 84 and 86 addresses, and chapter 30's
+[`descriptor.coax`](../coax/lib/bitcoin/descriptor.coax) expands output
+descriptors to the scripts a wallet watches. Chapter 41's
 [`taproot.coax`](../coax/lib/bitcoin/taproot.coax) holds Taproot: the key
 tweak and the key path, then script trees and control blocks (chapter
 42). Chapter 65's

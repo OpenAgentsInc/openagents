@@ -48,6 +48,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [27. Bech32](ch027-bech32.md) — implemented
 - [28. Bech32m](ch028-bech32m.md) — implemented
 - [29. Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR](ch029-addresses.md) — implemented
+- [30. Output descriptors and their checksum](ch030-output-descriptors-and-their-checksum.md) — implemented
 
 **VI. Keys from words**
 
