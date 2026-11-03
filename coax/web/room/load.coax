@@ -14,7 +14,10 @@
 // input, and an input is acknowledged within 120 ms at the 95th percentile on this machine (a tick
 // and a state frame's wait) or, through wss:// (the load balancer), within 250 ms past the median
 // ping's round trip (the spec's goal 3).
-//   coax/web/tool.sh coax/web/room/load.coax everglade [ws://localhost:8830] [players=64] [seconds=20] [stamp] [pings a second=1]
+//   coax/web/tool.sh coax/web/room/load.coax everglade [ws://localhost:8830] [players=64] [seconds=20] [stamp] [pings a second=1] [shards=0]
+// shards 0: every room through /api/room/relay/ (shard 1, as before the directory); N: the rooms as
+// the directory packs them (#12717), two to a shard, shard 1 first, up to N shards, each room's
+// sockets on /api/room/sK/relay/ with v3 tickets for shard K.
 // The rooms are pair-load-STAMP-1, -2, ... (STAMP from the clock unless given), so
 // GET /api/playtest/rooms/pair-load-STAMP lists them while the run lasts (a test realm: never in
 // everglade's own list). Each room's line also has the round trip's p99, the ACK's p99, and the
@@ -236,19 +239,22 @@ eg_load :: (a: [] Args) -> int {
   seconds := ifx args_count(a) > 3 then rs_num(args_at(a, 3)) else 20;
   given := ifx args_count(a) > 4 then rs_num(args_at(a, 4)) else 0;
   hz := ifx args_count(a) > 5 then rs_num(args_at(a, 5)) else 1;
+  shards := ifx args_count(a) > 6 then rs_num(args_at(a, 6)) else 0;
+  if shards < 0 || shards > 6 { tool_errln("load: shards 0..6"); return 2; }
   if players < 2 || players > EG_MAX || seconds < 3 || hz < 1 || hz > 8 { tool_errln("usage: coax/web/tool.sh coax/web/room/load.coax everglade [URL] [players 2..256] [seconds >= 3] [stamp] [pings a second 1..8: inputs are 30 a second and the relay takes 40] (from the repository's root)"); return 2; }
   stamp := ifx given > 0 then given else rs_stamp();
   rooms := (players + EG_SEATS - 1) / EG_SEATS;
   hs: [EG_MAX / EG_SEATS] int;
   nb: [16] u8; sb: [16] u8; kb: [16] u8; secb: [16] u8; hzb: [16] u8;
-  hzn := rs_int(hzb[..], 0, hz);
+  hzn := rs_int(hzb[..], 0, hz); shb: [16] u8;
   sn := rs_int(sb[..], 0, stamp); secn := rs_int(secb[..], 0, seconds);
   for k: 0..<rooms {
     n := ifx k == rooms - 1 then players - k * EG_SEATS else EG_SEATS;
     h := proc_new(); hs[k] = h;
     ok := proc_arg(h, "coax/web/tool.sh") && proc_arg(h, "coax/web/room/load.coax") && proc_arg(h, "everglade-room") && proc_arg(h, url) &&
           proc_arg(h, cast(string) nb[0..<rs_int(nb[..], 0, n)]) && proc_arg(h, cast(string) secb[0..<secn]) &&
-          proc_arg(h, cast(string) sb[0..<sn]) && proc_arg(h, cast(string) kb[0..<rs_int(kb[..], 0, k + 1)]) && proc_arg(h, cast(string) hzb[0..<hzn]);
+          proc_arg(h, cast(string) sb[0..<sn]) && proc_arg(h, cast(string) kb[0..<rs_int(kb[..], 0, k + 1)]) && proc_arg(h, cast(string) hzb[0..<hzn]) &&
+          proc_arg(h, cast(string) shb[0..<rs_int(shb[..], 0, ifx shards == 0 then 0 else (k / 2) % shards + 1)]);
     if !ok || proc_start(h) != 0 { tool_errln("load: can't start a room's process (run it from the repository's root)"); return 1; }
   }
   all := true; line: [8192] u8;
@@ -274,10 +280,12 @@ eg_room_main :: (a: [] Args) -> int {
   b: [512] u8;
   base := rs_base(args_at(a, 1), b[..]);
   hz := ifx args_count(a) > 6 then rs_num(args_at(a, 6)) else 1;
-  return eg_room(base, rs_num(args_at(a, 2)), rs_num(args_at(a, 3)), rs_num(args_at(a, 4)), rs_num(args_at(a, 5)), ifx hz < 1 then 1 else hz);
+  shard := ifx args_count(a) > 7 then rs_num(args_at(a, 7)) else 0;
+  return eg_room(base, rs_num(args_at(a, 2)), rs_num(args_at(a, 3)), rs_num(args_at(a, 4)), rs_num(args_at(a, 5)), ifx hz < 1 then 1 else hz, shard);
 }
-// One room of up to 16 players, pair-load-STAMP-ROOM (ROOM from 1), each pinging hz times a second.
-eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz: int) -> int {
+// One room of up to 16 players, pair-load-STAMP-ROOM (ROOM from 1), each pinging hz times a second, on
+// oa-room shard `shard` (0: the old path, shard 1).
+eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz: int, shard: int) -> int {
   if players < 1 || players > EG_SEATS { return 2; }
   c: [EG_SEATS] RelayConn; p: [EG_SEATS] EgPlayer; run: [1] EgRun;
   u: [1024] u8; nm: [64] u8;
@@ -285,11 +293,14 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   t_open := rs_now();
   for i: 0..<players {
     k := rs_put(nm[..], 0, "pair-load-"); k = rs_int(nm[..], k, stamp); k = rs_put(nm[..], k, "-"); k = rs_int(nm[..], k, room);
-    n := rs_put(u[..], 0, base); n = rs_put(u[..], n, "/api/room/relay/everglade/"); n = rs_put(u[..], n, cast(string) nm[0..<k]);
+    n := rs_put(u[..], 0, base);
+    if shard > 0 { n = rs_put(u[..], n, "/api/room/s"); n = rs_int(u[..], n, shard); n = rs_put(u[..], n, "/relay/everglade/"); }
+    else { n = rs_put(u[..], n, "/api/room/relay/everglade/"); }
+    n = rs_put(u[..], n, cast(string) nm[0..<k]);
     // each socket its own seat ticket (room-ticket.coax), when the environment has the key
     id: [48] u8; ik := rs_put(id[..], 0, "p-load-"); ik = rs_int(id[..], ik, room); ik = rs_put(id[..], ik, "-"); ik = rs_int(id[..], ik, i);
     ut: [1024] u8;
-    url := rs_ticketed(ut[..], cast(string) u[0..<n], cast(string) id[0..<ik], "");
+    url := rs_ticketed_on(ut[..], cast(string) u[0..<n], cast(string) id[0..<ik], "", shard);
     up := false;
     for attempt: 0..<3 { if !up && url.count > 0 && relay_conn_open(c[i..<i + 1], url) { up = true; } }
     if up { open += 1; }
@@ -364,6 +375,7 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
   jo_key(o[..], "room"); jo_int(o[..], room);
+  jo_key(o[..], "shard"); jo_int(o[..], shard);
   jo_key(o[..], "players"); jo_int(o[..], players);
   jo_key(o[..], "open"); jo_int(o[..], open);
   jo_key(o[..], "open_ms"); jo_int(o[..], open_ms);

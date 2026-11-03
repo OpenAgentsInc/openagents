@@ -1,28 +1,32 @@
 // Everglade's two-browser smoke (spec section 11.2, GitHub #12711): two headless Chromes open one
 // Everglade room of their own and check the shared world, and how smooth it is.
-//   coax/web/tool.sh everglade-pair [URL] [--phone] [--size WxH] [--shots PREFIX] [--trials N]
+//   coax/web/tool.sh everglade-pair [URL] [--phone] [--size WxH] [--shots PREFIX] [--trials N] [--allow-public-edit]
 // URL defaults to https://openagents.com/worlds/everglade; the room is a fresh pair-<hex> (?room=),
 // which the rooms list leaves out, and both sessions carry the automation mark pair-check-<hex>
 // (the verse-automation cookie), so analytics and the usage counts leave them out too.
 // --phone: a 390x844 touch phone at DPR 3 (else --size, default 1440x900 at DPR 1).
 // The in-page half, coax/web/everglade-pair.js, notes the page's frames and its socket's frames.
 // What it checks, in order (each a line, then one JSON line with every number, then holds/fails):
-//   1. both join and each has the other's player (D's p) and name (D's n: the nameplate), and the
-//      page draws the other (net_probe 2, the other players drawn);
-//   2. move latency: A holds W, B's socket gets A somewhere new (--trials, the sessions take turns);
-//   3. smoothness while A walks: each page's frame spacing (p50, p99, long frames), the Coax frame's
-//      own time, your drawn speed's jerks, snaps past NET_SNAP, re-runs and corrections a second
-//      (the server's place for an input against where the page had you), the states' arrival
-//      (gaps, skipped ticks) and the other player as drawn (stalls and lurches);
-//   4. the jump: A jumps while walking and walks on; after landing A's act (the server's, in D, as
-//      A's and B's sockets carry it) is walking or running again, A's page sends no jump bit after
-//      the key is up, and A's feet are on the floor;
-//   5. a cast shows for both: A casts Conjure Animals (bar slot 32); both hear e cast from A's seat
-//      and both have the pack;
-//   6. a kill agrees: B casts Starry Wisp (slot 22) at the nearest creature until one dies; both
-//      hear the same e die; both have the same WANTED levels.
-// Smoothness numbers are reported, not judged (a baseline for the fixes); checks 1, 4, 5 and 6 and
-// a move latency under 500 ms decide holds. Nothing opens on screen and no sound plays.
+//   1. both join (ENTER past the CHARACTER picker), each has the other's player (D's p) and who it is
+//      (D's n) and draws it (net_probe 2), and the name for its nameplate isn't "-";
+//   2. by the spawn: A casts Conjure Animals (bar slot 32); both hear e cast from A's seat and have
+//      the pack;
+//   3. B casts Starry Wisp (slot 22) at the nearest creature until B's own hit kills one: both hear
+//      B's hits and the same e die; both have every seat's WANTED level, the same;
+//   4. move latency: A holds W, B's socket gets A somewhere new (--trials, the sessions take turns);
+//   5. smoothness while A walks, per phase: frame spacing (p50, p99, long frames), the Coax frame's
+//      time, your drawn feet (coaxial_field_probe: speed, its frame-to-frame jerk, snaps past
+//      NET_SNAP, re-runs and those that moved you over 5 cm a second), the states' arrival and the
+//      other player as drawn (stalls and lurches against the frames around them);
+//   6. the jump: A jumps while walking and walks on; A's drawn clip (field probe 4) goes to the jump
+//      once and never shows it after, and A's act is walking again on both sockets;
+//   7. INVITE: a third page opens A's link (the page with ?room= A's instance, as INVITE copies it)
+//      and must sit in A's instance on A's shard, with A in its state;
+//   8. with OA_EVERGLADE_ADMIN_SESSION (an admin's oa_session) and --allow-public-edit: A places a
+//      thing in EDIT and publishes; B hears e edit and fetches the world within 2 s. Off by default:
+//      it publishes to the realm's world.
+// Smoothness numbers are reported, not judged here (everglade-proof.sh judges them); the checks decide
+// holds. Nothing opens on screen and no sound plays.
 #import "Basic";
 #load "../lib/net/cdp.coax";
 
@@ -142,7 +146,11 @@ tool_main :: () -> int #export_c {
   ca: [1] Cdp; cb: [1] Cdp;
   if !cdp_launch(ca[..], wh.w, wh.h, "coax-egpair-a-") { tool_err("everglade-pair: "); tool_errln(cdp_error(ca[..])); return 1; }
   if !cdp_launch(cb[..], wh.w, wh.h, "coax-egpair-b-") { tool_err("everglade-pair: "); tool_errln(cdp_error(cb[..])); cdp_close(ca[..]); return 1; }
-  status := ep_run(ca[..], cb[..], btext(ub[..]), origin, btext(mb[..]), wh, phone, cast(string) js[0..<jn], cast(int) trials_n.value, shots);
+  // a live admin edit publishes to the realm's world: only with an admin's session, and never on a
+  // realm everyone plays unless --allow-public-edit says so
+  ab: [4096] u8; admin := proc_getenv("OA_EVERGLADE_ADMIN_SESSION", ab[..]);
+  if admin.count > 0 && !args_has(a[..], "--allow-public-edit") { tool_errln("everglade-pair: OA_EVERGLADE_ADMIN_SESSION publishes an edit to the realm everyone plays; add --allow-public-edit to mean it"); return 2; }
+  status := ep_run(ca[..], cb[..], btext(ub[..]), origin, btext(mb[..]), wh, phone, cast(string) js[0..<jn], cast(int) trials_n.value, shots, admin);
   cdp_close(ca[..]); cdp_close(cb[..]);
   return status;
 }
@@ -150,7 +158,13 @@ tool_main :: () -> int #export_c {
 ep_fail :: (c: [] Cdp, what: string) -> int { tool_err("everglade-pair: "); tool_err(what); tool_err(": "); tool_errln(cdp_error(c)); print("fails\n"); return 1; }
 ep_check :: (ok: bool, what: string) -> bool { print("% %\n", ifx ok then "ok  " else "FAIL", what); return ok; }
 
-ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh: ArgsSize, phone: bool, script: string, trials: int, shots: string) -> int {
+ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh: ArgsSize, phone: bool, script: string, trials: int, shots: string, admin: string) -> int {
+  if admin.count > 0 {
+    params: [8192] u8; o: [1] Jo;
+    jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "oa_session"); jo_key(o[..], "value"); jo_str(o[..], admin);
+    jo_key(o[..], "url"); jo_str(o[..], origin); jo_end(o[..]);
+    if o[0].bad || cdp_call(ca, "Network.setCookie", jo_text(o[..]), CDP_CALL_MS) < 0 { return ep_fail(ca, "setting the admin's session"); }
+  }
   if !ep_open(ca, url, origin, mark, wh, phone, script) { return ep_fail(ca, "opening A"); }
   if !ep_open(cb, url, origin, mark, wh, phone, script) { return ep_fail(cb, "opening B"); }
   print("room % (%), mark %, %\n", url, ifx phone then "phone" else "desktop", mark, ifx phone then "390x844 DPR 3" else "DPR 1");
@@ -160,7 +174,11 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   deadline := proc_now_ms() + 90000;
   while !live && proc_now_ms() < deadline {
     proc_sleep(500);
-    live = ep_int(ca, "__eg.live()", 0) == 1 && ep_int(cb, "__eg.live()", 0) == 1;
+    la := ep_int(ca, "__eg.live()", 0) == 1; lb := ep_int(cb, "__eg.live()", 0) == 1;
+    // a first visit opens the CHARACTER picker and the socket waits for ENTER
+    if !la { _ := ep_press(ca, true, "Enter", "Enter", 13); _ = ep_press(ca, false, "Enter", "Enter", 13); }
+    if !lb { _ := ep_press(cb, true, "Enter", "Enter", 13); _ = ep_press(cb, false, "Enter", "Enter", 13); }
+    live = la && lb;
   }
   all := ep_check(live, "both pages joined the room");
   if !live {
@@ -186,7 +204,49 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   _ := ep_escape(ca); _ = ep_escape(cb);
   ep_mark(ca, cb, "idle");
   proc_sleep(4000);
-  // 2. move latency: the mover's key down to the watcher's socket having it somewhere new
+  // 2. near the spawn, before anyone walks off: A casts Conjure Animals; both hear it and have the pack
+  ep_mark(ca, cb, "cast");
+  went := ep_int(ca, "__eg.cast(32)", 0);
+  heard := false; pack := false;
+  qc: [1] Buf; bput(qc[..], "__eg.casts.some((c) => c[1] === "); bint(qc[..], sa); bput(qc[..], " && c[2] === 32) ? 1 : 0");
+  t_cast := proc_now_ms(); pack_ms := -1;
+  deadline = proc_now_ms() + 10000;
+  while !(heard && pack) && proc_now_ms() < deadline {
+    proc_sleep(200);
+    heard = ep_int(ca, btext(qc[..]), 0) == 1 && ep_int(cb, btext(qc[..]), 0) == 1;
+    pack = ep_int(ca, "__eg.probe(16)", 0) > 0 && ep_int(cb, "__eg.probe(16)", 0) > 0;
+    if pack && pack_ms < 0 { pack_ms = proc_now_ms() - t_cast; }
+  }
+  all = ep_check(went == 1 && heard && pack, "A's Conjure Animals: both hear the cast and both have the pack") && all;
+  print("  sent %, pack on both after % ms, creatures A % B %, casts heard A % B %\n", went, pack_ms, ep_int(ca, "__eg.probe(16)", -1), ep_int(cb, "__eg.probe(16)", -1),
+    ep_str(ca, "JSON.stringify(__eg.casts.map((c) => [c[1], c[2]]))", info[..]), ep_str(cb, "JSON.stringify(__eg.casts.map((c) => [c[1], c[2]]))", info2[..]));
+  // 3. B fights the pack with Starry Wisp (slot 22) from beside A, until B's own hit kills a creature;
+  // both must hear B's hits (BY 1000 + B's seat) and the same creature's e die (WHO 2000 + EID)
+  ep_mark(ca, cb, "fight");
+  by: [1] Buf; bint(by[..], 1000 + sb);
+  qk: [1] Buf; bput(qk[..], "JSON.stringify((() => { const mine = __eg.hits.filter((h) => h[2] === '"); bput(qk[..], btext(by[..]));
+  bput(qk[..], "').map((h) => h[1]); return __eg.deaths.map((d) => d[1]).filter((w) => Number(w) >= 2000 && mine.includes(w)); })())");
+  dead := false; casts_b := 0; kb: [512] u8; ka: [512] u8;
+  deadline = proc_now_ms() + 25000;
+  while !dead && proc_now_ms() < deadline {
+    casts_b += ep_int(cb, "__eg.cast(22)", 0);
+    proc_sleep(900);
+    kills_b := ep_str(cb, btext(qk[..]), kb[..]); kills_a := ep_str(ca, btext(qk[..]), ka[..]);
+    dead = kills_b.count > 2 && kills_b == kills_a;
+  }
+  proc_sleep(500);
+  da: [512] u8; db: [512] u8;
+  deaths_a := ep_str(ca, "JSON.stringify(__eg.deaths.map((d) => d[1]))", da[..]); deaths_b := ep_str(cb, "JSON.stringify(__eg.deaths.map((d) => d[1]))", db[..]);
+  all = ep_check(dead, "a kill agrees: B's Starry Wisp kills a creature and both hear B's hits and the same e die") && all;
+  print("  B cast % times; B's kills on A % on B %; deaths A % B %; B refused %\n", casts_b, ep_str(ca, btext(qk[..]), ka[..]), ep_str(cb, btext(qk[..]), kb[..]), deaths_a, deaths_b,
+    ep_str(cb, "JSON.stringify(__eg.refused.slice(-4).map((r) => r[1]))", info[..]));
+  wa: [512] u8; wb: [512] u8;
+  wanted_a := ep_str(ca, "JSON.stringify(__eg.wanted)", wa[..]); wanted_b := ep_str(cb, "JSON.stringify(__eg.wanted)", wb[..]);
+  wq: [1] Buf; bput(wq[..], "(() => { const o = "); bput(wq[..], ifx wanted_b.count > 0 then wanted_b else "{}"); bput(wq[..], ", m = __eg.wanted; for (const k of Object.keys(o)) if (k in m && m[k] !== o[k]) return 0; return ("); bint(wq[..], sa); bput(wq[..], " in o) && ("); bint(wq[..], sb); bput(wq[..], " in m) ? 1 : 2; })()");
+  wv := ep_int(ca, btext(wq[..]), 0);
+  all = ep_check(wv == 1, "WANTED agrees: each has the other's level, and where both have a seat's they match") && all;
+  print("  WANTED A % B %; your own (net_probe 24) A % B %\n", wanted_a, wanted_b, ep_int(ca, "__eg.probe(24)", -9), ep_int(cb, "__eg.probe(24)", -9));
+  // 4. move latency: the mover's key down to the watcher's socket having it somewhere new
   ep_mark(ca, cb, "trials");
   took: [EP_TRIALS_MAX] int; n_took := 0;
   for k: 0..<trials {
@@ -206,14 +266,15 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
     took[k] = got; n_took += 1;
     print("  % moves, % has it: % ms\n", ifx k % 2 == 0 then "A" else "B", ifx k % 2 == 0 then "B" else "A", got);
   }
+  proc_sleep(1200);
   missed := 0; for k: 0..<n_took { if took[k] < 0 { missed += 1; } }
   lat50 := ep_sorted_mid(took[..], n_took, 50); latmax := ep_sorted_mid(took[..], n_took, 100);
   all = ep_check(missed == 0 && latmax < 500, "move latency (key down to the other's socket): every trial under 500 ms") && all;
-  // 3. A walks 6 s
+  // 5. A walks 6 s
   ep_mark(ca, cb, "walk");
   if !ep_w(ca, true) { return ep_fail(ca, "pressing W"); }
   proc_sleep(6000);
-  // 4. A jumps while walking, then walks on 3 s
+  // 6. A jumps while walking, then walks on
   ep_mark(ca, cb, "jump");
   tj := ep_int(ca, "Math.round(__eg.now())", -1);
   _ = ep_press(ca, true, " ", "Space", 32); proc_sleep(120); _ = ep_press(ca, false, " ", "Space", 32);
@@ -222,70 +283,73 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   ep_mark(ca, cb, "after_jump");
   tl := ep_int(ca, "Math.round(__eg.now())", -1);
   proc_sleep(1500);
+  te := ep_int(ca, "Math.round(__eg.now())", -1);
   _ = ep_w(ca, false);
   ep_mark(ca, cb, "stand");
-  // the acts: airborne (3) at some point after the jump; walking or running (1, 2) with the ground bit
-  // through the last 1.5 s of walking, as A's socket and B's socket carry A's state
-  qa: [1] Buf; bput(qa[..], "(() => { const j = JSON.parse(__eg.actsSince("); bint(qa[..], tj);
-  bput(qa[..], ")), l = JSON.parse(__eg.actsSince("); bint(qa[..], tl);
-  bput(qa[..], ")), u = JSON.parse(__eg.actsSince("); bint(qa[..], tu);
-  bput(qa[..], ")); const walked = (r) => r.length > 0 && r.slice(0, Math.max(1, r.length - 4)).every((x) => (x[0] === 1 || x[0] === 2) && (x[1] & 1));");
-  bput(qa[..], " return JSON.stringify({ jumped: j.mine.some((x) => x[0] === 3), walked: walked(l.mine), acts_after: l.mine.map((x) => x[0]).join(''), jump_bits_after_up: u.jump_bits, feet_over_floor_cm: l.feet_over_floor_cm }); })()");
+  // the drawn pose on A's page (coaxial_field_probe 3 and 4), and A's act on both sockets
+  qa: [1] Buf; bput(qa[..], "__eg.jumpCheck("); bint(qa[..], tj); bput(qa[..], ", "); bint(qa[..], tl); bput(qa[..], ", "); bint(qa[..], te); bput(qa[..], ")");
+  qs: [1] Buf; bput(qs[..], "(() => { const j = JSON.parse(__eg.actsSince("); bint(qs[..], tj);
+  bput(qs[..], ")), l = JSON.parse(__eg.actsSince("); bint(qs[..], tl);
+  bput(qs[..], ")), u = JSON.parse(__eg.actsSince("); bint(qs[..], tu);
+  bput(qs[..], ")); const walked = (r) => r.length > 0 && r.slice(0, Math.max(1, r.length - 4)).every((x) => (x[0] === 1 || x[0] === 2) && (x[1] & 1));");
+  bput(qs[..], " return JSON.stringify({ jumped: j.mine.some((x) => x[0] === 3), walked: walked(l.mine), jump_bits_after_up: u.jump_bits }); })()");
   qb: [1] Buf; bput(qb[..], "(() => { const l = JSON.parse(__eg.actsSince("); bint(qb[..], tl); bput(qb[..], ")).others['"); bint(qb[..], sa);
-  bput(qb[..], "'] || []; const j = JSON.parse(__eg.actsSince("); bint(qb[..], tj); bput(qb[..], ")).others['"); bint(qb[..], sa);
-  bput(qb[..], "'] || []; return JSON.stringify({ jumped: j.some((x) => x[0] === 3), walked: l.length > 0 && l.slice(0, Math.max(1, l.length - 4)).every((x) => (x[0] === 1 || x[0] === 2) && (x[1] & 1)), acts_after: l.map((x) => x[0]).join('') }); })()");
-  ja: [4096] u8; jb: [4096] u8;
-  jump_a := ep_str(ca, btext(qa[..]), ja[..]); jump_b := ep_str(cb, btext(qb[..]), jb[..]);
-  print("  jump, A's socket: %\n  jump, B's socket: %\n", jump_a, jump_b);
-  qa2: [1] Buf; bput(qa2[..], "(() => { const r = "); bput(qa2[..], jump_a); bput(qa2[..], "; return r.jumped && r.walked && r.jump_bits_after_up === 0 && Math.abs(r.feet_over_floor_cm) < 10 ? 1 : 0; })()");
-  qb2: [1] Buf; bput(qb2[..], "(() => { const r = "); bput(qb2[..], jump_b); bput(qb2[..], "; return r.walked ? 1 : 0; })()");
-  jump_ok := jump_a.count > 0 && jump_b.count > 0 && ep_int(ca, btext(qa2[..]), 0) == 1 && ep_int(cb, btext(qb2[..]), 0) == 1;
-  all = ep_check(jump_ok, "after a jump, walking shows the walk again (A's act on both sockets, no stuck jump bit, feet on the floor)") && all;
+  bput(qb[..], "'] || []; return JSON.stringify({ walked: l.length > 0 && l.slice(0, Math.max(1, l.length - 4)).every((x) => (x[0] === 1 || x[0] === 2) && (x[1] & 1)) }); })()");
+  ja: [4096] u8; js: [4096] u8; jb: [4096] u8;
+  pose_a := ep_str(ca, btext(qa[..]), ja[..]); wire_a := ep_str(ca, btext(qs[..]), js[..]); wire_b := ep_str(cb, btext(qb[..]), jb[..]);
+  print("  jump, A's drawn pose: %\n  jump, A's socket: %; B's socket: %\n", pose_a, wire_a, wire_b);
+  qp: [1] Buf; bput(qp[..], "(() => { const p = "); bput(qp[..], ifx pose_a.count > 0 then pose_a else "{}"); bput(qp[..], ", a = ");
+  bput(qp[..], ifx wire_a.count > 0 then wire_a else "{}"); bput(qp[..], ", b = "); bput(qp[..], ifx wire_b.count > 0 then wire_b else "{}");
+  bput(qp[..], "; return p.jumped && p.into_jump === 1 && p.stuck_frames === 0 && p.frames_after > 30 && a.jumped && a.walked && a.jump_bits_after_up === 0 && b.walked ? 1 : 0; })()");
+  all = ep_check(ep_int(ca, btext(qp[..]), 0) == 1, "the jump: A's drawn clip goes to the jump once and, walking on, never shows it again; A's act is walking again on both sockets") && all;
   proc_sleep(1500);
-  // 5. A casts Conjure Animals; both hear it and have the pack
-  ep_mark(ca, cb, "cast");
-  went := ep_int(ca, "__eg.cast(32)", 0);
-  heard := false; pack := false;
-  qc: [1] Buf; bput(qc[..], "__eg.casts.some((c) => c[1] === "); bint(qc[..], sa); bput(qc[..], " && c[2] === 32) ? 1 : 0");
-  t_cast := proc_now_ms(); pack_ms := -1;
-  deadline = proc_now_ms() + 10000;
-  while !(heard && pack) && proc_now_ms() < deadline {
-    proc_sleep(200);
-    heard = ep_int(ca, btext(qc[..]), 0) == 1 && ep_int(cb, btext(qc[..]), 0) == 1;
-    pack = ep_int(ca, "__eg.probe(16)", 0) > 0 && ep_int(cb, "__eg.probe(16)", 0) > 0;
-    if pack && pack_ms < 0 { pack_ms = proc_now_ms() - t_cast; }
-  }
-  all = ep_check(went == 1 && heard && pack, "A's Conjure Animals: both hear the cast and both have the pack") && all;
-  print("  sent %, pack on both after % ms, creatures A % B %, casts heard A % B %\n", went, pack_ms, ep_int(ca, "__eg.probe(16)", -1), ep_int(cb, "__eg.probe(16)", -1),
-    ep_str(ca, "JSON.stringify(__eg.casts.map((c) => [c[1], c[2]]))", info[..]), ep_str(cb, "JSON.stringify(__eg.casts.map((c) => [c[1], c[2]]))", info2[..]));
-  // 6. B fights the nearest creature until one dies; both hear the same death
-  ep_mark(ca, cb, "fight");
-  dead := false;
-  deadline = proc_now_ms() + 20000;
-  while !dead && proc_now_ms() < deadline {
-    shot := ep_int(cb, "__eg.cast(22)", 0);
-    proc_sleep(700);
-    dead = ep_int(ca, "__eg.deaths.length", 0) > 0 && ep_int(cb, "__eg.deaths.length", 0) > 0;
-  }
-  proc_sleep(500);
-  da: [512] u8; db: [512] u8;
-  deaths_a := ep_str(ca, "JSON.stringify(__eg.deaths.map((d) => d[1]))", da[..]); deaths_b := ep_str(cb, "JSON.stringify(__eg.deaths.map((d) => d[1]))", db[..]);
-  wa: [512] u8; wb: [512] u8;
-  wanted_a := ep_str(ca, "JSON.stringify(__eg.wanted)", wa[..]); wanted_b := ep_str(cb, "JSON.stringify(__eg.wanted)", wb[..]);
-  all = ep_check(dead && deaths_a == deaths_b, "a kill agrees: both hear the same e die") && all;
-  wq: [1] Buf; bput(wq[..], "(() => { const o = "); bput(wq[..], wanted_b); bput(wq[..], ", m = __eg.wanted; for (const k of Object.keys(o)) if (k in m && m[k] !== o[k]) return 0; return ("); bint(wq[..], sa); bput(wq[..], " in o) && ("); bint(wq[..], sb); bput(wq[..], " in m) ? 1 : 2; })()");
-  wv := ep_int(ca, btext(wq[..]), 0);
-  all = ep_check(wv == 1, "WANTED agrees: each has the other's level, and where both have a seat's they match") && all;
-  if wv == 2 { print("  (no disagreement; one page has no w frame for the other seat)\n"); }
-  print("  deaths A % B %; WANTED A % B %; hits A % B %; B refused %\n", deaths_a, deaths_b, wanted_a, wanted_b, ep_int(ca, "__eg.hits.length", -1), ep_int(cb, "__eg.hits.length", -1),
-    ep_str(cb, "JSON.stringify(__eg.refused.slice(-4))", info[..]));
-  print("  hits A % B %; A's hello %\n", ep_str(ca, "JSON.stringify(__eg.hits.map((h) => h.slice(1)))", info[..]), ep_str(cb, "JSON.stringify(__eg.hits.map((h) => h.slice(1)))", info2[..]),
-    ep_str(ca, "__eg.hello || ''", wa[..]));
-  if !dead { raw: [65536] u8; print("  B's last frames: %\n", ep_str(cb, "__eg.raw.slice(-30).join(' | ')", raw[..])); }
   // B walks 4 s, so A has a moving remote body too
   ep_mark(ca, cb, "walk_b");
   _ = ep_w(cb, true); proc_sleep(4000); _ = ep_w(cb, false);
   ep_mark(ca, cb, "end");
+  // 7. INVITE's link: the page's address with ?room= and A's instance; a third page opens it and must
+  // sit in A's instance (the same code, on the same shard's socket path) with A in its state
+  inv_ok := false;
+  code_b: [256] u8; code := ep_str(ca, "__eg.code || ''", code_b[..]);
+  sock_b: [512] u8; sock_a := ep_str(ca, "__eg.wsUrl || ''", sock_b[..]);
+  if code.count > 0 {
+    lb: [1] Buf; bput(lb[..], origin); bput(lb[..], "/worlds/everglade?room="); bput(lb[..], code);
+    cc: [1] Cdp;
+    if cdp_launch(cc[..], wh.w, wh.h, "coax-egpair-c-") {
+      if ep_open(cc[..], btext(lb[..]), origin, mark, wh, phone, script) {
+        dl := proc_now_ms() + 90000; in := false;
+        qi: [1] Buf; bput(qi[..], "(__eg.live() && (__eg.others['"); bint(qi[..], sa); bput(qi[..], "'] || []).length > 0) ? 1 : 0");
+        while !in && proc_now_ms() < dl { proc_sleep(700); _ = ep_press(cc[..], true, "Enter", "Enter", 13); _ = ep_press(cc[..], false, "Enter", "Enter", 13); in = ep_int(cc[..], btext(qi[..]), 0) == 1; }
+        cb2: [256] u8; sc: [512] u8;
+        code_c := ep_str(cc[..], "__eg.code || ''", cb2[..]); sock_c := ep_str(cc[..], "__eg.wsUrl || ''", sc[..]);
+        inv_ok = in && code_c == code && sock_c == sock_a;
+        dc: [1024] u8;
+        print("  INVITE link %: C sits in % (%), A is in % (%); C live %, has A %\n", btext(lb[..]), code_c, sock_c, code, sock_a,
+          ep_int(cc[..], "__eg.live()", -1), ep_str(cc[..], "JSON.stringify({seat: __eg.seat, others: Object.keys(__eg.others), net: __eg.probe(0), frames: __eg.fr.length, d: __eg.d.length})", dc[..]));
+      }
+      cdp_close(cc[..]);
+    }
+  }
+  all = ep_check(inv_ok, "INVITE: a page opening A's ?room= link lands in A's instance, on A's shard, and has A") && all;
+  // 8. live admin edits (opt in): A, an admin (OA_EVERGLADE_ADMIN_SESSION, its oa_session), places a
+  // thing and publishes (B: EDIT, 1: the first thing, B: DONE publishes at once); B's socket hears
+  // e edit and B's page fetches the world within 2 s
+  if admin.count > 0 {
+    ep_mark(ca, cb, "edit");
+    t_e := ep_int(cb, "Math.round(__eg.now())", -1);
+    _ = ep_press(ca, true, "b", "KeyB", 66); _ = ep_press(ca, false, "b", "KeyB", 66); proc_sleep(600);
+    _ = ep_press(ca, true, "1", "Digit1", 49); _ = ep_press(ca, false, "1", "Digit1", 49); proc_sleep(600);
+    t_pub := ep_int(cb, "Math.round(__eg.now())", -1);
+    _ = ep_press(ca, true, "b", "KeyB", 66); _ = ep_press(ca, false, "b", "KeyB", 66);
+    proc_sleep(2500);
+    qe: [1] Buf; bput(qe[..], "(() => { const e = __eg.edits.find((x) => x[0] >= "); bint(qe[..], t_e); bput(qe[..], "), g = __eg.worldGets.find((x) => x[0] >= ");
+    bint(qe[..], t_e); bput(qe[..], "); return e && g ? Math.round(Math.max(e[0], g[0]) - "); bint(qe[..], t_pub); bput(qe[..], ") : -1; })()");
+    shown := ep_int(cb, btext(qe[..]), -1);
+    all = ep_check(shown >= 0 && shown <= 2000, "a live admin edit: B hears e edit and fetches the world within 2 s of A's DONE") && all;
+    print("  edit reached B after % ms\n", shown);
+  } else {
+    print("skip a live admin edit (no OA_EVERGLADE_ADMIN_SESSION: an admin's oa_session; it publishes to the realm's world)\n");
+  }
   if shots.count > 0 {
     png: [EP_SHOT] u8;
     for s: 0..<2 {
