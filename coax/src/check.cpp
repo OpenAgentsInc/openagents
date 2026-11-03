@@ -184,6 +184,8 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
   context.retain_reports={nullptr,0};
   zvec<int64_t> result_work((size_t)caps.result_work);
   context.result_work={result_work.data(),(int64_t)result_work.size()};
+  zvec<int64_t> names((size_t)caps.names);
+  context.names={names.data(),(int64_t)names.size()};
   laps.lap("check.storage");
   bool ok=CK_run(context,input->used,{file->library,file->metal,file->authority,file->quantity_device});
   laps.lap("check.checker");
