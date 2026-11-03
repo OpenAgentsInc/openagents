@@ -1,8 +1,11 @@
 // 5E Lab's C face for the browser (coax/web/host.js): scalar Wasm exports
 // over fivelab.coax, which holds the battle on the SRD engine
-// (aethyr/rules/srd/) and its drawing. It decides nothing. No scene:
-// gpu/fivelab.coax's bg_fs draws the grid and the log's glass, fx_fs the
-// strokes lab_frame writes, and fivelab-fx.wgsl the glade's effects (puffs).
+// (aethyr/rules/srd/) and its drawing. It decides nothing.
+// gpu/fivelab.coax's bg_fs draws the grid, the glade and the log's glass, writing the glade's
+// depth; scene_vs/scene_fs the figures (Everglade's pack: its catalog here, its vertices, indices
+// and layers on the GPU), from two stores: the frame's instances (fivelab-bodies.coax bd_build)
+// and the clips baked once (bd_bake); fx_fs the strokes lab_frame writes, and fivelab-fx.wgsl the
+// glade's effects (puffs), drawn after the figures, depth-tested.
 #include "fivelab.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -11,6 +14,14 @@
 
 static uint8_t inbox[4096];
 static bool golden;
+// The pack's catalog; the rig the clips are baked from, and the bake; the frame's instances.
+static uint8_t catalog[16384];
+static coax_t_People rig;
+static float bake[544440];        // fivelab-bodies.coax BD_BAKE_FLOATS
+static uint32_t baked;            // the bake's generation: 1 once baked
+static float records[1320 * 24];  // BD_RECORDS instances of BD_REC_FLOATS
+static uint32_t frames;
+static int64_t draw_n;
 
 static coax_t_Lab *lab_at(uint32_t state) { return (coax_t_Lab *)(uintptr_t)state; }
 static coax_v_t_Lab at(uint32_t state) { return (coax_v_t_Lab){lab_at(state), 1}; }
@@ -23,9 +34,9 @@ EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_defa
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_lab_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_lab_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_lab_uniform_floats(); }
-// The 3D glade traces every figure per pixel: drawn at most 1.6 million pixels (the host scales
-// the canvas up), it holds 60 frames a second on a Retina laptop.
-EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) { return 1600000u; }
+// bg_fs traces the glade's ground, trees and sky per pixel (the figures are drawn, not traced):
+// drawn at most 6.4 million pixels (3200 by 2000; the host scales the canvas up past that).
+EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) { return 6400000u; }
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 
 EXPORT("coaxial_frame")
@@ -34,8 +45,38 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_lab_max_vertices() * coaxial_lab_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_lab_uniform_floats()};
   int64_t n = lab_frame(at(state), out, u, w, h, scale, dt, still != 0);
+  draw_n = 0;
+  if (lab_at(state)->bodies.e[0].ready) {
+    if (!baked) { lab_bake((coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}); baked = 1; }
+    draw_n = lab_scene(at(state), (coax_v_f32){records, sizeof records / sizeof records[0]});
+  }
+  frames += 1;
   return n < 0 ? 0u : (uint32_t)n;
 }
+
+// ---- the figures: the pack's catalog, and the scene's draws over its vertices and the two stores
+EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
+  (void)state;
+  return i == 0 && bytes <= sizeof catalog ? (uint32_t)(uintptr_t)catalog : 0u;
+}
+EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state, int32_t i) {
+  (void)state;return i == 0 ? (uint32_t)sizeof catalog : 0u;
+}
+EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
+  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) lab_catalog(at(state), (coax_string){(const char *)catalog, bytes});
+}
+EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->bodies.e[0].draws.e; }
+EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 2; }
+EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return k == 0 ? (uint32_t)sizeof records : (uint32_t)sizeof bake; }
+EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { (void)state; return k == 0 ? (uint32_t)(uintptr_t)records : (uint32_t)(uintptr_t)bake; }
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) {
+  (void)state;
+  if (k == 0) { uint32_t n = 0; coax_t_Bodies *b = &lab_at(state)->bodies.e[0]; for (int64_t d = 0; d < b->draw_n; d++) n += b->draws.e[d * 4 + 3]; return n * 24u * 4u; }
+  return (uint32_t)sizeof bake;
+}
+// The instances every frame; the bake once, when it is made.
+EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { (void)state; return k == 0 ? frames : baked; }
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { return lab_key(at(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { return lab_key_up(at(state), key, mods) ? 1u : 0u; }

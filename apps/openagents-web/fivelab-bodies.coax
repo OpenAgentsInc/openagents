@@ -1,0 +1,566 @@
+// 5E Lab's figures (fivelab.coax): the Quaternius people Everglade's NPCs are made of (the
+// Universal Base Characters and the Modular Character Outfits - Fantasy parts in Everglade's pack,
+// rebound by verse/tools/people.py onto two skeletons, CC0), dressed by class, played by the
+// Universal Animation Library's clips (verse/everglade/people-rig.coax, aethyr/skin.coax).
+//
+// Two hundred and more figures at once, so nothing is posed per figure on the CPU: bd_bake samples
+// each clip once, 30 frames a second, into one store of skinning matrices (three rows of four a
+// joint, 65 joints a frame, both bodies), and the GPU skins every vertex from it
+// (gpu/fivelab.coax scene_vs). A figure is only which frame it shows (and, for a fifth of a second
+// after its clip changes, the one it fades from), where it stands and which way it faces: one
+// instance a part it wears, every figure wearing a part in one instanced draw of it.
+//
+// What a figure plays comes from the battle (bd_put each frame, bd_cue on an event): idle; walking
+// or running as fast as it moves (the gaits advance by the ground covered, so the feet keep pace);
+// a sword's swing for a blow, the spell clip for a cast or a shot; a knock back when it is hurt;
+// down, it falls and lies; dead, it falls, lies a few seconds and fades away (in the Horde a fresh
+// Skeleton takes its square at once, so the body is handed to a corpse of its own to finish).
+// Far figures leave off their hair (bd_build's LOD), and figures out of view are not drawn.
+//   coax/bin/coax test --library apps/openagents-web/fivelab-bodies.coax
+
+#module "openagents.fivelab.bodies";
+
+#load "../../verse/everglade/people-rig.coax";
+
+BD_SLOTS :: 216;          // the battle's creatures (aethyr/rules/srd/battle.coax RS_MAX)
+BD_CORPSES :: 48;         // bodies still lying after their square was taken
+BD_PARTS_MAX :: 5;        // a figure's parts: outfit, head, hair, a beard or a hood, robe
+BD_RECORDS :: 1320;       // instances at most: (216 + 48) figures, five parts each
+BD_REC_FLOATS :: 24;      // gpu/fivelab.coax FivelabObj: six vec4s
+BD_FPS :: 30.0;
+// The clips baked, as people-rig.coax numbers them, and their frames (each its seconds at 30 a second).
+BD_CLIPS :: 7;
+BD_IDLE :: 0; BD_WALK :: 1; BD_RUN :: 2; BD_SLASH :: 3; BD_SPELL :: 4; BD_KNOCK :: 5; BD_DIE :: 6;
+BD_CLIP :: [7] int.[PEOPLE_IDLE, PEOPLE_WALK, PEOPLE_RUN, PEOPLE_SLASH, PEOPLE_SPELL, PEOPLE_KNOCK, PEOPLE_DIE];
+BD_FRAMES :: [7] int.[75, 40, 28, 46, 63, 25, 72];
+BD_FIRST :: [7] int.[0, 75, 115, 143, 189, 252, 277];
+BD_TOTAL :: 349;          // frames a body
+BD_ROWS :: 195;           // rows a frame: 65 joints, three each
+BD_BAKE_FLOATS :: 544440; // 2 bodies * 349 frames * 195 rows * 4
+BD_FADE :: 0.18;          // seconds a change of clip blends
+BD_WALK_FROM :: 0.35;     // m/s: slower stands
+BD_RUN_FROM :: 2.2;       // and faster runs
+BD_TURN :: 9.0;           // radians a second a figure turns at most
+BD_LIE :: 3.5;            // seconds the dead lie once fallen
+BD_GONE :: 1.0;           // and then fade away over
+BD_SPELL_FOR :: 1.1;      // seconds the spell clip plays for a cast or a shot
+BD_FAR_PX :: 70.0;        // a figure shorter than this on the screen leaves off its hair
+
+// The pack's parts (people-rig.coax PEOPLE_PART_NAME's order).
+BP_MALE_PEASANT :: 0; BP_MALE_RANGER :: 1; BP_MALE_HOOD :: 2;
+BP_FEMALE_PEASANT :: 3; BP_FEMALE_RANGER :: 4; BP_FEMALE_HOOD :: 5;
+BP_MALE_HEAD :: 6; BP_FEMALE_HEAD :: 7;
+BP_HAIR_PARTED :: 8; BP_HAIR_BUZZED :: 9; BP_BEARD :: 10;
+BP_HAIR_LONG :: 11; BP_HAIR_BUNS :: 12; BP_HAIR_BUZZED_FEMALE :: 13;
+BP_MALE_ROBE :: 14; BP_FEMALE_ROBE :: 15;
+
+// How a figure is dressed.
+BdLook :: struct {
+  female: bool; bones: bool;
+  outfit: int; head: int; hair: int; extra: int; robe: int;   // parts, -1 none (extra: a beard or a hood)
+  variant: int;                 // the outfit's other colourway
+  skin: [3] f32; hair_rgb: [3] f32; dye: [4] f32;
+}
+
+// The looks (fivelab.coax look_of: 0 druid, 1 warlock, 2 barbarian, 3 monk, 4 skeleton, 5 wizard,
+// 6 bard, 7 cleric, 8 fighter, 9 paladin, 10 ranger, 11 rogue, 12 sorcerer), v 0 or 1 the two of a
+// class, so the second of each looks a little different (often the other body).
+bd_look :: (kind: int, v: int) -> BdLook {
+  l: BdLook;
+  l.outfit = BP_MALE_PEASANT; l.head = BP_MALE_HEAD; l.hair = BP_HAIR_PARTED; l.extra = -1; l.robe = -1;
+  l.skin = [3] f32.[1, 1, 1]; l.hair_rgb = [3] f32.[0.2, 0.1, 0.04]; l.dye = [4] f32.[0, 0, 0, 0];
+  fem := false;
+  if kind == 0 {          // a druid: leathers in leaf green, long hair
+    fem = v == 0;
+    l.outfit = BP_MALE_RANGER; l.hair = ifx fem then BP_HAIR_LONG else BP_HAIR_PARTED; l.extra = ifx fem then -1 else BP_BEARD;
+    l.dye = [4] f32.[0.1, 0.24, 0.05, 0.8]; l.hair_rgb = [3] f32.[0.45, 0.13, 0.04];
+  } else if kind == 1 {   // a Fiend warlock: an ember-crimson robe under a hood
+    fem = v == 1;
+    l.robe = BP_MALE_ROBE; l.hair = -1; l.extra = BP_MALE_HOOD; l.dye = [4] f32.[0.3, 0.025, 0.03, 1];
+  } else if kind == 2 {   // a barbarian: fur-brown, cropped hair, a beard
+    l.hair = BP_HAIR_BUZZED; l.extra = BP_BEARD; l.dye = [4] f32.[0.26, 0.15, 0.06, 1];
+    l.skin = [3] f32.[0.86, 0.76, 0.66]; l.hair_rgb = [3] f32.[0.5, 0.2, 0.05];
+  } else if kind == 3 {   // a monk: saffron
+    fem = v == 1;
+    l.hair = ifx fem then BP_HAIR_BUNS else BP_HAIR_BUZZED; l.dye = [4] f32.[0.8, 0.4, 0.05, 1];
+    l.skin = [3] f32.[0.66, 0.52, 0.42]; l.hair_rgb = [3] f32.[0.03, 0.025, 0.025];
+  } else if kind == 4 {   // a skeleton: the bare body made bone (gpu/fivelab.coax), half of them hooded
+    l.bones = true; l.hair = -1; l.extra = ifx v == 1 then BP_MALE_HOOD else -1;
+  } else if kind == 5 {   // an Evoker: a deep blue robe, a grey beard
+    fem = v == 1;
+    l.robe = BP_MALE_ROBE; l.extra = ifx fem then -1 else BP_BEARD; l.hair = ifx fem then BP_HAIR_LONG else BP_HAIR_PARTED;
+    l.dye = [4] f32.[0.04, 0.07, 0.36, 1]; l.hair_rgb = [3] f32.[0.55, 0.55, 0.57];
+  } else if kind == 6 {   // a bard: plum, the peasant's brighter cloth
+    fem = v == 0;
+    l.variant = 1; l.hair = ifx fem then BP_HAIR_BUNS else BP_HAIR_PARTED; l.dye = [4] f32.[0.36, 0.06, 0.26, 1];
+    l.hair_rgb = [3] f32.[0.62, 0.45, 0.2];
+  } else if kind == 7 {   // a Life cleric: a white vestment
+    fem = v == 0;
+    l.robe = BP_MALE_ROBE; l.hair = ifx fem then BP_HAIR_BUNS else BP_HAIR_BUZZED; l.dye = [4] f32.[0.8, 0.78, 0.7, 1];
+    l.skin = [3] f32.[0.86, 0.76, 0.66];
+  } else if kind == 8 {   // a fighter: the ranger's leathers and pauldron gone steel grey
+    fem = v == 1;
+    l.outfit = BP_MALE_RANGER; l.hair = ifx fem then BP_HAIR_BUZZED_FEMALE else BP_HAIR_BUZZED;
+    l.dye = [4] f32.[0.3, 0.32, 0.36, 1]; l.hair_rgb = [3] f32.[0.06, 0.04, 0.03];
+  } else if kind == 9 {   // a paladin: silver and blue, the ranger's other colourway
+    fem = v == 0;
+    l.outfit = BP_MALE_RANGER; l.variant = 1; l.hair = ifx fem then BP_HAIR_LONG else BP_HAIR_PARTED; l.extra = ifx fem then -1 else BP_BEARD;
+    l.dye = [4] f32.[0.55, 0.62, 0.78, 0.9]; l.hair_rgb = [3] f32.[0.78, 0.6, 0.3];
+  } else if kind == 10 {  // a ranger: forest green under a hood
+    fem = v == 1;
+    l.outfit = BP_MALE_RANGER; l.hair = -1; l.extra = BP_MALE_HOOD;
+  } else if kind == 11 {  // a rogue: black leathers, hooded
+    fem = v == 0;
+    l.outfit = BP_MALE_RANGER; l.hair = -1; l.extra = BP_MALE_HOOD; l.dye = [4] f32.[0.035, 0.035, 0.045, 1];
+  } else {                // a draconic sorcerer: copper, red hair
+    fem = v == 0;
+    l.robe = BP_MALE_ROBE; l.hair = ifx fem then BP_HAIR_LONG else BP_HAIR_PARTED; l.dye = [4] f32.[0.55, 0.18, 0.04, 1];
+    l.hair_rgb = [3] f32.[0.45, 0.08, 0.03];
+  }
+  if fem {
+    // the same outfit on the woman's body, and her hair
+    l.female = true;
+    l.outfit += 3; l.head = BP_FEMALE_HEAD;
+    if l.robe >= 0 { l.robe = BP_FEMALE_ROBE; }
+    if l.extra == BP_MALE_HOOD { l.extra = BP_FEMALE_HOOD; }
+    if l.extra == BP_BEARD { l.extra = -1; }
+    if l.hair == BP_HAIR_PARTED || l.hair == BP_HAIR_BUZZED { l.hair = BP_HAIR_BUZZED_FEMALE; }
+  }
+  return l;
+}
+
+// The parts a look wears, outfit first; `far` leaves off the hair and the beard.
+bd_parts :: (l: BdLook, far: bool, out: [] int) -> int {
+  n := 0;
+  out[n] = l.outfit; n += 1;
+  out[n] = l.head; n += 1;
+  if l.hair >= 0 && !far { out[n] = l.hair; n += 1; }
+  if l.extra >= 0 && !(far && l.extra == BP_BEARD) { out[n] = l.extra; n += 1; }
+  if l.robe >= 0 { out[n] = l.robe; n += 1; }
+  return n;
+}
+
+// One figure's playback.
+BdAnim :: struct {
+  on: bool;
+  look: int; v: int;
+  x: f32; z: f32; yaw: f32;
+  lx: f32; lz: f32; speed: f32; moved: bool;
+  clip: int = -1; t0: f32; phase: f32;
+  prev: int = -1; pt0: f32; pphase: f32; fade_at: f32 = -100;
+  act: int = -1; act_t0: f32; act_until: f32;
+  face_x: f32; face_z: f32; face_until: f32 = -100;
+  state: int; fell_at: f32;
+  marks: f32; outlined: f32;
+}
+
+BdCam :: struct { ex: f32; ey: f32; ez: f32; fx: f32; fy: f32; fz: f32; rx: f32; ry: f32; rz: f32; ux: f32; uy: f32; uz: f32; focal: f32; cx: f32; cy: f32; w: f32; h: f32; }
+
+Bodies :: struct {
+  ready: bool;              // the catalog named every part
+  part_first: [16] int; part_count: [16] int; part_word: [16] int;
+  slot: [BD_SLOTS] BdAnim;
+  corpse: [BD_CORPSES] BdAnim; corpse_at: int;
+  now: f32;
+  draws: [64] u32; draw_n: int;
+  shown: int;               // figures drawn this frame
+}
+
+// ---- the pack's catalog (verse/tools/pack_realm.py): "C NAME FIRST COUNT K WORD VERTICES JOINTS" a part
+
+bd_word_end :: (line: string, from: int) -> int { e := from; while e < line.count && line[e] != ' ' { e += 1; } return e; }
+bd_whole_at :: (line: string, from: int) -> int {
+  i := from; while i < line.count && line[i] == ' ' { i += 1; }
+  v := 0; any := false;
+  while i < line.count && line[i] >= '0' && line[i] <= '9' { v = v * 10 + cast(int) (line[i] - '0'); i += 1; any = true; }
+  return ifx any then v else -1;
+}
+bd_catalog :: (b: [] Bodies, text: string) {
+  for k: 0..<PEOPLE_PARTS { b[0].part_first[k] = 0; b[0].part_count[k] = 0; b[0].part_word[k] = 0; }
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e];
+    i = e + 1;
+    if line.count < 4 || line[0] != 'C' || line[1] != ' ' { continue; }
+    name_end := bd_word_end(line, 2);
+    at := name_end; nums: [6] int;
+    for k: 0..<6 { nums[k] = bd_whole_at(line, at); at = bd_word_end(line, at + 1); }
+    for k: 0..<PEOPLE_PARTS {
+      if line[2..<name_end] == PEOPLE_PART_NAME[k] && nums[0] >= 0 && nums[1] > 0 && nums[3] >= 0 && nums[5] == PEOPLE_JOINTS {
+        b[0].part_first[k] = nums[0]; b[0].part_count[k] = nums[1]; b[0].part_word[k] = nums[3];
+      }
+    }
+  }
+  all := true;
+  for k: 0..<PEOPLE_PARTS { if b[0].part_count[k] <= 0 { all = false; } }
+  b[0].ready = all;
+}
+
+// ---- the bake: every frame of every clip, both bodies, as skinning matrices
+
+// Frame f of baked clip c on a body: the first of its rows in the bake.
+bd_row :: (female: bool, c: int, f: int) -> int {
+  body := ifx female then 1 else 0;
+  return ((body * BD_TOTAL) + BD_FIRST[c] + f) * BD_ROWS;
+}
+// Bakes body `body`'s clip c (or all of them, c -1) into out (BD_BAKE_FLOATS floats).
+bd_bake_clip :: (d: [] People, body: int, c: int, out: [] f32) {
+  rig := people_rig(d, body == 1);
+  sk: [1] Skin;
+  sk[0] = Skin.{};
+  clip := BD_CLIP[c];
+  n := BD_FRAMES[c];
+  d_s := rig.duration[clip];
+  for f: 0..<n {
+    t := f32(f) * d_s / f32(n);
+    for j: 0..<PEOPLE_JOINTS { sk[0].now[j] = skin_sample(rig, clip, j, t); }
+    at := bd_row(body == 1, c, f) * 4;
+    skin_palette(rig, sk[..], out[at..<at + BD_ROWS * 4]);
+  }
+}
+bd_bake :: (d: [] People, out: [] f32) {
+  if out.count < BD_BAKE_FLOATS { return; }
+  for body: 0..<2 { for c: 0..<BD_CLIPS { bd_bake_clip(d, body, c, out); } }
+}
+
+// ---- playback
+
+bd_wrap :: (a: f32) -> f32 {
+  x := a;
+  while x > f32(PI) { x -= 2 * f32(PI); }
+  while x < -f32(PI) { x += 2 * f32(PI); }
+  return x;
+}
+bd_seconds :: (c: int) -> f32 { return f32(BD_FRAMES[c]) / f32(BD_FPS); }
+bd_gait :: (c: int) -> bool { return c == BD_WALK || c == BD_RUN; }
+bd_once :: (c: int) -> bool { return c == BD_SLASH || c == BD_KNOCK || c == BD_DIE; }
+// The frame clip c shows `now`, begun at t0, its gait at phase.
+bd_frame_of :: (c: int, t0: f32, phase: f32, now: f32) -> int {
+  n := BD_FRAMES[c];
+  if bd_gait(c) { p := phase - floor(phase); return clamp_int(cast(int) (p * f32(n)), 0, n - 1); }
+  s := (now - t0) / bd_seconds(c);
+  if !finite(s) || s < 0 { s = 0; }
+  if bd_once(c) { return clamp_int(cast(int) (s * f32(n)), 0, n - 1); }
+  return clamp_int(cast(int) ((s - floor(s)) * f32(n)), 0, n - 1);
+}
+clamp_int :: (v: int, a: int, b: int) -> int { if v < a { return a; } if v > b { return b; } return v; }
+
+// The figure in square i this frame, from the battle. `fresh`: another creature than last frame
+// stands there (the Horde's next Skeleton).
+bd_put :: (b: [] Bodies, i: int, fresh: bool, look: int, v: int, x: f32, z: f32, state: int, marks: f32, outlined: f32, now: f32) {
+  if i < 0 || i >= BD_SLOTS { return; }
+  a := b[0].slot[i];
+  if fresh || !a.on {
+    // the body lying here is handed to a corpse to finish its fall and fade
+    if a.on && a.state == 2 && now - a.fell_at < BD_LIE + BD_GONE + bd_seconds(BD_DIE) {
+      b[0].corpse[b[0].corpse_at] = a;
+      b[0].corpse_at = (b[0].corpse_at + 1) % BD_CORPSES;
+    }
+    a = BdAnim.{};
+    a.on = true; a.x = x; a.z = z; a.lx = x; a.lz = z;
+    a.yaw = ifx look == 4 then atan2(-x, -z) else 0.0f32;
+  }
+  a.look = look; a.v = v;
+  if state > 0 && a.state == 0 { a.fell_at = now; }
+  if state == 2 && a.state == 1 { a.fell_at = hi(a.fell_at, now - bd_seconds(BD_DIE)); }
+  a.state = state;
+  a.x = x; a.z = z;
+  a.marks = marks; a.outlined = outlined;
+  b[0].slot[i] = a;
+}
+// Figure i acts: a blow (BD_SLASH), a cast or a shot (BD_SPELL), or is hit (BD_KNOCK), facing (fx, fz).
+bd_cue :: (b: [] Bodies, i: int, clip: int, now: f32, fx: f32, fz: f32, face: bool) {
+  if i < 0 || i >= BD_SLOTS || !b[0].slot[i].on || b[0].slot[i].state != 0 { return; }
+  a := b[0].slot[i];
+  busy := a.act >= 0 && now < a.act_until;
+  // a hit never cuts short a blow or a cast already begun
+  if busy && clip == BD_KNOCK && a.act != BD_KNOCK { return; }
+  a.act = clip; a.act_t0 = now;
+  a.act_until = now + ifx clip == BD_SPELL then f32(BD_SPELL_FOR) else bd_seconds(clip);
+  if face { a.face_x = fx; a.face_z = fz; a.face_until = a.act_until; }
+  b[0].slot[i] = a;
+}
+// One figure's step to `now`: how fast it moves, which way it faces, the clip it plays.
+bd_step :: (a: [] BdAnim, now: f32, dt: f32) {
+  if dt > 0 {
+    d := sqrt((a[0].x - a[0].lx) * (a[0].x - a[0].lx) + (a[0].z - a[0].lz) * (a[0].z - a[0].lz));
+    v := d / dt;
+    a[0].speed += (v - a[0].speed) * clamp01(dt * 12);
+    if d > 0.0005 && a[0].state == 0 { a[0].moved = true; a[0].face_x = a[0].x + (a[0].x - a[0].lx) * 100; a[0].face_z = a[0].z + (a[0].z - a[0].lz) * 100; }
+    a[0].lx = a[0].x; a[0].lz = a[0].z;
+  }
+  moving := a[0].speed > f32(BD_WALK_FROM);
+  if a[0].state == 0 && (now < a[0].face_until || moving) {
+    goal := atan2(a[0].face_x - a[0].x, a[0].face_z - a[0].z);
+    left := bd_wrap(goal - a[0].yaw);
+    turn := clamp(left, -f32(BD_TURN) * dt, f32(BD_TURN) * dt);
+    a[0].yaw = bd_wrap(a[0].yaw + turn);
+  }
+  want := BD_IDLE; t0 := now;
+  if a[0].state > 0 { want = BD_DIE; t0 = a[0].fell_at; }
+  else if a[0].act >= 0 && now < a[0].act_until { want = a[0].act; t0 = a[0].act_t0; }
+  else if a[0].speed > f32(BD_RUN_FROM) { want = BD_RUN; }
+  else if moving { want = BD_WALK; }
+  if want != a[0].clip || (bd_once(want) && t0 != a[0].t0) {
+    a[0].prev = a[0].clip; a[0].pt0 = a[0].t0; a[0].pphase = a[0].phase;
+    a[0].fade_at = ifx a[0].clip < 0 then -100.0f32 else now;
+    a[0].clip = want; a[0].t0 = ifx bd_gait(want) || want == BD_IDLE then now else t0;
+    a[0].phase = 0;
+  }
+  if bd_gait(a[0].clip) && dt > 0 { a[0].phase += a[0].speed * dt / ifx a[0].clip == BD_RUN then 3.4f32 else 1.3f32; }
+}
+// How far a body is gone: 1 whole, 0 cleared (the dead, once they have lain BD_LIE seconds).
+bd_whole :: (a: BdAnim, now: f32) -> f32 {
+  if a.state != 2 { return 1; }
+  s := now - a.fell_at - bd_seconds(BD_DIE) - f32(BD_LIE);
+  return clamp01(1 - s / f32(BD_GONE));
+}
+
+// The frame's playback, every figure and corpse to `now` (a new battle, its clock begun again,
+// starts them all afresh).
+bd_frame :: (b: [] Bodies, now: f32) {
+  dt := now - b[0].now;
+  if dt < 0 || !finite(dt) {
+    for i: 0..<BD_SLOTS { b[0].slot[i] = BdAnim.{}; }
+    for i: 0..<BD_CORPSES { b[0].corpse[i] = BdAnim.{}; }
+    dt = 0;
+  }
+  dt = lo(dt, 0.25);
+  b[0].now = now;
+  for i: 0..<BD_SLOTS { if b[0].slot[i].on { bd_step(b[0].slot[i..<i + 1], now, dt); } }
+  for i: 0..<BD_CORPSES {
+    if !b[0].corpse[i].on { continue; }
+    bd_step(b[0].corpse[i..<i + 1], now, dt);
+    if bd_whole(b[0].corpse[i], now) <= 0 { b[0].corpse[i].on = false; }
+  }
+}
+// Marks a slot empty (its creature left the battle).
+bd_clear :: (b: [] Bodies, i: int) { if i >= 0 && i < BD_SLOTS { b[0].slot[i].on = false; } }
+
+// ---- the frame's instances and draws
+
+// Where a figure shows on the screen: its middle's depth, and how tall it is there (px); 0 off the screen.
+bd_seen :: (c: BdCam, x: f32, z: f32) -> f32 {
+  dx := x - c.ex; dy := 0.9 - c.ey; dz := z - c.ez;
+  depth := dx * c.fx + dy * c.fy + dz * c.fz;
+  if depth <= 0.1 { return 0; }
+  tall := 2.2 * c.focal / depth;
+  sx := c.cx + (dx * c.rx + dy * c.ry + dz * c.rz) / depth * c.focal;
+  sy := c.cy - (dx * c.ux + dy * c.uy + dz * c.uz) / depth * c.focal;
+  if sx < -tall || sx > c.w + tall || sy < -tall || sy > c.h + tall { return 0; }
+  return tall;
+}
+// One instance of part `word` worn by a, into out at record r (gpu/fivelab.coax FivelabObj).
+bd_record :: (a: BdAnim, l: BdLook, word: int, far: bool, now: f32, out: [] f32, r: int) {
+  o := r * BD_REC_FLOATS;
+  whole := bd_whole(a, now);
+  sink := ifx a.state == 2 then (1 - whole) * 0.25 else 0.0f32;
+  out[o] = a.x; out[o + 1] = -sink; out[o + 2] = a.z; out[o + 3] = a.yaw;
+  ra := bd_row(l.female, a.clip, bd_frame_of(a.clip, a.t0, a.phase, now));
+  fade := clamp01((now - a.fade_at) / f32(BD_FADE));
+  fade = fade * fade * (3 - 2 * fade);
+  rb := ra; mixb := 0.0f32;
+  if fade < 1 && a.prev >= 0 { rb = bd_row(l.female, a.prev, bd_frame_of(a.prev, a.pt0, a.pphase, now)); mixb = 1 - fade; }
+  out[o + 4] = f32(ra); out[o + 5] = f32(rb); out[o + 6] = mixb; out[o + 7] = f32(word);
+  for k: 0..<3 { out[o + 8 + k] = l.skin[k]; out[o + 12 + k] = l.hair_rgb[k]; out[o + 16 + k] = l.dye[k]; }
+  out[o + 11] = f32(l.variant);
+  out[o + 15] = f32((ifx l.bones then 1 else 0) + (ifx far then 2 else 0));
+  out[o + 19] = l.dye[3];
+  out[o + 20] = a.marks; out[o + 21] = f32(a.state); out[o + 22] = a.outlined; out[o + 23] = whole;
+}
+// Every figure in view, a record a part it wears, grouped by part; the draws (one a part worn, its
+// index range and its run of instances). The count of records.
+bd_build :: (b: [] Bodies, c: BdCam, out: [] f32) -> int {
+  b[0].draw_n = 0; b[0].shown = 0;
+  if !b[0].ready { return 0; }
+  now := b[0].now;
+  counts: [16] int;
+  // two passes over the figures: count each part's instances, then write them in its run
+  for pass: 0..<2 {
+    base: [16] int; used: [16] int;
+    if pass == 1 {
+      at := 0;
+      for k: 0..<PEOPLE_PARTS { base[k] = at; at += counts[k]; used[k] = 0; }
+    }
+    for i: 0..<BD_SLOTS + BD_CORPSES {
+      a := ifx i < BD_SLOTS then b[0].slot[i] else b[0].corpse[i - BD_SLOTS];
+      if !a.on || a.clip < 0 { continue; }
+      if bd_whole(a, now) <= 0 { continue; }
+      tall := bd_seen(c, a.x, a.z);
+      if tall <= 0 { continue; }
+      l := bd_look(a.look, a.v);
+      far := tall < f32(BD_FAR_PX);
+      parts: [BD_PARTS_MAX] int;
+      n := bd_parts(l, far, parts[..]);
+      if pass == 0 {
+        // keep within the records: a figure goes whole or not at all
+        total := 0; for k: 0..<PEOPLE_PARTS { total += counts[k]; }
+        if total + n > BD_RECORDS { continue; }
+        for k: 0..<n { counts[parts[k]] += 1; }
+        b[0].shown += 1;
+        continue;
+      }
+      ok := true;
+      for k: 0..<n { if used[parts[k]] >= counts[parts[k]] { ok = false; } }
+      if !ok { continue; }
+      for k: 0..<n {
+        p := parts[k];
+        bd_record(a, l, b[0].part_word[p], far, now, out, base[p] + used[p]);
+        used[p] += 1;
+      }
+    }
+  }
+  at := 0;
+  for k: 0..<PEOPLE_PARTS {
+    if counts[k] > 0 {
+      d := b[0].draw_n * 4;
+      b[0].draws[d] = cast(u32) b[0].part_first[k]; b[0].draws[d + 1] = cast(u32) b[0].part_count[k];
+      b[0].draws[d + 2] = cast(u32) at; b[0].draws[d + 3] = cast(u32) counts[k];
+      b[0].draw_n += 1;
+    }
+    at += counts[k];
+  }
+  return at;
+}
+
+// ---- checks
+
+BD_CATALOG :: "pack everglade\nC people/male-peasant 303939 20058 4 1179804 5751 65\nC people/male-ranger 323997 32610 4 1214310 10887 65\nC people/male-hood 356607 3204 4 1279632 706 65\nC people/female-peasant 359811 19422 4 1283868 6185 65\nC people/female-ranger 379233 34032 4 1320978 11408 65\nC people/female-hood 413265 3204 4 1389426 706 65\nC people/male-head 416469 8268 4 1393662 1837 65\nC people/female-head 424737 9480 4 1404684 2058 65\nC people/hair-parted 434217 2337 4 1417032 496 65\nC people/hair-buzzed 436554 1494 4 1420008 300 65\nC people/hair-beard 438048 1860 4 1421808 389 65\nC people/hair-long 439908 8598 4 1424142 3060 65\nC people/hair-buns 448506 9732 4 1442502 3481 65\nC people/hair-buzzed-female 458238 1494 4 1463388 300 65\nC people/male-robe 459732 1920 5 1465188 360 65\nC people/female-robe 461652 1920 5 1467348 360 65\n";
+
+BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486833, rx = -1, ry = 0, rz = 0, ux = 0, uy = 0.9486833, uz = 0.3162278, focal = 1000, cx = 800, cy = 500, w = 1600, h = 1000};
+
+#test "the baked clips' frames are their seconds at 30 a second, and the bake holds both bodies" {
+  for c: 0..<BD_CLIPS {
+    #assert BD_FRAMES[c] == cast(int) (PEOPLE_DURATION[BD_CLIP[c]] * f32(BD_FPS) + 0.5);
+    if c > 0 { #assert BD_FIRST[c] == BD_FIRST[c - 1] + BD_FRAMES[c - 1]; }
+  }
+  #assert BD_FIRST[BD_CLIPS - 1] + BD_FRAMES[BD_CLIPS - 1] == BD_TOTAL;
+  #assert BD_ROWS == PEOPLE_JOINTS * 3 && BD_BAKE_FLOATS == 2 * BD_TOTAL * BD_ROWS * 4;
+  #assert bd_row(true, BD_DIE, BD_FRAMES[BD_DIE] - 1) * 4 + BD_ROWS * 4 == BD_BAKE_FLOATS;
+}
+
+#test "a baked frame is the clip's pose as aethyr/skin.coax plays it" #steps 400000000 {
+  d: [1] People;
+  people_load(d[..]);
+  out: [BD_ROWS * 4 * 2] f32;
+  // the woman's knock back, frame 12, baked alone into a scratch the size of one frame
+  rig := people_rig(d[..], true);
+  sk: [1] Skin;
+  t := 12 * rig.duration[PEOPLE_KNOCK] / f32(BD_FRAMES[BD_KNOCK]);
+  skin_advance(rig, sk[..], PEOPLE_KNOCK, 0, t);
+  skin_palette(rig, sk[..], out[0..<BD_ROWS * 4]);
+  sk2: [1] Skin;
+  for j: 0..<PEOPLE_JOINTS { sk2[0].now[j] = skin_sample(rig, PEOPLE_KNOCK, j, t); }
+  skin_palette(rig, sk2[..], out[BD_ROWS * 4..<BD_ROWS * 8]);
+  worst := 0.0f32;
+  for k: 0..<BD_ROWS * 4 { worst = hi(worst, abs(out[k] - out[BD_ROWS * 4 + k])); }
+  #assert worst < 0.0001;
+}
+
+#test "the catalog names the sixteen parts; without them nothing draws" {
+  b: [1] Bodies;
+  bd_catalog(b[..], "pack everglade\nC people/male-peasant 1 2 4 3 4 65\n");
+  #assert !b[0].ready;
+  out: [BD_REC_FLOATS * 8] f32;
+  bd_put(b[..], 0, true, 0, 0, 0, 0, 0, 0, 0, 0);
+  bd_frame(b[..], 0.1);
+  #assert bd_build(b[..], BD_CAM, out[..]) == 0 && b[0].draw_n == 0;
+  bd_catalog(b[..], BD_CATALOG);
+  #assert b[0].ready && b[0].part_first[BP_FEMALE_ROBE] == 461652 && b[0].part_word[BP_BEARD] == 1421808;
+}
+
+#test "every look wears its body's parts: an outfit, a head, and no two of a kind" {
+  for kind: 0..<13 {
+    for v: 0..<2 {
+      l := bd_look(kind, v);
+      parts: [BD_PARTS_MAX] int;
+      for far: 0..<2 {
+        n := bd_parts(l, far == 1, parts[..]);
+        #assert n >= 2 && n <= BD_PARTS_MAX;
+        for k: 0..<n {
+          #assert parts[k] >= 0 && parts[k] < PEOPLE_PARTS && PEOPLE_PART_FEMALE[parts[k]] == l.female;
+          for q: 0..<k { #assert parts[q] != parts[k]; }
+        }
+        #assert parts[0] == l.outfit && parts[1] == l.head;
+      }
+    }
+  }
+  #assert bd_look(4, 0).bones && !bd_look(0, 0).bones && bd_look(0, 0).female != bd_look(0, 1).female;
+}
+
+#test "the figures in view are drawn a part a run, those behind the eye are not" {
+  b: [1] Bodies;
+  bd_catalog(b[..], BD_CATALOG);
+  out: [BD_REC_FLOATS * 64] f32;
+  bd_put(b[..], 0, true, 4, 0, 0, 0, 0, 0, 0, 0);     // a skeleton ahead
+  bd_put(b[..], 1, true, 0, 0, 2, 1, 0, 0, 0, 0);     // a druid ahead
+  bd_put(b[..], 2, true, 0, 1, 0, -60, 0, 0, 0, 0);   // one behind the eye
+  bd_frame(b[..], 0.1);
+  n := bd_build(b[..], BD_CAM, out[..]);
+  #assert b[0].shown == 2;
+  l0 := bd_look(4, 0); l1 := bd_look(0, 0);
+  p0: [BD_PARTS_MAX] int; p1: [BD_PARTS_MAX] int;
+  want := bd_parts(l0, false, p0[..]) + bd_parts(l1, false, p1[..]);
+  #assert n == want;
+  total := 0;
+  for d: 0..<b[0].draw_n { total += cast(int) b[0].draws[d * 4 + 3]; #assert b[0].draws[d * 4 + 1] > 0; }
+  #assert total == n;
+  // every record's frame is a row of the bake
+  for r: 0..<n { #assert out[r * BD_REC_FLOATS + 4] >= 0 && cast(int) out[r * BD_REC_FLOATS + 4] + BD_ROWS <= BD_BAKE_FLOATS / 4; }
+}
+
+#test "standing still idles, moving walks then runs, a blow swings, a hit knocks, the fallen lie and the dead fade" {
+  b: [1] Bodies;
+  bd_catalog(b[..], BD_CATALOG);
+  t := 0.0f32;
+  bd_put(b[..], 0, true, 8, 0, 0, 0, 0, 0, 0, t);
+  bd_frame(b[..], t);
+  #assert b[0].slot[0].clip == BD_IDLE;
+  // a slow walk, then a run
+  x := 0.0f32;
+  for k: 0..<30 { t += 1.0 / 60.0; x += 1.0 / 60.0; bd_put(b[..], 0, false, 8, 0, x, 0, 0, 0, 0, t); bd_frame(b[..], t); }
+  #assert b[0].slot[0].clip == BD_WALK;
+  for k: 0..<30 { t += 1.0 / 60.0; x += 4.0 / 60.0; bd_put(b[..], 0, false, 8, 0, x, 0, 0, 0, 0, t); bd_frame(b[..], t); }
+  #assert b[0].slot[0].clip == BD_RUN && near(b[0].slot[0].yaw, f32(PI) / 2, 0.05);
+  for k: 0..<60 { t += 1.0 / 60.0; bd_put(b[..], 0, false, 8, 0, x, 0, 0, 0, 0, t); bd_frame(b[..], t); }
+  #assert b[0].slot[0].clip == BD_IDLE;
+  bd_cue(b[..], 0, BD_SLASH, t, x, 5, true);
+  t += 1.0 / 60.0; bd_frame(b[..], t);
+  #assert b[0].slot[0].clip == BD_SLASH;
+  bd_cue(b[..], 0, BD_KNOCK, t, x, 5, false);   // a hit doesn't cut the blow short
+  t += 1.0 / 60.0; bd_frame(b[..], t);
+  #assert b[0].slot[0].clip == BD_SLASH;
+  for k: 0..<120 { t += 1.0 / 60.0; bd_frame(b[..], t); }
+  #assert b[0].slot[0].clip == BD_IDLE;
+  bd_cue(b[..], 0, BD_KNOCK, t, x, 5, false);
+  t += 1.0 / 60.0; bd_frame(b[..], t);
+  #assert b[0].slot[0].clip == BD_KNOCK;
+  // down: it falls and lies, its last frame held
+  bd_put(b[..], 0, false, 8, 0, x, 0, 1, 0, 0, t);
+  for k: 0..<240 { t += 1.0 / 60.0; bd_frame(b[..], t); }
+  #assert b[0].slot[0].clip == BD_DIE && bd_frame_of(BD_DIE, b[0].slot[0].t0, 0, t) == BD_FRAMES[BD_DIE] - 1 && bd_whole(b[0].slot[0], t) == 1;
+  // dead: it lies, then fades away
+  bd_put(b[..], 0, false, 8, 0, x, 0, 2, 0, 0, t);
+  for k: 0..<60 * 6 { t += 1.0 / 60.0; bd_frame(b[..], t); }
+  #assert bd_whole(b[0].slot[0], t) == 0;
+}
+
+#test "a Skeleton's square taken while it lies: the body becomes a corpse that finishes, the newcomer runs in" {
+  b: [1] Bodies;
+  bd_catalog(b[..], BD_CATALOG);
+  t := 1.0f32;
+  bd_put(b[..], 50, true, 4, 0, 3, 3, 0, 0, 0, t); bd_frame(b[..], t);
+  bd_put(b[..], 50, false, 4, 0, 3, 3, 2, 0, 0, t); bd_frame(b[..], t);
+  t += 1;
+  bd_put(b[..], 50, true, 4, 1, -20, 3, 0, 0, 0, t); bd_frame(b[..], t);
+  #assert b[0].slot[50].state == 0 && b[0].slot[50].clip == BD_IDLE;
+  found := false;
+  for k: 0..<BD_CORPSES { c := b[0].corpse[k]; if c.on && c.state == 2 && c.clip == BD_DIE && near(c.x, 3, 0.001) { found = true; } }
+  #assert found;
+  for k: 0..<60 * 8 { t += 1.0 / 60.0; bd_frame(b[..], t); }
+  for k: 0..<BD_CORPSES { #assert !b[0].corpse[k].on; }
+  // a new battle (its clock begun again) starts everyone afresh
+  bd_frame(b[..], 0);
+  #assert !b[0].slot[50].on;
+}

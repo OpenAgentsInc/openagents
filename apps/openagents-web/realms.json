@@ -355,7 +355,7 @@
     { "id": "fivelab", "name": "5E LAB", "kind": "open", "listed": false, "orbit": { "r": 0.42, "a": 2.1, "size": 0.02 },
       "realm": {
         "slug": "5e-lab",
-        "style": "lowpoly",
+        "style": "painterly",
         "clock": "fixed:0.0",
         "ruleset": "srd5",
         "title": "5E Lab",
@@ -365,7 +365,7 @@
         "module": "fivelab",
         "slot": "5e-lab",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
-        "assets": ["particles:/fivelab-fx.wgsl"]
+        "assets": ["pack:/realms/everglade/assets/everglade.pack", "particles:/fivelab-fx.wgsl"]
       } },
     { "id": "fivemmo", "name": "5E MMO", "kind": "open", "listed": false, "orbit": { "r": 0.46, "a": 2.4, "size": 0.02 },
       "realm": {

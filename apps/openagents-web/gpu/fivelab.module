@@ -1,3 +1,3 @@
---vertices fivelab_bg_vs,fivelab_fx_vs
---fragments fivelab_bg_fs,fivelab_fx_fs
+--vertices fivelab_bg_vs,fivelab_scene_vs,fivelab_fx_vs
+--fragments fivelab_bg_fs,fivelab_scene_fs,fivelab_fx_fs
 --bindings apps/openagents-web/gpu/fivelab.bindings --strip fivelab_

@@ -25,11 +25,13 @@
 #load "../../aethyr/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
 #load "../../aethyr/space.coax" as asp;
 #load "../../aethyr/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
+#load "fivelab-bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 180000;
 UNIFORM_FLOATS :: 1768;
-TOKENS3 :: 208;   // the glade's tokens (gpu/fivelab.coax FIVELAB_TOKENS)
+TOKENS3 :: 216;   // the glade's tokens (gpu/fivelab.coax FIVELAB_TOKENS)
+U_SQUARES :: 900;   // the grid's squares, the token on each (gpu/fivelab.coax FIVELAB_SQUARES)
 U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
 U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 1700; U_BOUNDS :: 1764;
 SQ :: 1.524;   // a 5-foot square, metres
@@ -130,14 +132,17 @@ Lab :: struct {
   held: int; vx: f32; vz: f32; vyaw: f32; vpitch: f32; vzoom: f32;   // keys held (HOLD_*), and how the camera flies
   fingers: int; fing_id: [2] int; fing_x: [2] f32; fing_y: [2] f32;   // touches down, for a pinch
   eye: P3; fwd: P3; right: P3; up: P3; focal: f32; cx: f32; cy: f32;
+  // the figures (fivelab-bodies.coax): their playback, and the squares the Horde filled afresh
+  bodies: [1] figs.Bodies; fresh: [RS_MAX] bool;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
 }
 
 // ---- small things
 
+GAP :: 0.5; SPACE :: 1.2;
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
-GAP :: 0.5; SPACE :: 1.2;
+
 text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
 in_rect :: (b: Rect, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 put :: (buf: [] u8, at: int, text: string) -> int { return rs_put(buf, at, text); }
@@ -260,8 +265,65 @@ take_events :: (s: [] Lab) {
       if e.by == rep_by && e.spell == rep_spell && e.at - rep_t < 0.01 && e.spell >= 0 { rep_n = rs_min(rep_n + 1, 4); } else { rep_n = 0; }
       rep_by = e.by; rep_spell = e.spell; rep_t = e.at;
     }
+    cue_event(s, e);
     fx_event(s, e, f32((book[0].seq - k) % 8192) * 0.37 + 0.11, e.at + ifx e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS then f32(rep_n) * 0.14 else 0);
   }
+}
+// One battle event as the figures' clips: a blow swings, a cast or a shot plays the spell clip, a
+// hurt figure is knocked back (fivelab-bodies.coax figs.bd_cue).
+cue_event :: (s: [] Lab, e: RsEvent) {
+  b := bt(s);
+  if e.by < 0 || e.by >= b[0].n { return; }
+  now := b[0].clock;
+  aimed := e.to >= 0 && e.to < b[0].n && e.to != e.by;
+  tx := ifx aimed then wx(s[0].dx[e.to]) else 0.0f32; tz := ifx aimed then wz(s[0].dy[e.to]) else 0.0f32;
+  if (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && aimed {
+    melee := e.spell < 0 && rs_feet_to(b, e.by, e.to) <= 5;
+    figs.bd_cue(s[0].bodies[..], e.by, ifx melee then figs.BD_SLASH else figs.BD_SPELL, now, tx, tz, true);
+    return;
+  }
+  if e.kind == RS_EV_CAST { figs.bd_cue(s[0].bodies[..], e.by, figs.BD_SPELL, now, tx, tz, aimed); return; }
+  if e.kind == RS_EV_DAMAGE && e.to >= 0 && e.to < b[0].n && b[0].c[e.to].hp > 0 { figs.bd_cue(s[0].bodies[..], e.to, figs.BD_KNOCK, now, 0, 0, false); }
+}
+// The figures this frame, from the battle: each creature's look, square and state.
+put_bodies :: (s: [] Lab) {
+  b := s[0].battle[0];
+  for i: 0..<figs.BD_SLOTS {
+    if i >= b.n { figs.bd_clear(s[0].bodies[..], i); continue; }
+    cr := b.c[i];
+    marks := 0;
+    if rs_has(cr, RS_RESTRAINED) { marks += 1; }
+    if rs_has(cr, RS_POISONED) { marks += 2; }
+    if rs_has(cr, RS_BLINDED) { marks += 4; }
+    if rs_effect(cr, EF_ENFEEBLED) { marks += 8; }
+    if cr.temp > 0 { marks += 16; }
+    if rs_has(cr, RS_PARALYZED) { marks += 32; }
+    if rs_effect(cr, EF_HEX) { marks += 64; }
+    state := ifx cr.dead then 2 else ifx cr.hp == 0 then 1 else 0;
+    // the second of each class, and every other skeleton, looks a little different
+    v := ifx cr.klass == RS_MONSTER then (i * 7 / 3) % 2 else (i / 12) % 2;
+    figs.bd_put(s[0].bodies[..], i, s[0].fresh[i], look_of(cr.klass), v, wx(s[0].dx[i]), wz(s[0].dy[i]), state, f32(marks), ifx cr.outlined_by >= 0 then 1.0f32 else 0.0f32, b.clock);
+    s[0].fresh[i] = false;
+  }
+  figs.bd_frame(s[0].bodies[..], b.clock);
+}
+// The pack's catalog arrived (fivelab-face.c): the figures' parts.
+lab_catalog :: (s: [] Lab, text: string) #export_c { figs.bd_catalog(s[0].bodies[..], text); }
+// The clips baked into the bake store, once (fivelab-face.c).
+lab_bake :: (d: [] figs.People, out: [] f32) #export_c { figs.people_load(d); figs.bd_bake(d, out); }
+// The figures' instances for the frame (the objects store) and their draws; the count of draws.
+lab_scene :: (s: [] Lab, out: [] f32) -> int #export_c {
+  if !s[0].started || s[0].view != VIEW_GLADE { s[0].bodies[0].draw_n = 0; return 0; }
+  c := figs.BdCam.{ex = s[0].eye.x, ey = s[0].eye.y, ez = s[0].eye.z, fx = s[0].fwd.x, fy = s[0].fwd.y, fz = s[0].fwd.z,
+              rx = s[0].right.x, ry = s[0].right.y, rz = s[0].right.z, ux = s[0].up.x, uy = s[0].up.y, uz = s[0].up.z,
+              focal = s[0].focal, cx = s[0].cx, cy = s[0].cy, w = s[0].width, h = s[0].height};
+  r := figs.bd_build(s[0].bodies[..], c, out);
+  // none in view: one empty draw still, so host.js draws the effects after the scene
+  if s[0].bodies[0].draw_n == 0 && s[0].bodies[0].ready {
+    for k: 0..<4 { s[0].bodies[0].draws[k] = 0; }
+    s[0].bodies[0].draw_n = 1;
+  }
+  return s[0].bodies[0].draw_n;
 }
 // Where a figure stands in the glade (its square's middle), `lift` metres up.
 fx_spot :: (s: [] Lab, i: int, lift: f32) -> FxV { return fxp_v(wx(f32(s[0].battle[0].c[i].x)), lift, wz(f32(s[0].battle[0].c[i].y))); }
@@ -366,7 +428,7 @@ flood :: (s: [] Lab) {
       b[0].c[i].x = x; b[0].c[i].y = y;
       b[0].c[i].turn_at = b[0].clock + 0.2 + rs_unit(dice(s)) * rs_beat(b);
       b[0].c[i].round_at = b[0].c[i].turn_at;
-      s[0].dx[i] = f32(x); s[0].dy[i] = f32(y); s[0].acted[i] = b[0].clock; s[0].fell[i] = 0;
+      s[0].dx[i] = f32(x); s[0].dy[i] = f32(y); s[0].acted[i] = b[0].clock; s[0].fell[i] = 0; s[0].fresh[i] = true;
       break;
     }
   }
@@ -1344,11 +1406,13 @@ step :: (s: [] Lab, dt: f32) {
     else { n = put(l[..], 0, "Nobody is left standing. A new battle in 6 seconds."); }
     add_line(s, cast(string) l[0..<n], GOLD);
   }
-  // the tokens slide to their squares
+  // the tokens go to their squares at a run (3.2 squares a second, faster the further they have to go)
   for i: 0..<b[0].n {
-    k := lo(1, dt * 9);
-    s[0].dx[i] += (f32(b[0].c[i].x) - s[0].dx[i]) * k;
-    s[0].dy[i] += (f32(b[0].c[i].y) - s[0].dy[i]) * k;
+    gx := f32(b[0].c[i].x) - s[0].dx[i]; gy := f32(b[0].c[i].y) - s[0].dy[i];
+    d := sqrt(gx * gx + gy * gy);
+    if d < 0.0001 { continue; }
+    go := lo(d, hi(3.2, d * 3) * dt);
+    s[0].dx[i] += gx / d * go; s[0].dy[i] += gy / d * go;
   }
 }
 
@@ -1960,6 +2024,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   step_dt := ifx s[0].golden || still || s[0].paused then 0.0f32 else dt;
   lab_run(s, step_dt);
   if !s[0].golden { fly(s, dt); }
+  put_bodies(s);
   if dt > 0 {
     s[0].fps_n += 1; s[0].fps_t += dt;
     if s[0].fps_t >= 0.5 { s[0].fps = f32(s[0].fps_n) / s[0].fps_t; s[0].fps_n = 0; s[0].fps_t = 0; }
@@ -1992,29 +2057,26 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   u[U_UP] = s[0].up.x; u[U_UP + 1] = s[0].up.y; u[U_UP + 2] = s[0].up.z;
   u[U_SUN] = 0.45; u[U_SUN + 1] = 0.62; u[U_SUN + 2] = 0.38;
   b := s[0].battle[0];
+  // the tokens, for the ground's rings and contact shadows: where each stands, its side and state,
+  // and the square it is nearest
   for i: 0..<TOKENS3 {
-    o := U_TOKENS + i * 8;
-    u[o + 2] = -1;
     if i >= b.n { continue; }
     cr := b.c[i];
-    look := look_of(cr.klass) + 16 * cr.team;
-    u[o] = wx(s[0].dx[i]); u[o + 1] = wz(s[0].dy[i]); u[o + 2] = f32(look);
-    u[o + 3] = f32(cr.hp) / f32(rs_max(cr.hp_max, 1));
-    u[o + 4] = ifx cr.dead then 2 else ifx cr.hp == 0 then 1 else 0;
-    u[o + 5] = ifx cr.outlined_by >= 0 then 1 else 0;
-    // its marks, a bit each: Restrained 1, Poisoned 2, Blinded 4, enfeebled 8, Temporary Hit Points 16,
-    // Paralyzed 32, hexed 64
-    marks := 0;
-    if rs_has(cr, RS_RESTRAINED) { marks += 1; }
-    if rs_has(cr, RS_POISONED) { marks += 2; }
-    if rs_has(cr, RS_BLINDED) { marks += 4; }
-    if rs_effect(cr, EF_ENFEEBLED) { marks += 8; }
-    if cr.temp > 0 { marks += 16; }
-    if rs_has(cr, RS_PARALYZED) { marks += 32; }
-    if rs_effect(cr, EF_HEX) { marks += 64; }
-    u[o + 6] = f32(marks);
+    o := U_TOKENS + i * 4;
+    if cr.dead { continue; }
+    u[o] = wx(s[0].dx[i]); u[o + 1] = wz(s[0].dy[i]);
+    down := 0; if cr.hp == 0 { down = 1; }
+    u[o + 2] = f32(1 + cr.team + 4 * down);
     since := b.clock - s[0].acted[i];
-    u[o + 7] = ifx since >= 0 && since < 1.2 then 1 - since / 1.2 else 0;
+    u[o + 3] = ifx since >= 0 && since < 1.2 then 1 - since / 1.2 else 0;
+    gx := cast(int) floor(s[0].dx[i] + 0.5); gy := cast(int) floor(s[0].dy[i] + 0.5);
+    if gx < 0 || gx >= COLS || gy < 0 || gy >= ROWS { continue; }
+    sq := gy * COLS + gx;
+    at := U_SQUARES + sq / 2;
+    pair := cast(int) u[at];
+    mine := ifx sq % 2 == 0 then pair % 256 else pair / 256;
+    place := 1; if sq % 2 == 1 { place = 256; }
+    if mine == 0 { u[at] = f32(pair + (i + 1) * place); }
   }
   for z: 0..<RS_ZONES {
     o := U_ZONES + z * 8;
@@ -2370,9 +2432,9 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
     far += rs_feet_to(b, i, 0);
   }
   for i: 0..<40 { step(s[..], f32(STEP)); }
-  near := 0;
-  for i: HEROES..<b[0].n { near += rs_feet_to(b, i, 0); }
-  #assert near < far;   // the dead have closed in
+  closer := 0;
+  for i: HEROES..<b[0].n { closer += rs_feet_to(b, i, 0); }
+  #assert closer < far;   // the dead have closed in
   #assert s[0].pool == HORDE - 24;
   b[0].c[HEROES].dead = true; b[0].c[HEROES].hp = 0;
   for i: 0..<70 { step(s[..], f32(STEP)); }

@@ -413,18 +413,18 @@ rs_cutting_words :: (b: [] RsBattle, i: int, margin: int) -> int {
 rs_own_luck :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
   if !b[0].c[j].own_luck || total >= need || total + 10 < need || b[0].c[j].uses[RS_USE_LUCK] <= 0 { return 0; }
   b[0].c[j].uses[RS_USE_LUCK] -= 1;
-  add := rs_roll(b[0].dice[..], 10);
-  l: [1] RsLine; rs_add_name(l[..], b, j); rs_add_text(l[..], ": Dark One's Own Luck, +"); rs_add_int(l[..], add);
-  rs_tell(b, RS_EV_CONDITION, -1, j, j, add, 0, l[..]);
-  return add;
+  luck := rs_roll(b[0].dice[..], 10);
+  l: [1] RsLine; rs_add_name(l[..], b, j); rs_add_text(l[..], ": Dark One's Own Luck, +"); rs_add_int(l[..], luck);
+  rs_tell(b, RS_EV_CONDITION, -1, j, j, luck, 0, l[..]);
+  return luck;
 }
 // A Bardic Inspiration die a creature holds, rolled on a failed D20 Test of `total` against `need`:
 // the number it adds (0 when it holds none or did not fail).
 rs_inspired_roll :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
   if b[0].c[j].inspired <= 0 || total >= need { return 0; }
-  add := rs_roll(b[0].dice[..], b[0].c[j].inspired);
+  die := rs_roll(b[0].dice[..], b[0].c[j].inspired);
   b[0].c[j].inspired = 0;
-  return add;
+  return die;
 }
 // One attack roll by i at j: the d20 with `edge`, `bonus`, a Critical Hit from `crit_min` up. A
 // missed spell attack can reroll with Seeking Spell (a Sorcery Point); a miss adds a held Bardic
@@ -1907,14 +1907,14 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
 #test "Dark One's Blessing: Cha + Warlock level Temporary Hit Points when it drops a foe, or one drops within 10 feet" {
   b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 4;
   a := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 1, 3);
-  near := rs_add(b[..], rs_druid("Rowan", 0, 3), 3, 3);
+  close := rs_add(b[..], rs_druid("Rowan", 0, 3), 3, 3);
   far := rs_add(b[..], rs_druid("Fern", 0, 3), 12, 3);
   ally := rs_add(b[..], rs_warlock("Ilse", 1, 3, SP_ELDRITCH_BLAST), 13, 6);
   b[0].c[far].hp = 1;
   rs_damage(b[..], ally, far, 4, RS_FORCE, false, -1);
   #assert b[0].c[a].temp == 0 && b[0].c[ally].temp == 3 + 3;
-  b[0].c[near].hp = 1;
-  rs_damage(b[..], ally, near, 4, RS_FORCE, false, -1);
+  b[0].c[close].hp = 1;
+  rs_damage(b[..], ally, close, 4, RS_FORCE, false, -1);
   #assert b[0].c[a].temp == 6;
 }
 #test "Rage: a Bonus Action; +2 damage on Greataxe hits, Bludgeoning/Piercing/Slashing halved; it ends on a turn without an attack" {
@@ -2580,15 +2580,15 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   b: [1] RsBattle; b[0].w = 30; b[0].h = 14; b[0].dice[0].state = 13;
   w := rs_add(b[..], c, 1, 6);
   f := rs_add(b[..], rs_fighter("Garr", 1, 3), 12, 6);   // an ally at the centre
-  near := rs_add(b[..], rs_skeleton("Skeleton", 2), 15, 6);   // 15 feet off the point: inside
+  inner := rs_add(b[..], rs_skeleton("Skeleton", 2), 15, 6);   // 15 feet off the point: inside
   edge := rs_add(b[..], rs_skeleton("Skeleton", 2), 16, 6);   // 20 feet: inside
   out := rs_add(b[..], rs_skeleton("Skeleton", 2), 17, 6);    // 25 feet: outside
   for k: 1..<4 { b[0].c[k + 1].hp = 200; b[0].c[k + 1].hp_max = 200; }
   rs_fresh(b[..], w);
   #assert rs_cast(b[..], w, SP_FIREBALL, 3, 12, 6, -1) && b[0].c[w].slots[3] == 2;
   #assert b[0].c[f].hp == b[0].c[f].hp_max;   // Sculpt Spells
-  #assert b[0].c[near].hp < 200 && b[0].c[edge].hp < 200 && b[0].c[out].hp == 200;
-  #assert 200 - b[0].c[near].hp >= 4 && 200 - b[0].c[near].hp <= 48;
+  #assert b[0].c[inner].hp < 200 && b[0].c[edge].hp < 200 && b[0].c[out].hp == 200;
+  #assert 200 - b[0].c[inner].hp >= 4 && 200 - b[0].c[inner].hp <= 48;
 }
 
 #test "Spirit Guardians: foes ending their turn within 15 feet save or take 3d8 Radiant, once a turn, at half Speed" {
@@ -2723,6 +2723,6 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert rs_cast(b[..], w, SP_FIREBALL, 3, 14, 3, -1) && b[0].c[w].slots[3] == 1 && b[0].c[t].hp < th;
   // the luck: a total short by 10 or less, never past one roll's reach
   #assert rs_own_luck(b[..], w, 5, 30) == 0 && rs_own_luck(b[..], w, 20, 15) == 0 && b[0].c[w].uses[RS_USE_LUCK] == 4;
-  add := rs_own_luck(b[..], w, 12, 15);
-  #assert add >= 1 && add <= 10 && b[0].c[w].uses[RS_USE_LUCK] == 3 && rs_saw(b[..], 0, "Own Luck");
+  luck := rs_own_luck(b[..], w, 12, 15);
+  #assert luck >= 1 && luck <= 10 && b[0].c[w].uses[RS_USE_LUCK] == 3 && rs_saw(b[..], 0, "Own Luck");
 }

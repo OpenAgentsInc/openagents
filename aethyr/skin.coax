@@ -146,9 +146,9 @@ skin_advance :: (r: SkinRig, s: [] Skin, clip: int, speed: f32, dt: f32) {
   first := s[0].clip < 0;
   if clip != s[0].clip { s[0].time = 0; }
   d := r.duration[clip];
-  step := t;
-  if r.distance[clip] > 0 { step = hi(ifx finite(speed) then speed else 0.0f32, 0) * t / r.distance[clip] * d; }
-  s[0].time += step;
+  went := t;
+  if r.distance[clip] > 0 { went = hi(ifx finite(speed) then speed else 0.0f32, 0) * t / r.distance[clip] * d; }
+  s[0].time += went;
   s[0].time -= d * floor(s[0].time / d);
   if !finite(s[0].time) { s[0].time = 0; }
   s[0].clock += t;
