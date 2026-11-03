@@ -655,7 +655,7 @@ si_hash :: (sp: ScriptSpend, w: [] ScriptWork, op: int) -> int {
 stack with the transaction's lock time or this input's sequence, and
 leave the stack as it was. Without their flags they are the `NOP2` and
 `NOP3` they replaced, and `DISCOURAGE_UPGRADABLE_NOPS` doesn't apply to
-them. Chapter 39 explains both locks:
+them. [Chapter 39](ch039-timelocks.md) explains both locks:
 
 <!-- source: coax/lib/bitcoin/script.coax locktime -->
 ```jai
@@ -1611,7 +1611,7 @@ On 2026-11-02, 16,178 cases agree with Python in native checked and release buil
   [37 (legacy)](ch037-legacy-signature-hashes.md) and
   [38 (BIP-143)](ch038-segwit-v0-signature-hashes.md).
 - What the lock times mean for a transaction, and BIP-68's relative lock
-  times: chapter 39.
+  times: [chapter 39](ch039-timelocks.md).
 - Which flags apply at which height: chapter 55. The transaction rules
   that come before any script (`CheckTransaction`, the 9 `BADTX` rows):
   chapter 52.

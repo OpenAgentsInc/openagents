@@ -1431,6 +1431,32 @@
       "bytes": 57755
     },
     {
+      "path": "upstream/bitcoin-core/tx_verify.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/tx_verify.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-locktime"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "45de31c846d87b202b46f1e314cbd07869c0b3e598cdc7b18342e2fe24de3fc0",
+      "bytes": 8948
+    },
+    {
+      "path": "upstream/bitcoin-core/chain.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/chain.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-locktime"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "a1b863764bc6e40ed79a447805843eb7b18a09730eb3a849bf9fe43f17274aba",
+      "bytes": 16640
+    },
+    {
       "path": "upstream/mainnet/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506.raw",
       "kind": "upstream",
       "url": "https://mempool.space/api/block/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506/raw",

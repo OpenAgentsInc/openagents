@@ -1,0 +1,54 @@
+IsFinalTx
+  lock time 499999999 in block 499999999: not final
+  lock time 499999999 in block 500000000: final
+  lock time 500000000, cutoff 500000000: not final
+  lock time 500000000, cutoff 500000001: final
+  lock time 500000000, sequence 0xffffffff, cutoff 0: final
+  reference cases: 105 of 105 agree
+median time past
+  the first 1: 1700000000
+  the first 2: 1700000660
+  the first 6: 1700001200
+  the first 11: 1700001900
+  reference windows: 24 of 24 agree
+BIP-68 sequences
+  10 blocks: 0x0000000a
+  144 blocks: 0x00000090
+  65535 blocks: 0x0000ffff
+  1 seconds: 0x00400001 (512 seconds)
+  512 seconds: 0x00400001 (512 seconds)
+  3600 seconds: 0x00400008 (4096 seconds)
+  33553920 seconds: 0x0040ffff (33553920 seconds)
+  33553921 seconds: -1
+  0x7fbf0001: 1 blocks
+  0x7fff0001: 512 seconds
+  0x80000000: no relative lock
+  0xfffffffe: no relative lock
+sequence locks
+  version 2, sequence 0x0000000a: last locked height 109, time -1; block 110 with MTP 1700000511: ok, 1700000512: ok
+    block 109: locked
+  version 1, sequence 0x0000000a: last locked height -1, time -1; block 110 with MTP 1700000511: ok, 1700000512: ok
+  version 2, sequence 0x00400001: last locked height -1, time 1700000511; block 110 with MTP 1700000511: locked, 1700000512: ok
+  version 1, sequence 0x00400001: last locked height -1, time -1; block 110 with MTP 1700000511: ok, 1700000512: ok
+  version 2, sequence 0x8000000a: last locked height -1, time -1; block 110 with MTP 1700000511: ok, 1700000512: ok
+  version 1, sequence 0x8000000a: last locked height -1, time -1; block 110 with MTP 1700000511: ok, 1700000512: ok
+  version 2, sequence 0x00000000: last locked height 99, time -1; block 110 with MTP 1700000511: ok, 1700000512: ok
+  version 1, sequence 0x00000000: last locked height -1, time -1; block 110 with MTP 1700000511: ok, 1700000512: ok
+  reference cases: 63 of 63 agree
+Bitcoin Core rows, flags off / CLTV and CSV on
+  tx_valid 102, CLTV 499999999, lock time 499999999: OK / OK
+  tx_invalid 67, CLTV 1, lock time 0: OK / UNSATISFIED_LOCKTIME
+  tx_invalid 70, CLTV 500000001, lock time 500000000: OK / UNSATISFIED_LOCKTIME
+  tx_invalid 86, CLTV 0 (a height), lock time 500000000 (a time): OK / UNSATISFIED_LOCKTIME
+  tx_invalid 81, CLTV 0, sequence 0xffffffff: OK / UNSATISFIED_LOCKTIME
+  tx_invalid 76, CLTV -1: OK / NEGATIVE_LOCKTIME
+  tx_valid 115, CLTV of a 5-byte zero: OK / OK
+  tx_invalid 96, CLTV of a 6-byte zero: OK / SCRIPTNUM
+  tx_invalid 105, CSV 1, sequence 0: OK / UNSATISFIED_LOCKTIME
+  tx_invalid 108, CSV 0x00400001, sequence 0x00400000: OK / UNSATISFIED_LOCKTIME
+  tx_invalid 117, CSV 0 (blocks), sequence 0x00400000 (time): OK / UNSATISFIED_LOCKTIME
+  tx_invalid 128, CSV 0, version 1: OK / UNSATISFIED_LOCKTIME
+Bitcoin Core rows that use CHECKLOCKTIMEVERIFY or CHECKSEQUENCEVERIFY
+  script_tests.json: 21 of 21 rows give Core's result
+  tx_valid.json: 40 transactions, 880 of 880 flag sets give Core's verdict
+  tx_invalid.json: 36 transactions, 792 of 792 flag sets give Core's verdict

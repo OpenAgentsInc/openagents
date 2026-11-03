@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 41 are implemented and 83 are planned. The 41
+Of the 124 chapters, 42 are implemented and 82 are planned. The 42
 implemented chapters have runnable examples, qualified on native CPU, and
 32 of them on Wasm. Fifteen of them are the cryptography Nostr already
 used; chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32,
-33, 34, 35, 36, 37, 38, 40, 41, 46, 47 and 48 are new.
+33, 34, 35, 36, 37, 38, 39, 40, 41, 46, 47 and 48 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -183,7 +183,7 @@ Transactions, their IDs, the script interpreter, signature hashes, timelocks and
 | [36. The script interpreter](ch036-the-script-interpreter.md) | Runnable: native C and wasm | Bitcoin Core's `EvalScript` and `VerifyScript` for legacy script, P2SH and segwit v0, with Core's error numbers. All 1,256 runnable rows of `script_tests.json` and all 4,532 flag sets of `tx_valid.json` and `tx_invalid.json` give Core's result, checked against a Python transliteration of Core on 16,178 cases natively and in Wasm. The 7 tapscript rows wait for chapter 44, and a Taproot output refuses instead of running. |
 | [37. Legacy signature hashes](ch037-legacy-signature-hashes.md) | Runnable: native C and wasm | The legacy signature hash of chapter 36's interpreter, field by field: what each of the six hash types signs, found by changing one byte at a time, the `SIGHASH_SINGLE` bug, FindAndDelete and `OP_CODESEPARATOR` in the scriptCode, undefined hash types, and quadratic hashing (1.87 GB for a 1,000,000-byte transaction of 6,756 inputs). All 500 rows of `sighash.json` match, 488 of them with undefined types, and the example agrees with a Python transliteration of Core. |
 | [38. Segwit v0 signature hashes](ch038-segwit-v0-signature-hashes.md) | Runnable: native C and wasm | BIP-143's hash as its steps: the three hashes computed once per transaction, the ones each hash type signs, and the hash, with the P2WPKH scriptCode, the amount commitment and its two-input limit, and linear hashing (1,499,900 bytes at 6,756 inputs against legacy's 1.87 GB). All thirteen signature hashes BIP-143 publishes match with their intermediate hashes, two signed BIP spends pass `VerifyScript`, and the example agrees with a Python transliteration of Core. |
-| 39. Timelocks | Planned | The `CHECKLOCKTIMEVERIFY` and `CHECKSEQUENCEVERIFY` cases in `script_tests.json` and `tx_valid.json` pass, and BIP-68 sequence encodings round-trip. |
+| [39. Timelocks](ch039-timelocks.md) | Runnable: native C | The lock time and its 500,000,000 threshold, `IsFinalTx` and final sequences, BIP-113's median time past, `OP_CHECKLOCKTIMEVERIFY`, BIP-68's disable bit, type bit and 512-second units, sequence locks (`CalculateSequenceLocks`, `EvaluateSequenceLocks`) and `OP_CHECKSEQUENCEVERIFY`, in a new `locktime.coax`. All 192 cases of a Python transliteration of Core's `tx_verify.cpp` and `chain.h` agree, and every Core row that reaches either opcode gives Core's result: 21 of `script_tests.json` and 1,672 flag sets of `tx_valid.json` and `tx_invalid.json`. |
 | [40. Weight, vsize and fees](ch040-weight-vsize-and-fees.md) | Runnable: native C | The fee as inputs minus outputs with Core's `MoneyRange` and in-below-out refusals, matching mempool.space for three segwit mainnet transactions; feerates in sat/vB, sat/kvB and sat/kWU and the fee for a rate, rounded up; Core's sigop-adjusted vsize (`GetVirtualTransactionSize`, 20 bytes per sigop); and pre-signing weights with the longest signatures (P2PKH 592, P2WPKH 272, key-path P2TR 230) that equal the signed weights of `f5864806` and `33e794d0`. Checked against Python natively. |
 
 ### Part VIII. Taproot (chapters 41–45)

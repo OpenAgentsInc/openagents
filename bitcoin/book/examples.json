@@ -386,6 +386,18 @@
       "timeout": 600
     },
     {
+      "source": "bitcoin/examples/timelocks.coax",
+      "chapter": "bitcoin/book/ch039-timelocks.md",
+      "stdout": "bitcoin/fixtures/timelocks.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 420
+    },
+    {
       "source": "bitcoin/examples/merkle-trees.coax",
       "chapter": "bitcoin/book/ch046-merkle-trees-and-the-duplicate-leaf-flaw.md",
       "stdout": "bitcoin/fixtures/merkle-trees.out",

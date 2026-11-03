@@ -21,7 +21,8 @@ The code the book teaches lives in the Coax library:
 [`coax/lib/bitcoin/`](../coax/lib/bitcoin/). Chapter 36's script
 interpreter, [`script.coax`](../coax/lib/bitcoin/script.coax), runs the
 scripts every later chapter checks, from legacy script through segwit v0.
-Chapters 37 and 38 explain its legacy and BIP-143 signature hashes. Chapter 33's
+Chapters 37 and 38 explain its legacy and BIP-143 signature hashes, and
+chapter 39 its timelocks, with [`locktime.coax`](../coax/lib/bitcoin/locktime.coax). Chapter 33's
 [`path.coax`](../coax/lib/bitcoin/path.coax) reads derivation paths and
 makes the standard BIP-44, 49, 84 and 86 addresses. Chapter 41's
 [`taproot.coax`](../coax/lib/bitcoin/taproot.coax) holds Taproot: the key

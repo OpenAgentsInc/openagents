@@ -1,0 +1,185 @@
+// Lock times (Bitcoin chapter 39): Bitcoin Core's IsFinalTx,
+// CalculateSequenceLocks and EvaluateSequenceLocks
+// (consensus/tx_verify.cpp), CBlockIndex::GetMedianTimePast (chain.h), and
+// the BIP-68 encoding of a relative lock time in an input's sequence.
+// OP_CHECKLOCKTIMEVERIFY and OP_CHECKSEQUENCEVERIFY are chapter 36's
+// si_locktime and si_sequence in script.coax.
+//
+// The chain is not here: a caller passes the block height, the block
+// times and, for each input, the height of the block that holds its coin
+// and the median time past before it. Transactions and times are public,
+// so everything runs in variable time and every procedure that decides
+// ends in _vartime (Bitcoin chapter 3).
+#load "script.coax";
+#load "../../tests/bitcoin/locktime_vectors.coax";
+#authority;
+
+// book:begin final
+// IsFinalTx: a transaction may enter a block of this height whose lock-time
+// cutoff is time (the block's time before BIP-113, the median time past of
+// the 11 blocks before it after). A lock time of 0 is final. Below
+// 500,000,000 it is a height and above a time, and the transaction is
+// final once the lock time is less than the block's. If it isn't, it is
+// still final when every input's sequence is 0xffffffff.
+locktime_final_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, height: int, time: int) -> bool {
+  locktime := tx_le_vartime(b, t.locktime, 4);
+  if locktime == 0 { return true; }
+  cutoff := ifx locktime < SCRIPT_LOCKTIME_THRESHOLD then height else time;
+  if locktime < cutoff { return true; }
+  for k: 0..<t.nin {
+    if tx_le_vartime(b, ins[k].sequence, 4) != SCRIPT_SEQUENCE_FINAL { return false; }
+  }
+  return true;
+}
+// book:end final
+
+// book:begin mtp
+// GetMedianTimePast: the median of the times of a block and the up to 10
+// before it (times holds 1 to 11 of them, in any order). With an even
+// count it is the upper of the two middle times, as in Core.
+LOCKTIME_MEDIAN_SPAN :: 11;
+locktime_median_time_past_vartime :: (times: [] int) -> int {
+  #assert times.count >= 1 && times.count <= LOCKTIME_MEDIAN_SPAN;
+  sorted: [LOCKTIME_MEDIAN_SPAN] int;
+  n := times.count;
+  for i: 0..<n {
+    v := times[i]; j := i;
+    while j > 0 && sorted[j-1] > v { sorted[j] = sorted[j-1]; j -= 1; }
+    sorted[j] = v;
+  }
+  return sorted[n / 2];
+}
+// book:end mtp
+
+// book:begin bip68
+// BIP-68's reading of an input's sequence. With bit 31 set the sequence
+// has no relative lock. Otherwise bit 22 chooses the unit, blocks or 512
+// seconds, and the low 16 bits count them; the other bits are ignored.
+LOCKTIME_GRANULARITY :: 9;   // SEQUENCE_LOCKTIME_GRANULARITY: units of 2^9 = 512 seconds
+LockRelative :: struct { enabled: bool; by_time: bool; blocks: int; seconds: int; }
+locktime_relative_vartime :: (sequence: int) -> LockRelative {
+  r: LockRelative;
+  if (sequence & SCRIPT_SEQUENCE_DISABLE) != 0 { return r; }
+  r.enabled = true;
+  r.by_time = (sequence & SCRIPT_SEQUENCE_TYPE) != 0;
+  value := sequence & SCRIPT_SEQUENCE_MASK;
+  if r.by_time { r.seconds = value << LOCKTIME_GRANULARITY; } else { r.blocks = value; }
+  return r;
+}
+// A sequence that locks an input for this many blocks, or -1 past 65,535.
+locktime_sequence_blocks_vartime :: (blocks: int) -> int {
+  if blocks < 0 || blocks > SCRIPT_SEQUENCE_MASK { return -1; }
+  return blocks;
+}
+// A sequence that locks an input for at least this many seconds, rounded
+// up to whole units of 512, or -1 past 65,535 units (about 388 days).
+locktime_sequence_seconds_vartime :: (seconds: int) -> int {
+  if seconds < 0 { return -1; }
+  units := (seconds + (1 << LOCKTIME_GRANULARITY) - 1) >> LOCKTIME_GRANULARITY;
+  if units > SCRIPT_SEQUENCE_MASK { return -1; }
+  return SCRIPT_SEQUENCE_TYPE | units;
+}
+// book:end bip68
+
+// book:begin sequencelocks
+// CalculateSequenceLocks: the last height and the last median time past at
+// which the transaction is still locked, -1 for none. Only a version 2 or
+// later transaction, with LOCKTIME_VERIFY_SEQUENCE (enforce), has relative
+// locks. An input whose coin is in the block at heights[k] adds
+// heights[k] + blocks - 1 or, by time, times[k] + seconds - 1, where
+// times[k] is the median time past of the block before the coin's.
+LockPair :: struct { height: int; time: int; }
+locktime_sequence_locks_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, enforce: bool, heights: [] int, times: [] int) -> LockPair {
+  lock := LockPair.{height=-1, time=-1};
+  if !enforce || tx_le_vartime(b, 0, 4) < 2 { return lock; }
+  for k: 0..<t.nin {
+    r := locktime_relative_vartime(tx_le_vartime(b, ins[k].sequence, 4));
+    if !r.enabled { continue; }
+    if r.by_time {
+      lock.time = lt_max(lock.time, times[k] + r.seconds - 1);
+    } else {
+      lock.height = lt_max(lock.height, heights[k] + r.blocks - 1);
+    }
+  }
+  return lock;
+}
+// EvaluateSequenceLocks: a block at height whose previous block's median
+// time past is prev_mtp may hold the transaction once both locks are past.
+locktime_sequence_ok_vartime :: (lock: LockPair, height: int, prev_mtp: int) -> bool {
+  return lock.height < height && lock.time < prev_mtp;
+}
+// book:end sequencelocks
+lt_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+
+// ---- checks
+// Reads a transaction from hex into fixed room.
+LtTx :: struct { b: [512] u8; ins: [8] TxIn; outs: [8] TxOut; items: [1] TxItem; }
+lt_read :: (x: [] LtTx, text: string) -> Tx {
+  b := tx_unhex(text, x[0].b[..]);
+  t := tx_read_vartime(b, true, x[0].ins[..], x[0].outs[..], x[0].items[..]);
+  #assert t.code == TX_OK;
+  return t;
+}
+#test "IsFinalTx at the threshold and with final sequences" {
+  x: [1] LtTx;
+  // Version 2, one input with sequence 0xfffffffe, lock time 499,999,999.
+  t := lt_read(x[..], "020000000100000000000000000000000000000000000000000000000000000000000000000000000000feffffff01000000000000000000ff64cd1d");
+  #assert !locktime_final_vartime(x[0].b[..], t, x[0].ins[..], 499999999, 0) && locktime_final_vartime(x[0].b[..], t, x[0].ins[..], 500000000, 0);
+  // The same at 500,000,000 is a time.
+  x[0].b[t.locktime] = 0x00; x[0].b[t.locktime+1] = 0x65;
+  #assert tx_le_vartime(x[0].b[..], t.locktime, 4) == 500000000;
+  #assert !locktime_final_vartime(x[0].b[..], t, x[0].ins[..], 1000000000, 500000000) && locktime_final_vartime(x[0].b[..], t, x[0].ins[..], 0, 500000001);
+  // A final sequence on every input makes any lock time final.
+  for k: 0..<4 { x[0].b[x[0].ins[0].sequence+k] = 0xff; }
+  #assert locktime_final_vartime(x[0].b[..], t, x[0].ins[..], 0, 0);
+  for k: 0..<4 { x[0].b[t.locktime+k] = 0; }
+  x[0].b[x[0].ins[0].sequence] = 0;
+  #assert locktime_final_vartime(x[0].b[..], t, x[0].ins[..], 0, 0);
+}
+#test "median time past: the middle of up to 11, upper middle when even" {
+  times := [11] int.[100, 90, 110, 80, 120, 70, 130, 60, 140, 50, 150];
+  #assert locktime_median_time_past_vartime(times[..]) == 100;
+  #assert locktime_median_time_past_vartime(times[0..<1]) == 100;
+  #assert locktime_median_time_past_vartime(times[0..<2]) == 100 && locktime_median_time_past_vartime(times[0..<4]) == 100;
+  #assert locktime_median_time_past_vartime(times[0..<3]) == 100 && locktime_median_time_past_vartime(times[1..<5]) == 110;
+}
+#test "BIP-68 encodings round-trip" {
+  for blocks: [5] int.[0, 1, 10, 144, 65535] {
+    r := locktime_relative_vartime(locktime_sequence_blocks_vartime(blocks));
+    #assert r.enabled && !r.by_time && r.blocks == blocks;
+  }
+  #assert locktime_sequence_blocks_vartime(65536) == -1 && locktime_sequence_blocks_vartime(-1) == -1;
+  for seconds: [6] int.[0, 1, 512, 513, 3600, 33553920] {
+    s := locktime_sequence_seconds_vartime(seconds);
+    r := locktime_relative_vartime(s);
+    #assert r.enabled && r.by_time && r.seconds >= seconds && r.seconds - seconds < 512 && (r.seconds & 511) == 0;
+  }
+  #assert locktime_sequence_seconds_vartime(3600) == 0x00400008 && locktime_sequence_seconds_vartime(33553921) == -1;
+  #assert !locktime_relative_vartime(0x80000000).enabled && !locktime_relative_vartime(0xffffffff).enabled;
+  r := locktime_relative_vartime(0x7fbf0001);
+  #assert r.enabled && !r.by_time && r.blocks == 1;
+}
+// Each case's locks and verdict are what make_locktime_vectors.py's
+// transliteration of Core decides.
+#forall "IsFinalTx: the reference's cases" i: 0..<LT_FINAL.count {
+  x: [1] LtTx;
+  v := LT_FINAL[i];
+  t := lt_read(x[..], v.tx);
+  #assert locktime_final_vartime(x[0].b[..], t, x[0].ins[..], v.height, v.time) == v.final;
+}
+#forall "median time past: the reference's cases" i: 0..<LT_MTP.count {
+  v := LT_MTP[i];
+  times: [LOCKTIME_MEDIAN_SPAN] int;
+  for k: 0..<v.count { times[k] = LT_MTP_TIMES[v.first + k]; }
+  #assert locktime_median_time_past_vartime(times[0..<v.count]) == v.median;
+}
+#forall "sequence locks: the reference's cases" i: 0..<LT_SEQ.count {
+  x: [1] LtTx;
+  v := LT_SEQ[i];
+  t := lt_read(x[..], v.tx);
+  heights: [8] int; times: [8] int;
+  for k: 0..<t.nin { heights[k] = LT_SEQ_HEIGHTS[v.first + k]; times[k] = LT_SEQ_TIMES[v.first + k]; }
+  lock := locktime_sequence_locks_vartime(x[0].b[..], t, x[0].ins[..], v.enforce, heights[0..<t.nin], times[0..<t.nin]);
+  #assert lock.height == v.lock_height && lock.time == v.lock_time;
+  #assert locktime_sequence_ok_vartime(lock, v.height, v.prev_mtp) == v.ok;
+}

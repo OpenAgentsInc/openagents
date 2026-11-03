@@ -868,14 +868,21 @@
   {
    "number": 39,
    "title": "Timelocks",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch039-timelocks.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     36
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/locktime.coax",
+    "coax/lib/bitcoin/script.coax",
+    "bitcoin/examples/timelocks.coax",
+    "bitcoin/examples/checks/timelocks.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

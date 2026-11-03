@@ -62,6 +62,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [36. The script interpreter](ch036-the-script-interpreter.md) — implemented
 - [37. Legacy signature hashes](ch037-legacy-signature-hashes.md) — implemented
 - [38. Segwit v0 signature hashes](ch038-segwit-v0-signature-hashes.md) — implemented
+- [39. Timelocks](ch039-timelocks.md) — implemented
 - [40. Weight, vsize and fees](ch040-weight-vsize-and-fees.md) — implemented
 
 **VIII. Taproot**

@@ -1,0 +1,209 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/locktime.coax";
+#load "../../coax/tests/bitcoin/script_vectors.coax";
+#import "Basic";
+
+// A transaction read into fixed room, with the scriptPubKey its input
+// spends.
+Spend :: struct {
+  b: [10240] u8; spk: [10100] u8;
+  ins: [16] TxIn; outs: [16] TxOut; items: [1300] TxItem;
+}
+spend_of :: (s: [] Spend, tx: string, spk: string, index: int, amount: int) -> ScriptSpend {
+  b := tx_unhex(tx, s[0].b[..]);
+  t := tx_read_vartime(b, true, s[0].ins[..], s[0].outs[..], s[0].items[..]);
+  #assert t.code == TX_OK;
+  return ScriptSpend.{b=b, t=t, ins=s[0].ins[0..<t.nin], outs=s[0].outs[0..<t.nout], items=s[0].items[0..<t.nitems],
+    index=index, amount=amount, spk=tx_unhex(spk, s[0].spk[..])};
+}
+show_hex32 :: (v: int) {
+  digits := "0123456789abcdef";
+  print("0x");
+  for k: 0..<8 { pair: [1] u8; pair[0] = digits[(v >> (28 - 4*k)) & 15]; print("%", cast(string) pair[..]); }
+}
+final_word :: (f: bool) -> string { return ifx f then "final" else "not final"; }
+
+// One transaction of tx_valid.json or tx_invalid.json, copied with its row
+// number, and the one scriptPubKey its input spends.
+Row :: struct { file: string; line: int; what: string; tx: string; spk: string; }
+ROWS :: [12] Row.[
+  Row.{file="tx_valid", line=102, what="CLTV 499999999, lock time 499999999",
+    tx="0100000001000100000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000ff64cd1d", spk="04ff64cd1db1"},
+  Row.{file="tx_invalid", line=67, what="CLTV 1, lock time 0",
+    tx="010000000100010000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000", spk="51b1"},
+  Row.{file="tx_invalid", line=70, what="CLTV 500000001, lock time 500000000",
+    tx="01000000010001000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000065cd1d", spk="040165cd1db1"},
+  Row.{file="tx_invalid", line=86, what="CLTV 0 (a height), lock time 500000000 (a time)",
+    tx="01000000010001000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000065cd1d", spk="00b151"},
+  Row.{file="tx_invalid", line=81, what="CLTV 0, sequence 0xffffffff",
+    tx="010000000100010000000000000000000000000000000000000000000000000000000000000000000000ffffffff0100000000000000000000000000", spk="00b151"},
+  Row.{file="tx_invalid", line=76, what="CLTV -1",
+    tx="010000000100010000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000", spk="4fb1"},
+  Row.{file="tx_valid", line=115, what="CLTV of a 5-byte zero",
+    tx="010000000100010000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000", spk="050000000000b151"},
+  Row.{file="tx_invalid", line=96, what="CLTV of a 6-byte zero",
+    tx="010000000100010000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000", spk="06000000000000b151"},
+  Row.{file="tx_invalid", line=105, what="CSV 1, sequence 0",
+    tx="020000000100010000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000", spk="51b2"},
+  Row.{file="tx_invalid", line=108, what="CSV 0x00400001, sequence 0x00400000",
+    tx="020000000100010000000000000000000000000000000000000000000000000000000000000000000000000040000100000000000000000000000000", spk="03010040b2"},
+  Row.{file="tx_invalid", line=117, what="CSV 0 (blocks), sequence 0x00400000 (time)",
+    tx="020000000100010000000000000000000000000000000000000000000000000000000000000000000000000040000100000000000000000000000000", spk="00b251"},
+  Row.{file="tx_invalid", line=128, what="CSV 0, version 1",
+    tx="010000000100010000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000", spk="00b251"},
+];
+
+// Whether a script has OP_CHECKLOCKTIMEVERIFY or OP_CHECKSEQUENCEVERIFY
+// (as NOP2 and NOP3 before their soft forks), read as GetScriptOp reads it.
+uses_lock :: (s: [] u8) -> bool {
+  pc := 0;
+  while pc < s.count {
+    o := script_op_vartime(s, pc);
+    if !o.ok { return false; }
+    if o.op == OP_CHECKLOCKTIMEVERIFY || o.op == OP_CHECKSEQUENCEVERIFY { return true; }
+    pc = o.next;
+  }
+  return false;
+}
+// The same for a spend: its scriptPubKey, scriptSig or a witness item.
+spend_uses_lock :: (sp: ScriptSpend) -> bool {
+  if uses_lock(sp.spk) { return true; }
+  i := sp.ins[sp.index];
+  if uses_lock(sp.b[i.script..<i.script+i.script_n]) { return true; }
+  for k: 0..<i.count {
+    item := sp.items[i.first + k];
+    if uses_lock(sp.b[item.at..<item.at+item.n]) { return true; }
+  }
+  return false;
+}
+
+main :: () {
+  s: [1] Spend; w: [1] ScriptWork;
+  x: [1] LtTx;
+
+  // IsFinalTx: lock time 499,999,999 is a height and 500,000,000 a time.
+  print("IsFinalTx\n");
+  t := lt_read(x[..], "020000000100000000000000000000000000000000000000000000000000000000000000000000000000feffffff01000000000000000000ff64cd1d");
+  b := x[0].b[..]; ins := x[0].ins[..];
+  print("  lock time 499999999 in block 499999999: %\n", final_word(locktime_final_vartime(b, t, ins, 499999999, 0)));
+  print("  lock time 499999999 in block 500000000: %\n", final_word(locktime_final_vartime(b, t, ins, 500000000, 0)));
+  b[t.locktime] = 0x00; b[t.locktime+1] = 0x65;
+  print("  lock time 500000000, cutoff 500000000: %\n", final_word(locktime_final_vartime(b, t, ins, 1000000000, 500000000)));
+  print("  lock time 500000000, cutoff 500000001: %\n", final_word(locktime_final_vartime(b, t, ins, 0, 500000001)));
+  for k: 0..<4 { b[ins[0].sequence + k] = 0xff; }
+  print("  lock time 500000000, sequence 0xffffffff, cutoff 0: %\n", final_word(locktime_final_vartime(b, t, ins, 0, 0)));
+  agree := 0;
+  for v: LT_FINAL {
+    y := lt_read(x[..], v.tx);
+    if locktime_final_vartime(x[0].b[..], y, x[0].ins[..], v.height, v.time) == v.final { agree += 1; }
+  }
+  print("  reference cases: % of % agree\n", agree, LT_FINAL.count);
+
+  // The median time past: block times need not rise, the median does not
+  // fall.
+  print("median time past\n");
+  times := [11] int.[1700000000, 1700000660, 1700000300, 1700001500, 1700001200, 1700002400,
+    1700001900, 1700003100, 1700002700, 1700003600, 1700003000];
+  for n: [4] int.[1, 2, 6, 11] {
+    print("  the first %: %\n", n, locktime_median_time_past_vartime(times[0..<n]));
+  }
+  agree = 0;
+  for v: LT_MTP {
+    window: [LOCKTIME_MEDIAN_SPAN] int;
+    for k: 0..<v.count { window[k] = LT_MTP_TIMES[v.first + k]; }
+    if locktime_median_time_past_vartime(window[0..<v.count]) == v.median { agree += 1; }
+  }
+  print("  reference windows: % of % agree\n", agree, LT_MTP.count);
+
+  // BIP-68 sequences, written and read back.
+  print("BIP-68 sequences\n");
+  for blocks: [3] int.[10, 144, 65535] {
+    print("  % blocks: ", blocks); show_hex32(locktime_sequence_blocks_vartime(blocks)); print("\n");
+  }
+  for seconds: [4] int.[1, 512, 3600, 33553920] {
+    q := locktime_sequence_seconds_vartime(seconds);
+    print("  % seconds: ", seconds); show_hex32(q);
+    print(" (% seconds)\n", locktime_relative_vartime(q).seconds);
+  }
+  print("  33553921 seconds: %\n", locktime_sequence_seconds_vartime(33553921));
+  for q: [4] int.[0x7fbf0001, 0x7fff0001, 0x80000000, 0xfffffffe] {
+    r := locktime_relative_vartime(q);
+    print("  "); show_hex32(q);
+    if !r.enabled { print(": no relative lock\n"); }
+    else if r.by_time { print(": % seconds\n", r.seconds); }
+    else { print(": % blocks\n", r.blocks); }
+  }
+
+  // Sequence locks: a coin in block 100, the block before it with median
+  // time past 1,700,000,000.
+  print("sequence locks\n");
+  heights := [1] int.[100]; coin_times := [1] int.[1700000000];
+  for q: [4] int.[10, 0x00400001, 0x80000000 | 10, 0] {
+    for version: [2] int.[2, 1] {
+      raw := tx_unhex("020000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000", x[0].b[..]);
+      y := tx_read_vartime(raw, true, x[0].ins[..], x[0].outs[..], x[0].items[..]);
+      x[0].b[0] = cast(u8) version;
+      for k: 0..<4 { x[0].b[x[0].ins[0].sequence + k] = cast(u8) ((q >> (8*k)) & 0xff); }
+      lock := locktime_sequence_locks_vartime(x[0].b[..], y, x[0].ins[..], true, heights[..], coin_times[..]);
+      print("  version %, sequence ", version); show_hex32(q);
+      print(": last locked height %, time %", lock.height, lock.time);
+      print("; block 110 with MTP 1700000511: %", ifx locktime_sequence_ok_vartime(lock, 110, 1700000511) then "ok" else "locked");
+      print(", 1700000512: %\n", ifx locktime_sequence_ok_vartime(lock, 110, 1700000512) then "ok" else "locked");
+      if version == 2 && q == 10 {
+        print("    block 109: %\n", ifx locktime_sequence_ok_vartime(lock, 109, 1800000000) then "ok" else "locked");
+      }
+    }
+  }
+  agree = 0;
+  for v: LT_SEQ {
+    y := lt_read(x[..], v.tx);
+    hs: [8] int; ts: [8] int;
+    for k: 0..<y.nin { hs[k] = LT_SEQ_HEIGHTS[v.first + k]; ts[k] = LT_SEQ_TIMES[v.first + k]; }
+    lock := locktime_sequence_locks_vartime(x[0].b[..], y, x[0].ins[..], v.enforce, hs[0..<y.nin], ts[0..<y.nin]);
+    if lock.height == v.lock_height && lock.time == v.lock_time && locktime_sequence_ok_vartime(lock, v.height, v.prev_mtp) == v.ok { agree += 1; }
+  }
+  print("  reference cases: % of % agree\n", agree, LT_SEQ.count);
+
+  // Rows of Core's transaction tests, with each opcode's flag on and off.
+  print("Bitcoin Core rows, flags off / CLTV and CSV on\n");
+  locks := SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY | SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;
+  for r: ROWS {
+    off := script_verify_vartime(spend_of(s[..], r.tx, r.spk, 0, 0), SCRIPT_VERIFY_P2SH, w[..]);
+    on := script_verify_vartime(spend_of(s[..], r.tx, r.spk, 0, 0), locks, w[..]);
+    print("  % %, %: % / %\n", r.file, r.line, r.what, SCRIPT_ERR_NAMES[off], SCRIPT_ERR_NAMES[on]);
+  }
+
+  // Every script_tests.json row and every tx_valid.json and
+  // tx_invalid.json flag set that reaches one of the two opcodes.
+  print("Bitcoin Core rows that use CHECKLOCKTIMEVERIFY or CHECKSEQUENCEVERIFY\n");
+  rows := 0; same := 0;
+  for r: SCRIPT_ROWS {
+    sp := spend_of(s[..], r.tx, r.spk, 0, r.amount);
+    if !spend_uses_lock(sp) { continue; }
+    rows += 1;
+    if script_verify_vartime(sp, r.flags, w[..]) == r.error { same += 1; }
+  }
+  print("  script_tests.json: % of % rows give Core's result\n", same, rows);
+  txs: [2] int; sets: [2] int; agree_sets: [2] int; last := -1;
+  for c: SCRIPT_TX_CASES {
+    e := SCRIPT_TXS[c.tx];
+    uses := false;
+    for k: 0..<e.count {
+      p := SCRIPT_PREVS[e.first + k];
+      if spend_uses_lock(spend_of(s[..], e.tx, p.spk, k, p.amount)) { uses = true; }
+    }
+    if !uses { continue; }
+    file := ifx e.valid then 0 else 1;
+    if c.tx != last { txs[file] += 1; last = c.tx; }
+    sets[file] += 1;
+    valid := true;
+    for k: 0..<e.count {
+      p := SCRIPT_PREVS[e.first + k];
+      if script_verify_vartime(spend_of(s[..], e.tx, p.spk, k, p.amount), c.flags, w[..]) != SCRIPT_ERR_OK { valid = false; break; }
+    }
+    if valid == c.valid { agree_sets[file] += 1; }
+  }
+  print("  tx_valid.json: % transactions, % of % flag sets give Core's verdict\n", txs[0], agree_sets[0], sets[0]);
+  print("  tx_invalid.json: % transactions, % of % flag sets give Core's verdict\n", txs[1], agree_sets[1], sets[1]);
+}
+// book:end example

@@ -1,0 +1,61 @@
+// The checks of timelocks.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/timelocks.coax
+#load "../timelocks.coax";
+
+// book:begin check
+// Each copied row gives Core's verdict with the opcodes' flags on, and
+// spends with them off: before its soft fork each opcode was a NOP.
+#test "Core's lock-time rows, flags on and off" #steps 200000000 {
+  s: [1] Spend; w: [1] ScriptWork;
+  locks := SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY | SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;
+  want := [12] int.[SCRIPT_ERR_OK, SCRIPT_ERR_UNSATISFIED_LOCKTIME, SCRIPT_ERR_UNSATISFIED_LOCKTIME,
+    SCRIPT_ERR_UNSATISFIED_LOCKTIME, SCRIPT_ERR_UNSATISFIED_LOCKTIME, SCRIPT_ERR_NEGATIVE_LOCKTIME,
+    SCRIPT_ERR_OK, SCRIPT_ERR_SCRIPTNUM, SCRIPT_ERR_UNSATISFIED_LOCKTIME, SCRIPT_ERR_UNSATISFIED_LOCKTIME,
+    SCRIPT_ERR_UNSATISFIED_LOCKTIME, SCRIPT_ERR_UNSATISFIED_LOCKTIME];
+  for r, i: ROWS {
+    #assert script_verify_vartime(spend_of(s[..], r.tx, r.spk, 0, 0), locks, w[..]) == want[i];
+    #assert script_verify_vartime(spend_of(s[..], r.tx, r.spk, 0, 0), SCRIPT_VERIFY_P2SH, w[..]) == SCRIPT_ERR_OK;
+  }
+  // tx_valid 115's 5-byte zero is a CScriptNum MINIMALDATA refuses.
+  #assert script_verify_vartime(spend_of(s[..], ROWS[6].tx, ROWS[6].spk, 0, 0), locks | SCRIPT_VERIFY_MINIMALDATA, w[..]) == SCRIPT_ERR_SCRIPTNUM;
+  // tx_invalid 128 at version 2 spends.
+  sp := spend_of(s[..], ROWS[11].tx, ROWS[11].spk, 0, 0);
+  sp.b[0] = 2;
+  #assert script_verify_vartime(sp, locks, w[..]) == SCRIPT_ERR_OK;
+}
+// CSV and BIP-68 read a sequence the same way: a script's CSV argument
+// passes exactly when the input's own sequence lock is at least as long
+// and of the same kind.
+#forall "CSV agrees with BIP-68's reading" i: 0..<64 {
+  kinds := [4] int.[0, SCRIPT_SEQUENCE_TYPE, 0x7fbf0000, 0x7fbf0000 | SCRIPT_SEQUENCE_TYPE];
+  have := kinds[i & 3] | ((i * 977) & 0xff);
+  want := kinds[(i >> 2) & 3] | ((i * 131) & 0xff);
+  a := locktime_relative_vartime(have); b := locktime_relative_vartime(want);
+  x: [1] LtTx;
+  t := lt_read(x[..], "020000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000");
+  for k: 0..<4 { x[0].b[x[0].ins[0].sequence + k] = cast(u8) ((have >> (8*k)) & 0xff); }
+  sp := ScriptSpend.{b=x[0].b[..], t=t, ins=x[0].ins[0..<1], outs=x[0].outs[0..<1], items=x[0].items[0..<0]};
+  same_kind := a.by_time == b.by_time;
+  longer := ifx a.by_time then a.seconds >= b.seconds else a.blocks >= b.blocks;
+  #assert si_sequence(sp, want) == (same_kind && longer);
+}
+// A coin locked for n blocks or n units of 512 seconds is spendable first
+// in the block n after its own, or once the previous block's median time
+// past is n * 512 seconds past the one before the coin's block.
+#forall "relative locks open exactly on time" n: 1..<300 {
+  x: [1] LtTx;
+  t := lt_read(x[..], "020000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000");
+  heights := [1] int.[1000]; times := [1] int.[1700000000];
+  for kind: 0..<2 {
+    q := ifx kind == 0 then locktime_sequence_blocks_vartime(n) else locktime_sequence_seconds_vartime(n * 512);
+    for k: 0..<4 { x[0].b[x[0].ins[0].sequence + k] = cast(u8) ((q >> (8*k)) & 0xff); }
+    lock := locktime_sequence_locks_vartime(x[0].b[..], t, x[0].ins[..], true, heights[..], times[..]);
+    if kind == 0 {
+      #assert !locktime_sequence_ok_vartime(lock, 1000 + n - 1, 2000000000) && locktime_sequence_ok_vartime(lock, 1000 + n, 2000000000);
+    } else {
+      #assert !locktime_sequence_ok_vartime(lock, 5000, 1700000000 + n * 512 - 1) && locktime_sequence_ok_vartime(lock, 5000, 1700000000 + n * 512);
+    }
+  }
+}
+// book:end check
