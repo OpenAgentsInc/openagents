@@ -544,7 +544,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       rs_add_text(l[..], ifx crit then ": critical hit" else ifx hit then ": hit" else ": miss");
       // Potent Cantrip: a missed cantrip still deals half its damage, and nothing more
       if !hit && b[0].c[i].potent && s.level == 0 { potent_miss = true; rs_add_text(l[..], " (Potent Cantrip: half damage)"); }
-      rs_tell(b, ifx hit then RS_EV_ATTACK else RS_EV_MISS, sp, i, j, r.total, 0, l[..]);
+      rs_tell(b, ifx hit then RS_EV_ATTACK else RS_EV_MISS, sp, i, j, r.total, ifx crit then 1 else 0, l[..]);
       if !hit && !potent_miss { return; }
     } else if st.kind == RS_S_SAVE {
       ran_save = true;
@@ -1066,7 +1066,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   rs_add_text(l[..], ifx w == W_UNARMED then "an Unarmed Strike" else wp.name);
   rs_add_text(l[..], ": "); rs_add_roll(l[..], r, bonus);
   rs_add_text(l[..], ifx crit then ": critical hit" else ifx hit then ": hit" else ": miss");
-  rs_tell(b, ifx hit then RS_EV_ATTACK else RS_EV_MISS, -1, i, j, r.total, 0, l[..]);
+  rs_tell(b, ifx hit then RS_EV_ATTACK else RS_EV_MISS, -1, i, j, r.total, ifx crit then 1 else 0, l[..]);
   if !hit {
     // Graze: a miss still deals the attack's ability modifier
     gm := rs_mod(me.score[ab]);

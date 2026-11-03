@@ -1,0 +1,209 @@
+// Puffs (puff.coax) drawn on a traced page: one whose bg_fs traces its world through a pinhole
+// camera and has no raster scene and no depth buffer (5E Lab's glade). The host draws them right
+// after bg_fs (coax/web/host.js, "Particles"), in the two passes puff.coax describes: the smoke and
+// fire premultiplied over the picture (particle_over_vs/fs), then the fire's heat, the glows,
+// sparks and rings added to it (particle_vs/fs). A page's module loads this file and names these
+// entries (apps/openagents-web/gpu/fivelab-fx.coax, .module, .bindings).
+//
+// The look is Everglade's own: the billows' churn, fire's painted bands and white heart, smoke lit
+// from above, a glow's hot core in its halo, all from verse/everglade/gpu-fx.coax, which this loads
+// and leaves as it is. Only the camera and what hides a puff are a traced page's:
+//  - the camera is a pinhole, read from the page's uniforms (floats): size 0 (width, height),
+//    time 2, eye 16 (xyz, then the focal length in px), forward 20 (xyz, then the image centre's
+//    x in px), right 24 (xyz, then the centre's y), up 28 (xyz). 5E Lab's FivelabU has these.
+//  - with no depth buffer, a puff fades where it meets the ground (y = 0), which the shader traces
+//    for its own pixel, so a billow rolling over the grass never ends in a hard line. Nothing else
+//    hides a puff: the figures and trees don't. Effects stay small round the figures for that.
+#load "../../verse/everglade/gpu-fx.coax";
+
+// The clip position of world point w through the pinhole: x and y as the bg_fs ray for that pixel
+// would have them, w its distance along forward (behind the eye: clipped).
+fxg_clip :: (w:V3,u:[]f32)->V4 {
+  rel:V3=v3(w.x-u[16],w.y-u[17],w.z-u[18]);
+  z:f32=(rel.x*u[20])+(rel.y*u[21])+(rel.z*u[22]);
+  r:f32=(rel.x*u[24])+(rel.y*u[25])+(rel.z*u[26]);
+  q:f32=(rel.x*u[28])+(rel.y*u[29])+(rel.z*u[30]);
+  wd:f32=fmax(u[0],1.0f32);
+  ht:f32=fmax(u[1],1.0f32);
+  f:f32=u[19];
+  x:f32=((((2.0f32*u[23])/wd)-1.0f32)*z)+(((2.0f32*f)/wd)*r);
+  y:f32=((1.0f32-((2.0f32*u[27])/ht))*z)+(((2.0f32*f)/ht)*q);
+  return v4(x,y,0.5f32*z,z);
+}
+fxg_place :: (v:u32,n:u32,u:[]f32,puffs:[]EgfxPuff)->EgfxP {
+  o:EgfxP;
+  e:EgfxPuff=puffs[cast(int)n];
+  quad:[6]V2=[6]V2.[v2(-1.0f32,-1.0f32),v2(1.0f32,-1.0f32),v2(-1.0f32,1.0f32),v2(-1.0f32,1.0f32),v2(1.0f32,-1.0f32),v2(1.0f32,1.0f32)];
+  c:V2=quad[cast(int)v];
+  kind:f32=floor(e.axis.w);
+  seed:f32=fract(e.axis.w)*2.0f32;
+  size:f32=e.at.w;
+  to_eye:V3=wg_sub_f3f3(v3(u[16],u[17],u[18]),v3(e.at.x,e.at.y,e.at.z));
+  d:f32=fmax(wg_length3(to_eye),0.001f32);
+  view:V3=wg_div_f3f(to_eye,d);
+  w:V3=v3(e.at.x,e.at.y,e.at.z);
+  streak:f32=ifx kind==EGFX_GLOW then wg_length3(v3(e.axis.x,e.axis.y,e.axis.z)) else 0.0f32;
+  along:f32=0.0f32;
+  if (kind==EGFX_RING) {
+    w=wg_add_f3f3(w,wg_mul_f3f(v3(c.x,0.0f32,c.y),size));
+  } else if (streak>0.001f32) {
+    a:V3=wg_div_f3f(v3(e.axis.x,e.axis.y,e.axis.z),streak);
+    side:V3=wg_normalize3(wg_add_f3f3(wg_cross3(a,view),v3(0.00001f32,0.0f32,0.0f32)));
+    w=wg_add_f3f3(w,wg_add_f3f3(wg_mul_f3f(wg_mul_f3f(a,c.x),(streak+size)),wg_mul_f3f(wg_mul_f3f(side,c.y),size)));
+    along=streak/fmax(size,0.001f32);
+  } else {
+    right:V3=wg_normalize3(wg_add_f3f3(wg_cross3(v3(0.0f32,1.0f32,0.0f32),view),v3(0.00001f32,0.0f32,0.0f32)));
+    up:V3=wg_cross3(view,right);
+    w=wg_add_f3f3(w,wg_mul_f3f(wg_add_f3f3(wg_mul_f3f(right,c.x),wg_mul_f3f(up,c.y)),size));
+  }
+  o.pos=fxg_clip(w,u);
+  o.depth=v2(o.pos.w,fmax(size*0.6f32,0.12f32));
+  o.corner=c;
+  o.colour=e.colour;
+  o.look=v4(kind,seed,ifx kind==EGFX_FIRE then e.axis.x else along,d);
+  o.near=ifx kind==EGFX_RING then 1.0f32 else smoothstep((size*0.9f32)+0.3f32,(size*2.2f32)+1.0f32,d);
+  return o;
+}
+fxg_particle_vs :: (v:u32,n:u32,u:[]f32,puffs:[]EgfxPuff)->EgfxP {
+  if (floor(puffs[cast(int)n].axis.w)==EGFX_SMOKE) {
+    return egfx_gone();
+  }
+  return fxg_place(v,n,u,puffs);
+}
+fxg_particle_over_vs :: (v:u32,n:u32,u:[]f32,puffs:[]EgfxPuff)->EgfxP {
+  kind:f32=floor(puffs[cast(int)n].axis.w);
+  if ((kind!=EGFX_SMOKE)&&(kind!=EGFX_FIRE)) {
+    return egfx_gone();
+  }
+  return fxg_place(v,n,u,puffs);
+}
+// How far along forward the ground is behind this pixel (1e6: sky), traced as bg_fs traces it.
+fxg_ground :: (px:V2,u:[]f32)->f32 {
+  f:f32=fmax(u[19],1.0f32);
+  dy:f32=(u[21]+((u[25]*(px.x-u[23]))/f))+((u[29]*(u[27]-px.y))/f);
+  if (dy>(-0.0001f32)) {
+    return 1000000.0f32;
+  }
+  return (-u[17])/dy;
+}
+// How much of a puff shows for the ground behind it: none where it meets it, all a little in front.
+fxg_soft :: (p:EgfxP,u:[]f32)->f32 {
+  return clampf((fxg_ground(v2(p.pos.x,p.pos.y),u)-p.depth.x)/p.depth.y,0.0f32,1.0f32);
+}
+fxg_particle_fs :: (p:EgfxP,u:[]f32)->V4 {
+  kind:f32=p.look.x;
+  a:f32=0.0f32;
+  c:V3=v3(p.colour.x,p.colour.y,p.colour.z);
+  if (kind==EGFX_RING) {
+    r:f32=wg_length2(p.corner);
+    band:f32=1.0f32-smoothstep(0.0f32,0.16f32,abs(r-0.86f32));
+    a=band*(0.7f32+(0.6f32*egfx_noise2(wg_add_f2f2(wg_mul_f2f(p.corner,6.0f32),v2(p.look.y*9.0f32,u[2])))));
+  } else if (kind==EGFX_GLOW) {
+    q:V2=p.corner;
+    if (p.look.z>0.0f32) {
+      q.x=fmax((abs(q.x)*(p.look.z+1.0f32))-p.look.z,0.0f32);
+    }
+    r2:f32=wg_dot2(q,q);
+    if (r2>=1.0f32) {
+      gpu_demote_helper();
+    }
+    a=exp((-r2)*3.5f32)*(1.0f32-r2);
+    c=wg_mix_f3f3f(c,wg_make_f3_f(fmax(c.x,fmax(c.y,c.z))),p.colour.w*exp((-r2)*18.0f32));
+  } else {
+    m:f32=egfx_billow(p.corner,p.look.y,0.6f32,0.08f32,p.look.z,u);
+    if (m<=0.002f32) {
+      gpu_demote_helper();
+    }
+    c=wg_mul_f3f(egfx_fire(p,m,u),(0.08f32+(0.4f32*p.colour.w)));
+    a=m;
+  }
+  k:f32=(a*p.near)*(ifx kind==EGFX_RING then 1.0f32 else fxg_soft(p,u));
+  return wg_make_f4_f3f(wg_mul_f3f(c,k),clampf(k*0.6f32,0.0f32,1.0f32));
+}
+fxg_particle_over_fs :: (p:EgfxP,u:[]f32)->V4 {
+  if (p.look.x==EGFX_FIRE) {
+    m:f32=egfx_billow(p.corner,p.look.y,0.6f32,0.08f32,p.look.z,u);
+    if (m<=0.002f32) {
+      gpu_demote_helper();
+    }
+    a:f32=(clampf(m,0.0f32,1.0f32)*p.near)*fxg_soft(p,u);
+    return wg_make_f4_f3f(wg_mul_f3f(egfx_fire(p,m,u),a),a);
+  }
+  m:f32=egfx_billow(p.corner,p.look.y,0.7f32,0.12f32,p.colour.w,u);
+  if (m<=0.002f32) {
+    gpu_demote_helper();
+  }
+  a:f32=(clampf(m*fmin(p.colour.w*1.6f32,0.92f32),0.0f32,1.0f32)*p.near)*fxg_soft(p,u);
+  n:f32=egfx_churn(wg_add_f2f2(wg_mul_f2f(p.corner,1.1f32),v2(0.0f32,0.4f32)),p.look.y+3.0f32,u);
+  r:f32=wg_length2(p.corner);
+  bulge:f32=sqrt(fmax(1.0f32-(r*r),0.0f32));
+  up:f32=clampf(0.5f32+(0.5f32*((p.corner.y+(0.6f32*bulge))-0.3f32)),0.0f32,1.0f32);
+  lit:f32=mix(0.5f32,1.3f32,smoothstep(0.42f32,0.5f32,up*(0.55f32+(0.8f32*n))));
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(v3(p.colour.x,p.colour.y,p.colour.z),lit),a),a);
+}
+
+// ---- checks: the CPU and the GPU agree
+
+// The same pinhole on the CPU, as a traced page's own code projects (5E Lab's proj): device px.
+fxg_cpu_px :: (w:V3,u:[]f32)->V3 {
+  rel:V3=v3(w.x-u[16],w.y-u[17],w.z-u[18]);
+  z:f32=(rel.x*u[20])+(rel.y*u[21])+(rel.z*u[22]);
+  a:f32=((rel.x*u[24])+(rel.y*u[25])+(rel.z*u[26]))/z;
+  b:f32=((rel.x*u[28])+(rel.y*u[29])+(rel.z*u[30]))/z;
+  return v3(u[23]+(a*u[19]),u[27]-(b*u[19]),z);
+}
+fxg_test_camera :: (u:[]f32) {
+  // 1600 x 1000, an eye up and back looking down at the middle of the glade
+  u[0]=1600.0f32; u[1]=1000.0f32; u[2]=3.0f32;
+  u[16]=2.0f32; u[17]=14.0f32; u[18]=22.0f32; u[19]=1100.0f32;
+  fw:V3=normalize3(v3(-2.0f32,-14.0f32,-22.0f32));
+  rt:V3=normalize3(cross3(fw,v3(0.0f32,1.0f32,0.0f32)));
+  up:V3=cross3(rt,fw);
+  u[20]=fw.x; u[21]=fw.y; u[22]=fw.z; u[23]=760.0f32;
+  u[24]=rt.x; u[25]=rt.y; u[26]=rt.z; u[27]=520.0f32;
+  u[28]=up.x; u[29]=up.y; u[30]=up.z;
+}
+#test "a puff's centre lands on the pixel the page's own camera puts it at" {
+  u:[32]f32; fxg_test_camera(u[..]);
+  pts:=[4]V3.[v3(0.0f32,1.0f32,0.0f32),v3(-12.0f32,0.2f32,6.0f32),v3(9.0f32,2.5f32,-7.0f32),v3(4.0f32,0.0f32,11.0f32)];
+  for i:0..<4 {
+    c:=fxg_clip(pts[i],u[..]);
+    px:=((c.x/c.w)+1.0f32)*0.5f32*u[0];
+    py:=(1.0f32-(c.y/c.w))*0.5f32*u[1];
+    cpu:=fxg_cpu_px(pts[i],u[..]);
+    #assert abs(px-cpu.x)<0.05f32 && abs(py-cpu.y)<0.05f32 && abs(c.w-cpu.z)<0.001f32;
+    #assert c.z>=0.0f32 && c.z<=c.w;
+  }
+  // behind the eye: clipped
+  b:=fxg_clip(v3(4.0f32,20.0f32,40.0f32),u[..]);
+  #assert b.w<0.0f32 && b.z<0.0f32;
+}
+#test "the ground the shader traces behind a pixel is where the camera sees it" {
+  u:[32]f32; fxg_test_camera(u[..]);
+  g:=v3(-5.0f32,0.0f32,4.0f32);
+  cpu:=fxg_cpu_px(g,u[..]);
+  #assert abs(fxg_ground(v2(cpu.x,cpu.y),u[..])-cpu.z)<0.01f32;
+  // a puff a metre above that ground shows whole; one half under it, faded
+  o:EgfxP; o.pos=v4(cpu.x,cpu.y,0.0f32,1.0f32); o.depth=v2(cpu.z-1.0f32,0.5f32);
+  #assert fxg_soft(o,u[..])==1.0f32;
+  o.depth=v2(cpu.z-0.1f32,0.5f32);
+  #assert fxg_soft(o,u[..])<0.3f32;
+  // the sky: nothing behind
+  #assert fxg_ground(v2(800.0f32,-5000.0f32),u[..])>=1000000.0f32;
+}
+#test "a puff's quad is placed round its centre, and smoke goes only to the over pass" {
+  u:[32]f32; fxg_test_camera(u[..]);
+  puffs:[2]EgfxPuff;
+  puffs[0]=EgfxPuff.{at=v4(1.0f32,1.2f32,-2.0f32,0.5f32),colour=v4(0.3f32,0.3f32,0.3f32,0.6f32),axis=v4(0.0f32,0.0f32,0.0f32,EGFX_SMOKE+0.25f32)};
+  puffs[1]=EgfxPuff.{at=v4(1.0f32,1.2f32,-2.0f32,0.5f32),colour=v4(1.0f32,0.5f32,0.1f32,0.6f32),axis=v4(0.0f32,0.0f32,0.0f32,EGFX_GLOW+0.25f32)};
+  #assert fxg_particle_vs(0,0,u[..],puffs[..]).pos.z==2.0f32;   // gone
+  #assert fxg_particle_over_vs(0,1,u[..],puffs[..]).pos.z==2.0f32;
+  cx:f32=0.0f32; cy:f32=0.0f32;
+  for v:0..<6 {
+    o:=fxg_particle_vs(cast(u32)v,1,u[..],puffs[..]);
+    cx+=((o.pos.x/o.pos.w)+1.0f32)*0.5f32*u[0]/6.0f32;
+    cy+=(1.0f32-(o.pos.y/o.pos.w))*0.5f32*u[1]/6.0f32;
+  }
+  cpu:=fxg_cpu_px(v3(1.0f32,1.2f32,-2.0f32),u[..]);
+  #assert abs(cx-cpu.x)<3.0f32 && abs(cy-cpu.y)<3.0f32;
+}

@@ -1,0 +1,780 @@
+// Effects made of puffs (book chapter 72): spell fire, smoke, sparks, glows and shockwave rings.
+// A cause is one event in a realm (a cast, a blow, a death) kept as a seed, a start time, where it
+// comes from and goes to, its colour and how big it is. A recipe expands a cause into puffs whose
+// place, size and light are a pure function of the seed, the puff's number and the cause's age:
+// nothing moves between frames, so the same clock and causes give the same frame on every client.
+//
+// A puff is three rows of four floats (FX_PUFF_FLOATS), the layout Everglade's spells already draw
+// (verse/everglade/gpu-fx.coax, everglade-spells.coax sp_fx):
+//   at.xyz, size (its radius, m)
+//   colour.rgb, heat (fire: 0 to 1, how white its heart is; smoke: how opaque; a glow: how white its core)
+//   axis.xyz (a streak's half-length along its flight, m; zero for a round puff; fire: x is how much
+//   of it is there), kind + seed / 2
+// Kinds (PF_*): a billow of fire, smoke or dust, a glow or a spark's streak, a ring on the ground.
+// The host draws the smoke and fire first, premultiplied over the scene (far to near: fxp_close
+// sorts them), then the fire's heat, the glows, the sparks and the rings added to the light.
+//
+// Budgets (book chapter 16): at most FX_LIVE causes live at once and FX_PUFF_CAP puffs a frame. A new
+// cause next to a fresh one of the same recipe merges into it (it grows instead); one that finds
+// every slot taken pushes out the one furthest through its life. A puff past the cap is refused,
+// never written over another, and the frame is counted over budget. Each of these is counted.
+//   coax/bin/coax test --library aethyr/fx/puff.coax
+#load "../render/noise.coax";
+
+FX_PUFF_FLOATS :: 12;
+PF_FIRE :: 0; PF_SMOKE :: 1; PF_GLOW :: 2; PF_RING :: 3;
+FX_LIVE :: 96;            // causes alive at once
+FX_PUFF_CAP :: 2400;      // puffs one frame may write
+FX_BUCKETS :: 40;         // the smoke and fire sorted far to near in these, FX_BUCKET_M each
+FX_BUCKET_M :: 4.0;
+FX_PI :: 3.14159265;
+
+// The recipes: what one cause looks like.
+FXR_NONE :: 0;
+FXR_FIREBOLT :: 1;    // a ball of fire flying from → to, sparks and smoke behind it, a burst where it lands
+FXR_FIREBALL :: 2;    // a bead flying from → to, then a great billow of fire, smoke and a ring on the ground
+FXR_STREAK :: 3;      // a crackling beam from → to (Eldritch Blast, the rays, Guiding Bolt), a flash at its end
+FXR_COLUMN :: 4;      // a column of light falling on `to` (Sacred Flame)
+FXR_LIGHTNING :: 5;   // a bolt from the sky onto `to`, a ring and dust on the ground
+FXR_SHOCK :: 6;       // a shockwave on the ground round `to`, `reach` metres, dust thrown out
+FXR_HEAL :: 7;        // motes rising round `to`
+FXR_ORBIT :: 8;       // glows circling `to` at `reach` metres (Spirit Guardians)
+FXR_SHIMMER :: 9;     // motes hanging and shimmering over the area round `to` (Hypnotic Pattern)
+FXR_BLOOM :: 10;      // glows on the ground of the area round `to`, motes rising (Entangle, Faerie Fire)
+FXR_HIT :: 11;        // sparks and dust where a blow lands on `to`, thrown away from `from`
+FXR_ARROW :: 12;      // a streak flying from → to, a few sparks where it lands
+FXR_BONES :: 13;      // a burst of bone dust and chips (a Skeleton falls)
+FXR_EMBERS :: 14;     // red embers rising off `to` (Rage)
+FXR_HALO :: 15;       // a radiant ring running out over the ground from `to` (Turn Undead)
+FXR_MARK :: 16;       // a mark glowing over `to`, motes falling onto it (Hex, Hunter's Mark)
+FXR_DUST :: 17;       // a puff of dust on the ground at `to` (someone drops)
+FXR_KINDS :: 18;
+
+FxV :: struct { x: f32; y: f32; z: f32; }
+FxCause :: struct { recipe: int; seed: f32; t0: f32; from: FxV; to: FxV; col: FxV; big: f32 = 1; reach: f32 = 1; }
+// What a frame wrote, for the realm's budget check.
+FxReport :: struct { live: int; puffs: int; refused: int; }
+FxPuffs :: struct {
+  live: [FX_LIVE] FxCause; on: [FX_LIVE] bool;
+  started: int; merged: int; dropped: int;   // causes started, merged into another, pushed out
+  n: int; refused: int; over: int;           // this frame's puffs and refusals; frames over budget so far
+  stage: [FX_PUFF_CAP * FX_PUFF_FLOATS] f32; far: [FX_PUFF_CAP] f32;
+  out: [FX_PUFF_CAP * FX_PUFF_FLOATS] f32; out_n: int;   // the frame's puffs as the host draws them
+  bucket: [FX_BUCKETS + 1] int;
+  eye: FxV;
+}
+
+fxp_v :: (x: f32, y: f32, z: f32) -> FxV { return FxV.{x = x, y = y, z = z}; }
+fxp_add :: (a: FxV, b: FxV) -> FxV { return FxV.{x = a.x + b.x, y = a.y + b.y, z = a.z + b.z}; }
+fxp_sub :: (a: FxV, b: FxV) -> FxV { return FxV.{x = a.x - b.x, y = a.y - b.y, z = a.z - b.z}; }
+fxp_mul :: (a: FxV, k: f32) -> FxV { return FxV.{x = a.x * k, y = a.y * k, z = a.z * k}; }
+fxp_lerp :: (a: FxV, b: FxV, k: f32) -> FxV { return FxV.{x = a.x + (b.x - a.x) * k, y = a.y + (b.y - a.y) * k, z = a.z + (b.z - a.z) * k}; }
+fxp_len :: (a: FxV) -> f32 { return sqrt(a.x * a.x + a.y * a.y + a.z * a.z); }
+fxp_min :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+fxp_max :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+fxp_clamp :: (x: f32, low: f32, high: f32) -> f32 { return fxp_min(fxp_max(x, low), high); }
+// A number in [0, 1) for puff i of the cause with this seed; k picks one of several.
+fxp_h :: (seed: f32, i: int, k: int) -> f32 { return render_noise3(seed, f32(i), f32(k)); }
+fxp_sym :: (seed: f32, i: int, k: int) -> f32 { return fxp_h(seed, i, k) * 2 - 1; }
+// A direction for puff i: round about, or with up >= 0 only above the ground.
+fxp_dir :: (seed: f32, i: int, k: int, up: bool) -> FxV {
+  a := fxp_h(seed, i, k) * 2 * FX_PI;
+  y := fxp_sym(seed, i, k + 1);
+  if up { y = fxp_h(seed, i, k + 1); }
+  r := sqrt(fxp_max(1 - y * y, 0));
+  return FxV.{x = cos(a) * r, y = y, z = sin(a) * r};
+}
+// How far through [b, b + life] t is: 0 to 1, or -1 outside it.
+fxp_through :: (t: f32, b: f32, life: f32) -> f32 {
+  if t < b || t > b + life || life <= 0 { return -1; }
+  return (t - b) / life;
+}
+fxp_ease :: (f: f32) -> f32 { g := 1 - fxp_clamp(f, 0, 1); return 1 - g * g * g; }
+
+// Fire's light f of the way through a billow's life: white-hot, yellow, orange, a deep red, soot.
+fxp_fire_col :: (f: f32) -> FxV {
+  if f < 0.1 { return fxp_lerp(fxp_v(1.0, 0.92, 0.65), fxp_v(1.0, 0.62, 0.16), f / 0.1); }
+  if f < 0.35 { return fxp_lerp(fxp_v(1.0, 0.62, 0.16), fxp_v(0.95, 0.32, 0.06), (f - 0.1) / 0.25); }
+  if f < 0.7 { return fxp_lerp(fxp_v(0.95, 0.32, 0.06), fxp_v(0.45, 0.1, 0.03), (f - 0.35) / 0.35); }
+  return fxp_lerp(fxp_v(0.45, 0.1, 0.03), fxp_v(0.12, 0.06, 0.04), (f - 0.7) / 0.3);
+}
+
+// ---- writing puffs
+
+// One puff into the frame, or refused (and counted) when the frame's budget is spent.
+fxp_put :: (p: [] FxPuffs, kind: int, at: FxV, size: f32, col: FxV, heat: f32, along: FxV, seed: f32) -> bool {
+  if !(size > 0.004) || !(at.x == at.x) { return false; }
+  n := p[0].n;
+  if n >= FX_PUFF_CAP { p[0].refused += 1; return false; }
+  p[0].n = n + 1;
+  o := n * FX_PUFF_FLOATS;
+  p[0].stage[o] = at.x; p[0].stage[o + 1] = at.y; p[0].stage[o + 2] = at.z; p[0].stage[o + 3] = size;
+  p[0].stage[o + 4] = col.x; p[0].stage[o + 5] = col.y; p[0].stage[o + 6] = col.z; p[0].stage[o + 7] = heat;
+  p[0].stage[o + 8] = along.x; p[0].stage[o + 9] = along.y; p[0].stage[o + 10] = along.z;
+  p[0].stage[o + 11] = f32(kind) + 0.5 * (seed - floor(seed)) * 0.998;
+  p[0].far[n] = ifx kind == PF_SMOKE || kind == PF_FIRE then fxp_len(fxp_sub(at, p[0].eye)) else -1;
+  return true;
+}
+fxp_glow :: (p: [] FxPuffs, at: FxV, size: f32, col: FxV, core: f32, seed: f32) -> bool {
+  return fxp_put(p, PF_GLOW, at, size, col, core, fxp_v(0, 0, 0), seed);
+}
+// A spark's streak: a thin glow drawn along `along` (its half-length and direction).
+fxp_spark :: (p: [] FxPuffs, at: FxV, width: f32, col: FxV, along: FxV, seed: f32) -> bool {
+  return fxp_put(p, PF_GLOW, at, width, col, 0.6, along, seed);
+}
+fxp_smoke :: (p: [] FxPuffs, at: FxV, size: f32, col: FxV, thick: f32, seed: f32) -> bool {
+  return fxp_put(p, PF_SMOKE, at, size, col, thick, fxp_v(0, 0, 0), seed);
+}
+fxp_flame :: (p: [] FxPuffs, at: FxV, size: f32, f: f32, heat: f32, cover: f32, seed: f32) -> bool {
+  return fxp_put(p, PF_FIRE, at, size, fxp_fire_col(f), heat, fxp_v(cover, 0, 0), seed);
+}
+fxp_ring :: (p: [] FxPuffs, at: FxV, radius: f32, col: FxV, seed: f32) -> bool {
+  return fxp_put(p, PF_RING, at, radius, col, 0, fxp_v(0, 0, 0), seed);
+}
+
+// ---- causes
+
+// How long a cause lasts, seconds.
+fxp_flight :: (c: FxCause, speed: f32, least: f32, most: f32) -> f32 {
+  return fxp_clamp(fxp_len(fxp_sub(c.to, c.from)) / speed, least, most);
+}
+fxp_life :: (c: FxCause) -> f32 {
+  r := c.recipe;
+  if r == FXR_FIREBOLT { return fxp_flight(c, 22, 0.15, 0.8) + 1.3; }
+  if r == FXR_FIREBALL { return fxp_flight(c, 16, 0.3, 1.0) + 2.6; }
+  if r == FXR_STREAK { return fxp_flight(c, 45, 0.08, 0.35) + 0.5; }
+  if r == FXR_COLUMN { return 1.0; }
+  if r == FXR_LIGHTNING { return 1.3; }
+  if r == FXR_SHOCK { return 1.1; }
+  if r == FXR_HEAL { return 1.5; }
+  if r == FXR_ORBIT { return 2.4; }
+  if r == FXR_SHIMMER { return 2.4; }
+  if r == FXR_BLOOM { return 1.8; }
+  if r == FXR_HIT { return 0.7; }
+  if r == FXR_ARROW { return fxp_flight(c, 40, 0.06, 0.6) + 0.4; }
+  if r == FXR_BONES { return 1.4; }
+  if r == FXR_EMBERS { return 1.6; }
+  if r == FXR_HALO { return 1.3; }
+  if r == FXR_MARK { return 1.5; }
+  if r == FXR_DUST { return 1.0; }
+  return 0;
+}
+fxp_near :: (a: FxV, b: FxV, m: f32) -> bool { d := fxp_sub(a, b); return d.x * d.x + d.y * d.y + d.z * d.z <= m * m; }
+// Starts a cause at `now` (its t0 is kept when later: a cause can be queued a moment ahead).
+// Merges it into a fresh one of the same recipe at the same place, else takes a free slot, else
+// pushes out the cause furthest through its life. Returns the slot.
+fxp_start :: (p: [] FxPuffs, c: FxCause, now: f32) -> int {
+  if c.recipe <= FXR_NONE || c.recipe >= FXR_KINDS { return -1; }
+  g := c; g.t0 = fxp_max(c.t0, now);
+  for k: 0..<FX_LIVE {
+    o := p[0].live[k];
+    if p[0].on[k] && o.recipe == g.recipe && g.t0 - o.t0 < 0.2 && g.t0 >= o.t0 && fxp_near(o.to, g.to, 0.8) && fxp_near(o.from, g.from, 0.8) {
+      p[0].live[k].big = fxp_min(o.big + 0.25, 2.2);
+      p[0].merged += 1;
+      return k;
+    }
+  }
+  slot := 0; worst: f32 = -1000000000;
+  for k: 0..<FX_LIVE {
+    if !p[0].on[k] { slot = k; break; }
+    o := p[0].live[k];
+    f := (now - o.t0) / fxp_max(fxp_life(o), 0.01);
+    if f > worst { worst = f; slot = k; }
+  }
+  if p[0].on[slot] { p[0].dropped += 1; }
+  p[0].live[slot] = g; p[0].on[slot] = true;
+  p[0].started += 1;
+  return slot;
+}
+fxp_live :: (p: [] FxPuffs) -> int { n := 0; for k: 0..<FX_LIVE { if p[0].on[k] { n += 1; } } return n; }
+fxp_clear :: (p: [] FxPuffs) { for k: 0..<FX_LIVE { p[0].on[k] = false; } p[0].n = 0; p[0].out_n = 0; }
+
+// Begins a frame: the eye (for the far-to-near sort) and no puffs yet; the causes that have run
+// their course are let go.
+fxp_begin :: (p: [] FxPuffs, now: f32, eye: FxV) {
+  p[0].n = 0; p[0].refused = 0; p[0].eye = eye;
+  for k: 0..<FX_LIVE {
+    if !p[0].on[k] { continue; }
+    o := p[0].live[k];
+    if now - o.t0 > fxp_life(o) || now < o.t0 - 5 { p[0].on[k] = false; }
+  }
+}
+// Every live cause's puffs at `now`.
+fxp_emit_all :: (p: [] FxPuffs, now: f32) {
+  for k: 0..<FX_LIVE {
+    if !p[0].on[k] { continue; }
+    o := p[0].live[k];
+    if now >= o.t0 { fxp_emit(p, o, now - o.t0); }
+  }
+}
+// Ends a frame: the smoke and fire far to near (in FX_BUCKET_M buckets), then the glows and rings,
+// into `out`; the frame counted over budget when a puff was refused.
+fxp_close :: (p: [] FxPuffs) -> FxReport {
+  n := p[0].n;
+  for k: 0..<FX_BUCKETS + 1 { p[0].bucket[k] = 0; }
+  for i: 0..<n { p[0].bucket[fxp_bucket(p[0].far[i])] += 1; }
+  sum := 0;
+  for k: 0..<FX_BUCKETS + 1 { c := p[0].bucket[k]; p[0].bucket[k] = sum; sum += c; }
+  for i: 0..<n {
+    k := fxp_bucket(p[0].far[i]);
+    into := p[0].bucket[k] * FX_PUFF_FLOATS; p[0].bucket[k] += 1;
+    o := i * FX_PUFF_FLOATS;
+    for q: 0..<FX_PUFF_FLOATS { p[0].out[into + q] = p[0].stage[o + q]; }
+  }
+  p[0].out_n = n;
+  if p[0].refused > 0 { p[0].over += 1; }
+  return FxReport.{live = fxp_live(p), puffs = n, refused = p[0].refused};
+}
+fxp_bucket :: (far: f32) -> int {
+  if far < 0 { return FX_BUCKETS; }
+  k := FX_BUCKETS - 1 - cast(int) (far / FX_BUCKET_M);
+  if k < 0 { return 0; }
+  return k;
+}
+// A whole frame: begin, every cause, close.
+fxp_frame :: (p: [] FxPuffs, now: f32, eye: FxV) -> FxReport {
+  fxp_begin(p, now, eye);
+  fxp_emit_all(p, now);
+  return fxp_close(p);
+}
+
+// ---- the recipes
+
+// Where a flight is u of the way: from → to, arched up a little for a long one.
+fxp_path :: (c: FxCause, u: f32) -> FxV {
+  q := fxp_lerp(c.from, c.to, u);
+  q.y += sin(fxp_clamp(u, 0, 1) * FX_PI) * fxp_min(fxp_len(fxp_sub(c.to, c.from)) * 0.05, 1.0);
+  return q;
+}
+// A cause's puffs at `age` seconds.
+fxp_emit :: (p: [] FxPuffs, c: FxCause, age: f32) {
+  r := c.recipe;
+  if r == FXR_FIREBOLT { fxp_firebolt(p, c, age); }
+  if r == FXR_FIREBALL { fxp_fireball(p, c, age); }
+  if r == FXR_STREAK { fxp_streak(p, c, age); }
+  if r == FXR_COLUMN { fxp_column(p, c, age); }
+  if r == FXR_LIGHTNING { fxp_lightning(p, c, age); }
+  if r == FXR_SHOCK { fxp_shock(p, c, age); }
+  if r == FXR_HEAL { fxp_motes(p, c, age, 14, 1.6, 0.55); }
+  if r == FXR_ORBIT { fxp_orbit(p, c, age); }
+  if r == FXR_SHIMMER { fxp_shimmer(p, c, age); }
+  if r == FXR_BLOOM { fxp_bloom(p, c, age); }
+  if r == FXR_HIT { fxp_hit(p, c, age); }
+  if r == FXR_ARROW { fxp_arrow(p, c, age); }
+  if r == FXR_BONES { fxp_bones(p, c, age); }
+  if r == FXR_EMBERS { fxp_embers(p, c, age); }
+  if r == FXR_HALO { fxp_halo(p, c, age); }
+  if r == FXR_MARK { fxp_mark(p, c, age); }
+  if r == FXR_DUST { fxp_dust(p, c, age); }
+}
+
+// Sparks thrown from `at` in directions about `toward` (zero: all round), gravity pulling them down.
+fxp_burst_sparks :: (p: [] FxPuffs, c: FxCause, t: f32, at: FxV, count: int, speed: f32, life: f32, toward: FxV, col: FxV, first: int) {
+  for i: 0..<count {
+    j := first + i;
+    l := life * (0.6 + 0.4 * fxp_h(c.seed, j, 1));
+    f := fxp_through(t, 0, l);
+    if f < 0 { continue; }
+    d := fxp_add(fxp_dir(c.seed, j, 2, false), toward);
+    v := fxp_mul(d, speed * (0.5 + 0.7 * fxp_h(c.seed, j, 4)));
+    tt := f * l;
+    q := fxp_add(at, fxp_mul(v, tt));
+    q.y -= 4.9 * tt * tt;
+    vel := fxp_v(v.x, v.y - 9.8 * tt, v.z);
+    fade := 1 - f;
+    ok := fxp_spark(p, q, 0.035 * c.big, fxp_mul(col, fade * 1.4), fxp_mul(vel, 0.028), c.seed + f32(j) * 0.07);
+  }
+}
+// Smoke rising from `at`: count puffs, each born a little later, growing and thinning.
+fxp_rise_smoke :: (p: [] FxPuffs, c: FxCause, t: f32, at: FxV, count: int, spread: f32, size: f32, life: f32, col: FxV, thick: f32, first: int) {
+  for i: 0..<count {
+    j := first + i;
+    b := fxp_h(c.seed, j, 5) * life * 0.25;
+    f := fxp_through(t, b, life);
+    if f < 0 { continue; }
+    d := fxp_dir(c.seed, j, 6, true);
+    q := fxp_add(at, fxp_mul(d, spread * fxp_ease(f)));
+    q.y += f * life * 0.8;
+    s := size * (0.6 + 1.1 * f) * (0.7 + 0.6 * fxp_h(c.seed, j, 7));
+    ok := fxp_smoke(p, q, s, col, thick * (1 - f) * (0.4 + 0.6 * fxp_ease(f * 4)), c.seed + f32(j) * 0.13);
+  }
+}
+// Billows of fire bursting out from `at`, `reach` metres.
+fxp_burst_fire :: (p: [] FxPuffs, c: FxCause, t: f32, at: FxV, count: int, reach: f32, size: f32, life: f32, first: int) {
+  for i: 0..<count {
+    j := first + i;
+    b := fxp_h(c.seed, j, 8) * life * 0.2;
+    l := life * (0.7 + 0.3 * fxp_h(c.seed, j, 9));
+    f := fxp_through(t, b, l);
+    if f < 0 { continue; }
+    d := fxp_dir(c.seed, j, 10, true);
+    d.y *= 0.7;
+    q := fxp_add(at, fxp_mul(d, reach * fxp_ease(f * 1.6) * (0.35 + 0.65 * fxp_h(c.seed, j, 11))));
+    q.y += f * f * reach * 0.5;
+    s := size * (0.45 + 0.75 * fxp_ease(f * 2)) * (0.7 + 0.5 * fxp_h(c.seed, j, 12));
+    ok := fxp_flame(p, q, s, f, fxp_max(0, 1 - f * 3), 1 - f * f, c.seed + f32(j) * 0.11);
+  }
+}
+
+fxp_firebolt :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fl := fxp_flight(c, 22, 0.15, 0.8);
+  sz := c.big;
+  if t < fl {
+    u := t / fl;
+    head := fxp_path(c, u);
+    ahead := fxp_sub(fxp_path(c, fxp_min(u + 0.05, 1)), head);
+    ok := fxp_flame(p, head, 0.26 * sz, 0.05, 0.9, 1, c.seed);
+    ok = fxp_put(p, PF_GLOW, head, 0.4 * sz, fxp_v(1.0, 0.55, 0.15), 0.8, fxp_mul(ahead, 2.5), c.seed);
+  }
+  // sparks shed along the flight
+  for i: 0..<10 {
+    b := fl * f32(i) / 10;
+    f := fxp_through(t, b, 0.4);
+    if f < 0 { continue; }
+    q := fxp_add(fxp_path(c, b / fl), fxp_mul(fxp_dir(c.seed, i, 20, false), f * 0.5));
+    q.y -= f * f * 0.5;
+    ok := fxp_spark(p, q, 0.03 * sz, fxp_mul(fxp_v(1.0, 0.6, 0.2), (1 - f) * 1.3), fxp_v(0, -0.04 - f * 0.08, 0), c.seed + f32(i) * 0.05);
+  }
+  // smoke left in the air behind it
+  for i: 0..<5 {
+    b := fl * f32(i) / 5;
+    f := fxp_through(t, b, 0.9);
+    if f < 0 { continue; }
+    q := fxp_path(c, b / fl); q.y += f * 0.5;
+    ok := fxp_smoke(p, q, (0.12 + 0.22 * f) * sz, fxp_v(0.2, 0.18, 0.17), 0.45 * (1 - f), c.seed + f32(i) * 0.3);
+  }
+  if t >= fl {
+    at := t - fl;
+    fxp_burst_fire(p, c, at, c.to, 6, 0.7 * sz, 0.32 * sz, 0.55, 30);
+    fxp_burst_sparks(p, c, at, c.to, 10, 4.5, 0.45, fxp_v(0, 0.5, 0), fxp_v(1.0, 0.6, 0.2), 40);
+    fxp_rise_smoke(p, c, at, c.to, 4, 0.4, 0.35 * sz, 1.2, fxp_v(0.2, 0.18, 0.17), 0.6, 50);
+    f := fxp_through(at, 0, 0.18);
+    if f >= 0 { ok := fxp_glow(p, c.to, 1.0 * sz * (0.6 + f), fxp_mul(fxp_v(1.0, 0.6, 0.2), 1 - f), 0.8, c.seed); }
+  }
+}
+
+fxp_fireball :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fl := fxp_flight(c, 16, 0.3, 1.0);
+  sz := c.big;
+  if t < fl {
+    u := t / fl;
+    head := fxp_path(c, u);
+    ok := fxp_put(p, PF_GLOW, head, 0.22 * sz, fxp_v(1.0, 0.7, 0.3), 1.0, fxp_v(0, 0, 0), c.seed);
+    ok = fxp_glow(p, head, 0.55 * sz, fxp_v(0.9, 0.4, 0.1), 0.2, c.seed + 0.5);
+    for i: 0..<12 {
+      b := fl * f32(i) / 12;
+      f := fxp_through(t, b, 0.35);
+      if f < 0 { continue; }
+      q := fxp_add(fxp_path(c, b / fl), fxp_mul(fxp_dir(c.seed, i, 20, false), f * 0.3));
+      ok = fxp_spark(p, q, 0.03, fxp_mul(fxp_v(1.0, 0.6, 0.2), 1 - f), fxp_v(0, -0.05, 0), c.seed + f32(i) * 0.05);
+    }
+    return;
+  }
+  at := t - fl;
+  reach := fxp_max(c.reach, 1.5);
+  centre := c.to;
+  centre.y = fxp_max(centre.y, 0.6);
+  // the flash
+  f := fxp_through(at, 0, 0.25);
+  if f >= 0 { ok := fxp_glow(p, centre, reach * (0.5 + 0.6 * f), fxp_mul(fxp_v(1.0, 0.7, 0.3), (1 - f) * 0.9), 0.9, c.seed); }
+  fxp_burst_fire(p, c, at, centre, 22, reach * 0.75, reach * 0.42, 1.1, 60);
+  fxp_rise_smoke(p, c, at - 0.25, centre, 14, reach * 0.7, reach * 0.4, 2.3, fxp_v(0.16, 0.14, 0.13), 0.75, 90);
+  fxp_burst_sparks(p, c, at, centre, 20, reach * 2.6, 0.9, fxp_v(0, 0.6, 0), fxp_v(1.0, 0.65, 0.25), 120);
+  g := fxp_through(at, 0, 0.7);
+  if g >= 0 {
+    ground := fxp_v(centre.x, 0.03, centre.z);
+    ok := fxp_ring(p, ground, reach * (0.2 + 1.1 * fxp_ease(g)), fxp_mul(fxp_v(1.0, 0.6, 0.25), (1 - g) * 1.2), c.seed);
+  }
+}
+
+// A beam from → to that crackles: its segments jump to fresh places twenty times a second.
+fxp_streak :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fl := fxp_flight(c, 45, 0.08, 0.35);
+  hold: f32 = 0.15;
+  segs := 9;
+  sz := c.big;
+  head := fxp_min(t / fl, 1);
+  fade := 1 - fxp_clamp((t - fl - hold) / 0.2, 0, 1);
+  tick := cast(int) floor(t * 20);
+  if fade > 0 {
+    span := fxp_sub(c.to, c.from);
+    for i: 0..<segs {
+      a := f32(i) / f32(segs); b := f32(i + 1) / f32(segs);
+      if a > head { break; }
+      b = fxp_min(b, head);
+      ja := fxp_mul(fxp_dir(c.seed, i * 31 + tick, 40, false), 0.14 * sz * sin(a * FX_PI));
+      jb := fxp_mul(fxp_dir(c.seed, (i + 1) * 31 + tick, 40, false), 0.14 * sz * sin(b * FX_PI));
+      if i + 1 == segs { jb = fxp_v(0, 0, 0); }
+      pa := fxp_add(fxp_add(c.from, fxp_mul(span, a)), ja);
+      pb := fxp_add(fxp_add(c.from, fxp_mul(span, b)), jb);
+      mid := fxp_lerp(pa, pb, 0.5);
+      ok := fxp_put(p, PF_GLOW, mid, 0.07 * sz, fxp_mul(c.col, fade * 1.1), 0.9, fxp_mul(fxp_sub(pb, pa), 0.5), c.seed + f32(i) * 0.03);
+      ok = fxp_glow(p, mid, 0.22 * sz, fxp_mul(c.col, fade * 0.35), 0.1, c.seed + f32(i) * 0.07);
+    }
+    ok := fxp_glow(p, fxp_lerp(c.from, c.to, head), 0.3 * sz, fxp_mul(c.col, fade), 0.9, c.seed);
+    ok = fxp_glow(p, c.from, 0.25 * sz, fxp_mul(c.col, fade * 0.7), 0.6, c.seed + 0.2);
+  }
+  if t >= fl {
+    at := t - fl;
+    f := fxp_through(at, 0, 0.3);
+    if f >= 0 { ok := fxp_glow(p, c.to, 0.7 * sz * (0.5 + f), fxp_mul(c.col, (1 - f) * 1.1), 0.8, c.seed + 0.4); }
+    fxp_burst_sparks(p, c, at, c.to, cast(int) (8 * sz), 3.5, 0.35, fxp_v(0, 0.3, 0), c.col, 60);
+  }
+}
+
+fxp_column :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  ground := fxp_v(c.to.x, 0.03, c.to.z);
+  sz := c.big;
+  // the light falling: streaks dropping from above onto the figure
+  for i: 0..<4 {
+    f := fxp_through(t, f32(i) * 0.04, 0.22);
+    if f < 0 { continue; }
+    q := fxp_v(c.to.x + fxp_sym(c.seed, i, 1) * 0.25, 7.0 * (1 - f) + 0.6, c.to.z + fxp_sym(c.seed, i, 2) * 0.25);
+    ok := fxp_put(p, PF_GLOW, q, 0.09 * sz, c.col, 1.0, fxp_v(0, 1.4, 0), c.seed + f32(i) * 0.1);
+  }
+  // the column itself, burning upward
+  fall := fxp_through(t, 0.15, 0.85);
+  if fall >= 0 {
+    for i: 0..<12 {
+      b := fxp_h(c.seed, i, 3) * 0.3;
+      f := fxp_through(fall, b, 0.7);
+      if f < 0 { continue; }
+      a := fxp_h(c.seed, i, 4) * 2 * FX_PI + f * 3;
+      rr := 0.35 * sz * (1 - f * 0.5);
+      q := fxp_v(c.to.x + cos(a) * rr, 0.1 + f * 2.8 * sz, c.to.z + sin(a) * rr);
+      ok := fxp_put(p, PF_GLOW, q, 0.12 * sz, fxp_mul(c.col, 1 - f), 0.7, fxp_v(0, 0.18, 0), c.seed + f32(i) * 0.09);
+    }
+    ok := fxp_glow(p, fxp_v(c.to.x, 1.0, c.to.z), 0.9 * sz, fxp_mul(c.col, (1 - fall) * 0.55), 0.3, c.seed);
+    ok = fxp_ring(p, ground, 0.6 * sz + 0.5 * fall, fxp_mul(c.col, 1 - fall), c.seed);
+  }
+}
+
+fxp_lightning :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  ground := fxp_v(c.to.x, 0.03, c.to.z);
+  sz := c.big;
+  // the bolt: a jagged line from the sky, flickering twice
+  flick := t < 0.08 || (t > 0.14 && t < 0.3);
+  if flick {
+    top := fxp_v(c.to.x + fxp_sym(c.seed, 0, 1) * 3, 16, c.to.z + fxp_sym(c.seed, 0, 2) * 3);
+    segs := 12;
+    twist := ifx t < 0.1 then 0 else 1;
+    prev := top;
+    for i: 1..<segs + 1 {
+      a := f32(i) / f32(segs);
+      q := fxp_lerp(top, fxp_v(c.to.x, 0.05, c.to.z), a);
+      if i < segs {
+        q.x += fxp_sym(c.seed, i + twist * 50, 3) * 0.9 * (1 - a * 0.6);
+        q.z += fxp_sym(c.seed, i + twist * 50, 4) * 0.9 * (1 - a * 0.6);
+      }
+      mid := fxp_lerp(prev, q, 0.5);
+      ok := fxp_put(p, PF_GLOW, mid, 0.1 * sz, fxp_v(0.85, 0.92, 1.0), 1.0, fxp_mul(fxp_sub(q, prev), 0.5), c.seed + f32(i) * 0.03);
+      ok = fxp_glow(p, mid, 0.45 * sz, fxp_mul(c.col, 0.3), 0.1, c.seed + f32(i) * 0.05);
+      prev = q;
+    }
+  }
+  f := fxp_through(t, 0, 0.35);
+  if f >= 0 { ok := fxp_glow(p, fxp_v(c.to.x, 0.8, c.to.z), 2.2 * sz, fxp_mul(c.col, (1 - f) * 0.9), 0.9, c.seed); }
+  g := fxp_through(t, 0, 0.6);
+  if g >= 0 { ok := fxp_ring(p, ground, (0.4 + 2.6 * fxp_ease(g)) * sz, fxp_mul(c.col, (1 - g) * 1.3), c.seed); }
+  fxp_rise_smoke(p, c, t, ground, 6, 1.2, 0.45 * sz, 1.2, fxp_v(0.45, 0.42, 0.38), 0.45, 20);
+  fxp_burst_sparks(p, c, t, fxp_v(c.to.x, 0.2, c.to.z), 10, 5, 0.5, fxp_v(0, 0.8, 0), fxp_v(0.8, 0.9, 1.0), 40);
+}
+
+fxp_shock :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  reach := fxp_max(c.reach, 1);
+  ground := fxp_v(c.to.x, 0.03, c.to.z);
+  for w: 0..<2 {
+    f := fxp_through(t, f32(w) * 0.12, 0.6);
+    if f < 0 { continue; }
+    ok := fxp_ring(p, ground, reach * (0.15 + 0.95 * fxp_ease(f)), fxp_mul(c.col, (1 - f) * 1.2), c.seed + f32(w) * 0.3);
+  }
+  f := fxp_through(t, 0, 0.25);
+  if f >= 0 { ok := fxp_glow(p, fxp_v(c.to.x, 0.9, c.to.z), reach * 0.5 * (0.6 + f), fxp_mul(c.col, (1 - f) * 0.6), 0.5, c.seed); }
+  // dust thrown out across the ground
+  for i: 0..<12 {
+    f2 := fxp_through(t, 0.05, 0.9 + 0.2 * fxp_h(c.seed, i, 1));
+    if f2 < 0 { continue; }
+    a := (f32(i) + fxp_h(c.seed, i, 2) * 0.6) * 2 * FX_PI / 12;
+    rr := reach * (0.2 + 0.9 * fxp_ease(f2));
+    q := fxp_v(c.to.x + cos(a) * rr, 0.25 + f2 * 0.6, c.to.z + sin(a) * rr);
+    ok := fxp_smoke(p, q, (0.35 + 0.5 * f2) * fxp_min(reach * 0.3, 1.2), fxp_v(0.55, 0.5, 0.42), 0.5 * (1 - f2), c.seed + f32(i) * 0.17);
+  }
+  // the air's own shudder: streaks running out
+  for i: 0..<10 {
+    f3 := fxp_through(t, 0, 0.35);
+    if f3 < 0 { continue; }
+    a := f32(i) * 2 * FX_PI / 10 + fxp_h(c.seed, i, 5);
+    d := fxp_v(cos(a), 0.15, sin(a));
+    q := fxp_add(fxp_v(c.to.x, 0.8, c.to.z), fxp_mul(d, reach * fxp_ease(f3)));
+    ok := fxp_spark(p, q, 0.05, fxp_mul(c.col, 1 - f3), fxp_mul(d, 0.4), c.seed + f32(i) * 0.05);
+  }
+}
+
+// Motes rising round `to`: count of them over `rise` metres, from a ring `radius` across.
+fxp_motes :: (p: [] FxPuffs, c: FxCause, t: f32, count: int, rise: f32, radius: f32) {
+  sz := c.big;
+  f0 := fxp_through(t, 0, 0.5);
+  if f0 >= 0 { ok := fxp_glow(p, fxp_v(c.to.x, 1.0, c.to.z), 0.7 * sz, fxp_mul(c.col, (1 - f0) * 0.4), 0.2, c.seed); }
+  for i: 0..<cast(int) (f32(count) * fxp_min(sz, 1.6)) {
+    b := fxp_h(c.seed, i, 1) * 0.45;
+    f := fxp_through(t, b, 0.9 + 0.3 * fxp_h(c.seed, i, 2));
+    if f < 0 { continue; }
+    a := fxp_h(c.seed, i, 3) * 2 * FX_PI + f * 1.5;
+    rr := radius * (0.4 + 0.6 * fxp_h(c.seed, i, 4)) * (1 - f * 0.4);
+    q := fxp_v(c.to.x + cos(a) * rr, 0.2 + fxp_h(c.seed, i, 5) * 0.8 + f * rise, c.to.z + sin(a) * rr);
+    blink := sin(f * FX_PI);
+    ok := fxp_put(p, PF_GLOW, q, 0.06 + 0.03 * fxp_h(c.seed, i, 6), fxp_mul(c.col, blink * 1.2), 0.8, fxp_v(0, 0.06, 0), c.seed + f32(i) * 0.07);
+  }
+}
+
+fxp_orbit :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  reach := fxp_max(c.reach, 1.5);
+  life: f32 = 2.4;
+  f := t / life;
+  bright := fxp_min(1, t * 4) * (1 - f * f);
+  for i: 0..<12 {
+    a := f32(i) * 2 * FX_PI / 12 + t * 1.6;
+    rr := reach * (0.4 + 0.6 * fxp_ease(t * 2));
+    y := 1.0 + 0.3 * sin(t * 3 + f32(i));
+    q := fxp_v(c.to.x + cos(a) * rr, y, c.to.z + sin(a) * rr);
+    ahead := fxp_v(-sin(a) * 0.25, 0, cos(a) * 0.25);
+    ok := fxp_put(p, PF_GLOW, q, 0.14, fxp_mul(c.col, bright * 1.1), 0.9, ahead, c.seed + f32(i) * 0.05);
+    ok = fxp_glow(p, q, 0.4, fxp_mul(c.col, bright * 0.3), 0.1, c.seed + f32(i) * 0.09);
+  }
+  ok := fxp_ring(p, fxp_v(c.to.x, 0.03, c.to.z), reach, fxp_mul(c.col, bright * 0.6), c.seed);
+}
+
+fxp_shimmer :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  reach := fxp_max(c.reach, 1);
+  bright := fxp_min(1, t * 3) * (1 - fxp_clamp((t - 1.6) / 0.8, 0, 1));
+  for i: 0..<30 {
+    q := fxp_v(c.to.x + fxp_sym(c.seed, i, 1) * reach, 0.4 + fxp_h(c.seed, i, 2) * 2.2 + sin(t * 2 + f32(i)) * 0.15, c.to.z + fxp_sym(c.seed, i, 3) * reach);
+    hue := fract(fxp_h(c.seed, i, 4) + t * 0.6);
+    col := fxp_v(0.6 + 0.4 * sin(hue * 6.283), 0.45 + 0.4 * sin(hue * 6.283 + 2.1), 0.7 + 0.3 * sin(hue * 6.283 + 4.2));
+    tw := 0.5 + 0.5 * sin(t * 9 + f32(i) * 1.7);
+    ok := fxp_glow(p, q, 0.09 + 0.05 * tw, fxp_mul(col, bright * (0.5 + 0.7 * tw)), 0.7, c.seed + f32(i) * 0.03);
+  }
+}
+
+// An area's ground lit and motes rising off it, for `reach` metres round `to`. Also the ambient look
+// of a lasting zone (fxp_zone), which calls it with its own clock.
+fxp_bloom :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  reach := fxp_max(c.reach, 1);
+  bright := fxp_min(1, t * 4) * (1 - fxp_clamp((t - 1.2) / 0.6, 0, 1));
+  for i: 0..<10 {
+    q := fxp_v(c.to.x + fxp_sym(c.seed, i, 1) * reach * 0.85, 0.08, c.to.z + fxp_sym(c.seed, i, 2) * reach * 0.85);
+    ok := fxp_glow(p, q, 0.5 + 0.3 * fxp_h(c.seed, i, 3), fxp_mul(c.col, bright * 0.45), 0.2, c.seed + f32(i) * 0.03);
+  }
+  for i: 0..<14 {
+    f := fxp_through(t, fxp_h(c.seed, i, 4) * 0.6, 1.0);
+    if f < 0 { continue; }
+    q := fxp_v(c.to.x + fxp_sym(c.seed, i, 5) * reach, 0.1 + f * 1.4, c.to.z + fxp_sym(c.seed, i, 6) * reach);
+    ok := fxp_put(p, PF_GLOW, q, 0.06, fxp_mul(c.col, sin(f * FX_PI) * bright * 1.2), 0.8, fxp_v(0, 0.05, 0), c.seed + f32(i) * 0.07);
+  }
+}
+// A lasting zone's ambient look at `now`: a few ground glows and motes that loop forever, a function
+// of the clock alone. x0 z0 x1 z1 is its rectangle on the ground (m).
+fxp_zone :: (p: [] FxPuffs, x0: f32, z0: f32, x1: f32, z1: f32, col: FxV, now: f32, seed: f32) {
+  cx := (x0 + x1) / 2; cz := (z0 + z1) / 2; hx := (x1 - x0) / 2; hz := (z1 - z0) / 2;
+  for i: 0..<12 {
+    life := 2.0 + fxp_h(seed, i, 1) * 1.5;
+    phase := now / life + fxp_h(seed, i, 2);
+    f := fract(phase);
+    round := cast(int) floor(phase);
+    q := fxp_v(cx + fxp_sym(seed, i + round * 13, 3) * hx, 0.1 + f * 1.3, cz + fxp_sym(seed, i + round * 13, 4) * hz);
+    ok := fxp_put(p, PF_GLOW, q, 0.05, fxp_mul(col, sin(f * FX_PI) * 0.9), 0.8, fxp_v(0, 0.05, 0), seed + f32(i) * 0.07);
+  }
+}
+
+fxp_hit :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  sz := c.big;
+  away := fxp_sub(c.to, c.from); away.y = 0;
+  l := fxp_len(away);
+  if l > 0.001 { away = fxp_mul(away, 1 / l); }
+  at := fxp_sub(c.to, fxp_mul(away, 0.3));
+  f := fxp_through(t, 0, 0.12 * sz);
+  if f >= 0 { ok := fxp_glow(p, at, 0.35 * sz, fxp_mul(c.col, (1 - f) * 1.2), 1.0, c.seed); }
+  fxp_burst_sparks(p, c, t, at, cast(int) (8 * sz), 3.2 * sz, 0.35, fxp_mul(fxp_v(away.x, 0.6, away.z), 0.9), c.col, 0);
+  fxp_rise_smoke(p, c, t, fxp_v(c.to.x, 0.15, c.to.z), cast(int) (3 * sz), 0.5, 0.22 * sz, 0.6, fxp_v(0.5, 0.45, 0.36), 0.45, 20);
+  if sz > 1.4 {
+    g := fxp_through(t, 0, 0.35);
+    if g >= 0 { ok := fxp_ring(p, fxp_v(c.to.x, 0.03, c.to.z), 0.4 + 1.2 * fxp_ease(g), fxp_mul(c.col, 1 - g), c.seed); }
+  }
+}
+
+fxp_arrow :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fl := fxp_flight(c, 40, 0.06, 0.6);
+  if t < fl {
+    u := t / fl;
+    head := fxp_path(c, u);
+    back := fxp_path(c, fxp_max(u - 0.08, 0));
+    ok := fxp_spark(p, fxp_lerp(back, head, 0.5), 0.03, fxp_v(0.9, 0.85, 0.7), fxp_mul(fxp_sub(head, back), 0.5), c.seed);
+    ok = fxp_glow(p, head, 0.08, fxp_v(0.6, 0.55, 0.45), 0.6, c.seed + 0.3);
+    return;
+  }
+  at := t - fl;
+  fxp_burst_sparks(p, c, at, c.to, 5, 2.5, 0.25, fxp_v(0, 0.4, 0), fxp_v(0.9, 0.8, 0.55), 10);
+  fxp_rise_smoke(p, c, at, c.to, 1, 0.2, 0.15, 0.4, fxp_v(0.5, 0.45, 0.36), 0.35, 20);
+}
+
+fxp_bones :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  bone := fxp_v(0.86, 0.83, 0.74);
+  fxp_rise_smoke(p, c, t, fxp_v(c.to.x, 0.5, c.to.z), 9, 0.8, 0.35, 1.3, bone, 0.6, 0);
+  // chips of bone, falling
+  for i: 0..<10 {
+    f := fxp_through(t, 0, 0.7 + 0.3 * fxp_h(c.seed, i, 1));
+    if f < 0 { continue; }
+    tt := f * 0.9;
+    v := fxp_mul(fxp_dir(c.seed, i, 2, true), 2.5 + 1.5 * fxp_h(c.seed, i, 3));
+    q := fxp_add(fxp_v(c.to.x, 1.0, c.to.z), fxp_mul(v, tt));
+    q.y = fxp_max(q.y - 4.9 * tt * tt, 0.04);
+    ok := fxp_smoke(p, q, 0.06, bone, 0.9 * (1 - f * f), c.seed + f32(i) * 0.11);
+  }
+}
+
+fxp_embers :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  f0 := fxp_through(t, 0, 0.6);
+  if f0 >= 0 { ok := fxp_glow(p, fxp_v(c.to.x, 1.1, c.to.z), 0.9, fxp_mul(c.col, (1 - f0) * 0.45), 0.2, c.seed); }
+  for i: 0..<16 {
+    f := fxp_through(t, fxp_h(c.seed, i, 1) * 0.6, 0.8 + 0.4 * fxp_h(c.seed, i, 2));
+    if f < 0 { continue; }
+    a := fxp_h(c.seed, i, 3) * 2 * FX_PI + sin(f * 6 + f32(i)) * 0.6;
+    rr := 0.3 + 0.35 * fxp_h(c.seed, i, 4) + f * 0.3;
+    q := fxp_v(c.to.x + cos(a) * rr, 0.3 + fxp_h(c.seed, i, 5) * 1.2 + f * 1.4, c.to.z + sin(a) * rr);
+    flick := 0.6 + 0.4 * sin(t * 23 + f32(i) * 2.1);
+    ok := fxp_put(p, PF_GLOW, q, 0.045, fxp_mul(fxp_lerp(fxp_v(1.0, 0.5, 0.12), c.col, f), (1 - f) * flick * 1.4), 0.6, fxp_v(0, 0.07, 0), c.seed + f32(i) * 0.05);
+  }
+}
+
+fxp_halo :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  reach := fxp_max(c.reach, 2);
+  ground := fxp_v(c.to.x, 0.03, c.to.z);
+  for w: 0..<2 {
+    f := fxp_through(t, f32(w) * 0.15, 0.8);
+    if f < 0 { continue; }
+    ok := fxp_ring(p, ground, reach * (0.1 + 0.9 * fxp_ease(f)), fxp_mul(c.col, (1 - f) * 1.3), c.seed + f32(w) * 0.2);
+  }
+  f := fxp_through(t, 0, 0.5);
+  if f >= 0 { ok := fxp_glow(p, fxp_v(c.to.x, 1.4, c.to.z), 1.1, fxp_mul(c.col, (1 - f) * 0.8), 0.9, c.seed); }
+  fxp_motes(p, c, t, 12, 2.2, 0.8);
+}
+
+fxp_mark :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  life: f32 = 1.5;
+  f := t / life;
+  pulse := 0.75 + 0.25 * sin(t * 10);
+  bright := fxp_min(1, t * 5) * (1 - f * f);
+  top := fxp_v(c.to.x, 2.55, c.to.z);
+  ok := fxp_glow(p, top, 0.22, fxp_mul(c.col, bright * pulse * 1.2), 0.9, c.seed);
+  ok = fxp_glow(p, top, 0.55, fxp_mul(c.col, bright * 0.35), 0.1, c.seed + 0.3);
+  for i: 0..<6 {
+    g := fxp_through(t, f32(i) * 0.12, 0.7);
+    if g < 0 { continue; }
+    a := f32(i) * 2 * FX_PI / 6 + g * 4;
+    rr := 0.45 * (1 - g);
+    q := fxp_v(c.to.x + cos(a) * rr, 2.5 - g * 1.6, c.to.z + sin(a) * rr);
+    ok = fxp_put(p, PF_GLOW, q, 0.05, fxp_mul(c.col, (1 - g) * 1.2), 0.8, fxp_v(0, -0.06, 0), c.seed + f32(i) * 0.07);
+  }
+  g := fxp_through(t, 0, 0.6);
+  if g >= 0 { ok = fxp_ring(p, fxp_v(c.to.x, 0.03, c.to.z), 0.5 + 0.4 * g, fxp_mul(c.col, (1 - g) * 0.9), c.seed); }
+}
+
+fxp_dust :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fxp_rise_smoke(p, c, t, fxp_v(c.to.x, 0.2, c.to.z), 5, 0.6, 0.3, 1.0, fxp_v(0.5, 0.45, 0.36), 0.5, 0);
+}
+
+// ---- checks
+
+fxp_test_cause :: (recipe: int, seed: f32) -> FxCause {
+  return FxCause.{recipe = recipe, seed = seed, t0 = 0, from = fxp_v(-6, 1.5, 0), to = fxp_v(5, 1.1, 2), col = fxp_v(0.9, 0.4, 1.0), big = 1, reach = 3};
+}
+
+#test "a puff's place and light are a function of its cause and age alone" #steps 2000000000 {
+  a: [1] FxPuffs; b: [1] FxPuffs;
+  for r: 1..<FXR_KINDS {
+    c := fxp_test_cause(r, 7.25 + f32(r));
+    fxp_begin(a[..], 0.3, fxp_v(0, 10, 20)); fxp_emit(a[..], c, 0.3);
+    // the same cause seen again later in a run, after other frames: the same puffs
+    fxp_begin(b[..], 9, fxp_v(0, 10, 20)); fxp_emit(b[..], c, 0.6); fxp_begin(b[..], 9, fxp_v(0, 10, 20)); fxp_emit(b[..], c, 0.3);
+    #assert a[0].n == b[0].n;
+    for i: 0..<a[0].n * FX_PUFF_FLOATS { #assert a[0].stage[i] == b[0].stage[i]; }
+  }
+}
+
+#test "every recipe draws something of its own kind and then is gone" #steps 2000000000 {
+  p: [1] FxPuffs;
+  for r: 1..<FXR_KINDS {
+    c := fxp_test_cause(r, 3.5);
+    life := fxp_life(c);
+    #assert life > 0.3 && life < 4;
+    any := 0;
+    for k: 0..<8 {
+      fxp_begin(p[..], 0, fxp_v(0, 10, 20)); fxp_emit(p[..], c, life * f32(k) / 8 + 0.02);
+      any += p[0].n;
+      for i: 0..<p[0].n {
+        kind := floor(p[0].stage[i * FX_PUFF_FLOATS + 11]);
+        #assert kind >= 0 && kind <= 3 && p[0].stage[i * FX_PUFF_FLOATS + 3] > 0;
+      }
+    }
+    #assert any > 0;
+    fxp_clear(p[..]);
+    s := fxp_start(p[..], c, 0);
+    rep := fxp_frame(p[..], life + 0.1, fxp_v(0, 10, 20));
+    #assert rep.live == 0 && rep.puffs == 0;
+  }
+}
+
+#test "a fire bolt flies from its caster to its target, and bursts there" #steps 2000000000 {
+  p: [1] FxPuffs;
+  c := fxp_test_cause(FXR_FIREBOLT, 1.5);
+  fxp_begin(p[..], 0, fxp_v(0, 10, 20)); fxp_emit(p[..], c, 0.01);
+  #assert p[0].n >= 1 && p[0].stage[0] < -5;   // its head, by the caster
+  fl := fxp_flight(c, 22, 0.15, 0.8);
+  fxp_begin(p[..], 0, fxp_v(0, 10, 20)); fxp_emit(p[..], c, fl + 0.1);
+  fire := 0;
+  for i: 0..<p[0].n {
+    o := i * FX_PUFF_FLOATS;
+    if floor(p[0].stage[o + 11]) == f32(PF_FIRE) { fire += 1; #assert p[0].stage[o] > 3.5 && p[0].stage[o] < 6.5; }
+  }
+  #assert fire >= 3;
+}
+
+#test "no frame writes more puffs than its budget, and going over is counted" #steps 2000000000 {
+  p: [1] FxPuffs;
+  for k: 0..<FX_LIVE * 2 {
+    c := fxp_test_cause(FXR_FIREBALL, f32(k) * 1.37);
+    c.to = fxp_v(f32(k % 20) * 2, 1, f32(k / 20) * 2);
+    s := fxp_start(p[..], c, 0);
+    #assert s >= 0 && s < FX_LIVE;
+  }
+  #assert p[0].started == FX_LIVE * 2 && p[0].dropped == FX_LIVE && fxp_live(p[..]) == FX_LIVE;
+  rep := fxp_frame(p[..], 1.4, fxp_v(0, 10, 20));
+  #assert rep.puffs == FX_PUFF_CAP && rep.refused > 0 && p[0].over == 1 && p[0].out_n == FX_PUFF_CAP;
+  // a light frame is under it, and says so
+  fxp_clear(p[..]);
+  s := fxp_start(p[..], fxp_test_cause(FXR_HIT, 2), 0);
+  rep = fxp_frame(p[..], 0.1, fxp_v(0, 10, 20));
+  #assert rep.puffs > 0 && rep.refused == 0 && p[0].over == 1;
+}
+
+#test "blows landing on one place together merge into one bigger effect" {
+  p: [1] FxPuffs;
+  c := fxp_test_cause(FXR_HIT, 2);
+  a := fxp_start(p[..], c, 0); b := fxp_start(p[..], c, 0.05);
+  #assert a == b && p[0].merged == 1 && p[0].live[a].big > 1 && fxp_live(p[..]) == 1;
+  c.to = fxp_v(-5, 1, -5);
+  d := fxp_start(p[..], c, 0.05);
+  #assert d != a && fxp_live(p[..]) == 2;
+}
+
+#test "the smoke and fire go far to near, then the glows" #steps 2000000000 {
+  p: [1] FxPuffs;
+  fxp_begin(p[..], 0, fxp_v(0, 0, 0));
+  ok := fxp_glow(p[..], fxp_v(0, 0, 1), 0.2, fxp_v(1, 1, 1), 0.5, 0);
+  ok = fxp_smoke(p[..], fxp_v(0, 0, 3), 0.2, fxp_v(1, 1, 1), 0.5, 0);
+  ok = fxp_smoke(p[..], fxp_v(0, 0, 60), 0.2, fxp_v(1, 1, 1), 0.5, 0);
+  ok = fxp_flame(p[..], fxp_v(0, 0, 20), 0.2, 0.1, 0.5, 1, 0);
+  rep := fxp_close(p[..]);
+  #assert rep.puffs == 4;
+  #assert p[0].out[2] == 60 && p[0].out[14] == 20 && p[0].out[26] == 3 && floor(p[0].out[47]) == f32(PF_GLOW);
+}

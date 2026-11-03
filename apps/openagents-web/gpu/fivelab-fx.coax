@@ -1,0 +1,5 @@
+// 5E Lab's spell and combat effects (fivelab.coax, aethyr/fx/puff.coax): build.sh writes
+// apps/openagents-web/fivelab-fx.wgsl from this with coax/web/wgsl-module.coax (fivelab-fx.module
+// and fivelab-fx.bindings beside it). The shader is aethyr/fx/gpu-puff.coax's, for a traced page:
+// the host draws it after bg_fs, the smoke and fire over the glade, then the light added.
+#load "../../../aethyr/fx/gpu-puff.coax";

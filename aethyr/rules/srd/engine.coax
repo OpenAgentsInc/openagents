@@ -715,7 +715,7 @@ RS_EV_CONDITION :: 6; RS_EV_END :: 7; RS_EV_DOWN :: 8; RS_EV_DEATH :: 9; RS_EV_P
 RS_EV_ZONE :: 11; RS_EV_MISS :: 12; RS_EV_STABLE :: 13; RS_EV_UP :: 14; RS_EV_TURN :: 15;
 RsEvent :: struct {
   kind: int; spell: int; by: int; to: int;
-  amount: int; damage: int;   // the amount and its damage type
+  amount: int; damage: int;   // the amount and its damage type (an attack's: 1 a critical hit)
   x: int; y: int;             // a square (an area's corner, a push's end)
   text: [RS_EV_TEXT] u8; text_n: int;
   at: f32;

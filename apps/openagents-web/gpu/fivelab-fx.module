@@ -1,0 +1,3 @@
+--vertices fxg_particle_vs,fxg_particle_over_vs
+--fragments fxg_particle_fs,fxg_particle_over_fs
+--bindings apps/openagents-web/gpu/fivelab-fx.bindings --strip fxg_

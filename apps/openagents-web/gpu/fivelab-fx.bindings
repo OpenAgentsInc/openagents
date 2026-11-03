@@ -1,0 +1,6 @@
+# 5E Lab's effects' bindings for `coax wgsl apps/openagents-web/gpu/fivelab-fx.coax` (coax/web/wgsl-module.coax):
+# NAME GROUP BINDING, and `uniform COUNT` for a []f32 read as a uniform block of COUNT vec4fs.
+# They are coax/web/host.js's particlePipeline layouts: group 0 fivelab.wgsl's uniforms, read up
+# to the camera's up (32 floats, 8 vec4fs); group 1 the puffs.
+u 0 0 uniform 8
+puffs 1 0

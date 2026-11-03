@@ -1,8 +1,8 @@
 // 5E Lab's C face for the browser (coax/web/host.js): scalar Wasm exports
 // over fivelab.coax, which holds the battle on the SRD engine
-// (aethyr/rules/srd/) and its drawing. It decides nothing. No assets, no
-// scene: gpu/fivelab.coax's bg_fs draws the grid and the log's glass, and
-// fx_fs the strokes lab_frame writes.
+// (aethyr/rules/srd/) and its drawing. It decides nothing. No scene:
+// gpu/fivelab.coax's bg_fs draws the grid and the log's glass, fx_fs the
+// strokes lab_frame writes, and fivelab-fx.wgsl the glade's effects (puffs).
 #include "fivelab.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -45,6 +45,12 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
 }
 EXPORT("coaxial_wheel") uint32_t coaxial_wheel(uint32_t state, float dy) { return lab_wheel(at(state), dy) ? 1u : 0u; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)lab_cursor(at(state)); }
+
+// ---- the glade's effects, drawn after bg_fs (fivelab-fx.wgsl, host.js particles): puffs of 12 floats
+EXPORT("coaxial_particle_cap") uint32_t coaxial_particle_cap(void) { return (uint32_t)sizeof(((coax_t_Lab *)0)->puffs.e[0].out); }
+EXPORT("coaxial_particles") uint32_t coaxial_particles(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->puffs.e[0].out.e; }
+EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(uint32_t state) { return (uint32_t)(lab_at(state)->puffs.e[0].out_n * 12 * sizeof(float)); }
+EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_t state) { return lab_at(state)->started ? (uint32_t)lab_at(state)->puffs.e[0].out_n : 0u; }
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }

@@ -365,7 +365,7 @@
         "module": "fivelab",
         "slot": "5e-lab",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
-        "assets": []
+        "assets": ["particles:/fivelab-fx.wgsl"]
       } },
     { "id": "metahumanlab", "name": "METAHUMAN LAB", "kind": "open", "listed": false, "orbit": { "r": 0.38, "a": 2.7, "size": 0.02 },
       "realm": {

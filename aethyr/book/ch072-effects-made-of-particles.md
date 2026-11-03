@@ -1,13 +1,22 @@
 # 72. Effects made of particles
 
-> **Status: unimplemented — design draft.** Today two private effect
-> systems exist. [`aethyr/particles.coax`](../../aethyr/particles.coax) and
-> [`aethyr/particle-motion.coax`](../../aethyr/particle-motion.coax) draw
-> embers, dust and fireflies for the Haunted House and Hecate's Cemetery,
-> and [`verse/everglade/gpu-fx.coax`](../../verse/everglade/gpu-fx.coax)
-> draws Everglade's spell fire, smoke, sparks and shockwave rings. This
-> chapter plans one effect module for every realm. Nothing in `aethyr/`
-> runs yet.
+> **Status: in progress — the puff half is implemented.**
+> [`aethyr/fx/puff.coax`](../../aethyr/fx/puff.coax) holds the puff record
+> and kinds, the budgets (`FX_LIVE` causes, `FX_PUFF_CAP` puffs a frame,
+> merges, push-outs and refusals counted), and seventeen recipes that
+> expand one event (seed, start time, from, to, colour) into puffs whose
+> motion is a pure function of seed, index and age.
+> [`aethyr/fx/gpu-puff.coax`](../../aethyr/fx/gpu-puff.coax) draws them on
+> a traced page (a pinhole camera from the uniforms, soft against the
+> ground it traces, no depth buffer) with Everglade's own shading, loaded
+> from [`verse/everglade/gpu-fx.coax`](../../verse/everglade/gpu-fx.coax),
+> which is unchanged. 5E Lab's glade is the first user: every spell, blow
+> and death in its battles is a recipe (`apps/openagents-web/fivelab.coax`
+> `fx_event`). The stateless emitters (`aethyr/fx/emitter.coax`,
+> `motion.coax`) are not built yet: the Haunted House and Hecate's
+> Cemetery still use [`aethyr/particles.coax`](../../aethyr/particles.coax)
+> and [`aethyr/particle-motion.coax`](../../aethyr/particle-motion.coax),
+> and Everglade still writes its own puffs (`everglade-spells.coax` `sp_fx`).
 
 Visual effects are particles that only look: embers off a candle, dust in
 a room, spray off a wake, smoke from a spell. They don't push anything and
@@ -79,8 +88,9 @@ and capped by a budget.
   functions.
 - `aethyr/fx/motion.coax`: stateless motion kinds, shared by the shader and
   the checks.
-- `aethyr/fx/puff.coax`: puffs with heat and streaks, and their two-pass
-  draw order.
+- `aethyr/fx/puff.coax` (built): puffs with heat and streaks, their two-pass
+  draw order, budgets and recipes; `aethyr/fx/gpu-puff.coax` (built) draws
+  them on traced pages.
 
 ## Acceptance checks and oracles
 
