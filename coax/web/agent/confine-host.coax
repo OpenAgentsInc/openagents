@@ -1,0 +1,84 @@
+// The file tools' checks against the real checkout, for turn.coax and
+// chat.coax: confine.coax (#authority) decides, confine-native.c makes the
+// system calls, and this moves the facts between them. Link
+// confine-native.c with the engine (deploy.sh, Dockerfile). The native
+// checks on a temporary directory are confine-check.coax
+// (coax/web/agent/test_confine.sh, under ASan and UBSan).
+#load "confine.coax";
+
+cfn_root :: (path: [] u8) -> int #foreign;
+cfn_close :: (fd: int) -> int #foreign;
+cfn_facts :: (root: int, rel: [] u8, out: [] int) -> int #foreign;
+cfn_sweep :: (root: int, counts: [] int) -> int #foreign;
+cfn_force_walk :: (on: int) -> int #foreign;
+
+CF_STEPS :: 80;   // a path and its ancestors looked at, at most
+
+// The checkout as a directory fd, or -1.
+cf_open_root :: (cwd: string) -> int {
+  b: [CF_PATH_MAX] u8;
+  if cwd.count == 0 || cwd.count > b.count { return -1; }
+  for i: 0..<cwd.count { b[i] = cwd[i]; }
+  return cfn_root(b[0..<cwd.count]);
+}
+
+// rel (relative to root) and its ancestors, nearest first, until one exists: the verdict.
+cf_look :: (root: int, rel: string) -> int {
+  codes: [CF_STEPS] int; kinds: [CF_STEPS] int; links: [CF_STEPS] int; facts: [3] int;
+  b: [CF_PATH_MAX] u8;
+  if rel.count > b.count { return CF_BAD; }
+  for i: 0..<rel.count { b[i] = rel[i]; }
+  n := 0;
+  while n < CF_STEPS {
+    k := cf_ancestor(rel, n);
+    if k < 0 { break; }
+    r := cfn_facts(root, b[0..<k], facts[..]);
+    codes[n] = ifx r == 0 then facts[0] else CFN_ERROR; kinds[n] = facts[1]; links[n] = facts[2];
+    n += 1;
+    if codes[n - 1] != CFN_MISSING { break; }
+  }
+  return cf_decide(codes[..], kinds[..], links[..], n);
+}
+
+// One path field as the model wrote it ("" is the checkout).
+cf_path_verdict :: (root: int, path: string, cwd: string) -> int {
+  s := cf_relative(path, cwd);
+  if s.verdict != CF_OK { return s.verdict; }
+  return cf_look(root, path[s.from..<s.to]);
+}
+// One Glob pattern: as written, then the directory its walk starts from.
+cf_pattern_verdict :: (root: int, pattern: string, cwd: string) -> int {
+  s := cf_pattern(pattern, cwd);
+  if s.verdict != CF_OK { return s.verdict; }
+  return cf_look(root, pattern[s.from..<s.to]);
+}
+
+// A tool call: the tool's name, whether Edit and Write are offered, and its
+// path field and its pattern field, decoded and as raw JSON ("" when absent;
+// the caller reads them from the input by cf_path_field and cf_glob_field).
+// CF_OK, or why not (cf_reason).
+cf_call :: (root: int, cwd: string, tool: string, writes: bool, path: string, path_raw: string, glob: string, glob_raw: string) -> int {
+  kind := cf_tool(tool, writes);
+  if kind == CFT_NONE || kind == CFT_REFUSED { return cf_verdict(kind, path, CF_OK, glob, CF_OK); }
+  if !cf_field_ok(path_raw, path) || !cf_field_ok(glob_raw, glob) { return CF_BAD; }
+  return cf_verdict(kind, path, cf_path_verdict(root, path, cwd), glob, cf_pattern_verdict(root, glob, cwd));
+}
+
+// The whole checkout, walked before the model starts: CF_OK, or why not.
+cf_sweep_checkout :: (root: int) -> int {
+  counts: [CFS_COUNT] int;
+  if cfn_sweep(root, counts[..]) != 0 { return CF_ERROR; }
+  return cf_sweep(counts[..]);
+}
+
+// What the CLI is told when a call is refused.
+cf_refusal :: (out: [] u8, v: int) -> string {
+  head := "Refused: the file tools work only inside the checkout (";
+  why := cf_reason(v);
+  n := 0;
+  for c: head { if n < out.count { out[n] = c; n += 1; } }
+  for c: why { if n < out.count { out[n] = c; n += 1; } }
+  if n < out.count { out[n] = ')'; n += 1; }
+  if n < out.count { out[n] = '.'; n += 1; }
+  return cast(string) out[0..<n];
+}

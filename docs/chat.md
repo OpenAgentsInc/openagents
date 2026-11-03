@@ -155,8 +155,9 @@ runner keeps 2 GiB: the Claude CLI (Node) takes 300–500 MB per turn, the
 checkout 41 MB of in-memory disk, and a project turn may run beside it.
 Cloud Run's `/tmp` is memory, so 1 GiB would be tight with two turns.
 
-Allowed tools: Read, Glob, Grep (only inside the checkout: no `..`, `~` or
-absolute paths outside it), WebSearch and WebFetch. Bash, Edit, Write,
+Allowed tools: Read, Glob, Grep (only inside the checkout, as
+`coax/web/agent/confine.coax` decides in a PreToolUse hook and the
+permission callback), WebSearch and WebFetch. Bash, Edit, Write,
 NotebookEdit, Task/Agent, TodoWrite and KillShell are refused by the
 permission callback. A refusal is a `session.error` event.
 

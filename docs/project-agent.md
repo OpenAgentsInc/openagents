@@ -155,7 +155,9 @@ version the agent read (`base`), build the new document and save it through
 only inside a running turn, never the title, the members or an agreed goal,
 and each edit recorded under the turn. The CLI's `Read`, `Glob`, `Grep`,
 `Edit` and `Write` are offered only when the project links a repository, and
-the permission callback allows them only for paths inside the checkout; Bash,
+a PreToolUse hook and the permission callback allow them only for paths
+inside the checkout, as `coax/web/agent/confine.coax` decides (git checks
+links out as plain files, and Edit and Write leave `.git` alone); Bash,
 web and Task are disallowed, no settings files load and no session is saved.
 Milestones are todo, doing or done: the document has no dropped status yet.
 

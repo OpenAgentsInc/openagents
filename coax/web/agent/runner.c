@@ -310,7 +310,14 @@ static int run(const char *dir, const char *const argv[], char *const envp[], te
 }
 static const char *git_bin(void) { return env("OA_GIT", "/usr/bin/git"); }
 static char git_env_ssh[1200];
-static char *git_envp[8];
+static char *git_envp[16];
+// Every git the runner runs, whatever a checkout's own config says: links are
+// checked out as small files holding the target (the model's file tools
+// refuse links, confine.coax), and no hook or fsmonitor command runs.
+static char *git_config[] = {"GIT_CONFIG_COUNT=3",
+                             "GIT_CONFIG_KEY_0=core.symlinks", "GIT_CONFIG_VALUE_0=false",
+                             "GIT_CONFIG_KEY_1=core.hooksPath", "GIT_CONFIG_VALUE_1=/dev/null",
+                             "GIT_CONFIG_KEY_2=core.fsmonitor", "GIT_CONFIG_VALUE_2=false", NULL};
 static void git_env(const char *keyfile, const char *home) {
   static char h[600], path[] = "PATH=/usr/local/bin:/usr/bin:/bin", name[] = "GIT_AUTHOR_NAME=Project agent",
               mail[] = "GIT_AUTHOR_EMAIL=agent@openagents.com", cname[] = "GIT_COMMITTER_NAME=Project agent",
@@ -318,6 +325,7 @@ static void git_env(const char *keyfile, const char *home) {
   snprintf(h, sizeof h, "HOME=%s", home);
   int n = 0;
   git_envp[n++] = h; git_envp[n++] = path; git_envp[n++] = name; git_envp[n++] = mail; git_envp[n++] = cname; git_envp[n++] = cmail;
+  for (int i = 0; git_config[i]; i++) git_envp[n++] = git_config[i];
   if (keyfile && *keyfile) {
     snprintf(git_env_ssh, sizeof git_env_ssh, "GIT_SSH_COMMAND=ssh -i %s -o IdentitiesOnly=yes -o UserKnownHostsFile=%s -o StrictHostKeyChecking=yes",
              keyfile, env("OA_KNOWN_HOSTS", "/etc/oa-agent/known_hosts"));

@@ -1,0 +1,189 @@
+// The file tools' confinement on a real directory (confine.coax decides,
+// confine-host.coax looks, confine-native.c makes the system calls). It makes
+// a temporary checkout with links out of it and into it, a hard link, a FIFO
+// and an escape through /proc, and checks that every call the model could
+// make on them is refused or allowed as confine.coax says, with openat2 and
+// again with the by-hand walk. Built and run under ASan and UBSan by
+// coax/web/agent/test_confine.sh; confine-check-native.c makes the fixtures.
+#import "Basic";
+#load "confine-host.coax";
+
+cft_tmpdir :: (out: [] u8) -> int #foreign;
+cft_mkdir :: (path: [] u8) -> int #foreign;
+cft_write :: (path: [] u8, text: [] u8) -> int #foreign;
+cft_symlink :: (target: [] u8, path: [] u8) -> int #foreign;
+cft_link :: (old: [] u8, path: [] u8) -> int #foreign;
+cft_mkfifo :: (path: [] u8) -> int #foreign;
+cft_rename :: (from: [] u8, to: [] u8) -> int #foreign;
+cft_rmtree :: (path: [] u8) -> int #foreign;
+cft_exit :: (code: int) #foreign;
+
+Ctx :: struct { base: [512] u8; base_n: int; failed: int; checks: int; }
+
+// base + "/" + rel, in out.
+at :: (c: [] Ctx, rel: string, out: [] u8) -> [] u8 {
+  n := 0;
+  for i: 0..<c[0].base_n { out[n] = c[0].base[i]; n += 1; }
+  if rel.count > 0 { out[n] = '/'; n += 1; }
+  for ch: rel { out[n] = ch; n += 1; }
+  return out[0..<n];
+}
+bytes :: (s: string, out: [] u8) -> [] u8 { for i: 0..<s.count { out[i] = s[i]; } return out[0..<s.count]; }
+
+make_dir :: (c: [] Ctx, rel: string) { b: [1024] u8; r := cft_mkdir(at(c, rel, b[..])); }
+make_file :: (c: [] Ctx, rel: string) { b: [1024] u8; t: [8] u8; r := cft_write(at(c, rel, b[..]), bytes("text\n", t[..])); }
+make_link :: (c: [] Ctx, target: string, rel: string) {
+  b: [1024] u8; t: [1024] u8;
+  r := cft_symlink(bytes(target, t[..]), at(c, rel, b[..]));
+}
+make_link_abs :: (c: [] Ctx, target_rel: string, rel: string) {
+  b: [1024] u8; t: [1024] u8;
+  r := cft_symlink(at(c, target_rel, t[..]), at(c, rel, b[..]));
+}
+
+expect :: (c: [] Ctx, name: string, got: int, want: int) {
+  c[0].checks += 1;
+  if got == want { print("ok   %\n", name); return; }
+  c[0].failed += 1;
+  print("FAIL % (got %, want %: %)\n", name, got, want, cf_reason(want));
+}
+
+// A call as the model would make it, with the path written absolute (as the CLI's Read wants).
+call :: (c: [] Ctx, root: int, tool: string, rel: string, glob: string) -> int {
+  cwd_b: [1024] u8; p_b: [1024] u8;
+  cwd := cast(string) at(c, "repo", cwd_b[..]);
+  path := ifx rel.count == 0 then "" else cast(string) at(c, rel, p_b[..]);
+  return cf_call(root, cwd, tool, true, path, "", glob, "");
+}
+call_as :: (c: [] Ctx, root: int, tool: string, path: string, glob: string) -> int {
+  cwd_b: [1024] u8;
+  return cf_call(root, cast(string) at(c, "repo", cwd_b[..]), tool, true, path, "", glob, "");
+}
+
+run :: (c: [] Ctx) {
+  cwd_b: [1024] u8;
+  root := cf_open_root(cast(string) at(c, "repo", cwd_b[..]));
+  expect(c, "the checkout opens", ifx root >= 0 then CF_OK else CF_ERROR, CF_OK);
+
+  // allowed
+  expect(c, "Read a file in the checkout", call(c, root, "Read", "repo/a.txt", ""), CF_OK);
+  expect(c, "Read a file in a directory", call(c, root, "Read", "repo/sub/b.txt", ""), CF_OK);
+  expect(c, "Read a relative path", call_as(c, root, "Read", "sub/b.txt", ""), CF_OK);
+  expect(c, "Read a missing file (the CLI says so)", call(c, root, "Read", "repo/sub/none.txt", ""), CF_OK);
+  expect(c, "Write a new file in new directories", call(c, root, "Write", "repo/new/deeper/c.txt", ""), CF_OK);
+  expect(c, "Edit a file", call(c, root, "Edit", "repo/a.txt", ""), CF_OK);
+  expect(c, "Glob the checkout", call(c, root, "Glob", "", "**/*.txt"), CF_OK);
+  expect(c, "Glob a directory", call(c, root, "Glob", "repo/sub", "*.txt"), CF_OK);
+  expect(c, "Grep the checkout", call(c, root, "Grep", "", ""), CF_OK);
+  expect(c, "Grep a directory with a glob", call(c, root, "Grep", "repo/sub", "*.txt"), CF_OK);
+
+  // a symbolic link to a file outside, and to a directory outside
+  expect(c, "Read a link to a file outside", call(c, root, "Read", "repo/link-out", ""), CF_LINK);
+  expect(c, "Read a relative link to a file outside", call(c, root, "Read", "repo/rel-out", ""), CF_LINK);
+  expect(c, "Read a file through a link to a directory outside", call(c, root, "Read", "repo/dir-out/inner.txt", ""), CF_LINK);
+  expect(c, "Read a link to /proc/self/environ", call(c, root, "Read", "repo/env", ""), CF_LINK);
+  expect(c, "Read a link to /proc/1/environ", call(c, root, "Read", "repo/env1", ""), CF_LINK);
+  expect(c, "Read a dangling link", call(c, root, "Read", "repo/dangling", ""), CF_LINK);
+  expect(c, "Read through a link deep in the path", call(c, root, "Read", "repo/sub/deep-out/inner.txt", ""), CF_LINK);
+  // a link that stays inside is refused too (a checkout has none: core.symlinks=false)
+  expect(c, "Read a link to a file inside", call(c, root, "Read", "repo/in-link", ""), CF_LINK);
+  expect(c, "Read through a link to a directory inside", call(c, root, "Read", "repo/sub-link/b.txt", ""), CF_LINK);
+  // Write and Edit through links
+  expect(c, "Write through a link to a file outside", call(c, root, "Write", "repo/link-out", ""), CF_LINK);
+  expect(c, "Write a new file through a link to a directory outside", call(c, root, "Write", "repo/dir-out/new.txt", ""), CF_LINK);
+  expect(c, "Write a new file deep under a link to a directory outside", call(c, root, "Write", "repo/dir-out/x/y/new.txt", ""), CF_LINK);
+  expect(c, "Edit through a link to a file outside", call(c, root, "Edit", "repo/link-out", ""), CF_LINK);
+  expect(c, "Edit through a link inside", call(c, root, "Edit", "repo/in-link", ""), CF_LINK);
+  expect(c, "Write through a dangling link", call(c, root, "Write", "repo/dangling", ""), CF_LINK);
+  // Glob and Grep starting at a link
+  expect(c, "Glob a link to a directory outside", call(c, root, "Glob", "repo/dir-out", "*"), CF_LINK);
+  expect(c, "Glob a pattern through a link", call(c, root, "Glob", "", "dir-out/*"), CF_LINK);
+  expect(c, "Grep a link to a directory outside", call(c, root, "Grep", "repo/dir-out", ""), CF_LINK);
+  expect(c, "Grep a link to a file outside", call(c, root, "Grep", "repo/link-out", ""), CF_LINK);
+  expect(c, "Grep with a glob through a link", call(c, root, "Grep", "", "dir-out/*.txt"), CF_LINK);
+  // .. steps and absolute paths
+  expect(c, "Read ../ out of the checkout", call_as(c, root, "Read", "../outside/secret.txt", ""), CF_DOTDOT);
+  expect(c, "Read the checkout/../ out of it", call(c, root, "Read", "repo/../outside/secret.txt", ""), CF_DOTDOT);
+  expect(c, "Read an absolute path outside", call(c, root, "Read", "outside/secret.txt", ""), CF_OUTSIDE);
+  expect(c, "Read /proc/self/environ", call_as(c, root, "Read", "/proc/self/environ", ""), CF_OUTSIDE);
+  expect(c, "Read /proc/1/environ", call_as(c, root, "Read", "/proc/1/environ", ""), CF_OUTSIDE);
+  expect(c, "Read a home path", call_as(c, root, "Read", "~/.ssh/id_ed25519", ""), CF_HOME);
+  expect(c, "Glob an absolute pattern outside", call(c, root, "Glob", "", "/etc/*"), CF_OUTSIDE);
+  expect(c, "Glob ../", call(c, root, "Glob", "", "../*"), CF_DOTDOT);
+  expect(c, "Glob a path outside", call(c, root, "Glob", "outside", "*"), CF_OUTSIDE);
+  expect(c, "Grep a path outside", call(c, root, "Grep", "outside", ""), CF_OUTSIDE);
+  // hard links, special files, .git
+  expect(c, "Read a hard link to a file outside", call(c, root, "Read", "repo/hard", ""), CF_HARDLINK);
+  expect(c, "Edit a hard link", call(c, root, "Edit", "repo/hard", ""), CF_HARDLINK);
+  expect(c, "Read a FIFO", call(c, root, "Read", "repo/fifo", ""), CF_SPECIAL);
+  expect(c, "Write a .git hook", call(c, root, "Write", "repo/.git/hooks/pre-commit", ""), CF_GIT);
+  expect(c, "Edit .git/config", call(c, root, "Edit", "repo/.git/config", ""), CF_GIT);
+  expect(c, "Read .git/config", call(c, root, "Read", "repo/.git/config", ""), CF_OK);
+  expect(c, "a file as a directory", call(c, root, "Write", "repo/a.txt/x", ""), CF_ERROR);
+  expect(c, "Read with no path", call_as(c, root, "Read", "", ""), CF_REQUIRED);
+
+  // a swap after a check: the next call is checked again
+  expect(c, "before the swap", call(c, root, "Read", "repo/swap/b.txt", ""), CF_OK);
+  fb: [1024] u8; tb: [1024] u8;
+  r := cft_rename(at(c, "repo/swap", fb[..]), at(c, "repo/swap-old", tb[..]));
+  make_link_abs(c, "outside/dir", "repo/swap");
+  expect(c, "after the swap", call(c, root, "Read", "repo/swap/inner.txt", ""), CF_LINK);
+  r = cft_rename(at(c, "repo/swap", fb[..]), at(c, "repo/swap-link", tb[..]));
+  r = cft_rename(at(c, "repo/swap-old", fb[..]), at(c, "repo/swap", tb[..]));
+  // the root itself: a link put where the checkout was is not followed by the fd already open
+  expect(c, "the open checkout after its parent moved", call(c, root, "Read", "repo/a.txt", ""), CF_OK);
+
+  // the sweep
+  expect(c, "the sweep finds the links", cf_sweep_checkout(root), CF_LINK);
+  r2 := cfn_close(root);
+  clean_b: [1024] u8;
+  clean := cf_open_root(cast(string) at(c, "clean", clean_b[..]));
+  expect(c, "the sweep passes a checkout of files and directories", cf_sweep_checkout(clean), CF_OK);
+  r2 = cfn_close(clean);
+  hard := cf_open_root(cast(string) at(c, "hard", clean_b[..]));
+  expect(c, "the sweep finds a hard link", cf_sweep_checkout(hard), CF_HARDLINK);
+  r2 = cfn_close(hard);
+  special := cf_open_root(cast(string) at(c, "special", clean_b[..]));
+  expect(c, "the sweep finds a FIFO", cf_sweep_checkout(special), CF_SPECIAL);
+  r2 = cfn_close(special);
+  expect(c, "no checkout", cf_call(-1, "/nowhere/repo", "Read", true, "/nowhere/repo/a", "", "", ""), CF_ERROR);
+  expect(c, "a path field that was not read whole", cf_call(-1, "/nowhere/repo", "Glob", true, "", "\"/etc\"", "*", ""), CF_BAD);
+  expect(c, "a pattern field that was not read whole", cf_call(-1, "/nowhere/repo", "Grep", true, "", "", "", "[1]"), CF_BAD);
+  expect(c, "a tool that is not a file tool", cf_call(-1, "/nowhere/repo", "WebSearch", true, "", "", "", ""), CF_OK);
+  expect(c, "a file tool not offered", cf_call(-1, "/nowhere/repo", "Write", false, "/nowhere/repo/a", "", "", ""), CF_TOOL);
+  expect(c, "the sweep of no checkout", cf_sweep_checkout(-1), CF_ERROR);
+}
+
+main :: () {
+  cc: [1] Ctx; c := cc[..];
+  c[0].base_n = cft_tmpdir(c[0].base[..]);
+  if c[0].base_n <= 0 { print("FAIL no temporary directory\n"); cft_exit(1); }
+  for d: [10] string.["outside", "outside/dir", "repo", "repo/sub", "repo/sub/inside", "repo/swap", "repo/.git", "clean", "clean/x", "hard"] { make_dir(c, d); }
+  make_dir(c, "special");
+  for f: [7] string.["outside/secret.txt", "outside/dir/inner.txt", "repo/a.txt", "repo/sub/b.txt", "repo/swap/b.txt", "repo/.git/config", "clean/x/y.txt"] { make_file(c, f); }
+  make_file(c, "hard/one.txt");
+  make_link_abs(c, "outside/secret.txt", "repo/link-out");
+  make_link(c, "../outside/secret.txt", "repo/rel-out");
+  make_link_abs(c, "outside/dir", "repo/dir-out");
+  make_link_abs(c, "outside/dir", "repo/sub/deep-out");
+  make_link(c, "/proc/self/environ", "repo/env");
+  make_link(c, "/proc/1/environ", "repo/env1");
+  make_link(c, "/nonexistent/file", "repo/dangling");
+  make_link(c, "a.txt", "repo/in-link");
+  make_link(c, "sub", "repo/sub-link");
+  ob: [1024] u8; nb: [1024] u8;
+  r := cft_link(at(c, "outside/secret.txt", ob[..]), at(c, "repo/hard", nb[..]));
+  r = cft_link(at(c, "hard/one.txt", ob[..]), at(c, "hard/two.txt", nb[..]));
+  r = cft_mkfifo(at(c, "repo/fifo", ob[..]));
+  r = cft_mkfifo(at(c, "special/fifo", ob[..]));
+
+  print("-- openat2 (where the kernel has it)\n");
+  run(c);
+  print("-- the by-hand walk\n");
+  r = cfn_force_walk(1);
+  run(c);
+
+  r = cft_rmtree(c[0].base[0..<c[0].base_n]);
+  print("% checks, % failed\n", c[0].checks, c[0].failed);
+  if c[0].failed > 0 { cft_exit(1); }
+}

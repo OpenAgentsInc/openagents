@@ -1,5 +1,11 @@
 # Owner actions
 
+## The agent runner: redeploy (2026-11-03)
+
+Redeploy the agent runner to pick up file-tool hardening
+(`coax/web/agent/deploy.sh`, staging first). Until then the running image
+has the old engines.
+
 ## Coax relay cutover: parity, the checkpoint's home, the export and the rehearsals (#12631, 2026-11-03)
 
 Built and checked offline, with test keys and synthetic data only: the
@@ -479,9 +485,22 @@ Details: `docs/verification/2026-11-01-nostr-book-chapters-11-104.md`.
        with its service account. Neither the environment nor the filesystem
        holds it, but it's more code, and any process running as the same user
        can use that account too.
+     - **R-D.** At start, have the runner re-exec itself with an environment
+       that holds none of the three secrets, handing them to the new image on
+       an inherited pipe or a sealed `memfd` that it reads once and closes.
+       The new process's initial environment block never held them, so
+       `/proc/<pid>/environ` can't show them, with no byte overwriting.
+       `deploy.sh` doesn't change. The keys still live in the runner's
+       memory.
+     - **R-E.** With any of the above, have the runner call
+       `prctl(PR_SET_DUMPABLE, 0)` at start. Other processes of the same user,
+       the engines and the claude CLI among them, then can't read its
+       `/proc/<pid>/environ` or `/proc/<pid>/mem` or attach to it. One line,
+       no deployment change; it also turns off the runner's core dumps.
 
      Recommendation: R-B now, then R-A or R-C with the encrypted-storage
-     decision above. Nothing is built until you choose.
+     decision above. R-D is the thorough form of R-B, and R-E is cheap
+     alongside any of them. Nothing is built until you choose.
    - **The unlock opener.** A recipient key pasted into the opener is kept in
      the site's IndexedDB (`coaxial-unlock`) as hex, in the clear
      (`coax/web/unlock/page.ts`), like web sign-in's entropy. It falls under

@@ -11,16 +11,20 @@
 // "project"): each call goes to the runner as {"t":"call","id","tool","args"}
 // and comes back as {"t":"reply","id","status","body"}; the runner makes it
 // one signed oa-api op, so oa-api's rules decide every document change. With
-// a linked repository it also gets Read, Glob, Grep, Edit and Write, and the
-// permission callback allows them only inside the checkout. Nothing else: no
+// a linked repository it also gets Read, Glob, Grep, Edit and Write, and a
+// PreToolUse hook and the permission callback allow them only inside the
+// checkout, as confine.coax decides (no links, no .. steps, nothing outside,
+// no .git for Edit and Write; the checkout is swept for links before the
+// model starts). Nothing else: no
 // Bash, no web, no settings files, no saved session. The engine streams what
 // the model does as {"t":"event",...} lines and ends with {"t":"done",...};
 // a {"t":"stop"} from the runner ends the turn. The runner does git.
-// Build: coax c turn.coax, then cc with coax/platform/process-native.c and
-// engine-io.c (coax/web/agent/Dockerfile).
+// Build: coax c turn.coax, then cc with coax/platform/process-native.c,
+// engine-io.c and confine-native.c (coax/web/agent/Dockerfile).
 
 #import "Basic";
 #load "../../lib/agent/claude/claude.coax";
+#load "confine-host.coax";
 
 eio_read_line :: (timeout_ms: int) -> int #foreign;
 eio_line_byte :: (i: int) -> int #foreign;
@@ -94,7 +98,7 @@ en_shown :: (path: string, cwd: string, doc: string) -> string {
   return path;
 }
 
-SYSTEM :: "You are the agent of a private project on OpenAgents. The project's members talk to you on the project's page; each message is one turn, and the members can undo any turn.\n\nChange the project only through the project tools, which save to the project at once:\n- project_get: the project document as JSON with its version. Read it before you change anything, and again after a write is refused as stale.\n- milestone_status and checklist_status: a milestone's or a checklist item's status (todo, doing, done) with evidence.\n- milestone_edit: add, reword, move or carry over a milestone (a dated step), or add or reword a backlog item (in a checklist).\n- goal_propose: a new goal, or a change to one, as proposed. Goals apply only when every member agrees on the page; you cannot agree for them.\n- project_note: a note on the project's thread. project_plan: your plan for a milestone.\n- document_patch: a JSON patch (add, remove, replace, move, test) for anything the other tools don't cover, against the version you read.\nYou can never change the title, the members or an agreed goal; the server refuses it.\n\nRepository files: when the project links a repository, it is your working directory, and Read, Glob, Grep, Edit and Write work inside it only. The runner commits and pushes your file edits after the turn, one commit per turn. You cannot run commands or use the web.\n\nDo only what the member asked; when a request is unclear, ask instead of guessing. When you finish, answer the member in a few plain sentences: what you changed, or why you changed nothing.";
+SYSTEM :: "You are the agent of a private project on OpenAgents. The project's members talk to you on the project's page; each message is one turn, and the members can undo any turn.\n\nChange the project only through the project tools, which save to the project at once:\n- project_get: the project document as JSON with its version. Read it before you change anything, and again after a write is refused as stale.\n- milestone_status and checklist_status: a milestone's or a checklist item's status (todo, doing, done) with evidence.\n- milestone_edit: add, reword, move or carry over a milestone (a dated step), or add or reword a backlog item (in a checklist).\n- goal_propose: a new goal, or a change to one, as proposed. Goals apply only when every member agrees on the page; you cannot agree for them.\n- project_note: a note on the project's thread. project_plan: your plan for a milestone.\n- document_patch: a JSON patch (add, remove, replace, move, test) for anything the other tools don't cover, against the version you read.\nYou can never change the title, the members or an agreed goal; the server refuses it.\n\nRepository files: when the project links a repository, it is your working directory, and Read, Glob, Grep, Edit and Write work inside it only (Edit and Write not in .git), and a symbolic link in the repository is a small file holding its target. The runner commits and pushes your file edits after the turn, one commit per turn. You cannot run commands or use the web.\n\nDo only what the member asked; when a request is unclear, ask instead of guessing. When you finish, answer the member in a few plain sentences: what you changed, or why you changed nothing.";
 
 PROJECT_TOOLS :: [8] string.["project_get", "project_note", "project_plan", "milestone_status", "milestone_edit", "checklist_status", "goal_propose", "document_patch"];
 PROJECT_ABOUT :: [8] string.[
@@ -118,14 +122,23 @@ PROJECT_SCHEMA :: [8] string.[
 FILE_TOOLS :: [5] string.["Read", "Glob", "Grep", "Edit", "Write"];
 DENIED :: [5] string.["Bash", "WebFetch", "WebSearch", "Task", "NotebookEdit"];
 
-// A path the model may touch: inside the checkout, with no ".." step.
-en_inside :: (path: string, cwd: string) -> bool {
-  if cwd.count == 0 { return false; }
-  for i: 0..<path.count {
-    if path[i] == '.' && i + 1 < path.count && path[i + 1] == '.' && (i == 0 || path[i - 1] == '/') && (i + 2 == path.count || path[i + 2] == '/') { return false; }
-  }
-  if path.count > 0 && path[0] != '/' { return true; }
-  return path == cwd || (path.count > cwd.count && en_starts(path, cwd) && path[cwd.count] == '/');
+// A tool call's input against the checkout (confine.coax): CF_OK, or why not.
+en_confined :: (ar: [] ClArena, root: int, cwd: string, tool: string, writes: bool, input: string) -> int {
+  kind := cf_tool(tool, writes);
+  pf := cf_path_field(kind); gf := cf_glob_field(kind);
+  path_raw := ifx pf.count > 0 then cl_raw(input, pf) else "";
+  glob_raw := ifx gf.count > 0 then cl_raw(input, gf) else "";
+  path := ifx pf.count > 0 then cl_str(ar, input, pf) else "";
+  glob := ifx gf.count > 0 then cl_str(ar, input, gf) else "";
+  return cf_call(root, cwd, tool, writes, path, path_raw, glob, glob_raw);
+}
+// The PreToolUse hook's answer: nothing to add, or a refusal with its reason.
+en_hook :: (q: [] ClQuery, v: int) {
+  if v == CF_OK { cl_hook_answer(q, "{}"); return; }
+  rb: [200] u8; hb: [400] u8; h: [1] ClOut; h[0].buf = hb[..];
+  cl_put(h[..], "{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":");
+  cl_put_string(h[..], cf_refusal(rb[..], v)); cl_put(h[..], "}");
+  cl_hook_reply(q, ClHookOutput.{hook_specific_output = cast(string) hb[0..<h[0].len]});
 }
 
 // Whether the next stdin line, waited for up to timeout_ms, is a stop.
@@ -163,6 +176,13 @@ main :: () {
   }
   budget := cl_num(line, "budget_usd").value;
   if text.count == 0 { en_done(out[..], "failed", "", "the turn has no message", 0.0); return; }
+  // the checkout, held open for the file tools' checks, and swept for links first
+  root := -1;
+  if repo {
+    root = cf_open_root(cwd);
+    if root < 0 { en_done(out[..], "failed", "", "the agent could not open the checkout", 0.0); return; }
+    if cf_sweep_checkout(root) != CF_OK { en_done(out[..], "failed", "", "the repository has a symbolic link, a hard link or a special file, so the agent cannot work in it", 0.0); return; }
+  }
 
   sys_buf: [16384] u8; sys: [1] ClOut; sys[0].buf = sys_buf[..];
   cl_put(sys[..], SYSTEM);
@@ -210,6 +230,7 @@ main :: () {
     cl_add_allowed(o[..], cast(string) names[k * 40..<k * 40 + w[0].len]);
   }
   o[0].permission_handler = true;
+  cl_add_hook(o[..], "PreToolUse", "", 0.0);   // every tool call, even one the CLI would allow by itself
   o[0].max_turns = 40;
   if budget > 0.0 { o[0].max_budget_usd = budget; o[0].has_max_budget = true; }
   o[0].persist_session = false;
@@ -237,14 +258,20 @@ main :: () {
     ev := cl_next(q[..], proc[..]);
     if ev.kind == ClEventKind.end { break; }
     if ev.kind == ClEventKind.failed { err = cl_error(q[..]); break; }
+    if ev.kind == ClEventKind.hook {
+      marg[0].at = 0; marg[0].full = false;
+      tool := cl_str(marg[..], ev.arguments, "tool_name");
+      v := en_confined(marg[..], root, cwd, tool, writes, cl_raw(ev.arguments, "tool_input"));
+      if v != CF_OK { en_event(out[..], "session.error", "error", "a file outside the checkout was refused"); }
+      en_hook(q[..], v);
+      continue;
+    }
     if ev.kind == ClEventKind.permission {
       tool := ev.request.tool_name;
       marg[0].at = 0; marg[0].full = false;
-      path := cl_str(marg[..], ev.request.input, "file_path");
-      if path.count == 0 { path = cl_str(marg[..], ev.request.input, "path"); }
       file_tool := false;
       for name: FILE_TOOLS { if name == tool && (writes || (name != "Edit" && name != "Write")) { file_tool = true; } }
-      if repo && file_tool && (path.count == 0 || en_inside(path, cwd)) { cl_allow(q[..], ev.request.input, ""); }
+      if repo && file_tool && en_confined(marg[..], root, cwd, tool, writes, ev.request.input) == CF_OK { cl_allow(q[..], ev.request.input, ""); }
       else {
         cl_deny(q[..], "Only the project tools, and Read, Glob, Grep, Edit and Write inside the checkout, are allowed.", false);
         en_event(out[..], "session.error", "error", "a tool outside the project was refused");
@@ -330,6 +357,7 @@ main :: () {
       }
     }
   }
+  cr := cfn_close(root);
   if stopped { r := cl_kill(proc[..]); en_done(out[..], "stopped", "", "", cost); return; }
   en_done_as(out[..], status, cast(string) ans_buf[0..<ans_n], err, cost, expired);
 }

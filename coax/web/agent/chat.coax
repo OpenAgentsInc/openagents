@@ -7,18 +7,21 @@
 // writes one line:
 //   {"t":"turn","mode":"chat","turn":{id,text,model},"model","budget_usd","cwd","today",
 //    "resume":SESSION or "session_id":SESSION, "history":[...] when the session could not be resumed}
-// The model gets Read, Glob and Grep, which the permission callback allows
-// only inside the checkout, and WebSearch and WebFetch. Everything else is
-// refused there: Edit, Write, Bash, Task and any path outside the checkout.
+// The model gets Read, Glob and Grep, which a PreToolUse hook and the
+// permission callback allow only inside the checkout (confine.coax: no links,
+// no .. steps, nothing outside; the checkout is swept for links first), and
+// WebSearch and WebFetch. Everything else is refused there: Edit, Write,
+// Bash, Task and any path outside the checkout.
 // No settings files load; the CLI session is kept (the runner stores it) so
 // the next turn resumes it, with whatever model that turn asks for. It
 // streams {"t":"event",...} lines (working, agent.message, agent.tool_use,
 // session.error) and ends with {"t":"done",...}; a {"t":"stop"} ends the turn.
-// Build: coax c chat.coax, then cc with coax/platform/process-native.c and
-// engine-io.c (coax/web/agent/Dockerfile).
+// Build: coax c chat.coax, then cc with coax/platform/process-native.c,
+// engine-io.c and confine-native.c (coax/web/agent/Dockerfile).
 
 #import "Basic";
 #load "../../lib/agent/claude/claude.coax";
+#load "confine-host.coax";
 
 eio_read_line :: (timeout_ms: int) -> int #foreign;
 eio_line_byte :: (i: int) -> int #foreign;
@@ -83,26 +86,35 @@ ch_shown :: (path: string, cwd: string) -> string {
   return path;
 }
 
-// A path the model may read: inside the checkout, with no ".." step.
-ch_inside :: (path: string, cwd: string) -> bool {
-  if cwd.count == 0 { return false; }
-  for i: 0..<path.count {
-    if path[i] == '.' && i + 1 < path.count && path[i + 1] == '.' && (i == 0 || path[i - 1] == '/') && (i + 2 == path.count || path[i + 2] == '/') { return false; }
-  }
-  if path.count > 0 && path[0] == '~' { return false; }
-  if path.count > 0 && path[0] != '/' { return true; }
-  return path == cwd || (path.count > cwd.count && ch_starts(path, cwd) && path[cwd.count] == '/');
-}
-
 READ_TOOLS :: [3] string.["Read", "Glob", "Grep"];
 WEB_TOOLS :: [2] string.["WebSearch", "WebFetch"];
 DENIED :: [8] string.["Bash", "Edit", "Write", "NotebookEdit", "Task", "Agent", "TodoWrite", "KillShell"];
 
-// What the permission callback decides: 1 allow, 0 refuse.
-ch_may :: (tool: string, path: string, cwd: string) -> bool {
+// What the permission callback decides, given the call's verdict against the
+// checkout (ch_confined, confine.coax): allow or refuse.
+ch_may :: (tool: string, confined: int) -> bool {
   for name: WEB_TOOLS { if name == tool { return true; } }
-  for name: READ_TOOLS { if name == tool { return path.count == 0 || ch_inside(path, cwd); } }
+  for name: READ_TOOLS { if name == tool { return confined == CF_OK; } }
   return false;
+}
+
+// A tool call's input against the checkout: CF_OK, or why not. Edit and Write are never offered here.
+ch_confined :: (ar: [] ClArena, root: int, cwd: string, tool: string, input: string) -> int {
+  kind := cf_tool(tool, false);
+  pf := cf_path_field(kind); gf := cf_glob_field(kind);
+  path_raw := ifx pf.count > 0 then cl_raw(input, pf) else "";
+  glob_raw := ifx gf.count > 0 then cl_raw(input, gf) else "";
+  path := ifx pf.count > 0 then cl_str(ar, input, pf) else "";
+  glob := ifx gf.count > 0 then cl_str(ar, input, gf) else "";
+  return cf_call(root, cwd, tool, false, path, path_raw, glob, glob_raw);
+}
+// The PreToolUse hook's answer: nothing to add, or a refusal with its reason.
+ch_hook :: (q: [] ClQuery, v: int) {
+  if v == CF_OK { cl_hook_answer(q, "{}"); return; }
+  rb: [200] u8; hb: [400] u8; h: [1] ClOut; h[0].buf = hb[..];
+  cl_put(h[..], "{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":");
+  cl_put_string(h[..], cf_refusal(rb[..], v)); cl_put(h[..], "}");
+  cl_hook_reply(q, ClHookOutput.{hook_specific_output = cast(string) hb[0..<h[0].len]});
 }
 
 // The expired or revoked subscription token, as the CLI says it.
@@ -145,6 +157,10 @@ main :: () {
   session := cl_str(targ[..], line, "session_id");
   budget := cl_num(line, "budget_usd").value;
   if text.count == 0 { ch_done(out[..], "failed", "", "the turn has no message", 0.0, false); return; }
+  // the checkout, held open for the file tools' checks, and swept for links first
+  root := cf_open_root(cwd);
+  if root < 0 { ch_done(out[..], "failed", "", "the agent could not open the checkout", 0.0, false); return; }
+  if cf_sweep_checkout(root) != CF_OK { ch_done(out[..], "failed", "", "the checkout has a symbolic link, a hard link or a special file", 0.0, false); return; }
 
   sys_buf: [8192] u8; sys: [1] ClOut; sys[0].buf = sys_buf[..];
   cl_put(sys[..], SYSTEM);
@@ -182,6 +198,7 @@ main :: () {
   for name: WEB_TOOLS { cl_add_tool(o[..], name); }
   for name: DENIED { cl_add_disallowed(o[..], name); }
   o[0].permission_handler = true;
+  cl_add_hook(o[..], "PreToolUse", "", 0.0);   // every tool call, even one the CLI would allow by itself
   o[0].max_turns = 30;
   if budget > 0.0 { o[0].max_budget_usd = budget; o[0].has_max_budget = true; }
   o[0].persist_session = true;
@@ -209,12 +226,20 @@ main :: () {
     ev := cl_next(q[..], proc[..]);
     if ev.kind == ClEventKind.end { break; }
     if ev.kind == ClEventKind.failed { err = cl_error(q[..]); break; }
+    if ev.kind == ClEventKind.hook {
+      marg[0].at = 0; marg[0].full = false;
+      tool := cl_str(marg[..], ev.arguments, "tool_name");
+      v := ch_confined(marg[..], root, cwd, tool, cl_raw(ev.arguments, "tool_input"));
+      if v != CF_OK { ch_event(out[..], "session.error", "error", cf_reason(v)); }
+      ch_hook(q[..], v);
+      continue;
+    }
     if ev.kind == ClEventKind.permission {
       tool := ev.request.tool_name;
       marg[0].at = 0; marg[0].full = false;
       path := cl_str(marg[..], ev.request.input, "file_path");
       if path.count == 0 { path = cl_str(marg[..], ev.request.input, "path"); }
-      if ch_may(tool, path, cwd) { cl_allow(q[..], ev.request.input, ""); }
+      if ch_may(tool, ch_confined(marg[..], root, cwd, tool, ev.request.input)) { cl_allow(q[..], ev.request.input, ""); }
       else {
         cl_deny(q[..], "Refused: only Read, Glob and Grep inside the checkout, WebSearch and WebFetch are allowed here.", false);
         wb: [400] u8; w: [1] ClOut; w[0].buf = wb[..];
@@ -275,22 +300,18 @@ main :: () {
       }
     }
   }
+  cr := cfn_close(root);
   if stopped { r := cl_kill(proc[..]); ch_done(out[..], "stopped", "", "", cost, false); return; }
   ch_done(out[..], status, cast(string) ans_buf[0..<ans_n], err, cost, expired);
 }
 
 #test "reads only inside the checkout, the web, and nothing else" {
-  cwd := "/tmp/oa-agent/chat-repo";
-  #assert ch_may("Read", "/tmp/oa-agent/chat-repo/coax/web/release.sh", cwd);
-  #assert ch_may("Grep", "", cwd) && ch_may("Glob", "coax/web", cwd);
-  #assert !ch_may("Read", "/etc/passwd", cwd);
-  #assert !ch_may("Read", "/tmp/oa-agent/chat-repo/../secrets", cwd);
-  #assert !ch_may("Read", "/tmp/oa-agent/chat-repo-other/x", cwd);
-  #assert !ch_may("Read", "~/.ssh/id_ed25519", cwd);
-  #assert !ch_may("Glob", "../", cwd);
-  #assert ch_may("WebSearch", "", cwd) && ch_may("WebFetch", "", cwd);
-  #assert !ch_may("Bash", "", cwd) && !ch_may("Edit", "/tmp/oa-agent/chat-repo/a", cwd) && !ch_may("Write", "/tmp/oa-agent/chat-repo/a", cwd);
-  #assert !ch_may("Task", "", cwd) && !ch_may("mcp__x__y", "", cwd);
+  // which paths are inside is confine.coax's (its checks, and confine-check.coax on a real directory)
+  #assert ch_may("Read", CF_OK) && ch_may("Grep", CF_OK) && ch_may("Glob", CF_OK);
+  #assert !ch_may("Read", CF_OUTSIDE) && !ch_may("Read", CF_LINK) && !ch_may("Glob", CF_DOTDOT) && !ch_may("Grep", CF_HOME);
+  #assert ch_may("WebSearch", CF_OK) && ch_may("WebFetch", CF_OK);
+  #assert !ch_may("Bash", CF_OK) && !ch_may("Edit", CF_OK) && !ch_may("Write", CF_OK);
+  #assert !ch_may("Task", CF_OK) && !ch_may("mcp__x__y", CF_OK);
 }
 
 #test "an expired subscription token is told apart" {

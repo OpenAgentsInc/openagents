@@ -1,0 +1,383 @@
+// Where the model's file tools may reach: inside the checkout, and nowhere
+// else. The project agent (turn.coax) and /chat (chat.coax) offer the claude
+// CLI's Read, Glob and Grep (and, for a project, Edit and Write) in a
+// checkout. The CLI opens the files itself, so each call is checked before it
+// runs, in a PreToolUse hook and again in the permission callback:
+//
+//   1. the path as written (cf_relative, cf_pattern): no "~", no ".." step,
+//      no absolute path but the checkout's own, no NUL; a Glob pattern also
+//      has no "\", and no "/", "~" or ".." after a "{" or ",";
+//   2. the path as the kernel resolves it (confine-native.c's cfn_facts,
+//      judged by cf_decide): opened beneath the checkout's directory fd with
+//      openat2(RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS),
+//      or one component at a time with O_NOFOLLOW where openat2 is missing.
+//      A symbolic link anywhere on the way is refused, even one that points
+//      inside the checkout: git checks links out as small files holding the
+//      target (the runner sets core.symlinks=false), so a working checkout
+//      has none. So is a file with more than one link (a hard link), and
+//      anything but a file or a directory. A path that doesn't exist yet
+//      (Write) is judged by its nearest existing ancestor, which must be a
+//      directory;
+//   3. Edit and Write never touch a ".git" directory: hooks and config there
+//      would run in the runner's git, outside the model's reach otherwise;
+//   4. before the model starts, the whole checkout is walked without
+//      following links (cfn_sweep, judged by cf_sweep): any link, hard link
+//      or special file ends the turn, so Glob and Grep, which walk
+//      directories, have nothing to follow out.
+//
+// Nothing in a turn can make a link (the model has no shell, and Write and
+// Edit write files), so the path checked is the path the CLI opens. This
+// file decides; confine-native.c only makes the system calls and
+// confine-host.coax moves the facts between them.
+#authority;
+
+// verdicts
+CF_OK :: 0; CF_OUTSIDE :: 1; CF_DOTDOT :: 2; CF_HOME :: 3; CF_BAD :: 4; CF_LINK :: 5; CF_ESCAPE :: 6;
+CF_HARDLINK :: 7; CF_SPECIAL :: 8; CF_ERROR :: 9; CF_TOOL :: 10; CF_REQUIRED :: 11; CF_PATTERN :: 12; CF_GIT :: 13;
+// what confine-native.c found at one path, and what it is
+CFN_FOUND :: 0; CFN_MISSING :: 1; CFN_LINK :: 2; CFN_ESCAPE :: 3; CFN_ERROR :: 4;
+CFK_DIR :: 1; CFK_FILE :: 2; CFK_LINK :: 3; CFK_OTHER :: 4;
+// cfn_sweep's counts
+CFS_DIRS :: 0; CFS_FILES :: 1; CFS_MULTI :: 2; CFS_LINKS :: 3; CFS_OTHER :: 4; CFS_ERRORS :: 5; CFS_CUT :: 6; CFS_COUNT :: 7;
+// the file tools
+CFT_NONE :: 0; CFT_READ :: 1; CFT_WRITE :: 2; CFT_GLOB :: 3; CFT_GREP :: 4; CFT_REFUSED :: 5;
+CF_PATH_MAX :: 4000;   // confine-native.c's buffer is 4096
+
+// A path (or pattern) the checks passed: path[from..<to] is relative to the checkout ("" is the checkout).
+CfSpan :: struct { verdict: int; from: int; to: int; }
+
+CWD :: "/tmp/oa-agent/turn-7-1/repo";
+
+#test "relative paths and the checkout's own absolute paths pass; the rest is relative to the checkout" {
+  r := cf_relative("src/a.ts", CWD);
+  #assert r.verdict == CF_OK && r.from == 0 && r.to == 8;
+  r = cf_relative("/tmp/oa-agent/turn-7-1/repo/src/a.ts", CWD);
+  #assert r.verdict == CF_OK && r.from == 28 && r.to == 36;
+  r = cf_relative("/tmp/oa-agent/turn-7-1/repo//src", CWD);
+  #assert r.verdict == CF_OK && r.from == 29;
+  r = cf_relative("/tmp/oa-agent/turn-7-1/repo", CWD);
+  #assert r.verdict == CF_OK && r.from == 27 && r.to == 27;
+  r = cf_relative("", CWD);
+  #assert r.verdict == CF_OK && r.from == 0 && r.to == 0;
+  #assert cf_relative("./a/./b", CWD).verdict == CF_OK && cf_relative("a..b/..c/c..", CWD).verdict == CF_OK;
+  #assert cf_relative(".../x", CWD).verdict == CF_OK && cf_relative("x/...", CWD).verdict == CF_OK && cf_relative(".", CWD).verdict == CF_OK;
+}
+#test "a path outside the checkout, a .. step, a home path or a NUL is refused" {
+  #assert cf_relative("/etc/passwd", CWD).verdict == CF_OUTSIDE;
+  #assert cf_relative("/proc/self/environ", CWD).verdict == CF_OUTSIDE;
+  #assert cf_relative("/tmp/oa-agent/turn-7-1/repo2/x", CWD).verdict == CF_OUTSIDE;
+  #assert cf_relative("/tmp/oa-agent/turn-7-1/rep", CWD).verdict == CF_OUTSIDE;
+  #assert cf_relative("/tmp/oa-agent/turn-7-1/deploy-key", CWD).verdict == CF_OUTSIDE;
+  #assert cf_relative("/", CWD).verdict == CF_OUTSIDE;
+  #assert cf_relative("..", CWD).verdict == CF_DOTDOT && cf_relative("../deploy-key", CWD).verdict == CF_DOTDOT;
+  #assert cf_relative("a/../../x", CWD).verdict == CF_DOTDOT && cf_relative("a/..", CWD).verdict == CF_DOTDOT;
+  #assert cf_relative("/tmp/oa-agent/turn-7-1/repo/../deploy-key", CWD).verdict == CF_DOTDOT;
+  #assert cf_relative("/tmp/oa-agent/turn-7-1/repo/..", CWD).verdict == CF_DOTDOT;
+  #assert cf_relative("~/.ssh/id_ed25519", CWD).verdict == CF_HOME && cf_relative("~", CWD).verdict == CF_HOME;
+  nul: [3] u8; nul[0] = 'a'; nul[1] = 0; nul[2] = 'b';
+  #assert cf_relative(cast(string) nul[..], CWD).verdict == CF_BAD;
+  #assert cf_relative(cast(string) nul[1..<3], CWD).verdict == CF_BAD;
+  #assert cf_relative(cast(string) nul[0..<2], CWD).verdict == CF_BAD;
+}
+#test "the checkout must be an absolute path with no trailing slash, and a path has a limit" {
+  #assert cf_relative("a", "").verdict == CF_BAD && cf_relative("a", "/").verdict == CF_BAD;
+  #assert cf_relative("a", "repo").verdict == CF_BAD && cf_relative("a", "/repo/").verdict == CF_BAD;
+  #assert cf_relative("a", "/r").verdict == CF_OK;
+  long: [CF_PATH_MAX + 1] u8;
+  for i: 0..<long.count { long[i] = 'a'; }
+  #assert cf_relative(cast(string) long[0..<CF_PATH_MAX], CWD).verdict == CF_OK;
+  #assert cf_relative(cast(string) long[..], CWD).verdict == CF_BAD;
+}
+
+#test "ancestors: each shorter by one step, then the checkout (0), then none" {
+  #assert cf_ancestor("a/b/c", 0) == 5 && cf_ancestor("a/b/c", 1) == 3 && cf_ancestor("a/b/c", 2) == 1;
+  #assert cf_ancestor("a/b/c", 3) == 0 && cf_ancestor("a/b/c", 4) == -1;
+  #assert cf_ancestor("ab//cd", 1) == 2 && cf_ancestor("x/", 1) == 1 && cf_ancestor("x/", 2) == 0;
+  #assert cf_ancestor("", 0) == 0 && cf_ancestor("", 1) == -1 && cf_ancestor("/a", 1) == 0;
+}
+
+#test "what the kernel found: a directory, or a file with one link, at the path itself" {
+  #assert cf_judge(CFN_FOUND, CFK_DIR, 2, false) == CF_OK && cf_judge(CFN_FOUND, CFK_DIR, 9, true) == CF_OK;
+  #assert cf_judge(CFN_FOUND, CFK_FILE, 1, false) == CF_OK;
+  #assert cf_judge(CFN_FOUND, CFK_FILE, 2, false) == CF_HARDLINK && cf_judge(CFN_FOUND, CFK_FILE, 0, false) == CF_HARDLINK;
+  #assert cf_judge(CFN_FOUND, CFK_FILE, 1, true) == CF_ERROR;
+  #assert cf_judge(CFN_FOUND, CFK_LINK, 1, false) == CF_LINK && cf_judge(CFN_FOUND, CFK_LINK, 1, true) == CF_ERROR;
+  #assert cf_judge(CFN_FOUND, CFK_OTHER, 1, false) == CF_SPECIAL;
+  #assert cf_judge(CFN_LINK, CFK_DIR, 1, false) == CF_LINK && cf_judge(CFN_ESCAPE, CFK_DIR, 1, false) == CF_ESCAPE;
+  #assert cf_judge(CFN_ERROR, CFK_DIR, 1, false) == CF_ERROR && cf_judge(CFN_MISSING, CFK_DIR, 1, false) == CF_ERROR;
+}
+#test "a missing path is judged by its nearest existing ancestor; a link or an escape on the way is refused" {
+  codes: [4] int; kinds: [4] int; links: [4] int;
+  codes[0] = CFN_MISSING; codes[1] = CFN_MISSING; codes[2] = CFN_FOUND; codes[3] = CFN_FOUND;
+  kinds[2] = CFK_DIR; kinds[3] = CFK_FILE; links[2] = 2; links[3] = 1;
+  #assert cf_decide(codes[..], kinds[..], links[..], 4) == CF_OK;
+  kinds[2] = CFK_FILE; links[2] = 1;
+  #assert cf_decide(codes[..], kinds[..], links[..], 4) == CF_ERROR;
+  #assert cf_decide(codes[..], kinds[..], links[..], 2) == CF_ERROR && cf_decide(codes[..], kinds[..], links[..], 0) == CF_ERROR;
+  #assert cf_decide(codes[2..<4], kinds[2..<4], links[2..<4], 2) == CF_OK;
+  codes[1] = CFN_FOUND; kinds[1] = CFK_FILE; links[1] = 1;
+  #assert cf_decide(codes[..], kinds[..], links[..], 4) == CF_ERROR;
+  codes[1] = CFN_LINK;
+  #assert cf_decide(codes[..], kinds[..], links[..], 4) == CF_LINK;
+  codes[0] = CFN_ESCAPE;
+  #assert cf_decide(codes[..], kinds[..], links[..], 4) == CF_ESCAPE;
+}
+
+#test "a Glob pattern: the literal directory it starts from, inside the checkout" {
+  p := cf_pattern("src/**/*.ts", CWD);
+  #assert p.verdict == CF_OK && p.from == 0 && p.to == 4;
+  p = cf_pattern("**/*.{ts,tsx}", CWD);
+  #assert p.verdict == CF_OK && p.to == 0;
+  p = cf_pattern("docs/plan.md", CWD);
+  #assert p.verdict == CF_OK && p.to == 12;
+  p = cf_pattern("/tmp/oa-agent/turn-7-1/repo/a/b?/c", CWD);
+  #assert p.verdict == CF_OK && p.from == 28 && p.to == 30;
+  p = cf_pattern("a/[bc]/d", CWD);
+  #assert p.verdict == CF_OK && p.to == 2;
+  p = cf_pattern("ab{c,d}", CWD);
+  #assert p.verdict == CF_OK && p.to == 0;
+  #assert cf_pattern("", CWD).verdict == CF_OK && cf_pattern("a..b/*", CWD).verdict == CF_OK && cf_pattern("x/..y", CWD).verdict == CF_OK;
+  #assert cf_pattern("x.../*", CWD).verdict == CF_OK && cf_pattern("src/*.{js,ts}", CWD).verdict == CF_OK && cf_pattern("{src,lib}/**", CWD).verdict == CF_OK;
+  #assert cf_pattern(".", CWD).verdict == CF_OK && cf_pattern("./src/*", CWD).verdict == CF_OK && cf_pattern("{a}/.", CWD).verdict == CF_OK;
+  #assert cf_pattern("a./{b}", CWD).verdict == CF_OK && cf_pattern(".,.", CWD).verdict == CF_OK && cf_pattern("{{a}b}.", CWD).verdict == CF_DOTDOT;
+  #assert cf_pattern("{a}x.", CWD).verdict == CF_OK && cf_pattern("}x.", CWD).verdict == CF_OK && cf_pattern("x{.,}", CWD).verdict == CF_OK;
+  #assert cf_pattern("a/{b}c./d", CWD).verdict == CF_OK && cf_pattern("..{a,b}", CWD).verdict == CF_DOTDOT;
+}
+#test "a Glob pattern may not leave the checkout by a path, a brace or an escape" {
+  #assert cf_pattern("/etc/*", CWD).verdict == CF_OUTSIDE && cf_pattern("../*", CWD).verdict == CF_DOTDOT;
+  #assert cf_pattern("~/*", CWD).verdict == CF_HOME;
+  #assert cf_pattern("{/etc,src}/*", CWD).verdict == CF_OUTSIDE && cf_pattern("{src,/proc}/*", CWD).verdict == CF_OUTSIDE;
+  #assert cf_pattern("{~,src}/*", CWD).verdict == CF_HOME && cf_pattern("{src,~}/*", CWD).verdict == CF_HOME;
+  #assert cf_pattern("{..,src}/*", CWD).verdict == CF_DOTDOT && cf_pattern("{src,..}/*", CWD).verdict == CF_DOTDOT;
+  #assert cf_pattern("x{/..}", CWD).verdict == CF_OUTSIDE && cf_pattern("x{a/..}", CWD).verdict == CF_DOTDOT && cf_pattern("..", CWD).verdict == CF_DOTDOT;
+  #assert cf_pattern("{.,x}./*", CWD).verdict == CF_DOTDOT && cf_pattern(".{.,x}/*", CWD).verdict == CF_DOTDOT && cf_pattern("{a,b}..", CWD).verdict == CF_DOTDOT;
+  #assert cf_pattern("{a.}", CWD).verdict == CF_DOTDOT && cf_pattern("{a/..,b}", CWD).verdict == CF_DOTDOT && cf_pattern("a/{.,x}./b", CWD).verdict == CF_DOTDOT;
+  #assert cf_pattern("x/{..}", CWD).verdict == CF_DOTDOT && cf_pattern("*/..", CWD).verdict == CF_DOTDOT;
+  #assert cf_pattern("\\.\\./x", CWD).verdict == CF_PATTERN && cf_pattern("a\\", CWD).verdict == CF_PATTERN;
+  #assert cf_pattern("x", "repo").verdict == CF_BAD;
+}
+
+#test "which tools are file tools, and which of their fields name paths" {
+  #assert cf_tool("Read", false) == CFT_READ && cf_tool("Glob", false) == CFT_GLOB && cf_tool("Grep", false) == CFT_GREP;
+  #assert cf_tool("Edit", true) == CFT_WRITE && cf_tool("Write", true) == CFT_WRITE;
+  #assert cf_tool("Edit", false) == CFT_REFUSED && cf_tool("Write", false) == CFT_REFUSED;
+  #assert cf_tool("MultiEdit", true) == CFT_REFUSED && cf_tool("NotebookEdit", true) == CFT_REFUSED;
+  #assert cf_tool("NotebookRead", true) == CFT_REFUSED && cf_tool("LS", true) == CFT_REFUSED;
+  #assert cf_tool("WebSearch", true) == CFT_NONE && cf_tool("mcp__project__project_get", true) == CFT_NONE && cf_tool("read", true) == CFT_NONE;
+  #assert cf_path_field(CFT_READ) == "file_path" && cf_path_field(CFT_WRITE) == "file_path";
+  #assert cf_path_field(CFT_GLOB) == "path" && cf_path_field(CFT_GREP) == "path";
+  #assert cf_path_field(CFT_NONE) == "" && cf_path_field(CFT_REFUSED) == "";
+  #assert cf_glob_field(CFT_GLOB) == "pattern" && cf_glob_field(CFT_GREP) == "glob";
+  #assert cf_glob_field(CFT_READ) == "" && cf_glob_field(CFT_WRITE) == "" && cf_glob_field(CFT_NONE) == "";
+}
+#test "a field read: absent, null, empty, or decoded; anything else is not checked as the checkout" {
+  #assert cf_field_ok("", "") && cf_field_ok("null", "") && cf_field_ok("\"\"", "") && cf_field_ok("\"a\"", "a");
+  #assert !cf_field_ok("\"/etc/passwd\"", "") && !cf_field_ok("[\"/etc\"]", "") && !cf_field_ok("7", "");
+}
+#test "a call's verdict: its tool, then its path, then its pattern" {
+  #assert cf_verdict(CFT_NONE, "", CF_LINK, "", CF_LINK) == CF_OK;
+  #assert cf_verdict(CFT_REFUSED, "a", CF_OK, "", CF_OK) == CF_TOOL;
+  #assert cf_verdict(CFT_READ, "", CF_OK, "", CF_OK) == CF_REQUIRED && cf_verdict(CFT_WRITE, "", CF_OK, "", CF_OK) == CF_REQUIRED;
+  #assert cf_verdict(CFT_READ, "a", CF_OK, "", CF_OK) == CF_OK && cf_verdict(CFT_READ, "a", CF_LINK, "", CF_OK) == CF_LINK;
+  #assert cf_verdict(CFT_GLOB, "", CF_OK, "", CF_OK) == CF_REQUIRED && cf_verdict(CFT_GLOB, "", CF_OK, "*", CF_OK) == CF_OK;
+  #assert cf_verdict(CFT_GREP, "", CF_OK, "", CF_OK) == CF_OK && cf_verdict(CFT_GREP, "", CF_OK, "*", CF_DOTDOT) == CF_DOTDOT;
+  #assert cf_verdict(CFT_GLOB, "a", CF_OUTSIDE, "*", CF_DOTDOT) == CF_OUTSIDE;
+  #assert cf_verdict(CFT_WRITE, "/r/.git/hooks/pre-commit", CF_OK, "", CF_OK) == CF_GIT;
+  #assert cf_verdict(CFT_WRITE, ".git/config", CF_OK, "", CF_OK) == CF_GIT;
+  #assert cf_verdict(CFT_WRITE, "a.gitignore", CF_OK, "", CF_OK) == CF_OK;
+  #assert cf_verdict(CFT_READ, ".git/config", CF_OK, "", CF_OK) == CF_OK;
+}
+#test "a .git step, in any case, anywhere in a path" {
+  #assert cf_in_git(".git") && cf_in_git("a/.git") && cf_in_git(".git/x") && cf_in_git("a/.GIT/b") && cf_in_git("/r/.Git");
+  #assert !cf_in_git("") && !cf_in_git(".gitignore") && !cf_in_git("a.git") && !cf_in_git("a/.gitx/b") && !cf_in_git("x.git/y") && !cf_in_git(".gi");
+  #assert !cf_in_git(".fit") && !cf_in_git(".ght");
+  #assert !cf_in_git("a/b.git") &&!cf_in_git(".hit") && !cf_in_git(".gxt") && !cf_in_git(".gix") && !cf_in_git("agit");
+}
+
+#test "the sweep: only directories and files with one link" {
+  n: [CFS_COUNT] int;
+  n[CFS_DIRS] = 3; n[CFS_FILES] = 40;
+  #assert cf_sweep(n[..]) == CF_OK;
+  n[CFS_LINKS] = 1;
+  #assert cf_sweep(n[..]) == CF_LINK;
+  n[CFS_LINKS] = 0; n[CFS_MULTI] = 1;
+  #assert cf_sweep(n[..]) == CF_HARDLINK;
+  n[CFS_MULTI] = 0; n[CFS_OTHER] = 1;
+  #assert cf_sweep(n[..]) == CF_SPECIAL;
+  n[CFS_OTHER] = 0; n[CFS_ERRORS] = 1;
+  #assert cf_sweep(n[..]) == CF_ERROR;
+  n[CFS_ERRORS] = 0; n[CFS_CUT] = 1;
+  #assert cf_sweep(n[..]) == CF_ERROR;
+  #assert cf_sweep(n[0..<6]) == CF_ERROR;
+}
+
+#test "each refusal says why in a few words" {
+  #assert cf_reason(CF_OK) == "" && cf_reason(CF_OUTSIDE) == "the path is outside the checkout";
+  #assert cf_reason(CF_DOTDOT) == "the path has a .. step" && cf_reason(CF_HOME) == "the path starts with ~";
+  #assert cf_reason(CF_LINK) == "the path goes through a symbolic link" && cf_reason(CF_ESCAPE) == "the path leaves the checkout";
+  #assert cf_reason(CF_HARDLINK) == "the file has more than one link" && cf_reason(CF_SPECIAL) == "the path is not a file or a directory";
+  #assert cf_reason(CF_TOOL) == "that tool is not offered here" && cf_reason(CF_REQUIRED) == "the call names no path";
+  #assert cf_reason(CF_PATTERN) == "the pattern has a backslash" && cf_reason(CF_GIT) == "Edit and Write do not change .git";
+  #assert cf_reason(CF_BAD) == "the path cannot be checked" && cf_reason(CF_ERROR) == "the path cannot be checked" && cf_reason(99) == "the path cannot be checked";
+}
+
+// Whether path is cwd or inside it, as text.
+cf_under :: (path: string, cwd: string) -> bool {
+  if path.count < cwd.count || path[0..<cwd.count] != cwd { return false; }
+  return path.count == cwd.count || path[cwd.count] == '/';
+}
+// Whether path[i..] is a ".." step.
+cf_dotdot :: (path: string, i: int) -> bool {
+  return path[i] == '.' && i + 1 < path.count && path[i + 1] == '.' && (i == 0 || path[i - 1] == '/') && (i + 2 == path.count || path[i + 2] == '/');
+}
+
+// A path as the model wrote it: CF_OK and the part relative to the checkout, or why not.
+cf_relative :: (path: string, cwd: string) -> CfSpan {
+  if cwd.count < 2 || cwd[0] != '/' || cwd[cwd.count - 1] == '/' { return CfSpan.{verdict = CF_BAD}; }
+  if path.count > CF_PATH_MAX { return CfSpan.{verdict = CF_BAD}; }
+  from := 0;
+  if path.count > 0 && path[0] == '~' { return CfSpan.{verdict = CF_HOME}; }
+  if path.count > 0 && path[0] == '/' {
+    if !cf_under(path, cwd) { return CfSpan.{verdict = CF_OUTSIDE}; }
+    from = cwd.count;
+    while from < path.count && path[from] == '/' { from += 1; }
+  }
+  for i: 0..<path.count {
+    if path[i] == 0 { return CfSpan.{verdict = CF_BAD}; }
+    if cf_dotdot(path, i) { return CfSpan.{verdict = CF_DOTDOT}; }
+  }
+  return CfSpan.{verdict = CF_OK, from = from, to = path.count};
+}
+
+// A Glob pattern (or Grep's glob): CF_OK and the literal directory its walk
+// starts from, or why not. Braces could put a ".." step together from parts
+// ("{.,x}."), so a step with braces, a dot, and only dots outside the
+// braces is refused like "..".
+cf_pattern :: (p: string, cwd: string) -> CfSpan {
+  r := cf_relative(p, cwd);
+  if r.verdict != CF_OK { return r; }
+  meta := p.count;
+  depth := 0; braced := false; dots := false; plain := true;
+  for i: r.from..<p.count {
+    c := p[i];
+    if c == '\\' { return CfSpan.{verdict = CF_PATTERN}; }
+    if i > r.from && (p[i - 1] == '{' || p[i - 1] == ',') {
+      if c == '/' { return CfSpan.{verdict = CF_OUTSIDE}; }
+      if c == '~' { return CfSpan.{verdict = CF_HOME}; }
+    }
+    if meta == p.count && (c == '*' || c == '?' || c == '[' || c == '{') { meta = i; }
+    if c == '/' {
+      if braced && dots && plain { return CfSpan.{verdict = CF_DOTDOT}; }
+      braced = false; dots = false; plain = true;
+    } else if c == '{' || c == '}' {
+      braced = true;
+      if c == '{' { depth += 1; }
+      if c == '}' { depth -= 1; }
+    } else if c == '.' { dots = true; }
+    else if depth <= 0 { plain = false; }
+  }
+  if braced && dots && plain { return CfSpan.{verdict = CF_DOTDOT}; }
+  to := meta;
+  if meta < p.count { while to > r.from && p[to - 1] != '/' { to -= 1; } }
+  return CfSpan.{verdict = CF_OK, from = r.from, to = to};
+}
+
+// The k-th ancestor of rel, as its length: rel itself (k = 0), one step
+// shorter, ..., the checkout (0), then -1.
+cf_ancestor :: (rel: string, k: int) -> int {
+  n := rel.count;
+  for step: 0..<k {
+    if n == 0 { return -1; }
+    while n > 0 && rel[n - 1] != '/' { n -= 1; }
+    while n > 0 && rel[n - 1] == '/' { n -= 1; }
+  }
+  return n;
+}
+
+// One path as found: a directory, or (the path itself) a file with one link.
+cf_judge :: (code: int, kind: int, links: int, ancestor: bool) -> int {
+  if code == CFN_LINK { return CF_LINK; }
+  if code == CFN_ESCAPE { return CF_ESCAPE; }
+  if code != CFN_FOUND { return CF_ERROR; }
+  if kind == CFK_DIR { return CF_OK; }
+  if ancestor { return CF_ERROR; }
+  if kind == CFK_FILE { return ifx links == 1 then CF_OK else CF_HARDLINK; }
+  if kind == CFK_LINK { return CF_LINK; }
+  return CF_SPECIAL;
+}
+// A path and its ancestors as found, nearest first: the first that exists decides.
+cf_decide :: (codes: [] int, kinds: [] int, links: [] int, n: int) -> int {
+  for i: 0..<n {
+    if codes[i] != CFN_MISSING { return cf_judge(codes[i], kinds[i], links[i], i > 0); }
+  }
+  return CF_ERROR;
+}
+
+cf_tool :: (tool: string, writes: bool) -> int {
+  if tool == "Read" { return CFT_READ; }
+  if tool == "Glob" { return CFT_GLOB; }
+  if tool == "Grep" { return CFT_GREP; }
+  if tool == "Edit" || tool == "Write" { return ifx writes then CFT_WRITE else CFT_REFUSED; }
+  if tool == "MultiEdit" || tool == "NotebookEdit" || tool == "NotebookRead" || tool == "LS" { return CFT_REFUSED; }
+  return CFT_NONE;
+}
+cf_path_field :: (kind: int) -> string {
+  if kind == CFT_READ || kind == CFT_WRITE { return "file_path"; }
+  if kind == CFT_GLOB || kind == CFT_GREP { return "path"; }
+  return "";
+}
+cf_glob_field :: (kind: int) -> string {
+  if kind == CFT_GLOB { return "pattern"; }
+  if kind == CFT_GREP { return "glob"; }
+  return "";
+}
+// Whether a field's text (raw JSON, "" when absent) was read whole: a path
+// that couldn't be decoded must not be checked as "" (the checkout).
+cf_field_ok :: (raw: string, decoded: string) -> bool {
+  return decoded.count > 0 || raw.count == 0 || raw == "null" || raw == "\"\"";
+}
+// Whether a step of path is ".git", in any case.
+cf_in_git :: (path: string) -> bool {
+  for i: 0..<path.count {
+    if i + 4 > path.count || (i > 0 && path[i - 1] != '/') { continue; }
+    if (i + 4 == path.count || path[i + 4] == '/') && path[i] == '.' && (path[i + 1] | 32) == 'g' && (path[i + 2] | 32) == 'i' && (path[i + 3] | 32) == 't' { return true; }
+  }
+  return false;
+}
+// A call: its tool's kind, its path field and that path's verdict, its
+// pattern field and that pattern's verdict.
+cf_verdict :: (kind: int, path: string, path_v: int, glob: string, glob_v: int) -> int {
+  if kind == CFT_NONE { return CF_OK; }
+  if kind == CFT_REFUSED { return CF_TOOL; }
+  if (kind == CFT_READ || kind == CFT_WRITE) && path.count == 0 { return CF_REQUIRED; }
+  if kind == CFT_GLOB && glob.count == 0 { return CF_REQUIRED; }
+  if path_v != CF_OK { return path_v; }
+  if glob_v != CF_OK { return glob_v; }
+  if kind == CFT_WRITE && cf_in_git(path) { return CF_GIT; }
+  return CF_OK;
+}
+
+// The walk of the checkout before the model starts.
+cf_sweep :: (n: [] int) -> int {
+  if n.count < CFS_COUNT || n[CFS_ERRORS] != 0 || n[CFS_CUT] != 0 { return CF_ERROR; }
+  if n[CFS_LINKS] != 0 { return CF_LINK; }
+  if n[CFS_MULTI] != 0 { return CF_HARDLINK; }
+  if n[CFS_OTHER] != 0 { return CF_SPECIAL; }
+  return CF_OK;
+}
+
+cf_reason :: (v: int) -> string {
+  if v == CF_OK { return ""; }
+  if v == CF_OUTSIDE { return "the path is outside the checkout"; }
+  if v == CF_DOTDOT { return "the path has a .. step"; }
+  if v == CF_HOME { return "the path starts with ~"; }
+  if v == CF_LINK { return "the path goes through a symbolic link"; }
+  if v == CF_ESCAPE { return "the path leaves the checkout"; }
+  if v == CF_HARDLINK { return "the file has more than one link"; }
+  if v == CF_SPECIAL { return "the path is not a file or a directory"; }
+  if v == CF_TOOL { return "that tool is not offered here"; }
+  if v == CF_REQUIRED { return "the call names no path"; }
+  if v == CF_PATTERN { return "the pattern has a backslash"; }
+  if v == CF_GIT { return "Edit and Write do not change .git"; }
+  return "the path cannot be checked";
+}
