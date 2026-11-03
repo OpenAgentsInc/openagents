@@ -18,12 +18,17 @@
 #load "room-relay.coax";
 
 ROOMS :: 8;
-CONNS :: 32;
+CONNS :: 512;
 PATH :: "/api/room/orbit-league/";
 
 QUICK_WAIT :: 10.0;      // a quick match waits this long for players, then bots take the empty seats
 
-RmConn :: struct { live: bool; room: int = -1; seat: int = -1; echo: int = -1; relay: int = -1; }
+RmConn :: struct {
+  live: bool; room: int = -1; seat: int = -1; echo: int = -1; relay: int = -1;
+  // a relay socket's rate limits (room-relay.coax rl_allow): tokens in thousandths, when they were refilled,
+  // whether it is over (since when, its last drop), frames dropped, and whether the host should close it
+  ftok: int; btok: int; refill_at: int; over: bool; over_since: int; last_drop: int; dropped: int; kicked: bool;
+}
 RmRoom :: struct {
   name: [ROOM_NAME] u8; name_n: int;
   bot_kicks: int;      // the kickoff its bots were last set out for
@@ -40,9 +45,12 @@ RmServer :: struct {
   out: [2048] u8;    // the last frame written for the host to send
   // the relay's rooms and the frames waiting to go out (room-relay below)
   relays: [RELAYS] RelayRoom;
-  q: [RELAY_QUEUE] RelayFrame; q_head: int; q_n: int;
+  q: [RELAY_QUEUE] RelayFrame; q_head: int; q_n: int; q_full: int;
   rout: [RELAY_FRAME] u8;   // the frame rm_relay_next took off the queue
   rto: [CONNS] bool;        // who it goes to
+  mono_ms: int; wall_ms: int;   // the host's clocks (rm_clock)
+  dropped: int;             // frames the rate limits dropped
+  jout: [RELAY_JSON] u8;    // rm_rooms' answer
 }
 
 // Every field's default (seats -1, the game's own defaults): the host calls

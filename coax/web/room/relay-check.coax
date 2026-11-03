@@ -1,18 +1,25 @@
 // The relay's check (room-relay.coax): two sockets in one relay room. Each
-// hears its seat, the other's join and the other's frames (a short one and
-// a 3000-byte one), 200 frames from one reach the other, and the other's
+// hears its seat and the server's clock (y SEAT N T), the other's join and the
+// other's frames (a short one and a 3000-byte one), a clock ping (t MS) comes
+// back to its sender only, 200 frames from one reach the other, and the other's
 // leave reaches the first.
-//   coax/web/tool.sh coax/web/room/relay-check.coax [ws://localhost:8830]
+//   coax/web/tool.sh coax/web/room/relay-check.coax [ws://localhost:8830] [slow]
 //   (deploy.sh runs it through wss://openagents.com)
+// With "slow" a third socket sits in the room and never reads: the 2000
+// 3000-byte frames still reach the reader in time, and the relay closes the
+// slow one (its seat's "l 2") instead of holding the others back. Through
+// wss://openagents.com the load balancer's proxy reads for the slow socket,
+// so there only the reader's frames are checked.
 // Prints one JSON line (the first three frames each heard, how many of the
-// 200 arrived, in how many ms), then "relays" and exits 0, or "fails" and 1.
+// frames arrived, in how many ms), then "relays" and exits 0, or "fails" and 1.
 #load "room-socket.coax";
 
 RK_N :: 200;
+RK_SLOW_N :: 2000;            // 3000-byte frames in the slow mode: 6 MB, past any socket buffer
 RK_KEEP :: 3;                 // frames kept from each socket
 RK_FRAME :: 3100;             // the longest kept frame
 // What one socket heard.
-RkHeard :: struct { first: [RK_KEEP * RK_FRAME] u8; first_n: [RK_KEEP] int; count: int; relayed: int; left: bool; }
+RkHeard :: struct { first: [RK_KEEP * RK_FRAME] u8; first_n: [RK_KEEP] int; count: int; relayed: int; left: bool; slow_left: bool; pong: int = -1; pinged: bool; }
 
 rk_kept :: (h: [] RkHeard, k: int) -> string {
   return ifx k < h[0].count && k < RK_KEEP then cast(string) h[0].first[k * RK_FRAME..<k * RK_FRAME + h[0].first_n[k]] else "";
@@ -26,6 +33,14 @@ rk_hear :: (h: [] RkHeard, t: string) {
   h[0].count += 1;
   if rs_starts(t, "m 0 u ") { h[0].relayed += 1; }
   if t == "l 1" { h[0].left = true; }
+  if t == "l 2" { h[0].slow_left = true; }
+  if rs_starts(t, "t 77 ") { h[0].pong = rs_num(rs_field(t, 2)); }
+  if rs_starts(t, "m 0 t 77") || rs_starts(t, "m 1 t 77") { h[0].pinged = true; }
+}
+// "y SEAT N T" with T a wall clock in ms after 2020: true when t is that, at seat and others.
+rk_join_ok :: (t: string, seat: int, others: int) -> bool {
+  return rs_field(t, 0) == "y" && rs_field(t, 1).count > 0 && rs_num(rs_field(t, 1)) == seat && rs_num(rs_field(t, 2)) == others &&
+         rs_num(rs_field(t, 3)) > 1577836800000 && rs_field(t, 4) == "";
 }
 // Every frame both sockets get for ms.
 rk_drain :: (c: [] RelayConn, h: [] RkHeard, ms: int) {
@@ -37,7 +52,7 @@ rk_drain :: (c: [] RelayConn, h: [] RkHeard, ms: int) {
       r := relay_conn_poll(c[i..<i + 1], 0);
       if r == RC_TEXT { rk_hear(h[i..<i + 1], cast(string) c[i].text[0..<c[i].text_n]); quiet = false; }
     }
-    if rs_now() >= until { return; }
+    if rs_now() >= until && quiet { return; }
     if quiet { proc_sleep(1); }
   }
 }
@@ -58,30 +73,48 @@ tool_main :: () -> int #export_c {
   base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
   u: [1024] u8;
   url := rs_url(u[..], base, "/api/room/relay/check/", "t", rs_stamp());
-  c: [2] RelayConn; h: [2] RkHeard;
+  slow := args_count(a[..]) > 1 && args_at(a[..], 1) == "slow";
+  // through a load balancer its proxy reads the slow socket's bytes, so only a local relay is seen to close it
+  local := rs_starts(base, "ws://localhost");
+  c: [3] RelayConn; h: [3] RkHeard;
   if url.count == 0 || !relay_conn_open(c[0..<1], url) { tool_err("relay-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
   rk_drain(c[..], h[..], 300);
   if !relay_conn_open(c[1..<2], url) { tool_err("relay-check: can't open a second socket to "); tool_errln(url); print("fails\n"); return 1; }
   rk_drain(c[..], h[..], 300);
+  if slow {
+    if !relay_conn_open(c[2..<3], url) { tool_err("relay-check: can't open the slow socket to "); tool_errln(url); print("fails\n"); return 1; }
+    rk_drain(c[..], h[..], 300);
+  }
   big: [3000] u8;
   for i: 0..<big.count { big[i] = 'x'; }
   sent := relay_conn_send(c[0..<1], "hello from a") && relay_conn_send(c[1..<2], cast(string) big[..]);
   rk_drain(c[..], h[..], 600);
+  ping_ok := relay_conn_send(c[1..<2], "t 77");
+  rk_drain(c[..], h[..], 600);
+  ping_ok = ping_ok && h[1].pong > 1577836800000 && h[0].pong < 0 && !h[0].pinged;
   t0 := rs_now();
-  m: [32] u8;
-  for i: 0..<RK_N {
+  // the slow mode's frames are big ("u N " and padding), and many
+  want := ifx slow then RK_SLOW_N else RK_N;
+  m: [3000] u8;
+  for i: 0..<want {
     k := rs_int(m[..], rs_put(m[..], 0, "u "), i);
+    if slow { k = rs_put(m[..], k, " "); while k < m.count { m[k] = 'p'; k += 1; } }
     if !relay_conn_send(c[0..<1], cast(string) m[0..<k]) { sent = false; }
+    // the reader reads as they come (the slow socket never does)
+    if slow && i % 4 == 0 { rk_drain(c[..], h[..], 0); }
   }
-  while h[1].relayed < RK_N && rs_now() - t0 < 5000 { rk_drain(c[..], h[..], 20); }
+  while h[1].relayed < want && rs_now() - t0 < 10000 { rk_drain(c[..], h[..], 20); }
   ms := rs_now() - t0;
   closed := relay_conn_close(c[1..<2], 1000);
   rk_drain(c[..], h[..], 500);
   want_big: [3004] u8;
   wb := rs_put(want_big[..], rs_put(want_big[..], 0, "m 1 "), cast(string) big[..]);
-  ok := sent && rk_kept(h[0..<1], 0) == "y 0 0" && rk_kept(h[0..<1], 1) == "j 1" && rk_kept(h[1..<2], 0) == "y 1 1" &&
-        rk_kept(h[1..<2], 1) == "j 0" && rk_kept(h[1..<2], 2) == "m 0 hello from a" &&
-        rk_kept(h[0..<1], 2) == cast(string) want_big[0..<wb] && h[1].relayed == RK_N && h[0].left;
+  // the slow socket's seat left (the relay closed it) and the reader heard every frame
+  if slow { while !h[0].slow_left && rs_now() - t0 < 15000 { rk_drain(c[..], h[..], 20); } }
+  joins := ifx slow then rk_kept(h[0..<1], 1) == "j 1" && rk_kept(h[1..<2], 1) == "j 0" && rk_kept(h[1..<2], 2) == "j 2"
+                    else rk_kept(h[0..<1], 1) == "j 1" && rk_kept(h[1..<2], 1) == "j 0" && rk_kept(h[1..<2], 2) == "m 0 hello from a" && rk_kept(h[0..<1], 2) == cast(string) want_big[0..<wb];
+  ok := sent && ping_ok && rk_join_ok(rk_kept(h[0..<1], 0), 0, 0) && rk_join_ok(rk_kept(h[1..<2], 0), 1, 1) && joins &&
+        h[1].relayed == want && h[0].left && (!slow || h[0].slow_left || !local);
   out: [4096] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
@@ -89,9 +122,12 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "b"); rk_json_first(o[..], h[1..<2]);
   jo_key(o[..], "relayed"); jo_int(o[..], h[1].relayed);
   jo_key(o[..], "ms"); jo_int(o[..], ms);
+  jo_key(o[..], "ping"); jo_bool(o[..], ping_ok);
+  if slow { jo_key(o[..], "slow_closed"); jo_bool(o[..], h[0].slow_left); }
   jo_end(o[..]);
   print("%\n", jo_text(o[..]));
   print("%\n", ifx ok then "relays" else "fails");
   r := relay_conn_close(c[0..<1], 1000);
+  if slow && c[2].h >= 0 { rc_shut(c[2..<3]); }
   return ifx ok then 0 else 1;
 }

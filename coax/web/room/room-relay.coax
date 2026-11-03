@@ -2,27 +2,48 @@
 // that carry each player's text frames to the others unread. Orbit League's rooms
 // (/api/room/orbit-league/NAME) are untouched; a relay room's WebSocket opens at
 //   /api/room/relay/GAME/CODE        GAME and CODE: 1 to RELAY_NAME of [a-z0-9-]
-// and up to RELAY_SEATS players sit in it, the first in seat 0. What each hears:
-//   y SEAT N        you are in, at SEAT, with N others (the first frame)
+// and up to rl_game_seats(GAME) players sit in it (16 for everglade, 4 for every other game),
+// the first in seat 0. Seats and counts are decimal numbers. What each hears:
+//   y SEAT N T      you are in, at SEAT, with N others; T is the server's wall clock in ms (the first frame)
 //   j SEAT          a player sat at SEAT (one each for those already in, after y)
 //   l SEAT          the player at SEAT left
 //   m SEAT TEXT     the player at SEAT sent TEXT (any text frame, as it was sent)
+//   t MS T          the answer to its own clock ping "t MS" (MS as sent, T the server's clock); never relayed
+// An everglade socket is held to RL_RATE frames a second (burst RL_BURST), RL_FRAME_BYTES a frame and
+// RL_BYTES a second: over, the frame is dropped and counted; over for RL_OVER_MS, the host closes it.
 // A room nobody is in closes. The host takes each frame off the queue with rm_relay_next and
-// sends it to every connection rm_relay_to names.
+// sends it to every connection rm_relay_to names, into that connection's own output buffer
+// (room-host.c: one slow socket never waits on the others; past 256 KB it is closed).
+//   GET /api/playtest/rooms/SLUG     the everglade rooms SLUG-1, SLUG-2, ... and their players, and
+//                                    which to join: the lowest with a free seat (rm_rooms, JSON)
 
-RELAYS :: 16;
-RELAY_SEATS :: 4;
+RELAYS :: 64;
+RELAY_SEATS :: 16;        // the most any game seats (everglade, verse.room_max())
+RELAY_GAME_SEATS :: 4;    // every other game's seats
 RELAY_NAME :: 24;
 RELAY_PATH :: "/api/room/relay/";
-RELAY_FRAME :: 4200;      // a frame the host parses is at most 4096 bytes, and "m S " goes before it
-RELAY_QUEUE :: 48;
+RELAY_FRAME :: 4200;      // a frame the host parses is at most 4096 bytes, and "m SS " goes before it
+RELAY_QUEUE :: 1024;
+RELAY_JSON :: 8192;
+ROOMS_PATH :: "/api/playtest/rooms/";
+EVERGLADE :: "everglade";
+RL_RATE :: 40;            // frames a second, an everglade socket
+RL_BURST :: 60;
+RL_FRAME_BYTES :: 1024;
+RL_BYTES :: 16384;        // bytes a second (and its burst)
+RL_OVER_MS :: 10000;      // dropping this long: closed
 
 RelayRoom :: struct {
   live: bool;
+  seats: int;              // how many sit in it (rl_game_seats)
+  limited: bool;           // its sockets are rate limited (everglade)
   game: [RELAY_NAME] u8; game_n: int;
   code: [RELAY_NAME] u8; code_n: int;
 }
+// A waiting frame and who it goes to (decided when it was queued).
 RelayFrame :: struct { to: [CONNS] bool; n: int; text: [RELAY_FRAME] u8; }
+
+rl_game_seats :: (game: string) -> int { return ifx game == EVERGLADE then RELAY_SEATS else RELAY_GAME_SEATS; }
 
 // A name's characters, lower-cased: its count, and where it stopped.
 RelayName :: struct { n: int; at: int; }
@@ -36,11 +57,12 @@ rl_name :: (req: string, at: int, out: [] u8) -> RelayName {
   }
   return RelayName.{n = n, at = i};
 }
-rl_is_path :: (req: string) -> bool {
+rl_has_path :: (req: string, path: string) -> bool {
   pre := "GET ";
   at := pre.count;
-  return req.count > at + RELAY_PATH.count && req[0..<at] == pre && req[at..<at + RELAY_PATH.count] == RELAY_PATH;
+  return req.count > at + path.count && req[0..<at] == pre && req[at..<at + path.count] == path;
 }
+rl_is_path :: (req: string) -> bool { return rl_has_path(req, RELAY_PATH); }
 // The game and the code in "GET /api/room/relay/GAME/CODE HTTP/1.1": false unless both are there.
 rl_path :: (req: string, game: [] u8, code: [] u8, ns: [] int) -> bool {
   if !rl_is_path(req) { return false; }
@@ -63,33 +85,40 @@ rl_find :: (v: [] RmServer, game: string, code: string) -> int {
   for i: 0..<game.count { v[0].relays[free].game[i] = game[i]; }
   for i: 0..<code.count { v[0].relays[free].code[i] = code[i]; }
   v[0].relays[free].game_n = game.count; v[0].relays[free].code_n = code.count;
+  v[0].relays[free].seats = rl_game_seats(game);
+  v[0].relays[free].limited = game == EVERGLADE;
   return free;
 }
 rl_seat :: (v: [] RmServer, r: int) -> int {
-  for seat: 0..<RELAY_SEATS {
-    taken := false;
-    for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].relay == r && v[0].conns[i].seat == seat { taken = true; } }
-    if !taken { return seat; }
+  taken: [RELAY_SEATS] bool;
+  for i: 0..<CONNS {
+    c := v[0].conns[i];
+    if c.live && c.relay == r && c.seat >= 0 && c.seat < RELAY_SEATS { taken[c.seat] = true; }
   }
+  for seat: 0..<v[0].relays[r].seats { if !taken[seat] { return seat; } }
   return -1;
 }
 // A frame onto the queue for one connection (only >= 0) or for everyone in room r but one (but).
+// The host drains the queue after every event, and one event queues at most RELAY_SEATS + 1
+// frames, so it is never full; if it were, the frame is counted in q_full.
 rl_queue :: (v: [] RmServer, r: int, only: int, but: int, head: string, body: string) {
-  if v[0].q_n >= RELAY_QUEUE || head.count + body.count > RELAY_FRAME { return; }   // full: dropped (the host drains it after every event)
+  if head.count + body.count > RELAY_FRAME { return; }
+  if v[0].q_n >= RELAY_QUEUE { v[0].q_full += 1; return; }
   k := (v[0].q_head + v[0].q_n) % RELAY_QUEUE;
   for i: 0..<CONNS {
     c := v[0].conns[i];
-    v[0].q[k].to[i] = ifx only >= 0 then i == only else c.live && c.relay == r && i != but;
+    v[0].q[k].to[i] = ifx only >= 0 then i == only else (c.live && c.relay == r && i != but);
   }
   for i: 0..<head.count { v[0].q[k].text[i] = head[i]; }
   for i: 0..<body.count { v[0].q[k].text[head.count + i] = body[i]; }
   v[0].q[k].n = head.count + body.count;
   v[0].q_n += 1;
 }
+// "K SEAT" (and a space after it when space): the seat in decimal.
 rl_head :: (buf: [] u8, kind: u8, seat: int, space: bool) -> string {
-  buf[0] = kind; buf[1] = ' '; buf[2] = cast(u8) ('0' + seat);
-  n := 3;
-  if space { buf[3] = ' '; n = 4; }
+  buf[0] = kind; buf[1] = ' ';
+  n := put_int(buf, 2, seat);
+  if space { buf[n] = ' '; n += 1; }
   return cast(string) buf[0..<n];
 }
 rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
@@ -103,23 +132,62 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
     if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
     return -1;
   }
-  v[0].conns[conn] = RmConn.{live = true, relay = r, seat = seat};
-  h: [8] u8;
-  others: [4] u8; others[0] = ' '; others[1] = cast(u8) ('0' + rl_people(v, r) - 1);
-  rl_queue(v, r, conn, -1, rl_head(h[..], 'y', seat, false), cast(string) others[0..<2]);
+  now := v[0].mono_ms;
+  v[0].conns[conn] = RmConn.{live = true, relay = r, seat = seat, ftok = RL_BURST * 1000, btok = RL_BYTES * 1000, refill_at = now};
+  h: [16] u8;
+  rest: [48] u8; k := put(rest[..], 0, " "); k = put_int(rest[..], k, rl_people(v, r) - 1);
+  k = put(rest[..], k, " "); k = put_int(rest[..], k, v[0].wall_ms);
+  rl_queue(v, r, conn, -1, rl_head(h[..], 'y', seat, false), cast(string) rest[0..<k]);
   for i: 0..<CONNS { if i != conn && v[0].conns[i].live && v[0].conns[i].relay == r { rl_queue(v, r, conn, -1, rl_head(h[..], 'j', v[0].conns[i].seat, false), ""); } }
   rl_queue(v, r, -1, conn, rl_head(h[..], 'j', seat, false), "");
   return seat;
 }
+// Whether an everglade socket may send a frame of bytes now (a token bucket for frames and one
+// for bytes, in thousandths). A refused frame is counted; refusing for RL_OVER_MS marks it kicked.
+rl_allow :: (v: [] RmServer, conn: int, bytes: int) -> bool {
+  now := v[0].mono_ms;
+  dt := now - v[0].conns[conn].refill_at;
+  if dt < 0 { dt = 0; }
+  if dt > 2000 { dt = 2000; }
+  v[0].conns[conn].refill_at = now;
+  v[0].conns[conn].ftok = least(RL_BURST * 1000, v[0].conns[conn].ftok + dt * RL_RATE);
+  v[0].conns[conn].btok = least(RL_BYTES * 1000, v[0].conns[conn].btok + dt * RL_BYTES);
+  c := v[0].conns[conn];
+  if bytes <= RL_FRAME_BYTES && c.ftok >= 1000 && c.btok >= bytes * 1000 {
+    v[0].conns[conn].ftok -= 1000; v[0].conns[conn].btok -= bytes * 1000;
+    if c.over && now - c.last_drop > 1000 { v[0].conns[conn].over = false; }
+    return true;
+  }
+  v[0].conns[conn].dropped += 1; v[0].dropped += 1;
+  if !c.over || now - c.last_drop > 1000 { v[0].conns[conn].over = true; v[0].conns[conn].over_since = now; }
+  v[0].conns[conn].last_drop = now;
+  if now - v[0].conns[conn].over_since >= RL_OVER_MS { v[0].conns[conn].kicked = true; }
+  return false;
+}
+// "t MS": a clock ping (MS: up to 15 digits, an optional minus).
+rl_is_ping :: (text: string) -> bool {
+  if text.count < 3 || text.count > 18 || text[0] != 't' || text[1] != ' ' { return false; }
+  i := 2;
+  if text[i] == '-' { i += 1; }
+  if i >= text.count { return false; }
+  while i < text.count { if text[i] < '0' || text[i] > '9' { return false; } i += 1; }
+  return true;
+}
 rl_heard :: (v: [] RmServer, conn: int, text: string) {
   c := v[0].conns[conn];
-  h: [8] u8;
+  if v[0].relays[c.relay].limited && !rl_allow(v, conn, text.count) { return; }
+  if rl_is_ping(text) {
+    b: [48] u8; k := put(b[..], 0, text); k = put(b[..], k, " "); k = put_int(b[..], k, v[0].wall_ms);
+    rl_queue(v, c.relay, conn, -1, cast(string) b[0..<k], "");
+    return;
+  }
+  h: [16] u8;
   rl_queue(v, c.relay, -1, conn, rl_head(h[..], 'm', c.seat, true), text);
 }
 rl_left :: (v: [] RmServer, conn: int) {
   c := v[0].conns[conn];
   v[0].conns[conn].live = false;
-  h: [8] u8;
+  h: [16] u8;
   rl_queue(v, c.relay, -1, conn, rl_head(h[..], 'l', c.seat, false), "");
   if rl_people(v, c.relay) == 0 { v[0].relays[c.relay].live = false; }
 }
@@ -128,6 +196,13 @@ rl_people :: (v: [] RmServer, r: int) -> int {
   for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].relay == r { n += 1; } }
   return n;
 }
+// The clocks the host keeps: monotonic ms (rate limits) and wall ms (y and t), set before each event.
+rm_clock :: (v: [] RmServer, mono: int, wall: int) #export_c { v[0].mono_ms = mono; v[0].wall_ms = wall; }
+// Whether conn's socket stayed over its rate limit RL_OVER_MS: the host closes it.
+rm_relay_kicked :: (v: [] RmServer, conn: int) -> bool #export_c { return conn >= 0 && conn < CONNS && v[0].conns[conn].live && v[0].conns[conn].kicked; }
+// Frames dropped by the rate limits, and by a full queue, since the start.
+rm_relay_dropped :: (v: [] RmServer) -> int #export_c { return v[0].dropped; }
+rm_relay_queue_full :: (v: [] RmServer) -> int #export_c { return v[0].q_full; }
 // The next frame for the host to send, into rout (who to: rto): its length, or 0 when none waits.
 rm_relay_next :: (v: [] RmServer) -> int #export_c {
   if v[0].q_n == 0 { return 0; }
@@ -139,6 +214,49 @@ rm_relay_next :: (v: [] RmServer) -> int #export_c {
   return n;
 }
 rm_relay_to :: (v: [] RmServer, conn: int) -> bool #export_c { return conn >= 0 && conn < CONNS && v[0].rto[conn]; }
+
+// "N" when code is slug + "-" + N (1 to 999, no leading zero), else 0.
+rl_instance :: (code: string, slug: string) -> int {
+  if code.count < slug.count + 2 || code.count > slug.count + 4 || code[0..<slug.count] != slug || code[slug.count] != '-' { return 0; }
+  if code[slug.count + 1] == '0' { return 0; }
+  n := 0; from := slug.count + 1;
+  for i: from..<code.count { if code[i] < '0' || code[i] > '9' { return 0; } n = n * 10 + cast(int) (code[i] - '0'); }
+  return n;
+}
+// GET /api/playtest/rooms/SLUG: the everglade rooms SLUG-N, lowest N first, into jout:
+//   {"realm":"SLUG","game":"everglade","seats":16,"join":"SLUG-K","rooms":[{"code":"SLUG-1","players":3},...]}
+// "join" is the lowest instance with a free seat (one nobody is in yet when all are full). Its
+// length, or -1 when the request isn't this path. A test room (pair-...) is never listed unless asked by name.
+rm_rooms :: (v: [] RmServer, request: string) -> int #export_c {
+  if !rl_has_path(request, ROOMS_PATH) { return -1; }
+  sb: [RELAY_NAME] u8;
+  s := rl_name(request, 4 + ROOMS_PATH.count, sb[0..<RELAY_NAME - 4]);
+  if s.n == 0 || s.at >= request.count || (request[s.at] != ' ' && request[s.at] != '?') { return -1; }
+  slug := cast(string) sb[0..<s.n];
+  ns: [RELAYS] int; ps: [RELAYS] int; m := 0;
+  for r: 0..<RELAYS {
+    x := v[0].relays[r];
+    if !x.live || cast(string) x.game[0..<x.game_n] != EVERGLADE { continue; }
+    n := rl_instance(cast(string) x.code[0..<x.code_n], slug);
+    if n == 0 { continue; }
+    // lowest first
+    at := m;
+    while at > 0 && ns[at - 1] > n { ns[at] = ns[at - 1]; ps[at] = ps[at - 1]; at -= 1; }
+    ns[at] = n; ps[at] = rl_people(v, r); m += 1;
+  }
+  join := 1;
+  for i: 0..<m { if ns[i] == join && ps[i] >= RELAY_SEATS { join += 1; } }
+  o := v[0].jout[..];
+  k := put(o, 0, "{\"realm\":\""); k = put(o, k, slug); k = put(o, k, "\",\"game\":\"everglade\",\"seats\":"); k = put_int(o, k, RELAY_SEATS);
+  k = put(o, k, ",\"join\":\""); k = put(o, k, slug); k = put(o, k, "-"); k = put_int(o, k, join); k = put(o, k, "\",\"rooms\":[");
+  for i: 0..<m {
+    if i > 0 { k = put(o, k, ","); }
+    k = put(o, k, "{\"code\":\""); k = put(o, k, slug); k = put(o, k, "-"); k = put_int(o, k, ns[i]);
+    k = put(o, k, "\",\"players\":"); k = put_int(o, k, ps[i]); k = put(o, k, "}");
+  }
+  k = put(o, k, "]}");
+  return k;
+}
 
 // What the queue holds, for the checks: every waiting frame for conn, joined by '|'.
 rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
@@ -156,14 +274,15 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
 #test "relay: rooms keyed by game and code carry each player's frames, unread, to the others; Orbit League's rooms are as they were (room-relay)" {
   v: [1] RmServer;
   rm_init(v[..]);
+  rm_clock(v[..], 0, 7);
   ga := "GET /api/room/relay/hold-the-stair/K7Q2 HTTP/1.1\r\n\r\n";
   #assert rm_join(v[..], 0, ga) == 0;
   b0: [512] u8; b1: [512] u8; b2: [512] u8;
-  #assert rl_heard_by(v[..], 0, b0[..]) == "y 0 0";
+  #assert rl_heard_by(v[..], 0, b0[..]) == "y 0 0 7";
   #assert rm_join(v[..], 1, ga) == 1;
   // the joiner hears its seat and who is in; the first hears it sat down (the queue is read once: two readers)
   #assert v[0].q_n == 3;
-  #assert rm_relay_next(v[..]) == 5 && v[0].rto[1] && !v[0].rto[0] && cast(string) v[0].rout[0..<5] == "y 1 1";
+  #assert rm_relay_next(v[..]) == 7 && v[0].rto[1] && !v[0].rto[0] && cast(string) v[0].rout[0..<7] == "y 1 1 7";
   #assert rm_relay_next(v[..]) == 3 && v[0].rto[1] && cast(string) v[0].rout[0..<3] == "j 0";
   #assert rm_relay_next(v[..]) == 3 && v[0].rto[0] && !v[0].rto[1] && cast(string) v[0].rout[0..<3] == "j 1";
   // a frame goes to the other, as it was, with its seat
@@ -195,4 +314,127 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   q4 := rl_heard_by(v[..], 0, b0[..]);
   for c: 0..<9 { rm_left(v[..], c); }
   for r: 0..<RELAYS { #assert !v[0].relays[r].live; }
+}
+
+#test "relay: an everglade room seats 16, seats written in decimal, and the join carries the server's clock; other games keep 4 (relay item 1)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 1000, 1762190000123);
+  ev := "GET /api/room/relay/everglade/everglade-1 HTTP/1.1\r\n\r\n";
+  b: [4096] u8;
+  for i: 0..<16 { #assert rm_join(v[..], i, ev) == i; }
+  // seat 12 heard its seat, the 12 already in and the clock, then each of them by decimal seat
+  q := rl_heard_by(v[..], 0, b[..]);
+  #assert rm_join(v[..], 16, ev) == -1;
+  rm_left(v[..], 12);
+  #assert rl_heard_by(v[..], 0, b[..]) == "l 12";
+  #assert rm_join(v[..], 20, ev) == 12;
+  #assert rl_heard_by(v[..], 20, b[..]) == "y 12 15 1762190000123|j 0|j 1|j 2|j 3|j 4|j 5|j 6|j 7|j 8|j 9|j 10|j 11|j 13|j 14|j 15";
+  rm_heard(v[..], 15, "P 1 0 0 0 0 0 0 0 0 0");
+  #assert rl_heard_by(v[..], 20, b[..]) == "m 15 P 1 0 0 0 0 0 0 0 0 0";
+  rm_heard(v[..], 20, "H 1 x 0 0 0 Ana");
+  #assert rl_heard_by(v[..], 3, b[..]) == "m 12 H 1 x 0 0 0 Ana";
+  // One-Shot's rooms: four seats, as before
+  os := "GET /api/room/relay/one-shot/abcd HTTP/1.1\r\n\r\n";
+  for i: 0..<4 { #assert rm_join(v[..], 30 + i, os) == i; }
+  #assert rm_join(v[..], 34, os) == -1;
+  qq := rl_heard_by(v[..], 33, b[..]);
+  #assert qq == "y 3 3 1762190000123|j 0|j 1|j 2";
+}
+#test "relay: t MS is answered to its sender with the server's clock and never relayed (relay item 5)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 555);
+  ev := "GET /api/room/relay/everglade/everglade-1 HTTP/1.1\r\n\r\n";
+  b: [512] u8;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  q := rl_heard_by(v[..], 0, b[..]);
+  rm_clock(v[..], 10, 900);
+  rm_heard(v[..], 1, "t 123456");
+  #assert v[0].q_n == 1 && rm_relay_next(v[..]) == 12 && v[0].rto[1] && !v[0].rto[0] && cast(string) v[0].rout[0..<12] == "t 123456 900";
+  // anything else that starts with t is a frame
+  rm_heard(v[..], 1, "t x");
+  #assert rl_heard_by(v[..], 0, b[..]) == "m 1 t x";
+  #assert rl_is_ping("t 0") && rl_is_ping("t -5") && !rl_is_ping("t ") && !rl_is_ping("t 1 2") && !rl_is_ping("tt 1");
+}
+#test "relay: an everglade socket's rate limits drop, count and at last close; other games are unlimited (relay item 4)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1);
+  ev := "GET /api/room/relay/everglade/pair-ab HTTP/1.1\r\n\r\n";
+  b: [65536] u8;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  q := rl_heard_by(v[..], 1, b[..]);
+  // a burst of 60, then the 61st is dropped
+  for i: 0..<61 { rm_heard(v[..], 0, "P 1"); }
+  #assert v[0].q_n == 60 && rm_relay_dropped(v[..]) == 1 && v[0].conns[0].dropped == 1 && !rm_relay_kicked(v[..], 0);
+  q = rl_heard_by(v[..], 1, b[..]);
+  // a second later 40 more
+  rm_clock(v[..], 1000, 1);
+  for i: 0..<41 { rm_heard(v[..], 0, "P 2"); }
+  #assert v[0].q_n == 40 && rm_relay_dropped(v[..]) == 2;
+  q = rl_heard_by(v[..], 1, b[..]);
+  // a frame over 1,024 bytes is dropped
+  big: [1025] u8; for i: 0..<big.count { big[i] = 'x'; }
+  rm_clock(v[..], 3000, 1);
+  rm_heard(v[..], 0, cast(string) big[..]);
+  #assert v[0].q_n == 0 && rm_relay_dropped(v[..]) == 3;
+  // 16 KB a second: sixteen frames of 1,024 bytes, then the seventeenth waits
+  rm_clock(v[..], 5000, 1);
+  for i: 0..<17 { rm_heard(v[..], 0, cast(string) big[0..<1024]); }
+  #assert v[0].q_n == 16 && rm_relay_dropped(v[..]) == 4;
+  q = rl_heard_by(v[..], 1, b[..]);
+  // over the limit for 10 s (a flood every 100 ms): closed
+  t := 6000;
+  while t <= 17500 {
+    rm_clock(v[..], t, 1);
+    for i: 0..<10 { rm_heard(v[..], 0, "P 3"); }
+    if t < 16800 { #assert !rm_relay_kicked(v[..], 0); }
+    q = rl_heard_by(v[..], 1, b[..]);
+    t += 100;
+  }
+  #assert rm_relay_kicked(v[..], 0) && !rm_relay_kicked(v[..], 1);
+  // a socket that eases off is no longer over
+  #assert rm_join(v[..], 2, ev) == 2;
+  rm_clock(v[..], 20000, 1);
+  for i: 0..<70 { rm_heard(v[..], 2, "P 4"); }
+  rm_clock(v[..], 22000, 1);
+  rm_heard(v[..], 2, "P 5");
+  #assert !v[0].conns[2].over && !rm_relay_kicked(v[..], 2);
+  // One-Shot's GM sends what it needs: 200 frames at once, and 3,000 bytes each
+  os := "GET /api/room/relay/one-shot/abcd HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 10, os) == 0 && rm_join(v[..], 11, os) == 1;
+  q = rl_heard_by(v[..], 11, b[0..<4096]);
+  d := rm_relay_dropped(v[..]);
+  for i: 0..<200 { rm_heard(v[..], 10, cast(string) big[0..<1000]); q = rl_heard_by(v[..], 11, b[..]); }
+  #assert rm_relay_dropped(v[..]) == d && !rm_relay_kicked(v[..], 10);
+}
+#test "relay: GET /api/playtest/rooms/SLUG lists the realm's instances and joins the lowest with room (section 3.4)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  req := "GET /api/playtest/rooms/everglade HTTP/1.1\r\n\r\n";
+  #assert rm_rooms(v[..], req) > 0;
+  #assert cast(string) v[0].jout[0..<rm_rooms(v[..], req)] == "{\"realm\":\"everglade\",\"game\":\"everglade\",\"seats\":16,\"join\":\"everglade-1\",\"rooms\":[]}";
+  e1 := "GET /api/room/relay/everglade/everglade-1 HTTP/1.1\r\n\r\n";
+  e2 := "GET /api/room/relay/everglade/everglade-2 HTTP/1.1\r\n\r\n";
+  e3 := "GET /api/room/relay/everglade/everglade-3 HTTP/1.1\r\n\r\n";
+  for i: 0..<16 { #assert rm_join(v[..], i, e1) == i; }
+  #assert rm_join(v[..], 20, e3) == 0;
+  // a fork's rooms, a test room and another game's room are not everglade's
+  #assert rm_join(v[..], 21, "GET /api/room/relay/everglade/my-fork-1 HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_join(v[..], 22, "GET /api/room/relay/everglade/pair-1f HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_join(v[..], 23, "GET /api/room/relay/one-shot/everglade-2 HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_join(v[..], 24, "GET /api/room/relay/everglade/everglade-02 HTTP/1.1\r\n\r\n") == 0;
+  n := rm_rooms(v[..], req);
+  #assert cast(string) v[0].jout[0..<n] == "{\"realm\":\"everglade\",\"game\":\"everglade\",\"seats\":16,\"join\":\"everglade-2\",\"rooms\":[{\"code\":\"everglade-1\",\"players\":16},{\"code\":\"everglade-3\",\"players\":1}]}";
+  for i: 0..<16 { #assert rm_join(v[..], 30 + i, e2) == i; }
+  n = rm_rooms(v[..], "GET /api/playtest/rooms/everglade?x=1 HTTP/1.1\r\n\r\n");
+  #assert cast(string) v[0].jout[0..<n] == "{\"realm\":\"everglade\",\"game\":\"everglade\",\"seats\":16,\"join\":\"everglade-3\",\"rooms\":[{\"code\":\"everglade-1\",\"players\":16},{\"code\":\"everglade-2\",\"players\":16},{\"code\":\"everglade-3\",\"players\":1}]}";
+  n = rm_rooms(v[..], "GET /api/playtest/rooms/My-Fork HTTP/1.1\r\n\r\n");
+  #assert cast(string) v[0].jout[0..<n] == "{\"realm\":\"my-fork\",\"game\":\"everglade\",\"seats\":16,\"join\":\"my-fork-1\",\"rooms\":[{\"code\":\"my-fork-1\",\"players\":1}]}";
+  // not the path
+  #assert rm_rooms(v[..], "GET /api/playtest/rooms/ HTTP/1.1\r\n\r\n") == -1;
+  #assert rm_rooms(v[..], "GET /api/playtest/rooms/a/b HTTP/1.1\r\n\r\n") == -1;
+  #assert rm_rooms(v[..], "POST /api/playtest/rooms/everglade HTTP/1.1\r\n\r\n") == -1;
+  #assert rl_instance("everglade-12", "everglade") == 12 && rl_instance("everglade-0", "everglade") == 0 && rl_instance("everglade-1x", "everglade") == 0 && rl_instance("everglade", "everglade") == 0;
 }

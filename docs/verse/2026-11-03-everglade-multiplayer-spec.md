@@ -1,6 +1,8 @@
 # Everglade multiplayer specification
 
-Date: 2026-11-03. Status: specification. Phase 1 is meant to ship today.
+Date: 2026-11-03. Status: specification, rewritten the same day for the owner's decision that the
+server is authoritative from the start (epic #12718). There are no interim phases and no room host
+on a player's page. Section 13 lists what is built and what is not, item by item.
 
 This spec makes Everglade a shared world. Anyone, guests included, opens
 `https://openagents.com/worlds/everglade`, gets a character of their own and
@@ -37,7 +39,7 @@ Related reading:
 10. Security
 11. Testing
 12. Deprecating the old Everglade
-13. Phased build order
+13. Build list and status
 14. Open questions for the owner
 15. Where the Aethyr book and the protocol are out of date
 
@@ -117,12 +119,14 @@ Non-goals for now: trading, an economy, PvP by default, and voice chat.
     to the others, unread, and tells them `y SEAT N` (you are in), `j SEAT`
     (joined), `l SEAT` (left) and `m SEAT TEXT` (a frame).
 - **Production:** Cloud Run service `oa-room` in `us-central1`, project
-  `openagentsgemini`, revision `oa-room-00010-fft`, 1 vCPU, 256 MiB,
+  `openagentsgemini`, revision `oa-room-00010-fft` (before #12705), 1 vCPU, 256 MiB,
   min 0 and max 1 instance, concurrency 64, timeout 3600 s, session affinity
   (`coax/web/room/deploy.sh`). The load balancer routes `/api/room/` on
   openagents.com to it. It answers on `wss://openagents.com/api/room/...`
   today.
-- Limits that block Everglade:
+- Limits that blocked Everglade before #12705 (section 3.3 lists what
+  replaced each; production is now `oa-room-00012-qbp`, concurrency 1000,
+  512 MiB):
   - `RELAY_SEATS` = 4 and `RELAYS` = 16 (`room-relay.coax:13-14`).
   - The seat is written as **one digit** (`rl_head`, line 89, `'0' + seat`),
     so a seat above 9 breaks the format.
@@ -194,118 +198,134 @@ see different results.
 
 ## 3. Architecture
 
-### 3.1 Decision: one authority per room, on the relay, moving to the server
+### 3.1 Decision: the room server is the authority
 
-**Recommendation.** Use the WebSocket relay the repo already runs, extended
-into an Everglade room. Each room has exactly one **world authority**:
+Owner decision, 2026-11-03: **the server is authoritative from the start.**
+No player's page ever simulates the shared world, and there is no room host,
+host election or host migration.
 
-1. **Phases 1 and 2: a room host.** One player's page, chosen by the relay,
-   simulates the shared world (townsfolk, watch, spawned creatures, zones,
-   damage) and sends snapshots and deltas. When it leaves or goes to a hidden
-   tab, the relay names the next host, which continues from the last state it
-   holds. This is One-Shot's pattern (the GM's page as authority), made
-   automatic.
-2. **Phase 3: the 5E rules on the server.** The SRD engine is already its
-   own C unit (`everglade5e-rules.coax`). The room server links it, as it
-   links `orbitleague.coax` today, and resolves every attack, save, damage
-   and HP change.
-3. **Phase 4: the whole world on the server.** The room server runs
-   Everglade's headless step (townsfolk, watch, zones, destruction). Clients
-   become pure viewers of the world plus owners of their own movement.
+- The room server (`coax/web/room/`, Cloud Run `oa-room`) runs one
+  **Everglade room simulation** per instance (`everglade-1`, ...), in the
+  same process as the relay and Orbit League, as Orbit League's rooms
+  already run `orbitleague.coax` on the server.
+- The simulation runs at a **fixed 30 Hz tick**. Each tick it applies every
+  seat's queued intents, steps every player's movement, the 5E rules, the
+  townsfolk, the watch and WANTED, spawned creatures and spell zones, fire,
+  destruction and the rebuild, then writes what changed.
+- It links the existing Coax, not a rewrite:
+  - the SRD 5e rules unit `everglade5e-rules.coax` (generalized from one
+    caster to the room's 16 seats);
+  - **Everglade's headless world step**, extracted from `everglade.coax`
+    and its modules (`verse/everglade/folk.coax`, `watch.coax`,
+    `everglade-watch.coax`, `everglade-guard-ai.coax`, `everglade-spells.coax`,
+    `everglade-abilities.coax`, `everglade-circle.coax`, the storm, frost,
+    tide, fire, rubble and doors modules) into a library with no drawing:
+    the city's plan, walls, bodies and ground heights, and every step that
+    today takes one `you: Point` takes the room's players;
+  - **one shared movement module** (`everglade-move.coax`, new): the
+    character controller (`aethyr/player.coax`) plus what
+    `everglade-face.c` does around it today (footing and pace, the river's
+    swim, flow and breath, Ray of Frost's slow, the spell lifts, the
+    bridge deck, the city's edge, `everglade_hold`), moved from the C face
+    into Coax so the server and the page run the identical step.
+- Clients send **intents** (move input, cast, interact, rebuild) and draw
+  what the server sends: **a full snapshot on join, then deltas**, filtered
+  by **interest** (section 3.6). A client predicts only its own movement,
+  with the same `everglade-move.coax` step, and reconciles to the server's
+  position for its last acknowledged input (section 3.9).
+- Every roll, every HP change, every death, break and WANTED level is the
+  server's. A patched client can only send intents, which the server checks
+  like any other.
 
-The frames do not change between these phases. Only who sends the authority
-frames changes, so clients never notice the move.
-
-**Why this order:**
-
-- It ships today. The relay, the host's socket ABI and the Cloud Run service
-  exist. A room host needs no new server code beyond the relay changes in
-  section 3.3.
-- Everglade's step is not separable yet. It lives in a 4,623-line page module
-  (`everglade.coax`) mixed with drawing, plus about 30 spell and town
-  modules. Pulling a headless step out is real work (phase 4). The 5E rules
-  are already separate, so they can move first (phase 3).
-- The world is mostly deterministic already. Townsfolk routines, the guards'
-  beats and the weather are pure functions of a seed and the clock. So a host
-  only sends what departs from that baseline (who is hurt, chasing, dead,
-  frogged, broken), which keeps frames small and makes host migration cheap.
-- **Not lockstep.** Lockstep needs every client to run identical floating
-  point on identical builds (`sim.v1` says cross-machine float determinism is
-  not assumed), stalls on the slowest of up to 16 players, and handles
-  mid-session joins poorly. It suits Belt 2200's two seats, not a town.
-- **Not a server sim on day one.** It would block multiplayer for weeks on
-  the extraction work.
-
-**What the room host costs us, and the mitigations:**
-
-- A host can cheat on world state (kill townsfolk, clear its own WANTED).
-  Mitigations: nothing has stakes yet (no economy, no XP from host results,
-  PvP off); a host cannot move another player or change another player's HP
-  after phase 3; phases 3 and 4 remove host trust.
-- A host's frame rate is everyone's world rate. Mitigations: the relay
-  prefers a host that said it can host (a computer, a visible tab, at least
-  50 FPS), and a host that goes hidden or drops below 30 FPS for 5 s yields.
-- A browser throttles a hidden tab. The host yields on message 601 (hidden),
-  before throttling starts.
+**Why not the alternatives:** a room host on a page trusts a player's machine
+with everyone's world and stalls when that tab hides; lockstep needs
+identical floats on every client and stalls on the slowest of 16; client
+replication of casts lets each page decide what a spell did. All three are
+dropped.
 
 ### 3.2 Transport
 
 - **Primary: WebSocket** to `wss://openagents.com/api/room/relay/everglade/<room>`
   through `coaxial_socket_open` in `everglade5e-face.c`. Text frames, one
   socket a page.
-- **Fallback: HTTP presence** (today's 1 Hz poll). It stays on in every phase:
+- **Fallback: HTTP presence** (today's 1 Hz poll). It stays on:
   it is the server-checked roster (names, ids, the 16-player cap, automation
   filtering, blocks), feeds the homepage and the Grid, and draws others
   (with real bodies, section 5) when the socket cannot open. The poll moves
   from 1 Hz to 0.5 Hz once the socket is open.
 - **Chat** stays on HTTP (`/api/playtest/chat/<room>`), where it is stored,
-  rate-limited, moderated and reportable. The `[5E] ` hidden lines stop in
-  phase 1.
+  rate-limited, moderated and reportable. The `[5E] ` hidden lines stop: the
+  server's state carries every player's HP.
 
-### 3.3 Relay changes (phase 1)
+### 3.3 Relay changes (built, #12705)
 
-In `coax/web/room/room-relay.coax` and `room-host.c`:
+In `coax/web/room/room-relay.coax`, `room.coax` and `room-host.c`:
 
 1. Seats per room: 16 (`RELAY_SEATS`) for the `everglade` game, matching
-   `verse.room_max()`; other games keep 4. Seats and counts are written as
-   decimal numbers (`0` to `15`), not one character, and `y SEAT N T` carries
-   the server's wall clock `T` in ms for clock sync. The existing games
-   already read the seat as a decimal field (One-Shot's `take_int`,
-   `lockroom.coax`'s reader), and `relay-check.coax` checks both.
-2. `CONNS` 512, `RELAYS` 64, `RELAY_QUEUE` 1024. A full queue closes the
-   slowest connection instead of dropping frames for everyone.
-3. Per-connection output buffers: no `send_all` that waits on one socket.
-   A connection whose buffer passes 256 KB is closed.
-4. Per-connection limits: 40 frames a second (burst 60), 1,024 bytes a frame
-   for the `everglade` game, 16 KB a second. Over the limit, frames are
-   dropped and counted; over it for 10 s, the socket is closed.
-5. `t MS` answers a client's `t MS` ping with the server's clock, for
-   round-trip and offset.
+   `verse.room_max()`; every other game keeps 4 (`RELAY_GAME_SEATS`). Seats
+   and counts are written as decimal numbers (`0` to `15`), not one
+   character, and the first frame is `y SEAT N T`: `T` is the server's wall
+   clock in ms (Unix epoch), for clock sync. The existing games read the seat
+   as a decimal field and ignore the extra field (One-Shot's `take_int`,
+   `lockroom.coax`'s reader); `relay-check.coax` checks both.
+2. `CONNS` 512, `RELAYS` 64, `RELAY_QUEUE` 1024. Each frame's recipients are
+   fixed when it is queued. The host drains the queue after every event and
+   one event queues at most 17 frames, so the queue cannot fill; a full queue
+   would be counted (`rm_relay_queue_full`) and logged.
+3. Per-connection output buffers (`room-host.c` `put_out`): a frame goes onto
+   each recipient's buffer, sent as far as its socket takes it, the rest on
+   `POLLOUT`. No send waits on one socket. A connection whose waiting bytes
+   pass 256 KB (`OUT_MAX`) is closed (its seat's `l SS` goes out), so the
+   slowest connection is closed instead of anyone waiting or losing frames.
+4. Per-connection limits, for the `everglade` game only: 40 frames a second
+   (burst 60), 1,024 bytes a frame, 16 KB a second (burst 16 KB). Over the
+   limit, frames are dropped and counted (`rm_relay_dropped`, in the host's
+   minute log); dropping for 10 s with no full second clear closes the socket.
+   One-Shot and the lockstep games keep their unlimited rate (their GM views
+   and snapshots are larger and burstier).
+5. A frame `t MS` (MS: an integer) is a clock ping: the relay answers the
+   sender only with `t MS T` (its MS as sent, T the server's wall clock in
+   ms) and never relays it. Any other frame starting `t` relays as before.
 6. Cloud Run: concurrency 1000 (from 64), memory 512 MiB (from 256), still
-   max 1 instance so one room lives in one process.
+   max 1 instance and min 0 (`coax/web/room/deploy.sh`).
 
-In phase 2:
+For everglade rooms the relay is the room simulation's front door, and three
+things change from a plain relay room:
 
-7. **Addressed frames.** A frame that starts `@SEAT ` goes only to that seat.
-   The host uses it for a late joiner's snapshot.
-8. **Authority.** The relay keeps one authority seat per room and announces
-   it: `a SS`. It picks the earliest-joined seat whose hello said `host=1`,
-   else the earliest seat. It moves authority on leave, on `yield`, or on a
-   ping silence of 3 s, and announces the new one.
-9. **Tickets.** Joining needs `?t=TICKET` (section 4.4). The relay stamps the
-   seat with the ticket's player id and name, and `j SS ID NAME` tells
-   everyone who sat down. Frames can no longer claim an identity.
+7. **Nothing is relayed.** A seat's frames go to the room's simulation as
+   intents; no `m SS` frame is ever sent in an everglade room. The server
+   writes every frame a client hears (`y`, `j`, `l`, `t` and the state
+   frames in 3.6).
+8. **Tickets.** Joining needs `?t=TICKET` (section 4.4). The server checks
+   the ticket's signature, stamps the seat with its player id and name, and
+   `j SS ID NAME` tells everyone who sat down. A socket without a valid
+   ticket is refused before the upgrade (401). Frames never claim an
+   identity.
+9. **A late joiner** gets the full snapshot as its first state frame; there
+   is no host to ask.
 
 ### 3.4 Rooms and sharding
 
 - A room is an **instance** of the realm: `everglade-1`, `everglade-2`, and
   so on, 16 players each. The relay keys it as game `everglade`, code
   `<realm-slug>-<n>`; a fork's rooms are its own slug's.
-- Joining: the page asks `GET /api/playtest/rooms/everglade` (new, phase 1)
-  for each instance's count from HTTP presence and joins the lowest instance
-  with room, or the instance a link names (section 8). The relay's 16-seat
-  cap is the hard limit; a full instance answers 404 and the page tries the
-  next.
+- Joining: the page asks `GET /api/playtest/rooms/everglade` (built,
+  #12705). The room server answers it from its own seats (the load balancer
+  routes `/api/playtest/rooms/` to `oa-room`, beside `/api/room/`), so the
+  answer is the same count the 16-seat cap enforces, not HTTP presence's
+  6-second view:
+
+  ```
+  GET /api/playtest/rooms/SLUG
+  {"realm":"SLUG","game":"everglade","seats":16,"join":"SLUG-2",
+   "rooms":[{"code":"SLUG-1","players":16},{"code":"SLUG-3","players":4}]}
+  ```
+
+  `rooms` lists the live everglade rooms named `SLUG-N` (N from 1, no
+  leading zero), lowest first; `join` is the lowest instance with a free
+  seat, which may be one nobody is in yet. The page joins `join`, or the
+  instance a link names (section 8). The relay's 16-seat cap is the hard
+  limit: a full instance answers 404 to the socket and the page asks again.
 - HTTP presence uses the instance's name as its room, so the roster and the
   socket agree.
 - Test rooms: an automation run uses code `pair-<hex>`, so it never meets
@@ -313,106 +333,133 @@ In phase 2:
 
 ### 3.5 Who owns what
 
-| Kind of state | Authority | Phase |
-| --- | --- | --- |
-| Your position, yaw, velocity, gait, clip | You (client-authoritative, checked, section 10) | 1 |
-| Your look, class, name shown | The roster (HTTP presence, then the ticket) | 1, 2 |
-| Your casts' visuals (flights, blasts, marks) | You send the intent; every page plays it from the same seed | 1 |
-| Creatures and zones you spawn | You (owner-simulated) in phase 1; the room authority from phase 2 | 1, 2 |
-| Townsfolk, the watch, their HP, deaths, chases, WANTED | Room authority | 2 |
-| Combat resolution and every HP change | Room authority in phase 2; the room server from phase 3 | 2, 3 |
-| Destruction, debris, fire, rebuild | Room authority | 2 |
-| Weather and time of day | Nobody: computed from the seed and the relay's clock | 1 |
-| Admin edits | The publish API (`/api/playtest/world/<id>`), as today | 2 |
+| Kind of state | Authority |
+| --- | --- |
+| Your position, yaw, velocity, gait, clip | The server, from your inputs; your page predicts it (3.9) |
+| Your look, class, name shown | The ticket (section 4.4) and your hello |
+| Casts: whether they happen, their seed, their aim | The server (an accepted `C` becomes an `e cast` event) |
+| Casts' visuals (flights, blasts, marks) | Every page plays the server's `e cast` from its seed |
+| Creatures and zones spells spawn | The server |
+| Townsfolk, the watch, their HP, deaths, chases, WANTED | The server |
+| Every roll, HP change, condition and concentration | The server (`everglade5e-rules.coax`) |
+| Destruction, fire, the rebuild | The server; debris physics is each page's, from the break event |
+| Weather and time of day | The server's seed and clock; every page computes it from `W` |
+| Admin edits | The publish API (`/api/playtest/world/<id>`); the server reloads the world doc and sends `e edit VERSION` |
 
 ### 3.6 Frames
 
 Text frames, space-separated fields, integers where possible (centimetres,
-centiradians, milliseconds). The relay prefixes `m SS ` on the way out. The
+centimetres a second, centiradians, milliseconds). One socket a page:
+`wss://openagents.com/api/room/relay/everglade/<code>?t=TICKET`. The
 `realm.v1` protocol messages (`ActorAppear`, `ActorUpdate`, `SpatialDelta`,
-`Snapshot`, `Command`) are the target; these text frames map onto them
-field for field and are replaced when Coax gains `#import_proto` (protocol
+`Snapshot`, `Command`) are the target; these text frames map onto them field
+for field and are replaced when Coax gains `#import_proto` (protocol
 section 13).
 
-From a player (phase 1):
+From the relay layer (built, 3.3): `y SS N T`, `j SS ID NAME`, `l SS`,
+`t MS T`.
+
+From a player (intents):
 
 ```
-H 1 ID LOOK CLASS FLAGS NAME     hello: on join, and again when anyone joins (j)
-P SEQ T X Y Z YAW VX VZ F A      pose: T ms (relay clock), X Y Z VX VZ cm and cm/s, YAW centirad,
-                                  F flags (airborne, swim, boat, dead, form 0-4, flock), A clip
-C SEQ SLOT AX AY AZ SEED TGT     cast: a bar slot, the aim (cm), the seed every page plays it with,
-                                  the target (-1 none; a townsperson's index or a seat)
-S EID KIND X Z YAW HP F          a creature or zone you own: spawn or update (EID: seat*256 + n)
-D EID                            it is gone
-V HP MAX TEMP COND               your vitals, on change (self-asserted until phase 2)
-t MS                             a clock ping
+H 1 LOOK CLASS FLAGS NAME   hello, once after y: look and class (section 5), flags (1 touch), the
+                            name shown until tickets carry it
+I SEQ MX MZ YAW B           input, one per client frame step at 30 Hz while any input is held, else
+                            5 Hz: MX MZ the move in world axes (-100 to 100, already turned by the
+                            camera), YAW your facing (centirad), B buttons (1 run, 2 jump, 4 dive,
+                            8 swim up, 16 sit/stand). SEQ counts up by one an input.
+C SEQ SLOT AX AY AZ TGT     cast bar slot SLOT at the aim (cm); TGT -1 none, 0 to 999 a townsperson or
+                            guard (watch actor index), 1000 + SS a seat, 2000 + EID a creature
+E SEQ KIND ID               interact: KIND 1 talk to townsperson ID, 2 a door, 3 a boat, 4 a quest board
+R SEQ                       ask for the rebuild
+t MS                        a clock ping
 ```
 
-From the room authority (phase 2):
+From the server (state), to each seat:
 
 ```
-@SS A s K N CHUNK                a snapshot for a late joiner, chunk K of N (base64, under 1 KB each)
-A d TICK ...                     a delta: townsfolk and creatures that changed, as
-                                  "f I X Z YAW HP CLIP" / "c EID ..." / "x EID" (gone) entries
-A e TICK KIND ...                an event: a hit (who, by, amount, kind), a death, a break
-                                  (piece id, impulse), a rebuild, a crime (player, level)
-A w PLAYER LEVEL                 a player's WANTED level
-A v SEAT HP MAX TEMP COND        a player's vitals, decided by the authority
-yield                            the host steps down (hidden tab, low frame rate)
+W TICK HZ SEED DAY WEATHER  the world header, right after y: the tick now, the tick rate (30), the
+                            room's seed, the time of day (ms into the cycle) and the weather schedule's
+                            zone; with the y frame's T every page computes the clock, the weather and
+                            the folk clock the server uses
+D TICK ACK F E;E;...        state: TICK the server tick, ACK the last I SEQ of yours applied (your
+                            reconciliation point), F 1 a full snapshot (on join, and after a resync)
+                            else 0, then entries separated by ';'. A state over 3,800 bytes goes out as
+                            D frames with F 2 (more follows) and the last with F 0 or 1.
+r SEQ REASON                an intent of yours refused (range, sight, dead, cooldown, unknown slot),
+                            to you only
 ```
 
-From a player to the authority (phase 2): `I SEQ SLOT AX AY AZ TGT`, a cast
-intent, and `R`, a rebuild request. The authority answers a refused intent
-with `@SS A n SEQ REASON`.
+Entries in `D`:
+
+```
+p SS X Y Z YAW VX VY VZ G CLIP HP MAX TEMP COND FORM     a player (always, every seat in the room);
+                            G 1 on ground, 2 swimming, 4 in a boat, 8 dead; CLIP the animation clip;
+                            COND a bitmask of the 15 conditions; FORM 0 you, 1-4 a Wild Shape form
+f I X Z YAW CLIP MODE HP    a townsperson or guard (watch actor I), MODE its watch mode (walk, talk,
+                            flee, chase, fight, down, frog)
+c EID KIND X Z YAW HP F OWNER    a creature or a zone a spell made (EID the server's), OWNER its seat
+x K ID                      gone from your view: K p, f or c (left, out of interest, dead and removed)
+e cast SS SLOT AX AY AZ SEED     a cast the server accepted; every page plays its visual from SEED
+e hit WHO BY AMT KIND       damage (WHO and BY as TGT codes), KIND the damage type
+e heal WHO AMT              healing
+e die WHO                   a death
+e break PIECE IX IY IZ      a building piece breaks with that impulse (debris is each page's)
+e burn PIECE ON             fire on a piece starts (ON 1) or burns out (0)
+e rebuild                   the town stands again
+e edit VERSION              the world doc changed: refetch it
+w SS LEVEL                  a seat's WANTED level
+```
+
+**Interest.** Players are always in every seat's state (16 at most).
+Townsfolk, guards, creatures and zones are in a seat's state while within
+120 m of it; one that leaves that radius gets `x`. Within it, an entity is
+written only when its quantized fields changed since what that seat last
+heard (a snapshot resends all). Events reach every seat within 120 m of
+where they happen, except `w`, `e edit` and `e rebuild`, which reach all.
 
 ### 3.7 Rates and the bandwidth budget
 
 | Frame | Rate | Size |
 | --- | --- | --- |
-| `P` while moving | 15 Hz | about 60 bytes |
-| `P` while still | 2 Hz | about 60 bytes |
-| `C`, `S`, `D`, `V` | on change | under 80 bytes |
-| `A d` | 10 Hz, only what changed within 120 m of anyone | 0.5 to 2 KB |
-| `A s` | once a joiner, plus every 30 s as a checkpoint | 6 to 20 KB in chunks |
+| `I` while input is held | 30 Hz | about 30 bytes |
+| `I` idle | 5 Hz | about 30 bytes |
+| `C`, `E`, `R` | on use | under 60 bytes |
+| `D` | 15 Hz (every other tick) | 16 players about 900 bytes plus changed folk and creatures, 1 to 3 KB |
+| `D` full | on join and resync | 6 to 20 KB in chunks |
 
-Per player, with WebSocket framing:
-
-- Up: about 1 KB/s.
-- Down, in a full room of 16: 15 others at about 1 KB/s each, plus up to
-  3 KB/s of authority deltas, so at most about **20 KB/s (160 kbit/s)**.
-  That is fine on a phone. The host sends about 3 KB/s more.
+Per player, with WebSocket framing: up about 1.2 KB/s, inside the relay's
+everglade rate limit (40 frames and 16 KB a second); down about 20 to
+45 KB/s in a full, busy room. The server's per-socket output buffer
+(256 KB) holds about 6 s of that.
 
 ### 3.8 Drawing remote players: interpolation
 
-Replace `room_ease` for socket players:
-
-- Keep the last 4 `P` samples per seat in a ring, stamped with the relay
-  clock.
-- Draw each remote player at `now - D`, with `D` = 100 ms + 1.5 send
-  intervals (200 ms at 15 Hz), interpolated between the two samples around
+- Keep the last 4 `p` entries per seat in a ring, stamped with the server
+  tick.
+- Draw each remote player at `tick_now - D`, with `D` = 100 ms + 1.5 state
+  intervals (200 ms at 15 Hz), interpolated between the two entries around
   that time. Yaw goes the short way round.
-- If no newer sample exists, extrapolate with the last velocity for at most
-  150 ms, then hold. Never extrapolate through a wall: clamp to
-  `walk_at`'s ground.
-- A seat with no `P` for 3 s fades out. One with none for 10 s is removed.
-- The clip comes from the sample (`A`), with the gait from the interpolated
-  speed (`skin_motion`), so a walk never skates.
-- HTTP-only players (no socket) keep easing, with `D` = 1.5 s.
+- If no newer entry exists, extrapolate with the last velocity for at most
+  150 ms, then hold.
+- The clip comes from the entry (`CLIP`), with the gait from the
+  interpolated speed (`skin_motion`), so a walk never skates.
+- Townsfolk, guards and creatures are interpolated the same way.
 
 ### 3.9 Your own player: prediction and reconciliation
 
-- **Movement:** client-authoritative. You move at once with no round trip,
-  and nothing corrects you in normal play. A failed speed or teleport check
-  (section 10) makes the authority send `@SS A m X Z`, and your page snaps
-  there.
-- **Casts:** you predict. The cast bar, your animation and the flight start
-  at once. In phase 1 your page also decides what your spell does to
-  townsfolk on your screen only. From phase 2 the authority decides hits,
-  damage and HP, and your page shows the numbers when `A e` arrives (one
-  round trip, about 100 ms). A refused intent (`A n`) stops the flight and
-  says why under the bar, as `E5_CANT` does today.
-- **Your HP:** from phase 2 the authority's `A v` is the truth. Your page
-  shows the predicted value and snaps to the authority's when they differ.
+- **Movement:** your page runs `everglade-move.coax` on your input at once
+  and keeps every `I` it sent that the server has not yet acknowledged. On
+  each `D`, it takes the server's `p` for your seat as the truth for input
+  `ACK`, re-runs the unacknowledged inputs on top, and eases any difference
+  under 0.5 m over 100 ms (a bigger one snaps). In normal play the two agree
+  exactly, because both run the same Coax step on the same inputs.
+- **Casts:** your cast bar and animation start at once; the spell's flight,
+  hits and numbers come from the server's `e cast` and `e hit` (one round
+  trip, about 100 ms). A refused cast (`r`) stops the bar and says why, as
+  `E5_CANT` does today.
+- **Your HP and conditions** are the server's `p` entry; nothing is
+  predicted.
 
 ### 3.10 Clock sync
 
@@ -470,18 +517,14 @@ are stamped with it.
 
 ### 4.4 Anti-impersonation
 
-- **Phase 1** (no tickets yet): a socket's hello names a player id. A page
-  draws a seat with a name only if that id is in the HTTP presence roster
-  (server-checked, keyed by the unforgeable player key) **and** the seat's
-  pose is within 5 m of the roster's position for it. A seat that fails is
-  drawn as a nameless figure. Two seats claiming one id: only the one that
-  matches is named.
-- **Phase 2: room tickets.** `POST /api/playtest/room-ticket/<room>` (player
-  key required) returns `base64(player_id | name | room | expires | HMAC)`,
+- **Room tickets.** `POST /api/playtest/room-ticket/<room>` (player key
+  required) returns `base64(player_id | name | room | expires | HMAC)`,
   valid for 10 minutes, signed with a secret in Secret Manager
-  (`oa-room-ticket-key`) that both `oa-api` and `oa-room` read. The relay
-  checks it on join and stamps the seat. Nothing a client sends can change
-  its id or name after that.
+  (`oa-room-ticket-key`) that both `oa-api` and `oa-room` read. The room
+  server checks it before the WebSocket upgrade and stamps the seat. Nothing a
+  client sends can change its id or name after that. Not built yet (section
+  13, item 8); until it is, the server takes the hello's name and marks the
+  seat unverified, and pages draw unverified seats without a gold name.
 
 ## 5. Characters
 
@@ -502,18 +545,18 @@ are stamped with it.
   `everglade-circle.coax:51`) is in the pose flags, and everyone draws that
   form instead of the Ranger.
 - Dead players lie down (the flag), and the sledgehammer's swing is clip 7.
-- Phase 4 adds the townsfolk rig (`verse/everglade/people-rig.coax`: male and
+- Later, the townsfolk rig (`verse/everglade/people-rig.coax`: male and
   female, 65 joints, 12 clips including spell, slash, die and knock) as a
   second body choice, so players can look like anyone in town.
 
 ### 5.2 Look and class
 
-- **Look** (phase 1): a tint on the Ranger's cloth layers and a skin tone,
+- **Look**: a tint on the Ranger's cloth layers and a skin tone,
   from the same tables the townsfolk use (`SKIN_TONE`, dyes), sent as
   `LOOK` in the hello (`ranger.SKIN.DYE.TRIM`). A guest's is random at first
   visit; a CHARACTER button opens a small picker (skin, cloak colour, trim)
   before you enter, with ENTER and a default.
-- **Class** (phase 2): the 5E engine's caster is fixed today (57 HP, AC 15,
+- **Class**: the 5E engine's caster is fixed today (57 HP, AC 15,
   the realm's druid bar). The picker adds class when the 5E engine and the
   hotbar layer (`fivebar.coax`) offer more than one Everglade loadout;
   until then everyone is the same caster and the class field is `druid`.
@@ -522,81 +565,58 @@ are stamped with it.
 
 - Over the head (`room_labels`, `everglade-room.coax`, now at the skinned
   head's height), faded by distance as today (`NAME_NEAR`, `NAME_FADE`).
-- Gold for logged-in, white for guests. A small `HOST` marker shows only in
-  the debug overlay, never to players.
+- Gold for logged-in, white for guests. 
 - Under the name, when hurt or under a condition: the HP bar and conditions
-  that `everglade5e.coax` already draws for others (from `A v` from phase 2).
+  that `everglade5e.coax` already draws for others (from the server's `p` entries).
 - The speaker's last chat line shows over them for 6 s.
 
 ## 6. Combat, spells and the shared world
 
 ### 6.1 Who rolls and how results broadcast
 
-- **Phase 1:** each page rolls its own player's casts on its own screen, as
-  today. Others see the cast (its flight, its blast, its marks) from the `C`
-  frame, played with the same seed, so it looks the same. What it does to
-  townsfolk differs per page until phase 2.
-- **Phase 2:** the room authority runs the 5E engine for every cast. A
-  player sends `I` (slot, aim, target); the authority checks the slot, the
-  action economy, the range and the line of sight, rolls (its seeded RNG),
-  applies damage, conditions and concentration, and broadcasts the outcome
-  as `A e` hit events and `A v`/`A d` state. Every page shows the same
-  numbers over the same heads.
-- **Phase 3:** the same, run by the room server (`everglade5e-rules.coax`
-  linked into `room`), so no client decides any roll.
+The room server runs the 5E engine (`everglade5e-rules.coax`) for every cast
+and blow. A player sends `C` (slot, aim, target); the server checks the slot,
+range and line of sight, rolls with the room's seeded RNG, applies damage,
+conditions and concentration to townsfolk, creatures and players, and writes
+the outcome as `e cast`, `e hit`, `e heal` and `e die` events and the new HP in
+`p`, `f` and `c` entries. Every page shows the same numbers over the same
+heads. The rules' "nothing is held back" choice stays: every slot can always
+be cast (no spell slots or actions run out).
 
 ### 6.2 Spell visuals
 
-- Every visual is played locally from the cast's seed and aim: meteors,
-  bolts, orbs, blasts, sparks and puffs (`SpMeteor` to `SpBolt`,
-  `everglade-spells.coax:140-151`), frost, tide and storm effects. Nothing per
+- Every visual is played locally from the server's `e cast` seed and aim:
+  meteors, bolts, orbs, blasts, sparks and puffs (`SpMeteor` to `SpBolt`,
+  `everglade-spells.coax`), frost, tide and storm effects. Nothing per
   particle crosses the network.
-- A visual starts when `C` (or, from phase 2, the authority's accepted
-  intent) arrives, offset by the sender's latency so its impact lands at the
-  same relay time on every page.
 - Ground marks (`everglade-marks.coax`) follow the cast.
 
 ### 6.3 Spawned creatures and spell zones
 
-Everything a spell or ability leaves in the world is an **entity with an id**
-(`EID`) that every page draws:
-
-- Conjure Animals' pack (`ci_ca_at`, `everglade-circle.coax:264`), the
-  Polymorph frog, Wild Shape and Shapechange forms, and any later summon.
-- Lingering zones: Wall of Stone's panels (`everglade-rubble.coax`), frost
-  patches and ice (`FrPatch`, `FrIce`), Sleet Storm and the other storms
-  (`everglade-storm.coax`), fire on wood (`everglade-fire.coax`), Black
-  Tentacles, Moonbeam and Spike Growth where the bar has them.
-
-Authority by phase:
-
-- **Phase 1:** the caster's page simulates its own creatures and zones and
-  sends `S` (spawn and updates at 5 Hz for moving creatures, once for still
-  zones) and `D`. Every page draws them. A caster who leaves takes theirs
-  with them (`l` despawns the seat's entities).
-- **Phase 2:** the room authority simulates every creature and zone. Casting
-  one is an intent; the authority spawns it, moves it, applies its effects to
-  townsfolk and players, ends it with concentration, and keeps it when the
-  caster leaves until the effect would end.
+Everything a spell or ability leaves in the world is a server entity (`c`
+entries, by `EID`): Conjure Animals' pack (`everglade-circle.coax`), the
+Polymorph frog, Wild Shape and Shapechange forms, Wall of Stone's panels,
+frost patches and ice, the storms, fire on wood, and any later summon. The
+server spawns it, moves it, applies its effects, ends it with concentration
+or its duration, and keeps it when the caster leaves until the effect would
+end.
 
 ### 6.4 Townsfolk and the town watch
 
-- One simulation per room (phase 2), on the authority. Routines are still a
-  function of the seed and the relay clock, so a townsperson nobody has
-  touched needs no frames at all. The authority sends only departures:
-  hurt, knocked down, dead, frogged, cowering, chasing, talking to a player.
-- **WANTED is per player.** The authority's watch (`verse/everglade/watch.coax`
-  rules) keeps a crime level for each player id. Guards who see your crime
-  chase you, and everyone sees them chase you. Another player is not chased
-  for your crime, and the guards do not attack bystanders.
+- One town per room, on the server: each townsperson's routine
+  (`verse/everglade/folk.coax`) and each guard's beat run against all of the
+  room's players instead of one `you`.
+- **WANTED is per player.** The server's watch (`verse/everglade/watch.coax`
+  rules) keeps a crime level for each seat's player. Guards who see your
+  crime chase you, and everyone sees them chase you. Another player is not
+  chased for your crime, and the guards do not attack bystanders.
 - The guard captain and guide decisions (`everglade-guard-ai.coax`,
-  `everglade-guide.coax`) run on the authority only, so one decision serves
-  the room and the decision model is asked once, not 16 times.
-- A townsperson talking to one player (`talk`, the NPC chat at
-  `/api/playtest/npc`) is shown to others as standing and talking (the talk
-  clip, `PEOPLE_TALK`). The words stay private to that player.
-- A late joiner gets the departures in the snapshot; the rest follows from
-  the clock.
+  `everglade-guide.coax`) run on the server only, through the Decisions API,
+  so one decision serves the room.
+- A townsperson talking to one player (`E 1 ID`, then the NPC chat at
+  `/api/playtest/npc`) is shown to others as standing and talking (its `f`
+  MODE). The words stay private to that player.
+- A late joiner gets the whole town in its snapshot.
 
 ### 6.5 PvP
 
@@ -608,17 +628,14 @@ owners who want it. A duel invitation is a later phase.
 
 ### 6.6 Destructible town state and the R rebuild
 
-- **Phase 1:** destruction stays on each page; a remote player's blast plays
-  its visuals but breaks nothing on your page. (Known gap, phase 2.)
-- **Phase 2:** the authority decides every break (`A e` with the piece id and
-  the impulse). Every page runs the debris physics itself from that event;
-  where a piece lands is cosmetic and need not match. Fire spreading is the
-  authority's (which pieces burn, when they burn out).
-- **Rebuild:** the 60 s regrow rule stays (a broken building stands again 60 s
-  after its last damage, once no player is within 30 m). **R** becomes a
-  request: the authority rebuilds the whole town if nothing broke in the last
-  10 s, at most once every 30 s a room, and says "The town stands again" to
-  everyone. An admin's R always works.
+- The server decides every break (`e break` with the piece id and the
+  impulse) and every fire (`e burn`). Every page runs the debris physics
+  itself from that event; where a piece lands is cosmetic and need not match.
+- **Rebuild:** the 60 s regrow rule stays (a broken building stands again
+  60 s after its last damage, once no player is within 30 m). **R** sends
+  `R`: the server rebuilds the whole town if nothing broke in the last 10 s,
+  at most once every 30 s a room, and sends `e rebuild` to everyone. An
+  admin's `R` always works.
 - Destruction is never saved. A room that empties starts whole.
 
 ### 6.7 Weather, time of day and the flock
@@ -631,9 +648,9 @@ owners who want it. A duel invitation is a later phase.
 ### 6.8 Admin edits
 
 - Publishing stays on `/api/playtest/world/<id>` with its owner and admin
-  checks. New: after a publish, the publishing page sends `E VERSION` on the
-  relay, and every page in the room refetches the world doc and applies it.
-  The phase 4 server sends it itself.
+  checks. After a publish the server reloads the world doc (the props and
+  walls it simulates against) and sends `e edit VERSION`; every page in the
+  room refetches and applies it.
 - Placed props join the world for everyone within 2 s of the publish.
 
 ## 7. Persistence
@@ -644,15 +661,15 @@ owners who want it. A duel invitation is a later phase.
 | Position and room you were in | Yes | `localStorage coaxial.everglade.place` (`place.coax`, host action 11, already) |
 | Spell bar arrangement | Yes | `localStorage coaxial.everglade.bar` (host action 12, already) |
 | Quests, the flock, NPC memory of you | Yes | The realm's save slot (host action 4), and the account's progress |
-| HP, spell slots, conditions | Yes, for 10 minutes | The authority keeps them by player id for 10 minutes after you leave, so a reload is not a free heal; after that, full |
-| WANTED | Yes, for 5 minutes | The authority, by player id, so a reload does not clear it |
+| HP, spell slots, conditions | Yes, for 10 minutes | The room server keeps them by player id for 10 minutes after you leave, so a reload is not a free heal; after that, full |
+| WANTED | Yes, for 5 minutes | The room server, by player id, so a reload does not clear it |
 | Inventory | Yes | The account's progress; a guest's save slot |
 | Spawned creatures and zones | No | They end when their effect ends |
 | Destruction | No | The room starts whole when it empties |
 | Admin edits | Yes | The published world doc, as today |
 
-From phase 3 the room server keeps the 10-minute and 5-minute records, in
-memory (lost on a restart; acceptable).
+The room server keeps the 10-minute and 5-minute records in memory (lost on
+a restart; acceptable).
 
 ## 8. The Grid, the portal and links
 
@@ -670,9 +687,8 @@ memory (lost on a restart; acceptable).
 
 ### 8.2 The Grid hand-off
 
-- Today the galaxy and the Grid only navigate to `/worlds/everglade`. Phase 1
-  keeps that.
-- Phase 3: walking into the Grid's Everglade gate (`/worlds/the-grid`)
+- Today the galaxy and the Grid only navigate to `/worlds/everglade`.
+- Walking into the Grid's Everglade gate (`/worlds/the-grid`)
   navigates to `/worlds/everglade?from=grid&with=<friend>` when a friend you
   walked with is in Everglade, else to the lowest instance. `from=grid` spawns
   you at the South Gate facing in, under a short arrival effect. Everglade's
@@ -688,15 +704,18 @@ memory (lost on a restart; acceptable).
 
 ### 9.2 Relay capacity
 
-- A full room: 16 players x 15 frames/s in = 240 frames/s, fanned out to 15
-  each = 3,600 sends a second of about 70 bytes. 16 rooms = 58,000 small sends
-  a second, which a single-threaded C poll loop on 1 vCPU handles with
-  headroom once sends no longer block (section 3.3, item 3).
+- Measured (2026-11-03, `load.coax everglade`, 64 players at 15 frames a
+  second each fanned out to 15): the relay's own time over a socket's bytes
+  is p50 0.2 ms and p95 0.7 ms on Cloud Run's 1 vCPU (`/api/room/health`).
+- With the room simulation, a full room is 16 players x 30 inputs a second
+  in, one 30 Hz tick, and 15 state frames a second out to each of 16 seats.
+  The tick's budget is 2 ms (16 rooms in one core at 30 Hz with headroom).
+  The tick is measured and reported in `/api/room/health` once built.
 - Memory: `IN_CAP` 16 KB a connection x 512 = 8 MB, plus output buffers.
   512 MiB is ample.
 - The limit after that is Cloud Run's 1000 concurrency and one instance.
-  Phase 4 adds instances, with the load balancer routing a room's code to
-  one instance, or moves `room` to a small VM as `coder-sync-1` did.
+  Past one instance (section 13, item 11): the load balancer routes a room's
+  code to one instance, or `room` moves to a small VM as `coder-sync-1` did.
 
 ### 9.3 Cost
 
@@ -704,31 +723,30 @@ All on project `openagentsgemini`, no third-party realtime service.
 
 | Item | Estimate |
 | --- | --- |
-| `oa-room` kept up while any socket is open, 1 vCPU and 512 MiB. Worst case always on | about $45 to $60 a month |
-| Egress: a full room is about 320 KB/s. At an average of one full room for 2 hours a day, about 70 GB a month | about $6 to $9 a month |
+| `oa-room`, 1 vCPU and 512 MiB, billed while any socket is open (min 0, max 1). Worst case always on | about $65 a month |
+| The server simulation: at 30 Hz a full room's tick must fit in about 2 ms of one vCPU so 16 rooms fit one core. If measured ticks need 2 vCPU, worst case always on | up to $65 a month more |
+| Egress: a full room is about 16 x 45 KB/s = 720 KB/s. At an average of one full room for 2 hours a day, about 160 GB a month | about $13 to $19 a month |
 | HTTP presence load on Cloud SQL drops (1 Hz to 0.5 Hz per player) | no new cost |
-| Phase 3 and 4 server simulation: possibly 2 vCPU | up to $50 a month more |
 | Secret Manager secret for tickets | under $1 |
 
-**Total added: under $80 a month in phases 1 and 2, under $130 with the
-phase 4 server simulation.** This must fit inside the hard rule of under
-$1,500 a month total GCP spend; check the current total before phase 4 and
-set a budget alert on `oa-room`. Accelerators are not used.
+**Total added: under $150 a month worst case, about $20 to $40 at expected
+load** (min instances stays 0). This must fit inside the hard rule of under
+$1,500 a month total GCP spend; check the current total before raising
+max instances or CPU, and set a budget alert on `oa-room`. Accelerators are
+not used.
 
 ## 10. Security
 
 - **Validate every frame at the edge.** The relay enforces sizes, rates and
-  (phase 2) identity. Clients parse frames with bounded readers (as
+  identity (tickets). Clients parse frames with bounded readers (as
   `room_take` does) and ignore unknown kinds.
-- **Speed and teleport checks.** Every page and the authority check each
-  seat's poses: more than 12 m/s on the ground or 30 m/s in a flight form
-  between samples, or a jump in position over 15 m without a warp, marks a
-  violation. Pages snap the drawn body to the last good sample. From phase 2
-  the authority sends the mover a correction (`A m`); three violations in a
-  minute close the socket.
-- **Warps** (a hash place, a fork arrival, respawn) are announced in a pose
-  flag, at most once every 5 s.
-- **Casts** are intents (phase 2): the authority refuses an unavailable slot,
+- **Movement is the server's.** A client sends inputs, not positions; the
+  server's `everglade-move.coax` step decides where it goes, so speed and
+  teleport cheats have nothing to send. Input values are clamped to their
+  ranges and at most 40 frames a second are taken (the relay's limit).
+- **Warps** (a hash place, a fork arrival, respawn) are the server's: a
+  hello may ask for a named place, at most once every 5 s.
+- **Casts** are intents: the server refuses an unavailable slot,
   a spent action, an aim out of range or out of sight, and more than 4 casts
   a second.
 - **Entities:** at most 16 owned entities a player, 128 a room; a spawn past
@@ -737,8 +755,6 @@ set a budget alert on `oa-room`. Accelerators are not used.
   report and admin kick; automation isolated in `pair-` rooms and kept out of
   analytics (migration 0074); joins limited per key and per IP at the load
   balancer (Cloud Armor rate rule on `/api/room/relay/`).
-- **Host trust** (phases 1 and 2): see section 3.1. No award, XP or anything
-  of value is ever granted on a room host's word.
 - **Privacy:** frames carry player ids and names only, never keys or emails.
   The relay logs counts, not frame contents.
 
@@ -746,23 +762,27 @@ set a budget alert on `oa-room`. Accelerators are not used.
 
 ### 11.1 Deterministic multi-client tests in Coax
 
-- **Relay:** `coax test --library coax/web/room/room.coax`: 16 seats with
-  two-character seats, `y` with the clock, `@SS` addressing, authority
-  election and hand-off on leave and on `yield`, rate-limit drops, a full
-  queue closing the slowest connection, tickets accepted and refused.
-- **Two Everglades in one test** (a new `everglade-net.coax` with
-  `#test`s, as `everglade-room.coax`'s room test does): two `Everglade`
-  states and a relay state in one process. Frames from one page's outbox go
-  through `rm_heard`/`rm_relay_next` into the other's inbox. Checks:
-  - B draws A's Ranger where A stands, with A's clip, within one frame of the
-    pose arriving, and interpolation never steps backward on jittered input.
-  - A's Conjure Animals pack appears on B's page at the same place, follows
-    A's updates and leaves on `D` and on A's `l`.
-  - (Phase 2) A breaks a wall; B's wall is broken. A is WANTED; B is not, and
-    B sees guards chase A. The host leaves; B becomes host and the chase and
-    broken wall continue.
-  - The folk clock with a 4-second skew between pages puts a townsperson in
-    the same spot after clock sync.
+- **Relay** (built): `coax test --library coax/web/room/room.coax --steps
+  4000000000`: 16 everglade seats with two-digit seats, `y` with the clock,
+  One-Shot's 4 seats, `t` pings, the rate limits' drops and close, and
+  `GET /api/playtest/rooms/SLUG`. `relay-check.coax URL slow` checks that
+  a socket that never reads is closed while the others get every frame.
+- **The room simulation** (to build): `#test`s in
+  `coax/web/room/everglade-room-sim.coax` drive two and sixteen seats'
+  intents through the 30 Hz tick in one process. Checks:
+  - a seat's inputs move it exactly as the page's `everglade-move.coax`
+    step predicts, so reconciliation is a no-op in normal play;
+  - A's cast hits a guard; both seats' `D` carry the same HP and the same
+    guard chasing A. A is WANTED; B is not;
+  - A's Conjure Animals pack appears in both seats' state and stays after A
+    leaves until it would end;
+  - A breaks a wall; B hears `e break`; `R` rebuilds it under the 10 s and
+    30 s rules;
+  - a late joiner's first `D` is a full snapshot with the broken wall, the
+    hurt townsfolk and the pack;
+  - a townsperson more than 120 m from B is never in B's state, and gets
+    `x` when it leaves B's radius;
+  - a forged ticket is refused before the upgrade.
 
 ### 11.2 Headless two-browser smoke
 
@@ -776,16 +796,21 @@ set a budget alert on `oa-room`. Accelerators are not used.
   2. Each page's debug export (`everglade_remote_count`, new) reports one
      remote body drawn; a screenshot shows a Ranger, not a cone.
   3. A casts Conjure Animals; B's export reports the creatures.
-  4. A breaks a crate (phase 2); B's export reports it broken.
+  4. A breaks a crate; B's export reports it broken.
   5. Neither session appears in real players' rooms or in analytics.
 
 ### 11.3 Load tests
 
-- `coax/web/room/load.coax` gains an `everglade` mode: N simulated players
-  (default 64, up to 256) join `pair-load-<n>` rooms in 16s, send `P` at
+- `coax/web/room/load.coax` has an `everglade` mode (built, #12705):
+  `coax/web/tool.sh coax/web/room/load.coax everglade URL [64] [20]` from the
+  repository's root. N simulated players (default 64, up to 256) join
+  `pair-load-<stamp>-<k>` rooms in 16s, one process a room (a Coax process
+  opens at most 16 sockets), send `P` at
   15 Hz with random walks, a `C` every 5 s and an `S`/`D` pair every 20 s.
 - It passes when every socket opens, the server-side fan-out time is under
-  50 ms at the 95th percentile, no frame is dropped below the rate limit,
+  50 ms at the 95th percentile (each `P` carries its send time; fan-out is
+  the 95th percentile of its time across the relay less the median `t` ping
+  round trip), no frame is dropped below the rate limit,
   and each client hears at least 14 frames a second from every other seat.
 - `deploy.sh` runs it (64 players, 20 s) through `wss://openagents.com`
   after each deploy, beside the Orbit League load test and the relay check.
@@ -824,103 +849,52 @@ set a budget alert on `oa-room`. Accelerators are not used.
    change to say the spells roll on the 5E rules and that other players are
    there with you.
 
-## 13. Phased build order
+## 13. Build list and status
 
-### Phase 1: everyone sees everyone, and everything they cast (today)
+One architecture, built whole (owner, 2026-11-03: no interim phases, no
+room host, no caster replication). Status as of the last edit of this file.
 
-Build:
+| # | Item | Where | Status |
+| --- | --- | --- | --- |
+| 1 | Relay: 16 decimal seats, the clock in `y`, 512 connections, queue 1024, per-socket output buffers, rate limits, `t` pings (3.3) | `coax/web/room/` | **Built and deployed** (#12705), `oa-room` concurrency 1000, 512 MiB |
+| 2 | `GET /api/playtest/rooms/SLUG` and instance joining (3.4) | `room-relay.coax` `rm_rooms`, load balancer rule | **Built and deployed** (#12705) |
+| 3 | The 64-player load test (11.3) | `load.coax everglade` | **Built**; passes locally and through `wss://openagents.com` on rates and gaps (below) |
+| 4 | `everglade-move.coax`: the controller and the face's movement glue in Coax, shared by page and server | `apps/openagents-web/` | Not built |
+| 5 | Everglade's headless world step for N players (town, watch, spells, creatures, zones, fire, destruction, rebuild) | extracted from `everglade.coax` and modules | Not built |
+| 6 | `everglade5e-rules.coax` for 16 seats | `apps/openagents-web/` | Not built |
+| 7 | The room simulation: 30 Hz tick, intents, snapshot and deltas, interest (3.1, 3.6) | `coax/web/room/everglade-room-sim.coax` | Not built |
+| 8 | Tickets: signed seat identity (4.4, 3.3 item 8) | API and `room` | Not built |
+| 9 | The page as a viewer plus its predicted movement (3.8, 3.9) | `everglade-net.coax` (#12706, #12708) | In progress elsewhere |
+| 10 | Remote players as skinned Rangers (section 5) | #12707 | In progress elsewhere |
+| 11 | Scale across instances: room code to `oa-room` instance routing | deploy and load balancer | Not built; one instance holds 512 sockets (32 full rooms) |
+| 12 | The swap to `/worlds/everglade` (section 12) | site | Not built |
 
-- The relay changes in section 3.3, items 1 to 6; deploy `oa-room` with
-  concurrency 1000 and 512 MiB.
-- `everglade5e-face.c` opens the socket to the instance's relay room, sends
-  `H`, `P`, `C`, `S`, `D` and `V`, and hands frames to a new
-  `everglade-net.coax`.
-- `everglade-net.coax`: the sample rings, interpolation (section 3.8), clock
-  sync (3.10), the phase 1 identity check (4.4), and the remote entities.
-- Remote players drawn as skinned Rangers with clips, looks and nameplates
-  (section 5); the cone figure is deleted from `everglade-room.coax`.
-- Casts' visuals, spawned creatures and zones replicate from their caster
-  (sections 6.2 and 6.3, phase 1 rules).
-- The folk clock and weather read the relay clock, so townsfolk stand in the
-  same places for everyone.
-- The `[5E] ` hidden chat lines stop; `V` carries vitals.
-- The swap to `/worlds/everglade` and the 301 from `/worlds/everglade-5e`
-  (section 12, steps 1 to 3 and 6).
-- `GET /api/playtest/rooms/everglade` and instance joining (section 3.4).
+Acceptance, all on production:
 
-Acceptance:
-
-1. Two browsers, one a fresh guest, open `/worlds/everglade` and land in the
-   same instance. Each sees the other as a skinned Ranger with a name,
-   walking, running, jumping and swinging with the right clips. No cone is
-   drawn anywhere.
-2. `presence-pair --socket` shows a move on the other screen within 300 ms at
-   the 95th percentile on staging and production.
-3. A casts Meteor Swarm and Conjure Animals. B sees the meteors fall at the
-   same spot and the pack appear, move and vanish when A's concentration ends
-   or A leaves.
-4. With the two machines' clocks set 4 s apart, the townsfolk stand in the
-   same places on both screens.
-5. A phone holds 60 FPS with 5 remote bodies in view.
-6. The room load test passes with 64 simulated players.
-7. `/worlds/everglade-5e` redirects; a player's kept place and bar from
-   either slot come back.
-8. With the socket blocked, the page still shows others from HTTP presence,
-   as Rangers.
-
-Known gaps after phase 1: townsfolk HP, the watch, WANTED and destruction are
-still each page's own.
-
-### Phase 2: one world per room (1 to 3 days after phase 1)
-
-Build: relay items 7 to 9 (addressing, authority, tickets); the room host in
-`everglade-net.coax` (section 3.1); authority frames (3.6); townsfolk, watch,
-WANTED per player, creatures, zones, destruction, fire and rebuild on the
-authority (section 6); late-join snapshots; host migration; `E VERSION`
-edit refresh; PvP off with the `pvp` row; names filter, block-hides-body,
-report and kick.
-
-Acceptance:
-
-1. A hits a guard; B sees the guard's HP drop by the same number, and both
+1. Two browsers, one a fresh guest, open `/worlds/everglade`, land in the
+   same instance, and each sees the other as a skinned Ranger with a name,
+   moving with the right clips, within 250 ms at the 95th percentile.
+2. A hits a guard; B sees the guard's HP drop by the same number, and both
    see the same guard chase A. B is not WANTED.
-2. A breaks a house; B sees it broken. R by either rebuilds it for both,
+3. A casts Meteor Swarm and Conjure Animals. B sees the meteors fall at the
+   same spot and the pack appear, move and vanish when A's concentration
+   ends; the pack stays if A leaves until it would end.
+4. A breaks a house; B sees it broken. R by either rebuilds it for both,
    under the 10 s and 30 s rules.
-3. A late joiner C sees the broken house, the hurt townsfolk, A's pack and
+5. A late joiner C sees the broken house, the hurt townsfolk, A's pack and
    the chase within 1 s of joining.
-4. The host closes its tab: within 3 s another page becomes host and the
-   chase, the pack and the broken house carry on. Switching the host's tab
-   to the background hands authority over before the world slows.
-5. A forged hello claiming another player's id is refused at join.
-6. An admin's placed bench appears for everyone within 2 s of publishing.
+6. A patched client cannot change any HP, roll or position beyond what its
+   inputs allow; a forged identity is refused at join.
+7. The room load test passes with 64 simulated players, with the server's
+   tick p95 under 5 ms at 16 full rooms.
+8. A phone holds 60 FPS with 5 remote bodies in view.
 
-### Phase 3: the rules on the server, and the Grid gate
-
-Build: `everglade5e-rules.coax` linked into `room`; the server takes intents
-and owns all rolls and HP; the 10-minute vitals and 5-minute WANTED records;
-the Grid gate hand-off and INVITE (section 8); the CHARACTER picker.
-
-Acceptance: no client can change any HP or roll (a patched client's `A e` is
-ignored by every page because only the server's seat may send it); a reload
-keeps HP and WANTED; walking into the Grid's gate lands you in your friend's
-instance.
-
-### Phase 4: the whole world on the server, and scale
-
-Build: Everglade's headless step (townsfolk, watch, zones, destruction) in
-the room server; clients become viewers plus their own movement; the frames
-mapped onto `realm.v1`; more than one `oa-room` instance with room-to-instance
-routing; the townsfolk rig as a body choice.
-
-Acceptance: 256 simulated players across 16 rooms with server-side worlds
-within the added-cost estimate; no room host exists; the `realm.v1` protocol
-conformance tests pass for the frames.
-
-### Phase 5: a persistent world
-
-The campaign creator's West Marches mode: expeditions, characters that keep
-level and gear, a world that remembers. Out of scope here; it builds on
-phases 3 and 4.
+Load test results (item 3), 2026-11-03, 64 players in 4 rooms of 16, 20 s:
+locally every socket opened, no gap, 14.9 P a second from every seat,
+fan-out p95 2 ms; through `wss://openagents.com` every socket opened, no gap,
+14.9 a second from every seat, end-to-end p50 about 64 ms and p95 about
+190 ms (goal 3: under 250 ms), the relay's own time over a socket's bytes p50 0.2 ms and
+p95 0.7 ms (`/api/room/health`), on revision `oa-room-00012-qbp`.
 
 ## 14. Open questions for the owner
 
@@ -931,13 +905,12 @@ phases 3 and 4.
    `everglade` before the swap, or drop them?
 4. **The old Everglade page.** Remove it two weeks after the swap, or keep it
    unlisted at `/worlds/everglade-classic`?
-5. **Room host trust in phases 1 and 2.** A player's page simulates the shared
-   town until phase 3 and 4. Acceptable for now, given nothing of value is at
-   stake?
+5. Answered (2026-11-03): no room host; the server is authoritative from
+   the start (section 3.1).
 6. **Guest names.** Generated two-word names (`Mossy Heron`) instead of
    `Guest ABCD`, and guests may pick their own through the filter. Agreed?
-7. **Everyone looks like the Ranger** in phase 1, told apart by tints. Is the
-   townsfolk rig (male and female bodies) needed earlier than phase 4?
+7. **Everyone looks like the Ranger**, told apart by tints. Is the
+   townsfolk rig (male and female bodies) needed at launch?
 8. **R rebuild.** Anyone may rebuild the town under the 10 s and 30 s rules,
    or admins only?
 
@@ -955,16 +928,14 @@ chapters are next revised.
   one-digit and 64-socket limits.
 - **Chapter 50, shared state over the network.** It offers two models,
   lockstep and server authority. It does not cover a client as the authority
-  with migration (One-Shot's pattern, this spec's phases 1 and 2), nor a
-  deterministic baseline (routines from the clock) with authority deltas
-  only, nor interest limits for non-player characters.
+  with migration (One-Shot's pattern), nor interest limits for non-player
+  characters.
 - **Chapter 58, Everglade.** It says others are seen; it does not say that
   the townsfolk, the watch and destruction are each page's own.
 - **The Verse protocol, section 6.3.** It lists Verse multiplayer as a 60 Hz
-  authoritative tick. This spec uses 15 Hz player poses and 10 Hz world
-  deltas, with authority moving from a room host to the server; the tick
-  profile in `sim.v1` should say so. Section 10.8's `realm.v1` remains the
+  authoritative tick. This spec uses a 30 Hz server tick and 15 Hz
+  state frames with interest; the tick profile in `sim.v1` should say so. Section 10.8's `realm.v1` remains the
   target wire; the text frames in section 3.6 are its bootstrap.
 - **`docs/verse/everglade.md`.** "Hostility is your page's alone" (line 789)
-  and "nothing broken is saved or shared" (line 661) become untrue in
-  phase 2; update them with that phase.
+  and "nothing broken is saved or shared" (line 661) become untrue when the
+  room simulation ships; update them then.
