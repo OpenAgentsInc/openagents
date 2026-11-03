@@ -701,23 +701,51 @@ refuses with `outputs`.
 // retry returns the retained outcome; a changed request with a used nonce
 // refuses. A full ledger refuses new requests.
 ky_consume :: (l:[]KyLedger,agent:string,r:KyRequest,code:KyCode)->KyRetry {
+  if agent.count>KY_TEXT || r.requester.count>KY_TEXT || r.nonce.count>KY_TEXT {return KyRetry.{code=KyCode.field};}
+  a:=ky_kept(agent);q:=ky_kept(r.requester);n:=ky_kept(r.nonce);
   for i:0..<l[0].count {
     x:=l[0].e[i];
-    if x.agent==agent && x.requester==r.requester && x.nonce==r.nonce {
+    if ky_kept_same(x.agent,a) && ky_kept_same(x.requester,q) && ky_kept_same(x.nonce,n) {
       for k:0..<32 {if x.digest[k]!=r.digest[k] {return KyRetry.{code=KyCode.nonce};}}
       return KyRetry.{code=x.code,retry=true};
     }
   }
   if l[0].count==KY_LEDGER {return KyRetry.{code=KyCode.nonce};}
-  l[0].e[l[0].count]=KyEntry.{agent=agent,requester=r.requester,nonce=r.nonce,digest=r.digest,code=code};
+  l[0].e[l[0].count]=KyEntry.{agent=a,requester=q,nonce=n,digest=r.digest,code=code};
   l[0].count+=1;
   return KyRetry.{code=code};
+}
+// Copy at most KY_TEXT bytes; ky_consume refuses anything longer first.
+ky_kept :: (s:string)->KyKept {
+  t:KyKept;
+  for i:0..<s.count {t.w[i/8]=t.w[i/8]|(cast(u64)s[i]<<((i%8)*8));}
+  t.n=s.count;
+  return t;
+}
+ky_kept_same :: (a:KyKept,b:KyKept)->bool {
+  if a.n!=b.n {return false;}
+  for j:0..<KY_TEXT/8 {if a.w[j]!=b.w[j] {return false;}}
+  return true;
+}
+// Write the kept bytes to out: the count, or -1 when out is too small.
+ky_kept_bytes :: (t:KyKept,out:[]u8)->int {
+  if out.count<t.n {return -1;}
+  for i:0..<t.n {out[i]=cast(u8)((t.w[i/8]>>((i%8)*8))&255);}
+  return t.n;
 }
 ```
 
 A signature already returned can't be recalled, so a key agent records the
 request before releasing its partial signature. The exact retry returns the
 retained outcome; the same nonce with different bytes refuses.
+
+The ledger keeps its own copy of each agent, requester and nonce in a
+`KyKept`: up to 64 bytes packed eight to a `u64`. A string argument only
+borrows the caller's bytes. A signer that reads each request into one buffer
+would otherwise find its retained nonce rewritten by the next request: the
+next request would refuse as `nonce`, and the old nonce, no longer on file,
+could be signed again with other outputs. Anything longer than 64 bytes
+refuses as `field`.
 
 ### Timelocks, rotation, the co-signer and the hot ceiling
 
@@ -1240,7 +1268,15 @@ checks cover every reader's refusals field by field, the descriptor for one
 path and for a recovery path (against a Python checksum), every composition
 rule at its boundary, rule 4's successor approvals, the PSBT reader's
 malformed inputs, every signer refusal, the ledger, and the timelock,
-rotation, delay and hot-ceiling functions at their boundaries.
+rotation, delay and hot-ceiling functions at their boundaries. On
+2026-11-03 the ledger began keeping its own copies of the agent,
+requester and nonce (#12692). A new check reads requests into one buffer
+and the agent into another, reuses both, and asserts that the first
+triple's exact retry still returns its outcome. Before the fix that
+request refused as `nonce` and the old triple was gone. The file then
+passed 299 checks, and all 20 root-only shards merged to 2006 mutants,
+2006 killed, 0 survived, none marked equivalent. `nipkeys_sign.coax`
+passed its 503 checks and the example's checks file passed 506.
 
 The signing files are `#authority` too. On 2026-11-01 root-only mutation
 left zero survivors in `coax/lib/crypto/ecdsa_sign.coax` (224 mutants,
