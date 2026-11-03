@@ -16,6 +16,9 @@
 #include <string.h>
 
 static coax_t_Everglade *world[WORLD_ROOMS];
+static coax_t_DemoWorld *pieces[WORLD_ROOMS];
+extern const int room_catalog_n;               /* room-catalog.c (room-catalog.py): the pack's catalog */
+extern const unsigned char room_catalog[];
 static coax_t_Player seat_p[WORLD_ROOMS][WORLD_SEATS];
 
 static coax_v_t_Everglade at(int k) { return (coax_v_t_Everglade){world[k], 1}; }
@@ -27,6 +30,10 @@ static bool world_of(int k) {
     world[k] = calloc(1, sizeof *world[k]);
     if (!world[k]) return false;
     (void)everglade_walls(at(k));   /* starts it: the ground, the town, the walls and bodies */
+    /* its pieces, which break and burn as a page's (everglade-watch.coax everglade_room_spells_start) */
+    pieces[k] = calloc(1, sizeof *pieces[k]);
+    if (pieces[k])
+      everglade_room_spells_start(at(k), (coax_v_t_DemoWorld){pieces[k], 1}, (coax_string){(const char *)room_catalog, room_catalog_n});
   }
   return true;
 }
@@ -72,15 +79,23 @@ float world_ground(int k, float x, float z) { return world_of(k) ? everglade_hei
 
 void world_folk_hp(int k, int j, int hp, int temp, int by) { if (world_of(k)) everglade_room_folk_hp(at(k), j, hp, temp, by); }
 void world_crime(int k, int by, float x, float z) { if (world_of(k)) (void)everglade_room_crime(at(k), by, x, z); }
-void world_town(int k, float dt, double world_s, const float seats[WORLD_SEATS * WORLD_SEAT_TOWN], float took[WORLD_SEATS]) {
+void world_town(int k, float dt, double world_s, const float seats[WORLD_SEATS * WORLD_SEAT_TOWN], float took[2 * WORLD_SEATS]) {
   if (!world_of(k)) return;
-  everglade_room_town(at(k), dt, world_s, (coax_v_f32){(float *)seats, WORLD_SEATS * WORLD_SEAT_TOWN}, WORLD_SEATS, (coax_v_f32){took, WORLD_SEATS});
+  everglade_room_town(at(k), dt, world_s, (coax_v_f32){(float *)seats, WORLD_SEATS * WORLD_SEAT_TOWN}, WORLD_SEATS, (coax_v_f32){took, 2 * WORLD_SEATS});
 }
 int world_people(int k, float out[WORLD_FOLK * WORLD_PEOPLE]) {
   return world_of(k) ? (int)everglade_room_people(at(k), (coax_v_f32){out, WORLD_FOLK * WORLD_PEOPLE}) : 0;
 }
 bool world_view(int k, int i, float out[WORLD_VIEW]) { return world_of(k) && everglade_room_view(at(k), i, (coax_v_f32){out, WORLD_VIEW}); }
 int world_wanted(int k, int s) { return world_of(k) ? (int)everglade_room_wanted(at(k), s) : 0; }
+
+void world_strike(int k, int by, int slot, const float from[3], const float to[3], int seed) {
+  if (world_of(k)) everglade_room_strike(at(k), by, slot, from[0], from[1], from[2], to[0], to[1], to[2], seed);
+}
+int world_spells(int k, float dt) { return world_of(k) ? (int)everglade_room_spells(at(k), dt) : 0; }
+bool world_event(int k, int q, float out[WORLD_EVENT]) { return world_of(k) && everglade_room_event(at(k), q, (coax_v_f32){out, WORLD_EVENT}); }
+void world_fresh(int k) { if (world_of(k)) everglade_room_fresh(at(k)); }
+void world_rebuild(int k) { if (world_of(k)) everglade_room_rebuild(at(k)); }
 
 /* The drawing host's calls, which grid.coax's thumbs make and a headless world never does. */
 void host_line(int64_t h, double ax, double ay, double bx, double by, double la, double lb, double w) { (void)h; (void)ax; (void)ay; (void)bx; (void)by; (void)la; (void)lb; (void)w; }

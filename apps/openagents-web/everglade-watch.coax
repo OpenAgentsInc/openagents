@@ -48,8 +48,13 @@ WatchView :: struct {
   seen: [WATCH_ACTORS] WatchSeen; seen_you: WatchSeen;
   // the room server's town (everglade_room_town): where each seat stands, whether it sat and lay dead last tick
   room_at: [WATCH_YOUS] Point; room_live: [WATCH_YOUS] bool; room_dead: [WATCH_YOUS] bool;
-  // a page in a room: the server's townsfolk (net_folk), drawn instead of the page's own watch
+  // a page in a room: the server's townsfolk (net_folk), drawn instead of the page's own watch; and
+  // the server, whose town takes no blast of its own (the rules do: everglade5e-room-rules.coax)
   net: bool;
+  // the room server's pieces: what stood and what burnt when the pages last heard, and what they hear
+  room_stood: [DEMO_PIECES] bool; room_burnt: [DEMO_PIECES] bool; room_known: bool;
+  room_ev: [EG_ROOM_EVENTS * EG_ROOM_EV_FLOATS] f32; room_ev_n: int;
+  room_hit: Point; room_by: int;   // where the last strike fell (a break is thrown out from it), and whose
 }
 
 watch_cap :: (group: int) -> int {
@@ -774,12 +779,13 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
 // WANTED. The room's SRD 5e rules (everglade5e-room-rules.coax) keep Hit Points, the seats' and the
 // people's; this town takes them back each tick, and hands the rules where the people are and the
 // damage its guards deal the seats.
-EG_ROOM_SEAT_FLOATS :: 6;      // a seat as the host hands it: X Y Z LIVE HP MAX (HP 0: dead)
+EG_ROOM_SEAT_FLOATS :: 6;      // a seat as the host hands it: X Y Z LIVE HP MAX (LIVE 2 just sat; HP 0: dead)
 EG_ROOM_VIEW_FLOATS :: 7;      // a person as a page hears them (wire f): X Z YAW CLIP MODE HP SHOWN
 EG_ROOM_HEAR :: 60.0;          // m a crime carries (the bolt's: everglade-spells.coax WATCH_HEAR)
 
 // One tick of the town, dt s, the shared clock at `world` s. seats: EG_ROOM_SEAT_FLOATS for each of n.
-// took[p]: the Hit Points the watch's blows took from seat p this tick (for the room's rules).
+// took[p]: the Hit Points the watch's blows took from seat p this tick (for the room's rules), and
+// took[WATCH_YOUS + p] who dealt them: the nearest of the town hunting p (a watch actor, -1 none).
 everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: int, took: [] f32) #export_c {
   if !s[0].started { everglade_start(s); }
   if !s[0].wv.started { watch_page_start(s); }
@@ -795,7 +801,7 @@ everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: 
     live[p] = seats[o + 3] > 0.5;
     hp[p] = cast(int) seats[o + 4];
     w[0].me = p;
-    if live[p] && !s[0].wv.room_live[p] { watch_start_you(w); }   // a new player: whole, unwanted
+    if live[p] && (!s[0].wv.room_live[p] || seats[o + 3] > 1.5) { watch_start_you(w); s[0].wv.room_dead[p] = false; }   // a new player: whole, unwanted
     s[0].wv.room_live[p] = live[p]; s[0].wv.room_at[p] = at[p];
     if !live[p] { continue; }
     y := watch_you(w[..]);
@@ -826,6 +832,16 @@ everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: 
     w[0].me = p;
     y := watch_you(w[..]);
     if !s[0].wv.room_dead[p] { took[p] = f32(hi_w(hp[p] - y[0].hp, 0)); }
+    if WATCH_YOUS + p < took.count {
+      by := -1; bd := 1000000000.0f32;
+      for i: 0..<WATCH_ACTORS {
+        a := w[0].actors[i];
+        if !watch_here(w, i) || a.foe != p || (a.mode != WM_CHASE && a.mode != WM_FIGHT) { continue; }
+        d := (a.x - at[p].x) * (a.x - at[p].x) + (a.z - at[p].z) * (a.z - at[p].z);
+        if d < bd { bd = d; by = i; }
+      }
+      took[WATCH_YOUS + p] = f32(by);
+    }
     y[0].knocked = false; y[0].knock = v3(0, 0, 0); y[0].bound_said = 0;
   }
   w[0].me = me;
@@ -946,4 +962,108 @@ watch_net_frame :: (s: [] Everglade) {
   y := watch_you(w[..]);
   level := net_wanted(s);
   y[0].wanted = level > 0; y[0].level = level; y[0].unseen = 0;
+}
+
+// ---- the room server's town breaking (GitHub #12713): the strikes of Everglade's own four spells
+// (the meteors, the bolt, the mega bolt, the orb) fall on the server's town as on a page's, from the
+// cast's seed; what breaks and what catches fire, and fire's own spreading and burning down, are the
+// server's, and each page hears it (e break, e burn) and breaks and lights the same pieces.
+EG_ROOM_EVENTS :: 96;
+EG_ROOM_EV_FLOATS :: 5;   // KIND PIECE A B C: KIND 1 a break (A B C its throw, m/s), 2 alight (A 1 on, 0 out)
+
+// The server's town gets its pieces: the storage for them, and the pack's catalog (their bounds).
+everglade_room_spells_start :: (s: [] Everglade, dm: [] DemoWorld, catalog: string) #export_c {
+  if !s[0].started { everglade_start(s); }
+  s[0].sp.on = true; s[0].wv.net = true;
+  everglade_attach_demolish(s, dm);
+  spells_catalog(s, catalog);
+  eg_room_known(s);
+}
+eg_room_known :: (s: [] Everglade) {
+  if s[0].sp.dm.count < 1 { return; }
+  w := sp_dm(s);
+  for i: 0..<DEMO_PIECES { s[0].wv.room_stood[i] = i < w[0].n && w[0].pieces[i].state == DP_STANDING; s[0].wv.room_burnt[i] = false; }
+  v := fi_of(s);
+  for k: 0..<v[0].n { s[0].wv.room_burnt[v[0].burn[k].piece] = true; }
+  s[0].wv.room_known = true;
+}
+// A cast of bar slot `slot` (one of the four) from `from` at `at`, from the seed every page plays it from.
+everglade_room_strike :: (s: [] Everglade, by: int, slot: int, fx: f32, fy: f32, fz: f32, ax: f32, ay: f32, az: f32, seed: int) #export_c {
+  if !sp_on(s) || slot < 0 || slot >= SP_SLOTS { return; }
+  s[0].wv.net = true;
+  s[0].sp.cast_at = v3(ax, ay, az); s[0].sp.cast_n = v3(0, 1, 0); s[0].sp.cast_from = v3(fx, fy, fz);
+  s[0].sp.cast_seed = cast(u64) hi_w(seed, 1);
+  s[0].sp.remote = false;
+  s[0].wv.room_hit = v3(ax, ay, az); s[0].wv.room_by = by;
+  sp_release(s, slot);
+  if slot == SP_ORB { s[0].sp.orb_live = true; s[0].sp.orb_t = 0; s[0].sp.orb_remote = false; s[0].sp.orb_to = v3(ax, ay, az); }
+}
+// The server's town for dt: the strikes land, fire burns and spreads, the walls open where pieces broke;
+// then what changed for the pages (everglade_room_event). How many events.
+everglade_room_spells :: (s: [] Everglade, dt: f32) -> int #export_c {
+  s[0].wv.room_ev_n = 0;
+  if !sp_on(s) { return 0; }
+  if !s[0].wv.room_known { eg_room_known(s); }
+  // what the strikes and fire do to the town is the last caster's doing (its crimes are theirs)
+  wt := watch_w(s); me := wt[0].me;
+  wt[0].me = clamp_w(s[0].wv.room_by, 0, WATCH_YOUS - 1);
+  sp_strikes(s, dt);
+  fi_frame(s, dt);
+  wt[0].me = me;
+  if s[0].sp.walls_dirty { sp_open_walls(s); }
+  w := sp_dm(s);
+  now: [DEMO_PIECES] bool;
+  v := fi_of(s);
+  for k: 0..<v[0].n { now[v[0].burn[k].piece] = true; }
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if s[0].wv.room_stood[i] && p.state != DP_STANDING {
+      c := v3(p.cx, p.cy, p.cz);
+      d := sub(c, s[0].wv.room_hit);
+      throw := ifx s[0].wv.room_burnt[i] then v3(0, 1.2, 0) else add(times(unit_or(v3(d.x, 0, d.z), v3(0, 0, 1)), 6), v3(0, 3, 0));
+      eg_room_put(s, 1, i, throw.x, throw.y, throw.z);
+      s[0].wv.room_stood[i] = false;
+    }
+    if now[i] != s[0].wv.room_burnt[i] {
+      if p.state == DP_STANDING { eg_room_put(s, 2, i, ifx now[i] then 1.0f32 else 0.0f32, 0, 0); }
+      s[0].wv.room_burnt[i] = now[i];
+    }
+  }
+  // breaking the town's pieces is a crime, as on a page (watch_spell): the last caster's
+  if s[0].wv.room_ev_n > 0 && s[0].wv.room_ev[0] == 1 {
+    p := w[0].pieces[cast(int) s[0].wv.room_ev[1]];
+    _ := everglade_room_crime(s, s[0].wv.room_by, p.cx, p.cz);
+  }
+  return s[0].wv.room_ev_n;
+}
+eg_room_put :: (s: [] Everglade, kind: int, i: int, a: f32, b: f32, c: f32) {
+  q := s[0].wv.room_ev_n;
+  if q >= EG_ROOM_EVENTS { return; }
+  o := q * EG_ROOM_EV_FLOATS;
+  s[0].wv.room_ev[o] = f32(kind); s[0].wv.room_ev[o + 1] = f32(i); s[0].wv.room_ev[o + 2] = a; s[0].wv.room_ev[o + 3] = b; s[0].wv.room_ev[o + 4] = c;
+  s[0].wv.room_ev_n = q + 1;
+}
+// Event q (EG_ROOM_EV_FLOATS), and where its piece stands (x, z) after them.
+everglade_room_event :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c {
+  if q < 0 || q >= s[0].wv.room_ev_n || out.count < EG_ROOM_EV_FLOATS + 2 { return false; }
+  for k: 0..<EG_ROOM_EV_FLOATS { out[k] = s[0].wv.room_ev[q * EG_ROOM_EV_FLOATS + k]; }
+  p := sp_dm(s)[0].pieces[cast(int) out[1]];
+  out[5] = p.cx; out[6] = p.cz;
+  return true;
+}
+// R: every piece stands again and the fires go out, and the fallen of the town stand up (watch_restore).
+everglade_room_rebuild :: (s: [] Everglade) #export_c {
+  if sp_on(s) { _ := sp_restore(s, -1); eg_room_known(s); }
+  if s[0].wv.started { _ := watch_restore(watch_w(s)); }
+}
+// A new room in this world's slot: the town whole again, everyone on their day, no player known.
+everglade_room_fresh :: (s: [] Everglade) #export_c {
+  if !s[0].started { everglade_start(s); }
+  if s[0].wv.started { watch_start(watch_w(s), s[0].heights[..]); }
+  for p: 0..<WATCH_YOUS { s[0].wv.room_live[p] = false; s[0].wv.room_dead[p] = false; }
+  if sp_on(s) {
+    for q: 0..<SP_METEORS * 2 { s[0].sp.meteors[q].live = false; }
+    s[0].sp.bolt.live = false; s[0].sp.orb_live = false;
+    _ := sp_restore(s, -1); eg_room_known(s);
+  }
 }

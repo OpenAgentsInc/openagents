@@ -39,6 +39,8 @@ EG_SLOT_STONE :: 10; EG_SLOT_TENTACLES :: 12; EG_SLOT_CONJURE :: 32; EG_SLOT_THO
 EG_SP_SLOTS :: 4;
 EG_FOLK_FLOATS :: 7;            // a townsperson as the world hands them (everglade-watch.coax EG_ROOM_VIEW_FLOATS)
 EG_CRIMES :: 16;
+EG_FOLK_STEP :: 0.3; EG_FOLK_TURN :: 0.15;   // m and radians a townsperson moves before a seat hears them again
+EG_PIECES :: 4000;              // the town's pieces at most (verse/demolish.coax DEMO_PIECES)
 
 EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: int; }
 EgPose :: struct { x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; g: int; clip: int; carry: int; }
@@ -53,8 +55,9 @@ EgSeat :: struct {
   heard_z: [E5RR_ZONES] int;                          // the zone id it last heard in each zone slot (0 none)
   heard_b: [E5RR_BEASTS] int; heard_b_id: [E5RR_BEASTS] int;   // each summoned creature: a hash of what it heard, and the id
   heard_f: [E5R_FOLK] int;                            // a hash of what it last heard of each townsperson (0 nothing)
-  heard_w: int;                                       // the WANTED level it last heard of itself, plus 1 (0 nothing)
+  heard_w: [EG_SEATS] int;                            // the WANTED level it last heard of each seat, plus 1 (0 nothing)
   full: bool;                                         // its next D is a snapshot
+  fresh: bool;                                        // just sat: the world's watch meets a new player
 }
 EgCast :: struct { on: bool; seat: int; slot: int; x: f32; y: f32; z: f32; tgt: int; due: int; }
 EgRoom :: struct {
@@ -74,7 +77,14 @@ EgRoom :: struct {
   // the harm seats did the town since the world last heard (a crime each), and who last harmed each person
   crimes: [EG_CRIMES] EgCrime; crime_n: int;
   folk_by: [E5R_FOLK] int;
+  // the town's pieces: Everglade's four spells' strikes for the world (it breaks and burns the pieces),
+  // the rebuild asked for, and what is broken and burning now (a seat's snapshot names them)
+  strikes: [EG_CASTS] EgStrike; strike_n: int;
+  rebuild: bool;
+  fresh: bool;                   // a new room in this slot: the world's town starts whole
+  broken: [EG_PIECES] bool; burning: [EG_PIECES] bool;
 }
+EgStrike :: struct { by: int; slot: int; fx: f32; fy: f32; fz: f32; ax: f32; ay: f32; az: f32; seed: int; }
 EgCrime :: struct { by: int; x: f32; z: f32; }
 
 // ---- text
@@ -128,6 +138,11 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     for s: 0..<EG_SEATS { v[0].eg[q].seat[s] = EgSeat.{}; }
     for c: 0..<EG_CASTS { v[0].eg[q].casts[c].on = false; }
     v[0].eg[q].ev_n = 0; v[0].eg[q].ev_bytes = 0;
+    // the town as new: the world's (the host's) is made whole again on rm_eg_fresh
+    v[0].eg[q].folk_on = false; v[0].eg[q].crime_n = 0; v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
+    for s: 0..<EG_SEATS { v[0].eg[q].wanted[s] = 0; }
+    for j: 0..<E5R_FOLK { v[0].eg[q].folk_by[j] = -1; }
+    for c: 0..<EG_PIECES { v[0].eg[q].broken[c] = false; v[0].eg[q].burning[c] = false; }
     e5rr_start(v[0].eg[q].rules[..], v[0].eg[q].seed);
     return q;
   }
@@ -138,7 +153,8 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
 eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
   k := eg_room_of(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
-  v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_BANK};
+  v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_BANK, fresh = true};
+  v[0].eg[k].wanted[seat] = 0;
   e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
   rv_join(v, k, seat);   // the HP its player left with (room-vitals.coax, #12715)
   v[0].eg[k].rules[0].pvp = v[0].ctl.pvp;   // the realm's pvp row (room-control.coax, #12714)
@@ -197,7 +213,10 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
     return;
   }
   if c == 'R' {
-    // no piece of the town breaks on the server yet, so a rebuild is only the word to every page
+    // the world stands its pieces and people up (rm_eg_rebuild), the rules the people, every page hears it
+    v[0].eg[k].rebuild = true;
+    e5rr_folk_restore(v[0].eg[k].rules[..]);
+    for q: 0..<EG_PIECES { v[0].eg[k].broken[q] = false; v[0].eg[k].burning[q] = false; }
     p := v[0].eg[k].seat[seat].pose;
     b: [32] u8;
     eg_event(v, k, cast(string) b[0..<wire_put_rebuilt(b[..], 0)], p.x, p.z, true);
@@ -288,8 +307,13 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
   due := v[0].eg[k].tick + eg_round(a.delay * f32(EG_HZ));
   v[0].eg[k].casts[free] = EgCast.{on = true, seat = seat, slot = slot, x = ax, y = ay, z = az, tgt = tgt, due = due};
   b: [128] u8;
-  n := wire_put_cast_e(b[..], 0, WireCastE.{ss = seat, slot = slot, ax = ax, ay = ay, az = az,
-                                            seed = 1 + (v[0].eg[k].seed + v[0].eg[k].tick * 31 + seat * 977 + slot * 7) % 999983});
+  seed := 1 + (v[0].eg[k].seed + v[0].eg[k].tick * 31 + seat * 977 + slot * 7) % 999983;
+  n := wire_put_cast_e(b[..], 0, WireCastE.{ss = seat, slot = slot, ax = ax, ay = ay, az = az, seed = seed});
+  // Everglade's own four fall on the world's town from the same seed the pages play them from
+  if slot < EG_SP_SLOTS && v[0].eg[k].strike_n < EG_CASTS {
+    v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = seat, slot = slot, fx = me.x, fy = me.y + 1.6, fz = me.z, ax = ax, ay = ay, az = az, seed = seed};
+    v[0].eg[k].strike_n += 1;
+  }
   eg_event(v, k, cast(string) b[0..<n], ax, az, false);
 }
 
@@ -409,7 +433,13 @@ eg_crime :: (v: [] RmServer, k: int, by: int, who: int, x: f32, z: f32) {
 
 // ---- the town: the host's world steps it between rm_eg_begin and rm_eg_end (room-world.c world_town)
 
-// Seat s for the world: X Y Z LIVE HP MAX (everglade-watch.coax EG_ROOM_SEAT_FLOATS).
+// Whether room k is new since the world last heard (its town starts whole: world_fresh).
+rm_eg_fresh :: (v: [] RmServer, k: int) -> bool #export_c {
+  if !rm_eg_live(v, k) || !v[0].eg[k].fresh { return false; }
+  v[0].eg[k].fresh = false;
+  return true;
+}
+// Seat s for the world: X Y Z LIVE HP MAX (everglade-watch.coax EG_ROOM_SEAT_FLOATS; LIVE 2 just sat).
 rm_eg_seat_town :: (v: [] RmServer, k: int, s: int, out: [] f32) #export_c {
   if out.count < 6 { return; }
   for q: 0..<6 { out[q] = 0; }
@@ -417,7 +447,8 @@ rm_eg_seat_town :: (v: [] RmServer, k: int, s: int, out: [] f32) #export_c {
   o: [E5RR_OUT_FLOATS] f32;
   e5rr_seat_out(v[0].eg[k].rules[..], s, o[..]);
   p := v[0].eg[k].seat[s].pose;
-  out[0] = p.x; out[1] = p.y; out[2] = p.z; out[3] = 1;
+  out[0] = p.x; out[1] = p.y; out[2] = p.z; out[3] = ifx v[0].eg[k].seat[s].fresh then 2.0f32 else 1.0f32;   // 2: new
+  v[0].eg[k].seat[s].fresh = false;
   out[4] = ifx o[4] > 0.5 then 0.0f32 else o[0]; out[5] = o[1];
 }
 // The people where the world has them (E5R_FOLK_FLOATS each, n of them), for the rules.
@@ -438,9 +469,45 @@ rm_eg_crime :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
   out[0] = f32(c.by); out[1] = c.x; out[2] = c.z;
 }
 rm_eg_crimes_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].crime_n = 0; } }
-// What the watch's blows took from seat s this tick.
-rm_eg_hurt :: (v: [] RmServer, k: int, s: int, amount: int) #export_c {
-  if rm_eg_seat_live(v, k, s) && amount > 0 { e5rr_hurt(v[0].eg[k].rules[..], EG_TGT_SEAT + s, amount); }
+// The strikes since the world last heard: q's BY SLOT FX FY FZ AX AY AZ SEED.
+rm_eg_strikes :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live(v, k) then v[0].eg[k].strike_n else 0; }
+rm_eg_strike :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
+  if !rm_eg_live(v, k) || q < 0 || q >= v[0].eg[k].strike_n || out.count < 9 { return; }
+  c := v[0].eg[k].strikes[q];
+  out[0] = f32(c.by); out[1] = f32(c.slot); out[2] = c.fx; out[3] = c.fy; out[4] = c.fz; out[5] = c.ax; out[6] = c.ay; out[7] = c.az; out[8] = f32(c.seed);
+}
+rm_eg_strikes_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].strike_n = 0; } }
+// Whether a rebuild was asked for since the world last heard.
+rm_eg_rebuild :: (v: [] RmServer, k: int) -> bool #export_c {
+  if !rm_eg_live(v, k) || !v[0].eg[k].rebuild { return false; }
+  v[0].eg[k].rebuild = false;
+  return true;
+}
+// Piece `piece` broke (KIND 1, thrown at A B C m/s) or caught or went out (KIND 2, A 1 alight) in the
+// world, standing at (x, z): every page hears it, near or far, for every page's town is the same.
+rm_eg_piece :: (v: [] RmServer, k: int, kind: int, piece: int, a: f32, b: f32, c: f32, x: f32, z: f32) #export_c {
+  if !rm_eg_live(v, k) || piece < 0 || piece >= EG_PIECES { return; }
+  e: [96] u8; n := 0;
+  if kind == 1 {
+    v[0].eg[k].broken[piece] = true; v[0].eg[k].burning[piece] = false;
+    n = eg_put_break(e[..], piece, a, b, c);
+  } else {
+    v[0].eg[k].burning[piece] = a > 0.5;
+    n = eg_put_burn(e[..], piece, a > 0.5);
+  }
+  eg_event(v, k, cast(string) e[0..<n], x, z, true);
+}
+eg_put_break :: (e: [] u8, piece: int, a: f32, b: f32, c: f32) -> int {
+  n := wire_put(e, 0, "e break"); n = wire_int(e, n, piece); n = wire_m(e, n, a); n = wire_m(e, n, b); n = wire_m(e, n, c);
+  return n;
+}
+eg_put_burn :: (e: [] u8, piece: int, on: bool) -> int {
+  n := wire_put(e, 0, "e burn"); n = wire_int(e, n, piece); n = wire_int(e, n, ifx on then 1 else 0);
+  return n;
+}
+// What the watch's blows took from seat s this tick, and who dealt them (a watch actor, -1 none).
+rm_eg_hurt :: (v: [] RmServer, k: int, s: int, amount: int, by: int) #export_c {
+  if rm_eg_seat_live(v, k, s) && amount > 0 { e5rr_hurt(v[0].eg[k].rules[..], EG_TGT_SEAT + s, amount, by); }
 }
 // Person i as pages hear them (X Z YAW CLIP MODE HP SHOWN), and seat s's WANTED level.
 rm_eg_folk :: (v: [] RmServer, k: int, i: int, at: [] f32) #export_c {
@@ -466,6 +533,7 @@ eg_out_send :: (o: [] EgOut, v: [] RmServer, k: int, s: int, f: int) {
   rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[s].conn, -1, cast(string) h[0..<n], cast(string) o[0].b[0..<o[0].n]);
   o[0].n = 0; o[0].any = false;
 }
+eg_snap :: (v: f32, step: f32) -> f32 { return f32(eg_round(v / step)) * step; }
 eg_near :: (p: EgPose, x: f32, z: f32) -> bool { return (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) <= f32(EG_VIEW * EG_VIEW); }
 eg_kind_of :: (slot: int) -> int {
   if slot == EG_SLOT_CONJURE { return WK_PACK; }
@@ -478,18 +546,27 @@ eg_kind_of :: (slot: int) -> int {
 eg_send :: (v: [] RmServer, k: int, s: int) {
   st := v[0].eg[k].seat[s..<s + 1];
   full := st[0].full;
+  full_pieces := false;
   f := ifx full then 1 else 0;
   if full {
     for q: 0..<EG_SEATS { st[0].heard_p[q] = 0; st[0].heard_n[q] = 0; }
     for q: 0..<E5RR_ZONES { st[0].heard_z[q] = 0; }
     for q: 0..<E5RR_BEASTS { st[0].heard_b[q] = 0; st[0].heard_b_id[q] = 0; }
     for q: 0..<E5R_FOLK { st[0].heard_f[q] = 0; }
-    st[0].heard_w = 0;
+    for q: 0..<EG_SEATS { st[0].heard_w[q] = 0; }
     st[0].full = false;
+    full_pieces = true;
   }
   o: [1] EgOut;
   me := st[0].pose;
   e: [320] u8;
+  // a snapshot names what of the town is broken and burning
+  if full_pieces {
+    for q: 0..<EG_PIECES {
+      if v[0].eg[k].broken[q] { n := eg_put_break(e[..], q, 0, 0, 0); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
+      else if v[0].eg[k].burning[q] { n := eg_put_burn(e[..], q, true); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
+    }
+  }
   out: [E5RR_OUT_FLOATS] f32;
   for q: 0..<EG_SEATS {
     other := v[0].eg[k].seat[q];
@@ -567,16 +644,23 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
         }
         continue;
       }
+      // heard again once they have moved EG_FOLK_STEP m or turned EG_FOLK_TURN, or changed mode, clip or
+      // Hit Points: a walker about five times a second, which the page's ring smooths
+      q: [96] u8;
+      qn := wire_put_f(q[..], 0, WireF.{i = i, x = eg_snap(fl[0], f32(EG_FOLK_STEP)), z = eg_snap(fl[1], f32(EG_FOLK_STEP)), yaw = eg_snap(fl[2], f32(EG_FOLK_TURN)),
+                                        clip = cast(int) fl[3], mode = cast(int) fl[4], hp = cast(int) fl[5]});
       n := wire_put_f(e[..], 0, WireF.{i = i, x = fl[0], z = fl[1], yaw = fl[2], clip = cast(int) fl[3], mode = cast(int) fl[4], hp = cast(int) fl[5]});
-      h := eg_hash(cast(string) e[0..<n]);
+      h := eg_hash(cast(string) q[0..<qn]);
       if h != st[0].heard_f[i] { eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); st[0].heard_f[i] = h; }
     }
   }
-  // your WANTED level, on change
-  if st[0].heard_w != v[0].eg[k].wanted[s] + 1 {
-    n := wire_put(e[..], 0, "w"); n = wire_int(e[..], n, s); n = wire_int(e[..], n, v[0].eg[k].wanted[s]);
+  // every seat's WANTED level (yours and the others'), on change
+  for q: 0..<EG_SEATS {
+    if !v[0].eg[k].seat[q].live || !v[0].eg[k].seat[q].placed { st[0].heard_w[q] = 0; continue; }
+    if st[0].heard_w[q] == v[0].eg[k].wanted[q] + 1 { continue; }
+    n := wire_put(e[..], 0, "w"); n = wire_int(e[..], n, q); n = wire_int(e[..], n, v[0].eg[k].wanted[q]);
     eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]);
-    st[0].heard_w = v[0].eg[k].wanted[s] + 1;
+    st[0].heard_w[q] = v[0].eg[k].wanted[q] + 1;
   }
   // the events since the last state, near you
   for q: 0..<v[0].eg[k].ev_n {
@@ -690,7 +774,7 @@ eg_test_has :: (t: string, part: string) -> bool {
   // four wolves (WK_BEAST 12, form 1, 11 Hit Points), ids 1 to 4, owner seat 0, once the ground under them is known
   #assert eg_test_has(a, "c 1 12 ") && eg_test_has(c, "c 1 12 ") && eg_test_has(c, "c 4 12 ") && (eg_test_has(c, " 11 0 0 1 11") || eg_test_has(c, " 11 1 0 1 11"));
   // seat 1 hurts wolf 2 until it is gone: everyone hears it hit, die and go
-  e5rr_hurt(v[0].eg[k].rules[..], E5RR_TGT_BEAST + 2, 30);
+  e5rr_hurt(v[0].eg[k].rules[..], E5RR_TGT_BEAST + 2, 30, -1);
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 0), "x c 2") && eg_test_has(eg_test_of(box[..], 1), "x c 2") && eg_test_has(eg_test_of(box[..], 1), "e die 2002");
@@ -701,7 +785,7 @@ eg_test_has :: (t: string, part: string) -> bool {
   eg_test_drain(v[..], box[..]);
   #assert eg_test_of(box[..], 1) == "r 2 range" && eg_test_of(box[..], 0) == "";
   // seat 1 hurt by the world, then healed by seat 0's Healing Word
-  e5rr_hurt(v[0].eg[k].rules[..], EG_TGT_SEAT + 1, 30);
+  e5rr_hurt(v[0].eg[k].rules[..], EG_TGT_SEAT + 1, 30, -1);
   rm_heard(v[..], 0, "C 3 28 100 0 0 1001");
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);

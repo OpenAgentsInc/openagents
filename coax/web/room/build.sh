@@ -41,6 +41,9 @@ if [[ -s "$work/both.syms" ]]; then
   objs[0]="$work/room-own.o"
 fi
 cc -std=c11 -O2 -w -I"$work" -c "$here/room-world.c" -o "$work/room-world.o"
+# the pack's catalog, the bounds the world's pieces break with (room-catalog.py)
+python3 "$here/room-catalog.py" "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$work/room-catalog.c"
+cc -std=c11 -O2 -w -c "$work/room-catalog.c" -o "$work/room-catalog.o"
 cc -std=c11 -O2 -Wall -Wextra -D_DEFAULT_SOURCE -I"$work" -I"$here" -I"$root/verse/voice-host" "$here/room-host.c" "$root/verse/voice-host/ws.c" \
-  "$work/room-world.o" "${objs[@]}" -lm -o "$out"
+  "$work/room-world.o" "$work/room-catalog.o" "${objs[@]}" -lm -o "$out"
 echo "built $out"

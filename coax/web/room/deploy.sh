@@ -35,6 +35,7 @@ for u in apps/openagents-web/everglade.coax apps/openagents-web/everglade-step.c
   "$coax" c "$u" --library --header "$stage/src/$n.h" > "$stage/src/$n.c"
 done
 cp "$here/room-host.c" "$here/room-world.c" "$here/room-world.h" verse/voice-host/ws.c verse/voice-host/ws.h "$stage/src/"
+python3 "$here/room-catalog.py" apps/openagents-web/realms/everglade/assets/everglade.pack "$stage/src/room-catalog.c"
 cp "$here/Dockerfile" "$stage/"
 image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/$service:$(git rev-parse --short HEAD)-$(date +%Y%m%d-%H%M%S)"
 gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$image" --quiet \

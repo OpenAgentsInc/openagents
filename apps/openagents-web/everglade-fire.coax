@@ -241,6 +241,7 @@ fi_frame :: (s: [] Everglade, dt: f32) {
     v[0].soot[i] = lo(v[0].soot[i] + dt / f32(FI_SOOT), 1);
     v[0].sooty = true;
     e := v[0].burn[k];
+    if net_town(s) { k += 1; continue; }   // in a room the server burns it down and spreads it (e break, e burn)
     if e.t >= e.tick {
       v[0].burn[k].tick = e.tick + f32(FI_TICK);
       // the rain may put it out

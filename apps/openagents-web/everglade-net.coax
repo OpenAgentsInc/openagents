@@ -63,6 +63,7 @@ NetEnt :: struct {
   live: bool; eid: int; kind: int; owner: int = -1;   // eid: a seat, NET_FOLK_ID + its index, NET_MADE_ID + the server's EID
   ring: [NET_RING] NetState; ring_n: int;   // oldest first, server times
   hp: int; max: int; p1: int; p2: int; form: int;
+  wanted: int;               // a player's WANTED level (w)
   born: int;                 // server ms it was first seen
   seen: int;                 // the last tick it was in
   // who a player is (n)
@@ -108,6 +109,7 @@ EgNet :: struct {
   fix: NetFix; fix_due: bool;
   off_x: f32; off_y: f32; off_z: f32;   // where you are drawn less where you are, eased out
   wanted: int = -1;          // your WANTED level (w; -1 none heard: the server runs no town)
+  breaks_heard: int; burns_heard: int;   // the town's pieces the server broke and lit (e break, e burn)
   fx: [NET_FX] NetFx;
   said: [48] u8; said_n: int; said_t: f32;   // the last refusal's reason
   hello_due: bool;
@@ -520,7 +522,10 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
   }
   if c == 'w' {
     ss := wire_num(t, r[..]); level := wire_num(t, r[..]);
-    if r[0].ok && ss == n[0].seat { n[0].wanted = level; }
+    if !r[0].ok || ss < 0 { return; }
+    if ss == n[0].seat { n[0].wanted = level; return; }
+    k := net_ent(n, ss, true);
+    if k >= 0 { n[0].ents[k].wanted = level; }   // another's (net_view)
     return;
   }
   if c != 'e' { return; }
@@ -557,6 +562,8 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     m := sqrt(ix * ix + iy * iy + iz * iz);
     from := ifx m > 0.01 then sub(c0, v3(ix / m, iy / m, iz / m)) else sub(c0, v3(0, 1, 0));
     demo_break(sp_dm(s), pc, from, hi(m, 2));
+    n[0].breaks_heard += 1;
+    s[0].sp.walls_dirty = true;
     return;
   }
   if wire_is(t, "e die") {
@@ -569,6 +576,17 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     // an admin published or switched something: everyone's page asks for the world and the board again
     n[0].edit_due = true;
     if s[0].ev.ed.count > 0 { s[0].ev.ed[0].spec_due = true; }
+    return;
+  }
+  if wire_is(t, "e burn") {
+    r[0] = wire_rd(t, 6);
+    pc := wire_num(t, r[..]); on := wire_num(t, r[..]);
+    if !r[0].ok || !sp_on(s) || pc < 0 || pc >= sp_dm(s)[0].n { return; }
+    // alight or out as the server says (its burning down and spreading are the server's: fi_frame)
+    v := fi_of(s);
+    if on == 1 { if !fi_burning(s, pc) { _ := fi_ignite(s, pc); } }
+    else { for q: 0..<v[0].n { if v[0].burn[q].piece == pc { fi_drop(s, q); break; } } }
+    n[0].burns_heard += 1;
     return;
   }
   if t == "e rebuild" { if sp_on(s) { _ := sp_restore(s, -1); } return; }
@@ -1059,7 +1077,7 @@ NetView :: struct {
   x: f32; y: f32; z: f32; yaw: f32; vx: f32; vz: f32;   // drawn now; y the feet's world height
   flags: int; act: int; form: int; air: bool; swim: bool; boat: bool; alive: bool;
   account: bool; away: bool;       // a player's: signed in (its hello's FLAGS 2), nothing heard from it (WG_AWAY)
-  hp: int; max: int; p1: int; p2: int;
+  hp: int; max: int; p1: int; p2: int; wanted: int;
   cast_slot: int; cast_age: f32;   // its last spell (a bar slot) and how long ago, s
 }
 // The k-th live entity of kind (-1 any; WK_PLAYER: the other players), as drawn this frame.
@@ -1074,7 +1092,7 @@ net_view :: (s: [] Everglade, kind: int, k: int) -> NetView {
                   flags = p.f, act = p.a, form = en.form,
                   air = pl && (p.f & (WG_GROUND | WG_SWIM | WG_BOAT)) == 0, swim = pl && (p.f & WG_SWIM) != 0, boat = pl && (p.f & WG_BOAT) != 0,
                   alive = !pl || (p.f & WG_DEAD) == 0, account = pl && (en.hello_flags & 2) != 0, away = pl && (p.f & WG_AWAY) != 0,
-                  hp = en.hp, max = en.max, p1 = en.p1, p2 = en.p2,
+                  hp = en.hp, max = en.max, p1 = en.p1, p2 = en.p2, wanted = en.wanted,
                   cast_slot = en.cast_slot, cast_age = ifx en.cast_slot >= 0 then f32(net_now(n) - en.cast_at) / 1000 else 100000.0f32};
 }
 // Its name ("" none yet: a nameless figure), player id, class and look (n).
@@ -1118,7 +1136,8 @@ net_self_max :: (s: [] Everglade) -> int {
 // 16 the server's summoned creatures here, 17 their Hit Points together, 18 hits heard on them, 19
 // their deaths heard, 20 the server's y for you (cm), 21 your feet's y as the face gives it, 22 the
 // floor's height under you, 23 the town's people heard (f), 24 your WANTED level (w, -1 none), 25 the
-// people drawn off their day. 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
+// people drawn off their day, 26 breaks heard (e break), 27 fires heard (e burn), 28 the pieces down.
+// 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
 // summoned creature, else 3 m ahead of you: 1 when it went out.
 net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if !net_on(s) { return -1; }
@@ -1153,6 +1172,9 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 22 { return wire_cm(walk_at(s, s[0].feet.x, s[0].feet.z)); }
   if field == 23 { return net_count(s, WK_FOLK); }                       // the town's people heard (f)
   if field == 24 { return n[0].wanted; }                                 // your WANTED level (w; -1 none)
+  if field == 26 { return n[0].breaks_heard; }
+  if field == 27 { return n[0].burns_heard; }
+  if field == 28 { k := 0; for i: 0..<sp_dm(s)[0].n { if sp_dm(s)[0].pieces[i].state != DP_STANDING { k += 1; } } return ifx sp_on(s) then k else -1; }
   if field == 25 { k := 0; for i: 0..<WATCH_ACTORS { if s[0].wt[0].actors[i].ready && s[0].wt[0].actors[i].mode != WM_CALM { k += 1; } } return k; }   // off their day as drawn
   if field == 19 { return n[0].creature_deaths; }
   // you as this frame drew you: the controller's act (aethyr/walk.coax Act: 3 airborne) and the clip

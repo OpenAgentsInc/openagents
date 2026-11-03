@@ -13,7 +13,8 @@ RUN gcc -std=c11 -O2 -w -c room.c -o room.o \
  && comm -12 room.syms city.syms > both.syms \
  && objcopy --localize-symbols=both.syms room.o room-own.o \
  && gcc -std=c11 -O2 -w -I. -c room-world.c -o room-world.o \
- && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -Wall -I. -o /room room-host.c ws.c room-world.o room-own.o everglade.o everglade-step.o grid.o river.o guard-guide-policy.o -lm
+ && gcc -std=c11 -O2 -w -c room-catalog.c -o room-catalog.o \
+ && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -Wall -I. -o /room room-host.c ws.c room-world.o room-catalog.o room-own.o everglade.o everglade-step.o grid.o river.o guard-guide-policy.o -lm
 
 FROM debian:bookworm-slim
 # curl: the room posts players' HP to the API (room-host.c vitals_post, #12715)

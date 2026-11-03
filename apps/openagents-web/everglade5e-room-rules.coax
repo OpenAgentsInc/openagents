@@ -319,12 +319,23 @@ e5rr_end :: (r: [] E5rRoom, s: int, k: int) -> bool #export_c {
   e5rr_beasts_check(r);
   return true;
 }
-// Damage the world dealt (a guard's sword, a spear, a fall): to creature `who` (a TGT code).
-e5rr_hurt :: (r: [] E5rRoom, who: int, amount: int) #export_c {
+// The rebuild (R) stands the town's fallen up: every person whole again (the world's watch_restore).
+e5rr_folk_restore :: (r: [] E5rRoom) #export_c {
+  if !r[0].started { return; }
+  for j: 0..<E5R_FOLK {
+    i := e5rr_folk(j);
+    if r[0].b[0].c[i].hp_max <= 0 { continue; }
+    r[0].b[0].c[i].hp = r[0].b[0].c[i].hp_max; r[0].b[0].c[i].dead = false;
+  }
+}
+// Damage the world dealt (a guard's sword, a spear, a fall): to creature `who`, by `by` (TGT codes; a
+// `by` that names nobody: the creature itself), so the hit event names the townsperson or guard.
+e5rr_hurt :: (r: [] E5rRoom, who: int, amount: int, by: int) #export_c {
   if !r[0].started || amount <= 0 { return; }
   i := ifx who > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, who) else e5rr_of_tgt(who);
   if i < 0 { return; }
-  rs_damage(r[0].b[..], i, i, amount, RS_BLUDGEONING, false, -1);
+  j := ifx by > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, by) else e5rr_of_tgt(by);
+  rs_damage(r[0].b[..], i, ifx j >= 0 then j else i, amount, RS_BLUDGEONING, false, -1);
 }
 
 // ---- summoned creatures
@@ -414,8 +425,8 @@ e5rr_beasts_step :: (r: [] E5rRoom, dt: f32) {
       tx = r[0].folk_x[j]; tz = r[0].folk_z[j]; stop = E5RR_REACH * 0.8;
       if (tx - bt[0].x) * (tx - bt[0].x) + (tz - bt[0].z) * (tz - bt[0].z) > E5RR_CHASE * E5RR_CHASE { foe = -1; }
     }
-    // a pack with no quarry sets on whoever comes within 10 feet of it
-    if foe < 0 { foe = e5rr_folk_near(r, bt[0].x, bt[0].z, f32(E5RR_SCENT)); }
+    // a pack with no quarry waits where it was sent: it sets on a person only when its caster sends it
+    // at one (e5rr_conjure), so the town's harm is always the caster's own doing
     bt[0].foe = foe;
     // each to its own place about the point, so the pack stands round it rather than in one spot
     if foe < 0 { a := 6.2831853 * f32(q % E5RR_PACK) / f32(E5RR_PACK) + 0.4; tx += cos(a); tz += sin(a); stop = 0.2; }
@@ -571,7 +582,7 @@ e5rr_test_people :: (r: [] E5rRoom) {
   }
   #assert hits >= 2 && e5rr_events(r[..], ev[..]) == 0;
   // aimed straight at another player, a harm is refused a target; a heal reaches them
-  e5rr_hurt(r[..], E5RR_TGT_SEAT + 5, 30);
+  e5rr_hurt(r[..], E5RR_TGT_SEAT + 5, 30, -1);
   e5rr_seat_out(r[..], 5, out[..]); #assert out[0] == 27;
   #assert e5rr_use(r[..], 3, 28, 3, 0.5, E5RR_TGT_SEAT + 5);   // Healing Word on seat 5
   e5rr_seat_out(r[..], 5, out[..]); #assert out[0] > 27;
@@ -646,10 +657,10 @@ e5rr_test_people :: (r: [] E5rRoom) {
   w := ids[0];
   wq := -1;
   for q: 0..<E5RR_BEASTS { if r[0].beasts[q].id == w { wq = q; } }
-  e5rr_hurt(r[..], E5RR_TGT_BEAST + w, 4);
+  e5rr_hurt(r[..], E5RR_TGT_BEAST + w, 4, -1);
   #assert e5rr_beast(r[..], wq, bf[..]) == w && bf[4] == 7;
   #assert e5rr_use(r[..], 1, 1, bf[0], bf[2], E5RR_TGT_BEAST + w);   // the Thunderbolt at it
-  e5rr_hurt(r[..], E5RR_TGT_BEAST + w, 20);
+  e5rr_hurt(r[..], E5RR_TGT_BEAST + w, 20, -1);
   e5rr_step(r[..], t + 0.1);
   #assert e5rr_beast(r[..], wq, bf[..]) == 0;
   died := false;

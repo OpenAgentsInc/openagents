@@ -23,6 +23,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <string.h>
 #include <sys/socket.h>
 #include <time.h>
@@ -122,8 +123,9 @@ static void relay_flush(void) {
 // crimes since into it, a step against every seat, then the guards' blows, WANTED and where everyone is
 // back to the room (the rules', and what the pages hear).
 static void everglade_town(int k) {
-  float hp[3], cr[3], seats[WORLD_SEATS * WORLD_SEAT_TOWN], took[WORLD_SEATS], people[WORLD_FOLK * WORLD_PEOPLE], fv[WORLD_VIEW];
+  float hp[3], cr[3], seats[WORLD_SEATS * WORLD_SEAT_TOWN], took[2 * WORLD_SEATS], people[WORLD_FOLK * WORLD_PEOPLE], fv[WORLD_VIEW];
   coax_v_f32 hpv = {hp, 3}, crv = {cr, 3}, fvv = {fv, WORLD_VIEW};
+  if (rm_eg_fresh(view(), k)) world_fresh(k);
   for (int j = 0; j < WORLD_FOLK; j++)
     if (rm_eg_folk_hp(view(), k, j, hpv)) world_folk_hp(k, j, (int)hp[0], (int)hp[1], (int)hp[2]);
   int64_t cn = rm_eg_crimes(view(), k);
@@ -133,9 +135,18 @@ static void everglade_town(int k) {
   world_town(k, 1.0f / WORLD_HZ, (double)wall_ms() / 1000.0, seats, took);
   for (int s = 0; s < WORLD_SEATS; s++) {
     if (seats[s * WORLD_SEAT_TOWN + 3] < 0.5f) continue;
-    rm_eg_hurt(view(), k, s, (int64_t)took[s]);
+    rm_eg_hurt(view(), k, s, (int64_t)took[s], (int64_t)took[WORLD_SEATS + s]);
     rm_eg_wanted(view(), k, s, world_wanted(k, s));
   }
+  /* the town's pieces: the rebuild, the strikes cast since, then what broke and caught for every page */
+  if (rm_eg_rebuild(view(), k)) world_rebuild(k);
+  float sk[9], ev[WORLD_EVENT]; coax_v_f32 skv = {sk, 9};
+  int64_t sn = rm_eg_strikes(view(), k);
+  for (int64_t q = 0; q < sn; q++) { rm_eg_strike(view(), k, q, skv); world_strike(k, (int)sk[0], (int)sk[1], sk + 2, sk + 5, (int)sk[8]); }
+  rm_eg_strikes_heard(view(), k);
+  int en = world_spells(k, 1.0f / WORLD_HZ);
+  for (int q = 0; q < en; q++)
+    if (world_event(k, q, ev)) rm_eg_piece(view(), k, (int64_t)ev[0], (int64_t)ev[1], ev[2], ev[3], ev[4], ev[5], ev[6]);
   int pn = world_people(k, people);
   rm_eg_people(view(), k, (coax_v_f32){people, WORLD_FOLK * WORLD_PEOPLE}, pn);
   for (int i = 0; i < WORLD_FOLK; i++) if (world_view(k, i, fv)) rm_eg_folk(view(), k, i, fvv);
@@ -409,7 +420,7 @@ int main(int argc, char **argv) {
   a.sin_family = AF_INET; a.sin_port = htons((uint16_t)port);
   inet_pton(AF_INET, address, &a.sin_addr);
   if (bind(lfd, (struct sockaddr *)&a, sizeof a) || listen(lfd, 512)) { perror("room: listen"); return 1; }
-  fcntl(lfd, F_SETFL, O_NONBLOCK);
+  fcntl(lfd, F_SETFL, O_NONBLOCK); fcntl(lfd, F_SETFD, FD_CLOEXEC);
   for (int i = 0; i < CONNS; i++) conns[i].fd = -1;
   printf("room: listening on %s:%d\n", address, port);
   const double tick = 1000.0 / 60.0;
@@ -433,7 +444,7 @@ int main(int argc, char **argv) {
           int slot = -1;
           for (int i = 0; i < CONNS; i++) if (conns[i].fd < 0) { slot = i; break; }
           if (slot < 0) { close(fd); continue; }
-          fcntl(fd, F_SETFL, O_NONBLOCK);
+          fcntl(fd, F_SETFL, O_NONBLOCK); fcntl(fd, F_SETFD, FD_CLOEXEC);   /* never a vitals curl's */
           setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
           conns[slot] = (conn){.fd = fd, .heard = now};
         }

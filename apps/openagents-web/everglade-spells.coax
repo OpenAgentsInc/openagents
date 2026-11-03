@@ -1156,44 +1156,9 @@ sp_upper :: (out: [] u8, text: string) -> string {
 // After the town's pieces are drawn: the casts move on, blasts break what
 // they reach, the debris steps, each piece's instance is written as it is
 // now, and the spells' fire, light and smoke are drawn.
-spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
-  s[0].sp.sprite_n = 0; s[0].sp.stage_n = 0;
-  if !s[0].sp.ready || s[0].sp.dm.count < 1 { return; }
-  w := sp_dm(s);
-  kn := eg_knobs(s);
-  demo_caps(w, kn.debris, kn.fine);   // the graphics quality's debris budgets (everglade-quality.coax)
-  s[0].sp.shot = shot;
-  aspect := s[0].width / hi(s[0].height, 1);
-  s[0].sp.fy = clamp(aspect * 1.25, 0.95, 1.9); s[0].sp.fx = s[0].sp.fy / aspect;
-  if s[0].sp.on && s[0].sp.armed >= 0 && (s[0].sp.seen || phone(s)) { sp_aim(s); }
-  // the cast bar
-  if s[0].sp.casting >= 0 {
-    slot := s[0].sp.casting;
-    s[0].sp.cast_t += dt;
-    if slot == SP_ORB { s[0].sp.orb_t += dt; }
-    if s[0].sp.cast_t >= srd_spell(SP_SPELL[slot]).bar {
-      s[0].sp.casting = -1;
-      // in a room the strike is the server's: it comes back as an effect (f) for every page alike
-      if !net_live(s) { sp_release(s, slot); } else if slot == SP_ORB && !s[0].sp.orb_remote { s[0].sp.orb_live = false; }
-    }
-    // the cast gathering round you: embers rising for the meteors, a crackle of sparks for a bolt
-    if slot != SP_ORB {
-      hand := add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z) + 1.3, 0));
-      rate := ifx slot == SP_METEOR then 34.0f32 else 40.0f32;
-      count := cast(int) (s[0].sp.cast_t * rate) - cast(int) ((s[0].sp.cast_t - dt) * rate);
-      for q: 0..<count {
-        a := f32(TAU) * sp_rand(s);
-        if slot == SP_METEOR {
-          r := 0.35 + 0.35 * sp_rand(s);
-          sp_add_spark(s, add(hand, v3(cos(a) * r, (sp_rand(s) - 0.6) * 1.0, sin(a) * r)), v3(-sin(a) * 0.6, 0.6 + 0.9 * sp_rand(s), cos(a) * 0.6),
-                       0.5 + 0.4 * sp_rand(s), 0.03, mix(v3(1.0, 0.85, 0.45), v3(1.0, 0.35, 0.06), sp_rand(s)), -1.5);
-        } else {
-          sp_add_spark(s, add(hand, times(sp_spray(s, 0), 0.4 + 0.3 * sp_rand(s))), times(sp_spray(s, 0), 6 + 6 * sp_rand(s)),
-                       0.06 + 0.08 * sp_rand(s), 0.02, mix(v3(1, 1, 1), v3(0.55, 0.68, 1.0), sp_rand(s)), 0);
-        }
-      }
-    }
-  }
+// The strikes on their way land when their time comes: the meteors, the bolt once it is down, the orb
+// once thrown (each frame here; the room server's town each tick, everglade-watch.coax).
+sp_strikes :: (s: [] Everglade, dt: f32) {
   // the meteors fall
   last := false;
   for m: 0..<SP_METEORS * 2 {
@@ -1243,6 +1208,47 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
       s[0].sp.orb_remote = false;
     }
   }
+}
+
+spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
+  s[0].sp.sprite_n = 0; s[0].sp.stage_n = 0;
+  if !s[0].sp.ready || s[0].sp.dm.count < 1 { return; }
+  w := sp_dm(s);
+  kn := eg_knobs(s);
+  demo_caps(w, kn.debris, kn.fine);   // the graphics quality's debris budgets (everglade-quality.coax)
+  s[0].sp.shot = shot;
+  aspect := s[0].width / hi(s[0].height, 1);
+  s[0].sp.fy = clamp(aspect * 1.25, 0.95, 1.9); s[0].sp.fx = s[0].sp.fy / aspect;
+  if s[0].sp.on && s[0].sp.armed >= 0 && (s[0].sp.seen || phone(s)) { sp_aim(s); }
+  // the cast bar
+  if s[0].sp.casting >= 0 {
+    slot := s[0].sp.casting;
+    s[0].sp.cast_t += dt;
+    if slot == SP_ORB { s[0].sp.orb_t += dt; }
+    if s[0].sp.cast_t >= srd_spell(SP_SPELL[slot]).bar {
+      s[0].sp.casting = -1;
+      // in a room the strike is the server's: it comes back as an effect (f) for every page alike
+      if !net_live(s) { sp_release(s, slot); } else if slot == SP_ORB && !s[0].sp.orb_remote { s[0].sp.orb_live = false; }
+    }
+    // the cast gathering round you: embers rising for the meteors, a crackle of sparks for a bolt
+    if slot != SP_ORB {
+      hand := add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z) + 1.3, 0));
+      rate := ifx slot == SP_METEOR then 34.0f32 else 40.0f32;
+      count := cast(int) (s[0].sp.cast_t * rate) - cast(int) ((s[0].sp.cast_t - dt) * rate);
+      for q: 0..<count {
+        a := f32(TAU) * sp_rand(s);
+        if slot == SP_METEOR {
+          r := 0.35 + 0.35 * sp_rand(s);
+          sp_add_spark(s, add(hand, v3(cos(a) * r, (sp_rand(s) - 0.6) * 1.0, sin(a) * r)), v3(-sin(a) * 0.6, 0.6 + 0.9 * sp_rand(s), cos(a) * 0.6),
+                       0.5 + 0.4 * sp_rand(s), 0.03, mix(v3(1.0, 0.85, 0.45), v3(1.0, 0.35, 0.06), sp_rand(s)), -1.5);
+        } else {
+          sp_add_spark(s, add(hand, times(sp_spray(s, 0), 0.4 + 0.3 * sp_rand(s))), times(sp_spray(s, 0), 6 + 6 * sp_rand(s)),
+                       0.06 + 0.08 * sp_rand(s), 0.02, mix(v3(1, 1, 1), v3(0.55, 0.68, 1.0), sp_rand(s)), 0);
+        }
+      }
+    }
+  }
+  sp_strikes(s, dt);
   // the abilities' fields over the debris, the people they have up, you (everglade-abilities.coax)
   if s[0].sp.on { ab_frame(s, dt); } else { w[0].field_n = 0; }
   // the debris (verse/demolish.coax), its dust, and what grows back

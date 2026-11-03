@@ -20,6 +20,8 @@ ScHeard :: struct {
   gone: [8] int; gone_n: int; hits: int; other_gone: bool;
   folk: [40] bool; folk_n: int; near_i: int = -1; near_d: f32 = 1000000; near_x: f32; near_z: f32;   // the town's people (f)
   wanted: int; wanted_heard: bool;                       // its own WANTED level (w)
+  other_wanted: int;                                     // the other's (w)
+  breaks: int; break_sum: int; burns: int; rebuilt: bool; // the town's pieces (e break, e burn, e rebuild)
   bad: int;
 }
 sc_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
@@ -51,13 +53,20 @@ sc_entry :: (h: [] ScHeard, me: int, t: string) {
     if i == h[0].near_i || d < h[0].near_d { h[0].near_i = i; h[0].near_d = d; h[0].near_x = x; h[0].near_z = z; }
     return;
   }
-  if k == "w" { if rs_num(rs_field(t, 1)) == me { h[0].wanted = rs_num(rs_field(t, 2)); h[0].wanted_heard = true; } return; }
+  if k == "w" {
+    if rs_num(rs_field(t, 1)) == me { h[0].wanted = rs_num(rs_field(t, 2)); h[0].wanted_heard = true; }
+    else { h[0].other_wanted = rs_num(rs_field(t, 2)); }
+    return;
+  }
   if k == "x" {
     if rs_field(t, 1) == "c" && h[0].gone_n < 8 { h[0].gone[h[0].gone_n] = rs_num(rs_field(t, 2)); h[0].gone_n += 1; }
     if rs_field(t, 1) == "p" && rs_num(rs_field(t, 2)) != me { h[0].other_gone = true; }
     return;
   }
   if k == "e" && rs_field(t, 1) == "cast" && rs_field(t, 3) == "32" { h[0].cast_seen = true; }
+  if k == "e" && rs_field(t, 1) == "break" { h[0].breaks += 1; h[0].break_sum += rs_num(rs_field(t, 2)); }
+  if k == "e" && rs_field(t, 1) == "burn" { h[0].burns += 1; }
+  if k == "e" && rs_field(t, 1) == "rebuild" { h[0].rebuilt = true; }
   if k == "e" && rs_field(t, 1) == "hit" && h[0].wolf_n > 0 && rs_num(rs_field(t, 2)) == 2000 + h[0].wolves[0] && rs_field(t, 3) == "1001" { h[0].hits += 1; }
 }
 sc_hear :: (h: [] ScHeard, me: int, t: string) {
@@ -140,7 +149,6 @@ tool_main :: () -> int #export_c {
     sent = sc_steps(c[..], h[..], seq[..], 500, false) && sent;
     tries += 1;
   }
-  killed := h[1].gone_n;
   // B strikes the nearest townsperson with the bolt (slot 1, 140 m) until the watch wants B
   near := h[1].near_i; strikes := 0;
   while near >= 0 && strikes < 8 && h[1].wanted == 0 {
@@ -153,6 +161,18 @@ tool_main :: () -> int #export_c {
     sent = sc_steps(c[..], h[..], seq[..], 600, false) && sent;
     strikes += 1;
   }
+  // B calls the meteors down where the townsperson stood: both hear the same pieces break; then the rebuild
+  k = rs_int(m[..], rs_put(m[..], 0, "C "), seq[1] + 1);
+  seq[1] += 1;
+  k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, cast(int) (h[1].near_x * 100));
+  k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, cast(int) (h[1].near_z * 100)); k = rs_put(m[..], k, " -1");
+  sent = relay_conn_send(c[1..<2], cast(string) m[0..<k]) && sent;
+  sent = sc_steps(c[..], h[..], seq[..], 4000, false) && sent;
+  k = rs_int(m[..], rs_put(m[..], 0, "R "), seq[1] + 1);
+  seq[1] += 1;
+  sent = relay_conn_send(c[1..<2], cast(string) m[0..<k]) && sent;
+  sent = sc_steps(c[..], h[..], seq[..], 500, false) && sent;
+  killed := h[1].gone_n;   // the meteors may take a wolf too; none more goes once A has
   closed := relay_conn_close(c[0..<1], 1000);
   c[0].h = -1;
   sent = sc_steps(c[..], h[..], seq[..], 800, false) && sent;
@@ -161,7 +181,8 @@ tool_main :: () -> int #export_c {
   ok := sent && h[0].w && h[1].w && h[0].snap && h[1].snap && h[0].ack > 30 && abs(walked) > 3 && abs(seen_walk - walked) < 1.5 && h[1].other_named &&
         h[0].cast_seen && h[1].cast_seen && h[0].wolf_n == 4 && h[1].wolf_n == 4 && h[0].hits > 0 && h[1].hits > 0 &&
         sc_gone(h[0], wolf) && sc_gone(h[1], wolf) && h[1].gone_n == killed && killed < 4 && h[1].other_gone && rate > 12 &&
-        h[0].folk_n >= 5 && h[1].folk_n >= 5 && h[0].wanted_heard && h[1].wanted_heard && h[1].wanted >= 1 && h[0].bad + h[1].bad == 0;
+        h[0].folk_n >= 5 && h[1].folk_n >= 5 && h[0].wanted_heard && h[1].wanted_heard && h[1].wanted >= 1 && h[0].other_wanted >= 1 &&
+        h[0].breaks > 0 && h[0].breaks == h[1].breaks && h[0].break_sum == h[1].break_sum && h[0].rebuilt && h[1].rebuilt && h[0].bad + h[1].bad == 0;
   out: [2048] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
@@ -185,6 +206,11 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "b_strikes"); jo_int(o[..], strikes);
   jo_key(o[..], "b_wanted"); jo_int(o[..], h[1].wanted);
   jo_key(o[..], "a_wanted"); jo_int(o[..], h[0].wanted);
+  jo_key(o[..], "a_heard_b_wanted"); jo_int(o[..], h[0].other_wanted);
+  jo_key(o[..], "breaks_a"); jo_int(o[..], h[0].breaks);
+  jo_key(o[..], "breaks_b"); jo_int(o[..], h[1].breaks);
+  jo_key(o[..], "burns_a"); jo_int(o[..], h[0].burns);
+  jo_key(o[..], "rebuilt"); jo_bool(o[..], h[0].rebuilt && h[1].rebuilt);
   jo_end(o[..]);
   print("%\n", jo_text(o[..]));
   print("%\n", ifx ok then "shares" else "fails");

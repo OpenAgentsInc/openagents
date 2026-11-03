@@ -23,11 +23,22 @@ float world_ground(int k, float x, float z);
 void world_folk_hp(int k, int j, int hp, int temp, int by);
 /* Seat `by` harmed someone of the town at (x, z): a crime. */
 void world_crime(int k, int by, float x, float z);
-/* One tick of room k's town at the shared clock `world_s` (s): took[s], what its guards took from seat s. */
-void world_town(int k, float dt, double world_s, const float seats[WORLD_SEATS * WORLD_SEAT_TOWN], float took[WORLD_SEATS]);
+/* One tick of room k's town at the shared clock `world_s` (s): took[s], what its guards took from seat s,
+   took[WORLD_SEATS + s] who did (a watch actor, -1 none). */
+void world_town(int k, float dt, double world_s, const float seats[WORLD_SEATS * WORLD_SEAT_TOWN], float took[2 * WORLD_SEATS]);
 /* The people for the rules (WORLD_PEOPLE each): how many. */
 int world_people(int k, float out[WORLD_FOLK * WORLD_PEOPLE]);
 /* Person i for the pages; seat s's WANTED level. */
 bool world_view(int k, int i, float out[WORLD_VIEW]);
 int world_wanted(int k, int s);
+/* The town's pieces: a strike of Everglade's four spells from seat `by`; dt of the strikes landing and
+   fire, the count of its events; event q: KIND PIECE A B C X Z (KIND 1 a break thrown at A B C m/s, 2
+   alight: A 1 on); the rebuild. */
+#define WORLD_EVENT 7
+void world_strike(int k, int by, int slot, const float from[3], const float to[3], int seed);
+int world_spells(int k, float dt);
+bool world_event(int k, int q, float out[WORLD_EVENT]);
+void world_rebuild(int k);
+/* A new room in slot k: its town whole and nobody known. */
+void world_fresh(int k);
 #endif
