@@ -1923,15 +1923,30 @@
   {
    "number": 96,
    "title": "Message signing",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch096-message-signing.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
+    22,
     36,
+    42,
+    43,
     94
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "bitcoin/examples/bip322.coax",
+    "bitcoin/examples/checks/bip322.coax",
+    "coax/lib/bitcoin/bip322.coax",
+    "coax/lib/bitcoin/psbt.coax",
+    "coax/lib/bitcoin/signmessage.coax",
+    "coax/tests/bitcoin/bip322_vectors.coax",
+    "coax/tests/bitcoin/make_bip322_vectors.py",
+    "coax/tests/bitcoin/bip322_reference.py",
+    "coax/tests/bitcoin/bip322.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

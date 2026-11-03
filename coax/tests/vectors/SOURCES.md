@@ -373,6 +373,12 @@ that a maliciously replaced manifest is authentic.
   `coinselect_reference.py`, a transliteration of Core's selectors with
   its ChaCha20 random draws, and checks the result against the one Core's
   test states.
+- **Generic signed messages (Bitcoin chapter 96):** BIP-322 and its
+  `basic-test-vectors.json` and `generated-test-vectors.json` at bips
+  revision `5aadddb5`. `make_bip322_vectors.py` checks every hash,
+  signature and error against `bip322_reference.py`, a Python signer and
+  verifier, and adds constructed cases for the upgradeable rules and
+  Taproot script paths.
 - **Multisig (Bitcoin chapter 100):** BIP-67 and BIP-387 at bips
   revision `5aadddb5`, whose test-vector sections hold the sorted-key
   2-of-n vectors and the `multi_a` and `sortedmulti_a` descriptors with
@@ -727,6 +733,9 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/coinselection_tests.cpp`](upstream/bitcoin-core/coinselection_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/test/coinselection_tests.cpp) | `7e7d4a26998d8091a5cb51963374b5896da8cb3d118dcdf5a3dfc5fa855c41cb` |
 | [`upstream/bitcoin-core/spend.cpp`](upstream/bitcoin-core/spend.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/spend.cpp) | `4b79ae1bda4f0c30c1e87d0fc4dce6a6106fbdbede7ffb8d09b4e171482198cf` |
 | [`upstream/bitcoin-core/feerate.cpp`](upstream/bitcoin-core/feerate.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/policy/feerate.cpp) | `3b9db74479742398ae15d8448f41ea67381611fa7bdced26f92116b0f22f0225` |
+| [`upstream/bip322/bip-0322.mediawiki`](upstream/bip322/bip-0322.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0322.mediawiki) | `bdf1e930211356666e11d4961acff7a1675a280fba7b57377b48a1fb2f1b45b9` |
+| [`upstream/bip322/basic-test-vectors.json`](upstream/bip322/basic-test-vectors.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0322/basic-test-vectors.json) | `a9184da5687b9cb7a1863807f4a8f4d743ec07d4f683f707cb85ce72f5b33f47` |
+| [`upstream/bip322/generated-test-vectors.json`](upstream/bip322/generated-test-vectors.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0322/generated-test-vectors.json) | `187205f77b4a639f8d7e9a8e9d9070204a4c6658cf925569001b4d15f02a6539` |
 | [`upstream/bip67/bip-0067.mediawiki`](upstream/bip67/bip-0067.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0067.mediawiki) | `4cc48c5c159c05585962a8eb264b05ccb4ad710b1a16c870232e0f0eb1428991` |
 | [`upstream/bip387/bip-0387.mediawiki`](upstream/bip387/bip-0387.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0387.mediawiki) | `92a1a95be774be27f3f373e15dcd8bf291f542cd62535dd1ccbd95bd1022464e` |
 | [`upstream/bitcoin-core/solver.cpp`](upstream/bitcoin-core/solver.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/solver.cpp) | `d795354fafbbcef7c6d28ff8b9912e896575276b4ca85aeed2fc57f18c41174a` |

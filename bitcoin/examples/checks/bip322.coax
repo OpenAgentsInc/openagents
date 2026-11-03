@@ -1,0 +1,40 @@
+// The checks of bip322.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/bip322.coax
+#load "../bip322.coax";
+
+// book:begin check
+// A key from a seed, and the P2WPKH or P2TR address it owns.
+seeded :: (s: int, taproot: bool, key: [] u8, address: [] u8) -> string {
+  seed: [2] u8; seed[0] = cast(u8) (s & 255); seed[1] = cast(u8) (s >> 8);
+  #assert sha256_hash_checked(seed[..], key, false) == SHA_OK;
+  pub: [33] u8; spk: [34] u8;
+  #assert bip32_public(key, pub[..]);
+  n := ifx taproot then p2tr_script_vartime(pub[1..<33], spk[..]) else p2wpkh_script_vartime(pub[..], spk[..]);
+  return cast(string) address[0..<address_encode_vartime(SW_MAINNET, spk[0..<n], address)];
+}
+// Any key signs any message for its own address, in either format; the
+// signature verifies, and it doesn't verify under another message or
+// with one character of its Base64 changed.
+signs_alone :: (s: int, taproot: bool) -> bool {
+  x: [1] B322Work; key: [32] u8; address: [90] u8; out: [1024] u8; aux: [32] u8;
+  format := ifx s % 2 == 0 then B322_SIMPLE else B322_FULL_FORMAT;
+  a := seeded(s, taproot, key[..], address[..]);
+  message := ifx s % 3 == 0 then "" else ifx s % 3 == 1 then "Hello World" else "Chapter 96: generic signed messages";
+  n := bip322_sign_vartime(a, message, key[..], key[0..<0], format, 0, 0, 0, aux[..], x[..], out[..]);
+  if n <= 6 { return false; }
+  r := bip322_verify_vartime(a, cast(string) out[0..<n], message, x[..]);
+  ok := r.state == B322_VALID && r.format == format && r.locktime == 0 && r.sequence == 0;
+  ok = ok && bip322_verify_vartime(a, cast(string) out[0..<n], "another message", x[..]).state == B322_INVALID;
+  at := 3 + (s * 7) % (n - 6);
+  out[at] = ifx out[at] == 'A' then 'B' else 'A';
+  return ok && bip322_verify_vartime(a, cast(string) out[0..<n], message, x[..]).state == B322_INVALID;
+}
+// One check per address type: each check has its own traversal budget.
+#forall "a P2WPKH signature verifies for its message, and for nothing else" s: 0..<3 #steps 20000000000 {
+  #assert signs_alone(s, false);
+}
+#forall "a P2TR signature verifies for its message, and for nothing else" s: 3..<6 #steps 20000000000 {
+  #assert signs_alone(s, true);
+}
+// book:end check

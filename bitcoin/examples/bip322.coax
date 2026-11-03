@@ -1,0 +1,103 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/bip322.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+put_hex :: (b: [] u8) {
+  text: [64] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+// A txid as it is displayed: byte-reversed.
+put_txid :: (id: [] u8) {
+  r: [32] u8;
+  for k: 0..<32 { r[k] = id[31-k]; }
+  put_hex(r[..]);
+}
+// A verification's answer in BIP-322's words.
+put_verdict :: (r: B322Result) {
+  if r.state == B322_VALID { print("  valid at time % and age % (%)\n", r.locktime, r.sequence, B322_FORMATS[r.format]); }
+  else if r.state == B322_INVALID { print("  invalid: % (%)\n", B322_REASONS[r.reason], B322_FORMATS[r.format]); }
+  else { print("  inconclusive (%)\n", B322_FORMATS[r.format]); }
+}
+show :: (title: string, address: string, signature: string, message: string, x: [] B322Work) {
+  print("%: %... (% characters)\n", title, signature[0..<44], signature.count);
+  put_verdict(bip322_verify_vartime(address, signature, message, x));
+}
+// The keys of a vector: 52-character WIFs, 32 bytes each.
+keys_of :: (c: B322Case, out: [] u8) -> [] u8 {
+  work: [WIF_WORK_BYTES] u8;
+  n := 0;
+  for k: 0..<c.keys.count / 52 {
+    if wif_decode_ct(c.keys[52*k..<52*k+52], work[..], out[32*k..<32*k+32]) == B58_MAIN_WIF_COMPRESSED { n += 32; }
+  }
+  return out[0..<n];
+}
+// Signs and shows the verdict; returns the signature.
+sign_and_show :: (title: string, c: B322Case, script: [] u8, format: int, version: int, locktime: int, sequence: int, x: [] B322Work, out: [] u8) -> string {
+  keys: [160] u8; aux: [32] u8;
+  n := bip322_sign_vartime(c.address, "Hello World", keys_of(c, keys[..]), script, format, version, locktime, sequence, aux[..], x, out);
+  s := cast(string) out[0..<n];
+  show(title, c.address, s, "Hello World", x);
+  return s;
+}
+
+main :: () {
+  x: [1] B322Work;
+  // The message hash and the two virtual transactions.
+  h := B322_HASHES[1];
+  hash: [32] u8; unsigned: [61] u8; id: [32] u8;
+  if !bip322_message_hash(h.message, hash[..]) || !b322_spend(h.address, h.message, x[..]) { return; }
+  if bip322_to_sign(x[0].txid[..], 0, 0, 0, unsigned[..]) != 61 || sha256d_checked(unsigned[..], id[..], false) != SHA_OK { return; }
+  print("\"%\" for %:\n", h.message, h.address);
+  print("  message_hash "); put_hex(hash[..]); print("\n");
+  print("  to_spend "); put_txid(x[0].txid[..]); print("\n");
+  print("  to_sign  "); put_txid(id[..]); print(" (unsigned)\n");
+
+  // A signature in each format, verified.
+  out: [4096] u8; script: [600] u8; none := out[0..<0];
+  w := B322_CASES[3]; tr := B322_CASES[5]; leaf := B322_CASES[13]; pkh := B322_CASES[10]; pof := B322_CASES[22];
+  s := sign_and_show("P2WPKH, simple", w, none, B322_SIMPLE, 0, 0, 0, x[..], out[..]);
+  print("  the published signature: %\n", ifx s == w.signature then "the same" else "another");
+  show("P2WPKH, the same signature under \"Hello World!\"", w.address, s, "Hello World!", x[..]);
+  s = sign_and_show("P2WPKH, full", w, none, B322_FULL_FORMAT, 0, 0, 0, x[..], out[..]);
+  s = sign_and_show("P2TR key path, simple", tr, none, B322_SIMPLE, 0, 0, 0, x[..], out[..]);
+  s = sign_and_show("P2TR time-lock leaf, full, version 2", leaf, tx_unhex(leaf.script, script[..]), B322_FULL_FORMAT, 2, 2016, 2016, x[..], out[..]);
+  s = sign_and_show("P2PKH, legacy", pkh, none, B322_LEGACY, 0, 0, 0, x[..], out[..]);
+  s = sign_and_show("P2PKH, full", pkh, none, B322_FULL_FORMAT, 0, 0, 0, x[..], out[..]);
+  show("P2TR proof of funds, published", pof.address, pof.signature, pof.message, x[..]);
+
+  // Every vector.
+  print("The BIP-322 vectors:\n");
+  pass := 0;
+  for v: B322_HASHES {
+    ok := bip322_message_hash(v.message, hash[..]) && tx_hex_is(hash[..], v.message_hash) && b322_spend(v.address, v.message, x[..]);
+    ok = ok && bip322_to_sign(x[0].txid[..], 0, 0, 0, unsigned[..]) == 61 && sha256d_checked(unsigned[..], id[..], false) == SHA_OK;
+    if ok && b322_displayed(x[0].txid[..], v.to_spend) && b322_displayed(id[..], v.to_sign) { pass += 1; }
+  }
+  print("  hashes: % of % match\n", pass, B322_HASHES.count);
+  pass = 0; signed := 0; signs := 0; same := 0;
+  for c: B322_CASES {
+    if b322_case_passes(c, x[..]) { pass += 1; }
+    if c.keys.count == 0 { continue; }
+    signed += 1;
+    if b322_case_signs(c, x[..]) { signs += 1; }
+    if c.ours == c.signature || (c.ours[3..<c.ours.count] == c.signature && c.signature[0..<3] != "smp") { same += 1; }
+  }
+  print("  signatures: % of % verify as published\n", pass, B322_CASES.count);
+  print("  the signer: % of % as the reference signs; % are the published ones byte for byte,\n", signs, signed, same);
+  print("    % were published with other nonces (BIP-340, or ECDSA ground to a low R)\n", signed - same);
+  pass = 0;
+  for e: B322_ERRORS {
+    r := bip322_verify_vartime(e.address, e.signature, e.message, x[..]);
+    if r.state == B322_INVALID && r.reason == e.reason && r.format == e.format { pass += 1; }
+  }
+  print("  errors: % of % invalid for their reason\n", pass, B322_ERRORS.count);
+  pass = 0; states: [3] int;
+  for c: B322_BUILT {
+    if b322_case_passes(c, x[..]) { pass += 1; }
+    states[c.state] += 1;
+  }
+  print("  constructed: % of % as decided: % valid, % invalid, % inconclusive\n", pass, B322_BUILT.count, states[0], states[1], states[2]);
+}
+// book:end example

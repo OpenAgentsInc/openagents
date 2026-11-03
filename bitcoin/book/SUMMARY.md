@@ -104,6 +104,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 - [94. PSBT](ch094-psbt.md) — implemented
 - [95. Coin selection and change](ch095-coin-selection-and-change.md) — implemented
+- [96. Message signing](ch096-message-signing.md) — implemented
 
 **XVI. Many signers**
 

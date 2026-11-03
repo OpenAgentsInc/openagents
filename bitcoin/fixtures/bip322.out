@@ -1,0 +1,28 @@
+"Hello World" for bc1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l:
+  message_hash f0eb03b1a75ac6d9847f55c624a99169b5dccba2a31f5b23bea77ba270de0a7a
+  to_spend b79d196740ad5217771c1098fc4a4b51e0535c32236c71f1ea4d61a2d603352b
+  to_sign  88737ae86f2077145f93cc4b153ae9a1cb8d56afa511988c149c5c8c9d93bddf (unsigned)
+P2WPKH, simple: smpAkgwRQIhAOzyynlqt93lOKJr+wmmxIens//zPzl9t... (147 characters)
+  valid at time 0 and age 0 (smp)
+  the published signature: the same
+P2WPKH, the same signature under "Hello World!": smpAkgwRQIhAOzyynlqt93lOKJr+wmmxIens//zPzl9t... (147 characters)
+  invalid: script failed (smp)
+P2WPKH, full: fulAAAAAAABASs1A9aiYU3q8XFsIzJcU+BRS0r8mBAcd... (231 characters)
+  valid at time 0 and age 0 (ful)
+P2TR key path, simple: smpAUCqgciSEySmMUQ3lpV3buLiwvaFvzR2+zLNgPrVC... (91 characters)
+  valid at time 0 and age 0 (smp)
+P2TR time-lock leaf, full, version 2: fulAgAAAAABATnWNhKALOvtONDvYpy3Lk+Nj+lOFuy0u... (323 characters)
+  valid at time 2016 and age 2016 (ful)
+P2PKH, legacy: IH5DRv5UMcdOv0FGoUUtIzhPkCqihzuVpewHHX2D0Umr... (88 characters)
+  valid at time 0 and age 0 (legacy)
+P2PKH, full: fulAAAAAAE9CIMeQTy+rGFfT0wNSCOQgoNCWTIJkfdk5... (227 characters)
+  valid at time 0 and age 0 (ful)
+P2TR proof of funds, published: pofcHNidP8BALgCAAAABDzMFysa2DX0k4ZymoVfzNzTI... (883 characters)
+  valid at time 123 and age 456 (pof)
+The BIP-322 vectors:
+  hashes: 3 of 3 match
+  signatures: 23 of 23 verify as published
+  the signer: 20 of 20 as the reference signs; 14 are the published ones byte for byte,
+    6 were published with other nonces (BIP-340, or ECDSA ground to a low R)
+  errors: 36 of 36 invalid for their reason
+  constructed: 22 of 22 as decided: 5 valid, 9 invalid, 8 inconclusive

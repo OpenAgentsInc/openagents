@@ -4214,6 +4214,45 @@
       "retrieved": "2026-11-03",
       "sha256": "94448fedf061ee1fe8286f4174de04eca59db9d1776216f5a1161fa9cb5b1fe8",
       "bytes": 42177
+    },
+    {
+      "path": "upstream/bip322/bip-0322.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0322.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "CC0-1.0 (declared in source)",
+      "covers": [
+        "bitcoin-bip322"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "bdf1e930211356666e11d4961acff7a1675a280fba7b57377b48a1fb2f1b45b9",
+      "bytes": 21804
+    },
+    {
+      "path": "upstream/bip322/basic-test-vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0322/basic-test-vectors.json",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "CC0-1.0 (declared in source)",
+      "covers": [
+        "bitcoin-bip322"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "a9184da5687b9cb7a1863807f4a8f4d743ec07d4f683f707cb85ce72f5b33f47",
+      "bytes": 6895
+    },
+    {
+      "path": "upstream/bip322/generated-test-vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0322/generated-test-vectors.json",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "CC0-1.0 (declared in source)",
+      "covers": [
+        "bitcoin-bip322"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "187205f77b4a639f8d7e9a8e9d9070204a4c6658cf925569001b4d15f02a6539",
+      "bytes": 35017
     }
   ]
 }

@@ -719,6 +719,18 @@
       "timeout": 600
     },
     {
+      "source": "bitcoin/examples/bip322.coax",
+      "chapter": "bitcoin/book/ch096-message-signing.md",
+      "stdout": "bitcoin/fixtures/bip322.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 600
+    },
+    {
       "source": "bitcoin/examples/lightning-onion.coax",
       "chapter": "bitcoin/book/ch111-onion-routing-and-blinded-paths.md",
       "stdout": "bitcoin/fixtures/lightning-onion.out",

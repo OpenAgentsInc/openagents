@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-81 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+82 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -75,6 +75,10 @@ Extractor. Chapter 95's [`coinselect.coax`](../coax/lib/bitcoin/coinselect.coax)
 chooses which coins pay for a transaction as Core's wallet does: Branch
 and Bound, CoinGrinder, Single Random Draw and Knapsack, judged by the
 waste metric, with Core's change target and dust threshold.
+Chapter 96's [`bip322.coax`](../coax/lib/bitcoin/bip322.coax)
+signs and verifies BIP-322 messages for any address: it builds the
+virtual `to_spend` and `to_sign` transactions and runs the address's
+script, in the simple, full, proof-of-funds and legacy formats.
 Chapter 100's [`multisig.coax`](../coax/lib/bitcoin/multisig.coax)
 writes and matches m-of-n scripts as Core does: `OP_CHECKMULTISIG` bare,
 under P2SH, P2WSH and P2SH-P2WSH, BIP-67's sorted keys, and BIP-387's
