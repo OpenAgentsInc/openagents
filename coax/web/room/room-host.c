@@ -4,7 +4,6 @@
    (rm_join), each text frame (rm_heard) and each close (rm_left), calls
    rm_tick 60 times a second and sends each player what rm_state writes.
      room [--listen 127.0.0.1] [--port 8830]     PORT in the environment wins (Cloud Run: 0.0.0.0)
-   OA_ROOM_SHARD names which shard of the everglade instance directory this is (room-directory.coax).
    GET /health answers 200 "ok" with the number of players; GET /api/playtest/rooms/SLUG
    answers rm_rooms' JSON (an everglade realm's instances and which to join).
    Every socket has its own output buffer: a frame for many goes onto each, sent as far as the
@@ -60,9 +59,6 @@ static int64_t fan_at(const int64_t *h, int q, int64_t *count) {
   for (int i = 0; i < FAN_BUCKETS; i++) { k += h[i]; if (k >= want) return (int64_t)(i + 1) * 100; }
   return FAN_BUCKETS * 100;
 }
-// The everglade tick's time (every room's world stepped, its frames out): 0.1 ms buckets, as above.
-static int64_t tick_now[FAN_BUCKETS], tick_last[FAN_BUCKETS];
-static void tick_add(int64_t us) { int64_t b = us / 100; tick_now[b < 0 ? 0 : b >= FAN_BUCKETS ? FAN_BUCKETS - 1 : b]++; }
 static int64_t now_ms(void) {
   struct timespec t;
   clock_gettime(CLOCK_MONOTONIC, &t);
@@ -194,26 +190,14 @@ static void opening(int i) {
   if (!end) { if (c->n >= IN_CAP) http(i, "431 Request Header Fields Too Large", "text/plain", "too big"); return; }
   size_t len = (size_t)(end - c->in);
   coax_string req = {(const char *)c->in, (int64_t)len};
-  /* a shard's own health through the load balancer: GET /api/room/sN/health (room-directory.coax) */
-  bool shard_health = false;
-  if (!strncmp((char *)c->in, "GET /api/room/s", 15)) {
-    const char *p = (const char *)c->in + 15; int digits = 0;
-    while (*p >= '0' && *p <= '9' && digits < 3) { p++; digits++; }
-    shard_health = digits > 0 && !strncmp(p, "/health ", 8);
-  }
-  if (shard_health || !strncmp((char *)c->in, "GET /health ", 12) || !strncmp((char *)c->in, "GET /api/room/health ", 21)) {
+  if (!strncmp((char *)c->in, "GET /health ", 12) || !strncmp((char *)c->in, "GET /api/room/health ", 21)) {
     // the fan-out time: this window's, else the last full minute's
     int64_t n = 0, p95 = fan_at(fan_now, 950, &n), p50, m;
     const int64_t *h = fan_now;
     if (n < 100) { int64_t last_n; int64_t last = fan_at(fan_last, 950, &last_n); if (last_n > n) { h = fan_last; p95 = last; n = last_n; } }
     p50 = fan_at(h, 500, &m);
-    int64_t tn = 0, tp95 = fan_at(tick_now, 950, &tn), tm;
-    const int64_t *th = tick_now;
-    if (tn < 100) { int64_t ln; int64_t lp = fan_at(tick_last, 950, &ln); if (ln > tn) { tp95 = lp; tn = ln; th = tick_last; } }
-    int64_t tp50 = fan_at(th, 500, &tm);
-    char body[320]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed, shard %lld, everglade tick p50 %lld us at the 95th %lld us over %lld ticks\n",
-                             (long long)rm_players(view()), (long long)p50, (long long)p95, (long long)n, (long long)rm_relay_dropped(view()), (long long)slow_closed,
-                             (long long)server->shard, (long long)tp50, (long long)tp95, (long long)tn);
+    char body[256]; snprintf(body, sizeof body, "ok %lld players, fanout p50 %lld us p95 %lld us over %lld reads, %lld rate-limited, %lld slow closed\n",
+                             (long long)rm_players(view()), (long long)p50, (long long)p95, (long long)n, (long long)rm_relay_dropped(view()), (long long)slow_closed);
     http(i, "200 OK", "text/plain", body); return;
   }
   int64_t listed = rm_rooms(view(), req);
@@ -341,41 +325,22 @@ static void control_hear(void) {
   }
   if (have == sizeof buf) have = 0;
 }
-/* A signed report to the API (vitals, the directory) through the poster: a curl config with the body. */
-static void post_signed(const char *url, const uint8_t *mac, const uint8_t *body, int64_t n) {
-  static char cfg[16384];
-  if (poster_fd < 0) return;
-  size_t k = (size_t)snprintf(cfg, sizeof cfg, "url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\nheader = \"Content-Type: text/plain\"\nsilent\nshow-error\nmax-time = 10\noutput = \"/dev/null\"\ndata-binary = \"",
-                              url, (const char *)mac);
-  for (int64_t i = 0; i < n && k + 4 < sizeof cfg; i++) {
-    char ch = (char)body[i];
-    if (ch == '\n') { cfg[k++] = '\\'; cfg[k++] = 'n'; } else cfg[k++] = ch;
-  }
-  if (k + 4 >= sizeof cfg) { fprintf(stderr, "room: a report too long to post\n"); return; }
-  k += (size_t)snprintf(cfg + k, sizeof cfg - k, "\"\n");
-  poster_send('P', cfg, k);
-}
-static const char *api_url(const char *env, const char *path, char *buf, size_t cap) {
-  const char *u = getenv(env);
-  if (u && *u) return u;
-  const char *base = getenv("OA_ROOM_API");   /* the API's origin (default production's) */
-  snprintf(buf, cap, "%s%s", base && *base ? base : "https://openagents.com", path);
-  return buf;
-}
-/* Players' HP between visits (room-vitals.coax, #12715). */
 static void vitals_post(void) {
   int64_t n = rm_vitals_due(view());
-  if (n <= 0) return;
-  char buf[512];
-  post_signed(api_url("OA_ROOM_VITALS_URL", "/api/playtest/room-vitals", buf, sizeof buf), server->vit.mac.e, server->vit.out.e, n);
-}
-/* This shard's everglade rooms and who sits in them, for the API's instance directory
-   (room-directory.coax, coax/web/api/rooms.c, #12717). */
-static void directory_post(void) {
-  int64_t n = rm_directory_due(view());
-  if (n <= 0) return;
-  char buf[512];
-  post_signed(api_url("OA_ROOM_DIRECTORY_URL", "/api/playtest/room-directory", buf, sizeof buf), server->dir.mac.e, server->dir.out.e, n);
+  if (n <= 0 || poster_fd < 0) return;
+  const char *url = getenv("OA_ROOM_VITALS_URL");
+  if (!url || !*url) url = "https://openagents.com/api/playtest/room-vitals";
+  static char cfg[2 * 4096 + 512];
+  size_t k = (size_t)snprintf(cfg, sizeof cfg, "url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\nheader = \"Content-Type: text/plain\"\nsilent\nshow-error\nmax-time = 10\noutput = \"/dev/null\"\ndata-binary = \"",
+                              url, (const char *)server->vit.mac.e);
+  for (int64_t i = 0; i < n && k + 4 < sizeof cfg; i++) {
+    char ch = (char)server->vit.out.e[i];
+    if (ch == '\n') { cfg[k++] = '\\'; cfg[k++] = 'n'; } else cfg[k++] = ch;
+  }
+  k += (size_t)snprintf(cfg + k, sizeof cfg - k, "\"\n");
+  char head[24]; int hn = snprintf(head, sizeof head, "%zu\n", k);
+  (void)head; (void)hn;
+  poster_send('P', cfg, k);
 }
 
 int main(int argc, char **argv) {
@@ -397,10 +362,6 @@ int main(int argc, char **argv) {
   const char *tkey = getenv("OA_ROOM_TICKET_KEY");
   const char *must = getenv("OA_ROOM_TICKET_REQUIRED");   /* "0": a join without a ticket sits with no id (while pages roll out) */
   bool required = !(must && !strcmp(must, "0"));
-  /* which shard of the instance directory this is (oa-room 1, oa-room-K K: room-directory.coax) */
-  const char *shard = getenv("OA_ROOM_SHARD");
-  if (shard && *shard) rm_shard(view(), atoi(shard));
-  printf("room: shard %lld\n", (long long)server->shard);
   if (tkey && strlen(tkey) >= 32) { rm_ticket_key(view(), (coax_string){tkey, (int64_t)strlen(tkey)}, required); printf("room: seat tickets checked%s\n", required ? ", required" : ""); }
   else printf("room: no OA_ROOM_TICKET_KEY, seat tickets not checked\n");
   int lfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -454,9 +415,8 @@ int main(int argc, char **argv) {
     reap();
     if ((double)now >= next) {
       clock_in();
-      int64_t t_tick = now_us();
       rm_tick(view());
-      if (ticks % 2 == 0) { everglade_tick(); tick_add(now_us() - t_tick); }
+      if (ticks % 2 == 0) everglade_tick();
       for (int i = 0; i < CONNS; i++) {
         if (conns[i].fd < 0 || !conns[i].ws) continue;
         int64_t len = rm_state(view(), i);
@@ -468,9 +428,9 @@ int main(int argc, char **argv) {
       ticks++;
       next += tick;
       if ((double)now - next > 250.0) next = (double)now + tick;   // a stall: start the beat again
-      if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); }
+      if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); }
       control_ask(); control_hear();
-      if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak); ticks = 0; last_report = now; memcpy(fan_last, fan_now, sizeof fan_now); memset(fan_now, 0, sizeof fan_now); memcpy(tick_last, tick_now, sizeof tick_now); memset(tick_now, 0, sizeof tick_now); }
+      if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak); ticks = 0; last_report = now; memcpy(fan_last, fan_now, sizeof fan_now); memset(fan_now, 0, sizeof fan_now); }
     }
   }
 }

@@ -1919,29 +1919,16 @@
   {
    "number": 91,
    "title": "Indexes: transactions, filters and coin statistics",
-   "file": "ch091-indexes-transactions-filters-and-coin-statistics.md",
-   "status": "partly implemented",
-   "profile": "native C (explorer transaction index)",
+   "file": null,
+   "status": "planned",
+   "profile": null,
    "depends_on": [
-    34,
-    58,
-    59,
-    60,
+    56,
     61,
-    62
+    74
    ],
-   "source": [
-    "coax/lib/bitcoin/txindex.coax",
-    "coax/lib/bitcoin/txindex-store.coax",
-    "coax/lib/bitcoin/txindex-files.coax",
-    "bitcoin/examples/tx-index.coax",
-    "bitcoin/examples/live/tx-index.coax",
-    "coax/tests/bitcoin/txindex-native.coax",
-    "coax/tests/bitcoin/txindex.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
+   "source": [],
+   "qualified_targets": [],
    "adopted_by": []
   },
   {

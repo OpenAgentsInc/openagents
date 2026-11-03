@@ -23,7 +23,6 @@
 #load "room-ticket.coax";
 #load "room-vitals.coax";
 #load "room-control.coax";
-#load "room-directory.coax";
 
 ROOMS :: 8;
 CONNS :: 512;
@@ -63,10 +62,8 @@ RmServer :: struct {
   eg: [EG_ROOMS] EgRoom;    // the everglade rooms' simulations (room-everglade.coax)
   tkey: [TICKET_KEY] u8; tkey_n: int;   // the seat-ticket key (rm_ticket_key): set, an everglade join's ticket must check
   tkey_must: bool;
-  vit: RmVitals;                         // players' HP between visits (room-vitals.coax)
-  ctl: RmControl;                        // the API's word on pvp, edits and kicks (room-control.coax)
-  shard: int = 1;                        // which oa-room shard this is (rm_shard; room-directory.coax)
-  dir: RmDirectory;                      // what it last told the API's instance directory
+  vit: RmVitals;
+  ctl: RmControl;                        // the API's word on pvp, edits and kicks (room-control.coax)                         // players' HP between visits (room-vitals.coax)                       // and a join without one is refused (else it sits with no id, "-")
 }
 
 // Every field's default (seats -1, the game's own defaults): the host calls
@@ -76,7 +73,6 @@ rm_init :: (v: [] RmServer) #export_c {
   for r: 0..<RELAYS { v[0].relays[r].live = false; }
   for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
   v[0].q_head = 0; v[0].q_n = 0;
-  v[0].shard = 1;
   for r: 0..<ROOMS { v[0].rooms[r].live = false; v[0].rooms[r].s[0] = OrbitLeague.{}; }
 }
 
@@ -163,18 +159,6 @@ rm_seat :: (conns: [] RmConn, r: int) -> int {
 // handshake): its seat, or -1 to refuse (no room's path, or full).
 rm_join :: (v: [] RmServer, conn: int, request: string) -> int #export_c {
   if conn < 0 || conn >= CONNS { return -1; }
-  // /api/room/sN/...: shard N's (room-directory.coax); any other shard's is not this server's
-  shard := rm_path_shard(request);
-  if shard != 0 {
-    if shard != v[0].shard { return -1; }
-    line: [1024] u8;
-    n := rm_path_unshard(request, line[..]);
-    if n < 0 { return -1; }
-    return rm_join_at(v, conn, cast(string) line[0..<n]);
-  }
-  return rm_join_at(v, conn, request);
-}
-rm_join_at :: (v: [] RmServer, conn: int, request: string) -> int {
   if rl_is_path(request) { return rl_join(v, conn, request); }
   name: [ROOM_NAME] u8;
   n := rm_path_room(request, name[..]);

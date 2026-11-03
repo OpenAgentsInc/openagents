@@ -56,16 +56,169 @@ eg_step_advance :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls: [] f
   if !w.deck && bodies.count >= 7 && p.pos.y > 0.6 { bodies[4] = 1.9; bodies[6] = 0.62; }
   return walk.walk_advance_in_realm(p, frame, bodies, walls, floors, "everglade");
 }
+// The wire's CARRY (seconds, a tenth of a millisecond: the server's leftover cut down to its tenth) as
+// the controller's leftover, nanoseconds. The room's 1/30 s step leaves the 1/64 s controller one of
+// fifteen leftovers, a fifteenth of its step apart, each a few ns over its fifteenth (the step is
+// 33333335 ns); one, 13541690 ns, is 25 ns over what makes the next step run three of the controller's
+// steps, not two. Cut to 13.5 ms it ran two: the page's re-run fell a controller step (12 cm at a run)
+// short of the server every half second, and the server's next word pulled you on. So the cut leftover
+// is put back on the nearest fifteenth (rounded up, under the true one by the few ns), when it is near
+// one; else taken as it came.
+EG_ROOM_CARRY_GRID :: 15;
+eg_step_carry_ns :: (carry: f32) -> int #export_c {
+  if !(carry == carry) { return 0; }
+  ns := cast(int) floor(f64(carry) * 1.0e9 + 0.5);
+  g := f64(LOOP_STEP_NS) / f64(EG_ROOM_CARRY_GRID);
+  mid := f64(ns) + 50000.0;   // the middle of the tenth it was cut to
+  j := floor(mid / g + 0.5);
+  on := ifx j < 0.5 then 0 else cast(int) floor(j * g) + 1;
+  if abs(f64(on) - mid) <= 60000.0 { ns = on; }
+  return ifx ns < 0 then 0 else ifx ns >= LOOP_STEP_NS then LOOP_STEP_NS - 1 else ns;
+}
 // The controller's leftover step time, seconds (the wire's CARRY).
 eg_step_carry :: (p: walk.Player) -> f32 #export_c { return f32(p.clock.carry_ns) / 1.0e9; }
 // You as the room server has you after an input (the wire's p entry for your seat): the start the
-// page re-runs its later inputs from.
-eg_step_set :: (p0: walk.Player, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, ground: bool, carry: f32) -> walk.Player #export_c {
+// page re-runs its later inputs from. jump: that input's jump, held or not, as the server's controller
+// last saw it, with no press waiting: a re-run of the press after it jumps as the server did. (The
+// page's own jump, still held from a later input, would make the re-run's press no rise, so the re-run
+// would drop you back to the ground and the server's next word would throw you up again.) The act
+// follows the ground: on it you stand until the re-run's step says how you move.
+eg_step_set :: (p0: walk.Player, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, ground: bool, carry: f32, jump: bool) -> walk.Player #export_c {
   p := p0;
-  p.pos = walk.Vec3.{x = x, y = y, z = z}; p.prev_pos = p.pos;
+  // where the last fixed step began moves with you, so the feet drawn between the two (walk_feet, by the
+  // leftover) stay where they were when the server agrees; set on you, a word on the input the page
+  // just stepped (nothing to re-run) moved the drawn feet by up to a controller step (12 cm at a run)
+  p.prev_pos = walk.Vec3.{x = p0.prev_pos.x + x - p0.pos.x, y = p0.prev_pos.y + y - p0.pos.y, z = p0.prev_pos.z + z - p0.pos.z};
+  p.pos = walk.Vec3.{x = x, y = y, z = z};
   p.vel = walk.Vec3.{x = vx, y = vy, z = vz}; p.on_ground = ground;
   p.face = yaw; p.prev_face = yaw;
-  ns := cast(int) (carry * 1.0e9);
-  p.clock.carry_ns = ifx ns < 0 then 0 else ifx ns >= LOOP_STEP_NS then LOOP_STEP_NS - 1 else ns;
+  p.jumps.held = jump; p.jumps.waiting = 0; p.jump_held = jump;
+  if !ground { p.act = walk.Act.airborne; }
+  else if p.act == walk.Act.airborne { p.act = walk.Act.idle; }
+  p.clock.carry_ns = eg_step_carry_ns(carry);
   return p;
+}
+
+// Where you are drawn in a room this frame: between the last two room steps' ends, `from` the feet
+// where the last step began (eg_step_feet then) and p after it, `ahead` (0 to 1) of the next step's
+// time gone. Each end is the controller's feet (eg_step_feet), not its raw position: the 1/64 s
+// controller runs two or three of its steps in each 1/30 s room step, so its raw position moves 31 or
+// 47 ms a step and a draw between those stutters (every few steps the body runs on and jumps back);
+// its feet, between its last two steps by its leftover time, move 33 ms each step.
+eg_step_feet :: (p: walk.Player) -> walk.Vec3 #export_c { return walk.walk_feet(p); }
+eg_step_drawn :: (from: walk.Vec3, p: walk.Player, ahead: f32) -> walk.Vec3 #export_c {
+  a := ifx ahead > 0 then (ifx ahead < 1 then ahead else 1.0f32) else 0.0f32;
+  to := walk.walk_feet(p);
+  return walk.Vec3.{x = from.x + (to.x - from.x) * a, y = from.y + (to.y - from.y) * a, z = from.z + (to.z - from.z) * a};
+}
+
+// ---- tests: the room step as the page and the server run it (1/30 s, the wire's rate)
+//   coax/bin/coax test apps/openagents-web/everglade-step.coax --only "step:"
+
+EG_TEST_STEP :: 1.0 / 30.0;
+eg_test_world :: () -> EgMoveWorld { w: EgMoveWorld; return w; }
+// One room step of input (ahead key_y, jump) on p, the page's and the server's order.
+eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player {
+  w := eg_test_world();
+  none: [1] f32;
+  p := eg_step_begin(p0, EgMoveIn.{key_y = key_y, run = true, jump = jump}, w, f32(EG_TEST_STEP));
+  p = eg_step_advance(p, w, none[0..<0], none[0..<0], none[0..<0], f32(EG_TEST_STEP));
+  return p;
+}
+
+#test "step: a jump while running lands, and the run's walk comes back (the air pose ends)" {
+  p := walk.walk_place(0, 0, 0, 0);
+  for k: 0..<20 { p = eg_test_step(p, 1, false); }
+  #assert p.on_ground && p.act == walk.Act.running;
+  p = eg_test_step(p, 1, true);
+  #assert !p.on_ground && p.act == walk.Act.airborne;
+  // held through the air: it jumps once
+  up := 0; landed := -1;
+  for k: 0..<60 {
+    p = eg_test_step(p, 1, k < 5);
+    if p.act == walk.Act.airborne { up += 1; } else if landed < 0 { landed = k; }
+  }
+  #assert landed > 5 && landed < 40;               // a jump's flight, about half a second
+  #assert p.on_ground && p.act == walk.Act.running && p.pos.y < 0.01;
+  // let go of the keys: you stand
+  for k: 0..<30 { p = eg_test_step(p, 0, false); }
+  #assert p.act == walk.Act.idle;
+}
+
+#test "step: the server's word mid-jump: the re-run jumps as the server did, not from the page's held key" {
+  // the server stepped input 1 (the press) and the page has stepped inputs 1..4, the key still down
+  start := walk.walk_place(0, 0, 0, 0);
+  for k: 0..<10 { start = eg_test_step(start, 1, false); }
+  page := start;
+  for k: 0..<4 { page = eg_test_step(page, 1, true); }
+  server := eg_test_step(start, 1, true);
+  #assert !server.on_ground;
+  // the word on input 1: you start again there and re-run inputs 2..4
+  again := eg_step_set(page, server.pos.x, server.pos.y, server.pos.z, server.face, server.vel.x, server.vel.y, server.vel.z,
+                       server.on_ground, eg_step_carry(server), true);
+  for k: 0..<3 { again = eg_test_step(again, 1, true); }
+  #assert abs(again.pos.y - page.pos.y) < 0.01 && !again.on_ground && again.act == walk.Act.airborne;
+  // the word on the input before the press (ground, key up): the re-run of the press jumps
+  before := eg_step_set(page, start.pos.x, start.pos.y, start.pos.z, start.face, start.vel.x, start.vel.y, start.vel.z,
+                        start.on_ground, eg_step_carry(start), false);
+  #assert before.act != walk.Act.airborne;
+  for k: 0..<4 { before = eg_test_step(before, 1, true); }
+  #assert abs(before.pos.y - page.pos.y) < 0.01 && before.act == walk.Act.airborne;
+  // and landed, the word says ground: no air pose is kept
+  landed := eg_step_set(page, 1, 0, 1, 0, 0, 0, 6, true, 0, false);
+  #assert landed.act != walk.Act.airborne && landed.on_ground;
+}
+
+#test "step: drawn between room steps, a steady run moves the same each frame (no 31/47 ms stutter)" {
+  p := walk.walk_place(0, 0, 0, 0);
+  for k: 0..<30 { p = eg_test_step(p, 1, false); }
+  // 60 Hz frames: a room step every second frame, drawn at ahead 0 and 0.5
+  last := eg_step_feet(p);
+  from := last;
+  least := 1000.0f32; most := 0.0f32;
+  raw_least := 1000.0f32; raw_most := 0.0f32;
+  for k: 0..<24 {
+    was := p.pos;
+    from = eg_step_feet(p);
+    p = eg_test_step(p, 1, false);
+    raw := sqrt((p.pos.x - was.x) * (p.pos.x - was.x) + (p.pos.z - was.z) * (p.pos.z - was.z));
+    raw_least = walk.lo(raw_least, raw); raw_most = walk.hi(raw_most, raw);
+    for half: 0..<2 {
+      d := eg_step_drawn(from, p, f32(half) * 0.5);
+      gap := sqrt((d.x - last.x) * (d.x - last.x) + (d.z - last.z) * (d.z - last.z));
+      if k > 0 || half > 0 { least = walk.lo(least, gap); most = walk.hi(most, gap); }
+      last = d;
+    }
+  }
+  // the controller's raw position moves two or three of its steps a room step
+  #assert raw_most > raw_least * 1.4;
+  // drawn, each frame moves the same to a millimetre
+  #assert least > 0.05 && most - least < 0.001;
+}
+
+#test "step: the server's word through the wire's tenth of a millisecond: every re-run steps as the server did" {
+  // the server's seat from its placing (leftover 0), a steady run; at each of 45 steps the page starts
+  // again from the server's word as the wire carries it and both step the next input
+  server := walk.walk_place(0, 0, 0, 0);
+  worst := 0.0f32;
+  for k: 0..<45 {
+    server = eg_test_step(server, 1, false);
+    tenths := server.clock.carry_ns / 100000;   // room-world.c's CARRY, tenths of a ms
+    page := eg_step_set(server, server.pos.x, server.pos.y, server.pos.z, server.face, server.vel.x, server.vel.y, server.vel.z,
+                        server.on_ground, f32(tenths) / 10000.0, false);
+    #assert abs(f64(page.clock.carry_ns - server.clock.carry_ns)) < 100;
+    a := eg_test_step(server, 1, false); b := eg_test_step(page, 1, false);
+    worst = walk.hi(worst, abs(a.pos.z - b.pos.z) + abs(a.pos.x - b.pos.x));
+  }
+  #assert worst < 0.001;
+  #assert eg_step_carry_ns(0) == 0 && eg_step_carry_ns(0.0071) == 7100000;   // off the fifteenths: as it came
+}
+
+#test "step: the server's word on the input just stepped (nothing to re-run) leaves the drawn feet where they were" {
+  p := walk.walk_place(0, 0, 0, 0);
+  for k: 0..<20 { p = eg_test_step(p, 1, false); }
+  before := eg_step_feet(p);
+  same := eg_step_set(p, p.pos.x, p.pos.y, p.pos.z, p.face, p.vel.x, p.vel.y, p.vel.z, p.on_ground, f32(p.clock.carry_ns / 100000) / 10000.0, false);
+  after := eg_step_feet(same);
+  #assert abs(after.x - before.x) + abs(after.z - before.z) < 0.002;
 }

@@ -769,20 +769,9 @@ look, as the others see you.
   The tick is measured and reported in `/api/room/health` once built.
 - Memory: `IN_CAP` 16 KB a connection x 512 = 8 MB, plus output buffers.
   512 MiB is ample.
-- Shards (#12717): one process's 30 Hz tick fits about three full rooms on
-  Cloud Run's 1 vCPU (four rooms took 78% of it and the tick fell to 28 Hz),
-  and the host is one thread, so more vCPU would not help. Everglade's
-  instances run on six services of one container each, `oa-room` (shard 1)
-  and `oa-room-2` to `oa-room-6`, min 0 and max 1 each. The API's directory
-  (`coax/web/api/rooms.c`, migration 0115) places each instance on the lowest
-  shard under its cap of three, holds a seat 20 s from the ticket, and the
-  ticket (v3) names the shard. The page opens `/api/room/sK/relay/everglade/CODE`,
-  which the load balancer sends to shard K, and a shard seats only its own
-  tickets. Shards post their rooms and players to
-  `POST /api/playtest/room-directory` every 5 s (`room-directory.coax`), and
-  `GET /api/playtest/rooms/REALM` is the API's, from the directory.
-  Session affinity was rejected: it is a per-browser, best-effort cookie, so
-  two friends could land on two containers.
+- The limit after that is Cloud Run's 1000 concurrency and one instance.
+  Past one instance (section 13, item 11): the load balancer routes a room's
+  code to one instance, or `room` moves to a small VM as `coder-sync-1` did.
 
 ### 9.3 Cost
 
@@ -791,7 +780,6 @@ All on project `openagentsgemini`, no third-party realtime service.
 | Item | Estimate |
 | --- | --- |
 | `oa-room`, 1 vCPU and 512 MiB, billed while any socket is open (min 0, max 1). Worst case always on | about $65 a month |
-| Shards `oa-room-2` to `oa-room-6` (#12717), the same size, min 0 and max 1 each. Shard K runs only while more than 3(K-1) instances are open, so at the expected 50 players only shard 1 runs. Worst case, all five always on | about $65 each, $325 a month more |
 | The server simulation: at 30 Hz a full room's tick must fit in about 2 ms of one vCPU so 16 rooms fit one core. If measured ticks need 2 vCPU, worst case always on | up to $65 a month more |
 | Egress: a full room is about 16 x 45 KB/s = 720 KB/s. At an average of one full room for 2 hours a day, about 160 GB a month | about $13 to $19 a month |
 | HTTP presence load on Cloud SQL drops (1 Hz to 0.5 Hz per player) | no new cost |
@@ -934,7 +922,7 @@ room host, no caster replication). Status as of the last edit of this file.
 | 8 | Tickets: signed seat identity (4.4, 3.3 item 8) | API and `room` | Not built |
 | 9 | The page as a viewer plus its predicted movement (3.8, 3.9) | `everglade-net.coax` (#12706, #12708) | In progress elsewhere |
 | 10 | Remote players as skinned Rangers (section 5) | #12707 | In progress elsewhere |
-| 11 | Scale across instances: room code to `oa-room` instance routing | API directory, `room-directory.coax`, deploy and load balancer | **Built** (#12717): six shards of three instances, v3 tickets name the shard, `fanout-check.coax` |
+| 11 | Scale across instances: room code to `oa-room` instance routing | deploy and load balancer | Not built; one instance holds 512 sockets (32 full rooms) |
 | 12 | The swap to `/worlds/everglade` (section 12) | site | Not built |
 | 13 | The Grid's gate, links, INVITE and CHARACTER (5.2, 8) | `everglade-join.coax`, `newland-walk.coax`, `rm_rooms ?with=` | **Built** (#12716): the page joins the instance a link names, else the list's `join` (with `?with=` the friend's instance); a refused socket asks the list again; the gate on the Grid sends you with the friend you walked with |
 

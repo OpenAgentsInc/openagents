@@ -43,7 +43,7 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 95 are implemented, 3 are partly implemented and 26 are planned. The 95 implemented
+Of the 124 chapters, 95 are implemented, 2 are partly implemented and 27 are planned. The 95 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
@@ -56,8 +56,6 @@ Chapters 58 and 60 are partly implemented: their native explorer light path
 tracks coins and complete inverses, prepares branch changes atomically, and
 persists them with an explicit proof-of-work-only profile. Full consensus
 validation and validated-node chainstate integration remain separate work.
-Chapter 91 is partly implemented for its transaction index; filters and
-historical coin statistics remain planned.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
 `coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -296,7 +294,7 @@ The node as a program: configuration and shutdown, the RPC and REST interface, i
 | --- | --- | --- |
 | 89. The node process: configuration, data directory, logs and shutdown | Planned | The node reads its configuration file and flags, keeps its state in one data directory, logs by category, and on a signal at any point shuts down cleanly and restarts at the same tip. |
 | 90. JSON-RPC and REST | Planned | The node answers the Bitcoin Core RPCs that wallets and Lightning implementations call (`getblockchaininfo`, `getblock`, `getblockheader`, `getrawtransaction`, `gettxout`, `sendrawtransaction`, `estimatesmartfee`, `getblocktemplate`, `submitblock` and the others the chapter names) with Core's JSON for the same chain, behind cookie authentication. |
-| [91. Indexes: transactions, filters and coin statistics](ch091-indexes-transactions-filters-and-coin-statistics.md) | Partly implemented: native C (explorer transaction index) | Durable full-txid positions share the light chainstate batch and cursor. Lookup verifies raw file spans, prefers active matches, preserves stale occurrences and original positions across reorgs, and excludes genesis. Filter and historical coin-statistics indexes, node backfill/pruning and RPC parity remain planned. |
+| 91. Indexes: transactions, filters and coin statistics | Planned | With each index on, `getrawtransaction` finds any confirmed transaction, the node serves BIP-157 filters to light clients, and `gettxoutsetinfo` answers for past heights, each matching Bitcoin Core. |
 | 92. Notifications for wallets and Lightning | Planned | A subscriber receives every connected and disconnected block and every mempool entry and removal in order, across a reorganization, and resumes from its last block after a restart. |
 | 93. Shadow mode beside Bitcoin Core | Planned | Run beside a Bitcoin Core node on the same peers for a stated period, the node gives the same verdict on every header and block and holds the same tip. Any difference stops it and records the block. |
 

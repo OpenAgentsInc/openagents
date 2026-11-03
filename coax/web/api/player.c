@@ -30,9 +30,7 @@
 //   POST /api/playtest/award, GET/POST /api/playtest/planets[/mine|/<id>]   a player's realm (0011_verse_planets.sql)
 //   POST /api/playtest/survey/answer, /api/playtest/survey   feedback (below)
 //   POST /api/playtest/room-ticket/<room>     {name}: a signed seat ticket for that room's socket
-//                                             (room_ticket below; coax/web/room/room-ticket.coax checks it);
-//                                             ?realm=R: the instance and shard from the directory (rooms.c),
-//                                             answered as "room" and "shard" (#12717)
+//                                             (room_ticket below; coax/web/room/room-ticket.coax checks it)
 //
 // Who asks: the X-Verse-Player key; a NIP-98 signed request (Authorization:
 // Nostr) adds that pubkey's account, and an admin's signature (OA_ADMIN_PUBKEYS)
@@ -237,21 +235,11 @@ static void room_ticket(const request *q, PGconn *db, const char *key, const cha
   PQclear(r);
   for (char *c = pid; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-')) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
   if (nn) b64url(name64, sizeof name64, (const unsigned char *)name, nn); else strcpy(name64, "-");
-  // ?realm=REALM (#12717): the directory (rooms.c) gives the instance and the shard that holds it,
-  // and the ticket names that shard (v3), which seats it and no other. Without it, a v2 ticket for the
-  // room asked, which shard 1 seats (a page from before the directory).
-  char realm[32] = "", placed[32] = "";
-  int shard = 0; bool full = false;
-  if (api_query(q, "realm", realm, sizeof realm) && realm[0]) {
-    if (!rooms_pick(db, realm, room, pid, placed, sizeof placed, &shard, &full)) { api_json(q->fd, 503, "{\"error\":\"every room is full: try again in a minute\"}"); return; }
-    room = placed;
-  }
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   long long expires = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000 + TICKET_MS;
   char text[256];
   char hps[16]; if (hp >= 0 && hp < 100000) snprintf(hps, sizeof hps, "%d", hp); else strcpy(hps, "-");
-  int tn = shard > 0 ? snprintf(text, sizeof text, "v3.%s.%d.%s.%s.%d.%lld.%s", pid, account ? 1 : 0, name64, room, shard, expires, hps)
-                     : snprintf(text, sizeof text, "v2.%s.%d.%s.%s.%lld.%s", pid, account ? 1 : 0, name64, room, expires, hps);
+  int tn = snprintf(text, sizeof text, "v2.%s.%d.%s.%s.%lld.%s", pid, account ? 1 : 0, name64, room, expires, hps);
   if (tn <= 0 || (size_t)tn + 66 >= sizeof text) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
   unsigned char mac[EVP_MAX_MD_SIZE]; unsigned int ml = 0;
   if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)text, (size_t)tn, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
@@ -263,8 +251,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, const cha
   if (hp >= 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"hp\":%d", hp);
   if (wanted >= 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"wanted\":%d", wanted);
   if (look[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"look\":\"%s\"", look);
-  if (klass[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"class\":\"%s\"", klass);
-  if (shard > 0) snprintf(st + sn, sizeof st - (size_t)sn, ",\"room\":\"%s\",\"shard\":%d%s", room, shard, full ? ",\"full\":true" : "");
+  if (klass[0]) snprintf(st + sn, sizeof st - (size_t)sn, ",\"class\":\"%s\"", klass);
   snprintf(out, sizeof out, "{\"ticket\":\"%s\",\"id\":\"%s\",\"account\":%s,\"name\":\"%s\",\"expires\":%lld%s}", text, pid, account ? "true" : "false", en, expires, st);
   api_json(q->fd, 200, out);
 }
@@ -428,8 +415,6 @@ bool player_route(const request *q) {
   // oa-room's HP report (#12715): signed with the seat-ticket key, not a player's
   if (!strcmp(rest, "room-vitals")) { room_vitals(q, db); return true; }
   if (!strcmp(rest, "room-control")) { room_control(q, db); return true; }
-  // the Everglade instance directory (rooms.c, #12717): a shard's report, and the instances' list
-  if (rooms_route(q, db, rest)) return true;
 
   char key[160], autom[64], auth[4096], npub[65] = "";
   bool site = false;

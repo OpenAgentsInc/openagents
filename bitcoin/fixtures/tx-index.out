@@ -1,6 +1,0 @@
-index profile: proof of work; scripts not validated
-A tip 102: spend active true, confirmations 2, raw 61 bytes
-late missing input: refusal 4, index tip 102
-B tip 103: A spend active false, confirmations 0
-active-only lookup: refusal 8
-reconnect: A spend active true; original position retained

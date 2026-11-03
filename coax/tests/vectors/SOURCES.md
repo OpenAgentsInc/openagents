@@ -774,7 +774,6 @@ check fails when a chapter cites a pinned file that is missing here.
 - Bitcoin chapter 74: `upstream/bip158`, `upstream/bip158/testnet-19.json`, `upstream/bitcoin-core`, `upstream/bitcoin-core/blockfilter.cpp`
 - Bitcoin chapter 75: `upstream/bitcoin-core`, `upstream/bitcoin-core/i2p.cpp`, `upstream/i2p`, `upstream/i2p/samv3.html`, `upstream/rfc`, `upstream/rfc/rfc1928.txt`, `upstream/tor`, `upstream/tor/encoding-onion-addresses.md`
 - Bitcoin chapter 81: `upstream/bitcoin-core`, `upstream/bitcoin-core/policy.cpp`
-- Bitcoin chapter 91: `upstream/bitcoin-core/txindex.cpp`, `upstream/bitcoin-core/txindex_key.h`, `upstream/bitcoin-core/txindex_tests.cpp`
 - Bitcoin chapter 94: `upstream/bip174/bip-0174.mediawiki`, `upstream/bitcoin-core`, `upstream/bitcoin-core/psbt.h`, `upstream/tiny-secp256k1`, `upstream/tiny-secp256k1/ecdsa.json`
 - Bitcoin chapter 95: `upstream/bitcoin-core`, `upstream/bitcoin-core/coinselection.cpp`
 - Bitcoin chapter 96: `upstream/bip322`, `upstream/bip322/bip-0322.mediawiki`
@@ -1174,7 +1173,3 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bolts/07-routing-gossip.md`](upstream/bolts/07-routing-gossip.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/07-routing-gossip.md) | `4b7cb122c9ba5c065d779671b52b9d2ec6be18cf34dddd046a8714a12af4a5c8` |
 | [`upstream/bolts/bolt07/extended-queries.json`](upstream/bolts/bolt07/extended-queries.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt07/extended-queries.json) | `9927ae2c9e1a68ad0f99830f2e1c318a50ff1b17d51e37eb0111cdc56ba16f79` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |
-| [`upstream/bitcoin-core/txindex.cpp`](upstream/bitcoin-core/txindex.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/index/txindex.cpp) | `7765ad58e9f8c9f64ab09276289e9f61f72006b7415ad15499997f06552cf7ac` |
-| [`upstream/bitcoin-core/txindex.h`](upstream/bitcoin-core/txindex.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/index/txindex.h) | `0f0819bc2a67dd3e4d6042e4bd747965b6525fe29812c2d0271dfd169d3ece39` |
-| [`upstream/bitcoin-core/txindex_key.h`](upstream/bitcoin-core/txindex_key.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/index/txindex_key.h) | `48685ad09715c7307498d856409adbef6512a10e6ff74401c5892613ea8b0ad2` |
-| [`upstream/bitcoin-core/txindex_tests.cpp`](upstream/bitcoin-core/txindex_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/txindex_tests.cpp) | `ed64ffb75d4602b26bf3c2407c8e83bed7bc5ebc0157f5c126a4ad934b3a84b8` |

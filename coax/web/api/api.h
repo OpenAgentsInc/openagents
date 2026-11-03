@@ -39,8 +39,6 @@ int admin_who(const request *q, PGconn *db, char who[65]);   // 0 an admin (cook
 bool chat_route(const request *q);        // chat.c
 void chat_key(const request *q, const char *pubkey, bool member);   // KEY for a signed-in admin, or a project member (private.c)
 bool player_route(const request *q);      // player.c
-bool rooms_route(const request *q, PGconn *db, const char *rest);   // rooms.c: the Everglade instance directory (#12717)
-bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pid, char *code, size_t cap, int *shard, bool *full);
 bool npc_route(const request *q);         // npc.c
 bool piece_route(const request *q);       // npc.c: the Sandbox's set pieces
 bool voice_edit_route(const request *q);  // npc.c: an admin's spoken edit to a realm (eg-voice-edit)
