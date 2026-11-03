@@ -110,7 +110,7 @@ rs_ticketed :: (out: [] u8, url: string, pid: string, name: string) -> string {
   at := url.count;
   while at > 0 && url[at - 1] != '/' { at -= 1; }
   t: [TICKET_TEXT] u8;
-  n := tk_sign(key, pid, false, name, url[at..<url.count], cxproc_wall_us() / 1000 + 300000, t[..]);
+  n := tk_sign(key, pid, false, name, url[at..<url.count], cxproc_wall_us() / 1000 + 300000, -1, t[..]);
   if n == 0 || url.count + 3 + n > out.count { return ""; }
   k := rs_put(out, 0, url); k = rs_put(out, k, "?t="); k = rs_put(out, k, cast(string) t[0..<n]);
   return ifx k < 0 then "" else cast(string) out[0..<k];

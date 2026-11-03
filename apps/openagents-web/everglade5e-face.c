@@ -70,6 +70,7 @@ static coax_t_Track track_state;
 static coax_t_EgSeen track_seen;   // what everglade_track saw last frame (everglade-track.coax)
 #define NPC_URL "/api/playtest/npc/ask"
 #define PLAYER_URL "/api/playtest/player"
+#define STATE_URL "/api/playtest/room-state"
 static int32_t ask_id = -1, mint_id = -1;
 /* Everglade's world, or a fork's own (made-<slug>: everglade-fork.coax everglade_world_path) */
 static uint8_t world_url_buf[4][128];
@@ -193,6 +194,7 @@ static void net_drain(uint32_t state) {
     if (p->op.e[k] == 1) net_opened(at(state), coaxial_socket_open(from, len));
     else if (p->op.e[k] == 2) coaxial_socket_send(id, from, len);
     else if (p->op.e[k] == 3) coaxial_socket_close(id);
+    else if (p->op.e[k] == 5 && has_player) coaxial_http((uint32_t)(uintptr_t)STATE_URL, sizeof STATE_URL - 1, from, len, 1 | 8);   /* what you bring back into a room (#12715) */
     else if (p->op.e[k] == 4 && len < sizeof ticket_url) { memcpy(ticket_url, &p->buf.e[p->from.e[k]], len); ticket_url_n = len; ticket_due = true; }
   }
   p->n = 0; p->used = 0;

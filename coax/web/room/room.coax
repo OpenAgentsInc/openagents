@@ -20,6 +20,7 @@
 #load "../../../apps/openagents-web/everglade-wire.coax";
 #load "room-everglade.coax";
 #load "room-ticket.coax";
+#load "room-vitals.coax";
 
 ROOMS :: 8;
 CONNS :: 512;
@@ -58,7 +59,8 @@ RmServer :: struct {
   jout: [RELAY_JSON] u8;    // rm_rooms' answer
   eg: [EG_ROOMS] EgRoom;    // the everglade rooms' simulations (room-everglade.coax)
   tkey: [TICKET_KEY] u8; tkey_n: int;   // the seat-ticket key (rm_ticket_key): set, an everglade join's ticket must check
-  tkey_must: bool;                       // and a join without one is refused (else it sits with no id, "-")
+  tkey_must: bool;
+  vit: RmVitals;                         // players' HP between visits (room-vitals.coax)                       // and a join without one is refused (else it sits with no id, "-")
 }
 
 // Every field's default (seats -1, the game's own defaults): the host calls
@@ -373,20 +375,20 @@ tk_test_ask :: (r: [] u8, t: [] u8, n: int) -> string {
   rm_ticket_key(v[..], key, true);
   // no ticket, a forged one, another room's: no seat
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-tk HTTP/1.1\r\n\r\n") < 0;
-  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-tk?t=v1.p-0011223344556677.1.-.pair-tk.1762190100000.0000000000000000000000000000000000000000000000000000000000000000 HTTP/1.1\r\n\r\n") < 0;
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-tk?t=v2.p-0011223344556677.1.-.pair-tk.1762190100000.-.0000000000000000000000000000000000000000000000000000000000000000 HTTP/1.1\r\n\r\n") < 0;
   t: [256] u8; r: [512] u8;
-  n := tk_sign(key, "p-0011223344556677", true, "Ash Vale", "pair-zz", now + 60000, t[..]);
+  n := tk_sign(key, "p-0011223344556677", true, "Ash Vale", "pair-zz", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) < 0;
   // an expired one
-  n = tk_sign(key, "p-0011223344556677", true, "Ash Vale", "pair-tk", now - 1, t[..]);
+  n = tk_sign(key, "p-0011223344556677", true, "Ash Vale", "pair-tk", now - 1, -1, t[..]);
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) < 0;
   // signed under another key (a forged id)
-  n = tk_sign("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210", "p-0011223344556677", true, "Ash Vale", "pair-tk", now + 60000, t[..]);
+  n = tk_sign("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210", "p-0011223344556677", true, "Ash Vale", "pair-tk", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) < 0;
   // the real ones seat, and the hello cannot rename them or claim an account
-  n = tk_sign(key, "p-0011223344556677", true, "Ash Vale", "pair-tk", now + 60000, t[..]);
+  n = tk_sign(key, "p-0011223344556677", true, "Ash Vale", "pair-tk", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
-  n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 60000, t[..]);
+  n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
   box: [1] EgInbox;
   eg_test_drain(v[..], box[..]);
@@ -406,5 +408,44 @@ tk_test_ask :: (r: [] u8, t: [] u8, n: int) -> string {
   rm_clock(v[..], 0, now);
   rm_ticket_key(v[..], "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", false);
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-tk2 HTTP/1.1\r\n\r\n") == 0 && !v[0].conns[0].ticket.ok;
-  #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-tk2?t=v1.p-0011223344556677.1.-.pair-tk2.1762190100000.0000000000000000000000000000000000000000000000000000000000000000 HTTP/1.1\r\n\r\n") < 0;
+  #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-tk2?t=v2.p-0011223344556677.1.-.pair-tk2.1762190100000.-.0000000000000000000000000000000000000000000000000000000000000000 HTTP/1.1\r\n\r\n") < 0;
+}
+#test "vitals: a player's HP when they leave comes back when they sit again, from this server's note or their ticket, and is posted signed" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8;
+  n := tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  ci := E5RR_SEAT;
+  full := v[0].eg[k].rules[0].b[0].c[ci].hp_max;
+  #assert full > 3 && v[0].eg[k].rules[0].b[0].c[ci].hp == full;
+  v[0].eg[k].rules[0].b[0].c[ci].hp = 3;
+  // a second player keeps the room up while the first reloads
+  n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
+  rm_left(v[..], 0);
+  // posted: "t MS\nPID HP MAX\n", with the MAC of the body
+  #assert rm_vitals_due(v[..]) > 0;
+  body := cast(string) v[0].vit.out[0..<v[0].vit.out_n];
+  want: [64] u8;
+  #assert tk_mac(key, body, want[..]) && cast(string) want[..] == cast(string) v[0].vit.mac[..];
+  line: [64] u8; m := tk_add(line[..], 0, "p-0011223344556677 3 "); m = rv_int(line[..], m, full);
+  #assert body.count > m && body[0..<2] == "t " && eg_test_has(body, cast(string) line[0..<m]);
+  #assert rm_vitals_due(v[..]) == 0;   // posted once
+  // the reload: a fresh ticket with no HP, and this server's note gives the 3 back
+  n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  #assert v[0].eg[k].rules[0].b[0].c[ci].hp == 3;
+  // another server (no note): the ticket's HP
+  w: [1] RmServer;
+  rm_init(w[..]); rm_clock(w[..], 0, now); rm_ticket_key(w[..], key, true);
+  n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 60000, 5, t[..]);
+  #assert rm_join(w[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  kw := eg_room_at(w[..], w[0].conns[0].relay);
+  #assert w[0].eg[kw].rules[0].b[0].c[ci].hp == 5;
 }

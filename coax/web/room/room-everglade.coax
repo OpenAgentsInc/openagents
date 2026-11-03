@@ -127,6 +127,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
   v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_BANK};
   e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
+  rv_join(v, k, seat);   // the HP its player left with (room-vitals.coax, #12715)
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   b: [128] u8;
   // the day and the weather: the page's own until the world runs them
@@ -137,6 +138,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
 eg_left :: (v: [] RmServer, r: int, seat: int) {
   k := eg_room_at(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
+  rv_note_seat(v, k, seat);   // its HP kept for its player (room-vitals.coax, #12715)
   v[0].eg[k].seat[seat].live = false;
   e5rr_leave(v[0].eg[k].rules[..], seat);
   for c: 0..<EG_CASTS { if v[0].eg[k].casts[c].seat == seat { v[0].eg[k].casts[c].on = false; } }
@@ -233,7 +235,7 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
 // The seat's ticket (ok false: none, in a room that needs none).
 eg_ticket :: (v: [] RmServer, k: int, seat: int) -> Ticket {
   c := v[0].eg[k].seat[seat].conn;
-  if c < 0 || c >= CONNS || !v[0].conns[c].live { return Ticket.{}; }
+  if c < 0 || c >= CONNS || !v[0].eg[k].seat[seat].live { return Ticket.{}; }   // (its socket may be closing: eg_left)
   return v[0].conns[c].ticket;
 }
 // C SEQ SLOT AX AY AZ TGT: a cast at the aim. Checked, announced (e cast), then rolled at its strike.

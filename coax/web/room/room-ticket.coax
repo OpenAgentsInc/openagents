@@ -2,11 +2,12 @@
 // POST /api/playtest/room-ticket/ROOM (coax/web/api/player.c room_ticket) and the
 // page joins with it as ?t=TICKET (or &t=). The text is
 //
-//   v1.PID.ACCT.NAME64.ROOM.EXPIRES.MAC
+//   v2.PID.ACCT.NAME64.ROOM.EXPIRES.HP.MAC
 //
 // PID the player id (p-<16 hex>), ACCT 1 when the player has an account, NAME64
 // the display name in unpadded base64url ("-" none), ROOM the relay code,
-// EXPIRES wall-clock milliseconds, and MAC the lowercase hex HMAC-SHA256 of
+// EXPIRES wall-clock milliseconds, HP the hit points the player left with in the last 10 minutes
+// ("-" none: full; #12715, room-vitals.coax), and MAC the lowercase hex HMAC-SHA256 of
 // everything before ".MAC" under OA_ROOM_TICKET_KEY (Secret Manager
 // oa-room-ticket-key). A room joins only with a ticket for itself that has not
 // expired and whose MAC checks; the seat then carries the ticket's id, name and
@@ -26,6 +27,7 @@ Ticket :: struct {
   account: bool;
   name: [TICKET_NAME] u8; name_n: int;
   expires: int;
+  hp: int = -1;           // the HP it brings back (-1 none)
 }
 
 // The t= value in the request line's query ("" none).
@@ -94,24 +96,24 @@ tk_mac :: (key: string, text: string, out: [] u8) -> bool {
 tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   t := Ticket.{};
   if key.count < 32 || ticket.count == 0 || ticket.count > TICKET_TEXT { return t; }
-  // the seven fields
-  at: [8] int; n := 1; at[0] = 0;
+  // the eight fields
+  at: [9] int; n := 1; at[0] = 0;
   for i: 0..<ticket.count {
     if ticket[i] == '.' {
-      if n >= 7 { return t; }
+      if n >= 8 { return t; }
       at[n] = i + 1; n += 1;
     }
   }
-  if n != 7 { return t; }
-  at[7] = ticket.count + 1;
-  f: [7] string;
-  for i: 0..<7 { f[i] = ticket[at[i]..<at[i + 1] - 1]; }
-  if f[0] != "v1" || f[4] != room || f[6].count != 64 { return t; }
+  if n != 8 { return t; }
+  at[8] = ticket.count + 1;
+  f: [8] string;
+  for i: 0..<8 { f[i] = ticket[at[i]..<at[i + 1] - 1]; }
+  if f[0] != "v2" || f[4] != room || f[7].count != 64 { return t; }
   // the MAC, compared in constant time
   want: [64] u8;
-  if !tk_mac(key, ticket[0..<at[6] - 1], want[..]) { return t; }
+  if !tk_mac(key, ticket[0..<at[7] - 1], want[..]) { return t; }
   diff := 0;
-  for i: 0..<64 { diff = diff | cast(int) (want[i] ^ f[6][i]); }
+  for i: 0..<64 { diff = diff | cast(int) (want[i] ^ f[7][i]); }
   if diff != 0 { return t; }
   // the id
   if f[1].count == 0 || f[1].count > TICKET_PID { return t; }
@@ -123,6 +125,13 @@ tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   ends := 0;
   for c: f[5] { if c < '0' || c > '9' { return t; } ends = ends * 10 + cast(int) (c - '0'); }
   if now > ends || ends - now > TICKET_LIFE_MS + TICKET_SKEW_MS { return t; }
+  // the HP it brings back
+  hp := -1;
+  if f[6] != "-" {
+    if f[6].count == 0 || f[6].count > 5 { return t; }
+    hp = 0;
+    for c: f[6] { if c < '0' || c > '9' { return t; } hp = hp * 10 + cast(int) (c - '0'); }
+  }
   // the name
   if f[3] != "-" {
     m := tk_unb64(f[3], t.name[..]);
@@ -133,6 +142,7 @@ tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   t.pid_n = f[1].count;
   t.account = f[2] == "1";
   t.expires = ends;
+  t.hp = hp;
   t.ok = true;
   return t;
 }
@@ -143,10 +153,10 @@ tk_add :: (b: [] u8, n: int, s: string) -> int {
   return n + s.count;
 }
 // A ticket as the API signs it (for tests and the deploy checks): its count in out, 0 if it did not fit.
-tk_sign :: (key: string, pid: string, account: bool, name: string, room: string, expires: int, out: [] u8) -> int {
+tk_sign :: (key: string, pid: string, account: bool, name: string, room: string, expires: int, hp: int, out: [] u8) -> int {
   a := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   b: [TICKET_TEXT] u8; n := 0;
-  n = tk_add(b[..], n, "v1."); n = tk_add(b[..], n, pid); n = tk_add(b[..], n, ifx account then ".1." else ".0.");
+  n = tk_add(b[..], n, "v2."); n = tk_add(b[..], n, pid); n = tk_add(b[..], n, ifx account then ".1." else ".0.");
   if name.count == 0 { n = tk_add(b[..], n, "-"); }
   i := 0;
   while i < name.count && n + 4 < b.count {
@@ -163,6 +173,13 @@ tk_sign :: (key: string, pid: string, account: bool, name: string, room: string,
   if e <= 0 { return 0; }
   while e > 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
   for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
+  n = tk_add(b[..], n, ".");
+  if hp < 0 { n = tk_add(b[..], n, "-"); }
+  else {
+    dn = 0; e = hp;
+    while e > 0 || dn == 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
+    for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
+  }
   if n + 65 > b.count || n + 65 > out.count { return 0; }
   mac: [64] u8;
   if !tk_mac(key, cast(string) b[0..<n], mac[..]) { return 0; }
@@ -175,7 +192,7 @@ tk_sign :: (key: string, pid: string, account: bool, name: string, room: string,
 #test "ticket: a signed ticket checks, and every forged field is refused" {
   key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
   b: [256] u8;
-  n := tk_sign(key, "p-00112233aabbccdd", true, "Ash Ranger", "dawn", 1000000, b[..]);
+  n := tk_sign(key, "p-00112233aabbccdd", true, "Ash Ranger", "dawn", 1000000, -1, b[..]);
   #assert n > 0;
   tk := cast(string) b[0..<n];
   t := tk_check(key, tk, "dawn", 990000);
@@ -193,10 +210,16 @@ tk_sign :: (key: string, pid: string, account: bool, name: string, room: string,
   f[22] = '0';
   #assert !tk_check(key, cast(string) f[0..<n], "dawn", 990000).ok;
   // a guest with no name
-  n = tk_sign(key, "p-ffeeddccbbaa9988", false, "", "dawn", 1000000, b[..]);
+  n = tk_sign(key, "p-ffeeddccbbaa9988", false, "", "dawn", 1000000, -1, b[..]);
   t = tk_check(key, cast(string) b[0..<n], "dawn", 999999);
   #assert t.ok && !t.account && t.name_n == 0;
-  #assert !tk_check(key, "", "dawn", 0).ok && !tk_check(key, "v1.p-1.0.-.dawn.5.zz", "dawn", 0).ok;
+  #assert !tk_check(key, "", "dawn", 0).ok && !tk_check(key, "v2.p-1.0.-.dawn.5.-.zz", "dawn", 0).ok;
+  // the HP it brings back
+  n = tk_sign(key, "p-ffeeddccbbaa9988", false, "", "dawn", 1000000, 7, b[..]);
+  t = tk_check(key, cast(string) b[0..<n], "dawn", 999999);
+  #assert t.ok && t.hp == 7;
+  n = tk_sign(key, "p-ffeeddccbbaa9988", false, "", "dawn", 1000000, 0, b[..]);
+  #assert tk_check(key, cast(string) b[0..<n], "dawn", 999999).hp == 0;
 }
 #test "ticket: t= comes out of the request line's query" {
   #assert tk_query("GET /api/room/relay/everglade/dawn?t=abc HTTP/1.1\r\n") == "abc";

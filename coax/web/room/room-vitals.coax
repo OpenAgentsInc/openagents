@@ -1,0 +1,110 @@
+// What a player's HP is when they leave an Everglade room, kept so a reload is not a free heal
+// (#12715, spec section 7). The server owns HP (everglade5e-room-rules.coax), so the server reports
+// it: each ticketed seat's HP (its ticket's player id, room-ticket.coax) is noted when the seat
+// leaves and every VITALS_EVERY_MS while it plays, and the host posts what changed to the API,
+// POST /api/playtest/room-vitals, signed with the seat-ticket key (coax/web/api/player.c
+// room_vitals), which keeps it by the player's account when logged in (so another device gets it).
+// A ticket brings it back for 10 minutes (its HP field); this server's own note, newer than any
+// post, wins when the same player sits again here.
+VITALS :: 64;
+VITALS_KEEP_MS :: 600000;
+VITALS_EVERY_MS :: 10000;
+VITALS_BODY :: 4096;
+
+RoomVital :: struct {
+  live: bool;
+  pid: [TICKET_PID] u8; pid_n: int;
+  hp: int; max: int;
+  at: int;          // wall ms it was noted
+  sent: bool;       // the API has this one
+}
+RmVitals :: struct {
+  v: [VITALS] RoomVital;
+  last: int;        // wall ms the seats were last noted
+  out: [VITALS_BODY] u8; out_n: int;   // the post rm_vitals_due made: "t MS\nPID HP MAX\n..."
+  mac: [64] u8;                        // its X-Room-Mac
+}
+
+rv_find :: (v: [] RmServer, pid: string) -> int {
+  for i: 0..<VITALS {
+    e := v[0].vit.v[i];
+    if e.live && cast(string) e.pid[0..<e.pid_n] == pid { return i; }
+  }
+  return -1;
+}
+// The player's HP now (from the seat of ticket pid).
+rv_note :: (v: [] RmServer, pid: string, hp: int, max: int) {
+  if pid.count == 0 || pid.count > TICKET_PID || max <= 0 { return; }
+  i := rv_find(v, pid);
+  if i < 0 {
+    // a free entry, else the oldest
+    old := v[0].wall_ms + 1;
+    for j: 0..<VITALS {
+      if !v[0].vit.v[j].live { i = j; break; }
+      if v[0].vit.v[j].at < old { old = v[0].vit.v[j].at; i = j; }
+    }
+    v[0].vit.v[i] = RoomVital.{live = true, pid_n = pid.count};
+    for c: 0..<pid.count { v[0].vit.v[i].pid[c] = pid[c]; }
+  } else if v[0].vit.v[i].hp == hp && v[0].vit.v[i].max == max {
+    v[0].vit.v[i].at = v[0].wall_ms;
+    return;
+  }
+  v[0].vit.v[i].hp = hp; v[0].vit.v[i].max = max; v[0].vit.v[i].at = v[0].wall_ms; v[0].vit.v[i].sent = false;
+}
+// Seat s of everglade room k: its HP noted, when its ticket names a player.
+rv_note_seat :: (v: [] RmServer, k: int, s: int) {
+  tk := eg_ticket(v, k, s);
+  if !tk.ok { return; }
+  c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];
+  rv_note(v, cast(string) tk.pid[0..<tk.pid_n], c.hp, c.hp_max);
+}
+// A seat that just joined (after e5rr_join): the HP its player left with, this server's note when it
+// has one from the last 10 minutes, else its ticket's. None (or 0: it fell) leaves it full.
+rv_join :: (v: [] RmServer, k: int, s: int) {
+  tk := eg_ticket(v, k, s);
+  if !tk.ok { return; }
+  hp := tk.hp;
+  i := rv_find(v, cast(string) tk.pid[0..<tk.pid_n]);
+  if i >= 0 && v[0].wall_ms - v[0].vit.v[i].at <= VITALS_KEEP_MS { hp = v[0].vit.v[i].hp; }
+  if hp <= 0 { return; }
+  b := v[0].eg[k].rules[0].b[..];
+  ci := E5RR_SEAT + s;
+  b[0].c[ci].hp = least(hp, b[0].c[ci].hp_max);
+}
+
+// Called by the host once a second: every VITALS_EVERY_MS the playing seats are noted, and what
+// the API doesn't have yet is written into vit.out with its MAC. Its count (0 nothing to post).
+rm_vitals_due :: (v: [] RmServer) -> int #export_c {
+  v[0].vit.out_n = 0;
+  if v[0].tkey_n == 0 { return 0; }
+  if v[0].wall_ms - v[0].vit.last >= VITALS_EVERY_MS {
+    v[0].vit.last = v[0].wall_ms;
+    for k: 0..<EG_ROOMS {
+      if !v[0].eg[k].live { continue; }
+      for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { rv_note_seat(v, k, s); } }
+    }
+  }
+  o := v[0].vit.out[..];
+  n := tk_add(o, 0, "t "); n = rv_int(o, n, v[0].wall_ms); n = tk_add(o, n, "\n");
+  head := n; marked: [VITALS] bool;
+  for i: 0..<VITALS {
+    e := v[0].vit.v[i];
+    if !e.live || e.sent { continue; }
+    if n + e.pid_n + 24 > o.count { break; }
+    n = tk_add(o, n, cast(string) e.pid[0..<e.pid_n]); n = tk_add(o, n, " "); n = rv_int(o, n, e.hp);
+    n = tk_add(o, n, " "); n = rv_int(o, n, e.max); n = tk_add(o, n, "\n");
+    marked[i] = true;
+  }
+  if n == head { return 0; }
+  if !tk_mac(cast(string) v[0].tkey[0..<v[0].tkey_n], cast(string) o[0..<n], v[0].vit.mac[..]) { return 0; }
+  for i: 0..<VITALS { if marked[i] { v[0].vit.v[i].sent = true; } }
+  v[0].vit.out_n = n;
+  return n;
+}
+rv_int :: (b: [] u8, at: int, x: int) -> int {
+  d: [20] u8; dn := 0; e := ifx x < 0 then 0 else x;
+  while e > 0 || dn == 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
+  n := at;
+  for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
+  return n;
+}

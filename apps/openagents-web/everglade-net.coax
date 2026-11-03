@@ -40,6 +40,8 @@ NET_HIST :: 64;            // your inputs kept for the server's ACK
 NET_FX :: 8;               // casts waiting for their time
 NET_ID :: 24; NET_NAME :: 40; NET_LOOK :: 32; NET_CODE :: 24; NET_URL :: 200;
 NET_TICKET :: 256;   // a seat ticket's most bytes (coax/web/room/room-ticket.coax)
+NET_PIPE_STATE :: 5;    // the pipe's save of what you bring back into a room: its bytes the JSON to POST to /api/playtest/room-state (#12715)
+NET_STATE_EVERY :: 2000;   // ms: a changed WANTED or look is saved at most this often
 NET_PIPE_TICKET :: 4;   // the pipe's ask for a seat ticket: its bytes the API path to POST (the face carries it)
 NET_BASE :: 40; NET_LOW :: 80; NET_HIGH :: 300;   // ms: the jitter buffer's delay
 NET_AHEAD :: 150;          // ms past its newest state an entity goes on by its velocity
@@ -81,6 +83,8 @@ EgNet :: struct {
   // the seat ticket the socket opens with (?t=, #12712): asked of the API before each open, used once;
   // free: a local relay (?relay=ws://localhost:PORT), which joins without one
   ticket: [NET_TICKET] u8; ticket_n: int; ticket_asked: bool; free: bool;
+  // what you bring back into a room (#12715): the WANTED level and look last saved, and when
+  saved_wanted: int; saved_look: [NET_LOOK] u8; saved_look_n: int; saved_at: int; restored: bool;
   pid: [NET_ID] u8; pid_n: int; account: bool;
   look: [NET_LOOK] u8; look_n: int;
   mono: int;                 // this frame's monotonic ms
@@ -221,12 +225,56 @@ net_ticket :: (s: [] Everglade, answer: string) #export_c {
       while e < answer.count && answer[e] != '"' { e += 1; }
       if e < answer.count && e - i - key.count > 0 && e - i - key.count <= NET_TICKET {
         n[0].ticket_n = net_copy(n[0].ticket[..], answer[i + key.count..<e]);
+        net_restore(s, n, answer);
         return;
       }
     }
   }
   n[0].ticket_n = 0;
   net_down(n);
+}
+// What the ticket's answer brings back (#12715), once a page: your WANTED level (kept 5 minutes; the
+// watch takes it as a "+wantedN" start) and your look (the hello sends it). The HP is the server's.
+net_restore :: (s: [] Everglade, n: [] EgNet, answer: string) {
+  if n[0].restored { return; }
+  n[0].restored = true;
+  w := net_json_field(answer, "wanted");
+  level := net_number(w);
+  if level > 0 && level <= 5 { s[0].wv.want = level; }
+  n[0].saved_wanted = ifx level > 0 && level <= 5 then level else 0;
+  look := net_json_field(answer, "look");
+  if look.count > 0 && look.count <= NET_LOOK && look[0] != '"' {
+    n[0].look_n = net_copy(n[0].look[..], look);
+    n[0].saved_look_n = net_copy(n[0].saved_look[..], look);
+  }
+}
+// A field of a flat JSON answer, its text without quotes ("" none).
+net_json_field :: (t: string, name: string) -> string {
+  for i: 0..<t.count {
+    if t[i] != '"' || i + name.count + 3 > t.count || t[i + 1..<i + 1 + name.count] != name || t[i + 1 + name.count] != '"' || t[i + 2 + name.count] != ':' { continue; }
+    a := i + 3 + name.count;
+    q := a < t.count && t[a] == '"';
+    if q { a += 1; }
+    e := a;
+    while e < t.count && (ifx q then t[e] != '"' else (t[e] != ',' && t[e] != '}')) { e += 1; }
+    return t[a..<e];
+  }
+  return "";
+}
+// While you play in a room: a WANTED level or look that changed is saved (at most every NET_STATE_EVERY).
+net_save_state :: (s: [] Everglade, n: [] EgNet) {
+  if n[0].free || !net_live(s) || n[0].mono - n[0].saved_at < NET_STATE_EVERY { return; }
+  level := ifx s[0].wt[0].wanted then s[0].wt[0].level else 0;
+  if level < 0 { level = 0; }
+  if level > 5 { level = 5; }
+  look := cast(string) n[0].look[0..<n[0].look_n];
+  if level == n[0].saved_wanted && look == cast(string) n[0].saved_look[0..<n[0].saved_look_n] { return; }
+  b: [128] u8;
+  k := wire_put(b[..], 0, "{\"wanted\":"); k = wire_put(b[..], k, ifx level == 0 then "0" else ifx level == 1 then "1" else ifx level == 2 then "2" else ifx level == 3 then "3" else ifx level == 4 then "4" else "5");
+  k = wire_put(b[..], k, ",\"look\":\""); k = wire_put(b[..], k, look); k = wire_put(b[..], k, "\",\"class\":\"druid\"}");
+  if pipe_put(n[0].pipe[..], NET_PIPE_STATE, -1, cast(string) b[0..<k]) {
+    n[0].saved_wanted = level; n[0].saved_look_n = net_copy(n[0].saved_look[..], look); n[0].saved_at = n[0].mono;
+  }
 }
 // The room's name (the chat's too).
 net_room :: (s: [] Everglade, room: string) -> string #export_c {
@@ -592,6 +640,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
       if pipe_put(n[0].pipe[..], NET_PIPE_TICKET, -1, cast(string) t[0..<k]) { n[0].ticket_asked = true; }
     }
   }
+  net_save_state(s, n);
   if n[0].said_t > 0 { n[0].said_t -= 0.016; }
   now := net_now(n);
   if net_live(s) {
@@ -1135,6 +1184,30 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert na[0].pipe[0].n == 0 && net_probe(a[..], 0) == NET_DOWN;
   net_step(a[..], 300000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET;
+}
+#test "net: the ticket's answer brings back your WANTED and look; a changed WANTED is saved while you play" {
+  a: [1] Everglade; na: [1] EgNet;
+  everglade_attach_net(a[..], na[..]);
+  net_facts(a[..], "url=https://openagents.com/worlds/everglade?room=pair-a\nplayer=pa\nnow=5000000\nnav=0\n", "everglade", false);
+  net_ticket(a[..], "200\n{\"ticket\":\"v2.x\",\"id\":\"pa\",\"account\":false,\"name\":\"\",\"expires\":9,\"hp\":4,\"wanted\":3,\"look\":\"ranger.2.1.0\",\"class\":\"druid\"}");
+  #assert a[0].wv.want == 3 && cast(string) na[0].look[0..<na[0].look_n] == "ranger.2.1.0";
+  net_step(a[..], 100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  pipe_drained(na[0].pipe[..]);
+  net_opened(a[..], 0);
+  #assert net_event(a[..], SOCKET_KIND + SOCKET_OPENED, "") && net_test_hear(a[..], 0, "y 0 1 5000100") && net_live(a[..]);
+  // the same as saved: nothing goes; a new level does, once
+  a[0].wt[0].wanted = true; a[0].wt[0].level = 3;
+  net_step(a[..], 3000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  for k: 0..<na[0].pipe[0].n { #assert na[0].pipe[0].op[k] != NET_PIPE_STATE; }
+  pipe_drained(na[0].pipe[..]);
+  a[0].wt[0].level = 4;
+  net_step(a[..], 6000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  got := "";
+  for k: 0..<na[0].pipe[0].n { if na[0].pipe[0].op[k] == NET_PIPE_STATE { got = pipe_bytes(na[0].pipe[..], k); } }
+  #assert got == "{\"wanted\":4,\"look\":\"ranger.2.1.0\",\"class\":\"druid\"}";
+  pipe_drained(na[0].pipe[..]);
+  net_step(a[..], 9000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  for k: 0..<na[0].pipe[0].n { #assert na[0].pipe[0].op[k] != NET_PIPE_STATE; }
 }
 #test "net: two pages in one room see each other move, as the server says, a jitter buffer behind it" {
   a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet; room: [1] NetTestRoom;

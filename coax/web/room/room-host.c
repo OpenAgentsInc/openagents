@@ -217,6 +217,36 @@ static void frames(int i) {
   }
 }
 
+/* Players' HP between visits (room-vitals.coax, #12715): what rm_vitals_due wrote goes to the API
+   by a curl of its own (its config on stdin, so the MAC is not in any argument list); nothing waits
+   for it, and SIGCHLD is ignored, so it reaps itself. */
+static void vitals_post(void) {
+  int64_t n = rm_vitals_due(view());
+  if (n <= 0) return;
+  const char *url = getenv("OA_ROOM_VITALS_URL");
+  if (!url || !*url) url = "https://openagents.com/api/playtest/room-vitals";
+  static char cfg[2 * 4096 + 512];
+  size_t k = (size_t)snprintf(cfg, sizeof cfg, "url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\nheader = \"Content-Type: text/plain\"\nsilent\nmax-time = 10\noutput = \"/dev/null\"\ndata-binary = \"",
+                              url, (const char *)server->vit.mac.e);
+  for (int64_t i = 0; i < n && k + 4 < sizeof cfg; i++) {
+    char ch = (char)server->vit.out.e[i];
+    if (ch == '\n') { cfg[k++] = '\\'; cfg[k++] = 'n'; } else cfg[k++] = ch;
+  }
+  k += (size_t)snprintf(cfg + k, sizeof cfg - k, "\"\n");
+  int p[2];
+  if (pipe(p)) return;
+  pid_t pid = fork();
+  if (pid == 0) {
+    dup2(p[0], 0);
+    for (int fd = 3; fd < 4096; fd++) close(fd);   /* the players' sockets stay the server's */
+    execlp("curl", "curl", "-K", "-", (char *)NULL);
+    _exit(127);
+  }
+  close(p[0]);
+  if (pid > 0) { ssize_t w = write(p[1], cfg, k); (void)w; }
+  close(p[1]);
+}
+
 int main(int argc, char **argv) {
   const char *address = "127.0.0.1"; int port = 8830;
   for (int i = 1; i < argc; i++) {
@@ -226,6 +256,7 @@ int main(int argc, char **argv) {
   const char *env = getenv("PORT");
   if (env && *env) { port = atoi(env); address = "0.0.0.0"; }
   signal(SIGPIPE, SIG_IGN);
+  signal(SIGCHLD, SIG_IGN);   /* vitals_post's curls reap themselves */
   setvbuf(stdout, NULL, _IOLBF, 0);
   server = calloc(1, sizeof *server);
   if (!server) { fprintf(stderr, "room: out of memory\n"); return 1; }
@@ -247,7 +278,7 @@ int main(int argc, char **argv) {
   printf("room: listening on %s:%d\n", address, port);
   const double tick = 1000.0 / 60.0;
   double next = (double)now_ms();
-  int64_t ticks = 0, last_report = now_ms();
+  int64_t ticks = 0, last_report = now_ms(), last_vitals = now_ms();
   for (;;) {
     struct pollfd fds[CONNS + 1]; int map[CONNS + 1], n = 0;
     fds[n] = (struct pollfd){lfd, POLLIN, 0}; map[n++] = -1;
@@ -300,6 +331,7 @@ int main(int argc, char **argv) {
       ticks++;
       next += tick;
       if ((double)now - next > 250.0) next = (double)now + tick;   // a stall: start the beat again
+      if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); }
       if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak); ticks = 0; last_report = now; memcpy(fan_last, fan_now, sizeof fan_now); memset(fan_now, 0, sizeof fan_now); }
     }
   }
