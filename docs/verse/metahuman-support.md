@@ -376,6 +376,18 @@ from the camera.
 - Selection uses projected screen height with hysteresis. Levels
   cross-dissolve with a dither over 0.3 s, as `groom.rs` did for strands,
   so nothing pops.
+- **Built in MetaHuman Lab.** `pack_human.reduce` writes two lower levels of
+  every piece (except the eyes' blended layers) by vertex clustering on a
+  0.8 cm and a 2.5 cm grid. All the vertices in a cell move to one place
+  and take its skin weights, so the surface stays closed in every pose.
+  Vertices facing another way or in another eighth of uv keep their own uv
+  and normal there. They are the catalog's `D LOD NAME FIRST COUNT
+  MATERIAL` lines. On the private pack that is 548k triangles at LOD0, 200k
+  at LOD1 and 39k at LOD2. The lab draws LOD0 (with the face rig) while the
+  figure stands taller than 340 px on the screen, LOD1 down to 130 px, then
+  LOD2, with 12% hysteresis. The unlisted L key picks a level, and
+  `pack_checks.py` compares each level's figure pixels with LOD0's (LOD1
+  misses 0.4% and LOD2 1.3%).
 - **Impostors.** Bake each class look into an octahedral atlas of N views
   times a few key poses (idle, walk phase, down) at pack time. Pose
   impostors cannot animate freely, so use them only past the distance
@@ -409,6 +421,24 @@ levels coarser.
 | Teeth and mouth | A flat light tone and a darkened mouth interior, drawn only at H0 | Standard PBR plus a saliva specular film |
 | Brows and lashes | Painted into the skin at H1 and below, cards at H0 | Cards |
 
+- **Built in MetaHuman Lab (photoreal).** The eye shell (`eyeshell`) is
+  the occlusion and the eye edge (`eyeEdge`) is the tear strip. Neither
+  has a texture. `pack_human.lid_coords` rewrites their uv as lid
+  coordinates: u runs from the lid margin (0) inward (1), and v runs up the
+  opening. They are materials 25 and 7, the pack's last pieces, and the
+  face rig moves them with the lids. The lab draws them after the scene the
+  way the host draws water: `water_transmit_fs` multiplies the light behind
+  by the occlusion (darkest at the margin, the upper lid more), and
+  `water_emit_fs` adds the tear film's glints and sky reflection. The CC0
+  stand-in has no such meshes, so `eye_layers` gives it a procedural cap
+  and ring on each eyeball to check the passes by eye. Saliva and the tear
+  ducts (`cartilage`) are not drawn yet.
+- **Anti-aliasing (MetaHuman Lab).** The lab draws through the host's post
+  pass: bg_fs and scene_fs write linear light, and post_fs tones it, runs
+  FXAA (Lottes' FXAA 2 filter on the toned image) and draws the HUD's
+  strips. Probe views pass through unchanged. TAA would also settle the
+  hair's dither, but it needs a history buffer and motion vectors that the
+  host doesn't have yet.
 - **Style conflict.** Art-styles §11 wants heads at 1/6 to 1/7 of height,
   with hands and feet slightly large. MetaHuman proportions are realistic,
   with the head at about 1/7.5. Creator's body and head controls can push
@@ -432,6 +462,14 @@ levels coarser.
 - **Face rig.** Evaluate it on the CPU in Wasm for at most four H0 figures
   at 30 Hz, interpolated in between. That covers 60 to 120 raw controls
   per face after the LOD slice.
+- **Measured (MetaHuman Lab, one figure, this Mac's Apple GPU, headless,
+  1600x1000).** The GPU's span per frame is about 1.3 ms at LOD0 and
+  0.9 ms at LOD2 (`frametime.ts`, p50), well inside 16.7 ms. The face rig
+  costs 1.5 to 2 ms of CPU natively per frame in which its controls change
+  (expressions easing, blinks, talk) and nothing on other frames. Two
+  changes got it there from 5 to 8.5 ms. A joint group gathers its live
+  inputs once, not per row. The points are unpacked into floats when the
+  block opens, not read from bytes every frame.
 - **Budgets.** Every realm declares a budget in `budget.coax`. Each LOD
   table entry has a triangle and byte cost, and the crowd planner picks LODs
   so that the frame fits, demoting the farthest figures first. Frame time
@@ -592,6 +630,15 @@ It holds no MetaHuman asset and draws with none.
   edges grown by half again and by over 1 cm, or one grown by over 4 cm (a
   spike), refuses the pack. The share stretched past 1.5x is printed too; on
   a fine mesh it counts millimetre edges that no one sees.
+- **The armpit band.** Where a garment's weights mix the arm with the trunk
+  (a sleeve meeting the side), and two rings round that, the weights are
+  smoothed over the garment's neighbours 30 more times
+  (`metahuman.armpit`). A raised arm then stretches the cloth across the
+  band instead of along the seam. Only close garments (the sweater) get the
+  band: in the big clips it cut the sweater's worst stretched share from
+  7.8% to 5.4% (slash) and 4.6% to 3.2% (spell). A loose robe is blended
+  over 6 cm already, and the band spiked its edges in a walk past the 4 cm
+  limit, so the robe still stretches in slash and spell.
 - **Probe views for scripts.** An unlisted V key cycles views a script reads
   without anyone looking at the frame: the albedo, uv and base layer, capsule
   pixels in magenta, each pixel's material, and its material with its base

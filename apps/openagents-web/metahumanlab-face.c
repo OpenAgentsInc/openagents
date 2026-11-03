@@ -20,7 +20,7 @@ static uint8_t inbox[4096];
 #define FACE_ROWS (4 * 65536)
 static uint8_t catalog[CATALOG_BYTES];
 static uint32_t catalog_bytes;
-static float face_work[1024 + 9 * 1024 + 3 * 12 * 1024 + 9 * 40000];
+static float face_work[1024 + 9 * 1024 + 3 * 12 * 1024 + 9 * 40000 + 19 * 40000];
 static bool face_still[1024];
 static float pose_store[PALETTE_FLOATS + FACE_ROWS];
 static uint32_t pose_version, pal_seen = 0xffffffffu;
@@ -94,8 +94,10 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) { catalog_bytes = bytes; lab_catalog(at(state), (coax_string){(const char *)catalog, (int64_t)bytes}); }
   lab_pack_part(at(state), i, i == 0 && bytes > sizeof catalog ? 0 : (int64_t)bytes);
 }
-EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->draws.e; }
+// the level of detail drawn: its run of draws
+EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)(lab_at(state)->draws.e + 4 * lab_draw_first(at(state))); }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)lab_draw_count(at(state)); }
+EXPORT("coaxial_water_draws") uint32_t coaxial_water_draws(uint32_t state) { return (uint32_t)lab_water_draws(at(state)); }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 1u; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { (void)k; return (uint32_t)sizeof pose_store; }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { (void)state; (void)k; return (uint32_t)(uintptr_t)pose_store; }

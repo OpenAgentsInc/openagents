@@ -27,6 +27,7 @@ from pathlib import Path
 
 import people
 import face_rig
+import pack_human
 
 DUMP_DIR = Path.home() / ".openagents/verse/private-build/metahuman-dump"
 OUTFITS = "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits"
@@ -241,8 +242,9 @@ def aligned(k):
 # ---- the meshes
 
 # Each DNA mesh the pack draws: its material and its maps (the export's dcc/*/Maps). The eyes'
-# shell (the cornea's wet layer), the eye edge (its occlusion), saliva and the tear ducts wait for
-# the passes that blend them.
+# shell (the lids' occlusion over the eye) and the eye edge (the wet layer along the lids) have no
+# maps: they are blended over the eyes, shaded from lid coordinates (pack_human.lid_coords).
+# Saliva and the tear ducts (cartilage) wait.
 MESHES = {
     "body_lod0_mesh": ("skin", "Body_Basecolor.png", "Body_Normal.png", "Body_SRMF.png"),
     "head_lod0_mesh": ("skin", "Head_Basecolor.png", "Head_Normal.png", "Head_SRMF.png"),
@@ -250,6 +252,8 @@ MESHES = {
     "eyeLeft_lod0_mesh": ("eye", "Eyes_Color.png", "Eyes_Normal.png", None),
     "eyeRight_lod0_mesh": ("eye", "Eyes_Color.png", "Eyes_Normal.png", None),
     "eyelashes_lod0_mesh": ("brow", "Eyelashes_Color.png", None, None),
+    "eyeshell_lod0_mesh": ("occlusion", None, None, None),
+    "eyeEdge_lod0_mesh": ("wet", None, None, None),
 }
 
 
@@ -362,7 +366,9 @@ def build(pack, export):
         verts, tris = mesh(path, skin_file(src / f"{name}.skin.txt"), J, flip_v,
                            hide=covered if src is body else None,
                            posed=(down["x"], down["vn"]) if src is body else None)
-        layers = skin.get(name) or (maps / base, maps / normal if normal else None, maps / rough if rough else None)
+        layers = skin.get(name) or (maps / base if base else None, maps / normal if normal else None, maps / rough if rough else None)
+        if pack_human.MATERIALS[material] in pack_human.BLENDED:
+            verts = pack_human.lid_coords(verts, tris)
         pack.piece(name.replace("_lod0_mesh", ""), verts, tris, material, *layers)
         if src is head and name in face_rig.FACE_MESHES:
             pack.pieces[-1]["face"] = name
@@ -371,6 +377,7 @@ def build(pack, export):
     pack.tints.update({"skin": (1.0, 1.0, 1.0, 1.0), "eye": (1.0, 1.0, 1.0, 0.25), "teeth": (1.0, 1.0, 1.0, 0.5),
                        "brow": (1.0, 1.0, 1.0, 0.6), "hair": (1.0, 1.0, 1.0, 0.55)})
     pack.tints.setdefault("cloth", (1.0, 1.0, 1.0, 1.0))
+    pack.tints.update(pack_human.EYE_TINTS)
     pack.body = "female" if body_female(P) else "male"
     return {"flip_v": flip_v}
 
@@ -719,7 +726,8 @@ def dressed(pack, sources, down, head, W, p, P):
                 # body
                 gs = sorted(gap)
                 print(f"gap {node['name']}: cm off the body 25/50/75/95% " + " ".join(f"{gs[int(len(gs) * q)]:.1f}" for q in (0.25, 0.5, 0.75, 0.95)))
-                if gs[len(gs) // 2] > 1.0:
+                close = gs[len(gs) // 2] <= 1.0
+                if not close:
                     kw = spread(hanging(loose(kw, [99.0] * len(kw)), keys), keys, sigma=6.0)
                 else:
                     kw = loose(kw, gap)
@@ -740,6 +748,11 @@ def dressed(pack, sources, down, head, W, p, P):
                                 acc[k] = acc.get(k, 0.0) + f * v
                         nxt.append(acc)
                     kw = nxt
+                # close cloth (a sweater) spreads a raised arm's pull over the band where its
+                # sleeve meets its side; loose cloth (a robe) is blended over 6 cm already, and
+                # more there spikes its edges in a walk
+                if close:
+                    kw = armpit(kw, nbr)
                 # a small piece (a tie, a collar's fall, a trim, a shirt's front) moves as one: its
                 # vertices all take the piece's mean weights, so it can't stretch
                 lo = [min(x[i] for x in keys) for i in range(3)]; hi = [max(x[i] for x in keys) for i in range(3)]
@@ -827,6 +840,31 @@ def limb_side(k):
     if n.split("_")[0] in ARM + HAND:
         return n[-1]
     return None
+
+
+def armpit(kw, nbr, iters=30, rings=2):
+    """Where a garment's weights mix the arm with the trunk (a sleeve meeting the side), and two
+    rings round that, its weights smoothed over its neighbours 30 times more: a raised arm (the
+    slash, the spell) stretches the cloth across that whole band instead of along the seam. The
+    sleeve's own points stay with the arm (in the clips, 95% within about a centimetre)."""
+    arm = {k for k, n in enumerate(LOWER) if n.split("_")[0] in ARM + HAND}
+    share = lambda w: sum(v for k, v in w.items() if k in arm) / max(sum(w.values()), 1e-9)
+    band = {i for i, w in enumerate(kw) if 0.02 < share(w) < 0.98}
+    for _ in range(rings):
+        band |= {j for i in band for j in nbr[i]}
+    for _ in range(iters):
+        nxt = list(kw)
+        for i in band:
+            if not nbr[i]:
+                continue
+            acc = {k: 0.5 * v for k, v in kw[i].items()}
+            f = 0.5 / len(nbr[i])
+            for j in nbr[i]:
+                for k, v in kw[j].items():
+                    acc[k] = acc.get(k, 0.0) + f * v
+            nxt[i] = acc
+        kw = nxt
+    return kw
 
 
 def loose(kw, gap):

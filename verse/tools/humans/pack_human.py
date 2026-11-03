@@ -35,6 +35,9 @@ The catalog, a line each:
                                 image: a map whose green points up is flipped, green_up()) or
                                 rough (G)
   box X0 Y0 Z0 X1 Y1 Z1         the bind pose's bounds
+  D LOD NAME FIRST COUNT MATERIAL  a piece at a lower level of detail (1, 2: reduce()), after
+                                every P line, the levels in order; the eyes' blended layers
+                                have none
   F FIRST COUNT BYTES           a face rig (face_rig.py): its vertices' range in the vertex
                                 buffer, and its block's length; the block follows the text
                                 after a NUL (aethyr/facerig.coax reads it)
@@ -45,7 +48,12 @@ sign, uv (2 x unorm16), four joints (u8) and their weights (u8, 255ths summing t
 layers its material reads (base, normal, rough; 255 none).
 
 Materials: 1 skin, 2 eye, 3 hair, 4 brow, 5 cloth, 6 teeth, 7 eye wet layer, 8 to 16 more
-cloths (a colour each, from the portrait's materials). A material with no base layer is its tint.
+cloths (a colour each, from the portrait's materials; 8 to 24), 25 the eyes' occlusion. A material
+with no base layer is its tint. The wet layer and the occlusion are blended over the eyes (the lab draws
+them last, as the host's water: one pass multiplies what lies behind, one adds): their uv is not
+a texture's but lid_coords', u from the lid's margin (0) inward (1), v up the eye's opening, and
+the wet layer's tint is its roughness (the occlusion's colour is scene_fs's: past the lab's 24
+material rows).
 """
 import io, math, os, struct, sys
 from pathlib import Path
@@ -58,7 +66,10 @@ KIND_CATALOG, KIND_VERTICES, KIND_INDICES, KIND_LAYER = 1, 2, 3, 4
 SPAN, LOW = 2.5, -0.25
 JOINTS = 65
 NONE = 255
-MATERIALS = {"skin": 1, "eye": 2, "hair": 3, "brow": 4, "cloth": 5, "teeth": 6, "wet": 7}
+MATERIALS = {"skin": 1, "eye": 2, "hair": 3, "brow": 4, "cloth": 5, "teeth": 6, "wet": 7, "occlusion": 25}
+BLENDED = (7, 25)       # drawn last, over what is behind them
+# the eyes' wet layer: its roughness
+EYE_TINTS = {"wet": (1.0, 1.0, 1.0, 0.06)}
 MATERIALS.update({f"cloth{k}": 8 + k for k in range(17)})   # more cloths, each its own colour (8 to 24)
 OUT_DIR = Path.home() / ".openagents/verse/private-build/web"
 
@@ -134,6 +145,156 @@ def vertex(v, tangent, material, layers):
                        octa(v["n"]), octa(t),
                        round(u * 65535) | (round(w * 65535) << 16),
                        *v["j"], *v["w"], base, normal, rough, material)
+
+
+# Levels of detail below the full mesh: a vertex-clustering cell size each (metres). The lab
+# switches by how tall the figure stands on the screen.
+LODS = (0.008, 0.025)
+
+
+def octant(n):
+    """A normal's dominant axis and sign (0..5): clustering keeps a cloth's two sides apart."""
+    k = max(range(3), key=lambda i: abs(n[i]))
+    return 2 * k + (n[k] < 0)
+
+
+def reduce(verts, tris, cell):
+    """A piece at a lower level of detail, by vertex clustering: the vertices in one cell of the
+    grid all move to one place (the one nearest their middle) and take its skin weights, so the
+    surface stays closed in every pose; those
+    facing another way or in another 1/8 of uv (a seam, a cloth's other side) keep their own uv,
+    normal and weights there. Triangles that collapse go."""
+    cells = {}
+    for i, v in enumerate(verts):
+        cells.setdefault(tuple(math.floor(c / cell) for c in v["p"]), []).append(i)
+    keep, out = {}, []
+    for idx in cells.values():
+        mid = [sum(verts[i]["p"][k] for i in idx) / len(idx) for k in range(3)]
+        anchor = verts[min(idx, key=lambda i: math.dist(verts[i]["p"], mid))]
+        parts = {}
+        for i in idx:
+            v = verts[i]
+            parts.setdefault((octant(v["n"]), math.floor(v["uv"][0] * 8), math.floor(v["uv"][1] * 8)), []).append(i)
+        for part in parts.values():
+            best = min(part, key=lambda i: math.dist(verts[i]["p"], mid))
+            for i in part:
+                keep[i] = len(out)
+            v = dict(verts[best]); v["p"] = anchor["p"]; v["j"] = list(anchor["j"]); v["w"] = list(anchor["w"])
+            out.append(v)
+    seen, tri = set(), []
+    for t in tris:
+        a, b, c = (keep[i] for i in t)
+        if len({a, b, c}) < 3 or len({out[a]["p"], out[b]["p"], out[c]["p"]}) < 3:
+            continue
+        k = tuple(sorted((a, b, c)))
+        if k in seen:
+            continue
+        seen.add(k); tri.append((a, b, c))
+    used = sorted({i for t in tri for i in t})
+    at = {i: k for k, i in enumerate(used)}
+    return [out[i] for i in used], [tuple(at[i] for i in t) for t in tri]
+
+
+def lid_coords(verts, tris):
+    """Rewrites the uv of an eye's blended layer (a disc in the eye's opening, or a ring along
+    the lids) to lid coordinates: u from its outer border, the lids' margin (0), to its middle or
+    its inner border (1), along the surface; v up the opening, 0 at its lowest point, 1 at its
+    highest. Each connected part (an eye) on its own. Vertices split at uv seams are one place."""
+    import heapq
+    from collections import defaultdict
+    ids, at = {}, []
+    for v in verts:
+        k = tuple(round(c, 6) for c in v["p"])
+        if k not in ids:
+            ids[k] = len(at); at.append(v["p"])
+        v["_k"] = ids[k]
+    edges, nbr = defaultdict(int), defaultdict(set)
+    for t in tris:
+        q = [verts[i]["_k"] for i in t]
+        for a, b in ((q[0], q[1]), (q[1], q[2]), (q[2], q[0])):
+            edges[(min(a, b), max(a, b))] += 1; nbr[a].add(b); nbr[b].add(a)
+    # a quad's diagonal is inside it: only an edge one triangle uses, both ways round a quad
+    # split in two, is the border
+    rim = defaultdict(set)
+    for (a, b), c in edges.items():
+        if c == 1:
+            rim[a].add(b); rim[b].add(a)
+    def walk(seed, links):
+        seen, stack = {seed}, [seed]
+        while stack:
+            for y in links[stack.pop()]:
+                if y not in seen:
+                    seen.add(y); stack.append(y)
+        return seen
+    def dist(seeds):
+        d = {i: 0.0 for i in seeds}; q = [(0.0, i) for i in seeds]
+        while q:
+            dd, i = heapq.heappop(q)
+            if dd > d[i]:
+                continue
+            for j in nbr[i]:
+                nd = dd + math.dist(at[i], at[j])
+                if nd < d.get(j, 1e9):
+                    d[j] = nd; heapq.heappush(q, (nd, j))
+        return d
+    uv, done = {}, set()
+    for start in range(len(at)):
+        if start in done:
+            continue
+        part = walk(start, nbr); done |= part
+        loops, left = [], {i for i in part if i in rim}
+        while left:
+            loop = walk(next(iter(left)), rim); left -= loop; loops.append(loop)
+        if not loops:
+            continue
+        # the outer border reaches lowest and highest (a ring's inner one doesn't)
+        loops.sort(key=lambda l: -(max(at[i][1] for i in l) - min(at[i][1] for i in l)))
+        out = dist(loops[0])
+        inner = dist(set().union(*loops[1:])) if len(loops) > 1 else None
+        far = max(out.get(i, 0.0) for i in part) or 1.0
+        y0 = min(at[i][1] for i in part); y1 = max(at[i][1] for i in part)
+        for i in part:
+            a = out.get(i, 0.0)
+            u = a / (a + inner[i]) if inner and a + inner.get(i, 0.0) > 0 else a / far
+            uv[i] = (min(max(u, 0.0), 1.0), (at[i][1] - y0) / max(y1 - y0, 1e-6))
+    for v in verts:
+        v["uv"] = uv.get(v.pop("_k"), (0.0, 0.0))
+    return verts
+
+
+def eye_layers(pack, eyes, segments=32, rings=6):
+    """Procedural blended layers for a figure whose eyes are bare balls (the CC0 stand-in): per eye
+    a cap on its ball (the occlusion) and a ring round the cap's edge (the wet layer), skinned as
+    the nearest eye vertex, so the lab's eye passes can be seen on art anyone may look at."""
+    from collections import defaultdict
+    sides = defaultdict(list)
+    for v in eyes["verts"]:
+        sides[v["p"][0] > 0].append(v)
+    cap, ring = ([], []), ([], [])
+    for side, vs in sides.items():
+        c = [sum(v["p"][k] for v in vs) / len(vs) for k in range(3)]
+        rad = max(math.dist(v["p"], c) for v in vs)
+        r_open = 0.75 * rad
+        near = lambda p: min(vs, key=lambda v: math.dist(v["p"], p))
+        def at(x, y):
+            z = c[2] + math.sqrt(max(rad * rad - x * x - y * y, 0.0)) + 0.0004
+            p = (c[0] + x, c[1] + y, z); n = tuple((p[k] - c[k]) / rad for k in range(3))
+            w = near(p)
+            return {"p": p, "n": n, "uv": (0.0, 0.0), "j": list(w["j"]), "w": list(w["w"])}
+        def grid(verts, tris, radii):
+            base = len(verts)
+            for r in radii:
+                for k in range(segments):
+                    a = 2 * math.pi * k / segments
+                    verts.append(at(r * math.cos(a), 0.62 * r * math.sin(a)))
+            for i in range(len(radii) - 1):
+                for k in range(segments):
+                    a, b = base + i * segments + k, base + i * segments + (k + 1) % segments
+                    tris += [(a, b + segments, b), (a, a + segments, b + segments)]
+        grid(*cap, [r_open * (1 - i / rings) + 1e-5 for i in range(rings + 1)])
+        grid(*ring, [r_open * 0.98, r_open * 0.8])
+    for name, (verts, tris), material in (("eyes/occlusion", cap, "occlusion"), ("eyes/wet", ring, "wet")):
+        pack.piece(name, lid_coords(verts, tris), tris, material)
 
 
 def green_up(path, n=256):
@@ -217,9 +378,11 @@ def write(pack, out, size):
     # opaque pieces first, then the ones with cut-out or blended texels (hair, brows, the eyes' wet
     # layer); the face rig's pieces (head, teeth, eyes, lashes) together where the two groups meet,
     # so its vertices are one range
+    # and the blended layers last of all (the lab draws its last pieces blended)
     def rank(p):
-        cut = p["material"] in (3, 4, 7)
-        return (cut, ("face" in p) != cut)
+        cut = p["material"] in (3, 4)
+        blended, face = p["material"] in BLENDED, "face" in p
+        return (blended, face != blended, cut)
     order = sorted(pack.pieces, key=rank)
     face_first = None
     for p in order:
@@ -237,6 +400,19 @@ def write(pack, out, size):
         ib += [count + k for t in p["tris"] for k in t]
         lines.append(f"P {p['name']} {first} {len(ib) - first} {p['material']}")
         count += len(p["verts"])
+    for level, cell in enumerate(LODS, 1):
+        for p in order:
+            if p["material"] in BLENDED:
+                continue
+            verts, tris = reduce(p["verts"], p["tris"], cell)
+            if not tris:
+                continue
+            for v, t in zip(verts, tangents(verts, tris)):
+                vb += vertex(v, t, p["material"], p["layers"])
+            first = len(ib)
+            ib += [count + k for t in tris for k in t]
+            lines.append(f"D {level} {p['name']} {first} {len(ib) - first} {p['material']}")
+            count += len(verts)
     images = [layer_bytes(img, size, flip) for _, _, img, flip in pack.images]
     for k, (role, source, _, _) in enumerate(pack.images):
         lines.append(f"L {k} {role} {source}")
@@ -301,6 +477,9 @@ def standin(pack):
             pack.piece(f"{path.stem}/{pr['material']}", pr["verts"], pr["tris"], material, b, n, r)
     pack.tints = {"skin": (1.0, 1.0, 1.0, 1.0), "eye": (1.0, 1.0, 1.0, 0.4), "hair": (0.16, 0.1, 0.06, 0.55),
                   "brow": (0.16, 0.1, 0.06, 0.6), "cloth": (1.0, 1.0, 1.0, 1.0)}
+    pack.tints.update(EYE_TINTS)
+    eyes = next(p for p in pack.pieces if p["material"] == MATERIALS["eye"])
+    eye_layers(pack, eyes)
 
 
 def main(argv):

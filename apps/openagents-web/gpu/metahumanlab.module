@@ -1,1 +1,1 @@
---vertices mhlab_bg_vs,mhlab_caster_vs,mhlab_scene_vs,mhlab_shadow_vs,mhlab_fx_vs --fragments mhlab_bg_fs,mhlab_scene_fs,mhlab_shadow_fs,mhlab_fx_fs --bindings apps/openagents-web/gpu/metahumanlab.bindings --strip mhlab_
+--vertices mhlab_bg_vs,mhlab_caster_vs,mhlab_scene_vs,mhlab_shadow_vs,mhlab_water_vs,mhlab_fx_vs --fragments mhlab_bg_fs,mhlab_scene_fs,mhlab_shadow_fs,mhlab_water_transmit_fs,mhlab_water_emit_fs,mhlab_bloom_fs,mhlab_post_fs,mhlab_fx_fs --bindings apps/openagents-web/gpu/metahumanlab.bindings --strip mhlab_

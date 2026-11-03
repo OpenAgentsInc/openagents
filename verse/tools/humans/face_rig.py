@@ -22,7 +22,8 @@ from pathlib import Path
 
 MAGIC = b"FRG1"
 # The meshes the pack draws that the face rig moves, by DNA mesh name.
-FACE_MESHES = ("head_lod0_mesh", "teeth_lod0_mesh", "eyeLeft_lod0_mesh", "eyeRight_lod0_mesh", "eyelashes_lod0_mesh")
+FACE_MESHES = ("head_lod0_mesh", "teeth_lod0_mesh", "eyeLeft_lod0_mesh", "eyeRight_lod0_mesh", "eyelashes_lod0_mesh",
+               "eyeshell_lod0_mesh", "eyeEdge_lod0_mesh")
 DELTA_MIN = 0.01        # cm: blend shape deltas below this (a tenth of a millimetre) are dropped
 DELTA_UNIT = 0.001      # cm per step of a packed delta (i16)
 INFLUENCES = 6          # joints kept per point

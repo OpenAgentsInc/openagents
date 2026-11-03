@@ -18,7 +18,11 @@ unlisted V key) and only reduced to numbers here:
   face      with a face rig in the pack: the rig runs (the material view's blue), and an
             expression (the lab's X) moves the face: the share of the face's pixels whose uv
             changes
+  eyes      the eyes' blended layers (the occlusion, 25, and the wet layer, 7) are the catalog's
+            last pieces, so the lab draws them over the scene
   frame     the share of the frame the figure covers
+  lod       each lower level of detail (the lab's unlisted L) covers the figure's pixels as the
+            full mesh does: the share of them it misses and the share it adds
 
 Exits non-zero if a check fails.
 """
@@ -31,11 +35,13 @@ RENDERS = Path.home() / ".openagents/verse/private-build/renders"
 HUD_TOP, HUD_BOTTOM = 70, 960
 
 
-def shot(url, out, views, face=True, expressions=0):
+def shot(url, out, views, face=True, expressions=0, lod=-1):
     """A frame after pressing V `views` times; face: the lab's unlisted F first (the clip paused at
     its start, the camera on the face: every load the same frame, so the views line up)."""
     keys = ("window.dispatchEvent(new KeyboardEvent('keydown',{key:'f'}));window.dispatchEvent(new KeyboardEvent('keyup',{key:'f'}));"
             if face else "")
+    keys += (f"for(let i=0;i<{lod + 1};i++){{window.dispatchEvent(new KeyboardEvent('keydown',{{key:'l'}}));"
+             "window.dispatchEvent(new KeyboardEvent('keyup',{key:'l'}));}")
     keys += (f"for(let i=0;i<{expressions};i++){{window.dispatchEvent(new KeyboardEvent('keydown',{{key:'x'}}));"
              "window.dispatchEvent(new KeyboardEvent('keyup',{key:'x'}));}")
     keys += (f"for(let i=0;i<{views};i++){{window.dispatchEvent(new KeyboardEvent('keydown',{{key:'v'}}));"
@@ -144,9 +150,29 @@ def main(argv):
         print(f"face: the rig runs on {runs / max(n, 1):.1%} of the face's pixels; an expression moves {moved / max(n, 1):.1%} of them")
         if not n or runs / n < 0.95 or moved / n < 0.02:
             failed.append("face")
+    pieces = [int(m.group(1)) for m in re.finditer(r"^P \S+ \d+ \d+ (\d+)$", cat, re.M)]
+    tail = []
+    for m in reversed(pieces):
+        if m not in (7, 25):
+            break
+        tail.append(m)
+    blended = sum(1 for m in pieces if m in (7, 25))
+    print(f"eyes: {blended} blended pieces, the last {len(tail)} of the catalog's {len(pieces)} (occlusion {tail.count(25)}, wet {tail.count(7)})")
+    if blended != len(tail) or (blended and not (25 in tail and 7 in tail)):
+        failed.append("eyes")
     probe = shot(page, RENDERS / "check-figure.png", 2, face=False).load()
     cover = sum(1 for y in range(HUD_TOP, HUD_BOTTOM) for x in range(1600) if any(probe[x, y])) / (1600 * (HUD_BOTTOM - HUD_TOP))
     print(f"frame: the figure covers {cover:.1%} of the frame")
+    levels = sorted({int(m.group(1)) for m in re.finditer(r"^D (\d+) ", cat, re.M)})
+    if levels:
+        full = {(x, y) for y in range(HUD_TOP, HUD_BOTTOM) for x in range(1600) if any(probe[x, y])}
+        for lv in levels:
+            im = shot(page, RENDERS / f"check-figure-lod{lv}.png", 2, face=False, lod=lv).load()
+            got = {(x, y) for y in range(HUD_TOP, HUD_BOTTOM) for x in range(1600) if any(im[x, y])}
+            miss, extra = len(full - got) / max(len(full), 1), len(got - full) / max(len(full), 1)
+            print(f"lod {lv}: misses {miss:.1%} of the full mesh's pixels, adds {extra:.1%}")
+            if miss > 0.08 or extra > 0.08:
+                failed.append(f"lod{lv}")
     print("checks", "failed: " + ", ".join(failed) if failed else "passed")
     return 1 if failed else 0
 

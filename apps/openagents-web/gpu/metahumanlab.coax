@@ -227,7 +227,11 @@ mhlab_depth :: (z:f32)->f32 {
   if (z<=MHLAB_NEAR) { return 0.0f32; }
   return fmin((MHLAB_FAR*(z-MHLAB_NEAR))/((MHLAB_FAR-MHLAB_NEAR)*z),1.0f32);
 }
-MhlabBg :: struct {c:V4; depth:f32 #depth; }
+// bg_fs and scene_fs draw linear light (the post pass's rgba16float; its alpha the share that
+// blooms, none) and aux (unused); post_fs tones it for the screen, smooths its edges (FXAA) and
+// lays the HUD's strips over it. A probe view's pixels are the probe's numbers, passed through.
+MhlabBg :: struct {light:V4; aux:V4; depth:f32 #depth; }
+MhlabLit :: struct {light:V4; aux:V4; }
 mhlab_bg_fs :: (pos:V4,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->MhlabBg {
   p:V2=v2(pos.x,pos.y);
   eye:V3=wg_at3(u,16);
@@ -248,13 +252,12 @@ mhlab_bg_fs :: (pos:V4,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->M
   if (mesh) { c=scale3(v3(pow(fmax(c.x,0.0f32),2.2f32),pow(fmax(c.y,0.0f32),2.2f32),pow(fmax(c.z,0.0f32),2.2f32)),0.95f32); }
   depth:f32=1.0f32;
   if (h.m>=0.0f32) { depth=mhlab_depth(h.t*dot3(rd,fwd)); }
-  c=mhlab_strips(p,mhlab_out(c,u),u);
   if (probe>0.5f32) {
     // a probe view: black, and on 3 magenta wherever a capsule of the figure would be drawn
     c=v3(0.0f32,0.0f32,0.0f32);
     if ((probe>2.5f32)&&(probe<3.5f32)&&(h.m>0.5f32)) { c=v3(1.0f32,0.0f32,1.0f32); }
   }
-  return MhlabBg.{c=v4(c.x,c.y,c.z,1.0f32),depth=depth};
+  return MhlabBg.{light=v4(c.x,c.y,c.z,0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32),depth=depth};
 }
 // ---- the mesh (a human pack, verse/tools/humans/pack_human.py): GPU skinning by four joints of
 // the pose (metahumanlab.coax lab_palette: three rows of four per joint), drawn into the depth
@@ -501,7 +504,7 @@ mhlab_bayer :: (x:int,y:int)->f32 {
   k:int=(((x0+y0)%2)*8)+(y0*4)+(((x1+y1)%2)*2)+y1;
   return (cast(f32)(k)+0.5f32)/16.0f32;
 }
-mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->MhlabLit {
   dx:V2=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));
   dy:V2=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));
   // the skeleton overlay: the body as stippled glass, so the bones read through it
@@ -567,7 +570,7 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
     c=add3(c,scale3(env,fs*(1.0f32-(rough*rough))*ao*0.6f32));
   }
   // cloth: a soft sheen where the weave turns from the eye
-  if (m>=8) {
+  if ((m>=8)&&(m<=24)) {
     sheen:f32=pow(1.0f32-saturate(dot3(n,v)),3.0f32)*0.22f32;
     c=add3(c,scale3(v3(0.4f32+albedo.x,0.4f32+albedo.y,0.4f32+albedo.z),sheen*(0.35f32+(0.65f32*sh))));
   }
@@ -582,8 +585,6 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
     glint:f32=mhlab_ggx(saturate(dot3(ng,hk)),0.02f32)*0.0025f32*sh;
     c=add3(c,scale3(v3(1.0f32,0.96f32,0.9f32),glint*u[384]));
   }
-  c=mhlab_out(c,u);
-  c=mhlab_strips(v2(s.pos.x,s.pos.y),c,u);
   // the probe views a script reads: the albedo as the screen's sRGB, or uv and the base layer
   if ((u[386]>0.5f32)&&(u[386]<1.5f32)) { c=v3(mhlab_srgb(albedo.x),mhlab_srgb(albedo.y),mhlab_srgb(albedo.z)); }
   if ((u[386]>1.5f32)&&(u[386]<2.5f32)) { c=v3(fract(s.uv.x),fract(s.uv.y),cast(f32)(s.layers&255)/255.0f32); }
@@ -592,6 +593,114 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   // material and the base layer together (one frame, so they can't drift apart between shots)
   if (u[386]>3.5f32) { c=v3(cast(f32)(m)/255.0f32,0.0f32,0.0f32); }
   if (u[386]>4.5f32) { c=v3(cast(f32)(m)/255.0f32,cast(f32)(s.layers&255)/255.0f32,saturate(u[390])); }
+  return MhlabLit.{light=v4(c.x,c.y,c.z,0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+}
+// ---- the eyes' blended layers (pack_human.py: material 25 the occlusion, 7 the wet layer), the
+// pack's last pieces, drawn after the scene as the host draws water: depth-tested and not written,
+// water_transmit_fs multiplying what lies behind, then water_emit_fs adding. Their uv is lid
+// coordinates (pack_human.lid_coords): x from the lids' margin (0) inward (1), y up the opening.
+// They blend in the post pass's linear light, before the tone.
+mhlab_water_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,pose:[]V4)->MhlabS {
+  return mhlab_scene_vs(id,instance,u,vertices,pose);
+}
+// How much the lids shade the eye here: most at their margin, the upper lid (and its lashes)
+// more than the lower, the corners most.
+mhlab_lid_shade :: (uv:V2)->f32 {
+  edge:f32=1.0f32-smoothstep(0.0f32,0.55f32,uv.x);
+  upper:f32=0.55f32+(0.45f32*smoothstep(0.35f32,0.9f32,uv.y));
+  return saturate(edge*upper);
+}
+mhlab_water_transmit_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+  m:u32=s.material;
+  if ((m!=25)||(u[386]>0.5f32)) { return v4(1.0f32,1.0f32,1.0f32,1.0f32); }
+  // what the lids' shade leaves: a little of the skin's warmth
+  mat:V4=v4(0.32f32,0.2f32,0.17f32,0.75f32);
+  k:f32=mhlab_lid_shade(s.uv)*mat.w;
+  t:V3=v3(1.0f32-(k*(1.0f32-mat.x)),1.0f32-(k*(1.0f32-mat.y)),1.0f32-(k*(1.0f32-mat.z)));
+  return v4(t.x,t.y,t.z,1.0f32);
+}
+// The wet layer: a thin film of tears along the lids, all highlight: the key's, fill's and rim's
+// glints and the sky's reflection, strongest at the meniscus on the margin, fading inward.
+mhlab_water_emit_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+  m:u32=s.material;
+  if ((m!=7)||(u[386]>0.5f32)) { return v4(0.0f32,0.0f32,0.0f32,1.0f32); }
+  film:f32=smoothstep(0.0f32,0.12f32,s.uv.x)*(1.0f32-smoothstep(0.35f32,0.95f32,s.uv.x));
+  n:V3=normalize3(s.normal);
+  if (!front) { n=scale3(n,-1.0f32); }
+  v:V3=normalize3(sub3(wg_at3(u,16),s.world));
+  nv:f32=saturate(dot3(n,v));
+  a:f32=fmax(wg_at4(u,280+6*4).w,0.02f32);
+  a=a*a;
+  sh:f32=mhlab_lit(s.world,n,u,shadow_map,shadow_cmp);
+  c:V3=v3(0.0f32,0.0f32,0.0f32);
+  k:int=0;
+  while k<3 {
+    l:V3=normalize3(wg_at3(u,276)); e:V3=scale3(v3(1.0f32,0.95f32,0.88f32),u[384]*sh);
+    if (k==1) { l=normalize3(wg_at3(u,376)); e=scale3(v3(0.75f32,0.82f32,1.0f32),u[379]); }
+    if (k==2) { l=normalize3(wg_at3(u,380)); e=scale3(v3(0.9f32,0.95f32,1.0f32),u[383]); }
+    nl:f32=saturate(dot3(n,l));
+    h:V3=normalize3(add3(l,v));
+    fr:f32=0.02f32+(0.98f32*pow(1.0f32-saturate(dot3(v,h)),5.0f32));
+    c=add3(c,scale3(e,fr*mhlab_ggx(saturate(dot3(n,h)),a)*mhlab_vis(nl,nv,a)*nl));
+    k+=1;
+  }
+  r:V3=reflect3(scale3(v,-1.0f32),n);
+  fe:f32=0.02f32+(0.98f32*pow(1.0f32-nv,5.0f32));
+  // the sky's reflection, as the scene's (a wet film is smooth: no roughness to dull it), kept
+  // small at grazing angles, where a film this thin shows the lid's skin through it as much
+  c=add3(c,scale3(mix3(v3(0.2f32,0.19f32,0.18f32),v3(0.4f32,0.44f32,0.52f32),saturate((r.y*0.5f32)+0.5f32)),fmin(fe,0.25f32)*0.35f32));
+  return v4(c.x*film,c.y*film,c.z*film,0.0f32);
+}
+// ---- the post pass
+// No bloom: the host runs bloom_fs's passes for any post pass; these write nothing to it.
+mhlab_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
+  return v4(0.0f32,0.0f32,0.0f32,1.0f32);
+}
+// The light at uv, toned for the screen.
+mhlab_toned :: (t:Tex2D,lin:Sampler,uv:V2,u:[]f32)->V3 {
+  l:V4=gpu_sample_level(t,lin,uv,0.0f32);
+  return mhlab_out(v3(l.x,l.y,l.z),u);
+}
+mhlab_luma :: (c:V3)->f32 { return dot3(c,v3(0.299f32,0.587f32,0.114f32)); }
+MHLAB_FXAA_SPAN :: 8.0f32;
+MHLAB_FXAA_REDUCE_MUL :: 0.125f32;
+MHLAB_FXAA_REDUCE_MIN :: 0.0078125f32;
+// FXAA (Lottes' FXAA 2 filter): from the four diagonal neighbours' luma, the edge's direction;
+// two taps along it (and two further, kept when they stay within the neighbours' range) blend the
+// staircase. On the toned image, so it smooths what the screen shows.
+mhlab_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
+  px:I2=i2(wg_i32_f(pos.x),wg_i32_f(pos.y));
+  if (u[386]>0.5f32) {
+    l:V4=wg_load_2d(post_light,px,0);
+    return v4(l.x,l.y,l.z,1.0f32);
+  }
+  size:U2=wg_dims_2d(post_light);
+  rx:f32=1.0f32/cast(f32)(size.x); ry:f32=1.0f32/cast(f32)(size.y);
+  uv:V2=v2(pos.x*rx,pos.y*ry);
+  lm:V4=wg_load_2d(post_light,px,0);
+  cm:V3=mhlab_out(v3(lm.x,lm.y,lm.z),u);
+  nw:f32=mhlab_luma(mhlab_toned(post_light,post_lin,v2(uv.x-rx,uv.y-ry),u));
+  ne:f32=mhlab_luma(mhlab_toned(post_light,post_lin,v2(uv.x+rx,uv.y-ry),u));
+  sw:f32=mhlab_luma(mhlab_toned(post_light,post_lin,v2(uv.x-rx,uv.y+ry),u));
+  se:f32=mhlab_luma(mhlab_toned(post_light,post_lin,v2(uv.x+rx,uv.y+ry),u));
+  m:f32=mhlab_luma(cm);
+  lo:f32=fmin(m,fmin(fmin(nw,ne),fmin(sw,se)));
+  hi:f32=fmax(m,fmax(fmax(nw,ne),fmax(sw,se)));
+  c:V3=cm;
+  if ((hi-lo)>fmax(0.03f32,hi*0.08f32)) {
+    dx:f32=-((nw+ne)-(sw+se));
+    dy:f32=(nw+sw)-(ne+se);
+    reduce:f32=fmax((nw+ne+sw+se)*0.25f32*MHLAB_FXAA_REDUCE_MUL,MHLAB_FXAA_REDUCE_MIN);
+    k:f32=1.0f32/(fmin(abs(dx),abs(dy))+reduce);
+    dx=clampf(dx*k,-MHLAB_FXAA_SPAN,MHLAB_FXAA_SPAN)*rx;
+    dy=clampf(dy*k,-MHLAB_FXAA_SPAN,MHLAB_FXAA_SPAN)*ry;
+    a:V3=scale3(add3(mhlab_toned(post_light,post_lin,v2(uv.x-(dx/6.0f32),uv.y-(dy/6.0f32)),u),mhlab_toned(post_light,post_lin,v2(uv.x+(dx/6.0f32),uv.y+(dy/6.0f32)),u)),0.5f32);
+    b:V3=add3(scale3(a,0.5f32),scale3(add3(mhlab_toned(post_light,post_lin,v2(uv.x-(dx*0.5f32),uv.y-(dy*0.5f32)),u),mhlab_toned(post_light,post_lin,v2(uv.x+(dx*0.5f32),uv.y+(dy*0.5f32)),u)),0.25f32));
+    lb:f32=mhlab_luma(b);
+    c=b;
+    if ((lb<lo)||(lb>hi)) { c=a; }
+  }
+  c=mhlab_strips(v2(pos.x,pos.y),c,u);
   return v4(c.x,c.y,c.z,1.0f32);
 }
 clamp_u :: (x:u32,a:u32,b:u32)->u32 {

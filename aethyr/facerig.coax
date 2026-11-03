@@ -44,6 +44,9 @@ FRIG_TARGETS_MAX :: 2048;
 FRIG_EXPRS_MAX :: 16;
 FRIG_INFLUENCES :: 6;
 FRIG_POINT_BYTES :: 72;          // rest xyz, normal xyz, 6 x (joint u16, pad u16, weight f32)
+FRIG_POINT_FLOATS :: 18;         // a point unpacked (frig_unpack): rest xyz, normal xyz, 6 joints, 6 weights
+// floats frig_unpack needs for n points: each unpacked, then the list of those that can move
+frig_unpacked_floats :: (n: int) -> int { return (FRIG_POINT_FLOATS + 1) * n; }
 FRIG_DELTA_UNIT :: 0.001;        // cm per step of a packed blend shape delta
 
 // Where things are in a block, found once when it arrives.
@@ -55,6 +58,9 @@ FaceRig :: struct {
   group_at: [FRIG_GROUPS_MAX] int;
   target_at: [FRIG_TARGETS_MAX] int;
   expr_off: [FRIG_EXPRS_MAX] int;
+  // after frig_unpack: how many points can move (a joint group drives one of their joints, or a
+  // blend shape moves them), listed after the unpacked points; and whether the others' rows are out
+  live: int; primed: bool;
 }
 
 frig_u8 :: (b: string, at: int) -> u32 { return cast(u32) b[at]; }
@@ -169,21 +175,24 @@ frig_psds :: (r: [] FaceRig, b: string, c: [] f32) {
 }
 
 // The joint groups' deltas into attr (9 per joint).
+// Each group's live inputs are gathered once, so a row costs only those (most of a face's
+// controls are 0 at any time).
 frig_joint_deltas :: (r: [] FaceRig, b: string, c: [] f32, attr: [] f32) {
   for i: 0..<9 * r[0].joints { attr[i] = 0; }
+  col: [1024] int; val: [1024] f32;
   for g: 0..<r[0].groups {
     o := r[0].group_at[g]; rows := frig_u32(b, o); cols := frig_u32(b, o + 4);
-    live := false;
-    for k: 0..<cols { if c[frig_u32(b, o + 8 + 4 * k)] != 0 { live = true; break; } }
-    if !live { continue; }
+    live := 0;
+    for k: 0..<cols {
+      x := c[frig_u32(b, o + 8 + 4 * k)];
+      if x != 0 && live < 1024 { col[live] = k; val[live] = x; live += 1; }
+    }
+    if live == 0 { continue; }
     outs := o + 8 + 4 * cols; vals := outs + 4 * rows;
     for row: 0..<rows {
       sum: f32 = 0;
       base := vals + 4 * row * cols;
-      for k: 0..<cols {
-        x := c[frig_u32(b, o + 8 + 4 * k)];
-        if x != 0 { sum += x * frig_f32(b, base + 4 * k); }
-      }
+      for a: 0..<live { sum += val[a] * frig_f32(b, base + 4 * col[a]); }
       attr[frig_u32(b, outs + 4 * row)] += sum;
     }
   }
@@ -235,8 +244,41 @@ frig_neutral_inverse :: (r: [] FaceRig, b: string, attr: [] f32, w: [] f32, inv:
 // Each point's move (cm) and normal for controls c: morph holds 3 per point (zeroed here), skin
 // the joints' skinning matrices (12 per joint, written here from w and inv), out 6 per point
 // (move xyz, normal xyz). still[j] says joint j's skinning matrix is the identity.
+// The points unpacked into floats once (FRIG_POINT_FLOATS each), so a frame's evaluation reads
+// no bytes for them, and the list of those that can move: a joint group drives one of their
+// joints, or a blend shape moves them. pts holds frig_unpacked_floats(points).
+frig_unpack :: (r: [] FaceRig, b: string, pts: [] f32) {
+  driven: [1024] bool;
+  for j: 0..<r[0].joints { if j < 1024 { driven[j] = false; } }
+  for g: 0..<r[0].groups {
+    o := r[0].group_at[g]; rows := frig_u32(b, o); cols := frig_u32(b, o + 4);
+    outs := o + 8 + 4 * cols;
+    for row: 0..<rows { j := frig_u32(b, outs + 4 * row) / 9; if j < 1024 { driven[j] = true; } }
+  }
+  list := FRIG_POINT_FLOATS * r[0].points;
+  for p: 0..<r[0].points { pts[list + p] = 0; }
+  for t: 0..<r[0].targets {
+    o := r[0].target_at[t]; first := frig_u32(b, o + 4); n := frig_u32(b, o + 8);
+    for k: 0..<n { pts[list + first + frig_u16(b, o + 12 + 8 * k)] = 1; }
+  }
+  live := 0;
+  for p: 0..<r[0].points {
+    o := r[0].point_at + FRIG_POINT_BYTES * p; q := FRIG_POINT_FLOATS * p;
+    for k: 0..<6 { pts[q + k] = frig_f32(b, o + 4 * k); }
+    moves := pts[list + p] > 0;
+    for k: 0..<FRIG_INFLUENCES {
+      j := frig_u16(b, o + 24 + 8 * k); wk := frig_f32(b, o + 28 + 8 * k);
+      pts[q + 6 + k] = f32(j);
+      pts[q + 12 + k] = wk;
+      if wk > 0 && j < 1024 && driven[j] { moves = true; }
+    }
+    // the list is written behind the flags it reads, never ahead of them
+    if moves { pts[list + live] = f32(p); live += 1; }
+  }
+  r[0].live = live; r[0].primed = false;
+}
 frig_points :: (r: [] FaceRig, b: string, c: [] f32, w: [] f32, inv: [] f32, skin: [] f32, still: [] bool,
-                morph: [] f32, out: [] f32) {
+                morph: [] f32, unpacked: [] f32, out: [] f32) {
   for j: 0..<r[0].joints {
     frig_mul(skin, 12 * j, w, 12 * j, inv, 12 * j);
     o := 12 * j;
@@ -244,7 +286,12 @@ frig_points :: (r: [] FaceRig, b: string, c: [] f32, w: [] f32, inv: [] f32, ski
     for i: 0..<3 { for k: 0..<4 { e = hi(e, abs(skin[o + 4 * i + k] - (ifx i == k then 1.0f32 else 0.0f32))); } }
     still[j] = e < 0.00001;
   }
-  for i: 0..<3 * r[0].points { morph[i] = 0; }
+  list := FRIG_POINT_FLOATS * r[0].points;
+  every := !r[0].primed;
+  count := ifx every then r[0].points else r[0].live;
+  if every { for i: 0..<3 * r[0].points { morph[i] = 0; } }
+  else { for a: 0..<count { p := cast(int) unpacked[list + a]; morph[3 * p] = 0; morph[3 * p + 1] = 0; morph[3 * p + 2] = 0; } }
+  r[0].primed = true;
   for t: 0..<r[0].targets {
     o := r[0].target_at[t];
     x := c[frig_u32(b, o)];
@@ -257,22 +304,23 @@ frig_points :: (r: [] FaceRig, b: string, c: [] f32, w: [] f32, inv: [] f32, ski
       morph[p] += s * f32(frig_i16(b, e + 2)); morph[p + 1] += s * f32(frig_i16(b, e + 4)); morph[p + 2] += s * f32(frig_i16(b, e + 6));
     }
   }
-  for p: 0..<r[0].points {
-    o := r[0].point_at + FRIG_POINT_BYTES * p;
-    rest := v3(frig_f32(b, o), frig_f32(b, o + 4), frig_f32(b, o + 8));
-    n := v3(frig_f32(b, o + 12), frig_f32(b, o + 16), frig_f32(b, o + 20));
+  for a: 0..<count {
+    p := ifx every then a else cast(int) unpacked[list + a];
+    o := FRIG_POINT_FLOATS * p;
+    rest := v3(unpacked[o], unpacked[o + 1], unpacked[o + 2]);
+    n := v3(unpacked[o + 3], unpacked[o + 4], unpacked[o + 5]);
     x := add(rest, v3(morph[3 * p], morph[3 * p + 1], morph[3 * p + 2]));
     moving := false;
     for k: 0..<FRIG_INFLUENCES {
-      if frig_f32(b, o + 28 + 8 * k) > 0 && !still[frig_u16(b, o + 24 + 8 * k)] { moving = true; }
+      if unpacked[o + 12 + k] > 0 && !still[cast(int) unpacked[o + 6 + k]] { moving = true; }
     }
     q := x; nq := n;
     if moving {
       q = v3(0, 0, 0); nq = v3(0, 0, 0);
       for k: 0..<FRIG_INFLUENCES {
-        wk := frig_f32(b, o + 28 + 8 * k);
+        wk := unpacked[o + 12 + k];
         if wk <= 0 { continue; }
-        m := 12 * frig_u16(b, o + 24 + 8 * k);
+        m := 12 * cast(int) unpacked[o + 6 + k];
         q = add(q, times(v3(skin[m] * x.x + skin[m + 1] * x.y + skin[m + 2] * x.z + skin[m + 3],
                              skin[m + 4] * x.x + skin[m + 5] * x.y + skin[m + 6] * x.z + skin[m + 7],
                              skin[m + 8] * x.x + skin[m + 9] * x.y + skin[m + 10] * x.z + skin[m + 11]), wk));
@@ -373,12 +421,14 @@ frig_run_test :: (blk: string, e: int, out: [] f32) -> bool {
   r: [1] FaceRig;
   if !frig_open(r[..], blk, 8, 4, 4) { return false; }
   c: [8] f32; attr: [36] f32; w: [48] f32; inv: [48] f32; skin: [48] f32; still: [4] bool; morph: [12] f32;
+  unpacked: [4 * (FRIG_POINT_FLOATS + 1)] f32;
   frig_neutral_inverse(r[..], blk, attr[..], w[..], inv[..]);
+  frig_unpack(r[..], blk, unpacked[..]);
   frig_add_expr(r[..], blk, e, 1, c[..]);
   frig_psds(r[..], blk, c[..]);
   frig_joint_deltas(r[..], blk, c[..], attr[..]);
   frig_worlds(r[..], blk, attr[..], w[..]);
-  frig_points(r[..], blk, c[..], w[..], inv[..], skin[..], still[..], morph[..], out);
+  frig_points(r[..], blk, c[..], w[..], inv[..], skin[..], still[..], morph[..], unpacked[..], out);
   return true;
 }
 

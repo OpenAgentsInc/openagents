@@ -37,17 +37,25 @@ U_FIG :: 260; U_LIGHT :: 264; U_MAT :: 280; U_RIG :: 376; U_PROBE :: 386;
 // The face rig's rows: its vertices' range (first, count) and whether it moves them.
 U_FACE :: 388;
 MATS :: 24;
-DRAWS_MAX :: 48;
+DRAWS_MAX :: 144;   // the full mesh's pieces and each lower level's (pack_human.py's D lines)
+// Levels of detail: the full mesh (with the face rig) while the figure stands taller on the screen
+// than LOD_TALL_0 px, the first lower level down to LOD_TALL_1, then the second; LOD_EASE is
+// the hysteresis, a share either way, so a figure at a boundary doesn't flicker.
+LODS :: 3;
+LOD_TALL_0 :: 340.0; LOD_TALL_1 :: 130.0;
+LOD_EASE :: 0.12;
 // The pack's assets in the page's list (realms.json "private:human"): its catalog, vertices,
 // indices and layers.
 PACK_CATALOG :: 0; PACK_PARTS :: 4;
 // The face rig's work (metahumanlab-face.c holds it): controls, joint attributes, the joints' world,
-// neutral inverse and skinning matrices, and per point its blend shape move and its result; its
+// neutral inverse and skinning matrices, per point its blend shape move and its result, and the
+// points unpacked (frig_unpack); its
 // rows for the vertex shader follow the palette in the pose store.
 FACE_CONTROLS :: 1024; FACE_JOINTS :: 1024; FACE_POINTS :: 40000; FACE_VERTICES :: 65536;
 FACE_W_C :: 0; FACE_W_ATTR :: 1024; FACE_W_WORLD :: 1024 + 9 * 1024; FACE_W_INV :: FACE_W_WORLD + 12 * 1024;
 FACE_W_SKIN :: FACE_W_INV + 12 * 1024; FACE_W_MORPH :: FACE_W_SKIN + 12 * 1024; FACE_W_PTS :: FACE_W_MORPH + 3 * 40000;
-FACE_WORK :: FACE_W_PTS + 6 * 40000;
+FACE_W_UNPACKED :: FACE_W_PTS + 6 * 40000;
+FACE_WORK :: FACE_W_UNPACKED + (FRIG_POINT_FLOATS + 1) * 40000;
 // Blinks: every 2.8 to 5.2 seconds, closing in 0.07, held 0.03, opening in 0.12.
 BLINK_CLOSE :: 0.07; BLINK_HOLD :: 0.03; BLINK_OPEN :: 0.12;
 EXPR_EASE :: 0.25;   // seconds an expression takes to come in
@@ -113,6 +121,10 @@ Lab :: struct {
   bturn: [MANNEQUIN_JOINTS] Quat;    // each joint's turn from the pack's bind pose to the rig's rest
   mats: [MATS * 4] f32;
   draws: [DRAWS_MAX * 4] u32; draw_n: int;
+  water_n: int;   // how many of the last draws are blended over the scene (the eyes' layers)
+  // the levels of detail: each one's draws (a range of draws), the one drawn, and the unlisted
+  // L key's choice (-1 by the figure's height on the screen, else that level)
+  lod_first: [LODS] int; lod_n: [LODS] int; lod: int; lod_pick: int = -1;
   palette: [MANNEQUIN_JOINTS * 12] f32; pal_version: int;
   // the face rig (a pack's F line and the block after its catalog): its state (0 none, 1 to open,
   // 2 running, -1 refused), where the block sits in the catalog, its vertices' range, the
@@ -153,7 +165,17 @@ turn_y :: (p: Point, yaw: f32) -> Point {
 }
 rig :: (s: [] Lab) -> SkinRig { return people_rig(s[0].rig[..], s[0].female); }
 // Whether a human pack's mesh draws the figure (else the capsules do).
-mesh_on :: (s: [] Lab) -> bool { return s[0].mesh && s[0].draw_n > 0; }
+mesh_on :: (s: [] Lab) -> bool { return s[0].mesh && s[0].lod_n[0] > 0; }
+// The level of detail for a figure this tall on the screen (px), from the one drawn now.
+lod_for :: (now: int, tall: f32, levels: int) -> int {
+  want := 0;
+  for k: 0..<LODS - 1 {
+    edge := (ifx k == 0 then f32(LOD_TALL_0) else f32(LOD_TALL_1)) * (ifx now > k then 1 + f32(LOD_EASE) else 1 - f32(LOD_EASE));
+    if tall < edge { want = k + 1; }
+  }
+  while want > 0 && levels <= want { want -= 1; }
+  return want;
+}
 clip_name :: (c: int) -> string { return PEOPLE_CLIP_NAME[c]; }
 // A gait: a clip that travels (walk, run), at its own pace in m/s; 0 for the rest.
 gait_speed :: (c: int) -> f32 {
@@ -420,6 +442,7 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   m = put(l[..], m, " "); m = put_int(l[..], m, s[0].clip + 1); m = put(l[..], m, "/"); m = put_int(l[..], m, PEOPLE_CLIPS);
   m = put(l[..], m, "   65 JOINTS");
   if s[0].face_state == 2 { m = put(l[..], m, "   FACE "); m = put(l[..], m, cast(string) s[0].expr_name[0..<s[0].expr_name_n]); }
+  if s[0].lod_pick >= 0 || s[0].lod > 0 { m = put(l[..], m, "   LOD "); m = put_int(l[..], m, s[0].lod); }
   if s[0].paused { m = put(l[..], m, "   PAUSED"); }
   sx0 := ifx s[0].portrait then pad else pad + text_width("METAHUMAN LAB", title_cap) + 28 * k;
   sy0 := ifx s[0].portrait then 54 * k else 34 * k;
@@ -525,6 +548,7 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   if key == ' ' || key == KEY_ENTER { s[0].paused = !s[0].paused; return true; }
   if key == 'k' || key == 'K' { s[0].bones = !s[0].bones; return true; }
   if key == 'v' || key == 'V' { s[0].probe = (s[0].probe + 1) % 6; return true; }
+  if key == 'l' || key == 'L' { s[0].lod_pick = ifx s[0].lod_pick + 1 >= LODS then -1 else s[0].lod_pick + 1; return true; }
   if key == 'f' || key == 'F' { face_view(s); return true; }
   if key == 'x' || key == 'X' { s[0].expr_ask += 1; return true; }
   if key == 'n' || key == 'N' { cycle_clip(s, 1); return true; }
@@ -634,7 +658,8 @@ lab_action_done :: (s: [] Lab) #export_c { s[0].out_n = 0; }
 // materials and the pieces, a draw each.
 lab_catalog :: (s: [] Lab, text: string) #export_c {
   lab_start(s);
-  s[0].draw_n = 0; s[0].binds = 0; s[0].pack_body = -1;
+  s[0].draw_n = 0; s[0].water_n = 0; s[0].binds = 0; s[0].pack_body = -1; s[0].lod = 0;
+  for k: 0..<LODS { s[0].lod_first[k] = 0; s[0].lod_n[k] = 0; }
   for j: 0..<MANNEQUIN_JOINTS { s[0].bturn[j] = Quat.{x = 0, y = 0, z = 0, w = 1}; }
   i := 0;
   s[0].face_state = 0; s[0].face_first = 0; s[0].face_count = 0; s[0].face_len = 0;
@@ -662,7 +687,9 @@ mesh_ready :: (s: [] Lab) {
   s[0].mesh = !s[0].pack_failed && s[0].pack_in == (1 << PACK_PARTS) - 1 && s[0].draw_n > 0;
   if s[0].mesh { lab_palette(s); }
 }
-lab_draw_count :: (s: [] Lab) -> int #export_c { return ifx mesh_on(s) then s[0].draw_n else 0; }
+lab_draw_count :: (s: [] Lab) -> int #export_c { return ifx mesh_on(s) then s[0].lod_n[s[0].lod] else 0; }
+lab_draw_first :: (s: [] Lab) -> int #export_c { return s[0].lod_first[s[0].lod]; }
+lab_water_draws :: (s: [] Lab) -> int #export_c { return ifx mesh_on(s) && s[0].lod == 0 then s[0].water_n else 0; }
 mh_word :: (line: string, from: int) -> int { e := from; while e < line.count && line[e] != ' ' { e += 1; } return e; }
 // An integer from at[0] (spaces before it skipped); at[0] is then past it, or -1 with none.
 mh_int :: (text: string, at: [] int) -> int {
@@ -730,10 +757,31 @@ mesh_line :: (s: [] Lab, line: string) {
     s[0].face_first = first; s[0].face_count = count; s[0].face_len = bytes;
     return;
   }
+  if line[0] == 'D' {
+    at[0] = 2;
+    level := mh_int(line, at[..]);
+    if at[0] < 0 { return; }
+    at[0] = mh_word(line, at[0] + 1);
+    first := mh_int(line, at[..]); count := mh_int(line, at[..]);
+    if at[0] < 0 || level < 1 || level >= LODS || first < 0 || count <= 0 || s[0].draw_n >= DRAWS_MAX { return; }
+    // a level's pieces are one run of draws, the levels in order
+    if s[0].lod_n[level] == 0 {
+      for k: level + 1..<LODS { if s[0].lod_n[k] > 0 { return; } }
+      s[0].lod_first[level] = s[0].draw_n;
+    } else if s[0].lod_first[level] + s[0].lod_n[level] != s[0].draw_n { return; }
+    o := s[0].draw_n * 4;
+    s[0].draws[o] = cast(u32) first; s[0].draws[o + 1] = cast(u32) count; s[0].draws[o + 2] = 0; s[0].draws[o + 3] = 1;
+    s[0].draw_n += 1; s[0].lod_n[level] += 1;
+    return;
+  }
   if line[0] == 'P' {
     at[0] = mh_word(line, 2);
-    first := mh_int(line, at[..]); count := mh_int(line, at[..]);
+    first := mh_int(line, at[..]); count := mh_int(line, at[..]); material := mh_int(line, at[..]);
     if at[0] < 0 || first < 0 || count <= 0 || s[0].draw_n >= DRAWS_MAX { return; }
+    // the eyes' blended layers (wet 7, occlusion 25) come last; the host draws them over the scene
+    s[0].water_n = ifx material == 7 || material == 25 then s[0].water_n + 1 else 0;
+    if s[0].lod_n[1] + s[0].lod_n[2] > 0 { return; }   // the full mesh's pieces come first
+    s[0].lod_n[0] += 1;
     o := s[0].draw_n * 4;
     s[0].draws[o] = cast(u32) first; s[0].draws[o + 1] = cast(u32) count; s[0].draws[o + 2] = 0; s[0].draws[o + 3] = 1;
     s[0].draw_n += 1;
@@ -790,7 +838,11 @@ mesh_uniforms :: (s: [] Lab, u: [] f32, mid: Point, reach: f32) {
   u[U_FLAGS + 1] = ifx on then 1 else 0;
   u[U_PROBE] = cast(f32) s[0].probe;
   if !on { return; }
-  if s[0].face_state == 2 { u[U_FACE] = f32(s[0].face_first); u[U_FACE + 1] = f32(s[0].face_count); u[U_FACE + 2] = 1; }
+  // the level of detail: by how tall the figure stands on the screen (or as L picks)
+  levels := 1; for k: 1..<LODS { if s[0].lod_n[k] > 0 { levels = k + 1; } }
+  tall := s[0].focal * 1.8 / hi(length(sub(mid, s[0].eye)), 0.1);
+  s[0].lod = ifx s[0].lod_pick >= 0 then (ifx s[0].lod_pick < levels then s[0].lod_pick else levels - 1) else lod_for(s[0].lod, tall, levels);
+  if s[0].face_state == 2 && s[0].lod == 0 { u[U_FACE] = f32(s[0].face_first); u[U_FACE + 1] = f32(s[0].face_count); u[U_FACE + 2] = 1; }
   u[U_FIG] = cos(s[0].fyaw); u[U_FIG + 1] = sin(s[0].fyaw); u[U_FIG + 2] = s[0].fx; u[U_FIG + 3] = s[0].fz;
   sun := unit_or(v3(u[U_SUN], u[U_SUN + 1], u[U_SUN + 2]), v3(0, 1, 0));
   side := unit_or(cross(v3(0, 1, 0), sun), v3(1, 0, 0));
@@ -822,12 +874,13 @@ lab_face :: (s: [] Lab, cat: string, work: [] f32, still: [] bool, rows: [] f32)
     if !frig_open(s[0].face[..], blk, FACE_CONTROLS, FACE_JOINTS, FACE_POINTS) || s[0].face[0].vertices != s[0].face_count { return false; }
     if 4 * s[0].face_count > rows.count { return false; }
     frig_neutral_inverse(s[0].face[..], blk, work[FACE_W_ATTR..<FACE_W_WORLD], work[FACE_W_WORLD..<FACE_W_INV], work[FACE_W_INV..<FACE_W_SKIN]);
+    frig_unpack(s[0].face[..], blk, work[FACE_W_UNPACKED..<FACE_WORK]);
     s[0].face_state = 2;
     s[0].expr = face_named(s, blk, "neutral");
     face_name(s, blk);
     for k: 0..<6 { s[0].face_key[k] = -1; }
   }
-  if s[0].face_state != 2 { return false; }
+  if s[0].face_state != 2 || s[0].lod != 0 { return false; }   // the lower levels have no face rig
   blk := cat[s[0].face_off..<s[0].face_off + s[0].face_len];
   r := s[0].face[..];
   // X: the next expression that isn't the blink's or the jaw's (those the lab plays itself)
@@ -866,8 +919,8 @@ lab_face :: (s: [] Lab, cat: string, work: [] f32, still: [] bool, rows: [] f32)
   frig_joint_deltas(r, blk, c, work[FACE_W_ATTR..<FACE_W_WORLD]);
   frig_worlds(r, blk, work[FACE_W_ATTR..<FACE_W_WORLD], work[FACE_W_WORLD..<FACE_W_INV]);
   frig_points(r, blk, c, work[FACE_W_WORLD..<FACE_W_INV], work[FACE_W_INV..<FACE_W_SKIN], work[FACE_W_SKIN..<FACE_W_MORPH],
-              still, work[FACE_W_MORPH..<FACE_W_PTS], work[FACE_W_PTS..<FACE_WORK]);
-  frig_vertices(r, blk, work[FACE_W_PTS..<FACE_WORK], rows);
+              still, work[FACE_W_MORPH..<FACE_W_PTS], work[FACE_W_UNPACKED..<FACE_WORK], work[FACE_W_PTS..<FACE_W_UNPACKED]);
+  frig_vertices(r, blk, work[FACE_W_PTS..<FACE_W_UNPACKED], rows);
   s[0].face_version += 1;
   return true;
 }
@@ -1159,6 +1212,46 @@ face_rig_in :: (s: [] Lab, text: [] u8) -> int {
   #assert lab_draw_count(s[..]) == 2 && u[U_FACE + 2] == 0;
 }
 
+#test "the eyes' blended layers, the catalog's last pieces, are the host's last draws; one before them isn't" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  text: [8192] u8;
+  n := rest_catalog(s[..], text[..]);
+  n = put(text[..], n, "P eyes/occlusion 360 30 25\nP eyes/wet 390 12 7\n");
+  lab_catalog(s[..], cast(string) text[0..<n]);
+  for i: 0..<PACK_PARTS { lab_pack_part(s[..], i, 100); }
+  #assert lab_draw_count(s[..]) == 4 && lab_water_draws(s[..]) == 2;
+  n = rest_catalog(s[..], text[..]);
+  n = put(text[..], n, "P eyes/wet 360 12 7\nP coat 372 30 8\n");
+  lab_catalog(s[..], cast(string) text[0..<n]);
+  #assert lab_draw_count(s[..]) == 4 && lab_water_draws(s[..]) == 0;
+}
+#test "levels of detail: D lines make each level's run of draws; a far figure draws a lower one, without the face rig" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  text: [8192] u8;
+  n := rest_catalog(s[..], text[..]);
+  n = put(text[..], n, "D 1 body/skin 360 150 1\nD 1 hair 510 30 3\nD 2 body/skin 540 60 1\n");
+  lab_catalog(s[..], cast(string) text[0..<n]);
+  for i: 0..<PACK_PARTS { lab_pack_part(s[..], i, 100); }
+  #assert s[0].lod_n[0] == 2 && s[0].lod_n[1] == 2 && s[0].lod_n[2] == 1 && s[0].lod_first[1] == 2 && s[0].lod_first[2] == 4;
+  u: [UNIFORM_FLOATS] f32;
+  m := frame_u(s[..], u[..]);
+  #assert s[0].lod == 0 && lab_draw_count(s[..]) == 2 && lab_draw_first(s[..]) == 0;
+  // L picks each level, then hands it back to the figure's height
+  #assert lab_key(s[..], 'l', 0); m = frame_u(s[..], u[..]);
+  #assert s[0].lod == 0;
+  #assert lab_key(s[..], 'l', 0); m = frame_u(s[..], u[..]);
+  #assert s[0].lod == 1 && lab_draw_count(s[..]) == 2 && lab_draw_first(s[..]) == 2 && s[0].draws[8] == 360;
+  #assert lab_key(s[..], 'l', 0); m = frame_u(s[..], u[..]);
+  #assert s[0].lod == 2 && lab_draw_count(s[..]) == 1 && s[0].draws[4 * lab_draw_first(s[..])] == 540;
+  #assert lab_key(s[..], 'l', 0); m = frame_u(s[..], u[..]);
+  #assert s[0].lod_pick == -1 && s[0].lod == 0;
+  // by height: a small figure is drawn coarser, and the boundary holds either way
+  #assert lod_for(0, 400, 3) == 0 && lod_for(0, 200, 3) == 1 && lod_for(0, 80, 3) == 2;
+  #assert lod_for(1, 360, 3) == 1 && lod_for(0, 320, 3) == 0 && lod_for(1, 390, 3) == 0;
+  #assert lod_for(0, 80, 1) == 0 && lod_for(0, 80, 2) == 1;
+}
 #test "with no pack the capsules draw the figure: no mesh draws, the mesh flag off" #steps 2000000000 {
   s: [1] Lab;
   u: [UNIFORM_FLOATS] f32;
