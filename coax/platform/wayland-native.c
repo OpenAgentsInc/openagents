@@ -33,6 +33,12 @@
 #define WL_MAPS 256
 
 static int lis = -1;
+/* The desk socket (os/compositor.coax --desk-socket): the desk protocol's clients, one JSON line a
+   request (os/desk.coax is one). Bytes only; the protocol is the compositor's. */
+#define WL_DESKS 8
+static int desk_lis = -1;
+static int desk_fd[WL_DESKS];
+static int desk_used[WL_DESKS];
 static int xwm_fd = -1, x_pending = -1, x_num = -1, x_lis = -1, x_slot = -1;   /* Xwayland: the window-manager end, its Wayland client before accept, its display */
 static char x_display[16];
 static int cl_fd[WL_CLIENTS];
@@ -55,6 +61,52 @@ int64_t cxwl_listen(coax_v_u8 path) {
   if (bind(fd, (struct sockaddr *)&a, sizeof a) < 0 || listen(fd, 16) < 0) { int e = errno; close(fd); return -(int64_t)e; }
   fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
   lis = fd;
+  return 0;
+}
+int64_t cxwl_desk_listen(coax_v_u8 path) {
+  struct sockaddr_un a; memset(&a, 0, sizeof a); a.sun_family = AF_UNIX;
+  if (path.count <= 0 || (size_t)path.count >= sizeof a.sun_path) return -ENAMETOOLONG;
+  memcpy(a.sun_path, path.data, (size_t)path.count);
+  unlink(a.sun_path);
+  int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+  if (fd < 0) return -(int64_t)errno;
+  if (bind(fd, (struct sockaddr *)&a, sizeof a) < 0 || listen(fd, 8) < 0) { int e = errno; close(fd); return -(int64_t)e; }
+  chmod(a.sun_path, 0600);
+  desk_lis = fd;
+  return 0;
+}
+/* A desk client's handle, or -1 when none is waiting. */
+int64_t cxwl_desk_accept(void) {
+  if (desk_lis < 0) return -1;
+  int fd = accept4(desk_lis, NULL, NULL, SOCK_CLOEXEC | SOCK_NONBLOCK);
+  if (fd < 0) return -1;
+  for (int i = 0; i < WL_DESKS; i++) if (!desk_used[i]) { desk_used[i] = 1; desk_fd[i] = fd; return i; }
+  close(fd);
+  return -1;
+}
+/* What a desk client sent: bytes into out, 0 when nothing is ready, -1 at its end. */
+int64_t cxwl_desk_recv(int64_t h, coax_v_u8 out) {
+  if (h < 0 || h >= WL_DESKS || !desk_used[h]) return -1;
+  ssize_t n = read(desk_fd[h], out.data, (size_t)out.count);
+  if (n > 0) return n;
+  if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) return 0;
+  return -1;
+}
+/* An answer line to a desk client: 0, or -1 when it is gone. */
+int64_t cxwl_desk_send(int64_t h, coax_v_u8 s) {
+  if (h < 0 || h >= WL_DESKS || !desk_used[h]) return -1;
+  size_t done = 0;
+  while (done < (size_t)s.count) {
+    ssize_t w = send(desk_fd[h], s.data + done, (size_t)s.count - done, MSG_NOSIGNAL);
+    if (w < 0 && (errno == EAGAIN || errno == EINTR)) { struct pollfd q = {desk_fd[h], POLLOUT, 0}; poll(&q, 1, 100); continue; }
+    if (w <= 0) return -1;
+    done += (size_t)w;
+  }
+  return 0;
+}
+int64_t cxwl_desk_close(int64_t h) {
+  if (h < 0 || h >= WL_DESKS || !desk_used[h]) return -1;
+  close(desk_fd[h]); desk_used[h] = 0;
   return 0;
 }
 int64_t cxwl_unlisten(coax_v_u8 path) {
@@ -133,9 +185,11 @@ int64_t cxwl_hangup(int64_t h) {
 int64_t cxwl_close_fd(int64_t fd) { return fd >= 0 ? close((int)fd) : -1; }
 /* Waits up to timeout_ms for the listener, a client, or stdin when watch_stdin: the ready count. */
 int64_t cxwl_poll(int64_t timeout_ms, int64_t watch_stdin) {
-  struct pollfd p[WL_CLIENTS + 3]; int n = 0;
+  struct pollfd p[WL_CLIENTS + WL_DESKS + 4]; int n = 0;
   if (lis >= 0) { p[n].fd = lis; p[n].events = POLLIN; p[n].revents = 0; n++; }
   if (watch_stdin) { p[n].fd = 0; p[n].events = POLLIN; p[n].revents = 0; n++; }
+  if (desk_lis >= 0) { p[n].fd = desk_lis; p[n].events = POLLIN; p[n].revents = 0; n++; }
+  for (int i = 0; i < WL_DESKS; i++) if (desk_used[i]) { p[n].fd = desk_fd[i]; p[n].events = POLLIN; p[n].revents = 0; n++; }
   if (xwm_fd >= 0) { p[n].fd = xwm_fd; p[n].events = POLLIN; p[n].revents = 0; n++; }
   for (int i = 0; i < WL_CLIENTS; i++) if (cl_used[i]) { p[n].fd = cl_fd[i]; p[n].events = POLLIN; p[n].revents = 0; n++; }
   int r = poll(p, (nfds_t)n, (int)timeout_ms);

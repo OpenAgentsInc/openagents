@@ -54,6 +54,8 @@ in
     system.switch.enable = false;
     boot.loader.grub.enable = false;
     boot.initrd.systemd.enable = true;
+    # the console on the screen and on the first serial port, so a boot can be read without one
+    boot.kernelParams = [ "console=ttyS0,115200" "console=tty1" ];
 
     fileSystems."/" = {
       device = "/dev/disk/by-partlabel/verse-os_${cfg.version}";
@@ -72,6 +74,8 @@ in
 
     image.repart = {
       name = "verse-os";
+      # 512-byte sectors: UEFI firmware (OVMF, and most real disks) reads them; repart's 4096 it may not
+      sectorSize = 512;
       partitions = {
         "10-esp" = {
           contents = {

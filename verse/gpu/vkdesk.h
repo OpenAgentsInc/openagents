@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -42,6 +43,7 @@ typedef struct {
   int dirty, has_frame, image_ready;
   int64_t mode;               // PANEL_CLOSED, PANEL_DOCKED, PANEL_FLAT
   uint32_t sw, sh;            // the screen it is shown on, for the pointer
+  int attached;               // the session's compositor (outlives this realm), not a child of ours
 } VkDesk;
 
 static VkDesk *vkdesk_;
@@ -60,6 +62,24 @@ static int vkdesk_open(Vkc *v, VkDesk *d, const char *dir, uint32_t dw, uint32_t
   snprintf(socket, sizeof socket, "%s/wayland-verse", rt);
   snprintf(d->frame_path, sizeof d->frame_path, "%s/verse-desk.ppm", rt);
   snprintf(wd, sizeof wd, "%u", dw); snprintf(hd, sizeof hd, "%u", dh);
+  // the session's compositor, when it runs one (verse-session: DIR/../desk.in and desk.out, FIFOs),
+  // so the desk's windows outlive travel; else one of our own
+  char fin[1100], fout[1100];
+  const char *run = getenv("VERSE_RUN");
+  if (run) {
+    snprintf(fin, sizeof fin, "%s/desk.in", run); snprintf(fout, sizeof fout, "%s/desk.out", run);
+    struct stat st;
+    if (!stat(fin, &st) && S_ISFIFO(st.st_mode) && !stat(fout, &st) && S_ISFIFO(st.st_mode)) {
+      d->to = open(fin, O_RDWR | O_CLOEXEC); d->from = open(fout, O_RDWR | O_CLOEXEC | O_NONBLOCK);
+      if (d->to >= 0 && d->from >= 0) {
+        char junk[4096]; while (read(d->from, junk, sizeof junk) > 0) {}   // a past realm's answers
+        d->pid = 1; d->attached = 1; d->ready = 1;
+        goto image;
+      }
+      if (d->to >= 0) close(d->to);
+      if (d->from >= 0) close(d->from);
+    }
+  }
   if (access(program, X_OK)) { fprintf(stderr, "vk-realm: no desk compositor at %s\n", program); return -1; }
   int in[2], out[2];
   if (pipe2(in, O_CLOEXEC) || pipe2(out, O_CLOEXEC)) return -1;
@@ -74,6 +94,7 @@ static int vkdesk_open(Vkc *v, VkDesk *d, const char *dir, uint32_t dw, uint32_t
   if (e) { close(in[1]); close(out[0]); d->pid = -1; fprintf(stderr, "vk-realm: the desk did not start\n"); return -1; }
   d->to = in[1]; d->from = out[0];
   fcntl(d->from, F_SETFL, fcntl(d->from, F_GETFL) | O_NONBLOCK);
+image:;
   // the panel's picture: BGRA as the swapchain is, filled from the staging buffer by a copy
   VkImageCreateInfo ii = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = VK_FORMAT_B8G8R8A8_UNORM,
                           .extent = {dw, dh, 1}, .mipLevels = 1, .arrayLayers = 1, .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -205,7 +226,8 @@ static int vkdesk_pointer(float x, float y, int button) {
 }
 
 static void vkdesk_close(Vkc *v, VkDesk *d) {
-  if (d->pid > 0) { vkdesk_say(d, "quit\n"); close(d->to); close(d->from); int st; for (int i = 0; i < 20 && waitpid(d->pid, &st, WNOHANG) == 0; i++) usleep(50000); kill(d->pid, SIGTERM); waitpid(d->pid, &st, 0); }
+  if (d->attached) { close(d->to); close(d->from); d->pid = -1; }   // the session's: it stays up
+  else if (d->pid > 0) { vkdesk_say(d, "quit\n"); close(d->to); close(d->from); int st; for (int i = 0; i < 20 && waitpid(d->pid, &st, WNOHANG) == 0; i++) usleep(50000); kill(d->pid, SIGTERM); waitpid(d->pid, &st, 0); }
   if (d->image) vkDestroyImage(v->dev, d->image, NULL);
   if (d->mem) vkFreeMemory(v->dev, d->mem, NULL);
   if (d->staging.buf) vkc_free(v, &d->staging);

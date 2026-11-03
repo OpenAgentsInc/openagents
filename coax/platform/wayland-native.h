@@ -23,6 +23,12 @@ typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
 int64_t cxwl_listen(coax_v_u8 path);
 int64_t cxwl_unlisten(coax_v_u8 path);
 int64_t cxwl_accept(void);
+/* The desk socket: listen on a path, accept a client (-1 none), its bytes (0 none, -1 gone), an answer, close. */
+int64_t cxwl_desk_listen(coax_v_u8 path);
+int64_t cxwl_desk_accept(void);
+int64_t cxwl_desk_recv(int64_t h, coax_v_u8 out);
+int64_t cxwl_desk_send(int64_t h, coax_v_u8 s);
+int64_t cxwl_desk_close(int64_t h);
 int64_t cxwl_recv(int64_t h, coax_v_u8 out);
 int64_t cxwl_fd_count(void);
 int64_t cxwl_fd(int64_t i);

@@ -79,6 +79,12 @@ as "failed to fetch"). Run it on the Mac.
 
 ## Verse OS V7: build and boot the image on a second machine (2026-11-02)
 
+**coderos-4080's disk is full** (937 GB, 885 GB used, 5 GB free on 2026-11-02;
+it was 2 GB free when an image build failed for lack of space). Building the
+image needs about 10 GB free. The image that did build (3.27 GB) booted in
+QEMU only as far as its boot entry, for a reason now fixed (512-byte
+sectors); it was deleted to give the space back.
+
 The image evaluates (`nix flake check ./os/nix`) and its realms package
 builds, but the disk itself was not built here, to keep the machine free for
 the other work on it. On a free machine with an AMD or Intel GPU and TPM2:

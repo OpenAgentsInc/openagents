@@ -29,6 +29,9 @@
 //   pointer on|off           draws the pointer in headless shots too
 //   bench N                  composites N times and says how long a frame took
 //   quit
+// --desk-socket PATH also serves the desk protocol (generation 1, os/desk.coax's) there, one JSON line
+// a request: list, focused, screens, open, move, click, close (by handle) and shot; the rest are
+// refused with code not_supported. Verse OS's session points CODER_DESK_SOCKET at it.
 // Effects (sockets, descriptors, shared memory) are coax/platform/wayland-native.c; the protocol,
 // every object and every decision is here.
 #import "Basic";
@@ -68,6 +71,11 @@ cxwl_run :: (args: [] u8, display: [] u8) -> int #foreign;
 cxwl_xwayland :: () -> int #foreign;
 cxwl_xwayland_handle :: () -> int #foreign;
 cxwl_xwayland_stop :: () -> int #foreign;
+cxwl_desk_listen :: (path: [] u8) -> int #foreign;
+cxwl_desk_accept :: () -> int #foreign;
+cxwl_desk_recv :: (h: int, out: [] u8) -> int #foreign;
+cxwl_desk_send :: (h: int, s: [] u8) -> int #foreign;
+cxwl_desk_close :: (h: int) -> int #foreign;
 cxx_send :: (b: [] u8) -> int #foreign;
 cxx_recv :: (out: [] u8) -> int #foreign;
 cxscr_open :: () -> int #foreign;
@@ -169,7 +177,10 @@ Cx :: struct {
   rules: [1] CxRules;
   xw: [1] CxXw;
   quit: bool; dirty: bool; screen: bool; show_pointer: bool;
+  desk_on: bool; desks: [CX_DESKS] CxDesk;   // --desk-socket: the desk protocol's clients
 }
+CX_DESKS :: 8;
+CxDesk :: struct { on: bool; buf: [8192] u8; n: int; }
 
 cx_say :: (s: string) { b: [8192] u8; n := 0; for c: s { if n < 8190 { b[n] = c; n += 1; } } b[n] = '\n'; x := cxwl_out(b[0..<n + 1]); }
 cx_rd :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24); }
@@ -1379,6 +1390,149 @@ cx_list :: (x: [] Cx) {
   }
   cx_say("end");
 }
+// ---- the desk protocol (--desk-socket)
+
+// The raw text of "key":"..." in a request line (no escapes are taken apart: the values the desk
+// protocol sends here are names, numbers and plain commands), or "".
+cx_jtext :: (line: string, key: string) -> string {
+  i := 0;
+  while i + key.count + 4 <= line.count {
+    if line[i] == '"' && line[i + 1..<i + 1 + key.count] == key && line[i + 1 + key.count] == '"' && line[i + 2 + key.count] == ':' && line[i + 3 + key.count] == '"' {
+      st := i + 4 + key.count; e := st;
+      while e < line.count && line[e] != '"' { if line[e] == '\\' { e += 1; } e += 1; }
+      return line[st..<cx_min(e, line.count)];
+    }
+    i += 1;
+  }
+  return "";
+}
+// "key":N in a request line, or fallback.
+cx_jint :: (line: string, key: string, fallback: int) -> int {
+  i := 0;
+  while i + key.count + 3 <= line.count {
+    if line[i] == '"' && line[i + 1..<i + 1 + key.count] == key && line[i + 1 + key.count] == '"' && line[i + 2 + key.count] == ':' {
+      k := i + 3 + key.count; neg := false;
+      if k < line.count && line[k] == '-' { neg = true; k += 1; }
+      if k >= line.count || line[k] < '0' || line[k] > '9' { return fallback; }
+      v := 0; while k < line.count && line[k] >= '0' && line[k] <= '9' { v = v * 10 + cast(int) (line[k] - '0'); k += 1; }
+      return ifx neg then -v else v;
+    }
+    i += 1;
+  }
+  return fallback;
+}
+#test "request fields" {
+  l := "{\"generation\":1,\"type\":\"move\",\"x\":12,\"y\":-3,\"command\":\"foot -e top\"}";
+  #assert cx_jtext(l, "type") == "move" && cx_jtext(l, "command") == "foot -e top" && cx_jtext(l, "none") == "";
+  #assert cx_jint(l, "x", 0) == 12 && cx_jint(l, "y", 0) == -3 && cx_jint(l, "z", 7) == 7 && cx_jint(l, "type", 9) == 9;
+}
+cx_put :: (b: [] u8, k: int, s: string) -> int { n := k; for c: s { if n < b.count { b[n] = c; n += 1; } } return n; }
+// a JSON string's body, escaped
+cx_put_json :: (b: [] u8, k: int, s: string) -> int {
+  n := k;
+  for c: s {
+    if n + 6 >= b.count { break; }
+    if c == '"' || c == '\\' { b[n] = '\\'; b[n + 1] = c; n += 2; }
+    else if c < 32 { b[n] = ' '; n += 1; }
+    else { b[n] = c; n += 1; }
+  }
+  return n;
+}
+cx_hex_into :: (b: [] u8, k: int, v: int) -> int {
+  d: [16] u8; m := 0; u := v; hex := "0123456789abcdef";
+  while true { d[m] = hex[u % 16]; m += 1; u = u / 16; if u == 0 || m == 16 { break; } }
+  n := k; for i: 0..<m { if n < b.count { b[n] = d[m - 1 - i]; n += 1; } }
+  return n;
+}
+cx_bool_into :: (b: [] u8, k: int, v: bool) -> int { return cx_put(b, k, ifx v then "true" else "false"); }
+// One window as the desk protocol has it.
+cx_desk_window :: (x: [] Cx, t: WmTile, b: [] u8, at: int) -> int {
+  m := x[0].wm[..];
+  s := x[0].win_surf[t.id];
+  fr: [4] int; cx_frame(x, t, wm_is_fullscreen(m, t.id), fr[..]);
+  k := cx_put(b, at, "{\"handle\":\"0x"); k = cx_hex_into(b, k, t.id);
+  k = cx_put(b, k, "\",\"desk\":"); k = cx_num_into(b, k, t.desk);
+  k = cx_put(b, k, ",\"screen\":\"verse\",\"at\":{\"x\":"); k = cx_num_into(b, k, fr[0]); k = cx_put(b, k, ",\"y\":"); k = cx_num_into(b, k, fr[1]);
+  k = cx_put(b, k, "},\"size\":{\"width\":"); k = cx_num_into(b, k, fr[2]); k = cx_put(b, k, ",\"height\":"); k = cx_num_into(b, k, fr[3]);
+  k = cx_put(b, k, "},\"class\":\""); if s >= 0 { k = cx_put_json(b, k, cast(string) x[0].surfs[s].app[0..<x[0].surfs[s].na]); }
+  k = cx_put(b, k, "\",\"title\":\""); if s >= 0 { k = cx_put_json(b, k, cast(string) x[0].surfs[s].title[0..<x[0].surfs[s].nt]); }
+  k = cx_put(b, k, "\",\"focused\":"); k = cx_bool_into(b, k, t.id == wm_focus(m));
+  k = cx_put(b, k, ",\"floating\":"); k = cx_bool_into(b, k, t.floating);
+  k = cx_put(b, k, ",\"fullscreen\":"); k = cx_bool_into(b, k, wm_is_fullscreen(m, t.id));
+  return cx_put(b, k, "}");
+}
+cx_desk_refused :: (b: [] u8, code: string, message: string) -> int {
+  k := cx_put(b, 0, "{\"generation\":1,\"type\":\"refused\",\"code\":\""); k = cx_put(b, k, code);
+  k = cx_put(b, k, "\",\"message\":\""); k = cx_put_json(b, k, message); return cx_put(b, k, "\"}\n");
+}
+cx_desk_done :: (b: [] u8) -> int { return cx_put(b, 0, "{\"generation\":1,\"type\":\"done\"}\n"); }
+// One request's answer line into b: its length.
+cx_desk_answer :: (x: [] Cx, o: [] CxFrame, line: string, b: [] u8) -> int {
+  if cx_jint(line, "generation", -1) != 1 { return cx_desk_refused(b, "generation", "this desk speaks generation 1"); }
+  ty := cx_jtext(line, "type"); m := x[0].wm[..];
+  t: [WM_WINS] WmTile; n := wm_all_windows(m, t[..]);
+  if ty == "list" {
+    k := cx_put(b, 0, "{\"generation\":1,\"type\":\"windows\",\"windows\":["); first := true;
+    for i: 0..<n { if x[0].win_surf[t[i].id] < 0 { continue; } if !first { k = cx_put(b, k, ","); } first = false; k = cx_desk_window(x, t[i], b, k); }
+    return cx_put(b, k, "]}\n");
+  }
+  if ty == "focused" {
+    k := cx_put(b, 0, "{\"generation\":1,\"type\":\"focused\",\"window\":"); found := false;
+    for i: 0..<n { if t[i].id == wm_focus(m) && x[0].win_surf[t[i].id] >= 0 { k = cx_desk_window(x, t[i], b, k); found = true; } }
+    if !found { k = cx_put(b, k, "null"); }
+    return cx_put(b, k, "}\n");
+  }
+  if ty == "screens" {
+    k := cx_put(b, 0, "{\"generation\":1,\"type\":\"screens\",\"screens\":[{\"name\":\"verse\",\"at\":{\"x\":0,\"y\":0},\"size\":{\"width\":");
+    k = cx_num_into(b, k, x[0].w); k = cx_put(b, k, ",\"height\":"); k = cx_num_into(b, k, x[0].h);
+    k = cx_put(b, k, "},\"scale\":1.0,\"desk\":"); f := wm_focus(m); k = cx_num_into(b, k, ifx f > 0 then wm_desk_of(m, f) else 1);
+    return cx_put(b, k, "}]}\n");
+  }
+  if ty == "open" {
+    cmd := cx_jtext(line, "command");
+    if cmd.count == 0 || cmd.count > 2000 { return cx_desk_refused(b, "bad_request", "open needs a command"); }
+    a: [2100] u8; an := 0;
+    for c: "/bin/sh\0-c\0" { a[an] = c; an += 1; } for c: cmd { a[an] = c; an += 1; } a[an] = 0; an += 1;
+    r := cxwl_run(a[0..<an], x[0].sock[0..<x[0].nsock]);
+    return ifx r >= 0 then cx_desk_done(b) else cx_desk_refused(b, "spawn", "the command did not start");   // cxwl_run: 0, or -errno
+  }
+  if ty == "move" { cx_pointer(x, cx_max(0, cx_min(x[0].w - 1, cx_jint(line, "x", 0))), cx_max(0, cx_min(x[0].h - 1, cx_jint(line, "y", 0)))); return cx_desk_done(b); }
+  if ty == "click" {
+    if line.count > 0 && cx_jint(line, "x", -1) >= 0 { cx_pointer(x, cx_max(0, cx_min(x[0].w - 1, cx_jint(line, "x", 0))), cx_max(0, cx_min(x[0].h - 1, cx_jint(line, "y", 0)))); }
+    btn := cx_jtext(line, "button"); code := ifx btn == "right" then 273 else ifx btn == "middle" then 274 else 272;
+    cx_button(x, code, true); cx_button(x, code, false); return cx_desk_done(b);
+  }
+  if ty == "close" {
+    hd := cx_jtext(line, "handle");
+    id := -1;
+    if hd.count > 2 && hd[0..<2] == "0x" { id = 0; for c: hd[2..<hd.count] { d := ifx c >= '0' && c <= '9' then cast(int) (c - '0') else ifx c >= 'a' && c <= 'f' then cast(int) (c - 'a') + 10 else -1; if d < 0 { id = -1; break; } id = id * 16 + d; } }
+    if id <= 0 || id >= WM_WINS || x[0].win_surf[id] < 0 { return cx_desk_refused(b, "no_such_window", "no window with that handle"); }
+    cx_close_win(x, id); return cx_desk_done(b);
+  }
+  if ty == "shot" {
+    path := cx_jtext(line, "path");
+    if path.count == 0 { return cx_desk_refused(b, "bad_request", "shot needs a path"); }
+    return ifx cx_shot(x, o, path, true) then cx_desk_done(b) else cx_desk_refused(b, "shot", "the shot was not written");
+  }
+  return cx_desk_refused(b, "not_supported", "this desk does not do that yet");
+}
+// A desk client's bytes: each whole line answered; a client that left is let go.
+cx_desk_read :: (x: [] Cx, o: [] CxFrame, h: int) {
+  d := x[0].desks[..];
+  got := cxwl_desk_recv(h, d[h].buf[d[h].n..<8192]);
+  if got < 0 { r := cxwl_desk_close(h); d[h].on = false; return; }
+  if got == 0 { return; }
+  d[h].n += got; st := 0;
+  for i: 0..<d[h].n {
+    if d[h].buf[i] != '\n' { continue; }
+    ans: [262144] u8; an := cx_desk_answer(x, o, cast(string) d[h].buf[st..<i], ans[..]);
+    if cxwl_desk_send(h, ans[0..<an]) < 0 { r := cxwl_desk_close(h); d[h].on = false; return; }
+    st = i + 1;
+  }
+  rest := d[h].n - st; for i: 0..<rest { d[h].buf[i] = d[h].buf[st + i]; } d[h].n = rest;
+  if d[h].n == 8192 { d[h].n = 0; }
+}
+
 cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
   w: [8] string; nw := 0; st := 0;
   for i: 0..<line.count + 1 { if i == line.count || line[i] == ' ' { if nw < 8 && i > st { w[nw] = line[st..<i]; nw += 1; } st = i + 1; } }
@@ -1477,6 +1631,7 @@ cx_screens_parse :: (text: string, w: [] int, h: [] int) -> int {
 }
 tool_main :: () -> int #export_c {
   a: [1] Args; ok := args_load(a[..]);
+  desk_sock := "";
   pos: [5] string; np := 0; want_screen := false; input := ""; screens := ""; want_x := false; check := false; ai := 0; leave_to := 0;
   while ok && ai < args_count(a[..]) {
     v := args_at(a[..], ai);
@@ -1485,11 +1640,12 @@ tool_main :: () -> int #export_c {
     else if v == "--screens" && ai + 1 < args_count(a[..]) { ai += 1; screens = args_at(a[..], ai); }
     else if v == "--xwayland" { want_x = true; }
     else if v == "--leave-to" && ai + 1 < args_count(a[..]) { ai += 1; leave_to = cx_num(args_at(a[..], ai)); }
-    else if v == "--check" { check = true; }   // start up (socket, keymap, rules), say ready, and leave: the update agent's trial
+    else if v == "--check" { check = true; }
+    else if v == "--desk-socket" && ai + 1 < args_count(a[..]) { ai += 1; desk_sock = args_at(a[..], ai); }   // start up (socket, keymap, rules), say ready, and leave: the update agent's trial
     else if np < 5 { pos[np] = v; np += 1; } else { ok = false; }
     ai += 1;
   }
-  if !ok || (np != 3 && np != 5) { tool_errln("usage: compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH,WxH...] [--xwayland] [--screen] [--leave-to VT] [--input FILE]"); return 2; }
+  if !ok || (np != 3 && np != 5) { tool_errln("usage: compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH,WxH...] [--xwayland] [--screen] [--leave-to VT] [--input FILE] [--desk-socket PATH]"); return 2; }
   cc: [1] Cx; x := cc[..]; ff: [1] CxFrame; fr := ff[..];
   x[0].w = 1280; x[0].h = 720;
   if np == 5 { x[0].w = cx_num(pos[3]); x[0].h = cx_num(pos[4]); }
@@ -1530,6 +1686,11 @@ tool_main :: () -> int #export_c {
   sock := pos[0]; sp: [256] u8; sn := 0; for c: sock { if sn < 255 { sp[sn] = c; sn += 1; } }
   for i: 0..<sn { x[0].sock[i] = sp[i]; } x[0].nsock = sn;
   r := cxwl_listen(sp[0..<sn]);
+  if desk_sock.count > 0 {
+    dp: [1024] u8; dn := 0; for c: desk_sock { if dn < 1023 { dp[dn] = c; dn += 1; } }
+    x[0].desk_on = cxwl_desk_listen(dp[0..<dn]) == 0;
+    if !x[0].desk_on { tool_errln("compositor: no desk socket there"); }
+  }
   if r < 0 { tool_errln("compositor: cannot listen on the socket"); return 1; }
   x[0].xw[0].client = -1;
   if want_x {   // Xwayland, rootless, before the start list so it sees DISPLAY
@@ -1576,6 +1737,10 @@ tool_main :: () -> int #export_c {
         rest := x[0].nline - st; for i: 0..<rest { x[0].line[i] = x[0].line[st + i]; } x[0].nline = rest;
         if x[0].nline == 8192 { x[0].nline = 0; }
       }
+    }
+    if x[0].desk_on {
+      while true { h := cxwl_desk_accept(); if h < 0 { break; } x[0].desks[h].on = true; x[0].desks[h].n = 0; }
+      for h: 0..<CX_DESKS { if x[0].desks[h].on { cx_desk_read(x, fr, h); } }
     }
     cx_close_answer(x);
     if input_open && !cx_input(x) { input_open = false; cx_say("input ended"); }

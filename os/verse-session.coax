@@ -163,6 +163,7 @@ VsPylon :: struct {
   // the agents on this machine (verse-agents.coax), for the Grid: where they go, and when last looked
   home: [1024] u8; home_n: int; agents: [4096] u8; agents_n: int; agents_ms: int;
   last: [2048] u8; last_n: int;
+  run: [4096] u8; run_n: int;   // the run directory, for the realm (VERSE_RUN) when the session has a desk
 }
 // Every five seconds: the agents, written for vk-realm (--agents) only when they changed.
 vs_agents_tick :: (p: [] VsPylon) {
@@ -275,6 +276,36 @@ vs_identity :: (cli: string, facts: string, home: string) -> bool {
   return wrote;
 }
 
+// The desk (V3), the session's own: the Coax compositor, headless, its test channel on two FIFOs in
+// the run directory (desk.in, desk.out), opened read-write so it never sees an end while realms come
+// and go; vk-realm attaches to them (VERSE_RUN), so the desk's windows outlive travel. The handle
+// is the session's: releasing it at the end stops the compositor. -1 when there is no desk.
+vs_desk_start :: (dir: string, run: string) -> int {
+  b: [6] [4096] u8;
+  desk := fs_join(dir, "desk", b[0][..]);
+  program := fs_join(desk, "compositor", b[1][..]);
+  if !fs_exists(program) { return -1; }
+  fin := fs_join(run, "desk.in", b[2][..]); fout := fs_join(run, "desk.out", b[3][..]);
+  r1 := fs_remove(fin); r2 := fs_remove(fout);
+  mk := proc_new(); if mk < 0 { return -1; }
+  ok := proc_arg(mk, "mkfifo") && proc_arg(mk, "-m") && proc_arg(mk, "600") && proc_arg(mk, fin) && proc_arg(mk, fout);
+  if !ok || proc_start(mk) != 0 { d := proc_release(mk); return -1; }
+  c := proc_close_stdin(mk); st := proc_wait(mk, 5000); d := proc_release(mk);
+  if st != 0 { print("verse-session: no FIFOs for the desk\n"); vs_flush(); return -1; }
+  rb: [1024] u8; rt := proc_getenv("XDG_RUNTIME_DIR", rb[..]);
+  sock: [1200] u8; socket := vs_cat(sock[..], rt, "/wayland-verse");
+  h := proc_new(); if h < 0 { return -1; }
+  // the desk protocol on its own socket (os/desk.coax's CODER_DESK_SOCKET), for the programs on the desk too
+  dsb: [1200] u8; dsock := vs_cat(dsb[..], rt, "/verse-desk.sock");
+  eb: [1300] u8; en := vs_fill(eb[..], "CODER_DESK_SOCKET="); for ch: dsock { if en < 1300 { eb[en] = ch; en += 1; } }
+  ok = proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, "exec \"$0\" \"$1\" \"$2\" \"$3\" 1280 720 --xwayland --desk-socket \"$6\" 0<>\"$4\" 1<>\"$5\"") &&
+       proc_arg(h, program) && proc_arg(h, socket) && proc_arg(h, fs_join(desk, "compositor-us.xkb", b[4][..])) && proc_arg(h, fs_join(desk, "launch", b[5][..])) &&
+       proc_arg(h, fin) && proc_arg(h, fout) && proc_arg(h, dsock) && proc_env(h, cast(string) eb[0..<en]);
+  if !ok || proc_start(h) != 0 { d2 := proc_release(h); return -1; }
+  print("verse-session: the desk is up on %\n", socket); vs_flush();
+  return h;
+}
+
 vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: string, window: string, facts: string, py: [] VsPylon) -> int {
   b: [6] [4096] u8;
   rdir := fs_join(dir, realm, b[0][..]);
@@ -307,6 +338,9 @@ vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: stri
   sb: [24] u8; ok = ok && proc_arg(h, vs_num(VS_FOREVER, sb[..]));
   if state.count > 0 { ok = ok && proc_arg(h, "--net") && proc_arg(h, state); }
   ok = ok && proc_cwd(h, rdir);
+  // where the session's desk FIFOs are, when it runs one
+  rv: [4200] u8; rn := vs_fill(rv[..], "VERSE_RUN="); for i: 0..<py[0].run_n { if rn < 4200 { rv[rn] = py[0].run[i]; rn += 1; } }
+  if py[0].run_n > 0 { ok = ok && proc_env(h, cast(string) rv[0..<rn]); }
   if !ok || proc_start(h) != 0 { d := proc_release(h); print("verse-session: % did not start\n", realm); vs_flush(); return -1; }
   c := proc_close_stdin(h);
   line: [65536] u8;
@@ -381,6 +415,8 @@ tool_main :: () -> int #export_c {
   py[0].home_n = vs_fill(py[0].home[..], home);
   agb: [4096] u8; py[0].agents_n = vs_fill(py[0].agents[..], fs_join(run, "agents.facts", agb[..]));
   vs_agents_tick(py[..]);   // the first list before the first realm opens
+  desk_h := vs_desk_start(dir, run);
+  if desk_h >= 0 { py[0].run_n = vs_fill(py[0].run[..], run); }
   while true {
     if window.count == 0 { vs_wait_for(tty, py[..]); }
     r := fs_remove(go);
@@ -408,6 +444,7 @@ tool_main :: () -> int #export_c {
     print("verse-session: % ended (status %)\n", cur, status); vs_flush();
     if once {
       // the session ends: a Pylon it started stops with it
+      if desk_h >= 0 { dr := proc_release(desk_h); }   // the desk ends with the session
       if py[0].running { stopped := vs_pylon_run(py[..], "stop"); py[0].running = false; print("verse-session: the session ended; the Pylon stopped\n"); vs_flush(); }
       return ifx status == 0 then 0 else 1;
     }
