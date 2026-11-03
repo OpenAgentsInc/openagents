@@ -24,9 +24,28 @@
 # commit coax/web/goldens/ with the change.
 #
 # The compiler: it uses the release's cached checked build for the ref's
-# compiler inputs (~/.cache/coax-release, release.sh) or the checkout's
-# coax/bin when that matches; with neither it stops and says to run a
-# release (or coax/build.sh) once.
+# compiler inputs (~/.cache/coax-release or release.sh's
+# ~/.cache/coax-release-fast) or the checkout's coax/bin when that matches;
+# with none it builds one in the ref's tree the way release.sh does
+# (COAX_MUTATION=0 coax/build.sh in the release's environment, a few
+# minutes, or seconds from a published build) and caches it.
+# The release's environment unsets CPATH, C_INCLUDE_PATH, CPLUS_INCLUDE_PATH,
+# LIBRARY_PATH and the SDK variables, and coax/provenance.sh's fingerprint
+# names them, because each can change what the C and C++ compilers build
+# (LIBRARY_PATH can put another libstdc++ or libm in the link). So a
+# coax/build.sh run in a shell that sets one (CoderOS sets LIBRARY_PATH) is
+# recorded under another fingerprint, and this check doesn't take it; it
+# builds its own instead. On coderos-4080 the two builds were the same
+# compiler (#12684: every generated C file equal, the binaries apart only in
+# their build directory's name), but that holds for that LIBRARY_PATH, not
+# for any, so the fingerprint keeps it.
+#
+# Linux (#12684): headless Chromium there composites in software when
+# WebGPU is on the GPU, and a screenshot leaves the WebGPU canvas out
+# (#12678). There the pages are walked by golden-frames.coax instead of
+# goldens.ts: each page's frame is read back from the GPU (golden-frames.js,
+# on the hardware adapter only) and compared in the same 8 px blocks with
+# coax/web/goldens/linux/. The Mac walks goldens.ts as before.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"
 ref=origin/main since=""
@@ -67,6 +86,7 @@ if [[ -z "${pages// }" ]]; then
 fi
 echo "golden-check ${full:0:10}: $count commit(s) since ${base:0:10} may change: $pages"
 [[ -f "$tree/coax/web/golden-pages.ts" ]] || { echo "golden-check ${full:0:10}: its walk predates goldens.ts --only; check a newer commit" >&2; exit 2; }
+[[ "$(uname -s)" == Darwin || -f "$tree/coax/web/golden-frames.coax" ]] || { echo "golden-check ${full:0:10}: it predates Linux goldens (golden-frames.coax, #12684); check a newer commit or run it on the Mac" >&2; exit 2; }
 
 # The release's compiler for the ref's inputs (release.sh: the same compilers and environment).
 compiler_env() {
@@ -75,11 +95,18 @@ compiler_env() {
     CC="${COAX_RELEASE_CC:-cc}" CXX="${COAX_RELEASE_CXX:-c++}" "$@"
 }
 fingerprint="$(compiler_env "$tree/coax/provenance.sh" fingerprint "$tree")"
-cache="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release}/$fingerprint"
-if ! { [[ -d "$cache" ]] && compiler_env "$tree/coax/provenance.sh" install "$tree" "$cache" 2> /dev/null; } &&
-   ! { [[ -d "$repo/coax/bin" ]] && compiler_env "$tree/coax/provenance.sh" install "$tree" "$repo/coax/bin" 2> /dev/null; }; then
-  echo "golden-check: no checked compiler for ${full:0:10}'s compiler inputs (${fingerprint:0:12}); run coax/web/release.sh --staging-only once (it bootstraps and caches one)" >&2
-  exit 2
+cache_root="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release}"
+install_from() { [[ -d "$1" ]] && compiler_env "$tree/coax/provenance.sh" install "$tree" "$1" 2> /dev/null; }
+if ! install_from "$cache_root/$fingerprint" && ! install_from "$HOME/.cache/coax-release-fast/$fingerprint" && ! install_from "$repo/coax/bin"; then
+  echo "golden-check ${full:0:10}: no checked compiler for its compiler inputs (${fingerprint:0:12}); building one (coax/build.sh, no mutation gates, in the release's environment)"
+  t0=$SECONDS
+  mkdir -p "$cache_root"
+  if ! compiler_env COAX_RELEASE_CACHE="$cache_root" COAX_MUTATION=0 "$tree/coax/build.sh" > "$cache_root/$fingerprint.log" 2>&1 || ! install_from "$cache_root/$fingerprint"; then
+    tail -5 "$cache_root/$fingerprint.log" >&2
+    echo "golden-check: the compiler for ${full:0:10} did not build (log: $cache_root/$fingerprint.log)" >&2
+    exit 2
+  fi
+  echo "  compiler   $(( SECONDS - t0 )) s"
 fi
 
 t0=$SECONDS
@@ -92,9 +119,20 @@ bun "$here/golden-serve.ts" "$stage/site" "$port" > "$stage/serve.log" 2>&1 & se
 for _ in $(seq 50); do curl -sf -o /dev/null "http://127.0.0.1:$port/verse" && break; sleep 0.1; done
 report="$stage/goldens.json"
 t0=$SECONDS
-if GOLDENS_PENDING="$stage/pending" bun "$tree/coax/web/goldens.ts" "http://golden.localhost:$port" --only "$(echo $pages | tr ' ' ',')" --report "$report"; then
+if [[ "$(uname -s)" == Darwin ]]; then
+  walk() { GOLDENS_PENDING="$stage/pending" bun "$tree/coax/web/goldens.ts" "http://golden.localhost:$port" --only "$(echo $pages | tr ' ' ',')" --report "$report"; }
+else
+  # the ref's pages (this checkout's rules, as above) as golden-frames.coax's table, walked with the ref's tool
+  GOLDEN_PAGES_ROOT="$tree" bun "$here/golden-pages.ts" table $pages > "$stage/pages.tsv"
+  # One Chrome, one page at a time (about 7 s a page): three side by side on one GPU starved
+  # Everglade's scene and moved Drop's frame (#12684).
+  walk() { COAX="$tree/coax/bin/coax" "$tree/coax/web/tool.sh" "$tree/coax/web/golden-frames.coax" "http://golden.localhost:$port" "$stage/pages.tsv" \
+    --dir "$tree/coax/web/goldens/linux" --pending "$stage/pending" --report "$report" --glue "$tree/coax/web/golden-frames.js" --require-hardware; }
+fi
+if walk; then
   echo "golden-check ${full:0:10}: every page the range may change matches its golden ($(( SECONDS - t0 )) s)"; exit 0
 fi
+[[ -f "$report" ]] || { echo "golden-check ${full:0:10}: the walk could not run" >&2; exit 2; }
 # The failing pages: those whose golden failed, and those named first in any other failure.
 failing="$(bun -e 'const r = JSON.parse(await Bun.file(process.argv[1]).text()); const n = new Set(r.golden.map((g) => g.name)); for (const o of r.other) { const m = /^([a-z0-9.-]+):/.exec(o); if (m && process.argv[2].split(" ").includes(m[1])) n.add(m[1]) } console.log([...n].join(" "))' "$report" "$pages")"
 while IFS=$'\t' read -r name hash author why subject; do

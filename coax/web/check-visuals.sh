@@ -16,7 +16,9 @@ while IFS= read -r page; do
   if [[ -n "$loader" ]]; then
     odd="$(printf '%s\n' "$loader" | grep -oE '<[a-z][a-z0-9]*' | sort -u | grep -vxE '<(div|s|b|i|span|a)' || true)"
     [[ -z "$odd" ]] || bad "${page#$app/}: the loading screen holds $(echo $odd)"
-    printf '%s\n' "$loader" | grep -q '<div id="coaxial-load"' || bad "${page#$app/}: a loader block that isn't the loading screen"
+    # a here-string, not printf | grep -q: under pipefail, grep -q stopping at the match can kill
+    # printf with SIGPIPE, and the page failed now and then (#12684)
+    grep -q '<div id="coaxial-load"' <<< "$loader" || bad "${page#$app/}: a loader block that isn't the loading screen"
   fi
   body="$(sed -n '/<body>/,/<\/body>/p' "$page" | sed '/<!-- loader: coax\/web\/loader.js -->/,/<!-- \/loader -->/d')"
   extra="$(printf '%s\n' "$body" | grep -oE '<[a-z][a-z0-9]*' | sort -u | grep -vxE '<(body|canvas|main|h1|h2|p|a|script|ul|li|em|strong|code)' || true)"

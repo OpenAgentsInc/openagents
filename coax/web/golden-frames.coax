@@ -1,0 +1,527 @@
+// Goldens on Linux (GitHub #12684): each page's WebGPU frame, read back from
+// the GPU in headless Chrome, compared with its golden in 8 px blocks as
+// goldens.ts compares a Mac screenshot.
+//   coax/web/tool.sh golden-frames BASE TABLE [--dir DIR] [--update] [--pending DIR] [--report FILE] [--glue FILE] [--shard I/N] [--require-hardware]
+//   coax test coax/web/golden-frames.coax          # its own checks
+// Why: headless Chromium on Linux gets the GPU's WebGPU adapter only with
+// software compositing (#12678), and a screenshot then leaves the WebGPU
+// canvas out. Here every page gets coax/web/golden-frames.js (--glue), which
+// copies the canvas's frame into a buffer on the GPU, maps it, and lays it on
+// a 2D canvas over the WebGPU one, which software compositing does draw; the
+// screenshot is then taken as usual (a page with no WebGPU canvas is a plain
+// screenshot), so a Linux golden is the same kind of PNG as the Mac's. The
+// Mac keeps goldens.ts and its screenshots; golden-check.sh picks this tool
+// on Linux.
+// TABLE is `bun coax/web/golden-pages.ts table [NAME...]`'s output, one page
+// a line: NAME PATH LIT SETTLE BLOCKS WIDTH HEIGHT UNLISTED (tab-separated).
+// Each page opens at BASE+PATH in golden mode (host.js: coaxialGolden) at
+// WIDTHxHEIGHT and dpr 1, waits for its scene (shot.coax's test, a started
+// page that reports no scene taken after 1.5 s rather than 10 s), SETTLE ms
+// more, and must light at least LIT of its pixels (a channel over 40; a dark
+// frame gets four more tries 750 ms apart). It then differs from its golden
+// (DIR/NAME.png, default coax/web/goldens/linux) when more than BLOCKS of its
+// 8 px blocks changed: a block changed when a channel's mean moved more than
+// 8. Three more frames 500 ms apart find the blocks that move on their own;
+// those and their eight neighbours are left out. A failing frame is kept and
+// its path printed. --update writes each first frame as the golden instead.
+// An unlisted realm with no golden passes and leaves its frame in --pending
+// (golden-policy.ts); any other page with none fails.
+// --report FILE writes the failures as goldens.ts --report does (golden-check.sh
+// reads it): {base, failed, golden: [{name, path}], other}. --require-hardware
+// stops, exit 2, unless the pages get a GPU's WebGPU adapter (not SwiftShader).
+// --shard I/N walks only the table's pages I, I+N, I+2N ... (1-based), so
+// a walk can be split into parts (golden-check.sh walks them all in one, as N
+// Chromes side by side on one GPU disturb the heavier realms).
+// Headless and muted; never a window. Exit 0 when every page passed, 1 when one failed.
+#import "Basic";
+#load "../lib/media/media.coax";   // MEDIA_READY_JS, media_ready_step, media_size, media_value; it loads cdp.coax
+#load "../lib/image/png.coax";
+
+GF_BLOCK :: 8;
+GF_SHADE :: 8;
+GF_LIT :: 40;                       // a pixel is lit when a channel is over this
+GF_MAX_W :: 1600; GF_MAX_H :: 1000;
+GF_PX :: GF_MAX_W * GF_MAX_H * 4;   // one RGBA frame
+GF_BLOCKS :: (GF_MAX_W / GF_BLOCK + 1) * (GF_MAX_H / GF_BLOCK + 1);
+GF_PNG :: 16777216;                 // one PNG, 16 MiB
+GF_PAGES :: 256;
+GF_READY_MS :: 120000;
+GF_IDLE_MS :: 1500;
+GF_FRAME_JS :: "globalThis.coaxGoldenFrame ? coaxGoldenFrame().catch((e) => 'error ' + e.message) : 'error no golden-frames.js in the page'";
+GF_SETUP :: "globalThis.coaxialGolden = true; Object.defineProperty(Navigator.prototype, 'sendBeacon', { value: () => false });";
+
+GfBuf :: struct { b: [8192] u8; n: int; }
+gf_put :: (o: [] GfBuf, s: string) {
+  for c: s { if o[0].n < o[0].b.count { o[0].b[o[0].n] = c; o[0].n += 1; } }
+}
+gf_int :: (o: [] GfBuf, value: int) {
+  v := value;
+  if v < 0 { gf_put(o, "-"); v = -v; }
+  d: [24] u8; k := 0;
+  while true { d[k] = cast,trunc(u8) (48 + v % 10); k += 1; v = v / 10; if v == 0 { break; } }
+  while k > 0 { k -= 1; gf_put(o, cast(string) d[k..<k + 1]); }
+}
+gf_text :: (o: [] GfBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+// A share in tenths of a percent as "12.3%".
+gf_percent :: (o: [] GfBuf, tenths: int) { gf_int(o, tenths / 10); gf_put(o, "."); gf_int(o, tenths % 10); gf_put(o, "%"); }
+#test "text: numbers and shares" {
+  o: [1] GfBuf;
+  gf_int(o[..], 0); gf_put(o[..], " "); gf_int(o[..], 16000); gf_put(o[..], " "); gf_int(o[..], -42); gf_put(o[..], " "); gf_percent(o[..], 4); gf_put(o[..], " "); gf_percent(o[..], 1000);
+  #assert gf_text(o[..]) == "0 16000 -42 0.4% 100.0%";
+}
+
+// ---- the comparison (goldens.ts's differ and against) ---------------------------------
+
+// Which 8 px blocks differ between two RGBA frames (1 a block): a block differs when the mean of
+// a channel over its pixels moved more than GF_SHADE. Frames of different sizes differ everywhere.
+// The count of blocks (a's), each set in out.
+gf_differ :: (a: [] u8, aw: int, ah: int, b: [] u8, bw: int, bh: int, out: [] u8) -> int {
+  cols := (aw + GF_BLOCK - 1) / GF_BLOCK; rows := (ah + GF_BLOCK - 1) / GF_BLOCK;
+  for k: 0..<cols * rows { out[k] = 0; }
+  if aw != bw || ah != bh { for k: 0..<cols * rows { out[k] = 1; } return cols * rows; }
+  for by: 0..<rows {
+    for bx: 0..<cols {
+      r := 0; g := 0; bl := 0; n := 0;
+      y1 := ifx by * GF_BLOCK + GF_BLOCK < ah then by * GF_BLOCK + GF_BLOCK else ah;
+      x1 := ifx bx * GF_BLOCK + GF_BLOCK < aw then bx * GF_BLOCK + GF_BLOCK else aw;
+      for y: by * GF_BLOCK..<y1 {
+        for x: bx * GF_BLOCK..<x1 {
+          i := (y * aw + x) * 4;
+          r += cast(int) a[i] - cast(int) b[i]; g += cast(int) a[i + 1] - cast(int) b[i + 1]; bl += cast(int) a[i + 2] - cast(int) b[i + 2];
+          n += 1;
+        }
+      }
+      // |sum / n| > SHADE, exactly, in integers
+      lim := GF_SHADE * n;
+      if r > lim || -r > lim || g > lim || -g > lim || bl > lim || -bl > lim { out[by * cols + bx] = 1; }
+    }
+  }
+  return cols * rows;
+}
+GfDiff :: struct { changed: int; moved: int; x0: int; y0: int; x1: int; y1: int; }
+// One RGBA frame: its pixels and size.
+GfView :: struct { px: [] u8; w: int; h: int; }
+// The blocks of shot 0 that changed against the golden, leaving out those that moved between the
+// shots and the blocks round them (as goldens.ts: neighbours by index, rows wrapping at the edges).
+// moving, near and once: a byte a block each.
+gf_against :: (shots: [] GfView, golden: GfView, moving: [] u8, near: [] u8, once: [] u8) -> GfDiff {
+  r: GfDiff; r.x0 = -1; r.y0 = -1; r.x1 = -1; r.y1 = -1;
+  s := shots[0];
+  n := gf_differ(s.px, s.w, s.h, s.px, s.w, s.h, moving);
+  for i: 1..<shots.count {
+    m := gf_differ(s.px, s.w, s.h, shots[i].px, shots[i].w, shots[i].h, once);
+    for k: 0..<m { if once[k] != 0 { moving[k] = 1; } }
+  }
+  cols := (golden.w + GF_BLOCK - 1) / GF_BLOCK;
+  for k: 0..<n { near[k] = moving[k]; }
+  for k: 0..<n {
+    if moving[k] == 0 { continue; }
+    offs := [8] int.[-cols - 1, -cols, -cols + 1, -1, 1, cols - 1, cols, cols + 1];
+    for o: offs { j := k + o; if j >= 0 && j < n { near[j] = 1; } }
+  }
+  d := gf_differ(s.px, s.w, s.h, golden.px, golden.w, golden.h, once);
+  for k: 0..<d {
+    if near[k] != 0 { r.moved += 1; }
+    if once[k] == 0 || near[k] != 0 { continue; }
+    r.changed += 1;
+    bx := k % cols; by := k / cols;
+    if r.x0 < 0 || bx < r.x0 { r.x0 = bx; }
+    if r.y0 < 0 || by < r.y0 { r.y0 = by; }
+    if bx > r.x1 { r.x1 = bx; }
+    if by > r.y1 { r.y1 = by; }
+  }
+  return r;
+}
+// The share of pixels lit, in tenths of a percent (rounded down).
+gf_lit :: (f: GfView) -> int {
+  n := 0; total := f.w * f.h;
+  for i: 0..<total {
+    p := i * 4;
+    if f.px[p] > GF_LIT || f.px[p + 1] > GF_LIT || f.px[p + 2] > GF_LIT { n += 1; }
+  }
+  return ifx total > 0 then n * 1000 / total else 0;
+}
+
+gf_fill :: (f: GfView, r: u8, g: u8, b: u8) {
+  for i: 0..<f.w * f.h { f.px[i * 4] = r; f.px[i * 4 + 1] = g; f.px[i * 4 + 2] = b; f.px[i * 4 + 3] = 255; }
+}
+gf_rect :: (f: GfView, x0: int, y0: int, x1: int, y1: int, v: u8) {
+  for y: y0..<y1 { for x: x0..<x1 { i := (y * f.w + x) * 4; f.px[i] = v; f.px[i + 1] = v; f.px[i + 2] = v; } }
+}
+#test "a block changes when a channel's mean moves more than 8, not at 8" {
+  ap: [16 * 16 * 4] u8; bp: [16 * 16 * 4] u8; out: [64] u8;
+  a := GfView.{px = ap[..], w = 16, h = 16}; b := GfView.{px = bp[..], w = 16, h = 16};
+  gf_fill(a, 100, 100, 100); gf_fill(b, 100, 100, 100);
+  #assert gf_differ(ap[..], 16, 16, bp[..], 16, 16, out[..]) == 4;
+  #assert out[0] == 0 && out[1] == 0 && out[2] == 0 && out[3] == 0;
+  // a mean of exactly 8 is the same; 8 and a bit is not
+  gf_rect(b, 0, 0, 8, 8, 108);
+  k := gf_differ(ap[..], 16, 16, bp[..], 16, 16, out[..]); #assert out[0] == 0;
+  bp[0] = 109; k = gf_differ(ap[..], 16, 16, bp[..], 16, 16, out[..]); #assert out[0] == 1 && out[1] == 0;
+  // darker counts the same as lighter, in any one channel
+  gf_fill(b, 100, 100, 100); gf_rect(b, 8, 8, 16, 16, 91);
+  k = gf_differ(ap[..], 16, 16, bp[..], 16, 16, out[..]); #assert out[3] == 1 && out[0] == 0;
+  gf_fill(b, 100, 100, 100); for y: 0..<8 { for x: 8..<16 { bp[(y * 16 + x) * 4 + 2] = 120; } }
+  k = gf_differ(ap[..], 16, 16, bp[..], 16, 16, out[..]); #assert out[1] == 1 && out[3] == 0;
+  gf_fill(b, 100, 100, 100); for y: 8..<16 { for x: 0..<8 { bp[(y * 16 + x) * 4 + 1] = 91; } }
+  k = gf_differ(ap[..], 16, 16, bp[..], 16, 16, out[..]); #assert out[2] == 1 && out[3] == 0;
+  // one pixel's change is spread over its block: no single pixel moves a mean past 8
+  gf_fill(b, 100, 100, 100); bp[(9 * 16 + 1) * 4 + 1] = 255;
+  k = gf_differ(ap[..], 16, 16, bp[..], 16, 16, out[..]); #assert out[2] == 0;
+  // a partial block at the edge averages over the pixels it has
+  cp: [10 * 9 * 4] u8; dp: [10 * 9 * 4] u8;
+  c := GfView.{px = cp[..], w = 10, h = 9}; d := GfView.{px = dp[..], w = 10, h = 9};
+  // (block (1,1) of a 10x9 frame is two pixels: a sum over 16 changes it)
+  gf_fill(c, 0, 0, 0); gf_fill(d, 0, 0, 0); dp[(8 * 10 + 9) * 4] = 17;
+  #assert gf_differ(cp[..], 10, 9, dp[..], 10, 9, out[..]) == 4 && out[3] == 1 && out[0] == 0 && out[1] == 0 && out[2] == 0;
+  dp[(8 * 10 + 9) * 4] = 16; k = gf_differ(cp[..], 10, 9, dp[..], 10, 9, out[..]); #assert out[3] == 0;
+  // another size differs everywhere
+  #assert gf_differ(ap[..], 16, 16, cp[..], 10, 9, out[..]) == 4 && out[0] == 1 && out[3] == 1;
+  #assert gf_differ(ap[..], 16, 16, bp[..], 16, 8, out[..]) == 4 && out[1] == 1;
+}
+#test "against: changed blocks, the box round them, and what moves left out with its neighbours" {
+  p0: [64 * 64 * 4] u8; p1: [64 * 64 * 4] u8; gp: [64 * 64 * 4] u8;
+  moving: [64] u8; near: [64] u8; once: [64] u8;
+  shots: [2] GfView; shots[0] = GfView.{px = p0[..], w = 64, h = 64}; shots[1] = GfView.{px = p1[..], w = 64, h = 64};
+  golden := GfView.{px = gp[..], w = 64, h = 64};
+  gf_fill(golden, 50, 50, 50); gf_fill(shots[0], 50, 50, 50);
+  r := gf_against(shots[0..<1], golden, moving[..], near[..], once[..]);
+  #assert r.changed == 0 && r.moved == 0 && r.x0 == -1;
+  gf_rect(shots[0], 16, 8, 32, 16, 200);   // blocks (2,1) and (3,1)
+  r = gf_against(shots[0..<1], golden, moving[..], near[..], once[..]);
+  #assert r.changed == 2 && r.x0 == 2 && r.x1 == 3 && r.y0 == 1 && r.y1 == 1 && r.moved == 0;
+  // a second shot where block (2,1) is back: it moves, so it and its eight neighbours are left out
+  gf_fill(shots[1], 50, 50, 50); gf_rect(shots[1], 24, 8, 32, 16, 200);
+  r = gf_against(shots[0..<2], golden, moving[..], near[..], once[..]);
+  #assert r.changed == 0 && r.moved == 9;
+  // a change far from what moves still counts
+  gf_rect(shots[0], 56, 56, 64, 64, 0); gf_rect(shots[1], 56, 56, 64, 64, 0);
+  r = gf_against(shots[0..<2], golden, moving[..], near[..], once[..]);
+  #assert r.changed == 1 && r.x0 == 7 && r.y0 == 7 && r.x1 == 7 && r.y1 == 7 && r.moved == 9;
+  // neighbours by index: a block moving at a row's end leaves out the next row's first
+  gf_fill(shots[0], 50, 50, 50); gf_fill(shots[1], 50, 50, 50);
+  gf_rect(shots[1], 56, 0, 64, 8, 200);    // block (7,0) moves
+  gf_rect(shots[0], 0, 8, 8, 16, 0); gf_rect(shots[1], 0, 8, 8, 16, 0);     // block (0,1) changed, beside (7,0) by index
+  gf_rect(shots[0], 8, 16, 16, 24, 0); gf_rect(shots[1], 8, 16, 16, 24, 0); // block (1,2) changed
+  r = gf_against(shots[0..<2], golden, moving[..], near[..], once[..]);
+  #assert r.changed == 1 && r.x0 == 1 && r.y0 == 2 && r.moved == 7;   // 7 and 0, 6, 8, 14, 15, 16 by index
+  // the box spans every changed block
+  gf_fill(shots[0], 50, 50, 50); gf_rect(shots[0], 8, 40, 16, 48, 0); gf_rect(shots[0], 40, 16, 48, 24, 0);
+  r = gf_against(shots[0..<1], golden, moving[..], near[..], once[..]);
+  #assert r.changed == 2 && r.x0 == 1 && r.x1 == 5 && r.y0 == 2 && r.y1 == 5;
+}
+#test "lit: a pixel with any channel over 40" {
+  fp: [10 * 10 * 4] u8; f := GfView.{px = fp[..], w = 10, h = 10};
+  gf_fill(f, 40, 40, 40); #assert gf_lit(f) == 0;
+  fp[2] = 41; #assert gf_lit(f) == 10;
+  fp[2] = 40; fp[1] = 41; #assert gf_lit(f) == 10;
+  fp[1] = 40; fp[0] = 41; #assert gf_lit(f) == 10;
+  gf_rect(f, 0, 0, 10, 5, 255); #assert gf_lit(f) == 500;
+  #assert gf_lit(GfView.{px = fp[0..<0], w = 0, h = 0}) == 0;
+}
+
+// ---- the pages (golden-pages.ts table) ------------------------------------------------
+
+GfPage :: struct { name: string; path: string; lit: int; settle: int; blocks: int; w: int; h: int; unlisted: bool; }
+// lit as tenths of a percent: 0.004 is 4
+gf_field :: (line: string, k: int) -> string {
+  at := 0; i := 0;
+  for j: 0..<line.count + 1 {
+    if j == line.count || line[j] == '\t' {
+      if i == k { return line[at..<j]; }
+      i += 1; at = j + 1;
+    }
+  }
+  return "";
+}
+gf_name_ok :: (s: string) -> bool {
+  if s.count == 0 || s.count > 80 { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '.') { return false; } }
+  return true;
+}
+// One line of the table, ok false when it is not one.
+gf_page :: (line: string, p: [] GfPage) -> bool {
+  name := gf_field(line, 0); path := gf_field(line, 1);
+  lit := args_number(gf_field(line, 2)); settle := args_whole(gf_field(line, 3)); blocks := args_whole(gf_field(line, 4));
+  w := args_whole(gf_field(line, 5)); h := args_whole(gf_field(line, 6)); u := gf_field(line, 7);
+  if !gf_name_ok(name) || path.count == 0 || path[0] != '/' || !lit.ok || lit.value < 0.0 || lit.value > 1.0 { return false; }
+  if settle < 0 || blocks < 0 || w < 1 || h < 1 || w > GF_MAX_W || h > GF_MAX_H || (u != "0" && u != "1") { return false; }
+  p[0] = GfPage.{name = name, path = path, lit = cast(int) (lit.value * 1000.0 + 0.5), settle = settle, blocks = blocks, w = w, h = h, unlisted = u == "1"};
+  return true;
+}
+#test "the table: one page a line, refused when a field is wrong" {
+  p: [1] GfPage;
+  #assert gf_page("the-grid\t/realms/the-grid\t0.03\t2500\t6\t1280\t800\t0", p[..]);
+  #assert p[0].name == "the-grid" && p[0].path == "/realms/the-grid" && p[0].lit == 30 && p[0].settle == 2500 && p[0].blocks == 6 && p[0].w == 1280 && p[0].h == 800 && !p[0].unlisted;
+  #assert gf_page("nip-01-phone\t/nip/01\t0.004\t2200\t4\t390\t844\t1", p[..]) && p[0].lit == 4 && p[0].w == 390 && p[0].unlisted;
+  #assert gf_page("fixture-painterly-0.25\t/realms/fixture?style=painterly&clock=0.25\t0.5\t3000\t6\t1280\t800\t0", p[..]) && p[0].lit == 500;
+  #assert !gf_page("", p[..]) && !gf_page("x\trealms\t0.1\t1\t1\t10\t10\t0", p[..]) && !gf_page("X\t/r\t0.1\t1\t1\t10\t10\t0", p[..]);
+  #assert !gf_page("x\t/r\t2\t1\t1\t10\t10\t0", p[..]) && !gf_page("x\t/r\t0.1\t1\t1\t10\t10\t2", p[..]) && !gf_page("x\t/r\t0.1\t1\t1\t10\t10", p[..]);
+  #assert !gf_page("x\t/r\t0.1\t1\t1\t1601\t10\t0", p[..]) && !gf_page("x\t/r\t0.1\t-1\t1\t10\t10\t0", p[..]) && !gf_page("../x\t/r\t0.1\t1\t1\t10\t10\t0", p[..]);
+}
+
+// --shard I/N: k and n, or n 0 when it is not one.
+GfShard :: struct { k: int; n: int; }
+gf_shard :: (s: string) -> GfShard {
+  out: GfShard;
+  for i: 0..<s.count {
+    if s[i] == '/' {
+      k := args_whole(s[0..<i]); n := args_whole(s[i + 1..<s.count]);
+      if k >= 1 && n >= 1 && k <= n { out.k = k; out.n = n; }
+      return out;
+    }
+  }
+  return out;
+}
+#test "a shard is I/N with 1 <= I <= N" {
+  #assert gf_shard("1/3").k == 1 && gf_shard("1/3").n == 3 && gf_shard("3/3").k == 3 && gf_shard("1/1").n == 1;
+  #assert gf_shard("0/3").n == 0 && gf_shard("4/3").n == 0 && gf_shard("3").n == 0 && gf_shard("/3").n == 0 && gf_shard("1/").n == 0 && gf_shard("").n == 0;
+}
+
+// ---- the report ---------------------------------------------------------------------
+
+// A failure that is only a golden comparison (goldens.ts's classify): "NAME: matches its golden (" or
+// "NAME: no golden ". The page's name, or "".
+gf_golden_failure :: (line: string) -> string {
+  for j: 0..<line.count {
+    if line[j] == ':' {
+      rest := line[j..<line.count];
+      a := ": matches its golden ("; b := ": no golden ";
+      if (rest.count >= a.count && rest[0..<a.count] == a) || (rest.count >= b.count && rest[0..<b.count] == b) { return line[0..<j]; }
+      return "";
+    }
+  }
+  return "";
+}
+#test "a golden failure is told from every other" {
+  #assert gf_golden_failure("the-grid: matches its golden (40 blocks changed, 6 allowed, 0 moving)") == "the-grid";
+  #assert gf_golden_failure("nip-01: no golden (coax/web/goldens/linux/nip-01.png); run --update and look at it") == "nip-01";
+  #assert gf_golden_failure("the-grid: draws (0.0% lit, at least 3.0%)") == "" && gf_golden_failure("the-grid: the engine started") == "";
+  #assert gf_golden_failure("no colon here") == "";
+}
+
+// ---- in the browser (effects) --------------------------------------------------------
+
+Gf :: struct {
+  c: [1] Cdp;
+  png: [GF_PNG] u8; png_n: int;       // the first frame's PNG, a screenshot
+  text: [4096] u8;                    // what the page said
+  work: [GF_PX + GF_PNG] u8;          // png_decode's
+  px: [4 * GF_PX] u8; shots: [4] GfView;      // a page's four frames
+  golden_px: [GF_PX] u8;
+  moving: [GF_BLOCKS] u8; near: [GF_BLOCKS] u8; once: [GF_BLOCKS] u8;
+  failed: [GF_PAGES] GfBuf; failed_n: int;
+}
+gf_call :: (c: [] Cdp, method: string, params: string) -> bool { return cdp_call(c, method, params, 30000) >= 0; }
+gf_str_param :: (c: [] Cdp, method: string, key: string, value: string) -> bool {
+  buf: [CDP_REQ] u8; o: [1] Jo;
+  jo_start(o[..], buf[..]); jo_obj(o[..]); jo_key(o[..], key); jo_str(o[..], value); jo_end(o[..]);
+  return !o[0].bad && gf_call(c, method, jo_text(o[..]));
+}
+gf_fail :: (g: [] Gf, line: string) {
+  print("  FAIL  %\n", line);
+  if g[0].failed_n < GF_PAGES { g[0].failed[g[0].failed_n].n = 0; gf_put(g[0].failed[g[0].failed_n..<g[0].failed_n + 1], line); g[0].failed_n += 1; }
+}
+// One frame of the page into shots[k] (and its PNG into png when k is 0): "" when it worked, else why.
+gf_frame :: (g: [] Gf, k: int) -> string {
+  c := g[0].c[..];
+  v := cdp_evaluate(c, GF_FRAME_JS);
+  d := cdp_doc(c);
+  if v < 0 || jv_kind(d, v) != JV_STRING { return "the frame was not read back"; }
+  tn := jv_str(d, v, g[0].text[..]);
+  t := ifx tn >= 0 then cast(string) g[0].text[0..<tn] else "";
+  if t.count > 6 && t[0..<6] == "error " { return t; }
+  if t != "shown" && t != "" { return "the page did not show its frame"; }
+  // "shown": the GPU's frame covers the WebGPU canvas; "": the page has none, and what the browser
+  // composites is the page
+  n := cdp_screenshot(c, g[0].png[..]);
+  if t == "shown" { done := cdp_evaluate(c, "coaxGoldenFrameDone()"); }
+  if n < 0 { return "no screenshot"; }
+  if k == 0 { g[0].png_n = n; }
+  info := png_info(g[0].png[0..<n]);
+  if info.status != PNG_OK || info.w > GF_MAX_W || info.h > GF_MAX_H || info.work > g[0].work.count { return "the frame's PNG can't be read"; }
+  px := g[0].px[k * GF_PX..<k * GF_PX + info.w * info.h * 4];
+  if png_decode(g[0].png[0..<n], g[0].work[..], px) != PNG_OK { return "the frame's PNG can't be decoded"; }
+  g[0].shots[k] = GfView.{px = px, w = info.w, h = info.h};
+  return "";
+}
+gf_line :: (o: [] GfBuf, name: string, what: string) { o[0].n = 0; gf_put(o, name); gf_put(o, what); }
+// One page: opened, ready, drawn, and compared (or written, with update).
+gf_run_page :: (g: [] Gf, base: string, p: GfPage, dir: string, pending: string, update: bool) {
+  c := g[0].c[..];
+  t0 := proc_now_ms();
+  print("lane %\n", p.name);
+  l: [1] GfBuf;
+  u: [1] GfBuf; gf_put(u[..], base); gf_put(u[..], p.path);
+  wh: ArgsSize; wh.ok = true; wh.w = p.w; wh.h = p.h;
+  prev := cdp_evaluate(c, MEDIA_PREV_JS);
+  if !media_size(c, wh) || !gf_str_param(c, "Page.navigate", "url", gf_text(u[..])) {
+    gf_line(l[..], p.name, ": the browser did not open it: "); gf_put(l[..], cdp_error(c)); gf_fail(g, gf_text(l[..])); return;
+  }
+  // ready as shot.coax takes it: the scene drawn and the loading card gone
+  idle_from := -1;
+  while true {
+    word: [512] u8;
+    wn := media_value(c, MEDIA_READY_JS, word[..]);
+    status := ifx wn > 0 then cast(string) word[0..<wn] else "";
+    now := proc_now_ms();
+    if status == "idle" { if idle_from < 0 { idle_from = now; } } else { idle_from = -1; }
+    // a started page that reports no scene (its card gone) counts as ready after GF_IDLE_MS, as goldens.ts
+    // takes a started page once its files have stopped arriving for 1.5 s, not shot.coax's 10 s
+    step := media_ready_step(status, now - t0, ifx idle_from < 0 then 0 else now - idle_from + MEDIA_IDLE_MS - GF_IDLE_MS, GF_READY_MS);
+    if step == MEDIA_READY { break; }
+    if step == MEDIA_TIMEOUT { gf_line(l[..], p.name, ": the engine started (its scene not drawn in 120 s)"); gf_fail(g, gf_text(l[..])); return; }
+    if step == MEDIA_FAILED { gf_line(l[..], p.name, ": the engine started (its card says "); gf_put(l[..], status); gf_put(l[..], ")"); gf_fail(g, gf_text(l[..])); return; }
+    proc_sleep(MEDIA_POLL_MS);
+  }
+  proc_sleep(p.settle);
+  why := gf_frame(g, 0);
+  lit := ifx why.count == 0 then gf_lit(g[0].shots[0]) else 0;
+  for again: 0..<4 {
+    if why.count > 0 || lit >= p.lit { break; }
+    l[0].n = 0; gf_put(l[..], "  info  "); gf_put(l[..], p.name); gf_put(l[..], ": "); gf_percent(l[..], lit); gf_put(l[..], " lit; reading it again");
+    print("%\n", gf_text(l[..]));
+    proc_sleep(750);
+    why = gf_frame(g, 0); lit = ifx why.count == 0 then gf_lit(g[0].shots[0]) else 0;
+  }
+  if why.count > 0 { gf_line(l[..], p.name, ": a frame read back: "); gf_put(l[..], why); gf_fail(g, gf_text(l[..])); return; }
+  gf_line(l[..], p.name, ": draws ("); gf_percent(l[..], lit); gf_put(l[..], " lit, at least "); gf_percent(l[..], p.lit); gf_put(l[..], ")");
+  if lit < p.lit { gf_fail(g, gf_text(l[..])); return; }
+  print("  ok    %\n", gf_text(l[..]));
+  frame := cast(string) g[0].png[0..<g[0].png_n];
+  gp: [4096] u8;
+  pn: [1] GfBuf; gf_put(pn[..], p.name); gf_put(pn[..], ".png");
+  golden := fs_join(dir, gf_text(pn[..]), gp[..]);
+  if update {
+    if !fs_write(golden, frame) { gf_line(l[..], p.name, ": could not write "); gf_put(l[..], golden); gf_fail(g, gf_text(l[..])); return; }
+    print("  new   % (% bytes)\n", golden, g[0].png_n);
+    return;
+  }
+  if !fs_exists(golden) {
+    if p.unlisted && pending.count > 0 {
+      pp: [4096] u8; at := fs_join(pending, gf_text(pn[..]), pp[..]);
+      ok := fs_mkdir(pending); ok = fs_write(at, frame);
+      print("  NEW REALM %: no golden yet; its frame is %, approve with --update and commit %\n", p.name, at, golden);
+      return;
+    }
+    gf_line(l[..], p.name, ": no golden ("); gf_put(l[..], golden); gf_put(l[..], "); run --update and look at it"); gf_fail(g, gf_text(l[..])); return;
+  }
+  // three more frames: what moves on its own isn't compared
+  for k: 1..<4 {
+    proc_sleep(500);
+    why = gf_frame(g, k);
+    // a read the browser dropped (it happens once in a while, #12684) is asked for once more
+    if why.count > 0 { proc_sleep(250); why = gf_frame(g, k); }
+    if why.count > 0 { gf_line(l[..], p.name, ": a frame read back: "); gf_put(l[..], why); gf_fail(g, gf_text(l[..])); return; }
+  }
+  n := fs_read(golden, g[0].png[..]);
+  info := ifx n > 0 then png_info(g[0].png[0..<n]) else PngInfo.{status = PNG_NOT};
+  if n < 0 || info.status != PNG_OK || info.w > GF_MAX_W || info.h > GF_MAX_H || info.work > g[0].work.count ||
+     png_decode(g[0].png[0..<n], g[0].work[..], g[0].golden_px[0..<info.w * info.h * 4]) != PNG_OK {
+    gf_line(l[..], p.name, ": its golden can't be read: "); gf_put(l[..], golden); gf_fail(g, gf_text(l[..])); return;
+  }
+  golden_view := GfView.{px = g[0].golden_px[0..<info.w * info.h * 4], w = info.w, h = info.h};
+  r := gf_against(g[0].shots[..], golden_view, g[0].moving[..], g[0].near[..], g[0].once[..]);
+  gf_line(l[..], p.name, ": matches its golden ("); gf_int(l[..], r.changed); gf_put(l[..], " blocks changed, "); gf_int(l[..], p.blocks);
+  gf_put(l[..], " allowed, "); gf_int(l[..], r.moved); gf_put(l[..], " moving");
+  if r.changed > 0 {
+    gf_put(l[..], ", x "); gf_int(l[..], r.x0 * GF_BLOCK); gf_put(l[..], "-"); gf_int(l[..], (r.x1 + 1) * GF_BLOCK);
+    gf_put(l[..], ", y "); gf_int(l[..], r.y0 * GF_BLOCK); gf_put(l[..], "-"); gf_int(l[..], (r.y1 + 1) * GF_BLOCK);
+  }
+  if r.changed > p.blocks {
+    // the frame that failed, kept to look at (the first one, re-read: png now holds the golden)
+    tp: [4096] u8; kd := fs_temp("coax-golden-", tp[..]);
+    kp: [4096] u8; kept := ifx kd.count > 0 then fs_join(kd, gf_text(pn[..]), kp[..]) else "";
+    why = gf_frame(g, 0);
+    if kept.count > 0 && why.count == 0 && fs_write(kept, cast(string) g[0].png[0..<g[0].png_n]) { gf_put(l[..], "; this frame: "); gf_put(l[..], kept); }
+    gf_put(l[..], ")");
+    gf_fail(g, gf_text(l[..]));
+  } else {
+    gf_put(l[..], ")");
+    print("  ok    %\n", gf_text(l[..]));
+  }
+  print("  time  %: % s\n", p.name, (proc_now_ms() - t0) / 1000);
+}
+gf_report :: (g: [] Gf, base: string, path: string, pages: [] GfPage, count: int) -> bool {
+  buf: [1048576] u8; o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]); jo_key(o[..], "base"); jo_str(o[..], base);
+  jo_key(o[..], "failed"); jo_arr(o[..]);
+  for i: 0..<g[0].failed_n { jo_str(o[..], gf_text(g[0].failed[i..<i + 1])); }
+  jo_end(o[..]);
+  jo_key(o[..], "golden"); jo_arr(o[..]);
+  for i: 0..<g[0].failed_n {
+    name := gf_golden_failure(gf_text(g[0].failed[i..<i + 1]));
+    if name.count == 0 { continue; }
+    for k: 0..<count {
+      if pages[k].name == name { jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], name); jo_key(o[..], "path"); jo_str(o[..], pages[k].path); jo_end(o[..]); }
+    }
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "other"); jo_arr(o[..]);
+  for i: 0..<g[0].failed_n { line := gf_text(g[0].failed[i..<i + 1]); if gf_golden_failure(line).count == 0 { jo_str(o[..], line); } }
+  jo_end(o[..]); jo_end(o[..]);
+  return !o[0].bad && fs_write(path, jo_text(o[..]));
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  base := args_at(a[..], 0); table_path := args_at(a[..], 1);
+  while base.count > 0 && base[base.count - 1] == '/' { base = base[0..<base.count - 1]; }
+  if !ok || base.count < 8 || base[0..<4] != "http" || table_path.count == 0 {
+    tool_errln("usage: coax/web/tool.sh golden-frames BASE TABLE [--dir DIR] [--update] [--pending DIR] [--report FILE] [--glue FILE] [--shard I/N] [--require-hardware]");
+    return 2;
+  }
+  dir := args_value(a[..], "--dir", "coax/web/goldens/linux");
+  pending := args_value(a[..], "--pending", "");
+  report := args_value(a[..], "--report", "");
+  glue_path := args_value(a[..], "--glue", "coax/web/golden-frames.js");
+  update := args_has(a[..], "--update");
+  shard := gf_shard(args_value(a[..], "--shard", "1/1"));
+  if shard.n == 0 { tool_errln("golden-frames: --shard is I/N, 1 <= I <= N"); return 2; }
+  table: [1048576] u8; tn := fs_read(table_path, table[..]);
+  if tn < 0 { tool_err("golden-frames: can't read the table "); tool_errln(table_path); return 2; }
+  glue: [65536] u8; glue_n := fs_read(glue_path, glue[..]);
+  if glue_n < 0 { tool_err("golden-frames: can't read the page glue "); tool_errln(glue_path); return 2; }
+  pages: [GF_PAGES] GfPage; count := 0; line_no := 0;
+  text := cast(string) table[0..<tn]; at := 0;
+  for j: 0..<text.count + 1 {
+    if j < text.count && text[j] != '\n' { continue; }
+    line := text[at..<j]; at = j + 1;
+    if line.count == 0 { continue; }
+    line_no += 1;
+    if (line_no - 1) % shard.n != shard.k - 1 { continue; }
+    if count >= GF_PAGES || !gf_page(line, pages[count..<count + 1]) { tool_err("golden-frames: not a page: "); tool_errln(line); return 2; }
+    count += 1;
+  }
+  if count == 0 { tool_errln("golden-frames: the table names no page"); return 2; }
+  if update { made := fs_mkdir(dir); }
+  g: [1] Gf;
+  c := g[0].c[..];
+  if !cdp_launch(c, 1280, 800, "coax-golden-frames-") { tool_err("golden-frames: "); tool_errln(cdp_error(c)); return 1; }
+  // asked on a page of the site: about:blank is no secure context, and has no WebGPU
+  ask: [1] GfBuf; gf_put(ask[..], base); gf_put(ask[..], "/robots.txt");
+  asked := gf_str_param(c, "Page.navigate", "url", gf_text(ask[..]));
+  proc_sleep(1000);
+  gpu: [256] u8; adapter := cdp_adapter(c, gpu[..]);
+  print("golden-frames: WebGPU adapter: %\n", adapter);
+  if args_has(a[..], "--require-hardware") && !cdp_adapter_hardware(adapter) {
+    cdp_close(c);
+    tool_errln("golden-frames: --require-hardware: headless Chrome has no hardware WebGPU adapter here; Linux goldens are the GPU's frames");
+    return 2;
+  }
+  if !gf_call(c, "Page.enable", "{}") || !gf_call(c, "Runtime.enable", "{}") ||
+     !gf_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}") ||
+     !gf_str_param(c, "Page.addScriptToEvaluateOnNewDocument", "source", GF_SETUP) ||
+     !gf_str_param(c, "Page.addScriptToEvaluateOnNewDocument", "source", cast(string) glue[0..<glue_n]) {
+    tool_err("golden-frames: "); tool_errln(cdp_error(c)); cdp_close(c); return 1;
+  }
+  t0 := proc_now_ms();
+  for i: 0..<count { gf_run_page(g[..], base, pages[i], dir, pending, update); }
+  cdp_close(c);
+  if report.count > 0 && !gf_report(g[..], base, report, pages[..], count) { tool_err("golden-frames: could not write "); tool_errln(report); }
+  secs := (proc_now_ms() - t0) / 1000;
+  if g[0].failed_n > 0 { print("golden-frames %: % failed in % s (% pages)\n", base, g[0].failed_n, secs, count); return 1; }
+  print("golden-frames %: % in % s (% pages)\n", base, ifx update then "updated" else "passed", secs, count);
+  return 0;
+}

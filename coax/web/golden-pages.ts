@@ -191,6 +191,7 @@ export function commitsIn(range: string, cwd = ROOT) {
 //   bun golden-pages.ts affected RANGE           the pages RANGE (BASE..HEAD) may have changed, one a line
 //   bun golden-pages.ts blame RANGE NAME...      each page's likeliest breaking commit in RANGE: NAME<TAB>HASH<TAB>AUTHOR<TAB>WHY<TAB>SUBJECT
 //   bun golden-pages.ts objects NAME...          the bucket objects that are those pages' bytes, as one regex
+//   bun golden-pages.ts table [NAME...]          those pages (or every one) for golden-frames.coax (Linux), one a line
 if (import.meta.main) {
   const [verb, ...rest] = process.argv.slice(2)
   const p = goldenPages()
@@ -203,9 +204,16 @@ if (import.meta.main) {
       const s = suspects(name, commits, p)[0]
       console.log(s ? [name, s.hash, s.author, s.why, s.subject].join("\t") : [name, "", "", "", "no commit in the range touches its inputs"].join("\t"))
     }
+  } else if (verb === "table") {
+    // golden-frames.coax's pages: NAME PATH LIT SETTLE BLOCKS WIDTH HEIGHT UNLISTED (1 or 0), tab-separated
+    for (const n of rest.length ? rest : Object.keys(p.pages)) {
+      const g = p.pages[n]
+      if (!g) { console.error(`golden-pages: no page ${n}`); process.exit(2) }
+      console.log([n, g.path, g.lit, g.settle, g.blocks, g.size?.[0] ?? 1280, g.size?.[1] ?? 800, p.unlisted.has(n) ? 1 : 0].join("\t"))
+    }
   } else if (verb === "objects") {
     console.log(rest.filter((n) => p.pages[n]).map((n) => pageObjects(p.pages[n].path)).join("|"))
   } else {
-    console.error("usage: bun golden-pages.ts affected RANGE | blame RANGE NAME... | objects NAME..."); process.exit(2)
+    console.error("usage: bun golden-pages.ts affected RANGE | blame RANGE NAME... | objects NAME... | table [NAME...]"); process.exit(2)
   }
 }

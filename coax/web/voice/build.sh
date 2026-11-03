@@ -7,10 +7,10 @@
 set -euo pipefail
 out="$1"
 repo="$(cd "$(dirname "$0")/../../.." && pwd)"
-clang="${COAXIAL_CLANG:-/opt/homebrew/opt/llvm/bin/clang}"
-sysroot="${COAXIAL_SYSROOT:-/opt/homebrew/opt/wasi-libc/share/wasi-sysroot}"
-resources="${COAXIAL_RESOURCES:-/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes}"
-export PATH="/opt/homebrew/opt/lld/bin:$PATH"
+# The Wasm toolchain wasm.sh uses (toolchain.sh): Homebrew's on a Mac, nixpkgs' on Linux;
+# COAXIAL_CLANG, COAXIAL_SYSROOT and COAXIAL_RESOURCES override it.
+source "$repo/coax/web/toolchain.sh"
+clang="$COAXIAL_CLANG"; sysroot="$COAXIAL_SYSROOT"; resources="$COAXIAL_RESOURCES"
 work="$(dirname "$out")/.voice"
 mkdir -p "$work"
 cflags=(--target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -std=c11 -O2
