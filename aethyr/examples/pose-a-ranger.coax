@@ -1,0 +1,68 @@
+// Book chapter 14: Everglade's Ranger (75 joints, eight clips) played through a recorded clip
+// sequence at 60 frames a second. Each frame's skinning palette goes into one digest, recorded
+// before the pose pipeline moved into aethyr/anim/pose.coax, and every bone's length in the
+// posed skeleton is compared with its length in the clip being played.
+#load "../../verse/everglade/ranger.coax";
+#load "../motion.coax";
+#import "Basic";
+
+r4 :: (x: f32) -> f32 { return cast(f32) floor(x * 10000 + 0.5) / 10000; }
+
+// book:begin example
+// FNV-1a over 32-bit words, kept in 32 bits.
+mix32 :: (h: int, v: int) -> int { return ((h ^ (v & 4294967295)) * 16777619) & 4294967295; }
+
+// The bone from joint j's parent to j in the pose now, and its length.
+bone :: (r: SkinRig, s: [] Skin, j: int) -> f32 {
+  d := sub(skin_joint(r, s, j), skin_joint(r, s, r.parent[j]));
+  return length(d);
+}
+
+main :: () {
+  d: [1] Ranger;
+  ranger_load(d[..]);
+  r := ranger_rig(d[..]);
+  s: [1] Skin;
+  // The recorded sequence: stand half a second, walk at 1.3 m/s, run at 6, jump, then stand.
+  clips := [5] int.[SKIN_IDLE, SKIN_WALK, SKIN_RUN, SKIN_JUMP, SKIN_IDLE];
+  speeds := [5] f32.[0, 1.3, 6, 6, 0];
+  frames := [5] int.[30, 60, 30, 30, 30];
+  palette: [RANGER_JOINTS * 12] f32;
+  h := 2166136261;
+  n := 0;
+  worst := 0.0f32; worst_frame := 0; worst_joint := 0;
+  for k: 0..<5 {
+    for f: 0..<frames[k] {
+      skin_advance(r, s[..], clips[k], speeds[k], 1.0 / 60.0);
+      skin_palette(r, s[..], palette[..]);
+      for i: 0..<palette.count { h = mix32(h, cast(int) f32_bits(palette[i])); }
+      n += 1;
+      if k == 1 && f == 6 {
+        // 0.1 s into the walk: the fade's share, smoothstepped
+        a := (s[0].clock - s[0].changed) / SKIN_FADE;
+        print("0.1 s into the walk: % of the fade, a share of %\n", r4(a), r4(a * a * (3 - 2 * a)));
+      }
+      // Each bone against the same bone in the clip's own pose at this time: a fade blends
+      // each joint locally, so a bone keeps the length the two poses give it.
+      for j: 1..<r.joints {
+        target := length(skin_sample(r, s[0].clip, j, s[0].time).t);
+        from := length(s[0].from[j].t);
+        lo_len := ifx target < from then target else from;
+        hi_len := ifx target > from then target else from;
+        b := bone(r, s[..], j);
+        off := ifx b < lo_len then lo_len - b else ifx b > hi_len then b - hi_len else 0.0f32;
+        if off > worst { worst = off; worst_frame = n; worst_joint = j; }
+      }
+    }
+    faded := (s[0].clock - s[0].changed) / SKIN_FADE;
+    print("after % frames of % at % m/s: % s into the clip, its fade % done\n", frames[k], RANGER_CLIP_NAME[clips[k]], speeds[k], r4(s[0].time), ifx faded >= 1 then "all" else "not");
+  }
+  print("% frames, % joints: palette digest %\n", n, r.joints, h);
+  print("bones outside their two poses' lengths: at most % m (frame %, joint %)\n", worst, worst_frame, worst_joint);
+  // A motion that turns a joint past its limit is refused with the line and the range, not bent.
+  m: [1] Motion;
+  ok := verse_motion_read(m[..], "motion wave; rig person; seconds 2; once; at 0.5; right_shoulder 0 0 -250");
+  print("a wave past the shoulder's limit read %: %\n", ok, verse_motion_error(m[..]));
+  print("clip for 0.05 m/s %, 1.3 m/s %, 6 m/s %, in the air %\n", RANGER_CLIP_NAME[skin_motion(0.05, false)], RANGER_CLIP_NAME[skin_motion(1.3, false)], RANGER_CLIP_NAME[skin_motion(6, false)], RANGER_CLIP_NAME[skin_motion(1.3, true)]);
+}
+// book:end example

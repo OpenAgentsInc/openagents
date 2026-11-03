@@ -222,6 +222,16 @@
       ]
     },
     {
+      "source": "aethyr/examples/pose-a-ranger.coax",
+      "chapter": "aethyr/book/ch014-figures-and-animation.md",
+      "stdout": "aethyr/fixtures/pose-a-ranger.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "aethyr/examples/hold-to-talk.coax",
       "chapter": "aethyr/book/ch069-voices-in-a-realm.md",
       "stdout": "aethyr/fixtures/hold-to-talk.out",

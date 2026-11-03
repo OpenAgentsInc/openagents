@@ -1,0 +1,10 @@
+after 30 frames of idle at 0.0 m/s: 0.5 s into the clip, its fade all done
+0.1 s into the walk: 0.4545 of the fade, a share of 0.432
+after 60 frames of walk at 1.3 m/s: 0.0 s into the clip, its fade all done
+after 30 frames of run at 6.0 m/s: 0.56 s into the clip, its fade all done
+after 30 frames of jump at 6.0 m/s: 0.5 s into the clip, its fade all done
+after 30 frames of idle at 0.0 m/s: 0.5 s into the clip, its fade all done
+180 frames, 75 joints: palette digest 3351927923
+bones outside their two poses' lengths: at most 2.3841858e-07 m (frame 38, joint 17)
+a wave past the shoulder's limit read false: line 6: right_shoulder roll is outside -190..40
+clip for 0.05 m/s idle, 1.3 m/s walk, 6 m/s run, in the air jump
