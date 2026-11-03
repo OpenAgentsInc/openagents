@@ -27,11 +27,12 @@
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 90000;
-UNIFORM_FLOATS :: 456;
-TOKENS3 :: 44;   // the glade's tokens (gpu/fivelab.coax FIVELAB_TOKENS)
+UNIFORM_FLOATS :: 936;
+TOKENS3 :: 104;   // the glade's tokens (gpu/fivelab.coax FIVELAB_TOKENS)
 U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
-U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 388; U_BOUNDS :: 452;
+U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 868; U_BOUNDS :: 932;
 SQ :: 1.524;   // a 5-foot square, metres
+HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
 DIST :: 32.0; PIVOT_Z :: 0.6; ZOOM_NEAR :: 6.0; ZOOM_FAR :: 90.0;   // the camera's orbit: start, and how near and far it zooms
 VIEW_FLAT :: 0; VIEW_GLADE :: 1;
 // The time adapters (docs/dnd/README.md, "The time adapter"): the SRD's 6-second rounds, or action
@@ -49,15 +50,12 @@ KEY_SHIFT :: -13; KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :
 
 COLS :: 26; ROWS :: 14;
 FAST :: 4.0;
-// Three sides. Twelve a side, all level 3, and twenty Skeletons (the SRD's stat block) risen in
-// the middle as the Restless Dead, against everyone: five Druids and seven Berserker Barbarians (the Circle of Moss)
+// Three sides. Twelve a side, all level 3, and an army of eighty Skeletons (the SRD's stat block) in
+// the middle from the start as the Restless Dead, against everyone: five Druids and seven Berserker Barbarians (the Circle of Moss)
 // against five Fiend Warlocks (Armor of Shadows, Agonizing Blast and Repelling Blast for Eldritch
 // Blast) and seven Open Hand Monks (the Ember Pact).
-SIDE :: 12; HEROES :: 24; SKELETONS :: 20; PEOPLE :: 44; CASTERS :: 5; TEAMS :: 3;
-WAVE :: 5; WAVE_EVERY :: 8.0;   // the Restless Dead rise five at a time, every 8 seconds
-// where each wave claws up: the top edge, the bottom edge, the middle, then the top and bottom again
-WAVE_X :: [4] int.[11, 12, 13, 14];
-WAVE_Y :: [4] int.[0, 13, 6, 0];
+SIDE :: 12; HEROES :: 24; SKELETONS :: 80; PEOPLE :: 104; CASTERS :: 5; TEAMS :: 3;
+ARMY_X :: 8; ARMY_Y :: 3; ARMY_COLS :: 10;   // the Restless Dead stand ten wide, eight deep, mid-glade
 TEAM_NAME :: [3] string.["CIRCLE OF MOSS", "THE EMBER PACT", "THE RESTLESS DEAD"];
 NAMES :: [24] string.["Rowan", "Briar", "Fern", "Hazel", "Alder",
                        "Sen", "Lio", "Mara", "Tam", "Ishu", "Rook", "Wen",
@@ -108,7 +106,6 @@ Lab :: struct {
   gx: f32; gy: f32; cell: f32;
   panel: Rect; back: Rect; flip: Rect; modal: Rect;
   mode: int = MODE_ACTION;
-  risen: int; next_wave: f32;   // the Skeletons risen so far, and when the next wave rises
   pressing: int;
   // the glade's camera: an orbit round the clearing, and what it makes this frame
   view: int = VIEW_GLADE;
@@ -116,6 +113,8 @@ Lab :: struct {
   px: f32 = 0; pz: f32 = PIVOT_Z;   // the point it orbits, on the ground (metres)
   dragging: bool; drag_x: f32; drag_y: f32;
   panning: bool; shift: bool;       // Shift held: a drag pans
+  fps: f32; fps_n: int; fps_t: f32;   // frames a second, counted over each half second
+  held: int; vx: f32; vz: f32; vyaw: f32; vpitch: f32; vzoom: f32;   // keys held (HOLD_*), and how the camera flies
   fingers: int; fing_id: [2] int; fing_x: [2] f32; fing_y: [2] f32;   // touches down, for a pinch
   eye: P3; fwd: P3; right: P3; up: P3; focal: f32; cx: f32; cy: f32;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
@@ -226,7 +225,14 @@ new_battle :: (s: [] Lab) {
   s[0].seed += 1;
   s[0].battle[0].dice[0].state = s[0].seed * 7919 + 17;
   for i: 0..<PEOPLE {
-    if i >= HEROES { continue; }   // the Restless Dead rise later, in waves
+    if i >= HEROES {
+      q := i - HEROES; x := ARMY_X + q % ARMY_COLS; y := ARMY_Y + q / ARMY_COLS;
+      nm: [16] u8;
+      nn := put(nm[..], 0, "Skeleton "); nn = put_int(nm[..], nn, q + 1);
+      d := rs_add(bt(s), rs_skeleton(cast(string) nm[0..<nn], 2), x, y);
+      s[0].dx[i] = f32(x); s[0].dy[i] = f32(y); s[0].acted[i] = -10;
+      continue;
+    }
     k := i % SIDE; team := i / SIDE;
     who := ifx k >= CASTERS then (ifx team == 0 then rs_monk(NAMES[i], 0, 3) else rs_barbarian(NAMES[i], 1, 3))
            else (ifx team == 0 then rs_druid(NAMES[i], 0, 3) else rs_warlock(NAMES[i], 1, 3, SP_ELDRITCH_BLAST));
@@ -238,14 +244,13 @@ new_battle :: (s: [] Lab) {
   rs_begin(bt(s));
   s[0].seen = s[0].battle[0].book[0].seq;
   s[0].over = false; s[0].winner = -1;
-  s[0].risen = 0; s[0].next_wave = 2;
   s[0].round += 1;
   for i: 0..<FXS { s[0].fx[i].kind = 0; }
   l: [LINE_CAP] u8;
   n := put(l[..], 0, "Battle ");
   n = put_int(l[..], n, s[0].round);
   n = put(l[..], n, ifx s[0].mode == MODE_ACTION then ", action combat" else ", SRD rounds");
-  n = put(l[..], n, ": druids and monks, warlocks and barbarians, and 20 skeletons.");
+  n = put(l[..], n, ": druids and monks, warlocks and barbarians, and an army of 80 skeletons.");
   add_line(s, cast(string) l[0..<n], GOLD);
   // six to a line
   for row: 0..<(HEROES / 6) {
@@ -257,33 +262,6 @@ new_battle :: (s: [] Lab) {
     }
     add_line(s, cast(string) l[0..<m], TEAM_COL[(row * 6) / SIDE]);
   }
-}
-// Five Skeletons claw up out of the glade, on free squares along an edge or in the middle.
-rise :: (s: [] Lab) {
-  b := bt(s);
-  w := s[0].risen / WAVE;
-  ys := ifx w < 4 then WAVE_Y[w] else 13 * (w % 2);
-  got := 0;
-  for k: 0..<(WAVE * 4) {
-    if got >= WAVE { break; }
-    x := 10 + (k * 3) % 7; y := ys + (ifx ys == 0 then k / 7 else ifx ys == 13 then -(k / 7) else (k / 7) - 1);
-    if y < 0 || y >= ROWS || rs_at(b, x, y) >= 0 { continue; }
-    q := s[0].risen;
-    nm: [16] u8;
-    nn := put(nm[..], 0, "Skeleton "); nn = put_int(nm[..], nn, q + 1);
-    i := rs_add(b, rs_skeleton(cast(string) nm[0..<nn], 2), x, y);
-    if i < 0 { break; }
-    b[0].c[i].turn_at = b[0].clock + 0.5 + f32(got) * rs_beat(b) / f32(WAVE);
-    b[0].c[i].round_at = b[0].c[i].turn_at;
-    s[0].dx[i] = f32(x); s[0].dy[i] = f32(y); s[0].acted[i] = b[0].clock;
-    s[0].risen += 1; got += 1;
-  }
-  s[0].next_wave = b[0].clock + WAVE_EVERY;
-  l: [LINE_CAP] u8;
-  n := put(l[..], 0, "The Restless Dead rise: "); n = put_int(l[..], n, got);
-  n = put(l[..], n, " skeletons ("); n = put_int(l[..], n, s[0].risen); n = put(l[..], n, " of 20)");
-  add_line(s, cast(string) l[0..<n], TEAM_COL[2]);
-  if got == 0 { s[0].risen = SKELETONS; }
 }
 lab_start :: (s: [] Lab) {
   if s[0].started { return; }
@@ -597,12 +575,10 @@ step :: (s: [] Lab, dt: f32) {
     guard += 1;
     due = rs_due(b);
   }
-  // the next wave of the Restless Dead
-  if s[0].risen < SKELETONS && b[0].clock >= s[0].next_wave { rise(s); }
   take_events(s);
-  // the last side standing wins (the Dead stand while any are still to rise)
+  // the last side standing wins
   standing := 0; last := -1;
-  for t: 0..<TEAMS { if rs_team_up(b, t) > 0 || (t == 2 && s[0].risen < SKELETONS) { standing += 1; last = t; } }
+  for t: 0..<TEAMS { if rs_team_up(b, t) > 0 { standing += 1; last = t; } }
   if standing <= 1 && !s[0].over {
     s[0].over = true; s[0].over_t = b[0].clock; s[0].winner = last;
     l: [LINE_CAP] u8;
@@ -1006,8 +982,8 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     for i: HEROES..<b.n { if rs_up(b.c[i]) { up += 1; hp += b.c[i].hp; } }
     y += crow * 1.4;
     n = say_at(out, n, "SKELETONS", x, y, cap * 0.92, ink(k, 0.85, ifx up > 0 then TEAM_COL[2] else FAINT));
-    m := put(l[..], 0, ""); m = put_int(l[..], m, up); m = put(l[..], m, " STANDING, ");
-    m = put_int(l[..], m, SKELETONS - s[0].risen); m = put(l[..], m, " TO RISE  HP "); m = put_int(l[..], m, hp);
+    m := put(l[..], 0, ""); m = put_int(l[..], m, up); m = put(l[..], m, " OF "); m = put_int(l[..], m, SKELETONS);
+    m = put(l[..], m, " STANDING  HP "); m = put_int(l[..], m, hp);
     m = put(l[..], m, "  AC 14  SHORTSWORD AND SHORTBOW");
     n = say_at(out, n, cast(string) l[0..<m], x + 84 * k, y, cap * 0.85, ink(k, 0.6, DIM));
   }
@@ -1045,6 +1021,15 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   m = put(l[..], m, "   R NEW BATTLE   V 2D/3D   M MODE");
   if s[0].view == VIEW_GLADE { m = put(l[..], m, "   DRAG ORBIT   SHIFT+DRAG PAN   WHEEL ZOOM"); }
   n = say_at(out, n, cast(string) l[0..<m], sx0, sy0 + 16 * k, ifx s[0].portrait then 7 * k else 8 * k, ink(k, 0.45, FAINT));
+  // frames a second, in the scene's bottom-right corner (not in the golden, which has no clock)
+  if !s[0].golden {
+    fl: [16] u8;
+    fm := put_int(fl[..], 0, int(s[0].fps + 0.5)); fm = put(fl[..], fm, " FPS");
+    fc := 9 * k;
+    fxr := ifx s[0].portrait then s[0].width - 14 * k else s[0].panel.x0 - 12 * k;
+    fyb := ifx s[0].portrait then s[0].panel.y0 - 12 * k else s[0].height - 14 * k;
+    n = say_at(out, n, cast(string) fl[0..<fm], fxr - text_width(cast(string) fl[0..<fm], fc), fyb, fc, ink(k, 0.8, DIM));
+  }
   if s[0].paused { n = say_mid(out, n, "PAUSED", s[0].cx, s[0].gy + 26 * k, 14 * k, ink(k, 0.9, GOLD)); }
   if s[0].over && s[0].winner >= 0 {
     mid := s[0].cx; cy := s[0].cy;
@@ -1075,6 +1060,11 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   }
   step_dt := ifx s[0].golden || still || s[0].paused then 0.0f32 else dt;
   lab_run(s, step_dt);
+  if !s[0].golden { fly(s, dt); }
+  if dt > 0 {
+    s[0].fps_n += 1; s[0].fps_t += dt;
+    if s[0].fps_t >= 0.5 { s[0].fps = f32(s[0].fps_n) / s[0].fps_t; s[0].fps_n = 0; s[0].fps_t = 0; }
+  }
   t := s[0].clock;
   layout(s, width, height, k);
   n := 0;
@@ -1159,27 +1149,64 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   if key == 'v' || key == 'V' { s[0].view = 1 - s[0].view; return true; }
   if key == 'm' || key == 'M' { switch_mode(s); return true; }
   if s[0].view == VIEW_GLADE {
-    if key == KEY_LEFT { s[0].yaw -= 0.12; return true; }
-    if key == KEY_RIGHT { s[0].yaw += 0.12; return true; }
-    if key == KEY_UP { s[0].pitch = lo(1.35, s[0].pitch + 0.06); return true; }
-    if key == KEY_DOWN { s[0].pitch = hi(0.12, s[0].pitch - 0.06); return true; }
-    if key == '=' || key == '+' { cam_zoom(s, 0.9); return true; }
-    if key == '-' || key == '_' { cam_zoom(s, 1 / 0.9); return true; }
-    nudge := s[0].dist * 0.06 * s[0].focal;   // device px, so a step is a few metres at any zoom
-    if key == 'w' || key == 'W' { cam_pan(s, 0, nudge); return true; }
-    if key == 's' || key == 'S' { cam_pan(s, 0, -nudge); return true; }
-    if key == 'a' || key == 'A' { cam_pan(s, nudge, 0); return true; }
-    if key == 'd' || key == 'D' { cam_pan(s, -nudge, 0); return true; }
-    if key == 'c' || key == 'C' { s[0].yaw = 0; s[0].pitch = 0.6; s[0].dist = DIST; s[0].px = 0; s[0].pz = PIVOT_Z; return true; }
+    h := hold_bit(key);
+    if h != 0 { s[0].held |= h; return true; }
+    if key == 'c' || key == 'C' { s[0].yaw = 0; s[0].pitch = 0.6; s[0].dist = DIST; s[0].px = 0; s[0].pz = PIVOT_Z; s[0].vx = 0; s[0].vz = 0; return true; }
     if key == KEY_SHIFT { s[0].shift = true; return false; }
   }
   return false;
 }
 lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   if key == KEY_SHIFT { s[0].shift = false; }
-  return false;
+  h := hold_bit(key);
+  s[0].held = s[0].held & (1023 - h);   // h is one HOLD_ bit or none
+  return h != 0;
 }
-lab_blur :: (s: [] Lab) #export_c { s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0; }
+lab_blur :: (s: [] Lab) #export_c { s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0; s[0].held = 0; }
+// The keys that fly the camera while they are held.
+hold_bit :: (key: int) -> int {
+  if key == 'w' || key == 'W' { return HOLD_W; }
+  if key == 'a' || key == 'A' { return HOLD_A; }
+  if key == 's' || key == 'S' { return HOLD_S; }
+  if key == 'd' || key == 'D' { return HOLD_D; }
+  if key == KEY_LEFT { return HOLD_LEFT; }
+  if key == KEY_RIGHT { return HOLD_RIGHT; }
+  if key == KEY_UP { return HOLD_UP; }
+  if key == KEY_DOWN { return HOLD_DOWN; }
+  if key == '=' || key == '+' { return HOLD_IN; }
+  if key == '-' || key == '_' { return HOLD_OUT; }
+  return 0;
+}
+axis :: (held: int, plus: int, minus: int) -> f32 {
+  a: f32 = 0;
+  if held & plus != 0 { a += 1; }
+  if held & minus != 0 { a -= 1; }
+  return a;
+}
+// Each frame the held keys fly the camera: its speeds ease toward what the keys ask and coast to
+// a stop when they let go, so it glides rather than steps. Paused or not, on the frame's real time.
+fly :: (s: [] Lab, dt: f32) {
+  t := lo(dt, 0.1);
+  if !(t > 0) { return; }
+  ease := lo(1, t * 9);
+  h := s[0].held;
+  if s[0].view != VIEW_GLADE { h = 0; }
+  speed := s[0].dist * 0.9;   // metres a second: a long way out, it flies faster
+  s[0].vx += (axis(h, HOLD_D, HOLD_A) * speed - s[0].vx) * ease;
+  s[0].vz += (axis(h, HOLD_W, HOLD_S) * speed - s[0].vz) * ease;
+  s[0].vyaw += (axis(h, HOLD_RIGHT, HOLD_LEFT) * 1.6 - s[0].vyaw) * ease;
+  s[0].vpitch += (axis(h, HOLD_UP, HOLD_DOWN) * 0.9 - s[0].vpitch) * ease;
+  s[0].vzoom += (axis(h, HOLD_OUT, HOLD_IN) * 1.4 - s[0].vzoom) * ease;
+  ax := s[0].fwd.x; az := s[0].fwd.z; al := sqrt(ax * ax + az * az);
+  if al > 0.0001 { ax /= al; az /= al; }
+  s[0].px += (s[0].right.x * s[0].vx + ax * s[0].vz) * t;
+  s[0].pz += (s[0].right.z * s[0].vx + az * s[0].vz) * t;
+  hx := f32(COLS) * f32(SQ) / 2; hz := f32(ROWS) * f32(SQ) / 2;
+  s[0].px = lo(hx, hi(-hx, s[0].px)); s[0].pz = lo(hz, hi(-hz, s[0].pz));
+  s[0].yaw += s[0].vyaw * t;
+  s[0].pitch = lo(1.35, hi(0.12, s[0].pitch + s[0].vpitch * t));
+  cam_zoom(s, 1 + s[0].vzoom * t);
+}
 // The camera's zoom: its distance times `by`, held between near and far.
 cam_zoom :: (s: [] Lab, by: f32) { s[0].dist = lo(ZOOM_FAR, hi(ZOOM_NEAR, s[0].dist * by)); }
 // A pan: the ground follows the pointer, dx right and dy down (device px), so the pivot moves the
@@ -1318,7 +1345,13 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert s[0].px > 0 && s[0].yaw == 0;   // the ground moved left under the pointer
   ok = lab_key_up(s[..], KEY_SHIFT, 0);
   ok = lab_key(s[..], 'c', 0); n = frame_at(s[..], 1600, 1000, 1, 0.016);
-  ok = lab_key(s[..], 'w', 0); #assert s[0].pz < PIVOT_Z;   // forward is toward -Z at yaw 0
+  ok = lab_key(s[..], 'w', 0);
+  for i: 0..<20 { fly(s[..], 0.016); }
+  z1 := s[0].pz; #assert z1 < PIVOT_Z;   // held, W flies forward (toward -Z at yaw 0)
+  ok = lab_key_up(s[..], 'w', 0);
+  for i: 0..<60 { fly(s[..], 0.016); }
+  #assert s[0].pz < z1 && s[0].vz < 0.5 && s[0].vz > -0.5;   // let go, it coasts to a stop
+  ok = lab_key(s[..], 'c', 0);
   ok = lab_pointer(s[..], 400, 500, 0, 0, 1); ok = lab_pointer(s[..], 450, 500, 1, 0, 1); ok = lab_pointer(s[..], 450, 500, 2, 0, 1);
   #assert s[0].yaw != 0;   // a plain drag still orbits
 }
