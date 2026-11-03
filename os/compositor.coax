@@ -43,6 +43,7 @@
 #load "desk-buffer-policy.coax";
 #load "desk-dmabuf.coax";
 #load "desk-control.coax";
+#load "game-window-policy.coax";
 
 cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
 
@@ -1109,6 +1110,11 @@ cx_rules :: (x: [] Cx, s: int, w: int) {
   if x[0].surfs[s].ruled { return; }
   t := cast(string) x[0].surfs[s].title[0..<x[0].surfs[s].nt]; ap := cast(string) x[0].surfs[s].app[0..<x[0].surfs[s].na];
   m := x[0].wm[..];
+  if game_window_fullscreen(t, ap) && wm_focus(m) == w {
+    x[0].surfs[s].ruled = true;
+    if !wm_is_fullscreen(m, w) { wm_fullscreen(m); }
+    return;
+  }
   for i: 0..<x[0].rules[0].n {
     r := x[0].rules[0].r[i];
     if !cx_rule_matches(r, t, ap) { continue; }

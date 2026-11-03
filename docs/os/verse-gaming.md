@@ -11,7 +11,8 @@ d="$HOME/.local/share/verse-os/current"
 . "$d/env"
 export LD_LIBRARY_PATH
 VK_DRIVER_FILES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json \
-  "$d/verse-session" --dir "$d" --window --state "$HOME/.local/state/verse"
+  "$d/verse-session" --dir "$d" --window --desk-size 2548x1428 \
+    --state "$HOME/.local/state/verse" --run "$XDG_RUNTIME_DIR/verse-session"
 ```
 
 F10 shows the desk flat; its terminal starts automatically. Super+G, or
@@ -62,9 +63,15 @@ also works from a separate local connection. A long-running controller can
 use [desk-control-v2](../protocol/desk-control-v2.md) directly; it must keep
 the connection open while holding a key/button.
 
+`--desk-size` sets both the compositor and the panel image, each side
+64–4096 pixels. Match the Verse window's actual pixel dimensions to avoid
+upscaling. The launcher now sets each installed WoW variant's saved window
+resolution to that desk size before starting Battle.net, and the main
+Battle.net/WoW surfaces use the whole desk automatically. Close a running
+game before changing the desk size.
+
 The first accelerated path retains CPU desk composition and frame upload;
-it is not zero-copy. WoW's existing resolution settings may leave black
-space inside its window. Continuous turning across cursor edges and a
+it is not zero-copy. Continuous turning across cursor edges and a
 sustained frame-rate target are not yet qualified. Actual launch, movement,
 camera and cancellation evidence is in the
 [verification record](../verification/verse-os-gaming-2026-11-03.md).

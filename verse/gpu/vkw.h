@@ -50,6 +50,7 @@ typedef struct {
   float x, y;               // the pointer, in the window's pixels
   int down;                 // the left button is held
   int shift, keys_down[KEY_MAX + 1];
+  unsigned char forwarded_down[KEY_MAX + 1]; // physical keys delivered to the desk
   VkwTo to;
 } Vkw;
 
@@ -79,8 +80,10 @@ static void vkw_kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_s
 // Focus gone: every key held is let go, so none sticks while the window is behind another.
 static void vkw_kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *w) {
   (void)d; (void)k; (void)s; (void)w;
-  for (int c = 0; c <= KEY_MAX; c++)
+  for (int c = 0; c <= KEY_MAX; c++) {
+    if (vkw_->forwarded_down[c]) { if (vkw_->to.key) vkw_->to.key(c, 0); vkw_->forwarded_down[c] = 0; }
     if (vkw_->keys_down[c]) { realm_key_up(NULL, vkw_->keys_down[c]); vkw_->keys_down[c] = 0; }
+  }
   vkw_->shift = 0;
 }
 // evdev codes, as the seat sends them; shifted and released as evdev.h does.
@@ -89,7 +92,13 @@ static void vkw_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t ti
   if (code > KEY_MAX) return;
   int pressed = state == WL_KEYBOARD_KEY_STATE_PRESSED;
   if (code == KEY_LEFTSHIFT || code == KEY_RIGHTSHIFT) vkw_->shift += pressed ? 1 : (vkw_->shift > 0 ? -1 : 0);
-  if (vkw_->to.key && !vkw_->keys_down[code] && vkw_->to.key((int)code, pressed)) return;
+  if (!pressed && vkw_->forwarded_down[code]) {
+    if (vkw_->to.key) vkw_->to.key((int)code, 0);
+    vkw_->forwarded_down[code] = 0; return;
+  }
+  if (vkw_->to.key && !vkw_->keys_down[code] && vkw_->to.key((int)code, pressed)) {
+    vkw_->forwarded_down[code] = pressed; return;
+  }
   int r = pressed ? realm_key_shifted((int)code, vkw_->shift > 0) : vkw_->keys_down[code];
   if (!r) return;
   if (pressed) { vkw_->keys_down[code] = r; realm_key(NULL, r); }

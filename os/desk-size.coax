@@ -1,0 +1,29 @@
+// One size shared by the session's compositor and its realm host.
+#authority;
+DeskSize :: struct { width: int; height: int; }
+#test "desk pixels are exact bounded decimal dimensions" {
+  #assert desk_size("1280x720").width == 1280;
+  #assert desk_size("2548x1428").height == 1428;
+  #assert desk_size("64x64").height == 64;
+  #assert desk_size("4096x4096").width == 4096;
+  #assert desk_dimension("99") == 99 && desk_dimension("100") == 100;
+  for bad: [18] string.["", "0x720", "63x720", "1280x63", "4097x720", "1280x4097", "1280X720", "1280x720x1", "1280.0x720", "-1280x720", "1280x720 ", "x720", "1280x", "1280720", "064x720", "64x064", "64x:0", "64x/0"] {
+    #assert desk_size(bad).width == 0 && desk_size(bad).height == 0;
+  }
+}
+desk_size :: (s: string) -> DeskSize {
+  for i: 2..<s.count {
+    if s[i] == 'x' {
+      w := desk_dimension(s[0..<i]); h := desk_dimension(s[i + 1..<s.count]);
+      if w == 0 || h == 0 { return DeskSize.{}; }
+      return DeskSize.{width = w, height = h};
+    }
+  }
+  return DeskSize.{};
+}
+desk_dimension :: (s: string) -> int {
+  if s.count == 0 || s[0] == '0' { return 0; }
+  value := 0;
+  for c: s { if c < '0' || c > '9' { return 0; } value = value * 10 + cast(int) (c - '0'); if value > 4096 { return 0; } }
+  return ifx value >= 64 then value else 0;
+}

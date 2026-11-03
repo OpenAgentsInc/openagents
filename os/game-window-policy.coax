@@ -1,0 +1,13 @@
+// Curated game surfaces use the whole desk, rather than competing with Wine helper tiles.
+#authority;
+#test "only this runner's two named game surfaces request the whole desk" {
+  #assert game_window_fullscreen("Battle.net", "steam_app_battlenet");
+  #assert game_window_fullscreen("World of Warcraft", "steam_app_battlenet");
+  #assert !game_window_fullscreen("", "steam_app_battlenet");
+  #assert !game_window_fullscreen("Battle.net helper", "steam_app_battlenet");
+  #assert !game_window_fullscreen("World of Warcraft", "foot");
+  #assert !game_window_fullscreen("Other", "steam_app_battlenet");
+}
+game_window_fullscreen :: (title: string, app: string) -> bool {
+  return app == "steam_app_battlenet" && (title == "Battle.net" || title == "World of Warcraft");
+}

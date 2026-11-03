@@ -8,6 +8,7 @@
 #load "../coax/lib/json/json.coax";
 #load "desk-client.coax";
 #load "battlenet-policy.coax";
+#load "wow-display.coax";
 
 tool_main :: () -> int #export_c {
   a: [1] Args; if !args_load(a[..]) { return 2; }
@@ -36,6 +37,26 @@ tool_main :: () -> int #export_c {
     return 1;
   }
   if args_has(a[..], "--check") { print("Battle.net ready: existing prefix, Verse desk, DISPLAY %\n", display); return 0; }
+  // Start WoW at this desk's pixel size; a larger X window alone left its saved viewport small.
+  ww := jv_int(d[0], jv_path(d[0], 0, "screens[0].size.width"), 0);
+  hh := jv_int(d[0], jv_path(d[0], 0, "screens[0].size.height"), 0);
+  sizebytes: [64] u8; so: [1] Jo; jo_start(so[..], sizebytes[..]); jo_int(so[..], ww);
+  // Plain decimal dimensions, not a JSON string.
+  sizeout: [64] u8; size_n := 0;
+  for c: jo_text(so[..]) { sizeout[size_n] = c; size_n += 1; } sizeout[size_n] = 'x'; size_n += 1;
+  jo_start(so[..], sizebytes[..]); jo_int(so[..], hh);
+  for c: jo_text(so[..]) { sizeout[size_n] = c; size_n += 1; }
+  pixels := cast(string) sizeout[0..<size_n];
+  for variant: [3] string.["_classic_era_", "_classic_", "_retail_"] {
+    wb: [4096] u8; wp: [4096] u8; wq: [4096] u8;
+    base := fs_join(prefix, "drive_c/Program Files (x86)/World of Warcraft", wb[..]);
+    config := fs_join(fs_join(base, variant, wp[..]), "WTF/Config.wtf", wq[..]);
+    if fs_exists(config) {
+      before: [65536] u8; after: [65792] u8; count := fs_read(config, before[..]);
+      written := ifx count >= 0 then wow_display(cast(string) before[0..<count], pixels, after[..]) else -1;
+      if written < 0 || !fs_write(config, cast(string) after[0..<written]) { tool_errln("Battle.net: could not set WoW's desk resolution"); return 1; }
+    }
+  }
   lockbuf: [4096] u8; lock := fs_join(prefix, ".verse-launch.lock", lockbuf[..]);
   h := proc_new(); if h < 0 { return 1; }
   argv := [4] string.["flock", "--nonblock", lock, runner]; ok := true;
