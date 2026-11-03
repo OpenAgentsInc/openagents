@@ -1,0 +1,358 @@
+// Aethyr's light and shadow (book chapter 13): one key light from the realm's clock, hemisphere
+// ambient, a shadow map that holds still as the eye moves, a mover's contact shadow, height haze
+// and bounded local lights. Every material reads the same numbers.
+//
+// The shader functions below keep their verse_style_ names, as aethyr/render/material.coax's do:
+// coax wgsl emits each as `coax_p_<name>`, so every realm's WGSL is byte for byte what it was when
+// they lived in verse/style.coax, which loads this file. The CPU pieces (the key light by clock,
+// the light's space and its snapped middle, local lights) are what a realm's frame and its checks
+// compute before the GPU does.
+//   coax/bin/coax test aethyr/render/light.coax
+//   coax/bin/coax mutate aethyr/render/light.coax
+
+#module "aethyr.render.light";
+#load "material.coax";
+
+// A hemisphere ambient channel: ground below, sky above, by the normal's y.
+verse_style_ambient :: (ny:f32,sky:f32,ground:f32,scale:f32)->f32 #export_c {
+ return (ground+(sky-ground)*(st_sat(ny*0.5f32+0.5f32)))*scale;
+}
+// ---- 3. Real shadows: the key light's shadow map (host.js shadowLayout, 2048 square, 1024 on a phone)
+// How far round the eye the map reaches, in metres: the camera's near 60 m, 40 m on a phone.
+verse_style_shadow_reach :: (on_phone:f32)->f32 #export_c {if on_phone>0.5f32 {return 40.0f32;} return 60.0f32;}
+// The map's place snapped to whole texels (reach across size texels each way), so shadows hold still as the eye moves.
+verse_style_shadow_snap :: (x:f32,reach:f32,size:f32)->f32 #export_c {
+ texel:=2.0f32*reach/st_max(size,1.0f32);
+ return floor(x/texel+0.5f32)*texel;
+}
+// A point's place across the map, -1 to 1 from its middle (x metres across the light from the
+// snapped middle), and its depth, 0 to 1, from how far it lies toward the light (`along`, metres
+// past the middle): nearer the light is nearer 0, and the map holds twice its reach either way.
+verse_style_shadow_across :: (x:f32,reach:f32)->f32 #export_c {return x/st_max(reach,0.001f32);}
+verse_style_shadow_depth :: (along:f32,reach:f32)->f32 #export_c {return 0.5f32-along/(4.0f32*st_max(reach,0.001f32));}
+// How many Poisson taps the filter takes (where they are and how far out they reach,
+// verse_style_shadow_tap and verse_style_shadow_radius, stay in verse/style.coax).
+verse_style_shadow_taps :: (on_phone:f32)->f32 #export_c {if on_phone>0.5f32 {return 4.0f32;} return 9.0f32;}
+// The cast shadow (1 lit, 0 shadowed) with a mover's blob under it: the blob darkens to
+// 1 - strength (0.35) at its middle and never lightens a cast shadow.
+verse_style_contact :: (cast_lit:f32,blob:f32,strength:f32)->f32 #export_c {return st_min(cast_lit,1.0f32-strength*st_sat(blob));}
+
+// ---- 4. Atmosphere: haze
+// The haze's share at distance d, height y over the ground at the eye (base_y):
+// exponential past `start`, thinner higher up (falloff), capped.
+verse_style_haze :: (d:f32,y:f32,base_y:f32,start:f32,density:f32,cap:f32,falloff:f32)->f32 #export_c {
+ dist:=1.0f32-exp(-density*st_max(d-start,0.0f32));
+ height:=exp(-st_max(y-base_y,0.0f32)/st_max(falloff,0.001f32));
+ return st_min(dist*(1.0f32+(height-1.0f32)*0.6f32),cap);
+}
+// How much of the key light's colour the haze takes looking toward it (V.L).
+verse_style_haze_glow :: (vdl:f32)->f32 #export_c {
+ a:=st_sat(vdl);a2:=a*a;a4:=a2*a2;
+ return a4*a4*0.45f32;
+}
+// One channel of a surface through the haze: toward haze_c (the haze's colour
+// with the key's glow mixed in) by the haze's share f.
+verse_style_fog :: (c:f32,haze_c:f32,f:f32)->f32 #export_c {return c+(haze_c-c)*st_sat(f);}
+
+// The haze's hue by its share (art-styles.md 4): teal where it is thin, the middle distance, turning
+// to the preset's blue as it thickens toward its cap, so far ridges step back teal, then blue, and
+// the haze never whitens what's near. One channel (0 red, 1 green, 2 blue) of the haze colour h.
+verse_style_haze_teal :: (ch:f32)->f32 #export_c {if ch<0.5f32 {return 0.70f32;} if ch<1.5f32 {return 1.0f32;} return 0.84f32;}
+verse_style_haze_hue :: (h:f32,ch:f32,f:f32,cap:f32)->f32 #export_c {
+ t:=verse_style_haze_teal(ch);
+ far:=verse_style_soft_step((0.15f32+cap)*0.5f32,(cap-0.15f32)*0.5f32,f);
+ return h*(t+(1.0f32-t)*far);
+}
+
+
+// ---- the key light from the clock (CPU)
+// book:begin key
+// The key light at `clock` (0 midnight, 0.25 dawn, 0.5 noon, 0.75 dusk; it wraps). The sun's
+// elevation runs from `low` at midnight to `high` at noon. Its azimuth turns half a turn through
+// the day, an eighth of a turn either side of noon's `azimuth` at dawn and dusk. While the sun is
+// below `moon_below` the moon leads, opposite it, so exactly one of the two is the key. (x, y, z)
+// points toward the light.
+LightKey :: struct { x: f32; y: f32; z: f32; moon: bool; elevation: f32; }
+light_key :: (low: f32, high: f32, azimuth: f32, moon_below: f32, clock: f32) -> LightKey {
+  e := 0.5 * (low + high) - 0.5 * (high - low) * cos(6.2831853 * clock);
+  az := azimuth + (clock - floor(clock) - 0.5) * 3.14159265;
+  k := LightKey.{x = cos(e) * sin(az), y = sin(e), z = cos(e) * cos(az), moon = e < moon_below, elevation = e};
+  if k.moon { k.x = -k.x; k.y = -k.y; k.z = -k.z; }
+  return k;
+}
+// book:end key
+
+// ---- the shadow map's space (CPU)
+// book:begin space
+// The shadow map's space for a key light toward (lx, ly, lz): `ax` across it, level with the
+// ground, `ay` across it the other way, and the map's middle (mx along ax, my along ay) at the
+// eye's feet, snapped to whole texels of a map `size` texels square that reaches `reach` metres
+// each way. The realms' shaders build the same space (gpu/fixture.coax fixture_light_space).
+LightSpace :: struct {
+  axx: f32; axz: f32;            // ax is level: its y is 0
+  ayx: f32; ayy: f32; ayz: f32;
+  mx: f32; my: f32; reach: f32; texel: f32;
+}
+light_space :: (lx: f32, ly: f32, lz: f32, eye_x: f32, eye_z: f32, reach: f32, size: f32) -> LightSpace {
+  s: LightSpace;
+  s.axx = 1;
+  if abs(ly) < 0.999 {   // cross((0, 1, 0), l) made unit; straight overhead, +x will do
+    n := sqrt(lz * lz + lx * lx);
+    s.axx = lz / n; s.axz = -lx / n;
+  }
+  s.ayx = ly * s.axz; s.ayy = lz * s.axx - lx * s.axz; s.ayz = -ly * s.axx;   // cross(l, ax)
+  s.mx = verse_style_shadow_snap(eye_x * s.axx + eye_z * s.axz, reach, size);
+  s.my = verse_style_shadow_snap(eye_x * s.ayx + eye_z * s.ayz, reach, size);
+  s.reach = reach;
+  s.texel = 2 * reach / st_max(size, 1);
+  return s;
+}
+// Where a world point falls on the map, in texels from the map's corner, along ax (`which` 0)
+// or ay (`which` 1). The map's middle moves only in whole texels, so a point that holds still
+// keeps the same fraction of a texel however the eye moves: shadow edges don't crawl.
+light_map_texel :: (s: LightSpace, x: f32, y: f32, z: f32, which: int) -> f32 {
+  along := ifx which == 0 then x * s.axx + z * s.axz - s.mx else x * s.ayx + y * s.ayy + z * s.ayz - s.my;
+  return (verse_style_shadow_across(along, s.reach) * 0.5 + 0.5) * (2 * s.reach / s.texel);
+}
+// book:end space
+
+// ---- local lights (CPU)
+// book:begin local
+LIGHT_LOCAL_MAX :: 16;   // local lights one frame may hold
+// A lantern or a spell: where it is, how far it reaches, and its colour (linear, 0 or more).
+LocalLight :: struct { x: f32; y: f32; z: f32; radius: f32; r: f32; g: f32; b: f32; }
+LocalLights :: struct { lights: [LIGHT_LOCAL_MAX] LocalLight; count: int; refused: int; }
+
+// A local light's share at distance d of its radius r: (1 - d/r)^2, none at r and past it
+// (verse/haunt-light.coax verse_haunt_attenuate, the Haunted House's).
+light_falloff :: (d: f32, r: f32) -> f32 {
+  q := st_max(0, 1 - d / st_max(r, 0.01));
+  return q * q;
+}
+
+// Adds a light to this frame's list, or refuses it whole: past LIGHT_LOCAL_MAX, a radius that
+// isn't above 0, or a colour below 0. A refusal is counted.
+light_local_add :: (s: [] LocalLights, l: LocalLight) -> bool {
+  if s[0].count >= LIGHT_LOCAL_MAX || !(l.radius > 0) || !(l.r >= 0 && l.g >= 0 && l.b >= 0) {
+    s[0].refused += 1;
+    return false;
+  }
+  s[0].lights[s[0].count] = l;
+  s[0].count += 1;
+  return true;
+}
+
+// The light every local light puts on the point (x, y, z), summed.
+light_local_at :: (s: LocalLights, x: f32, y: f32, z: f32) -> MatRgb {
+  c := mat_rgb(0, 0, 0);
+  for i: 0..<s.count {
+    l := s.lights[i];
+    dx := x - l.x; dy := y - l.y; dz := z - l.z;
+    k := light_falloff(sqrt(dx * dx + dy * dy + dz * dz), l.radius);
+    c.r += l.r * k; c.g += l.g * k; c.b += l.b * k;
+  }
+  return c;
+}
+// book:end local
+
+// ---- checks
+#test "hemisphere ambient: the ground's straight down, the sky's straight up, halfway level, scaled" {
+  #assert verse_style_ambient(-1, 0.8, 0.2, 1) == 0.2f32 && verse_style_ambient(1, 0.8, 0.2, 1) == 0.8f32;
+  #assert abs(verse_style_ambient(0, 0.8, 0.2, 1) - 0.5f32) < 0.000001f32 && abs(verse_style_ambient(0, 0.8, 0.2, 2) - 1.0f32) < 0.000001f32;
+  #assert verse_style_ambient(-3, 0.8, 0.2, 1) == 0.2f32 && verse_style_ambient(3, 0.8, 0.2, 1) == 0.8f32;
+  #assert abs(verse_style_ambient(0.5, 0.8, 0.2, 1) - 0.65f32) < 0.000001f32;
+}
+#test "the key at the four clock keys: the moon at midnight, the sun at its height at noon, an eighth of a turn round at dawn and dusk" {
+  low := -0.9f32; high := 1.1f32; az := 0.3f32; below := -0.05f32;
+  mid := light_key(low, high, az, below, 0);
+  #assert mid.moon && abs(mid.elevation - low) < 0.00001f32;
+  #assert abs(mid.y + sin(low)) < 0.00001f32 && mid.y > 0;   // the moon is up when the sun is down
+  noon := light_key(low, high, az, below, 0.5);
+  #assert !noon.moon && abs(noon.elevation - high) < 0.00001f32;
+  #assert abs(noon.y - sin(high)) < 0.00001f32 && abs(noon.x - cos(high) * sin(az)) < 0.00001f32 && abs(noon.z - cos(high) * cos(az)) < 0.00001f32;
+  dawn := light_key(low, high, az, below, 0.25); dusk := light_key(low, high, az, below, 0.75);
+  #assert !dawn.moon && !dusk.moon && abs(dawn.elevation - 0.1f32) < 0.00001f32 && abs(dusk.elevation - 0.1f32) < 0.00001f32;
+  // an eighth of a turn either side of noon's azimuth
+  #assert abs(dawn.x - cos(0.1f32) * sin(az - 0.78539816f32)) < 0.0001f32 && abs(dusk.x - cos(0.1f32) * sin(az + 0.78539816f32)) < 0.0001f32;
+  #assert abs(dawn.z - cos(0.1f32) * cos(az - 0.78539816f32)) < 0.0001f32;
+  // it wraps
+  again := light_key(low, high, az, below, 1.5);
+  #assert abs(again.x - noon.x) < 0.0001f32 && abs(again.y - noon.y) < 0.0001f32 && abs(again.z - noon.z) < 0.0001f32 && !again.moon;
+}
+#test "the key is a unit direction through the day, and the moon leads exactly while the sun is below" {
+  for i: 0..<96 {
+    c := cast(f32) i / 96;
+    k := light_key(-0.9, 1.1, 0.3, -0.05, c);
+    #assert abs(k.x * k.x + k.y * k.y + k.z * k.z - 1) < 0.0001f32;
+    #assert k.moon == (k.elevation < -0.05f32);
+  }
+  at := light_key(0, 0, 0, 0, 0.5);
+  #assert !at.moon;   // exactly at moon_below the sun still leads
+}
+#test "the light's space is square to the light; straight overhead it takes +x" {
+  n := sqrt(0.2f32 * 0.2f32 + 0.9f32 * 0.9f32 + 0.3f32 * 0.3f32);
+  lx := 0.2f32 / n; ly := 0.9f32 / n; lz := 0.3f32 / n;
+  s := light_space(lx, ly, lz, 0, 0, 60, 2048);
+  #assert abs(s.axx * lx + s.axz * lz) < 0.00001f32 && abs(s.ayx * lx + s.ayy * ly + s.ayz * lz) < 0.00001f32;
+  #assert abs(s.axx * s.ayx + s.axz * s.ayz) < 0.00001f32;
+  #assert abs(s.axx * s.axx + s.axz * s.axz - 1) < 0.00001f32 && abs(s.ayx * s.ayx + s.ayy * s.ayy + s.ayz * s.ayz - 1) < 0.00001f32;
+  #assert abs(s.axx - lz / sqrt(lz * lz + lx * lx)) < 0.00001f32 && abs(s.axz + lx / sqrt(lz * lz + lx * lx)) < 0.00001f32;
+  #assert abs(s.ayy - (lz * s.axx - lx * s.axz)) < 0.00001f32;
+  #assert abs(s.texel - 120.0f32 / 2048) < 0.000001f32 && s.reach == 60;
+  up := light_space(0, 1, 0, 0, 0, 60, 2048);
+  #assert up.axx == 1 && up.axz == 0 && up.ayx == 0 && up.ayy == 0 && up.ayz == -1;
+  near := light_space(0.0447f32, 0.9989f32, 0, 0, 0, 60, 2048);   // |ly| just under the limit: still level
+  #assert near.axx == 0 && abs(near.axz + 1) < 0.00001f32;
+  one := light_space(0.5, 0.5, 0.70710678, 3, 4, 40, 0.5);   // a map under one texel is one texel
+  #assert abs(one.texel - 80) < 0.0001f32;
+}
+#test "the map's middle moves only in whole texels, so a still point keeps its place within a texel" {
+  n := sqrt(0.3f32 * 0.3f32 + 0.8f32 * 0.8f32 + 0.5f32 * 0.5f32);
+  lx := 0.3f32 / n; ly := 0.8f32 / n; lz := 0.5f32 / n;
+  first := light_space(lx, ly, lz, 0, 0, 60, 2048);
+  fx := light_map_texel(first, 4.3, 0.7, -2.1, 0); fy := light_map_texel(first, 4.3, 0.7, -2.1, 1);
+  #assert abs(fx - (((4.3f32 * first.axx - 2.1f32 * first.axz) - first.mx) / 60 * 0.5 + 0.5) * 2048) < 0.01f32;
+  moved := 0;
+  for i: 1..<300 {
+    s := light_space(lx, ly, lz, cast(f32) i * 0.01, cast(f32) i * 0.007, 60, 2048);
+    if s.mx != first.mx { moved += 1; }
+    #assert abs(s.mx / s.texel - floor(s.mx / s.texel + 0.5)) < 0.001f32 && abs(s.my / s.texel - floor(s.my / s.texel + 0.5)) < 0.001f32;
+    x := light_map_texel(s, 4.3, 0.7, -2.1, 0); y := light_map_texel(s, 4.3, 0.7, -2.1, 1);
+    // the same fraction of a texel: the map moved by whole texels under it
+    dx := x - fx; dy := y - fy;
+    #assert abs(dx - floor(dx + 0.5)) < 0.01f32 && abs(dy - floor(dy + 0.5)) < 0.01f32;
+  }
+  #assert moved > 0;   // the eye walked far enough for the map to follow
+}
+#test "a local light falls off as (1 - d/r) squared and ends at its radius" {
+  #assert light_falloff(0, 5) == 1 && light_falloff(5, 5) == 0 && light_falloff(9, 5) == 0;
+  #assert abs(light_falloff(2.5, 5) - 0.25f32) < 0.000001f32 && abs(light_falloff(1, 4) - 0.5625f32) < 0.000001f32;
+  #assert abs(light_falloff(0.004, 0) - 0.36f32) < 0.0001f32;   // a radius under 1 cm counts as 1 cm
+}
+#test "the frame's local lights: added up to sixteen, refused whole past it or when malformed, summed at a point" {
+  s: [1] LocalLights;
+  lamp := LocalLight.{x = 0, y = 2, z = 0, radius = 4, r = 1, g = 0.5, b = 0.25};
+  #assert light_local_add(s[..], lamp);
+  spell := LocalLight.{x = 3, y = 2, z = 0, radius = 2, r = 0, g = 0, b = 2};
+  #assert light_local_add(s[..], spell);
+  c := light_local_at(s[0], 1, 2, 0);   // 1 m from the lamp, 2 m (its radius) from the spell
+  #assert abs(c.r - 0.5625f32) < 0.000001f32 && abs(c.g - 0.28125f32) < 0.000001f32 && abs(c.b - 0.140625f32) < 0.000001f32;
+  c = light_local_at(s[0], 3, 2, 0);    // under the spell, 3 m from the lamp
+  #assert abs(c.b - (2 + 0.25f32 * 0.0625f32)) < 0.000001f32 && abs(c.r - 0.0625f32) < 0.000001f32;
+  bad := lamp; bad.radius = 0; #assert !light_local_add(s[..], bad);
+  bad.radius = 0.0f32 / 0.0f32; #assert !light_local_add(s[..], bad);
+  bad = lamp; bad.r = -0.1; #assert !light_local_add(s[..], bad);
+  bad = lamp; bad.g = -0.1; #assert !light_local_add(s[..], bad);
+  bad = lamp; bad.b = -0.1; #assert !light_local_add(s[..], bad);
+  #assert s[0].count == 2 && s[0].refused == 5;
+  for i: 2..<LIGHT_LOCAL_MAX { #assert light_local_add(s[..], lamp); }
+  #assert s[0].count == LIGHT_LOCAL_MAX && !light_local_add(s[..], lamp) && s[0].count == LIGHT_LOCAL_MAX && s[0].refused == 6;
+  none: [1] LocalLights;
+  e := light_local_at(none[0], 0, 0, 0);
+  #assert e.r == 0 && e.g == 0 && e.b == 0;
+}
+#test "the shadow map reaches 60 m, 40 m on a phone, snapped to whole texels" {
+ #assert verse_style_shadow_reach(0.0f32)==60.0f32 && verse_style_shadow_reach(1.0f32)==40.0f32;
+ // 120 m over 2048 texels: 0.0586 m a texel; a point moves only in whole texels
+ t:=120.0f32/2048.0f32;
+ #assert abs(verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)-10.0f32)<t*0.5f32+0.00001f32;
+ #assert abs(verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)/t-floor(verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)/t+0.5f32))<0.001f32;
+ #assert verse_style_shadow_snap(10.01f32,60.0f32,2048.0f32)==verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32);
+}
+#test "the map's depth runs 0 at the light's side to 1 away from it, over twice the reach each way" {
+ #assert verse_style_shadow_depth(0.0f32,60.0f32)==0.5f32;
+ #assert verse_style_shadow_depth(120.0f32,60.0f32)==0.0f32 && verse_style_shadow_depth(-120.0f32,60.0f32)==1.0f32;
+ #assert verse_style_shadow_depth(1.0f32,60.0f32)<verse_style_shadow_depth(0.0f32,60.0f32);
+ #assert verse_style_shadow_across(60.0f32,60.0f32)==1.0f32 && verse_style_shadow_across(-20.0f32,40.0f32)==-0.5f32;
+}
+#test "a mover's blob darkens to 0.65 under it and never lightens a cast shadow" {
+ #assert abs(verse_style_contact(1.0f32,1.0f32,0.35f32)-0.65f32)<0.0001f32;
+ #assert verse_style_contact(1.0f32,0.0f32,0.35f32)==1.0f32;
+ #assert verse_style_contact(0.2f32,1.0f32,0.35f32)==0.2f32;
+}
+#test "day haze: 0.58 at 100 m, 0.86 at 200 m, never past its cap" {
+ #assert verse_style_haze(20.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==0.0f32;
+ #assert abs(verse_style_haze(100.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)-0.585f32)<0.005f32;
+ #assert abs(verse_style_haze(200.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)-0.862f32)<0.005f32;
+ #assert verse_style_haze(5000.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==0.88f32;
+}
+#test "haze thins higher up, to 0.4 of itself far above the eye" {
+ low:=verse_style_haze(100.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
+ high:=verse_style_haze(100.0f32,60.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
+ top:=verse_style_haze(100.0f32,10000.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
+ #assert high<low;
+ #assert abs(top-low*0.4f32)<0.001f32;
+ #assert verse_style_haze(100.0f32,-30.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==low;
+}
+#test "the haze glows toward the key light only" {
+ #assert verse_style_haze_glow(-1.0f32)==0.0f32;
+ #assert verse_style_haze_glow(0.0f32)==0.0f32;
+ #assert abs(verse_style_haze_glow(1.0f32)-0.45f32)<0.0001f32;
+ #assert abs(verse_style_fog(0.2f32,0.8f32,0.5f32)-0.5f32)<0.0001f32;
+}
+#test "haze is teal in the middle distance and the preset's blue far off" {
+ // the day haze (0.56, 0.74, 0.90): thin, at a share of 0.15, it's teal (green the largest)
+ r:=verse_style_haze_hue(0.56f32,0.0f32,0.15f32,0.88f32); g:=verse_style_haze_hue(0.74f32,1.0f32,0.15f32,0.88f32); b:=verse_style_haze_hue(0.90f32,2.0f32,0.15f32,0.88f32);
+ #assert abs(r-0.392f32)<0.001f32 && g==0.74f32 && abs(b-0.756f32)<0.001f32;
+ #assert g>r && b>r;
+ // at its cap, the blue itself
+ #assert abs(verse_style_haze_hue(0.56f32,0.0f32,0.88f32,0.88f32)-0.56f32)<0.0001f32 && abs(verse_style_haze_hue(0.90f32,2.0f32,0.88f32,0.88f32)-0.90f32)<0.0001f32;
+ // and it turns steadily between
+ for i:0..<80 {f:=cast(f32)i*0.01f32; #assert verse_style_haze_hue(0.56f32,0.0f32,f+0.01f32,0.88f32)>=verse_style_haze_hue(0.56f32,0.0f32,f,0.88f32);}
+}
+#test "each shadow switch flips at its own edge: past half is a phone" {
+  #assert verse_style_shadow_reach(0.5) == 60 && verse_style_shadow_reach(0.51) == 40;
+  #assert verse_style_shadow_taps(0.5) == 9 && verse_style_shadow_taps(0.51) == 4;
+}
+#test "haze over raised ground: its height counts from the eye's ground, and thins by e at one falloff" {
+  #assert verse_style_haze(100, 70, 10, 20, 0.011, 0.88, 60) == verse_style_haze(100, 60, 0, 20, 0.011, 0.88, 60);
+  // at one falloff up the height term is 1/e: the haze is 1 + (1/e - 1) 0.6 = 0.6207 of the level one
+  level := verse_style_haze(100, 0, 0, 20, 0.011, 0.88, 60);
+  #assert abs(verse_style_haze(100, 60, 0, 20, 0.011, 0.88, 60) - level * 0.62073f32) < 0.0001f32;
+  #assert abs(verse_style_haze(100, 30, 0, 20, 0.011, 0.88, 30) - level * 0.62073f32) < 0.0001f32;
+}
+#test "the haze's teal: red 0.70 to half, green 1 to one and a half, blue 0.84 past" {
+  #assert verse_style_haze_teal(0.49) == 0.70f32 && verse_style_haze_teal(0.5) == 1 && verse_style_haze_teal(1.49) == 1 && verse_style_haze_teal(1.5) == 0.84f32;
+}
+#test "the azimuth wraps with the clock, bit for bit; the moon is the sun turned about" {
+  a := light_key(0.3, 0.3, 0.2, -1, 0.25); b := light_key(0.3, 0.3, 0.2, -1, 1.25); c := light_key(0.3, 0.3, 0.2, -1, 2.75);
+  d := light_key(0.3, 0.3, 0.2, -1, 0.75);
+  #assert f32_bits(a.x) == f32_bits(b.x) && f32_bits(a.z) == f32_bits(b.z) && f32_bits(c.x) == f32_bits(d.x) && f32_bits(c.z) == f32_bits(d.z);
+  sun := light_key(-0.9, -0.9, 0.3, -2, 0);   // the same sun, but the moon only leads below -2
+  moon := light_key(-0.9, -0.9, 0.3, -0.05, 0);
+  #assert !sun.moon && moon.moon;
+  #assert moon.x == -sun.x && moon.y == -sun.y && moon.z == -sun.z && sun.x != 0 && sun.z != 0;
+}
+#test "the map's middle is the eye's feet in the light's space, snapped, along both axes; straight overhead too" {
+  n := sqrt(0.3f32 * 0.3f32 + 0.8f32 * 0.8f32 + 0.5f32 * 0.5f32);
+  lx := 0.3f32 / n; ly := 0.8f32 / n; lz := 0.5f32 / n;
+  s := light_space(lx, ly, lz, 7.3, -4.1, 60, 2048);
+  h := sqrt(lz * lz + lx * lx);
+  ax := lz / h; az := -lx / h;
+  yx := ly * az; yy := lz * ax - lx * az; yz := -ly * ax;
+  #assert s.axx == ax && s.axz == az && s.ayx == yx && s.ayy == yy && s.ayz == yz;
+  #assert s.mx == verse_style_shadow_snap(7.3f32 * ax - 4.1f32 * az, 60, 2048) && s.my == verse_style_shadow_snap(7.3f32 * yx - 4.1f32 * yz, 60, 2048);
+  #assert s.mx != 0 && s.my != 0;
+  edge := light_space(0.0447f32, 0.999f32, 0, 5, 3, 60, 2048);   // |ly| at the limit: overhead, +x
+  #assert edge.axx == 1 && edge.axz == 0;
+  #assert edge.my == verse_style_shadow_snap(-3.0f32 * 0.999f32, 60, 2048);
+}
+#test "a point's texel on the map, worked from the space: along ax and along ay" {
+  n := sqrt(0.3f32 * 0.3f32 + 0.8f32 * 0.8f32 + 0.5f32 * 0.5f32);
+  s := light_space(0.3f32 / n, 0.8f32 / n, 0.5f32 / n, 7.3, -4.1, 60, 2048);
+  x := 12.5f32; y := 3.25f32; z := -9.75f32;
+  u := ((x * s.axx + z * s.axz - s.mx) / 60 * 0.5 + 0.5) * 2048;
+  v := ((x * s.ayx + y * s.ayy + z * s.ayz - s.my) / 60 * 0.5 + 0.5) * 2048;
+  #assert abs(light_map_texel(s, x, y, z, 0) - u) < 0.01f32 && abs(light_map_texel(s, x, y, z, 1) - v) < 0.01f32;
+  #assert abs(u - v) > 1;
+}
+#test "local lights reach through all three axes, and a black light is a light" {
+  s: [1] LocalLights;
+  #assert light_local_add(s[..], LocalLight.{x = 1, y = 2, z = 3, radius = 10, r = 1, g = 0, b = 0});
+  #assert light_local_add(s[..], LocalLight.{x = 0, y = 0, z = 0, radius = 1, r = 0, g = 0, b = 0});
+  c := light_local_at(s[0], 3, 5, 9);   // 2, 3 and 6 m away: 7 m
+  #assert abs(c.r - 0.09f32) < 0.000001f32 && c.g == 0 && c.b == 0;
+  c = light_local_at(s[0], -1, -2, -3);  // 2, 4 and 6 m: sqrt(56)
+  q := 1 - sqrt(56.0f32) / 10;
+  #assert abs(c.r - q * q) < 0.000001f32;
+}

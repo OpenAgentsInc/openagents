@@ -1,0 +1,369 @@
+// Aethyr's materials (book chapter 12): how a surface answers light. A material is a small typed
+// record (linear albedo, a texture layer, the style that draws it, how strongly it asks for an
+// outline and what it emits), kept in a realm's table and admitted whole before anything draws.
+//
+// The surface functions below are the ones every painterly and photoreal realm's WGSL calls.
+// coax wgsl emits each as `coax_p_<name>`, so they keep their verse_style_ names: a realm's
+// shader is byte for byte what it was when they lived in verse/style.coax, which loads this
+// file. They are plain f32, one colour channel at a time (the Metal scalar profile has no
+// vectors). The numbers they take come from the realm's style preset at its clock
+// (verse/style-preset.coax, verse_style_at), so a realm never hand-tunes them.
+//   coax/bin/coax test aethyr/render/material.coax
+//   coax/bin/coax mutate aethyr/render/material.coax
+
+#module "aethyr.render.material";
+
+st_min :: (a:f32,b:f32)->f32 {if a<b{return a;}return b;}
+st_max :: (a:f32,b:f32)->f32 {if a>b{return a;}return b;}
+st_sat :: (x:f32)->f32 {return st_min(1.0f32,st_max(0.0f32,x));}
+// book:begin bands
+// smoothstep(e - s, e + s, x): a band edge at e, blended over 2s.
+verse_style_soft_step :: (e:f32,s:f32,x:f32)->f32 #export_c {
+ t:=st_sat((x-(e-s))/st_max(2.0f32*s,0.000001f32));
+ return t*t*(3.0f32-2.0f32*t);
+}
+
+// ---- 1. Shading: soft toon bands
+// Wrapped Lambert: N.L lifted a quarter, so the terminator sits past the side.
+verse_style_wrap :: (ndl:f32)->f32 #export_c {return st_sat((ndl+0.25f32)/1.25f32);}
+// Three bands: shadow 0, mid (`mid`, 0.55), lit 1, edges e0 and e1 (0.20, 0.58)
+// softened over s (0.06). w is the wrapped term times the shadow map's soft term.
+verse_style_bands :: (w:f32,e0:f32,e1:f32,s:f32,mid:f32)->f32 #export_c {
+ return mid*verse_style_soft_step(e0,s,w)+(1.0f32-mid)*verse_style_soft_step(e1,s,w);
+}
+// Two bands, for characters: one edge (0.40, softness 0.08).
+verse_style_bands2 :: (w:f32,e:f32,s:f32)->f32 #export_c {return verse_style_soft_step(e,s,w);}
+// book:end bands
+// One channel of a banded surface: the albedo under the tinted ambient in the
+// shadow band (`shadow_light`: shadow tint times ambient) and under the key
+// plus ambient in the lit one (`lit_light`), mixed by the band.
+verse_style_shade :: (albedo:f32,shadow_light:f32,lit_light:f32,band:f32)->f32 #export_c {
+ return albedo*(shadow_light+(lit_light-shadow_light)*st_sat(band));
+}
+// Painterly shadows are cool (art-styles.md 3), warm albedos too: the shadow band's colour (one
+// channel c of albedo times the tinted ambient) takes the tint's hue once more (tint over tint_lum,
+// the tint's luminance), raised to `amount` (the preset's `cool`), and verse_style_keep_value then
+// scales the three back to the luminance they had. A multiply, not a mix: mixing a warm colour toward
+// blue passes through grey, while multiplying turns olive teal and brown slate and keeps colour in it.
+verse_style_cool :: (c:f32,tint:f32,tint_lum:f32,amount:f32)->f32 #export_c {
+ return c*pow(st_max(tint,0.000001f32)/st_max(tint_lum,0.000001f32),st_max(amount,0.0f32));
+}
+// One channel of the cooled colour put back to the luminance `before` from `after` (both from verse_style_luma).
+verse_style_keep_value :: (c:f32,before:f32,after:f32)->f32 #export_c {return c*before/st_max(after,0.000001f32);}
+// One channel of a banded surface from its cooled shadow colour and its lit colour (albedo times
+// key plus ambient), mixed by the band.
+verse_style_banded :: (shadow_c:f32,lit_c:f32,band:f32)->f32 #export_c {return shadow_c+(lit_c-shadow_c)*st_sat(band);}
+// The one hard dab of a wet, metal or glass surface: R.L past `cut` (0.92) at `strength` (0.35).
+verse_style_dab :: (rdl:f32,cut:f32,strength:f32)->f32 #export_c {return ifx rdl>=cut then strength else 0.0f32;}
+
+// ---- 2. Rim light
+// How much rim a surface gets: from where it turns `start` (N.V 0.38) from the
+// eye to full at `full` (0.12), more on the key light's side, times strength.
+verse_style_rim :: (ndv:f32,ndl:f32,start:f32,full:f32,strength:f32)->f32 #export_c {
+ t:=st_sat((ndv-start)/(full-start));
+ edge:=t*t*(3.0f32-2.0f32*t);
+ return edge*(0.35f32+0.65f32*st_sat(ndl+0.3f32))*strength;
+}
+
+// Relative luminance of linear RGB.
+verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c {return 0.2126f32*r+0.7152f32*g+0.0722f32*b;}
+
+// book:begin record
+// The styles a material is drawn in: the values of verse/style-preset.coax's STYLE_*.
+MATERIAL_LOWPOLY :: 0;
+MATERIAL_PAINTERLY :: 1;
+MATERIAL_PHOTOREAL :: 2;
+MATERIAL_FLAT :: 3;
+MATERIAL_ANIME :: 4;
+MATERIAL_STYLES :: 5;
+MATERIAL_UNTEXTURED :: -1;   // a material that reads no texture layer
+MATERIAL_MAX :: 256;         // materials in one realm's table
+
+// One surface. Colours are linear RGB.
+Material :: struct {
+  r: f32; g: f32; b: f32;              // albedo, each 0 to 1
+  layer: int = MATERIAL_UNTEXTURED;    // the texture layer it reads
+  style: int;                          // MATERIAL_*
+  outline: f32;                        // how strongly it asks for an outline: 0 none, 1 full
+  er: f32; eg: f32; eb: f32;           // the light it emits, 0 or more
+}
+
+MATERIAL_OK :: 0;
+MATERIAL_ALBEDO :: 1;      // an albedo channel outside 0 to 1
+MATERIAL_LAYER :: 2;       // a texture layer the realm doesn't have
+MATERIAL_STYLE :: 3;       // a style the realm doesn't draw
+MATERIAL_OUTLINE :: 4;     // an outline outside 0 to 1
+MATERIAL_EMISSION :: 5;    // an emission below 0
+MATERIAL_TABLE :: 6;       // no materials, or more than MATERIAL_MAX
+
+// Why one material can't be drawn by a realm with `layers` texture layers that draws the
+// styles whose bits are set in `styles` (bit MATERIAL_PAINTERLY for painterly), or
+// MATERIAL_OK. A NaN fails every range, so it is refused too.
+material_check :: (m: Material, layers: int, styles: int) -> int {
+  if !(m.r >= 0 && m.r <= 1 && m.g >= 0 && m.g <= 1 && m.b >= 0 && m.b <= 1) { return MATERIAL_ALBEDO; }
+  if m.layer < MATERIAL_UNTEXTURED || m.layer >= layers { return MATERIAL_LAYER; }
+  if m.style < 0 || m.style >= MATERIAL_STYLES || ((styles >> m.style) & 1) == 0 { return MATERIAL_STYLE; }
+  if !(m.outline >= 0 && m.outline <= 1) { return MATERIAL_OUTLINE; }
+  if !(m.er >= 0 && m.eg >= 0 && m.eb >= 0) { return MATERIAL_EMISSION; }
+  return MATERIAL_OK;
+}
+
+// The first material a table can't have, by its index, and why. index -1 with MATERIAL_OK:
+// the table is admitted whole. index -1 with MATERIAL_TABLE: the table itself is refused.
+MaterialRefusal :: struct { index: int = -1; reason: int = MATERIAL_OK; }
+
+// A realm's table, admitted whole or refused at load, before anything draws.
+material_admit :: (table: [] Material, layers: int, styles: int) -> MaterialRefusal {
+  if table.count == 0 || table.count > MATERIAL_MAX { return MaterialRefusal.{reason = MATERIAL_TABLE}; }
+  for i: 0..<table.count {
+    why := material_check(table[i], layers, styles);
+    if why != MATERIAL_OK { return MaterialRefusal.{index = i, reason = why}; }
+  }
+  return MaterialRefusal.{};
+}
+
+// How strongly the outline pass inks a material: what it asks for times the style's most (the
+// preset's outline_max). A material that glows asks for none.
+material_ink :: (m: Material, most: f32) -> f32 {
+  if m.er > 0 || m.eg > 0 || m.eb > 0 { return 0; }
+  return m.outline * most;
+}
+// book:end record
+
+material_reason_name :: (why: int) -> string {
+  if why == MATERIAL_OK { return "none"; }
+  if why == MATERIAL_ALBEDO { return "albedo"; }
+  if why == MATERIAL_LAYER { return "layer"; }
+  if why == MATERIAL_STYLE { return "style"; }
+  if why == MATERIAL_OUTLINE { return "outline"; }
+  if why == MATERIAL_EMISSION { return "emission"; }
+  if why == MATERIAL_TABLE { return "table"; }
+  return "unknown";
+}
+
+// book:begin banded
+MatRgb :: struct { r: f32; g: f32; b: f32; }
+mat_rgb :: (r: f32, g: f32, b: f32) -> MatRgb { return MatRgb.{r = r, g = g, b = b}; }
+
+// Where a surface sits in the three bands: the wrapped key light (n.l) times the shadow map's lit
+// share, against the preset's edges e0 and e1, softness and mid band.
+material_band :: (ndl: f32, lit: f32, e0: f32, e1: f32, soft: f32, mid: f32) -> f32 {
+  return verse_style_bands(verse_style_wrap(ndl) * lit, e0, e1, soft, mid);
+}
+
+// One banded surface, the CPU form of a painterly realm's fragment shader (gpu/fixture.coax,
+// fixture_banded): the albedo `a` under `dark` (the shadow tint times the ambient), cooled toward
+// the tint `t` by `cool` with its luminance kept, and under `bright` (the key plus the ambient),
+// mixed by the band.
+material_banded :: (a: MatRgb, dark: MatRgb, bright: MatRgb, t: MatRgb, cool: f32, band: f32) -> MatRgb {
+  s := mat_rgb(a.r * dark.r, a.g * dark.g, a.b * dark.b);
+  tl := verse_style_luma(t.r, t.g, t.b);
+  m := mat_rgb(verse_style_cool(s.r, t.r, tl, cool), verse_style_cool(s.g, t.g, tl, cool), verse_style_cool(s.b, t.b, tl, cool));
+  y := verse_style_luma(s.r, s.g, s.b);
+  ym := verse_style_luma(m.r, m.g, m.b);
+  c := mat_rgb(verse_style_keep_value(m.r, y, ym), verse_style_keep_value(m.g, y, ym), verse_style_keep_value(m.b, y, ym));
+  return mat_rgb(verse_style_banded(c.r, a.r * bright.r, band), verse_style_banded(c.g, a.g * bright.g, band), verse_style_banded(c.b, a.b * bright.b, band));
+}
+// book:end banded
+
+#test "the band edges sit at 0.20 and 0.58 and blend over 0.12" {
+ #assert verse_style_bands(0.0f32,0.20f32,0.58f32,0.06f32,0.55f32)==0.0f32;
+ #assert verse_style_bands(0.14f32,0.20f32,0.58f32,0.06f32,0.55f32)==0.0f32;
+ #assert abs(verse_style_bands(0.20f32,0.20f32,0.58f32,0.06f32,0.55f32)-0.275f32)<0.0001f32;
+ #assert abs(verse_style_bands(0.26f32,0.20f32,0.58f32,0.06f32,0.55f32)-0.55f32)<0.0001f32;
+ #assert abs(verse_style_bands(0.40f32,0.20f32,0.58f32,0.06f32,0.55f32)-0.55f32)<0.0001f32;
+ #assert abs(verse_style_bands(0.52f32,0.20f32,0.58f32,0.06f32,0.55f32)-0.55f32)<0.0001f32;
+ #assert abs(verse_style_bands(0.64f32,0.20f32,0.58f32,0.06f32,0.55f32)-1.0f32)<0.0001f32;
+ #assert verse_style_bands(1.0f32,0.20f32,0.58f32,0.06f32,0.55f32)==1.0f32;
+}
+#test "the bands never step back as the light grows" {
+ for i:0..<100 {a:=cast(f32)i*0.01f32;
+  #assert verse_style_bands(a+0.01f32,0.20f32,0.58f32,0.06f32,0.55f32)>=verse_style_bands(a,0.20f32,0.58f32,0.06f32,0.55f32);}
+}
+#test "the wrap lifts the terminator a quarter and stays in 0..1" {
+ #assert verse_style_wrap(1.0f32)==1.0f32;
+ #assert verse_style_wrap(-0.25f32)==0.0f32;
+ #assert verse_style_wrap(-1.0f32)==0.0f32;
+ #assert abs(verse_style_wrap(0.0f32)-0.2f32)<0.0001f32;
+}
+#test "characters get two bands at 0.40" {
+ #assert verse_style_bands2(0.31f32,0.40f32,0.08f32)==0.0f32;
+ #assert abs(verse_style_bands2(0.40f32,0.40f32,0.08f32)-0.5f32)<0.0001f32;
+ #assert verse_style_bands2(0.49f32,0.40f32,0.08f32)==1.0f32;
+}
+#test "the shadow band is the albedo under the tinted ambient, never black" {
+ #assert abs(verse_style_shade(0.5f32,0.3f32,1.5f32,0.0f32)-0.15f32)<0.0001f32;
+ #assert abs(verse_style_shade(0.5f32,0.3f32,1.5f32,1.0f32)-0.75f32)<0.0001f32;
+ #assert verse_style_shade(0.5f32,0.3f32,1.5f32,-1.0f32)>0.0f32;
+}
+#test "the shadow band takes the tint's hue once more, warm albedos included, keeping its value" {
+ // the fixture's olive and brown grounds under the noon tint (0.52, 0.58, 0.86) times the day's sky
+ // ambient (0.30, 0.36, 0.46): albedo x tint x ambient alone keeps them warm (blue the smallest)
+ tr:=0.52f32; tint_g:=0.58f32; tb:=0.86f32; tl:=verse_style_luma(tr,tint_g,tb);
+ for g:0..<2 {
+  ar:=ifx g==0 then 0.21f32 else 0.27f32; ag:=ifx g==0 then 0.29f32 else 0.22f32; ab:=ifx g==0 then 0.08f32 else 0.10f32;
+  r:=ar*tr*0.30f32; gg:=ag*tint_g*0.36f32; b:=ab*tb*0.46f32;
+  #assert b<r && b<gg;
+  y:=verse_style_luma(r,gg,b);
+  mr:=verse_style_cool(r,tr,tl,1.0f32); mg:=verse_style_cool(gg,tint_g,tl,1.0f32); mb:=verse_style_cool(b,tb,tl,1.0f32);
+  m:=verse_style_luma(mr,mg,mb);
+  cr:=verse_style_keep_value(mr,y,m); cg:=verse_style_keep_value(mg,y,m); cb:=verse_style_keep_value(mb,y,m);
+  // its value kept, blue gaining on red and green, and colour left in it (never grey): its channels
+  // spread at least as far apart as the plain shadow's
+  #assert abs(verse_style_luma(cr,cg,cb)-y)<0.00001f32;
+  #assert cb/cr>b/r*1.4f32 && cb/cg>b/gg*1.4f32;
+  #assert st_max(cr,st_max(cg,cb))-st_min(cr,st_min(cg,cb))>=0.6f32*(st_max(r,st_max(gg,b))-st_min(r,st_min(gg,b)));
+  #assert cr>0.0f32 && cg>0.0f32 && cb>0.0f32;
+ }
+ // none leaves it, and a neutral tint changes nothing
+ #assert verse_style_cool(0.3f32,tr,tl,0.0f32)==0.3f32;
+ #assert abs(verse_style_cool(0.3f32,0.5f32,0.5f32,1.0f32)-0.3f32)<0.00001f32;
+ #assert verse_style_banded(0.1f32,0.7f32,0.0f32)==0.1f32 && verse_style_banded(0.1f32,0.7f32,1.0f32)==0.7f32;
+ #assert abs(verse_style_banded(0.1f32,0.7f32,0.5f32)-0.4f32)<0.00001f32 && verse_style_banded(0.1f32,0.7f32,2.0f32)==0.7f32;
+}
+#test "one dab of paint, not a gloss" {
+ #assert verse_style_dab(0.92f32,0.92f32,0.35f32)==0.35f32;
+ #assert verse_style_dab(0.91f32,0.92f32,0.35f32)==0.0f32;
+ #assert verse_style_dab(0.95f32,0.92f32,0.35f32)==0.35f32;
+}
+#test "the rim starts at 68 degrees, is full at 83, and is stronger toward the key" {
+ #assert verse_style_rim(0.38f32,1.0f32,0.38f32,0.12f32,0.30f32)==0.0f32;
+ #assert verse_style_rim(0.9f32,1.0f32,0.38f32,0.12f32,0.30f32)==0.0f32;
+ #assert abs(verse_style_rim(0.12f32,1.0f32,0.38f32,0.12f32,0.30f32)-0.30f32)<0.0001f32;
+ #assert abs(verse_style_rim(0.0f32,-1.0f32,0.38f32,0.12f32,0.30f32)-0.105f32)<0.0001f32;
+ #assert verse_style_rim(0.2f32,0.5f32,0.38f32,0.12f32,0.30f32)>verse_style_rim(0.2f32,-0.5f32,0.38f32,0.12f32,0.30f32);
+}
+#test "on a 1.8 m figure 8 m away at 1440x900 the rim is 2 to 4 px wide" {
+ // a figure's body: a 0.24 m round seen side on, by the style fixture's lens (900 rows over a
+ // half-height of 0.36): 156 px a metre at 8 m. Walk in from the silhouette a millimetre at a time.
+ px_per_m:=900.0f32/(2.0f32*0.36f32*8.0f32);
+ r:=0.24f32; rim_m:=0.0f32;
+ for i:0..<240 {x:=r-cast(f32)i*0.001f32-0.0005f32; ndv:=sqrt(st_max(1.0f32-x*x/(r*r),0.0f32));
+  if verse_style_rim(ndv,0.5f32,0.38f32,0.12f32,0.45f32)>0.0f32 {rim_m=rim_m+0.001f32;}}
+ w:=rim_m*px_per_m;
+ #assert w>=2.0f32 && w<=4.0f32;
+}
+
+#test "min and max keep their operands' order: of two equal zeros, min gives the second and max the second" {
+  #assert f32_bits(st_min(-0.0f32, 0.0f32)) == 0 && f32_bits(st_min(0.0f32, -0.0f32)) == 0x80000000;
+  #assert f32_bits(st_max(0.0f32, -0.0f32)) == 0x80000000 && f32_bits(st_max(-0.0f32, 0.0f32)) == 0;
+  #assert st_min(1, 2) == 1 && st_min(2, 1) == 1 && st_max(1, 2) == 2 && st_max(2, 1) == 2;
+}
+
+// ---- the material record and its table
+material_test_ok :: () -> Material { return Material.{r = 0.5, g = 0.4, b = 0.25, layer = 2, style = MATERIAL_PAINTERLY, outline = 1}; }
+#test "a material in range is drawn; each range refuses with its own reason, the edges admitted" {
+  painterly := 1 << MATERIAL_PAINTERLY;
+  m := material_test_ok();
+  #assert material_check(m, 4, painterly) == MATERIAL_OK && material_check(m, 3, painterly) == MATERIAL_OK;
+  for ch: 0..<3 {
+    for k: 0..<4 {
+      v := ifx k == 0 then -0.0001f32 else ifx k == 1 then 1.0001f32 else ifx k == 2 then 0.0f32 else 1.0f32;
+      a := m;
+      if ch == 0 { a.r = v; } else if ch == 1 { a.g = v; } else { a.b = v; }
+      #assert material_check(a, 4, painterly) == (ifx k < 2 then MATERIAL_ALBEDO else MATERIAL_OK);
+    }
+  }
+  nan := m; nan.g = 0.0f32 / 0.0f32;
+  #assert material_check(nan, 4, painterly) == MATERIAL_ALBEDO;
+  // layers: untextured, the last of four, one past it, and below untextured
+  l := m; l.layer = MATERIAL_UNTEXTURED; #assert material_check(l, 0, painterly) == MATERIAL_OK;
+  l.layer = 3; #assert material_check(l, 4, painterly) == MATERIAL_OK;
+  l.layer = 4; #assert material_check(l, 4, painterly) == MATERIAL_LAYER;
+  l.layer = -2; #assert material_check(l, 4, painterly) == MATERIAL_LAYER;
+  l.layer = 0; #assert material_check(l, 0, painterly) == MATERIAL_LAYER;
+  // styles: one the realm draws, one it doesn't, and none that is a style
+  s := m; s.style = MATERIAL_FLAT;
+  #assert material_check(s, 4, painterly) == MATERIAL_STYLE && material_check(s, 4, painterly | (1 << MATERIAL_FLAT)) == MATERIAL_OK;
+  s.style = MATERIAL_ANIME; #assert material_check(s, 4, 31) == MATERIAL_OK;
+  s.style = MATERIAL_LOWPOLY; #assert material_check(s, 4, 1) == MATERIAL_OK && material_check(s, 4, 30) == MATERIAL_STYLE;
+  s.style = MATERIAL_STYLES; #assert material_check(s, 4, 63) == MATERIAL_STYLE;
+  s.style = -1; #assert material_check(s, 4, 63) == MATERIAL_STYLE;
+  o := m; o.outline = 0; #assert material_check(o, 4, painterly) == MATERIAL_OK;
+  o.outline = 1.0001; #assert material_check(o, 4, painterly) == MATERIAL_OUTLINE;
+  o.outline = -0.0001; #assert material_check(o, 4, painterly) == MATERIAL_OUTLINE;
+  for ch: 0..<3 {
+    e := m;
+    if ch == 0 { e.er = -0.0001; } else if ch == 1 { e.eg = -0.0001; } else { e.eb = -0.0001; }
+    #assert material_check(e, 4, painterly) == MATERIAL_EMISSION;
+    if ch == 0 { e.er = 0; } else if ch == 1 { e.eg = 0; } else { e.eb = 0; }
+    #assert material_check(e, 4, painterly) == MATERIAL_OK;
+  }
+}
+#test "the first refusal comes before the later ones: albedo, then layer, style, outline, emission" {
+  m := material_test_ok();
+  m.r = 2; m.layer = 9; m.style = 7; m.outline = 3; m.eb = -1;
+  #assert material_check(m, 4, 2) == MATERIAL_ALBEDO;
+  m.r = 0.5; #assert material_check(m, 4, 2) == MATERIAL_LAYER;
+  m.layer = 0; #assert material_check(m, 4, 2) == MATERIAL_STYLE;
+  m.style = MATERIAL_PAINTERLY; #assert material_check(m, 4, 2) == MATERIAL_OUTLINE;
+  m.outline = 0.5; #assert material_check(m, 4, 2) == MATERIAL_EMISSION;
+}
+#test "a table is admitted whole, or refused at its first bad material, or refused itself" {
+  t: [3] Material;
+  for i: 0..<3 { t[i] = material_test_ok(); }
+  ok := material_admit(t[..], 4, 2);
+  #assert ok.index == -1 && ok.reason == MATERIAL_OK;
+  t[0].outline = 2;
+  r := material_admit(t[..], 4, 2);
+  #assert r.index == 0 && r.reason == MATERIAL_OUTLINE;
+  t[0].outline = 1;
+  t[1].layer = 4; t[2].style = MATERIAL_FLAT;
+  r = material_admit(t[..], 4, 2);
+  #assert r.index == 1 && r.reason == MATERIAL_LAYER;
+  t[1].layer = 3;
+  r = material_admit(t[..], 4, 2);
+  #assert r.index == 2 && r.reason == MATERIAL_STYLE;
+  none: [1] Material;
+  r = material_admit(none[0..<0], 4, 2);
+  #assert r.index == -1 && r.reason == MATERIAL_TABLE;
+  big: [MATERIAL_MAX + 1] Material;
+  for i: 0..<big.count { big[i] = material_test_ok(); }
+  #assert material_admit(big[0..<MATERIAL_MAX], 4, 2).reason == MATERIAL_OK;
+  r = material_admit(big[..], 4, 2);
+  #assert r.index == -1 && r.reason == MATERIAL_TABLE;
+}
+#test "the ink is the outline times the style's most; a glowing material has none" {
+  m := material_test_ok(); m.outline = 0.5;
+  #assert material_ink(m, 0.8) == 0.4f32;
+  for ch: 0..<3 {
+    g := m;
+    if ch == 0 { g.er = 0.001; } else if ch == 1 { g.eg = 0.001; } else { g.eb = 0.001; }
+    #assert material_ink(g, 0.8) == 0;
+  }
+}
+#test "every reason has its own name" {
+  for a: 0..<8 {
+    #assert material_reason_name(a) != "";
+    for b: 0..<8 { if a != b { #assert material_reason_name(a) != material_reason_name(b); } }
+  }
+  #assert material_reason_name(MATERIAL_LAYER) == "layer" && material_reason_name(-1) == "unknown" && material_reason_name(7) == "unknown";
+  #assert material_reason_name(MATERIAL_OK) == "none" && material_reason_name(MATERIAL_ALBEDO) == "albedo" && material_reason_name(MATERIAL_STYLE) == "style";
+  #assert material_reason_name(MATERIAL_OUTLINE) == "outline" && material_reason_name(MATERIAL_EMISSION) == "emission" && material_reason_name(MATERIAL_TABLE) == "table";
+}
+
+// ---- the banded surface, against plain arithmetic
+#test "the band is the wrapped key times the lit share, worked by hand at n.l 0.5" {
+  // w = (0.5 + 0.25) / 1.25 = 0.6; past e1 - s = 0.52 by 0.08 of 0.12: t = 2/3, 20/27 of the way;
+  // band = 0.55 + 0.45 * 20/27 = 0.8833
+  #assert abs(material_band(0.5, 1, 0.20, 0.58, 0.06, 0.55) - 0.88333f32) < 0.0001f32;
+  #assert material_band(0.5, 0, 0.20, 0.58, 0.06, 0.55) == 0;
+  #assert material_band(1, 1, 0.20, 0.58, 0.06, 0.55) == 1;
+}
+#test "a banded surface equals plain arithmetic: the lit band is albedo times bright, the shadow band cooled with its value kept" {
+  a := mat_rgb(0.21, 0.29, 0.08); dark := mat_rgb(0.156, 0.2088, 0.3956); bright := mat_rgb(1.5, 1.4, 1.2); t := mat_rgb(0.52, 0.58, 0.86);
+  lit := material_banded(a, dark, bright, t, 1, 1);
+  #assert lit.r == a.r * bright.r && lit.g == a.g * bright.g && lit.b == a.b * bright.b;
+  sh := material_banded(a, dark, bright, t, 1, 0);
+  sr := a.r * dark.r; sg := a.g * dark.g; sb := a.b * dark.b;
+  tl := 0.2126f32 * t.r + 0.7152f32 * t.g + 0.0722f32 * t.b;
+  mr := sr * t.r / tl; mg := sg * t.g / tl; mb := sb * t.b / tl;
+  y := 0.2126f32 * sr + 0.7152f32 * sg + 0.0722f32 * sb; ym := 0.2126f32 * mr + 0.7152f32 * mg + 0.0722f32 * mb;
+  #assert abs(sh.r - mr * y / ym) < 0.000001f32 && abs(sh.g - mg * y / ym) < 0.000001f32 && abs(sh.b - mb * y / ym) < 0.000001f32;
+  #assert abs(verse_style_luma(sh.r, sh.g, sh.b) - y) < 0.000001f32;
+  // no cooling leaves the plain shadow; half way is half way
+  plain := material_banded(a, dark, bright, t, 0, 0);
+  #assert abs(plain.r - sr) < 0.000001f32 && abs(plain.g - sg) < 0.000001f32 && abs(plain.b - sb) < 0.000001f32;
+  half := material_banded(a, dark, bright, t, 0, 0.5);
+  #assert abs(half.r - (sr + lit.r) * 0.5f32) < 0.000001f32 && abs(half.b - (sb + lit.b) * 0.5f32) < 0.000001f32 && abs(half.g - (sg + lit.g) * 0.5f32) < 0.000001f32;
+}
