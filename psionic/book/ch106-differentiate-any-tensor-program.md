@@ -102,7 +102,7 @@ saved and there are no backward steps.
 ad_reads :: (n:TiNode,custom:bool,need_a:bool,need_b:bool)->[2]bool {
     r:[2]bool;
     if custom {r[0]=true;r[1]=ti_binary(n.op);}
-    else if n.op==TiOp.registered || n.op==TiOp.relu || n.op==TiOp.layernorm {r[0]=true;}
+    else if n.op==TiOp.registered || n.op==TiOp.relu || n.op==TiOp.layernorm || n.op==TiOp.maxpool2d {r[0]=true;}
     else if n.op==TiOp.matmul || n.op==TiOp.multiply || n.op==TiOp.conv2d {r[0]=need_b;r[1]=need_a;}
     return r;
 }
@@ -267,6 +267,16 @@ ad_rule :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) {
                 if need_a {ad_add(t,n.a,ja,g*ad_read(t,n.b,jb,inputs,values),grads);}
                 if need_b {ad_add(t,n.b,jb,g*ad_read(t,n.a,ja,inputs,values),grads);}
             }}}
+        } else if n.op==TiOp.avgpool2d || n.op==TiOp.maxpool2d {
+            // Average: every window element receives g / (height * width).
+            // Maximum: only the first largest element (the forward's choice).
+            best:=-1;top:f64=0;share:=g/f64(n.window[0]*n.window[1]);
+            for h:0..<n.window[0] {for w:0..<n.window[1] {
+                ja:=((c[0]*a.dims[1]+c[1])*a.dims[2]+c[2]*n.stride+h)*a.dims[3]+c[3]*n.stride+w;
+                if n.op==TiOp.avgpool2d {ad_add(t,n.a,ja,share,grads);}
+                else {x:=ad_read(t,n.a,ja,inputs,values);if best<0 || x>top {best=ja;top=x;}}
+            }}
+            if n.op==TiOp.maxpool2d {ad_add(t,n.a,best,g,grads);}
         } else if n.op==TiOp.relu {
             if ad_read(t,n.a,j,inputs,values)>0 {ad_add(t,n.a,j,g,grads);}
         } else if n.op==TiOp.sum {
@@ -304,6 +314,12 @@ overwrites them. That is why a value read twice gets the sum of both
 gradients. A broadcast operand adds every output position that read it, and
 a gather adds every position that selected the same row. ReLU's gradient at
 exactly zero is zero, matching chapter 5's convention.
+
+Pooling (chapter 117) adds two rules. An average window gives each of its
+inputs the upstream derivative divided by the window size, and overlapping
+windows add; a maximum window gives the whole upstream derivative to its
+first largest input, the one the forward pass chose, so only that rule
+reads a saved value.
 
 The CPU convolution extension uses the same additive rule. For each output
 coordinate, the input derivative adds the upstream derivative times its

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Reader harness (scratch, not product): run2.sh ROUTE PART EPOCHS_NOW
+# Writes run2-<ROUTE>-part<PART>.out with stdout, stderr, bash time and exit code.
+cd "$(dirname "$0")/../.."
+r=$1; p=$2; e=$3; out=scratch-12626/reader/run2-$r-part$p.out
+{
+  echo "start $(date) epochs_now=$e"
+  time timeout 900 coax/web/tool.sh scratch-12626/reader/reader2-$r.coax scratch-12626/mnist scratch-12626/reader/out2-$r $e
+  echo "exit=$?"
+  echo "end $(date)"
+} > "$out" 2>&1

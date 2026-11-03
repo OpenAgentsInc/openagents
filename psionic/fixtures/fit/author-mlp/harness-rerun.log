@@ -1,0 +1,9 @@
+MNIST validation: phase 1, step 2560, loss 0.249321973, correct 909/1024
+MNIST validation: phase 1, step 2816, loss 0.241568294, correct 913/1024
+MNIST validation: phase 1, step 3072, loss 0.237390912, correct 910/1024
+
+real	7m59.411s
+user	5m25.388s
+sys	0m0.151s
+
+[exited with code 0]

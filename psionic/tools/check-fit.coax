@@ -1,0 +1,51 @@
+// Focused gate for the public fit library (psionic/lib/fit.coax and its
+// #authority fit-policy.coax) and the pooling layers (module-pool.coax),
+// all orchestration in Coax.
+//   coax/web/tool.sh psionic/tools/check-fit.coax all|checks|mutate|native
+// No download or MNIST training: the native phase runs fit_run end to end on
+// synthetic IDX bytes. Dependency units (module, trainer, data/mnist) keep
+// their own gates. Each phase stays well under fifteen minutes.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+cf_run :: (argv:[]string,seconds:int,out:[]u8)->int {
+    err:[65536]u8;r:=proc_run(argv,seconds*1000,out,err[..]);
+    if r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return -1;}
+    return r.out_n;
+}
+tool_main :: ()->int #export_c {
+    args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {tool_errln("usage: check-fit all|checks|mutate|native");return 2;}
+    phase:=args_at(args[..],0);out:[4194304]u8;
+    if phase=="all" {
+        start:=proc_now_ms();phases:=[3]string.["checks","mutate","native"];
+        for part:phases {
+            left:=840-(proc_now_ms()-start)/1000;if left<=0 {tool_errln("fourteen-minute gate budget exhausted; run separate phases");return 1;}
+            cmd:=[3]string.["coax/web/tool.sh","psionic/tools/check-fit.coax",part];
+            n:=cf_run(cmd[..],left,out[..]);if n<0 {return 1;}print("%",cast(string)out[0..<n]);if n>0 && out[n-1]!=10 {print("\n");}
+        }return 0;
+    }
+    if phase=="checks" {
+        for mode:0..<2 {
+            policy:=[5]string.["coax/bin/coax","test","psionic/lib/fit-policy.coax","--library","--release"];
+            if cf_run(policy[0..<4+mode],300,out[..])<0 {return 1;}
+            // fit.coax's own checks; the loaded engines' checks run in their gates.
+            fit:=[9]string.["coax/bin/coax","test","psionic/lib/fit.coax","--library","--steps","4000000000","--only","fit ","--release"];
+            if cf_run(fit[0..<8+mode],600,out[..])<0 {return 1;}
+            pool:=[7]string.["coax/bin/coax","test","psionic/lib/module-pool.coax","--library","--steps","4000000000","--release"];
+            if cf_run(pool[0..<6+mode],600,out[..])<0 {return 1;}
+            print("checks: fit-policy, fit and module-pool, release %: passed\n",mode);
+        }return 0;
+    }
+    if phase=="mutate" {
+        units:=[2]string.["psionic/lib/fit-policy.coax","psionic/lib/module-pool.coax"];
+        for unit:units {cmd:=[7]string.["coax/bin/coax","mutate",unit,"--library","--root-only","--jobs","8"];
+            n:=cf_run(cmd[..],420,out[..]);if n<0 {return 1;}print("%",cast(string)out[0..<n]);if n>0 && out[n-1]!=10 {print("\n");}}
+        return 0;
+    }
+    if phase=="native" {
+        cmd:=[2]string.["coax/web/tool.sh","psionic/tests/fit-native.coax"];
+        n:=cf_run(cmd[..],600,out[..]);if n<0 {return 1;}print("%",cast(string)out[0..<n]);return 0;
+    }
+    tool_errln("unknown phase");return 2;
+}

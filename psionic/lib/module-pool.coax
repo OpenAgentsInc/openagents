@@ -1,0 +1,29 @@
+// Public CPU pooling layers, composed on the shared tensor IR (chapter 38's
+// avgpool2d and maxpool2d nodes) and differentiated by the ordinary tape.
+// Profile: NCHW f32, a height x width window moved by one stride over both
+// spatial axes, no padding or dilation, first-order gradients; the IR refuses
+// other devices and the compiled paths refuse these nodes explicitly.
+#load "module-cnn.coax";
+#authority;
+#load "../tests/pool-modules-checks.coax";
+
+// book:begin pool-layers
+// Each output is the average (or the first largest value) of one window.
+// Pooling adds no parameters: it is a node, not a module with entries.
+mdl_pool :: (m:MdlModel,op:TiOp,x:int,height:int,width:int,stride:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
+    s:=m.shapes[x];
+    if s.rank!=4 || height<1 || width<1 || stride<1 || height>s.dims[2] || width>s.dims[3] {return mdl_fail(m,MdlStatus.shape);}
+    return mdl_node(m,TiNode.{op=op,a=x,window=[2]int.[height,width],stride=stride});
+}
+mdl_avgpool2d :: (m:MdlModel,x:int,height:int,width:int,stride:int)->MdlModel {return mdl_pool(m,TiOp.avgpool2d,x,height,width,stride);}
+mdl_maxpool2d :: (m:MdlModel,x:int,height:int,width:int,stride:int)->MdlModel {return mdl_pool(m,TiOp.maxpool2d,x,height,width,stride);}
+// Global average pooling, ResNet's head: [N,C,H,W] -> [N,C,1,1].
+mdl_global_avgpool :: (m:MdlModel,x:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
+    s:=m.shapes[x];if s.rank!=4 {return mdl_fail(m,MdlStatus.shape);}
+    return mdl_pool(m,TiOp.avgpool2d,x,s.dims[2],s.dims[3],1);
+}
+// book:end pool-layers

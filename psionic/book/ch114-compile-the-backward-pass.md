@@ -10,8 +10,8 @@
 
 The later `cnn-nchw-f32-v1` extension is supported by the eager tape, not this
 compiled-backward profile. `cb_compile` explicitly returns `operation` for
-convolution, including a forward-only request. It cannot silently run a
-convolution with a missing compiled derivative.
+convolution and for both pooling nodes, including a forward-only request.
+It cannot silently run one of them with a missing compiled derivative.
 
 [Chapter 106](ch106-differentiate-any-tensor-program.md) differentiates a
 tensor program with a tape. The tape is already planned ahead: it decides
@@ -219,7 +219,7 @@ cb_compile :: (p:TiProgram,mode:AdMode,registry:OrRegistry,choice:CbChoice)->CbP
         if p.nodes[i].op==TiOp.registered || mode.custom[i] {return cb_fail(c,CbStatus.external);}
         // Convolution has an interpreted formal VJP, but no compiled-backward
         // instruction rule yet. Refuse even forward-only compilation explicitly.
-        if p.nodes[i].op==TiOp.conv2d {return cb_fail(c,CbStatus.operation);}
+        if p.nodes[i].op==TiOp.conv2d || ti_pool(p.nodes[i].op) {return cb_fail(c,CbStatus.operation);}
         r:=t.root[i];c.facts.root[i]=r;c.facts.input[i]=p.nodes[r].op==TiOp.input;c.facts.input_base[i]=p.nodes[i].input_base;
         c.facts.views[i]=t.plan.values[i].view;c.facts.storage[i]=t.plan.values[i].storage;
         c.facts.wants[i]=t.wants[i];c.facts.reaches[i]=t.reaches[i];

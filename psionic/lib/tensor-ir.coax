@@ -4,7 +4,7 @@
 #authority;
 TI_NODES :: 32;
 // book:begin types
-TiOp :: enum u8 {input;matmul;add;multiply;relu;sum;layernorm;view;reshape;gather;registered=11;conv2d=12;}
+TiOp :: enum u8 {input;matmul;add;multiply;relu;sum;layernorm;view;reshape;gather;registered=11;conv2d=12;avgpool2d=13;maxpool2d=14;}
 TiStatus :: enum u8 {ok;operation;dependency;shape;dtype;device;layout;index;limit;capacity;alias;number;arithmetic;identity;budget;driver;absent;state;}
 TiPlacement :: enum u8 {target;cpu;cuda;metal;}
 TiNode :: struct {
@@ -12,6 +12,8 @@ TiNode :: struct {
     shape:TvShape;strides:[4]int;offset:int;storage:int;input_base:int;
     dtype:TdDtype;placement:TiPlacement;
     axis:int;epsilon:f32=0.00001f32;index_count:int;indices:[16]int;
+    // Pooling: a [height, width] window moved by stride over NCHW's last two axes.
+    window:[2]int;stride:int;
 }
 TiProgram :: struct {count:int;output:int;nodes:[32]TiNode;}
 TiTarget :: struct {device:TdDevice;compiler:[4]u64;backend:[4]u64;kernel:[4]u64;operators:[4]u64;budget:int=67108864;}
@@ -58,6 +60,31 @@ TiResult :: struct {status:TiStatus;written:int;workspace:int;}
     p.nodes[1]=TiNode.{op=TiOp.sum,a=0,axis=1};plan=ti_compile(p,TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.output_elements==2 && ti_lower(plan,0).meta[30]==3;
     p.nodes[1]=TiNode.{op=TiOp.layernorm,a=0,epsilon=1};#assert ti_compile(p,TiTarget.{},true).status==TiStatus.ok;p.nodes[1].epsilon=0;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.shape;
 }
+#test "pooling plans NCHW windows, lowers its window and stays inside the CPU profile" {
+    p:TiProgram;p.count=2;p.output=1;p.nodes[0]=ti_input(TvShape.{rank=4,dims=[4]int.[1,2,4,5]},0);
+    p.nodes[1]=TiNode.{op=TiOp.avgpool2d,a=0,window=[2]int.[2,3],stride=2};
+    plan:=ti_compile(p,TiTarget.{},true);
+    // (4-2)/2+1 = 2 rows and (5-3)/2+1 = 2 columns per channel; six reads each.
+    #assert plan.status==TiStatus.ok && plan.output_elements==8 && plan.work==48 && ti_shape_equal(plan.values[1].view.shape,TvShape.{rank=4,dims=[4]int.[1,2,2,2]});
+    l:=ti_lower(plan,0);#assert l.status==TiStatus.ok && l.meta[0]==13 && l.meta[49]==2 && l.meta[50]==3 && l.meta[51]==2 && l.items==8;
+    p.nodes[1].op=TiOp.maxpool2d;plan=ti_compile(p,TiTarget.{},true);#assert plan.status==TiStatus.ok && ti_lower(plan,0).meta[0]==14;
+    #assert ti_compile(p,TiTarget.{device=TdDevice.cuda},true).status==TiStatus.device;
+    #assert ti_compile(p,TiTarget.{device=TdDevice.metal},true).status==TiStatus.device;
+    #assert ti_compile(ti_fixture(),TiTarget.{device=TdDevice.cuda},true).status==TiStatus.ok;
+    q:=p;q.nodes[1].stride=0;#assert ti_compile(q,TiTarget.{},true).status==TiStatus.shape;
+    q=p;q.nodes[1].window=[2]int.[5,1];#assert ti_compile(q,TiTarget.{},true).status==TiStatus.shape;
+    q=p;q.nodes[1].window=[2]int.[4,5];plan=ti_compile(q,TiTarget.{},true);#assert plan.status==TiStatus.ok && plan.output_elements==2;
+    q=p;q.nodes[1].window=[2]int.[1,0];#assert ti_compile(q,TiTarget.{},true).status==TiStatus.shape;
+    q=p;q.nodes[0]=ti_input(TvShape.{rank=3,dims=[4]int.[2,4,5,0]},0);#assert ti_compile(q,TiTarget.{},true).status==TiStatus.shape;
+    // Pooling options are part of the cached program's identity.
+    q=p;q.nodes[1].window[0]=1;#assert !ti_node_equal(p.nodes[1],q.nodes[1]);
+    q=p;q.nodes[1].window[1]=2;#assert !ti_node_equal(p.nodes[1],q.nodes[1]);
+    q=p;q.nodes[1].stride=1;#assert !ti_node_equal(p.nodes[1],q.nodes[1]) && ti_node_equal(p.nodes[1],p.nodes[1]);
+    // Options on other nodes change nothing they compute.
+    c:=p;c.nodes[1]=TiNode.{op=TiOp.relu,a=0,window=[2]int.[9,9],stride=0};#assert ti_compile(c,TiTarget.{},true).status==TiStatus.ok && ti_request(c.nodes[1]).stride==1;
+    #assert ti_request(p.nodes[1]).height==2 && ti_request(p.nodes[1]).width==3 && ti_request(p.nodes[1]).stride==2;
+    #assert ti_pool(TiOp.avgpool2d) && ti_pool(TiOp.maxpool2d) && !ti_pool(TiOp.conv2d) && !ti_pool(TiOp.relu);
+}
 
 ti_input :: (shape:TvShape,base:int)->TiNode #export_c {
     n:=tv_elements(shape);owner:=tv_owner(1,1,n.elements).storage;v:=tv_contiguous(owner,shape,false).view;
@@ -81,18 +108,22 @@ ti_fixture :: ()->TiProgram #export_c {
 ti_material :: (op:TiOp)->bool {return op!=TiOp.input && op!=TiOp.view && op!=TiOp.reshape;}
 ti_binary :: (op:TiOp)->bool {return op==TiOp.matmul || op==TiOp.add || op==TiOp.multiply || op==TiOp.registered || op==TiOp.conv2d;}
 ti_shape_equal :: (a:TvShape,b:TvShape)->bool {if a.rank!=b.rank {return false;}for i:0..<4 {if a.dims[i]!=b.dims[i] {return false;}}return true;}
-ti_request :: (n:TiNode)->ToRequest {op:=ToOp.relu;if n.op==TiOp.matmul {op=ToOp.matmul;}else if n.op==TiOp.add {op=ToOp.add;}else if n.op==TiOp.multiply {op=ToOp.multiply;}else if n.op==TiOp.sum {op=ToOp.sum;}else if n.op==TiOp.gather {op=ToOp.take;}else if n.op==TiOp.conv2d {op=ToOp.conv2d;}return ToRequest.{op=op,axis=n.axis};}
+ti_request :: (n:TiNode)->ToRequest {op:=ToOp.relu;if n.op==TiOp.matmul {op=ToOp.matmul;}else if n.op==TiOp.add {op=ToOp.add;}else if n.op==TiOp.multiply {op=ToOp.multiply;}else if n.op==TiOp.sum {op=ToOp.sum;}else if n.op==TiOp.gather {op=ToOp.take;}else if n.op==TiOp.conv2d {op=ToOp.conv2d;}
+    else if n.op==TiOp.avgpool2d {op=ToOp.avgpool2d;}else if n.op==TiOp.maxpool2d {op=ToOp.maxpool2d;}
+    r:=ToRequest.{op=op,axis=n.axis};if ti_pool(n.op) {r.height=n.window[0];r.width=n.window[1];r.stride=n.stride;}return r;}
+ti_pool :: (op:TiOp)->bool {return op==TiOp.avgpool2d || op==TiOp.maxpool2d;}
 ti_compile :: (p:TiProgram,t:TiTarget,reuse:bool)->TiPlan #export_c {
     if p.count<1 || p.count>TI_NODES || p.output<0 || p.output>=p.count {return TiPlan.{status=TiStatus.capacity};}
     if !td_device_known(cast(u8)t.device) {return TiPlan.{status=TiStatus.device};}if t.budget<0 || t.budget>1073741824 {return TiPlan.{status=TiStatus.budget};}
     plan:=TiPlan.{program=p,target=t,reuse=reuse};
     for i:0..<p.count {
-        n:=p.nodes[i];if cast(u8)n.op>12 || cast(u8)n.op==10 {return TiPlan.{status=TiStatus.operation};}
+        n:=p.nodes[i];if cast(u8)n.op>14 || cast(u8)n.op==10 {return TiPlan.{status=TiStatus.operation};}
         if n.dtype!=TdDtype.f32 {return TiPlan.{status=TiStatus.dtype};}if cast(u8)n.placement>3 {return TiPlan.{status=TiStatus.device};}
         if n.placement!=TiPlacement.target && int(cast(u8)n.placement)-1!=int(cast(u8)t.device) {return TiPlan.{status=TiStatus.device};}
         // The first convolution profile is CPU-only, NCHW/OIHW, valid padding
         // and implicit stride one. Command tags 10 (copy) and 11 stay unchanged.
-        if n.op==TiOp.conv2d && t.device!=TdDevice.cpu {return TiPlan.{status=TiStatus.device};}
+        // Pooling (13, 14) shares that profile: CPU only, NCHW, no padding.
+        if (n.op==TiOp.conv2d || ti_pool(n.op)) && t.device!=TdDevice.cpu {return TiPlan.{status=TiStatus.device};}
         v:TiValue;
         if n.op==TiOp.input {
             owner:=tv_owner(i+1,1,n.storage);if owner.status!=TvStatus.ok || n.input_base<0 || n.input_base>TV_LIMIT-n.storage {return TiPlan.{status=TiStatus.capacity};}
@@ -113,6 +144,7 @@ ti_compile :: (p:TiProgram,t:TiTarget,reuse:bool)->TiPlan #export_c {
                 else if n.op==TiOp.layernorm {if shape.rank<1 || shape.dims[shape.rank-1]<1 || !tv_finite(n.epsilon) || n.epsilon<=0 {return TiPlan.{status=TiStatus.shape};}inner=shape.dims[shape.rank-1]*2+1;}
                 else {b:=TvShape.{rank=1};if ti_binary(n.op) {b=plan.values[n.b].view.shape;}index_count:=0;if n.op==TiOp.gather {index_count=n.index_count;if index_count<0 || index_count>16 {return TiPlan.{status=TiStatus.index};}}
                     if n.op==TiOp.conv2d && (shape.rank!=4 || b.rank!=4) {return TiPlan.{status=TiStatus.shape};}
+                    if ti_pool(n.op) && shape.rank!=4 {return TiPlan.{status=TiStatus.shape};}
                     inferred:=to_plan(ti_request(n),shape,b,index_count);if inferred.status!=ToStatus.ok {if n.op==TiOp.conv2d && inferred.status==ToStatus.limit {return TiPlan.{status=TiStatus.limit};}return TiPlan.{status=TiStatus.shape};}shape=inferred.shape;inner=inferred.inner;
                     if n.op==TiOp.gather {bound:=a.view.shape.dims[n.axis];for j:0..<n.index_count {if n.indices[j]<0 || n.indices[j]>=bound {return TiPlan.{status=TiStatus.index};}}}
                 }
@@ -147,9 +179,10 @@ ti_lower :: (plan:TiPlan,command:int)->TiLaunch #export_c {
     id:=plan.commands[command];n:=plan.program.nodes[id];v:=plan.values[id];result.items=v.storage;result.epsilon=n.epsilon;result.meta[0]=int(cast(u8)n.op);result.meta[1]=v.base;result.meta[2]=flag;result.meta[3]=v.view.shape.rank;
     for j:0..<4 {result.meta[4+j]=v.view.shape.dims[j];}a:=plan.values[n.a];ti_lower_value(a,8,result.meta[..]);if ti_binary(n.op) {ti_lower_value(plan.values[n.b],19,result.meta[..]);}
     result.meta[31]=n.axis;result.meta[48]=n.index_count;if n.op==TiOp.matmul {result.meta[30]=a.view.shape.dims[1];}else if n.op==TiOp.sum {result.meta[30]=a.view.shape.dims[n.axis];}else if n.op==TiOp.layernorm {result.meta[30]=a.view.shape.dims[a.view.shape.rank-1];}
+    result.meta[49]=n.window[0];result.meta[50]=n.window[1];result.meta[51]=n.stride;
     for j:0..<16 {result.meta[32+j]=n.indices[j];}return result;
 }
-ti_node_equal :: (a:TiNode,b:TiNode)->bool {if a.op!=b.op || a.a!=b.a || a.b!=b.b || !ti_shape_equal(a.shape,b.shape) || a.offset!=b.offset || a.storage!=b.storage || a.input_base!=b.input_base || a.dtype!=b.dtype || a.placement!=b.placement || a.axis!=b.axis || f32_bits(a.epsilon)!=f32_bits(b.epsilon) || a.index_count!=b.index_count {return false;}for i:0..<4 {if a.strides[i]!=b.strides[i] {return false;}}for i:0..<16 {if a.indices[i]!=b.indices[i] {return false;}}return true;}
+ti_node_equal :: (a:TiNode,b:TiNode)->bool {if a.op!=b.op || a.a!=b.a || a.b!=b.b || !ti_shape_equal(a.shape,b.shape) || a.offset!=b.offset || a.storage!=b.storage || a.input_base!=b.input_base || a.dtype!=b.dtype || a.placement!=b.placement || a.axis!=b.axis || f32_bits(a.epsilon)!=f32_bits(b.epsilon) || a.index_count!=b.index_count || a.window[0]!=b.window[0] || a.window[1]!=b.window[1] || a.stride!=b.stride {return false;}for i:0..<4 {if a.strides[i]!=b.strides[i] {return false;}}for i:0..<16 {if a.indices[i]!=b.indices[i] {return false;}}return true;}
 ti_cache_matches :: (plan:TiPlan,p:TiProgram,t:TiTarget)->bool #export_c {
     if plan.status!=TiStatus.ok || p.count!=plan.program.count || p.output!=plan.program.output || p.count<1 || p.count>32 || t.device!=plan.target.device || t.budget!=plan.target.budget {return false;}
     for i:0..<4 {if t.compiler[i]!=plan.target.compiler[i] || t.backend[i]!=plan.target.backend[i] || t.kernel[i]!=plan.target.kernel[i] || t.operators[i]!=plan.target.operators[i] {return false;}}

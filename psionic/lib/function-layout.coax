@@ -1,6 +1,15 @@
 #load "function-types.coax";
 #authority;
 
+#test "pooling is refused by graph functions at every derivative order" {
+  for op:0..<2 {
+    p:TiProgram;p.count=2;p.output=1;p.nodes[0]=ti_input(TvShape.{rank=4,dims=[4]int.[1,1,2,2]},0);
+    p.nodes[1]=TiNode.{op=ifx op==0 then TiOp.avgpool2d else TiOp.maxpool2d,a=0,window=[2]int.[2,2],stride=1};
+    #assert ti_compile(p,TiTarget.{},false).status==TiStatus.ok && fx_program(p).status==FxStatus.operation;
+    f:=FxFunction.{program=p,count=1};
+    for order:0..<3 {f.leaves[0].order=order;#assert fx_layout(f).status==FxStatus.operation;}
+  }
+}
 #test "cnn function eligibility refuses convolution before unsupported higher derivatives" {
   shape:=TvShape.{rank=4,dims=[4]int.[1,1,1,1]};
   p:TiProgram;p.count=3;p.output=2;p.nodes[0]=ti_input(shape,0);p.nodes[1]=ti_input(shape,1);p.nodes[2]=TiNode.{op=TiOp.conv2d,a=0,b=1};
@@ -54,7 +63,7 @@ fx_program :: (p:TiProgram)->FxLayout {
     // Convolution has a first-order tape VJP, but the graph-function tangent
     // and cross-curvature rules do not yet implement it. Refuse every leaf
     // order here so a later transform cannot silently publish zero derivatives.
-    n:=p.nodes[i];if n.op==TiOp.registered || n.op==TiOp.conv2d {r.status=FxStatus.operation;return r;}
+    n:=p.nodes[i];if n.op==TiOp.registered || n.op==TiOp.conv2d || ti_pool(n.op) {r.status=FxStatus.operation;return r;}
     root:=r.tape.plan.values[i].root;r.tape.root[i]=root;r.tape.wants[i]=true;
     if root==i {
       size:=r.tape.plan.values[i].storage;if size>FX_CELLS-r.cells {r.status=FxStatus.limit;return r;}

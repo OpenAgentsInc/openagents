@@ -1,0 +1,182 @@
+// psionic-fit-v1 decisions: what the public fit library (fit.coax) admits
+// from a caller's classifier, data splits, trainer settings and arenas, and
+// the integer quality gate it applies. Every rule here is data: no model,
+// dataset or experiment constant lives in this file except the profile's
+// feature and class counts (the mnist-pool14 preparation: 196 features,
+// 10 classes) and the trainer/checkpoint limits it inherits.
+#authority;
+
+FIT_FEATURES :: 196;
+FIT_CLASSES :: 10;
+FIT_PARAMS :: 4096;    // checkpoint/record.coax's CK_VALUES
+FIT_EXAMPLES :: 4096;  // trainer.coax's TR_EXAMPLES: rows in one epoch
+
+// Rows [first, first+count) of one source.
+FitSplit :: struct {first:int;count:int;}
+// Pass when correct >= correct and correct - baseline >= margin, on exactly
+// count held-out rows. Integer counts, so every endpoint is observable.
+FitGate :: struct {count:int;correct:int;margin:int;}
+FitScore :: struct {count:int;correct:int;baseline:int;initial_loss:f64;final_loss:f64;replayed:bool;exported:bool;}
+// Storage a run needs (from the model's plan) or a caller has.
+FitNeed :: struct {inputs:int;values:int;adjoints:int;flags:int;entry:int;parameters:int;examples:int;}
+
+#test "a split lies inside its source and is never empty" {
+    #assert fit_split(FitSplit.{first=0,count=1},1);
+    #assert fit_split(FitSplit.{first=4096,count=1024},5120);
+    #assert !fit_split(FitSplit.{first=4096,count=1025},5120);
+    #assert !fit_split(FitSplit.{first=4097,count=1024},5120);
+    #assert fit_split(FitSplit.{first=4095,count=1024},5120);
+    #assert !fit_split(FitSplit.{first=-1,count=1},5120);
+    #assert !fit_split(FitSplit.{first=0,count=0},5120);
+    #assert !fit_split(FitSplit.{first=0,count=-1},5120);
+    #assert !fit_split(FitSplit.{first=0,count=1},0);
+    // first + count would overflow; the subtraction form refuses it.
+    #assert !fit_split(FitSplit.{first=9223372036854775000,count=1000},5120);
+}
+#test "training and validation rows of one source never overlap" {
+    a:=FitSplit.{first=0,count=4096};
+    #assert fit_apart(a,FitSplit.{first=4096,count=1024});
+    #assert fit_apart(FitSplit.{first=4096,count=1024},a);
+    #assert !fit_apart(a,FitSplit.{first=4095,count=1024});
+    #assert !fit_apart(FitSplit.{first=4095,count=1024},a);
+    #assert !fit_apart(a,FitSplit.{first=0,count=1});
+    #assert !fit_apart(a,FitSplit.{first=100,count=10});
+    #assert fit_apart(FitSplit.{first=10,count=5},FitSplit.{first=0,count=10});
+    #assert !fit_apart(FitSplit.{first=10,count=5},FitSplit.{first=0,count=11});
+}
+#test "the model's data entries and prediction match the preparation profile" {
+    #assert fit_entries(true,196,true,10,10);
+    #assert !fit_entries(false,196,true,10,10);
+    #assert !fit_entries(true,196,false,10,10);
+    #assert !fit_entries(true,195,true,10,10) && !fit_entries(true,197,true,10,10);
+    #assert !fit_entries(true,196,true,9,10) && !fit_entries(true,196,true,11,10);
+    #assert !fit_entries(true,196,true,10,9) && !fit_entries(true,196,true,10,11);
+}
+#test "fit drives single-row micro-batches over the whole training split" {
+    #assert fit_settings(true,1,4096,4096,0,0);
+    #assert !fit_settings(false,1,4096,4096,0,0);
+    #assert !fit_settings(true,2,4096,4096,0,0) && !fit_settings(true,0,4096,4096,0,0);
+    #assert !fit_settings(true,1,4095,4096,0,0) && !fit_settings(true,1,4096,4095,0,0);
+    #assert !fit_settings(true,1,4096,4096,1,0) && !fit_settings(true,1,4096,4096,0,1);
+    #assert fit_settings(true,1,1,1,0,0);
+    #assert fit_settings(true,1,4096,4096,0,0) && !fit_settings(true,1,4097,4097,0,0);
+}
+#test "the checkpoint revision is a step strictly inside the run" {
+    #assert fit_save_at(1,3) && fit_save_at(2,3);
+    #assert !fit_save_at(0,3) && !fit_save_at(3,3) && !fit_save_at(4,3);
+    #assert !fit_save_at(1,1);
+}
+#test "a part trains forward from where the session stopped, never past the last epoch" {
+    #assert fit_stop(0,1,12) && fit_stop(0,12,12) && fit_stop(11,12,12) && fit_stop(5,6,12);
+    #assert !fit_stop(0,0,12) && !fit_stop(6,6,12) && !fit_stop(7,6,12) && !fit_stop(0,13,12) && !fit_stop(-1,1,12);
+}
+#test "every arena is at least what the plan needs" {
+    need:=FitNeed.{inputs=3529,values=9000,adjoints=9000,flags=3136,entry=3136,parameters=3322,examples=4096};
+    #assert fit_room(need,need);
+    #assert fit_room(need,FitNeed.{inputs=4000,values=9001,adjoints=9001,flags=4000,entry=4000,parameters=3322,examples=4096});
+    for field:0..<7 {
+        have:=need;
+        if field==0 {have.inputs-=1;}else if field==1 {have.values-=1;}else if field==2 {have.adjoints-=1;}
+        else if field==3 {have.flags-=1;}else if field==4 {have.entry-=1;}else if field==5 {have.parameters-=1;}else {have.examples-=1;}
+        #assert !fit_room(need,have);
+    }
+    // The parameter and example limits are the checkpoint's and trainer's.
+    big:=need;big.parameters=4096;#assert fit_room(big,big);
+    big.parameters=4097;#assert !fit_room(big,big);
+    big=need;big.examples=4096;#assert fit_room(big,big);
+    big.examples=4097;#assert !fit_room(big,big);
+    big=need;big.parameters=0;#assert !fit_room(big,big);
+    big.parameters=1;#assert fit_room(big,big);
+}
+#test "a gate names a nonempty count and reachable thresholds" {
+    #assert fit_gate(FitGate.{count=2048,correct=1639,margin=1024});
+    #assert fit_gate(FitGate.{count=1,correct=0,margin=0});
+    #assert fit_gate(FitGate.{count=1,correct=1,margin=1});
+    #assert !fit_gate(FitGate.{count=0,correct=0,margin=0});
+    #assert !fit_gate(FitGate.{count=2048,correct=2049,margin=0});
+    #assert !fit_gate(FitGate.{count=2048,correct=-1,margin=0});
+    #assert !fit_gate(FitGate.{count=2048,correct=0,margin=2049});
+    #assert !fit_gate(FitGate.{count=2048,correct=0,margin=-1});
+}
+#test "the quality gate counts exact endpoints and needs lower finite loss and persistence" {
+    g:=FitGate.{count=2048,correct=1639,margin=1024};
+    s:=FitScore.{count=2048,correct=1639,baseline=615,initial_loss=1,final_loss=0.5,replayed=true,exported=true};
+    #assert fit_accept(g,s);
+    t:=s;t.correct=1638;t.baseline=200;#assert !fit_accept(g,t);
+    t=s;t.baseline=616;#assert !fit_accept(g,t);
+    t=s;t.correct=1640;t.baseline=616;#assert fit_accept(g,t);
+    t=s;t.correct=2048;t.baseline=1024;#assert fit_accept(g,t);
+    t.baseline=1025;#assert !fit_accept(g,t);
+    t=s;t.count=2047;#assert !fit_accept(g,t);
+    t=s;t.count=2049;#assert !fit_accept(g,t);
+    t=s;t.correct=2049;t.count=2048;#assert !fit_accept(g,t);
+    // A negative baseline would inflate the margin.
+    t=s;t.correct=1639;t.baseline=-1;#assert !fit_accept(FitGate.{count=2048,correct=0,margin=1640},t);
+    t.baseline=0;#assert !fit_accept(FitGate.{count=2048,correct=0,margin=1640},t);
+    t.correct=1640;#assert fit_accept(FitGate.{count=2048,correct=0,margin=1640},t);
+    t=s;t.final_loss=1;#assert !fit_accept(g,t);
+    t=s;t.final_loss=1.0001;#assert !fit_accept(g,t);
+    t=s;t.final_loss=-0.001;#assert !fit_accept(g,t);
+    t=s;t.final_loss=0;#assert fit_accept(g,t);
+    t=s;t.initial_loss=1000000;t.final_loss=0;#assert fit_accept(g,t);
+    t=s;t.initial_loss=1000000.5;t.final_loss=0;#assert !fit_accept(g,t);
+    big:=f64_from_bits(0x7fefffffffffffff);inf:=big*2;
+    t=s;t.initial_loss=inf-inf;#assert !fit_accept(g,t);
+    t=s;t.final_loss=inf-inf;#assert !fit_accept(g,t);
+    t=s;t.replayed=false;#assert !fit_accept(g,t);
+    t=s;t.exported=false;#assert !fit_accept(g,t);
+    #assert !fit_accept(FitGate.{count=0,correct=0,margin=0},FitScore.{initial_loss=1,replayed=true,exported=true});
+}
+#test "argmax refuses any non-finite score and keeps the first tie" {
+    s:=[4]f32.[0.25,0.75,0.75,-1];#assert fit_argmax(s[..])==1;
+    s[3]=1;#assert fit_argmax(s[..])==3;
+    s[0]=2;#assert fit_argmax(s[..])==0;
+    one:=[1]f32.[-3];#assert fit_argmax(one[..])==0;
+    #assert fit_argmax(one[0..<0])== -1;
+    huge:=f32_from_bits(0x7f7fffff);two:=[2]f32.[huge,-huge];#assert fit_argmax(two[..])==0;
+    inf:=huge*2;
+    bad:=s;bad[2]=inf-inf;#assert fit_argmax(bad[..])== -1;
+    bad=s;bad[3]=inf;#assert fit_argmax(bad[..])== -1;
+    bad=s;bad[0]=-inf;#assert fit_argmax(bad[..])== -1;
+}
+
+fit_split :: (s:FitSplit,rows:int)->bool {
+    return s.first>=0 && s.count>=1 && s.first<=rows-s.count;
+}
+// Both splits are admitted first, so the sums below cannot overflow.
+fit_apart :: (a:FitSplit,b:FitSplit)->bool {
+    return a.first+a.count<=b.first || b.first+b.count<=a.first;
+}
+fit_entries :: (x_data:bool,x_size:int,target_data:bool,target_size:int,scores:int)->bool {
+    return x_data && target_data && x_size==FIT_FEATURES && target_size==FIT_CLASSES && scores==FIT_CLASSES;
+}
+fit_settings :: (rows:bool,batch:int,examples:int,train:int,every:int,patience:int)->bool {
+    return rows && batch==1 && examples==train && examples<=FIT_EXAMPLES && every==0 && patience==0;
+}
+fit_stop :: (done:int,stop:int,epochs:int)->bool {return done>=0 && stop>done && stop<=epochs;}
+fit_save_at :: (revision:int,steps:int)->bool {return revision>=1 && revision<steps;}
+fit_room :: (need:FitNeed,have:FitNeed)->bool {
+    if need.parameters<1 || need.parameters>FIT_PARAMS || need.examples>FIT_EXAMPLES {return false;}
+    return have.inputs>=need.inputs && have.values>=need.values && have.adjoints>=need.adjoints
+        && have.flags>=need.flags && have.entry>=need.entry && have.parameters>=need.parameters
+        && have.examples>=need.examples;
+}
+fit_gate :: (g:FitGate)->bool {
+    return g.count>=1 && g.correct>=0 && g.correct<=g.count && g.margin>=0 && g.margin<=g.count;
+}
+// The baseline is the TRAINING split's majority class scored on the held-out
+// rows; the held-out rows never choose a class, setting or checkpoint.
+fit_accept :: (g:FitGate,s:FitScore)->bool {
+    // correct >= g.correct >= 0 and correct - baseline >= margin >= 0 bound
+    // the rest: 0 <= baseline <= correct <= count once these hold.
+    if !fit_gate(g) || s.count!=g.count || s.correct>s.count || s.baseline<0 {return false;}
+    if !(s.initial_loss<=1000000 && s.final_loss>=0 && s.final_loss<s.initial_loss) {return false;}
+    return s.correct>=g.correct && s.correct-s.baseline>=g.margin && s.replayed && s.exported;
+}
+// The first largest score, or -1 when there is none or any score is not finite.
+fit_argmax :: (scores:[]f32)->int {
+    if scores.count<1 {return -1;}
+    for x:scores {if (f32_bits(x)&0x7fffffff)>=0x7f800000 {return -1;}}
+    best:=0;for i:1..<scores.count {if scores[i]>scores[best] {best=i;}}
+    return best;
+}

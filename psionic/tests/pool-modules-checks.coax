@@ -1,0 +1,71 @@
+// Checks for psionic/lib/module-pool.coax, authored before it. Every
+// expected loss and derivative is dyadic hand arithmetic on
+// x = 1 5 2 7 / 3 -1 2 7 ([1,1,2,4]) through a 1x1 convolution.
+#load "../lib/module-train.coax";
+mp_test_shape :: (n:int,c:int,h:int,w:int)->TvShape {return TvShape.{rank=4,dims=[4]int.[n,c,h,w]};}
+mp_test_x :: [8]f32.[1,5,2,7,3,-1,2,7];
+// conv 1x1 (w, b), then pool, then squared error against target.
+mp_test_model :: (op:int)->MdlModel {
+    m:=mdl_data(mdl_model(),"x",mp_test_shape(1,1,2,4));x:=m.node;
+    m=mdl_data(m,"target",ifx op==2 then mp_test_shape(1,1,1,1) else mp_test_shape(1,1,1,2));target:=m.node;
+    m=mdl_conv2d(m,MDL_ROOT,"conv",x,1,1,1);
+    if op==0 {m=mdl_maxpool2d(m,m.node,2,2,2);}
+    else if op==1 {m=mdl_avgpool2d(m,m.node,2,2,2);}
+    else {m=mdl_global_avgpool(m,m.node);}
+    return mdl_squared_error(m,MDL_ROOT,"loss",m.node,target);
+}
+mp_test_step :: (op:int,t0:f32,t1:f32)->[3]f64 {
+    m:=mp_test_model(op);q:=mtr_plan(m);#assert q.status==MtrStatus.ok && q.parameters==2;
+    inputs:[64]f32;values:[256]f32;adjoints:[256]f64;flags:[64]u8;entry:[2]f32;staging:[2]f64;gradient:[2]f64;
+    for j:0..<8 {inputs[j]=mp_test_x[j];}inputs[8]=t0;inputs[9]=t1;
+    master:=[2]f64.[0.5,0.25];
+    r:=mtr_run(q,0,master[..],inputs[..],values[..],adjoints[..],flags[..],entry[..],staging[..],gradient[..]);
+    #assert r.status==MtrStatus.ok;
+    return [3]f64.[r.loss,gradient[0],gradient[1]];
+}
+
+#test "pooling layers add a node, no parameters, and the windowed shape" {
+    m:=mdl_data(mdl_model(),"x",mp_test_shape(1,2,4,5));
+    a:=mdl_avgpool2d(m,0,2,3,2);
+    #assert a.status==MdlStatus.ok && a.count==1 && a.program.count==2 && a.node==1 && a.program.nodes[1].op==TiOp.avgpool2d;
+    #assert ti_shape_equal(a.shapes[1],mp_test_shape(1,2,2,2)) && a.program.nodes[1].window[0]==2 && a.program.nodes[1].window[1]==3 && a.program.nodes[1].stride==2;
+    b:=mdl_maxpool2d(m,0,3,3,1);
+    #assert b.status==MdlStatus.ok && b.program.nodes[1].op==TiOp.maxpool2d && ti_shape_equal(b.shapes[1],mp_test_shape(1,2,2,3));
+    g:=mdl_global_avgpool(m,0);
+    #assert g.status==MdlStatus.ok && g.program.nodes[1].op==TiOp.avgpool2d && ti_shape_equal(g.shapes[1],mp_test_shape(1,2,1,1));
+    #assert g.program.nodes[1].window[0]==4 && g.program.nodes[1].window[1]==5 && g.program.nodes[1].stride==1;
+    one:=mdl_maxpool2d(m,0,1,1,1);#assert one.status==MdlStatus.ok && ti_shape_equal(one.shapes[1],mp_test_shape(1,2,4,5));
+    full:=mdl_avgpool2d(m,0,4,5,7);#assert full.status==MdlStatus.ok && ti_shape_equal(full.shapes[1],mp_test_shape(1,2,1,1));
+}
+#test "pooling refuses bad nodes, ranks, windows and strides, and keeps an earlier refusal" {
+    m:=mdl_data(mdl_model(),"x",mp_test_shape(1,2,4,5));
+    #assert mdl_avgpool2d(m,-1,2,2,2).status==MdlStatus.program && mdl_maxpool2d(m,1,2,2,2).status==MdlStatus.program;
+    #assert mdl_global_avgpool(m,-1).status==MdlStatus.program && mdl_global_avgpool(m,1).status==MdlStatus.program;
+    #assert mdl_avgpool2d(m,0,0,2,2).status==MdlStatus.shape && mdl_avgpool2d(m,0,2,0,2).status==MdlStatus.shape;
+    #assert mdl_avgpool2d(m,0,2,2,0).status==MdlStatus.shape && mdl_maxpool2d(m,0,5,2,1).status==MdlStatus.shape;
+    #assert mdl_maxpool2d(m,0,4,6,1).status==MdlStatus.shape && mdl_maxpool2d(m,0,4,5,1).status==MdlStatus.ok;
+    flat:=mdl_data(mdl_model(),"x",mdl_shape(2,1,20));
+    #assert mdl_avgpool2d(flat,0,1,1,1).status==MdlStatus.shape && mdl_global_avgpool(flat,0).status==MdlStatus.shape;
+    bad:=m;bad.status=MdlStatus.name;
+    #assert mdl_avgpool2d(bad,0,2,2,2).status==MdlStatus.name && mdl_global_avgpool(bad,0).status==MdlStatus.name;
+}
+#test "a convolution and max pool train with the hand-derived loss and gradient" #steps 400000000 {
+    // conv = 0.5x + 0.25: 0.75 2.75 1.25 3.75 / 1.75 -0.25 1.25 3.75. Window 0's
+    // maximum is 2.75 (x = 5); window 1 holds 3.75 twice and keeps the first (x = 7).
+    // Errors against (2, 4): 0.75 and -0.25; loss 0.625; dL/dy = (1.5, -0.5).
+    r:=mp_test_step(0,2,4);
+    #assert r[0]==0.625 && r[1]==4 && r[2]==1;
+}
+#test "a convolution and average pool train with the hand-derived loss and gradient" #steps 400000000 {
+    // Window means of x are 2 and 4.5, so y = 0.5*2+0.25 = 1.25 and 2.5.
+    // Against (1, 2): errors 0.25 and 0.5; loss 0.3125; dL/dy = (0.5, 1).
+    // dL/dw = 0.5*2 + 1*4.5 = 5.5; dL/db = 1.5.
+    r:=mp_test_step(1,1,2);
+    #assert r[0]==0.3125 && r[1]==5.5 && r[2]==1.5;
+}
+#test "global average pooling trains with the hand-derived loss and gradient" #steps 400000000 {
+    // mean(x) = 3.25, y = 1.875, target 1: loss 0.765625, dL/dy = 1.75,
+    // dL/dw = 1.75 * 3.25 = 5.6875, dL/db = 1.75.
+    r:=mp_test_step(2,1,0);
+    #assert r[0]==0.765625 && r[1]==5.6875 && r[2]==1.75;
+}

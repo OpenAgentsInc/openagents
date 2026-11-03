@@ -1,0 +1,58 @@
+// A pooled CNN on MNIST through the public fit library: 3x3 convolution to
+// four channels, ReLU, 2x2 max pooling with stride 2, a linear readout.
+// Frozen before learning in psionic/fixtures/fit/pooled-cnn/experiment.json.
+//   coax/web/tool.sh psionic/examples/fit-pooled-cnn.coax DATA_DIR OUT_DIR
+// tool.sh: release
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../lib/module-pool.coax";
+#load "../lib/fit.coax";
+
+// book:begin pooled-model
+fp_model :: ()->FitModel {
+    m:=mdl_model();m=mdl_data(m,"x",TvShape.{rank=4,dims=[4]int.[1,1,14,14]});x:=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,1,10));target:=m.node;
+    m=mdl_conv2d(m,MDL_ROOT,"conv",x,4,3,3);m=mdl_relu(m,m.node);
+    m=mdl_maxpool2d(m,m.node,2,2,2);
+    m=mdl_flatten(m,m.node);m=mdl_linear(m,MDL_ROOT,"fc",m.node,10);prediction:=m.node;
+    m=mdl_squared_error(m,MDL_ROOT,"loss",prediction,target);
+    return fit_model(m,prediction);
+}
+fp_spec :: ()->FitSpec {
+    c:=TrConfig.{optimizer=TrOptimizer.adamw,storage=TrStorage.binary64,
+        rate=0.003,beta1=0.9,beta2=0.999,eps=0.00000001,clip=1,bound=16,
+        examples=4096,batch=1,accumulate=16,epochs=4,shuffle=true,seed=11832};
+    return FitSpec.{name="mnist pooled cnn conv3x3x4 maxpool2 fc10",seed=11831,config=c,
+        train=FitSplit.{first=0,count=4096},valid=FitSplit.{first=4096,count=1024},
+        test=FitSplit.{first=0,count=2048},save_at=512,
+        gate=FitGate.{count=2048,correct=1639,margin=1024}};
+}
+// book:end pooled-model
+
+fp_read :: (dir:string,name:string,out:[]u8)->int {path:[4096]u8;return fs_read(fs_join(dir,name,path[..]),out);}
+fp_put :: (dir:string,name:string,bytes:[]u8)->bool {path:[4096]u8;return fs_write(fs_join(dir,name,path[..]),cast(string)bytes);}
+tool_main :: ()->int #export_c {
+    args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {print("usage: DATA_DIR OUT_DIR\n");return 2;}
+    data:=args_at(args[..],0);out:=args_at(args[..],1);
+    images:[47040016]u8;labels:[60008]u8;test_images:[7840016]u8;test_labels:[10008]u8;
+    if fp_read(data,"train-images-idx3-ubyte",images[..])!=images.count || fp_read(data,"train-labels-idx1-ubyte",labels[..])!=labels.count
+        || fp_read(data,"t10k-images-idx3-ubyte",test_images[..])!=test_images.count || fp_read(data,"t10k-labels-idx1-ubyte",test_labels[..])!=test_labels.count {
+        print("could not read the four IDX files in %\n",data);return 1;
+    }
+    train:=fit_mnist(images[..],labels[..]);test:=fit_mnist(test_images[..],test_labels[..]);
+    f:=fp_model();print("model status % parameters % inputs % nodes %\n",cast(int)f.status,f.need.parameters,f.need.inputs,f.model.program.count);
+    if f.status!=FitStatus.ok {return 1;}
+    a:[1]FitArena;r:=fit_run(f,fp_spec(),train,test,a[..]);
+    print("status % passed %: % of % correct (training-majority baseline %), loss % -> %, valid %/1024\n",
+        cast(int)r.status,r.passed,r.final_correct,r.test_rows,r.baseline_correct,r.initial_loss,r.final_loss,r.valid_correct);
+    print("initial correct %; % parameters, % updates; replay equal %, reload equal %; % tensors, % bytes\n",
+        r.initial_correct,r.parameters,r.steps,r.replay_equal,r.export_equal,r.tensors,r.export_bytes);
+    if r.export_bytes>0 && !fp_put(out,"model.safetensors",a[0].state_file[0..<r.export_bytes]) {return 1;}
+    trace:[16416]u8;for j:0..<52 {w:=f64_bits(a[0].trace[j]);for k:0..<8 {trace[j*8+k]=cast,trunc(u8)(w>>cast(u64)(8*k));}}
+    if !fp_put(out,"validation.f64",trace[0..<416]) {return 1;}
+    scores:[81920]u8;for j:0..<20480 {w:=f32_bits(a[0].predictions[j]);for k:0..<4 {scores[j*4+k]=cast,trunc(u8)(w>>cast(u32)(8*k));}}
+    if !fp_put(out,"test-scores.f32",scores[..]) {return 1;}
+    if r.status!=FitStatus.ok && r.status!=FitStatus.quality {return 1;}
+    return 0;
+}

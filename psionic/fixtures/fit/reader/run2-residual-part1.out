@@ -1,0 +1,10 @@
+start Mon Nov  2 11:02:24 PM CST 2026 epochs_now=2
+epoch 1 of 12: 256 updates, validation 874 of 1024 correct, loss 0.3568026077455215
+epoch 2 of 12: 512 updates, validation 910 of 1024 correct, loss 0.292356718055089
+saved the session after epoch 2; run again to continue
+
+real	2m12.275s
+user	1m48.330s
+sys	0m0.094s
+exit=0
+end Mon Nov  2 11:04:37 PM CST 2026

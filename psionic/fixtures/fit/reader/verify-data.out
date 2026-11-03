@@ -1,0 +1,10 @@
+{
+  "verified": true,
+  "objects": 4,
+  "splits": 3,
+  "payload_bytes": 54950048
+}
+
+real	0m1.375s
+user	0m0.350s
+sys	0m0.134s

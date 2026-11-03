@@ -1,0 +1,59 @@
+// Reader reproduction, route mlp. Usage: coax/web/tool.sh scratch-12626/reader/reader-mlp.coax DATA_DIR OUT_DIR
+// tool.sh: release
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../psionic/lib/fit.coax";
+
+// Model-specific: psionic/fixtures/mnist/experiment.json
+fx_model :: ()->FitModel {
+    m:=mdl_model();m=mdl_data(m,"x",mdl_shape(2,1,196));x:=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,1,10));target:=m.node;
+    m=mdl_linear(m,MDL_ROOT,"fc1",x,16);m=mdl_relu(m,m.node);
+    m=mdl_linear(m,MDL_ROOT,"fc2",m.node,10);prediction:=m.node;
+    m=mdl_squared_error(m,MDL_ROOT,"loss",prediction,target);
+    return fit_model(m,prediction);
+}
+fx_spec :: ()->FitSpec {
+    c:=TrConfig.{optimizer=TrOptimizer.adamw,storage=TrStorage.binary64,
+        rate=0.003,beta1=0.9,beta2=0.999,eps=0.00000001,clip=1,bound=16,
+        examples=4096,batch=1,accumulate=16,epochs=12,shuffle=true,seed=11802};
+    return FitSpec.{name="reader mnist mlp 196-16-10",seed=11801,config=c,
+        train=FitSplit.{first=0,count=4096},valid=FitSplit.{first=4096,count=1024},
+        test=FitSplit.{first=0,count=2048},save_at=1536,
+        gate=FitGate.{count=2048,correct=1639,margin=1024}};
+}
+
+// book:begin fit-main
+fx_read :: (dir:string,name:string,out:[]u8)->int {
+    path:[4096]u8;return fs_read(fs_join(dir,name,path[..]),out);
+}
+tool_main :: ()->int #export_c {
+    args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {print("usage: DATA_DIR OUT_DIR\n");return 2;}
+    data:=args_at(args[..],0);out:=args_at(args[..],1);
+    images:[47040016]u8;labels:[60008]u8;test_images:[7840016]u8;test_labels:[10008]u8;
+    if fx_read(data,"train-images-idx3-ubyte",images[..])!=images.count || fx_read(data,"train-labels-idx1-ubyte",labels[..])!=labels.count
+        || fx_read(data,"t10k-images-idx3-ubyte",test_images[..])!=test_images.count || fx_read(data,"t10k-labels-idx1-ubyte",test_labels[..])!=test_labels.count {
+        print("could not read the four IDX files in %\n",data);return 1;
+    }
+    train:=fit_mnist(images[..],labels[..]);test:=fit_mnist(test_images[..],test_labels[..]);
+    f:=fx_model();a:[1]FitArena;
+    r:=fit_run(f,fx_spec(),train,test,a[..]);
+    print("status % passed %: % of % correct (training-majority baseline %), loss % -> %\n",
+        cast(int)r.status,r.passed,r.final_correct,r.test_rows,r.baseline_correct,r.initial_loss,r.final_loss);
+    print("% parameters, % updates; replay equal %, reload equal %; % tensors, % bytes\n",
+        r.parameters,r.steps,r.replay_equal,r.export_equal,r.tensors,r.export_bytes);
+    path:[4096]u8;
+    if r.export_bytes>0 && !fs_write(fs_join(out,"model.safetensors",path[..]),cast(string)a[0].state_file[0..<r.export_bytes]) {return 1;}
+    if r.status!=FitStatus.ok {return 1;}
+    // Inference from the saved file alone: a fresh constructor, fresh storage.
+    file:[65536]u8;n:=fs_read(fs_join(out,"model.safetensors",path[..]),file[..]);
+    g:=fx_model();inputs:[32768]f32;values:[65536]f32;adjoints:[65536]f64;flags:[32768]u8;
+    if n<1 || mdl_load(g.model,file[0..<n],inputs[..],true).status!=MdlStatus.ok {return 1;}
+    w:=FitWork.{inputs=inputs[..],values=values[..],adjoints=adjoints[..],flags=flags[..]};
+    e:=fit_check(g,test,FitSplit.{first=0,count=2048},r.baseline_class,inputs[..],w,inputs[0..<0]);
+    print("reloaded from % bytes: % of % correct\n",n,e.correct,e.count);
+    if e.status!=FitStatus.ok || e.correct!=r.final_correct {return 1;}
+    return 0;
+}
+// book:end fit-main

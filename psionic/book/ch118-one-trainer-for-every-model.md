@@ -1116,6 +1116,241 @@ forward-only checks, with no training, downloads or runtime modifications.
 The follow-up was explicitly assisted by improved author documentation;
 fresh training, full accuracy reproduction and framework graduation remain open.
 
+## Fit any classifier: the fit library
+
+The three classifiers above each carry their own arena structs, batch loop,
+evaluation loop, digests, checkpoint and replay code, policy constants, a C
+host and a build script: about 500 model-specific lines apiece, all of them
+copies with different numbers. [fit.coax](../lib/fit.coax) is that code once,
+for any model built from chapter 117's constructors. A new classifier is a
+constructor and a `FitSpec`; it needs no host C, no arena struct and no
+change to the module, tape, trainer or optimizer engines. The decisions fit
+makes (split, settings, storage admission and the quality gate) are
+[fit-policy.coax](../lib/fit-policy.coax), an `#authority` file whose
+mutants are all killed.
+
+### What a model must provide
+
+- A data entry named `"x"` with 196 values, in any shape: `[1,196]` for an
+  MLP, `[1,1,14,14]` for a convolution. fit writes the
+  [mnist-pool14](../lib/data/mnist.coax) features there: each 2×2 pixel block's
+  byte sum divided by 1,020.
+- A data entry named `"target"` with 10 values; fit writes the one-hot label.
+- A prediction node with 10 values (the scores), passed to `fit_model`.
+- The loss as the program output, for example `mdl_squared_error`.
+- At most 4,096 trainable values (the checkpoint record's limit) and the
+  module profile's 32 graph nodes.
+
+Any constructor from chapter 117 may sit between them: `mdl_linear`,
+`mdl_relu`, `mdl_conv2d`, `mdl_flatten`, `mdl_residual_conv1x1`,
+`mdl_layernorm`, `mdl_dropout`, and the pooling layers `mdl_avgpool2d`,
+`mdl_maxpool2d` and `mdl_global_avgpool`. `fit.coax` loads every one of
+them, so a model file needs no other library load. `fit_model(model, prediction)` checks the names,
+sizes and graph, builds the training plan and a forward-only tape whose output
+is the prediction, and records what storage the run needs.
+
+### Settings, splits and the gate
+
+The trainer's `TrConfig` chooses the optimizer: `TrOptimizer.sgd` (rate at
+most 16) or `TrOptimizer.adamw` (rate at most 1, binary64 storage), with
+clipping, a parameter bound, a schedule, weight-decay spans, `accumulate`
+rows per update, `epochs`, and a shuffle `seed`. fit drives single-row
+micro-batches, so `batch` is 1 and `examples` equals the training split's
+row count (at most 4,096). Evaluation is fixed, once per epoch on the
+validation split, so `every` and `patience` are 0. A field left out of a
+`TrConfig` literal is zero or the enum's first member: `decay` 0, `drop` 0,
+`schedule` `constant`, `source` `rows`, `every` and `patience` 0, no decay
+spans. The example relies on exactly those defaults.
+
+`FitSpec` freezes the rest before learning: a name (any string; it is
+hashed into the checkpoints' model identity and compared with nothing
+else), the initializer `seed`, three `FitSplit{first, count}` row ranges
+(`train` and `valid` from the training file, which must not overlap, and
+`test` from the held-out file), `save_at` and a `FitGate{count, correct,
+margin}`. `save_at` is the update whose checkpoint is saved; the update
+after it is the one replayed. For "checkpoint at the end of epoch 6" it is
+6 × (updates per epoch) = 6 × 4,096 / 16 = 1,536. The gate passes when at
+least `correct` of the `count` test rows are right, the model's correct
+count exceeds the training-majority class's correct count on the same rows
+by at least `margin` rows, the test loss fell, the replayed update matched
+byte for byte and the reloaded file matched every score. Both thresholds
+are row counts: an accuracy fraction becomes the smallest count that meets
+it (0.8 × 2,048 = 1,638.4, so 1,639), and a margin of 0.5 becomes 0.5 ×
+2,048 = 1,024 rows. The test split is scored before and after training only; nothing
+reads it to choose a setting, step or checkpoint.
+
+### A complete run
+
+[fit-mnist.coax](../examples/fit-mnist.coax) is a whole training program. The
+lines that describe this model are the constructor and the spec:
+
+<!-- source: psionic/examples/fit-mnist.coax fit-model -->
+```jai
+fx_model :: ()->FitModel {
+    m:=mdl_model();m=mdl_data(m,"x",mdl_shape(2,1,196));x:=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,1,10));target:=m.node;
+    m=mdl_linear(m,MDL_ROOT,"fc1",x,16);m=mdl_relu(m,m.node);
+    m=mdl_linear(m,MDL_ROOT,"fc2",m.node,10);prediction:=m.node;
+    m=mdl_squared_error(m,MDL_ROOT,"loss",prediction,target);
+    return fit_model(m,prediction);
+}
+fx_spec :: ()->FitSpec {
+    c:=TrConfig.{optimizer=TrOptimizer.adamw,storage=TrStorage.binary64,
+        rate=0.003,beta1=0.9,beta2=0.999,eps=0.00000001,clip=1,bound=16,
+        examples=4096,batch=1,accumulate=16,epochs=12,shuffle=true,seed=11802};
+    return FitSpec.{name="mnist mlp 196-16-10",seed=11801,config=c,
+        train=FitSplit.{first=0,count=4096},valid=FitSplit.{first=4096,count=1024},
+        test=FitSplit.{first=0,count=2048},save_at=1536,
+        gate=FitGate.{count=2048,correct=1639,margin=1024}};
+}
+```
+
+The rest is the same for every model: read the four files, train one
+epoch at a time with `fit_continue` (each epoch prints its validation
+result), save the named state, then reload it into a fresh model and
+evaluate again from the file alone. With a third argument the program
+trains that many epochs, writes `OUT_DIR/session.psfs` and stops; run it
+again to continue; a finished run deletes the session, so the next run in
+that directory starts from the beginning. A session holds the trainer's checkpoint (parameters,
+AdamW moments, the batch order and cursor), the replay records and the
+validation trace, so the parts' result is byte for byte the one-call
+result ([fit-native.coax](../tests/fit-native.coax) checks the model file and
+every score of a two-part run against one call). `FitArena` holds every buffer a run needs (about 4.4 MB); a Coax
+tool runs on a 1 GiB stack, so it is an ordinary local.
+
+<!-- source: psionic/examples/fit-mnist.coax fit-main -->
+```jai
+fx_read :: (dir:string,name:string,out:[]u8)->int {
+    path:[4096]u8;return fs_read(fs_join(dir,name,path[..]),out);
+}
+fx_write :: (dir:string,name:string,bytes:[]u8)->bool {
+    path:[4096]u8;return fs_write(fs_join(dir,name,path[..]),cast(string)bytes);
+}
+tool_main :: ()->int #export_c {
+    args:[1]Args;if !args_load(args[..]) || args_count(args[..])<2 || args_count(args[..])>3 {print("usage: DATA_DIR OUT_DIR [EPOCHS_NOW]\n");return 2;}
+    data:=args_at(args[..],0);out:=args_at(args[..],1);
+    images:[47040016]u8;labels:[60008]u8;test_images:[7840016]u8;test_labels:[10008]u8;
+    if fx_read(data,"train-images-idx3-ubyte",images[..])!=images.count || fx_read(data,"train-labels-idx1-ubyte",labels[..])!=labels.count
+        || fx_read(data,"t10k-images-idx3-ubyte",test_images[..])!=test_images.count || fx_read(data,"t10k-labels-idx1-ubyte",test_labels[..])!=test_labels.count {
+        print("could not read the four IDX files in %\n",data);return 1;
+    }
+    train:=fit_mnist(images[..],labels[..]);test:=fit_mnist(test_images[..],test_labels[..]);
+    f:=fx_model();spec:=fx_spec();a:[1]FitArena;
+    // Resume from OUT_DIR/session.psfs when an earlier invocation left one.
+    held:[1048576]u8;previous:=held[0..<0];epoch:=0;
+    k:=fx_read(out,"session.psfs",held[..]);if k>0 {previous=held[0..<k];epoch=fit_session_epoch(previous);if epoch<0 {return 1;}}
+    last:=spec.config.epochs;if args_count(args[..])==3 {more:=args_whole(args_at(args[..],2));if more<1 {return 2;}if epoch+more<last {last=epoch+more;}}
+    // One epoch per part, so every epoch prints its validation result.
+    r:FitReport;
+    while epoch<last {
+        r=fit_continue(f,spec,train,test,a[..],previous,epoch+1);epoch+=1;
+        if r.status!=FitStatus.ok && r.status!=FitStatus.quality {print("epoch %: status %\n",epoch,cast(int)r.status);return 1;}
+        print("epoch % of %: % updates, validation % of % correct, loss %\n",epoch,spec.config.epochs,r.steps,r.valid_correct,spec.valid.count,r.valid_loss);
+        if !r.done {previous=a[0].session[0..<r.session_bytes];}
+    }
+    if !r.done {
+        if !fx_write(out,"session.psfs",previous) {return 1;}
+        print("saved the session after epoch %; run again to continue\n",epoch);return 0;
+    }
+    print("status % passed %: % of % correct (training-majority baseline %), loss % -> %\n",
+        cast(int)r.status,r.passed,r.final_correct,r.test_rows,r.baseline_correct,r.initial_loss,r.final_loss);
+    print("% parameters, % updates; replay equal %, reload equal %; % tensors, % bytes\n",
+        r.parameters,r.steps,r.replay_equal,r.export_equal,r.tensors,r.export_bytes);
+    if r.export_bytes<1 || !fx_write(out,"model.safetensors",a[0].state_file[0..<r.export_bytes]) {return 1;}
+    // A finished run's session is spent; remove it so a rerun starts afresh.
+    path:[4096]u8;session:=fs_join(out,"session.psfs",path[..]);if fs_exists(session) && !fs_remove(session) {return 1;}
+    if r.status!=FitStatus.ok {return 1;}
+    // Inference from the saved file alone: a fresh constructor, fresh storage.
+    file:[65536]u8;n:=fx_read(out,"model.safetensors",file[..]);
+    g:=fx_model();inputs:[32768]f32;values:[65536]f32;adjoints:[65536]f64;flags:[32768]u8;
+    if n<1 || mdl_load(g.model,file[0..<n],inputs[..],true).status!=MdlStatus.ok {return 1;}
+    w:=FitWork.{inputs=inputs[..],values=values[..],adjoints=adjoints[..],flags=flags[..]};
+    e:=fit_check(g,test,FitSplit.{first=0,count=2048},r.baseline_class,inputs[..],w,inputs[0..<0]);
+    print("reloaded from % bytes: % of % correct\n",n,e.correct,e.count);
+    if e.status!=FitStatus.ok || e.correct!=r.final_correct {return 1;}
+    return 0;
+}
+```
+
+Get the data once (the tool checks the pinned hashes; Python here is
+download and checking tooling, never part of a run), then run the program
+with [`coax/web/tool.sh`](../../coax/web/tool.sh), which builds a Coax file
+whose `tool_main` is the program. Its first line, `// tool.sh: release`, asks
+for release C: the same arithmetic without checked-arithmetic traps, several
+times faster for a training run.
+
+```shell
+coax/build.sh                                   # the compiler, once
+python3 -I psionic/tests/mnist_reference.py acquire --data-dir DATA_DIR
+python3 -I psionic/tests/mnist_reference.py verify-data --data-dir DATA_DIR
+mkdir -p OUT_DIR
+coax/web/tool.sh psionic/examples/fit-mnist.coax DATA_DIR OUT_DIR      # all twelve epochs
+coax/web/tool.sh psionic/examples/fit-mnist.coax DATA_DIR OUT_DIR 4    # or four at a time
+```
+
+How long it takes depends on the host far more than on fit. On a shared
+Linux i7-14700K (28 threads, load average 40 to 90 from other work) the
+whole MLP run took about 6 minutes of CPU time and 9 minutes of wall time;
+the model-specific MLP harness that first produced this result took
+5 min 25 s of CPU time on the same host, and 17 s on an Apple M5 Max. On
+that Linux host the CNN took 13 min 45 s and the residual model 12 min 45 s
+of CPU time (about 2.1 to 2.3 times the MLP), so under a 15-minute limit
+per command run them a few epochs per invocation. Every epoch prints a line, so a slow run
+is visibly not a stuck one.
+
+`OUT_DIR/model.safetensors` is the named state (chapter 117's format). For
+your own model, copy the file, change `fx_model` and `fx_spec`, and keep the
+rest. A file you write outside `psionic/examples` loads the same libraries by
+path: `#load "PATH/coax/lib/sys/tool.coax";`, `#load
+"PATH/coax/lib/sys/fs.coax";` and `#load "PATH/psionic/lib/fit.coax";`.
+
+### Inference and the pieces
+
+`fit_run` is built from public calls you can use on their own, for a
+different loop or for inference only:
+
+| Call | What it does |
+| --- | --- |
+| `fit_model(model, prediction)` | Admits a classifier; returns its plan, prediction tape, data places and storage need (`need`). `status` is `FitStatus.model` on any mismatch. |
+| `fit_mnist(images, labels)` | Admits IDX bytes (kept as views; keep them live). |
+| `fit_run(f, spec, train, test, arena)` | The whole frozen experiment; returns a `FitReport`. |
+| `fit_continue(f, spec, train, test, arena, previous, stop)` | The same experiment in parts: from `previous` (empty, or session bytes) to the end of epoch `stop`. Before the last epoch it returns `done=false` and `session_bytes` of `arena[0].session`; at the last it finishes as `fit_run`. |
+| `fit_session_epoch(bytes)` | The epoch a saved session ends at, or -1. |
+| `fit_bind(f, c, inputs, values, adjoints, flags, entry, staging, gradient, total, stage, order, p, m, v)`, `fit_arena(f, c, arena)` | Bind your own storage, or an arena, to exact lengths; `capacity` when anything is short. |
+| `fit_init(f, seed, work, state)` | Draws initial parameters into the binary64 master and zeroes the moments. |
+| `fit_step(f, c, run, state, work, source, train)` | One optimizer update (`TrStep`, as `tr_apply` returns). |
+| `fit_eval(f, source, split, baseline, p, work, capture)` | Accuracy, baseline hits and mean loss from master parameters. |
+| `fit_check(f, source, split, baseline, inputs, work, capture)` | The same with parameters already in `inputs`, for example after `mdl_load`. |
+| `fit_predict(f, source, row, inputs, work, scores)` | One row's class (-1 on a refusal) and its ten scores. |
+| `fit_example(f, source, row, inputs, target)` | Prepares one row into `"x"` (and `"target"`). |
+| `fit_move(f, p, inputs, into)`, `fit_majority(source, split)`, `fit_ids(c, name, initial, train, test)` | Master/model copies, the baseline class, checkpoint identities. |
+| `fit_split`, `fit_apart`, `fit_settings`, `fit_room`, `fit_gate`, `fit_accept`, `fit_argmax` | The policy's decisions. |
+
+For inference alone, only `inputs`, `values`, `adjoints` and `flags` of a
+`FitWork` are read; the example above sets just those.
+
+### Boundaries
+
+This is one profile, stated so nobody mistakes it for more:
+
+| Boundary | Supported | Not yet |
+| --- | --- | --- |
+| Device | CPU | GPU: the tensor IR refuses convolution on other devices; there is no GPU module trainer. |
+| Execution | Eager tape, f32 module values, binary64 master weights and moments, first-order gradients | Compiled forward/backward for convolution (refused), higher-order derivatives. |
+| Data | MNIST IDX, mnist-pool14 features, 10 classes | Other datasets, other preparations, data augmentation. |
+| Scale | 4,096 parameters, 4,096 training rows per epoch, 32 graph nodes, batch 1 | Full 60,000-row epochs, larger models, batched micro-steps. |
+| Selection | Fixed schedule; validation is traced only | Early stopping (the trainer has it; fit does not drive it). |
+
+The [evidence record](../fixtures/fit/README.md) has the audit of the old
+per-model routes, the byte-identical MLP rerun, and a separate reader's
+docs-only reproduction of all three models, training included, with every
+documentation gap it found and how each was closed.
+
+[fit-native.coax](../tests/fit-native.coax) runs `fit_run` end to end in
+emitted C on synthetic IDX bytes and checks four refusals; the library's
+checks in [fit-checks.coax](../tests/fit-checks.coax) work a linear model's
+updates, scores and reload by hand.
+
 ## What is not here yet
 
 - **Broader CNN training.** The bounded CPU CNN above uses the shared

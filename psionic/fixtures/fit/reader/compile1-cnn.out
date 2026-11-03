@@ -1,0 +1,11 @@
+/home/christopherdavid/openagents/.claude/worktrees/agent-ad2da7496b2b8d425/scratch-12626/reader/reader-cnn.coax:12:7: error[E0315]: procedure 'mdl_conv2d' is not declared
+      m=mdl_conv2d(m,MDL_ROOT,"conv",x,2,3,3);m=mdl_relu(m,m.node);
+        ^
+/home/christopherdavid/openagents/.claude/worktrees/agent-ad2da7496b2b8d425/scratch-12626/reader/reader-cnn.coax:13:7: error[E0315]: procedure 'mdl_flatten' is not declared
+      m=mdl_flatten(m,m.node);m=mdl_linear(m,MDL_ROOT,"fc",m.node,10);prediction:=m.node;
+        ^
+2 errors
+
+real	0m2.514s
+user	0m3.404s
+sys	0m0.447s

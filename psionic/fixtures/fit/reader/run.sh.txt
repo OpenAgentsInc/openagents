@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Reader harness (scratch, not product): run.sh ROUTE ATTEMPT
+# Writes run<ATTEMPT>-<ROUTE>.out with stdout, stderr, bash time and exit code.
+cd "$(dirname "$0")/../.."
+r=$1; a=$2; out=scratch-12626/reader/run$a-$r.out
+{
+  echo "start $(date)"
+  time timeout 900 coax/web/tool.sh scratch-12626/reader/reader-$r.coax scratch-12626/mnist scratch-12626/reader/out-$r
+  echo "exit=$?"
+  echo "end $(date)"
+} > "$out" 2>&1

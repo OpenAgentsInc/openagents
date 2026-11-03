@@ -823,13 +823,83 @@ checks a nonzero branch, named-state reload and refusal through the public
 API. Its [record](../fixtures/residual-mlp/fresh-reader/reproduction.md)
 states the numerical and native scope separately from training acceptance.
 
+## Pooling
+
+[`module-pool.coax`](../lib/module-pool.coax) adds pooling to the shared IR,
+not as a model-specific loop. Chapter 38's program gains two nodes,
+`avgpool2d` (13) and `maxpool2d` (14), with a `window` of `[height, width]`
+and a `stride`. The plan infers `[N, C, (H-h)/s+1, (W-w)/s+1]`; the kernel
+averages a window in f32, row-major, then divides once by its size, or keeps
+the first largest value. Chapter 106's tape differentiates both: an average
+gives each window element `dy / (h*w)` (overlapping windows add), a maximum
+gives `dy` to the first largest element only, the one the forward chose.
+
+<!-- source: psionic/lib/module-pool.coax pool-layers -->
+```jai
+// Each output is the average (or the first largest value) of one window.
+// Pooling adds no parameters: it is a node, not a module with entries.
+mdl_pool :: (m:MdlModel,op:TiOp,x:int,height:int,width:int,stride:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
+    s:=m.shapes[x];
+    if s.rank!=4 || height<1 || width<1 || stride<1 || height>s.dims[2] || width>s.dims[3] {return mdl_fail(m,MdlStatus.shape);}
+    return mdl_node(m,TiNode.{op=op,a=x,window=[2]int.[height,width],stride=stride});
+}
+mdl_avgpool2d :: (m:MdlModel,x:int,height:int,width:int,stride:int)->MdlModel {return mdl_pool(m,TiOp.avgpool2d,x,height,width,stride);}
+mdl_maxpool2d :: (m:MdlModel,x:int,height:int,width:int,stride:int)->MdlModel {return mdl_pool(m,TiOp.maxpool2d,x,height,width,stride);}
+// Global average pooling, ResNet's head: [N,C,H,W] -> [N,C,1,1].
+mdl_global_avgpool :: (m:MdlModel,x:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
+    s:=m.shapes[x];if s.rank!=4 {return mdl_fail(m,MdlStatus.shape);}
+    return mdl_pool(m,TiOp.avgpool2d,x,s.dims[2],s.dims[3],1);
+}
+```
+
+The gradient checks are independent of the rule they check. The
+[module checks](../tests/pool-modules-checks.coax) train a 1×1 convolution
+followed by each pool through `mtr_run` and compare the loss and both
+parameter derivatives with dyadic hand arithmetic, including a tie the
+maximum must break toward the first element. Chapter 106's checks compare
+the tape's pooling VJPs, for a non-uniform output gradient, against the eager
+tensor library's own pooling VJPs, which are themselves checked against
+central differences. The IR refuses pooling on CUDA and Metal, and the
+compiled-backward and graph-function paths refuse it, as they refuse
+convolution, so no path publishes a missing derivative as zero.
+
+[fit-pooled-cnn.coax](../examples/fit-pooled-cnn.coax) trains a 3×3, four-channel
+convolution, ReLU, 2×2 max pool and linear readout on MNIST through the fit
+library, under a [frozen manifest](../fixtures/fit/pooled-cnn/experiment.json);
+the [record](../fixtures/fit/README.md) has the result.
+
+## Toward ResNet-18 on CIFAR-10
+
+The plan's acceptance project is ResNet-18 trained from raw CIFAR-10 to a
+saved model that reloads independently. Pooling is one piece; it is not
+that project. What the library still lacks, in the order the model meets it:
+
+| Needed | State |
+| --- | --- |
+| CIFAR-10 data: the binary batches, 3×32×32 records, per-channel normalization, crop and flip augmentation | Missing. fit's only preparation is mnist-pool14. |
+| 3×3 convolution with padding 1, stride 2, and 1×1 stride-2 projection shortcuts | Missing. The eager operator and the IR accept valid, stride-one convolution only. |
+| Batch normalization with running statistics (buffers) and train/eval modes | Missing. `mdl_layernorm` exists; there is no per-channel batch statistic. |
+| Max pool 3×3 stride 2 padding 1 (the stem), global average pool (the head) | Pooling exists without padding; the stem's padded pool needs padding. |
+| Softmax cross-entropy in the IR | Missing. The eager library has it; the IR and modules use squared error. |
+| About 60 convolution and normalization layers, 62+ saved tensors, hundreds of nodes | The module profile holds 32 nodes, 16 modules and 16 saved tensors. |
+| 11.2 million parameters, 50,000 rows per epoch, batches above 1 | The trainer's checkpoint holds 4,096 values and 4,096 rows per epoch; fit drives batch 1. |
+| GPU training with Coax-generated kernels | Convolution and pooling are CPU only; there is no GPU module trainer. |
+
+The next missing piece after pooling is padded and strided convolution in
+the eager operator, the IR and the tape, then the node and checkpoint limits.
+
 ## What is not here yet
 
 - **Broader CNNs and attention.** Valid stride-one CPU convolution is wired
-  through modules, IR and the eager tape. Pooling, padding/stride/group
-  options, convolution on GPUs and compiled convolution derivatives remain.
-  `cb_compile` refuses convolution instead of producing an incomplete
-  gradient. Softmax and exponential are still missing from the IR, so a full
+  through modules, IR and the eager tape, and so are average and max
+  pooling. Padding, strided and grouped convolution, pooling with padding,
+  convolution and pooling on GPUs, and their compiled derivatives remain.
+  `cb_compile` refuses convolution and pooling instead of producing an
+  incomplete gradient. Softmax and exponential are still missing from the IR, so a full
   attention block cannot yet be composed from this API.
 - **Larger models.** One program holds 32 nodes, which is one block like the
   example's. Stacking blocks needs chapter 38's limit raised or programs
@@ -857,6 +927,7 @@ states the numerical and native scope separately from training acceptance.
 | `mdl_residual_conv1x1(m, parent, name, x, hidden)` | Same-shape CPU 1×1 residual branch and identity add; load `module-residual.coax`. |
 | `mdl_conv2d(m, parent, name, x, out, kh, kw)` | Named valid stride-one CPU convolution, with OIHW weights and broadcast bias; load `module-cnn.coax`. |
 | `mdl_flatten(m, x)` | Batch-preserving contiguous reshape; load `module-cnn.coax`. |
+| `mdl_avgpool2d(m, x, height, width, stride)`, `mdl_maxpool2d(...)`, `mdl_global_avgpool(m, x)` | NCHW CPU pooling nodes without padding (the last: one value per channel); load `module-pool.coax`. |
 | `mdl_output(m, x)` | Chooses the output node (by default, the last). |
 | `mdl_find(m, name)` | An entry's index, or -1. |
 | `mdl_parameters(m)`, `mdl_state_floats(m)` | Trainable and saved float counts. |

@@ -1,0 +1,352 @@
+// The fit library (psionic-fit-v1): train, evaluate, checkpoint, replay,
+// save, reload and run inference for ANY image classifier built with the
+// public module constructors (chapter 117), on the public trainer (chapter
+// 118). A new model is a constructor and a FitSpec; it needs no new arena
+// struct, batch loop, evaluation loop, digest, checkpoint or export code,
+// and no host C. Decisions (admission, the quality gate) are fit-policy.coax.
+//
+// Profile, all inherited and checked, not widened here:
+// - data: MNIST IDX bytes (data/mnist.coax), prepared as mnist-pool14 (196
+//   f32 features, the 2x2 byte sum / 1020) into the model's data entry "x",
+//   and a one-hot 10-class "target"; the model's prediction node has 10 values;
+// - training: the trainer's rows source, batch 1, accumulate any, SGD or
+//   AdamW, binary64 master weights and moments, every == 0 (the epoch
+//   evaluation below is fixed); at most 4,096 parameters (checkpoint record)
+//   and 4,096 training rows per epoch (trainer);
+// - execution: CPU, eager tape, f32 module values, first-order gradients.
+#load "module-train.coax";
+#load "trainer.coax";
+#load "data/mnist.coax";
+// Every public layer, so a model file needs only this load: linear, ReLU,
+// layer norm and dropout (module.coax), conv2d and flatten (module-cnn),
+// the 1x1 residual block (module-residual) and pooling (module-pool).
+#load "module-residual.coax";
+#load "module-pool.coax";
+#load "fit-policy.coax";
+
+FitStatus :: enum u8 {ok;model;data;config;capacity;number;training;checkpoint;state;quality;}
+// A classifier ready to fit: the model (its program output is the loss), its
+// training plan, a forward-only tape whose output is the prediction, and the
+// input-buffer places of "x" and "target".
+FitModel :: struct {
+    status:FitStatus;model:MdlModel;plan:MtrPlan;tape:AdTape;
+    prediction:int;x:int;target:int;need:FitNeed;
+}
+// Admitted MNIST IDX bytes. The views must stay live and unchanged.
+FitSource :: struct {status:FitStatus;set:MnDataset;images:[]u8;labels:[]u8;}
+// The caller's storage, bound to exact lengths by fit_bind.
+FitWork :: struct {inputs:[]f32;values:[]f32;adjoints:[]f64;flags:[]u8;entry:[]f32;staging:[]f64;gradient:[]f64;total:[]f64;stage:[]f64;order:[]int;}
+FitState :: struct {p:[]f64;m:[]f64;v:[]f64;}
+FitBound :: struct {status:FitStatus;work:FitWork;state:FitState;}
+FitEval :: struct {status:FitStatus;loss:f64;correct:int;baseline:int;count:int;}
+// One experiment, frozen before learning: a name for its identity, the
+// initializer seed, trainer settings, three splits (train and valid from the
+// training source, test from the held-out source), the checkpoint revision
+// whose next update is replayed, and the quality gate. Validation only
+// traces progress; nothing is selected with the test split.
+FitSpec :: struct {name:string;seed:u64;config:TrConfig;train:FitSplit;valid:FitSplit;test:FitSplit;save_at:int;gate:FitGate;}
+FitReport :: struct {
+    status:FitStatus;steps:int;train_rows:int;test_rows:int;baseline_class:int;
+    initial_loss:f64;final_loss:f64;initial_correct:int;final_correct:int;baseline_correct:int;
+    valid_loss:f64;valid_correct:int;parameters:int;checkpoint_bytes:int;export_bytes:int;tensors:int;
+    replay_equal:bool;export_equal:bool;passed:bool;
+    // fit_continue: done after the last epoch; else session_bytes of a[0].session.
+    done:bool;session_bytes:int;
+}
+
+// Fixed storage for fit_run within the profile's limits, about 13 MiB: hold
+// one in a tool's (1 GiB) stack or a static, and pass a one-element view.
+FitArena :: struct {
+    inputs:[32768]f32;fresh:[32768]f32;values:[65536]f32;adjoints:[65536]f64;flags:[32768]u8;
+    entry:[4096]f32;staging:[4096]f64;gradient:[4096]f64;total:[4096]f64;stage:[12288]f64;
+    p:[4096]f64;m:[4096]f64;v:[4096]f64;rp:[4096]f64;rm:[4096]f64;rv:[4096]f64;
+    order:[4096]int;next_order:[4096]int;
+    checkpoint:[131072]u8;next_record:[131072]u8;replay_record:[131072]u8;final_checkpoint:[131072]u8;
+    pointer:[80]u8;next_pointer:[80]u8;replay_pointer:[80]u8;final_pointer:[80]u8;
+    state_file:[65536]u8;export_stage:[65536]u8;
+    initial:[100000]f32;predictions:[100000]f32;again:[100000]f32;
+    trace:[2052]f64;session:[1048576]u8;
+}
+
+// Checks precede the implementation: tests/fit-checks.coax.
+#load "../tests/fit-checks.coax";
+
+// Admit a classifier. prediction is the node whose 10 values are scores.
+fit_model :: (m:MdlModel,prediction:int)->FitModel {
+    fail:=FitModel.{status=FitStatus.model};
+    if m.status!=MdlStatus.ok {return fail;}
+    xi:=mdl_find(m,"x");ti:=mdl_find(m,"target");
+    if xi<0 || ti<0 || !mdl_valid(m,prediction) {return fail;}
+    x:=m.entries[xi];t:=m.entries[ti];
+    plan:=mtr_plan(m);if plan.status!=MtrStatus.ok {return fail;}
+    f:=mdl_output(m,prediction);if f.status!=MdlStatus.ok {return fail;}
+    tape:=ad_tape(f.program,AdMode.{enabled=false},OrRegistry.{});
+    if tape.status!=AdStatus.ok {return fail;}
+    scores:=ad_count(tape.plan.values[prediction].view.shape);
+    if !fit_entries(x.kind==MdlKind.data,x.size,t.kind==MdlKind.data,t.size,scores) {return fail;}
+    flags:=plan.flags;for s:0..<tape.count {flags=mtr_max(flags,tape.plan.values[tape.steps[s].node].storage);}
+    need:=FitNeed.{inputs=plan.inputs,values=mtr_max(plan.values,tape.values.top),adjoints=mtr_max(plan.adjoints,tape.grads.top),
+        flags=flags,entry=plan.largest,parameters=plan.parameters};
+    return FitModel.{model=m,plan=plan,tape=tape,prediction=prediction,x=x.base,target=t.base,need=need};
+}
+
+fit_mnist :: (images:[]u8,labels:[]u8)->FitSource {
+    d:=mn_admit(images,labels);if d.status!=MnStatus.ok {return FitSource.{status=FitStatus.data};}
+    return FitSource.{set=d,images=images,labels=labels};
+}
+fit_label :: (s:FitSource,row:int)->int {return cast(int)s.labels[8+row];}
+// Prepare one row into the model's input buffer: features into "x" and,
+// with target set, the one-hot label into "target".
+fit_example :: (f:FitModel,s:FitSource,row:int,inputs:[]f32,target:bool)->FitStatus {
+    if f.status!=FitStatus.ok || s.status!=FitStatus.ok || inputs.count<f.need.inputs {return FitStatus.capacity;}
+    if mn_pool(s.set,s.images,row,inputs[f.x..<f.x+FIT_FEATURES])!=MnStatus.ok {return FitStatus.data;}
+    if target && mn_target(fit_label(s,row),inputs[f.target..<f.target+FIT_CLASSES])!=MnStatus.ok {return FitStatus.data;}
+    return FitStatus.ok;
+}
+
+// Bind caller storage to the exact lengths the trainer and tape require.
+fit_bind :: (f:FitModel,c:TrConfig,inputs:[]f32,values:[]f32,adjoints:[]f64,flags:[]u8,entry:[]f32,staging:[]f64,gradient:[]f64,total:[]f64,stage:[]f64,order:[]int,p:[]f64,m:[]f64,v:[]f64)->FitBound {
+    if f.status!=FitStatus.ok {return FitBound.{status=FitStatus.model};}
+    n:=f.need.parameters;need:=f.need;need.examples=c.examples;
+    // Every per-parameter arena must hold n; the smallest one decides.
+    sizes:=[7]int.[staging.count,gradient.count,total.count,stage.count/3,p.count,m.count,v.count];
+    smallest:=sizes[0];for size:sizes {if size<smallest {smallest=size;}}
+    have:=FitNeed.{inputs=inputs.count,values=values.count,adjoints=adjoints.count,flags=flags.count,entry=entry.count,parameters=smallest,examples=order.count};
+    if !fit_room(need,have) {return FitBound.{status=FitStatus.capacity};}
+    w:=FitWork.{inputs=inputs[0..<need.inputs],values=values[0..<need.values],adjoints=adjoints[0..<need.adjoints],flags=flags[0..<need.flags],
+        entry=entry[0..<need.entry],staging=staging[0..<n],gradient=gradient[0..<n],total=total[0..<n],stage=stage[0..<3*n],order=order[0..<c.examples]};
+    return FitBound.{work=w,state=FitState.{p=p[0..<n],m=m[0..<n],v=v[0..<n]}};
+}
+fit_arena :: (f:FitModel,c:TrConfig,a:[]FitArena)->FitBound {
+    return fit_bind(f,c,a[0].inputs[..],a[0].values[..],a[0].adjoints[..],a[0].flags[..],a[0].entry[..],a[0].staging[..],
+        a[0].gradient[..],a[0].total[..],a[0].stage[..],a[0].order[..],a[0].p[..],a[0].m[..],a[0].v[..]);
+}
+
+// Binary64 master <-> the model's binary32 input buffer (into: master to model).
+fit_move :: (f:FitModel,p:[]f64,inputs:[]f32,into:bool) {
+    m:=f.model;at:=0;
+    for i:0..<m.count {e:=m.entries[i];if e.kind!=MdlKind.parameter || e.frozen {continue;}
+        for j:0..<e.size {if into {inputs[e.base+j]=f32(p[at+j]);} else {p[at+j]=f64(inputs[e.base+j]);}}
+        at+=e.size;
+    }
+}
+// Draw the model's initial parameters with seed and start AdamW's moments at zero.
+fit_init :: (f:FitModel,seed:u64,w:FitWork,s:FitState)->FitStatus {
+    if f.status!=FitStatus.ok || s.p.count!=f.need.parameters {return FitStatus.model;}
+    if mdl_init(f.model,seed,w.inputs)!=MdlStatus.ok {return FitStatus.capacity;}
+    fit_move(f,s.p,w.inputs,false);for j:0..<s.p.count {s.m[j]=0;s.v[j]=0;}
+    return FitStatus.ok;
+}
+
+// The scores for the row already prepared in inputs (parameters in place).
+fit_scores :: (f:FitModel,inputs:[]f32,w:FitWork,scores:[]f32)->FitStatus {
+    if scores.count!=FIT_CLASSES {return FitStatus.capacity;}
+    run:=ad_run(f.tape,AdCursor.{},inputs,w.values,w.adjoints,w.flags);
+    if run.status==AdStatus.number {return FitStatus.number;}
+    if run.status!=AdStatus.ok {return FitStatus.state;}
+    if ad_value(f.tape,run.cursor,f.prediction,inputs,w.values,scores)!=AdStatus.ok {return FitStatus.state;}
+    return FitStatus.ok;
+}
+// Inference on one source row with the parameters already in inputs (after
+// fit_move or mdl_load): the predicted class, or -1.
+fit_predict :: (f:FitModel,s:FitSource,row:int,inputs:[]f32,w:FitWork,scores:[]f32)->int {
+    if fit_example(f,s,row,inputs,false)!=FitStatus.ok || fit_scores(f,inputs,w,scores)!=FitStatus.ok {return -1;}
+    return fit_argmax(scores);
+}
+// Evaluate split with the parameters already in inputs: correct predictions,
+// the baseline class's hits, and the mean summed squared error. capture, when
+// not empty, receives split.count*10 scores.
+fit_check :: (f:FitModel,s:FitSource,split:FitSplit,baseline:int,inputs:[]f32,w:FitWork,capture:[]f32)->FitEval {
+    if !fit_split(split,s.set.count) || (capture.count!=0 && capture.count!=split.count*FIT_CLASSES) {return FitEval.{status=FitStatus.capacity};}
+    if mdl_refresh(mdl_train(f.model,false),0,inputs)!=MdlStatus.ok {return FitEval.{status=FitStatus.state};}
+    r:=FitEval.{count=split.count};scores:[10]f32;
+    for k:0..<split.count {
+        row:=split.first+k;pick:=fit_predict(f,s,row,inputs,w,scores[..]);
+        if pick<0 {return FitEval.{status=FitStatus.number};}
+        label:=fit_label(s,row);
+        if pick==label {r.correct+=1;}if baseline==label {r.baseline+=1;}
+        loss:f32=0;for j:0..<FIT_CLASSES {target:f32=0;if j==label {target=1;}error:=scores[j]-target;loss+=error*error;
+            if capture.count>0 {capture[k*FIT_CLASSES+j]=scores[j];}}
+        r.loss+=f64(loss)/f64(split.count);
+    }
+    return r;
+}
+// The same from binary64 master parameters.
+fit_eval :: (f:FitModel,s:FitSource,split:FitSplit,baseline:int,p:[]f64,w:FitWork,capture:[]f32)->FitEval {
+    fit_move(f,p,w.inputs,true);return fit_check(f,s,split,baseline,w.inputs,w,capture);
+}
+// The training split's most frequent class (the first on a tie).
+fit_majority :: (s:FitSource,split:FitSplit)->int {
+    histogram:[10]int;for j:0..<split.count {histogram[fit_label(s,split.first+j)]+=1;}
+    best:=0;for j:1..<FIT_CLASSES {if histogram[j]>histogram[best] {best=j;}}
+    return best;
+}
+
+// One optimizer step: the trainer names each micro-batch's row, fit prepares
+// it, the module adapter runs it, and the trainer accumulates and applies.
+fit_step :: (f:FitModel,c:TrConfig,run:TrRun,s:FitState,w:FitWork,src:FitSource,train:FitSplit)->TrStep {
+    none:[1]PkDoc;nothing:[1]u8;
+    batch:=tr_next(c,run,none[0..<0],nothing[0..<0],nothing[0..<0]);
+    if batch.status!=TrStatus.ok {return TrStep.{status=batch.status,run=run};}
+    sum:TrSum;
+    for k:0..<batch.micro {
+        rows:=tr_rows(c,batch,k);if rows.count!=1 {return TrStep.{status=TrStatus.config,run=run};}
+        row:=train.first+w.order[rows.first];
+        if fit_example(f,src,row,w.inputs,true)!=FitStatus.ok {return TrStep.{status=TrStatus.data,run=run};}
+        part:=mtr_run(f.plan,cast(u64)run.revision,s.p,w.inputs,w.values,w.adjoints,w.flags,w.entry,w.staging,w.gradient);
+        if part.status!=MtrStatus.ok {return TrStep.{status=TrStatus.number,run=run};}
+        sum=tr_add(batch,sum,part.loss,w.gradient,w.total);
+    }
+    return tr_apply(c,run,batch,sum,s.p,s.m,s.v,w.total,w.stage,w.order);
+}
+
+fit_sha :: (bytes:[]u8)->[32]u8 {
+    state:[112]u8;out:[32]u8;#assert sha256_init(state[..])==SHA_OK;
+    at:=0;while at<bytes.count {n:=bytes.count-at;if n>1048576 {n=1048576;}
+        #assert sha256_update_checked(state[..],bytes[at..<at+n],false)==SHA_OK;at+=n;}
+    #assert sha256_final_checked(state[..],out[..],false)==SHA_OK;return out;
+}
+// Checkpoint identity: the experiment name and initial parameters (model),
+// the preparation profile, the four data objects' SHA-256 and the settings.
+fit_ids :: (c:TrConfig,name:string,initial:[]f64,train:FitSource,test:FitSource)->CkIds {
+    state:[112]u8;#assert sha256_init(state[..])==SHA_OK;
+    head:[256]u8;n:=name.count;if n>256 {n=256;}for j:0..<n {head[j]=cast(u8)byte_at(name,j);}
+    #assert sha256_update_checked(state[..],head[0..<n],false)==SHA_OK;
+    chunk:[512]u8;at:=0;
+    for x:initial {at=ck_put64(chunk[..],at,f64_bits(x));if at==512 {#assert sha256_update_checked(state[..],chunk[..],false)==SHA_OK;at=0;}}
+    #assert sha256_update_checked(state[..],chunk[0..<at],false)==SHA_OK;
+    model:[32]u8;#assert sha256_final_checked(state[..],model[..],false)==SHA_OK;
+    data:[128]u8;a:=fit_sha(train.images);b:=fit_sha(train.labels);d:=fit_sha(test.images);e:=fit_sha(test.labels);
+    for j:0..<32 {data[j]=a[j];data[32+j]=b[j];data[64+j]=d[j];data[96+j]=e[j];}
+    text:="psionic-fit-v1 mnist-pool14: 2x2 byte sum/1020 f32; one-hot 10";prep:[96]u8;for j:0..<text.count {prep[j]=cast(u8)byte_at(text,j);}
+    return tr_ids(c,ck_digest("psionic.fit-model.v1",model[..]),fit_sha(prep[0..<text.count]),fit_sha(data[..]));
+}
+
+// The whole frozen experiment in one call: fit_continue from nothing to the
+// last epoch. The arena's state_file[0..<export_bytes] is the named-state
+// file; final_checkpoint and trace hold the rest.
+fit_run :: (f:FitModel,spec:FitSpec,train:FitSource,test:FitSource,a:[]FitArena)->FitReport {
+    none:[1]u8;return fit_continue(f,spec,train,test,a,none[0..<0],spec.config.epochs);
+}
+
+// The same experiment in parts, so a long run fits a time limit or reports
+// progress. previous is empty to start, else the session bytes an earlier
+// part left in a[0].session[0..<session_bytes] (or a file holding them; it
+// may be that very buffer). The part trains to the end of epoch stop. Before
+// the last epoch it returns done=false with a new session; at the last it
+// finishes exactly as fit_run does. The results equal one fit_run's.
+fit_continue :: (f:FitModel,spec:FitSpec,train:FitSource,test:FitSource,a:[]FitArena,previous:[]u8,stop:int)->FitReport {
+    c:=spec.config;n:=f.need.parameters;
+    if f.status!=FitStatus.ok {return FitReport.{status=FitStatus.model};}
+    if train.status!=FitStatus.ok || test.status!=FitStatus.ok {return FitReport.{status=FitStatus.data};}
+    if !fit_split(spec.train,train.set.count) || !fit_split(spec.valid,train.set.count) || !fit_split(spec.test,test.set.count)
+        || !fit_apart(spec.train,spec.valid) || spec.test.count*FIT_CLASSES>100000 {return FitReport.{status=FitStatus.data};}
+    if !fit_settings(c.source==TrSource.rows,c.batch,c.examples,spec.train.count,c.every,c.patience)
+        || c.epochs>512 || !fit_save_at(spec.save_at,tr_steps(c)) || !fit_gate(spec.gate) || spec.gate.count!=spec.test.count {return FitReport.{status=FitStatus.config};}
+    b:=fit_arena(f,c,a);if b.status!=FitStatus.ok {return FitReport.{status=b.status};}
+    w:=b.work;s:=b.state;size:=tr_size(n);per:=tr_steps(c)/c.epochs;
+    r:=FitState.{p=a[0].rp[0..<n],m=a[0].rm[0..<n],v=a[0].rv[0..<n]};
+    // The initial parameters are drawn again each part (they are a pure
+    // function of the seed); they name the checkpoints and score the start.
+    if fit_init(f,spec.seed,w,r)!=FitStatus.ok {return FitReport.{status=FitStatus.model};}
+    ids:=fit_ids(c,spec.name,r.p,train,test);majority:=fit_majority(train,spec.train);
+    capture:=spec.test.count*FIT_CLASSES;none:[1]PkDoc;nothing:[1]u8;run:TrRun;
+    if previous.count==0 {
+        if !fit_stop(0,stop,c.epochs) {return FitReport.{status=FitStatus.config};}
+        for j:0..<n {s.p[j]=r.p[j];s.m[j]=0;s.v[j]=0;}
+        valid:=fit_eval(f,train,spec.valid,majority,s.p,w,a[0].initial[0..<0]);if valid.status!=FitStatus.ok {return FitReport.{status=FitStatus.number};}
+        a[0].trace[0]=0;a[0].trace[1]=valid.loss;a[0].trace[2]=f64(valid.correct);a[0].trace[3]=0;
+        begin:=tr_begin(c,n,none[0..<0],nothing[0..<0],w.order);if begin.status!=TrStatus.ok {return FitReport.{status=FitStatus.config};}
+        run=begin.run;
+    } else {
+        // Every read of previous precedes the first write of a new session.
+        h:=fit_session_read(previous,n,size,c.examples,c.epochs,a);if h.status!=FitStatus.ok {return FitReport.{status=h.status};}
+        back:=tr_resume(c,ids,previous[FIT_HEAD+size..<FIT_HEAD+size+80],previous[FIT_HEAD..<FIT_HEAD+size],none[0..<0],nothing[0..<0],s.p,s.m,s.v,w.order);
+        if back.status!=CkStatus.ok || back.run.revision%per!=0 || back.run.revision/per!=fit_session_epoch(previous) || !fit_stop(back.run.revision/per,stop,c.epochs) {return FitReport.{status=FitStatus.checkpoint};}
+        run=back.run;
+    }
+    valid:FitEval;
+    while run.revision<stop*per {
+        step:=fit_step(f,c,run,s,w,train,spec.train);
+        if step.status!=TrStatus.ok {return FitReport.{status=FitStatus.training,steps=run.revision};}
+        run=step.run;
+        if run.revision==spec.save_at && tr_save(ids,run,s.p,s.m,s.v,a[0].checkpoint[0..<size],a[0].pointer[..])!=CkStatus.ok {return FitReport.{status=FitStatus.checkpoint};}
+        if run.revision==spec.save_at+1 {
+            if tr_save(ids,run,s.p,s.m,s.v,a[0].next_record[0..<size],a[0].next_pointer[..])!=CkStatus.ok {return FitReport.{status=FitStatus.checkpoint};}
+            for j:0..<c.examples {a[0].next_order[j]=w.order[j];}
+        }
+        if run.revision%per==0 {
+            valid=fit_eval(f,train,spec.valid,majority,s.p,w,a[0].initial[0..<0]);if valid.status!=FitStatus.ok {return FitReport.{status=FitStatus.number};}
+            epoch:=run.revision/per;
+            a[0].trace[epoch*4]=f64(epoch);a[0].trace[epoch*4+1]=valid.loss;a[0].trace[epoch*4+2]=f64(valid.correct);a[0].trace[epoch*4+3]=step.loss;
+        }
+    }
+    if stop<c.epochs {
+        k:=fit_session_write(ids,run,run.revision/per,s,n,size,c.examples,c.epochs,a);if k<0 {return FitReport.{status=FitStatus.checkpoint};}
+        e:=run.revision/per;
+        return FitReport.{steps=run.revision,parameters=n,valid_loss=a[0].trace[e*4+1],valid_correct=cast(int)a[0].trace[e*4+2],session_bytes=k};
+    }
+    initial:=fit_eval(f,test,spec.test,majority,r.p,w,a[0].initial[0..<capture]);
+    final:=fit_eval(f,test,spec.test,majority,s.p,w,a[0].predictions[0..<capture]);
+    if initial.status!=FitStatus.ok || final.status!=FitStatus.ok {return FitReport.{status=FitStatus.number};}
+    if tr_save(ids,run,s.p,s.m,s.v,a[0].final_checkpoint[0..<size],a[0].final_pointer[..])!=CkStatus.ok {return FitReport.{status=FitStatus.checkpoint};}
+    // Replay ONE optimizer update from the saved record into separate state
+    // and compare the complete next record, moments and batch order included.
+    back:=tr_resume(c,ids,a[0].pointer[..],a[0].checkpoint[0..<size],none[0..<0],nothing[0..<0],r.p,r.m,r.v,w.order);
+    if back.status!=CkStatus.ok || back.run.revision!=spec.save_at {return FitReport.{status=FitStatus.checkpoint};}
+    replay:=fit_step(f,c,back.run,r,w,train,spec.train);
+    if replay.status!=TrStatus.ok || tr_save(ids,replay.run,r.p,r.m,r.v,a[0].replay_record[0..<size],a[0].replay_pointer[..])!=CkStatus.ok {return FitReport.{status=FitStatus.checkpoint};}
+    equal:=true;for j:0..<size {equal=equal && a[0].replay_record[j]==a[0].next_record[j];}
+    for j:0..<80 {equal=equal && a[0].replay_pointer[j]==a[0].next_pointer[j];}
+    for j:0..<c.examples {equal=equal && a[0].next_order[j]==w.order[j];}
+    // Export the final binary32 weights by name, load them into fresh storage
+    // after a different initialization, and compare every held-out score word.
+    fit_move(f,s.p,w.inputs,true);
+    saved:=mdl_save(f.model,w.inputs,a[0].state_file[..],a[0].export_stage[..]);if saved.status!=MdlStatus.ok {return FitReport.{status=FitStatus.state};}
+    fresh:=a[0].fresh[0..<f.need.inputs];if mdl_init(f.model,999,fresh)!=MdlStatus.ok {return FitReport.{status=FitStatus.state};}
+    loaded:=mdl_load(f.model,a[0].state_file[0..<saved.written],fresh,true);if loaded.status!=MdlStatus.ok {return FitReport.{status=FitStatus.state};}
+    again:=fit_check(f,test,spec.test,majority,fresh,w,a[0].again[0..<capture]);if again.status!=FitStatus.ok {return FitReport.{status=FitStatus.number};}
+    same:=true;for j:0..<capture {same=same && f32_bits(a[0].again[j])==f32_bits(a[0].predictions[j]);}
+    score:=FitScore.{count=spec.test.count,correct=final.correct,baseline=final.baseline,initial_loss=initial.loss,final_loss=final.loss,replayed=equal,exported=same};
+    passed:=fit_accept(spec.gate,score);status:=FitStatus.ok;if !passed {status=FitStatus.quality;}
+    e:=c.epochs;
+    return FitReport.{status=status,steps=run.revision,train_rows=c.examples*c.epochs,test_rows=spec.test.count,baseline_class=majority,
+        initial_loss=initial.loss,final_loss=final.loss,initial_correct=initial.correct,final_correct=final.correct,baseline_correct=final.baseline,
+        valid_loss=a[0].trace[e*4+1],valid_correct=cast(int)a[0].trace[e*4+2],parameters=n,checkpoint_bytes=size,export_bytes=saved.written,tensors=saved.tensors,
+        replay_equal=equal,export_equal=same,passed=passed,done=true};
+}
+
+// A session: "PSFS", version 1, parameters, the epoch it ends at, then the current trainer
+// record and pointer, the save_at record and pointer, the next record and
+// pointer, the next batch order and the validation trace so far. Each record
+// keeps its own checksums; a changed byte fails tr_resume or the replay.
+FIT_HEAD :: 24;
+// The epoch a session ends at, or -1 when b is not a session.
+fit_session_epoch :: (b:[]u8)->int {
+    if b.count<FIT_HEAD || b[0]!=80 || b[1]!=83 || b[2]!=70 || b[3]!=83 || b[4]!=1 {return -1;}
+    e:=ck_get64(b,16);if e>512 {return -1;}return cast(int)e;
+}
+fit_session_size :: (size:int,examples:int,epochs:int)->int {return FIT_HEAD+3*(size+80)+8*examples+32*(epochs+1);}
+fit_session_write :: (ids:CkIds,run:TrRun,epoch:int,s:FitState,n:int,size:int,examples:int,epochs:int,a:[]FitArena)->int {
+    total:=fit_session_size(size,examples,epochs);if total>a[0].session.count {return -1;}
+    o:=a[0].session[0..<total];o[0]=80;o[1]=83;o[2]=70;o[3]=83;o[4]=1;o[5]=0;o[6]=0;o[7]=0;at:=ck_put64(o,8,cast(u64)n);at=ck_put64(o,at,cast(u64)epoch);
+    if tr_save(ids,run,s.p,s.m,s.v,o[at..<at+size],o[at+size..<at+size+80])!=CkStatus.ok {return -1;}at+=size+80;
+    // Records not yet written are carried as zeros; the replay checks them.
+    for j:0..<size {o[at+j]=a[0].checkpoint[j];o[at+size+80+j]=a[0].next_record[j];}
+    for j:0..<80 {o[at+size+j]=a[0].pointer[j];o[at+2*size+80+j]=a[0].next_pointer[j];}
+    at+=2*(size+80);for j:0..<examples {at=ck_put64(o,at,cast(u64)a[0].next_order[j]);}
+    for j:0..<4*(epochs+1) {at=ck_put64(o,at,f64_bits(a[0].trace[j]));}
+    return at;
+}
+FitHead :: struct {status:FitStatus;}
+fit_session_read :: (b:[]u8,n:int,size:int,examples:int,epochs:int,a:[]FitArena)->FitHead {
+    if b.count!=fit_session_size(size,examples,epochs) {return FitHead.{status=FitStatus.capacity};}
+    if b[0]!=80 || b[1]!=83 || b[2]!=70 || b[3]!=83 || b[4]!=1 || b[5]!=0 || b[6]!=0 || b[7]!=0 || ck_get64(b,8)!=cast(u64)n {return FitHead.{status=FitStatus.checkpoint};}
+    at:=FIT_HEAD+size+80;
+    for j:0..<size {a[0].checkpoint[j]=b[at+j];a[0].next_record[j]=b[at+size+80+j];}
+    for j:0..<80 {a[0].pointer[j]=b[at+size+j];a[0].next_pointer[j]=b[at+2*size+80+j];}
+    at+=2*(size+80);
+    for j:0..<examples {a[0].next_order[j]=cast(int)ck_get64(b,at);at+=8;}
+    for j:0..<4*(epochs+1) {a[0].trace[j]=f64_from_bits(ck_get64(b,at));at+=8;}
+    return FitHead.{};
+}

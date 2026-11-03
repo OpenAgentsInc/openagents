@@ -1,0 +1,4 @@
+model status 0 parameters 1490 inputs 1697 nodes 19
+status 0 passed true: 1828 of 2048 correct (training-majority baseline 242), loss 1.770439535670448 -> 0.3566704823169857, valid 933/1024
+initial correct 209; 1490 parameters, 1024 updates; replay equal true, reload equal true; 4 tensors, 6296 bytes
+exit 0

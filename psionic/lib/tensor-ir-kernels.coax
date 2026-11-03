@@ -15,6 +15,43 @@
     m:[64]int;m[0]=4;m[3]=1;m[4]=1;m[10]=1;m[11]=1;m[15]=1;
     input:=[1]f32.[f32_from_bits(0x80000000)];work:[1]f32;out:[1]f32;flags:[1]u8;
     tik_run(0,m[..],1,input[..],work[..],out[..],flags[..]);#assert flags[0]==0 && f32_bits(work[0])==0;
+}#test "pooling windows average in order and keep the first maximum" {
+    // Input [1,1,2,4] row-major: 1 5 2 7 / 3 -1 2 7; 2x2 windows, stride 2.
+    m:[64]int;m[0]=13;m[3]=4;m[4]=1;m[5]=1;m[6]=1;m[7]=2;
+    m[8]=0;m[9]=0;m[10]=4;m[11]=1;m[12]=1;m[13]=2;m[14]=4;m[15]=8;m[16]=8;m[17]=4;m[18]=1;
+    m[49]=2;m[50]=2;m[51]=2;
+    input:=[8]f32.[1,5,2,7,3,-1,2,7];work:[2]f32;out:[2]f32;flags:[2]u8;
+    for i:0..<2 {tik_run(i,m[..],1,input[..],work[..],out[..],flags[..]);#assert flags[i]==0;}
+    #assert work[0]==2 && work[1]==4.5;
+    m[0]=14;for i:0..<2 {tik_run(i,m[..],1,input[..],work[..],out[..],flags[..]);#assert flags[i]==0;}
+    #assert work[0]==5 && work[1]==7;
+    // A one-row window with stride 1 visits overlapping columns.
+    m[7]=3;m[49]=1;m[50]=2;m[51]=1;work3:[3]f32;flags3:[3]u8;
+    for i:0..<3 {tik_run(i,m[..],1,input[..],work3[..],out[..],flags3[..]);}#assert work3[0]==5 && work3[1]==5 && work3[2]==7;
+    big:=f32_from_bits(0x7f7fffff);input[1]=big;input[2]=big;m[0]=13;
+    tik_run(1,m[..],1,input[..],work3[..],out[..],flags3[..]);#assert flags3[1]==2 && work3[1]==0;
+    inf:=big*2;input[3]=-inf;m[0]=14;tik_run(2,m[..],1,input[..],work3[..],out[..],flags3[..]);#assert flags3[2]==2;
+}
+
+#test "pooling reads its own batch, channel, rows and stride, and keeps +0 on a signed-zero tie" {
+    // x [1,2,3,4]: channel 0 is 1..12, channel 1 is -1..-12, row-major.
+    input:[24]f32;for j:0..<12 {input[j]=f32(j+1);input[12+j]=-f32(j+1);}
+    m:[64]int;m[3]=4;m[8]=0;m[9]=0;m[10]=4;m[11]=1;m[12]=2;m[13]=3;m[14]=4;m[15]=24;m[16]=12;m[17]=4;m[18]=1;
+    work:[16]f32;out:[1]f32;flags:[16]u8;
+    // A 2x1 window, stride 1: output [1,2,2,4]. Item 10 is channel 1, row 0,
+    // column 2 (-3, -7); item 14 is channel 1, row 1, column 2 (-7, -11).
+    m[4]=1;m[5]=2;m[6]=2;m[7]=4;m[49]=2;m[50]=1;m[51]=1;
+    for op:13..<15 {m[0]=op;for i:0..<16 {tik_run(i,m[..],1,input[..],work[..],out[..],flags[..]);#assert flags[i]==0;}
+        if op==13 {#assert work[10]== -5 && work[14]== -9 && work[0]==3 && work[7]==10;}
+        else {#assert work[10]== -3 && work[14]== -7 && work[0]==5 && work[7]==12;}}
+    // A 1x3 window, stride 2: output [1,2,2,1]; item 3 is channel 1, row 2.
+    m[6]=2;m[7]=1;m[49]=1;m[50]=3;m[51]=2;
+    for op:13..<15 {m[0]=op;for i:0..<4 {tik_run(i,m[..],1,input[..],work[..],out[..],flags[..]);#assert flags[i]==0;}
+        if op==13 {#assert work[0]==2 && work[1]==10 && work[3]== -10;}else {#assert work[0]==3 && work[1]==11 && work[3]== -9;}}
+    // Signed zeros compare equal; the first, +0, stays the maximum.
+    zero:=[2]f32.[0,-0.0f32];z:[64]int;z[0]=14;z[3]=4;z[4]=1;z[5]=1;z[6]=1;z[7]=1;
+    z[8]=0;z[10]=4;z[11]=1;z[12]=1;z[13]=1;z[14]=2;z[15]=2;z[16]=2;z[17]=2;z[18]=1;z[49]=1;z[50]=2;z[51]=1;
+    tik_run(0,z[..],1,zero[..],work[..],out[..],flags[..]);#assert flags[0]==0 && f32_bits(work[0])==0;
 }
 tik_finite :: (x:f32)->bool {return (f32_bits(x)&0x7fffffff)<0x7f800000;}
 tik_coord :: (m:[]int,item:int,axis:int)->int {n:=item;for pass:0..<4 {a:=m[3]-1-pass;if a>axis {n/=m[4+a];}}return n%m[4+axis];}
@@ -34,6 +71,20 @@ tik_run :: (item:int,m:[]int,epsilon:f32,input:[]f32,work:[]f32,out:[]f32,flags:
             product:=tik_read(m,8,c[0],channel,c[2]+h,c[3]+w,input,work)*tik_read(m,19,c[1],channel,h,w,input,work);
             value+=product;if !tik_finite(product) || !tik_finite(value) {bad=true;}
         }}}
+    }
+    else if op==13 || op==14 {
+        // Pooling: an m[49] x m[50] window moved by m[51] over the last two
+        // axes. Average sums in f32, row-major, then divides once by the
+        // window size; maximum keeps the first largest value.
+        first:=true;
+        for h:0..<m[49] {for w:0..<m[50] {
+            x:=tik_read(m,8,c[0],c[1],c[2]*m[51]+h,c[3]*m[51]+w,input,work);if !tik_finite(x) {bad=true;}
+            // An infinite or NaN running sum never becomes finite again; the
+            // final check below flags it.
+            if op==13 {value+=x;}
+            else if first || x>value {value=x;first=false;}
+        }}
+        if op==13 {value/=f32(m[49]*m[50]);}
     }
     else if op==5 {point:[4]int;cursor:=0;for i:0..<m[10] {if i!=m[31] {point[i]=c[cursor];cursor+=1;}}for j:0..<m[30] {point[m[31]]=j;value+=tik_read(m,8,point[0],point[1],point[2],point[3],input,work);if !tik_finite(value) {bad=true;}}}
     else if op==9 {point:=c;point[m[31]]=m[32+c[m[31]]];value=tik_read(m,8,point[0],point[1],point[2],point[3],input,work);}

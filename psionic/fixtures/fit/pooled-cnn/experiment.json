@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "profile": "psionic-fit-mnist-pooled-cnn-v2",
+  "status": "frozen before learning; no outcome claimed",
+  "frozen_at": "2026-11-02T22:50:00-06:00",
+  "purpose": "first training run through the new IR max-pooling node (GitHub #12626, ResNet-18/CIFAR-10 track); a step toward ResNet, not ResNet",
+  "program": "psionic/examples/fit-pooled-cnn.coax",
+  "library": "psionic/lib/fit.coax (psionic-fit-v1) and psionic/lib/module-pool.coax",
+  "dataset_manifest": "psionic/fixtures/mnist/dataset.json",
+  "preparation": "mnist-pool14: 2x2 byte sum / 1020, f32, [1,1,14,14]; one-hot 10",
+  "splits": {
+    "train": {
+      "source": "official train",
+      "first": 0,
+      "rows": 4096
+    },
+    "validation": {
+      "source": "official train",
+      "first": 4096,
+      "rows": 1024
+    },
+    "test": {
+      "source": "official test",
+      "first": 0,
+      "rows": 2048
+    }
+  },
+  "model": {
+    "architecture": "conv 1->4 3x3 valid stride 1, ReLU, maxpool 2x2 stride 2 (12x12 -> 6x6), flatten 144, linear 10, sum squared error",
+    "trainable_parameters": 1490,
+    "initializer_seed": 11831
+  },
+  "training": {
+    "optimizer": "AdamW",
+    "learning_rate": 0.003,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "epsilon": 1e-08,
+    "decay": 0.0,
+    "clip": 1.0,
+    "parameter_bound": 16.0,
+    "microbatch": 1,
+    "accumulate": 16,
+    "epochs": 4,
+    "shuffle": true,
+    "shuffle_seed": 11832,
+    "updates": 1024,
+    "checkpoint_replayed_after_update": 512
+  },
+  "evaluation": {
+    "validation": "traced once per epoch; selects nothing",
+    "test": "initial and final only; never selects a setting, step or checkpoint",
+    "baseline": "training split's most frequent label, scored on the test rows"
+  },
+  "acceptance": {
+    "test_rows": 2048,
+    "min_correct": 1639,
+    "min_margin_over_baseline": 1024,
+    "final_loss_below_initial": true,
+    "replay_and_reload_exact": true
+  },
+  "disclosure": "The same 2,048 official-test rows were observed by the earlier MLP, CNN and residual trials. This trial's settings were copied from those trials and fixed before it ran; it is not a pristine unseen-test result or a controlled architecture comparison.",
+  "previous_attempts": [
+    {
+      "profile": "psionic-fit-mnist-pooled-cnn-v1 (12 epochs, 3,072 updates)",
+      "launch": 1,
+      "outcome": "build failed before running: two fixture files were missing from the isolated source copy; no learning, no outcome observed"
+    },
+    {
+      "profile": "psionic-fit-mnist-pooled-cnn-v1",
+      "launch": 2,
+      "outcome": "stopped by the 15-minute command limit (516 s user CPU, 266 MB peak RSS, shared host at load 80-90) before printing anything; no outcome observed"
+    },
+    {
+      "profile": "psionic-fit-mnist-pooled-cnn-v1",
+      "launch": 3,
+      "outcome": "started by mistake after a refused edit left the v1 program in place; stopped by hand within a minute, nothing printed; no outcome observed"
+    }
+  ],
+  "change_reason": "v1 could not finish inside one 15-minute command on the shared host. v2 cuts only the epoch count (12 -> 4) and moves the replayed checkpoint to update 512; model, data, seeds, optimizer and gate are v1's. No v1 result was seen."
+}

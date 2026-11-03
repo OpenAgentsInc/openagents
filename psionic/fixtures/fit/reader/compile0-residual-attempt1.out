@@ -1,0 +1,11 @@
+/home/christopherdavid/openagents/.claude/worktrees/agent-ad2da7496b2b8d425/scratch-12626/reader/attempt1-reader-residual.coax:12:7: error[E0315]: procedure 'mdl_residual_conv1x1' is not declared
+      m=mdl_residual_conv1x1(m,MDL_ROOT,"block",x,2);
+        ^
+/home/christopherdavid/openagents/.claude/worktrees/agent-ad2da7496b2b8d425/scratch-12626/reader/attempt1-reader-residual.coax:13:7: error[E0315]: procedure 'mdl_flatten' is not declared
+      m=mdl_flatten(m,m.node);m=mdl_linear(m,MDL_ROOT,"fc1",m.node,16);m=mdl_relu(m,m.node);
+        ^
+2 errors
+
+real	0m2.812s
+user	0m3.527s
+sys	0m0.423s

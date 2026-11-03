@@ -10,7 +10,9 @@
 # for wss:// and https:// (coax/lib/net/relay_conn.coax, http.coax). A
 # "// tool.sh: run-steps N" line in the tool's own file gives the compiler a
 # larger compile-time budget (coax --run-steps), for a tool that loads the
-# secp256k1 tables (coder/tui/host.coax).
+# secp256k1 tables (coder/tui/host.coax). A "// tool.sh: release" line in the
+# tool's own file emits release C (coax c --release: no checked-arithmetic
+# traps), for a long numerical tool such as a training run (psionic/examples/fit-mnist.coax).
 #   coax/web/tool.sh shot URL OUT.png [WxH] [WAIT_MS] [--eval JS]
 #   coax/web/tool.sh clip URL OUT.mp4 [--size WxH] [--seconds S] ...
 set -euo pipefail
@@ -54,10 +56,11 @@ if [[ -n "$why" ]]; then
     source "$p/tls-env.sh"; tls=("$p/tls-native.c" $CXTLS_CFLAGS); libs+=($CXTLS_LIBS)
   fi
   steps=(); n="$(sed -n 's|^// tool.sh: run-steps \([0-9][0-9]*\)$|\1|p' "$src" | head -n 1)"; [[ -z "$n" ]] || steps=(--run-steps "$n")
+  release=(); ! grep -qs '^// tool.sh: release$' "$src" || release=(--release)
   work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
   "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > "$work/entropy.c"
   "$coax" deps "$src" ${steps[@]+"${steps[@]}"} > "$work/deps.json" 2> /dev/null & deps_pid=$!
-  "$coax" c "$src" --library ${steps[@]+"${steps[@]}"} > "$work/$name.c"
+  "$coax" c "$src" --library ${steps[@]+"${steps[@]}"} ${release[@]+"${release[@]}"} > "$work/$name.c"
   mkdir -p "$(dirname "$bin")"
   "${cc[@]}" -std=c11 -O2 -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "$p/tool-native.c" "$p/process-native.c" \
     "$p/store-file-native.c" "$p/read-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" ${tls[@]+"${tls[@]}"} "${libs[@]}" -lm

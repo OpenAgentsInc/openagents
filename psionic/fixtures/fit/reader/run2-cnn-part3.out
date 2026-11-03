@@ -1,0 +1,16 @@
+start Mon Nov  2 11:09:30 PM CST 2026 epochs_now=6
+epoch 7 of 12: 1792 updates, validation 928 of 1024 correct, loss 0.3129703984495791
+epoch 8 of 12: 2048 updates, validation 931 of 1024 correct, loss 0.31022674971609376
+epoch 9 of 12: 2304 updates, validation 936 of 1024 correct, loss 0.3069912854680297
+epoch 10 of 12: 2560 updates, validation 933 of 1024 correct, loss 0.31267286315141973
+epoch 11 of 12: 2816 updates, validation 932 of 1024 correct, loss 0.30671448205157503
+epoch 12 of 12: 3072 updates, validation 938 of 1024 correct, loss 0.3105949025298287
+status 0 passed true: 1814 of 2048 correct (training-majority baseline 242), loss 1.1769798680907115 -> 0.3471311970060924
+2910 parameters, 3072 updates; replay equal true, reload equal true; 4 tensors, 11976 bytes
+reloaded from 11976 bytes: 1814 of 2048 correct
+
+real	10m54.040s
+user	7m29.705s
+sys	0m2.460s
+exit=0
+end Mon Nov  2 11:20:24 PM CST 2026

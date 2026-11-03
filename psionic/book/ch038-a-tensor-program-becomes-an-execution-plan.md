@@ -29,6 +29,12 @@ and [chapter 118's CNN](ch118-one-trainer-for-every-model.md#the-same-trainer-fo
 CUDA/Metal plans refuse this operation; older device qualification is not
 qualification of convolution. Compiled backward and higher-order function
 transforms also refuse it until they have their own derivative rules.
+Pooling follows the same profile at tags 13 (`avgpool2d`) and 14
+(`maxpool2d`): a node's `window` and `stride` (command metadata 49 to 51,
+part of the cached program's identity) pick an unpadded window over the
+last two axes, the CPU kernel averages in order or keeps the first largest
+value, and other devices, compiled backward and function transforms
+refuse it ([chapter 117](ch117-models-are-compositions-of-modules.md#pooling)).
 
 ## Run it
 
@@ -73,7 +79,7 @@ Other dtype annotations return `dtype`, rather than silently converting.
 
 <!-- source: psionic/lib/tensor-ir.coax types -->
 ```jai
-TiOp :: enum u8 {input;matmul;add;multiply;relu;sum;layernorm;view;reshape;gather;registered=11;conv2d=12;}
+TiOp :: enum u8 {input;matmul;add;multiply;relu;sum;layernorm;view;reshape;gather;registered=11;conv2d=12;avgpool2d=13;maxpool2d=14;}
 TiStatus :: enum u8 {ok;operation;dependency;shape;dtype;device;layout;index;limit;capacity;alias;number;arithmetic;identity;budget;driver;absent;state;}
 TiPlacement :: enum u8 {target;cpu;cuda;metal;}
 TiNode :: struct {
@@ -81,6 +87,8 @@ TiNode :: struct {
     shape:TvShape;strides:[4]int;offset:int;storage:int;input_base:int;
     dtype:TdDtype;placement:TiPlacement;
     axis:int;epsilon:f32=0.00001f32;index_count:int;indices:[16]int;
+    // Pooling: a [height, width] window moved by stride over NCHW's last two axes.
+    window:[2]int;stride:int;
 }
 TiProgram :: struct {count:int;output:int;nodes:[32]TiNode;}
 TiTarget :: struct {device:TdDevice;compiler:[4]u64;backend:[4]u64;kernel:[4]u64;operators:[4]u64;budget:int=67108864;}

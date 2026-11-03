@@ -1,0 +1,10 @@
+start Mon Nov  2 10:26:25 PM CST 2026
+status 0 passed true: 1755 of 2048 correct (training-majority baseline 242), loss 1.276122591283638 -> 0.28320420931240164
+3322 parameters, 3072 updates; replay equal true, reload equal true; 4 tensors, 13632 bytes
+reloaded from 13632 bytes: 1755 of 2048 correct
+
+real	9m8.881s
+user	6m1.584s
+sys	0m0.988s
+exit=0
+end Mon Nov  2 10:35:34 PM CST 2026

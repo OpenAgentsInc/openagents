@@ -83,6 +83,17 @@ cb_test_pair :: ()->TiProgram {
     return p;
 }
 // Run the tape to the end; built-in programs never hand back a call.
+#test "pooling has a tape VJP but no compiled instruction, so compilation refuses" {
+    for op:0..<2 {
+        p:TiProgram;p.count=3;p.output=2;p.nodes[0]=ti_input(TvShape.{rank=4,dims=[4]int.[1,1,2,2]},0);
+        p.nodes[1]=TiNode.{op=ifx op==0 then TiOp.avgpool2d else TiOp.maxpool2d,a=0,window=[2]int.[2,2],stride=1};
+        p.nodes[2]=TiNode.{op=TiOp.sum,a=1,axis=3};
+        mode:AdMode;mode.grad[0]=true;
+        #assert ad_tape(p,mode,OrRegistry.{}).status==AdStatus.ok;
+        #assert cb_compile(p,mode,OrRegistry.{},CbChoice.{}).status==CbStatus.operation;
+        mode.enabled=false;#assert cb_compile(p,mode,OrRegistry.{},CbChoice.{}).status==CbStatus.operation;
+    }
+}
 cb_test_tape :: (t:AdTape,inputs:[]f32,values:[]f32,grads:[]f64,flags:[]u8)->AdRun {return ad_run(t,AdCursor.{},inputs,values,grads,flags);}
 
 #test "the hand-planned network: schedule, saved values and both arenas" {
@@ -543,7 +554,7 @@ cb_compile :: (p:TiProgram,mode:AdMode,registry:OrRegistry,choice:CbChoice)->CbP
         if p.nodes[i].op==TiOp.registered || mode.custom[i] {return cb_fail(c,CbStatus.external);}
         // Convolution has an interpreted formal VJP, but no compiled-backward
         // instruction rule yet. Refuse even forward-only compilation explicitly.
-        if p.nodes[i].op==TiOp.conv2d {return cb_fail(c,CbStatus.operation);}
+        if p.nodes[i].op==TiOp.conv2d || ti_pool(p.nodes[i].op) {return cb_fail(c,CbStatus.operation);}
         r:=t.root[i];c.facts.root[i]=r;c.facts.input[i]=p.nodes[r].op==TiOp.input;c.facts.input_base[i]=p.nodes[i].input_base;
         c.facts.views[i]=t.plan.values[i].view;c.facts.storage[i]=t.plan.values[i].storage;
         c.facts.wants[i]=t.wants[i];c.facts.reaches[i]=t.reaches[i];

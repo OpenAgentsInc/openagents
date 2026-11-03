@@ -1,0 +1,5 @@
+usage: DATA_DIR OUT_DIR [EPOCHS_NOW]
+
+real	0m56.197s
+user	1m25.212s
+sys	0m5.564s

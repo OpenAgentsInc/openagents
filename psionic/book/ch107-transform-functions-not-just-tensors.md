@@ -157,7 +157,7 @@ ReLU has derivative 1 for positive input and 0 for nonpositive input. Its second
 rule is zero, including at the kink. That is the declared convention, not a
 claim that a classical derivative exists at zero. Supported original graph
 operators are input, add, multiply, matmul, ReLU, sum, layer norm, gather, view
-and reshape. Unknown/registered operations and requests above order two refuse. The later CPU convolution extension also refuses here, including order-zero graph-function requests: its first-order tape rule does not supply these tangent and cross-curvature rules.
+and reshape. Unknown/registered operations and requests above order two refuse. The later CPU convolution and pooling extensions also refuse here, including order-zero graph-function requests: their first-order tape rules do not supply these tangent and cross-curvature rules.
 No rule is invented for an external simulator or a foreign callback.
 
 The scalar coordinates are a flat input-storage domain of at most 256 values.

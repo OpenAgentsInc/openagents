@@ -1,0 +1,117 @@
+// Checks for psionic/lib/fit.coax, written before it. The model is a public
+// 196 -> 10 linear classifier; every expected value is hand arithmetic on
+// four synthetic IDX images: image 0 is black, image 1 has one white pixel
+// at (0,0), so its first pooled feature is 255/1020 = 0.25 exactly.
+
+fit_test_model :: ()->FitModel {
+    m:=mdl_model();m=mdl_data(m,"x",mdl_shape(2,1,196));x:=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,1,10));target:=m.node;
+    m=mdl_linear(m,MDL_ROOT,"fc",x,10);prediction:=m.node;
+    m=mdl_squared_error(m,MDL_ROOT,"loss",prediction,target);
+    return fit_model(m,prediction);
+}
+// Four 28x28 images labelled 7, 3, 3, 1.
+fit_test_idx :: (images:[]u8,labels:[]u8) {
+    images[2]=8;images[3]=3;images[7]=4;images[11]=28;images[15]=28;
+    labels[2]=8;labels[3]=1;labels[7]=4;
+    labels[8]=7;labels[9]=3;labels[10]=3;labels[11]=1;
+    images[16+784]=255;images[16+2*784+100]=40;images[16+3*784+500]=200;
+}
+fit_test_config :: ()->TrConfig {
+    return TrConfig.{optimizer=TrOptimizer.sgd,storage=TrStorage.binary64,rate=0.5,bound=16,examples=2,batch=1,accumulate=1,epochs=1};
+}
+
+#test "fit admits a public classifier and records where its data goes" #steps 4000000000 {
+    f:=fit_test_model();
+    #assert f.status==FitStatus.ok && f.x==0 && f.target==196;
+    #assert f.need.parameters==1970 && f.need.inputs==2177 && f.need.entry==1960;
+    #assert f.need.values>=1 && f.need.adjoints>=1 && f.need.flags>=1;
+}
+#test "fit refuses a classifier whose data entries or prediction do not fit the profile" #steps 4000000000 {
+    m:=mdl_model();m=mdl_data(m,"x",mdl_shape(2,1,196));x:=m.node;
+    m=mdl_data(m,"label",mdl_shape(2,1,10));t:=m.node;
+    m=mdl_linear(m,MDL_ROOT,"fc",x,10);p:=m.node;m=mdl_squared_error(m,MDL_ROOT,"loss",p,t);
+    #assert fit_model(m,p).status==FitStatus.model;
+    m=mdl_model();m=mdl_data(m,"x",mdl_shape(2,1,195));x=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,1,10));t=m.node;
+    m=mdl_linear(m,MDL_ROOT,"fc",x,10);p=m.node;m=mdl_squared_error(m,MDL_ROOT,"loss",p,t);
+    #assert fit_model(m,p).status==FitStatus.model;
+    m=mdl_model();m=mdl_data(m,"x",mdl_shape(2,1,196));x=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,1,10));t=m.node;
+    m=mdl_linear(m,MDL_ROOT,"fc",x,10);p=m.node;m=mdl_squared_error(m,MDL_ROOT,"loss",p,t);
+    #assert fit_model(m,p).status==FitStatus.ok;
+    // The loss is one value, not ten scores; nodes outside the program fail.
+    #assert fit_model(m,m.node).status==FitStatus.model;
+    #assert fit_model(m,-1).status==FitStatus.model && fit_model(m,m.program.count).status==FitStatus.model;
+    bad:=m;bad.status=MdlStatus.shape;#assert fit_model(bad,p).status==FitStatus.model;
+}
+#test "fit prepares a row into the model's own data places" #steps 4000000000 {
+    f:=fit_test_model();images:[3152]u8;labels:[12]u8;fit_test_idx(images[..],labels[..]);
+    s:=fit_mnist(images[..],labels[..]);#assert s.status==FitStatus.ok && s.set.count==4;
+    inputs:[2177]f32;for j:0..<2177 {inputs[j]=-5;}
+    #assert fit_example(f,s,1,inputs[..],true)==FitStatus.ok;
+    #assert inputs[0]==0.25;for j:1..<196 {#assert inputs[j]==0;}
+    for j:0..<10 {#assert inputs[196+j]==ifx j==3 then 1.0f32 else 0.0f32;}
+    #assert inputs[206]== -5 && inputs[2176]== -5;
+    #assert fit_example(f,s,0,inputs[..],false)==FitStatus.ok && inputs[0]==0 && inputs[199]==1;
+    #assert fit_example(f,s,4,inputs[..],true)==FitStatus.data && fit_example(f,s,-1,inputs[..],true)==FitStatus.data;
+    #assert fit_example(f,s,0,inputs[0..<2176],true)==FitStatus.capacity;
+    #assert fit_mnist(images[0..<3151],labels[..]).status==FitStatus.data;
+    #assert fit_majority(s,FitSplit.{first=0,count=4})==3 && fit_majority(s,FitSplit.{first=0,count=2})==3;
+    #assert fit_majority(s,FitSplit.{first=0,count=1})==7 && fit_majority(s,FitSplit.{first=3,count=1})==1;
+}
+#test "fit binds caller storage only when every arena holds what the plan needs" #steps 4000000000 {
+    f:=fit_test_model();c:=fit_test_config();
+    inputs:[2177]f32;values:[8192]f32;adjoints:[8192]f64;flags:[4096]u8;entry:[1960]f32;
+    staging:[1970]f64;gradient:[1970]f64;total:[1970]f64;stage:[5910]f64;order:[2]int;p:[1970]f64;m:[1970]f64;v:[1970]f64;
+    b:=fit_bind(f,c,inputs[..],values[..],adjoints[..],flags[..],entry[..],staging[..],gradient[..],total[..],stage[..],order[..],p[..],m[..],v[..]);
+    #assert b.status==FitStatus.ok && b.work.inputs.count==2177 && b.work.stage.count==5910 && b.work.order.count==2 && b.state.v.count==1970;
+    #assert fit_bind(f,c,inputs[0..<2176],values[..],adjoints[..],flags[..],entry[..],staging[..],gradient[..],total[..],stage[..],order[..],p[..],m[..],v[..]).status==FitStatus.capacity;
+    #assert fit_bind(f,c,inputs[..],values[..],adjoints[..],flags[..],entry[0..<1959],staging[..],gradient[..],total[..],stage[..],order[..],p[..],m[..],v[..]).status==FitStatus.capacity;
+    #assert fit_bind(f,c,inputs[..],values[..],adjoints[..],flags[..],entry[..],staging[..],gradient[..],total[..],stage[0..<5909],order[..],p[..],m[..],v[..]).status==FitStatus.capacity;
+    #assert fit_bind(f,c,inputs[..],values[..],adjoints[..],flags[..],entry[..],staging[..],gradient[..],total[..],stage[..],order[0..<1],p[..],m[..],v[..]).status==FitStatus.capacity;
+    #assert fit_bind(f,c,inputs[..],values[..],adjoints[..],flags[..],entry[..],staging[..],gradient[..],total[..],stage[..],order[..],p[..],m[..],v[0..<1969]).status==FitStatus.capacity;
+    #assert fit_bind(f,c,inputs[..],values[..],adjoints[..],flags[..],entry[..],staging[0..<1969],gradient[..],total[..],stage[..],order[..],p[..],m[..],v[..]).status==FitStatus.capacity;
+    #assert fit_bind(f,c,inputs[..],values[0..<f.need.values-1],adjoints[..],flags[..],entry[..],staging[..],gradient[..],total[..],stage[..],order[..],p[..],m[..],v[..]).status==FitStatus.capacity;
+}
+#test "fit steps, evaluates, saves and reloads with hand-derived values" #steps 4000000000 {
+    f:=fit_test_model();c:=fit_test_config();images:[3152]u8;labels:[12]u8;fit_test_idx(images[..],labels[..]);
+    s:=fit_mnist(images[..],labels[..]);
+    inputs:[2177]f32;values:[8192]f32;adjoints:[8192]f64;flags:[4096]u8;entry:[1960]f32;
+    staging:[1970]f64;gradient:[1970]f64;total:[1970]f64;stage:[5910]f64;order:[2]int;p:[1970]f64;m:[1970]f64;v:[1970]f64;
+    b:=fit_bind(f,c,inputs[..],values[..],adjoints[..],flags[..],entry[..],staging[..],gradient[..],total[..],stage[..],order[..],p[..],m[..],v[..]);
+    w:=b.work;st:=b.state;
+    #assert fit_init(f,5,w,st)==FitStatus.ok && st.p[0]!=0 && st.m[0]==0;
+    for j:0..<1970 {st.p[j]=0;}
+    capture:[40]f32;
+    none:[1]PkDoc;nothing:[1]u8;begin:=tr_begin(c,1970,none[0..<0],nothing[0..<0],w.order);#assert begin.status==TrStatus.ok;
+    train:=FitSplit.{first=0,count=2};
+    // Row 0 (black, label 7): zero scores, loss 1, only bias 7 moves: 0 - 0.5 * -2.
+    one:=fit_step(f,c,begin.run,st,w,s,train);
+    #assert one.status==TrStatus.ok && one.loss==1 && one.run.revision==1;
+    for j:0..<1970 {#assert st.p[j]==ifx j==1967 then 1.0 else 0.0;}
+    // Every row now scores class 7 only: one correct; class 3 is the baseline.
+    e:=fit_eval(f,s,FitSplit.{first=0,count=4},3,st.p[..],w,capture[0..<40]);
+    #assert e.status==FitStatus.ok && e.correct==1 && e.baseline==2 && e.loss==1.5 && e.count==4;
+    for k:0..<4 {for j:0..<10 {#assert capture[k*10+j]==ifx j==7 then 1.0f32 else 0.0f32;}}
+    #assert fit_eval(f,s,FitSplit.{first=0,count=4},3,st.p[..],w,capture[0..<39]).status==FitStatus.capacity;
+    #assert fit_eval(f,s,FitSplit.{first=1,count=4},3,st.p[..],w,capture[0..<0]).status==FitStatus.capacity;
+    // Row 1 (feature 0 is 0.25, label 3): dL/dy7 = 2, dL/dy3 = -2, loss 2.
+    two:=fit_step(f,c,one.run,st,w,s,train);
+    #assert two.status==TrStatus.ok && two.loss==2 && two.run.revision==2;
+    for j:0..<1970 {
+        want:=0.0;if j==3 || j==1963 {want=1;}if j==3 {want=0.25;}if j==7 {want= -0.25;}
+        #assert st.p[j]==want;
+    }
+    #assert fit_step(f,c,two.run,st,w,s,train).status==TrStatus.done;
+    // Save by name, reload into storage initialized differently, predict again.
+    scores:[10]f32;again:[10]f32;fit_move(f,st.p[..],w.inputs,true);
+    #assert fit_predict(f,s,1,w.inputs,w,scores[..])==3 && scores[3]==1.0625 && scores[7]== -0.0625;
+    file:[16384]u8;scratch:[16384]u8;saved:=mdl_save(f.model,w.inputs,file[..],scratch[..]);
+    #assert saved.status==MdlStatus.ok && saved.tensors==2;
+    fresh:[2177]f32;#assert mdl_init(f.model,999,fresh[..])==MdlStatus.ok;
+    #assert mdl_load(f.model,file[0..<saved.written],fresh[..],true).status==MdlStatus.ok;
+    #assert fit_predict(f,s,1,fresh[..],w,again[..])==3;
+    for j:0..<10 {#assert f32_bits(again[j])==f32_bits(scores[j]);}
+    #assert fit_predict(f,s,9,fresh[..],w,again[..])== -1;
+}

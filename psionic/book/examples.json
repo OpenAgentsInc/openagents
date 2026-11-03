@@ -3622,6 +3622,26 @@
         "psionic/fixtures/residual-mlp/fresh-reader-artifacts/reproduction.json",
         "psionic/fixtures/residual-mlp/fresh-reader-artifacts/reproduction.md"
       ]
+    },
+    {
+      "source": "psionic/examples/fit-mnist.coax",
+      "kind": "native-library",
+      "chapter": "psionic/book/ch118-one-trainer-for-every-model.md",
+      "consumer": "coax/platform/tool-native.c",
+      "evidence": [
+        "psionic/fixtures/fit/README.md",
+        "psionic/fixtures/fit/author-mlp/model-sha256.txt"
+      ]
+    },
+    {
+      "source": "psionic/examples/fit-pooled-cnn.coax",
+      "kind": "native-library",
+      "chapter": "psionic/book/ch117-models-are-compositions-of-modules.md",
+      "consumer": "coax/platform/tool-native.c",
+      "evidence": [
+        "psionic/fixtures/fit/pooled-cnn/experiment.json",
+        "psionic/fixtures/fit/pooled-cnn/run-v2/stdout.log"
+      ]
     }
   ]
 }

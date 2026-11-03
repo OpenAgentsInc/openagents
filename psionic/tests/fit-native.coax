@@ -1,0 +1,70 @@
+// Native whole-run check of psionic/lib/fit.coax: fit_run end to end in
+// emitted C on synthetic IDX bytes, no download. Each image of class L has
+// a bright 2x2 block at pooled cell (L, L) and one dim counter-chosen pixel
+// elsewhere, so a 196->10 linear classifier separates the classes; the gate
+// and every persistence check must pass, and two refusals must refuse.
+//   coax/web/tool.sh psionic/tests/fit-native.coax
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../lib/fit.coax";
+
+fn_idx :: (n:int,seed:u64,images:[]u8,labels:[]u8) {
+    images[2]=8;images[3]=3;images[11]=28;images[15]=28;
+    images[4]=cast,trunc(u8)(n>>24);images[5]=cast,trunc(u8)(n>>16);images[6]=cast,trunc(u8)(n>>8);images[7]=cast,trunc(u8)n;
+    labels[2]=8;labels[3]=1;
+    labels[4]=cast,trunc(u8)(n>>24);labels[5]=cast,trunc(u8)(n>>16);labels[6]=cast,trunc(u8)(n>>8);labels[7]=cast,trunc(u8)n;
+    for k:0..<n {
+        label:=cast(int)(cr_bits(seed,cast(u64)(2*k))%10);labels[8+k]=cast(u8)label;
+        at:=16+k*784;row:=2*label;col:=2*label;
+        images[at+row*28+col]=255;images[at+row*28+col+1]=255;images[at+(row+1)*28+col]=255;images[at+(row+1)*28+col+1]=255;
+        noise:=cast(int)(cr_bits(seed,cast(u64)(2*k+1))%784);images[at+noise]=60;
+    }
+}
+fn_model :: ()->FitModel {
+    m:=mdl_model();m=mdl_data(m,"x",mdl_shape(2,1,196));x:=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,1,10));target:=m.node;
+    m=mdl_linear(m,MDL_ROOT,"fc",x,10);prediction:=m.node;
+    m=mdl_squared_error(m,MDL_ROOT,"loss",prediction,target);
+    return fit_model(m,prediction);
+}
+
+tool_main :: ()->int #export_c {
+    train_images:[16+5120*784]u8;train_labels:[8+5120]u8;test_images:[16+2048*784]u8;test_labels:[8+2048]u8;
+    fn_idx(5120,71,train_images[..],train_labels[..]);fn_idx(2048,72,test_images[..],test_labels[..]);
+    train:=fit_mnist(train_images[..],train_labels[..]);test:=fit_mnist(test_images[..],test_labels[..]);
+    f:=fn_model();a:[1]FitArena;
+    c:=TrConfig.{optimizer=TrOptimizer.adamw,storage=TrStorage.binary64,rate=0.01,beta1=0.9,beta2=0.999,eps=0.00000001,clip=1,bound=16,
+        examples=1024,batch=1,accumulate=16,epochs=2,shuffle=true,seed=73};
+    spec:=FitSpec.{name="fit-native synthetic linear",seed=74,config=c,train=FitSplit.{first=0,count=1024},valid=FitSplit.{first=4096,count=1024},
+        test=FitSplit.{first=0,count=2048},save_at=64,gate=FitGate.{count=2048,correct=1900,margin=1000}};
+    r:=fit_run(f,spec,train,test,a[..]);
+    print("fit-native: status % steps % params % correct %/% (baseline %) loss % -> % valid %/1024 replay % export % tensors % bytes %\n",
+        cast(int)r.status,r.steps,r.parameters,r.final_correct,r.test_rows,r.baseline_correct,r.initial_loss,r.final_loss,r.valid_correct,
+        r.replay_equal,r.export_equal,r.tensors,r.export_bytes);
+    bad:=0;
+    if r.status!=FitStatus.ok || !r.passed || !r.done || r.steps!=128 || r.parameters!=1970 || r.tensors!=2 {bad+=1;}
+    whole:[8072]u8;for j:0..<8072 {whole[j]=a[0].state_file[j];}
+    // The same run in two parts. The checkpoint at update 64 is written in
+    // part one and its replayed update happens in part two.
+    one:=fit_continue(f,spec,train,test,a[..],a[0].session[0..<0],1);
+    if one.status!=FitStatus.ok || one.done || one.steps!=64 || one.session_bytes<1 {bad+=1;print("fit-native: part one %\n",cast(int)one.status);}
+    held:[1048576]u8;k:=one.session_bytes;for j:0..<k {held[j]=a[0].session[j];}
+    // A changed byte in the current record, a short session and a stop that
+    // does not move forward are refused.
+    held[FIT_HEAD+300]^=1;if fit_continue(f,spec,train,test,a[..],held[0..<k],2).status!=FitStatus.checkpoint {bad+=1;}
+    held[FIT_HEAD+300]^=1;if fit_continue(f,spec,train,test,a[..],held[0..<k-1],2).status!=FitStatus.capacity {bad+=1;}
+    if fit_continue(f,spec,train,test,a[..],held[0..<k],1).status!=FitStatus.checkpoint {bad+=1;}
+    if fit_continue(f,spec,train,test,a[..],a[0].session[0..<0],3).status!=FitStatus.config {bad+=1;}
+    two:=fit_continue(f,spec,train,test,a[..],held[0..<k],2);
+    if two.status!=FitStatus.ok || !two.done || two.final_correct!=r.final_correct || two.initial_loss!=r.initial_loss || two.final_loss!=r.final_loss
+        || two.valid_correct!=r.valid_correct || !two.replay_equal || !two.export_equal || two.export_bytes!=r.export_bytes {bad+=1;print("fit-native: part two differs\n");}
+    for j:0..<8072 {if a[0].state_file[j]!=whole[j] {bad+=1;break;}}
+    print("fit-native: two parts: % then %; same model file and scores as one run\n",one.steps,two.steps);
+    // Refusals: overlapping train/valid splits, and a test split past the end.
+    s2:=spec;s2.valid=FitSplit.{first=1000,count=100};if fit_run(f,s2,train,test,a[..]).status!=FitStatus.data {bad+=1;}
+    s3:=spec;s3.test=FitSplit.{first=1,count=2048};if fit_run(f,s3,train,test,a[..]).status!=FitStatus.data {bad+=1;}
+    s4:=spec;s4.save_at=128;if fit_run(f,s4,train,test,a[..]).status!=FitStatus.config {bad+=1;}
+    s5:=spec;s5.config.batch=2;if fit_run(f,s5,train,test,a[..]).status!=FitStatus.config {bad+=1;}
+    if bad!=0 {print("fit-native: % failed\n",bad);return 1;}
+    print("fit-native: ok\n");return 0;
+}
