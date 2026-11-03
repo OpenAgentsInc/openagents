@@ -1,0 +1,201 @@
+// Checks for result-handling.coax and result-flow.coax that the checker mutation
+// gate found unchecked (#12638): each one fails for a mutant that survived every
+// other check. A part of the checker: lib/compiler/checker.coax loads it.
+
+// result-handling.coax
+#test "R3 handling: the Result inventory counts only Result locals, from any statement node and every switch arm" {
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=15,type_count=17}];words:[4]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],state=rs[..]},state=cs[..]};#assert RF_init(f.flow);
+ nodes[1]=CK_Node.{kind=CK_Tag.stmt_var,type=16};nodes[2]=CK_Node.{kind=CK_Tag.stmt_var,type=11};
+ nodes[3]=CK_Node.{kind=CK_Tag.stmt_switch,head=4};nodes[4]=CK_Node.{kind=CK_Tag.switch_case,b=6,next=5};nodes[5]=CK_Node.{kind=CK_Tag.switch_case,b=7};
+ nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=8};nodes[7]=CK_Node.{kind=CK_Tag.stmt_block,head=9};nodes[8]=nodes[1];nodes[9]=nodes[1];
+ CF_collect(f,1,0);#assert cs[0].collected==1;
+ CF_collect(f,2,0);#assert cs[0].collected==1;
+ CF_collect(f,3,0);#assert cs[0].collected==3 && CF_ok(f) && ck[0].depth==0;
+}
+#forall "R3 handling: every operand and arm is read, also when no Result local takes a snapshot slot" pick:0..<10 {
+ // Node 7 produces a Result that nothing handles. pick 0: an or-else default;
+ // 1: an ifx condition; 2: an array element; 3: an assigned value; 4: an if
+ // condition; 5: the then arm of an if; 6: the else arm after an empty then arm;
+ // 7: the left operand of a short circuit; 8: a slice bound; 9: an assignment target
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=15,type_count=17}];words:[4]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],state=rs[..]},state=cs[..]};#assert RF_init(f.flow);
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_call,type=16};nodes[7]=CK_Node.{kind=CK_Tag.expr_call,type=16,loc=CK_Loc.{line=203,column=5}};nodes[8]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ nodes[9]=CK_Node.{kind=CK_Tag.stmt_block};nodes[10]=CK_Node.{kind=CK_Tag.stmt_block,head=11};nodes[11]=CK_Node.{kind=CK_Tag.stmt_expr,a=7};nodes[12]=CK_Node.{kind=CK_Tag.expr_bool,type=2};
+ if pick==0 {nodes[5]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=6,b=7};}
+ if pick==1 {nodes[5]=CK_Node.{kind=CK_Tag.expr_ifx,type=11,a=7,b=8,c=8};}
+ if pick==2 {nodes[5]=CK_Node.{kind=CK_Tag.expr_array,type=11,head=7};}
+ if pick==3 {nodes[5]=CK_Node.{kind=CK_Tag.stmt_assign,c=8,a=7};}
+ if pick==4 {nodes[5]=CK_Node.{kind=CK_Tag.stmt_if,a=7,c=9};}
+ if pick==5 {nodes[5]=CK_Node.{kind=CK_Tag.stmt_if,a=12,c=10,d=9};}
+ if pick==6 {nodes[5]=CK_Node.{kind=CK_Tag.stmt_if,a=12,c=9,d=10};}
+ if pick==7 {nodes[5]=CK_Node.{kind=CK_Tag.expr_binary,type=2,op=50,a=7,b=12};}
+ if pick==8 {nodes[5]=CK_Node.{kind=CK_Tag.expr_slice,type=11,c=7};}
+ if pick==9 {nodes[5]=CK_Node.{kind=CK_Tag.stmt_assign,c=7,a=8};}
+ if pick<3 || pick==7 || pick==8 {CF_expr(f,5,false);}else {CF_stmt(f,5);}
+ #assert !ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0907" && errors[0].loc.line==203 && ck[0].depth==0;
+}
+#test "R3 handling: a Result name with no registered obligation is refused" {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=17}];words:[8]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=4,loc=CK_Loc.{line=202,column=3}};
+ CF_expr(f,5,true);#assert !ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0907" && errors[0].loc.line==202 && RF_get(f.flow,0)==1;
+}
+#test "R3 handling: a Result declared at a defer's own scope may be consumed in it" {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=17}];words:[8]int;rs:[1]RF_State;cs:=[1]CF_State.[CF_State.{depth=1,defer_scope=1}];
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,1) && RF_set(f.flow,0,1);
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};
+ CF_expr(f,5,true);#assert CF_ok(f) && RF_get(f.flow,0)==2 && ck[0].depth==0;
+}
+#test "R3 handling: the left arm of a short circuit and of an or-else default is empty" {
+ nodes:[12]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=11,type_count=17}];words:[4]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],state=rs[..]},state=cs[..]};#assert RF_init(f.flow);
+ nodes[1]=CK_Node.{kind=CK_Tag.expr_call,type=16,loc=CK_Loc.{line=204,column=3}};nodes[5]=CK_Node.{kind=CK_Tag.expr_binary,type=2,op=50,a=6,b=6};nodes[6]=CK_Node.{kind=CK_Tag.expr_bool,type=2};
+ CF_expr(f,5,false);#assert CF_ok(f) && ck[0].depth==0;
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=7,b=8};nodes[7]=CK_Node.{kind=CK_Tag.expr_call,type=16};nodes[8]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ CF_expr(f,5,false);#assert CF_ok(f) && ck[0].depth==0;
+}
+#test "R3 handling: each call argument takes its own parameter's transfer, and the pending-argument mark ends with the call" {
+ nodes:[20]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=19,type_count=17}];words:[8]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[14]=CK_Node.{kind=CK_Tag.proc,type=11,head=15};nodes[15]=CK_Node.{kind=CK_Tag.param,type=11,next=16};nodes[16]=CK_Node.{kind=CK_Tag.param,type=16};
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_call,type=11,proc=14,head=6};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11,next=7};nodes[7]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};
+ CF_expr(f,5,false);#assert CF_ok(f) && RF_get(f.flow,0)==2 && !cs[0].arguments && ck[0].depth==0;
+}
+#test "R3 handling: a switch arm after a returning arm continues alive" {
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=15,type_count=17}];words:[4]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],state=rs[..]},state=cs[..]};#assert RF_init(f.flow);
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_switch,a=6,head=7};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[7]=CK_Node.{kind=CK_Tag.switch_case,b=9,next=8};nodes[8]=CK_Node.{kind=CK_Tag.switch_case,b=10};
+ nodes[9]=CK_Node.{kind=CK_Tag.stmt_return};nodes[10]=CK_Node.{kind=CK_Tag.stmt_block};
+ CF_stmt(f,5);#assert CF_ok(f) && cs[0].alive && ck[0].depth==0;
+}
+#forall "R3 handling: loop and defer bodies may consume a Result of their own scope, and a loop continues alive" mode:0..<4 {
+ // mode 0: a while condition; 1: a range body; 2: a defer body; 3: a while whose body returns
+ nodes:[20]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=19,type_count=17}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,1) && RF_set(f.flow,0,1);
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_bool,type=2};nodes[10]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=11,b=12};nodes[11]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};nodes[12]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ nodes[13]=CK_Node.{kind=CK_Tag.stmt_block};nodes[14]=CK_Node.{kind=CK_Tag.stmt_expr,a=10};nodes[15]=CK_Node.{kind=CK_Tag.stmt_return};
+ if mode==0 {nodes[5]=CK_Node.{kind=CK_Tag.stmt_while,a=10,c=13};}
+ if mode==1 {nodes[5]=CK_Node.{kind=CK_Tag.stmt_range,a=12,b=12,c=14};}
+ if mode==2 {nodes[5]=CK_Node.{kind=CK_Tag.stmt_defer,c=14};}
+ if mode==3 {nodes[5]=CK_Node.{kind=CK_Tag.stmt_while,a=6,c=15};#assert RF_set(f.flow,0,2);}
+ CF_stmt(f,5);#assert CF_ok(f) && cs[0].alive && cs[0].loop_scope==0 && cs[0].defer_scope==0 && rs[0].top==3 && ck[0].depth==0;
+ if mode==0 || mode==2 {#assert RF_get(f.flow,0)==2;}
+}
+#forall "R3 handling: a procedure's body locals are scoped inside it, and a parameter left pending is reported at its end" mode:0..<3 {
+ // mode 0: a Result parameter the body never handles; 1: a body local consumed by a defer;
+ // 2: a returned parameter, with workspace for exactly one obligation and no snapshot
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;work:[64]int;state:=[1]CK_State.[CK_State.{used=15,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=ifx mode==2 then work[0..<3] else work[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=4,loc=CK_Loc.{line=205,column=1}};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block};
+ if mode==1 {
+  nodes[2].head=0;nodes[4].head=5;nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=16,a=6,next=7};nodes[6]=CK_Node.{kind=CK_Tag.expr_call,type=16};nodes[7]=CK_Node.{kind=CK_Tag.stmt_defer,c=8};
+  nodes[8]=CK_Node.{kind=CK_Tag.stmt_expr,a=9};nodes[9]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=10,b=11};nodes[10]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=5,loc=CK_Loc.{line=206,column=3}};nodes[11]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ }
+ if mode==2 {nodes[2].type=16;nodes[4].head=5;nodes[5]=CK_Node.{kind=CK_Tag.stmt_return,a=6};nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};}
+ CK_result_proc(c,2);
+ if mode==2 {#assert !state[0].fatal && state[0].error_count==0 && state[0].depth==0;return;}
+ want:=ifx mode==0 then "E0907" else "E0909";
+ #assert !state[0].fatal && state[0].error_count==1 && errors[0].code==want && errors[0].loc.line==205+mode && state[0].depth==0;
+}
+#forall "R3 handling: Result handling checks concrete procedures, checks and every instance, and skips generic ones and other declarations" mode:0..<6 {
+ // mode 0: a generic procedure; 1: a check; 2: a generic instance; 3: a clean instance chained to one with a pending parameter;
+ // 4, 5: a declaration and an instance-chain entry that are not procedures, though their lists hold a Result
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;work:[64]int;state:=[1]CK_State.[CK_State.{used=15,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block};
+ pending:=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=4,loc=CK_Loc.{line=207,column=1}};
+ if mode==0 {nodes[2]=pending;nodes[2].generic=true;}
+ if mode==1 {nodes[2]=CK_Node.{kind=CK_Tag.check,a=5};nodes[5]=pending;}
+ if mode==2 {nodes[1].head=0;state[0].instances=2;nodes[2]=pending;nodes[2].generic=true;}
+ if mode==3 {nodes[1].head=0;state[0].instances=2;nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,b=4,chain=5};nodes[5]=pending;}
+ if mode==4 {nodes[2]=CK_Node.{kind=CK_Tag.struct_,head=3};}
+ if mode==5 {nodes[1].head=0;state[0].instances=2;nodes[2]=CK_Node.{kind=CK_Tag.struct_,head=3};}
+ CK_results(c);
+ if mode==0 || mode>=2 && mode!=3 {#assert !state[0].fatal && state[0].error_count==0;}
+ else {#assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0907" && errors[0].loc.line==207;}
+}
+#test "R3 handling: a try transfers its operand before leaving" {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=17}];words:[8]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_try,type=11,a=6};nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};
+ CF_expr(f,5,false);#assert CF_ok(f) && RF_get(f.flow,0)==2 && ck[0].depth==0;
+}
+#forall "R3 handling: a block reports its own pending Results and retires its scope; a break reports the loop's" mode:0..<3 {
+ // mode 0: a block leaves its pending Result; 1: a block whose two Results were handled; 2: a break leaves the loop's pending Result
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=17}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=2,state=rs[..]},state=cs[..]};
+ #assert RF_init(f.flow) && RF_register(f.flow,0,3,1) && RF_register(f.flow,1,4,1) && RF_set(f.flow,0,ifx mode==1 then 2 else 1) && RF_set(f.flow,1,2);
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=209,column=3}};
+ if mode==2 {cs[0].loop_scope=1;cs[0].depth=1;nodes[5]=CK_Node.{kind=CK_Tag.stmt_break,loc=CK_Loc.{line=209,column=3}};}
+ CF_stmt(f,5);
+ if mode==1 {#assert CF_ok(f) && RF_get(f.flow,0)==0 && RF_get(f.flow,1)==0 && cs[0].depth==0;}
+ else {#assert !ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0907" && errors[0].loc.line==209;}
+ #assert ck[0].depth==0;
+}
+#test "R3 handling: switch arms that continue must agree about each Result" {
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=15,type_count=17}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_switch,a=6,head=7,loc=CK_Loc.{line=210,column=3}};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[7]=CK_Node.{kind=CK_Tag.switch_case,b=9,next=8};nodes[8]=CK_Node.{kind=CK_Tag.switch_case,b=10};
+ nodes[9]=CK_Node.{kind=CK_Tag.stmt_expr,a=11};nodes[10]=CK_Node.{kind=CK_Tag.stmt_block};nodes[11]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=12,b=13};nodes[12]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};nodes[13]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ CF_stmt(f,5);#assert !ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0909" && errors[0].loc.line==210 && ck[0].depth==0;
+}
+#forall "R3 handling: a Result-free switch stays alive when its work ends at the second arm's join" exhausted:bool {
+ // Eight flow ticks pass: the switch, its subject, the base snapshot, per arm
+ // a restore and a block, and the first arm's join point. The ninth is the
+ // second arm's join, the eleventh the last.
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=15,type_count=17}];words:[4]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],state=rs[..]},state=cs[..]};#assert RF_init(f.flow);rs[0].work=1048576-(ifx exhausted then 8 else 11);
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_switch,a=6,head=7};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[7]=CK_Node.{kind=CK_Tag.switch_case,b=9,next=8};nodes[8]=CK_Node.{kind=CK_Tag.switch_case,b=9};nodes[9]=CK_Node.{kind=CK_Tag.stmt_block};
+ CF_stmt(f,5);#assert cs[0].alive && rs[0].reason==(ifx exhausted then RF_Reason.work else RF_Reason.ok) && rs[0].work==1048576 && !ck[0].fatal && ck[0].error_count==0;
+}
+
+// result-flow.coax
+#test "R3 flow: the first refusal reason stays, and only a single-state context initializes" {
+ words:[8]int;state:[1]RF_State;c:=RF_Context.{words=words[..],count=1,state=state[..]};
+ #assert RF_init(c);state[0].reason=RF_Reason.capacity;#assert !RF_fail(c,RF_Reason.invalid) && state[0].reason==RF_Reason.capacity;
+ two:[2]RF_State;d:=RF_Context.{words=words[..],count=1,state=two[..]};#assert !RF_init(d) && two[0].reason==RF_Reason.ok;
+}
+#test "R3 flow: initialization clears the old state and every word it owns, up to a full workspace" {
+ words:=[7]int.[9,9,9,9,9,9,9];state:=[1]RF_State.[RF_State.{top=5,work=4,reason=RF_Reason.invalid}];c:=RF_Context.{words=words[0..<6],count=2,state=state[..]};
+ #assert RF_init(c) && state[0].reason==RF_Reason.ok && state[0].work==0 && state[0].top==6;
+ for i:0..<6 {#assert words[i]==0;}#assert words[6]==9;
+}
+#test "R3 flow: registration takes ids from 2, refuses a used slot and a repeated id" {
+ words:[8]int;state:[1]RF_State;c:=RF_Context.{words=words[..],count=2,state=state[..]};
+ #assert RF_init(c) && RF_register(c,1,2,0) && RF_find(c,2)==1;
+ #assert !RF_register(c,1,9,0) && state[0].reason==RF_Reason.invalid && words[3]==2;
+ #assert RF_init(c) && RF_register(c,0,7,0) && !RF_register(c,1,7,0) && words[3]==0;
+ #assert RF_init(c) && RF_register(c,1,7,0) && !RF_register(c,0,7,0) && words[0]==0;
+}
+#test "R3 flow: a refused read returns zero" {
+ words:[8]int;state:[1]RF_State;c:=RF_Context.{words=words[..],count=2,state=state[..]};
+ #assert RF_init(c) && RF_get(c,5)==0 && RF_scope(c,5)==0 && state[0].reason==RF_Reason.invalid;
+ #assert RF_init(c) && RF_register(c,1,7,4);words[4]=3;#assert RF_get(c,1)==0 && state[0].reason==RF_Reason.invalid;
+ #assert RF_init(c);words[4]= -1;#assert RF_get(c,1)==0 && state[0].reason==RF_Reason.invalid;
+}
+#forall "R3 flow: snapshots refuse exhausted work, bad bases and bad saved values" mode:0..<6 {
+ // mode 0: save with no work left; 1: save over an invalid state word; 2: snapshot with no work left;
+ // 3: restore of an invalid saved value; 4: equal and drop at a bad base; 5: equal compares slot by slot
+ words:[16]int;state:[1]RF_State;c:=RF_Context.{words=words[..],count=2,state=state[..]};
+ #assert RF_init(c) && RF_set(c,0,1) && RF_set(c,1,2);
+ if mode==0 {state[0].work=1048576;#assert RF_save(c)== -1 && state[0].top==6;}
+ if mode==1 {words[4]=3;#assert RF_save(c)== -1 && state[0].top==6;}
+ if mode==2 {#assert RF_save(c)==6;state[0].work=1048576;#assert !RF_snapshot(c,6);}
+ if mode==3 {#assert RF_save(c)==6;words[7]=3;#assert !RF_restore(c,6);}
+ if mode==4 {#assert RF_save(c)==6 && !RF_equal(c,5);#assert RF_init(c) && RF_save(c)==6 && !RF_drop(c,9) && state[0].top==8;}
+ if mode==5 {#assert RF_save(c)==6 && RF_equal(c,6) && RF_set(c,1,1) && !RF_equal(c,6);}
+ if mode<5 {#assert state[0].reason!=RF_Reason.ok;}
+}

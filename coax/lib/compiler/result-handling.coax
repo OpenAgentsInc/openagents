@@ -184,10 +184,12 @@ CF_stmt :: (f:CF_Context,id:int) {
 }
 CK_result_proc :: (c:CK_Context,proc:int) {
  rs:[1]RF_State;state:[1]CF_State;f:=CF_Context.{c=c,flow=RF_Context.{words=c.result_work,state=rs[..]},state=state[..]};p:=c.nodes[proc];at:=p.head;
- while at!=0 {if CF_result(c,c.nodes[at].type) {state[0].collected+=1;}at=c.nodes[at].next;}CF_collect(f,p.b,0);count:=state[0].collected;f.flow.count=count;
+ // Both passes walk the body at the same depth; the first, with no flow
+ // slots yet, only counts.
+ body:=0;while at!=0 {if CF_result(c,c.nodes[at].type) {state[0].collected+=1;}at=c.nodes[at].next;}CF_collect(f,p.b,body);count:=state[0].collected;f.flow.count=count;
  if !RF_init(f.flow) {CK_resource(c,p.loc);return;}state[0].collected=0;at=p.head;
  while at!=0 {if CF_result(c,c.nodes[at].type) {index:=state[0].collected;ignored:=RF_register(f.flow,index,at,0);ignored=RF_set(f.flow,index,1);state[0].collected+=1;}at=c.nodes[at].next;}
- CF_collect(f,p.b,0);CF_stmt(f,p.b);if state[0].alive {CF_exit(f,0,p.loc);}if rs[0].reason!=RF_Reason.ok && c.state[0].error_count==0 {CK_resource(c,p.loc);}
+ CF_collect(f,p.b,body);CF_stmt(f,p.b);if state[0].alive {CF_exit(f,0,p.loc);}if rs[0].reason!=RF_Reason.ok && c.state[0].error_count==0 {CK_resource(c,p.loc);}
 }
 CK_results :: (c:CK_Context) {
  if !CF_has_results(c) {return;}

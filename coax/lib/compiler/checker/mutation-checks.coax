@@ -688,6 +688,23 @@
  CR_leaf(r,2,10,17,BS_Path.{});
  #assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && cr[0].leaves==3;
 }
+#forall "a retained leaf write whose value already has an error asks nothing of its target" plain:bool {
+ // f(dst:[][]int, src:[]int) { dst[0] = ifx true then g() else src; } where g returns a slice of
+ // its own local array (E0383). plain: dst[0] = src, which records the effect src -> dst.
+ // With the error, the value's three query rows are all: the target's address is not asked.
+ nodes:[64]CK_Node;types:[24]CK_Type;errors:[8]CK_Error;state:=[1]CK_State.[CK_State.{used=63,type_count=19}];work:[1]CB_State;queries:[256]CK_BorrowQuery;origins:[2048]BS_Origin;effects:[128]CK_RetainEffect;reports:[8]CK_RetainObservation;cr:[1]CR_State;for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=12,length=2};types[18]=CK_Type.{kind=CK_Kind.view,elem=16};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=16,b=4,borrow_returns=5};nodes[3]=CK_Node.{kind=CK_Tag.stmt_var,type=17,borrow_owner=2};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=5};nodes[5]=CK_Node.{kind=CK_Tag.stmt_return,a=6};
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=7,loc=CK_Loc.{line=108,column=4}};nodes[7]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=3};
+ nodes[20]=CK_Node.{kind=CK_Tag.proc,type=1,head=21,b=23,borrow_writes=30};nodes[21]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=20,next=22};nodes[22]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=20};nodes[23].kind=CK_Tag.stmt_block;
+ nodes[31]=CK_Node.{kind=CK_Tag.expr_index,type=16,a=32,b=33};nodes[32]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=21};nodes[33]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ nodes[34]=CK_Node.{kind=CK_Tag.expr_ifx,type=16,a=35,b=36,c=37};nodes[35]=CK_Node.{kind=CK_Tag.expr_bool,type=2};nodes[36]=CK_Node.{kind=CK_Tag.expr_call,type=16,proc=2};nodes[37]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=22};
+ nodes[30]=CK_Node.{kind=CK_Tag.stmt_assign,a=ifx plain then 37 else 34,c=31,borrow_owner=20,loc=CK_Loc.{line=109,column=3}};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=cr[..]};
+ CR_leaf(r,20,30,16,BS_Path.{});
+ if plain {#assert !state[0].fatal && state[0].error_count==0 && cr[0].effects==1;}
+ else {#assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==108 && cr[0].effects==0 && work[0].queries==3;}
+}
 #test "a callee summary of exactly the maximum 256 effects is applied" #steps 80000000 {
  nodes:[64]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=63,type_count=18}];queries:[1024]CK_BorrowQuery;origins:[8192]BS_Origin;work:[1]CB_State;effects:[512]CK_RetainEffect;reports:[4]CK_RetainObservation;rs:=[1]CR_State.[CR_State.{effects=256}];for i:0..<16 {types[i]=CK_builtin(i);}
  types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=256};types[17]=CK_Type.{kind=CK_Kind.view,elem=16};
@@ -712,6 +729,54 @@
  c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=rs[..]};
  CR_apply(r,2,30,false);
  #assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==101 && nodes[3].borrow_query==0;
+}
+
+// checker/b2-r2-checks.coax: its shared fixture. The checks that use it read
+// only some of what it builds, so this one holds it to the whole graph.
+#test "the B2 fixture builds exactly its documented graph, and reowning moves the caller and its locals" {
+ nodes:[96]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:[1]CK_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};CB2_fixture(c);
+ for i:0..<16 {#assert types[i].kind==CK_builtin(i).kind && types[i].name==CK_builtin(i).name && types[i].size==CK_builtin(i).size;}
+ #assert state[0].used==95 && state[0].type_count==21;
+ #assert types[16].kind==CK_Kind.view && types[16].elem==12;
+ #assert types[17].kind==CK_Kind.struct_ && types[17].decl==34;
+ #assert types[18].kind==CK_Kind.array && types[18].elem==17 && types[18].length==1;
+ #assert types[19].kind==CK_Kind.view && types[19].elem==17;
+ #assert types[20].kind==CK_Kind.array && types[20].elem==12 && types[20].length==4;
+ #assert nodes[1].kind==CK_Tag.file && nodes[1].head==2;
+ #assert nodes[2].kind==CK_Tag.proc && nodes[2].type==16 && nodes[2].head==3 && nodes[2].b==51 && nodes[2].borrow_calls==22 && nodes[2].borrow_returns==10;
+ #assert nodes[3].kind==CK_Tag.param && nodes[3].type==16 && nodes[3].next==4 && nodes[3].borrow_owner==2;
+ #assert nodes[4].kind==CK_Tag.param && nodes[4].type==16 && nodes[4].borrow_owner==2;
+ #assert nodes[8].kind==CK_Tag.stmt_var && nodes[8].type==18 && nodes[8].borrow_owner==2;
+ #assert nodes[9].kind==CK_Tag.stmt_var && nodes[9].type==20 && nodes[9].borrow_owner==2;
+ #assert nodes[10].kind==CK_Tag.stmt_return && nodes[10].a==11;
+ #assert nodes[11].kind==CK_Tag.expr_field && nodes[11].type==16 && nodes[11].a==12 && nodes[11].field_index==0 && nodes[11].loc.line==90 && nodes[11].loc.column==5;
+ #assert nodes[12].kind==CK_Tag.expr_index && nodes[12].type==17 && nodes[12].a==24 && nodes[12].b==45;
+ #assert nodes[22].kind==CK_Tag.expr_call && nodes[22].type==1 && nodes[22].proc==30 && nodes[22].head==23 && nodes[22].borrow_owner==2;
+ #assert nodes[23].kind==CK_Tag.expr_slice && nodes[23].type==19 && nodes[23].a==24 && nodes[23].next==25;
+ #assert nodes[24].kind==CK_Tag.expr_ident && nodes[24].type==18 && nodes[24].borrow_binding==8;
+ #assert nodes[25].kind==CK_Tag.expr_ident && nodes[25].type==16 && nodes[25].borrow_binding==3 && nodes[25].next==26;
+ #assert nodes[26].kind==CK_Tag.expr_slice && nodes[26].type==16 && nodes[26].a==27;
+ #assert nodes[27].kind==CK_Tag.expr_ident && nodes[27].type==20 && nodes[27].borrow_binding==9;
+ #assert nodes[30].kind==CK_Tag.proc && nodes[30].type==1 && nodes[30].head==31 && nodes[30].b==50 && nodes[30].borrow_writes==40;
+ #assert nodes[31].kind==CK_Tag.param && nodes[31].type==19 && nodes[31].next==32 && nodes[31].borrow_owner==30 && nodes[31].borrow_writes==40;
+ #assert nodes[32].kind==CK_Tag.param && nodes[32].type==16 && nodes[32].next==33 && nodes[32].borrow_owner==30;
+ #assert nodes[33].kind==CK_Tag.param && nodes[33].type==16 && nodes[33].borrow_owner==30;
+ #assert nodes[34].kind==CK_Tag.struct_ && nodes[34].head==35;
+ #assert nodes[35].kind==CK_Tag.field && nodes[35].type==16 && nodes[35].next==36;
+ #assert nodes[36].kind==CK_Tag.field && nodes[36].type==16;
+ #assert nodes[40].kind==CK_Tag.stmt_assign && nodes[40].c==42 && nodes[40].a==46 && nodes[40].borrow_owner==30;
+ #assert nodes[42].kind==CK_Tag.expr_field && nodes[42].type==16 && nodes[42].a==43 && nodes[42].field_index==0;
+ #assert nodes[43].kind==CK_Tag.expr_index && nodes[43].type==17 && nodes[43].a==44 && nodes[43].b==45;
+ #assert nodes[44].kind==CK_Tag.expr_ident && nodes[44].type==19 && nodes[44].borrow_binding==31;
+ #assert nodes[45].kind==CK_Tag.expr_int && nodes[45].type==11;
+ #assert nodes[46].kind==CK_Tag.expr_ident && nodes[46].type==16 && nodes[46].borrow_binding==32 && nodes[46].loc.line==81 && nodes[46].loc.column==24;
+ #assert nodes[49].kind==CK_Tag.expr_ident && nodes[49].type==16 && nodes[49].borrow_binding==33;
+ #assert nodes[50].kind==CK_Tag.stmt_block;
+ #assert nodes[51].kind==CK_Tag.stmt_block;
+ CB2_reowner(c,60);
+ #assert nodes[60].kind==CK_Tag.proc && nodes[60].head==3 && nodes[60].borrow_calls==22 && nodes[60].borrow_returns==10 && nodes[1].head==60 && nodes[22].borrow_owner==60;
+ #assert nodes[3].borrow_owner==60 && nodes[4].borrow_owner==60 && nodes[8].borrow_owner==60 && nodes[9].borrow_owner==60 && nodes[31].borrow_owner==30;
 }
 
 // query-projection-cache.coax

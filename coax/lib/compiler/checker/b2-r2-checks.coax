@@ -4,8 +4,10 @@
 // Small checked-graph oracle for generic write-to-return composition. Distinct
 // fields and unrelated local backing prevent an all-arguments approximation.
 CB2_fixture :: (c:CK_Context) {
- c.state[0]=CK_State.{used=95,type_count=21};for i:0..<16 {c.types[i]=CK_builtin(i);}
+ c.state[0]=CK_State.{used=95,type_count=21};
  c.types[16]=CK_Type.{kind=CK_Kind.view,elem=12};c.types[17]=CK_Type.{kind=CK_Kind.struct_,decl=34};c.types[18]=CK_Type.{kind=CK_Kind.array,elem=17,length=1};c.types[19]=CK_Type.{kind=CK_Kind.view,elem=17};c.types[20]=CK_Type.{kind=CK_Kind.array,elem=12,length=4};
+ // The builtins go in after the program types, so a loop past them would show.
+ for i:0..<16 {c.types[i]=CK_builtin(i);}
  c.nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};c.nodes[2]=CK_Node.{kind=CK_Tag.proc,type=16,head=3,b=51,borrow_calls=22,borrow_returns=10};c.nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,next=4,borrow_owner=2};c.nodes[4]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};
  c.nodes[8]=CK_Node.{kind=CK_Tag.stmt_var,type=18,borrow_owner=2};c.nodes[9]=CK_Node.{kind=CK_Tag.stmt_var,type=20,borrow_owner=2};c.nodes[10]=CK_Node.{kind=CK_Tag.stmt_return,a=11};c.nodes[11]=CK_Node.{kind=CK_Tag.expr_field,type=16,a=12,field_index=0,loc=CK_Loc.{line=90,column=5}};c.nodes[12]=CK_Node.{kind=CK_Tag.expr_index,type=17,a=24,b=45};
  c.nodes[22]=CK_Node.{kind=CK_Tag.expr_call,type=1,proc=30,head=23,borrow_owner=2};c.nodes[23]=CK_Node.{kind=CK_Tag.expr_slice,type=19,a=24,next=25};c.nodes[24]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=8};c.nodes[25]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3,next=26};c.nodes[26]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=27};c.nodes[27]=CK_Node.{kind=CK_Tag.expr_ident,type=20,borrow_binding=9};
