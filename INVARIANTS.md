@@ -1802,8 +1802,8 @@ contract obligations; callback provenance is trusted producer metadata, not
 sandboxing or attestation. See the focused `operator-registry` gate and
 [chapter 40 evidence](docs/verification/psionic-ch26c-2026-10-29.md) for actual
 CPU/CUDA/Metal inference, finite-difference VJPs, compiled MLP, batching and
-scalar training. `operator-registry.coax` is gated by root-only mutation with
-zero survivors (#12698).
+scalar training. `operator-registry.coax` and `examples/operators/squared-relu.coax` are gated by
+root-only mutation with zero survivors (#12698).
 
 ## Psionic symbolic templates share code and specialize guarded plans
 
@@ -1879,7 +1879,8 @@ instrumented by host sanitizers. Metal uses the qualified release emission;
 the failed checked candidate is recorded in
 [chapter 38 verification](docs/verification/psionic-ch26a-2026-10-29.md).
 `tensor-ir.coax` and `tensor-ir-host.coax` are gated by root-only mutation with
-zero survivors (#12698); `tensor-ir-kernels.coax` is not claimed.
+zero survivors, and `tensor-ir-kernels.coax` has zero under the host's checks
+(#12698). Metal requalification of the changed kernels is an owner action.
 Automatic graph extraction, dynamic shapes, narrow dtype IR execution, direct
 `PtdTensor` binding, fusion and differentiation remain separate work.
 

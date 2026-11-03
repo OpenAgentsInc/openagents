@@ -21,6 +21,28 @@ microphone was opened. To accept it:
       for it), try `--dictation-key ctrl-g` and note which terminal it was.
 - [ ] On the Mac this also needs the `dictate-mac.m` build in the
       `openagents dictate` item below.
+## Tensor IR kernels: requalify Metal on the Mac (#12698, 2026-11-03)
+
+`tik_run` in `psionic/lib/tensor-ir-kernels.coax` and `registered_squared`
+in `psionic/examples/operators/squared-relu.coax` changed so that no mutant
+can survive: loops run to the rank instead of to 4 with a guard, matmul reads
+rank-two addresses, and flags that the final non-finite test already caught
+are gone. On Linux the outputs are bit-identical: the 12 graph cases match
+word for word on CUDA (RTX 4080) and the CPU, in debug and release, plain and
+ASan/UBSan; the registered-operator run on CUDA prints the same weight and
+loss; and 4,000 random programs with infinities, NaNs and the largest floats
+give identical words, flags and outputs from the old and new kernels.
+
+Metal was not run. The release Metal emission is now
+`3c74be010b0f4fd74e1f092e5bc52220d2a662b0e4d46d37dba99088bf228677`
+(squared-relu: `8af2b3f1bfb91ddd8dd66237d16e5dce515f09d91bdd3b5f9cf642d5d12ffc14`).
+Metal compiles with fast math by default, so the non-finite cases matter
+most there. On the Mac, run:
+
+    psionic/tests/check_tensor_ir.sh --metal
+    psionic/tests/check_operator_registry.sh --metal
+
+Both should pass unchanged. If either fails, comment on #12698.
 
 ## Dictation vocabulary and code text in Coder for Mac (#12670, 2026-11-03)
 

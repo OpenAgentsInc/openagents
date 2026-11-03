@@ -75,7 +75,7 @@ runtime dispatch. The first computes `gain * max(x,0)^2`, and its input VJP is
 <!-- source: psionic/examples/operators/squared-relu.coax custom -->
 ```jai
 registered_squared :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {
-    c:[4]int;for axis:0..<4 {if axis<m[3] {c[axis]=tik_coord(m,item,axis);}}
+    c:[4]int;for axis:0..<m[3] {c[axis]=tik_coord(m,item,axis);}
     x:=tik_read(m,8,c[0],c[1],c[2],c[3],input,work);positive:f32=0;if x>0 {positive=x;}
     value:=gain*(positive*positive);
     if m[48]==1 {dy:=tik_read(m,19,c[0],c[1],c[2],c[3],input,work);value=(2.0f32*gain*positive)*dy;}

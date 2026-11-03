@@ -10,9 +10,36 @@
     registered_linear(2,m[..],2,x[..],work[..],stage[..],flags[..]);#assert work[2]== -1;
     registered_linear_reference(2,m[..],2,x[..],work[..],stage[..],flags[..]);#assert work[2]== -1;
 }
+#test "rank-three items, signed zero, overflow and the f32 limit in every entry point" {
+    // x and dy are [2,3,2] inputs at 0 and 12, row-major.
+    m:[64]int;m[3]=3;m[4]=2;m[5]=3;m[6]=2;m[10]=3;m[11]=2;m[12]=3;m[13]=2;m[15]=6;m[16]=2;m[17]=1;m[20]=12;m[21]=3;m[22]=2;m[23]=3;m[24]=2;m[26]=6;m[27]=2;m[28]=1;m[2]=12;
+    x:=[24]f32.[-2,0,3,1,2,-0.5,-0.0f32,4,0.5,-1,1.5,2.5,1,2,3,4,5,6,7,8,9,10,11,12];
+    forward:=[12]f32.[0,0,18,2,8,0,0,32,0.5,0,4.5,12.5];backward:=[12]f32.[0,0,36,16,40,0,0,128,18,0,66,120];
+    for mode:0..<2 {m[48]=mode;want:=forward;if mode==1 {want=backward;}
+        a:[12]f32;b:[12]f32;fa:[24]u8;fb:[24]u8;for k:0..<24 {fa[k]=9;fb[k]=9;}
+        for i:0..<12 {registered_squared(i,m[..],2,x[..],a[..],a[..],fa[..]);registered_squared_reference(i,m[..],2,x[..],b[..],b[..],fb[..]);}
+        for i:0..<12 {#assert f32_bits(a[i])==f32_bits(want[i]) && f32_bits(b[i])==f32_bits(want[i]) && fa[12+i]==0 && fb[12+i]==0;}
+        l:[12]f32;r:[12]f32;fl:[24]u8;fr:[24]u8;for k:0..<24 {fl[k]=9;fr[k]=9;}
+        for i:0..<12 {registered_linear(i,m[..],2,x[..],l[..],l[..],fl[..]);registered_linear_reference(i,m[..],2,x[..],r[..],r[..],fr[..]);}
+        for i:0..<12 {#assert l[i]==2*x[12*mode+i] && r[i]==l[i] && fl[12+i]==0 && fr[12+i]==0;}}
+    // The largest finite results pass; one step beyond is flagged and zeroed.
+    top:=f32_from_bits(0x7f7fffff);one:[64]int;one[3]=1;one[4]=1;one[10]=1;one[11]=1;one[15]=1;one[20]=1;one[21]=1;one[22]=1;one[26]=1;
+    v:=[2]f32.[1,-1];w:[1]f32;f:[1]u8;
+    registered_squared(0,one[..],top,v[..],w[..],w[..],f[..]);#assert w[0]==top && f[0]==0;
+    registered_squared_reference(0,one[..],top,v[..],w[..],w[..],f[..]);#assert w[0]==top && f[0]==0;
+    one[48]=1;half:=f32_from_bits(0x7effffff);
+    registered_squared_reference(0,one[..],half,v[..],w[..],w[..],f[..]);#assert w[0]== -top && f[0]==0;
+    registered_squared(0,one[..],half,v[..],w[..],w[..],f[..]);#assert w[0]== -top && f[0]==0;
+    one[48]=0;v[0]=2;
+    registered_squared(0,one[..],top,v[..],w[..],w[..],f[..]);#assert w[0]==0 && f[0]==2;
+    registered_squared_reference(0,one[..],top,v[..],w[..],w[..],f[..]);#assert w[0]==0 && f[0]==2;
+    one[48]=1;v[1]=-2;registered_squared_reference(0,one[..],top,v[..],w[..],w[..],f[..]);#assert w[0]==0 && f[0]==2;
+    one[48]=0;w[0]=5;registered_linear(0,one[..],top,v[..],w[..],w[..],f[..]);#assert w[0]==0 && f[0]==2;
+    nan:=top*2;nan=nan-nan;v[0]=nan;registered_squared(0,one[..],1,v[..],w[..],w[..],f[..]);#assert w[0]==0 && f[0]==2;
+}
 // book:begin custom
 registered_squared :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {
-    c:[4]int;for axis:0..<4 {if axis<m[3] {c[axis]=tik_coord(m,item,axis);}}
+    c:[4]int;for axis:0..<m[3] {c[axis]=tik_coord(m,item,axis);}
     x:=tik_read(m,8,c[0],c[1],c[2],c[3],input,work);positive:f32=0;if x>0 {positive=x;}
     value:=gain*(positive*positive);
     if m[48]==1 {dy:=tik_read(m,19,c[0],c[1],c[2],c[3],input,work);value=(2.0f32*gain*positive)*dy;}
@@ -20,10 +47,10 @@ registered_squared :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f3
 }
 // book:end custom
 registered_squared_reference :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {
-    c:[4]int;for axis:0..<4 {if axis<m[3] {c[axis]=tik_coord(m,item,axis);}}x:=tik_read(m,8,c[0],c[1],c[2],c[3],input,work);p:f64=0;if x>0 {p=f64(x);}value:=f64(gain)*p*p;
+    c:[4]int;for axis:0..<m[3] {c[axis]=tik_coord(m,item,axis);}x:=tik_read(m,8,c[0],c[1],c[2],c[3],input,work);p:f64=0;if x>0 {p=f64(x);}value:=f64(gain)*p*p;
     if m[48]==1 {value=2*f64(gain)*p*f64(tik_read(m,19,c[0],c[1],c[2],c[3],input,work));}flag:=0;if value>f64(f32_from_bits(0x7f7fffff)) || value< -f64(f32_from_bits(0x7f7fffff)) {flag=2;value=0;}work[m[1]+item]=f32(value);flags[m[2]+item]=cast(u8)flag;
 }
 registered_linear :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {
-    c:[4]int;for axis:0..<4 {if axis<m[3] {c[axis]=tik_coord(m,item,axis);}}at:=8;if m[48]==1 {at=19;}value:=gain*tik_read(m,at,c[0],c[1],c[2],c[3],input,work);flag:=0;if !tik_finite(value) {flag=2;value=0;}work[m[1]+item]=value;flags[m[2]+item]=cast(u8)flag;
+    c:[4]int;for axis:0..<m[3] {c[axis]=tik_coord(m,item,axis);}at:=8;if m[48]==1 {at=19;}value:=gain*tik_read(m,at,c[0],c[1],c[2],c[3],input,work);flag:=0;if !tik_finite(value) {flag=2;value=0;}work[m[1]+item]=value;flags[m[2]+item]=cast(u8)flag;
 }
 registered_linear_reference :: (item:int,m:[]int,gain:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {registered_linear(item,m,gain,input,work,out,flags);}

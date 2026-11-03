@@ -704,7 +704,9 @@ if [[ $tensor_ir == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_ir.sh
     "$coax" mutate psionic/lib/tensor-ir.coax --root-only --jobs "$jobs"
     "$coax" mutate psionic/lib/tensor-ir-host.coax --root-only --jobs "$jobs"
-    phase "tensor-ir-f32-v1 (focused gate; tensor-ir and tensor-ir-host root-only mutation)"
+    # The kernels' arithmetic is checked through the host's programs.
+    "$coax" mutate psionic/lib/tensor-ir-host.coax --unit psionic/lib/tensor-ir-kernels.coax --jobs "$jobs"
+    phase "tensor-ir-f32-v1 (focused gate; tensor-ir, tensor-ir-host and tensor-ir-kernels mutation)"
 fi
 
 if [[ $tensor_template == 1 ]]; then
@@ -715,7 +717,8 @@ fi
 if [[ $operator_registry == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_operator_registry.sh
     "$coax" mutate psionic/lib/operator-registry.coax --root-only --jobs "$jobs"
-    phase "operator-registry (focused gate; root-only mutation)"
+    "$coax" mutate psionic/examples/operators/squared-relu.coax --root-only --jobs "$jobs"
+    phase "operator-registry (focused gate; registry and squared-relu root-only mutation)"
 fi
 
 if [[ $gguf == 1 ]]; then
@@ -870,13 +873,13 @@ if [[ $tensor_device == 1 ]]; then
     echo "tensor-device-v1: focused gate; tensor-placement root-only mutation has zero survivors"
 fi
 if [[ $tensor_ir == 1 ]]; then
-    echo "tensor-ir-f32-v1: focused gate; tensor-ir and tensor-ir-host root-only mutation have zero survivors (tensor-ir-kernels is not claimed)"
+    echo "tensor-ir-f32-v1: focused gate; tensor-ir and tensor-ir-host root-only mutation and tensor-ir-kernels under the host's checks have zero survivors"
 fi
 if [[ $tensor_template == 1 ]]; then
     echo "tensor-template: focused gate; full mutation runs not claimed"
 fi
 if [[ $operator_registry == 1 ]]; then
-    echo "operator-registry: focused gate; root-only mutation has zero survivors"
+    echo "operator-registry: focused gate; registry and squared-relu root-only mutation have zero survivors"
 fi
 if [[ $interchange == 1 ]]; then
     echo "interchange: focused gate; full mutation runs not claimed"
