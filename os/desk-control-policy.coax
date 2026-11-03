@@ -1,0 +1,33 @@
+// Connection and lifetime ownership of a bounded local input lease.
+#authority;
+ctrl_range :: (v: int, low: int, high: int) -> bool { return v >= low && v <= high; }
+ctrl_live :: (on: bool, owner: int, caller: int, revision: int, current: int, focused: bool, now: int, deadline: int) -> bool {
+  return on && owner == caller && revision == current && focused && now < deadline;
+}
+ctrl_window_slot :: (occupied: [] bool) -> int {
+  if occupied.count != 256 { return 0; }
+  for i: 1..<occupied.count { if !occupied[i] { return i; } }
+  return 0;
+}
+#test "window handles reuse only a free bounded slot" {
+  busy: [256] bool;
+  #assert ctrl_window_slot(busy[..]) == 1;
+  busy[1] = true; #assert ctrl_window_slot(busy[..]) == 2;
+  for i: 1..<256 { busy[i] = true; } #assert ctrl_window_slot(busy[..]) == 0;
+  busy[255] = false; #assert ctrl_window_slot(busy[..]) == 255;
+  #assert ctrl_window_slot(busy[0..<255]) == 0;
+}
+#test "integer bounds include exactly their endpoints" {
+  #assert ctrl_range(1, 1, 5000) && ctrl_range(5000, 1, 5000);
+  #assert !ctrl_range(0, 1, 5000) && !ctrl_range(5001, 1, 5000);
+  #assert ctrl_range(-2048, -2048, 2048) && ctrl_range(2048, -2048, 2048);
+}
+#test "only the live connection window lifetime focus and deadline admit input" {
+  #assert ctrl_live(true, 0, 0, 4, 4, true, 99, 100);
+  #assert !ctrl_live(false, 0, 0, 4, 4, true, 99, 100);
+  #assert !ctrl_live(true, 0, 1, 4, 4, true, 99, 100);
+  #assert !ctrl_live(true, 0, 0, 4, 5, true, 99, 100);
+  #assert !ctrl_live(true, 0, 0, 4, 4, false, 99, 100);
+  #assert !ctrl_live(true, 0, 0, 4, 4, true, 100, 100);
+  #assert !ctrl_live(true, 0, 0, 4, 4, true, 101, 100);
+}

@@ -1,0 +1,35 @@
+syntax = "proto3";
+package openagents.os.desk.v2;
+
+// Semantic schema for the local newline-JSON desk-control-v2 contract.
+// The transport is specified in docs/protocol/desk-control-v2.md; it is not protobuf JSON.
+message Request {
+  uint32 generation = 1; // exactly 2
+  string type = 2;
+  optional uint64 session = 3;
+  optional uint32 handle = 4;
+  optional uint64 revision = 5;
+  optional uint32 ms = 6;
+  optional uint32 code = 7;
+  optional bool down = 8;
+  optional int32 x = 9;
+  optional int32 y = 10;
+  optional int32 dx = 11;
+  optional int32 dy = 12;
+  optional int32 clicks = 13;
+  optional string text = 14;
+  optional string path = 15;
+}
+message Window {
+  uint32 handle = 1;
+  uint64 revision = 2;
+  string title = 3;
+  string app_class = 4;
+  int32 x = 5;
+  int32 y = 6;
+  uint32 width = 7;
+  uint32 height = 8;
+  uint32 content_width = 9;
+  uint32 content_height = 10;
+  bool focused = 11;
+}

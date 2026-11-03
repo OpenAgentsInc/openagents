@@ -1,0 +1,143 @@
+// Effect routing for desk-control-v2. Wire/lease admission is checked Coax in the loaded policies.
+#load "desk-control-wire.coax";
+ControlState :: struct { on: bool; owner: int; handle: int; surface: int; revision: int; deadline: int; keys: [256] bool; buttons: [8] bool; }
+
+cx_control_release :: (x: [] Cx) {
+  if !x[0].control.on { return; }
+  old := x[0].control; x[0].control = ControlState.{};
+  s := old.surface;
+  if !x[0].surfs[s].used || x[0].surfs[s].revision != old.revision { return; }
+  kf := x[0].kfocus; pf := x[0].pfocus; routing := x[0].control_routing;
+  x[0].kfocus = s; x[0].pfocus = s; x[0].control_routing = true;
+  for c: 1..<256 { if old.keys[c] { cx_key(x, c, false); } }
+  cx_mods(x, cx_mask(x));
+  for b: 0..<8 { if old.buttons[b] { cx_button(x, b + 272, false); } }
+  x[0].kfocus = kf; x[0].pfocus = pf; x[0].control_routing = routing;
+}
+cx_control_tick :: (x: [] Cx) {
+  c := x[0].control; if !c.on { return; }
+  s := c.surface;
+  revision := ifx x[0].surfs[s].used && x[0].surfs[s].win == c.handle then x[0].surfs[s].revision else -1;
+  focused := x[0].kfocus == s && x[0].pfocus == s;
+  if !ctrl_live(c.on, c.owner, c.owner, c.revision, revision, focused, cxwl_ms(), c.deadline) { cx_control_release(x); }
+}
+cx_control_base :: (x: [] Cx, b: [] u8, ty: string) -> int {
+  k := cx_put(b, 0, "{\"generation\":2,\"type\":\""); k = cx_put(b, k, ty);
+  k = cx_put(b, k, "\",\"session\":"); return cx_num_into(b, k, x[0].session);
+}
+cx_control_done :: (x: [] Cx, b: [] u8) -> int {
+  k := cx_control_base(x, b, "done"); return cx_put(b, k, "}\n");
+}
+cx_control_refused :: (x: [] Cx, h: int, b: [] u8, code: string) -> int {
+  if x[0].control.on && x[0].control.owner == h { cx_control_release(x); }
+  k := cx_control_base(x, b, "refused"); k = cx_put(b, k, ",\"code\":\""); k = cx_put(b, k, code); return cx_put(b, k, "\"}\n");
+}
+cx_control_window :: (x: [] Cx, id: int, b: [] u8, start: int) -> int {
+  s := x[0].win_surf[id]; q := x[0].surfs[s]; r: [4] int; visible := cx_place(x, id, r[..]);
+  bw := 0; bh := 0; if q.cur >= 0 && x[0].bufs[q.cur].used { bw = x[0].bufs[q.cur].w; bh = x[0].bufs[q.cur].h; }
+  k := cx_put(b, start, "{\"handle\":"); k = cx_num_into(b, k, id);
+  k = cx_put(b, k, ",\"revision\":"); k = cx_num_into(b, k, q.revision);
+  k = cx_put(b, k, ",\"title\":\""); k = cx_put_json(b, k, cast(string) q.title[0..<q.nt]);
+  k = cx_put(b, k, "\",\"class\":\""); k = cx_put_json(b, k, cast(string) q.app[0..<q.na]);
+  k = cx_put(b, k, "\",\"x\":"); k = cx_num_into(b, k, cx_max(0, r[0]));
+  k = cx_put(b, k, ",\"y\":"); k = cx_num_into(b, k, cx_max(0, r[1]));
+  k = cx_put(b, k, ",\"width\":"); k = cx_num_into(b, k, r[2]);
+  k = cx_put(b, k, ",\"height\":"); k = cx_num_into(b, k, r[3]);
+  k = cx_put(b, k, ",\"content_width\":"); k = cx_num_into(b, k, bw);
+  k = cx_put(b, k, ",\"content_height\":"); k = cx_num_into(b, k, bh);
+  k = cx_put(b, k, ",\"focused\":"); k = cx_bool_into(b, k, x[0].kfocus == s);
+  return cx_put(b, k, "}");
+}
+cx_control_rect :: (x: [] Cx, id: int, r: [] int) -> bool {
+  if !cx_place(x, id, r) { return false; }
+  s := x[0].win_surf[id]; q := x[0].surfs[s];
+  if q.cur < 0 || !x[0].bufs[q.cur].used { return false; }
+  bf := x[0].bufs[q.cur]; r[2] = cx_min(r[2], bf.w - q.gx); r[3] = cx_min(r[3], bf.h - q.gy);
+  r[2] = cx_min(r[2], x[0].w - r[0]); r[3] = cx_min(r[3], x[0].h - r[1]);
+  return r[0] >= 0 && r[1] >= 0 && r[2] > 0 && r[3] > 0;
+}
+cx_control_point :: (x: [] Cx, s: int, px: int, py: int) -> bool {
+  r: [4] int; if !cx_control_rect(x, x[0].surfs[s].win, r[..]) { return false; }
+  if px < r[0] || py < r[1] || px >= r[0] + r[2] || py >= r[1] + r[3] { return false; }
+  for i: 0..<CX_XWINS {
+    q := x[0].xw[0].wins[i];
+    if q.used && q.ovr && q.mapped && q.s >= 0 && q.s != s && px >= q.x && py >= q.y && px < q.x + q.w && py < q.y + q.h { return false; }
+  }
+  return true;
+}
+cx_control_mods :: (x: [] Cx) {
+  ks := x[0].control.keys; mask := 0;
+  if ks[42] || ks[54] { mask |= CX_SHIFT; } if ks[29] || ks[97] { mask |= CX_CTRL; }
+  if ks[56] || ks[100] { mask |= CX_ALT; } if ks[125] || ks[126] { mask |= CX_SUPER; }
+  cx_mods(x, mask);
+}
+cx_control_answer :: (x: [] Cx, frame: [] CxFrame, h: int, line: string, b: [] u8) -> int {
+  request: [1] ControlRequest;
+  if !cw_parse(line, request[..]) { return cx_control_refused(x, h, b, "bad_request"); }
+  q := request[0];
+  if q.kind == CW_INFO {
+    keys := 0; buttons := 0;
+    for v: x[0].control.keys { if v { keys += 1; } } for v: x[0].control.buttons { if v { buttons += 1; } }
+    k := cx_control_base(x, b, "info"); k = cx_put(b, k, ",\"display\":\"");
+    if x[0].xw[0].on { k = cx_put(b, k, ":"); k = cx_num_into(b, k, x[0].xw[0].display); }
+    k = cx_put(b, k, "\",\"wayland\":\""); k = cx_put_json(b, k, cast(string) x[0].sock[0..<x[0].nsock]);
+    k = cx_put(b, k, "\",\"active\":"); k = cx_bool_into(b, k, x[0].control.on);
+    k = cx_put(b, k, ",\"keys\":"); k = cx_num_into(b, k, keys);
+    k = cx_put(b, k, ",\"buttons\":"); k = cx_num_into(b, k, buttons); return cx_put(b, k, "}\n");
+  }
+  if q.kind == CW_LIST {
+    k := cx_control_base(x, b, "windows"); k = cx_put(b, k, ",\"windows\":["); first := true;
+    t: [WM_WINS] WmTile; n := wm_all_windows(x[0].wm[..], t[..]);
+    for i: 0..<n { if x[0].win_surf[t[i].id] < 0 { continue; } if !first { k = cx_put(b, k, ","); } first = false; k = cx_control_window(x, t[i].id, b, k); }
+    return cx_put(b, k, "]}\n");
+  }
+  if q.session != x[0].session { return cx_control_refused(x, h, b, "session"); }
+  if q.kind == CW_STOP { cx_control_release(x); return cx_control_done(x, b); }
+  s := x[0].win_surf[q.handle];
+  if s < 0 || !x[0].surfs[s].used || x[0].surfs[s].revision != q.revision { return cx_control_refused(x, h, b, "window"); }
+  if q.kind == CW_SHOT {
+    if x[0].shot_sequence >= 9007199254740991 || !cx_shot(x, frame, cast(string) q.data[0..<q.n], true) { return cx_control_refused(x, h, b, "shot"); }
+    x[0].shot_sequence += 1;
+    k := cx_control_base(x, b, "shot"); k = cx_put(b, k, ",\"frame\":"); k = cx_num_into(b, k, x[0].shot_sequence);
+    k = cx_put(b, k, ",\"window\":"); k = cx_control_window(x, q.handle, b, k); return cx_put(b, k, "}\n");
+  }
+  if q.kind == CW_ACQUIRE {
+    if x[0].control.on && x[0].control.owner != h { return cx_control_refused(x, h, b, "busy"); }
+    for held: x[0].held { if held { return cx_control_refused(x, h, b, "physical_input"); } }
+    for held: x[0].physical_buttons { if held { return cx_control_refused(x, h, b, "physical_input"); } }
+    cx_control_release(x);
+    focused := wm_focus_id(x[0].wm[..], q.handle); cx_sync(x);
+    r: [4] int; if !focused || !cx_control_rect(x, q.handle, r[..]) { return cx_control_refused(x, h, b, "not_visible"); }
+    px := r[0] + r[2] / 2; py := r[1] + r[3] / 2;
+    if !cx_control_point(x, s, px, py) { return cx_control_refused(x, h, b, "occluded"); }
+    x[0].control_routing = true; cx_pointer(x, px, py); x[0].control_routing = false;
+    if x[0].kfocus != s || x[0].pfocus != s { return cx_control_refused(x, h, b, "focus"); }
+    x[0].control = ControlState.{on = true, owner = h, handle = q.handle, surface = s, revision = q.revision, deadline = cxwl_ms() + q.ms};
+    return cx_control_done(x, b);
+  }
+  c := x[0].control;
+  if c.handle != q.handle || !ctrl_live(c.on, c.owner, h, c.revision, q.revision, x[0].kfocus == s && x[0].pfocus == s, cxwl_ms(), c.deadline) { return cx_control_refused(x, h, b, "lease"); }
+  x[0].control_routing = true;
+  if q.kind == CW_KEY { x[0].control.keys[q.code] = q.down; cx_key(x, q.code, q.down); cx_control_mods(x); }
+  else if q.kind == CW_BUTTON { x[0].control.buttons[q.code - 272] = q.down; cx_button(x, q.code, q.down); }
+  else if q.kind == CW_MOVE || q.kind == CW_RELATIVE {
+    px := q.x; py := q.y;
+    if q.kind == CW_RELATIVE {
+      r: [4] int; if !cx_control_rect(x, q.handle, r[..]) { x[0].control_routing = false; return cx_control_refused(x, h, b, "not_visible"); }
+      px = cx_max(r[0], cx_min(r[0] + r[2] - 1, x[0].px + q.x)); py = cx_max(r[1], cx_min(r[1] + r[3] - 1, x[0].py + q.y));
+    }
+    if !cx_control_point(x, s, px, py) { x[0].control_routing = false; return cx_control_refused(x, h, b, "outside_window"); }
+    cx_pointer(x, px, py);
+    if x[0].kfocus != s || x[0].pfocus != s { x[0].control_routing = false; return cx_control_refused(x, h, b, "focus"); }
+  } else if q.kind == CW_WHEEL { cx_wheel(x, q.x); }
+  else if q.kind == CW_TEXT {
+    for held: c.keys { if held { x[0].control_routing = false; return cx_control_refused(x, h, b, "held_key"); } }
+    for i: 0..<q.n {
+      shift: [1] bool; code := cx_char_key(q.data[i], shift[..]);
+      if shift[0] { cx_mods(x, CX_SHIFT); } cx_key(x, code, true); cx_key(x, code, false); if shift[0] { cx_mods(x, 0); }
+    }
+  }
+  x[0].control_routing = false;
+  cx_control_tick(x);
+  return cx_control_done(x, b);
+}

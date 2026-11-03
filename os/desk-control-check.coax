@@ -1,0 +1,126 @@
+// Native integration against a private headless compositor and upstream xev.
+// coax/web/tool.sh os/desk-control-check.coax COMPOSITOR KEYMAP
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/json/json.coax";
+#load "desk-client.coax";
+
+CtTarget :: struct { session: int; handle: int; revision: int; }
+ct_has :: (s: string, q: string) -> bool { for i: 0..<s.count - q.count + 1 { if s[i..<i + q.count] == q { return true; } } return false; }
+ct_wait :: (h: int, q: string) -> bool {
+  out: [8192] u8; until := proc_now_ms() + 5000;
+  while proc_now_ms() < until { n := proc_line(h, 100, out[..]); if n >= 0 && ct_has(cast(string) out[0..<n], q) { return true; } if n == PROC_EOF || n == PROC_ERROR { break; } }
+  return false;
+}
+ct_check :: (name: string, ok: bool) -> bool { print("% %\n", ifx ok then "ok" else "FAIL", name); return ok; }
+ct_reply :: (h: int, line: string, want: string) -> bool {
+  out: [65536] u8; nodes: [512] JvNode; d: [1] Jv;
+  if !dc_send(h, line) { return false; } n := dc_line(h, out[..]);
+  return n > 0 && jv_parse(d[..], cast(string) out[0..<n], nodes[..]) && jv_raw(d[0], jv_get(d[0], 0, "type")) == want;
+}
+ct_request :: (h: int, t: CtTarget, ty: string, code: int, down: bool, ms: int, want: string) -> bool {
+  bytes: [4096] u8; o: [1] Jo; jo_start(o[..], bytes[..]); jo_obj(o[..]);
+  jo_key(o[..], "generation"); jo_int(o[..], 2); jo_key(o[..], "type"); jo_str(o[..], ty);
+  jo_key(o[..], "session"); jo_int(o[..], t.session); jo_key(o[..], "handle"); jo_int(o[..], t.handle);
+  jo_key(o[..], "revision"); jo_int(o[..], t.revision); jo_key(o[..], "code"); jo_int(o[..], code);
+  jo_key(o[..], "down"); jo_bool(o[..], down); jo_key(o[..], "ms"); jo_int(o[..], ms); jo_end(o[..]);
+  return !o[0].bad && ct_reply(h, jo_text(o[..]), want);
+}
+ct_clear :: (socket: string) -> bool {
+  out: [65536] u8; nodes: [128] JvNode; d: [1] Jv; n := dc_call(socket, "{\"generation\":2,\"type\":\"info\"}", out[..]);
+  return n > 0 && jv_parse(d[..], cast(string) out[0..<n], nodes[..]) && !jv_bool(d[0], jv_get(d[0], 0, "active")) &&
+    jv_int(d[0], jv_get(d[0], 0, "keys"), -1) == 0 && jv_int(d[0], jv_get(d[0], 0, "buttons"), -1) == 0;
+}
+ct_pointer :: (h: int, t: CtTarget, ty: string, x: int, y: int, want: string) -> bool {
+  bytes: [4096] u8; o: [1] Jo; jo_start(o[..], bytes[..]); jo_obj(o[..]);
+  jo_key(o[..], "generation"); jo_int(o[..], 2); jo_key(o[..], "type"); jo_str(o[..], ty);
+  jo_key(o[..], "session"); jo_int(o[..], t.session); jo_key(o[..], "handle"); jo_int(o[..], t.handle);
+  jo_key(o[..], "revision"); jo_int(o[..], t.revision);
+  jo_key(o[..], ifx ty == "relative" then "dx" else "x"); jo_int(o[..], x);
+  jo_key(o[..], ifx ty == "relative" then "dy" else "y"); jo_int(o[..], y); jo_end(o[..]);
+  return ct_reply(h, jo_text(o[..]), want);
+}
+ct_xev :: (display: string) -> int {
+  h := proc_new(); if h < 0 { return -1; }
+  if !proc_arg(h, "xev") || !proc_arg(h, "-display") || !proc_arg(h, display) || proc_start(h) != 0 { r := proc_release(h); return -1; }
+  return h;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 2 { return 2; }
+  tmp: [4096] u8; dir := fs_temp("verse-control-", tmp[..]); if dir.count == 0 { return 1; }
+  b: [2] [4096] u8; wl := fs_join(dir, "wayland", b[0][..]); socket := fs_join(dir, "desk.sock", b[1][..]);
+  comp := proc_new(); if comp < 0 { return 1; }
+  av := [9] string.[args_at(a[..], 0), wl, args_at(a[..], 1), dir, "800", "600", "--xwayland", "--desk-socket", socket]; ok := true;
+  for v: av { ok = ok && proc_arg(comp, v); }
+  if !ok || proc_start(comp) != 0 { r := proc_release(comp); return 1; }
+  ok = ct_check("private compositor ready", ct_wait(comp, "xwayland ready")) && ok;
+  out: [65536] u8; nodes: [512] JvNode; d: [1] Jv;
+  n := dc_call(socket, "{\"generation\":2,\"type\":\"info\"}", out[..]);
+  if n < 0 || !jv_parse(d[..], cast(string) out[0..<n], nodes[..]) { r := proc_release(comp); return 1; }
+  t: CtTarget; t.session = jv_int(d[0], jv_get(d[0], 0, "session"), 0);
+  display: [64] u8; nd := jv_str(d[0], jv_get(d[0], 0, "display"), display[..]);
+  if nd < 1 { r := proc_release(comp); return 1; }
+  client := ct_xev(cast(string) display[0..<nd]);
+  until := proc_now_ms() + 5000;
+  while proc_now_ms() < until {
+    n = dc_call(socket, "{\"generation\":2,\"type\":\"list\"}", out[..]);
+    if n > 0 && jv_parse(d[..], cast(string) out[0..<n], nodes[..]) {
+      at := jv_at(d[0], jv_get(d[0], 0, "windows"), 0);
+      if at >= 0 { t.handle = jv_int(d[0], jv_get(d[0], at, "handle"), 0); t.revision = jv_int(d[0], jv_get(d[0], at, "revision"), 0); break; }
+    }
+    proc_sleep(20);
+  }
+  h := dc_open(socket); other := dc_open(socket);
+  ok = ct_check("target and lifetime exposed", client >= 0 && t.handle > 0 && t.revision > 0) && ok;
+  bad := t; bad.revision += 1;
+  ok = ct_check("stale lifetime refused", ct_request(h, bad, "acquire", 0, false, 500, "refused")) && ok;
+  bad = t; bad.session += 1;
+  ok = ct_check("stale session refused", ct_request(h, bad, "acquire", 0, false, 500, "refused")) && ok;
+  ok = ct_check("acquire target", ct_request(h, t, "acquire", 0, false, 2000, "done")) && ok;
+  ok = ct_check("another controller refused", ct_request(other, t, "acquire", 0, false, 500, "refused")) && ok;
+  ok = ct_check("relative motion reaches client", ct_pointer(h, t, "relative", 16, 0, "done") && ct_wait(client, "MotionNotify")) && ok;
+  ok = ct_check("key down reaches client", ct_request(h, t, "key", 17, true, 0, "done") && ct_wait(client, "KeyPress")) && ok;
+  r := cxsock_close(h); proc_sleep(50);
+  ok = ct_check("disconnect releases key", ct_clear(socket) && ct_wait(client, "KeyRelease")) && ok;
+  h = dc_open(socket);
+  ok = ct_check("deadline setup", ct_request(h, t, "acquire", 0, false, 200, "done") && ct_request(h, t, "key", 30, true, 0, "done")) && ok;
+  proc_sleep(250);
+  ok = ct_check("deadline releases without client traffic", ct_clear(socket)) && ok;
+  ok = ct_check("expired input refused", ct_request(h, t, "key", 30, true, 0, "refused")) && ok;
+  ok = ct_check("button setup", ct_request(h, t, "acquire", 0, false, 1000, "done") && ct_request(h, t, "button", 273, true, 0, "done")) && ok;
+  ok = ct_check("separate emergency stop", ct_request(other, t, "stop", 0, false, 0, "done") && ct_clear(socket)) && ok;
+  ok = ct_check("out of target setup", ct_request(h, t, "acquire", 0, false, 1000, "done")) && ok;
+  ok = ct_check("outside target is refused and releases lease", ct_pointer(h, t, "move", 799, 599, "refused") && ct_clear(socket)) && ok;
+  ok = ct_check("malformed request setup", ct_request(h, t, "acquire", 0, false, 1000, "done") && ct_request(h, t, "key", 17, true, 0, "done")) && ok;
+  ok = ct_check("duplicate keys refuse whole and release", ct_reply(h, "{\"generation\":2,\"type\":\"info\",\"type\":\"stop\"}", "refused") && ct_clear(socket)) && ok;
+  ok = ct_check("legacy input setup", ct_request(h, t, "acquire", 0, false, 1000, "done") && ct_request(h, t, "key", 17, true, 0, "done")) && ok;
+  sent := proc_send(comp, "key 57\n"); proc_sleep(50);
+  ok = ct_check("legacy input revokes owned keys", ct_clear(socket)) && ok;
+  ok = ct_check("focus loss setup", ct_request(h, t, "acquire", 0, false, 1000, "done") && ct_request(h, t, "key", 17, true, 0, "done")) && ok;
+  second := ct_xev(cast(string) display[0..<nd]); proc_sleep(250);
+  ok = ct_check("another window taking focus releases input", ct_clear(socket)) && ok;
+  ok = ct_check("window removal setup", ct_request(h, t, "acquire", 0, false, 1000, "done") && ct_request(h, t, "key", 17, true, 0, "done")) && ok;
+  killed := proc_kill(client, PROC_SIGTERM); status := proc_wait(client, 2000); released := proc_release(client); proc_sleep(100);
+  ok = ct_check("window disappearance releases input", ct_clear(socket)) && ok;
+  ok = ct_check("removed window refused", ct_request(h, t, "acquire", 0, false, 1000, "refused")) && ok;
+  third := ct_xev(cast(string) display[0..<nd]); newer := t; newer.revision = 0; until = proc_now_ms() + 3000;
+  while proc_now_ms() < until {
+    n = dc_call(socket, "{\"generation\":2,\"type\":\"list\"}", out[..]);
+    if n > 0 && jv_parse(d[..], cast(string) out[0..<n], nodes[..]) {
+      at := jv_at(d[0], jv_get(d[0], 0, "windows"), 0);
+      while at >= 0 { if jv_int(d[0], jv_get(d[0], at, "handle"), 0) == t.handle { newer.revision = jv_int(d[0], jv_get(d[0], at, "revision"), 0); } at = d[0].nodes[at].next; }
+      if newer.revision > 0 { break; }
+    }
+    proc_sleep(20);
+  }
+  ok = ct_check("reused handle has a new lifetime", newer.revision > t.revision) && ok;
+  ok = ct_check("old lifetime cannot acquire reused handle", ct_request(h, t, "acquire", 0, false, 1000, "refused")) && ok;
+  ok = ct_check("new lifetime can acquire reused handle", ct_request(h, newer, "acquire", 0, false, 1000, "done")) && ok;
+  r = cxsock_close(h); r = cxsock_close(other); released = proc_release(second); released = proc_release(third);
+  sent = proc_send(comp, "quit\n"); drained := ct_wait(comp, "not-a-real-output-marker"); status = proc_wait(comp, 1000);
+  err: [65536] u8; errors := proc_stderr(comp, err[..]);
+  ok = ct_check("compositor and sanitizers", status == 0 && !ct_has(errors, "ERROR: AddressSanitizer") && !ct_has(errors, "runtime error:")) && ok;
+  if !ok { print("%\n", errors); } released = proc_release(comp); removed := fs_remove(dir);
+  return ifx ok then 0 else 1;
+}

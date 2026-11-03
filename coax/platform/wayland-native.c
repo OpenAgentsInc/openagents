@@ -96,10 +96,13 @@ int64_t cxwl_desk_recv(int64_t h, coax_v_u8 out) {
 /* An answer line to a desk client: 0, or -1 when it is gone. */
 int64_t cxwl_desk_send(int64_t h, coax_v_u8 s) {
   if (h < 0 || h >= WL_DESKS || !desk_used[h]) return -1;
-  size_t done = 0;
+  size_t done = 0; int64_t deadline = cxwl_ms() + 100;
   while (done < (size_t)s.count) {
     ssize_t w = send(desk_fd[h], s.data + done, (size_t)s.count - done, MSG_NOSIGNAL);
-    if (w < 0 && (errno == EAGAIN || errno == EINTR)) { struct pollfd q = {desk_fd[h], POLLOUT, 0}; poll(&q, 1, 100); continue; }
+    if (w < 0 && (errno == EAGAIN || errno == EINTR)) {
+      if (cxwl_ms() >= deadline) return -1;
+      struct pollfd q = {desk_fd[h], POLLOUT, 0}; poll(&q, 1, 5); continue;
+    }
     if (w <= 0) return -1;
     done += (size_t)w;
   }

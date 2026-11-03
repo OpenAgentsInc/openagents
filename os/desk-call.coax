@@ -1,10 +1,22 @@
-// Inspect a private desk during integration: SOCKET REQUEST_JSON, one complete reply.
+// Inspect a private desk: SOCKET [--pause-ms N] REQUEST_JSON... on one connection.
 #import "Basic";
 #load "../coax/lib/sys/tool.coax";
 #load "desk-client.coax";
 tool_main :: () -> int #export_c {
-  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 2 { return 2; }
-  out: [262144] u8; n := dc_call(args_at(a[..], 0), args_at(a[..], 1), out[..]);
-  if n < 0 { tool_errln("desk did not return a complete reply"); return 1; }
-  print("%\n", cast(string) out[0..<n]); return 0;
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 2 { return 2; }
+  number := args_number(args_value(a[..], "--pause-ms", "0"));
+  if !number.ok || number.value < 0 || number.value > 1000 { return 2; }
+  pause := cast(int) number.value;
+  h := dc_open(args_at(a[..], 0)); if h < 0 { return 1; }
+  out: [262144] u8;
+  i := 1;
+  while i < args_count(a[..]) {
+    line := args_at(a[..], i); i += 1;
+    if line == "--pause-ms" { i += 1; continue; }
+    n := ifx dc_send(h, line) then dc_line(h, out[..]) else -1;
+    if n < 0 { closed := cxsock_close(h); tool_errln("desk did not return a complete reply"); return 1; }
+    print("%\n", cast(string) out[0..<n]);
+    if pause > 0 { proc_sleep(pause); }
+  }
+  closed := cxsock_close(h); return 0;
 }

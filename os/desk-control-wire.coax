@@ -1,0 +1,139 @@
+// Strict, owned decoding of desk-control-v2. A decoded request still needs its live input lease.
+#authority;
+#load "../coax/lib/json/json.coax";
+#load "desk-control-policy.coax";
+CW_INFO :: 1; CW_LIST :: 2; CW_ACQUIRE :: 3; CW_KEY :: 4; CW_BUTTON :: 5;
+CW_MOVE :: 6; CW_RELATIVE :: 7; CW_WHEEL :: 8; CW_TEXT :: 9; CW_STOP :: 10; CW_SHOT :: 11;
+ControlRequest :: struct { kind: int; session: int; handle: int; revision: int; ms: int; code: int; down: bool; x: int; y: int; data: [4096] u8; n: int; }
+CW_NAMES :: [11] string.["info", "list", "acquire", "key", "button", "move", "relative", "wheel", "text", "stop", "shot"];
+CW_FIELDS :: [15] string.["generation", "type", "session", "handle", "revision", "ms", "code", "down", "x", "y", "dx", "dy", "clicks", "text", "path"];
+
+cw_int :: (d: Jv, name: string) -> int { return jv_int(d, jv_get(d, 0, name), -2049); }
+cw_parse :: (line: string, out: [] ControlRequest) -> bool {
+  out[0] = ControlRequest.{};
+  nodes: [64] JvNode; doc: [1] Jv;
+  if !jv_parse(doc[..], line, nodes[..]) { return false; }
+  d := doc[0]; seen: [15] bool;
+  k := d.nodes[0].first;
+  while k != -1 {
+    field := CW_FIELDS.count;
+    for i: 0..<CW_FIELDS.count { if jv_raw_eq(jv_key(d, k), CW_FIELDS[i]) { field = i; break; } }
+    if field == CW_FIELDS.count { return false; }
+    if seen[field] { return false; } seen[field] = true;
+    k = d.nodes[k].next;
+  }
+  if cw_int(d, "generation") != 2 { return false; }
+  ty := jv_get(d, 0, "type"); if jv_kind(d, ty) != JV_STRING { return false; }
+  q: ControlRequest;
+  for i: 0..<CW_NAMES.count { if jv_raw(d, ty) == CW_NAMES[i] { q.kind = i + 1; } }
+  if q.kind == 0 { return false; }
+  if q.kind == CW_INFO || q.kind == CW_LIST { out[0] = q; return true; }
+  q.session = cw_int(d, "session");
+  if !ctrl_range(q.session, 1, 9007199254740991) { return false; }
+  if q.kind == CW_STOP { out[0] = q; return true; }
+  q.handle = cw_int(d, "handle"); q.revision = cw_int(d, "revision");
+  if !ctrl_range(q.handle, 1, 255) || !ctrl_range(q.revision, 1, 9007199254740991) { return false; }
+  if q.kind == CW_ACQUIRE { q.ms = cw_int(d, "ms"); if !ctrl_range(q.ms, 1, 5000) { return false; } }
+  if q.kind == CW_KEY || q.kind == CW_BUTTON {
+    q.code = cw_int(d, "code"); lo := ifx q.kind == CW_KEY then 1 else 272; hi := ifx q.kind == CW_KEY then 255 else 279;
+    if !ctrl_range(q.code, lo, hi) { return false; }
+    down := jv_kind(d, jv_get(d, 0, "down")); if down != JV_TRUE && down != JV_FALSE { return false; }
+    q.down = down == JV_TRUE;
+  }
+  if q.kind == CW_MOVE || q.kind == CW_RELATIVE {
+    q.x = cw_int(d, ifx q.kind == CW_MOVE then "x" else "dx"); q.y = cw_int(d, ifx q.kind == CW_MOVE then "y" else "dy");
+    if q.kind == CW_MOVE { if !ctrl_range(q.x, 0, 3839) || !ctrl_range(q.y, 0, 2159) { return false; } }
+    else if !ctrl_range(q.x, -2048, 2048) || !ctrl_range(q.y, -2048, 2048) { return false; }
+  }
+  if q.kind == CW_WHEEL { q.x = cw_int(d, "clicks"); if !ctrl_range(q.x, -20, 20) { return false; } }
+  if q.kind == CW_TEXT || q.kind == CW_SHOT {
+    q.n = jv_str(d, jv_get(d, 0, ifx q.kind == CW_TEXT then "text" else "path"), q.data[..]);
+    if q.n <= 0 { return false; }
+    if q.kind == CW_TEXT && q.n > 256 { return false; }
+    for i: 0..<q.n {
+      c := q.data[i]; if c == 0 { return false; }
+      if q.kind == CW_TEXT && !(ctrl_range(cast(int) c, 32, 126) || c == 9 || c == 10) { return false; }
+    }
+  }
+  out[0] = q; return true;
+}
+
+#test "wire framing unique known keys and typed operations" {
+  q: [1] ControlRequest;
+  #assert cw_parse("{\"generation\":2,\"type\":\"info\"}", q[..]) && q[0].kind == CW_INFO;
+  #assert cw_parse("{\"generation\":2,\"type\":\"list\"}", q[..]) && q[0].kind == CW_LIST;
+  #assert !cw_parse("[]", q[..]) && q[0].kind == 0 && !cw_parse("{", q[..]);
+  #assert !cw_parse("{}", q[..]);
+  #assert !cw_parse("{\"generation\":1,\"type\":\"info\"}", q[..]);
+  #assert !cw_parse("{\"generation\":2,\"type\":true}", q[..]);
+  #assert !cw_parse("{\"generation\":2,\"type\":\"unknown\"}", q[..]);
+  #assert !cw_parse("{\"generation\":2,\"type\":\"info\",\"other\":0}", q[..]);
+  #assert !cw_parse("{\"generation\":2,\"type\":\"info\",\"type\":\"list\"}", q[..]);
+  #assert !cw_parse("{\"generation\":2,\"type\":\"info\",\"ty\\u0070e\":\"list\"}", q[..]);
+}
+// Test requests are encoded through the independent JSON writer, including all range endpoints.
+cw_case :: (kind: string, extra: string, out: [] ControlRequest) -> bool {
+  b: [8192] u8; n := 0;
+  for c: "{\"generation\":2,\"type\":\"" { b[n] = c; n += 1; }
+  for c: kind { b[n] = c; n += 1; }
+  for c: "\",\"session\":7,\"handle\":4,\"revision\":9" { b[n] = c; n += 1; }
+  for c: extra { b[n] = c; n += 1; }
+  b[n] = '}'; n += 1;
+  return cw_parse(cast(string) b[0..<n], out);
+}
+#test "wire acquisition and target identity" {
+  q: [1] ControlRequest;
+  #assert cw_case("acquire", ",\"ms\":1", q[..]) && q[0].kind == CW_ACQUIRE && q[0].session == 7 && q[0].handle == 4 && q[0].revision == 9 && q[0].ms == 1;
+  #assert cw_case("acquire", ",\"ms\":5000", q[..]) && q[0].ms == 5000;
+  #assert !cw_case("acquire", ",\"ms\":0", q[..]) && !cw_case("acquire", ",\"ms\":5001", q[..]) && !cw_case("acquire", "", q[..]);
+  #assert cw_case("stop", "", q[..]) && q[0].kind == CW_STOP;
+  for s: [4] string.["{\"generation\":2,\"type\":\"stop\",\"session\":0}", "{\"generation\":2,\"type\":\"acquire\",\"session\":1}", "{\"generation\":2,\"type\":\"stop\",\"session\":1e2}", "{\"generation\":2,\"type\":\"stop\"}"] { #assert !cw_parse(s, q[..]); }
+  #assert cw_parse("{\"generation\":2,\"type\":\"acquire\",\"session\":1,\"handle\":1,\"revision\":1,\"ms\":1}", q[..]);
+  #assert cw_parse("{\"generation\":2,\"type\":\"acquire\",\"session\":9007199254740991,\"handle\":255,\"revision\":9007199254740991,\"ms\":5000}", q[..]);
+  for s: [4] string.[
+    "{\"generation\":2,\"type\":\"acquire\",\"session\":1,\"handle\":0,\"revision\":1,\"ms\":1}",
+    "{\"generation\":2,\"type\":\"acquire\",\"session\":1,\"handle\":256,\"revision\":1,\"ms\":1}",
+    "{\"generation\":2,\"type\":\"acquire\",\"session\":1,\"handle\":1,\"revision\":0,\"ms\":1}",
+    "{\"generation\":2,\"type\":\"acquire\",\"session\":1,\"handle\":1,\"revision\":9007199254740992,\"ms\":1}"] { #assert !cw_parse(s, q[..]); }
+  #assert !cw_parse("{\"generation\":2,\"type\":\"stop\",\"session\":9007199254740992}", q[..]);
+}
+#test "wire keys and buttons preserve both states and reject missing or mistyped fields" {
+  q: [1] ControlRequest;
+  #assert cw_case("key", ",\"code\":1,\"down\":true", q[..]) && q[0].kind == CW_KEY && q[0].code == 1 && q[0].down;
+  #assert cw_case("key", ",\"code\":255,\"down\":false", q[..]) && q[0].code == 255 && !q[0].down;
+  #assert cw_case("button", ",\"code\":272,\"down\":true", q[..]) && q[0].kind == CW_BUTTON && q[0].code == 272;
+  #assert cw_case("button", ",\"code\":279,\"down\":false", q[..]) && q[0].code == 279;
+  for s: [5] string.[",\"code\":0,\"down\":true", ",\"code\":256,\"down\":false", ",\"code\":17", ",\"code\":17,\"down\":0", ",\"down\":true"] { #assert !cw_case("key", s, q[..]); }
+  #assert !cw_case("button", ",\"code\":271,\"down\":true", q[..]) && !cw_case("button", ",\"code\":280,\"down\":true", q[..]);
+}
+#test "wire pointer ranges and wheel" {
+  q: [1] ControlRequest;
+  #assert cw_case("move", ",\"x\":0,\"y\":2159", q[..]) && q[0].kind == CW_MOVE && q[0].x == 0 && q[0].y == 2159;
+  #assert cw_case("move", ",\"x\":3839,\"y\":0", q[..]) && q[0].x == 3839 && q[0].y == 0;
+  for s: [5] string.[",\"x\":-1,\"y\":0", ",\"x\":3840,\"y\":0", ",\"x\":0,\"y\":-1", ",\"x\":0,\"y\":2160", ",\"x\":0"] { #assert !cw_case("move", s, q[..]); }
+  #assert cw_case("relative", ",\"dx\":-2048,\"dy\":2048", q[..]) && q[0].kind == CW_RELATIVE && q[0].x == -2048 && q[0].y == 2048;
+  #assert cw_case("relative", ",\"dx\":2048,\"dy\":-2048", q[..]);
+  for s: [4] string.[",\"dx\":-2049,\"dy\":0", ",\"dx\":2049,\"dy\":0", ",\"dx\":0,\"dy\":-2049", ",\"dx\":0,\"dy\":2049"] { #assert !cw_case("relative", s, q[..]); }
+  #assert !cw_case("relative", ",\"dy\":0", q[..]);
+  #assert cw_case("wheel", ",\"clicks\":-20", q[..]) && q[0].kind == CW_WHEEL && q[0].x == -20;
+  #assert cw_case("wheel", ",\"clicks\":20", q[..]) && q[0].x == 20;
+  #assert !cw_case("wheel", ",\"clicks\":-21", q[..]) && !cw_case("wheel", ",\"clicks\":21", q[..]);
+}
+#test "wire text is whole and snapshot paths are owned" {
+  q: [1] ControlRequest;
+  #assert cw_case("text", ",\"text\":\" ~\\t\\n\"", q[..]) && q[0].kind == CW_TEXT && q[0].n == 4 && q[0].data[0] == ' ' && q[0].data[1] == '~' && q[0].data[2] == 9 && q[0].data[3] == 10;
+  for s: [4] string.[",\"text\":\"\"", ",\"text\":\"\\u0000\"", ",\"text\":\"\\u001f\"", ",\"text\":\"\\u007f\""] { #assert !cw_case("text", s, q[..]); }
+  #assert cw_case("shot", ",\"path\":\"/tmp/a.ppm\"", q[..]) && q[0].kind == CW_SHOT && cast(string) q[0].data[0..<q[0].n] == "/tmp/a.ppm";
+  #assert !cw_case("shot", ",\"path\":\"\"", q[..]) && !cw_case("shot", ",\"path\":\"x\\u0000y\"", q[..]);
+  #assert cw_case("text", ",\"text\":\"A\"", q[..]) && q[0].n == 1;
+  extra: [4200] u8; n := 0;
+  for c: ",\"text\":\"" { extra[n] = c; n += 1; }
+  for i: 0..<257 { extra[n + i] = 'A'; }
+  extra[n + 256] = '"';
+  #assert cw_case("text", cast(string) extra[0..<n + 257], q[..]) && q[0].n == 256;
+  extra[n + 256] = 'A'; extra[n + 257] = '"';
+  #assert !cw_case("text", cast(string) extra[0..<n + 258], q[..]);
+  n = 0; for c: ",\"path\":\"" { extra[n] = c; n += 1; }
+  for i: 0..<4096 { extra[n + i] = 'A'; } extra[n + 4096] = '"';
+  #assert cw_case("shot", cast(string) extra[0..<n + 4097], q[..]) && q[0].n == 4096;
+}

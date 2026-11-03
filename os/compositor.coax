@@ -42,6 +42,9 @@
 #load "xwm.coax";
 #load "desk-buffer-policy.coax";
 #load "desk-dmabuf.coax";
+#load "desk-control.coax";
+
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
 
 cxgpu_open :: (node: [] u8) -> int #foreign;
 cxgpu_format :: (i: int, field: int) -> int #foreign;
@@ -142,6 +145,7 @@ CxSurf :: struct {
   title: [128] u8; nt: int; app: [128] u8; na: int;
   noborder: bool; ruled: bool; nofull: bool;   // what a window rule set: no border, matched already, no fullscreen asked by the client
   aspect: f32;      // width over height a resize keeps (keep_aspect_ratio), or 0
+  revision: int;
 }
 // A clipboard source: the client offering it and the types it offers.
 CxSource :: struct { used: bool; client: int; id: int; mimes: [8] [64] u8; ml: [8] int; nm: int; }
@@ -194,6 +198,8 @@ Cx :: struct {
   quit: bool; dirty: bool; screen: bool; show_pointer: bool;
   desk_on: bool; desks: [CX_DESKS] CxDesk;   // --desk-socket: the desk protocol's clients
   ngpu: int; params: [256] CxParams;
+  session: int; next_revision: int; shot_sequence: int;
+  control: ControlState; control_routing: bool; physical_buttons: [8] bool;
 }
 CX_DESKS :: 8;
 CxDesk :: struct { on: bool; buf: [8192] u8; n: int; }
@@ -285,6 +291,7 @@ cx_sync :: (x: [] Cx) {
   }
   k := ifx focus != 0 then x[0].win_surf[focus] else -1;
   if k != x[0].kfocus {
+    if x[0].control.on && k != x[0].control.surface { cx_control_release(x); }
     cx_damage_all(x); cx_keyboards(x, x[0].kfocus, false); x[0].kfocus = k; cx_keyboards(x, k, true); if k >= 0 { cx_offer_selection(x, x[0].surfs[k].client); }
     if k >= 0 && x[0].surfs[k].role == R_X11 && x[0].surfs[k].xwin >= 0 { xw_focus(x[0].xw[0].o[..], x[0].xw[0].wins[x[0].surfs[k].xwin].id); cx_xw_flush(x); }
   }
@@ -341,6 +348,14 @@ cx_new_surf :: (x: [] Cx, ci: int, id: int) -> int {
   for i: 0..<CX_SURFS { if !x[0].surfs[i].used { x[0].surfs[i] = CxSurf.{used = true, client = ci, id = id, cur = -1, pend = -1, parent = -1, xwin = -1}; return i; } }
   return -1;
 }
+cx_spawn_window :: (x: [] Cx, s: int) -> int {
+  if x[0].next_revision >= 9007199254740991 { return 0; }
+  busy: [256] bool; for i: 0..<WM_WINS { busy[i] = x[0].win_surf[i] >= 0; }
+  slot := ctrl_window_slot(busy[..]); if slot == 0 { return 0; }
+  x[0].wm[0].next_id = slot; w := wm_spawn(x[0].wm[..]);
+  x[0].next_revision += 1; x[0].surfs[s].revision = x[0].next_revision;
+  x[0].surfs[s].win = w; x[0].win_surf[w] = s; return w;
+}
 cx_release :: (x: [] Cx, b: int) {
   if b < 0 || !x[0].bufs[b].used { return; }
   g := x[0].g[..]; mg_begin(g, x[0].bufs[b].id, 0); mg_end(g); mg_flush(x, x[0].bufs[b].client, -1);
@@ -357,6 +372,7 @@ cx_buf_free :: (x: [] Cx, b: int) {
 }
 // A toplevel leaves the window policy.
 cx_unmap :: (x: [] Cx, s: int) {
+  if x[0].control.on && x[0].control.surface == s { cx_control_release(x); }
   w := x[0].surfs[s].win;
   if w != 0 { wm_close(x[0].wm[..], w); x[0].win_surf[w] = -1; x[0].surfs[s].win = 0; }
   if x[0].kfocus == s { x[0].kfocus = -1; }
@@ -365,6 +381,7 @@ cx_unmap :: (x: [] Cx, s: int) {
   cx_damage_all(x); cx_sync(x);
 }
 cx_surf_free :: (x: [] Cx, s: int) {
+  if x[0].control.on && x[0].control.surface == s { cx_control_release(x); }
   if x[0].surfs[s].xwin >= 0 { i := x[0].surfs[s].xwin; if x[0].xw[0].wins[i].s == s { x[0].xw[0].wins[i].s = -1; x[0].xw[0].wins[i].win = 0; x[0].xw[0].wins[i].sw = 0; } x[0].surfs[s].xwin = -1; }
   if x[0].surfs[s].win != 0 { cx_unmap(x, s); }
   for i: 0..<CX_SURFS { if x[0].surfs[i].used && x[0].surfs[i].parent == s { x[0].surfs[i].parent = -1; } }
@@ -541,9 +558,8 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
       for i: 0..<x[0].surfs[s].npfr { if x[0].ndue < CX_DUE { x[0].due[x[0].ndue] = CxDue.{client = ci, id = x[0].surfs[s].pfr[i]}; x[0].ndue += 1; } }
       x[0].surfs[s].npfr = 0;
       if x[0].surfs[s].role == R_TOPLEVEL && x[0].surfs[s].win == 0 {
-        w := wm_spawn(x[0].wm[..]); x[0].surfs[s].win = w; x[0].win_surf[w] = s;
-        cx_rules(x, s, w);
-        cx_sync(x);
+        w := cx_spawn_window(x, s);
+        if w > 0 { cx_rules(x, s, w); cx_sync(x); }
       }
     }
   } else if k == K_SEAT {
@@ -956,6 +972,7 @@ cx_vt_key :: (code: int) -> int {
 // Another VT shows: every key held goes up for the window that has it (the keys that go up there are
 // that session's), and nothing is held when this one comes back.
 cx_vt_away :: (x: [] Cx) {
+  cx_control_release(x);
   for code: 0..<256 {
     if x[0].held[code] && !x[0].swallowed[code] { cx_key(x, code, false); }
     x[0].held[code] = false; x[0].swallowed[code] = false;
@@ -964,6 +981,7 @@ cx_vt_away :: (x: [] Cx) {
 }
 // One key going down or up, from the keyboard (evdev code).
 cx_input_key :: (x: [] Cx, code: int, down: bool) {
+  cx_control_release(x);
   if code < 0 || code >= 256 { return; }
   if !down && x[0].swallowed[code] { x[0].swallowed[code] = false; x[0].held[code] = false; return; }
   before := cx_mask(x);
@@ -1266,7 +1284,7 @@ cx_xw_tick :: (x: [] Cx) {
     }
     s := x[0].xw[0].wins[i].s;
     if s >= 0 && x[0].xw[0].wins[i].mapped && !x[0].xw[0].wins[i].ovr && x[0].xw[0].wins[i].win == 0 {
-      w := wm_spawn(x[0].wm[..]); x[0].xw[0].wins[i].win = w; x[0].surfs[s].win = w; x[0].win_surf[w] = s;
+      w := cx_spawn_window(x, s); if w == 0 { continue; } x[0].xw[0].wins[i].win = w;
       cx_xw_names(x, i); cx_rules(x, s, w); cx_sync(x);
     }
   }
@@ -1316,6 +1334,7 @@ cx_char_key :: (c: u8, shift: [] bool) -> int {
   return 0;
 }
 cx_pointer :: (x: [] Cx, px: int, py: int) {
+  if !x[0].control_routing { cx_control_release(x); }
   m := x[0].wm[..];
   sc := cx_screen_at(x, px, py); id := 0;
   if sc >= 0 {
@@ -1352,6 +1371,7 @@ cx_pointer :: (x: [] Cx, px: int, py: int) {
   x[0].pfocus = s;
 }
 cx_button :: (x: [] Cx, button: int, down: bool) {
+  if !x[0].control_routing { cx_control_release(x); }
   s := x[0].pfocus; if s < 0 { return; }
   ci := x[0].surfs[s].client; g := x[0].g[..];
   for i: 0..<x[0].clients[ci].npt {
@@ -1362,6 +1382,7 @@ cx_button :: (x: [] Cx, button: int, down: bool) {
   mg_flush(x, ci, -1);
 }
 cx_wheel :: (x: [] Cx, clicks: int) {
+  if !x[0].control_routing { cx_control_release(x); }
   s := x[0].pfocus; if s < 0 { return; }
   ci := x[0].surfs[s].client; g := x[0].g[..];
   for i: 0..<x[0].clients[ci].npt {
@@ -1374,6 +1395,8 @@ cx_wheel :: (x: [] Cx, clicks: int) {
 // A button: with Super held, 272 drags the window under the pointer and 273 resizes it from the
 // corner nearest the grab (Hyprland bindm movewindow / resizewindow); otherwise the window's.
 cx_mouse_button :: (x: [] Cx, button: int, down: bool) {
+  cx_control_release(x);
+  if button >= 272 && button <= 279 { x[0].physical_buttons[button - 272] = down; }
   if down && x[0].drag == 0 && (cx_mask(x) & CX_SUPER) != 0 && (button == 272 || button == 273) && x[0].pfocus >= 0 {
     r: [4] int; f := wm_focus(x[0].wm[..]);
     if f != 0 && cx_place(x, f, r[..]) { x[0].drag_left = x[0].px < r[0] + r[2] / 2; x[0].drag_top = x[0].py < r[1] + r[3] / 2; }
@@ -1574,17 +1597,19 @@ cx_desk_answer :: (x: [] Cx, o: [] CxFrame, line: string, b: [] u8) -> int {
 cx_desk_read :: (x: [] Cx, o: [] CxFrame, h: int) {
   d := x[0].desks[..];
   got := cxwl_desk_recv(h, d[h].buf[d[h].n..<8192]);
-  if got < 0 { r := cxwl_desk_close(h); d[h].on = false; return; }
+  if got < 0 { if x[0].control.on && x[0].control.owner == h { cx_control_release(x); } r := cxwl_desk_close(h); d[h].on = false; return; }
   if got == 0 { return; }
   d[h].n += got; st := 0;
   for i: 0..<d[h].n {
     if d[h].buf[i] != '\n' { continue; }
-    ans: [262144] u8; an := cx_desk_answer(x, o, cast(string) d[h].buf[st..<i], ans[..]);
-    if cxwl_desk_send(h, ans[0..<an]) < 0 { r := cxwl_desk_close(h); d[h].on = false; return; }
+    line := cast(string) d[h].buf[st..<i];
+    cx_control_tick(x);
+    ans: [262144] u8; an := ifx cx_jint(line, "generation", -1) == 2 then cx_control_answer(x, o, h, line, ans[..]) else cx_desk_answer(x, o, line, ans[..]);
+    if cxwl_desk_send(h, ans[0..<an]) < 0 { if x[0].control.on && x[0].control.owner == h { cx_control_release(x); } r := cxwl_desk_close(h); d[h].on = false; return; }
     st = i + 1;
   }
   rest := d[h].n - st; for i: 0..<rest { d[h].buf[i] = d[h].buf[st + i]; } d[h].n = rest;
-  if d[h].n == 8192 { d[h].n = 0; }
+  if d[h].n == 8192 { if x[0].control.on && x[0].control.owner == h { cx_control_release(x); } r := cxwl_desk_close(h); d[h].on = false; d[h].n = 0; }
 }
 
 cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
@@ -1707,6 +1732,10 @@ tool_main :: () -> int #export_c {
   }
   if !ok || (np != 3 && np != 5) { tool_errln("usage: compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH,WxH...] [--xwayland] [--screen] [--leave-to VT] [--input FILE] [--desk-socket PATH]"); return 2; }
   cc: [1] Cx; x := cc[..]; ff: [1] CxFrame; fr := ff[..];
+  nonce: [7] u8; if cxrand_draw(nonce[..], 7) != 0 { tool_errln("compositor: no session entropy"); return 1; }
+  for i: 0..<6 { x[0].session |= cast(int) nonce[i] << (8 * i); }
+  x[0].session |= (cast(int) nonce[6] & 31) << 48;
+  if x[0].session == 0 { return 1; }
   x[0].w = 1280; x[0].h = 720;
   if np == 5 { x[0].w = cx_num(pos[3]); x[0].h = cx_num(pos[4]); }
   // --screens: headless screens side by side, left to right, each WxH
@@ -1772,6 +1801,7 @@ tool_main :: () -> int #export_c {
   if !check && cxwl_spawn(sp2[0..<stn], sp[0..<sn]) > 0 { cx_say("exec start"); }
   last := cxwl_ms(); stdin_open := true; input_open := want_screen || input.count > 0;
   while !x[0].quit {
+    cx_control_tick(x);
     p := cxwl_poll(8, ifx stdin_open then 1 else 0);
     while true {
       h := cxwl_accept(); if h == -1 { break; }
@@ -1830,6 +1860,7 @@ tool_main :: () -> int #export_c {
       x[0].ndue = 0;
     }
   }
+  cx_control_release(x);
   for ci: 0..<CX_CLIENTS { if x[0].clients[ci].used { cx_drop_client(x, ci); } }
   r = cxwl_unlisten(sp[0..<sn]); r = cxwl_xwayland_stop();
   r = cxgpu_close();

@@ -84,3 +84,40 @@ The current game buffer is smaller than the desk's requested fullscreen
 rectangle; the remaining area is black. This is functional windowed rendering,
 not a fullscreen-resolution or frame-rate qualification. The next issues
 provide explicit window targeting, bounded controls and a controller CLI.
+
+## Targeted control (#12726)
+
+Generation 2 is specified in `docs/protocol/desk-control-v2.md` and
+`proto/openagents/os/desk/v2/control.proto`. Generation 1 remains available.
+The new API exposes the actual display and window/buffer geometry, uses a
+fresh OS-entropy session identifier and per-mapping window lifetime revisions,
+and grants one connection a lease of at most five seconds. Window handles
+now reuse free bounded slots instead of eventually indexing past the window
+table; every new mapping has a new revision.
+
+Owned input bypasses compositor keyboard shortcuts. It is released on stop,
+disconnect, lease expiry, target/focus loss, physical/legacy input, VT departure
+and shutdown. Slow reply writes have a 100 ms deadline, so a client that stops
+reading cannot block the compositor indefinitely. The screenshot API returns
+a capture sequence and the target's metadata.
+
+Checks and observations:
+
+- Full compositor: 100 Coax checks passed. Lease/slot policy: 17 mutants
+  killed, zero survivors. Strict wire decoder: 207 entry-source mutants
+  killed, zero survivors; dependency checks retained in that run.
+- New protobuf compiled with protoc 34.1 to a temporary descriptor.
+- `os/desk-control-check.coax` against upstream xev in an isolated desk,
+  native ASan/UBSan: input delivered, relative motion, competing controller,
+  malformed/duplicate request, outside-target refusal, disconnect, expiry
+  without traffic, emergency stop, legacy input, focus loss, removal and
+  recycled-handle lifetime checks all passed. Compositor exit 0, no sanitizer
+  error. LeakSanitizer remains disabled for the external graphics driver.
+- In actual WoW Classic, Enter pressed through generation 2 entered the
+  world. A 200 ms W hold visibly moved the character among the graves in
+  Coldridge Valley. An 80-pixel right-button relative drag visibly turned
+  the camera. Subsequent info reported inactive, zero keys and zero buttons.
+  These were bounded controls on the private headless desk with muted audio.
+
+`os/desk-call.coax SOCKET [--pause-ms N] REQUEST_JSON...` is the developer
+probe: its requests share one connection. The controller CLI follows in #12727.
