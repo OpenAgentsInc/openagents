@@ -1308,15 +1308,31 @@
   {
    "number": 58,
    "title": "Connect and disconnect a block",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch058-connect-and-disconnect-a-block.md",
+   "status": "partly implemented",
+   "profile": "native C (explorer light)",
    "depends_on": [
+    34,
+    49,
     56,
-    57
+    59,
+    62
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/lightstore.coax",
+    "coax/lib/bitcoin/lightpolicy.coax",
+    "coax/lib/bitcoin/lightchain.coax",
+    "coax/lib/bitcoin/kvhash.coax",
+    "bitcoin/examples/light-chain.coax",
+    "bitcoin/examples/live/light-chain.coax",
+    "coax/tests/bitcoin/lightchain_cases.coax",
+    "coax/tests/bitcoin/lightchain_vectors.coax",
+    "coax/tests/bitcoin/lightchain-native.coax",
+    "coax/tests/bitcoin/lightchain.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
@@ -1345,15 +1361,28 @@
   {
    "number": 60,
    "title": "Reorganizations and invalid chains",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch060-reorganizations-and-invalid-chains.md",
+   "status": "partly implemented",
+   "profile": "native C (explorer light)",
    "depends_on": [
     58,
     59
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/lightstore.coax",
+    "coax/lib/bitcoin/lightpolicy.coax",
+    "coax/lib/bitcoin/lightchain.coax",
+    "coax/lib/bitcoin/kvhash.coax",
+    "bitcoin/examples/light-chain.coax",
+    "bitcoin/examples/live/light-chain.coax",
+    "coax/tests/bitcoin/lightchain_cases.coax",
+    "coax/tests/bitcoin/lightchain_vectors.coax",
+    "coax/tests/bitcoin/lightchain-native.coax",
+    "coax/tests/bitcoin/lightchain.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
@@ -1390,7 +1419,8 @@
    "source": [
     "coax/lib/bitcoin/kvstore.coax",
     "bitcoin/examples/chainstate-store.coax",
-    "bitcoin/examples/checks/chainstate-store.coax"
+    "bitcoin/examples/checks/chainstate-store.coax",
+    "coax/lib/bitcoin/kvhash.coax"
    ],
    "qualified_targets": [
     "cpu"

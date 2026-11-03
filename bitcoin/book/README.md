@@ -43,7 +43,7 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 95 are implemented and 29 are planned. The 95 implemented
+Of the 124 chapters, 95 are implemented, 2 are partly implemented and 27 are planned. The 95 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
@@ -51,6 +51,11 @@ Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 77, 81, 94, 95, 96, 97, 100, 101,
 102, 103, 104, 105, 106, 107, 108, 109, 111, 112, 113, 114, 115, 116, 119, 121
 and 122 are new.
+
+Chapters 58 and 60 are partly implemented: their native explorer light path
+tracks coins and complete inverses, prepares branch changes atomically, and
+persists them with an explicit proof-of-work-only profile. Full consensus
+validation and validated-node chainstate integration remain separate work.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
 `coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -228,9 +233,9 @@ Connecting and disconnecting blocks, the block index, reorganizations, block fil
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 58. Connect and disconnect a block | Planned | Connecting then disconnecting each block of a pinned mainnet range restores the UTXO set's MuHash, using only the undo data the connect step wrote. Undo data with a wrong spent output refuses. |
+| [58. Connect and disconnect a block](ch058-connect-and-disconnect-a-block.md) | Partly implemented: native C (explorer light) | Tracks created and spent coins with ordered inverses, afterimage checks and a parent-bound undo digest. Prepares coins, undo and tip in one KV batch, with a durable Coax file adapter. Independent native UTXO/MuHash comparisons and physical-cut recovery checks qualify the light profile; full consensus validation remains chapter 57's prerequisite. |
 | [59. The block index and the most-work chain](ch059-the-block-index-and-the-most-work-chain.md) | Runnable: native C | Bitcoin Core's block index: `CBlockIndex` entries with height, chainwork, status levels and flags, parent and `GetSkipHeight` skip pointers, `GetAncestor` in O(log n) steps, `LastCommonAncestor`, `FindFork` and the locator; `AcceptBlockHeader` with `ContextualCheckBlockHeader` over the index; sequence ids, `m_blocks_unlinked` and `FindMostWorkChain` with Core's tie-breaks; `InvalidBlockFound`, `InvalidChainFound` and `InvalidateBlock`. Mainnet's first 2,017 headers and mined regtest forks; Core's `skiplist_tests.cpp` and `blockchain_tests.cpp` cases pass, and every line agrees with Core's transliterated `chain.cpp`, `blockstorage.cpp` and `validation.cpp`. |
-| 60. Reorganizations and invalid chains | Planned | On regtest a fork with more work replaces the tip: the node disconnects to the fork point and connects the new branch, and its UTXO set matches Bitcoin Core's after the same reorganization. A fork that contains an invalid block never becomes the tip. |
+| [60. Reorganizations and invalid chains](ch060-reorganizations-and-invalid-chains.md) | Partly implemented: native C (explorer light) | Chooses a preferred admitted-header branch, disconnects to its fork and connects its bodies as one atomic prepared batch. Late tracking failures preserve the live snapshot and do not mark the shared index consensus-invalid. Both fork directions restore exact UTXO metadata; validated invalid-chain propagation remains planned. |
 | [61. Block files and undo files](ch061-block-files-and-undo-files.md) | Runnable: native C | Core-compatible block and undo records, reads by body position, position-dependent `xor.dat`, and a file tool for durable append, import and torn-tail recovery. Imports all 2,501 records of Core 32.1's regtest file byte for byte; every physical cut retains the preceding complete records, and a wrong previous hash refuses undo data without publishing its body. |
 | [62. A key-value store for the chainstate](ch062-a-key-value-store-for-the-chainstate.md) | Runnable: native C | Our own store, not LevelDB: a sorted table with get, put, delete and ordered iteration, atomic batches, and an append-only log of SHA-256d-checksummed frames with replay that cuts a torn last frame and refuses any other damage, plus compaction by copy-on-write and Bitcoin Core's obfuscation key. On real files, a crash at every byte of every append reopens to exactly the last committed batch, and every single-byte flip of a log gets the same verdict from Coax and a separate Python reader. |
 | 63. The coins cache and crash-safe flushes | Planned | A crash at any point of a flush restarts to a consistent tip and replays to the same MuHash. The cache stays under its configured memory limit. |

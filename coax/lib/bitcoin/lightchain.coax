@@ -1,0 +1,368 @@
+// Bitcoin chapters 58/60, explorer light profile (#12704). These are staged
+// UTXO transitions on an already admitted header tree, NOT consensus validation.
+#run_steps 250000000;
+#load "lightpolicy.coax";
+#load "blockindex.coax";
+#load "witness.coax";
+#authority;
+
+LcBlock :: struct { index: int; bytes: [] u8; }
+LcWork :: struct {
+  ins: [] TxIn; outs: [] TxOut; items: [] TxItem;
+  ids: [] u8; wids: [] u8; merkle: [] u8; path: [] int;
+}
+#load "../../tests/bitcoin/lightchain_cases.coax";
+
+// Tests for this module are added before the transition implementation.
+#test "light chain: a corrupt or absent tip cannot prepare a transition" {
+  table: [16] u8; stage: [16] u8; batch: [16] u8;
+  tree: [1] BlockTree; blocks: [1] LcBlock; w: LcWork;
+  #assert lc_reorg_vartime(tree[..], table[..], 0, 0, blocks[0..<0], stage[..], batch[..], w).code == LC_CONTEXT;
+  #assert lc_disconnect_vartime(table[..], 0, stage[..], batch[..]).code == LC_CONTEXT;
+}
+#test "light chain: mined mature spends and a whole fork round trip" #steps 1000000000 {
+  d: [1] LcDemo; lc_demo_setup(d[..]);
+  #assert lc_demo_coins_are(d[..], "d50474301eaa0549f1ab3e3eff2775b403fd5213698998a6bda4fe3f89cf1cc0");
+  lc_demo_to_a(d[..]);
+  #assert lc_demo_coins_are(d[..], "1abacde98a8df2478c3127127eaf722cb728fea7eac506b4f0debbcfa95b8c73");
+  saved: [65536] u8; used := d[0].used;
+  for i: 0..<used { saved[i] = d[0].live[i]; }
+  blocks: [3] LcBlock; lc_demo_branch(d[..], 2, 3, blocks[..]);
+  r := lc_reorg_vartime(d[0].tree[..], d[0].live[..], used, 105, blocks[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..]));
+  #assert r.code == LC_OK && r.disconnected == 2 && r.connected == 3;
+  #assert lc_same(d[0].live[0..<used], saved[0..<used]);
+  lc_demo_publish(d[..], r);
+  #assert lc_demo_coins_are(d[..], "78022e75e75039255767de0c6b999ef13237c5a45b79bee3f0a5ec2acae4030a");
+  #assert lc_tip_vartime(d[0].live[..], d[0].used).height == 103;
+  a: [2] LcBlock; lc_demo_branch(d[..], 0, 2, a[..]);
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 102, a[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..])).code == LC_NOT_BETTER;
+  undone := lc_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..]);
+  #assert undone.disconnected == 1 && undone.connected == 0;
+  lc_demo_publish(d[..], undone);
+  r = lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 102, a[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..]));
+  #assert r.code == LC_OK && r.used == used && r.disconnected == 2 && r.connected == 2;
+  #assert lc_same(d[0].stage[0..<r.used], saved[0..<used]);
+  // Light preparation never raises index validity or moves its active chain.
+  #assert d[0].entries[105].status == BLOCK_VALID_TREE && d[0].tree[0].height == -1;
+}
+#test "light chain: each header-receipt consistency gate refuses independently" #steps 100000000 {
+  d: [1] LcDemo; lc_demo_minimal(d[..]); raw: [1024] u8;
+  b := tx_unhex(LC_PREFIX[1], raw[..]); block := LcBlock.{index=1, bytes=b};
+  w := lc_demo_work(d[..]);
+  #assert lc_demo_connect(d[..], block, w, 4096).code == LC_OK;
+  #assert lc_demo_connect(d[..], LcBlock.{index=-1, bytes=b}, w, 4096).code == LC_CONTEXT;
+  d[0].links[107] = d[0].links[1]; d[0].entries[107] = d[0].entries[1];
+  #assert lc_demo_connect(d[..], LcBlock.{index=107, bytes=b}, w, 4096).code == LC_CONTEXT;
+  key := LC_META; f := kv_find_vartime(d[0].live[..], d[0].used, key[..]); meta := f.at + 7;
+  kv_put32(d[0].live[..], meta, 2);
+  #assert lc_demo_connect(d[..], block, w, 4096).code == LC_CONTEXT;
+  kv_put32(d[0].live[..], meta, 1); kv_put32(d[0].live[..], meta+4, 1);
+  #assert lc_demo_connect(d[..], block, w, 4096).code == LC_CONTEXT;
+  kv_put32(d[0].live[..], meta+4, 5);
+  d[0].links[1].height = 2;
+  #assert lc_demo_connect(d[..], block, w, 4096).code == LC_CONTEXT;
+  d[0].links[1].height = 1; d[0].links[1].prev = -1;
+  #assert lc_demo_connect(d[..], block, w, 4096).code == LC_CONTEXT;
+  d[0].links[1].prev = 0; d[0].entries[1].status |= BLOCK_FAILED_VALID;
+  #assert lc_demo_connect(d[..], block, w, 4096).code == LC_CONTEXT;
+  d[0].entries[1].status = BLOCK_VALID_TREE;
+  d[0].live[meta+12] ^= 1;
+  #assert lc_demo_connect(d[..], block, w, 4096).code == LC_BLOCK;
+  // Now the tip agrees with the index's parent, but the header does not.
+  d[0].entries[0].hash[0] ^= 1;
+  #assert lc_demo_connect(d[..], block, w, 4096).code == LC_BLOCK;
+  d[0].live[meta+12] ^= 1; d[0].entries[0].hash[0] ^= 1;
+  raw[0] ^= 1;
+  #assert lc_demo_connect(d[..], block, w, 4096).code == LC_BLOCK;
+  raw[0] ^= 1;
+  #assert lc_demo_connect(d[..], LcBlock.{index=1, bytes=raw[0..<80]}, w, 4096).code == LC_BLOCK;
+  w.merkle = d[0].merkle[0..<0];
+  #assert lc_demo_connect(d[..], block, w, 4096).code == LC_CAPACITY;
+  w = lc_demo_work(d[..]);
+  #assert lc_demo_connect(d[..], LcBlock.{index=1, bytes=raw[0..<b.count+1]}, w, 4096).code == LC_BLOCK;
+  raw[80] = 0;
+  #assert lc_demo_connect(d[..], LcBlock.{index=1, bytes=raw[0..<81]}, w, 4096).code == LC_BLOCK;
+  raw[80] = 1;
+  for cap: [4] int.[12, 188, 250, 308] {
+    #assert lc_demo_connect(d[..], block, w, cap).code == LC_CAPACITY;
+  }
+  hk: [33] u8; hk[0] = 'H'; h := d[0].entries[1].hash;
+  for k: 0..<32 { hk[1+k] = h[k]; }
+  value: [1] u8; d[0].used = kv_set_vartime(d[0].live[..], d[0].used, hk[..], value[..]);
+  #assert lc_demo_connect(d[..], block, w, 4096).code == LC_CONTEXT;
+}
+#test "light chain: transaction-shape, amount, collision and empty-script input cases" #steps 100000000 {
+  for which: 0..<4 {
+    d: [1] LcDemo; lc_demo_minimal(d[..]); raw: [1024] u8;
+    b := tx_unhex(LC_PREFIX[1], raw[..]); tx := b[81..<b.count];
+    t := tx_read_vartime(tx, true, d[0].ins[..], d[0].outs[..], d[0].items[..]);
+    if which == 0 { tx[5] = 7; }
+    if which == 1 { for k: 0..<8 { tx[d[0].outs[0].value+k] = 255; } }
+    if which == 2 { kv_put64(tx, d[0].outs[0].value, 2100000000000001); }
+    lc_demo_rehash(d[..], b);
+    if which < 3 {
+      #assert lc_demo_connect(d[..], LcBlock.{index=1, bytes=b}, lc_demo_work(d[..]), 4096).code == LC_BLOCK;
+    } else {
+      point: [37] u8; point[0] = 'C'; #assert tx_txid_vartime(tx, t, point[1..<33]);
+      old: [13] u8; d[0].used = kv_set_vartime(d[0].live[..], d[0].used, point[..], old[..]);
+      #assert lc_demo_connect(d[..], LcBlock.{index=1, bytes=b}, lc_demo_work(d[..]), 4096).code == LC_OVERWRITE;
+    }
+  }
+  d: [1] LcDemo; lc_demo_minimal(d[..]); raw: [1024] u8; extra: [128] u8;
+  cb := tx_unhex(LC_PREFIX[1], raw[..]); second := tx_unhex(TX_LEGACY_OK, extra[..]);
+  second[5] = 17; for k: 37..<41 { second[k] = 0; }
+  for k: 0..<second.count { raw[cb.count+k] = second[k]; } raw[80] = 2;
+  b := raw[0..<cb.count+second.count]; lc_demo_rehash(d[..], b);
+  point: [37] u8; point[0] = 'C'; point[1] = 17; old: [13] u8;
+  d[0].used = kv_set_vartime(d[0].live[..], d[0].used, point[..], old[..]);
+  #assert lc_demo_connect(d[..], LcBlock.{index=1, bytes=b}, lc_demo_work(d[..]), 190).code == LC_CAPACITY;
+  r := lc_demo_connect(d[..], LcBlock.{index=1, bytes=b}, lc_demo_work(d[..]), 4096);
+  #assert r.code == LC_OK && lc_value_vartime(d[0].stage[..], r.used, point[..]).count == 0;
+}
+#test "light chain: malformed undo headers, afterimages and exact capacities" #steps 300000000 {
+  for which: 0..<8 {
+    d: [1] LcDemo; lc_demo_minimal(d[..]); raw: [1024] u8;
+    b := tx_unhex(LC_PREFIX[1], raw[..]); block := LcBlock.{index=1, bytes=b};
+    r := lc_demo_connect(d[..], block, lc_demo_work(d[..]), 4096); lc_demo_publish(d[..], r);
+    h := d[0].entries[1].hash; key: [33] u8; key[0] = 'H'; for k: 0..<32 { key[1+k] = h[k]; }
+    f := kv_find_vartime(d[0].live[..], d[0].used, key[..]); start := f.at + 6 + 33;
+    if which == 0 { d[0].used = kv_delete_vartime(d[0].live[..], d[0].used, key[..]); }
+    if which == 1 {
+      short: [79] u8; for k: 0..<79 { short[k] = d[0].live[start+k]; }
+      d[0].used = kv_set_vartime(d[0].live[..], d[0].used, key[..], short[..]);
+    }
+    if which == 2 { kv_put32(d[0].live[..], start, 2); }
+    if which == 3 { kv_put32(d[0].live[..], start+4, 0); }
+    if which == 4 { kv_put32(d[0].live[..], start+40, 2); }
+    if which == 5 { d[0].live[start+44] ^= 1; }
+    if which == 6 { d[0].live[start+8] ^= 1; }
+    if which == 7 {
+      at := 0;
+      while at < d[0].used {
+        e := kv_entry_vartime(d[0].live[..], d[0].used, at);
+        if e.key[0] == 'C' { d[0].live[at+6+37] ^= 1; break; }
+        at = e.next;
+      }
+    }
+    #assert lc_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..]).code == LC_UNDO;
+  }
+  d: [1] LcDemo; lc_demo_minimal(d[..]); raw: [1024] u8;
+  b := tx_unhex(LC_PREFIX[1], raw[..]); blocks := [1] LcBlock.[LcBlock.{index=1, bytes=b}];
+  w := lc_demo_work(d[..]); w.path = d[0].path[0..<1];
+  r := lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], d[0].stage[..], d[0].batch[..], w);
+  #assert r.code == LC_OK;
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[0..<r.used], d[0].used, 1, blocks[..], d[0].stage[..], d[0].batch[..], w).code == LC_OK;
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[0..<d[0].used], d[0].used, 1, blocks[..], d[0].stage[..], d[0].batch[..], w).code == LC_CAPACITY;
+  #assert lc_reorg_vartime(d[0].tree[0..<0], d[0].live[..], d[0].used, 1, blocks[..], d[0].stage[..], d[0].batch[..], w).code == LC_CONTEXT;
+  key := LC_META; f := kv_find_vartime(d[0].live[..], d[0].used, key[..]);
+  d[0].live[f.at+7+12] ^= 1;
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], d[0].stage[..], d[0].batch[..], w).code == LC_CONTEXT;
+  d[0].live[f.at+7+12] ^= 1;
+  r = lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], d[0].stage[..], d[0].batch[..], w); lc_demo_publish(d[..], r);
+  #assert lc_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[0..<1], d[0].batch[..]).code == LC_CAPACITY;
+  #assert lc_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[0..<12]).code == LC_CAPACITY;
+  // Enough for the inverse operations, then failure at H deletion or tip.
+  #assert lc_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[0..<127]).code == LC_CAPACITY;
+  #assert lc_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[0..<179]).code == LC_CAPACITY;
+  lc_demo_publish(d[..], lc_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..]));
+  #assert d[0].used == 51 && lc_tip_vartime(d[0].live[..], 51).height == 0;
+  #assert lc_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..]).code == LC_CONTEXT;
+}
+#test "light chain: witness activation, witness parsing and exact script bytes" #steps 100000000 {
+  d: [1] LcDemo; lc_demo_minimal(d[..]); raw: [6000] u8;
+  // Chapter 49's three-transaction witness fixture, with synthetic receipts
+  // and pre-existing inputs, isolates the transition from header admission.
+  b := tx_unhex(WT_CASES[3].hex, raw[..]);
+  for k: 0..<32 { b[4+k] = d[0].entries[0].hash[k]; }
+  lc_demo_rehash(d[..], b);
+  at := tx_compact_read_vartime(b, 80).next;
+  for n: 0..<3 {
+    bytes := b[at..<b.count]; t := tx_parse_vartime(bytes, true, d[0].ins[..], d[0].outs[..], d[0].items[..]);
+    if n != 0 {
+      for j: 0..<t.nin {
+        point: [37] u8; point[0] = 'C'; old: [13] u8;
+        for k: 0..<36 { point[1+k] = bytes[d[0].ins[j].outpoint+k]; }
+        d[0].used = kv_set_vartime(d[0].live[..], d[0].used, point[..], old[..]);
+      }
+    }
+    at += t.total;
+  }
+  block := LcBlock.{index=1, bytes=b};
+  r := lc_demo_connect(d[..], block, lc_demo_work(d[..]), 16384);
+  #assert r.code == LC_OK;
+  at = tx_compact_read_vartime(b, 80).next;
+  for n: 0..<3 {
+    bytes := b[at..<b.count]; t := tx_parse_vartime(bytes, true, d[0].ins[..], d[0].outs[..], d[0].items[..]);
+    for j: 0..<t.nout {
+      out := d[0].outs[j];
+      if lc_unspendable(bytes[out.script..<out.script+out.script_n]) { continue; }
+      point: [37] u8; point[0] = 'C'; kv_put32(point[..], 33, j);
+      #assert tx_txid_vartime(bytes, t, point[1..<33]);
+      coin := lc_value_vartime(d[0].stage[..], r.used, point[..]);
+      #assert coin.count == 13+out.script_n;
+      #assert lc_same(coin[13..<coin.count], bytes[out.script..<out.script+out.script_n]);
+    }
+    at += t.total;
+  }
+  d[0].tree[0].p.segwit_height = 2;
+  #assert lc_demo_connect(d[..], block, lc_demo_work(d[..]), 16384).code == LC_BLOCK;
+}
+#test "light chain: late branch failure, malformed body and capacities leave live state" #steps 1000000000 {
+  d: [1] LcDemo; lc_demo_setup(d[..]); lc_demo_to_a(d[..]);
+  blocks: [4] LcBlock; lc_demo_branch(d[..], 2, 4, blocks[..]);
+  saved: [65536] u8; for k: 0..<d[0].used { saved[k] = d[0].live[k]; }
+  r := lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 106, blocks[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..]));
+  #assert r.code == LC_MISSING && r.n == 0;
+  #assert lc_same(saved[0..<d[0].used], d[0].live[0..<d[0].used]);
+  w := lc_demo_work(d[..]);
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 105, blocks[0..<3], d[0].stage[0..<1], d[0].batch[..], w).code == LC_CAPACITY;
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 105, blocks[0..<3], d[0].stage[..], d[0].batch[0..<12], w).code == LC_CAPACITY;
+  w.path = d[0].path[0..<0];
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 105, blocks[0..<3], d[0].stage[..], d[0].batch[..], w).code == LC_CAPACITY;
+  w = lc_demo_work(d[..]); w.ids = d[0].ids[0..<0];
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 105, blocks[0..<3], d[0].stage[..], d[0].batch[..], w).code == LC_CAPACITY;
+  w = lc_demo_work(d[..]);
+  blocks[2].bytes[blocks[2].bytes.count-1] ^= 1;
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 105, blocks[0..<3], d[0].stage[..], d[0].batch[..], w).code == LC_BLOCK;
+  blocks[2].bytes[blocks[2].bytes.count-1] ^= 1;
+  blocks[0].index = 104;
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 105, blocks[0..<3], d[0].stage[..], d[0].batch[..], w).code == LC_CONTEXT;
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 105, blocks[0..<2], d[0].stage[..], d[0].batch[..], w).code == LC_CONTEXT;
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, -1, blocks[0..<3], d[0].stage[..], d[0].batch[..], w).code == LC_CONTEXT;
+  #assert lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 107, blocks[0..<3], d[0].stage[..], d[0].batch[..], w).code == LC_CONTEXT;
+  // Corrupt inverse bytes are checked before any reverse operation.
+  h := d[0].entries[102].hash; uk: [37] u8; lc_key('U', 0, uk[..]);
+  for k: 0..<32 { uk[1+k] = h[k]; }
+  f := kv_find_vartime(d[0].live[..], d[0].used, uk[..]);
+  d[0].live[f.at + 6 + 37 + 2] ^= 1;
+  #assert lc_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..]).code == LC_UNDO;
+}
+
+// ----- one block, on private scratch
+lc_connect_stage_vartime :: (tree: [] BlockTree, table: [] u8, c: [] LcCursor, batch: [] u8, block: LcBlock, w: LcWork) -> int {
+  tip := lc_tip_vartime(table, c[0].used); i := block.index; b := block.bytes;
+  if tip.code != LC_OK || tip.chain != tree[0].p.chain || !lc_index_extent(i, tree[0].count) { return LC_CONTEXT; }
+  l := tree[0].l; e := tree[0].e;
+  if !lc_child_context(l[i].height, l[i].prev, tip.height) || !bi_is_valid(e[i].status, BLOCK_VALID_TREE) { return LC_CONTEXT; }
+  parent := e[l[i].prev].hash; expected := e[i].hash;
+  if !lc_same(tip.hash[..], parent[..]) || !lc_body_extent(b.count) { return LC_BLOCK; }
+  hash: [32] u8;
+  #assert pow_block_hash_vartime(b[0..<80], hash[..]) == POW_OK;
+  if !lc_same(hash[..], expected[..]) || !lc_same(b[4..<36], parent[..]) { return LC_BLOCK; }
+  hk: [33] u8; hk[0] = 'H'; for k: 0..<32 { hk[1+k] = hash[k]; }
+  if lc_value_vartime(table, c[0].used, hk[..]).count != 0 { return LC_CONTEXT; }
+  check := witness_mutated_vartime(b, chain_deployment_active(tree[0].p, DEP_SEGWIT, l[i].height), w.ins, w.outs, w.items, w.ids, w.wids, w.merkle);
+  if check.code == WITNESS_CAPACITY { return LC_CAPACITY; }
+  if check.code != WITNESS_OK || check.count < 1 { return LC_BLOCK; }
+  at := tx_compact_read_vartime(b, 80).next; ordinal := 0; weight := 4 * at;
+  repeat := chain_bip30_repeat_vartime(l[i].height, hash[..]);
+  for n: 0..<check.count {
+    bytes := b[at..<b.count]; t := tx_parse_vartime(bytes, true, w.ins, w.outs, w.items);
+    cb := tx_coinbase_vartime(bytes, t, w.ins);
+    if !lc_tx_shape(cb, n == 0, t.nin, t.nout) { return LC_BLOCK; }
+    weight += tx_weight_vartime(t);
+    weight_code := lc_weight_check(weight);
+    if weight_code != LC_OK { return weight_code; }
+    key: [37] u8; key[0] = 'C';
+    if !cb {
+      for j: 0..<t.nin {
+        for k: 0..<36 { key[1+k] = bytes[w.ins[j].outpoint+k]; }
+        old := lc_value_vartime(table, c[0].used, key[..]);
+        if old.count < LC_COIN_HEAD { return LC_MISSING; }
+        absent: [] u8;
+        code := lc_change_vartime(table, c, batch, hash[..], ordinal, key[..], absent[..], false);
+        if code != LC_OK { return code; }
+        ordinal += 1;
+      }
+    }
+    for j: 0..<t.nout {
+      out := w.outs[j]; amount := tx_le_vartime(bytes, out.value, 8);
+      if !lc_amount_ok(amount) { return LC_BLOCK; }
+      kv_put32(key[..], 33, j);
+      for k: 0..<32 { key[1+k] = w.ids[32*n+k]; }
+      if lc_value_vartime(table, c[0].used, key[..]).count != 0 && !repeat { return LC_OVERWRITE; }
+      // Core's IsUnspendable: OP_RETURN or a script larger than 10,000.
+      if lc_unspendable(bytes[out.script..<out.script+out.script_n]) { continue; }
+      coin: [LC_COIN_HEAD + LC_SCRIPT_MAX] u8;
+      kv_put32(coin[..], 8, l[i].height); coin[12] = ifx cb then 1 else 0;
+      for k: 0..<8 { coin[k] = bytes[out.value+k]; }
+      for k: 0..<out.script_n { coin[13+k] = bytes[out.script+k]; }
+      code := lc_change_vartime(table, c, batch, hash[..], ordinal, key[..], coin[0..<13+out.script_n], true);
+      if code != LC_OK { return code; }
+      ordinal += 1;
+    }
+    at += t.total;
+  }
+  header: [80] u8;
+  kv_put32(header[..], 0, LC_VERSION); kv_put32(header[..], 4, l[i].height);
+  for k: 0..<32 { header[8+k] = parent[k]; } kv_put32(header[..], 40, ordinal);
+  kv_put32(header[..], 76, weight);
+  // Every inverse above was just constructed successfully in this scratch.
+  sum: [32] u8;
+  #assert lc_undo_digest_vartime(table, c[0].used, hash[..], parent[..], ordinal, sum[..]);
+  for k: 0..<32 { header[44+k] = sum[k]; }
+  if !lc_put_vartime(table, c, batch, hk[..], header[..]) || !lc_set_tip_vartime(table, c, batch, tip.chain, l[i].height, hash[..]) { return LC_CAPACITY; }
+  return LC_OK;
+}
+
+lc_disconnect_stage_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8) -> int {
+  tip := lc_tip_vartime(table, c[0].used);
+  if tip.code != LC_OK || tip.height == 0 { return LC_CONTEXT; }
+  hk: [33] u8; hk[0] = 'H'; for k: 0..<32 { hk[1+k] = tip.hash[k]; }
+  h := lc_value_vartime(table, c[0].used, hk[..]);
+  if h.count != 80 { return LC_UNDO; }
+  if kv_get32(h, 0) != LC_VERSION || kv_get32(h, 4) != tip.height { return LC_UNDO; }
+  count := kv_get32(h, 40); parent: [32] u8; sum: [32] u8;
+  for k: 0..<32 { parent[k] = h[8+k]; }
+  if !lc_undo_digest_vartime(table, c[0].used, tip.hash[..], parent[..], count, sum[..]) || !lc_same(sum[..], h[44..<76]) { return LC_UNDO; }
+  ordinal := count;
+  while ordinal > 0 {
+    ordinal -= 1;
+    code := lc_reverse_vartime(table, c, batch, tip.hash[..], ordinal);
+    if code != LC_OK { return code; }
+  }
+  if !lc_delete_vartime(table, c, batch, hk[..]) || !lc_set_tip_vartime(table, c, batch, tip.chain, tip.height - 1, parent[..]) { return LC_CAPACITY; }
+  return LC_OK;
+}
+
+// A standalone disconnect prepares one atomic batch; genesis is never spent.
+lc_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+  c: [1] LcCursor;
+  if !lc_begin_vartime(table, used, stage, batch, c[..]) { return LcResult.{code=LC_CAPACITY}; }
+  code := lc_disconnect_stage_vartime(stage, c[..], batch);
+  if code != LC_OK { return LcResult.{code=code}; }
+  return LcResult.{used=c[0].used, n=c[0].n, disconnected=1};
+}
+
+// Prepare an entire best-chain change. The accepted BlockTree is read-only.
+// Blocks are exactly the fork's children through target in forward order.
+// Neither table nor index changes on failure, even after partial scratch work.
+// Do not raise BLOCK_VALID_CHAIN/SCRIPTS after committing this light profile.
+lc_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] LcBlock, stage: [] u8, batch: [] u8, w: LcWork) -> LcResult #export_c {
+  tip := lc_tip_vartime(table, used);
+  if tip.code != LC_OK || tree.count != 1 || tip.chain != tree[0].p.chain || !lc_index_extent(target, tree[0].count) { return LcResult.{code=LC_CONTEXT}; }
+  current := bi_find(tree, tip.hash[..]);
+  if current < 0 || tree[0].l[current].height != tip.height || !bi_is_valid(tree[0].e[target].status, BLOCK_VALID_TREE) { return LcResult.{code=LC_CONTEXT}; }
+  if !bi_worse(tree[0].e, current, target) { return LcResult.{code=LC_NOT_BETTER}; }
+  fork := bi_last_common_ancestor(tree[0].l, current, target);
+  count := tree[0].l[target].height - tree[0].l[fork].height;
+  if count != blocks.count { return LcResult.{code=LC_CONTEXT}; }
+  if count > w.path.count { return LcResult.{code=LC_CAPACITY}; }
+  j := target;
+  for n: 0..<count { w.path[count-1-n] = j; j = tree[0].l[j].prev; }
+  c: [1] LcCursor;
+  if !lc_begin_vartime(table, used, stage, batch, c[..]) { return LcResult.{code=LC_CAPACITY}; }
+  disconnected := tip.height - tree[0].l[fork].height;
+  for n: 0..<disconnected {
+    code := lc_disconnect_stage_vartime(stage, c[..], batch);
+    if code != LC_OK { return LcResult.{code=code}; }
+  }
+  for n: 0..<count {
+    block := blocks[n];
+    if block.index != w.path[n] { return LcResult.{code=LC_CONTEXT}; }
+    code := lc_connect_stage_vartime(tree, stage, c[..], batch, block, w);
+    if code != LC_OK { return LcResult.{code=code}; }
+  }
+  if c[0].used > table.count { return LcResult.{code=LC_CAPACITY}; }
+  return LcResult.{used=c[0].used, n=c[0].n, disconnected=disconnected, connected=count};
+}

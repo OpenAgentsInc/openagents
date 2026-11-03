@@ -1,0 +1,8 @@
+light profile: proof of work; scripts not validated
+common tip 100: 100 coins, 500000000000 sat, MuHash 17017854d9aded03d641b700431cf2888cde418ac63fc01a41bd39ece3f87934
+A tip 102: 103 coins, 509999996000 sat, MuHash 750ba8d8990d5e5b14951087241be1ca2c0b6830ddd1225d70e9a67b4fdc4912
+late missing input: refusal 4, live tip 102
+reorg: detached 2, attached 3
+B tip 103: 103 coins, 514999998000 sat, MuHash f8bf3d0c6b623f7f1b10a11a25cc87896262c6e40babdf1cec23b5c662d47a19
+weaker fork: refusal 7
+undo and reconnect: original snapshot restored

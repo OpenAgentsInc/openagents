@@ -6,7 +6,10 @@
       "chapter": "bitcoin/book/ch055-script-flags-by-height-and-their-exceptions.md",
       "stdout": "bitcoin/fixtures/script-flags.out",
       "exit_status": 0,
-      "modes": ["debug", "release"],
+      "modes": [
+        "debug",
+        "release"
+      ],
       "timeout": 300
     },
     {
@@ -14,7 +17,10 @@
       "chapter": "bitcoin/book/ch055-script-flags-by-height-and-their-exceptions.md",
       "stdout": "bitcoin/fixtures/script-flags-refused.out",
       "exit_status": 0,
-      "modes": ["debug", "release"],
+      "modes": [
+        "debug",
+        "release"
+      ],
       "timeout": 300
     },
     {
@@ -1052,6 +1058,17 @@
       "source": "bitcoin/examples/fuzzing.coax",
       "chapter": "bitcoin/book/ch119-fuzzing.md",
       "stdout": "bitcoin/fixtures/fuzzing.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/light-chain.coax",
+      "chapter": "bitcoin/book/ch058-connect-and-disconnect-a-block.md",
+      "stdout": "bitcoin/fixtures/light-chain.out",
       "exit_status": 0,
       "modes": [
         "debug",

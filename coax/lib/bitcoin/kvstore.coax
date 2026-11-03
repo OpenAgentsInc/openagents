@@ -23,7 +23,7 @@
 //
 // Keys and values are public chain data, so everything here runs in
 // variable time.
-#load "hash.coax";
+#load "kvhash.coax";
 #authority;
 
 // book:begin codes
@@ -274,11 +274,6 @@ kv_mask_batch :: (body: [] u8, mask: u64) {
 // masked), two zero bytes, the mask, then a checksum of those 16 bytes.
 // Every checksum here is the first 4 bytes of SHA-256d, as in a P2P
 // message header.
-kv_checksum :: (data: [] u8, out: [] u8) {
-  d: [32] u8;
-  #assert sha256d_checked(data, d[..], false) == SHA_OK;
-  for i: 0..<4 { out[i] = d[i]; }
-}
 kv_checksum_ok :: (data: [] u8, sum: [] u8) -> bool {
   c: [4] u8;
   kv_checksum(data, c[..]);

@@ -1,0 +1,34 @@
+// Chapter 62's log checksum, streamed beyond the one-shot SHA input bound.
+#load "hash.coax";
+#authority;
+
+#test "KV checksum stride is the largest admitted SHA input" {
+  #assert sha256_input_ok(kv_checksum_stride()) && !sha256_input_ok(kv_checksum_stride() + 1);
+}
+
+#test "KV checksums keep four bytes and preserve the caller's tail" {
+  b := [3] u8.[97, 98, 99]; out: [5] u8; out[4] = 165;
+  kv_checksum(b[0..<0], out[..]);
+  #assert bh_hex_equal(out[0..<4], "5df6e0e2") && out[4] == 165;
+  kv_checksum(b[..], out[..]);
+  #assert bh_hex_equal(out[0..<4], "4f8b42c2") && out[4] == 165;
+}
+#test "KV checksums stream a frame larger than one MiB" #steps 2000000000 {
+  b: [1048577] u8; out: [4] u8; b[1048576] = 1;
+  kv_checksum(b[..], out[..]);
+  #assert bh_hex_equal(out[..], "40fd8840");
+}
+
+kv_checksum_stride :: () -> int { return CB_MAX_BYTES; }
+kv_checksum :: (data: [] u8, out: [] u8) {
+  state: [SHA_STATE_BYTES] u8; first: [32] u8; digest: [32] u8;
+  #assert sha256_init(state[..]) == SHA_OK;
+  stride := kv_checksum_stride(); chunks := data.count / stride;
+  for i: 0..<chunks {
+    #assert sha256_update_checked(state[..], data[i*stride..<(i+1)*stride], false) == SHA_OK;
+  }
+  #assert sha256_update_checked(state[..], data[chunks*stride..<data.count], false) == SHA_OK;
+  #assert sha256_final_checked(state[..], first[..], false) == SHA_OK;
+  #assert sha256_hash_checked(first[..], digest[..], false) == SHA_OK;
+  for i: 0..<4 { out[i] = digest[i]; }
+}

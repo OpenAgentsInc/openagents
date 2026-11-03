@@ -1,0 +1,49 @@
+#run_steps 250000000;
+#load "../../coax/lib/bitcoin/lightchain.coax";
+#load "../../coax/lib/bitcoin/coins.coax";
+#import "Basic";
+
+// This example uses the independently generated regtest fixtures. It never
+// performs I/O or publishes a node's state; the native oracle tests fsync/replay.
+show :: (label: string, d: [] LcDemo) {
+  count := 0; total := cast(u64) 0; at := 0; m := muhash_new(); record: [10100] u8;
+  while at < d[0].used {
+    e := kv_entry_vartime(d[0].live[..], d[0].used, at); at = e.next;
+    if e.key[0] != 'C' { continue; }
+    count += 1; total += kv_get64(e.value, 0);
+    c := Coin.{value=kv_get64(e.value, 0), height=kv_get32(e.value, 8), coinbase=e.value[12] != 0};
+    n := coin_txout_ser_vartime(e.key[1..<33], kv_get32(e.key, 33), c, e.value[13..<e.value.count], record[..]);
+    #assert n > 0; m = muhash_insert_vartime(m, record[0..<n]);
+  }
+  hash: [32] u8; #assert muhash_finalize_vartime(m, hash[..]) == MUHASH_OK;
+  tip := lc_tip_vartime(d[0].live[..], d[0].used);
+  print("% tip %: % coins, % sat, MuHash ", label, tip.height, count, total);
+  digits := "0123456789abcdef";
+  for k: 0..<32 {
+    byte := hash[31-k]; pair := [2] u8.[digits[byte >> 4], digits[byte & 15]];
+    print("%", cast(string) pair[..]);
+  }
+  print("\n");
+}
+main :: () {
+  print("light profile: proof of work; scripts not validated\n");
+  d: [1] LcDemo; lc_demo_setup(d[..]); show("common", d[..]);
+  lc_demo_to_a(d[..]); show("A", d[..]);
+  saved: [65536] u8; used := d[0].used;
+  for k: 0..<used { saved[k] = d[0].live[k]; }
+  blocks: [4] LcBlock; lc_demo_branch(d[..], 2, 4, blocks[..]);
+  r := lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 106, blocks[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..]));
+  #assert r.code == LC_MISSING && r.n == 0 && lc_same(saved[0..<used], d[0].live[0..<used]);
+  print("late missing input: refusal %, live tip %\n", r.code, lc_tip_vartime(d[0].live[..], d[0].used).height);
+  r = lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 105, blocks[0..<3], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..]));
+  #assert r.code == LC_OK && r.disconnected == 2 && r.connected == 3;
+  print("reorg: detached %, attached %\n", r.disconnected, r.connected);
+  lc_demo_publish(d[..], r); show("B", d[..]);
+  a: [2] LcBlock; lc_demo_branch(d[..], 0, 2, a[..]);
+  r = lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 102, a[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..]));
+  #assert r.code == LC_NOT_BETTER; print("weaker fork: refusal %\n", r.code);
+  lc_demo_publish(d[..], lc_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..]));
+  r = lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 102, a[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..]));
+  #assert r.code == LC_OK && r.used == used && lc_same(d[0].stage[0..<r.used], saved[0..<used]);
+  print("undo and reconnect: original snapshot restored\n");
+}

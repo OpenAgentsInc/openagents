@@ -1,5 +1,24 @@
 # Invariants
 
+## Explorer light state changes one durable branch at a time
+
+`coax/lib/bitcoin/lightchain.coax`, `lightpolicy.coax` and `lightstore.coax` own the explorer's
+version-1 light schema over chapter 62's store: the `L` profile/tip, `C`
+coins, `U` ordered inverses and `H` parent/block-bound inverse digests.
+Preparation changes only disjoint private scratch. Coins, inverse records
+and final tip form one KV batch; a late failure yields no publishable batch.
+Disconnect checks the complete inverse digest and each current afterimage
+before restoring old coin bytes. Same-block spends reverse in opposite order.
+Only a preferred path through the admitted header tree can be prepared,
+and neither active header-index tip nor validation levels are changed.
+The file adapter acknowledges only after append and storage sync, requires
+exclusive file ownership and immutable inputs, and truncates only a KV
+reader's reported torn tail. `kvhash.coax` streams large-frame SHA-256d
+without changing the existing KV format. This is explicitly proof-of-work-only
+tracking, never full consensus validation or authority for money. Evidence:
+chapters 58/60's partial profiles, mutation checks, and `lightchain.py`'s
+independent native UTXO/MuHash, physical-cut and real Coax file-tool journeys.
+
 ## Bitcoin block script rules keep their hash and ancestry context
 
 `coax/lib/bitcoin/scriptflags.coax` selects pinned Core's block script mask:

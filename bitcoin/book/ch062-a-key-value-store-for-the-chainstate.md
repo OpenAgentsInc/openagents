@@ -323,17 +323,18 @@ Each checksum is the first 4 bytes of SHA-256d, the same construction as
 a P2P message header (chapter 65). It is there to detect damage, not an
 attacker: anyone who can write the file can recompute it.
 
+The checksum implementation is now in
+[kvhash.coax](../../coax/lib/bitcoin/kvhash.coax). It streams full SHA input
+chunks and the final remainder, so a frame above 1 MiB keeps exactly the
+same checksum bytes without hitting the one-shot hash limit. Chapter 58's
+light connector exercises such a frame through real append and reopen.
+
 <!-- source: coax/lib/bitcoin/kvstore.coax frame -->
 ```jai
 // The log's header: "OAKV", version 1, a flags byte (bit 0: values are
 // masked), two zero bytes, the mask, then a checksum of those 16 bytes.
 // Every checksum here is the first 4 bytes of SHA-256d, as in a P2P
 // message header.
-kv_checksum :: (data: [] u8, out: [] u8) {
-  d: [32] u8;
-  #assert sha256d_checked(data, d[..], false) == SHA_OK;
-  for i: 0..<4 { out[i] = d[i]; }
-}
 kv_checksum_ok :: (data: [] u8, sum: [] u8) -> bool {
   c: [4] u8;
   kv_checksum(data, c[..]);

@@ -1,0 +1,308 @@
+// Explorer-only state, #12704. Own versioned keys over chapter 62's store.
+// Preparation mutates private scratch only. Publish after its one frame is
+// appended and synced; the tip and every coin/undo change share that frame.
+#load "kvstore.coax";
+#authority;
+
+LC_OK :: 0; LC_CONTEXT :: 1; LC_CAPACITY :: 2; LC_BLOCK :: 3;
+LC_MISSING :: 4; LC_OVERWRITE :: 5; LC_UNDO :: 6; LC_NOT_BETTER :: 7;
+LC_VERSION :: 1; LC_COIN_HEAD :: 13; LC_SCRIPT_MAX :: 10000;
+LC_META :: [1] u8.['L'];
+LcCursor :: struct { used: int; n: int; }
+LcResult :: struct { code: int; used: int; n: int; disconnected: int; connected: int; }
+LcTip :: struct { code: int; chain: int; height: int; hash: [32] u8; }
+
+// Checks are written before the implementation.
+#test "light store: init is explicit, versioned and staged" {
+  live: [4096] u8; stage: [4096] u8; batch: [4096] u8;
+  g: [32] u8; g[0] = 7;
+  #assert lc_tip_vartime(live[..], 0).code == LC_CONTEXT;
+  r := lc_init_vartime(5, g[..], live[..], 0, stage[..], batch[..]);
+  #assert r.code == LC_OK && r.n > 12 && r.used == 51 && live[0] == 0;
+  t := lc_tip_vartime(stage[..], r.used);
+  #assert t.code == LC_OK && t.chain == 5 && t.height == 0 && t.hash[0] == 7;
+  #assert lc_init_vartime(0, g[..], live[..], 0, stage[..], batch[..]).code == LC_CONTEXT;
+  #assert lc_init_vartime(6, g[..], live[..], 0, stage[..], batch[..]).code == LC_CONTEXT;
+  #assert lc_init_vartime(5, g[0..<31], live[..], 0, stage[..], batch[..]).code == LC_CONTEXT;
+  #assert lc_init_vartime(5, g[..], live[..], 1, stage[..], batch[..]).code == LC_CONTEXT;
+  #assert lc_init_vartime(5, g[..], live[..], 0, stage[0..<50], batch[..]).code == LC_CAPACITY;
+  #assert lc_init_vartime(5, g[..], live[..], 0, stage[..], batch[0..<12]).code == LC_CAPACITY;
+  key := LC_META; f := kv_find_vartime(stage[..], r.used, key[..]);
+  stage[f.at + 7] ^= 1;
+  #assert lc_tip_vartime(stage[..], r.used).code == LC_CONTEXT;
+}
+#test "light store: reverse changes restore exact old bytes and check afterimages" {
+  table: [4096] u8; batch: [4096] u8; c: [1] LcCursor;
+  c[0].n = kv_batch_new(batch[..]);
+  key: [37] u8; lc_key('C', 9, key[..]);
+  value: [14] u8; value[0] = 50; value[13] = 0x51;
+  hash: [32] u8; hash[0] = 8;
+  #assert lc_change_vartime(table[..], c[..], batch[..], hash[..], 0, key[..], value[..], true) == LC_OK;
+  #assert lc_value_vartime(table[..], c[0].used, key[..]).count == 14;
+  #assert lc_reverse_vartime(table[..], c[..], batch[..], hash[..], 0) == LC_OK;
+  #assert c[0].used == 0;
+  #assert lc_change_vartime(table[..], c[..], batch[..], hash[..], 1, key[..], value[..], true) == LC_OK;
+  #assert lc_change_vartime(table[..], c[..], batch[..], hash[..], 2, key[..], value[0..<0], false) == LC_OK;
+  #assert lc_reverse_vartime(table[..], c[..], batch[..], hash[..], 2) == LC_OK;
+  f := kv_find_vartime(table[..], c[0].used, key[..]);
+  table[f.at + 6 + 37] ^= 1;
+  #assert lc_reverse_vartime(table[..], c[..], batch[..], hash[..], 1) == LC_UNDO;
+  #assert lc_reverse_vartime(table[..], c[..], batch[..], hash[..], 99) == LC_UNDO;
+}
+#forall "light store: ordered inverses restore repeated edits to the same outputs" seed: 0..<16 #steps 100000000 {
+  table: [8192] u8; batch: [32768] u8; c: [1] LcCursor;
+  c[0].n = kv_batch_new(batch[..]);
+  hash: [32] u8; parent: [32] u8; before: [32] u8; after: [32] u8;
+  hash[0] = cast(u8) seed;
+  for i: 0..<10 {
+    key: [37] u8; lc_key('C', (seed + i) % 4, key[..]); key[1] = cast(u8) (seed+11);
+    value: [14] u8; value[0] = cast(u8) (i+1); value[13] = 0x51;
+    #assert lc_change_vartime(table[..], c[..], batch[..], hash[..], i, key[..], value[0..<13+i%2], i % 3 != 0) == LC_OK;
+    #assert kv_batch_check_vartime(batch[0..<c[0].n]).code == KV_OK;
+  }
+  #assert lc_undo_digest_vartime(table[..], c[0].used, hash[..], parent[..], 10, before[..]);
+  parent[1] = 1;
+  #assert lc_undo_digest_vartime(table[..], c[0].used, hash[..], parent[..], 10, after[..]) && !lc_same(before[..], after[..]);
+  #assert !lc_undo_digest_vartime(table[..], c[0].used, hash[..], parent[..], -1, after[..]);
+  #assert !lc_undo_digest_vartime(table[..], c[0].used, hash[..], parent[..], 10000, after[..]);
+  #assert !lc_undo_digest_vartime(table[..], c[0].used, hash[..], parent[..], 11, after[..]);
+  i := 10;
+  while i > 0 {
+    i -= 1; #assert lc_reverse_vartime(table[..], c[..], batch[..], hash[..], i) == LC_OK;
+    #assert kv_batch_check_vartime(batch[0..<c[0].n]).code == KV_OK;
+  }
+  #assert c[0].used == 0;
+}
+
+#test "light store: signed results, extents and the first byte have exact boundaries" {
+  #assert lc_negative(-1) && !lc_negative(0) && !lc_negative(1);
+  a := [3] u8.[9, 2, 3]; b := [3] u8.[8, 2, 3]; batch: [100] u8; c: [1] LcCursor;
+  #assert !lc_same(a[..], b[..]) && !lc_same(a[..], b[0..<2]) && lc_same(a[0..<0], b[0..<0]);
+  #assert lc_extent(a[..], 0) && lc_extent(a[..], 3) && !lc_extent(a[..], -1) && !lc_extent(a[..], 4);
+  #assert lc_begin_vartime(a[..], 3, b[..], batch[..], c[..]) && lc_same(a[..], b[..]);
+  #assert !lc_begin_vartime(a[..], -1, b[..], batch[..], c[..]);
+  #assert !lc_begin_vartime(a[..], 4, b[..], batch[..], c[..]);
+  #assert !lc_begin_vartime(a[..], 3, b[0..<2], batch[..], c[..]);
+  #assert !lc_begin_vartime(a[..], 3, b[..], batch[0..<11], c[..]);
+}
+#test "light store: every metadata boundary and exact-full buffers" {
+  table: [51] u8; batch: [4096] u8; c: [1] LcCursor; hash: [32] u8;
+  c[0].n = kv_batch_new(batch[..]);
+  for chain: 0..<7 {
+    for height: [3] int.[1, 2147483647, 2147483648] {
+      #assert lc_set_tip_vartime(table[..], c[..], batch[..], chain, height, hash[..]);
+      t := lc_tip_vartime(table[..], 51);
+      #assert (t.code == LC_OK) == (chain >= 1 && chain <= 5 && height <= 2147483647);
+      if t.code == LC_OK { #assert t.chain == chain && t.height == height; }
+    }
+  }
+  #assert lc_tip_vartime(table[..], -1).code == LC_CONTEXT && lc_tip_vartime(table[..], 52).code == LC_CONTEXT;
+  live: [51] u8;
+  #assert lc_init_vartime(1, hash[..], live[..], 0, table[..], batch[..]).code == LC_OK;
+  #assert lc_init_vartime(1, hash[..], live[..], 0, table[..], batch[0..<11]).code == LC_CAPACITY;
+}
+#test "light store: independent inverse digest and maximum coin records" #steps 100000000 {
+  table: [32768] u8; batch: [65536] u8; c: [1] LcCursor;
+  hash: [32] u8; parent: [32] u8; digest: [32] u8; key: [37] u8;
+  hash[0] = 8; lc_key('C', 9, key[..]);
+  value: [14] u8; value[0] = 50; value[13] = 0x51; c[0].n = kv_batch_new(batch[..]);
+  #assert lc_change_vartime(table[..], c[..], batch[..], hash[..], 0, key[..], value[..], true) == LC_OK;
+  #assert lc_undo_digest_vartime(table[..], c[0].used, hash[..], parent[..], 1, digest[..]);
+  // hashlib SHA256d(parent || block || LE32(74) || the hand-written inverse).
+  #assert bh_hex_equal(digest[..], "36ce9a24f7a7287d406fb40ab8bf60568093a88d67d34e9c75f7c8089020c6ad");
+  #assert lc_reverse_vartime(table[..], c[..], batch[..], hash[..], 0) == LC_OK;
+  #assert lc_undo_digest_vartime(table[..], 0, hash[..], parent[..], 0, digest[..]);
+  large: [10014] u8;
+  c[0].used = kv_set_vartime(table[..], 0, key[..], large[0..<10013]); c[0].n = kv_batch_new(batch[..]);
+  #assert lc_change_vartime(table[..], c[..], batch[..], hash[..], 0, key[..], value[0..<13], true) == LC_OK;
+  #assert lc_undo_digest_vartime(table[..], c[0].used, hash[..], parent[..], 1, digest[..]);
+  #assert lc_reverse_vartime(table[..], c[..], batch[..], hash[..], 0) == LC_OK;
+  #assert lc_value_vartime(table[..], c[0].used, key[..]).count == 10013;
+  #assert lc_change_vartime(table[..], c[..], batch[..], hash[..], 1, key[..], large[0..<10013], true) == LC_OK;
+  #assert lc_change_vartime(table[..], c[..], batch[..], hash[..], 1, key[..], large[..], true) == LC_CONTEXT;
+  c[0].used = kv_set_vartime(table[..], c[0].used, key[..], large[..]);
+  #assert lc_change_vartime(table[..], c[..], batch[..], hash[..], 1, key[..], value[..], true) == LC_CONTEXT;
+  // An externally damaged inverse cannot exceed the largest record either.
+  uk: [37] u8; lc_key('U', 0, uk[..]); for k: 0..<32 { uk[1+k] = hash[k]; }
+  bad: [10088] u8; c[0].used = kv_set_vartime(table[..], 0, uk[..], bad[..]);
+  #assert !lc_undo_digest_vartime(table[..], c[0].used, hash[..], parent[..], 1, digest[..]);
+}
+#test "light store: malformed inverse flags, lengths and afterimages refuse" {
+  for which: 0..<9 {
+    table: [32768] u8; batch: [4096] u8; c: [1] LcCursor;
+    hash: [32] u8; key: [37] u8; uk: [37] u8; u: [10088] u8;
+    lc_key('C', 0, key[..]); lc_key('U', 0, uk[..]);
+    n := 74;
+    if which == 0 { u[0] = 2; }
+    if which == 1 { u[1] = 2; }
+    if which == 2 { kv_put32(u[..], 38, 1); n = 75; }
+    if which == 3 { u[0] = 1; kv_put32(u[..], 38, 12); n = 86; }
+    if which == 4 { u[0] = 1; kv_put32(u[..], 38, 10014); n = 10088; }
+    if which == 5 { u[0] = 1; kv_put32(u[..], 38, 13); }
+    if which == 6 { u[0] = 1; kv_put32(u[..], 38, 13); n = 87; }
+    if which == 7 { u[1] = 1; }
+    if which == 8 { n = 73; }
+    c[0].used = kv_set_vartime(table[..], 0, uk[..], u[0..<n]);
+    if which == 6 || which == 1 {
+      value: [13] u8; c[0].used = kv_set_vartime(table[..], c[0].used, key[..], value[..]);
+      if which == 1 {
+        sum: [32] u8; #assert sha256d_checked(value[..], sum[..], false) == SHA_OK;
+        f := kv_find_vartime(table[..], c[0].used, uk[..]);
+        for k: 0..<32 { table[f.at + 6 + 37 + 42 + k] = sum[k]; }
+      }
+    }
+    c[0].n = kv_batch_new(batch[..]);
+    #assert lc_reverse_vartime(table[..], c[..], batch[..], hash[..], 0) == LC_UNDO;
+  }
+}
+#test "light store: capacity refusals at each forward and reverse write" {
+  for which: 0..<7 {
+    table: [4096] u8; batch: [4096] u8; c: [1] LcCursor;
+    hash: [32] u8; key: [37] u8; value: [13] u8; lc_key('C', 0, key[..]);
+    c[0].n = kv_batch_new(batch[..]);
+    if which < 3 {
+      cap := ifx which == 0 then 129 else 130;
+      #assert lc_change_vartime(table[..], c[..], batch[0..<cap], hash[..], 0, key[..], value[..], which != 2) == LC_CAPACITY;
+    } else {
+      if which >= 5 { c[0].used = kv_set_vartime(table[..], 0, key[..], value[..]); }
+      #assert lc_change_vartime(table[..], c[..], batch[..], hash[..], 0, key[..], value[..], which < 5) == LC_OK;
+      c[0].n = kv_batch_new(batch[..]);
+      cap := ifx which == 3 then 51 else ifx which == 4 then 52 else ifx which == 5 then 68 else 69;
+      #assert lc_reverse_vartime(table[..], c[..], batch[0..<cap], hash[..], 0) == LC_CAPACITY;
+    }
+  }
+  // Batch space can be enough while the private table itself is full.
+  table: [117] u8; batch: [4096] u8; c: [1] LcCursor; key: [37] u8; value: [13] u8; hash: [32] u8;
+  lc_key('C', 0, key[..]); c[0].n = kv_batch_new(batch[..]);
+  #assert lc_change_vartime(table[..], c[..], batch[..], hash[..], 0, key[..], value[..], true) == LC_CAPACITY;
+}
+
+lc_negative :: (offset: int) -> bool { return offset < 0; }
+lc_extent :: (bytes: [] u8, used: int) -> bool { return used >= 0 && used <= bytes.count; }
+
+lc_same :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+lc_key :: (prefix: u8, ordinal: int, out: [] u8) {
+  out[0] = prefix; kv_put32(out, out.count - 4, ordinal);
+}
+// A borrowed view, used only until the next table mutation. Empty means absent;
+// all light-profile values are nonempty.
+lc_value_vartime :: (table: [] u8, used: int, key: [] u8) -> [] u8 {
+  f := kv_find_vartime(table, used, key);
+  if !f.found { return table[0..<0]; }
+  return kv_entry_vartime(table, used, f.at).value;
+}
+lc_put_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, key: [] u8, value: [] u8) -> bool {
+  n := kv_batch_put_vartime(batch, c[0].n, key, value);
+  if lc_negative(n) { return false; }
+  used := kv_set_vartime(table, c[0].used, key, value);
+  if lc_negative(used) { return false; }
+  c[0].n = n; c[0].used = used; return true;
+}
+lc_delete_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, key: [] u8) -> bool {
+  n := kv_batch_delete_vartime(batch, c[0].n, key);
+  if lc_negative(n) { return false; }
+  c[0].n = n; c[0].used = kv_delete_vartime(table, c[0].used, key); return true;
+}
+lc_tip_vartime :: (table: [] u8, used: int) -> LcTip #export_c {
+  r := LcTip.{code=LC_CONTEXT};
+  if !lc_extent(table, used) { return r; }
+  key := LC_META; v := lc_value_vartime(table, used, key[..]);
+  if v.count != 44 { return r; }
+  if kv_get32(v, 0) != LC_VERSION { return r; }
+  r.chain = kv_get32(v, 4); r.height = kv_get32(v, 8);
+  if r.chain < 1 || r.chain > 5 || r.height > 2147483647 { return r; }
+  for i: 0..<32 { r.hash[i] = v[12+i]; }
+  r.code = LC_OK; return r;
+}
+lc_set_tip_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, chain: int, height: int, hash: [] u8) -> bool {
+  v: [44] u8; key := LC_META;
+  kv_put32(v[..], 0, LC_VERSION); kv_put32(v[..], 4, chain); kv_put32(v[..], 8, height);
+  for i: 0..<32 { v[12+i] = hash[i]; }
+  return lc_put_vartime(table, c, batch, key[..], v[..]);
+}
+lc_begin_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8, c: [] LcCursor) -> bool {
+  if !lc_extent(table, used) || !lc_extent(stage, used) { return false; }
+  n := kv_batch_new(batch);
+  if lc_negative(n) { return false; }
+  for i: 0..<used { stage[i] = table[i]; }
+  c[0] = LcCursor.{used=used, n=n}; return true;
+}
+lc_init_vartime :: (chain: int, genesis: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+  if chain < 1 || chain > 5 || genesis.count != 32 || used != 0 { return LcResult.{code=LC_CONTEXT}; }
+  c: [1] LcCursor;
+  if !lc_begin_vartime(table, used, stage, batch, c[..]) { return LcResult.{code=LC_CAPACITY}; }
+  if !lc_set_tip_vartime(stage, c[..], batch, chain, 0, genesis) { return LcResult.{code=LC_CAPACITY}; }
+  return LcResult.{used=c[0].used, n=c[0].n};
+}
+
+// One inverse per coin mutation, under U || blockhash || ordinal-le32.
+// Value: old-present, new-present, outpoint[36], old-length-le32,
+// old coin bytes, SHA256d(new coin) (zero bytes when the new coin is absent).
+// Copy views before inserting anything: sorted-table writes move their bytes.
+lc_change_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, ordinal: int, key: [] u8, value: [] u8, present: bool) -> int {
+  undo: [74 + LC_COIN_HEAD + LC_SCRIPT_MAX] u8; uk: [37] u8;
+  old := lc_value_vartime(table, c[0].used, key);
+  if old.count > LC_COIN_HEAD + LC_SCRIPT_MAX || value.count > LC_COIN_HEAD + LC_SCRIPT_MAX { return LC_CONTEXT; }
+  undo[0] = ifx old.count == 0 then 0 else 1; undo[1] = ifx present then 1 else 0;
+  for i: 0..<36 { undo[2+i] = key[1+i]; }
+  kv_put32(undo[..], 38, old.count);
+  for i: 0..<old.count { undo[42+i] = old[i]; }
+  sum: [32] u8;
+  if present { #assert sha256d_checked(value, sum[..], false) == SHA_OK; }
+  for i: 0..<32 { undo[42+old.count+i] = sum[i]; }
+  lc_key('U', ordinal, uk[..]); for i: 0..<32 { uk[1+i] = hash[i]; }
+  if !lc_put_vartime(table, c, batch, uk[..], undo[0..<74+old.count]) { return LC_CAPACITY; }
+  if present {
+    if !lc_put_vartime(table, c, batch, key, value) { return LC_CAPACITY; }
+  } else { if !lc_delete_vartime(table, c, batch, key) { return LC_CAPACITY; } }
+  return LC_OK;
+}
+lc_reverse_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, hash: [] u8, ordinal: int) -> int {
+  uk: [37] u8; key: [37] u8; old: [LC_COIN_HEAD + LC_SCRIPT_MAX] u8; sum: [32] u8;
+  lc_key('U', ordinal, uk[..]); for i: 0..<32 { uk[1+i] = hash[i]; }
+  u := lc_value_vartime(table, c[0].used, uk[..]);
+  if u.count < 74 || u[0] > 1 || u[1] > 1 { return LC_UNDO; }
+  n := kv_get32(u, 38);
+  if n > old.count || u.count != 74 + n || (u[0] == 0 && n != 0) || (u[0] == 1 && n < LC_COIN_HEAD) { return LC_UNDO; }
+  key[0] = 'C'; for i: 0..<36 { key[1+i] = u[2+i]; }
+  now := lc_value_vartime(table, c[0].used, key[..]);
+  if u[1] == 0 {
+    if now.count != 0 { return LC_UNDO; }
+  } else {
+    if now.count < LC_COIN_HEAD { return LC_UNDO; }
+    #assert sha256d_checked(now, sum[..], false) == SHA_OK;
+    if !lc_same(sum[..], u[42+n..<74+n]) { return LC_UNDO; }
+  }
+  restore := u[0] == 1;
+  for i: 0..<n { old[i] = u[42+i]; }
+  if restore {
+    if !lc_put_vartime(table, c, batch, key[..], old[0..<n]) { return LC_CAPACITY; }
+  } else { if !lc_delete_vartime(table, c, batch, key[..]) { return LC_CAPACITY; } }
+  if !lc_delete_vartime(table, c, batch, uk[..]) { return LC_CAPACITY; }
+  return LC_OK;
+}
+
+// Bind all inverse bytes to this block and its parent before disconnecting.
+// Each record is length-prefixed, so concatenations cannot be ambiguous.
+lc_undo_digest_vartime :: (table: [] u8, used: int, hash: [] u8, parent: [] u8, count: int, out: [] u8) -> bool {
+  state: [SHA_STATE_BYTES] u8; first: [32] u8; key: [37] u8; length: [4] u8;
+  if lc_negative(count) { return false; }
+  #assert sha256_init(state[..]) == SHA_OK;
+  #assert sha256_update_checked(state[..], parent, false) == SHA_OK;
+  #assert sha256_update_checked(state[..], hash, false) == SHA_OK;
+  for i: 0..<count {
+    lc_key('U', i, key[..]); for k: 0..<32 { key[1+k] = hash[k]; }
+    v := lc_value_vartime(table, used, key[..]);
+    if v.count < 74 || v.count > 74 + LC_COIN_HEAD + LC_SCRIPT_MAX { return false; }
+    kv_put32(length[..], 0, v.count);
+    #assert sha256_update_checked(state[..], length[..], false) == SHA_OK;
+    #assert sha256_update_checked(state[..], v, false) == SHA_OK;
+  }
+  #assert sha256_final_checked(state[..], first[..], false) == SHA_OK;
+  #assert sha256_hash_checked(first[..], out, false) == SHA_OK;
+  return true;
+}
