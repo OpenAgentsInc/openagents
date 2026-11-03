@@ -688,7 +688,7 @@ It holds no MetaHuman asset and draws with none.
   neck above it. The skin meant to be covered (no head, neck or hand
   weight) within 10 cm of a garment is drawn as an under layer instead
   (`outfits.under`): the colour of the garment nearest it, 40% darker,
-  0.8 cm inside the skin (2.5 cm under the skirt, whose hips move apart
+  1.5 cm inside the skin (2.5 cm under the skirt, whose hips move apart
   from it). Where a pose parts the cloth (the back of a
   sleeve as the arm comes down, a bulkier body between two pieces) that
   layer shows, never skin and never a hole into the body. A peek check
@@ -701,6 +701,29 @@ It holds no MetaHuman asset and draws with none.
   harder fit to judge by eye. In the lab, with a pack in, the body button
   (and G) shows the outfit and steps to the next: `?pack&outfit=fantasy`,
   `hooded`, `robe`, then the pack's own clothes (`?pack`).
+- **Her figure under the cloth.** The outfits were cut for the superhero
+  female, whose trunk is straighter than a woman's. Before the gap step,
+  `outfits.snug` draws the trunk's cloth (bodice, tunic, belt and the
+  skirt's top; not the hood, pauldrons, boots, bracers or sleeves) onto her
+  body: a point more than 0.5 cm off the skin goes 95% of the rest of the
+  way in along the skin's normal, from the shoulders down to the hips and
+  fading out over 12 cm below them. It measures against skin that faces
+  the same way as the cloth, so a vest bridging the bust's underside is
+  drawn in to the waist below it instead of to the bust. The moves are
+  smoothed over the cloth's neighbours.
+- **Her posture.** The people rig's clips were made on a stooped body, and
+  the lab's retarget passes their global orientations straight to her, so
+  the stoop showed. Per clip and joint the lab takes the mean local
+  rotation over 24 samples and corrects each frame by rest times its
+  inverse: on the trunk (pelvis to head) in every clip but die, knock and
+  cower, half of it on the clavicles, and on the legs in the standing clips
+  (idle, talk, nod, fold, lantern), so every clip starts from her own rest
+  pose: chest up, head over the shoulders, weight on both feet. The fingers
+  go 40% of the way from her rest pose to the clip's, so her hands hang
+  relaxed instead of in fists. The pelvis rises by however much the
+  correction moved the lowest foot joint, so she stays on the floor.
+  `metahuman.clip_poses` applies the same correction, so the pack's edge
+  and peek checks see the poses the lab draws.
 - **Which way v runs.** The DNA meshes' texture v runs up their images, as
   Maya's: the compiler flips it when the lips' vertices land on redder
   texels than the cheeks' that way (`metahuman.lips_v`). It used to decide

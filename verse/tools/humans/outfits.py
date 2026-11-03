@@ -63,6 +63,9 @@ OUTFITS = {
 }
 LICENCE = "Quaternius Modular Character Outfits - Fantasy|CC0 1.0"
 GAP_MIN = 0.3        # cm: the least cloth stands off the skin
+SNUG_CM = 0.5        # cm: the most a bodice, tunic or skirt's top stands off the skin from the hips up
+SNUG_PULL = 0.95     # of the rest it is drawn in (snug()), so the cloth takes the body's waist and bust
+SNUG_SKIP = ("Hood", "Pauldron", "Feet", "Bracer", "Arms")   # pieces kept as cut: loose by design
 SPREAD_CM = 3.0      # how far a push spreads over the cloth round it
 SMALL_CM = 40.0      # a piece no bigger than this every way moves as one
 ROBE_SEGMENTS, ROBE_RINGS = 96, 30
@@ -310,6 +313,7 @@ def fit(outfit, target, log=print):
                 i = found[0][1]; sd = dot(sub(v["x"], tx[i]), tn[i])
                 if sd > ROBE_WAIST_CM:
                     v["x"] = add(v["x"], scale(tn[i], t * t * (ROBE_WAIST_CM - sd)))
+    snug(pieces, target, tnear, lower, log)
     # 3. the gap: pushes off the skin, spread over the cloth round them (all pieces, so layers keep order)
     allv = [v for pc in pieces for v in pc["verts"]]
     push = []
@@ -399,6 +403,50 @@ def fit(outfit, target, log=print):
         if pc["own_weights"]:
             renormal(pc)
     return pieces
+
+
+def snug(pieces, target, tnear, lower, log=print):
+    """The cloth over the trunk drawn onto the body: a point of a bodice, tunic, belt or the
+    skirt's top (not SNUG_SKIP's) more than SNUG_CM off the target's skin goes SNUG_PULL of the way
+    in along the skin's normal, from the shoulders down to the hips, fading out over 12 cm below
+    them (a tunic's skirt keeps its flare); the moves are smoothed over each piece's neighbours.
+    The outfits were cut for the superhero female, whose trunk is straighter than a woman's: this
+    gives the clothes her waist and bust instead of a tube."""
+    J = target["joints"]; tx, tn = target["x"], target["n"]
+    hip = J[lower.index("thigh_l")][1]
+    moved = []
+    for pc in pieces:
+        if any(k in pc["name"] for k in SNUG_SKIP):
+            continue
+        keys, nbr = welded(pc["verts"], pc["tris"])
+        mv_ = [None] * len(nbr)
+        for v, k in zip(pc["verts"], keys):
+            if mv_[k] is not None:
+                continue
+            y = v["x"][1]
+            f = 1.0 if y >= hip else max(0.0, 1.0 - (hip - y) / 12.0)
+            # skin facing the same way as the cloth (not the bust's underside the cloth bridges)
+            found = []
+            for r in ((2.0, 4.0, 8.0, 16.0) if f > 0 else ()):
+                found = [(d, i) for d, i in tnear.within(v["x"], r) if dot(tn[i], v["n"]) > 0.6][:4]
+                if found:
+                    break
+            m = (0.0, 0.0, 0.0)
+            if found:
+                n = unit(tuple(sum(tn[i][q] for _, i in found) for q in range(3)))
+                sd = sum(dot(sub(v["x"], tx[i]), n) for _, i in found) / len(found)
+                if sd > SNUG_CM:
+                    m = scale(n, -f * SNUG_PULL * (sd - SNUG_CM))
+            mv_[k] = m
+        for _ in range(4):
+            mv_ = [scale(add(scale(m, 1.0), scale(tuple(sum(mv_[o][q] for o in nbr[i]) for q in range(3)), 1.0 / len(nbr[i]))), 0.5)
+                   if nbr[i] else m for i, m in enumerate(mv_)]
+        for v, k in zip(pc["verts"], keys):
+            v["x"] = add(v["x"], mv_[k])
+        moved += [math.sqrt(dot(m, m)) for m in mv_]
+    if moved:
+        ms = sorted(moved)
+        log(f"snug: the trunk's cloth drawn in 50/95/max% " + " ".join(f"{ms[int((len(ms) - 1) * q)]:.1f}" for q in (0.5, 0.95, 1.0)) + " cm")
 
 
 def robe_weights(x, J, lower):
@@ -666,7 +714,7 @@ def peeks(body_x, body_w, body_tris, pieces, poses, lower, log=print, under_tris
 
 UNDER_CM = 10.0      # skin meant to be covered this near a garment is drawn as cloth (under())
 UNDER_SHADE = 0.6    # the under layer is the garment's colour this much darker (cloth in its shadow)
-UNDER_INSET = 0.8    # cm it sits inside the skin, so a garment over it always shows in front
+UNDER_INSET = 1.5    # cm it sits inside the skin, so a garment over it always shows in front
 UNDER_INSET_LOOSE = 2.5   # under a garment with its own weights (the skirt), whose hips move apart from it
 
 

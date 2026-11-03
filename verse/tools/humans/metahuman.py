@@ -1129,6 +1129,24 @@ def sleeves(kw, kw_core, cand, nbr, keys, arm_bones):
     return out
 
 
+# The lab's posture (metahumanlab.coax posture_kind and posture_build), the same numbers.
+PEOPLE_CLIP_NAMES = ["idle", "walk", "talk", "nod", "fold", "lantern", "spell", "slash", "run", "die", "knock", "cower"]
+POSTURE_SAMPLES, POSTURE_HAND, POSTURE_CLAVICLE = 24, 0.4, 0.5
+def posture_kind(c, j):
+    """0 none, 1 trunk, 2 clavicle, 3 leg (standing clips), 4 finger."""
+    if 11 <= j <= 30 or 35 <= j <= 54:
+        return 4
+    if PEOPLE_CLIP_NAMES[c] in ("die", "knock", "cower"):
+        return 0
+    if 1 <= j <= 6:
+        return 1
+    if j in (7, 31):
+        return 2
+    if PEOPLE_CLIP_NAMES[c] in ("idle", "talk", "nod", "fold", "lantern") and 55 <= j <= 64:
+        return 3
+    return 0
+
+
 def clip_poses(binds, body):
     """The lab's clips (verse/packs/everglade.json's people) at a few moments each, as the mesh's
     palette has them (metahumanlab.coax lab_palette, with the pack's bind turns): per pose, per
@@ -1149,18 +1167,14 @@ def clip_poses(binds, body):
     moments = [("idle", f) for f in (0.0, 0.33, 0.66)] + [("walk", f) for f in (0.0, 0.25, 0.5, 0.75)] + \
               [(n, 0.5) for n in ("talk", "spell", "slash", "run", "fold")]
     out = []
-    for name, f in moments:
-        c = clips.get(name)
-        if not c:
-            continue
-        t = f * c["duration"]
+    pel = sk.index("pelvis")
+    def locals_at(c, t):
         def pair(keys):
             i = max(sum(1 for k in keys if k[0] <= t) - 1, 0)
             a = keys[i]; b = keys[i + 1] if i + 1 < len(keys) else a
             u = min(max((t - a[0]) / (b[0] - a[0]), 0.0), 1.0) if b[0] > a[0] else 0.0
             return a[1], b[1], u
-        pel = sk.index("pelvis")
-        gq, rq, gp, D = [], [], [], []
+        L = []
         for j in range(len(sk.names)):
             lt = sk.t[j]
             if j == pel and c["move"][body]:
@@ -1168,6 +1182,62 @@ def clip_poses(binds, body):
             lq = sk.q[j]
             if c["rot"][j]:
                 a, b, u = pair(c["rot"][j]); lq = people.slerp(people.qunit(a), people.qunit(b), u)
+            L.append([lt, lq])
+        return L
+    def floor(L):
+        gq, gt = [], []
+        for j in range(len(sk.names)):
+            par = sk.parent[j]
+            if par < 0:
+                gq.append(L[j][1]); gt.append(L[j][0])
+            else:
+                gq.append(people.qunit(people.qmul(gq[par], L[j][1]))); gt.append(add(gt[par], rot(gq[par], L[j][0])))
+        return min(gt[k][1] for k in (57, 58, 62, 63))
+    def posture(name, c):
+        """metahumanlab.coax posture_build: per joint its correction (trunk and standing legs: the
+        rest times the clip's mean turn's inverse) and the pelvis's lift."""
+        n = PEOPLE_CLIP_NAMES.index(name)
+        post = {}
+        samples = [locals_at(c, c["duration"] * i / POSTURE_SAMPLES) for i in range(POSTURE_SAMPLES)]
+        for j in range(len(sk.names)):
+            k = posture_kind(n, j)
+            if k not in (1, 2, 3):
+                continue
+            rest = sk.q[j]; acc = (0.0, 0.0, 0.0, 0.0)
+            for L in samples:
+                q = L[j][1]
+                if sum(a * b for a, b in zip(q, rest)) < 0:
+                    q = tuple(-x for x in q)
+                acc = tuple(a + b for a, b in zip(acc, q))
+            post[j] = people.qunit(people.qmul(rest, conj(people.qunit(acc))))
+        raw = fixed = 0.0
+        for L in samples:
+            raw += floor(L)
+            M = [[lt, people.qunit(people.qmul(post[j], lq)) if posture_kind(n, j) in (1, 3) else lq] for j, (lt, lq) in enumerate(L)]
+            fixed += floor(M)
+        return n, post, (raw - fixed) / POSTURE_SAMPLES
+    for name, f in moments:
+        c = clips.get(name)
+        if not c:
+            continue
+        t = f * c["duration"]
+        n, post, lift = posture(name, c)
+        L = locals_at(c, t)
+        for j in range(len(sk.names)):
+            k = posture_kind(n, j)
+            lq = L[j][1]
+            if k == 4:
+                L[j][1] = people.slerp(sk.q[j], lq, POSTURE_HAND)
+            elif k in (1, 3):
+                L[j][1] = people.qunit(people.qmul(post[j], lq))
+            elif k == 2:
+                L[j][1] = people.slerp(lq, people.qunit(people.qmul(post[j], lq)), POSTURE_CLAVICLE)
+        par = sk.parent[pel]
+        up = (0.0, lift, 0.0) if par < 0 else rot(conj(L[par][1]), (0.0, lift, 0.0))
+        L[pel][0] = add(L[pel][0], up)
+        gq, rq, gp, D = [], [], [], []
+        for j in range(len(sk.names)):
+            lt, lq = L[j]
             par = sk.parent[j]
             if par < 0:
                 gq.append(lq); rq.append(sk.q[j]); gp.append(add(bp[j], sub(lt, sk.t[j])))
