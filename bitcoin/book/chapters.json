@@ -1129,17 +1129,28 @@
   {
    "number": 52,
    "title": "Transaction checks outside script",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch052-transaction-checks-outside-script.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     34,
     35,
     39,
     40
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "bitcoin/examples/tx-checks.coax",
+    "bitcoin/examples/checks/tx-checks.coax",
+    "coax/lib/bitcoin/txcheck.coax",
+    "coax/lib/bitcoin/fees.coax",
+    "coax/lib/bitcoin/locktime.coax",
+    "coax/tests/bitcoin/txcheck_vectors.coax",
+    "coax/tests/bitcoin/make_txcheck_vectors.py",
+    "coax/tests/bitcoin/txcheck.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

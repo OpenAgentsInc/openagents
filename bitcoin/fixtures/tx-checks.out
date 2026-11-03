@@ -1,0 +1,35 @@
+CheckTransaction on Core's vectors:
+  BADTX No outputs (1 inputs, 0 outputs): bad-txns-vout-empty
+  BADTX Negative output (1 inputs, 1 outputs): bad-txns-vout-negative
+  BADTX MAX_MONEY + 1 output (1 inputs, 1 outputs): bad-txns-vout-toolarge
+  BADTX MAX_MONEY output + 1 output (1 inputs, 2 outputs): bad-txns-txouttotal-toolarge
+  BADTX Duplicate inputs (2 inputs, 1 outputs): bad-txns-inputs-duplicate
+  BADTX Coinbase of size 1 (1 inputs, 1 outputs): bad-cb-length
+  BADTX Coinbase of size 101 (1 inputs, 1 outputs): bad-cb-length
+  BADTX Null txin, but without being a coinbase (because there are two inputs) (2 inputs, 1 outputs): bad-txns-prevout-null
+  BADTX Null txin, but without being a coinbase (because there are two inputs) (2 inputs, 1 outputs): bad-txns-prevout-null
+  tx_valid.json: 122 of 122 pass
+  tx_invalid.json without BADTX: 84 of 84 pass (their scripts fail)
+  no inputs: bad-txns-vin-empty
+  chapter 34's one-byte coinbase: bad-cb-length
+  tx_valid's first case, 158 bytes stripped: ok
+  as if 1000000 bytes: ok
+  as if 1000001 bytes: bad-txns-oversize
+CheckTxInputs, one output of 1000000:
+  a coinbase coin from height 500, spent at 598: bad-txns-premature-spend-of-coinbase (fee 0)
+  a coinbase coin from height 500, spent at 599: bad-txns-premature-spend-of-coinbase (fee 0)
+  a coinbase coin from height 500, spent at 600: ok (fee 500000)
+  a coin of 999999: bad-txns-in-belowout (fee 0)
+  a coin of 1000000: ok (fee 0)
+  a coin of 2100000000000000: ok (fee 2099999999000000)
+  a coin of 2100000000000001: bad-txns-inputvalues-outofrange (fee 0)
+  a coin of -1: bad-txns-inputvalues-outofrange (fee 0)
+  a coin that is spent: bad-txns-inputs-missingorspent
+  2 coins of 1050000000000001 each: bad-txns-inputvalues-outofrange
+final in a block (lock time 1500000000, sequence 0xfffffffe):
+  CSV active from 419328
+  height 419327, median 1499999999 and block time 1500000001: ok
+  height 419327, median 1500000001 and block time 1500000000: bad-txns-nonfinal
+  height 419328, median 1499999999 and block time 1500000001: bad-txns-nonfinal
+  height 419328, median 1500000001 and block time 1500000000: ok
+  with a final sequence, median and time 0: ok

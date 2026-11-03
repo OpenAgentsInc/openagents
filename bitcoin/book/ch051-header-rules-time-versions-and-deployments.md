@@ -755,7 +755,8 @@ Wasm was not run.
 - `nBits`: chapter 48. The header's own proof of work: chapter 47.
 - Checkpoints: the pinned Core has none (chapter 50).
 - The block rules that read deployment heights: the BIP-34 coinbase height
-  and the witness commitment are chapter 54's, script flags chapter 55's.
+  is chapter 54's, the witness commitment chapter 49's, and script flags
+  chapter 55's.
 - Headers presync and the time a node accepts from peers: chapter 72.
 - Core's warnings about unknown version bits, and the `getdeploymentinfo`
   RPC: chapter 89.

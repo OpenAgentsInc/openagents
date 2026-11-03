@@ -1,0 +1,77 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/txcheck.coax";
+#import "Basic";
+
+reason :: (code: int) -> string { return TXC_REASONS[code]; }
+put_le :: (raw: [] u8, at: int, v: int, width: int) {
+  for j: 0..<width { raw[at+j] = cast,trunc(u8) (v >> (8 * j)); }
+}
+
+main :: () {
+  raw: [2048] u8; ins: [16] TxIn; outs: [16] TxOut; items: [16] TxItem;
+
+  // Bitcoin Core's tx_valid.json and tx_invalid.json through CheckTransaction.
+  print("CheckTransaction on Core's vectors:\n");
+  valid := 0; valid_ok := 0; other := 0; other_ok := 0;
+  for i: 0..<TXCHECK_CASES.count {
+    c := TXCHECK_CASES[i];
+    r := txc_read(c.tx, raw[..], ins[..], outs[..], items[..]);
+    code := txcheck_vartime(raw[0..<r.n], r.t, ins[..], outs[..]);
+    if c.badtx { print("  BADTX % (% inputs, % outputs): %\n", c.note, r.t.nin, r.t.nout, reason(code)); }
+    else if c.valid { valid += 1; if code == TXC_OK { valid_ok += 1; } }
+    else { other += 1; if code == TXC_OK { other_ok += 1; } }
+  }
+  print("  tx_valid.json: % of % pass\n", valid_ok, valid);
+  print("  tx_invalid.json without BADTX: % of % pass (their scripts fail)\n", other_ok, other);
+  print("  no inputs: %\n", reason(txc_code("01000000000000000000")));
+  print("  chapter 34's one-byte coinbase: %\n", reason(txc_code(TX_LEGACY_OK)));
+  r := txc_read(TXCHECK_CASES[0].tx, raw[..], ins[..], outs[..], items[..]);
+  t := r.t;
+  print("  tx_valid's first case, % bytes stripped: %\n", t.stripped, reason(txcheck_vartime(raw[0..<r.n], t, ins[..], outs[..])));
+  t.stripped = FEE_MAX_BLOCK_WEIGHT / TX_SCALE;
+  print("  as if % bytes: %\n", t.stripped, reason(txcheck_vartime(raw[0..<r.n], t, ins[..], outs[..])));
+  t.stripped += 1;
+  print("  as if % bytes: %\n", t.stripped, reason(txcheck_vartime(raw[0..<r.n], t, ins[..], outs[..])));
+
+  // CheckTxInputs: the first case again, paying 1,000,000 satoshis.
+  print("CheckTxInputs, one output of 1000000:\n");
+  put_le(raw[..], outs[0].value, 1000000, 8);
+  b := raw[0..<r.n];
+  coin: [1] TxcCoin;
+  coin[0] = TxcCoin.{found=true, value=1500000, height=500, coinbase=true};
+  for spend: 598..<601 {
+    x := txcheck_inputs_vartime(b, r.t, outs[..], coin[..], spend);
+    print("  a coinbase coin from height 500, spent at %: % (fee %)\n", spend, reason(x.code), x.fee);
+  }
+  coin[0].coinbase = false;
+  values := [5] int.[999999, 1000000, FEE_MAX_MONEY, FEE_MAX_MONEY + 1, -1];
+  for i: 0..<5 {
+    coin[0].value = values[i];
+    x := txcheck_inputs_vartime(b, r.t, outs[..], coin[..], 501);
+    print("  a coin of %: % (fee %)\n", values[i], reason(x.code), x.fee);
+  }
+  coin[0].found = false;
+  print("  a coin that is spent: %\n", reason(txcheck_inputs_vartime(b, r.t, outs[..], coin[..], 501).code));
+  r2 := txc_read(TXCHECK_CASES[9].tx, raw[..], ins[..], outs[..], items[..]);
+  two: [16] TxcCoin;
+  for k: 0..<r2.t.nin { two[k] = TxcCoin.{found=true, value=FEE_MAX_MONEY / 2 + 1, height=1}; }
+  print("  % coins of % each: %\n", r2.t.nin, FEE_MAX_MONEY / 2 + 1, reason(txcheck_inputs_vartime(raw[0..<r2.n], r2.t, outs[..], two[0..<r2.t.nin], 10).code));
+
+  // Lock time in a block, before and after CSV's height on mainnet.
+  print("final in a block (lock time 1500000000, sequence 0xfffffffe):\n");
+  r = txc_read(TXCHECK_CASES[0].tx, raw[..], ins[..], outs[..], items[..]);
+  lock := 1500000000;
+  put_le(raw[..], r.t.locktime, lock, 4);
+  put_le(raw[..], ins[0].sequence, 0xfffffffe, 4);
+  b = raw[0..<r.n];
+  m := CHAIN_MAINNET_PARAMS;
+  print("  CSV active from %\n", chain_deployment_height(m, DEP_CSV));
+  heights := [2] int.[419327, 419328];
+  for i: 0..<2 {
+    print("  height %, median % and block time %: %\n", heights[i], lock - 1, lock + 1, reason(txcheck_final_vartime(m, b, r.t, ins[..], heights[i], lock - 1, lock + 1)));
+    print("  height %, median % and block time %: %\n", heights[i], lock + 1, lock, reason(txcheck_final_vartime(m, b, r.t, ins[..], heights[i], lock + 1, lock)));
+  }
+  put_le(raw[..], ins[0].sequence, 0xffffffff, 4);
+  print("  with a final sequence, median and time 0: %\n", reason(txcheck_final_vartime(m, b, r.t, ins[..], 419328, 0, 0)));
+}
+// book:end example

@@ -2252,6 +2252,19 @@
       "bytes": 32800
     },
     {
+      "path": "upstream/bitcoin-core/tx_check.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/tx_check.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-tx-checks"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "66ff205c2bb482133eb864968815158e3474554870ad64e6e795fe313d803ed5",
+      "bytes": 2765
+    },
+    {
       "path": "derived/catalog.json",
       "kind": "derived",
       "url": "local:make_catalog.py",

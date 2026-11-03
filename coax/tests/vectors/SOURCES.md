@@ -309,6 +309,11 @@ that a maliciously replaced manifest is authentic.
   limits. `make_v2transport_vectors.py` reads the vectors, and
   `v2transport.py` runs `reference.py` and reads the Core files as the
   cross-check's oracle.
+- **Transaction checks (Bitcoin chapter 52):** Bitcoin Core's
+  `consensus/tx_check.cpp` (`CheckTransaction`) at revision `ddea9196`,
+  with the already pinned `consensus/tx_verify.cpp` (`CheckTxInputs`,
+  `IsFinalTx`), `transaction_tests.cpp`, `tx_valid.json` and
+  `tx_invalid.json`.
 - **Header rules (Bitcoin chapter 51):** Bitcoin Core's `validation.cpp`
   (`ContextualCheckBlockHeader`), `chain.h`, `consensus/consensus.h`,
   `versionbits.h`, `versionbits_impl.h` and `versionbits.cpp` at revision
@@ -425,6 +430,7 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip340/reference.py`](upstream/bip340/reference.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0340/reference.py) | `4b1d4ad9e60820df4a6d239733d52b014bc03e4c47afd757a2fe4d3b586d892c` |
 | [`upstream/bitcoin-core/tx_valid.json`](upstream/bitcoin-core/tx_valid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/tx_valid.json) | `0abeb1a6e4b942e4e43ef8d49b7356c1f6204bcb14163f24153f4d0ec5418011` |
 | [`upstream/bitcoin-core/chainparams.cpp`](upstream/bitcoin-core/chainparams.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/kernel/chainparams.cpp) | `cfadf1478377c32625280520655b598674e6d487f08d7f7a80ac69252104b5e1` |
+| [`upstream/bitcoin-core/tx_check.cpp`](upstream/bitcoin-core/tx_check.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/tx_check.cpp) | `66ff205c2bb482133eb864968815158e3474554870ad64e6e795fe313d803ed5` |
 | [`upstream/bitcoin-core/versionbits.cpp`](upstream/bitcoin-core/versionbits.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.cpp) | `4394f6fdf7656e0e6e4eb90a11c44875dab506345bde9a54d84ed9337d524ec8` |
 | [`upstream/bitcoin-core/versionbits.h`](upstream/bitcoin-core/versionbits.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.h) | `babd3b786f7d787f88b47da1effd47f631b3e37cba95c1d501f1a553c960f100` |
 | [`upstream/bitcoin-core/versionbits_impl.h`](upstream/bitcoin-core/versionbits_impl.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits_impl.h) | `6c7b5afcaff8d99b2e9e1e62d11bc76adb6164dcce8add41aabde51bcbe7a9ce` |

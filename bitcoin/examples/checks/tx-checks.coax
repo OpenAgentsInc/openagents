@@ -1,0 +1,64 @@
+// The checks of tx-checks.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/tx-checks.coax
+#load "../tx-checks.coax";
+
+// book:begin check
+// CheckTxInputs and chapter 40's fee agree: for a coin that is not a
+// coinbase, both accept the same values and give the same fee.
+#forall "the fee is chapter 40's" i: 0..<12 #steps 100000000 {
+  raw: [2048] u8; ins: [16] TxIn; outs: [16] TxOut; items: [16] TxItem;
+  r := txc_read(TXCHECK_CASES[0].tx, raw[..], ins[..], outs[..], items[..]);
+  put_le(raw[..], outs[0].value, 1000000, 8);
+  b := raw[0..<r.n];
+  values := [12] int.[-2, -1, 0, 1, 999999, 1000000, 1000001, 5000000, FEE_MAX_MONEY - 1, FEE_MAX_MONEY, FEE_MAX_MONEY + 1, 1 << 62];
+  coin: [1] TxcCoin;
+  coin[0] = TxcCoin.{found=true, value=values[i], height=1};
+  x := txcheck_inputs_vartime(b, r.t, outs[..], coin[..], 2);
+  v := [1] int.[values[i]];
+  f := fee_vartime(b, r.t, outs[..], v[..]);
+  #assert (x.code == TXC_OK) == f.ok;
+  if f.ok { #assert x.fee == f.fee; }
+}
+// A coinbase's coin is spendable exactly 100 blocks later.
+#forall "coinbase maturity is 100 blocks" depth: 0..<200 #steps 100000000 {
+  raw: [2048] u8; ins: [16] TxIn; outs: [16] TxOut; items: [16] TxItem;
+  r := txc_read(TXCHECK_CASES[0].tx, raw[..], ins[..], outs[..], items[..]);
+  coin: [1] TxcCoin;
+  coin[0] = TxcCoin.{found=true, value=FEE_MAX_MONEY, height=1000, coinbase=true};
+  code := txcheck_inputs_vartime(raw[0..<r.n], r.t, outs[..], coin[..], 1000 + depth).code;
+  #assert (code == TXC_PREMATURE) == (depth < TXC_COINBASE_MATURITY) && (code == TXC_OK) == (depth >= TXC_COINBASE_MATURITY);
+}
+// The lock-time rule is chapter 39's IsFinalTx, given the block's time
+// before CSV and the median time past from CSV's height, on every network.
+#forall "the cutoff switches at CSV's height" chain: 1..<6 #steps 100000000 {
+  raw: [2048] u8; ins: [16] TxIn; outs: [16] TxOut; items: [16] TxItem;
+  r := txc_read(TXCHECK_CASES[0].tx, raw[..], ins[..], outs[..], items[..]);
+  lock := 1500000000;
+  put_le(raw[..], r.t.locktime, lock, 4);
+  put_le(raw[..], ins[0].sequence, 0, 4);
+  b := raw[0..<r.n];
+  p := chain_params(chain);
+  csv := chain_deployment_height(p, DEP_CSV);
+  for d: -2..<3 {
+    h := csv + d;
+    if h < 0 { continue; }
+    for k: 0..<3 {
+      mtp := lock - 1 + k; time := lock + 1 - k;
+      want := locktime_final_vartime(b, r.t, ins[..], h, ifx h >= csv then mtp else time);
+      #assert (txcheck_final_vartime(p, b, r.t, ins[..], h, mtp, time) == TXC_OK) == want;
+    }
+  }
+}
+// CheckTransaction reads nothing but the transaction: chapter 34's two
+// readings of the same bytes, when both read, get the same answer.
+#forall "legacy and extended readings agree" i: 0..<TXCHECK_CASES.count #steps 100000000 {
+  raw: [2048] u8; ins: [16] TxIn; outs: [16] TxOut; items: [16] TxItem;
+  n := cp_unhex(TXCHECK_CASES[i].tx, raw[..]);
+  b := raw[0..<n];
+  a := tx_read_vartime(b, true, ins[..], outs[..], items[..]);
+  ca := txcheck_vartime(b, a, ins[..], outs[..]);
+  l := tx_read_vartime(b, false, ins[..], outs[..], items[..]);
+  if a.code == TX_OK && l.code == TX_OK && !a.segwit { #assert txcheck_vartime(b, l, ins[..], outs[..]) == ca; }
+}
+// book:end check

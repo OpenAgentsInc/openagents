@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 51 are implemented and 73 are planned. The 51 implemented
+Of the 124 chapters, 52 are implemented and 72 are planned. The 52 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 43, 46, 47, 48, 50, 51, 65, 66, 67 and 68 are new.
+39, 40, 41, 42, 43, 46, 47, 48, 50, 51, 52, 65, 66, 67 and 68 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -210,7 +210,7 @@ Merkle trees, headers and proof of work, the chain parameters, every consensus r
 | 49. The witness commitment | Planned | The coinbase commitments of pinned segwit blocks match their computed witness roots. |
 | [50. Chain parameters: mainnet, testnet4, signet and regtest](ch050-chain-parameters-mainnet-testnet4-signet-and-regtest.md) | Runnable: native C | Mainnet, testnet3, testnet4, signet and regtest as one typed record each, every field checked against the pinned `chainparams.cpp`. Each genesis block is built and hashes to its published hash; the magic bytes, ports, Base58, BIP-32 and bech32 prefixes agree with chapters 26–32; the buried deployment heights, exception blocks, `nMinimumChainWork` and `defaultAssumeValid` are Core's. Signet's magic comes from its challenge, and signet blocks 1 and 19,990 pass BIP-325's signature check while a changed signature, time or solution refuses. Checked against Python natively. |
 | [51. Header rules: time, versions and deployments](ch051-header-rules-time-versions-and-deployments.md) | Runnable: native C | Mainnet block 840,113, 67 seconds before its parent, passes because it is after the median time past; at the median it refuses as time-too-old, two hours and a second ahead of the clock as time-too-new, and at version 3 as bad-version. Testnet4's first retarget passes, and its timewarp counterexample refuses at 601 seconds and passes at 600. The minimum version steps up at chapter 50's BIP-34, BIP-66 and BIP-65 heights, and BIP-9's state machine agrees with Core's backward walk, including Taproot's minimum activation height. Checked against Python natively. |
-| 52. Transaction checks outside script | Planned | Every case in `tx_invalid.json` that fails before the script interpreter refuses with its reason: no inputs or outputs, a value out of range, an overflowing total (CVE-2010-5139), duplicate inputs (CVE-2018-17144), a coinbase spent before 100 confirmations and a non-final transaction. |
+| [52. Transaction checks outside script](ch052-transaction-checks-outside-script.md) | Runnable: native C | Every case of Core's tx_invalid.json marked BADTX refuses with its reason (no outputs, a negative or too-large output, an overflowing total as in CVE-2010-5139, duplicate inputs as in CVE-2018-17144, a coinbase script of 1 or 101 bytes, a null outpoint outside a coinbase), and every other case of both files passes. CheckTxInputs refuses a coinbase spent at 99 confirmations and accepts it at 100, refuses out-of-range input values and inputs below the outputs, and a time-locked transaction is judged by the block's time before CSV and the median time past after. Checked against Python natively. |
 | 53. Sigops, weight and block limits | Planned | Legacy, P2SH and witness signature-operation costs of pinned transactions and blocks match Bitcoin Core. A block over 4,000,000 weight units or 80,000 sigop cost refuses. |
 | 54. The subsidy and the coinbase | Planned | The subsidy at every halving matches, and is zero from height 6,930,000. A coinbase that claims one satoshi more than subsidy plus fees refuses, and so does a coinbase without its BIP-34 height after activation. |
 | 55. Script flags by height and their exceptions | Planned | The script verification flags for every block of a pinned mainnet range match Bitcoin Core's, including the BIP-16 and Taproot exception blocks, and the two blocks exempt from BIP-30 are handled as Core handles them. |

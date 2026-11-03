@@ -549,6 +549,17 @@
         "release"
       ],
       "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/tx-checks.coax",
+      "chapter": "bitcoin/book/ch052-transaction-checks-outside-script.md",
+      "stdout": "bitcoin/fixtures/tx-checks.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 480
     }
   ]
 }
