@@ -1740,6 +1740,26 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert s[0].line_n > 10;
 }
 
+#test "in the Horde every class finds the dead and spends its features on them" #steps 2000000000 {
+  s: [1] Lab; s[0].skeletons = 16; s[0].horde = true;
+  lab_start(s[..]);
+  spent := 0;
+  for i: 0..<700 {
+    step(s[..], f32(STEP));
+    if i % 10 == 0 {
+      for h: 0..<HEROES {
+        c := s[0].battle[0].c[h];
+        any := c.slots[1] < c.slots_max[1] || c.slots[2] < c.slots_max[2] || c.rages < c.rages_max || c.focus < c.focus_max;
+        for u: 0..<RS_USES { if c.uses[u] < c.uses_max[u] { any = true; } }
+        if c.klass == RS_ROGUE && s[0].acted[h] > 0 { any = true; }
+        if any { spent = spent | (1 << c.klass); }
+      }
+    }
+    if s[0].over { break; }
+  }
+  for r: 0..<12 { #assert (spent & (1 << ROSTER[r])) != 0; }
+}
+
 #test "each side fields two of every SRD 5e class at level 3, the casters behind" #steps 2000000000 {
   s: [1] Lab; s[0].skeletons = 0; s[0].horde = false;
   lab_start(s[..]);
