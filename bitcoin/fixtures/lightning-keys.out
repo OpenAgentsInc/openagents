@@ -1,0 +1,25 @@
+BOLT 3 key derivation vectors
+  base_point: true
+  per_commitment_point: true
+  localpubkey: true
+  localprivkey: true, times G is localpubkey: true
+  revocationpubkey: true
+  revocationprivkey: true, times G is revocationpubkey: true
+Bob's commitment 42
+  per_commitment_point: 03a79d1ab8b2a02c4ded1eeb0b2cf1a3f20f4b18e20acbe915cddcb8a8cf7ffce9
+  local_delayedpubkey: 03366d2771d9894e5a2a1afa85af9ceeb66499e3724ce7163c889e198086f66589
+  revocationpubkey:    022b1875e619c4f88e5ab859b7d009226ac21b945ece3594634c48e61ee2c980d9
+  remotepubkey:        03819b98a6aeaa8c3af9b03e405f66a6f52848a036967259dc180f71096dcb378b
+  local_htlcpubkey:    038aadcce85642317b269f00571192b059a37cdf1a41601053857295b92b89c463
+  remote_htlcpubkey:   02dbaa7aaf7e374e60e3e175094bd7f0b149b8b386f047c80df5abaac72e71dbd7
+  Bob's delayed private key matches: true
+revoking commitment 42
+  Bob's per-commitment secret alone: false
+  Alice's revocation secret alone: false
+  the secret matches the point Bob sent: true
+  Alice's store holds 43 secrets
+  revocationprivkey: OK, times G is revocationpubkey: true
+  commitment 41's secret instead: false
+refusals
+  per-commitment point with prefix 04: BAD_POINT
+  a zero secret: BAD_SECRET

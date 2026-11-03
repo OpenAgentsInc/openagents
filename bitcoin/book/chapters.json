@@ -2026,15 +2026,21 @@
   {
    "number": 106,
    "title": "Commitment keys and revocation",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch106-commitment-keys-and-revocation.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     4,
     16
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/lightning/keys.coax",
+    "bitcoin/examples/lightning-keys.coax",
+    "bitcoin/examples/checks/lightning-keys.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

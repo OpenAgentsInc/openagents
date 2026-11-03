@@ -1,0 +1,36 @@
+// The checks of lightning-keys.coax. They live apart so that running the
+// example doesn't also run them. The example runs BOLT 3's key vectors;
+// these check the properties around them.
+// Checks: coax test bitcoin/examples/checks/lightning-keys.coax
+#load "../lightning-keys.coax";
+
+// book:begin check
+// For four basepoint secrets and four commitments of one seed, the
+// derived private key times G is the derived public key.
+#forall "a derived private key signs for the derived key" k: 0..<4 #steps 3000000000 {
+  base := secret(17 * k + 5); seed := secret(200); pcs: [32] u8; out: [32] u8;
+  code := shachain_generate(seed[..], shachain_index(cast(u64) (k * 1000)), pcs[..]);
+  pcp := lnk_point(pcs[..]);
+  key := derived(base[..], pcp.bytes[..]);
+  #assert key.code == LNK_OK && lnk_privkey(base[..], pcp.bytes[..], out[..]) == LNK_OK;
+  #assert signs_for(out[..], key.bytes[..]);
+}
+// For three pairs of secrets, the revocation private key made from both
+// times G is the revocation key made from both points.
+#forall "both secrets make the revocation key" k: 0..<3 #steps 3000000000 {
+  r := secret(31 * k + 9); p := secret(43 * k + 2); out: [32] u8;
+  big_r := lnk_point(r[..]); big_p := lnk_point(p[..]);
+  key := lnk_revocation_pubkey_vartime(big_r.bytes[..], big_p.bytes[..]);
+  #assert lnk_revocation_privkey(r[..], p[..], out[..]) == LNK_OK && signs_for(out[..], key.bytes[..]);
+}
+// Each commitment gets its own revocation key from the same basepoint,
+// and neither secret alone is it.
+#test "every commitment has its own revocation key" #steps 2000000000 {
+  r := secret(9); p := secret(2); q := secret(3);
+  big_r := lnk_point(r[..]); big_p := lnk_point(p[..]); big_q := lnk_point(q[..]);
+  a := lnk_revocation_pubkey_vartime(big_r.bytes[..], big_p.bytes[..]);
+  b := lnk_revocation_pubkey_vartime(big_r.bytes[..], big_q.bytes[..]);
+  #assert cb_ct_equal(a.bytes[..], b.bytes[..]) == 0;
+  #assert !signs_for(r[..], a.bytes[..]) && !signs_for(p[..], a.bytes[..]);
+}
+// book:end check

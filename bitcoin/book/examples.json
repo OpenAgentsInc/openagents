@@ -682,6 +682,17 @@
         "release"
       ],
       "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/lightning-keys.coax",
+      "chapter": "bitcoin/book/ch106-commitment-keys-and-revocation.md",
+      "stdout": "bitcoin/fixtures/lightning-keys.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

@@ -43,12 +43,12 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 63 are implemented and 61 are planned. The 63 implemented
+Of the 124 chapters, 64 are implemented and 60 are planned. The 64 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 62, 65, 66, 67,
-68, 69, 73, 74, 104, 105 and 107 are new.
+68, 69, 73, 74, 104, 105, 106 and 107 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
 `coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -321,7 +321,7 @@ Lightning built in Coax on our node: messages, the Noise handshake, channels, on
 | --- | --- | --- |
 | [104. Messages and TLVs](ch104-messages-and-tlvs.md) | Runnable: native C | BOLT 1's message framing with the "it's OK to be odd" rule, BigSize, TLV streams, truncated integers, `init` with BOLT 9's feature bits, `error`, `warning`, `ping` and `pong`. Every BigSize, TLV and `init` vector in BOLT 1 gives its result, and every line agrees with an independent Python reader. |
 | [105. The Noise handshake](ch105-the-noise-handshake.md) | Runnable: native C | BOLT 8's Noise_XK handshake: the three acts with exact byte layouts, `h` and `ck`, ECDH as SHA-256 of the compressed point, HKDF, the encrypted-length transport and key rotation every 1,000 uses, with secrets in constant time. Every BOLT 8 handshake and message vector gives its result, and every line agrees with an independent Python handshake. |
-| 106. Commitment keys and revocation | Planned | BOLT 3's key-derivation vectors give every key. |
+| [106. Commitment keys and revocation](ch106-commitment-keys-and-revocation.md) | Runnable: native C | BOLT 3's key derivation: per-commitment points, localpubkey and the HTLC and delayed keys with their private keys, remotepubkey under option_static_remotekey, and the revocation key that needs both peers' secrets. Every BOLT 3 key vector gives its result, and every line agrees with an independent Python derivation. |
 | [107. Shachain](ch107-shachain.md) | Runnable: native C | BOLT 3's per-commitment secrets: generation from one seed over 2^48 indices by bit flips and SHA-256, and the receiver's 49-slot store with its insert check and lookup. Every BOLT 3 generation and storage vector gives its result, and every line agrees with an independent Python store. |
 | 108. Commitment and HTLC transactions | Planned | BOLT 3's commitment and HTLC transaction vectors match byte for byte, with and without anchors. |
 | 109. Open, update and close a channel | Planned | Two Coax nodes open, update and close a channel on regtest. The state machine refuses every out-of-order message BOLT 2 names. |

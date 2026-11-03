@@ -448,6 +448,14 @@ that a maliciously replaced manifest is authentic.
   `coax/tests/lightning/shachain_vectors.coax`, and
   `coax/tests/lightning/shachain.py` is the independent generator and
   store the cross-check runs.
+- **Commitment keys and revocation (Bitcoin chapter 106):** the same
+  pinned BOLT 3. Its Appendix E gives a base secret and a per-commitment
+  secret, their points, and the four derived keys: `localpubkey`,
+  `localprivkey`, `revocationpubkey` and `revocationprivkey`.
+  `coax/tests/lightning/make_keys_vectors.py` reads them into
+  `coax/tests/lightning/keys_vectors.coax`, and
+  `coax/tests/lightning/keys.py` is the independent derivation the
+  cross-check runs.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-

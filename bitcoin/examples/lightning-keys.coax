@@ -1,0 +1,97 @@
+// book:begin example
+#load "../../coax/lib/lightning/keys.coax";
+#load "../../coax/lib/lightning/shachain.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex.
+show :: (b: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+// A 32-byte secret whose bytes are k, k + 1, k + 2, ...
+secret :: (k: int) -> [32] u8 { s: [32] u8; for i: 0..<32 { s[i] = cast(u8) ((k + i) & 255); } return s; }
+// Whether secret * G is the compressed key.
+signs_for :: (s: [] u8, key: [] u8) -> bool { p := lnk_point(s); return cb_ct_equal(p.bytes[..], key) == CB_MAX64; }
+// A key derived from the basepoint of a secret.
+derived :: (base_secret: [] u8, point: [] u8) -> LnkKey { b := lnk_point(base_secret); return lnk_pubkey_vartime(b.bytes[..], point); }
+LNK_CODE_NAMES :: [5] string.["OK", "BAD_POINT", "BAD_SECRET", "BAD_TWEAK", "INFINITY"];
+
+main :: () {
+  // ---- BOLT 3's Appendix E
+  print("BOLT 3 key derivation vectors\n");
+  bs: [32] u8; ps: [32] u8; out: [32] u8;
+  lnk_fill(LNK_VECTOR.base_secret, bs[..]); lnk_fill(LNK_VECTOR.per_commitment_secret, ps[..]);
+  base := lnk_point(bs[..]); point := lnk_point(ps[..]);
+  print("  base_point: %\n", lnk_hex_is(base.bytes[..], LNK_VECTOR.base_point));
+  print("  per_commitment_point: %\n", lnk_hex_is(point.bytes[..], LNK_VECTOR.per_commitment_point));
+  k := lnk_pubkey_vartime(base.bytes[..], point.bytes[..]);
+  print("  localpubkey: %\n", lnk_hex_is(k.bytes[..], LNK_VECTOR.localpubkey));
+  code := lnk_privkey(bs[..], point.bytes[..], out[..]);
+  print("  localprivkey: %, times G is localpubkey: %\n", lnk_hex_is(out[..], LNK_VECTOR.localprivkey),
+        signs_for(out[..], k.bytes[..]));
+  k = lnk_revocation_pubkey_vartime(base.bytes[..], point.bytes[..]);
+  print("  revocationpubkey: %\n", lnk_hex_is(k.bytes[..], LNK_VECTOR.revocationpubkey));
+  code = lnk_revocation_privkey(bs[..], ps[..], out[..]);
+  print("  revocationprivkey: %, times G is revocationpubkey: %\n", lnk_hex_is(out[..], LNK_VECTOR.revocationprivkey),
+        signs_for(out[..], k.bytes[..]));
+
+  // ---- one commitment of Bob's, from both sides
+  print("Bob's commitment 42\n");
+  seed := secret(100);
+  pcs: [32] u8;
+  code = shachain_generate(seed[..], shachain_index(42), pcs[..]);
+  pcp := lnk_point(pcs[..]);
+  print("  per_commitment_point: "); show(pcp.bytes[..]); print("\n");
+  bob_delayed := secret(2); bob_htlc := secret(3);
+  alice_payment := secret(11); alice_htlc := secret(13); alice_revocation := secret(14);
+  alice_pay_point := lnk_point(alice_payment[..]);
+  alice_rev_point := lnk_point(alice_revocation[..]);
+  // Bob's to_local output: his delayed key, or Alice's revocation key.
+  delayed := derived(bob_delayed[..], pcp.bytes[..]);
+  print("  local_delayedpubkey: "); show(delayed.bytes[..]); print("\n");
+  revocation := lnk_revocation_pubkey_vartime(alice_rev_point.bytes[..], pcp.bytes[..]);
+  print("  revocationpubkey:    "); show(revocation.bytes[..]); print("\n");
+  // Alice's to_remote output: her payment basepoint, unchanged.
+  remote := lnk_remotepubkey_vartime(alice_pay_point.bytes[..]);
+  print("  remotepubkey:        "); show(remote.bytes[..]); print("\n");
+  local_htlc := derived(bob_htlc[..], pcp.bytes[..]);
+  remote_htlc := derived(alice_htlc[..], pcp.bytes[..]);
+  print("  local_htlcpubkey:    "); show(local_htlc.bytes[..]); print("\n");
+  print("  remote_htlcpubkey:   "); show(remote_htlc.bytes[..]); print("\n");
+  // Bob can sign for his own keys: each private key times G is the key.
+  code = lnk_privkey(bob_delayed[..], pcp.bytes[..], out[..]);
+  print("  Bob's delayed private key matches: %\n", signs_for(out[..], delayed.bytes[..]));
+
+  // ---- revocation: Alice needs Bob's per-commitment secret
+  print("revoking commitment 42\n");
+  // Before: Bob's secret alone, or Alice's alone, is not the key.
+  print("  Bob's per-commitment secret alone: %\n", signs_for(pcs[..], revocation.bytes[..]));
+  print("  Alice's revocation secret alone: %\n", signs_for(alice_revocation[..], revocation.bytes[..]));
+  // Bob sends the secret in revoke_and_ack; Alice checks it against the
+  // point she was given, stores it, and can now make the key.
+  print("  the secret matches the point Bob sent: %\n", signs_for(pcs[..], pcp.bytes[..]));
+  store: [1] Shachain; store[0] = shachain_new(); s: [32] u8; accepted := 0;
+  for n: 0..<43 {
+    code = shachain_generate(seed[..], shachain_index(cast(u64) n), s[..]);
+    if shachain_insert(store[..], shachain_index(cast(u64) n), s[..]) == SHACHAIN_OK { accepted += 1; }
+  }
+  print("  Alice's store holds % secrets\n", accepted);
+  code = shachain_lookup(store[..], shachain_index(42), s[..]);
+  code = lnk_revocation_privkey(alice_revocation[..], s[..], out[..]);
+  print("  revocationprivkey: %, times G is revocationpubkey: %\n", LNK_CODE_NAMES[code],
+        signs_for(out[..], revocation.bytes[..]));
+  // The secret of commitment 41 makes a different key.
+  code = shachain_lookup(store[..], shachain_index(41), s[..]);
+  code = lnk_revocation_privkey(alice_revocation[..], s[..], out[..]);
+  print("  commitment 41's secret instead: %\n", signs_for(out[..], revocation.bytes[..]));
+
+  // ---- refusals
+  print("refusals\n");
+  bad := pcp.bytes; bad[0] = 4;
+  print("  per-commitment point with prefix 04: %\n", LNK_CODE_NAMES[lnk_pubkey_vartime(base.bytes[..], bad[..]).code]);
+  zero: [32] u8;
+  print("  a zero secret: %\n", LNK_CODE_NAMES[lnk_point(zero[..]).code]);
+}
+// book:end example

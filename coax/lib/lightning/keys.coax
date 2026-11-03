@@ -1,0 +1,202 @@
+// Commitment keys and revocation (Bitcoin chapter 106): BOLT 3's key
+// derivation. Each commitment has a per-commitment point, and every key in
+// it is a basepoint moved by that point: localpubkey and the HTLC and
+// delayed keys by addition, the revocation key by a blinded sum of both
+// sides' points. With option_static_remotekey, remotepubkey is the remote
+// node's payment basepoint unchanged.
+//
+// Basepoints and per-commitment points are public: they are sent in
+// open_channel and revoke_and_ack, so the procedures that work only on
+// them run in variable time and end in _vartime (chapter 3). Basepoint
+// secrets and per-commitment secrets are secret: their procedures use
+// chapter 16's constant-time multiplication and constant-time scalar
+// arithmetic, and overwrite what they leave on the stack.
+#load "../crypto/sha256.coax";
+#load "../crypto/secp_encode.coax";
+#load "../crypto/secp_mult.coax";
+#load "../crypto/secp_mult_const.coax";
+#load "../../tests/lightning/keys_vectors.coax";
+#authority;
+
+// book:begin codes
+LNK_OK :: 0;
+LNK_BAD_POINT :: 1;   // a basepoint or per-commitment point that is not a compressed point
+LNK_BAD_SECRET :: 2;  // a secret of zero or at least n
+LNK_BAD_TWEAK :: 3;   // a SHA-256 tweak of at least n: never seen, but refused
+LNK_INFINITY :: 4;    // a derived key at infinity or zero: never seen, but refused
+
+LNK_POINT :: 33;      // compressed points
+LNK_SECRET :: 32;
+// book:end codes
+
+LnkKey :: struct { code: int; bytes: [33] u8; }
+lnk_encode :: (p: SgResult) -> LnkKey {
+  r: LnkKey;
+  r.code = ifx p.ok && se_encode(p.value, SE_COMPRESSED, r.bytes[..]) == SE_COMPRESSED then LNK_OK else LNK_INFINITY;
+  return r;
+}
+
+// book:begin tweak
+// SHA256(a || b) for two compressed points, as a scalar.
+LnkTweak :: struct { code: int; value: ScScalar; }
+lnk_tweak :: (a: [] u8, b: [] u8) -> LnkTweak {
+  joined: [66] u8; hash: [32] u8;
+  for i: 0..<33 { joined[i] = a[i]; joined[33 + i] = b[i]; }
+  #assert sha256_hash_checked(joined[..], hash[..], false) == SHA_OK;
+  t := sc_load(hash[..]);
+  return LnkTweak.{code = ifx t.ok then LNK_OK else LNK_BAD_TWEAK, value = t.value};
+}
+// book:end tweak
+
+// book:begin point
+// per_commitment_point = per_commitment_secret * G. The secret is the
+// shachain secret of chapter 107; the point goes to the peer.
+lnk_point :: (secret: [] u8) -> LnkKey {
+  if secret.count != LNK_SECRET { return LnkKey.{code = LNK_BAD_SECRET}; }
+  k := sc_load(secret);
+  if !k.ok || sc_is_zero(k.value) { k = ScLoad.{}; return LnkKey.{code = LNK_BAD_SECRET}; }
+  r := lnk_encode(smc_multiply(k.value, sg_generator()));
+  k = ScLoad.{};
+  return r;
+}
+// book:end point
+
+// book:begin derive
+// pubkey = basepoint + SHA256(per_commitment_point || basepoint) * G.
+// localpubkey, local_htlcpubkey, remote_htlcpubkey, local_delayedpubkey
+// and remote_delayedpubkey all use this, each from its own basepoint.
+lnk_pubkey_vartime :: (basepoint: [] u8, point: [] u8) -> LnkKey {
+  if basepoint.count != LNK_POINT || point.count != LNK_POINT { return LnkKey.{code = LNK_BAD_POINT}; }
+  b := se_decode(basepoint);
+  if !b.ok || !se_decode(point).ok { return LnkKey.{code = LNK_BAD_POINT}; }
+  t := lnk_tweak(point, basepoint);
+  if t.code != LNK_OK { return LnkKey.{code = t.code}; }
+  one: [32] u8; one[31] = 1;
+  return lnk_encode(ecmult_vartime(t.value, b.value, sc_load(one[..]).value));
+}
+// privkey = basepoint_secret + SHA256(per_commitment_point || basepoint),
+// for the keys whose basepoint secret this node holds.
+lnk_privkey :: (base_secret: [] u8, point: [] u8, out: [] u8) -> int {
+  base := lnk_point(base_secret);
+  if base.code != LNK_OK { return base.code; }
+  if point.count != LNK_POINT || !se_decode(point).ok { return LNK_BAD_POINT; }
+  t := lnk_tweak(point, base.bytes[..]);
+  if t.code != LNK_OK { return t.code; }
+  k := sc_load(base_secret);
+  sum := sc_add(k.value, t.value);
+  code := ifx sc_is_zero(sum) then LNK_INFINITY else LNK_OK;
+  stored := sc_store(sum, out);
+  k = ScLoad.{}; sum = ScScalar.{};
+  return code;
+}
+// With option_static_remotekey, remotepubkey is the remote node's
+// payment_basepoint itself: no per-commitment point, so a node that lost
+// its state can still spend its to_remote output.
+lnk_remotepubkey_vartime :: (payment_basepoint: [] u8) -> LnkKey {
+  if payment_basepoint.count != LNK_POINT || !se_decode(payment_basepoint).ok { return LnkKey.{code = LNK_BAD_POINT}; }
+  r: LnkKey; for i: 0..<33 { r.bytes[i] = payment_basepoint[i]; }
+  return r;
+}
+// book:end derive
+
+// book:begin revocation
+// revocationpubkey = R * SHA256(R || P) + P * SHA256(P || R), with R this
+// node's revocation_basepoint and P the peer's per_commitment_point.
+// Neither side can know its secret alone.
+lnk_revocation_pubkey_vartime :: (revocation_basepoint: [] u8, point: [] u8) -> LnkKey {
+  if revocation_basepoint.count != LNK_POINT || point.count != LNK_POINT { return LnkKey.{code = LNK_BAD_POINT}; }
+  r := se_decode(revocation_basepoint); p := se_decode(point);
+  if !r.ok || !p.ok { return LnkKey.{code = LNK_BAD_POINT}; }
+  tr := lnk_tweak(revocation_basepoint, point); tp := lnk_tweak(point, revocation_basepoint);
+  if tr.code != LNK_OK || tp.code != LNK_OK { return LnkKey.{code = LNK_BAD_TWEAK}; }
+  zero: ScScalar;
+  a := ecmult_vartime(zero, r.value, tr.value); b := ecmult_vartime(zero, p.value, tp.value);
+  if !a.ok || !b.ok { return LnkKey.{code = LNK_INFINITY}; }
+  return lnk_encode(sg_add(a.value, b.value));
+}
+// revocationprivkey = r * SHA256(R || P) + p * SHA256(P || R). Once the
+// peer reveals p to revoke its commitment, this node knows both secrets.
+lnk_revocation_privkey :: (revocation_secret: [] u8, commitment_secret: [] u8, out: [] u8) -> int {
+  big_r := lnk_point(revocation_secret); big_p := lnk_point(commitment_secret);
+  if big_r.code != LNK_OK || big_p.code != LNK_OK { return LNK_BAD_SECRET; }
+  tr := lnk_tweak(big_r.bytes[..], big_p.bytes[..]); tp := lnk_tweak(big_p.bytes[..], big_r.bytes[..]);
+  if tr.code != LNK_OK || tp.code != LNK_OK { return LNK_BAD_TWEAK; }
+  r := sc_load(revocation_secret); p := sc_load(commitment_secret);
+  sum := sc_add(sc_mul(r.value, tr.value), sc_mul(p.value, tp.value));
+  code := ifx sc_is_zero(sum) then LNK_INFINITY else LNK_OK;
+  stored := sc_store(sum, out);
+  r = ScLoad.{}; p = ScLoad.{}; sum = ScScalar.{};
+  return code;
+}
+// book:end revocation
+
+// ---- test helpers
+lnk_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+lnk_fill :: (text: string, out: [] u8) {
+  for i: 0..<text.count / 2 { out[i] = cast(u8) (lnk_nibble(text[2 * i]) * 16 + lnk_nibble(text[2 * i + 1])); }
+}
+LNK_DIGITS :: "0123456789abcdef";
+lnk_hex_is :: (a: [] u8, text: string) -> bool {
+  if text.count != 2 * a.count { return false; }
+  for i: 0..<a.count {
+    if text[2 * i] != LNK_DIGITS[cast(int) (a[i] >> 4)] || text[2 * i + 1] != LNK_DIGITS[cast(int) (a[i] & 15)] { return false; }
+  }
+  return true;
+}
+
+#test "BOLT 3: the points of Appendix E's secrets" #steps 400000000 {
+  s: [32] u8;
+  lnk_fill(LNK_VECTOR.base_secret, s[..]); b := lnk_point(s[..]);
+  #assert b.code == LNK_OK && lnk_hex_is(b.bytes[..], LNK_VECTOR.base_point);
+  lnk_fill(LNK_VECTOR.per_commitment_secret, s[..]); p := lnk_point(s[..]);
+  #assert p.code == LNK_OK && lnk_hex_is(p.bytes[..], LNK_VECTOR.per_commitment_point);
+}
+#test "BOLT 3: localpubkey and localprivkey" #steps 400000000 {
+  base: [33] u8; point: [33] u8; s: [32] u8; out: [32] u8;
+  lnk_fill(LNK_VECTOR.base_point, base[..]); lnk_fill(LNK_VECTOR.per_commitment_point, point[..]);
+  k := lnk_pubkey_vartime(base[..], point[..]);
+  #assert k.code == LNK_OK && lnk_hex_is(k.bytes[..], LNK_VECTOR.localpubkey);
+  lnk_fill(LNK_VECTOR.base_secret, s[..]);
+  #assert lnk_privkey(s[..], point[..], out[..]) == LNK_OK && lnk_hex_is(out[..], LNK_VECTOR.localprivkey);
+  back := lnk_point(out[..]);
+  #assert lnk_hex_is(back.bytes[..], LNK_VECTOR.localpubkey);
+}
+#test "BOLT 3: revocationpubkey and revocationprivkey" #steps 800000000 {
+  base: [33] u8; point: [33] u8; r: [32] u8; p: [32] u8; out: [32] u8;
+  lnk_fill(LNK_VECTOR.base_point, base[..]); lnk_fill(LNK_VECTOR.per_commitment_point, point[..]);
+  k := lnk_revocation_pubkey_vartime(base[..], point[..]);
+  #assert k.code == LNK_OK && lnk_hex_is(k.bytes[..], LNK_VECTOR.revocationpubkey);
+  lnk_fill(LNK_VECTOR.base_secret, r[..]); lnk_fill(LNK_VECTOR.per_commitment_secret, p[..]);
+  #assert lnk_revocation_privkey(r[..], p[..], out[..]) == LNK_OK && lnk_hex_is(out[..], LNK_VECTOR.revocationprivkey);
+  back := lnk_point(out[..]);
+  #assert lnk_hex_is(back.bytes[..], LNK_VECTOR.revocationpubkey);
+}
+#test "remotepubkey is the payment basepoint" {
+  base: [33] u8; lnk_fill(LNK_VECTOR.base_point, base[..]);
+  k := lnk_remotepubkey_vartime(base[..]);
+  #assert k.code == LNK_OK && lnk_hex_is(k.bytes[..], LNK_VECTOR.base_point);
+  base[0] = 4;
+  #assert lnk_remotepubkey_vartime(base[..]).code == LNK_BAD_POINT;
+}
+#test "refusals: bad points, bad secrets" #steps 400000000 {
+  base: [33] u8; point: [33] u8; s: [32] u8; out: [32] u8; zero: [32] u8;
+  lnk_fill(LNK_VECTOR.base_point, base[..]); lnk_fill(LNK_VECTOR.per_commitment_point, point[..]);
+  lnk_fill(LNK_VECTOR.base_secret, s[..]);
+  bad := point; bad[0] = 4;
+  #assert lnk_pubkey_vartime(base[..], bad[..]).code == LNK_BAD_POINT;
+  #assert lnk_pubkey_vartime(bad[..], point[..]).code == LNK_BAD_POINT;
+  #assert lnk_pubkey_vartime(base[0..<32], point[..]).code == LNK_BAD_POINT;
+  #assert lnk_revocation_pubkey_vartime(base[..], bad[..]).code == LNK_BAD_POINT;
+  #assert lnk_revocation_pubkey_vartime(base[0..<32], point[..]).code == LNK_BAD_POINT;
+  #assert lnk_privkey(s[..], bad[..], out[..]) == LNK_BAD_POINT;
+  #assert lnk_privkey(zero[..], point[..], out[..]) == LNK_BAD_SECRET;
+  #assert lnk_point(zero[..]).code == LNK_BAD_SECRET;
+  #assert lnk_point(s[0..<31]).code == LNK_BAD_SECRET;
+  n: [32] u8; for i: 0..<32 { n[i] = 0xff; }
+  #assert lnk_point(n[..]).code == LNK_BAD_SECRET;
+  #assert lnk_revocation_privkey(zero[..], s[..], out[..]) == LNK_BAD_SECRET;
+  #assert lnk_revocation_privkey(s[..], zero[..], out[..]) == LNK_BAD_SECRET;
+  // BOLT 3's tweak for localpubkey, from its comments.
+  t := lnk_tweak(point[..], base[..]); h: [32] u8; stored := sc_store(t.value, h[..]);
+  #assert t.code == LNK_OK && lnk_hex_is(h[..], "cbcdd70fcfad15ea8e9e5c5a12365cf00912504f08ce01593689dd426bca9ff0");
+}

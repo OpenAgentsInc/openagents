@@ -100,4 +100,5 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 - [104. Messages and TLVs](ch104-messages-and-tlvs.md) — implemented
 - [105. The Noise handshake](ch105-the-noise-handshake.md) — implemented
+- [106. Commitment keys and revocation](ch106-commitment-keys-and-revocation.md) — implemented
 - [107. Shachain](ch107-shachain.md) — implemented
