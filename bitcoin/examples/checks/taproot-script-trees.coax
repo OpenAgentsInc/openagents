@@ -1,0 +1,40 @@
+// The checks of taproot-script-trees.coax. They live apart so that running
+// the example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/taproot-script-trees.coax --only script-trees:
+#load "../taproot-script-trees.coax";
+
+// book:begin check
+// BIP-341's figure: five leaves, AB = (A, B) and CDE = ((C, D), E), so the
+// depths are 2 2 3 3 2. D's control block lists C, E and AB, in that
+// order, and every leaf's control block commits to Q.
+#test "script-trees: BIP-341's five-leaf figure" #steps 2000000000 {
+  scripts := [5] u8.[0x51, 0x52, 0x53, 0x54, 0x55];   // OP_1 to OP_5, one leaf each
+  depths := [5] int.[2, 2, 3, 3, 2];
+  h: [5][32] u8; tree: [1] TrTree; p: [32] u8; q: [32] u8; c: [129] u8;
+  for k: 0..<5 { #assert taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, scripts[k..<k + 1], h[k][..]) == TR_OK; }
+  #assert taproot_tree_vartime(depths[..], h[..], tree[..]) == TR_OK;
+  ab: [32] u8; cd: [32] u8; cde: [32] u8; root: [32] u8;
+  taproot_branch_vartime(h[0][..], h[1][..], ab[..]); taproot_branch_vartime(h[2][..], h[3][..], cd[..]);
+  taproot_branch_vartime(cd[..], h[4][..], cde[..]); taproot_branch_vartime(ab[..], cde[..], root[..]);
+  #assert bt_same(tree[0].root[..], root[..]);
+  #assert tree[0].path_n[3] == 3 && bt_same(tree[0].path[3][0][..], h[2][..]) && bt_same(tree[0].path[3][1][..], h[4][..]) && bt_same(tree[0].path[3][2][..], ab[..]);
+  pk := bt_unhex("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", p[..]);
+  #assert taproot_output_key_vartime(pk, root[..], q[..]) >= 0;
+  for k: 0..<5 {
+    n := taproot_control_block_vartime(tree[..], k, pk, TR_LEAF_TAPSCRIPT, c[..]);
+    #assert n == 33 + 32 * depths[k] && taproot_commitment_vartime(c[0..<n], scripts[k..<k + 1], q[..]) == TR_OK;
+    // Another leaf's script with this leaf's control block fails.
+    #assert taproot_commitment_vartime(c[0..<n], scripts[(k + 1) % 5..<(k + 1) % 5 + 1], q[..]) == TR_MISMATCH;
+  }
+}
+// The same leaves in a different shape give a different root: a tree
+// commits to its shape as well as its leaves.
+#test "script-trees: the shape is committed" {
+  scripts := [3] u8.[0x51, 0x52, 0x53];
+  h: [3][32] u8; tree: [1] TrTree; r: [32] u8;
+  for k: 0..<3 { #assert taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, scripts[k..<k + 1], h[k][..]) == TR_OK; }
+  a := [3] int.[1, 2, 2]; b := [3] int.[2, 2, 1];
+  #assert taproot_tree_vartime(a[..], h[..], tree[..]) == TR_OK; r = tree[0].root;
+  #assert taproot_tree_vartime(b[..], h[..], tree[..]) == TR_OK && !bt_same(r[..], tree[0].root[..]);
+}
+// book:end check

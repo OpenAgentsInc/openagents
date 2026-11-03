@@ -187,7 +187,7 @@ there is a need.
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
 | [41. The key tweak and the key path](ch041-the-key-tweak-and-the-key-path.md) — implemented | 5, 24 | BIP-341's `wallet-test-vectors.json` key-path tweaks and signatures match. | BIP-341 |
-| 42. Script trees: tapleaves and tapbranches — planned | 41 | BIP-341's script-tree vectors give every leaf hash, Merkle root and output key. | BIP-341 |
+| [42. Script trees: tapleaves and tapbranches](ch042-script-trees-tapleaves-and-tapbranches.md) — implemented | 41 | BIP-341's script-tree vectors give every leaf hash, Merkle root and output key. | BIP-341 |
 | 43. Taproot signature hashes — planned | 34, 41 | Every BIP-341 key-path and script-path signature hash vector matches, for every hash type. | BIP-341 |
 | 44. Tapscript — planned | 36, 43 | Bitcoin Core's Taproot script tests (`script_assets_test.json`) give their expected results. | BIP-342 |
 | 45. Control blocks and script-path spends — planned | 42, 44 | Script-path spends from BIP-341's vectors verify. A control block with the wrong parity or path refuses. | BIP-341 |

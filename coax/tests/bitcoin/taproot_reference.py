@@ -82,6 +82,29 @@ def address(spk):
     return ADDR.encode("bc", spk[0] - 0x50 if spk[0] else 0, spk[2:])
 
 
+def verify_commitment(c, s, q):
+    """BIP-341's script-path rules, as its text gives them: the control
+    block's size, the tapleaf hash, the sorted path, the tweak, then x(Q)
+    and the parity. Returns None when they hold, else the rule that fails."""
+    if len(c) < 33 or len(c) > 33 + 32 * 128 or (len(c) - 33) % 32:
+        return "size"
+    P = R.lift_x(int.from_bytes(c[1:33], "big"))
+    if P is None:
+        return "mismatch"
+    v = c[0] & 0xfe
+    k = R.tagged_hash("TapLeaf", bytes([v]) + ser_script(s))
+    for j in range((len(c) - 33) // 32):
+        e = c[33 + 32 * j:65 + 32 * j]
+        k = R.tagged_hash("TapBranch", k + e if k < e else e + k)
+    t = int.from_bytes(R.tagged_hash("TapTweak", c[1:33] + k), "big")
+    if t >= R.n:
+        return "mismatch"
+    Q = R.point_add(P, R.point_mul(R.G, t))
+    if Q is None or R.x(Q) != int.from_bytes(q, "big") or (c[0] & 1) != R.y(Q) % 2:
+        return "mismatch"
+    return None
+
+
 def check_vectors():
     """BIP-341's code gives every scriptPubKey vector's values."""
     count = 0
@@ -107,8 +130,9 @@ def check_vectors():
             flat(g["scriptTree"])
             for k, leaf in enumerate(leaves):
                 num = [n for n, (lv, _) in enumerate(info) if lv == (leaf["leafVersion"], bytes.fromhex(leaf["script"]))][0]
-                control = R.taproot_sign_script(p, t, num, [])[-1]
+                script, control = R.taproot_sign_script(p, t, num, [])[-2:]
                 assert control.hex() == ex["scriptPathControlBlocks"][leaf["id"]]
+                assert verify_commitment(control, script, spk[2:]) is None
         count += 1
     for i in VECTORS["keyPathSpending"][0]["inputSpending"]:
         g, im = i["given"], i["intermediary"]

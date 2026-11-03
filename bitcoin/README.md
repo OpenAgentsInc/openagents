@@ -26,7 +26,8 @@ chapter 39 its timelocks, with [`locktime.coax`](../coax/lib/bitcoin/locktime.co
 [`path.coax`](../coax/lib/bitcoin/path.coax) reads derivation paths and
 makes the standard BIP-44, 49, 84 and 86 addresses. Chapter 41's
 [`taproot.coax`](../coax/lib/bitcoin/taproot.coax) holds Taproot: the key
-tweak and the key path first. Chapter 65's
+tweak and the key path, then script trees and control blocks (chapter
+42). Chapter 65's
 [`p2p.coax`](../coax/lib/bitcoin/p2p.coax) reads and writes the peer-to-peer
 messages: the 24-byte header and the payloads a node exchanges.
 
@@ -71,9 +72,10 @@ chapter 34's.
 ## Cryptography still to build
 
 Everything Nostr used is built, and so are the five address types and the
-Taproot key tweak and key path (chapter 41). Bitcoin and Lightning also need:
+Taproot key tweak, key path and script trees (chapters 41 and 42). Bitcoin
+and Lightning also need:
 
-- Batch Schnorr verification, Taproot script trees and tapscript.
+- Batch Schnorr verification and tapscript.
 - MuHash3072. Merkle trees with the duplicate-leaf flaw are built in
   chapter 46 (`coax/lib/bitcoin/merkle.coax`), compact targets in chapter
   47 (`coax/lib/bitcoin/pow.coax`), and retargeting and chainwork in

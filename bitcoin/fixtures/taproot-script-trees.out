@@ -1,0 +1,48 @@
+BIP-341's script trees
+  vector 1: root matches
+    leaf 0 (version 0xc0, depth 0): hash matches, control block of 33 bytes matches, commits: ok
+  vector 2: root matches
+    leaf 0 (version 0xc0, depth 0): hash matches, control block of 33 bytes matches, commits: ok
+  vector 3: root matches
+    leaf 0 (version 0xc0, depth 1): hash matches, control block of 65 bytes matches, commits: ok
+    leaf 1 (version 0xfa, depth 1): hash matches, control block of 65 bytes matches, commits: ok
+  vector 4: root matches
+    leaf 0 (version 0xc0, depth 1): hash matches, control block of 65 bytes matches, commits: ok
+    leaf 1 (version 0xc0, depth 1): hash matches, control block of 65 bytes matches, commits: ok
+  vector 5: root matches
+    leaf 0 (version 0xc0, depth 1): hash matches, control block of 65 bytes matches, commits: ok
+    leaf 1 (version 0xc0, depth 2): hash matches, control block of 97 bytes matches, commits: ok
+    leaf 2 (version 0xc0, depth 2): hash matches, control block of 97 bytes matches, commits: ok
+  vector 6: root matches
+    leaf 0 (version 0xc0, depth 1): hash matches, control block of 65 bytes matches, commits: ok
+    leaf 1 (version 0xc0, depth 2): hash matches, control block of 97 bytes matches, commits: ok
+    leaf 2 (version 0xc0, depth 2): hash matches, control block of 97 bytes matches, commits: ok
+vector 5, step by step
+  leaf 0 TapLeaf: 2645a02e0aac1fe69d69755733a9b7621b694bb5b5cde2bbfc94066ed62b9817
+  leaf 1 TapLeaf: ba982a91d4fc552163cb1c0da03676102d5b7a014304c01f0c77b2b8e888de1c
+  leaf 2 TapLeaf: 9e31407bffa15fefbf5090b149d53959ecdf3f62b1246780238c24501d5ceaf6
+  leaves 1 and 2 join with leaf 2 first, as the smaller hash
+  TapBranch(1, 2): ffe578e9ea769027e4f5a3de40732f75a88a6353a09d767ddeb66accef85e553
+  the root joins leaf 0 and that branch with leaf 0 first
+  root: ccbd66c6f7e8fdab47b3a486f59d28262be857f30d4773f2d5ea47f7761ce0e2
+  leaf 1's control block, 97 bytes:
+    first byte 0xc0: leaf version 0xc0, Q's parity 0
+    internal key P: e0dfe2300b0dd746a3f8674dfd4525623639042569d829c7f0eed9602d263e6f
+    path 0 (leaf 2): 9e31407bffa15fefbf5090b149d53959ecdf3f62b1246780238c24501d5ceaf6
+    path 1 (leaf 0): 2645a02e0aac1fe69d69755733a9b7621b694bb5b5cde2bbfc94066ed62b9817
+leaf 1 of vector 5, changed
+  as built: ok
+  the parity bit flipped: mismatch
+  leaf version 0xc2: mismatch
+  one bit of a path hash: mismatch
+  the path in the other order: mismatch
+  the last path hash left out: mismatch
+  one bit of the script: mismatch
+  34 bytes: bad control block size
+  33 + 32 * 129 bytes: bad control block size
+depths that make no tree
+  1 2 2: ok
+  1 2 1: bad tree
+  1 2: bad tree
+  0 0: bad tree
+  an odd leaf version, 0xc1: bad leaf version

@@ -5,6 +5,10 @@
 //   is bt_tweak in sighash.coax. This file adds what a verifier does with
 //   a key-path witness: read its hash type and check its signature against
 //   the output key.
+// - Chapter 42, script trees: TapLeaf and TapBranch hashes, a tree's root
+//   and each leaf's path from leaves listed with their depths, control
+//   blocks, and the check that a control block and a script commit to an
+//   output key.
 //
 // Keys, scripts, signatures and hashes here are public, so the procedures
 // run in variable time and end in _vartime (chapter 3). The secret half of
@@ -104,3 +108,187 @@ taproot_key_path_verify_vartime :: (output_key: [] u8, sig: [] u8, sighash: [] u
   return schnorr_verify_vartime(sighash, output_key, sig[0..<64]);
 }
 // book:end keypath
+
+// A vector's tree, from its leaves' depths and published scripts.
+tr_vector_tree :: (v: TrSpk, tree: [] TrTree) -> int {
+  depths: [TR_TREE_LEAVES] int; hashes: [TR_TREE_LEAVES][32] u8; sc: [64] u8;
+  for k: 0..<v.count {
+    leaf := TR_LEAVES[v.first + k]; depths[k] = leaf.depth;
+    #assert taproot_leaf_hash_vartime(leaf.version, bt_unhex(leaf.script, sc[..]), hashes[k][..]) == TR_OK;
+  }
+  return taproot_tree_vartime(depths[0..<v.count], hashes[0..<v.count], tree);
+}
+#forall "BIP-341's script trees: leaf hashes, roots and control blocks" i: 1..<7 #steps 4000000000 {
+  v := TR_SPK[i]; tree: [1] TrTree; p: [32] u8; q: [34] u8; c: [TR_CONTROL_MAX] u8; sc: [64] u8;
+  #assert tr_vector_tree(v, tree[..]) == TR_OK && tree[0].count == v.count && bt_hex_is(tree[0].root[..], v.root);
+  pk := bt_unhex(v.internal, p[..]); prog := bt_unhex(v.spk, q[..])[2..<34];
+  for k: 0..<v.count {
+    leaf := TR_LEAVES[v.first + k];
+    #assert bt_hex_is(tree[0].leaf[k][..], leaf.hash) && tree[0].path_n[k] == leaf.depth;
+    n := taproot_control_block_vartime(tree[..], k, pk, leaf.version, c[..]);
+    #assert n == 33 + 32 * leaf.depth && bt_hex_is(c[0..<n], leaf.control);
+    script := bt_unhex(leaf.script, sc[..]);
+    #assert taproot_commitment_vartime(c[0..<n], script, prog) == TR_OK;
+    c[0] ^= 1; #assert taproot_commitment_vartime(c[0..<n], script, prog) == TR_MISMATCH; c[0] ^= 1;
+    if n > 33 { c[40] ^= 1; #assert taproot_commitment_vartime(c[0..<n], script, prog) == TR_MISMATCH; c[40] ^= 1; }
+  }
+}
+#test "a single leaf's root is its hash, and children sort" {
+  a: [32] u8; b: [32] u8; ab: [32] u8; ba: [32] u8; m: [64] u8; e: [32] u8;
+  a[0] = 1; b[0] = 2;
+  taproot_branch_vartime(a[..], b[..], ab[..]); taproot_branch_vartime(b[..], a[..], ba[..]);
+  m[0] = 1; m[32] = 2; bt_tagged(BH_TAPBRANCH, m[..], e[..]);
+  #assert bt_same(ab[..], ba[..]) && bt_same(ab[..], e[..]);
+  // Equal children, and a differing last byte.
+  taproot_branch_vartime(a[..], a[..], ab[..]); for i: 0..<32 { m[i] = a[i]; m[32 + i] = a[i]; }
+  bt_tagged(BH_TAPBRANCH, m[..], e[..]); #assert bt_same(ab[..], e[..]);
+  b[0] = 1; b[31] = 1; taproot_branch_vartime(b[..], a[..], ba[..]);
+  for i: 0..<32 { m[i] = a[i]; m[32 + i] = b[i]; } bt_tagged(BH_TAPBRANCH, m[..], e[..]); #assert bt_same(ba[..], e[..]);
+  // The aliasing out = a.
+  taproot_branch_vartime(a[..], b[..], a[..]); #assert bt_same(a[..], e[..]);
+}
+#test "leaf hashes: the version byte and the script's compact size" {
+  s: [300] u8; h: [32] u8; e: [32] u8; m: [304] u8;
+  #assert taproot_leaf_hash_vartime(0xc1, s[0..<1], h[..]) == TR_BAD_LEAF_VERSION && taproot_leaf_hash_vartime(256, s[0..<1], h[..]) == TR_BAD_LEAF_VERSION;
+  #assert taproot_leaf_hash_vartime(-2, s[0..<1], h[..]) == TR_BAD_LEAF_VERSION && taproot_leaf_hash_vartime(0xc0, s[0..<1], h[0..<31]) == TR_CAPACITY;
+  // 253 bytes take a three-byte length: fd fd 00.
+  #assert taproot_leaf_hash_vartime(0xc0, s[0..<253], h[..]) == TR_OK;
+  m[0] = 0xc0; m[1] = 0xfd; m[2] = 0xfd; m[3] = 0; bt_tagged(BH_TAPLEAF, m[0..<257], e[..]); #assert bt_same(h[..], e[..]);
+  #assert taproot_leaf_hash_vartime(0xfe, s[0..<0], h[..]) == TR_OK;
+  m[0] = 0xfe; m[1] = 0; bt_tagged(BH_TAPLEAF, m[0..<2], e[..]); #assert bt_same(h[..], e[..]);
+}
+#test "depths that don't make a tree refuse" {
+  h: [17][32] u8; tree: [1] TrTree; two: [2] TrTree;
+  for k: 0..<17 { h[k][0] = cast(u8) k; }
+  bad := [18] int.[1, 2, 2, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 1, 2, 1, 2, 1];
+  // 1,2,2 is a tree of three; the others are not.
+  #assert taproot_tree_vartime(bad[0..<3], h[0..<3], tree[..]) == TR_OK && tree[0].path_n[0] == 1 && tree[0].path_n[2] == 2;
+  for k: 1..<6 { #assert taproot_tree_vartime(bad[3 * k..<3 * k + 3], h[0..<3], tree[..]) == TR_BAD_TREE && tree[0].count == 0; }
+  one := [1] int.[1]; zero := [2] int.[0, 0]; neg := [1] int.[-1];
+  #assert taproot_tree_vartime(one[..], h[0..<1], tree[..]) == TR_BAD_TREE && taproot_tree_vartime(zero[..], h[0..<2], tree[..]) == TR_BAD_TREE;
+  #assert taproot_tree_vartime(neg[..], h[0..<1], tree[..]) == TR_BAD_TREE && taproot_tree_vartime(one[0..<0], h[0..<0], tree[..]) == TR_BAD_TREE;
+  #assert taproot_tree_vartime(one[..], h[0..<2], tree[..]) == TR_BAD_TREE && taproot_tree_vartime(one[..], h[0..<1], two[..]) == TR_CAPACITY;
+  // A chain of 16 leaves, depths 1 to 15 then 15, is the deepest a TrTree holds.
+  chain: [17] int; for k: 0..<15 { chain[k] = k + 1; } chain[15] = 15; chain[16] = 16;
+  #assert taproot_tree_vartime(chain[0..<16], h[0..<16], tree[..]) == TR_OK && tree[0].path_n[15] == 15 && tree[0].path_n[0] == 1;
+  chain[15] = 16; chain[16] = 16;
+  #assert taproot_tree_vartime(chain[..], h[..], tree[..]) == TR_BAD_TREE;
+  #assert taproot_tree_vartime(chain[0..<15], h[0..<15], tree[..]) == TR_BAD_TREE;
+}
+#test "control block sizes" #steps 400000000 {
+  c: [TR_CONTROL_MAX + 32] u8; s: [1] u8; prog: [32] u8;
+  #assert taproot_commitment_vartime(c[0..<32], s[..], prog[..]) == TR_BAD_CONTROL_SIZE;
+  #assert taproot_commitment_vartime(c[0..<34], s[..], prog[..]) == TR_BAD_CONTROL_SIZE;
+  #assert taproot_commitment_vartime(c[0..<64], s[..], prog[..]) == TR_BAD_CONTROL_SIZE;
+  #assert taproot_commitment_vartime(c[0..<TR_CONTROL_MAX + 32], s[..], prog[..]) == TR_BAD_CONTROL_SIZE;
+  // 128 hashes is a size consensus accepts; this one commits to nothing.
+  #assert taproot_commitment_vartime(c[0..<TR_CONTROL_MAX], s[..], prog[..]) == TR_MISMATCH;
+  #assert taproot_commitment_vartime(c[0..<33], s[..], prog[0..<31]) == TR_MISMATCH;
+}
+
+// book:begin tree
+TR_BAD_LEAF_VERSION :: -3;  // a leaf version with its low bit set, or above 0xfe
+TR_BAD_TREE :: -4;          // depths that don't make a binary tree, or more than TR_TREE_LEAVES leaves
+TR_BAD_CONTROL_SIZE :: -5;  // a control block that is not 33 + 32m bytes with m at most 128
+TR_MISMATCH :: -6;          // a control block and script that don't commit to the output key
+TR_CAPACITY :: -7;          // an output buffer of the wrong size, or a script too long to hash
+TR_OK :: 0;
+TR_LEAF_TAPSCRIPT :: 0xc0;  // BIP-342's leaf version
+TR_TREE_LEAVES :: 16;       // the leaves one TrTree holds, so a path is at most 15 hashes
+TR_CONTROL_MAX :: 33 + 32 * 128;   // consensus: a path of at most 128 hashes
+// A built tree: its leaf hashes, root, and each leaf's path, the sibling
+// hashes from the leaf up to the root's child, as a control block lists them.
+TrTree :: struct { count: int; root: [32] u8; leaf: [TR_TREE_LEAVES][32] u8; path_n: [TR_TREE_LEAVES] int; path: [TR_TREE_LEAVES][TR_TREE_LEAVES - 1][32] u8; }
+
+// TapLeaf: H_TapLeaf(version || compact size(script) || script). The low
+// bit of a control block's first byte is the output key's parity, so a
+// leaf version is always even.
+taproot_leaf_hash_vartime :: (version: int, script: [] u8, out: [] u8) -> int {
+  if version < 0 || version > 0xfe || (version & 1) != 0 { return TR_BAD_LEAF_VERSION; }
+  if out.count != 32 || !sha256_input_ok(script.count) { return TR_CAPACITY; }
+  state: [SHA_STATE_BYTES] u8; prefix: [10] u8;
+  prefix[0] = cast(u8) version;
+  n := bt_var_put(prefix[..], 1, script.count);
+  #assert bitcoin_tagged_init(state[..], BH_TAPLEAF) == SHA_OK;
+  #assert sha256_update_checked(state[..], prefix[0..<n], false) == SHA_OK && sha256_update_checked(state[..], script, false) == SHA_OK;
+  #assert sha256_final_checked(state[..], out, false) == SHA_OK;
+  return TR_OK;
+}
+// TapBranch: H_TapBranch of the two children, the smaller one first, so a
+// node's hash doesn't depend on which child is on the left. out may be a
+// or b.
+taproot_branch_vartime :: (a: [] u8, b: [] u8, out: [] u8) {
+  m: [64] u8;
+  b_first := false;
+  for i: 0..<32 { if a[i] != b[i] { b_first = b[i] < a[i]; break; } }
+  for i: 0..<32 { m[i] = ifx b_first then b[i] else a[i]; m[32 + i] = ifx b_first then a[i] else b[i]; }
+  bt_tagged(BH_TAPBRANCH, m[..], out);
+}
+// A tree from its leaf hashes, listed left to right with their depths (a
+// lone leaf has depth 0, the root's children depth 1): the order and form
+// descriptors and PSBTs use. A stack joins the top two nodes while they
+// have the same depth. Each join adds each side's hash to the other side's
+// leaves' paths. The depths make a tree when one node of depth 0 is left.
+taproot_tree_vartime :: (depths: [] int, leaves: [] [32] u8, tree: [] TrTree) -> int {
+  fresh: TrTree;
+  if tree.count != 1 { return TR_CAPACITY; }
+  tree[0] = fresh;
+  n := depths.count;
+  if n == 0 || n > TR_TREE_LEAVES || leaves.count != n { return TR_BAD_TREE; }
+  hash: [TR_TREE_LEAVES][32] u8; depth: [TR_TREE_LEAVES] int; lo: [TR_TREE_LEAVES] int; hi: [TR_TREE_LEAVES] int;
+  top := 0;
+  for k: 0..<n {
+    if depths[k] < 0 || depths[k] >= TR_TREE_LEAVES { tree[0] = fresh; return TR_BAD_TREE; }
+    tree[0].leaf[k] = leaves[k];
+    hash[top] = leaves[k]; depth[top] = depths[k]; lo[top] = k; hi[top] = k + 1; top += 1;
+    while top >= 2 && depth[top - 1] == depth[top - 2] {
+      a := top - 2; b := top - 1;
+      if depth[a] == 0 { tree[0] = fresh; return TR_BAD_TREE; }
+      for j: lo[a]..<hi[a] { tree[0].path[j][tree[0].path_n[j]] = hash[b]; tree[0].path_n[j] += 1; }
+      for j: lo[b]..<hi[b] { tree[0].path[j][tree[0].path_n[j]] = hash[a]; tree[0].path_n[j] += 1; }
+      taproot_branch_vartime(hash[a][..], hash[b][..], hash[a][..]);
+      depth[a] -= 1; hi[a] = hi[b]; top -= 1;
+    }
+  }
+  if top != 1 || depth[0] != 0 { tree[0] = fresh; return TR_BAD_TREE; }
+  tree[0].count = n; tree[0].root = hash[0];
+  return TR_OK;
+}
+// book:end tree
+
+// book:begin control
+// The control block that spends leaf k of tree (whose leaf version is
+// version) from the output of internal key P: one byte of leaf version
+// plus Q's parity, P, then the leaf's path. Returns its length, 33 + 32m.
+taproot_control_block_vartime :: (tree: [] TrTree, k: int, internal: [] u8, version: int, out: [] u8) -> int {
+  if tree.count != 1 { return TR_CAPACITY; }
+  if k < 0 || k >= tree[0].count || version < 0 || version > 0xfe || (version & 1) != 0 { return TR_BAD_TREE; }
+  n := 33 + 32 * tree[0].path_n[k];
+  if out.count < n { return TR_CAPACITY; }
+  q: [32] u8;
+  parity := taproot_output_key_vartime(internal, tree[0].root[..], q[..]);
+  if parity < 0 { return TR_MISMATCH; }
+  out[0] = cast(u8) (version + parity);
+  for i: 0..<32 { out[1 + i] = internal[i]; }
+  for j: 0..<tree[0].path_n[k] { for i: 0..<32 { out[33 + 32 * j + i] = tree[0].path[k][j][i]; } }
+  return n;
+}
+// BIP-341's script-path commitment check: the leaf hash of script under
+// the control block's leaf version, joined with each path hash in turn,
+// is the root r, and P + H_TapTweak(P || r)G must have the x in the
+// witness program and the parity in the control block. Bitcoin Core
+// reports every failure after the size check as
+// SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH: an internal key off the curve too.
+taproot_commitment_vartime :: (control: [] u8, script: [] u8, program: [] u8) -> int {
+  if control.count < 33 || control.count > TR_CONTROL_MAX || (control.count - 33) % 32 != 0 { return TR_BAD_CONTROL_SIZE; }
+  if program.count != 32 { return TR_MISMATCH; }
+  k: [32] u8;
+  if taproot_leaf_hash_vartime(cast(int) (control[0] & 0xfe), script, k[..]) != TR_OK { return TR_CAPACITY; }
+  for j: 0..<(control.count - 33) / 32 { taproot_branch_vartime(k[..], control[33 + 32 * j..<65 + 32 * j], k[..]); }
+  q: [32] u8;
+  parity := taproot_output_key_vartime(control[1..<33], k[..], q[..]);
+  if parity != cast(int) (control[0] & 1) { return TR_MISMATCH; }
+  for i: 0..<32 { if q[i] != program[i] { return TR_MISMATCH; } }
+  return TR_OK;
+}
+// book:end control

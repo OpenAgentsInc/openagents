@@ -5,6 +5,7 @@ taproot_reference.py, which runs BIP-340's reference.py and the Python in
 BIP-341 itself, and shares no code with Coax.
 
   python3 coax/tests/bitcoin/taproot_examples.py key-path bitcoin/fixtures/taproot-key-path.out
+  python3 coax/tests/bitcoin/taproot_examples.py script-trees bitcoin/fixtures/taproot-script-trees.out
 
 Each mode writes the whole output the example should print, from the
 reference, and compares it with the fixture line by line."""
@@ -137,7 +138,104 @@ def key_path():
     return lines
 
 
-MODES = {"key-path": key_path}
+def name(rule):
+    return {None: "ok", "size": "bad control block size", "mismatch": "mismatch"}[rule]
+
+
+def is_tree(depths):
+    """Whether leaf depths, left to right, make a binary tree: read the
+    list recursively, a subtree at depth d being one leaf at d or two
+    subtrees at d + 1. (Coax uses a stack; this is a separate method.)"""
+    def take(i, d):
+        if i >= len(depths) or depths[i] < d:
+            return None
+        if depths[i] == d:
+            return i + 1
+        j = take(i, d + 1)
+        return None if j is None else take(j, d + 1)
+    return take(0, 0) == len(depths)
+
+
+def leaves_of(node, depth=0):
+    if isinstance(node, dict):
+        return [(depth, node)]
+    return leaves_of(node[0], depth + 1) + leaves_of(node[1], depth + 1)
+
+
+def matches(ok):
+    return "matches" if ok else "differs"
+
+
+def script_trees():
+    lines = ["BIP-341's script trees"]
+    for i, v in enumerate(T.VECTORS["scriptPubKey"]):
+        g, im, ex = v["given"], v["intermediary"], v["expected"]
+        if g["scriptTree"] is None:
+            continue
+        p = bytes.fromhex(g["internalPubkey"])
+        t = T.tree(g["scriptTree"])
+        _, root = R.taproot_tree_helper(t)
+        spk = R.taproot_output_script(p, t)
+        lines.append(f"  vector {i}: root {matches(root.hex() == im['merkleRoot'])}")
+        for k, (depth, leaf) in enumerate(leaves_of(g["scriptTree"])):
+            lv, script = leaf["leafVersion"], bytes.fromhex(leaf["script"])
+            h = R.tagged_hash("TapLeaf", bytes([lv]) + T.ser_script(script))
+            control = R.taproot_sign_script(p, t, k, [])[-1]
+            lines.append(f"    leaf {k} (version 0x{lv:02x}, depth {depth}): hash "
+                         f"{matches(h.hex() == im['leafHashes'][leaf['id']])}, control block of "
+                         f"{len(control)} bytes {matches(control.hex() == ex['scriptPathControlBlocks'][leaf['id']])}"
+                         f", commits: {name(T.verify_commitment(control, script, spk[2:]))}")
+
+    lines.append("vector 5, step by step")
+    g = T.VECTORS["scriptPubKey"][5]["given"]
+    p = bytes.fromhex(g["internalPubkey"])
+    t = T.tree(g["scriptTree"])
+    info, root = R.taproot_tree_helper(t)
+    hs = [R.tagged_hash("TapLeaf", bytes([lv]) + T.ser_script(sc)) for (lv, sc), _ in info]
+    for k in range(3):
+        lines.append(f"  leaf {k} TapLeaf: {hs[k].hex()}")
+    lines.append(f"  leaves 1 and 2 join with leaf {1 if hs[1] < hs[2] else 2} first, as the smaller hash")
+    b12 = R.tagged_hash("TapBranch", min(hs[1], hs[2]) + max(hs[1], hs[2]))
+    lines.append(f"  TapBranch(1, 2): {b12.hex()}")
+    lines.append(f"  the root joins leaf 0 and that branch with {'leaf 0 first' if hs[0] < b12 else 'the branch first'}")
+    lines.append(f"  root: {root.hex()}")
+    c = bytes(R.taproot_sign_script(p, t, 1, [])[-1])
+    lines.append(f"  leaf 1's control block, {len(c)} bytes:")
+    lines.append(f"    first byte 0x{c[0]:02x}: leaf version 0x{c[0] & 0xfe:02x}, Q's parity {c[0] & 1}")
+    lines.append(f"    internal key P: {c[1:33].hex()}")
+    lines.append(f"    path 0 (leaf 2): {c[33:65].hex()}")
+    lines.append(f"    path 1 (leaf 0): {c[65:97].hex()}")
+
+    lines.append("leaf 1 of vector 5, changed")
+    q = R.taproot_output_script(p, t)[2:]
+    script = info[1][0][1]
+
+    def check(cc, ss=script):
+        return name(T.verify_commitment(bytes(cc), bytes(ss), q))
+
+    def flip(data, at, bit):
+        d = bytearray(data)
+        d[at] ^= bit
+        return bytes(d)
+    lines.append(f"  as built: {check(c)}")
+    lines.append(f"  the parity bit flipped: {check(flip(c, 0, 1))}")
+    lines.append(f"  leaf version 0xc2: {check(flip(c, 0, 2))}")
+    lines.append(f"  one bit of a path hash: {check(flip(c, 40, 1))}")
+    lines.append(f"  the path in the other order: {check(c[:33] + c[65:97] + c[33:65])}")
+    lines.append(f"  the last path hash left out: {check(c[:65])}")
+    lines.append(f"  one bit of the script: {check(c, flip(script, 2, 1))}")
+    lines.append(f"  34 bytes: {check(c[:34])}")
+    lines.append(f"  33 + 32 * 129 bytes: {check(bytes(33 + 32 * 129))}")
+
+    lines.append("depths that make no tree")
+    for d in ([1, 2, 2], [1, 2, 1], [1, 2], [0, 0]):
+        lines.append(f"  {' '.join(map(str, d))}: {'ok' if is_tree(d) else 'bad tree'}")
+    # BIP-341: the control block's low bit is the parity, so a leaf version is even.
+    lines.append(f"  an odd leaf version, 0xc1: {'bad leaf version' if 0xc1 & 1 else 'ok'}")
+    return lines
+
+
+MODES = {"script-trees": script_trees, "key-path": key_path}
 
 if __name__ == "__main__":
     mode, fixture = sys.argv[1], Path(sys.argv[2])
