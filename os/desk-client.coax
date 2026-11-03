@@ -1,12 +1,7 @@
 // Bounded line transport for the local desk. Protocol and requests belong to callers.
 #load "../coax/lib/sys/proc.coax";
-cxsock_host_push :: (byte: int) -> int #foreign;
+#load "../coax/lib/net/socket_foreign.coax";
 cxsock_connect_unix :: (timeout_ms: int) -> int #foreign;
-cxsock_write :: (h: int, byte: int) -> int #foreign;
-cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_byte :: (h: int, i: int) -> int #foreign;
-cxsock_close :: (h: int) -> int #foreign;
 
 dc_open :: (socket: string) -> int {
   if socket.count == 0 || socket.count > 107 { return -1; }

@@ -1,0 +1,31 @@
+syntax = "proto3";
+package openagents.engine.navigation.v1;
+
+// Semantic schema for the local external-navigation-v1 JSONL journal.
+// Observations are sensed facts, not the external game's authoritative state.
+message Target { uint64 session = 1; uint32 handle = 2; uint64 revision = 3; }
+message Observation {
+  uint32 schema = 1;
+  Target target = 2;
+  uint64 sequence = 3;
+  uint64 monotonic_ms = 4;
+  string source = 5;
+  string image = 6;
+  uint64 capture = 7;
+  uint32 map = 8;
+  double map_x = 9;
+  double map_y = 10;
+  double heading_radians = 11;
+  bool alive = 12;
+  bool in_combat = 13;
+  bool ui_blocked = 14;
+}
+message Goal { uint32 map = 1; double map_x = 2; double map_y = 3; double radius = 4; uint32 aspect_milli = 5; }
+message Action {
+  uint64 observation = 1;
+  uint64 ticket = 2;
+  string name = 3; // stop, forward, left, right, back, jump
+  uint32 milliseconds = 4;
+  string decision_identity = 5;
+}
+message Outcome { uint64 observation = 1; uint64 next_observation = 2; string status = 3; }

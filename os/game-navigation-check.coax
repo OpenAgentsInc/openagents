@@ -1,0 +1,66 @@
+// Live controller cancellation/menu fixture: BIN SOCKET, against one idle sensor-equipped WoW.
+#import "Basic";
+#load "game-observation.coax";
+#load "game-client.coax";
+#load "../aethyr/points.coax";
+nt_num :: (n: int, out: [] u8) -> string { o: [1] Jo; jo_start(o[..], out); jo_int(o[..], n); return jo_text(o[..]); }
+nt_spawn :: (bin: string, socket: string, path: string, x: int, y: int) -> int {
+  bx: [32] u8; by: [32] u8;
+  args := [15] string.[bin, "--socket", socket, "--out", path, "--mode", "rules", "--map", "1426", "--x", nt_num(x, bx[..]), "--y", nt_num(y, by[..]), "--steps", "120"];
+  h := proc_new(); if h < 0 { return -1; }
+  ok := true; for arg: args { ok = ok && proc_arg(h, arg); }
+  if !ok || proc_start(h) != 0 { released := proc_release(h); return -1; } return h;
+}
+nt_info :: (h: int, reply: [] u8, held: bool) -> bool {
+  t: GameTarget; n := gc_exchange(h, t, "info", 0, false, 0, 0, 0, "", reply, "info");
+  nodes: [128] JvNode; d: [1] Jv;
+  if n < 0 || !jv_parse(d[..], cast(string) reply[0..<n], nodes[..]) { return false; }
+  active := jv_bool(d[0], jv_get(d[0], 0, "active")); keys := jv_int(d[0], jv_get(d[0], 0, "keys"), -1); buttons := jv_int(d[0], jv_get(d[0], 0, "buttons"), -1);
+  return ifx held then active && keys == 1 else !active && keys == 0 && buttons == 0;
+}
+nt_key :: (h: int, t: GameTarget, code: int, reply: [] u8) -> bool {
+  if gc_exchange(h, t, "acquire", 0, false, 1500, 0, 0, "", reply, "done") < 0 { return false; }
+  if gc_exchange(h, t, "key", code, true, 0, 0, 0, "", reply, "done") < 0 { return false; }
+  proc_sleep(50);
+  if gc_exchange(h, t, "key", code, false, 0, 0, 0, "", reply, "done") < 0 { return false; }
+  return gc_exchange(h, t, "stop", 0, false, 0, 0, 0, "", reply, "done") > 0;
+}
+nt_sample :: (h: int, t: GameTarget, path: string, reply: [] u8) -> NavSample {
+  n := gc_exchange(h, t, "shot", 0, false, 0, 0, 0, path, reply, "shot");
+  return ifx n > 0 then nav_read(path) else NavSample.{};
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 2 { tool_errln("usage: game-navigation-check NAVIGATE_BIN SOCKET"); return 2; }
+  bin := args_at(a[..], 0); socket := args_at(a[..], 1); h := dc_open(socket); if h < 0 { return 1; }
+  reply: [262144] u8; empty: GameTarget;
+  n := gc_exchange(h, empty, "list", 0, false, 0, 0, 0, "", reply[..], "windows"); if n < 0 { return 1; }
+  t := gc_target(cast(string) reply[0..<n], "World of Warcraft", 0, 0); if t.handle == 0 { return 1; }
+  root: [4096] u8; dir := fs_temp("verse-nav-check-", root[..]); paths: [5] [4096] u8;
+  image := fs_join(dir, "sense.ppm", paths[0][..]);
+  sample := nt_sample(h, t, image, reply[..]); if !sample.ok || sample.blocked || !sample.alive || sample.combat { tool_errln("fixture: requires idle gameplay"); return 1; }
+  // A visible menu is a sensor fact and refuses the child before input.
+  opened := nt_key(h, t, 1, reply[..]); proc_sleep(700);
+  blocked := nt_sample(h, t, image, reply[..]);
+  child := nt_spawn(bin, socket, fs_join(dir, "menu", paths[1][..]), sample.x + 10, sample.y + 30);
+  status := ifx child >= 0 then proc_wait(child, 7000) else -1;
+  released := ifx child >= 0 then proc_release(child) else false;
+  closed_menu := nt_key(h, t, 1, reply[..]); proc_sleep(700);
+  if !opened || !blocked.blocked || status != 1 || !closed_menu || !nt_info(h, reply[..], false) { tool_errln("fixture: menu brake failed"); return 1; }
+  print("ok menu observation refuses before input\n");
+  for kill_case: 0..<2 {
+    sample = nt_sample(h, t, image, reply[..]);
+    angle := cast(f32) sample.heading * (6.283185307179586 / 65535.0);
+    x := sample.x - cast(int) (sin(angle) * 40 / 1.5); y := sample.y - cast(int) (cos(angle) * 40);
+    path := fs_join(dir, ifx kill_case == 0 then "cancel" else "killed", paths[2][..]);
+    child = nt_spawn(bin, socket, path, x, y); if child < 0 { return 1; }
+    held := false;
+    for poll: 0..<400 { if nt_info(h, reply[..], true) { held = true; break; } proc_sleep(10); }
+    if !held { killed := proc_kill(child, 9); released = proc_release(child); tool_errln("fixture: did not observe the child's held key"); return 1; }
+    if kill_case == 0 { written := fs_write(fs_join(path, "stop", paths[3][..]), "stop\n"); if !written { return 1; } }
+    else { killed := proc_kill(child, 9); }
+    status = proc_wait(child, 7000); released = proc_release(child); proc_sleep(100);
+    if status != (ifx kill_case == 0 then 1 else 137) || !nt_info(h, reply[..], false) { tool_errln("fixture: cancellation left input active"); return 1; }
+    print("ok % during a verified held key clears its lease and input\n", ifx kill_case == 0 then "stop file" else "SIGKILL");
+  }
+  closed := cxsock_close(h); print("fixture records: %\n", dir); return 0;
+}

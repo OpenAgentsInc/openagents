@@ -1,0 +1,21 @@
+#load "../../coax/lib/json/json.coax";
+choice_test_fixture :: (go: string, stop: string, selected: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "model"); jo_str(o[..], "m"); jo_key(o[..], "answers"); jo_obj(o[..]);
+  jo_key(o[..], "steer"); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "choice");
+  jo_key(o[..], "choice"); jo_str(o[..], selected); jo_key(o[..], "probabilities"); jo_obj(o[..]);
+  jo_key(o[..], "go"); jo_raw(o[..], go); jo_key(o[..], "stop"); jo_raw(o[..], stop);
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_key(o[..], "service"); jo_obj(o[..]);
+  jo_key(o[..], "identity"); jo_str(o[..], "id"); jo_key(o[..], "version"); jo_str(o[..], "psionic-serve-v1");
+  jo_end(o[..]); jo_end(o[..]); return jo_text(o[..]);
+}
+choice_test_many :: (names: [] string, probability: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]); jo_key(o[..], "model"); jo_str(o[..], "m");
+  jo_key(o[..], "service"); jo_obj(o[..]); jo_key(o[..], "identity"); jo_str(o[..], "id");
+  jo_key(o[..], "version"); jo_str(o[..], "psionic-serve-v1"); jo_end(o[..]);
+  jo_key(o[..], "answers"); jo_obj(o[..]); jo_key(o[..], "steer"); jo_obj(o[..]);
+  jo_key(o[..], "type"); jo_str(o[..], "choice"); jo_key(o[..], "choice"); jo_str(o[..], names[names.count - 1]);
+  jo_key(o[..], "probabilities"); jo_obj(o[..]);
+  for name: names { jo_key(o[..], name); jo_raw(o[..], probability); }
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); return jo_text(o[..]);
+}

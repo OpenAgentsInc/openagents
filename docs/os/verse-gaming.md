@@ -68,7 +68,68 @@ the connection open while holding a key/button.
 upscaling. The launcher now sets each installed WoW variant's saved window
 resolution to that desk size before starting Battle.net, and the main
 Battle.net/WoW surfaces use the whole desk automatically. Close a running
-game before changing the desk size.
+game before changing the desk size. The launcher restores borderless mode
+after the host runner prepares its window settings. A fresh launch was
+qualified at 2548×1428 and 100% render scale.
+
+## Recorded waypoint navigation
+
+The installed bundle includes `verse-navigate`, `verse-sense` and the
+read-only `wow/VerseNavigation` addon. On this machine the addon is already
+installed in Classic Era. For a new installation, copy that addon directory
+to the game's `Interface/AddOns/VerseNavigation` before starting the client;
+fully restart a client that was already running. Enable the addon and enter
+the world. Its colour strip appears at the top-left of the game.
+
+Capture the current public-API position/facing sensor:
+
+```sh
+d="$HOME/.local/share/verse-os/current"
+"$d/verse-navigate" --mode observe --out /tmp/wow-observe-01
+"$d/verse-sense" /tmp/wow-observe-01/observe-1.ppm
+```
+
+Each output directory must be new and absolute. The navigation tool defaults
+to `$XDG_RUNTIME_DIR/verse-desk.sock`; `--socket PATH` overrides it. It records
+images, capture identities, sensor samples, model distributions, actions and
+the terminal outcome in that directory's `journal.jsonl`.
+
+The qualified profile is Dun Morogh, map 1426. Coordinates are the sensor's
+normalized integers from 0 to 65535. Select a nearby unobstructed waypoint
+after inspecting a capture, then supply its coordinates:
+
+```sh
+"$d/verse-navigate" --mode elephant --map 1426 \
+  --x 19670 --y 46120 --radius 12 --steps 40 --out /tmp/wow-route-01
+```
+
+That coordinate is an example from the recorded trial, not a destination
+appropriate to every starting position. `--mode rules` explicitly selects
+the geometric baseline. Elephant mode requires the existing Psionic service
+on `http://127.0.0.1:8790/v1/systemone` with the original pinned Elephant
+identity in `os/game-navigate.coax`. On coderos-4080, the existing GPU switch
+at port 8791 loads it with `POST /use/elephant`; check `/status` until ready.
+No CPU whole-model run, remote service or toy fallback is used.
+
+Stop a running controller and release held input with:
+
+```sh
+touch /tmp/wow-route-01/stop
+"$d/verse-game" --socket "$XDG_RUNTIME_DIR/verse-desk.sock" stop
+```
+
+Actions last at most 300 ms in this profile. No key is held during model
+inference. Death, combat, a menu/chat focus, stale sensor, changed target,
+no progress, invalid decision or action budget end stops further input.
+The stop file ends the loop; the separate stop command releases held input
+immediately. Killing the controller releases its lease too.
+
+This provides feedback-controlled local waypoints. The learned model gets
+semantic left/right/ahead facts rather than pixels. Route selection around
+arbitrary obstacles, combat and quest planning are not implemented. See the
+[protocol](../protocol/external-navigation-v1.md),
+[work journal](verse-navigation.md) and
+[measured trials](../verification/verse-navigation-2026-11-03/README.md).
 
 The first accelerated path retains CPU desk composition and frame upload;
 it is not zero-copy. Continuous turning across cursor edges and a

@@ -1,0 +1,104 @@
+// A complete local decision distribution, decoded before a game's ticket can stage its enum.
+#authority;
+#load "../../../coax/lib/json/json.coax";
+#load "../../tests/game-choice-fixtures.coax";
+ChoiceReply :: struct { ok: bool; action: int; units: [8] int; }
+CHOICE_UNIT :: 1000000000;
+#test "fixed-point probabilities retain nine digits and reject other numeric profiles" {
+  #assert choice_units("0") == 0 && choice_units("1") == CHOICE_UNIT;
+  #assert choice_units("0.123456789") == 123456789 && choice_units("1.000000000") == CHOICE_UNIT;
+  #assert choice_units("0.999999999") == 999999999 && choice_units("0.000000001") == 1;
+  #assert choice_units("0.1") == 100000000;
+  for s: [12] string.["", "2", "-1", "01", "0.", ".1", "0e0", "0.0000000001", "0.x", "1.000000001", "0./", "0.:"] { #assert choice_units(s) == -1; }
+}
+#test "distribution endpoints ties typed values and exact normalization tolerance" {
+  names := [2] string.["go", "stop"]; out: [1024] u8;
+  r := choice_decode(choice_test_fixture("0", "1", "stop", out[..]), "m", "id", "steer", names[..]);
+  #assert r.ok && r.action == 1 && r.units[0] == 0 && r.units[1] == CHOICE_UNIT;
+  #assert choice_decode(choice_test_fixture("0.5", "0.5", "stop", out[..]), "m", "id", "steer", names[..]).ok;
+  #assert choice_decode(choice_test_fixture("0.5", "0.5", "go", out[..]), "m", "id", "steer", names[..]).ok;
+  for other: [2] string.["0.499999990", "0.500000010"] {
+    #assert choice_decode(choice_test_fixture("0.5", other, ifx other == "0.499999990" then "go" else "stop", out[..]), "m", "id", "steer", names[..]).ok;
+  }
+  for other: [6] string.["0.499999989", "0.500000011", "0.4", "0.6", "\"0.5\"", "-0.1"] {
+    #assert !choice_decode(choice_test_fixture("0.5", other, "go", out[..]), "m", "id", "steer", names[..]).ok;
+  }
+  #assert !choice_decode(choice_test_fixture("0.2", "0.8", "go", out[..]), "m", "id", "steer", names[..]).ok;
+  #assert !choice_decode(choice_test_fixture("0.2", "0.8", "unknown", out[..]), "m", "id", "steer", names[..]).ok;
+  #assert !choice_decode(choice_test_fixture("0.8", "0.2", "unknown", out[..]), "m", "id", "steer", names[..]).ok;
+  #assert !choice_decode(choice_test_fixture("0.8", "0.2", "stop", out[..]), "m", "id", "steer", names[..]).ok;
+  #assert !choice_decode(choice_test_fixture("0.5", "0.500000011", "stop", out[..]), "m", "id", "steer", names[..]).ok;
+  duplicate := [2] string.["go", "go"];
+  #assert !choice_decode(choice_test_fixture("0.5", "0.5", "go", out[..]), "m", "id", "steer", duplicate[..]).ok;
+  nodes: [24] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], "{\"x\":1,\"\\u0078\":2}", nodes[..]) && choice_member(d[0], 0, "x") == -1;
+  #assert choice_member(d[0], 1, "x") == -1 && !choice_is(d[0], 1, "1");
+  many: [9] string;
+  #assert !choice_decode(CHOICE_FIXTURE, "m", "id", "steer", many[..]).ok;
+  #assert !choice_decode(CHOICE_FIXTURE, "m", "id", "steer", many[0..<0]).ok;
+}
+#test "eight choices and the exact byte ceiling remain accepted" {
+  names := [9] string.["a","b","c","d","e","f","g","h","i"]; out: [2048] u8;
+  #assert choice_decode(choice_test_many(names[0..<8], "0.125", out[..]), "m", "id", "steer", names[0..<8]).ok;
+  #assert !choice_decode(choice_test_many(names[..], "0.111111111", out[..]), "m", "id", "steer", names[..]).ok;
+  two := [2] string.["go", "stop"]; padded: [8193] u8;
+  for i: 0..<8193 { padded[i] = ' '; } for i: 0..<CHOICE_FIXTURE.count { padded[i] = CHOICE_FIXTURE[i]; }
+  #assert choice_decode(cast(string) padded[0..<8192], "m", "id", "steer", two[..]).ok;
+  #assert !choice_decode(cast(string) padded[..], "m", "id", "steer", two[..]).ok;
+}
+CHOICE_FIXTURE :: "{\"model\":\"m\",\"answers\":{\"steer\":{\"type\":\"choice\",\"choice\":\"go\",\"probabilities\":{\"go\":0.75,\"stop\":0.25}}},\"service\":{\"version\":\"psionic-serve-v1\",\"identity\":\"id\"}}";
+#test "a complete pinned distribution selects only one of its actual maxima" {
+  names := [2] string.["go", "stop"];
+  r := choice_decode(CHOICE_FIXTURE, "m", "id", "steer", names[..]);
+  #assert r.ok && r.action == 0 && r.units[0] == 750000000 && r.units[1] == 250000000;
+  #assert !choice_decode(CHOICE_FIXTURE, "other", "id", "steer", names[..]).ok;
+  #assert !choice_decode(CHOICE_FIXTURE, "m", "other", "steer", names[..]).ok;
+  #assert !choice_decode(CHOICE_FIXTURE, "m", "id", "other", names[..]).ok;
+  #assert !choice_decode(CHOICE_FIXTURE, "m", "id", "steer", names[0..<1]).ok;
+  names[0] = "stop"; #assert !choice_decode(CHOICE_FIXTURE, "m", "id", "steer", names[..]).ok;
+  #assert !choice_decode("{}", "m", "id", "steer", names[..]).ok;
+  #assert !choice_decode("{", "m", "id", "steer", names[..]).ok;
+}
+choice_units :: (s: string) -> int {
+  if s.count == 0 || (s[0] != '0' && s[0] != '1') { return -1; }
+  value := cast(int) (s[0] - '0') * CHOICE_UNIT;
+  if s.count == 1 { return value; }
+  if s.count < 3 || s.count > 11 || s[1] != '.' { return -1; }
+  scale := 100000000;
+  for i: 2..<s.count { if s[i] < '0' || s[i] > '9' { return -1; } value += cast(int) (s[i] - '0') * scale; scale /= 10; }
+  return ifx value <= CHOICE_UNIT then value else -1;
+}
+choice_member :: (d: Jv, object: int, key: string) -> int {
+  if jv_kind(d, object) != JV_OBJECT { return -1; }
+  found := -1;
+  for i: 0..<jv_len(d, object) {
+    at := jv_at(d, object, i);
+    if jv_raw_eq(jv_key(d, at), key) { if found != -1 { return -1; } found = at; }
+  }
+  return found;
+}
+choice_is :: (d: Jv, at: int, value: string) -> bool { return jv_kind(d, at) == JV_STRING && jv_raw_eq(jv_raw(d, at), value); }
+choice_decode :: (body: string, model: string, identity: string, question: string, names: [] string) -> ChoiceReply {
+  bad: ChoiceReply;
+  if names.count < 2 || names.count > 8 || body.count > 8192 { return bad; }
+  for i: 1..<names.count { for j: 0..<i { if names[i] == names[j] { return bad; } } }
+  nodes: [256] JvNode; parsed: [1] Jv;
+  if !jv_parse(parsed[..], body, nodes[..]) { return bad; } d := parsed[0];
+  if !choice_is(d, choice_member(d, 0, "model"), model) { return bad; }
+  service := choice_member(d, 0, "service");
+  if !choice_is(d, choice_member(d, service, "identity"), identity) || !choice_is(d, choice_member(d, service, "version"), "psionic-serve-v1") { return bad; }
+  answers := choice_member(d, 0, "answers"); if jv_len(d, answers) != 1 { return bad; }
+  answer := choice_member(d, answers, question);
+  if !choice_is(d, choice_member(d, answer, "type"), "choice") { return bad; }
+  probabilities := choice_member(d, answer, "probabilities"); if jv_len(d, probabilities) != names.count { return bad; }
+  sum := 0; chosen := -1; result: ChoiceReply;
+  for i: 0..<names.count {
+    at := choice_member(d, probabilities, names[i]); value := choice_units(jv_raw(d, at));
+    if jv_kind(d, at) != JV_NUMBER || value < 0 { return bad; }
+    result.units[i] = value; sum += value;
+    if choice_is(d, choice_member(d, answer, "choice"), names[i]) { chosen = i; }
+  }
+  if sum < CHOICE_UNIT - 10 || sum > CHOICE_UNIT + 10 || chosen < 0 { return bad; }
+  for i: 0..<names.count { if result.units[i] > result.units[chosen] { return bad; } }
+  result.ok = true; result.action = chosen; return result;
+}

@@ -4,7 +4,7 @@ Owner request, 2026-11-03: sharp full-size WoW; independently enter and
 navigate the world; share applicable Aethyr components; then let a local
 Psionic decision model choose steering actions. Issues #12728–#12730.
 
-## Current work
+## Initial findings
 
 The initial visible trial exposed two independent display problems. The
 session fixes its compositor at 1280×720 while the actual Verse window on
@@ -61,8 +61,9 @@ successfully acquiring and capturing WoW again (previously refused with
 Checks: session 35 passed; updated launcher 86 passed; compositor 101 passed.
 Desk-size authority: 42 mutants killed, no survivors; game-window selection:
 2 killed, no survivors. Native bundle built/installed; Nix flake evaluation
-passed. tools-check reports five existing unrelated Python tools without
-reason headers; these changes add no foreign-language tool.
+passed. At that milestone tools-check reported five existing unrelated
+Python tools without reason headers; the presentation changes added no
+foreign-language tool.
 
 Observation lesson: an immediately requested screenshot can precede the
 game's rendered reaction. Capture sequence is a desk capture identifier,
@@ -77,3 +78,50 @@ lifetime presentations separately. A private Vulkan window with
 samples, exited on its requested time and reported zero live GPU objects.
 The visible session was restarted with that fix. Panel policy: eight checks
 passed; the native bundle was rebuilt and installed.
+
+## Navigation and local decision milestone (#12729, #12730)
+
+Installed `verse-navigate` and `verse-sense` with the native bundle. The
+Classic Era addon in `os/wow/VerseNavigation` samples public position,
+facing, life, combat and menu state into a visible colour strip. Coax reads
+that strip from the same captured game image. The addon has no movement
+effects; all actions go through desk-control-v2's targeted input lease.
+
+The loop records observe → propose → recheck → bounded action → release →
+settle → observe. It reuses Aethyr `Intent`, replay event envelopes and
+angle arithmetic, and Psionic's current-context decision ticket. The new
+shared pilot and distribution decoder have checked, mutation-qualified
+contracts. See the [protocol](../protocol/external-navigation-v1.md) and
+the [Aethyr chapter](../../aethyr/book/ch075-creatures-that-follow-and-watch.md).
+
+Entered Coldridge Valley and calibrated actual movement/facing. An initial
+rule waypoint hit a wall and stopped on no progress; a revised waypoint
+arrived. Original Elephant is now running through the existing local
+Psionic CUDA service, with its model identity pinned and no fallback.
+A long numeric prompt oscillated; a compact left/right/ahead observation
+worked. Elephant reached three subsequent waypoints: ten actions near the
+graveyard, six toward its gate, and nine up the snowy clearing. The last
+trial moved from (19637,45891) to (19670,46110), inside the declared radius
+of (19670,46120). Each arrival was measured from a new observation.
+
+Elephant chooses a short steering action from semantic sensor facts. It
+does not see screenshot pixels. I chose the waypoints after inspecting
+the images. General terrain planning, obstacle recovery, combat and quest
+selection remain future work; this is a qualified local waypoint loop.
+
+Checks: controller closure 148 passed; direct CLI 87 passed. Entry-source
+mutation runs killed all 39 pilot, 87 sensor, 91 navigation-policy and 120
+distribution-decoder mutants, with zero survivors. Live checks exercised
+menu refusal, a stop file during a verified held key, and SIGKILL during a
+verified held key. Both cancellation cases released input; the same live
+fixture passed with an ASan/UBSan controller and leak checks enabled.
+The installed tools also captured and decoded the live game successfully.
+Protobuf compilation, Aethyr book structure/source/link checks, native
+bundle installation and Nix flake evaluation passed. Final tools-check
+reports nine unrelated tools without reason headers after rebasing onto
+the concurrent main-branch changes (six before that rebase).
+The new Lua sampler declares its SDK-only exception in its source.
+
+Usage is in [verse-gaming.md](verse-gaming.md). Successful and failed
+trial journals, the native screenshot, sanitizer results and limitations
+are retained in the [verification record](../verification/verse-navigation-2026-11-03/README.md).

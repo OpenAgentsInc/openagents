@@ -1,0 +1,4 @@
+ok menu observation refuses before input
+ok stop file during a verified held key clears its lease and input
+ok SIGKILL during a verified held key clears its lease and input
+fixture records: /tmp/verse-nav-check-h0QSD8

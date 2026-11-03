@@ -8,28 +8,7 @@
 #load "game-policy.coax";
 
 #load "game-target-policy.coax";
-
-gc_exchange :: (h: int, t: GameTarget, ty: string, code: int, down: bool, ms: int, x: int, y: int, path: string, reply: [] u8, want: string) -> int {
-  bytes: [8192] u8; o: [1] Jo; jo_start(o[..], bytes[..]); jo_obj(o[..]);
-  jo_key(o[..], "generation"); jo_int(o[..], 2); jo_key(o[..], "type"); jo_str(o[..], ty);
-  if t.session > 0 { jo_key(o[..], "session"); jo_int(o[..], t.session); }
-  if t.handle > 0 { jo_key(o[..], "handle"); jo_int(o[..], t.handle); jo_key(o[..], "revision"); jo_int(o[..], t.revision); }
-  if ty == "acquire" { jo_key(o[..], "ms"); jo_int(o[..], ms); }
-  if ty == "key" || ty == "button" { jo_key(o[..], "code"); jo_int(o[..], code); jo_key(o[..], "down"); jo_bool(o[..], down); }
-  if ty == "move" || ty == "relative" {
-    jo_key(o[..], ifx ty == "move" then "x" else "dx"); jo_int(o[..], x);
-    jo_key(o[..], ifx ty == "move" then "y" else "dy"); jo_int(o[..], y);
-  }
-  if ty == "shot" { jo_key(o[..], "path"); jo_str(o[..], path); } jo_end(o[..]);
-  if o[0].bad || !dc_send(h, jo_text(o[..])) { tool_errln("game: could not send to the desk"); return -1; }
-  n := dc_line(h, reply); nodes: [4096] JvNode; d: [1] Jv;
-  if n < 0 || !jv_parse(d[..], cast(string) reply[0..<n], nodes[..]) || jv_int(d[0], jv_get(d[0], 0, "generation"), 0) != 2 { tool_errln("game: no complete v2 desk reply"); return -1; }
-  if t.session > 0 && jv_int(d[0], jv_get(d[0], 0, "session"), 0) != t.session { tool_errln("game: the desk session changed"); return -1; }
-  if jv_raw(d[0], jv_get(d[0], 0, "type")) != want {
-    tool_err("game: desk refused "); tool_err(ty); tool_err(": "); tool_errln(jv_raw(d[0], jv_get(d[0], 0, "code"))); return -1;
-  }
-  return n;
-}
+#load "game-client.coax";
 gc_usage :: () -> int {
   tool_errln("usage: verse-game [--socket PATH] [--title TITLE] [--handle N] [--revision N] list | look [OUT.png|OUT.ppm] | press KEY | hold KEY MS | click X Y [BUTTON] | drag DX DY [BUTTON] | stop");
   return 2;

@@ -1,0 +1,147 @@
+// Bounded observe -> local decision -> leased action -> fresh observation.
+// tool.sh: tls
+#load "game-observation.coax";
+#load "game-client.coax";
+#load "game-policy.coax";
+#load "game-navigation-policy.coax";
+#load "../psionic/lib/game/decision.coax";
+#load "../psionic/lib/game/choice.coax";
+#load "../coax/lib/net/http.coax";
+NAV_IDENTITY :: "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba";
+NAV_NAMES :: [4] string.["stop", "forward", "left", "right"];
+nv_num :: (n: int, out: [] u8) -> string { o: [1] Jo; jo_start(o[..], out); jo_int(o[..], n); return jo_text(o[..]); }
+nv_record :: (path: string, text: string) -> bool {
+  line: [32768] u8; if text.count >= line.count { return false; }
+  for i: 0..<text.count { line[i] = text[i]; } line[text.count] = '\n';
+  return fs_append_durable(path, cast(string) line[0..<text.count + 1]);
+}
+nv_request :: (s: NavSample, g: NavGoal, route: NavRoute, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "model"); jo_str(o[..], "elephant-1"); jo_key(o[..], "state");
+  // The full typed sensor/goal is in the journal. The learned selector gets a compact
+  // semantic bearing, not a long numeric prompt that it has not been qualified to interpret.
+  jo_str(o[..], ifx route.bearing > 0.15 then "The player is alive and not in combat. The waypoint is to the left."
+    else ifx route.bearing < -0.15 then "The player is alive and not in combat. The waypoint is to the right."
+    else "The player is alive and not in combat. The waypoint is ahead.");
+  jo_key(o[..], "questions"); jo_obj(o[..]); jo_key(o[..], "steer"); jo_obj(o[..]);
+  jo_key(o[..], "type"); jo_str(o[..], "choice"); jo_key(o[..], "instructions");
+  jo_str(o[..], "Which direction should the player move to reach the waypoint?");
+  jo_key(o[..], "criteria"); jo_obj(o[..]);
+  descriptions := [4] string.["Stop moving", "Move forward", "Turn left", "Turn right"];
+  for i: 0..<4 { jo_key(o[..], NAV_NAMES[i]); jo_str(o[..], descriptions[i]); }
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); return jo_text(o[..]);
+}
+nv_target :: (h: int, reply: [] u8) -> GameTarget {
+  empty: GameTarget; n := gc_exchange(h, empty, "list", 0, false, 0, 0, 0, "", reply, "windows");
+  return ifx n > 0 then gc_target(cast(string) reply[0..<n], "World of Warcraft", 0, 0) else empty;
+}
+nv_action :: (h: int, t: GameTarget, action: PilotAction, reply: [] u8) -> bool {
+  if !action.ok { return false; }
+  if action.name == PILOT_STOP { return true; }
+  if gc_exchange(h, t, "acquire", 0, false, 1500, 0, 0, "", reply, "done") < 0 { return false; }
+  key := nav_key(action.name); if key == 0 { return false; }
+  if gc_exchange(h, t, "key", key, true, 0, 0, 0, "", reply, "done") < 0 { return false; }
+  proc_sleep(action.milliseconds);
+  if gc_exchange(h, t, "key", key, false, 0, 0, 0, "", reply, "done") < 0 { return false; }
+  return gc_exchange(h, t, "stop", 0, false, 0, 0, 0, "", reply, "done") > 0;
+}
+nv_loop :: (h: int, t: GameTarget, goal: NavGoal, steps: int, mode: string, outdir: string) -> int {
+  paths: [4] [4096] u8; journal := fs_join(outdir, "journal.jsonl", paths[0][..]); stop := fs_join(outdir, "stop", paths[1][..]);
+  reply: [262144] u8; record: [16384] u8; request: [8192] u8; response: [8192] u8; work: [1] HttpWork;
+  previous: NavSample; last_action := PILOT_STOP; stuck := 0; tickets: [1] GdState;
+  initial: [1] Jo; jo_start(initial[..], record[..]); jo_obj(initial[..]);
+  jo_key(initial[..], "type"); jo_str(initial[..], "start"); jo_key(initial[..], "profile"); jo_str(initial[..], "wow-coldridge-waypoint-v1");
+  jo_key(initial[..], "mode"); jo_str(initial[..], mode); jo_key(initial[..], "goal_map"); jo_int(initial[..], goal.map);
+  jo_key(initial[..], "goal_x_u16"); jo_int(initial[..], goal.x); jo_key(initial[..], "goal_y_u16"); jo_int(initial[..], goal.y);
+  jo_key(initial[..], "radius_y_units"); jo_int(initial[..], goal.radius); jo_key(initial[..], "aspect_milli"); jo_int(initial[..], goal.aspect_milli);
+  jo_key(initial[..], "max_actions"); jo_int(initial[..], steps); jo_end(initial[..]);
+  if !nv_record(journal, jo_text(initial[..])) { return 1; }
+  for i: 0..<steps + 1 {
+    if fs_exists(stop) { tool_errln("navigate: stop file"); return 1; }
+    current := nv_target(h, reply[..]);
+    if current.session != t.session || current.handle != t.handle || current.revision != t.revision { tool_errln("navigate: target changed"); return 1; }
+    num: [24] u8; filename: [64] u8; fo: [1] Jo; jo_start(fo[..], filename[..]); jo_put(fo[..], "observe-"); jo_put(fo[..], nv_num(i + 1, num[..])); jo_put(fo[..], ".ppm");
+    picture := fs_join(outdir, jo_text(fo[..]), paths[2][..]);
+    n := gc_exchange(h, t, "shot", 0, false, 0, 0, 0, picture, reply[..], "shot"); if n < 0 { return 1; }
+    sample := nav_read(picture); sensed: [1024] u8;
+    o: [1] Jo; jo_start(o[..], record[..]); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "observation");
+    jo_key(o[..], "schema"); jo_int(o[..], 1); jo_key(o[..], "sequence"); jo_int(o[..], i + 1);
+    jo_key(o[..], "monotonic_ms"); jo_int(o[..], proc_now_ms()); jo_key(o[..], "image"); jo_str(o[..], picture);
+    jo_key(o[..], "capture"); jo_raw(o[..], cast(string) reply[0..<n]); jo_key(o[..], "sensor"); jo_raw(o[..], nav_json(sample, sensed[..])); jo_end(o[..]);
+    if !sample.ok || !nv_record(journal, jo_text(o[..])) { tool_errln("navigate: invalid sensor or journal write failed"); return 1; }
+    print("%\n", jo_text(o[..]));
+    if mode == "observe" { return 0; }
+    if i > 0 && sample.serial == previous.serial { tool_errln("navigate: sensor did not advance"); return 1; }
+    route := nav_route(sample, goal); if !route.ok { tool_errln("navigate: unavailable, combat, menu or wrong map"); return 1; }
+    if route.arrived { print("{\"type\":\"outcome\",\"status\":\"arrived\",\"sequence\":%}\n", i + 1); return ifx nv_record(journal, "{\"type\":\"outcome\",\"status\":\"arrived\"}") then 0 else 1; }
+    if i == steps { tool_errln("navigate: iteration budget exhausted after final observation"); return 1; }
+    if last_action == PILOT_FORWARD {
+      movement := abs(cast(f32) (sample.x - previous.x)) + abs(cast(f32) (sample.y - previous.y));
+      stuck = ifx movement < 4 then stuck + 1 else 0;
+      if stuck >= 2 { tool_errln("navigate: no progress; inspect and choose a new waypoint"); return 1; }
+    }
+    context := GdContext.{epoch = t.session, actor = t.handle, generation = t.revision, revision = i + 1, policy = 1, options = 1};
+    now := proc_now_ms(); started := gd_begin(tickets[..], context, now, 8000);
+    if started.code != GdCode.ok { return 1; }
+    chosen := nav_baseline(route); request_text := nv_request(sample, goal, route, request[..]);
+    answer_n := 0;
+    if mode == "elephant" {
+      headers := [1] string.["Content-Type: application/json"];
+      result := http_do(work[..], "POST", "http://127.0.0.1:8790/v1/systemone", headers[..], request_text, 7000, 0, response[..]);
+      if result.error != HTTP_OK || result.code != 200 { tool_errln("navigate: local Elephant request failed; no fallback"); return 1; }
+      names := NAV_NAMES;
+      answer_n = result.n; parsed := choice_decode(cast(string) response[0..<answer_n], "elephant-1", NAV_IDENTITY, "steer", names[..]);
+      if !parsed.ok { tool_errln("navigate: local decision identity/distribution refused"); return 1; } chosen = parsed.action;
+    }
+    if fs_exists(stop) { return 1; }
+    // No input is held during inference. A second capture rechecks geometry/life/menu after it.
+    recheck := fs_join(outdir, "recheck.ppm", paths[3][..]);
+    n = gc_exchange(h, t, "shot", 0, false, 0, 0, 0, recheck, reply[..], "shot");
+    if n < 0 { return 1; } latest := nav_read(recheck);
+    if !nav_route(latest, goal).ok || latest.x != sample.x || latest.y != sample.y || latest.heading != sample.heading { tool_errln("navigate: observation changed during decision"); return 1; }
+    offered := gd_offer(tickets[..], started.ticket.sequence, proc_now_ms(), chosen);
+    take := gd_take(tickets[..], started.ticket.sequence, context, proc_now_ms(), 1 | (1 << nav_baseline(route)));
+    if answer_n > 0 {
+      jo_start(o[..], record[..]); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "proposal");
+      jo_key(o[..], "observation"); jo_int(o[..], i + 1); jo_key(o[..], "ticket"); jo_int(o[..], started.ticket.sequence);
+      jo_key(o[..], "request"); jo_raw(o[..], request_text); jo_key(o[..], "decision"); jo_raw(o[..], cast(string) response[0..<answer_n]);
+      jo_key(o[..], "admitted"); jo_bool(o[..], offered == GdCode.ok && take.code == GdCode.ok); jo_end(o[..]);
+      if !nv_record(journal, jo_text(o[..])) { return 1; }
+    }
+    if offered != GdCode.ok || take.code != GdCode.ok { tool_errln("navigate: decision ticket refused"); return 1; }
+    action := pilot_action(take.action, nav_duration(take.action, route));
+    event := pilot_event(t.session, i + 1, action);
+    jo_start(o[..], record[..]); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "action");
+    jo_key(o[..], "observation"); jo_int(o[..], event.request); jo_key(o[..], "ticket"); jo_int(o[..], started.ticket.sequence);
+    jo_key(o[..], "name"); jo_str(o[..], NAV_NAMES[action.name]); jo_key(o[..], "milliseconds"); jo_int(o[..], action.milliseconds);
+    jo_key(o[..], "distance_y_units"); jo_int(o[..], cast(int) route.distance);
+    jo_key(o[..], "bearing_milliradians"); jo_int(o[..], cast(int) (route.bearing * 1000));
+    jo_key(o[..], "mode"); jo_str(o[..], mode); jo_key(o[..], "decision_identity"); jo_str(o[..], ifx mode == "elephant" then NAV_IDENTITY else "rules-v1");
+    jo_key(o[..], "request"); jo_raw(o[..], request_text);
+    if answer_n > 0 { jo_key(o[..], "decision"); jo_raw(o[..], cast(string) response[0..<answer_n]); }
+    jo_end(o[..]); if !nv_record(journal, jo_text(o[..])) { return 1; } print("%\n", jo_text(o[..]));
+    if action.name == PILOT_STOP { tool_errln("navigate: model stopped before arrival"); return 1; }
+    if !nv_action(h, t, action, reply[..]) { tool_errln("navigate: input interrupted/refused"); return 1; }
+    previous = sample; last_action = action.name; proc_sleep(500);
+  }
+  tool_errln("navigate: iteration budget exhausted"); return 1;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  runtime: [4096] u8; default_socket: [4096] u8;
+  socket := args_value(a[..], "--socket", fs_join(proc_getenv("XDG_RUNTIME_DIR", runtime[..]), "verse-desk.sock", default_socket[..])); outdir := args_value(a[..], "--out", "");
+  mode := args_value(a[..], "--mode", "rules");
+  if outdir.count == 0 || outdir[0] != '/' || fs_exists(outdir) || (mode != "rules" && mode != "elephant" && mode != "observe") { tool_errln("usage: game-navigate --socket PATH --out NEW_ABSOLUTE_DIR --mode observe|rules|elephant --map 1426 --x U16 --y U16 [--steps 1..120] [--radius 1..256]"); return 2; }
+  x := game_integer(args_value(a[..], "--x", "0")); y := game_integer(args_value(a[..], "--y", "0"));
+  map := game_integer(args_value(a[..], "--map", "1426")); steps := game_integer(args_value(a[..], "--steps", "60")); radius := game_integer(args_value(a[..], "--radius", "12"));
+  if !x.ok || !y.ok || !map.ok || !steps.ok || !radius.ok || map.value != 1426 || x.value < 0 || x.value > 65535 || y.value < 0 || y.value > 65535 || steps.value < 1 || steps.value > 120 || radius.value < 1 || radius.value > 256 { return 2; }
+  if mode != "observe" && (!args_has(a[..], "--x") || !args_has(a[..], "--y")) { return 2; }
+  if !fs_mkdir(outdir) { return 1; }
+  h := dc_open(socket); if h < 0 { return 1; }
+  reply: [262144] u8; t := nv_target(h, reply[..]);
+  result := ifx t.handle > 0 then nv_loop(h, t, NavGoal.{map = map.value, x = x.value, y = y.value, radius = radius.value, aspect_milli = 1500}, steps.value, mode, outdir) else 1;
+  closed := cxsock_close(h);
+  finalpath: [4096] u8; journal := fs_join(outdir, "journal.jsonl", finalpath[..]);
+  if result != 0 { saved := nv_record(journal, "{\"type\":\"outcome\",\"status\":\"stopped\"}"); }
+  return result;
+}

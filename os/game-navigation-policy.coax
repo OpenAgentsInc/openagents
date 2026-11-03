@@ -1,0 +1,97 @@
+// Geometry and action bounds for one observed waypoint. No game physics or hidden world state.
+#authority;
+#import "Basic";
+#load "game-sensor.coax";
+#load "../aethyr/ai/pilot.coax";
+#load "../aethyr/points.coax";
+NavGoal :: struct { map: int; x: int; y: int; radius: int = 12; aspect_milli: int = 1000; }
+NavRoute :: struct { ok: bool; arrived: bool; distance: f32; bearing: f32; }
+#test "short final approaches and small turns reduce pulse length within bounds" {
+  #assert nav_duration(PILOT_STOP, NavRoute.{}) == 0;
+  #assert nav_duration(PILOT_FORWARD, NavRoute.{distance = 100}) == 300;
+  #assert nav_duration(PILOT_FORWARD, NavRoute.{distance = 20}) == 100;
+  #assert nav_duration(PILOT_FORWARD, NavRoute.{distance = 1}) == 40;
+  #assert nav_duration(PILOT_LEFT, NavRoute.{bearing = 1}) == 100;
+  #assert nav_duration(PILOT_RIGHT, NavRoute.{bearing = -1}) == 100;
+  #assert nav_duration(PILOT_LEFT, NavRoute.{bearing = 0.2}) == 40;
+  #assert nav_duration(PILOT_RIGHT, NavRoute.{bearing = -0.01}) == 20;
+}
+nav_duration :: (action: int, route: NavRoute) -> int {
+  if action == PILOT_STOP { return 0; }
+  amount := ifx action == PILOT_FORWARD then cast(int) (route.distance * 5) else cast(int) (abs(route.bearing) * 200);
+  low := ifx action == PILOT_FORWARD then 40 else 20; high := ifx action == PILOT_FORWARD then 300 else 100;
+  // min/max define the saturation directly; equality must keep the same value.
+  return cast(int) clamp(cast(f32) amount, cast(f32) low, cast(f32) high);
+}
+#test "the WoW keyboard adapter maps each typed action explicitly" {
+  #assert nav_key(PILOT_STOP) == 0 && nav_key(PILOT_FORWARD) == 17;
+  #assert nav_key(PILOT_LEFT) == 30 && nav_key(PILOT_RIGHT) == 32;
+  #assert nav_key(PILOT_BACK) == 31 && nav_key(PILOT_JUMP) == 57;
+  #assert nav_key(-1) == 0 && nav_key(6) == 0;
+}
+nav_key :: (action: int) -> int {
+  if action == PILOT_FORWARD { return 17; } if action == PILOT_LEFT { return 30; }
+  if action == PILOT_RIGHT { return 32; } if action == PILOT_BACK { return 31; }
+  return ifx action == PILOT_JUMP then 57 else 0;
+}
+#test "map coordinates face north west south east, and arrival has an inclusive radius" {
+  s := NavSample.{ok = true, map = 1, x = 1000, y = 1000, alive = true};
+  #assert nav_route(s, NavGoal.{map = 1, x = 1000, y = 900}).bearing == 0;
+  #assert nav_route(s, NavGoal.{map = 1, x = 900, y = 1000}).bearing > 1.5;
+  #assert abs(nav_route(s, NavGoal.{map = 1, x = 1000, y = 1100}).bearing) > 3;
+  #assert nav_route(s, NavGoal.{map = 1, x = 1100, y = 1000}).bearing < -1.5;
+  #assert nav_route(s, NavGoal.{map = 1, x = 1012, y = 1000}).arrived;
+  #assert !nav_route(s, NavGoal.{map = 1, x = 1013, y = 1000}).arrived;
+  #assert !nav_route(s, NavGoal.{map = 2, x = 1000, y = 900}).ok;
+  s.heading = 65535; #assert abs(nav_route(s, NavGoal.{map = 1, x = 1000, y = 900}).bearing) < 0.001;
+  s.heading = 16384; #assert nav_route(s, NavGoal.{map = 1, x = 1000, y = 900}).bearing < -1.5;
+  s.heading = 60000; #assert nav_route(s, NavGoal.{map = 1, x = 900, y = 1000}).bearing < 3.1416;
+}
+#test "coordinate radius and map aspect endpoints are individually admitted" {
+  s := NavSample.{ok = true, map = 1, x = 1000, y = 1000, alive = true}; g := NavGoal.{map = 1, x = 1003, y = 1004, radius = 1};
+  r := nav_route(s, g); #assert r.ok && r.distance == 5 && !r.arrived;
+  for i: 0..<6 {
+    t := g;
+    if i == 0 { t.x = 0; } if i == 1 { t.x = 65535; } if i == 2 { t.y = 0; }
+    if i == 3 { t.y = 65535; } if i == 4 { t.radius = 256; } if i == 5 { t.aspect_milli = 100; }
+    #assert nav_route(s, t).ok;
+  }
+  g.aspect_milli = 10000; #assert nav_route(s, g).ok;
+  for i: 0..<7 {
+    t := g;
+    if i == 0 { t.x = -1; } if i == 1 { t.x = 65536; } if i == 2 { t.y = -1; }
+    if i == 3 { t.y = 65536; } if i == 4 { t.radius = 257; } if i == 5 { t.aspect_milli = 99; } if i == 6 { t.aspect_milli = 10001; }
+    #assert !nav_route(s, t).ok;
+  }
+  g.aspect_milli = 2000; #assert abs(nav_route(s, g).distance - sqrt(f32(52))) < 0.001;
+}
+#test "unavailable dead combat and menu observations refuse before an action" {
+  s := NavSample.{ok = true, map = 1, x = 1000, y = 1000, alive = true}; g := NavGoal.{map = 1, x = 1000, y = 900};
+  for bad: 0..<6 {
+    t := s; goal := g;
+    if bad == 0 { t.ok = false; } if bad == 1 { t.alive = false; } if bad == 2 { t.combat = true; }
+    if bad == 3 { t.blocked = true; } if bad == 4 { goal.radius = 0; } if bad == 5 { goal.x = 65536; }
+    #assert !nav_route(t, goal).ok;
+  }
+  #assert nav_baseline(NavRoute.{ok = false}) == PILOT_STOP;
+  #assert nav_baseline(NavRoute.{ok = true, arrived = true}) == PILOT_STOP;
+  #assert nav_baseline(NavRoute.{ok = true, bearing = 0.2}) == PILOT_LEFT;
+  #assert nav_baseline(NavRoute.{ok = true, bearing = -0.2}) == PILOT_RIGHT;
+  #assert nav_baseline(NavRoute.{ok = true, bearing = 0.15}) == PILOT_FORWARD;
+  #assert nav_baseline(NavRoute.{ok = true, bearing = -0.15}) == PILOT_FORWARD;
+}
+nav_route :: (s: NavSample, g: NavGoal) -> NavRoute {
+  r: NavRoute;
+  if !s.ok || !s.alive || s.combat || s.blocked || s.map != g.map { return r; }
+  if g.x < 0 || g.x > 65535 || g.y < 0 || g.y > 65535 || g.radius < 1 || g.radius > 256 { return r; }
+  if g.aspect_milli < 100 || g.aspect_milli > 10000 { return r; }
+  dx := cast(f32) (g.x - s.x) * cast(f32) g.aspect_milli / 1000.0; dy := cast(f32) (g.y - s.y);
+  r.distance = sqrt(dx * dx + dy * dy); r.arrived = r.distance <= cast(f32) g.radius;
+  wanted := atan2(-dx, -dy); heading := cast(f32) s.heading * (6.283185307179586 / 65535.0);
+  r.bearing = wrap_angle(wanted - heading); r.ok = true; return r;
+}
+nav_baseline :: (r: NavRoute) -> int {
+  if !r.ok || r.arrived { return PILOT_STOP; }
+  if r.bearing > 0.15 { return PILOT_LEFT; } if r.bearing < -0.15 { return PILOT_RIGHT; }
+  return PILOT_FORWARD;
+}

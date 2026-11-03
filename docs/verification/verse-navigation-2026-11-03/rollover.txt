@@ -1,0 +1,10 @@
+vk-realm: canonical profile1 at 320x180, package made in 25 ms
+vk-realm: in a 626x346 window at 60.000 Hz, drawn at 320x180; closing the window or 4 s ends it
+vk-realm: lifetime 226 presented frames; timing sample 34 frames
+vk-realm: step+render median 1.92 ms, 99th 5.34 ms, longest 5.34 ms
+vk-realm: wait median 0.00 ms, 99th 0.00 ms, longest 0.00 ms
+vk-realm: 34 frames in 0.6 s (52.77 a second) at 60.000 Hz; dropped 0, longest gap 23.0 ms
+vk-realm: frame time median 18.11 ms, 95th 21.91 ms, 99th 22.96 ms
+vk-realm: NVIDIA GeForce RTX 4080, 320x180, 34 frames, 2 draws the last; it ended because its time was up
+vk-realm: ledger: 4 objects, 6290224 words live at the last frame (epoch 227)
+vk-realm: ledger: 0 objects live after close

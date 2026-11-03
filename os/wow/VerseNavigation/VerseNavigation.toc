@@ -1,0 +1,5 @@
+## Interface: 11509
+## Title: Verse Navigation Sensor
+## Notes: Visible read-only position and heading samples for Verse OS.
+## Version: 1
+VerseNavigation.lua

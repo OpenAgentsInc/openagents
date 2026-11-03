@@ -1,0 +1,32 @@
+// A bounded external actor's steering vocabulary. Facts come from its adapter, not engine truth.
+// Reuses Aethyr Intent and replay event envelopes; does not run another game's physics.
+#authority;
+#load "../input.coax";
+#load "../replay.coax";
+PILOT_STOP :: 0; PILOT_FORWARD :: 1; PILOT_LEFT :: 2; PILOT_RIGHT :: 3; PILOT_BACK :: 4; PILOT_JUMP :: 5;
+PilotAction :: struct { ok: bool; intent: Intent; milliseconds: int; name: int; }
+#test "external actions are bounded typed Aethyr intents with a replay envelope" {
+  #assert pilot_action(PILOT_FORWARD, 300).intent.move_y == 1;
+  #assert pilot_action(PILOT_FORWARD, 300).intent.run && !pilot_action(PILOT_FORWARD, 300).intent.act;
+  #assert pilot_action(PILOT_BACK, 500).intent.move_y == -1;
+  #assert pilot_action(PILOT_LEFT, 100).intent.look_x > 0;
+  #assert pilot_action(PILOT_RIGHT, 100).intent.look_x < 0;
+  #assert pilot_action(PILOT_JUMP, 50).intent.jump;
+  #assert pilot_action(PILOT_STOP, 0).ok && pilot_action(PILOT_FORWARD, 1).ok;
+  #assert !pilot_action(-1, 100).ok && !pilot_action(6, 100).ok;
+  #assert !pilot_action(PILOT_STOP, 1).ok && !pilot_action(PILOT_FORWARD, 0).ok;
+  #assert !pilot_action(PILOT_FORWARD, 501).ok && !pilot_action(PILOT_FORWARD, -1).ok;
+  e := pilot_event(3, 7, pilot_action(PILOT_FORWARD, 300));
+  #assert e.source == REPLAY_ACTIONS && e.epoch == 3 && e.request == 7 && e.words[0] == PILOT_FORWARD && e.words[1] == 300;
+}
+pilot_action :: (action: int, milliseconds: int) -> PilotAction {
+  if action < PILOT_STOP || action > PILOT_JUMP { return PilotAction.{}; }
+  if (action == PILOT_STOP && milliseconds != 0) || (action != PILOT_STOP && (milliseconds < 1 || milliseconds > 500)) { return PilotAction.{}; }
+  intent := input_keys(0, ifx action == PILOT_FORWARD then 1 else ifx action == PILOT_BACK then -1 else 0,
+    false, action == PILOT_JUMP, false, ifx action == PILOT_LEFT then 0.1 else ifx action == PILOT_RIGHT then -0.1 else 0, 0, 0);
+  return PilotAction.{ok = true, intent = intent, milliseconds = milliseconds, name = action};
+}
+pilot_event :: (epoch: int, request: int, action: PilotAction) -> ReplayEvent {
+  e := ReplayEvent.{source = REPLAY_ACTIONS, epoch = epoch, request = request};
+  e.words[0] = action.name; e.words[1] = action.milliseconds; return e;
+}

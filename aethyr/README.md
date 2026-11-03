@@ -40,6 +40,7 @@ behaviour, zero surviving mutants. One short section per primitive is in
 | `rand.coax` | Random streams: a draw is a pure function of seed, stream and counter |
 | `scatter.coax` | Scatter from a seed: things on a jittered grid of world cells, each cell's draws keyed by its layer, version and grid coordinates, kept clear of keep-outs (book chapter 80) |
 | `ai/stimulus.coax` | What a creature senses and knows: sight through `query_ray`, sound and touch as typed stimuli stamped by tick, and a bounded memory that forgets and counts what it refuses (book chapter 75) |
+| `ai/pilot.coax` | Bounded external actor actions as typed `Intent`s and `ReplayEvent` envelopes; the Verse OS WoW adapter consumes it, without claiming replay of WoW's simulation (book chapter 75) |
 | `frame-report.coax` | A realm's frames, measured: frame statistics and the 60 FPS rule every realm is held to (`coax/web/realm-perf.coax` judges each case by it), and one frame's report by stage (book chapter 83) |
 | `voice.coax` | Spoken requests (HOLD TO TALK): a press is a question on the replay gate, the voice host's final transcript its answer, applied once, only in its epoch; duplicates, answers after a cancel and unasked answers are refused, and the record replays every heard request with no recognizer (`examples/hold-to-talk.coax`; local recognition is resident Parakeet, `docs/voice/dev.md`) |
 | `math.coax` | Sine, cosine and powers with the same bits natively and in the browser, for simulation steps |
