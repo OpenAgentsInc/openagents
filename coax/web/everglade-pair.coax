@@ -1,0 +1,303 @@
+// Everglade's two-browser smoke (spec section 11.2, GitHub #12711): two headless Chromes open one
+// Everglade room of their own and check the shared world, and how smooth it is.
+//   coax/web/tool.sh everglade-pair [URL] [--phone] [--size WxH] [--shots PREFIX] [--trials N]
+// URL defaults to https://openagents.com/worlds/everglade; the room is a fresh pair-<hex> (?room=),
+// which the rooms list leaves out, and both sessions carry the automation mark pair-check-<hex>
+// (the verse-automation cookie), so analytics and the usage counts leave them out too.
+// --phone: a 390x844 touch phone at DPR 3 (else --size, default 1440x900 at DPR 1).
+// The in-page half, coax/web/everglade-pair.js, notes the page's frames and its socket's frames.
+// What it checks, in order (each a line, then one JSON line with every number, then holds/fails):
+//   1. both join and each has the other's player (D's p) and name (D's n: the nameplate), and the
+//      page draws the other (net_probe 2, the other players drawn);
+//   2. move latency: A holds W, B's socket gets A somewhere new (--trials, the sessions take turns);
+//   3. smoothness while A walks: each page's frame spacing (p50, p99, long frames), the Coax frame's
+//      own time, your drawn speed's jerks, snaps past NET_SNAP, re-runs and corrections a second
+//      (the server's place for an input against where the page had you), the states' arrival
+//      (gaps, skipped ticks) and the other player as drawn (stalls and lurches);
+//   4. the jump: A jumps while walking and walks on; after landing A's act (the server's, in D, as
+//      A's and B's sockets carry it) is walking or running again, A's page sends no jump bit after
+//      the key is up, and A's feet are on the floor;
+//   5. a cast shows for both: A casts Conjure Animals (bar slot 32); both hear e cast from A's seat
+//      and both have the pack;
+//   6. a kill agrees: B casts Starry Wisp (slot 22) at the nearest creature until one dies; both
+//      hear the same e die; both have the same WANTED levels.
+// Smoothness numbers are reported, not judged (a baseline for the fixes); checks 1, 4, 5 and 6 and
+// a move latency under 500 ms decide holds. Nothing opens on screen and no sound plays.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+EP_SHOT :: 25165824;
+EP_TRIALS_MAX :: 16;
+EP_OUT :: 262144;
+
+Buf :: struct { b: [8192] u8; n: int; bad: bool; }
+bput :: (o: [] Buf, s: string) {
+  if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<s.count { o[0].b[o[0].n + k] = s[k]; }
+  o[0].n += s.count;
+}
+bint :: (o: [] Buf, v: int) {
+  if v < 0 { bput(o, "-"); bint(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; bput(o, cast(string) e[..]); }
+}
+btext :: (o: [] Buf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+
+// scheme://host[:port] of a URL, "" when it has none.
+ep_origin :: (url: string) -> string {
+  i := 0;
+  while i + 2 < url.count && !(url[i] == ':' && url[i + 1] == '/' && url[i + 2] == '/') { i += 1; }
+  if i + 2 >= url.count || i == 0 { return ""; }
+  j := i + 3;
+  while j < url.count && url[j] != '/' && url[j] != '?' && url[j] != '#' { j += 1; }
+  return ifx j > i + 3 then url[0..<j] else "";
+}
+ep_has_query :: (url: string) -> bool { for c: url { if c == '?' { return true; } } return false; }
+ep_sorted_mid :: (t: [] int, n: int, q: int) -> int {
+  if n <= 0 { return -1; }
+  s: [EP_TRIALS_MAX] int; for i: 0..<n { s[i] = t[i]; }
+  for i: 1..<n { v := s[i]; j := i - 1; while j >= 0 && s[j] > v { s[j + 1] = s[j]; j -= 1; } s[j + 1] = v; }
+  k := (n * q) / 100; if k >= n { k = n - 1; }
+  return s[k];
+}
+
+#test "the pair smoke's pieces" {
+  #assert ep_origin("https://openagents.com/worlds/everglade") == "https://openagents.com" && ep_origin("nope") == "";
+  #assert ep_has_query("https://x/a?b=1") && !ep_has_query("https://x/a");
+  t: [5] int; t[0] = 400; t[1] = 120; t[2] = 900; t[3] = 300; t[4] = 610;
+  #assert ep_sorted_mid(t[..], 5, 50) == 400 && ep_sorted_mid(t[..], 5, 100) == 900 && ep_sorted_mid(t[..], 0, 50) == -1 && t[0] == 400;
+  b: [1] Buf; bput(b[..], "__eg.mark('"); bput(b[..], "walk"); bput(b[..], "')"); bint(b[..], -12);
+  #assert btext(b[..]) == "__eg.mark('walk')-12";
+}
+
+ep_int :: (c: [] Cdp, js: string, fallback: int) -> int {
+  v := cdp_evaluate(c, js);
+  return ifx v >= 0 then jv_int(cdp_doc(c), v, fallback) else fallback;
+}
+ep_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
+  v := cdp_evaluate(c, js);
+  if v < 0 { return ""; }
+  n := jv_str(cdp_doc(c), v, out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+// A key as the page hears it: a keydown or keyup on window (host.js listens there).
+ep_press :: (c: [] Cdp, down: bool, key: string, code: string, vk: int) -> bool {
+  q: [1] Buf;
+  bput(q[..], "dispatchEvent(new KeyboardEvent('"); bput(q[..], ifx down then "keydown" else "keyup");
+  bput(q[..], "', {key: '"); bput(q[..], key); bput(q[..], "', code: '"); bput(q[..], code); bput(q[..], "', keyCode: "); bint(q[..], vk);
+  bput(q[..], ", bubbles: true})); 1");
+  return ep_int(c, btext(q[..]), 0) == 1;
+}
+ep_w :: (c: [] Cdp, down: bool) -> bool { return ep_press(c, down, "w", "KeyW", 87); }
+ep_escape :: (c: [] Cdp) -> bool { return ep_press(c, true, "Escape", "Escape", 27) && ep_press(c, false, "Escape", "Escape", 27); }
+ep_mark :: (ca: [] Cdp, cb: [] Cdp, name: string) {
+  q: [1] Buf; bput(q[..], "__eg.mark('"); bput(q[..], name); bput(q[..], "')");
+  _ := ep_int(ca, btext(q[..]), 0); _ = ep_int(cb, btext(q[..]), 0);
+}
+
+ep_open :: (c: [] Cdp, url: string, origin: string, mark: string, wh: ArgsSize, phone: bool, script: string) -> bool {
+  params: [131072] u8; o: [1] Jo;
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "width"); jo_int(o[..], wh.w); jo_key(o[..], "height"); jo_int(o[..], wh.h);
+  jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], ifx phone then 3 else 1); jo_key(o[..], "mobile"); jo_bool(o[..], phone); jo_end(o[..]);
+  if cdp_call(c, "Emulation.setDeviceMetricsOverride", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  if phone && cdp_call(c, "Emulation.setTouchEmulationEnabled", "{\"enabled\":true,\"maxTouchPoints\":5}", CDP_CALL_MS) < 0 { return false; }
+  if cdp_call(c, "Page.enable", "", CDP_CALL_MS) < 0 { return false; }
+  if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return false; }
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "verse-automation"); jo_key(o[..], "value"); jo_str(o[..], mark);
+  jo_key(o[..], "url"); jo_str(o[..], origin); jo_end(o[..]);
+  if cdp_call(c, "Network.setCookie", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "source"); jo_str(o[..], script); jo_end(o[..]);
+  if o[0].bad || cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  url := args_at(a[..], 0);
+  if url.count == 0 || url[0] == '-' { url = "https://openagents.com/worlds/everglade"; }
+  phone := args_has(a[..], "--phone");
+  wh := args_size(args_value(a[..], "--size", ifx phone then "390x844" else "1440x900"));
+  shots := args_value(a[..], "--shots", "");
+  trials_n := args_number(args_value(a[..], "--trials", "4"));
+  origin := ep_origin(url);
+  if !ok || !wh.ok || !trials_n.ok || origin.count == 0 || trials_n.value < 1.0 || trials_n.value > f64(EP_TRIALS_MAX) {
+    tool_errln("usage: coax/web/tool.sh everglade-pair [URL] [--phone] [--size WxH] [--shots PREFIX] [--trials 1..16]"); return 2;
+  }
+  js: [65536] u8;
+  jn := fs_read("coax/web/everglade-pair.js", js[..]);
+  if jn <= 0 { tool_errln("everglade-pair: can't read coax/web/everglade-pair.js (run it from the repository's root)"); return 2; }
+  rnd: [6] u8;
+  if !cdp_draw(6, rnd[..]) { tool_errln("everglade-pair: no entropy"); return 1; }
+  hex := "0123456789abcdef";
+  hx: [1] Buf;
+  for b: rnd { h: [2] u8; h[0] = hex[b / 16]; h[1] = hex[b % 16]; bput(hx[..], cast(string) h[..]); }
+  mb: [1] Buf; bput(mb[..], "pair-check-"); bput(mb[..], btext(hx[..]));
+  ub: [1] Buf; bput(ub[..], url); bput(ub[..], ifx ep_has_query(url) then "&room=pair-" else "?room=pair-"); bput(ub[..], btext(hx[..]));
+  ca: [1] Cdp; cb: [1] Cdp;
+  if !cdp_launch(ca[..], wh.w, wh.h, "coax-egpair-a-") { tool_err("everglade-pair: "); tool_errln(cdp_error(ca[..])); return 1; }
+  if !cdp_launch(cb[..], wh.w, wh.h, "coax-egpair-b-") { tool_err("everglade-pair: "); tool_errln(cdp_error(cb[..])); cdp_close(ca[..]); return 1; }
+  status := ep_run(ca[..], cb[..], btext(ub[..]), origin, btext(mb[..]), wh, phone, cast(string) js[0..<jn], cast(int) trials_n.value, shots);
+  cdp_close(ca[..]); cdp_close(cb[..]);
+  return status;
+}
+
+ep_fail :: (c: [] Cdp, what: string) -> int { tool_err("everglade-pair: "); tool_err(what); tool_err(": "); tool_errln(cdp_error(c)); print("fails\n"); return 1; }
+ep_check :: (ok: bool, what: string) -> bool { print("% %\n", ifx ok then "ok  " else "FAIL", what); return ok; }
+
+ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh: ArgsSize, phone: bool, script: string, trials: int, shots: string) -> int {
+  if !ep_open(ca, url, origin, mark, wh, phone, script) { return ep_fail(ca, "opening A"); }
+  if !ep_open(cb, url, origin, mark, wh, phone, script) { return ep_fail(cb, "opening B"); }
+  print("room % (%), mark %, %\n", url, ifx phone then "phone" else "desktop", mark, ifx phone then "390x844 DPR 3" else "DPR 1");
+  t_open := proc_now_ms();
+  // 1. both in, each with the other's player and name
+  live := false;
+  deadline := proc_now_ms() + 90000;
+  while !live && proc_now_ms() < deadline {
+    proc_sleep(500);
+    live = ep_int(ca, "__eg.live()", 0) == 1 && ep_int(cb, "__eg.live()", 0) == 1;
+  }
+  all := ep_check(live, "both pages joined the room");
+  if !live {
+    dbg: [4096] u8;
+    print("A: %\nB: %\n", ep_str(ca, "JSON.stringify({net: __eg.probe(0), seat: __eg.seat, ws: !!__eg.ws, wasm: !!__eg.x, frames: __eg.fr.length})", dbg[..]),
+      ep_str(cb, "JSON.stringify({net: __eg.probe(0), seat: __eg.seat, ws: !!__eg.ws, wasm: !!__eg.x, frames: __eg.fr.length})", dbg[..]));
+    print("fails\n"); return 1;
+  }
+  join_ms := proc_now_ms() - t_open;
+  seen := false;
+  deadline = proc_now_ms() + 20000;
+  see_js := "(__eg.otherSeat() >= 0 && __eg.names[__eg.otherSeat()] !== undefined && __eg.probe(2) >= 1) ? 1 : 0";
+  while !seen && proc_now_ms() < deadline { proc_sleep(250); seen = ep_int(ca, see_js, 0) == 1 && ep_int(cb, see_js, 0) == 1; }
+  sa := ep_int(ca, "__eg.seat", -1); sb := ep_int(cb, "__eg.seat", -1);
+  oa := ep_int(ca, "__eg.otherSeat()", -1); ob := ep_int(cb, "__eg.otherSeat()", -1);
+  all = ep_check(seen && oa == sb && ob == sa, "each has the other's player and who it is (D's n) and draws its body") && all;
+  named := "(() => { const n = __eg.names[__eg.otherSeat()]; return n && n !== '-' ? 1 : 0; })()";
+  all = ep_check(ep_int(ca, named, 0) == 1 && ep_int(cb, named, 0) == 1, "each has a name for the other's nameplate (not -)") && all;
+  info: [4096] u8; info2: [4096] u8;
+  print("  A seat % sees %, drawn %; B seat % sees %, drawn %; names A % B %\n", sa, oa, ep_int(ca, "__eg.probe(2)", -1), sb, ob, ep_int(cb, "__eg.probe(2)", -1),
+    ep_str(ca, "JSON.stringify(__eg.names)", info[..]), ep_str(cb, "JSON.stringify(__eg.names)", info[..]));
+  proc_sleep(2000);
+  _ := ep_escape(ca); _ = ep_escape(cb);
+  ep_mark(ca, cb, "idle");
+  proc_sleep(4000);
+  // 2. move latency: the mover's key down to the watcher's socket having it somewhere new
+  ep_mark(ca, cb, "trials");
+  took: [EP_TRIALS_MAX] int; n_took := 0;
+  for k: 0..<trials {
+    mover := ifx k % 2 == 0 then ca else cb; watcher := ifx k % 2 == 0 then cb else ca;
+    ms := ifx k % 2 == 0 then sa else sb;
+    proc_sleep(1200);
+    t0 := ep_int(mover, "Math.round(__eg.now())", -1);
+    if t0 < 0 || !ep_w(mover, true) { return ep_fail(mover, "pressing W"); }
+    q: [1] Buf; bput(q[..], "__eg.movedSince("); bint(q[..], t0); bput(q[..], ", "); bint(q[..], ms); bput(q[..], ")");
+    pressed := proc_now_ms(); got := -1; up := false;
+    while got < 0 && proc_now_ms() < pressed + 5000 {
+      proc_sleep(30);
+      got = ep_int(watcher, btext(q[..]), -1);
+      if !up && proc_now_ms() > pressed + 800 { up = ep_w(mover, false); }
+    }
+    if !up { up = ep_w(mover, false); }
+    took[k] = got; n_took += 1;
+    print("  % moves, % has it: % ms\n", ifx k % 2 == 0 then "A" else "B", ifx k % 2 == 0 then "B" else "A", got);
+  }
+  missed := 0; for k: 0..<n_took { if took[k] < 0 { missed += 1; } }
+  lat50 := ep_sorted_mid(took[..], n_took, 50); latmax := ep_sorted_mid(took[..], n_took, 100);
+  all = ep_check(missed == 0 && latmax < 500, "move latency (key down to the other's socket): every trial under 500 ms") && all;
+  // 3. A walks 6 s
+  ep_mark(ca, cb, "walk");
+  if !ep_w(ca, true) { return ep_fail(ca, "pressing W"); }
+  proc_sleep(6000);
+  // 4. A jumps while walking, then walks on 3 s
+  ep_mark(ca, cb, "jump");
+  tj := ep_int(ca, "Math.round(__eg.now())", -1);
+  _ = ep_press(ca, true, " ", "Space", 32); proc_sleep(120); _ = ep_press(ca, false, " ", "Space", 32);
+  tu := ep_int(ca, "Math.round(__eg.now())", -1) + 200;   // a jump pressed goes out with the next step or two
+  proc_sleep(1800);
+  ep_mark(ca, cb, "after_jump");
+  tl := ep_int(ca, "Math.round(__eg.now())", -1);
+  proc_sleep(1500);
+  _ = ep_w(ca, false);
+  ep_mark(ca, cb, "stand");
+  // the acts: airborne (3) at some point after the jump; walking or running (1, 2) with the ground bit
+  // through the last 1.5 s of walking, as A's socket and B's socket carry A's state
+  qa: [1] Buf; bput(qa[..], "(() => { const j = JSON.parse(__eg.actsSince("); bint(qa[..], tj);
+  bput(qa[..], ")), l = JSON.parse(__eg.actsSince("); bint(qa[..], tl);
+  bput(qa[..], ")), u = JSON.parse(__eg.actsSince("); bint(qa[..], tu);
+  bput(qa[..], ")); const walked = (r) => r.length > 0 && r.slice(0, Math.max(1, r.length - 4)).every((x) => (x[0] === 1 || x[0] === 2) && (x[1] & 1));");
+  bput(qa[..], " return JSON.stringify({ jumped: j.mine.some((x) => x[0] === 3), walked: walked(l.mine), acts_after: l.mine.map((x) => x[0]).join(''), jump_bits_after_up: u.jump_bits, feet_over_floor_cm: l.feet_over_floor_cm }); })()");
+  qb: [1] Buf; bput(qb[..], "(() => { const l = JSON.parse(__eg.actsSince("); bint(qb[..], tl); bput(qb[..], ")).others['"); bint(qb[..], sa);
+  bput(qb[..], "'] || []; const j = JSON.parse(__eg.actsSince("); bint(qb[..], tj); bput(qb[..], ")).others['"); bint(qb[..], sa);
+  bput(qb[..], "'] || []; return JSON.stringify({ jumped: j.some((x) => x[0] === 3), walked: l.length > 0 && l.slice(0, Math.max(1, l.length - 4)).every((x) => (x[0] === 1 || x[0] === 2) && (x[1] & 1)), acts_after: l.map((x) => x[0]).join('') }); })()");
+  ja: [4096] u8; jb: [4096] u8;
+  jump_a := ep_str(ca, btext(qa[..]), ja[..]); jump_b := ep_str(cb, btext(qb[..]), jb[..]);
+  print("  jump, A's socket: %\n  jump, B's socket: %\n", jump_a, jump_b);
+  qa2: [1] Buf; bput(qa2[..], "(() => { const r = "); bput(qa2[..], jump_a); bput(qa2[..], "; return r.jumped && r.walked && r.jump_bits_after_up === 0 && Math.abs(r.feet_over_floor_cm) < 10 ? 1 : 0; })()");
+  qb2: [1] Buf; bput(qb2[..], "(() => { const r = "); bput(qb2[..], jump_b); bput(qb2[..], "; return r.walked ? 1 : 0; })()");
+  jump_ok := jump_a.count > 0 && jump_b.count > 0 && ep_int(ca, btext(qa2[..]), 0) == 1 && ep_int(cb, btext(qb2[..]), 0) == 1;
+  all = ep_check(jump_ok, "after a jump, walking shows the walk again (A's act on both sockets, no stuck jump bit, feet on the floor)") && all;
+  proc_sleep(1500);
+  // 5. A casts Conjure Animals; both hear it and have the pack
+  ep_mark(ca, cb, "cast");
+  went := ep_int(ca, "__eg.cast(32)", 0);
+  heard := false; pack := false;
+  qc: [1] Buf; bput(qc[..], "__eg.casts.some((c) => c[1] === "); bint(qc[..], sa); bput(qc[..], " && c[2] === 32) ? 1 : 0");
+  t_cast := proc_now_ms(); pack_ms := -1;
+  deadline = proc_now_ms() + 10000;
+  while !(heard && pack) && proc_now_ms() < deadline {
+    proc_sleep(200);
+    heard = ep_int(ca, btext(qc[..]), 0) == 1 && ep_int(cb, btext(qc[..]), 0) == 1;
+    pack = ep_int(ca, "__eg.probe(16)", 0) > 0 && ep_int(cb, "__eg.probe(16)", 0) > 0;
+    if pack && pack_ms < 0 { pack_ms = proc_now_ms() - t_cast; }
+  }
+  all = ep_check(went == 1 && heard && pack, "A's Conjure Animals: both hear the cast and both have the pack") && all;
+  print("  sent %, pack on both after % ms, creatures A % B %, casts heard A % B %\n", went, pack_ms, ep_int(ca, "__eg.probe(16)", -1), ep_int(cb, "__eg.probe(16)", -1),
+    ep_str(ca, "JSON.stringify(__eg.casts.map((c) => [c[1], c[2]]))", info[..]), ep_str(cb, "JSON.stringify(__eg.casts.map((c) => [c[1], c[2]]))", info2[..]));
+  // 6. B fights the nearest creature until one dies; both hear the same death
+  ep_mark(ca, cb, "fight");
+  dead := false;
+  deadline = proc_now_ms() + 20000;
+  while !dead && proc_now_ms() < deadline {
+    shot := ep_int(cb, "__eg.cast(22)", 0);
+    proc_sleep(700);
+    dead = ep_int(ca, "__eg.deaths.length", 0) > 0 && ep_int(cb, "__eg.deaths.length", 0) > 0;
+  }
+  proc_sleep(500);
+  da: [512] u8; db: [512] u8;
+  deaths_a := ep_str(ca, "JSON.stringify(__eg.deaths.map((d) => d[1]))", da[..]); deaths_b := ep_str(cb, "JSON.stringify(__eg.deaths.map((d) => d[1]))", db[..]);
+  wa: [512] u8; wb: [512] u8;
+  wanted_a := ep_str(ca, "JSON.stringify(__eg.wanted)", wa[..]); wanted_b := ep_str(cb, "JSON.stringify(__eg.wanted)", wb[..]);
+  all = ep_check(dead && deaths_a == deaths_b, "a kill agrees: both hear the same e die") && all;
+  wq: [1] Buf; bput(wq[..], "(() => { const o = "); bput(wq[..], wanted_b); bput(wq[..], ", m = __eg.wanted; for (const k of Object.keys(o)) if (k in m && m[k] !== o[k]) return 0; return ("); bint(wq[..], sa); bput(wq[..], " in o) && ("); bint(wq[..], sb); bput(wq[..], " in m) ? 1 : 2; })()");
+  wv := ep_int(ca, btext(wq[..]), 0);
+  all = ep_check(wv == 1, "WANTED agrees: each has the other's level, and where both have a seat's they match") && all;
+  if wv == 2 { print("  (no disagreement; one page has no w frame for the other seat)\n"); }
+  print("  deaths A % B %; WANTED A % B %; hits A % B %; B refused %\n", deaths_a, deaths_b, wanted_a, wanted_b, ep_int(ca, "__eg.hits.length", -1), ep_int(cb, "__eg.hits.length", -1),
+    ep_str(cb, "JSON.stringify(__eg.refused.slice(-4))", info[..]));
+  print("  hits A % B %; A's hello %\n", ep_str(ca, "JSON.stringify(__eg.hits.map((h) => h.slice(1)))", info[..]), ep_str(cb, "JSON.stringify(__eg.hits.map((h) => h.slice(1)))", info2[..]),
+    ep_str(ca, "__eg.hello || ''", wa[..]));
+  if !dead { raw: [65536] u8; print("  B's last frames: %\n", ep_str(cb, "__eg.raw.slice(-30).join(' | ')", raw[..])); }
+  // B walks 4 s, so A has a moving remote body too
+  ep_mark(ca, cb, "walk_b");
+  _ = ep_w(cb, true); proc_sleep(4000); _ = ep_w(cb, false);
+  ep_mark(ca, cb, "end");
+  if shots.count > 0 {
+    png: [EP_SHOT] u8;
+    for s: 0..<2 {
+      c := ifx s == 0 then ca else cb;
+      p: [1] Buf; bput(p[..], shots); bput(p[..], ifx s == 0 then "-a.png" else "-b.png");
+      n := cdp_screenshot(c, png[..]);
+      if n > 0 && fs_write(btext(p[..]), cast(string) png[0..<n]) { print("  %\n", btext(p[..])); }
+    }
+  }
+  ra: [EP_OUT] u8; rb: [EP_OUT] u8;
+  print("{\"viewport\":\"%\",\"join_ms\":%,\"move_latency_ms\":{\"p50\":%,\"max\":%,\"missed\":%},\"a\":%,\"b\":%}\n",
+    ifx phone then "phone" else "desktop", join_ms, lat50, latmax, missed, ep_str(ca, "__eg.report()", ra[..]), ep_str(cb, "__eg.report()", rb[..]));
+  print("%\n", ifx all then "holds" else "fails");
+  return ifx all then 0 else 1;
+}
