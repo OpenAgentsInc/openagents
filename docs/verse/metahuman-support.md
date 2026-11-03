@@ -707,8 +707,11 @@ It holds no MetaHuman asset and draws with none.
   the capsule body draws. The deploy's asset rewrite never matches
   `private:human`, so no release carries a pack.
 - Renders of a private pack are never committed, used as goldens or
-  training data, or read by agents. The world's golden shows the capsule
-  body only.
+  training data. Agents may take and view renders of the private pack to
+  review their own work (owner decision, 2026-11-03: these MetaHumans are not
+  used for model training). The screenshots stay in local scratch space,
+  never in git, goldens, datasets, public traces or Labs output. The world's
+  golden shows the capsule body only.
 
 ## 5E Lab
 
