@@ -256,11 +256,15 @@ struct CtMemory {
   static uint64_t max_containers() { return CB_container_limit(); }
   uint64_t slots = 0, containers = 0, peak_slots = 0, peak_containers = 0;
   uint64_t string_bytes = 0, string_peak_bytes = 0;
-  std::vector<std::weak_ptr<CtStorage>> stores;
+  // Every live aggregate storage, newest first, linked through the storage
+  // itself (so a short-lived array costs no registry entry), for clear_cycles.
+  CtStorage *live = nullptr;
+  uint64_t live_count = 0;
   CtStorage *pending = nullptr;
   bool draining = false;
   void dispose(CtStorage *storage) noexcept;
   void remember(const std::shared_ptr<CtStorage> &storage);
+  void forget(CtStorage *storage) noexcept;
   void clear_cycles() noexcept;
   void take_slots(size_t n);
   void release_slots(size_t n) noexcept { slots -= n; }
@@ -295,9 +299,11 @@ struct CtString {
   ~CtString();
 };
 struct Value;
-struct CtStorage : std::vector<Value, CtAllocator<Value>> {
+struct CtStorage : std::vector<Value, CtAllocator<Value>>, std::enable_shared_from_this<CtStorage> {
   std::shared_ptr<CtMemory> owner;
   CtStorage *pending_next = nullptr;
+  CtStorage *live_prev = nullptr, *live_next = nullptr;  // CtMemory::live
+  bool linked = false;
   explicit CtStorage(std::shared_ptr<CtMemory> memory);
   ~CtStorage();
 };
@@ -431,6 +437,7 @@ struct SwitchCase {
 struct EffectName { Str name; Loc loc; };
 
 struct ProcDecl {
+  uint64_t ct_executed_mark = 0;  // the evaluator that last recorded entering it (Evaluator::executed)
   Str name;
   int32_t scope = 0;  // a name two modules declare: its C spelling's module scope (0: the plain name)
   Loc loc;

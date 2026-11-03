@@ -15,7 +15,9 @@ cd "$(dirname "$0")"
 root="$(cd .. && pwd -P)"
 input_identity="$(./provenance.sh fingerprint "$root")"
 mkdir -p bin
-host_flags=(-std=c++20 -O1 -g -Wall -Wextra -Wno-missing-field-initializers)
+# The C++ driver at -O2: its evaluator runs every #authority check, and -O2 inlines
+# the Value moves and destructors each node costs (#12657). The C seeds stay -O1.
+host_flags=(-std=c++20 -O2 -g -Wall -Wextra -Wno-missing-field-initializers)
 if [[ -n "${COAX_HOST_TARGET:-}" ]]; then host_flags+=(-target "$COAX_HOST_TARGET"); fi
 c_flags=(-std=c11 -O1 -g)
 # Extra link flags for the executables (stage0, coax, provenance-check):

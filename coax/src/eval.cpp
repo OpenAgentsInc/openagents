@@ -9,12 +9,13 @@
 #include <cmath>
 #include <algorithm>
 #include <map>
+#include <optional>
 
 namespace coax {
 
 CtStorage::CtStorage(std::shared_ptr<CtMemory> memory)
     : std::vector<Value, CtAllocator<Value>>(CtAllocator<Value>(memory)), owner(std::move(memory)) {}
-CtStorage::~CtStorage() { owner->release_container(); }
+CtStorage::~CtStorage() { owner->forget(this); owner->release_container(); }
 
 CtString::CtString(std::shared_ptr<CtMemory> memory, size_t n)
     : owner(std::move(memory)), size(n) {
@@ -42,18 +43,31 @@ void CtMemory::dispose(CtStorage *storage) noexcept {
 }
 
 void CtMemory::remember(const std::shared_ptr<CtStorage> &storage) {
-  // Bound registry overhead even when a long run creates many short-lived arrays.
-  if (stores.size() >= container_limit * 2) {
-    stores.erase(std::remove_if(stores.begin(), stores.end(),
-                                [](const auto &item) { return item.expired(); }), stores.end());
-  }
-  stores.emplace_back(storage);
+  CtStorage *s = storage.get();
+  s->live_prev = nullptr;
+  s->live_next = live;
+  if (live) live->live_prev = s;
+  live = s;
+  s->linked = true;
+  ++live_count;
+}
+void CtMemory::forget(CtStorage *s) noexcept {
+  if (!s->linked) return;
+  if (s->live_prev) s->live_prev->live_next = s->live_next;
+  else live = s->live_next;
+  if (s->live_next) s->live_next->live_prev = s->live_prev;
+  s->linked = false;
+  --live_count;
 }
 void CtMemory::clear_cycles() noexcept {
   // Views can form cycles. File teardown invalidates the entire interpreted
   // graph after emission, so break those cycles before dropping frozen roots.
-  for (const auto &item : stores) if (auto storage = item.lock()) storage->clear();
-  stores.clear();
+  // Hold every live storage first: clearing one can release others.
+  std::vector<std::shared_ptr<CtStorage>> all;
+  try { all.reserve(live_count); } catch (...) {}
+  for (CtStorage *s = live; s; s = s->live_next)
+    if (auto storage = s->weak_from_this().lock()) all.push_back(std::move(storage));
+  for (auto &storage : all) storage->clear();
 }
 File::~File() { if (ct_memory) ct_memory->clear_cycles(); }
 
@@ -94,9 +108,18 @@ struct CtFrame {
   const ProcDecl *procedure = nullptr;
   std::vector<CtLocal> locals;
 
+  // The same answer as str_eq, without a memcmp call for the short, often
+  // one-letter names most lookups compare.
+  static bool same_name(Str a, Str b) {
+    if (a.count != b.count) return false;
+    if (a.data == b.data || a.count == 0) return true;
+    if (a.data[0] != b.data[0]) return false;
+    for (int32_t i = 1; i < a.count; i++) if (a.data[i] != b.data[i]) return false;
+    return true;
+  }
   CtLocal *find(Str name) {
     for (size_t i = locals.size(); i-- > 0;)
-      if (str_eq(locals[i].name, name)) return &locals[i];
+      if (same_name(locals[i].name, name)) return &locals[i];
     return nullptr;
   }
 };
@@ -124,13 +147,22 @@ struct PlaceOutcome {
   if(failed)return {}; \
   Value name=std::move(name##_outcome.value)
 
-// Keeps storage alive while a located element is in use.
+// Keeps storage alive while a located element is in use. Most places keep
+// at most one view and one temporary, so the first ones live inline and only
+// more of them allocate (a host allocation, never compile-time storage).
 struct Holder {
-  std::vector<std::shared_ptr<CtStorage>> keep;
-  std::vector<std::unique_ptr<Value>> temps;
+  std::shared_ptr<CtStorage> first_keep;
+  std::vector<std::shared_ptr<CtStorage>> more_keep;
+  std::optional<Value> first_temp;
+  std::vector<std::unique_ptr<Value>> more_temps;
+  void keep(std::shared_ptr<CtStorage> s) {
+    if (!first_keep) first_keep = std::move(s);
+    else more_keep.push_back(std::move(s));
+  }
   Value *temp(Value v) {
-    temps.push_back(std::make_unique<Value>(std::move(v)));
-    return temps.back().get();
+    if (!first_temp) { first_temp.emplace(std::move(v)); return &*first_temp; }
+    more_temps.push_back(std::make_unique<Value>(std::move(v)));
+    return more_temps.back().get();
   }
 };
 
@@ -165,7 +197,13 @@ struct Evaluator {
   Loc fail_loc;
   std::string fail_code, fail_message;
   std::vector<Loc> calls;
-  std::vector<const ProcDecl *> executed;
+  std::vector<const ProcDecl *> executed;      // in the order first entered
+  // A procedure is in executed when its ct_executed_mark is this evaluator's.
+  const uint64_t executed_mark = ++executed_marks;
+  static inline uint64_t executed_marks = 0;
+  // Each call depth's locals vector, kept between calls so a call doesn't
+  // allocate one (cleared, so each call starts with none).
+  std::vector<std::vector<CtLocal>> local_pool;
   static constexpr uint32_t MAX_DEPTH = 64;
   // --profile steps: the procedures being evaluated, innermost last, and each
   // one's own steps, total steps and calls.
@@ -195,8 +233,17 @@ struct Evaluator {
     if (profile) profiled[frames.empty() ? nullptr : frames.back()].own--;
   }
   bool steps_exceeded = false;
-  bool tick(Loc loc, uint32_t cost = 1) {
+  // One step (or cost steps) for a node. The common case, no failure, budget
+  // left and no profile, stays inline; the rest is tick_slow.
+  __attribute__((always_inline)) bool tick(Loc loc, uint32_t cost = 1) {
     current_loc = loc;
+    if (__builtin_expect(!failed && steps <= max_steps && cost <= max_steps - steps && !profile, 1)) {
+      steps += cost;
+      return true;
+    }
+    return tick_slow(loc, cost);
+  }
+  __attribute__((noinline)) bool tick_slow(Loc loc, uint32_t cost) {
     if (failed) return false;
     if (steps > max_steps || cost > max_steps - steps) {
       steps_exceeded = true;
@@ -344,6 +391,21 @@ struct Evaluator {
 
   // Aggregates copy deeply; views and strings keep sharing what they borrow.
   Value clone(const Value &v, bool nested = false) {
+    // A number, bool or enum is its type and bits (or f): nothing to share.
+    const TypeKind kind = v.type->kind;
+    if (kind == TypeKind::integer || kind == TypeKind::floating || kind == TypeKind::bool_ || kind == TypeKind::enum_) {
+      if (nested) traverse();
+      Value c;
+      c.type = v.type;
+      c.bits = v.bits;
+      c.f = v.f;
+      c.offset = v.offset;
+      c.count = v.count;
+      c.sum_tag = v.sum_tag;
+      c.s = v.s;
+      if (__builtin_expect(v.string_owner != nullptr || v.agg != nullptr, 0)) { c.string_owner = v.string_owner; c.agg = v.agg; }
+      return c;
+    }
     if (nested || is_aggregate(v.type) || is_sum(v.type)) traverse();
     if(is_sum(v.type) && !valid_sum(v,current_loc))return {};
     Value c = v;
@@ -489,7 +551,8 @@ struct Evaluator {
 
   // ---- arithmetic: the same rules as the C runtime, checked in every mode ----
 
-  Value int_op(Tok op, Type t, uint64_t a_bits, uint64_t b_bits, Type bt, Loc loc) {
+  // The bits of an integer operation, or false after reporting its error.
+  bool int_bits(Tok op, Type t, uint64_t a_bits, uint64_t b_bits, Type bt, Loc loc, uint64_t *out) {
     __int128 a = as_int128(t, a_bits), b = as_int128(bt ? bt : t, b_bits), r = 0;
     switch (op) {
       case Tok::plus: r = a + b; break;
@@ -497,29 +560,36 @@ struct Evaluator {
       case Tok::star: r = a * b; break;
       case Tok::slash:
       case Tok::percent:
-        if (b == 0) { err(loc, "E0407", "division by zero during compile-time evaluation"); return {}; }
+        if (b == 0) { err(loc, "E0407", "division by zero during compile-time evaluation"); return false; }
         r = op == Tok::slash ? a / b : a % b;
         break;
-      case Tok::amp: return scalar(t, canon_bits(t, a_bits & b_bits));
-      case Tok::pipe: return scalar(t, canon_bits(t, a_bits | b_bits));
-      case Tok::caret: return scalar(t, canon_bits(t, a_bits ^ b_bits));
+      case Tok::amp: *out = canon_bits(t, a_bits & b_bits); return true;
+      case Tok::pipe: *out = canon_bits(t, a_bits | b_bits); return true;
+      case Tok::caret: *out = canon_bits(t, a_bits ^ b_bits); return true;
       case Tok::shl: case Tok::shr: {
         if (b < 0 || b >= t->bits) {
           err(loc, "E0411", "shift by " + std::to_string((long long)b) + " is out of range for " + type_name(t));
-          return {};
+          return false;
         }
-        if (op == Tok::shl) return scalar(t, canon_bits(t, a_bits << (int)b));
-        if (t->is_signed) return scalar(t, canon_bits(t, (uint64_t)((int64_t)a_bits >> (int)b)));
+        if (op == Tok::shl) { *out = canon_bits(t, a_bits << (int)b); return true; }
+        if (t->is_signed) { *out = canon_bits(t, (uint64_t)((int64_t)a_bits >> (int)b)); return true; }
         uint64_t mask = t->bits >= 64 ? UINT64_MAX : (UINT64_C(1) << t->bits) - 1;
-        return scalar(t, (a_bits & mask) >> (int)b);
+        *out = (a_bits & mask) >> (int)b;
+        return true;
       }
       default: break;
     }
     if (!fits_type(t, r)) {
       err(loc, "E0407", std::string("integer overflow in ") + type_name(t) + " during compile-time evaluation");
-      return {};
+      return false;
     }
-    return scalar(t, canon_bits(t, (uint64_t)r));
+    *out = canon_bits(t, (uint64_t)r);
+    return true;
+  }
+  Value int_op(Tok op, Type t, uint64_t a_bits, uint64_t b_bits, Type bt, Loc loc) {
+    uint64_t bits;
+    if (!int_bits(op, t, a_bits, b_bits, bt, loc, &bits)) return {};
+    return scalar(t, bits);
   }
 
   Value float_op(Tok op, Type t, double a, double b) {
@@ -651,26 +721,52 @@ struct Evaluator {
         Type lt = e->lhs->type;
         if (lt == &T_STRING) break;
         Value *base = nullptr;
-        Value view;
-        if (lt->kind == TypeKind::view) {
-          CT_EVAL(value,e->lhs);view=std::move(value);
+        std::optional<Value> copied;  // a view that is not a local's, copied as expression() reads it
+        const Value *local_view = nullptr;
+        if (lt->kind == TypeKind::view && e->lhs->kind == ExprKind::ident && !e->lhs->constant) {
+          // A local view indexed in place (w[i], the common case): the same
+          // step, lookup and checks as reading the view (expression(),
+          // which charges a step, refunds it and lets place() charge it
+          // again), without copying it. Nothing an index expression does can
+          // change or drop a caller's local, so the local keeps the storage.
+          if (!tick(e->lhs->loc)) return nullptr;
+          CtLocal *local = frame.find(e->lhs->text);
+          if (!local) {
+            err(e->lhs->loc, "E0401", "compile-time expression cannot capture runtime value '" + to_std(e->lhs->text) + "'");
+            return nullptr;
+          }
+          if (!local->initialized) {
+            err(e->lhs->loc, "E0405", "compile-time read of an uninitialized variable");
+            return nullptr;
+          }
+          local_view = &local->value;
+          if (root) *root = nullptr;  // a view's elements are always initialized storage
+        } else if (lt->kind == TypeKind::view) {
+          CT_EVAL(value,e->lhs);copied.emplace(std::move(value));
           if (root) *root = nullptr;  // a view's elements are always initialized storage
         } else {
           auto located=place(e->lhs,frame,h,allow_calls,root);if(located.returning)return ExprOutcome::returned(std::move(located.returned_value));base=located.value;
         }
         if (failed) return nullptr;
-        CT_EVAL(iv,e->rhs);
-        if (failed) return nullptr;
-        int64_t i = index_value(iv);
-        int64_t count = base ? lt->length : view.count;
+        Scalar iv;
+        {
+          std::optional<ExprOutcome> sc_ret;
+          const int sc = scalar_eval(e->rhs, frame, allow_calls, iv, sc_ret);
+          if (sc == SC_RETURN) return std::move(*sc_ret);
+          if (sc == SC_STOP || failed) return nullptr;
+        }
+        int64_t i = iv.type->is_signed ? (int64_t)iv.bits : (iv.bits > (uint64_t)INT64_MAX ? -1 : (int64_t)iv.bits);
+        int64_t count = base ? lt->length : local_view ? local_view->count : copied->count;
         if (i < 0 || i >= count) {
           err(e->loc, "E0410", "index " + std::to_string((long long)(int64_t)iv.bits) + " is out of bounds for " +
                                    std::to_string((long long)count) + " elements");
           return nullptr;
         }
         if (base) return &(*base->agg)[(size_t)i];
-        h.keep.push_back(view.agg);
-        return &(*view.agg)[(size_t)(view.offset + i)];
+        if (local_view) return &(*local_view->agg)[(size_t)(local_view->offset + i)];
+        Value *element = &(*copied->agg)[(size_t)(copied->offset + i)];
+        h.keep(std::move(copied->agg));
+        return element;
       }
       default: break;
     }
@@ -686,9 +782,200 @@ struct Evaluator {
     return std::move(r.value);
   }
 
+
+  // ---- scalar expressions without a Value ----
+  //
+  // Most of a check's work is numbers: indexes, counters, coordinates and
+  // comparisons. scalar_eval computes a number, bool or enum expression as
+  // expression() does, node for node: the same steps, in the same order,
+  // the same checks and the same errors at the same places, without building,
+  // moving and destroying a Value for every node. A node it doesn't handle
+  // goes to expression(). It returns SC_OK with the result in out, SC_STOP
+  // when evaluation failed (as expression() returning {} with failed set), or
+  // SC_RETURN with the outcome to return in ret (a propagation).
+  struct Scalar { Type type; uint64_t bits; double f; };
+  enum { SC_OK, SC_STOP, SC_RETURN };
+  static bool scalar_type(Type t) {
+    const TypeKind k = t->kind;
+    return k == TypeKind::integer || k == TypeKind::floating || k == TypeKind::bool_ || k == TypeKind::enum_;
+  }
+  static Value scalar_value(const Scalar &v) {
+    Value r;
+    r.type = v.type;
+    r.bits = v.bits;
+    r.f = v.f;
+    return r;
+  }
+  int scalar_fallback(Expr *e, CtFrame &frame, bool allow_calls, Scalar &out, std::optional<ExprOutcome> &ret) {
+    ExprOutcome r = expression(e, frame, allow_calls);
+    if (r.returning) { ret.emplace(std::move(r)); return SC_RETURN; }
+    if (failed) return SC_STOP;
+    out = {r.value.type, r.value.bits, r.value.f};
+    return SC_OK;
+  }
+  int scalar_eval(Expr *e, CtFrame &frame, bool allow_calls, Scalar &out, std::optional<ExprOutcome> &ret) {
+    switch (e->kind) {
+      case ExprKind::int_lit: case ExprKind::bool_lit: case ExprKind::enum_value:
+        if (!tick(e->loc)) return SC_STOP;
+        out = {e->type, (uint64_t)e->int_value, 0};
+        return SC_OK;
+      case ExprKind::float_lit:
+        if (!tick(e->loc)) return SC_STOP;
+        out = {e->type, 0, e->type == &T_F32 ? (double)(float)e->float_value : e->float_value};
+        return SC_OK;
+      case ExprKind::ident:
+        if (!e->constant) {
+          // expression(): a step, refunded; place(): the step again.
+          if (!tick(e->loc)) return SC_STOP;
+          refund();
+          if (!tick(e->loc)) return SC_STOP;
+          CtLocal *local = frame.find(e->text);
+          if (!local) {
+            err(e->loc, "E0401", "compile-time expression cannot capture runtime value '" + to_std(e->text) + "'");
+            return SC_STOP;
+          }
+          if (!local->initialized) {
+            err(e->loc, "E0405", "compile-time read of an uninitialized variable");
+            return SC_STOP;
+          }
+          const Value &v = local->value;
+          out = {v.type, v.bits, v.f};
+          return SC_OK;
+        }
+        break;
+      case ExprKind::field: case ExprKind::index: {
+        if (e->kind == ExprKind::field && e->field_index == -2) break;
+        if (e->kind == ExprKind::index && e->lhs->type == &T_STRING) break;
+        if (!tick(e->loc)) return SC_STOP;
+        Holder h;
+        CtLocal *root = nullptr;
+        refund();
+        auto located = place(e, frame, h, allow_calls, &root);
+        if (located.returning) { ret.emplace(ExprOutcome::returned(std::move(located.returned_value))); return SC_RETURN; }
+        Value *v = located.value;
+        if (!v || failed) return SC_STOP;
+        if (root && !root->initialized) {
+          err(e->loc, "E0405", "compile-time read of an uninitialized variable");
+          return SC_STOP;
+        }
+        out = {v->type, v->bits, v->f};
+        return SC_OK;
+      }
+      case ExprKind::unary: {
+        if (!scalar_type(e->lhs->type)) break;
+        if (!tick(e->loc)) return SC_STOP;
+        Scalar a;
+        int r = scalar_eval(e->lhs, frame, allow_calls, a, ret);
+        if (r != SC_OK) return r;
+        if (failed) return SC_STOP;
+        if (e->op == Tok::bang) { out = {&T_BOOL, (uint64_t)!a.bits, 0}; return SC_OK; }
+        if (is_float(a.type)) { out = {a.type, 0, a.type == &T_F32 ? (double)(float)-a.f : -a.f}; return SC_OK; }
+        uint64_t bits;
+        if (!int_bits(Tok::minus, a.type, 0, a.bits, nullptr, e->loc, &bits)) return SC_STOP;
+        out = {a.type, bits, 0};
+        return SC_OK;
+      }
+      case ExprKind::binary: {
+        if (!scalar_type(e->lhs->type) || !scalar_type(e->rhs->type)) break;
+        if (!tick(e->loc)) return SC_STOP;
+        Scalar a, b;
+        int r = scalar_eval(e->lhs, frame, allow_calls, a, ret);
+        if (r != SC_OK) return r;
+        if (failed) return SC_STOP;
+        if (e->op == Tok::andand && !a.bits) { out = {&T_BOOL, 0, 0}; return SC_OK; }
+        if (e->op == Tok::oror && a.bits) { out = {&T_BOOL, 1, 0}; return SC_OK; }
+        r = scalar_eval(e->rhs, frame, allow_calls, b, ret);
+        if (r != SC_OK) return r;
+        if (failed) return SC_STOP;
+        Type t = a.type;
+        switch (e->op) {
+          case Tok::plus: case Tok::minus: case Tok::star: case Tok::slash: case Tok::percent:
+          case Tok::amp: case Tok::pipe: case Tok::caret:
+            if (is_float(t)) {
+              double f = 0;
+              switch (e->op) {
+                case Tok::plus: f = a.f + b.f; break;
+                case Tok::minus: f = a.f - b.f; break;
+                case Tok::star: f = a.f * b.f; break;
+                case Tok::slash: f = a.f / b.f; break;
+                default: out = {&T_VOID, 0, 0}; return SC_OK;  // float_op's {}: no such operator is checked
+              }
+              out = {t, 0, t == &T_F32 ? (double)(float)f : f};
+              return SC_OK;
+            } else {
+              uint64_t bits;
+              if (!int_bits(e->op, t, a.bits, b.bits, nullptr, e->loc, &bits)) return SC_STOP;
+              out = {t, bits, 0};
+              return SC_OK;
+            }
+          case Tok::shl: case Tok::shr: {
+            uint64_t bits;
+            if (!int_bits(e->op, t, a.bits, b.bits, b.type, e->loc, &bits)) return SC_STOP;
+            out = {t, bits, 0};
+            return SC_OK;
+          }
+          case Tok::andand: case Tok::oror: out = {&T_BOOL, (uint64_t)(b.bits != 0), 0}; return SC_OK;
+          default: break;
+        }
+        bool result = false;
+        if (is_float(t)) {
+          switch (e->op) {
+            case Tok::eqeq: result = a.f == b.f; break;
+            case Tok::noteq: result = a.f != b.f; break;
+            case Tok::lt: result = a.f < b.f; break;
+            case Tok::le: result = a.f <= b.f; break;
+            case Tok::gt: result = a.f > b.f; break;
+            case Tok::ge: result = a.f >= b.f; break;
+            default: break;
+          }
+        } else {
+          __int128 x = as_int128(t, a.bits), y = as_int128(t, b.bits);
+          switch (e->op) {
+            case Tok::eqeq: result = x == y; break;
+            case Tok::noteq: result = x != y; break;
+            case Tok::lt: result = x < y; break;
+            case Tok::le: result = x <= y; break;
+            case Tok::gt: result = x > y; break;
+            case Tok::ge: result = x >= y; break;
+            default: break;
+          }
+        }
+        out = {&T_BOOL, (uint64_t)result, 0};
+        return SC_OK;
+      }
+      case ExprKind::ifx: {
+        if (!tick(e->loc)) return SC_STOP;
+        Scalar c;
+        int r = scalar_eval(e->lhs, frame, allow_calls, c, ret);
+        if (r != SC_OK) return r;
+        if (failed) return SC_STOP;
+        Expr *branch = c.bits ? e->rhs : e->third;
+        if (!scalar_type(branch->type)) {
+          ExprOutcome v = expression(branch, frame, allow_calls);
+          if (v.returning) { ret.emplace(std::move(v)); return SC_RETURN; }
+          if (failed) return SC_STOP;
+          out = {v.value.type, v.value.bits, v.value.f};
+          return SC_OK;
+        }
+        return scalar_eval(branch, frame, allow_calls, out, ret);
+      }
+      default: break;
+    }
+    return scalar_fallback(e, frame, allow_calls, out, ret);
+  }
+
   // ---- expressions ----
 
   ExprOutcome expression(Expr *e, CtFrame &frame, bool allow_calls) {
+    if ((e->kind == ExprKind::binary && scalar_type(e->lhs->type) && scalar_type(e->rhs->type)) ||
+        (e->kind == ExprKind::unary && scalar_type(e->lhs->type))) {
+      Scalar v;
+      std::optional<ExprOutcome> ret;
+      const int r = scalar_eval(e, frame, allow_calls, v, ret);
+      if (r == SC_RETURN) return std::move(*ret);
+      if (r == SC_STOP) return {};
+      return scalar_value(v);
+    }
     if (!tick(e->loc)) return {};
     switch (e->kind) {
       case ExprKind::int_lit: case ExprKind::bool_lit: case ExprKind::enum_value:
@@ -786,16 +1073,31 @@ struct Evaluator {
           return {};
         }
         CtFrame callee;callee.procedure=e->proc;
+        const size_t depth = calls.size();
+        if (local_pool.size() <= depth) local_pool.resize(depth + 1);
+        callee.locals.swap(local_pool[depth]);
+        struct ReturnLocals {
+          // By index: a nested call can grow local_pool.
+          std::vector<std::vector<CtLocal>> &pool;
+          size_t depth;
+          std::vector<CtLocal> &locals;
+          ~ReturnLocals() { locals.clear(); pool[depth].swap(locals); }
+        } return_locals{local_pool, depth, callee.locals};
         for (int i = 0; i < e->args.count; i++) {
+          if (scalar_type(e->args[i]->type)) {
+            Scalar v;
+            std::optional<ExprOutcome> sc_ret;
+            const int sc = scalar_eval(e->args[i], frame, allow_calls, v, sc_ret);
+            if (sc == SC_RETURN) return std::move(*sc_ret);
+            if (sc == SC_STOP || failed) return {};
+            callee.locals.push_back({e->proc->params[i].name, scalar_value(v), true});
+            continue;
+          }
           CT_EVAL(value,e->args[i]);
           if (failed) return {};
           callee.locals.push_back({e->proc->params[i].name, std::move(value), true});
         }
-        if (quiet) {
-          bool known = false;
-          for (const ProcDecl *p : executed) known = known || p == e->proc;
-          if (!known) executed.push_back(e->proc);
-        }
+        if (quiet && e->proc->ct_executed_mark != executed_mark) { e->proc->ct_executed_mark = executed_mark; executed.push_back(e->proc); }
         calls.push_back(e->loc);
         Value result;
         const uint64_t before = steps;
@@ -984,6 +1286,12 @@ struct Evaluator {
   if(name##_outcome.returning){*returned=std::move(name##_outcome.value);return Flow::ret;} \
   if(failed)return Flow::normal; \
   Value name=std::move(name##_outcome.value)
+// The same for an expression known to be a number, bool or enum (scalar_eval).
+#define CT_STMT_SCALAR(name, node) \
+  Scalar name; \
+  { std::optional<ExprOutcome> name##_ret; const int name##_sc=scalar_eval((node),frame,true,name,name##_ret); \
+    if(name##_sc==SC_RETURN){*returned=std::move(name##_ret->value);return Flow::ret;} \
+    if(name##_sc==SC_STOP || failed)return Flow::normal; }
 
   Flow stmt(Stmt *s, CtFrame &frame, Value *returned) {
     if (!tick(s->loc)) return Flow::normal;
@@ -1011,7 +1319,8 @@ struct Evaluator {
       }
       case StmtKind::var: {
         Value value;
-        if (s->expr) { CT_STMT_EVAL(initial,s->expr);value=std::move(initial); }
+        if (s->expr && scalar_type(s->expr->type)) { CT_STMT_SCALAR(initial,s->expr);value=scalar_value(initial); }
+        else if (s->expr) { CT_STMT_EVAL(initial,s->expr);value=std::move(initial); }
         else value = zero(s->type, s->loc);
         frame.locals.push_back({s->name, std::move(value), !s->uninit});
         return Flow::normal;
@@ -1023,7 +1332,9 @@ struct Evaluator {
         if(located.returning){*returned=std::move(located.returned_value);return Flow::ret;}
         Value *place=located.value;
         if(!place || failed)return Flow::normal;
-        CT_STMT_EVAL(value,s->expr);
+        Value value;
+        if (scalar_type(s->expr->type)) { CT_STMT_SCALAR(scalar,s->expr);value=scalar_value(scalar); }
+        else { CT_STMT_EVAL(computed,s->expr);value=std::move(computed); }
         if (s->op != Tok::equal) {
           if (root && !root->initialized) {
             err(s->loc, "E0405", "compile-time read of an uninitialized variable");
@@ -1050,12 +1361,12 @@ struct Evaluator {
       case StmtKind::continue_: return Flow::cont;
       case StmtKind::defer: return Flow::normal;  // registered by the enclosing block
       case StmtKind::assert_: {
-        CT_STMT_EVAL(condition,s->expr);
+        CT_STMT_SCALAR(condition,s->expr);
         if (!failed && !condition.bits) err(s->loc, "E0406", "assertion failed");
         return Flow::normal;
       }
       case StmtKind::if_: {
-        CT_STMT_EVAL(condition,s->expr);
+        CT_STMT_SCALAR(condition,s->expr);
         if (failed) return Flow::normal;
         if (condition.bits) return stmt(s->then_, frame, returned);
         return s->else_ ? stmt(s->else_, frame, returned) : Flow::normal;
@@ -1077,7 +1388,7 @@ struct Evaluator {
       }
       case StmtKind::while_:
         while (!failed) {
-          CT_STMT_EVAL(c,s->expr);
+          CT_STMT_SCALAR(c,s->expr);
           if (failed || !c.bits) break;
           Flow f = stmt(s->then_, frame, returned);
           if (f == Flow::ret) return f;
@@ -1085,13 +1396,13 @@ struct Evaluator {
         }
         return Flow::normal;
       case StmtKind::for_range: {
-        CT_STMT_EVAL(lo,s->expr);
+        CT_STMT_SCALAR(lo,s->expr);
         if (failed) return Flow::normal;
-        CT_STMT_EVAL(hi,s->expr2);
+        CT_STMT_SCALAR(hi,s->expr2);
         if (failed) return Flow::normal;
         Type t = s->type;
         size_t mark = frame.locals.size();
-        frame.locals.push_back({s->name, lo, true});
+        frame.locals.push_back({s->name, scalar_value(lo), true});
         for (__int128 i = as_int128(t, lo.bits); i < as_int128(t, hi.bits) && !failed; i++) {
           frame.locals[mark].value = scalar(t, canon_bits(t, (uint64_t)i));
           Flow f = stmt(s->then_, frame, returned);

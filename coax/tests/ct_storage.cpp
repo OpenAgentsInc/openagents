@@ -42,7 +42,7 @@ int main() {
   for (uint64_t i = 0; i < CtMemory::max_containers() * 3; ++i) {
     auto ephemeral = evaluator.storage();
   }
-  assert(memory->stores.size() <= CtMemory::max_containers() * 2);
+  assert(memory->live_count == 0 && memory->live == nullptr);
   assert(memory->slots == 0 && memory->containers == 0);
   // Ordinary scope release of a deep chain must not recurse on the native
   // stack. Every link is a live view of the preceding storage.

@@ -3616,6 +3616,19 @@ Otherwise every check runs again sequentially. The order children start in
 (slowest last time first, from a times record beside the check cache)
 changes nothing else.
 
+The evaluator computes number, bool and enum expressions (literals, local
+reads, field and index reads, unary and binary operators, `ifx`) on a scalar
+path that builds no `Value` per node (#12657). It charges the same steps in
+the same order and reports the same errors at the same places as the general
+path, which every other node still takes; storage accounting is unchanged.
+Indexing a local view reads it in place rather than copying it, with the
+same step and checks. Host bookkeeping (the live-storage list, pooled local
+frames, executed-procedure marks) is not compile-time storage. Check: before
+and after, `coax test` printed identical per-check steps, verdicts and
+diagnostics on `verse/demolish.coax` (91 checks), `coax/tests/pass`, `fail`,
+`steps`, the results and System One policy files, the parallel-checks and
+authority-cache fixtures; `coax/tests/ct_storage.cpp` under the sanitizers.
+
 Check: `coax/tests/parallel-checks.coax` (passing, failing `#assert` and
 `#forall`, over-budget E0400, E0380 coverage from children, storage left
 behind within the limit, and past `--slots 40000` only sequentially: each
