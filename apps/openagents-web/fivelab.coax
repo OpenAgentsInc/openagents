@@ -111,6 +111,9 @@ Lab :: struct {
   gx: f32; gy: f32; cell: f32;
   panel: Rect; back: Rect; flip: Rect; modal: Rect;
   mode: int = MODE_ACTION;
+  // Player mode (P): you play one hero of the Living, the class picked from the bar along the top
+  player: bool; pick: int = 6; me: int = -1; act: int = ACT_ATTACK; target: int = -1;
+  pbtn: Rect; picks: [12] Rect; slots: [3] Rect; down_x: f32; down_y: f32;
   horde: bool = true;   // the Horde (the default): every hero on one side, the dead running in from the edges
   skeletons: int = SKELETONS;   // the Restless Dead's number (the tests field fewer, for the interpreter)
   pressing: int;
@@ -280,6 +283,7 @@ flood :: (s: [] Lab) {
 }
 // The Horde's ground: the heroes hold an 8 by 6 block mid-glade, the casters in its 6 by 4 middle
 // and the rest on its rim; the dead start on the grid's two outer rings.
+ACT_ATTACK :: 0; ACT_POWER :: 1; ACT_DASH :: 2;   // the hotbar's slots, keys 1 to 3
 HORDE :: 1000;   // the dead the Horde sends in all, 160 at a time
 HOLD_X :: COLS / 2 - 4; HOLD_Y :: ROWS / 2 - 3;
 EDGE_CELLS :: 2 * COLS + 2 * ROWS - 4 + 2 * (COLS - 2) + 2 * (ROWS - 2) - 4;
@@ -340,6 +344,7 @@ new_battle :: (s: [] Lab) {
   rs_begin(bt(s));
   s[0].seen = s[0].battle[0].book[0].seq;
   s[0].over = false; s[0].winner = -1;
+  if s[0].player { pick_hero(s); }
   s[0].pool = ifx s[0].horde then rs_max(0, HORDE - s[0].skeletons) else 0; s[0].raised = s[0].skeletons;
   for i: 0..<RS_MAX { s[0].fell[i] = 0; }
   s[0].round += 1;
@@ -996,7 +1001,18 @@ lab_turn :: (s: [] Lab, i: int) {
   // a turned Skeleton spends its turn moving away from the Cleric who turned it
   holy := rs_turned_by(b[0].c[i]);
   if holy >= 0 && rs_can_move(b[0].c[i]) { walk(s, i, holy, 300, 400); }
-  if rs_can_act(b[0].c[i]) {
+  if s[0].player && i == s[0].me {
+    if rs_can_act(b[0].c[i]) { player_turn(s, i); }
+    rs_end_turn(b, i);
+    return;
+  }
+  if rs_can_act(b[0].c[i]) { class_turn(s, i); }
+  rs_end_turn(b, i);
+}
+// A hero's turn as its class plays it.
+class_turn :: (s: [] Lab, i: int) {
+  kl := s[0].battle[0].c[i].klass;
+  if true {
     if kl == RS_BARBARIAN { barbarian_turn(s, i); }
     else if kl == RS_MONSTER { skeleton_turn(s, i); }
     else if kl == RS_MONK { monk_turn(s, i); }
@@ -1011,7 +1027,60 @@ lab_turn :: (s: [] Lab, i: int) {
     else if kl == RS_WIZARD { wizard_turn(s, i); }
     else { druid_turn(s, i); }
   }
-  rs_end_turn(b, i);
+}
+// Your turn in Player mode: you walk where the held keys point (the camera's right and forward,
+// on the grid), then the hotbar's slot: Attack (your target if it's in reach, else whoever is,
+// else a shot or your class's own spell), your class's powers, or Dash.
+player_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  tgt := s[0].target;
+  if tgt >= 0 && !rs_up(b[0].c[tgt]) { tgt = -1; s[0].target = -1; }
+  act := s[0].act;
+  if act == ACT_DASH { ok := rs_dash(b, i); }
+  ax := axis(s[0].held, HOLD_D, HOLD_A); az := axis(s[0].held, HOLD_W, HOLD_S);
+  if ax != 0 || az != 0 {
+    fx := s[0].fwd.x; fz := s[0].fwd.z; fl := sqrt(fx * fx + fz * fz);
+    if fl > 0.0001 { fx /= fl; fz /= fl; }
+    vx := s[0].right.x * ax + fx * az; vz := s[0].right.z * ax + fz * az;
+    m := hi(abs(vx), abs(vz));
+    ox := ifx vx > 0.4 * m then 1 else ifx vx < -0.4 * m then -1 else 0;
+    oy := ifx vz > 0.4 * m then 1 else ifx vz < -0.4 * m then -1 else 0;
+    guard := 0;
+    while b[0].turn.move_left > 0 && guard < 16 {
+      guard += 1;
+      x := b[0].c[i].x; y := b[0].c[i].y;
+      gone := false;
+      for tr: 0..<3 {
+        sx := ifx tr == 2 then 0 else ox; sy := ifx tr == 1 then 0 else oy;
+        if sx == 0 && sy == 0 { continue; }
+        nx := x + sx; ny := y + sy;
+        if nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS || rs_at(b, nx, ny) >= 0 { continue; }
+        if rs_step_to(b, i, nx, ny) { gone = true; break; }
+      }
+      if !gone { break; }
+    }
+  } else if tgt >= 0 && act == ACT_ATTACK && b[0].c[i].ranged < 0 && b[0].c[i].spell_ability < 0 {
+    walk(s, i, tgt, 0, 5);
+  }
+  if act == ACT_POWER { class_turn(s, i); return; }
+  if act == ACT_DASH { return; }
+  j := ifx tgt >= 0 && rs_feet_to(b, i, tgt) <= 5 then tgt else foe_at_hand(s, i, -1);
+  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  far := ifx tgt >= 0 then tgt else nearest_foe(s, i);
+  if far >= 0 && b[0].c[i].ranged >= 0 { ok := rs_shoot(b, i, far); return; }
+  if b[0].c[i].spell_ability >= 0 { class_turn(s, i); }
+}
+// The hero you play: the first of the Living's heroes of the picked class still up, or -1.
+pick_hero :: (s: [] Lab) {
+  b := bt(s);
+  s[0].me = -1; s[0].target = -1;
+  for i: 0..<rs_min(b[0].n, HEROES) {
+    if b[0].c[i].team == 0 && b[0].c[i].klass == ROSTER[s[0].pick] && rs_up(b[0].c[i]) { s[0].me = i; return; }
+  }
+}
+set_player :: (s: [] Lab, on: bool) {
+  s[0].player = on;
+  if on { pick_hero(s); } else { s[0].me = -1; s[0].target = -1; }
 }
 
 step :: (s: [] Lab, dt: f32) {
@@ -1178,6 +1247,20 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   s[0].modal = Rect.{x0 = s[0].flip.x0 - 8 * k - mw, y0 = 18 * k, x1 = s[0].flip.x0 - 8 * k, y1 = 46 * k};
   // a phone has no room beside the title: the mode sits in the scene's bottom-left corner
   if s[0].portrait { s[0].modal = Rect.{x0 = pad, y0 = s[0].panel.y0 - 8 * k - 28 * k, x1 = pad + mw, y1 = s[0].panel.y0 - 8 * k}; }
+  pbw := 104 * k;
+  s[0].pbtn = Rect.{x0 = s[0].modal.x0 - 8 * k - pbw, y0 = s[0].modal.y0, x1 = s[0].modal.x0 - 8 * k, y1 = s[0].modal.y1};
+  if s[0].portrait { s[0].pbtn = Rect.{x0 = s[0].modal.x1 + 8 * k, y0 = s[0].modal.y0, x1 = s[0].modal.x1 + 8 * k + pbw, y1 = s[0].modal.y1}; }
+  // Player mode: the class picker along the scene's top, the hotbar centred at its foot
+  scx0 := pad; scx1 := ifx s[0].portrait then w - pad else s[0].panel.x0 - pad;
+  scy1 := ifx s[0].portrait then s[0].modal.y0 - 8 * k else h - pad;
+  pg := 4 * k; pwid := (scx1 - scx0 - 11 * pg) / 12;
+  for c: 0..<12 { s[0].picks[c] = Rect.{x0 = scx0 + f32(c) * (pwid + pg), y0 = top + 6 * k, x1 = scx0 + f32(c) * (pwid + pg) + pwid, y1 = top + 30 * k}; }
+  slot := 58 * k; sg := 8 * k; hx0 := (scx0 + scx1) / 2 - (3 * slot + 2 * sg) / 2;
+  for c: 0..<3 { s[0].slots[c] = Rect.{x0 = hx0 + f32(c) * (slot + sg), y0 = scy1 - 24 * k - slot, x1 = hx0 + f32(c) * (slot + sg) + slot, y1 = scy1 - 24 * k}; }
+  if !s[0].player {
+    for c: 0..<12 { s[0].picks[c] = Rect.{}; }
+    for c: 0..<3 { s[0].slots[c] = Rect.{}; }
+  }
   // the glade's camera, fitted to the space left of the log (above it on a phone)
   rx0 := pad; rx1 := ifx s[0].portrait then w - pad else s[0].panel.x0 - pad;
   ry0 := top; ry1 := ifx s[0].portrait then s[0].panel.y0 - pad else h - pad;
@@ -1491,6 +1574,84 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   return n;
 }
 
+// The token under (x, y) on the screen that's a foe of yours, or -1.
+token_at :: (s: [] Lab, x: f32, y: f32) -> int {
+  b := s[0].battle[0];
+  best := -1; bd := 40 * hi(s[0].dpr, 1);
+  for i: 0..<b.n {
+    if !rs_up(b.c[i]) || (s[0].me >= 0 && b.c[i].team == b.c[s[0].me].team) { continue; }
+    p := proj(s, wx(s[0].dx[i]), 0.9, wz(s[0].dy[i]));
+    if p.z <= 0 { continue; }
+    d := abs(p.x - x) + abs(p.y - y);
+    if d < bd { bd = d; best = i; }
+  }
+  return best;
+}
+// A small picture for a hotbar slot, in strokes: a sword, a burst, or two chevrons.
+slot_icon :: (out: [] f32, at: int, r: Rect, which: int, k: f32, c: Col) -> int {
+  n := at; cx := (r.x0 + r.x1) / 2; cy := (r.y0 + r.y1) / 2 - 4 * k; e := (r.x1 - r.x0) * 0.26; w := 2.2 * k;
+  if which == ACT_ATTACK {
+    n = seg(out, n, cx - e, cy + e, cx + e, cy - e, w, 0.95, c);
+    n = seg(out, n, cx - e * 0.75, cy + e * 0.15, cx - e * 0.15, cy + e * 0.75, w, 0.95, c);
+  } else if which == ACT_POWER {
+    for a: 0..<8 { an := f32(a) * 0.7853982; n = seg(out, n, cx + cos(an) * e * 0.3, cy + sin(an) * e * 0.3, cx + cos(an) * e, cy + sin(an) * e, w, 0.95, c); }
+  } else {
+    for v: 0..<2 { ox := f32(v) * e * 0.8 - e * 0.5; n = seg(out, n, cx + ox - e * 0.4, cy - e * 0.6, cx + ox + e * 0.2, cy, w, 0.95, c); n = seg(out, n, cx + ox + e * 0.2, cy, cx + ox - e * 0.4, cy + e * 0.6, w, 0.95, c); }
+  }
+  return n;
+}
+// Player mode's bar: the Spectator/Player switch always; when playing, the class picker, your
+// hero's ring and your target's, and the hotbar, each slot filling as your next turn comes round.
+draw_player :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+  n := at;
+  pb := s[0].pbtn;
+  n = box_lines(out, n, pb, 0.8 * k, ifx s[0].pressing == 4 then 0.9 else 0.45, DIM);
+  n = say_mid(out, n, ifx s[0].player then "PLAYER" else "SPECTATOR", (pb.x0 + pb.x1) / 2, (pb.y0 + pb.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, ifx s[0].player then GOLD else WHITE));
+  if !s[0].player { return n; }
+  b := bt(s);
+  for c: 0..<12 {
+    r := s[0].picks[c];
+    on := c == s[0].pick;
+    n = box_lines(out, n, r, 0.8 * k, ifx on then 0.95 else 0.4, ifx on then GOLD else DIM);
+    nm := RS_CLASS[ROSTER[c]];
+    cp := lo(8 * k, 8 * k * (r.x1 - r.x0 - 6 * k) / hi(text_width(nm, 8 * k), 1));
+    n = say_mid(out, n, nm, (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2 + 4 * k, cp, ink(k, ifx on then 1 else 0.7, ifx on then GOLD else WHITE));
+  }
+  me := s[0].me;
+  if s[0].view == VIEW_GLADE {
+    if me >= 0 { n = ring3(s, out, n, wx(s[0].dx[me]), wz(s[0].dy[me]), 0.78, 0.06, 2.5 * k, 1, GOLD); }
+    if s[0].target >= 0 && rs_up(b[0].c[s[0].target]) { n = ring3(s, out, n, wx(s[0].dx[s[0].target]), wz(s[0].dy[s[0].target]), 0.7, 0.06, 2.5 * k, 1, RED); }
+  }
+  // the hotbar
+  ready := 1.0f32;
+  if me >= 0 { ready = lo(1, hi(0, (b[0].clock - s[0].acted[me]) / rs_beat(b))); }
+  for c: 0..<3 {
+    r := s[0].slots[c];
+    on := c == s[0].act;
+    n = box_lines(out, n, r, ifx on then 1.6 * k else 0.9 * k, ifx on then 1 else 0.55, ifx on then GOLD else DIM);
+    // the turn coming round: the slot fills from its foot
+    fill := (r.y1 - r.y0 - 4 * k) * ready;
+    for row: 0..<6 { yy := r.y1 - 2 * k - fill * f32(row) / 5; n = seg(out, n, r.x0 + 3 * k, yy, r.x1 - 3 * k, yy, 0.7 * k, ifx on then 0.35 else 0.18, ifx on then GOLD else DIM); }
+    n = slot_icon(out, n, r, c, k, ifx on then GOLD else WHITE);
+    key: [2] u8; key[0] = cast(u8) ('1' + c);
+    n = say_at(out, n, cast(string) key[0..<1], r.x1 - 10 * k, r.y0 + 11 * k, 8 * k, ink(k, 0.9, WHITE));
+    nm := ifx c == ACT_ATTACK then "ATTACK" else ifx c == ACT_DASH then "DASH" else ifx me >= 0 then RS_CLASS[b[0].c[me].klass] else "POWERS";
+    cp := lo(7.5 * k, 7.5 * k * (r.x1 - r.x0 - 4 * k) / hi(text_width(nm, 7.5 * k), 1));
+    n = say_mid(out, n, nm, (r.x0 + r.x1) / 2, r.y1 - 6 * k, cp, ink(k, 0.85, ifx on then GOLD else WHITE));
+  }
+  // who you are, above the hotbar
+  l: [LINE_CAP] u8;
+  m := 0;
+  if me >= 0 {
+    cr := b[0].c[me];
+    m = put(l[..], 0, "YOU: "); m = put(l[..], m, cast(string) cr.name[0..<cr.name_n]); m = put(l[..], m, ", ");
+    m = put(l[..], m, RS_CLASS[cr.klass]); m = put(l[..], m, "   HP "); m = put_int(l[..], m, cr.hp); m = put(l[..], m, "/"); m = put_int(l[..], m, cr.hp_max);
+    m = put(l[..], m, "   WASD WALKS   CLICK ONE OF THE DEAD TO TARGET IT");
+  } else { m = put(l[..], 0, "YOU HAVE FALLEN. PICK A CLASS TO PLAY ANOTHER HERO."); }
+  r0 := s[0].slots[0]; r2 := s[0].slots[2];
+  n = say_mid(out, n, cast(string) l[0..<m], (r0.x0 + r2.x1) / 2, r0.y0 - 10 * k, 9 * k, ink(k, 0.9, ifx me >= 0 then WHITE else RED));
+  return n;
+}
 draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   n := at; pad := 16 * k;
   n = say_at(out, n, "5E LAB", pad, 38 * k, 18 * k, ink(k, 0.95, WHITE));
@@ -1504,7 +1665,7 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   n = say_at(out, n, cast(string) l[0..<m], sx0, sy0, ifx s[0].portrait then 8.5 * k else 10 * k, ink(k, 0.7, DIM));
   m = put(l[..], 0, "SPACE "); m = put(l[..], m, ifx s[0].paused then "RESUME" else "PAUSE");
   m = put(l[..], m, "   F "); m = put(l[..], m, ifx s[0].fast then "NORMAL SPEED" else "FAST");
-  m = put(l[..], m, "   R NEW BATTLE   H HORDE/ARMIES   V 2D/3D   M MODE");
+  m = put(l[..], m, "   R NEW BATTLE   H HORDE/ARMIES   P PLAY   V 2D/3D   M MODE");
   if s[0].view == VIEW_GLADE { m = put(l[..], m, "   DRAG ORBIT   SHIFT+DRAG PAN   WHEEL ZOOM"); }
   n = say_at(out, n, cast(string) l[0..<m], sx0, sy0 + 16 * k, ifx s[0].portrait then 7 * k else 8 * k, ink(k, 0.45, FAINT));
   // frames a second, in the scene's bottom-right corner (not in the golden, which has no clock)
@@ -1564,6 +1725,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   }
   n = draw_panel(s, out, n, k);
   n = draw_top(s, out, n, width, k, t);
+  n = draw_player(s, out, n, k);
   for i: 0..<u.count { u[i] = 0; }
   u[0] = width; u[1] = height; u[2] = t; u[3] = 1;
   u[U_GRID] = s[0].gx; u[U_GRID + 1] = s[0].gy; u[U_GRID + 2] = s[0].cell;
@@ -1634,6 +1796,9 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   if key == 'r' || key == 'R' { new_battle(s); return true; }
   if key == 'v' || key == 'V' { s[0].view = 1 - s[0].view; return true; }
   if key == 'm' || key == 'M' { switch_mode(s); return true; }
+  if key == 'p' || key == 'P' { set_player(s, !s[0].player); return true; }
+  if s[0].player && key >= '1' && key <= '3' { s[0].act = key - '1'; return true; }
+  if s[0].player && (key == '[' || key == ']') { s[0].pick = (s[0].pick + ifx key == ']' then 1 else 11) % 12; pick_hero(s); return true; }
   if key == 'h' || key == 'H' { s[0].horde = !s[0].horde; s[0].wins[0] = 0; s[0].wins[1] = 0; s[0].wins[2] = 0; new_battle(s); return true; }
   if s[0].view == VIEW_GLADE {
     h := hold_bit(key);
@@ -1678,6 +1843,13 @@ fly :: (s: [] Lab, dt: f32) {
   ease := lo(1, t * 9);
   h := s[0].held;
   if s[0].view != VIEW_GLADE { h = 0; }
+  // in Player mode W, A, S and D walk your hero, and the camera follows it
+  if s[0].player { h = h & (1023 - HOLD_W - HOLD_A - HOLD_S - HOLD_D); }
+  if s[0].player && s[0].me >= 0 {
+    follow := lo(1, t * 4);
+    s[0].px += (wx(s[0].dx[s[0].me]) - s[0].px) * follow;
+    s[0].pz += (wz(s[0].dy[s[0].me]) - s[0].pz) * follow;
+  }
   speed := s[0].dist * 0.9;   // metres a second: a long way out, it flies faster
   s[0].vx += (axis(h, HOLD_D, HOLD_A) * speed - s[0].vx) * ease;
   s[0].vz += (axis(h, HOLD_W, HOLD_S) * speed - s[0].vz) * ease;
@@ -1721,6 +1893,12 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
     if in_rect(s[0].back, x, y) { s[0].pressing = 1; return true; }
     if in_rect(s[0].flip, x, y) { s[0].pressing = 2; return true; }
     if in_rect(s[0].modal, x, y) { s[0].pressing = 3; return true; }
+    if in_rect(s[0].pbtn, x, y) { s[0].pressing = 4; return true; }
+    if s[0].player {
+      for c: 0..<12 { if in_rect(s[0].picks[c], x, y) { s[0].pressing = 10 + c; return true; } }
+      for c: 0..<3 { if in_rect(s[0].slots[c], x, y) { s[0].pressing = 30 + c; return true; } }
+    }
+    s[0].down_x = x; s[0].down_y = y;
     if s[0].view == VIEW_GLADE && !in_rect(s[0].panel, x, y) {
       // a second finger: the two pinch to zoom and move together to pan
       if kind == 1 && s[0].fingers == 1 && s[0].fing_id[0] != id {
@@ -1768,6 +1946,14 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
   if held == 1 { if phase == 2 && in_rect(s[0].back, x, y) { leave_to(s, "/worlds"); } return true; }
   if held == 2 { if phase == 2 && in_rect(s[0].flip, x, y) { s[0].view = 1 - s[0].view; } return true; }
   if held == 3 { if phase == 2 && in_rect(s[0].modal, x, y) { switch_mode(s); } return true; }
+  if held == 4 { if phase == 2 && in_rect(s[0].pbtn, x, y) { set_player(s, !s[0].player); } return true; }
+  if held >= 10 && held < 22 { if phase == 2 && in_rect(s[0].picks[held - 10], x, y) { s[0].pick = held - 10; pick_hero(s); } return true; }
+  if held >= 30 && held < 33 { if phase == 2 && in_rect(s[0].slots[held - 30], x, y) { s[0].act = held - 30; } return true; }
+  // in Player mode a click (not a drag) on one of the dead makes it your target
+  if phase == 2 && s[0].player && s[0].view == VIEW_GLADE && abs(x - s[0].down_x) + abs(y - s[0].down_y) < 8 * hi(s[0].dpr, 1) {
+    s[0].target = token_at(s, x, y);
+    return true;
+  }
   return false;
 }
 lab_cursor :: (s: [] Lab) -> int #export_c { return 0; }
@@ -1940,4 +2126,22 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   for i: 0..<70 { step(s[..], f32(STEP)); }
   #assert s[0].raised >= 25 && s[0].pool == HORDE - s[0].raised && s[0].fell[HEROES] == 0;   // a fresh one ran in
   #assert lab_key(s[..], 'h', 0) && !s[0].horde && b[0].c[HEROES - 1].team == 1;
+}
+
+#test "Player mode: P plays the picked class, the hotbar keys pick the action, and D walks you right" #steps 2000000000 {
+  s: [1] Lab; s[0].skeletons = 0; s[0].horde = false; ok: bool; n: int;
+  n = frame_at(s[..], 1600, 1000, 1, 0.016);
+  ok = lab_key(s[..], 'p', 0);
+  #assert s[0].player && s[0].me >= 0 && s[0].battle[0].c[s[0].me].klass == RS_FIGHTER;
+  ok = lab_key(s[..], ']', 0);
+  #assert s[0].battle[0].c[s[0].me].klass == ROSTER[7];
+  ok = lab_key(s[..], '3', 0); #assert s[0].act == ACT_DASH;
+  ok = lab_key(s[..], '1', 0); #assert s[0].act == ACT_ATTACK;
+  me := s[0].me; x0 := s[0].battle[0].c[me].x;
+  ok = lab_key(s[..], 'd', 0);
+  for i: 0..<200 { step(s[..], f32(STEP)); }
+  #assert s[0].battle[0].c[me].x > x0;
+  n = frame_at(s[..], 1600, 1000, 1, 0.016);
+  #assert n > 300 && s[0].slots[0].x1 > s[0].slots[0].x0;
+  ok = lab_key(s[..], 'p', 0); #assert !s[0].player && s[0].me < 0;
 }

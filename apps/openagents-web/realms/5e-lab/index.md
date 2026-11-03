@@ -46,3 +46,13 @@ This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1
 ## The Horde
 
 The Horde is the default battle. All 48 heroes fight as one company, the Living, in the middle of the glade: the casting classes inside an 8 by 6 block and the rest round its rim. 160 Skeletons start on the grid's two outer rings and run at them, taking the Dash action until they're within reach. When one falls, a fresh Skeleton runs in from a free square on the edge a second later, until the Horde has sent 1,000. The Living win if they outlast all 1,000. Press H to switch between the Horde and the two armies.
+
+## Playing a hero
+
+Press P, or the SPECTATOR button at the top, to switch to Player mode. You play one hero of the Living: pick its class on the bar along the top of the scene, or with [ and ]. W, A, S and D walk your hero on its turn, and the camera follows it. Click one of the dead to make it your target (a red ring); your hero has a gold ring. The hotbar at the foot of the scene holds three slots, and each fills as your next turn comes round:
+
+1. Attack: your target if it's within reach, else whoever is, else a shot with a ranged weapon or your class's own spell.
+2. Your class's powers: the turn your class plays on its own, after you've walked.
+3. Dash: double your movement this turn.
+
+If your hero falls, pick a class to play another. Press P again to go back to watching.
