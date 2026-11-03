@@ -126,6 +126,11 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   if !rl_path(request, game[..], code[..], ns[..]) { return -1; }
   r := rl_find(v, cast(string) game[0..<ns[0]], cast(string) code[0..<ns[1]]);
   if r < 0 { return -1; }
+  // an everglade room needs one of the server's simulations (room-everglade.coax EG_ROOMS)
+  if v[0].relays[r].limited && eg_room_of(v, r) < 0 {
+    if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
+    return -1;
+  }
   seat := rl_seat(v, r);
   if seat < 0 {
     // full: a room nobody is in yet stays closed
@@ -140,6 +145,7 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   rl_queue(v, r, conn, -1, rl_head(h[..], 'y', seat, false), cast(string) rest[0..<k]);
   for i: 0..<CONNS { if i != conn && v[0].conns[i].live && v[0].conns[i].relay == r { rl_queue(v, r, conn, -1, rl_head(h[..], 'j', v[0].conns[i].seat, false), ""); } }
   rl_queue(v, r, -1, conn, rl_head(h[..], 'j', seat, false), "");
+  if v[0].relays[r].limited { eg_join(v, r, conn, seat); }
   return seat;
 }
 // Whether an everglade socket may send a frame of bytes now (a token bucket for frames and one
@@ -181,6 +187,8 @@ rl_heard :: (v: [] RmServer, conn: int, text: string) {
     rl_queue(v, c.relay, conn, -1, cast(string) b[0..<k], "");
     return;
   }
+  // an everglade room is the server's world: its frames are intents, never passed on
+  if v[0].relays[c.relay].limited { eg_heard(v, c.relay, c.seat, text); return; }
   h: [16] u8;
   rl_queue(v, c.relay, -1, conn, rl_head(h[..], 'm', c.seat, true), text);
 }
@@ -189,6 +197,7 @@ rl_left :: (v: [] RmServer, conn: int) {
   v[0].conns[conn].live = false;
   h: [16] u8;
   rl_queue(v, c.relay, -1, conn, rl_head(h[..], 'l', c.seat, false), "");
+  if v[0].relays[c.relay].limited { eg_left(v, c.relay, c.seat); }
   if rl_people(v, c.relay) == 0 { v[0].relays[c.relay].live = false; }
 }
 rl_people :: (v: [] RmServer, r: int) -> int {
@@ -329,11 +338,13 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   rm_left(v[..], 12);
   #assert rl_heard_by(v[..], 0, b[..]) == "l 12";
   #assert rm_join(v[..], 20, ev) == 12;
-  #assert rl_heard_by(v[..], 20, b[..]) == "y 12 15 1762190000123|j 0|j 1|j 2|j 3|j 4|j 5|j 6|j 7|j 8|j 9|j 10|j 11|j 13|j 14|j 15";
+  // the join, then the world's header (room-everglade.coax), then who is in
+  heard := rl_heard_by(v[..], 20, b[..]);
+  #assert heard[0..<25] == "y 12 15 1762190000123|j 0" && eg_test_has(heard, "|j 13|j 14|j 15|W 0 30 ");
+  // an everglade room's frames are the server's intents, never passed on
   rm_heard(v[..], 15, "P 1 0 0 0 0 0 0 0 0 0");
-  #assert rl_heard_by(v[..], 20, b[..]) == "m 15 P 1 0 0 0 0 0 0 0 0 0";
-  rm_heard(v[..], 20, "H 1 x 0 0 0 Ana");
-  #assert rl_heard_by(v[..], 3, b[..]) == "m 12 H 1 x 0 0 0 Ana";
+  rm_heard(v[..], 20, "H 1 x 0 0 Ana");
+  #assert v[0].q_n == 0;
   // One-Shot's rooms: four seats, as before
   os := "GET /api/room/relay/one-shot/abcd HTTP/1.1\r\n\r\n";
   for i: 0..<4 { #assert rm_join(v[..], 30 + i, os) == i; }
@@ -354,7 +365,7 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   #assert v[0].q_n == 1 && rm_relay_next(v[..]) == 12 && v[0].rto[1] && !v[0].rto[0] && cast(string) v[0].rout[0..<12] == "t 123456 900";
   // anything else that starts with t is a frame
   rm_heard(v[..], 1, "t x");
-  #assert rl_heard_by(v[..], 0, b[..]) == "m 1 t x";
+  #assert v[0].q_n == 0;
   #assert rl_is_ping("t 0") && rl_is_ping("t -5") && !rl_is_ping("t ") && !rl_is_ping("t 1 2") && !rl_is_ping("tt 1");
 }
 #test "relay: an everglade socket's rate limits drop, count and at last close; other games are unlimited (relay item 4)" #steps 2000000000 {
@@ -367,22 +378,22 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   q := rl_heard_by(v[..], 1, b[..]);
   // a burst of 60, then the 61st is dropped
   for i: 0..<61 { rm_heard(v[..], 0, "P 1"); }
-  #assert v[0].q_n == 60 && rm_relay_dropped(v[..]) == 1 && v[0].conns[0].dropped == 1 && !rm_relay_kicked(v[..], 0);
+  #assert rm_relay_dropped(v[..]) == 1 && v[0].conns[0].dropped == 1 && !rm_relay_kicked(v[..], 0);
   q = rl_heard_by(v[..], 1, b[..]);
   // a second later 40 more
   rm_clock(v[..], 1000, 1);
   for i: 0..<41 { rm_heard(v[..], 0, "P 2"); }
-  #assert v[0].q_n == 40 && rm_relay_dropped(v[..]) == 2;
+  #assert rm_relay_dropped(v[..]) == 2;
   q = rl_heard_by(v[..], 1, b[..]);
   // a frame over 1,024 bytes is dropped
   big: [1025] u8; for i: 0..<big.count { big[i] = 'x'; }
   rm_clock(v[..], 3000, 1);
   rm_heard(v[..], 0, cast(string) big[..]);
-  #assert v[0].q_n == 0 && rm_relay_dropped(v[..]) == 3;
+  #assert rm_relay_dropped(v[..]) == 3;
   // 16 KB a second: sixteen frames of 1,024 bytes, then the seventeenth waits
   rm_clock(v[..], 5000, 1);
   for i: 0..<17 { rm_heard(v[..], 0, cast(string) big[0..<1024]); }
-  #assert v[0].q_n == 16 && rm_relay_dropped(v[..]) == 4;
+  #assert rm_relay_dropped(v[..]) == 4;
   q = rl_heard_by(v[..], 1, b[..]);
   // over the limit for 10 s (a flood every 100 ms): closed
   t := 6000;

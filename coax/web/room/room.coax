@@ -16,6 +16,8 @@
 //   coax/web/room/build.sh && coax/web/room/bin/room --port 8830
 #load "../../../apps/openagents-web/orbitleague.coax";
 #load "room-relay.coax";
+#load "../../../apps/openagents-web/everglade5e-room-rules.coax";
+#load "room-everglade.coax";
 
 ROOMS :: 8;
 CONNS :: 512;
@@ -51,6 +53,7 @@ RmServer :: struct {
   mono_ms: int; wall_ms: int;   // the host's clocks (rm_clock)
   dropped: int;             // frames the rate limits dropped
   jout: [RELAY_JSON] u8;    // rm_rooms' answer
+  eg: [EG_ROOMS] EgRoom;    // the everglade rooms' simulations (room-everglade.coax)
 }
 
 // Every field's default (seats -1, the game's own defaults): the host calls
@@ -58,6 +61,7 @@ RmServer :: struct {
 rm_init :: (v: [] RmServer) #export_c {
   for i: 0..<CONNS { v[0].conns[i] = RmConn.{}; }
   for r: 0..<RELAYS { v[0].relays[r].live = false; }
+  for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
   v[0].q_head = 0; v[0].q_n = 0;
   for r: 0..<ROOMS { v[0].rooms[r].live = false; v[0].rooms[r].s[0] = OrbitLeague.{}; }
 }

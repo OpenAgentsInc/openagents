@@ -1,0 +1,623 @@
+// The room server's Everglade rooms: the server is the authority (spec
+// docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.1 and 3.6; GitHub #12705).
+// An everglade relay room (room-relay.coax, game "everglade") relays nothing: its seats' frames are
+// intents for the room's simulation here, which runs at EG_HZ, and each seat hears the world from it.
+//   in:  H 1 LOOK CLASS FLAGS NAME   I SEQ KX KY PX PY THETA B   C SEQ SLOT AX AY AZ TGT
+//        E SEQ SLOT   R SEQ   (t MS, the relay's)
+//   out: W TICK HZ SEED DAY WEATHER   D TICK ACK F E;E;...   r SEQ REASON
+// D's entries: p (every player, when its fields change; your own every frame, the ACK's state),
+// n (who a seat is, on change), c (a creature or zone within EG_VIEW m), x c EID (one gone from
+// your view), and the events near you (e cast, e hit, e heal, e die, e rebuild).
+//
+// Each tick: every seat's queued inputs are stepped, one controller step of 1/EG_HZ s each and no
+// more than the tick allows (EG_BANK), by the shared movement step on the room's Everglade world
+// (everglade-step.coax, everglade-move.coax: the page predicts with the same calls). That step
+// lives in other C units, so the host runs it: rm_eg_input hands it a seat's next input and
+// rm_eg_moved takes the state back. Then casts that strike now are rolled by the SRD 5e engine
+// (apps/openagents-web/everglade5e-room-rules.coax: one battle for the 16 seats), the engine's
+// clock moves on, and every EG_SEND ticks each seat gets its D frame.
+
+EG_ROOMS :: 16;                 // simulated rooms at once (256 players)
+EG_SEATS :: 16;
+EG_HZ :: 30;
+EG_SEND :: 2;                   // a D frame every 2 ticks (15 Hz)
+EG_INPUTS :: 8;                 // inputs queued a seat; past it the oldest go
+EG_IN_FIELDS :: 7;              // SEQ KX KY PX PY THETA B: what rm_eg_input hands the host
+EG_BANK :: 4;                   // steps a seat may be owed: a page can't move faster than the tick
+EG_VIEW :: 120.0;               // m: what a seat hears of creatures, zones and events
+EG_CHUNK :: 3800;               // a D frame's entries at most; past it, F 2 (more follows)
+EG_CASTS :: 16;                 // casts on their way (a slot's delay from press to strike)
+EG_CAST_GAP :: 8;               // ticks between a seat's casts at least (about 4 a second)
+EG_NAME :: 24; EG_LOOK :: 32;
+EG_EVENTS :: 96; EG_EV_BYTES :: 6144;
+EG_TGT_SEAT :: 1000;            // TGT codes (spec 3.6): 1000 + SS a seat, 2000 + EID a creature
+// the wire's creature kinds (apps/openagents-web/everglade-wire.coax WK_*), by the bar slot that
+// makes them: SP_SLOTS (4) + the ability (everglade-abilities.coax AB_*, everglade-circle.coax)
+WK_PACK_ :: 10; WK_STONE_ :: 20; WK_TENTACLES_ :: 21; WK_THORNS_ :: 22; WK_ZONE_ :: 24;
+EG_SLOT_STONE :: 10; EG_SLOT_TENTACLES :: 12; EG_SLOT_CONJURE :: 32; EG_SLOT_THORNS :: 36;
+EG_SP_SLOTS :: 4;
+
+EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: int; }
+EgPose :: struct { x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; g: int; clip: int; carry: int; }
+EgSeat :: struct {
+  live: bool; conn: int = -1;
+  q: [EG_INPUTS] EgIn; q_n: int; bank: int; ack: int;
+  pose: EgPose; placed: bool;    // placed: the host has put it in the world (rm_eg_moved)
+  look: [EG_LOOK] u8; look_n: int; klass: [EG_NAME] u8; klass_n: int; flags: int; name: [EG_NAME] u8; name_n: int;
+  last_cast: int = -1000;
+  heard_p: [EG_SEATS] int; heard_n: [EG_SEATS] int;   // a hash of what it last heard of each seat (0 nothing)
+  heard_z: [E5RR_ZONES] int;                          // the zone id it last heard in each zone slot (0 none)
+  full: bool;                                         // its next D is a snapshot
+}
+EgCast :: struct { on: bool; seat: int; slot: int; x: f32; y: f32; z: f32; tgt: int; due: int; }
+EgRoom :: struct {
+  live: bool; relay: int = -1;
+  tick: int; seed: int;
+  seat: [EG_SEATS] EgSeat;
+  casts: [EG_CASTS] EgCast;
+  rules: [1] E5rRoom;
+  // the events since the last D, as entry text, each with where it happened
+  ev: [EG_EV_BYTES] u8; ev_bytes: int; ev_n: int;
+  ev_at: [EG_EVENTS] int; ev_len: [EG_EVENTS] int; ev_x: [EG_EVENTS] f32; ev_z: [EG_EVENTS] f32; ev_all: [EG_EVENTS] bool;
+}
+
+// ---- text
+
+eg_n :: (b: [] u8, at: int, v: int) -> int {
+  n := put(b, at, " ");
+  if v < 0 { n = put(b, n, "-"); return put_int(b, n, -v); }
+  return put_int(b, n, v);
+}
+eg_round :: (v: f32) -> int {
+  if !(v == v) || v > 1.0e9 || v < -1.0e9 { return 0; }
+  return cast(int) floor(v + 0.5);
+}
+eg_cm :: (b: [] u8, at: int, m: f32) -> int { return eg_n(b, at, eg_round(m * 100.0)); }
+eg_hash :: (t: string) -> int {
+  h := 2166136261;
+  for c: t { h = ((h ^ cast(int) c) * 16777619) & 4294967295; }
+  return ifx h == 0 then 1 else h;
+}
+// The k-th space-separated field of t ("" past the last).
+eg_field :: (t: string, k: int) -> string {
+  i := 0; f := 0;
+  while i <= t.count {
+    j := i;
+    while j < t.count && t[j] != ' ' { j += 1; }
+    if f == k { return t[i..<j]; }
+    f += 1; i = j + 1;
+  }
+  return "";
+}
+eg_fields :: (t: string) -> int {
+  if t.count == 0 { return 0; }
+  n := 1;
+  for c: t { if c == ' ' { n += 1; } }
+  return n;
+}
+eg_num :: (s: string) -> int {
+  i := 0; neg := false; v := 0;
+  if s.count > 0 && s[0] == '-' { neg = true; i = 1; }
+  while i < s.count && i < 16 && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(int) (s[i] - '0'); i += 1; }
+  return ifx neg then -v else v;
+}
+// A whole number: an optional minus and up to 15 digits.
+eg_is_num :: (s: string) -> bool {
+  if s.count == 0 || s.count > 16 { return false; }
+  i := ifx s[0] == '-' then 1 else 0;
+  if i >= s.count { return false; }
+  while i < s.count { if s[i] < '0' || s[i] > '9' { return false; } i += 1; }
+  return true;
+}
+eg_clamp :: (v: int, a: int, b: int) -> int { return ifx v < a then a else (ifx v > b then b else v); }
+// A word for a frame: letters, digits, '.', '-' and '_' only.
+eg_word :: (t: string, out: [] u8) -> int {
+  n := 0;
+  for c: t {
+    if n >= out.count { break; }
+    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_';
+    if ok { out[n] = c; n += 1; }
+  }
+  return n;
+}
+
+// ---- rooms
+
+eg_room_at :: (v: [] RmServer, r: int) -> int {
+  for k: 0..<EG_ROOMS { if v[0].eg[k].live && v[0].eg[k].relay == r { return k; } }
+  return -1;
+}
+// The simulation of relay room r, made when its first seat sits: its index, or -1 (all taken).
+eg_room_of :: (v: [] RmServer, r: int) -> int {
+  k := eg_room_at(v, r);
+  if k >= 0 { return k; }
+  for q: 0..<EG_ROOMS {
+    if v[0].eg[q].live { continue; }
+    v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0;
+    v[0].eg[q].seed = 1 + (v[0].wall_ms / 7 + r * 7919) % 999999937;
+    for s: 0..<EG_SEATS { v[0].eg[q].seat[s] = EgSeat.{}; }
+    for c: 0..<EG_CASTS { v[0].eg[q].casts[c].on = false; }
+    v[0].eg[q].ev_n = 0; v[0].eg[q].ev_bytes = 0;
+    e5rr_start(v[0].eg[q].rules[..], v[0].eg[q].seed);
+    return q;
+  }
+  return -1;
+}
+// A seat sat down in everglade relay room r: it hears the world's header (after the relay's y), and
+// its first D is a snapshot. The host puts it in the world (rm_eg_unplaced, rm_eg_moved) first.
+eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
+  k := eg_room_of(v, r);
+  if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
+  v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_BANK};
+  e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
+  b: [128] u8;
+  n := put(b[..], 0, "W"); n = eg_n(b[..], n, v[0].eg[k].tick); n = eg_n(b[..], n, EG_HZ); n = eg_n(b[..], n, v[0].eg[k].seed);
+  n = eg_n(b[..], n, 0); n = eg_n(b[..], n, 0);   // the day and the weather: the page's own until the world runs them
+  rl_queue(v, r, conn, -1, cast(string) b[0..<n], "");
+  for s: 0..<EG_SEATS { v[0].eg[k].seat[s].heard_p[seat] = 0; v[0].eg[k].seat[s].heard_n[seat] = 0; }
+}
+eg_left :: (v: [] RmServer, r: int, seat: int) {
+  k := eg_room_at(v, r);
+  if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
+  v[0].eg[k].seat[seat].live = false;
+  e5rr_leave(v[0].eg[k].rules[..], seat);
+  for c: 0..<EG_CASTS { if v[0].eg[k].casts[c].seat == seat { v[0].eg[k].casts[c].on = false; } }
+  any := false;
+  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { any = true; } }
+  if !any { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
+}
+eg_refuse :: (v: [] RmServer, k: int, seat: int, seq: int, why: string) {
+  b: [64] u8;
+  n := put(b[..], 0, "r"); n = eg_n(b[..], n, seq); n = put(b[..], n, " "); n = put(b[..], n, why);
+  rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[seat].conn, -1, cast(string) b[0..<n], "");
+}
+// An event since the last D, heard within EG_VIEW of (x, z), or by everyone (all).
+eg_event :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool) {
+  e := v[0].eg[k].ev_n;
+  if e >= EG_EVENTS || v[0].eg[k].ev_bytes + text.count > EG_EV_BYTES { return; }
+  a := v[0].eg[k].ev_bytes;
+  for i: 0..<text.count { v[0].eg[k].ev[a + i] = text[i]; }
+  v[0].eg[k].ev_at[e] = a; v[0].eg[k].ev_len[e] = text.count; v[0].eg[k].ev_x[e] = x; v[0].eg[k].ev_z[e] = z; v[0].eg[k].ev_all[e] = all;
+  v[0].eg[k].ev_bytes += text.count; v[0].eg[k].ev_n = e + 1;
+}
+
+// ---- intents
+
+// A seat's frame (past the relay's rate limits and pings).
+eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
+  k := eg_room_at(v, r);
+  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || text[1] != ' ' { return; }
+  c := text[0];
+  if c == 'I' { eg_heard_input(v, k, seat, text); return; }
+  if c == 'C' { eg_heard_cast(v, k, seat, text); return; }
+  if c == 'H' { eg_heard_hello(v, k, seat, text); return; }
+  if c == 'E' {
+    if eg_fields(text) != 3 || !eg_is_num(eg_field(text, 1)) || !eg_is_num(eg_field(text, 2)) { return; }
+    seq := eg_num(eg_field(text, 1));
+    if !e5rr_end(v[0].eg[k].rules[..], seat, eg_num(eg_field(text, 2))) { eg_refuse(v, k, seat, seq, "nothing"); }
+    return;
+  }
+  if c == 'R' {
+    // no piece of the town breaks on the server yet, so a rebuild is only the word to every page
+    p := v[0].eg[k].seat[seat].pose;
+    eg_event(v, k, "e rebuild", p.x, p.z, true);
+    return;
+  }
+}
+// I SEQ KX KY PX PY THETA B: one step's input, queued for the tick.
+eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
+  if eg_fields(text) != 8 { return; }
+  for f: 1..<8 { if !eg_is_num(eg_field(text, f)) { return; } }
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  seq := eg_num(eg_field(text, 1));
+  n := st[0].q_n;
+  if seq <= st[0].ack || (n > 0 && seq <= st[0].q[n - 1].seq) { return; }   // old or repeated
+  if n >= EG_INPUTS {
+    for i: 1..<EG_INPUTS { st[0].q[i - 1] = st[0].q[i]; }
+    n = EG_INPUTS - 1;
+  }
+  st[0].q[n] = EgIn.{seq = seq, kx = eg_clamp(eg_num(eg_field(text, 2)), -100, 100), ky = eg_clamp(eg_num(eg_field(text, 3)), -100, 100),
+                     px = eg_clamp(eg_num(eg_field(text, 4)), -100, 100), py = eg_clamp(eg_num(eg_field(text, 5)), -100, 100),
+                     theta = eg_clamp(eg_num(eg_field(text, 6)), -100000, 100000), b = eg_clamp(eg_num(eg_field(text, 7)), 0, 7)};
+  st[0].q_n = n + 1;
+}
+// H 1 LOOK CLASS FLAGS NAME
+eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
+  if eg_fields(text) < 6 || eg_field(text, 1) != "1" { return; }
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  st[0].look_n = eg_word(eg_field(text, 2), st[0].look[..]);
+  st[0].klass_n = eg_word(eg_field(text, 3), st[0].klass[..]);
+  st[0].flags = eg_clamp(eg_num(eg_field(text, 4)), 0, 255);
+  // the name is the rest of the line: letters, digits, spaces, '-' and '_' ("-" none)
+  at := 0; sp := 0;
+  while at < text.count && sp < 5 { if text[at] == ' ' { sp += 1; } at += 1; }
+  m := 0;
+  while at < text.count && m < EG_NAME {
+    ch := text[at]; at += 1;
+    ok := (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || (ch == ' ' && m > 0) || ch == '-' || ch == '_';
+    if ok { st[0].name[m] = ch; m += 1; }
+  }
+  while m > 0 && st[0].name[m - 1] == ' ' { m -= 1; }
+  st[0].name_n = ifx m == 1 && st[0].name[0] == '-' then 0 else m;
+}
+// C SEQ SLOT AX AY AZ TGT: a cast at the aim. Checked, announced (e cast), then rolled at its strike.
+eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
+  if eg_fields(text) != 7 { return; }
+  for f: 1..<7 { if !eg_is_num(eg_field(text, f)) { return; } }
+  seq := eg_num(eg_field(text, 1));
+  slot := eg_num(eg_field(text, 2));
+  if slot < 0 || slot >= FB_EG_SLOTS { eg_refuse(v, k, seat, seq, "slot"); return; }
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  a := v[0].eg[k].rules[0].bar[slot];
+  if a.kind == FB_WORLD { eg_refuse(v, k, seat, seq, "slot"); return; }
+  if v[0].eg[k].tick - st[0].last_cast < EG_CAST_GAP { eg_refuse(v, k, seat, seq, "cooldown"); return; }
+  o: [E5RR_OUT_FLOATS] f32;
+  e5rr_seat_out(v[0].eg[k].rules[..], seat, o[..]);
+  if o[4] > 0.5 { eg_refuse(v, k, seat, seq, "dead"); return; }
+  ax := f32(eg_num(eg_field(text, 3))) / 100.0; ay := f32(eg_num(eg_field(text, 4))) / 100.0; az := f32(eg_num(eg_field(text, 5))) / 100.0;
+  tgt := eg_num(eg_field(text, 6));
+  me := st[0].pose;
+  if a.tg == FB_SELF { ax = me.x; ay = me.y; az = me.z; }
+  else if a.kind == FB_SPELL {
+    // the spell's range (Everglade's own four: the old bar's 140 m), and 3 m for where you stand
+    reach := ifx slot < EG_SP_SLOTS then 140.0f32 else f32(rs_spell(a.sp).range_ft) * 0.3048f32 + 3.0f32;
+    if reach < 4.5 { reach = 4.5; }
+    dx := ax - me.x; dz := az - me.z;
+    if dx * dx + dz * dz > reach * reach { eg_refuse(v, k, seat, seq, "range"); return; }
+  }
+  free := -1;
+  for q: 0..<EG_CASTS { if !v[0].eg[k].casts[q].on && free < 0 { free = q; } }
+  if free < 0 { eg_refuse(v, k, seat, seq, "busy"); return; }
+  st[0].last_cast = v[0].eg[k].tick;
+  due := v[0].eg[k].tick + eg_round(a.delay * f32(EG_HZ));
+  v[0].eg[k].casts[free] = EgCast.{on = true, seat = seat, slot = slot, x = ax, y = ay, z = az, tgt = tgt, due = due};
+  b: [128] u8;
+  n := put(b[..], 0, "e cast"); n = eg_n(b[..], n, seat); n = eg_n(b[..], n, slot);
+  n = eg_cm(b[..], n, ax); n = eg_cm(b[..], n, ay); n = eg_cm(b[..], n, az);
+  n = eg_n(b[..], n, 1 + (v[0].eg[k].seed + v[0].eg[k].tick * 31 + seat * 977 + slot * 7) % 999983);
+  eg_event(v, k, cast(string) b[0..<n], ax, az, false);
+}
+
+// ---- the tick. The host, EG_HZ times a second for each live room: rm_eg_begin; for each seat
+// rm_eg_unplaced (then rm_eg_moved with seq 0 at the gate) and while rm_eg_input, the shared
+// step and rm_eg_moved; then rm_eg_end, and the queue out.
+
+// Room k's tick begins: each seat is owed one more step (EG_BANK at most). False: no such room.
+rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return false; }
+  v[0].eg[k].tick += 1;
+  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { v[0].eg[k].seat[s].bank = least(v[0].eg[k].seat[s].bank + 1, EG_BANK); } }
+  return true;
+}
+// Seat s's next input to step this tick, EG_IN_FIELDS into out (SEQ KX KY PX PY THETA B); false when
+// none is queued or none owed.
+rm_eg_input :: (v: [] RmServer, k: int, s: int, out: [] int) -> bool #export_c {
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < EG_IN_FIELDS { return false; }
+  st := v[0].eg[k].seat[s..<s + 1];
+  if !st[0].live || !st[0].placed || st[0].q_n == 0 || st[0].bank <= 0 { return false; }
+  i := st[0].q[0];
+  for q: 1..<st[0].q_n { st[0].q[q - 1] = st[0].q[q]; }
+  st[0].q_n -= 1; st[0].bank -= 1;
+  out[0] = i.seq; out[1] = i.kx; out[2] = i.ky; out[3] = i.px; out[4] = i.py; out[5] = i.theta; out[6] = i.b;
+  return true;
+}
+// Where seat s stands after the step of input seq (0: just placed), as the step left it.
+rm_eg_moved :: (v: [] RmServer, k: int, s: int, seq: int, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, g: int, clip: int, carry: int) #export_c {
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].live || !v[0].eg[k].seat[s].live { return; }
+  st := v[0].eg[k].seat[s..<s + 1];
+  st[0].pose = EgPose.{x = x, y = y, z = z, yaw = yaw, vx = vx, vy = vy, vz = vz, g = g, clip = clip, carry = carry};
+  if seq > st[0].ack { st[0].ack = seq; }
+  st[0].placed = true;
+  e5rr_place(v[0].eg[k].rules[..], s, x, z);
+}
+// Whether seat s sits and is still to be put in the world.
+rm_eg_unplaced :: (v: [] RmServer, k: int, s: int) -> bool #export_c {
+  return k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].live && v[0].eg[k].seat[s].live && !v[0].eg[k].seat[s].placed;
+}
+rm_eg_rooms :: () -> int #export_c { return EG_ROOMS; }
+rm_eg_seats :: () -> int #export_c { return EG_SEATS; }
+rm_eg_hz :: () -> int #export_c { return EG_HZ; }
+rm_eg_live :: (v: [] RmServer, k: int) -> bool #export_c { return k >= 0 && k < EG_ROOMS && v[0].eg[k].live; }
+rm_eg_seat_live :: (v: [] RmServer, k: int, s: int) -> bool #export_c { return rm_eg_live(v, k) && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].live; }
+
+// Room k's tick ends: the casts that strike now are rolled, the engine's clock moves on, its events
+// are heard, and every EG_SEND ticks each seat gets its state.
+rm_eg_end :: (v: [] RmServer, k: int) #export_c {
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return; }
+  t := v[0].eg[k].tick;
+  for c: 0..<EG_CASTS {
+    cs := v[0].eg[k].casts[c];
+    if !cs.on || t < cs.due { continue; }
+    v[0].eg[k].casts[c].on = false;
+    if !v[0].eg[k].seat[cs.seat].live { continue; }
+    x := cs.x; z := cs.z;
+    // a cast at a seat lands where that seat stands now
+    if cs.tgt >= EG_TGT_SEAT && cs.tgt < EG_TGT_SEAT + EG_SEATS { p := v[0].eg[k].seat[cs.tgt - EG_TGT_SEAT].pose; x = p.x; z = p.z; }
+    _ := e5rr_use(v[0].eg[k].rules[..], cs.seat, cs.slot, x, z, ifx cs.tgt >= 2000 then -1 else cs.tgt);
+  }
+  e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
+  eg_engine_events(v, k);
+  if t % EG_SEND != 0 { return; }
+  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed { eg_send(v, k, s); } }
+  v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
+}
+// Where a TGT code is now (a seat's place), else (x, z).
+eg_where :: (v: [] RmServer, k: int, tgt: int, x: f32, z: f32) -> EgPose {
+  if tgt >= EG_TGT_SEAT && tgt < EG_TGT_SEAT + EG_SEATS { return v[0].eg[k].seat[tgt - EG_TGT_SEAT].pose; }
+  return EgPose.{x = x, z = z};
+}
+eg_engine_events :: (v: [] RmServer, k: int) {
+  ev: [64 * E5RR_EV_FLOATS] f32;
+  n := e5rr_events(v[0].eg[k].rules[..], ev[..]);
+  for q: 0..<n {
+    o := q * E5RR_EV_FLOATS;
+    kind := cast(int) ev[o]; by := cast(int) ev[o + 2]; who := cast(int) ev[o + 3];
+    at := eg_where(v, k, who, ev[o + 6], ev[o + 7]);
+    b: [96] u8; m := 0;
+    if kind == RS_EV_DAMAGE { m = put(b[..], 0, "e hit"); m = eg_n(b[..], m, who); m = eg_n(b[..], m, by); m = eg_n(b[..], m, cast(int) ev[o + 4]); m = eg_n(b[..], m, cast(int) ev[o + 5]); }
+    else if kind == RS_EV_HEAL { m = put(b[..], 0, "e heal"); m = eg_n(b[..], m, who); m = eg_n(b[..], m, cast(int) ev[o + 4]); }
+    else if kind == RS_EV_DEATH { m = put(b[..], 0, "e die"); m = eg_n(b[..], m, who); }
+    if m > 0 { eg_event(v, k, cast(string) b[0..<m], at.x, at.z, false); }
+  }
+}
+
+// ---- what a seat hears
+
+EgOut :: struct { b: [EG_CHUNK + 512] u8; n: int; any: bool; }
+eg_out_entry :: (o: [] EgOut, v: [] RmServer, k: int, s: int, f: int, entry: string) {
+  if o[0].any && o[0].n + entry.count + 1 > EG_CHUNK { eg_out_send(o, v, k, s, 2); }
+  if o[0].any { o[0].b[o[0].n] = ';'; o[0].n += 1; }
+  o[0].n = put(o[0].b[..], o[0].n, entry);
+  o[0].any = true;
+}
+// The entries so far out as one D frame with F f; the next start a new frame.
+eg_out_send :: (o: [] EgOut, v: [] RmServer, k: int, s: int, f: int) {
+  h: [64] u8;
+  n := put(h[..], 0, "D"); n = eg_n(h[..], n, v[0].eg[k].tick); n = eg_n(h[..], n, v[0].eg[k].seat[s].ack); n = eg_n(h[..], n, f);
+  n = put(h[..], n, " ");
+  rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[s].conn, -1, cast(string) h[0..<n], cast(string) o[0].b[0..<o[0].n]);
+  o[0].n = 0; o[0].any = false;
+}
+eg_near :: (p: EgPose, x: f32, z: f32) -> bool { return (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) <= f32(EG_VIEW * EG_VIEW); }
+eg_kind_of :: (slot: int) -> int {
+  if slot == EG_SLOT_CONJURE { return WK_PACK_; }
+  if slot == EG_SLOT_STONE { return WK_STONE_; }
+  if slot == EG_SLOT_TENTACLES { return WK_TENTACLES_; }
+  if slot == EG_SLOT_THORNS { return WK_THORNS_; }
+  return WK_ZONE_;
+}
+
+eg_send :: (v: [] RmServer, k: int, s: int) {
+  st := v[0].eg[k].seat[s..<s + 1];
+  full := st[0].full;
+  f := ifx full then 1 else 0;
+  if full {
+    for q: 0..<EG_SEATS { st[0].heard_p[q] = 0; st[0].heard_n[q] = 0; }
+    for q: 0..<E5RR_ZONES { st[0].heard_z[q] = 0; }
+    st[0].full = false;
+  }
+  o: [1] EgOut;
+  me := st[0].pose;
+  e: [320] u8;
+  out: [E5RR_OUT_FLOATS] f32;
+  for q: 0..<EG_SEATS {
+    other := v[0].eg[k].seat[q];
+    if !other.live || !other.placed {
+      if st[0].heard_p[q] != 0 {
+        n := put(e[..], 0, "x p"); n = eg_n(e[..], n, q); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]);
+        st[0].heard_p[q] = 0; st[0].heard_n[q] = 0;
+      }
+      continue;
+    }
+    e5rr_seat_out(v[0].eg[k].rules[..], q, out[..]);
+    p := other.pose;
+    g := p.g | (ifx out[4] > 0.5 then 8 else 0);
+    // p SS X Y Z YAW VX VY VZ G CLIP HP MAX TEMP COND FORM CARRY
+    n := put(e[..], 0, "p"); n = eg_n(e[..], n, q);
+    n = eg_cm(e[..], n, p.x); n = eg_cm(e[..], n, p.y); n = eg_cm(e[..], n, p.z); n = eg_cm(e[..], n, p.yaw);
+    n = eg_cm(e[..], n, p.vx); n = eg_cm(e[..], n, p.vy); n = eg_cm(e[..], n, p.vz);
+    n = eg_n(e[..], n, g); n = eg_n(e[..], n, p.clip);
+    n = eg_n(e[..], n, cast(int) out[0]); n = eg_n(e[..], n, cast(int) out[1]); n = eg_n(e[..], n, cast(int) out[2]); n = eg_n(e[..], n, cast(int) out[3]);
+    n = eg_n(e[..], n, 0); n = eg_n(e[..], n, p.carry);
+    h := eg_hash(cast(string) e[0..<n]);
+    // your own every frame: its ACK is where your page replays from
+    if q == s || h != st[0].heard_p[q] { eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); st[0].heard_p[q] = h; }
+    // n SS ID LOOK CLASS FLAGS NAME
+    n = put(e[..], 0, "n"); n = eg_n(e[..], n, q); n = put(e[..], n, " - ");
+    n = put(e[..], n, ifx other.look_n > 0 then cast(string) other.look[0..<other.look_n] else "ranger.0.0.0"); n = put(e[..], n, " ");
+    n = put(e[..], n, ifx other.klass_n > 0 then cast(string) other.klass[0..<other.klass_n] else "druid");
+    n = eg_n(e[..], n, other.flags); n = put(e[..], n, " ");
+    n = put(e[..], n, ifx other.name_n > 0 then cast(string) other.name[0..<other.name_n] else "-");
+    h = eg_hash(cast(string) e[0..<n]);
+    if h != st[0].heard_n[q] { eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); st[0].heard_n[q] = h; }
+  }
+  // creatures and lasting areas within view: each once, and gone when it ends or leaves your view
+  zf: [E5RR_ZONE_FLOATS] f32;
+  for q: 0..<E5RR_ZONES {
+    id := e5rr_zone(v[0].eg[k].rules[..], q, zf[..]);
+    seen := id > 0 && eg_near(me, zf[2], zf[3]);
+    was := st[0].heard_z[q];
+    if was != 0 && (was != id || !seen) {
+      n := put(e[..], 0, "x c"); n = eg_n(e[..], n, was); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]);
+      st[0].heard_z[q] = 0;
+    }
+    if seen && st[0].heard_z[q] != id {
+      // c EID KIND X Y Z YAW HP F OWNER P1 P2
+      slot := cast(int) zf[5]; by := cast(int) zf[1];
+      kind := eg_kind_of(slot);
+      n := put(e[..], 0, "c"); n = eg_n(e[..], n, id); n = eg_n(e[..], n, kind);
+      n = eg_cm(e[..], n, zf[2]); n = eg_n(e[..], n, 0); n = eg_cm(e[..], n, zf[3]); n = eg_n(e[..], n, 0);
+      n = eg_n(e[..], n, -1); n = eg_n(e[..], n, 1);
+      n = eg_n(e[..], n, ifx by >= EG_TGT_SEAT then by - EG_TGT_SEAT else -1);
+      n = eg_n(e[..], n, ifx kind == WK_ZONE_ then slot - EG_SP_SLOTS else 0); n = eg_cm(e[..], n, zf[4]);
+      eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]);
+      st[0].heard_z[q] = id;
+    }
+  }
+  // the events since the last state, near you
+  for q: 0..<v[0].eg[k].ev_n {
+    if !v[0].eg[k].ev_all[q] && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }
+    a := v[0].eg[k].ev_at[q];
+    eg_out_entry(o[..], v, k, s, f, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]);
+  }
+  eg_out_send(o[..], v, k, s, f);
+}
+
+// ---- checks
+
+// The host's part for a check: every seat at the gate, then each tick a flat world's step (each
+// input moves its seat PX/100 m along x and PY/100 m along z) instead of the shared one.
+eg_test_tick :: (v: [] RmServer, k: int) {
+  if !rm_eg_begin(v, k) { return; }
+  in: [EG_IN_FIELDS] int;
+  for s: 0..<EG_SEATS {
+    if rm_eg_unplaced(v, k, s) { rm_eg_moved(v, k, s, 0, f32(s), 0, 0, 0, 0, 0, 0, 1, 0, 0); }
+    while rm_eg_input(v, k, s, in[..]) {
+      p := v[0].eg[k].seat[s].pose;
+      rm_eg_moved(v, k, s, in[0], p.x + f32(in[3]) / 100.0, 0, p.z + f32(in[4]) / 100.0, 0, 0, 0, 0, 1, 1, 0);
+    }
+  }
+  rm_eg_end(v, k);
+}
+// What conns 0 to EG_TEST_CONNS - 1 heard since the last read, each its frames joined by '|' (the
+// queue is read once, for everyone).
+EG_TEST_CONNS :: 4;
+EgInbox :: struct { t: [EG_TEST_CONNS * 16384] u8; n: [EG_TEST_CONNS] int; }
+eg_test_drain :: (v: [] RmServer, box: [] EgInbox) {
+  for c: 0..<EG_TEST_CONNS { box[0].n[c] = 0; }
+  while true {
+    got := rm_relay_next(v);
+    if got == 0 { break; }
+    for c: 0..<EG_TEST_CONNS {
+      if !v[0].rto[c] || box[0].n[c] + got + 1 > 16384 { continue; }
+      at := c * 16384 + box[0].n[c];
+      if box[0].n[c] > 0 { box[0].t[at] = '|'; at += 1; box[0].n[c] += 1; }
+      for i: 0..<got { box[0].t[at + i] = v[0].rout[i]; }
+      box[0].n[c] += got;
+    }
+  }
+}
+eg_test_of :: (box: [] EgInbox, c: int) -> string { return cast(string) box[0].t[c * 16384..<c * 16384 + box[0].n[c]]; }
+eg_test_has :: (t: string, part: string) -> bool {
+  if part.count > t.count { return false; }
+  for i: 0..<t.count - part.count + 1 { if t[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+#test "everglade room: the world's header on joining, each seat's inputs stepped no faster than the tick, everyone's players and names in D" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-sim HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), "y 0 0 1762190000000|W 0 30 ");
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  #assert k >= 0;
+  rm_heard(v[..], 0, "H 1 ranger.2.1.0 druid 1 Ash Vale");
+  rm_heard(v[..], 1, "H 1 ranger.0.0.0 druid 0 -");
+  // seat 0 queues 8 inputs at once: 4 are stepped this tick (its bank), the rest on the next ticks
+  for q: 1..<9 {
+    t: [64] u8; n := put(t[..], 0, "I"); n = eg_n(t[..], n, q); n = put(t[..], n, " 0 0 0 50 0 1");
+    rm_heard(v[..], 0, cast(string) t[0..<n]);
+  }
+  rm_heard(v[..], 0, "I 3 0 0 0 50 0 1");   // a repeat goes
+  eg_test_tick(v[..], k);
+  #assert v[0].eg[k].seat[0].ack == 4 && v[0].eg[k].seat[0].q_n == 4;
+  eg_test_tick(v[..], k);   // tick 2: D goes out
+  #assert v[0].eg[k].seat[0].ack == 5;
+  eg_test_drain(v[..], box[..]);
+  a := eg_test_of(box[..], 0); c := eg_test_of(box[..], 1);
+  #assert eg_test_has(a, "D 2 5 1 p 0 0 0 250 0 0 0 0 1 1 57 57 0 0 0 0;");
+  #assert eg_test_has(a, ";n 0 - ranger.2.1.0 druid 1 Ash Vale") && eg_test_has(a, ";p 1 100 0 0 ") && eg_test_has(a, ";n 1 - ranger.0.0.0 druid 0 -");
+  // seat 1 hears seat 0, with seat 1's own ACK (none yet)
+  #assert eg_test_has(c, "D 2 0 1 p 0 0 0 250 ") && eg_test_has(c, ";p 1 100 0 0 ");
+  // the next frame: only what changed (seat 0 moved; seat 1's own always; the names not again)
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  c = eg_test_of(box[..], 1);
+  #assert eg_test_has(c, "D 4 0 0 p 0 0 0 350 ") && eg_test_has(c, ";p 1 100 ") && !eg_test_has(c, "n 0");
+  // a bad input is dropped whole
+  waiting := v[0].eg[k].seat[0].q_n;
+  rm_heard(v[..], 0, "I 20 0 0 x 50 0 1");
+  rm_heard(v[..], 0, "I 21 0 0 50");
+  #assert v[0].eg[k].seat[0].q_n == waiting;
+}
+
+#test "everglade room: a pack one seat conjures is in both seats' state; the other's heal reaches it; a joiner's snapshot has the pack; it goes when its caster leaves" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-pack HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  // Conjure Animals at (4, 7): seat 0 stands at x 0, seat 1 at x 1
+  rm_heard(v[..], 0, "C 1 32 400 0 700 -1");
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  a := eg_test_of(box[..], 0); c := eg_test_of(box[..], 1);
+  #assert eg_test_has(a, ";e cast 0 32 400 0 700 ") && eg_test_has(c, ";e cast 0 32 400 0 700 ");
+  #assert eg_test_has(a, ";c 1 10 ") && eg_test_has(c, ";c 1 10 ") && eg_test_has(c, " 0 -1 1 0 0 ");
+  // too far: refused, to the caster only
+  for q: 0..<10 { eg_test_tick(v[..], k); }
+  eg_test_drain(v[..], box[..]);
+  rm_heard(v[..], 1, "C 2 1 50000 0 0 -1");
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_of(box[..], 1) == "r 2 range" && eg_test_of(box[..], 0) == "";
+  // seat 1 hurt by the world, then healed by seat 0's Healing Word
+  e5rr_hurt(v[0].eg[k].rules[..], EG_TGT_SEAT + 1, 30);
+  rm_heard(v[..], 0, "C 3 28 100 0 0 1001");
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 1), ";e heal 1001 ");
+  // a third joins: its snapshot holds every player and the pack
+  #assert rm_join(v[..], 2, ev) == 2;
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  j := eg_test_of(box[..], 2);
+  #assert eg_test_has(j, " 1 p 0 ") && eg_test_has(j, ";p 1 ") && eg_test_has(j, ";p 2 ") && eg_test_has(j, ";c 1 10 ") && eg_test_has(j, ";n 0 - ");
+  // seat 0 leaves: its pack goes, and the others hear both gone
+  rm_left(v[..], 0);
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  c = eg_test_of(box[..], 1);
+  #assert eg_test_has(c, "x p 0") && eg_test_has(c, "x c 1");
+}
+
+#test "everglade room: what is over 120 m off isn't in a seat's state; seat 1 hears seat 0's Moonbeam once it walks up, and its end" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-far HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  eg_test_tick(v[..], k);
+  rm_eg_moved(v[..], k, 1, 0, 200, 0, 0, 0, 0, 0, 0, 1, 0, 0);   // seat 1 is 200 m off
+  rm_heard(v[..], 0, "C 1 20 300 0 0 -1");                     // Moonbeam 3 m from seat 0
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  a := eg_test_of(box[..], 0); c := eg_test_of(box[..], 1);
+  #assert eg_test_has(a, ";c 1 24 ") && eg_test_has(a, " 0 -1 1 0 16 ") && !eg_test_has(c, "c 1 ") && !eg_test_has(c, "e cast");
+  #assert eg_test_has(c, " 1 p 0 ");   // players are always heard
+  rm_eg_moved(v[..], k, 1, 0, 10, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 1), ";c 1 24 ");
+  rm_eg_moved(v[..], k, 1, 0, 300, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 1), ";x c 1");
+  // seat 0 ends it (E SEQ SLOT): gone for seat 0 too; ending it again is refused
+  rm_heard(v[..], 0, "E 2 20");
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), ";x c 1");
+  rm_heard(v[..], 0, "E 3 20");
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_of(box[..], 0) == "r 3 nothing";
+}
