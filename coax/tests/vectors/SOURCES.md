@@ -364,6 +364,14 @@ that a maliciously replaced manifest is authentic.
   `test_framework/wallet.py`, `address.py` and `test_node.py` (the mock
   time). It runs Core's own `test_framework/crypto/muhash.py` and
   `chacha20.py` from the pins as the independent MuHash. All are MIT.
+- **The chainstate store (Bitcoin chapter 62):** Bitcoin Core's
+  `util/obfuscation.h` (the XOR key and its rotations), `dbwrapper.cpp` and
+  `dbwrapper.h` (the `"\0obfuscate_key"` record, synced batch writes) and
+  `txdb.cpp` (the `'B'` and `'H'` markers around a flush in partial
+  batches), at the same revision, retrieved 2026-11-03, all MIT.
+  `coax/tests/bitcoin/kvstore.py` checks that the two lines of
+  `obfuscation.h` its transliteration rests on are in the pinned file. The
+  store's format is the book's own, so no vector file is pinned for it.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -602,4 +610,7 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip141/bip-0141.mediawiki`](upstream/bip141/bip-0141.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0141.mediawiki) | `d72409335872a32494f75e7547589abf4b3b23b6beebe6bc6999c7a84b135e2c` |
 | [`upstream/bitcoin-core/consensus_validation.h`](upstream/bitcoin-core/consensus_validation.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/validation.h) | `2875af77e8e0d4db5b210bc716f37713bd0bd8922dde60713e611b33cdf1806a` |
 | [`upstream/bitcoin-core/blocktools.py`](upstream/bitcoin-core/blocktools.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/blocktools.py) | `13de0034eb8f41e3435e8f2996ef217221b4450f21f7c24aef1d6e20bc1590df` |
+| [`upstream/bitcoin-core/obfuscation.h`](upstream/bitcoin-core/obfuscation.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/util/obfuscation.h) | `c9a37543d90e6859577f85ab1a46df76cdb5bb6931056764d8a9ed5ce79f6cc6` |
+| [`upstream/bitcoin-core/dbwrapper.cpp`](upstream/bitcoin-core/dbwrapper.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/dbwrapper.cpp) | `3ecd43525a45dbf0318d5a00a6fadbd47393241a8204cb714b86893b7f20727f` |
+| [`upstream/bitcoin-core/dbwrapper.h`](upstream/bitcoin-core/dbwrapper.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/dbwrapper.h) | `ec747f471d4467b710c41db11337dd93f834775cd08fdb94c8fb24efd0fca531` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

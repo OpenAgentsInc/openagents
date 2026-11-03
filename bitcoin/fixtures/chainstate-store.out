@@ -1,0 +1,17 @@
+header: 4f414b5601010000195a6fc0a1d3d72b912a8b86
+batch 1: ok, frame of 67 bytes
+  frame: 3b000000020e4c2101000000000000000300000001060002000000636f696e3a612c6a01060002000000636f696e3a632b6f01060004000000636f696e3a62286841f5
+  table: coin:a=50 coin:b=12.5 coin:c=25
+batch 2: ok, frame of 46 bytes
+  table: coin:b=12.5 coin:c=25 coin:d=6.25
+get coin:c: ok 25
+get coin:a: not found
+first key from coin:bb: coin:c
+  "50" on disk: 2c6a
+reopen: ok, sequence 2, 2 frames
+  table: coin:b=12.5 coin:c=25 coin:d=6.25
+crash at each of 47 lengths: 46 reopen to batch 1 (45 cut), 1 to batch 2
+five bytes of batch 2, then zeros: ok, sequence 1, cut at 87
+a flipped bit in batch 1: corrupt at byte 20
+compacted: 89 bytes instead of 133, reopens ok, sequence 2
+  table: coin:b=12.5 coin:c=25 coin:d=6.25

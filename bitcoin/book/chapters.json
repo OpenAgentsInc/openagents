@@ -1308,15 +1308,21 @@
   {
    "number": 62,
    "title": "A key-value store for the chainstate",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch062-a-key-value-store-for-the-chainstate.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     1,
     5
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/kvstore.coax",
+    "bitcoin/examples/chainstate-store.coax",
+    "bitcoin/examples/checks/chainstate-store.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

@@ -496,6 +496,17 @@
       "timeout": 300
     },
     {
+      "source": "bitcoin/examples/chainstate-store.coax",
+      "chapter": "bitcoin/book/ch062-a-key-value-store-for-the-chainstate.md",
+      "stdout": "bitcoin/fixtures/chainstate-store.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
       "source": "bitcoin/examples/p2p-messages.coax",
       "chapter": "bitcoin/book/ch065-p2p-messages-and-checksums.md",
       "stdout": "bitcoin/fixtures/p2p-messages.out",

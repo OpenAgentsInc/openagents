@@ -1,0 +1,115 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/kvstore.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+CODES :: [7] string.["ok", "not found", "full", "too long", "bad batch", "corrupt", "bad header"];
+// Bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [600] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// A string's bytes in out.
+bytes_of :: (s: string, out: [] u8) -> [] u8 {
+  for i: 0..<s.count { out[i] = s[i]; }
+  return out[0..<s.count];
+}
+// Every key and value of the table, in order.
+dump :: (label: string, table: [] u8, used: int) {
+  print("%:", label);
+  e := kv_entry_vartime(table, used, 0);
+  while e.code == KV_OK {
+    print(" %=%", cast(string) e.key, cast(string) e.value);
+    e = kv_entry_vartime(table, used, e.next);
+  }
+  print("\n");
+}
+// Add a put or a delete to a batch, by string.
+put :: (batch: [] u8, at: int, key: string, value: string) -> int {
+  k: [32] u8; v: [32] u8;
+  return kv_batch_put_vartime(batch, at, bytes_of(key, k[..]), bytes_of(value, v[..]));
+}
+del :: (batch: [] u8, at: int, key: string) -> int {
+  k: [32] u8;
+  return kv_batch_delete_vartime(batch, at, bytes_of(key, k[..]));
+}
+
+main :: () {
+  // The "disk": the log's bytes. The host would write them to a file.
+  file: [512] u8; table: [512] u8; batch: [128] u8;
+  mask := cast(u64) 0x2bd7d3a1c06f5a19;   // fixed here; Core draws it at random
+  n := kv_header_vartime(mask, file[..]);
+  show("header", file[0..<n]);
+
+  // Batch 1: three keys.
+  at := kv_batch_new(batch[..]);
+  at = put(batch[..], at, "coin:a", "50");
+  at = put(batch[..], at, "coin:c", "25");
+  at = put(batch[..], at, "coin:b", "12.5");
+  c := kv_commit_vartime(table[..], 0, 0, batch[0..<at], mask, file[n..<file.count]);
+  print("batch 1: %, frame of % bytes\n", CODES[c.code], c.n);
+  show("  frame", file[n..<n+c.n]);
+  n += c.n;
+  used := c.used;
+  dump("  table", table[..], used);
+
+  // Batch 2: spend coin:a and add coin:d, together.
+  at = kv_batch_new(batch[..]);
+  at = del(batch[..], at, "coin:a");
+  at = put(batch[..], at, "coin:d", "6.25");
+  c = kv_commit_vartime(table[..], used, 1, batch[0..<at], mask, file[n..<file.count]);
+  print("batch 2: %, frame of % bytes\n", CODES[c.code], c.n);
+  first := n;
+  n += c.n;
+  used = c.used;
+  dump("  table", table[..], used);
+
+  // Reads and ordered iteration from a key.
+  value: [16] u8; key: [16] u8;
+  g := kv_get_vartime(table[..], used, bytes_of("coin:c", key[..]), value[..]);
+  print("get coin:c: % %\n", CODES[g.code], cast(string) value[0..<g.n]);
+  g = kv_get_vartime(table[..], used, bytes_of("coin:a", key[..]), value[..]);
+  print("get coin:a: %\n", CODES[g.code]);
+  e := kv_entry_vartime(table[..], used, kv_seek_vartime(table[..], used, bytes_of("coin:bb", key[..])));
+  print("first key from coin:bb: %\n", cast(string) e.key);
+
+  // The value bytes on disk are masked: batch 1's "50" is at the first
+  // put's value.
+  show("  \"50\" on disk", file[20+8+12+7+6..<20+8+12+7+6+2]);
+
+  // Reopen the log from scratch.
+  fresh: [512] u8;
+  r := kv_open_vartime(file[0..<n], fresh[..]);
+  print("reopen: %, sequence %, % frames\n", CODES[r.code], r.seq, r.frames);
+  dump("  table", fresh[..], r.used);
+
+  // A crash during batch 2's append: the file ends at any byte of it.
+  one := 0; two := 0; cuts := 0;
+  for end: first..<n+1 {
+    q := kv_open_vartime(file[0..<end], fresh[..]);
+    if q.seq == 1 { one += 1; }
+    if q.seq == 2 { two += 1; }
+    if q.cut { cuts += 1; }
+  }
+  print("crash at each of % lengths: % reopen to batch 1 (% cut), % to batch 2\n", n + 1 - first, one, cuts, two);
+  // The same, with the rest of the frame left as zeros.
+  zeros: [512] u8;
+  for i: 0..<first+5 { zeros[i] = file[i]; }
+  q := kv_open_vartime(zeros[0..<n], fresh[..]);
+  print("five bytes of batch 2, then zeros: %, sequence %, cut at %\n", CODES[q.code], q.seq, q.keep);
+
+  // Damage to a committed byte: refused, not skipped.
+  file[30] ^= 1;
+  q = kv_open_vartime(file[0..<n], fresh[..]);
+  print("a flipped bit in batch 1: % at byte %\n", CODES[q.code], q.keep);
+  file[30] ^= 1;
+
+  // Compaction: the table as a new log of one frame.
+  snap: [512] u8;
+  s := kv_snapshot_vartime(table[..], used, 2, mask, snap[..]);
+  q = kv_open_vartime(snap[0..<s], fresh[..]);
+  print("compacted: % bytes instead of %, reopens %, sequence %\n", s, n, CODES[q.code], q.seq);
+  dump("  table", fresh[..], q.used);
+}
+// book:end example

@@ -2434,7 +2434,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-utxo-set"
+        "bitcoin-utxo-set",
+        "bitcoin-chainstate-store"
       ],
       "retrieved": "2026-11-03",
       "sha256": "fcd265ad7d8a6b77cc121f37c6541df860e1a9d24725e6158ff1a83e722faef3",
@@ -2595,6 +2596,45 @@
       "retrieved": "2026-11-03",
       "sha256": "13de0034eb8f41e3435e8f2996ef217221b4450f21f7c24aef1d6e20bc1590df",
       "bytes": 10530
+    },
+    {
+      "path": "upstream/bitcoin-core/obfuscation.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/util/obfuscation.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-chainstate-store"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "c9a37543d90e6859577f85ab1a46df76cdb5bb6931056764d8a9ed5ce79f6cc6",
+      "bytes": 3869
+    },
+    {
+      "path": "upstream/bitcoin-core/dbwrapper.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/dbwrapper.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-chainstate-store"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "3ecd43525a45dbf0318d5a00a6fadbd47393241a8204cb714b86893b7f20727f",
+      "bytes": 15441
+    },
+    {
+      "path": "upstream/bitcoin-core/dbwrapper.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/dbwrapper.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-chainstate-store"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "ec747f471d4467b710c41db11337dd93f834775cd08fdb94c8fb24efd0fca531",
+      "bytes": 11257
     }
   ]
 }

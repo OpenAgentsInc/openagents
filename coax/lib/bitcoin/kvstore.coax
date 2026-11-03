@@ -1,0 +1,749 @@
+// A key-value store for the chainstate (Bitcoin chapter 62). Not LevelDB:
+// a small store of our own with the four things a chainstate needs from a
+// database, and nothing else.
+//
+// - get, put and delete on byte-string keys and values;
+// - batches: a set of puts and deletes that lands entirely or not at all;
+// - iteration in key order, from the start or from any key;
+// - crash safety: after a crash at any moment, the store reopens to exactly
+//   the last batch that was committed.
+//
+// The data lives in memory as one sorted table. The file is a log: a
+// 20-byte header, then one frame per committed batch, each with a length
+// and a checksum. A commit appends one frame and calls fsync; only then is
+// the batch committed. Opening the file replays every frame into the table.
+// A crash can only damage the frame being appended, so replay cuts a torn
+// last frame off and refuses any other damage. Compaction writes the whole
+// table as a new log (one frame) beside the old one, fsyncs it and renames
+// it over the old one, which a crash leaves either old or new.
+//
+// This file is pure logic over byte views: it builds the bytes to write and
+// reads the bytes it is given. The host does the I/O: write, fsync, rename
+// and truncate (coax/tests/bitcoin/kvstore.py does them on real files).
+//
+// Keys and values are public chain data, so everything here runs in
+// variable time.
+#load "hash.coax";
+#authority;
+
+// book:begin codes
+KV_OK :: 0;
+KV_NOT_FOUND :: 1;   // no such key, or the end of iteration
+KV_FULL :: 2;        // the caller's table or output is too small
+KV_TOO_LONG :: 3;    // an empty key, or a key or value over its limit
+KV_BAD_BATCH :: 4;   // a batch whose bytes do not read as one
+KV_CORRUPT :: 5;     // committed bytes of the log are damaged: refuse to open
+KV_BAD_HEADER :: 6;  // not a log of this store, or its header is damaged
+
+KV_KEY_MAX :: 1024;
+KV_VALUE_MAX :: 1048576;
+KV_HEADER :: 20;          // the log's header
+KV_FRAME_HEAD :: 8;       // a frame's length and checksum
+KV_BODY_HEAD :: 12;       // a batch's sequence number and count
+KV_FRAME_MAX :: 67108864; // the largest body a frame may claim
+KV_ENTRY_HEAD :: 6;       // a table entry's key and value lengths
+KV_PUT :: 1;
+KV_DELETE :: 2;
+KV_VERSION :: 1;
+// book:end codes
+
+// book:begin types
+// Where a key is in the table, or where it would go.
+KvFind :: struct { at: int; found: bool; }
+// A value read: its length, which is set even when out is too small.
+KvGet :: struct { code: int; n: int; }
+// One table entry, for iteration: its key, its value and the next entry.
+KvEntry :: struct { code: int; next: int; key: [] u8; value: [] u8; }
+// One operation of a batch.
+KvOp :: struct { code: int; kind: int; key: [] u8; value: [] u8; value_at: int; next: int; }
+// A whole batch checked: its sequence number, its operations, and the most
+// the table can grow by applying it.
+KvBatch :: struct { code: int; seq: u64; count: int; grow: int; }
+// A commit: the table's new length and the frame's length in the output.
+KvCommit :: struct { code: int; used: int; n: int; }
+// A log opened: the table's length, the last sequence number, how many
+// frames replayed, where the file's good bytes end and whether a torn tail
+// must be cut there, and the obfuscation key.
+KvOpen :: struct { code: int; used: int; seq: u64; frames: int; keep: int; cut: bool; mask: u64; }
+// book:end types
+
+// ---- little-endian fields
+kv_get16 :: (b: [] u8, at: int) -> int { return (cast(int) b[at]) | ((cast(int) b[at+1]) << 8); }
+kv_get32 :: (b: [] u8, at: int) -> int {
+  return (cast(int) b[at]) | ((cast(int) b[at+1]) << 8) | ((cast(int) b[at+2]) << 16) | ((cast(int) b[at+3]) << 24);
+}
+kv_get64 :: (b: [] u8, at: int) -> u64 {
+  v := cast(u64) 0;
+  for i: 0..<8 { v |= (cast(u64) b[at+i]) << (cast(u64) (8*i)); }
+  return v;
+}
+kv_put16 :: (b: [] u8, at: int, v: int) { b[at] = cast(u8) (v & 255); b[at+1] = cast(u8) ((v >> 8) & 255); }
+kv_put32 :: (b: [] u8, at: int, v: int) { for i: 0..<4 { b[at+i] = cast(u8) ((v >> (8*i)) & 255); } }
+kv_put64 :: (b: [] u8, at: int, v: u64) { for i: 0..<8 { b[at+i] = cast(u8) ((v >> cast(u64) (8*i)) & 255); } }
+
+// book:begin compare
+// Byte order, as LevelDB's default comparator: the first differing byte
+// decides, and a key that is a prefix of another sorts first.
+kv_compare :: (a: [] u8, b: [] u8) -> int {
+  n := ifx a.count < b.count then a.count else b.count;
+  for i: 0..<n {
+    if a[i] != b[i] { return ifx a[i] < b[i] then -1 else 1; }
+  }
+  if a.count == b.count { return 0; }
+  return ifx a.count < b.count then -1 else 1;
+}
+// book:end compare
+
+// book:begin table
+// The table is entries in key order, packed from byte 0 to used: each is
+// a 2-byte key length, a 4-byte value length, the key, then the value.
+kv_entry_size :: (key_n: int, value_n: int) -> int { return KV_ENTRY_HEAD + key_n + value_n; }
+kv_key_ok :: (key: [] u8) -> bool { return key.count >= 1 && key.count <= KV_KEY_MAX; }
+
+// The first entry whose key is at least key: its offset, and whether its
+// key is key itself.
+kv_find_vartime :: (table: [] u8, used: int, key: [] u8) -> KvFind {
+  at := 0;
+  while at < used {
+    kn := kv_get16(table, at); vn := kv_get32(table, at + 2);
+    c := kv_compare(table[at+KV_ENTRY_HEAD..<at+KV_ENTRY_HEAD+kn], key);
+    if c >= 0 { return KvFind.{at = at, found = c == 0}; }
+    at += kv_entry_size(kn, vn);
+  }
+  return KvFind.{at = used};
+}
+// Get: the value of key into out.
+kv_get_vartime :: (table: [] u8, used: int, key: [] u8, out: [] u8) -> KvGet {
+  f := kv_find_vartime(table, used, key);
+  if !f.found { return KvGet.{code = KV_NOT_FOUND}; }
+  kn := kv_get16(table, f.at); vn := kv_get32(table, f.at + 2);
+  if vn > out.count { return KvGet.{code = KV_FULL, n = vn}; }
+  from := f.at + KV_ENTRY_HEAD + kn;
+  for i: 0..<vn { out[i] = table[from+i]; }
+  return KvGet.{n = vn};
+}
+// Move table[from..<used] to start at to, in either direction.
+kv_move :: (table: [] u8, from: int, to: int, used: int) {
+  n := used - from;
+  if to > from { i := n - 1; while i >= 0 { table[to+i] = table[from+i]; i -= 1; } }
+  if to < from { for i: 0..<n { table[to+i] = table[from+i]; } }
+}
+// Put: insert key or replace its value, keeping the order. Returns the
+// table's new length, or minus a code with the table unchanged.
+kv_set_vartime :: (table: [] u8, used: int, key: [] u8, value: [] u8) -> int {
+  if !kv_key_ok(key) || value.count > KV_VALUE_MAX { return -KV_TOO_LONG; }
+  f := kv_find_vartime(table, used, key);
+  old := 0;
+  if f.found { old = kv_entry_size(kv_get16(table, f.at), kv_get32(table, f.at + 2)); }
+  size := kv_entry_size(key.count, value.count);
+  if used - old + size > table.count { return -KV_FULL; }
+  kv_move(table, f.at + old, f.at + size, used);
+  kv_put16(table, f.at, key.count); kv_put32(table, f.at + 2, value.count);
+  for i: 0..<key.count { table[f.at+KV_ENTRY_HEAD+i] = key[i]; }
+  for i: 0..<value.count { table[f.at+KV_ENTRY_HEAD+key.count+i] = value[i]; }
+  return used - old + size;
+}
+// Delete: remove key if it is there. Returns the table's new length.
+kv_delete_vartime :: (table: [] u8, used: int, key: [] u8) -> int {
+  f := kv_find_vartime(table, used, key);
+  if !f.found { return used; }
+  size := kv_entry_size(kv_get16(table, f.at), kv_get32(table, f.at + 2));
+  kv_move(table, f.at + size, f.at, used);
+  return used - size;
+}
+// book:end table
+
+// book:begin iterate
+// The entry at offset at: KV_NOT_FOUND at the end. Start at 0 for the whole
+// table, or at kv_seek_vartime's offset for the keys from a given one.
+kv_entry_vartime :: (table: [] u8, used: int, at: int) -> KvEntry {
+  if at >= used { return KvEntry.{code = KV_NOT_FOUND, next = used}; }
+  kn := kv_get16(table, at); vn := kv_get32(table, at + 2);
+  k := at + KV_ENTRY_HEAD;
+  return KvEntry.{next = k + kn + vn, key = table[k..<k+kn], value = table[k+kn..<k+kn+vn]};
+}
+kv_seek_vartime :: (table: [] u8, used: int, key: [] u8) -> int {
+  return kv_find_vartime(table, used, key).at;
+}
+// book:end iterate
+
+// book:begin batch
+// A batch is the body of a frame: an 8-byte sequence number (set when it
+// is committed), a 4-byte count, then each operation: a kind byte, a
+// 2-byte key length, for a put a 4-byte value length, the key, the value.
+// Each builder returns where the next operation goes, or minus a code with
+// the batch unchanged.
+kv_batch_new :: (batch: [] u8) -> int #export_c {
+  if batch.count < KV_BODY_HEAD { return -KV_FULL; }
+  for i: 0..<KV_BODY_HEAD { batch[i] = 0; }
+  return KV_BODY_HEAD;
+}
+kv_batch_put_vartime :: (batch: [] u8, at: int, key: [] u8, value: [] u8) -> int #export_c {
+  if !kv_key_ok(key) || value.count > KV_VALUE_MAX { return -KV_TOO_LONG; }
+  if at < KV_BODY_HEAD || at > batch.count || 7 + key.count + value.count > batch.count - at { return -KV_FULL; }
+  batch[at] = KV_PUT; kv_put16(batch, at + 1, key.count); kv_put32(batch, at + 3, value.count);
+  for i: 0..<key.count { batch[at+7+i] = key[i]; }
+  for i: 0..<value.count { batch[at+7+key.count+i] = value[i]; }
+  kv_put32(batch, 8, kv_get32(batch, 8) + 1);
+  return at + 7 + key.count + value.count;
+}
+kv_batch_delete_vartime :: (batch: [] u8, at: int, key: [] u8) -> int #export_c {
+  if !kv_key_ok(key) { return -KV_TOO_LONG; }
+  if at < KV_BODY_HEAD || at > batch.count || 3 + key.count > batch.count - at { return -KV_FULL; }
+  batch[at] = KV_DELETE; kv_put16(batch, at + 1, key.count);
+  for i: 0..<key.count { batch[at+3+i] = key[i]; }
+  kv_put32(batch, 8, kv_get32(batch, 8) + 1);
+  return at + 3 + key.count;
+}
+// The operation at at, read back.
+kv_op_vartime :: (body: [] u8, at: int) -> KvOp {
+  bad := KvOp.{code = KV_BAD_BATCH};
+  if body.count - at < 3 { return bad; }
+  kind := cast(int) body[at]; kn := kv_get16(body, at + 1);
+  if kn < 1 || kn > KV_KEY_MAX { return bad; }
+  if kind == KV_DELETE {
+    if kn > body.count - at - 3 { return bad; }
+    return KvOp.{kind = kind, key = body[at+3..<at+3+kn], next = at + 3 + kn};
+  }
+  if kind != KV_PUT || body.count - at < 7 { return bad; }
+  vn := kv_get32(body, at + 3);
+  if vn > KV_VALUE_MAX || kn + vn > body.count - at - 7 { return bad; }
+  v := at + 7 + kn;
+  return KvOp.{kind = kind, key = body[at+7..<v], value = body[v..<v+vn], value_at = v, next = v + vn};
+}
+// The whole batch: its count must match its operations, which must end
+// exactly at its end. grow bounds what applying it adds to the table.
+kv_batch_check_vartime :: (body: [] u8) -> KvBatch {
+  if body.count < KV_BODY_HEAD { return KvBatch.{code = KV_BAD_BATCH}; }
+  count := kv_get32(body, 8);
+  at := KV_BODY_HEAD; grow := 0;
+  for i: 0..<count {
+    op := kv_op_vartime(body, at);
+    if op.code != KV_OK { return KvBatch.{code = KV_BAD_BATCH}; }
+    if op.kind == KV_PUT { grow += kv_entry_size(op.key.count, op.value.count); }
+    at = op.next;
+  }
+  if at != body.count { return KvBatch.{code = KV_BAD_BATCH}; }
+  return KvBatch.{seq = kv_get64(body, 0), count = count, grow = grow};
+}
+// Apply a checked batch to the table, in order, after unmasking each value
+// with mask (0 for a batch the caller built). Returns the new length, or
+// minus KV_FULL with the table unchanged: the check comes first, so a batch
+// lands whole or not at all.
+kv_apply_vartime :: (table: [] u8, used: int, body: [] u8, mask: u64) -> int {
+  b := kv_batch_check_vartime(body);
+  if b.code != KV_OK { return -b.code; }
+  if b.grow > table.count - used { return -KV_FULL; }
+  at := KV_BODY_HEAD; u := used;
+  for i: 0..<b.count {
+    op := kv_op_vartime(body, at);
+    if op.kind == KV_DELETE { u = kv_delete_vartime(table, u, op.key); }
+    if op.kind == KV_PUT {
+      u = kv_set_vartime(table, u, op.key, op.value);
+      f := kv_find_vartime(table, u, op.key);
+      kv_mask(table[f.at+KV_ENTRY_HEAD+op.key.count..<f.at+KV_ENTRY_HEAD+op.key.count+op.value.count], mask);
+    }
+    at = op.next;
+  }
+  return u;
+}
+// book:end batch
+
+// book:begin mask
+// Bitcoin Core's obfuscation (util/obfuscation.h): every value is XORed
+// with an 8-byte key, byte i of the value with byte i mod 8 of the key.
+// Core stores the key, unmasked, under "\0obfuscate_key". Here it is in
+// the header, as a little-endian u64. A key of zero changes nothing, and
+// masking twice unmasks.
+kv_mask :: (value: [] u8, mask: u64) {
+  for i: 0..<value.count { value[i] ^= cast(u8) ((mask >> cast(u64) (8 * (i % 8))) & 255); }
+}
+// Mask every value of a batch in place.
+kv_mask_batch :: (body: [] u8, mask: u64) {
+  count := kv_get32(body, 8); at := KV_BODY_HEAD;
+  for i: 0..<count {
+    op := kv_op_vartime(body, at);
+    kv_mask(body[op.value_at..<op.value_at+op.value.count], mask);
+    at = op.next;
+  }
+}
+// book:end mask
+
+// book:begin frame
+// The log's header: "OAKV", version 1, a flags byte (bit 0: values are
+// masked), two zero bytes, the mask, then a checksum of those 16 bytes.
+// Every checksum here is the first 4 bytes of SHA-256d, as in a P2P
+// message header.
+kv_checksum :: (data: [] u8, out: [] u8) {
+  d: [32] u8;
+  #assert sha256d_checked(data, d[..], false) == SHA_OK;
+  for i: 0..<4 { out[i] = d[i]; }
+}
+kv_checksum_ok :: (data: [] u8, sum: [] u8) -> bool {
+  c: [4] u8;
+  kv_checksum(data, c[..]);
+  for i: 0..<4 { if c[i] != sum[i] { return false; } }
+  return true;
+}
+kv_header_vartime :: (mask: u64, out: [] u8) -> int #export_c {
+  if out.count < KV_HEADER { return -KV_FULL; }
+  out[0] = 'O'; out[1] = 'A'; out[2] = 'K'; out[3] = 'V';
+  out[4] = KV_VERSION; out[5] = ifx mask != 0 then cast(u8) 1 else 0; out[6] = 0; out[7] = 0;
+  kv_put64(out, 8, mask);
+  kv_checksum(out[0..<16], out[16..<20]);
+  return KV_HEADER;
+}
+// A frame: a 4-byte body length, the body's checksum, then the body. Seal
+// the plain batch already in frame[8..<8+n]: set its sequence number, mask
+// its values, then fill in the length and checksum.
+kv_seal_vartime :: (frame: [] u8, n: int, seq: u64, mask: u64) {
+  body := frame[KV_FRAME_HEAD..<KV_FRAME_HEAD+n];
+  kv_put64(body, 0, seq);
+  kv_mask_batch(body, mask);
+  kv_put32(frame, 0, n);
+  kv_checksum(body, frame[4..<8]);
+}
+// Commit a batch: apply it to the table and write the frame to append.
+// The batch is committed when the host has appended the frame and fsync
+// has returned, and not before. Nothing changes on a refusal.
+kv_commit_vartime :: (table: [] u8, used: int, seq: u64, batch: [] u8, mask: u64, frame: [] u8) -> KvCommit {
+  b := kv_batch_check_vartime(batch);
+  if b.code != KV_OK { return KvCommit.{code = b.code}; }
+  if batch.count > KV_FRAME_MAX { return KvCommit.{code = KV_TOO_LONG}; }
+  if frame.count < KV_FRAME_HEAD + batch.count || b.grow > table.count - used { return KvCommit.{code = KV_FULL}; }
+  for i: 0..<batch.count { frame[KV_FRAME_HEAD+i] = batch[i]; }
+  kv_seal_vartime(frame, batch.count, seq + 1, mask);
+  u := kv_apply_vartime(table, used, batch, 0);
+  return KvCommit.{used = u, n = KV_FRAME_HEAD + batch.count};
+}
+// book:end frame
+
+// book:begin open
+// Are the bytes from at to the end all zero? A file that grew in a crash
+// but whose new bytes were never written reads as zeros.
+kv_zero_from :: (file: [] u8, at: int) -> bool {
+  for i: at..<file.count { if file[i] != 0 { return false; } }
+  return true;
+}
+// Open a log: check the header and replay every frame into the table.
+// Only the last frame can be damaged by a crash, because each append is
+// fsynced before the next, and a torn append has one shape: a prefix of
+// the frame, then nothing or zeros to the end of the file. So replay cuts
+// a frame that runs past the end, a length that is not one with only
+// zeros after its 4 bytes (part of the length was written), and a frame
+// whose checksum fails with only zeros after it. It stops there and asks
+// the host to cut the file at keep. Damage anywhere else is in committed
+// bytes, and replay refuses rather than guess.
+kv_open_vartime :: (file: [] u8, table: [] u8) -> KvOpen {
+  if file.count < KV_HEADER || file[0] != 'O' || file[1] != 'A' || file[2] != 'K' || file[3] != 'V' { return KvOpen.{code = KV_BAD_HEADER}; }
+  if file[4] != KV_VERSION || !kv_checksum_ok(file[0..<16], file[16..<20]) { return KvOpen.{code = KV_BAD_HEADER}; }
+  r := KvOpen.{mask = kv_get64(file, 8)};
+  at := KV_HEADER;
+  while at < file.count {
+    if file.count - at < KV_FRAME_HEAD { r.cut = true; break; }
+    n := kv_get32(file, at);
+    if n >= KV_BODY_HEAD && n <= KV_FRAME_MAX && n > file.count - at - KV_FRAME_HEAD { r.cut = true; break; }
+    if n < KV_BODY_HEAD || n > KV_FRAME_MAX {
+      if kv_zero_from(file, at + 4) { r.cut = true; break; }
+      return KvOpen.{code = KV_CORRUPT, keep = at};
+    }
+    end := at + KV_FRAME_HEAD + n;
+    body := file[at+KV_FRAME_HEAD..<end];
+    if !kv_checksum_ok(body, file[at+4..<at+8]) {
+      if kv_zero_from(file, end) { r.cut = true; break; }
+      return KvOpen.{code = KV_CORRUPT, keep = at};
+    }
+    b := kv_batch_check_vartime(body);
+    if b.code != KV_OK || b.seq == 0 || (r.frames > 0 && b.seq != r.seq + 1) { return KvOpen.{code = KV_CORRUPT, keep = at}; }
+    u := kv_apply_vartime(table, r.used, body, r.mask);
+    if u < 0 { return KvOpen.{code = -u, keep = at}; }
+    r.used = u; r.seq = b.seq; r.frames += 1;
+    at = end;
+  }
+  r.keep = at;
+  return r;
+}
+// book:end open
+
+// book:begin snapshot
+// Compaction: the whole table as a new log, a header and one frame of puts
+// carrying the last sequence number, so that the next commit follows on.
+// The host writes it to a new file, fsyncs it, renames it over the old log
+// and fsyncs the directory. Returns its length, or minus a code.
+kv_snapshot_vartime :: (table: [] u8, used: int, seq: u64, mask: u64, out: [] u8) -> int #export_c {
+  if kv_header_vartime(mask, out) < 0 { return -KV_FULL; }
+  if seq == 0 { return ifx used == 0 then KV_HEADER else -KV_BAD_BATCH; }
+  body := out[KV_HEADER+KV_FRAME_HEAD..<out.count];
+  at := kv_batch_new(body);
+  if at < 0 { return -KV_FULL; }
+  e := kv_entry_vartime(table, used, 0);
+  while e.code == KV_OK {
+    at = kv_batch_put_vartime(body, at, e.key, e.value);
+    if at < 0 { return at; }
+    e = kv_entry_vartime(table, used, e.next);
+  }
+  if at > KV_FRAME_MAX { return -KV_TOO_LONG; }
+  kv_seal_vartime(out[KV_HEADER..<out.count], at, seq, mask);
+  return KV_HEADER + KV_FRAME_HEAD + at;
+}
+// book:end snapshot
+
+// ---- the C interface: results as u64 fields
+kv_open_c :: (file: [] u8, table: [] u8, fields: [] u64) -> int #export_c {
+  if fields.count < 6 { return -1; }
+  r := kv_open_vartime(file, table);
+  fields[0] = cast(u64) r.used; fields[1] = r.seq; fields[2] = cast(u64) r.frames;
+  fields[3] = cast(u64) r.keep; fields[4] = ifx r.cut then cast(u64) 1 else 0; fields[5] = r.mask;
+  return r.code;
+}
+kv_commit_c :: (table: [] u8, used: int, seq: u64, batch: [] u8, mask: u64, frame: [] u8, fields: [] u64) -> int #export_c {
+  if fields.count < 2 { return -1; }
+  r := kv_commit_vartime(table, used, seq, batch, mask, frame);
+  fields[0] = cast(u64) r.used; fields[1] = cast(u64) r.n;
+  return r.code;
+}
+kv_get_c :: (table: [] u8, used: int, key: [] u8, out: [] u8) -> int #export_c {
+  r := kv_get_vartime(table, used, key, out);
+  if r.code != KV_OK { return -r.code; }
+  return r.n;
+}
+kv_set_c :: (table: [] u8, used: int, key: [] u8, value: [] u8) -> int #export_c { return kv_set_vartime(table, used, key, value); }
+kv_delete_c :: (table: [] u8, used: int, key: [] u8) -> int #export_c { return kv_delete_vartime(table, used, key); }
+kv_seek_c :: (table: [] u8, used: int, key: [] u8) -> int #export_c { return kv_seek_vartime(table, used, key); }
+// The entry at at as offsets into the table: next, key, key length, value,
+// value length.
+kv_entry_c :: (table: [] u8, used: int, at: int, fields: [] u64) -> int #export_c {
+  if fields.count < 5 { return -1; }
+  e := kv_entry_vartime(table, used, at);
+  if e.code != KV_OK { return e.code; }
+  k := at + KV_ENTRY_HEAD;
+  fields[0] = cast(u64) e.next; fields[1] = cast(u64) k; fields[2] = cast(u64) e.key.count;
+  fields[3] = cast(u64) (k + e.key.count); fields[4] = cast(u64) e.value.count;
+  return KV_OK;
+}
+
+// ---- checks
+// The test helpers take keys and values as strings.
+kv_copy :: (s: string, out: [] u8) -> [] u8 {
+  for i: 0..<s.count { out[i] = s[i]; }
+  return out[0..<s.count];
+}
+kv_sets :: (table: [] u8, used: int, key: string, value: string) -> int {
+  k: [64] u8; v: [64] u8;
+  return kv_set_vartime(table, used, kv_copy(key, k[..]), kv_copy(value, v[..]));
+}
+kv_dels :: (table: [] u8, used: int, key: string) -> int { k: [64] u8; return kv_delete_vartime(table, used, kv_copy(key, k[..])); }
+kv_gets :: (table: [] u8, used: int, key: string, out: [] u8) -> KvGet { k: [64] u8; return kv_get_vartime(table, used, kv_copy(key, k[..]), out); }
+kv_seeks :: (table: [] u8, used: int, key: string) -> int { k: [64] u8; return kv_seek_vartime(table, used, kv_copy(key, k[..])); }
+kv_bputs :: (batch: [] u8, at: int, key: string, value: string) -> int {
+  k: [64] u8; v: [64] u8;
+  return kv_batch_put_vartime(batch, at, kv_copy(key, k[..]), kv_copy(value, v[..]));
+}
+kv_bdels :: (batch: [] u8, at: int, key: string) -> int { k: [64] u8; return kv_batch_delete_vartime(batch, at, kv_copy(key, k[..])); }
+kv_compares :: (a: string, b: string) -> int { x: [64] u8; y: [64] u8; return kv_compare(kv_copy(a, x[..]), kv_copy(b, y[..])); }
+kv_is :: (a: [] u8, s: string) -> bool {
+  if a.count != s.count { return false; }
+  for i: 0..<a.count { if a[i] != s[i] { return false; } }
+  return true;
+}
+// The keys of the table in order, joined with commas.
+kv_keys_are :: (table: [] u8, used: int, want: string) -> bool {
+  text: [256] u8; n := 0;
+  e := kv_entry_vartime(table, used, 0);
+  while e.code == KV_OK {
+    if n > 0 { text[n] = ','; n += 1; }
+    for i: 0..<e.key.count { text[n] = e.key[i]; n += 1; }
+    e = kv_entry_vartime(table, used, e.next);
+  }
+  return kv_is(text[0..<n], want);
+}
+kv_value_is :: (table: [] u8, used: int, key: string, want: string) -> bool {
+  out: [64] u8;
+  g := kv_gets(table, used, key, out[..]);
+  return g.code == KV_OK && kv_is(out[0..<g.n], want);
+}
+// A log with two batches: a=1, b=22, c=333; then delete b, put a=4444.
+kv_two_batches :: (file: [] u8, mask: u64) -> int {
+  table: [256] u8; batch: [128] u8;
+  n := kv_header_vartime(mask, file);
+  at := kv_batch_new(batch[..]);
+  at = kv_bputs(batch[..], at, "a", "1");
+  at = kv_bputs(batch[..], at, "b", "22");
+  at = kv_bputs(batch[..], at, "c", "333");
+  c := kv_commit_vartime(table[..], 0, 0, batch[0..<at], mask, file[n..<file.count]);
+  n += c.n;
+  at = kv_batch_new(batch[..]);
+  at = kv_bdels(batch[..], at, "b");
+  at = kv_bputs(batch[..], at, "a", "4444");
+  c = kv_commit_vartime(table[..], c.used, 1, batch[0..<at], mask, file[n..<file.count]);
+  return n + c.n;
+}
+
+#test "the check helpers notice every difference" {
+  table: [64] u8;
+  u := kv_sets(table[..], 0, "k", "v");
+  ab: [2] u8; ab[0] = 'a'; ab[1] = 'b';
+  #assert kv_is(ab[..], "ab") && !kv_is(ab[..], "ac") && !kv_is(ab[..], "a");
+  #assert kv_keys_are(table[..], u, "k") && !kv_keys_are(table[..], u, "j") && !kv_keys_are(table[..], 0, "k");
+  #assert kv_value_is(table[..], u, "k", "v") && !kv_value_is(table[..], u, "k", "w") && !kv_value_is(table[..], u, "j", "v");
+}
+#test "little-endian fields" {
+  b: [8] u8;
+  kv_put16(b[..], 0, 0x1234); #assert b[0] == 0x34 && b[1] == 0x12 && kv_get16(b[..], 0) == 0x1234;
+  kv_put32(b[..], 0, 0x89abcdef); #assert b[0] == 0xef && b[3] == 0x89 && kv_get32(b[..], 0) == 0x89abcdef;
+  kv_put64(b[..], 0, 0x0102030405060708); #assert b[0] == 8 && b[7] == 1 && kv_get64(b[..], 0) == 0x0102030405060708;
+}
+#test "byte order: the first difference decides, then the shorter key" {
+  #assert kv_compares("a", "b") < 0 && kv_compares("b", "a") > 0;
+  #assert kv_compares("ab", "ab") == 0;
+  #assert kv_compares("a", "ab") < 0 && kv_compares("ab", "a") > 0;
+  #assert kv_compares("b", "ab") > 0;
+  hi := [1] u8.[0xff]; lo := [2] u8.[0x7f, 0xff];
+  #assert kv_compare(hi[..], lo[..]) > 0;
+}
+#test "put, replace, get and delete keep the table in order" {
+  table: [96] u8; out: [8] u8;
+  u := kv_sets(table[..], 0, "m", "1");
+  u = kv_sets(table[..], u, "c", "22");
+  u = kv_sets(table[..], u, "x", "333");
+  u = kv_sets(table[..], u, "ca", "");
+  #assert u == 4 * 6 + 1 + 1 + 1 + 2 + 1 + 3 + 2 && kv_keys_are(table[..], u, "c,ca,m,x");
+  // Replace with a longer value, then a shorter one: the neighbours move.
+  u = kv_sets(table[..], u, "c", "abcdef");
+  #assert kv_value_is(table[..], u, "c", "abcdef") && kv_value_is(table[..], u, "x", "333") && kv_value_is(table[..], u, "ca", "");
+  u = kv_sets(table[..], u, "c", "z");
+  #assert kv_value_is(table[..], u, "c", "z") && kv_value_is(table[..], u, "m", "1") && kv_keys_are(table[..], u, "c,ca,m,x");
+  g := kv_gets(table[..], u, "x", out[0..<2]);
+  #assert g.code == KV_FULL && g.n == 3;
+  #assert kv_gets(table[..], u, "q", out[..]).code == KV_NOT_FOUND;
+  u = kv_dels(table[..], u, "ca");
+  #assert kv_keys_are(table[..], u, "c,m,x") && kv_value_is(table[..], u, "x", "333");
+  #assert kv_dels(table[..], u, "q") == u;
+  u = kv_dels(table[..], u, "x");
+  u = kv_dels(table[..], u, "c");
+  u = kv_dels(table[..], u, "m");
+  #assert u == 0 && kv_keys_are(table[..], u, "");
+}
+#test "a put that does not fit, or is too long, changes nothing" {
+  table: [16] u8; big: [1025] u8;
+  u := kv_sets(table[..], 0, "a", "123");
+  #assert u == 10 && kv_sets(table[..], u, "b", "1") == -KV_FULL;
+  #assert kv_sets(table[..], u, "a", "1234567890") == -KV_FULL && kv_value_is(table[..], u, "a", "123");
+  #assert kv_sets(table[..], u, "a", "123456") == 13;
+  #assert kv_sets(table[..], u, "", "1") == -KV_TOO_LONG;
+  one: [1] u8; one[0] = '1';
+  #assert kv_set_vartime(table[..], u, big[..], one[..]) == -KV_TOO_LONG;
+  #assert kv_set_vartime(table[..], u, big[0..<1024], one[..]) == -KV_FULL;
+}
+#test "iteration from the start and from a key" {
+  table: [96] u8;
+  u := 0;
+  for k: [4] string.["d", "b", "f", "bb"] { u = kv_sets(table[..], u, k, k); }
+  e := kv_entry_vartime(table[..], u, kv_seeks(table[..], u, "c"));
+  #assert e.code == KV_OK && kv_is(e.key, "d") && kv_is(e.value, "d");
+  e = kv_entry_vartime(table[..], u, e.next);
+  #assert kv_is(e.key, "f") && kv_entry_vartime(table[..], u, e.next).code == KV_NOT_FOUND;
+  #assert kv_is(kv_entry_vartime(table[..], u, kv_seeks(table[..], u, "b")).key, "b");
+  #assert kv_is(kv_entry_vartime(table[..], u, kv_seeks(table[..], u, "ba")).key, "bb");
+  #assert kv_seeks(table[..], u, "g") == u;
+}
+#test "a batch is built, read back and checked" {
+  batch: [64] u8;
+  at := kv_batch_new(batch[..]);
+  at = kv_bputs(batch[..], at, "key", "value");
+  at = kv_bdels(batch[..], at, "old");
+  #assert at == 12 + 7 + 3 + 5 + 3 + 3 && kv_get32(batch[..], 8) == 2;
+  op := kv_op_vartime(batch[0..<at], 12);
+  #assert op.code == KV_OK && op.kind == KV_PUT && kv_is(op.key, "key") && kv_is(op.value, "value") && op.value_at == 22;
+  op = kv_op_vartime(batch[0..<at], op.next);
+  #assert op.kind == KV_DELETE && kv_is(op.key, "old") && op.next == at;
+  b := kv_batch_check_vartime(batch[0..<at]);
+  #assert b.code == KV_OK && b.count == 2 && b.grow == 6 + 3 + 5;
+  // A count that disagrees with the operations, a cut and an unknown kind.
+  kv_put32(batch[..], 8, 3); #assert kv_batch_check_vartime(batch[0..<at]).code == KV_BAD_BATCH;
+  kv_put32(batch[..], 8, 1); #assert kv_batch_check_vartime(batch[0..<at]).code == KV_BAD_BATCH;
+  kv_put32(batch[..], 8, 2);
+  for cut: 0..<at { #assert kv_batch_check_vartime(batch[0..<cut]).code == KV_BAD_BATCH; }
+  batch[12] = 3; #assert kv_batch_check_vartime(batch[0..<at]).code == KV_BAD_BATCH;
+  batch[12] = KV_PUT; kv_put16(batch[..], 13, 0); #assert kv_op_vartime(batch[0..<at], 12).code == KV_BAD_BATCH;
+  // Builders refuse what does not fit or is too long, and leave the count.
+  small: [21] u8;
+  a := kv_batch_new(small[..]);
+  #assert kv_bputs(small[..], a, "k", "v") == 21;
+  #assert kv_bputs(small[..], 20, "k", "v") == -KV_FULL;
+  #assert kv_bdels(small[..], 18, "k") == -KV_FULL && kv_get32(small[..], 8) == 1;
+  #assert kv_bputs(small[..], a, "", "v") == -KV_TOO_LONG;
+  #assert kv_bdels(small[..], a, "") == -KV_TOO_LONG;
+  #assert kv_bputs(small[..], 3, "k", "v") == -KV_FULL;
+  #assert kv_batch_new(small[0..<11]) == -KV_FULL;
+}
+#test "a batch lands whole or not at all" {
+  table: [40] u8; batch: [64] u8;
+  u := kv_sets(table[..], 0, "a", "1");
+  at := kv_batch_new(batch[..]);
+  at = kv_bdels(batch[..], at, "a");
+  at = kv_bputs(batch[..], at, "b", "12345678");
+  at = kv_bputs(batch[..], at, "c", "12345678");
+  // 2 * 15 bytes may grow it from 8 to 38: fits.
+  #assert kv_apply_vartime(table[..], u, batch[0..<at], 0) == 30;
+  // From a full table, the same batch could not be checked to fit: no change.
+  u = kv_sets(table[..], 0, "zz", "123456789012345");
+  #assert u == 23 && kv_apply_vartime(table[..], u, batch[0..<at], 0) == -KV_FULL && kv_keys_are(table[..], u, "zz");
+  #assert kv_apply_vartime(table[..], u, batch[0..<at-1], 0) == -KV_BAD_BATCH;
+}
+#test "Core's obfuscation: byte i with key byte i mod 8, twice is nothing" {
+  v: [10] u8;
+  for i: 0..<10 { v[i] = cast(u8) i; }
+  kv_mask(v[..], 0x0807060504030201);
+  // 0^1, 1^2, ... 7^8, then 8^1, 9^2
+  #assert v[0] == 1 && v[1] == 3 && v[7] == 15 && v[8] == 9 && v[9] == 11;
+  kv_mask(v[..], 0x0807060504030201);
+  #assert v[0] == 0 && v[9] == 9;
+  kv_mask(v[..], 0);
+  #assert v[5] == 5;
+}
+#test "the header: magic, version, flags, mask and checksum" {
+  h: [20] u8;
+  #assert kv_header_vartime(0x1122334455667788, h[..]) == 20 && kv_is(h[0..<4], "OAKV") && h[4] == 1 && h[5] == 1 && h[8] == 0x88;
+  #assert kv_checksum_ok(h[0..<16], h[16..<20]);
+  h[9] ^= 1; #assert !kv_checksum_ok(h[0..<16], h[16..<20]);
+  #assert kv_header_vartime(0, h[..]) == 20 && h[5] == 0;
+  #assert kv_header_vartime(0, h[0..<19]) == -KV_FULL;
+}
+#test "commit, then open: the log replays to the same table" {
+  file: [256] u8; table: [256] u8;
+  for mask: [2] u64.[0, 0xa5a5a5a5a5a5a5a5] {
+    n := kv_two_batches(file[..], mask);
+    // The header, then frames of 8 + 12 + (9 + 10 + 11) and 8 + 12 + (4 + 12).
+    #assert n == 20 + 50 + 36;
+    r := kv_open_vartime(file[0..<n], table[..]);
+    #assert r.code == KV_OK && r.seq == 2 && r.frames == 2 && r.keep == n && !r.cut && r.mask == mask;
+    #assert kv_keys_are(table[..], r.used, "a,c") && kv_value_is(table[..], r.used, "a", "4444") && kv_value_is(table[..], r.used, "c", "333");
+  }
+  // With a mask, the value bytes on disk are not the value's.
+  n := kv_two_batches(file[..], 0xa5a5a5a5a5a5a5a5);
+  #assert file[20 + 8 + 12 + 7 + 1] == '1' ^ 0xa5;
+  // A header alone is an empty store.
+  r := kv_open_vartime(file[0..<20], table[..]);
+  #assert r.code == KV_OK && r.used == 0 && r.seq == 0 && r.keep == 20;
+}
+#test "commit refuses a bad batch, a small frame or a full table, and changes nothing" {
+  table: [32] u8; batch: [64] u8; frame: [64] u8;
+  at := kv_batch_new(batch[..]);
+  at = kv_bputs(batch[..], at, "k", "v");
+  #assert kv_commit_vartime(table[..], 0, 0, batch[0..<at-1], 0, frame[..]).code == KV_BAD_BATCH;
+  #assert kv_commit_vartime(table[..], 0, 0, batch[0..<at], 0, frame[0..<at+7]).code == KV_FULL;
+  #assert kv_commit_vartime(table[0..<7], 0, 0, batch[0..<at], 0, frame[..]).code == KV_FULL;
+  c := kv_commit_vartime(table[..], 0, 6, batch[0..<at], 0, frame[..]);
+  #assert c.code == KV_OK && c.used == 8 && c.n == 8 + at && kv_get64(frame[8..<frame.count], 0) == 7 && kv_get32(frame[..], 0) == at;
+}
+#test "a torn last frame is cut, at every length" {
+  file: [256] u8; table: [256] u8;
+  n := kv_two_batches(file[..], 0x0102030405060708);
+  second := 20 + 50;
+  for cut: second..<n {
+    r := kv_open_vartime(file[0..<cut], table[..]);
+    #assert r.code == KV_OK && r.seq == 1 && r.keep == second && r.cut == (cut > second);
+    #assert kv_value_is(table[..], r.used, "b", "22") && kv_value_is(table[..], r.used, "a", "1");
+  }
+  // The file grew but the last frame's bytes are zeros, or half written.
+  full: [256] u8;
+  for i: 0..<n { full[i] = file[i]; }
+  for z: second..<n { full[z] = 0; }
+  r := kv_open_vartime(full[0..<n], table[..]);
+  #assert r.code == KV_OK && r.cut && r.keep == second && r.seq == 1;
+  // One byte of a length written: not a length, but only zeros follow it.
+  full[second] = 4;
+  r = kv_open_vartime(full[0..<n], table[..]);
+  #assert r.code == KV_OK && r.cut && r.keep == second;
+  full[second+5] = 1;
+  #assert kv_open_vartime(full[0..<n], table[..]).code == KV_CORRUPT;
+  full[second] = 0; full[second+5] = 0;
+  for i: second..<second+20 { full[i] = file[i]; }
+  r = kv_open_vartime(full[0..<n], table[..]);
+  #assert r.code == KV_OK && r.cut && r.keep == second;
+  // Zeros after the last whole frame are cut too.
+  for i: 0..<n { full[i] = file[i]; }
+  r = kv_open_vartime(full[0..<n+5], table[..]);
+  #assert r.code == KV_OK && r.cut && r.keep == n && r.seq == 2;
+}
+#test "damage to committed bytes is refused" {
+  file: [256] u8; table: [256] u8;
+  n := kv_two_batches(file[..], 0);
+  // A flipped byte in the first frame's body, checksum or length.
+  for at: [3] int.[20 + 30, 20 + 5, 20 + 0] {
+    file[at] ^= 0x08;
+    r := kv_open_vartime(file[0..<n], table[..]);
+    #assert r.code == KV_CORRUPT && r.keep == 20;
+    file[at] ^= 0x08;
+  }
+  // A length too small for a body, with bytes after it. (A flipped bit
+  // that makes the length point past the end looks like a torn append.)
+  file[20] = 3; file[21] = 0;
+  #assert kv_open_vartime(file[0..<n], table[..]).code == KV_CORRUPT;
+  file[20] = 42;
+  // The second frame replayed alone: its sequence number does not follow.
+  r := kv_open_vartime(file[0..<n], table[..]);
+  #assert r.code == KV_OK && r.seq == 2;
+  kv_put64(file[..], 20 + 50 + 8, 5);
+  kv_checksum(file[20+50+8..<n], file[20+50+4..<20+50+8]);
+  #assert kv_open_vartime(file[0..<n], table[..]).code == KV_CORRUPT;
+  // Headers: short, another magic, another version, a damaged mask.
+  n = kv_two_batches(file[..], 0);
+  #assert kv_open_vartime(file[0..<19], table[..]).code == KV_BAD_HEADER;
+  file[0] = 'X'; #assert kv_open_vartime(file[0..<n], table[..]).code == KV_BAD_HEADER; file[0] = 'O';
+  file[4] = 2; #assert kv_open_vartime(file[0..<n], table[..]).code == KV_BAD_HEADER; file[4] = 1;
+  file[10] = 1; #assert kv_open_vartime(file[0..<n], table[..]).code == KV_BAD_HEADER; file[10] = 0;
+  // A table too small to replay into.
+  #assert kv_open_vartime(file[0..<n], table[0..<10]).code == KV_FULL;
+}
+#test "a sealed frame with a well-formed checksum but a bad batch is corrupt" {
+  file: [128] u8; table: [64] u8;
+  n := kv_header_vartime(0, file[..]);
+  body := file[n+8..<n+8+13];
+  #assert kv_batch_new(body) == 12;
+  kv_put32(body, 8, 1); body[12] = 9;
+  kv_seal_vartime(file[n..<file.count], 13, 1, 0);
+  #assert kv_open_vartime(file[0..<n+8+13], table[..]).code == KV_CORRUPT;
+  // A first frame with sequence number 0.
+  kv_put32(body, 8, 0);
+  kv_seal_vartime(file[n..<file.count], 12, 0, 0);
+  #assert kv_open_vartime(file[0..<n+8+12], table[..]).code == KV_CORRUPT;
+}
+#test "compaction: a snapshot opens to the same table and sequence number" {
+  file: [256] u8; table: [256] u8; snap: [256] u8; again: [256] u8;
+  for mask: [2] u64.[0, 0x0102030405060708] {
+    n := kv_two_batches(file[..], mask);
+    r := kv_open_vartime(file[0..<n], table[..]);
+    s := kv_snapshot_vartime(table[..], r.used, r.seq, mask, snap[..]);
+    // a=4444 and c=333 as two puts.
+    #assert s == 20 + 8 + 12 + (7 + 1 + 4) + (7 + 1 + 3);
+    q := kv_open_vartime(snap[0..<s], again[..]);
+    #assert q.code == KV_OK && q.seq == 2 && q.frames == 1 && q.used == r.used && q.mask == mask;
+    for i: 0..<r.used { #assert again[i] == table[i]; }
+  }
+  #assert kv_snapshot_vartime(table[..], 0, 0, 0, snap[..]) == 20;
+  #assert kv_snapshot_vartime(table[..], 8, 0, 0, snap[..]) == -KV_BAD_BATCH;
+  #assert kv_snapshot_vartime(table[..], 8, 3, 0, snap[0..<19]) == -KV_FULL;
+  #assert kv_snapshot_vartime(table[..], 8, 3, 0, snap[0..<30]) == -KV_FULL;
+  #assert kv_snapshot_vartime(table[..], 8, 3, 0, snap[0..<45]) == -KV_FULL;
+}
+#test "the C interface" {
+  file: [256] u8; table: [256] u8; out: [8] u8; f: [6] u64; batch: [32] u8; frame: [64] u8;
+  n := kv_two_batches(file[..], 0);
+  #assert kv_open_c(file[0..<n], table[..], f[..]) == KV_OK && f[1] == 2 && f[2] == 2 && f[3] == cast(u64) n && f[4] == 0;
+  #assert kv_open_c(file[0..<n], table[..], f[0..<5]) == -1;
+  used := cast(int) f[0];
+  a: [1] u8; a[0] = 'a'; b: [1] u8; b[0] = 'b'; x: [1] u8; x[0] = 'x';
+  #assert kv_get_c(table[..], used, a[..], out[..]) == 4 && kv_get_c(table[..], used, b[..], out[..]) == -KV_NOT_FOUND;
+  #assert kv_seek_c(table[..], used, b[..]) == kv_entry_size(1, 4);
+  #assert kv_entry_c(table[..], used, 0, f[..]) == KV_OK && f[0] == 11 && f[1] == 6 && f[2] == 1 && f[3] == 7 && f[4] == 4;
+  #assert kv_entry_c(table[..], used, used, f[..]) == KV_NOT_FOUND && kv_entry_c(table[..], used, 0, f[0..<4]) == -1;
+  used = kv_set_c(table[..], used, b[..], x[..]);
+  used = kv_delete_c(table[..], used, a[..]);
+  #assert kv_keys_are(table[..], used, "b,c");
+  at := kv_batch_new(batch[..]);
+  at = kv_bputs(batch[..], at, "d", "y");
+  #assert kv_commit_c(table[..], used, 2, batch[0..<at], 0, frame[..], f[..]) == KV_OK && f[1] == cast(u64) (8 + at);
+  #assert kv_commit_c(table[..], used, 2, batch[0..<at], 0, frame[..], f[0..<1]) == -1;
+}

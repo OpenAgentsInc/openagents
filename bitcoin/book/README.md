@@ -43,11 +43,12 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 54 are implemented and 70 are planned. The 54 implemented
+Of the 124 chapters, 55 are implemented and 69 are planned. The 55 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 56, 65, 66, 67 and 68 are new.
+39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 56, 62, 65, 66, 67 and 68 are
+new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -227,7 +228,7 @@ Connecting and disconnecting blocks, the block index, reorganizations, block fil
 | 59. The block index and the most-work chain | Planned | A header chain from genesis to a pinned height selects the most-work tip; a fork with less work loses. A header that fails a header rule is marked invalid with all its descendants. |
 | 60. Reorganizations and invalid chains | Planned | On regtest a fork with more work replaces the tip: the node disconnects to the fork point and connects the new branch, and its UTXO set matches Bitcoin Core's after the same reorganization. A fork that contains an invalid block never becomes the tip. |
 | 61. Block files and undo files | Planned | Blocks and undo data are appended to files and read back by position, and the node imports Bitcoin Core's `blk*.dat` files. A file cut mid-record at any byte is detected at start and its damaged tail dropped. |
-| 62. A key-value store for the chainstate | Planned | Reads, writes, deletes and ordered iteration match a reference map on random workloads. A crash at every write of a recorded workload restarts to exactly the last committed batch. |
+| [62. A key-value store for the chainstate](ch062-a-key-value-store-for-the-chainstate.md) | Runnable: native C | Our own store, not LevelDB: a sorted table with get, put, delete and ordered iteration, atomic batches, and an append-only log of SHA-256d-checksummed frames with replay that cuts a torn last frame and refuses any other damage, plus compaction by copy-on-write and Bitcoin Core's obfuscation key. On real files, a crash at every byte of every append reopens to exactly the last committed batch, and every single-byte flip of a log gets the same verdict from Coax and a separate Python reader. |
 | 63. The coins cache and crash-safe flushes | Planned | A crash at any point of a flush restarts to a consistent tip and replays to the same MuHash. The cache stays under its configured memory limit. |
 | 64. Pruning | Planned | A pruned node keeps its block files under the configured target, keeps at least the last 288 blocks, and still reorganizes across them. |
 

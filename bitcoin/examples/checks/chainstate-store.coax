@@ -1,0 +1,85 @@
+// The checks of chainstate-store.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/chainstate-store.coax
+#load "../chainstate-store.coax";
+
+// book:begin check
+// A log of `count` batches over eight keys, each batch a seeded mix of puts
+// and deletes. Returns the log's length; the expected value of key k after
+// the last batch is in want[k] (0 for absent, else its one-byte value).
+cs_log :: (file: [] u8, count: int, mask: u64, want: [] u8) -> int {
+  table: [512] u8; batch: [128] u8; key: [2] u8; value: [1] u8;
+  n := kv_header_vartime(mask, file);
+  used := 0; x := cast(u64) 62;
+  for k: 0..<8 { want[k] = 0; }
+  for b: 0..<count {
+    at := kv_batch_new(batch[..]);
+    for j: 0..<3 {
+      x = add_wrap(mul_wrap(x, 6364136223846793005), 1442695040888963407);
+      k := cast(int) ((x >> 33) % 8);
+      key[0] = 'k'; key[1] = cast(u8) ('0' + k);
+      if ((x >> 40) & 3) == 0 {
+        at = kv_batch_delete_vartime(batch[..], at, key[..]);
+        want[k] = 0;
+      } else {
+        value[0] = cast(u8) (1 + ((x >> 45) % 200));
+        at = kv_batch_put_vartime(batch[..], at, key[..], value[..]);
+        want[k] = value[0];
+      }
+    }
+    c := kv_commit_vartime(table[..], used, cast(u64) b, batch[0..<at], mask, file[n..<file.count]);
+    used = c.used; n += c.n;
+  }
+  return n;
+}
+// The table holds exactly want.
+cs_holds :: (table: [] u8, used: int, want: [] u8) -> bool {
+  key: [2] u8; out: [4] u8; count := 0;
+  for k: 0..<8 {
+    key[0] = 'k'; key[1] = cast(u8) ('0' + k);
+    g := kv_get_vartime(table, used, key[..], out[..]);
+    if want[k] == 0 && g.code != KV_NOT_FOUND { return false; }
+    if want[k] != 0 && (g.code != KV_OK || g.n != 1 || out[0] != want[k]) { return false; }
+    if want[k] != 0 { count += 1; }
+  }
+  // And nothing else, in order.
+  e := kv_entry_vartime(table, used, 0); seen := 0; last: [2] u8;
+  while e.code == KV_OK {
+    if seen > 0 && kv_compare(last[..], e.key) >= 0 { return false; }
+    last[0] = e.key[0]; last[1] = e.key[1];
+    seen += 1; e = kv_entry_vartime(table, used, e.next);
+  }
+  return seen == count;
+}
+// Every log of 1 to 12 batches reopens to its last batch, masked or not.
+#forall "a log of n batches reopens to batch n" n: 1..<13 #steps 400000000 {
+  file: [1024] u8; table: [512] u8; want: [8] u8;
+  for mask: [2] u64.[0, 0x2bd7d3a1c06f5a19] {
+    size := cs_log(file[..], n, mask, want[..]);
+    r := kv_open_vartime(file[0..<size], table[..]);
+    #assert r.code == KV_OK && r.seq == cast(u64) n && r.frames == n && !r.cut;
+    #assert cs_holds(table[..], r.used, want[..]);
+  }
+}
+// Cut a log of 6 batches at every byte of its last frame: each reopens to batch 5.
+#test "a crash at every byte of the last append reopens to the batch before" #steps 4000000000 {
+  file: [1024] u8; table: [512] u8; want5: [8] u8; want6: [8] u8;
+  first := cs_log(file[..], 5, 7, want5[..]);
+  n := cs_log(file[..], 6, 7, want6[..]);
+  for end: first..<n {
+    r := kv_open_vartime(file[0..<end], table[..]);
+    #assert r.code == KV_OK && r.seq == 5 && r.keep == first && r.cut == (end > first);
+    #assert cs_holds(table[..], r.used, want5[..]);
+  }
+}
+// Compacting at any point gives the same table, and commits follow on.
+#test "compaction keeps the table and the sequence" #steps 4000000000 {
+  file: [1024] u8; table: [512] u8; snap: [512] u8; again: [512] u8; want: [8] u8;
+  n := cs_log(file[..], 9, 0x55, want[..]);
+  r := kv_open_vartime(file[0..<n], table[..]);
+  s := kv_snapshot_vartime(table[..], r.used, r.seq, 0x55, snap[..]);
+  q := kv_open_vartime(snap[0..<s], again[..]);
+  #assert q.code == KV_OK && q.seq == 9 && q.frames == 1 && cs_holds(again[..], q.used, want[..]);
+  #assert s < n;
+}
+// book:end check
