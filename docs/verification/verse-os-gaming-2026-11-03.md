@@ -121,3 +121,49 @@ Checks and observations:
 
 `os/desk-call.coax SOCKET [--pause-ms N] REQUEST_JSON...` is the developer
 probe: its requests share one connection. The controller CLI follows in #12727.
+
+## Controller CLI (#12727)
+
+`os/game.coax` builds as `verse-game`: list, look, press, hold, click, drag,
+stop. It selects exactly one title/handle/lifetime, uses the v2 socket and
+never assumes an X display number. `look` captures PPM from the desk and can
+ask the installed ffmpeg to encode PNG; a JSON sidecar binds the file to the
+capture's frame/session/window metadata. Holds are bounded to two seconds.
+Closing the connection releases only that connection's lease; explicit
+`stop` is the separate emergency stop.
+
+Observed:
+
+- Game entry: 87 Coax checks. Action policy: 193 mutants killed, zero
+  survivors. Target-selection policy: 65 entry-source mutants killed,
+  zero survivors, dependency checks retained.
+- The native ASan/UBSan fixture now also drives a private foot/cat terminal
+  through the actual CLI. Capture -> press -> capture changes the visual
+  fixture; PNG bytes and metadata are written; an invalid fractional hold
+  refuses before input. Killing a CLI while the desk observably holds its
+  key clears the key and lease. Emergency stop passes. All cases passed.
+- Against actual WoW: CLI PNG capture, a 100 ms W hold, a -40-pixel right
+  drag, another PNG capture and stop all succeeded. The earlier API run
+  independently established visible movement and camera turning.
+- Session checks after adding the tools directory to its desk's PATH:
+  34 passed. Nix flake evaluation after packaging the CLI and PNG converter:
+  passed. The CLI does not add a new Python, JavaScript or shell tool.
+
+- Built and installed the native newland/Verse bundle at
+  `~/.local/share/verse-os/current`, including both gaming tools and the
+  optional openagents CLI. The installer preserves that CLI when a checkout
+  has not built a replacement. No system rebuild or default-session change.
+- Final integrated trial: the installed verse-session ran its actual Vulkan
+  Grid inside another private headless compositor, with its own inner desk.
+  Plain `verse-battlenet` started from that desk, Play launched Classic Era,
+  and the installed CLI entered Coldridge Valley, held W for 100 ms, dragged
+  the camera 40 pixels and stopped. The outer capture shows the in-world
+  game docked beside the Grid; before/after captures are
+  `/tmp/verse-wow-outer/wow-in-grid.png` and `wow-in-grid-after.png`.
+  Audio stayed on a temporary null sink throughout.
+- That trial exposed host `VK_DRIVER_FILES` and `LD_LIBRARY_PATH` overrides
+  leaking from the native Verse into Proton's container. The launcher now
+  clears both for its child; the installed fix passed the integrated trial.
+  Its updated entry passed 84 Coax checks.
+
+User commands: [Verse gaming](../os/verse-gaming.md).

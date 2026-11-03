@@ -32,6 +32,10 @@ ct_clear :: (socket: string) -> bool {
   return n > 0 && jv_parse(d[..], cast(string) out[0..<n], nodes[..]) && !jv_bool(d[0], jv_get(d[0], 0, "active")) &&
     jv_int(d[0], jv_get(d[0], 0, "keys"), -1) == 0 && jv_int(d[0], jv_get(d[0], 0, "buttons"), -1) == 0;
 }
+ct_one_key :: (socket: string) -> bool {
+  out: [65536] u8; nodes: [128] JvNode; d: [1] Jv; n := dc_call(socket, "{\"generation\":2,\"type\":\"info\"}", out[..]);
+  return n > 0 && jv_parse(d[..], cast(string) out[0..<n], nodes[..]) && jv_bool(d[0], jv_get(d[0], 0, "active")) && jv_int(d[0], jv_get(d[0], 0, "keys"), 0) == 1;
+}
 ct_pointer :: (h: int, t: CtTarget, ty: string, x: int, y: int, want: string) -> bool {
   bytes: [4096] u8; o: [1] Jo; jo_start(o[..], bytes[..]); jo_obj(o[..]);
   jo_key(o[..], "generation"); jo_int(o[..], 2); jo_key(o[..], "type"); jo_str(o[..], ty);
@@ -46,8 +50,13 @@ ct_xev :: (display: string) -> int {
   if !proc_arg(h, "xev") || !proc_arg(h, "-display") || !proc_arg(h, display) || proc_start(h) != 0 { r := proc_release(h); return -1; }
   return h;
 }
+ct_cli :: (cli: string, socket: string, title: string, verb: string, a: string, b: string) -> int {
+  av: [10] string; av[0] = cli; av[1] = "--socket"; av[2] = socket; av[3] = "--title"; av[4] = title; av[5] = verb; n := 6;
+  if a.count > 0 { av[n] = a; n += 1; } if b.count > 0 { av[n] = b; n += 1; }
+  out: [8192] u8; err: [4096] u8; r := proc_run(av[0..<n], 5000, out[..], err[..]); return r.status;
+}
 tool_main :: () -> int #export_c {
-  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 2 { return 2; }
+  a: [1] Args; if !args_load(a[..]) || (args_count(a[..]) != 2 && args_count(a[..]) != 3) { return 2; }
   tmp: [4096] u8; dir := fs_temp("verse-control-", tmp[..]); if dir.count == 0 { return 1; }
   b: [2] [4096] u8; wl := fs_join(dir, "wayland", b[0][..]); socket := fs_join(dir, "desk.sock", b[1][..]);
   comp := proc_new(); if comp < 0 { return 1; }
@@ -118,6 +127,35 @@ tool_main :: () -> int #export_c {
   ok = ct_check("old lifetime cannot acquire reused handle", ct_request(h, t, "acquire", 0, false, 1000, "refused")) && ok;
   ok = ct_check("new lifetime can acquire reused handle", ct_request(h, newer, "acquire", 0, false, 1000, "done")) && ok;
   r = cxsock_close(h); r = cxsock_close(other); released = proc_release(second); released = proc_release(third);
+  if args_count(a[..]) == 3 {
+    cli := args_at(a[..], 2); terminal := proc_new();
+    env: [8192] u8; ne := 0; for c: "WAYLAND_DISPLAY=" { env[ne] = c; ne += 1; } for c: wl { env[ne] = c; ne += 1; }
+    started := proc_arg(terminal, "foot") && proc_arg(terminal, "--title") && proc_arg(terminal, "Verse Control Fixture") && proc_arg(terminal, "cat") && proc_env(terminal, cast(string) env[0..<ne]) && proc_start(terminal) == 0;
+    until = proc_now_ms() + 3000; present := false;
+    while started && proc_now_ms() < until {
+      n = dc_call(socket, "{\"generation\":2,\"type\":\"list\"}", out[..]);
+      if n > 0 && ct_has(cast(string) out[0..<n], "Verse Control Fixture") { present = true; break; } proc_sleep(20);
+    }
+    ok = ct_check("CLI visual fixture ready", present) && ok;
+    pics: [3] [4096] u8; before := fs_join(dir, "before.ppm", pics[0][..]); after := fs_join(dir, "after.ppm", pics[1][..]); png := fs_join(dir, "after.png", pics[2][..]);
+    ok = ct_check("CLI capture before", ct_cli(cli, socket, "Verse Control Fixture", "look", before, "") == 0) && ok;
+    ok = ct_check("CLI press delivered", ct_cli(cli, socket, "Verse Control Fixture", "press", "a", "") == 0) && ok;
+    ok = ct_check("CLI capture after", ct_cli(cli, socket, "Verse Control Fixture", "look", after, "") == 0) && ok;
+    pixels1: [1440016] u8; pixels2: [1440016] u8; n1 := fs_read(before, pixels1[..]); n2 := fs_read(after, pixels2[..]);
+    ok = ct_check("CLI action changes visual fixture", n1 > 0 && n1 == n2 && cast(string) pixels1[0..<n1] != cast(string) pixels2[0..<n2]) && ok;
+    ok = ct_check("CLI PNG capture", ct_cli(cli, socket, "Verse Control Fixture", "look", png, "") == 0) && ok;
+    sig: [8] u8; count := fs_read_at(png, 0, sig[..]);
+    ok = ct_check("CLI writes PNG bytes", count == 8 && sig[0] == 137 && sig[1] == 'P' && sig[2] == 'N' && sig[3] == 'G') && ok;
+    ok = ct_check("CLI invalid duration has no input", ct_cli(cli, socket, "Verse Control Fixture", "hold", "w", "2.5") == 2 && ct_clear(socket)) && ok;
+    cancelled := proc_new(); cv := [8] string.[cli, "--socket", socket, "--title", "Verse Control Fixture", "hold", "w", "2000"]; started = true;
+    for v: cv { started = started && proc_arg(cancelled, v); } started = started && proc_start(cancelled) == 0;
+    seen_key := false; until = proc_now_ms() + 1000;
+    while started && proc_now_ms() < until { if ct_one_key(socket) { seen_key = true; break; } proc_sleep(10); }
+    killed = proc_kill(cancelled, PROC_SIGTERM); status = proc_wait(cancelled, 2000); released = proc_release(cancelled); proc_sleep(50);
+    ok = ct_check("CLI cancellation releases observed held input", started && seen_key && ct_clear(socket)) && ok;
+    ok = ct_check("CLI emergency stop", ct_cli(cli, socket, "Verse Control Fixture", "stop", "", "") == 0 && ct_clear(socket)) && ok;
+    released = proc_release(terminal);
+  }
   sent = proc_send(comp, "quit\n"); drained := ct_wait(comp, "not-a-real-output-marker"); status = proc_wait(comp, 1000);
   err: [65536] u8; errors := proc_stderr(comp, err[..]);
   ok = ct_check("compositor and sanitizers", status == 0 && !ct_has(errors, "ERROR: AddressSanitizer") && !ct_has(errors, "runtime error:")) && ok;

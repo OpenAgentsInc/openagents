@@ -470,9 +470,12 @@ vs_desk_start :: (dir: string, run: string) -> int {
   // the desk protocol on its own socket (os/desk.coax's CODER_DESK_SOCKET), for the programs on the desk too
   dsb: [1200] u8; dsock := vs_cat(dsb[..], rt, "/verse-desk.sock");
   eb: [1300] u8; en := vs_fill(eb[..], "CODER_DESK_SOCKET="); for ch: dsock { if en < 1300 { eb[en] = ch; en += 1; } }
+  oldpath: [12288] u8; path: [16384] u8; prefix: [4096] u8; envpath: [16384] u8;
+  pref := vs_cat(prefix[..], dir, ":"); fullpath := vs_cat(path[..], pref, proc_getenv("PATH", oldpath[..]));
+  path_entry := vs_cat(envpath[..], "PATH=", fullpath);
   ok = proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, "exec \"$0\" \"$1\" \"$2\" \"$3\" 1280 720 --xwayland --desk-socket \"$6\" 0<>\"$4\" 1<>\"$5\"") &&
        proc_arg(h, program) && proc_arg(h, socket) && proc_arg(h, fs_join(desk, "compositor-us.xkb", b[4][..])) && proc_arg(h, fs_join(desk, "launch", b[5][..])) &&
-       proc_arg(h, fin) && proc_arg(h, fout) && proc_arg(h, dsock) && proc_env(h, cast(string) eb[0..<en]);
+       proc_arg(h, fin) && proc_arg(h, fout) && proc_arg(h, dsock) && proc_env(h, cast(string) eb[0..<en]) && path_entry.count > 5 && proc_env(h, path_entry);
   if !ok || proc_start(h) != 0 { d2 := proc_release(h); return -1; }
   print("verse-session: the desk is up on %\n", socket); vs_flush();
   return h;

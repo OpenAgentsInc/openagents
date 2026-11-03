@@ -165,6 +165,7 @@ coax="${COAX:-$root/coax/bin/coax}"
 (cd "$root" && "$coax" c verse/native/net.coax --library) > "$work/ship/net-src/net.c"
 (cd "$root" && "$coax" c os/verse-session.coax --library) > "$work/ship/net-src/verse-session.c"
 (cd "$root" && "$coax" c os/verse-transcript.coax --library) > "$work/ship/net-src/verse-transcript.c"
+(cd "$root" && "$coax" c os/game.coax --library) > "$work/ship/net-src/verse-game.c"
 (cd "$root" && "$coax" c os/battlenet.coax --library) > "$work/ship/net-src/verse-battlenet.c"
 (cd "$root" && "$coax" c os/gpu-limits.coax --library) > "$work/ship/net-src/gpu-limits.c"
 # the desk: the Coax compositor (os/compositor.coax), headless, which vk-realm --desk runs
@@ -204,6 +205,8 @@ nix-shell -p gcc pkg-config libdrm libglvnd libgbm vulkan-headers vulkan-loader 
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-session
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-transcript.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-transcript
+   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-game.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
+     entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-game
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-battlenet.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-battlenet
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. gpu-limits.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
@@ -291,6 +294,8 @@ if [ $mode = install ]; then
   mkdir -p \$dest.new/desk/launch
   for n in start coder pane; do printf \"#!/bin/sh\\nexec foot\\n\" > \$dest.new/desk/launch/\$n; chmod +x \$dest.new/desk/launch/\$n; done
   ln -s ../../verse-battlenet \$dest.new/desk/launch/battlenet
+  # Keep the installed optional CLI when this checkout has not built a replacement.
+  if [ -x \$dest/openagents ] && [ ! -x \$dest.new/openagents ]; then cp \$dest/openagents \$dest.new/openagents; fi
   { [ ! -e \$dest ] || mv \$dest \$dest.old; } && mv \$dest.new \$dest && rm -rf \$dest.old
   # the store paths the programs link (Vulkan, libdrm, wayland, OpenSSL: nix-shell's), kept from
   # the garbage collector while this directory holds them
@@ -354,6 +359,7 @@ exit \${status:-0}
 if [[ "$mode" == install && ( "$host" == local || "$host" == localhost ) ]]; then
   cli="$root/apps/openagents-cli/build/openagents"
   if [[ -x "$cli" ]]; then cp "$cli" "$dest/openagents.new" && mv "$dest/openagents.new" "$dest/openagents"; echo "realm.sh: the CLI is in $dest/openagents"
+  elif [[ -x "$dest/openagents" ]]; then echo "realm.sh: kept the installed CLI"
   else echo "realm.sh: no $cli (apps/openagents-cli/build.sh); the Grid cannot make an identity"; fi
 fi
 if [[ "$mode" == screen ]]; then

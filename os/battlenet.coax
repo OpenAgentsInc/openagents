@@ -40,6 +40,9 @@ tool_main :: () -> int #export_c {
   h := proc_new(); if h < 0 { return 1; }
   argv := [4] string.["flock", "--nonblock", lock, runner]; ok := true;
   for v: argv { ok = ok && proc_arg(h, v); }
+  // The native Verse selects its host Vulkan loader/ICD. Proton's container supplies its own
+  // loader paths; inheriting these host overrides made Battle.net exit during startup.
+  ok = ok && proc_unset(h, "VK_DRIVER_FILES") && proc_unset(h, "LD_LIBRARY_PATH");
   ok = ok && proc_detach(h) && proc_quiet(h);
   if !ok || proc_start(h) != 0 { r := proc_release(h); tool_errln("Battle.net: the runner did not start"); return 1; }
   status := proc_wait(h, 1000); pid := proc_pid(h); r := proc_release(h);

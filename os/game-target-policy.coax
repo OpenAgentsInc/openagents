@@ -1,0 +1,47 @@
+// Select exactly one target from an already normalized v2 window list. Refusal is all zero.
+#authority;
+#load "../coax/lib/json/json.coax";
+GameTarget :: struct { session: int; handle: int; revision: int; }
+#test "one exact title, explicit handle and expected lifetime" {
+  reply := "{\"session\":1,\"windows\":[{\"handle\":1,\"revision\":1,\"title\":\"World of Warcraft\"},{\"handle\":255,\"revision\":9007199254740991,\"title\":\"Battle.net\"}]}";
+  q := gc_target(reply, "World of Warcraft", 0, 0);
+  #assert q.session == 1 && q.handle == 1 && q.revision == 1;
+  q = gc_target(reply, "Battle.net", 255, 9007199254740991);
+  #assert q.session == 1 && q.handle == 255 && q.revision == 9007199254740991;
+  #assert gc_target(reply, "World of Warcraft", 255, 0).handle == 0;
+  #assert gc_target(reply, "World of Warcraft", 0, 2).handle == 0;
+  #assert gc_target(reply, "Other", 0, 0).handle == 0;
+  #assert gc_target("{\"session\":9007199254740991,\"windows\":[{\"handle\":1,\"revision\":1,\"title\":\"W\\u006fW\"}]}", "WoW", 0, 0).session == 9007199254740991;
+}
+#test "missing ambiguous malformed or out-of-range observations publish no target" {
+  for reply: [8] string.["{", "{}", "{\"session\":1,\"windows\":[{\"handle\":1,\"revision\":1,\"title\":\"WoW\"},{\"handle\":2,\"revision\":2,\"title\":\"WoW\"}]}",
+    "{\"session\":0,\"windows\":[{\"handle\":1,\"revision\":1,\"title\":\"WoW\"}]}",
+    "{\"session\":9007199254740992,\"windows\":[{\"handle\":1,\"revision\":1,\"title\":\"WoW\"}]}",
+    "{\"session\":1,\"windows\":[{\"handle\":0,\"revision\":1,\"title\":\"WoW\"}]}",
+    "{\"session\":1,\"windows\":[{\"handle\":256,\"revision\":1,\"title\":\"WoW\"}]}",
+    "{\"session\":1,\"windows\":[{\"handle\":1,\"revision\":0,\"title\":\"WoW\"}]}" ] {
+    q := gc_target(reply, "WoW", 0, 0); #assert q.session == 0 && q.handle == 0 && q.revision == 0;
+  }
+  #assert gc_target("{\"session\":1,\"windows\":[{\"handle\":1,\"revision\":9007199254740992,\"title\":\"WoW\"}]}", "WoW", 0, 0).handle == 0;
+  #assert gc_target("{\"session\":1,\"windows\":[{\"handle\":1,\"revision\":1,\"title\":123}]}", "123", 0, 0).handle == 0;
+  #assert gc_target("{\"windows\":[{\"handle\":1,\"revision\":1,\"title\":\"WoW\"}]}", "WoW", 0, 0).handle == 0;
+  #assert gc_target("{\"session\":1,\"windows\":[{\"revision\":1,\"title\":\"WoW\"}]}", "WoW", 0, 0).handle == 0;
+  #assert gc_target("{\"session\":1,\"windows\":[{\"handle\":1,\"title\":\"WoW\"}]}", "WoW", 0, 0).handle == 0;
+}
+gc_target :: (reply: string, title: string, handle: int, revision: int) -> GameTarget {
+  nodes: [4096] JvNode; d: [1] Jv; t: GameTarget;
+  if !jv_parse(d[..], reply, nodes[..]) { return t; }
+  session := jv_int(d[0], jv_get(d[0], 0, "session"), 0);
+  if session < 1 || session > 9007199254740991 { return t; }
+  found := 0; at := jv_at(d[0], jv_get(d[0], 0, "windows"), 0);
+  while at != -1 {
+    id := jv_int(d[0], jv_get(d[0], at, "handle"), 0); rev := jv_int(d[0], jv_get(d[0], at, "revision"), 0);
+    name := jv_get(d[0], at, "title");
+    if id > 0 && id < 256 && rev > 0 && rev <= 9007199254740991 && (handle == 0 || handle == id) && (revision == 0 || revision == rev) && jv_kind(d[0], name) == JV_STRING && jv_raw_eq(jv_raw(d[0], name), title) {
+      t.handle = id; t.revision = rev; found += 1;
+    }
+    at = d[0].nodes[at].next;
+  }
+  if found != 1 { return GameTarget.{}; }
+  t.session = session; return t;
+}

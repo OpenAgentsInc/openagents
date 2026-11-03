@@ -1,5 +1,13 @@
 # Owner actions
 
+## Verse OS: optional visible WoW trial (#12724–#12727, 2026-11-03)
+
+- [ ] Try the installed Verse window using [the gaming commands](docs/os/verse-gaming.md).
+      Battle.net, entering Classic Era, bounded movement, camera turns and
+      cancellation passed programmatically in a private headless session.
+      This optional play-through checks the visible desktop experience and
+      sustained performance. The default desktop/session has not changed.
+
 ## The agent runner: redeploy (2026-11-03)
 
 Redeploy the agent runner to pick up file-tool hardening

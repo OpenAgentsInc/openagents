@@ -122,6 +122,7 @@ in
 
     # Vulkan: the loader finds the driver's ICD under /run/opengl-driver.
     hardware.graphics.enable = true;
+    environment.systemPackages = lib.optional (cfg.package != null) cfg.package;
 
     # the GPU's ceiling (V5): set at boot, and again when the session starts or stops serving
     systemd.tmpfiles.rules = lib.mkIf cfg.gpuLimits [ "d /run/verse-os 0755 ${cfg.user} users -" "f /run/verse-os/serving 0644 ${cfg.user} users - 0" ];

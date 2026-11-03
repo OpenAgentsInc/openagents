@@ -1,0 +1,89 @@
+// Bounded actions for the local game controller. Lease ownership is the desk's authority.
+#authority;
+GAME_LIST :: 1; GAME_LOOK :: 2; GAME_PRESS :: 3; GAME_HOLD :: 4; GAME_CLICK :: 5; GAME_DRAG :: 6; GAME_STOP :: 7;
+GameAction :: struct { kind: int; key: int; ms: int; x: int; y: int; button: int; }
+GameInteger :: struct { ok: bool; value: int; }
+game_integer :: (s: string) -> GameInteger {
+  if s.count == 0 { return GameInteger.{}; }
+  neg := s[0] == '-'; at := ifx neg then 1 else 0; if at == s.count { return GameInteger.{}; }
+  v := 0;
+  for c: s[at..<s.count] {
+    if c < '0' || c > '9' { return GameInteger.{}; }
+    d := cast(int) (c - '0');
+    if v > 900719925474099 || (v == 900719925474099 && d > 1) { return GameInteger.{}; }
+    v = v * 10 + d;
+  }
+  return GameInteger.{ok = true, value = ifx neg then -v else v};
+}
+game_eq :: (s: string, lower: string) -> bool {
+  if s.count != lower.count { return false; }
+  for i: 0..<s.count { if (cast(int) s[i] | 32) != cast(int) lower[i] { return false; } }
+  return true;
+}
+game_key :: (s: string) -> int {
+  if s.count == 1 {
+    c := cast(int) s[0] | 32;
+    letters := "qwertyuiopasdfghjklzxcvbnm";
+    for i: 0..<letters.count { if c == cast(int) letters[i] { return ifx i < 10 then i + 16 else ifx i < 19 then i + 20 else i + 25; } }
+    if c == '0' { return 11; }
+    if c >= '1' && c <= '9' { return c - '1' + 2; }
+  }
+  if game_eq(s, "tab") { return 15; } if game_eq(s, "enter") || game_eq(s, "return") { return 28; }
+  if game_eq(s, "escape") { return 1; } if game_eq(s, "space") { return 57; }
+  if game_eq(s, "shift") { return 42; } if game_eq(s, "ctrl") { return 29; } if game_eq(s, "alt") { return 56; }
+  if game_eq(s, "left") { return 105; } if game_eq(s, "right") { return 106; }
+  if game_eq(s, "up") { return 103; } if game_eq(s, "down") { return 108; }
+  if s.count >= 2 && game_eq(s[0..<1], "f") {
+    n := game_integer(s[1..<s.count]);
+    if n.ok && n.value >= 1 && n.value <= 12 { return ifx n.value <= 10 then 58 + n.value else 76 + n.value; }
+  }
+  return -1;
+}
+game_button :: (s: string) -> int {
+  if game_eq(s, "left") { return 272; } if game_eq(s, "right") { return 273; } if game_eq(s, "middle") { return 274; } return -1;
+}
+game_action :: (a: GameAction) -> bool {
+  if a.kind == GAME_LIST || a.kind == GAME_LOOK || a.kind == GAME_STOP { return true; }
+  if a.kind == GAME_PRESS || a.kind == GAME_HOLD { return a.key >= 1 && a.key <= 255 && a.ms >= 1 && a.ms <= 2000; }
+  if a.kind == GAME_CLICK || a.kind == GAME_DRAG {
+    if a.button < 272 || a.button > 274 { return false; }
+    if a.kind == GAME_CLICK { return a.x >= 0 && a.x <= 3839 && a.y >= 0 && a.y <= 2159; }
+    return a.x >= -2048 && a.x <= 2048 && a.y >= -2048 && a.y <= 2048;
+  }
+  return false;
+}
+#test "CLI integers are exact signed decimals within the JSON safe range" {
+  #assert game_integer("0").ok && game_integer("0").value == 0 && game_integer("-2048").value == -2048;
+  #assert game_integer("2000").value == 2000 && game_integer("9007199254740991").value == 9007199254740991;
+  #assert game_integer("-9007199254740991").value == -9007199254740991;
+  for s: [8] string.["", "-", "+1", "1.5", "1e3", "9007199254740992", "/", ":"] { #assert !game_integer(s).ok; }
+  #assert !game_integer("9007199254741000").ok;
+}
+#test "game keyboard names follow Linux evdev rows and named keys" {
+  #assert game_key("q") == 16 && game_key("p") == 25 && game_key("a") == 30 && game_key("l") == 38 && game_key("z") == 44 && game_key("m") == 50;
+  #assert game_key("W") == 17 && game_key("A") == 30 && game_key("Z") == 44;
+  #assert game_key("0") == 11 && game_key("1") == 2 && game_key("9") == 10;
+  #assert game_key("Tab") == 15 && game_key("Enter") == 28 && game_key("Return") == 28 && game_key("Escape") == 1 && game_key("Space") == 57;
+  #assert game_key("Shift") == 42 && game_key("Ctrl") == 29 && game_key("Alt") == 56;
+  #assert game_key("Left") == 105 && game_key("Right") == 106 && game_key("Up") == 103 && game_key("Down") == 108;
+  #assert game_key("F1") == 59 && game_key("F10") == 68 && game_key("F11") == 87 && game_key("F12") == 88;
+  #assert game_key("F0") == -1 && game_key("F13") == -1 && game_key("F1.5") == -1 && game_key("foo") == -1 && game_key("") == -1 && game_key("/") == -1 && game_key(":") == -1;
+  #assert game_key("xight") == -1;
+  #assert game_button("left") == 272 && game_button("RIGHT") == 273 && game_button("middle") == 274 && game_button("bad") == -1;
+}
+#test "actions are bounded before they acquire control" {
+  #assert game_action(GameAction.{kind = GAME_LIST}) && game_action(GameAction.{kind = GAME_LOOK}) && game_action(GameAction.{kind = GAME_STOP});
+  #assert !game_action(GameAction.{});
+  for k: [2] int.[GAME_PRESS, GAME_HOLD] {
+    #assert game_action(GameAction.{kind = k, key = 1, ms = 1}) && game_action(GameAction.{kind = k, key = 255, ms = 2000});
+    #assert !game_action(GameAction.{kind = k, key = 0, ms = 1}) && !game_action(GameAction.{kind = k, key = 256, ms = 1});
+    #assert !game_action(GameAction.{kind = k, key = 17, ms = 0}) && !game_action(GameAction.{kind = k, key = 17, ms = 2001});
+  }
+  #assert game_action(GameAction.{kind = GAME_CLICK, x = 0, y = 2159, button = 272}) && game_action(GameAction.{kind = GAME_CLICK, x = 3839, y = 0, button = 274});
+  #assert !game_action(GameAction.{kind = GAME_CLICK, x = -1, button = 272}) && !game_action(GameAction.{kind = GAME_CLICK, x = 3840, button = 272});
+  #assert !game_action(GameAction.{kind = GAME_CLICK, y = -1, button = 272}) && !game_action(GameAction.{kind = GAME_CLICK, y = 2160, button = 272});
+  #assert !game_action(GameAction.{kind = GAME_CLICK, button = 271}) && !game_action(GameAction.{kind = GAME_CLICK, button = 275});
+  #assert game_action(GameAction.{kind = GAME_DRAG, x = -2048, y = 2048, button = 273}) && game_action(GameAction.{kind = GAME_DRAG, x = 2048, y = -2048, button = 273});
+  #assert !game_action(GameAction.{kind = GAME_DRAG, x = -2049, button = 273}) && !game_action(GameAction.{kind = GAME_DRAG, x = 2049, button = 273});
+  #assert !game_action(GameAction.{kind = GAME_DRAG, y = -2049, button = 273}) && !game_action(GameAction.{kind = GAME_DRAG, y = 2049, button = 273});
+}

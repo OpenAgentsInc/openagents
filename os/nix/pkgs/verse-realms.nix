@@ -6,14 +6,14 @@
 # transcendental math ahead of glibc's so a realm computes what its wasm computes) and installs the
 # tree to $out/share/verse-os, the directory verse-session runs (`--dir`). Nothing here is Coax: the
 # Coax compiler already ran, on the machine that shipped `src`.
-{ lib, stdenv, pkg-config, libdrm, libglvnd, libgbm, vulkan-headers, vulkan-loader, wayland, wayland-scanner, wayland-protocols, openssl, musl, foot, src }:
+{ lib, stdenv, pkg-config, makeWrapper, libdrm, libglvnd, libgbm, vulkan-headers, vulkan-loader, wayland, wayland-scanner, wayland-protocols, openssl, musl, foot, ffmpeg, xwayland, src }:
 
 stdenv.mkDerivation {
   pname = "verse-realms";
   version = "0";
   inherit src;
 
-  nativeBuildInputs = [ pkg-config wayland-scanner ];
+  nativeBuildInputs = [ pkg-config wayland-scanner makeWrapper ];
   buildInputs = [ libdrm libglvnd libgbm vulkan-headers vulkan-loader wayland wayland-protocols openssl ];
 
   dontConfigure = true;
@@ -35,6 +35,8 @@ stdenv.mkDerivation {
        entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-transcript
      gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-battlenet.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
        entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-battlenet
+     gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-game.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
+       entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-game
      gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. gpu-limits.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
        entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../gpu-limits
      # the desk's headless compositor (os/compositor.coax), which vk-realm --desk runs
@@ -70,11 +72,15 @@ stdenv.mkDerivation {
     runHook preInstall
     mkdir -p $out/share/verse-os $out/bin
     for r in $(cat realms); do cp -a $r $out/share/verse-os/; rm -f $out/share/verse-os/$r/*.o; done
-    cp net verse-session verse-transcript verse-battlenet gpu-limits realms travel $out/share/verse-os/
+    cp net verse-session verse-transcript verse-battlenet verse-game gpu-limits realms travel $out/share/verse-os/
     mkdir -p $out/share/verse-os/desk/launch
     cp desk/compositor desk/compositor-us.xkb $out/share/verse-os/desk/
     for n in start coder pane; do printf '#!/bin/sh\nexec ${foot}/bin/foot\n' > $out/share/verse-os/desk/launch/$n; chmod +x $out/share/verse-os/desk/launch/$n; done
     ln -s ../../verse-battlenet $out/share/verse-os/desk/launch/battlenet
+    mv $out/share/verse-os/verse-game $out/share/verse-os/.verse-game-native
+    makeWrapper $out/share/verse-os/.verse-game-native $out/share/verse-os/verse-game --prefix PATH : ${lib.makeBinPath [ ffmpeg ]}
+    ln -s ${xwayland}/bin/Xwayland $out/share/verse-os/Xwayland
+    ln -s $out/share/verse-os/verse-game $out/bin/verse-game
     ln -s $out/share/verse-os/verse-battlenet $out/bin/verse-battlenet
     ln -s $out/share/verse-os/verse-session $out/bin/verse-session
     runHook postInstall

@@ -1,0 +1,132 @@
+// verse-game: observe and drive one window on the Verse desk, using desk-control-v2.
+// coax/web/tool.sh os/game.coax [--socket PATH] [--title TITLE] [--handle N] VERB ...
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/json/json.coax";
+#load "desk-client.coax";
+#load "game-policy.coax";
+
+#load "game-target-policy.coax";
+
+gc_exchange :: (h: int, t: GameTarget, ty: string, code: int, down: bool, ms: int, x: int, y: int, path: string, reply: [] u8, want: string) -> int {
+  bytes: [8192] u8; o: [1] Jo; jo_start(o[..], bytes[..]); jo_obj(o[..]);
+  jo_key(o[..], "generation"); jo_int(o[..], 2); jo_key(o[..], "type"); jo_str(o[..], ty);
+  if t.session > 0 { jo_key(o[..], "session"); jo_int(o[..], t.session); }
+  if t.handle > 0 { jo_key(o[..], "handle"); jo_int(o[..], t.handle); jo_key(o[..], "revision"); jo_int(o[..], t.revision); }
+  if ty == "acquire" { jo_key(o[..], "ms"); jo_int(o[..], ms); }
+  if ty == "key" || ty == "button" { jo_key(o[..], "code"); jo_int(o[..], code); jo_key(o[..], "down"); jo_bool(o[..], down); }
+  if ty == "move" || ty == "relative" {
+    jo_key(o[..], ifx ty == "move" then "x" else "dx"); jo_int(o[..], x);
+    jo_key(o[..], ifx ty == "move" then "y" else "dy"); jo_int(o[..], y);
+  }
+  if ty == "shot" { jo_key(o[..], "path"); jo_str(o[..], path); } jo_end(o[..]);
+  if o[0].bad || !dc_send(h, jo_text(o[..])) { tool_errln("game: could not send to the desk"); return -1; }
+  n := dc_line(h, reply); nodes: [4096] JvNode; d: [1] Jv;
+  if n < 0 || !jv_parse(d[..], cast(string) reply[0..<n], nodes[..]) || jv_int(d[0], jv_get(d[0], 0, "generation"), 0) != 2 { tool_errln("game: no complete v2 desk reply"); return -1; }
+  if t.session > 0 && jv_int(d[0], jv_get(d[0], 0, "session"), 0) != t.session { tool_errln("game: the desk session changed"); return -1; }
+  if jv_raw(d[0], jv_get(d[0], 0, "type")) != want {
+    tool_err("game: desk refused "); tool_err(ty); tool_err(": "); tool_errln(jv_raw(d[0], jv_get(d[0], 0, "code"))); return -1;
+  }
+  return n;
+}
+gc_usage :: () -> int {
+  tool_errln("usage: verse-game [--socket PATH] [--title TITLE] [--handle N] [--revision N] list | look [OUT.png|OUT.ppm] | press KEY | hold KEY MS | click X Y [BUTTON] | drag DX DY [BUTTON] | stop");
+  return 2;
+}
+gc_absolute :: (path: string, out: [] u8) -> string {
+  if path.count > 0 && path[0] == '/' { if path.count > out.count { return ""; } for i: 0..<path.count { out[i] = path[i]; } return cast(string) out[0..<path.count]; }
+  cwd: [4096] u8; base := fs_cwd(cwd[..]); if base.count == 0 { return ""; } return fs_join(base, path, out);
+}
+gc_suffix :: (path: string, suffix: string) -> bool { return path.count >= suffix.count && path[path.count - suffix.count..<path.count] == suffix; }
+gc_picture :: (path: string, ppm: string) -> bool {
+  if gc_suffix(path, ".ppm") { return fs_rename(ppm, path); }
+  out: [4096] u8; err: [4096] u8;
+  av := [11] string.["ffmpeg", "-loglevel", "error", "-y", "-i", ppm, "-frames:v", "1", "-f", "image2", path];
+  r := proc_run(av[..], 30000, out[..], err[..]);
+  return r.status == 0 && !r.timed_out && fs_size(path) > 0;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) { return gc_usage(); }
+  pos: [5] string; np := 0; i := 0;
+  while i < args_count(a[..]) {
+    s := args_at(a[..], i); i += 1;
+    if s == "--socket" || s == "--title" || s == "--handle" || s == "--revision" { if i == args_count(a[..]) { return gc_usage(); } i += 1; continue; }
+    if s.count >= 2 && s[0..<2] == "--" { return gc_usage(); }
+    if np == 5 { return gc_usage(); } pos[np] = s; np += 1;
+  }
+  if np == 0 { return gc_usage(); }
+  action: GameAction; verb := pos[0]; output := "/tmp/verse-game.png";
+  if verb == "list" && np == 1 { action.kind = GAME_LIST; }
+  else if verb == "stop" && np == 1 { action.kind = GAME_STOP; }
+  else if verb == "look" && (np == 1 || np == 2) { action.kind = GAME_LOOK; if np == 2 { output = pos[1]; } }
+  else if (verb == "press" && np == 2) || (verb == "hold" && np == 3) {
+    action.kind = ifx verb == "press" then GAME_PRESS else GAME_HOLD; action.key = game_key(pos[1]); action.ms = 50;
+    if verb == "hold" { n := game_integer(pos[2]); if !n.ok { return gc_usage(); } action.ms = n.value; }
+  } else if (verb == "click" || verb == "drag") && (np == 3 || np == 4) {
+    action.kind = ifx verb == "click" then GAME_CLICK else GAME_DRAG;
+    x := game_integer(pos[1]); y := game_integer(pos[2]); if !x.ok || !y.ok { return gc_usage(); } action.x = x.value; action.y = y.value;
+    action.button = game_button(ifx np == 4 then pos[3] else ifx verb == "drag" then "right" else "left");
+  } else { return gc_usage(); }
+  if !game_action(action) { return gc_usage(); }
+  if action.kind == GAME_LOOK && (!gc_suffix(output, ".png") && !gc_suffix(output, ".ppm")) { return gc_usage(); }
+  handle := 0; revision := 0;
+  if args_has(a[..], "--handle") { n := game_integer(args_value(a[..], "--handle", "")); if !n.ok || n.value < 1 || n.value > 255 { return gc_usage(); } handle = n.value; }
+  if args_has(a[..], "--revision") { n := game_integer(args_value(a[..], "--revision", "")); if !n.ok || n.value < 1 { return gc_usage(); } revision = n.value; }
+  title := args_value(a[..], "--title", "World of Warcraft"); if title.count == 0 || title.count > 128 { return gc_usage(); }
+  sb: [4096] u8; rb: [4096] u8; joined: [4096] u8;
+  socket := args_value(a[..], "--socket", "");
+  if socket.count == 0 { socket = proc_getenv("CODER_DESK_SOCKET", sb[..]); }
+  if socket.count == 0 { socket = fs_join(proc_getenv("XDG_RUNTIME_DIR", rb[..]), "verse-desk.sock", joined[..]); }
+  h := dc_open(socket); if h < 0 { tool_errln("game: no Verse desk at the selected socket"); return 1; }
+  reply: [262144] u8; t: GameTarget;
+  n := gc_exchange(h, t, "info", 0, false, 0, 0, 0, "", reply[..], "info");
+  if n < 0 { r := cxsock_close(h); return 1; }
+  nodes: [128] JvNode; d: [1] Jv; parsed := jv_parse(d[..], cast(string) reply[0..<n], nodes[..]);
+  t.session = jv_int(d[0], jv_get(d[0], 0, "session"), 0);
+  if t.session < 1 { r := cxsock_close(h); return 1; }
+  if action.kind == GAME_STOP {
+    n = gc_exchange(h, t, "stop", 0, false, 0, 0, 0, "", reply[..], "done"); r := cxsock_close(h);
+    if n < 0 { return 1; } print("%\n", cast(string) reply[0..<n]); return 0;
+  }
+  n = gc_exchange(h, t, "list", 0, false, 0, 0, 0, "", reply[..], "windows");
+  if n < 0 { r := cxsock_close(h); return 1; }
+  if action.kind == GAME_LIST { r := cxsock_close(h); print("%\n", cast(string) reply[0..<n]); return 0; }
+  t = gc_target(cast(string) reply[0..<n], title, handle, revision);
+  if t.handle == 0 { r := cxsock_close(h); tool_errln("game: expected one matching window; use list, --title and --handle"); return 1; }
+  lease := ifx action.kind == GAME_HOLD then action.ms + 1000 else 3000;
+  n = gc_exchange(h, t, "acquire", 0, false, lease, 0, 0, "", reply[..], "done");
+  if n < 0 { r := cxsock_close(h); return 1; }
+  if action.kind == GAME_LOOK {
+    absolute: [4096] u8; path := gc_absolute(output, absolute[..]);
+    if path.count == 0 || (!gc_suffix(path, ".png") && !gc_suffix(path, ".ppm")) { r := cxsock_close(h); return gc_usage(); }
+    tmp: [4096] u8; dir := fs_temp("verse-game-", tmp[..]); ppmbuf: [4096] u8; ppm := fs_join(dir, "desk.ppm", ppmbuf[..]);
+    n = ifx dir.count > 0 then gc_exchange(h, t, "shot", 0, false, 0, 0, 0, ppm, reply[..], "shot") else -1;
+    r := cxsock_close(h);
+    ok := n > 0 && gc_picture(path, ppm); removed := fs_remove(dir);
+    if !ok { tool_errln("game: could not save the image (PNG conversion needs ffmpeg)"); return 1; }
+    report: [266240] u8; o: [1] Jo; jo_start(o[..], report[..]); jo_obj(o[..]);
+    jo_key(o[..], "image"); jo_str(o[..], path); jo_key(o[..], "capture"); jo_raw(o[..], cast(string) reply[0..<n]); jo_end(o[..]);
+    side: [8192] u8; ns := 0; for c: path { side[ns] = c; ns += 1; } for c: ".json" { side[ns] = c; ns += 1; }
+    saved := fs_write(cast(string) side[0..<ns], jo_text(o[..]));
+    if !saved || o[0].bad { tool_errln("game: image saved, but metadata could not be saved"); return 1; }
+    print("%\n", jo_text(o[..])); return 0;
+  }
+  ok := true;
+  if action.kind == GAME_PRESS || action.kind == GAME_HOLD {
+    ok = gc_exchange(h, t, "key", action.key, true, 0, 0, 0, "", reply[..], "done") > 0;
+    if ok { proc_sleep(action.ms); ok = gc_exchange(h, t, "key", action.key, false, 0, 0, 0, "", reply[..], "done") > 0; }
+  } else {
+    if action.kind == GAME_CLICK { ok = gc_exchange(h, t, "move", 0, false, 0, action.x, action.y, "", reply[..], "done") > 0; }
+    ok = ok && gc_exchange(h, t, "button", action.button, true, 0, 0, 0, "", reply[..], "done") > 0;
+    if ok {
+      proc_sleep(ifx action.kind == GAME_DRAG then 100 else 25);
+      if action.kind == GAME_DRAG { ok = gc_exchange(h, t, "relative", 0, false, 0, action.x, action.y, "", reply[..], "done") > 0; proc_sleep(100); }
+      if ok { ok = gc_exchange(h, t, "button", action.button, false, 0, 0, 0, "", reply[..], "done") > 0; }
+    }
+  }
+  // Closing releases this connection's lease, including every held input on failure/cancellation.
+  r := cxsock_close(h); if !ok { return 1; }
+  print("{\"type\":\"done\",\"action\":\"%\",\"session\":%,\"handle\":%,\"revision\":%}\n", verb, t.session, t.handle, t.revision);
+  return 0;
+}
