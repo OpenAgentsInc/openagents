@@ -1,0 +1,26 @@
+// The types Everglade's movement step passes between its two halves (everglade-move.coax, in the
+// page's unit, reads the world; everglade-step.coax, its own unit with the controller, moves you).
+// Both #load this file, so the two units agree on every field. Plain numbers only: no unit's own types.
+
+// Your input for one step: the keys and a thumb's stick as the controller takes them (-1 to 1, along
+// the camera: x right, y ahead), run, jump, and the camera's yaw that turns them.
+EgMoveIn :: struct { key_x: f32; key_y: f32; pad_x: f32; pad_y: f32; run: bool; jump: bool; theta: f32; }
+// What the world says before the step, where you stand (everglade_move_world).
+EgMoveWorld :: struct {
+  kx: f32; ky: f32; kz: f32;             // a blast's throw on you, once
+  busy: bool;                            // held, talking, the map up, a board open, down: nothing of yours moves you
+  still: bool;                           // prone, or caught in the ice
+  jump_ok: bool = true;                  // not afloat
+  pace: f32 = 1; grip: f32 = 1;          // the water's, the ice's and Ray of Frost's pace; the ice's grip
+  deck: bool;                            // on the bridge's deck (its rails, not its piles)
+  walls: int; bodies: int; floors: int;  // how many of the world's walls, bodies and floors are round you
+  low_grav: f32;                         // a fork's low gravity: m/s^2 given back while you're up
+  aboard: bool; seat_x: f32; seat_z: f32; seat_yaw: f32;   // in a rowboat: where it seats you
+  medium: int; flow_x: f32; flow_z: f32; // your water (0 dry, 2 swimming, 3 under) and its current
+}
+// You, as the two halves hand you to each other.
+EgBody :: struct {
+  x: f32; y: f32; z: f32; px: f32; py: f32; pz: f32;   // feet, and where the last fixed step left them
+  vx: f32; vy: f32; vz: f32; ground: bool; air: bool;  // air: the controller shows you airborne
+  show_vx: f32; show_vz: f32; rooted: bool;            // the velocity your body's clip goes by
+}

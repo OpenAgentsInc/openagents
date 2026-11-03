@@ -80,7 +80,8 @@
 #load "everglade-lod.coax";
 #load "everglade-sky.coax";
 #load "everglade-room.coax";
-#load "everglade-net.coax";    // the relay socket: others' poses, casts and creatures (everglade5e-face.c attaches it)
+#load "everglade-net.coax";
+#load "everglade-move.coax";   // the movement step the page and the room server share (with everglade-step.coax)
 #load "everglade-fork.coax";   // FORK, and a fork's rules (docs/verse/realm-fork.md)
 #load "everglade-forge.coax";   // EDIT opens Aethyrforge's panels (docs/verse/aethyrforge.md)
 #load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (aethyr/stand.coax)
@@ -448,8 +449,9 @@ Everglade :: struct {
   answered: f32;                           // seconds since the one you talk to last said something
   ev: EditVoice;                           // an admin's voice edits and what's published over the plan (everglade-voice.coax)
   room: [1] RoomState;                     // the others in the realm's room and its chat (everglade-room.coax)
-  net: [] EgNet;                           // the room's relay socket, when the face attaches it (everglade-net.coax)
+  net: [] EgNet;                           // the room server's world, when the face attaches it (everglade-net.coax)
   rangers: [1] Rangers;                    // the others' bodies (everglade-rangers.coax)
+  move_bodies: [(EG_MOVE_BODIES + EG_MOVE_HULLS) * 7] f32;   // the bodies round you this step (everglade-move.coax)
   chat: EgChat;
   lod: Lod;                                // the small pieces drawn near you (everglade-lod.coax)
   doors: Doors;                            // every door you open and close with E (everglade-doors.coax)

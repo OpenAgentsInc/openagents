@@ -1,0 +1,103 @@
+// Everglade's movement step, the world's half (docs/verse/2026-11-03-everglade-multiplayer-spec.md
+// section 3.1, the shared movement module; GitHub #12706): what the C faces did round the controller,
+// moved into Coax. The page runs it on your input to move you at once, and the room server runs the
+// same step on the same input for your seat, so the page's prediction and the server agree (section
+// 3.9). Loaded by everglade.coax; the controller's half is everglade-step.coax, its own unit (the
+// order the two are called in is written there).
+//
+// Before the step (everglade_move_world): a blast's throw, held or busy, prone or caught in the ice,
+// afloat (no jump), the ice's grip and pace with the water's and Ray of Frost's slow, the bridge's deck
+// (its rails, else its piles), the city's bodies round you and the rowboats' hulls, the walls and
+// floors, a fork's low gravity, the rowboat's seat and your water. After it (everglade_move_after):
+// Reverse Gravity's and the Wind Walls' lift, the current and Control Water's carry, the city's edge
+// and what stands, and the velocity your body's clip goes by.
+//   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "move:"
+
+#load "everglade-move-types.coax";
+
+EG_MOVE_BODIES :: 48;      // the city's bodies round you at most (the fountain, the piles, the Walls of Stone, trunks, rocks)
+EG_MOVE_HULLS :: 3;        // rowboats' hulls, 7 floats each
+
+// The world where you stand. The river's word (its own unit, verse/everglade/river.coax) comes in:
+// your water's medium, pace and current, the rowboat's seat (aboard), and the hulls round you. The
+// bodies (the city's, then the hulls) are left in s[0].move_bodies.
+everglade_move_world :: (s: [] Everglade, x: f32, y: f32, z: f32, medium: int, pace: f32, flow_x: f32, flow_z: f32,
+                         aboard: bool, seat_x: f32, seat_z: f32, seat_yaw: f32, hulls: [] f32) -> EgMoveWorld #export_c {
+  w: EgMoveWorld;
+  k := everglade_knock(s);
+  w.kx = k.x; w.ky = k.y; w.kz = k.z;
+  w.busy = everglade_busy(s) || everglade_held(s);
+  w.jump_ok = !everglade_afloat(s);
+  // the ice under you (everglade-frost.coax): Slippery Ice takes your grip, Difficult Terrain and
+  // slush your pace; prone or caught in the ice you can't move; and Ray of Frost slows you
+  foot := everglade_footing(s, x, z, y);
+  w.still = foot.still; w.grip = foot.grip;
+  w.pace = pace * foot.pace * everglade_slow(s);
+  // on the bridge's deck its rails are in your way; off it (in the river under it) its piles are
+  w.deck = everglade_on_bridge(s, x, z) && medium < 2;
+  w.walls = everglade_walls_on(s, w.deck);
+  n := lo_int(everglade_bodies_near(s, w.deck, x, z), EG_MOVE_BODIES);
+  for q: 0..<n * 7 { s[0].move_bodies[q] = s[0].bodies[q]; }
+  if !aboard { for h: 0..<lo_int(hulls.count / 7, EG_MOVE_HULLS) { for q: 0..<7 { s[0].move_bodies[n * 7 + q] = hulls[h * 7 + q]; } n += 1; } }
+  w.bodies = n;
+  w.floors = ifx aboard then 0 else everglade_floors_near(s, x, z);
+  w.low_grav = everglade_gravity_lift(s);
+  w.aboard = aboard; w.seat_x = seat_x; w.seat_z = seat_z; w.seat_yaw = seat_yaw;
+  w.medium = medium; w.flow_x = flow_x; w.flow_z = flow_z;
+  return w;
+}
+// The bodies everglade_move_world left round you, for the advance.
+everglade_move_bodies :: (s: [] Everglade) -> [] f32 #export_c { return s[0].move_bodies[..]; }
+
+// After the advance (b0 you before it, b after): lifts, currents, the city's edge, the clip's speed.
+everglade_move_after :: (s: [] Everglade, w: EgMoveWorld, b0: EgBody, b1: EgBody, dt: f32) -> EgBody #export_c {
+  b := b1;
+  if !w.aboard {
+    // Reverse Gravity's cylinder and the Wind Walls move you up (everglade-abilities.coax)
+    lift := everglade_lift(s, b.x, b.z, b0.y, b0.vy, b.y, b.vy, dt);
+    if lift.on {
+      b.py += lift.y - b.y;
+      b.y = lift.y; b.vy = lift.vy;
+      if lift.y > 0.01 || lift.vy > 0 { b.ground = false; b.air = true; }
+    }
+  }
+  // afloat, the current carries you, and Control Water's wave, current and whirlpool (everglade-tide.coax)
+  if w.medium == 2 || w.medium == 3 {
+    b.x += w.flow_x * dt; b.z += w.flow_z * dt;
+    tide := everglade_tide_flow(s, b.x, b.z, w.medium);
+    b.x += tide.x * dt; b.z += tide.z * dt;
+  }
+  // the city's edge and what stands hold you back
+  kept := everglade_hold(s, b0.x, b0.z, b.x, b.z);
+  if kept.x != b.x || kept.z != b.z {
+    if kept.x != b.x { b.vx = 0; }
+    if kept.z != b.z { b.vz = 0; }
+    b.x = kept.x; b.z = kept.z;
+    b.px = b.x; b.py = b.y; b.pz = b.z;
+  }
+  // what your body's clip goes by: held, bound to the spot, your pace taken to nothing or caught in
+  // the ice, you stand; on the ground, walking into what stops you, the gait goes no faster than you went
+  b.rooted = w.busy || w.still || !(w.pace > 0.02);
+  b.show_vx = b.vx; b.show_vz = b.vz;
+  if b.ground && !w.aboard && w.medium < 2 {
+    sp := sqrt(b.vx * b.vx + b.vz * b.vz);
+    mx := b.x - b0.x; mz := b.z - b0.z;
+    went := ifx dt > 0 then sqrt(mx * mx + mz * mz) / dt else sp;
+    if b.rooted { b.show_vx = 0; b.show_vz = 0; }
+    else if sp > 0.3 && went < 0.5 * sp { b.show_vx *= went / sp; b.show_vz *= went / sp; }
+  }
+  return b;
+}
+
+#test "move: the world's half: a current carries you, and walking into what stops you the gait slows" #steps 400000000 {
+  s: [1] Everglade;
+  w := everglade_move_world(s[..], 0, 0, 0, 2, 1, 3, 0, false, 0, 0, 0, s[0].bodies[0..<0]);
+  #assert w.medium == 2 && w.flow_x == 3 && !w.aboard;
+  b0 := EgBody.{ground = true};
+  b := everglade_move_after(s[..], w, b0, b0, 1);
+  #assert b.x > 2.5 && b.show_vx == 0;
+  // walking into what stops you, the gait goes no faster than you went
+  dry := everglade_move_world(s[..], 0, 0, 0, 0, 1, 0, 0, false, 0, 0, 0, s[0].bodies[0..<0]);
+  stuck := everglade_move_after(s[..], dry, EgBody.{ground = true}, EgBody.{ground = true, vx = 4, x = 0.1}, 1);
+  #assert stuck.show_vx < 0.2 && stuck.show_vx > 0;
+}

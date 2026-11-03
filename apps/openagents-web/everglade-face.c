@@ -25,7 +25,7 @@
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).
 #include "everglade.h"
 #include "Guard-guide-policy.h"
-#include "Player.h"
+#include "Everglade-step.h"
 #include "Grid.h"
 #include "River.h"
 #include "analytics-face.h"
@@ -95,13 +95,12 @@ static coax_v_t_River rv(void) { return (coax_v_t_River){&river, 1}; }
 // The walls' round bodies, then each rowboat's hull as a capsule along its keel (river.coax W6): so
 // you swim and wade round a hull, not through it. 7 numbers each, as the page's bodies.
 #define BOAT_BODIES 3
-#define CITY_BODIES 48   /* the city's: the fountain, the piles, the Walls of Stone, the trunks and rocks round you */
-static float hull_bodies[(CITY_BODIES + BOAT_BODIES) * 7];
-static int64_t with_hulls(coax_t_Everglade *g, int64_t bodies) {
-  int64_t n = bodies < CITY_BODIES ? bodies : CITY_BODIES;
-  memcpy(hull_bodies, g->bodies.e, (size_t)n * 7 * sizeof(float));
-  if (river.aboard >= 0) return n;
-  for (int64_t i = 0; i < g->float_n && n < CITY_BODIES + BOAT_BODIES; i++) {
+static float hull_bodies[BOAT_BODIES * 7];
+/* The rowboats' hulls round you (7 floats each), for the movement step; none while you row one. */
+static int64_t boat_hulls(coax_t_Everglade *g) {
+  int64_t n = 0;
+  if (river.aboard >= 0) return 0;
+  for (int64_t i = 0; i < g->float_n && n < BOAT_BODIES; i++) {
     const float *f = g->floats.e + i * 8;
     if (f[7] < 1.5f) continue;
     float ax = __builtin_sinf(f[3]), az = __builtin_cosf(f[3]), half = 1.6f - 0.55f;
@@ -215,75 +214,31 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     if (river_built) everglade_river_reset(rv());
     swim = (coax_t_Swim){0}; swim.pace = 1; swim.breath = 1; swim.surface = -1000;
   }
-  {
-    // a blast's throw on you (everglade-watch.coax watch_spell_you): once, into your velocity
-    coax_t_Point k = everglade_knock(at(state));
-    if (k.x != 0 || k.y != 0 || k.z != 0) {
-      player.vel.x += k.x; player.vel.z += k.z;
-      if (k.y > 0) { player.vel.y = k.y > player.vel.y ? k.y : player.vel.y; player.on_ground = false; }
-    }
-  }
-  // Hold Person holds you where you stand (everglade-watch.coax)
+  // Your movement step (everglade-move.coax, the world's half; everglade-step.coax, the controller's):
+  // the same Coax step the room server runs for your seat, in the order written there.
   bool busy = everglade_busy(at(state)) || everglade_held(at(state));
   if (busy) sticks = verse_sticks_reset();
-  if (busy) player = verse_player_input(player, 0, 0, 0, 0, false, false, 0, 0);
-  else player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y), (g->jump || sticks.jump) && !everglade_afloat(at(state)), 0, 0);
-  {
-    // the ice under you (everglade-frost.coax): Slippery Ice takes your grip, Difficult Terrain and
-    // slush your pace; Prone or caught in the ice you can't move
-    coax_t_FrFooting foot = everglade_footing(at(state), player.pos.x, player.pos.z, player.pos.y);
-    if (foot.still) player = verse_player_input(player, 0, 0, 0, 0, false, false, 0, 0);
-    player.pace = swim.pace * foot.pace * everglade_slow(at(state));   // and Ray of Frost slows you
-    player.grip = foot.grip;
-  }
-  player.theta = everglade_player_theta(at(state));
+  coax_t_EgMoveIn input = {g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y),
+                           g->jump || sticks.jump, everglade_player_theta(at(state))};
   if (sticks.zoom != 0) everglade_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
-  // on the bridge's deck its rails are in your way; off it (in the river under it) its piles are
-  bool deck = everglade_on_bridge(at(state), player.pos.x, player.pos.z) && swim.medium < 2;
-  int64_t walls = everglade_walls_on(at(state), deck);
-  int64_t bodies = with_hulls(g, everglade_bodies_near(at(state), deck, player.pos.x, player.pos.z));
-  /* low gravity on a fork (everglade-fork.coax): part of the fall given back while you're up */
-  if (!player.on_ground) player.vel.y += everglade_gravity_lift(at(state)) * dt;
-  coax_t_Vec3 was = player.pos;
+  coax_t_Seat seat = {0};
   if (river.aboard >= 0) {
     // in a rowboat: W and S row, A and D turn (a thumb's stick too); you sit where it takes you
     float ahead = g->key_y + sticks.pad_y, turn = g->key_x + sticks.pad_x;
     everglade_river_row(rv(), busy ? 0 : ahead, busy ? 0 : turn);
-    coax_t_Seat seat = everglade_river_seat(rv());
-    player.pos.x = seat.x; player.pos.z = seat.z; player.prev_pos = player.pos;
-    player.vel.x = 0; player.vel.z = 0;
-    player.face = seat.yaw; player.prev_face = seat.yaw;
-  } else {
-    float vy0 = player.vel.y;
-    // the roofs, the rubble, the dome and the fountain's lips round you (everglade-stand.coax), and over
-    // the fountain's lip only its column stands in your way, so you stand on the lip
-    int64_t floors = everglade_floors_near(at(state), player.pos.x, player.pos.z);
-    if (!deck && bodies > 0 && player.pos.y > 0.6f) { hull_bodies[4] = 1.9f; hull_bodies[6] = 0.62f; }
-    player = verse_player_advance_in_realm(player, frame, (coax_v_f32){hull_bodies, bodies * 7}, (coax_v_f32){g->walls.e, walls * 6},
-                                           (coax_v_f32){g->floors.e, floors * 10}, (coax_string){"everglade", sizeof "everglade" - 1});
-    // Reverse Gravity's cylinder and the Wind Walls move you up (everglade-abilities.coax)
-    coax_t_SpLift lift = everglade_lift(at(state), player.pos.x, player.pos.z, was.y, vy0, player.pos.y, player.vel.y, dt);
-    if (lift.on) {
-      player.prev_pos.y += lift.y - player.pos.y;
-      player.pos.y = lift.y; player.vel.y = lift.vy;
-      if (lift.y > 0.01f || lift.vy > 0) { player.on_ground = false; player.act = 3; }
-    }
+    seat = everglade_river_seat(rv());
   }
-  // afloat, the current carries you
-  if (swim.medium == 2 || swim.medium == 3) {
-    player.pos.x += swim.flow_x * dt; player.pos.z += swim.flow_z * dt;
-    // and Control Water's: its wave, its current, its whirlpool (everglade-tide.coax)
-    coax_t_Point tide = everglade_tide_flow(at(state), player.pos.x, player.pos.z, swim.medium);
-    player.pos.x += tide.x * dt; player.pos.z += tide.z * dt;
-  }
-  coax_t_Point kept = everglade_hold(at(state), was.x, was.z, player.pos.x, player.pos.z);
-  if (kept.x != player.pos.x || kept.z != player.pos.z) {
-    if (kept.x != player.pos.x) player.vel.x = 0;
-    if (kept.z != player.pos.z) player.vel.z = 0;
-    player.pos.x = kept.x; player.pos.z = kept.z;
-    player.prev_pos = player.pos;
-  }
+  int64_t hulls = boat_hulls(g);
+  coax_t_EgMoveWorld mw = everglade_move_world(at(state), player.pos.x, player.pos.y, player.pos.z, swim.medium, swim.pace, swim.flow_x, swim.flow_z,
+                                               river.aboard >= 0, seat.x, seat.z, seat.yaw, (coax_v_f32){hull_bodies, hulls * 7});
+  player = eg_step_begin(player, input, mw, dt);
+  coax_t_EgBody before = eg_step_body(player);
+  coax_v_f32 near = everglade_move_bodies(at(state));
+  player = eg_step_advance(player, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){g->walls.e, mw.walls * 6}, (coax_v_f32){g->floors.e, mw.floors * 10}, frame);
+  coax_t_EgBody moved = everglade_move_after(at(state), mw, before, eg_step_body(player), dt);
+  player = eg_step_put(player, moved);
+  float show_vx = moved.show_vx, show_vz = moved.show_vz;
   // the river: what water you are in, on the bridge's deck none
   // the rain's rise on it and its current's gain (verse/water-weather.coax, W9)
   everglade_river_weather(rv(), everglade_rise(at(state)), everglade_flow_gain(at(state)));

@@ -1,0 +1,58 @@
+// Everglade's movement step, the controller's half: its own unit with the controller (the
+// controller's names stay out of the page's unit). The page's face and the room server both call
+// the step in this order, every step, on the same input, so both put you in the same place:
+//   w := everglade_move_world(...)          the world where you stand   (everglade-move.coax)
+//   p  = eg_step_begin(p, input, w, dt)     the throw, your input, the ice and the pace, low gravity
+//   b0 := eg_step_body(p)
+//   p  = eg_step_advance(p, w, bodies, walls, floors, frame)   the rowboat's seat, or the controller's advance
+//   b  := everglade_move_after(s, w, b0, eg_step_body(p), dt)   lifts, currents, the city's edge, the clip's speed
+//   p  = eg_step_put(p, b)
+// docs/verse/2026-11-03-everglade-multiplayer-spec.md section 3.1 (the shared movement module), #12706.
+// The unit carries aethyr/player.coax's C surface too (the faces' verse_player_*), in place of
+// player.coax's own unit, so the controller is in one unit.
+#module "everglade.step";
+#load "../../aethyr/player.coax";
+#load "../../aethyr/walk.coax" as walk;
+#load "everglade-move-types.coax";
+
+eg_step_body :: (p: walk.Player) -> EgBody #export_c {
+  return EgBody.{x = p.pos.x, y = p.pos.y, z = p.pos.z, px = p.prev_pos.x, py = p.prev_pos.y, pz = p.prev_pos.z,
+                 vx = p.vel.x, vy = p.vel.y, vz = p.vel.z, ground = p.on_ground, air = p.act == walk.Act.airborne,
+                 show_vx = p.vel.x, show_vz = p.vel.z};
+}
+eg_step_put :: (p0: walk.Player, b: EgBody) -> walk.Player #export_c {
+  p := p0;
+  p.pos = walk.Vec3.{x = b.x, y = b.y, z = b.z}; p.prev_pos = walk.Vec3.{x = b.px, y = b.py, z = b.pz};
+  p.vel = walk.Vec3.{x = b.vx, y = b.vy, z = b.vz}; p.on_ground = b.ground;
+  if b.air { p.act = walk.Act.airborne; }
+  return p;
+}
+// Before the advance: a blast's throw into your velocity; held or busy, no input of yours; your input;
+// prone or caught, still; the pace and grip; the camera's yaw; a fork's low gravity while you're up.
+eg_step_begin :: (p0: walk.Player, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> walk.Player #export_c {
+  p := p0;
+  if w.kx != 0 || w.ky != 0 || w.kz != 0 {
+    p.vel.x += w.kx; p.vel.z += w.kz;
+    if w.ky > 0 { p.vel.y = ifx w.ky > p.vel.y then w.ky else p.vel.y; p.on_ground = false; }
+  }
+  if w.busy || w.still { p = walk.walk_input(p, 0, 0, 0, 0, false, false, 0, 0); }
+  else { p = walk.walk_input(p, input.key_x, input.key_y, input.pad_x, input.pad_y, input.run, input.jump && w.jump_ok, 0, 0); }
+  p.pace = w.pace; p.grip = w.grip;
+  p.theta = input.theta;
+  if !p.on_ground { p.vel.y += w.low_grav * dt; }
+  return p;
+}
+// The advance: in a rowboat you sit where it seats you; else the controller among the world's bodies
+// (the city's and the rowboats' hulls), walls and floors. Over the fountain's lip only its column
+// stands in your way, so you stand on the lip.
+eg_step_advance :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls: [] f32, floors: [] f32, frame: f32) -> walk.Player #export_c {
+  p := p0;
+  if w.aboard {
+    p.pos.x = w.seat_x; p.pos.z = w.seat_z; p.prev_pos = p.pos;
+    p.vel.x = 0; p.vel.z = 0;
+    p.face = w.seat_yaw; p.prev_face = w.seat_yaw;
+    return p;
+  }
+  if !w.deck && bodies.count >= 7 && p.pos.y > 0.6 { bodies[4] = 1.9; bodies[6] = 0.62; }
+  return walk.walk_advance_in_realm(p, frame, bodies, walls, floors, "everglade");
+}
