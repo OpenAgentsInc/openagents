@@ -1,0 +1,16 @@
+#load "/Users/christopherdavid/work/oa-coder-issue-eval/aethyr/forge/doc.coax";
+main :: () {}
+#test "independent issue 12720 all numeric fields refuse strings transactionally" {
+ d:[1]ForgeDoc; forge_reset(d[..],1); #assert forge_read_doc(d[..],FORGE_DOC_V1).ok;
+ before:[8192]u8; bn:=forge_doc_text(d[..],before[..]);
+ {b:[8192]u8; changed:=forge_doc_with("\"version\": 1","\"version\": \"1\"",b[..]); #assert changed.count>0; #assert !forge_read_doc(d[..],changed).ok; after:[8192]u8; an:=forge_doc_text(d[..],after[..]); #assert cast(string)after[0..<an]==cast(string)before[0..<bn];}
+ {b:[8192]u8; changed:=forge_doc_with("\"rev\": 4","\"rev\": \"4\"",b[..]); #assert changed.count>0; #assert !forge_read_doc(d[..],changed).ok; after:[8192]u8; an:=forge_doc_text(d[..],after[..]); #assert cast(string)after[0..<an]==cast(string)before[0..<bn];}
+ {b:[8192]u8; changed:=forge_doc_with("\"x\": 1.25","\"x\": \"1.25\"",b[..]); #assert changed.count>0; #assert !forge_read_doc(d[..],changed).ok; after:[8192]u8; an:=forge_doc_text(d[..],after[..]); #assert cast(string)after[0..<an]==cast(string)before[0..<bn];}
+ {b:[8192]u8; changed:=forge_doc_with("\"z\": -2.5","\"z\": \"-2.5\"",b[..]); #assert changed.count>0; #assert !forge_read_doc(d[..],changed).ok; after:[8192]u8; an:=forge_doc_text(d[..],after[..]); #assert cast(string)after[0..<an]==cast(string)before[0..<bn];}
+ {b:[8192]u8; changed:=forge_doc_with("\"x\": 2,","\"x\": \"2\",",b[..]); #assert changed.count>0; #assert !forge_read_doc(d[..],changed).ok; after:[8192]u8; an:=forge_doc_text(d[..],after[..]); #assert cast(string)after[0..<an]==cast(string)before[0..<bn];}
+ {b:[8192]u8; changed:=forge_doc_with("\"z\": -3.5","\"z\": \"-3.5\"",b[..]); #assert changed.count>0; #assert !forge_read_doc(d[..],changed).ok; after:[8192]u8; an:=forge_doc_text(d[..],after[..]); #assert cast(string)after[0..<an]==cast(string)before[0..<bn];}
+ {b:[8192]u8; changed:=forge_doc_with("\"yaw\": 90","\"yaw\": \"90\"",b[..]); #assert changed.count>0; #assert !forge_read_doc(d[..],changed).ok; after:[8192]u8; an:=forge_doc_text(d[..],after[..]); #assert cast(string)after[0..<an]==cast(string)before[0..<bn];}
+ {b:[8192]u8; changed:=forge_doc_with("\"forked_from\": null","\"forked_from\": {\"slug\":\"lamp-cove\",\"rev\":\"4\"}",b[..]); #assert changed.count>0; #assert !forge_read_doc(d[..],changed).ok; after:[8192]u8; an:=forge_doc_text(d[..],after[..]); #assert cast(string)after[0..<an]==cast(string)before[0..<bn];}
+ {b:[8192]u8; changed:=forge_doc_with("\"version\": 1,","\"version\": 1, \"shaped\":[{\"entity\":\"trees:3\",\"yaw\":\"5\",\"scale\":100,\"gone\":false}],",b[..]); #assert changed.count>0; #assert !forge_read_doc(d[..],changed).ok; after:[8192]u8; an:=forge_doc_text(d[..],after[..]); #assert cast(string)after[0..<an]==cast(string)before[0..<bn];}
+ {b:[8192]u8; changed:=forge_doc_with("\"version\": 1,","\"version\": 1, \"shaped\":[{\"entity\":\"trees:3\",\"yaw\":5,\"scale\":\"100\",\"gone\":false}],",b[..]); #assert changed.count>0; #assert !forge_read_doc(d[..],changed).ok; after:[8192]u8; an:=forge_doc_text(d[..],after[..]); #assert cast(string)after[0..<an]==cast(string)before[0..<bn];}
+}

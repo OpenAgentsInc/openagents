@@ -579,4 +579,7 @@ structural coding fixtures, and actual process termination after an append
 or partial edit. The routing chapter and shared contract describe their limits.
 The original pilot remains historical evidence. Two successful development
 smoke tasks do not close the broader comparative evaluation roadmap; the new
-continuation case remains reserved for later live measurement.
+continuation case was reserved at that stage. The subsequent
+[qualification](../verification/coder-qualification-2026-11-03/README.md) consumes
+it successfully, closes the pinned protocol gate and records a historical real
+issue repair that passes functional checks but fails its mutation gate.

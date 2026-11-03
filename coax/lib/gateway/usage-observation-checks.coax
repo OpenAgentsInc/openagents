@@ -1,0 +1,18 @@
+#load "gateway.coax";
+main :: () {}
+#test "observed usage distinguishes missing details from a reported zero" {
+  a:=gw_responses_usage_of("{\"input_tokens\":10,\"output_tokens\":2}");
+  #assert a.observed == 3;
+  b:=gw_responses_usage_of("{\"input_tokens\":10,\"output_tokens\":2,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens_details\":{\"reasoning_tokens\":1}}");
+  #assert b.observed == 15 && b.cached_tokens==0 && b.reasoning_tokens==1;
+  #assert gw_gemini_usage("{\"usageMetadata\":{\"promptTokenCount\":8}}").observed==1;
+  g:=gw_gemini_usage("{\"usageMetadata\":{\"promptTokenCount\":8,\"candidatesTokenCount\":2,\"thoughtsTokenCount\":3,\"cachedContentTokenCount\":0}}");
+  #assert g.observed==15 && g.output_tokens==5;
+  c:=gw_chat_usage_of("{\"prompt_tokens\":8,\"completion_tokens\":2,\"prompt_tokens_details\":{\"cached_tokens\":3}}");
+  #assert c.observed==7 && c.cached_tokens==3;
+  ps:[1]GwParse;
+  gw_anthropic_take_usage(ps[..],"{\"input_tokens\":5,\"output_tokens\":0}");
+  #assert gw_anthropic_usage(ps[..]).observed==3;
+  gw_anthropic_take_usage(ps[..],"{\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":2}");
+  #assert gw_anthropic_usage(ps[..]).observed==23;
+}

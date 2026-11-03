@@ -7,6 +7,8 @@
 // the same worker told "local": its plan is a model served on this machine. The worker keeps the
 // conversation and owns the credentials; nothing here holds a key.
 
+#load "micro-observation.coax";
+
 CD_MC_TOOL :: "/coax/web/tool.sh";              // under the repo
 CD_MC_WORKER :: "/coder/tui/mcworker.coax";
 
@@ -83,6 +85,9 @@ cd_micro_line :: (a: [] App, line: string) {
   if !a[0].running || !cd_is_micro(a[0].engine) { return; }    // late lines after a stop
   if kind == "reply" { cd_reply_add(a, cd_mc_str(a, line, "text")); cd_reply_commit(a, false); return; }
   if kind == "attempt" {
+    o := a[0].log[0].line[..];
+    count := mo_relay(line, ifx a[0].engine == ENGINE_PSIONIC then "psionic" else "micro", o);
+    if count > 0 { cs_put(a, count); }
     usd := cl_int(line, "usd_micros");
     if usd.ok && usd.value > 0 { a[0].cost += cast(f64) usd.value / 1000000.0; }
     outcome := cd_mc_str(a, line, "outcome");

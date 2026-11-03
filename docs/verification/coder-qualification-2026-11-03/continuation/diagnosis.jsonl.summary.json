@@ -1,0 +1,21 @@
+{
+  "ending": {
+    "kind": "end",
+    "ending": "finished",
+    "ms": 13264,
+    "steps": 8
+  },
+  "attempt_count": 4,
+  "configured_models": [
+    "google/gemini-3.8-flash"
+  ],
+  "requested_efforts": [
+    "low"
+  ],
+  "observed_input_tokens": 4179,
+  "observed_output_tokens": 532,
+  "input_unknown_attempts": 0,
+  "cached_unknown_attempts": 4,
+  "provider_cost_unknown_attempts": 4,
+  "raw_sha256": "f5071d6f90b359e50823ca71440546e0eb9f03a36e0ae186e9a97099f3fe11fd"
+}

@@ -1,0 +1,13 @@
+unique_count :: (s: string) -> int {
+  seen: [256] bool;
+  for i: 0..<256 { seen[i] = false; }
+  count := 0;
+  for b: s {
+    idx := cast(int) b;
+    if !seen[idx] {
+      seen[idx] = true;
+      count += 1;
+    }
+  }
+  return count;
+}

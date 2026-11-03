@@ -51,6 +51,8 @@ GW_OUT_STOPPED :: 7;             // the caller stopped it
 
 // One attempt in the log. No field can hold the prompt or the answer.
 GwAttemptLog :: struct {
+  usage: GwUsage;                // retain provider presence separately from normalized zero defaults
+  requested_effort: string;
   gateway: string;
   model: string;
   outcome: int;
@@ -149,7 +151,7 @@ gw_plan_log :: (p: [] GwPlan, i: int, outcome: int, status: int, raw: GwUsage) {
   a := p[0].attempts[i];
   usage := gw_plan_price(p, i, raw);
   now := cxproc_now_ms();
-  e := GwAttemptLog.{gateway = a.gateway.name, model = a.model, outcome = outcome, status = status, first_ms = -1, latency_ms = ifx outcome == GW_OUT_SKIPPED then 0 else now - p[0].started_ms, card_usd_micros = usage.card_usd_micros, cost_msats = usage.cost_msats, cost_usd_micros = usage.cost_usd_micros};
+  e := GwAttemptLog.{usage = raw, requested_effort = p[0].req.effort, gateway = a.gateway.name, model = a.model, outcome = outcome, status = status, first_ms = -1, latency_ms = ifx outcome == GW_OUT_SKIPPED then 0 else now - p[0].started_ms, card_usd_micros = usage.card_usd_micros, cost_msats = usage.cost_msats, cost_usd_micros = usage.cost_usd_micros};
   if outcome != GW_OUT_SKIPPED && p[0].first_ms >= 0 { e.first_ms = p[0].first_ms - p[0].started_ms; }
   if usage.ok { e.input_tokens = usage.input_tokens; e.output_tokens = usage.output_tokens; }
   p[0].log[p[0].nlog] = e; p[0].nlog += 1;

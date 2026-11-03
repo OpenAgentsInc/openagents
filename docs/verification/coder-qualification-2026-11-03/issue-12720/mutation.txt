@@ -1,0 +1,224 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/forge/doc.coax:35:31: mutant survived: 64 became 65
+    if s.count < 1 || s.count > FORGE_SLUG || !(forge_lower(s[0]) || forge_digit(s[0])) { return false; }
+                                ^
+aethyr/forge/doc.coax:43:22: mutant survived: 0 became 1
+    neg := raw.count > 0 && raw[0] == '-';
+                       ^
+aethyr/forge/doc.coax:46:89: mutant survived: 1 became 2
+    if dot == 0 || dot > 2 || (dot < s.count && (s.count - dot - 1 < 1 || s.count - dot - 1 > 2)) { return 4001; }
+                                                                                          ^
+aethyr/forge/doc.coax:46:93: mutant survived: 2 became 3
+    if dot == 0 || dot > 2 || (dot < s.count && (s.count - dot - 1 < 1 || s.count - dot - 1 > 2)) { return 4001; }
+                                                                                              ^
+aethyr/forge/doc.coax:48:51: mutant survived: 4001 became 4002
+    for i: 0..<dot { if !forge_digit(s[i]) { return 4001; } v = v * 10 + cast(int) (s[i] - '0'); }
+                                                    ^
+aethyr/forge/doc.coax:50:61: mutant survived: 4001 became 4002
+    for i: dot + 1..<s.count { if !forge_digit(s[i]) { return 4001; } frac = frac * 10 + cast(int) (s[i] - '0'); places += 1; }
+                                                              ^
+aethyr/forge/doc.coax:58:22: mutant survived: 0 became 1
+    neg := raw.count > 0 && raw[0] == '-';
+                       ^
+aethyr/forge/doc.coax:60:32: mutant survived: 9 became 10
+    if s.count == 0 || s.count > 9 { return lo - 1; }
+                                 ^
+aethyr/forge/doc.coax:78:17: mutant survived: '>' became '>='
+    if text.count > FORGE_DOC_BYTES { return forge_why("too large"); }
+                  ^
+aethyr/forge/doc.coax:78:19: mutant survived: 262144 became 262145
+    if text.count > FORGE_DOC_BYTES { return forge_why("too large"); }
+                    ^
+aethyr/forge/doc.coax:80:40: mutant survived: '||' became '&&'
+    if !jv_parse(j[..], text, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return forge_why("not a JSON object"); }
+                                         ^
+aethyr/forge/doc.coax:84:13: mutant survived: '||' became '&&'
+    if kn < 0 || cast(string) kind[0..<kn] != FORGE_DOC_KIND { return forge_why("not a realm document"); }
+              ^
+aethyr/forge/doc.coax:84:9: mutant survived: '<' became '<='
+    if kn < 0 || cast(string) kind[0..<kn] != FORGE_DOC_KIND { return forge_why("not a realm document"); }
+          ^
+aethyr/forge/doc.coax:84:11: mutant survived: 0 became 1
+    if kn < 0 || cast(string) kind[0..<kn] != FORGE_DOC_KIND { return forge_why("not a realm document"); }
+            ^
+aethyr/forge/doc.coax:85:82: mutant survived: 1000000 became 1000001
+    version := forge_whole(forge_doc_number(j[0], jv_get(j[0], at, "version")), 1, 1000000);
+                                                                                   ^
+aethyr/forge/doc.coax:88:74: mutant survived: 999999999 became 1000000000
+    rev := forge_whole(forge_doc_number(j[0], jv_get(j[0], at, "rev")), 1, 999999999);
+                                                                           ^
+aethyr/forge/doc.coax:94:13: mutant survived: '>=' became '>'
+    if parent >= 0 && jv_kind(j[0], parent) != JV_NULL {
+              ^
+aethyr/forge/doc.coax:94:16: mutant survived: 0 became 1
+    if parent >= 0 && jv_kind(j[0], parent) != JV_NULL {
+                 ^
+aethyr/forge/doc.coax:96:88: mutant survived: 999999999 became 1000000000
+      got.from_rev = forge_whole(forge_doc_number(j[0], jv_get(j[0], parent, "rev")), 1, 999999999);
+                                                                                         ^
+aethyr/forge/doc.coax:110:14: mutant survived: '||' became '&&'
+      if n < 0 || forge_where(next[..], cast(string) key[0..<n]).found || !forge_read_move(next[..], cast(string) key[0..<n], x, z) { return forge_why("a move out of bounds"); }
+               ^
+aethyr/forge/doc.coax:110:10: mutant survived: '<' became '<='
+      if n < 0 || forge_where(next[..], cast(string) key[0..<n]).found || !forge_read_move(next[..], cast(string) key[0..<n], x, z) { return forge_why("a move out of bounds"); }
+           ^
+aethyr/forge/doc.coax:110:12: mutant survived: 0 became 1
+      if n < 0 || forge_where(next[..], cast(string) key[0..<n]).found || !forge_read_move(next[..], cast(string) key[0..<n], x, z) { return forge_why("a move out of bounds"); }
+             ^
+aethyr/forge/doc.coax:110:56: mutant survived: 0 became 1
+      if n < 0 || forge_where(next[..], cast(string) key[0..<n]).found || !forge_read_move(next[..], cast(string) key[0..<n], x, z) { return forge_why("a move out of bounds"); }
+                                                         ^
+aethyr/forge/doc.coax:113:13: mutant survived: '>=' became '>'
+    if shaped >= 0 && jv_kind(j[0], shaped) != JV_ARRAY { return forge_why("shapes not a list"); }
+              ^
+aethyr/forge/doc.coax:113:16: mutant survived: 0 became 1
+    if shaped >= 0 && jv_kind(j[0], shaped) != JV_ARRAY { return forge_why("shapes not a list"); }
+                 ^
+aethyr/forge/doc.coax:116:88: mutant survived: 180 became 181
+      yaw := forge_whole(forge_doc_number(j[0], jv_get(j[0], e, "yaw")), 1 - FORGE_TURN, FORGE_TURN);
+                                                                                         ^
+aethyr/forge/doc.coax:117:93: mutant survived: 400 became 401
+      scale := forge_whole(forge_doc_number(j[0], jv_get(j[0], e, "scale")), FORGE_SCALE_MIN, FORGE_SCALE_MAX);
+                                                                                              ^
+aethyr/forge/doc.coax:119:65: mutant survived: '||' became '&&'
+      if n < 0 || yaw < 1 - FORGE_TURN || scale < FORGE_SCALE_MIN || (gone != JV_TRUE && gone != JV_FALSE) { return forge_why("a shape out of bounds"); }
+                                                                  ^
+aethyr/forge/doc.coax:119:38: mutant survived: '||' became '&&'
+      if n < 0 || yaw < 1 - FORGE_TURN || scale < FORGE_SCALE_MIN || (gone != JV_TRUE && gone != JV_FALSE) { return forge_why("a shape out of bounds"); }
+                                       ^
+aethyr/forge/doc.coax:119:14: mutant survived: '||' became '&&'
+      if n < 0 || yaw < 1 - FORGE_TURN || scale < FORGE_SCALE_MIN || (gone != JV_TRUE && gone != JV_FALSE) { return forge_why("a shape out of bounds"); }
+               ^
+aethyr/forge/doc.coax:119:10: mutant survived: '<' became '<='
+      if n < 0 || yaw < 1 - FORGE_TURN || scale < FORGE_SCALE_MIN || (gone != JV_TRUE && gone != JV_FALSE) { return forge_why("a shape out of bounds"); }
+           ^
+aethyr/forge/doc.coax:119:12: mutant survived: 0 became 1
+      if n < 0 || yaw < 1 - FORGE_TURN || scale < FORGE_SCALE_MIN || (gone != JV_TRUE && gone != JV_FALSE) { return forge_why("a shape out of bounds"); }
+             ^
+aethyr/forge/doc.coax:120:52: mutant survived: 0 became 1
+      s := forge_shape_of(next[..], cast(string) key[0..<n]);
+                                                     ^
+aethyr/forge/doc.coax:121:47: mutant survived: '||' became '&&'
+      if s.yaw != 0 || s.scale != 100 || s.gone || (yaw == 0 && scale == 100 && gone == JV_FALSE) { return forge_why("a shape twice, or no shape"); }
+                                                ^
+aethyr/forge/doc.coax:121:37: mutant survived: '||' became '&&'
+      if s.yaw != 0 || s.scale != 100 || s.gone || (yaw == 0 && scale == 100 && gone == JV_FALSE) { return forge_why("a shape twice, or no shape"); }
+                                      ^
+aethyr/forge/doc.coax:121:19: mutant survived: '||' became '&&'
+      if s.yaw != 0 || s.scale != 100 || s.gone || (yaw == 0 && scale == 100 && gone == JV_FALSE) { return forge_why("a shape twice, or no shape"); }
+                    ^
+aethyr/forge/doc.coax:121:60: mutant survived: '&&' became '||'
+      if s.yaw != 0 || s.scale != 100 || s.gone || (yaw == 0 && scale == 100 && gone == JV_FALSE) { return forge_why("a shape twice, or no shape"); }
+                                                             ^
+aethyr/forge/doc.coax:121:55: mutant survived: '==' became '!='
+      if s.yaw != 0 || s.scale != 100 || s.gone || (yaw == 0 && scale == 100 && gone == JV_FALSE) { return forge_why("a shape twice, or no shape"); }
+                                                        ^
+aethyr/forge/doc.coax:121:58: mutant survived: 0 became 1
+      if s.yaw != 0 || s.scale != 100 || s.gone || (yaw == 0 && scale == 100 && gone == JV_FALSE) { return forge_why("a shape twice, or no shape"); }
+                                                           ^
+aethyr/forge/doc.coax:121:69: mutant survived: '==' became '!='
+      if s.yaw != 0 || s.scale != 100 || s.gone || (yaw == 0 && scale == 100 && gone == JV_FALSE) { return forge_why("a shape twice, or no shape"); }
+                                                                      ^
+aethyr/forge/doc.coax:121:72: mutant survived: 100 became 101
+      if s.yaw != 0 || s.scale != 100 || s.gone || (yaw == 0 && scale == 100 && gone == JV_FALSE) { return forge_why("a shape twice, or no shape"); }
+                                                                         ^
+aethyr/forge/doc.coax:128:10: mutant survived: '>' became '>='
+      if n > 0 && !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<n]) { return forge_why("a setup field out of bounds"); }
+           ^
+aethyr/forge/doc.coax:128:12: mutant survived: 0 became 1
+      if n > 0 && !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<n]) { return forge_why("a setup field out of bounds"); }
+             ^
+aethyr/forge/doc.coax:136:14: mutant survived: '||' became '&&'
+      if k < 0 || (on != JV_TRUE && on != JV_FALSE) || !forge_read_slot(next[..], cast(string) kb[0..<k], ifx on == JV_TRUE then "1" else "0") { return forge_why("a tool out of bounds"); }
+               ^
+aethyr/forge/doc.coax:136:10: mutant survived: '<' became '<='
+      if k < 0 || (on != JV_TRUE && on != JV_FALSE) || !forge_read_slot(next[..], cast(string) kb[0..<k], ifx on == JV_TRUE then "1" else "0") { return forge_why("a tool out of bounds"); }
+           ^
+aethyr/forge/doc.coax:136:12: mutant survived: 0 became 1
+      if k < 0 || (on != JV_TRUE && on != JV_FALSE) || !forge_read_slot(next[..], cast(string) kb[0..<k], ifx on == JV_TRUE then "1" else "0") { return forge_why("a tool out of bounds"); }
+             ^
+aethyr/forge/doc.coax:149:10: mutant survived: '<' became '<='
+      if n < 1 || m < 0 || !forge_read_slot(next[..], forge_place_key(i, kb[..]), cast(string) v[0..<m]) { return forge_why("a placed thing out of bounds"); }
+           ^
+aethyr/forge/doc.coax:149:12: mutant survived: 1 became 2
+      if n < 1 || m < 0 || !forge_read_slot(next[..], forge_place_key(i, kb[..]), cast(string) v[0..<m]) { return forge_why("a placed thing out of bounds"); }
+             ^
+aethyr/forge/doc.coax:149:19: mutant survived: '<' became '<='
+      if n < 1 || m < 0 || !forge_read_slot(next[..], forge_place_key(i, kb[..]), cast(string) v[0..<m]) { return forge_why("a placed thing out of bounds"); }
+                    ^
+aethyr/forge/doc.coax:149:21: mutant survived: 0 became 1
+      if n < 1 || m < 0 || !forge_read_slot(next[..], forge_place_key(i, kb[..]), cast(string) v[0..<m]) { return forge_why("a placed thing out of bounds"); }
+                      ^
+aethyr/forge/doc.coax:152:11: mutant survived: '>=' became '>'
+    if lore >= 0 && jv_kind(j[0], lore) != JV_OBJECT { return forge_why("lore not an object"); }
+            ^
+aethyr/forge/doc.coax:152:14: mutant survived: 0 became 1
+    if lore >= 0 && jv_kind(j[0], lore) != JV_OBJECT { return forge_why("lore not an object"); }
+               ^
+aethyr/forge/doc.coax:157:47: mutant survived: '||' became '&&'
+      if k < 0 || jv_kind(j[0], e) != JV_STRING || n < 1 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<n]) { return forge_why("lore out of bounds"); }
+                                                ^
+aethyr/forge/doc.coax:157:14: mutant survived: '||' became '&&'
+      if k < 0 || jv_kind(j[0], e) != JV_STRING || n < 1 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<n]) { return forge_why("lore out of bounds"); }
+               ^
+aethyr/forge/doc.coax:157:10: mutant survived: '<' became '<='
+      if k < 0 || jv_kind(j[0], e) != JV_STRING || n < 1 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<n]) { return forge_why("lore out of bounds"); }
+           ^
+aethyr/forge/doc.coax:157:12: mutant survived: 0 became 1
+      if k < 0 || jv_kind(j[0], e) != JV_STRING || n < 1 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<n]) { return forge_why("lore out of bounds"); }
+             ^
+aethyr/forge/doc.coax:157:52: mutant survived: '<' became '<='
+      if k < 0 || jv_kind(j[0], e) != JV_STRING || n < 1 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<n]) { return forge_why("lore out of bounds"); }
+                                                     ^
+aethyr/forge/doc.coax:157:54: mutant survived: 1 became 2
+      if k < 0 || jv_kind(j[0], e) != JV_STRING || n < 1 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<n]) { return forge_why("lore out of bounds"); }
+                                                       ^
+aethyr/forge/doc.coax:160:13: mutant survived: '>=' became '>'
+    if quests >= 0 && jv_kind(j[0], quests) != JV_OBJECT { return forge_why("quests not an object"); }
+              ^
+aethyr/forge/doc.coax:160:16: mutant survived: 0 became 1
+    if quests >= 0 && jv_kind(j[0], quests) != JV_OBJECT { return forge_why("quests not an object"); }
+                 ^
+aethyr/forge/doc.coax:170:12: mutant survived: '>=' became '>'
+        if p >= 1 && p <= 3 && p > jv_len(j[0], steps) { continue; }   // fewer than three steps: blank ones
+             ^
+aethyr/forge/doc.coax:170:15: mutant survived: 1 became 2
+        if p >= 1 && p <= 3 && p > jv_len(j[0], steps) { continue; }   // fewer than three steps: blank ones
+                ^
+aethyr/forge/doc.coax:172:34: mutant survived: '<' became '<='
+        if pn < 0 || (p == 0 && pn < 1) { bad = true; break; }
+                                   ^
+aethyr/forge/doc.coax:172:36: mutant survived: 1 became 2
+        if pn < 0 || (p == 0 && pn < 1) { bad = true; break; }
+                                     ^
+aethyr/forge/doc.coax:173:14: mutant survived: 0 became 1
+        for q: 0..<pn { if part[q] == '|' { bad = true; } }
+               ^
+aethyr/forge/doc.coax:176:17: mutant survived: '<' became '<='
+      if bad || k < 0 || m < 0 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<m]) { return forge_why("a quest out of bounds"); }
+                  ^
+aethyr/forge/doc.coax:176:19: mutant survived: 0 became 1
+      if bad || k < 0 || m < 0 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<m]) { return forge_why("a quest out of bounds"); }
+                    ^
+aethyr/forge/doc.coax:176:26: mutant survived: '<' became '<='
+      if bad || k < 0 || m < 0 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<m]) { return forge_why("a quest out of bounds"); }
+                           ^
+aethyr/forge/doc.coax:176:28: mutant survived: 0 became 1
+      if bad || k < 0 || m < 0 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<m]) { return forge_why("a quest out of bounds"); }
+                             ^
+aethyr/forge/doc.coax:200:10: mutant survived: 0 became 1
+    for i: 0..<FORGE_DOC_V1.count {
+           ^
+aethyr/forge/doc.coax:201:23: mutant survived: '<=' became '<'
+      if i + from.count <= FORGE_DOC_V1.count && FORGE_DOC_V1[i..<i + from.count] == from {
+                        ^
+aethyr/forge/doc.coax:201:10: mutant survived: '+' became '-'
+      if i + from.count <= FORGE_DOC_V1.count && FORGE_DOC_V1[i..<i + from.count] == from {
+           ^
+aethyr/forge/doc.coax:203:20: mutant survived: '<' became '<='
+        return ifx n < 0 then "" else cast(string) buf[0..<n];
+                     ^
+aethyr/forge/doc.coax:203:22: mutant survived: 0 became 1
+        return ifx n < 0 then "" else cast(string) buf[0..<n];
+                       ^
+469 mutants, 395 killed, 74 survived

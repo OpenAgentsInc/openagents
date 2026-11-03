@@ -1,0 +1,49 @@
+{
+  "issue": 12720,
+  "snapshot": "a331a9cfdeea796f17f9150c8b2e18683f7ddaf0",
+  "driver_product_commit": "e1e427275f0c76bc3dcd4d5a6702410a94a0f2c4",
+  "driver_binary_sha256": "92b1d17b33ec1abe08658c569264a8b1f9d4035788b7b11cf5ca8a5b77808de4",
+  "oracle_sha256": "2ee1fb4c3327c92f1d2046985089697881248338f91cd3f75069fc32e12760f8",
+  "protected_original_checks_sha256": "e2896a85a164f41ce58e8fe4cf43632bb53c81d04ef1df773d249f463dd0b99d",
+  "original_checks_preserved": true,
+  "task_budget_seconds": 180,
+  "ending": {
+    "kind": "end",
+    "ending": "finished",
+    "ms": 100717,
+    "steps": 15
+  },
+  "functional_acceptance": true,
+  "independent_checks_passed": 98,
+  "mutants": 469,
+  "killed": 395,
+  "survivors": 74,
+  "release_qualified": false,
+  "outcome": "quality_gate_failed",
+  "model_observations": [
+    {
+      "kind": "model",
+      "schema": "coder.observability.v1",
+      "engine": "codex",
+      "source": "thread/start",
+      "model": "gpt-6.1-sol",
+      "effort": "xhigh",
+      "cost_usd": null
+    }
+  ],
+  "last_usage_snapshot": {
+    "kind": "usage",
+    "schema": "coder.observability.v1",
+    "engine": "codex",
+    "scope": "thread_total",
+    "thread_id": "01a1a324-38a0-7220-a20a-61b61550d6f4",
+    "turn_id": "01a1a324-3934-7ba0-ae8c-b2b6bff4e37f",
+    "totalTokens": 607262,
+    "inputTokens": 600752,
+    "cachedInputTokens": 522368,
+    "cacheWriteInputTokens": 0,
+    "outputTokens": 6510,
+    "reasoningOutputTokens": 2731
+  },
+  "tool_starts": 15
+}

@@ -30,6 +30,7 @@
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "microcoder_keys.coax";
+#load "micro-observation.coax";
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign;
 cxterm_write :: (s: [] u8) -> int #foreign;
@@ -48,12 +49,15 @@ mw_event :: (e: McRunEvent, o: [] u8) {
   if e.kind == MR_REPLY {
     n = json_raw(o, 0, "{\"kind\":\"reply\",\"text\":"); n = json_write_string(o, n, e.text); n = json_raw(o, n, "}");
   } else if e.kind == MR_ATTEMPT {
-    n = json_raw(o, 0, "{\"kind\":\"attempt\",\"gateway\":"); n = json_write_string(o, n, e.log.gateway);
-    n = json_raw(o, n, ",\"model\":"); n = json_write_string(o, n, e.log.model);
-    n = json_raw(o, n, ",\"outcome\":"); n = json_write_string(o, n, gw_outcome_name(e.log.outcome));
-    n = json_raw(o, n, ",\"status\":"); n = json_write_int(o, n, e.log.status);
-    n = json_raw(o, n, ",\"usd_micros\":"); n = json_write_int(o, n, e.log.card_usd_micros);
-    n = json_raw(o, n, "}");
+    u := e.log.usage;
+    values := [7] int.[
+      ifx (u.observed & 1) != 0 then u.input_tokens else -1,
+      ifx (u.observed & 2) != 0 then u.output_tokens else -1,
+      ifx (u.observed & 4) != 0 then u.cached_tokens else -1,
+      ifx (u.observed & 8) != 0 then u.reasoning_tokens else -1,
+      ifx (u.observed & 16) != 0 then u.cache_write_tokens else -1,
+      e.log.cost_usd_micros, e.log.card_usd_micros];
+    n = mo_attempt("", e.log.gateway, e.log.model, e.log.requested_effort, gw_outcome_name(e.log.outcome), e.log.status, values[..], o);
   } else if e.kind == MR_COMMAND {
     n = json_raw(o, 0, "{\"kind\":\"command\",\"command\":"); n = json_write_string(o, n, e.text);
     n = json_raw(o, n, ",\"exit\":"); n = json_write_int(o, n, e.exit);

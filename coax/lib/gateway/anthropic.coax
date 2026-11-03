@@ -78,9 +78,9 @@ gw_anthropic_take_usage :: (ps: [] GwParse, usage: string) {
   i := cl_int(usage, "input_tokens");
   if i.ok { ps[0].in_raw = i.value; ps[0].in_ok = true; }
   r := cl_int(usage, "cache_read_input_tokens");
-  if r.ok { ps[0].cache_read = r.value; }
+  if r.ok { ps[0].cache_read = r.value; ps[0].cache_read_ok = true; }
   w := cl_int(usage, "cache_creation_input_tokens");
-  if w.ok { ps[0].cache_write = w.value; }
+  if w.ok { ps[0].cache_write = w.value; ps[0].cache_write_ok = true; }
   o := cl_int(usage, "output_tokens");
   if o.ok { ps[0].out = o.value; ps[0].out_ok = true; }
 }
@@ -88,7 +88,7 @@ gw_anthropic_take_usage :: (ps: [] GwParse, usage: string) {
 gw_anthropic_usage :: (ps: [] GwParse) -> GwUsage {
   u: GwUsage;
   if !ps[0].in_ok || !ps[0].out_ok { return u; }
-  return GwUsage.{ok = true, input_tokens = ps[0].in_raw + ps[0].cache_read + ps[0].cache_write, cached_tokens = ps[0].cache_read, cache_write_tokens = ps[0].cache_write, output_tokens = ps[0].out, cost_usd_micros = -1};
+  return GwUsage.{ok = true, observed = 3 | (ifx ps[0].cache_read_ok then 4 else 0) | (ifx ps[0].cache_write_ok then 16 else 0), input_tokens = ps[0].in_raw + ps[0].cache_read + ps[0].cache_write, cached_tokens = ps[0].cache_read, cache_write_tokens = ps[0].cache_write, output_tokens = ps[0].out, cost_usd_micros = -1};
 }
 
 gw_anthropic_ended :: (finish: int, usage: GwUsage, out: [] GwEvent, n: int) -> int {

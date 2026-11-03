@@ -1,0 +1,22 @@
+syntax = "proto3";
+package openagents.coder.observability.v2;
+
+// One finished request attempt, never a cumulative snapshot or an invoice.
+// Mapping: docs/protocol/coder-observability-v2.md.
+message Attempt {
+  optional string engine = 1;
+  string scope = 2;
+  string gateway = 3;
+  string model = 4; // configured attempt model, not a resolved provider identity.
+  optional string requested_effort = 5;
+  string outcome = 6;
+  int32 status = 7;
+  optional int64 input_tokens = 8;
+  optional int64 output_tokens = 9;
+  optional int64 cached_tokens = 10;
+  optional int64 reasoning_tokens = 11;
+  optional int64 cache_write_tokens = 12;
+  optional int64 provider_cost_usd_micros = 13;
+  optional int64 card_estimate_usd_micros = 14;
+  string model_source = 15;
+}

@@ -19,6 +19,12 @@ named scope runs; it is not a security audit or a performance comparison.
 | Consent ledger | Chapter 18 checks labelled sends, grants and revocation | Gates remembered facts; ordinary conversation/tool output are not universally ledger-gated | Gates remembered facts; ordinary conversation/tool output are not universally ledger-gated | Gates remembered facts; ordinary conversation/tool output are not universally ledger-gated |
 | Crash recovery | Experimental replay rebuilds simulated state | Coder reads complete JSONL lines; arbitrary tool effects may be unknown | Router launch/delivery recovery is checked; engine tool effects remain engine-owned | Router launch/delivery recovery is checked; engine tool effects remain engine-owned |
 
+Microcoder and Psionic emit [versioned request-attempt observations](../../docs/protocol/coder-observability-v2.md).
+They identify the configured model and requested effort, preserve missing usage
+as null, and separate provider cost from the static estimate. These records do
+not make the internal request history reconstructible or prove resolved model
+identity. Codex's cumulative snapshots remain a different scope.
+
 The Psionic path currently shares Microcoder's loop on a Chat Completions
 server. It does not inherit server prefix-cache or constrained-generation
 qualification merely by selecting `--engine psionic`. See chapters 9–12

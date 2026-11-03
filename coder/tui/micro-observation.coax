@@ -1,0 +1,51 @@
+// Versioned, whitelisted observations shared by the worker and session writer.
+#load "../../coax/lib/agent/claude/fields.coax";
+MO_SCHEMA :: "coder.observability.v2";
+MO_COUNTS :: [7] string.["input_tokens", "output_tokens", "cached_tokens", "reasoning_tokens", "cache_write_tokens", "provider_cost_usd_micros", "card_estimate_usd_micros"];
+
+#test "attempt observations preserve unknowns, zeros and cost provenance" {
+  values:=[7]int.[10,2,0,-1,-1,-1,12]; b:[4096]u8;
+  n:=mo_attempt("micro","g","model","low","done",200,values[..],b[..]);
+  #assert n>0; s:=cast(string)b[0..<n];
+  #assert cl_raw(s,"cached_tokens")=="0" && cl_raw(s,"reasoning_tokens")=="null";
+  #assert cl_raw(s,"provider_cost_usd_micros")=="null" && cl_raw(s,"card_estimate_usd_micros")=="12";
+  #assert cl_raw(s,"scope")=="\"request_attempt\"";
+}
+#test "relay accepts only versioned metadata and drops non-observation payloads" {
+  b:[4096]u8;
+  line:="{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"gateway\":\"g\",\"model\":\"m\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":4,\"output_tokens\":0,\"prompt\":\"hidden\",\"usd_micros\":99}";
+  n:=mo_relay(line,"psionic",b[..]);#assert n>0;
+  s:=cast(string)b[0..<n];
+  #assert cl_raw(s,"engine")=="\"psionic\"" && cl_raw(s,"requested_effort")=="null";
+  #assert cl_raw(s,"input_tokens")=="4" && cl_raw(s,"output_tokens")=="0";
+  #assert cl_raw(s,"prompt")=="" && cl_raw(s,"card_estimate_usd_micros")=="null";
+  #assert mo_relay("{}","micro",b[..])<0 && mo_relay(line,"claude",b[..])<0;
+  #assert mo_relay("{","micro",b[..])<0;
+}
+
+mo_attempt :: (engine:string,gateway:string,model:string,effort:string,outcome:string,status:int,values:[]int,out:[]u8)->int {
+  if values.count!=7 {return -1;}
+  n:=json_raw(out,0,"{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":");
+  n=ifx engine.count>0 then json_write_string(out,n,engine) else json_raw(out,n,"null");
+  n=json_raw(out,n,",\"gateway\":");n=json_write_string(out,n,gateway);
+  n=json_raw(out,n,",\"model\":");n=json_write_string(out,n,model);
+  n=json_raw(out,n,",\"model_source\":\"attempt_configuration\",\"requested_effort\":");
+  n=ifx effort.count>0 then json_write_string(out,n,effort) else json_raw(out,n,"null");
+  n=json_raw(out,n,",\"outcome\":");n=json_write_string(out,n,outcome);
+  n=json_raw(out,n,",\"status\":");n=json_write_int(out,n,status);
+  keys:=MO_COUNTS;
+  for i:0..<7 {n=json_raw(out,n,",");n=json_write_string(out,n,keys[i]);n=json_raw(out,n,":");n=ifx values[i]>=0 then json_write_int(out,n,values[i]) else json_raw(out,n,"null");}
+  // Existing worker clients use this card estimate for their status footer.
+  n=json_raw(out,n,",\"usd_micros\":");n=json_write_int(out,n,values[6]);
+  return json_raw(out,n,"}");
+}
+mo_relay :: (line:string,engine:string,out:[]u8)->int {
+  if (engine!="micro" && engine!="psionic") || line.count>8192 || !json_valid(line) {return -1;}
+  ab:[4096]u8;ar:[1]ClArena;ar[0].buf=ab[..];
+  if cl_str(ar[..],line,"schema")!=MO_SCHEMA || cl_str(ar[..],line,"kind")!="attempt" {return -1;}
+  gateway:=cl_str(ar[..],line,"gateway");model:=cl_str(ar[..],line,"model");effort:=cl_str(ar[..],line,"requested_effort");outcome:=cl_str(ar[..],line,"outcome");status:=cl_int(line,"status");
+  if ar[0].full || gateway.count==0 || model.count==0 || outcome.count==0 || !status.ok || status.value<0 {return -1;}
+  values:[7]int;keys:=MO_COUNTS;
+  for i:0..<7 {v:=cl_int(line,keys[i]);values[i]=ifx v.ok then v.value else -1;}
+  return mo_attempt(engine,gateway,model,effort,outcome,status.value,values[..],out);
+}

@@ -81,6 +81,13 @@ service-account key file with a gcloud config of its own. The plan is every
 gateway with a credential, Vertex first; when Vertex is skipped, the worker
 says why once on stderr.
 
+Each completed request attempt also reaches the session log under
+[`coder.observability.v2`](../../docs/protocol/coder-observability-v2.md):
+configured gateway/model, requested effort, outcome, available token counts,
+and separate provider-reported cost and rate-card estimate. Missing details
+are null. This records internal attempts without reconstructing every internal
+request, and a configured model is not proof of a resolved upstream identity.
+
 ```sh
 coder/tui/coder.sh run "What is 2+2? Reply with only the number." --engine micro
 ```

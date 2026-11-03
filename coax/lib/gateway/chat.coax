@@ -100,11 +100,11 @@ gw_chat_usage_of :: (usage: string) -> GwUsage {
     if t.ok && i.ok { o = JsonInt.{ok = true, value = t.value - i.value}; }
   }
   if !i.ok || !o.ok { return u; }
-  u = GwUsage.{ok = true, input_tokens = i.value, output_tokens = o.value, cost_usd_micros = gw_cost_micros(usage, "cost")};
+  u = GwUsage.{ok = true, observed = 3, input_tokens = i.value, output_tokens = o.value, cost_usd_micros = gw_cost_micros(usage, "cost")};
   c := cl_int(usage, "prompt_tokens_details.cached_tokens");
-  if c.ok { u.cached_tokens = c.value; }
+  if c.ok { u.cached_tokens = c.value; u.observed = u.observed | 4; }
   r := cl_int(usage, "completion_tokens_details.reasoning_tokens");
-  if r.ok { u.reasoning_tokens = r.value; }
+  if r.ok { u.reasoning_tokens = r.value; u.observed = u.observed | 8; }
   // Vertex counts reasoning beside completion_tokens, not inside it: the total says which
   t := cl_int(usage, "total_tokens");
   if r.ok && r.value > 0 && t.ok && t.value == u.input_tokens + u.output_tokens + r.value { u.output_tokens += r.value; }

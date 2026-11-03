@@ -2,6 +2,19 @@
 #run_steps 1000000;
 main :: () {}
 
+#test "Microcoder attempts reach the durable event writer with engine and presence" {
+  a:[1]App;logs:[1]CsLog;a[0].log=logs[..];a[0].running=true;a[0].engine=ENGINE_MICRO;
+  buf:[4096]u8;a[0].mc_ar[0].buf=buf[..];
+  line:="{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"gateway\":\"vertex\",\"model\":\"test\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":12,\"output_tokens\":2,\"cached_tokens\":0,\"usd_micros\":3,\"card_estimate_usd_micros\":3}";
+  cd_micro_line(a[..],line);
+  s:=cast(string)logs[0].line[..];
+  #assert cd_holds(s,"\"engine\":\"micro\"") && cd_holds(s,"\"input_tokens\":12");
+  #assert cd_holds(s,"\"cached_tokens\":0") && cd_holds(s,"\"provider_cost_usd_micros\":null");
+  #assert a[0].cost>0.0;
+  a[0].engine=ENGINE_PSIONIC;cd_micro_line(a[..],line);
+  #assert cd_holds(cast(string)logs[0].line[..],"\"engine\":\"psionic\"");
+}
+
 #test "routing uses only eligible defaults and explains low confidence" {
   r: [1] CdRoute; r[0].eligible = 2;
   #assert cd_route_pick(r[..]) == ENGINE_CODEX;

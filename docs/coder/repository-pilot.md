@@ -168,9 +168,10 @@ COAX=/absolute/path/to/coax coax/web/tool.sh coder/tests/repository-v2.coax run 
 The four fresh cases exercise strict parsing (0), epoch/sequence admission
 state (1), exhaustive inclusive intersections across two modules (2), and a
 superseded proposal followed by an explicit fork objective (3). Cases 0..2
-are development cases. Case 3 is reserved for a later live continuation
-measurement; its reference repair is checked offline, but it has not been
-sent to a live engine in this follow-up. These public fixtures are not a
+are development cases. Case 3 was reserved at the first follow-up and has now been consumed by a
+single live Microcoder continuation run; it passes. Its diagnostic turn and
+fork transcript are retained in the [qualification record](../verification/coder-qualification-2026-11-03/README.md).
+Use a fresh case for future held-out measurements. These public fixtures are not a
 private evaluation set. Acceptance lives outside the working directory;
 AGENTS.md must remain intact. Live calls have a three-minute bound per turn.
 The fourth case permits two bounded turns, so its command remains under
@@ -190,3 +191,19 @@ The initial [follow-up evidence](../verification/coder-followup-2026-11-03/READM
 contains a Codex parser smoke run and a Microcoder state-machine smoke run.
 Different tasks are not an engine ranking. Larger repositories, more cases,
 repeated trials and a fresh private holdout remain future evaluation work.
+
+## Real repository issue replay
+
+The [qualification record](../verification/coder-qualification-2026-11-03/README.md)
+also replays actual issue #12720 at its pre-fix commit, with an external checker
+frozen before inference, a three-minute task budget and the existing checks
+protected. It passes functional acceptance but fails the zero-survivor mutation
+requirement. Its reviewed diff is evidence only; today's existing fix stays in
+place. This is a public historical task, not a private or uncontaminated holdout.
+
+`coder/tests/issue.coax` is the bounded Coax process runner. It accepts absolute
+`--driver`, `--driver-repo`, `--coax`, `--home`, `--repo`, `--task` and `--out`
+paths; the driver is a frozen Coder executable, the task is a UTF-8 file, and
+output is its JSONL transcript. The independent acceptance and protected-file
+review are separate from the model's self-report. A successful process exit is
+not sufficient to qualify a repair.

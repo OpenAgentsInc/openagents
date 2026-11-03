@@ -1,0 +1,87 @@
+diff --git a/aethyr/forge/doc.coax b/aethyr/forge/doc.coax
+index fa1ab2fb9d..724f3eae64 100644
+--- a/aethyr/forge/doc.coax
++++ b/aethyr/forge/doc.coax
+@@ -68,0 +69,5 @@ forge_why :: (why: string) -> ForgeRead { return ForgeRead.{ok = false, why = wh
++// jv_raw strips string quotes too: only JSON numbers may reach numeric readers.
++forge_doc_number :: (j: Jv, at: int) -> string {
++  return ifx jv_kind(j, at) == JV_NUMBER then jv_raw(j, at) else "";
++}
++
+@@ -80 +85 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
+-  version := forge_whole(jv_raw(j[0], jv_get(j[0], at, "version")), 1, 1000000);
++  version := forge_whole(forge_doc_number(j[0], jv_get(j[0], at, "version")), 1, 1000000);
+@@ -83 +88 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
+-  rev := forge_whole(jv_raw(j[0], jv_get(j[0], at, "rev")), 1, 999999999);
++  rev := forge_whole(forge_doc_number(j[0], jv_get(j[0], at, "rev")), 1, 999999999);
+@@ -91,3 +96,2 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
+-    got.from_rev = forge_whole(jv_raw(j[0], jv_get(j[0], parent, "rev")), 1, 999999999);
+-    if jv_kind(j[0], parent) != JV_OBJECT || sn < 1 || !forge_slug_ok(cast(string) slug[0..<sn]) || got.from_rev < 1
+-        || jv_kind(j[0], jv_get(j[0], parent, "rev")) != JV_NUMBER {
++    got.from_rev = forge_whole(forge_doc_number(j[0], jv_get(j[0], parent, "rev")), 1, 999999999);
++    if jv_kind(j[0], parent) != JV_OBJECT || sn < 1 || !forge_slug_ok(cast(string) slug[0..<sn]) || got.from_rev < 1 {
+@@ -105 +109 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
+-    x := forge_cm_of(jv_raw(j[0], jv_get(j[0], e, "x"))); z := forge_cm_of(jv_raw(j[0], jv_get(j[0], e, "z")));
++    x := forge_cm_of(forge_doc_number(j[0], jv_get(j[0], e, "x"))); z := forge_cm_of(forge_doc_number(j[0], jv_get(j[0], e, "z")));
+@@ -112,2 +116,2 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
+-    yaw := forge_whole(jv_raw(j[0], jv_get(j[0], e, "yaw")), 1 - FORGE_TURN, FORGE_TURN);
+-    scale := forge_whole(jv_raw(j[0], jv_get(j[0], e, "scale")), FORGE_SCALE_MIN, FORGE_SCALE_MAX);
++    yaw := forge_whole(forge_doc_number(j[0], jv_get(j[0], e, "yaw")), 1 - FORGE_TURN, FORGE_TURN);
++    scale := forge_whole(forge_doc_number(j[0], jv_get(j[0], e, "scale")), FORGE_SCALE_MIN, FORGE_SCALE_MAX);
+@@ -139 +143,5 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
+-    for f: [3] string.["x", "z", "yaw"] { m = forge_put(v[..], m, " "); m = forge_put(v[..], m, jv_raw(j[0], jv_get(j[0], e, f))); }
++    for f: [3] string.["x", "z", "yaw"] {
++      number := jv_get(j[0], e, f);
++      if jv_kind(j[0], number) != JV_NUMBER { return forge_why("a placed thing out of bounds"); }
++      m = forge_put(v[..], m, " "); m = forge_put(v[..], m, jv_raw(j[0], number));
++    }
+@@ -141 +149 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
+-    if n < 1 || m < 0 || jv_kind(j[0], jv_get(j[0], e, "x")) != JV_NUMBER || !forge_read_slot(next[..], forge_place_key(i, kb[..]), cast(string) v[0..<m]) { return forge_why("a placed thing out of bounds"); }
++    if n < 1 || m < 0 || !forge_read_slot(next[..], forge_place_key(i, kb[..]), cast(string) v[0..<m]) { return forge_why("a placed thing out of bounds"); }
+@@ -296,0 +305,46 @@ forge_doc_with :: (from: string, to: string, buf: [] u8) -> string {
++
++#test "every document number requires a JSON number and refuses the whole replacement" {
++  d: [1] ForgeDoc; forge_reset(d[..], 1);
++  #assert forge_read_doc(d[..], FORGE_DOC_V1).ok;
++  last: [8192] u8; ln := forge_doc_text(d[..], last[..]);
++  fields := [10] string.["\"version\": 1", "\"rev\": 4", "\"forked_from\": null", "\"x\": 1.25", "\"z\": -2.5",
++    "\"x\": 2", "\"z\": -3.5", "\"yaw\": 90", "\"version\": 1,", "\"version\": 1,"];
++  prefix := [10] string.["\"version\": ", "\"rev\": ", "\"forked_from\": {\"slug\": \"lamp-cove\", \"rev\": ", "\"x\": ", "\"z\": ",
++    "\"x\": ", "\"z\": ", "\"yaw\": ", "\"version\": 1, \"shaped\": [{\"yaw\": ", "\"version\": 1, \"shaped\": [{\"scale\": "];
++  suffix := [10] string.["", "", "}", "", "", "", "", "", ", \"scale\": 150, \"gone\": false, \"entity\": \"trees:3\"}],",
++    ", \"yaw\": -90, \"gone\": false, \"entity\": \"trees:3\"}],"];
++  numbers := [10] string.["1", "4", "4", "1.25", "-2.5", "2", "-3.5", "90", "-90", "150"];
++  for f: 0..<fields.count {
++    for bad: 0..<7 {
++      v: [64] u8; vn := 0;
++      if bad == 0 { vn = forge_put(v[..], vn, "\""); vn = forge_put(v[..], vn, numbers[f]); vn = forge_put(v[..], vn, "\""); }
++      else { vn = forge_put(v[..], vn, [6] string.["\"\"", "true", "false", "null", "[]", "{}"][bad - 1]); }
++      replacement: [256] u8; rn := forge_put(replacement[..], 0, prefix[f]);
++      rn = forge_put(replacement[..], rn, cast(string) v[0..<vn]); rn = forge_put(replacement[..], rn, suffix[f]);
++      b: [4096] u8; text := forge_doc_with(fields[f], cast(string) replacement[0..<rn], b[..]);
++      r := forge_read_doc(d[..], text);
++      #assert text.count > 0 && !r.ok && r.why != "";
++      now: [8192] u8; nn := forge_doc_text(d[..], now[..]);
++      #assert cast(string) now[0..<nn] == cast(string) last[0..<ln];
++    }
++  }
++}
++
++
++#test "numeric document boundaries and number spelling remain compatible" {
++  d: [1] ForgeDoc; forge_reset(d[..], 1);
++  b: [4096] u8;
++  #assert forge_read_doc(d[..], forge_doc_with("\"rev\": 4", "\"rev\": 1", b[..])).ok && d[0].rev == 1;
++  #assert forge_read_doc(d[..], forge_doc_with("\"rev\": 4", "\"rev\": 999999999", b[..])).ok && d[0].rev == 999999999;
++  #assert forge_read_doc(d[..], forge_doc_with("\"forked_from\": null", "\"forked_from\": {\"slug\": \"a\", \"rev\": 1}", b[..])).from_rev == 1;
++  #assert forge_read_doc(d[..], forge_doc_with("\"forked_from\": null", "\"forked_from\": {\"slug\": \"a\", \"rev\": 999999999}", b[..])).from_rev == 999999999;
++  #assert forge_read_doc(d[..], forge_doc_with("\"x\": 1.25", "\"x\": 40", b[..])).ok && forge_where(d[..], "trees:3").x == 4000;
++  #assert forge_read_doc(d[..], forge_doc_with("\"z\": -2.5", "\"z\": -40", b[..])).ok && forge_where(d[..], "trees:3").z == -4000;
++  #assert forge_read_doc(d[..], forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": -179, \"scale\": 25, \"gone\": false, \"entity\": \"trees:3\"}],", b[..])).ok;
++  shape := forge_shape_of(d[..], "trees:3"); #assert shape.yaw == -179 && shape.scale == 25;
++  #assert forge_read_doc(d[..], forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": 180, \"scale\": 400, \"gone\": false, \"entity\": \"trees:3\"}],", b[..])).ok;
++  shape = forge_shape_of(d[..], "trees:3"); #assert shape.yaw == 180 && shape.scale == 400;
++  // Placed numbers are kept as written, including JSON exponents and fractions.
++  #assert forge_read_doc(d[..], forge_doc_with("\"placed\": [{\"x\": 2, \"z\": -3.5, \"yaw\": 90", "\"placed\": [{\"x\": 4e1, \"z\": -40.00, \"yaw\": 90.5", b[..])).ok;
++  #assert forge_slot_text(d[..], "place:0") == "barrel 4e1 -40.00 90.5";
++}
