@@ -42,21 +42,37 @@ for library in verse/gridwalk.coax; do
 done
 if [[ "$render" == 1 ]]; then cp "$work/landing-browser.h" "$work/Render.h"; fi
 if [[ -n "${COAXIAL_ADMITTED_DIR:-}" ]]; then mkdir -p "$COAXIAL_ADMITTED_DIR";cp "$work/"*.c "$work/"*.h "$COAXIAL_ADMITTED_DIR/";fi
+# A release compiles as wasm.sh does (#12648): -Os bitcode, full LTO at the
+# link, then wasm-opt -O2. Dev builds keep -O2, linked by clang at -O2.
+level=(-O2); link_level=(-O2)
+if [[ "${COAXIAL_MODE:-release}" != dev ]]; then level=(-Os -flto); link_level=(); fi
 # Struct defaults come from the compiler (coax_default_T in each unit's header):
 # the Grid's face calls them for its globals.
 for unit in "${units[@]}"; do
-  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable -c "$work/$unit.c" -o "$work/$unit.o"
+  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 "${level[@]}" -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable -c "$work/$unit.c" -o "$work/$unit.o"
   objects+=("$work/$unit.o")
 done
 for unit in newland landing-reader landing-fold landing-cache; do
   directory="$here"; [[ "$unit" != newland ]] || directory="$repo/apps/openagents-web"
   face="$directory/$unit-face.c"
-  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 -O2 -I"$work" -I"$directory" -c "$face" -o "$work/$unit-face.o"
+  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 "${level[@]}" -I"$work" -I"$directory" -c "$face" -o "$work/$unit-face.o"
   objects+=("$work/$unit-face.o")
 done
 if [[ "$render" == 1 ]]; then
-  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 -O2 -I"$work" -c "$repo/coax/web/render-face.c" -o "$work/Render-face.o"
+  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 "${level[@]}" -I"$work" -c "$repo/coax/web/render-face.c" -o "$work/Render-face.o"
   objects+=("$work/Render-face.o")
 fi
-"$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -O2 -mexec-model=reactor "${objects[@]}" -Wl,--import-memory,--max-memory=67108864,-z,stack-size="$grid_stack_bytes",--export=__heap_base,--gc-sections,--strip-debug -o "$work/reader.wasm"
+"$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" ${link_level[@]+"${link_level[@]}"} -mexec-model=reactor "${objects[@]}" -Wl,--import-memory,--max-memory=67108864,-z,stack-size="$grid_stack_bytes",--export=__heap_base,--gc-sections,--strip-debug -o "$work/reader.wasm"
+# A release: wasm-opt -O2, then its size budget (apps/openagents-web/wasm-budgets.txt,
+# as wasm.sh checks each module's).
+if [[ "${COAXIAL_MODE:-release}" != dev ]]; then
+  wasm_opt="${COAXIAL_WASM_OPT:-$(command -v wasm-opt || true)}"
+  if [[ -n "$wasm_opt" ]]; then
+    "$wasm_opt" "$work/reader.wasm" -O2 -o "$work/optimized.wasm" && mv "$work/optimized.wasm" "$work/reader.wasm"
+  else
+    echo "build-home.sh: no wasm-opt (brew install binaryen, or set COAXIAL_WASM_OPT): $(basename "$out") is larger" >&2
+  fi
+  (cd "$repo" && coax/web/tool.sh wasm-size budget apps/openagents-web/wasm-budgets.txt "$(basename "$out" .wasm)" "$work/reader.wasm") || {
+    (cd "$repo" && coax/web/tool.sh wasm-size report "$work/reader.wasm" 25) >&2 || true; exit 1; }
+fi
 mv "$work/reader.wasm" "$out"

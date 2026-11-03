@@ -374,6 +374,164 @@ ws_report :: (a: [] Args) -> int {
   return 0;
 }
 
+// ---- size budgets (apps/openagents-web/wasm-budgets.txt) --------------------
+
+// n in decimal, into out.
+ws_num :: (n: int, out: [] u8) -> string {
+  if n < 0 { return "-"; }
+  k := out.count;
+  v := n;
+  while true {
+    k -= 1; out[k] = cast,trunc(u8) (cast(int) '0' + v % 10); v = v / 10;
+    if v == 0 || k == 0 { break; }
+  }
+  return cast(string) out[k..<out.count];
+}
+// A budget line's bytes: a positive decimal; -1 when it isn't one.
+ws_bytes :: (s: string) -> int {
+  if s.count == 0 || s.count > 12 { return -1; }
+  v := 0;
+  for ch: s { if ch < '0' || ch > '9' { return -1; } v = v * 10 + cast(int) (ch - '0'); }
+  return ifx v > 0 then v else -1;
+}
+// The next field of line from at[0] (spaces and tabs between), moving at[0] past it.
+ws_field :: (line: string, at: [] int) -> string {
+  s := at[0];
+  while s < line.count && (line[s] == ' ' || line[s] == '\t' || line[s] == '\r') { s += 1; }
+  e := s;
+  while e < line.count && line[e] != ' ' && line[e] != '\t' && line[e] != '\r' { e += 1; }
+  at[0] = e;
+  return line[s..<e];
+}
+// The budgets file's lines into names and bytes (a "#" line and a blank one
+// say nothing): the count, or -(line number) of the first line that is not
+// NAME BYTES, or that names a module a second time.
+ws_budget_lines :: (text: string, names: [] Closure, bytes: [] int) -> int {
+  i := 0; line_no := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e]; i = e + 1; line_no += 1;
+    at: [1] int;
+    name := ws_field(line, at[..]);
+    if name.count == 0 || name[0] == '#' { continue; }
+    n := ws_bytes(ws_field(line, at[..]));
+    if n < 0 || ws_field(line, at[..]).count > 0 { return -line_no; }
+    before := names[0].n;
+    if before >= bytes.count || !ws_add(names, name) || names[0].n == before { return -line_no; }
+    bytes[before] = n;
+  }
+  return names[0].n;
+}
+// The line naming name, or -1.
+ws_budget_of :: (names: [] Closure, name: string) -> int {
+  for k: 0..<names[0].n { if ws_path(names, k) == name { return k; } }
+  return -1;
+}
+// Every module a build script writes ("$here/build/NAME.wasm"), once each,
+// into built; false only when full.
+ws_built :: (text: string, built: [] Closure) -> bool {
+  mark := "$here/build/";
+  i := 0;
+  while i + mark.count <= text.count {
+    if text[i..<i + mark.count] != mark { i += 1; continue; }
+    s := i + mark.count; e := s;
+    while e < text.count && (ws_ident(text[e]) || text[e] == '-') { e += 1; }
+    if e > s && e + 5 <= text.count && text[e..<e + 5] == ".wasm" && (e + 5 == text.count || !ws_ident(text[e + 5])) {
+      if !ws_add(built, text[s..<e]) { return false; }
+    }
+    i = e;
+  }
+  return true;
+}
+#test "budget lines: NAME BYTES, comments and blanks skipped, a bad or second line named" {
+  names: [1] Closure; bytes: [64] int;
+  #assert ws_budget_lines("# NAME BYTES\n\noneshot 320000\n  everglade\t2000000\r\n", names[..], bytes[..]) == 2;
+  #assert ws_path(names[..], 1) == "everglade" && bytes[1] == 2000000 && bytes[0] == 320000;
+  #assert ws_budget_of(names[..], "oneshot") == 0 && ws_budget_of(names[..], "everglade") == 1 && ws_budget_of(names[..], "villa") == -1;
+  again: [1] Closure;
+  #assert ws_budget_lines("a 1\nb 2\na 3\n", again[..], bytes[..]) == -3;
+  b1: [1] Closure; #assert ws_budget_lines("a\n", b1[..], bytes[..]) == -1;
+  b2: [1] Closure; #assert ws_budget_lines("a 12x\n", b2[..], bytes[..]) == -1;
+  b3: [1] Closure; #assert ws_budget_lines("# x\na 0\n", b3[..], bytes[..]) == -2;
+  b4: [1] Closure; #assert ws_budget_lines("a 1 2\n", b4[..], bytes[..]) == -1;
+  b5: [1] Closure; #assert ws_budget_lines("a -4\n", b5[..], bytes[..]) == -1;
+  few: [1] int; b6: [1] Closure;
+  #assert ws_budget_lines("a 1\nb 2\n", b6[..], few[..]) == -2;
+  #assert ws_bytes("1999999") == 1999999 && ws_bytes("9") == 9 && ws_bytes("") == -1 && ws_bytes("1234567890123") == -1;
+  o: [24] u8;
+  #assert ws_num(0, o[..]) == "0" && ws_num(924684, o[..]) == "924684" && ws_num(-1, o[..]) == "-";
+}
+#test "the modules a build script writes, once each" {
+  b: [1] Closure;
+  t := "# Builds build/splash.wasm and build/nope.wasm\nwasm.sh \"$here/splash.coax\" \"$here/face.c\" \"$here/build/splash.wasm\" &\nvoice/build.sh \"$here/build/voice.wasm\"\nx \"$here/build/connect-pylon.wasm\" \"$here/build/splash.wasm\"\ncp \"$here/build/zeron/\" \"$here/build/a.wasmx\" \"$here/build/.wasm\" \"$here/build/b_2.wasm\"";
+  #assert ws_built(t, b[..]) && b[0].n == 4;
+  #assert ws_path(b[..], 0) == "splash" && ws_path(b[..], 1) == "voice" && ws_path(b[..], 2) == "connect-pylon" && ws_path(b[..], 3) == "b_2";
+}
+ws_bad_line :: (file: string, line: int) {
+  o: [24] u8;
+  tool_err("wasm-size: "); tool_err(file); tool_err(":"); tool_err(ws_num(line, o[..]));
+  tool_errln(": not a NAME BYTES line, or a module named twice");
+}
+
+// wasm-size budgets BUDGETS SCRIPT...: every module the scripts write has a
+// line in BUDGETS, and every line names a module one of them writes.
+ws_budgets :: (a: [] Args) -> int {
+  body: [WS_FILE] u8;
+  file := args_at(a, 1);
+  n := fs_read(file, body[..]);
+  if n < 0 { tool_err("wasm-size: can't read "); tool_errln(file); return 2; }
+  names: [1] Closure; bytes: [WS_PATHS] int;
+  lines := ws_budget_lines(cast(string) body[0..<n], names[..], bytes[..]);
+  if lines < 0 { ws_bad_line(file, -lines); return 1; }
+  built: [1] Closure;
+  for k: 2..<args_count(a) {
+    script := args_at(a, k);
+    m := fs_read(script, body[..]);
+    if m < 0 { tool_err("wasm-size: can't read "); tool_errln(script); return 2; }
+    if !ws_built(cast(string) body[0..<m], built[..]) { tool_errln("wasm-size: too many modules"); return 2; }
+  }
+  wrong := 0;
+  for k: 0..<built[0].n {
+    name := ws_path(built[..], k);
+    if ws_budget_of(names[..], name) >= 0 { continue; }
+    wrong += 1;
+    tool_err("wasm-size: "); tool_err(name); tool_err(".wasm has no size budget: add a line \""); tool_err(name); tool_err(" BYTES\" to "); tool_errln(file);
+  }
+  for k: 0..<names[0].n {
+    name := ws_path(names[..], k);
+    if ws_budget_of(built[..], name) >= 0 { continue; }
+    wrong += 1;
+    tool_err("wasm-size: "); tool_err(file); tool_err(" has a line for "); tool_err(name); tool_errln(", which no build script writes: take it out");
+  }
+  return ifx wrong > 0 then 1 else 0;
+}
+
+// wasm-size budget BUDGETS NAME FILE.wasm: the module against its line. Exit
+// 0 within it, 1 over it, 4 when it has no line.
+ws_budget :: (a: [] Args) -> int {
+  body: [WS_FILE] u8;
+  file := args_at(a, 1); name := args_at(a, 2); module := args_at(a, 3);
+  n := fs_read(file, body[..]);
+  if n < 0 { tool_err("wasm-size: can't read "); tool_errln(file); return 2; }
+  names: [1] Closure; bytes: [WS_PATHS] int;
+  lines := ws_budget_lines(cast(string) body[0..<n], names[..], bytes[..]);
+  if lines < 0 { ws_bad_line(file, -lines); return 2; }
+  size := fs_read(module, body[..]);
+  if size < 0 { tool_err("wasm-size: can't read "); tool_errln(module); return 2; }
+  o: [24] u8;
+  k := ws_budget_of(names[..], name);
+  if k < 0 {
+    tool_err("wasm-size: "); tool_err(name); tool_err(" is "); tool_err(ws_num(size, o[..]));
+    tool_err(" bytes and has no size budget: add a line \""); tool_err(name); tool_err(" BYTES\" to "); tool_errln(file);
+    return 4;
+  }
+  if size <= bytes[k] { return 0; }
+  tool_err("wasm-size: "); tool_err(name); tool_err(" is "); tool_err(ws_num(size, o[..]));
+  tool_err(" bytes, over its budget of "); tool_err(ws_num(bytes[k], o[..])); tool_err(" ("); tool_err(file); tool_errln(")");
+  return 1;
+}
+
 tool_main :: () -> int #export_c {
   a: [1] Args;
   ok := args_load(a[..]);
@@ -381,6 +539,8 @@ tool_main :: () -> int #export_c {
   if ok && verb == "sources" && args_count(a[..]) >= 2 { return ws_sources(a[..]); }
   if ok && verb == "exports" && args_count(a[..]) >= 2 { return ws_exports(a[..]); }
   if ok && verb == "report" && args_count(a[..]) >= 2 { return ws_report(a[..]); }
-  tool_errln("usage: wasm-size sources UNIT.coax... | wasm-size exports UNIT.coax... | wasm-size report FILE.wasm [N]");
+  if ok && verb == "budgets" && args_count(a[..]) >= 3 { return ws_budgets(a[..]); }
+  if ok && verb == "budget" && args_count(a[..]) == 4 { return ws_budget(a[..]); }
+  tool_errln("usage: wasm-size sources UNIT.coax... | wasm-size exports UNIT.coax... | wasm-size report FILE.wasm [N] | wasm-size budgets BUDGETS SCRIPT... | wasm-size budget BUDGETS NAME FILE.wasm");
   return 2;
 }

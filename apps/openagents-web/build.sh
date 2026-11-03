@@ -19,6 +19,12 @@ bun "$here/../../coax/web/realms.ts"
 # (coax/web/tool.sh wasm-size sources): build that tool once here, before the
 # modules below start side by side, so they don't each build it.
 (cd "$here/../.." && coax/web/tool.sh wasm-size sources apps/openagents-web/fixture.coax > /dev/null)
+# Every module this script writes has a size budget in wasm-budgets.txt, and
+# every line there names one it writes: a release stops here, in seconds, not
+# after the modules (wasm.sh and build-home.sh check each module's bytes).
+if [[ "${COAXIAL_MODE:-release}" != dev ]]; then
+  (cd "$here/../.." && coax/web/tool.sh wasm-size budgets apps/openagents-web/wasm-budgets.txt apps/openagents-web/build.sh)
+fi
 # The HUD bar's light, the same function the iOS stages draw (verse/light.coax).
 # (splash.wgsl loads verse/light.coax in its Coax: gpu/splash.coax.)
 "$here/../../coax/web/wasm.sh" "$here/splash.coax" "$here/face.c" "$here/build/splash.wasm" &

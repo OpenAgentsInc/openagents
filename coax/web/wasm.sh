@@ -98,16 +98,22 @@ fi
 # No fast math and no contraction: the browser computes what the checks computed.
 # COAXIAL_MODE=dev (what coax serve uses) compiles at -O1 in parallel and
 # links without the optimizer pass, for the fastest edit-to-screen loop.
-# Release (the default) compiles at -Os and runs wasm-opt -O2 on the linked
-# module (measured 2026-11-02, #12648: Everglade 2,020,138 bytes at -O2 with
-# wasm-opt -O2 becomes 1,690,474, 16% smaller, 11% smaller gzipped; its frame
-# code takes about 0.1 ms more of a 16.7 ms frame; -Oz and ThinLTO were larger, and
-# wasm-opt -Os gave 1.6% more for 30 s more per module). Clang ran wasm-opt by
-# itself before, at its -O level, whenever one was on PATH; now wasm.sh does,
-# by name: COAXIAL_WASM_OPT, else the wasm-opt on PATH (brew install binaryen).
+# Release (the default) compiles every unit at -Os to LLVM bitcode (-flto) and
+# links them with full link-time optimization, so code is inlined and dropped
+# across units, then runs wasm-opt -O2 on the linked module. Measured
+# 2026-11-03 on coderos-4080 (#12648, clang 21, Everglade with its renderer):
+# -Os and wasm-opt -O2 without LTO made 1,919,015 bytes; with full LTO,
+# 1,569,186 (18% smaller, 16% smaller gzipped), and its frame code takes no
+# longer. ThinLTO made 1,864,911; -O2, -O3 and -Oz were larger; wasm-opt -Os
+# or -Oz after LTO gave under 2% more for 25 s or more a module. (2026-11-02,
+# on the Mac: -Os with wasm-opt -O2 was 16% smaller than -O2.) Linked without
+# -O, so clang doesn't run a wasm-opt of its own choosing; wasm.sh runs
+# COAXIAL_WASM_OPT, else the wasm-opt on PATH (toolchain.sh links one on
+# Linux; brew install binaryen on a Mac).
 mode="${COAXIAL_MODE:-release}"
-opt=-Os; [[ "$mode" == dev ]] && opt=-O1
-cflags=(--target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -std=c11 "$opt"
+opt=-Os; lto=(-flto)
+if [[ "$mode" == dev ]]; then opt=-O1; lto=(); fi
+cflags=(--target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -std=c11 "$opt" ${lto[@]+"${lto[@]}"}
         -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable
         -Wno-unused-but-set-variable)
 # Every unit's C first (in parallel): the face includes their headers.
@@ -211,7 +217,8 @@ objects_done=$SECONDS
 # the same 64 MiB imported-memory limit, with room for the measured chain.
 stack_bytes=1048576
 [[ "$render" == 1 ]] && stack_bytes=4194304
-# Linked without -O, so clang doesn't run a wasm-opt of its own choosing.
+# Linked without -O, so clang doesn't run a wasm-opt of its own choosing (a
+# release's objects are bitcode: the link optimizes them together).
 "$clang" --target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" \
   -mexec-model=reactor -o "$work/output.wasm" "${objects[@]}" \
   -Wl,--import-memory,--max-memory=67108864,-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections,--strip-debug
@@ -225,25 +232,28 @@ if [[ "$mode" != dev ]]; then
 fi
 # A module that took over a minute says where the time went (or every module, with COAXIAL_WASM_TIMES=1).
 if (( SECONDS - started > 60 )) || [[ "${COAXIAL_WASM_TIMES:-}" == 1 ]]; then
-  echo "wasm.sh: $(basename "$out"): $((SECONDS - started)) s: Coax to C $((c_done - started)) s, clang $((objects_done - c_done)) s, link and wasm-opt $((SECONDS - objects_done)) s" >&2
+  echo "wasm.sh: $(basename "$out"): $((SECONDS - started)) s: Coax to C $((c_done - started)) s, clang $((objects_done - c_done)) s, link and wasm-opt $((SECONDS - objects_done)) s; $(wc -c < "$work/output.wasm" | tr -d ' ') bytes" >&2
 fi
 # The size budget: apps/openagents-web/wasm-budgets.txt (beside the app's Coax)
-# gives each module its most bytes. Over it, the build stops and names the
-# module's biggest functions (coax/web/tool.sh wasm-size report).
+# gives each module its most bytes (coax/web/tool.sh wasm-size budget). A
+# release module over it, or written to the app's build/ with no line, stops the build; over it, wasm.sh
+# names the module's sections and biggest functions (wasm-size report). build.sh
+# checks first that every module it writes has a line (wasm-size budgets).
 budgets="$repo/$(dirname "$coax_file")/wasm-budgets.txt"
 module="$(basename "$out" .wasm)"
 if [[ "$mode" != dev && -f "$budgets" ]]; then
-  budget="$(awk -v m="$module" '$1 == m { print $2; exit }' "$budgets")"
-  size="$(wc -c < "$work/output.wasm" | tr -d ' ')"
-  if [[ -z "$budget" ]]; then
-    echo "wasm.sh: $module has no size budget in ${budgets#"$repo"/} ($size bytes); add a line: $module BYTES" >&2
-  elif (( size > budget )); then
-    echo "wasm.sh: $module is $size bytes, over its budget of $budget (${budgets#"$repo"/}). Its biggest parts:" >&2
+  status=0
+  (cd "$repo" && coax/web/tool.sh wasm-size budget "${budgets#"$repo"/}" "$module" "$work/output.wasm") || status=$?
+  if [[ "$status" == 1 ]]; then
+    echo "wasm.sh: $module's biggest parts:" >&2
     "$clang" --target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -mexec-model=reactor -o "$work/named.wasm" "${objects[@]}" \
       -Wl,--import-memory,--max-memory=67108864,-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections || true
     (cd "$repo" && coax/web/tool.sh wasm-size report "$work/named.wasm" 25) >&2 || true
     echo "wasm.sh: (sizes before wasm-opt, by name.) Make it smaller, or raise its budget in the same commit and say why." >&2
-    exit 1
   fi
+  # A module written anywhere but the app's build/ (a check's or a bench's copy,
+  # under its own name) may have no line: that only warns.
+  if [[ "$status" == 4 && "$out" != "$(cd "$(dirname "$budgets")" && pwd)/build/$module.wasm" ]]; then status=0; fi
+  [[ "$status" == 0 ]] || exit 1
 fi
 mv "$work/output.wasm" "$out"   # the server never serves a half-written module

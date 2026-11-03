@@ -238,7 +238,7 @@ for an admin only and publishes the list as the realm's world.
 
 ## Adding a realm
 
-1. Its module: `<module>.coax` with checks, `<module>-face.c`, `<module>.wgsl`; a `wasm.sh` line in `build.sh`, and its size budget in `apps/openagents-web/wasm-budgets.txt` (`<module> BYTES`; the build stops a module over its budget and names its biggest functions).
+1. Its module: `<module>.coax` with checks, `<module>-face.c`, `<module>.wgsl`; a `wasm.sh` line in `build.sh`, and its size budget in `apps/openagents-web/wasm-budgets.txt` (`<module> BYTES`, its release size with about 5% room; `build.sh` stops at once on a module without a line, and the build stops a module over its budget and names its biggest functions).
 2. Its pack: `verse/packs/<realm>.json`, compiled with `pack_realm.py` (above).
 3. Its world in `realms.json`: listed `false` until launch, assets `pack:...`, its `style` and `clock`.
 4. `realms/<slug>/index.md`, linking its `licences.md`.

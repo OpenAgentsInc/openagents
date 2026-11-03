@@ -29,4 +29,10 @@ done
 "$clang" --target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -O2 -mexec-model=reactor \
   -o "$out.tmp" "${objects[@]}" "$work/voice.o" "$work/voice-web.o" \
   -Wl,--max-memory=16777216,-z,stack-size=262144,--gc-sections,--strip-debug
+# Its size budget (apps/openagents-web/wasm-budgets.txt, as wasm.sh checks each module's).
+if [[ "${COAXIAL_MODE:-release}" != dev ]]; then
+  tmp="$(cd "$(dirname "$out")" && pwd)/$(basename "$out").tmp"
+  (cd "$repo" && coax/web/tool.sh wasm-size budget apps/openagents-web/wasm-budgets.txt "$(basename "$out" .wasm)" "$tmp") || {
+    (cd "$repo" && coax/web/tool.sh wasm-size report "$tmp" 25) >&2 || true; exit 1; }
+fi
 mv "$out.tmp" "$out"

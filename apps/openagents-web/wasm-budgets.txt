@@ -1,7 +1,55 @@
-# Each module's most bytes, as coax/web/wasm.sh builds it for a release (-Os, then
-# wasm-opt -O2; raw bytes, not gzipped). A module over its budget stops the build,
-# and wasm.sh names its biggest functions. A module growing on purpose raises its
-# line in the same commit, with the reason in the commit message. One module a line:
+# Each module's most bytes, as a release builds it (coax/web/wasm.sh, and
+# build-home.sh for newland: -Os bitcode, full LTO, then wasm-opt -O2; the voice
+# engine as coax/web/voice/build.sh builds it). Raw bytes, not gzipped. A module
+# over its budget stops the build, and the build names its sections and biggest
+# functions. Every module build.sh writes needs a line, and every line names one
+# it writes: build.sh checks first (coax/web/tool.sh wasm-size budgets), so a new
+# realm adds its line in the commit that adds it. A module growing on purpose
+# raises its line in the same commit, with the reason in the commit message.
+# Set 2026-11-03 (#12648) from a Linux release build (clang 21, nixpkgs
+# binaryen) with about 5% room, rounded up to 10,000 bytes; project, projects
+# and newland carry baked Nostr data that grows, so they have about 15%.
+# One module a line:
 #   NAME BYTES
-oneshot 320000
-everglade5e 2000000
+admin 50000
+animelab 190000
+belt 320000
+builder 90000
+changelog 160000
+characters 100000
+chat 200000
+connect-pylon 80000
+deadgears 450000
+droprealm 180000
+everglade 1650000
+everglade5e 1660000
+fairy 660000
+fivelab 490000
+fivemmo 1430000
+fixture 190000
+garden 270000
+gridcrowd 60000
+icecream 500000
+memorial 60000
+metahumanlab 230000
+myrealm 660000
+newland 1150000
+nip01 90000
+nip-guide 130000
+og 50000
+oneshot 230000
+orbitleague 290000
+private 280000
+project 2400000
+projects 110000
+pylon 110000
+realm 510000
+realmlist 70000
+speedrunhud 120000
+splash 90000
+stair 290000
+verse 210000
+villa 520000
+voice 190000
+watchtower 290000
+waterlab 190000
