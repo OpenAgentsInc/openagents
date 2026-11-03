@@ -43,7 +43,7 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 95 are implemented, 3 are partly implemented and 26 are planned. The 95 implemented
+Of the 125 chapters, 96 are implemented, 3 are partly implemented and 26 are planned. The 96 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
@@ -365,3 +365,9 @@ Where OpenAgents uses the stack: our node on Pylons and Verse OS, one seed, agen
 | [122. Agent treasuries](ch122-agent-treasuries.md) | Runnable: native C | An agent's treasury under a 2-of-3 of the agent, the owner and a recovery key, with the recovery key alone after a BIP-68 delay, as a P2WSH script and as a Taproot output with a MuSig2 key path, a `multi_a` leaf and a recovery leaf. The agent's limit is a separate hot wallet; it signs a treasury PSBT only for a refill under the ceiling and the fee cap, and refuses payments, overfills, high fees and foreign coins. A refill by agent and owner, the recovery path at the delay and one block before, and every pair of keys run through chapter 36's interpreter. Checked against a Python implementation natively. Broadcast on signet and recovery with an independent wallet wait for the node (chapters 80, 93, 99 and 118). |
 | 123. Paying for requests | Planned | A request pays a BOLT 11 invoice, and the server releases its response only after settlement. |
 | 124. Our node on Pylons and Verse OS | Planned | A Pylon and a Verse OS machine run the node from its Nix module and sync it, and OpenAgents' on-chain checks query it instead of a third-party chain source. |
+
+### Part XX. Explorer extensions (chapter 125)
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| [125. Address history, balances and spends](ch125-address-history-balances-and-spends.md) | Runnable: native C | Exact-script histories and balances, output spend links and reorg-aware active membership share the indexed light chain’s atomic batch and cursor. Independent raw-block replay qualifies native results and crash recovery. |

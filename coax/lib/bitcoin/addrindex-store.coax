@@ -1,0 +1,241 @@
+// Address index schema 1: synchronized script/output and spend queries.
+#load "txindex-store.coax";
+#authority;
+
+AxiSpend :: struct { code: int; vin: int; height: int; order: int; txid: [32] u8; block: [32] u8; }
+AxiOutput :: struct { height: int; order: int; value: int; vout: int; status: int; txid: [32] u8; block: [32] u8; spend: AxiSpend; }
+AxiTx :: struct { height: int; order: int; txid: [32] u8; block: [32] u8; }
+AxiResult :: struct { code: int; balance: int; outputs: int; transactions: int; }
+AXI_META :: [1] u8.['E'];
+
+#test "address index: exact spend identity, duplicate history and corruption refusals" {
+  for fault: 0..<16 {
+    table: [8192] u8; batch: [8192] u8; stage: [8192] u8; g: [32] u8; g[0] = 1;
+    r := axi_init_vartime(5,g[..],table[..],0,stage[..],batch[..]); #assert r.code == LC_OK;
+    for k: 0..<r.used { table[k] = stage[k]; }
+    c := [1] LcCursor.[LcCursor.{used=r.used,n=kv_batch_new(batch[..])}];
+    script := [1] u8.[0x51]; key: [101] u8; key[0] = 'F';
+    #assert sha256_hash_checked(script[..],key[1..<33],false) == SHA_OK;
+    key[33] = 7; key[69] = 1; kv_put32(key[..],65,13);
+    value: [17] u8; kv_put32(value[..],0,1); kv_put32(value[..],4,9); kv_put64(value[..],8,1234); value[16] = 0x51;
+    #assert axi_archive_vartime(table[..],c[..],batch[..],key[..],value[..]) == LC_OK;
+    #assert axi_archive_vartime(table[..],c[..],batch[..],key[..],value[..]) == LC_OK;
+    value[8] ^= 1; #assert axi_archive_vartime(table[..],c[..],batch[..],key[..],value[..]) == TXI_CORRUPT; value[8] ^= 1;
+    hk: [33] u8; hv: [80] u8; hk[0] = 'H'; hk[1] = 1; kv_put32(hv[..],0,1); kv_put32(hv[..],4,1);
+    #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);
+    sk: [73] u8; sk[0] = 'G'; for k: 0..<36 { sk[1+k] = key[33+k]; } kv_put32(sk[..],37,1); sk[41] = 2;
+    sv: [44] u8; sv[0] = 8; kv_put32(sv[..],32,17); kv_put32(sv[..],36,2); kv_put32(sv[..],40,19);
+    hk[1] = 2; kv_put32(hv[..],4,2); #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);
+    #assert lc_put_vartime(table[..],c[..],batch[..],sk[..],sv[..]);
+    outs: [2] AxiOutput; txs: [2] AxiTx;
+    q := axi_query_vartime(table[..],c[0].used,script[..],outs[..],txs[..]);
+    #assert q.code == LC_OK && q.outputs == 1 && q.balance == 0 && q.transactions == 2;
+    o := outs[0]; s := o.spend;
+    #assert o.status == 1 && o.vout == 13 && o.order == 9 && o.value == 1234 && o.txid[0] == 7 && o.block[0] == 1;
+    #assert s.code == LC_OK && s.txid[0] == 8 && s.block[0] == 2 && s.vin == 17 && s.height == 2 && s.order == 19;
+    #assert txs[0].height == 2 && txs[0].order == 19 && txs[0].txid[0] == 8 && txs[0].block[0] == 2;
+    #assert txs[1].height == 1 && txs[1].order == 9 && txs[1].txid[0] == 7 && txs[1].block[0] == 1;
+    #assert axi_history_add(txs[..],2,s.txid[..],s.block[..],2,19) == 2;
+    #assert axi_query_vartime(table[..],c[0].used,script[..],outs[..],txs[0..<1]).code == LC_CAPACITY;
+    #assert axi_spend_vartime(table[..],c[0].used,key[33..<68],1).code == LC_CONTEXT;
+    if fault == 0 { key[16] ^= 1; #assert axi_query_vartime(table[..],c[0].used,key[..],outs[..],txs[..]).outputs == 0; continue; }
+    if fault == 1 {
+      c[0].used = kv_delete_vartime(table[..],c[0].used,hk[..]);
+      q = axi_query_vartime(table[..],c[0].used,script[..],outs[..],txs[..]);
+      #assert q.code == LC_OK && q.transactions == 1 && outs[0].status == 2;
+      h: [32] u8; h[0] = 2; #assert axi_active_vartime(table[..],c[0].used,h[..],2) == 0; continue;
+    }
+    if fault == 2 { hv[0] = 2; }
+    if fault == 3 { kv_put32(hv[..],4,3); }
+    if fault >= 2 && fault <= 4 { #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[0..<ifx fault == 4 then 79 else 80]); }
+    if fault >= 2 && fault <= 4 { h: [32] u8; h[0] = 2; #assert axi_active_vartime(table[..],c[0].used,h[..],2) == -1; }
+    if fault == 5 { kv_put32(sv[..],36,0); #assert lc_put_vartime(table[..],c[..],batch[..],sk[..],sv[..]); }
+    if fault == 6 { #assert lc_put_vartime(table[..],c[..],batch[..],sk[..],sv[0..<43]); }
+    if fault == 7 { c[0].used = kv_delete_vartime(table[..],c[0].used,sk[..]); #assert lc_put_vartime(table[..],c[..],batch[..],sk[0..<72],sv[..]); }
+    if fault == 8 {
+      sk[41] = 3; #assert lc_put_vartime(table[..],c[..],batch[..],sk[..],sv[..]); hk[1] = 3;
+      #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);
+    }
+    if fault == 9 { value[16] = 0x52; #assert lc_put_vartime(table[..],c[..],batch[..],key[..],value[..]); }
+    if fault == 10 { #assert lc_put_vartime(table[..],c[..],batch[..],key[..],value[0..<15]); }
+    if fault == 11 { c[0].used = kv_delete_vartime(table[..],c[0].used,key[..]); #assert lc_put_vartime(table[..],c[..],batch[..],key[0..<100],value[..]); }
+    if fault == 12 { hk[1] = 1; kv_put32(hv[..],4,7); #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]); }
+    if fault >= 13 {
+      ck: [37] u8; ck[0] = 'C'; for k: 0..<36 { ck[1+k] = key[33+k]; } coin: [14] u8;
+      kv_put64(coin[..],0,1234); kv_put32(coin[..],8,1); coin[13] = 0x51;
+      if fault != 13 { c[0].used = kv_delete_vartime(table[..],c[0].used,sk[..]); }
+      if fault == 14 { coin[0] ^= 1; } if fault == 15 { coin[13] = 0x52; }
+      #assert lc_put_vartime(table[..],c[..],batch[..],ck[..],coin[..]);
+    }
+    #assert axi_query_vartime(table[..],c[0].used,script[..],outs[..],txs[..]).code == TXI_CORRUPT;
+  }
+}
+#test "address index store: init and empty query boundaries" {
+  table: [4096] u8; stage: [4096] u8; batch: [4096] u8; g: [32] u8;
+  #assert axi_context_vartime(table[..],0) == LC_CONTEXT;
+  #assert axi_init_vartime(0,g[..],table[..],0,stage[..],batch[..]).code == LC_CONTEXT;
+  for which: 0..<5 {
+    r := axi_init_vartime(5,g[..],table[0..<ifx which == 0 then 160 else 161],0,stage[0..<ifx which == 1 then 160 else 161],batch[0..<ifx which == 2 then 175 else 176]);
+    if which < 3 { #assert r.code == LC_CAPACITY; } else { #assert r.code == LC_OK && r.used == 161 && r.n == 176; }
+  }
+  r := axi_init_vartime(5,g[..],table[..],0,stage[..],batch[..]); for k: 0..<r.used { table[k] = stage[k]; }
+  #assert axi_context_vartime(table[..],r.used) == LC_OK && txi_context_vartime(table[..],r.used).next == 0;
+  outs: [1] AxiOutput; txs: [1] AxiTx; script: [] u8;
+  q := axi_query_vartime(table[..],r.used,script,outs[..],txs[..]); #assert q.code == LC_OK && q.outputs == 0 && q.transactions == 0 && q.balance == 0;
+  ek := AXI_META; f := kv_find_vartime(table[..],r.used,ek[..]); table[f.at+7] ^= 1;
+  #assert axi_context_vartime(table[..],r.used) == LC_CONTEXT;
+  #assert axi_query_vartime(table[..],r.used,script,outs[..],txs[..]).code == LC_CONTEXT;
+  point: [36] u8; #assert axi_spend_vartime(table[..],r.used,point[..],0).code == LC_CONTEXT;
+}
+#test "address index store: unspent, empty scripts, maximum balance and exact prefixes" {
+  for which: 0..<13 {
+    table: [8192] u8; stage: [8192] u8; batch: [8192] u8; g: [32] u8;
+    r := axi_init_vartime(5,g[..],table[..],0,stage[..],batch[..]); for k: 0..<r.used { table[k] = stage[k]; }
+    c := [1] LcCursor.[LcCursor.{used=r.used,n=kv_batch_new(batch[..])}];
+    script := [1] u8.[0x51]; n := ifx which == 0 then 0 else 1; fk: [101] u8; fk[0] = 'F';
+    #assert sha256_hash_checked(script[0..<n],fk[1..<33],false) == SHA_OK;
+    for k: 0..<32 { fk[33+k] = cast(u8)(k+71); fk[69+k] = cast(u8)(k+121); }
+    hk: [33] u8; txi_blockkey('H',fk[69..<101],hk[..]); hv: [80] u8; kv_put32(hv[..],0,1); kv_put32(hv[..],4,1);
+    #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);
+    #assert axi_active_vartime(table[..],c[0].used,fk[69..<101],1) == 1;
+    v: [17] u8; kv_put32(v[..],0,1); amount := ifx which == 2 then 0 else (ifx which >= 3 && which <= 5 then 2100000000000000 else 1234);
+    kv_put64(v[..],8,cast(u64)amount); v[16] = 0x51;
+    if which == 4 { kv_put64(v[..],8,2100000000000001); }
+    if which == 5 { kv_put64(v[..],8,0xffffffffffffffff); }
+    if which == 11 { kv_put64(v[..],8,1); }
+    if which == 12 { kv_put64(v[..],8,2100000000000001); }
+    #assert lc_put_vartime(table[..],c[..],batch[..],fk[..],v[0..<16+n]);
+    ck: [37] u8; ck[0] = 'C'; for k: 0..<36 { ck[1+k] = fk[33+k]; }
+    coin: [14] u8; for k: 0..<8 { coin[k] = v[8+k]; } kv_put32(coin[..],8,1); coin[13] = 0x51;
+    #assert lc_put_vartime(table[..],c[..],batch[..],ck[..],coin[0..<13+n]);
+    if which == 6 { kv_put32(coin[..],8,2); #assert lc_put_vartime(table[..],c[..],batch[..],ck[..],coin[..]); }
+    if which == 7 { c[0].used = kv_delete_vartime(table[..],c[0].used,hk[..]); }
+    if which == 8 { #assert lc_put_vartime(table[..],c[..],batch[..],fk[0..<33],v[..]); }
+    if which == 9 {
+      sk: [41] u8; sk[0] = 'G'; for k: 0..<36 { sk[1+k] = fk[33+k]; } kv_put32(sk[..],37,1);
+      #assert lc_put_vartime(table[..],c[..],batch[..],sk[..],v[..]);
+    }
+    if which == 10 {
+      // An active same-block spend has creation height == spending height.
+      c[0].used = kv_delete_vartime(table[..],c[0].used,ck[..]); sk: [73] u8; sk[0] = 'G';
+      for k: 0..<36 { sk[1+k] = fk[33+k]; } kv_put32(sk[..],37,1); for k: 0..<32 { sk[41+k] = fk[69+k]; }
+      sv: [44] u8; for k: 0..<32 { sv[k] = cast(u8)(k+31); } kv_put32(sv[..],36,1);
+      #assert lc_put_vartime(table[..],c[..],batch[..],sk[..],sv[..]);
+    }
+    if which == 11 {
+      // A second output makes a total above the supply bound.
+      fk[65] = 1; ck[33] = 1; kv_put64(v[..],8,2100000000000000); kv_put64(coin[..],0,2100000000000000);
+      #assert lc_put_vartime(table[..],c[..],batch[..],fk[..],v[..]) && lc_put_vartime(table[..],c[..],batch[..],ck[..],coin[..]);
+    }
+    if which == 12 { c[0].used = kv_delete_vartime(table[..],c[0].used,ck[..]); }
+    outs: [3] AxiOutput; txs: [3] AxiTx; q := axi_query_vartime(table[..],c[0].used,script[0..<n],outs[..],txs[..]);
+    if which == 4 || which == 5 || which == 8 || which == 9 || which == 11 || which == 12 { #assert q.code == TXI_CORRUPT; continue; }
+    #assert q.code == LC_OK;
+    if which == 7 { #assert q.outputs == 0 && q.transactions == 0 && q.balance == 0; continue; }
+    #assert q.outputs == 1 && q.transactions == ifx which == 10 then 2 else 1;
+    #assert q.balance == ifx which == 6 || which == 10 then 0 else amount;
+    #assert outs[0].status == ifx which == 6 then 2 else (ifx which == 10 then 1 else 0);
+    #assert lc_same(outs[0].txid[..],fk[33..<65]) && lc_same(outs[0].block[..],fk[69..<101]);
+    #assert axi_query_vartime(table[..],c[0].used,script[0..<n],outs[0..<0],txs[..]).code == LC_CAPACITY;
+    #assert axi_query_vartime(table[..],c[0].used,script[0..<n],outs[..],txs[0..<0]).code == LC_CAPACITY;
+    if which == 10 { #assert lc_same(outs[0].spend.block[..],fk[69..<101]); }
+  }
+  txs: [3] AxiTx; a: [32] u8; b: [32] u8; b[0] = 1;
+  #assert axi_history_add(txs[..],0,a[..],a[..],1,2) == 1;
+  #assert axi_history_add(txs[..],1,b[..],a[..],1,3) == 2;
+  #assert axi_history_add(txs[..],2,a[..],b[..],2,4) == 3;
+  table: [32] u8; batch: [32] u8; c := [1] LcCursor.[LcCursor.{n=kv_batch_new(batch[..])}];
+  #assert axi_archive_vartime(table[..],c[..],batch[0..<c[0].n],a[..],b[..]) == LC_CAPACITY;
+}
+
+axi_context_vartime :: (table: [] u8, used: int) -> int #export_c {
+  if txi_context_vartime(table,used).code != LC_OK { return LC_CONTEXT; }
+  ek := AXI_META; ik := TXI_META;
+  if !lc_same(lc_value_vartime(table,used,ek[..]),lc_value_vartime(table,used,ik[..])) { return LC_CONTEXT; }
+  return LC_OK;
+}
+axi_sync_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8) -> bool {
+  ik := TXI_META; ek := AXI_META; v: [48] u8; src := lc_value_vartime(table,c[0].used,ik[..]);
+  for k: 0..<48 { v[k] = src[k]; }
+  return lc_put_vartime(table,c,batch,ek[..],v[..]);
+}
+axi_init_vartime :: (chain: int, genesis: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+  r := lc_init_vartime(chain,genesis,table,used,stage,batch); if r.code != LC_OK { return r; }
+  c := [1] LcCursor.[LcCursor.{used=r.used,n=r.n}];
+  if !txi_sync_vartime(stage,c[..],batch,0) || !axi_sync_vartime(stage,c[..],batch) || c[0].used > table.count { return LcResult.{code=LC_CAPACITY}; }
+  return LcResult.{used=c[0].used,n=c[0].n};
+}
+// Idempotent archive writes must agree byte for byte. Replays never replace
+// an old occurrence with a new location or a different spend.
+axi_archive_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, key: [] u8, value: [] u8) -> int {
+  old := lc_value_vartime(table,c[0].used,key);
+  if old.count != 0 { return ifx lc_same(old,value) then LC_OK else TXI_CORRUPT; }
+  return ifx lc_put_vartime(table,c,batch,key,value) then LC_OK else LC_CAPACITY;
+}
+// Active membership is shared with the light chain, never stored as a second
+// independently updated bit. -1 means malformed; 0 stale; 1 active.
+axi_active_vartime :: (table: [] u8, used: int, hash: [] u8, height: int) -> int {
+  hk: [33] u8; txi_blockkey('H',hash,hk[..]); h := lc_value_vartime(table,used,hk[..]);
+  if h.count == 0 { return 0; }
+  if h.count != 80 || kv_get32(h,0) != LC_VERSION || kv_get32(h,4) != height { return -1; } return 1;
+}
+axi_spend_vartime :: (table: [] u8, used: int, point: [] u8, height: int) -> AxiSpend #export_c {
+  if axi_context_vartime(table,used) != LC_OK || point.count != 36 { return AxiSpend.{code=LC_CONTEXT}; }
+  prefix: [41] u8; prefix[0] = 'G'; for k: 0..<36 { prefix[1+k] = point[k]; } kv_put32(prefix[..],37,height);
+  at := kv_find_vartime(table,used,prefix[..]).at; best := AxiSpend.{code=TXI_MISS};
+  while true {
+    e := kv_entry_vartime(table,used,at); at = e.next;
+    if e.key.count < 41 || !lc_same(e.key[0..<41],prefix[..]) { break; }
+    if e.key.count != 73 || e.value.count != 44 { return AxiSpend.{code=TXI_CORRUPT}; }
+    h := kv_get32(e.value,36); active := axi_active_vartime(table,used,e.key[41..<73],h);
+    if active < 0 || h < height { return AxiSpend.{code=TXI_CORRUPT}; }
+    if active == 0 { continue; }
+    if best.code == LC_OK { return AxiSpend.{code=TXI_CORRUPT}; }
+    best = AxiSpend.{vin=kv_get32(e.value,32),height=h,order=kv_get32(e.value,40)};
+    for k: 0..<32 { best.txid[k] = e.value[k]; best.block[k] = e.key[41+k]; }
+  }
+  return best;
+}
+axi_history_add :: (txs: [] AxiTx, count: int, id: [] u8, hash: [] u8, height: int, order: int) -> int {
+  for i: 0..<count { if lc_same(txs[i].txid[..],id) && lc_same(txs[i].block[..],hash) { return count; } }
+  if count == txs.count { return -1; }
+  txs[count] = AxiTx.{height=height,order=order}; for k: 0..<32 { txs[count].txid[k] = id[k]; txs[count].block[k] = hash[k]; } return count+1;
+}
+// Results are valid only on code=LC_OK. Caller-owned arrays are scratch on
+// refusal. Output status: 0 unspent, 1 spent, 2 replaced (historical BIP30).
+axi_query_vartime :: (table: [] u8, used: int, script: [] u8, outs: [] AxiOutput, txs: [] AxiTx) -> AxiResult #export_c {
+  if axi_context_vartime(table,used) != LC_OK { return AxiResult.{code=LC_CONTEXT}; }
+  prefix: [33] u8; prefix[0] = 'F'; #assert sha256_hash_checked(script,prefix[1..<33],false) == SHA_OK;
+  at := kv_find_vartime(table,used,prefix[..]).at; r: AxiResult;
+  while true {
+    e := kv_entry_vartime(table,used,at); at = e.next;
+    if e.key.count < 33 || !lc_same(e.key[0..<33],prefix[..]) { break; }
+    if e.key.count != 101 || e.value.count < 16 { return AxiResult.{code=TXI_CORRUPT}; }
+    if !lc_same(e.value[16..<e.value.count],script) { return AxiResult.{code=TXI_CORRUPT}; }
+    height := kv_get32(e.value,0); active := axi_active_vartime(table,used,e.key[69..<101],height);
+    if active < 0 { return AxiResult.{code=TXI_CORRUPT}; } if active == 0 { continue; }
+    if r.outputs == outs.count { return AxiResult.{code=LC_CAPACITY}; }
+    amount := kv_get64(e.value,8);
+    if amount > 2100000000000000 { return AxiResult.{code=TXI_CORRUPT}; }
+    o := AxiOutput.{height=height,order=kv_get32(e.value,4),value=cast(int)amount,vout=kv_get32(e.key,65),status=2};
+    for k: 0..<32 { o.txid[k] = e.key[33+k]; o.block[k] = e.key[69+k]; }
+    o.spend = axi_spend_vartime(table,used,e.key[33..<69],height);
+    if o.spend.code != LC_OK && o.spend.code != TXI_MISS { return AxiResult.{code=o.spend.code}; }
+    ck: [37] u8; ck[0] = 'C'; for k: 0..<36 { ck[1+k] = e.key[33+k]; } coin := lc_value_vartime(table,used,ck[..]);
+    unspent := coin.count >= 13 && kv_get32(coin,8) == height;
+    if o.spend.code == LC_OK {
+      if unspent { return AxiResult.{code=TXI_CORRUPT}; } o.status = 1;
+      s := o.spend; r.transactions = axi_history_add(txs,r.transactions,s.txid[..],s.block[..],s.height,s.order);
+      if r.transactions == -1 { return AxiResult.{code=LC_CAPACITY}; }
+    } else {
+      if unspent {
+        if kv_get64(coin,0) != cast(u64)o.value || !lc_same(coin[13..<coin.count],script) { return AxiResult.{code=TXI_CORRUPT}; }
+        o.status = 0;
+        if o.value > 2100000000000000-r.balance { return AxiResult.{code=TXI_CORRUPT}; } r.balance += o.value;
+      }
+    }
+    r.transactions = axi_history_add(txs,r.transactions,o.txid[..],o.block[..],o.height,o.order);
+    if r.transactions == -1 { return AxiResult.{code=LC_CAPACITY}; } outs[r.outputs] = o; r.outputs += 1;
+  }
+  return r;
+}

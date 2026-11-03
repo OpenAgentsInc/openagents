@@ -1086,6 +1086,17 @@
         "release"
       ],
       "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/address-index.coax",
+      "chapter": "bitcoin/book/ch125-address-history-balances-and-spends.md",
+      "stdout": "bitcoin/fixtures/address-index.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600
     }
   ]
 }

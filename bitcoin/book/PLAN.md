@@ -326,3 +326,7 @@ there is a need.
 | [122. Agent treasuries](ch122-agent-treasuries.md) — implemented | 94, 100, 101 | A 2-of-3 treasury spend is signed by independent key agents and broadcast on signet, and an independent wallet tool recovers the coins. | NIP-KEYS |
 | 123. Paying for requests — planned | 113, 114 | A request pays a BOLT 11 invoice, and the server releases its response only after settlement. | x402, BOLT 11 |
 | 124. Our node on Pylons and Verse OS — planned | 89, 93 | A Pylon and a Verse OS machine run the node from its Nix module and sync it, and OpenAgents' on-chain checks query it instead of a third-party chain source. | — |
+
+## Explorer extension: address index (chapter 125)
+
+Added for [#12704](https://github.com/OpenAgentsInc/openagents/issues/12704) after the original 124-chapter plan. [Chapter 125](ch125-address-history-balances-and-spends.md) depends on chapters 29, 58, 60 and 91. It indexes exact scripts, confirmed histories, balances and output spend links in the light chain’s atomic batch. Native debug/release answers must match an independent transaction replay before and after both reorg directions; crash cuts must expose one whole snapshot. Full validation remains outside the explorer light profile.

@@ -1,0 +1,70 @@
+// Address-aware light chain transitions, #12704, chapter 125.
+#run_steps 250000000;
+#load "addrindex-stage.coax";
+#load "txindex.coax";
+#authority;
+
+#test "address index: fresh cursor, empty address, stale wrapper and capacities" {
+  d: [1] LcDemo; lc_demo_minimal(d[..]); g := d[0].entries[0].hash;
+  r := axi_init_vartime(5,g[..],d[0].live[..],0,d[0].stage[..],d[0].batch[..]);
+  #assert r.code == LC_OK && r.used == 161 && r.n == 176;
+  lc_demo_publish(d[..],r);
+  outs: [4] AxiOutput; txs: [4] AxiTx; script := [1] u8.[0x51];
+  q := axi_query_vartime(d[0].live[..],d[0].used,script[..],outs[..],txs[..]);
+  #assert q.code == LC_OK && q.balance == 0 && q.outputs == 0 && q.transactions == 0;
+  #assert axi_context_vartime(d[0].live[..],-1) == LC_CONTEXT;
+  mk := AXI_META; f := kv_find_vartime(d[0].live[..],d[0].used,mk[..]); d[0].live[f.at+7] ^= 1;
+  #assert axi_context_vartime(d[0].live[..],d[0].used) == LC_CONTEXT;
+  #assert axi_query_vartime(d[0].live[..],d[0].used,script[..],outs[..],txs[..]).code == LC_CONTEXT;
+  raw: [1024] u8; b := tx_unhex(LC_PREFIX[1],raw[..]); blocks := [1] LcBlock.[LcBlock.{index=1,bytes=b}]; locs := [1] TxiLoc.[TxiLoc.{pos=8}];
+  #assert axi_reorg_vartime(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[..],d[0].stage[..],d[0].batch[..],lc_demo_work(d[..])).code == LC_CONTEXT;
+  #assert axi_init_vartime(5,g[..],d[0].live[0..<160],0,d[0].stage[..],d[0].batch[..]).code == LC_CAPACITY;
+  #assert axi_init_vartime(5,g[..],d[0].live[..],0,d[0].stage[..],d[0].batch[0..<175]).code == LC_CAPACITY;
+}
+#test "address index: a confirmed output disconnects and replays without duplication" #steps 100000000 {
+  d: [1] LcDemo; lc_demo_minimal(d[..]); g := d[0].entries[0].hash;
+  lc_demo_publish(d[..],axi_init_vartime(5,g[..],d[0].live[..],0,d[0].stage[..],d[0].batch[..]));
+  raw: [1024] u8; b := tx_unhex(LC_PREFIX[1],raw[..]); blocks := [1] LcBlock.[LcBlock.{index=1,bytes=b}]; locs := [1] TxiLoc.[TxiLoc.{pos=8}];
+  r := axi_reorg_vartime(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[..],d[0].stage[..],d[0].batch[..],lc_demo_work(d[..]));
+  #assert r.code == LC_OK && kv_batch_check_vartime(d[0].batch[0..<r.n]).code == KV_OK;
+  #assert axi_reorg_vartime(d[0].tree[..],d[0].live[0..<r.used],d[0].used,1,blocks[..],locs[..],d[0].stage[..],d[0].batch[..],lc_demo_work(d[..])).code == LC_OK;
+  #assert axi_reorg_vartime(d[0].tree[..],d[0].live[0..<r.used-1],d[0].used,1,blocks[..],locs[..],d[0].stage[..],d[0].batch[..],lc_demo_work(d[..])).code == LC_CAPACITY;
+  #assert axi_reorg_vartime(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[..],d[0].stage[..],d[0].batch[0..<r.n-1],lc_demo_work(d[..])).code == LC_CAPACITY;
+  r = axi_reorg_vartime(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[..],d[0].stage[..],d[0].batch[..],lc_demo_work(d[..])); lc_demo_publish(d[..],r);
+  outs: [4] AxiOutput; txs: [4] AxiTx; script := [1] u8.[0x51];
+  q := axi_query_vartime(d[0].live[..],d[0].used,script[..],outs[..],txs[..]);
+  #assert q.code == LC_OK && q.balance == 5000000000 && q.outputs == 1 && q.transactions == 1;
+  #assert outs[0].status == 0 && outs[0].height == 1 && outs[0].order == 0 && outs[0].vout == 0 && outs[0].value == 5000000000;
+  #assert txs[0].height == 1 && txs[0].order == 0 && lc_same(txs[0].txid[..],outs[0].txid[..]);
+  #assert axi_query_vartime(d[0].live[..],d[0].used,script[..],outs[0..<0],txs[..]).code == LC_CAPACITY;
+  #assert axi_query_vartime(d[0].live[..],d[0].used,script[..],outs[..],txs[0..<0]).code == LC_CAPACITY;
+  used := d[0].used;
+  base := txi_disconnect_vartime(d[0].live[..],used,d[0].stage[..],d[0].batch[..]);
+  #assert axi_disconnect_vartime(d[0].live[..],used,d[0].stage[..],d[0].batch[0..<base.n+55]).code == LC_CAPACITY;
+  detached := axi_disconnect_vartime(d[0].live[..],used,d[0].stage[..],d[0].batch[..]);
+  #assert kv_batch_check_vartime(d[0].batch[0..<detached.n]).code == KV_OK;
+  lc_demo_publish(d[..],detached);
+  q = axi_query_vartime(d[0].live[..],d[0].used,script[..],outs[..],txs[..]); #assert q.code == LC_OK && q.outputs == 0 && q.balance == 0;
+  lc_demo_publish(d[..],axi_reorg_vartime(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[..],d[0].stage[..],d[0].batch[..],lc_demo_work(d[..])));
+  #assert d[0].used == used && axi_context_vartime(d[0].live[..],used) == LC_OK;
+  lc_demo_publish(d[..],txi_disconnect_vartime(d[0].live[..],used,d[0].stage[..],d[0].batch[..]));
+  #assert axi_disconnect_vartime(d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[..]).code == LC_CONTEXT;
+}
+axi_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] LcBlock, locs: [] TxiLoc, stage: [] u8, batch: [] u8, w: LcWork) -> LcResult #export_c {
+  if axi_context_vartime(table,used) != LC_OK { return LcResult.{code=LC_CONTEXT}; }
+  r := txi_reorg_vartime(tree,table,used,target,blocks,locs,stage,batch,w); if r.code != LC_OK { return r; }
+  c := [1] LcCursor.[LcCursor.{used=r.used,n=r.n}];
+  for block: blocks {
+    hash := tree[0].e[block.index].hash;
+    code := axi_stage_block_vartime(stage,c[..],batch,block.bytes,hash[..],tree[0].l[block.index].height,w.ins,w.outs,w.items);
+    if code != LC_OK { return LcResult.{code=code}; }
+  }
+  if !axi_sync_vartime(stage,c[..],batch) || c[0].used > table.count { return LcResult.{code=LC_CAPACITY}; }
+  r.used = c[0].used; r.n = c[0].n; return r;
+}
+axi_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+  if axi_context_vartime(table,used) != LC_OK { return LcResult.{code=LC_CONTEXT}; }
+  r := txi_disconnect_vartime(table,used,stage,batch); if r.code != LC_OK { return r; }
+  c := [1] LcCursor.[LcCursor.{used=r.used,n=r.n}];
+  if !axi_sync_vartime(stage,c[..],batch) { return LcResult.{code=LC_CAPACITY}; } r.n = c[0].n; return r;
+}

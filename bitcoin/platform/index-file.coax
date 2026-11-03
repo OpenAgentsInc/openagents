@@ -1,0 +1,159 @@
+// Chapter 91. Exclusive ownership of STATE and BLOCKFILE; immutable inputs.
+// init|tip|disconnect CHAIN STATE
+// apply CHAIN STATE BLOCKFILE HEADERS NOW BLOCK...
+// get CHAIN STATE BLOCKFILE TXID [--active]
+// recover CHAIN STATE BLOCKFILE
+// tool.sh: run-steps 250000000
+#run_steps 250000000;
+#load "../../coax/lib/bitcoin/addrindex.coax";
+#load "../../coax/lib/bitcoin/address.coax";
+#load "../../coax/lib/bitcoin/txindex-files.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+TxiFile :: struct {
+  table: [8388608] u8; stage: [8388608] u8; batch: [8388608] u8; frame: [8388636] u8;
+  log: [33554432] u8; storage: [33554432] u8; raw: [16777216] u8; append: [16778240] u8;
+  tree: [1] BlockTree; links: [4096] BiLink; entries: [4096] BiEntry; slots: [8192] int; chain: [4096] int; path: [128] int;
+  ins: [30000] TxIn; outs: [120000] TxOut; items: [100000] TxItem;
+  ids: [2240000] u8; wids: [2240000] u8; merkle: [2240000] u8;
+}
+ti_number :: (s: string) -> int {
+  if s.count == 0 || s.count > 10 { return -1; }
+  n := 0; for c: s { if c < '0' || c > '9' { return -1; } n = 10*n+cast(int)(c-'0'); } return n;
+}
+ti_hex :: (b: [] u8, reverse: bool) {
+  digits := "0123456789abcdef";
+  for k: 0..<b.count {
+    v := b[ifx reverse then b.count-1-k else k]; pair := [2] u8.[digits[v>>4],digits[v&15]];
+    print("%", cast(string)pair[..]);
+  }
+}
+ti_tip :: (tip: LcTip) { print("profile pow-only, height %, hash ",tip.height); h := tip.hash; ti_hex(h[..],true); print("\n"); }
+ti_commit :: (f: [] TxiFile, path: string, r: LcResult, seq: u64, initial: bool) -> bool {
+  if r.code != LC_OK || seq == 0xffffffffffffffff { return false; }
+  start := ifx initial then 20 else 0;
+  if initial { #assert kv_header_vartime(0,f[0].frame[..]) == 20; }
+  frame := f[0].frame[start..<f[0].frame.count];
+  for k: 0..<r.n { frame[8+k] = f[0].batch[k]; }
+  kv_seal_vartime(frame,r.n,seq+1,0);
+  return fs_append_durable(path,cast(string)f[0].frame[0..<start+8+r.n]);
+}
+index_file_main :: (addresses: bool) -> int {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 3 { tool_errln("usage: tx-index init|tip|disconnect CHAIN STATE; apply CHAIN STATE BLOCKFILE HEADERS NOW BLOCK...; get CHAIN STATE BLOCKFILE TXID [--active]; recover CHAIN STATE BLOCKFILE"); return 2; }
+  action := args_at(a[..],0); name := args_at(a[..],1); path := args_at(a[..],2); chain := 0;
+  for i: 1..<6 { if name == CHAIN_NAMES[i] { chain = i; } }
+  if chain == 0 { return 2; }
+  p := chain_params(chain); magic := cb_load_le32(p.magic[..],0).value; f: [1] TxiFile;
+  if action == "init" {
+    if args_count(a[..]) != 3 || fs_exists(path) { return 2; }
+    g: [32] u8; #assert cp_unhex(p.genesis.hash,g[..]) == 32 && bitcoin_reverse32(g[..],g[..]) == SHA_OK;
+    r := ifx addresses then axi_init_vartime(chain,g[..],f[0].table[..],0,f[0].stage[..],f[0].batch[..]) else txi_init_vartime(chain,g[..],f[0].table[..],0,f[0].stage[..],f[0].batch[..]);
+    if !ti_commit(f[..],path,r,0,true) { return 1; } ti_tip(lc_tip_vartime(f[0].stage[..],r.used)); return 0;
+  }
+  n := fs_read(path,f[0].log[..]); if n < 0 { return 1; }
+  opened := kv_open_vartime(f[0].log[0..<n],f[0].table[..]);
+  if opened.code != KV_OK { print("storage refused %\n",opened.code); return 1; }
+  tip := lc_tip_vartime(f[0].table[..],opened.used);
+  if txi_context_vartime(f[0].table[..],opened.used).code != LC_OK || (addresses && axi_context_vartime(f[0].table[..],opened.used) != LC_OK) || tip.chain != chain { print("refused %\n",LC_CONTEXT); return 1; }
+  if opened.cut && action != "recover" { tool_errln("recover the torn state tail first"); return 1; }
+  if action == "tip" { if args_count(a[..]) != 3 { return 2; } ti_tip(tip); return 0; }
+  if addresses && action == "address" {
+    if args_count(a[..]) != 4 { return 2; }
+    script: [42] u8; network := ifx chain == CHAIN_MAIN then 1 else (ifx chain == CHAIN_REGTEST then 3 else 2);
+    decoded := address_decode_vartime(network,args_at(a[..],3),script[..]);
+    if decoded.length < 0 { print("address refused %\n",decoded.length); return 2; }
+    outs: [4096] AxiOutput; txs: [4096] AxiTx;
+    q := axi_query_vartime(f[0].table[..],opened.used,script[0..<decoded.length],outs[..],txs[..]);
+    if q.code != LC_OK { print("refused %\n",q.code); return 1; }
+    ti_tip(tip); print("balance % sat, % transactions, % outputs\n",q.balance,q.transactions,q.outputs);
+    for i: 0..<q.transactions { t := txs[i]; print("tx "); ti_hex(t.txid[..],true); print(" height %\n",t.height); }
+    for i: 0..<q.outputs {
+      o := outs[i]; ti_hex(o.txid[..],true); print(":% % sat status %",o.vout,o.value,o.status);
+      if o.status == 1 { s := o.spend; print(" spent by "); ti_hex(s.txid[..],true); print(":%",s.vin); } print("\n");
+    }
+    return 0;
+  }
+  store := args_at(a[..],3);
+  if action == "get" {
+    if args_count(a[..]) < 5 || args_count(a[..]) > 6 || (args_count(a[..]) == 6 && args_at(a[..],5) != "--active") { return 2; }
+    text := args_at(a[..],4); id: [32] u8;
+    if text.count != 64 || hex_decode_checked(text,id[..],false).written != 32 { return 2; }
+    #assert bitcoin_reverse32(id[..],id[..]) == SHA_OK;
+    hit := txi_find_vartime(f[0].table[..],opened.used,id[..],args_count(a[..]) == 6);
+    if hit.code != LC_OK { print("refused %\n",hit.code); return 1; }
+    if hit.file != 0 { tool_errln("this teaching adapter serves block file 0"); return 1; }
+    hash := hit.block; b := txi_block_vartime(f[0].table[..],opened.used,hash[..]); head: [8] u8; header: [80] u8;
+    if fs_read_at(store,hit.pos-8,head[..]) != 8 { return 1; }
+    record := bf_next_vartime(head[..],hit.pos-8,fs_size(store),BF_BLOCK,magic,0);
+    if !txi_frame_matches(record,b.n) { print("refused %\n",TXI_STORAGE); return 1; }
+    raw := f[0].raw[0..<hit.n];
+    if fs_read_at(store,hit.pos,header[..]) != 80 || fs_read_at(store,hit.pos+hit.offset,raw) != hit.n { return 1; }
+    code := txi_check_tx_vartime(hit,id[..],header[..],raw,f[0].ins[..],f[0].outs[..],f[0].items[..]);
+    if code != LC_OK { print("refused %\n",code); return 1; }
+    confirmations := ifx hit.active then tip.height-hit.height+1 else 0;
+    print("profile pow-only, active %, height %, confirmations %\nblock ",hit.active,hit.height,confirmations); ti_hex(hash[..],true);
+    print("\nraw "); ti_hex(raw,false); print("\n"); return 0;
+  }
+  if action == "recover" || action == "apply" {
+    if store.count == 0 { return 2; }
+    size := ifx fs_exists(store) then fs_read(store,f[0].storage[..]) else 0;
+    if size < 0 { return 1; }
+    audit := txi_storage_vartime(f[0].table[..],opened.used,0,f[0].storage[0..<size],magic,0);
+    if audit.code != LC_OK { print("refused %\n",audit.code); return 1; }
+    if action == "recover" {
+      if args_count(a[..]) != 4 { return 2; }
+      if audit.cut && !fs_truncate(store,audit.keep) { return 1; }
+      if opened.cut && !fs_truncate(path,opened.keep) { return 1; }
+      print("recover: state keep %, block keep %\n",opened.keep,audit.keep); return 0;
+    }
+    if audit.cut { tool_errln("recover the torn block tail first"); return 1; }
+    count := args_count(a[..])-6; headers := args_at(a[..],4); now := ti_number(args_at(a[..],5));
+    blocks: [128] LcBlock; locs: [128] TxiLoc;
+    total := fs_size(headers); stamp := fs_mtime_ns(headers);
+    if count < 1 || count > 128 || now < 0 || total < 80 || total % 80 != 0 || total / 80 > 4096 { return 2; }
+    #assert bi_init(f[0].tree[..],p,f[0].links[..],f[0].entries[..],f[0].slots[..],f[0].chain[..]);
+    header: [80] u8;
+    for i: 0..<total/80 {
+      if fs_read_at(headers,80*i,header[..]) != 80 { return 1; }
+      h := bi_accept_header_vartime(f[0].tree[..],header[..],now); if h.code != BI_OK { print("header refused %\n",h.code); return 1; }
+    }
+    if fs_size(headers) != total || fs_mtime_ns(headers) != stamp { return 1; }
+    at := 0; appended := 0;
+    for i: 0..<count {
+      body_path := args_at(a[..],6+i); take := fs_size(body_path);
+      if take < 81 || take > 4000000 || take > f[0].raw.count-at { return 2; }
+      bytes := f[0].raw[at..<at+take]; if fs_read(body_path,bytes) != take { return 1; }
+      hash: [32] u8; #assert pow_block_hash_vartime(bytes[0..<80],hash[..]) == POW_OK;
+      blocks[i] = LcBlock.{index=bi_find(f[0].tree[..],hash[..]),bytes=bytes}; at += take;
+      old := txi_block_vartime(f[0].table[..],opened.used,hash[..]);
+      if old.code == LC_OK {
+        if old.file != 0 { return 1; } locs[i] = TxiLoc.{file=old.file,pos=old.pos};
+      } else {
+        if old.code != TXI_MISS { print("refused %\n",old.code); return 1; }
+        if take+8 > f[0].append.count-appended || size+appended+8+take > f[0].storage.count { return 1; }
+        locs[i] = TxiLoc.{file=0,pos=size+appended+8};
+        written := bf_write_vartime(BF_BLOCK,magic,0,size+appended,bytes,hash[..],f[0].append[appended..<f[0].append.count]);
+        if written < 0 { return 1; } appended += written;
+      }
+    }
+    w := LcWork.{ins=f[0].ins[..],outs=f[0].outs[..],items=f[0].items[..],ids=f[0].ids[..],wids=f[0].wids[..],merkle=f[0].merkle[..],path=f[0].path[..]};
+    r := ifx addresses then axi_reorg_vartime(f[0].tree[..],f[0].table[..],opened.used,blocks[count-1].index,blocks[0..<count],locs[0..<count],f[0].stage[..],f[0].batch[..],w) else txi_reorg_vartime(f[0].tree[..],f[0].table[..],opened.used,blocks[count-1].index,blocks[0..<count],locs[0..<count],f[0].stage[..],f[0].batch[..],w);
+    if r.code != LC_OK { print("refused %\n",r.code); return 1; }
+    // Block bytes become durable first. A crash before the state commit can
+    // leave unreferenced bytes; a state commit never precedes its block data.
+    if appended != 0 && !fs_append_durable(store,cast(string)f[0].append[0..<appended]) { tool_errln("block append failed; reopen and recover"); return 1; }
+    if !ti_commit(f[..],path,r,opened.seq,false) { tool_errln("state append failed; reopen and recover"); return 1; }
+    print("committed: disconnected %, connected %\n",r.disconnected,r.connected); ti_tip(lc_tip_vartime(f[0].stage[..],r.used)); return 0;
+  }
+  if action == "disconnect" {
+    if args_count(a[..]) != 3 { return 2; }
+    r := ifx addresses then axi_disconnect_vartime(f[0].table[..],opened.used,f[0].stage[..],f[0].batch[..]) else txi_disconnect_vartime(f[0].table[..],opened.used,f[0].stage[..],f[0].batch[..]);
+    if r.code != LC_OK { print("refused %\n",r.code); return 1; }
+    if !ti_commit(f[..],path,r,opened.seq,false) { return 1; } ti_tip(lc_tip_vartime(f[0].stage[..],r.used)); return 0;
+  }
+  return 2;
+}

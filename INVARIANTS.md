@@ -1,5 +1,22 @@
 # Invariants
 
+## Address histories and spend links share the light chain's cursor
+
+`coax/lib/bitcoin/addrindex.coax`, `addrindex-stage.coax` and
+`addrindex-store.coax` own schema 1:
+`E` is the synchronized transaction-index cursor, `F` binds full scripts,
+outpoints and creation blocks, and `G` binds a spend to its outpoint and
+original creation height. One batch contains coins, inverses, transaction
+positions, address occurrences and all cursors. Only the light chain's
+active block membership determines confirmed history. Archived records
+survive disconnect and replay must reproduce them exactly. Queries compare
+full scripts, deduplicate transaction occurrences, distinguish spent,
+unspent and historical replacement, and refuse incomplete workspaces or
+stale cursors. Balances include immature outputs and confer no money
+authority. This remains the proof-of-work-only explorer profile. Evidence:
+chapter 125 and `coax/tests/bitcoin/addrindex.py`'s independent raw-block
+replay, native/file journeys and atomic-frame crash cuts.
+
 ## Transaction positions and light chainstate publish one cursor
 
 `coax/lib/bitcoin/txindex.coax`, `txindex-store.coax` and `txindex-files.coax`

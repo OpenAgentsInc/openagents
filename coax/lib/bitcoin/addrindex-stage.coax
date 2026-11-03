@@ -1,0 +1,145 @@
+// Serialize receipts after the admitted light/tx-index transition.
+// Requires immutable checked block bytes and their ordered coin inverses.
+#load "addrindex-store.coax";
+#load "lightpolicy.coax";
+#load "../../tests/bitcoin/lightchain_vectors.coax";
+#load "../../tests/bitcoin/merkle_vectors.coax";
+#authority;
+
+#test "address index: private serialization uses ordered original-coin receipts" #steps 100000000 {
+  // Isolate archive serialization with admitted fixture bytes. The native
+  // trace independently admits the complete mature chain and real inverses.
+  storage: [1024] u8; b := tx_unhex(LC_BRANCH[0],storage[..]); hash: [32] u8;
+  #assert sha256d_checked(b[0..<80],hash[..],false) == SHA_OK;
+  table: [65536] u8; batch: [131072] u8; c := [1] LcCursor.[LcCursor.{n=kv_batch_new(batch[..])}];
+  ins: [32] TxIn; outs: [32] TxOut; items: [32] TxItem;
+  // Coinbase has one spendable output; the first tx spends an old coin;
+  // the next spends its first output in this same block.
+  for ordinal: [2] int.[1,4] {
+    key: [37] u8; lc_key('U',ordinal,key[..]); for k: 0..<32 { key[1+k] = hash[k]; }
+    u: [87] u8; u[0] = 1; kv_put32(u[..],38,13); kv_put32(u[..],50,ifx ordinal == 1 then 1 else 101);
+    #assert lc_put_vartime(table[..],c[..],batch[..],key[..],u[..]);
+  }
+  #assert axi_stage_block_vartime(table[..],c[..],batch[..],b,hash[..],101,ins[..],outs[..],items[..]) == LC_OK;
+  at := tx_compact_read_vartime(b,80).next; fc := 0; gc := 0;
+  for n: 0..<3 {
+    raw := b[at..<b.count]; t := tx_parse_vartime(raw,true,ins[..],outs[..],items[..]); id: [32] u8;
+    #assert tx_txid_vartime(raw,t,id[..]);
+    if n != 0 {
+      sk: [73] u8; sk[0] = 'G'; for k: 0..<36 { sk[1+k] = raw[ins[0].outpoint+k]; }
+      kv_put32(sk[..],37,ifx n == 1 then 1 else 101); for k: 0..<32 { sk[41+k] = hash[k]; }
+      v := lc_value_vartime(table[..],c[0].used,sk[..]);
+      #assert v.count == 44 && lc_same(v[0..<32],id[..]) && kv_get32(v,32) == 0 && kv_get32(v,36) == 101 && kv_get32(v,40) == n; gc += 1;
+    }
+    for j: 0..<t.nout {
+      o := outs[j]; script := raw[o.script..<o.script+o.script_n]; if lc_unspendable(script) { continue; }
+      fk: [101] u8; fk[0] = 'F'; #assert sha256_hash_checked(script,fk[1..<33],false) == SHA_OK;
+      for k: 0..<32 { fk[33+k] = id[k]; fk[69+k] = hash[k]; } kv_put32(fk[..],65,j);
+      v := lc_value_vartime(table[..],c[0].used,fk[..]);
+      #assert v.count == 16+script.count && kv_get32(v,0) == 101 && kv_get32(v,4) == n;
+      #assert kv_get64(v,8) == cast(u64)tx_le_vartime(raw,o.value,8) && lc_same(v[16..<v.count],script); fc += 1;
+    }
+    at += t.total;
+  }
+  #assert fc == 4 && gc == 2;
+  used := c[0].used; size := c[0].n;
+  #assert axi_stage_block_vartime(table[..],c[..],batch[..],b,hash[..],101,ins[..],outs[..],items[..]) == LC_OK;
+  #assert c[0].used == used && c[0].n == size;
+  for prefix: [2] u8.['F','G'] {
+    k := [1] u8.[prefix]; entry := kv_entry_vartime(table[..],c[0].used,kv_find_vartime(table[..],c[0].used,k[..]).at);
+    key: [101] u8; saved: [10016] u8; kn := entry.key.count; vn := entry.value.count;
+    for i: 0..<kn { key[i] = entry.key[i]; } for i: 0..<vn { saved[i] = entry.value[i]; }
+    bad := [1] u8.[99]; #assert lc_put_vartime(table[..],c[..],batch[..],key[0..<kn],bad[..]);
+    #assert axi_stage_block_vartime(table[..],c[..],batch[..],b,hash[..],101,ins[..],outs[..],items[..]) == TXI_CORRUPT;
+    c[0].used = kv_delete_vartime(table[..],c[0].used,key[0..<kn]);
+    #assert axi_stage_block_vartime(table[..],c[..],batch[0..<c[0].n],b,hash[..],101,ins[..],outs[..],items[..]) == LC_CAPACITY;
+    #assert lc_put_vartime(table[..],c[..],batch[..],key[0..<kn],saved[0..<vn]);
+  }
+  for fault: 0..<3 {
+    uk: [37] u8; lc_key('U',1,uk[..]); for k: 0..<32 { uk[1+k] = hash[k]; }
+    u: [87] u8; u[0] = ifx fault == 0 then 0 else 1; u[1] = ifx fault == 1 then 1 else 0;
+    #assert lc_put_vartime(table[..],c[..],batch[..],uk[..],u[0..<ifx fault == 2 then 86 else 87]);
+    #assert axi_stage_block_vartime(table[..],c[..],batch[..],b,hash[..],101,ins[..],outs[..],items[..]) == LC_UNDO;
+  }
+}
+#test "address archive: exact byte transfer refuses mismatched extents" {
+  src := [2] u8.[17,29]; dst: [3] u8;
+  #assert axi_copy_exact(src[..],dst[0..<2]) && dst[0] == 17 && dst[1] == 29;
+  #assert !axi_copy_exact(src[..],dst[..]) && !axi_copy_exact(src[..],dst[0..<1]);
+  #assert axi_copy_exact(src[0..<0],dst[0..<0]);
+}
+#test "address archive: original witness transactions, multiple inputs and full scripts" #steps 100000000 {
+  bytes: [6000] u8; b := tx_unhex(MK_BLOCK_514999,bytes[..]); hash: [32] u8;
+  #assert sha256d_checked(b[0..<80],hash[..],false) == SHA_OK;
+  table: [65536] u8; batch: [131072] u8; c := [1] LcCursor.[LcCursor.{n=kv_batch_new(batch[..])}];
+  ins: [32] TxIn; outs: [32] TxOut; items: [32] TxItem; count := tx_compact_read_vartime(b,80); at := count.next; ordinal := 0;
+  for n: 0..<count.value {
+    raw := b[at..<b.count]; t := tx_parse_vartime(raw,true,ins[..],outs[..],items[..]);
+    if n != 0 {
+      for j: 0..<t.nin {
+        uk: [37] u8; lc_key('U',ordinal,uk[..]); for k: 0..<32 { uk[1+k] = hash[k]; }
+        u: [87] u8; u[0] = 1; kv_put32(u[..],38,13); kv_put32(u[..],50,1);
+        #assert lc_put_vartime(table[..],c[..],batch[..],uk[..],u[..]); ordinal += 1;
+      }
+    }
+    for j: 0..<t.nout { out := outs[j]; if !lc_unspendable(raw[out.script..<out.script+out.script_n]) { ordinal += 1; } }
+    at += t.total;
+  }
+  #assert axi_stage_block_vartime(table[..],c[..],batch[..],b,hash[..],514999,ins[..],outs[..],items[..]) == LC_OK;
+  at = count.next; multi := false;
+  for n: 0..<count.value {
+    raw := b[at..<b.count]; t := tx_parse_vartime(raw,true,ins[..],outs[..],items[..]); id: [32] u8; #assert tx_txid_vartime(raw,t,id[..]);
+    if n != 0 {
+      for j: 0..<t.nin {
+        key: [73] u8; key[0] = 'G'; for k: 0..<36 { key[1+k] = raw[ins[j].outpoint+k]; } kv_put32(key[..],37,1); for k: 0..<32 { key[41+k] = hash[k]; }
+        v := lc_value_vartime(table[..],c[0].used,key[..]); #assert v.count == 44 && lc_same(v[0..<32],id[..]) && kv_get32(v,32) == j && kv_get32(v,36) == 514999 && kv_get32(v,40) == n;
+        if j > 0 { multi = true; }
+      }
+    }
+    for j: 0..<t.nout {
+      out := outs[j]; script := raw[out.script..<out.script+out.script_n]; if lc_unspendable(script) { continue; }
+      key: [101] u8; key[0] = 'F'; #assert sha256_hash_checked(script,key[1..<33],false) == SHA_OK;
+      for k: 0..<32 { key[33+k] = id[k]; key[69+k] = hash[k]; } kv_put32(key[..],65,j);
+      v := lc_value_vartime(table[..],c[0].used,key[..]); #assert v.count == 16+script.count && lc_same(v[16..<v.count],script);
+    }
+    at += t.total;
+  }
+  #assert multi;
+}
+axi_copy_exact :: (src: [] u8, dst: [] u8) -> bool {
+  if src.count != dst.count { return false; } for k: 0..<src.count { dst[k] = src[k]; } return true;
+}
+axi_stage_block_vartime :: (table: [] u8, c: [] LcCursor, batch: [] u8, b: [] u8, hash: [] u8, height: int, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> int {
+  count := tx_compact_read_vartime(b,80); at := count.next; ordinal := 0;
+  for n: 0..<count.value {
+    raw := b[at..<b.count]; t := tx_parse_vartime(raw,true,ins,outs,items); id: [32] u8;
+    #assert tx_txid_vartime(raw,t,id[..]);
+    if n != 0 {
+      for j: 0..<t.nin {
+        uk: [37] u8; lc_key('U',ordinal,uk[..]); for k: 0..<32 { uk[1+k] = hash[k]; }
+        u := lc_value_vartime(table,c[0].used,uk[..]);
+        if u.count < 87 || u[0] != 1 || u[1] != 0 { return LC_UNDO; }
+        key: [73] u8; key[0] = 'G'; #assert axi_copy_exact(raw[ins[j].outpoint..<ins[j].outpoint+36],key[1..<37]);
+        kv_put32(key[..],37,kv_get32(u,50)); for k: 0..<32 { key[41+k] = hash[k]; }
+        v: [44] u8; for k: 0..<32 { v[k] = id[k]; } kv_put32(v[..],32,j); kv_put32(v[..],36,height); kv_put32(v[..],40,n);
+        code := axi_archive_vartime(table,c,batch,key[..],v[..]); if code != LC_OK { return code; } ordinal += 1;
+      }
+    }
+    for j: 0..<t.nout {
+      o := outs[j]; script := raw[o.script..<o.script+o.script_n];
+      // Address scripts are at most 42 bytes. Retain other spendable scripts
+      // too, so the same index supports exact script-hash queries.
+      if !lc_unspendable(script) {
+        key: [101] u8; key[0] = 'F'; digest: [32] u8; #assert sha256_hash_checked(script,digest[..],false) == SHA_OK;
+        #assert axi_copy_exact(digest[..],key[1..<33]);
+        for k: 0..<32 { key[33+k] = id[k]; key[69+k] = hash[k]; } kv_put32(key[..],65,j);
+        v: [16+LC_SCRIPT_MAX] u8; kv_put32(v[..],0,height); kv_put32(v[..],4,n);
+        kv_put64(v[..],8,cast(u64)tx_le_vartime(raw,o.value,8));
+        for k: 0..<script.count { v[16+k] = script[k]; }
+        code := axi_archive_vartime(table,c,batch,key[..],v[0..<16+script.count]); if code != LC_OK { return code; } ordinal += 1;
+      }
+    }
+    at += t.total;
+  }
+  return LC_OK;
+}

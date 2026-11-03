@@ -1,0 +1,14 @@
+// Caller-owned native oracle ABI; all index decisions remain in Coax.
+#run_steps 250000000;
+#load "../../lib/bitcoin/addrindex.coax";
+#load "txindex-native.coax";
+axi_native_reorg :: (d: [] TxiNative, table: [] u8, used: int, indices: [] int, raw: [] u8, offsets: [] int, positions: [] int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+  blocks: [128] LcBlock; locs: [128] TxiLoc;
+  if indices.count < 1 || indices.count > 128 || offsets.count != indices.count+1 || positions.count != indices.count { return LcResult.{code=LC_CONTEXT}; }
+  for i: 0..<indices.count {
+    if offsets[i] < 0 || offsets[i+1] < offsets[i] || offsets[i+1] > raw.count { return LcResult.{code=LC_CONTEXT}; }
+    blocks[i] = LcBlock.{index=indices[i],bytes=raw[offsets[i]..<offsets[i+1]]}; locs[i] = TxiLoc.{pos=positions[i]};
+  }
+  w := LcWork.{ins=d[0].base[0].ins[..],outs=d[0].base[0].outs[..],items=d[0].base[0].items[..],ids=d[0].ids[..],wids=d[0].wids[..],merkle=d[0].merkle[..],path=d[0].base[0].path[..]};
+  return axi_reorg_vartime(d[0].base[0].tree[..],table,used,indices[indices.count-1],blocks[0..<indices.count],locs[0..<indices.count],stage,batch,w);
+}

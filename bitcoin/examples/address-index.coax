@@ -1,0 +1,19 @@
+#run_steps 250000000;
+#load "../../coax/lib/bitcoin/addrindex.coax";
+#import "Basic";
+main :: () {
+  d: [1] LcDemo; lc_demo_minimal(d[..]); g := d[0].entries[0].hash;
+  lc_demo_publish(d[..],axi_init_vartime(5,g[..],d[0].live[..],0,d[0].stage[..],d[0].batch[..]));
+  raw: [1024] u8; b := tx_unhex(LC_PREFIX[1],raw[..]); blocks := [1] LcBlock.[LcBlock.{index=1,bytes=b}]; locs := [1] TxiLoc.[TxiLoc.{pos=8}];
+  lc_demo_publish(d[..],axi_reorg_vartime(d[0].tree[..],d[0].live[..],d[0].used,1,blocks[..],locs[..],d[0].stage[..],d[0].batch[..],lc_demo_work(d[..])));
+  script := [1] u8.[0x51]; outs: [4] AxiOutput; txs: [4] AxiTx;
+  q := axi_query_vartime(d[0].live[..],d[0].used,script[..],outs[..],txs[..]); #assert q.code == LC_OK;
+  print("profile pow-only; scripts not validated\n");
+  print("height 1: balance % sat, % transaction, % output\n",q.balance,q.transactions,q.outputs);
+  print("output status %: unspent\n",outs[0].status);
+  refused := axi_query_vartime(d[0].live[..],d[0].used,script[..],outs[0..<0],txs[..]);
+  print("zero output capacity: refusal %\n",refused.code); #assert refused.code == LC_CAPACITY;
+  lc_demo_publish(d[..],axi_disconnect_vartime(d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[..]));
+  q = axi_query_vartime(d[0].live[..],d[0].used,script[..],outs[..],txs[..]); #assert q.code == LC_OK;
+  print("disconnect: balance % sat, % transactions, % outputs\n",q.balance,q.transactions,q.outputs);
+}

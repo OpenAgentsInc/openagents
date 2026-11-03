@@ -2625,6 +2625,33 @@
    "source": [],
    "qualified_targets": [],
    "adopted_by": []
+  },
+  {
+   "number": 125,
+   "title": "Address history, balances and spends",
+   "file": "ch125-address-history-balances-and-spends.md",
+   "status": "implemented",
+   "profile": "native C",
+   "depends_on": [
+    29,
+    58,
+    60,
+    91
+   ],
+   "source": [
+    "coax/lib/bitcoin/addrindex.coax",
+    "coax/lib/bitcoin/addrindex-stage.coax",
+    "coax/lib/bitcoin/addrindex-store.coax",
+    "bitcoin/platform/index-file.coax",
+    "bitcoin/examples/address-index.coax",
+    "bitcoin/examples/live/address-index.coax",
+    "coax/tests/bitcoin/addrindex-native.coax",
+    "coax/tests/bitcoin/addrindex.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
   }
  ]
 }
