@@ -232,6 +232,16 @@
       ]
     },
     {
+      "source": "aethyr/examples/publish-a-realm.coax",
+      "chapter": "aethyr/book/ch054-publish-a-realm.md",
+      "stdout": "aethyr/fixtures/publish-a-realm.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "aethyr/examples/fork-a-realm.coax",
       "chapter": "aethyr/book/ch055-fork-a-realm.md",
       "stdout": "aethyr/fixtures/fork-a-realm.out",

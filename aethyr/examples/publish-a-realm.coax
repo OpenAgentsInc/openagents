@@ -1,0 +1,36 @@
+// book:begin example
+#load "../forge/publish.coax";
+#load "../forge/doc.coax";
+#import "Basic";
+
+// The hex SHA-256 of some bytes, as the record writes it.
+hex :: (t: string, out: [] u8) -> string { return ifx engine_sha(t, out) then cast(string) out[0..<64] else ""; }
+
+// Lamp Cove's revision 4 published: the engine page served today becomes a manifest, the record
+// pins it with the document's hash, and the record is read back and held to the rule. Then a later
+// release, a page that names a file not by its content, and a record changed by one byte.
+main :: () {
+  m: [ENGINE_TEXT] u8;
+  manifest := engine_manifest(ENGINE_FIXTURE, m[..]);
+  print("%", manifest);
+  e: [64] u8; engine := hex(manifest, e[..]);
+  print("engine: %\n", engine);
+  d: [64] u8; doc := hex(FORGE_DOC_V1, d[..]);
+  print("record: rev 4, document %, engine %\n", doc, engine);
+  print("the record holds: %\n", engine_record_ok(4, doc, manifest, engine));
+  // A later release: a new host script. Its manifest and hash differ; the record still names the first.
+  t: [4096] u8; later := engine_swap(ENGINE_FIXTURE, "host.9ca333f3d8b0.js", "host.5b0c2e81d4f7.js", t[..]);
+  m2: [ENGINE_TEXT] u8; next := engine_manifest(later, m2[..]);
+  e2: [64] u8;
+  print("a later release's engine: %\n", hex(next, e2[..]));
+  print("the record still holds, naming the first: %\n", engine_record_ok(4, doc, manifest, engine));
+  // Refusals: a page naming its wasm without a content name pins nothing.
+  u: [4096] u8; plain := engine_swap(ENGINE_FIXTURE, "data-wasm=\"/build/myrealm.0e7b9526d8a2.wasm\"", "data-wasm=\"/build/myrealm.wasm\"", u[..]);
+  m3: [ENGINE_TEXT] u8;
+  print("a page with /build/myrealm.wasm -> manifest \"%\" (refused: nothing is published)\n", engine_manifest(plain, m3[..]));
+  // A record whose manifest says a different host script but keeps the old hash.
+  b: [ENGINE_TEXT] u8; bent := engine_swap(manifest, "host.9ca333f3d8b0", "host.9ca333f3d8b1", b[..]);
+  print("the manifest with one digit changed: holds by the rule %, record holds %\n", engine_check(bent), engine_record_ok(4, doc, bent, engine));
+  print("a record at revision 0: %\n", engine_record_ok(0, doc, manifest, engine));
+}
+// book:end example

@@ -1,0 +1,21 @@
+aethyr-engine 1
+type module
+src /coaxial/host.9ca333f3d8b0.js
+data-app myrealm
+data-realm built
+data-slot built
+data-voice made-realm
+data-style lowpoly
+data-clock fixed:0.5
+data-assets pack:/build/realms/fixture/assets/fixture.df9c027378c8.pack
+data-voice-wasm /build/voice.71d76f28966b.wasm
+data-wasm /build/myrealm.0e7b9526d8a2.wasm
+data-wgsl /build/myrealm.224131021ece.wgsl
+engine: 1592e30f8f480ae5f99954d1733f6f57cb1b139b6d0d449ad6098e5e2336b006
+record: rev 4, document 22445c951d53b25548aa0909254446198fcb3215ee5d84f4a745a5b3969c2517, engine 1592e30f8f480ae5f99954d1733f6f57cb1b139b6d0d449ad6098e5e2336b006
+the record holds: true
+a later release's engine: 077452077f674f61863d2ad089e79d66356abbb8bc1133b3823b052ffedab781
+the record still holds, naming the first: true
+a page with /build/myrealm.wasm -> manifest "" (refused: nothing is published)
+the manifest with one digit changed: holds by the rule true, record holds false
+a record at revision 0: false

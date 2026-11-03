@@ -8,7 +8,9 @@
 > own SHA-256) and its hash
 > ([GitHub #12629](https://github.com/OpenAgentsInc/openagents/issues/12629)).
 > The whole route (edit, publish, reload from the record, a later release,
-> fork, edits kept apart, refusals) is one checked walkthrough below.
+> fork, edits kept apart, refusals) is one checked walkthrough below, and
+> the manifest and record are worked by hand and run in
+> [aethyr/examples/publish-a-realm.coax](../examples/publish-a-realm.coax).
 > Not built yet: the release gates per version (golden, 60 FPS) and the page
 > text's hash in the record. Hand-built realms are published from one table
 > (`apps/openagents-web/realms.json`) and are not pinned this way.
@@ -31,7 +33,10 @@ and a release of the engine never overwrites what someone made.
 
 ## The method
 
-A publish record is the unit a release reasons about:
+A publish record is the unit a release reasons about. This is its design;
+the record the server keeps today (a revision, the document's hash, the
+engine manifest and its hash) is in
+[The engine a made realm is published with](#the-engine-a-made-realm-is-published-with):
 
 ```jai
 Published :: struct {
@@ -280,6 +285,119 @@ so the manifest a publish pins carries them and its hash covers them.
 every path the script names listed once, each file's bytes hashing to what
 the record says.
 
+### Worked by hand
+
+The engine page served on 2026-11-02 (`ENGINE_FIXTURE` in
+[publish.coax](../forge/publish.coax)) has one script that opens like the
+engine's and names `data-app="myrealm"`. Its attributes, in the page's order,
+are `type`, `src`, `data-app`, `data-realm`, `data-slot`, `data-voice`,
+`data-style`, `data-clock`, `data-assets`, `data-voice-wasm`, `data-wasm` and
+`data-wgsl`. Each becomes one line, `NAME VALUE`, after the header line
+`aethyr-engine 1`, 13 lines in all. `data-assets` starts with a newline and
+two spaces in the page; the leading white space is dropped, so its line is
+`data-assets pack:/build/realms/fixture/assets/fixture.df9c027378c8.pack`.
+Every path is named by its content: `host.9ca333f3d8b0.js`,
+`myrealm.0e7b9526d8a2.wasm`, `myrealm.224131021ece.wgsl`,
+`voice.71d76f28966b.wasm` and `fixture.df9c027378c8.pack` (`df9c027378c8` is
+the first 12 hex digits of `sha256sum
+apps/openagents-web/realms/fixture/assets/fixture.pack`). The host script,
+engine, wasm and shaders are all there, so the manifest holds. The engine
+hash is the SHA-256 of those bytes. `sha256sum` agrees, computed apart from
+the Coax:
+
+```shell
+printf 'aethyr-engine 1\ntype module\nsrc /coaxial/host.9ca333f3d8b0.js\ndata-app myrealm\ndata-realm built\ndata-slot built\ndata-voice made-realm\ndata-style lowpoly\ndata-clock fixed:0.5\ndata-assets pack:/build/realms/fixture/assets/fixture.df9c027378c8.pack\ndata-voice-wasm /build/voice.71d76f28966b.wasm\ndata-wasm /build/myrealm.0e7b9526d8a2.wasm\ndata-wgsl /build/myrealm.224131021ece.wgsl\n' | sha256sum
+```
+
+```text
+1592e30f8f480ae5f99954d1733f6f57cb1b139b6d0d449ad6098e5e2336b006  -
+```
+
+A later release changes the host script's name to `host.5b0c2e81d4f7.js`. One
+line of the manifest changes, so its hash does too (`sha256sum` gives
+`077452…ab781` for those bytes). The record still names the first manifest,
+which still holds. A page whose wasm is `/build/myrealm.wasm` names a file not
+by its content, so it has no manifest and nothing is published. A record whose
+manifest has one digit of the host's name changed still follows the rule
+line by line, but no longer hashes to the engine hash the record states, so
+the record is refused. So is a record at revision 0.
+
+### Publish Lamp Cove
+
+The program is
+[aethyr/examples/publish-a-realm.coax](../examples/publish-a-realm.coax). The
+document hash here is the SHA-256 of the fixture's document text
+(`FORGE_DOC_V1`); the server hashes its own canonical document the same way:
+
+<!-- source: aethyr/examples/publish-a-realm.coax example -->
+```jai
+#load "../forge/publish.coax";
+#load "../forge/doc.coax";
+#import "Basic";
+
+// The hex SHA-256 of some bytes, as the record writes it.
+hex :: (t: string, out: [] u8) -> string { return ifx engine_sha(t, out) then cast(string) out[0..<64] else ""; }
+
+// Lamp Cove's revision 4 published: the engine page served today becomes a manifest, the record
+// pins it with the document's hash, and the record is read back and held to the rule. Then a later
+// release, a page that names a file not by its content, and a record changed by one byte.
+main :: () {
+  m: [ENGINE_TEXT] u8;
+  manifest := engine_manifest(ENGINE_FIXTURE, m[..]);
+  print("%", manifest);
+  e: [64] u8; engine := hex(manifest, e[..]);
+  print("engine: %\n", engine);
+  d: [64] u8; doc := hex(FORGE_DOC_V1, d[..]);
+  print("record: rev 4, document %, engine %\n", doc, engine);
+  print("the record holds: %\n", engine_record_ok(4, doc, manifest, engine));
+  // A later release: a new host script. Its manifest and hash differ; the record still names the first.
+  t: [4096] u8; later := engine_swap(ENGINE_FIXTURE, "host.9ca333f3d8b0.js", "host.5b0c2e81d4f7.js", t[..]);
+  m2: [ENGINE_TEXT] u8; next := engine_manifest(later, m2[..]);
+  e2: [64] u8;
+  print("a later release's engine: %\n", hex(next, e2[..]));
+  print("the record still holds, naming the first: %\n", engine_record_ok(4, doc, manifest, engine));
+  // Refusals: a page naming its wasm without a content name pins nothing.
+  u: [4096] u8; plain := engine_swap(ENGINE_FIXTURE, "data-wasm=\"/build/myrealm.0e7b9526d8a2.wasm\"", "data-wasm=\"/build/myrealm.wasm\"", u[..]);
+  m3: [ENGINE_TEXT] u8;
+  print("a page with /build/myrealm.wasm -> manifest \"%\" (refused: nothing is published)\n", engine_manifest(plain, m3[..]));
+  // A record whose manifest says a different host script but keeps the old hash.
+  b: [ENGINE_TEXT] u8; bent := engine_swap(manifest, "host.9ca333f3d8b0", "host.9ca333f3d8b1", b[..]);
+  print("the manifest with one digit changed: holds by the rule %, record holds %\n", engine_check(bent), engine_record_ok(4, doc, bent, engine));
+  print("a record at revision 0: %\n", engine_record_ok(0, doc, manifest, engine));
+}
+```
+
+```shell
+coax/bin/coax run aethyr/examples/publish-a-realm.coax
+```
+
+```text
+aethyr-engine 1
+type module
+src /coaxial/host.9ca333f3d8b0.js
+data-app myrealm
+data-realm built
+data-slot built
+data-voice made-realm
+data-style lowpoly
+data-clock fixed:0.5
+data-assets pack:/build/realms/fixture/assets/fixture.df9c027378c8.pack
+data-voice-wasm /build/voice.71d76f28966b.wasm
+data-wasm /build/myrealm.0e7b9526d8a2.wasm
+data-wgsl /build/myrealm.224131021ece.wgsl
+engine: 1592e30f8f480ae5f99954d1733f6f57cb1b139b6d0d449ad6098e5e2336b006
+record: rev 4, document 22445c951d53b25548aa0909254446198fcb3215ee5d84f4a745a5b3969c2517, engine 1592e30f8f480ae5f99954d1733f6f57cb1b139b6d0d449ad6098e5e2336b006
+the record holds: true
+a later release's engine: 077452077f674f61863d2ad089e79d66356abbb8bc1133b3823b052ffedab781
+the record still holds, naming the first: true
+a page with /build/myrealm.wasm -> manifest "" (refused: nothing is published)
+the manifest with one digit changed: holds by the rule true, record holds false
+a record at revision 0: false
+```
+
+The engine hash is the `sha256sum` one above, and so is the later release's.
+The last three lines are the broken cases, each refused.
+
 ### The route, checked end to end
 
 `coax/web/tool.sh coax/web/api/tests/realm_walkthrough.coax` (`PGURL`, `PSQL`,
@@ -315,7 +433,9 @@ before served hashes were written (an older `/realms/built`) has names only,
 and `engine-served check` says so; built-in realms' forks are not pinned; the
 walkthrough stages its own site instead of reading the production bucket.
 
-Checks: `coax/bin/coax test aethyr/forge/publish.coax --library` (the rule,
+Checks: `coax/bin/coax run aethyr/examples/publish-a-realm.coax` (the worked
+example, in the book's `--coax` runs, debug and release),
+`coax/bin/coax test aethyr/forge/publish.coax --library` (the rule,
 the live page's fixture and its hash, which `sha256sum` agrees with; `coax
 mutate` with no survivors), `coax/web/tool.sh
 coax/web/api/tests/realm_engine_pin.coax` (the same fixture through the SQL
