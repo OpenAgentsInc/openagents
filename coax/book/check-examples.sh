@@ -107,8 +107,11 @@ fi
 if selected ch20_interop; then
   examples/ch20_interop/run.sh > "$tmp/actual" 2>&1
   status=$?
-  if [[ $status != 0 ]] || ! cmp -s "$tmp/actual" examples/ch20_interop/run.out; then
-    echo "FAIL ch20 interop"; cat "$tmp/actual"; fail=1
+  # A host with swiftc also runs the Swift caller: run-swift.out is run.out plus that section.
+  expected=examples/ch20_interop/run.out
+  ! command -v swiftc > /dev/null || expected=examples/ch20_interop/run-swift.out
+  if [[ $status != 0 ]] || ! cmp -s "$tmp/actual" "$expected"; then
+    echo "FAIL ch20 interop"; diff -u "$expected" "$tmp/actual"; fail=1
   fi
 fi
 if selected ch15_requests.mutation; then

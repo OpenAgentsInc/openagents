@@ -124,13 +124,19 @@ if [[ -n "$results_output" ]] && \
    COAX_TEST_COMPILER="$PWD/$COAX" COAX_RESULTS_PROFILE_DIR="$results_output/profiles" python3 tests/results_profiles.py && \
    "$COAX" test lib/sys/file-policy.coax --library && \
    "$COAX" mutate lib/sys/file-policy.coax --library && \
-   python3 tests/sys/read-file.py --compiler "$PWD/$COAX" --output "$results_output/read-file" && \
-   bash book/check-examples.sh --only ch05_tagged ch07_results; then
+   python3 tests/sys/read-file.py --compiler "$PWD/$COAX" --output "$results_output/read-file"; then
   results_rc=0
 else
   echo "Result language/file gate failed; evidence: $results_output" >&2
   results_rc=1
 fi
+# The book against this compiler: every chapter's examples (debug and release
+# output, checks, the ch15 mutation gate, the C/C++ and protobuf hosts), its
+# navigation, links, checked excerpts and chapter registry, and its reviewed
+# capability claims. About a minute; `book/check-examples.sh --only NAME...`
+# reruns single units.
+bash book/check-examples.sh && python3 book/capability-claims.py
+book_rc=$?
 python3 tests/sources.py && python3 tests/modules.py && python3 tests/lowering.py && python3 tests/generics.py && python3 tests/effects.py && python3 tests/quantity.py && python3 tests/quantity_native.py && python3 tests/quantity_derived.py && python3 tests/quantity_derived_native.py
 sources_rc=$?
 python3 tests/reflection.py
@@ -213,4 +219,4 @@ else
   echo "Spatial gate failed; evidence: $spatial_output" >&2
   spatial_rc=1
 fi
-[[ $results_rc -eq 0 && $systemone_rc -eq 0 && $spatial_operators_rc -eq 0 && $spatial_rc -eq 0 && $borrow_summary_rc -eq 0 && $spatial_policy_rc -eq 0 && $unit_forms_rc -eq 0 && $unit_algebra_rc -eq 0 && $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $native_check_baseline_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $query_rc -eq 0 && $steps_rc -eq 0 && $library_checks_rc -eq 0 && $authority_cache_rc -eq 0 && $parallel_checks_rc -eq 0 && $release_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $semantic_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $library_tools_rc -eq 0 && $sequence_rc -eq 0 && $bounded_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $cuda_rc -eq 0 && $proto_cap_rc -eq 0 && $proto_rc -eq 0 && $proto_policy_rc -eq 0 && $proto_message_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $generated_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]
+[[ $results_rc -eq 0 && $book_rc -eq 0 && $systemone_rc -eq 0 && $spatial_operators_rc -eq 0 && $spatial_rc -eq 0 && $borrow_summary_rc -eq 0 && $spatial_policy_rc -eq 0 && $unit_forms_rc -eq 0 && $unit_algebra_rc -eq 0 && $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $native_check_baseline_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $query_rc -eq 0 && $steps_rc -eq 0 && $library_checks_rc -eq 0 && $authority_cache_rc -eq 0 && $parallel_checks_rc -eq 0 && $release_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $semantic_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $library_tools_rc -eq 0 && $sequence_rc -eq 0 && $bounded_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $cuda_rc -eq 0 && $proto_cap_rc -eq 0 && $proto_rc -eq 0 && $proto_policy_rc -eq 0 && $proto_message_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $generated_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]

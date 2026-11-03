@@ -148,7 +148,9 @@ error or `abort`, a trap needs another way to stop and say why.
 `FP_CONTRACT OFF` is what makes float results the same everywhere
 (Chapter 16). A C compiler that ignores the pragma could fuse operations
 and give different answers, so a new compiler is checked for it, not
-assumed.
+assumed. GCC is such a compiler: it ignores the pragma (and says so
+under `-Wall`), so a GCC build of Coax output passes `-ffp-contract=off`
+to get the same rounding, as the book's own Linux runs do.
 
 Further down, checked integer arithmetic is written with
 `__builtin_add_overflow` and its relatives, which GCC and Clang provide.

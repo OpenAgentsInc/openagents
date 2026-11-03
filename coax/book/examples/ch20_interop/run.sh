@@ -4,9 +4,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 COAX=../../../bin/coax
-CC=${COAX_CC:-/usr/bin/cc}
-out=${TMPDIR:-/tmp}/coax-ch20
-mkdir -p "$out"
+CC=${COAX_CC:-cc}
+out=$(mktemp -d "${TMPDIR:-/tmp}/coax-ch20.XXXXXX")
+trap 'rm -rf "$out"' EXIT
 for name in ease path; do
   $COAX header ../ch20_$name.coax -o "$out/$name.h"
   $COAX lib ../ch20_$name.coax -o "$out/$name.o"
@@ -15,16 +15,16 @@ $COAX header meter.coax -o "$out/meter.h"
 $COAX lib meter.coax -o "$out/meter.o"
 
 echo "== C calls ease"
-$CC -std=c11 -Wall -I"$out" -o "$out/ease_host" ease_host.c "$out/ease.o"
+$CC -std=c11 -Wall -I"$out" -o "$out/ease_host" ease_host.c "$out/ease.o" -lm
 "$out/ease_host"
 echo "== C++ calls ease"
-${COAX_CXX:-/usr/bin/c++} -std=c++17 -Wall -I"$out" -o "$out/ease_hostpp" ease_host.cpp "$out/ease.o"
+${COAX_CXX:-c++} -std=c++17 -Wall -I"$out" -o "$out/ease_hostpp" ease_host.cpp "$out/ease.o" -lm
 "$out/ease_hostpp"
 echo "== C calls path"
-$CC -std=c11 -Wall -I"$out" -o "$out/path_host" path_host.c "$out/path.o"
+$CC -std=c11 -Wall -I"$out" -o "$out/path_host" path_host.c "$out/path.o" -lm
 "$out/path_host"
 echo "== Coax calls C (meter)"
-$CC -std=c11 -Wall -I"$out" -o "$out/meter_host" meter_host.c "$out/meter.o"
+$CC -std=c11 -Wall -I"$out" -o "$out/meter_host" meter_host.c "$out/meter.o" -lm
 "$out/meter_host"
 if command -v swiftc >/dev/null; then
   echo "== Swift calls path"

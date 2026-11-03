@@ -16,7 +16,7 @@ for mode in debug release; do
   flags=(-O0)
   if [[ $mode == release ]]; then flags=(-O2); fi
   if [[ ${BOOK_SANITIZE:-0} == 1 ]]; then flags+=(-g -fno-omit-frame-pointer -fsanitize=address,undefined); fi
-  "${COAX_CC:-cc}" -std=c11 -Wall -Wextra -Wno-unused-parameter "${flags[@]}" -I "$out" "$out/workflow.c" host.c -lm -o "$out/demo"
+  "${COAX_CC:-cc}" -std=c11 -Wall -Wextra -Wno-unused-parameter -Wno-unknown-pragmas -ffp-contract=off "${flags[@]}" -I "$out" "$out/workflow.c" host.c -lm -o "$out/demo"
   "$out/demo" "$out/preview.pb"
 done
 if [[ -n ${PROTOC:-} ]]; then
