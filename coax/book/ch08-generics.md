@@ -440,6 +440,17 @@ forest's blooms (`verse/fairy-forest/forest.coax`) each carried their own
 array and count with its own capacity test; both use `Bounded` now, with
 the same observable results.
 
+`coax/lib/kept.coax` holds the other: `Kept :: struct($W) { n: int; w: [$W]
+u64; }`, a copy of up to `8 * W` bytes of text that a ledger keeps instead
+of a borrowed `string`. The argument counts words because an array length
+must be a parameter or a constant, not an expression. `kept_set` copies a
+string in and returns `false` for one longer than the capacity, leaving a
+refused copy (`n` is -1); `kept_same`, `kept_is`, `kept_bytes` and
+`kept_view` compare and read it back. Since a procedure's result can't bind
+`$W` on its own, `kept64`, `kept72` and `kept128` return the three sizes the
+ledgers use as values. Six `#authority` ledgers that each had their own
+copy of this type use it now (#12696).
+
 ## Specialization costs something
 
 Specializing removes decisions from the running program and gives the

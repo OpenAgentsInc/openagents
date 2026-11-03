@@ -1,0 +1,258 @@
+// Fixed-size owned text. A string argument only borrows the caller's bytes,
+// and a caller may read its next record into the same buffer, so a ledger
+// that stores the borrow sees its stored text change underneath it.
+// Kept($W) is a copy instead: up to 8*W bytes, packed eight to a u64 word
+// with the first byte lowest, and their count n. It holds no view, so a
+// value copy of it, or of a struct that holds it, copies the bytes.
+//
+//   kept_set(t[..], s)  copy s into t[0]: true, or false when s is longer
+//                       than 8*W bytes, which leaves t[0] refused
+//   kept64(s), kept72(s), kept128(s)
+//                       the same copy into Kept(8), Kept(9) and Kept(16),
+//                       returned as a value; a longer s gives a refused one
+//   kept_same(a, b)     the same count and the same bytes
+//   kept_is(t, s)       t holds exactly the bytes of s
+//   kept_bytes(t, out)  write the bytes to out: their count, or -1 when out
+//                       is too small or t is refused
+//   kept_view(t, out)   the same, returned as a string that views out; a
+//                       buffer too small for t, or a refused t, traps
+//
+// A refused text has n = -1 and every word zero. It matches no string, and
+// two refused texts are the same. A text kept_set wrote has every byte past
+// n zero, so kept_same compares whole words. A caller that writes the fields
+// itself gets those fields compared as they are.
+#module "coax.kept";
+#export Kept, kept_set, kept64, kept72, kept128, kept_same, kept_is, kept_bytes, kept_view;
+#authority;
+
+Kept :: struct($W) { n: int; w: [$W] u64; }
+
+// ---- checks
+
+// Bytes that differ from both neighbours, the high bit among them.
+kept_fixture :: (b: [] u8) {
+  for i: 0..<b.count { b[i] = cast(u8)((i * 37 + 200) & 255); }
+}
+
+// Every instance is its own code, so each size the library names is held to
+// the whole contract by a check of its own. The contract stays in the check
+// bodies: coax mutate changes procedures, and a shared checking procedure
+// would be mutated into a weaker check.
+
+#forall "Kept(8) keeps 64 bytes" at: 0..<9 {
+  src: [130] u8; kept_fixture(src[..]);
+  #assert src[0] == 200 && src[1] == 237 && src[2] == 18;
+  lens := [9] int.[0, 1, 7, 8, 9, 31, 63, 64, 65];
+  k := lens[at];
+  t: [1] Kept(8);
+  c := t[0].w.count * 8;
+  #assert c == 64;
+  s := cast(string) src[0..<k];
+  ok := kept_set(t[..], s);
+  #assert ok == (k <= c) && kept_is(t[0], s) == ok && kept_same(kept64(s), t[0]);
+  out: [130] u8;
+  for i: 0..<130 { out[i] = 9; }
+  if !ok {
+    #assert t[0].n == -1 && kept_bytes(t[0], out[..]) == -1 && !kept_is(t[0], "");
+    for j: 0..<8 { #assert t[0].w[j] == 0; }
+  } else {
+    #assert t[0].n == k && kept_bytes(t[0], out[..]) == k && out[k] == 9 && kept_view(t[0], out[..]) == s;
+    for i: 0..<k { #assert out[i] == src[i]; }
+    #assert kept_bytes(t[0], out[0..<k]) == k && kept_same(t[0], t[0]);
+    if k > 0 { #assert kept_bytes(t[0], out[0..<k - 1]) == -1; }
+    // the first byte lowest, and every byte past n zero
+    for i: 0..<64 {
+      want: u8 = 0;
+      if i < k { want = src[i]; }
+      #assert cast(u8)((t[0].w[i / 8] >> ((i % 8) * 8)) & 255) == want;
+    }
+    // one byte changed anywhere
+    u: [1] Kept(8);
+    for p: 0..<k {
+      src[p] = cast(u8)(src[p] ^ 1);
+      #assert kept_set(u[..], s) && !kept_same(t[0], u[0]) && !kept_same(u[0], t[0]) && !kept_is(t[0], s) && kept_is(u[0], s);
+      src[p] = cast(u8)(src[p] ^ 1);
+    }
+    // the same words with one more count: a zero byte after the last
+    if k < c {
+      keep := src[k];
+      src[k] = 0;
+      longer := cast(string) src[0..<k + 1];
+      #assert kept_set(u[..], longer) && !kept_same(t[0], u[0]) && !kept_same(u[0], t[0]) && !kept_is(t[0], longer) && !kept_is(u[0], s);
+      src[k] = keep;
+    }
+    // a refused text is the same only as another refused one
+    r: [1] Kept(8);
+    #assert !kept_set(r[..], cast(string) src[0..<c + 1]) && !kept_same(r[0], t[0]) && !kept_same(t[0], r[0]);
+    #assert !kept_set(u[..], cast(string) src[1..<c + 2]) && kept_same(r[0], u[0]) && !kept_is(r[0], cast(string) src[0..<c + 1]);
+  }
+}
+
+#forall "Kept(9) keeps 72 bytes" at: 0..<7 {
+  src: [130] u8; kept_fixture(src[..]);
+  lens := [7] int.[0, 1, 8, 64, 71, 72, 73];
+  k := lens[at];
+  t: [1] Kept(9);
+  c := t[0].w.count * 8;
+  #assert c == 72;
+  s := cast(string) src[0..<k];
+  ok := kept_set(t[..], s);
+  #assert ok == (k <= c) && kept_is(t[0], s) == ok && kept_same(kept72(s), t[0]);
+  out: [130] u8;
+  for i: 0..<130 { out[i] = 9; }
+  if !ok {
+    #assert t[0].n == -1 && kept_bytes(t[0], out[..]) == -1 && !kept_is(t[0], "");
+    for j: 0..<9 { #assert t[0].w[j] == 0; }
+  } else {
+    #assert t[0].n == k && kept_bytes(t[0], out[..]) == k && out[k] == 9 && kept_view(t[0], out[..]) == s;
+    for i: 0..<k { #assert out[i] == src[i]; }
+    #assert kept_bytes(t[0], out[0..<k]) == k && kept_same(t[0], t[0]);
+    if k > 0 { #assert kept_bytes(t[0], out[0..<k - 1]) == -1; }
+    // the first byte lowest, and every byte past n zero
+    for i: 0..<72 {
+      want: u8 = 0;
+      if i < k { want = src[i]; }
+      #assert cast(u8)((t[0].w[i / 8] >> ((i % 8) * 8)) & 255) == want;
+    }
+    // one byte changed anywhere
+    u: [1] Kept(9);
+    for p: 0..<k {
+      src[p] = cast(u8)(src[p] ^ 1);
+      #assert kept_set(u[..], s) && !kept_same(t[0], u[0]) && !kept_same(u[0], t[0]) && !kept_is(t[0], s) && kept_is(u[0], s);
+      src[p] = cast(u8)(src[p] ^ 1);
+    }
+    // the same words with one more count: a zero byte after the last
+    if k < c {
+      keep := src[k];
+      src[k] = 0;
+      longer := cast(string) src[0..<k + 1];
+      #assert kept_set(u[..], longer) && !kept_same(t[0], u[0]) && !kept_same(u[0], t[0]) && !kept_is(t[0], longer) && !kept_is(u[0], s);
+      src[k] = keep;
+    }
+    // a refused text is the same only as another refused one
+    r: [1] Kept(9);
+    #assert !kept_set(r[..], cast(string) src[0..<c + 1]) && !kept_same(r[0], t[0]) && !kept_same(t[0], r[0]);
+    #assert !kept_set(u[..], cast(string) src[1..<c + 2]) && kept_same(r[0], u[0]) && !kept_is(r[0], cast(string) src[0..<c + 1]);
+  }
+}
+
+#forall "Kept(16) keeps 128 bytes" at: 0..<7 {
+  src: [130] u8; kept_fixture(src[..]);
+  lens := [7] int.[0, 1, 9, 72, 127, 128, 129];
+  k := lens[at];
+  t: [1] Kept(16);
+  c := t[0].w.count * 8;
+  #assert c == 128;
+  s := cast(string) src[0..<k];
+  ok := kept_set(t[..], s);
+  #assert ok == (k <= c) && kept_is(t[0], s) == ok && kept_same(kept128(s), t[0]);
+  out: [130] u8;
+  for i: 0..<130 { out[i] = 9; }
+  if !ok {
+    #assert t[0].n == -1 && kept_bytes(t[0], out[..]) == -1 && !kept_is(t[0], "");
+    for j: 0..<16 { #assert t[0].w[j] == 0; }
+  } else {
+    #assert t[0].n == k && kept_bytes(t[0], out[..]) == k && out[k] == 9 && kept_view(t[0], out[..]) == s;
+    for i: 0..<k { #assert out[i] == src[i]; }
+    #assert kept_bytes(t[0], out[0..<k]) == k && kept_same(t[0], t[0]);
+    if k > 0 { #assert kept_bytes(t[0], out[0..<k - 1]) == -1; }
+    // the first byte lowest, and every byte past n zero
+    for i: 0..<128 {
+      want: u8 = 0;
+      if i < k { want = src[i]; }
+      #assert cast(u8)((t[0].w[i / 8] >> ((i % 8) * 8)) & 255) == want;
+    }
+    // one byte changed anywhere
+    u: [1] Kept(16);
+    for p: 0..<k {
+      src[p] = cast(u8)(src[p] ^ 1);
+      #assert kept_set(u[..], s) && !kept_same(t[0], u[0]) && !kept_same(u[0], t[0]) && !kept_is(t[0], s) && kept_is(u[0], s);
+      src[p] = cast(u8)(src[p] ^ 1);
+    }
+    // the same words with one more count: a zero byte after the last
+    if k < c {
+      keep := src[k];
+      src[k] = 0;
+      longer := cast(string) src[0..<k + 1];
+      #assert kept_set(u[..], longer) && !kept_same(t[0], u[0]) && !kept_same(u[0], t[0]) && !kept_is(t[0], longer) && !kept_is(u[0], s);
+      src[k] = keep;
+    }
+    // a refused text is the same only as another refused one
+    r: [1] Kept(16);
+    #assert !kept_set(r[..], cast(string) src[0..<c + 1]) && !kept_same(r[0], t[0]) && !kept_same(t[0], r[0]);
+    #assert !kept_set(u[..], cast(string) src[1..<c + 2]) && kept_same(r[0], u[0]) && !kept_is(r[0], cast(string) src[0..<c + 1]);
+  }
+}
+
+#test "the first byte is lowest in its word" {
+  t := kept64("abcdefghi");
+  #assert t.w[0] == 0x6867666564636261 && t.w[1] == 0x69 && t.n == 9;
+  ff := [9] u8.[255, 255, 255, 255, 255, 255, 255, 255, 128];
+  t = kept64(cast(string) ff[..]);
+  #assert t.w[0] == 0xffffffffffffffff && t.w[1] == 0x80 && t.w[2] == 0;
+}
+
+#test "a new copy replaces every byte of the old one" {
+  t: [1] Kept(9);
+  #assert kept_set(t[..], "0123456789abcdef");
+  #assert kept_set(t[..], "xy") && t[0].n == 2 && t[0].w[0] == 0x7978 && t[0].w[1] == 0;
+}
+
+#test "a kept text does not change when the caller reuses its buffer" {
+  buf: [64] u8; kept_fixture(buf[..]);
+  t := kept64(cast(string) buf[..]);
+  first := buf;
+  for i: 0..<64 { buf[i] = cast(u8) 'z'; }
+  #assert kept_is(t, cast(string) first[..]) && !kept_is(t, cast(string) buf[..]);
+  out: [64] u8;
+  #assert kept_view(t, out[..]) == cast(string) first[..];
+}
+
+// ---- the type
+
+// Copy s into t[0], or the refused text when s is longer than 8*W bytes.
+kept_fill :: (t: [] Kept($W), s: string) {
+  u: Kept($W);
+  u.n = -1;
+  if s.count <= u.w.count * 8 {
+    for i: 0..<s.count { u.w[i / 8] = u.w[i / 8] | (cast(u64) s[i] << ((i % 8) * 8)); }
+    u.n = s.count;
+  }
+  t[0] = u;
+}
+
+kept_set :: (t: [] Kept($W), s: string) -> bool {
+  kept_fill(t, s);
+  return t[0].n >= 0;
+}
+
+kept64 :: (s: string) -> Kept(8) { t: [1] Kept(8); kept_fill(t[..], s); return t[0]; }
+kept72 :: (s: string) -> Kept(9) { t: [1] Kept(9); kept_fill(t[..], s); return t[0]; }
+kept128 :: (s: string) -> Kept(16) { t: [1] Kept(16); kept_fill(t[..], s); return t[0]; }
+
+kept_same :: (a: Kept($W), b: Kept($W)) -> bool {
+  if a.n != b.n { return false; }
+  for j: 0..<a.w.count { if a.w[j] != b.w[j] { return false; } }
+  return true;
+}
+
+// A string of another count is never the same, a refused t included; one of
+// the same count is copied and compared word by word.
+kept_is :: (t: Kept($W), s: string) -> bool {
+  if t.n != s.count { return false; }
+  u: [1] Kept($W);
+  kept_fill(u[..], s);
+  return kept_same(t, u[0]);
+}
+
+// A refused t has n = -1: out is never smaller than that, the loop is empty,
+// and -1 comes back.
+kept_bytes :: (t: Kept($W), out: [] u8) -> int {
+  if out.count < t.n { return -1; }
+  for i: 0..<t.n { out[i] = cast(u8)((t.w[i / 8] >> ((i % 8) * 8)) & 255); }
+  return t.n;
+}
+
+kept_view :: (t: Kept($W), out: [] u8) -> string {
+  return cast(string) out[0..<kept_bytes(t, out)];
+}

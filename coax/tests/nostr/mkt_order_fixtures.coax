@@ -20,7 +20,7 @@ mk_offering :: ()->MktOffering {
 mk_market :: ()->MktMarket {m:MktMarket;m.market="m-1";m.buyer=MK_BUYER;m.provider=MK_PROVIDER;return m;}
 // Quote A: 50,000 msat over Lightning on bitcoin.
 mk_terms :: (id:string,price:int)->MktTerms {
-  t:MktTerms;t.quote_id=mkt_kept(id);t.digest=mkt_kept(MK_DIGEST);t.worker=mkt_kept(MK_WORKER);t.reviewer=mkt_kept(MK_REVIEWER);
+  t:MktTerms;t.quote_id=kept72(id);t.digest=kept72(MK_DIGEST);t.worker=kept72(MK_WORKER);t.reviewer=kept72(MK_REVIEWER);
   t.price_msat=price;t.fee_limit_msat=1000;t.profile=MKT_LIGHTNING;t.network=MKT_BITCOIN;
   t.quote_expires_at=MK_T0+600;t.order_confirm_by=MK_T0+900;t.delivery_due_at=MK_T0+3600;
   t.review_due_at=MK_T0+7200;t.payment_due_at=MK_T0+86400;t.retain_until=MK_T0+30*86400;return t;
@@ -50,11 +50,11 @@ mk_proof :: (rail:int,state:int,amount:int,preimage:string)->MktProof {
   p:MktProof;p.rail=rail;p.state=state;p.amount_msat=amount;p.preimage=preimage;return p;
 }
 mk_same :: (a:MktMarket,b:MktMarket)->bool {
-  return a.stage==b.stage && a.quotes==b.quotes && a.order==b.order && mkt_same(a.order_id,b.order_id) && a.submitted==b.submitted
+  return a.stage==b.stage && a.quotes==b.quotes && a.order==b.order && kept_same(a.order_id,b.order_id) && a.submitted==b.submitted
     && a.submitted_at==b.submitted_at && a.verdict==b.verdict && a.accepted==b.accepted && a.amount_due==b.amount_due
-    && mkt_same(a.obligation,b.obligation) && a.amount_msat==b.amount_msat && a.attempts==b.attempts && a.payment==b.payment
+    && kept_same(a.obligation,b.obligation) && a.amount_msat==b.amount_msat && a.attempts==b.attempts && a.payment==b.payment
     && a.paid_msat==b.paid_msat && a.price_limit==b.price_limit && a.response_due_at==b.response_due_at && a.expires_at==b.expires_at
-    && mkt_same(a.payment_hash,b.payment_hash);
+    && kept_same(a.payment_hash,b.payment_hash);
 }
 // Write s into out, as a caller reading a record into a reused buffer does,
 // and return the borrowed bytes.

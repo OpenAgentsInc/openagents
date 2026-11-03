@@ -37,6 +37,7 @@
 //         coax mutate coax/lib/nostr/xp_ledger.coax --root-only
 #load "xp_keys.coax";
 #load "nip34.coax";
+#load "../kept.coax";
 #load "../../tests/nostr/text_swap.coax";
 #load "../../tests/nostr/xp_mv_vectors.coax";
 #authority;
@@ -54,11 +55,10 @@ XpRevocation :: struct {code:XpCode;event:string;referee:string;award:string;key
 // A credit keeps its own copy of the awardee's key. A string only borrows
 // the caller's bytes, and a caller may read the next events into the same
 // buffer; a credit holding that borrow would move its XP to another key.
-// XP_TEXT bytes hold a 64-hex key, packed eight to a word, the first byte
-// lowest; an award naming a longer key is not counted.
+// A Kept(8) (coax/lib/kept.coax) holds XP_TEXT bytes, a 64-hex key; an
+// award naming a longer key is not counted.
 XP_TEXT :: 64;
-XpKept :: struct {n:int;w:[XP_TEXT/8]u64;}
-XpCredit :: struct {pubkey:XpKept;xp:int;}
+XpCredit :: struct {pubkey:Kept(8);xp:int;}
 // counted awards, credits written (-1 when out is too short), conflicts.
 XpLedger :: struct {counted:int;credits:int;conflicts:int;revoked:int;}
 
@@ -331,7 +331,7 @@ XP_K7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
   ruled:=[1]bool.[true];why:[1]XpWhy;out:[4]XpCredit;
   l:=xp_ledger(trusted[..],qs[..],as[..],rs[0..<0],ruled[..],why[..],out[..]);
   #assert l.counted==1 && l.credits==2 && l.conflicts==0 && l.revoked==0 && why[0]==XpWhy.counted;
-  #assert xp_is(out[0].pubkey,XP_K2) && out[0].xp==6 && xp_is(out[1].pubkey,XP_K4) && out[1].xp==4;
+  #assert kept_is(out[0].pubkey,XP_K2) && out[0].xp==6 && kept_is(out[1].pubkey,XP_K4) && out[1].xp==4;
   // Untrusted referee, unrun rule, refused read, short output.
   l=xp_ledger(trusted[0..<0],qs[..],as[..],rs[0..<0],ruled[..],why[..],out[..]);#assert l.counted==0 && why[0]==XpWhy.untrusted;
   ruled[0]=false;l=xp_ledger(trusted[..],qs[..],as[..],rs[0..<0],ruled[..],why[..],out[..]);#assert l.counted==0 && why[0]==XpWhy.rule && l.credits==0;
@@ -347,27 +347,17 @@ XP_K7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
   as:=[1]XpAward.[s.a1];as[0].keys[0]=cast(string)b[0..<64];as[0].keys[1]=cast(string)b[64..<128];
   l:=xp_ledger(trusted[..],qs[..],as[..],rs[0..<0],ruled[..],why[..],out[..]);
   for k:0..<128 {b[k]='7';}
-  #assert l.credits==2 && xp_is(out[0].pubkey,XP_K2) && out[0].xp==6 && xp_is(out[1].pubkey,XP_K4) && out[1].xp==4;
+  #assert l.credits==2 && kept_is(out[0].pubkey,XP_K2) && out[0].xp==6 && kept_is(out[1].pubkey,XP_K4) && out[1].xp==4;
   h:[65]u8;
-  #assert xp_bytes(out[1].pubkey,h[..])==64 && cast(string)h[0..<64]==XP_K4 && xp_bytes(out[1].pubkey,h[0..<63])==-1;
+  #assert kept_bytes(out[1].pubkey,h[..])==64 && cast(string)h[0..<64]==XP_K4 && kept_bytes(out[1].pubkey,h[0..<63])==-1;
   // An awardee key of 64 bytes is kept; 65 is not counted.
   g:[65]u8;for k:0..<65 {g[k]='a';}
   as=[1]XpAward.[s.a1];as[0].keys[1]=cast(string)g[0..<64];
-  l=xp_ledger(trusted[..],qs[..],as[..],rs[0..<0],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.counted && xp_is(out[1].pubkey,cast(string)g[0..<64]);
+  l=xp_ledger(trusted[..],qs[..],as[..],rs[0..<0],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.counted && kept_is(out[1].pubkey,cast(string)g[0..<64]);
   for k:0..<2 {
     as=[1]XpAward.[s.a1];as[0].keys[k]=cast(string)g[..];
     l=xp_ledger(trusted[..],qs[..],as[..],rs[0..<0],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.xp && l.counted==0 && l.credits==0;
   }
-  // A copy matches exactly the string it was made from.
-  a:=xp_kept("alpha");
-  #assert xp_is(a,"alpha") && !xp_is(a,"alph") && !xp_is(a,"alphb") && !xp_is(a,"alphaa") && !xp_is(a,"blpha") && xp_is(xp_kept(""),"") && !xp_is(xp_kept(""),"a");
-  z:=[2]u8.['a',0];#assert !xp_is(xp_kept("a"),cast(string)z[..]) && !xp_is(xp_kept(cast(string)z[..]),"a");
-  #assert xp_bytes(a,h[0..<5])==5 && cast(string)h[0..<5]=="alpha" && xp_bytes(xp_kept(""),h[0..<0])==0;
-  // Every byte value at every position survives the packing.
-  e:[64]u8;for k:0..<64 {e[k]=cast(u8)(k*4+3);}
-  t:=xp_kept(cast(string)e[..]);#assert xp_bytes(t,h[..])==64;
-  for k:0..<64 {#assert h[k]==e[k];}
-  for v:[3]u8.[0,128,255] {e[9]=v;#assert xp_is(xp_kept(cast(string)e[..]),cast(string)e[..]) && !xp_is(t,cast(string)e[..]);}
 }
 #test "a revoked award is removed from the derived ledger; its replacement counts" {
   s:=xp_set();trusted:=[1]string.[QUEST_PK];qs:=[1]XpQuest.[s.q];rs0:[1]XpRevocation;
@@ -379,7 +369,7 @@ XP_K7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
   rs:=[1]XpRevocation.[s.r1];
   l=xp_ledger(trusted[..],qs[..],as[..],rs[..],ruled[..],why[..],out[..]);
   #assert l.counted==1 && l.revoked==1 && l.conflicts==0 && why[0]==XpWhy.revoked && why[1]==XpWhy.counted && l.credits==2;
-  #assert xp_is(out[0].pubkey,XP_K7) && out[0].xp==6 && xp_is(out[1].pubkey,XP_K4) && out[1].xp==4;
+  #assert kept_is(out[0].pubkey,XP_K7) && out[0].xp==6 && kept_is(out[1].pubkey,XP_K4) && out[1].xp==4;
   // Alone, the revoked award credits no one.
   l=xp_ledger(trusted[..],qs[..],as[0..<1],rs[..],ruled[..],why[..],out[..]);#assert l.counted==0 && l.credits==0 && why[0]==XpWhy.revoked;
   // A revocation by another key, or naming another key or award, removes nothing.
@@ -426,7 +416,7 @@ XP_K7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
   b=as;b[0].n=1;l=xp_ledger(trusted[..],qs[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.xp;
   // Zero XP gets no credit; one person in two awards sums.
   z:=qs;z[0].xp[0]=0;b=as;b[0].xp[0]=0;
-  l=xp_ledger(trusted[..],z[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.counted && l.credits==1 && xp_is(out[0].pubkey,XP_K4) && out[0].xp==4;
+  l=xp_ledger(trusted[..],z[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.counted && l.credits==1 && kept_is(out[0].pubkey,XP_K4) && out[0].xp==4;
   q2:=[2]XpQuest.[s.q,s.q];q2[1].event=AWARD2_ID;q2[1].address="other@1";
   a2:=[2]XpAward.[s.a1,s.a1];a2[1].event=REVOKE1_ID;a2[1].quest=AWARD2_ID;a2[1].key="30193:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:other@1";
   l=xp_ledger(trusted[..],q2[..],a2[..],none[..],ruled[..],why[..],out[..]);
@@ -704,27 +694,6 @@ xp_revocation_read :: (kind:int,event:string,signer:string,tags:string,content:s
 
 // ---- the ledger
 // book:begin ledger
-// Copy at most XP_TEXT bytes; xp_ledger refuses a longer key first.
-xp_kept :: (s:string)->XpKept {
-  t:XpKept;
-  for i:0..<s.count {t.w[i/8]=t.w[i/8]|(cast(u64)s[i]<<((i%8)*8));}
-  t.n=s.count;
-  return t;
-}
-// A kept text is never longer than XP_TEXT, so a longer s differs by count.
-xp_is :: (t:XpKept,s:string)->bool {
-  if t.n!=s.count {return false;}
-  u:=xp_kept(s);
-  for j:0..<XP_TEXT/8 {if t.w[j]!=u.w[j] {return false;}}
-  return true;
-}
-// Write the kept bytes to out for a caller to read: the count, or -1 when
-// out is too small.
-xp_bytes :: (t:XpKept,out:[]u8)->int {
-  if out.count<t.n {return -1;}
-  for i:0..<t.n {out[i]=cast(u8)((t.w[i/8]>>((i%8)*8))&255);}
-  return t.n;
-}
 xp_trusted :: (trusted:[]string,key:string)->bool {for k:trusted {if k==key {return true;}}return false;}
 // Whether key is 30193:<referee>:<address>.
 xp_coordinate :: (key:string,referee:string,address:string)->bool {
@@ -766,10 +735,10 @@ xp_ledger :: (trusted:[]string,quests:[]XpQuest,awards:[]XpAward,revs:[]XpRevoca
     l.counted+=1;
     for k:0..<awards[i].n {
       if awards[i].xp[k]==0 || l.credits<0 {continue;}
-      at:=-1;for c:0..<l.credits {if xp_is(out[c].pubkey,awards[i].keys[k]) {at=c;}}
+      at:=-1;for c:0..<l.credits {if kept_is(out[c].pubkey,awards[i].keys[k]) {at=c;}}
       if at<0 {
         if l.credits==out.count {l.credits= -1;continue;}
-        out[l.credits]=XpCredit.{pubkey=xp_kept(awards[i].keys[k]),xp=0};at=l.credits;l.credits+=1;
+        out[l.credits]=XpCredit.{pubkey=kept64(awards[i].keys[k]),xp=0};at=l.credits;l.credits+=1;
       }
       out[at].xp+=awards[i].xp[k];
     }

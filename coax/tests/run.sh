@@ -180,6 +180,8 @@ unit_sequence() {
   return $rc
 }
 unit_bounded() { ./tests/bounded.sh "$COAX_ABS"; }
+# lib/kept.coax, the owned fixed-size text the money and admission ledgers keep.
+unit_kept() { "$COAX" test lib/kept.coax --library && "$COAX" mutate lib/kept.coax --library; }
 unit_debugging() { python3 tests/debugging.py; }
 unit_nostr() { python3 tests/nostr.py; }
 unit_constant_time() { python3 tests/constant_time.py; }
@@ -234,7 +236,7 @@ unit_spatial() {
 UNITS=(pass fail examples pulse python native native_checks lexer parser budget strings traversal
   provenance query steps library_checks authority_cache check_reuse parallel_checks release mutation_schedule
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
-  sequence bounded debugging nostr constant_time wrapping mul_wide cuda proto_cap proto proto_policy
+  sequence bounded kept debugging nostr constant_time wrapping mul_wide cuda proto_cap proto proto_policy
   proto_message verify wire_checks generated_checks wire_core importer_checks fingerprint_checks
   unit_algebra unit_forms spatial_policy borrow_summary spatial_operators spatial)
 

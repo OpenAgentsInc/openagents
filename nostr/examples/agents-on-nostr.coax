@@ -212,7 +212,7 @@ main :: () {
   print("\n== 4. MKT: the agent quotes, the buyer orders\n");
   o := MktOffering.{provider = agent, valid_until = T0 + 86400, profiles = MKT_LIGHTNING, networks = MKT_BITCOIN};
   mk := [1] MktMarket.[MktMarket.{market = "m-1", buyer = buyer, provider = agent}]; q: [2] MktTerms;
-  t: MktTerms; t.quote_id = mkt_kept("A"); t.digest = mkt_kept(TERMS); t.worker = mkt_kept(agent); t.reviewer = mkt_kept(REVIEWER);
+  t: MktTerms; t.quote_id = kept72("A"); t.digest = kept72(TERMS); t.worker = kept72(agent); t.reviewer = kept72(REVIEWER);
   t.price_msat = 50000; t.fee_limit_msat = 1000; t.profile = MKT_LIGHTNING; t.network = MKT_BITCOIN;
   t.quote_expires_at = T0 + 600; t.order_confirm_by = T0 + 900; t.delivery_due_at = T0 + 3600;
   t.review_due_at = T0 + 7200; t.payment_due_at = T0 + 86400; t.retain_until = T0 + 30 * 86400;
@@ -288,7 +288,7 @@ main :: () {
   print("the same at the current revision 1: %; token %, revision %\n", CO_WORDS[coord_claim(st[..], claims[..], holds[..], cq2, want[..], T0 + 63)], st[0].token, st[0].revision);
   ib: [8192] u8; impostor := sign(STRANGER_SK, T0 + 92, 26920, answer_tags, result_payload, ib[..]);
   v3 := verify(impostor, vs[..]); print("26920 from 7G with the agent's tags and content: %\n", CJ_WORDS[cj_answer(req, v3)]);
-  m2 := [1] MktMarket.[mk[0]]; m2[0].obligation = MktKept.{}; m2[0].payment = MKT_NONE; m2[0].attempts = 0; m2[0].paid_msat = 0;
+  m2 := [1] MktMarket.[mk[0]]; m2[0].obligation = kept72(""); m2[0].payment = MKT_NONE; m2[0].attempts = 0; m2[0].paid_msat = 0;
   print("the agent asks 60000 msat: %\n", MKT_WORDS[mkt_instruct(m2[..], q[..], agent, "ob-1", 60000, INVOICE, HASH, T0 + 5000, T0 + 120)]);
   #assert mkt_instruct(m2[..], q[..], agent, "ob-1", 50000, INVOICE, HASH, T0 + 5000, T0 + 120) == MKT_OK;
   #assert mkt_attempt(m2[..], q[..], buyer, 1, 1000, T0 + 130) == MKT_OK;

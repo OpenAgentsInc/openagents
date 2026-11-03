@@ -34,6 +34,7 @@
 #load "../crypto/sha256.coax";
 #load "../crypto/bip32.coax";
 #load "../crypto/secp_mult.coax";
+#load "../kept.coax";
 #authority;
 
 KyCode :: enum u8 {ok;json;version;field;wallet;holder;revision;network;descriptor;checksum;family;paths;threshold;timelock;primary;enrollment;key_order;xpub;recipient;times;attestation;operator;sovereign;recovery;attested_only;weakening;approval;psbt;inputs;outputs;amount;address;change;fee;ceiling;nonce;deadline;locked;retired;compromised;delay;hot;not_built;}
@@ -67,11 +68,10 @@ KyAdmit :: struct {code:KyCode;proven:bool;}
 // argument only borrows the caller's bytes, and a signer may read the next
 // request into the same buffer; a stored borrow would then change a retained
 // triple, so a used nonce could look new and be signed a second time.
-// KY_TEXT bytes hold a 64-digit hex key or nonce, packed eight to a word,
-// the first byte lowest. ky_consume refuses anything longer with field.
+// A Kept(8) (coax/lib/kept.coax) holds KY_TEXT bytes, a 64-digit hex key
+// or nonce. ky_consume refuses anything longer with field.
 KY_TEXT :: 64;
-KyKept :: struct {n:int;w:[KY_TEXT/8]u64;}
-KyEntry :: struct {agent:KyKept;requester:KyKept;nonce:KyKept;digest:[32]u8;code:KyCode;}
+KyEntry :: struct {agent:Kept(8);requester:Kept(8);nonce:Kept(8);digest:[32]u8;code:KyCode;}
 KyLedger :: struct {count:int;e:[KY_LEDGER]KyEntry;}
 KyRetry :: struct {code:KyCode;retry:bool;}
 
@@ -855,10 +855,10 @@ ky_rfail :: (c:KyCode)->KyRequest {r:KyRequest;r.code=c;return r;}
 // refuses. A full ledger refuses new requests.
 ky_consume :: (l:[]KyLedger,agent:string,r:KyRequest,code:KyCode)->KyRetry {
   if agent.count>KY_TEXT || r.requester.count>KY_TEXT || r.nonce.count>KY_TEXT {return KyRetry.{code=KyCode.field};}
-  a:=ky_kept(agent);q:=ky_kept(r.requester);n:=ky_kept(r.nonce);
+  a:=kept64(agent);q:=kept64(r.requester);n:=kept64(r.nonce);
   for i:0..<l[0].count {
     x:=l[0].e[i];
-    if ky_kept_same(x.agent,a) && ky_kept_same(x.requester,q) && ky_kept_same(x.nonce,n) {
+    if kept_same(x.agent,a) && kept_same(x.requester,q) && kept_same(x.nonce,n) {
       for k:0..<32 {if x.digest[k]!=r.digest[k] {return KyRetry.{code=KyCode.nonce};}}
       return KyRetry.{code=x.code,retry=true};
     }
@@ -867,24 +867,6 @@ ky_consume :: (l:[]KyLedger,agent:string,r:KyRequest,code:KyCode)->KyRetry {
   l[0].e[l[0].count]=KyEntry.{agent=a,requester=q,nonce=n,digest=r.digest,code=code};
   l[0].count+=1;
   return KyRetry.{code=code};
-}
-// Copy at most KY_TEXT bytes; ky_consume refuses anything longer first.
-ky_kept :: (s:string)->KyKept {
-  t:KyKept;
-  for i:0..<s.count {t.w[i/8]=t.w[i/8]|(cast(u64)s[i]<<((i%8)*8));}
-  t.n=s.count;
-  return t;
-}
-ky_kept_same :: (a:KyKept,b:KyKept)->bool {
-  if a.n!=b.n {return false;}
-  for j:0..<KY_TEXT/8 {if a.w[j]!=b.w[j] {return false;}}
-  return true;
-}
-// Write the kept bytes to out: the count, or -1 when out is too small.
-ky_kept_bytes :: (t:KyKept,out:[]u8)->int {
-  if out.count<t.n {return -1;}
-  for i:0..<t.n {out[i]=cast(u8)((t.w[i/8]>>((i%8)*8))&255);}
-  return t.n;
 }
 // book:end ledger
 // A timelocked path is spendable for a coin confirmed at conf_height when
@@ -1649,9 +1631,9 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   x=ky_consume(l[..],KY_AGENT1,o,KyCode.fee);#assert x.code==KyCode.ok && x.retry && l[0].count==3;
   x=ky_consume(l[..],cast(string)g[..],o,KyCode.fee);#assert x.code==KyCode.fee && !x.retry && l[0].count==4;
   out:[65]u8;
-  #assert ky_kept_bytes(l[0].e[0].agent,out[..])==64 && cast(string)out[0..<64]==KY_AGENT1 && ky_kept_bytes(l[0].e[0].agent,out[0..<63])==-1;
-  #assert ky_kept_bytes(l[0].e[0].nonce,out[..])==64 && cast(string)out[0..<64]==nine;
-  #assert ky_kept_bytes(l[0].e[0].requester,out[..])==64 && cast(string)out[0..<64]==o.requester;
+  #assert kept_bytes(l[0].e[0].agent,out[..])==64 && cast(string)out[0..<64]==KY_AGENT1 && kept_bytes(l[0].e[0].agent,out[0..<63])==-1;
+  #assert kept_bytes(l[0].e[0].nonce,out[..])==64 && cast(string)out[0..<64]==nine;
+  #assert kept_bytes(l[0].e[0].requester,out[..])==64 && cast(string)out[0..<64]==o.requester;
   // 64 bytes is the longest kept; one more in any of the three refuses.
   w:[65]u8;for k:0..<65 {w[k]='9';}
   long:=o;long.nonce=cast(string)w[..];
@@ -1659,16 +1641,6 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   long=o;long.requester=cast(string)w[..];#assert ky_consume(l[..],KY_AGENT1,long,KyCode.ok).code==KyCode.field;
   #assert ky_consume(l[..],cast(string)w[..],o,KyCode.ok).code==KyCode.field && l[0].count==4;
   #assert ky_consume(l[..],cast(string)w[0..<64],o,KyCode.ok).code==KyCode.ok && l[0].count==5;
-  // A copy compares equal to exactly the string it was made from.
-  a:=ky_kept("alpha");
-  #assert ky_kept_same(a,ky_kept("alpha")) && !ky_kept_same(a,ky_kept("alph")) && !ky_kept_same(a,ky_kept("alphb")) && !ky_kept_same(a,ky_kept("blpha"));
-  #assert ky_kept_bytes(a,out[0..<5])==5 && cast(string)out[0..<5]=="alpha" && ky_kept_bytes(ky_kept(""),out[0..<0])==0;
-  z:=[2]u8.['a',0];#assert !ky_kept_same(ky_kept("a"),ky_kept(cast(string)z[..]));
-  // Every byte value at every position survives the packing.
-  e:[64]u8;for k:0..<64 {e[k]=cast(u8)(k*4+3);}
-  y:=ky_kept(cast(string)e[..]);#assert ky_kept_bytes(y,out[..])==64;
-  for k:0..<64 {#assert out[k]==e[k];}
-  for b:[3]u8.[0,128,255] {e[9]=b;#assert ky_kept_same(ky_kept(cast(string)e[..]),ky_kept(cast(string)e[..])) && !ky_kept_same(y,ky_kept(cast(string)e[..]));}
 }
 
 #test "timelocks, retired wallets, compromised agents, the co-signer's delay, the hot ceiling" {

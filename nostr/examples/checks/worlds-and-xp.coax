@@ -52,7 +52,7 @@
   ruled:=[2]bool.[true,true];why:[2]XpWhy;out:[4]XpCredit;
   l:=xp_ledger(trusted[..],quests[..],both[..],revs[..],ruled[..],why[..],out[..]);
   #assert l.counted==1 && l.revoked==1 && l.credits==2;
-  #assert xp_is(out[0].pubkey,"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc") && out[0].xp==6;
-  #assert xp_is(out[1].pubkey,"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13") && out[1].xp==4;
+  #assert kept_is(out[0].pubkey,"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc") && out[0].xp==6;
+  #assert kept_is(out[1].pubkey,"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13") && out[1].xp==4;
 }
 // book:end check

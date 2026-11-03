@@ -265,35 +265,15 @@ NIP-EVAL run evidence, which this chapter doesn't build, so `xp_ledger`
 takes the rule's verdict per award as `ruled` from the caller and counts
 nothing whose rule wasn't run and passed.
 
-Each credit keeps its own copy of the awardee's key, an `XpKept` of up to
-64 bytes. A string only borrows the caller's bytes. Without the copy, a
+Each credit keeps its own copy of the awardee's key, a `Kept(8)` of up to
+64 bytes ([`coax/lib/kept.coax`](../../coax/lib/kept.coax)). A string only
+borrows the caller's bytes. Without the copy, a
 caller that reuses the buffer holding the keys would move each credit's XP
 to whatever key the buffer held next. An award that names a longer key is
 not counted.
 
 <!-- source: coax/lib/nostr/xp_ledger.coax ledger -->
 ```jai
-// Copy at most XP_TEXT bytes; xp_ledger refuses a longer key first.
-xp_kept :: (s:string)->XpKept {
-  t:XpKept;
-  for i:0..<s.count {t.w[i/8]=t.w[i/8]|(cast(u64)s[i]<<((i%8)*8));}
-  t.n=s.count;
-  return t;
-}
-// A kept text is never longer than XP_TEXT, so a longer s differs by count.
-xp_is :: (t:XpKept,s:string)->bool {
-  if t.n!=s.count {return false;}
-  u:=xp_kept(s);
-  for j:0..<XP_TEXT/8 {if t.w[j]!=u.w[j] {return false;}}
-  return true;
-}
-// Write the kept bytes to out for a caller to read: the count, or -1 when
-// out is too small.
-xp_bytes :: (t:XpKept,out:[]u8)->int {
-  if out.count<t.n {return -1;}
-  for i:0..<t.n {out[i]=cast(u8)((t.w[i/8]>>((i%8)*8))&255);}
-  return t.n;
-}
 xp_trusted :: (trusted:[]string,key:string)->bool {for k:trusted {if k==key {return true;}}return false;}
 // Whether key is 30193:<referee>:<address>.
 xp_coordinate :: (key:string,referee:string,address:string)->bool {
@@ -335,10 +315,10 @@ xp_ledger :: (trusted:[]string,quests:[]XpQuest,awards:[]XpAward,revs:[]XpRevoca
     l.counted+=1;
     for k:0..<awards[i].n {
       if awards[i].xp[k]==0 || l.credits<0 {continue;}
-      at:=-1;for c:0..<l.credits {if xp_is(out[c].pubkey,awards[i].keys[k]) {at=c;}}
+      at:=-1;for c:0..<l.credits {if kept_is(out[c].pubkey,awards[i].keys[k]) {at=c;}}
       if at<0 {
         if l.credits==out.count {l.credits= -1;continue;}
-        out[l.credits]=XpCredit.{pubkey=xp_kept(awards[i].keys[k]),xp=0};at=l.credits;l.credits+=1;
+        out[l.credits]=XpCredit.{pubkey=kept64(awards[i].keys[k]),xp=0};at=l.credits;l.credits+=1;
       }
       out[at].xp+=awards[i].xp[k];
     }
@@ -468,7 +448,7 @@ ledger :: (what:string,awards:[]XpAward,revs:[]XpRevocation) {
   l:=xp_ledger(trusted[..],quests[..],awards,revs,ruled[0..<awards.count],why[..],out[..]);
   print("%\n",what);
   for i:0..<awards.count {print("  award %...: %\n",awards[i].event[0..<8],WHY[cast(int)why[i]]);}
-  for i:0..<l.credits {k:[XP_TEXT]u8;n:=xp_bytes(out[i].pubkey,k[..]);print("  credit %...: % XP\n",cast(string)k[0..<8],out[i].xp);}
+  for i:0..<l.credits {k:[XP_TEXT]u8;print("  credit %...: % XP\n",kept_view(out[i].pubkey,k[..])[0..<8],out[i].xp);}
   if l.credits==0 {print("  no credit\n");}
 }
 ```
@@ -611,8 +591,8 @@ a key that isn't the award's referee refused.
   ruled:=[2]bool.[true,true];why:[2]XpWhy;out:[4]XpCredit;
   l:=xp_ledger(trusted[..],quests[..],both[..],revs[..],ruled[..],why[..],out[..]);
   #assert l.counted==1 && l.revoked==1 && l.credits==2;
-  #assert xp_is(out[0].pubkey,"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc") && out[0].xp==6;
-  #assert xp_is(out[1].pubkey,"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13") && out[1].xp==4;
+  #assert kept_is(out[0].pubkey,"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc") && out[0].xp==6;
+  #assert kept_is(out[1].pubkey,"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13") && out[1].xp==4;
 }
 ```
 
@@ -667,7 +647,10 @@ On 2026-11-01, `nipmv.coax` passed 92 checks (with its loaded files') and
 full mutation run (`COAX_MUTATION_FULL=1`) and cross-target runs were not
 done. On 2026-11-03, after each credit began keeping its own copy of the
 key (#12692), `xp_ledger.coax` passed 61 checks and `coax mutate
---root-only` killed all 977 mutants, none marked equivalent.
+--root-only` killed all 977 mutants, none marked equivalent. When the copy
+moved to the standard library's `Kept(8)` (#12696), `xp_ledger.coax` passed
+67 checks (61 and `kept.coax`'s 6) and `coax mutate --root-only` killed all
+941 mutants, none marked equivalent; `kept.coax`'s own run killed all 173.
 
 ## Summary
 

@@ -34,7 +34,7 @@ main :: () {
   ch:=[32]u8.[118,155,102,194,62,112,76,236,214,118,64,208,42,153,181,157,73,255,190,73,170,157,220,27,55,130,115,77,207,218,158,199];
   for i:0..<32 {#assert result.beacon_digest[i]==bh[i] && result.receipt_digest[i]==rh[i] && result.check_digest[i]==ch[i];}
   // Output lists sort their own descriptors and retain the owned input arena.
-  #assert result.beacon_ids[0]==bs[31].event_id && result.receipt_ids[0]==rs[63].event_id && result.check_ids[0]==cs[127].event_id;
+  #assert kept_is(result.beacon_ids[0],bs[31].event_id) && kept_is(result.receipt_ids[0],rs[63].event_id) && kept_is(result.check_ids[0],cs[127].event_id);
   #assert bs[0].event_id==cast(string)beacon_bytes[0..<64] && rs[0].event_id==cast(string)receipt_bytes[0..<64] && cs[0].event_id==cast(string)check_bytes[0..<64];
   for i:0..<4 {#assert result.paid_buckets[i]==0;}
   #assert mt_recompute(p,bs[..],rs[0..<64],cs[0..<128]).code==MT_LIMIT;

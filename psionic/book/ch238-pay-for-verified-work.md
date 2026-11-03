@@ -64,13 +64,12 @@ VpState :: enum u8 {none;held;paid;withheld;review;}
 // The ledger keeps its own copy of every receipt digest and payee. A string
 // argument only borrows the caller's bytes, and a caller may reuse them for
 // the next job; a stored borrow would then rename a held job, its intent and
-// the wallet's idempotency key. VP_TEXT bytes hold a 64-digit digest or a
-// hex public key, packed eight to a word, the first byte lowest.
+// the wallet's idempotency key. A Kept(8) (coax/lib/kept.coax) holds
+// VP_TEXT bytes: a 64-digit digest or a hex public key.
 VP_TEXT :: 64;
-VpText :: struct {n:int;w:[VP_TEXT/8]u64;}
 // One job: the receipt digest that names it, who is paid, the quote held
 // for it and, once decided, the amount owed.
-VpJob :: struct {receipt:VpText;payee:VpText;quote:int;amount:int;state:VpState;}
+VpJob :: struct {receipt:Kept(8);payee:Kept(8);quote:int;amount:int;state:VpState;}
 // What a wallet is asked to pay: at is the paid job's index, whose receipt
 // digest is the key and whose payee is paid.
 VpIntent :: struct {at:int;msat:int;}
@@ -98,27 +97,6 @@ order, and the first one that fails names the refusal.
 
 <!-- source: psionic/lib/peer/pay.coax hold -->
 ```jai
-// Copy at most VP_TEXT bytes; callers refuse anything longer first.
-vp_text :: (s:string)->VpText {
-    t:VpText;
-    for i:0..<s.count {t.w[i/8]=t.w[i/8]|(cast(u64)s[i]<<((i%8)*8));}
-    t.n=s.count;
-    return t;
-}
-vp_byte :: (t:VpText,i:int)->u8 {return cast(u8)((t.w[i/8]>>((i%8)*8))&255);}
-vp_same :: (a:VpText,b:VpText)->bool {
-    if a.n!=b.n {return false;}
-    for j:0..<VP_TEXT/8 {if a.w[j]!=b.w[j] {return false;}}
-    return true;
-}
-vp_is :: (t:VpText,s:string)->bool {return s.count<=VP_TEXT && vp_same(t,vp_text(s));}
-// Write the kept bytes to out for a caller to read: the count, or -1 when
-// out is too small.
-vp_bytes :: (t:VpText,out:[]u8)->int {
-    if out.count<t.n {return -1;}
-    for i:0..<t.n {out[i]=vp_byte(t,i);}
-    return t.n;
-}
 // A receipt digest is 64 lowercase hex digits, as audit-run.coax writes it.
 vp_digest_ok :: (s:string)->bool {
     if s.count!=64 {return false;}
@@ -129,9 +107,8 @@ vp_digest_ok :: (s:string)->bool {
     return true;
 }
 vp_find :: (l:VpLedger,receipt:string)->int {
-    if receipt.count>VP_TEXT {return -1;}
-    r:=vp_text(receipt);
-    for i:0..<l.n {if vp_same(l.jobs[i].receipt,r) {return i;}}
+    r:=kept64(receipt);
+    for i:0..<l.n {if kept_same(l.jobs[i].receipt,r) {return i;}}
     return -1;
 }
 // Hold a quote before the work runs. unit is "msat" or "sat"; anything else
@@ -155,7 +132,7 @@ vp_hold :: (l:VpLedger,receipt:string,payee:string,quote:int,unit:string)->VpSte
     a:=bl_admit(l.account,BlPrice.{msat=q});
     r.refuse=VpRefuse.budget;
     if a.cause!=BlCause.none {return r;}
-    n:=l;n.jobs[n.n]=VpJob.{receipt=vp_text(receipt),payee=vp_text(payee),quote=q,state=VpState.held};n.n+=1;n.account=a.account;
+    n:=l;n.jobs[n.n]=VpJob.{receipt=kept64(receipt),payee=kept64(payee),quote=q,state=VpState.held};n.n+=1;n.account=a.account;
     return VpStep.{state=VpState.held,ledger=n};
 }
 ```
@@ -295,7 +272,7 @@ The first check walks a smaller ledger the same way, with chapter 180's
     #assert t.state==VpState.paid && t.ledger.account.held==0 && t.ledger.account.spent==3464 && t.ledger.m==2 && t.ledger.intents[1].at==2;
     // The wallet boundary: 1732 msat is a Lightning amount, not a whole sat.
     i:=vp_invoice(t.ledger,VPT_A,"lightning");
-    #assert i.refuse==VpRefuse.none && i.rail==VpRail.lightning && i.msat==1732 && i.sat==0 && vp_is(i.key,VPT_A) && vp_is(i.payee,"alpha");
+    #assert i.refuse==VpRefuse.none && i.rail==VpRail.lightning && i.msat==1732 && i.sat==0 && kept_is(i.key,VPT_A) && kept_is(i.payee,"alpha");
     #assert vp_invoice(t.ledger,VPT_A,"spark").refuse==VpRefuse.fraction;
 }
 ```
@@ -398,13 +375,12 @@ the recount refuses it there with `settled`.
 // refused for Spark rather than rounded. Any other rail is refused. key is
 // the idempotency key the wallet records, so a retried intent pays once.
 VpRail :: enum u8 {lightning;spark;}
-VpInvoice :: struct {refuse:VpRefuse;rail:VpRail;msat:int;sat:int;key:VpText;payee:VpText;}
+VpInvoice :: struct {refuse:VpRefuse;rail:VpRail;msat:int;sat:int;key:Kept(8);payee:Kept(8);}
 
 vp_invoice :: (l:VpLedger,key:string,rail:string)->VpInvoice #export_c {
     r:=VpInvoice.{refuse=VpRefuse.unknown};
-    if key.count>VP_TEXT {return r;}
-    want:=vp_text(key);k:=-1;
-    for i:0..<l.m {if vp_same(l.jobs[l.intents[i].at].receipt,want) {k=i;}}
+    want:=kept64(key);k:=-1;
+    for i:0..<l.m {if kept_same(l.jobs[l.intents[i].at].receipt,want) {k=i;}}
     if k<0 {return r;}
     t:=l.intents[k];j:=l.jobs[t.at];
     if rail=="lightning" {return VpInvoice.{rail=VpRail.lightning,msat=t.msat,key=j.receipt,payee=j.payee};}
@@ -531,8 +507,10 @@ million bitcoin in both units, the withheld total's bound, the Spark
 whole-sat rule and the recount's refusals.
 
 `peer/pay.coax` is an `#authority` file. `coax mutate` changes each of the
-536 mutation sites its checks reach, in this file and the ones it loads, in
-turn, and the checks kill all 536. Run it
+663 mutation sites its checks reach, in this file and the ones it loads, in
+turn, and the checks kill all 663, none marked equivalent (2026-11-03, after
+the receipts and payees moved to the standard library's `Kept(8)`, #12696;
+`coax/lib/kept.coax`'s own 173 sites are among them). Run it
 with the other Psionic units:
 
 ```shell

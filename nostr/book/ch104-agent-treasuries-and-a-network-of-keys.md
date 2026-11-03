@@ -702,10 +702,10 @@ refuses with `outputs`.
 // refuses. A full ledger refuses new requests.
 ky_consume :: (l:[]KyLedger,agent:string,r:KyRequest,code:KyCode)->KyRetry {
   if agent.count>KY_TEXT || r.requester.count>KY_TEXT || r.nonce.count>KY_TEXT {return KyRetry.{code=KyCode.field};}
-  a:=ky_kept(agent);q:=ky_kept(r.requester);n:=ky_kept(r.nonce);
+  a:=kept64(agent);q:=kept64(r.requester);n:=kept64(r.nonce);
   for i:0..<l[0].count {
     x:=l[0].e[i];
-    if ky_kept_same(x.agent,a) && ky_kept_same(x.requester,q) && ky_kept_same(x.nonce,n) {
+    if kept_same(x.agent,a) && kept_same(x.requester,q) && kept_same(x.nonce,n) {
       for k:0..<32 {if x.digest[k]!=r.digest[k] {return KyRetry.{code=KyCode.nonce};}}
       return KyRetry.{code=x.code,retry=true};
     }
@@ -715,24 +715,6 @@ ky_consume :: (l:[]KyLedger,agent:string,r:KyRequest,code:KyCode)->KyRetry {
   l[0].count+=1;
   return KyRetry.{code=code};
 }
-// Copy at most KY_TEXT bytes; ky_consume refuses anything longer first.
-ky_kept :: (s:string)->KyKept {
-  t:KyKept;
-  for i:0..<s.count {t.w[i/8]=t.w[i/8]|(cast(u64)s[i]<<((i%8)*8));}
-  t.n=s.count;
-  return t;
-}
-ky_kept_same :: (a:KyKept,b:KyKept)->bool {
-  if a.n!=b.n {return false;}
-  for j:0..<KY_TEXT/8 {if a.w[j]!=b.w[j] {return false;}}
-  return true;
-}
-// Write the kept bytes to out: the count, or -1 when out is too small.
-ky_kept_bytes :: (t:KyKept,out:[]u8)->int {
-  if out.count<t.n {return -1;}
-  for i:0..<t.n {out[i]=cast(u8)((t.w[i/8]>>((i%8)*8))&255);}
-  return t.n;
-}
 ```
 
 A signature already returned can't be recalled, so a key agent records the
@@ -740,7 +722,8 @@ request before releasing its partial signature. The exact retry returns the
 retained outcome; the same nonce with different bytes refuses.
 
 The ledger keeps its own copy of each agent, requester and nonce in a
-`KyKept`: up to 64 bytes packed eight to a `u64`. A string argument only
+`Kept(8)`, the standard library's owned text of up to 64 bytes
+([`coax/lib/kept.coax`](../../coax/lib/kept.coax)). A string argument only
 borrows the caller's bytes. A signer that reads each request into one buffer
 would otherwise find its retained nonce rewritten by the next request: the
 next request would refuse as `nonce`, and the old nonce, no longer on file,

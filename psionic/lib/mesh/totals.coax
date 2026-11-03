@@ -4,6 +4,7 @@
 // This unit does not verify signatures or accept a verified bit. Trust lists
 // are explicit, empty by default. Totals describe buyer/checker claims.
 #load "../../../coax/lib/crypto/sha256.coax";
+#load "../../../coax/lib/kept.coax";
 #authority;
 
 MT_BEACONS :: 32; MT_RECEIPTS :: 64; MT_CHECKS :: 128;
@@ -16,14 +17,13 @@ MtBeacon :: struct {event_id:string;provider:string;pylon:string;generation:int;
 // The result keeps its own copy of each counted event ID. A string only
 // borrows the caller's bytes; a result holding those borrows would name
 // other events once the caller reused its input buffers, while its digests
-// still committed to the old ones. Every counted ID passed mt_hex, so
-// MT_TEXT bytes, packed eight to a word, the first byte lowest, hold it.
+// still committed to the old ones. Every counted ID passed mt_hex, so a
+// Kept(8) (coax/lib/kept.coax), MT_TEXT bytes, holds it.
 MT_TEXT :: 64;
-MtKept :: struct {n:int;w:[MT_TEXT/8]u64;}
 MtPolicy :: struct {from:int;to:int;providers:[]string;buyers:[]string;checkers:[]string;}
 MtResult :: struct {
   code:int=MT_RECORD;beacon_count:int;receipt_count:int;check_count:int;
-  beacon_ids:[MT_BEACONS]MtKept;receipt_ids:[MT_RECEIPTS]MtKept;check_ids:[MT_CHECKS]MtKept;
+  beacon_ids:[MT_BEACONS]Kept(8);receipt_ids:[MT_RECEIPTS]Kept(8);check_ids:[MT_CHECKS]Kept(8);
   beacon_digest:[32]u8;receipt_digest:[32]u8;check_digest:[32]u8;
   pylons_online:int;slots_total:int;slots_free:int;by_family:[3]int;
   jobs_accepted:int;jobs_reported:int;units_jobs:int;checks_pass:int;checks_fail:int;checks_inconclusive:int;rate:int;paid_buckets:[4]int;
@@ -59,21 +59,11 @@ MT_E :: "5555555555555555555555555555555555555555555555555555555555555555";
   providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=0,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};
   r:=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.code==MT_OK && r.beacon_count==1 && r.receipt_count==1 && r.check_count==1;
   for i:0..<192 {d[i]='9';}
-  #assert mt_is(r.beacon_ids[0],MT_A) && mt_is(r.receipt_ids[0],MT_C) && mt_is(r.check_ids[0],MT_D);
+  #assert kept_is(r.beacon_ids[0],MT_A) && kept_is(r.receipt_ids[0],MT_C) && kept_is(r.check_ids[0],MT_D);
   // The digests still commit to the kept IDs.
   out:[65]u8;
-  #assert mt_bytes(r.receipt_ids[0],out[..])==64 && cast(string)out[0..<64]==MT_C && mt_bytes(r.receipt_ids[0],out[0..<63])==-1;
+  #assert kept_bytes(r.receipt_ids[0],out[..])==64 && cast(string)out[0..<64]==MT_C && kept_bytes(r.receipt_ids[0],out[0..<63])==-1;
   one:=[1]string.[MT_C];h:=mt_hash(one[..]);for i:0..<32 {#assert r.receipt_digest[i]==h[i];}
-  // A copy matches exactly the string it was made from.
-  a:=mt_kept("alpha");
-  #assert mt_is(a,"alpha") && !mt_is(a,"alph") && !mt_is(a,"alphb") && !mt_is(a,"alphaa") && !mt_is(a,"blpha") && mt_is(mt_kept(""),"") && !mt_is(mt_kept(""),"a");
-  z:=[2]u8.['a',0];#assert !mt_is(mt_kept("a"),cast(string)z[..]) && !mt_is(mt_kept(cast(string)z[..]),"a");
-  #assert mt_bytes(a,out[0..<5])==5 && cast(string)out[0..<5]=="alpha" && mt_bytes(mt_kept(""),out[0..<0])==0;
-  // Every byte value at every position survives the packing.
-  e:[64]u8;for k:0..<64 {e[k]=cast(u8)(k*4+3);}
-  t:=mt_kept(cast(string)e[..]);#assert mt_bytes(t,out[..])==64;
-  for k:0..<64 {#assert out[k]==e[k];}
-  for v:[3]u8.[0,128,255] {e[9]=v;#assert mt_is(mt_kept(cast(string)e[..]),cast(string)e[..]) && !mt_is(t,cast(string)e[..]);}
 }
 #test "free accepted jobs remain buyer claims and checks need independent explicit trust" {
   bs:=[1]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=1,observed_at=90,valid_until=120,status=0,family=0,total=3,free=2}];
@@ -86,7 +76,7 @@ MT_E :: "5555555555555555555555555555555555555555555555555555555555555555";
   ch:=[32]u8.[244,53,242,66,11,80,199,14,200,8,101,207,142,32,177,105,135,65,101,251,133,118,180,134,51,202,242,168,23,109,46,74];
   for i:0..<32 {#assert r.beacon_digest[i]==bh[i] && r.receipt_digest[i]==rh[i] && r.check_digest[i]==ch[i];}
   #assert r.jobs_accepted==1 && r.jobs_reported==1 && r.units_jobs==1 && r.rate==1 && r.checks_pass==1 && r.checks_fail==0 && r.checks_inconclusive==0;
-  #assert r.beacon_count==1 && r.receipt_count==1 && r.check_count==1 && mt_is(r.beacon_ids[0],MT_A) && mt_is(r.receipt_ids[0],MT_C) && mt_is(r.check_ids[0],MT_D);
+  #assert r.beacon_count==1 && r.receipt_count==1 && r.check_count==1 && kept_is(r.beacon_ids[0],MT_A) && kept_is(r.receipt_ids[0],MT_C) && kept_is(r.check_ids[0],MT_D);
   for i:0..<4 {#assert r.paid_buckets[i]==0;}
   r=mt_recompute(MtPolicy.{from=0,to=120},bs[..],rs[..],cs[..]);#assert r.code==MT_OK && r.beacon_count==0 && r.receipt_count==0 && r.check_count==0;
   empty:[1]string;p.buyers=empty[0..<0];r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.pylons_online==1 && r.jobs_reported==0 && r.check_count==0;p.buyers=buyers[..];p.providers=empty[0..<0];r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.pylons_online==0 && r.jobs_reported==0;p.providers=providers[..];p.checkers=empty[0..<0];r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.jobs_reported==1 && r.check_count==0 && r.checks_fail==0;p.checkers=checkers[..];
@@ -98,14 +88,14 @@ MT_E :: "5555555555555555555555555555555555555555555555555555555555555555";
 #test "canonical receipt and verdict selection is order independent and time bounded" {
   bs:[1]MtBeacon;rs:=[2]MtReceipt.[MtReceipt.{event_id=MT_A,buyer=MT_A,provider=MT_B,pylon="p1",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1},MtReceipt.{}];rs[1]=rs[0];rs[1].event_id=MT_C;rs[1].created_at=63;
   cs:=[2]MtCheck.[MtCheck.{event_id=MT_A,checker=MT_E,receipt_id=MT_A,provider=MT_B,result_digest=MT_C,created_at=70,verdict=1},MtCheck.{}];cs[1]=cs[0];cs[1].event_id=MT_B;cs[1].created_at=71;cs[1].verdict=2;
-  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=60,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};r:=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.receipt_count==1 && mt_is(r.receipt_ids[0],MT_A) && r.check_count==1 && mt_is(r.check_ids[0],MT_B) && r.checks_fail==1;
-  rs[1].created_at=62;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.receipt_count==1 && mt_is(r.receipt_ids[0],MT_A);
+  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=60,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};r:=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.receipt_count==1 && kept_is(r.receipt_ids[0],MT_A) && r.check_count==1 && kept_is(r.check_ids[0],MT_B) && r.checks_fail==1;
+  rs[1].created_at=62;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.receipt_count==1 && kept_is(r.receipt_ids[0],MT_A);
   swap:=rs[0];rs[0]=rs[1];rs[1]=swap;cswap:=cs[0];cs[0]=cs[1];cs[1]=cswap;other:=mt_recompute(p,bs[0..<0],rs[..],cs[..]);for i:0..<32 {#assert r.receipt_digest[i]==other.receipt_digest[i] && r.check_digest[i]==other.check_digest[i];}
   rs[0]=rs[1];cs[0]=cs[1];r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.receipt_count==1 && r.check_count==1 && r.checks_pass==1;
   rs[0].created_at=61;rs[0].event_id=MT_C;rs[0].finished_at=59;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.receipt_count==0 && r.check_count==0;
   rs[0]=rs[1];rs[1].event_id=MT_C;rs[0].finished_at=120;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.receipt_count==0;
   rs[0].finished_at=60;cs[1].event_id=MT_B;cs[1].created_at=120;cs[1].verdict=2;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.checks_pass==1 && r.checks_fail==0;
-  cs[1].created_at=70;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.checks_fail==1 && mt_is(r.check_ids[0],MT_B);
+  cs[1].created_at=70;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.checks_fail==1 && kept_is(r.check_ids[0],MT_B);
   cs[1].provider=MT_C;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.checks_pass==1;
   cs[0].created_at=61;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.check_count==0;
   cs[0].created_at=62;cs[1]=cs[0];cs[1].event_id=MT_B;cs[1].verdict=2;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.check_count==1 && r.checks_fail==1;
@@ -114,10 +104,10 @@ MT_E :: "5555555555555555555555555555555555555555555555555555555555555555";
   bs:=[2]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=1,observed_at=90,valid_until=120,status=0,family=1,total=2,free=1},MtBeacon.{}];bs[1]=bs[0];bs[1].event_id=MT_B;bs[1].generation=2;bs[1].status=2;
   rs:[1]MtReceipt;cs:[1]MtCheck;keys:=[1]string.[MT_B];p:=MtPolicy.{from=60,to=120,providers=keys[..]};r:=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.beacon_count==0;
   bs[1].observed_at=120;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.beacon_count==0;bs[1].observed_at=90;
-  bs[1].status=1;bs[1].family=2;bs[1].free=0;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.pylons_online==1 && r.slots_total==2 && r.slots_free==0 && r.by_family[2]==1 && mt_is(r.beacon_ids[0],MT_B);
+  bs[1].status=1;bs[1].family=2;bs[1].free=0;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.pylons_online==1 && r.slots_total==2 && r.slots_free==0 && r.by_family[2]==1 && kept_is(r.beacon_ids[0],MT_B);
   bs[1].valid_until=119;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.beacon_count==0;
-  bs[1].observed_at=121;bs[1].valid_until=421;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.beacon_count==1 && mt_is(r.beacon_ids[0],MT_A) && r.by_family[1]==1;
-  bs[1]=bs[0];bs[1].event_id=MT_B;bs[1].free=2;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert mt_is(r.beacon_ids[0],MT_B) && r.slots_free==2;
+  bs[1].observed_at=121;bs[1].valid_until=421;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.beacon_count==1 && kept_is(r.beacon_ids[0],MT_A) && r.by_family[1]==1;
+  bs[1]=bs[0];bs[1].event_id=MT_B;bs[1].free=2;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert kept_is(r.beacon_ids[0],MT_B) && r.slots_free==2;
   bs[1].event_id=MT_A;bs[1].free=1;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.beacon_count==1;
 }
 #test "untrusted signer and provider noise is filtered before validation or dedup" {
@@ -163,32 +153,11 @@ MT_E :: "5555555555555555555555555555555555555555555555555555555555555555";
   bs:[3]MtBeacon;rs:[3]MtReceipt;cs:[3]MtCheck;ids:=[3]string.[MT_C,MT_B,MT_A];names:=[3]string.["p3","p2","p1"];
   for i:0..<3 {bs[i]=MtBeacon.{event_id=ids[i],provider=MT_B,pylon=names[i],generation=1,observed_at=120,valid_until=120,status=0,family=i,total=3,free=i};rs[i]=MtReceipt.{event_id=ids[i],buyer=MT_A,provider=MT_B,pylon="p",request=ids[i],request_digest=MT_D,result_digest=MT_E,created_at=60,finished_at=60,accepted=true,units=1};cs[i]=MtCheck.{event_id=ids[i],checker=MT_E,receipt_id=ids[i],provider=MT_B,result_digest=MT_D,created_at=60,verdict=1};}
   providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=60,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};r:=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.beacon_count==3 && r.receipt_count==3 && r.check_count==3 && r.pylons_online==3 && r.slots_total==9 && r.slots_free==3 && r.jobs_reported==3 && r.checks_pass==3;
-  for i:0..<3 {#assert r.by_family[i]==1 && mt_is(r.beacon_ids[i],ids[2-i]) && mt_is(r.receipt_ids[i],ids[2-i]) && mt_is(r.check_ids[i],ids[2-i]);}
+  for i:0..<3 {#assert r.by_family[i]==1 && kept_is(r.beacon_ids[i],ids[2-i]) && kept_is(r.receipt_ids[i],ids[2-i]) && kept_is(r.check_ids[i],ids[2-i]);}
   up:=[3]string.[ids[2],ids[1],ids[0]];b:=mt_hash(up[..]);q:=b;c:=b;for i:0..<32 {#assert r.beacon_digest[i]==b[i] && r.receipt_digest[i]==q[i] && r.check_digest[i]==c[i];}
   cs[1].checker=MT_D;cs[1].receipt_id=MT_C;more:=[2]string.[MT_E,MT_D];p.checkers=more[..];r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.check_count==3;
 }
 
-// Copy at most MT_TEXT bytes: mt_recompute keeps only IDs that passed mt_hex.
-mt_kept :: (s:string)->MtKept {
-  t:MtKept;
-  for i:0..<s.count {t.w[i/8]=t.w[i/8]|(cast(u64)s[i]<<((i%8)*8));}
-  t.n=s.count;
-  return t;
-}
-// A kept ID is never longer than MT_TEXT, so a longer s differs by count.
-mt_is :: (t:MtKept,s:string)->bool {
-  if t.n!=s.count {return false;}
-  u:=mt_kept(s);
-  for j:0..<MT_TEXT/8 {if t.w[j]!=u.w[j] {return false;}}
-  return true;
-}
-// Write the kept bytes to out for a caller to read: the count, or -1 when
-// out is too small.
-mt_bytes :: (t:MtKept,out:[]u8)->int {
-  if out.count<t.n {return -1;}
-  for i:0..<t.n {out[i]=cast(u8)((t.w[i/8]>>((i%8)*8))&255);}
-  return t.n;
-}
 mt_hex :: (s:string)->bool {if s.count!=64 {return false;}for c:s {if !((c>='0'&&c<='9')||(c>='a'&&c<='f')) {return false;}}return true;}
 mt_slug :: (s:string)->bool {if s.count<1||s.count>64 {return false;}for c:s {if !((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'||c=='_') {return false;}}return true;}
 mt_time :: (n:int)->bool {return n>=0 && n<=MT_SAFE;}
@@ -247,5 +216,5 @@ mt_recompute :: (p:MtPolicy,beacons:[]MtBeacon,receipts:[]MtReceipt,checks:[]MtC
   }
   mt_sort(bids[0..<r.beacon_count]);mt_sort(rids[0..<r.receipt_count]);mt_sort(cids[0..<r.check_count]);
   r.beacon_digest=mt_hash(bids[0..<r.beacon_count]);r.receipt_digest=mt_hash(rids[0..<r.receipt_count]);r.check_digest=mt_hash(cids[0..<r.check_count]);
-  for i:0..<r.beacon_count {r.beacon_ids[i]=mt_kept(bids[i]);}for i:0..<r.receipt_count {r.receipt_ids[i]=mt_kept(rids[i]);}for i:0..<r.check_count {r.check_ids[i]=mt_kept(cids[i]);}r.jobs_reported=r.jobs_accepted;r.rate=r.jobs_accepted;r.code=MT_OK;return r;
+  for i:0..<r.beacon_count {r.beacon_ids[i]=kept64(bids[i]);}for i:0..<r.receipt_count {r.receipt_ids[i]=kept64(rids[i]);}for i:0..<r.check_count {r.check_ids[i]=kept64(cids[i]);}r.jobs_reported=r.jobs_accepted;r.rate=r.jobs_accepted;r.code=MT_OK;return r;
 }

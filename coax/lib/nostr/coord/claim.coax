@@ -25,6 +25,7 @@
 // findings and integration, background plans, a separately admitted
 // controller for cancel, status reads, and RUN records.
 //   coax/bin/coax test coax/lib/nostr/coord/claim.coax --library
+#load "../../kept.coax";
 #authority;
 
 // book:begin codes
@@ -47,14 +48,13 @@ CO_MAX_RESOURCES :: 64;                               // the schema's array boun
 // hold's resource and snapshot. A string argument only borrows the caller's
 // bytes, and a coordinator may read the next request into the same buffer;
 // a stored borrow would then move a hold to another resource or a claim to
-// another worker after the claim was checked. CO_TEXT bytes hold a 64-hex
-// key, a "sha256:" digest or a resource ID, packed eight to a word, the
-// first byte lowest; a longer string refuses as malformed.
+// another worker after the claim was checked. A Kept(16)
+// (coax/lib/kept.coax) holds CO_TEXT bytes: a 64-hex key, a "sha256:"
+// digest or a resource ID; a longer string refuses as malformed.
 CO_TEXT :: 128;
-CoKept :: struct {n:int;w:[CO_TEXT/8]u64;}
 CoordState :: struct {owner:string;epoch:int;token:int;revision:int;max_lease:int;claims:int;holds:int;}
-CoordClaim :: struct {token:int;proposal:CoKept;worker:CoKept;expires_at:int;state:int;}
-CoordHold :: struct {token:int;resource:CoKept;write:bool;snapshot:CoKept;released:bool;}
+CoordClaim :: struct {token:int;proposal:Kept(16);worker:Kept(16);expires_at:int;state:int;}
+CoordHold :: struct {token:int;resource:Kept(16);write:bool;snapshot:Kept(16);released:bool;}
 CoordWant :: struct {resource:string;write:bool;snapshot:string;}
 CoordRequest :: struct {proposal:string;worker:string;expected_revision:int;requested_until:int;}
 // book:end record
@@ -92,7 +92,7 @@ co_put :: (out:[]u8,s:string)->string {
   #assert coord_claim(s[..],c[..],h[..],q,x[..],CO_T0)==CO_OK;
   // It reads the next request into the same buffers.
   y:=co_put(w[..],CO_W7);y=co_put(p[..],"proposal-2");y=co_put(r[..],"ref");for k:7..<71 {n[k]='6';}
-  #assert co_is(c[0].worker,CO_W3) && co_is(c[0].proposal,CO_P) && co_is(h[0].resource,"doc") && co_is(h[1].snapshot,CO_SNAP);
+  #assert kept_is(c[0].worker,CO_W3) && kept_is(c[0].proposal,CO_P) && kept_is(h[0].resource,"doc") && kept_is(h[1].snapshot,CO_SNAP);
   // The hold is still on doc for worker 3: worker 7's write of doc conflicts.
   z:=[1]CoordWant.[co_want("doc",true,"")];
   #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,11,CO_T0+60),z[..],CO_T0)==CO_CONFLICT;
@@ -107,23 +107,12 @@ co_put :: (out:[]u8,s:string)->string {
   }
   #assert s[0].revision==11 && s[0].claims==1 && s[0].holds==2;
   l:=co_request(most,11,CO_T0+60);l.proposal=most;m:=[1]CoordWant.[co_want(most,false,most)];
-  #assert coord_claim(s[..],c[..],h[..],l,m[..],CO_T0)==CO_OK && co_is(c[1].worker,most) && co_is(h[2].resource,most) && co_is(h[2].snapshot,most);
+  #assert coord_claim(s[..],c[..],h[..],l,m[..],CO_T0)==CO_OK && kept_is(c[1].worker,most) && kept_is(h[2].resource,most) && kept_is(h[2].snapshot,most);
   m[0]=co_want(most,true,"");
   #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,12,CO_T0+60),m[..],CO_T0)==CO_OK;
   #assert coord_fence(s[..],c[..],h[..],CO_W7,most,2,3,CO_T0+10)==CO_OK && coord_fence(s[..],c[..],h[..],CO_W7,long,2,3,CO_T0+10)==CO_NOT_ADMITTED;
   #assert coord_control(s[..],c[..],h[..],2,CO_RENEW,long,13,CO_T0+100,CO_T0)==CO_NOT_ADMITTED;
   #assert coord_control(s[..],c[..],h[..],2,CO_RENEW,most,13,CO_T0+100,CO_T0)==CO_OK && c[1].expires_at==CO_T0+100;
-  // A copy matches exactly the string it was made from.
-  a:=co_kept("alpha");
-  #assert co_is(a,"alpha") && !co_is(a,"alph") && !co_is(a,"alphb") && !co_is(a,"alphaa") && !co_is(a,"blpha") && co_is(co_kept(""),"") && !co_is(co_kept(""),"a");
-  e0:=[2]u8.['a',0];#assert !co_is(co_kept("a"),cast(string)e0[..]) && !co_is(co_kept(cast(string)e0[..]),"a");
-  out:[129]u8;
-  #assert co_bytes(a,out[0..<5])==5 && cast(string)out[0..<5]=="alpha" && co_bytes(a,out[0..<4])==-1 && co_bytes(co_kept(""),out[0..<0])==0;
-  // Every byte value at every position survives the packing.
-  e:[128]u8;for k:0..<128 {e[k]=cast(u8)(k*2+1);}
-  t:=co_kept(cast(string)e[..]);#assert co_bytes(t,out[..])==128 && co_bytes(t,out[0..<127])==-1;
-  for k:0..<128 {#assert out[k]==e[k];}
-  for v:[3]u8.[0,128,255] {e[9]=v;#assert co_is(co_kept(cast(string)e[..]),cast(string)e[..]) && !co_is(t,cast(string)e[..]);}
 }
 #test "the codes and states are distinct" {
   #assert CO_OK==0 && CO_MALFORMED==1 && CO_LIMIT==2 && CO_STALE==3 && CO_CONFLICT==4 && CO_NOT_ADMITTED==5 && CO_EXPIRED==6 && CO_CLOSED==7;
@@ -134,8 +123,8 @@ co_put :: (out:[]u8,s:string)->string {
   w:=[1]CoordWant.[co_want("doc",true,"")];
   #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+300),w[..],CO_T0)==CO_OK;
   #assert s[0].token==1 && s[0].revision==11 && s[0].claims==1 && s[0].holds==1;
-  #assert c[0].token==1 && co_is(c[0].worker,CO_W3) && co_is(c[0].proposal,CO_P) && c[0].expires_at==CO_T0+300 && c[0].state==CO_ACTIVE;
-  #assert h[0].token==1 && co_is(h[0].resource,"doc") && h[0].write;
+  #assert c[0].token==1 && kept_is(c[0].worker,CO_W3) && kept_is(c[0].proposal,CO_P) && c[0].expires_at==CO_T0+300 && c[0].state==CO_ACTIVE;
+  #assert h[0].token==1 && kept_is(h[0].resource,"doc") && h[0].write;
   // The loser sent the same expected revision: stale, and nothing moves.
   #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,10,CO_T0+300),w[..],CO_T0)==CO_STALE;
   // At the current revision it still loses: the resource is held.
@@ -177,7 +166,7 @@ co_put :: (out:[]u8,s:string)->string {
   #assert s[0].holds==1 && s[0].claims==1;
   only:=[1]CoordWant.[co_want("a",true,"")];
   #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,11,CO_T0+60),only[..],CO_T0)==CO_OK;
-  #assert s[0].holds==2 && co_is(h[1].resource,"a") && h[1].token==2 && co_is(c[1].worker,CO_W7);
+  #assert s[0].holds==2 && kept_is(h[1].resource,"a") && h[1].token==2 && kept_is(c[1].worker,CO_W7);
 }
 #test "which modes share: reads, snapshot reads beside a write; live reads and writes do not" {
   // Each case: hold one, then ask for one, on the same resource.
@@ -287,35 +276,11 @@ co_put :: (out:[]u8,s:string)->string {
   #assert s[0].token==n && s[0].revision==10+n && s[0].claims==n;
 }
 
-// book:begin kept
-// Copy at most CO_TEXT bytes; coord_claim refuses anything longer first.
-co_kept :: (s:string)->CoKept {
-  t:CoKept;
-  for i:0..<s.count {t.w[i/8]=t.w[i/8]|(cast(u64)s[i]<<((i%8)*8));}
-  t.n=s.count;
-  return t;
-}
-// A kept text is never longer than CO_TEXT, so a longer s differs by count.
-co_is :: (t:CoKept,s:string)->bool {
-  if t.n!=s.count {return false;}
-  u:=co_kept(s);
-  for j:0..<CO_TEXT/8 {if t.w[j]!=u.w[j] {return false;}}
-  return true;
-}
-// Write the kept bytes to out for a caller to read: the count, or -1 when
-// out is too small.
-co_bytes :: (t:CoKept,out:[]u8)->int {
-  if out.count<t.n {return -1;}
-  for i:0..<t.n {out[i]=cast(u8)((t.w[i/8]>>((i%8)*8))&255);}
-  return t.n;
-}
-// book:end kept
-
 // book:begin conflict
 // Two entries on one resource conflict unless both read, or the reader holds
 // an immutable snapshot.
 coord_overlap :: (resource:string,write:bool,snapshot:string,h:CoordHold)->bool {
-  if !co_is(h.resource,resource) {return false;}
+  if !kept_is(h.resource,resource) {return false;}
   if write && h.write {return true;}
   if write {return h.snapshot.n==0;}
   return h.write && snapshot=="";
@@ -344,9 +309,9 @@ coord_claim :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,q:CoordRequ
   if st.claims>=claims.count || st.holds+want.count>holds.count {return CO_LIMIT;}
   // 4. Grant all of it at once: the next token, the next revision.
   t:=st.token+1;
-  claims[st.claims]=CoordClaim.{token=t,proposal=co_kept(q.proposal),worker=co_kept(q.worker),expires_at=q.requested_until,state=CO_ACTIVE};
+  claims[st.claims]=CoordClaim.{token=t,proposal=kept128(q.proposal),worker=kept128(q.worker),expires_at=q.requested_until,state=CO_ACTIVE};
   for i:0..<want.count {
-    holds[st.holds+i]=CoordHold.{token=t,resource=co_kept(want[i].resource),write=want[i].write,snapshot=co_kept(want[i].snapshot)};
+    holds[st.holds+i]=CoordHold.{token=t,resource=kept128(want[i].resource),write=want[i].write,snapshot=kept128(want[i].snapshot)};
   }
   s[0].token=t;s[0].revision=st.revision+1;s[0].claims=st.claims+1;s[0].holds=st.holds+want.count;
   return CO_OK;
@@ -367,7 +332,7 @@ coord_control :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,token:int
   if k<0 {return CO_NOT_ADMITTED;}
   c:=claims[k];
   if action==CO_CANCEL {if actor!=st.owner {return CO_NOT_ADMITTED;}}
-  else if action==CO_RENEW || action==CO_RELEASE {if !co_is(c.worker,actor) && actor!=st.owner {return CO_NOT_ADMITTED;}}
+  else if action==CO_RENEW || action==CO_RELEASE {if !kept_is(c.worker,actor) && actor!=st.owner {return CO_NOT_ADMITTED;}}
   else {return CO_MALFORMED;}
   if expected_revision!=st.revision {return CO_STALE;}
   if c.state==CO_RELEASED || (action!=CO_RELEASE && c.state==CO_CANCELLED) {return CO_CLOSED;}
@@ -391,10 +356,10 @@ coord_control :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,token:int
 coord_fence :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,worker:string,resource:string,epoch:int,token:int,now:int)->u32 {
   st:=s[0];
   k:=coord_find(claims,st.claims,token);
-  if k<0 || !co_is(claims[k].worker,worker) {return CO_NOT_ADMITTED;}
+  if k<0 || !kept_is(claims[k].worker,worker) {return CO_NOT_ADMITTED;}
   held:=false;newer:=false;
   for i:0..<st.holds {
-    if co_is(holds[i].resource,resource) && holds[i].write {
+    if kept_is(holds[i].resource,resource) && holds[i].write {
       if holds[i].token==token {held=true;}
       if holds[i].token>token {newer=true;}
     }

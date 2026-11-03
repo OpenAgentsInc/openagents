@@ -93,49 +93,25 @@ them. The record in `claim.coax`:
 // hold's resource and snapshot. A string argument only borrows the caller's
 // bytes, and a coordinator may read the next request into the same buffer;
 // a stored borrow would then move a hold to another resource or a claim to
-// another worker after the claim was checked. CO_TEXT bytes hold a 64-hex
-// key, a "sha256:" digest or a resource ID, packed eight to a word, the
-// first byte lowest; a longer string refuses as malformed.
+// another worker after the claim was checked. A Kept(16)
+// (coax/lib/kept.coax) holds CO_TEXT bytes: a 64-hex key, a "sha256:"
+// digest or a resource ID; a longer string refuses as malformed.
 CO_TEXT :: 128;
-CoKept :: struct {n:int;w:[CO_TEXT/8]u64;}
 CoordState :: struct {owner:string;epoch:int;token:int;revision:int;max_lease:int;claims:int;holds:int;}
-CoordClaim :: struct {token:int;proposal:CoKept;worker:CoKept;expires_at:int;state:int;}
-CoordHold :: struct {token:int;resource:CoKept;write:bool;snapshot:CoKept;released:bool;}
+CoordClaim :: struct {token:int;proposal:Kept(16);worker:Kept(16);expires_at:int;state:int;}
+CoordHold :: struct {token:int;resource:Kept(16);write:bool;snapshot:Kept(16);released:bool;}
 CoordWant :: struct {resource:string;write:bool;snapshot:string;}
 CoordRequest :: struct {proposal:string;worker:string;expected_revision:int;requested_until:int;}
 ```
 
 A request arrives as strings. The claims and holds that outlive it keep
-their own copies, `CoKept`, of up to 128 bytes. A string only borrows the
+their own copies, each a `Kept(16)` of up to 128 bytes from the standard
+library's owned text ([`coax/lib/kept.coax`](../../coax/lib/kept.coax)),
+made with `kept128` and compared with `kept_is`. A string only borrows the
 caller's bytes: without the copy, a coordinator that reads each request into
 one buffer would move an existing hold onto whatever resource the next
 request names, and free the one it was granted. A longer proposal, worker,
 resource or snapshot refuses as `CO_MALFORMED` before anything is written.
-
-<!-- source: coax/lib/nostr/coord/claim.coax kept -->
-```jai
-// Copy at most CO_TEXT bytes; coord_claim refuses anything longer first.
-co_kept :: (s:string)->CoKept {
-  t:CoKept;
-  for i:0..<s.count {t.w[i/8]=t.w[i/8]|(cast(u64)s[i]<<((i%8)*8));}
-  t.n=s.count;
-  return t;
-}
-// A kept text is never longer than CO_TEXT, so a longer s differs by count.
-co_is :: (t:CoKept,s:string)->bool {
-  if t.n!=s.count {return false;}
-  u:=co_kept(s);
-  for j:0..<CO_TEXT/8 {if t.w[j]!=u.w[j] {return false;}}
-  return true;
-}
-// Write the kept bytes to out for a caller to read: the count, or -1 when
-// out is too small.
-co_bytes :: (t:CoKept,out:[]u8)->int {
-  if out.count<t.n {return -1;}
-  for i:0..<t.n {out[i]=cast(u8)((t.w[i/8]>>((i%8)*8))&255);}
-  return t.n;
-}
-```
 
 A claim request (`openagents.claim-request.v1`) names a proposal, the
 worker's key, its resources as `{id, mode, snapshot}`, the revision it
@@ -184,7 +160,7 @@ resource conflict. Written out for one resource:
 // Two entries on one resource conflict unless both read, or the reader holds
 // an immutable snapshot.
 coord_overlap :: (resource:string,write:bool,snapshot:string,h:CoordHold)->bool {
-  if !co_is(h.resource,resource) {return false;}
+  if !kept_is(h.resource,resource) {return false;}
   if write && h.write {return true;}
   if write {return h.snapshot.n==0;}
   return h.write && snapshot=="";
@@ -220,9 +196,9 @@ coord_claim :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,q:CoordRequ
   if st.claims>=claims.count || st.holds+want.count>holds.count {return CO_LIMIT;}
   // 4. Grant all of it at once: the next token, the next revision.
   t:=st.token+1;
-  claims[st.claims]=CoordClaim.{token=t,proposal=co_kept(q.proposal),worker=co_kept(q.worker),expires_at=q.requested_until,state=CO_ACTIVE};
+  claims[st.claims]=CoordClaim.{token=t,proposal=kept128(q.proposal),worker=kept128(q.worker),expires_at=q.requested_until,state=CO_ACTIVE};
   for i:0..<want.count {
-    holds[st.holds+i]=CoordHold.{token=t,resource=co_kept(want[i].resource),write=want[i].write,snapshot=co_kept(want[i].snapshot)};
+    holds[st.holds+i]=CoordHold.{token=t,resource=kept128(want[i].resource),write=want[i].write,snapshot=kept128(want[i].snapshot)};
   }
   s[0].token=t;s[0].revision=st.revision+1;s[0].claims=st.claims+1;s[0].holds=st.holds+want.count;
   return CO_OK;
@@ -254,7 +230,7 @@ coord_control :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,token:int
   if k<0 {return CO_NOT_ADMITTED;}
   c:=claims[k];
   if action==CO_CANCEL {if actor!=st.owner {return CO_NOT_ADMITTED;}}
-  else if action==CO_RENEW || action==CO_RELEASE {if !co_is(c.worker,actor) && actor!=st.owner {return CO_NOT_ADMITTED;}}
+  else if action==CO_RENEW || action==CO_RELEASE {if !kept_is(c.worker,actor) && actor!=st.owner {return CO_NOT_ADMITTED;}}
   else {return CO_MALFORMED;}
   if expected_revision!=st.revision {return CO_STALE;}
   if c.state==CO_RELEASED || (action!=CO_RELEASE && c.state==CO_CANCELLED) {return CO_CLOSED;}
@@ -295,10 +271,10 @@ latest token registered in its trusted coordinator connection."
 coord_fence :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,worker:string,resource:string,epoch:int,token:int,now:int)->u32 {
   st:=s[0];
   k:=coord_find(claims,st.claims,token);
-  if k<0 || !co_is(claims[k].worker,worker) {return CO_NOT_ADMITTED;}
+  if k<0 || !kept_is(claims[k].worker,worker) {return CO_NOT_ADMITTED;}
   held:=false;newer:=false;
   for i:0..<st.holds {
-    if co_is(holds[i].resource,resource) && holds[i].write {
+    if kept_is(holds[i].resource,resource) && holds[i].write {
       if holds[i].token==token {held=true;}
       if holds[i].token>token {newer=true;}
     }
@@ -997,7 +973,10 @@ survived and none is marked equivalent. The full mutation run
 (`COAX_MUTATION_FULL=1`) and cross-target runs were not done. On
 2026-11-03, after the record began keeping its own copies (#12692),
 `claim.coax` passed 13 checks and `coax mutate --root-only` killed all 205
-mutants, none marked equivalent.
+mutants, none marked equivalent. Later that day the copies moved to the
+standard library's `Kept(16)` (#12696): `claim.coax` passed 19 checks (13
+and `kept.coax`'s 6), and `coax mutate --root-only` killed all 169 mutants,
+none marked equivalent. `kept.coax`'s own run killed all 173.
 
 ## Summary
 
