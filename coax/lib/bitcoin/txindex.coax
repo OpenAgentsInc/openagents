@@ -1,0 +1,196 @@
+// Chapter 91's transaction portion, #12704. Coins, archival tx positions and
+// their shared sync cursor publish in one light-profile KV batch.
+#run_steps 250000000;
+#load "txindex-store.coax";
+#load "lightchain.coax";
+#authority;
+
+#test "tx index: explicit genesis init and exact init capacities" {
+  live: [4096] u8; stage: [4096] u8; batch: [4096] u8; g: [32] u8; g[31] = 19;
+  r := txi_init_vartime(5, g[..], live[..], 0, stage[..], batch[..]);
+  #assert r.code == LC_OK && r.used == 106 && r.n == 120 && live[0] == 0;
+  meta := txi_context_vartime(stage[..], r.used); #assert meta.code == LC_OK && meta.next == 0;
+  #assert txi_find_vartime(stage[..], r.used, g[..], false).code == TXI_MISS;
+  #assert txi_init_vartime(5, g[..], live[0..<106], 0, stage[..], batch[0..<120]).code == LC_OK;
+  #assert txi_init_vartime(5, g[..], live[0..<105], 0, stage[..], batch[..]).code == LC_CAPACITY;
+  #assert txi_init_vartime(5, g[..], live[..], 0, stage[0..<105], batch[..]).code == LC_CAPACITY;
+  #assert txi_init_vartime(5, g[..], live[..], 0, stage[..], batch[0..<119]).code == LC_CAPACITY;
+  #assert txi_init_vartime(5, g[..], live[..], 1, stage[..], batch[..]).code == LC_CONTEXT;
+}
+#test "tx index: one block, disconnect, reconnect and incomplete index refusal" #steps 100000000 {
+  d: [1] LcDemo; lc_demo_minimal(d[..]);
+  raw: [1024] u8; b := tx_unhex(LC_PREFIX[1], raw[..]); blocks := [1] LcBlock.[LcBlock.{index=1,bytes=b}];
+  locs := [1] TxiLoc.[TxiLoc.{file=17,pos=65536}];
+  #assert txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..])).code == LC_CONTEXT;
+  #assert txi_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..]).code == LC_CONTEXT;
+  txi_demo_init(d[..]);
+  #assert txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[0..<0], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..])).code == LC_CONTEXT;
+  r := txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..]));
+  #assert r.code == LC_OK && r.connected == 1 && r.disconnected == 0;
+  #assert kv_batch_check_vartime(d[0].batch[0..<r.n]).code == KV_OK;
+  lc_demo_publish(d[..], r); used := d[0].used; saved: [65536] u8; for i: 0..<used { saved[i] = d[0].live[i]; }
+  id: [32] u8; t := tx_parse_vartime(b[81..<b.count], true, d[0].ins[..], d[0].outs[..], d[0].items[..]);
+  #assert tx_txid_vartime(b[81..<b.count], t, id[..]);
+  hit := txi_find_vartime(d[0].live[..], used, id[..], true);
+  #assert hit.code == LC_OK && hit.active && hit.file == 17 && hit.pos == 65536 && hit.offset == 81 && hit.n == t.total && hit.height == 1;
+  h := d[0].entries[1].hash; #assert lc_same(hit.block[..], h[..]);
+  detached := txi_disconnect_vartime(d[0].live[..], used, d[0].stage[..], d[0].batch[..]);
+  #assert detached.code == LC_OK && kv_batch_check_vartime(d[0].batch[0..<detached.n]).code == KV_OK;
+  lc_demo_publish(d[..], detached);
+  #assert txi_find_vartime(d[0].live[..], d[0].used, id[..], true).code == TXI_MISS;
+  hit = txi_find_vartime(d[0].live[..], d[0].used, id[..], false); #assert hit.code == LC_OK && !hit.active;
+  lc_demo_publish(d[..], txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..])));
+  #assert d[0].used == used && lc_same(d[0].live[0..<used], saved[0..<used]);
+  // Bypassing the indexed wrapper makes the sync cursor visibly stale.
+  lc_demo_publish(d[..], lc_disconnect_vartime(d[0].live[..], used, d[0].stage[..], d[0].batch[..]));
+  #assert txi_find_vartime(d[0].live[..], d[0].used, id[..], false).code == LC_CONTEXT;
+}
+#test "tx index: location, sequence, body and final capacity refusals are private" #steps 100000000 {
+  d: [1] LcDemo; lc_demo_minimal(d[..]); txi_demo_init(d[..]); raw: [1024] u8;
+  b := tx_unhex(LC_PREFIX[1], raw[..]); blocks := [1] LcBlock.[LcBlock.{index=1,bytes=b}];
+  locs := [1] TxiLoc.[TxiLoc.{file=0,pos=8}];
+  r := txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..]));
+  #assert r.code == LC_OK;
+  base := lc_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..]));
+  for extra: [3] int.[79, 143, 199] {
+    #assert txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[0..<base.n+extra], lc_demo_work(d[..])).code == LC_CAPACITY;
+  }
+  #assert txi_reorg_vartime(d[0].tree[..], d[0].live[0..<r.used], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..])).code == LC_OK;
+  #assert txi_reorg_vartime(d[0].tree[..], d[0].live[0..<r.used-1], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..])).code == LC_CAPACITY;
+  #assert txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[0..<r.n-1], lc_demo_work(d[..])).code == LC_CAPACITY;
+  locs[0].pos = 7;
+  #assert txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..])).code == TXI_LOCATION;
+  locs[0].pos = 8; blocks[0].index = -1;
+  #assert txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..])).code == LC_CONTEXT;
+  blocks[0].index = 1; b[b.count-1] ^= 1;
+  #assert txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..])).code == LC_BLOCK;
+  b[b.count-1] ^= 1;
+  c := [1] LcCursor.[LcCursor.{used=d[0].used,n=kv_batch_new(d[0].batch[..])}];
+  #assert txi_sync_vartime(d[0].live[..], c[..], d[0].batch[..], 4294967295); d[0].used = c[0].used;
+  #assert txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..])).code == LC_CAPACITY;
+  #assert lc_tip_vartime(d[0].live[..], d[0].used).height == 0 && txi_context_vartime(d[0].live[..], d[0].used).next == 4294967295;
+}
+#test "tx index: prevalidated multi-transaction offsets and idempotent replay" #steps 100000000 {
+  d: [1] LcDemo; lc_demo_minimal(d[..]); txi_demo_init(d[..]); raw: [1024] u8;
+  // Isolate the private serialization stage; public traces admit the actual
+  // 100-block prefix. These positions/ids were computed by a Python reader.
+  b := tx_unhex(LC_BRANCH[0], raw[..]); block := LcBlock.{index=1,bytes=b}; loc := TxiLoc.{file=123,pos=256};
+  c: [1] LcCursor; #assert lc_begin_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..], c[..]);
+  m := txi_stage_block_vartime(d[0].tree[..], d[0].stage[..], c[..], d[0].batch[..], block, loc, 0, lc_demo_work(d[..]));
+  #assert m.code == LC_OK && m.next == 1 && txi_sync_vartime(d[0].stage[..], c[..], d[0].batch[..], m.next);
+  ids := [3] string.["50ad9797194afb45c133ec94480d82aa71fbd236d38132223466806d7061487b", "2a94b23b273ecd77d23f951ba720913327d87b1e186617d8058ea9909314d944", "ec9bc0753b795b707db19571400e119ebb3dea2129b99ea793be32e602afc2be"];
+  offsets := [3] int.[81,157,228]; sizes := [3] int.[76,71,61];
+  for i: 0..<3 {
+    id: [32] u8; h := tx_unhex(ids[i], id[..]);
+    hit := txi_find_vartime(d[0].stage[..], c[0].used, h, false);
+    #assert hit.code == LC_OK && !hit.active && hit.seq == 0 && hit.file == 123 && hit.pos == 256 && hit.offset == offsets[i] && hit.n == sizes[i];
+  }
+  used := c[0].used; n := c[0].n;
+  m = txi_stage_block_vartime(d[0].tree[..], d[0].stage[..], c[..], d[0].batch[..], block, loc, 1, lc_demo_work(d[..]));
+  #assert m.code == LC_OK && m.next == 1 && c[0].used == used && c[0].n == n;
+}
+#test "tx index: reconnect refuses altered receipts and orphan or damaged positions" #steps 100000000 {
+  for which: 0..<10 {
+    d: [1] LcDemo; lc_demo_minimal(d[..]); txi_demo_init(d[..]); raw: [1024] u8;
+    b := tx_unhex(LC_PREFIX[1], raw[..]); blocks := [1] LcBlock.[LcBlock.{index=1,bytes=b}]; locs := [1] TxiLoc.[TxiLoc.{file=0,pos=8}];
+    lc_demo_publish(d[..], txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..])));
+    base := lc_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..]);
+    #assert txi_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[0..<base.n+55]).code == LC_CAPACITY;
+    lc_demo_publish(d[..], txi_disconnect_vartime(d[0].live[..], d[0].used, d[0].stage[..], d[0].batch[..]));
+    hash := d[0].entries[1].hash; jk: [33] u8; txi_blockkey('J', hash[..], jk[..]); f := kv_find_vartime(d[0].live[..], d[0].used, jk[..]); start := f.at+39;
+    if which < 6 { d[0].live[start+4*which] ^= 1; }
+    if which == 6 { short: [23] u8; d[0].used = kv_set_vartime(d[0].live[..], d[0].used, jk[..], short[..]); }
+    if which > 6 {
+      id: [32] u8; t := tx_parse_vartime(b[81..<b.count], true, d[0].ins[..], d[0].outs[..], d[0].items[..]); #assert tx_txid_vartime(b[81..<b.count], t, id[..]);
+      key: [65] u8; txi_txkey(id[..], hash[..], key[..]);
+      if which == 7 { d[0].used = kv_delete_vartime(d[0].live[..], d[0].used, key[..]); }
+      if which == 8 { f = kv_find_vartime(d[0].live[..], d[0].used, key[..]); d[0].live[f.at+71] ^= 1; }
+      if which == 9 { d[0].used = kv_delete_vartime(d[0].live[..], d[0].used, jk[..]); }
+    }
+    #assert txi_reorg_vartime(d[0].tree[..], d[0].live[..], d[0].used, 1, blocks[..], locs[..], d[0].stage[..], d[0].batch[..], lc_demo_work(d[..])).code == TXI_CORRUPT;
+    #assert lc_tip_vartime(d[0].live[..], d[0].used).height == 0;
+  }
+}
+#test "tx index: prevalidated witness blocks keep their complete serialization" #steps 100000000 {
+  d: [1] LcDemo; lc_demo_minimal(d[..]); txi_demo_init(d[..]); raw: [6000] u8;
+  b := tx_unhex(WT_CASES[3].hex,raw[..]); c: [1] LcCursor;
+  #assert lc_begin_vartime(d[0].live[..],d[0].used,d[0].stage[..],d[0].batch[..],c[..]);
+  m := txi_stage_block_vartime(d[0].tree[..],d[0].stage[..],c[..],d[0].batch[..],LcBlock.{index=1,bytes=b},TxiLoc.{file=0,pos=8},0,lc_demo_work(d[..]));
+  #assert m.code == LC_OK && txi_sync_vartime(d[0].stage[..],c[..],d[0].batch[..],m.next);
+  at := tx_compact_read_vartime(b,80).next;
+  for i: 0..<3 {
+    bytes := b[at..<b.count]; t := tx_parse_vartime(bytes,true,d[0].ins[..],d[0].outs[..],d[0].items[..]); id: [32] u8;
+    #assert t.code == TX_OK && tx_txid_vartime(bytes,t,id[..]);
+    hit := txi_find_vartime(d[0].stage[..],c[0].used,id[..],false);
+    #assert hit.code == LC_OK && hit.offset == at && hit.n == t.total;
+    if i == 0 { #assert t.segwit; }
+    at += t.total;
+  }
+  #assert at == b.count;
+}
+
+txi_demo_init :: (d: [] LcDemo) {
+  g := d[0].entries[0].hash;
+  lc_demo_publish(d, txi_init_vartime(5, g[..], d[0].live[..], 0, d[0].stage[..], d[0].batch[..]));
+}
+txi_init_vartime :: (chain: int, genesis: [] u8, table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+  r := lc_init_vartime(chain, genesis, table, used, stage, batch);
+  if r.code != LC_OK { return r; }
+  c := [1] LcCursor.[LcCursor.{used=r.used,n=r.n}];
+  if !txi_sync_vartime(stage, c[..], batch, 0) || c[0].used > table.count { return LcResult.{code=LC_CAPACITY}; }
+  return LcResult.{used=c[0].used,n=c[0].n};
+}
+
+// Bodies were completely checked by lc_reorg_vartime in the same immutable
+// views. Offsets include the 80-byte header and CompactSize count. Existing
+// block receipts keep their sequence and immutable original file location.
+txi_stage_block_vartime :: (tree: [] BlockTree, table: [] u8, c: [] LcCursor, batch: [] u8, block: LcBlock, loc: TxiLoc, next_seq: int, w: LcWork) -> TxiMeta {
+  next := next_seq;
+  bytes := block.bytes; height := tree[0].l[block.index].height; hash := tree[0].e[block.index].hash;
+  if !txi_location_ok(loc.file, loc.pos, bytes.count) { return TxiMeta.{code=TXI_LOCATION}; }
+  count := tx_compact_read_vartime(bytes, 80); b := txi_block_vartime(table, c[0].used, hash[..]); fresh := b.code == TXI_MISS;
+  if fresh {
+    if next == 4294967295 { return TxiMeta.{code=LC_CAPACITY}; }
+    b = TxiBlock.{height=height,count=count.value,seq=next,file=loc.file,pos=loc.pos,n=bytes.count}; next += 1;
+  } else {
+    if b.code != LC_OK || b.seq >= next || b.height != height || b.count != count.value || b.file != loc.file || b.pos != loc.pos || b.n != bytes.count { return TxiMeta.{code=TXI_CORRUPT}; }
+  }
+  at := count.next;
+  for i: 0..<count.value {
+    raw := bytes[at..<bytes.count]; t := tx_parse_vartime(raw, true, w.ins, w.outs, w.items); #assert t.code == TX_OK;
+    id: [32] u8; #assert tx_txid_vartime(raw, t, id[..]); key: [65] u8; txi_txkey(id[..], hash[..], key[..]);
+    value: [8] u8; kv_put32(value[..], 0, at); kv_put32(value[..], 4, t.total);
+    old := lc_value_vartime(table, c[0].used, key[..]);
+    if fresh {
+      if old.count != 0 { return TxiMeta.{code=TXI_CORRUPT}; }
+      if !lc_put_vartime(table, c, batch, key[..], value[..]) { return TxiMeta.{code=LC_CAPACITY}; }
+    } else { if !lc_same(old, value[..]) { return TxiMeta.{code=TXI_CORRUPT}; } }
+    at += t.total;
+  }
+  if fresh && !txi_put_block_vartime(table, c, batch, hash[..], b) { return TxiMeta.{code=LC_CAPACITY}; }
+  return TxiMeta.{next=next};
+}
+txi_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] LcBlock, locs: [] TxiLoc, stage: [] u8, batch: [] u8, w: LcWork) -> LcResult #export_c {
+  meta := txi_context_vartime(table, used);
+  if meta.code != LC_OK || locs.count != blocks.count { return LcResult.{code=LC_CONTEXT}; }
+  r := lc_reorg_vartime(tree, table, used, target, blocks, stage, batch, w);
+  if r.code != LC_OK { return r; }
+  c := [1] LcCursor.[LcCursor.{used=r.used,n=r.n}];
+  for i: 0..<blocks.count {
+    meta = txi_stage_block_vartime(tree, stage, c[..], batch, blocks[i], locs[i], meta.next, w);
+    if meta.code != LC_OK { return LcResult.{code=meta.code}; }
+  }
+  if !txi_sync_vartime(stage, c[..], batch, meta.next) || c[0].used > table.count { return LcResult.{code=LC_CAPACITY}; }
+  r.used = c[0].used; r.n = c[0].n; return r;
+}
+txi_disconnect_vartime :: (table: [] u8, used: int, stage: [] u8, batch: [] u8) -> LcResult #export_c {
+  meta := txi_context_vartime(table, used);
+  if meta.code != LC_OK { return LcResult.{code=LC_CONTEXT}; }
+  r := lc_disconnect_vartime(table, used, stage, batch);
+  if r.code != LC_OK { return r; }
+  c := [1] LcCursor.[LcCursor.{used=r.used,n=r.n}];
+  if !txi_sync_vartime(stage, c[..], batch, meta.next) { return LcResult.{code=LC_CAPACITY}; }
+  // The required existing I record is replaced by the same fixed-size value.
+  #assert c[0].used == r.used;
+  r.n = c[0].n; return r;
+}

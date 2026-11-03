@@ -4648,6 +4648,58 @@
       "retrieved": "2026-11-03",
       "sha256": "ce0101af05d758a7d1579e02562966301912998c4a1cc25d28cbe45ac51d78f7",
       "bytes": 10835
+    },
+    {
+      "path": "upstream/bitcoin-core/txindex.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/index/txindex.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-txindex"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "7765ad58e9f8c9f64ab09276289e9f61f72006b7415ad15499997f06552cf7ac",
+      "bytes": 9237
+    },
+    {
+      "path": "upstream/bitcoin-core/txindex.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/index/txindex.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-txindex"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "0f0819bc2a67dd3e4d6042e4bd747965b6525fe29812c2d0271dfd169d3ece39",
+      "bytes": 2170
+    },
+    {
+      "path": "upstream/bitcoin-core/txindex_key.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/index/txindex_key.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-txindex"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "48685ad09715c7307498d856409adbef6512a10e6ff74401c5892613ea8b0ad2",
+      "bytes": 4447
+    },
+    {
+      "path": "upstream/bitcoin-core/txindex_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/txindex_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-txindex"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "ed64ffb75d4602b26bf3c2407c8e83bed7bc5ebc0157f5c126a4ad934b3a84b8",
+      "bytes": 14284
     }
   ]
 }

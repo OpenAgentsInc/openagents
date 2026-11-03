@@ -116,6 +116,10 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 - [81. Policy is not consensus: standardness](ch081-policy-is-not-consensus-standardness.md) — implemented
 
+**XIV. Operating the node**
+
+- [91. Indexes: transactions, filters and coin statistics](ch091-indexes-transactions-filters-and-coin-statistics.md) — partly implemented
+
 **XV. Wallets**
 
 - [94. PSBT](ch094-psbt.md) — implemented

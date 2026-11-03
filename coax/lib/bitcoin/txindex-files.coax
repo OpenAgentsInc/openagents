@@ -1,0 +1,87 @@
+// Recovery admission for one immutable transaction-index block file. The
+// host checks each file separately before truncating a reported torn tail.
+#load "txindex-store.coax";
+#load "blockfiles.coax";
+#authority;
+TXI_STORAGE :: 12;
+TxiStorage :: struct { code: int; keep: int; cut: bool; }
+
+#test "tx index files: never discard a committed position; orphan tails recover" #steps 100000000 {
+  table: [4096] u8; batch: [4096] u8; c: [1] LcCursor; body: [81] u8; file: [178] u8; hash: [32] u8;
+  #assert sha256d_checked(body[0..<80], hash[..], false) == SHA_OK;
+  #assert txi_storage_vartime(table[..], 0, 0, file[0..<0], 1, 0).code == LC_CONTEXT;
+  c[0].n = kv_batch_new(batch[..]);
+  #assert lc_set_tip_vartime(table[..], c[..], batch[..], 5, 0, hash[..]) && txi_sync_vartime(table[..], c[..], batch[..], 1);
+  #assert bf_write_vartime(BF_BLOCK, 1, 0, 0, body[..], hash[..], file[..]) == 89;
+  for cut: 0..<89 {
+    r := txi_storage_vartime(table[..], c[0].used, 0, file[0..<cut], 1, 0);
+    #assert r.code == LC_OK && r.keep == 0 && r.cut == (cut != 0);
+  }
+  #assert txi_put_block_vartime(table[..], c[..], batch[..], hash[..], TxiBlock.{height=1,count=1,seq=0,file=0,pos=8,n=81});
+  for cut: 0..<89 { #assert txi_storage_vartime(table[..], c[0].used, 0, file[0..<cut], 1, 0).code == TXI_STORAGE; }
+  r := txi_storage_vartime(table[..], c[0].used, 0, file[0..<89], 1, 0);
+  #assert r.code == LC_OK && r.keep == 89 && !r.cut;
+  for k: 0..<3 { file[89+k] = file[k]; }
+  r = txi_storage_vartime(table[..], c[0].used, 0, file[0..<92], 1, 0);
+  #assert r.code == LC_OK && r.keep == 89 && r.cut;
+  #assert txi_storage_vartime(table[..], c[0].used, 0, file[0..<89], 2, 0).code == TXI_STORAGE;
+  file[8] ^= 1;
+  #assert txi_storage_vartime(table[..], c[0].used, 0, file[0..<89], 1, 0).code == TXI_STORAGE;
+  // Other files' receipts are audited when that file is supplied.
+  #assert txi_storage_vartime(table[..], c[0].used, 1, file[0..<89], 1, 0).code == LC_OK;
+  file[8] ^= 1;
+  key: [33] u8; txi_blockkey('J', hash[..], key[..]); f := kv_find_vartime(table[..], c[0].used, key[..]);
+  table[f.at+39+20] = 82;
+  #assert txi_storage_vartime(table[..], c[0].used, 0, file[0..<89], 1, 0).code == TXI_STORAGE;
+  for k: 0..<89 { file[89+k] = file[k]; }
+  #assert txi_storage_vartime(table[..], c[0].used, 0, file[..], 1, 0).code == TXI_STORAGE;
+  table[f.at+39+20] = 81; table[f.at+39+16] = 9;
+  #assert txi_storage_vartime(table[..], c[0].used, 0, file[..], 1, 0).code == TXI_STORAGE;
+  table[f.at+39+16] = 8;
+  xor_mask := cast(u64) 0x0807060504030201;
+  #assert bf_write_vartime(BF_BLOCK, 1, xor_mask, 0, body[..], hash[..], file[..]) == 89;
+  #assert txi_storage_vartime(table[..], c[0].used, 0, file[0..<89], 1, xor_mask).code == LC_OK;
+}
+#test "tx index files: frame identity requires both success and exact length" {
+  #assert txi_frame_matches(BfFrame.{n=81}, 81);
+  #assert !txi_frame_matches(BfFrame.{code=BF_TORN,n=81},81);
+  #assert !txi_frame_matches(BfFrame.{n=82},81);
+}
+txi_frame_matches :: (frame: BfFrame, n: int) -> bool { return frame.code == BF_OK && frame.n == n; }
+#test "tx index files: damaged receipts and cursor sequences refuse" {
+  table: [4096] u8; batch: [4096] u8; c: [1] LcCursor; hash: [32] u8; file: [1] u8;
+  c[0].n = kv_batch_new(batch[..]);
+  #assert lc_set_tip_vartime(table[..], c[..], batch[..], 5, 0, hash[..]) && txi_sync_vartime(table[..], c[..], batch[..], 1);
+  key: [33] u8; txi_blockkey('J', hash[..], key[..]); v: [24] u8;
+  #assert lc_put_vartime(table[..], c[..], batch[..], key[0..<32], v[..]);
+  #assert txi_storage_vartime(table[..], c[0].used, 0, file[0..<0], 1, 0).code == TXI_CORRUPT;
+  c[0].used = kv_delete_vartime(table[..], c[0].used, key[0..<32]);
+  #assert lc_put_vartime(table[..], c[..], batch[..], key[..], v[0..<23]);
+  #assert txi_storage_vartime(table[..], c[0].used, 0, file[0..<0], 1, 0).code == TXI_CORRUPT;
+  #assert txi_put_block_vartime(table[..], c[..], batch[..], hash[..], TxiBlock.{height=1,count=1,seq=1,file=0,pos=8,n=81});
+  #assert txi_storage_vartime(table[..], c[0].used, 0, file[0..<0], 1, 0).code == TXI_CORRUPT;
+}
+
+txi_storage_vartime :: (table: [] u8, used: int, file_id: int, bytes: [] u8, magic: u32, xor_key: u64) -> TxiStorage #export_c {
+  meta := txi_context_vartime(table, used);
+  if meta.code != LC_OK { return TxiStorage.{code=LC_CONTEXT}; }
+  r := bf_recover_vartime(bytes, BF_BLOCK, magic, xor_key);
+  if r.code != BF_OK { return TxiStorage.{code=TXI_STORAGE}; }
+  at := 0;
+  while at < used {
+    e := kv_entry_vartime(table, used, at); at = e.next;
+    if e.key[0] != 'J' { continue; }
+    if e.key.count != 33 { return TxiStorage.{code=TXI_CORRUPT}; }
+    hash := e.key[1..<33]; b := txi_block_vartime(table, used, hash);
+    if b.code != LC_OK || b.seq >= meta.next { return TxiStorage.{code=TXI_CORRUPT}; }
+    if b.file != file_id { continue; }
+    if b.pos + b.n > r.keep { return TxiStorage.{code=TXI_STORAGE}; }
+    f := bf_next_vartime(bytes[b.pos-8..<b.pos], b.pos-8, r.keep, BF_BLOCK, magic, xor_key);
+    if !txi_frame_matches(f, b.n) { return TxiStorage.{code=TXI_STORAGE}; }
+    header: [80] u8; sum: [32] u8;
+    for k: 0..<80 { header[k] = bf_byte(bytes, b.pos+k, xor_key, 0); }
+    #assert sha256d_checked(header[..], sum[..], false) == SHA_OK;
+    if !lc_same(sum[..], hash) { return TxiStorage.{code=TXI_STORAGE}; }
+  }
+  return TxiStorage.{keep=r.keep,cut=r.cut};
+}

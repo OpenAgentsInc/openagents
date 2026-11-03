@@ -1,5 +1,23 @@
 # Invariants
 
+## Transaction positions and light chainstate publish one cursor
+
+`coax/lib/bitcoin/txindex.coax`, `txindex-store.coax` and `txindex-files.coax`
+own transaction-index schema 1 (`I`, `J`, `T`) alongside the unchanged light
+schema. Index receipts and full-txid/block-hash occurrences share the coins,
+undo and final tip's atomic batch. The index cursor must match the light
+cursor before reads or transitions. Archival entries survive disconnects;
+active membership wins before first-indexed sequence, and replay preserves
+original immutable positions and sequences. Genesis is excluded. Raw lookup
+checks framing, header identity, a complete transaction and its full txid;
+witness-only integrity relies on the admitted immutable block body. The
+file adapter syncs new block bytes before the KV commit and acknowledges
+only afterward. Per-file recovery never discards a committed position and
+checks referenced header identity before trimming an unreferenced torn tail.
+This remains the explorer's proof-of-work-only profile. Evidence: chapter
+91's partial transaction profile and the independent native/file/sanitizer
+oracle in `coax/tests/bitcoin/txindex.py`.
+
 ## Explorer light state changes one durable branch at a time
 
 `coax/lib/bitcoin/lightchain.coax`, `lightpolicy.coax` and `lightstore.coax` own the explorer's
