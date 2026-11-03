@@ -626,6 +626,17 @@
         "release"
       ],
       "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/subsidy-coinbase.coax",
+      "chapter": "bitcoin/book/ch054-the-subsidy-and-the-coinbase.md",
+      "stdout": "bitcoin/fixtures/subsidy-coinbase.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600
     }
   ]
 }

@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-58 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+59 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -54,6 +54,9 @@ transaction checks that run before any script: Core's `CheckTransaction`,
 Chapter 53's [`sigops.coax`](../coax/lib/bitcoin/sigops.coax) counts
 signature operations and checks a block's limits: Core's `CheckBlock`, the
 weight rule and the sigop cost `ConnectBlock` charges.
+Chapter 54's [`subsidy.coax`](../coax/lib/bitcoin/subsidy.coax) holds the
+coinbase rules: Core's `GetBlockSubsidy`, the BIP-34 height and the claim
+of subsidy plus fees.
 
 ```sh
 python3 psionic/tests/book.py --book bitcoin                     # structure and registry

@@ -2850,6 +2850,32 @@
       "retrieved": "2026-11-03",
       "sha256": "5405acbf04ebd8a1b92ae2b7188022f4c14723ed8a0ae0d077d12a1e6908da9a",
       "bytes": 21050
+    },
+    {
+      "path": "upstream/bitcoin-core/validation_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/validation_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-subsidy-coinbase"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "174ebba0af246a7b5e3d7769be4a504f00f6d5b47a80935b57d4a8a58b648dbf",
+      "bytes": 15684
+    },
+    {
+      "path": "upstream/mainnet/coinbase-proofs.json",
+      "kind": "upstream",
+      "url": "https://mempool.space/api/block-height/840000",
+      "revision": "static: for mainnet blocks 91,722, 91,812, 91,842, 91,880, 227,930, 227,931 and both sides of each halving to 840,000, mempool.space's header (/api/block/HASH/header), coinbase (/api/tx/TXID/hex), transaction count, fees and reward (/api/v1/block/HASH), and the coinbase's Merkle branch computed from /api/block/HASH/txids; make_subsidy_vectors.py proves each coinbase in its header; pinned by sha256",
+      "license": "Public Bitcoin blockchain data",
+      "covers": [
+        "bitcoin-subsidy-coinbase"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "3a10ff94f45a2fbef360731be48c468ec7c2ecc3da760fb2861b97721aeb5efb",
+      "bytes": 17201
     }
   ]
 }

@@ -1,0 +1,42 @@
+// The checks of subsidy-coinbase.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/subsidy-coinbase.coax
+#load "../subsidy-coinbase.coax";
+
+// book:begin check
+// Core's TestBlockSubsidyHalvings: at every halving the subsidy is half
+// the one before, for mainnet's interval, regtest's 150 and 1,000.
+#forall "each halving halves the subsidy" k: 1..<SUBSIDY_MAX_HALVINGS #steps 100000000 {
+  intervals := [3] int.[CHAIN_MAINNET_PARAMS.halving, 150, 1000];
+  for i: 0..<3 {
+    h := intervals[i];
+    #assert subsidy_vartime(k * h, h) == subsidy_vartime((k - 1) * h, h) / 2;
+    #assert subsidy_vartime(k * h - 1, h) == subsidy_vartime((k - 1) * h, h);
+  }
+}
+// The height a coinbase starts with reads back as that height: one
+// opcode up to 16, otherwise a push whose bytes are a minimal CScriptNum.
+#forall "the height script reads back minimally" height: 0..<70000 #steps 1000000000 {
+  out: [10] u8;
+  n := subsidy_height_script_vartime(height, out[..]);
+  if height == 0 { #assert n == 1 && out[0] == OP_0; }
+  else if height <= 16 { #assert n == 1 && out[0] == cast(u8) (OP_1 - 1 + height); }
+  else {
+    x := script_num_vartime(out[1..<n], true, 8);
+    #assert cast(int) out[0] == n - 1 && x.ok && x.value == height;
+  }
+}
+// Each pinned coinbase passes with exactly the fees its claim needs, and
+// refuses with one satoshi less, whenever its claim is above the subsidy.
+#forall "the claim is decided at subsidy plus fees" i: 0..<SUBSIDY_PROOFS.count #steps 1000000000 {
+  m := CHAIN_MAINNET_PARAMS;
+  c := SUBSIDY_PROOFS[i];
+  raw: [512] u8; ins: [4] TxIn; outs: [8] TxOut; items: [8] TxItem;
+  x := sb_read(c.coinbase, raw[..], ins[..], outs[..], items[..]);
+  b := raw[0..<x.n];
+  need := subsidy_claim_vartime(b, x.t, outs[..]) - subsidy_vartime(c.height, m.halving);
+  #assert need >= 0 && need <= c.fees;
+  #assert subsidy_amount_check_vartime(m, b, x.t, ins[..], outs[..], c.height, need) == SUBSIDY_OK;
+  if need > 0 { #assert subsidy_amount_check_vartime(m, b, x.t, ins[..], outs[..], c.height, need - 1) == SUBSIDY_CB_AMOUNT; }
+}
+// book:end check

@@ -1188,15 +1188,26 @@
   {
    "number": 54,
    "title": "The subsidy and the coinbase",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch054-the-subsidy-and-the-coinbase.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     34,
     50
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "bitcoin/examples/subsidy-coinbase.coax",
+    "bitcoin/examples/checks/subsidy-coinbase.coax",
+    "coax/lib/bitcoin/subsidy.coax",
+    "coax/lib/bitcoin/chainparams.coax",
+    "coax/lib/bitcoin/txcheck.coax",
+    "coax/tests/bitcoin/subsidy_vectors.coax",
+    "coax/tests/bitcoin/make_subsidy_vectors.py",
+    "coax/tests/bitcoin/subsidy.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

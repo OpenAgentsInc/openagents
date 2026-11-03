@@ -322,6 +322,15 @@ that a maliciously replaced manifest is authentic.
   outputs block 514,999 spends, with each transaction's fee and sigop
   cost; `make_sigops_vectors.py` checks every spent script against the
   block's own scriptSigs and witnesses, and the fees against the coinbase.
+- **The subsidy and the coinbase (Bitcoin chapter 54):** Bitcoin Core's
+  `test/validation_tests.cpp` at revision `ddea9196`, with the already
+  pinned `validation.cpp`, `script.h`, `amount.h` and `chainparams.cpp`.
+  `mainnet/coinbase-proofs.json` holds the header, coinbase, transaction
+  count, fees and reward of 14 mainnet blocks as mempool.space serves
+  them, with the coinbase's Merkle branch computed from the block's txid
+  list; `make_subsidy_vectors.py` proves each coinbase in its header, links
+  each pair of neighbouring blocks by the previous-block hash, and checks
+  each claim against the reward and each BIP-34 height.
 - **Header rules (Bitcoin chapter 51):** Bitcoin Core's `validation.cpp`
   (`ContextualCheckBlockHeader`), `chain.h`, `consensus/consensus.h`,
   `versionbits.h`, `versionbits_impl.h` and `versionbits.cpp` at revision
@@ -497,6 +506,8 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/sigopcount_tests.cpp`](upstream/bitcoin-core/sigopcount_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/sigopcount_tests.cpp) | `71fb92a1fce40f6c31339dd931cdb3f07fdc4587442e3862d1de107d3c93a225` |
 | [`upstream/bitcoin-core/miner_tests.cpp`](upstream/bitcoin-core/miner_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/miner_tests.cpp) | `2e8ec65462c8b6cae821bd22b95407c6c94a4710edea2f4b4f7d785a27f2c783` |
 | [`upstream/mainnet/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097.spent.json`](upstream/mainnet/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097.spent.json) | [mempool.space API](https://mempool.space/api/block/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097/txs/0) | `f65a8fa8f6284871947a4a45838a93c20b7254816204f7c670c1db3034ae2e09` |
+| [`upstream/bitcoin-core/validation_tests.cpp`](upstream/bitcoin-core/validation_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/validation_tests.cpp) | `174ebba0af246a7b5e3d7769be4a504f00f6d5b47a80935b57d4a8a58b648dbf` |
+| [`upstream/mainnet/coinbase-proofs.json`](upstream/mainnet/coinbase-proofs.json) | [mempool.space API](https://mempool.space/api/block-height/840000) | `3a10ff94f45a2fbef360731be48c468ec7c2ecc3da760fb2861b97721aeb5efb` |
 | [`upstream/bitcoin-core/versionbits.cpp`](upstream/bitcoin-core/versionbits.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.cpp) | `4394f6fdf7656e0e6e4eb90a11c44875dab506345bde9a54d84ed9337d524ec8` |
 | [`upstream/bitcoin-core/versionbits.h`](upstream/bitcoin-core/versionbits.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.h) | `babd3b786f7d787f88b47da1effd47f631b3e37cba95c1d501f1a553c960f100` |
 | [`upstream/bitcoin-core/versionbits_impl.h`](upstream/bitcoin-core/versionbits_impl.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits_impl.h) | `6c7b5afcaff8d99b2e9e1e62d11bc76adb6164dcce8add41aabde51bcbe7a9ce` |

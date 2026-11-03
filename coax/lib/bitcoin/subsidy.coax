@@ -1,0 +1,225 @@
+// The subsidy and the coinbase (Bitcoin chapter 54): what a block's first
+// transaction may claim and must say. Bitcoin Core's GetBlockSubsidy
+// (validation.cpp) pays 50 bitcoin a block, halved every 210,000 blocks
+// (150 on regtest) and zero once the halvings reach 64, where a shift of a
+// 64-bit number stops meaning anything. ConnectBlock lets the coinbase's
+// outputs claim at most that subsidy plus the block's fees
+// ("bad-cb-amount"), with the fees' running total within MAX_MONEY.
+// ContextualCheckBlock requires, from BIP-34's height, that the coinbase's
+// scriptSig start with the block's height as Core's CScript() << nHeight
+// writes it ("bad-cb-height"). That push made coinbases unique, after two
+// coinbases of 2010 repeated earlier ones (BIP-30, chapter 50's exception
+// blocks).
+//
+// One coinbase first is chapter 53's CheckBlock rule, the length of its
+// scriptSig chapter 52's, the maturity of its outputs chapter 52's
+// CheckTxInputs, and its witness commitment chapter 49's.
+// coax/tests/bitcoin/subsidy.py checks the reasons and constants against
+// the pinned Core sources and replays the example.
+//
+// Heights, amounts and coinbases are public, so everything here runs in
+// variable time and every procedure that decides ends in _vartime
+// (Bitcoin chapter 3).
+#load "sigops.coax";
+#load "../../tests/bitcoin/subsidy_vectors.coax";
+#authority;
+
+// book:begin codes
+// Result codes, with Core's reject reason.
+SUBSIDY_OK :: 0;
+SUBSIDY_CB_HEIGHT :: 1;    // "bad-cb-height"
+SUBSIDY_CB_AMOUNT :: 2;    // "bad-cb-amount"
+SUBSIDY_FEE_RANGE :: 3;    // "bad-txns-accumulated-fee-outofrange"
+SUBSIDY_CONTEXT :: 4;      // the transaction is not a coinbase, or did not read
+SUBSIDY_REASONS :: [5] string.["ok", "bad-cb-height", "bad-cb-amount", "bad-txns-accumulated-fee-outofrange", "bad context"];
+// book:end codes
+
+// book:begin subsidy
+SUBSIDY_INITIAL :: 50 * CHAIN_COIN;   // 50 bitcoin
+SUBSIDY_MAX_HALVINGS :: 64;           // a shift of 64 or more is undefined in C++
+// GetBlockSubsidy: 50 bitcoin shifted right once per halving interval,
+// and 0 from the 64th halving.
+subsidy_vartime :: (height: int, halving: int) -> int #export_c {
+  halvings := height / halving;
+  if halvings >= SUBSIDY_MAX_HALVINGS { return 0; }
+  return SUBSIDY_INITIAL >> halvings;
+}
+// Every subsidy there will ever be: each interval's subsidy times the
+// interval, until the subsidy is 0.
+subsidy_total_vartime :: (halving: int) -> int #export_c {
+  total := 0;
+  for i: 0..<SUBSIDY_MAX_HALVINGS { total += subsidy_vartime(i * halving, halving) * halving; }
+  return total;
+}
+// book:end subsidy
+
+// book:begin height
+// CScript() << nHeight: -1 and 1 to 16 as one opcode (OP_1NEGATE, OP_1 to
+// OP_16), 0 as OP_0, anything else as a push of its minimal CScriptNum.
+// Writes the bytes to out (10 bytes of room); returns their length.
+subsidy_height_script_vartime :: (height: int, out: [] u8) -> int #export_c {
+  if height == -1 || (height >= 1 && height <= 16) { out[0] = cast(u8) (height + 0x50); return 1; }
+  if height == 0 { out[0] = OP_0; return 1; }
+  num: [9] u8;
+  n := script_num_write_vartime(height, num[..]);
+  out[0] = cast(u8) n;
+  for i: 0..<n { out[1+i] = num[i]; }
+  return n + 1;
+}
+// ContextualCheckBlock's BIP-34 rule for a block at height whose coinbase
+// is t: once BIP-34 is active, the coinbase's scriptSig starts with the
+// height's script. Bytes after it are free.
+subsidy_height_check_vartime :: (p: ChainParams, b: [] u8, t: Tx, ins: [] TxIn, height: int) -> int #export_c {
+  if t.code != TX_OK || !tx_coinbase_vartime(b, t, ins) { return SUBSIDY_CONTEXT; }
+  if !chain_deployment_active(p, DEP_HEIGHTINCB, height) { return SUBSIDY_OK; }
+  return ifx subsidy_starts_with_height_vartime(b, ins, height) then SUBSIDY_OK else SUBSIDY_CB_HEIGHT;
+}
+// Whether the first input's scriptSig starts with height's script.
+subsidy_starts_with_height_vartime :: (b: [] u8, ins: [] TxIn, height: int) -> bool #export_c {
+  want: [10] u8;
+  n := subsidy_height_script_vartime(height, want[..]);
+  if ins[0].script_n < n { return false; }
+  for i: 0..<n { if b[ins[0].script+i] != want[i] { return false; } }
+  return true;
+}
+// book:end height
+
+// book:begin amount
+// ConnectBlock's fee total: each transaction's fee added in turn, refused
+// once the total leaves 0..MAX_MONEY.
+subsidy_add_fee_vartime :: (total: int, fee: int) -> int #export_c {
+  if total < 0 || fee < 0 { return -1; }
+  sum := total + fee;
+  return ifx txc_money_range(sum) then sum else -1;
+}
+// The coinbase's claim: the sum of its outputs. CheckTransaction (chapter
+// 52) has kept each value and the sum within MAX_MONEY.
+subsidy_claim_vartime :: (b: [] u8, t: Tx, outs: [] TxOut) -> int #export_c {
+  claim := 0;
+  for k: 0..<t.nout { claim += tx_le_vartime(b, outs[k].value, 8); }
+  return claim;
+}
+// ConnectBlock's coinbase rule: the coinbase may claim at most the
+// subsidy at its height plus the fees of the block's other transactions.
+subsidy_amount_check_vartime :: (p: ChainParams, b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, height: int, fees: int) -> int #export_c {
+  if t.code != TX_OK || !tx_coinbase_vartime(b, t, ins) || fees < 0 { return SUBSIDY_CONTEXT; }
+  if subsidy_claim_vartime(b, t, outs) > subsidy_vartime(height, p.halving) + fees { return SUBSIDY_CB_AMOUNT; }
+  return SUBSIDY_OK;
+}
+// book:end amount
+
+// ---- checks
+#test "GetBlockSubsidy: Core's validation_tests" {
+  // TestBlockSubsidyHalvings for mainnet's interval, regtest's 150 and 1000.
+  intervals := [3] int.[210000, 150, 1000];
+  for k: 0..<3 {
+    previous := SUBSIDY_INITIAL * 2;
+    for h: 0..<SUBSIDY_MAX_HALVINGS {
+      s := subsidy_vartime(h * intervals[k], intervals[k]);
+      #assert s <= SUBSIDY_INITIAL && s == previous / 2;
+      previous = s;
+    }
+    #assert subsidy_vartime(SUBSIDY_MAX_HALVINGS * intervals[k], intervals[k]) == 0;
+  }
+  // subsidy_limit_test: every 1000th height, times 1000, to 14,000,000.
+  sum := 0;
+  for h: 0..<14000 {
+    s := subsidy_vartime(h * 1000, 210000);
+    #assert s <= SUBSIDY_INITIAL;
+    sum += s * 1000;
+    #assert txc_money_range(sum);
+  }
+  #assert sum == 2099999997690000 && subsidy_total_vartime(210000) == sum;
+}
+#test "the subsidy at the halvings, and zero from 6,930,000" {
+  #assert subsidy_vartime(0, 210000) == 5000000000 && subsidy_vartime(209999, 210000) == 5000000000;
+  #assert subsidy_vartime(210000, 210000) == 2500000000 && subsidy_vartime(840000, 210000) == 312500000;
+  #assert subsidy_vartime(6929999, 210000) == 1 && subsidy_vartime(6930000, 210000) == 0;
+  #assert subsidy_vartime(63 * 210000, 210000) == 0 && subsidy_vartime(1 << 40, 210000) == 0;
+  #assert subsidy_vartime(149, 150) == 5000000000 && subsidy_vartime(150, 150) == 2500000000;
+  #assert subsidy_total_vartime(150) == 1499999998350;
+}
+// The height script of h as hex digits.
+sb_height_is :: (h: int, hex: string) -> bool {
+  out: [10] u8; want: [10] u8;
+  n := subsidy_height_script_vartime(h, out[..]);
+  m := cp_unhex(hex, want[..]);
+  if m != n { return false; }
+  for i: 0..<n { if out[i] != want[i] { return false; } }
+  return true;
+}
+#test "CScript() << nHeight" {
+  #assert sb_height_is(0, "00") && sb_height_is(1, "51") && sb_height_is(16, "60") && sb_height_is(-1, "4f");
+  #assert sb_height_is(17, "0111") && sb_height_is(127, "017f") && sb_height_is(128, "028000") && sb_height_is(255, "02ff00");
+  #assert sb_height_is(256, "020001") && sb_height_is(32767, "02ff7f") && sb_height_is(32768, "03008000");
+  #assert sb_height_is(227931, "035b7a03") && sb_height_is(514999, "03b7db07") && sb_height_is(8388608, "0400008000");
+  #assert !sb_height_is(17, "0112") && !sb_height_is(17, "011100");
+}
+// A coinbase read from hex into raw.
+SbCoinbase :: struct { t: Tx; n: int; }
+sb_read :: (hex: string, raw: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> SbCoinbase {
+  r: SbCoinbase;
+  r.n = cp_unhex(hex, raw);
+  #assert r.n > 0;
+  r.t = tx_read_vartime(raw[0..<r.n], true, ins, outs, items);
+  return r;
+}
+#test "the BIP-34 height of pinned coinbases, before and after activation" {
+  raw: [512] u8; ins: [4] TxIn; outs: [8] TxOut; items: [8] TxItem;
+  m := CHAIN_MAINNET_PARAMS;
+  for i: 0..<SUBSIDY_PROOFS.count {
+    c := SUBSIDY_PROOFS[i];
+    r := sb_read(c.coinbase, raw[..], ins[..], outs[..], items[..]);
+    b := raw[0..<r.n];
+    #assert subsidy_height_check_vartime(m, b, r.t, ins[..], c.height) == SUBSIDY_OK;
+    // Every coinbase from 209,999 on starts with its height, the four of
+    // 2010 do not.
+    starts := subsidy_starts_with_height_vartime(b, ins[..], c.height);
+    #assert starts == (c.height >= 209999);
+    if c.height >= m.bip34_height {
+      raw[ins[0].script + 1] ^= 1;
+      #assert subsidy_height_check_vartime(m, b, r.t, ins[..], c.height) == SUBSIDY_CB_HEIGHT;
+      #assert subsidy_height_check_vartime(m, b, r.t, ins[..], m.bip34_height - 1) == SUBSIDY_OK;
+    }
+  }
+  r := sb_read(SUBSIDY_PROOFS[0].coinbase, raw[..], ins[..], outs[..], items[..]);
+  #assert subsidy_height_check_vartime(m, raw[0..<r.n], r.t, ins[..], m.bip34_height) == SUBSIDY_CB_HEIGHT;
+  t := r.t; t.code = TX_TRUNCATED;
+  #assert subsidy_height_check_vartime(m, raw[0..<r.n], t, ins[..], 1) == SUBSIDY_CONTEXT;
+}
+#test "the coinbase's claim: subsidy plus fees, and not a satoshi more" {
+  raw: [512] u8; ins: [4] TxIn; outs: [8] TxOut; items: [8] TxItem;
+  m := CHAIN_MAINNET_PARAMS;
+  for i: 0..<SUBSIDY_PROOFS.count {
+    c := SUBSIDY_PROOFS[i];
+    r := sb_read(c.coinbase, raw[..], ins[..], outs[..], items[..]);
+    b := raw[0..<r.n];
+    #assert subsidy_amount_check_vartime(m, b, r.t, ins[..], outs[..], c.height, c.fees) == SUBSIDY_OK;
+    // Each of these miners claimed exactly the subsidy and the fees.
+    #assert subsidy_claim_vartime(b, r.t, outs[..]) == subsidy_vartime(c.height, m.halving) + c.fees;
+    // One satoshi more in its first output refuses.
+    txc_put(raw[..], outs[0].value, tx_le_vartime(b, outs[0].value, 8) + 1, 8);
+    #assert subsidy_amount_check_vartime(m, b, r.t, ins[..], outs[..], c.height, c.fees) == SUBSIDY_CB_AMOUNT;
+  }
+  #assert subsidy_add_fee_vartime(FEE_MAX_MONEY - 1, 1) == FEE_MAX_MONEY && subsidy_add_fee_vartime(FEE_MAX_MONEY, 1) == -1;
+  #assert subsidy_add_fee_vartime(-1, 0) == -1 && subsidy_add_fee_vartime(0, -1) == -1 && subsidy_add_fee_vartime(5, 7) == 12;
+  r := sb_read(TXCHECK_CASES[0].tx, raw[..], ins[..], outs[..], items[..]);
+  #assert subsidy_amount_check_vartime(m, raw[0..<r.n], r.t, ins[..], outs[..], 1, 0) == SUBSIDY_CONTEXT;
+  r = sb_read(SUBSIDY_PROOFS[0].coinbase, raw[..], ins[..], outs[..], items[..]);
+  #assert subsidy_amount_check_vartime(m, raw[0..<r.n], r.t, ins[..], outs[..], 1, -1) == SUBSIDY_CONTEXT;
+}
+// Whether pinned coinbase i is in its block: its header hashes to the
+// block's hash and the branch leads from its txid to the header's root.
+sb_proved :: (i: int) -> bool {
+  c := SUBSIDY_PROOFS[i];
+  raw: [512] u8; ins: [4] TxIn; outs: [8] TxOut; items: [8] TxItem; h: [80] u8; hash: [32] u8; id: [32] u8; branch: [512] u8;
+  r := sb_read(c.coinbase, raw[..], ins[..], outs[..], items[..]);
+  if cp_unhex(c.header, h[..]) != 80 { return false; }
+  if pow_block_hash_vartime(h[..], hash[..]) != POW_OK || !chain_hash_is_vartime(hash[..], c.hash) { return false; }
+  if !tx_txid_vartime(raw[0..<r.n], r.t, id[..]) { return false; }
+  k := cp_unhex(c.branch, branch[..]);
+  return merkle_verify_vartime(id[..], branch[0..<k], 0, c.count, h[36..<68]) == MERKLE_OK;
+}
+#test "every pinned coinbase is proved in its header" {
+  for i: 0..<SUBSIDY_PROOFS.count { #assert sb_proved(i); }
+}

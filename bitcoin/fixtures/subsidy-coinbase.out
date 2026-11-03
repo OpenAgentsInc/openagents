@@ -1,0 +1,77 @@
+GetBlockSubsidy on mainnet, a halving every 210000 blocks:
+  halving 0 from height 0: 5000000000
+  halving 1 from height 210000: 2500000000
+  halving 2 from height 420000: 1250000000
+  halving 3 from height 630000: 625000000
+  halving 4 from height 840000: 312500000
+  halving 5 from height 1050000: 156250000
+  halving 6 from height 1260000: 78125000
+  halving 7 from height 1470000: 39062500
+  halving 8 from height 1680000: 19531250
+  halving 9 from height 1890000: 9765625
+  halving 10 from height 2100000: 4882812
+  halving 11 from height 2310000: 2441406
+  halving 12 from height 2520000: 1220703
+  halving 13 from height 2730000: 610351
+  halving 14 from height 2940000: 305175
+  halving 15 from height 3150000: 152587
+  halving 16 from height 3360000: 76293
+  halving 17 from height 3570000: 38146
+  halving 18 from height 3780000: 19073
+  halving 19 from height 3990000: 9536
+  halving 20 from height 4200000: 4768
+  halving 21 from height 4410000: 2384
+  halving 22 from height 4620000: 1192
+  halving 23 from height 4830000: 596
+  halving 24 from height 5040000: 298
+  halving 25 from height 5250000: 149
+  halving 26 from height 5460000: 74
+  halving 27 from height 5670000: 37
+  halving 28 from height 5880000: 18
+  halving 29 from height 6090000: 9
+  halving 30 from height 6300000: 4
+  halving 31 from height 6510000: 2
+  halving 32 from height 6720000: 1
+  halving 33 from height 6930000: 0
+  halving 34 from height 7140000: 0
+  the last satoshi at height 6929999; the halving at 64: 0
+  every subsidy there will be: 2099999997690000 satoshis
+  regtest, every 150 blocks: 5000000000 at 149, 2500000000 at 150, 1499999998350 in all
+The height a coinbase starts with (CScript() << nHeight):
+  0: 00
+  1: 51
+  16: 60
+  17: 0111
+  127: 017f
+  128: 028000
+  255: 02ff00
+  256: 020001
+  32768: 03008000
+  227931: 035b7a03
+  514999: 03b7db07
+  840000: 0340d10c
+Pinned mainnet coinbases, each proved in its header by its Merkle branch:
+  91722: proved yes, starts with its height no, BIP-34 ok, claims 5000000000 of subsidy 5000000000 and fees 0: ok
+  91812: proved yes, starts with its height no, BIP-34 ok, claims 5000000000 of subsidy 5000000000 and fees 0: ok
+  91842: proved yes, starts with its height no, BIP-34 ok, claims 5000000000 of subsidy 5000000000 and fees 0: ok
+  91880: proved yes, starts with its height no, BIP-34 ok, claims 5000000000 of subsidy 5000000000 and fees 0: ok
+  209999: proved yes, starts with its height yes, BIP-34 ok, claims 5053620000 of subsidy 5000000000 and fees 53620000: ok
+  210000: proved yes, starts with its height yes, BIP-34 ok, claims 3856295554 of subsidy 2500000000 and fees 1356295554: ok
+  227930: proved yes, starts with its height yes, BIP-34 ok, claims 2508015017 of subsidy 2500000000 and fees 8015017: ok
+  227931: proved yes, starts with its height yes, BIP-34 ok, claims 2528700000 of subsidy 2500000000 and fees 28700000: ok
+  419999: proved yes, starts with its height yes, BIP-34 ok, claims 2500000000 of subsidy 2500000000 and fees 0: ok
+  420000: proved yes, starts with its height yes, BIP-34 ok, claims 1307569681 of subsidy 1250000000 and fees 57569681: ok
+  629999: proved yes, starts with its height yes, BIP-34 ok, claims 1356876397 of subsidy 1250000000 and fees 106876397: ok
+  630000: proved yes, starts with its height yes, BIP-34 ok, claims 715968084 of subsidy 625000000 and fees 90968084: ok
+  839999: proved yes, starts with its height yes, BIP-34 ok, claims 729455386 of subsidy 625000000 and fees 104455386: ok
+  840000: proved yes, starts with its height yes, BIP-34 ok, claims 4075061499 of subsidy 312500000 and fees 3762561499: ok
+Coinbases with the same txid (BIP-30):
+  91722 and 91880: the same txid yes; 91880 is one of Core's BIP-30 exceptions: yes
+  91812 and 91842: the same txid yes; 91842 is one of Core's BIP-30 exceptions: yes
+Mainnet block 514,999:
+  fees from the outputs its transactions spend: 49221
+  the coinbase claims 1250049221 of subsidy 1250000000 and fees 49221: ok
+  one satoshi more: bad-cb-amount
+  its height: ok
+  with the height's first byte changed: bad-cb-height at 514999, ok at 227930
+  fees whose total passes MAX_MONEY: bad-txns-accumulated-fee-outofrange
