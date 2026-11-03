@@ -18,9 +18,10 @@
 SD_ENGINES :: 64; SD_LIBS :: 16; SD_UNITS :: SD_LIBS + 1;
 SD_TYPES :: 64; SD_GLOBALS :: 64; SD_STATE :: 32;
 SD_TEXT :: 4194304;
-SD_TYPE_MAX :: 8388608;        // the largest default compared (Everglade's DemoWorld is 2.5 MB, chat's WcHost 5.4 MB)
+SD_TYPE_MAX :: 41943040;       // the largest default compared (Everglade's DemoWorld is 2.5 MB, chat's WcHost 5.4 MB, 5E Lab's Lab 36 MB)
 SD_HEX :: SD_TYPE_MAX * 2 + SD_TYPE_MAX / 8 + SD_TYPE_MAX / 4096 + 64;  // one default in hex, then its pointer mask (sd_native)
-SD_FACE_OUT :: SD_TYPE_MAX * 8;    // the face program's lines: each global and its reference, in hex
+SD_FACE_MAX :: 8388608;        // the largest face global compared (Everglade's DemoWorld is 2.5 MB)
+SD_FACE_OUT :: SD_FACE_MAX * 8;    // the face program's lines: each global and its reference, in hex (kept apart from SD_TYPE_MAX: the buffers share the 1 GiB tool stack)
 SD_PAR :: 6;                   // engines generated at once, as the old harness did
 
 Engine :: struct { name: string; coax: string; face: string; wasm: string; libs: [SD_LIBS] string; nlibs: int; steps: string; }
