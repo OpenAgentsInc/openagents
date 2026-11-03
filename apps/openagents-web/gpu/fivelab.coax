@@ -22,14 +22,14 @@
 //   right 24: right xyz, the image centre's y (px)
 //   up 28: up xyz, 0
 //   sun 32: toward the sun xyz, 0
-//   tokens 36: twenty-four, two vec4s each: (x, z m, class (0 druid, 1 warlock, 2 barbarian, 3 monk;
-//              even the Circle of Moss, odd the Ember Pact) or -1 for none, hit point share),
+//   tokens 36: forty-four, two vec4s each: (x, z m, look (0 druid, 1 warlock, 2 barbarian, 3 monk,
+//              4 skeleton; 0 and 3 the Circle of Moss, 1 and 2 the Ember Pact) or -1 for none, hit point share),
 //              (0 standing, 1 down, 2 dead; outlined; marks, a bit each: Restrained 1, Poisoned 2,
 //              Blinded 4, enfeebled 8, Temporary Hit Points 16,
 //              Paralyzed 32, hexed 64; whose turn just ran 0..1)
-//   zones 228: eight, two vec4s each: (x0, z0, x1, z1 m), (1 Entangle, 2 Faerie Fire, 0 none; 0; 0; 0)
-//   bounds 292: the grid's half width and half depth (m), the square (m), 0
-FIVELAB_TOKENS :: 24;
+//   zones 388: eight, two vec4s each: (x0, z0, x1, z1 m), (1 Entangle, 2 Faerie Fire, 0 none; 0; 0; 0)
+//   bounds 452: the grid's half width and half depth (m), the square (m), 0
+FIVELAB_TOKENS :: 44;
 FIVELAB_ZONES :: 8;
 FIVELAB_TREES :: 16;
 
@@ -117,8 +117,8 @@ fivelab_capsule_n :: (p:V3,a:V3,b:V3)->V3 {
 fivelab_tree :: (i:int,u:[]f32)->V4 {
   fi:f32=cast(f32)i;
   a:f32=(fi*0.3926991f32)+(0.35f32*sin(fi*2.3f32));
-  rx:f32=u[292]+5.5f32+(2.5f32*verse_style_hash(fi,3.0f32));
-  rz:f32=u[293]+5.0f32+(2.5f32*verse_style_hash(fi,7.0f32));
+  rx:f32=u[452]+5.5f32+(2.5f32*verse_style_hash(fi,3.0f32));
+  rz:f32=u[453]+5.0f32+(2.5f32*verse_style_hash(fi,7.0f32));
   size:f32=0.8f32+(0.45f32*verse_style_hash(fi,11.0f32));
   return v4(cos(a)*rx,0.0f32,sin(a)*rz,size);
 }
@@ -131,7 +131,9 @@ fivelab_body :: (u:[]f32,i:int)->FivelabBody {
   // a barbarian is broader; a monk carries nothing (its staff is put out of reach underground)
   big:f32=1.0f32;
   if (abs(t.z-2.0f32)<0.5f32) { big=1.22f32; }
-  monk:bool=t.z>2.5f32;
+  monk:bool=abs(t.z-3.0f32)<0.5f32;
+  bones:bool=t.z>3.5f32;
+  if (bones) { big=0.62f32; }
   if (s.x>0.5f32) {
     o.a=v3(t.x-0.55f32,0.24f32,t.y);
     o.b=v3(t.x+0.45f32,0.24f32,t.y);
@@ -151,6 +153,8 @@ fivelab_body :: (u:[]f32,i:int)->FivelabBody {
   o.sa=v3(t.x+(0.42f32*big),0.0f32,t.y+0.08f32);
   o.sb=v3(t.x+(0.42f32*big),1.85f32,t.y+0.08f32);
   if (monk) { o.sa=v3(t.x,-9.0f32,t.y); o.sb=v3(t.x,-8.0f32,t.y); }
+  // a skeleton's shortsword, held out at the hip
+  if (bones) { o.b=v3(t.x,1.12f32,t.y); o.head=v3(t.x,1.5f32,t.y); o.hr=0.17f32; o.sa=v3(t.x+0.3f32,0.75f32,t.y+0.1f32); o.sb=v3(t.x+0.45f32,1.4f32,t.y+0.22f32); }
   return o;
 }
 // What a ray hits first: t (or 1e9), its normal, the material (0 ground, 1 trunk, 2 leaves,
@@ -240,7 +244,7 @@ fivelab_grass :: (x:f32,z:f32,u:[]f32,t:f32)->V3 {
   dab:f32=verse_style_noise(x*6.0f32,z*6.0f32);
   c:V3=mix3(v3(0.16f32,0.3f32,0.07f32),v3(0.33f32,0.46f32,0.13f32),(n1*0.65f32)+(n2*0.35f32));
   c=scale3(c,0.88f32+(0.24f32*dab));
-  hw:f32=u[292]; hd:f32=u[293]; sq:f32=fmax(u[294],0.1f32);
+  hw:f32=u[452]; hd:f32=u[453]; sq:f32=fmax(u[454],0.1f32);
   inside:f32=(1.0f32-smoothstep(hw,hw+0.3f32,abs(x)))*(1.0f32-smoothstep(hd,hd+0.3f32,abs(z)));
   // the clearing: shorter, lighter grass
   c=mix3(c,add3(scale3(c,0.82f32),v3(0.05f32,0.06f32,0.02f32)),inside*0.6f32);
@@ -273,8 +277,8 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
     {
       i:int=0;
       while i<FIVELAB_ZONES {
-        za:V4=wg_at4(u,228+(i*8));
-        zb:V4=wg_at4(u,232+(i*8));
+        za:V4=wg_at4(u,388+(i*8));
+        zb:V4=wg_at4(u,392+(i*8));
         if (zb.x>0.5f32) {
           if ((((pos.x>=za.x)&&(pos.x<=za.z))&&(pos.z>=za.y))&&(pos.z<=za.w)) {
             if (zb.x<1.5f32) {
@@ -301,7 +305,8 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
           albedo=scale3(albedo,0.55f32+(0.45f32*smoothstep(0.15f32,0.7f32,d)));
           ring:f32=1.0f32-smoothstep(0.03f32,0.08f32,abs(d-0.68f32));
           tc:V3=v3(0.35f32,0.95f32,0.45f32);
-          if (wg_fmod(tk.z,2.0f32)>0.5f32) { tc=v3(0.55f32,0.85f32,1.0f32); }
+          if ((abs(tk.z-1.0f32)<0.5f32)||(abs(tk.z-2.0f32)<0.5f32)) { tc=v3(0.55f32,0.85f32,1.0f32); }
+          if (tk.z>3.5f32) { tc=v3(0.9f32,0.86f32,0.74f32); }
           if (ts.y<1.5f32) { glow=add3(glow,scale3(tc,ring*(0.25f32+(ts.w*1.6f32)))); }
         }
         i+=1;
@@ -321,7 +326,8 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
     ts:V4=wg_at4(u,40+(who*8));
     pact:bool=abs(tk.z-1.0f32)<0.5f32;
     barb:bool=abs(tk.z-2.0f32)<0.5f32;
-    monk:bool=tk.z>2.5f32;
+    monk:bool=abs(tk.z-3.0f32)<0.5f32;
+    bones:bool=tk.z>3.5f32;
     if (h.m<3.5f32) {
       albedo=v3(0.2f32,0.42f32,0.16f32);
       // a Fiend warlock's robe: ember crimson, with a gold hem and collar
@@ -338,6 +344,12 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
         albedo=v3(0.92f32,0.55f32,0.12f32);
         if (pos.y>1.15f32) { albedo=v3(0.78f32,0.58f32,0.44f32); }
       }
+      // a skeleton: old bone, the ribs banded with shadow, the pelvis dark below them
+      if (bones) {
+        albedo=v3(0.86f32,0.82f32,0.7f32);
+        if ((pos.y>0.72f32)&&(pos.y<1.08f32)&&(fract(pos.y*14.0f32)<0.45f32)) { albedo=v3(0.12f32,0.1f32,0.09f32); }
+        if ((pos.y>0.45f32)&&(pos.y<0.62f32)) { albedo=v3(0.25f32,0.22f32,0.18f32); }
+      }
       // a belt
       if (abs(pos.y-0.82f32)<0.05f32) { albedo=v3(0.35f32,0.24f32,0.1f32); if (pact) { albedo=v3(0.08f32,0.05f32,0.04f32); } if (barb) { albedo=v3(0.2f32,0.12f32,0.06f32); } if (monk) { albedo=v3(0.35f32,0.1f32,0.06f32); } }
       if (fivelab_mark(ts.z,0.0f32)) {
@@ -348,6 +360,11 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
       albedo=v3(0.78f32,0.58f32,0.44f32);
       if (pos.y>(1.62f32)) { albedo=v3(0.24f32,0.16f32,0.09f32); }
       if (monk) { albedo=v3(0.78f32,0.58f32,0.44f32); }
+      // a skull: bone, with two dark sockets facing the camera's way and a glint in them
+      if (bones) {
+        albedo=v3(0.9f32,0.87f32,0.76f32);
+        if ((n.y<0.35f32)&&(n.y>(-0.1f32))&&(abs(fract((wg_atan2(n.z,n.x)*3.0f32)/6.2831853f32)-0.5f32)<0.12f32)) { albedo=v3(0.03f32,0.02f32,0.02f32); glow=add3(glow,v3(0.25f32,0.08f32,0.05f32)); }
+      }
       // a barbarian's wild hair
       if (barb && (pos.y>1.66f32)) { albedo=v3(0.55f32,0.25f32,0.08f32); }
       if (pact) {
@@ -363,6 +380,7 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
       }
       // a black iron rod, the pact's focus
       if (pact) { albedo=v3(0.06f32,0.05f32,0.06f32); }
+      if (bones) { albedo=v3(0.62f32,0.64f32,0.68f32); }
       // a greataxe: an ash haft, a steel head at the top
       if (barb) {
         albedo=v3(0.42f32,0.3f32,0.16f32);

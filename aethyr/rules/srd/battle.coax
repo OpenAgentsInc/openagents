@@ -12,7 +12,7 @@
 //   coax/bin/coax test --library aethyr/rules/srd/battle.coax
 #load "spells.coax";
 
-RS_MAX :: 24;
+RS_MAX :: 48;
 RS_ZONES :: 8;
 RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; }
 RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool; }
@@ -132,6 +132,7 @@ rs_drop_effect :: (b: [] RsBattle, j: int, k: int) {
   b[0].c[j] = c[0];
 }
 rs_put_effect :: (b: [] RsBattle, j: int, e: RsEffect) {
+  if e.kind == EF_COND && (b[0].c[j].immune_cond & e.cond) != 0 { return; }
   c: [1] RsCreature; c[0] = b[0].c[j];
   rs_effect_add(c[..], e);
   b[0].c[j] = c[0];
@@ -236,6 +237,7 @@ rs_cast :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target
   me := b[0].c[i];
   if s.area == RS_A_NONE {
     if target < 0 || target >= b[0].n || b[0].c[target].dead { return false; }
+    if s.humanoid_only && !b[0].c[target].humanoid { return false; }
     if s.range_ft > 0 && rs_feet_to(b, i, target) > s.range_ft { return false; }
   } else if s.area != RS_A_CUBE_SELF {
     if rs_feet(me.x, me.y, tx, ty) > s.range_ft { return false; }
@@ -315,9 +317,16 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   return rs_edge(ups, downs);
 }
 // Rage's Resistance to Bludgeoning, Piercing and Slashing: half the damage, rounded down.
+// Damage after Immunity (none), Resistance (half, rounded down) and Vulnerability (double):
+// Rage gives Resistance to Bludgeoning, Piercing and Slashing.
 rs_resisted :: (b: [] RsBattle, j: int, amount: int, kind: int) -> int {
-  if b[0].c[j].raging && (kind == RS_BLUDGEONING || kind == RS_PIERCING || kind == RS_SLASHING) { return amount / 2; }
-  return amount;
+  c := b[0].c[j];
+  bit := 1 << kind;
+  if (c.immune & bit) != 0 { return 0; }
+  a := amount;
+  if (c.resist & bit) != 0 || (c.raging && (kind == RS_BLUDGEONING || kind == RS_PIERCING || kind == RS_SLASHING)) { a = a / 2; }
+  if (c.vulnerable & bit) != 0 { a = a * 2; }
+  return a;
 }
 
 // Advantage or Disadvantage on j's saving throw of an ability.
@@ -390,7 +399,11 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       if agony != 0 { rs_add_text(l[..], " + "); rs_add_int(l[..], agony); }
       if weak > 0 { rs_add_text(l[..], ", -"); rs_add_int(l[..], weak); rs_add_text(l[..], " enfeebled"); }
       rs_add_text(l[..], ")");
-      if rs_resisted(b, j, amount, st.c) != amount { amount = rs_resisted(b, j, amount, st.c); rs_add_text(l[..], ", halved by Rage"); }
+      if rs_resisted(b, j, amount, st.c) != amount {
+        after := rs_resisted(b, j, amount, st.c);
+        rs_add_text(l[..], ifx after == 0 then ", immune" else ifx after > amount then ", vulnerable" else ", resisted");
+        amount = after;
+      }
       rs_tell(b, RS_EV_DAMAGE, sp, i, j, amount, st.c, l[..]);
       // Hex: 1d6 Necrotic more when its caster hits the target with an attack roll
       hexed := false;
@@ -422,6 +435,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       rs_tell(b, RS_EV_HEAL, sp, i, j, got, 0, l[..]);
     } else if st.kind == RS_S_CONDITION {
       if ran_save && saved { continue; }
+      if (b[0].c[j].immune_cond & st.a) != 0 { continue; }
       b[0].c[j].cond = b[0].c[j].cond | st.a;
       if st.a == RS_RESTRAINED { b[0].c[j].restrained_by = zone_at; }
       l: [1] RsLine;
@@ -700,14 +714,19 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   ab := rs_attack_ability(me, w);
   strength := ab == RS_STR;
   b[0].turn.struck = true;
-  d := rs_d20(b[0].dice[..], rs_attack_edge(b, i, j, true, strength));
+  melee := wp.range_ft <= 5;
+  far := 0;
+  if !melee && rs_feet_to(b, i, j) > wp.range_ft { far = -1; }   // long range: Disadvantage
+  edge := rs_attack_edge(b, i, j, melee, strength);
+  if far < 0 { edge = rs_edge(ifx edge > 0 then 1 else 0, 1 + (ifx edge < 0 then 1 else 0)); }
+  d := rs_d20(b[0].dice[..], edge);
   bonus := rs_weapon_attack(me, w);
   total := d.roll + bonus;
   crit := d.roll == 20;
   hit := d.roll != 1 && (crit || total >= b[0].c[j].ac);
-  if hit && (rs_has(b[0].c[j], RS_PARALYZED) || rs_has(b[0].c[j], RS_UNCONSCIOUS)) { crit = true; }
+  if hit && melee && (rs_has(b[0].c[j], RS_PARALYZED) || rs_has(b[0].c[j], RS_UNCONSCIOUS)) { crit = true; }
   l: [1] RsLine;
-  rs_add_name(l[..], b, i); rs_add_text(l[..], " attacks "); rs_add_name(l[..], b, j); rs_add_text(l[..], " with ");
+  rs_add_name(l[..], b, i); rs_add_text(l[..], ifx melee then " attacks " else " shoots "); rs_add_name(l[..], b, j); rs_add_text(l[..], " with ");
   rs_add_text(l[..], ifx w == W_UNARMED then "an Unarmed Strike" else wp.name);
   rs_add_text(l[..], ": "); rs_add_int(l[..], d.roll);
   if d.edge > 0 { rs_add_text(l[..], " (Advantage)"); }
@@ -753,7 +772,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   if frenzy > 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], frenzy); rs_add_text(dl[..], " Frenzy"); }
   if weak > 0 { rs_add_text(dl[..], ", -"); rs_add_int(dl[..], weak); rs_add_text(dl[..], " enfeebled"); }
   if cut > 0 { rs_add_text(dl[..], ", Deflect Attacks -"); rs_add_int(dl[..], cut); }
-  if tg.raging && dealt != rs_max(amount - cut, 0) { rs_add_text(dl[..], ", halved by Rage"); }
+  if dealt != rs_max(amount - cut, 0) { rs_add_text(dl[..], ifx dealt == 0 then ", immune" else ifx dealt > amount - cut then ", vulnerable" else ", resisted"); }
   rs_add_text(dl[..], ")");
   rs_tell(b, RS_EV_DAMAGE, -1, i, j, dealt, wp.damage, dl[..]);
   rs_damage(b, i, j, dealt, wp.damage, crit, -1);
@@ -810,6 +829,15 @@ rs_attack :: (b: [] RsBattle, i: int, j: int, reckless: bool, cleave_to: int) ->
     rs_tell(b, RS_EV_CONDITION, -1, i, k, 0, 0, l[..]);
     ok := rs_strike(b, i, k, w, true);
   }
+  return true;
+}
+
+// The Attack action with its ranged weapon, at j within its long range.
+rs_shoot :: (b: [] RsBattle, i: int, j: int) -> bool {
+  if b[0].who != i || b[0].turn.action || !rs_can_act(b[0].c[i]) || b[0].c[i].ranged < 0 { return false; }
+  if j < 0 || j >= b[0].n || b[0].c[j].dead || j == i || rs_feet_to(b, i, j) > rs_weapon(b[0].c[i].ranged).long_ft { return false; }
+  b[0].turn.action = true;
+  ok := rs_strike(b, i, j, b[0].c[i].ranged, false);
   return true;
 }
 
@@ -1287,4 +1315,47 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   rs_end_turn(b[..], a);
   for k: 0..<10 { rs_tick(b[..], 1.0); }
   #assert b[0].c[a].slots[2] == 2;
+}
+#test "a Skeleton takes double from a Monk's fists, nothing from Poison Spray, and can't be held by Hold Person" {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 14;
+  m := rs_add(b[..], rs_monk("Sen", 0, 3), 3, 3);
+  s := rs_add(b[..], rs_skeleton("Skeleton", 2), 4, 3);
+  w := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 8, 3);
+  d := rs_add(b[..], rs_druid("Rowan", 0, 3), 5, 4);
+  hit := false;
+  for k: 0..<20 {
+    b[0].c[s].hp = 13; b[0].c[s].dead = false; b[0].c[s].cond = 0;
+    rs_start_turn(b[..], m);
+    #assert rs_attack(b[..], m, s, false, -1);
+    rs_end_turn(b[..], m);
+    if b[0].c[s].hp < 13 { #assert (13 - b[0].c[s].hp) % 2 == 0 || b[0].c[s].hp == 0; hit = true; break; }
+  }
+  #assert hit;
+  rs_start_turn(b[..], w);
+  #assert !rs_cast(b[..], w, SP_HOLD_PERSON, 2, 0, 0, s);
+  rs_end_turn(b[..], w);
+  for k: 0..<10 {
+    b[0].c[s].hp = 13; b[0].c[s].dead = false; b[0].c[s].cond = 0;
+    rs_start_turn(b[..], d);
+    #assert rs_cast(b[..], d, SP_POISON_SPRAY, 0, 0, 0, s);
+    rs_end_turn(b[..], d);
+    #assert b[0].c[s].hp == 13;
+  }
+}
+#test "a Skeleton's Shortbow: 80 feet, Disadvantage out to 320, and up close Disadvantage while a foe is beside it" {
+  b: [1] RsBattle; b[0].w = 80; b[0].h = 8; b[0].dice[0].state = 2;
+  s := rs_add(b[..], rs_skeleton("Skeleton", 2), 1, 3);
+  t := rs_add(b[..], rs_druid("Rowan", 0, 3), 30, 3);
+  rs_start_turn(b[..], s);
+  #assert rs_shoot(b[..], s, t);
+  ev := rs_recent(b[0].book[0], 0);
+  for k: 0..<4 { e := rs_recent(b[0].book[0], k); if e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS { ev = e; } }
+  txt := cast(string) ev.text[0..<ev.text_n];
+  dis := false;
+  for c: 0..<(ev.text_n - 12) { if txt[c..<(c + 12)] == "Disadvantage" { dis = true; } }
+  #assert dis;   // 145 feet: long range
+  rs_end_turn(b[..], s);
+  b[0].c[t].x = 75;
+  rs_start_turn(b[..], s);
+  #assert !rs_shoot(b[..], s, t);   // 370 feet: beyond 320
 }

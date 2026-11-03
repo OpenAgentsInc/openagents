@@ -55,6 +55,7 @@ RsSpell :: struct {
   area: int; area_ft: int;
   steps: [RS_STEPS] RsStep; step_n: int;
   part_of: int;               // a part of another spell (Produce Flame's hurl), -1 none
+  humanoid_only: bool;        // its target must be a Humanoid
   page: int;                  // the SRD 5.2.1 page
   text: string;
 }
@@ -148,6 +149,7 @@ rs_spell :: (i: int) -> RsSpell {
                  concentration = true, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 142,
                  text = "Choose a Humanoid that you can see within range. The target must succeed on a Wisdom saving throw or have the Paralyzed condition for the duration. At the end of each of its turns, the target repeats the save, ending the spell on itself on a success. Using a Higher-Level Spell Slot. You can target one additional Humanoid for each spell slot level above 2."};
     s.steps[0] = rs_step(RS_S_SAVE, RS_WIS, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_TIMED, RS_PARALYZED, 2, RS_WIS, 0); s.step_n = 2;
+    s.humanoid_only = true;
   } else if i == SP_SCORCHING_RAY {
     // On the Sorcerer and Wizard lists; a Fiend Patron Warlock always has it prepared from level 3.
     s = RsSpell.{id = "scorching-ray", name = "Scorching Ray", level = 2, school = "Evocation", classes = "Sorcerer, Wizard",

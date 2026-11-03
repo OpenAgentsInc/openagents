@@ -24,10 +24,10 @@
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 90000;
-UNIFORM_FLOATS :: 296;
-TOKENS3 :: 24;   // the glade's tokens (gpu/fivelab.coax FIVELAB_TOKENS)
+UNIFORM_FLOATS :: 456;
+TOKENS3 :: 44;   // the glade's tokens (gpu/fivelab.coax FIVELAB_TOKENS)
 U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
-U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 228; U_BOUNDS :: 292;
+U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 388; U_BOUNDS :: 452;
 SQ :: 1.524;   // a 5-foot square, metres
 VIEW_FLAT :: 0; VIEW_GLADE :: 1;
 // The time adapters (docs/dnd/README.md, "The time adapter"): the SRD's 6-second rounds, or action
@@ -43,19 +43,24 @@ OUTBOX_CAP :: 64;
 ACT_NAVIGATE :: 1;
 KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
 
-COLS :: 20; ROWS :: 12;
+COLS :: 26; ROWS :: 14;
 FAST :: 4.0;
-// Twelve a side, all level 3: five Druids and seven Berserker Barbarians (the Circle of Moss)
+// Three sides. Twelve a side, all level 3, and twenty Skeletons (the SRD's stat block) risen in
+// the middle as the Restless Dead, against everyone: five Druids and seven Berserker Barbarians (the Circle of Moss)
 // against five Fiend Warlocks (Armor of Shadows, Agonizing Blast and Repelling Blast for Eldritch
 // Blast) and seven Open Hand Monks (the Ember Pact).
-SIDE :: 12; PEOPLE :: 24; CASTERS :: 5;
-TEAM_NAME :: [2] string.["CIRCLE OF MOSS", "THE EMBER PACT"];
+SIDE :: 12; HEROES :: 24; SKELETONS :: 20; PEOPLE :: 44; CASTERS :: 5; TEAMS :: 3;
+WAVE :: 5; WAVE_EVERY :: 8.0;   // the Restless Dead rise five at a time, every 8 seconds
+// where each wave claws up: the top edge, the bottom edge, the middle, then the top and bottom again
+WAVE_X :: [4] int.[11, 12, 13, 14];
+WAVE_Y :: [4] int.[0, 13, 6, 0];
+TEAM_NAME :: [3] string.["CIRCLE OF MOSS", "THE EMBER PACT", "THE RESTLESS DEAD"];
 NAMES :: [24] string.["Rowan", "Briar", "Fern", "Hazel", "Alder",
                        "Sen", "Lio", "Mara", "Tam", "Ishu", "Rook", "Wen",
                        "Mordra", "Vesk", "Sallow", "Grimsby", "Ilse",
                        "Thorn", "Gorr", "Brakka", "Ulf", "Hild", "Torva", "Kesh"];
-START_X :: [24] int.[1, 2, 1, 2, 1,  4, 5, 4, 5, 4, 5, 4,  18, 17, 18, 17, 18,  15, 14, 15, 14, 15, 14, 15];
-START_Y :: [24] int.[1, 3, 5, 8, 10,  0, 2, 4, 6, 7, 9, 11,  0, 3, 6, 8, 11,  1, 2, 4, 5, 7, 9, 10];
+START_X :: [24] int.[1, 2, 1, 2, 1,  4, 5, 4, 5, 4, 5, 4,  24, 23, 24, 23, 24,  21, 20, 21, 20, 21, 20, 21];
+START_Y :: [24] int.[2, 4, 6, 9, 11,  1, 3, 5, 7, 8, 10, 12,  1, 4, 7, 9, 12,  2, 3, 5, 6, 8, 10, 11];
 
 LOG_LINES :: 40;
 LINE_CAP :: 96;
@@ -73,7 +78,7 @@ GREEN :: Col.{r = 0.4, g = 1.0, b = 0.5};
 VIOLET :: Col.{r = 0.75, g = 0.48, b = 1.0};
 GOLD :: Col.{r = 1.0, g = 0.8, b = 0.35};
 CYAN :: Col.{r = 0.35, g = 0.9, b = 1.0};
-TEAM_COL :: [2] Col.[Col.{r = 0.45, g = 0.95, b = 0.55}, Col.{r = 0.62, g = 0.85, b = 1.0}];
+TEAM_COL :: [3] Col.[Col.{r = 0.45, g = 0.95, b = 0.55}, Col.{r = 0.62, g = 0.85, b = 1.0}, Col.{r = 0.9, g = 0.86, b = 0.74}];
 
 Line :: struct { text: [LINE_CAP] u8; n: int; col: Col; }
 Fx :: struct { kind: int; ax: f32; ay: f32; bx: f32; by: f32; t0: f32; life: f32; col: Col; text: [12] u8; n: int; }
@@ -84,7 +89,7 @@ Lab :: struct {
   seen: int;                       // the battle log's events already shown
   seed: u64;
   round: int;
-  wins: [2] int;
+  wins: [3] int;
   over: bool; over_t: f32; winner: int;
   dx: [RS_MAX] f32; dy: [RS_MAX] f32;   // where each token is drawn, in squares
   acted: [RS_MAX] f32;             // when each last took its turn
@@ -98,7 +103,8 @@ Lab :: struct {
   portrait: bool;
   gx: f32; gy: f32; cell: f32;
   panel: Rect; back: Rect; flip: Rect; modal: Rect;
-  mode: int;
+  mode: int = MODE_ACTION;
+  risen: int; next_wave: f32;   // the Skeletons risen so far, and when the next wave rises
   pressing: int;
   // the glade's camera: an orbit round the clearing, and what it makes this frame
   view: int = VIEW_GLADE;
@@ -213,6 +219,7 @@ new_battle :: (s: [] Lab) {
   s[0].seed += 1;
   s[0].battle[0].dice[0].state = s[0].seed * 7919 + 17;
   for i: 0..<PEOPLE {
+    if i >= HEROES { continue; }   // the Restless Dead rise later, in waves
     k := i % SIDE; team := i / SIDE;
     who := ifx k >= CASTERS then (ifx team == 0 then rs_monk(NAMES[i], 0, 3) else rs_barbarian(NAMES[i], 1, 3))
            else (ifx team == 0 then rs_druid(NAMES[i], 0, 3) else rs_warlock(NAMES[i], 1, 3, SP_ELDRITCH_BLAST));
@@ -224,16 +231,17 @@ new_battle :: (s: [] Lab) {
   rs_begin(bt(s));
   s[0].seen = s[0].battle[0].book[0].seq;
   s[0].over = false; s[0].winner = -1;
+  s[0].risen = 0; s[0].next_wave = 2;
   s[0].round += 1;
   for i: 0..<FXS { s[0].fx[i].kind = 0; }
   l: [LINE_CAP] u8;
   n := put(l[..], 0, "Battle ");
   n = put_int(l[..], n, s[0].round);
   n = put(l[..], n, ifx s[0].mode == MODE_ACTION then ", action combat" else ", SRD rounds");
-  n = put(l[..], n, ": druids and monks against warlocks and barbarians, level 3. Initiative:");
+  n = put(l[..], n, ": druids and monks, warlocks and barbarians, and 20 skeletons.");
   add_line(s, cast(string) l[0..<n], GOLD);
   // six to a line
-  for row: 0..<(PEOPLE / 6) {
+  for row: 0..<(HEROES / 6) {
     m := put(l[..], 0, " ");
     for c: 0..<6 {
       i := row * 6 + c;
@@ -242,6 +250,33 @@ new_battle :: (s: [] Lab) {
     }
     add_line(s, cast(string) l[0..<m], TEAM_COL[(row * 6) / SIDE]);
   }
+}
+// Five Skeletons claw up out of the glade, on free squares along an edge or in the middle.
+rise :: (s: [] Lab) {
+  b := bt(s);
+  w := s[0].risen / WAVE;
+  ys := ifx w < 4 then WAVE_Y[w] else 13 * (w % 2);
+  got := 0;
+  for k: 0..<(WAVE * 4) {
+    if got >= WAVE { break; }
+    x := 10 + (k * 3) % 7; y := ys + (ifx ys == 0 then k / 7 else ifx ys == 13 then -(k / 7) else (k / 7) - 1);
+    if y < 0 || y >= ROWS || rs_at(b, x, y) >= 0 { continue; }
+    q := s[0].risen;
+    nm: [16] u8;
+    nn := put(nm[..], 0, "Skeleton "); nn = put_int(nm[..], nn, q + 1);
+    i := rs_add(b, rs_skeleton(cast(string) nm[0..<nn], 2), x, y);
+    if i < 0 { break; }
+    b[0].c[i].turn_at = b[0].clock + 0.5 + f32(got) * rs_beat(b) / f32(WAVE);
+    b[0].c[i].round_at = b[0].c[i].turn_at;
+    s[0].dx[i] = f32(x); s[0].dy[i] = f32(y); s[0].acted[i] = b[0].clock;
+    s[0].risen += 1; got += 1;
+  }
+  s[0].next_wave = b[0].clock + WAVE_EVERY;
+  l: [LINE_CAP] u8;
+  n := put(l[..], 0, "The Restless Dead rise: "); n = put_int(l[..], n, got);
+  n = put(l[..], n, " skeletons ("); n = put_int(l[..], n, s[0].risen); n = put(l[..], n, " of 20)");
+  add_line(s, cast(string) l[0..<n], TEAM_COL[2]);
+  if got == 0 { s[0].risen = SKELETONS; }
 }
 lab_start :: (s: [] Lab) {
   if s[0].started { return; }
@@ -253,11 +288,15 @@ lab_start :: (s: [] Lab) {
 // ---- how a druid decides (the world's; the rules are the engine's)
 
 nearest_foe :: (s: [] Lab, i: int) -> int {
+  // heroes count the Restless Dead 40 feet further off than they are: the rival side is their
+  // quarrel, and the dead are fought when they come close
   best := -1; bd := 100000;
+  me := s[0].battle[0].c[i];
   for j: 0..<s[0].battle[0].n {
     c := s[0].battle[0].c[j];
-    if c.team == s[0].battle[0].c[i].team || !rs_up(c) { continue; }
+    if c.team == me.team || !rs_up(c) { continue; }
     d := rs_feet_to(bt(s), i, j);
+    if c.klass == RS_MONSTER && me.klass != RS_MONSTER && d > 5 { d += 40; }
     if d < bd { bd = d; best = j; }
   }
   return best;
@@ -333,7 +372,7 @@ pact_turn :: (s: [] Lab, i: int) {
   }
   if b[0].c[i].conc < 0 && b[0].c[i].slots[2] > 0 {
     if brute >= 0 && rs_unit(dice(s)) < 0.7 { ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, brute); }
-    else if rs_feet_to(b, i, foe) <= 60 && !rs_has(b[0].c[foe], RS_PARALYZED) && rs_unit(dice(s)) < 0.35 { ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe); }
+    else if b[0].c[foe].humanoid && rs_feet_to(b, i, foe) <= 60 && !rs_has(b[0].c[foe], RS_PARALYZED) && rs_unit(dice(s)) < 0.35 { ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe); }
     else if rs_feet_to(b, i, foe) <= 90 { ok := rs_cast(b, i, SP_HEX, 2, 0, 0, foe); }
   }
   // a Paralyzed foe within a walk: go and touch it
@@ -363,7 +402,7 @@ pact_turn :: (s: [] Lab, i: int) {
   }
   d := rs_feet_to(b, i, foe);
   if !b[0].turn.slot_spent && b[0].c[i].slots[2] > 0 {
-    if b[0].c[i].conc < 0 && d <= 60 && !rs_has(b[0].c[foe], RS_PARALYZED) { ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe); }
+    if b[0].c[i].conc < 0 && d <= 60 && b[0].c[foe].humanoid && !rs_has(b[0].c[foe], RS_PARALYZED) { ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe); }
     else if rs_unit(dice(s)) < 0.6 { ok := rs_cast(b, i, SP_SCORCHING_RAY, 2, 0, 0, foe); }
   }
   if !b[0].turn.action { ok := rs_cast(b, i, SP_ELDRITCH_BLAST, 0, 0, 0, foe); }
@@ -449,12 +488,30 @@ monk_turn :: (s: [] Lab, i: int) {
   else { ok = rs_bonus_strike(b, i, j); }
 }
 
+// A Skeleton's turn: the even ones close in with the Shortsword, the odd ones hang back and shoot;
+// any with a foe beside it uses the Shortsword (a bow up close has Disadvantage).
+skeleton_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if rs_has(b[0].c[i], RS_RESTRAINED) && rs_unit(dice(s)) < 0.5 { ok := rs_escape(b, i); }
+  foe := nearest_foe(s, i);
+  if foe < 0 { return; }
+  j := foe_at_hand(s, i, -1);
+  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  archer := i % 2 == 1;
+  if !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, foe, ifx archer then 30 else 0, ifx archer then 70 else 5); }
+  j = foe_at_hand(s, i, -1);
+  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  foe = nearest_foe(s, i);
+  if foe >= 0 && rs_feet_to(b, i, foe) <= 80 { ok := rs_shoot(b, i, foe); }
+}
+
 lab_turn :: (s: [] Lab, i: int) {
   b := bt(s);
   rs_start_turn(b, i);
   if rs_can_act(b[0].c[i]) && b[0].c[i].klass != RS_DRUID {
     s[0].acted[i] = b[0].clock;
     if b[0].c[i].klass == RS_BARBARIAN { barbarian_turn(s, i); }
+    else if b[0].c[i].klass == RS_MONSTER { skeleton_turn(s, i); }
     else if b[0].c[i].klass == RS_MONK { monk_turn(s, i); }
     else { pact_turn(s, i); }
     rs_end_turn(b, i);
@@ -533,16 +590,19 @@ step :: (s: [] Lab, dt: f32) {
     guard += 1;
     due = rs_due(b);
   }
+  // the next wave of the Restless Dead
+  if s[0].risen < SKELETONS && b[0].clock >= s[0].next_wave { rise(s); }
   take_events(s);
-  for t: 0..<2 {
-    if rs_team_up(b, t) == 0 && !s[0].over {
-      s[0].over = true; s[0].over_t = b[0].clock; s[0].winner = 1 - t;
-      s[0].wins[1 - t] += 1;
-      l: [LINE_CAP] u8;
-      n := put(l[..], 0, TEAM_NAME[1 - t]);
-      n = put(l[..], n, " wins. A new battle in 6 seconds.");
-      add_line(s, cast(string) l[0..<n], GOLD);
-    }
+  // the last side standing wins (the Dead stand while any are still to rise)
+  standing := 0; last := -1;
+  for t: 0..<TEAMS { if rs_team_up(b, t) > 0 || (t == 2 && s[0].risen < SKELETONS) { standing += 1; last = t; } }
+  if standing <= 1 && !s[0].over {
+    s[0].over = true; s[0].over_t = b[0].clock; s[0].winner = last;
+    l: [LINE_CAP] u8;
+    n := 0;
+    if last >= 0 { s[0].wins[last] += 1; n = put(l[..], 0, TEAM_NAME[last]); n = put(l[..], n, " wins. A new battle in 6 seconds."); }
+    else { n = put(l[..], 0, "Nobody is left standing. A new battle in 6 seconds."); }
+    add_line(s, cast(string) l[0..<n], GOLD);
   }
   // the tokens slide to their squares
   for i: 0..<b[0].n {
@@ -829,10 +889,11 @@ draw_labels3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
     p := proj(s, x, lift, z);
     if p.z <= 0 { continue; }
     col := ifx cr.dead then FAINT else ifx cr.hp == 0 then DIM else TEAM_COL[cr.team];
+    if cr.klass == RS_MONSTER && cr.dead { continue; }
     nm := cast(string) cr.name[0..<cr.name_n];
-    n = say_mid(out, n, nm, p.x, p.y - 8 * k, 10 * k, ink(k, 0.95, col));
+    if cr.klass != RS_MONSTER { n = say_mid(out, n, nm, p.x, p.y - 8 * k, 10 * k, ink(k, 0.95, col)); }
     if cr.dead { continue; }
-    bw := 46 * k; by := p.y;
+    bw := ifx cr.klass == RS_MONSTER then 26 * k else 46 * k; by := p.y;
     share := f32(cr.hp) / f32(rs_max(cr.hp_max, 1));
     n = seg(out, n, p.x - bw / 2, by, p.x + bw / 2, by, 2.6 * k, 0.25, FAINT);
     hc := ifx share > 0.5 then GREEN else ifx share > 0.25 then GOLD else RED;
@@ -897,7 +958,7 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n = say_at(out, n, "CHARACTERS", x, y, cap, ink(k, 0.6, DIM));
   y += row * 0.6;
   l: [LINE_CAP] u8;
-  for i: 0..<b.n {
+  for i: 0..<rs_min(b.n, HEROES) {
     cr := b.c[i];
     y += crow;
     if i == SIDE { y += crow * 0.4; }
@@ -930,6 +991,17 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     cp := lo(cap * 0.85, cap * 0.85 * (p.x1 - x - 70 * k - pad) / hi(text_width(t, cap * 0.85), 1));
     n = say_at(out, n, t, x + 70 * k, y, cp, ink(k, 0.6, DIM));
   }
+  // the Restless Dead, counted
+  if true {
+    up := 0; hp := 0;
+    for i: HEROES..<b.n { if rs_up(b.c[i]) { up += 1; hp += b.c[i].hp; } }
+    y += crow * 1.4;
+    n = say_at(out, n, "SKELETONS", x, y, cap * 0.92, ink(k, 0.85, ifx up > 0 then TEAM_COL[2] else FAINT));
+    m := put(l[..], 0, ""); m = put_int(l[..], m, up); m = put(l[..], m, " STANDING, ");
+    m = put_int(l[..], m, SKELETONS - s[0].risen); m = put(l[..], m, " TO RISE  HP "); m = put_int(l[..], m, hp);
+    m = put(l[..], m, "  AC 14  SHORTSWORD AND SHORTBOW");
+    n = say_at(out, n, cast(string) l[0..<m], x + 84 * k, y, cap * 0.85, ink(k, 0.6, DIM));
+  }
   y += row * 1.2;
   n = seg(out, n, p.x0 + pad, y, p.x1 - pad, y, 0.6 * k, 0.25, DIM);
   // the log, newest at the bottom
@@ -955,6 +1027,7 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   m := put(l[..], 0, "BATTLE "); m = put_int(l[..], m, s[0].round);
   m = put(l[..], m, "   "); m = put(l[..], m, TEAM_NAME[0]); m = put(l[..], m, " "); m = put_int(l[..], m, s[0].wins[0]);
   m = put(l[..], m, "  "); m = put(l[..], m, TEAM_NAME[1]); m = put(l[..], m, " "); m = put_int(l[..], m, s[0].wins[1]);
+  m = put(l[..], m, "  DEAD "); m = put_int(l[..], m, s[0].wins[2]);
   sx0 := ifx s[0].portrait then pad else pad + text_width("5E LAB", 18 * k) + 28 * k;
   sy0 := ifx s[0].portrait then 62 * k else 34 * k;
   n = say_at(out, n, cast(string) l[0..<m], sx0, sy0, ifx s[0].portrait then 8.5 * k else 10 * k, ink(k, 0.7, DIM));
@@ -1025,7 +1098,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
     u[o + 2] = -1;
     if i >= b.n { continue; }
     cr := b.c[i];
-    look := ifx cr.klass == RS_WARLOCK then 1 else ifx cr.klass == RS_BARBARIAN then 2 else ifx cr.klass == RS_MONK then 3 else 0;
+    look := ifx cr.klass == RS_WARLOCK then 1 else ifx cr.klass == RS_BARBARIAN then 2 else ifx cr.klass == RS_MONK then 3 else ifx cr.klass == RS_MONSTER then 4 else 0;
     u[o] = wx(s[0].dx[i]); u[o + 1] = wz(s[0].dy[i]); u[o + 2] = f32(look);
     u[o + 3] = f32(cr.hp) / f32(rs_max(cr.hp_max, 1));
     u[o + 4] = ifx cr.dead then 2 else ifx cr.hp == 0 then 1 else 0;
@@ -1169,7 +1242,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert lab_key(s[..], 'f', 0) && s[0].fast;
   r := s[0].round;
   #assert lab_key(s[..], 'r', 0) && s[0].round == r + 1;
-  #assert s[0].mode == MODE_ROUNDS && lab_key(s[..], 'm', 0) && s[0].mode == MODE_ACTION && s[0].battle[0].beat == ACTION_BEAT && lab_key(s[..], 'm', 0) && s[0].mode == MODE_ROUNDS && s[0].battle[0].beat == 0;
+  #assert s[0].mode == MODE_ACTION && s[0].battle[0].beat == ACTION_BEAT && lab_key(s[..], 'm', 0) && s[0].mode == MODE_ROUNDS && s[0].battle[0].beat == 0 && lab_key(s[..], 'm', 0) && s[0].mode == MODE_ACTION;
   #assert s[0].view == VIEW_GLADE && lab_key(s[..], 'v', 0) && s[0].view == VIEW_FLAT && lab_key(s[..], 'v', 0) && s[0].view == VIEW_GLADE;
   #assert lab_key(s[..], KEY_ESCAPE, 0) && lab_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds";
 }

@@ -119,13 +119,13 @@ RS_CONDITION :: [15] string.["Blinded", "Charmed", "Deafened", "Exhaustion", "Fr
 EF_NONE :: 0; EF_COND :: 1; EF_ENFEEBLED :: 2; EF_WEAK :: 3; EF_NOHEAL :: 4; EF_HEX :: 5;
 
 // The classes a creature can be built as (-1 for a stat block).
-RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4;
-RS_CLASS :: [5] string.["Druid", "Wizard", "Warlock", "Barbarian", "Monk"];
+RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4; RS_MONSTER :: 5;
+RS_CLASS :: [6] string.["Druid", "Wizard", "Warlock", "Barbarian", "Monk", "Monster"];
 
 // Weapons a creature attacks with: the SRD's weapon table (p. 90) and Unarmed Strike. A Monk's
 // Unarmed Strike rolls its Martial Arts die in place of the 1 + Strength of anyone else's.
-RsWeapon :: struct { id: string; name: string; dice: int; sides: int; damage: int; finesse: bool; mastery: int; }
-W_UNARMED :: 0; W_GREATAXE :: 1;
+RsWeapon :: struct { id: string; name: string; dice: int; sides: int; damage: int; finesse: bool; mastery: int; range_ft: int; long_ft: int; }
+W_UNARMED :: 0; W_GREATAXE :: 1; W_SHORTSWORD :: 2; W_SHORTBOW :: 3;
 M_NONE :: 0; M_CLEAVE :: 1;
 RS_EFFECTS :: 6;
 RsEffect :: struct { kind: int; cond: int; by: int; spell: int; until: f32; save: int; dc: int; }
@@ -159,7 +159,11 @@ RsCreature :: struct {
   dark_blessing: bool;
   hex_free: bool; hex_free_after: f32;
   klass: int;
+  humanoid: bool;           // its creature type is Humanoid (Hold Person)
+  resist: int; vulnerable: int; immune: int;   // damage types, bits of 1 << RS_* (Resistance, Vulnerability, Immunity)
+  immune_cond: int;         // conditions it can't have
   weapon: int;              // what it attacks with (W_*)
+  ranged: int;              // a ranged weapon it can shoot instead (-1 none)
   masteries: int;           // the weapon mastery properties it can use, bits of 1 << M_*
   reacted: bool;            // its Reaction is spent until its next turn starts
   dodge_until: f32;         // the Dodge action: attacks against it have Disadvantage, Advantage on Dex saves
@@ -209,7 +213,7 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level;
-  c[0].klass = RS_DRUID;
+  c[0].klass = RS_DRUID; c[0].humanoid = true; c[0].ranged = -1;
   c[0].score = [6] int.[10, 14, 13, 12, 16, 8];
   c[0].save_prof[RS_INT] = true; c[0].save_prof[RS_WIS] = true;
   con := rs_mod(c[0].score[RS_CON]);
@@ -237,7 +241,7 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level;
-  c[0].klass = RS_WIZARD;
+  c[0].klass = RS_WIZARD; c[0].humanoid = true; c[0].ranged = -1;
   c[0].score = [6] int.[8, 14, 13, 16, 12, 10];
   c[0].save_prof[RS_INT] = true; c[0].save_prof[RS_WIS] = true;
   con := rs_mod(c[0].score[RS_CON]);
@@ -268,7 +272,7 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   c: [1] RsCreature;
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level;
-  c[0].klass = RS_WARLOCK;
+  c[0].klass = RS_WARLOCK; c[0].humanoid = true; c[0].ranged = -1;
   c[0].score = [6] int.[8, 14, 13, 10, 12, 16];
   c[0].save_prof[RS_WIS] = true; c[0].save_prof[RS_CHA] = true;
   con := rs_mod(c[0].score[RS_CON]);
@@ -297,7 +301,7 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
 rs_barbarian :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   rs_set_name(c[..], name);
-  c[0].team = team; c[0].level = level; c[0].klass = RS_BARBARIAN;
+  c[0].team = team; c[0].level = level; c[0].klass = RS_BARBARIAN; c[0].humanoid = true; c[0].ranged = -1;
   c[0].score = [6] int.[16, 13, 14, 8, 12, 10];
   c[0].save_prof[RS_STR] = true; c[0].save_prof[RS_CON] = true;
   con := rs_mod(c[0].score[RS_CON]);
@@ -323,7 +327,7 @@ rs_barbarian :: (name: string, team: int, level: int) -> RsCreature {
 rs_monk :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   rs_set_name(c[..], name);
-  c[0].team = team; c[0].level = level; c[0].klass = RS_MONK;
+  c[0].team = team; c[0].level = level; c[0].klass = RS_MONK; c[0].humanoid = true; c[0].ranged = -1;
   c[0].score = [6] int.[12, 16, 13, 10, 14, 8];
   c[0].save_prof[RS_STR] = true; c[0].save_prof[RS_DEX] = true;
   con := rs_mod(c[0].score[RS_CON]);
@@ -340,14 +344,35 @@ rs_monk :: (name: string, team: int, level: int) -> RsCreature {
   return c[0];
 }
 
+// The SRD 5.2.1 Skeleton (p. 326): Medium Undead, AC 14, HP 13 (2d8 + 4), Speed 30 ft., Str 10
+// Dex 16 Con 15 Int 6 Wis 8 Cha 5, Vulnerability to Bludgeoning, Immunity to Poison and to the
+// Exhaustion and Poisoned conditions, CR 1/4 (PB +2). It carries a Shortsword (+5, 1d6 + 3
+// Piercing) and a Shortbow (+5, range 80/320 ft., 1d6 + 3 Piercing). A stat block's Proficiency
+// Bonus comes from its CR; level 1 gives the same +2.
+rs_skeleton :: (name: string, team: int) -> RsCreature {
+  c: [1] RsCreature;
+  rs_set_name(c[..], name);
+  c[0].team = team; c[0].level = 1; c[0].klass = RS_MONSTER;
+  c[0].score = [6] int.[10, 16, 15, 6, 8, 5];
+  c[0].hp_max = 13; c[0].hp = 13; c[0].ac = 14; c[0].speed = 30;
+  c[0].spell_ability = -1;
+  c[0].weapon = W_SHORTSWORD; c[0].ranged = W_SHORTBOW;
+  c[0].vulnerable = 1 << RS_BLUDGEONING; c[0].immune = 1 << RS_POISON; c[0].immune_cond = RS_POISONED | RS_EXHAUSTION;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  return c[0];
+}
+
 rs_weapon :: (w: int) -> RsWeapon {
-  if w == W_GREATAXE { return RsWeapon.{id = "greataxe", name = "Greataxe", dice = 1, sides = 12, damage = RS_SLASHING, finesse = false, mastery = M_CLEAVE}; }
-  return RsWeapon.{id = "unarmed-strike", name = "Unarmed Strike", dice = 0, sides = 0, damage = RS_BLUDGEONING, finesse = false, mastery = M_NONE};
+  if w == W_GREATAXE { return RsWeapon.{id = "greataxe", name = "Greataxe", dice = 1, sides = 12, damage = RS_SLASHING, finesse = false, mastery = M_CLEAVE, range_ft = 5, long_ft = 5}; }
+  if w == W_SHORTSWORD { return RsWeapon.{id = "shortsword", name = "Shortsword", dice = 1, sides = 6, damage = RS_PIERCING, finesse = true, mastery = M_NONE, range_ft = 5, long_ft = 5}; }
+  if w == W_SHORTBOW { return RsWeapon.{id = "shortbow", name = "Shortbow", dice = 1, sides = 6, damage = RS_PIERCING, finesse = false, mastery = M_NONE, range_ft = 80, long_ft = 320}; }
+  return RsWeapon.{id = "unarmed-strike", name = "Unarmed Strike", dice = 0, sides = 0, damage = RS_BLUDGEONING, finesse = false, mastery = M_NONE, range_ft = 5, long_ft = 5};
 }
 // The ability an attack with weapon w uses: Strength, or Dexterity for a Finesse weapon or a Monk's
 // Martial Arts when it is the higher.
 rs_attack_ability :: (c: RsCreature, w: int) -> int {
   wp := rs_weapon(w);
+  if wp.range_ft > 5 { return RS_DEX; }   // a ranged weapon
   dex_ok := wp.finesse || (c.klass == RS_MONK && (w == W_UNARMED || wp.dice > 0));
   if dex_ok && c.score[RS_DEX] > c.score[RS_STR] { return RS_DEX; }
   return RS_STR;
@@ -456,6 +481,8 @@ rs_hurt :: (c: [] RsCreature, dealt: int, crit: bool) -> RsHurt {
   if c[0].hp == 0 {
     r.dropped = true;
     if left >= c[0].hp_max { c[0].dead = true; r.killed = true; }
+    // Monster Death: a monster dies the instant it drops to 0 Hit Points
+    if c[0].klass == RS_MONSTER { c[0].dead = true; r.killed = true; }
     c[0].cond = c[0].cond | RS_UNCONSCIOUS | RS_PRONE;
     c[0].death_ok = 0; c[0].death_fail = 0; c[0].stable = false;
   }
@@ -518,6 +545,12 @@ rs_death_save :: (d: [] RsDice, c: [] RsCreature) -> int {
   c := rs_monk("Sen", 1, 3);
   #assert c.hp_max == 21 && c.ac == 15 && rs_weapon_attack(c, W_UNARMED) == 5 && c.martial_die == 6 && c.focus == 3 && c.speed == 40;
   #assert rs_focus_dc(c) == 12 && c.deflect && c.open_hand;
+}
+#test "the Skeleton's stat block: AC 14, 13 HP, Shortsword and Shortbow at +5, Bludgeoning vulnerable, Poison immune" {
+  c := rs_skeleton("Skeleton", 2);
+  #assert c.ac == 14 && c.hp_max == 13 && rs_weapon_attack(c, W_SHORTSWORD) == 5 && rs_weapon_attack(c, W_SHORTBOW) == 5 && !c.humanoid;
+  #assert (c.vulnerable & (1 << RS_BLUDGEONING)) != 0 && (c.immune & (1 << RS_POISON)) != 0 && (c.immune_cond & RS_POISONED) != 0;
+  #assert rs_weapon(W_SHORTBOW).range_ft == 80 && rs_weapon(W_SHORTBOW).long_ft == 320;
 }
 #test "Temporary Hit Points soak damage first; a grip that stops healing stops it" {
   c: [1] RsCreature; c[0] = rs_wizard("Mordra", 1, 3);
