@@ -226,6 +226,13 @@ static int world_rect(int32_t c[8], uint32_t w, uint32_t h) {
   if (!coaxial_panel_rect || coaxial_panel_rect(H.state, 4) <= 0 || panel_draw_w <= 0) return 0;
   float sx = (float)w / panel_draw_w, sy = (float)h / panel_draw_h;
   for (int k = 0; k < 8; k++) c[k] = (int32_t)(coaxial_panel_rect(H.state, 5 + k) * (k % 2 ? sy : sx));
+  // what stands in front of the screen, from the realm (its k 13, 14 + 4i ..)
+  int n = (int)coaxial_panel_rect(H.state, 13);
+  desk.occ_n = 0;
+  for (int i = 0; i < n && i < 8; i++) {
+    for (int j = 0; j < 4; j++) desk.occ[i][j] = (int32_t)(coaxial_panel_rect(H.state, 14 + 4 * i + j) * (j % 2 ? sy : sx));
+    desk.occ_n++;
+  }
   return 1;
 }
 // The pointer to the desk first, in the screen's pixels: 1 when the desk took it.

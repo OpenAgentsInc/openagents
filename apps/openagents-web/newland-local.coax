@@ -16,6 +16,7 @@ LocalAgents :: struct {
   desk: bool; rect: [4] f32; rect_ok: bool;
   corner: [8] f32;                 // the four corners on the screen (x, y each: bottom-left, bottom-right, top-right, top-left)
   slide: f32; lift: f32;           // where you moved the screen to: metres along its width, and up
+  occ: [8] Box; occ_n: int;       // what stands between the camera and the desk's screen this frame
   label: Box; grab: bool; grab_x: f32; grab_y: f32; grab_slide: f32; grab_lift: f32;
   // where each agent's name was drawn (a click there asks for its transcript), and that ask
   head_x: [LOCAL_MAX] f32; head_y: [LOCAL_MAX] f32; head_ok: [LOCAL_MAX] bool;
@@ -115,11 +116,39 @@ local_desk :: (out: [] f32, at: int, s: [] LandState, c: Cam, mid: Fv, p: Pen) -
   l[0].label = Box.{x0 = lx - 70 * p.d, y0 = ly - 12 * p.d, x1 = lx + 70 * p.d, y1 = ly + 6 * p.d};
   return put_centred(out, v, ifx l[0].grab then "MOVING THE DESK" else "DESK  ·  F8  ·  DRAG HERE TO MOVE", lx, ly, 7 * p.d, chrome(ink(p, ifx l[0].grab then INK_BLUE else INK_DIM)));
 }
+// Something just drawn (vertices from..to, standing at grid point at) hides the desk's screen where
+// it covers it when it is nearer the camera than the screen's middle: its box on the screen is kept
+// for the host, which leaves the desk out there (k 13, 14..).
+local_occlude :: (s: [] LandState, out: [] f32, from: int, to: int, c: Cam, mid: Fv, at: Fv) {
+  l := s[0].local[..];
+  if !l[0].desk || to <= from || l[0].occ_n >= 8 { return; }
+  a := local_desk_corner_at(0, l[0].slide, l[0].lift); b := local_desk_corner_at(2, l[0].slide, l[0].lift);
+  dc := wk_at(mid, (a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5);
+  d_obj := dot3(fv_sub(at, c.eye), fv_sub(at, c.eye)); d_desk := dot3(fv_sub(dc, c.eye), fv_sub(dc, c.eye));
+  if d_obj >= d_desk { return; }
+  x0 := out[from * VERTEX_FLOATS]; y0 := out[from * VERTEX_FLOATS + 1]; x1 := x0; y1 := y0;
+  for q: from..<to { x := out[q * VERTEX_FLOATS]; y := out[q * VERTEX_FLOATS + 1]; x0 = lo(x0, x); y0 = lo(y0, y); x1 = hi(x1, x); y1 = hi(y1, y); }
+  l[0].occ[l[0].occ_n] = Box.{x0 = x0, y0 = y0, x1 = x1, y1 = y1}; l[0].occ_n += 1;
+}
+#test "what is nearer than the screen hides it; what is behind does not" {
+  s: [1] LandState; l := s[0].local[..]; l[0].desk = true;
+  out: [1200] f32; out[0] = 10; out[1] = 20; out[VERTEX_FLOATS] = 30; out[VERTEX_FLOATS + 1] = 60;
+  mid := fv(0, 0, 0);
+  c: Cam; c.eye = wk_at(mid, WK_SPAWN_X, 1.6, WK_SPAWN_Z);
+  local_occlude(s[..], out[..], 0, 2, c, mid, wk_at(mid, WK_SPAWN_X, 0, WK_SPAWN_Z));
+  #assert l[0].occ_n == 1 && l[0].occ[0].x0 == 10 && l[0].occ[0].y1 == 60;
+  local_occlude(s[..], out[..], 0, 2, c, mid, wk_at(mid, -200, 0, -200));
+  #assert l[0].occ_n == 1;
+}
+
 // The rectangle for the host: k 0..3 x0 y0 x1 y1 in the realm's pixels, 4 whether it is on screen.
 // k 5..12: the corners, x then y, bottom-left, bottom-right, top-right, top-left (for perspective).
 coaxial_land_panel :: (s: [] LandState, k: int) -> f32 #export_c {
-  if s.count < 1 || k < 0 || k > 12 { return -1; }
+  if s.count < 1 || k < 0 || k > 13 + 32 { return -1; }
   l := s[0].local[..];
+  // k 13: how many occluders; 14 + 4i ..: occluder i's x0 y0 x1 y1
+  if k == 13 { return cast(f32) l[0].occ_n; }
+  if k > 13 { i := (k - 14) / 4; j := (k - 14) % 4; if i >= l[0].occ_n { return -1; } b := l[0].occ[i]; return ifx j == 0 then b.x0 else ifx j == 1 then b.y0 else ifx j == 2 then b.x1 else b.y1; }
   if k == 4 { return ifx l[0].rect_ok then 1.0f32 else 0.0f32; }
   if !l[0].rect_ok { return -1; }
   return ifx k < 4 then l[0].rect[k] else l[0].corner[k - 5];
@@ -169,7 +198,9 @@ local_agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, mid: Fv, p: Pen,
     if g.working { pose.turn[P_R_SHOULDER] = fv(-1.1 - 0.15 * sin(t * 3.1 + cast(f32) a), 0, -0.2); pose.turn[P_R_ELBOW] = fv(-0.5, 0, 0); }
     tint := ink(p, ifx g.working then INK_BLUE else INK_PALE);
     top: [1] Spot;
+    fig_from := v;
     v = figure(out, v, c, k, pose, at_grid.x, at_grid.z, yaw, tint, ifx g.working then 1.0f32 else 0.6f32, p, top[..]);
+    local_occlude(s, out, fig_from, v, c, mid, at_grid);
     l[0].head_ok[a] = top[0].ok; l[0].head_x[a] = top[0].x; l[0].head_y[a] = top[0].y;
     if top[0].ok {
       name: [80] u8; n := 0;

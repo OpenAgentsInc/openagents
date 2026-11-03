@@ -49,6 +49,7 @@ typedef struct {
   // F8: where the realm drew the desk's screen this frame, in the swapchain's pixels (0: not there)
   int (*world)(int32_t corners[8], uint32_t w, uint32_t h);
   int32_t world_c[8]; int world_ok;
+  int32_t occ[8][4]; int occ_n;   // what the realm says stands in front of its screen (x0 y0 x1 y1)
 } VkDesk;
 
 static VkDesk *vkdesk_;
@@ -200,9 +201,27 @@ static void vkdesk_overlay(VkCommandBuffer cmd, VkImage dst, uint32_t w, uint32_
       for (int k = 0; k < 4; k++) q[k] = (int32_t)verse_panel_strip(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], i, VKDESK_STRIPS, k);
       if (q[2] <= q[0] || q[3] <= q[1] || q[0] < 0 || q[1] < 0 || q[2] > (int32_t)w || q[3] > (int32_t)h) continue;
       int32_t sx0 = (int32_t)((int64_t)d->dw * i / VKDESK_STRIPS), sx1 = (int32_t)((int64_t)d->dw * (i + 1) / VKDESK_STRIPS);
-      VkImageBlit strip = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffsets = {{sx0, 0, 0}, {sx1, (int32_t)d->dh, 1}},
-                           .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstOffsets = {{q[0], q[1], 0}, {q[2], q[3], 1}}};
-      vkCmdBlitImage(cmd, d->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &strip, VK_FILTER_LINEAR);
+      // the strip's rows less what stands in front of it: up to 9 pieces, each its share of the desk
+      int32_t lo[9], hi[9]; int np = 1; lo[0] = q[1]; hi[0] = q[3];
+      for (int o = 0; o < d->occ_n; o++) {
+        int32_t *b = d->occ[o];
+        if (b[0] >= q[2] || b[2] <= q[0]) continue;
+        int32_t nlo[9], nhi[9]; int nn = 0;
+        for (int k = 0; k < np && nn < 8; k++) {
+          if (b[3] <= lo[k] || b[1] >= hi[k]) { nlo[nn] = lo[k]; nhi[nn++] = hi[k]; continue; }
+          if (b[1] > lo[k]) { nlo[nn] = lo[k]; nhi[nn++] = b[1]; }
+          if (b[3] < hi[k] && nn < 9) { nlo[nn] = b[3]; nhi[nn++] = hi[k]; }
+        }
+        np = nn; memcpy(lo, nlo, sizeof lo); memcpy(hi, nhi, sizeof hi);
+      }
+      for (int k = 0; k < np; k++) {
+        if (hi[k] <= lo[k]) continue;
+        int32_t sy0 = (int32_t)((int64_t)(lo[k] - q[1]) * d->dh / (q[3] - q[1])), sy1 = (int32_t)((int64_t)(hi[k] - q[1]) * d->dh / (q[3] - q[1]));
+        if (sy1 <= sy0) continue;
+        VkImageBlit strip = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffsets = {{sx0, sy0, 0}, {sx1, sy1, 1}},
+                             .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstOffsets = {{q[0], lo[k], 0}, {q[2], hi[k], 1}}};
+        vkCmdBlitImage(cmd, d->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &strip, VK_FILTER_LINEAR);
+      }
     }
     return;
   } else

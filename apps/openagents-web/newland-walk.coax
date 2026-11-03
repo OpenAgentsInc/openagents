@@ -451,7 +451,10 @@ coaxial_walk_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   none := Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   s[0].playtest = none; s[0].network_box = none; s[0].walk_box = none; s[0].gal_box = none; s[0].gal_open = none; s[0].gal_over = -1;
   v := land_scene(out, 0, s, c, feet, f.p, f.t, f.motion);
+  s[0].local[0].occ_n = 0;
+  you_from := v;
   v = wk_you(out, v, s, c, f.p, f.motion);
+  local_occlude(s, out, you_from, v, c, mid, feet);   // you hide the desk's screen when you stand before it
   v = local_agents(out, v, s, c, mid, f.p, f.t);   // Verse OS: the machine's own agents (newland-local.coax)
   scene_end := v;
   if s[0].card != CARD_NONE {
