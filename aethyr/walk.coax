@@ -451,10 +451,10 @@ step :: (w: World, given: Player, dt: f32) -> Player {
   // A flying realm's hook: in the air, this step's vertical speed is the flight's.
   next.diving = false;
   if w.flight.on && !next.on_ground {
-    turn := flight_vertical(w.flight, next.vel.y, next.pos.y, beat, p.jump_held, p.dive_held, p.wings);
-    next.vel.y = turn.vy;
-    next.diving = turn.diving;
-    if turn.beat { next.beats += 1; }
+    lift := flight_vertical(w.flight, next.vel.y, next.pos.y, beat, p.jump_held, p.dive_held, p.wings);
+    next.vel.y = lift.vy;
+    next.diving = lift.diving;
+    if lift.beat { next.beats += 1; }
   }
   next.pos.y = hi(next.pos.y + next.vel.y * dt, ground - w.locomotion.sink_limit);
 
