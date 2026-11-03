@@ -319,6 +319,7 @@ Watch :: struct {
   aa_cool: f32;                   // till the company's next Magic Missile or Earthbind (AA_GAP)
   bound_said: int;                // for the page: 1 bound, 2 resisted (it says so once and clears it)
   darts_hit: int;                 // for the checks
+  bound_kept: bool;               // a staged Earthbind (a page's check): it lasts though no caster keeps it
   call_cool: f32;                 // till a guard may call for help again (ROLE_CALL)
   // what a thrown body comes down onto besides the ground (aethyr/stand.coax: the roofs and rubble round
   // the bodies in flight, the realm's to set each frame), in the world
@@ -362,6 +363,7 @@ watch_start :: (w: [] Watch, heights: [] f32) {
   w[0].held_t = 0; w[0].held_saves = 0; w[0].slow_t = 0; w[0].marked = false; w[0].knocked = false; w[0].temp = 0;
   w[0].call_cool = 0;
   w[0].you_seen = false; w[0].you_v = v3(0, 0, 0); w[0].bound_t = 0; w[0].bound_by = -1; w[0].bound_said = 0; w[0].darts_hit = 0; w[0].aa_cool = 0;
+  w[0].bound_kept = false;
   for i: 0..<WATCH_ACTORS { w[0].actors[i].homed = false; w[0].actors[i].rank = RANK_GUARD; watch_revive(w, i); }
   for k: 0..<WATCH_NEW { watch_beat_route(w[0].beats[k..<k + 1], w[0].solids[..], w[0].solid_n, k, heights); }
   w[0].beats_ok = heights.count >= EG_GROUND_POINTS;
@@ -1309,9 +1311,9 @@ watch_tick :: (w: [] Watch, dt: f32, you: Point, day: f32, boxes: [] f32, nb: in
   if w[0].bound_t > 0 {
     w[0].bound_t = hi(w[0].bound_t - t, 0);
     c := w[0].bound_by;
-    if c < 0 || c >= WATCH_ACTORS || !w[0].actors[c].homed || w[0].actors[c].mode != WM_CHASE || !w[0].wanted { w[0].bound_t = 0; }
+    if !w[0].bound_kept && (c < 0 || c >= WATCH_ACTORS || !w[0].actors[c].homed || w[0].actors[c].mode != WM_CHASE || !w[0].wanted) { w[0].bound_t = 0; }
   }
-  if w[0].dead { w[0].held_t = 0; w[0].slow_t = 0; w[0].bound_t = 0; }
+  if w[0].dead { w[0].held_t = 0; w[0].slow_t = 0; w[0].bound_t = 0; w[0].bound_kept = false; }
   if w[0].dead { w[0].you_fall += t; w[0].you_body = tumble_stepped(w, w[0].you_body, t, heights); }
   if w[0].dead {
     w[0].dead_t += t;

@@ -178,6 +178,9 @@
 //                             or "over URL X0 Y0 X1 Y1", a picture drawn over the strokes too (a HUD's card),
 //                             URL this site's ("/..."), the box in the canvas's device pixels; the picture fits
 //                             inside it, centred. A video plays muted and loops; one no longer listed is let go.
+//                             "over URL X0 Y0 X1 Y1 LOOK V0 V1": LOOK its brightness in hundredths (100 as it
+//                             is) and V0 to V1 (thousandths) the band of the picture, top to bottom, stretched
+//                             over the box (a hotbar's cooldown: the icon's top part, dimmed, over the icon).
 //                             At most 8. Message 607 says how each one came in, a line each: "URL W H" (0 0: it failed).
 
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
@@ -1456,7 +1459,7 @@ struct O { @builtin(position) p: vec4f, @location(0) uv: vec2f };
   o.uv = k;
   return o;
 }
-@fragment fn fs(o: O) -> @location(0) vec4f { return vec4f(textureSample(t, s, o.uv).rgb * m.look.x, 1); }`;
+@fragment fn fs(o: O) -> @location(0) vec4f { return vec4f(textureSample(t, s, vec2f(o.uv.x, mix(m.look.y, m.look.z, o.uv.y))).rgb * m.look.x, 1); }`;
 function mediaPipeline(depth) {
   const key = depth ? "mediaDepth" : "media";
   if (gpu[key] !== undefined) return gpu[key];
@@ -1517,7 +1520,7 @@ function mediaOpen(kind, url) {
 function mediaClose(key, m) {
   media.delete(key);
   if (m.el) { m.el.pause(); m.el.removeAttribute("src"); m.el.load(); }
-  m.texture?.destroy(); m.buffer?.destroy();
+  m.texture?.destroy(); m.buffer?.destroy(); m.bandBuffer?.destroy();
 }
 // The media this frame wants, opened as they're first named; the ready ones drawn into pass: the
 // pictures and videos under the strokes, or (over) the ones drawn over them.
@@ -1528,9 +1531,10 @@ function drawMedia(x, pass, w, h, depth, over = false) {
     const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_media(arena.state), n).slice());
     for (const line of text.split("\n").slice(0, MEDIA_MAX)) {
       const [named, url, ...b] = line.split(" ");
-      const box = b.map(Number);
+      const nums = b.map(Number), box = nums.slice(0, 4);
       const kind = named === "over" ? "image" : named;
-      if ((kind !== "image" && kind !== "video") || !url?.startsWith("/") || url.startsWith("//") || box.length !== 4 || box.some((v) => !Number.isFinite(v))) continue;
+      if ((kind !== "image" && kind !== "video") || !url?.startsWith("/") || url.startsWith("//") || (nums.length !== 4 && nums.length !== 7) || nums.some((v) => !Number.isFinite(v))) continue;
+      const band = nums.length === 7 ? [nums[4] / 100, nums[5] / 1000, nums[6] / 1000] : null;
       const key = `${kind} ${url}`;
       if ((named === "over") !== over) { wanted.add(key); continue; }
       wanted.add(key);
@@ -1541,9 +1545,15 @@ function drawMedia(x, pass, w, h, depth, over = false) {
       // fit inside the box, centred
       const [x0, y0, x1, y1] = box, bw = x1 - x0, bh = y1 - y0;
       if (bw <= 1 || bh <= 1) continue;
-      const f = Math.min(bw / m.w, bh / m.h), dw = m.w * f, dh = m.h * f, cx = x0 + (bw - dw) / 2, cy = y0 + (bh - dh) / 2;
-      gpu.device.queue.writeBuffer(m.buffer, 0, new Float32Array([cx / w * 2 - 1, 1 - cy / h * 2, (cx + dw) / w * 2 - 1, 1 - (cy + dh) / h * 2, 1, 0, 0, 0]));
-      pass.setPipeline(mediaPipeline(depth)); pass.setBindGroup(0, m.group); pass.draw(6);
+      const f = band ? 0 : Math.min(bw / m.w, bh / m.h), dw = band ? bw : m.w * f, dh = band ? bh : m.h * f, cx = x0 + (bw - dw) / 2, cy = y0 + (bh - dh) / 2;
+      // a band has its own uniforms, so the same picture drawn whole under it keeps its own
+      if (band && !m.bandGroup) {
+        m.bandBuffer = gpu.device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        m.bandGroup = gpu.device.createBindGroup({ layout: gpu.mediaLayout, entries: [
+          { binding: 0, resource: { buffer: m.bandBuffer } }, { binding: 1, resource: m.texture.createView() }, { binding: 2, resource: gpu.mediaSampler }] });
+      }
+      gpu.device.queue.writeBuffer(band ? m.bandBuffer : m.buffer, 0, new Float32Array([cx / w * 2 - 1, 1 - cy / h * 2, (cx + dw) / w * 2 - 1, 1 - (cy + dh) / h * 2, ...(band || [1, 0, 1]), 0]));
+      pass.setPipeline(mediaPipeline(depth)); pass.setBindGroup(0, band ? m.bandGroup : m.group); pass.draw(6);
     }
   }
   if (!over) for (const [key, m] of media) if (!wanted.has(key) && ++m.unseen > 60) mediaClose(key, m); else if (wanted.has(key)) m.unseen = 0;

@@ -3196,7 +3196,7 @@ hint :: (s: [] Everglade) -> string {
     return "THE MAP · M OR ESC TO WALK AGAIN";
   }
   if s[0].ev.editing { return edit_hint(s); }
-  if s[0].news_time > 0 && s[0].news >= 0 { return news_line(s); }
+  if s[0].news_time > 0 && s[0].news >= 0 && !s[0].guide.quiet { return news_line(s); }
   if s[0].water == WATER_BOAT { return ifx phone(s) then "ROWING · LEFT THUMB ROWS AND TURNS" else "ROWING · W AND S ROW · A AND D TURN"; }
   if s[0].water == WATER_WADING { return "WADING · HALF SPEED IN THE WATER"; }
   if s[0].water == WATER_SWIMMING { return ifx phone(s) then "SWIMMING · HALF SPEED" else "SWIMMING · HOLD C TO DIVE"; }
@@ -3643,7 +3643,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   s[0].bye_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   if s[0].talk >= 0 { return conversation(s, out, u, n); }
   if s[0].board { return board_panel(s, out, u, n); }
-  if s[0].lift < 0.5 && !s[0].ev.editing {
+  if s[0].lift < 0.5 && !s[0].ev.editing && !s[0].guide.quiet {
     // under the title; on a phone, where the chat line, HP and REPLY share the top, under them
     goal_top := gutter + cap + small + 44 * k;
     if phone(s) { goal_top = hi(goal_top, hi(s[0].chat.box.y1 + 10 * k, s[0].rp.boxes[RP_B_OPEN].y1 + 10 * k)); }
@@ -3860,7 +3860,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].near = ifx s[0].above || s[0].talk >= 0 || s[0].board then -1 else nearest(s, feet);
   // the quest board, when it is nearer than anyone
   s[0].near_board = false;
-  if !s[0].above && s[0].talk < 0 && !s[0].board {
+  if !s[0].above && s[0].talk < 0 && !s[0].board && !s[0].guide.quiet {
     bm := board_middle();
     bd := flat_gap(bm, feet);
     if bd < f32(BOARD_NEAR) && (s[0].near < 0 || bd < flat_gap(folk_at(s, s[0].near), feet)) {

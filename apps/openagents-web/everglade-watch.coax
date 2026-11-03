@@ -402,7 +402,12 @@ watch_missiles_draw :: (s: [] Everglade) {
       }
       if burst { sp_burst(s, b, v3(0, 1, 0), 8, 2.5, 0.6, 0.08, v3(0.85, 0.95, 1), v3(0.5, 0.75, 1), 2); }
     } else if m.kind == MS_HOLD {
-      if burst { sp_add_shock(s, v3(b.x, b.y - 0.9, b.z), 1.1, 0.7, v3(0.7, 0.4, 1)); }
+      // a golden thread from the hand to you, then a ring closing round you
+      if flying {
+        d := sub(b, a);
+        for q: 0..<3 { sp_add_spark(s, add(a, times(d, clamp01(u - f32(q) * 0.08))), times(d, 0.2), 0.12, 0.12 - f32(q) * 0.02, v3(1.4, 1.05, 0.35), 0); }
+      }
+      if burst { sp_add_shock(s, v3(b.x, b.y - 0.9, b.z), 1.1, 0.7, v3(1, 0.8, 0.3)); }
     } else if m.kind == MS_LIGHTNING {
       // the bolt's line, 100 ft from the hand, crackling
       if burst {
@@ -458,12 +463,51 @@ watch_missiles_draw :: (s: [] Everglade) {
     ax := v3(cos(yaw), 0, -sin(yaw));
     shape(s, SHAPE_BOX, LOOK_FLAME, add(top, times(ax, -0.4 * (1 - fill))), yaw, 0, 0.4 * fill + 0.001, 0.035, 0.025, colour.x, colour.y, colour.z);
   }
-  // Earthbind on you: yellow strips loop round you
+}
+// What holds you, on your body while it lasts: Hold Person's golden rings round you, Earthbind's dark
+// earthen tendrils dragging at your feet, Ray of Frost's frost motes. Called from spells_frame
+// (everglade-spells.coax), whose puffs (sp_fx) are this frame's only between its start and sp_fx_close.
+watch_on_you_draw :: (s: [] Everglade) {
+  if !s[0].wv.started { return; }
+  w := watch_w(s);
+  if w[0].dead { return; }
+  you := ab_you(s);
+  t := f32(s[0].time);
+  if watch_held(w) {
+    for q: 0..<3 {
+      h := 0.35 + 0.6 * f32(q) + 0.06 * sin(t * 3 + f32(q) * 2.1);
+      r := 0.62 - 0.08 * f32(q) + 0.04 * sin(t * 5 + f32(q));
+      sp_fx(s, FX_RING, v3(you.x, you.y + h, you.z), r, v3(2.2, 1.6, 0.5), 0, v3(0, 0, 0), f32(q) * 0.31 + t * 0.2);
+      for j: 0..<4 {
+        ang := t * (1.6 - 0.5 * f32(q)) + f32(j) * f32(PI) * 0.5 + f32(q);
+        sp_glow(s, v3(you.x + r * 0.86 * cos(ang), you.y + h, you.z + r * 0.86 * sin(ang)), 0.11, v3(1.8, 1.4, 0.5));
+      }
+    }
+  }
   if watch_bound(w) {
-    you := ab_you(s);
-    for q: 0..<2 {
-      ang := f32(s[0].time) * 4 + f32(q) * f32(PI);
-      sp_add_spark(s, v3(you.x + 0.6 * cos(ang), you.y + 0.3 + 0.6 * f32(q), you.z + 0.6 * sin(ang)), v3(-sin(ang), 0, cos(ang)), 0.3, 0.06, v3(1, 0.85, 0.2), 0);
+    // six tendrils of dark earth out of the ground, curling in round your shins and pulling, each a
+    // few clods of rock stacked up it, and a faint amber glint of the spell along them
+    for j: 0..<6 {
+      ang := f32(j) * f32(PI) / 3 + 0.3 * sin(t * 0.8 + f32(j));
+      pull := 0.5 + 0.5 * sin(t * 2.6 + f32(j) * 1.7);
+      for q: 0..<4 {
+        f := f32(q) / 3;
+        rr := 0.62 - 0.36 * f;
+        h := 0.04 + (0.5 + 0.12 * pull) * f;
+        twist := ang + f * 0.9;
+        at := v3(you.x + rr * cos(twist), you.y + h, you.z + rr * sin(twist));
+        sz := 0.11 - 0.05 * f;
+        shape(s, SHAPE_BOX, LOOK_ROCK, at, twist + 0.6 * f, 0.5 + 0.4 * f, sz, sz * 1.6, sz, 0.22, 0.15, 0.09);
+        if q == 3 { sp_glow(s, at, 0.07, v3(0.9, 0.55, 0.18)); }
+      }
+    }
+    sp_fx(s, FX_RING, v3(you.x, you.y + 0.05, you.z), 0.66, v3(0.7, 0.42, 0.14), 0, v3(0, 0, 0), t * 0.1);
+  }
+  if w[0].slow_t > 0 {
+    for j: 0..<8 {
+      ph := (t * 0.5 + f32(j) * 0.125) - floor(t * 0.5 + f32(j) * 0.125);
+      ang := f32(j) * 2.4 + t * 1.3;
+      sp_glow(s, v3(you.x + 0.45 * cos(ang), you.y + 0.2 + 1.6 * ph, you.z + 0.45 * sin(ang)), 0.08 + 0.04 * (1 - ph), v3(0.8, 1.0, 1.5));
     }
   }
 }

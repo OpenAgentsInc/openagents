@@ -7,8 +7,9 @@
 // before Everglade's frame the page takes the rules' numbers for the bar and for you (e5_before); after
 // it, what Everglade's dice did is put back and handed to the engine, the casts that land go to the
 // engine, and the engine's Hit Points, conditions and log come back to the page (e5_after, e5r_*,
-// e5_take), which draws its HUD over Everglade's (e5_finish). A bar key or tap that can't be used now is
-// held back (e5_key, e5_pointer). The room is "everglade-5e", and each player's numbers go to it on
+// e5_take), which draws its HUD over Everglade's (e5_finish). No bar key or tap is ever held back.
+// While nothing moves you of your own (held, your pace taken to nothing) your body stands, and walking
+// into a wall it doesn't run in place (show_vx). The room is "everglade-5e", and each player's numbers go to it on
 // the chat (e5_sync_take). It decides nothing. Every pointer is an offset into the host's
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).
 //
@@ -224,6 +225,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_t_Everglade *g = city(state);
   width = w; height = h; dpr = scale;
   float frame = dt;   /* the player's clock (aethyr/loop.coax) steps it; the rest moves by what it counts */
+  e5_tick(e5v(), frame);   /* the frame rate in the corner (everglade5e.coax e5_fps_draw) */
   dt = verse_player_counts(player, frame);
   if (!golden) now += dt;
   everglade_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
@@ -244,6 +246,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   }
   // Hold Person holds you where you stand (everglade-watch.coax)
   bool busy = everglade_busy(at(state)) || everglade_held(at(state));
+  bool rooted = busy;   /* nothing moves you of your own: the body stands (show_v below) */
   if (busy) sticks = verse_sticks_reset();
   if (busy) player = verse_player_input(player, 0, 0, 0, 0, false, false, 0, 0);
   else player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y), (g->jump || sticks.jump) && !everglade_afloat(at(state)), 0, 0);
@@ -253,6 +256,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     coax_t_FrFooting foot = everglade_footing(at(state), player.pos.x, player.pos.z, player.pos.y);
     if (foot.still) player = verse_player_input(player, 0, 0, 0, 0, false, false, 0, 0);
     player.pace = swim.pace * foot.pace * everglade_slow(at(state));   // and Ray of Frost slows you
+    if (foot.still || !(player.pace > 0.02f)) rooted = true;
     player.grip = foot.grip;
   }
   player.theta = everglade_player_theta(at(state));
@@ -303,6 +307,17 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     player.pos.x = kept.x; player.pos.z = kept.z;
     player.prev_pos = player.pos;
   }
+  // What the body's clip goes by (everglade_frame's vx, vz, everglade.coax figure): held, bound to the
+  // spot, your pace taken to nothing or caught in the ice, you stand; and on the ground, walking into
+  // what stops you, the gait goes no faster than you went, so you never run in place.
+  float show_vx = player.vel.x, show_vz = player.vel.z;
+  if (player.on_ground && river.aboard < 0 && swim.medium < 2) {
+    float sp = __builtin_sqrtf(show_vx * show_vx + show_vz * show_vz);
+    float mx = player.pos.x - was.x, mz = player.pos.z - was.z;
+    float went = dt > 0 ? __builtin_sqrtf(mx * mx + mz * mz) / dt : sp;
+    if (rooted) { show_vx = 0; show_vz = 0; }
+    else if (sp > 0.3f && went < 0.5f * sp) { show_vx *= went / sp; show_vz *= went / sp; }
+  }
   // the river: what water you are in, on the bridge's deck none
   // the rain's rise on it and its current's gain (verse/water-weather.coax, W9)
   everglade_river_weather(rv(), everglade_rise(at(state)), everglade_flow_gain(at(state)));
@@ -348,7 +363,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (!e5_rules.started) e5r_start(e5r(), 20261103);
   e5_before(at(state), e5v(), (coax_v_f32){e5_bar_buf, 49 * 6}, e5_bar_n, (coax_v_f32){e5_hero_buf, 32}, e5_hero_n, (float)now);
   int64_t n = everglade_frame(at(state), out, u, w, h, scale, dt, still != 0 || golden, feet.x, feet.y, feet.z, verse_player_face(player),
-                           verse_player_act(player), player.vel.x, player.vel.z,
+                           verse_player_act(player), show_vx, show_vz,
                            sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   guide_out(state);
   n = everglade_finish_frame(at(state), out, u);
@@ -411,7 +426,7 @@ static void e5_frame(uint32_t state) {
     if (e5r_use(e5r(), slot, e5_pass[q * 3 + 1], e5_pass[q * 3 + 2])) {
       int64_t cn = e5r_spell_name(e5r(), slot, (coax_v_u8){e5_card_buf, sizeof e5_card_buf});
       e5_used(e5v(), slot, (coax_string){(const char *)e5_card_buf, cn});
-    } else e5_refused(g, e5v(), slot);
+    }
   }
   int64_t outn = e5r_out(e5r(), (coax_v_f32){e5_out_buf, 48 * 4});
   int64_t ln = e5r_lines(e5r(), (coax_v_u8){e5_lines_buf, sizeof e5_lines_buf});
@@ -592,7 +607,6 @@ EXPORT("coaxial_water_draws") uint32_t coaxial_water_draws(uint32_t state) { (vo
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
   start(state);
   track_key(tr(), key, false);
-  if (e5_key(at(state), e5v(), key, mods)) { track_drain(&track_state); return 1u; }
   bool used = everglade_key(at(state), key, mods);
   track_drain(&track_state);
   return used ? 1u : 0u;
@@ -607,7 +621,6 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   start(state);
   track_pointer(tr(), x, y, phase, kind, (coax_string){"", 0});
   track_drain(&track_state);
-  if (e5_pointer(at(state), e5v(), x, y, phase, kind, id)) return 1u;
   if (everglade_pointer(at(state), x, y, phase, kind, id)) return 1u;
   if (kind != 0) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
@@ -709,6 +722,8 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
 EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
+  // Everglade 5E's staging tails first ("gate+held": e5_hash), the rest is Everglade's
+  length = (uint32_t)e5_hash(e5v(), (coax_v_u8){inbox, sizeof inbox}, length);
   everglade_hash(at(state), (coax_string){(const char *)inbox, length});
   // a hash that named a place (or the map) wins over the kept one
   coax_t_Everglade *g = city(state);

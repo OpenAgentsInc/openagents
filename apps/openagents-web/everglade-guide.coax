@@ -15,6 +15,7 @@ EgGuide :: struct {
   offered:int;button:Box;finger:int=-1;drawn:int;now_ms:int;
   hud_move:bool;ox:f32;oy:f32;pad_x:f32;pad_y:f32;you:Point;still:bool;
   first_done:int;first_shown:int;first_mark:[40]u8;   // the first goal (eg_first_*): what is done, the step drawn
+  quiet:bool;   // a realm with no quests and no guidance (Everglade 5E sets it): no tracker, first goal, board, guide's button or lines
 }
 
 everglade_guide_begin :: (s:[]Everglade,golden:bool) #export_c {s[0].guide.defer_hud=true;s[0].guide.golden=golden;}
@@ -27,11 +28,13 @@ everglade_guide_ask :: (s:[]Everglade) {
 }
 everglade_guide_key :: (s:[]Everglade,key:int)->bool {
   if key!='g' && key!='G' {return false;}
+  if s[0].guide.quiet {return false;}
   if s[0].guide.offered==0 || s[0].guide.now_ms<s[0].guide.view.cooldown_until_ms {return false;}
   if !s[0].guide.key_down {everglade_guide_ask(s);}
   s[0].guide.key_down=true;return true;
 }
 everglade_guide_pointer :: (s:[]Everglade,x:f32,y:f32,phase:int,id:int)->bool {
+  if s[0].guide.quiet {return false;}
   if phase==0 && s[0].guide.now_ms>=s[0].guide.view.cooldown_until_ms && in_box(s[0].guide.button,x,y) {s[0].guide.finger=id;return true;}
   if s[0].guide.finger!=id || id<0 {return false;}
   if phase==2 && in_box(s[0].guide.button,x,y) {everglade_guide_ask(s);}
@@ -101,6 +104,7 @@ everglade_guide_view :: (s:[]Everglade,shown_view:GgsView,observation:GgObservat
 // Only this local view is rendered. There is no raw remote choice in the page.
 everglade_guide_hud :: (s:[]Everglade,out:[]f32,u:[]f32,n0:int,bottom:f32)->int {
   s[0].guide.button=Box.{};s[0].guide.drawn=0;n:=n0;
+  if s[0].guide.quiet {return n;}
   k:=hi(s[0].dpr,0.5);w:=s[0].width;
   if s[0].guide.offered>0 && s[0].guide.now_ms>=s[0].guide.view.cooldown_until_ms {
     word:=ifx s[0].guide.offered==2 then "BRAM · FIND WORK · G" else "BRAM · DIRECTIONS · G";

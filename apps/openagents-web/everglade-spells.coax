@@ -1143,6 +1143,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   }
   sp_draw(s, dt);
   if s[0].sp.on { ab_draw(s); }
+  watch_on_you_draw(s);   // what holds you (everglade-watch.coax): Hold Person's rings, Earthbind's tendrils, frost
   chimney_smoke(s, s[0].smoke_still);   // the town's wood smoke (everglade-dress.coax)
   sp_fx_close(s);
   if s[0].sp.news_t > 0 { s[0].sp.news_t = hi(s[0].sp.news_t - dt, 0); }

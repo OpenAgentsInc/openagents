@@ -6,8 +6,9 @@
 // in the room are friends after them. The page (everglade5e.coax) tells this file where everyone
 // stands and what Hit Points they have each frame; this file says what each slot can do now, uses a
 // slot when its cast lands, and gives back everyone's Hit Points and conditions and the log's lines.
-// It plays on the action clock, as 5E MMO does: your turn comes every 1.5 seconds with its action,
-// Bonus Action and one spell slot, and a spent slot comes back 9 seconds later.
+// Nothing on the bar is ever held back (owner, November 3): no spell slots, actions or Bonus Actions
+// to run out of. Each use has a fresh turn and every slot and use back first (e5r_free), so Meteor
+// Swarm and the rest can always be cast; the engine still rolls their attacks, saves and damage.
 // This is its own C unit (everglade5e-face.c calls its e5r_ exports), so its names stay apart from
 // Everglade's.
 //   coax/bin/coax test --library apps/openagents-web/everglade5e-rules.coax
@@ -165,10 +166,19 @@ e5r_can_of :: (r: [] E5r, a: FbAb) -> int {
   b := r[0].b[..];
   if a.kind == FB_WORLD { return E5R_READY; }
   me := b[0].c[E5R_ME];
-  if me.dead || me.hp <= 0 || !rs_can_act(me) { return E5R_CANT; }
-  if !fb_ready(b, E5R_ME, a) { return E5R_NO_SLOT; }
-  if !fb_seat_can(b, r[0].seat[..], a) { return E5R_SPENT; }
+  if me.dead || me.hp <= 0 { return E5R_CANT; }
   return E5R_READY;
+}
+// Before a use: a fresh turn, every spell slot and use back and the Reaction unspent, so nothing
+// holds the bar back.
+e5r_free :: (r: [] E5r) {
+  b := r[0].b[..];
+  c := b[0].c[E5R_ME..<E5R_ME + 1];
+  for l: 0..<10 { c[0].slots[l] = c[0].slots_max[l]; }
+  for u: 0..<RS_USES { c[0].uses[u] = c[0].uses_max[u]; }
+  c[0].reacted = false;
+  r[0].seat[0].open = true;
+  r[0].seat[0].turn.action = false; r[0].seat[0].turn.bonus = false; r[0].seat[0].turn.slot_spent = false;
 }
 // Each of the bar's slots, E5R_SLOT_FLOATS each: whether it can be used now (E5R_READY or why not),
 // what it has left (slots at its level, uses; -1 nothing to count), seconds till its next slot is
@@ -182,9 +192,8 @@ e5r_bar :: (r: [] E5r, out: [] f32) -> int #export_c {
     a := r[0].bar[k];
     o := k * E5R_SLOT_FLOATS;
     out[o] = f32(e5r_can_of(r, a));
-    out[o + 1] = f32(fb_left(b, E5R_ME, a));
-    back := fb_back(b, E5R_ME, a);
-    out[o + 2] = ifx back > 0 then hi_r(back - b[0].clock, 0) else 0.0f32;
+    out[o + 1] = -1;   // nothing to count: slots never run out here
+    out[o + 2] = 0;
     out[o + 3] = f32(e5r_cost_of(a));
     out[o + 4] = a.delay;
     out[o + 5] = f32(a.lvl);
@@ -249,6 +258,7 @@ e5r_use :: (r: [] E5r, k: int, x: f32, z: f32) -> bool #export_c {
   a := r[0].bar[k];
   if a.kind == FB_WORLD { return true; }
   if e5r_can_of(r, a) != E5R_READY { return false; }
+  e5r_free(r);
   tx := e5r_sq(x); ty := e5r_sq(z);
   foe := e5r_near(r, tx, ty, 10);
   if a.tg == FB_SELF { foe = -1; tx = b[0].c[E5R_ME].x; ty = b[0].c[E5R_ME].y; }
@@ -373,7 +383,7 @@ e5r_test_world :: (r: [] E5r) {
   #assert e5r_near(r[..], e5r_sq(3), e5r_sq(0), 10) == e5r_folk_at(0);
   #assert e5r_near(r[..], e5r_sq(60), e5r_sq(0), 10) == -1;
 }
-#test "Everglade 5E: a slot used spends the turn and the slot, and the bar says so" #steps 400000000 {
+#test "Everglade 5E: nothing on the bar runs out: every slot can be used again at once" #steps 400000000 {
   r: [1] E5r;
   e5r_test_world(r[..]);
   bar: [FB_EG_SLOTS * E5R_SLOT_FLOATS] f32;
@@ -382,11 +392,9 @@ e5r_test_world :: (r: [] E5r) {
   #assert bar[47 * E5R_SLOT_FLOATS] == f32(E5R_READY) && bar[47 * E5R_SLOT_FLOATS + 3] == f32(E5R_COST_NONE);
   // the Thunderbolt on the guards: a 7th-level slot, the action
   #assert e5r_use(r[..], 1, 3, 0.8);
-  #assert r[0].b[0].c[E5R_ME].slots[7] == 0;
   _ := e5r_bar(r[..], bar[..]);
-  #assert bar[1 * E5R_SLOT_FLOATS] == f32(E5R_SPENT);        // an 8th-level slot is left, but the turn's slot is spent
-  #assert bar[43 * E5R_SLOT_FLOATS] == f32(E5R_SPENT);        // Ray of Frost: the action is spent
-  #assert !e5r_use(r[..], 43, 3, 0);
+  #assert bar[1 * E5R_SLOT_FLOATS] == f32(E5R_READY) && bar[43 * E5R_SLOT_FLOATS] == f32(E5R_READY) && bar[1 * E5R_SLOT_FLOATS + 1] == -1;
+  #assert e5r_use(r[..], 43, 3, 0);   // Ray of Frost in the same turn
   out: [(1 + E5R_FOLK) * E5R_OUT_FLOATS] f32;
   #assert e5r_out(r[..], out[..]) == 1 + E5R_FOLK;
   // 20d10 against 11 Hit Points: both guards fall, saved or not; the commoner far off is untouched
@@ -394,15 +402,11 @@ e5r_test_world :: (r: [] E5r) {
   text: [2000] u8;
   #assert e5r_lines(r[..], text[..]) > 20;
   #assert e5r_lines(r[..], text[..]) == 0;
-  // the next turn opens on its beat: Ray of Frost ready again
-  e5r_step(r[..], r[0].b[0].clock + 1.6);
-  _ = e5r_bar(r[..], bar[..]);
-  #assert bar[43 * E5R_SLOT_FLOATS] == f32(E5R_READY);
-  // the Mega Thunderbolt takes the one 9th-level slot: none left, and it is back 9 seconds on
-  #assert e5r_use(r[..], 2, 30, 0);
+  // the Mega Thunderbolt (the one 9th-level slot) and Meteor Swarm, again and again
+  for q: 0..<3 { #assert e5r_use(r[..], 2, 30, 0); #assert e5r_use(r[..], 0, 30, 0); }
   e5r_step(r[..], r[0].b[0].clock + 0.05);
   _ = e5r_bar(r[..], bar[..]);
-  #assert bar[2 * E5R_SLOT_FLOATS] == f32(E5R_NO_SLOT) && bar[2 * E5R_SLOT_FLOATS + 2] > 8 && bar[2 * E5R_SLOT_FLOATS + 1] == 0;
+  #assert bar[2 * E5R_SLOT_FLOATS] == f32(E5R_READY) && bar[0] == f32(E5R_READY) && bar[2 * E5R_SLOT_FLOATS + 2] == 0;
 }
 #test "Everglade 5E: the world's own blows go through the engine" #steps 400000000 {
   r: [1] E5r;
