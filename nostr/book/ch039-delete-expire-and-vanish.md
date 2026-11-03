@@ -90,9 +90,31 @@ nsd_covers :: (tb: [] NsdTombs, k: int, c: RsdRec) -> bool {
   q := NsMeta.{author = t.author, kind = t.kind, created = t.until, identifier = cast(string) t.d[0..<t.d_n]};
   return ns_delete_address(m, q, t.signer);
 }
-// Whether any tombstone covers c.
+// Whether any tombstone covers c. A tombstone that covers c has c's id (e),
+// c's address (a) or c's author (vanish) as its key, so with the lookup
+// only those three chains are read.
 nsd_blocked :: (tb: [] NsdTombs, c: RsdRec) -> bool {
+  if nsd_indexed(tb) {
+    return nsd_chain(tb, ns_id_hash(c.id), c) || nsd_chain(tb, ns_address_hash(c.kind, c.author, c.d, c.d_n), c) || nsd_chain(tb, ns_id_hash(c.author), c);
+  }
   for k: 0..<tb[0].n { if nsd_covers(tb, k, c) { return true; } }
+  return false;
+}
+// Whether tb has the lookup (longer than t, so a free slot remains).
+nsd_indexed :: (tb: [] NsdTombs) -> bool { return tb[0].slots.count > tb[0].t.count; }
+// A tombstone's key: what any event it covers shares with it.
+nsd_key :: (t: NsdTomb) -> int {
+  if t.what == NSD_E { return ns_id_hash(t.id); }
+  if t.what == NSD_A { return ns_address_hash(t.kind, t.author, t.d, t.d_n); }
+  return ns_id_hash(t.signer);
+}
+// Whether a tombstone in the chain from h's slot to the next empty one covers c.
+nsd_chain :: (tb: [] NsdTombs, h: int, c: RsdRec) -> bool {
+  at := h % tb[0].slots.count; tb[0].probes += 1;
+  while tb[0].slots[at] != 0 {
+    if nsd_covers(tb, tb[0].slots[at] - 1, c) { return true; }
+    at = (at + 1) % tb[0].slots.count; tb[0].probes += 1;
+  }
   return false;
 }
 ```
@@ -110,11 +132,24 @@ nsd_blocked :: (tb: [] NsdTombs, c: RsdRec) -> bool {
 <!-- source: coax/lib/nostr/store_delete.coax apply -->
 ```jai
 // Adds t and retires the live records it covers: how many, or -1 (nothing
-// changed) when the table is full.
+// changed) when the table is full. With the store's lookups an e or a tag
+// reads the one record that can be live with its id or at its address; a
+// vanish reads every record.
 nsd_apply :: (s: [] RsdStore, tb: [] NsdTombs, t: NsdTomb) -> int {
   if tb[0].n >= tb[0].t.count { return -1; }
   k := tb[0].n; tb[0].t[k] = t; tb[0].n += 1;
+  if nsd_indexed(tb) {
+    at := nsd_key(t) % tb[0].slots.count;
+    while tb[0].slots[at] != 0 { at = (at + 1) % tb[0].slots.count; }
+    tb[0].slots[at] = k + 1;
+  }
   gone := 0;
+  if ns_indexed(s) && t.what != NSD_VANISH {
+    q: RsdRec; q.kind = t.kind; q.author = t.author; q.d = t.d; q.d_n = t.d_n;
+    i := ifx t.what == NSD_E then ns_find_id(s, t.id) else ns_find_address(s, q);
+    if i >= 0 && s[0].recs[i].live && nsd_covers(tb, k, s[0].recs[i]) { ns_store_retire(s, i); gone = 1; }
+    return gone;
+  }
   for i: 0..<s[0].n {
     if s[0].recs[i].live && nsd_covers(tb, k, s[0].recs[i]) { ns_store_retire(s, i); gone += 1; }
   }
@@ -124,6 +159,36 @@ nsd_apply :: (s: [] RsdStore, tb: [] NsdTombs, t: NsdTomb) -> int {
 
 A retired record is not served. Its bytes stay in the arena until the next
 compaction and in the file for good.
+
+### Lookups instead of scans
+
+Read as written, `nsd_blocked` reads every tombstone for every event, and
+`nsd_apply` reads every record for every tombstone. That is fine for a
+chapter's dozen events and too slow for a relay's hundreds of thousands
+(issue #12631: an import of 60,000 events spent 203 of its 246 seconds
+there and in `ns_store_plan`'s own scan). Both scans have a lookup beside
+them that gives the same answers.
+
+A tombstone that covers an event shares one thing with it: an `e`
+tombstone the event's ID, an `a` tombstone its address, a vanish its
+author (the signer). `nsd_key` hashes that thing, and `nsd_apply` puts the
+tombstone in `slots`, an open-addressed table, at the first free slot from
+its key. `nsd_blocked` then reads only three chains: from the slots that
+the event's ID, address and author hash to, up to the next empty slot, and
+asks `nsd_covers` about each tombstone it meets. The hash only chooses
+where to look; `nsd_covers` still decides, so a collision costs a look and
+never an answer. Nothing is removed from the table, so a chain is never
+broken.
+
+`nsd_apply` uses the store's own lookups (chapter 35's `store_core.coax`
+keeps the latest record for each ID and each address beside the records):
+only the latest record with an ID, or at an address, can be live, so an
+`e` or `a` tombstone reads that one record. A vanish still reads every
+record, once per request. The relay sizes the tombstone table from its
+input (the export, or the `--store` file) plus room for new requests, so
+the earlier fixed 8,192 is gone. Without the tables (empty slices) both
+functions scan as before, and the checks run the same random sessions both
+ways and compare every answer.
 
 ## Requests to vanish
 

@@ -33,7 +33,19 @@ RsdRec :: struct {
 // n records are in use and used arena bytes; live and bytes count the live
 // records and their originals (what the bounds charge); now is the latest
 // query time seen, used to drop expired regular events at compaction.
-RsdStore :: struct { n: int; used: int; live: int; bytes: int; now: int; arena: [] u8; recs: [] RsdRec; }
+//
+// ids and addrs (#12631, optional) are the admission lookups: open-addressed
+// tables of record index + 1 (0 an empty slot), as long as each other and
+// longer than recs. ids
+// holds, for every id among the records, the latest record with that id;
+// addrs, for every address (kind and author, and d when addressable) of a
+// replaceable or addressable record, the latest record at it. Records are
+// only appended and retired, never revived, so the latest is the only one
+// that can be live, which is all admission asks (ns_store_plan). Without
+// them (empty, or not longer than recs) admission scans every record, as it
+// always did; the decisions are the same either way. probes counts the
+// slots the lookups read, for the checks.
+RsdStore :: struct { n: int; used: int; live: int; bytes: int; now: int; arena: [] u8; recs: [] RsdRec; ids: [] int; addrs: [] int; probes: int; }
 NsRoom :: struct { ok: bool; keep: int; }
 // An admission decided but not yet applied: the result, what it writes
 // (nothing, an append retiring record at when at >= 0, or an in-place
@@ -296,6 +308,129 @@ nss_t_rec :: (id: u8, kind: int, created: int) -> RsdRec {
   #assert n == 0;
 }
 
+// ---- the admission lookups (#12631) --------------------------------------------
+#test "the lookup hashes: an id's first seven bytes; an address's kind, author and (addressable only) d" {
+  id: [32] u8; id[0] = 1; id[6] = 2; id[7] = 99; id[31] = 7;
+  #assert ns_id_hash(id) == 281474976710658;
+  for k: 0..<32 { id[k] = 255; }
+  #assert ns_id_hash(id) == 72057594037927935;
+  // Python: h = kind; h = (h*257 + b) % (2**31-1) over the author, then (h*257 + b + 1) % P over d
+  author: [32] u8; author[0] = 1; author[31] = 2; d: [256] u8; d[0] = 'a'; d[1] = 'b';
+  #assert ns_address_hash(30023, author, d, 2) == 738669570;
+  #assert ns_address_hash(0, author, d, 2) == 1413567272 && ns_address_hash(0, author, d, 0) == 1413567272;
+  for k: 0..<32 { author[k] = 255; } d[0] = 255; d[1] = 255; d[2] = 255;
+  #assert ns_address_hash(65535, author, d, 3) == 314152622 && ns_address_hash(39999, author, d, 3) == 946229052;
+}
+// A store over arena and recs with lookups of the given lengths.
+NssT :: struct { arena: [64] u8; recs: [6] RsdRec; ids: [7] int; addrs: [7] int; s: [1] RsdStore; }
+nss_t_store :: (t: [] NssT, ids: int, addrs: int) -> [] RsdStore {
+  t[0].s[0] = RsdStore.{arena = t[0].arena[..], recs = t[0].recs[..], ids = t[0].ids[0..<ids], addrs = t[0].addrs[0..<addrs]};
+  return t[0].s[..];
+}
+#test "the lookups: each slot read counted, collisions probe on, the last slot wraps to the first" {
+  t: [1] NssT; s := nss_t_store(t[..], 7, 7);
+  #assert ns_indexed(s);
+  // kind 0 by author 1 and by author 4 hash to address slot 3 (mod 7)
+  c1 := nss_t_rec(0, 0, 10); c1.id[6] = 1; c1.author[0] = 1;
+  #assert ns_store_admit(s, c1, "x", true) == NSS_ACCEPT && s[0].probes == 4 && t[0].ids[1] == 1 && t[0].addrs[3] == 1;
+  c2 := nss_t_rec(0, 0, 10); c2.id[6] = 2; c2.author[0] = 4;
+  #assert ns_store_admit(s, c2, "x", true) == NSS_ACCEPT && s[0].probes == 10 && t[0].ids[2] == 2 && t[0].addrs[4] == 2;
+  // id 9 hashes to slot 2 (taken: on to 3); its address is c2's (slot 3, then 4)
+  c3 := c2; c3.id[6] = 9; c3.created = 11;
+  #assert ns_store_admit(s, c3, "x", true) == NSS_ACCEPT && s[0].probes == 18;
+  #assert t[0].ids[3] == 3 && t[0].addrs[3] == 1 && t[0].addrs[4] == 3 && !s[0].recs[1].live && s[0].recs[2].live;
+  // an older version at c3's address: superseded, found through slot 4
+  c4 := c2; c4.id[6] = 3; c4.created = 9;
+  #assert ns_store_plan(s, c4, "x", true).result == NSS_SUPERSEDED && s[0].probes == 22;
+  // slot 6, then a collision there wraps to slot 0
+  c5 := nss_t_rec(0, 1, 10); c5.id[6] = 6;
+  #assert ns_store_admit(s, c5, "x", true) == NSS_ACCEPT && s[0].probes == 24 && t[0].ids[6] == 4;
+  c6 := nss_t_rec(0, 1, 10); c6.id[6] = 13;
+  #assert ns_store_admit(s, c6, "x", true) == NSS_ACCEPT && s[0].probes == 28 && t[0].ids[0] == 5;
+  // the same event again: found at slot 0 after slot 6, a duplicate
+  #assert ns_store_plan(s, c6, "x", true).result == NSS_DUP && s[0].probes == 30;
+  // c2 again: its id is known, its record retired: a duplicate
+  #assert ns_store_plan(s, c2, "x", true).result == NSS_DUP;
+}
+#test "without both lookups longer than recs, admission scans" {
+  t: [1] NssT;
+  for n: [3] int.[6, 7, 5] {
+    s := nss_t_store(t[..], n, ifx n == 7 then 6 else n);
+    #assert !ns_indexed(s);
+    c := nss_t_rec(1, 0, 10);
+    #assert ns_store_admit(s, c, "x", true) == NSS_ACCEPT && ns_store_admit(s, c, "x", true) == NSS_DUP && s[0].probes == 0;
+    for k: 0..<7 { #assert t[0].ids[k] == 0 && t[0].addrs[k] == 0; }
+  }
+  s := nss_t_store(t[..], 7, 7);
+  #assert ns_indexed(s) && ns_store_admit(s, nss_t_rec(1, 1, 10), "x", true) == NSS_ACCEPT && s[0].probes == 2;
+  // a compaction without lookups leaves the (absent) tables alone
+  u: [1] NssT; v := nss_t_store(u[..], 0, 0);
+  for k: 0..<6 { #assert ns_store_admit(v, nss_t_rec(cast(u8) (k + 1), 1, 10), "x", true) == NSS_ACCEPT; }
+  #assert ns_store_admit(v, nss_t_rec(9, 1, 11), "x", true) == NSS_FULL && v[0].n == 6 && v[0].probes == 0;
+}
+#test "the random check's events: the fields each id carries" {
+  // Python, the same rule: sums of each field times (v + 1) over v 0 to 63
+  s: [7] int;
+  for v: 0..<64 {
+    c := nss_t_of(v); w := v + 1;
+    #assert c.id[0] == cast(u8) v;
+    s[0] += c.kind * w; s[1] += c.created * w; s[2] += cast(int) c.id[6] * w; s[3] += cast(int) c.author[0] * w;
+    s[4] += cast(int) c.d[0] * w; s[5] += c.d_n * w; s[6] += c.expiry * w;
+  }
+  #assert s[0] == 15854272 && s[1] == 29360 && s[2] == 2058 && s[3] == 1104 && s[4] == 51512 && s[5] == 528 && s[6] == 1787;
+}
+#test "the lookups find record 0: a duplicate, a retired id, a head" {
+  t: [1] NssT; s := nss_t_store(t[..], 7, 7);
+  c := nss_t_rec(1, 0, 10); #assert ns_store_admit(s, c, "x", true) == NSS_ACCEPT;
+  p := ns_store_plan(s, c, "w", true); #assert p.result == NSS_DUP && p.write == NS_W_INPLACE && p.at == 0;
+  n := c; n.id[0] = 0; n.created = 11;
+  p = ns_store_plan(s, n, "y", true); #assert p.result == NSS_ACCEPT && p.write == NS_W_APPEND && p.at == 0;
+  #assert ns_store_apply(s, p, n, "y") == NSS_ACCEPT && !s[0].recs[0].live;
+  p = ns_store_plan(s, c, "w", true); #assert p.result == NSS_DUP && p.write == NS_W_NONE;
+}
+// A larger store for the random check: arena and record table both fill.
+NssR :: struct { arena: [36] u8; recs: [16] RsdRec; ids: [17] int; addrs: [17] int; s: [1] RsdStore; }
+nss_t_big :: (t: [] NssR, indexed: bool) -> [] RsdStore {
+  n := ifx indexed then 17 else 0;
+  t[0].s[0] = RsdStore.{arena = t[0].arena[..], recs = t[0].recs[..], ids = t[0].ids[0..<n], addrs = t[0].addrs[0..<n]};
+  return t[0].s[..];
+}
+// The fields an id carries (the same id always carries the same event).
+nss_t_of :: (v: int) -> RsdRec {
+  kinds := [4] int.[1, 0, 30023, 3];
+  c := nss_t_rec(cast(u8) v, kinds[v % 4], 10 + v % 5 + v / 16);
+  c.id[6] = cast(u8) (v % 3); c.author[0] = cast(u8) ((v / 4) % 2);
+  if c.kind == 30023 { c.d[0] = cast(u8) ('a' + (v / 8) % 2); c.d_n = 1; }
+  if c.kind == 1 && v % 3 != 1 { c.expiry = 8 + v % 8; }
+  return c;
+}
+#test "the lookups decide exactly as the scan: random admissions, replacements, expiry and compactions" #steps 400000000 {
+  ta: [1] NssR; a := nss_t_big(ta[..], true);
+  tb: [1] NssR; b := nss_t_big(tb[..], false);
+  texts := [5] string.["a", "bb", "ab", "ccc", "b"];
+  seed := 12631; seen := 0;
+  for step: 0..<3000 {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    x := seed >> 8;
+    if x % 11 == 0 { t := step / 150 + x / 11 % 3; #assert ns_store_seen(a, t) == ns_store_seen(b, t); continue; }
+    c := nss_t_of(x % 64);
+    text := texts[(x / 64) % 5];
+    ok := (x / 320) % 50 != 0;
+    pa := ns_store_plan(a, c, text, ok); pb := ns_store_plan(b, c, text, ok);
+    #assert pa.result == pb.result && pa.write == pb.write && pa.at == pb.at;
+    #assert ns_store_apply(a, pa, c, text) == ns_store_apply(b, pb, c, text);
+    #assert a[0].n == b[0].n && a[0].used == b[0].used && a[0].live == b[0].live && a[0].bytes == b[0].bytes;
+    for i: 0..<a[0].n {
+      #assert a[0].recs[i].live == b[0].recs[i].live && a[0].recs[i].id[0] == b[0].recs[i].id[0] && rsd_text(a, i) == rsd_text(b, i);
+      // every record's id finds the latest record with it
+      j := ns_find_id(a, a[0].recs[i].id);
+      #assert j >= i && a[0].recs[j].id[0] == a[0].recs[i].id[0];
+    }
+    if pa.write != NS_W_NONE { seen += 1; }
+  }
+  #assert seen > 150 && a[0].probes > 3000 && b[0].probes == 0 && b[0].ids.count == 0 && b[0].addrs.count == 0;
+}
+
 rsd_text :: (s: [] RsdStore, i: int) -> string { return cast(string) s[0].arena[s[0].recs[i].from..<s[0].recs[i].to]; }
 ns_store_same_address :: (a: RsdRec, b: RsdRec) -> bool {
   if a.kind != b.kind || !ns_equal32(a.author, b.author) { return false; }
@@ -329,6 +464,7 @@ ns_store_compact :: (s: [] RsdStore, keep: int) -> int {
     at = r.to; j += 1;
   }
   s[0].n = j; s[0].used = at;
+  ns_store_reindex(s);
   return moved;
 }
 // Room for one more record of need bytes, compacting when the table or the
@@ -345,6 +481,7 @@ ns_store_append :: (s: [] RsdStore, c: RsdRec, text: string) {
   r := c; r.live = true; r.from = from; r.to = from + text.count;
   r.tags_from = from + c.tags_from; r.tags_to = from + c.tags_to;
   s[0].recs[s[0].n] = r; s[0].n += 1; s[0].used += text.count; s[0].live += 1; s[0].bytes += text.count;
+  if ns_indexed(s) { ns_note(s, s[0].n - 1); }
 }
 // Retires live record i.
 ns_store_retire :: (s: [] RsdStore, i: int) {
@@ -362,6 +499,62 @@ ns_store_duplicate :: (s: [] RsdStore, i: int, text: string) -> NsPlan {
   if !room.ok || room.keep < 0 { return NsPlan.{result = NSS_DUP}; }
   return NsPlan.{result = NSS_DUP, write = NS_W_APPEND, at = room.keep};
 }
+// ---- the admission lookups (RsdStore's ids and addrs, #12631) ----------------
+NS_HASH_P :: 2147483647;   // 2^31 - 1, a prime: h * 257 + 256 stays below 2^40
+// Whether s has both lookups, as long as each other and longer than recs
+// (so a free slot always remains).
+ns_indexed :: (s: [] RsdStore) -> bool { return s[0].ids.count > s[0].recs.count && s[0].addrs.count == s[0].ids.count; }
+// An id's hash: its first seven bytes (an id is a SHA-256 digest).
+ns_id_hash :: (id: [32] u8) -> int {
+  h := 0;
+  for k: 0..<7 { h = h * 256 + cast(int) id[k]; }
+  return h;
+}
+// An address's hash over what ns_store_same_address compares: kind and
+// author, and d when the kind is addressable. kind is 0 to 65535.
+ns_address_hash :: (kind: int, author: [32] u8, d: [256] u8, d_n: int) -> int {
+  h := kind;
+  for k: 0..<32 { h = (h * 257 + cast(int) author[k]) % NS_HASH_P; }
+  if ns_class(kind) == NS_ADDRESSABLE { for k: 0..<d_n { h = (h * 257 + cast(int) d[k] + 1) % NS_HASH_P; } }
+  return h;
+}
+// The ids slot holding the latest record with id, or the empty slot where
+// it would go (linear probing; nothing is ever removed but by a rebuild).
+ns_id_slot :: (s: [] RsdStore, id: [32] u8) -> int {
+  at := ns_id_hash(id) % s[0].ids.count;
+  s[0].probes += 1;
+  while s[0].ids[at] != 0 && !ns_equal32(s[0].recs[s[0].ids[at] - 1].id, id) {
+    at = (at + 1) % s[0].ids.count; s[0].probes += 1;
+  }
+  return at;
+}
+// The addrs slot holding the latest record at c's address, or the empty one.
+ns_address_slot :: (s: [] RsdStore, c: RsdRec) -> int {
+  at := ns_address_hash(c.kind, c.author, c.d, c.d_n) % s[0].addrs.count;
+  s[0].probes += 1;
+  while s[0].addrs[at] != 0 && !ns_store_same_address(s[0].recs[s[0].addrs[at] - 1], c) {
+    at = (at + 1) % s[0].addrs.count; s[0].probes += 1;
+  }
+  return at;
+}
+// The latest record with id, or at c's address: its index, or -1.
+ns_find_id :: (s: [] RsdStore, id: [32] u8) -> int { return s[0].ids[ns_id_slot(s, id)] - 1; }
+ns_find_address :: (s: [] RsdStore, c: RsdRec) -> int { return s[0].addrs[ns_address_slot(s, c)] - 1; }
+// Notes record i as the latest with its id, and at its address when its
+// kind has one.
+ns_note :: (s: [] RsdStore, i: int) {
+  r := s[0].recs[i];
+  s[0].ids[ns_id_slot(s, r.id)] = i + 1;
+  if ns_class(r.kind) != NS_ORDINARY { s[0].addrs[ns_address_slot(s, r)] = i + 1; }
+}
+// Rebuilds both lookups over the records, in index order (after a
+// compaction renumbered them).
+ns_store_reindex :: (s: [] RsdStore) {
+  if !ns_indexed(s) { return; }
+  for k: 0..<s[0].ids.count { s[0].ids[k] = 0; s[0].addrs[k] = 0; }
+  for i: 0..<s[0].n { ns_note(s, i); }
+}
+
 // Decides one event's admission without storing it. verified is the
 // caller's signature check over this exact text (id recomputed from it,
 // signature checked against it); c holds the fields read from it, with
@@ -375,12 +568,22 @@ ns_store_plan :: (s: [] RsdStore, c: RsdRec, text: string, verified: bool) -> Ns
   class := ns_class(c.kind);
   if class == NS_EPHEMERAL { return NsPlan.{result = NSS_ACCEPT}; }
   known := false; head := -1;
-  for i: 0..<s[0].n {
-    if ns_equal32(s[0].recs[i].id, c.id) {
-      if s[0].recs[i].live { return ns_store_duplicate(s, i, text); }
-      known = true; continue;
+  if ns_indexed(s) {
+    // the latest record with this id is the only one that can be live, and
+    // the latest at this address the only live head (RsdStore)
+    i := ns_find_id(s, c.id);
+    if i >= 0 && s[0].recs[i].live { return ns_store_duplicate(s, i, text); }
+    known = i >= 0;
+    a := ifx class != NS_ORDINARY then ns_find_address(s, c) else -1;
+    if a >= 0 && s[0].recs[a].live { head = a; }
+  } else {
+    for i: 0..<s[0].n {
+      if ns_equal32(s[0].recs[i].id, c.id) {
+        if s[0].recs[i].live { return ns_store_duplicate(s, i, text); }
+        known = true; continue;
+      }
+      if class != NS_ORDINARY && s[0].recs[i].live && ns_store_same_address(s[0].recs[i], c) { head = i; }
     }
-    if class != NS_ORDINARY && s[0].recs[i].live && ns_store_same_address(s[0].recs[i], c) { head = i; }
   }
   if known { return NsPlan.{result = NSS_DUP}; }
   if head >= 0 && !ns_store_newer(c, s[0].recs[head]) { return NsPlan.{result = NSS_SUPERSEDED}; }

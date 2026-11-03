@@ -31,6 +31,13 @@
    --store, --url and --now) writes a new --store file from a JSON-lines
    export and exits; --check-store replays the store (and checks the
    checkpoint) and exits without listening; --now T is the clock for both.
+   --export OUT [--from BYTE] replays the store, then writes its frames
+   from BYTE on (the start of a frame) as JSON lines to OUT, which must
+   not exist (OUT.tmp written, synced, renamed), and exits.
+   The tombstones (NIP-09 and NIP-62) are allocated at what the input (the
+   export, or the --store file) can ask for plus --tombstones N more for
+   later requests (8,192 without it): relay.coax's ry_store_tombs counts
+   them and says how much memory they take.
    Effects only; every relay decision is Coax. */
 #define _DEFAULT_SOURCE /* getentropy */
 #include "socket-server-native.h"
@@ -56,7 +63,9 @@
 static long long capacity = -1;
 static coax_v_u8 arena, count_seen;
 static coax_t_RsdRec *recs; static int64_t events;
-static coax_v_s64 by_id, by_ak, by_time, tag_key, tag_rec, count_out;
+static coax_v_s64 by_id, by_ak, by_time, tag_key, tag_rec, count_out, ids, addrs, tomb_slots;
+static coax_v_t_NsdTomb tombs;
+static long long tombs_extra = -1; /* --tombstones */
 static int64_t port = 7447;
 static const char *address = "127.0.0.1";
 static const char *url = "";
@@ -67,7 +76,7 @@ static long long pow_bits = -1;
 static const char *admins[8];
 static int admin_n = 0;
 static int groups = 0;
-static int mode = 0;               /* 0 serve, 1 --import, 2 --check-store */
+static int mode = 0;               /* 0 serve, 1 --import, 2 --check-store, 3 --export */
 static long long now_flag = -1;    /* --now */
 static int adopt = 0;
 static int exit_code = 0;
@@ -191,6 +200,7 @@ int64_t ry_journal_truncate(int64_t n) {
 
 /* ---- modes, the clock and the process's measurements ---- */
 int64_t ry_host_mode(void) { return mode; }
+int64_t ry_host_tombs_extra(void) { return (int64_t)tombs_extra; }
 int64_t ry_host_now_flag(void) { return (int64_t)now_flag; }
 int64_t ry_host_adopt(void) { return adopt; }
 void ry_host_exit(int64_t code) { exit_code = (int)code; }
@@ -235,6 +245,50 @@ int64_t ry_import_load(void) {
   return got;
 }
 int64_t ry_import_byte(int64_t i) { return i >= 0 && i < import_n ? import_data[i] : -1; }
+/* ---- --export OUT: written to OUT.tmp, synced, renamed over OUT ---- */
+static const char *export_path = NULL;
+static long long export_from = 0;   /* --from */
+static char export_tmp[4200];
+static FILE *export_file;
+int64_t ry_host_export_from(void) { return (int64_t)export_from; }
+/* Opens OUT.tmp for writing; OUT must not exist: 0, or -1. */
+int64_t ry_export_open(void) {
+  struct stat st;
+  if (!export_path || stat(export_path, &st) == 0 || errno != ENOENT) return -1;
+  snprintf(export_tmp, sizeof export_tmp, "%s.tmp", export_path);
+  int f = open(export_tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+  if (f < 0) return -1;
+  export_file = fdopen(f, "w");
+  if (!export_file) { close(f); unlink(export_tmp); return -1; }
+  setvbuf(export_file, NULL, _IOFBF, 1 << 20);
+  return 0;
+}
+int64_t ry_export_put(int64_t b) {
+  if (!export_file || b < 0 || b > 255) return -1;
+  return fputc((int)b, export_file) == EOF ? -1 : 0;
+}
+/* Flushes, syncs and renames OUT.tmp to OUT, then syncs the folder: 0, or -1 (and OUT.tmp removed). */
+int64_t ry_export_commit(void) {
+  if (!export_file) return -1;
+  int ok = fflush(export_file) == 0 && fsync(fileno(export_file)) == 0;
+  ok = fclose(export_file) == 0 && ok;
+  export_file = NULL;
+  if (!ok || rename(export_tmp, export_path) != 0) { unlink(export_tmp); return -1; }
+  char dir[sizeof export_tmp];
+  snprintf(dir, sizeof dir, "%s", export_path);
+  char *slash = strrchr(dir, '/');
+  if (!slash) { dir[0] = '.'; dir[1] = 0; } else if (slash == dir) dir[1] = 0; else *slash = 0;
+  int d = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (d < 0) return -1;
+  int r = fsync(d);
+  close(d);
+  return r == 0 ? 0 : -1;
+}
+/* Drops OUT.tmp. */
+void ry_export_abort(void) {
+  if (export_file) { fclose(export_file); export_file = NULL; }
+  unlink(export_tmp);
+}
 /* ---- --checkpoint FILE ---- */
 int64_t ry_host_fresh(void) { return fresh_path[0] != 0; }
 #define RY_FRESH_MAX 4096
@@ -303,7 +357,7 @@ int64_t ry_host_random(void) {
 
 static void *run(void *arg) {
   (void)arg;
-  ry_main(arena, (coax_v_t_RsdRec){recs, events}, by_id, by_ak, by_time, tag_key, tag_rec, count_out, count_seen, items);
+  ry_main(arena, (coax_v_t_RsdRec){recs, events}, by_id, by_ak, by_time, tag_key, tag_rec, count_out, count_seen, items, ids, addrs, tombs, tomb_slots);
   return NULL;
 }
 /* n zeroed int64 slots, or a view with no data. */
@@ -337,6 +391,14 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[i], "--adopt")) adopt = 1;
     else if (!strcmp(argv[i], "--check-store")) mode = mode ? -1 : 2;
     else if (!strcmp(argv[i], "--import") && i + 1 < argc) { import_path = argv[++i]; mode = mode ? -1 : 1; }
+    else if (!strcmp(argv[i], "--export") && i + 1 < argc) {
+      export_path = argv[++i]; mode = mode ? -1 : 3;
+      if (!export_path[0] || strlen(export_path) + 5 > sizeof export_tmp) { fprintf(stderr, "relay: bad --export path\n"); return 2; }
+    }
+    else if (!strcmp(argv[i], "--from") && i + 1 < argc) {
+      char tail = 0;
+      if (sscanf(argv[++i], "%lld%c", &export_from, &tail) != 1 || export_from < 0) { fprintf(stderr, "relay: --from takes a byte offset\n"); return 2; }
+    }
     else if (!strcmp(argv[i], "--checkpoint") && i + 1 < argc) {
       const char *cp = argv[++i];
       if (!cp[0] || strlen(cp) + 5 > sizeof fresh_path) { fprintf(stderr, "relay: bad --checkpoint path\n"); return 2; }
@@ -350,6 +412,10 @@ int main(int argc, char **argv) {
       if (admin_n == 8) { fprintf(stderr, "relay: too many --admin keys\n"); return 2; }
       admins[admin_n++] = argv[++i];
     }
+    else if (!strcmp(argv[i], "--tombstones") && i + 1 < argc) {
+      char tail = 0;
+      if (sscanf(argv[++i], "%lld%c", &tombs_extra, &tail) != 1 || tombs_extra < 0) { fprintf(stderr, "relay: --tombstones takes a number of tombstones\n"); return 2; }
+    }
     else if (!strcmp(argv[i], "--store-capacity") && i + 1 < argc) {
       char tail = 0;
       if (sscanf(argv[++i], "%lld%c", &capacity, &tail) != 1) { fprintf(stderr, "relay: --store-capacity takes a number of events\n"); return 2; }
@@ -360,10 +426,11 @@ int main(int argc, char **argv) {
       snprintf(journal_path, sizeof journal_path, "%s.nip86", sp);
       store = 1;
     }
-    else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]... [--groups] [--checkpoint FILE [--adopt]] [--import EXPORT --now T | --check-store [--now T]]\n"); return 2; }
+    else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]... [--groups] [--checkpoint FILE [--adopt]] [--tombstones N] [--import EXPORT --now T | --check-store [--now T] | --export OUT [--from BYTE] [--now T]]\n"); return 2; }
   }
-  if (mode < 0) { fprintf(stderr, "relay: --import and --check-store don't go together\n"); return 2; }
-  if (mode != 0 && !store) { fprintf(stderr, "relay: --import and --check-store need --store\n"); return 2; }
+  if (mode < 0) { fprintf(stderr, "relay: --import, --check-store and --export don't go together\n"); return 2; }
+  if (mode != 0 && !store) { fprintf(stderr, "relay: --import, --check-store and --export need --store\n"); return 2; }
+  if (export_from != 0 && mode != 3) { fprintf(stderr, "relay: --from goes with --export\n"); return 2; }
   if (mode == 1 && now_flag < 0) { fprintf(stderr, "relay: --import needs --now (the export's time)\n"); return 2; }
   if ((cert == NULL) != (key == NULL)) { fprintf(stderr, "relay: --tls-cert and --tls-key go together\n"); return 2; }
   if (cert != NULL) {
@@ -382,7 +449,14 @@ int main(int argc, char **argv) {
   tag_key = ints(tags); tag_rec = ints(tags); count_out = ints(events);
   count_seen = (coax_v_u8){calloc((size_t)events, 1), events};
   items = (coax_v_t_NegItem){calloc((size_t)events, sizeof(coax_t_NegItem)), events};
-  if (!arena.data || !recs || !by_id.data || !by_ak.data || !by_time.data || !tag_key.data || !tag_rec.data || !count_out.data || !count_seen.data || !items.data) {
+  int64_t slots = ry_store_slots(events);
+  ids = ints(slots); addrs = ints(slots);
+  int64_t ntombs = ry_store_tombs();
+  if (ntombs < 0) return 2;
+  tombs = (coax_v_t_NsdTomb){calloc((size_t)(ntombs ? ntombs : 1), sizeof(coax_t_NsdTomb)), ntombs};
+  tomb_slots = ints(2 * ntombs + 1);
+  if (!arena.data || !recs || !by_id.data || !by_ak.data || !by_time.data || !tag_key.data || !tag_rec.data || !count_out.data || !count_seen.data || !items.data
+      || !ids.data || !addrs.data || !tombs.data || !tomb_slots.data) {
     fprintf(stderr, "relay: cannot allocate a store of %lld events\n", (long long)events); return 1;
   }
   pthread_attr_t attr;

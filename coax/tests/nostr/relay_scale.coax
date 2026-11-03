@@ -14,7 +14,14 @@
 //    the same;
 // 5. rehearses three restores the checkpoint must refuse: an older copy
 //    (the store's first half), a forked copy (one byte changed), and the
-//    store without its checkpoint.
+//    store without its checkpoint;
+// 6. exports the store (relay --export) and imports the export at the same
+//    --now into a second store: the same store file byte for byte, the
+//    same checkpoint, the same served set, and the export's SHA-256 as the
+//    import read it; then imports the export's first half into a third
+//    store and exports the first store --from that store's size (the
+//    rollback's "events since the cutover"), which must be the export's
+//    second half exactly, and --from one byte later is refused.
 //
 // Prints the relay's measurements (time, verification, peak memory, file
 // size) and "relay_scale: holds", exit 0; or what differs and exit 1.
@@ -197,6 +204,8 @@ tool_main :: () -> int #export_c {
   rx_check(failures[..], rr.status == 3 && rx_has_word(rr.out, "there is no checkpoint"), "the store without its checkpoint is refused");
   for p: [2] string.[old, fork] { if fs_exists(p) { gone := fs_remove(p); } }
 
+  rx_round_trip(failures[..], relay, dir, store, cp, now, url, cap);
+
   print("relay_scale: %\n", ifx failures[0] == 0 then "holds" else "fails");
   return ifx failures[0] == 0 then 0 else 1;
 }
@@ -205,4 +214,92 @@ rx_has_word :: (out: string, word: string) -> bool {
   if word.count == 0 { return false; }
   for i: 0..<out.count - word.count + 1 { if out[i..<i + word.count] == word { return true; } }
   return false;
+}
+
+// Removes path and its .nip86 journal, if they exist.
+rx_clear :: (path: string) {
+  if fs_exists(path) { gone := fs_remove(path); }
+  j: [1100] u8; n := 0; for c: path { j[n] = c; n += 1; } for c: ".nip86" { j[n] = c; n += 1; }
+  if fs_exists(cast(string) j[0..<n]) { gone := fs_remove(cast(string) j[0..<n]); }
+}
+// Whether file a from offset skip on holds the same bytes as file b.
+rx_same :: (a: string, skip: int, b: string) -> bool {
+  n := fs_size(b);
+  if n < 0 || fs_size(a) - skip != n { return false; }
+  x: [65536] u8; y: [65536] u8; at := 0;
+  while at < n {
+    k := ifx n - at < x.count then n - at else x.count;
+    if fs_read_at(a, skip + at, x[0..<k]) != k || fs_read_at(b, at, y[0..<k]) != k { return false; }
+    for i: 0..<k { if x[i] != y[i] { return false; } }
+    at += k;
+  }
+  return true;
+}
+// The 64 characters after "sha256 " in out's line that starts "relay: " + start, or "".
+rx_sha :: (out: string, start: string) -> string {
+  l := rx_line(out, start);
+  for i: 0..<l.count - 70 { if l[i..<i + 7] == "sha256 " { return l[i + 7..<i + 71]; } }
+  return "";
+}
+// Where line k + 1 of path starts (lines counted from 1), or -1.
+rx_line_end :: (path: string, k: int) -> int {
+  buf: [65536] u8; at := 0; seen := 0; n := fs_size(path);
+  while at < n {
+    m := fs_read_at(path, at, buf[..]);
+    if m <= 0 { return -1; }
+    for i: 0..<m { if buf[i] == 10 { seen += 1; if seen == k { return at + i + 1; } } }
+    at += m;
+  }
+  return -1;
+}
+// How many lines path holds.
+rx_lines :: (path: string) -> int {
+  buf: [65536] u8; at := 0; seen := 0; n := fs_size(path);
+  while at < n {
+    m := fs_read_at(path, at, buf[..]);
+    if m <= 0 { return -1; }
+    for i: 0..<m { if buf[i] == 10 { seen += 1; } }
+    at += m;
+  }
+  return seen;
+}
+// Step 6: the export's round trip, and --from.
+rx_round_trip :: (failures: [] int, relay: string, dir: string, store: string, cp: string, now: string, url: string, cap: string) {
+  out: [RX_OUT] u8; out2: [RX_OUT] u8;
+  p0: [1024] u8; p1: [1024] u8; p2: [1024] u8; p3: [1024] u8; p4: [1024] u8; p5: [1024] u8; p6: [1024] u8; p7: [1024] u8;
+  ex := fs_join(dir, "rt.jsonl", p0[..]); st2 := fs_join(dir, "rt.store", p1[..]); cp2 := fs_join(dir, "rt.checkpoint", p2[..]);
+  half := fs_join(dir, "rt-half.jsonl", p3[..]); st3 := fs_join(dir, "rt-half.store", p4[..]); tail := fs_join(dir, "rt-tail.jsonl", p5[..]);
+  bad := fs_join(dir, "rt-bad.jsonl", p6[..]); cp3 := fs_join(dir, "rt-half.checkpoint", p7[..]);
+  for p: [8] string.[ex, st2, cp2, half, st3, tail, bad, cp3] { rx_clear(p); }
+  e := [13] string.[relay, "--export", ex, "--now", now, "--url", url, "--store", store, "--checkpoint", cp, "--store-capacity", cap];
+  re := rx_run(e[..], 14, out[..]);
+  rx_check(failures, re.status == 0 && rx_has_word(re.out, "export wrote "), "export: every frame of the store file, one line each");
+  print("  %\n", rx_line(re.out, "export wrote"));
+  i := [13] string.[relay, "--import", ex, "--now", now, "--url", url, "--store", st2, "--checkpoint", cp2, "--store-capacity", cap];
+  ri := rx_run(i[..], 14, out2[..]);
+  sha := rx_sha(re.out, "export wrote");
+  served := rx_served(rx_line(re.out, "served set"));
+  rx_check(failures, ri.status == 0 && sha.count == 64 && rx_has(ri.out, "import read") && rx_sha(ri.out, "import export") == sha,
+    "the export imports clean, and the import read the bytes the export wrote (its SHA-256)");
+  rx_check(failures, served.count > 0 && rx_has(ri.out, served), "the round trip serves the same set");
+  rx_check(failures, rx_same(store, 0, st2) && rx_same(cp, 0, cp2), "the round trip writes the same store file and the same checkpoint");
+  // the export's first half imported: its store is the first store's first frames
+  mid := rx_line_end(ex, (rx_lines(ex) + 1) / 2);
+  ok := mid > 0 && fs_write(half, "");
+  at := 0; buf: [65536] u8;
+  while ok && at < mid {
+    m := fs_read_at(ex, at, buf[0..<ifx mid - at < buf.count then mid - at else buf.count]);
+    ok = m > 0 && fs_append(half, cast(string) buf[0..<m]); at += m;
+  }
+  i[2] = half; i[8] = st3; i[10] = cp3;
+  rh := rx_run(i[..], 14, out2[..]);
+  from := fs_size(st3);
+  nb: [32] u8;
+  f := [13] string.[relay, "--export", tail, "--from", rx_int(nb[..], from), "--now", now, "--url", url, "--store", store, "--store-capacity", cap];
+  rf := rx_run(f[..], 14, out2[..]);
+  rx_check(failures, ok && rh.status == 0 && rf.status == 0 && rx_same(ex, mid, tail), "export --from the first half's store size: exactly the export's second half");
+  nb2: [32] u8; f[2] = bad; f[4] = rx_int(nb2[..], from + 1);
+  rb := rx_run(f[..], 14, out2[..]);
+  rx_check(failures, rb.status == 3 && !fs_exists(bad) && rx_has_word(rb.out, "is not where a frame"), "export --from inside a frame is refused, and nothing is written");
+  for p: [8] string.[ex, st2, cp2, half, st3, tail, bad, cp3] { rx_clear(p); }
 }

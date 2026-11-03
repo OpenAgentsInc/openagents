@@ -33,7 +33,7 @@
 #load "nip50.coax";
 #load "nip77.coax";
 
-RD_TOMBS :: 8192;             // tombstones the relay keeps
+RD_TOMBS_EXTRA :: 8192;       // tombstones beyond the input's, for new requests (--tombstones)
 RD_WORK :: RS_MAX_TAGS;       // one request's tombstones (one per tag at most)
 
 RdStore :: struct {
@@ -42,16 +42,19 @@ RdStore :: struct {
   tb: [1] NsdTombs; work: [] NsdTomb; relay: string;
   saved: bool;      // --store: every write goes to the file first
   builds: int;      // whole builds, for the checks
+  bulk: bool;       // an import: the query index is built once, at the first query
 }
 // The caller owns every array (relay-host.c allocates them at
-// --store-capacity's size, with RD_TOMBS tombstones and RD_WORK work
-// slots); none may move afterwards.
-// relay is this relay's URL, for NIP-62.
-rd_init :: (d: [] RdStore, arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time: [] int, tag_key: [] int, tag_rec: [] int, tombs: [] NsdTomb, work: [] NsdTomb, relay: string, saved: bool) {
-  d[0].s[0] = RsdStore.{arena = arena, recs = recs};
-  d[0].tb[0] = NsdTombs.{t = tombs}; d[0].work = work; d[0].relay = relay;
+// --store-capacity's size, the tombstones at what the input asks for plus
+// --tombstones, with RD_WORK work slots); none may move afterwards. ids and
+// addrs are the store's admission lookups and tomb_slots the tombstones'
+// (store_core.coax, store_delete.coax; each longer than recs and tombs, or
+// empty to scan). relay is this relay's URL, for NIP-62.
+rd_init :: (d: [] RdStore, arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time: [] int, tag_key: [] int, tag_rec: [] int, ids: [] int, addrs: [] int, tombs: [] NsdTomb, tomb_slots: [] int, work: [] NsdTomb, relay: string, saved: bool) {
+  d[0].s[0] = RsdStore.{arena = arena, recs = recs, ids = ids, addrs = addrs};
+  d[0].tb[0] = NsdTombs.{t = tombs, slots = tomb_slots}; d[0].work = work; d[0].relay = relay;
   d[0].ix[0] = NsiIndex.{by_id = by_id, by_ak = by_ak, by_time = by_time, tag_key = tag_key, tag_rec = tag_rec};
-  d[0].saved = saved; d[0].builds = 0;
+  d[0].saved = saved; d[0].builds = 0; d[0].bulk = false;
 }
 rd_store :: (d: [] RdStore) -> [] RsdStore { return d[0].s[..]; }
 
@@ -60,8 +63,11 @@ rd_may_compact :: (d: [] RdStore, text: string) -> bool {
   s := d[0].s[0];
   return rr_may_compact(s.n, s.recs.count, text.count, s.arena.count - s.used);
 }
-// Keeps the index after an admission that found before records.
+// Keeps the index after an admission that found before records (in bulk,
+// leaves it to be built at the first query: one sort instead of an
+// insertion per event).
 rd_index_after :: (d: [] RdStore, may: bool, before: int) {
+  if d[0].bulk { d[0].ix[0].ok = false; return; }
   step := rr_index_step(may, before, d[0].s[0].n);
   if step == RR_IX_ADD { ok := nsi_add(d[0].s[..], d[0].ix[..], before); }
   else if step == RR_IX_STALE { d[0].ix[0].ok = false; }
@@ -199,7 +205,22 @@ rd_neg_items :: (d: [] RdStore, filter: string, now: int, out: [] NegItem) -> in
 // ---- checks -------------------------------------------------------------------
 
 RdT :: struct { arena: [8192] u8; recs: [4] RsdRec; by_id: [4] int; by_ak: [4] int; by_time: [4] int; tag_key: [32] int; tag_rec: [32] int; tombs: [4] NsdTomb; work: [4] NsdTomb; d: [1] RdStore; }
-rd_t_init :: (t: [] RdT) { rd_init(t[0].d[..], t[0].arena[..], t[0].recs[..], t[0].by_id[..], t[0].by_ak[..], t[0].by_time[..], t[0].tag_key[..], t[0].tag_rec[..], t[0].tombs[..], t[0].work[..], "wss://r", false); }
+rd_t_init :: (t: [] RdT) { none: [] int; rd_init(t[0].d[..], t[0].arena[..], t[0].recs[..], t[0].by_id[..], t[0].by_ak[..], t[0].by_time[..], t[0].tag_key[..], t[0].tag_rec[..], none, none, t[0].tombs[..], none, t[0].work[..], "wss://r", false); }
+RdTx :: struct { ids: [5] int; addrs: [5] int; slots: [5] int; }
+#test "in bulk the index is left for the first query; the lookups answer as the scans" {
+  t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
+  x: [1] RdTx; d[0].s[0].ids = x[0].ids[..]; d[0].s[0].addrs = x[0].addrs[..]; d[0].tb[0].slots = x[0].slots[..];
+  scratch: [4096] u8; f: NostrFilter; idx: [8] int;
+  #assert rd_query(d, f, 1000, idx[..]) == 0 && d[0].builds == 1 && d[0].ix[0].ok;
+  d[0].bulk = true;
+  #assert rd_admit(d, rst_store_read(RST_PLAIN, scratch[..]), RST_PLAIN) == RS_ACCEPT && !d[0].ix[0].ok && d[0].s[0].probes > 0;
+  #assert rd_admit(d, rst_store_read(RST_EDGE, scratch[..]), RST_EDGE) == RS_ACCEPT && !d[0].ix[0].ok;
+  #assert rd_admit(d, rst_store_read(RD_T_DEL, scratch[..]), RD_T_DEL) == RS_ACCEPT && d[0].tb[0].n == 1 && d[0].tb[0].last == 1;
+  #assert rd_admit(d, rst_store_read(RST_PLAIN, scratch[..]), RST_PLAIN) == NSD_DELETED && d[0].tb[0].probes > 0;
+  d[0].bulk = false;
+  #assert rd_query(d, f, 1000, idx[..]) == 2 && d[0].builds == 2 && d[0].ix[0].ok;
+  #assert rd_admit(d, rst_store_read(RST_ADDR, scratch[..]), RST_ADDR) == RS_ACCEPT && d[0].ix[0].ok && d[0].builds == 2;
+}
 
 #test "the index follows admissions, and a compaction makes it rebuild" {
   t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];

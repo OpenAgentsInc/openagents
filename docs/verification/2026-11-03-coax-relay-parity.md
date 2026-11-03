@@ -30,7 +30,7 @@ protocol difference a shadow period would see.
 | NIP | Rust | Coax advertises | Coax wiring | Gap | Decision |
 | --- | --- | --- | --- | --- | --- |
 | 1 | yes | yes | wired (`relay_server.coax`) | reason texts; per-kind structure checks (R1 owner question 1); multi-filter order and shared limit (R1 owner question 2) | open since 2026-10-30 (NEEDS_OWNER) |
-| 9 | yes | yes | wired (`store_delete.coax` through `rd_admit`) | Rust never deletes kind 30350 by an `e` tag (`DELETE_EVENT_TARGET_SQL`); Rust keeps a tombstone after NIP-40 removes the deletion event (`0002_nip_expansion.sql`), Coax rebuilds tombstones only from stored requests; Coax holds at most `RD_TOMBS` = 8,192 tombstones | owner: carry orphan tombstones (below) |
+| 9 | yes | yes | wired (`store_delete.coax` through `rd_admit`) | Rust never deletes kind 30350 by an `e` tag (`DELETE_EVENT_TARGET_SQL`); Rust keeps a tombstone after NIP-40 removes the deletion event (`0002_nip_expansion.sql`), Coax rebuilds tombstones only from stored requests (the table is sized from the input since the second run, no cap) | owner: carry orphan tombstones (below) |
 | 11 | yes | yes | wired | extra limitation fields differ (R1 record) | none needed |
 | 13 | no | with `--pow` | wired, off by default | Coax extra | none needed (off) |
 | 17 | with relay URL | no | **not wired** | Rust serves kinds 1059, 21059 (and 24200, 30622, 44200) only to an authenticated reader who is the event's single `p` recipient; Coax serves them to anyone | **owner, blocks cutover** |

@@ -30,8 +30,10 @@
 // where the store's backups don't reach; durable.coax). Without it an older
 // copy of FILE replays as an older store. --import EXPORT writes a new FILE
 // from a JSON-lines export (relay_import.coax decides, durable.coax reads)
-// and exits; --check-store replays and exits; both print the served set's
-// digest (relay_equal.coax). TLS: with --tls-cert and
+// and exits; --check-store replays and exits; --export OUT [--from BYTE]
+// replays, then writes the --store file's frames as an export --import
+// reads (durable.coax) and exits; each prints the served set's digest
+// (relay_equal.coax). TLS: with --tls-cert and
 // --tls-key the host makes every connection TLS (tls-native.c's server mode,
 // under socket-server-native.c), so this file reads and writes the same
 // plaintext bytes; only the default relay URL's scheme (wss://) and the
@@ -698,15 +700,21 @@ ry_store_events :: (flag: int) -> int #export_c {
 // The store's arena bytes, and its tag-index entries, for events records.
 ry_store_arena :: (events: int) -> int #export_c { return rr_arena(events); }
 ry_store_tags :: (events: int) -> int #export_c { return events * RS_MAX_TAGS; }
+// The slots of each admission lookup (store_core.coax's ids and addrs) for
+// events records: twice as many plus one, so at most half are ever in use.
+ry_store_slots :: (events: int) -> int #export_c { return 2 * events + 1; }
 main :: () { print("relay: start the relay with the host that coax/relay/build.sh builds\n"); }
 // The relay, over the store's arrays, which the host allocated zeroed at
 // ry_store_events records (count_out and count_seen: one COUNT's slots).
 // items: the served set's slots (durable.coax's ry_served), as many as records.
-ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time: [] int, tag_key: [] int, tag_rec: [] int, count_out: [] int, count_seen: [] u8, items: [] NegItem) #export_c {
+// ids and addrs: the store's admission lookups (ry_store_slots each);
+// tombs and tomb_slots: the tombstones (ry_store_tombs) and their lookup.
+ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time: [] int, tag_key: [] int, tag_rec: [] int, count_out: [] int, count_seen: [] u8, items: [] NegItem,
+  ids: [] int, addrs: [] int, tombs: [] NsdTomb, tomb_slots: [] int) #export_c {
   mode := ry_host_mode();
-  // --import and --check-store don't listen; their clock is --now (the
-  // wall clock without it, for --check-store), and the relay URL that kind
-  // 62 requests name is --url as given.
+  // --import, --check-store and --export don't listen; their clock is --now
+  // (the wall clock without it, for --check-store and --export), and the
+  // relay URL that kind 62 requests name is --url as given.
   now := ifx ry_host_now_flag() >= 0 then ry_host_now_flag() else cxsrv_now_s();
   if mode == RY_SERVE && cxsrv_listen(ry_host_port()) != 0 { print("relay: cannot listen\n"); return; }
   conns: [RY_CONNS] RyConn;
@@ -719,9 +727,9 @@ ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time
   if u < 0 || nip42_init(w[0].n42[..], cast(string) url[0..<u]) != N42_OK {
     print("relay: NIP-42 needs a ws:// (wss:// with TLS) relay URL without brackets: pass --url\n"); ry_host_exit(2); return;
   }
-  tombs: [RD_TOMBS] NsdTomb; work: [RD_WORK] NsdTomb;
+  work: [RD_WORK] NsdTomb;
   store: [1] RdStore;
-  rd_init(store[..], arena, recs, by_id, by_ak, by_time, tag_key, tag_rec, tombs[..], work[..], cast(string) url[0..<u], ry_host_store() == 1);
+  rd_init(store[..], arena, recs, by_id, by_ak, by_time, tag_key, tag_rec, ids, addrs, tombs, tomb_slots, work[..], cast(string) url[0..<u], ry_host_store() == 1);
   w[0].count[0].big_out = count_out; w[0].count[0].big_seen = count_seen;
   w[0].groups_on = ry_host_groups() == 1;
   if mode == RY_IMPORT { ry_import(w[..], store[..], items, now); return; }
@@ -745,13 +753,14 @@ ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time
     if w[0].fresh[0].on && !ry_fresh_after(w[0].fresh[..]) { print("relay: refusing to start: the checkpoint can't be written\n"); ry_host_exit(3); return; }
     // what a check prints, and a start with --checkpoint (a start without
     // it prints as it always has, for the tools that read its first lines)
-    if mode == RY_CHECK || w[0].fresh[0].on {
+    if mode == RY_CHECK || mode == RY_EXPORT || w[0].fresh[0].on {
       if !w[0].fresh[0].on { print("relay: no --checkpoint: an older copy of the --store file would replay as an older store\n"); }
       print("relay: the --store file replayed in % ms; peak memory % KiB\n", ry_ms(ry_host_ns() - t0), ry_host_peak_kib());
       served := ry_served(store[..], items, now);
     }
   }
   if mode == RY_CHECK { return; }
+  if mode == RY_EXPORT { ry_export(store[..], items, now); return; }
   w[0].rate = ry_rate();
   for i: 0..<u { w[0].url[i] = url[i]; }
   w[0].url_n = u;

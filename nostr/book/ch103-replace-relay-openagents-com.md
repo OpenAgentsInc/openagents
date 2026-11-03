@@ -94,7 +94,7 @@ RI_CUT :: RS_REASONS + 2;        // the last line has no "\n": the export was cu
 RI_EPHEMERAL :: RS_REASONS + 3;  // kinds 20000-29999 are never stored, so never exported
 // With deletion (the relay's --import, store_delete.coax through rd_admit):
 RI_DELETED :: RS_REASONS + 4;    // an earlier line's deletion or vanish covers it: the old relay disagreed
-RI_NO_TOMBS :: RS_REASONS + 5;   // no room for a deletion's tombstones (the relay's RD_TOMBS)
+RI_NO_TOMBS :: RS_REASONS + 5;   // no room for a deletion's tombstones (the relay sizes them from the export)
 RI_OUTCOMES :: RS_REASONS + 6;
 // What one import did: lines read, each outcome's count, and the first
 // refused line (1-based, 0 when none).
@@ -543,6 +543,15 @@ Nothing in this chapter has run any of them.
    [relay_scale.coax](../../coax/tests/nostr/relay_scale.coax) runs both on a
    synthetic export from an independent oracle and checks every count and
    the digest (records in the [scale record](../../docs/verification/2026-11-03-coax-relay-import-restart.md)).
+   Admission reads an ID and an address lookup (`store_core.coax`'s `ids`
+   and `addrs`) and the tombstones' lookup (`store_delete.coax`'s `slots`)
+   instead of scanning every record and tombstone, with the same decisions:
+   at 60,000 lines "store and file" went from 203 s to 1.9 s with every count
+   and the digest unchanged, and 250,000 lines import in about 5 minutes,
+   almost all of it signature verification. The tombstone table is sized
+   from the input (what the export or the `--store` file can ask for, plus
+   `--tombstones N` more, 8,192 without it; 400 bytes each), so an export
+   is never incomplete for want of tombstone room.
 
 ### Export (owner)
 
@@ -632,11 +641,18 @@ Nothing in this chapter has run any of them.
 19. Events written to the Coax relay after the cutover aren't in the Rust
     database. Export them from the Coax store (its `--store` file, every
     event verified again on replay) and import them into the Rust relay
-    with its own `import-jsonl`, then compare the event sets. The Coax
-    relay has no `--export` yet: the store file's frames are each
-    original's exact bytes (chapter 35), so the export is the frames after
-    the cutover's byte offset, one per line, and writing that command is
-    open work before this rehearsal.
+    with its own `import-jsonl`, then compare the event sets:
+    `relay --export OUT --from BYTE --store FILE --checkpoint CP`, where
+    BYTE is the `--store` file's size at the cutover (the checkpoint's store
+    size then; record it at step 15). The export is the file's frames from
+    that byte on, one per line, each original's exact bytes (chapter 35),
+    verified again by the replay first; it carries the deletion and vanish
+    requests in the order they were applied. It prints its line count,
+    byte count and SHA-256; `--import` prints the SHA-256 it read.
+    Rehearse it on the staging copy first: an export from byte 0 imported
+    at the same `--now` writes the same `--store` file and checkpoint
+    (relay_scale.coax step 6 checks this, and that `--from` gives exactly
+    the events after it).
 20. The rollback rehearsal passes when service is restored from the Rust
     relay and the final equality check is equal.
 
@@ -728,9 +744,13 @@ They are not production-capacity evidence for a larger configured store.
 Run on 2026-11-03 ([record](../../docs/verification/2026-11-03-coax-relay-import-restart.md)):
 the import, restart and checkpoint at 3,000, 30,000 and 60,000 synthetic
 lines against an independent oracle (every count and the served-set digest
-equal; three restores refused), which also shows admission costs
-O(records) per event, so import and restart grow with the square of the
-count; and the Rust differential refreshed for COUNT, search, deletion,
+equal; three restores refused), which also showed admission cost
+O(records) per event, so import and restart grew with the square of the
+count. The second run that day replaced the scans with lookups and sized
+the tombstones from the input: the same counts and digests at 3,000, 30,000
+and 60,000 lines before and after, 125,000 and 250,000 lines measured, and
+`relay --export` round trips (the same store file and checkpoint). Also run
+that day: the Rust differential refreshed for COUNT, search, deletion,
 vanish, protected events, NIP-77 and NIP-86 (163 observations, none
 unexplained). The [completion route](COMPLETION.md#3-finish-the-relay-and-its-production-migration)
 keeps that qualification separate from the owner-approved migration.

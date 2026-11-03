@@ -29,7 +29,7 @@ RI_CUT :: RS_REASONS + 2;        // the last line has no "\n": the export was cu
 RI_EPHEMERAL :: RS_REASONS + 3;  // kinds 20000-29999 are never stored, so never exported
 // With deletion (the relay's --import, store_delete.coax through rd_admit):
 RI_DELETED :: RS_REASONS + 4;    // an earlier line's deletion or vanish covers it: the old relay disagreed
-RI_NO_TOMBS :: RS_REASONS + 5;   // no room for a deletion's tombstones (the relay's RD_TOMBS)
+RI_NO_TOMBS :: RS_REASONS + 5;   // no room for a deletion's tombstones (the relay sizes them from the export)
 RI_OUTCOMES :: RS_REASONS + 6;
 // What one import did: lines read, each outcome's count, and the first
 // refused line (1-based, 0 when none).

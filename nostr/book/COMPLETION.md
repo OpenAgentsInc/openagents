@@ -106,9 +106,11 @@ budgets against an approved restored-backup export. The durable import
 freshness checkpoint (`--checkpoint`, `store_fresh.coax`) now exist and are
 measured on synthetic exports against an independent oracle
 ([record](../../docs/verification/2026-11-03-coax-relay-import-restart.md)).
-That record also shows admission is linear in the store's size, so import
-and restart grow with the square of the event count; production's count
-decides whether that must change before cutover.
+Admission now reads ID, address and tombstone lookups instead of scanning
+(same decisions, same digests at 3,000 to 60,000 lines; 250,000 lines import
+in about 5 minutes, almost all signature verification), the tombstones are
+sized from the input, and `relay --export` writes the store back out as an
+export for the rollback rehearsal; all in the same record.
 
 Then follow [chapter 103's runbook](ch103-replace-relay-openagents-com.md#the-runbook):
 import with every signature checked, compare the served event sets, shadow

@@ -23,8 +23,14 @@ ry_fresh_load :: () -> int #foreign;
 ry_fresh_byte :: (i: int) -> int #foreign;
 ry_fresh_put :: (b: int) -> int #foreign;
 ry_fresh_commit :: () -> int #foreign;
+ry_host_tombs_extra :: () -> int #foreign;
+ry_host_export_from :: () -> int #foreign;
+ry_export_open :: () -> int #foreign;
+ry_export_put :: (b: int) -> int #foreign;
+ry_export_commit :: () -> int #foreign;
+ry_export_abort :: () #foreign;
 
-RY_SERVE :: 0; RY_IMPORT :: 1; RY_CHECK :: 2;
+RY_SERVE :: 0; RY_IMPORT :: 1; RY_CHECK :: 2; RY_EXPORT :: 3;
 RY_STORE_FILE :: 0; RY_JOURNAL_FILE :: 1;
 
 #assert RI_NSD_DELETED == NSD_DELETED && RI_NSD_NO_ROOM == NSD_NO_ROOM;
@@ -149,6 +155,63 @@ ry_fresh_grew :: (f: [] RyFresh, which: int, size: int, body: string) {
   ok := ry_fresh_save(f);
 }
 
+// ---- tombstones, sized from the input (#12631) ------------------------------------
+// One tombstone's memory: the record and its two slots in the lookup
+// (relay-host.c allocates ry_store_tombs of each, twice as many slots plus one).
+RY_TOMB_BYTES :: size_of(NsdTomb) + 16;
+RY_TOMBS_EXTRA_MAX :: 16777216;
+// How many tombstones the relay allocates: every one its input can ask for
+// (store_delete.coax's nsd_read over each kind 5's tags; one for each kind
+// 62), from the export with --import, from the --store file otherwise,
+// read without verifying (an upper bound: refused lines still count), plus
+// --tombstones more for requests that come later (RD_TOMBS_EXTRA without
+// it). -1, after saying why, when --tombstones is over RY_TOMBS_EXTRA_MAX.
+ry_store_tombs :: () -> int #export_c {
+  extra := ry_host_tombs_extra();
+  if extra < 0 { extra = RD_TOMBS_EXTRA; }
+  if extra > RY_TOMBS_EXTRA_MAX { print("relay: --tombstones takes 0 to %\n", RY_TOMBS_EXTRA_MAX); return -1; }
+  n := 0;
+  if ry_host_mode() == RY_IMPORT { n = ry_tombs_in(true); } else if ry_host_store() == 1 { n = ry_tombs_in(false); }
+  // said where the replay's time is (a start without --checkpoint prints as
+  // it always has, for the tools that read its first lines)
+  if ry_host_mode() != RY_SERVE || ry_host_fresh() == 1 {
+    print("relay: tombstones: room for % (% the input can ask for, % more), % KiB\n", n + extra, n, extra, (n + extra) * RY_TOMB_BYTES / 1024);
+  }
+  return n + extra;
+}
+// The tombstones the export's lines (export) or the --store file's frames
+// can ask for.
+ry_tombs_in :: (export: bool) -> int {
+  total := ifx export then ry_import_load() else cxstore_load();
+  text: [RI_LINE_MAX + 1] u8; scratch: [262144] u8; work: [RD_WORK] NsdTomb;
+  n := 0; at := 0;
+  while at < total {
+    from := at; to := at; next := at;
+    if export {
+      while to < total && ry_import_byte(to) != 10 { to += 1; }
+      next = to + 1;
+    } else {
+      head: [4] u8; k := 0;
+      while k < 4 && at + k < total { head[k] = cast(u8) cxstore_byte(at + k); k += 1; }
+      f := ns_file_next(head[0..<k], at, total);
+      if f.status != NSF_OK { break; }
+      from = f.from; to = f.to; next = f.to;
+    }
+    if to - from <= RI_LINE_MAX {
+      for i: from..<to { text[i - from] = cast(u8) ifx export then ry_import_byte(i) else cxstore_byte(i); }
+      line := cast(string) text[0..<to - from];
+      r := rs_admit_read(line, 0, false, false, scratch[..]);
+      if r.e.error == NE_OK && r.e.kind == 62 { n += 1; }
+      if r.e.error == NE_OK && r.e.kind == 5 {
+        t := nsd_read(line, rsd_rec(r), "", work[..]);
+        n += ifx t < 0 then work.count else t;
+      }
+    }
+    at = next;
+  }
+  return n;
+}
+
 // The served set at now (relay_equal.coax's re_items and re_digest): how
 // many, and its digest, printed in the form the runbook compares.
 ry_served :: (store: [] RdStore, items: [] NegItem, now: int) -> int {
@@ -161,6 +224,77 @@ ry_served :: (store: [] RdStore, items: [] NegItem, now: int) -> int {
   return n;
 }
 ry_ms :: (ns: int) -> int { return ns / 1000000; }
+
+// ---- --export OUT (#12631; chapter 103's rollback, step 19) -------------------------
+// The export is the --store file's frames, each original's exact bytes, one
+// per line in file order: the format --import reads (and the Rust relay's
+// import-jsonl). It is every write the store made, so the deletion and
+// vanish requests that make the tombstones are in it, in the order they
+// were applied, and an import of it at the same --now writes the same
+// --store file byte for byte: the same checkpoint and the same served set.
+// --from BYTE starts at the frame that begins there (the store's size at a
+// cutover, which its checkpoint records), for the events written since.
+// Runs after the replay, so every frame was verified again and the file is
+// whole. OUT is written beside itself (OUT.tmp, synced, renamed) and must
+// not exist. Prints the lines, bytes and SHA-256 of OUT, which the import
+// prints too. Exit 0, 2 when it can't run, 3 when it refuses (--from not at
+// a frame, or a frame with a line break, which one line can't carry).
+ry_export :: (store: [] RdStore, items: [] NegItem, now: int) {
+  t0 := ry_host_ns();
+  total := cxstore_load();
+  from := ry_host_export_from();
+  if total < 0 { print("relay: cannot read the --store file\n"); ry_host_exit(2); return; }
+  // --from must be where a frame begins, or the end
+  at := 0;
+  while at < from && at < total {
+    head: [4] u8; k := 0;
+    while k < 4 && at + k < total { head[k] = cast(u8) cxstore_byte(at + k); k += 1; }
+    f := ns_file_next(head[0..<k], at, total);
+    if f.status != NSF_OK { break; }
+    at = f.to;
+  }
+  if at != from { print("relay: --from % is not where a frame of the --store file begins (it is % bytes)\n", from, total); ry_host_exit(3); return; }
+  if ry_export_open() != 0 { print("relay: --export writes a new file: OUT must not exist, and its folder must be writable\n"); ry_host_exit(2); return; }
+  st: [SHA_STATE_BYTES] u8; #assert sha256_init(st[..]) == SHA_OK;
+  buf: [65536] u8; k := 0; lines := 0; bytes := 0;
+  while at < total {
+    head: [4] u8; h := 0;
+    while h < 4 && at + h < total { head[h] = cast(u8) cxstore_byte(at + h); h += 1; }
+    f := ns_file_next(head[0..<h], at, total);
+    if f.status != NSF_OK { break; }
+    for i: f.from..<f.to + 1 {
+      b := ifx i < f.to then cxstore_byte(i) else 10;
+      if i < f.to && b == 10 { ry_export_abort(); print("relay: the frame at byte % holds a line break, which an export line can't carry; nothing was written\n", at); ry_host_exit(3); return; }
+      if ry_export_put(b) != 0 { ry_export_abort(); print("relay: cannot write the export; nothing was written\n"); ry_host_exit(2); return; }
+      buf[k] = cast(u8) b; k += 1;
+      if k == buf.count { #assert sha256_update_checked(st[..], buf[..], false) == SHA_OK; k = 0; }
+    }
+    lines += 1; bytes += f.to - f.from + 1;
+    at = f.to;
+  }
+  #assert sha256_update_checked(st[..], buf[0..<k], false) == SHA_OK;
+  if ry_export_commit() != 0 { print("relay: cannot write the export; nothing was written\n"); ry_host_exit(2); return; }
+  d: [32] u8; ry_hash_now(st[..], d[..]); hx: [64] u8;
+  print("relay: export wrote % lines, % bytes, sha256 %, the --store file's frames from byte % to %\n", lines, bytes, ry_hex(d[..], hx[..]), from, at);
+  print("relay: export took % ms\n", ry_ms(ry_host_ns() - t0));
+}
+// 32 bytes as lowercase hex, in hex.
+ry_hex :: (d: [] u8, hex: [] u8) -> string {
+  h := "0123456789abcdef";
+  for k: 0..<32 { hex[2 * k] = h[cast(int) (d[k] >> 4)]; hex[2 * k + 1] = h[cast(int) (d[k] & 15)]; }
+  return cast(string) hex[0..<64];
+}
+// The SHA-256 of the whole export, which --export printed for it.
+ry_import_digest :: (total: int, out: [] u8) {
+  st: [SHA_STATE_BYTES] u8; #assert sha256_init(st[..]) == SHA_OK;
+  buf: [65536] u8; at := 0;
+  while at < total {
+    k := 0; while k < buf.count && at + k < total { buf[k] = cast(u8) ry_import_byte(at + k); k += 1; }
+    #assert sha256_update_checked(st[..], buf[0..<k], false) == SHA_OK;
+    at += k;
+  }
+  ry_hash_now(st[..], out);
+}
 
 // What an import read, beyond the outcome counts.
 RyInventory :: struct { bytes: int; regular: int; replaceable: int; addressable: int; deletions: int; vanishes: int; expiring: int; retired: int; }
@@ -188,9 +322,12 @@ ry_import :: (w: [] RyWork, store: [] RdStore, items: [] NegItem, now: int) {
   if f[0].on && ry_fresh_load() != -1 { print("relay: --import starts a new checkpoint: the --checkpoint file must not exist\n"); ry_host_exit(2); return; }
   total := ry_import_load();
   if total < 0 { print("relay: cannot read the export\n"); ry_host_exit(2); return; }
+  xd: [32] u8; ry_import_digest(total, xd[..]); hx: [64] u8;
+  print("relay: import export sha256 %\n", ry_hex(xd[..], hx[..]));
   // One sync at the end instead of one per event: until the checkpoint is
   // written last, a crashed import's store is refused (no checkpoint).
   cxstore_bulk(1);
+  store[0].bulk = true;
   rep: [1] RiReport; inv: RyInventory;
   text: [RI_LINE_MAX + 1] u8;
   verify_ns := 0; store_ns := 0; shown := 0;

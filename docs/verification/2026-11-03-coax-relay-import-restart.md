@@ -73,9 +73,108 @@ costs O(records), and an import or a restart of N events costs O(N^2).
 event count of that order can cut over, admission needs an id and address
 lookup (a hash or the sorted index chapter 36 already keeps), with
 `ns_store_plan`'s decisions unchanged and its mutation run kept at zero.
-This is engineering work, not an owner decision; it is open on #12631.
-The tombstone table is also fixed at `RD_TOMBS` = 8,192 (the import says
-"incomplete" past it) and each admission scans it.
+This was engineering work, not an owner decision; the second run below
+fixes it. The tombstone table was also fixed at `RD_TOMBS` = 8,192 (the
+import said "incomplete" past it) and each admission scanned it.
+
+### Fixed: lookups instead of scans, tombstones sized from the input (second run)
+
+The same day, on the same machine under the same kind of load (load
+average 35 to 50), with no change to any admission rule:
+
+- `store_core.coax` (`#authority`) keeps two open-addressed tables beside
+  the records, `ids` and `addrs`: for every ID the latest record with it,
+  and for every address (kind and author, and `d` when addressable) of a
+  replaceable or addressable record the latest record at it. Records are
+  only appended and retired, never revived, so the latest is the only one
+  that can be live, and `ns_store_plan` reads one slot chain for each
+  instead of every record. A compaction renumbers the records and rebuilds
+  both tables. Without the tables admission scans as before. A check runs
+  3,000 random admissions (duplicates, lower originals, replacements,
+  expiry, compactions by record count and by bytes) through an indexed and
+  an unindexed store and compares every plan, every result and every
+  record. `coax mutate --root-only`: 488 mutants, 488 killed.
+- `store_delete.coax` (`#authority`) keeps the tombstones in an
+  open-addressed table keyed by what a covered event shares with the
+  tombstone (an `e` tag's ID, an `a` tag's address, a vanish's signer), so
+  `nsd_blocked` reads three chains, not every tombstone; `nsd_covers` still
+  decides. An `e` or `a` tombstone retires through the store's lookups (one
+  record each); a vanish still reads every record. The same kind of random
+  check (events, deletions by ID and by address, vanishes, compactions)
+  compares both ways. `coax mutate --root-only`: 431 mutants, 431 killed.
+- The 8,192-tombstone cap is gone: the relay counts the tombstones its
+  input can ask for (every kind 5's `e` and `a` tags and every kind 62,
+  read without verifying, so an upper bound) in the export for `--import`
+  or the `--store` file otherwise, and allocates that many plus
+  `--tombstones N` more for requests that arrive later (8,192 without it).
+  Each costs 400 bytes (the tombstone and its two slots); the relay prints
+  the count and the memory with `--import`, `--check-store`, `--export`
+  and `--checkpoint`.
+- In an import the query index is built once at the end instead of being
+  kept by insertion after every event (`RdStore.bulk`).
+
+**Identity.** The relay at `57c3f6e63a` (before) and this one (after)
+imported the same oracle exports (seed 12631) and restarted from them.
+Every outcome count, the tombstone count, the served set's size and its
+digest are identical, and equal to the oracle's:
+
+| Lines | Served | Digest (both) |
+| ---: | ---: | --- |
+| 3,000 | 2,419 | `c8384e45...` |
+| 30,000 | 22,954 | `78b10991...` |
+| 60,000 | 44,488 | `7f2c37a6...` |
+
+**Scale.** Import is total (verification; store and file). Restart is
+`--check-store`, which verifies every signature again.
+
+| Lines | Before: import | Before: restart | After: import | After: restart | After: peak memory (import, restart) |
+| ---: | --- | ---: | --- | ---: | --- |
+| 3,000 | 2.9 s (2.4 s; 0.48 s) | 1.6 s | 1.5 s (1.4 s; 0.04 s) | 1.6 s | 31, 29 MiB |
+| 30,000 | 57.9 s (19.8 s; 37.6 s) | 68.3 s | 22.0 s (20.9 s; 0.63 s) | 21.4 s | 69, 58 MiB |
+| 60,000 | 245.6 s (41.9 s; 202.9 s) | 228.5 s | 82.6 s (79.0 s; 1.85 s) | 43.8 s | 114, 90 MiB |
+| 125,000 | not run (quadratic: about 15 minutes) | | 79.8 s (75.6 s; 2.74 s) | 79.6 s | 210, 160 MiB |
+| 250,000 | not run (about an hour) | | 293.3 s (280.8 s; 8.75 s) | 234.1 s | 365, 264 MiB |
+
+The 125,000 line export is the oracle's (every count and the digest
+match it, 1,036 tombstones). The 250,000 line export is that one followed
+by the oracle's 125,000 lines for seed 7, so it has no oracle expectation;
+it stored 209,270 records (173,478 served, digest `1654cdc3...`), and the
+restart served the same set. "Store and file" is now under 4% of an
+import and grows about linearly (0.6 s, 1.9 s, 2.7 s, 8.7 s); the rest is
+signature verification, about 0.7 to 1.1 ms an event under this load,
+which is why restart time grows linearly too (0.7 ms an event at 30,000
+and 60,000, 0.64 at 125,000, 0.94 at 250,000 with a mutation run beside
+it). Each measurement ran as its own command, under 15 minutes.
+
+### The export (`relay --export`)
+
+`relay --export OUT [--from BYTE] --store FILE [--checkpoint CP]` replays
+the store (every frame verified again, the checkpoint checked), then
+writes the `--store` file's frames, one per line, in file order: the
+format `--import` reads. Every write the store made is a frame, so the
+deletion and vanish requests behind the tombstones are in it, in the order
+they were applied, and an import of the export at the same `--now` writes
+the same `--store` file byte for byte. `--from BYTE` starts at the frame
+that begins there (a cutover's store size, which its checkpoint records):
+the events written since, for chapter 103's rollback (step 19). OUT is
+written as OUT.tmp, synced and renamed, and must not exist; a `--from`
+inside a frame, or a frame holding a raw line break, is refused (exit 3)
+and nothing is written. Both `--export` and `--import` print the export's
+SHA-256.
+
+Round trips (export, then import at the same `--now` into a new store):
+
+| Lines imported | Export lines, bytes | Store file and checkpoint | Served set |
+| ---: | --- | --- | --- |
+| 3,000 | 2,870, 1,122,850 | identical (`cmp`) | identical |
+| 30,000 | 28,560, 11,200,275 | identical | identical |
+| 60,000 | 57,176, 22,439,133 | identical | identical |
+
+`relay_scale.coax` now runs this round trip at the end (step 6), plus the
+`--from` check: the export's first half imported into a third store, the
+first store exported `--from` that store's size, which must be exactly the
+export's second half, and `--from` one byte later refused. At 3,000 lines
+every check holds.
 
 ## The refreshed differential
 
