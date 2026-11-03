@@ -469,6 +469,38 @@
  #assert !CB_leaves(b,2,17,BS_Path.{},leaves[..]) && leaves[0]==1 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383";
 }
 
+#forall "a retained field row is refused when a step past its eight field slots holds an index" corrupt:bool {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=4,type_count=17}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=99,column=8}}];queries:[8]CK_BorrowQuery;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2,retain_fields=1};nodes[2]=CK_Node.{kind=CK_Tag.struct_,head=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=3};
+ work[0].queries=1;queries[0]=CK_BorrowQuery.{kind=4,decl=16,type=2,status=2,start=0,count=3};queries[0].path.steps[0].index=3;
+ if corrupt {queries[0].path.steps[8].index=1;}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..],retain_fields=true};
+ result:=CB_field(b,16,0);
+ if corrupt {#assert result==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==99;}
+ else {#assert result==3 && !state[0].fatal && state[0].error_count==0;}
+}
+#forall "a union's variant past its list or a malformed variant node is refused" pick:0..<4 {
+ // pick 0: ordinal 1 of a one-variant union; 1: a variant node of another kind; 2: a variant numbered 1 at ordinal 0; 3: well formed
+ nodes:[8]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=18}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=102,column=4}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.union_,decl=4};nodes[4]=CK_Node.{kind=CK_Tag.union_,head=5};
+ nodes[5]=CK_Node.{kind=ifx pick==1 then CK_Tag.field else CK_Tag.variant,value=ifx pick==2 then 1 else 0,type=16};
+ // A failed walk never reads node 0, even when it looks like the variant asked for.
+ if pick==0 {nodes[0]=CK_Node.{kind=CK_Tag.variant,value=1,type=16};}
+ got:=CB_variant(b,17,ifx pick==0 then 1 else 0);
+ #assert got==(ifx pick==3 then 16 else 0) && state[0].fatal==(pick<3) && state[0].error_count==(ifx pick<3 then 1 else 0);
+}
+#forall "a null optional's borrow is empty at its variant and refused past it" past:bool {
+ nodes:[8]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=18}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=103,column=4}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.optional,elem=16};
+ nodes[3]=CK_Node.{kind=CK_Tag.expr_null,type=17,sum_variant=0,loc=CK_Loc.{line=104,column=9}};
+ path:=BS_Path.{count=ifx past then 2 else 1};path.steps[0]=BS_Step.{kind=BS_VARIANT,index=0};path.steps[1]=BS_Step.{kind=BS_FIELD,index=0};
+ out:[4]BS_Origin;got:=CB_expr(b,3,path,false,out[..]);
+ #assert got.count==0 && !got.incomplete && state[0].fatal==past && state[0].error_count==(ifx past then 1 else 0);
+ if past {#assert errors[0].code=="E0381" && errors[0].loc.line==104;}
+}
+
 // checker/retain.coax
 #test "a retained write of a sum reaches a borrowing variant after a variant that holds none" {
  nodes:[128]CK_Node;types:[24]CK_Type;errors:[8]CK_Error;state:=[1]CK_State.[CK_State.{used=127,type_count=22}];work:[1]CB_State;queries:[256]CK_BorrowQuery;origins:[2048]BS_Origin;effects:[128]CK_RetainEffect;reports:[8]CK_RetainObservation;cr:[1]CR_State;for i:0..<16 {types[i]=CK_builtin(i);}
@@ -564,4 +596,29 @@
  #assert !state[0].fatal && state[0].error_count==0 && cr[0].leaves==2 && cr[0].shape.count==2;
  CR_leaf(r,2,10,17,BS_Path.{});
  #assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && cr[0].leaves==3;
+}
+#test "a callee summary of exactly the maximum 256 effects is applied" #steps 80000000 {
+ nodes:[64]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=63,type_count=18}];queries:[1024]CK_BorrowQuery;origins:[8192]BS_Origin;work:[1]CB_State;effects:[512]CK_RetainEffect;reports:[4]CK_RetainObservation;rs:=[1]CR_State.[CR_State.{effects=256}];for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=256};types[17]=CK_Type.{kind=CK_Kind.view,elem=16};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=5,borrow_calls=30};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,next=4,borrow_owner=2};nodes[4]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;
+ nodes[20]=CK_Node.{kind=CK_Tag.proc,type=1,head=21,b=23,retain_head=256,retain_count=256,retain_relation=true};nodes[21]=CK_Node.{kind=CK_Tag.param,type=16,next=22,borrow_owner=20};nodes[22]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=20};nodes[23].kind=CK_Tag.stmt_block;
+ nodes[30]=CK_Node.{kind=CK_Tag.expr_call,type=1,proc=20,head=31,borrow_owner=2,loc=CK_Loc.{line=98,column=7}};nodes[31]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3,next=32};nodes[32]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=4};
+ for i:0..<256 {src:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=12,path=BS_Path.{count=1}};src.path.steps[0]=BS_Step.{kind=BS_ELEMENT,index=i};dst:=BS_Origin.{kind=BS_PARAMETER,root=1,role=BS_DESCRIPTOR,type=3,path=BS_Path.{count=2}};dst.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};dst.path.steps[1]=BS_Step.{kind=BS_ELEMENT,index=i};effects[i]=CK_RetainEffect.{source=src,destination=dst,value_type=12,witness=30,next=i};}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=rs[..]};CR_apply(r,2,30,false);
+ #assert !state[0].fatal && state[0].error_count==0 && nodes[2].retain_count==256 && rs[0].effects==512;
+}
+#test "applying a callee effect stops at a refused argument before asking where its destination lives" {
+ // f(g(), out) where f stores its first argument through its second, and g returns a slice of its own local array.
+ nodes:[64]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=63,type_count=20}];queries:[64]CK_BorrowQuery;origins:[512]BS_Origin;work:[1]CB_State;effects:[8]CK_RetainEffect;reports:[4]CK_RetainObservation;rs:=[1]CR_State.[CR_State.{effects=1}];for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=12,length=1};types[19]=CK_Type.{kind=CK_Kind.view,elem=16};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=5,borrow_calls=30};nodes[3]=CK_Node.{kind=CK_Tag.param,type=19,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;
+ nodes[20]=CK_Node.{kind=CK_Tag.proc,type=1,head=21,b=23,retain_head=1,retain_count=1,retain_relation=true};nodes[21]=CK_Node.{kind=CK_Tag.param,type=16,next=22,borrow_owner=20};nodes[22]=CK_Node.{kind=CK_Tag.param,type=19,borrow_owner=20};nodes[23].kind=CK_Tag.stmt_block;
+ nodes[30]=CK_Node.{kind=CK_Tag.expr_call,type=1,proc=20,head=31,borrow_owner=2,loc=CK_Loc.{line=100,column=3}};nodes[31]=CK_Node.{kind=CK_Tag.expr_call,type=16,proc=40,next=32};nodes[32]=CK_Node.{kind=CK_Tag.expr_ident,type=19,borrow_binding=3};
+ nodes[40]=CK_Node.{kind=CK_Tag.proc,type=16,b=41,borrow_returns=42};nodes[41].kind=CK_Tag.stmt_block;nodes[42]=CK_Node.{kind=CK_Tag.stmt_return,a=43};
+ nodes[43]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=44,loc=CK_Loc.{line=101,column=10}};nodes[44]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=45};nodes[45]=CK_Node.{kind=CK_Tag.stmt_var,type=17,borrow_owner=40};
+ src:=BS_Origin.{kind=BS_PARAMETER,root=0,role=BS_DESCRIPTOR,type=12};dst:=BS_Origin.{kind=BS_PARAMETER,root=1,role=BS_DESCRIPTOR,type=3,path=BS_Path.{count=1}};dst.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};
+ effects[0]=CK_RetainEffect.{source=src,destination=dst,value_type=12,witness=30};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=rs[..]};
+ CR_apply(r,2,30,false);
+ #assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==101 && nodes[3].borrow_query==0;
 }
