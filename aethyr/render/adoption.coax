@@ -38,11 +38,16 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
   #assert !route.shared && route.tracked_legacy && route.profile == -1;
   #assert !render_adoption("5e-mmo", "everglade").tracked_legacy;
 }
-// Everglade 5E (Everglade on the SRD 5e engine) draws with Everglade's passes until it has a catalog profile.
-#test "Everglade 5E is a tracked legacy consumer" {
-  route := render_adoption("everglade-5e", "everglade5e");
+// Everglade is the SRD 5e module (everglade5e.coax on everglade.coax) since the swap (#12710): it draws
+// with Everglade's passes until the catalog's profile names its module. Everglade Classic, the old
+// module, is a tracked legacy page under its own slug; /worlds/everglade-5e is a redirect, no page.
+#test "Everglade on the 5E module and Everglade Classic are tracked legacy consumers" {
+  route := render_adoption("everglade", "everglade5e");
   #assert !route.shared && route.tracked_legacy && route.profile == -1;
-  #assert !render_adoption("everglade-5e", "everglade").tracked_legacy;
+  classic := render_adoption("everglade-classic", "everglade");
+  #assert !classic.shared && classic.tracked_legacy && classic.profile == -1;
+  #assert !render_adoption("everglade-5e", "everglade5e").tracked_legacy;
+  #assert !render_adoption("everglade-classic", "everglade5e").tracked_legacy;
 }
 // MetaHuman Lab (the human runtime's bench) draws with its own two passes until it has a catalog profile.
 #test "MetaHuman Lab is a tracked legacy consumer" {
@@ -72,7 +77,8 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c {
   if slug == "anime-lab" && app == "animelab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "5e-lab" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "5e-mmo" && app == "fivemmo" { return RenderAdoption.{tracked_legacy = true}; }
-  if slug == "everglade-5e" && app == "everglade5e" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "everglade" && app == "everglade5e" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "everglade-classic" && app == "everglade" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "metahuman-lab" && app == "metahumanlab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "one-shot" && app == "oneshot" { return RenderAdoption.{tracked_legacy = true}; }
   return RenderAdoption.{};

@@ -217,6 +217,35 @@ for pm in m["pathMatchers"]:
         rules.sort(key=lambda r: r["priority"])
         changed = True
         print(f"url map: {pm['name']} {next(iter(want[0].values()))} is the site's {to}")
+# Everglade plays the SRD 5e module since the swap (#12710): /worlds/everglade-5e and everything
+# under it move for good to /worlds/everglade (the query kept; a #place stays in the browser). They
+# go ahead of /worlds/*, which would serve the old page's objects; /worlds/everglade-5e-fork and
+# other made realms whose slugs start the same are not matched.
+for pm in m["pathMatchers"]:
+    if pm["name"] not in ("production", "staging"): continue
+    rules = pm.setdefault("routeRules", [])
+    moves = (([{"fullPathMatch": "/worlds/everglade-5e"}], {"pathRedirect": "/worlds/everglade"}),
+             ([{"prefixMatch": "/worlds/everglade-5e/"}], {"prefixRedirect": "/worlds/everglade/"}))
+    for want, to in moves:
+        go = {**to, "redirectResponseCode": "MOVED_PERMANENTLY_DEFAULT"}
+        rule = next((r for r in rules if r.get("matchRules") == want), None)
+        if rule and rule.get("urlRedirect") == go: continue
+        if rule: rules.remove(rule)
+        rules.append({"priority": 0, "matchRules": want, "urlRedirect": go})
+        changed = True
+        print(f"url map: {pm['name']} {next(iter(want[0].values()))} to {next(iter(to.values()))}")
+    worlds = [r for r in rules if any((x.get("fullPathMatch") or x.get("prefixMatch") or "") in ("/worlds", "/worlds/") for x in r.get("matchRules", []))]
+    mine = [r for r in rules if any((x.get("fullPathMatch") or x.get("prefixMatch") or "").startswith("/worlds/everglade-5e") for x in r.get("matchRules", []))]
+    first = min((r["priority"] for r in worlds), default=None)
+    if first is not None and any(r["priority"] == 0 or r["priority"] >= first for r in mine):
+        rest = sorted((r for r in rules if r not in mine), key=lambda r: r["priority"])
+        at = next(i for i, r in enumerate(rest) if r in worlds)
+        order = rest[:at] + mine + rest[at:]
+        base = min(r["priority"] for r in rest)
+        for i, r in enumerate(order): r["priority"] = base + i
+        rules[:] = order
+        changed = True
+        print(f"url map: {pm['name']} /worlds/everglade-5e ahead of /worlds/*")
 # The coder service is retired (docs/2026-10-28-coder-service-deprecation.md): whatever no rule
 # names is the site's bucket, so an unknown path gets the Coax 404.
 for pm in m["pathMatchers"]:
