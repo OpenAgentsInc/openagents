@@ -1,0 +1,658 @@
+// Invoices (Bitcoin chapter 114): BOLT 11's payment requests. An invoice
+// is Bech32 text without the 90-character limit: a human-readable part
+// with the currency and the amount, then 5-bit words with a timestamp,
+// tagged fields and a recoverable ECDSA signature. The signature names the
+// payee: a reader recovers its key from the signature, or checks it
+// against the `n` field when the invoice carries one.
+//
+// The reader and writer here are pure encoding: no payment and no route.
+// Chapter 113 pays the invoice; its route hints and fallback addresses are
+// read here, and chapter 29 turns a fallback into an address.
+//
+// An invoice is public, so reading one runs in variable time and the
+// procedures' names end in _vartime (chapter 3). Signing uses the payee's
+// private key: invoice_sign_vartime calls chapter 20's constant-time
+// signer, and only its public inputs and output steer its own branches.
+#load "../crypto/sha256.coax";
+#load "../crypto/ecdsa_recover.coax";
+#load "../crypto/ecdsa_sign.coax";
+#load "../crypto/secp_mult_const.coax";
+#load "../nostr/bech32-core.coax";
+#load "../bitcoin/address.coax";
+#load "bolt1.coax";
+#load "../../tests/lightning/invoice_vectors.coax";
+#authority;
+
+// book:begin codes
+INV_OK :: 0;
+INV_BAD_BECH32 :: 1;     // not Bech32: a checksum, case, separator or character error
+INV_BAD_PREFIX :: 2;     // the human-readable part is not ln and a known currency
+INV_BAD_AMOUNT :: 3;     // a non-digit, an unknown multiplier, a p amount not ending in 0, or too large
+INV_TOO_SHORT :: 4;      // fewer words than a timestamp and a signature
+INV_TRUNCATED :: 5;      // a tagged field runs into the signature
+INV_BAD_LENGTH :: 6;     // p, s or h not 52 words, n not 53, or x or c too long for 64 bits
+INV_REQUIRED :: 7;       // not exactly one p and one s, or not exactly one of d and h
+INV_NOT_MINIMAL :: 8;    // x, c or 9 that starts with a zero word
+INV_BAD_UTF8 :: 9;       // a d field that is not UTF-8
+INV_BAD_FEATURES :: 10;  // an unknown even feature bit, or basic_mpp without payment_secret
+INV_BAD_FALLBACK :: 11;  // an f field of a known version with a wrong program length
+INV_BAD_ROUTE :: 12;     // an r field that is not a whole number of 51-byte hops
+INV_BAD_SIGNATURE :: 13; // no key recovers, or the n key does not verify a low-S signature
+INV_CAPACITY :: 14;      // more words, fields, fallbacks or hops than this reader keeps
+
+INV_MAINNET :: 1; INV_TESTNET :: 2; INV_SIGNET :: 3; INV_REGTEST :: 4;
+
+// The tagged fields, by their 5-bit type: the letter is the type's Bech32
+// character.
+INV_P :: 1;   // payment_hash, 52 words
+INV_S :: 16;  // payment_secret, 52 words
+INV_D :: 13;  // description, UTF-8
+INV_M :: 27;  // payment_metadata
+INV_N :: 19;  // the payee's node ID, 53 words
+INV_H :: 23;  // SHA-256 of a long description, 52 words
+INV_X :: 6;   // expiry in seconds, default 3600
+INV_C :: 24;  // min_final_cltv_expiry_delta, default 18
+INV_F :: 9;   // a fallback on-chain address
+INV_R :: 3;   // route hints: hops of 51 bytes
+INV_9 :: 5;   // features
+
+INV_TIMESTAMP :: 7;      // 35 bits
+INV_SIGNATURE :: 104;    // 520 bits: r, s and the recovery ID
+INV_HOP :: 51;           // pubkey 33, short_channel_id 8, fee_base_msat 4, proportional 4, cltv 2
+INV_MAX_WORDS :: 4096;
+INV_MAX_FIELDS :: 128;
+INV_MAX_FALLBACKS :: 4;
+INV_MAX_HOPS :: 16;
+// book:end codes
+
+// book:begin invoice
+// What an invoice says. Every byte value is a copy, so the text can go.
+InvField :: struct { type: int; start: int; length: int; }   // a field's words in words[]
+InvFallback :: struct { version: int; program: [40] u8; length: int; }
+InvHop :: struct { pubkey: [33] u8; scid: u64; fee_base: u64; fee_ppm: u64; cltv: int; hint: int; }
+Invoice :: struct {
+  code: int;
+  network: int;
+  hrp: [83] u8; hrp_n: int;
+  has_amount: bool; amount_msat: u64;
+  timestamp: u64;
+  payment_hash: [32] u8; secret: [32] u8;
+  description: [640] u8; description_n: int; has_description: bool;
+  description_hash: [32] u8; has_hash: bool;
+  payee: [33] u8; has_n: bool;     // the n field's key, or the recovered key
+  expiry: u64; min_final_cltv: u64;
+  features: [640] u8; features_n: int;   // a big-endian bitmap, as in BOLT 9
+  metadata: [640] u8; metadata_n: int; has_metadata: bool;
+  fallbacks: [4] InvFallback; fallbacks_n: int;
+  hops: [16] InvHop; hops_n: int; hints: int;
+  ignored: int;                    // unknown fields and fallbacks of unknown versions skipped
+  words: [4096] u8; words_n: int; data_n: int;   // data_n: the words before the signature
+  fields: [128] InvField; fields_n: int;
+  signature: [64] u8; recovery: int;
+  digest: [32] u8;                 // SHA-256 of the signed bytes
+}
+// book:end invoice
+
+// ---- words and bytes
+// book:begin words
+// Words to bytes, 5 bits each, most significant first, with zero bits
+// added at the end to fill the last byte. A field's value is the first
+// (5 * words) / 8 bytes: the partial byte is padding. The signature
+// covers all of them.
+inv_pack :: (words: [] u8, out: [] u8) -> int {
+  n := (words.count * 5 + 7) / 8;
+  for i: 0..<n { out[i] = 0; }
+  for k: 0..<words.count * 5 {
+    if (words[k / 5] >> cast(u8) (4 - k % 5)) & 1 == 1 { out[k / 8] |= cast(u8) (128 >> (k % 8)); }
+  }
+  return n;
+}
+// Bytes to words, with zero bits added at the end to fill the last word.
+inv_unpack :: (bytes: [] u8, out: [] u8) -> int {
+  n := (bytes.count * 8 + 4) / 5;
+  for i: 0..<n { out[i] = 0; }
+  for k: 0..<bytes.count * 8 {
+    if (bytes[k / 8] >> cast(u8) (7 - k % 8)) & 1 == 1 { out[k / 5] |= cast(u8) (16 >> (k % 5)); }
+  }
+  return n;
+}
+// A big-endian number in words: x, c and the timestamp.
+inv_number :: (words: [] u8) -> u64 {
+  v: u64 = 0;
+  for w: words { v = (v << 5) | cast(u64) w; }
+  return v;
+}
+// book:end words
+
+// ---- the human-readable part
+// book:begin hrp
+// ln, the currency prefix, then an optional amount: a positive decimal
+// number of bitcoin and an optional multiplier. A millisatoshi is 10^-11
+// bitcoin, so m is 10^8 msat, u 10^5 and n 10^2, and p is a tenth of a
+// msat: a p amount must end in 0.
+INV_PREFIXES :: [4] string.["bc", "tb", "tbs", "bcrt"];
+InvAmount :: struct { code: int; network: int; has: bool; msat: u64; }
+inv_hrp_vartime :: (hrp: [] u8) -> InvAmount {
+  if hrp.count < 2 || hrp[0] != 'l' || hrp[1] != 'n' { return InvAmount.{code = INV_BAD_PREFIX}; }
+  at := 2;
+  while at < hrp.count && (hrp[at] < '0' || hrp[at] > '9') { at += 1; }
+  r: InvAmount;
+  for p: 0..<4 { if cast(string) hrp[2..<at] == INV_PREFIXES[p] { r.network = p + 1; } }
+  if r.network == 0 { return InvAmount.{code = INV_BAD_PREFIX}; }
+  if at == hrp.count { return r; }
+  value: u64 = 0;
+  while at < hrp.count && hrp[at] >= '0' && hrp[at] <= '9' {
+    d := cast(u64) (hrp[at] - '0');
+    if value > (CB_MAX64 - d) / 10 { return InvAmount.{code = INV_BAD_AMOUNT}; }
+    value = value * 10 + d; at += 1;
+  }
+  scale: u64 = 100000000000;
+  if at < hrp.count {
+    m := hrp[at]; at += 1;
+    if at != hrp.count { return InvAmount.{code = INV_BAD_AMOUNT}; }
+    if m == 'm' { scale = 100000000; }
+    else if m == 'u' { scale = 100000; }
+    else if m == 'n' { scale = 100; }
+    else if m == 'p' {
+      if value % 10 != 0 { return InvAmount.{code = INV_BAD_AMOUNT}; }
+      r.has = true; r.msat = value / 10; return r;
+    } else { return InvAmount.{code = INV_BAD_AMOUNT}; }
+  }
+  if value > CB_MAX64 / scale { return InvAmount.{code = INV_BAD_AMOUNT}; }
+  r.has = true; r.msat = value * scale;
+  return r;
+}
+// book:end hrp
+
+// ---- UTF-8, as BOLT 1 requires of text: no overlong forms, no surrogates,
+// nothing above U+10FFFF.
+inv_utf8_vartime :: (b: [] u8) -> bool {
+  at := 0;
+  while at < b.count {
+    c := cast(int) b[at];
+    n := 0; low := 0; least := 0;
+    if c < 0x80 { at += 1; continue; }
+    if c >= 0xc2 && c <= 0xdf { n = 1; least = 0x80; low = c & 0x1f; }
+    else if c >= 0xe0 && c <= 0xef { n = 2; least = 0x800; low = c & 0x0f; }
+    else if c >= 0xf0 && c <= 0xf4 { n = 3; least = 0x10000; low = c & 0x07; }
+    else { return false; }
+    if at + n >= b.count { return false; }
+    v := low;
+    for i: 1..<n + 1 {
+      d := cast(int) b[at + i];
+      if d < 0x80 || d > 0xbf { return false; }
+      v = (v << 6) | (d & 0x3f);
+    }
+    if v < least || v > 0x10ffff || (v >= 0xd800 && v <= 0xdfff) { return false; }
+    at += n + 1;
+  }
+  return true;
+}
+
+// ---- the reader
+// BOLT 9's features with context 9, as the even bit of each pair:
+// var_onion_optin, payment_secret, basic_mpp, option_route_blinding,
+// option_attribution_data and option_payment_metadata.
+INV_KNOWN_FEATURES :: [6] int.[8, 14, 16, 24, 36, 48];
+
+// book:begin field
+// One tagged field: its value checked against its type and kept. A field
+// whose type the reader does not know is skipped; so is a fallback of an
+// unknown version.
+inv_field_vartime :: (inv: [] Invoice, f: InvField, seen: [] int) -> int {
+  w := inv[0].words[f.start..<f.start + f.length];
+  b: [640] u8; nb := (f.length * 5) / 8; packed := inv_pack(w, b[..]);
+  t := f.type;
+  if t == INV_P || t == INV_S || t == INV_H || t == INV_N {
+    if f.length != ifx t == INV_N then 53 else 52 { return INV_BAD_LENGTH; }
+    if seen[t] > 1 { return INV_REQUIRED; }
+    for i: 0..<32 {
+      if t == INV_P { inv[0].payment_hash[i] = b[i]; }
+      if t == INV_S { inv[0].secret[i] = b[i]; }
+      if t == INV_H { inv[0].description_hash[i] = b[i]; }
+    }
+    if t == INV_H { inv[0].has_hash = true; }
+    if t == INV_N { for i: 0..<33 { inv[0].payee[i] = b[i]; } inv[0].has_n = true; }
+  } else if t == INV_D {
+    if !inv_utf8_vartime(b[0..<nb]) { return INV_BAD_UTF8; }
+    for i: 0..<nb { inv[0].description[i] = b[i]; }
+    inv[0].description_n = nb; inv[0].has_description = true;
+  } else if t == INV_X || t == INV_C {
+    if f.length == 0 || w[0] == 0 { return INV_NOT_MINIMAL; }
+    if f.length > 12 { return INV_BAD_LENGTH; }
+    if t == INV_X { inv[0].expiry = inv_number(w); } else { inv[0].min_final_cltv = inv_number(w); }
+  } else if t == INV_9 {
+    if f.length == 0 || w[0] == 0 { return INV_NOT_MINIMAL; }
+    // Bit k counts from the last word's least significant bit.
+    n := (f.length * 5 + 7) / 8;
+    for i: 0..<n { inv[0].features[i] = 0; }
+    for k: 0..<f.length * 5 {
+      if (w[f.length - 1 - k / 5] >> cast(u8) (k % 5)) & 1 == 1 { inv[0].features[n - 1 - k / 8] |= cast(u8) (1 << (k % 8)); }
+    }
+    inv[0].features_n = n;
+  } else if t == INV_M {
+    for i: 0..<nb { inv[0].metadata[i] = b[i]; }
+    inv[0].metadata_n = nb; inv[0].has_metadata = true;
+  } else if t == INV_F {
+    if f.length == 0 { return INV_BAD_FALLBACK; }
+    version := cast(int) w[0];
+    if version > 18 { inv[0].ignored += 1; return INV_OK; }
+    pb: [640] u8; n := (f.length - 1) * 5 / 8; packed = inv_pack(w[1..<f.length], pb[..]);
+    good := ifx version >= 17 then n == 20 else ifx version == 0 then n == 20 || n == 32 else n >= 2 && n <= 40;
+    if !good { return INV_BAD_FALLBACK; }
+    if inv[0].fallbacks_n == INV_MAX_FALLBACKS { return INV_CAPACITY; }
+    fb := InvFallback.{version = version, length = n};
+    for i: 0..<n { fb.program[i] = pb[i]; }
+    inv[0].fallbacks[inv[0].fallbacks_n] = fb; inv[0].fallbacks_n += 1;
+  } else if t == INV_R {
+    if nb == 0 || nb % INV_HOP != 0 { return INV_BAD_ROUTE; }
+    for e: 0..<nb / INV_HOP {
+      if inv[0].hops_n == INV_MAX_HOPS { return INV_CAPACITY; }
+      h: InvHop; at := e * INV_HOP;
+      for i: 0..<33 { h.pubkey[i] = b[at + i]; }
+      h.scid = cb_load_be64(b[..], at + 33).value;
+      h.fee_base = cast(u64) cb_load_be32(b[..], at + 41).value;
+      h.fee_ppm = cast(u64) cb_load_be32(b[..], at + 45).value;
+      h.cltv = ln_u16(b[..], at + 49);
+      h.hint = inv[0].hints;
+      inv[0].hops[inv[0].hops_n] = h; inv[0].hops_n += 1;
+    }
+    inv[0].hints += 1;
+  } else {
+    inv[0].ignored += 1;
+  }
+  return INV_OK;
+}
+// book:end field
+
+// book:begin decode
+// Reads an invoice into inv[0]. Returns INV_OK or the first refusal.
+invoice_decode_vartime :: (text: string, inv: [] Invoice) -> int {
+  fresh: Invoice; inv[0] = fresh;
+  inv[0].expiry = 3600; inv[0].min_final_cltv = 18; inv[0].recovery = -1;
+  // Bech32 without the 90-character limit (extended).
+  r := bech32_decode_checked(text, inv[0].hrp[..], inv[0].words[..], true, false);
+  if r.error == NC_CAPACITY { return INV_CAPACITY; }
+  if r.error != NC_OK { return INV_BAD_BECH32; }
+  inv[0].hrp_n = r.hrp_written; inv[0].words_n = r.written;
+  a := inv_hrp_vartime(inv[0].hrp[0..<r.hrp_written]);
+  if a.code != INV_OK { return a.code; }
+  inv[0].network = a.network; inv[0].has_amount = a.has; inv[0].amount_msat = a.msat;
+  if r.written < INV_TIMESTAMP + INV_SIGNATURE { return INV_TOO_SHORT; }
+  end := r.written - INV_SIGNATURE; inv[0].data_n = end;
+  inv[0].timestamp = inv_number(inv[0].words[0..<INV_TIMESTAMP]);
+  // Tagged fields: type (5 bits), data_length (10 bits), data.
+  seen: [32] int; at := INV_TIMESTAMP;
+  while at < end {
+    if end - at < 3 { return INV_TRUNCATED; }
+    f := InvField.{type = cast(int) inv[0].words[at], start = at + 3,
+                   length = cast(int) inv[0].words[at + 1] * 32 + cast(int) inv[0].words[at + 2]};
+    if f.length > end - f.start { return INV_TRUNCATED; }
+    if inv[0].fields_n == INV_MAX_FIELDS { return INV_CAPACITY; }
+    inv[0].fields[inv[0].fields_n] = f; inv[0].fields_n += 1;
+    seen[f.type] += 1;
+    code := inv_field_vartime(inv, f, seen[..]);
+    if code != INV_OK { return code; }
+    at = f.start + f.length;
+  }
+  if seen[INV_P] != 1 || seen[INV_S] != 1 || seen[INV_D] + seen[INV_H] != 1 { return INV_REQUIRED; }
+  known := INV_KNOWN_FEATURES;
+  if ln_feature_refuse_vartime(inv[0].features[0..<inv[0].features_n], known[..]) >= 0 { return INV_BAD_FEATURES; }
+  f := inv[0].features[0..<inv[0].features_n];
+  if (ln_feature_set(f, 16) || ln_feature_set(f, 17)) && !ln_feature_set(f, 14) && !ln_feature_set(f, 15) { return INV_BAD_FEATURES; }
+  return inv_check_signature_vartime(inv);
+}
+// book:end decode
+
+// book:begin signature
+// The signed bytes: the human-readable part as text, then every word
+// before the signature, packed with zero bits to a whole byte.
+inv_digest :: (hrp: [] u8, words: [] u8, out: [] u8) {
+  m: [83 + 2560] u8;
+  for i: 0..<hrp.count { m[i] = hrp[i]; }
+  n := inv_pack(words, m[hrp.count..<m.count]);
+  #assert sha256_hash_checked(m[0..<hrp.count + n], out, false) == SHA_OK;
+}
+// With an n field, the signature must verify under that key with a low s.
+// Without one, the recovery ID names the nonce point, and the key that
+// signature recovers to is the payee: any s is accepted.
+inv_check_signature_vartime :: (inv: [] Invoice) -> int {
+  sig: [65] u8;
+  packed := inv_pack(inv[0].words[inv[0].data_n..<inv[0].words_n], sig[..]);
+  for i: 0..<64 { inv[0].signature[i] = sig[i]; }
+  inv[0].recovery = cast(int) sig[64];
+  inv_digest(inv[0].hrp[0..<inv[0].hrp_n], inv[0].words[0..<inv[0].data_n], inv[0].digest[..]);
+  if inv[0].has_n {
+    if !ecdsa_verify_vartime(inv[0].digest[..], inv[0].payee[..], sig[0..<64], true) { return INV_BAD_SIGNATURE; }
+    return INV_OK;
+  }
+  if ecdsa_recover_vartime(inv[0].digest[..], sig[0..<64], inv[0].recovery, SE_COMPRESSED, inv[0].payee[..]) != SE_COMPRESSED {
+    return INV_BAD_SIGNATURE;
+  }
+  return INV_OK;
+}
+// book:end signature
+
+// book:begin fallback
+// A fallback's address on the invoice's network: version 17 is P2PKH,
+// 18 is P2SH, and 0 to 16 are witness programs (chapter 29). Signet
+// addresses are testnet's. Returns the length or a negative AD_ code.
+invoice_fallback_address_vartime :: (inv: [] Invoice, i: int, out: [] u8) -> int {
+  fb := inv[0].fallbacks[i]; script: [42] u8; n := 0;
+  if fb.version >= 17 { n = ad_hash_script(fb.version == 17, fb.program[0..<20], script[..]); }
+  else { n = ad_witness_script(fb.version, fb.program[0..<fb.length], script[..]); }
+  network := ifx inv[0].network == INV_MAINNET then SW_MAINNET else ifx inv[0].network == INV_REGTEST then SW_REGTEST else SW_TESTNET;
+  return address_encode_vartime(network, script[0..<n], out);
+}
+// book:end fallback
+
+// ---- the writer
+// book:begin writer
+// An invoice being written: the human-readable part, then words. Fields
+// go in the order they are put; the signature comes last.
+InvoiceWriter :: struct { code: int; hrp: [90] u8; hrp_n: int; words: [4096] u8; n: int; }
+// The amount in the fewest digits: the largest multiplier that divides
+// it, or p with a trailing 0 for a whole number of msat.
+invoice_begin_vartime :: (w: [] InvoiceWriter, network: int, has_amount: bool, amount_msat: u64, timestamp: u64) -> int {
+  fresh: InvoiceWriter; w[0] = fresh;
+  if network < INV_MAINNET || network > INV_REGTEST { w[0].code = INV_BAD_PREFIX; return w[0].code; }
+  if timestamp >> 35 != 0 { w[0].code = INV_BAD_LENGTH; return w[0].code; }
+  w[0].hrp[0] = 'l'; w[0].hrp[1] = 'n'; w[0].hrp_n = 2;
+  for c: INV_PREFIXES[network - 1] { w[0].hrp[w[0].hrp_n] = c; w[0].hrp_n += 1; }
+  if has_amount {
+    value := amount_msat; m: u8 = 'p';
+    if amount_msat % 100000000000 == 0 { value = amount_msat / 100000000000; m = 0; }
+    else if amount_msat % 100000000 == 0 { value = amount_msat / 100000000; m = 'm'; }
+    else if amount_msat % 100000 == 0 { value = amount_msat / 100000; m = 'u'; }
+    else if amount_msat % 100 == 0 { value = amount_msat / 100; m = 'n'; }
+    else if amount_msat > CB_MAX64 / 10 { w[0].code = INV_BAD_AMOUNT; return w[0].code; }
+    else { value = amount_msat * 10; }
+    digits: [20] u8; d := 0;
+    while d == 0 || value > 0 { digits[d] = cast(u8) (value % 10) + '0'; value /= 10; d += 1; }
+    for i: 0..<d { w[0].hrp[w[0].hrp_n] = digits[d - 1 - i]; w[0].hrp_n += 1; }
+    if m != 0 { w[0].hrp[w[0].hrp_n] = m; w[0].hrp_n += 1; }
+  }
+  for i: 0..<INV_TIMESTAMP { w[0].words[i] = cast(u8) ((timestamp >> cast(u64) (5 * (6 - i))) & 31); }
+  w[0].n = INV_TIMESTAMP;
+  return INV_OK;
+}
+// A field of the given words: type, data_length, data.
+invoice_put_words_vartime :: (w: [] InvoiceWriter, type: int, words: [] u8) -> int {
+  if w[0].code != INV_OK { return w[0].code; }
+  if type < 0 || type > 31 || words.count > 1023 { w[0].code = INV_BAD_LENGTH; return w[0].code; }
+  if w[0].n + 3 + words.count + INV_SIGNATURE > INV_MAX_WORDS { w[0].code = INV_CAPACITY; return w[0].code; }
+  w[0].words[w[0].n] = cast(u8) type;
+  w[0].words[w[0].n + 1] = cast(u8) (words.count >> 5); w[0].words[w[0].n + 2] = cast(u8) (words.count & 31);
+  for i: 0..<words.count { w[0].words[w[0].n + 3 + i] = words[i]; }
+  w[0].n += 3 + words.count;
+  return INV_OK;
+}
+// Bytes, padded with zero bits to whole words: p, s, h, n, d and m.
+invoice_put_bytes_vartime :: (w: [] InvoiceWriter, type: int, bytes: [] u8) -> int {
+  if bytes.count > 639 { w[0].code = INV_BAD_LENGTH; return w[0].code; }
+  words: [1023] u8; n := inv_unpack(bytes, words[..]);
+  return invoice_put_words_vartime(w, type, words[0..<n]);
+}
+// A number in the fewest words, no leading zero word: x and c.
+invoice_put_number_vartime :: (w: [] InvoiceWriter, type: int, v: u64) -> int {
+  words: [13] u8; n := 0;
+  while n < 13 && (v >> cast(u64) (5 * n)) != 0 { n += 1; }
+  for i: 0..<n { words[i] = cast(u8) ((v >> cast(u64) (5 * (n - 1 - i))) & 31); }
+  return invoice_put_words_vartime(w, type, words[0..<n]);
+}
+// A feature bitmap, big-endian as in BOLT 9, in the fewest words. An
+// empty bitmap writes no field at all.
+invoice_put_features_vartime :: (w: [] InvoiceWriter, f: [] u8) -> int {
+  top := -1;
+  for bit: 0..<f.count * 8 { if ln_feature_set(f, bit) { top = bit; } }
+  if top < 0 { return w[0].code; }
+  n := top / 5 + 1; words: [1023] u8;
+  if n > 1023 { w[0].code = INV_BAD_LENGTH; return w[0].code; }
+  for k: 0..<n * 5 { if ln_feature_set(f, k) { words[n - 1 - k / 5] |= cast(u8) (1 << (k % 5)); } }
+  return invoice_put_words_vartime(w, INV_9, words[0..<n]);
+}
+// A fallback: the version as one word, then the program or hash.
+invoice_put_fallback_vartime :: (w: [] InvoiceWriter, version: int, program: [] u8) -> int {
+  if version < 0 || version > 18 || program.count > 40 { w[0].code = INV_BAD_FALLBACK; return w[0].code; }
+  words: [66] u8; words[0] = cast(u8) version;
+  n := inv_unpack(program, words[1..<66]);
+  return invoice_put_words_vartime(w, INV_F, words[0..<n + 1]);
+}
+// One r field: the hops of one private route, 51 bytes each.
+invoice_put_route_vartime :: (w: [] InvoiceWriter, hops: [] InvHop) -> int {
+  if hops.count == 0 || hops.count > 12 { w[0].code = INV_BAD_ROUTE; return w[0].code; }
+  b: [612] u8;
+  for e: 0..<hops.count {
+    at := e * INV_HOP; h := hops[e];
+    for i: 0..<33 { b[at + i] = h.pubkey[i]; }
+    for i: 0..<8 { b[at + 33 + i] = cast(u8) ((h.scid >> cast(u64) (56 - 8 * i)) & 255); }
+    for i: 0..<4 { b[at + 41 + i] = cast(u8) ((h.fee_base >> cast(u64) (24 - 8 * i)) & 255); }
+    for i: 0..<4 { b[at + 45 + i] = cast(u8) ((h.fee_ppm >> cast(u64) (24 - 8 * i)) & 255); }
+    ln_put16(b[..], at + 49, h.cltv);
+  }
+  return invoice_put_bytes_vartime(w, INV_R, b[0..<hops.count * INV_HOP]);
+}
+// Signs the hrp and words with the payee's key and writes the invoice:
+// r || s || recovery ID as 104 words, then the Bech32 checksum.
+InvoiceText :: struct { code: int; length: int; }
+invoice_sign_vartime :: (w: [] InvoiceWriter, key: [] u8, out: [] u8) -> InvoiceText {
+  if w[0].code != INV_OK { return InvoiceText.{code = w[0].code}; }
+  digest: [32] u8; sig: [65] u8; work: [1] EcdsaWork;
+  inv_digest(w[0].hrp[0..<w[0].hrp_n], w[0].words[0..<w[0].n], digest[..]);
+  if !ecdsa_sign_recoverable(key, digest[..], work[..], sig[..], false) { return InvoiceText.{code = INV_BAD_SIGNATURE}; }
+  n := inv_unpack(sig[..], w[0].words[w[0].n..<w[0].n + INV_SIGNATURE]);
+  e := b32_encode(cast(string) w[0].hrp[0..<w[0].hrp_n], cast(string) w[0].words[0..<w[0].n + n], false, out, true, false, B32_BECH32);
+  if e.error != NC_OK { return InvoiceText.{code = INV_CAPACITY}; }
+  return InvoiceText.{length = e.written};
+}
+// book:end writer
+
+// ---- checks
+inv_row_code :: (row: InvoiceRow) -> int { inv: [1] Invoice; return invoice_decode_vartime(row.text, inv[..]); }
+inv_public :: (key: [] u8) -> [33] u8 {
+  out: [33] u8; k := sc_load(key);
+  n := se_encode(smc_multiply(k.value, sg_generator()).value, SE_COMPRESSED, out[..]);
+  return out;
+}
+inv_lower :: (text: string, out: [] u8) -> string {
+  for i: 0..<text.count { out[i] = b32_lower(text[i]); }
+  return cast(string) out[0..<text.count];
+}
+inv_text :: (s: string, out: [] u8) -> [] u8 {
+  for i: 0..<s.count { out[i] = s[i]; }
+  return out[0..<s.count];
+}
+// The writer, started from what a decoded invoice says.
+inv_restart :: (inv: [] Invoice, w: [] InvoiceWriter) -> int {
+  return invoice_begin_vartime(w[..], inv[0].network, inv[0].has_amount, inv[0].amount_msat, inv[0].timestamp);
+}
+inv_signed_is :: (w: [] InvoiceWriter, text: string) -> bool {
+  key: [32] u8; out: [5000] u8; low: [5000] u8;
+  t := invoice_sign_vartime(w[..], ln_unhex(INVOICE_KEY, key[..]), out[..]);
+  return t.code == INV_OK && cast(string) out[0..<t.length] == inv_lower(text, low[..]);
+}
+INV_HIGH_S :: 15;   // the example whose signature has a high s
+
+#test "every BOLT 11 example is valid or invalid as stated" #steps 4000000000 {
+  for row: INVOICE_ROWS { #assert (inv_row_code(row) == INV_OK) == row.valid; }
+}
+#test "each invalid example refuses for its reason" #steps 2000000000 {
+  want := [15] int.[INV_BAD_FEATURES, INV_BAD_LENGTH, INV_REQUIRED, INV_REQUIRED, INV_REQUIRED, INV_REQUIRED,
+                    INV_BAD_BECH32, INV_BAD_BECH32, INV_BAD_BECH32, INV_BAD_SIGNATURE, INV_TOO_SHORT,
+                    INV_BAD_AMOUNT, INV_BAD_AMOUNT, INV_REQUIRED, INV_REQUIRED];
+  k := 0;
+  for row: INVOICE_ROWS { if !row.valid { #assert inv_row_code(row) == want[k]; k += 1; } }
+  #assert k == 15;
+}
+#test "the signed data, digest, signature and recovery ID BOLT 11 states" #steps 4000000000 {
+  inv: [1] Invoice; m: [3000] u8; checked := 0;
+  for row: INVOICE_ROWS {
+    if row.timestamp > 0 {
+      #assert invoice_decode_vartime(row.text, inv[..]) == INV_OK && inv[0].timestamp == row.timestamp;
+    }
+    if row.data.count > 0 {
+      for i: 0..<inv[0].hrp_n { m[i] = inv[0].hrp[i]; }
+      n := inv_pack(inv[0].words[0..<inv[0].data_n], m[inv[0].hrp_n..<m.count]);
+      #assert ln_hex_is(m[0..<inv[0].hrp_n + n], row.data) && ln_hex_is(inv[0].digest[..], row.digest);
+      #assert ln_hex_is(inv[0].signature[..], row.signature) && inv[0].recovery == row.recovery;
+      checked += 1;
+    }
+  }
+  #assert checked == 11;
+}
+#test "the payee, the secret, and the same text written again" #steps 8000000000 {
+  inv: [1] Invoice; w: [1] InvoiceWriter; key: [32] u8; secret: [32] u8; s: [32] u8;
+  payee := inv_public(ln_unhex(INVOICE_KEY, key[..]));
+  #assert ln_unhex(INVOICE_SECRET, secret[..]).count > 0;
+  for r: 0..<INVOICE_ROWS.count {
+    row := INVOICE_ROWS[r];
+    if row.valid {
+      #assert invoice_decode_vartime(row.text, inv[..]) == INV_OK;
+      #assert cb_ct_equal(inv[0].secret[..], secret[..]) == CB_MAX64;
+      #assert (cb_ct_equal(inv[0].payee[..], payee[..]) == CB_MAX64) == (r != INV_HIGH_S);
+      #assert inv_restart(inv[..], w[..]) == INV_OK;
+      for f: inv[0].fields[0..<inv[0].fields_n] {
+        #assert invoice_put_words_vartime(w[..], f.type, inv[0].words[f.start..<f.start + f.length]) == INV_OK;
+      }
+      #assert inv_signed_is(w[..], row.text) == (r != INV_HIGH_S);
+    }
+  }
+}
+#test "the fields of the examples" #steps 4000000000 {
+  inv: [1] Invoice; a: [100] u8;
+  #assert invoice_decode_vartime(INVOICE_ROWS[1].text, inv[..]) == INV_OK;
+  #assert inv[0].has_amount && inv[0].amount_msat == 250000000 && inv[0].expiry == 60 && inv[0].min_final_cltv == 18;
+  #assert cast(string) inv[0].description[0..<inv[0].description_n] == "1 cup coffee" && !inv[0].has_hash;
+  f := inv[0].features[0..<inv[0].features_n];
+  #assert ln_feature_set(f, 8) && ln_feature_set(f, 14) && !ln_feature_set(f, 9) && inv[0].features_n == 2;
+  #assert invoice_decode_vartime(INVOICE_ROWS[0].text, inv[..]) == INV_OK && !inv[0].has_amount;
+  #assert ln_hex_is(inv[0].payment_hash[..], "0001020304050607080900010203040506070809000102030405060708090102");
+  #assert invoice_decode_vartime(INVOICE_ROWS[3].text, inv[..]) == INV_OK && inv[0].has_hash && !inv[0].has_description;
+  #assert ln_hex_is(inv[0].description_hash[..], "3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1");
+  // Fallbacks on testnet (P2PKH), then mainnet P2PKH, P2SH, P2WPKH, P2WSH and P2TR.
+  addresses := [6] string.["mk2QpYatsKicvFVuTAQLBryyccRXMUaGHP", "1RustyRX2oai4EYYDpQGWvEL62BBGqN9T",
+    "3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+    "bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3",
+    "bc1pptdvg0d2nj99568qn6ssdy4cygnwuxgw2ukmnwgwz7jpqjz2kszse2s3lm"];
+  for i: 0..<6 {
+    #assert invoice_decode_vartime(INVOICE_ROWS[4 + i].text, inv[..]) == INV_OK && inv[0].fallbacks_n == 1;
+    n := invoice_fallback_address_vartime(inv[..], 0, a[..]);
+    #assert n > 0 && cast(string) a[0..<n] == addresses[i];
+  }
+  #assert invoice_decode_vartime(INVOICE_ROWS[5].text, inv[..]) == INV_OK && inv[0].hops_n == 2 && inv[0].hints == 1;
+  h := inv[0].hops[1];
+  #assert ln_hex_is(h.pubkey[..], "039e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255");
+  #assert h.scid == ((cast(u64) 197637 << 40) | (cast(u64) 395016 << 16) | 2314) && h.fee_base == 2 && h.fee_ppm == 30 && h.cltv == 4;
+  #assert invoice_decode_vartime(INVOICE_ROWS[10].text, inv[..]) == INV_OK && inv[0].amount_msat == 967878534;
+  #assert inv[0].expiry == 604800 && inv[0].min_final_cltv == 10 && inv[0].hops_n == 1 && inv[0].hops[0].fee_ppm == 2500;
+  #assert inv[0].timestamp == 1572468703 && inv[0].description_n == 148;
+  #assert invoice_decode_vartime(INVOICE_ROWS[11].text, inv[..]) == INV_OK && ln_feature_set(inv[0].features[0..<inv[0].features_n], 99);
+  #assert invoice_decode_vartime(INVOICE_ROWS[13].text, inv[..]) == INV_OK && inv[0].ignored == 2 && inv[0].fallbacks_n == 0;
+  #assert invoice_decode_vartime(INVOICE_ROWS[14].text, inv[..]) == INV_OK && inv[0].has_metadata;
+  #assert ln_hex_is(inv[0].metadata[0..<inv[0].metadata_n], "01fafaf0") && ln_feature_set(inv[0].features[0..<inv[0].features_n], 48);
+  #assert invoice_decode_vartime(INVOICE_ROWS[12].text, inv[..]) == INV_OK && inv[0].hrp_n == 7;
+}
+#test "the typed writer gives BOLT 11's coffee and route-hint invoices" #steps 4000000000 {
+  w: [1] InvoiceWriter; secret: [32] u8; hash: [32] u8; f: [2] u8; t: [64] u8;
+  #assert ln_unhex(INVOICE_SECRET, secret[..]).count > 0;
+  #assert ln_unhex("0001020304050607080900010203040506070809000102030405060708090102", hash[..]).count > 0;
+  #assert ln_feature_put(f[..], 8) && ln_feature_put(f[..], 14);
+  #assert invoice_begin_vartime(w[..], INV_MAINNET, true, 250000000, 1496314658) == INV_OK;
+  #assert invoice_put_bytes_vartime(w[..], INV_S, secret[..]) == INV_OK && invoice_put_bytes_vartime(w[..], INV_P, hash[..]) == INV_OK;
+  #assert invoice_put_bytes_vartime(w[..], INV_D, inv_text("1 cup coffee", t[..])) == INV_OK;
+  #assert invoice_put_number_vartime(w[..], INV_X, 60) == INV_OK && invoice_put_features_vartime(w[..], f[..]) == INV_OK;
+  #assert inv_signed_is(w[..], INVOICE_ROWS[1].text);
+  dh: [32] u8; pkh: [20] u8; hops: [2] InvHop;
+  #assert ln_unhex("3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1", dh[..]).count > 0;
+  #assert ln_unhex("04b61f7dc1ea0dc99424464cc4064dc564d91e89", pkh[..]).count > 0;
+  #assert ln_unhex("029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255", hops[0].pubkey[..]).count > 0;
+  #assert ln_unhex("039e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255", hops[1].pubkey[..]).count > 0;
+  hops[0].scid = 0x0102030405060708; hops[0].fee_base = 1; hops[0].fee_ppm = 20; hops[0].cltv = 3;
+  hops[1].scid = 0x030405060708090a; hops[1].fee_base = 2; hops[1].fee_ppm = 30; hops[1].cltv = 4;
+  #assert invoice_begin_vartime(w[..], INV_MAINNET, true, 2000000000, 1496314658) == INV_OK;
+  #assert invoice_put_bytes_vartime(w[..], INV_S, secret[..]) == INV_OK && invoice_put_bytes_vartime(w[..], INV_P, hash[..]) == INV_OK;
+  #assert invoice_put_bytes_vartime(w[..], INV_H, dh[..]) == INV_OK && invoice_put_fallback_vartime(w[..], 17, pkh[..]) == INV_OK;
+  #assert invoice_put_route_vartime(w[..], hops[..]) == INV_OK && invoice_put_features_vartime(w[..], f[..]) == INV_OK;
+  #assert inv_signed_is(w[..], INVOICE_ROWS[5].text);
+}
+#test "an n field: verified with a low s, refused with a high one" #steps 4000000000 {
+  w: [1] InvoiceWriter; inv: [1] Invoice; key: [32] u8; hash: [32] u8; out: [5000] u8;
+  payee := inv_public(ln_unhex(INVOICE_KEY, key[..]));
+  #assert invoice_begin_vartime(w[..], INV_REGTEST, true, 1, 1700000000) == INV_OK;
+  #assert invoice_put_bytes_vartime(w[..], INV_P, hash[..]) == INV_OK && invoice_put_bytes_vartime(w[..], INV_S, key[..]) == INV_OK;
+  #assert invoice_put_bytes_vartime(w[..], INV_D, hash[0..<0]) == INV_OK && invoice_put_bytes_vartime(w[..], INV_N, payee[..]) == INV_OK;
+  t := invoice_sign_vartime(w[..], key[..], out[..]);
+  #assert t.code == INV_OK && cast(string) out[0..<10] == "lnbcrt10p1";
+  #assert invoice_decode_vartime(cast(string) out[0..<t.length], inv[..]) == INV_OK && inv[0].has_n && inv[0].amount_msat == 1;
+  // Replace s with n - s: the same signature with a high s.
+  sig: [65] u8; for i: 0..<64 { sig[i] = inv[0].signature[i]; } sig[64] = cast(u8) inv[0].recovery;
+  borrow := 0;
+  for k: 0..<32 {
+    v := cast(int) ER_N[31 - k] - cast(int) sig[63 - k] - borrow;
+    borrow = ifx v < 0 then 1 else 0; sig[63 - k] = cast(u8) (v + 256 * borrow);
+  }
+  words: [104] u8; n := inv_unpack(sig[..], words[..]);
+  for i: 0..<104 { w[0].words[w[0].n + i] = words[i]; }
+  e := b32_encode(cast(string) w[0].hrp[0..<w[0].hrp_n], cast(string) w[0].words[0..<w[0].n + 104], false, out[..], true, false, B32_BECH32);
+  #assert e.error == NC_OK && invoice_decode_vartime(cast(string) out[0..<e.written], inv[..]) == INV_BAD_SIGNATURE;
+}
+#test "amounts: the shortest text, and the human-readable part read back" {
+  w: [1] InvoiceWriter; t: [32] u8;
+  msat := [7] u64.[1, 10, 1000, 100000, 250000000, 100000000000, 2100000000000000000];
+  text := [7] string.["lnbc10p", "lnbc100p", "lnbc10n", "lnbc1u", "lnbc2500u", "lnbc1", "lnbc21000000"];
+  for i: 0..<7 {
+    #assert invoice_begin_vartime(w[..], INV_MAINNET, true, msat[i], 0) == INV_OK;
+    #assert cast(string) w[0].hrp[0..<w[0].hrp_n] == text[i];
+    a := inv_hrp_vartime(w[0].hrp[0..<w[0].hrp_n]);
+    #assert a.code == INV_OK && a.has && a.msat == msat[i] && a.network == INV_MAINNET;
+  }
+  #assert invoice_begin_vartime(w[..], INV_SIGNET, false, 0, 0) == INV_OK && cast(string) w[0].hrp[0..<w[0].hrp_n] == "lntbs";
+  #assert inv_hrp_vartime(inv_text("lntbs", t[..])).network == INV_SIGNET && inv_hrp_vartime(inv_text("lnbcrt", t[..])).network == INV_REGTEST;
+  #assert inv_hrp_vartime(inv_text("lnxy", t[..])).code == INV_BAD_PREFIX && inv_hrp_vartime(inv_text("bc", t[..])).code == INV_BAD_PREFIX;
+  #assert inv_hrp_vartime(inv_text("lnbc25mm", t[..])).code == INV_BAD_AMOUNT && inv_hrp_vartime(inv_text("lnbc11p", t[..])).code == INV_BAD_AMOUNT;
+  #assert inv_hrp_vartime(inv_text("lnbc99999999999999999999", t[..])).code == INV_BAD_AMOUNT;
+  #assert inv_hrp_vartime(inv_text("lnbc184467441", t[..])).code == INV_BAD_AMOUNT;
+  #assert invoice_begin_vartime(w[..], 5, false, 0, 0) == INV_BAD_PREFIX && invoice_begin_vartime(w[..], 1, false, 0, cast(u64) 1 << 35) == INV_BAD_LENGTH;
+}
+#test "words and bytes, and UTF-8" {
+  b := [3] u8.[0xff, 0x00, 0x81]; words: [5] u8; back: [4] u8; t: [32] u8;
+  n := inv_unpack(b[..], words[..]);
+  #assert n == 5 && words[0] == 31 && words[1] == 28 && words[3] == 8 && words[4] == 2;
+  #assert inv_pack(words[0..<n], back[..]) == 4 && back[0] == 0xff && back[2] == 0x81 && back[3] == 0;
+  #assert inv_number(words[0..<2]) == 31 * 32 + 28;
+  #assert inv_utf8_vartime(inv_text("ナンセンス 1杯", t[..])) && inv_utf8_vartime(t[0..<0]);
+  bad := [5] string.["c0af", "eda080", "f4908080", "e383", "80"];
+  for s: bad { #assert !inv_utf8_vartime(ln_unhex(s, t[..])); }
+  good := [3] string.["c2a9", "f09f9880", "efbfbd"];
+  for s: good { #assert inv_utf8_vartime(ln_unhex(s, t[..])); }
+}
+#test "refusals: fields that break their type's rules" #steps 4000000000 {
+  w: [1] InvoiceWriter; inv: [1] Invoice; key: [32] u8; z: [32] u8; out: [5000] u8; x: [2] u8;
+  #assert ln_unhex(INVOICE_KEY, key[..]).count > 0;
+  codes: [8] int;
+  for c: 0..<8 {
+    #assert invoice_begin_vartime(w[..], INV_MAINNET, false, 0, 1) == INV_OK;
+    #assert invoice_put_bytes_vartime(w[..], INV_P, z[..]) == INV_OK && invoice_put_bytes_vartime(w[..], INV_S, z[..]) == INV_OK;
+    if c != 1 { #assert invoice_put_bytes_vartime(w[..], INV_D, inv_text("x", x[..])) == INV_OK; }
+    zero_first := [2] u8.[0, 1]; long: [13] u8; long[0] = 1; f: [3] u8; ff := [1] u8.[0xff];
+    if c == 0 { #assert invoice_put_bytes_vartime(w[..], INV_H, z[..]) == INV_OK; }                 // d and h
+    if c == 2 { #assert invoice_put_words_vartime(w[..], INV_X, zero_first[..]) == INV_OK; }       // x with a zero word
+    if c == 3 { #assert invoice_put_words_vartime(w[..], INV_C, long[..]) == INV_OK; }             // c above 64 bits
+    if c == 4 { #assert invoice_put_fallback_vartime(w[..], 0, z[0..<21]) == INV_OK; }             // v0 of 21 bytes
+    if c == 5 { #assert invoice_put_bytes_vartime(w[..], INV_R, out[0..<50]) == INV_OK; }            // a 50-byte hop
+    if c == 6 { #assert ln_feature_put(f[..], 16) && invoice_put_features_vartime(w[..], f[..]) == INV_OK; }  // basic_mpp alone
+    if c == 7 { #assert invoice_put_bytes_vartime(w[..], INV_M, z[0..<1]) == INV_OK; }
+    if c == 7 { #assert invoice_put_bytes_vartime(w[..], INV_D, ff[..]) == INV_OK; }               // not UTF-8
+    t := invoice_sign_vartime(w[..], key[..], out[..]);
+    #assert t.code == INV_OK;
+    codes[c] = invoice_decode_vartime(cast(string) out[0..<t.length], inv[..]);
+  }
+  #assert codes[0] == INV_REQUIRED && codes[1] == INV_REQUIRED && codes[2] == INV_NOT_MINIMAL && codes[3] == INV_BAD_LENGTH;
+  #assert codes[4] == INV_BAD_FALLBACK && codes[5] == INV_BAD_ROUTE && codes[6] == INV_BAD_FEATURES && codes[7] == INV_BAD_UTF8;
+  #assert invoice_begin_vartime(w[..], INV_MAINNET, false, 0, 1) == INV_OK && invoice_put_fallback_vartime(w[..], 19, z[..]) == INV_BAD_FALLBACK;
+  #assert invoice_begin_vartime(w[..], INV_MAINNET, false, 0, 1) == INV_OK && invoice_put_route_vartime(w[..], inv[0].hops[0..<0]) == INV_BAD_ROUTE;
+  #assert invoice_begin_vartime(w[..], INV_MAINNET, false, 0, 1) == INV_OK && invoice_put_words_vartime(w[..], 32, z[..]) == INV_BAD_LENGTH;
+  #assert invoice_sign_vartime(w[..], key[..], out[..]).code == INV_BAD_LENGTH;
+  #assert invoice_begin_vartime(w[..], INV_MAINNET, false, 0, 1) == INV_OK && invoice_sign_vartime(w[..], key[..], out[0..<10]).code == INV_CAPACITY;
+  #assert invoice_decode_vartime(cast(string) out[0..<0], inv[..]) == INV_BAD_BECH32;
+}

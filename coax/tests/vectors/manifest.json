@@ -3332,6 +3332,32 @@
       "retrieved": "2026-11-03",
       "sha256": "432b91c123750a21097cb2efacbc5f0fca88c461a8606e4a458bb71c257dbb5e",
       "bytes": 13888
+    },
+    {
+      "path": "upstream/bolts/11-payment-encoding.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/11-payment-encoding.md",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "114"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "c659da1bc08091f7fe691cd4ce661e578dfbe1f77a0b9cd9c53d1839010ae029",
+      "bytes": 53374
+    },
+    {
+      "path": "upstream/bolts/bolt11/invoice-test.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt11/invoice-test.json",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "114"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "5d6af32b7dfb84722e4e8a94d633d1597b9504a836c32046219b82c1edb7824a",
+      "bytes": 13732
     }
   ]
 }

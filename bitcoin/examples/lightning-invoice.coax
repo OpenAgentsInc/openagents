@@ -1,0 +1,169 @@
+// book:begin example
+#load "../../coax/lib/lightning/invoice.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex.
+show :: (b: [] u8) {
+  text: [1300] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+INV_NAMES :: [15] string.["OK", "BAD_BECH32", "BAD_PREFIX", "BAD_AMOUNT", "TOO_SHORT", "TRUNCATED", "BAD_LENGTH",
+                          "REQUIRED", "NOT_MINIMAL", "BAD_UTF8", "BAD_FEATURES", "BAD_FALLBACK", "BAD_ROUTE",
+                          "BAD_SIGNATURE", "CAPACITY"];
+NETWORK_NAMES :: [5] string.["", "mainnet", "testnet", "signet", "regtest"];
+
+// Everything a decoded invoice says, field by field in the order written.
+report :: (inv: [] Invoice) {
+  print("  %, ", NETWORK_NAMES[inv[0].network]);
+  if inv[0].has_amount { print("% msat", inv[0].amount_msat); } else { print("any amount"); }
+  print(", timestamp %\n", inv[0].timestamp);
+  for f: inv[0].fields[0..<inv[0].fields_n] {
+    print("  %: % words", cast(string) B32_ALPHABET[f.type..<f.type + 1], f.length);
+    if f.type == INV_P { print(", payment_hash "); show(inv[0].payment_hash[..]); }
+    if f.type == INV_S { print(", payment_secret "); show(inv[0].secret[..]); }
+    if f.type == INV_D { print(", description \"%\"", cast(string) inv[0].description[0..<inv[0].description_n]); }
+    if f.type == INV_H { print(", description_hash "); show(inv[0].description_hash[..]); }
+    if f.type == INV_N { print(", payee "); show(inv[0].payee[..]); }
+    if f.type == INV_X { print(", expiry % s", inv[0].expiry); }
+    if f.type == INV_C { print(", min_final_cltv_expiry_delta %", inv[0].min_final_cltv); }
+    if f.type == INV_M { print(", payment_metadata "); show(inv[0].metadata[0..<inv[0].metadata_n]); }
+    if f.type == INV_9 {
+      print(", features");
+      for bit: 0..<inv[0].features_n * 8 {
+        if ln_feature_set(inv[0].features[0..<inv[0].features_n], bit) { print(" %", bit); }
+      }
+    }
+    if f.type == INV_F {
+      print(", fallback version %", cast(int) inv[0].words[f.start]);
+      if inv[0].words[f.start] <= 18 {
+        a: [100] u8; n := invoice_fallback_address_vartime(inv, inv_fallback_index(inv, f), a[..]);
+        print(" %", cast(string) a[0..<n]);
+      }
+    }
+    if f.type == INV_R {
+      for h: inv[0].hops[0..<inv[0].hops_n] {
+        if h.hint == inv_hint_index(inv, f) {
+          print("\n    hop "); k := h.pubkey; show(k[0..<4]);
+          print("... over %x%x%, fee % msat + % ppm, cltv delta %", h.scid >> 40, (h.scid >> 16) & 0xffffff,
+                h.scid & 0xffff, h.fee_base, h.fee_ppm, h.cltv);
+        }
+      }
+    }
+    print("\n");
+  }
+  print("  signature recovery ID %, payee ", inv[0].recovery); show(inv[0].payee[..]);
+  print("%\n", ifx inv[0].has_n then " (from n)" else " (recovered)");
+}
+// Which fallback and which route hint a field is, counting fields of its type.
+inv_fallback_index :: (inv: [] Invoice, f: InvField) -> int {
+  k := 0;
+  for g: inv[0].fields[0..<inv[0].fields_n] {
+    if g.start == f.start { return k; }
+    if g.type == INV_F && inv[0].words[g.start] <= 18 { k += 1; }
+  }
+  return k;
+}
+inv_hint_index :: (inv: [] Invoice, f: InvField) -> int {
+  k := 0;
+  for g: inv[0].fields[0..<inv[0].fields_n] {
+    if g.start == f.start { return k; }
+    if g.type == INV_R { k += 1; }
+  }
+  return k;
+}
+
+main :: () {
+  inv: [1] Invoice;
+  // ---- BOLT 11's examples
+  print("BOLT 11 examples\n");
+  valid := 0; refused := 0; same_key := 0;
+  key: [32] u8; payee := inv_public(ln_unhex(INVOICE_KEY, key[..]));
+  for row: INVOICE_ROWS {
+    code := invoice_decode_vartime(row.text, inv[..]);
+    if row.valid && code == INV_OK {
+      valid += 1;
+      if cb_ct_equal(inv[0].payee[..], payee[..]) == CB_MAX64 { same_key += 1; }
+    }
+    if !row.valid && code != INV_OK { refused += 1; }
+  }
+  print("  % of 16 valid invoices decode, % to the key that signed them\n", valid, same_key);
+  print("  % of 15 invalid invoices refuse:", refused);
+  for row: INVOICE_ROWS { if !row.valid { print(" %", INV_NAMES[invoice_decode_vartime(row.text, inv[..])]); } }
+  print("\n");
+
+  // ---- three of them, field by field
+  print("$3 for a cup of coffee\n");
+  code := invoice_decode_vartime(INVOICE_ROWS[1].text, inv[..]);
+  report(inv[..]);
+  print("  signed: % bytes, SHA-256 ", inv[0].hrp_n + (inv[0].data_n * 5 + 7) / 8); show(inv[0].digest[..]); print("\n");
+  print("a fallback address and two route hints\n");
+  code = invoice_decode_vartime(INVOICE_ROWS[5].text, inv[..]);
+  report(inv[..]);
+  print("an amount in pico-bitcoin and fields to skip\n");
+  code = invoice_decode_vartime(INVOICE_ROWS[10].text, inv[..]);
+  print("  % msat from %\n", inv[0].amount_msat, cast(string) inv[0].hrp[0..<inv[0].hrp_n]);
+  code = invoice_decode_vartime(INVOICE_ROWS[13].text, inv[..]);
+  print("  % unknown fields skipped, % fallbacks kept\n", inv[0].ignored, inv[0].fallbacks_n);
+
+  // ---- writing an invoice on regtest
+  print("an invoice we write\n");
+  node: [32] u8; for i: 0..<32 { node[i] = cast(u8) (7 * i + 3); }
+  id := inv_public(node[..]);
+  preimage: [32] u8; for i: 0..<32 { preimage[i] = 0x42; }
+  hash: [32] u8; done := sha256_hash_checked(preimage[..], hash[..], false);
+  secret: [32] u8; for i: 0..<32 { secret[i] = cast(u8) (255 - i); }
+  features: [3] u8; put := ln_feature_put(features[..], 8) && ln_feature_put(features[..], 14) && ln_feature_put(features[..], 17);
+  text: [64] u8; d := "Bitcoin From Scratch, chapter 114";
+  for i: 0..<d.count { text[i] = d[i]; }
+  tap: [32] u8; for i: 0..<32 { tap[i] = cast(u8) (i + 1); }
+  peer: [32] u8; for i: 0..<32 { peer[i] = cast(u8) ((11 * i + 5) & 255); }
+  hop: [1] InvHop; hop[0].pubkey = inv_public(peer[..]);
+  hop[0].scid = (cast(u64) 800000 << 40) | (cast(u64) 7 << 16) | 1; hop[0].fee_base = 1000; hop[0].fee_ppm = 100; hop[0].cltv = 144;
+  w: [1] InvoiceWriter;
+  code = invoice_begin_vartime(w[..], INV_REGTEST, true, 150000000, 1762156800);
+  code = invoice_put_bytes_vartime(w[..], INV_P, hash[..]);
+  code = invoice_put_bytes_vartime(w[..], INV_S, secret[..]);
+  code = invoice_put_bytes_vartime(w[..], INV_D, text[0..<d.count]);
+  code = invoice_put_number_vartime(w[..], INV_X, 600);
+  code = invoice_put_number_vartime(w[..], INV_C, 80);
+  code = invoice_put_fallback_vartime(w[..], 1, tap[..]);
+  code = invoice_put_route_vartime(w[..], hop[..]);
+  code = invoice_put_features_vartime(w[..], features[..]);
+  out: [5000] u8;
+  t := invoice_sign_vartime(w[..], node[..], out[..]);
+  print("  % characters: %\n", t.length, cast(string) out[0..<t.length]);
+  code = invoice_decode_vartime(cast(string) out[0..<t.length], inv[..]);
+  print("  decodes: %\n", INV_NAMES[code]);
+  report(inv[..]);
+  print("  the payee is our node: %\n", cb_ct_equal(inv[0].payee[..], id[..]) == CB_MAX64);
+
+  // ---- changes
+  print("changing it\n");
+  copy: [5000] u8; for i: 0..<t.length { copy[i] = out[i]; }
+  copy[60] = ifx copy[60] == 'q' then 'p' else 'q';
+  print("  one character changed: %\n", INV_NAMES[invoice_decode_vartime(cast(string) copy[0..<t.length], inv[..])]);
+  // The amount changed and the checksum made again: the signature still
+  // recovers a key, but not the payee's.
+  w[0].hrp[w[0].hrp_n - 1] = 'm';
+  hrp_text := cast(string) w[0].hrp[0..<w[0].hrp_n];
+  code = invoice_decode_vartime(cast(string) out[0..<t.length], inv[..]);
+  e := b32_encode(hrp_text, cast(string) inv[0].words[0..<inv[0].words_n], false, copy[..], true, false, B32_BECH32);
+  code = invoice_decode_vartime(cast(string) copy[0..<e.written], inv[..]);
+  print("  % msat with the checksum made again: %, payee ", inv[0].amount_msat, INV_NAMES[code]); show(inv[0].payee[..]); print("\n");
+  print("  is it our node: %\n", cb_ct_equal(inv[0].payee[..], id[..]) == CB_MAX64);
+  // The same change to an invoice that names its payee in n.
+  code = invoice_begin_vartime(w[..], INV_REGTEST, true, 150000000, 1762156800);
+  code = invoice_put_bytes_vartime(w[..], INV_P, hash[..]);
+  code = invoice_put_bytes_vartime(w[..], INV_S, secret[..]);
+  code = invoice_put_bytes_vartime(w[..], INV_D, text[0..<d.count]);
+  code = invoice_put_bytes_vartime(w[..], INV_N, id[..]);
+  t = invoice_sign_vartime(w[..], node[..], out[..]);
+  code = invoice_decode_vartime(cast(string) out[0..<t.length], inv[..]);
+  print("  with an n field: % characters, %\n", t.length, INV_NAMES[code]);
+  w[0].hrp[w[0].hrp_n - 1] = 'm';
+  e = b32_encode(cast(string) w[0].hrp[0..<w[0].hrp_n], cast(string) inv[0].words[0..<inv[0].words_n], false, copy[..], true, false, B32_BECH32);
+  print("  its amount changed: %\n", INV_NAMES[invoice_decode_vartime(cast(string) copy[0..<e.written], inv[..])]);
+}
+// book:end example

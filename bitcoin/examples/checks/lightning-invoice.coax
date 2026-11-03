@@ -1,0 +1,57 @@
+// The checks of lightning-invoice.coax. They live apart so that running
+// the example doesn't also run them. The example reads BOLT 11's examples
+// and writes one invoice; these check the properties around them.
+// Checks: coax test bitcoin/examples/checks/lightning-invoice.coax --run-steps 250000000
+#load "../lightning-invoice.coax";
+
+// book:begin check
+// Any one character of BOLT 11's coffee invoice changed to another
+// character of the alphabet refuses: Bech32 finds every single change.
+#forall "one changed character refuses" at: 0..<271 #steps 400000000 {
+  row := INVOICE_ROWS[1]; copy: [271] u8; inv: [1] Invoice;
+  for i: 0..<271 { copy[i] = row.text[i]; }
+  copy[at] = ifx copy[at] == 'q' then 'p' else 'q';
+  #assert invoice_decode_vartime(cast(string) copy[..], inv[..]) == INV_BAD_BECH32;
+}
+// The writer's shortest amount text reads back to the same msat, for
+// amounts from 1 msat to 18 million bitcoin, the most a p amount can
+// count in 64 bits.
+#forall "an amount is written and read back" k: 0..<64 {
+  msat: u64 = 1; for i: 0..<k { msat = (msat * 3 + cast(u64) (i % 7)) % 1844674407370955161; }
+  w: [1] InvoiceWriter;
+  #assert invoice_begin_vartime(w[..], INV_TESTNET, true, msat, 0) == INV_OK;
+  a := inv_hrp_vartime(w[0].hrp[0..<w[0].hrp_n]);
+  #assert a.code == INV_OK && a.has && a.msat == msat && a.network == INV_TESTNET;
+}
+// Bytes to words and back gives the same bytes, then zero padding.
+#forall "bytes survive words" n: 0..<64 {
+  b: [64] u8; for i: 0..<n { b[i] = cast(u8) ((37 * i + n) & 255); }
+  words: [103] u8; back: [65] u8;
+  m := inv_unpack(b[0..<n], words[..]);
+  #assert m == (8 * n + 4) / 5;
+  #assert inv_pack(words[0..<m], back[..]) >= n;
+  for i: 0..<n { #assert back[i] == b[i]; }
+}
+// An invoice with every field type, written by three nodes, decodes to
+// what was written and recovers each node's key.
+#forall "every field written is read back" k: 0..<3 #steps 3000000000 {
+  node: [32] u8; for i: 0..<32 { node[i] = cast(u8) ((13 * i + k + 1) & 255); }
+  id := inv_public(node[..]);
+  hash: [32] u8; for i: 0..<32 { hash[i] = cast(u8) (i * k); }
+  meta := [3] u8.[1, 2, 3]; f: [7] u8; t: [8] u8; pkh: [20] u8;
+  #assert ln_feature_put(f[..], 14) && ln_feature_put(f[..], 49);
+  w: [1] InvoiceWriter; inv: [1] Invoice; out: [5000] u8;
+  #assert invoice_begin_vartime(w[..], INV_MAINNET, k > 0, cast(u64) (k * 1000), cast(u64) (1700000000 + k)) == INV_OK;
+  #assert invoice_put_bytes_vartime(w[..], INV_P, hash[..]) == INV_OK && invoice_put_bytes_vartime(w[..], INV_S, node[..]) == INV_OK;
+  #assert invoice_put_bytes_vartime(w[..], INV_D, inv_text("coffee", t[..])) == INV_OK;
+  #assert invoice_put_bytes_vartime(w[..], INV_M, meta[..]) == INV_OK && invoice_put_number_vartime(w[..], INV_X, cast(u64) (k + 1)) == INV_OK;
+  #assert invoice_put_number_vartime(w[..], INV_C, 40) == INV_OK && invoice_put_fallback_vartime(w[..], 18, pkh[..]) == INV_OK;
+  #assert invoice_put_features_vartime(w[..], f[..]) == INV_OK;
+  s := invoice_sign_vartime(w[..], node[..], out[..]);
+  #assert s.code == INV_OK && invoice_decode_vartime(cast(string) out[0..<s.length], inv[..]) == INV_OK;
+  #assert cb_ct_equal(inv[0].payee[..], id[..]) == CB_MAX64 && !inv[0].has_n;
+  #assert inv[0].has_amount == (k > 0) && inv[0].timestamp == cast(u64) (1700000000 + k) && inv[0].expiry == cast(u64) (k + 1);
+  #assert inv[0].min_final_cltv == 40 && inv[0].metadata_n == 3 && inv[0].fallbacks_n == 1 && inv[0].fields_n == 8;
+  #assert ln_feature_set(inv[0].features[0..<inv[0].features_n], 49) && inv[0].features_n == 7;
+}
+// book:end check

@@ -2187,15 +2187,21 @@
   {
    "number": 114,
    "title": "Invoices",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch114-invoices.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22,
     27
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/lightning/invoice.coax",
+    "bitcoin/examples/lightning-invoice.coax",
+    "bitcoin/examples/checks/lightning-invoice.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

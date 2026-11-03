@@ -1,0 +1,47 @@
+BOLT 11 examples
+  16 of 16 valid invoices decode, 15 to the key that signed them
+  15 of 15 invalid invoices refuse: BAD_FEATURES BAD_LENGTH REQUIRED REQUIRED REQUIRED REQUIRED BAD_BECH32 BAD_BECH32 BAD_BECH32 BAD_SIGNATURE TOO_SHORT BAD_AMOUNT BAD_AMOUNT REQUIRED REQUIRED
+$3 for a cup of coffee
+  mainnet, 250000000 msat, timestamp 1496314658
+  s: 52 words, payment_secret 1111111111111111111111111111111111111111111111111111111111111111
+  p: 52 words, payment_hash 0001020304050607080900010203040506070809000102030405060708090102
+  d: 20 words, description "1 cup coffee"
+  x: 2 words, expiry 60 s
+  9: 3 words, features 8 14
+  signature recovery ID 1, payee 03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad (recovered)
+  signed: 104 bytes, SHA-256 047e24bf270b25d42a56d57b2578faa3a10684641bab817c2851a871cb41dbc0
+a fallback address and two route hints
+  mainnet, 2000000000 msat, timestamp 1496314658
+  s: 52 words, payment_secret 1111111111111111111111111111111111111111111111111111111111111111
+  p: 52 words, payment_hash 0001020304050607080900010203040506070809000102030405060708090102
+  h: 52 words, description_hash 3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1
+  f: 33 words, fallback version 17 1RustyRX2oai4EYYDpQGWvEL62BBGqN9T
+  r: 164 words
+    hop 029e03a9... over 66051x263430x1800, fee 1 msat + 20 ppm, cltv delta 3
+    hop 039e03a9... over 197637x395016x2314, fee 2 msat + 30 ppm, cltv delta 4
+  9: 3 words, features 8 14
+  signature recovery ID 0, payee 03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad (recovered)
+an amount in pico-bitcoin and fields to skip
+  967878534 msat from lnbc9678785340p
+  2 unknown fields skipped, 0 fallbacks kept
+an invoice we write
+  453 characters: lnbcrt1500u1p5sscgqpp5gf0dfe9rdvcw5gdepcsuwykxf85zznpfkl40dqyf6ypecmj48pxqsp5lll0ml8mltul3alk7h608uh37rh7am0va04wn688umj7fclzu8sqdp4gf5hgcm0d9hzq3njdakjq5mrwfshgcmg9ssxx6rpwp6x2u3qxycngxqzjccqzzsfp4pqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5z5tpwxqergd3c8g7rusqrzjqfz0tdqnsddcpxavv07qpxh2kpvumw8mwjujup5fnqzsztca9tdmgrp4qqqqqpcqqyqqqqlgqqqqqeqqjq9qyysgqvg5u8sluuk03m37xjmq9g335vycs6nzs556zdql8r0g8pcah5dwktchrkupd98j7k44tfg77v9k2dnz4qztfjj3pkjqc25ljhqvlkggq5msaat
+  decodes: OK
+  regtest, 150000000 msat, timestamp 1762156800
+  p: 52 words, payment_hash 425ed4e4a36b30ea21b90e21c712c649e8214c29b7eaf68089d1039c6e55384c
+  s: 52 words, payment_secret fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0
+  d: 53 words, description "Bitcoin From Scratch, chapter 114"
+  x: 2 words, expiry 600 s
+  c: 2 words, min_final_cltv_expiry_delta 80
+  f: 53 words, fallback version 1 bcrt1pqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5z5tpwxqergd3c8g7rusq58nmtx
+  r: 82 words
+    hop 0244f5b4... over 800000x7x1, fee 1000 msat + 100 ppm, cltv delta 144
+  9: 4 words, features 8 14 17
+  signature recovery ID 0, payee 03f324133f92f203537cd7f9c4f1cf1078020159111a18457809ce3c11950d87eb (recovered)
+  the payee is our node: true
+changing it
+  one character changed: BAD_BECH32
+  150000000000 msat with the checksum made again: OK, payee 02ff1dc25adb6959702ee27431606e75dd8d432394bcca529230762833c3031b43
+  is it our node: false
+  with an n field: 351 characters, OK
+  its amount changed: BAD_SIGNATURE

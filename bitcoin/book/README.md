@@ -43,12 +43,12 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 68 are implemented and 56 are planned. The 68 implemented
+Of the 124 chapters, 69 are implemented and 55 are planned. The 69 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 62, 65, 66, 67, 68,
-69, 70, 73, 74, 94, 100, 104, 105, 106, 107 and 111 are new.
+69, 70, 73, 74, 94, 100, 104, 105, 106, 107, 111 and 114 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
 `coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -329,7 +329,7 @@ Lightning built in Coax on our node: messages, the Noise handshake, channels, on
 | [111. Onion routing and blinded paths](ch111-onion-routing-and-blinded-paths.md) | Runnable: native C | BOLT 4's Sphinx packet: shared secrets, blinding factors, the rho, mu, um, pad and ammag keys, the ChaCha20 stream, the filler and the HMAC chain over 1,300 bytes of TLV hop payloads; error onions and their decryption by the payer; and route blinding with `encrypted_recipient_data` and path keys. Every BOLT 4 onion, error and blinded-path vector gives its result, and every line agrees with an independent Python Sphinx. |
 | 112. Gossip and the channel graph | Planned | Announcements from a pinned gossip snapshot verify. An announcement with a bad signature refuses. |
 | 113. Find a route and pay | Planned | A payment routes over a three-node regtest network and settles. A failure returns its error to the sender. |
-| 114. Invoices | Planned | BOLT 11's examples decode to their stated fields and payee. A changed character refuses. |
+| [114. Invoices](ch114-invoices.md) | Runnable: native C | BOLT 11's invoices: the human-readable part with the currency and an amount with its multiplier, the 5-bit tagged fields `p`, `s`, `d`, `h`, `n`, `x`, `c`, `f`, `r`, `9` and `m` with their rules, and the recoverable signature that names the payee or verifies under `n` with a low S; a writer that reproduces BOLT 11's examples. All 31 BOLT 11 examples give their stated result, and every line agrees with an independent Python reader and writer. |
 | 115. Offers | Planned | BOLT 12's offer, invoice-request and invoice vectors decode and verify. |
 
 ### Part XVIII. Interop and verification (chapters 116–120)

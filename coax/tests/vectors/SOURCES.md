@@ -499,6 +499,16 @@ that a maliciously replaced manifest is authentic.
   them into `coax/tests/lightning/onion_vectors.coax`, and
   `coax/tests/lightning/onion.py` runs them and the example on
   `coax/tests/lightning/sphinx.py`, the independent Sphinx.
+- **Invoices (Bitcoin chapter 114):** BOLT 11 (`11-payment-encoding.md`)
+  and `bolt11/invoice-test.json` at the same lightning/bolts revision,
+  CC-BY-4.0, retrieved 2026-11-03. The JSON file gives 31 invoices, 16
+  valid and 15 invalid; BOLT 11's Examples section gives the key that
+  signs them, the payment secret, and for 11 of them the signature, the
+  recovery flag, the signed data and its SHA-256.
+  `coax/tests/lightning/make_invoice_vectors.py` reads them into
+  `coax/tests/lightning/invoice_vectors.coax`, and
+  `coax/tests/lightning/invoice.py` runs them and the example on
+  `coax/tests/lightning/bolt11.py`, the independent reader and writer.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -792,4 +802,6 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bolts/bolt04/route-blinding-test.json`](upstream/bolts/bolt04/route-blinding-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/route-blinding-test.json) | `d2c32e0260e6cb189246ec93bfc606459ef7c8abcad666fab4c496fe9644ef66` |
 | [`upstream/bolts/bolt04/blinded-payment-onion-test.json`](upstream/bolts/bolt04/blinded-payment-onion-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/blinded-payment-onion-test.json) | `ce74ab58d12031eebf080c3fde4e259baf9c66bbd1b1cf45f098669ad58b5dab` |
 | [`upstream/bolts/bolt04/blinded-onion-message-onion-test.json`](upstream/bolts/bolt04/blinded-onion-message-onion-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/blinded-onion-message-onion-test.json) | `e5e8ac8a42d3d0ce3bb70c12c5bbd76408e022a63322dcf32b00ddd97d051f96` |
+| [`upstream/bolts/11-payment-encoding.md`](upstream/bolts/11-payment-encoding.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/11-payment-encoding.md) | `c659da1bc08091f7fe691cd4ce661e578dfbe1f77a0b9cd9c53d1839010ae029` |
+| [`upstream/bolts/bolt11/invoice-test.json`](upstream/bolts/bolt11/invoice-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt11/invoice-test.json) | `5d6af32b7dfb84722e4e8a94d633d1597b9504a836c32046219b82c1edb7824a` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

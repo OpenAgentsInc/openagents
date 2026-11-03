@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: reads the BOLTs' published test vectors outside Coax)
-"""The pinned BOLT texts for Bitcoin chapters 104 to 107 and 111, read and checked.
+"""The pinned BOLT texts for Bitcoin chapters 104 to 107, 111 and 114, read and checked.
 
 The BOLTs at lightning/bolts revision 19146282 are pinned in
 coax/tests/vectors/upstream/bolts/. Every read checks the file's SHA-256
@@ -24,6 +24,8 @@ PINS = {
     'bolt04/route-blinding-test.json': 'd2c32e0260e6cb189246ec93bfc606459ef7c8abcad666fab4c496fe9644ef66',
     '08-transport.md': '85a1d6402adb653416c5a48f3b4c8eac2d8964621c41cb1bb6e09b8e06fbde46',
     '09-features.md': '39ead9fa5743104a3e66e0f6c342e34d64966dc943dcbcc337969e543e3e3cbe',
+    '11-payment-encoding.md': 'c659da1bc08091f7fe691cd4ce661e578dfbe1f77a0b9cd9c53d1839010ae029',
+    'bolt11/invoice-test.json': '5d6af32b7dfb84722e4e8a94d633d1597b9504a836c32046219b82c1edb7824a',
 }
 
 
@@ -223,3 +225,32 @@ def error_trace():
     hops = [(int(n), ss, ammag, packet) for ss, ammag, n, packet in re.findall(
         r'shared_secret = (\w+)\n\s*ammag_key = (\w+)\n\s*stream = \w+\n\s*error packet for node (\d): (\w+)', body)]
     return {'payload': one('payload'), 'um_key': one('um_key'), 'raw': one('raw_error_packet'), 'hops': hops}
+
+
+# ---- BOLT 11
+
+def bolt11_json():
+    """bolt11/invoice-test.json: every example invoice and whether it is valid."""
+    return json.loads(text('bolt11/invoice-test.json'))
+
+
+def bolt11_examples():
+    """What BOLT 11's Examples section states for each invoice: the signing
+    key and payment secret every example uses, and for each invoice its
+    timestamp, and the signature, recovery flag, signed data and its
+    SHA-256 where its "Signature breakdown" gives them."""
+    body = section(text('11-payment-encoding.md'), '# Examples\n', '# Examples of Invalid Invoices')
+    key = re.search(r'`priv_key`=`(\w+)`', body).group(1)
+    secret = re.search(r'`payment_secret`=`(\w+)`', body).group(1)
+    out = {}
+    for block in body.split('\n> ###')[1:]:
+        invoice = re.search(r'^> (ln\w+)$', block, re.M | re.I).group(1)
+        one = lambda pattern: (lambda m: m.group(1) if m else '')(re.search(pattern, block))
+        out[invoice] = {
+            'timestamp': int(one(r'timestamp \((\d+)\)') or 0),
+            'signature': one(r'`(\w{128})` hex of signature data'),
+            'recovery': int(one(r'`(\d)` \(int\) recovery flag') or -1),
+            'data': one(r'`(\w+)` hex of data for signing'),
+            'digest': one(r'`(\w{64})` hex of SHA256 of the preimage'),
+        }
+    return key, secret, out
