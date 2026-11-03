@@ -21,6 +21,8 @@ import subprocess
 from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
+# coax/src/main.cpp capacity_text: the one stderr line a clean run may print.
+NEAR_LIMIT = re.compile(r"coax: note\[E[0-9]{4}\]: [a-z -]+: [0-9]+ of [0-9]+ used \([0-9]+%\), above three quarters of the limit; more than [0-9]+ fails with E[0-9]{4}")
 BOOKS = {
     # book directory, example programs, project README, least source listings
     "psionic": ("psionic/book", "psionic/examples", "psionic/README.md", 3),
@@ -272,15 +274,23 @@ def run_one(compiler, item, mode):
     # A program that loads the whole signer compiles for longer than a minute.
     result = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=item.get("timeout", 60), preexec_fn=limit)
     assert result.returncode == item["exit_status"], f"exit status: {cmd}\n{result.stderr.decode()}"
-    assert not result.stderr, f"unexpected diagnostics: {cmd}\n{result.stderr.decode()}"
+    # The compiler's near-limit report (a use above three quarters of a capacity
+    # limit) is advisory, not a diagnostic; it is collected and printed once.
+    lines = result.stderr.decode().splitlines()
+    notes = [line for line in lines if NEAR_LIMIT.fullmatch(line)]
+    assert len(notes) == len(lines), f"unexpected diagnostics: {cmd}\n{result.stderr.decode()}"
     assert result.stdout == path(item["stdout"]).read_bytes(), f"transcript drift: {cmd}\n{result.stdout.decode()}"
+    return [f"{item['source']}: {note}" for note in notes]
 
 
 def run(compiler, examples, jobs=1):
     runs = [(item, mode) for item in examples for mode in item["modes"]]
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+        notes = {}
         for future in [pool.submit(run_one, compiler, item, mode) for item, mode in runs]:
-            future.result()  # in inventory order: the first failure is reported
+            notes.update(dict.fromkeys(future.result()))  # in inventory order: the first failure is reported
+    for note in notes:
+        print(f"near limit: {note}")
     print(f"book execution: {len(examples) * 2} runs match output and exit status")
 
 
