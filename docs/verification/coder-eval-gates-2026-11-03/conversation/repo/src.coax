@@ -1,0 +1,12 @@
+span_count :: (lo:int, hi:int) -> int {
+    if lo < 0 || hi < 0 || hi > 63 || lo > hi {
+        return -1;
+    }
+    return hi - lo + 1;
+}
+#test "initial regression" {#assert span_count(0,0)==1 && span_count(0,2)==3;}
+#test "interior spans" {#assert span_count(5,10)==6 && span_count(16,31)==16;}
+#test "boundary spans" {#assert span_count(0,0)==1 && span_count(63,63)==1 && span_count(62,63)==2 && span_count(0,63)==64;}
+#test "out of bounds upper" {#assert span_count(0,64)==-1 && span_count(63,64)==-1 && span_count(64,64)==-1 && span_count(0,100)==-1 && span_count(100,100)==-1 && span_count(64,0)==-1;}
+#test "negative indices" {#assert span_count(-1,10)==-1 && span_count(0,-1)==-1 && span_count(-5,-1)==-1 && span_count(-1,-1)==-1;}
+#test "inverted ranges" {#assert span_count(10,5)==-1 && span_count(63,0)==-1 && span_count(64,63)==-1 && span_count(1,0)==-1;}

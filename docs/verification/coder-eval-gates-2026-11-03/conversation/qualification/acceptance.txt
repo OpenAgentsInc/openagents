@@ -1,0 +1,8 @@
+ok   #test external span acceptance (1 case, 1457116 steps, 8 ms)
+ok   #test initial regression (1 case, 59 steps, 0 ms)
+ok   #test interior spans (1 case, 59 steps, 0 ms)
+ok   #test boundary spans (1 case, 117 steps, 0 ms)
+ok   #test out of bounds upper (1 case, 142 steps, 0 ms)
+ok   #test negative indices (1 case, 72 steps, 0 ms)
+ok   #test inverted ranges (1 case, 105 steps, 0 ms)
+7 checks, 7 passed, 0 failed

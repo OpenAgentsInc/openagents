@@ -175,6 +175,13 @@ fails, comment on #12695.
 
 ## MetaHuman packers: port them, or name a Firm reason (#12693, 2026-11-03)
 
+Audit update: [five remaining generators and dependency roadmap](docs/coder/tools-check-audit.md).
+`pack_checks.py` is independently justified as a pixel oracle (reason 2), with
+public synthetic match/refusal checks; no private assets were read. `outfits.py`
+also needs a production port. The owner choice of full ports versus a temporary
+exception remains pending; no exception or port-list expansion was applied.
+
+
 `verse/tools/humans/metahuman.py` (453 lines) and `pack_human.py` (301)
 have no `Firm reason:` line, so `coax/web/tool.sh tools-check` reports them.
 None of the six reasons holds: they are packers with real logic (OBJ and

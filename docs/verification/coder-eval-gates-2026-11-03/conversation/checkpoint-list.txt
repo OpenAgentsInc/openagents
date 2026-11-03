@@ -1,0 +1,2 @@
+/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-conversation-IL3DzB/repo/src.coax
+/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-conversation-IL3DzB/repo/AGENTS.md

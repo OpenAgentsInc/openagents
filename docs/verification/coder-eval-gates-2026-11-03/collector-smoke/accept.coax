@@ -1,0 +1,2 @@
+#load "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-qualification-smoke-Bzfj24/unit.coax";
+#test "external" {#assert f(4)==5;}

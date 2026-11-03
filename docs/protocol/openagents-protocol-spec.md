@@ -4854,3 +4854,8 @@ retain their wire encodings until separately reviewed migrations pass.
 - `Verse source archive` `third_party/openagents-engine-proto`
 - Repository-wide inventory of `openagents.*.vN` identifiers, 2026-10-27
   (2,368 distinct)
+
+Coder local evaluation artifacts use the versioned
+[qualification evidence v1](coder-qualification-v1.md) contract. These supervisor
+receipts and file seals grant no execution permissions and are distinct from
+model observability events.

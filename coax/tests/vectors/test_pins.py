@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (conformance fixtures for the independent Python pin-policy oracle; production checks are Coax)
 """check_pins.py refuses each kind of disagreement (Bitcoin chapter 116)."""
 import copy
 import json

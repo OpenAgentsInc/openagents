@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""The provenance checks that sit above check_vectors.py (Bitcoin chapter 116).
+# Firm reason: 2 (independent Python reference oracle for the production Coax pin checker, check-pins.coax)
+"""Independent reference for check-pins.coax, retained for parity and vector regeneration.
+
+The provenance checks that sit above check_vectors.py (Bitcoin chapter 116).
 
 check_vectors.py proves that each pinned file has the bytes its manifest
 entry records. This file checks that the pins agree with each other and with

@@ -1001,7 +1001,6 @@ psionic/tests/check_training_dense_units.sh
 psionic/tests/cnn/test_reference.py
 psionic/tests/cores.sh
 psionic/tests/cosmos_slices.py
-psionic/tests/decoder_oracle.py
 psionic/tests/devstral_manifest.py
 psionic/tests/distill_mammoth_fixture.py
 psionic/tests/distill_oracle.py

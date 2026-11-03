@@ -1,0 +1,7 @@
+Earlier passing results on unchanged sources, observed in this worktree (not repeated):
+qualification-policy.coax: 26 mutants, 26 killed, 0 survived.
+pin-policy.coax: 27 checks, 27 passed, 0 failed (includes dependencies).
+Python reference test_pins.py: 6 tests passed.
+Pixel oracle: public synthetic matching albedo accepted; wrong colour and absent layer refused. No private assets read.
+Collector smoke: positive receipt; engine, protected, checkpoint and acceptance failures refused.
+Conversation: all 8 transcript digests, all 7 snapshot pairs, original regression and final file scope independently audited.

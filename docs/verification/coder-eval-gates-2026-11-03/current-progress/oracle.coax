@@ -1,0 +1,10 @@
+#load "/Users/christopherdavid/work/oa-coder-progress-eval/coax/web/api/progress-admission.coax";
+#test "independent revision admission table" {
+for current:0..<4 {for base:-2..<5 {for legacy:[2]bool.[false,true] {for clock:[3]int.[-9000000000,0,9000000000] {
+ want:=false;if legacy {want=current==0 && base == -1;} else {want=base>=0 && base==current;}
+ #assert progress_admit(base,current,legacy,clock)==want;
+}}}}
+#assert !progress_admit(999999999,999999999,false,0); #assert progress_admit(999999998,999999998,false,0);
+#assert !progress_admit(0,-1,false,0); #assert !progress_admit(-1,-1,false,0); #assert !progress_admit(-1,-1,true,0);
+#assert !progress_admit(-1,999999999,true,0);
+}

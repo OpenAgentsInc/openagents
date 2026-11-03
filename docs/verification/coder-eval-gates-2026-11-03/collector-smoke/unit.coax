@@ -1,0 +1,2 @@
+f :: (x:int)->int {return 0;}
+#test "broken" {#assert f(0)==1;}

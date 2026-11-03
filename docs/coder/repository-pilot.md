@@ -207,3 +207,7 @@ paths; the driver is a frozen Coder executable, the task is a UTF-8 file, and
 output is its JSONL transcript. The independent acceptance and protected-file
 review are separate from the model's self-report. A successful process exit is
 not sufficient to qualify a repair.
+
+For new runs, use the [independent qualification collector](evaluation-qualification.md)
+and preserve the receipt alongside transcripts. Earlier pilot records retain
+their original gates and limitations.

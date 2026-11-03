@@ -1,0 +1,5 @@
+/tmp/coder-current-progress-evaluation/oracle.coax
+/tmp/coder-current-progress-evaluation/task.txt
+/Users/christopherdavid/work/oa-coder-progress-eval/AGENTS.md
+/Users/christopherdavid/work/oa-coder-progress-eval/coax/web/api/player.c
+/Users/christopherdavid/work/oa-coder-progress-eval/coax/web/api/migrations/0004_verse_players.sql

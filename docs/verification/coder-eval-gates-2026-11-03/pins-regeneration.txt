@@ -1,0 +1,6 @@
+Bitcoin Core target ddea9196 (master on 2026-11-02, the merge of bitcoin#36554; not a release tag): 152 pinned files, 1 at another revision
+  upstream/bitcoin-core/chainparams_v22.cpp at a0988140: v22.0 (tag v22.0, a0988140): chapter 51 reads Taproot's Speedy Trial deployment parameters from it; later releases bury Taproot at a fixed height and no longer list them
+  note: bitcoin/bips is pinned at 3 revisions: 5aadddb5, 927b6de9, ada34196
+345 manifest entries, 419 citations checked
+48 generators rebuilt their files in a scratch copy
+check_pins.py: every pin agrees

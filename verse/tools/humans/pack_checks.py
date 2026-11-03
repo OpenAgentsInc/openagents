@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent pixel oracle: recomputes source-texture UV/albedo errors, material coverage and LOD differences outside the Coax renderer)
 """Checks a human pack as MetaHuman Lab draws it, without anyone looking at a frame.
 
     python3 verse/tools/humans/pack_checks.py [PACK] [--url http://127.0.0.1:8802] [--source IMAGE]

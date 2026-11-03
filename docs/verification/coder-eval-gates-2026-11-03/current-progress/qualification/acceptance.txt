@@ -1,0 +1,9 @@
+ok   #test independent revision admission table (1 case, 5835 steps, 0 ms)
+ok   #test modern revisions match exactly, including the empty record (1 case, 128 steps, 0 ms)
+ok   #test modern negative revisions and the next revision boundary refuse (1 case, 136 steps, 0 ms)
+ok   #test legacy requires exactly base minus one and an empty record (1 case, 175 steps, 0 ms)
+ok   #test fast and slow clocks cannot admit stale or refuse current modern saves (1 case, 150 steps, 0 ms)
+ok   #test legacy initialization and overwrite refusal ignore both clock extremes (1 case, 107 steps, 0 ms)
+ok   #test same base race admits only the first save after revision advancement (1 case, 116 steps, 0 ms)
+ok   #test legacy initialization consumes the empty revision for every other writer (1 case, 85 steps, 0 ms)
+8 checks, 8 passed, 0 failed

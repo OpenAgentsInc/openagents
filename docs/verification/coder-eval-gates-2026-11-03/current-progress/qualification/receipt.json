@@ -1,0 +1,1 @@
+{"schema":"coder.qualification.v1","qualified":true,"engine_exit":0,"elapsed_ms":64511,"budget_ms":180000,"acceptance_exit":0,"mutation_exit":0,"mutants":13,"killed":13,"survivors":0,"acceptance":true,"protected":true,"checkpoints":true,"artifacts":true,"no_exemptions":true}

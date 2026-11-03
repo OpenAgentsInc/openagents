@@ -1,0 +1,5 @@
+/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-qualification-smoke-Bzfj24/unit.coax:2:17: error[E0406]: assertion failed
+  #test "broken" {#assert f(0)==1;}
+                  ^
+  note: in #test broken
+coax: the checks fail before any mutation; make them pass first

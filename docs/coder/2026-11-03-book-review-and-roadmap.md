@@ -583,3 +583,11 @@ continuation case was reserved at that stage. The subsequent
 [qualification](../verification/coder-qualification-2026-11-03/README.md) consumes
 it successfully, closes the pinned protocol gate and records a historical real
 issue repair that passes functional checks but fails its mutation gate.
+
+The [automated evidence collector](evaluation-qualification.md) now qualifies
+protected bytes, read-only snapshots, acceptance and zero-survivor mutation in
+one receipt. [Fresh evidence](../verification/coder-eval-gates-2026-11-03/README.md)
+adds a bounded current issue policy prototype and an eight-turn continuation.
+Neither closes the full current issue or the comparative study. The
+[tools audit](tools-check-audit.md) identifies the five asset generators whose
+ports or owner exception remain unresolved.

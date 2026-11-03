@@ -1,0 +1,48 @@
+syntax = "proto3";
+package openagents.coder.qualification.v1;
+
+// Local JSON artifact mapping: docs/protocol/coder-qualification-v1.md.
+// Presence is required by the artifact reader; absent bools never imply success.
+message FileSeal {
+  string path = 1;
+  string realpath = 2;
+  string sha256 = 3;
+}
+message Seal {
+  string schema = 1;
+  repeated FileSeal files = 2;
+}
+message CheckpointPair {
+  Seal before = 1;
+  Seal after = 2;
+}
+message Checkpoints {
+  string schema = 1;
+  repeated CheckpointPair pairs = 2;
+}
+message Execution {
+  string schema = 1;
+  optional int32 engine_exit = 2;
+  optional int64 elapsed_ms = 3;
+  optional int64 budget_ms = 4;
+  optional bool timeout = 5;
+  optional bool cut = 6;
+  string log_sha256 = 7;
+}
+message Qualification {
+  string schema = 1;
+  optional bool qualified = 2;
+  optional int32 engine_exit = 3;
+  optional int64 elapsed_ms = 4;
+  optional int64 budget_ms = 5;
+  optional int32 acceptance_exit = 6;
+  optional int32 mutation_exit = 7;
+  optional int32 mutants = 8;
+  optional int32 killed = 9;
+  optional int32 survivors = 10;
+  optional bool acceptance = 11;
+  optional bool protected = 12;
+  optional bool checkpoints = 13;
+  optional bool artifacts = 14;
+  optional bool no_exemptions = 15;
+}

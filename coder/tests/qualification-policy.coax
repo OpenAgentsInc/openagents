@@ -1,0 +1,33 @@
+// Release qualification is a policy, separate from engine process success.
+#authority;
+QgEvidence :: struct {
+  engine_exit:int; elapsed_ms:int; budget_ms:int;
+  acceptance:bool; protected_ok:bool; checkpoints:bool;
+  mutation_exit:int; mutants:int; killed:int; survivors:int;
+  artifacts:bool; no_exemptions:bool;
+}
+#test "a completed task needs every independent release gate" {
+  good:=QgEvidence.{engine_exit=0,elapsed_ms=100,budget_ms=100,acceptance=true,protected_ok=true,checkpoints=true,mutation_exit=0,mutants=10,killed=10,survivors=0,artifacts=true,no_exemptions=true};
+  #assert qg_qualified(good);
+  g:=good;g.engine_exit=1;#assert !qg_qualified(g);
+  g=good;g.elapsed_ms=101;#assert !qg_qualified(g);
+  g=good;g.elapsed_ms=-1;#assert !qg_qualified(g);
+  g=good;g.elapsed_ms=0;g.budget_ms=0;#assert !qg_qualified(g);
+  g=good;g.budget_ms=0;#assert !qg_qualified(g);
+  g=good;g.acceptance=false;#assert !qg_qualified(g);
+  g=good;g.protected_ok=false;#assert !qg_qualified(g);
+  g=good;g.checkpoints=false;#assert !qg_qualified(g);
+  g=good;g.mutation_exit=1;#assert !qg_qualified(g);
+  g=good;g.mutants=0;g.killed=0;#assert !qg_qualified(g);
+  g=good;g.survivors=1;g.killed=9;#assert !qg_qualified(g);
+  g=good;g.killed=9;#assert !qg_qualified(g);
+  g=good;g.no_exemptions=false;#assert !qg_qualified(g);
+  g=good;g.artifacts=false;#assert !qg_qualified(g);
+  g=good;g.elapsed_ms=0;g.budget_ms=1;#assert qg_qualified(g);
+  g=good;g.mutants=1;g.killed=1;g.elapsed_ms=0;#assert qg_qualified(g);
+}
+qg_preflight :: (g:QgEvidence)->bool {return g.engine_exit==0 && g.elapsed_ms>=0 && g.budget_ms>0 && g.elapsed_ms<=g.budget_ms && g.protected_ok && g.checkpoints;}
+qg_qualified :: (g:QgEvidence)->bool {
+  return qg_preflight(g) && g.acceptance && g.mutation_exit==0
+    && g.mutants>0 && g.killed==g.mutants && g.survivors==0 && g.artifacts && g.no_exemptions;
+}

@@ -1,0 +1,61 @@
+// Production provenance checks; Python's check_pins.py remains an independent reference.
+#load "../../lib/agent/claude/fields.coax";
+PpEntry :: struct {path:string;url:string;sha:string;revision:string;kind:string;}
+pp_find :: (s:string,from:int,needle:string)->int {if needle.count>s.count {return -1;}for i:from..<s.count-needle.count+1 {if s[i..<i+needle.count]==needle {return i;}}return -1;}
+pp_less :: (a:string,b:string)->bool {for c,i:a {if i==b.count {return false;}if c!=b[i] {return c<b[i];}}return a.count<b.count;}
+pp_starts :: (s:string,p:string)->bool {return s.count>=p.count && s[0..<p.count]==p;}
+pp_repo :: (url:string)->string {
+  prefix:="https://raw.githubusercontent.com/";if !pp_starts(url,prefix) {return "";}
+  at:=prefix.count;first:=pp_find(url,at,"/");if first<=at {return "";}last:=pp_find(url,first+1,"/");if last<=first+1 {return "";}return cast(string)url[at..<last];
+}
+pp_pin :: (e:PpEntry,target:string,reason:string)->bool {return e.revision==target || pp_reason(reason);}
+pp_reason :: (s:string)->bool {for c:s {if c!=' ' && c!=9 && c!=10 && c!=13 {return true;}}return false;}
+pp_known :: (entries:[]PpEntry,path:string)->bool {for e:entries {if e.path==path || (pp_starts(e.path,path) && e.path.count>path.count && e.path[path.count]=='/') {return true;}}return false;}
+// One inventory table row, with borrowed slices. Non-table text is not a row.
+pp_row :: (line:string)->PpEntry {
+  e:PpEntry;if !pp_starts(line,"| [`") {return e;}
+  p:=pp_find(line,4,"`]");if p<0 {return e;}e.path=cast(string)line[4..<p];
+  link:=pp_find(line,p+2,"](");if link<0 {return PpEntry.{};}end:=pp_find(line,link+2,") | `");if end<0 {return PpEntry.{};}
+  e.url=cast(string)line[link+2..<end];at:=end+5;
+  if at+67>line.count || line[at+64..<at+67]!="` |" {return PpEntry.{};}
+  e.sha=cast(string)line[at..<at+64];for c:e.sha {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return PpEntry.{};}}
+  return e;
+}
+pp_inventory :: (entries:[]PpEntry,sources:string)->int {
+  start:=pp_find(sources,0,"## Inventory");if start<0 {return 1;}counts:[512]int;bad:=0;at:=start;
+  while at<sources.count {end:=pp_find(sources,at,"\n");if end<0 {end=sources.count;}r:=pp_row(cast(string)sources[at..<end]);at=end+1;if r.path.count==0 {continue;}
+    found:=false;for e,i:entries {if e.kind=="upstream" && e.path==r.path {found=true;counts[i]+=1;if e.sha!=r.sha || e.url!=r.url {bad+=1;}}}if !found {bad+=1;}
+  }
+  for e,i:entries {if e.kind=="upstream" && counts[i]!=1 {bad+=1;}}return bad;
+}
+pp_char :: (c:u8)->bool {return (c>='A' && c<='Z') || (c>='a' && c<='z') || (c>='0' && c<='9') || c=='_' || c=='.' || c=='/' || c=='+' || c=='-';}
+// Distinct citations within one file, in lexical order, exactly as the reference regex.
+pp_citations :: (text:string,full:bool,out:[][512]u8,lens:[]int)->int {
+  prefix:=ifx full then "coax/tests/vectors/" else "tests/vectors/";at:=0;n:=0;
+  while at<text.count {found:=pp_find(text,at,prefix);if found<0 {break;}begin:=found+prefix.count;end:=begin;while end<text.count && pp_char(text[end]) {end+=1;}at=end+1;
+    while end>begin && (text[end-1]=='.' || text[end-1]=='/') {end-=1;}p:=cast(string)text[begin..<end];if !pp_starts(p,"upstream/") {continue;}
+    duplicate:=false;for i:0..<n {if p==cast(string)out[i][0..<lens[i]] {duplicate=true;}}if duplicate {continue;}
+    if n==out.count || p.count>512 {return -1;}for c,i:p {out[n][i]=c;}lens[n]=p.count;n+=1;
+  }
+  for i:0..<n {for j:i+1..<n {if pp_less(cast(string)out[j][0..<lens[j]],cast(string)out[i][0..<lens[i]]) {tmp:=out[i];out[i]=out[j];out[j]=tmp;t:=lens[i];lens[i]=lens[j];lens[j]=t;}}}return n;
+}
+#test "pin policy rejects target drift and empty exception reasons" {
+  e:=PpEntry.{path="upstream/core",revision="git:one"};#assert pp_pin(e,"git:one","");#assert !pp_pin(e,"git:two"," \t\n");#assert pp_pin(e,"git:two","old deployment parameters");
+  #assert pp_repo("https://raw.githubusercontent.com/bitcoin/bitcoin/abc/file")=="bitcoin/bitcoin" && pp_repo("https://example.org/file")=="";
+}
+#test "inventory refuses missing duplicate altered and extra rows" {
+  sha:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  e:=[1]PpEntry.[PpEntry.{path="upstream/a",url="url",sha=sha,kind="upstream"}];
+  row:="| [`upstream/a`](a) | [source](url) | `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` |\n";
+  good:="## Inventory\n| [`upstream/a`](a) | [source](url) | `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` |\n";
+  #assert pp_row(row).sha==sha && pp_inventory(e[..],good)==0;
+  #assert pp_inventory(e[..],"## Inventory\n")==1;
+  other:=[1]PpEntry.[PpEntry.{path="upstream/a",url="wrong",sha=sha,kind="upstream"}];#assert pp_inventory(other[..],good)>0;
+  #assert pp_inventory(e[0..<0],good)>0;
+  #assert pp_inventory(e[..],"## Inventory\n| [`upstream/a`](a) | [source](url) | `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` |\n| [`upstream/a`](a) | [source](url) | `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` |\n")>0;
+}
+#test "citations are deduplicated sorted and checked as files or pinned directories" {
+  out:[8][512]u8;lens:[8]int;n:=pp_citations("coax/tests/vectors/upstream/b. coax/tests/vectors/upstream/a/ and coax/tests/vectors/upstream/b",true,out[..],lens[..]);
+  #assert n==2 && cast(string)out[0][0..<lens[0]]=="upstream/a" && cast(string)out[1][0..<lens[1]]=="upstream/b";
+  e:=[1]PpEntry.[PpEntry.{path="upstream/a/file"}];#assert pp_known(e[..],"upstream/a") && !pp_known(e[..],"upstream/ab");
+}

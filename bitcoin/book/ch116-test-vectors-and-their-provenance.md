@@ -35,8 +35,8 @@ what an audit of all 316 pins found and fixed.
 | [check_vectors.py](../../coax/tests/vectors/check_vectors.py) | checks every file against its entry; `--fetch` re-reads the URLs |
 | [test_integrity.py](../../coax/tests/vectors/test_integrity.py) | shows that `check_vectors.py` refuses each kind of damage |
 | [pins.json](../../coax/tests/vectors/pins.json) | the Bitcoin Core revision the book targets, and the one exception |
-| [check_pins.py](../../coax/tests/vectors/check_pins.py) | checks the Core target, the inventory, the citations, the chapter index and, with `--regenerate`, every generator |
-| [test_pins.py](../../coax/tests/vectors/test_pins.py) | shows that `check_pins.py` refuses each kind of disagreement |
+| [check-pins.coax](../../coax/tests/vectors/check-pins.coax) | checks the Core target, the inventory, the citations, the chapter index and, with `--regenerate`, every generator |
+| [test_pins.py](../../coax/tests/vectors/test_pins.py) | independently checks the Python reference and shows that `check_pins.py` refuses each kind of disagreement |
 | [make_provenance_vectors.py](../../coax/tests/bitcoin/make_provenance_vectors.py) | copies one pinned file and its entry into the example's table |
 | [provenance.coax](../examples/provenance.coax) | the example: hash the bytes, compare with the pin, then use the rows |
 
@@ -218,7 +218,7 @@ agree with each other and with the book:
    committed one byte for byte.
 
 ```shell
-python3 coax/tests/vectors/check_pins.py --regenerate
+coax/web/tool.sh coax/tests/vectors/check-pins.coax --regenerate
 ```
 
 ```text
@@ -573,3 +573,8 @@ None. Every chapter that reads a pinned file depends on this one.
 - Bitcoin Core at `ddea9196493d3b8fd841a36a6c53efd85dac7a05`, pinned in
   [coax/tests/vectors/upstream/bitcoin-core/](../../coax/tests/vectors/upstream/bitcoin-core/chainparams_v22.cpp),
   and the v32.1 release notes for the relation to the latest release.
+
+The production provenance checker is Coax (`check-pins.coax` and `pin-policy.coax`).
+`check_pins.py` remains an independent Python reference for parity and the
+explicit `--regenerate` oracle run; it does not supply the production pin,
+inventory, citation or chapter-index decisions.

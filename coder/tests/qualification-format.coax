@@ -1,0 +1,45 @@
+// Strict compiler-owned summary grammar. No inference from model reply text.
+QgSummary :: struct {ok:bool;total:int;passed:int;failed:int;}
+#test "summaries require a complete exact unique consistent footer" {
+  s:=qf_summary("source notes\n469 mutants, 395 killed, 74 survived\n",true);
+  #assert s.ok && s.total==469 && s.passed==395 && s.failed==74;
+  s=qf_summary("98 checks, 98 passed, 0 failed\n",false);#assert s.ok && s.total==98 && s.failed==0;
+  #assert !qf_summary("469 mutants, 395 killed, 74 survived",true).ok;
+  #assert !qf_summary("1 mutants, 1 killed, 0 survived\n1 mutants, 1 killed, 0 survived\n",true).ok;
+  #assert !qf_summary("1 mutants, 1 killed, 1 survived\n",true).ok;
+  #assert !qf_summary("0 mutants, 0 killed, 0 survived\n",true).ok;
+  #assert !qf_summary("1 mutants, 1 killed, 0 survived junk\n",true).ok;
+  #assert !qf_summary("-1 mutants, 0 killed, 0 survived\n",true).ok;
+  #assert !qf_summary("99999999999999999999 mutants, 0 killed, 0 survived\n",true).ok;
+  #assert qf_summary("1 check, 1 passed, 0 failed\n",false).ok;
+  #assert !qf_summary("all checks passed\n",false).ok;
+}
+qf_number :: (s:string,at:[]int)->int {
+  start:=at[0];n:=0;
+  while at[0]<s.count && s[at[0]]>='0' && s[at[0]]<='9' {
+    n=n*10+cast(int)(s[at[0]]-'0');at[0]+=1;if n>1000000000 {return -1;}
+  }
+  return ifx at[0]==start then -1 else n;
+}
+qf_take :: (s:string,at:[]int,word:string)->bool {
+  if at[0]+word.count>s.count || s[at[0]..<at[0]+word.count]!=word {return false;}
+  at[0]+=word.count;return true;
+}
+qf_line :: (s:string,mutation:bool)->QgSummary {
+  at:[1]int;n:=qf_number(s,at[..]);
+  if n<=0 || !qf_take(s,at[..],ifx mutation then " mutants, " else (ifx n==1 then " check, " else " checks, ")) {return QgSummary.{};}
+  p:=qf_number(s,at[..]);
+  if p<0 || !qf_take(s,at[..],ifx mutation then " killed, " else " passed, ") {return QgSummary.{};}
+  f:=qf_number(s,at[..]);
+  if f<0 || !qf_take(s,at[..],ifx mutation then " survived" else " failed") || at[0]!=s.count || p+f!=n {return QgSummary.{};}
+  return QgSummary.{ok=true,total=n,passed=p,failed=f};
+}
+qf_summary :: (s:string,mutation:bool)->QgSummary {
+  found:QgSummary;seen:=0;at:=0;
+  while at<s.count {
+    end:=at;while end<s.count && s[end]!=10 {end+=1;}
+    if end==s.count {break;}
+    r:=qf_line(cast(string)s[at..<end],mutation);if r.ok {found=r;seen+=1;}at=end+1;
+  }
+  found.ok=seen==1;return found;
+}

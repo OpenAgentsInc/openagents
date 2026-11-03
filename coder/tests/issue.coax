@@ -1,53 +1,5 @@
-// Repository v2: fresh structural cases and actual process interruption checks.
-#load "../../coax/lib/sys/tool.coax";
-#load "../../coax/lib/sys/fs.coax";
-#load "../../coax/lib/sys/proc.coax";
-#load "../../coax/lib/json/json.coax";
-#load "../../coax/lib/nostr/json.coax";
-#load "../../coax/lib/crypto/sha256-memory.coax";
-cxterm_write :: (bytes:[]u8)->int #foreign;
-pe_put :: (s:string) {b:[65536]u8;if s.count>b.count {tool_errln("output too large");return;}for c,i:s {b[i]=c;}r:=cxterm_write(b[0..<s.count]);}
-pe_cat :: (b:[]u8,n:int,s:string)->int {return json_raw(b,n,s);}
-pe_num :: (x:int,b:[]u8)->string {n:=json_write_int(b,0,x);return cast(string)b[0..<n];}
-pe_join :: (a:string,b:string,out:[]u8)->string {return fs_join(a,b,out);}
-pe_has :: (s:string,p:string)->bool {if p.count>s.count {return false;}for i:0..<s.count-p.count+1 {if s[i..<i+p.count]==p {return true;}}return false;}
-pe_sha :: (s:string,out:[]u8)->string {
- b:[131072]u8;if s.count>b.count {return "";}for c,i:s {b[i]=c;}d:[32]u8;r:=sha256_hash_checked(b[0..<s.count],d[..],false);
- if r!=0 {return "";}hex:="0123456789abcdef";for i:0..<32 {out[i*2]=hex[cast(int)(d[i]>>4)];out[i*2+1]=hex[cast(int)(d[i]&15)];}return cast(string)out[0..<64];
-}
-PeRun :: struct {text:[262144]u8;n:int;status:int=-1;cut:bool;timeout:bool;ms:int;}
-PeEnv :: struct {repo:string;coder:string;coax:string;home:string;cwd:string;path:string;allowed:string;}
-// Arguments are passed as argv, never interpolated into a shell.
-pe_run :: (env:PeEnv,argv:[]string,ms:int,r:[]PeRun) {
- r[0]=PeRun.{};h:=proc_new();if h<0 {return;}
- ok:=proc_cwd(h,env.cwd);for a:argv {ok=ok && proc_arg(h,a);}
- eb:[4096]u8;
- n:=pe_cat(eb[..],0,"CODER_HOME=");n=pe_cat(eb[..],n,env.home);ok=ok && proc_env(h,cast(string)eb[0..<n]);
- n=pe_cat(eb[..],0,"COAX=");n=pe_cat(eb[..],n,env.coax);ok=ok && proc_env(h,cast(string)eb[0..<n]);
- n=pe_cat(eb[..],0,"CODER_REPO=");n=pe_cat(eb[..],n,env.repo);ok=ok && proc_env(h,cast(string)eb[0..<n]);
- n=pe_cat(eb[..],0,"PWD=");n=pe_cat(eb[..],n,env.cwd);ok=ok && proc_env(h,cast(string)eb[0..<n]);
- ok=ok && proc_env(h,"BROWSER=/usr/bin/true") && proc_env(h,"CODER_USAGE=0") && proc_env(h,"CODER_RECAPS=0");
- if env.path.count>0 {n=pe_cat(eb[..],0,"PATH=");n=pe_cat(eb[..],n,env.path);ok=ok && proc_env(h,cast(string)eb[0..<n]);}
- if env.allowed.count>0 {n=pe_cat(eb[..],0,"CODER_ROUTE_ENGINES=");n=pe_cat(eb[..],n,env.allowed);ok=ok && proc_env(h,cast(string)eb[0..<n]);}
- // Inherited test playback must never silently turn a live measurement offline.
- ok=ok && proc_unset(h,"GW_REPLAY") && proc_unset(h,"GW_RECORD") && proc_unset(h,"CODER_ROUTER_FAULT");
- if !ok || proc_start(h)!=0 {done:=proc_release(h);return;}
- close:=proc_close_stdin(h);t:=proc_now_ms();line:[65536]u8;
- while true {
-  left:=ms-(proc_now_ms()-t);if left<=0 {r[0].timeout=true;break;}
-  nline:=proc_line(h,ifx left>1000 then 1000 else left,line[..]);
-  if nline==PROC_EOF {break;}if nline==PROC_TIMEOUT {continue;}if nline<0 {r[0].cut=true;if nline==PROC_ERROR {break;}continue;}
-  if r[0].n+nline+1>r[0].text.count {r[0].cut=true;continue;}
-  for i:0..<nline {r[0].text[r[0].n]=line[i];r[0].n+=1;}r[0].text[r[0].n]=10;r[0].n+=1;
- }
- if r[0].timeout {kill:=proc_kill(h,9);}
- r[0].status=proc_wait(h,2000);if r[0].status==PROC_RUNNING {kill:=proc_kill(h,9);r[0].status=proc_wait(h,2000);r[0].timeout=true;}
- r[0].ms=proc_now_ms()-t;done:=proc_release(h);
-}
-pe_text :: (r:[]PeRun)->string {return cast(string)r[0].text[0..<r[0].n];}
-pe_cmd :: (e:PeEnv,a:[]string,r:[]PeRun) {pe_run(e,a,30000,r);}
-
-
+// Bounded issue driver. Qualification is a separate independent command.
+#load "process.coax";
 tool_main :: ()->int #export_c {
  a:[1]Args;if !args_load(a[..]) {return 2;}
  e:=PeEnv.{repo=args_value(a[..],"--driver-repo",""),coder=args_value(a[..],"--driver",""),coax=args_value(a[..],"--coax",""),home=args_value(a[..],"--home",""),cwd=args_value(a[..],"--repo","")};
@@ -55,6 +7,10 @@ tool_main :: ()->int #export_c {
  run:=[10]string.[e.coder,"run",cast(string)taskb[0..<taskn],"--engine","codex","--deadline","180","--cwd",e.cwd,"--json"];
  r:[1]PeRun;pe_run(e,run[..],210000,r[..]);
  out:=args_value(a[..],"--out","");if out.count==0 || !fs_write(out,pe_text(r[..])) {return 2;}
+ meta:[1024]u8;n:=json_raw(meta[..],0,"{\"schema\":\"coder.execution.v1\",\"engine_exit\":");n=json_write_int(meta[..],n,r[0].status);
+ n=json_raw(meta[..],n,",\"elapsed_ms\":");n=json_write_int(meta[..],n,r[0].ms);n=json_raw(meta[..],n,",\"budget_ms\":180000,\"timeout\":");n=json_raw(meta[..],n,ifx r[0].timeout then "true" else "false");
+ n=json_raw(meta[..],n,",\"cut\":");n=json_raw(meta[..],n,ifx r[0].cut then "true" else "false");h:[64]u8;n=json_raw(meta[..],n,",\"log_sha256\":");n=json_write_string(meta[..],n,pe_sha(pe_text(r[..]),h[..]));n=json_raw(meta[..],n,"}\n");
+ path:[4096]u8;pn:=pe_cat(path[..],0,out);pn=pe_cat(path[..],pn,".execution.json");if n<0 || !fs_write(cast(string)path[0..<pn],cast(string)meta[0..<n]) {return 2;}
  pe_put("run recorded; exit ");b:[32]u8;pe_put(pe_num(r[0].status,b[..]));pe_put("\n");
  if r[0].timeout {return 124;}if r[0].cut {return 2;}return r[0].status;
 }

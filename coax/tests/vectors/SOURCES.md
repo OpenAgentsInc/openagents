@@ -17,7 +17,7 @@ Run from the repository root:
 ```sh
 python3 coax/tests/vectors/check_vectors.py
 python3 coax/tests/vectors/test_integrity.py
-python3 coax/tests/vectors/check_pins.py           # the Core target, inventory, citations, chapter index
+coax/web/tool.sh coax/tests/vectors/check-pins.coax           # the Core target, inventory, citations, chapter index
 python3 coax/tests/vectors/test_pins.py
 python3 coax/tests/vectors/check_vectors.py --fetch   # explicit network comparison
 ```
@@ -760,6 +760,7 @@ check fails when a chapter cites a pinned file that is missing here.
 - Bitcoin chapter 54: `upstream/bitcoin-core`, `upstream/bitcoin-core/validation_tests.cpp`, `upstream/mainnet`, `upstream/mainnet/coinbase-proofs.json`
 - Bitcoin chapter 56: `upstream/bitcoin-core`, `upstream/bitcoin-core/muhash.cpp`
 - Bitcoin chapter 59: `upstream/bitcoin-core`, `upstream/bitcoin-core/skiplist_tests.cpp`, `upstream/mainnet`, `upstream/mainnet/headers-0-2016.txt`
+- Bitcoin chapter 61: `upstream/bitcoin-core/blockstorage.cpp`
 - Bitcoin chapter 62: `upstream/bitcoin-core`, `upstream/bitcoin-core/obfuscation.h`
 - Bitcoin chapter 65: `upstream/bip155`, `upstream/bip155/bip-0155.mediawiki`, `upstream/bitcoin-core`, `upstream/bitcoin-core/net.cpp`, `upstream/developer-bitcoin-org`, `upstream/developer-bitcoin-org/p2p_networking.rst`
 - Bitcoin chapter 66: `upstream/bip324`, `upstream/bip324/bip-0324.mediawiki`

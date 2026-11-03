@@ -1,0 +1,80 @@
+// Production pin/inventory/citation checker. check_pins.py is its independent Python oracle.
+#import "Basic";
+#load "pin-policy.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+PP_BEGIN :: "<!-- pins-by-chapter:begin -->";
+PP_END :: "<!-- pins-by-chapter:end -->";
+pp_read :: (path:string,b:[]u8)->string {n:=fs_read(path,b);return ifx n<0 || n>=b.count then "" else cast(string)b[0..<n];}
+pp_cat :: (b:[]u8,n:int,s:string)->int {return json_raw(b,n,s);}
+pp_problem :: (message:string) {tool_err("problem: ");tool_errln(message);}
+pp_suffix :: (s:string,tail:string)->bool {return s.count>=tail.count && s[s.count-tail.count..<s.count]==tail;}
+pp_citer :: (path:string)->bool {for suffix:[7]string.[".md",".py",".coax",".json",".c",".cjs",".sh"] {if pp_suffix(path,suffix) {return true;}}return false;}
+pp_scan :: (dir:string,entries:[]PpEntry,count:[]int,depth:int)->int {
+  if depth>32 {return 1;}l:[1]FsList;k:=fs_list(dir,l[..]);if k<0 || l[0].full {return 1;}bad:=0;
+  for i:0..<k {name:=fs_entry(l[..],i);pb:[4096]u8;path:=fs_join(dir,name,pb[..]);if path=="coax/tests/vectors" {continue;}
+    if fs_kind(path)==FS_DIR {bad+=pp_scan(path,entries,count,depth+1);continue;}
+    if !pp_citer(path) {continue;}
+    b:[2097152]u8;text:=pp_read(path,b[..]);if text.count==0 && fs_size(path)!=0 {bad+=1;continue;}
+    pairs:[256][512]u8;lens:[256]int;n:=pp_citations(text,false,pairs[..],lens[..]);if n<0 {bad+=1;continue;}count[0]+=n;
+    for q:0..<n {p:=cast(string)pairs[q][0..<lens[q]];if !pp_known(entries,p) {print("problem: % names %, which the manifest does not pin\n",path,p);bad+=1;}}
+  }return bad;
+}
+pp_index :: (entries:[]PpEntry,out:[]u8)->int {
+  n:=pp_cat(out,0,PP_BEGIN);l:[1]FsList;k:=fs_list("bitcoin/book",l[..]);if k<0 || l[0].full {return -1;}
+  for i:0..<k {name:=fs_entry(l[..],i);if !pp_starts(name,"ch") || !pp_suffix(name,".md") {continue;}pb:[4096]u8;path:=fs_join("bitcoin/book",name,pb[..]);b:[2097152]u8;text:=pp_read(path,b[..]);if text.count==0 {return -1;}
+    pairs:[256][512]u8;lens:[256]int;found:=pp_citations(text,true,pairs[..],lens[..]);if found<0 {return -1;}chapter:=0;at:=2;while at<name.count && name[at]>='0' && name[at]<='9' {chapter=chapter*10+cast(int)(name[at]-'0');at+=1;}
+    first:=true;for q:0..<found {p:=cast(string)pairs[q][0..<lens[q]];if !pp_known(entries,p) {continue;}
+      if first {n=pp_cat(out,n,"\n- Bitcoin chapter ");n=json_write_int(out,n,chapter);n=pp_cat(out,n,": ");first=false;} else {n=pp_cat(out,n,", ");}
+      n=pp_cat(out,n,"`");n=pp_cat(out,n,p);n=pp_cat(out,n,"`");
+    }
+  }n=pp_cat(out,n,"\n");return pp_cat(out,n,PP_END);
+}
+pp_notes :: (entries:[]PpEntry) {
+  names:[64]string;nn:=0;
+  for e:entries {repo:=pp_repo(e.url);if repo=="" || repo=="bitcoin/bitcoin" {continue;}have:=false;for i:0..<nn {if names[i]==repo {have=true;}}if !have && nn<64 {names[nn]=repo;nn+=1;}}
+  for i:0..<nn {for j:i+1..<nn {if pp_less(names[j],names[i]) {t:=names[i];names[i]=names[j];names[j]=t;}}}
+  for i:0..<nn {revs:[64]string;nr:=0;for e:entries {if pp_repo(e.url)!=names[i] {continue;}have:=false;for j:0..<nr {if revs[j]==e.revision {have=true;}}if !have && nr<64 {revs[nr]=e.revision;nr+=1;}}
+    if nr<2 {continue;}for x:0..<nr {for y:x+1..<nr {if pp_less(revs[y],revs[x]) {t:=revs[x];revs[x]=revs[y];revs[y]=t;}}}
+    print("  note: % is pinned at % revisions: ",names[i],nr);for j:0..<nr {if j>0 {print(", ");}rev:=revs[j];print("%",ifx rev.count>=12 then cast(string)rev[4..<12] else rev);}print("\n");
+  }
+}
+// --regenerate remains an explicit oracle invocation: independently generated
+// Python reference vectors must match committed Coax vectors byte for byte.
+pp_regenerate :: ()->int {
+  h:=proc_new();a:=[3]string.["python3","coax/tests/vectors/check_pins.py","--regenerate"];for x:a {ok:=proc_arg(h,x);}if proc_start(h)!=0 {done:=proc_release(h);return 2;}closed:=proc_close_stdin(h);b:[65536]u8;start:=proc_now_ms();
+  while proc_now_ms()-start<600000 {n:=proc_line(h,1000,b[..]);if n==PROC_EOF {break;}if n==PROC_TIMEOUT {continue;}if n<0 {k:=proc_kill(h,9);done:=proc_release(h);return 2;}line:=cast(string)b[0..<n];if !pp_starts(line,"Bitcoin Core target ") && !pp_starts(line,"  ") && pp_find(line,0," manifest entries,")<0 {print("%\n",line);}}
+  status:=proc_wait(h,1000);if status==PROC_RUNNING {k:=proc_kill(h,9);status=proc_wait(h,1000);}err:[65536]u8;message:=proc_stderr(h,err[..]);if message.count>0 {tool_err(message);}
+  done:=proc_release(h);return status;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}
+  mb:[524288]u8;manifest:=pp_read(args_value(a[..],"--manifest","coax/tests/vectors/manifest.json"),mb[..]);pb:[65536]u8;pins:=pp_read(args_value(a[..],"--pins","coax/tests/vectors/pins.json"),pb[..]);sb:[524288]u8;sources_path:=args_value(a[..],"--sources","coax/tests/vectors/SOURCES.md");sources:=pp_read(sources_path,sb[..]);
+  if !json_valid(manifest) || !json_valid(pins) || sources.count==0 {tool_errln("pin checker input missing, invalid or too large");return 2;}
+  ab:[2097152]u8;ar:[1]ClArena;ar[0].buf=ab[..];files:=cl_raw(manifest,"files");ne:=cl_count(files);if ne<1 || ne>512 {return 2;}entries:[512]PpEntry;
+  for i:0..<ne {row:=cl_json(files,cl_item(files,i));entries[i]=PpEntry.{path=cl_str(ar[..],row,"path"),url=cl_str(ar[..],row,"url"),sha=cl_str(ar[..],row,"sha256"),revision=cl_str(ar[..],row,"revision"),kind=cl_str(ar[..],row,"kind")};}
+  target_obj:=cl_raw(pins,"targets.bitcoin/bitcoin");target:=cl_str(ar[..],target_obj,"revision");description:=cl_str(ar[..],target_obj,"describe");exceptions:=cl_raw(target_obj,"exceptions");
+  if target.count!=40 || ar[0].full {return 2;}tb:[64]u8;tn:=pp_cat(tb[..],0,"git:");tn=pp_cat(tb[..],tn,target);wanted:=cast(string)tb[0..<tn];bad:=0;core:=0;different:=0;
+  for e:entries[0..<ne] {if pp_repo(e.url)!="bitcoin/bitcoin" {continue;}core+=1;if e.revision!=wanted {different+=1;}}
+  print("Bitcoin Core target % (%): % pinned files, % at another revision\n",cast(string)target[0..<8],description,core,different);
+  for e:entries[0..<ne] {if pp_repo(e.url)!="bitcoin/bitcoin" {continue;}slice:=cl_member(exceptions,cl_root(exceptions),e.path);reason:=cl_text(ar[..],exceptions,slice);
+    if e.revision==wanted {if slice.ok {bad+=1;pp_problem("an exception is pinned at the current target");}continue;}
+    rev:=e.revision;print("  % at %: %\n",e.path,ifx rev.count>=12 then cast(string)rev[4..<12] else rev,ifx pp_reason(reason) then reason else "NOT LISTED");if !pp_pin(e,wanted,reason) {bad+=1;}
+  }
+  for i:0..<cl_count(exceptions) {path:=cl_text(ar[..],exceptions,cl_key(exceptions,i));found:=false;for e:entries[0..<ne] {if e.path==path {found=true;}}if !found {bad+=1;pp_problem("an exception names a file the manifest does not pin");}}
+  pp_notes(entries[0..<ne]);inventory:=pp_inventory(entries[0..<ne],sources);if inventory>0 {bad+=inventory;pp_problem("inventory rows disagree with the manifest");}
+  count:[1]int;for dir:[4]string.["bitcoin","nostr","coax/lib","coax/tests"] {bad+=pp_scan(dir,entries[0..<ne],count[..],0);}
+  ib:[262144]u8;ni:=pp_index(entries[0..<ne],ib[..]);begin:=pp_find(sources,0,PP_BEGIN);end:=pp_find(sources,0,PP_END);
+  if ni<0 {return 2;}
+  if begin<0 || end<begin {bad+=1;pp_problem("SOURCES.md has no pins-by-chapter index");}
+  else {
+    end+=PP_END.count;index:=cast(string)ib[0..<ni];
+    if args_has(a[..],"--write") {out:[1048576]u8;n:=pp_cat(out[..],0,cast(string)sources[0..<begin]);n=pp_cat(out[..],n,index);n=pp_cat(out[..],n,cast(string)sources[end..<sources.count]);if n<0 || !fs_write(sources_path,cast(string)out[0..<n]) {return 2;}}
+    else if index!=cast(string)sources[begin..<end] {bad+=1;pp_problem("SOURCES.md: the pins-by-chapter index is stale (run --write)");}
+  }
+  print("% manifest entries, % citations checked\n",ne,count[0]);
+  if bad>0 {tool_err("check_pins.py: ");eb:[32]u8;en:=json_write_int(eb[..],0,bad);tool_err(cast(string)eb[0..<en]);tool_errln(" problems");return 1;}
+  if args_has(a[..],"--regenerate") {return pp_regenerate();}
+  print("check_pins.py: every pin agrees\n");return 0;
+}

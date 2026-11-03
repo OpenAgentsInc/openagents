@@ -1,0 +1,118 @@
+// Independent evidence collector. Model process exit alone never qualifies work.
+#load "process.coax";
+#load "qualification-policy.coax";
+#load "qualification-format.coax";
+#load "../../coax/lib/agent/claude/fields.coax";
+
+qs_int :: (s:string)->int {at:[1]int;n:=qf_number(s,at[..]);return ifx at[0]==s.count then n else -1;}
+qs_file :: (path:string,b:[]u8)->string {n:=fs_read(path,b);return ifx n<0 || n>=b.count then "" else cast(string)b[0..<n];}
+// A bounded coherent read; source files over 2 MiB refuse rather than truncate.
+qs_hash :: (path:string,out:[]u8)->string {
+  size:=fs_size(path);stamp:=fs_mtime_ns(path);b:[2097152]u8;
+  if size<0 || size>=b.count || fs_kind(path)!=FS_FILE {return "";}
+  n:=fs_read(path,b[..]);if n!=size || fs_size(path)!=size || fs_mtime_ns(path)!=stamp {return "";}
+  d:[32]u8;if sha256_hash(b[0..<n],d[..])!=SHA_OK {return "";}
+  hex:="0123456789abcdef";for i:0..<32 {out[i*2]=hex[cast(int)(d[i]>>4)];out[i*2+1]=hex[cast(int)(d[i]&15)];}
+  return cast(string)out[0..<64];
+}
+qs_seal :: (list:string,out:[]u8)->int {
+  n:=json_raw(out,0,"{\"schema\":\"coder.seal.v1\",\"files\":[");at:=0;count:=0;
+  paths:[64][4096]u8;lens:[64]int;
+  while at<list.count {
+    end:=at;while end<list.count && list[end]!=10 {end+=1;}path:=cast(string)list[at..<end];at=end+1;
+    if path.count==0 {continue;}
+    if count==64 || path[0]!='/' || path.count>=4096 {return -1;}
+    for i:0..<count {if path==cast(string)paths[i][0..<lens[i]] {return -1;}}
+    lens[count]=pe_cat(paths[count][..],0,path);
+    rb:[4096]u8;real:=fs_realpath(path,rb[..]);hb:[64]u8;hash:=qs_hash(path,hb[..]);
+    if real.count==0 || hash.count!=64 {return -1;}
+    if count>0 {n=json_raw(out,n,",");}
+    n=json_raw(out,n,"{\"path\":");n=json_write_string(out,n,path);n=json_raw(out,n,",\"realpath\":");n=json_write_string(out,n,real);
+    n=json_raw(out,n,",\"sha256\":");n=json_write_string(out,n,hash);n=json_raw(out,n,"}");count+=1;
+  }
+  if count==0 {return -1;}
+  return json_raw(out,n,"]}");
+}
+qs_manifest :: (manifest:string)->bool {
+  if !json_valid(manifest) {return false;}
+  ab:[32768]u8;ar:[1]ClArena;ar[0].buf=ab[..];
+  if cl_str(ar[..],manifest,"schema")!="coder.seal.v1" || cl_at(manifest,"files").tok!=JSON_ARRAY {return false;}
+  files:=cl_raw(manifest,"files");count:=cl_count(files);if count<1 || count>64 {return false;}
+  for i:0..<count {
+    row:=cl_json(files,cl_item(files,i));path:=cl_str(ar[..],row,"path");real:=cl_str(ar[..],row,"realpath");h:=cl_str(ar[..],row,"sha256");
+    if path.count==0 || path[0]!='/' || real.count==0 || real[0]!='/' || h.count!=64 {return false;}
+    for c:h {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  }
+  return !ar[0].full;
+}
+qs_chain :: (chain:string)->bool {
+  if !json_valid(chain) {return false;}
+  ab:[1024]u8;ar:[1]ClArena;ar[0].buf=ab[..];
+  if cl_str(ar[..],chain,"schema")!="coder.checkpoints.v1" || cl_at(chain,"pairs").tok!=JSON_ARRAY {return false;}
+  pairs:=cl_raw(chain,"pairs");n:=cl_count(pairs);if n<1 || n>32 {return false;}
+  for i:0..<n {row:=cl_json(pairs,cl_item(pairs,i));a:=cl_raw(row,"before");b:=cl_raw(row,"after");if a!=b || !qs_manifest(a) {return false;}}
+  return true;
+}
+#test "checkpoint chains refuse empty malformed and unequal proof pairs" {
+  #assert !qs_manifest("{}");
+  #assert !qs_manifest("{\"schema\":\"coder.seal.v1\",\"files\":[]}");
+  #assert !qs_chain("{\"schema\":\"coder.checkpoints.v1\",\"pairs\":[]}");
+  #assert !qs_chain("{\"schema\":\"coder.checkpoints.v1\",\"pairs\":[{\"before\":{},\"after\":{}}]}");
+  #assert !qs_chain("{\"schema\":\"coder.checkpoints.v1\",\"pairs\":[{\"before\":{},\"after\":null}]}");
+}
+qs_check :: (manifest:string)->bool {
+  if !qs_manifest(manifest) {return false;}
+  ab:[32768]u8;ar:[1]ClArena;ar[0].buf=ab[..];
+  files:=cl_raw(manifest,"files");count:=cl_count(files);if count<1 || count>64 {return false;}
+  for i:0..<count {
+    row:=cl_json(files,cl_item(files,i));path:=cl_str(ar[..],row,"path");real:=cl_str(ar[..],row,"realpath");expected:=cl_str(ar[..],row,"sha256");
+    rb:[4096]u8;hb:[64]u8;
+    if path.count==0 || expected.count!=64 || fs_realpath(path,rb[..])!=real || qs_hash(path,hb[..])!=expected {return false;}
+  }
+  return !ar[0].full;
+}
+qs_saved :: (dir:string,name:string,s:string)->bool {p:[4096]u8;return fs_write(pe_join(dir,name,p[..]),s);}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}mode:=args_at(a[..],0);
+  out:=args_value(a[..],"--out","");if out.count==0 {return 2;}
+  if mode=="seal" {
+    if fs_exists(out) {tool_errln("seal refuses to replace an existing proof");return 2;}
+    b:[262144]u8;list:=qs_file(args_value(a[..],"--list",""),b[..]);o:[524288]u8;n:=qs_seal(list,o[..]);
+    if n<0 || !fs_write(out,cast(string)o[0..<n]) {return 2;}return 0;
+  }
+  if mode!="verify" {tool_errln("qualify.coax seal --list FILE --out FILE | verify --repo DIR --coax BIN --accept FILE --unit FILE --seal FILE (--checkpoint-before FILE --checkpoint-after FILE | --checkpoint-chain FILE) (--execution FILE --run-log FILE | --engine-exit N --elapsed-ms N --budget-ms N) --out DIR");return 2;}
+  if fs_exists(out) || !fs_mkdir(out) {tool_errln("verification requires a fresh output directory");return 2;}
+  sb:[524288]u8;seal:=qs_file(args_value(a[..],"--seal",""),sb[..]);beforeb:[524288]u8;before:=qs_file(args_value(a[..],"--checkpoint-before",""),beforeb[..]);afterb:[524288]u8;after:=qs_file(args_value(a[..],"--checkpoint-after",""),afterb[..]);
+  g:=QgEvidence.{engine_exit=qs_int(args_value(a[..],"--engine-exit","")),elapsed_ms=qs_int(args_value(a[..],"--elapsed-ms","")),budget_ms=qs_int(args_value(a[..],"--budget-ms",""))};
+  execb:[4096]u8;execution:=qs_file(args_value(a[..],"--execution",""),execb[..]);
+  if args_has(a[..],"--execution") {
+    eb:[4096]u8;ar:[1]ClArena;ar[0].buf=eb[..];valid:=json_valid(execution) && cl_str(ar[..],execution,"schema")=="coder.execution.v1";
+    ex:=cl_int(execution,"engine_exit");elapsed:=cl_int(execution,"elapsed_ms");budget:=cl_int(execution,"budget_ms");cut:=cl_bool(execution,"cut");late:=cl_bool(execution,"timeout");
+    hb:[64]u8;actual:=qs_hash(args_value(a[..],"--run-log",""),hb[..]);expected:=cl_str(ar[..],execution,"log_sha256");
+    valid=valid && !ar[0].full && ex.ok && elapsed.ok && budget.ok && cut.ok && !cut.value && late.ok && !late.value && expected.count==64 && actual==expected;
+    g.engine_exit=ifx valid then ex.value else -1;g.elapsed_ms=ifx valid then elapsed.value else -1;g.budget_ms=ifx valid then budget.value else -1;
+  }
+  g.protected_ok=qs_check(seal);g.checkpoints=qs_manifest(before) && before==after;
+  chainb:[1048576]u8;chain:=qs_file(args_value(a[..],"--checkpoint-chain",""),chainb[..]);
+  if args_has(a[..],"--checkpoint-chain") {g.checkpoints=qs_chain(chain);}
+  e:=PeEnv.{repo=args_value(a[..],"--repo",""),cwd=args_value(a[..],"--repo",""),coax=args_value(a[..],"--coax",""),home=out};
+  r:[1]PeRun;accept:=args_value(a[..],"--accept","");unit:=args_value(a[..],"--unit","");
+  sourceb:[2097152]u8;source:=qs_file(unit,sourceb[..]);g.no_exemptions=source.count>0 && !pe_has(source,"mutant: equivalent");
+  ready:=qg_preflight(g) && g.no_exemptions;
+  checks:=[4]string.[e.coax,"test",accept,"--library"];if ready {pe_run(e,checks[..],120000,r[..]);}accept_status:=r[0].status;ac:=qf_summary(pe_text(r[..]),false);
+  g.acceptance=accept_status==0 && !r[0].cut && !r[0].timeout && ac.ok && ac.failed==0;
+  g.artifacts=qs_saved(out,"acceptance.txt",pe_text(r[..])) && qs_saved(out,"acceptance-stderr.txt",cast(string)r[0].err[0..<r[0].ne]);
+  mutants:=[7]string.[e.coax,"mutate",unit,"--library","--root-only","--jobs","4"];r[0]=PeRun.{};if ready {pe_run(e,mutants[..],120000,r[..]);}mu:=qf_summary(pe_text(r[..]),true);
+  g.mutation_exit=ifx r[0].cut || r[0].timeout then -1 else r[0].status;g.mutants=mu.total;g.killed=mu.passed;g.survivors=ifx mu.ok then mu.failed else -1;
+  g.protected_ok=g.protected_ok && qs_check(seal);g.checkpoints=g.checkpoints && (ifx chain.count>0 then qs_chain(chain) else qs_manifest(after));
+  g.artifacts=g.artifacts && qs_saved(out,"mutation.txt",pe_text(r[..])) && qs_saved(out,"mutation-stderr.txt",cast(string)r[0].err[0..<r[0].ne]) && qs_saved(out,"protected.json",seal) && qs_saved(out,"checkpoint-before.json",before) && qs_saved(out,"checkpoint-after.json",after);
+  if execution.count>0 {g.artifacts=g.artifacts && qs_saved(out,"execution.json",execution);}
+  if chain.count>0 {g.artifacts=g.artifacts && qs_saved(out,"checkpoints.json",chain);}
+  qualified:=qg_qualified(g);o:[4096]u8;n:=json_raw(o[..],0,"{\"schema\":\"coder.qualification.v1\",\"qualified\":");n=json_raw(o[..],n,ifx qualified then "true" else "false");
+  names:=[8]string.["engine_exit","elapsed_ms","budget_ms","acceptance_exit","mutation_exit","mutants","killed","survivors"];
+  values:=[8]int.[g.engine_exit,g.elapsed_ms,g.budget_ms,accept_status,g.mutation_exit,g.mutants,g.killed,g.survivors];
+  for i:0..<8 {n=json_raw(o[..],n,",");n=json_write_string(o[..],n,names[i]);n=json_raw(o[..],n,":");n=json_write_int(o[..],n,values[i]);}
+  keys:=[5]string.["acceptance","protected","checkpoints","artifacts","no_exemptions"];flags:=[5]bool.[g.acceptance,g.protected_ok,g.checkpoints,g.artifacts,g.no_exemptions];
+  for i:0..<5 {n=json_raw(o[..],n,",");n=json_write_string(o[..],n,keys[i]);n=json_raw(o[..],n,ifx flags[i] then ":true" else ":false");}
+  n=json_raw(o[..],n,"}\n");if n<0 || !qs_saved(out,"receipt.json",cast(string)o[0..<n]) {return 2;}pe_put(cast(string)o[0..<n]);return ifx qualified then 0 else 1;
+}

@@ -1,0 +1,91 @@
+diff --git a/coax/web/api/progress-admission.coax b/coax/web/api/progress-admission.coax
+new file mode 100644
+index 0000000000..1e3e44023a
+--- /dev/null
++++ b/coax/web/api/progress-admission.coax
+@@ -0,0 +1,85 @@
++// Bounded player-progress admission prototype for #12719. Pure policy only:
++// callers supply the stored revision and must atomically compare and advance
++// it when saving. This module performs no storage or protocol changes.
++#authority;
++
++#test "modern revisions match exactly, including the empty record" {
++  #assert progress_admit(0, 0, false, 0);
++  #assert progress_admit(1, 1, false, 0);
++  #assert progress_admit(42, 42, false, 0);
++  #assert !progress_admit(0, 1, false, 0);
++  #assert !progress_admit(1, 0, false, 0);
++  #assert !progress_admit(41, 42, false, 0);
++  #assert !progress_admit(43, 42, false, 0);
++}
++
++#test "modern negative revisions and the next revision boundary refuse" {
++  #assert !progress_admit(-1, -1, false, 0);
++  #assert !progress_admit(-2, -2, false, 0);
++  #assert !progress_admit(-1, 0, false, 0);
++  #assert !progress_admit(0, -1, false, 0);
++  #assert progress_admit(999999998, 999999998, false, 0);
++  #assert !progress_admit(999999999, 999999999, false, 0);
++  #assert !progress_admit(1000000000, 1000000000, false, 0);
++}
++
++#test "legacy requires exactly base minus one and an empty record" {
++  #assert progress_admit(-1, 0, true, 0);
++  #assert !progress_admit(-2, 0, true, 0);
++  #assert !progress_admit(0, 0, true, 0);
++  #assert !progress_admit(1, 0, true, 0);
++  #assert !progress_admit(-1, -1, true, 0);
++  #assert !progress_admit(-1, 1, true, 0);
++  #assert !progress_admit(-1, 999999998, true, 0);
++  #assert !progress_admit(-1, 999999999, true, 0);
++  #assert !progress_admit(1, 1, true, 0);
++  #assert !progress_admit(999999998, 999999998, true, 0);
++}
++
++#test "fast and slow clocks cannot admit stale or refuse current modern saves" {
++  #assert progress_admit(7, 7, false, -2000000000);
++  #assert progress_admit(7, 7, false, 2000000000);
++  #assert !progress_admit(6, 7, false, -2000000000);
++  #assert !progress_admit(6, 7, false, 2000000000);
++  #assert !progress_admit(8, 7, false, -2000000000);
++  #assert !progress_admit(8, 7, false, 2000000000);
++  #assert progress_admit(999999998, 999999998, false, -2000000000);
++  #assert !progress_admit(999999999, 999999999, false, 2000000000);
++}
++
++#test "legacy initialization and overwrite refusal ignore both clock extremes" {
++  #assert progress_admit(-1, 0, true, -2000000000);
++  #assert progress_admit(-1, 0, true, 2000000000);
++  #assert !progress_admit(-1, 1, true, -2000000000);
++  #assert !progress_admit(-1, 1, true, 2000000000);
++  #assert !progress_admit(0, 0, true, -2000000000);
++  #assert !progress_admit(0, 0, true, 2000000000);
++}
++
++#test "same base race admits only the first save after revision advancement" {
++  fast_first := 23;
++  if progress_admit(23, fast_first, false, 2000000000) { fast_first += 1; }
++  #assert fast_first == 24;
++  #assert !progress_admit(23, fast_first, false, -2000000000);
++  #assert progress_admit(24, fast_first, false, -2000000000);
++  slow_first := 23;
++  if progress_admit(23, slow_first, false, -2000000000) { slow_first += 1; }
++  #assert slow_first == 24;
++  #assert !progress_admit(23, slow_first, false, 2000000000);
++}
++
++#test "legacy initialization consumes the empty revision for every other writer" {
++  current := 0;
++  if progress_admit(-1, current, true, -2000000000) { current += 1; }
++  #assert current == 1;
++  #assert !progress_admit(-1, current, true, 2000000000);
++  #assert !progress_admit(0, current, false, 2000000000);
++  #assert progress_admit(1, current, false, -2000000000);
++}
++
++// Client time is deliberately unused: only the stored revision orders saves.
++progress_admit :: (base: int, current: int, legacy: bool, client_time: int) -> bool {
++  if legacy { return base == -1 && current == 0; }
++  // Equality makes the nonnegative current bound apply to base as well.
++  return base == current && current >= 0 && current < 999999999;
++}

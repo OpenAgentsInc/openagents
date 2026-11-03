@@ -1,0 +1,4 @@
+#load "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-conversation-IL3DzB/repo/src.coax";
+#test "external span acceptance" #steps 20000000 {
+for lo:-2..<66 {for hi:-2..<66 {want:= -1;if lo>=0 && hi<=63 && lo<=hi {want=0;for id:0..<64 {if id>=lo && id<=hi {want+=1;}}}#assert span_count(lo,hi)==want;}}
+}

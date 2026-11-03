@@ -1,0 +1,23 @@
+#load "process.coax";
+qm_put :: (dir:string,name:string,s:string)->bool {b:[4096]u8;return fs_write(pe_join(dir,name,b[..]),s);}
+qm_verify :: (e:PeEnv,gate:string,root:string,name:string,exit:string,before:string,after:string,r:[]PeRun) {
+  ub:[4096]u8;unit:=pe_join(root,"unit.coax",ub[..]);ab:[4096]u8;accept:=pe_join(root,"accept.coax",ab[..]);sb:[4096]u8;seal:=pe_join(root,"protected.json",sb[..]);ob:[4096]u8;out:=pe_join(root,name,ob[..]);
+  argv:=[24]string.[gate,"verify","--repo",root,"--coax",e.coax,"--accept",accept,"--unit",unit,"--seal",seal,"--checkpoint-before",before,"--checkpoint-after",after,"--engine-exit",exit,"--elapsed-ms","10","--budget-ms","1000","--out",out];
+  pe_cmd(e,argv[..],r);
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}gate:=args_value(a[..],"--gate","");cb:[4096]u8;coax:=proc_getenv("COAX",cb[..]);tb:[4096]u8;root:=fs_temp("coder-qualification-smoke-",tb[..]);
+  if gate.count==0 || coax.count==0 || root.count==0 {return 2;}
+  e:=PeEnv.{repo=root,cwd=root,home=root,coax=coax};ok:=qm_put(root,"AGENTS.md","protected rules\n") && qm_put(root,"unit.coax","f :: (x:int)->int {return x+1;}\n#test \"unit\" {#assert f(0)==1 && f(-2)==-1 && f(3)==4;}\n");
+  ub:[4096]u8;unit:=pe_join(root,"unit.coax",ub[..]);b:[8192]u8;n:=json_raw(b[..],0,"#load ");n=json_write_string(b[..],n,unit);n=json_raw(b[..],n,";\n#test \"external\" {#assert f(4)==5;}\n");ok=ok && qm_put(root,"accept.coax",cast(string)b[0..<n]);
+  ab:[4096]u8;ap:=pe_join(root,"accept.coax",ab[..]);gb:[4096]u8;gp:=pe_join(root,"AGENTS.md",gb[..]);n=pe_cat(b[..],0,gp);n=pe_cat(b[..],n,"\n");n=pe_cat(b[..],n,ap);n=pe_cat(b[..],n,"\n");ok=ok && qm_put(root,"list.txt",cast(string)b[0..<n]);
+  lb:[4096]u8;list:=pe_join(root,"list.txt",lb[..]);sb:[4096]u8;seal:=pe_join(root,"protected.json",sb[..]);r:[1]PeRun;
+  argv:=[6]string.[gate,"seal","--list",list,"--out",seal];pe_cmd(e,argv[..],r[..]);ok=ok && r[0].status==0;
+  qm_verify(e,gate,root,"passed","0",seal,seal,r[..]);ok=ok && r[0].status==0 && pe_has(pe_text(r[..]),"\"qualified\":true");
+  qm_verify(e,gate,root,"engine-failed","1",seal,seal,r[..]);ok=ok && r[0].status==1 && pe_has(pe_text(r[..]),"\"qualified\":false");
+  changed:=qm_put(root,"AGENTS.md","changed rules\n");qm_verify(e,gate,root,"protected-failed","0",seal,seal,r[..]);ok=ok && changed && r[0].status==1 && pe_has(pe_text(r[..]),"\"protected\":false");
+  xb:[4096]u8;next:=pe_join(root,"changed.json",xb[..]);args2:=[6]string.[gate,"seal","--list",list,"--out",next];pe_cmd(e,args2[..],r[..]);ok=ok && r[0].status==0;
+  changed=qm_put(root,"AGENTS.md","protected rules\n");qm_verify(e,gate,root,"checkpoint-failed","0",seal,next,r[..]);ok=ok && changed && r[0].status==1 && pe_has(pe_text(r[..]),"\"checkpoints\":false");
+  changed=qm_put(root,"unit.coax","f :: (x:int)->int {return 0;}\n#test \"broken\" {#assert f(0)==1;}\n");qm_verify(e,gate,root,"acceptance-failed","0",seal,seal,r[..]);ok=ok && changed && r[0].status==1 && pe_has(pe_text(r[..]),"\"acceptance\":false");
+  pe_put(ifx ok then "PASS qualification collector positive and refusal cases\n" else "FAIL qualification collector\n");pe_put("artifacts: ");pe_put(root);pe_put("\n");return ifx ok then 0 else 1;
+}
