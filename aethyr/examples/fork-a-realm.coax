@@ -1,0 +1,52 @@
+// book:begin example
+#load "../forge/doc.coax";
+#import "Basic";
+
+// The text with its first `from` replaced by `to`.
+swap :: (t: string, from: string, to: string, buf: [] u8) -> string {
+  for i: 0..<t.count {
+    if i + from.count <= t.count && t[i..<i + from.count] == from {
+      n := forge_put(buf, 0, t[0..<i]); n = forge_put(buf, n, to); n = forge_put(buf, n, t[i + from.count..<t.count]);
+      return cast(string) buf[0..<n];
+    }
+  }
+  return "";
+}
+// A model's text without its first line (the revision): the realm itself.
+realm :: (d: [] ForgeDoc, buf: [] u8) -> string {
+  n := forge_doc_text(d, buf);
+  at := 0; while buf[at] != '\n' { at += 1; }
+  return cast(string) buf[at + 1..<n];
+}
+
+// Lamp Cove at its published revision 4, and the fork the server made of it: the same document
+// at the fork's own revision 1, naming its parent. The fork's edits are its own log; the parent's
+// model doesn't change, and the parent plus the fork's log is the fork.
+main :: () {
+  parent: [1] ForgeDoc; forge_reset(parent[..], 1);
+  read := forge_read_doc(parent[..], FORGE_DOC_V1);
+  print("parent read: %, revision %\n", read.ok, parent[0].rev);
+  a: [4096] u8; b: [4096] u8;
+  doc := swap(swap(FORGE_DOC_V1, "\"rev\": 4", "\"rev\": 1", a[..]), "\"forked_from\": null",
+              "\"forked_from\": {\"rev\": 4, \"slug\": \"lamp-cove\"}", b[..]);
+  fork: [1] ForgeDoc; forge_reset(fork[..], 1);
+  r := forge_read_doc(fork[..], doc);
+  print("fork read: %, revision %, forked from % at revision %\n", r.ok, fork[0].rev, cast(string) r.from[0..<r.from_n], r.from_rev);
+  p0: [8192] u8; f0: [8192] u8;
+  print("the fork starts as its parent's realm: %\n", realm(parent[..], p0[..]) == realm(fork[..], f0[..]));
+  before: [8192] u8; bn := forge_doc_text(parent[..], before[..]);
+  edited := forge_rotate(fork[..], "trees:3", 90) && forge_resize(fork[..], "trees:3", 150) && forge_remove(fork[..], "rocks:0");
+  print("the fork turns trees:3, makes it 150%%, takes rocks:0 away: %, % steps in its log\n", edited, fork[0].done);
+  after: [8192] u8; an := forge_doc_text(parent[..], after[..]);
+  print("the parent is byte-identical: %\n", cast(string) before[0..<bn] == cast(string) after[0..<an]);
+  base: [1] ForgeDoc; forge_reset(base[..], 1);
+  replayed := forge_read_doc(base[..], FORGE_DOC_V1).ok && forge_replay(base[..], fork[..]);
+  p1: [8192] u8; f1: [8192] u8;
+  print("parent + the fork's log replays: %, and is the fork: %\n", replayed, realm(base[..], p1[..]) == realm(fork[..], f1[..]));
+  body: [2048] u8; n := forge_save_body(fork[..], body[..]);
+  print("the fork's save: %\n", cast(string) body[0..<n]);
+  c: [4096] u8;
+  no := forge_read_doc(fork[..], swap(doc, "\"rev\": 4, \"slug\"", "\"rev\": 0, \"slug\"", c[..]));
+  print("a parent at revision 0 -> refused: %; the fork keeps its % edits\n", no.why, fork[0].done);
+}
+// book:end example

@@ -96,7 +96,7 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
     for i: 0..<sn { got.from[i] = slug[i]; }
     got.from_n = sn;
   }
-  // book:end fork
+// book:end fork
   next: [1] ForgeDoc; forge_reset(next[..], rev);
   moved := jv_get(j[0], at, "moved");
   if jv_kind(j[0], moved) != JV_ARRAY { return forge_why("no moves"); }

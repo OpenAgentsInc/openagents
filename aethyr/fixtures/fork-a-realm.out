@@ -1,0 +1,8 @@
+parent read: true, revision 4
+fork read: true, revision 1, forked from lamp-cove at revision 4
+the fork starts as its parent's realm: true
+the fork turns trees:3, makes it 150%, takes rocks:0 away: true, 3 steps in its log
+the parent is byte-identical: true
+parent + the fork's log replays: true, and is the fork: true
+the fork's save: {"rev":1,"moved":[{"entity":"trees:3","x":1.25,"z":-2.50},{"entity":"rocks:0","x":-40.00,"z":0.07}],"shaped":[{"entity":"trees:3","yaw":90,"scale":150,"gone":false},{"entity":"rocks:0","yaw":0,"scale":100,"gone":true}]}
+a parent at revision 0 -> refused: a fork's parent out of bounds; the fork keeps its 3 edits

@@ -220,6 +220,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/fork-a-realm.coax",
+      "chapter": "aethyr/book/ch055-fork-a-realm.md",
+      "stdout": "aethyr/fixtures/fork-a-realm.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
