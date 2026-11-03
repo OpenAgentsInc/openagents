@@ -43,12 +43,12 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 67 are implemented and 57 are planned. The 67 implemented
+Of the 124 chapters, 68 are implemented and 56 are planned. The 68 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 62, 65, 66, 67,
-68, 69, 73, 74, 94, 100, 104, 105, 106, 107 and 111 are new.
+39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 62, 65, 66, 67, 68,
+69, 70, 73, 74, 94, 100, 104, 105, 106, 107 and 111 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
 `coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -243,7 +243,7 @@ P2P messages, BIP-324 encrypted transport, the handshake, peer discovery and con
 | [67. The v2 encrypted transport](ch067-the-v2-encrypted-transport.md) | Runnable: native C | BIP-324's key derivation, FSChaCha20 and FSChaCha20Poly1305 with rekeying every 224 uses, packets sealed and opened in place with the ignore bit, the garbage and its terminator, and the short message IDs. All 7 packet vectors pass from the private key, and every line agrees with BIP-324's `reference.py` and Core's `net.cpp`. |
 | [68. The handshake and feature negotiation](ch068-the-handshake-and-feature-negotiation.md) | Runnable: native C | The `version` and `verack` exchange as a pure state machine with Core's checks in Core's order (services, minimum version, the payload's tail, self-connection by nonce), `wtxidrelay`, `sendaddrv2` and `feature` before `verack`, `sendheaders`, `sendcmpct`, `ping` and `feefilter`, the inactivity timeouts, and the transport underneath: v1 frames, the v2 handshake, v1 detection by a v2 responder and the retry in v1. Every line agrees with Core's transliterated `ProcessMessage`, `messages.py` and BIP-324's `reference.py`. |
 | [69. Addresses and the address manager](ch069-addresses-and-the-address-manager.md) | Runnable: native C | Bitcoin Core's `AddrMan`: network groups without an asmap, the new and tried tables with keyed SHA-256d buckets, `Add`, `Good` with test-before-evict, `Attempt`, `Select` and `GetAddr` over `FastRandomContext`, and `peers.dat` in Core's format 4. Then `ProcessAddrs`' limits and token bucket, `RelayAddress`, the cached `getaddr` answer and DNS seed timing. Core's `addrman_tests.cpp` cases pass, and every line agrees with Core's transliterated `addrman.cpp`, `netgroup.cpp` and `net_processing.cpp`. |
-| 70. Connections: outbound, block-relay-only, feelers and eviction | Planned | The node keeps 8 full-relay and 2 block-relay-only outbound connections and makes feeler connections. With its inbound slots full it evicts by Bitcoin Core's protected-peer rules, and Core's eviction cases pass. |
+| [70. Connections: outbound, block-relay-only, feelers and eviction](ch070-connections-outbound-block-relay-only-feelers-and-eviction.md) | Runnable: native C | Bitcoin Core's connection manager over chapter 69's address manager: 8 full-relay, 2 block-relay-only and 1 feeler slot, anchors first, exponential timers for feelers and extra block-relay-only peers, the address loop with one peer per network group and `IsBadPort`, `SelectNodeToEvict` with its protected peers, inbound acceptance and `EvictExtraOutboundPeers`. Core's `net_peer_eviction_tests.cpp` cases pass, and every line agrees with Core's transliterated `net.cpp`, `node/eviction.cpp` and `net_processing.cpp`. |
 | 71. Misbehavior, limits and denial of service | Planned | Each message limit (size, `inv` and `addr` counts and rates, unconnecting headers and the low-work headers presync) refuses its oversized case. A peer that sends an invalid block is disconnected, and memory per peer stays under its stated bound under a flood. |
 | 72. Headers sync and block download | Planned | From genesis the node downloads headers by locator, presyncs them against low-work spam, and fetches blocks from many peers through a moving window, replacing a peer that stalls. It syncs regtest and signet from Bitcoin Core peers to their tips. |
 | [73. Compact blocks](ch073-compact-blocks.md) | Runnable: native C | BIP-152 version 2: short IDs from SipHash-2-4 keyed by SHA-256(header || nonce), the `cmpctblock`, `getblocktxn` and `blocktxn` messages with differential indexes, and `PartiallyDownloadedBlock`'s `InitData` and `FillBlock`, collisions and `IsBlockMutated` included, with Core's high-bandwidth peer choice. Block 413,567's keys, short IDs and message equal `messages.py`'s, and Core's `blockencodings_tests.cpp` cases pass. |

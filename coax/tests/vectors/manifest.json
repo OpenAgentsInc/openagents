@@ -1920,7 +1920,8 @@
       "covers": [
         "bitcoin-p2p",
         "bitcoin-v2-transport",
-        "bitcoin-handshake"
+        "bitcoin-handshake",
+        "bitcoin-connman"
       ],
       "retrieved": "2026-11-03",
       "sha256": "c268325ae03f4f80e8427af80eb794265b08e3686923b7a5a8b850416bed213b",
@@ -1936,7 +1937,8 @@
         "bitcoin-p2p",
         "bitcoin-v2-transport",
         "bitcoin-handshake",
-        "bitcoin-addrman"
+        "bitcoin-addrman",
+        "bitcoin-connman"
       ],
       "retrieved": "2026-11-03",
       "sha256": "05e8ce20762e9c23e060d428fb5218cb32fea599afbd40b2417b9bd2a236d7a6",
@@ -1952,7 +1954,8 @@
         "bitcoin-p2p",
         "bitcoin-handshake",
         "bitcoin-compact-blocks",
-        "bitcoin-addrman"
+        "bitcoin-addrman",
+        "bitcoin-connman"
       ],
       "retrieved": "2026-11-03",
       "sha256": "bcd69aba37869cd68dfe03cce37b1400d1488b59ef1faafdc319ddcb51ebea36",
@@ -2524,7 +2527,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-utxo-set",
-        "bitcoin-addrman"
+        "bitcoin-addrman",
+        "bitcoin-connman"
       ],
       "retrieved": "2026-11-03",
       "sha256": "c0b383e8c1ee47cd3d0cb02630ad316cd8e915b857fa19193a7111d79cbe4878",
@@ -2929,7 +2933,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-addrman"
+        "bitcoin-addrman",
+        "bitcoin-connman"
       ],
       "retrieved": "2026-11-03",
       "sha256": "d4b7ae941920c48731fc04a6bfbefb11c65d829b1a81b45ff1084581dd7fee0a",
@@ -2981,7 +2986,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-addrman"
+        "bitcoin-addrman",
+        "bitcoin-connman"
       ],
       "retrieved": "2026-11-03",
       "sha256": "81d2a13a3801dae67f48ae45fc604c10358c4360a9dc11eccd7b6e535d162c60",
@@ -3007,7 +3013,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-addrman"
+        "bitcoin-addrman",
+        "bitcoin-connman"
       ],
       "retrieved": "2026-11-03",
       "sha256": "5459198b3ae7962176537041ae01a8f74f7fa0a02e5b363ce378e6f5ac7ac430",
@@ -3247,6 +3254,84 @@
       "retrieved": "2026-11-03",
       "sha256": "d795354fafbbcef7c6d28ff8b9912e896575276b4ca85aeed2fc57f18c41174a",
       "bytes": 8417
+    },
+    {
+      "path": "upstream/bitcoin-core/eviction.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/eviction.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-connman"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "f9cabeeec931cd4d3c2b50f0e9abe8fbaa87cef5c47fbd6de6ecfadc4bd9ce3c",
+      "bytes": 11536
+    },
+    {
+      "path": "upstream/bitcoin-core/eviction.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/eviction.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-connman"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "4d140c3f4d5c7eff6ae88083d31803febcfbce29e3518aa3fc435a916832b55e",
+      "bytes": 2418
+    },
+    {
+      "path": "upstream/bitcoin-core/net_peer_eviction_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/net_peer_eviction_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-connman"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "02c8421823aa431341b600bb498551c1de15596b3e948c56297d1a8978305b2e",
+      "bytes": 30508
+    },
+    {
+      "path": "upstream/bitcoin-core/netbase.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/netbase.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-connman"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "2cf9b0a0f94e8632fa585927c16e6714352770d31affe6ce986c19ad468146d4",
+      "bytes": 35921
+    },
+    {
+      "path": "upstream/bitcoin-core/random.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/random.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-connman"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "36c7f0204674539fa86d78766cd0f074420a1c46578a054bc1f0ac1c0b62a090",
+      "bytes": 24555
+    },
+    {
+      "path": "upstream/bitcoin-core/test_util_net.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/util/net.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-connman"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "432b91c123750a21097cb2efacbc5f0fca88c461a8606e4a458bb71c257dbb5e",
+      "bytes": 13888
     }
   ]
 }

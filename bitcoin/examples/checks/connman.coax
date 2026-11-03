@@ -1,0 +1,42 @@
+// The checks of connman.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/connman.coax
+#load "../connman.coax";
+
+// book:begin check
+// Whatever the candidates, the peer chosen for eviction is an inbound
+// peer without noban, and with 20 candidates or fewer nobody is chosen.
+#forall "eviction never picks a noban or outbound peer" k: 0..<60 #steps 2000000000 {
+  rng := [1] AmRng.[seeded(cast,trunc(u8) (k + 1))];
+  n := 10 + k * 2;
+  c: [200] CnCand; saved: [200] CnCand; trace: [8] int;
+  cn_random_candidates(rng[..], c[0..<n]);
+  for i: 0..<n { c[i].noban = am_randrange(rng[..], 5) == 0; c[i].inbound = am_randrange(rng[..], 4) != 0; saved[i] = c[i]; }
+  eligible := 0;
+  for i: 0..<n { if !c[i].noban && c[i].inbound { eligible += 1; } }
+  v := cn_select_to_evict(c[0..<n], trace[..]);
+  if eligible <= 20 { #assert v < 0; }
+  if v >= 0 { #assert v < n && !saved[v].noban && saved[v].inbound; }
+}
+// ProtectEvictionCandidatesByRatio always leaves the larger half.
+#forall "the ratio protection leaves n - n/2" n: 0..<120 #steps 400000000 {
+  rng := [1] AmRng.[seeded(cast,trunc(u8) n)];
+  c: [120] CnCand;
+  cn_random_candidates(rng[..], c[0..<n]);
+  #assert cn_protect_by_ratio(c[0..<n], n) == n - n / 2;
+}
+// The logarithm turns products into sums, and delays are never negative.
+#forall "ln(xy) = ln x + ln y; delays are non-negative" k: 1..<200 #steps 40000000 {
+  x := cast(f64) k / 37.0; y := 1.0 / cast(f64) (k * 3 + 1);
+  d := cn_ln(x * y) - cn_ln(x) - cn_ln(y);
+  #assert d < 0.000000000000005 && d > -0.000000000000005;
+  rng := [1] AmRng.[seeded(cast,trunc(u8) k)];
+  #assert cn_exp_delay(rng[..], CN_FEELER_INTERVAL * 1000000) >= 0;
+}
+// A banned address gets in only with noban, whatever the slots.
+#forall "a banned address needs noban" k: 0..<40 {
+  c: [1] CnCand; s: [1] CnCand;
+  #assert cn_accept(k, 20, true, k % 2 == 0, false, c[0..<0], s[..]).code == CN_DROP_BANNED;
+  #assert cn_accept(k, 20, true, false, true, c[0..<0], s[..]).code != CN_DROP_BANNED;
+}
+// book:end check

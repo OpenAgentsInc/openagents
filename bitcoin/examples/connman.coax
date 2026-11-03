@@ -1,0 +1,229 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/connman.coax";
+#import "Basic";
+
+NOW :: 1700000000;
+GOOD_SERVICES :: HS_NODE_NETWORK | HS_NODE_WITNESS;
+
+// The seed of a random context: 32 copies of one byte.
+seeded :: (b: u8) -> AmRng { seed: [32] u8; for i: 0..<32 { seed[i] = b; } return am_rng(seed[..]); }
+show :: (a: AmAddr) { print("%.%.%.%:%", a.ip[0], a.ip[1], a.ip[2], a.ip[3], a.port); }
+// A number right-aligned in four columns.
+pad4 :: (x: int) {
+  if x < 1000 { print(" "); } if x < 100 { print(" "); } if x < 10 { print(" "); }
+  print("%", x);
+}
+// Microseconds as seconds with six decimals.
+print_secs :: (us: int) {
+  print("%.", us / 1000000);
+  frac := us % 1000000; div := 100000;
+  while div > 0 { print("%", (frac / div) % 10); div /= 10; }
+}
+who :: (id: int) { if id < 0 { print("nobody"); } else { print("%", id); } }
+kind :: (conn: int) -> string {
+  if conn == HS_OUTBOUND { return "full-relay "; }
+  if conn == HS_BLOCK_RELAY { return "block-relay"; }
+  return "feeler     ";
+}
+
+slots :: () {
+  print("slots\n");
+  sizes := [4] int.[CN_MAX_CONNECTIONS, 125, 10, 4];
+  for n: sizes {
+    l := cn_limits(n);
+    print("  -maxconnections=%: % full-relay, % block-relay-only, % feeler, % inbound\n", n, l.full, l.block, l.feelers, l.inbound);
+  }
+}
+
+timers :: () {
+  print("exponential timers\n");
+  rng := [1] AmRng.[seeded(3)];
+  print("  feeler delays (us):");
+  for i: 0..<5 { print(" %", cn_exp_delay(rng[..], CN_FEELER_INTERVAL * 1000000)); }
+  total := 0;
+  for i: 0..<2000 { total += cn_exp_delay(rng[..], CN_FEELER_INTERVAL * 1000000); }
+  print("\n  mean of 2,000 more: % ms (FEELER_INTERVAL is % s)\n", total / 2000 / 1000, CN_FEELER_INTERVAL);
+  print("  bad ports among 8333 22 80 443 6667 10080 18333:");
+  ports := [7] int.[8333, 22, 80, 443, 6667, 10080, 18333];
+  for p: ports { if cn_bad_port(p) { print(" %", p); } }
+  print(" (% in all)\n", CN_BAD_PORTS.count);
+}
+
+// The simulated network: 48 /16 groups of 5 addresses. One address in
+// every eleventh group listens on port 22, one in some groups serves
+// only recent blocks, and an address fails when its first and third
+// bytes add up to a multiple of 4.
+fails :: (a: AmAddr) -> bool { return (cast(int) a.ip[0] + cast(int) a.ip[2]) % 4 == 0; }
+outbound :: () {
+  print("opening connections for 15 minutes\n");
+  new_t: [65536] int; tried_t: [16384] int; info: [4096] AmInfo; random: [4096] int; index: [8192] int;
+  scratch: [4096] int; am_rng_: [1] AmRng; m: [1] AddrMan;
+  zero: [32] u8; one: [32] u8; one[0] = 1;
+  am_rng_[0] = am_rng(zero[..]);
+  #assert am_init(m[..], one[..], am_rng_[..], new_t[..], tried_t[..], info[..], random[..], index[..]);
+  for g: 0..<48 { for i: 0..<5 {
+    services := GOOD_SERVICES;
+    if g % 9 == 4 && i == 1 { services = HS_NODE_NETWORK_LIMITED; }
+    a := am_v4(20 + g, (g * 7) % 256, i, 1 + g % 3, ifx g % 11 == 0 && i == 0 then 22 else 8333);
+    r := [1] AmRecord.[AmRecord.{addr=a, services=services, time=NOW - 3600}];
+    added := am_add(m[..], r[..], am_v4(99, 99, 1, 1, 0), 0, NOW);
+  } }
+
+  node: [1] CnNode; peers: [16] CnPeer; rng := [1] AmRng.[seeded(5)];
+  start := NOW * 1000000;
+  cn_start(node[..], m[..], rng[..], peers[..], cn_limits(CN_MAX_CONNECTIONS), start);
+  stored := cn_add_anchor(node[..], AmRecord.{addr=am_v4(57, 3, 3, 3, 8333), services=GOOD_SERVICES});
+  print("  first feeler after "); print_secs(node[0].next_feeler - start);
+  print(" s, first extra block-relay-only after "); print_secs(node[0].next_extra_block - start); print(" s\n");
+
+  next_check := NOW + CN_CHECK_INTERVAL;
+  for step: 0..<15 * 60 * 2 {
+    now_us := start + step * 500000; now := now_us / 1000000;
+    if now >= next_check {
+      next_check += CN_CHECK_INTERVAL;
+      blocks := cn_count(node[..], HS_BLOCK_RELAY);
+      id := cn_check_extra(node[..], now);
+      if id >= 0 {
+        gone := cn_disconnect(node[..], id);
+        print("  "); pad4(now - NOW); print(" s  % block-relay-only peers: disconnect peer %\n", blocks, id);
+      }
+    }
+    node[0].extra_block_ok = now >= NOW + 60;   // "synced" after a minute
+    a := cn_step(node[..], now_us);
+    if a.conn < 0 { continue; }
+    print("  "); pad4(now - NOW);
+    if !a.pick.found { print(" s  %: nothing after % tries\n", kind(a.conn), a.pick.tries); continue; }
+    ok := !fails(a.pick.addr);
+    print(" s  % ", kind(a.conn)); show(a.pick.addr);
+    print("% after % tries: %\n", ifx a.pick.anchor then " (anchor)" else "", a.pick.tries, ifx ok then "connected" else "failed");
+    n := node[0].next_id;
+    id := cn_result(node[..], a, ok, now, ifx n % 3 == 0 then 0 else now + (n * 37) % 300);
+  }
+  print("  after 15 minutes: % full-relay, % block-relay-only, % groups; addrman % new, % tried, check %\n",
+    cn_count(node[..], HS_OUTBOUND), cn_count(node[..], HS_BLOCK_RELAY), cn_groups(node[..]),
+    am_size(m[..], -1, 1), am_size(m[..], -1, 0), am_check(m[..], scratch[..]));
+}
+
+// The protection cases, set up as in Core's tests.
+setup :: (k: int, c: CnCand) -> CnCand {
+  x := c; id := c.id;
+  x.local = false; x.net = AM_NET_IPV4;
+  if k == 0 { x.connected = id; }
+  if k == 1 { if id == 3 || id == 8 || id == 9 { x.net = AM_NET_ONION; } }
+  if k == 2 { x.connected = id; x.net = ifx id == 3 || id > 7 then AM_NET_ONION else AM_NET_IPV6; }
+  if k == 3 { x.local = id == 1 || id == 9 || id == 11; }
+  if k == 4 {
+    x.connected = id;
+    if id == 2 || id == 7 || id == 10 { x.net = AM_NET_I2P; }
+    if id == 5 { x.net = AM_NET_CJDNS; }
+  }
+  return x;
+}
+
+inbound :: () {
+  print("inbound eviction: 40 random candidates\n");
+  rng := [1] AmRng.[seeded(4)]; r := rng[..];
+  c: [200] CnCand; trace: [8] int;
+  cn_random_candidates(r, c[0..<40]);
+  victim := cn_select_to_evict(c[0..<40], trace[..]);
+  print("  left after netgroup %, ping %, tx %, block-relay-only %, block %, ratio %, prefer-evict %\n",
+    trace[0], trace[1], trace[2], trace[3], trace[4], trace[5], trace[6]);
+  print("  evict peer %, youngest of the largest group (% peers)\n", victim, trace[7]);
+  small := 0; large := 0;
+  for n: 0..<21 { cn_random_candidates(r, c[0..<n]); if cn_select_to_evict(c[0..<n], trace[..]) < 0 { small += 1; } }
+  for n: 29..<60 { cn_random_candidates(r, c[0..<n]); if cn_select_to_evict(c[0..<n], trace[..]) >= 0 { large += 1; } }
+  print("  0 to 20 random candidates: % of 21 evict no one; 29 to 59: % of 31 evict one\n", small, large);
+
+  print("Core's protection cases (12 peers)\n");
+  labels := [5] string.["uptime: the 6 longest connected", "3 onion peers", "onion 3, 8-11 and uptime", "localhost 1, 9, 11", "I2P 2, 7, 10, CJDNS 5"];
+  for k: 0..<5 {
+    cn_random_candidates(r, c[0..<12]);
+    for i: 0..<12 { c[i] = setup(k, c[i]); }
+    left := cn_protect_by_ratio(c[0..<12], 12);
+    print("  %: protected", labels[k]);
+    for id: 0..<12 {
+      kept := false;
+      for i: 0..<left { if c[i].id == id { kept = true; } }
+      if !kept { print(" %", id); }
+    }
+    print("\n");
+  }
+
+  print("an attacker fills the inbound slots\n");
+  max_in := cn_limits(CN_MAX_CONNECTIONS).inbound;
+  peers: [256] CnCand; scratch: [256] CnCand; n := 0;
+  for i: 0..<60 {
+    p := CnCand.{id=i, connected=NOW - 86400 + i * 600, ping=20000 + (i * 7919) % 180000, relevant=true, relay=i % 5 != 0, net=AM_NET_IPV4};
+    if i % 4 == 0 { p.block = NOW - 600 * (i % 10); }
+    if i % 3 == 0 { p.tx = NOW - 60 * (i % 13); }
+    p.group = cn_keyed_group(11, 22, am_v4(30 + i, i * 3 % 256, 1, 1, 8333));
+    peers[n] = p; n += 1;
+  }
+  attackers := max_in - 60 + 200; lost := 0;
+  for k: 0..<attackers {
+    if n >= max_in {
+      for i: 0..<n { scratch[i] = peers[i]; }
+      v := cn_select_to_evict(scratch[0..<n], trace[..]);
+      if v < 60 { lost += 1; }
+      w := 0;
+      for i: 0..<n { if peers[i].id != v { peers[w] = peers[i]; w += 1; } }
+      n = w;
+    }
+    peers[n] = CnCand.{id=60 + k, connected=NOW + k, ping=5000, relevant=true, relay=true, net=AM_NET_IPV4,
+                       group=cn_keyed_group(11, 22, am_v4(66, k % 3, k / 250 % 256, 1 + k % 250, 8333))};
+    n += 1;
+  }
+  honest := 0;
+  for i: 0..<n { if peers[i].id < 60 { honest += 1; } }
+  print("  % slots, 60 honest peers, % attacker connections from 3 groups: % honest peers evicted, % remain\n", max_in, attackers, lost, honest);
+
+  print("accepting an inbound connection\n");
+  few: [20] CnCand;
+  cn_random_candidates(r, few[..]);
+  all := peers[0..<n];
+  print("  % inbound: ", max_in - 1); decision(cn_accept(max_in - 1, max_in, false, false, false, all, scratch[..]));
+  print("\n  % inbound: ", max_in); decision(cn_accept(max_in, max_in, false, false, false, all, scratch[..]));
+  print("\n  full, 20 candidates all protected: "); decision(cn_accept(20, 20, false, false, false, few[..], scratch[..]));
+  print("\n  banned: "); decision(cn_accept(5, max_in, true, false, false, all, scratch[..]));
+  print("; with noban: "); decision(cn_accept(5, max_in, true, false, true, all, scratch[..]));
+  print("\n  discouraged, one slot left: "); decision(cn_accept(max_in - 1, max_in, false, true, false, all, scratch[..]));
+  print("; two left: "); decision(cn_accept(max_in - 2, max_in, false, true, false, all, scratch[..]));
+  print("\n");
+}
+decision :: (a: CnAccept) {
+  if a.code == CN_ACCEPT { print("accepted"); }
+  if a.code == CN_ACCEPT_EVICTING { print("accepted, evicting peer %", a.victim); }
+  if a.code == CN_DROP_BANNED { print("dropped (banned)"); }
+  if a.code == CN_DROP_DISCOURAGED { print("dropped (discouraged)"); }
+  if a.code == CN_DROP_FULL { print("dropped (full)"); }
+}
+
+extra :: () {
+  print("extra outbound peers\n");
+  t := NOW + 3600;
+  p := [3] CnPeer.[CnPeer.{id=4, conn=HS_BLOCK_RELAY, connected=t - 900, last_block=t - 100},
+                   CnPeer.{id=7, conn=HS_BLOCK_RELAY, connected=t - 600, last_block=t - 50},
+                   CnPeer.{id=12, conn=HS_BLOCK_RELAY, connected=t - 60, last_block=t - 10}];
+  print("  block-relay-only 4, 7, 12; 12 sent the latest block: disconnect "); who(cn_evict_extra_block(p[..], t));
+  p[2].last_block = 0;
+  print("\n  12 sent no block: disconnect "); who(cn_evict_extra_block(p[..], t));
+  p[2].connected = t - 20;
+  print("\n  12 connected 20 s ago: disconnect "); who(cn_evict_extra_block(p[..], t));
+  onion: [32] u8; f: [9] CnPeer;
+  for i: 0..<8 { f[i] = CnPeer.{id=i, conn=HS_OUTBOUND, addr=am_v4(20 + i, 1, 1, 1, 8333), connected=t - 3000 + i, last_announce=t - 100 * (i % 4)}; }
+  f[8] = CnPeer.{id=20, conn=HS_OUTBOUND, addr=am_bytes(AM_NET_ONION, onion[..], 8333), connected=t - 40, last_announce=t - 5};
+  print("\n  9 full-relay: disconnect "); who(cn_evict_extra_full(f[..], t));
+  print(" (oldest block announcement, then the youngest)\n");
+  f[3].protect = true; f[7].protect = true;
+  print("  3 and 7 protected: disconnect "); who(cn_evict_extra_full(f[..], t));
+  print("; the only onion peer is never chosen\n");
+}
+
+main :: () {
+  slots();
+  timers();
+  outbound();
+  inbound();
+  extra();
+}
+// book:end example

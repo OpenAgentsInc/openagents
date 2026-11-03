@@ -1484,15 +1484,21 @@
   {
    "number": 70,
    "title": "Connections: outbound, block-relay-only, feelers and eviction",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch070-connections-outbound-block-relay-only-feelers-and-eviction.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     68,
     69
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/connman.coax",
+    "bitcoin/examples/connman.coax",
+    "bitcoin/examples/checks/connman.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

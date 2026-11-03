@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-67 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+68 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -43,7 +43,9 @@ encrypted transport built on it. Chapter 68's
 [`cmpctblock.coax`](../coax/lib/bitcoin/cmpctblock.coax) relays blocks as
 BIP-152 compact blocks and rebuilds them from a mempool. Chapter 69's
 [`addrman.coax`](../coax/lib/bitcoin/addrman.coax) is Core's address manager,
-`peers.dat` and the rules for `addr` relay. Chapter 50's
+`peers.dat` and the rules for `addr` relay. Chapter 70's
+[`connman.coax`](../coax/lib/bitcoin/connman.coax) chooses outbound
+connections and evicts inbound peers as Core does. Chapter 50's
 [`chainparams.coax`](../coax/lib/bitcoin/chainparams.coax) holds each
 network's parameters, chapter 49's
 [`witness.coax`](../coax/lib/bitcoin/witness.coax) checks a block's BIP-141

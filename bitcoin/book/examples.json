@@ -728,6 +728,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/connman.coax",
+      "chapter": "bitcoin/book/ch070-connections-outbound-block-relay-only-feelers-and-eviction.md",
+      "stdout": "bitcoin/fixtures/connman.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }
