@@ -673,8 +673,16 @@ owners who want it. A duel invitation is a later phase.
 
 ### 6.7 Weather, time of day and the flock
 
-- Weather and the day cycle are computed from the seed and the relay clock on
-  every page (section 3.10). No frames.
+- The room server owns the weather and the day cycle (#12709,
+  `coax/web/room/room-sky.coax`). Its day is 48 minutes long (`WIRE_DAY_MS`) and
+  turns on its wall clock. Its weather is the temperate schedule on
+  `WIRE_WEATHER_SEED` at its world tick. `W` carries both: `DAY` is ms into the
+  day at `TICK`, and `WEATHER` is the state plus 1. A seat hears `W` when it
+  sits, and every seat hears it again when the weather turns.
+- The page draws the day and the rain on the server clock (section 3.10,
+  `everglade-net.coax` `net_sky_*`). Where the server's state differs from the
+  page's schedule, the page pins the server's state. Offline, or with a `W`
+  whose `WEATHER` is 0, the page keeps its own sky.
 - Your flock (the river quest's birds) is a pose flag; other pages draw a
   flock following you with their own local flocking.
 

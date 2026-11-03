@@ -3118,7 +3118,11 @@ weather_facts :: (s: [] Everglade, text: string) {
 weather_frame :: (s: [] Everglade, u: [] f32, still: bool) {
   w := Weather.{state = WEATHER_CLEAR, rain = 0.0, wind_x = 0.0, wind_z = 0.0, fog = 0.0, cloud = 0.0, lightning = 0.0};
   if s[0].weather_ready && (!still || s[0].weather_pin >= 0) {
-    tick := ifx still then 1000 * WEATHER_BLOCK else weather_tick_at(cast(u64) fmax(s[0].weather_ms + (s[0].time - s[0].weather_t0) * 1000.0, 0.0));
+    // in a room, the server's clock and its weather (everglade-net.coax net_sky_*, #12709), else the page's
+    ms := net_sky_ms(s);
+    if ms < 0 { ms = s[0].weather_ms + (s[0].time - s[0].weather_t0) * 1000.0; }
+    tick := ifx still then 1000 * WEATHER_BLOCK else weather_tick_at(cast(u64) fmax(ms, 0.0));
+    if !still && s[0].weather_pin < 0 { net_sky_weather(s, s[0].weather[..], tick); }
     w = weather_sample(s[0].weather[..], tick);
     if s[0].time - s[0].weather_at >= 1.0 || s[0].time < s[0].weather_at {
       s[0].ground = weather_ground(s[0].weather[..], tick);
@@ -3858,7 +3862,11 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // the painterly preset at the clock (art-styles.md 13): the day turns unless the page is still;
   // the key light (the sun, or the moon at night) is the one everything here is lit by
   // (a still page, a golden or reduced motion, shows a turning day at noon, so its shot is the same every time)
-  if !still && redit_row_on(s[0].ev.ed[..], "daycycle") { s[0].clock = verse_style_clock_at(s[0].day, cast(f32) (s[0].time - s[0].day_from)); }
+  // (in a room the turning day is the server's, everglade-net.coax net_sky_day, #12709)
+  if !still && redit_row_on(s[0].ev.ed[..], "daycycle") {
+    sky := ifx s[0].day.mode == STYLE_CLOCK_CYCLE then net_sky_day(s) else -1.0f32;
+    s[0].clock = ifx sky >= 0 then sky else verse_style_clock_at(s[0].day, cast(f32) (s[0].time - s[0].day_from));
+  }
   else if s[0].day.mode != STYLE_CLOCK_FIXED { s[0].clock = 0.5; }
   fork_frame(s, ifx still then 0.0f32 else dt);   // a fork's rules: night holds the clock (everglade-fork.coax)
   // no toon outlines here (the owner, October 29): no rim line along any silhouette, people, props, buildings or trees

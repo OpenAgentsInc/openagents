@@ -1,0 +1,70 @@
+// Everglade's time of day and weather on the room server (GitHub #12709; spec
+// docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.10 and 6.7). The server owns the
+// room's sky: its day is WIRE_DAY_MS long and turns on the server's wall clock, and its weather is
+// verse/water-weather.coax's temperate schedule on WIRE_WEATHER_SEED at the server's world tick. A
+// seat hears both in W when it sits (room-everglade.coax eg_join), and every seat hears W again when
+// the weather turns; the page draws the day and the rain on the server's clock (everglade-net.coax
+// net_sky_*), so every page in the room has the same sky whatever its own clock says.
+//   coax/bin/coax test coax/web/room/room.coax --only "sky:"
+
+#load "../../../verse/water-weather.coax";
+
+// The weather state the server runs at wall ms (the block's, a pin's when the server has one).
+eg_sky_weather :: (wall_ms: int) -> int {
+  w: [1] WeatherSchedule;
+  weather_schedule(w[..], weather_temperate(), WIRE_WEATHER_SEED);
+  return weather_states(w[..], weather_tick_at(cast(u64) (ifx wall_ms > 0 then wall_ms else 0))).after;
+}
+// Ms into the server's day at wall ms.
+eg_sky_day :: (wall_ms: int) -> int { return ifx wall_ms > 0 then wall_ms % WIRE_DAY_MS else 0; }
+// Room k's world header now: its tick, rate and seed, the day and the weather.
+eg_sky_world :: (v: [] RmServer, k: int) -> WireWorld {
+  return WireWorld.{tick = v[0].eg[k].tick, hz = EG_HZ, seed = v[0].eg[k].seed,
+    day = eg_sky_day(v[0].wall_ms), weather = eg_sky_weather(v[0].wall_ms) + 1};
+}
+// Each tick: when the weather turns, every seat hears the new header.
+eg_sky_tick :: (v: [] RmServer, k: int) {
+  w := eg_sky_world(v, k);
+  if w.weather == v[0].eg[k].sky { return; }
+  v[0].eg[k].sky = w.weather;
+  b: [128] u8;
+  n := wire_put_world(b[..], 0, w);
+  for s: 0..<EG_SEATS {
+    if v[0].eg[k].seat[s].live { rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[s].conn, -1, cast(string) b[0..<n], ""); }
+  }
+}
+
+#test "sky: a seat hears the server's day and weather when it sits, and everyone hears the weather turn on the server's clock" #steps 2000000000 {
+  // a wall time just before a block whose weather differs from the one before it
+  block := WEATHER_BLOCK_SECONDS * 1000;
+  at := 1762190000000 / block * block;
+  while eg_sky_weather(at + block) == eg_sky_weather(at + block - 1) { at += block; }
+  before := eg_sky_weather(at + block - 1000); after := eg_sky_weather(at + block);
+  #assert before != after && before >= WEATHER_CLEAR && after <= WEATHER_STORM;
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, at + block - 1000);
+  ev := "GET /api/room/relay/everglade/pair-sky HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  eg_test_drain(v[..], box[..]);
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  w: [128] u8;
+  n := wire_put_world(w[..], 0, WireWorld.{tick = 0, hz = EG_HZ, seed = v[0].eg[k].seed, day = eg_sky_day(at + block - 1000), weather = before + 1});
+  #assert eg_test_has(eg_test_of(box[..], 0), cast(string) w[0..<n]) && eg_test_has(eg_test_of(box[..], 1), cast(string) w[0..<n]);
+  #assert eg_sky_day(at + block - 1000) == (at + block - 1000) % WIRE_DAY_MS;
+  // the weather holds: no header
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert !eg_test_has(eg_test_of(box[..], 0), "W ");
+  // the block turns: both seats hear it, once
+  rm_clock(v[..], 1000, at + block);
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  t := v[0].eg[k].tick;
+  n = wire_put_world(w[..], 0, WireWorld.{tick = t, hz = EG_HZ, seed = v[0].eg[k].seed, day = eg_sky_day(at + block), weather = after + 1});
+  #assert eg_test_has(eg_test_of(box[..], 0), cast(string) w[0..<n]) && eg_test_has(eg_test_of(box[..], 1), cast(string) w[0..<n]);
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert !eg_test_has(eg_test_of(box[..], 1), "W ");
+}

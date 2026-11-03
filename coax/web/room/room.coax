@@ -19,6 +19,7 @@
 #load "../../../apps/openagents-web/everglade5e-room-rules.coax";
 #load "../../../apps/openagents-web/everglade-wire.coax";
 #load "room-everglade.coax";
+#load "room-sky.coax";
 #load "room-ticket.coax";
 #load "room-vitals.coax";
 

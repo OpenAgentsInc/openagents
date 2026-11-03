@@ -60,6 +60,7 @@ EgCast :: struct { on: bool; seat: int; slot: int; x: f32; y: f32; z: f32; tgt: 
 EgRoom :: struct {
   live: bool; relay: int = -1;
   tick: int; seed: int;
+  sky: int;                      // the weather its seats last heard, as W has it (room-sky.coax)
   seat: [EG_SEATS] EgSeat;
   casts: [EG_CASTS] EgCast;
   rules: [1] E5rRoom;
@@ -142,8 +143,9 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
   rv_join(v, k, seat);   // the HP its player left with (room-vitals.coax, #12715)
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   b: [128] u8;
-  // the day and the weather: the page's own until the world runs them
-  n := wire_put_world(b[..], 0, WireWorld.{tick = v[0].eg[k].tick, hz = EG_HZ, seed = v[0].eg[k].seed});
+  // the day and the weather: the server's (room-sky.coax)
+  w := eg_sky_world(v, k); v[0].eg[k].sky = w.weather;
+  n := wire_put_world(b[..], 0, w);
   rl_queue(v, r, conn, -1, cast(string) b[0..<n], "");
   for s: 0..<EG_SEATS { v[0].eg[k].seat[s].heard_p[seat] = 0; v[0].eg[k].seat[s].heard_n[seat] = 0; }
 }
@@ -358,6 +360,7 @@ rm_eg_end :: (v: [] RmServer, k: int) #export_c {
   }
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
   eg_engine_events(v, k);
+  eg_sky_tick(v, k);   // the weather turned: everyone hears it (room-sky.coax)
   if t % EG_SEND != 0 { return; }
   for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed { eg_send(v, k, s); } }
   v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;

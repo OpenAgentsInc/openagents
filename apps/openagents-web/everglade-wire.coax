@@ -25,8 +25,10 @@
 //   R SEQ                          ask for the rebuild
 //   t MS                           a clock ping
 // Server to page (the relay's own first: y SS N T, j SS, l SS, t MS T):
-//   W TICK HZ SEED DAY WEATHER     the world header, after y: the tick now, the tick rate, the room's seed,
-//                                  ms into the day, the weather's zone
+//   W TICK HZ SEED DAY WEATHER     the world header, after y, and again to everyone when the weather turns
+//                                  (#12709): the tick now, the tick rate, the room's seed, ms into the
+//                                  server's day (WIRE_DAY_MS long) at TICK, and the weather state the server
+//                                  runs now plus 1 (WEATHER_*; 0 none: the page keeps its own sky)
 //   D TICK ACK F E;E;...           state at TICK; ACK the last I SEQ of yours stepped; F 1 a full snapshot,
 //                                  2 more of this tick follows, else 0; entries a ';' apart:
 //     p SS X Y Z YAW VX VY VZ G CLIP HP MAX TEMP COND FORM CARRY
@@ -47,6 +49,9 @@ WIRE_VERSION :: 2;
 WIRE_FRAME :: 1024;        // a page's frame at most
 WIRE_SERVER_FRAME :: 3800; // a server's
 WIRE_HZ :: 30; WIRE_AWAY_MS :: 3000;             // the tick, and a page's steps
+// the sky the server runs (#12709): its day, 48 minutes (verse/style-preset.coax STYLE_CYCLE_SECONDS),
+// and the weather's schedule seed (everglade.coax EG_WEATHER_SEED), on the temperate climate
+WIRE_DAY_MS :: 2880000; WIRE_WEATHER_SEED :: 0xe7e5;
 // creature and zone kinds (c)
 WK_PACK :: 10;             // Conjure Animals' pack: its middle; F 1 while it runs
 WK_FROG :: 11;             // a townsperson Polymorph took: P1 their index

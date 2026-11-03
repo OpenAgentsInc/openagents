@@ -1126,6 +1126,39 @@ net_pipe_id :: (s: [] Everglade, k: int) -> int #export_c { return net_of(s)[0].
 net_pipe_bytes :: (s: [] Everglade, k: int) -> string #export_c { return pipe_bytes(net_of(s)[0].pipe[..], k); }
 net_pipe_done :: (s: [] Everglade) #export_c { if net_on(s) { pipe_drained(net_of(s)[0].pipe[..]); } }
 
+// ---- the sky (#12709): the room server owns the time of day and the weather (room-sky.coax). W
+// says the server's day (ms into it at its tick) and the weather it runs; the page draws both on the
+// server clock, so every page in the room has the same sky whatever its own clock says. Offline, or
+// a server that runs no sky (W's WEATHER 0), the page keeps its own (everglade.coax weather_frame).
+
+// In a room whose server runs the sky.
+net_sky :: (s: [] Everglade) -> bool { return net_live(s) && net_of(s)[0].worlds > 0 && net_of(s)[0].weather > 0; }
+// The server's time of day now, 0 midnight to 1, or -1 none.
+net_sky_day :: (s: [] Everglade) -> f32 {
+  if !net_sky(s) { return -1; }
+  n := net_of(s);
+  ms := (n[0].day + net_now(n) - n[0].w_t) % WIRE_DAY_MS;
+  if ms < 0 { ms += WIRE_DAY_MS; }
+  return f32(ms) / f32(WIRE_DAY_MS);
+}
+// The server clock in ms for the weather's tick, or -1 none.
+net_sky_ms :: (s: [] Everglade) -> f64 {
+  if !net_sky(s) { return -1.0; }
+  return cast(f64) net_now(net_of(s));
+}
+// The server's weather over the page's schedule at `tick`: where the server runs another state than the
+// schedule has then (or 2 s either side: the turn the server just sent, on a clock a little off), the
+// server's state from then on.
+net_sky_weather :: (s: [] Everglade, w: [] WeatherSchedule, tick: u64) {
+  if !net_sky(s) { return; }
+  want := net_of(s)[0].weather - 1;
+  if want < WEATHER_CLEAR || want > WEATHER_STORM { return; }
+  near := cast(u64) (2 * WEATHER_TICK_HZ);
+  if weather_states(w, tick).after == want || weather_states(w, tick + near).after == want { return; }
+  if tick > near && weather_states(w, tick - near).after == want { return; }
+  weather_pin(w, tick, want);
+}
+
 // ---- checks: two pages and a room server of the check's own, written with the wire's writers
 
 NetTestRoom :: struct { buf: [WIRE_SERVER_FRAME] u8; n: int; }
@@ -1430,4 +1463,42 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
     #assert !a[0].sp.meteors[q].live;   // nothing of this page's own
   }
   #assert live == SP_METEORS;
+}
+#test "net: the time of day and the weather are the server's: two pages 4 s apart on their own clocks draw the same sky" {
+  a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet;
+  everglade_attach_net(a[..], na[..]); everglade_attach_net(b[..], nb[..]);
+  // A's wall clock says 5000 s, B's 5004 s
+  net_facts(a[..], "url=https://openagents.com/worlds/everglade?room=pair-a\nplayer=pa\nnow=5000000\nnav=0\n", "everglade", false);
+  net_facts(b[..], "url=https://openagents.com/worlds/everglade?room=pair-a\nplayer=pb\nnow=5004000\nnav=0\n", "everglade", false);
+  #assert net_sky_day(a[..]) < 0 && net_sky_ms(a[..]) < 0;   // no room: each page's own
+  for p: 0..<2 {
+    pg := ifx p == 0 then a[..] else b[..];
+    net_step(pg, 100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+    pipe_drained(net_of(pg)[0].pipe[..]);
+    net_opened(pg, p);
+    #assert net_event(pg, SOCKET_KIND + 4 * p + SOCKET_OPENED, "");
+  }
+  // the server's clock is 7000 s: its day 7000 s in, its weather rain
+  #assert net_test_hear(a[..], 0, "y 0 1 7000100") && net_test_hear(b[..], 1, "y 1 2 7000100");
+  buf: [128] u8;
+  m := wire_put_world(buf[..], 0, WireWorld.{tick = 0, seed = 41, day = 7000100 % WIRE_DAY_MS, weather = WEATHER_RAIN + 1});
+  #assert net_test_hear(a[..], 0, cast(string) buf[0..<m]) && net_test_hear(b[..], 1, cast(string) buf[0..<m]);
+  // a minute on: the same time of day and the same weather tick on both
+  net_step(a[..], 60100, 0, 0, 0, 0, 0, 0, false, 0, false, 0); net_step(b[..], 60100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  want := f32((7000100 + 60000) % WIRE_DAY_MS) / f32(WIRE_DAY_MS);
+  #assert abs(net_sky_day(a[..]) - want) < 0.00001 && net_sky_day(a[..]) == net_sky_day(b[..]);
+  #assert net_sky_ms(a[..]) == 7060100.0 && net_sky_ms(b[..]) == 7060100.0;
+  // the server's rain over the page's schedule: pinned where it differs, left where it agrees
+  ws: [1] WeatherSchedule;
+  weather_schedule(ws[..], weather_temperate(), WIRE_WEATHER_SEED);
+  tick := weather_tick_at(7060100);
+  net_sky_weather(a[..], ws[..], tick);
+  #assert weather_states(ws[..], tick + cast(u64) (90 * WEATHER_TICK_HZ)).after == WEATHER_RAIN;
+  pins := ws[0].pin_n;
+  net_sky_weather(a[..], ws[..], tick + 100);
+  #assert ws[0].pin_n == pins;
+  // closed: the page's own sky again
+  #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "") && net_sky_day(a[..]) < 0 && net_sky_ms(a[..]) < 0;
+  // and the wire's day is the page's 48-minute day, its seed the page's weather's
+  #assert WIRE_DAY_MS == cast(int) (STYLE_CYCLE_SECONDS * 1000) && WIRE_WEATHER_SEED == EG_WEATHER_SEED;
 }
