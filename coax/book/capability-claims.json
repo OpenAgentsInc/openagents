@@ -14,7 +14,7 @@
         },
         {
           "id": "generics.instantiation",
-          "sha256": "d619e5ccb4234789d30d8560577375523d0e9d024868d1f1f99f728632566544"
+          "sha256": "52dcac9ad3d9e78d790a1b91e3d66defa47cd399e8c7344d1d2e1aae7a5cc124"
         },
         {
           "id": "generics.value-parameters",
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "path": "coax/tests/generics.py",
-          "sha256": "a8ebaed7779148cf7dd9fd9ba94e3df75677dad6bf56be5ac8ceb6b181293b2c"
+          "sha256": "84b663bb202b6c701a0cebcd58e6cf70a74b25aec1489cc658ac1b95ac4ed307"
         }
       ]
     },
@@ -295,7 +295,7 @@
         },
         {
           "id": "generics.instantiation",
-          "sha256": "d619e5ccb4234789d30d8560577375523d0e9d024868d1f1f99f728632566544"
+          "sha256": "52dcac9ad3d9e78d790a1b91e3d66defa47cd399e8c7344d1d2e1aae7a5cc124"
         },
         {
           "id": "generics.value-parameters",
