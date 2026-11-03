@@ -65,6 +65,9 @@ recognition cannot publish a draft after the switch.
 Parakeet's per-call bound remains 327,520 samples. Longer clips are divided
 into at most three independent model requests, with exact coverage and no
 omitted or repeated samples; their text is joined only after all succeed.
+Coax selects quiet cut positions and model-only silence: 300 ms before each
+later request and after each earlier request, within the same per-call bound.
+The Mac host transports that padding without adding it to the captured clip.
 This is bounded offline segmentation. Cross-boundary word quality is not a
 full-context or streaming equivalence claim.
 
@@ -86,6 +89,11 @@ keeps focused policy mutations, native O0/O2 and sanitizer checks, asynchronous
 host-effect cases, the real resident Metal recording and offscreen app checks.
 Tests use public recordings or injected capture/permission effects; they never
 open the owner's microphone or a visible window.
+
+The [2026-11-03 Mac follow-up](../verification/dictation-eval-2026-11-02/README.md#mac-consumer-adoption-2026-11-03)
+qualifies the padding through the actual Swift worker: exact bounded call
+payloads, cancellation between calls, a 30.46-second original-weight Metal
+recording and the rebuilt app's offscreen insertion/Undo/no-send path.
 
 Repository vocabulary rescoring and spoken formatting exist for
 `openagents dictate` (`--terms FILE`, `--format code`; [record](../verification/dictation-vocab-2026-11-03/README.md)).

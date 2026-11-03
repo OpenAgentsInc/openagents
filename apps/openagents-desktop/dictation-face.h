@@ -33,6 +33,11 @@ uint64_t dct_ticket(void *state);
 int32_t dct_samples(void *state);
 /* Complete disjoint model-sized segments, or0 for an invalid/end offset. */
 int32_t dct_segment(void *state,int32_t offset);
+/* Model-only silence; captured audio coverage excludes these samples.
+ * Segment plus both counts fits the model's per-call bound. Invalid offsets
+ * and inactive/cancelled clips return zero. */
+int32_t dct_segment_leading_silence(void *state,int32_t offset);
+int32_t dct_segment_trailing_silence(void *state,int32_t offset);
 int32_t dct_copy_audio(void *state,int32_t offset,float *out,int32_t capacity);
 int dct_decode_begin(void *state,uint64_t ticket);
 /* True only for this current, uncancelled decoding ticket and successful result.

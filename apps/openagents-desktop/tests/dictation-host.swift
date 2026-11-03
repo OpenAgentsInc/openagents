@@ -98,6 +98,10 @@ func utterance(_ host: CoderDictation, silence: Bool = false) throws -> UInt64 {
     if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "--real" {
       try real(model: CommandLine.arguments[2], pcm: CommandLine.arguments[3]); return
     }
+    if CommandLine.arguments.count == 5, CommandLine.arguments[1] == "--real-words" {
+      let reference = try String(contentsOfFile: CommandLine.arguments[4], encoding: .utf8)
+      try real(model: CommandLine.arguments[2], pcm: CommandLine.arguments[3], reference: reference); return
+    }
     var checked = 0
     do {
       let name = "openagents.dictation-device-oracle.\(UUID().uuidString)"
@@ -277,15 +281,35 @@ func utterance(_ host: CoderDictation, silence: Bool = false) throws -> UInt64 {
       frames(host, 0, 20); host.fixtureTime(400); try require(host.begin() > 0, "long begin")
       frames(host, 20, 3000); host.fixtureTime(60000)
       try eventually("long clip not joined") { result != nil }
-      let lengths = recognizer.clips.map { $0.count }
-      try require(result == "one two three" && lengths.count == 3 && lengths.reduce(0, +) == 959200,
-                  "60s model segments did not cover bounded clip")
+      let clips = recognizer.clips, lengths = clips.map { $0.count }
+      try require(result == "one two three" && lengths.count == 3 && lengths.reduce(0, +) == 959200 + 4 * 4800,
+                  "60s model calls did not include seam silence")
       try require(lengths.allSatisfy { $0 >= 320 && $0 <= 327520 }, "invalid model segment length")
+      var original: [Float] = []
+      for (index, clip) in clips.enumerated() {
+        let leading = index == 0 ? 0 : 4800, trailing = index == 2 ? 0 : 4800
+        try require(clip.prefix(leading).allSatisfy { $0 == 0 } && clip.suffix(trailing).allSatisfy { $0 == 0 },
+                    "seam padding was not silence")
+        original.append(contentsOf: clip.dropFirst(leading).dropLast(trailing))
+      }
+      try require(original == square(959200), "seam padding lost, duplicated or changed captured samples")
+      host.shutdown(); checked += 1
+    }
+    do {
+      let capture = OracleCapture(), recognizer = OracleRecognizer(); recognizer.blockCall = DispatchSemaphore(value: 0)
+      var results: [String] = []; let host = try prepared(capture, recognizer) { _, text in results.append(text) }
+      frames(host, 0, 20); host.fixtureTime(400); try require(host.begin() > 0, "long cancel begin")
+      frames(host, 20, 3000); host.fixtureTime(60000)
+      try eventually("first long call not started") { recognizer.counts.1 == 1 }
+      host.cancel(); recognizer.blockCall?.signal()
+      try eventually("cancelled long call not completed") { recognizer.counts.3 == 1 }; drain()
+      try require(recognizer.counts.1 == 1 && results.isEmpty && host.inspect().3 == 0,
+                  "cancelled long dictation continued or published")
       host.shutdown(); checked += 1
     }
     print("Dictation native effects: \(checked) cases passed; no microphone, network or audio files")
   }
-  static func real(model: String, pcm: String) throws {
+  static func real(model: String, pcm: String, reference: String? = nil) throws {
     let data = try Data(contentsOf: URL(fileURLWithPath: pcm)); try require(data.count % 2 == 0, "PCM alignment")
     var audio: [Float] = []; audio.reserveCapacity(data.count / 2)
     for i in stride(from: 0, to: data.count, by: 2) {
@@ -308,7 +332,17 @@ func utterance(_ host: CoderDictation, silence: Bool = false) throws -> UInt64 {
     let release = audio.count - 3200; feed(6400, release); host.fixtureTime(Int64(release / 16)); host.end()
     feed(release, audio.count); host.fixtureTime(Int64(audio.count / 16))
     try eventually("actual recorded recognition did not complete", timeout: 180) { result != nil }
-    try require(result == "I am convinced of what I say, said the Count.", "actual fixture transcript differs")
+    if let reference {
+      // A human reference checks word preservation independently of model
+      // punctuation/casing. The original short witness stays byte-exact.
+      func words(_ text: String) -> [String] {
+        text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+      }
+      try require(words(result!) == words(reference), "recorded words differ: \(result!)")
+      print("Dictation recorded Metal words: \(audio.count) samples; \(result!)")
+    } else {
+      try require(result == "I am convinced of what I say, said the Count.", "actual fixture transcript differs")
+    }
     try require(host.inspect().3 == 0, "actual fixture audio not cleared")
     host.shutdown(); print("Dictation recorded Metal model: exact expected transcript, composer candidate only")
   }

@@ -372,9 +372,12 @@ final class CoderDictation {
     var audio = [Float](repeating: 0, count: count)
     let copied = audio.withUnsafeMutableBufferPointer { dct_copy_audio(controller, 0, $0.baseAddress, Int32($0.count)) }
     guard copied == count else { dct_fault(controller, 4); publish(); return }
-    var segments: [Range<Int>] = []; var offset: Int32 = 0
+    var segments: [(range: Range<Int>, leading: Int, trailing: Int)] = []; var offset: Int32 = 0
     while let n = Optional(dct_segment(controller, offset)), n > 0 {
-      segments.append(Int(offset)..<Int(offset + n)); offset += n
+      segments.append((Int(offset)..<Int(offset + n),
+                       Int(dct_segment_leading_silence(controller, offset)),
+                       Int(dct_segment_trailing_silence(controller, offset))))
+      offset += n
     }
     guard offset == count, dct_decode_begin(controller, ticket) != 0 else { dct_fault(controller, 4); publish(); return }
     publish(); let recognizer = self.recognizer
@@ -385,7 +388,12 @@ final class CoderDictation {
         let current = self.sync { !self.disposed && dct_ticket(self.controller) == ticket && dct_phase(self.controller) == 5 }
         if !current { return }
         do {
-          let text = try recognizer.recognize(audio[segment])
+          // The Coax plan owns cut positions and silence counts. Padding is
+          // only model input; it never advances the captured audio offset.
+          var input = [Float](repeating: 0, count: segment.leading)
+          input.append(contentsOf: audio[segment.range])
+          input.append(contentsOf: repeatElement(Float(0), count: segment.trailing))
+          let text = try recognizer.recognize(input[...])
           let appended = self.sync {
             guard !self.disposed, dct_ticket(self.controller) == ticket, dct_phase(self.controller) == 5 else { return false }
             return text.withUnsafeBufferPointer { dct_append_text(self.controller, ticket, $0.baseAddress, Int32($0.count)) != 0 }

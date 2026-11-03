@@ -363,7 +363,7 @@ is word errors the joined text has beyond its rows recognized one by one):
 | quietest boundary in 2 s, silence before later calls | 4 | 20 | 1320-122612 still lost 16 words, at the end of its first call |
 | the same, silence before and after | 2 | 1 | "justice, \| justice": the cut was inside a word |
 | 4 s window, 160 ms pauses, silence before and after (shipped) | **0** | **0** | none |
-| shipped cuts without the silence (Coder for Mac until it adds it) | 0 | 1 | "travellers" spelled differently; no seam loss |
+| shipped cuts without the silence (Mac before the 2026-11-03 adoption below) | 0 | 1 | "travellers" spelled differently; no seam loss |
 
 So the trailing silence is what saved 1320-122612 (Parakeet dropped speech
 just before an abrupt end, not only after an abrupt start), and the wider
@@ -522,3 +522,63 @@ download its `audio[0].src` FLAC and convert it with
 The synthetic clips are
 `espeak-ng -v VOICE -w TMP.wav -- "SENTENCE"` then the same ffmpeg line.
 `corpus` refuses any file whose SHA-256 differs.
+
+## Mac consumer adoption, 2026-11-03
+
+The missing desktop C/Swift seam-padding transport is now implemented.
+`dictation-face.c` forwards the shared Coax leading/trailing silence counts;
+`CoderDictation.considerRecognition` captures those counts on its serialized
+controller queue and constructs each model input on the worker. The captured
+sample offsets exclude padding. Current-ticket checks remain between calls,
+and the joined text is published only after all admitted calls succeed.
+
+[The follow-up record](../coder-dictation-2026-11-03/mac-seams/record.json)
+pins sources, compilers, generated controller and binaries. Linux O2 and fatal
+ASan/UBSan controller checks pass. On the Apple M5 Max over SSH, the generated
+controller passes fatal ASan/UBSan, and all 19 Swift effect cases pass normally
+and with ASan (generated C/bridge also have fatal UBSan). Mac leak detection
+is disabled. The strengthened long case checks every zero pad, reconstructs
+the exact original waveform and enforces the per-call bound; cancellation of
+the first call prevents subsequent calls and publication. Restoring only the
+old unpadded Swift host fails the new assertion, retained in
+[unpadded.stderr](../coder-dictation-2026-11-03/mac-seams/unpadded.stderr).
+
+A separate original-weight Metal witness passes all words from a 30.46 s
+public recording through the actual `CoderDictation` worker and resident API.
+Its input concatenates the first three `seam-1320-122612` rows in the existing
+corpus (clean-120, clean-121, clean-122), without silence inserted between
+source files. FFmpeg's three-input audio concat filter writes 487,360 signed
+16-bit mono samples; PCM SHA-256 is
+`0ede7e2076519c509c842c8ed665912df99d6c27c744c6e9e1a8b3eca38356ad`.
+The independent expected words are those three corpus rows' human references,
+with letters/numbers lowercased and punctuation treated as separators.
+The original short `--real` witness retains its exact-text assertion.
+This new long case establishes finite word preservation, not general seam
+accuracy, streaming or actual key-release latency.
+
+The complete current app builds and its offscreen keyboard → exact draft →
+Undo → mouse → exact draft check passes with zero sends and message parts.
+[The receipt](../coder-dictation-2026-11-03/mac-seams/app-receipt.json),
+[observations](../coder-dictation-2026-11-03/mac-seams/app-stdout.txt) and
+[PNG](../coder-dictation-2026-11-03/mac-seams/dictation.png) identify the actual
+executable and run. The app was preserved on the Mac at
+`/tmp/openagents-parakeet-seams-20261103/OpenAgents.app`. It was not installed
+or opened visibly. No microphone, permission dialog or audio playback was used.
+Physical acceptance remains in `NEEDS_OWNER.md`.
+
+Reproduce the host build with the commands in
+[the native-effects record](../coder-dictation-2026-11-02/native-host/README.md),
+adding `-DDEBUG -framework CoreAudio -framework AudioToolbox` for the current
+host, then run the oracle normally. For the long original-weight witness:
+
+```sh
+/tmp/coder-dictation/host-oracle --real-words "$PARAKEET_MODEL" long.pcm long-reference.txt
+coax/web/tool.sh apps/openagents-desktop/tests/check-dictation-app.coax \
+  apps/openagents-desktop/build/OpenAgents.app "$PWD" /tmp/coder-dictation-app
+```
+
+No Coax admission/segmentation policy or model arithmetic changed, so their
+unchanged passing mutation/model-corpus records are reused. The required
+`tools-check` was run: it reports eight unrelated existing tools without
+reason headers and an existing decoder-oracle port-list disagreement, listed
+in the follow-up record. This patch adds no non-Coax tool file.

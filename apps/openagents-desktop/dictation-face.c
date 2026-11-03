@@ -28,6 +28,8 @@ int dct_fault_reason(void*p){return p?(int)((DctOwner*)p)->state.gate.fault:0;}
 uint64_t dct_ticket(void*p){return p?((DctOwner*)p)->state.gate.ticket:0;}
 int32_t dct_samples(void*p){return p?(int32_t)((DctOwner*)p)->state.n:0;}
 int32_t dct_segment(void*p,int32_t offset){return p?(int32_t)dct_next_segment(view(p),offset):0;}
+int32_t dct_segment_leading_silence(void*p,int32_t offset){return p?(int32_t)dct_segment_lead(view(p),offset):0;}
+int32_t dct_segment_trailing_silence(void*p,int32_t offset){return p?(int32_t)dct_segment_trail(view(p),offset):0;}
 int32_t dct_copy_audio(void*p,int32_t offset,float*out,int32_t cap){return p?(int32_t)dct_copy_samples(view(p),offset,(coax_v_f32){out,out?cap:0}):-1;}
 int dct_decode_begin(void*p,uint64_t ticket){return p?dct_begin_decode(view(p),ticket):0;}
 int dct_result(void*p,uint64_t ticket,int success){return p?dct_complete(view(p),ticket,success!=0):0;}

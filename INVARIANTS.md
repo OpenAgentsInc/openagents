@@ -3313,7 +3313,11 @@ reuses Verse's resampling/VAD and plans complete nonoverlapping Parakeet slices:
 at most three, each cut in a pause before its limit (the quietest-boundary
 rule `verse/asr-cut.coax` shares with the voice host), with 300 ms of silence
 the host adds before a later slice and after an earlier one inside the model's
-20.47 s; the silence is never part of the clip (#12694).
+20.47 s; the silence is never part of the clip (#12694). The Mac C bridge
+forwards those Coax counts and the Swift worker adds exactly that padding;
+it checks the current ticket between calls. Exact call-payload/cancellation,
+native sanitizer, recorded Metal and rebuilt offscreen app evidence is in
+`docs/verification/dictation-eval-2026-11-02/README.md` (2026-11-03 follow-up).
 The desktop insertion authority holds the original composer text, selection
 and send count. It admits one complete UTF-8 insertion only for the current
 unchanged draft; edits, cancellation, IME and navigation invalidate it. Literal

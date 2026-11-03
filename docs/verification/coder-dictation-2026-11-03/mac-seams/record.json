@@ -1,0 +1,86 @@
+{
+  "schema": "openagents.dictation.mac-seams.v1",
+  "date": "2026-11-03",
+  "base_commit": "38b219dbaf67a5815149d7ad3879ab03d857bd82",
+  "status": "passed-focused-adoption",
+  "scope": "The Mac host now transports existing Coax model-only seam silence. No ASR arithmetic, segmentation/admission policy, microphone permission or send behavior changes.",
+  "sources_sha256": {
+    "apps/openagents-desktop/Sources/Dictation.swift": "1709c82c99ee5d74e1e6db5f118b13511ab95de8f2f2a954c5f98c1eed612979",
+    "apps/openagents-desktop/dictation-face.c": "4cde384850d79c23ce868f6a0e57eb043ac3590e9366af70645856b4e8417ade",
+    "apps/openagents-desktop/dictation-face.h": "8f37435f4a8da048d1aed310749db384447bf79ec4044e307617a3d9901a6541",
+    "apps/openagents-desktop/tests/dictation-controller.c": "fbe5cb83e926011e9a841bfddd9e373249f4dd8fbd741da66358a243ed647fce",
+    "apps/openagents-desktop/tests/dictation-host.swift": "5854db4a0a2a956986973719d1788755c14e6a22b9964b34e283ba9596bb8083",
+    "apps/shared/dictation.coax": "6aaf03458c08ea377be040e42fa7478e4a841ee8ca14d4f0fad29794cbddaeee",
+    "apps/shared/dictation-policy.coax": "5f1522683d3963b7d2e808ba15302e7853d7e535a1129ea2b3a9d3c3b8baa700",
+    "verse/asr-cut.coax": "f0d6659aed5448eee5a89c3df8ac9d1f31ab9c05f07a594a4e81d172ef258794"
+  },
+  "linux": {
+    "host": "coderos-4080",
+    "compiler_sha256": "54308753598854075405f995a04eb94f64eeb85f231ee6840a42e77afe6d2e80",
+    "controller": "O2 native and O1 fatal ASan/UBSan passed; exact audio coverage, padding counts, per-call bound, refusal and cancelled clip",
+    "controller_binary_sha256": "661f1b6658aef2ae5c7f717574ece7d3f190b7072bf8331850837c70726e12a9",
+    "sanitized_binary_sha256": "bf18164cf4b4ca26c53e9d54cca6661e27a05a9db803cbd4647ae3e8a98df2ad",
+    "leak_detection": true
+  },
+  "mac": {
+    "hardware": "Apple M5 Max, 18 cores, 128 GB",
+    "os": "macOS 26.4",
+    "clang": "Apple clang 21.0.0 (clang-2100.1.1.101)",
+    "swift": "Apple Swift 6.3.3",
+    "compiler_sha256": "cdaceb89e69c8d523e41242a940af34774e8b6b4f945998c2d3bf38486c357fb",
+    "generated_controller_c_sha256": "d25c5bf6f7041047e39173d6ceb4a98a32f49fb263df6574bce2e5a00a1ca3dc",
+    "generated_controller_h_sha256": "f1b924edb730808b8986209e82caef4ffce2f40cfe2508a062288c97239b3e62",
+    "parakeet_archive_sha256": "2c11fed8c402a7d860f844b911b308104fdca2b269b3ecb2dcf99d9375202761",
+    "host_cases": 19,
+    "host_normal": "passed",
+    "host_asan_with_generated_controller_and_bridge_fatal_ubsan": "passed",
+    "controller_fatal_asan_ubsan": "passed",
+    "mac_leak_detection": false,
+    "host_normal_binary_sha256": "081dcd8364d062e679706915b810d5798f6e488fa578b6fc7b421a4a35bb7f8c",
+    "host_sanitized_binary_sha256": "b6982ca000887ceac1a9928b5a766d56eef1b0d7ca6bf23fa003ced7e0bcd5ac",
+    "host_original_weight_binary_sha256": "cc460e47cd39e6b7c95a9461edfc7acddf0394f0d803e148a7cf8ef4286a30ef",
+    "test_source_epoch": "The 19-case normal/ASan runs preceded only the optional --real-words argument/reference addition. Production Swift/C and the fake-device cases were identical. The final oracle binary tested the new --real-words path. No unchanged passing model corpus or policy mutation was rerun.",
+    "full_app_build": "passed; app-build.log; focused development compiler, not a full bootstrap/release gate",
+    "offscreen_app": "app-receipt.json, app-stdout.txt and dictation.png; exact keyboard/Undo/mouse drafts, zero sends and zero message parts",
+    "preserved_app": "/tmp/openagents-parakeet-seams-20261103/OpenAgents.app"
+  },
+  "regression_witness": {
+    "variant": "HEAD/base Swift host (no seam padding), current generated controller/bridge and strengthened host oracle",
+    "expected_failure": "60s model calls did not include seam silence",
+    "observed": "Expected top-level Swift assertion trap; unpadded.stderr retains the first diagnostic. Exit was nonzero.",
+    "fixed_case": "Three calls cover 959200 original samples exactly; four 4800-sample zero pads are additional model input; each call <=327520 samples; cancellation stops after the in-flight first call."
+  },
+  "recorded_model": {
+    "backend": "Metal, existing pinned Parakeet TDT v3; no vocabulary",
+    "capture": "fixture-only CoderDictation -> actual Swift worker -> resident engine -> transcript callback",
+    "pcm_samples": 487360,
+    "seconds": 30.46,
+    "pcm_sha256": "0ede7e2076519c509c842c8ed665912df99d6c27c744c6e9e1a8b3eca38356ad",
+    "human_reference_sha256": "f6072e21bcb3fe3e62e245396a2a48d2d8b00fe1eff0bc47c82e4d5d77e137b6",
+    "source": "First three seam-1320-122612 corpus entries: clean-120.wav, clean-121.wav, clean-122.wav in dictation-eval-v1; source hashes, text, revision and license retained in ../dictation-eval-2026-11-02/corpus/corpus.tsv",
+    "result": "All normalized human-reference words exact, no missing/duplicated words. This is one finite long fixture, not general seam accuracy or a latency result.",
+    "observation": "Observed successful --real-words command output; it was not rerun just to create a raw log."
+  },
+  "required_tools_check": {
+    "command": "COAX=\"$PWD/coax/bin/coax\" coax/web/tool.sh tools-check",
+    "exit": 1,
+    "result": "1737 tracked tool files, 8 unrelated existing files without Firm reason headers; decoder_oracle.py also has a pre-existing port-list/header disagreement. No new non-Coax tool file was added.",
+    "unrelated_paths": [
+      "coax/tests/vectors/check_pins.py",
+      "coax/tests/vectors/test_pins.py",
+      "psionic/tests/decoder_oracle.py",
+      "verse/tools/fivemmo_hotbar.py",
+      "verse/tools/humans/face_rig.py",
+      "verse/tools/humans/metahuman.py",
+      "verse/tools/humans/outfits.py",
+      "verse/tools/humans/pack_checks.py",
+      "verse/tools/humans/pack_human.py"
+    ]
+  },
+  "limits": [
+    "No physical microphone, TCC/permission dialog, visible window or sound playback.",
+    "Physical acceptance remains in NEEDS_OWNER.md.",
+    "No normal compiler bootstrap/release qualification.",
+    "No streaming ASR, first-partial result, Mac vocabulary or key-release latency qualification."
+  ]
+}
