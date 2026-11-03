@@ -8,7 +8,8 @@
 //
 // Two views, V switches them. The glade (the default): gpu/fivelab.coax's bg_fs traces the
 // battle in 3D in Everglade's painterly look, the druids standing on their squares in a
-// clearing; drag (or the arrow keys) turns the camera, + and - zoom. Flat: bg_fs draws the bare
+// clearing; drag (or the arrow keys) orbits the camera, Shift-drag, WASD or two fingers pan it,
+// the wheel, a pinch or + and - zoom it. Flat: bg_fs draws the bare
 // grid and the tokens and areas are strokes. Either way the labels, effects and text are fx
 // strokes (font.coax) and bg_fs puts the log's glass under them.
 //   coax/bin/coax test apps/openagents-web/fivelab.coax
@@ -21,6 +22,8 @@
 #load "font.coax";
 #load "../../aethyr/loop.coax";
 #load "../../aethyr/rules/srd/battle.coax";
+#load "../../aethyr/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
+#load "../../aethyr/space.coax" as asp;
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 90000;
@@ -29,6 +32,7 @@ TOKENS3 :: 44;   // the glade's tokens (gpu/fivelab.coax FIVELAB_TOKENS)
 U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
 U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 388; U_BOUNDS :: 452;
 SQ :: 1.524;   // a 5-foot square, metres
+DIST :: 32.0; PIVOT_Z :: 0.6; ZOOM_NEAR :: 6.0; ZOOM_FAR :: 90.0;   // the camera's orbit: start, and how near and far it zooms
 VIEW_FLAT :: 0; VIEW_GLADE :: 1;
 // The time adapters (docs/dnd/README.md, "The time adapter"): the SRD's 6-second rounds, or action
 // combat in the way of the Neverwinter MMO: a turn's worth every 1.5 seconds, spent slots, Rages and
@@ -41,7 +45,7 @@ LAB_STEP_NS :: 16666667;
 LAB_FRAME_NS :: 100000000;
 OUTBOX_CAP :: 64;
 ACT_NAVIGATE :: 1;
-KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
+KEY_SHIFT :: -13; KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
 
 COLS :: 26; ROWS :: 14;
 FAST :: 4.0;
@@ -108,8 +112,11 @@ Lab :: struct {
   pressing: int;
   // the glade's camera: an orbit round the clearing, and what it makes this frame
   view: int = VIEW_GLADE;
-  yaw: f32 = 0; pitch: f32 = 0.6; dist: f32 = 32;
+  yaw: f32 = 0; pitch: f32 = 0.6; dist: f32 = DIST;
+  px: f32 = 0; pz: f32 = PIVOT_Z;   // the point it orbits, on the ground (metres)
   dragging: bool; drag_x: f32; drag_y: f32;
+  panning: bool; shift: bool;       // Shift held: a drag pans
+  fingers: int; fing_id: [2] int; fing_x: [2] f32; fing_y: [2] f32;   // touches down, for a pinch
   eye: P3; fwd: P3; right: P3; up: P3; focal: f32; cx: f32; cy: f32;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
 }
@@ -744,10 +751,12 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   rx0 := pad; rx1 := ifx s[0].portrait then w - pad else s[0].panel.x0 - pad;
   ry0 := top; ry1 := ifx s[0].portrait then s[0].panel.y0 - pad else h - pad;
   s[0].cx = (rx0 + rx1) / 2; s[0].cy = (ry0 + ry1) / 2;
-  d := s[0].dist; cp := cos(s[0].pitch); sp := sin(s[0].pitch);
-  tx: f32 = 0; ty: f32 = 0.5; tz: f32 = 0.6;
-  s[0].eye = P3.{x = tx + d * cp * sin(s[0].yaw), y = ty + d * sp, z = tz + d * cp * cos(s[0].yaw)};
-  s[0].fwd = norm3(P3.{x = tx - s[0].eye.x, y = ty - s[0].eye.y, z = tz - s[0].eye.z});
+  // Aethyr's orbit (yaw 0 faces +Z there; here yaw 0 looks toward -Z, so it turns half round)
+  turn := s[0].yaw + 3.14159265;
+  ray := ash.shot_orbit_ray(asp.world_point(s[0].px, 0.5, s[0].pz), turn, s[0].pitch, s[0].dist, 0);
+  shot := ash.shot_orbit(ray, ray.far, turn, s[0].pitch);
+  s[0].eye = P3.{x = shot.eye.x, y = shot.eye.y, z = shot.eye.z};
+  s[0].fwd = norm3(P3.{x = shot.at.x - shot.eye.x, y = shot.at.y - shot.eye.y, z = shot.at.z - shot.eye.z});
   s[0].right = norm3(P3.{x = -s[0].fwd.z, y = 0, z = s[0].fwd.x});
   r := s[0].right; f := s[0].fwd;
   s[0].up = P3.{x = r.y * f.z - r.z * f.y, y = r.z * f.x - r.x * f.z, z = r.x * f.y - r.y * f.x};
@@ -1023,7 +1032,7 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
 draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   n := at; pad := 16 * k;
   n = say_at(out, n, "5E LAB", pad, 38 * k, 18 * k, ink(k, 0.95, WHITE));
-  l: [LINE_CAP] u8;
+  l: [2 * LINE_CAP] u8;   // the key line runs long
   m := put(l[..], 0, "BATTLE "); m = put_int(l[..], m, s[0].round);
   m = put(l[..], m, "   "); m = put(l[..], m, TEAM_NAME[0]); m = put(l[..], m, " "); m = put_int(l[..], m, s[0].wins[0]);
   m = put(l[..], m, "  "); m = put(l[..], m, TEAM_NAME[1]); m = put(l[..], m, " "); m = put_int(l[..], m, s[0].wins[1]);
@@ -1034,7 +1043,7 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   m = put(l[..], 0, "SPACE "); m = put(l[..], m, ifx s[0].paused then "RESUME" else "PAUSE");
   m = put(l[..], m, "   F "); m = put(l[..], m, ifx s[0].fast then "NORMAL SPEED" else "FAST");
   m = put(l[..], m, "   R NEW BATTLE   V 2D/3D   M MODE");
-  if s[0].view == VIEW_GLADE { m = put(l[..], m, "   DRAG TURNS   +/- ZOOM"); }
+  if s[0].view == VIEW_GLADE { m = put(l[..], m, "   DRAG ORBIT   SHIFT+DRAG PAN   WHEEL ZOOM"); }
   n = say_at(out, n, cast(string) l[0..<m], sx0, sy0 + 16 * k, ifx s[0].portrait then 7 * k else 8 * k, ink(k, 0.45, FAINT));
   if s[0].paused { n = say_mid(out, n, "PAUSED", s[0].cx, s[0].gy + 26 * k, 14 * k, ink(k, 0.9, GOLD)); }
   if s[0].over && s[0].winner >= 0 {
@@ -1154,31 +1163,93 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
     if key == KEY_RIGHT { s[0].yaw += 0.12; return true; }
     if key == KEY_UP { s[0].pitch = lo(1.35, s[0].pitch + 0.06); return true; }
     if key == KEY_DOWN { s[0].pitch = hi(0.12, s[0].pitch - 0.06); return true; }
-    if key == '=' || key == '+' { s[0].dist = hi(12, s[0].dist * 0.9); return true; }
-    if key == '-' || key == '_' { s[0].dist = lo(70, s[0].dist / 0.9); return true; }
+    if key == '=' || key == '+' { cam_zoom(s, 0.9); return true; }
+    if key == '-' || key == '_' { cam_zoom(s, 1 / 0.9); return true; }
+    nudge := s[0].dist * 0.06 * s[0].focal;   // device px, so a step is a few metres at any zoom
+    if key == 'w' || key == 'W' { cam_pan(s, 0, nudge); return true; }
+    if key == 's' || key == 'S' { cam_pan(s, 0, -nudge); return true; }
+    if key == 'a' || key == 'A' { cam_pan(s, nudge, 0); return true; }
+    if key == 'd' || key == 'D' { cam_pan(s, -nudge, 0); return true; }
+    if key == 'c' || key == 'C' { s[0].yaw = 0; s[0].pitch = 0.6; s[0].dist = DIST; s[0].px = 0; s[0].pz = PIVOT_Z; return true; }
+    if key == KEY_SHIFT { s[0].shift = true; return false; }
   }
   return false;
 }
-lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c { return false; }
-lab_blur :: (s: [] Lab) #export_c { s[0].pressing = 0; s[0].dragging = false; }
+lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
+  if key == KEY_SHIFT { s[0].shift = false; }
+  return false;
+}
+lab_blur :: (s: [] Lab) #export_c { s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0; }
+// The camera's zoom: its distance times `by`, held between near and far.
+cam_zoom :: (s: [] Lab, by: f32) { s[0].dist = lo(ZOOM_FAR, hi(ZOOM_NEAR, s[0].dist * by)); }
+// A pan: the ground follows the pointer, dx right and dy down (device px), so the pivot moves the
+// other way along the camera's level right and forward. It stays over the grid.
+cam_pan :: (s: [] Lab, dx: f32, dy: f32) {
+  m := s[0].dist / hi(s[0].focal, 1);   // metres per px at the pivot
+  ahead := m / hi(sin(s[0].pitch), 0.3);  // the ground is foreshortened along the view
+  ax := s[0].fwd.x; az := s[0].fwd.z; al := sqrt(ax * ax + az * az);
+  if al > 0.0001 { ax /= al; az /= al; }
+  s[0].px += -s[0].right.x * dx * m + ax * dy * ahead;
+  s[0].pz += -s[0].right.z * dx * m + az * dy * ahead;
+  hx := f32(COLS) * f32(SQ) / 2; hz := f32(ROWS) * f32(SQ) / 2;
+  s[0].px = lo(hx, hi(-hx, s[0].px)); s[0].pz = lo(hz, hi(-hz, s[0].pz));
+}
+// The wheel (CSS px, down is out) zooms.
+lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c {
+  lab_start(s);
+  if s[0].view != VIEW_GLADE { return false; }
+  cam_zoom(s, 1 + lo(200, hi(-200, dy)) * 0.0012);
+  return true;
+}
 lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   lab_start(s);
   if phase == 0 {
     if in_rect(s[0].back, x, y) { s[0].pressing = 1; return true; }
     if in_rect(s[0].flip, x, y) { s[0].pressing = 2; return true; }
     if in_rect(s[0].modal, x, y) { s[0].pressing = 3; return true; }
-    if s[0].view == VIEW_GLADE && !in_rect(s[0].panel, x, y) { s[0].dragging = true; s[0].drag_x = x; s[0].drag_y = y; return true; }
+    if s[0].view == VIEW_GLADE && !in_rect(s[0].panel, x, y) {
+      // a second finger: the two pinch to zoom and move together to pan
+      if kind == 1 && s[0].fingers == 1 && s[0].fing_id[0] != id {
+        s[0].fingers = 2; s[0].fing_id[1] = id; s[0].fing_x[1] = x; s[0].fing_y[1] = y; return true;
+      }
+      if kind == 1 { s[0].fingers = 1; s[0].fing_id[0] = id; s[0].fing_x[0] = x; s[0].fing_y[0] = y; }
+      s[0].dragging = true; s[0].panning = s[0].shift; s[0].drag_x = x; s[0].drag_y = y; return true;
+    }
     return false;
   }
   if phase == 1 {
+    if kind == 1 && s[0].fingers == 2 {
+      f := ifx s[0].fing_id[0] == id then 0 else ifx s[0].fing_id[1] == id then 1 else -1;
+      if f < 0 { return false; }
+      gap0 := sqrt((s[0].fing_x[0] - s[0].fing_x[1]) * (s[0].fing_x[0] - s[0].fing_x[1]) + (s[0].fing_y[0] - s[0].fing_y[1]) * (s[0].fing_y[0] - s[0].fing_y[1]));
+      mx0 := (s[0].fing_x[0] + s[0].fing_x[1]) / 2; my0 := (s[0].fing_y[0] + s[0].fing_y[1]) / 2;
+      s[0].fing_x[f] = x; s[0].fing_y[f] = y;
+      gap1 := sqrt((s[0].fing_x[0] - s[0].fing_x[1]) * (s[0].fing_x[0] - s[0].fing_x[1]) + (s[0].fing_y[0] - s[0].fing_y[1]) * (s[0].fing_y[0] - s[0].fing_y[1]));
+      if gap0 > 1 && gap1 > 1 { cam_zoom(s, gap0 / gap1); }
+      cam_pan(s, (s[0].fing_x[0] + s[0].fing_x[1]) / 2 - mx0, (s[0].fing_y[0] + s[0].fing_y[1]) / 2 - my0);
+      return true;
+    }
     if !s[0].dragging { return false; }
-    k := hi(s[0].dpr, 0.5);
-    s[0].yaw -= (x - s[0].drag_x) * 0.005 / k;
-    s[0].pitch = lo(1.35, hi(0.12, s[0].pitch + (y - s[0].drag_y) * 0.004 / k));
+    if s[0].panning { cam_pan(s, x - s[0].drag_x, y - s[0].drag_y); }
+    else {
+      k := hi(s[0].dpr, 0.5);
+      s[0].yaw -= (x - s[0].drag_x) * 0.005 / k;
+      s[0].pitch = lo(1.35, hi(0.12, s[0].pitch + (y - s[0].drag_y) * 0.004 / k));
+    }
     s[0].drag_x = x; s[0].drag_y = y;
     return true;
   }
-  s[0].dragging = false;
+  if kind == 1 && s[0].fingers > 0 {
+    // a finger lifts: the one left (if any) drags on from where it is
+    if s[0].fingers == 2 {
+      left := ifx s[0].fing_id[0] == id then 1 else 0;
+      s[0].fing_id[0] = s[0].fing_id[left]; s[0].fing_x[0] = s[0].fing_x[left]; s[0].fing_y[0] = s[0].fing_y[left];
+      s[0].fingers = 1; s[0].drag_x = s[0].fing_x[0]; s[0].drag_y = s[0].fing_y[0];
+      return true;
+    }
+    s[0].fingers = 0;
+  }
+  s[0].dragging = false; s[0].panning = false;
   held := s[0].pressing; s[0].pressing = 0;
   if held == 1 { if phase == 2 && in_rect(s[0].back, x, y) { leave_to(s, "/worlds"); } return true; }
   if held == 2 { if phase == 2 && in_rect(s[0].flip, x, y) { s[0].view = 1 - s[0].view; } return true; }
@@ -1234,6 +1305,32 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
     p := proj(s[..], wx(x), 0, wz(y));
     #assert p.z > 0 && p.x > 0 && p.x < s[0].panel.x0 && p.y > 64 && p.y < 1000;
   }
+}
+
+#test "the camera zooms on the wheel and pans on Shift-drag and WASD, and C puts it back" #steps 2000000000 {
+  s: [1] Lab; ok: bool; n: int;
+  n = frame_at(s[..], 1600, 1000, 1, 0.016);
+  #assert lab_wheel(s[..], -100) && s[0].dist < DIST;
+  ok = lab_wheel(s[..], 100000); #assert s[0].dist <= ZOOM_FAR;
+  ok = lab_key(s[..], 'c', 0); #assert s[0].dist == DIST;
+  ok = lab_key(s[..], KEY_SHIFT, 1);
+  ok = lab_pointer(s[..], 400, 500, 0, 0, 1); ok = lab_pointer(s[..], 300, 500, 1, 0, 1); ok = lab_pointer(s[..], 300, 500, 2, 0, 1);
+  #assert s[0].px > 0 && s[0].yaw == 0;   // the ground moved left under the pointer
+  ok = lab_key_up(s[..], KEY_SHIFT, 0);
+  ok = lab_key(s[..], 'c', 0); n = frame_at(s[..], 1600, 1000, 1, 0.016);
+  ok = lab_key(s[..], 'w', 0); #assert s[0].pz < PIVOT_Z;   // forward is toward -Z at yaw 0
+  ok = lab_pointer(s[..], 400, 500, 0, 0, 1); ok = lab_pointer(s[..], 450, 500, 1, 0, 1); ok = lab_pointer(s[..], 450, 500, 2, 0, 1);
+  #assert s[0].yaw != 0;   // a plain drag still orbits
+}
+
+#test "two fingers pinch to zoom" #steps 2000000000 {
+  s: [1] Lab; ok: bool; n: int;
+  n = frame_at(s[..], 390, 844, 3, 0.016);
+  ok = lab_pointer(s[..], 100, 300, 0, 1, 7); ok = lab_pointer(s[..], 200, 300, 0, 1, 8);
+  ok = lab_pointer(s[..], 250, 300, 1, 1, 8);
+  #assert s[0].dist < DIST && s[0].yaw == 0;
+  ok = lab_pointer(s[..], 250, 300, 2, 1, 8); ok = lab_pointer(s[..], 100, 300, 2, 1, 7);
+  #assert s[0].fingers == 0 && !s[0].dragging;
 }
 
 #test "space pauses, F runs fast, R starts a new battle, Escape goes to /worlds" {
