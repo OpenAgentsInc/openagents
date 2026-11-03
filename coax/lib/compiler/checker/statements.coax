@@ -123,7 +123,8 @@ CK_stmt :: (c:CK_Context,id:int) {
   }
   if s.kind==CK_Tag.stmt_var {
     declared:=CK_resolve(c,s.d,CK_Access.value);
-    if s.a==0 && declared!=0 && ((s.flag && CK_inline_sum(c,declared)) || (!s.flag && !CK_defaultable(c,declared))) {CK_error(c,s.loc,"E0902","this sum or containing value requires valid initialized storage","");return;}
+    // A type that failed to resolve (0) is neither an inline sum nor nondefaultable.
+    if s.a==0 && ((s.flag && CK_inline_sum(c,declared)) || (!s.flag && !CK_defaultable(c,declared))) {CK_error(c,s.loc,"E0902","this sum or containing value requires valid initialized storage","");return;}
     init:=CK_value(c,s.a,CK_Hint.{type=declared});
     if init==1 {CK_error(c,c.nodes[s.a].loc,"E0324","this call returns nothing, so it cannot initialize a variable","");init=0;}
     if declared!=CK_NONE && init!=CK_NONE && declared!=init {

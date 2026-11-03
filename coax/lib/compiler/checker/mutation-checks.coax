@@ -1,0 +1,246 @@
+// Checks for behaviour the full checker mutation gate found unchecked
+// (#12638): each one fails for a mutant that survived every other check. A
+// part of the checker: lib/compiler/checker.coax loads it (#12646). Sections
+// follow the part whose procedures they check.
+#authority;
+
+// checker/types.coax
+#test "optional type syntax interns the canonical optional, whose error ID is invalid" {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=4,type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.type_optional,b=3};nodes[3]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ t:=CK_resolve(c,2,CK_Access.value);
+ #assert t==16 && types[16].kind==CK_Kind.optional && types[16].elem==11 && types[16].sum_error==0 && state[0].error_count==0 && state[0].depth==0;
+ #assert CK_sum_type(c,CK_Kind.optional,11,0,CK_Loc.{})==16 && state[0].type_count==17;
+}
+#forall "a named struct is laid out where it is used by value, not through a view" view:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=5,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.struct_,name="S",decl=2};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="S",type=16,head=3};
+ nodes[3]=CK_Node.{kind=CK_Tag.field,name="x",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="int"};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="S"};
+ t:=CK_resolve(c,5,ifx view then CK_Access.view else CK_Access.value);
+ #assert t==16 && state[0].error_count==0 && state[0].depth==0 && (nodes[2].mark==2)==!view && (types[16].size==8)==!view;
+}
+#forall "a view or array of an optional is admitted where one of Result is refused" shape:0..<3 {
+ nodes:[12]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=9,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.optional,name="int?",elem=11,size=16,alignment=8,bits=32,sum_payload_offset=8};
+ nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[3]=CK_Node.{kind=CK_Tag.type_optional,b=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_int,value=3};
+ nodes[2]=CK_Node.{kind=CK_Tag.type_view,b=3};
+ if shape==1 {nodes[2]=CK_Node.{kind=CK_Tag.type_array,a=6,b=3};}
+ if shape==2 {nodes[7]=CK_Node.{kind=CK_Tag.type_param,name="N"};nodes[8]=CK_Node.{kind=CK_Tag.proc,name="f"};nodes[2]=CK_Node.{kind=CK_Tag.type_array,a=7,b=3};state[0].generic=8;state[0].site=CK_Site.param;}
+ t:=CK_resolve(c,2,CK_Access.value);
+ #assert t>=17 && !state[0].fatal && state[0].error_count==0 && types[t].elem==16 && types[t].kind==(ifx shape==0 then CK_Kind.view else CK_Kind.array);
+}
+#forall "a view or array of Result is refused where its type is written" shape:0..<3 {
+ nodes:[12]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=9,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ // Result(int, u8), already interned; a bound length parameter N is 3.
+ types[16]=CK_Type.{kind=CK_Kind.result,name="Result(int, u8)",elem=11,sum_error=12,size=16,alignment=8,bits=32,sum_payload_offset=8,sum_default= -1};
+ nodes[1]=CK_Node.{kind=CK_Tag.file};
+ nodes[3]=CK_Node.{kind=CK_Tag.type_named,name="Result",head=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="int",next=5};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="u8"};
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_int,value=3};
+ nodes[2]=CK_Node.{kind=CK_Tag.type_view,b=3,loc=CK_Loc.{line=41,column=5}};
+ if shape==1 {nodes[2]=CK_Node.{kind=CK_Tag.type_array,a=6,b=3,loc=CK_Loc.{line=41,column=5}};}
+ // [$N] Result(int, u8) in a parameter of f: N binds a length placeholder.
+ if shape==2 {nodes[7]=CK_Node.{kind=CK_Tag.type_param,name="N"};nodes[8]=CK_Node.{kind=CK_Tag.proc,name="f"};nodes[2]=CK_Node.{kind=CK_Tag.type_array,a=7,b=3,loc=CK_Loc.{line=41,column=5}};state[0].generic=8;state[0].site=CK_Site.param;}
+ t:=CK_resolve(c,2,CK_Access.value);
+ #assert t==0 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0900" && errors[0].loc.line==41 && errors[0].loc.column==5;
+ #assert errors[0].message==(ifx shape==0 then "a view cannot contain Result" else "an array cannot contain Result");
+}
+#forall "a Result is generic when either its success or its error type is a placeholder" which:0..<3 {
+ nodes:[4]CK_Node;types:[24]CK_Type;errors:[2]CK_Error;state:=[1]CK_State.[CK_State.{type_count=18}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.param,name="$T",decl=2};
+ types[17]=CK_Type.{kind=CK_Kind.result,elem=ifx which==0 then 16 else 11,sum_error=ifx which==1 then 16 else 12};
+ #assert CK_generic(c,17)==(which!=2) && CK_nests(c,17)==(which!=2);
+}
+#test "a struct field may hold an optional" {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=5,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.struct_,name="S",decl=2};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="S",type=16,head=3};
+ nodes[3]=CK_Node.{kind=CK_Tag.field,name="x",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_optional,b=5};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ CK_layout(c,2);
+ #assert !state[0].fatal && state[0].error_count==0 && nodes[2].mark==2 && types[nodes[3].type].kind==CK_Kind.optional && types[16].size==16;
+}
+#forall "a union named as a type takes no arguments and is laid out by value" args:bool {
+ nodes:[10]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=7,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.union_,name="U",decl=2};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="U",type=16,head=3};
+ nodes[3]=CK_Node.{kind=CK_Tag.variant,name="n",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="U",loc=CK_Loc.{line=21,column=6}};nodes[6]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ if args {nodes[5].head=6;}
+ t:=CK_resolve(c,5,CK_Access.value);
+ #assert t==16 && !state[0].fatal && nodes[2].mark==2 && types[16].size==16 && state[0].error_count==(ifx args then 1 else 0);
+ if args {#assert errors[0].code=="E0803" && errors[0].loc.line==21 && errors[0].loc.column==6;}
+}
+#test "laying out a union declaration lays out its alternatives" {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=5,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.union_,name="U",decl=2};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="U",type=16,head=3};
+ nodes[3]=CK_Node.{kind=CK_Tag.variant,name="n",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="u8"};
+ CK_layout(c,2);
+ #assert !state[0].fatal && state[0].error_count==0 && nodes[2].mark==2 && nodes[3].type==12 && types[16].size==8 && types[16].sum_payload_offset==4;
+}
+#forall "a struct's layout leaves the nesting depth as it found it and refuses a Result field" result_field:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=6,type_count=18,depth=3,peak_depth=3}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.struct_,name="S",decl=2};
+ types[17]=CK_Type.{kind=CK_Kind.result,name="Result(int, u8)",elem=11,sum_error=12,size=16,alignment=8,bits=32,sum_payload_offset=8,sum_default= -1};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="S",type=16,head=3};
+ nodes[3]=CK_Node.{kind=CK_Tag.field,name="x",a=4,loc=CK_Loc.{line=9,column=3}};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ if result_field {nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="Result",head=5};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="int",next=6};nodes[6]=CK_Node.{kind=CK_Tag.type_named,name="u8"};}
+ CK_layout(c,2);
+ #assert state[0].depth==3 && !state[0].fatal && nodes[2].mark==2 && state[0].error_count==(ifx result_field then 1 else 0);
+ if result_field {#assert errors[0].code=="E0900" && errors[0].message=="Result cannot be stored in a record field" && errors[0].loc.line==9 && errors[0].loc.column==3;}
+}
+#test "a field of an optional value is refused: payloads are read only by handling forms" {
+ nodes:[8]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=4,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.optional,name="int?",elem=11,size=16,alignment=8,bits=32,sum_payload_offset=8};
+ nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.stmt_var,name="o",type=16};
+ nodes[3]=CK_Node.{kind=CK_Tag.expr_field,name="value",a=4,loc=CK_Loc.{line=12,column=4}};nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="o"};
+ CK_declare_id(c,"o",16,CK_Loc.{},"",2);
+ t:=CK_field(c,3);
+ #assert t==0 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0903" && errors[0].loc.line==12 && errors[0].loc.column==4;
+}
+#forall "a cast to or from a sum type is refused" to_sum:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=6,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.optional,name="int?",elem=11,size=16,alignment=8,bits=32,sum_payload_offset=8};
+ nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.stmt_var,name="o",type=16};
+ // cast(?int) 7, or cast(int) o where o is an optional local
+ nodes[3]=CK_Node.{kind=CK_Tag.expr_cast,a=4,d=5,loc=CK_Loc.{line=13,column=8}};
+ nodes[4]=CK_Node.{kind=CK_Tag.expr_int,value=7};nodes[5]=CK_Node.{kind=CK_Tag.type_optional,b=6};nodes[6]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ if !to_sum {nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="o"};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="int"};}
+ CK_declare_id(c,"o",16,CK_Loc.{},"",2);
+ t:=CK_cast(c,3);
+ #assert t==0 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0903" && errors[0].loc.line==13 && errors[0].loc.column==8;
+}
+
+// checker/generics.coax
+#test "a cloned sum constructor is rebuilt as constructor syntax for its specialization" {
+ nodes:[12]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=4,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ // a checked .{some=7}: an expr_sum with its payload, marked as generated
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_sum,name="some",a=3,type=16,mark=1,sum_variant=1,loc=CK_Loc.{line=30,column=2}};nodes[3]=CK_Node.{kind=CK_Tag.expr_int,value=7};
+ copy:=CK_clone(c,2);n:=nodes[copy];
+ #assert copy==5 && !state[0].fatal && n.kind==CK_Tag.expr_struct && n.mark==0 && n.head==7 && n.loc.line==30;
+ #assert nodes[6].kind==CK_Tag.expr_int && nodes[6].value==7 && nodes[7].kind==CK_Tag.field_init && nodes[7].name=="some" && nodes[7].a==6 && nodes[7].loc.line==30;
+}
+#test "binding an optional parameter type needs an optional argument" {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=5,type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,name="f"};nodes[3]=CK_Node.{kind=CK_Tag.type_optional,b=4};nodes[4]=CK_Node.{kind=CK_Tag.type_param,name="T"};
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=31,column=9}};
+ CK_bind(c,2,3,11,5,0);
+ #assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0349" && errors[0].loc.line==31 && errors[0].loc.column==9 && state[0].type_count==16;
+}
+#test "an instance keeps its template's effect declaration" {
+ nodes:[16]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;
+ state:=[1]CK_State.[CK_State.{used=9,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.param,name="$T",decl=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,name="id",head=3,a=7,type=16,generic=true,effect_present=true,pure_decl=true,effect_loc=CK_Loc.{line=40,column=3},effect_head=8};
+ nodes[3]=CK_Node.{kind=CK_Tag.param,name="a",a=4,type=16};nodes[4]=CK_Node.{kind=CK_Tag.type_param,name="T"};nodes[7]=CK_Node.{kind=CK_Tag.type_param,name="T"};
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_call,name="id",head=6,loc=CK_Loc.{line=3,column=5}};nodes[6]=CK_Node.{kind=CK_Tag.expr_bool};
+ nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,name="io"};
+ t:=CK_instance(c,5,2);
+ #assert t==2 && nodes[5].proc==10 && nodes[10].origin==2 && state[0].error_count==0;
+ i:=nodes[10];
+ #assert i.effect_present && i.pure_decl && i.effect_loc.line==40 && i.effect_loc.column==3 && i.effect_head==11 && nodes[11].kind==CK_Tag.expr_ident && nodes[11].name=="io";
+}
+#forall "a union borrows when any alternative holds a view" view_at:0..<3 {
+ // view_at: which of two alternatives is a view of u8; 2 is neither
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[2]CK_Error;state:=[1]CK_State.[CK_State.{used=4,type_count=18}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.union_,name="U",decl=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.union_,name="U",type=17,head=3};
+ nodes[3]=CK_Node.{kind=CK_Tag.variant,name="a",type=ifx view_at==0 then 16 else 11,next=4};nodes[4]=CK_Node.{kind=CK_Tag.variant,name="b",type=ifx view_at==1 then 16 else 12};
+ #assert CK_borrows(c,17)==(view_at!=2);
+}
+
+// checker/statements.coax
+#forall "a try statement may drop a void value; any other value must be used" success:0..<3 {
+ // the propagated Result's success type: void, bool or int
+ payload:=1;if success==1 {payload=2;}if success==2 {payload=11;}
+ nodes:[12]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=8,type_count=17,current=2}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.result,elem=payload,sum_error=12,size=16,alignment=8,sum_payload_offset=8};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=16,b=6};nodes[3]=CK_Node.{kind=CK_Tag.expr_try,a=4,loc=CK_Loc.{line=50,column=3}};
+ nodes[4]=CK_Node.{kind=CK_Tag.expr_sum,type=16,a=5,sum_variant=0};nodes[5]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_expr,a=3,loc=CK_Loc.{line=50,column=3}};
+ CK_stmt(c,7);
+ #assert !state[0].fatal && nodes[3].propagate_type==16 && state[0].error_count==(ifx success==0 then 0 else 1);
+ if success!=0 {#assert errors[0].code=="E0322" && errors[0].loc.line==50;}
+}
+#forall "an or_else statement may drop a void value; any other value must be used" void_success:bool {
+ nodes:[12]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=8,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.result,elem=ifx void_success then 1 else 11,sum_error=12,size=16,alignment=8,sum_payload_offset=8};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="noop",type=1,b=3,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.stmt_block};
+ // .{err=7} or_else noop(), or .{err=7} or_else 0
+ nodes[4]=CK_Node.{kind=CK_Tag.expr_or_else,a=5,b=6,loc=CK_Loc.{line=55,column=3}};nodes[5]=CK_Node.{kind=CK_Tag.expr_sum,type=16,a=7,sum_variant=1};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,type=12};
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_int};if void_success {nodes[6]=CK_Node.{kind=CK_Tag.expr_call,name="noop"};}
+ nodes[8]=CK_Node.{kind=CK_Tag.stmt_expr,a=4,loc=CK_Loc.{line=55,column=3}};
+ CK_stmt(c,8);
+ #assert !state[0].fatal && state[0].error_count==(ifx void_success then 0 else 1);
+ if !void_success {#assert errors[0].code=="E0322" && errors[0].loc.line==55;}
+}
+#forall "a variable of a type with no default needs an initializer, and an initialized one is admitted" initialized:bool {
+ nodes:[12]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=9,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.result,name="Result(int, u8)",elem=11,sum_error=12,size=16,alignment=8,bits=32,sum_payload_offset=8,sum_default= -1};
+ nodes[1]=CK_Node.{kind=CK_Tag.file};
+ // x: Result(int, u8) [= .{ok=1}];
+ nodes[2]=CK_Node.{kind=CK_Tag.stmt_var,name="x",d=3,loc=CK_Loc.{line=51,column=3}};
+ nodes[3]=CK_Node.{kind=CK_Tag.type_named,name="Result",head=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="int",next=5};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="u8"};
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_sum,type=16,a=7,sum_variant=0};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ if initialized {nodes[2].a=6;}
+ CK_stmt(c,2);
+ #assert !state[0].fatal && state[0].error_count==(ifx initialized then 0 else 1) && state[0].local_count==(ifx initialized then 1 else 0);
+ if initialized {#assert locals[0].name=="x" && locals[0].type==16 && locals[0].immutable=="Result binding";}
+ if !initialized {#assert errors[0].code=="E0902" && errors[0].loc.line==51;}
+}
+#test "a variable initialized by a call that returns nothing has that one error" {
+ nodes:[12]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=7,type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="noop",type=1,b=3,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.stmt_block};
+ // x: int = noop();
+ nodes[4]=CK_Node.{kind=CK_Tag.stmt_var,name="x",d=5,a=6,loc=CK_Loc.{line=52,column=3}};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_call,name="noop",loc=CK_Loc.{line=52,column=12}};
+ CK_stmt(c,4);
+ #assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0324" && errors[0].loc.line==52 && errors[0].loc.column==12 && state[0].local_count==1 && nodes[4].type==11;
+}
+#forall "a switch always returns only when it has cases and every case returns" shape:0..<4 {
+ // 0: no cases; 1: both cases return; 2: the second does not; 3: the first does not
+ nodes:[8]CK_Node;types:[16]CK_Type;errors:[2]CK_Error;state:=[1]CK_State.[CK_State.{used=7}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};
+ nodes[2]=CK_Node.{kind=CK_Tag.stmt_switch,head=3};nodes[3]=CK_Node.{kind=CK_Tag.switch_case,b=5,next=4};nodes[4]=CK_Node.{kind=CK_Tag.switch_case,b=6};
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_return};nodes[6]=CK_Node.{kind=CK_Tag.stmt_return};nodes[7]=CK_Node.{kind=CK_Tag.stmt_block};
+ if shape==0 {nodes[2].head=0;}if shape==2 {nodes[4].b=7;}if shape==3 {nodes[3].b=7;}
+ #assert CK_always_returns(c,2)==(shape==1) && state[0].depth==0;
+}
+#test "a union whose name is taken is reported as a union" {
+ nodes:[4]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=2}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="int",loc=CK_Loc.{line=53,column=1}};
+ CK_global_names(c);
+ #assert state[0].error_count==1 && errors[0].code=="E0372" && errors[0].loc.line==53 && errors[0].message=="union 'int' conflicts with another declaration or a built-in name";
+}
+#test "field defaults are checked outside any procedure, which is then restored" {
+ nodes:[12]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=8,type_count=17,current=1}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12,size=16,alignment=8,sum_payload_offset=8};
+ // S :: struct {x: int = try .{ok=1};}, checked while inside f (node 1), which returns Result(int, u8)
+ nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="S",head=3};nodes[3]=CK_Node.{kind=CK_Tag.field,name="x",type=11,b=4};
+ nodes[4]=CK_Node.{kind=CK_Tag.expr_try,a=5,loc=CK_Loc.{line=54,column=17}};nodes[5]=CK_Node.{kind=CK_Tag.expr_sum,type=16,a=6,sum_variant=0};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ nodes[1]=CK_Node.{kind=CK_Tag.proc,name="f",type=16};
+ CK_defaults(c,2);
+ #assert state[0].current==1 && state[0].error_count==1 && errors[0].code=="E0905" && errors[0].loc.line==54 && errors[0].loc.column==17;
+}

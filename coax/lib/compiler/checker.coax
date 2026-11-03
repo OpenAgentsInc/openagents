@@ -23,6 +23,7 @@
 #load "checker/retained-checks.coax";
 #load "checker/retain.coax";
 #load "checker/b2-r2-checks.coax";
+#load "checker/mutation-checks.coax";
 #load "query-index.coax";
 #load "literal-projection-cache.coax";
 #load "borrow-summary.coax";
