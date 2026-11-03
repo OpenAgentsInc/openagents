@@ -1,0 +1,306 @@
+// Segwit addresses (Bitcoin chapter 28): BIP-173 and BIP-350.
+//
+// - segwit_variant_vartime: whether a string is Bech32 (checksum constant 1)
+//   or Bech32m (0x2bc830a3), or why it is neither.
+// - segwit_encode_vartime and segwit_decode_vartime: a network, a witness
+//   version (0 to 16) and a witness program (2 to 40 bytes; 20 or 32 for
+//   version 0) to and from an address. Version 0 uses Bech32 and versions
+//   1 to 16 use Bech32m; the other checksum refuses.
+//
+// The checksum, the alphabet and the 5-bit regrouping are chapter 27's
+// (bech32-core.coax), and the padding rule and the 5-to-8 regrouping are
+// the ones nip19-core.coax applies to NIP-19. Addresses are public, so
+// everything here may branch and index on its input. Every procedure that
+// writes takes a caller-owned buffer and returns a count, or one negative
+// SW_* refusal. A refusal writes nothing.
+#load "../nostr/nip19-core.coax";
+#authority;
+
+// book:begin networks
+// The networks and their human-readable parts. Testnet, testnet4 and
+// signet share "tb". Network 0 is unused.
+SW_MAINNET :: 1; SW_TESTNET :: 2; SW_REGTEST :: 3;
+SW_HRPS :: [4] string.["", "bc", "tb", "bcrt"];
+// The two checksum variants.
+SW_BECH32 :: 1; SW_BECH32M :: 2;
+// book:end networks
+
+// book:begin refusals
+SW_TOO_LONG :: -1;       // over 90 characters
+SW_MIXED_CASE :: -2;     // upper and lower case letters together
+SW_BAD_FORMAT :: -3;     // otherwise not Bech32: a byte outside 33-126, no separator,
+                         // an empty HRP, a short checksum or a character outside the alphabet
+SW_BAD_CHECKSUM :: -4;   // the polymod result is neither 1 nor 0x2bc830a3
+SW_UNKNOWN_HRP :: -5;    // not bc, tb or bcrt; for encoding, a network outside 1-3
+SW_NO_VERSION :: -6;     // no data before the checksum, so no witness version
+SW_BAD_VERSION :: -7;    // a witness version over 16
+SW_WRONG_VARIANT :: -8;  // version 0 with Bech32m, or version 1-16 with Bech32
+SW_BAD_PADDING :: -9;    // 5 or more spare bits, or a spare bit that is 1
+SW_BAD_LENGTH :: -10;    // a witness program outside 2-40 bytes
+SW_BAD_V0_LENGTH :: -11; // a version 0 program that is not 20 or 32 bytes
+SW_CAPACITY :: -12;      // the output buffer is too small
+// book:end refusals
+
+// A decoded address. length is the program's byte count, or a refusal.
+Segwit_Address :: struct { length: int; network: int; version: int; }
+
+// ---- checks
+sw_unhex :: (text: string, out: [] u8) -> [] u8 {
+  for i: 0..<text.count/2 { out[i] = cast(u8) (sw_nibble(text[2*i])*16 + sw_nibble(text[2*i+1])); }
+  return out[0..<text.count/2];
+}
+sw_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+sw_same :: (a: [] u8, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// Decodes text and compares every field; the program must match hex.
+sw_decodes :: (text: string, network: int, version: int, hex: string) -> bool {
+  want: [40] u8; out: [40] u8;
+  program := sw_unhex(hex, want[..]);
+  a := segwit_decode_vartime(text, out[..]);
+  if a.length != program.count || a.network != network || a.version != version { return false; }
+  return sw_same(out[0..<a.length], cast(string) program);
+}
+// Decodes text and checks the refusal, with nothing written.
+sw_refuses :: (text: string, code: int) -> bool {
+  out: [64] u8;
+  for i: 0..<64 { out[i] = 0xa5; }
+  a := segwit_decode_vartime(text, out[..]);
+  for b: out { if b != 0xa5 { return false; } }
+  return a.length == code && a.network == 0 && a.version == 0;
+}
+
+#test "the check helpers notice every difference" {
+  b1: [3] u8; b2: [3] u8;
+  x := sw_unhex("0a1b2c", b1[..]);
+  #assert sw_same(x, cast(string) sw_unhex("0a1b2c", b2[..]));
+  #assert !sw_same(x, cast(string) sw_unhex("0b1b2c", b2[..])) && !sw_same(x, cast(string) sw_unhex("0a1b2d", b2[..]));
+  #assert !sw_same(x, cast(string) sw_unhex("0a1b", b2[..])) && x[0] == 10 && x[2] == 44;
+  T := "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0";
+  K := "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+  #assert sw_decodes(T, SW_MAINNET, 1, K) && !sw_decodes(T, SW_TESTNET, 1, K) && !sw_decodes(T, SW_MAINNET, 2, K);
+  #assert !sw_decodes(T, SW_MAINNET, 1, "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81797");
+  #assert !sw_decodes(T, SW_MAINNET, 1, "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817");
+  #assert sw_refuses("bc1gmk9yu", SW_NO_VERSION) && !sw_refuses("bc1gmk9yu", SW_BAD_VERSION);
+  #assert !sw_refuses("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", 20);
+}
+
+#test "the program rules: versions 0-16, 2-40 bytes, and 20 or 32 for version 0" {
+  #assert sw_program_rule(0, 20) == 0 && sw_program_rule(0, 32) == 0;
+  #assert sw_program_rule(0, 21) == SW_BAD_V0_LENGTH && sw_program_rule(0, 31) == SW_BAD_V0_LENGTH;
+  #assert sw_program_rule(0, 2) == SW_BAD_V0_LENGTH && sw_program_rule(0, 40) == SW_BAD_V0_LENGTH;
+  #assert sw_program_rule(1, 2) == 0 && sw_program_rule(16, 40) == 0 && sw_program_rule(1, 32) == 0;
+  #assert sw_program_rule(1, 1) == SW_BAD_LENGTH && sw_program_rule(16, 41) == SW_BAD_LENGTH;
+  #assert sw_program_rule(0, 1) == SW_BAD_LENGTH && sw_program_rule(0, 41) == SW_BAD_LENGTH;
+  #assert sw_program_rule(17, 32) == SW_BAD_VERSION && sw_program_rule(-1, 32) == SW_BAD_VERSION;
+  #assert sw_program_rule(17, 1) == SW_BAD_VERSION;
+}
+
+#test "networks by HRP, in either case, and nothing else" {
+  #assert sw_network("bc") == SW_MAINNET && sw_network("BC") == SW_MAINNET;
+  #assert sw_network("tb") == SW_TESTNET && sw_network("bcrt") == SW_REGTEST && sw_network("BCRT") == SW_REGTEST;
+  #assert sw_network("tc") == SW_UNKNOWN_HRP && sw_network("b") == SW_UNKNOWN_HRP && sw_network("bcr") == SW_UNKNOWN_HRP;
+  #assert sw_network("bcrtx") == SW_UNKNOWN_HRP && sw_network("") == SW_UNKNOWN_HRP && sw_network("cb") == SW_UNKNOWN_HRP;
+}
+
+#test "BIP-350's valid addresses and a regtest one from Bitcoin Core decode and re-encode" {
+  #assert sw_decodes("bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0", SW_MAINNET, 1,
+                     "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert sw_decodes("BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4", SW_MAINNET, 0, "751e76e8199196d454941c45d1b3a323f1433bd6");
+  #assert sw_decodes("tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy", SW_TESTNET, 0,
+                     "000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433");
+  #assert sw_decodes("BC1SW50QGDZ25J", SW_MAINNET, 16, "751e");
+  #assert sw_decodes("bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs", SW_MAINNET, 2, "751e76e8199196d454941c45d1b3a323");
+  #assert sw_decodes("bcrt1s489d9fhmyel0vzfqsrmew4x7r80asuqesm5hgqacy35daflcyufh3j8cgdtflvt99ph05m", SW_REGTEST, 16,
+                     "a9cad2a6fb267ef6092080f79754de19dfd8701986e97403b82468dea7f8271378c8f843569fb165");
+  text: [90] u8; program: [40] u8;
+  p := sw_unhex("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", program[..]);
+  n := segwit_encode_vartime(SW_MAINNET, 1, p, text[..]);
+  #assert n == 62 && sw_same(text[0..<n], "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0");
+  n = segwit_encode_vartime(SW_TESTNET, 1, p, text[..]);
+  #assert n == 62 && sw_same(text[0..<n], "tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq47zagq");
+  p = sw_unhex("751e76e8199196d454941c45d1b3a323f1433bd6", program[..]);
+  n = segwit_encode_vartime(SW_MAINNET, 0, p, text[..]);
+  #assert n == 42 && sw_same(text[0..<n], "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4");
+  p = sw_unhex("6f58bac9506f9bfb821d62e69330410bb56f0085", program[..]);
+  n = segwit_encode_vartime(SW_REGTEST, 0, p, text[..]);
+  #assert n == 44 && sw_same(text[0..<n], "bcrt1qdavt4j2sd7dlhqsavtnfxvzppw6k7qy97tmnu9");
+}
+
+#test "each refusal, with nothing written" {
+  #assert sw_refuses("bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav253zgeavqqqqqqqqqqqqqqq", SW_TOO_LONG);
+  #assert sw_refuses("tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq47Zagq", SW_MIXED_CASE);
+  #assert sw_refuses("Bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", SW_MIXED_CASE);
+  #assert sw_refuses("bc1p38j9r5y49hruaue7wxjce0updqjuyyx0kh56v8s25huc6995vvpql3jow4", SW_BAD_FORMAT);
+  #assert sw_refuses("qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", SW_BAD_FORMAT);
+  #assert sw_refuses("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5", SW_BAD_CHECKSUM);
+  #assert sw_refuses("tc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq5zuyut", SW_UNKNOWN_HRP);
+  #assert sw_refuses("bc1gmk9yu", SW_NO_VERSION);
+  #assert sw_refuses("BC130XLXVLHEMJA6C4DQV22UAPCTQUPFHLXM9H8Z3K2E72Q4K9HCZ7VQ7ZWS8R", SW_BAD_VERSION);
+  #assert sw_refuses("bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd", SW_WRONG_VARIANT);
+  #assert sw_refuses("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kemeawh", SW_WRONG_VARIANT);
+  #assert sw_refuses("bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v07qwwzcrf", SW_BAD_PADDING);
+  #assert sw_refuses("tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vpggkg4j", SW_BAD_PADDING);
+  #assert sw_refuses("BC13W508D6QEJXTDG4Y5R3ZARVARY0C5XW7KN40WF2", SW_BAD_VERSION);  // version 17, Bech32
+  #assert sw_refuses("bc1pdg93mv", SW_BAD_LENGTH);  // version 1, no program
+  #assert sw_refuses("bc1pw5dgrnzv", SW_BAD_LENGTH);
+  #assert sw_refuses("bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav253zgeav", SW_BAD_LENGTH);
+  #assert sw_refuses("BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P", SW_BAD_V0_LENGTH);
+  short: [19] u8;
+  a := segwit_decode_vartime("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", short[..]);
+  #assert a.length == SW_CAPACITY && a.network == 0 && a.version == 0;
+  for b: short { #assert b == 0; }
+  exact: [20] u8;
+  #assert segwit_decode_vartime("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", exact[..]).length == 20;
+}
+
+#test "encoding refusals write nothing" {
+  out: [90] u8; program: [41] u8;
+  for i: 0..<90 { out[i] = 0xa5; }
+  #assert segwit_encode_vartime(0, 1, program[0..<32], out[..]) == SW_UNKNOWN_HRP;
+  #assert segwit_encode_vartime(4, 1, program[0..<32], out[..]) == SW_UNKNOWN_HRP;
+  #assert segwit_encode_vartime(SW_MAINNET, 17, program[0..<32], out[..]) == SW_BAD_VERSION;
+  #assert segwit_encode_vartime(SW_MAINNET, -1, program[0..<32], out[..]) == SW_BAD_VERSION;
+  #assert segwit_encode_vartime(SW_MAINNET, 0, program[0..<21], out[..]) == SW_BAD_V0_LENGTH;
+  #assert segwit_encode_vartime(SW_MAINNET, 1, program[0..<41], out[..]) == SW_BAD_LENGTH;
+  #assert segwit_encode_vartime(SW_MAINNET, 1, program[0..<1], out[..]) == SW_BAD_LENGTH;
+  #assert segwit_encode_vartime(SW_MAINNET, 1, program[0..<32], out[0..<61]) == SW_CAPACITY;
+  for b: out { #assert b == 0xa5; }
+  #assert segwit_encode_vartime(SW_MAINNET, 1, program[0..<32], out[0..<62]) == 62;
+}
+
+#test "the variants of BIP-350's Bech32m strings and BIP-173's Bech32 strings" {
+  #assert segwit_variant_vartime("a1lqfn3a") == SW_BECH32M && segwit_variant_vartime("A1LQFN3A") == SW_BECH32M;
+  #assert segwit_variant_vartime("a12uel5l") == SW_BECH32 && segwit_variant_vartime("?1ezyfcl") == SW_BECH32;
+  #assert segwit_variant_vartime("a12uel5m") == SW_BAD_CHECKSUM && segwit_variant_vartime("a12UEL5L") == SW_MIXED_CASE;
+  #assert segwit_variant_vartime("an84characterslonghumanreadablepartthatcontainsthetheexcludedcharactersbioandnumber11d6pts4") == SW_TOO_LONG;
+  #assert segwit_variant_vartime("an83characterlonghumanreadablepartthatcontainsthetheexcludedcharactersbioandnumber11sg7hg6") == SW_BECH32M;
+  #assert segwit_variant_vartime("in1muywd") == SW_BAD_FORMAT && segwit_variant_vartime("M1VUXWEZ") == SW_BAD_CHECKSUM;
+  // The case boundaries: 'A', 'Z', 'a' and 'z' are letters; '[' and '{' are not.
+  #assert segwit_variant_vartime("A12uel5l") == SW_MIXED_CASE && segwit_variant_vartime("Z12uel5l") == SW_MIXED_CASE;
+  #assert segwit_variant_vartime("AAAAAAAz") == SW_MIXED_CASE;
+  #assert segwit_variant_vartime("[1swal4y") == SW_BECH32 && segwit_variant_vartime("{1JV5GVU") == SW_BECH32;
+  #assert segwit_variant_vartime("[abcdefg") == SW_BAD_FORMAT && segwit_variant_vartime("{ABCDEFG") == SW_BAD_FORMAT;
+  #assert segwit_variant_vartime("ABCDEFGHI") == SW_BAD_FORMAT;
+  // 90 characters is not too long; 91 is, and so is a valid Bech32m string of 94.
+  #assert segwit_variant_vartime("qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq") == SW_BAD_FORMAT;
+  #assert segwit_variant_vartime("qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq") == SW_TOO_LONG;
+  #assert segwit_variant_vartime("bc1pqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq7tcrxw") == SW_TOO_LONG;
+}
+
+// Every version and program length encodes exactly when the rules allow
+// it, on one of the three networks in turn, and decodes back to itself;
+// the address refuses as the wrong variant when its checksum uses the
+// other constant.
+#forall version: 0..<18, length: 0..<42 #steps 200000000 {
+  network := 1 + (version + length) % 3;
+  program: [41] u8; text: [90] u8; back: [41] u8;
+  for i: 0..<length { program[i] = cast(u8) ((i * 37 + version * 11 + length) % 256); }
+  n := segwit_encode_vartime(network, version, program[0..<length], text[..]);
+  rule := sw_program_rule(version, length);
+  if rule < 0 {
+    #assert n == rule;
+  } else {
+    #assert n == SW_HRPS[network].count + 1 + 1 + (length * 8 + 4) / 5 + 6;
+    a := segwit_decode_vartime(cast(string) text[0..<n], back[..]);
+    #assert a.length == length && a.network == network && a.version == version;
+    for i: 0..<length { #assert back[i] == program[i]; }
+    words: [70] u8; hrp: [4] u8; other: [90] u8;
+    constant := ifx version == 0 then B32_BECH32M else B32_BECH32;
+    d := b32_decode(cast(string) text[0..<n], hrp[..], words[..], false, false, ifx version == 0 then B32_BECH32 else B32_BECH32M);
+    #assert d.error == NC_OK;
+    e := b32_encode(cast(string) hrp[0..<d.hrp_written], cast(string) words[0..<d.written], false, other[..], false, false, constant);
+    #assert e.error == NC_OK && segwit_decode_vartime(cast(string) other[0..<e.written], back[..]).length == SW_WRONG_VARIANT;
+  }
+}
+
+// book:begin variant
+// A scanned string: its variant (SW_BECH32 or SW_BECH32M) or a refusal,
+// and the HRP length and data word count that b32_scan found.
+Segwit_Scan :: struct { variant: int; hrp: int; words: int; }
+sw_scan :: (text: string) -> Segwit_Scan {
+  h := b32_scan(text, false);
+  if h.error != NC_OK {
+    // b32_scan refuses an overlong or mixed-case string too; give those
+    // two their own codes.
+    if text.count > 90 { return Segwit_Scan.{variant = SW_TOO_LONG}; }
+    upper := false; lower := false;
+    for c: text {
+      if c >= 'A' && c <= 'Z' { upper = true; }
+      if c >= 'a' && c <= 'z' { lower = true; }
+    }
+    if upper && lower { return Segwit_Scan.{variant = SW_MIXED_CASE}; }
+    return Segwit_Scan.{variant = SW_BAD_FORMAT};
+  }
+  variant := SW_BAD_CHECKSUM;
+  if h.residue == B32_BECH32 { variant = SW_BECH32; }
+  if h.residue == B32_BECH32M { variant = SW_BECH32M; }
+  return Segwit_Scan.{variant = variant, hrp = h.hrp, words = h.words};
+}
+// Bech32 or Bech32m, or the reason the string is neither.
+segwit_variant_vartime :: (text: string) -> int #export_c { return sw_scan(text).variant; }
+// book:end variant
+
+// book:begin rules
+// The network for an HRP, compared without case, or SW_UNKNOWN_HRP.
+sw_network :: (hrp: string) -> int {
+  for network: SW_MAINNET..<SW_REGTEST + 1 {
+    name := SW_HRPS[network];
+    if name.count == hrp.count {
+      same := true;
+      for i: 0..<hrp.count { if b32_lower(hrp[i]) != name[i] { same = false; } }
+      if same { return network; }
+    }
+  }
+  return SW_UNKNOWN_HRP;
+}
+// 0 when a witness version and program length make an address, or the refusal.
+sw_program_rule :: (version: int, length: int) -> int {
+  if version < 0 || version > 16 { return SW_BAD_VERSION; }
+  if length < 2 || length > 40 { return SW_BAD_LENGTH; }
+  if version == 0 && length != 20 && length != 32 { return SW_BAD_V0_LENGTH; }
+  return 0;
+}
+// book:end rules
+
+// book:begin decode
+segwit_decode_vartime :: (text: string, program_out: [] u8) -> Segwit_Address #export_c {
+  h := sw_scan(text);
+  if h.variant < SW_BECH32 { return Segwit_Address.{length = h.variant}; }
+  network := sw_network(text[0..<h.hrp]);
+  if network < SW_MAINNET { return Segwit_Address.{length = network}; }
+  if h.words == 0 { return Segwit_Address.{length = SW_NO_VERSION}; }
+  version := b32_digit(b32_lower(text[h.hrp + 1]));
+  if version > 16 { return Segwit_Address.{length = SW_BAD_VERSION}; }
+  if (version == 0) != (h.variant == SW_BECH32) { return Segwit_Address.{length = SW_WRONG_VARIANT}; }
+  // The program is the words after the version, regrouped 5 to 8 bits.
+  last := b32_digit(b32_lower(text[h.hrp + h.words]));
+  length := n19_byte_count(h.words - 1, last);
+  if length < 0 { return Segwit_Address.{length = SW_BAD_PADDING}; }
+  rule := sw_program_rule(version, length);
+  if rule < 0 { return Segwit_Address.{length = rule}; }
+  if program_out.count < length { return Segwit_Address.{length = SW_CAPACITY}; }
+  source := N19_Source.{input = text, start = h.hrp + 2, count = length, encoded = true};
+  for i: 0..<length { program_out[i] = n19_byte(source, i); }
+  return Segwit_Address.{length = length, network = network, version = version};
+}
+// book:end decode
+
+// book:begin encode
+segwit_encode_vartime :: (network: int, version: int, program: [] u8, out: [] u8) -> int #export_c {
+  if network < SW_MAINNET || network > SW_REGTEST { return SW_UNKNOWN_HRP; }
+  rule := sw_program_rule(version, program.count);
+  if rule < 0 { return rule; }
+  // The version is one word, then the program regrouped 8 to 5 bits.
+  words: [65] u8;
+  count := b32_word_count(program.count, true);
+  words[0] = cast(u8) version;
+  for i: 0..<count { words[i + 1] = b32_word(cast(string) program, true, i); }
+  constant := ifx version == 0 then B32_BECH32 else B32_BECH32M;
+  r := b32_encode_words(SW_HRPS[network], cast(string) words[0..<count + 1], out, constant);
+  if r.error != NC_OK { return SW_CAPACITY; }
+  return r.written;
+}
+// book:end encode

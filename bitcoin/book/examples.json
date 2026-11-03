@@ -249,6 +249,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "bitcoin/examples/bech32m.coax",
+      "chapter": "bitcoin/book/ch028-bech32m.md",
+      "stdout": "bitcoin/fixtures/bech32m.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

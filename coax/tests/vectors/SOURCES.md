@@ -133,6 +133,17 @@ that a maliciously replaced manifest is authentic.
   and regtest) are used; the 32 Bech32 and Bech32m addresses are left to
   chapters 27–29. All 70 invalid strings must refuse as an address and as a
   WIF. Chapter 26 also reads the 17 extended public keys in BIP-32's text.
+- **Bech32m and segwit addresses (Bitcoin chapter 28):** BIP-350's text at
+  the same revision as BIP-173's, retrieved 2026-11-02, for its 7 valid and
+  14 invalid Bech32m strings and its 8 valid and 15 invalid segwit
+  addresses, with the reasons it gives. Chapter 28 also reads BIP-173's 6
+  valid and 10 invalid segwit addresses from the already pinned BIP-173 text,
+  and the 32 Bech32 and Bech32m addresses of `key_io_valid.json` that
+  chapter 26 left. `segwit_addr.py` is BIP-350's reference Python
+  implementation from `sipa/bech32` at commit `7a7d7ab1`. It is stored as
+  `segwit_addr.py.txt`, bytes unchanged, so the repository's tools rule
+  doesn't read it as one of our tools; `coax/tests/bitcoin/segwit.py`
+  loads it after checking its digest and uses it as the oracle.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -157,11 +168,12 @@ execution, fuzzing, secret handling and production review remain separate tasks.
 
 ## License and source notices
 
-BIP-340 is BSD-2-Clause OR MIT OR CC0-1.0; BIP-173 declares BSD-2-Clause in its
+BIP-340 is BSD-2-Clause OR MIT OR CC0-1.0; BIP-173 and BIP-350 declare BSD-2-Clause in their
 text, and BIP-341 declares BSD-3-Clause in its text. Bitcoin Core is MIT and
 btcd is ISC; their license files are retained. SipHash is CC0-1.0, MIT or
 Apache-2.0 with LLVM exception; its CC0 file is retained. The NIP-44 JavaScript subtree is Unlicense; Wycheproof is Apache-2.0;
-JSONTestSuite is MIT. Their provided license files are retained. RFCs retain
+JSONTestSuite is MIT. Their provided license files are retained. `segwit_addr.py`
+carries its MIT notice in its own header. RFCs retain
 complete IETF/Internet Society copyright and redistribution notices (including
 the older RFC 4231 terms). NIST's U.S. Government archive supplies CAVS notices
 and no standalone license file. The NIP texts already vendored by this repository
@@ -172,7 +184,7 @@ index is OpenAgents Apache-2.0; it does not relicense upstream material.
 ## Inventory
 
 All dates below are retrieval dates (2026-10-28; the RIPEMD-160 and BIP-32
-files, the Bitcoin chapter 5 and 17 files and the SipHash files, 2026-11-02), not claims about
+files, the Bitcoin chapter 5, 17, 26 and 28 files and the SipHash files, 2026-11-02), not claims about
 publication.
 The complete revision/license/archive fields are in `manifest.json`.
 
@@ -222,6 +234,8 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/base58_encode_decode.json`](upstream/bitcoin-core/base58_encode_decode.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/base58_encode_decode.json) | `20d51011f49339714c28b9244cc5238f4c78bb9206dc8fc61500aed6fc2682ca` |
 | [`upstream/bitcoin-core/key_io_valid.json`](upstream/bitcoin-core/key_io_valid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/key_io_valid.json) | `90bd1d35d12763e0d00c5400b2c9fe551e532a821e1e466c20cad3aced70a7fe` |
 | [`upstream/bitcoin-core/key_io_invalid.json`](upstream/bitcoin-core/key_io_invalid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/key_io_invalid.json) | `c3ca74ddad7c01faaca7c26063537feb73ff2be03eb7fc83a42a655d2979261d` |
+| [`upstream/bip350/bip-0350.mediawiki`](upstream/bip350/bip-0350.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0350.mediawiki) | `63634b06aa8bae88b31929674736e74964c4598684269ac2b0b140c43a7a0dec` |
+| [`upstream/sipa-bech32/segwit_addr.py.txt`](upstream/sipa-bech32/segwit_addr.py.txt) | [pinned source](https://raw.githubusercontent.com/sipa/bech32/7a7d7ab158db7078a333384e0e918c90dbc42917/ref/python/segwit_addr.py) | `2884ce04a36c8374c4249177cd90e91e545ac73b5c9260307bbeb74ae2e9de0f` |
 | [`upstream/bitcoin-core/COPYING`](upstream/bitcoin-core/COPYING) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING) | `b028769f3852a9368ab10bd754ff01ebb741f84a2fa658c9aff82a631bc6ecfc` |
 | [`upstream/btcd/genesis_test.go`](upstream/btcd/genesis_test.go) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/chaincfg/genesis_test.go) | `e188c4fb27cccec22a0853be80f5c9b308e88045baccbf81a2058b01c7155452` |
 | [`upstream/btcd/LICENSE`](upstream/btcd/LICENSE) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/LICENSE) | `10db068dbe11e2b3d652a3d4ae3cdd7998b84b12cdefe3d8083a2b63c295c13f` |

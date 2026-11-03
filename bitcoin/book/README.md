@@ -43,10 +43,10 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 24 are implemented and 100 are planned. The 24
-implemented chapters have runnable examples, qualified on native CPU, and 19
+Of the 124 chapters, 25 are implemented and 99 are planned. The 25
+implemented chapters have runnable examples, qualified on native CPU, and 20
 of them on Wasm. Fifteen of them are the cryptography Nostr already used;
-chapters 5, 6, 7, 10, 12, 17, 19, 20 and 26 are new.
+chapters 5, 6, 7, 10, 12, 17, 19, 20, 26 and 28 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -157,7 +157,7 @@ Base58Check, Bech32 and Bech32m, addresses and output descriptors.
 | --- | --- | --- |
 | [26. Base58Check](ch026-base58check.md) | Runnable: native C and wasm | Base58 and Base58Check with the P2PKH, P2SH and WIF version bytes, checked against all of Bitcoin Core's `base58_encode_decode.json`, the Base58 entries of `key_io_valid.json` and `key_io_invalid.json`, BIP-32's extended public keys and a Python implementation, natively and in Wasm. WIF keys encode and decode in constant time. A one-character change fails the checksum. |
 | [27. Bech32](ch027-bech32.md) | Runnable: native C | BIP-173 Bech32 (checksum constant 1, never Bech32m) with the pinned vectors and canonical lowercase re-encoding. |
-| 28. Bech32m | Planned | Every valid and invalid BIP-350 vector gives its expected result, including the witness-version rules. |
+| [28. Bech32m](ch028-bech32m.md) | Runnable: native C and wasm | BIP-350 Bech32m (constant `0x2bc830a3`) added to chapter 27's code, and segwit address encoding and decoding with BIP-350's rule (Bech32 for version 0, Bech32m for 1–16), checked against every BIP-350 and BIP-173 vector, Bitcoin Core's Bech32 key I/O entries and BIP-350's reference Python implementation, natively and in Wasm. Twelve refusals have codes of their own. |
 | 29. Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR | Planned | Every BIP-173 and BIP-350 segwit address vector and pinned P2PKH and P2SH addresses map to their scriptPubKeys and back. |
 | 30. Output descriptors and their checksum | Planned | The BIP-380 checksum vectors and the BIP-381–386 examples parse and give their stated scripts. |
 

@@ -20,7 +20,8 @@ addresses, and Nostr chapter 16 builds the NIP-19 entities on top of it.
 | --- | --- | --- |
 | [bech32-core.coax](../../coax/lib/nostr/bech32-core.coax) | `b32_word(data, eight, at)` | One 5-bit word, from bytes (`eight` true) or from words |
 | | `b32_step`, `b32_prefix` | One polymod step; the polymod state after the HRP |
-| | `b32_inspect(input, extended)` | Checks length, characters, case, separator and checksum without writing anything |
+| | `b32_scan(input, extended)` | Checks length, characters, case and separator and returns the polymod result, without writing anything |
+| | `b32_inspect(input, extended)` | `b32_scan`, then refuses any result other than 1 |
 | | `bech32_encode_checked`, `bech32_decode_checked` | Encode to and decode from caller buffers |
 | [nip19-core.coax](../../coax/lib/nostr/nip19-core.coax) | `n19_byte_count(words, last)` | The byte count of `words` 5-bit words, or -1 when the padding is wrong |
 | [bech32-memory.coax](../../coax/lib/nostr/bech32-memory.coax) | `bech32_encode`, `bech32_decode` | The exported entry points; they add the buffer-overlap check |
@@ -192,19 +193,22 @@ data character is `p`, inserting or deleting `q` characters just before it
 can leave the checksum valid. Bitcoin uses Bech32m for SegWit version 1 and
 later addresses.
 
-BIP-173 is Bech32 with constant 1, and so is NIP-19, so this code uses
-constant 1 only. Chapter 28 adds the other constant for Taproot addresses. A Bech32m string
-leaves the polymod at `0x2bc830a3`, not 1, and refuses as a bad checksum.
-There is no fallback that tries the other constant: one string has one
-meaning.
+BIP-173 is Bech32 with constant 1, and so is NIP-19, so the procedures
+this chapter uses take constant 1 only. [Chapter 28](ch028-bech32m.md) adds
+the Bech32m entry points for Taproot addresses. A Bech32m string leaves the
+polymod at `0x2bc830a3`, not 1, and refuses as a bad checksum. There is no
+fallback that tries the other constant: one string has one meaning.
 
 ## Checking a string
 
-`b32_inspect` applies every rule before a decoder writes anything:
+`b32_scan` applies every rule but the checksum before a decoder writes
+anything, and returns the polymod result as `residue`. `b32_check`
+refuses a residue other than the constant it is given, and `b32_inspect`
+gives it 1:
 
 <!-- source: coax/lib/nostr/bech32-core.coax inspect -->
 ```jai
-b32_inspect :: (input: string, extended: bool) -> B32_Header {
+b32_scan :: (input: string, extended: bool) -> B32_Header {
   if !b32_text_count(input.count, extended) { return B32_Header.{error = NC_INVALID}; }
   upper := false; lower := false; separator := 0;
   for i: 0..<input.count {
@@ -222,12 +226,17 @@ b32_inspect :: (input: string, extended: bool) -> B32_Header {
     if value < 0 { return B32_Header.{error = NC_INVALID}; }
     state = b32_step(state, cast(u8) value);
   }
-  if state != 1 { return B32_Header.{error = NC_INVALID}; }
-  return B32_Header.{hrp = separator, words = input.count - separator - 7};
+  return B32_Header.{hrp = separator, words = input.count - separator - 7, residue = state};
 }
+b32_check :: (input: string, extended: bool, constant: u32) -> B32_Header {
+  h := b32_scan(input, extended);
+  if h.error == NC_OK && h.residue != constant { return B32_Header.{error = NC_INVALID}; }
+  return h;
+}
+b32_inspect :: (input: string, extended: bool) -> B32_Header { return b32_check(input, extended, B32_BECH32); }
 ```
 
-In order, it refuses:
+In order, `b32_inspect` refuses:
 
 1. a length outside 8 to 90 (or 5,000 when `extended`);
 2. a byte outside 33 to 126;
@@ -568,8 +577,11 @@ gives the results on 2026-10-28:
   `@scure/base 1.2.4`.
 
 Those runs were not repeated for this chapter. Since then the two library
-files gained only the `// book:` comment markers that this chapter's
-listings use.
+files gained the `// book:` comment markers that this chapter's listings
+use, and [chapter 28](ch028-bech32m.md) split `b32_inspect` into
+`b32_scan` and `b32_check` and made the encoder's final constant a
+parameter. The Bech32 procedures behave as before; chapter 28 records the
+checks it ran on the changed file.
 
 ## Summary
 

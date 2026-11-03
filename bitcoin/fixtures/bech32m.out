@@ -1,0 +1,46 @@
+Bech32m constant: 2bc830a3
+expanded HRP of bc: 3 3 0 2 3
+version word: 1 = p
+first key words: 15 6 31 6 12 31
+key words: 52
+polymod with six zeros: 2ea27aec
+xor 0x2bc830a3: 056a4a4f
+Bech32m checksum: 2 22 20 18 18 15 = zk5jj0
+xor 1: 2ea27aed
+Bech32 checksum: 23 10 4 30 23 13 = h2y7hd
+address: bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0
+equals BIP-350's vector: true
+variant: Bech32m
+decode: bc, version 1, 32 bytes
+program: 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+regtest: bcrt1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqc8gma6
+variant of the Bech32 form: Bech32
+the Bech32 form: wrong variant
+P2WPKH BC1QW508D6...: bc, version 0, 20 bytes
+re-encoded: bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4
+Bech32, ends in p
+  state before the p: 00000000
+  0 q inserted: Bech32, BIP-173 program 32 bytes
+  1 q inserted: Bech32, BIP-173 program 33 bytes
+  2 q inserted: Bech32, BIP-173 program bad padding
+Bech32m, ends in p
+  state before the p: 165d86d5
+  1 q inserted, state before the p: 2bc830a2
+  1 q inserted: bad checksum
+91 characters: too long
+tb1p...q47Zagq: mixed case
+'o' in bc1p38j9...jow4: bad format
+last character changed: bad checksum
+tc1p...: unknown HRP
+bc1gmk9yu: no version
+version 17: bad version
+v0 with Bech32m: wrong variant
+5 spare bits: bad padding
+a spare bit set: bad padding
+1-byte program: bad length
+41-byte program: bad length
+16-byte v0 program: bad v0 length
+32 bytes into 31: capacity
+encode version 17: bad version
+encode v0, 32 bytes: 62
+encode v0, 31 bytes: bad v0 length

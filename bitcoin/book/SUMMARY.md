@@ -44,3 +44,4 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 - [26. Base58Check](ch026-base58check.md) — implemented
 - [27. Bech32](ch027-bech32.md) — implemented
+- [28. Bech32m](ch028-bech32m.md) — implemented

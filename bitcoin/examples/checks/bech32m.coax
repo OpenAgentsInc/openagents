@@ -1,0 +1,109 @@
+// The checks of bech32m.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/bech32m.coax
+#load "../bech32m.coax";
+#load "../../../coax/tests/bitcoin/bech32m_vectors.coax";
+
+// book:begin check
+// BIP-350's valid Bech32m strings decode as Bech32m, re-encode in
+// lowercase, and refuse as Bech32.
+#forall "every valid BIP-350 string is Bech32m and only Bech32m" i: 0..<7 {
+  s := SW_BECH32M_VALID[i];
+  hrp: [83] u8; words: [90] u8; text: [90] u8;
+  #assert segwit_variant_vartime(s) == SW_BECH32M;
+  #assert bech32_decode_checked(s, hrp[..], words[..], false, false).error == NC_INVALID;
+  r := bech32m_decode_checked(s, hrp[..], words[..], false, false);
+  #assert r.error == NC_OK && r.hrp_written + 1 + r.written + 6 == s.count;
+  q := bech32m_encode_checked(cast(string) hrp[0..<r.hrp_written], cast(string) words[0..<r.written], false, text[..], false, false);
+  #assert q.error == NC_OK && q.written == s.count;
+  for k: 0..<s.count { #assert text[k] == b32_lower(s[k]); }
+}
+// BIP-350's invalid Bech32m strings refuse. The three with a byte outside
+// printable ASCII are built from their listed bytes.
+#forall "every invalid BIP-350 string refuses" i: 0..<14 {
+  s: [8] u8; text := "";
+  if i < 11 {
+    text = SW_BECH32M_INVALID[i];
+  } else {
+    s[0] = SW_BECH32M_LEAD[i - 11];
+    for k: 0..<7 { s[k + 1] = SW_BECH32M_TAIL[i - 11][k]; }
+    text = cast(string) s[..];
+  }
+  hrp: [83] u8; words: [90] u8;
+  #assert bech32m_decode_checked(text, hrp[..], words[..], false, false).error == NC_INVALID;
+  #assert segwit_variant_vartime(text) < 0;
+}
+// Every segwit address in BIP-350, BIP-173 and key_io_valid.json decodes
+// to its network, version and program, or refuses with the code for its
+// BIP's reason. A valid address re-encodes in lowercase. A BIP-173 address
+// for version 1 or later refuses as the wrong variant, and its program
+// re-encodes with Bech32m to a different string that decodes back.
+#forall "every segwit address vector" i: 0..<71 #steps 200000000 {
+  c := SW_CASES[i];
+  program: [41] u8; want: [41] u8; text: [90] u8;
+  a := segwit_decode_vartime(c.text, program[..]);
+  if c.code != 0 {
+    #assert a.length == c.code && a.network == 0 && a.version == 0;
+  } else {
+    p := sw_unhex(c.program, want[..]);
+    #assert a.length == p.count && a.network == c.network && a.version == c.version;
+    #assert sw_same(program[0..<a.length], cast(string) p);
+    n := segwit_encode_vartime(a.network, a.version, program[0..<a.length], text[..]);
+    #assert n == c.text.count;
+    for k: 0..<n { #assert text[k] == b32_lower(c.text[k]); }
+  }
+  if c.code == SW_WRONG_VARIANT && c.program.count > 0 {
+    p := sw_unhex(c.program, want[..]);
+    n := segwit_encode_vartime(c.network, c.version, p, text[..]);
+    #assert n == c.text.count && segwit_variant_vartime(cast(string) text[0..<n]) == SW_BECH32M;
+    #assert segwit_variant_vartime(c.text) == SW_BECH32;
+    #assert sw_decodes(cast(string) text[0..<n], c.network, c.version, c.program);
+  }
+}
+#forall "every string in key_io_invalid.json refuses" i: 0..<70 {
+  out: [41] u8;
+  code := segwit_decode_vartime(SW_KEY_IO_INVALID[i], out[..]).length;
+  #assert code < 0 && sw_refuses(SW_KEY_IO_INVALID[i], code);
+}
+// Each character of the Taproot address replaced by each other character
+// of the alphabet: BCH codes detect any 4 substitutions, so each of the
+// 1,922 changes fails the checksum, except at the separator, where the
+// string loses its '1'.
+#forall "every one-character change refuses" at: 0..<62, by: 0..<32 #steps 200000000 {
+  s: [62] u8;
+  for k: 0..<62 { s[k] = TAPROOT_ADDRESS[k]; }
+  if s[at] != B32_ALPHABET[by] {
+    s[at] = B32_ALPHABET[by];
+    want := ifx at == 2 then SW_BAD_FORMAT else SW_BAD_CHECKSUM;
+    #assert sw_refuses(cast(string) s[..], want);
+  }
+}
+// The weakness and its fix: up to 20 'q's in front of the final 'p' keep a
+// Bech32 string valid, and any number of them breaks a Bech32m string.
+#forall "q insertion before a final p" extra: 1..<21 {
+  s: [90] u8; t: [90] u8;
+  m := ENDS_IN_P_BECH32.count - 1;
+  for k: 0..<m { s[k] = ENDS_IN_P_BECH32[k]; t[k] = ENDS_IN_P_BECH32M[k]; }
+  for k: 0..<extra { s[m + k] = 'q'; t[m + k] = 'q'; }
+  s[m + extra] = 'p'; t[m + extra] = 'p';
+  #assert state_before(ENDS_IN_P_BECH32, 1) == 0;
+  #assert segwit_variant_vartime(cast(string) s[0..<m + extra + 1]) == SW_BECH32;
+  #assert segwit_variant_vartime(cast(string) t[0..<m + extra + 1]) == SW_BAD_CHECKSUM;
+}
+// The worked example's values, computed with the pinned segwit_addr.py:
+// bech32_polymod(bech32_hrp_expand("bc") + [1] + convertbits(key, 8, 5)
+// + [0] * 6) is 0x2ea27aec.
+#test "the worked example" {
+  key: [32] u8;
+  #assert hex_decode_checked(TAPROOT_KEY, key[..], false).error == NC_OK;
+  state := b32_prefix("bc");
+  #assert state == b32_step(b32_step(b32_step(b32_step(b32_step(1, 3), 3), 0), 2), 3);
+  state = b32_step(state, 1);
+  for i: 0..<52 { state = b32_step(state, b32_word(cast(string) key[..], true, i)); }
+  for i: 0..<6 { state = b32_step(state, 0); }
+  #assert state == 0x2ea27aec && (state ^ B32_BECH32M) == 0x056a4a4f && (state ^ 1) == 0x2ea27aed;
+  first := [6] u8.[15, 6, 31, 6, 12, 31];
+  for i: 0..<6 { #assert b32_word(cast(string) key[..], true, i) == first[i]; }
+  #assert state_before(ENDS_IN_P_BECH32M, 1) == 0x165d86d5;
+}
+// book:end check

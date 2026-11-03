@@ -46,10 +46,12 @@ decides where money may go. It does not fetch anything, resolve a
 Lightning address's domain, or verify a signature. The caller verifies the
 event (chapter 21) and passes it in.
 
-Bitcoin chapter 27's `bech32-core.coax` reads Bech32 only. This chapter does not
-change it. `a3_segwit` calls its polymod (`b32_prefix`, `b32_step`) and
-compares the residue with both constants itself, so the library gains
-Bech32m without a new code path in Bitcoin chapter 27.
+Bitcoin chapter 27's `b32_inspect` reads Bech32 only. `a3_segwit` calls its
+polymod (`b32_prefix`, `b32_step`) and compares the residue with both
+constants itself. Bitcoin chapter 28, written later, added Bech32m and a
+segwit address decoder to the library
+([segwit.coax](../../coax/lib/bitcoin/segwit.coax)); `a3_segwit` predates
+it and keeps its own checks and its own `A3_*` refusals.
 
 ## The record
 

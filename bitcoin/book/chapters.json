@@ -613,14 +613,22 @@
   {
    "number": 28,
    "title": "Bech32m",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch028-bech32m.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
     27
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/bech32-core.coax",
+    "coax/lib/bitcoin/segwit.coax",
+    "bitcoin/examples/bech32m.coax",
+    "bitcoin/examples/checks/bech32m.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {

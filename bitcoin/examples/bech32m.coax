@@ -1,0 +1,162 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/segwit.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [100] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// A 30-bit checksum state as 8 hex digits.
+show_state :: (label: string, state: u32) {
+  b: [4] u8;
+  for i: 0..<4 { b[i] = cast(u8)((state >> (8 * (3 - i))) & 255); }
+  show(label, b[..]);
+}
+// The six checksum words of a final polymod value, and their characters.
+show_checksum :: (label: string, value: u32) {
+  chars: [6] u8;
+  print("%:", label);
+  for i: 0..<6 {
+    word := (value >> (5 * (5 - i))) & 31;
+    print(" %", word);
+    chars[i] = B32_ALPHABET[word];
+  }
+  print(" = %\n", cast(string) chars[..]);
+}
+// The name of a refusal or variant.
+code_name :: (code: int) -> string {
+  names := [12] string.["too long", "mixed case", "bad format", "bad checksum", "unknown HRP",
+                        "no version", "bad version", "wrong variant", "bad padding", "bad length",
+                        "bad v0 length", "capacity"];
+  if code < 0 && code >= -12 { return names[-code - 1]; }
+  if code == SW_BECH32 { return "Bech32"; }
+  if code == SW_BECH32M { return "Bech32m"; }
+  return "?";
+}
+// Decode an address and print what it holds, or its refusal.
+try_decode :: (label: string, text: string) {
+  program: [40] u8;
+  a := segwit_decode_vartime(text, program[..]);
+  if a.length < 0 { print("%: %\n", label, code_name(a.length)); return; }
+  print("%: %, version %, % bytes\n", label, SW_HRPS[a.network], a.version, a.length);
+}
+// The polymod state over a string's expanded HRP and its data words, up to
+// but not including the last `skip` characters.
+state_before :: (text: string, skip: int) -> u32 {
+  at := text.count - 1;
+  while text[at] != '1' { at -= 1; }
+  state := b32_prefix(text[0..<at]);
+  for k: at + 1..<text.count - skip { state = b32_step(state, cast(u8) b32_digit(b32_lower(text[k]))); }
+  return state;
+}
+
+// The x coordinate of the generator G, as a Taproot output key.
+TAPROOT_KEY :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+TAPROOT_ADDRESS :: "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0";
+// The same key with a Bech32 checksum: BIP-350's invalid vector.
+TAPROOT_BECH32 :: "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd";
+// A version 1 program whose Bech32 checksum ends in 'p': the key with its
+// last byte changed to 0x0c, as a wallet written before BIP-350 would
+// encode it. The Bech32m form of the key with last byte 0x2b also ends in 'p'.
+ENDS_IN_P_BECH32 :: "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hczuxqwrttsp";
+ENDS_IN_P_BECH32M :: "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hczu4se9yxfp";
+
+main :: () {
+  // The constant and the HRP.
+  show_state("Bech32m constant", B32_BECH32M);
+  print("expanded HRP of bc:");
+  for c: "bc" { print(" %", c >> 5); }
+  print(" 0");
+  for c: "bc" { print(" %", c & 31); }
+  print("\n");
+
+  // The Taproot address by hand: the version word 1, then 52 words of key,
+  // then the checksum.
+  key: [32] u8;
+  #assert hex_decode_checked(TAPROOT_KEY, key[..], false).error == NC_OK;
+  print("version word: 1 = p\n");
+  print("first key words:");
+  for i: 0..<6 { print(" %", b32_word(cast(string) key[..], true, i)); }
+  print("\nkey words: %\n", b32_word_count(32, true));
+  state := b32_prefix("bc");
+  state = b32_step(state, 1);
+  for i: 0..<52 { state = b32_step(state, b32_word(cast(string) key[..], true, i)); }
+  for i: 0..<6 { state = b32_step(state, 0); }
+  show_state("polymod with six zeros", state);
+  show_state("xor 0x2bc830a3", state ^ B32_BECH32M);
+  show_checksum("Bech32m checksum", state ^ B32_BECH32M);
+  show_state("xor 1", state ^ B32_BECH32);
+  show_checksum("Bech32 checksum", state ^ B32_BECH32);
+
+  // The library does the same.
+  text: [90] u8;
+  n := segwit_encode_vartime(SW_MAINNET, 1, key[..], text[..]);
+  address := cast(string) text[0..<n];
+  print("address: %\n", address);
+  print("equals BIP-350's vector: %\n", address == TAPROOT_ADDRESS);
+  print("variant: %\n", code_name(segwit_variant_vartime(address)));
+  program: [40] u8;
+  a := segwit_decode_vartime(address, program[..]);
+  print("decode: %, version %, % bytes\n", SW_HRPS[a.network], a.version, a.length);
+  show("program", program[0..<a.length]);
+  n = segwit_encode_vartime(SW_REGTEST, 1, key[..], text[..]);
+  print("regtest: %\n", cast(string) text[0..<n]);
+  print("variant of the Bech32 form: %\n", code_name(segwit_variant_vartime(TAPROOT_BECH32)));
+  try_decode("the Bech32 form", TAPROOT_BECH32);
+
+  // Version 0 keeps Bech32.
+  try_decode("P2WPKH BC1QW508D6...", "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4");
+  a = segwit_decode_vartime("BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4", program[..]);
+  n = segwit_encode_vartime(a.network, a.version, program[0..<a.length], text[..]);
+  print("re-encoded: %\n", cast(string) text[0..<n]);
+
+  // The weakness: a Bech32 string ending in 'p' takes or loses 'q's in
+  // front of that 'p' and still passes.
+  print("Bech32, ends in p\n");
+  show_state("  state before the p", state_before(ENDS_IN_P_BECH32, 1));
+  inserted: [70] u8;
+  for extra: 0..<3 {
+    m := ENDS_IN_P_BECH32.count - 1;
+    for i: 0..<m { inserted[i] = ENDS_IN_P_BECH32[i]; }
+    for i: 0..<extra { inserted[m + i] = 'q'; }
+    inserted[m + extra] = 'p';
+    s := cast(string) inserted[0..<m + extra + 1];
+    // BIP-173 took Bech32 for every version: what it would have read.
+    h := b32_scan(s, false);
+    bytes := n19_byte_count(h.words - 1, b32_digit(s[h.hrp + h.words]));
+    print("  % q inserted: %, BIP-173 program ", extra, code_name(segwit_variant_vartime(s)));
+    if bytes < 0 { print("bad padding\n"); } else { print("% bytes\n", bytes); }
+  }
+  print("Bech32m, ends in p\n");
+  show_state("  state before the p", state_before(ENDS_IN_P_BECH32M, 1));
+  m := ENDS_IN_P_BECH32M.count - 1;
+  for i: 0..<m { inserted[i] = ENDS_IN_P_BECH32M[i]; }
+  inserted[m] = 'q'; inserted[m + 1] = 'p';
+  s := cast(string) inserted[0..<m + 2];
+  show_state("  1 q inserted, state before the p", state_before(s, 1));
+  print("  1 q inserted: %\n", code_name(segwit_variant_vartime(s)));
+
+  // Refusals, one for each code.
+  try_decode("91 characters", "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav253zgeavqqqqqqqqqqqqqqq");
+  try_decode("tb1p...q47Zagq", "tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq47Zagq");
+  try_decode("'o' in bc1p38j9...jow4", "bc1p38j9r5y49hruaue7wxjce0updqjuyyx0kh56v8s25huc6995vvpql3jow4");
+  try_decode("last character changed", "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj2");
+  try_decode("tc1p...", "tc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq5zuyut");
+  try_decode("bc1gmk9yu", "bc1gmk9yu");
+  try_decode("version 17", "BC130XLXVLHEMJA6C4DQV22UAPCTQUPFHLXM9H8Z3K2E72Q4K9HCZ7VQ7ZWS8R");
+  try_decode("v0 with Bech32m", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kemeawh");
+  try_decode("5 spare bits", "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v07qwwzcrf");
+  try_decode("a spare bit set", "tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vpggkg4j");
+  try_decode("1-byte program", "bc1pw5dgrnzv");
+  try_decode("41-byte program", "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav253zgeav");
+  try_decode("16-byte v0 program", "BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P");
+  small: [31] u8;
+  print("32 bytes into 31: %\n", code_name(segwit_decode_vartime(TAPROOT_ADDRESS, small[..]).length));
+  print("encode version 17: %\n", code_name(segwit_encode_vartime(SW_MAINNET, 17, key[..], text[..])));
+  print("encode v0, 32 bytes: %\n", segwit_encode_vartime(SW_MAINNET, 0, key[..], text[..]));
+  print("encode v0, 31 bytes: %\n", code_name(segwit_encode_vartime(SW_MAINNET, 0, key[0..<31], text[..])));
+}
+// book:end example

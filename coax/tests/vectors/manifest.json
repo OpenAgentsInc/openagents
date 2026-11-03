@@ -613,6 +613,34 @@
       "bytes": 5193
     },
     {
+      "path": "upstream/bip350/bip-0350.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0350.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in source)",
+      "covers": [
+        "bech32m",
+        "segwit-address"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "63634b06aa8bae88b31929674736e74964c4598684269ac2b0b140c43a7a0dec",
+      "bytes": 26836
+    },
+    {
+      "path": "upstream/sipa-bech32/segwit_addr.py.txt",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/sipa/bech32/7a7d7ab158db7078a333384e0e918c90dbc42917/ref/python/segwit_addr.py",
+      "revision": "git:7a7d7ab158db7078a333384e0e918c90dbc42917",
+      "license": "MIT (declared in source)",
+      "covers": [
+        "bech32m",
+        "segwit-address"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "2884ce04a36c8374c4249177cd90e91e545ac73b5c9260307bbeb74ae2e9de0f",
+      "bytes": 5022
+    },
+    {
       "path": "upstream/bitcoin-core/COPYING",
       "kind": "upstream",
       "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING",
