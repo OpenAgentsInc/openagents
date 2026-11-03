@@ -582,14 +582,22 @@
   {
    "number": 25,
    "title": "Batch verification",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch025-batch-verification.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     23
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/crypto/schnorr_batch.coax",
+    "bitcoin/examples/schnorr-batch.coax",
+    "bitcoin/examples/checks/schnorr-batch.coax",
+    "coax/tests/bitcoin/batch.py",
+    "coax/tests/bitcoin/batch_bench.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

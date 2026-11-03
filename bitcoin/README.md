@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-90 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+91 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -56,7 +56,9 @@ checksum in [`sha3.coax`](../coax/lib/crypto/sha3.coax). Chapter 81's
 standardness rules, which refuse transactions that blocks may still hold.
 Chapter 77's [`secp_glv.coax`](../coax/lib/crypto/secp_glv.coax) splits
 each verification scalar with secp256k1's endomorphism, which makes ECDSA
-and BIP-340 verification about 1.6 times faster.
+and BIP-340 verification about 1.6 times faster. Chapter 25's
+[`schnorr_batch.coax`](../coax/lib/crypto/schnorr_batch.coax) verifies
+many BIP-340 signatures with one multi-scalar multiplication.
 Chapter 116 pins every vector file in
 [`coax/tests/vectors/`](../coax/tests/vectors/SOURCES.md) by source and
 SHA-256, and holds Bitcoin Core's files at one revision, `ddea9196`.
@@ -193,14 +195,14 @@ Taproot key tweak, key path, script trees and signature hashes (chapters
 coin record and hashes in chapter 56 (`coax/lib/bitcoin/muhash.coax`,
 `coax/lib/bitcoin/coins.coax`), and BIP-158 Golomb-coded block filters
 with BIP-157 filter headers in chapter 74
-(`coax/lib/bitcoin/blockfilter.coax`). Bitcoin
-and Lightning also need:
+(`coax/lib/bitcoin/blockfilter.coax`). So are batch Schnorr
+verification in chapter 25 (`coax/lib/crypto/schnorr_batch.coax`),
+ElligatorSwift and the BIP-324 transport in chapters 66 and 67, silent
+payments in chapter 97, MuSig2 in chapter 101
+(`coax/lib/bitcoin/musig.coax`), FROST in chapter 102
+(`coax/lib/bitcoin/frost.coax`) and adaptor signatures in chapter 103
+(`coax/lib/bitcoin/adaptor.coax`). Bitcoin and Lightning also need:
 
-- Batch Schnorr verification and tapscript. (ElligatorSwift and the
-  BIP-324 transport are built in chapters 66 and 67; silent payments in
-  chapter 97, MuSig2 in chapter 101, `coax/lib/bitcoin/musig.coax`,
-  FROST in chapter 102, `coax/lib/bitcoin/frost.coax`, and adaptor
-  signatures in chapter 103, `coax/lib/bitcoin/adaptor.coax`.)
 - Lightning: watching the chain for a channel's transactions (chapter
   110). (BOLT 1's messages and TLVs are built in chapter 104, the BOLT 8 Noise handshake in chapter 105, BOLT 3's keys and
   revocation in chapter 106, shachain in chapter 107, commitment and HTLC

@@ -41,6 +41,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [22. Public key recovery and signed messages](ch022-public-key-recovery-and-signed-messages.md) — implemented
 - [23. Verify a Schnorr signature](ch023-verify-a-schnorr-signature.md) — implemented
 - [24. Sign with Schnorr](ch024-sign-with-schnorr.md) — implemented
+- [25. Batch verification](ch025-batch-verification.md) — implemented
 
 **V. Encodings and addresses**
 

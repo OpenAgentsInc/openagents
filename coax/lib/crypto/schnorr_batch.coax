@@ -1,0 +1,367 @@
+// BIP-340 batch verification (Bitcoin chapter 25): many signatures checked
+// with one random linear combination and one multi-scalar multiplication.
+// Signatures, keys and messages are public, so this runs in variable time.
+#load "schnorr.coax";
+#load "chacha20.coax";
+#authority;
+
+// book:begin constants
+// Signatures in one call: R and P for each, plus G, share one chain of
+// doublings. A caller with more splits them into several batches.
+SB_MAX :: 64;
+SB_POINTS :: 2 * SB_MAX;
+// Why a batch was refused. The first four name the signature that failed
+// while it was read; SB_E_SUM means only that some signature is wrong.
+SB_OK :: 0;
+SB_E_SHAPE :: 1;
+SB_E_KEY :: 2;
+SB_E_R :: 3;
+SB_E_S :: 4;
+SB_E_SUM :: 5;
+// book:end constants
+
+sb_error_text :: (error: int) -> string {
+  if error == SB_OK { return "valid"; }
+  if error == SB_E_SHAPE { return "the inputs don't describe a batch"; }
+  if error == SB_E_KEY { return "public key is not an x coordinate on the curve"; }
+  if error == SB_E_R { return "r is not an x coordinate on the curve"; }
+  if error == SB_E_S { return "s is not below n"; }
+  return "the combined equation does not hold";
+}
+
+// book:begin randomizers
+SbRandom :: struct { a: [SB_MAX] ScScalar; drawn: int; ok: bool; }
+// seed = SHA-256(pk_1 .. pk_u || m_1 .. m_u || sig_1 .. sig_u), BIP-340's
+// suggested seed_hash. The three slices are exactly those concatenations.
+sb_seed :: (keys: [] u8, messages: [] u8, signatures: [] u8, out: [] u8) -> bool {
+  state: [112] u8;
+  if out.count != 32 || sha256_init(state[..]) != SHA_OK { return false; }
+  if sha256_update_checked(state[..], keys, false) != SHA_OK { return false; }
+  if sha256_update_checked(state[..], messages, false) != SHA_OK { return false; }
+  if sha256_update_checked(state[..], signatures, false) != SHA_OK { return false; }
+  return sha256_final_checked(state[..], out, false) == SHA_OK;
+}
+// a_1 = 1. a_2 .. a_u are ChaCha20's keystream under the key seed (nonce
+// zero, block counter from 0), read 32 bytes at a time as big-endian
+// integers, skipping any that are 0 or not below n.
+sb_randomizers :: (seed: [] u8, count: int) -> SbRandom {
+  r: SbRandom;
+  if seed.count != 32 || count < 0 || count > SB_MAX { return r; }
+  if count > 0 { r.a[0] = sc_small(1); }
+  nonce: [12] u8; block: [64] u8; counter := cast(u32) 0; have := 1;
+  while have < count {
+    if chacha20_block_checked(seed, nonce[..], counter, block[..], false).error != CC_OK { return r; }
+    counter += 1;
+    for half: 0..<2 {
+      if have < count {
+        v := sc_load(block[half*32..<half*32+32]); r.drawn += 1;
+        if v.ok && !sc_is_zero(v.value) { r.a[have] = v.value; have += 1; }
+      }
+    }
+  }
+  r.ok = true; return r;
+}
+// book:end randomizers
+
+// book:begin msm
+// One point of the sum and its scalar: odd multiples P, 3P, .., 15P and
+// λ times each, and the scalar split into two signed halves of about 128
+// bits, each as a width-5 wNAF (chapter 77).
+SbTerm :: struct { table: [8] SgPoint; lambda: [8] SgPoint; h1: GlvHalf; h2: GlvHalf; w1: SmWnaf; w2: SmWnaf; }
+SbCount :: struct { value: SgPoint; doubles: int; additions: int; }
+sb_term :: (terms: [] SbTerm, j: int, point: SgPoint, k: ScScalar, c: [] SbCount) {
+  terms[j].table = glv_odd_table_vartime(point);
+  terms[j].lambda = glv_lambda_table(terms[j].table);
+  // The table costs one doubling and seven additions.
+  c[0].doubles += 1; c[0].additions += 7;
+  s := glv_split_vartime(k);
+  terms[j].h1 = glv_half_vartime(s.r1); terms[j].h2 = glv_half_vartime(s.r2);
+  terms[j].w1 = sm_wnaf_vartime(terms[j].h1.value, SM_P_WINDOW);
+  terms[j].w2 = sm_wnaf_vartime(terms[j].h2.value, SM_P_WINDOW);
+}
+// ±|d|·T for a nonzero digit d of a half whose sign is given.
+sb_pick :: (entry: SgPoint, digit: int, negative: bool) -> SgPoint {
+  d := ifx negative then -digit else digit;
+  r := entry;
+  if d < 0 { r.y = sf_negate(r.y); }
+  return r;
+}
+sb_index :: (digit: int) -> int { return ((ifx digit < 0 then -digit else digit) - 1) / 2; }
+// g·G + Σ k_j·Q_j by Strauss's method: every term's digits are added into
+// one accumulator, which is doubled once per bit for all of them.
+sb_multiply :: (g: ScScalar, terms: [] SbTerm, count: int, c: [] SbCount) {
+  sg := glv_split_vartime(g);
+  g1 := glv_half_vartime(sg.r1); g2 := glv_half_vartime(sg.r2);
+  wg1 := sm_wnaf_vartime(g1.value, SM_P_WINDOW); wg2 := sm_wnaf_vartime(g2.value, SM_P_WINDOW);
+  length := sm_joint_length_vartime(wg1, wg2);
+  for j: 0..<count {
+    l := sm_joint_length_vartime(terms[j].w1, terms[j].w2);
+    if l > length { length = l; }
+  }
+  r := sg_infinity();
+  for round: 0..<length {
+    bit := length-1-round;
+    if round > 0 { r = sg_double_valid(r); c[0].doubles += 1; }
+    d := wg1.digits[bit];
+    if d != 0 { r = sg_add_valid(r, sb_pick(GLV_G_TABLE[sb_index(d)], d, g1.negative)); c[0].additions += 1; }
+    d = wg2.digits[bit];
+    if d != 0 { r = sg_add_valid(r, sb_pick(GLV_G_LAMBDA_TABLE[sb_index(d)], d, g2.negative)); c[0].additions += 1; }
+    for j: 0..<count {
+      d = terms[j].w1.digits[bit];
+      if d != 0 { r = sg_add_valid(r, sb_pick(terms[j].table[sb_index(d)], d, terms[j].h1.negative)); c[0].additions += 1; }
+      d = terms[j].w2.digits[bit];
+      if d != 0 { r = sg_add_valid(r, sb_pick(terms[j].lambda[sb_index(d)], d, terms[j].h2.negative)); c[0].additions += 1; }
+    }
+  }
+  c[0].value = r;
+}
+// book:end msm
+
+// book:begin batch
+SbResult :: struct { ok: bool; error: int; index: int; doubles: int; additions: int; roots: int; }
+// The inputs describe u signatures: u keys of 32 bytes, u signatures of 64
+// bytes, and u messages whose lengths add up to the messages' bytes.
+sb_shape :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8) -> bool {
+  u := lengths.count;
+  if u > SB_MAX || keys.count != 32 * u || signatures.count != 64 * u { return false; }
+  total := 0;
+  for i: 0..<u {
+    if lengths[i] < 0 || lengths[i] > SV_MAX_MESSAGE { return false; }
+    total += lengths[i];
+  }
+  return total == messages.count;
+}
+// BIP-340's BatchVerify with the randomizers given: a[0] must be 1 for the
+// algorithm as specified, but the example also passes other values.
+sb_verify_with_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8, a: [] ScScalar) -> SbResult {
+  result := SbResult.{error=SB_E_SHAPE,index=-1};
+  if !sb_shape(keys, messages, lengths, signatures) || a.count < lengths.count { return result; }
+  u := lengths.count;
+  terms: [SB_POINTS] SbTerm; c: [1] SbCount;
+  g: ScScalar; at := 0;
+  for i: 0..<u {
+    key := keys[i*32..<i*32+32]; sig := signatures[i*64..<i*64+64];
+    message := messages[at..<at+lengths[i]]; at += lengths[i];
+    result.index = i;
+    p := sg_lift_x_public(key); result.roots += 1;
+    if !p.ok { result.error = SB_E_KEY; return result; }
+    if !sf_load_strict(sig[0..<32]).ok { result.error = SB_E_R; return result; }
+    s := sc_load(sig[32..<64]);
+    if !s.ok { result.error = SB_E_S; return result; }
+    e := sv_challenge_vartime(message, key, sig[0..<32]);
+    if !e.ok { result.error = SB_E_SHAPE; return result; }
+    big_r := sg_lift_x_public(sig[0..<32]); result.roots += 1;
+    if !big_r.ok { result.error = SB_E_R; return result; }
+    // (Σ a_i·s_i)·G - Σ a_i·R_i - Σ (a_i·e_i)·P_i must be infinity.
+    g = sc_add(g, sc_mul(a[i], s.value));
+    sb_term(terms[..], 2*i, big_r.value, sc_negate(a[i]), c[..]);
+    sb_term(terms[..], 2*i+1, p.value, sc_negate(sc_mul(a[i], e.value)), c[..]);
+  }
+  result.index = -1;
+  sb_multiply(g, terms[..], 2*u, c[..]);
+  result.doubles = c[0].doubles; result.additions = c[0].additions;
+  zero: SecpField;
+  result.ok = sf_equal_mask(c[0].value.z, zero) == CB_MAX64;
+  result.error = ifx result.ok then SB_OK else SB_E_SUM;
+  return result;
+}
+// The whole algorithm: the seed, the randomizers, then the check above.
+schnorr_batch_check_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8) -> SbResult {
+  if !sb_shape(keys, messages, lengths, signatures) { return SbResult.{error=SB_E_SHAPE,index=-1}; }
+  seed: [32] u8;
+  if !sb_seed(keys, messages, signatures, seed[..]) { return SbResult.{error=SB_E_SHAPE,index=-1}; }
+  a := sb_randomizers(seed[..], lengths.count);
+  if !a.ok { return SbResult.{error=SB_E_SHAPE,index=-1}; }
+  return sb_verify_with_vartime(keys, messages, lengths, signatures, a.a[0..<lengths.count]);
+}
+schnorr_batch_verify_vartime :: (keys: [] u8, messages: [] u8, lengths: [] int, signatures: [] u8) -> bool {
+  return schnorr_batch_check_vartime(keys, messages, lengths, signatures).ok;
+}
+// book:end batch
+
+// ---- checks
+
+// BIP-340's test vectors (test-vectors.csv): public key, message, signature.
+SB_VEC_KEY :: [19] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+  "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517",
+  "d69c3509bb99e412e68b0fe8544e72837dfa30746d8be2aa65975f29d22dc7b9",
+  "eefdea4cdb677750a420fee807eacf21eb9898ae79b9768766e4faa04a2d4a34",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc30",
+  "778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117",
+  "778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117",
+  "778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117",
+  "778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117"];
+SB_VEC_MSG :: [19] string.[
+  "0000000000000000000000000000000000000000000000000000000000000000",
+  "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89",
+  "7e2d58d8b3bcdf1abadec7829054f90dda9805aab56c77333024b9d0a508b75c",
+  "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "4df3c3f68fcc83b27e9d42c90431a72499f17875c81a599b566c9889b9696703",
+  "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89",
+  "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89",
+  "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89",
+  "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89",
+  "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89",
+  "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89",
+  "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89",
+  "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89",
+  "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89",
+  "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89",
+  "",
+  "11",
+  "0102030405060708090a0b0c0d0e0f1011",
+  "99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"];
+SB_VEC_SIG :: [19] string.[
+  "e907831f80848d1069a5371b402410364bdf1c5f8307b0084c55f1ce2dca821525f66a4a85ea8b71e482a74f382d2ce5ebeee8fdb2172f477df4900d310536c0",
+  "6896bd60eeae296db48a229ff71dfe071bde413e6d43f917dc8dcf8c78de33418906d11ac976abccb20b091292bff4ea897efcb639ea871cfa95f6de339e4b0a",
+  "5831aaeed7b44bb74e5eab94ba9d4294c49bcf2a60728d8b4c200f50dd313c1bab745879a5ad954a72c45a91c3a51d3c7adea98d82f8481e0e1e03674a6f3fb7",
+  "7eb0509757e246f19449885651611cb965ecc1a187dd51b64fda1edc9637d5ec97582b9cb13db3933705b32ba982af5af25fd78881ebb32771fc5922efc66ea3",
+  "00000000000000000000003b78ce563f89a0ed9414f5aa28ad0d96d6795f9c6376afb1548af603b3eb45c9f8207dee1060cb71c04e80f593060b07d28308d7f4",
+  "6cff5c3ba86c69ea4b7376f31a9bcb4f74c1976089b2d9963da2e5543e17776969e89b4c5564d00349106b8497785dd7d1d713a8ae82b32fa79d5f7fc407d39b",
+  "fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a14602975563cc27944640ac607cd107ae10923d9ef7a73c643e166be5ebeafa34b1ac553e2",
+  "1fa62e331edbc21c394792d2ab1100a7b432b013df3f6ff4f99fcb33e0e1515f28890b3edb6e7189b630448b515ce4f8622a954cfe545735aaea5134fccdb2bd",
+  "6cff5c3ba86c69ea4b7376f31a9bcb4f74c1976089b2d9963da2e5543e177769961764b3aa9b2ffcb6ef947b6887a226e8d7c93e00c5ed0c1834ff0d0c2e6da6",
+  "0000000000000000000000000000000000000000000000000000000000000000123dda8328af9c23a94c1feecfd123ba4fb73476f0d594dcb65c6425bd186051",
+  "00000000000000000000000000000000000000000000000000000000000000017615fbaf5ae28864013c099742deadb4dba87f11ac6754f93780d5a1837cf197",
+  "4a298dacae57395a15d0795ddbfd1dcb564da82b0f269bc70a74f8220429ba1d69e89b4c5564d00349106b8497785dd7d1d713a8ae82b32fa79d5f7fc407d39b",
+  "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f69e89b4c5564d00349106b8497785dd7d1d713a8ae82b32fa79d5f7fc407d39b",
+  "6cff5c3ba86c69ea4b7376f31a9bcb4f74c1976089b2d9963da2e5543e177769fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+  "6cff5c3ba86c69ea4b7376f31a9bcb4f74c1976089b2d9963da2e5543e17776969e89b4c5564d00349106b8497785dd7d1d713a8ae82b32fa79d5f7fc407d39b",
+  "71535db165ecd9fbbc046e5ffaea61186bb6ad436732fccc25291a55895464cf6069ce26bf03466228f19a3a62db8a649f2d560fac652827d1af0574e427ab63",
+  "08a20a0afef64124649232e0693c583ab1b9934ae63b4c3511f3ae1134c6a303ea3173bfea6683bd101fa5aa5dbc1996fe7cacfc5a577d33ec14564cec2bacbf",
+  "5130f39a4059b43bc7cac09a19ece52b5d8699d1a71e3c52da9afdb6b50ac370c4a482b77bf960f8681540e25b6771ece1e5a37fd80e5a51897c5566a97ea5a5",
+  "403b12b0d8555a344175ea7ec746566303321e5dbfa8be6f091635163eca79a8585ed3e3170807e7c03b720fc54c7b23897fcba0e9d0b4a06894cfd249f22367"];
+// Whether each vector verifies, as the CSV states.
+SB_VEC_VALID :: [19] bool.[true, true, true, true, true, false, false, false, false, false,
+                           false, false, false, false, false, true, true, true, true];
+
+SbBatch :: struct { keys: [32 * SB_MAX] u8; sigs: [64 * SB_MAX] u8; messages: [8192] u8; lengths: [SB_MAX] int; u: int; used: int; }
+sb_hex :: (text: string, out: [] u8) -> int {
+  if text.count % 2 != 0 || text.count / 2 > out.count { return -1; }
+  for i: 0..<text.count/2 {
+    hi := sb_nibble(text[2*i]); lo := sb_nibble(text[2*i+1]);
+    if hi < 0 || lo < 0 { return -1; }
+    out[i] = cast,trunc(u8) (hi * 16 + lo);
+  }
+  return text.count / 2;
+}
+sb_nibble :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  return -1;
+}
+// Append vector v to a batch.
+sb_add_vector :: (b: [] SbBatch, v: int) -> bool {
+  u := b[0].u;
+  if u >= SB_MAX { return false; }
+  if sb_hex(SB_VEC_KEY[v], b[0].keys[u*32..<u*32+32]) != 32 { return false; }
+  if sb_hex(SB_VEC_SIG[v], b[0].sigs[u*64..<u*64+64]) != 64 { return false; }
+  n := sb_hex(SB_VEC_MSG[v], b[0].messages[b[0].used..<b[0].messages.count]);
+  if n < 0 { return false; }
+  b[0].lengths[u] = n; b[0].used += n; b[0].u = u + 1;
+  return true;
+}
+sb_check :: (b: [] SbBatch) -> SbResult {
+  u := b[0].u;
+  return schnorr_batch_check_vartime(b[0].keys[0..<32*u], b[0].messages[0..<b[0].used], b[0].lengths[0..<u], b[0].sigs[0..<64*u]);
+}
+sb_single :: (b: [] SbBatch, i: int) -> bool {
+  at := 0;
+  for j: 0..<i { at += b[0].lengths[j]; }
+  return schnorr_verify_vartime(b[0].messages[at..<at+b[0].lengths[i]], b[0].keys[i*32..<i*32+32], b[0].sigs[i*64..<i*64+64]);
+}
+
+#test "the valid BIP-340 vectors verify as one batch, and alone as a batch of one" #steps 3000000000 {
+  b: [1] SbBatch;
+  for v: 0..<19 { if SB_VEC_VALID[v] { #assert sb_add_vector(b[..], v); } }
+  #assert b[0].u == 9;
+  r := sb_check(b[..]);
+  #assert r.ok && r.error == SB_OK && r.index == -1 && r.roots == 18;
+  for v: 0..<19 {
+    one: [1] SbBatch; #assert sb_add_vector(one[..], v);
+    #assert sb_check(one[..]).ok == SB_VEC_VALID[v];
+  }
+}
+#test "each invalid vector refuses the batch it joins, for its reason" #steps 3000000000 {
+  want := [19] int.[0, 0, 0, 0, 0, SB_E_KEY, SB_E_SUM, SB_E_SUM, SB_E_SUM, SB_E_R,
+                    SB_E_SUM, SB_E_R, SB_E_R, SB_E_S, SB_E_KEY, 0, 0, 0, 0];
+  for v: 5..<15 {
+    b: [1] SbBatch;
+    #assert sb_add_vector(b[..], 1) && sb_add_vector(b[..], v) && sb_add_vector(b[..], 15);
+    r := sb_check(b[..]);
+    #assert !r.ok && r.error == want[v];
+    if want[v] != SB_E_SUM { #assert r.index == 1; } else { #assert r.index == -1; }
+  }
+}
+#test "one changed bit anywhere in one signature refuses the batch" #steps 3000000000 {
+  for at: 0..<4 {
+    b: [1] SbBatch;
+    for v: 0..<5 { #assert sb_add_vector(b[..], v); }
+    spot := ifx at < 2 then 64*at + 7 else 64*at + 40;
+    b[0].sigs[spot] ^= 4;
+    r := sb_check(b[..]);
+    #assert !r.ok;
+    for i: 0..<5 { #assert sb_single(b[..], i) == (i != at); }
+  }
+}
+#test "without randomizers, two wrong signatures can cancel" #steps 3000000000 {
+  b: [1] SbBatch;
+  #assert sb_add_vector(b[..], 1) && sb_add_vector(b[..], 2);
+  // Add 1 to s_1 and take 1 from s_2: both are now invalid.
+  s1 := sc_add(sc_load(b[0].sigs[32..<64]).value, sc_small(1));
+  s2 := sc_sub(sc_load(b[0].sigs[96..<128]).value, sc_small(1));
+  #assert sc_store(s1, b[0].sigs[32..<64]) && sc_store(s2, b[0].sigs[96..<128]);
+  #assert !sb_single(b[..], 0) && !sb_single(b[..], 1);
+  ones := [2] ScScalar.[sc_small(1), sc_small(1)];
+  #assert sb_verify_with_vartime(b[0].keys[0..<64], b[0].messages[0..<b[0].used], b[0].lengths[0..<2], b[0].sigs[0..<128], ones[..]).ok;
+  #assert !sb_check(b[..]).ok;
+}
+#test "the randomizers: a_1 is 1 and the rest come from ChaCha20" {
+  seed: [32] u8;
+  for i: 0..<32 { seed[i] = cast,trunc(u8) i; }
+  r := sb_randomizers(seed[..], 5);
+  #assert r.ok && r.drawn == 4 && sc_equal(r.a[0], sc_small(1));
+  block: [64] u8; nonce: [12] u8;
+  #assert chacha20_block_checked(seed[..], nonce[..], 0, block[..], false).error == CC_OK;
+  #assert sc_equal(r.a[1], sc_load(block[0..<32]).value) && sc_equal(r.a[2], sc_load(block[32..<64]).value);
+  #assert chacha20_block_checked(seed[..], nonce[..], 1, block[..], false).error == CC_OK;
+  #assert sc_equal(r.a[3], sc_load(block[0..<32]).value) && sc_equal(r.a[4], sc_load(block[32..<64]).value);
+  #assert sb_randomizers(seed[..], 0).ok && sb_randomizers(seed[..], 1).drawn == 0;
+  #assert !sb_randomizers(seed[0..<31], 2).ok && !sb_randomizers(seed[..], SB_MAX + 1).ok && !sb_randomizers(seed[..], -1).ok;
+  out: [32] u8; none: [1] u8;
+  #assert sb_seed(none[0..<0], none[0..<0], none[0..<0], out[..]);
+  want: [32] u8;
+  #assert sha256_hash_checked(none[0..<0], want[..], false) == SHA_OK;
+  for i: 0..<32 { #assert out[i] == want[i]; }
+  #assert !sb_seed(none[0..<0], none[0..<0], none[0..<0], out[0..<31]);
+}
+#test "shapes: an empty batch verifies; mismatched inputs refuse" {
+  b: [1] SbBatch;
+  #assert sb_check(b[..]).ok;
+  #assert sb_add_vector(b[..], 1);
+  r := schnorr_batch_check_vartime(b[0].keys[0..<31], b[0].messages[0..<32], b[0].lengths[0..<1], b[0].sigs[0..<64]);
+  #assert !r.ok && r.error == SB_E_SHAPE;
+  #assert !schnorr_batch_verify_vartime(b[0].keys[0..<32], b[0].messages[0..<31], b[0].lengths[0..<1], b[0].sigs[0..<64]);
+  #assert !schnorr_batch_verify_vartime(b[0].keys[0..<32], b[0].messages[0..<32], b[0].lengths[0..<1], b[0].sigs[0..<63]);
+  bad := [1] int.[-1];
+  #assert !schnorr_batch_verify_vartime(b[0].keys[0..<32], b[0].messages[0..<0], bad[..], b[0].sigs[0..<64]);
+  short: [1] ScScalar;
+  #assert sb_verify_with_vartime(b[0].keys[0..<32], b[0].messages[0..<32], b[0].lengths[0..<1], b[0].sigs[0..<64], short[0..<0]).error == SB_E_SHAPE;
+  big: [SB_MAX + 1] int;
+  #assert !sb_shape(b[0].keys[0..<0], b[0].messages[0..<0], big[..], b[0].sigs[0..<0]);
+  #assert sb_hex("abc", b[0].keys[..]) == -1 && sb_hex("zz", b[0].keys[..]) == -1 && sb_hex("0g", b[0].keys[..]) == -1;
+  for e: 0..<6 { #assert sb_error_text(e).count > 0; }
+  full: [1] SbBatch; full[0].u = SB_MAX;
+  #assert !sb_add_vector(full[..], 1);
+}

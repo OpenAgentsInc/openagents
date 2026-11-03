@@ -1,0 +1,15 @@
+// A byte-level entry for batch.py (Bitcoin chapter 25), so that batch and
+// single verification can be compared and timed from Python. Tests only;
+// nothing here is a library entry.
+#run_steps 1000000;
+#load "../../lib/crypto/schnorr_batch.coax";
+
+// u signatures over 32-byte messages: keys, messages and signatures are
+// the concatenations BIP-340 hashes for the seed.
+batch_bench_verify :: (keys: [] u8, messages: [] u8, signatures: [] u8) -> bool #export_c {
+  u := keys.count / 32;
+  if u > SB_MAX || messages.count != 32 * u { return false; }
+  lengths: [SB_MAX] int;
+  for i: 0..<u { lengths[i] = 32; }
+  return schnorr_batch_verify_vartime(keys, messages, lengths[0..<u], signatures);
+}

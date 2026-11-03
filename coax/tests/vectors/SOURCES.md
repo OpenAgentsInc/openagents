@@ -481,6 +481,17 @@ that a maliciously replaced manifest is authentic.
   `netaddress.cpp` (`SetTor`, `SetI2P`, `OnionToString`), `net.cpp`
   (`ConnectNode`) and BIP-155, pinned above, give the rest. `proxy.py`
   transliterates them as the cross-check's oracle.
+- **Batch verification (Bitcoin chapter 25):** BIP-340 (`bip-0340.mediawiki`),
+  whose "Batch Verification" section specifies `BatchVerify`, the seed hash
+  and the ChaCha20 randomizers, and BIP-342 (`bip-0342.mediawiki`), whose
+  signature-opcode rules make tapscript batch-verifiable, both at bips
+  revision `5aadddb5`; and libsecp256k1's `src/ecmult_impl.h`
+  (`secp256k1_ecmult_multi_var`, Strauss and Pippenger with
+  `ECMULT_PIPPENGER_THRESHOLD`) and `include/secp256k1_schnorrsig.h`, which
+  has no batch function, at revision `6e2c8bc4`. BIP-340's
+  `test-vectors.csv`, RFC 8439 and Bitcoin Core's `pubkey.cpp`,
+  `interpreter.cpp` and `validation.cpp`, pinned above, give the rest.
+  `batch.py` follows them as the cross-check's oracle.
 - **Standardness (Bitcoin chapter 81):** Bitcoin Core's
   `policy/policy.cpp` and `policy/policy.h` (`IsStandardTx`,
   `GetDustThreshold`, `ValidateInputsStandardness`, `IsWitnessStandard`
@@ -1121,6 +1132,10 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/i2p/samv3.html`](upstream/i2p/samv3.html) | [pinned source](https://raw.githubusercontent.com/i2p/i2p.www/3afd7340f51d53e407986e2d2ca9cf004b708b35/i2p2www/pages/site/docs/api/samv3.html) | `027523dabc63d7f8e1e839945ff8f5a3b33a04dfbc3ceb69bf46d6cf46c58551` |
 | [`upstream/rfc/rfc1928.txt`](upstream/rfc/rfc1928.txt) | [pinned source](https://www.rfc-editor.org/rfc/rfc1928.txt) | `ddc2916419a52bedae0fc7d0c051ea513e88c2b930dda27128982fb0c1d6fe2a` |
 | [`upstream/rfc/rfc1929.txt`](upstream/rfc/rfc1929.txt) | [pinned source](https://www.rfc-editor.org/rfc/rfc1929.txt) | `b023357f33b42ba1f3ae10b45ebfcc6dd7b6b13eba0743052b08ae3f7ae3581b` |
+| [`upstream/bip340/bip-0340.mediawiki`](upstream/bip340/bip-0340.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0340.mediawiki) | `17d64d6dc6bc97f4ecf178697bf810b92aa2a9e41ef13db809c25bc44a9b8109` |
+| [`upstream/bip342/bip-0342.mediawiki`](upstream/bip342/bip-0342.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0342.mediawiki) | `29641340adec741b695be99ae3dc6e2fd025ea6566f9d6c2544ed5d47db4d822` |
+| [`upstream/secp256k1/ecmult_impl.h`](upstream/secp256k1/ecmult_impl.h) | [pinned source](https://raw.githubusercontent.com/bitcoin-core/secp256k1/6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d/src/ecmult_impl.h) | `ce70d26cb987c9bb2a2477389459437fc2831546c9c14404b58cf7ed07f32cc1` |
+| [`upstream/secp256k1/secp256k1_schnorrsig.h`](upstream/secp256k1/secp256k1_schnorrsig.h) | [pinned source](https://raw.githubusercontent.com/bitcoin-core/secp256k1/6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d/include/secp256k1_schnorrsig.h) | `9b72c2199046d815df533d61a0287c1f4ca73cdef2195666c0c57d284e0c84cc` |
 | [`upstream/bitcoin-core/blockstorage.cpp`](upstream/bitcoin-core/blockstorage.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/blockstorage.cpp) | `5063ae02875b3370cb0d1ca4ec41003853d102ba74ab7354a342bc3cb8dc8d6f` |
 | [`upstream/bitcoin-core/skiplist_tests.cpp`](upstream/bitcoin-core/skiplist_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/skiplist_tests.cpp) | `9eec53e04cf2a5a6a4269687da834bb0c61b52396212ef1b902df22e3a46c588` |
 | [`upstream/bitcoin-core/blockchain_tests.cpp`](upstream/bitcoin-core/blockchain_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/blockchain_tests.cpp) | `613c4f9158dfddb5b6cbdbc07d71f2043d8295eec18869591ea5550b0aea1e25` |

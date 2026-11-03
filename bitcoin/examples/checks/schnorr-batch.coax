@@ -1,0 +1,34 @@
+// The checks of schnorr-batch.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/schnorr-batch.coax
+#load "../schnorr-batch.coax";
+
+// book:begin check
+// Seeded batches of the valid vectors, some with one bit of one signature
+// changed: the batch accepts exactly when every signature alone does.
+#forall "batch and single verification agree on seeded batches" k: 0..<6 #steps 6000000000 {
+  b: [1] SbBatch;
+  u := 2 + k % 3;
+  for i: 0..<u { #assert sb_add_vector(b[..], VALID[(k * 5 + i * 7) % 9]); }
+  if k % 3 != 0 {
+    at := (k / 3) % u; byte := (k * 11) % 64;
+    b[0].sigs[at * 64 + byte] ^= cast,trunc(u8) (1 << (k % 8));
+  }
+  all := true;
+  for i: 0..<u { if !sb_single(b[..], i) { all = false; } }
+  #assert sb_check(b[..]).ok == all;
+  #assert all == (k % 3 == 0);
+}
+// The randomizers are in 1..n-1 and differ, whatever the seed.
+#forall "the randomizers are in range and distinct" k: 0..<64 {
+  seed: [32] u8;
+  one := [1] u8.[cast,trunc(u8) k];
+  #assert sha256_hash_checked(one[..], seed[..], false) == SHA_OK;
+  r := sb_randomizers(seed[..], 16);
+  #assert r.ok && r.drawn >= 15;
+  for i: 0..<16 {
+    #assert !sc_is_zero(r.a[i]) && !sc_overflow(r.a[i]);
+    for j: 0..<i { #assert !sc_equal(r.a[i], r.a[j]); }
+  }
+}
+// book:end check

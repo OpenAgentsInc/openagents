@@ -48,7 +48,8 @@
       "revision": "RFC 8439",
       "license": "IETF Trust Legal Provisions; notices retained in full RFC",
       "covers": [
-        "chacha20"
+        "chacha20",
+        "bitcoin-batch"
       ],
       "retrieved": "2026-10-28",
       "sha256": "25bef70fbf7a07ff45c2fe4cb7c6ce954eac687413d8610603268b4e4415324c",
@@ -101,7 +102,8 @@
       "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
       "license": "BSD-2-Clause OR MIT OR CC0-1.0",
       "covers": [
-        "bip340"
+        "bip340",
+        "bitcoin-batch"
       ],
       "retrieved": "2026-10-28",
       "sha256": "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d",
@@ -1370,7 +1372,8 @@
       "covers": [
         "bip66-strict-der",
         "bitcoin-script-interpreter",
-        "bitcoin-malleability"
+        "bitcoin-malleability",
+        "bitcoin-batch"
       ],
       "retrieved": "2026-11-02",
       "sha256": "57a6f328c7e6202f499e48366a86eb26e09c8ebb78e92eef7e839207230be333",
@@ -1384,7 +1387,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bip66-strict-der",
-        "bitcoin-script-interpreter"
+        "bitcoin-script-interpreter",
+        "bitcoin-batch"
       ],
       "retrieved": "2026-11-02",
       "sha256": "13e59d462a35ba37f818538454228822718c3328d219a6a022e345d69c4b1d99",
@@ -1466,7 +1470,8 @@
         "bitcoin-witness-commitment",
         "bitcoin-compact-blocks",
         "bitcoin-block-index",
-        "bitcoin-standardness"
+        "bitcoin-standardness",
+        "bitcoin-batch"
       ],
       "retrieved": "2026-11-02",
       "sha256": "65e88786ccaaf4dd0ebd14e7a0b82d7fbe6b86a8f0b2f9de4cc2db7b983283d2",
@@ -4563,6 +4568,58 @@
       "retrieved": "2026-11-03",
       "sha256": "b023357f33b42ba1f3ae10b45ebfcc6dd7b6b13eba0743052b08ae3f7ae3581b",
       "bytes": 3568
+    },
+    {
+      "path": "upstream/bip340/bip-0340.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0340.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in bip-0340.mediawiki)",
+      "covers": [
+        "bitcoin-batch"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "17d64d6dc6bc97f4ecf178697bf810b92aa2a9e41ef13db809c25bc44a9b8109",
+      "bytes": 39995
+    },
+    {
+      "path": "upstream/bip342/bip-0342.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0342.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-3-Clause (declared in bip-0342.mediawiki)",
+      "covers": [
+        "bitcoin-batch"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "29641340adec741b695be99ae3dc6e2fd025ea6566f9d6c2544ed5d47db4d822",
+      "bytes": 23988
+    },
+    {
+      "path": "upstream/secp256k1/ecmult_impl.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin-core/secp256k1/6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d/src/ecmult_impl.h",
+      "revision": "git:6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d",
+      "license": "MIT (secp256k1 COPYING)",
+      "covers": [
+        "bitcoin-batch"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "ce70d26cb987c9bb2a2477389459437fc2831546c9c14404b58cf7ed07f32cc1",
+      "bytes": 34325
+    },
+    {
+      "path": "upstream/secp256k1/secp256k1_schnorrsig.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin-core/secp256k1/6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d/include/secp256k1_schnorrsig.h",
+      "revision": "git:6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d",
+      "license": "MIT (secp256k1 COPYING)",
+      "covers": [
+        "bitcoin-batch"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "9b72c2199046d815df533d61a0287c1f4ca73cdef2195666c0c57d284e0c84cc",
+      "bytes": 7698
     }
   ]
 }

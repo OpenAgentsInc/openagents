@@ -1,0 +1,37 @@
+BIP-340's valid vectors as one batch
+  seed: ff904fbc45246eaa136630ed57edb5c6bb0a0886c01cc17b8ab748632f673d07
+  a1: 0000000000000000000000000000000000000000000000000000000000000001
+  a2: cdb7d3b6234fd19b829758086041f7ffc5b72ff24fda15eef171cfb3ed27112d
+  a9: d3ddfdb852c7b0c58b95f7c1b2bb2364c49c03b0ad6a521e330768c69ea2e221
+  ChaCha20 draws: 8, none skipped: true
+  vectors 0-4 and 15-18: valid
+  one multiplication: 146 doublings, 896 additions, 18 square roots, no inversion
+  nine verifications: 1146 doublings, 843 additions, 9 square roots, 9 inversions
+BIP-340's invalid vectors, each between vectors 1 and 15
+  vector 5: refused at signature 2: public key is not an x coordinate on the curve
+  vector 6: refused: the combined equation does not hold
+  vector 7: refused: the combined equation does not hold
+  vector 8: refused: the combined equation does not hold
+  vector 9: refused at signature 2: r is not an x coordinate on the curve
+  vector 10: refused: the combined equation does not hold
+  vector 11: refused at signature 2: r is not an x coordinate on the curve
+  vector 12: refused at signature 2: r is not an x coordinate on the curve
+  vector 13: refused at signature 2: s is not below n
+  vector 14: refused at signature 2: public key is not an x coordinate on the curve
+One bad signature among five
+  as signed: valid
+  a bit of signature 4's s changed: refused: the combined equation does not hold
+  each alone: ok ok ok BAD ok
+Two wrong signatures whose errors cancel
+  s1 + 1 and s2 - 1, each alone: false, false
+  summed with a1 = a2 = 1: valid
+  summed with BIP-340's randomizers: refused: the combined equation does not hold
+Point operations per signature as the batch grows (the valid vectors, repeated)
+      u | batch: doublings additions roots | alone: doublings additions roots inversions
+      1 |              127       101     2 |              126        93     1          1
+      2 |               65        99     2 |              127        93     1          1
+      4 |               33        99     2 |              127        93     1          1
+      8 |               17       100     2 |              127        93     1          1
+     16 |               10       100     2 |              127        93     1          1
+     32 |                5       101     2 |              127        93     1          1
+     64 |                4       100     2 |              127        93     1          1

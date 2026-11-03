@@ -255,6 +255,18 @@
       "timeout": 240
     },
     {
+      "source": "bitcoin/examples/schnorr-batch.coax",
+      "chapter": "bitcoin/book/ch025-batch-verification.md",
+      "stdout": "bitcoin/fixtures/schnorr-batch.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 600
+    },
+    {
       "source": "bitcoin/examples/base58check.coax",
       "chapter": "bitcoin/book/ch026-base58check.md",
       "stdout": "bitcoin/fixtures/base58check.out",
