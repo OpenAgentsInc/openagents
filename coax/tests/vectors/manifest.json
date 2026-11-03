@@ -853,7 +853,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "sha256d-block-hash"
+        "sha256d-block-hash",
+        "bitcoin-p2p"
       ],
       "retrieved": "2026-11-02",
       "sha256": "cfadf1478377c32625280520655b598674e6d487f08d7f7a80ac69252104b5e1",
@@ -1554,7 +1555,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-pow"
+        "bitcoin-pow",
+        "bitcoin-p2p"
       ],
       "retrieved": "2026-11-02",
       "sha256": "f817c51d79daa78fa3cb24506938c2523409c0703a2e0384794515d2cfc879a5",
@@ -1793,6 +1795,136 @@
       "retrieved": "2026-11-03",
       "sha256": "fbaf7f3186b066f911e74720117299e9b88132cf612a1b27dfe34ab55752a393",
       "bytes": 1206
+    },
+    {
+      "path": "upstream/bitcoin-core/protocol.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/protocol.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-p2p"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "92d6290df90eaea49b4a110b518ff34be914666471a5dee7e5eaa26832986738",
+      "bytes": 22347
+    },
+    {
+      "path": "upstream/bitcoin-core/protocol.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/protocol.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-p2p"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "dd933f035e3d104bea8db6f83970787912357f8aebf6a01c8afc6992e93c6dfe",
+      "bytes": 3899
+    },
+    {
+      "path": "upstream/bitcoin-core/net.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/net.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-p2p"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "c268325ae03f4f80e8427af80eb794265b08e3686923b7a5a8b850416bed213b",
+      "bytes": 82254
+    },
+    {
+      "path": "upstream/bitcoin-core/net.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/net.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-p2p"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "05e8ce20762e9c23e060d428fb5218cb32fea599afbd40b2417b9bd2a236d7a6",
+      "bytes": 172928
+    },
+    {
+      "path": "upstream/bitcoin-core/net_processing.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/net_processing.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-p2p"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "bcd69aba37869cd68dfe03cce37b1400d1488b59ef1faafdc319ddcb51ebea36",
+      "bytes": 313521
+    },
+    {
+      "path": "upstream/bitcoin-core/netaddress.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/netaddress.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-p2p"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "4590086cfafa37ec56949b59cab8c151fb0fac91161186f985d5048c0e0d83e4",
+      "bytes": 20318
+    },
+    {
+      "path": "upstream/bitcoin-core/netaddress.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/netaddress.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-p2p"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "d8714d78569b92e8ce49b8cf845f8e3008ed739e20e44b025526e0ef92ae7c34",
+      "bytes": 31614
+    },
+    {
+      "path": "upstream/bitcoin-core/messages.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/messages.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-p2p"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "44e3b8c702916c8ab7820db65cf38af801dd5b5a457e91cabdff95eba5d412a5",
+      "bytes": 58677
+    },
+    {
+      "path": "upstream/bip155/bip-0155.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0155.mediawiki",
+      "revision": "git:927b6de9915c9262615a6399de51b200f81e5aa4",
+      "license": "BSD-2-Clause",
+      "covers": [
+        "bitcoin-p2p"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "acf8a589041612260ec073dd7d74e4842928cb78204c4a9c8656e1b0618cf174",
+      "bytes": 9740
+    },
+    {
+      "path": "upstream/developer-bitcoin-org/p2p_networking.rst",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin-dot-org/developer.bitcoin.org/813ba3fb5eae85cfdfffe91d12f2df653ea8b725/reference/p2p_networking.rst",
+      "revision": "git:813ba3fb5eae85cfdfffe91d12f2df653ea8b725",
+      "license": "MIT (developer.bitcoin.org LICENSE)",
+      "covers": [
+        "bitcoin-p2p"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "6284673665cdf619238a828d1df15cffbe35f8ab1026583a280fb81a105ac379",
+      "bytes": 215267
     }
   ]
 }

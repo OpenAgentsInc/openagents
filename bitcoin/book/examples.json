@@ -448,6 +448,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "bitcoin/examples/p2p-messages.coax",
+      "chapter": "bitcoin/book/ch065-p2p-messages-and-checksums.md",
+      "stdout": "bitcoin/fixtures/p2p-messages.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

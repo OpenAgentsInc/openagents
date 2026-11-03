@@ -1,0 +1,667 @@
+// P2P messages and checksums (Bitcoin chapter 65): the 24-byte message
+// header of the v1 transport, its refusals, and the payloads of the
+// messages a node exchanges first: version and verack, ping and pong, inv
+// and getdata, getheaders and headers with their block locator, addr and
+// addrv2 (BIP-155), feefilter, and the empty feature messages wtxidrelay
+// and sendaddrv2, with sendcmpct read but not acted on.
+//
+// The header follows Bitcoin Core's V1Transport (net.cpp) and
+// CMessageHeader (protocol.h, protocol.cpp); the payloads follow
+// net_processing.cpp's ProcessMessage, which reads each one, and the
+// serializers in protocol.h and netaddress.h. Everything here is pure
+// encoding and decoding: no socket, no peer state. Connections are
+// chapter 68's.
+//
+// Readers copy nothing. A read message is positions into the caller's
+// bytes, like chapter 34's transactions. Messages are public, so every
+// procedure runs in variable time and its name ends in _vartime
+// (Bitcoin chapter 3).
+#load "tx.coax";
+#load "pow.coax";
+#load "../../tests/bitcoin/p2p_vectors.coax";
+#authority;
+
+// book:begin codes
+// Refusal codes. The quoted words are Core's log messages.
+P2P_OK :: 0;
+P2P_TRUNCATED :: 1;     // fewer bytes than the header or its payload: a reader waits for more
+P2P_BAD_MAGIC :: 2;     // "Header error: Wrong MessageStart"
+P2P_OVERSIZE :: 3;      // "Header error: Size too large"
+P2P_BAD_CHECKSUM :: 4;  // "Header error: Wrong checksum"
+P2P_BAD_COMMAND :: 5;   // "Header error: Invalid message type"
+P2P_BAD_PAYLOAD :: 6;   // the payload ends early or holds a value its message refuses
+P2P_TOO_MANY :: 7;      // a count above the message's limit: Core disconnects or penalizes
+P2P_CAPACITY :: 8;      // more entries than the caller's array holds, or no room to write
+
+P2P_HEADER :: 24;             // magic 4, command 12, length 4, checksum 4
+P2P_COMMAND :: 12;            // protocol.h MESSAGE_TYPE_SIZE
+P2P_MAX_MESSAGE :: 4000000;   // net.h MAX_PROTOCOL_MESSAGE_LENGTH
+P2P_MAX_INV :: 50000;         // net_processing.cpp MAX_INV_SZ
+P2P_MAX_LOCATOR :: 101;       // net_processing.cpp MAX_LOCATOR_SZ
+P2P_MAX_HEADERS :: 2000;      // net_processing.h MAX_HEADERS_RESULTS
+P2P_MAX_ADDR :: 1000;         // net_processing.cpp MAX_ADDR_TO_SEND
+P2P_MAX_AGENT :: 256;         // net.h MAX_SUBVERSION_LENGTH
+P2P_MAX_ADDRV2 :: 512;        // netaddress.h MAX_ADDRV2_SIZE
+// book:end codes
+
+// book:begin networks
+// Each network's message start ("magic") and default port, from Bitcoin
+// Core's kernel/chainparams.cpp. Signet's is the default signet's, which
+// Core derives from its challenge (chapter 50); messages.py pins it.
+P2pNetwork :: struct { name: string; magic: [4] u8; port: int; }
+P2P_MAINNET :: 0; P2P_TESTNET3 :: 1; P2P_TESTNET4 :: 2; P2P_SIGNET :: 3; P2P_REGTEST :: 4;
+P2P_NETWORKS :: [5] P2pNetwork.[
+  P2pNetwork.{name="mainnet", magic=[4] u8.[0xf9, 0xbe, 0xb4, 0xd9], port=8333},
+  P2pNetwork.{name="testnet3", magic=[4] u8.[0x0b, 0x11, 0x09, 0x07], port=18333},
+  P2pNetwork.{name="testnet4", magic=[4] u8.[0x1c, 0x16, 0x3f, 0x28], port=48333},
+  P2pNetwork.{name="signet", magic=[4] u8.[0x0a, 0x03, 0xcf, 0x40], port=38333},
+  P2pNetwork.{name="regtest", magic=[4] u8.[0xfa, 0xbf, 0xb5, 0xda], port=18444},
+];
+// book:end networks
+
+// BIP-155 network IDs (netaddress.h BIP155Network). ID 3 was Tor v2,
+// which Core no longer knows.
+P2P_NET_IPV4 :: 1; P2P_NET_IPV6 :: 2; P2P_NET_TORV2 :: 3; P2P_NET_TORV3 :: 4; P2P_NET_I2P :: 5; P2P_NET_CJDNS :: 6;
+// Inventory types (protocol.h GetDataMsg).
+P2P_MSG_TX :: 1; P2P_MSG_BLOCK :: 2; P2P_MSG_FILTERED_BLOCK :: 3; P2P_MSG_CMPCT_BLOCK :: 4; P2P_MSG_WTX :: 5;
+P2P_MSG_WITNESS_FLAG :: cast(u32) 0x40000000;
+
+// ---- checks
+p2p_unhex :: (text: string, out: [] u8) -> [] u8 { return tx_unhex(text, out); }
+p2p_same :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+p2p_sample :: (name: string, out: [] u8) -> [] u8 {
+  for s: P2P_SAMPLES { if s.name == name { return p2p_unhex(s.hex, out); } }
+  return out[0..<0];
+}
+// A message framed for mainnet around payload, with its header patched by
+// the caller afterwards.
+p2p_framed :: (command: string, payload: [] u8, out: [] u8) -> [] u8 {
+  n := p2p_frame_write_vartime(P2P_NETWORKS[P2P_MAINNET].magic, command, payload, out);
+  #assert n == P2P_HEADER + payload.count;
+  return out[0..<n];
+}
+#test "the published verack header reads, and each refusal has its own code" {
+  b: [64] u8;
+  m := P2P_NETWORKS[P2P_MAINNET].magic;
+  h := p2p_sample("verack header", b[..]);
+  f := p2p_frame_read_vartime(h, m);
+  #assert f.code == P2P_OK && f.length == 0 && f.payload == 24 && f.next == 24 && p2p_command_is(h, f, "verack");
+  #assert !p2p_command_is(h, f, "verac") && !p2p_command_is(h, f, "veracks");
+  #assert p2p_frame_read_vartime(h[0..<23], m).code == P2P_TRUNCATED;
+  #assert p2p_frame_read_vartime(h, P2P_NETWORKS[P2P_TESTNET4].magic).code == P2P_BAD_MAGIC;
+  h[23] ^= 1; #assert p2p_frame_read_vartime(h, m).code == P2P_BAD_CHECKSUM; h[23] ^= 1;
+  h[16] = 1; #assert p2p_frame_read_vartime(h, m).code == P2P_TRUNCATED;        // a length of 1, and no payload yet
+  h[16] = 0;
+  // 4,000,000 is allowed and waits for its payload; 4,000,001 refuses at once.
+  h[16] = 0x00; h[17] = 0x09; h[18] = 0x3d; h[19] = 0x00;
+  #assert p2p_frame_read_vartime(h, m).code == P2P_TRUNCATED;
+  h[16] = 0x01;
+  #assert p2p_frame_read_vartime(h, m).code == P2P_OVERSIZE;
+  h[16] = 0xff; h[17] = 0xff; h[18] = 0xff; h[19] = 0xff;
+  #assert p2p_frame_read_vartime(h, m).code == P2P_OVERSIZE;
+  // The magic is checked before the size.
+  h[0] = 0; #assert p2p_frame_read_vartime(h, m).code == P2P_BAD_MAGIC;
+}
+#test "command padding: printable, then zeros to the end" {
+  b: [64] u8; e: [1] u8;
+  h := p2p_framed("verack", e[0..<0], b[..]);
+  m := P2P_NETWORKS[P2P_MAINNET].magic;
+  h[11] = 0x41;                                   // a byte after the first zero
+  #assert p2p_frame_read_vartime(h, m).code == P2P_BAD_COMMAND;
+  h[11] = 0; h[4] = 0x1f;                         // a control character
+  #assert p2p_frame_read_vartime(h, m).code == P2P_BAD_COMMAND;
+  h[4] = 0x7f; #assert p2p_frame_read_vartime(h, m).code == P2P_BAD_COMMAND;
+  h[4] = 0x7e; #assert p2p_frame_read_vartime(h, m).code == P2P_OK;
+  h[4] = 0x20; #assert p2p_frame_read_vartime(h, m).code == P2P_OK;
+  // A checksum failure is reported before a bad command, as Core does.
+  h[4] = 0; h[5] = 0x41; h[23] ^= 1;
+  #assert p2p_frame_read_vartime(h, m).code == P2P_BAD_CHECKSUM;
+  h[23] ^= 1; #assert p2p_frame_read_vartime(h, m).code == P2P_BAD_COMMAND;
+  // All twelve bytes zero is a valid, empty command; twelve letters fill it.
+  for i: 4..<16 { h[i] = 0; }
+  f := p2p_frame_read_vartime(h, m);
+  #assert f.code == P2P_OK && f.command_n == 0 && p2p_command_is(h, f, "");
+  g := p2p_framed("abcdefghijkl", e[0..<0], b[..]);
+  f = p2p_frame_read_vartime(g, m);
+  #assert f.code == P2P_OK && f.command_n == 12 && p2p_command_is(g, f, "abcdefghijkl");
+}
+#test "writing a frame refuses what Core would refuse to read" {
+  b: [64] u8; e: [1] u8; m := P2P_NETWORKS[P2P_MAINNET].magic;
+  #assert p2p_frame_write_vartime(m, "abcdefghijklm", e[0..<0], b[..]) == -1;
+  #assert p2p_frame_write_vartime(m, "a\tb", e[0..<0], b[..]) == -1;
+  #assert p2p_frame_write_vartime(m, "ping", e[..], b[0..<24]) == -1;
+  #assert p2p_frame_write_vartime(m, "ping", e[..], b[0..<25]) == 25;
+  n := p2p_frame_write_vartime(m, "verack", e[0..<0], b[..]);
+  s: [64] u8; #assert n == 24 && p2p_same(b[0..<24], p2p_sample("verack header", s[..]));
+}
+#test "version: the published message, its optional tail, and its limits" {
+  b: [256] u8; o: [256] u8;
+  p := p2p_sample("version", b[..]);
+  v := p2p_version_read_vartime(p);
+  #assert v.code == P2P_OK && v.version == 70002 && v.services == 1 && v.time == 1415483324;
+  #assert v.recv.services == 1 && v.recv.net == P2P_NET_IPV4 && v.recv.port == 8333 && v.from.port == 8333;
+  #assert v.nonce == 0xf85379c9cb358012 && v.agent_n == 15 && v.height == 329167 && v.relay && v.parts == 4 && v.next == p.count;
+  #assert p2p_version_write_vartime(p, v, o[..]) == p.count && p2p_same(o[0..<p.count], p);
+  // Each optional group may be missing; a group cut short refuses.
+  ends := [5] int.[46, 80, 96, 100, 101];
+  for k: 0..<5 {
+    w := p2p_version_read_vartime(p[0..<ends[k]]);
+    #assert w.code == P2P_OK && w.parts == k && w.next == ends[k];
+    #assert p2p_version_write_vartime(p, w, o[..]) == ends[k] && p2p_same(o[0..<ends[k]], p[0..<ends[k]]);
+    if k < 3 { #assert p2p_version_read_vartime(p[0..<ends[k]+1]).code == P2P_BAD_PAYLOAD; }
+  }
+  #assert p2p_version_read_vartime(p[0..<46]).relay && p2p_version_read_vartime(p[0..<46]).height == -1;    // Core's defaults
+  #assert p2p_version_read_vartime(p[0..<45]).code == P2P_BAD_PAYLOAD;
+  // Any nonzero relay byte is true; bytes after it are left unread.
+  q := b[0..<102]; q[100] = 7; q[101] = 9;
+  w := p2p_version_read_vartime(q);
+  #assert w.code == P2P_OK && w.relay && w.next == 101;
+  #assert p2p_version_write_vartime(p, v, o[0..<100]) == -1;
+}
+#test "version: a user agent of 256 bytes reads, 257 refuses" {
+  b: [400] u8; s: [128] u8;
+  p := p2p_sample("version", s[..]);
+  for i: 0..<80 { b[i] = p[i]; }
+  b[80] = 0xfd; b[81] = 0x00; b[82] = 0x01;
+  for i: 0..<256 { b[83+i] = 0x61; }
+  #assert p2p_version_read_vartime(b[0..<339]).code == P2P_OK && p2p_version_read_vartime(b[0..<339]).agent_n == 256;
+  b[81] = 0x01; #assert p2p_version_read_vartime(b[0..<340]).code == P2P_BAD_PAYLOAD;
+  b[80] = 0xfd; b[81] = 0x05; b[82] = 0x00;    // a non-canonical CompactSize
+  #assert p2p_version_read_vartime(b[0..<86]).code == P2P_BAD_PAYLOAD;
+}
+#test "ping, pong and feefilter carry 8 bytes" {
+  b: [16] u8;
+  p := p2p_sample("ping", b[..]);
+  n := p2p_u64_read_vartime(p);
+  #assert n.code == P2P_OK && n.value == 0x4dafe21121109400;
+  #assert p2p_u64_read_vartime(p[0..<7]).code == P2P_BAD_PAYLOAD;
+  f := p2p_feefilter_read_vartime(p2p_sample("feefilter", b[..]));
+  #assert f.code == P2P_OK && f.rate == 48508 && f.in_range;
+  for i: 0..<8 { b[i] = 0xff; }
+  f = p2p_feefilter_read_vartime(b[0..<8]);
+  #assert f.code == P2P_OK && f.rate == -1 && !f.in_range;
+  o: [8] u8; #assert p2p_u64_write_vartime(0x4dafe21121109400, o[..]) == 8 && o[0] == 0x00 && o[7] == 0x4d;
+  #assert p2p_u64_write_vartime(1, o[0..<7]) == -1;
+}
+#test "inv: the published entries, the witness flag and the 50,000 limit" {
+  b: [128] u8; o: [128] u8; e: [4] P2pInv;
+  p := p2p_sample("inv", b[..]);
+  l := p2p_inv_read_vartime(p, e[..]);
+  #assert l.code == P2P_OK && l.count == 2 && l.next == p.count && e[0].type == 1 && e[0].hash == 5 && e[1].hash == 41;
+  #assert p2p_inv_write_vartime(p, e[0..<2], o[..]) == p.count && p2p_same(o[0..<p.count], p);
+  #assert p2p_inv_read_vartime(p, e[0..<1]).code == P2P_CAPACITY;
+  #assert p2p_inv_read_vartime(p[0..<p.count-1], e[..]).code == P2P_BAD_PAYLOAD;
+  #assert p2p_inv_type_name(1) == "tx" && p2p_inv_type_name(5) == "wtx" && p2p_inv_type_name(0x40000001) == "witness-tx";
+  #assert p2p_inv_type_name(0x40000002) == "witness-block" && p2p_inv_type_name(3) == "merkleblock" && p2p_inv_type_name(4) == "cmpctblock";
+  #assert p2p_inv_type_name(0) == "" && p2p_inv_type_name(6) == "" && p2p_inv_type_name(0x40000005) == "witness-wtx";
+  // Core reads every entry before it checks the count: 50,001 entries
+  // that are all there are too many, and one byte short is a failed read.
+  big: [1800039] u8; big[0] = 0xfd; big[1] = 0x51; big[2] = 0xc3;
+  #assert p2p_inv_read_vartime(big[..], e[..]).code == P2P_TOO_MANY;
+  #assert p2p_inv_read_vartime(big[0..<1800038], e[..]).code == P2P_BAD_PAYLOAD;
+  big[1] = 0x50; #assert p2p_inv_read_vartime(big[0..<1800003], e[..]).code == P2P_CAPACITY;   // 50,000 is allowed
+  #assert p2p_inv_read_vartime(big[0..<2], e[..]).code == P2P_BAD_PAYLOAD;
+}
+#test "getblocks and getheaders: the published locator, its limit and its heights" {
+  b: [256] u8; o: [256] u8;
+  p := p2p_sample("getblocks", b[..]);
+  l := p2p_locator_read_vartime(p);
+  #assert l.code == P2P_OK && l.version == 70001 && l.count == 2 && l.first == 5 && l.stop == 69 && l.next == 101;
+  #assert p2p_locator_write_vartime(l.version, p[5..<69], p[69..<101], o[..]) == 101 && p2p_same(o[0..<101], p);
+  #assert p2p_locator_write_vartime(1, p[5..<68], p[69..<101], o[..]) == -1 && p2p_locator_write_vartime(1, p[5..<69], p[69..<100], o[..]) == -1;
+  #assert p2p_locator_read_vartime(p[0..<100]).code == P2P_BAD_PAYLOAD;
+  p[4] = 101; #assert p2p_locator_read_vartime(p).code == P2P_BAD_PAYLOAD;    // 101 hashes don't fit in 101 bytes
+  long: [3301] u8; long[4] = 102;
+  #assert p2p_locator_read_vartime(long[..]).code == P2P_TOO_MANY;
+  #assert p2p_locator_read_vartime(long[0..<3300]).code == P2P_BAD_PAYLOAD;
+  long[4] = 101; #assert p2p_locator_read_vartime(long[0..<3269]).code == P2P_OK;
+  h: [40] int;
+  #assert p2p_locator_heights_vartime(0, h[..]) == 1 && h[0] == 0;
+  #assert p2p_locator_heights_vartime(10, h[..]) == 11 && h[10] == 0;
+  #assert p2p_locator_heights_vartime(11, h[..]) == 12 && h[10] == 1 && h[11] == 0;
+  n := p2p_locator_heights_vartime(1000, h[..]);
+  #assert n == 21 && h[10] == 990 && h[11] == 989 && h[12] == 987 && h[19] == 479 && h[20] == 0;
+  #assert p2p_locator_heights_vartime(1000, h[0..<20]) == -1 && p2p_locator_heights_vartime(-1, h[..]) == -1;
+}
+#test "headers: the published header meets its target; tx counts are read and ignored" {
+  b: [128] u8; at: [2] int;
+  p := p2p_sample("headers", b[..]);
+  l := p2p_headers_read_vartime(p, at[..]);
+  #assert l.code == P2P_OK && l.count == 1 && at[0] == 1 && l.next == 82;
+  #assert pow_header_check_vartime(p[1..<81], POW_LIMIT_MAINNET) == POW_OK;
+  p[81] = 1; #assert p2p_headers_read_vartime(p, at[..]).code == P2P_OK;   // Core ignores a nonzero count
+  p[81] = 0xfd; #assert p2p_headers_read_vartime(p, at[..]).code == P2P_BAD_PAYLOAD;
+  #assert p2p_headers_read_vartime(p[0..<81], at[..]).code == P2P_BAD_PAYLOAD;
+  c := [3] u8.[0xfd, 0xd1, 0x07];
+  #assert p2p_headers_read_vartime(c[..], at[..]).code == P2P_TOO_MANY;      // 2,001
+  c[1] = 0xd0; #assert p2p_headers_read_vartime(c[..], at[..]).code == P2P_CAPACITY;
+}
+#test "addr: the published entry; the excerpt's count of 1,000 runs out of bytes" {
+  b: [64] u8; o: [64] u8; a: [2] P2pAddress;
+  p := p2p_sample("addr", b[..]);
+  big: [1000] P2pAddress;
+  #assert p2p_addr_read_vartime(p, false, big[..]).code == P2P_BAD_PAYLOAD && p2p_addr_read_vartime(p, false, a[..]).code == P2P_BAD_PAYLOAD;
+  q := p[2..<p.count]; q[0] = 1;                  // the count as 1
+  l := p2p_addr_read_vartime(q, false, a[..]);
+  #assert l.code == P2P_OK && l.count == 1 && l.next == q.count;
+  #assert a[0].time == 1414012889 && a[0].services == 1 && a[0].net == P2P_NET_IPV4 && a[0].n == 4 && a[0].port == 8333;
+  #assert q[a[0].at] == 192 && q[a[0].at+3] == 0x33;
+  #assert p2p_addr_write_vartime(q, a[0..<1], false, o[..]) == q.count && p2p_same(o[0..<q.count], q);
+  many: [30033] u8; many[0] = 0xfd; many[1] = 0xe9; many[2] = 0x03;     // 1,001 entries
+  #assert p2p_addr_read_vartime(many[..], false, big[..]).code == P2P_TOO_MANY;
+  #assert p2p_addr_read_vartime(many[0..<30032], false, big[..]).code == P2P_BAD_PAYLOAD;
+}
+#test "addrv2: every BIP-155 network that Core knows, and the refusals" {
+  b: [96] u8; o: [96] u8; a: [2] P2pAddress;
+  lens := [7] int.[0, 4, 16, 10, 32, 32, 16];
+  for s: P2P_ADDRV2 {
+    e := p2p_unhex(s.hex, b[1..<96]); b[0] = 1;
+    q := b[0..<e.count+1];
+    l := p2p_addr_read_vartime(q, true, a[..]);
+    #assert l.code == P2P_OK && l.count == 1 && a[0].net == s.net && a[0].n == lens[s.net] && a[0].known && a[0].port == 8333 && a[0].services == 9;
+    #assert p2p_addr_write_vartime(q, a[0..<1], true, o[..]) == q.count && p2p_same(o[0..<q.count], q);
+  }
+  // A known network with the wrong length refuses; an unknown one, Tor v2
+  // included, is read and marked unknown, as Core skips it.
+  e := p2p_unhex(P2P_ADDRV2[0].hex, b[1..<96]); b[0] = 1;
+  q := b[0..<e.count+1];
+  q[7] = 5; #assert p2p_addr_read_vartime(q, true, a[..]).code == P2P_BAD_PAYLOAD;
+  q[7] = 4; q[6] = 3;
+  l := p2p_addr_read_vartime(q, true, a[..]);
+  #assert l.code == P2P_OK && a[0].net == 3 && !a[0].known && a[0].n == 4;
+  q[6] = 99; #assert p2p_addr_read_vartime(q, true, a[..]).code == P2P_OK && !a[0].known;
+  // An address longer than 512 bytes refuses before its bytes are read.
+  q[7] = 0xfd; q[8] = 0x01; q[9] = 0x02;
+  #assert p2p_addr_read_vartime(q, true, a[..]).code == P2P_BAD_PAYLOAD;
+  // The published addrv2 excerpt: services fd4804, IPv4.
+  s: [64] u8; x := p2p_sample("addrv2", s[..]);
+  y := x[2..<x.count]; y[0] = 1;
+  l = p2p_addr_read_vartime(y, true, a[..]);
+  #assert l.code == P2P_OK && a[0].services == 0x448 && a[0].net == P2P_NET_IPV4 && a[0].port == 8333;
+  // Services is a CompactSize with no MAX_SIZE limit, but still canonical.
+  y[5] = 0xfd; y[6] = 0x10; y[7] = 0;
+  #assert p2p_addr_read_vartime(y, true, a[..]).code == P2P_BAD_PAYLOAD;
+}
+#test "sendcmpct reads its two fields; the feature messages are empty" {
+  m := [9] u8.[1, 2, 0, 0, 0, 0, 0, 0, 0];
+  c := p2p_sendcmpct_read_vartime(m[..]);
+  #assert c.code == P2P_OK && c.announce && c.version == 2;
+  m[0] = 0; #assert !p2p_sendcmpct_read_vartime(m[..]).announce;
+  #assert p2p_sendcmpct_read_vartime(m[0..<8]).code == P2P_BAD_PAYLOAD;
+  b: [64] u8; e: [1] u8; f: P2pFrame;
+  for name: [4] string.["wtxidrelay", "sendaddrv2", "verack", "sendheaders"] {
+    h := p2p_framed(name, e[0..<0], b[..]);
+    f = p2p_frame_read_vartime(h, P2P_NETWORKS[P2P_MAINNET].magic);
+    #assert f.code == P2P_OK && f.length == 0 && p2p_command_is(h, f, name);
+  }
+}
+
+// book:begin frame
+// The header of the message at the start of b, then its payload. Checks
+// follow V1Transport: the magic and the length as soon as the 24 header
+// bytes are there, then the checksum and the command once the payload is.
+// TRUNCATED means "not yet": a stream reader waits for more bytes.
+P2pFrame :: struct { code: int; command_n: int; length: int; payload: int; next: int; }
+p2p_frame_read_vartime :: (b: [] u8, magic: [4] u8) -> P2pFrame #export_c {
+
+  if b.count < P2P_HEADER { return P2pFrame.{code=P2P_TRUNCATED}; }
+  for i: 0..<4 { if b[i] != magic[i] { return P2pFrame.{code=P2P_BAD_MAGIC}; } }
+  length := tx_le_vartime(b, 16, 4);
+  if length > P2P_MAX_MESSAGE { return P2pFrame.{code=P2P_OVERSIZE}; }
+  if b.count - P2P_HEADER < length { return P2pFrame.{code=P2P_TRUNCATED}; }
+  payload := b[P2P_HEADER..<P2P_HEADER+length];
+  if !bitcoin_checksum_matches(payload, b[20..<24]) { return P2pFrame.{code=P2P_BAD_CHECKSUM}; }
+  if !p2p_command_valid_vartime(b[4..<16]) { return P2pFrame.{code=P2P_BAD_COMMAND}; }
+  n := 0;
+  while n < P2P_COMMAND && b[4+n] != 0 { n += 1; }
+  return P2pFrame.{command_n=n, length=length, payload=P2P_HEADER, next=P2P_HEADER+length};
+}
+// CMessageHeader::IsMessageTypeValid: printable ASCII (0x20 to 0x7e), and
+// after the first zero byte nothing but zeros.
+p2p_command_valid_vartime :: (command: [] u8) -> bool #export_c {
+  if command.count != P2P_COMMAND { return false; }
+  ended := false;
+  for c: command {
+    if c == 0 { ended = true; }
+    else if ended || c < 0x20 || c > 0x7e { return false; }
+  }
+  return true;
+}
+// True when the read frame's command is name.
+p2p_command_is :: (b: [] u8, f: P2pFrame, name: string) -> bool {
+  if f.code != P2P_OK || f.command_n != name.count { return false; }
+  for i: 0..<name.count { if b[4+i] != name[i] { return false; } }
+  return true;
+}
+// A whole message into out: magic, command padded with zeros, length,
+// checksum, payload. Returns its size, or -1 for a command Core would
+// refuse, a payload above the limit or an out too small.
+p2p_frame_write_vartime :: (magic: [4] u8, command: string, payload: [] u8, out: [] u8) -> int #export_c {
+  if command.count > P2P_COMMAND || payload.count > P2P_MAX_MESSAGE { return -1; }
+  if out.count < P2P_HEADER + payload.count { return -1; }
+  padded: [12] u8;
+  for i: 0..<command.count { padded[i] = command[i]; }
+  if !p2p_command_valid_vartime(padded[..]) { return -1; }
+  for i: 0..<4 { out[i] = magic[i]; }
+  for i: 0..<12 { out[4+i] = padded[i]; }
+  stored := cb_store_le32(out, 16, cast(u32) payload.count);
+  #assert bitcoin_checksum_checked(payload, out[20..<24], false) == SHA_OK;
+  for i: 0..<payload.count { out[P2P_HEADER+i] = payload[i]; }
+  return P2P_HEADER + payload.count;
+}
+// book:end frame
+
+// ---- payload helpers
+p2p_u64 :: (b: [] u8, at: int) -> u64 { return cb_load_le64(b, at).value; }
+p2p_put :: (out: [] u8, at: int, b: [] u8) -> int {
+  for i: 0..<b.count { out[at+i] = b[i]; }
+  return at + b.count;
+}
+p2p_put_u64 :: (out: [] u8, at: int, v: u64) -> int { stored := cb_store_le64(out, at, v); return at + 8; }
+p2p_put_u32 :: (out: [] u8, at: int, v: u32) -> int { stored := cb_store_le32(out, at, v); return at + 4; }
+p2p_signed32 :: (b: [] u8, at: int) -> int { v := tx_le_vartime(b, at, 4); return ifx v >= 0x80000000 then v - 0x100000000 else v; }
+// ReadCompactSize with range_check false: a 64-bit value, still in its
+// shortest form. addrv2 services use it.
+P2pU64 :: struct { code: int; value: u64; next: int; }
+p2p_compact64_read_vartime :: (b: [] u8, at: int) -> P2pU64 {
+  if at >= b.count { return P2pU64.{code=P2P_BAD_PAYLOAD}; }
+  first := b[at];
+  if first < 0xfd { return P2pU64.{value=cast(u64) first, next=at+1}; }
+  width := ifx first == 0xfd then 2 else ifx first == 0xfe then 4 else 8;
+  if width > b.count - at - 1 { return P2pU64.{code=P2P_BAD_PAYLOAD}; }
+  v: u64;
+  for i: 0..<width { v |= cast(u64) b[at+1+i] << cast(u64) (8 * i); }
+  least := ifx width == 2 then cast(u64) 0xfd else ifx width == 4 then cast(u64) 0x10000 else cast(u64) 0x100000000;
+  if v < least { return P2pU64.{code=P2P_BAD_PAYLOAD}; }
+  return P2pU64.{value=v, next=at+1+width};
+}
+p2p_compact64_write_vartime :: (out: [] u8, at: int, v: u64) -> int {
+  if v < 0xfd { out[at] = cast(u8) v; return at + 1; }
+  width := ifx v <= 0xffff then 2 else ifx v <= 0xffffffff then 4 else 8;
+  out[at] = cast(u8) (ifx width == 2 then 0xfd else ifx width == 4 then 0xfe else 0xff);
+  for i: 0..<width { out[at+1+i] = cast,trunc(u8) (v >> cast(u64) (8 * i)); }
+  return at + 1 + width;
+}
+#test "64-bit CompactSize: shortest form only, no range limit" {
+  b: [9] u8;
+  for v: [6] u64.[0, 0xfc, 0xfd, 0xffff, 0x10000, 0xffffffffffffffff] {
+    n := p2p_compact64_write_vartime(b[..], 0, v);
+    r := p2p_compact64_read_vartime(b[0..<n], 0);
+    #assert r.code == P2P_OK && r.value == v && r.next == n && n == tx_compact_size_vartime(ifx v > 0x7fffffffffffffff then 0x100000000 else cast(int) v);
+  }
+  b[0] = 0xff; for i: 1..<9 { b[i] = 0; } b[5] = 1;
+  #assert p2p_compact64_read_vartime(b[..], 0).code == P2P_OK;
+  b[5] = 0; b[4] = 0xff;
+  #assert p2p_compact64_read_vartime(b[..], 0).code == P2P_BAD_PAYLOAD;
+  #assert p2p_compact64_read_vartime(b[0..<8], 0).code == P2P_BAD_PAYLOAD && p2p_compact64_read_vartime(b[0..<0], 0).code == P2P_BAD_PAYLOAD;
+}
+
+// book:begin version
+// One address as positions in the bytes: its time (addr and addrv2 only),
+// services, BIP-155 network, the address bytes at at..at+n, and the port,
+// which is big-endian. In the 16-byte v1 form an IPv4 address is mapped
+// (::ffff:a.b.c.d), so at points past the 12-byte prefix and n is 4.
+// known is false for an addrv2 network Core skips.
+P2pAddress :: struct { time: u32; services: u64; net: int; at: int; n: int; port: int; known: bool; }
+P2P_V4_PREFIX :: [12] u8.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff];
+// The 26-byte v1 form without time: services, 16 address bytes, port.
+p2p_addr_v1_read_vartime :: (b: [] u8, at: int) -> P2pAddress {
+  a := P2pAddress.{services=p2p_u64(b, at), net=P2P_NET_IPV4, at=at+20, n=4, known=true};
+  for i: 0..<12 { if b[at+8+i] != P2P_V4_PREFIX[i] { a.net = P2P_NET_IPV6; a.at = at + 8; a.n = 16; } }
+  a.port = (cast(int) b[at+24] << 8) | cast(int) b[at+25];
+  return a;
+}
+p2p_addr_v1_write_vartime :: (src: [] u8, a: P2pAddress, out: [] u8, at: int) -> int {
+  w := p2p_put_u64(out, at, a.services);
+  prefix := P2P_V4_PREFIX;
+  if a.n == 4 { w = p2p_put(out, w, prefix[..]); }
+  w = p2p_put(out, w, src[a.at..<a.at+a.n]);
+  out[w] = cast,trunc(u8) (a.port >> 8); out[w+1] = cast,trunc(u8) a.port;
+  return w + 2;
+}
+// The version message as Core's ProcessMessage reads it: version,
+// services, time and the receiver's address are required; then four
+// optional groups, each read only if bytes remain: the sender's address
+// and the nonce, the user agent (at most 256 bytes), the start height,
+// and the relay flag. parts counts the groups present. A group cut short
+// refuses. Bytes after the relay flag are left unread, as Core leaves them.
+P2pVersion :: struct {
+  code: int; version: int; services: u64; time: int; recv: P2pAddress;
+  parts: int; from: P2pAddress; nonce: u64; agent: int; agent_n: int;
+  height: int = -1; relay: bool = true; next: int;
+}
+p2p_version_read_vartime :: (b: [] u8) -> P2pVersion #export_c {
+  bad := P2pVersion.{code=P2P_BAD_PAYLOAD};
+  if b.count < 46 { return bad; }
+  v := P2pVersion.{version=p2p_signed32(b, 0), services=p2p_u64(b, 4), time=tx_le_vartime(b, 12, 8)};
+  v.recv = p2p_addr_v1_read_vartime(b, 20);
+  at := 46;
+  if at < b.count {
+    if b.count - at < 34 { return bad; }
+    v.from = p2p_addr_v1_read_vartime(b, at); v.nonce = p2p_u64(b, at + 26);
+    at += 34; v.parts = 1;
+  }
+  if at < b.count {
+    s := tx_span_vartime(b, at);
+    if s.code != TX_OK || s.n > P2P_MAX_AGENT { return bad; }
+    v.agent = s.at; v.agent_n = s.n; at = s.next; v.parts = 2;
+  }
+  if at < b.count {
+    if b.count - at < 4 { return bad; }
+    v.height = p2p_signed32(b, at); at += 4; v.parts = 3;
+  }
+  if at < b.count { v.relay = b[at] != 0; at += 1; v.parts = 4; }
+  v.next = at;
+  return v;
+}
+// The message back, with v.parts optional groups; the address and user
+// agent bytes come from src. Returns the size, or -1 if out is too small.
+p2p_version_write_vartime :: (src: [] u8, v: P2pVersion, out: [] u8) -> int #export_c {
+  need := 46;
+  if v.parts >= 1 { need += 34; }
+  if v.parts >= 2 { need += tx_compact_size_vartime(v.agent_n) + v.agent_n; }
+  if v.parts >= 3 { need += 4; }
+  if v.parts >= 4 { need += 1; }
+  if out.count < need { return -1; }
+  at := p2p_put_u32(out, 0, cast,trunc(u32) v.version);
+  at = p2p_put_u64(out, at, v.services);
+  at = p2p_put_u64(out, at, cast,trunc(u64) v.time);
+  at = p2p_addr_v1_write_vartime(src, v.recv, out, at);
+  if v.parts >= 1 { at = p2p_addr_v1_write_vartime(src, v.from, out, at); at = p2p_put_u64(out, at, v.nonce); }
+  if v.parts >= 2 { at = tx_compact_write_vartime(out, at, v.agent_n); at = p2p_put(out, at, src[v.agent..<v.agent+v.agent_n]); }
+  if v.parts >= 3 { at = p2p_put_u32(out, at, cast,trunc(u32) v.height); }
+  if v.parts >= 4 { out[at] = ifx v.relay then 1 else 0; at += 1; }
+  return at;
+}
+// book:end version
+
+// book:begin small
+// ping, pong and the 8-byte nonces they carry; feefilter's rate in
+// sat/kvB, which Core applies only inside MoneyRange.
+P2pNumber :: struct { code: int; value: u64; }
+p2p_u64_read_vartime :: (b: [] u8) -> P2pNumber #export_c {
+  if b.count < 8 { return P2pNumber.{code=P2P_BAD_PAYLOAD}; }
+  return P2pNumber.{value=p2p_u64(b, 0)};
+}
+p2p_u64_write_vartime :: (v: u64, out: [] u8) -> int #export_c {
+  if out.count < 8 { return -1; }
+  return p2p_put_u64(out, 0, v);
+}
+P2pFeeFilter :: struct { code: int; rate: int; in_range: bool; }
+p2p_feefilter_read_vartime :: (b: [] u8) -> P2pFeeFilter #export_c {
+  if b.count < 8 { return P2pFeeFilter.{code=P2P_BAD_PAYLOAD}; }
+  rate := tx_le_vartime(b, 0, 8);        // a signed CAmount
+  return P2pFeeFilter.{rate=rate, in_range=rate >= 0 && rate <= 2100000000000000};
+}
+// sendcmpct (BIP-152): announce with cmpctblock or not, and a version.
+// Read only; chapter 74 acts on it.
+P2pSendCmpct :: struct { code: int; announce: bool; version: u64; }
+p2p_sendcmpct_read_vartime :: (b: [] u8) -> P2pSendCmpct #export_c {
+  if b.count < 9 { return P2pSendCmpct.{code=P2P_BAD_PAYLOAD}; }
+  return P2pSendCmpct.{announce=b[0] != 0, version=p2p_u64(b, 1)};
+}
+// book:end small
+
+// book:begin inv
+// inv, getdata and notfound: a count of at most 50,000, then 36-byte
+// entries of a 4-byte type and a 32-byte hash (hash is its position).
+// Core reads all the entries before it checks the count, so a count
+// longer than the bytes is a failed read, not too many.
+P2pInv :: struct { type: u32; hash: int; }
+P2pList :: struct { code: int; count: int; next: int; }
+p2p_inv_read_vartime :: (b: [] u8, out: [] P2pInv) -> P2pList #export_c {
+  n := tx_compact_read_vartime(b, 0);
+  if n.code != TX_OK { return P2pList.{code=P2P_BAD_PAYLOAD}; }
+  if b.count - n.next < 36 * n.value { return P2pList.{code=P2P_BAD_PAYLOAD}; }
+  if n.value > P2P_MAX_INV { return P2pList.{code=P2P_TOO_MANY}; }
+  if n.value > out.count { return P2pList.{code=P2P_CAPACITY}; }
+  for k: 0..<n.value {
+    at := n.next + 36 * k;
+    out[k] = P2pInv.{type=cast(u32) tx_le_vartime(b, at, 4), hash=at+4};
+  }
+  return P2pList.{count=n.value, next=n.next+36*n.value};
+}
+p2p_inv_write_vartime :: (src: [] u8, entries: [] P2pInv, out: [] u8) -> int #export_c {
+  if entries.count > P2P_MAX_INV || out.count < tx_compact_size_vartime(entries.count) + 36 * entries.count { return -1; }
+  at := tx_compact_write_vartime(out, 0, entries.count);
+  for e: entries { at = p2p_put_u32(out, at, e.type); at = p2p_put(out, at, src[e.hash..<e.hash+32]); }
+  return at;
+}
+// CInv::GetMessageType's names; "" for a type Core doesn't know.
+p2p_inv_type_name :: (type: u32) -> string {
+  witness := (type & P2P_MSG_WITNESS_FLAG) != 0;
+  names := [6] string.["", "tx", "block", "merkleblock", "cmpctblock", "wtx"];
+  wnames := [6] string.["", "witness-tx", "witness-block", "witness-merkleblock", "witness-cmpctblock", "witness-wtx"];
+  base := type & 0x3fffffff;
+  if base == 0 || base > 5 { return ""; }
+  return ifx witness then wnames[base] else names[base];
+}
+// book:end inv
+
+// book:begin locator
+// getblocks and getheaders: a version Core ignores, a block locator of at
+// most 101 hashes, and the hash to stop at. first and stop are positions.
+P2pLocator :: struct { code: int; version: int; count: int; first: int; stop: int; next: int; }
+p2p_locator_read_vartime :: (b: [] u8) -> P2pLocator #export_c {
+  bad := P2pLocator.{code=P2P_BAD_PAYLOAD};
+  if b.count < 4 { return bad; }
+  n := tx_compact_read_vartime(b, 4);
+  if n.code != TX_OK { return bad; }
+  if b.count - n.next < 32 * n.value + 32 {
+    // Core reads the whole vector before checking its size, so a count
+    // too long for the bytes fails as a read first.
+    return bad;
+  }
+  if n.value > P2P_MAX_LOCATOR { return P2pLocator.{code=P2P_TOO_MANY}; }
+  stop := n.next + 32 * n.value;
+  return P2pLocator.{version=tx_le_vartime(b, 0, 4), count=n.value, first=n.next, stop=stop, next=stop+32};
+}
+p2p_locator_write_vartime :: (version: int, hashes: [] u8, stop: [] u8, out: [] u8) -> int #export_c {
+  n := hashes.count / 32;
+  if hashes.count != 32 * n || n > P2P_MAX_LOCATOR || stop.count != 32 { return -1; }
+  if out.count < 4 + tx_compact_size_vartime(n) + hashes.count + 32 { return -1; }
+  at := p2p_put_u32(out, 0, cast,trunc(u32) version);
+  at = tx_compact_write_vartime(out, at, n);
+  return p2p_put(out, p2p_put(out, at, hashes), stop);
+}
+// The heights of the blocks a locator names for a chain whose tip is at
+// height tip, as Core's LocatorEntries (chain.cpp) walks back: the newest
+// ten one by one, then steps that double, and always genesis. Returns how
+// many, or -1 if out is too small or tip is negative.
+p2p_locator_heights_vartime :: (tip: int, out: [] int) -> int #export_c {
+  if tip < 0 { return -1; }
+  height := tip; step := 1; n := 0;
+  while true {
+    if n == out.count { return -1; }
+    out[n] = height; n += 1;
+    if height == 0 { break; }
+    height = ifx height - step > 0 then height - step else 0;
+    if n > 10 { step *= 2; }
+  }
+  return n;
+}
+// book:end locator
+
+// book:begin headers
+// headers: a count of at most 2,000, then each 80-byte header followed by
+// a transaction count, which Core reads and ignores. out gets each
+// header's position.
+p2p_headers_read_vartime :: (b: [] u8, out: [] int) -> P2pList #export_c {
+  n := tx_compact_read_vartime(b, 0);
+  if n.code != TX_OK { return P2pList.{code=P2P_BAD_PAYLOAD}; }
+  if n.value > P2P_MAX_HEADERS { return P2pList.{code=P2P_TOO_MANY}; }
+  if n.value > out.count { return P2pList.{code=P2P_CAPACITY}; }
+  at := n.next;
+  for k: 0..<n.value {
+    if b.count - at < POW_HEADER { return P2pList.{code=P2P_BAD_PAYLOAD}; }
+    out[k] = at;
+    c := tx_compact_read_vartime(b, at + POW_HEADER);
+    if c.code != TX_OK { return P2pList.{code=P2P_BAD_PAYLOAD}; }
+    at = c.next;
+  }
+  return P2pList.{count=n.value, next=at};
+}
+// book:end headers
+
+// book:begin addr
+// addr (v1) and addrv2 (BIP-155): a count of at most 1,000 addresses.
+// A v1 entry is time, services, 16 address bytes and port. A v2 entry is
+// time, services as a CompactSize, a network ID, the address with its
+// length (at most 512), and port. A known network with the wrong length
+// refuses; an unknown ID, Tor v2's 3 included, is read and marked unknown.
+// Like inv, the count is checked after the entries are read.
+P2P_V2_LENGTHS :: [7] int.[0, 4, 16, 0, 32, 32, 16];
+p2p_addr_read_vartime :: (b: [] u8, v2: bool, out: [] P2pAddress) -> P2pList #export_c {
+  bad := P2pList.{code=P2P_BAD_PAYLOAD};
+  n := tx_compact_read_vartime(b, 0);
+  if n.code != TX_OK { return bad; }
+  at := n.next;
+  for k: 0..<n.value {
+    if b.count - at < 4 { return bad; }
+    a := P2pAddress.{time=cast(u32) tx_le_vartime(b, at, 4)}; at += 4;
+    if !v2 {
+      if b.count - at < 26 { return bad; }
+      a = p2p_addr_v1_read_vartime(b, at); a.time = cast(u32) tx_le_vartime(b, at - 4, 4); at += 26;
+    } else {
+      s := p2p_compact64_read_vartime(b, at);
+      if s.code != P2P_OK || s.next == b.count { return bad; }
+      net := cast(int) b[s.next];
+      size := tx_compact_read_vartime(b, s.next + 1);
+      if size.code != TX_OK || size.value > P2P_MAX_ADDRV2 { return bad; }
+      a.known = net >= 1 && net <= 6 && net != P2P_NET_TORV2;
+      if a.known && size.value != P2P_V2_LENGTHS[net] { return bad; }
+      if b.count - size.next < size.value + 2 { return bad; }
+      at = size.next + size.value;
+      a.services = s.value; a.net = net; a.at = size.next; a.n = size.value;
+      a.port = (cast(int) b[at] << 8) | cast(int) b[at+1];
+      at += 2;
+    }
+    if k < out.count { out[k] = a; }
+  }
+  // Core reads the whole vector, then checks its size.
+  if n.value > P2P_MAX_ADDR { return P2pList.{code=P2P_TOO_MANY}; }
+  if n.value > out.count { return P2pList.{code=P2P_CAPACITY}; }
+  return P2pList.{count=n.value, next=at};
+}
+// The message back from entries read out of src. Returns its size or -1.
+p2p_addr_write_vartime :: (src: [] u8, entries: [] P2pAddress, v2: bool, out: [] u8) -> int #export_c {
+  if entries.count > P2P_MAX_ADDR { return -1; }
+  need := tx_compact_size_vartime(entries.count);
+  for a: entries { need += ifx v2 then 4 + 9 + 1 + tx_compact_size_vartime(a.n) + a.n + 2 else 30; }
+  if out.count < need { return -1; }
+  at := tx_compact_write_vartime(out, 0, entries.count);
+  for a: entries {
+    at = p2p_put_u32(out, at, a.time);
+    if !v2 { at = p2p_addr_v1_write_vartime(src, a, out, at); continue; }
+    at = p2p_compact64_write_vartime(out, at, a.services);
+    out[at] = cast(u8) a.net; at = tx_compact_write_vartime(out, at + 1, a.n);
+    at = p2p_put(out, at, src[a.at..<a.at+a.n]);
+    out[at] = cast,trunc(u8) (a.port >> 8); out[at+1] = cast,trunc(u8) a.port; at += 2;
+  }
+  return at;
+}
+// book:end addr

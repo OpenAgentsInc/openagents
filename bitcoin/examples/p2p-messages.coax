@@ -1,0 +1,150 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/p2p.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex, at most 256 of them.
+show :: (b: [] u8) {
+  text: [512] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+// A hash as explorers show it: the bytes reversed.
+show_hash :: (b: [] u8) { for i: 0..<32 { show(b[31-i..<32-i]); } }
+show_ip :: (b: [] u8, a: P2pAddress) {
+  if a.net == P2P_NET_IPV4 { print("%.%.%.%", b[a.at], b[a.at+1], b[a.at+2], b[a.at+3]); }
+  else { show(b[a.at..<a.at+a.n]); }
+}
+CODES :: [9] string.["ok", "truncated", "bad magic", "oversize", "bad checksum", "bad command", "bad payload", "too many", "capacity"];
+NETS :: [7] string.["?", "IPv4", "IPv6", "TorV2", "TorV3", "I2P", "CJDNS"];
+sample :: (name: string, out: [] u8) -> [] u8 { return p2p_sample(name, out); }
+
+main :: () {
+  // ---- the header
+  print("networks: message start and default port\n");
+  for n: P2P_NETWORKS { m := n.magic; print("  % ", n.name); show(m[..]); print(" %\n", n.port); }
+  b: [512] u8; f: [640] u8; o: [640] u8;
+  h := sample("verack header", b[..]);
+  r := p2p_frame_read_vartime(h, P2P_NETWORKS[P2P_MAINNET].magic);
+  print("the published verack header: % (%)\n", CODES[r.code], cast(string) h[4..<4+r.command_n]);
+  print("  magic "); show(h[0..<4]); print(", length %, checksum ", r.length); show(h[20..<24]);
+  print(" = SHA-256d of nothing, first 4 bytes\n");
+
+  // ---- version
+  p := sample("version", b[..]);
+  v := p2p_version_read_vartime(p);
+  print("version, % bytes: %\n", p.count, CODES[v.code]);
+  print("  version %, services %, time %\n", v.version, v.services, v.time);
+  print("  receiver "); show_ip(p, v.recv); print(" port %, sender ", v.recv.port); show_ip(p, v.from); print(" port %\n", v.from.port);
+  print("  nonce %, agent %, height %, relay %\n", v.nonce, cast(string) p[v.agent..<v.agent+v.agent_n], v.height, v.relay);
+  n := p2p_frame_write_vartime(P2P_NETWORKS[P2P_MAINNET].magic, "version", p, f[..]);
+  print("  framed for mainnet: % bytes, header ", n); show(f[0..<24]); print("\n");
+  r = p2p_frame_read_vartime(f[0..<n], P2P_NETWORKS[P2P_MAINNET].magic);
+  w := p2p_version_write_vartime(f[24..<n], p2p_version_read_vartime(f[24..<n]), o[..]);
+  print("  read back: %, \"%\", % bytes; written again, the same bytes: %\n",
+    CODES[r.code], cast(string) f[4..<4+r.command_n], r.length, p2p_same(o[0..<w], p));
+  for k: 0..<5 {
+    ends := [5] int.[46, 80, 96, 100, 101];
+    print("  first % bytes: %, % optional groups\n", ends[k], CODES[p2p_version_read_vartime(p[0..<ends[k]]).code], p2p_version_read_vartime(p[0..<ends[k]]).parts);
+  }
+  print("  first 47 bytes: %\n", CODES[p2p_version_read_vartime(p[0..<47]).code]);
+
+  // ---- refusals
+  print("refusals of the framed version message\n");
+  print("  read as testnet4: %\n", CODES[p2p_frame_read_vartime(f[0..<n], P2P_NETWORKS[P2P_TESTNET4].magic).code]);
+  print("  first 23 bytes: %\n", CODES[p2p_frame_read_vartime(f[0..<23], P2P_NETWORKS[P2P_MAINNET].magic).code]);
+  print("  first 124 bytes: %\n", CODES[p2p_frame_read_vartime(f[0..<124], P2P_NETWORKS[P2P_MAINNET].magic).code]);
+  f[100] ^= 1;
+  print("  one payload bit changed: %\n", CODES[p2p_frame_read_vartime(f[0..<n], P2P_NETWORKS[P2P_MAINNET].magic).code]);
+  f[100] ^= 1; f[16] = 0x01; f[17] = 0x09; f[18] = 0x3d;
+  print("  length 4000001: %\n", CODES[p2p_frame_read_vartime(f[0..<n], P2P_NETWORKS[P2P_MAINNET].magic).code]);
+  f[16] = 0x00;
+  print("  length 4000000: % (the payload hasn't arrived)\n", CODES[p2p_frame_read_vartime(f[0..<n], P2P_NETWORKS[P2P_MAINNET].magic).code]);
+  f[16] = 101; f[17] = 0; f[18] = 0; f[7] = 0;
+  print("  command \"ver\" then \"sion\" after a zero: %\n", CODES[p2p_frame_read_vartime(f[0..<n], P2P_NETWORKS[P2P_MAINNET].magic).code]);
+  f[7] = 0x07;
+  print("  a 0x07 byte in the command: %\n", CODES[p2p_frame_read_vartime(f[0..<n], P2P_NETWORKS[P2P_MAINNET].magic).code]);
+  f[7] = 0x73;
+  print("  restored: %\n", CODES[p2p_frame_read_vartime(f[0..<n], P2P_NETWORKS[P2P_MAINNET].magic).code]);
+
+  // ---- getblocks and the locator
+  p = sample("getblocks", b[..]);
+  l := p2p_locator_read_vartime(p);
+  print("getblocks: %, version %, % hashes, stop ", CODES[l.code], l.version, l.count); show_hash(p[l.stop..<l.stop+32]); print("\n");
+  for i: 0..<l.count { print("  "); show_hash(p[l.first+32*i..<l.first+32*i+32]); print("\n"); }
+  heights: [64] int;
+  c := p2p_locator_heights_vartime(329167, heights[..]);
+  print("a locator from height 329167 names % blocks:", c);
+  for i: 0..<c { print(" %", heights[i]); }
+  print("\n");
+
+  // ---- headers
+  p = sample("headers", b[..]);
+  at: [4] int;
+  hl := p2p_headers_read_vartime(p, at[..]);
+  hd := pow_header_read_vartime(p[at[0]..<at[0]+80]);
+  hash: [32] u8; hashed := pow_block_hash_vartime(p[at[0]..<at[0]+80], hash[..]);
+  print("headers: %, % header, version %, time %, bits %, nonce %\n", CODES[hl.code], hl.count, hd.version, hd.time, hd.bits, hd.nonce);
+  print("  hash "); show_hash(hash[..]); print("\n  meets its target (chapter 47): %\n", pow_header_check_vartime(p[at[0]..<at[0]+80], POW_LIMIT_MAINNET) == POW_OK);
+
+  // ---- inv and getdata
+  p = sample("inv", b[..]);
+  e: [4] P2pInv;
+  il := p2p_inv_read_vartime(p, e[..]);
+  print("inv: %, % entries\n", CODES[il.code], il.count);
+  for i: 0..<il.count { print("  % ", p2p_inv_type_name(e[i].type)); show_hash(p[e[i].hash..<e[i].hash+32]); print("\n"); }
+  for i: 0..<il.count { e[i].type |= P2P_MSG_WITNESS_FLAG; }
+  w = p2p_inv_write_vartime(p, e[0..<il.count], o[..]);
+  print("getdata for both with the witness flag: % bytes, types % and %, names % and %\n", w, e[0].type, e[1].type, p2p_inv_type_name(e[0].type), p2p_inv_type_name(e[1].type));
+  print("  first entry: "); show(o[1..<5]); print(" then the hash\n");
+
+  // ---- addr and addrv2
+  a: [4] P2pAddress;
+  p = sample("addr", b[..]);
+  print("addr excerpt: count %, % bytes: %\n", tx_compact_read_vartime(p, 0).value, p.count, CODES[p2p_addr_read_vartime(p, false, a[..]).code]);
+  q := p[2..<p.count]; q[0] = 1;
+  al := p2p_addr_read_vartime(q, false, a[..]);
+  print("  with the count set to 1: %, time %, services %, ", CODES[al.code], a[0].time, a[0].services); show_ip(q, a[0]); print(" port %\n", a[0].port);
+  p = sample("addrv2", b[..]);
+  q = p[2..<p.count]; q[0] = 1;
+  al = p2p_addr_read_vartime(q, true, a[..]);
+  print("addrv2 excerpt with the count set to 1: %, services % (hex fd4804), % ", CODES[al.code], a[0].services, NETS[a[0].net]); show_ip(q, a[0]); print(" port %\n", a[0].port);
+  print("addrv2 entries Bitcoin Core's messages.py writes\n");
+  for s: P2P_ADDRV2 {
+    x := p2p_unhex(s.hex, b[1..<96]); b[0] = 1;
+    y := b[0..<x.count+1];
+    al = p2p_addr_read_vartime(y, true, a[..]);
+    w = p2p_addr_write_vartime(y, a[0..<1], true, o[..]);
+    print("  %: % % bytes ", CODES[al.code], NETS[a[0].net], a[0].n); show(y[a[0].at..<a[0].at+a[0].n]);
+    print(", round trip %\n", w == y.count && p2p_same(o[0..<w], y));
+  }
+  x := p2p_unhex(P2P_ADDRV2[0].hex, b[1..<96]); b[0] = 1;
+  y := b[0..<x.count+1];
+  y[7] = 16;
+  print("  IPv4 with length 16: %\n", CODES[p2p_addr_read_vartime(y, true, a[..]).code]);
+  y[7] = 4; y[6] = 3;
+  al = p2p_addr_read_vartime(y, true, a[..]);
+  print("  network 3 (Tor v2): %, known %\n", CODES[al.code], a[0].known);
+
+  // ---- the small ones
+  p = sample("feefilter", b[..]);
+  ff := p2p_feefilter_read_vartime(p);
+  print("feefilter: %, % sat/kvB, in MoneyRange %\n", CODES[ff.code], ff.rate, ff.in_range);
+  p = sample("ping", b[..]);
+  nonce := p2p_u64_read_vartime(p);
+  print("ping: %, nonce %\n", CODES[nonce.code], nonce.value);
+  pong: [8] u8; k := p2p_u64_write_vartime(nonce.value, pong[..]);
+  n = p2p_frame_write_vartime(P2P_NETWORKS[P2P_MAINNET].magic, "pong", pong[0..<k], f[..]);
+  print("  the pong that answers it: "); show(f[0..<n]); print("\n");
+  cmpct := [9] u8.[0, 2, 0, 0, 0, 0, 0, 0, 0];
+  sc := p2p_sendcmpct_read_vartime(cmpct[..]);
+  print("sendcmpct 000200000000000000: %, announce %, version %\n", CODES[sc.code], sc.announce, sc.version);
+  for name: [3] string.["wtxidrelay", "sendaddrv2", "verack"] {
+    empty: [1] u8;
+    n = p2p_frame_write_vartime(P2P_NETWORKS[P2P_MAINNET].magic, name, empty[0..<0], f[..]);
+    print("% for mainnet: ", name); show(f[0..<n]); print("\n");
+  }
+  print("limits: message %, inv %, locator %, headers %, addr %, user agent %, addrv2 address %\n",
+    P2P_MAX_MESSAGE, P2P_MAX_INV, P2P_MAX_LOCATOR, P2P_MAX_HEADERS, P2P_MAX_ADDR, P2P_MAX_AGENT, P2P_MAX_ADDRV2);
+}
+// book:end example

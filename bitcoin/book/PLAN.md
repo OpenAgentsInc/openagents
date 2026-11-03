@@ -225,7 +225,7 @@ there is a need.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| 65. P2P messages and checksums — planned | 5, 34 | Captured `version`, `inv`, `tx` and `block` messages parse and re-serialize exactly. A bad checksum refuses. | Bitcoin P2P protocol |
+| [65. P2P messages and checksums](ch065-p2p-messages-and-checksums.md) — implemented | 5, 34 | The developer reference's `version`, `getblocks`, `headers`, `inv`, `addr`, `addrv2`, `feefilter` and `ping` samples parse and re-serialize exactly, and every line the example prints matches Bitcoin Core's own `messages.py`. A bad magic, a bad checksum, a length above 4,000,000 and a badly padded command each refuse in Core's order. | Bitcoin P2P protocol |
 | 66. ElligatorSwift — planned | 15, 17 | BIP-324's `ellswift_decode_test_vectors.csv` and `xswiftec_inv_test_vectors.csv` pass. | BIP-324 |
 | 67. The v2 encrypted transport — planned | 9, 12, 65, 66 | BIP-324's `packet_encoding_test_vectors.csv` give every ciphertext, including rekeying. | BIP-324 |
 | 68. The handshake and feature negotiation — planned | 65, 67 | The node completes `version` and `verack` with Bitcoin Core over the v1 and v2 transports and negotiates `wtxidrelay`, `sendaddrv2`, `sendheaders`, `sendcmpct` and `feefilter`. A feature message after `verack` is handled as Core handles it. | BIP-130, BIP-133, BIP-152, BIP-155, BIP-339 |

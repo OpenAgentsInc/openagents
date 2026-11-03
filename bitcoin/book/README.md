@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 42 are implemented and 82 are planned. The 42
-implemented chapters have runnable examples, qualified on native CPU, and
-32 of them on Wasm. Fifteen of them are the cryptography Nostr already
-used; chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32,
-33, 34, 35, 36, 37, 38, 39, 40, 41, 46, 47 and 48 are new.
+Of the 124 chapters, 43 are implemented and 81 are planned. The 43 implemented
+chapters have runnable examples, qualified on native CPU, and 32 of them on
+Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
+7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+40, 41, 46, 47, 48 and 65 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -237,7 +237,7 @@ P2P messages, BIP-324 encrypted transport, the handshake, peer discovery and con
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 65. P2P messages and checksums | Planned | Captured `version`, `inv`, `tx` and `block` messages parse and re-serialize exactly. A bad checksum refuses. |
+| [65. P2P messages and checksums](ch065-p2p-messages-and-checksums.md) | Runnable: native C | The 24-byte v1 header with Core's checks in Core's order (message start, a length of at most 4,000,000, checksum, command padding), and the payloads of `version`, `ping`/`pong`, `inv`/`getdata` with the witness flag, `getheaders`/`headers` with the block locator, `addr` and `addrv2` (BIP-155), `feefilter`, `sendcmpct`, `wtxidrelay` and `sendaddrv2`. The developer reference's samples round-trip, and every line agrees with Bitcoin Core's `messages.py`. |
 | 66. ElligatorSwift | Planned | BIP-324's `ellswift_decode_test_vectors.csv` and `xswiftec_inv_test_vectors.csv` pass. |
 | 67. The v2 encrypted transport | Planned | BIP-324's `packet_encoding_test_vectors.csv` give every ciphertext, including rekeying. |
 | 68. The handshake and feature negotiation | Planned | The node completes `version` and `verack` with Bitcoin Core over the v1 and v2 transports and negotiates `wtxidrelay`, `sendaddrv2`, `sendheaders`, `sendcmpct` and `feefilter`. A feature message after `verack` is handled as Core handles it. |

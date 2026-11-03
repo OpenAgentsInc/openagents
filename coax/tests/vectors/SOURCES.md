@@ -259,6 +259,21 @@ that a maliciously replaced manifest is authentic.
   `check_vectors.py --fetch` cannot re-read it from its URL;
   `make_retarget_vectors.py` checks every header's hash and proof of work
   instead.
+- **P2P messages (Bitcoin chapter 65):** Bitcoin Core's `protocol.h` and
+  `protocol.cpp` (the message header, the message types, `CInv` and the
+  service flags), `net.h` and `net.cpp` (`V1Transport`'s header and checksum
+  checks, `MAX_PROTOCOL_MESSAGE_LENGTH`), `netaddress.h` and `netaddress.cpp`
+  (BIP-155's network IDs and address sizes), `net_processing.cpp` (the
+  `version`, `inv`, `getheaders`, `headers`, `addr` and `feefilter` limits)
+  and `test/functional/test_framework/messages.py` (Core's own Python
+  serializer, the cross-check's oracle), all at revision `ddea9196`, with
+  `chain.cpp` (`LocatorEntries`) and `kernel/chainparams.cpp` (each network's
+  message start) pinned above. BIP-155's text at the bips revision `927b6de9`
+  gives the `addrv2` format. The developer reference's
+  `reference/p2p_networking.rst` at developer.bitcoin.org revision `813ba3fb`
+  gives the annotated hexdumps of a `verack` header and of the `getblocks`,
+  `headers`, `inv`, `addr`, `addrv2`, `feefilter`, `ping` and `version`
+  payloads; `make_p2p_vectors.py` reads them from the pinned bytes.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -288,7 +303,8 @@ text, BIP-84 declares CC0-1.0 and BIP-49 declares itself public domain, and BIP-
 btcd is ISC, rust-bitcoin is CC0-1.0 and BIP-54 is CC0-1.0; their license files are retained. The
 mainnet transactions and blocks are public blockchain data. SipHash is CC0-1.0, MIT or
 Apache-2.0 with LLVM exception; its CC0 file is retained. The NIP-44 JavaScript subtree is Unlicense; Wycheproof is Apache-2.0;
-JSONTestSuite is MIT. Their provided license files are retained. `segwit_addr.py`
+JSONTestSuite is MIT. The Bitcoin developer reference
+(developer.bitcoin.org) is MIT and BIP-155 declares BSD-2-Clause in its text. Their provided license files are retained. `segwit_addr.py`
 carries its MIT notice in its own header. RFCs retain
 complete IETF/Internet Society copyright and redistribution notices (including
 the older RFC 4231 terms). NIST's U.S. Government archive supplies CAVS notices
@@ -435,4 +451,14 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/transaction_utils.cpp`](upstream/bitcoin-core/transaction_utils.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/util/transaction_utils.cpp) | `d90dcb4affb043b6b738c673c507318821f3d1252bfe6665680af7594efc977f` |
 | [`upstream/bitcoin-core/sighash.json`](upstream/bitcoin-core/sighash.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/sighash.json) | `52cf23c2076e7f129c71d5508631d3e5ae3be1b1cb0585c0e23bbb4bb373e924` |
 | [`upstream/mainnet/retarget-boundaries.txt`](upstream/mainnet/retarget-boundaries.txt) | [mempool.space API](https://mempool.space/api/v1/blocks/32256), assembled | `06c7e555e0812abb2a12246ea1326ec79f6c0c379cc88a83bb31a5c6fb297a2e` |
+| [`upstream/bitcoin-core/protocol.h`](upstream/bitcoin-core/protocol.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/protocol.h) | `92d6290df90eaea49b4a110b518ff34be914666471a5dee7e5eaa26832986738` |
+| [`upstream/bitcoin-core/protocol.cpp`](upstream/bitcoin-core/protocol.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/protocol.cpp) | `dd933f035e3d104bea8db6f83970787912357f8aebf6a01c8afc6992e93c6dfe` |
+| [`upstream/bitcoin-core/net.h`](upstream/bitcoin-core/net.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/net.h) | `c268325ae03f4f80e8427af80eb794265b08e3686923b7a5a8b850416bed213b` |
+| [`upstream/bitcoin-core/net.cpp`](upstream/bitcoin-core/net.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/net.cpp) | `05e8ce20762e9c23e060d428fb5218cb32fea599afbd40b2417b9bd2a236d7a6` |
+| [`upstream/bitcoin-core/net_processing.cpp`](upstream/bitcoin-core/net_processing.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/net_processing.cpp) | `bcd69aba37869cd68dfe03cce37b1400d1488b59ef1faafdc319ddcb51ebea36` |
+| [`upstream/bitcoin-core/netaddress.h`](upstream/bitcoin-core/netaddress.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/netaddress.h) | `4590086cfafa37ec56949b59cab8c151fb0fac91161186f985d5048c0e0d83e4` |
+| [`upstream/bitcoin-core/netaddress.cpp`](upstream/bitcoin-core/netaddress.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/netaddress.cpp) | `d8714d78569b92e8ce49b8cf845f8e3008ed739e20e44b025526e0ef92ae7c34` |
+| [`upstream/bitcoin-core/messages.py`](upstream/bitcoin-core/messages.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/messages.py) | `44e3b8c702916c8ab7820db65cf38af801dd5b5a457e91cabdff95eba5d412a5` |
+| [`upstream/bip155/bip-0155.mediawiki`](upstream/bip155/bip-0155.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0155.mediawiki) | `acf8a589041612260ec073dd7d74e4842928cb78204c4a9c8656e1b0618cf174` |
+| [`upstream/developer-bitcoin-org/p2p_networking.rst`](upstream/developer-bitcoin-org/p2p_networking.rst) | [pinned source](https://raw.githubusercontent.com/bitcoin-dot-org/developer.bitcoin.org/813ba3fb5eae85cfdfffe91d12f2df653ea8b725/reference/p2p_networking.rst) | `6284673665cdf619238a828d1df15cffbe35f8ab1026583a280fb81a105ac379` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

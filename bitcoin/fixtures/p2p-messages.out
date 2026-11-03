@@ -1,0 +1,61 @@
+networks: message start and default port
+  mainnet f9beb4d9 8333
+  testnet3 0b110907 18333
+  testnet4 1c163f28 48333
+  signet 0a03cf40 38333
+  regtest fabfb5da 18444
+the published verack header: ok (verack)
+  magic f9beb4d9, length 0, checksum 5df6e0e2 = SHA-256d of nothing, first 4 bytes
+version, 101 bytes: ok
+  version 70002, services 1, time 1415483324
+  receiver 198.27.100.9 port 8333, sender 203.0.113.192 port 8333
+  nonce 17893779652077781010, agent /Satoshi:0.9.3/, height 329167, relay true
+  framed for mainnet: 125 bytes, header f9beb4d976657273696f6e0000000000650000005f1a69d2
+  read back: ok, "version", 101 bytes; written again, the same bytes: true
+  first 46 bytes: ok, 0 optional groups
+  first 80 bytes: ok, 1 optional groups
+  first 96 bytes: ok, 2 optional groups
+  first 100 bytes: ok, 3 optional groups
+  first 101 bytes: ok, 4 optional groups
+  first 47 bytes: bad payload
+refusals of the framed version message
+  read as testnet4: bad magic
+  first 23 bytes: truncated
+  first 124 bytes: truncated
+  one payload bit changed: bad checksum
+  length 4000001: oversize
+  length 4000000: truncated (the payload hasn't arrived)
+  command "ver" then "sion" after a zero: bad command
+  a 0x07 byte in the command: bad command
+  restored: ok
+getblocks: ok, version 70001, 2 hashes, stop 0000000000000000000000000000000000000000000000000000000000000000
+  00000000000000001bd3146aa1555e10b23b63e6d484987237b575778a609fd3
+  00000000000000000aea3be27cda4b71011c2b60fb8a2e0a113708d403643e5c
+a locator from height 329167 names 30 blocks: 329167 329166 329165 329164 329163 329162 329161 329160 329159 329158 329157 329156 329154 329150 329142 329126 329094 329030 328902 328646 328134 327110 325062 320966 312774 296390 263622 198086 67014 0
+headers: ok, 1 header, version 2, time 1415239972, bits 404472624, nonce 1678286846
+  hash 000000000000000009a11b3972c8e532fe964de937c9e0096b43814e67af3728
+  meets its target (chapter 47): true
+inv: ok, 2 entries
+  tx 5af521b6a11d0829e43247224f03ca42c41f0b5d92a009c55d1fac09d7ff55de
+  tx c78dc6b217985ee84ae972d8f1aa55a0b8246f767829261880e03770996dd391
+getdata for both with the witness flag: 73 bytes, types 1073741825 and 1073741825, names witness-tx and witness-tx
+  first entry: 01000040 then the hash
+addr excerpt: count 1000, 33 bytes: bad payload
+  with the count set to 1: ok, time 1414012889, services 1, 192.0.2.51 port 8333
+addrv2 excerpt with the count set to 1: ok, services 1096 (hex fd4804), IPv4 192.0.2.51 port 8333
+addrv2 entries Bitcoin Core's messages.py writes
+  ok: IPv4 4 bytes 0141c362, round trip true
+  ok: IPv6 16 bytes 200141f00000000000626974636f696e, round trip true
+  ok: TorV3 32 bytes d06063b563a7982a1b8f42b2f8d8f34a5b2c106488a75123ca58ad923da91f3c, round trip true
+  ok: I2P 32 bytes d77a5389fe026a59b70ef86d9d81bb9f01c0c4ee7b36103307d229d8eccd8ea3, round trip true
+  ok: CJDNS 16 bytes fc3217eae415c3bf9808149db5a2c9aa, round trip true
+  IPv4 with length 16: bad payload
+  network 3 (Tor v2): ok, known false
+feefilter: ok, 48508 sat/kvB, in MoneyRange true
+ping: ok, nonce 5597941425041871872
+  the pong that answers it: f9beb4d9706f6e6700000000000000000800000088ea81760094102111e2af4d
+sendcmpct 000200000000000000: ok, announce false, version 2
+wtxidrelay for mainnet: f9beb4d9777478696472656c61790000000000005df6e0e2
+sendaddrv2 for mainnet: f9beb4d973656e646164647276320000000000005df6e0e2
+verack for mainnet: f9beb4d976657261636b000000000000000000005df6e0e2
+limits: message 4000000, inv 50000, locator 101, headers 2000, addr 1000, user agent 256, addrv2 address 512

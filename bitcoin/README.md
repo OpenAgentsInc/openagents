@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-39 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+43 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -26,7 +26,9 @@ chapter 39 its timelocks, with [`locktime.coax`](../coax/lib/bitcoin/locktime.co
 [`path.coax`](../coax/lib/bitcoin/path.coax) reads derivation paths and
 makes the standard BIP-44, 49, 84 and 86 addresses. Chapter 41's
 [`taproot.coax`](../coax/lib/bitcoin/taproot.coax) holds Taproot: the key
-tweak and the key path first.
+tweak and the key path first. Chapter 65's
+[`p2p.coax`](../coax/lib/bitcoin/p2p.coax) reads and writes the peer-to-peer
+messages: the 24-byte header and the payloads a node exchanges.
 
 ```sh
 python3 psionic/tests/book.py --book bitcoin                     # structure and registry

@@ -1,0 +1,46 @@
+// The checks of p2p-messages.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/p2p-messages.coax
+#load "../p2p-messages.coax";
+
+// book:begin check
+// Each published payload reads, and written back it is the same bytes.
+#test "the developer reference's payloads round-trip" {
+  b: [256] u8; o: [256] u8; e: [4] P2pInv; a: [2] P2pAddress; at: [2] int;
+  p := sample("version", b[..]);
+  v := p2p_version_read_vartime(p);
+  #assert v.code == P2P_OK && v.next == p.count && p2p_version_write_vartime(p, v, o[..]) == p.count && p2p_same(o[0..<p.count], p);
+  p = sample("getblocks", b[..]);
+  l := p2p_locator_read_vartime(p);
+  #assert l.next == p.count && p2p_locator_write_vartime(l.version, p[l.first..<l.stop], p[l.stop..<l.next], o[..]) == p.count && p2p_same(o[0..<p.count], p);
+  p = sample("inv", b[..]);
+  i := p2p_inv_read_vartime(p, e[..]);
+  #assert i.next == p.count && p2p_inv_write_vartime(p, e[0..<i.count], o[..]) == p.count && p2p_same(o[0..<p.count], p);
+  p = sample("headers", b[..]);
+  #assert p2p_headers_read_vartime(p, at[..]).next == p.count;
+  for name: [2] string.["addr", "addrv2"] {
+    q := sample(name, b[..]); r := q[2..<q.count]; r[0] = 1;
+    v2 := name == "addrv2";
+    c := p2p_addr_read_vartime(r, v2, a[..]);
+    #assert c.code == P2P_OK && c.next == r.count && p2p_addr_write_vartime(r, a[0..<1], v2, o[..]) == r.count && p2p_same(o[0..<r.count], r);
+  }
+  #assert p2p_u64_write_vartime(p2p_u64_read_vartime(sample("ping", b[..])).value, o[..]) == 8 && p2p_same(o[0..<8], sample("ping", b[..]));
+}
+// Every one of the 192 single-bit changes to the verack header is refused,
+// or is a different command that is still printable.
+#forall "one changed bit of the verack header" bit: 0..<192 {
+  b: [64] u8;
+  h := sample("verack header", b[..]);
+  h[bit / 8] ^= cast(u8) (1 << (bit % 8));
+  f := p2p_frame_read_vartime(h, P2P_NETWORKS[P2P_MAINNET].magic);
+  #assert f.code != P2P_OK || (bit >= 32 && bit < 128 && !p2p_command_is(h, f, "verack"));
+}
+// A message framed for one network reads on that network only.
+#forall "each network reads only its own messages" i: 0..<5, j: 0..<5 {
+  b: [256] u8; f: [300] u8;
+  p := sample("version", b[..]);
+  n := p2p_frame_write_vartime(P2P_NETWORKS[i].magic, "version", p, f[..]);
+  r := p2p_frame_read_vartime(f[0..<n], P2P_NETWORKS[j].magic);
+  #assert (r.code == P2P_OK) == (i == j) && (i == j || r.code == P2P_BAD_MAGIC);
+}
+// book:end check
