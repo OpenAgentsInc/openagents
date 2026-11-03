@@ -96,6 +96,7 @@ verse/test_voice.sh [WAV...]             # voice engine, wire, floor, meter thro
 coax/tests/net/tls.sh [--public [URL]]   # wss://: tls-native.c under ASan/UBSan against local TLS endpoints (OpenSSL from Nix)
 apps/openagents-ios/build.sh                # the app, for the simulator
 coax/web/serve.sh apps/openagents-web       # the website with hot reload: http://127.0.0.1:8800/
+coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/openagents-web/*.wgsl match their Coax (build.sh writes them; commit them)
 ```
 
 Keep iteration fast. Checks run while you work finish in minutes: test the

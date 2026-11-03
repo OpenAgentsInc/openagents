@@ -14,6 +14,7 @@
 # the same two checks run on production; a new failure rolls back.
 #
 # Everything else is a report and never stops a release: tools-check,
+# the committed shaders against their Coax (wgsl-module --site --check),
 # check-visuals, the release metadata check, the golden walk, 60 FPS, every
 # world's frame rate, the maker journey, the changed suites (after-release.sh,
 # in the background, written to releases/<time>/).
@@ -102,6 +103,9 @@ compiler_env COAX_RELEASE_COMPILER="$tree/coax/bin/coax" "$tree/scripts/coax-rel
   echo "  report     the release metadata check fails (not stopping): $(tail -1 "$reports/metadata")"
 (cd "$tree" && bounded 300 coax/web/tool.sh tools-check) > "$reports/tools" 2>&1 ||
   echo "  report     tools-check fails (not stopping): $(tail -1 "$reports/tools")"
+# Before deploy.sh's build rewrites them: are the committed shaders what their Coax writes?
+(cd "$tree" && bounded 300 coax/web/tool.sh coax/web/wgsl-module.coax --site --check) > "$reports/wgsl" 2>&1 ||
+  echo "  report     committed .wgsl drift from their Coax (not stopping): $(tail -1 "$reports/wgsl")"
 "$tree/coax/web/check-visuals.sh" "$tree/apps/openagents-web" > "$reports/visuals" 2>&1 ||
   echo "  report     check-visuals fails (not stopping): $(head -1 "$reports/visuals")"
 

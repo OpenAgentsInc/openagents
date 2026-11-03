@@ -2239,7 +2239,7 @@ fn coax_p_wg_floor_f3(p_p0: vec3f) -> vec3f {
 }
 fn coax_p_orbitleague_hash3(p_p: vec3f) -> f32 {
   var l_p: vec3f = p_p;
-  return coax_p_fract((sin(coax_p_wg_dot3(l_p, coax_p_v3(0x1.fc6666p6f, 0x1.37b334p8f, 0x1.2accccp6f))) * 0x1.55dd18p15f));
+  return coax_p_render_noise3(l_p.x, l_p.y, l_p.z);
 }
 fn coax_p_fract(p_x: f32) -> f32 {
   var l_x: f32 = p_x;
@@ -2773,6 +2773,43 @@ fn coax_p_ORBITLEAGUE_PLANET_D() -> vec3f {
 }
 fn coax_p_ORBITLEAGUE_SUN() -> vec3f {
   return coax_p_v3((-0x1.000000p-1f), 0x1.3d70a4p-1f, (-0x1.ccccccp-2f));
+}
+fn coax_p_render_noise3(p_x: f32, p_y: f32, p_z: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_y: f32 = p_y;
+  var l_z: f32 = p_z;
+  if ((((!coax_p_render_noise_coordinate_ok(l_x)) || (!coax_p_render_noise_coordinate_ok(l_y))) || (!coax_p_render_noise_coordinate_ok(l_z))))
+  {
+    return 0.0f;
+  }
+  return coax_p_render_noise_unit(coax_p_render_noise_mix3(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y), coax_p_render_noise_cell(l_z)));
+}
+fn coax_p_render_noise_coordinate_ok(p_x: f32) -> bool {
+  var l_x: f32 = p_x;
+  return ((l_x >= (-0x1.fffffep127f)) && (l_x <= 0x1.fffffep127f));
+}
+fn coax_p_render_noise_cell(p_x: f32) -> u32 {
+  var l_x: f32 = p_x;
+  var l_bounded: f32;
+  l_bounded = coax_p_fmin(coax_p_fmax(l_x, (-0x1.000000p25f)), 0x1.fffffep24f);
+  return u32(i32(floor((l_bounded * 0x1.000000p6f))));
+}
+fn coax_p_render_noise_mix3(p_x: u32, p_y: u32, p_z: u32) -> u32 {
+  var l_x: u32 = p_x;
+  var l_y: u32 = p_y;
+  var l_z: u32 = p_z;
+  return coax_p_render_noise_permute((((l_x * 1597334677u) ^ (l_y * 3812015801u)) ^ (l_z * 2654435761u)));
+}
+fn coax_p_render_noise_unit(p_word: u32) -> f32 {
+  var l_word: u32 = p_word;
+  return (f32((l_word >> u32(8u))) * 0x1.000000p-24f);
+}
+fn coax_p_render_noise_permute(p_word: u32) -> u32 {
+  var l_word: u32 = p_word;
+  var l_h: u32;
+  l_h = (l_word * 747796405u);
+  l_h = ((l_h ^ (l_h >> u32(16u))) * 2246822519u);
+  return (l_h ^ (l_h >> u32(13u)));
 }
 @vertex
 fn bg_vs(@builtin(vertex_index) coax_vid: u32, @builtin(instance_index) coax_iid: u32) -> @builtin(position) vec4f {

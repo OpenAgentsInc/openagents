@@ -7,6 +7,11 @@
 // OPTIONS is a file of `--vertices A,B --fragments C,D --bindings F [--strip P]`, apart by
 // spaces or lines, so the page's build and its checks lower the same entries
 // (verse/everglade/gpu.module). OUT is written only when the module changes.
+//   coax/web/tool.sh coax/web/wgsl-module.coax --site            every page's module (wm_site)
+// The committed .wgsl files are what the dev server, the GPU passes and the golden checks
+// read without a build, so they must be what their Coax writes. --check, after either form,
+// writes nothing: it names each .wgsl that differs from what its Coax writes now and fails (1).
+//   coax/web/tool.sh coax/web/wgsl-module.coax --site --check
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
@@ -14,39 +19,104 @@
 #load "../lib/sys/proc.coax";
 
 WM_PAGE :: 4194304;
+// Every page's module, as apps/openagents-web/build.sh writes them: Everglade's two from
+// verse/everglade/, then each apps/openagents-web/gpu/NAME.coax with NAME.module to
+// apps/openagents-web/NAME.wgsl. gpu/nip.coax is the NIP pages' (nip01.wgsl, generated
+// and ignored), which build.sh writes itself.
+WM_GPU :: "apps/openagents-web/gpu";
+WM_APP :: "apps/openagents-web";
+WM_SKIP :: "nip";
+// wm_module's answers.
+WM_SAME :: 0; WM_FAILED :: 1; WM_WRITTEN :: 2; WM_STALE :: 3;
+// What a --site run found.
+WmTally :: struct { bad: int; stale: int; seen: int; }
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
   n := args_load(a[..]);
   count := args_count(a[..]);
-  if !n || count != 3 { tool_errln("usage: wgsl-module FILE.coax OUT.wgsl OPTIONS"); return 2; }
-  file := args_at(a[..], 0); into := args_at(a[..], 1);
+  check := n && count > 0 && args_at(a[..], count - 1) == "--check";
+  if check { count -= 1; }
+  if n && count == 1 && args_at(a[..], 0) == "--site" { return wm_site(check); }
+  if !n || count != 3 { tool_errln("usage: wgsl-module FILE.coax OUT.wgsl OPTIONS [--check] | wgsl-module --site [--check]"); return 2; }
+  r := wm_module(args_at(a[..], 0), args_at(a[..], 1), args_at(a[..], 2), check);
+  if r == WM_STALE { wm_stale(args_at(a[..], 1)); }
+  return ifx r == WM_FAILED || r == WM_STALE then 1 else 0;
+}
+wm_stale :: (into: string) {
+  tool_err("stale: "); tool_err(into);
+  tool_errln(" differs from what its Coax writes (apps/openagents-web/build.sh writes it; commit the result)");
+}
+// Every page's module: written, or with check compared; 1 when one failed or is stale.
+wm_site :: (check: bool) -> int {
+  t: WmTally;
+  t = wm_tally(t, wm_module("verse/everglade/gpu.coax", "apps/openagents-web/everglade.wgsl", "verse/everglade/gpu.module", check), "apps/openagents-web/everglade.wgsl");
+  t = wm_tally(t, wm_module("verse/everglade/gpu-fx.coax", "apps/openagents-web/everglade-fx.wgsl", "verse/everglade/gpu-fx.module", check), "apps/openagents-web/everglade-fx.wgsl");
+  l: [1] FsList;
+  k := fs_list(WM_GPU, l[..]);
+  if k < 0 || l[0].full { tool_err("wgsl-module: cannot list "); tool_errln(WM_GPU); return 1; }
+  for i: 0..<k {
+    name := wm_stem(fs_entry(l[..], i));
+    if name.count == 0 || name == WM_SKIP { continue; }
+    fb: [512] u8; ob: [512] u8; mb: [512] u8;
+    file := wm_path(fb[..], WM_GPU, name, ".coax");
+    into := wm_path(ob[..], WM_APP, name, ".wgsl");
+    opts := wm_path(mb[..], WM_GPU, name, ".module");
+    if file.count == 0 || into.count == 0 || opts.count == 0 { tool_err("wgsl-module: name too long: "); tool_errln(name); t.bad += 1; continue; }
+    t = wm_tally(t, wm_module(file, into, opts, check), into);
+  }
+  if check { print("wgsl-module: % module(s) checked, % stale, % failed\n", t.seen, t.stale, t.bad); }
+  return ifx t.bad > 0 || t.stale > 0 then 1 else 0;
+}
+// t with one module's answer r (for into) counted; a stale one is named.
+wm_tally :: (t: WmTally, r: int, into: string) -> WmTally {
+  u := t;
+  u.seen += 1;
+  if r == WM_FAILED { u.bad += 1; }
+  if r == WM_STALE { u.stale += 1; wm_stale(into); }
+  return u;
+}
+// NAME of NAME.module, or "" for any other entry.
+wm_stem :: (entry: string) -> string {
+  ext := ".module";
+  if entry.count <= ext.count || entry[entry.count - ext.count..<entry.count] != ext { return ""; }
+  return entry[0..<entry.count - ext.count];
+}
+// dir/NAME.ext into out, or "" when it does not fit.
+wm_path :: (out: [] u8, dir: string, name: string, ext: string) -> string {
+  n := wm_add(out, 0, dir); n = wm_add(out, n, "/"); n = wm_add(out, n, name); n = wm_add(out, n, ext);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// FILE's module (coax wgsl with the options file's words) under its header: written to into
+// when it changed, or with check only compared. WM_SAME, WM_WRITTEN, WM_STALE or WM_FAILED.
+wm_module :: (file: string, into: string, options: string, check: bool) -> int {
   ob: [8192] u8;
-  on := fs_read(args_at(a[..], 2), ob[..]);
-  if on < 0 { tool_err("wgsl-module: no options file "); tool_errln(args_at(a[..], 2)); return 1; }
+  on := fs_read(options, ob[..]);
+  if on < 0 { tool_err("wgsl-module: no options file "); tool_errln(options); return WM_FAILED; }
   // coax wgsl FILE and the file's options
   argv: [16] string;
   argv[0] = "coax/bin/coax"; argv[1] = "wgsl"; argv[2] = file;
   m := wm_words(cast(string) ob[0..<on], argv[3..<16]);
-  if m < 0 { tool_errln("wgsl-module: too many options"); return 2; }
+  if m < 0 { tool_errln("wgsl-module: too many options"); return WM_FAILED; }
   out: [WM_PAGE] u8; err: [65536] u8;
   r := proc_run(argv[0..<m + 3], 120000, out[..], err[..]);
   if r.started != 0 || r.status != 0 || r.cut {
     tool_err(cast(string) err[0..<r.err_n]);
-    tool_errln("wgsl-module: coax wgsl failed (run from the repo root)");
-    return 1;
+    tool_err("wgsl-module: coax wgsl failed on "); tool_err(file); tool_errln(" (run from the repo root)");
+    return WM_FAILED;
   }
   page: [WM_PAGE] u8; pn := 0;
   pn = wm_add(page[..], pn, "// ---- generated: "); pn = wm_add(page[..], pn, file);
   pn = wm_add(page[..], pn, " (the module) by coax wgsl; do not edit\n");
   pn = wm_add(page[..], pn, cast(string) out[0..<r.out_n]);
-  if pn < 0 { tool_errln("wgsl-module: the module is too large"); return 1; }
+  if pn < 0 { tool_errln("wgsl-module: the module is too large"); return WM_FAILED; }
   text := cast(string) page[0..<pn];
   was: [WM_PAGE] u8;
   wn := fs_read(into, was[..]);
-  if wn >= 0 && cast(string) was[0..<wn] == text { return 0; }
-  if !fs_write(into, text) { tool_err("wgsl-module: cannot write "); tool_errln(into); return 1; }
-  return 0;
+  if wn >= 0 && cast(string) was[0..<wn] == text { return WM_SAME; }
+  if check { return WM_STALE; }
+  if !fs_write(into, text) { tool_err("wgsl-module: cannot write "); tool_errln(into); return WM_FAILED; }
+  return WM_WRITTEN;
 }
 // s after the n bytes of out; -1 when it does not fit (or n was already -1).
 wm_add :: (out: [] u8, n: int, s: string) -> int {
@@ -75,4 +145,20 @@ wm_words :: (text: string, into: [] string) -> int {
   o: [4] u8;
   #assert wm_add(o[..], 0, "ab") == 2 && wm_add(o[..], 2, "cd") == 4 && cast(string) o[..] == "abcd";
   #assert wm_add(o[..], 3, "cd") == -1 && wm_add(o[..], -1, "") == -1;
+}
+#test "a page's module names" {
+  #assert wm_stem("realm.module") == "realm" && wm_stem("everglade-fx.module") == "everglade-fx";
+  #assert wm_stem("realm.coax") == "" && wm_stem(".module") == "" && wm_stem("module") == "" && wm_stem("realm.bindings") == "";
+  o: [40] u8;
+  #assert wm_path(o[..], "apps/openagents-web/gpu", "realm", ".coax") == "apps/openagents-web/gpu/realm.coax";
+  #assert wm_path(o[..], "apps/openagents-web/gpu", "realmrealm", ".module") == "";
+}
+#test "a failed module is bad; written and unchanged ones are only seen" {
+  t: WmTally;
+  t = wm_tally(t, WM_SAME, "x");
+  #assert t.bad == 0 && t.stale == 0 && t.seen == 1;
+  t = wm_tally(t, WM_FAILED, "x");
+  #assert t.bad == 1 && t.stale == 0 && t.seen == 2;
+  t = wm_tally(t, WM_WRITTEN, "x");
+  #assert t.bad == 1 && t.stale == 0 && t.seen == 3;
 }

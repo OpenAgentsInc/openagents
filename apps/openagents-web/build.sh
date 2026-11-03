@@ -36,16 +36,12 @@ foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canop
 # Everglade's whole module is Coax (verse/everglade/gpu.coax, with verse/style.coax): its
 # entries and bindings (verse/everglade/gpu.module, gpu.bindings) as coax wgsl writes them; its
 # particles' module the same from gpu-fx.coax.
-(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax verse/everglade/gpu.coax apps/openagents-web/everglade.wgsl verse/everglade/gpu.module \
-  && coax/web/tool.sh coax/web/wgsl-module.coax verse/everglade/gpu-fx.coax apps/openagents-web/everglade-fx.wgsl verse/everglade/gpu-fx.module)
 # Every page's and realm's WGSL is written from its Coax: apps/openagents-web/gpu/NAME.coax, with
 # NAME.bindings and NAME.module, writes NAME.wgsl (docs/verse/native-gpu.md, G6); none is
 # written by hand. gpu/nip.coax is the NIP pages', written to nip01.wgsl below.
-for m in "$here"/gpu/*.module; do
-  w=$(basename "$m" .module)
-  [[ "$w" == nip ]] && continue
-  (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax "apps/openagents-web/gpu/$w.coax" "apps/openagents-web/$w.wgsl" "apps/openagents-web/gpu/$w.module")
-done
+# They are committed (the dev server, GPU passes and golden checks read them without a build):
+# commit what this writes. `coax/web/tool.sh coax/web/wgsl-module.coax --site --check` fails on drift.
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax --site)
 # The closed realm catalog owns these identities and module/entry/binding
 # declarations. Unchanged packages reuse verified source and product hashes.
 profiles="$(cd "$here/../.." && coax/web/tool.sh aethyr/render/build.coax --profiles)"

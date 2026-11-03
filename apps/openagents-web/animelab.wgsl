@@ -692,9 +692,7 @@ fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
 fn coax_p_verse_style_hash(p_x: f32, p_y: f32) -> f32 {
   var l_x: f32 = p_x;
   var l_y: f32 = p_y;
-  var l_v: f32;
-  l_v = (sin(((l_x * 0x1.fc6666p6f) + (l_y * 0x1.37b334p8f))) * 0x1.55dd18p15f);
-  return (l_v - floor(l_v));
+  return coax_p_render_noise2(l_x, l_y);
 }
 fn coax_p_verse_style_noise(p_x: f32, p_y: f32) -> f32 {
   var l_x: f32 = p_x;
@@ -1258,6 +1256,15 @@ fn coax_p_st_max(p_a: f32, p_b: f32) -> f32 {
   }
   return l_b;
 }
+fn coax_p_render_noise2(p_x: f32, p_y: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_y: f32 = p_y;
+  if (((!coax_p_render_noise_coordinate_ok(l_x)) || (!coax_p_render_noise_coordinate_ok(l_y))))
+  {
+    return 0.0f;
+  }
+  return coax_p_render_noise_unit(coax_p_render_noise_mix2(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y)));
+}
 fn coax_p_wg_dims_depth() -> coax_t22 {
   return coax_p_u2(textureDimensions(shadow_map).x, textureDimensions(shadow_map).y);
 }
@@ -1377,6 +1384,25 @@ fn coax_p_verse_style_anime_sky_t(p_an_up: f32, p_an_power: f32) -> f32 {
   var l_an_power: f32 = p_an_power;
   return coax_pow_bg_vs(coax_p_st_max(coax_p_st_sat(l_an_up), 0x1.0c6f7ap-20f), l_an_power);
 }
+fn coax_p_render_noise_coordinate_ok(p_x: f32) -> bool {
+  var l_x: f32 = p_x;
+  return ((l_x >= (-0x1.fffffep127f)) && (l_x <= 0x1.fffffep127f));
+}
+fn coax_p_render_noise_cell(p_x: f32) -> u32 {
+  var l_x: f32 = p_x;
+  var l_bounded: f32;
+  l_bounded = coax_p_fmin(coax_p_fmax(l_x, (-0x1.000000p25f)), 0x1.fffffep24f);
+  return u32(i32(floor((l_bounded * 0x1.000000p6f))));
+}
+fn coax_p_render_noise_mix2(p_x: u32, p_y: u32) -> u32 {
+  var l_x: u32 = p_x;
+  var l_y: u32 = p_y;
+  return coax_p_render_noise_permute(((l_x * 1597334677u) ^ (l_y * 3812015801u)));
+}
+fn coax_p_render_noise_unit(p_word: u32) -> f32 {
+  var l_word: u32 = p_word;
+  return (f32((l_word >> u32(8u))) * 0x1.000000p-24f);
+}
 fn coax_p_wg_fmod(p_a: f32, p_b: f32) -> f32 {
   var l_a: f32 = p_a;
   var l_b: f32 = p_b;
@@ -1393,6 +1419,13 @@ fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
   var l_low: f32 = p_low;
   var l_high: f32 = p_high;
   return coax_p_fmin(coax_p_fmax(l_x, l_low), l_high);
+}
+fn coax_p_render_noise_permute(p_word: u32) -> u32 {
+  var l_word: u32 = p_word;
+  var l_h: u32;
+  l_h = (l_word * 747796405u);
+  l_h = ((l_h ^ (l_h >> u32(16u))) * 2246822519u);
+  return (l_h ^ (l_h >> u32(13u)));
 }
 fn coax_p_wg_trunc(p_x: f32) -> f32 {
   var l_x: f32 = p_x;
