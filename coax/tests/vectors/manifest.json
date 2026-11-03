@@ -2706,6 +2706,45 @@
       "retrieved": "2026-11-03",
       "sha256": "395fb94ebc7fb7d38bfe86bc3dbfb4df2e94d3c1e3cd1c41b66cc19d0d5e76e3",
       "bytes": 2401
+    },
+    {
+      "path": "upstream/bitcoin-core/sigopcount_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/sigopcount_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-sigop-limits"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "71fb92a1fce40f6c31339dd931cdb3f07fdc4587442e3862d1de107d3c93a225",
+      "bytes": 9993
+    },
+    {
+      "path": "upstream/bitcoin-core/miner_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/miner_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-sigop-limits"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "2e8ec65462c8b6cae821bd22b95407c6c94a4710edea2f4b4f7d785a27f2c783",
+      "bytes": 46006
+    },
+    {
+      "path": "upstream/mainnet/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097.spent.json",
+      "kind": "upstream",
+      "url": "https://mempool.space/api/block/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097/txs/0",
+      "revision": "static: mempool.space's record of each transaction of mainnet block 514,999 (/api/block/HASH/txs/0), reduced to its txid, fee, sigop cost and the value and scriptPubKey of every output it spends; make_sigops_vectors.py checks each against the block; pinned by sha256",
+      "license": "Public Bitcoin blockchain data",
+      "covers": [
+        "bitcoin-sigop-limits"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "f65a8fa8f6284871947a4a45838a93c20b7254816204f7c670c1db3034ae2e09",
+      "bytes": 4693
     }
   ]
 }

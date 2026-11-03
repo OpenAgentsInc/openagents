@@ -604,6 +604,17 @@
         "release"
       ],
       "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/sigop-limits.coax",
+      "chapter": "bitcoin/book/ch053-sigops-weight-and-block-limits.md",
+      "stdout": "bitcoin/fixtures/sigop-limits.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600
     }
   ]
 }

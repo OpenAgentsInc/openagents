@@ -1,0 +1,31 @@
+Counting signature operations (GetSigOpCount):
+  OP_CHECKSIG: 1
+  1 <key> <key> 2 OP_CHECKMULTISIGVERIFY: legacy 20, accurate 2
+  1 <20 bytes> <20 bytes> 2 OP_CHECKMULTISIG OP_IF OP_CHECKSIG OP_ENDIF: legacy 21, accurate 3
+  that script under P2SH, spent with OP_0 <script>: 3
+Core's GetTxSigOpCost cases, under P2SH and WITNESS:
+  spending a bare 1-of-2 multisig: 0
+  the multisig in P2SH: 8 (without the P2SH flag: 0)
+  P2WPKH: 1 (without WITNESS: 0; as version 1: 0; as a coinbase: 0)
+  P2WPKH in P2SH: 1
+  P2WSH of the multisig: 2 (without WITNESS: 0)
+  P2WSH in P2SH: 2
+Mainnet block 514,999, 19 transactions:
+  4571 bytes without witnesses, 5044 in all, weight 18757
+  legacy sigops 25, cost 100 of CheckBlock's 80000
+  CheckBlock: ok; the weight limit: ok
+  cost of each transaction: 4 12 8 4 8 8 4 8 8 4 5 4 4 1 1 1 16 8 8
+  19 of 19 agree with mempool.space
+  ConnectBlock's sigop cost: 116 of 80000; without P2SH and WITNESS: 100
+Blocks that break a rule:
+  514,999 with a changed Merkle root: bad-txnmrklroot
+  with its last transaction twice: bad-txns-duplicate
+  without its coinbase: bad-cb-missing
+  with a second coinbase: bad-cb-multiple
+  with transaction 1 spending one outpoint twice: bad-txns-inputs-duplicate
+  Core's sigop cluster, 52 transactions and 20001 legacy sigops: bad-blk-sigops
+  Core's sigop cluster, 52 transactions and 20000 legacy sigops: ok
+  a block of 1000000 bytes without witnesses: ok
+  a block of 1000001 bytes without witnesses: bad-blk-length
+  a block of weight 4000000, 168 bytes without witnesses: CheckBlock ok, then ok
+  a block of weight 4000001, 168 bytes without witnesses: CheckBlock ok, then bad-blk-weight

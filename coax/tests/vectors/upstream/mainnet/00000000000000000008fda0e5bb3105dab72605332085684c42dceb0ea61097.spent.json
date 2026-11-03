@@ -1,0 +1,220 @@
+[
+ {
+  "txid": "f4bf807cb9611ce6695ee26ae5b34c0b51630bbce270d8cc55d28337483c9489",
+  "sigops": 4,
+  "fee": 0,
+  "spent": [
+   null
+  ]
+ },
+ {
+  "txid": "b49af21af6495dc6340549811a7ec2475f449e9b0ebbb9ce0198c4f0be72eba9",
+  "sigops": 12,
+  "fee": 15820,
+  "spent": [
+   {
+    "value": 546,
+    "scriptpubkey": "76a914d243e6abb9a60fbff430b421d2df4b7d59ec186088ac"
+   },
+   {
+    "value": 4837542,
+    "scriptpubkey": "76a9143851f34d13937b673a7d24a1950bb5b21ce94af388ac"
+   }
+  ]
+ },
+ {
+  "txid": "797d67ea57c2a5095e0e0d39e9e36fc8eb403f9822ade8cc4f21d6593f986e2b",
+  "sigops": 8,
+  "fee": 5000,
+  "spent": [
+   {
+    "value": 3856707725,
+    "scriptpubkey": "76a914100b2733a5efc85f4d3256e502d3ddf01dd38eb088ac"
+   }
+  ]
+ },
+ {
+  "txid": "f9aac632623a483390371f789b1afa8f1990ac9a530725935916d1ddadece6cc",
+  "sigops": 4,
+  "fee": 2712,
+  "spent": [
+   {
+    "value": 2050000,
+    "scriptpubkey": "76a9144d23c1e75b4e5da3bbecff05aa202f2f75e7921f88ac"
+   }
+  ]
+ },
+ {
+  "txid": "1822a168d2edb8cd7c2733c5c86494bfc9b0631e96c074a4577cdf87a565fb38",
+  "sigops": 8,
+  "fee": 2260,
+  "spent": [
+   {
+    "value": 14832025,
+    "scriptpubkey": "76a914208d59fdd1599d47b10fac32f0df52c82f0ff9a988ac"
+   }
+  ]
+ },
+ {
+  "txid": "5f377f97f585e024126429e3b6c55b4db42adc2e61355c232b024b964d94fe31",
+  "sigops": 8,
+  "fee": 2260,
+  "spent": [
+   {
+    "value": 4829765,
+    "scriptpubkey": "76a914a944f243e8cce7896135b442e2c1f5b4bdd4865e88ac"
+   }
+  ]
+ },
+ {
+  "txid": "42a75b2f109f1bcef3dcba1e6ff63a7f6d26e9fe1a7ea4a18829e444398183a1",
+  "sigops": 4,
+  "fee": 2992,
+  "spent": [
+   {
+    "value": 221734,
+    "scriptpubkey": "76a9141ecb6e0b87bcef7d3b29504c766c48580b88a14388ac"
+   },
+   {
+    "value": 27384,
+    "scriptpubkey": "76a914d58d7d9f95d126412c3941fc3904bb04953ec17088ac"
+   }
+  ]
+ },
+ {
+  "txid": "7cce4a02498a2fcd30848a4cfa0bda3e6febc158978adfb460a254b49694db1d",
+  "sigops": 8,
+  "fee": 1800,
+  "spent": [
+   {
+    "value": 21278124,
+    "scriptpubkey": "76a9148a7fa601b98ccce954962b6f9af8d360f910d72b88ac"
+   }
+  ]
+ },
+ {
+  "txid": "35d129601e1245d258b7dbbf1513345011e10c402eb06e7161623177113e591b",
+  "sigops": 8,
+  "fee": 1724,
+  "spent": [
+   {
+    "value": 89512,
+    "scriptpubkey": "76a914cdf33550155c1d0809634679fa69c83b8372e75988ac"
+   }
+  ]
+ },
+ {
+  "txid": "41a7bd71265ea0ae82b966178fcc3d73f4e9b0e786de3c038042e1d0f704d13b",
+  "sigops": 4,
+  "fee": 1599,
+  "spent": [
+   {
+    "value": 300000,
+    "scriptpubkey": "76a914cac459fdf1b996f81a8e3142fd7de1ee5486e14b88ac"
+   }
+  ]
+ },
+ {
+  "txid": "f7e5d7869f2a423cd6ee5bbb204445f88d597c65b5de6026c2122719582bdbf1",
+  "sigops": 5,
+  "fee": 1033,
+  "spent": [
+   {
+    "value": 12998802,
+    "scriptpubkey": "00148a5e8fd1bdbf38b004be13dfad83ebe28533cbc9"
+   }
+  ]
+ },
+ {
+  "txid": "466796b57e65ed9bac2a007dd1de511e6f0118dbb63136b9fb79f5d2b5f29a67",
+  "sigops": 4,
+  "fee": 1599,
+  "spent": [
+   {
+    "value": 131718,
+    "scriptpubkey": "76a91423af60f7d7251669cd9e89bf164699daf7a355e588ac"
+   }
+  ]
+ },
+ {
+  "txid": "7e2fc2e1520ce7638f68ff485577bc3bda10284d8989a026eeb440facc40ecfa",
+  "sigops": 4,
+  "fee": 1599,
+  "spent": [
+   {
+    "value": 3994825,
+    "scriptpubkey": "76a914a2932686f8e3e0dc7f40bf8ceb451f7e60ba62d288ac"
+   }
+  ]
+ },
+ {
+  "txid": "6d82e8bdd83eff79c4b3cc0db6e84aa05173ce6075e7097983ad2272792559ff",
+  "sigops": 1,
+  "fee": 1183,
+  "spent": [
+   {
+    "value": 593146,
+    "scriptpubkey": "a914fbbeccec34d0bdbd35b9f6fb39d84d1b6bef53ff87"
+   }
+  ]
+ },
+ {
+  "txid": "bda87e2b050eb46a4fdd418144be6418150af0a33edd8c010aeb0767a528044e",
+  "sigops": 1,
+  "fee": 1018,
+  "spent": [
+   {
+    "value": 273213,
+    "scriptpubkey": "0014adf9f2bea2a2ef0acc6367ba9b5bc1473a5329b0"
+   }
+  ]
+ },
+ {
+  "txid": "761172cccf56f881b595e7145f2abb8ca1e291fb84f00d2a77265a88ca0630e5",
+  "sigops": 1,
+  "fee": 1018,
+  "spent": [
+   {
+    "value": 429429,
+    "scriptpubkey": "0014987fccfe9a671ce97d187695e07b0cc69e9bc98e"
+   }
+  ]
+ },
+ {
+  "txid": "3b544adc4df991810bc157d940eb6028a4bfbd1fcdf44246ceeaf8fe21bd1624",
+  "sigops": 16,
+  "fee": 2604,
+  "spent": [
+   {
+    "value": 10361110,
+    "scriptpubkey": "a914b0ebd959094f00393822603d163b5d12998e95d587"
+   }
+  ]
+ },
+ {
+  "txid": "e9a0289d128dfdde310202acd19da2e47a479aa89ca3d088979fe8b08f136389",
+  "sigops": 8,
+  "fee": 1130,
+  "spent": [
+   {
+    "value": 999000,
+    "scriptpubkey": "76a9144ee9c04f439a5fec67765d9d9d0bb4300ad96a5d88ac"
+   }
+  ]
+ },
+ {
+  "txid": "d041bb4283b856785c2446e9c43e89c9dad0c7fb309b4ab14bb6f651ee46e2eb",
+  "sigops": 8,
+  "fee": 1870,
+  "spent": [
+   {
+    "value": 9827331,
+    "scriptpubkey": "76a9140307ddbf0e6b30812af3402cf2ef459fb5e99a4388ac"
+   },
+   {
+    "value": 13326466,
+    "scriptpubkey": "76a914e4ecf9a35711552e101c7cb14c5724523b21b1c088ac"
+   }
+  ]
+ }
+]

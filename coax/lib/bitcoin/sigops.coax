@@ -1,0 +1,588 @@
+// Sigops, weight and block limits (Bitcoin chapter 53): what a block may
+// hold. Bitcoin Core counts signature operations three ways: the legacy
+// count of every scriptSig and scriptPubKey (GetLegacySigOpCount, where
+// any OP_CHECKMULTISIG counts 20), the redeem scripts of P2SH spends
+// counted accurately (GetP2SHSigOpCount) and the witness scripts of
+// segwit v0 spends (CountWitnessSigOps). A block's sigop cost, legacy and
+// P2SH times 4 plus witness, may not pass 80,000. A block's weight may not
+// pass 4,000,000, and its size without witnesses 1,000,000 bytes.
+// CheckBlock (validation.cpp) checks a block without its context, in this
+// order: the Merkle root and its duplicate-leaf flaw (chapter 46), the
+// size, one coinbase first, CheckTransaction on every transaction
+// (chapter 52) and the legacy sigop count. ContextualCheckBlock checks the
+// weight; ConnectBlock, which has the spent outputs, the full sigop cost.
+//
+// Tapscript's signature operations are budgeted per input instead
+// (BIP-342, chapter 44) and count nothing here.
+//
+// The opcodes, P2SH and witness program shapes are chapter 36's
+// (script.coax), the transaction reader chapter 34's, CheckTransaction
+// chapter 52's (txcheck.coax) and the Merkle root chapter 46's
+// (merkle.coax). coax/tests/bitcoin/sigops.py checks the reasons and
+// constants against the pinned Core sources and replays the example.
+//
+// Blocks and scripts are public, so everything here runs in variable time
+// and every procedure that decides ends in _vartime (Bitcoin chapter 3).
+#load "txcheck.coax";
+#load "../../tests/bitcoin/sigops_vectors.coax";
+#authority;
+
+// book:begin codes
+// Result codes of the block checks, with Core's reject reason. A
+// transaction that fails CheckTransaction is BLOCK_TX, with chapter 52's
+// code in BlockCheck.tx_code.
+BLOCK_OK :: 0;
+BLOCK_BAD :: 1;            // the bytes do not read as a block
+BLOCK_MERKLE :: 2;         // "bad-txnmrklroot"
+BLOCK_DUPLICATE :: 3;      // "bad-txns-duplicate": a mutated Merkle tree (CVE-2012-2459)
+BLOCK_LENGTH :: 4;         // "bad-blk-length"
+BLOCK_CB_MISSING :: 5;     // "bad-cb-missing"
+BLOCK_CB_MULTIPLE :: 6;    // "bad-cb-multiple"
+BLOCK_TX :: 7;             // CheckTransaction's reason
+BLOCK_SIGOPS :: 8;         // "bad-blk-sigops"
+BLOCK_WEIGHT :: 9;         // "bad-blk-weight"
+BLOCK_CAPACITY :: 10;      // a caller's array is too small, or the spent outputs do not match
+BLOCK_REASONS :: [11] string.["ok", "bad block", "bad-txnmrklroot", "bad-txns-duplicate", "bad-blk-length",
+  "bad-cb-missing", "bad-cb-multiple", "bad transaction", "bad-blk-sigops", "bad-blk-weight", "capacity"];
+// book:end codes
+
+// book:begin limits
+BLOCK_MAX_SIGOPS_COST :: 80000;   // consensus.h MAX_BLOCK_SIGOPS_COST
+// MAX_BLOCK_WEIGHT is chapter 40's FEE_MAX_BLOCK_WEIGHT, 4,000,000;
+// WITNESS_SCALE_FACTOR chapter 34's TX_SCALE, 4; MAX_PUBKEYS_PER_MULTISIG
+// chapter 36's SCRIPT_MAX_KEYS, 20.
+// book:end limits
+
+// book:begin count
+// CScript::GetSigOpCount(fAccurate): OP_CHECKSIG and OP_CHECKSIGVERIFY
+// count 1. OP_CHECKMULTISIG and OP_CHECKMULTISIGVERIFY count 20, or, when
+// accurate and the opcode before is OP_1 to OP_16, that number. Counting
+// stops at a push that runs past the end.
+sigop_count_vartime :: (s: [] u8, accurate: bool) -> int #export_c {
+  n := 0; last := 0xff; pc := 0;
+  while pc < s.count {
+    op := script_op_vartime(s, pc);
+    if !op.ok { break; }
+    if op.op == OP_CHECKSIG || op.op == OP_CHECKSIGVERIFY { n += 1; }
+    else if op.op == OP_CHECKMULTISIG || op.op == OP_CHECKMULTISIGVERIFY {
+      n += ifx accurate && last >= OP_1 && last <= OP_16 then last - 0x50 else SCRIPT_MAX_KEYS;
+    }
+    last = op.op; pc = op.next;
+  }
+  return n;
+}
+// book:end count
+
+// book:begin p2sh
+// CScript::GetSigOpCount(scriptSig) on a scriptPubKey: for a P2SH output,
+// the accurate count of the redeem script, the last push of a push-only
+// scriptSig (0 when the scriptSig is not push-only or ends in OP_0 to
+// OP_16, which push no bytes here); for any other output its own accurate
+// count.
+sigop_p2sh_vartime :: (spk: [] u8, script_sig: [] u8) -> int #export_c {
+  if !script_p2sh_vartime(spk) { return sigop_count_vartime(spk, true); }
+  pc := 0; at := 0; n := 0;
+  while pc < script_sig.count {
+    op := script_op_vartime(script_sig, pc);
+    if !op.ok || op.op > OP_16 { return 0; }
+    at = op.at; n = op.n; pc = op.next;
+  }
+  return sigop_count_vartime(script_sig[at..<at+n], true);
+}
+// book:end p2sh
+
+// book:begin witness
+// WitnessSigOps: a v0 program of 20 bytes (P2WPKH) is 1; of 32 bytes
+// (P2WSH) the accurate count of the witness script, the last witness item.
+// Every other version counts 0: Taproot's are budgeted per input.
+sigop_program_vartime :: (version: int, program_n: int, script: [] u8, has_script: bool) -> int #export_c {
+  if version != 0 { return 0; }
+  if program_n == 20 { return 1; }
+  if program_n == 32 && has_script { return sigop_count_vartime(script, true); }
+  return 0;
+}
+// CountWitnessSigOps for input k of t, read from b: nothing without the
+// WITNESS flag; a witness program, or a P2SH output whose push-only
+// scriptSig's last push is one, counts by its program.
+sigop_witness_vartime :: (b: [] u8, ins: [] TxIn, items: [] TxItem, k: int, spk: [] u8, flags: int) -> int #export_c {
+  if (flags & SCRIPT_VERIFY_WITNESS) == 0 { return 0; }
+  in := ins[k];
+  script := b[0..<0];
+  if in.count > 0 { last := items[in.first + in.count - 1]; script = b[last.at..<last.at+last.n]; }
+  v := script_witness_version_vartime(spk);
+  if v >= 0 { return sigop_program_vartime(v, spk.count - 2, script, in.count > 0); }
+  sig := b[in.script..<in.script+in.script_n];
+  if !script_p2sh_vartime(spk) || !script_push_only_vartime(sig) { return 0; }
+  pc := 0; at := 0; n := 0;
+  while pc < sig.count { op := script_op_vartime(sig, pc); at = op.at; n = op.n; pc = op.next; }
+  redeem := sig[at..<at+n];
+  v = script_witness_version_vartime(redeem);
+  if v >= 0 { return sigop_program_vartime(v, redeem.count - 2, script, in.count > 0); }
+  return 0;
+}
+// book:end witness
+
+// book:begin cost
+// GetLegacySigOpCount: the inaccurate count of every scriptSig and every
+// scriptPubKey of t.
+sigop_legacy_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut) -> int #export_c {
+  n := 0;
+  for k: 0..<t.nin { n += sigop_count_vartime(b[ins[k].script..<ins[k].script+ins[k].script_n], false); }
+  for k: 0..<t.nout { n += sigop_count_vartime(b[outs[k].script..<outs[k].script+outs[k].script_n], false); }
+  return n;
+}
+// The output an input spends: its value and its scriptPubKey at
+// prev[script..<script+script_n].
+SigopSpent :: struct { value: int; script: int; script_n: int; }
+// GetTransactionSigOpCost: the legacy count times 4; for a transaction
+// that is not a coinbase, plus the P2SH count times 4 under the P2SH flag
+// and the witness count under the WITNESS flag. spent holds one output per
+// input; -1 when it does not.
+sigop_cost_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, prev: [] u8, spent: [] SigopSpent, flags: int) -> int #export_c {
+  cost := sigop_legacy_vartime(b, t, ins, outs) * TX_SCALE;
+  if tx_coinbase_vartime(b, t, ins) { return cost; }
+  if spent.count != t.nin { return -1; }
+  for k: 0..<t.nin {
+    spk := prev[spent[k].script..<spent[k].script+spent[k].script_n];
+    if (flags & SCRIPT_VERIFY_P2SH) != 0 && script_p2sh_vartime(spk) {
+      cost += sigop_p2sh_vartime(spk, b[ins[k].script..<ins[k].script+ins[k].script_n]) * TX_SCALE;
+    }
+    cost += sigop_witness_vartime(b, ins, items, k, spk, flags);
+  }
+  return cost;
+}
+// book:end cost
+
+// book:begin check
+// What CheckBlock found: the code, the transaction it stopped at (-1 for
+// the block), chapter 52's code for BLOCK_TX, and the block's size
+// without witnesses, its weight and its legacy sigop count.
+BlockCheck :: struct { code: int; tx: int; tx_code: int; count: int; stripped: int; weight: int; legacy: int; }
+// CheckBlock after the header's own checks (chapters 47 and 50), in
+// Core's order. txids needs 32 bytes per transaction and work as many.
+block_check_vartime :: (blk: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8, work: [] u8) -> BlockCheck #export_c {
+  r := BlockCheck.{tx=-1};
+  ids := merkle_block_ids_vartime(blk, false, ins, outs, items, txids, wtxids);
+  if ids.code != MERKLE_OK { r.code = ifx ids.code == MERKLE_CAPACITY then BLOCK_CAPACITY else BLOCK_BAD; return r; }
+  r.count = ids.count;
+  m := merkle_check_vartime(txids[0..<32*r.count], work, blk[36..<68]);
+  if m == MERKLE_CAPACITY { r.code = BLOCK_CAPACITY; return r; }
+  if m == MERKLE_MISMATCH { r.code = BLOCK_MERKLE; return r; }
+  if m == MERKLE_MUTATED { r.code = BLOCK_DUPLICATE; return r; }
+  // The size without witnesses, and the weight: the full size plus three
+  // times the stripped size.
+  r.stripped = MERKLE_HEADER + tx_compact_size_vartime(r.count);
+  at := tx_compact_read_vartime(blk, MERKLE_HEADER).next;
+  for i: 0..<r.count {
+    t := tx_parse_vartime(blk[at..<blk.count], true, ins, outs, items);
+    r.stripped += t.stripped; at += t.total;
+  }
+  r.weight = r.stripped * (TX_SCALE - 1) + blk.count;
+  if r.count == 0 || r.count * TX_SCALE > FEE_MAX_BLOCK_WEIGHT || r.stripped * TX_SCALE > FEE_MAX_BLOCK_WEIGHT { r.code = BLOCK_LENGTH; return r; }
+  at = tx_compact_read_vartime(blk, MERKLE_HEADER).next;
+  for i: 0..<r.count {
+    s := blk[at..<blk.count];
+    t := tx_parse_vartime(s, true, ins, outs, items);
+    if tx_coinbase_vartime(s, t, ins) != (i == 0) { r.code = ifx i == 0 then BLOCK_CB_MISSING else BLOCK_CB_MULTIPLE; r.tx = i; return r; }
+    at += t.total;
+  }
+  at = tx_compact_read_vartime(blk, MERKLE_HEADER).next;
+  for i: 0..<r.count {
+    s := blk[at..<blk.count];
+    t := tx_parse_vartime(s, true, ins, outs, items);
+    c := txcheck_vartime(s[0..<t.total], t, ins, outs);
+    if c != TXC_OK { r.code = BLOCK_TX; r.tx = i; r.tx_code = c; return r; }
+    r.legacy += sigop_legacy_vartime(s, t, ins, outs);
+    at += t.total;
+  }
+  if r.legacy * TX_SCALE > BLOCK_MAX_SIGOPS_COST { r.code = BLOCK_SIGOPS; return r; }
+  return r;
+}
+// ContextualCheckBlock's last rule, once the witness commitment is
+// checked (chapter 49): the weight is at most 4,000,000.
+block_weight_check_vartime :: (c: BlockCheck) -> int #export_c {
+  if c.code != BLOCK_OK { return c.code; }
+  return ifx c.weight > FEE_MAX_BLOCK_WEIGHT then BLOCK_WEIGHT else BLOCK_OK;
+}
+// book:end check
+
+// book:begin connect
+// ConnectBlock's sigop limit: the sigop cost of each transaction in turn,
+// refused as soon as the total passes 80,000. spent holds the outputs the
+// inputs spend, for every input but the coinbase's, in block order.
+BlockSigops :: struct { code: int; cost: int; tx: int; }
+block_sigops_vartime :: (blk: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, prev: [] u8, spent: [] SigopSpent, flags: int) -> BlockSigops #export_c {
+  r := BlockSigops.{tx=-1};
+  if blk.count <= MERKLE_HEADER { r.code = BLOCK_BAD; return r; }
+  c := tx_compact_read_vartime(blk, MERKLE_HEADER);
+  if c.code != TX_OK { r.code = BLOCK_BAD; return r; }
+  at := c.next; used := 0;
+  for i: 0..<c.value {
+    s := blk[at..<blk.count];
+    t := tx_parse_vartime(s, true, ins, outs, items);
+    if t.code != TX_OK { r.code = BLOCK_BAD; r.tx = i; return r; }
+    mine := spent[0..<0];
+    if !tx_coinbase_vartime(s, t, ins) {
+      if used + t.nin > spent.count { r.code = BLOCK_CAPACITY; r.tx = i; return r; }
+      mine = spent[used..<used+t.nin]; used += t.nin;
+    }
+    r.cost += sigop_cost_vartime(s[0..<t.total], t, ins, outs, items, prev, mine, flags);
+    if r.cost > BLOCK_MAX_SIGOPS_COST { r.code = BLOCK_SIGOPS; r.tx = i; return r; }
+    at += t.total;
+  }
+  if used != spent.count { r.code = BLOCK_CAPACITY; }
+  return r;
+}
+// book:end connect
+
+// ---- checks
+sg_unhex :: (text: string, out: [] u8) -> [] u8 {
+  n := cp_unhex(text, out);
+  #assert n >= 0;
+  return out[0..<n];
+}
+// A script from hex.
+sg_count :: (text: string, accurate: bool) -> int {
+  b: [256] u8;
+  return sigop_count_vartime(sg_unhex(text, b[..]), accurate);
+}
+#test "GetSigOpCount: Core's sigopcount_tests" {
+  #assert sg_count("", false) == 0 && sg_count("", true) == 0;
+  // OP_1 <20 bytes> <20 bytes> OP_2 OP_CHECKMULTISIG
+  s1 := "5114000000000000000000000000000000000000000014000000000000000000000000000000000000000052ae";
+  #assert sg_count(s1, true) == 2 && sg_count(s1, false) == 20;
+  // ... OP_IF OP_CHECKSIG OP_ENDIF
+  s1b := "5114000000000000000000000000000000000000000014000000000000000000000000000000000000000052ae63ac68";
+  #assert sg_count(s1b, true) == 3 && sg_count(s1b, false) == 21;
+  // OP_1 and three 33-byte keys, OP_3 OP_CHECKMULTISIG: 3 accurate, 20 not.
+  #assert sg_count("5121020000000000000000000000000000000000000000000000000000000000000000210200000000000000000000000000000000000000000000000000000000000000002102000000000000000000000000000000000000000000000000000000000000000053ae", true) == 3;
+  #assert sg_count("5121020000000000000000000000000000000000000000000000000000000000000000210200000000000000000000000000000000000000000000000000000000000000002102000000000000000000000000000000000000000000000000000000000000000053ae", false) == 20;
+}
+#test "GetSigOpCount: the opcode before a multisig, and a broken push" {
+  #assert sg_count("ac", false) == 1 && sg_count("ad", true) == 1 && sg_count("af", true) == 20;
+  #assert sg_count("60ae", true) == 16 && sg_count("51ae", true) == 1 && sg_count("4fae", true) == 20 && sg_count("50ae", true) == 20;
+  #assert sg_count("0110ae", true) == 20 && sg_count("00ae", true) == 20;
+  // A push that runs past the end stops the count: the CHECKSIG before it counts.
+  #assert sg_count("ac4c05ac", false) == 1 && sg_count("ac02ac", false) == 1 && sg_count("acac02ac", false) == 2;
+  // The pushed bytes are data, not opcodes.
+  #assert sg_count("02acac", false) == 0;
+}
+#test "P2SH: the accurate count of the redeem script" {
+  b: [256] u8; c: [256] u8;
+  // A P2SH scriptPubKey: HASH160 <20 bytes> EQUAL. Its own count is 0.
+  spk := sg_unhex("a914000000000000000000000000000000000000000087", b[..]);
+  #assert sigop_count_vartime(spk, true) == 0 && sigop_count_vartime(spk, false) == 0;
+  // scriptSig: OP_0 and a push of Core's 48-byte script with OP_IF OP_CHECKSIG OP_ENDIF.
+  #assert sigop_p2sh_vartime(spk, sg_unhex("00305114000000000000000000000000000000000000000014000000000000000000000000000000000000000052ae63ac68", c[..])) == 3;
+  // A scriptSig that is not push-only, or ends in OP_1, counts 0.
+  #assert sigop_p2sh_vartime(spk, sg_unhex("ac", c[..])) == 0 && sigop_p2sh_vartime(spk, sg_unhex("0151", c[..])) == 0;
+  #assert sigop_p2sh_vartime(spk, sg_unhex("", c[..])) == 0 && sigop_p2sh_vartime(spk, sg_unhex("4c", c[..])) == 0;
+  // Any other scriptPubKey counts itself, accurately.
+  #assert sigop_p2sh_vartime(sg_unhex("52ae", b[..]), sg_unhex("00", c[..])) == 2;
+}
+
+// ---- building transactions and blocks for the checks
+// A transaction of one input and nout equal outputs, written at at:
+// version 1, the outpoint (null for a coinbase, else txid and index), the
+// scriptSig, sequence 0xffffffff, the outputs, the witness items given in
+// hex (the legacy form when there are none), lock time 0. Returns the end.
+sg_tx :: (out: [] u8, at: int, coinbase: bool, txid: [] u8, index: int, sig: [] u8, witness: [] string, nout: int, value: int, spk: [] u8) -> int {
+  p := cp_le(out, at, 1, 4);
+  if witness.count > 0 { out[p] = 0; out[p+1] = 1; p += 2; }
+  p = tx_compact_write_vartime(out, p, 1);
+  for i: 0..<32 { out[p+i] = ifx coinbase then 0 else txid[i]; }
+  p = cp_le(out, p + 32, ifx coinbase then 0xffffffff else index, 4);
+  p = tx_compact_write_vartime(out, p, sig.count);
+  p = cp_put(out, p, sig);
+  p = cp_le(out, p, 0xffffffff, 4);
+  p = tx_compact_write_vartime(out, p, nout);
+  for k: 0..<nout {
+    p = cp_le(out, p, value, 8);
+    p = tx_compact_write_vartime(out, p, spk.count);
+    p = cp_put(out, p, spk);
+  }
+  if witness.count > 0 {
+    p = tx_compact_write_vartime(out, p, witness.count);
+    for k: 0..<witness.count {
+      p = tx_compact_write_vartime(out, p, witness[k].count / 2);
+      if witness[k].count > 0 { p += cp_unhex(witness[k], out[p..<out.count]); }
+    }
+  }
+  return cp_le(out, p, 0, 4);
+}
+// A block's first 81 bytes: mainnet block 514,999's header and a count
+// below 0xfd. Returns where the transactions start.
+sg_block_head :: (out: [] u8, count: int) -> int {
+  h: [6000] u8;
+  n := cp_unhex(MK_BLOCK_514999, h[..]);
+  #assert n == 5044 && count < 0xfd;
+  for i: 0..<80 { out[i] = h[i]; }
+  return tx_compact_write_vartime(out, 80, count);
+}
+// Writes the Merkle root of blk's transactions into its header, as a
+// miner would, so that a crafted block passes the root and fails later.
+sg_fix_root :: (blk: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8, work: [] u8) {
+  ids := merkle_block_ids_vartime(blk, false, ins, outs, items, txids, wtxids);
+  #assert ids.code == MERKLE_OK;
+  #assert merkle_root_vartime(txids[0..<32*ids.count], work, blk[36..<68]).code == MERKLE_OK;
+}
+// The txid of the transaction at b[at..<end].
+sg_txid :: (b: [] u8, at: int, end: int, out: [] u8) {
+  ins: [64] TxIn; outs: [64] TxOut; items: [64] TxItem;
+  s := b[at..<end];
+  #assert tx_txid_vartime(s, tx_read_vartime(s, true, ins[..], outs[..], items[..]), out);
+}
+// Bitcoin Core's miner_tests sigop cluster (CreateBigSigOpsCluster) in a
+// block: a coinbase; a parent whose scriptSig is OP_0 OP_0 OP_CHECKSIG
+// OP_1 (1 sigop; with checksig false OP_0 instead, 0) and 50 outputs of
+// OP_1; 50 children, each spending one of them with 20 outputs of OP_0
+// OP_0 OP_0 OP_NOP OP_CHECKMULTISIG OP_1 (20 legacy sigops each). Returns
+// the block's length.
+SG_CMS_OUTPUT :: "00000061ae51";
+sg_cluster :: (blk: [] u8, checksig: bool) -> int {
+  nothing: [1] string; parent: [32] u8; spk: [8] u8; sig: [4] u8; cb: [2] u8;
+  none := nothing[0..<0];
+  cb[0] = OP_1; cb[1] = OP_1;
+  one := spk[0..<1]; one[0] = OP_1;
+  at := sg_block_head(blk, 52);
+  at = sg_tx(blk, at, true, parent[..], 0, cb[..], none, 1, 0, one);
+  sig[0] = OP_0; sig[1] = OP_0; sig[2] = ifx checksig then OP_CHECKSIG else OP_0; sig[3] = OP_1;
+  start := at;
+  for i: 0..<32 { parent[i] = 0x11; }
+  at = sg_tx(blk, at, false, parent[..], 0, sig[..], none, 50, 100000000, spk[0..<1]);
+  sg_txid(blk, start, at, parent[..]);
+  cms := sg_unhex(SG_CMS_OUTPUT, spk[..]);
+  for k: 0..<50 { at = sg_tx(blk, at, false, parent[..], k, cb[0..<1], none, 20, 0, cms); }
+  return at;
+}
+#test "Core's sigop cluster: 20,001 legacy sigops refuse, 20,000 pass" #steps 1000000000 {
+  blk: [24000] u8; ins: [64] TxIn; outs: [64] TxOut; items: [64] TxItem;
+  txids: [52 * 32] u8; wtxids: [52 * 32] u8; work: [52 * 32] u8;
+  n := sg_cluster(blk[..], true);
+  b := blk[0..<n];
+  sg_fix_root(b, ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  c := block_check_vartime(b, ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  #assert c.code == BLOCK_SIGOPS && c.legacy == 20001 && c.count == 52;
+  n = sg_cluster(blk[..], false);
+  b = blk[0..<n];
+  sg_fix_root(b, ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  c = block_check_vartime(b, ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  #assert c.code == BLOCK_OK && c.legacy == 20000 && c.legacy * TX_SCALE == BLOCK_MAX_SIGOPS_COST;
+  #assert c.weight == 4 * n && c.stripped == n && block_weight_check_vartime(c) == BLOCK_OK;
+  // The cost ConnectBlock counts is the same: nothing here is P2SH or
+  // segwit. The parent and children spend outputs of OP_1.
+  prev: [1] u8; prev[0] = OP_1;
+  spent: [51] SigopSpent;
+  for i: 0..<51 { spent[i] = SigopSpent.{value=0, script=0, script_n=1}; }
+  s := block_sigops_vartime(b, ins[..], outs[..], items[..], prev[..], spent[..], SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS);
+  #assert s.code == BLOCK_OK && s.cost == 80000;
+  #assert block_sigops_vartime(b, ins[..], outs[..], items[..], prev[..], spent[0..<50], 0).code == BLOCK_CAPACITY;
+  n = sg_cluster(blk[..], true);
+  s = block_sigops_vartime(blk[0..<n], ins[..], outs[..], items[..], prev[..], spent[..], 0);
+  #assert s.code == BLOCK_SIGOPS && s.cost == 80004 && s.tx == 51;
+}
+// The sigop cost of a transaction spending one output of spk with sig and
+// witness, as GetTransactionSigOpCost counts it under flags.
+sg_cost :: (sig: string, witness: [] string, spk: string, flags: int, coinbase: bool) -> int {
+  raw: [512] u8; s: [256] u8; p: [128] u8; id: [32] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem;
+  for i: 0..<32 { id[i] = 0x22; }
+  n := sg_tx(raw[..], 0, coinbase, id[..], 0, sg_unhex(sig, s[..]), witness, 1, 1, p[0..<0]);
+  b := raw[0..<n];
+  t := tx_read_vartime(b, true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && t.total == n;
+  prev := sg_unhex(spk, p[..]);
+  spent := [1] SigopSpent.[SigopSpent.{value=1, script=0, script_n=prev.count}];
+  return sigop_cost_vartime(b, t, ins[..], outs[..], items[..], prev, spent[..], flags);
+}
+// 1 <key> <key> 2 OP_CHECKMULTISIGVERIFY, with a fixed compressed key
+// where Core's test makes a random one; counting reads no key.
+SG_MULTI :: "51210211111111111111111111111111111111111111111111111111111111111111112102111111111111111111111111111111111111111111111111111111111111111152af";
+#test "GetTxSigOpCost: Core's sigopcount_tests cases" {
+  f := SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH;
+  nothing: [1] string;
+  none := nothing[0..<0];
+  // The redeem and witness scripts are hashed into the output in Core's
+  // test; counting checks only the output's shape, so zero hashes do.
+  p2sh := "a914000000000000000000000000000000000000000087";
+  // A bare multisig output: its creating transaction (a coinbase) counts
+  // 20 times 4; spending it counts nothing.
+  raw: [512] u8; ins: [4] TxIn; outs: [4] TxOut; items: [8] TxItem; m: [80] u8; id: [32] u8; sp: [1] SigopSpent;
+  n := sg_tx(raw[..], 0, true, id[..], 0, m[0..<2], none, 1, 1, sg_unhex(SG_MULTI, m[..]));
+  t := tx_read_vartime(raw[0..<n], true, ins[..], outs[..], items[..]);
+  #assert sigop_cost_vartime(raw[0..<n], t, ins[..], outs[..], items[..], m[0..<0], sp[0..<0], f) == 20 * 4;
+  #assert sg_cost("0000", none, SG_MULTI, f, false) == 0;
+  // Multisig in P2SH: 2 times 4, and nothing without the P2SH flag.
+  sig := "00004751210211111111111111111111111111111111111111111111111111111111111111112102111111111111111111111111111111111111111111111111111111111111111152af";
+  #assert sg_cost(sig, none, p2sh, f, false) == 8 && sg_cost(sig, none, p2sh, 0, false) == 0;
+  // P2WPKH: 1, nothing without WITNESS, nothing for version 1, nothing
+  // for a coinbase (its outpoint null).
+  two := [2] string.["", ""];
+  p2wpkh := "00140000000000000000000000000000000000000000";
+  #assert sg_cost("", two[..], p2wpkh, f, false) == 1 && sg_cost("", two[..], p2wpkh, SCRIPT_VERIFY_P2SH, false) == 0;
+  #assert sg_cost("", two[..], "51140000000000000000000000000000000000000000", f, false) == 0;
+  #assert sg_cost("", two[..], p2wpkh, f, true) == 0;
+  // P2WPKH in P2SH: 1.
+  #assert sg_cost("1600140000000000000000000000000000000000000000", two[..], p2sh, f, false) == 1;
+  // P2WSH of the multisig: 2, nothing without WITNESS; in P2SH: 2.
+  three := [3] string.["", "", SG_MULTI];
+  p2wsh := "00200000000000000000000000000000000000000000000000000000000000000000";
+  #assert sg_cost("", three[..], p2wsh, f, false) == 2 && sg_cost("", three[..], p2wsh, SCRIPT_VERIFY_P2SH, false) == 0;
+  #assert sg_cost("2200200000000000000000000000000000000000000000000000000000000000000000", three[..], p2sh, f, false) == 2;
+}
+// Mainnet block 514,999 (chapter 46's) into out; returns its length.
+sg_block :: (out: [] u8) -> int {
+  n := cp_unhex(MK_BLOCK_514999, out);
+  #assert n == 5044;
+  return n;
+}
+// The outputs block 514,999 spends, as SIGOPS_SPENT_514999 lists them:
+// their scriptPubKeys one after another in prev.
+sg_spent :: (prev: [] u8, spent: [] SigopSpent) -> int {
+  at := 0;
+  for i: 0..<SIGOPS_SPENT_514999.count {
+    r := SIGOPS_SPENT_514999[i];
+    n := cp_unhex(r.spk, prev[at..<prev.count]);
+    #assert n > 0;
+    spent[i] = SigopSpent.{value=r.value, script=at, script_n=n};
+    at += n;
+  }
+  return SIGOPS_SPENT_514999.count;
+}
+// The sigop cost of each transaction of a block into costs; returns the
+// count.
+sg_costs :: (blk: [] u8, prev: [] u8, spent: [] SigopSpent, flags: int, costs: [] int) -> int {
+  ins: [64] TxIn; outs: [64] TxOut; items: [64] TxItem;
+  c := tx_compact_read_vartime(blk, MERKLE_HEADER);
+  at := c.next; used := 0;
+  for i: 0..<c.value {
+    s := blk[at..<blk.count];
+    t := tx_parse_vartime(s, true, ins[..], outs[..], items[..]);
+    n := ifx tx_coinbase_vartime(s, t, ins[..]) then 0 else t.nin;
+    costs[i] = sigop_cost_vartime(s[0..<t.total], t, ins[..], outs[..], items[..], prev, spent[used..<used+n], flags);
+    used += n; at += t.total;
+  }
+  return c.value;
+}
+#test "block 514,999: CheckBlock passes, and its sigop cost is mempool.space's" #steps 1000000000 {
+  blk: [6000] u8; ins: [64] TxIn; outs: [64] TxOut; items: [64] TxItem;
+  txids: [640] u8; wtxids: [640] u8; work: [640] u8;
+  n := sg_block(blk[..]);
+  b := blk[0..<n];
+  c := block_check_vartime(b, ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  #assert c.code == BLOCK_OK && c.count == 19 && c.weight == 18757 && c.legacy == 25 && c.stripped == 4571;
+  #assert c.weight == c.stripped * 3 + n && block_weight_check_vartime(c) == BLOCK_OK;
+  prev: [1024] u8; spent: [32] SigopSpent;
+  k := sg_spent(prev[..], spent[..]);
+  f := SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS;
+  s := block_sigops_vartime(b, ins[..], outs[..], items[..], prev[..], spent[0..<k], f);
+  #assert s.code == BLOCK_OK && s.cost == 116;
+  costs: [19] int;
+  #assert sg_costs(b, prev[..], spent[0..<k], f, costs[..]) == 19;
+  for i: 0..<19 { #assert costs[i] == SIGOPS_MEMPOOL_514999[i]; }
+  // Without the flags only the legacy count is left.
+  #assert block_sigops_vartime(b, ins[..], outs[..], items[..], prev[..], spent[0..<k], 0).cost == 25 * 4;
+  #assert block_sigops_vartime(b, ins[..], outs[..], items[..], prev[..], spent[0..<k-1], f).code == BLOCK_CAPACITY;
+  #assert block_sigops_vartime(b[0..<80], ins[..], outs[..], items[..], prev[..], spent[0..<k], f).code == BLOCK_BAD;
+}
+#test "block 514,999 changed: each CheckBlock refusal in turn" #steps 1000000000 {
+  blk: [6000] u8; m: [6200] u8; ins: [64] TxIn; outs: [64] TxOut; items: [64] TxItem;
+  txids: [704] u8; wtxids: [704] u8; work: [704] u8;
+  n := sg_block(blk[..]);
+  b := blk[0..<n];
+  ids := merkle_block_ids_vartime(b, false, ins[..], outs[..], items[..], txids[..], wtxids[..]);
+  // Where each transaction starts.
+  starts: [20] int;
+  starts[0] = 81;
+  for i: 1..<20 {
+    s := b[starts[i-1]..<n];
+    starts[i] = starts[i-1] + tx_parse_vartime(s, true, ins[..], outs[..], items[..]).total;
+  }
+  #assert starts[19] == n && ids.last == starts[18];
+  // A changed root.
+  for i: 0..<n { m[i] = b[i]; }
+  m[40] ^= 1;
+  #assert block_check_vartime(m[0..<n], ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]).code == BLOCK_MERKLE;
+  // The last transaction twice: the same root, a mutated tree (CVE-2012-2459).
+  for i: 0..<n { m[i] = b[i]; }
+  m[80] = 20;
+  e := cp_put(m[..], n, b[starts[18]..<n]);
+  #assert block_check_vartime(m[0..<e], ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]).code == BLOCK_DUPLICATE;
+  // No coinbase: the 18 others, under their own root.
+  e = cp_put(m[..], 81, b[starts[1]..<n]);
+  m[80] = 18;
+  sg_fix_root(m[0..<e], ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  c := block_check_vartime(m[0..<e], ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  #assert c.code == BLOCK_CB_MISSING && c.tx == 0;
+  // A second coinbase at the end, the fourth byte of its scriptSig changed.
+  e = cp_put(m[..], 0, b);
+  e = cp_put(m[..], e, b[81..<starts[1]]);
+  m[80] = 20;
+  m[n + 4 + 2 + 1 + 36 + 1 + 3] ^= 1;
+  sg_fix_root(m[0..<e], ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  c = block_check_vartime(m[0..<e], ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  #assert c.code == BLOCK_CB_MULTIPLE && c.tx == 19;
+  // Transaction 1 spending its first outpoint twice (CVE-2018-17144).
+  e = cp_put(m[..], 0, b);
+  t := tx_parse_vartime(b[starts[1]..<n], true, ins[..], outs[..], items[..]);
+  #assert t.nin == 2;
+  for i: 0..<36 { m[starts[1] + ins[1].outpoint + i] = b[starts[1] + ins[0].outpoint + i]; }
+  sg_fix_root(m[0..<e], ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  c = block_check_vartime(m[0..<e], ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  #assert c.code == BLOCK_TX && c.tx == 1 && c.tx_code == TXC_DUPLICATE;
+  // Bytes that do not read, and arrays too small.
+  #assert block_check_vartime(b[0..<n-1], ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]).code == BLOCK_BAD;
+  #assert block_check_vartime(b, ins[..], outs[..], items[..], txids[0..<32], wtxids[..], work[..]).code == BLOCK_CAPACITY;
+  #assert block_check_vartime(b, ins[..], outs[..], items[..], txids[..], wtxids[..], work[0..<32]).code == BLOCK_CAPACITY;
+}
+#test "the weight and the length limits" {
+  #assert block_weight_check_vartime(BlockCheck.{weight=FEE_MAX_BLOCK_WEIGHT}) == BLOCK_OK;
+  #assert block_weight_check_vartime(BlockCheck.{weight=FEE_MAX_BLOCK_WEIGHT + 1}) == BLOCK_WEIGHT;
+  #assert block_weight_check_vartime(BlockCheck.{code=BLOCK_SIGOPS, weight=1}) == BLOCK_SIGOPS;
+  // A header and a count of zero: the root of no transactions is zero.
+  b: [81] u8; ins: [1] TxIn; outs: [1] TxOut; items: [1] TxItem; ids: [32] u8; w: [32] u8;
+  for i: 0..<81 { b[i] = 0; }
+  c := block_check_vartime(b[..], ins[..], outs[..], items[..], ids[..], ids[..], w[..]);
+  #assert c.code == BLOCK_LENGTH && c.count == 0;
+  b[40] = 1;
+  #assert block_check_vartime(b[..], ins[..], outs[..], items[..], ids[..], ids[..], w[..]).code == BLOCK_MERKLE;
+}
+// A block of one coinbase whose output script is spk_n zero bytes and,
+// when witness_n is 0 or more, whose witness is one item of witness_n
+// zero bytes, under its own root. Returns its length.
+sg_coinbase_block :: (out: [] u8, spk_n: int, witness_n: int) -> int {
+  ins: [1] TxIn; outs: [1] TxOut; items: [1] TxItem; ids: [32] u8; wids: [32] u8; work: [32] u8;
+  p := sg_block_head(out, 1);
+  p = cp_le(out, p, 1, 4);
+  if witness_n >= 0 { out[p] = 0; out[p+1] = 1; p += 2; }
+  p = tx_compact_write_vartime(out, p, 1);
+  for i: 0..<32 { out[p+i] = 0; }
+  p = cp_le(out, p + 32, 0xffffffff, 4);
+  p = tx_compact_write_vartime(out, p, 2);
+  out[p] = OP_1; out[p+1] = OP_1; p += 2;
+  p = cp_le(out, p, 0xffffffff, 4);
+  p = tx_compact_write_vartime(out, p, 1);
+  p = cp_le(out, p, 0, 8);
+  p = tx_compact_write_vartime(out, p, spk_n);
+  for i: 0..<spk_n { out[p+i] = 0; }
+  p += spk_n;
+  if witness_n >= 0 {
+    p = tx_compact_write_vartime(out, p, 1);
+    p = tx_compact_write_vartime(out, p, witness_n);
+    for i: 0..<witness_n { out[p+i] = 0; }
+    p += witness_n;
+  }
+  p = cp_le(out, p, 0, 4);
+  sg_fix_root(out[0..<p], ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  return p;
+}
+#test "a coinbase-only block: its stripped size and weight" {
+  blk: [512] u8; ins: [1] TxIn; outs: [1] TxOut; items: [1] TxItem; ids: [32] u8; wids: [32] u8; work: [32] u8;
+  n := sg_coinbase_block(blk[..], 25, -1);
+  c := block_check_vartime(blk[0..<n], ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  #assert c.code == BLOCK_OK && c.stripped == n && c.weight == 4 * n && c.legacy == 0;
+  m := sg_coinbase_block(blk[..], 25, 100);
+  c = block_check_vartime(blk[0..<m], ins[..], outs[..], items[..], ids[..], wids[..], work[..]);
+  // Marker and flag, a count, a length and 100 bytes: 104 bytes of witness.
+  #assert c.code == BLOCK_OK && m == n + 104 && c.stripped == n && c.weight == 3 * n + m;
+}

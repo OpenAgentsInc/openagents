@@ -1,0 +1,49 @@
+// The checks of sigop-limits.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/sigop-limits.coax
+#load "../sigop-limits.coax";
+
+// book:begin check
+// OP_n OP_CHECKMULTISIG counts n accurately and 20 otherwise; any other
+// opcode before it counts 20 both ways.
+#forall "a multisig counts its key count only when accurate" op: 0..<256 #steps 100000000 {
+  s: [2] u8;
+  s[0] = cast(u8) op; s[1] = OP_CHECKMULTISIG;
+  // A push opcode needs its bytes: 0x01 to 0x4e run past the end.
+  if op >= 1 && op <= OP_PUSHDATA4 {
+    #assert sigop_count_vartime(s[..], true) == 0 && sigop_count_vartime(s[..], false) == 0;
+  } else {
+    // A signature opcode before the multisig counts too.
+    first := ifx op == OP_CHECKSIG || op == OP_CHECKSIGVERIFY then 1 else ifx op == OP_CHECKMULTISIG || op == OP_CHECKMULTISIGVERIFY then SCRIPT_MAX_KEYS else 0;
+    want := ifx op >= OP_1 && op <= OP_16 then op - 0x50 else SCRIPT_MAX_KEYS;
+    #assert sigop_count_vartime(s[..], true) == first + want && sigop_count_vartime(s[..], false) == first + SCRIPT_MAX_KEYS;
+  }
+}
+// The accurate count is never above the legacy one, over every pair of
+// opcodes before a CHECKSIG.
+#forall "accurate is at most legacy" x: 0..<256 #steps 1000000000 {
+  s: [3] u8;
+  for y: 0..<256 {
+    s[0] = cast(u8) x; s[1] = cast(u8) y; s[2] = OP_CHECKSIG;
+    #assert sigop_count_vartime(s[..], true) <= sigop_count_vartime(s[..], false);
+  }
+}
+// Without P2SH and WITNESS, ConnectBlock's cost is CheckBlock's legacy
+// count times 4, for block 514,999 and both sigop clusters.
+#forall "the cost without flags is the legacy count times 4" which: 0..<3 #steps 1000000000 {
+  blk: [24000] u8; ins: [64] TxIn; outs: [64] TxOut; items: [64] TxItem;
+  txids: [1700] u8; wtxids: [1700] u8; work: [1700] u8; prev: [1024] u8; spent: [64] SigopSpent;
+  n := 0; k := 0;
+  if which == 0 { n = sg_block(blk[..]); k = sg_spent(prev[..], spent[..]); }
+  else {
+    n = sg_cluster(blk[..], which == 1);
+    prev[0] = OP_1; k = 51;
+    for i: 0..<k { spent[i] = SigopSpent.{script=0, script_n=1}; }
+  }
+  b := blk[0..<n];
+  sg_fix_root(b, ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  c := block_check_vartime(b, ins[..], outs[..], items[..], txids[..], wtxids[..], work[..]);
+  x := block_sigops_vartime(b, ins[..], outs[..], items[..], prev[..], spent[0..<k], 0);
+  #assert c.legacy * TX_SCALE == x.cost || (x.code == BLOCK_SIGOPS && c.legacy * TX_SCALE > BLOCK_MAX_SIGOPS_COST);
+}
+// book:end check
