@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-76 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+77 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -71,7 +71,11 @@ coinbase rules: Core's `GetBlockSubsidy`, the BIP-34 height and the claim
 of subsidy plus fees. Chapter 94's [`psbt.coax`](../coax/lib/bitcoin/psbt.coax)
 reads and writes PSBTs (BIP-174, BIP-370 and BIP-371) as Core does, with
 the Creator, Updater, Signer, Combiner, Input Finalizer and Transaction
-Extractor. Chapter 100's [`multisig.coax`](../coax/lib/bitcoin/multisig.coax)
+Extractor. Chapter 95's [`coinselect.coax`](../coax/lib/bitcoin/coinselect.coax)
+chooses which coins pay for a transaction as Core's wallet does: Branch
+and Bound, CoinGrinder, Single Random Draw and Knapsack, judged by the
+waste metric, with Core's change target and dust threshold.
+Chapter 100's [`multisig.coax`](../coax/lib/bitcoin/multisig.coax)
 writes and matches m-of-n scripts as Core does: `OP_CHECKMULTISIG` bare,
 under P2SH, P2WSH and P2SH-P2WSH, BIP-67's sorted keys, and BIP-387's
 `multi_a` tapscript leaves with their script-path signatures.

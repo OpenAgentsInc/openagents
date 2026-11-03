@@ -3861,6 +3861,84 @@
       "retrieved": "2026-11-03",
       "sha256": "9927ae2c9e1a68ad0f99830f2e1c318a50ff1b17d51e37eb0111cdc56ba16f79",
       "bytes": 9266
+    },
+    {
+      "path": "upstream/bitcoin-core/coinselection.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/coinselection.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-coinselect"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "3b85e3d2d911bcb56428d18b2aea4bb4c19a2f95edf53efc48015e37c4adcb80",
+      "bytes": 52495
+    },
+    {
+      "path": "upstream/bitcoin-core/coinselection.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/coinselection.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-coinselect"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "edaf87098a5dfaa5ae1ff1b1b053f22bb2a34af5d7180a3e8f5b1f6cd6e13085",
+      "bytes": 22396
+    },
+    {
+      "path": "upstream/bitcoin-core/coinselector_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/test/coinselector_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-coinselect"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "745d3319b676dea37fe38b7ce9ebc9a679bf57a47e143b18c3a8e2188f2464fa",
+      "bytes": 73312
+    },
+    {
+      "path": "upstream/bitcoin-core/coinselection_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/test/coinselection_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-coinselect"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "7e7d4a26998d8091a5cb51963374b5896da8cb3d118dcdf5a3dfc5fa855c41cb",
+      "bytes": 21464
+    },
+    {
+      "path": "upstream/bitcoin-core/spend.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/spend.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-coinselect"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "4b79ae1bda4f0c30c1e87d0fc4dce6a6106fbdbede7ffb8d09b4e171482198cf",
+      "bytes": 78565
+    },
+    {
+      "path": "upstream/bitcoin-core/feerate.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/policy/feerate.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-coinselect"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "3b9db74479742398ae15d8448f41ea67381611fa7bdced26f92116b0f22f0225",
+      "bytes": 1976
     }
   ]
 }

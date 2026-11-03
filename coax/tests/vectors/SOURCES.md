@@ -348,6 +348,15 @@ that a maliciously replaced manifest is authentic.
   `psbt_reference.py` and checks the verdict against the published one,
   replays Core's signer, combiner, finalizer and extractor cases, and
   recomputes each `extraEntropy` signature.
+- **Coin selection (Bitcoin chapter 95):** Bitcoin Core's
+  `wallet/coinselection.cpp`, `wallet/coinselection.h`, `wallet/spend.cpp`,
+  `policy/feerate.cpp`, `wallet/test/coinselector_tests.cpp` and
+  `wallet/test/coinselection_tests.cpp` at revision `ddea9196`.
+  `make_coinselect_vectors.py` ports each Branch and Bound, CoinGrinder,
+  Single Random Draw, Knapsack and waste case, runs it through
+  `coinselect_reference.py`, a transliteration of Core's selectors with
+  its ChaCha20 random draws, and checks the result against the one Core's
+  test states.
 - **Multisig (Bitcoin chapter 100):** BIP-67 and BIP-387 at bips
   revision `5aadddb5`, whose test-vector sections hold the sorted-key
   2-of-n vectors and the `multi_a` and `sortedmulti_a` descriptors with
@@ -688,6 +697,12 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/rpc_psbt.json`](upstream/bitcoin-core/rpc_psbt.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/data/rpc_psbt.json) | `6dc130e0ead807b7521e0f55dc60b6b8a6c10ffaf6c623eb524d814deda0c9ce` |
 | [`upstream/bitcoin-core/psbt_wallet_tests.cpp`](upstream/bitcoin-core/psbt_wallet_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/test/psbt_wallet_tests.cpp) | `e15530b0262b7114f2cb0a6552a516f7d5f9ce3a8ec714461ddfaf6ca4d7cfd1` |
 | [`upstream/bitcoin-core/pubkey.h`](upstream/bitcoin-core/pubkey.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/pubkey.h) | `b586b35e4749579e9dad6c6c56c1d7ceecce20ddbd7e066b5c86cadf5d16bb71` |
+| [`upstream/bitcoin-core/coinselection.cpp`](upstream/bitcoin-core/coinselection.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/coinselection.cpp) | `3b85e3d2d911bcb56428d18b2aea4bb4c19a2f95edf53efc48015e37c4adcb80` |
+| [`upstream/bitcoin-core/coinselection.h`](upstream/bitcoin-core/coinselection.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/coinselection.h) | `edaf87098a5dfaa5ae1ff1b1b053f22bb2a34af5d7180a3e8f5b1f6cd6e13085` |
+| [`upstream/bitcoin-core/coinselector_tests.cpp`](upstream/bitcoin-core/coinselector_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/test/coinselector_tests.cpp) | `745d3319b676dea37fe38b7ce9ebc9a679bf57a47e143b18c3a8e2188f2464fa` |
+| [`upstream/bitcoin-core/coinselection_tests.cpp`](upstream/bitcoin-core/coinselection_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/test/coinselection_tests.cpp) | `7e7d4a26998d8091a5cb51963374b5896da8cb3d118dcdf5a3dfc5fa855c41cb` |
+| [`upstream/bitcoin-core/spend.cpp`](upstream/bitcoin-core/spend.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/spend.cpp) | `4b79ae1bda4f0c30c1e87d0fc4dce6a6106fbdbede7ffb8d09b4e171482198cf` |
+| [`upstream/bitcoin-core/feerate.cpp`](upstream/bitcoin-core/feerate.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/policy/feerate.cpp) | `3b9db74479742398ae15d8448f41ea67381611fa7bdced26f92116b0f22f0225` |
 | [`upstream/bip67/bip-0067.mediawiki`](upstream/bip67/bip-0067.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0067.mediawiki) | `4cc48c5c159c05585962a8eb264b05ccb4ad710b1a16c870232e0f0eb1428991` |
 | [`upstream/bip387/bip-0387.mediawiki`](upstream/bip387/bip-0387.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0387.mediawiki) | `92a1a95be774be27f3f373e15dcd8bf291f542cd62535dd1ccbd95bd1022464e` |
 | [`upstream/bitcoin-core/solver.cpp`](upstream/bitcoin-core/solver.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/solver.cpp) | `d795354fafbbcef7c6d28ff8b9912e896575276b4ca85aeed2fc57f18c41174a` |

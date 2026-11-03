@@ -1,0 +1,62 @@
+// The checks of coinselect.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/coinselect.coax
+#load "../coinselect.coax";
+
+// book:begin check
+// Ten random coins and a random target, at a feerate above or below the
+// long-term feerate.
+random_pool :: (s: int, pool: [] CsGroup) -> [2] int {
+  seed: [32] u8; seed[0] = cast(u8) (s & 255); seed[1] = cast(u8) (s >> 8);
+  rng: [1] CsRng; rng[0] = cs_rng(seed[..]);
+  feerate := ifx s % 2 == 0 then 3000 else 40000;
+  for i: 0..<10 { pool[i] = cs_coin(1000 + cs_randrange(rng[..], 200000), ifx i % 3 == 0 then 148 else 68, feerate, 10000); }
+  return [2] int.[feerate, 20000 + cs_randrange(rng[..], 600000)];
+}
+// Branch and Bound against every one of the 1,023 nonempty subsets: it
+// finds a changeless selection exactly when one exists, and none has
+// less waste than the one it returns.
+#forall "BnB finds the least-waste changeless subset" s: 0..<300 #steps 600000000 {
+  pool: [10] CsGroup; marks: [10] int; work: [50] int;
+  x := random_pool(s, pool[..]);
+  cost := 1289;
+  r := cs_bnb(pool[..], x[1], cost, FEE_MAX_STANDARD_WEIGHT, marks[..], work[..]);
+  best := FEE_MAX_MONEY;
+  for mask: 1..<1024 {
+    amount := 0; waste := 0; usable := true;
+    for i: 0..<10 {
+      if (mask >> i) & 1 == 1 {
+        if cs_amount(pool[i]) <= 0 { usable = false; }
+        amount += cs_amount(pool[i]); waste += pool[i].fee - pool[i].long_term_fee;
+      }
+    }
+    if usable && amount >= x[1] && amount <= x[1] + cost && waste + amount - x[1] < best { best = waste + amount - x[1]; }
+  }
+  #assert (r.code == CS_OK) == (best < FEE_MAX_MONEY);
+  if r.code == CS_OK {
+    #assert r.effective >= x[1] && r.effective <= x[1] + cost && r.completed;
+    #assert (r.fee - r.long_term_fee) + r.effective - x[1] == best;
+  }
+}
+// CoinGrinder against every subset: no subset that covers the target
+// and the change target is lighter than the one it returns.
+#forall "CoinGrinder finds the lightest subset that leaves change" s: 0..<300 #steps 600000000 {
+  pool: [10] CsGroup; marks: [10] int; work: [50] int;
+  x := random_pool(s, pool[..]);
+  change_target := 50000;
+  r := cs_coin_grinder(pool[..], x[1], change_target, FEE_MAX_STANDARD_WEIGHT, marks[..], work[..]);
+  lightest := FEE_MAX_MONEY;
+  for mask: 1..<1024 {
+    amount := 0; weight := 0; usable := true;
+    for i: 0..<10 {
+      if (mask >> i) & 1 == 1 {
+        if cs_amount(pool[i]) <= 0 { usable = false; }
+        amount += cs_amount(pool[i]); weight += pool[i].weight;
+      }
+    }
+    if usable && amount >= x[1] + change_target && weight < lightest { lightest = weight; }
+  }
+  #assert (r.code == CS_OK) == (lightest < FEE_MAX_MONEY);
+  if r.code == CS_OK { #assert r.weight == lightest && r.effective >= x[1] + change_target; }
+}
+// book:end check

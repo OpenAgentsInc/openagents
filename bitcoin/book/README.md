@@ -43,12 +43,12 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 76 are implemented and 48 are planned. The 76 implemented
+Of the 124 chapters, 77 are implemented and 47 are planned. The 77 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62, 65, 66,
-67, 68, 69, 70, 71, 73, 74, 81, 94, 100, 101, 104, 105, 106, 107, 108, 111,
+67, 68, 69, 70, 71, 73, 74, 81, 94, 95, 100, 101, 104, 105, 106, 107, 108, 111,
 112, 114 and 115 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
@@ -297,7 +297,7 @@ PSBTs, coin selection, message signing, silent payments, miniscript and a descri
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [94. PSBT](ch094-psbt.md) | Runnable: native C | BIP-174 version 0, BIP-370 version 2 and BIP-371's Taproot fields, read as Bitcoin Core reads them: all 155 distinct PSBTs that BIP-174, BIP-370, BIP-371 and Core's rpc_psbt.json publish read or refuse as published, each refusal with Core's message, and BIP-370's lock-time cases give its lock time. BIP-174's worked example runs from its master key through the Creator, Updater, two Signers, Combiner, Input Finalizer and Transaction Extractor, matching every published result; its signer-check cases refuse for BIP-174's reasons; Core's signer (low-R ECDSA), combiner, finalizer and extractor cases match byte for byte. A P2WPKH, P2WSH 2-of-2 and P2TR key-path spend passes the script interpreter and BIP-340. Checked against Python natively. |
-| 95. Coin selection and change | Planned | Branch-and-bound and fallback selection pass Bitcoin Core's coin-selection cases, and no selection pays more than its stated fee rate allows. |
+| [95. Coin selection and change](ch095-coin-selection-and-change.md) | Runnable: native C | Bitcoin Core's Branch and Bound, CoinGrinder, Single Random Draw and Knapsack with its waste metric, change target and dust threshold: all 344 selection cases and 11 waste cases ported from Core's coinselector_tests.cpp and coinselection_tests.cpp give Core's result, with Core's ChaCha20 random draws. Brute force over every subset of random wallets finds no changeless selection with less waste than Branch and Bound and none lighter than CoinGrinder, and every chosen selection pays its feerate. Checked against Python natively. |
 | 96. Message signing | Planned | BIP-322's simple and full vectors verify. |
 | 97. Silent payments | Planned | BIP-352's `send_and_receive_test_vectors.json` give every output and scan result. |
 | 98. Miniscript | Planned | The BIP-379 examples type-check, compile to their stated scripts and satisfy. |

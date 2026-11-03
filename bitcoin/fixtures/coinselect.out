@@ -1,0 +1,50 @@
+The wallet's coins, at 1, 10 and 100 sat/vB:
+  A: 1000000 sat P2WPKH, effective 999932 999320 993200
+  B: 250000 sat P2TR, effective 249942 249420 244200
+  C: 3500 sat P2PKH, effective 3352 2020 -11300
+  D: 600000 sat P2WPKH, effective 599932 599320 593200
+  E: 50000 sat P2TR, effective 49942 49420 44200
+  F: 2000000 sat P2WPKH, effective 1999932 1999320 1993200
+  G: 120000 sat P2PKH, effective 119852 118520 105200
+  H: 75000 sat P2TR, effective 74942 74420 69200
+  I: 400000 sat P2WPKH, effective 399932 399320 393200
+  J: 9000 sat P2WPKH, effective 8932 8320 2200
+Dust at the discard feerate, 3 sat/vB: P2PKH 546, P2WPKH 294, P2TR 330
+Pay 830,000 at 35 sat/vB: 830000 sat to a P2TR address at 35000 sat/kvB
+  target 831890 (the payment and 1890 sat for the transaction without inputs)
+  change fee 1085, cost of change 1289, smallest change 294, change target 760658
+  bnb: no selection
+  knapsack: A C D, effective 1593560, weight 1136, change 760585, waste 8389
+  srd: E F J, effective 2052210, weight 776, change 1219235, waste 6139
+  cg: F, effective 1997620, weight 272, change 1164645, waste 2989
+  chosen: cg, waste 2989; the transaction: 2000000 in, 830000 out and 1164645 change, fee 5355, 153 vB, 35000 sat/kvB
+Pay 995,730 at 35 sat/vB: 995730 sat to a P2TR address at 35000 sat/kvB
+  target 997620 (the payment and 1890 sat for the transaction without inputs)
+  change fee 1085, cost of change 1289, smallest change 294, change target 124663
+  bnb: A, effective 997620, weight 272, change 0, waste 1700
+  knapsack: A, effective 997620, weight 272, change 0, waste 1700
+  srd: E F G H J, effective 2240000, weight 1600, change 1241295, waste 11289
+  cg: F, effective 1997620, weight 272, change 998915, waste 2989
+  chosen: bnb, waste 1700; the transaction: 1000000 in, 995730 out, no change, fee 4270, 122 vB, 35000 sat/kvB
+Pay 830,000 at 2 sat/vB: 830000 sat to a P2TR address at 2000 sat/kvB
+  target 830108 (the payment and 108 sat for the transaction without inputs)
+  change fee 62, cost of change 266, smallest change 294, change target 857358
+  bnb: no selection
+  knapsack: A B E I, effective 1699496, weight 1008, change 869326, waste -1750
+  srd: A C D G J, effective 1731500, weight 2000, change 901330, waste -3734
+  cg: not run below three times the long-term feerate
+  chosen: srd, waste -3734; the transaction: 1732500 in, 830000 out and 901330 change, fee 1170, 585 vB, 2000 sat/kvB
+Pay 4,600,000 at 35 sat/vB: 4600000 sat to a P2TR address at 35000 sat/kvB
+  target 4601890 (the payment and 1890 sat for the transaction without inputs)
+  change fee 1085, cost of change 1289, smallest change 294, change target 961309
+  bnb: no selection
+  knapsack: no selection
+  srd: no selection
+  cg: no selection
+  no selection: code -1
+Bitcoin Core's coin-selection cases:
+  bnb: 175 of 175 give Core's result
+  knapsack: 30 of 30 give Core's result
+  srd: 130 of 130 give Core's result
+  cg: 9 of 9 give Core's result
+  waste: 11 of 11 give Core's result
