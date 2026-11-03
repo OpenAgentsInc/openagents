@@ -36,9 +36,10 @@ That makes it the realm where replay is not a feature but the oracle.
 - **House** ([chapters 6](ch006-entities-are-born-and-die.md)–[8](ch008-ground-and-collision.md)):
   the seed's rooms, doors, furniture and keys as entities and colliders; the
   same geometry the camera's sweep and the kid's movement query.
-- **Camera** ([chapter 10](ch010-the-camera-follows.md)): a boom from the
-  kid's head, pulled in short of walls, lintels, floor and ceiling by a swept
-  sphere; drag to orbit, Shift Lock, V for first person.
+- **Camera** ([chapter 10](ch010-the-camera-follows.md)): Aethyr's follow,
+  stepped once a rules step, its target on a spring to the kid's head,
+  pulled in short of walls, lintels, floor and ceiling (`follow_room`); drag
+  to orbit, Shift Lock, V for first person.
 - **Look and HUD** ([chapters 11](ch011-the-wgsl-renderer.md),
   [12](ch012-materials.md), [15](ch015-ui-and-the-hud.md)): per-room light,
   ink outlines, the house's button style for health, keys, timer, boss bar,

@@ -268,11 +268,13 @@ Checks: `aethyr/loop.coax` (step count follows the time fed at 30, 60, 120 and
 same states at 30, 60, 120 and 144 FPS", "a jump drawn at 60 FPS has no stutter").
 A realm's flight is the walker's per-step hook (`aethyr/flight.coax`), never
 a face's per-frame change to the player's speed, and a realm camera that
-eases (Hecate's Cemetery's free orbit) eases once per fixed step and is
-drawn between the last two. Checks: `aethyr/walk.coax` ("a flight of beats,
+eases (Hecate's Cemetery's free orbit, Ice Cream Man's follow) eases once per
+fixed step; Hecate's is drawn between the last two. Checks: `aethyr/walk.coax` ("a flight of beats,
 climbs, glides and a dive has the same states at 30, 60, 120 and 144 FPS and
 on uneven frames"), `apps/openagents-web/villa.coax` ("Hecate's camera eases
-on the fixed step ...").
+on the fixed step ..."), `verse/icecream/play.coax` ("the camera steps with the
+rules: the same input at 30, 60, 120 and 144 FPS and at uneven rates gives
+the same camera every step").
 
 ## A realm's frame time is what its clock counts, and no frame runs past 8 steps
 

@@ -799,8 +799,8 @@ moves the rest of the realms' cameras onto `CameraShot`:
   between the two at its edge.
 - The homepage's dive into the Grid (`apps/openagents-web/newland-walk.coax`,
   `wk_dive`) moves onto `shot_dive`.
-- Ice Cream Man's boom (`verse/icecream/camera.coax`) and `SpaceCam`
-  (`aethyr/spacecam.coax`) make `CameraShot`s.
+- `SpaceCam` (`aethyr/spacecam.coax`) makes `CameraShot`s. (Ice Cream
+  Man's boom is done: `verse/icecream/camera.coax` is a `Follow` now.)
 - The free orbit's easing (`verse_orbit_follow`, `verse_orbit_limit`) moves
   from the frame to the fixed step, and `verse_orbit_room` reads the realm's
   `Colliders` through `follow_room`.

@@ -77,8 +77,8 @@ Play :: struct {
   suspended: bool;
   touch: bool;
   camera: Camera;
-  space: [1] Space;
-  boom: Boom;
+  walls: [1] HouseBoxes;   // what the camera bumps (camera.coax)
+  follow: Follow;          // the camera, stepped with the rules (aethyr/follow.coax)
   held: u32; taps: u32; click: bool; fire: bool;
   select: s8 = -1;
   sprint_toggle: bool; sprint_held: bool; touch_jump: bool; touch_fire: bool; touch_use: bool;
@@ -251,9 +251,9 @@ options_of :: (text: string) -> Options {
 // The realm's board (docs/verse/realm-edit.md) over a house's tuning.
 board_tuning :: (o: Options, t: Tuning) -> Tuning {
   tuned := t;
-  if o.no_minions { tuned = change(tuned, "minion_count", 0); tuned = change(tuned, "minion_growth", 0); }
-  if o.no_weapons { tuned = change(tuned, "earned_weapons", 0); tuned = change(tuned, "puzzle_key", 0); }
-  if o.no_backrooms { tuned = change(tuned, "backrooms", 0); }
+  if o.no_minions { tuned = tuning_change(tuned, "minion_count", 0); tuned = tuning_change(tuned, "minion_growth", 0); }
+  if o.no_weapons { tuned = tuning_change(tuned, "earned_weapons", 0); tuned = tuning_change(tuned, "puzzle_key", 0); }
+  if o.no_backrooms { tuned = tuning_change(tuned, "backrooms", 0); }
   return tuned;
 }
 
@@ -301,7 +301,7 @@ new_run :: (p: [] Play, g: [] Game) {
     if kept { g[0].event_n = 0; }
   }
   if o.cone { add_drop(g, Drop.{at = vadd(g[0].player.pos, vmul(g[0].player.facing, 2)), kind = DropKind.cone, tool = Tool.sword, age = 0}); }
-  space_of(g, p[0].space[..]);
+  house_boxes_of(g, p[0].walls[..]);
   fresh: Bot;
   p[0].bots[0] = fresh;
   c: Camera;
@@ -309,8 +309,8 @@ new_run :: (p: [] Play, g: [] Game) {
   c.yaw = p[0].yaw;
   p[0].camera = c;
   if o.first_person || g[0].tuning.first_person == 1 { p[0].camera = cam_toggle_view(p[0].camera); }
-  nb: Boom;
-  p[0].boom = nb;
+  pl := g[0].player;
+  p[0].follow = cam_place(p[0].camera, pl.pos, pl.height, house_colliders(p[0].walls[..]));
   p[0].man_yaw = 0; p[0].particle_n = 0; p[0].spotted = 0; p[0].hurt = 0; p[0].daylight = 0; p[0].select = -1;
   fresh_steps: FrameClock;
   p[0].steps = fresh_steps; p[0].end_t = 0; p[0].new_best = false;
@@ -786,19 +786,26 @@ scare_eye :: (p: [] Play, g: [] Game) -> View {
   dir := ifx l > 0 then v3mul(d, 1 / l) else v3(0, 0, 1);
   return View.{eye = eye, target = v3add(eye, dir), first_person = true};
 }
-view_now :: (p: [] Play, g: [] Game) -> View {
-  pl := g[0].player;
+// The camera shown: the player's, but the ending circles the kid and the title circles slowly.
+shown_camera :: (p: [] Play, g: [] Game) -> Camera {
   camera := p[0].camera;
-  st := scare_time(p, g);
-  if p[0].phase == Phase.ending && st < 0 {
+  if p[0].phase == Phase.ending && scare_time(p, g) < 0 {
     camera.yaw += p[0].end_t * 0.6;
     camera.zoom = cmax(camera.zoom, 4);
     camera.shift_lock = false;
   }
   if p[0].phase == Phase.title { camera.yaw = p[0].time * 0.15; camera.zoom = 6; }
-  r := cam_rig(camera, pl.pos, pl.height, p[0].space[..]);
-  p[0].boom = boom_follow(p[0].boom, r, p[0].frame_dt);
-  view := rig_view(p[0].space[..], r, p[0].boom.length);
+  return camera;
+}
+// The camera's step, after the rules' (aethyr/follow.coax through camera.coax cam_track).
+camera_step :: (p: [] Play, g: [] Game, dt: f32) {
+  pl := g[0].player;
+  p[0].follow = cam_track(p[0].follow, shown_camera(p, g), pl.pos, pl.height, house_colliders(p[0].walls[..]), dt);
+}
+view_now :: (p: [] Play, g: [] Game) -> View {
+  pl := g[0].player;
+  st := scare_time(p, g);
+  view := cam_view(p[0].follow, shown_camera(p, g), pl.pos, pl.height);
   if pl.hidden >= 0 && st < 0 {
     // In the closet: looking out through the slats at eye height, from its door.
     closet := g[0].house.closets[pl.hidden];
@@ -825,13 +832,17 @@ ice_pace :: () -> FrameClock {
   return c;
 }
 ice_counts :: (frame_dt: f32) -> f32 { return cast(f32) loop_counts(ice_pace(), cast(f64) frame_dt); }
-// The rules steps a frame of `dt` counted seconds makes due, on the clock: 1/30 s each, at most 4,
-// and a backlog past that dropped, never run later. A round that ends mid-frame runs no more.
+// The steps a frame of `dt` counted seconds makes due, on the clock: 1/30 s each, at most 4,
+// and a backlog past that dropped, never run later. Each runs the rules while the round is
+// played (one that ends mid-frame runs no more), then the camera, in every phase.
 ice_run :: (p: [] Play, g: [] Game, dt: f32) {
   c := p[0].steps;
   c.step_ns = ICE_STEP_NS; c.max_frame_ns = ICE_FRAME_NS; c.max_steps = ICE_MAX_STEPS;
   c = loop_accept(c, cast(f64) dt);
-  for k: 0..<loop_due(c) { if p[0].phase == Phase.playing { step_once(p, g); } }
+  for k: 0..<loop_due(c) {
+    if running(p) { step_once(p, g); }
+    camera_step(p, g, cast(f32) loop_step(c));
+  }
   p[0].steps = loop_ran(c);
 }
 
@@ -842,7 +853,7 @@ ice_play_frame :: (p: [] Play, g: [] Game, width: f32, height: f32, dpr: f32, fr
   step := ifx p[0].suspended then 0.0f32 else ice_counts(frame_dt);
   p[0].time += step;
   p[0].frame_dt = step;
-  if running(p) { ice_run(p, g, step); }
+  ice_run(p, g, step);
   if p[0].phase == Phase.ending {
     p[0].end_t += step;
     if g[0].status == Status.escaped { p[0].daylight = cmin(p[0].end_t / ENDING * 1.4, 1); }
@@ -1005,6 +1016,65 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   // negative or no number: no time, no steps
   ice_play_frame(p, g, 1440, 900, 1, -1.0);
   #assert p[0].frame_dt == 0 && p[0].steps.ran == 0;
+}
+
+// The camera after each of CAM_TRAIL steps of one replayed input, played at the frame times
+// dts (in turn): W held from the start, D too from step 20 until 75, a drag at step 40, Shift
+// Lock at 60, first person at 90 and back at 105. Each step's follow (target, its spring's
+// velocity, distance) and the kid's x, as bits. False if a frame ran two steps.
+CAM_TRAIL :: 120;
+CAM_TRAIL_WORDS :: 8;
+CamTrail :: struct { bits: [CAM_TRAIL * CAM_TRAIL_WORDS] u32; }
+cam_trail :: (base: [] Play, game: [] Game, dts: [] f32, out: [] CamTrail) -> bool {
+  plays: [1] Play; games: [1] Game;
+  plays[0] = base[0]; games[0] = game[0];
+  p := plays[..]; g := games[..];
+  given := -1; k := 0;
+  while p[0].stepped < CAM_TRAIL {
+    n := cast(int) p[0].stepped;
+    if n != given {
+      given = n;
+      keys := true;
+      if n == 0 { keys = ice_play_key(p, g, 'w', true, 0); }
+      if n == 20 { keys = ice_play_key(p, g, 'd', true, 0); }
+      if n == 40 { p[0].camera = cam_orbit(p[0].camera, 150, 60); }
+      if n == 60 { keys = ice_play_key(p, g, PK_CONTROL, true, 0) && !ice_play_key(p, g, PK_CONTROL, false, 0); }
+      if n == 75 { keys = ice_play_key(p, g, 'd', false, 0); }
+      if n == 90 || n == 105 { keys = ice_play_key(p, g, 'v', true, 0) && !ice_play_key(p, g, 'v', false, 0); }
+      if !keys { return false; }
+    }
+    ice_play_frame(p, g, 1440, 900, 1, dts[k % dts.count]);
+    k += 1;
+    if cast(int) p[0].stepped > n + 1 { return false; }
+    if cast(int) p[0].stepped == n + 1 {
+      f := p[0].follow;
+      w := [CAM_TRAIL_WORDS] f32.[f.target.x, f.target.y, f.target.z, f.vel.x, f.vel.z, f.dist, f.theta, g[0].player.pos.x];
+      for i: 0..<CAM_TRAIL_WORDS { out[0].bits[n * CAM_TRAIL_WORDS + i] = f32_bits(w[i]); }
+    }
+  }
+  return true;
+}
+
+#test "the camera steps with the rules: the same input at 30, 60, 120 and 144 FPS and at uneven rates gives the same camera every step" #steps 900000000 {
+  plays: [1] Play;
+  games: [1] Game;
+  p := plays[..]; g := games[..];
+  tb: [TEST_TRACE] u8; p[0].trace = tb[..];
+  ice_play_hash(p, g, "seed=3&calm"); ice_play_act(p, g, A_TOUR_END, 0);
+  rates := [4] f32.[1.0 / 30.0, 1.0 / 60.0, 1.0 / 120.0, 1.0 / 144.0];
+  uneven := [7] f32.[0.004, 0.021, 0.0333, 0.009, 0.016, 0.031, 0.0007];
+  first: [1] CamTrail; other: [1] CamTrail;
+  #assert cam_trail(p, g, rates[0..<1], first[..]);
+  for r: 1..<4 {
+    #assert cam_trail(p, g, rates[r..<r + 1], other[..]);
+    for i: 0..<CAM_TRAIL * CAM_TRAIL_WORDS { #assert other[0].bits[i] == first[0].bits[i]; }
+  }
+  #assert cam_trail(p, g, uneven[..], other[..]);
+  for i: 0..<CAM_TRAIL * CAM_TRAIL_WORDS { #assert other[0].bits[i] == first[0].bits[i]; }
+  // and it was a camera that moved: it followed the walk and turned with the drag
+  at := (CAM_TRAIL - 1) * CAM_TRAIL_WORDS;
+  #assert first[0].bits[at] != first[0].bits[0] && first[0].bits[at + 6] != first[0].bits[6];
+  #assert first[0].bits[50 * CAM_TRAIL_WORDS + 3] != 0;   // the spring still closing on the walk
 }
 
 #test "the browser's trace replays to the same state" #steps 80000000 {

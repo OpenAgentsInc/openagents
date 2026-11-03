@@ -250,8 +250,12 @@ jump's rising arc, and drawing the last step instead changes its move by more
 than three times the bound). Mutation: 189 of 189 (`follow.coax`), 54 of 54
 (`shot.coax`), none surviving on the changed lines of `player.coax` and
 `camera.coax`. `aethyr/points.coax`'s `Shot`, the homepage's dive into the
-Grid, Ice Cream Man's boom and `SpaceCam` move onto `CameraShot` with
-ec-migrate.
+Grid and `SpaceCam` move onto `CameraShot` with ec-migrate. Ice Cream Man's
+boom is gone: its camera is a `Follow` stepped once per 1/30 s rules step
+(`verse/icecream/camera.coax` `cam_track`), bumping the house's walls,
+lintels, floor and ceiling through `follow_room`; the same input gives the
+same camera every step at 30, 60, 120 and 144 FPS and on uneven frames
+(`verse/icecream/play.coax`).
 
 ## Budgets (`aethyr/budget.coax`)
 

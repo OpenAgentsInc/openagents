@@ -1,60 +1,45 @@
-// Ice Cream Man's third-person view, from ~/work/aethyr-demo/src/icecream/
-// camera.cpp (the Rust build's camera.rs): a boom from the kid's head that
-// tilts down to stay under the ceiling, pulled in short of every wall,
-// piece of furniture, doorway lintel, the floor and the ceiling by a sphere
-// swept along it. With the drag (orbit), the wheel, Shift Lock over the right
-// shoulder, V between first and third person, and the boom's easing.
+// Ice Cream Man's third-person view, on Aethyr's follow camera (aethyr/follow.coax, Aethyr
+// book chapter 10). Once a rules step the follow's target springs to the kid's head (over the
+// right shoulder in Shift Lock), and the camera pulls in at once short of every wall, piece of
+// furniture, doorway lintel, the floor and the ceiling, and backs out gently (`cam_track`).
+// This file keeps the realm's own controls, from ~/work/aethyr-demo/src/icecream/camera.cpp:
+// the drag (orbit), the wheel, Shift Lock, V between first and third person; the house as the
+// colliders the follow reads; and the view drawn from the follow (`cam_view`). It eases nothing
+// itself.
 //   coax/bin/coax test verse/icecream/camera.coax --library --steps 1000000000   (the house seeds ~512M)
 #load "mesh.coax";
+#load "../../aethyr/follow.coax" as aethyr_follow;   // the follow camera every walking realm uses (aethyr/book ch010)
 
 CAM_MIN_ZOOM :: 0.5f32;
 CAM_MAX_ZOOM :: 8.0f32;
 CAM_FIRST_PERSON :: 0.9f32;
-CAM_HEAD :: 1.2f32;            // kEyeHeight: third person pivots here
-CAM_HEADROOM :: 0.3f32;
-CAM_FLOOR :: 0.35f32;
-CAM_RADIUS :: 0.2f32;
-CAM_MARGIN :: 0.08f32;
+CAM_HEAD :: 1.2f32;            // kEyeHeight: the follow's target, above the feet
 CAM_THIRD_PERSON :: 4.5f32;    // the zoom a run starts with
-MAX_BOXES :: MAX_BLOCKS + 2 * MAX_ROOMS;
+// The pitch a run starts with: at 4.5 m the eye is 1.1 m over the head, at 2.3 m, where the
+// demo's boom tilted down to, under the ceiling (2.6 m less 0.3 m of headroom).
+CAM_PITCH :: 0.247f32;
+CAM_CLOSE :: 0.6f32;           // a camera nearer than this to the head: the kid isn't drawn
+CAM_MIN_PITCH :: -0.6f32;
+CAM_MAX_PITCH :: 1.2f32;
+CAM_SHOULDER :: 0.7f32;
 
-Box3 :: struct { min: V3; max: V3; }
-axis_of :: (v: V3, i: int) -> f32 { return ifx i == 0 then v.x else ifx i == 1 then v.y else v.z; }
-// Where along a to b (0 to 1) the segment enters the box grown by r; < 0 if
-// it misses or starts inside.
-sweep :: (box: Box3, a: V3, b: V3, r: f32) -> f32 {
-  lo := v3(box.min.x - r, box.min.y - r, box.min.z - r);
-  hi := v3(box.max.x + r, box.max.y + r, box.max.z + r);
-  if a.x >= lo.x && a.y >= lo.y && a.z >= lo.z && a.x <= hi.x && a.y <= hi.y && a.z <= hi.z { return -1; }
-  d := v3sub(b, a);
-  low: f32 = 0;
-  high: f32 = 1;
-  for i: 0..<3 {
-    ai := axis_of(a, i); di := axis_of(d, i); mn := axis_of(lo, i); mx := axis_of(hi, i);
-    if abs(di) < 0.000000001 {
-      if ai < mn || ai > mx { return -1; }
-    } else {
-      t0 := (mn - ai) / di;
-      t1 := (mx - ai) / di;
-      if t0 > t1 { swap := t0; t0 = t1; t1 = swap; }
-      low = cmax(low, t0);
-      high = cmin(high, t1);
-      if low > high { return -1; }
-    }
-  }
-  return low;
+// ---- the house the camera bumps: every wall and piece of furniture, each doorway's lintel, the
+// floor and the ceiling, as aethyr/query.coax boxes (QUERY_BOX numbers each) that follow_room reads.
+CAM_BOXES :: MAX_BLOCKS + 2 * MAX_ROOMS + 2;
+CAM_SLAB :: 10000.0f32;        // how far the floor and the ceiling reach every way
+HouseBoxes :: struct { at: [QUERY_BOX * CAM_BOXES] f32; n: int; }
+house_box :: (h: [] HouseBoxes, low: V3, high: V3) {
+  k := h[0].n * QUERY_BOX;
+  h[0].at[k] = low.x; h[0].at[k + 1] = low.y; h[0].at[k + 2] = low.z;
+  h[0].at[k + 3] = high.x; h[0].at[k + 4] = high.y; h[0].at[k + 5] = high.z;
+  h[0].n += 1;
 }
-
-// What the camera can bump: every wall, piece of furniture and doorway
-// lintel as a box, and the floor and ceiling.
-Space :: struct { boxes: [MAX_BOXES] Box3; n: int; ceiling: f32 = WALL_HEIGHT; }
-space_of :: (g: [] Game, s: [] Space) {
+house_boxes_of :: (g: [] Game, out: [] HouseBoxes) {
   h := g[0].house;
-  s[0].n = 0;
+  out[0].n = 0;
   for i: 0..<h.block_n {
     b := h.blocks[i];
-    s[0].boxes[s[0].n] = Box3.{min = v3(b.min.x, 0, b.min.z), max = v3(b.max.x, b.height, b.max.z)};
-    s[0].n += 1;
+    house_box(out, v3(b.min.x, 0, b.min.z), v3(b.max.x, b.height, b.max.z));
   }
   two: f32 = 2.0;
   for i: 0..<h.room_n {
@@ -68,74 +53,21 @@ space_of :: (g: [] Game, s: [] Space) {
       along_x := side == Side.south;
       hx := ifx along_x then DOOR / two else WALL / two;
       hz := ifx along_x then WALL / two else DOOR / two;
-      s[0].boxes[s[0].n] = Box3.{min = v3(mid.x - hx, DOOR_HEIGHT, mid.z - hz), max = v3(mid.x + hx, WALL_HEIGHT, mid.z + hz)};
-      s[0].n += 1;
+      house_box(out, v3(mid.x - hx, DOOR_HEIGHT, mid.z - hz), v3(mid.x + hx, WALL_HEIGHT, mid.z + hz));
     }
   }
-  s[0].ceiling = WALL_HEIGHT;
+  house_box(out, v3(-CAM_SLAB, -1, -CAM_SLAB), v3(CAM_SLAB, 0, CAM_SLAB));
+  house_box(out, v3(-CAM_SLAB, WALL_HEIGHT, -CAM_SLAB), v3(CAM_SLAB, WALL_HEIGHT + 1, CAM_SLAB));
 }
-space_cast :: (s: [] Space, a: V3, b: V3, r: f32) -> f32 {
-  t: f32 = 1;
-  d := v3sub(b, a);
-  top := s[0].ceiling - r;
-  if b.y > top && a.y < top && abs(d.y) > 0.000000001 { t = cmin(t, (top - a.y) / d.y); }
-  if b.y < r && a.y > r && abs(d.y) > 0.000000001 { t = cmin(t, (r - a.y) / d.y); }
-  for i: 0..<s[0].n {
-    hit := sweep(s[0].boxes[i], a, b, r);
-    if hit >= 0 { t = cmin(t, hit); }
-  }
-  return cmax(t, 0.0);
-}
+house_colliders :: (h: [] HouseBoxes) -> Colliders { return Colliders.{boxes = h[0].at[0..<h[0].n * QUERY_BOX]}; }
 
 View :: struct { eye: V3; target: V3; first_person: bool; }
-Rig :: struct { pivot: V3; back: V3; look: V3; rise: f32; want: f32; safe: f32; first_person: bool; }
-rig_dir :: (s: [] Space, r: Rig, length0: f32) -> V3 {
-  length := cmax(length0, 0.001);
-  top := cmax(s[0].ceiling - CAM_HEADROOM, CAM_FLOOR);
-  y := cmin(length * r.rise, top - r.pivot.y);
-  y = cmax(y, CAM_FLOOR - r.pivot.y);
-  y = clampf(y, -length * 0.95, length * 0.95);
-  flat := sqrt(length * length - y * y);
-  one: f32 = 1.0;
-  return v3mul(v3add(v3mul(r.back, flat), v3mul(TN_Y, y)), one / length);
-}
-rig_reach :: (s: [] Space, r: Rig, length: f32) -> f32 {
-  end := v3add(r.pivot, v3mul(rig_dir(s, r, length), length));
-  return space_cast(s, r.pivot, end, CAM_RADIUS) * length;
-}
-rig_clear :: (s: [] Space, r: Rig, length: f32) -> f32 {
-  reach := rig_reach(s, r, length);
-  return ifx reach >= length - 0.0001 then length else cmax(reach - CAM_MARGIN, 0.0);
-}
-rig_view :: (s: [] Space, r: Rig, boom: f32) -> View {
-  if r.first_person { return View.{eye = r.pivot, target = v3add(r.pivot, r.look), first_person = true}; }
-  length := rig_clear(s, r, clampf(boom, 0, r.safe));
-  d := rig_dir(s, r, length);
-  eye := v3add(r.pivot, v3mul(d, length));
-  return View.{eye = eye, target = v3sub(eye, d)};
-}
-
-// Boom smooths the boom's length: it snaps in at once (never through a
-// wall) and eases back out slowly.
-CAM_CLOSE :: 0.6f32;           // under this boom the kid isn't drawn
-CAM_EASE_OUT :: 3.0f32;
-CAM_MIN_PITCH :: -0.6f32;
-CAM_MAX_PITCH :: 1.2f32;
-CAM_SHOULDER :: 0.7f32;
-Boom :: struct { has: bool; length: f32; }
-boom_follow :: (b: Boom, r: Rig, step: f32) -> Boom {
-  next: f32 = 0;
-  if r.first_person { next = 0; }
-  else if !b.has || r.safe <= b.length { next = r.safe; }
-  else { next = b.length + (r.safe - b.length) * (1 - exp(-CAM_EASE_OUT * step)); }
-  return Boom.{has = true, length = next};
-}
-boom_close :: (b: Boom) -> bool { return b.has && b.length < CAM_CLOSE; }
+cam_v3 :: (w: WorldPoint) -> V3 { return v3(w.x, w.y, w.z); }
 
 // The camera: its yaw (0 looks toward +z), its pitch below the horizon, its
 // zoom (first person under CAM_FIRST_PERSON), Shift Lock and the zoom to go
 // back to from first person.
-Camera :: struct { yaw: f32 = 3.14159265; pitch: f32 = 0.35; zoom: f32 = CAM_THIRD_PERSON; shift_lock: bool; third: f32 = CAM_THIRD_PERSON; }
+Camera :: struct { yaw: f32 = 3.14159265; pitch: f32 = CAM_PITCH; zoom: f32 = CAM_THIRD_PERSON; shift_lock: bool; third: f32 = CAM_THIRD_PERSON; }
 // atan on [0, 1], within 2e-5 rad (aethyr/points.coax's).
 atan_unit :: (t: f32) -> f32 {
   q := t * t;
@@ -147,7 +79,7 @@ arctan2 :: (y: f32, x: f32) -> f32 {
   if ax == 0 && ay == 0 { return 0; }
   half: f32 = 2;
   a := ifx ay > ax then PI_F / half - atan_unit(ax / ay) else atan_unit(ay / ax);
-  if x < 0 { a = PI_F - a; }
+  if ax != x { a = PI_F - a; }   // x is below zero (a -0 is not): no tie for x == 0 to round
   if y < 0 { a = -a; }
   return a;
 }
@@ -184,33 +116,56 @@ cam_toggle_view :: (c: Camera) -> Camera {
 }
 cam_aims :: (c: Camera) -> bool { return c.shift_lock || cam_first_person(c); }
 cam_look :: (c: Camera) -> V3 { return v3(cos(c.pitch) * sin(c.yaw), -sin(c.pitch), cos(c.pitch) * cos(c.yaw)); }
-cam_rig :: (c: Camera, at: V2, feet: f32, s: [] Space) -> Rig {
-  head := v3(at.x, feet + CAM_HEAD, at.z);
-  b := cam_forward(c);
-  r := Rig.{pivot = head, back = v3(-b.x, 0, -b.z), rise = sin(c.pitch), look = cam_look(c), first_person = cam_first_person(c)};
-  if r.first_person { return r; }
-  if c.shift_lock {
-    rt := cam_right(c);
-    shoulder := v3add(v3mul(v3(rt.x, 0, rt.z), CAM_SHOULDER * 0.6), v3mul(TN_Y, 0.1));
-    length := sqrt(v3dot(shoulder, shoulder));
-    t := space_cast(s, head, v3add(head, shoulder), CAM_RADIUS);
-    r.pivot = v3add(r.pivot, v3mul(shoulder, cmax(t * length - CAM_MARGIN, 0.0) / length));
-  }
-  r.want = clampf(c.zoom, CAM_FIRST_PERSON, CAM_MAX_ZOOM);
-  // Pull in until the boom's own (steeper, shorter) line is clear.
-  length := r.want;
-  for i: 0..<6 {
-    cl := rig_clear(s, r, length);
-    if cl >= length { break; }
-    length = cl;
-  }
-  r.safe = rig_clear(s, r, length);
-  return r;
+
+// ---- the camera on the follow
+
+// The follow's look from the camera's: it sits behind (theta is the yaw turned round), as high
+// as the pitch looks down (phi is down from straight up), and the zoom asks for its distance.
+cam_aim :: (f: Follow, c: Camera) -> Follow {
+  next := f;
+  next.theta = follow_wrap(c.yaw + f32(FOLLOW_PI));
+  next.phi = f32(FOLLOW_PI) / 2 - c.pitch;
+  next.max_dist = clampf(c.zoom, CAM_FIRST_PERSON, CAM_MAX_ZOOM);
+  return next;
 }
-cam_view :: (c: Camera, at: V2, feet: f32, s: [] Space) -> View {
-  r := cam_rig(c, at, feet, s);
-  return rig_view(s, r, r.safe);
+// What the follow looks at: the kid's head, or in Shift Lock (third person) over the right
+// shoulder, as far as the room beside the head allows.
+cam_pivot :: (c: Camera, at: V2, feet: f32, walls: Colliders) -> WorldPoint {
+  head := world_point(at.x, feet + CAM_HEAD, at.z);
+  if !c.shift_lock || cam_first_person(c) { return head; }
+  rt := cam_right(c);
+  shoulder := world_point(rt.x * CAM_SHOULDER * 0.6, 0.1, rt.z * CAM_SHOULDER * 0.6);
+  length := sqrt(world_dot(shoulder, shoulder));
+  dir := world_scale(shoulder, 1 / length);
+  return world_add(head, world_scale(dir, follow_room(walls, length, head, dir, length)));
 }
+// One rules step of the camera (aethyr/follow.coax follow_track): it reads the house and the kid
+// and changes nothing but the follow.
+cam_track :: (f: Follow, c: Camera, at: V2, feet: f32, walls: Colliders, dt: f32) -> Follow {
+  return follow_track(cam_aim(f, c), walls, CAM_MAX_ZOOM, cam_pivot(c, at, feet, walls), dt);
+}
+// A follow placed at once, on its target and pulled in to the room it has: a run's start.
+cam_place :: (c: Camera, at: V2, feet: f32, walls: Colliders) -> Follow {
+  f := cam_aim(Follow.{}, c);
+  f.target = cam_pivot(c, at, feet, walls);
+  f.dist = f.max_dist;
+  return follow_track(f, walls, CAM_MAX_ZOOM, f.target, 0);
+}
+// The view drawn: the follow's last step (aethyr/follow.coax follow_shot), turned by the look
+// at once; first person, out of the kid's eyes (CAM_HEAD over the feet) along the look. The kid,
+// the man and the minions are drawn at their last step, so the camera is too.
+cam_view :: (f: Follow, c: Camera, at: V2, feet: f32) -> View {
+  g := cam_aim(f, c);
+  if cam_first_person(c) {
+    s := follow_first_shot(g, world_point(at.x, feet + CAM_HEAD - f32(FOLLOW_FIRST_EYE), at.z));
+    return View.{eye = cam_v3(s.eye), target = cam_v3(s.at), first_person = true};
+  }
+  s := follow_shot(g, g.target, g.dist, 1);
+  return View.{eye = cam_v3(s.eye), target = cam_v3(s.at)};
+}
+// The camera so close to the head that the kid isn't drawn.
+cam_close :: (f: Follow) -> bool { return f.dist < CAM_CLOSE; }
+
 // The vertical field of view: wider on a tall screen.
 cam_fov :: (aspect: f32) -> f32 { d: f32 = 180.0; return (ifx aspect < 1 then 70.0f32 else 60.0f32) * 3.14159265 / d; }
 
@@ -226,54 +181,195 @@ ray_to_height :: (eye: V3, dir: V3, height: f32) -> Hit2 {
 
 // ---- checks ----
 
-#test "a sweep enters a box, misses it, or starts inside" {
-  b := Box3.{min = v3(0, 0, 0), max = v3(2, 2, 2)};
-  #assert sweep(b, v3(-1, 1, 1), v3(3, 1, 1), 0) == 0.25;
-  #assert sweep(b, v3(-1, 5, 1), v3(3, 5, 1), 0) < 0;
-  #assert sweep(b, v3(1, 1, 1), v3(3, 1, 1), 0) < 0;
-  #assert sweep(b, v3(-2, 1, 1), v3(2, 1, 1), 0.5) == 0.375;
-}
+cam_near :: (a: f32, b: f32, t: f32) -> bool { return abs(a - b) <= t; }
 
 #test "orbit, the wheel and V keep their bounds" {
   c: Camera;
+  #assert c.pitch == CAM_PITCH && c.zoom == CAM_THIRD_PERSON;
   c = cam_orbit(c, 0, 100000);
   #assert c.pitch == CAM_MAX_PITCH;
+  c = cam_orbit(c, 0, -100000);
+  #assert c.pitch == CAM_MIN_PITCH;
   c = cam_wheel(c, 3000);
   #assert c.zoom == CAM_MAX_ZOOM;
   c = cam_toggle_view(c);
-  #assert cam_first_person(c) && cam_aims(c) && c.third == CAM_MAX_ZOOM;
+  #assert cam_first_person(c) && cam_aims(c) && c.third == CAM_MAX_ZOOM && c.zoom == CAM_MIN_ZOOM;
   c = cam_toggle_view(c);
-  #assert !cam_first_person(c) && c.zoom == CAM_MAX_ZOOM;
+  #assert !cam_first_person(c) && c.zoom == CAM_MAX_ZOOM && c.pitch == 0.3;
   w := cam_walk(c, 1, 1);
   #assert abs(len2(w) - 1) < 0.001;
-  b: Boom;
-  r: Rig;
-  r.safe = 3;
-  b = boom_follow(b, r, 0.016);
-  #assert b.length == 3;
-  r.safe = 5;
-  b = boom_follow(b, r, 0.016);
-  #assert b.length > 3 && b.length < 3.2;
-  r.safe = 1;
-  b = boom_follow(b, r, 0.016);
-  #assert b.length == 1 && !boom_close(b);
 }
 
-#test "the start view: behind the kid's head, under the ceiling, inside the house" {
+#test "the camera's look is the follow's: behind, above by the pitch, out to the zoom" {
+  c: Camera; c.yaw = 0.7; c.pitch = 0.4;
+  f := cam_aim(Follow.{}, c);
+  o := follow_offset(f);
+  l := cam_look(c);
+  #assert cam_near(o.x, -l.x, 0.00001) && cam_near(o.y, -l.y, 0.00001) && cam_near(o.z, -l.z, 0.00001);
+  #assert cam_near(o.y, sin(0.4f32), 0.00001) && f.max_dist == CAM_THIRD_PERSON;
+  // the look sets only the look: where it looks at and how far out it is stay
+  g: Follow; g.target = world_point(1, 2, 3); g.dist = 2.5; g.vel = world_point(0.5, 0, 0);
+  h := cam_aim(g, c);
+  #assert h.target.x == 1 && h.target.z == 3 && h.dist == 2.5 && h.vel.x == 0.5;
+  c.zoom = CAM_MIN_ZOOM;
+  #assert cam_aim(g, c).max_dist == CAM_FIRST_PERSON;
+  c.zoom = 20;
+  #assert cam_aim(g, c).max_dist == CAM_MAX_ZOOM;
+  c.yaw = 100;   // a yaw wound round many times: the same look
+  #assert cam_aim(g, c).theta == follow_wrap(100 + f32(FOLLOW_PI)) && abs(cam_aim(g, c).theta) <= f32(FOLLOW_PI);
+  // theta is the yaw turned round by +pi, bit for bit, whatever the yaw
+  for k: 0..<64 {
+    c.yaw = f32(k) * 0.37 - 11;
+    #assert f32_bits(cam_aim(g, c).theta) == f32_bits(follow_wrap(c.yaw + f32(FOLLOW_PI)));
+  }
+}
+
+// A wall 1.8 m behind the kid's back: the follow pulls in short of it by FOLLOW_CLEAR.
+#test "a wall behind pulls the camera in at once; in the open it backs out gently to the zoom" {
+  wall := [12] f32.[-5, 0, -2, 5, 2.6, -1.8, -50, -1, -50, 50, 0, 50];
+  c: Camera; c.yaw = 0; c.pitch = 0;   // looking toward +z, the camera behind toward -z
+  step: f32 = 1.0 / 30.0;
+  walls := Colliders.{boxes = wall[..]};
+  f := cam_place(c, v2(0, 0), 0, walls);
+  #assert cam_near(f.dist, 1.6, 0.0001) && f.target.y == CAM_HEAD;
+  v := cam_view(f, c, v2(0, 0), 0);
+  #assert cam_near(v.eye.z, -1.6, 0.0001) && !v.first_person && v.target.z == 0 && v.target.y == CAM_HEAD;
+  open := Colliders.{boxes = wall[6..<12]};
+  far := c; far.zoom = CAM_MAX_ZOOM;
+  #assert cam_place(far, v2(0, 0), 0, open).dist == CAM_MAX_ZOOM;   // placed at the zoom at once, not eased out to it
+  g := cam_track(f, c, v2(0, 0), 0, open, step);
+  #assert g.dist > f.dist && g.dist < CAM_THIRD_PERSON;
+  for k: 0..<300 { g = cam_track(g, c, v2(0, 0), 0, open, step); }
+  #assert cam_near(g.dist, CAM_THIRD_PERSON, 0.001) && !cam_close(g);
+  // walking: the target follows the head on the follow's spring
+  h := cam_track(g, c, v2(1, 0), 0, open, step);
+  #assert h.target.x > 0 && h.target.x < 1;
+  near := g; near.dist = 0.59;
+  #assert cam_close(near);
+  near.dist = CAM_CLOSE;
+  #assert !cam_close(near);
+}
+
+#test "the floor and the ceiling hold a steep camera between them" #steps 1000000000 {
   games: [1] Game;
   g := games[..];
   game_new(g, 3, false, tuning_for(Difficulty.normal));
-  spaces: [1] Space;
-  s := spaces[..];
-  space_of(g, s);
-  #assert s[0].n > g[0].house.block_n;
+  hb: [1] HouseBoxes;
+  house_boxes_of(g, hb[..]);
+  walls := house_colliders(hb[..]);
+  at := g[0].player.pos;
+  up: Camera; up.pitch = CAM_MAX_PITCH; up.zoom = CAM_MAX_ZOOM;
+  a := cam_view(cam_place(up, at, 0, walls), up, at, 0);
+  #assert a.eye.y <= WALL_HEIGHT - f32(FOLLOW_CLEAR) + 0.001 && a.eye.y > CAM_HEAD;
+  down: Camera; down.pitch = CAM_MIN_PITCH; down.zoom = CAM_MAX_ZOOM;
+  b := cam_view(cam_place(down, at, 0, walls), down, at, 0);
+  #assert b.eye.y >= f32(FOLLOW_CLEAR) - 0.001 && b.eye.y < CAM_HEAD;
+}
+
+#test "Shift Lock looks over the right shoulder, short of a wall there; first person out of the eyes" {
+  c: Camera; c.yaw = 0; c.shift_lock = true;   // facing +z: the right is -x
+  none := Colliders.{};
+  p := cam_pivot(c, v2(0, 0), 0, none);
+  #assert cam_near(p.x, -CAM_SHOULDER * 0.6, 0.00001) && cam_near(p.y, CAM_HEAD + 0.1, 0.00001) && cam_near(p.z, 0, 0.00001);
+  wall := [6] f32.[-1, 0, -5, -0.5, 2.6, 5];   // 0.5 m to the right
+  q := cam_pivot(c, v2(0, 0), 0, Colliders.{boxes = wall[..]});
+  #assert cam_near(q.x, -0.3, 0.0001) && q.y > CAM_HEAD;
+  c.shift_lock = false;
+  r := cam_pivot(c, v2(2, 3), 0.5, none);
+  #assert r.x == 2 && r.y == 0.5 + CAM_HEAD && r.z == 3;
+  c.shift_lock = true; c.zoom = CAM_MIN_ZOOM; c.pitch = 0.2;
+  #assert cam_pivot(c, v2(2, 3), 0.5, none).x == 2;
+  f := cam_place(c, v2(2, 3), 0.5, none);
+  v := cam_view(f, c, v2(2, 3), 0.5);
+  l := cam_look(c);
+  #assert v.first_person && v.eye.x == 2 && cam_near(v.eye.y, 0.5 + CAM_HEAD, 0.00001) && v.eye.z == 3;
+  #assert cam_near(v.target.x - v.eye.x, l.x, 0.00001) && cam_near(v.target.y - v.eye.y, l.y, 0.00001) && cam_near(v.target.z - v.eye.z, l.z, 0.00001);
+}
+
+#test "the house's colliders: every block, every doorway's lintel, the floor and the ceiling" #steps 1000000000 {
+  games: [1] Game;
+  g := games[..];
+  game_new(g, 3, false, tuning_for(Difficulty.normal));
+  hb: [1] HouseBoxes;
+  house_boxes_of(g, hb[..]);
+  h := g[0].house;
+  #assert hb[0].n > h.block_n + 2 && house_colliders(hb[..]).boxes.count == hb[0].n * QUERY_BOX;
+  b := h.blocks[0];
+  #assert hb[0].at[0] == b.min.x && hb[0].at[1] == 0 && hb[0].at[2] == b.min.z;
+  #assert hb[0].at[3] == b.max.x && hb[0].at[4] == b.height && hb[0].at[5] == b.max.z;
+  // the lintels: a room's south door then its east one, each DOOR wide along its wall and WALL
+  // thick, over its doorway, from DOOR_HEIGHT to WALL_HEIGHT
+  lintel := h.block_n * QUERY_BOX;
+  for i: 0..<h.room_n {
+    for j: 0..<2 {
+      side := ifx j == 0 then Side.south else Side.east;
+      nb := neighbour(g, h.rooms[i].at, side);
+      if !h.rooms[i].doors[cast(int) side] || cell_eq(nb, NO_CELL) { continue; }
+      mid := doorway(h.rooms[i].at, nb);
+      wide := ifx side == Side.south then DOOR else WALL;
+      deep := ifx side == Side.south then WALL else DOOR;
+      #assert hb[0].at[lintel + 1] == DOOR_HEIGHT && hb[0].at[lintel + 4] == WALL_HEIGHT;
+      #assert cam_near(hb[0].at[lintel + 3] - hb[0].at[lintel], wide, 0.0001) && cam_near(hb[0].at[lintel + 5] - hb[0].at[lintel + 2], deep, 0.0001);
+      #assert cam_near(hb[0].at[lintel] + hb[0].at[lintel + 3], 2 * mid.x, 0.001) && cam_near(hb[0].at[lintel + 2] + hb[0].at[lintel + 5], 2 * mid.z, 0.001);
+      lintel += QUERY_BOX;
+    }
+  }
+  #assert lintel == (hb[0].n - 2) * QUERY_BOX && lintel > (h.block_n + 1) * QUERY_BOX;
+  low := (hb[0].n - 2) * QUERY_BOX;
+  #assert hb[0].at[low + 4] == 0 && hb[0].at[low + 1] == -1 && hb[0].at[low] == -CAM_SLAB && hb[0].at[low + 3] == CAM_SLAB;
+  #assert hb[0].at[low + 2] == -CAM_SLAB && hb[0].at[low + 5] == CAM_SLAB;
+  top := low + QUERY_BOX;
+  #assert hb[0].at[top + 1] == WALL_HEIGHT && hb[0].at[top + 4] == WALL_HEIGHT + 1 && hb[0].at[top] == -CAM_SLAB && hb[0].at[top + 5] == CAM_SLAB;
+  #assert hb[0].at[top + 2] == -CAM_SLAB && hb[0].at[top + 3] == CAM_SLAB;
+  // built again, the same count: it starts from none
+  house_boxes_of(g, hb[..]);
+  #assert hb[0].n * QUERY_BOX == top + QUERY_BOX;
+}
+
+#test "the start view: behind the kid's head, under the ceiling, inside the house" #steps 1000000000 {
+  games: [1] Game;
+  g := games[..];
+  game_new(g, 3, false, tuning_for(Difficulty.normal));
+  hb: [1] HouseBoxes;
+  house_boxes_of(g, hb[..]);
+  walls := house_colliders(hb[..]);
   c := camera_facing(g[0].player.facing);
   at := g[0].player.pos;
-  v := cam_view(c, at, g[0].player.height, s);
-  #assert !v.first_person && v.eye.y <= WALL_HEIGHT - CAM_HEADROOM + 0.001 && v.eye.y >= CAM_HEAD;
+  v := cam_view(cam_place(c, at, g[0].player.height, walls), c, at, g[0].player.height);
+  #assert !v.first_person && v.eye.y <= WALL_HEIGHT - f32(FOLLOW_CLEAR) + 0.001 && v.eye.y >= CAM_HEAD;
   back := v2(v.eye.x - at.x, v.eye.z - at.z);
   #assert dot2(back, g[0].player.facing) < 0 && len2(back) <= CAM_THIRD_PERSON;
   #assert room_of(g, v2(v.eye.x, v.eye.z)) == room_of(g, at);
-  d := v3sub(v.target, v.eye);
-  #assert abs(v3dot(d, d) - 1) < 0.001;
+  #assert v.target.x == at.x && v.target.z == at.z && v.target.y == g[0].player.height + CAM_HEAD;
+}
+
+#test "a ray meets a height, or doesn't; a tall screen sees wider" {
+  h := ray_to_height(v3(0, 3, 2), v3(1, -2, 0.5), 1);
+  #assert h.ok && h.at.x == 1 && h.at.z == 2.5;
+  #assert !ray_to_height(v3(0, 2, 0), v3(1, 1, 0), 1).ok && !ray_to_height(v3(0, 2, 0), v3(1, 0, 0), 1).ok;
+  #assert ray_to_height(v3(0, 2, 0), v3(1, -0.00001, 0), 1).ok && !ray_to_height(v3(0, 1, 0), v3(1, -1, 0), 1).ok;
+  #assert cam_fov(0.5) > cam_fov(2) && cam_fov(1) == cam_fov(2) && cam_near(cam_fov(2), 1.0471976, 0.000001) && cam_near(cam_fov(0.5), 1.2217305, 0.000001);
+  #assert cam_near(1, 1.5, 0.5) && !cam_near(1, 1.5, 0.4);
+}
+
+#test "the yaw of a direction, and the controls' steps" {
+  // on the diagonal the short arc is taken, bit for bit: atan_unit(1), not PI / 2 less it
+  #assert f32_bits(arctan2(1, 1)) == f32_bits(atan_unit(1)) && f32_bits(arctan2(-1, -1)) == f32_bits(-(PI_F - atan_unit(1)));
+  #assert arctan2(1, 0) == PI_F / 2 && arctan2(1, -0.0) == PI_F / 2 && arctan2(-1, 0) == -PI_F / 2;
+  #assert yaw_of(v2(0, 1)) == 0 && yaw_of(v2(0, 0)) == 0;
+  #assert cam_near(yaw_of(v2(0, -1)), PI_F, 0.000001) && cam_near(yaw_of(v2(1, 0)), PI_F / 2, 0.00003);
+  #assert cam_near(yaw_of(v2(1, 1)), 0.7853982, 0.00003) && cam_near(yaw_of(v2(1, 2)), 0.4636476, 0.00003) && cam_near(yaw_of(v2(2, 1)), 1.1071487, 0.00003);
+  #assert cam_near(yaw_of(v2(-1, -2)), -2.6779451, 0.00003) && cam_near(yaw_of(v2(1, -2)), 2.6779451, 0.00003) && cam_near(yaw_of(v2(-2, 1)), -1.1071487, 0.00003);
+  #assert cam_near(yaw_of(v2(0.3, 1)), 0.2914568, 0.00003) && cam_near(yaw_of(v2(1, 0.3)), 1.2793395, 0.00003);
+  #assert cam_near(camera_facing(v2(1, 0)).yaw, PI_F / 2, 0.00003) && camera_facing(v2(0, 0)).yaw == 3.14159265;
+  c: Camera;
+  #assert cam_near(cam_orbit(c, 100, 0).yaw, c.yaw - 0.6, 0.00001) && cam_near(cam_orbit(c, 0, 10).pitch, CAM_PITCH + 0.05, 0.00001);
+  #assert cam_near(cam_wheel(c, 100).zoom, 4.95, 0.0001) && cam_near(cam_wheel(c, -100).zoom, 4.5 / 1.1, 0.0001);
+  c.zoom = CAM_FIRST_PERSON;
+  #assert !cam_first_person(c);
+  first: Camera; first.zoom = CAM_MIN_ZOOM; first.third = 1; first.pitch = 0.1;
+  back := cam_toggle_view(first);
+  #assert back.zoom == CAM_FIRST_PERSON + 1 && back.pitch == 0.1;
+  third: Camera; third.pitch = 0.3;
+  #assert cam_toggle_view(third).pitch == 0.15 && cam_toggle_view(third).third == CAM_THIRD_PERSON;
 }

@@ -1,5 +1,19 @@
 # Owner actions
 
+## Ice Cream Man's camera on Aethyr's follow: approve the look (#12609, 2026-11-02)
+
+Ice Cream Man's boom camera now runs on `aethyr/follow.coax`, one step per
+rules step. The same bot round (`#seed=4&bot`) was drawn before and after,
+frame for frame:
+`docs/verification/data/icecream-boom-2026-11-02/side-by-side/` (before on
+the left), with the full frames in `before/` and `after/` and what changed
+in its `README.md`. In tight rooms and doorways the camera sits a little
+further back, the kid trails slightly while walking, and the camera backs
+out faster after a wall. Look at the pairs. If the look is right, refresh
+`ice-cream-man.png` with `bun coax/web/goldens.ts BASE --update` against
+staging. If not, say what to tune: distance, spring or ease.
+
+
 ## Made realm's accessible layer, lifecycle and controller: run on a real GPU (#12629, 2026-11-02)
 
 `coax/web/forge-access.coax` drives a made realm in muted headless Chrome:

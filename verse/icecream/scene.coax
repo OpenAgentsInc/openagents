@@ -264,7 +264,7 @@ draw_held :: (s: [] IceScene) {
 draw_avatar :: (s: [] IceScene) {
   g := s[0].games[..]; p := s[0].plays[..];
   player := g[0].player;
-  if player.hidden >= 0 || p[0].view.first_person || boom_close(p[0].boom) { return; }
+  if player.hidden >= 0 || p[0].view.first_person || cam_close(p[0].follow) { return; }
   time := p[0].time;
   light := floor3(light_at(g, player.pos, time), 0.97);
   sink: f32 = 0;
@@ -522,7 +522,7 @@ icecream_facts :: (s: [] IceScene, out: [] f32) #export_c { ice_play_facts(s[0].
   #assert store_retry2 == store_first && store_retry3 == store_first && store_idle == 0 && s[0].sent == 3;
 }
 
-#test "the kid and the keys are drawn, each with its outline" {
+#test "the kid and the keys are drawn, each with its outline" #steps 200000000 {
   s: [1] IceScene;
   vs: [TEST_SCENE * SCENE_WORDS] u32; tb: [SCENE_TRACE] u8; icecream_attach(s[..], vs[..], tb[..]);
   icecream_frame(s[..], 1600, 1000, 1, 0.016);
@@ -536,7 +536,7 @@ icecream_facts :: (s: [] IceScene, out: [] f32) #export_c { ice_play_facts(s[0].
   #assert first >= OBJ_BASE && (first - OBJ_BASE) / 1024 == 0;
 }
 
-#test "the view puts the kid's head mid-screen, in front of the eye" {
+#test "the view puts the kid's head mid-screen, in front of the eye" #steps 200000000 {
   s: [1] IceScene;
   vs: [TEST_SCENE * SCENE_WORDS] u32; tb: [SCENE_TRACE] u8; icecream_attach(s[..], vs[..], tb[..]);
   icecream_frame(s[..], 1600, 1000, 1, 0.016);

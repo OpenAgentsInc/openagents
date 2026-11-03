@@ -218,7 +218,7 @@ tuning_set :: (t: Tuning, name: string, value: f64) -> TuningSet {
   if b.whole && value != floor(value) { return TuningSet.{ok = false, tuning = t, why = WHY_WHOLE}; }
   return TuningSet.{ok = true, tuning = tuning_put(t, i, value), why = WHY_OK};
 }
-change :: (t: Tuning, name: string, value: f64) -> Tuning {
+tuning_change :: (t: Tuning, name: string, value: f64) -> Tuning {
   r := tuning_set(t, name, value);
   #assert r.ok;
   return r.tuning;
@@ -227,14 +227,14 @@ sight_cos :: (t: Tuning) -> f32 { return cos(t.sight_angle * rads_per_deg()); }
 
 tuning_original :: () -> Tuning {
   t: Tuning;
-  t = change(t, "man_wander", 2.4); t = change(t, "man_investigate", 3.6); t = change(t, "man_search", 3.2);
-  t = change(t, "man_chase", 5.6); t = change(t, "extra_closets", 0); t = change(t, "earned_weapons", 0);
-  t = change(t, "minion_count", 0); t = change(t, "free_roam", 0); t = change(t, "backrooms", 0);
-  t = change(t, "loops", 4); t = change(t, "yellow", 0); t = change(t, "fog_near", 9); t = change(t, "fog_far", 34);
-  t = change(t, "flicker", 0.03); t = change(t, "buzz", 0); t = change(t, "sprint_noise", 8); t = change(t, "unlock", 2);
-  t = change(t, "unlock_guard", 0); t = change(t, "puzzle_key", 0); t = change(t, "house_size", 4);
-  t = change(t, "key_spread", 0); t = change(t, "patrol_keys", 0); t = change(t, "corners", 0);
-  t = change(t, "minion_growth", 0);
+  t = tuning_change(t, "man_wander", 2.4); t = tuning_change(t, "man_investigate", 3.6); t = tuning_change(t, "man_search", 3.2);
+  t = tuning_change(t, "man_chase", 5.6); t = tuning_change(t, "extra_closets", 0); t = tuning_change(t, "earned_weapons", 0);
+  t = tuning_change(t, "minion_count", 0); t = tuning_change(t, "free_roam", 0); t = tuning_change(t, "backrooms", 0);
+  t = tuning_change(t, "loops", 4); t = tuning_change(t, "yellow", 0); t = tuning_change(t, "fog_near", 9); t = tuning_change(t, "fog_far", 34);
+  t = tuning_change(t, "flicker", 0.03); t = tuning_change(t, "buzz", 0); t = tuning_change(t, "sprint_noise", 8); t = tuning_change(t, "unlock", 2);
+  t = tuning_change(t, "unlock_guard", 0); t = tuning_change(t, "puzzle_key", 0); t = tuning_change(t, "house_size", 4);
+  t = tuning_change(t, "key_spread", 0); t = tuning_change(t, "patrol_keys", 0); t = tuning_change(t, "corners", 0);
+  t = tuning_change(t, "minion_growth", 0);
   return t;
 }
 
@@ -242,18 +242,18 @@ Difficulty :: enum u8 { easy; normal; hard; }
 tuning_for :: (d: Difficulty) -> Tuning {
   t: Tuning;
   if d == Difficulty.easy {
-    t = change(t, "man_wander", 1.92); t = change(t, "man_investigate", 2.88); t = change(t, "man_search", 2.56);
-    t = change(t, "man_chase", 4.48); t = change(t, "loops", 10); t = change(t, "sprint_noise", 8);
-    t = change(t, "unlock", 2); t = change(t, "unlock_guard", 0); t = change(t, "puzzle_key", 0);
-    t = change(t, "house_size", 4); t = change(t, "key_spread", 0); t = change(t, "patrol_keys", 0);
-    t = change(t, "corners", 0); t = change(t, "minion_growth", 0);
+    t = tuning_change(t, "man_wander", 1.92); t = tuning_change(t, "man_investigate", 2.88); t = tuning_change(t, "man_search", 2.56);
+    t = tuning_change(t, "man_chase", 4.48); t = tuning_change(t, "loops", 10); t = tuning_change(t, "sprint_noise", 8);
+    t = tuning_change(t, "unlock", 2); t = tuning_change(t, "unlock_guard", 0); t = tuning_change(t, "puzzle_key", 0);
+    t = tuning_change(t, "house_size", 4); t = tuning_change(t, "key_spread", 0); t = tuning_change(t, "patrol_keys", 0);
+    t = tuning_change(t, "corners", 0); t = tuning_change(t, "minion_growth", 0);
   } else if d == Difficulty.hard {
-    t = change(t, "house_size", 8); t = change(t, "man_wander", 2.7); t = change(t, "man_investigate", 4.0);
-    t = change(t, "man_search", 3.6); t = change(t, "man_chase", 6.2); t = change(t, "sight", 26);
-    t = change(t, "search_time", 10); t = change(t, "sniff_every", 18); t = change(t, "patrol_keys", 1);
-    t = change(t, "sprint_noise", 18); t = change(t, "unlock", 7); t = change(t, "unlock_guard", 11);
-    t = change(t, "minion_count", 4); t = change(t, "minion_growth", 40); t = change(t, "minion_speed", 3.8);
-    t = change(t, "extra_closets", 1);
+    t = tuning_change(t, "house_size", 8); t = tuning_change(t, "man_wander", 2.7); t = tuning_change(t, "man_investigate", 4.0);
+    t = tuning_change(t, "man_search", 3.6); t = tuning_change(t, "man_chase", 6.2); t = tuning_change(t, "sight", 26);
+    t = tuning_change(t, "search_time", 10); t = tuning_change(t, "sniff_every", 18); t = tuning_change(t, "patrol_keys", 1);
+    t = tuning_change(t, "sprint_noise", 18); t = tuning_change(t, "unlock", 7); t = tuning_change(t, "unlock_guard", 11);
+    t = tuning_change(t, "minion_count", 4); t = tuning_change(t, "minion_growth", 40); t = tuning_change(t, "minion_speed", 3.8);
+    t = tuning_change(t, "extra_closets", 1);
   }
   return t;
 }
@@ -359,7 +359,7 @@ module_def :: (m: Module) -> ModuleDef { return MODULES[cast(int) m]; }
 ALL_MODULES :: [8] Module.[Module.bedroom, Module.kitchen, Module.living_room, Module.bathroom, Module.laundry, Module.hallway, Module.stairwell, Module.freezer_room];
 
 Cell :: struct { col: int; row: int; }
-cell :: (col: int, row: int) -> Cell { return Cell.{col = col, row = row}; }
+house_cell :: (col: int, row: int) -> Cell { return Cell.{col = col, row = row}; }
 cell_eq :: (a: Cell, b: Cell) -> bool { return a.col == b.col && a.row == b.row; }
 side_at :: (i: int) -> Side { return cast(Side) cast(u8) i; }
 side_dx :: (s: Side) -> int { return ifx s == Side.east then 1 else ifx s == Side.west then -1 else 0; }
@@ -378,7 +378,7 @@ neighbour_in :: (c: Cell, s: Side, cols: int, rows: int) -> Cell {
   col := c.col + side_dx(s);
   row := c.row + side_dz(s);
   if col < 0 || row < 0 || col >= cols || row >= rows { return NO_CELL; }
-  return cell(col, row);
+  return house_cell(col, row);
 }
 
 Room :: struct { at: Cell; kind: Module; flavor: Flavor; doors: [4] bool; }
@@ -422,14 +422,14 @@ House :: struct {
   cabinet_key: int = -1;
 }
 
-centre :: (c: Cell) -> V2 {
+cell_centre :: (c: Cell) -> V2 {
   two: f32 = 2.0;
   return v2(f32(c.col) * CELL + CELL / two, f32(c.row) * CELL + CELL / two);
 }
 cell_of :: (g: [] Game, p: V2) -> Cell {
   col := int(clampf(floor(p.x / CELL), 0, f32(g[0].house.cols - 1)));
   row := int(clampf(floor(p.z / CELL), 0, f32(g[0].house.rows - 1)));
-  return cell(col, row);
+  return house_cell(col, row);
 }
 room_index :: (g: [] Game, c: Cell) -> int { return c.row * g[0].house.cols + c.col; }
 room_of :: (g: [] Game, p: V2) -> int { return room_index(g, cell_of(g, p)); }
@@ -488,7 +488,7 @@ cell_path :: (g: [] Game, from: Cell, to: Cell) -> Cells {
   return out;
 }
 
-doorway :: (a: Cell, b: Cell) -> V2 { half: f32 = 0.5; return vmul(vadd(centre(a), centre(b)), half); }
+doorway :: (a: Cell, b: Cell) -> V2 { half: f32 = 0.5; return vmul(vadd(cell_centre(a), cell_centre(b)), half); }
 
 headroom :: (g: [] Game, p: V2, radius: f32) -> f32 {
   two: f32 = 2.0;
@@ -589,7 +589,7 @@ route :: (g: [] Game, from: V2, to: V2, radius: f32) -> Path {
       room = cells.c[i];
     }
     if first_hit(g, last, next, radius, 0) >= 0 {
-      c := centre(room);
+      c := cell_centre(room);
       if dist2(c, last) > 0.2 {
         out = path_push(out, c);
         last = c;
@@ -670,7 +670,7 @@ house_build_blocks :: (g: [] Game) {
     }
   }
   for i: 0..<g[0].house.room_n {
-    c := centre(g[0].house.rooms[i].at);
+    c := cell_centre(g[0].house.rooms[i].at);
     def := module_def(g[0].house.rooms[i].kind);
     for k: 0..<def.prop_n {
       p := def.props[k];
@@ -764,7 +764,7 @@ house_place_puzzle :: (g: [] Game, front_room: int, spread: bool) {
   for k: 0..<pool_n {
     if k >= BUTTONS + 1 { break; }
     room := pool[k];
-    c := centre(g[0].house.rooms[room].at);
+    c := cell_centre(g[0].house.rooms[room].at);
     def := module_def(g[0].house.rooms[room].kind);
     slots: [4] V2;
     slot_n := 0;
@@ -798,7 +798,7 @@ house_generate :: (g: [] Game, seed: u64, shape: Shape) {
   g[0].house.seed = seed;
   g[0].house.cols = cols;
   g[0].house.rows = rows;
-  corners := [4] Cell.[cell(0, 0), cell(cols - 1, 0), cell(0, rows - 1), cell(cols - 1, rows - 1)];
+  corners := [4] Cell.[house_cell(0, 0), house_cell(cols - 1, 0), house_cell(0, rows - 1), house_cell(cols - 1, rows - 1)];
   spawn_cell := corners[rng_below(g, RNG_HOUSE, 4)];
   spawn_room := spawn_cell.row * cols + spawn_cell.col;
 
@@ -834,7 +834,7 @@ house_generate :: (g: [] Game, seed: u64, shape: Shape) {
   next := 0;
   for r: 0..<count {
     room: Room;
-    room.at = cell(r % cols, r / cols);
+    room.at = house_cell(r % cols, r / cols);
     if r == spawn_room {
       room.kind = Module.bedroom;
     } else if next < kind_n {
@@ -891,7 +891,7 @@ house_generate :: (g: [] Game, seed: u64, shape: Shape) {
     }
   }
 
-  g[0].house.spawn = vadd(centre(spawn_cell), v2(0, 1));
+  g[0].house.spawn = vadd(cell_centre(spawn_cell), v2(0, 1));
   g[0].house.spawn_room = spawn_room;
   g[0].house.backrooms = shape.backrooms;
   dist := distances(g, spawn_cell);
@@ -911,7 +911,7 @@ house_generate :: (g: [] Game, seed: u64, shape: Shape) {
   side := outer_sides[rng_below(g, RNG_HOUSE, outer_n)];
   two: f32 = 2.0;
   out_by: f32 = 1.1;
-  mid := vadd(centre(g[0].house.rooms[front_room].at), vmul(outward(side), CELL / two));
+  mid := vadd(cell_centre(g[0].house.rooms[front_room].at), vmul(outward(side), CELL / two));
   g[0].house.front = FrontDoor.{room = front_room, side = side, at = mid, stand = vsub(mid, vmul(outward(side), out_by))};
 
   // Keys: three other rooms two or more doorways from the bedroom.
@@ -969,7 +969,7 @@ house_generate :: (g: [] Game, seed: u64, shape: Shape) {
     room := key_rooms[k];
     def := module_def(g[0].house.rooms[room].kind);
     slot := def.slots[rng_below(g, RNG_HOUSE, 4)];
-    g[0].house.keys[g[0].house.key_n] = vadd(centre(g[0].house.rooms[room].at), slot);
+    g[0].house.keys[g[0].house.key_n] = vadd(cell_centre(g[0].house.rooms[room].at), slot);
     g[0].house.key_n += 1;
   }
 
@@ -984,7 +984,7 @@ house_generate :: (g: [] Game, seed: u64, shape: Shape) {
   } else {
     man_room = far[rng_below(g, RNG_HOUSE, far_n)];
   }
-  g[0].house.man_start = centre(g[0].house.rooms[man_room].at);
+  g[0].house.man_start = cell_centre(g[0].house.rooms[man_room].at);
 
   house_build_blocks(g);
   house_place_puzzle(g, front_room, shape.spread);
@@ -1015,7 +1015,7 @@ house_with_closets :: (g: [] Game, extra: int) {
     def := module_def(g[0].house.rooms[room].kind);
     if !def.has_spare { continue; }
     p := def.spare;
-    c := centre(g[0].house.rooms[room].at);
+    c := cell_centre(g[0].house.rooms[room].at);
     blk := Block.{min = vadd(c, p.min), max = vadd(c, p.max), height = p.height};
     #assert g[0].house.block_n < MAX_BLOCKS;
     g[0].house.blocks[g[0].house.block_n] = blk;
@@ -1306,7 +1306,7 @@ man_walk :: (g: [] Game, toward: V2, speed: f32) {
   if g[0].man.stuck > 20 {
     g[0].man.stuck = 0;
     if g[0].man.has_goal {
-      c := centre(cell_of(g, g[0].man.pos));
+      c := cell_centre(cell_of(g, g[0].man.pos));
       rest := route(g, c, g[0].man.goal, MAN_RADIUS);
       p: Path;
       p = path_push(p, c);
@@ -1421,7 +1421,7 @@ man_step :: (g: [] Game, senses: Senses) -> Acts {
     if g[0].man.sniff <= 0 {
       g[0].man.sniff = t.sniff_every;
       g[0].man.state = ManState.investigate;
-      man_head_to(g, centre(cell_of(g, senses.player)));
+      man_head_to(g, cell_centre(cell_of(g, senses.player)));
     }
   }
 
@@ -1476,7 +1476,7 @@ man_step :: (g: [] Game, senses: Senses) -> Acts {
         g[0].man.has_last_seen = false;
         g[0].man.has_goal = false;
       } else {
-        c := centre(cell_of(g, g[0].man.pos));
+        c := cell_centre(cell_of(g, g[0].man.pos));
         spots := [5] V2.[v2(0, 0), v2(3, 0), v2(-3, 0), v2(0, 3), v2(0, -3)];
         spot := vadd(c, spots[rng_below(g, RNG_MAN, 5)]);
         g[0].man.has_goal = true;
@@ -1498,7 +1498,7 @@ man_step :: (g: [] Game, senses: Senses) -> Acts {
         next := neighbours(g, here);
         pick := here;
         if next.n > 0 { pick = next.c[rng_below(g, RNG_MAN, next.n)]; }
-        man_head_to(g, centre(pick));
+        man_head_to(g, cell_centre(pick));
       }
     }
   }
@@ -1562,8 +1562,8 @@ minion_wander :: (g: [] Game, i: int, speed: f32) {
     pick := here;
     if next.n > 0 { pick = next.c[rng_below(g, RNG_GAME, next.n)]; }
     g[0].minions[i].has_goal = true;
-    g[0].minions[i].goal = centre(pick);
-    g[0].minions[i].path = route(g, g[0].minions[i].pos, centre(pick), MINION_RADIUS);
+    g[0].minions[i].goal = cell_centre(pick);
+    g[0].minions[i].path = route(g, g[0].minions[i].pos, cell_centre(pick), MINION_RADIUS);
   }
   if g[0].minions[i].has_goal { minion_go(g, i, g[0].minions[i].goal, speed, 0.4); }
 }
@@ -2320,7 +2320,7 @@ spawn_minions :: (g: [] Game) {
     for i: 0..<g[0].house.room_n { if steps.d[i] >= 2 && steps.d[i] != NONE { far[far_n] = i; far_n += 1; } }
     if far_n == 0 { return; }
     room := far[rng_below(g, RNG_GAME, far_n)];
-    at = centre(g[0].house.rooms[room].at);
+    at = cell_centre(g[0].house.rooms[room].at);
   }
   add_minion(g, at, g[0].tuning.minion_health, false, 0);
   ev_at(g, EventKind.minion_came, at);
@@ -2675,7 +2675,7 @@ check_house :: (g: [] Game, d: Difficulty, seed: u64) -> bool {
 #test "rules: the fudge freezes him, the keys open the door" {
   games: [1] Game;
   g := games[..];
-  t := change(change(tuning_for(Difficulty.normal), "freeze_hits", 2), "unlock", 0.3);
+  t := tuning_change(tuning_change(tuning_for(Difficulty.normal), "freeze_hits", 2), "unlock", 0.3);
   game_new(g, 7, true, t);
   #assert man_fudge(g) == false && man_fudge(g) == true && g[0].man.state == ManState.frozen;
   #assert !man_fudge(g);
