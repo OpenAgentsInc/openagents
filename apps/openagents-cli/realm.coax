@@ -455,7 +455,8 @@ realm_publish :: (a: [] Args, r: [] Rep, profile: string) -> int {
   body := cast(string) out[0..<res.n];
   if res.error == HTTP_OK && res.status == 409 {
     nodes: [32] JvNode; d: [1] Jv;
-    if jv_parse(d[..], body, nodes[..]) { rep_raw(r, "rev", jv_raw(d[0], jv_get(d[0], 0, "rev"))); }
+    // realm_reply_rev refuses a quoted "7" (commands.coax's checks), so only a number is printed
+    if jv_parse(d[..], body, nodes[..]) { rv := realm_reply_rev(body); if rv > 0 { rep_int(r, "rev", rv); } }
   }
   if !api_ok(res) { return api_fail(r, res, body); }
   if !rep_object(r, body) { return fail(r, EXIT_FAIL, "the server's answer isn't JSON"); }

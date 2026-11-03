@@ -781,7 +781,7 @@ lb_captions :: (cw: [] LbCutWork, voice: string, why: [] u8) -> int {
   for i: 0..<jv_len(d[0], segs) {
     if cw[0].cap_n >= LB_CAPS_MAX { break; }
     s := jv_at(d[0], segs, i);
-    a := lb_ms(jv_raw(d[0], jv_get(d[0], s, "start"))); b := lb_ms(jv_raw(d[0], jv_get(d[0], s, "end")));
+    a := lb_json_ms(d[0], jv_get(d[0], s, "start")); b := lb_json_ms(d[0], jv_get(d[0], s, "end"));
     k := cw[0].cap_n;
     n := jv_str(d[0], jv_get(d[0], s, "text"), cw[0].caps[k].text[..]);
     if a < 0 || b <= a || n <= 0 { continue; }

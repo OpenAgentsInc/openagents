@@ -40,7 +40,7 @@ forge_slug_ok :: (s: string) -> bool {
 // book:begin metres
 // Metres with at most two decimals, as the server writes them, to whole centimetres; 4001 when not.
 forge_cm_of :: (raw: string) -> int {
-  neg := raw.count > 0 && raw[0] == '-';
+  neg := raw != "" && raw[0] == '-';
   s := ifx neg then raw[1..<raw.count] else raw;
   dot := 0; while dot < s.count && s[dot] != '.' { dot += 1; }
   if dot == 0 || dot > 2 || (dot < s.count && (s.count - dot - 1 < 1 || s.count - dot - 1 > 2)) { return 4001; }
@@ -53,18 +53,38 @@ forge_cm_of :: (raw: string) -> int {
   return ifx neg then -cm else cm;
 }
 // book:end metres
-// A whole number in JSON (no fraction, no exponent) in [lo, hi], or lo - 1.
+// A whole number in JSON (no fraction, no exponent) in [lo, hi], or lo - 1. Its digits stop
+// counting past hi, so it never overflows (lo is never below -hi here).
 forge_whole :: (raw: string, lo: int, hi: int) -> int {
-  neg := raw.count > 0 && raw[0] == '-';
+  neg := raw != "" && raw[0] == '-';
   s := ifx neg then raw[1..<raw.count] else raw;
-  if s.count == 0 || s.count > 9 { return lo - 1; }
+  if s == "" { return lo - 1; }
   v := 0;
-  for c: s { if !forge_digit(c) { return lo - 1; } v = v * 10 + cast(int) (c - '0'); }
+  for c: s {
+    if !forge_digit(c) { return lo - 1; }
+    v = v * 10 + cast(int) (c - '0');
+    if v > hi { return lo - 1; }
+  }
   v = ifx neg then -v else v;
-  return ifx v < lo || v > hi then lo - 1 else v;
+  return ifx v < lo then lo - 1 else v;
+}
+FORGE_REV_MOST :: 999999999;   // a document's version and revision, and a fork's, at most
+
+// A string's text unescaped into buf, or "" when the node isn't a string or doesn't fit.
+forge_str :: (j: Jv, at: int, buf: [] u8) -> string {
+  n := jv_str(j, at, buf);
+  return ifx n == -1 then "" else cast(string) buf[0..<n];
+}
+// prefix and name as one slot key in buf, or "" when it doesn't fit.
+forge_key_of :: (prefix: string, name: string, buf: [] u8) -> string {
+  n := forge_put(buf, forge_put(buf, 0, prefix), name);
+  return ifx n == -1 then "" else cast(string) buf[0..<n];
 }
 
 forge_why :: (why: string) -> ForgeRead { return ForgeRead.{ok = false, why = why}; }
+// A number's text, or "" when the node is anything else: jv_raw gives a string's contents, so a
+// quoted "4" would read as 4 without this (#12720). Every numeric field is read through it.
+forge_num :: (j: Jv, at: int) -> string { return ifx jv_kind(j, at) == JV_NUMBER then jv_raw(j, at) else ""; }
 
 // book:begin doc
 // Read a document (or /doc's answer around it) into d. Refused whole, d as it was, when it isn't an
@@ -75,97 +95,99 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
   if !jv_parse(j[..], text, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return forge_why("not a JSON object"); }
   at := 0;
   if jv_kind(j[0], jv_get(j[0], 0, "doc")) == JV_OBJECT { at = jv_get(j[0], 0, "doc"); }   // /doc's answer
-  kind: [32] u8; kn := jv_str(j[0], jv_get(j[0], at, "doc"), kind[..]);
-  if kn < 0 || cast(string) kind[0..<kn] != FORGE_DOC_KIND { return forge_why("not a realm document"); }
-  version := forge_whole(jv_raw(j[0], jv_get(j[0], at, "version")), 1, 1000000);
+  kind: [32] u8;
+  if forge_str(j[0], jv_get(j[0], at, "doc"), kind[..]) != FORGE_DOC_KIND { return forge_why("not a realm document"); }
+  version := forge_whole(forge_num(j[0], jv_get(j[0], at, "version")), 1, FORGE_REV_MOST);
   if version < 1 { return forge_why("no version"); }
   if version > FORGE_DOC_NEWEST { return forge_why("a newer document than this reader knows"); }
-  rev := forge_whole(jv_raw(j[0], jv_get(j[0], at, "rev")), 1, 999999999);
+  rev := forge_whole(forge_num(j[0], jv_get(j[0], at, "rev")), 1, FORGE_REV_MOST);
   if rev < 1 { return forge_why("no revision"); }
   got := ForgeRead.{ok = true, version = version};
   // book:begin fork
   // A fork names the realm it was copied from and that realm's revision: {"slug": S, "rev": N}.
   parent := jv_get(j[0], at, "forked_from");   // null, or absent, when it isn't a fork
-  if parent >= 0 && jv_kind(j[0], parent) != JV_NULL {
-    slug: [FORGE_SLUG + 1] u8; sn := jv_str(j[0], jv_get(j[0], parent, "slug"), slug[..]);
-    got.from_rev = forge_whole(jv_raw(j[0], jv_get(j[0], parent, "rev")), 1, 999999999);
-    if jv_kind(j[0], parent) != JV_OBJECT || sn < 1 || !forge_slug_ok(cast(string) slug[0..<sn]) || got.from_rev < 1
-        || jv_kind(j[0], jv_get(j[0], parent, "rev")) != JV_NUMBER {
+  if jv_kind(j[0], parent) > JV_NULL {
+    buf: [FORGE_SLUG + 1] u8; slug := forge_str(j[0], jv_get(j[0], parent, "slug"), buf[..]);
+    got.from_rev = forge_whole(forge_num(j[0], jv_get(j[0], parent, "rev")), 1, FORGE_REV_MOST);
+    if jv_kind(j[0], parent) != JV_OBJECT || !forge_slug_ok(slug) || got.from_rev < 1 {
       return forge_why("a fork's parent out of bounds");
     }
-    for i: 0..<sn { got.from[i] = slug[i]; }
-    got.from_n = sn;
+    for i: 0..<slug.count { got.from[i] = slug[i]; }
+    got.from_n = slug.count;
   }
 // book:end fork
   next: [1] ForgeDoc; forge_reset(next[..], rev);
   moved := jv_get(j[0], at, "moved");
   if jv_kind(j[0], moved) != JV_ARRAY { return forge_why("no moves"); }
   for i: 0..<jv_len(j[0], moved) {
-    e := jv_at(j[0], moved, i); key: [FORGE_KEY + 1] u8; n := jv_str(j[0], jv_get(j[0], e, "entity"), key[..]);
-    x := forge_cm_of(jv_raw(j[0], jv_get(j[0], e, "x"))); z := forge_cm_of(jv_raw(j[0], jv_get(j[0], e, "z")));
-    if n < 0 || forge_where(next[..], cast(string) key[0..<n]).found || !forge_read_move(next[..], cast(string) key[0..<n], x, z) { return forge_why("a move out of bounds"); }
+    e := jv_at(j[0], moved, i); kb: [FORGE_KEY + 1] u8; key := forge_str(j[0], jv_get(j[0], e, "entity"), kb[..]);
+    x := forge_cm_of(forge_num(j[0], jv_get(j[0], e, "x"))); z := forge_cm_of(forge_num(j[0], jv_get(j[0], e, "z")));
+    if forge_where(next[..], key).found || !forge_read_move(next[..], key, x, z) { return forge_why("a move out of bounds"); }
   }
   shaped := jv_get(j[0], at, "shaped");   // absent before migration 0109: no shapes
-  if shaped >= 0 && jv_kind(j[0], shaped) != JV_ARRAY { return forge_why("shapes not a list"); }
+  if shaped != -1 && jv_kind(j[0], shaped) != JV_ARRAY { return forge_why("shapes not a list"); }
   for i: 0..<jv_len(j[0], shaped) {
-    e := jv_at(j[0], shaped, i); key: [FORGE_KEY + 1] u8; n := jv_str(j[0], jv_get(j[0], e, "entity"), key[..]);
-    yaw := forge_whole(jv_raw(j[0], jv_get(j[0], e, "yaw")), 1 - FORGE_TURN, FORGE_TURN);
-    scale := forge_whole(jv_raw(j[0], jv_get(j[0], e, "scale")), FORGE_SCALE_MIN, FORGE_SCALE_MAX);
+    e := jv_at(j[0], shaped, i); kb: [FORGE_KEY + 1] u8; key := forge_str(j[0], jv_get(j[0], e, "entity"), kb[..]);
+    yaw := forge_whole(forge_num(j[0], jv_get(j[0], e, "yaw")), 1 - FORGE_TURN, FORGE_TURN);
+    scale := forge_whole(forge_num(j[0], jv_get(j[0], e, "scale")), FORGE_SCALE_MIN, FORGE_SCALE_MAX);
     gone := jv_kind(j[0], jv_get(j[0], e, "gone"));
-    if n < 0 || yaw < 1 - FORGE_TURN || scale < FORGE_SCALE_MIN || (gone != JV_TRUE && gone != JV_FALSE) { return forge_why("a shape out of bounds"); }
-    s := forge_shape_of(next[..], cast(string) key[0..<n]);
+    if yaw < 1 - FORGE_TURN || scale < FORGE_SCALE_MIN || (gone != JV_TRUE && gone != JV_FALSE) { return forge_why("a turn, size or gone out of bounds"); }
+    s := forge_shape_of(next[..], key);
     if s.yaw != 0 || s.scale != 100 || s.gone || (yaw == 0 && scale == 100 && gone == JV_FALSE) { return forge_why("a shape twice, or no shape"); }
-    if !forge_read_shape(next[..], cast(string) key[0..<n], yaw, scale, gone == JV_TRUE) { return forge_why("a shape out of bounds"); }
+    if !forge_read_shape(next[..], key, yaw, scale, gone == JV_TRUE) { return forge_why("a shape out of bounds"); }
   }
   setup := jv_get(j[0], at, "setup");
   for what: [5] string.["style", "ground", "time", "camera", "palette"] {
-    v: [64] u8; n := jv_str(j[0], jv_get(j[0], setup, what), v[..]);
-    kb: [16] u8; k := forge_put(kb[..], 0, "set:"); k = forge_put(kb[..], k, what);
-    if n > 0 && !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<n]) { return forge_why("a setup field out of bounds"); }
+    vb: [64] u8; v := forge_str(j[0], jv_get(j[0], setup, what), vb[..]);
+    kb: [16] u8;
+    if v != "" && !forge_read_slot(next[..], forge_key_of("set:", what, kb[..]), v) { return forge_why("a setup field out of bounds"); }
   }
   tools := jv_get(j[0], at, "tools");
   for i: 0..<jv_len(j[0], tools) {
     if jv_kind(j[0], tools) != JV_OBJECT { return forge_why("tools not an object"); }
-    t := jv_at(j[0], tools, i); name := jv_key(j[0], t);
-    kb: [48] u8; k := forge_put(kb[..], 0, "tool:"); k = forge_put(kb[..], k, name);
+    t := jv_at(j[0], tools, i);
+    kb: [48] u8; key := forge_key_of("tool:", jv_key(j[0], t), kb[..]);
     on := jv_kind(j[0], t);
-    if k < 0 || (on != JV_TRUE && on != JV_FALSE) || !forge_read_slot(next[..], cast(string) kb[0..<k], ifx on == JV_TRUE then "1" else "0") { return forge_why("a tool out of bounds"); }
+    if (on != JV_TRUE && on != JV_FALSE) || !forge_read_slot(next[..], key, ifx on == JV_TRUE then "1" else "0") { return forge_why("a tool out of bounds"); }
   }
   placed := jv_get(j[0], at, "placed");
   for i: 0..<jv_len(j[0], placed) {
     if jv_kind(j[0], placed) != JV_ARRAY { return forge_why("placed not a list"); }
-    e := jv_at(j[0], placed, i); thing: [32] u8; n := jv_str(j[0], jv_get(j[0], e, "thing"), thing[..]);
-    v: [96] u8; m := forge_put(v[..], 0, cast(string) thing[0..<n]);
-    for f: [3] string.["x", "z", "yaw"] { m = forge_put(v[..], m, " "); m = forge_put(v[..], m, jv_raw(j[0], jv_get(j[0], e, f))); }
+    e := jv_at(j[0], placed, i); tb: [32] u8; thing := forge_str(j[0], jv_get(j[0], e, "thing"), tb[..]);
+    v: [96] u8; m := forge_put(v[..], 0, thing);
+    for f: [3] string.["x", "z", "yaw"] {
+      num := forge_num(j[0], jv_get(j[0], e, f));
+      if num.count == 0 { return forge_why("a placed thing out of bounds"); }
+      m = forge_put(v[..], m, " "); m = forge_put(v[..], m, num);
+    }
     kb: [24] u8;
-    if n < 1 || m < 0 || jv_kind(j[0], jv_get(j[0], e, "x")) != JV_NUMBER || !forge_read_slot(next[..], forge_place_key(i, kb[..]), cast(string) v[0..<m]) { return forge_why("a placed thing out of bounds"); }
+    if thing == "" || m == -1 || !forge_read_slot(next[..], forge_place_key(i, kb[..]), cast(string) v[0..<m]) { return forge_why("a placed thing out of bounds"); }
   }
   lore := jv_get(j[0], at, "lore");   // absent before migration 0111: none
-  if lore >= 0 && jv_kind(j[0], lore) != JV_OBJECT { return forge_why("lore not an object"); }
+  if lore != -1 && jv_kind(j[0], lore) != JV_OBJECT { return forge_why("lore not an object"); }
   for i: 0..<jv_len(j[0], lore) {
     e := jv_at(j[0], lore, i);
-    kb: [FORGE_SLOT_KEY] u8; k := forge_put(kb[..], 0, "lore:"); k = forge_put(kb[..], k, jv_key(j[0], e));
-    v: [FORGE_VAL] u8; n := jv_str(j[0], e, v[..]);
-    if k < 0 || jv_kind(j[0], e) != JV_STRING || n < 1 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<n]) { return forge_why("lore out of bounds"); }
+    kb: [FORGE_SLOT_KEY] u8; vb: [FORGE_VAL] u8; v := forge_str(j[0], e, vb[..]);
+    if v == "" || !forge_read_slot(next[..], forge_key_of("lore:", jv_key(j[0], e), kb[..]), v) { return forge_why("lore out of bounds"); }
   }
   quests := jv_get(j[0], at, "quests");
-  if quests >= 0 && jv_kind(j[0], quests) != JV_OBJECT { return forge_why("quests not an object"); }
+  if quests != -1 && jv_kind(j[0], quests) != JV_OBJECT { return forge_why("quests not an object"); }
   for i: 0..<jv_len(j[0], quests) {
     e := jv_at(j[0], quests, i);
-    kb: [FORGE_SLOT_KEY] u8; k := forge_put(kb[..], 0, "quest:"); k = forge_put(kb[..], k, jv_key(j[0], e));
+    kb: [FORGE_SLOT_KEY] u8; key := forge_key_of("quest:", jv_key(j[0], e), kb[..]);
     v: [FORGE_VAL] u8; m := 0; bad := jv_kind(j[0], e) != JV_OBJECT;
     steps := jv_get(j[0], e, "steps");
     if jv_kind(j[0], steps) != JV_ARRAY || jv_len(j[0], steps) > 3 { bad = true; }
     for p: 0..<5 {
       at2 := ifx p == 0 then jv_get(j[0], e, "ask") else ifx p == 4 then jv_get(j[0], e, "reward") else jv_at(j[0], steps, p - 1);
       if p > 0 { m = forge_put(v[..], m, "|"); }
-      if p >= 1 && p <= 3 && p > jv_len(j[0], steps) { continue; }   // fewer than three steps: blank ones
-      part: [FORGE_VAL] u8; pn := jv_str(j[0], at2, part[..]);
-      if pn < 0 || (p == 0 && pn < 1) { bad = true; break; }
-      for q: 0..<pn { if part[q] == '|' { bad = true; } }
-      m = forge_put(v[..], m, cast(string) part[0..<pn]);
+      if p <= 3 && p > jv_len(j[0], steps) { continue; }   // fewer than three steps: blank ones
+      pb: [FORGE_VAL] u8; part := forge_str(j[0], at2, pb[..]);
+      if jv_kind(j[0], at2) != JV_STRING || (p == 0 && part == "") { bad = true; break; }
+      for c: part { if c == '|' { bad = true; } }
+      m = forge_put(v[..], m, part);
     }
-    if bad || k < 0 || m < 0 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<m]) { return forge_why("a quest out of bounds"); }
+    if bad || m == -1 || !forge_read_slot(next[..], key, cast(string) v[0..<m]) { return forge_why("a quest out of bounds"); }
   }
   d[0] = next[0];
   return got;
@@ -192,7 +214,7 @@ forge_doc_with :: (from: string, to: string, buf: [] u8) -> string {
   for i: 0..<FORGE_DOC_V1.count {
     if i + from.count <= FORGE_DOC_V1.count && FORGE_DOC_V1[i..<i + from.count] == from {
       n := forge_put(buf, 0, FORGE_DOC_V1[0..<i]); n = forge_put(buf, n, to); n = forge_put(buf, n, FORGE_DOC_V1[i + from.count..<FORGE_DOC_V1.count]);
-      return ifx n < 0 then "" else cast(string) buf[0..<n];
+      return ifx n == -1 then "" else cast(string) buf[0..<n];
     }
   }
   return "";
@@ -268,29 +290,154 @@ forge_doc_with :: (from: string, to: string, buf: [] u8) -> string {
   #assert forge_read_doc(d[..], FORGE_DOC_V1).ok;
   last: [8192] u8; ln := forge_doc_text(d[..], last[..]);
   b: [4096] u8;
-  cases := [22] string.[
-    forge_doc_with("\"version\": 1", "\"version\": 2", b[..]), forge_doc_with("\"version\": 1", "\"version\": 0", b[..]),
-    forge_doc_with("\"version\": 1,", "", b[..]), forge_doc_with("\"version\": 1", "\"version\": 1.5", b[..]),
-    forge_doc_with("aethyr.realm", "aethyr.world", b[..]), forge_doc_with("\"rev\": 4", "\"rev\": 0", b[..]),
-    forge_doc_with("\"x\": 1.25", "\"x\": 40.01", b[..]), forge_doc_with("\"x\": 1.25", "\"x\": 1.255", b[..]),
-    forge_doc_with("\"x\": 1.25", "\"x\": \"1.25\"", b[..]), forge_doc_with("\"entity\": \"rocks:0\"", "\"entity\": \"trees:3\"", b[..]),
-    forge_doc_with("\"entity\": \"rocks:0\"", "\"entity\": \"Rocks\"", b[..]), forge_doc_with("\"moved\": [", "\"moved\": {\"a\": [", b[..]),
-    forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": 181, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],", b[..]),
-    forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 24, \"entity\": \"trees:1\"}],", b[..]),
-    forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": 0, \"scale\": 50, \"entity\": \"trees:1\"}],", b[..]),
-    forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],", b[..]),
-    forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": 5, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}, {\"yaw\": 6, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],", b[..]),
-    forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": {},", b[..]),
-    forge_doc_with("\"fly\": false", "\"fly\": 0", b[..]), forge_doc_with("\"time\": \"night\"", "\"time\": \"two\\nlines\"", b[..]),
-    forge_doc_with("\"thing\": \"barrel\"", "\"thing\": \"\"", b[..]), "[1]"];
-  for i: 0..<cases.count {
-    c: [4096] u8; cn := forge_put(c[..], 0, cases[i]);   // each case is built in one buffer: copy it before the next
+  // Each case is a piece of the fixture replaced (from, to), built in its own buffer as it is read.
+  V := "\"version\": 1,";
+  cases := [54] string.[
+    "\"version\": 1", "\"version\": 2", "\"version\": 1", "\"version\": 0", V, "", "\"version\": 1", "\"version\": 1.5",
+    "aethyr.realm", "aethyr.world", "\"rev\": 4", "\"rev\": 0", "\"rev\": 4,", "",
+    "\"x\": 1.25", "\"x\": 40.01", "\"x\": 1.25", "\"x\": 1.255",
+    "\"entity\": \"rocks:0\"", "\"entity\": \"trees:3\"", "\"entity\": \"rocks:0\"", "\"entity\": \"Rocks\"", "\"moved\": [", "\"moved\": {\"a\": [",
+    V, "\"version\": 1, \"shaped\": [{\"yaw\": 181, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],",
+    V, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 24, \"entity\": \"trees:1\"}],",
+    V, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": 0, \"scale\": 50, \"entity\": \"trees:1\"}],",
+    V, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],",
+    V, "\"version\": 1, \"shaped\": [{\"yaw\": 5, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}, {\"yaw\": 6, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],",
+    V, "\"version\": 1, \"shaped\": {},",
+    "\"fly\": false", "\"fly\": 0", "\"time\": \"night\"", "\"time\": \"two\\nlines\"",
+    "\"thing\": \"barrel\"", "\"thing\": \"\"", "\"yaw\": 90, \"thing\"", "\"thing\"", "\"z\": -3.5, \"yaw\"", "\"yaw\"",
+    "\"x\": 2, \"z\"", "\"x\": null, \"z\"", "\"x\": 2, \"z\"", "\"x\": [2], \"z\"", "\"x\": 2, \"z\"", "\"x\": true, \"z\"",
+    "{\"doc\": {", "[1, {"];
+  for i: 0..<cases.count / 2 {
+    c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with(cases[2 * i], cases[2 * i + 1], b[..]));
     r := forge_read_doc(d[..], cast(string) c[0..<cn]);
-    #assert cn > 2 && !r.ok && r.why != "";
+    #assert cn > 2;
+    #assert !r.ok && r.why != "";
     now: [8192] u8; nn := forge_doc_text(d[..], now[..]);
     #assert cast(string) now[0..<nn] == cast(string) last[0..<ln];
   }
+  #assert !forge_read_doc(d[..], "[1]").ok;
   #assert forge_read_doc(d[..], forge_doc_with("\"version\": 1", "\"version\": 2", b[..])).why == "a newer document than this reader knows";
   #assert forge_cm_of("40") == 4000 && forge_cm_of("-0.5") == -50 && forge_cm_of("0.07") == 7 && forge_cm_of("1.") == 4001 && forge_cm_of(".5") == 4001 && forge_cm_of("100") == 4001 && forge_cm_of("") == 4001;
   #assert forge_whole("-179", -179, 180) == -179 && forge_whole("181", -179, 180) == -180 && forge_whole("1e2", 0, 999) == -1 && forge_whole("", 0, 9) == -1;
+}
+
+// #12720: every numeric field refuses its number quoted ("4" is a string), keeps the last document,
+// and says which part was out of bounds; the same field as a number reads.
+#test "a quoted number is refused in every numeric field, and the last document stays" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  #assert forge_read_doc(d[..], FORGE_DOC_V1).ok;
+  last: [8192] u8; ln := forge_doc_text(d[..], last[..]);
+  b: [4096] u8;
+  // field, the fixture's piece, it quoted, it as a number (read), the reason refused
+  cases := [50] string.[
+    "version", "\"version\": 1,", "\"version\": \"1\",", "\"version\": 1,", "no version",
+    "rev", "\"rev\": 4,", "\"rev\": \"4\",", "\"rev\": 4,", "no revision",
+    "moved x", "\"x\": 1.25", "\"x\": \"1.25\"", "\"x\": 1.25", "a move out of bounds",
+    "moved z", "\"z\": -2.5", "\"z\": \"-2.5\"", "\"z\": -2.5", "a move out of bounds",
+    "shaped yaw", "\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": \"-90\", \"gone\": false, \"scale\": 150, \"entity\": \"trees:3\"}],",
+      "\"version\": 1, \"shaped\": [{\"yaw\": -90, \"gone\": false, \"scale\": 150, \"entity\": \"trees:3\"}],", "a turn, size or gone out of bounds",
+    "shaped scale", "\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": -90, \"gone\": false, \"scale\": \"150\", \"entity\": \"trees:3\"}],",
+      "\"version\": 1, \"shaped\": [{\"yaw\": -90, \"gone\": false, \"scale\": 150, \"entity\": \"trees:3\"}],", "a turn, size or gone out of bounds",
+    "placed x", "\"x\": 2,", "\"x\": \"2\",", "\"x\": 2,", "a placed thing out of bounds",
+    "placed z", "\"z\": -3.5,", "\"z\": \"-3.5\",", "\"z\": -3.5,", "a placed thing out of bounds",
+    "placed yaw", "\"yaw\": 90,", "\"yaw\": \"90\",", "\"yaw\": 90,", "a placed thing out of bounds",
+    "fork rev", "\"forked_from\": null", "\"forked_from\": {\"rev\": \"4\", \"slug\": \"lamp-cove\"}", "\"forked_from\": {\"rev\": 4, \"slug\": \"lamp-cove\"}", "a fork's parent out of bounds"];
+  for i: 0..<cases.count / 5 {
+    q := 5 * i;
+    c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with(cases[q + 1], cases[q + 2], b[..]));
+    r := forge_read_doc(d[..], cast(string) c[0..<cn]);
+    #assert cn > 2;
+    #assert !r.ok;
+    #assert r.why == cases[q + 4];
+    now: [8192] u8; nn := forge_doc_text(d[..], now[..]);
+    #assert cast(string) now[0..<nn] == cast(string) last[0..<ln];
+    e: [1] ForgeDoc; forge_reset(e[..], 1);
+    g: [4096] u8; gn := forge_put(g[..], 0, forge_doc_with(cases[q + 1], cases[q + 3], b[..]));
+    #assert gn > 2;
+    #assert forge_read_doc(e[..], cast(string) g[0..<gn]).ok;
+  }
+  #assert forge_slot_text(d[..], "place:0") == "barrel 2 -3.5 90";
+  #assert forge_num(Jv.{}, 0) == "";
+}
+
+// Whether the fixture with one piece replaced reads (each in its own buffers).
+forge_doc_reads :: (from: string, to: string) -> bool {
+  b: [4096] u8; c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with(from, to, b[..]));
+  d: [1] ForgeDoc;
+  return forge_read_doc(d[..], cast(string) c[0..<cn]).ok;
+}
+FORGE_SH :: "\"version\": 1,";
+
+// Each bound the reader keeps, at its edge and one past it.
+#test "every bound holds at its edge and refuses one past it" {
+  #assert forge_doc_reads("\"rev\": 4,", "\"rev\": 1,") && forge_doc_reads("\"rev\": 4,", "\"rev\": 999999999,") && !forge_doc_reads("\"rev\": 4,", "\"rev\": 1000000000,");
+  #assert !forge_doc_reads("\"version\": 1", "\"version\": 1000000000") && !forge_doc_reads("\"rev\": 4,", "\"rev\": -4,");
+  #assert forge_doc_reads("\"forked_from\": null", "\"forked_from\": {\"rev\": 1, \"slug\": \"a\"}");
+  #assert forge_doc_reads("\"forked_from\": null", "\"forked_from\": {\"rev\": 999999999, \"slug\": \"a\"}");
+  #assert !forge_doc_reads("\"forked_from\": null", "\"forked_from\": {\"rev\": 1000000000, \"slug\": \"a\"}");
+  #assert forge_doc_reads(", \"forked_from\": null", "") && !forge_doc_reads("\"forked_from\": null", "\"forked_from\": false");
+  // shapes: turns -179..180, sizes 25..400, a turn alone or a size alone is a shape
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": -179, \"gone\": false, \"scale\": 25, \"entity\": \"trees:1\"}],");
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 180, \"gone\": false, \"scale\": 400, \"entity\": \"trees:1\"}],");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": -180, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 401, \"entity\": \"trees:1\"}],");
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"trees:1\"}],");
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 5, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],");
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": true, \"scale\": 100, \"entity\": \"trees:1\"}],");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 5, \"gone\": false, \"scale\": 100, \"entity\": 3}],");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": null,") && !forge_doc_reads(FORGE_SH, "\"version\": 1, \"lore\": null,") && !forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": null,");
+  // names that don't fit their slot key, and a placed thing whose value doesn't fit
+  #assert !forge_doc_reads("\"fly\": false", "\"flyflyflyflyflyflyflyflyflyflyflyflyflyflyflyflyfly\": false");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"lore\": {\"maramaramaramaramaramaramaramaramaramaramaramara\": \"x\"},");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"maramaramaramaramaramaramaramaramaramaramaramara\": {\"ask\": \"a\", \"steps\": [], \"reward\": \"\"}},");
+  #assert forge_doc_reads("\"x\": 2,", "\"x\": 2.5,") && !forge_doc_reads("\"x\": 2,", "\"x\": 12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890,");
+  #assert !forge_doc_reads("\"thing\": \"barrel\"", "\"thing\": \"barrelbarrelbarrelbarrelbarrelbarrel\"") && !forge_doc_reads("\"thing\": \"barrel\"", "\"thing\": 7");
+  // quests: no steps, two; a | anywhere in a part; a part not a string
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"a\", \"steps\": [], \"reward\": \"\"}},");
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"a\", \"steps\": [\"s\", \"t\"], \"reward\": \"r\"}},");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"|a\", \"steps\": [], \"reward\": \"\"}},");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"a\", \"steps\": [3], \"reward\": \"\"}},");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"a\", \"steps\": [], \"reward\": null}},");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"a\", \"steps\": {}, \"reward\": \"\"}},");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"lore\": {\"mara\": \"\"},");
+  // the document's kind, and a JSON value that isn't an object
+  #assert !forge_doc_reads("\"doc\": \"aethyr.realm\"", "\"doc\": 7") && !forge_doc_reads("\"doc\": \"aethyr.realm\"", "\"doc\": \"aethyr.realm.x\"");
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  #assert forge_read_doc(d[..], "[1]").why == "not a JSON object" && forge_read_doc(d[..], "{").why == "not a JSON object";
+  // the size: 262144 bytes read (the fixture padded with spaces), one more doesn't
+  big: [262145] u8; n := forge_put(big[..], 0, FORGE_DOC_V1[0..<FORGE_DOC_V1.count - 1]);
+  while n < 262143 { big[n] = ' '; n += 1; }
+  big[n] = '}'; n += 1;
+  #assert n == 262144 && forge_read_doc(d[..], cast(string) big[0..<n]).ok;
+  big[n - 1] = ' '; big[n] = '}';
+  #assert forge_read_doc(d[..], cast(string) big[0..<n + 1]).why == "too large";
+  // the helpers at their edges
+  long: [80] u8;
+  for i: 0..<80 { long[i] = 'a'; }
+  #assert forge_slug_ok(cast(string) long[0..<64]) && !forge_slug_ok(cast(string) long[0..<65]);
+  #assert forge_cm_of("1x") == 4001 && forge_cm_of("1.x") == 4001 && forge_cm_of("-") == 4001 && forge_cm_of("-1") == -100;
+  #assert forge_whole("180", -179, 180) == 180 && forge_whole("181", 0, 180) == -1 && forge_whole("-", 0, 9) == -1 && forge_whole("-0", 0, 9) == 0;
+  #assert forge_whole("9999999999", 0, 99999999999) == 9999999999 && forge_whole("0x", 0, 9) == -1;
+  b: [4096] u8; small: [4] u8;
+  #assert forge_doc_with("\"rev\": 4", "\"rev\": 5", small[..]) == "" && forge_doc_with("nowhere", "x", b[..]) == "";
+  #assert forge_doc_with("\"sha256\": \"x\"}", "\"sha256\": \"y\"}", b[..]).count == FORGE_DOC_V1.count;
+  #assert forge_key_of("set:", "time", small[..]) == "" && forge_key_of("ab", "cd", small[..]) == "abcd";
+  #assert forge_str(Jv.{}, 0, small[..]) == "" && forge_whole("-5", 0, 9) == -1;
+  // which check refused: the reader's own bounds, before the model's
+  #assert forge_read_doc(d[..], forge_doc_with("\"version\": 1", "\"version\": 1000000000", b[..])).why == "no version";
+  turn := forge_read_doc(d[..], forge_doc_with(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 181, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],", b[..]));
+  #assert turn.why == "a turn, size or gone out of bounds";
+  size := forge_read_doc(d[..], forge_doc_with(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 401, \"entity\": \"trees:1\"}],", b[..]));
+  #assert size.why == "a turn, size or gone out of bounds";
+  low := forge_read_doc(d[..], forge_doc_with(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": -180, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],", b[..]));
+  #assert low.why == "a turn, size or gone out of bounds";
+  #assert forge_read_doc(d[..], forge_doc_with(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 5, \"gone\": false, \"scale\": 100, \"entity\": \"Trees\"}],", b[..])).why == "a shape out of bounds";
+  // a quest whose parts fit one by one but not together
+  q: [3000] u8; qn := forge_put(q[..], 0, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"");
+  for i: 0..<2000 { q[qn] = 'a'; qn += 1; }
+  qn = forge_put(q[..], qn, "\", \"steps\": [], \"reward\": \"");
+  for i: 0..<500 { q[qn] = 'r'; qn += 1; }
+  qn = forge_put(q[..], qn, "\"}},");
+  long_quest := forge_doc_with(FORGE_SH, cast(string) q[0..<qn], b[..]);
+  #assert long_quest.count > 3000 && forge_read_doc(d[..], long_quest).why == "a quest out of bounds";
 }

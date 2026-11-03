@@ -58,15 +58,14 @@ the server's own slug rule, or the whole document is refused:
 ```jai
   // A fork names the realm it was copied from and that realm's revision: {"slug": S, "rev": N}.
   parent := jv_get(j[0], at, "forked_from");   // null, or absent, when it isn't a fork
-  if parent >= 0 && jv_kind(j[0], parent) != JV_NULL {
-    slug: [FORGE_SLUG + 1] u8; sn := jv_str(j[0], jv_get(j[0], parent, "slug"), slug[..]);
-    got.from_rev = forge_whole(jv_raw(j[0], jv_get(j[0], parent, "rev")), 1, 999999999);
-    if jv_kind(j[0], parent) != JV_OBJECT || sn < 1 || !forge_slug_ok(cast(string) slug[0..<sn]) || got.from_rev < 1
-        || jv_kind(j[0], jv_get(j[0], parent, "rev")) != JV_NUMBER {
+  if jv_kind(j[0], parent) > JV_NULL {
+    buf: [FORGE_SLUG + 1] u8; slug := forge_str(j[0], jv_get(j[0], parent, "slug"), buf[..]);
+    got.from_rev = forge_whole(forge_num(j[0], jv_get(j[0], parent, "rev")), 1, FORGE_REV_MOST);
+    if jv_kind(j[0], parent) != JV_OBJECT || !forge_slug_ok(slug) || got.from_rev < 1 {
       return forge_why("a fork's parent out of bounds");
     }
-    for i: 0..<sn { got.from[i] = slug[i]; }
-    got.from_n = sn;
+    for i: 0..<slug.count { got.from[i] = slug[i]; }
+    got.from_n = slug.count;
   }
 ```
 

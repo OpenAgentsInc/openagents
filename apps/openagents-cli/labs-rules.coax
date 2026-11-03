@@ -558,6 +558,11 @@ lb_json_ms :: (d: Jv, at: int) -> int {
   if jv_kind(d, at) != JV_NUMBER { return -1; }
   return lb_ms(jv_raw(d, at));
 }
+#test "a JSON time is a number, never a quoted one" {
+  nodes: [16] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], "{\"start\":1.5,\"end\":\"2.5\"}", nodes[..]);
+  #assert lb_json_ms(d[0], jv_get(d[0], 0, "start")) == 1500 && lb_json_ms(d[0], jv_get(d[0], 0, "end")) == -1 && lb_json_ms(d[0], jv_get(d[0], 0, "dur")) == -1;
+}
 lb_json_text :: (d: Jv, at: int, out: [] u8) -> string {
   if jv_kind(d, at) != JV_STRING { return ""; }
   n := jv_str(d, at, out);

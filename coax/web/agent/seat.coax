@@ -43,7 +43,7 @@ host_first :: (line: string, h: [] HostOpen) -> bool {
   jo_key(o[..], "key"); jo_str(o[..], cast(string) kb[0..<kn]); jo_key(o[..], "id"); jo_str(o[..], cast(string) ib[0..<pn]); jo_end(o[..]);
   if o[0].bad { return false; }
   h[0].player_n = jo_text(o[..]).count;
-  h[0].phone = jv_raw(d[0], jv_get(d[0], 0, "phone")) == "true";
+  h[0].phone = jv_bool(d[0], jv_get(d[0], 0, "phone"));
   return true;
 }
 // Whether an action line asks the seat to leave.
@@ -59,6 +59,7 @@ host_leaving :: (line: string) -> bool {
   #assert cast(string) h[0].origin[0..<h[0].origin_n] == "https://staging.openagents.com" && cast(string) h[0].slug[0..<h[0].slug_n] == "village-green";
   #assert cast(string) h[0].player[0..<h[0].player_n] == "{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1a2b\"}" && !h[0].phone;
   #assert host_first("{\"origin\":\"http://127.0.0.1:8800\",\"slug\":\"g\",\"player\":{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1\"},\"phone\":true}", h[..]) && h[0].phone;
+  #assert host_first("{\"origin\":\"http://127.0.0.1:8800\",\"slug\":\"g\",\"player\":{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1\"},\"phone\":\"true\"}", h[..]) && !h[0].phone;
   #assert !host_first("{\"origin\":\"https://staging.openagents.com/x\",\"slug\":\"g\",\"player\":{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1\"}}", h[..]);
   #assert !host_first("{\"origin\":\"file:///etc\",\"slug\":\"g\",\"player\":{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1\"}}", h[..]);
   #assert !host_first("{\"origin\":\"http://evil.example\",\"slug\":\"g\",\"player\":{\"key\":\"0123456789abcdef0123\",\"id\":\"p-1\"}}", h[..]);

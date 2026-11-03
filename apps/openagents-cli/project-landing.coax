@@ -360,6 +360,14 @@ ld_list :: (d: Jv, at: int, out: [] Pg) {
     k = d.nodes[k].next;
   }
 }
+// A JSON number's text, or "" for anything else: a quoted "16" (or "16|x") never reaches a row.
+ld_number :: (d: Jv, at: int) -> string { return ifx jv_kind(d, at) == JV_NUMBER then jv_raw(d, at) else ""; }
+#test "a beacon's memory and slots are JSON numbers, never quoted" {
+  nodes: [16] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], "{\"memory_gb\":16,\"total\":\"4\",\"free\":\"1|x\"}", nodes[..]);
+  #assert ld_number(d[0], jv_get(d[0], 0, "memory_gb")) == "16";
+  #assert ld_number(d[0], jv_get(d[0], 0, "total")) == "" && ld_number(d[0], jv_get(d[0], 0, "free")) == "" && ld_number(d[0], jv_get(d[0], 0, "none")) == "";
+}
 // One beacon lr_beacon admitted, as the page's row wants it (pylons.ts fromBeacon).
 ld_pylon :: (s: [] LdPylons, content: string, out: [] LdPylon) -> bool {
   nodes: [4096] JvNode; d_: [1] Jv;
@@ -376,9 +384,9 @@ ld_pylon :: (s: [] LdPylons, content: string, out: [] LdPylon) -> bool {
   class := jv_get(d, 0, "class");
   n = jv_str(d, jv_get(d, class, "family"), b[..]); p[0].family = ld_pkeep(s, ifx n < 0 then "" else cast(string) b[0..<n]);
   n = jv_str(d, jv_get(d, class, "tier"), b[..]); p[0].tier = ld_pkeep(s, ifx n < 0 then "" else cast(string) b[0..<n]);
-  p[0].memory_gb = ld_pkeep(s, jv_raw(d, jv_get(d, class, "memory_gb")));
+  p[0].memory_gb = ld_pkeep(s, ld_number(d, jv_get(d, class, "memory_gb")));
   slots := jv_get(d, 0, "slots");
-  p[0].total = ld_pkeep(s, jv_raw(d, jv_get(d, slots, "total"))); p[0].free = ld_pkeep(s, jv_raw(d, jv_get(d, slots, "free")));
+  p[0].total = ld_pkeep(s, ld_number(d, jv_get(d, slots, "total"))); p[0].free = ld_pkeep(s, ld_number(d, jv_get(d, slots, "free")));
   // services: each model once (without its @digest), each lane once, the lowest price hint
   models: [1] Pg; lanes: [1] Pg;
   mseen: [64] string; mn := 0; lseen: [64] string; ln := 0; price := -1;

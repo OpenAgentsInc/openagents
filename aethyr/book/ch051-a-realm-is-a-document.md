@@ -93,7 +93,7 @@ document gives the same model everywhere:
 ```jai
 // Metres with at most two decimals, as the server writes them, to whole centimetres; 4001 when not.
 forge_cm_of :: (raw: string) -> int {
-  neg := raw.count > 0 && raw[0] == '-';
+  neg := raw != "" && raw[0] == '-';
   s := ifx neg then raw[1..<raw.count] else raw;
   dot := 0; while dot < s.count && s[dot] != '.' { dot += 1; }
   if dot == 0 || dot > 2 || (dot < s.count && (s.count - dot - 1 < 1 || s.count - dot - 1 > 2)) { return 4001; }
@@ -122,7 +122,11 @@ most `FORGE_REACH`, 4000 cm, from the middle on each axis
 | `40.01` | 40 | `01` | 4001 | no: refused |
 
 A third decimal (`1.255`), a quoted number or three whole-metre digits all give
-4001 and are refused the same way.
+4001 and are refused the same way. The JSON reader's `jv_raw` gives a string's
+contents without its quotes, so `"1.25"` would read as `1.25`; every numeric
+field (the version, the revision, a fork's revision, a move's `x` and `z`, a
+shape's turn and size, a placed thing's `x`, `z` and turn) is read through
+`forge_num`, which gives nothing unless the value is a JSON number (#12720).
 
 ## The model as one text
 
@@ -236,8 +240,13 @@ edits a page makes to them.
   move past the reach, with three decimals or quoted, an entity moved twice
   or misnamed, moves that aren't a list, shapes out of bounds, plain or twice,
   shapes that aren't a list, a tool that isn't a boolean, a setup field with a
-  line break, a placed thing with no name, and a top level that isn't an
-  object) are each refused and leave the last document's text byte-identical.
+  line break, a placed thing with no name or a missing or non-number place,
+  and a top level that isn't an object) are each refused and leave the last
+  document's text byte-identical; each of the ten numeric fields quoted is
+  refused with its own reason while the same field as a number reads; and every
+  bound (revision, turn, size, the 256 KiB limit, slug and key lengths) is
+  checked at its edge and one past it. `coax/bin/coax mutate
+  aethyr/forge/doc.coax --library --root-only`: 409 mutants, 0 survivors.
 - The independent check is the server. `coax/web/tool.sh
   coax/web/api/tests/realm_walkthrough.coax` runs the made-realm route against
   PostgreSQL with every migration applied

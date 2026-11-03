@@ -94,6 +94,14 @@ seat_dec_of :: (s: string) -> SeatDec {
   if i != s.count || digits == 0 { return SeatDec.{}; }
   return SeatDec.{v = ifx neg then -v else v, ok = true};
 }
+// A JSON node's decimal number: ok false unless the node is a number ("4" in quotes is a string).
+seat_num :: (d: Jv, at: int) -> SeatDec { return ifx jv_kind(d, at) == JV_NUMBER then seat_dec_of(jv_raw(d, at)) else SeatDec.{}; }
+#test "an action's numbers are JSON numbers, never quoted" {
+  nodes: [16] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], "{\"turn\":-90.5,\"max\":\"20\",\"x\":\"4.5\"}", nodes[..]);
+  t := seat_num(d[0], jv_get(d[0], 0, "turn")); #assert t.ok && t.v == -90.5;
+  #assert !seat_num(d[0], jv_get(d[0], 0, "max")).ok && !seat_num(d[0], jv_get(d[0], 0, "x")).ok && !seat_num(d[0], jv_get(d[0], 0, "z")).ok;
+}
 // The angle of (y, x) in degrees, -180..180, within a tenth of a degree.
 seat_atan2 :: (y: f32, x: f32) -> f32 {
   if x == 0 && y == 0 { return 0; }
@@ -651,12 +659,12 @@ seat_act :: (s: [] Seat, c: [] Cdp, line: string, png: [] u8, out: [] SeatBuf) -
   if !seat_read(s, c) { seat_note(s, "the realm isn't laid out"); seat_observation(s, op, false, out); return false; }
   ok := false;
   if op == "see" { ok = true; seat_note(s, "seen"); }
-  else if op == "look" { ok = seat_look(s, c, seat_dec_of(jv_raw(j, jv_get(j, 0, "turn"))), seat_dec_of(jv_raw(j, jv_get(j, 0, "pitch")))); }
+  else if op == "look" { ok = seat_look(s, c, seat_num(j, jv_get(j, 0, "turn")), seat_num(j, jv_get(j, 0, "pitch"))); }
   else if op == "go" {
     tb: [64] u8; tn := jv_str(j, jv_get(j, 0, "to"), tb[..]); to := ifx tn > 0 then cast(string) tb[0..<tn] else "";
-    mx := seat_dec_of(jv_raw(j, jv_get(j, 0, "max"))); secs := ifx mx.ok then cast(int) mx.v else 10;
+    mx := seat_num(j, jv_get(j, 0, "max")); secs := ifx mx.ok then cast(int) mx.v else 10;
     if secs < 1 || secs > 30 { seat_note(s, "max is 1 to 30 seconds"); }
-    else { ok = seat_go(s, c, seat_target(s, to, seat_dec_of(jv_raw(j, jv_get(j, 0, "x"))), seat_dec_of(jv_raw(j, jv_get(j, 0, "z")))), secs); }
+    else { ok = seat_go(s, c, seat_target(s, to, seat_num(j, jv_get(j, 0, "x")), seat_num(j, jv_get(j, 0, "z"))), secs); }
   }
   else if op == "say" { wb: [1600] u8; wn := jv_str(j, jv_get(j, 0, "words"), wb[..]); ok = seat_say(s, c, ifx wn > 0 then cast(string) wb[0..<wn] else ""); }
   else if op == "bye" { ok = seat_bye(s, c); }

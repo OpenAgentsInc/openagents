@@ -232,7 +232,7 @@ seat_obs_text :: (obs: string, o: [] SeatBuf) -> string {
       n = jv_str(d, jv_get(d, e, "role"), b[..]); seat_put(o, ifx n > 0 then cast(string) b[0..<n] else "character"); seat_put(o, ")");
     } else { seat_put(o, jv_raw(d, jv_get(d, e, "kind"))); seat_put(o, " "); seat_put(o, jv_raw(d, jv_get(d, e, "id"))); }
     seat_put(o, " "); seat_put(o, jv_raw(d, jv_get(d, e, "d"))); seat_put(o, " m ");
-    bv := seat_dec_of(jv_raw(d, jv_get(d, e, "bearing")));
+    bv := seat_num(d, jv_get(d, e, "bearing"));
     seat_side(ifx bv.ok then bv.v else 0, o);
   }
   seat_put(o, "\n");
