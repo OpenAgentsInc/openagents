@@ -346,6 +346,7 @@ fx_event :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
   if e.by < 0 || e.by >= b[0].n { return; }
   hand := fx_spot(s, e.by, 1.5); hand.x += 0.3;
   aimed := e.to >= 0 && e.to < b[0].n && e.to != e.by;
+  if e.feat != RS_FT_NONE && fx_feat(s, e, seed, t0) { return; }
   if (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && aimed {
     at := fx_spot(s, e.to, 1.1);
     if e.kind == RS_EV_MISS { at.x += fxp_sym(seed, 0, 0) * 0.9; at.z += fxp_sym(seed, 0, 1) * 0.9; at.y = 0.6; }
@@ -353,6 +354,7 @@ fx_event :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
       sp := e.spell; col := fx_col(sp);
       fiery := sp == SP_FIRE_BOLT || sp == SP_PRODUCE_FLAME || sp == SP_FLAME_HURL || sp == SP_SCORCHING_RAY;
       if fiery { fx_cause(s, FXR_FIREBOLT, seed, t0, hand, at, col, ifx e.damage == 1 then 1.5 else 1, 1); }
+      else if sp == SP_STARRY_WISP { fx_cause(s, FXR_STAR, seed, t0, hand, at, col, 1, 1); }
       else { fx_cause(s, FXR_STREAK, seed, t0, hand, at, col, ifx sp == SP_ELDRITCH_BLAST || sp == SP_GUIDING_BOLT then 1.25 else 0.9, 1); }
       return;
     }
@@ -368,8 +370,16 @@ fx_event :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
     if e.to >= 0 && e.to < b[0].n {
       at := fx_spot(s, e.to, 1.1);
       if sp == SP_SACRED_FLAME { fx_cause(s, FXR_COLUMN, seed, t0, hand, at, col, 1, 1); return; }
-      if sp == SP_HEX || sp == SP_HUNTERS_MARK || sp == SP_SHIELD { fx_cause(s, FXR_MARK, seed, t0, hand, at, col, 1, 1); return; }
-      if sp == SP_DIVINE_SMITE { fx_cause(s, FXR_HIT, seed, t0, fx_spot(s, e.by, 1.1), at, col, 2.0, 1); return; }
+      feet := fx_spot(s, e.to, 0);
+      if sp == SP_HEX || sp == SP_HUNTERS_MARK { fx_cause(s, FXR_MARK, seed, t0, hand, at, col, 1, 1); return; }
+      if sp == SP_SHIELD { fx_cause(s, FXR_BARRIER, seed, t0, hand, feet, col, 1, 1); return; }
+      // Divine Smite: bigger for each slot level over the first
+      if sp == SP_DIVINE_SMITE { fx_cause(s, FXR_SMITE, seed, t0, fx_spot(s, e.by, 1.1), at, col, 1 + 0.3 * f32(rs_max(e.amount, 1) - 1), 1); return; }
+      if sp == SP_HOLD_PERSON { fx_cause(s, FXR_BIND, seed, t0, hand, feet, col, 1, 1); return; }
+      if sp == SP_BLINDNESS { fx_cause(s, FXR_VEIL, seed, t0, hand, feet, col, 1, 1); return; }
+      if sp == SP_VICIOUS_MOCKERY { fx_cause(s, FXR_MOCKERY, seed, t0, hand, fx_spot(s, e.to, 1.7), MOCK_FX, 1, 1); return; }
+      if sp == SP_FALSE_LIFE && e.to == e.by { fx_cause(s, FXR_DRAIN, seed, t0, hand, feet, col, 1, 1); return; }
+      if sp == SP_PRODUCE_FLAME && e.to == e.by { fx_cause(s, FXR_KINDLE, seed, t0, hand, hand, col, 1, 1); return; }
       if sp == SP_CURE_WOUNDS || sp == SP_HEALING_WORD || e.to == e.by { return; }   // the healing shows on its HEAL
       fx_cause(s, FXR_STREAK, seed, t0, hand, at, col, 0.8, 1);
     }
@@ -398,12 +408,97 @@ fx_event :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
   }
   if !(e.to >= 0 && e.to < b[0].n) { return; }
   if e.kind == RS_EV_HEAL { fx_cause(s, FXR_HEAL, seed, t0, hand, fx_spot(s, e.to, 0), GREEN_FX, 1, 1); return; }
+  // Guiding Bolt's light left on its target: the next attack roll against it has Advantage
+  if e.kind == RS_EV_CONDITION && e.spell == SP_GUIDING_BOLT { fx_cause(s, FXR_GLIMMER, seed, t0, hand, fx_spot(s, e.to, 0), fx_col(SP_GUIDING_BOLT), 1, 1); return; }
   if e.kind == RS_EV_DAMAGE && e.spell == SP_SPIRIT_GUARDIANS { fx_cause(s, FXR_COLUMN, seed, t0, hand, fx_spot(s, e.to, 1.1), fx_col(SP_SPIRIT_GUARDIANS), 0.6, 1); return; }
   if e.kind == RS_EV_DEATH && b[0].c[e.to].klass == RS_MONSTER { fx_cause(s, FXR_BONES, seed, t0, hand, fx_spot(s, e.to, 0), fxp_v(0.86, 0.83, 0.74), 1, 1); return; }
   if e.kind == RS_EV_DOWN || e.kind == RS_EV_DEATH { fx_cause(s, FXR_DUST, seed, t0, hand, fx_spot(s, e.to, 0), fxp_v(0.5, 0.45, 0.36), 1, 1); return; }
   if e.kind == RS_EV_CONDITION && e.to == e.by && b[0].c[e.by].klass == RS_BARBARIAN && b[0].c[e.by].raging {
     fx_cause(s, FXR_EMBERS, seed, t0, hand, fx_spot(s, e.by, 0), fxp_v(1.0, 0.18, 0.08), 1, 1);
   }
+}
+
+MOCK_FX :: FxV.{x = 0.8, y = 0.35, z = 1.0};   // a psychic burst's purple
+// A class feature's event as its effect (aethyr/fx/abilities.coax), from the feature the engine
+// says it is (RsEvent.feat). True when it drew one, or the feature's look is drawn by another of
+// its events (the healing a feature's own cast already shows).
+fx_feat :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) -> bool {
+  b := bt(s);
+  f := e.feat; i := e.by;
+  hand := fx_spot(s, i, 1.5); hand.x += 0.3;
+  feet := fx_spot(s, i, 0);
+  on := e.to >= 0 && e.to < b[0].n;
+  if f == RS_FT_ACTION_SURGE { fx_cause(s, FXR_SURGE, seed, t0, hand, feet, fxp_v(1.0, 0.78, 0.3), 1, 1); return true; }
+  if f == RS_FT_SECOND_WIND || f == RS_FT_WHOLENESS || f == RS_FT_LAY_ON_HANDS {
+    if e.kind == RS_EV_HEAL { return true; }   // its cast shows it
+    if f == RS_FT_SECOND_WIND { fx_cause(s, FXR_BREATH, seed, t0, hand, feet, fxp_v(0.7, 1.0, 0.78), 1, 1); }
+    if f == RS_FT_WHOLENESS { fx_cause(s, FXR_WHOLENESS, seed, t0, hand, feet, fxp_v(1.0, 0.9, 0.65), 1, 1); }
+    if f == RS_FT_LAY_ON_HANDS && on { fx_cause(s, FXR_LAY, seed, t0, hand, fx_spot(s, e.to, 1.1), fxp_v(1.0, 0.85, 0.45), 1, 1); }
+    return true;
+  }
+  if f == RS_FT_SNEAK_ATTACK && on { fx_cause(s, FXR_SHADOW_SLASH, seed, t0, fx_spot(s, i, 1.1), fx_spot(s, e.to, 1.1), fxp_v(0.7, 0.3, 1.0), 1, 1); return true; }
+  if f == RS_FT_STEADY_AIM { fx_cause(s, FXR_RETICLE, seed, t0, hand, feet, fxp_v(1.0, 0.55, 0.3), 1, 1); return true; }
+  if f == RS_FT_CUNNING_DASH {
+    // the shadows trail away from the foe it runs for
+    foe := nearest_foe(s, i);
+    fx_cause(s, FXR_AFTERIMAGE, seed, t0, ifx foe >= 0 then fx_spot(s, foe, 0) else feet, feet, fxp_v(0.1, 0.1, 0.14), 1, 1);
+    return true;
+  }
+  if f == RS_FT_FLURRY {
+    foe := foe_at_hand(s, i, -1);
+    if foe >= 0 { fx_cause(s, FXR_FLURRY, seed, t0, fx_spot(s, i, 1.2), fx_spot(s, foe, 1.15), fxp_v(0.8, 0.9, 1.0), 1, 1); }
+    return true;
+  }
+  if f == RS_FT_STUNNING_STRIKE && on {
+    fx_cause(s, FXR_STUN, seed, t0, hand, fx_spot(s, e.to, 0), fxp_v(1.0, 0.82, 0.35), ifx e.kind == RS_EV_CONDITION then 1.0f32 else 0.6f32, 1);
+    return true;
+  }
+  if f == RS_FT_PATIENT_DEFENSE { fx_cause(s, FXR_WIND, seed, t0, hand, feet, fxp_v(0.72, 0.88, 1.0), 1, 0.8); return true; }
+  if f == RS_FT_STEP_OF_THE_WIND { fx_cause(s, FXR_WIND, seed, t0, hand, feet, fxp_v(0.72, 0.88, 1.0), 1, 2); return true; }
+  if f == RS_FT_SACRED_WEAPON { fx_cause(s, FXR_SACRED, seed, t0, hand, feet, fxp_v(1.0, 0.9, 0.6), 1, 1); return true; }
+  if f == RS_FT_TURN_UNDEAD {
+    if e.kind == RS_EV_CAST { fx_cause(s, FXR_HALO, seed, t0, hand, feet, fxp_v(1.0, 0.9, 0.55), 1, 9.1); return true; }
+    return false;
+  }
+  if f == RS_FT_PRESERVE_LIFE {
+    if e.kind == RS_EV_CAST { fx_cause(s, FXR_WAVE, seed, t0, hand, feet, fxp_v(0.85, 1.0, 0.6), 1, 9.1); return true; }
+    return false;   // each one it heals: the healing motes
+  }
+  if f == RS_FT_LANDS_AID {
+    if e.kind == RS_EV_ZONE {
+      mid := f32(e.amount - 1) / 2;
+      fx_cause(s, FXR_THORNS, seed, t0, hand, fxp_v(wx(f32(e.x) + mid), 0, wz(f32(e.y) + mid)), fxp_v(0.35, 0.9, 0.4), 1, f32(e.amount) * f32(SQ) / 2);
+      return true;
+    }
+    return e.kind == RS_EV_CAST;   // the sphere shows it; its healing shows on its HEAL
+  }
+  if f == RS_FT_INSPIRATION && on { fx_cause(s, FXR_NOTES, seed, t0, hand, fx_spot(s, e.to, 1.9), fxp_v(1.0, 0.8, 0.35), 1, 1); return true; }
+  if f == RS_FT_FONT { fx_cause(s, FXR_NOTES, seed, t0, feet, feet, fxp_v(1.0, 0.8, 0.35), 1, 1); return true; }
+  if f == RS_FT_CUTTING_WORDS && on { fx_cause(s, FXR_MOCKERY, seed, t0, hand, fx_spot(s, e.to, 1.7), MOCK_FX, 0.6, 1); return true; }
+  if f == RS_FT_INNATE_SORCERY { fx_cause(s, FXR_ARCANE, seed, t0, hand, feet, fxp_v(0.75, 0.4, 1.0), 1, 1); return true; }
+  if f == RS_FT_DARK_BLESSING { fx_cause(s, FXR_FIEND, seed, t0, hand, feet, fxp_v(1.0, 0.25, 0.1), 1, 1); return true; }
+  if f == RS_FT_WILD_RESURGENCE { fx_cause(s, FXR_BLOOM, seed, t0, hand, feet, fxp_v(0.45, 0.95, 0.4), 0.6, 1); return true; }
+  return false;
+}
+// What lasts on a creature, as the glade draws it (aethyr/fx/abilities.coax fxp_status): its
+// conditions, concentration, Rage, Sacred Weapon, Innate Sorcery, a flame in hand and a Fiend's
+// Temporary Hit Points from Dark One's Blessing.
+fx_lasting :: (s: [] Lab, i: int) -> int {
+  b := bt(s);
+  if b[0].c[i].dead || b[0].c[i].hp == 0 { return 0; }
+  cond := b[0].c[i].cond; now := b[0].clock;
+  f := 0;
+  if (cond & RS_POISONED) != 0 { f = f | FXS_POISONED; }
+  if (cond & (RS_STUNNED | RS_PARALYZED)) != 0 { f = f | FXS_STUNNED; }
+  if (cond & RS_FRIGHTENED) != 0 { f = f | FXS_FRIGHTENED; }
+  if (cond & RS_CHARMED) != 0 { f = f | FXS_CHARMED; }
+  if b[0].c[i].conc >= 0 { f = f | FXS_CONCENTRATING; }
+  if b[0].c[i].raging { f = f | FXS_RAGING; }
+  if b[0].c[i].sacred_until > now { f = f | FXS_SACRED; }
+  if b[0].c[i].innate_until > now { f = f | FXS_INNATE; }
+  if b[0].c[i].flame_until > now { f = f | FXS_FLAME; }
+  if b[0].c[i].dark_blessing && b[0].c[i].temp > 0 { f = f | FXS_FIEND; }
+  return f;
 }
 
 // ---- a battle
@@ -1755,6 +1850,13 @@ draw_fx3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     zc := fx_col(zo.spell);
     fxp_zone(pf, wx(f32(zo.x0)) - f32(SQ) / 2, wz(f32(zo.y0)) - f32(SQ) / 2, wx(f32(zo.x1)) + f32(SQ) / 2, wz(f32(zo.y1)) + f32(SQ) / 2, zc, s[0].clock, f32(z) * 3.1 + 0.7);
   }
+  // what lasts on each creature: a few puffs each, capped (FX_STATUS_CAP), after the effects
+  for i: 0..<s[0].battle[0].n {
+    lf := fx_lasting(s, i);
+    if lf == 0 { continue; }
+    feet := fxp_v(wx(s[0].dx[i]), 0, wz(s[0].dy[i]));
+    fxp_status(pf, feet, fxp_v(feet.x + 0.3, 1.1, feet.z), lf, now, f32(i) * 1.37 + 0.4);
+  }
   rep := fxp_close(pf);
   for i: 0..<FXS {
     f := s[0].fx[i];
@@ -2497,6 +2599,50 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   e.kind = RS_EV_ATTACK; e.spell = -1; e.to = 1; e.damage = 0;
   fx_event(s[..], e, 3.5, e.at);
   for k: 0..<FX_LIVE { if s[0].puffs[0].on[k] { #assert s[0].puffs[0].live[k].recipe == FXR_ARROW; } }
+}
+
+#test "the glade's effects: each class feature and spell starts its own recipe" #steps 2000000000 {
+  s: [1] Lab; s[0].skeletons = 16; s[0].horde = false;
+  lab_start(s[..]);
+  b := bt(s[..]);
+  b[0].c[0].x = 4; b[0].c[0].y = 4; b[0].c[1].x = 5; b[0].c[1].y = 4;
+  b[0].c[1].team = 1 - b[0].c[0].team;   // a foe beside it, for the Flurry
+  e: RsEvent; e.at = b[0].clock; e.by = 0;
+  feats := [16] int.[RS_FT_ACTION_SURGE, RS_FT_SECOND_WIND, RS_FT_SNEAK_ATTACK, RS_FT_STEADY_AIM, RS_FT_CUNNING_DASH, RS_FT_FLURRY,
+                     RS_FT_STUNNING_STRIKE, RS_FT_PATIENT_DEFENSE, RS_FT_STEP_OF_THE_WIND, RS_FT_WHOLENESS, RS_FT_LAY_ON_HANDS,
+                     RS_FT_SACRED_WEAPON, RS_FT_PRESERVE_LIFE, RS_FT_INSPIRATION, RS_FT_INNATE_SORCERY, RS_FT_DARK_BLESSING];
+  kinds := [16] int.[RS_EV_CONDITION, RS_EV_CAST, RS_EV_DAMAGE, RS_EV_CONDITION, RS_EV_FEAT, RS_EV_CONDITION,
+                     RS_EV_CONDITION, RS_EV_CONDITION, RS_EV_FEAT, RS_EV_CAST, RS_EV_CAST,
+                     RS_EV_CONDITION, RS_EV_CAST, RS_EV_CONDITION, RS_EV_CONDITION, RS_EV_HEAL];
+  want := [16] int.[FXR_SURGE, FXR_BREATH, FXR_SHADOW_SLASH, FXR_RETICLE, FXR_AFTERIMAGE, FXR_FLURRY,
+                    FXR_STUN, FXR_WIND, FXR_WIND, FXR_WHOLENESS, FXR_LAY,
+                    FXR_SACRED, FXR_WAVE, FXR_NOTES, FXR_ARCANE, FXR_FIEND];
+  for q: 0..<16 {
+    fxp_clear(s[0].puffs[..]);
+    e.kind = kinds[q]; e.feat = feats[q]; e.spell = -1; e.to = ifx q == 2 || q == 6 || q == 10 || q == 13 then 1 else 0;
+    fx_event(s[..], e, 2.5 + f32(q), e.at);
+    found := -1;
+    for k: 0..<FX_LIVE { if s[0].puffs[0].on[k] { found = s[0].puffs[0].live[k].recipe; } }
+    #assert found == want[q] && fxp_live(s[0].puffs[..]) == 1;
+  }
+  // a feature's own healing draws nothing more: its cast showed it
+  fxp_clear(s[0].puffs[..]);
+  e.kind = RS_EV_HEAL; e.feat = RS_FT_SECOND_WIND; e.to = 0;
+  fx_event(s[..], e, 1.5, e.at);
+  #assert fxp_live(s[0].puffs[..]) == 0;
+  // the spells that had no look of their own
+  e.feat = RS_FT_NONE; e.kind = RS_EV_CAST; e.to = 1;
+  spells := [5] int.[SP_HOLD_PERSON, SP_BLINDNESS, SP_VICIOUS_MOCKERY, SP_SHIELD, SP_DIVINE_SMITE];
+  looks := [5] int.[FXR_BIND, FXR_VEIL, FXR_MOCKERY, FXR_BARRIER, FXR_SMITE];
+  for q: 0..<5 {
+    fxp_clear(s[0].puffs[..]);
+    e.spell = spells[q]; e.amount = 3;
+    fx_event(s[..], e, 4.5 + f32(q), e.at);
+    for k: 0..<FX_LIVE { if s[0].puffs[0].on[k] { #assert s[0].puffs[0].live[k].recipe == looks[q]; if q == 4 { #assert s[0].puffs[0].live[k].big > 1.5; } } }
+  }
+  // a creature poisoned and concentrating carries its lasting looks
+  b[0].c[1].cond = RS_POISONED; b[0].c[0].conc = SP_HOLD_PERSON;
+  #assert fx_lasting(s[..], 1) == FXS_POISONED && (fx_lasting(s[..], 0) & FXS_CONCENTRATING) != 0;
 }
 
 #test "a battle in the glade draws its effects as puffs, never past the budget" #steps 2000000000 {

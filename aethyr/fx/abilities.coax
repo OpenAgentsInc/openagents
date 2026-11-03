@@ -1,0 +1,841 @@
+// The SRD 5e class features' effects, and the spells puff.coax had no look of its own for (book
+// chapter 72). puff.coax loads this file: its recipes FXR_SURGE to FXR_KINDLE are here, under the
+// same rule as the rest: a puff's place, size and light are a pure function of the cause's seed,
+// the puff's number and the cause's age.
+//
+// Each look follows what the feature does in the SRD (aethyr/rules/srd/battle.coax):
+//   Action Surge         a golden burst, streaks of light rushing up round the Fighter
+//   Second Wind          a breath of pale light drawn in, then rising off the Fighter in two strands
+//   Sneak Attack         a dark slash across the target, a violet flash and sparks
+//   Cunning Action Dash  shadow afterimages left where the Rogue stood
+//   Steady Aim           a reticle closing on the Rogue, a glint at the eye
+//   Flurry of Blows      six quick blows on the target, a crackle chained between them
+//   Stunning Strike      gold rings knocked off the target; stars round its head when it is Stunned
+//   Patient Defense      a calm swirl of wind close round the Monk
+//   Step of the Wind     a gust spiralling up and out, dust thrown off the ground
+//   Wholeness of Body    motes drawn into the Monk's chest, a warm pulse
+//   Divine Smite         a hammer of light falling on the target, bigger for a higher slot
+//   Lay On Hands         golden motes flowing from the Paladin's hand into the one it touches
+//   Sacred Weapon        the weapon shine as a blade of light, sparkles running up it
+//   Preserve Life        a radiant wave running out over the ground to the allies
+//   Land's Aid           thorns thrust up and flowers bloom over the sphere
+//   Bardic Inspiration   notes of light flying to the ally, twinkling round its head (Font: round the Bard)
+//   Vicious Mockery      a jagged psychic burst at the target's head (Cutting Words: a small one)
+//   Innate Sorcery       arcane lightning crackling round the Sorcerer
+//   Dark One's Blessing  fiendish fire rising round the Warlock, embers drawn into its chest
+//   Hold Person          spectral golden bands closing round the target
+//   Blindness/Deafness   a dark wreath closing on the target's head, its light snuffed out
+//   False Life           a dark aura, crimson motes drawn up into the caster
+//   Starry Wisp          a star flying, glitter behind it, a starburst where it lands
+//   Guiding Bolt's glow  motes clinging to the target's outline (the next attack has Advantage)
+//   Shield               a hexagonal barrier of light flashing round the caster
+//   Produce Flame        a flame kindled in the hand
+//
+// The lasting looks (fxp_status) are a creature's conditions, its concentration and its sustained
+// features while they last: a few puffs each, looping on the clock alone, capped at FX_STATUS_CAP a
+// frame and never written past the frame's budget, so they never push out an effect or are refused.
+//   coax/bin/coax test --library aethyr/fx/puff.coax
+
+FXS_POISONED :: 1; FXS_STUNNED :: 2; FXS_FRIGHTENED :: 4; FXS_CHARMED :: 8; FXS_CONCENTRATING :: 16;
+FXS_RAGING :: 32; FXS_SACRED :: 64; FXS_INNATE :: 128; FXS_FLAME :: 256; FXS_FIEND :: 512;
+FX_STATUS_CAP :: 360;   // puffs the lasting looks may write in one frame, all told
+
+fxa_at :: (c: FxCause, h: f32) -> FxV { return fxp_v(c.to.x, h, c.to.z); }
+// The flat way from `from` to `to` (x when they are one place).
+fxa_fwd :: (c: FxCause) -> FxV {
+  d := fxp_sub(c.to, c.from); d.y = 0;
+  l := fxp_len(d);
+  if l < 0.001 { return fxp_v(1, 0, 0); }
+  return fxp_mul(d, 1 / l);
+}
+fxa_out :: (t: f32, from: f32, span: f32) -> f32 { return 1 - fxp_clamp((t - from) / span, 0, 1); }
+
+fxa_life :: (c: FxCause) -> f32 {
+  r := c.recipe;
+  if r == FXR_SURGE { return 1.2; }
+  if r == FXR_BREATH { return 1.6; }
+  if r == FXR_SHADOW_SLASH { return 0.9; }
+  if r == FXR_AFTERIMAGE { return 1.3; }
+  if r == FXR_RETICLE { return 1.4; }
+  if r == FXR_FLURRY { return 0.9; }
+  if r == FXR_STUN { return 2.0; }
+  if r == FXR_WIND { return 1.4; }
+  if r == FXR_WHOLENESS { return 1.5; }
+  if r == FXR_SMITE { return 1.0; }
+  if r == FXR_LAY { return 1.4; }
+  if r == FXR_SACRED { return 1.5; }
+  if r == FXR_WAVE { return 1.8; }
+  if r == FXR_THORNS { return 1.8; }
+  if r == FXR_NOTES { return 1.7; }
+  if r == FXR_MOCKERY { return 0.9; }
+  if r == FXR_ARCANE { return 1.6; }
+  if r == FXR_FIEND { return 1.6; }
+  if r == FXR_BIND { return 2.2; }
+  if r == FXR_VEIL { return 1.6; }
+  if r == FXR_DRAIN { return 1.6; }
+  if r == FXR_STAR { return fxp_flight(c, 18, 0.12, 0.8) + 0.7; }
+  if r == FXR_GLIMMER { return 3.0; }
+  if r == FXR_BARRIER { return 0.9; }
+  if r == FXR_KINDLE { return 1.0; }
+  return 0;
+}
+fxa_emit :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  r := c.recipe;
+  if r == FXR_SURGE { fxa_surge(p, c, t); }
+  if r == FXR_BREATH { fxa_breath(p, c, t); }
+  if r == FXR_SHADOW_SLASH { fxa_slash(p, c, t); }
+  if r == FXR_AFTERIMAGE { fxa_afterimage(p, c, t); }
+  if r == FXR_RETICLE { fxa_reticle(p, c, t); }
+  if r == FXR_FLURRY { fxa_flurry(p, c, t); }
+  if r == FXR_STUN { fxa_stun(p, c, t); }
+  if r == FXR_WIND { fxa_wind(p, c, t); }
+  if r == FXR_WHOLENESS { fxa_wholeness(p, c, t); }
+  if r == FXR_SMITE { fxa_smite(p, c, t); }
+  if r == FXR_LAY { fxa_lay(p, c, t); }
+  if r == FXR_SACRED { fxa_sacred(p, c, t); }
+  if r == FXR_WAVE { fxa_wave(p, c, t); }
+  if r == FXR_THORNS { fxa_thorns(p, c, t); }
+  if r == FXR_NOTES { fxa_notes(p, c, t); }
+  if r == FXR_MOCKERY { fxa_mockery(p, c, t); }
+  if r == FXR_ARCANE { fxa_arcane(p, c, t); }
+  if r == FXR_FIEND { fxa_fiend(p, c, t); }
+  if r == FXR_BIND { fxa_bind(p, c, t); }
+  if r == FXR_VEIL { fxa_veil(p, c, t); }
+  if r == FXR_DRAIN { fxa_drain(p, c, t); }
+  if r == FXR_STAR { fxa_star(p, c, t); }
+  if r == FXR_GLIMMER { fxa_glimmer(p, c, t); }
+  if r == FXR_BARRIER { fxa_barrier(p, c, t); }
+  if r == FXR_KINDLE { fxa_kindle(p, c, t); }
+}
+
+// ---- the Fighter
+
+// Action Surge at `to` (its feet): a golden flash and ring, streaks of light rushing up round it.
+fxa_surge :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  sz := c.big;
+  gold := fxp_v(1.0, 0.78, 0.3);
+  f := fxp_through(t, 0, 0.3);
+  if f >= 0 { ok := fxp_glow(p, fxa_at(c, 1.1), 1.1 * sz * (0.5 + f), fxp_mul(gold, (1 - f) * 1.3), 0.95, c.seed); }
+  g := fxp_through(t, 0, 0.55);
+  if g >= 0 { ok := fxp_ring(p, fxa_at(c, 0.04), (0.3 + 1.5 * fxp_ease(g)) * sz, fxp_mul(gold, (1 - g) * 1.4), c.seed + 0.2); }
+  for i: 0..<16 {
+    k := fxp_through(t, fxp_h(c.seed, i, 1) * 0.6, 0.3 + 0.15 * fxp_h(c.seed, i, 2));
+    if k < 0 { continue; }
+    a := fxp_h(c.seed, i, 3) * 2 * FX_PI;
+    rr := (0.45 + 0.45 * fxp_h(c.seed, i, 4)) * sz;
+    q := fxp_v(c.to.x + cos(a) * rr, 0.1 + k * 2.6, c.to.z + sin(a) * rr);
+    ok := fxp_spark(p, q, 0.03, fxp_mul(fxp_lerp(fxp_v(1.0, 0.95, 0.75), gold, k), (1 - k) * 1.5), fxp_v(0, 0.35, 0), c.seed + f32(i) * 0.05);
+  }
+  fxp_burst_sparks(p, c, t, fxa_at(c, 1.0), 8, 3.0, 0.4, fxp_v(0, 0.7, 0), gold, 40);
+}
+
+// Second Wind at `to` (its feet): pale wisps drawn in to the chest, then light rising in two strands.
+fxa_breath :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  sz := c.big;
+  mint := fxp_v(0.7, 1.0, 0.78);
+  for i: 0..<6 {
+    k := fxp_through(t, f32(i) * 0.05, 0.5);
+    if k < 0 { continue; }
+    a := f32(i) * 2 * FX_PI / 6 + fxp_h(c.seed, i, 1);
+    rr := 1.3 * (1 - fxp_ease(k)) + 0.15;
+    q := fxp_v(c.to.x + cos(a) * rr, 1.2 + 0.3 * fxp_sym(c.seed, i, 2), c.to.z + sin(a) * rr);
+    ok := fxp_smoke(p, q, 0.22, fxp_v(0.85, 0.95, 0.88), 0.18 * sin(k * FX_PI), c.seed + f32(i) * 0.1);
+  }
+  for i: 0..<18 {
+    k := fxp_through(t, 0.35 + f32(i) * 0.035, 0.8);
+    if k < 0 { continue; }
+    a := f32(i % 2) * FX_PI + k * 4 * FX_PI + fxp_h(c.seed, i, 3) * 0.4;
+    rr := 0.55 * (1 - 0.5 * k) * sz;
+    q := fxp_v(c.to.x + cos(a) * rr, 0.15 + k * 2.3, c.to.z + sin(a) * rr);
+    ok := fxp_put(p, PF_GLOW, q, 0.05, fxp_mul(fxp_lerp(mint, fxp_v(1, 1, 1), k), sin(k * FX_PI) * 1.4), 0.8, fxp_v(-sin(a) * 0.12, 0.08, cos(a) * 0.12), c.seed + f32(i) * 0.07);
+  }
+  g := fxp_through(t, 0.35, 0.6);
+  if g >= 0 { ok := fxp_glow(p, fxa_at(c, 1.15), 0.9 * sz, fxp_mul(mint, sin(g * FX_PI) * 0.5), 0.4, c.seed + 0.5); }
+}
+
+// ---- the Rogue
+
+// Sneak Attack from `from` on `to` (its chest): a dark slash swept across it, a violet flash.
+fxa_slash :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  sz := c.big;
+  fwd := fxa_fwd(c);
+  across := fxp_v(-fwd.z, 0, fwd.x);
+  violet := fxp_v(0.7, 0.3, 1.0);
+  sweep := fxp_clamp(t / 0.12, 0, 1);
+  for i: 0..<9 {
+    u := f32(i) / 8;
+    if u > sweep { break; }
+    th := 2.5 - u * 3.2;
+    q := fxp_add(c.to, fxp_add(fxp_mul(across, cos(th) * 0.75 * sz), fxp_v(0, sin(th) * 0.75 * sz, 0)));
+    born := u * 0.12;
+    k := fxp_through(t, born, 0.7);
+    if k < 0 { continue; }
+    ok := fxp_smoke(p, fxp_add(q, fxp_v(0, k * 0.3, 0)), (0.13 + 0.2 * k) * sz, fxp_v(0.07, 0.04, 0.1), 0.85 * (1 - k), c.seed + f32(i) * 0.13);
+    g := fxp_through(t, born, 0.25);
+    if g >= 0 {
+      tang := fxp_add(fxp_mul(across, sin(th)), fxp_v(0, -cos(th), 0));
+      ok = fxp_put(p, PF_GLOW, q, 0.05 * sz, fxp_mul(violet, (1 - g) * 1.5), 0.9, fxp_mul(tang, 0.17 * sz), c.seed + f32(i) * 0.05);
+    }
+  }
+  f := fxp_through(t, 0.06, 0.25);
+  if f >= 0 { ok := fxp_glow(p, c.to, 0.75 * sz * (0.5 + f), fxp_mul(violet, (1 - f) * 1.3), 0.9, c.seed + 0.3); }
+  fxp_burst_sparks(p, c, t - 0.06, c.to, 8, 3.0, 0.35, fxp_mul(fwd, 0.6), violet, 20);
+}
+
+// Cunning Action's Dash from `to` (its feet), heading for `from`: three shadows left behind it.
+AFTER_H :: [4] f32.[0.35, 0.85, 1.3, 1.65];
+AFTER_W :: [4] f32.[0.26, 0.3, 0.26, 0.17];
+fxa_afterimage :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  behind := fxp_mul(fxa_fwd(c), -1);
+  if fxp_len(fxp_sub(c.to, c.from)) < 0.3 { a := fxp_h(c.seed, 0, 1) * 2 * FX_PI; behind = fxp_v(cos(a), 0, sin(a)); }
+  for g: 0..<3 {
+    k := fxp_through(t, f32(g) * 0.08, 1.0 - f32(g) * 0.15);
+    if k < 0 { continue; }
+    base := fxp_add(c.to, fxp_mul(behind, f32(g) * 0.4));
+    for m: 0..<4 {
+      j := g * 4 + m;
+      q := fxp_v(base.x + fxp_sym(c.seed, j, 2) * 0.05 * (1 + k * 3), AFTER_H[m] + k * 0.25, base.z + fxp_sym(c.seed, j, 3) * 0.05 * (1 + k * 3));
+      ok := fxp_smoke(p, q, AFTER_W[m] * (1 + 0.6 * k), fxp_v(0.09, 0.08, 0.13), (0.75 - 0.18 * f32(g)) * (1 - k), c.seed + f32(j) * 0.11);
+    }
+  }
+  fxp_rise_smoke(p, c, t, fxa_at(c, 0.1), 4, 0.5, 0.18, 0.9, fxp_v(0.12, 0.1, 0.15), 0.4, 30);
+}
+
+// Steady Aim at `to` (its feet): a reticle closing on the Rogue, a glint at its eye.
+fxa_reticle :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  amber := fxp_v(1.0, 0.55, 0.3);
+  fade := fxa_out(t, 1.0, 0.4);
+  k := fxp_ease(fxp_clamp(t / 0.4, 0, 1));
+  pulse := 0.8 + 0.2 * sin(t * 14);
+  ok := fxp_ring(p, fxa_at(c, 0.04), 1.7 - 1.1 * k, fxp_mul(amber, fade * pulse * 1.2), c.seed);
+  ok = fxp_ring(p, fxa_at(c, 1.25), 1.2 - 0.75 * k, fxp_mul(amber, fade * 0.8), c.seed + 0.3);
+  for i: 0..<4 {
+    a := f32(i) * FX_PI / 2 + FX_PI / 4;
+    d := fxp_v(cos(a), 0, sin(a));
+    ok = fxp_spark(p, fxp_add(fxa_at(c, 1.25), fxp_mul(d, 1.3 - 0.75 * k)), 0.035, fxp_mul(amber, fade * 1.4), fxp_mul(d, 0.12), c.seed + f32(i) * 0.1);
+  }
+  g := fxp_through(t, 0.35, 0.45);
+  if g >= 0 { ok = fxp_glow(p, fxa_at(c, 1.62), 0.18, fxp_mul(fxp_v(1.0, 0.95, 0.8), sin(g * FX_PI) * 1.6), 1.0, c.seed + 0.6); }
+}
+
+// ---- the Monk
+
+// Flurry of Blows from `from` (the Monk's hand) on `to` (the foe's chest): six quick blows,
+// alternating sides, a crackle chained from each to the last.
+fxa_flurry :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  ki := fxp_v(0.8, 0.9, 1.0);
+  fwd := fxa_fwd(c);
+  across := fxp_v(-fwd.z, 0, fwd.x);
+  last := c.to;
+  for h: 0..<6 {
+    b := f32(h) * 0.08;
+    off := ifx h % 2 == 0 then 0.25f32 else -0.25f32;
+    q := fxp_add(c.to, fxp_add(fxp_mul(across, off + fxp_sym(c.seed, h, 1) * 0.08), fxp_v(0, fxp_sym(c.seed, h, 2) * 0.3, 0)));
+    k := fxp_through(t, b - 0.05, 0.05);
+    if k >= 0 { ok := fxp_spark(p, fxp_lerp(c.from, q, k), 0.04, fxp_mul(ki, 1.2), fxp_mul(fxp_sub(q, c.from), 0.08), c.seed + f32(h) * 0.03); }
+    f := fxp_through(t, b, 0.18);
+    if f >= 0 {
+      ok := fxp_glow(p, q, 0.3 * (0.6 + f), fxp_mul(ki, (1 - f) * 1.3), 0.95, c.seed + f32(h) * 0.07);
+      if h > 0 { ok = fxp_spark(p, fxp_lerp(last, q, 0.5), 0.025, fxp_mul(ki, (1 - f) * 1.1), fxp_mul(fxp_sub(q, last), 0.5), c.seed + f32(h) * 0.09); }
+    }
+    fxp_burst_sparks(p, c, t - b, q, 4, 2.6, 0.3, fxp_mul(fwd, 0.7), ki, 10 + h * 4);
+    last = q;
+  }
+}
+
+// Stunning Strike on `to` (its feet): gold rings knocked off it; with big >= 0.9 (it failed the
+// save, Stunned) stars circle its head.
+fxa_stun :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  gold := fxp_v(1.0, 0.82, 0.35);
+  sz := c.big;
+  for w: 0..<3 {
+    f := fxp_through(t, f32(w) * 0.09, 0.4);
+    if f < 0 { continue; }
+    h := ifx w == 2 then 0.04 else 1.75 - f32(w) * 0.4;
+    ok := fxp_ring(p, fxa_at(c, h), (0.15 + 1.1 * fxp_ease(f)) * sz, fxp_mul(gold, (1 - f) * 1.4), c.seed + f32(w) * 0.2);
+  }
+  f := fxp_through(t, 0, 0.2);
+  if f >= 0 { ok := fxp_glow(p, fxa_at(c, 1.75), 0.6 * sz, fxp_mul(gold, (1 - f) * 1.4), 0.95, c.seed); }
+  if sz < 0.9 { return; }
+  bright := fxp_clamp((t - 0.15) * 5, 0, 1) * fxa_out(t, 1.6, 0.4);
+  for i: 0..<5 {
+    a := f32(i) * 2 * FX_PI / 5 + t * 3.2;
+    q := fxp_v(c.to.x + cos(a) * 0.38, 2.0 + 0.06 * sin(t * 6 + f32(i)), c.to.z + sin(a) * 0.38);
+    shine := fxp_mul(fxp_v(1.0, 0.92, 0.5), bright * (0.6 + 0.4 * sin(t * 11 + f32(i) * 2.3)) * 1.5);
+    ok := fxp_put(p, PF_GLOW, q, 0.025, shine, 1.0, fxp_v(0.07, 0, 0), c.seed + f32(i) * 0.05);
+    ok = fxp_put(p, PF_GLOW, q, 0.025, shine, 1.0, fxp_v(0, 0.07, 0), c.seed + f32(i) * 0.05 + 0.02);
+  }
+}
+
+// Wind round `to` (its feet): reach 1 or less, Patient Defense's calm swirl close round it; more,
+// Step of the Wind's gust spiralling up and out, dust thrown off the ground.
+fxa_wind :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  air := fxp_v(0.72, 0.88, 1.0);
+  gust := c.reach > 1.2;
+  bright := fxp_min(1, t * 5) * fxa_out(t, 1.0, 0.4);
+  for i: 0..<12 {
+    k := fract(t * (ifx gust then 0.9f32 else 0.6f32) + fxp_h(c.seed, i, 1));
+    a := fxp_h(c.seed, i, 2) * 2 * FX_PI + t * (ifx gust then 7.0f32 else 4.5f32);
+    rr := ifx gust then 0.45 + 0.7 * k else 0.6 + 0.08 * sin(t * 3 + f32(i));
+    h := ifx gust then 0.1 + 2.0 * k else 0.2 + 1.6 * fxp_h(c.seed, i, 3);
+    q := fxp_v(c.to.x + cos(a) * rr, h, c.to.z + sin(a) * rr);
+    ok := fxp_put(p, PF_GLOW, q, 0.03, fxp_mul(air, bright * sin(k * FX_PI) * 1.1), 0.6, fxp_v(-sin(a) * 0.22, ifx gust then 0.1f32 else 0.02f32, cos(a) * 0.22), c.seed + f32(i) * 0.05);
+  }
+  if gust {
+    fxp_rise_smoke(p, c, t, fxa_at(c, 0.1), 5, 0.9, 0.25, 0.8, fxp_v(0.55, 0.5, 0.42), 0.4, 30);
+    g := fxp_through(t, 0, 0.5);
+    if g >= 0 { ok := fxp_ring(p, fxa_at(c, 0.04), 0.3 + 1.2 * fxp_ease(g), fxp_mul(air, (1 - g)), c.seed); }
+  } else {
+    ok := fxp_glow(p, fxa_at(c, 1.0), 1.0, fxp_mul(air, bright * 0.18), 0.1, c.seed);
+  }
+}
+
+// Wholeness of Body at `to` (its feet): motes drawn in to the chest, then a warm pulse.
+fxa_wholeness :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  warm := fxp_v(1.0, 0.9, 0.65);
+  chest := fxa_at(c, 1.1);
+  for i: 0..<16 {
+    k := fxp_through(t, fxp_h(c.seed, i, 1) * 0.3, 0.65);
+    if k < 0 { continue; }
+    a := fxp_h(c.seed, i, 2) * 2 * FX_PI + k * 2;
+    rr := 1.4 * (1 - fxp_ease(k));
+    q := fxp_v(c.to.x + cos(a) * rr, 0.2 + 1.8 * fxp_h(c.seed, i, 3) + (0.9 - 1.8 * fxp_h(c.seed, i, 3)) * fxp_ease(k), c.to.z + sin(a) * rr);
+    ok := fxp_put(p, PF_GLOW, q, 0.05, fxp_mul(warm, sin(k * FX_PI) * 1.4), 0.8, fxp_mul(fxp_sub(chest, q), 0.1), c.seed + f32(i) * 0.07);
+  }
+  g := fxp_through(t, 0.55, 0.8);
+  if g >= 0 {
+    ok := fxp_glow(p, chest, 0.4 + 0.8 * g, fxp_mul(warm, (1 - g) * 0.9), 0.7, c.seed + 0.4);
+    ok = fxp_ring(p, fxa_at(c, 0.04), 0.5 + 0.6 * g, fxp_mul(warm, (1 - g) * 0.8), c.seed + 0.6);
+  }
+}
+
+// ---- the Paladin
+
+// Divine Smite on `to` (the foe's chest): a hammer of light falls on it, then a flash, a column,
+// spokes, a ring and sparks; big grows with the slot.
+fxa_smite :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  sz := c.big;
+  holy := fxp_v(1.0, 0.88, 0.5);
+  white := fxp_v(1.0, 0.97, 0.88);
+  if t < 0.1 {
+    hy := c.to.y + 3.2 * (1 - t / 0.1);
+    ok := fxp_put(p, PF_GLOW, fxp_v(c.to.x, hy + 0.3, c.to.z), 0.16 * sz, fxp_mul(white, 1.4), 1.0, fxp_v(0, 0.5, 0), c.seed);
+    ok = fxp_glow(p, fxp_v(c.to.x, hy, c.to.z), 0.45 * sz, fxp_mul(holy, 0.8), 0.6, c.seed + 0.1);
+    return;
+  }
+  at := t - 0.1;
+  f := fxp_through(at, 0, 0.3);
+  if f >= 0 { ok := fxp_glow(p, c.to, 1.3 * sz * (0.5 + f), fxp_mul(white, (1 - f) * 1.5), 1.0, c.seed + 0.2); }
+  g := fxp_through(at, 0, 0.35);
+  if g >= 0 { ok := fxp_put(p, PF_GLOW, fxa_at(c, 1.4), 0.12 * sz, fxp_mul(holy, (1 - g) * 1.3), 0.9, fxp_v(0, 1.3, 0), c.seed + 0.3); }
+  for i: 0..<12 {
+    k := fxp_through(at, 0, 0.3);
+    if k < 0 { continue; }
+    a := f32(i) * 2 * FX_PI / 12 + fxp_h(c.seed, i, 1) * 0.3;
+    d := fxp_v(cos(a), 0.1, sin(a));
+    ok := fxp_spark(p, fxp_add(c.to, fxp_mul(d, 0.3 + 1.6 * sz * fxp_ease(k))), 0.04, fxp_mul(holy, (1 - k) * 1.4), fxp_mul(d, 0.25), c.seed + f32(i) * 0.05);
+  }
+  r := fxp_through(at, 0, 0.5);
+  if r >= 0 { ok := fxp_ring(p, fxa_at(c, 0.04), 0.3 + 1.7 * sz * fxp_ease(r), fxp_mul(holy, (1 - r) * 1.4), c.seed + 0.5); }
+  fxp_burst_sparks(p, c, at, c.to, cast(int) (10 * sz), 4.0, 0.5, fxp_v(0, 0.8, 0), holy, 40);
+}
+
+// Lay On Hands from `from` (the hand) to `to` (the chest it touches): golden motes flowing in.
+fxa_lay :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  gold := fxp_v(1.0, 0.85, 0.45);
+  fwd := fxa_fwd(c);
+  across := fxp_v(-fwd.z, 0, fwd.x);
+  for i: 0..<14 {
+    k := fxp_through(t, fxp_h(c.seed, i, 1) * 0.3, 0.5);
+    if k < 0 { continue; }
+    u := fxp_ease(k);
+    q := fxp_lerp(c.from, c.to, u);
+    q = fxp_add(q, fxp_add(fxp_mul(across, sin(u * FX_PI) * 0.3 * fxp_sym(c.seed, i, 3)), fxp_v(0, sin(u * FX_PI) * 0.4 * fxp_h(c.seed, i, 2), 0)));
+    ok := fxp_put(p, PF_GLOW, q, 0.05, fxp_mul(gold, sin(k * FX_PI * 0.9 + 0.3) * 1.3), 0.85, fxp_mul(fxp_sub(c.to, c.from), 0.03), c.seed + f32(i) * 0.07);
+  }
+  g := fxp_through(t, 0.4, 0.9);
+  if g >= 0 { ok := fxp_glow(p, c.to, 0.5 + 0.5 * g, fxp_mul(gold, sin(g * FX_PI) * 0.9), 0.6, c.seed + 0.3); }
+  for i: 0..<6 {
+    k := fxp_through(t, 0.5 + fxp_h(c.seed, i, 4) * 0.2, 0.7);
+    if k < 0 { continue; }
+    q := fxp_add(c.to, fxp_v(fxp_sym(c.seed, i, 5) * 0.3, -0.4 + k * 1.0, fxp_sym(c.seed, i, 6) * 0.3));
+    ok := fxp_glow(p, q, 0.04, fxp_mul(gold, sin(k * FX_PI) * 1.2), 0.8, c.seed + f32(i) * 0.09);
+  }
+}
+
+// Sacred Weapon: the weapon in `from` (the hand) shine as a blade of light, sparkles running up it,
+// a ring at `to` (the feet).
+fxa_sacred :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  gold := fxp_v(1.0, 0.85, 0.45);
+  white := fxp_v(1.0, 0.95, 0.75);
+  blade := fxp_add(c.from, fxp_v(0, 0.5, 0));
+  bright := fxp_min(1, t * 6) * fxa_out(t, 1.0, 0.5);
+  ok := fxp_put(p, PF_GLOW, blade, 0.06, fxp_mul(white, bright * 1.4), 1.0, fxp_v(0, 0.5, 0), c.seed);
+  ok = fxp_glow(p, blade, 0.5, fxp_mul(gold, bright * 0.35), 0.1, c.seed + 0.1);
+  g := fxp_through(t, 0, 0.25);
+  if g >= 0 { ok = fxp_glow(p, blade, 0.9 * (0.5 + g), fxp_mul(white, (1 - g) * 1.2), 0.9, c.seed + 0.2); }
+  for i: 0..<8 {
+    k := fract(t * 1.4 + fxp_h(c.seed, i, 1));
+    q := fxp_add(c.from, fxp_v(fxp_sym(c.seed, i, 2) * 0.04, k * 1.0, fxp_sym(c.seed, i, 3) * 0.04));
+    ok = fxp_glow(p, q, 0.035, fxp_mul(white, bright * sin(k * FX_PI) * 1.3), 1.0, c.seed + f32(i) * 0.05);
+  }
+  r := fxp_through(t, 0, 0.6);
+  if r >= 0 { ok = fxp_ring(p, fxa_at(c, 0.04), 0.4 + 0.8 * fxp_ease(r), fxp_mul(gold, (1 - r) * 1.2), c.seed + 0.3); }
+}
+
+// ---- the Cleric
+
+// Preserve Life from `to` (the Cleric's feet): a radiant wave running out over the ground to `reach`
+// metres, lights riding its front, motes rising behind it.
+fxa_wave :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  reach := fxp_max(c.reach, 2);
+  k := fxp_through(t, 0, 1.3);
+  if k >= 0 {
+    rr := reach * fxp_ease(k);
+    ok := fxp_ring(p, fxa_at(c, 0.04), rr, fxp_mul(c.col, (1 - k) * 1.3), c.seed);
+    for i: 0..<20 {
+      a := f32(i) * 2 * FX_PI / 20 + fxp_h(c.seed, i, 1) * 0.2;
+      q := fxp_v(c.to.x + cos(a) * rr, 0.35 + 0.25 * sin(t * 6 + f32(i)), c.to.z + sin(a) * rr);
+      ok = fxp_glow(p, q, 0.12, fxp_mul(c.col, (1 - k) * 1.2), 0.8, c.seed + f32(i) * 0.03);
+    }
+  }
+  g := fxp_through(t, 0, 0.6);
+  if g >= 0 { ok := fxp_glow(p, fxa_at(c, 1.4), 1.0, fxp_mul(c.col, (1 - g) * 0.9), 0.9, c.seed + 0.5); }
+  for i: 0..<16 {
+    b := fxp_h(c.seed, i, 2) * 0.8;
+    m := fxp_through(t, b, 0.9);
+    if m < 0 { continue; }
+    a := fxp_h(c.seed, i, 3) * 2 * FX_PI;
+    rr := reach * fxp_ease(fxp_min(b / 1.3, 1)) * (0.8 + 0.2 * fxp_h(c.seed, i, 4));
+    q := fxp_v(c.to.x + cos(a) * rr, 0.2 + m * 1.6, c.to.z + sin(a) * rr);
+    ok := fxp_put(p, PF_GLOW, q, 0.05, fxp_mul(c.col, sin(m * FX_PI) * 1.2), 0.8, fxp_v(0, 0.06, 0), c.seed + f32(i) * 0.07);
+  }
+}
+
+// ---- the Druid
+
+// Land's Aid round `to` (the sphere's middle), `reach` metres: thorns thrust up out of the ground and
+// drawn back, flowers blooming, petals drifting up.
+fxa_thorns :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  reach := fxp_max(c.reach, 1);
+  for i: 0..<14 {
+    k := fxp_through(t, fxp_h(c.seed, i, 1) * 0.3, 1.0);
+    if k < 0 { continue; }
+    grow := fxp_clamp(k * 6, 0, 1) * fxa_out(k, 0.7, 0.3);
+    span := (0.35 + 0.35 * fxp_h(c.seed, i, 4)) * grow;
+    lean := fxp_v(fxp_sym(c.seed, i, 5) * 0.25, 1, fxp_sym(c.seed, i, 6) * 0.25);
+    q := fxp_v(c.to.x + fxp_sym(c.seed, i, 2) * reach * 0.8 + lean.x * span * 0.5, span * 0.5, c.to.z + fxp_sym(c.seed, i, 3) * reach * 0.8 + lean.z * span * 0.5);
+    ok := fxp_spark(p, q, 0.035, fxp_v(0.22, 0.55, 0.18), fxp_mul(lean, span * 0.5), c.seed + f32(i) * 0.05);
+  }
+  for i: 0..<12 {
+    k := fxp_through(t, 0.15 + fxp_h(c.seed, i, 7) * 0.4, 1.2);
+    if k < 0 { continue; }
+    petal := ifx i % 3 == 0 then fxp_v(1.0, 0.5, 0.7) else ifx i % 3 == 1 then fxp_v(1.0, 1.0, 0.9) else fxp_v(1.0, 0.85, 0.3);
+    q := fxp_v(c.to.x + fxp_sym(c.seed, i, 8) * reach * 0.85, 0.12, c.to.z + fxp_sym(c.seed, i, 9) * reach * 0.85);
+    ok := fxp_glow(p, q, 0.05 + 0.12 * fxp_ease(fxp_min(k * 3, 1)), fxp_mul(petal, sin(k * FX_PI) * 1.2), 0.7, c.seed + f32(i) * 0.07);
+    up := fxp_through(k, 0.3, 0.7);
+    if up >= 0 { ok = fxp_glow(p, fxp_add(q, fxp_v(fxp_sym(c.seed, i, 10) * 0.3, up * 1.3, fxp_sym(c.seed, i, 11) * 0.3)), 0.035, fxp_mul(petal, (1 - up) * 1.1), 0.8, c.seed + f32(i) * 0.09); }
+  }
+  g := fxp_through(t, 0, 0.8);
+  if g >= 0 { ok := fxp_ring(p, fxa_at(c, 0.04), reach * (0.3 + 0.7 * fxp_ease(g)), fxp_mul(fxp_v(0.35, 0.9, 0.4), (1 - g) * 1.2), c.seed); }
+}
+
+// Produce Flame coming to the hand at `to`: a small flame kindled, sparks and a glow.
+fxa_kindle :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fxp_burst_fire(p, c, t, c.to, 3, 0.15, 0.14, 0.5, 0);
+  fxp_burst_sparks(p, c, t, c.to, 6, 1.6, 0.4, fxp_v(0, 0.9, 0), fxp_v(1.0, 0.6, 0.2), 10);
+  f := fxp_through(t, 0, 0.4);
+  if f >= 0 { ok := fxp_glow(p, c.to, 0.5 * (0.5 + f), fxp_mul(fxp_v(1.0, 0.55, 0.15), (1 - f) * 1.2), 0.8, c.seed); }
+}
+
+// Starry Wisp from `from` to `to`: a four-pointed star flying, glitter left behind it, a starburst.
+fxa_star :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fl := fxp_flight(c, 18, 0.12, 0.8);
+  if t < fl {
+    head := fxp_path(c, t / fl);
+    ahead := fxp_mul(fxa_fwd(c), 0.18);
+    ok := fxp_put(p, PF_GLOW, head, 0.025, fxp_v(1.6, 1.5, 1.2), 1.0, ahead, c.seed);
+    ok = fxp_put(p, PF_GLOW, head, 0.025, fxp_v(1.6, 1.5, 1.2), 1.0, fxp_v(0, 0.18, 0), c.seed + 0.02);
+    ok = fxp_glow(p, head, 0.25, fxp_mul(c.col, 1.2), 0.6, c.seed + 0.1);
+  }
+  for i: 0..<12 {
+    b := fl * f32(i) / 12;
+    k := fxp_through(t, b, 0.6);
+    if k < 0 { continue; }
+    q := fxp_add(fxp_path(c, b / fl), fxp_mul(fxp_dir(c.seed, i, 2, false), k * 0.15));
+    q.y -= k * 0.2;
+    ok := fxp_glow(p, q, 0.03, fxp_mul(c.col, (1 - k) * (0.5 + 0.5 * sin(t * 30 + f32(i) * 2)) * 1.5), 0.9, c.seed + f32(i) * 0.05);
+  }
+  if t >= fl {
+    at := t - fl;
+    k := fxp_through(at, 0, 0.35);
+    if k >= 0 {
+      ok := fxp_glow(p, c.to, 0.6 * (0.5 + k), fxp_mul(c.col, (1 - k) * 1.3), 0.9, c.seed + 0.3);
+      for i: 0..<8 {
+        d := fxp_dir(c.seed, i, 4, false);
+        ok = fxp_spark(p, fxp_add(c.to, fxp_mul(d, 0.2 + 0.8 * fxp_ease(k))), 0.03, fxp_mul(c.col, (1 - k) * 1.4), fxp_mul(d, 0.15), c.seed + f32(i) * 0.07);
+      }
+    }
+  }
+}
+
+// ---- the Bard
+
+// Bardic Inspiration from `from` (the hand) to `to` (the ally's head): notes of light flying on a
+// bobbing path, then twinkling round its head. From one place to itself (Font of Inspiration), the
+// notes spiral up round the Bard.
+fxa_notes :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  round := fxp_len(fxp_sub(c.to, c.from)) < 0.5;
+  for i: 0..<7 {
+    k := fxp_through(t, f32(i) * 0.09, 0.9);
+    if k < 0 { continue; }
+    tone := ifx i % 3 == 0 then fxp_v(1.0, 0.8, 0.35) else ifx i % 3 == 1 then fxp_v(1.0, 0.5, 0.8) else fxp_v(0.4, 0.9, 1.0);
+    q := c.to;
+    if round {
+      a := f32(i) * 2 * FX_PI / 7 + k * 5;
+      q = fxp_v(c.to.x + cos(a) * 0.5, 0.6 + k * 1.6, c.to.z + sin(a) * 0.5);
+    } else {
+      u := fxp_ease(k);
+      q = fxp_lerp(c.from, c.to, u);
+      q.y += sin(u * FX_PI) * 0.6 + sin(k * 14 + f32(i)) * 0.12;
+    }
+    shine := sin(k * FX_PI);
+    ok := fxp_glow(p, q, 0.06, fxp_mul(tone, shine * 1.5), 0.9, c.seed + f32(i) * 0.05);
+    ok = fxp_put(p, PF_GLOW, fxp_add(q, fxp_v(0.05, 0.1, 0)), 0.012, fxp_mul(tone, shine * 1.2), 0.6, fxp_v(0, 0.1, 0), c.seed + f32(i) * 0.05 + 0.02);
+  }
+  g := fxp_through(t, 0.8, 0.9);
+  if g >= 0 {
+    for i: 0..<5 {
+      a := f32(i) * 2 * FX_PI / 5 + t * 2.5;
+      q := fxp_v(c.to.x + cos(a) * 0.35, c.to.y + 0.15 + 0.05 * sin(t * 7 + f32(i)), c.to.z + sin(a) * 0.35);
+      ok := fxp_glow(p, q, 0.04, fxp_mul(fxp_v(1.0, 0.85, 0.5), sin(g * FX_PI) * (0.6 + 0.4 * sin(t * 13 + f32(i))) * 1.4), 1.0, c.seed + f32(i) * 0.03);
+    }
+  }
+}
+
+// Vicious Mockery at `to` (the head): a jagged psychic burst, spikes crackling out, ripples.
+fxa_mockery :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  sz := c.big;
+  tick := cast(int) floor(t * 25);
+  for i: 0..<10 {
+    e := fxp_through(t, fxp_h(c.seed, i, 2) * 0.08, 0.45);
+    if e < 0 { continue; }
+    a := f32(i) * 2 * FX_PI / 10 + fxp_h(c.seed, i, 1) * 0.4;
+    d := fxp_v(cos(a), fxp_sym(c.seed, i, 3) * 0.5, sin(a));
+    jag := fxp_mul(fxp_v(-sin(a), 0.4, cos(a)), (ifx (tick + i) % 2 == 0 then 0.12f32 else -0.12f32) * sz);
+    span := fxp_ease(fxp_min(e * 3, 1)) * 0.9 * sz;
+    p0 := fxp_add(c.to, fxp_mul(d, 0.2 * sz));
+    p1 := fxp_add(fxp_add(c.to, fxp_mul(d, 0.2 * sz + span * 0.5)), jag);
+    p2 := fxp_add(c.to, fxp_mul(d, 0.2 * sz + span));
+    shine := fxp_mul(c.col, (1 - e) * 1.5);
+    ok := fxp_spark(p, fxp_lerp(p0, p1, 0.5), 0.03, shine, fxp_mul(fxp_sub(p1, p0), 0.5), c.seed + f32(i) * 0.05);
+    ok = fxp_spark(p, fxp_lerp(p1, p2, 0.5), 0.03, shine, fxp_mul(fxp_sub(p2, p1), 0.5), c.seed + f32(i) * 0.05 + 0.02);
+  }
+  f := fxp_through(t, 0, 0.2);
+  if f >= 0 { ok := fxp_glow(p, c.to, 0.7 * sz * (0.5 + f), fxp_mul(c.col, (1 - f) * 1.4), 0.9, c.seed + 0.3); }
+  for w: 0..<2 {
+    g := fxp_through(t, f32(w) * 0.1, 0.45);
+    if g < 0 { continue; }
+    ok := fxp_ring(p, c.to, (0.2 + 1.1 * fxp_ease(g)) * sz, fxp_mul(c.col, (1 - g) * 1.2), c.seed + f32(w) * 0.2);
+  }
+}
+
+// ---- the Sorcerer and the Warlock
+
+// Innate Sorcery round `to` (its feet): arcane lightning crackling round it, a flash and a ring.
+fxa_arcane :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  bright := fxp_min(1, t * 5) * fxa_out(t, 1.2, 0.4);
+  tick := cast(int) floor(t * 16);
+  for i: 0..<8 {
+    j := i + tick * 11;
+    a := fxp_h(c.seed, j, 1) * 2 * FX_PI;
+    h := 0.2 + fxp_h(c.seed, j, 2) * 1.7;
+    a2 := a + fxp_sym(c.seed, j, 3) * 0.6;
+    h2 := h + fxp_sym(c.seed, j, 4) * 0.35;
+    p0 := fxp_v(c.to.x + cos(a) * 0.5, h, c.to.z + sin(a) * 0.5);
+    p2 := fxp_v(c.to.x + cos(a2) * 0.5, h2, c.to.z + sin(a2) * 0.5);
+    p1 := fxp_add(fxp_lerp(p0, p2, 0.5), fxp_v(cos((a + a2) / 2) * 0.12 * fxp_sym(c.seed, j, 5), 0, sin((a + a2) / 2) * 0.12 * fxp_sym(c.seed, j, 5)));
+    shine := fxp_mul(c.col, bright * 1.4);
+    ok := fxp_spark(p, fxp_lerp(p0, p1, 0.5), 0.022, shine, fxp_mul(fxp_sub(p1, p0), 0.5), c.seed + f32(i) * 0.05);
+    ok = fxp_spark(p, fxp_lerp(p1, p2, 0.5), 0.022, shine, fxp_mul(fxp_sub(p2, p1), 0.5), c.seed + f32(i) * 0.05 + 0.02);
+  }
+  g := fxp_through(t, 0, 0.3);
+  if g >= 0 {
+    ok := fxp_ring(p, fxa_at(c, 0.04), 0.3 + 1.2 * fxp_ease(g), fxp_mul(c.col, (1 - g) * 1.3), c.seed);
+    ok = fxp_glow(p, fxa_at(c, 1.1), 0.9 * (0.5 + g), fxp_mul(c.col, (1 - g)), 0.8, c.seed + 0.2);
+  }
+  ok := fxp_glow(p, fxa_at(c, 1.0), 1.0, fxp_mul(c.col, bright * 0.2), 0.1, c.seed + 0.4);
+}
+
+// Dark One's Blessing round `to` (the Warlock's feet): fiendish fire rising round it, dark smoke,
+// crimson embers drawn into its chest.
+fxa_fiend :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  for i: 0..<8 {
+    k := fxp_through(t, fxp_h(c.seed, i, 1) * 0.4, 0.8);
+    if k < 0 { continue; }
+    a := f32(i) * 2 * FX_PI / 8 + fxp_h(c.seed, i, 2) * 0.5;
+    rr := 0.55 - 0.2 * k;
+    q := fxp_v(c.to.x + cos(a) * rr, 0.15 + k * 1.4, c.to.z + sin(a) * rr);
+    ok := fxp_flame(p, q, 0.16 * (1 - 0.4 * k), 0.3 + 0.5 * k, fxp_max(0, 1 - k * 2), 1 - k * k, c.seed + f32(i) * 0.11);
+  }
+  fxp_rise_smoke(p, c, t, fxa_at(c, 0.8), 4, 0.5, 0.25, 1.2, fxp_v(0.12, 0.05, 0.06), 0.5, 30);
+  chest := fxa_at(c, 1.1);
+  for i: 0..<8 {
+    k := fxp_through(t, 0.5 + f32(i) * 0.04, 0.5);
+    if k < 0 { continue; }
+    a := fxp_h(c.seed, i, 3) * 2 * FX_PI;
+    rr := 1.0 * (1 - fxp_ease(k));
+    q := fxp_v(c.to.x + cos(a) * rr, 0.6 + fxp_h(c.seed, i, 4) * 1.0 + (0.5 - fxp_h(c.seed, i, 4)) * fxp_ease(k), c.to.z + sin(a) * rr);
+    ok := fxp_put(p, PF_GLOW, q, 0.05, fxp_mul(fxp_v(1.0, 0.2, 0.15), sin(k * FX_PI) * 1.4), 0.8, fxp_mul(fxp_sub(chest, q), 0.08), c.seed + f32(i) * 0.07);
+  }
+  g := fxp_through(t, 0.9, 0.6);
+  if g >= 0 { ok := fxp_glow(p, chest, 0.5 + 0.4 * g, fxp_mul(fxp_v(1.0, 0.25, 0.15), sin(g * FX_PI) * 0.8), 0.6, c.seed + 0.5); }
+}
+
+// ---- spells
+
+// Hold Person on `to` (its feet): spectral golden bands closing round it, links between them turning.
+fxa_bind :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  bright := fxp_min(1, t * 6) * fxa_out(t, 1.7, 0.5);
+  for w: 0..<3 {
+    if t < f32(w) * 0.12 { continue; }
+    k := fxp_ease(fxp_clamp((t - f32(w) * 0.12) / 0.35, 0, 1));
+    ok := fxp_ring(p, fxa_at(c, 0.5 + 0.5 * f32(w)), (1.2 - 0.8 * k) * (1 + 0.06 * sin(t * 8 + f32(w))), fxp_mul(c.col, bright * 1.3), c.seed + f32(w) * 0.2);
+  }
+  rr := 1.2 - 0.8 * fxp_ease(fxp_clamp(t / 0.5, 0, 1));
+  for i: 0..<6 {
+    a := f32(i) * FX_PI / 3 + t * 0.8;
+    ok := fxp_put(p, PF_GLOW, fxp_v(c.to.x + cos(a) * rr, 1.0, c.to.z + sin(a) * rr), 0.025, fxp_mul(c.col, bright * 0.9), 0.7, fxp_v(0, 0.5, 0), c.seed + f32(i) * 0.05);
+  }
+  f := fxp_through(t, 0, 0.25);
+  if f >= 0 { ok := fxp_glow(p, fxa_at(c, 1.1), 0.9 * (0.5 + f), fxp_mul(c.col, (1 - f) * 1.1), 0.8, c.seed + 0.4); }
+}
+
+// Blindness/Deafness on `to` (its feet): a dark wreath closing on its head, a light snuffed out.
+fxa_veil :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  head := fxa_at(c, 1.75);
+  close := fxp_ease(fxp_clamp(t / 0.5, 0, 1));
+  fade := fxa_out(t, 1.1, 0.5) * fxp_min(1, t * 5);
+  for i: 0..<8 {
+    a := f32(i) * 2 * FX_PI / 8 + t * 1.8;
+    rr := 0.65 - 0.4 * close;
+    q := fxp_add(head, fxp_v(cos(a) * rr, fxp_sym(c.seed, i, 1) * 0.12, sin(a) * rr));
+    ok := fxp_smoke(p, q, 0.16 + 0.06 * close, fxp_v(0.05, 0.05, 0.09), 0.75 * fade, c.seed + f32(i) * 0.13);
+  }
+  g := fxp_through(t, 0, 0.6);
+  if g >= 0 { ok := fxp_glow(p, head, 0.5 * (1 - g) + 0.05, fxp_mul(c.col, (1 - g) * 1.4), 0.9, c.seed); }
+  for i: 0..<5 {
+    k := fxp_through(t, 0.3 + f32(i) * 0.1, 0.7);
+    if k < 0 { continue; }
+    q := fxp_add(head, fxp_v(fxp_sym(c.seed, i, 2) * 0.3, -k * 1.2, fxp_sym(c.seed, i, 3) * 0.3));
+    ok := fxp_glow(p, q, 0.035, fxp_mul(c.col, (1 - k) * 0.9), 0.7, c.seed + f32(i) * 0.07);
+  }
+}
+
+// False Life on `to` (the caster's feet): a dark aura rising, crimson motes drawn up into its chest.
+fxa_drain :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fxp_rise_smoke(p, c, t, fxa_at(c, 0.3), 6, 0.6, 0.3, 1.3, fxp_v(0.08, 0.03, 0.08), 0.55, 0);
+  chest := fxa_at(c, 1.1);
+  for i: 0..<12 {
+    k := fxp_through(t, fxp_h(c.seed, i, 1) * 0.4, 0.7);
+    if k < 0 { continue; }
+    a := fxp_h(c.seed, i, 2) * 2 * FX_PI + k * 4;
+    rr := 1.1 * (1 - fxp_ease(k)) + 0.1;
+    q := fxp_v(c.to.x + cos(a) * rr, 0.05 + fxp_ease(k) * 1.05, c.to.z + sin(a) * rr);
+    ok := fxp_put(p, PF_GLOW, q, 0.05, fxp_mul(c.col, sin(k * FX_PI) * 1.5), 0.8, fxp_mul(fxp_sub(chest, q), 0.08), c.seed + f32(i) * 0.07);
+  }
+  g := fxp_through(t, 0.6, 0.8);
+  if g >= 0 { ok := fxp_glow(p, chest, 0.4 + 0.6 * g, fxp_mul(c.col, (1 - g) * 0.8), 0.6, c.seed + 0.4); }
+}
+
+// Guiding Bolt's glow on `to` (its feet): motes clinging to its outline until its light fades.
+fxa_glimmer :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  bright := fxp_min(1, t * 4) * fxa_out(t, 2.4, 0.6);
+  for i: 0..<14 {
+    a := fxp_h(c.seed, i, 1) * 2 * FX_PI + t * 0.5;
+    h := 0.15 + fxp_h(c.seed, i, 2) * 1.7;
+    rr := 0.36 * (1 - 0.35 * fxp_max(h - 1, 1 - h));
+    q := fxp_v(c.to.x + cos(a) * rr, h, c.to.z + sin(a) * rr);
+    ok := fxp_glow(p, q, 0.04, fxp_mul(c.col, bright * (0.5 + 0.5 * sin(t * 8 + f32(i) * 1.9)) * 1.3), 0.9, c.seed + f32(i) * 0.05);
+  }
+}
+
+// Shield round `to` (the caster's feet): a hexagonal barrier of light flashing up and fading.
+fxa_barrier :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  bright := ifx t < 0.12 then 1.6f32 else 1.6 * fxa_out(t, 0.12, 0.7);
+  shine := fxp_mul(c.col, bright);
+  for e: 0..<6 {
+    a0 := f32(e) * FX_PI / 3 + 0.3;
+    a1 := a0 + FX_PI / 3;
+    for band: 0..<2 {
+      h := 0.55 + f32(band);
+      p0 := fxp_v(c.to.x + cos(a0) * 0.75, h, c.to.z + sin(a0) * 0.75);
+      p1 := fxp_v(c.to.x + cos(a1) * 0.75, h, c.to.z + sin(a1) * 0.75);
+      ok := fxp_spark(p, fxp_lerp(p0, p1, 0.5), 0.025, shine, fxp_mul(fxp_sub(p1, p0), 0.5), c.seed + f32(e * 2 + band) * 0.05);
+    }
+    ok := fxp_spark(p, fxp_v(c.to.x + cos(a0) * 0.75, 1.05, c.to.z + sin(a0) * 0.75), 0.02, fxp_mul(shine, 0.7), fxp_v(0, 0.5, 0), c.seed + f32(e) * 0.07);
+  }
+  f := fxp_through(t, 0, 0.3);
+  if f >= 0 { ok := fxp_glow(p, fxa_at(c, 1.05), 1.0 * (0.6 + f), fxp_mul(c.col, (1 - f) * 0.9), 0.5, c.seed + 0.3); }
+}
+
+// ---- the lasting looks
+
+// One lasting puff, when the lasting looks have room this frame and the frame has room for it.
+fxp_lput :: (p: [] FxPuffs, kind: int, at: FxV, size: f32, col: FxV, heat: f32, along: FxV, seed: f32) -> bool {
+  if p[0].lasting >= FX_STATUS_CAP || p[0].n >= FX_PUFF_CAP { return false; }
+  if !fxp_put(p, kind, at, size, col, heat, along, seed) { return false; }
+  p[0].lasting += 1;
+  return true;
+}
+// A creature's lasting looks at `now`: `feet` where it stands, `hand` its weapon hand, `flags` the
+// FXS_* that hold for it. A few puffs each, looping on the clock alone.
+fxp_status :: (p: [] FxPuffs, feet: FxV, hand: FxV, flags: int, now: f32, seed: f32) {
+  zero := fxp_v(0, 0, 0);
+  if (flags & FXS_POISONED) != 0 {
+    for i: 0..<2 {
+      ph := now / 1.4 + fxp_h(seed, i, 1);
+      f := fract(ph); lap := cast(int) floor(ph);
+      q := fxp_add(feet, fxp_v(fxp_sym(seed, i + lap * 7, 2) * 0.25, 1.2 + f * 0.8, fxp_sym(seed, i + lap * 7, 3) * 0.25));
+      ok := fxp_lput(p, PF_GLOW, q, 0.04 + 0.03 * f, fxp_mul(fxp_v(0.45, 1.0, 0.3), sin(f * FX_PI) * 0.9), 0.3, zero, seed + f32(i) * 0.1);
+    }
+  }
+  if (flags & FXS_STUNNED) != 0 {
+    for i: 0..<3 {
+      a := f32(i) * 2 * FX_PI / 3 + now * 3;
+      q := fxp_add(feet, fxp_v(cos(a) * 0.32, 2.0, sin(a) * 0.32));
+      ok := fxp_lput(p, PF_GLOW, q, 0.035, fxp_mul(fxp_v(1.0, 0.9, 0.45), 0.6 + 0.4 * sin(now * 10 + f32(i))), 1.0, zero, seed + f32(i) * 0.13);
+    }
+  }
+  if (flags & FXS_FRIGHTENED) != 0 {
+    for i: 0..<2 {
+      f := fract(now / 0.9 + fxp_h(seed, i, 4));
+      q := fxp_add(feet, fxp_v(fxp_sym(seed, i, 5) * 0.2, 1.9 - f * 0.5, fxp_sym(seed, i, 6) * 0.2));
+      ok := fxp_lput(p, PF_GLOW, q, 0.02, fxp_mul(fxp_v(0.6, 0.75, 1.0), (1 - f) * 1.1), 0.6, fxp_v(0, -0.05, 0), seed + f32(i) * 0.17);
+    }
+  }
+  if (flags & FXS_CHARMED) != 0 {
+    f := fract(now / 1.6 + fxp_h(seed, 0, 7));
+    q := fxp_add(feet, fxp_v(fxp_sym(seed, 0, 8) * 0.2, 1.9 + f * 0.6, 0));
+    pink := fxp_mul(fxp_v(1.0, 0.4, 0.65), sin(f * FX_PI) * 1.2);
+    ok := fxp_lput(p, PF_GLOW, fxp_add(q, fxp_v(-0.035, 0.02, 0)), 0.035, pink, 0.8, zero, seed + 0.21);
+    ok = fxp_lput(p, PF_GLOW, fxp_add(q, fxp_v(0.035, 0.02, 0)), 0.035, pink, 0.8, zero, seed + 0.23);
+    ok = fxp_lput(p, PF_GLOW, fxp_add(q, fxp_v(0, -0.035, 0)), 0.028, pink, 0.8, zero, seed + 0.25);
+  }
+  if (flags & FXS_CONCENTRATING) != 0 {
+    a := now * 2.2 + fxp_h(seed, 0, 9) * 2 * FX_PI;
+    q := fxp_add(feet, fxp_v(cos(a) * 0.5, 1.5 + 0.1 * sin(now * 1.3), sin(a) * 0.5));
+    ok := fxp_lput(p, PF_GLOW, q, 0.035, fxp_v(0.55, 0.62, 0.75), 0.8, fxp_v(-sin(a) * 0.05, 0, cos(a) * 0.05), seed + 0.3);
+  }
+  if (flags & FXS_RAGING) != 0 {
+    for i: 0..<2 {
+      f := fract(now / 1.0 + f32(i) * 0.5 + fxp_h(seed, i, 10));
+      a := fxp_h(seed, i + cast(int) floor(now + f32(i) * 0.5) * 5, 11) * 2 * FX_PI;
+      q := fxp_add(feet, fxp_v(cos(a) * 0.35, 0.4 + f * 1.6, sin(a) * 0.35));
+      ok := fxp_lput(p, PF_GLOW, q, 0.04, fxp_mul(fxp_v(1.0, 0.3, 0.1), (1 - f) * 1.3), 0.6, fxp_v(0, 0.06, 0), seed + f32(i) * 0.19);
+    }
+  }
+  if (flags & FXS_SACRED) != 0 {
+    ok := fxp_lput(p, PF_GLOW, fxp_add(hand, fxp_v(0, 0.45, 0)), 0.04, fxp_mul(fxp_v(1.0, 0.92, 0.65), 0.75 + 0.15 * sin(now * 5)), 0.9, fxp_v(0, 0.42, 0), seed + 0.4);
+  }
+  if (flags & FXS_INNATE) != 0 {
+    tick := cast(int) floor(now * 12);
+    a := fxp_h(seed, tick, 12) * 2 * FX_PI;
+    q := fxp_add(feet, fxp_v(cos(a) * 0.45, 0.3 + fxp_h(seed, tick, 13) * 1.5, sin(a) * 0.45));
+    ok := fxp_lput(p, PF_GLOW, q, 0.02, fxp_v(1.0, 0.6, 1.4), 0.9, fxp_v(fxp_sym(seed, tick, 14) * 0.12, fxp_sym(seed, tick, 15) * 0.12, fxp_sym(seed, tick, 16) * 0.12), seed + 0.5);
+  }
+  if (flags & FXS_FLAME) != 0 {
+    ok := fxp_lput(p, PF_FIRE, fxp_add(hand, fxp_v(0, 0.08, 0)), 0.09 + 0.02 * sin(now * 13), fxp_fire_col(fract(now * 1.7) * 0.3), 0.7, fxp_v(1, 0, 0), seed + 0.6);
+    ok = fxp_lput(p, PF_GLOW, hand, 0.3, fxp_v(0.5, 0.27, 0.07), 0.3, zero, seed + 0.62);
+  }
+  if (flags & FXS_FIEND) != 0 {
+    for i: 0..<2 {
+      f := fract(now / 0.8 + f32(i) * 0.5);
+      a := f32(i) * FX_PI + now * 1.5;
+      q := fxp_add(feet, fxp_v(cos(a) * 0.35, 0.12 + f * 0.4, sin(a) * 0.35));
+      ok := fxp_lput(p, PF_FIRE, q, 0.1 * (1 - f) + 0.01, fxp_fire_col(0.4 + 0.4 * f), 0.2, fxp_v(1 - f, 0, 0), seed + f32(i) * 0.23);
+    }
+  }
+}
+
+// ---- checks
+
+fxa_cause :: (recipe: int, seed: f32) -> FxCause {
+  return FxCause.{recipe = recipe, seed = seed, t0 = 0, from = fxp_v(-1.5, 1.5, 0), to = fxp_v(0, 1.1, 0), col = fxp_v(0.9, 0.6, 1.0), big = 1, reach = 3};
+}
+
+#test "each feature's recipe stays within a small share of the budget at every age" #steps 2000000000 {
+  p: [1] FxPuffs;
+  for r: FXR_SURGE..<FXR_KINDS {
+    c := fxa_cause(r, 2.75 + f32(r) * 0.31);
+    c.big = 2.2;   // merged as big as a cause gets
+    life := fxp_life(c);
+    most := 0;
+    for k: 0..<24 {
+      fxp_begin(p[..], 0, fxp_v(0, 10, 20)); fxp_emit(p[..], c, life * f32(k) / 24);
+      #assert p[0].refused == 0;
+      if p[0].n > most { most = p[0].n; }
+    }
+    // a 96th of the frame's puffs each, so a full house of causes can't spend it all
+    #assert most > 0 && most <= FX_PUFF_CAP / FX_LIVE * 3;
+  }
+}
+
+#test "a battle's worth of feature effects at once is never refused" #steps 2000000000 {
+  p: [1] FxPuffs;
+  // a heavy moment in a 48-hero fight: two dozen features and their spells in flight together
+  for k: 0..<24 {
+    c := fxa_cause(FXR_SURGE + k % (FXR_KINDS - FXR_SURGE), f32(k) * 1.37);
+    c.to = fxp_v(f32(k % 8) * 2, 1.1, f32(k / 8) * 2);
+    c.from = fxp_add(c.to, fxp_v(-2, 0.4, 0));
+    c.t0 = f32(k) * 0.05;
+    s := fxp_start(p[..], c, 0);
+  }
+  for f: 0..<12 {
+    rep := fxp_frame(p[..], 0.1 + f32(f) * 0.15, fxp_v(0, 10, 20));
+    #assert rep.refused == 0 && rep.puffs < FX_PUFF_CAP / 2;
+  }
+}
+
+#test "Divine Smite is bigger from a higher slot; a Stunned target gets its stars, a save only rings" #steps 2000000000 {
+  p: [1] FxPuffs;
+  c := fxa_cause(FXR_SMITE, 4.5);
+  fxp_begin(p[..], 0, fxp_v(0, 10, 20)); fxp_emit(p[..], c, 0.2);
+  small := p[0].n;
+  c.big = 1.6;
+  fxp_begin(p[..], 0, fxp_v(0, 10, 20)); fxp_emit(p[..], c, 0.2);
+  #assert p[0].n > small;
+  s := fxa_cause(FXR_STUN, 1.25);
+  fxp_begin(p[..], 0, fxp_v(0, 10, 20)); fxp_emit(p[..], s, 1.0);
+  stunned := p[0].n;
+  s.big = 0.6;
+  fxp_begin(p[..], 0, fxp_v(0, 10, 20)); fxp_emit(p[..], s, 1.0);
+  #assert stunned >= 10 && p[0].n == 0;
+}
+
+#test "the lasting looks loop on the clock, stay cheap, and stop at their cap without a refusal" #steps 2000000000 {
+  p: [1] FxPuffs; q: [1] FxPuffs;
+  every := FXS_POISONED | FXS_STUNNED | FXS_FRIGHTENED | FXS_CHARMED | FXS_CONCENTRATING | FXS_RAGING | FXS_SACRED | FXS_INNATE | FXS_FLAME | FXS_FIEND;
+  fxp_begin(p[..], 7.3, fxp_v(0, 10, 20));
+  fxp_status(p[..], fxp_v(1, 0, 2), fxp_v(1.3, 1.1, 2), every, 7.3, 0.7);
+  #assert p[0].n > 0 && p[0].n <= 20 && p[0].lasting == p[0].n;
+  fxp_begin(q[..], 99, fxp_v(0, 10, 20));
+  fxp_status(q[..], fxp_v(1, 0, 2), fxp_v(1.3, 1.1, 2), every, 7.3, 0.7);
+  #assert q[0].n == p[0].n;
+  for i: 0..<p[0].n * FX_PUFF_FLOATS { #assert p[0].stage[i] == q[0].stage[i]; }
+  // one each: a poisoned creature is two bubbles, a concentrating one a single mote
+  fxp_begin(p[..], 0, fxp_v(0, 10, 20));
+  fxp_status(p[..], fxp_v(0, 0, 0), fxp_v(0, 1, 0), FXS_POISONED, 3.1, 0.2);
+  #assert p[0].n == 2;
+  fxp_begin(p[..], 0, fxp_v(0, 10, 20));
+  fxp_status(p[..], fxp_v(0, 0, 0), fxp_v(0, 1, 0), FXS_CONCENTRATING, 3.1, 0.2);
+  #assert p[0].n == 1;
+  // a horde all poisoned, stunned and charmed: the cap holds, and nothing is refused
+  fxp_begin(p[..], 0, fxp_v(0, 10, 20));
+  for i: 0..<400 { fxp_status(p[..], fxp_v(f32(i % 20), 0, f32(i / 20)), fxp_v(0, 1, 0), FXS_POISONED | FXS_STUNNED | FXS_CHARMED, 2.0, f32(i)); }
+  #assert p[0].lasting == FX_STATUS_CAP && p[0].refused == 0;
+  // and a frame already near its budget takes none past it
+  p[0].n = FX_PUFF_CAP - 1; p[0].lasting = 0;
+  fxp_status(p[..], fxp_v(0, 0, 0), fxp_v(0, 1, 0), FXS_POISONED, 3.1, 0.2);
+  #assert p[0].refused == 0 && p[0].n <= FX_PUFF_CAP;
+}

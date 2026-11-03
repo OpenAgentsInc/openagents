@@ -6,6 +6,22 @@
 > merges, push-outs and refusals counted), and seventeen recipes that
 > expand one event (seed, start time, from, to, colour) into puffs whose
 > motion is a pure function of seed, index and age.
+> [`aethyr/fx/abilities.coax`](../../aethyr/fx/abilities.coax) adds 25
+> more for the SRD 5e class features and the spells that had no look of
+> their own: Action Surge, Second Wind, Sneak Attack, Cunning Action's
+> Dash, Steady Aim, Flurry of Blows, Stunning Strike, Patient Defense,
+> Step of the Wind, Wholeness of Body, Divine Smite (bigger for a higher
+> slot), Lay On Hands, Sacred Weapon, Preserve Life, Land's Aid, Bardic
+> Inspiration and Font of Inspiration, Vicious Mockery and Cutting Words,
+> Innate Sorcery, Dark One's Blessing, Hold Person, Blindness/Deafness,
+> False Life, Starry Wisp, Guiding Bolt's glow, Shield and Produce Flame.
+> It also holds the lasting looks (`fxp_status`): a few puffs each for a
+> creature that is Poisoned, Stunned or Paralyzed, Frightened, Charmed or
+> concentrating, and for Rage, Sacred Weapon, Innate Sorcery, a flame in
+> hand and a Fiend's Temporary Hit Points, capped at `FX_STATUS_CAP` a
+> frame and never written past the budget. The engine says which feature
+> an event tells of (`RsEvent.feat`, `RS_FT_*`), so a world maps it to a
+> recipe without reading the log line.
 > [`aethyr/fx/gpu-puff.coax`](../../aethyr/fx/gpu-puff.coax) draws them on
 > a traced page (a pinhole camera from the uniforms, soft against the
 > ground it traces, no depth buffer) with Everglade's own shading, loaded

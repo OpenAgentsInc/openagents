@@ -713,8 +713,17 @@ RS_EV_TEXT :: 96;
 RS_EV_CAST :: 1; RS_EV_ATTACK :: 2; RS_EV_SAVE :: 3; RS_EV_DAMAGE :: 4; RS_EV_HEAL :: 5;
 RS_EV_CONDITION :: 6; RS_EV_END :: 7; RS_EV_DOWN :: 8; RS_EV_DEATH :: 9; RS_EV_PUSH :: 10;
 RS_EV_ZONE :: 11; RS_EV_MISS :: 12; RS_EV_STABLE :: 13; RS_EV_UP :: 14; RS_EV_TURN :: 15;
+RS_EV_FEAT :: 16;   // a class feature used that has no line of its own (Cunning Action's Dash, Step of the Wind)
+// The class feature an event tells of (RsEvent.feat, 0 none), so a world can draw it (its effects)
+// without reading the line.
+RS_FT_NONE :: 0; RS_FT_SECOND_WIND :: 1; RS_FT_ACTION_SURGE :: 2; RS_FT_SNEAK_ATTACK :: 3; RS_FT_STEADY_AIM :: 4;
+RS_FT_CUNNING_DASH :: 5; RS_FT_FLURRY :: 6; RS_FT_STUNNING_STRIKE :: 7; RS_FT_PATIENT_DEFENSE :: 8; RS_FT_STEP_OF_THE_WIND :: 9;
+RS_FT_WHOLENESS :: 10; RS_FT_LAY_ON_HANDS :: 11; RS_FT_SACRED_WEAPON :: 12; RS_FT_TURN_UNDEAD :: 13; RS_FT_PRESERVE_LIFE :: 14;
+RS_FT_LANDS_AID :: 15; RS_FT_INSPIRATION :: 16; RS_FT_FONT :: 17; RS_FT_CUTTING_WORDS :: 18; RS_FT_INNATE_SORCERY :: 19;
+RS_FT_DARK_BLESSING :: 20; RS_FT_OWN_LUCK :: 21; RS_FT_WILD_RESURGENCE :: 22;
 RsEvent :: struct {
   kind: int; spell: int; by: int; to: int;
+  feat: int;                  // the class feature it tells of (RS_FT_*, 0 none)
   amount: int; damage: int;   // the amount and its damage type (an attack's: 1 a critical hit)
   x: int; y: int;             // a square (an area's corner, a push's end)
   text: [RS_EV_TEXT] u8; text_n: int;

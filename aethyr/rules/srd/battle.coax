@@ -99,8 +99,12 @@ rs_add_text :: (l: [] RsLine, t: string) { l[0].n = rs_put(l[0].buf[..], l[0].n,
 rs_add_int :: (l: [] RsLine, v: int) { l[0].n = rs_put_int(l[0].buf[..], l[0].n, v); }
 rs_add_name :: (l: [] RsLine, b: [] RsBattle, i: int) { rs_add_text(l, cast(string) b[0].c[i].name[0..<b[0].c[i].name_n]); }
 rs_tell :: (b: [] RsBattle, kind: int, spell: int, by: int, to: int, amount: int, damage: int, l: [] RsLine) {
+  rs_tell_ft(b, kind, spell, by, to, amount, damage, RS_FT_NONE, l);
+}
+// The same, telling of a class feature (RS_FT_*).
+rs_tell_ft :: (b: [] RsBattle, kind: int, spell: int, by: int, to: int, amount: int, damage: int, feat: int, l: [] RsLine) {
   e: RsEvent;
-  e.kind = kind; e.spell = spell; e.by = by; e.to = to; e.amount = amount; e.damage = damage; e.at = b[0].clock;
+  e.kind = kind; e.spell = spell; e.by = by; e.to = to; e.amount = amount; e.damage = damage; e.at = b[0].clock; e.feat = feat;
   if to >= 0 { e.x = b[0].c[to].x; e.y = b[0].c[to].y; }
   for k: 0..<l[0].n { e.text[k] = l[0].buf[k]; }
   e.text_n = l[0].n;
@@ -210,7 +214,7 @@ rs_dropped :: (b: [] RsBattle, by: int, j: int) {
     b[0].c[k].temp = gain;
     l: [1] RsLine;
     rs_add_name(l[..], b, k); rs_add_text(l[..], " has Dark One's Blessing: "); rs_add_int(l[..], gain); rs_add_text(l[..], " Temporary Hit Points");
-    rs_tell(b, RS_EV_HEAL, -1, k, k, gain, 0, l[..]);
+    rs_tell_ft(b, RS_EV_HEAL, -1, k, k, gain, 0, RS_FT_DARK_BLESSING, l[..]);
   }
 }
 // Damage, with dropping to 0 and the concentration save the SRD calls for.
@@ -368,7 +372,7 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
   if b[0].c[i].blessed_healer && slot > 0 && (s.area != RS_A_NONE || target != i) {
     heals := false;
     for k: 0..<s.step_n { if s.steps[k].kind == RS_S_HEAL { heals = true; } }
-    if heals { got := rs_feature_heal(b, i, i, 2 + slot, "Blessed Healer"); }
+    if heals { got := rs_feature_heal(b, i, i, 2 + slot, "Blessed Healer", RS_FT_NONE); }
   }
   return true;
 }
@@ -403,7 +407,7 @@ rs_cutting_words :: (b: [] RsBattle, i: int, margin: int) -> int {
     cut := rs_roll(b[0].dice[..], c.insp_die);
     l: [1] RsLine;
     rs_add_name(l[..], b, k); rs_add_text(l[..], " mocks "); rs_add_name(l[..], b, i); rs_add_text(l[..], " with Cutting Words: -"); rs_add_int(l[..], cut);
-    rs_tell(b, RS_EV_CONDITION, -1, k, i, cut, 0, l[..]);
+    rs_tell_ft(b, RS_EV_CONDITION, -1, k, i, cut, 0, RS_FT_CUTTING_WORDS, l[..]);
     return cut;
   }
   return 0;
@@ -415,7 +419,7 @@ rs_own_luck :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
   b[0].c[j].uses[RS_USE_LUCK] -= 1;
   luck := rs_roll(b[0].dice[..], 10);
   l: [1] RsLine; rs_add_name(l[..], b, j); rs_add_text(l[..], ": Dark One's Own Luck, +"); rs_add_int(l[..], luck);
-  rs_tell(b, RS_EV_CONDITION, -1, j, j, luck, 0, l[..]);
+  rs_tell_ft(b, RS_EV_CONDITION, -1, j, j, luck, 0, RS_FT_OWN_LUCK, l[..]);
   return luck;
 }
 // A Bardic Inspiration die a creature holds, rolled on a failed D20 Test of `total` against `need`:
@@ -1150,7 +1154,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   if dodged { rs_add_text(dl[..], ", halved by Uncanny Dodge"); }
   else if dealt != rs_max(amount - cut, 0) { rs_add_text(dl[..], ifx dealt == 0 then ", immune" else ifx dealt > amount - cut then ", vulnerable" else ", resisted"); }
   rs_add_text(dl[..], ")");
-  rs_tell(b, RS_EV_DAMAGE, -1, i, j, dealt, kind, dl[..]);
+  rs_tell_ft(b, RS_EV_DAMAGE, -1, i, j, dealt, kind, ifx sneak > 0 then RS_FT_SNEAK_ATTACK else RS_FT_NONE, dl[..]);
   rs_damage(b, i, j, dealt, kind, crit, -1);
   // Hex and Hunter's Mark hold for any attack roll their caster hits with
   rs_curse_damage(b, i, j, crit);
@@ -1257,7 +1261,7 @@ rs_stunning_strike :: (b: [] RsBattle, i: int, j: int) {
   rs_add_text(l[..], "  "); rs_add_name(l[..], b, i); rs_add_text(l[..], " spends a Focus Point on a Stunning Strike: "); rs_add_name(l[..], b, j);
   rs_add_text(l[..], " CON save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
   rs_add_text(l[..], ifx ok then ": success, half Speed and exposed" else ": failure, Stunned");
-  rs_tell(b, ifx ok then RS_EV_SAVE else RS_EV_CONDITION, -1, i, j, total, 0, l[..]);
+  rs_tell_ft(b, ifx ok then RS_EV_SAVE else RS_EV_CONDITION, -1, i, j, total, 0, RS_FT_STUNNING_STRIKE, l[..]);
   if ok {
     b[0].c[j].halved_until = until;
     rs_put_effect(b, j, RsEffect.{kind = EF_EXPOSED, by = i, spell = -1, until = until, save = -1, dc = 0});
@@ -1270,8 +1274,8 @@ rs_stunning_strike :: (b: [] RsBattle, i: int, j: int) {
 rs_wholeness :: (b: [] RsBattle, i: int) -> bool {
   if !rs_bonus_free(b, i) || b[0].c[i].uses[RS_USE_WHOLE] <= 0 || b[0].c[i].hp >= b[0].c[i].hp_max || rs_effect(b[0].c[i], EF_NOHEAL) { return false; }
   b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_WHOLE] -= 1;
-  rs_say(b, RS_EV_CAST, i, i, 0, " draws on Wholeness of Body");
-  got := rs_feature_heal(b, i, i, rs_max(rs_roll(b[0].dice[..], b[0].c[i].martial_die) + rs_mod(b[0].c[i].score[RS_WIS]), 1), "Wholeness of Body");
+  rs_say_ft(b, RS_EV_CAST, i, i, 0, RS_FT_WHOLENESS, " draws on Wholeness of Body");
+  got := rs_feature_heal(b, i, i, rs_max(rs_roll(b[0].dice[..], b[0].c[i].martial_die) + rs_mod(b[0].c[i].score[RS_WIS]), 1), "Wholeness of Body", RS_FT_WHOLENESS);
   return true;
 }
 // Cunning Strike's effects, after the damage (p. 63): a save against 8 + Dex + Proficiency.
@@ -1379,7 +1383,7 @@ rs_flurry :: (b: [] RsBattle, i: int, j: int, how: int) -> bool {
   if j < 0 || j >= b[0].n || b[0].c[j].dead || rs_feet_to(b, i, j) > 5 { return false; }
   b[0].turn.bonus = true; b[0].c[i].focus -= 1;
   l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " spends a Focus Point on Flurry of Blows");
-  rs_tell(b, RS_EV_CONDITION, -1, i, i, 0, 0, l[..]);
+  rs_tell_ft(b, RS_EV_CONDITION, -1, i, i, 0, 0, RS_FT_FLURRY, l[..]);
   for k: 0..<2 {
     if b[0].c[j].dead || rs_feet_to(b, i, j) > 5 { break; }
     if rs_strike(b, i, j, W_UNARMED, false) { rs_open_hand(b, i, j, how); }
@@ -1392,7 +1396,7 @@ rs_patient_defense :: (b: [] RsBattle, i: int) -> bool {
   b[0].turn.bonus = true; b[0].c[i].focus -= 1;
   b[0].c[i].dodge_until = rs_before_next_turn(b, i);
   l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " spends a Focus Point on Patient Defense: Disengage and Dodge");
-  rs_tell(b, RS_EV_CONDITION, -1, i, i, 0, 0, l[..]);
+  rs_tell_ft(b, RS_EV_CONDITION, -1, i, i, 0, 0, RS_FT_PATIENT_DEFENSE, l[..]);
   return true;
 }
 // Step of the Wind without a Focus Point: Dash as a Bonus Action (its Speed again).
@@ -1400,6 +1404,7 @@ rs_step_of_the_wind :: (b: [] RsBattle, i: int) -> bool {
   if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) || b[0].c[i].focus_max <= 0 { return false; }
   b[0].turn.bonus = true;
   b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE;
+  rs_quiet_ft(b, i, RS_FT_STEP_OF_THE_WIND);
   return true;
 }
 // ---- the classes' features
@@ -1418,12 +1423,15 @@ rs_turned_by :: (c: RsCreature) -> int {
 // A creature's own Bonus Action feature may run: its turn, its Bonus Action free, able to act.
 rs_bonus_free :: (b: [] RsBattle, i: int) -> bool { return b[0].who == i && !b[0].turn.bonus && rs_can_act(b[0].c[i]); }
 rs_action_free :: (b: [] RsBattle, i: int) -> bool { return b[0].who == i && !b[0].turn.action && rs_can_act(b[0].c[i]); }
-rs_say :: (b: [] RsBattle, kind: int, i: int, j: int, amount: int, t: string) {
+rs_say :: (b: [] RsBattle, kind: int, i: int, j: int, amount: int, t: string) { rs_say_ft(b, kind, i, j, amount, RS_FT_NONE, t); }
+rs_say_ft :: (b: [] RsBattle, kind: int, i: int, j: int, amount: int, feat: int, t: string) {
   l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], t);
-  rs_tell(b, kind, -1, i, j, amount, 0, l[..]);
+  rs_tell_ft(b, kind, -1, i, j, amount, 0, feat, l[..]);
 }
+// A feature that has no line of its own (a Dash): told quietly, for the worlds that draw it.
+rs_quiet_ft :: (b: [] RsBattle, i: int, feat: int) { l: [1] RsLine; rs_tell_ft(b, RS_EV_FEAT, -1, i, i, 0, 0, feat, l[..]); }
 // Healing from a feature (not a spell): the log line, and Hit Points back.
-rs_feature_heal :: (b: [] RsBattle, i: int, j: int, amount: int, what: string) -> int {
+rs_feature_heal :: (b: [] RsBattle, i: int, j: int, amount: int, what: string, feat: int) -> int {
   was_down := b[0].c[j].hp == 0;
   h: [1] RsCreature; h[0] = b[0].c[j];
   got := rs_heal(h[..], amount);
@@ -1431,7 +1439,7 @@ rs_feature_heal :: (b: [] RsBattle, i: int, j: int, amount: int, what: string) -
   l: [1] RsLine;
   rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " regains "); rs_add_int(l[..], got); rs_add_text(l[..], " Hit Points from "); rs_add_text(l[..], what);
   if was_down && b[0].c[j].hp > 0 { rs_add_text(l[..], " and wakes"); }
-  rs_tell(b, RS_EV_HEAL, -1, i, j, got, 0, l[..]);
+  rs_tell_ft(b, RS_EV_HEAL, -1, i, j, got, 0, feat, l[..]);
   return got;
 }
 
@@ -1441,7 +1449,7 @@ rs_font :: (b: [] RsBattle, i: int) -> bool {
   for l: 1..<10 {
     if b[0].c[i].slots[l] > 0 {
       b[0].c[i].slots[l] -= 1; b[0].c[i].uses[RS_USE_INSPIRE] += 1;
-      rs_say(b, RS_EV_CONDITION, i, i, 0, ": Font of Inspiration, a spell slot for Bardic Inspiration");
+      rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_FONT, ": Font of Inspiration, a spell slot for Bardic Inspiration");
       return true;
     }
   }
@@ -1455,7 +1463,7 @@ rs_inspire :: (b: [] RsBattle, i: int, j: int) -> bool {
   b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_INSPIRE] -= 1;
   b[0].c[j].inspired = b[0].c[i].insp_die;
   l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " inspires "); rs_add_name(l[..], b, j); rs_add_text(l[..], ": a Bardic Inspiration d"); rs_add_int(l[..], b[0].c[i].insp_die);
-  rs_tell(b, RS_EV_CONDITION, -1, i, j, 0, 0, l[..]);
+  rs_tell_ft(b, RS_EV_CONDITION, -1, i, j, 0, 0, RS_FT_INSPIRATION, l[..]);
   return true;
 }
 
@@ -1465,7 +1473,7 @@ rs_inspire :: (b: [] RsBattle, i: int, j: int) -> bool {
 rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
   if !rs_action_free(b, i) || !b[0].c[i].turn_undead || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
   b[0].turn.action = true; b[0].c[i].uses[RS_USE_CHANNEL] -= 1;
-  rs_say(b, RS_EV_CAST, i, -1, 0, " presents a holy symbol: Turn Undead");
+  rs_say_ft(b, RS_EV_CAST, i, -1, 0, RS_FT_TURN_UNDEAD, " presents a holy symbol: Turn Undead");
   dc := rs_dc(b, i);
   // Sear Undead: Wisdom-modifier d8s (at least one), rolled once, Radiant on each that fails
   sear := ifx b[0].c[i].sear then rs_sum(b[0].dice[..], rs_max(rs_mod(b[0].c[i].score[RS_WIS]), 1), 8) else 0;
@@ -1503,7 +1511,7 @@ rs_preserve_life :: (b: [] RsBattle, i: int) -> bool {
   }
   if !any { return false; }
   b[0].turn.action = true; b[0].c[i].uses[RS_USE_CHANNEL] -= 1;
-  rs_say(b, RS_EV_CAST, i, -1, 0, " channels divinity: Preserve Life");
+  rs_say_ft(b, RS_EV_CAST, i, -1, 0, RS_FT_PRESERVE_LIFE, " channels divinity: Preserve Life");
   pool := 5 * b[0].c[i].level;
   while pool > 0 {
     best := -1; bv := 2.0f32;
@@ -1516,7 +1524,7 @@ rs_preserve_life :: (b: [] RsBattle, i: int) -> bool {
     if best < 0 { break; }
     give := rs_min(pool, b[0].c[best].hp_max / 2 - b[0].c[best].hp);
     pool -= give;
-    got := rs_feature_heal(b, i, best, give, "Preserve Life");
+    got := rs_feature_heal(b, i, best, give, "Preserve Life", RS_FT_PRESERVE_LIFE);
   }
   return true;
 }
@@ -1525,8 +1533,8 @@ rs_preserve_life :: (b: [] RsBattle, i: int) -> bool {
 rs_second_wind :: (b: [] RsBattle, i: int) -> bool {
   if !rs_bonus_free(b, i) || b[0].c[i].uses[RS_USE_WIND] <= 0 || b[0].c[i].hp >= b[0].c[i].hp_max { return false; }
   b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_WIND] -= 1;
-  rs_say(b, RS_EV_CAST, i, i, 0, " takes a Second Wind");
-  got := rs_feature_heal(b, i, i, rs_roll(b[0].dice[..], 10) + b[0].c[i].level, "Second Wind");
+  rs_say_ft(b, RS_EV_CAST, i, i, 0, RS_FT_SECOND_WIND, " takes a Second Wind");
+  got := rs_feature_heal(b, i, i, rs_roll(b[0].dice[..], 10) + b[0].c[i].level, "Second Wind", RS_FT_SECOND_WIND);
   // Tactical Shift (p. 48): half its Speed more (no Opportunity Attacks in this engine to avoid)
   if b[0].c[i].shift && !b[0].turn.anchored { b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE / 2; }
   return true;
@@ -1535,7 +1543,7 @@ rs_second_wind :: (b: [] RsBattle, i: int) -> bool {
 rs_action_surge :: (b: [] RsBattle, i: int) -> bool {
   if b[0].who != i || !b[0].turn.action || !rs_can_act(b[0].c[i]) || b[0].c[i].uses[RS_USE_SURGE] <= 0 { return false; }
   b[0].turn.action = false; b[0].c[i].uses[RS_USE_SURGE] -= 1;
-  rs_say(b, RS_EV_CONDITION, i, i, 0, " uses Action Surge");
+  rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_ACTION_SURGE, " uses Action Surge");
   return true;
 }
 
@@ -1547,8 +1555,8 @@ rs_lay_on_hands :: (b: [] RsBattle, i: int, j: int, amount: int) -> bool {
   give := rs_min(rs_min(amount, b[0].c[i].uses[RS_USE_LAY]), b[0].c[j].hp_max - b[0].c[j].hp);
   if give <= 0 { return false; }
   b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_LAY] -= give;
-  rs_say(b, RS_EV_CAST, i, j, give, " lays on hands");
-  got := rs_feature_heal(b, i, j, give, "Lay On Hands");
+  rs_say_ft(b, RS_EV_CAST, i, j, give, RS_FT_LAY_ON_HANDS, " lays on hands");
+  got := rs_feature_heal(b, i, j, give, "Lay On Hands", RS_FT_LAY_ON_HANDS);
   return true;
 }
 // Sacred Weapon (Oath of Devotion, p. 56): with the Attack action, a Channel Divinity use; for 10
@@ -1558,7 +1566,7 @@ rs_sacred_weapon :: (b: [] RsBattle, i: int) -> bool {
   if b[0].c[i].sacred_until > b[0].clock { return false; }
   b[0].c[i].uses[RS_USE_CHANNEL] -= 1;
   b[0].c[i].sacred_until = b[0].clock + 600;
-  rs_say(b, RS_EV_CONDITION, i, i, 0, " raises a Sacred Weapon: +Cha to hit, Radiant on a hit");
+  rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_SACRED_WEAPON, " raises a Sacred Weapon: +Cha to hit, Radiant on a hit");
   return true;
 }
 
@@ -1567,6 +1575,7 @@ rs_cunning_dash :: (b: [] RsBattle, i: int) -> bool {
   if !rs_bonus_free(b, i) || !b[0].c[i].cunning { return false; }
   b[0].turn.bonus = true;
   b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE;
+  rs_quiet_ft(b, i, RS_FT_CUNNING_DASH);
   return true;
 }
 // Steady Aim (p. 62): a Bonus Action, only if it hasn't moved this turn; Advantage on its next
@@ -1574,7 +1583,7 @@ rs_cunning_dash :: (b: [] RsBattle, i: int) -> bool {
 rs_steady_aim :: (b: [] RsBattle, i: int) -> bool {
   if !rs_bonus_free(b, i) || !b[0].c[i].steady_aim || b[0].turn.moved { return false; }
   b[0].turn.bonus = true; b[0].turn.aimed = true; b[0].turn.anchored = true; b[0].turn.move_left = 0;
-  rs_say(b, RS_EV_CONDITION, i, i, 0, " takes Steady Aim");
+  rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_STEADY_AIM, " takes Steady Aim");
   return true;
 }
 
@@ -1584,7 +1593,7 @@ rs_innate_sorcery :: (b: [] RsBattle, i: int) -> bool {
   if !rs_bonus_free(b, i) || b[0].c[i].uses[RS_USE_INNATE] <= 0 || b[0].c[i].innate_until > b[0].clock { return false; }
   b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_INNATE] -= 1;
   b[0].c[i].innate_until = b[0].clock + 60;
-  rs_say(b, RS_EV_CONDITION, i, i, 0, " unleashes Innate Sorcery");
+  rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_INNATE_SORCERY, " unleashes Innate Sorcery");
   return true;
 }
 
@@ -1595,7 +1604,7 @@ rs_wild_resurgence :: (b: [] RsBattle, i: int) -> bool {
   for l: 1..<10 {
     if b[0].c[i].slots[l] > 0 {
       b[0].c[i].slots[l] -= 1; b[0].c[i].uses[RS_USE_WILD] = 1; b[0].turn.resurged = true;
-      rs_say(b, RS_EV_CONDITION, i, i, 0, ": Wild Resurgence, a spell slot for a Wild Shape use");
+      rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_WILD_RESURGENCE, ": Wild Resurgence, a spell slot for a Wild Shape use");
       return true;
     }
   }
@@ -1615,8 +1624,8 @@ rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
   if rs_feet(b[0].c[i].x, b[0].c[i].y, tx, ty) > 60 { return false; }
   b[0].turn.action = true; b[0].c[i].uses[RS_USE_WILD] -= 1;
   n6 := ifx b[0].c[i].level >= 14 then 4 else ifx b[0].c[i].level >= 10 then 3 else 2;
-  rs_say(b, RS_EV_CAST, i, -1, 0, " calls on Land's Aid: flowers and thorns");
-  e: RsEvent; e.kind = RS_EV_ZONE; e.spell = -1; e.by = i; e.to = -1; e.x = tx - 2; e.y = ty - 2; e.amount = 5; e.at = b[0].clock;
+  rs_say_ft(b, RS_EV_CAST, i, -1, 0, RS_FT_LANDS_AID, " calls on Land's Aid: flowers and thorns");
+  e: RsEvent; e.kind = RS_EV_ZONE; e.spell = -1; e.by = i; e.to = -1; e.feat = RS_FT_LANDS_AID; e.x = tx - 2; e.y = ty - 2; e.amount = 5; e.at = b[0].clock;
   k := rs_emit(b[0].book[..], e);
   dc := rs_dc(b, i);
   for j: 0..<b[0].n {
@@ -1637,7 +1646,7 @@ rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
     rs_damage(b, i, j, amount, RS_NECROTIC, false, -1);
   }
   if heal >= 0 && heal < b[0].n && !b[0].c[heal].dead && rs_feet(tx, ty, b[0].c[heal].x, b[0].c[heal].y) <= 10 {
-    got := rs_feature_heal(b, i, heal, rs_sum(b[0].dice[..], n6, 6), "Land's Aid");
+    got := rs_feature_heal(b, i, heal, rs_sum(b[0].dice[..], n6, 6), "Land's Aid", RS_FT_LANDS_AID);
   }
   return true;
 }
@@ -2201,6 +2210,20 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert !rs_action_surge(b[..], f);   // nothing to surge past yet
   #assert rs_attack(b[..], f, t, false, -1) && !rs_attack(b[..], f, t, false, -1);
   #assert rs_action_surge(b[..], f) && rs_attack(b[..], f, t, false, -1) && b[0].c[f].uses[RS_USE_SURGE] == 0 && !rs_action_surge(b[..], f);
+}
+#test "a feature's events say which feature it is; a Cunning Action Dash is told without a line" {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 2;
+  f := rs_add(b[..], rs_fighter("Garr", 0, 3), 3, 4);
+  r := rs_add(b[..], rs_rogue("Nim", 0, 3), 6, 4);
+  b[0].c[f].hp = 5;
+  rs_fresh(b[..], f);
+  #assert rs_second_wind(b[..], f);
+  told := rs_recent(b[0].book[0], 1); heal := rs_recent(b[0].book[0], 0);
+  #assert told.kind == RS_EV_CAST && told.feat == RS_FT_SECOND_WIND && heal.kind == RS_EV_HEAL && heal.feat == RS_FT_SECOND_WIND;
+  rs_fresh(b[..], r);
+  #assert rs_cunning_dash(b[..], r);
+  e := rs_recent(b[0].book[0], 0);
+  #assert e.kind == RS_EV_FEAT && e.feat == RS_FT_CUNNING_DASH && e.by == r && e.text_n == 0;
 }
 #test "Improved Critical: the Champion's 19s are Critical Hits; Graze deals the Strength modifier on a miss" {
   b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 12;
