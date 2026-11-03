@@ -10,6 +10,10 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 //   coax/bin/coax test --library aethyr/rules/srd/spells.coax
 #load "engine.coax";
+// More records past the first RS_SPELLS: SRD spells a world needed (more.coax) and house rules,
+// marked srd: false (house.coax). rs_spell answers for both.
+#load "more.coax";
+#load "house.coax";
 
 // casting times
 RS_T_ACTION :: 0; RS_T_BONUS :: 1; RS_T_REACTION :: 2;
@@ -67,6 +71,7 @@ RsSpell :: struct {
   part_of: int;               // a part of another spell (Produce Flame's hurl), -1 none
   humanoid_only: bool;        // its target must be a Humanoid
   burst: bool;                // an area that is there only as it's cast, though the spell lasts (Call Lightning)
+  srd: bool = true;           // the SRD's; false: a house rule (house.coax), not SRD content
   page: int;                  // the SRD 5.2.1 page
   text: string;
 }
@@ -83,6 +88,7 @@ RS_SPELLS :: 30;
 rs_step :: (kind: int, a: int, b: int, c: int, d: int) -> RsStep { return RsStep.{kind = kind, a = a, b = b, c = c, d = d}; }
 
 rs_spell :: (i: int) -> RsSpell {
+  if i >= RS_SPELLS { return rs_more_spell(i); }
   s: RsSpell;
   s.part_of = -1;
   if i == SP_PRODUCE_FLAME {

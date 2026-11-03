@@ -1,0 +1,434 @@
+// The hotbar on the SRD 5e engine (fivebar): one layer between a world's hotbar and
+// aethyr/rules/srd/, shared by Everglade 5E (everglade5e-rules.coax) and 5E MMO
+// (fivemmo-battle.coax). A slot is an entry: what kind of thing it is (a spell or a class feature),
+// the spell record and the slot level it is cast at, how it is aimed, its name, and its picture's
+// name in the world's hotbar art (`art`: realms/everglade/hotbar/ for Everglade's bar, the spell's
+// or feature's id in realms/5e-mmo/hotbar/ for a class's bar). The layer says whether an entry can
+// be used now (fb_ready), what it has left to count (fb_left), and uses it (fb_use): every roll,
+// slot, save, condition and concentration is the engine's.
+//
+// Two bars:
+//   fb_class_bar   a class's own abilities at level 6 (5E MMO), in slot order;
+//   fb_everglade   Everglade's bar, slot for slot in its order (everglade-hotbar.coax HB_NAME): its
+//                  four aimed spells, its 43 abilities and Rebuild and the phone's row switcher. The
+//                  SRD's spells are their records (spells.coax, more.coax); Everglade's own four
+//                  are house rules marked srd: false (house.coax).
+//
+// A world that plays in real time (Everglade 5E) seats its players (FbSeat): each keeps its own turn
+// (an action, a Bonus Action, one slot spent) that opens on its beat and that it can spend at any
+// moment of it, while the engine's other creatures take their turns on the same clock. A spell
+// whose area lasts runs its record again on whoever is in it each round (fb_zones_round).
+//   coax/bin/coax test --library apps/openagents-web/fivebar-test.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+// what an entry is (5E MMO's numbers; its face reads them)
+FB_ATTACK :: 0; FB_DASH :: 1; FB_SPELL :: 2; FB_RECKLESS :: 3; FB_RAGE :: 4; FB_FLURRY :: 5; FB_PATIENT :: 6;
+FB_WIND :: 7; FB_WHOLE :: 8; FB_SECOND :: 9; FB_SURGE :: 10; FB_LAY :: 11; FB_SACRED :: 12; FB_CDASH :: 13;
+FB_AIM :: 14; FB_INNATE :: 15; FB_INSPIRE :: 16; FB_TURN :: 17; FB_PRESERVE :: 18; FB_LANDS :: 19;
+FB_RESURGE :: 20;   // Wild Resurgence: a slot for a use of Wild Shape, taken at once
+FB_WORLD :: 21;     // the world's own (Rebuild, the phone's row switcher): no rules
+// how it is aimed: your target, a point (the ground under your target, or where you point), you,
+// the friend most hurt, the friends round a point (up to six)
+FB_FOE :: 0; FB_POINT :: 1; FB_SELF :: 2; FB_ALLY :: 3; FB_ALLIES :: 4;
+FB_CLASS_SLOTS :: 9;
+FB_EG_SLOTS :: 49;
+FB_ALLIES_MOST :: 6; FB_ALLIES_FT :: 30;   // Mass Cure Wounds: six creatures in a 30-foot sphere
+
+FbAb :: struct {
+  kind: int; sp: int; lvl: int; tg: int;
+  name: string; art: string;
+  conjure: bool;      // Produce Flame on one slot: the flame comes to hand first (a Bonus Action), then is hurled
+  part: int = -1;     // a part that follows (Ice Knife's burst round its target)
+  again: int = -1;    // a lasting area's part, run on whoever is in it each round (-1 none)
+  delay: f32;         // seconds from the press to the strike, as the world draws it (a cast bar, a fall)
+}
+fb_feature :: (kind: int, name: string, art: string) -> FbAb { return FbAb.{kind = kind, sp = -1, name = name, art = art}; }
+fb_spell :: (sp: int, lvl: int, tg: int) -> FbAb { s := rs_spell(sp); return FbAb.{kind = FB_SPELL, sp = sp, lvl = lvl, tg = tg, name = s.name, art = s.id}; }
+fb_art_spell :: (sp: int, tg: int, art: string) -> FbAb { a := fb_spell(sp, rs_spell(sp).level, tg); a.art = art; return a; }
+
+// ---- 5E MMO: a class's bar at level 6, in slot order (the abilities its rules in the engine support)
+
+fb_class_bar :: (kl: int, out: [] FbAb) -> int {
+  n := 0;
+  if kl == RS_DRUID {
+    out[0] = fb_spell(SP_STARRY_WISP, 0, FB_FOE); out[1] = fb_spell(SP_PRODUCE_FLAME, 0, FB_SELF); out[2] = fb_spell(SP_FLAME_HURL, 0, FB_FOE);
+    out[3] = fb_spell(SP_THUNDERWAVE, 1, FB_POINT); out[4] = fb_spell(SP_ENTANGLE, 1, FB_POINT); out[5] = fb_spell(SP_HEALING_WORD, 1, FB_ALLY);
+    out[6] = fb_spell(SP_CALL_LIGHTNING, 3, FB_POINT); out[7] = fb_feature(FB_LANDS, "LAND'S AID", "lands-aid"); out[8] = fb_feature(FB_DASH, "DASH", "dash"); n = 9;
+  } else if kl == RS_WIZARD {
+    out[0] = fb_spell(SP_FIRE_BOLT, 0, FB_FOE); out[1] = fb_spell(SP_CHILL_TOUCH, 0, FB_FOE); out[2] = fb_spell(SP_RAY_OF_SICKNESS, 1, FB_FOE);
+    out[3] = fb_spell(SP_FALSE_LIFE, 1, FB_SELF); out[4] = fb_spell(SP_SCORCHING_RAY, 2, FB_FOE); out[5] = fb_spell(SP_BLINDNESS, 2, FB_FOE);
+    out[6] = fb_spell(SP_FIREBALL, 3, FB_POINT); out[7] = fb_feature(FB_DASH, "DASH", "dash"); n = 8;
+  } else if kl == RS_WARLOCK {
+    out[0] = fb_spell(SP_ELDRITCH_BLAST, 0, FB_FOE); out[1] = fb_spell(SP_CHILL_TOUCH, 0, FB_FOE); out[2] = fb_spell(SP_HEX, 1, FB_FOE);
+    out[3] = fb_spell(SP_HOLD_PERSON, 2, FB_FOE); out[4] = fb_spell(SP_SCORCHING_RAY, 2, FB_FOE); out[5] = fb_spell(SP_FIREBALL, 3, FB_POINT);
+    out[6] = fb_feature(FB_DASH, "DASH", "dash"); n = 7;
+  } else if kl == RS_SORCERER {
+    out[0] = fb_spell(SP_FIRE_BOLT, 0, FB_FOE); out[1] = fb_spell(SP_SCORCHING_RAY, 2, FB_FOE); out[2] = fb_spell(SP_FIREBALL, 3, FB_POINT);
+    out[3] = fb_feature(FB_INNATE, "INNATE SORCERY", "innate-sorcery"); out[4] = fb_feature(FB_DASH, "DASH", "dash"); n = 5;
+  } else if kl == RS_BARD {
+    out[0] = fb_spell(SP_VICIOUS_MOCKERY, 0, FB_FOE); out[1] = fb_spell(SP_HEALING_WORD, 1, FB_ALLY); out[2] = fb_feature(FB_INSPIRE, "BARDIC INSPIRATION", "bardic-inspiration");
+    out[3] = fb_spell(SP_HYPNOTIC_PATTERN, 3, FB_POINT); out[4] = fb_spell(SP_FIREBALL, 3, FB_POINT); out[5] = fb_feature(FB_DASH, "DASH", "dash"); n = 6;
+  } else if kl == RS_CLERIC {
+    out[0] = fb_feature(FB_ATTACK, "ATTACK", "attack"); out[1] = fb_spell(SP_SACRED_FLAME, 0, FB_FOE); out[2] = fb_spell(SP_GUIDING_BOLT, 1, FB_FOE);
+    out[3] = fb_spell(SP_HEALING_WORD, 1, FB_ALLY); out[4] = fb_spell(SP_SPIRIT_GUARDIANS, 3, FB_SELF); out[5] = fb_feature(FB_TURN, "TURN UNDEAD", "turn-undead");
+    out[6] = fb_feature(FB_PRESERVE, "PRESERVE LIFE", "preserve-life"); out[7] = fb_feature(FB_DASH, "DASH", "dash"); n = 8;
+  } else if kl == RS_FIGHTER {
+    out[0] = fb_feature(FB_ATTACK, "ATTACK", "attack"); out[1] = fb_feature(FB_SECOND, "SECOND WIND", "second-wind");
+    out[2] = fb_feature(FB_SURGE, "ACTION SURGE", "action-surge"); out[3] = fb_feature(FB_DASH, "DASH", "dash"); n = 4;
+  } else if kl == RS_PALADIN {
+    out[0] = fb_feature(FB_ATTACK, "ATTACK", "attack"); out[1] = fb_spell(SP_DIVINE_SMITE, 1, FB_FOE); out[2] = fb_feature(FB_LAY, "LAY ON HANDS", "lay-on-hands");
+    out[3] = fb_feature(FB_SACRED, "SACRED WEAPON", "sacred-weapon"); out[4] = fb_spell(SP_SACRED_FLAME, 0, FB_FOE); out[5] = fb_feature(FB_DASH, "DASH", "dash"); n = 6;
+  } else if kl == RS_BARBARIAN {
+    out[0] = fb_feature(FB_ATTACK, "ATTACK", "attack"); out[1] = fb_feature(FB_RECKLESS, "RECKLESS ATTACK", "reckless-attack");
+    out[2] = fb_feature(FB_RAGE, "RAGE", "rage"); out[3] = fb_feature(FB_DASH, "DASH", "dash"); n = 4;
+  } else if kl == RS_MONK {
+    out[0] = fb_feature(FB_ATTACK, "ATTACK", "attack"); out[1] = fb_feature(FB_FLURRY, "FLURRY OF BLOWS", "flurry-of-blows"); out[2] = fb_feature(FB_PATIENT, "PATIENT DEFENSE", "patient-defense");
+    out[3] = fb_feature(FB_WIND, "STEP OF THE WIND", "step-of-the-wind"); out[4] = fb_feature(FB_WHOLE, "WHOLENESS OF BODY", "wholeness-of-body"); out[5] = fb_feature(FB_DASH, "DASH", "dash"); n = 6;
+  } else if kl == RS_ROGUE {
+    out[0] = fb_feature(FB_ATTACK, "ATTACK", "attack"); out[1] = fb_feature(FB_AIM, "STEADY AIM", "steady-aim");
+    out[2] = fb_feature(FB_CDASH, "CUNNING DASH", "cunning-dash"); out[3] = fb_feature(FB_DASH, "DASH", "dash"); n = 4;
+  } else if kl == RS_RANGER {
+    out[0] = fb_feature(FB_ATTACK, "ATTACK", "attack"); out[1] = fb_spell(SP_HUNTERS_MARK, 1, FB_FOE); out[2] = fb_feature(FB_DASH, "DASH", "dash"); n = 3;
+  } else { out[0] = fb_feature(FB_ATTACK, "ATTACK", "attack"); out[1] = fb_feature(FB_DASH, "DASH", "dash"); n = 2; }
+  return n;
+}
+
+// ---- Everglade's bar, in its slot order (everglade-hotbar.coax HB_NAME; `art` is that name)
+
+fb_everglade :: (out: [] FbAb) -> int {
+  // the four aimed spells: Everglade's own, house rules; each strikes when Everglade's cast bar and
+  // fall end (everglade-spells.coax: 2.5 s and 1.1 s; 1.2 s; 0.5 s; 0.6 s and the orb's flight)
+  out[0] = fb_art_spell(SP_EG_METEOR_SWARM, FB_POINT, "meteor-swarm"); out[0].delay = 3.6;
+  out[1] = fb_art_spell(SP_THUNDERBOLT, FB_POINT, "thunderbolt"); out[1].delay = 1.3;
+  out[2] = fb_art_spell(SP_MEGA_THUNDERBOLT, FB_POINT, "mega-thunderbolt"); out[2].delay = 0.6;
+  out[3] = fb_art_spell(SP_WATER_ORB, FB_POINT, "water-orb"); out[3].delay = 1.0;
+  // the abilities (everglade-abilities.coax AB_*, from slot 4)
+  out[4] = fb_art_spell(SP_REVERSE_GRAVITY, FB_POINT, "reverse-gravity");
+  out[5] = fb_art_spell(SP_WIND_WALL, FB_POINT, "wind-wall");
+  out[6] = fb_art_spell(SP_LEVITATE, FB_SELF, "levitate");
+  out[7] = fb_art_spell(SP_FEATHER_FALL, FB_SELF, "feather-fall");
+  out[8] = fb_art_spell(SP_GUST_OF_WIND, FB_POINT, "gust-of-wind");
+  out[9] = fb_art_spell(SP_THUNDERWAVE, FB_POINT, "thunderwave");
+  out[10] = fb_art_spell(SP_WALL_OF_STONE, FB_POINT, "wall-of-stone");
+  out[11] = fb_art_spell(SP_TELEKINESIS, FB_FOE, "telekinesis");
+  out[12] = fb_art_spell(SP_BLACK_TENTACLES, FB_POINT, "black-tentacles"); out[12].again = SP_BLACK_TENTACLES;
+  out[13] = fb_art_spell(SP_ICE_KNIFE, FB_FOE, "ice-knife"); out[13].part = SP_ICE_KNIFE_BURST;
+  out[14] = fb_art_spell(SP_ICE_STORM, FB_POINT, "ice-storm");
+  out[15] = fb_art_spell(SP_SLEET_STORM, FB_POINT, "sleet-storm"); out[15].again = SP_SLEET_STORM;
+  out[16] = fb_art_spell(SP_WATER_WALK, FB_SELF, "water-walk");
+  out[17] = fb_art_spell(SP_CONTROL_WATER, FB_POINT, "control-water"); out[17].again = SP_CONTROL_WATER;
+  out[18] = fb_art_spell(SP_CREATE_WATER, FB_POINT, "create-water");
+  out[19] = fb_art_spell(SP_WATER_BREATHING, FB_SELF, "water-breathing");
+  out[20] = fb_art_spell(SP_MOONBEAM, FB_POINT, "moonbeam"); out[20].again = SP_MOONBEAM;
+  out[21] = fb_art_spell(SP_FLAME_HURL, FB_FOE, "produce-flame"); out[21].conjure = true;
+  out[22] = fb_art_spell(SP_STARRY_WISP, FB_FOE, "starry-wisp");
+  out[23] = fb_art_spell(SP_SHILLELAGH, FB_SELF, "shillelagh");
+  out[24] = fb_art_spell(SP_POISON_SPRAY, FB_FOE, "poison-spray");
+  out[25] = fb_art_spell(SP_ELEMENTALISM, FB_POINT, "elementalism");
+  out[26] = fb_art_spell(SP_ENTANGLE, FB_POINT, "entangle");
+  out[27] = fb_art_spell(SP_FAERIE_FIRE, FB_POINT, "faerie-fire");
+  out[28] = fb_art_spell(SP_HEALING_WORD, FB_ALLY, "healing-word");
+  out[29] = fb_art_spell(SP_SPIKE_GROWTH, FB_POINT, "spike-growth"); out[29].again = SP_SPIKE_STEP;
+  out[30] = fb_art_spell(SP_CALL_LIGHTNING, FB_POINT, "call-lightning"); out[30].again = SP_CALL_BOLT;
+  out[31] = fb_art_spell(SP_WALL_OF_FIRE, FB_POINT, "wall-of-fire"); out[31].again = SP_WALL_OF_FIRE;
+  out[32] = fb_art_spell(SP_CONJURE_ANIMALS, FB_POINT, "conjure-animals"); out[32].again = SP_CONJURE_ANIMALS;
+  out[33] = fb_art_spell(SP_POLYMORPH, FB_FOE, "polymorph");
+  out[34] = fb_art_spell(SP_MASS_CURE_WOUNDS, FB_ALLIES, "mass-cure-wounds");
+  out[35] = fb_art_spell(SP_SUNBEAM, FB_POINT, "sunbeam");
+  out[36] = fb_art_spell(SP_WALL_OF_THORNS, FB_POINT, "wall-of-thorns"); out[36].again = SP_WALL_OF_THORNS;
+  out[37] = fb_art_spell(SP_FIRE_STORM, FB_POINT, "fire-storm");
+  out[38] = fb_art_spell(SP_SUNBURST, FB_POINT, "sunburst");
+  out[39] = fb_art_spell(SP_STORM_OF_VENGEANCE, FB_POINT, "storm-of-vengeance"); out[39].again = SP_STORM_BOLT;
+  out[40] = fb_art_spell(SP_SHAPECHANGE, FB_SELF, "shapechange");
+  out[41] = fb_art_spell(SP_SPEAK_WITH_ANIMALS, FB_SELF, "speak-with-animals");
+  out[42] = fb_feature(FB_RESURGE, "Wild Resurgence", "wild-resurgence");
+  out[43] = fb_art_spell(SP_RAY_OF_FROST, FB_FOE, "ray-of-frost");
+  out[44] = fb_art_spell(SP_FOG_CLOUD, FB_POINT, "fog-cloud");
+  out[45] = fb_art_spell(SP_HOLD_PERSON, FB_FOE, "hold-person");
+  out[46] = fb_art_spell(SP_CONE_OF_COLD, FB_POINT, "cone-of-cold");
+  out[47] = fb_feature(FB_WORLD, "Rebuild", "rebuild");
+  out[48] = fb_feature(FB_WORLD, "Next row", "next-row");
+  return FB_EG_SLOTS;
+}
+
+// Everglade's caster (its realm's tier, everglade-grove.coax: DC 15, +7, a 9th-level druid with
+// Wisdom +3; cantrips at two dice): the SRD 5.2.1 Druid at level 9, standard array, Wisdom first
+// to 16 and no feat raised it, Leather Armor and a Shield (AC 11 + Dex + 2). One house rule: a
+// level 17 full caster's slots (4, 3, 3, 3, 2, 1, 1, 1, 1), so every spell on Everglade's bar, up
+// to its 9th-level Meteor Swarm and Mega Thunderbolt, has a slot to be cast with.
+FB_EG_LEVEL :: 9;
+FB_EG_SLOTS_MAX :: [10] int.[0, 4, 3, 3, 3, 2, 1, 1, 1, 1];
+fb_everglade_hero :: (name: string, team: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_hero(name, team, FB_EG_LEVEL, RS_DRUID, [6] int.[10, 14, 13, 12, 16, 8], RS_INT, RS_WIS, 8);
+  c[0].ac = 11 + rs_mod(c[0].score[RS_DEX]) + 2;
+  c[0].spell_ability = RS_WIS;
+  for l: 0..<10 { c[0].slots_max[l] = FB_EG_SLOTS_MAX[l]; c[0].slots[l] = FB_EG_SLOTS_MAX[l]; }
+  c[0].companion = true; c[0].resurgence = true; c[0].lands_aid = true;
+  rs_use_set(c[..], RS_USE_WILD, 3);
+  return c[0];
+}
+// A stat block for a world's own people, from its numbers (Everglade's watch: verse/rules/srd5.coax
+// SRD_COMMONER, SRD_GUARD and the ranks): Armor Class, Hit Points, the six scores, its proficiency
+// bonus on its saving throws (0: none).
+fb_folk :: (name: string, team: int, ac: int, hp: int, score: [6] int) -> RsCreature {
+  c: [1] RsCreature;
+  rs_set_name(c[..], name);
+  c[0].team = team; c[0].level = 1; c[0].klass = RS_MONSTER; c[0].humanoid = true;
+  c[0].score = score; c[0].ac = ac; c[0].hp_max = rs_max(hp, 1); c[0].hp = c[0].hp_max; c[0].speed = 30;
+  c[0].spell_ability = -1; c[0].ranged = -1; c[0].weapon = W_UNARMED;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  return c[0];
+}
+
+// ---- ready, left, use
+
+// The lowest free slot of at least `level`, or 0.
+fb_free_slot :: (b: [] RsBattle, i: int, level: int) -> int {
+  for k: rs_max(level, 1)..<10 { if b[0].c[i].slots[k] > 0 { return k; } }
+  return 0;
+}
+// Whether an entry can be used now, from the creature's slots, uses, Rages and Focus.
+fb_ready :: (b: [] RsBattle, i: int, a: FbAb) -> bool {
+  c := b[0].c[i];
+  if a.kind == FB_WORLD { return true; }
+  if a.kind == FB_SPELL {
+    if rs_spell(a.sp).cast_time == RS_T_REACTION && c.reacted { return false; }
+    return a.lvl == 0 || fb_free_slot(b, i, a.lvl) > 0;
+  }
+  if a.kind == FB_RAGE { return c.rages > 0 && !c.raging; }
+  if a.kind == FB_FLURRY || a.kind == FB_PATIENT || a.kind == FB_WIND { return c.focus > 0; }
+  if a.kind == FB_WHOLE { return c.uses[RS_USE_WHOLE] > 0; }
+  if a.kind == FB_SECOND { return c.uses[RS_USE_WIND] > 0; }
+  if a.kind == FB_SURGE { return c.uses[RS_USE_SURGE] > 0; }
+  if a.kind == FB_LAY { return c.uses[RS_USE_LAY] > 0; }
+  if a.kind == FB_INSPIRE { return c.uses[RS_USE_INSPIRE] > 0; }
+  if a.kind == FB_INNATE { return c.uses[RS_USE_INNATE] > 0; }
+  if a.kind == FB_LANDS { return c.uses[RS_USE_WILD] > 0; }
+  if a.kind == FB_RESURGE { return c.resurgence && (c.uses[RS_USE_WILD] > 0 || fb_free_slot(b, i, 1) > 0); }
+  if a.kind == FB_TURN || a.kind == FB_PRESERVE || a.kind == FB_SACRED { return c.uses[RS_USE_CHANNEL] > 0; }
+  return true;
+}
+// What an entry has left to show in its corner: slots at its level, uses, Rages or Focus (-1: none).
+fb_left :: (b: [] RsBattle, i: int, a: FbAb) -> int {
+  c := b[0].c[i];
+  if a.kind == FB_SPELL { if a.lvl == 0 { return -1; } sl := fb_free_slot(b, i, a.lvl); return ifx sl > 0 then c.slots[sl] else 0; }
+  if a.kind == FB_RAGE { return c.rages; }
+  if a.kind == FB_FLURRY || a.kind == FB_PATIENT || a.kind == FB_WIND { return c.focus; }
+  if a.kind == FB_WHOLE { return c.uses[RS_USE_WHOLE]; }
+  if a.kind == FB_SECOND { return c.uses[RS_USE_WIND]; }
+  if a.kind == FB_SURGE { return c.uses[RS_USE_SURGE]; }
+  if a.kind == FB_LAY { return c.uses[RS_USE_LAY]; }
+  if a.kind == FB_INSPIRE { return c.uses[RS_USE_INSPIRE]; }
+  if a.kind == FB_INNATE { return c.uses[RS_USE_INNATE]; }
+  if a.kind == FB_LANDS || a.kind == FB_RESURGE { return c.uses[RS_USE_WILD]; }
+  if a.kind == FB_TURN || a.kind == FB_PRESERVE || a.kind == FB_SACRED { return c.uses[RS_USE_CHANNEL]; }
+  return -1;
+}
+// When the slot an entry spends next comes back on the action clock (0: nothing to wait for).
+fb_back :: (b: [] RsBattle, i: int, a: FbAb) -> f32 {
+  if a.kind != FB_SPELL || a.lvl == 0 { return 0; }
+  if fb_free_slot(b, i, a.lvl) > 0 { return 0; }
+  best := 0.0f32;
+  for l: a.lvl..<10 {
+    t := b[0].c[i].slot_back[l];
+    if b[0].c[i].slots_max[l] > 0 && t > 0 && (best == 0 || t < best) { best = t; }
+  }
+  return best;
+}
+
+// Use entry a now, in creature i's turn: at foe `foe` (a spell aimed at a creature, an attack), at
+// the square (tx, ty) (a spell aimed at a point), for the friend `ally` (a heal). The world chooses
+// those; the rules are the engine's. False, and nothing spent, when it can't be used so.
+fb_use :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: int) -> bool {
+  at := foe;
+  if a.kind == FB_WORLD { return true; }
+  if a.kind == FB_SPELL { return fb_cast(b, i, a, foe, tx, ty, ally); }
+  if a.kind == FB_ATTACK { if at >= 0 { return rs_attack(b, i, at, false, -1); } return false; }
+  if a.kind == FB_DASH { return rs_dash(b, i); }
+  if a.kind == FB_CDASH { return rs_cunning_dash(b, i); }
+  if a.kind == FB_WIND { return rs_step_of_the_wind(b, i); }
+  if a.kind == FB_RECKLESS { if at >= 0 { return rs_attack(b, i, at, true, -1); } return false; }
+  if a.kind == FB_RAGE { return rs_rage(b, i); }
+  if a.kind == FB_FLURRY {
+    if at < 0 { return false; }
+    ok := rs_attack(b, i, at, false, -1);
+    if rs_up(b[0].c[at]) { ok = rs_flurry(b, i, at, OH_TOPPLE); }
+    return ok;
+  }
+  if a.kind == FB_PATIENT { return rs_patient_defense(b, i); }
+  if a.kind == FB_WHOLE { return rs_wholeness(b, i); }
+  if a.kind == FB_SECOND { return rs_second_wind(b, i); }
+  if a.kind == FB_SURGE { return rs_action_surge(b, i); }
+  if a.kind == FB_LAY { w := ifx ally >= 0 then ally else i; return rs_lay_on_hands(b, i, w, ifx b[0].c[w].hp == 0 then 5 else 10); }
+  if a.kind == FB_SACRED { return rs_sacred_weapon(b, i); }
+  if a.kind == FB_AIM { return rs_steady_aim(b, i); }
+  if a.kind == FB_INNATE { return rs_innate_sorcery(b, i); }
+  if a.kind == FB_INSPIRE { if ally >= 0 && ally != i { return rs_inspire(b, i, ally); } return false; }
+  if a.kind == FB_TURN { return rs_turn_undead(b, i); }
+  if a.kind == FB_PRESERVE { return rs_preserve_life(b, i); }
+  if a.kind == FB_LANDS { if foe >= 0 { return rs_lands_aid(b, i, b[0].c[foe].x, b[0].c[foe].y, ally); } return rs_lands_aid(b, i, tx, ty, ally); }
+  if a.kind == FB_RESURGE { return fb_wild_shape(b, i); }
+  return false;
+}
+// Wild Resurgence for a use of Wild Shape (a slot spent when none is left, the SRD's Druid level 5),
+// and the Wild Shape taken at once: Temporary Hit Points equal to the Druid level.
+fb_wild_shape :: (b: [] RsBattle, i: int) -> bool {
+  if b[0].who != i || !rs_can_act(b[0].c[i]) || b[0].turn.bonus { return false; }
+  if b[0].c[i].uses[RS_USE_WILD] <= 0 && !rs_wild_resurgence(b, i) { return false; }
+  b[0].c[i].uses[RS_USE_WILD] -= 1;
+  b[0].turn.bonus = true;
+  b[0].c[i].temp = rs_max(b[0].c[i].temp, b[0].c[i].level);
+  rs_say(b, RS_EV_HEAL, i, i, b[0].c[i].level, ": Wild Shape, a wolf, with Temporary Hit Points");
+  return true;
+}
+fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: int) -> bool {
+  s := rs_spell(a.sp);
+  sl := ifx a.lvl == 0 then 0 else fb_free_slot(b, i, a.lvl);
+  if a.lvl > 0 && sl == 0 { return false; }
+  // a Reaction (Feather Fall): its own Reaction and a slot, not the turn's action
+  if s.cast_time == RS_T_REACTION {
+    if b[0].c[i].reacted || !rs_can_act(b[0].c[i]) { return false; }
+    b[0].c[i].reacted = true; b[0].c[i].slots[sl] -= 1;
+    l: [1] RsLine;
+    rs_add_name(l[..], b, i); rs_add_text(l[..], " casts "); rs_add_text(l[..], s.name); rs_add_text(l[..], " ("); rs_add_text(l[..], RS_ORDINAL[sl]); rs_add_text(l[..], "-level slot, Reaction)");
+    rs_tell(b, RS_EV_CAST, a.sp, i, i, sl, 0, l[..]);
+    return true;
+  }
+  // Produce Flame on one slot: to hand first (a Bonus Action), then hurled
+  if a.conjure && b[0].c[i].flame_until <= b[0].clock {
+    if !rs_cast(b, i, SP_PRODUCE_FLAME, 0, 0, 0, i) { return false; }
+  }
+  ok := false;
+  if a.tg == FB_SELF { ok = rs_cast(b, i, a.sp, sl, 0, 0, i); }
+  else if a.tg == FB_ALLY { ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx ally >= 0 then ally else i); }
+  else if a.tg == FB_ALLIES {
+    // the first is you, then up to five friends round the point, the most hurt first
+    ok = rs_cast(b, i, a.sp, sl, 0, 0, i);
+    if ok {
+      done := 1;
+      while done < FB_ALLIES_MOST {
+        best := -1; bv := 2.0f32;
+        for j: 0..<b[0].n {
+          c := b[0].c[j];
+          if j == i || c.team != b[0].c[i].team || c.dead || rs_feet(tx, ty, c.x, c.y) > FB_ALLIES_FT || c.hp >= c.hp_max { continue; }
+          v := f32(c.hp) / f32(rs_max(c.hp_max, 1));
+          if v < bv { bv = v; best = j; }
+        }
+        if best < 0 { break; }
+        rs_affect(b, i, best, a.sp, sl, -1);
+        done += 1;
+      }
+    }
+  }
+  else if a.tg == FB_POINT && s.area != RS_A_NONE { ok = rs_cast(b, i, a.sp, sl, tx, ty, -1); }
+  else if a.tg == FB_POINT { ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx foe >= 0 then foe else i); }   // a point the world aims, no creature's
+  else if foe >= 0 { ok = rs_cast(b, i, a.sp, sl, 0, 0, foe); }
+  else { ok = fb_cast_at_nothing(b, i, a.sp, sl); }
+  if !ok { return false; }
+  // what follows: Ice Knife's shard bursts round its target, hit or miss
+  if a.part >= 0 && foe >= 0 {
+    p := rs_spell(a.part);
+    for j: 0..<b[0].n {
+      if j == i || b[0].c[j].dead || rs_feet_to(b, foe, j) > p.area_ft { continue; }
+      rs_affect(b, i, j, a.part, sl, -1);
+    }
+  }
+  return true;
+}
+
+// A spell aimed at a creature cast where none is (at a wall, at the ground): its action or Bonus
+// Action, its slot and its concentration are spent as rs_cast spends them, and nothing is affected.
+fb_cast_at_nothing :: (b: [] RsBattle, i: int, sp: int, sl: int) -> bool {
+  if !rs_can_cast(b, i, sp, sl) { return false; }
+  s := rs_spell(sp);
+  if s.cast_time == RS_T_ACTION { b[0].turn.action = true; } else { b[0].turn.bonus = true; }
+  if s.level > 0 { b[0].turn.leveled = true; b[0].c[i].slots[sl] -= 1; b[0].turn.slot_spent = true; }
+  if s.concentration { rs_end_concentration(b, i, ""); b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + s.duration_s; }
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], " casts "); rs_add_text(l[..], s.name);
+  if s.level > 0 { rs_add_text(l[..], " ("); rs_add_text(l[..], RS_ORDINAL[sl]); rs_add_text(l[..], "-level slot)"); }
+  rs_add_text(l[..], " at no one");
+  rs_tell(b, RS_EV_CAST, sp, i, -1, sl, 0, l[..]);
+  return true;
+}
+
+// ---- a player in real time: its own turn, open through its beat
+
+FbSeat :: struct { me: int = -1; turn: RsTurn; open: bool; who: int; kept: RsTurn; }
+// Into the seat's turn (the battle's own, if any, kept aside) and out again.
+fb_seat_in :: (b: [] RsBattle, s: [] FbSeat) { s[0].who = b[0].who; s[0].kept = b[0].turn; b[0].who = s[0].me; b[0].turn = s[0].turn; }
+fb_seat_out :: (b: [] RsBattle, s: [] FbSeat) { s[0].turn = b[0].turn; b[0].who = s[0].who; b[0].turn = s[0].kept; }
+// On its beat the seat's turn ends (the saves it repeats, its Rage) and the next opens.
+fb_seat_step :: (b: [] RsBattle, s: [] FbSeat) {
+  i := s[0].me;
+  if i < 0 || i >= b[0].n || b[0].c[i].dead || b[0].c[i].turn_at > b[0].clock { return; }
+  fb_seat_in(b, s);
+  // its turn_at becomes the next beat: rs_end_turn moves it on, and a first turn moves it by hand
+  if s[0].open { rs_end_turn(b, i); } else { b[0].c[i].turn_at += rs_beat(b); }
+  rs_start_turn(b, i);
+  s[0].open = true;
+  fb_seat_out(b, s);
+}
+// Use an entry in the seat's turn.
+fb_seat_use :: (b: [] RsBattle, s: [] FbSeat, a: FbAb, foe: int, tx: int, ty: int, ally: int) -> bool {
+  if !s[0].open { return false; }
+  fb_seat_in(b, s);
+  ok := fb_use(b, s[0].me, a, foe, tx, ty, ally);
+  fb_seat_out(b, s);
+  return ok;
+}
+// Whether the seat's turn still has what an entry spends: its action, its Bonus Action, a slot.
+fb_seat_can :: (b: [] RsBattle, s: [] FbSeat, a: FbAb) -> bool {
+  if !s[0].open || !rs_can_act(b[0].c[s[0].me]) { return false; }
+  if !fb_ready(b, s[0].me, a) { return false; }
+  if a.kind != FB_SPELL { return true; }
+  sp := rs_spell(a.sp);
+  if sp.cast_time == RS_T_REACTION { return true; }
+  if sp.level > 0 && s[0].turn.slot_spent { return false; }
+  if sp.cast_time == RS_T_BONUS { return !s[0].turn.bonus; }
+  if a.conjure && b[0].c[s[0].me].flame_until <= b[0].clock && s[0].turn.bonus { return false; }
+  return !s[0].turn.action;
+}
+// When the seat's next turn opens.
+fb_seat_next :: (b: [] RsBattle, s: [] FbSeat) -> f32 { return ifx s[0].me >= 0 then b[0].c[s[0].me].turn_at else 0.0f32; }
+
+// ---- lasting areas: each round, the part runs on whoever is in the area
+
+FB_ZONES :: 8;
+FbZone :: struct { on: bool; by: int; spell: int; part: int; slot: int; cx: int; cy: int; r_ft: int; next: f32; }
+fb_zone_add :: (z: [] FbZone, b: [] RsBattle, by: int, a: FbAb, slot: int, tx: int, ty: int) {
+  if a.again < 0 { return; }
+  k := 0;   // the first free, else the first
+  for q: 0..<FB_ZONES { if !z[q].on { k = q; break; } }
+  z[k] = FbZone.{on = true, by = by, spell = a.sp, part = a.again, slot = slot, cx = tx, cy = ty, r_ft = rs_max(rs_spell(a.sp).area_ft, 5), next = b[0].clock + f32(RS_ROUND)};
+}
+// A round on: an area whose caster no longer concentrates on its spell is gone; the rest run their
+// part on each creature but the caster in them (Call Lightning's and Storm of Vengeance's bolt on
+// the one nearest the middle). Returns how many it ran on.
+fb_zones_round :: (z: [] FbZone, b: [] RsBattle) -> int {
+  ran := 0;
+  for q: 0..<FB_ZONES {
+    if !z[q].on { continue; }
+    by := z[q].by;
+    if by < 0 || by >= b[0].n || b[0].c[by].conc != z[q].spell { z[q].on = false; continue; }
+    if b[0].clock < z[q].next { continue; }
+    z[q].next += f32(RS_ROUND);
+    one := z[q].part == SP_CALL_BOLT || z[q].part == SP_STORM_BOLT;
+    best := -1; bd := 100000;
+    for j: 0..<b[0].n {
+      c := b[0].c[j];
+      if j == by || c.dead || c.team == b[0].c[by].team { continue; }
+      d := rs_feet(z[q].cx, z[q].cy, c.x, c.y);
+      if d > z[q].r_ft { continue; }
+      if one { if d < bd { bd = d; best = j; } continue; }
+      rs_affect(b, by, j, z[q].part, z[q].slot, -1); ran += 1;
+    }
+    if one && best >= 0 { rs_affect(b, by, best, z[q].part, z[q].slot, -1); ran += 1; }
+  }
+  return ran;
+}

@@ -1,0 +1,175 @@
+// More SRD 5.2.1 spells as records, past spells.coax's first RS_SPELLS: the ones Everglade's bar
+// casts (apps/openagents-web/fivebar.coax) that the first records didn't hold. Loaded by
+// spells.coax, which answers for them through rs_spell. Each holds the SRD's level, school, casting
+// time, range, duration, concentration and area, and an effect program in the same closed set of
+// steps battle.coax runs. The SRD's words and page numbers come with the import tool
+// (aethyr/rules/srd/import.coax, planned): `text` is empty and `page` 0 until then.
+//
+// The grid has squares and spheres, not lines and cones, so: a line (Wind Wall, Wall of Fire,
+// Wall of Thorns, Sunbeam) is the square or sphere at the point it is aimed through, and a cone
+// (Cone of Cold) or a line from you (Gust of Wind) is a cube from you. A cylinder is the sphere of
+// its radius. What a spell does to the world rather than to a creature (lifting, water, walls you
+// can't pass) is the world's; the record holds what the rules do to a creature.
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+//   coax/bin/coax test --library aethyr/rules/srd/spells.coax
+
+SP_ICE_KNIFE :: 30; SP_ICE_KNIFE_BURST :: 31; SP_ICE_STORM :: 32; SP_SLEET_STORM :: 33; SP_MOONBEAM :: 34;
+SP_SHILLELAGH :: 35; SP_ELEMENTALISM :: 36; SP_SPIKE_GROWTH :: 37; SP_SPIKE_STEP :: 38; SP_WALL_OF_FIRE :: 39;
+SP_CONJURE_ANIMALS :: 40; SP_POLYMORPH :: 41; SP_MASS_CURE_WOUNDS :: 42; SP_SUNBEAM :: 43; SP_WALL_OF_THORNS :: 44;
+SP_FIRE_STORM :: 45; SP_SUNBURST :: 46; SP_STORM_OF_VENGEANCE :: 47; SP_STORM_BOLT :: 48; SP_SHAPECHANGE :: 49;
+SP_SPEAK_WITH_ANIMALS :: 50; SP_RAY_OF_FROST :: 51; SP_FOG_CLOUD :: 52; SP_CONE_OF_COLD :: 53; SP_REVERSE_GRAVITY :: 54;
+SP_WIND_WALL :: 55; SP_LEVITATE :: 56; SP_FEATHER_FALL :: 57; SP_GUST_OF_WIND :: 58; SP_WALL_OF_STONE :: 59;
+SP_TELEKINESIS :: 60; SP_BLACK_TENTACLES :: 61; SP_WATER_WALK :: 62; SP_CONTROL_WATER :: 63; SP_CREATE_WATER :: 64;
+SP_WATER_BREATHING :: 65; SP_METEOR_SWARM :: 66;
+RS_MORE_END :: 67;
+
+// A record's fields, the steps after.
+rs_more :: (id: string, name: string, level: int, school: string, classes: string, time: int, range_ft: int,
+            duration: string, duration_s: f32, conc: bool, area: int, area_ft: int) -> RsSpell {
+  return RsSpell.{id = id, name = name, level = level, school = school, classes = classes, cast_time = time, range_ft = range_ft,
+                  components = "", duration = duration, duration_s = duration_s, concentration = conc, area = area, area_ft = area_ft,
+                  part_of = -1, page = 0, text = ""};
+}
+rs_more_spell :: (i: int) -> RsSpell {
+  if i >= RS_HOUSE { return rs_house_spell(i); }
+  s: RsSpell;
+  s.part_of = -1;
+  if i == SP_ICE_KNIFE {
+    s = rs_more("ice-knife", "Ice Knife", 1, "Conjuration", "Druid, Sorcerer, Wizard", RS_T_ACTION, 60, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.steps[0] = rs_step(RS_S_ATTACK, 0, 0, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 10, RS_PIERCING, 0); s.step_n = 2;
+  } else if i == SP_ICE_KNIFE_BURST {
+    // the shard explodes, hit or miss: each creature within 5 feet of the target
+    s = rs_more("ice-knife-burst", "Ice Knife", 1, "Conjuration", "Druid, Sorcerer, Wizard", RS_T_ACTION, 60, "Instantaneous", 0, false, RS_A_SPHERE, 5);
+    s.part_of = SP_ICE_KNIFE;
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 2, 6, RS_COLD, 1); s.step_n = 2;
+  } else if i == SP_ICE_STORM {
+    // the ground is Difficult Terrain until the end of the caster's next turn
+    s = rs_more("ice-storm", "Ice Storm", 4, "Evocation", "Druid, Sorcerer, Wizard", RS_T_ACTION, 300, "Instantaneous", 6, false, RS_A_SPHERE, 20);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 2, 10, RS_BLUDGEONING, 1);
+    s.steps[2] = rs_step(RS_S_DAMAGE, 4, 6, RS_COLD, 0); s.steps[3] = rs_step(RS_S_TERRAIN, 0, 0, 0, 0); s.step_n = 4;
+  } else if i == SP_SLEET_STORM {
+    s = rs_more("sleet-storm", "Sleet Storm", 3, "Conjuration", "Druid, Sorcerer, Wizard", RS_T_ACTION, 150, "Concentration, up to 1 minute", 60, true, RS_A_SPHERE, 40);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_CONDITION, RS_PRONE, 0, 0, 0);
+    s.steps[2] = rs_step(RS_S_TERRAIN, 0, 0, 0, 0); s.step_n = 3;
+  } else if i == SP_MOONBEAM {
+    s = rs_more("moonbeam", "Moonbeam", 2, "Evocation", "Druid", RS_T_ACTION, 120, "Concentration, up to 1 minute", 60, true, RS_A_SPHERE, 5);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 2, 10, RS_RADIANT, 1); s.step_n = 2;
+  } else if i == SP_SHILLELAGH {
+    s = rs_more("shillelagh", "Shillelagh", 0, "Transmutation", "Druid", RS_T_BONUS, 0, "1 minute", 60, false, RS_A_NONE, 0);
+  } else if i == SP_ELEMENTALISM {
+    s = rs_more("elementalism", "Elementalism", 0, "Transmutation", "Druid, Sorcerer, Wizard", RS_T_ACTION, 30, "Instantaneous", 0, false, RS_A_NONE, 0);
+  } else if i == SP_SPIKE_GROWTH {
+    s = rs_more("spike-growth", "Spike Growth", 2, "Transmutation", "Druid, Ranger", RS_T_ACTION, 150, "Concentration, up to 10 minutes", 600, true, RS_A_SPHERE, 20);
+    s.steps[0] = rs_step(RS_S_TERRAIN, 0, 0, 0, 0); s.step_n = 1;
+  } else if i == SP_SPIKE_STEP {
+    // 2d4 Piercing for every 5 feet a creature moves in it
+    s = rs_more("spike-growth-step", "Spike Growth", 2, "Transmutation", "Druid, Ranger", RS_T_ACTION, 150, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.part_of = SP_SPIKE_GROWTH;
+    s.steps[0] = rs_step(RS_S_DAMAGE, 2, 4, RS_PIERCING, 0); s.step_n = 1;
+  } else if i == SP_WALL_OF_FIRE {
+    s = rs_more("wall-of-fire", "Wall of Fire", 4, "Evocation", "Druid, Sorcerer, Wizard", RS_T_ACTION, 120, "Concentration, up to 1 minute", 60, true, RS_A_SQUARE, 10);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 5, 8, RS_FIRE, 1); s.step_n = 2;
+  } else if i == SP_CONJURE_ANIMALS {
+    s = rs_more("conjure-animals", "Conjure Animals", 3, "Conjuration", "Druid, Ranger", RS_T_ACTION, 60, "Concentration, up to 10 minutes", 600, true, RS_A_SPHERE, 10);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 3, 10, RS_SLASHING, 1); s.step_n = 2;
+  } else if i == SP_POLYMORPH {
+    // a beast's shape: as the grid can hold it, Incapacitated as itself for the duration
+    s = rs_more("polymorph", "Polymorph", 4, "Transmutation", "Bard, Druid, Sorcerer, Wizard", RS_T_ACTION, 60, "Concentration, up to 1 hour", 3600, true, RS_A_NONE, 0);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_WIS, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_TIMED, RS_INCAPACITATED, 2, -1, 0); s.step_n = 2;
+  } else if i == SP_MASS_CURE_WOUNDS {
+    // up to six creatures in a 30-foot sphere: the world picks them and runs the record on each
+    s = rs_more("mass-cure-wounds", "Mass Cure Wounds", 5, "Abjuration", "Bard, Cleric, Druid", RS_T_ACTION, 60, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.steps[0] = rs_step(RS_S_HEAL, 5, 8, 1, 1); s.step_n = 1;
+  } else if i == SP_SUNBEAM {
+    s = rs_more("sunbeam", "Sunbeam", 6, "Evocation", "Cleric, Druid, Sorcerer, Wizard", RS_T_ACTION, 60, "Concentration, up to 1 minute", 60, true, RS_A_SPHERE, 5);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 6, 8, RS_RADIANT, 0);
+    s.steps[2] = rs_step(RS_S_TIMED, RS_BLINDED, 1, 0, 0); s.step_n = 3;
+  } else if i == SP_WALL_OF_THORNS {
+    s = rs_more("wall-of-thorns", "Wall of Thorns", 6, "Conjuration", "Druid", RS_T_ACTION, 120, "Concentration, up to 10 minutes", 600, true, RS_A_SQUARE, 10);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 7, 8, RS_PIERCING, 1); s.step_n = 2;
+  } else if i == SP_FIRE_STORM {
+    s = rs_more("fire-storm", "Fire Storm", 7, "Evocation", "Cleric, Druid, Sorcerer", RS_T_ACTION, 150, "Instantaneous", 0, false, RS_A_CUBE, 30);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 7, 10, RS_FIRE, 0); s.step_n = 2;
+  } else if i == SP_SUNBURST {
+    s = rs_more("sunburst", "Sunburst", 8, "Evocation", "Cleric, Druid, Sorcerer, Wizard", RS_T_ACTION, 150, "Instantaneous", 0, false, RS_A_SPHERE, 60);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 12, 6, RS_RADIANT, 0);
+    s.steps[2] = rs_step(RS_S_TIMED, RS_BLINDED, 2, RS_CON, 0); s.step_n = 3;
+    s.duration_s = 60; s.burst = true;   // Blinded for a minute, the light itself only as it's cast
+  } else if i == SP_STORM_OF_VENGEANCE {
+    s = rs_more("storm-of-vengeance", "Storm of Vengeance", 9, "Conjuration", "Druid", RS_T_ACTION, 5280, "Concentration, up to 1 minute", 60, true, RS_A_SPHERE, 300);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 2, 6, RS_THUNDER, 0);
+    s.steps[2] = rs_step(RS_S_CONDITION, RS_DEAFENED, 0, 0, 0); s.step_n = 3;
+  } else if i == SP_STORM_BOLT {
+    // its later rounds: bolts of lightning, each on a creature under the cloud
+    s = rs_more("storm-of-vengeance-bolt", "Storm of Vengeance", 9, "Conjuration", "Druid", RS_T_ACTION, 5280, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.part_of = SP_STORM_OF_VENGEANCE;
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 10, 6, RS_LIGHTNING, 0); s.step_n = 2;
+  } else if i == SP_SHAPECHANGE {
+    s = rs_more("shapechange", "Shapechange", 9, "Transmutation", "Druid, Wizard", RS_T_ACTION, 0, "Concentration, up to 1 hour", 3600, true, RS_A_NONE, 0);
+  } else if i == SP_SPEAK_WITH_ANIMALS {
+    s = rs_more("speak-with-animals", "Speak with Animals", 1, "Divination", "Bard, Druid, Ranger", RS_T_ACTION, 0, "10 minutes", 600, false, RS_A_NONE, 0);
+  } else if i == SP_RAY_OF_FROST {
+    s = rs_more("ray-of-frost", "Ray of Frost", 0, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 60, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.steps[0] = rs_step(RS_S_ATTACK, 0, 0, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 8, RS_COLD, 0); s.step_n = 2;
+  } else if i == SP_FOG_CLOUD {
+    s = rs_more("fog-cloud", "Fog Cloud", 1, "Conjuration", "Druid, Ranger, Sorcerer, Wizard", RS_T_ACTION, 120, "Concentration, up to 1 hour", 3600, true, RS_A_SPHERE, 20);
+  } else if i == SP_CONE_OF_COLD {
+    s = rs_more("cone-of-cold", "Cone of Cold", 5, "Evocation", "Druid, Sorcerer, Wizard", RS_T_ACTION, 0, "Instantaneous", 0, false, RS_A_CUBE_SELF, 30);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 8, 8, RS_COLD, 1); s.step_n = 2;
+  } else if i == SP_REVERSE_GRAVITY {
+    // a failure falls upward (the world's physics); a success holds on to something within reach
+    s = rs_more("reverse-gravity", "Reverse Gravity", 7, "Transmutation", "Druid, Sorcerer, Wizard", RS_T_ACTION, 100, "Concentration, up to 1 minute", 60, true, RS_A_SPHERE, 50);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_NONE, 0, 0); s.step_n = 1;
+  } else if i == SP_WIND_WALL {
+    s = rs_more("wind-wall", "Wind Wall", 3, "Evocation", "Druid, Ranger", RS_T_ACTION, 120, "Concentration, up to 1 minute", 60, true, RS_A_SQUARE, 10);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_STR, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 4, 8, RS_BLUDGEONING, 0); s.step_n = 2;
+  } else if i == SP_LEVITATE {
+    s = rs_more("levitate", "Levitate", 2, "Transmutation", "Sorcerer, Wizard", RS_T_ACTION, 60, "Concentration, up to 10 minutes", 600, true, RS_A_NONE, 0);
+  } else if i == SP_FEATHER_FALL {
+    s = rs_more("feather-fall", "Feather Fall", 1, "Transmutation", "Bard, Sorcerer, Wizard", RS_T_REACTION, 60, "1 minute", 60, false, RS_A_NONE, 0);
+  } else if i == SP_GUST_OF_WIND {
+    s = rs_more("gust-of-wind", "Gust of Wind", 2, "Evocation", "Druid, Ranger, Sorcerer, Wizard", RS_T_ACTION, 0, "Concentration, up to 1 minute", 60, true, RS_A_CUBE_SELF, 15);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_STR, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_PUSH, 15, 0, 0, 0); s.step_n = 2;
+  } else if i == SP_WALL_OF_STONE {
+    s = rs_more("wall-of-stone", "Wall of Stone", 5, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 120, "Concentration, up to 10 minutes", 600, true, RS_A_SQUARE, 10);
+  } else if i == SP_TELEKINESIS {
+    s = rs_more("telekinesis", "Telekinesis", 5, "Transmutation", "Sorcerer, Wizard", RS_T_ACTION, 60, "Concentration, up to 10 minutes", 600, true, RS_A_NONE, 0);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_STR, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_TIMED, RS_RESTRAINED, 1, 0, 0); s.step_n = 2;
+  } else if i == SP_BLACK_TENTACLES {
+    s = rs_more("black-tentacles", "Evard's Black Tentacles", 4, "Conjuration", "Wizard", RS_T_ACTION, 90, "Concentration, up to 1 minute", 60, true, RS_A_SQUARE, 20);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_STR, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 3, 6, RS_BLUDGEONING, 0);
+    s.steps[2] = rs_step(RS_S_CONDITION, RS_RESTRAINED, 0, 0, 0); s.steps[3] = rs_step(RS_S_ESCAPE, RS_STR, 0, 0, 0);
+    s.steps[4] = rs_step(RS_S_TERRAIN, 0, 0, 0, 0); s.step_n = 5;
+  } else if i == SP_WATER_WALK {
+    s = rs_more("water-walk", "Water Walk", 3, "Transmutation", "Cleric, Druid, Ranger, Sorcerer", RS_T_ACTION, 30, "1 hour", 3600, false, RS_A_NONE, 0);
+  } else if i == SP_CONTROL_WATER {
+    // its whirlpool: a creature in the water makes a Strength save or takes 2d8 Bludgeoning
+    s = rs_more("control-water", "Control Water", 4, "Transmutation", "Cleric, Druid, Wizard", RS_T_ACTION, 300, "Concentration, up to 10 minutes", 600, true, RS_A_SPHERE, 25);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_STR, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 2, 8, RS_BLUDGEONING, 0); s.step_n = 2;
+  } else if i == SP_CREATE_WATER {
+    s = rs_more("create-or-destroy-water", "Create or Destroy Water", 1, "Transmutation", "Cleric, Druid", RS_T_ACTION, 30, "Instantaneous", 0, false, RS_A_NONE, 0);
+  } else if i == SP_WATER_BREATHING {
+    s = rs_more("water-breathing", "Water Breathing", 3, "Transmutation", "Druid, Ranger, Sorcerer, Wizard", RS_T_ACTION, 30, "24 hours", 86400, false, RS_A_NONE, 0);
+  } else if i == SP_METEOR_SWARM {
+    s = rs_more("meteor-swarm", "Meteor Swarm", 9, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 5280, "Instantaneous", 0, false, RS_A_SPHERE, 40);
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 20, 6, RS_FIRE, 0);
+    s.steps[2] = rs_step(RS_S_DAMAGE, 20, 6, RS_BLUDGEONING, 0); s.step_n = 3;
+  }
+  return s;
+}
+
+#test "the more records hold the SRD's numbers" {
+  for i: RS_SPELLS..<RS_MORE_END { s := rs_spell(i); #assert s.name.count > 0 && s.id.count > 0 && s.srd && s.level >= 0 && s.level <= 9; }
+  ms := rs_spell(SP_METEOR_SWARM); #assert ms.level == 9 && ms.steps[1].a == 20 && ms.steps[1].b == 6 && ms.steps[2].c == RS_BLUDGEONING && ms.area_ft == 40;
+  mb := rs_spell(SP_MOONBEAM); #assert mb.level == 2 && mb.concentration && mb.steps[0].a == RS_CON && mb.steps[1].b == 10 && mb.steps[1].d == 1;
+  is := rs_spell(SP_ICE_STORM); #assert is.level == 4 && is.steps[1].c == RS_BLUDGEONING && is.steps[2].c == RS_COLD && is.area_ft == 20;
+  cc := rs_spell(SP_CONE_OF_COLD); #assert cc.level == 5 && cc.steps[1].a == 8 && cc.steps[1].b == 8 && cc.steps[1].c == RS_COLD;
+  bt := rs_spell(SP_BLACK_TENTACLES); #assert bt.concentration && bt.steps[2].a == RS_RESTRAINED && bt.area_ft == 20;
+  sb := rs_spell(SP_SUNBURST); #assert sb.level == 8 && sb.steps[1].a == 12 && sb.steps[2].a == RS_BLINDED && sb.steps[2].c == RS_CON;
+  #assert rs_spell(SP_FEATHER_FALL).cast_time == RS_T_REACTION && rs_spell(SP_ICE_KNIFE_BURST).part_of == SP_ICE_KNIFE;
+  #assert rs_spell(SP_THUNDERWAVE).srd && rs_spell(SP_THUNDERWAVE).id == "thunderwave";
+}

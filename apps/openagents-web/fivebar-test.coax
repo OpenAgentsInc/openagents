@@ -1,0 +1,197 @@
+// Checks for the hotbar on the SRD 5e engine (fivebar.coax): every slot of Everglade's bar resolved
+// by the engine, the bar's mapping, the real-time seat, and 5E MMO's class bars.
+//   coax/bin/coax test --library apps/openagents-web/fivebar-test.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+#load "../../aethyr/rules/srd/battle.coax";
+#load "fivebar.coax";
+
+FT_HERO :: 0; FT_FOE :: 1; FT_NEXT :: 2; FT_ALLY :: 3;
+// A small field: you at (10, 10), a foe two squares east and another beside it, a hurt friend
+// beside you; your seat's turn open. Foes have 400 Hit Points, so a blow shows and nobody drops.
+ft_field :: (b: [] RsBattle, s: [] FbSeat, seed: int) {
+  b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = 40; b[0].h = 40; b[0].beat = 1.5; b[0].recharge = 9;
+  for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
+  b[0].dice[0].state = cast(u64) seed * 7919 + 3;
+  _ := rs_add(b, fb_everglade_hero("You", 0), 10, 10);
+  _ = rs_add(b, fb_folk("Guard", 1, 16, 400, [6] int.[13, 12, 12, 10, 11, 10]), 12, 10);
+  _ = rs_add(b, fb_folk("Guard", 1, 16, 400, [6] int.[13, 12, 12, 10, 11, 10]), 12, 11);
+  _ = rs_add(b, fb_everglade_hero("Friend", 0), 11, 10);
+  b[0].c[FT_ALLY].hp = 10;
+  rs_begin(b);
+  s[0] = FbSeat.{me = FT_HERO};
+  b[0].clock = b[0].c[FT_HERO].turn_at;
+  fb_seat_step(b, s);
+}
+// What a trial saw: whether it was used, the slot level spent (0 none), and the events of each kind
+// on the foe (or the friend, for a heal).
+FtSaw :: struct { ok: bool; spent: int; casted: bool; hits: int; saves: int; damage: int; heal: int; cond: int; conc: int; }
+ft_try :: (b: [] RsBattle, s: [] FbSeat, k: int) -> FtSaw {
+  bar: [FB_EG_SLOTS] FbAb; _ := fb_everglade(bar[..]);
+  a := bar[k];
+  before: [10] int; for l: 0..<10 { before[l] = b[0].c[FT_HERO].slots[l]; }
+  seq := b[0].book[0].seq;
+  saw: FtSaw;
+  saw.ok = fb_seat_use(b, s, a, FT_FOE, b[0].c[FT_FOE].x, b[0].c[FT_FOE].y, FT_ALLY);
+  for l: 1..<10 { if b[0].c[FT_HERO].slots[l] < before[l] { saw.spent = l; } }
+  for e: 0..<rs_min(b[0].book[0].seq - seq, RS_EVENTS) {
+    ev := rs_recent(b[0].book[0], e);
+    if ev.kind == RS_EV_CAST { saw.casted = true; }
+    if ev.to != FT_FOE && ev.to != FT_NEXT && ev.to != FT_ALLY && ev.to != FT_HERO { continue; }
+    if ev.kind == RS_EV_ATTACK || ev.kind == RS_EV_MISS { saw.hits += 1; }
+    if ev.kind == RS_EV_SAVE { saw.saves += 1; }
+    if ev.kind == RS_EV_DAMAGE { saw.damage += ev.amount; }
+    if ev.kind == RS_EV_HEAL { saw.heal += ev.amount; }
+    if ev.kind == RS_EV_CONDITION { saw.cond += 1; }
+  }
+  saw.conc = b[0].c[FT_HERO].conc;
+  return saw;
+}
+// Every slot k in from..<to: used, its slot spent at its level, and the engine's rolls on who it reaches.
+ft_slots :: (from: int, to: int) -> int {
+  b: [1] RsBattle; s: [1] FbSeat;
+  bar: [FB_EG_SLOTS] FbAb; _ := fb_everglade(bar[..]);
+  bad := 0;
+  for k: from..<to {
+    ft_field(b[..], s[..], k + 1);
+    a := bar[k];
+    saw := ft_try(b[..], s[..], k);
+    good := saw.ok;
+    if a.kind == FB_SPELL {
+      sp := rs_spell(a.sp);
+      good = good && saw.casted && saw.spent == a.lvl;
+      // held, unless its one target saved (the engine ends a one-target spell with no one under it)
+      if sp.concentration { good = good && (saw.conc == a.sp || (sp.area == RS_A_NONE && saw.saves > 0)); }
+      for q: 0..<sp.step_n {
+        st := sp.steps[q].kind;
+        if st == RS_S_ATTACK { good = good && saw.hits > 0; }
+        if st == RS_S_SAVE { good = good && saw.saves > 0; }
+        if st == RS_S_HEAL { good = good && saw.heal > 0; }
+      }
+    }
+    if !good { bad += 1; }
+  }
+  return bad;
+}
+
+#test "Everglade's bar: 49 slots in its order, each its art and its engine record" {
+  bar: [FB_EG_SLOTS] FbAb; n := fb_everglade(bar[..]);
+  #assert n == 49;
+  names := [49] string.["meteor-swarm", "thunderbolt", "mega-thunderbolt", "water-orb", "reverse-gravity", "wind-wall", "levitate", "feather-fall", "gust-of-wind", "thunderwave", "wall-of-stone", "telekinesis", "black-tentacles", "ice-knife", "ice-storm", "sleet-storm", "water-walk", "control-water", "create-water", "water-breathing", "moonbeam", "produce-flame", "starry-wisp", "shillelagh", "poison-spray", "elementalism", "entangle", "faerie-fire", "healing-word", "spike-growth", "call-lightning", "wall-of-fire", "conjure-animals", "polymorph", "mass-cure-wounds", "sunbeam", "wall-of-thorns", "fire-storm", "sunburst", "storm-of-vengeance", "shapechange", "speak-with-animals", "wild-resurgence", "ray-of-frost", "fog-cloud", "hold-person", "cone-of-cold", "rebuild", "next-row"];
+  for k: 0..<n { #assert bar[k].art == names[k]; }
+  // Everglade's own four are house rules; every other spell is the SRD's
+  for k: 0..<n {
+    if bar[k].kind != FB_SPELL { continue; }
+    #assert rs_spell(bar[k].sp).srd == (k >= 4);
+    #assert bar[k].lvl == rs_spell(bar[k].sp).level;
+  }
+  #assert bar[2].sp == SP_MEGA_THUNDERBOLT && bar[2].lvl == 9 && bar[0].sp == SP_EG_METEOR_SWARM;
+  #assert bar[9].sp == SP_THUNDERWAVE && bar[45].sp == SP_HOLD_PERSON && bar[30].sp == SP_CALL_LIGHTNING;
+  #assert bar[42].kind == FB_RESURGE && bar[47].kind == FB_WORLD && bar[48].kind == FB_WORLD;
+}
+
+#test "Everglade's caster: DC 15, +7, cantrips at two dice, a slot of every level" {
+  c := fb_everglade_hero("You", 0);
+  #assert rs_spell_dc(c) == 15 && rs_spell_attack(c) == 7 && rs_cantrip_tier(c.level) == 2;
+  #assert c.slots[9] == 1 && c.slots[1] == 4 && c.ac == 15 && c.hp_max == 57;
+}
+
+#test "the aimed four and the first row, resolved by the engine" #steps 2000000000 { #assert ft_slots(0, 10) == 0; }
+#test "the second row, resolved by the engine" #steps 2000000000 { #assert ft_slots(10, 20) == 0; }
+#test "the grove's spells, resolved by the engine" #steps 2000000000 { #assert ft_slots(20, 30) == 0; }
+#test "the circle's spells, resolved by the engine" #steps 2000000000 { #assert ft_slots(30, 40) == 0; }
+#test "the storm and the polar spells, resolved by the engine" #steps 2000000000 { #assert ft_slots(40, 49) == 0; }
+
+#test "Mega Thunderbolt: Dexterity save, 100d10 Lightning, half on a success" #steps 2000000000 {
+  b: [1] RsBattle; s: [1] FbSeat;
+  lo := 100000; hi_ := 0;
+  for t: 0..<6 {
+    ft_field(b[..], s[..], 40 + t);
+    b[0].c[FT_FOE].hp = 2000; b[0].c[FT_FOE].hp_max = 2000;
+    saw := ft_try(b[..], s[..], 2);
+    #assert saw.ok && saw.spent == 9 && saw.saves >= 1;
+    took := 2000 - b[0].c[FT_FOE].hp;
+    lo = rs_min(lo, took); hi_ = rs_max(hi_, took);
+    #assert took >= 50 && took <= 1000;
+  }
+  #assert hi_ > 200;
+}
+
+#test "Meteor Swarm (Everglade's): both damage types, and a creature is hit once" #steps 2000000000 {
+  b: [1] RsBattle; s: [1] FbSeat;
+  ft_field(b[..], s[..], 5);
+  seq := b[0].book[0].seq;
+  saw := ft_try(b[..], s[..], 0);
+  #assert saw.ok && saw.spent == 9;
+  fire := 0; blunt := 0;
+  for e: 0..<rs_min(b[0].book[0].seq - seq, RS_EVENTS) {
+    ev := rs_recent(b[0].book[0], e);
+    if ev.kind == RS_EV_DAMAGE && ev.to == FT_FOE && ev.damage == RS_FIRE { fire += 1; }
+    if ev.kind == RS_EV_DAMAGE && ev.to == FT_FOE && ev.damage == RS_BLUDGEONING { blunt += 1; }
+  }
+  #assert fire == 1 && blunt == 1;
+  // the foe beside it is in the same sphere
+  #assert b[0].c[FT_NEXT].hp < 400;
+}
+
+#test "the seat: one action a turn, the next on the next beat; a spent slot back 9 seconds on" #steps 2000000000 {
+  b: [1] RsBattle; s: [1] FbSeat;
+  ft_field(b[..], s[..], 9);
+  bar: [FB_EG_SLOTS] FbAb; _ := fb_everglade(bar[..]);
+  #assert fb_seat_can(b[..], s[..], bar[43]);
+  #assert ft_try(b[..], s[..], 43).ok;               // Ray of Frost, the action
+  #assert !fb_seat_can(b[..], s[..], bar[22]);        // Starry Wisp: no action left this turn
+  #assert !ft_try(b[..], s[..], 22).ok;
+  #assert fb_seat_can(b[..], s[..], bar[28]);         // Healing Word is a Bonus Action
+  #assert ft_try(b[..], s[..], 28).ok;
+  // the next beat opens a new turn
+  b[0].clock = fb_seat_next(b[..], s[..]);
+  fb_seat_step(b[..], s[..]);
+  #assert ft_try(b[..], s[..], 22).ok;
+  // one 9th-level slot: Mega Thunderbolt spends it, Meteor Swarm waits for it
+  b[0].clock = fb_seat_next(b[..], s[..]); fb_seat_step(b[..], s[..]);
+  #assert ft_try(b[..], s[..], 2).ok;
+  b[0].clock = fb_seat_next(b[..], s[..]); fb_seat_step(b[..], s[..]);
+  #assert !fb_ready(b[..], FT_HERO, bar[0]) && fb_left(b[..], FT_HERO, bar[0]) == 0;
+  for q: 0..<7 { rs_tick(b[..], 1.5); }
+  #assert fb_ready(b[..], FT_HERO, bar[0]);
+}
+
+#test "concentration: a second spell held ends the first; a lasting area runs each round" #steps 2000000000 {
+  b: [1] RsBattle; s: [1] FbSeat; z: [FB_ZONES] FbZone;
+  ft_field(b[..], s[..], 13);
+  bar: [FB_EG_SLOTS] FbAb; _ := fb_everglade(bar[..]);
+  #assert ft_try(b[..], s[..], 20).ok && b[0].c[FT_HERO].conc == SP_MOONBEAM;
+  fb_zone_add(z[..], b[..], FT_HERO, bar[20], 2, b[0].c[FT_FOE].x, b[0].c[FT_FOE].y);
+  b[0].clock += 6.1;
+  #assert fb_zones_round(z[..], b[..]) == 2;   // both guards: the second stands 5 feet off the first
+  // Hold Person on the next turn ends Moonbeam, and its area with it
+  b[0].clock = fb_seat_next(b[..], s[..]); fb_seat_step(b[..], s[..]);
+  #assert ft_try(b[..], s[..], 45).ok && b[0].c[FT_HERO].conc != SP_MOONBEAM;   // held, or ended by a save: Moonbeam is gone either way
+  b[0].clock += 6.1;
+  #assert fb_zones_round(z[..], b[..]) == 0 && !z[0].on;
+}
+
+#test "Wild Resurgence: a use of Wild Shape, Temporary Hit Points of the Druid's level" #steps 2000000000 {
+  b: [1] RsBattle; s: [1] FbSeat;
+  ft_field(b[..], s[..], 17);
+  saw := ft_try(b[..], s[..], 42);
+  #assert saw.ok && b[0].c[FT_HERO].temp == 9 && b[0].c[FT_HERO].uses[RS_USE_WILD] == 2;
+}
+
+#test "5E MMO's class bars: kinds, aims and art in slot order" {
+  out: [FB_CLASS_SLOTS] FbAb;
+  n := fb_class_bar(RS_DRUID, out[..]);
+  #assert n == 9 && out[0].art == "starry-wisp" && out[2].art == "produce-flame-hurl" && out[7].kind == FB_LANDS && out[7].art == "lands-aid";
+  n = fb_class_bar(RS_FIGHTER, out[..]);
+  #assert n == 4 && out[1].kind == FB_SECOND && out[1].art == "second-wind" && out[2].art == "action-surge";
+  n = fb_class_bar(RS_CLERIC, out[..]);
+  #assert out[4].sp == SP_SPIRIT_GUARDIANS && out[4].tg == FB_SELF && out[5].art == "turn-undead";
+  total := 0;
+  for kl: 0..<RS_CLASSES { if kl != RS_MONSTER { total += fb_class_bar(kl, out[..]); } }
+  #assert total == 70;
+}

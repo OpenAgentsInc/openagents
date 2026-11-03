@@ -1,0 +1,71 @@
+// House rules: spells that are not SRD content, written in the engine's terms so the same
+// battle.coax runs them. Each record is marked srd: false. They are Everglade's own spells (its bar,
+// apps/openagents-web/everglade-spells.coax), kept at the numbers Everglade plays them at. Loaded by
+// spells.coax; rs_spell answers for them (through more.coax's rs_more_spell).
+//
+// How Everglade's numbers became records (a 5-foot square is 1.524 m; areas round to the nearest
+// 5 feet; the range is Everglade's 140 m, 460 feet; the save DC and attack are the caster's):
+//
+//   everglade-meteor-swarm  Everglade's Meteor Swarm, on the Druid's list. Everglade drops six
+//                           meteors on a 3.5 m ring, each a 4 m blast, and rolls 20d6 Fire and 20d6
+//                           Bludgeoning once a cast. A creature is hit once however many blasts
+//                           reach it (the SRD's own rule), so the record is one sphere over the
+//                           ring's reach: 3.3 m + 4 m is 7.3 m, a 25-foot sphere. Dexterity save
+//                           for half, a 9th-level slot (the SRD's Meteor Swarm is 9th level).
+//   thunderbolt             One bolt from the clouds: 20d10 Lightning over 3.4 m, a 10-foot
+//                           sphere. Dexterity save for half. 7th level, the slot whose damage is
+//                           nearest (Fire Storm's 7d10 a cube is the SRD's 7th-level blast).
+//   mega-thunderbolt        The owner's Mega Thunderbolt: 100d10 Lightning over 5.8 m, a 20-foot
+//                           sphere. Dexterity save for half. 9th level: it is the bar's top spell.
+//   water-orb               A thrown orb of water: 6d10 Bludgeoning over 3 m, a 10-foot sphere,
+//                           Dexterity save for half, and a failure is pushed 10 feet (Everglade's
+//                           orb shoves what it meets). 3rd level, Fireball's (8d6 over 20 feet).
+//
+// Everglade's cast bars (2.5 s, 1.2 s, 0.5 s, 0.6 s) and its fire, smoke and lightning stay the
+// world's: the record is what the rules do to a creature.
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+//   coax/bin/coax test --library aethyr/rules/srd/spells.coax
+
+RS_HOUSE :: 100;
+SP_EG_METEOR_SWARM :: 100; SP_THUNDERBOLT :: 101; SP_MEGA_THUNDERBOLT :: 102; SP_WATER_ORB :: 103;
+RS_HOUSE_END :: 104;
+RS_HOUSE_RANGE :: 460;   // Everglade's 140 m
+
+rs_house :: (id: string, name: string, level: int, area_ft: int, text: string) -> RsSpell {
+  return RsSpell.{id = id, name = name, level = level, school = "Evocation", classes = "Druid (Everglade)", cast_time = RS_T_ACTION,
+                  range_ft = RS_HOUSE_RANGE, components = "V, S", duration = "Instantaneous", duration_s = 0, concentration = false,
+                  area = RS_A_SPHERE, area_ft = area_ft, part_of = -1, page = 0, srd = false, text = text};
+}
+rs_house_spell :: (i: int) -> RsSpell {
+  s: RsSpell;
+  s.part_of = -1; s.srd = false;
+  if i == SP_EG_METEOR_SWARM {
+    s = rs_house("everglade-meteor-swarm", "Meteor Swarm", 9, 25, "Six meteors fall on a ring round the point and burst. Each creature in a 25-foot-radius Sphere there makes a Dexterity saving throw, taking 20d6 Fire damage and 20d6 Bludgeoning damage on a failed save, or half as much on a successful one.");
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 20, 6, RS_FIRE, 0);
+    s.steps[2] = rs_step(RS_S_DAMAGE, 20, 6, RS_BLUDGEONING, 0); s.step_n = 3;
+  } else if i == SP_THUNDERBOLT {
+    s = rs_house("thunderbolt", "The Thunderbolt", 7, 10, "A branching bolt falls from the clouds on the point. Each creature in a 10-foot-radius Sphere there makes a Dexterity saving throw, taking 20d10 Lightning damage on a failed save, or half as much on a successful one.");
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 20, 10, RS_LIGHTNING, 0); s.step_n = 2;
+  } else if i == SP_MEGA_THUNDERBOLT {
+    s = rs_house("mega-thunderbolt", "The Mega Thunderbolt", 9, 20, "The great bolt falls on the point. Each creature in a 20-foot-radius Sphere there makes a Dexterity saving throw, taking 100d10 Lightning damage on a failed save, or half as much on a successful one.");
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 100, 10, RS_LIGHTNING, 0); s.step_n = 2;
+  } else if i == SP_WATER_ORB {
+    s = rs_house("water-orb", "The Water Orb", 3, 10, "An orb of water gathers over you and is thrown at the point, where it bursts. Each creature in a 10-foot-radius Sphere there makes a Dexterity saving throw, taking 6d10 Bludgeoning damage and being pushed 10 feet away on a failed save, or half as much damage on a successful one.");
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 6, 10, RS_BLUDGEONING, 0);
+    s.steps[2] = rs_step(RS_S_PUSH, 10, 0, 0, 0); s.step_n = 3;
+  }
+  return s;
+}
+
+#test "house rules are marked, apart from the SRD" {
+  for i: RS_HOUSE..<RS_HOUSE_END { s := rs_spell(i); #assert !s.srd && s.name.count > 0 && s.text.count > 40 && s.step_n > 0 && s.range_ft == RS_HOUSE_RANGE; }
+  mega := rs_spell(SP_MEGA_THUNDERBOLT); #assert mega.level == 9 && mega.steps[1].a == 100 && mega.steps[1].b == 10 && mega.steps[1].c == RS_LIGHTNING && mega.area_ft == 20;
+  mt := rs_spell(SP_EG_METEOR_SWARM); #assert mt.level == 9 && mt.area_ft == 25 && mt.steps[2].c == RS_BLUDGEONING && mt.classes == "Druid (Everglade)";
+  #assert rs_spell(SP_THUNDERBOLT).level == 7 && rs_spell(SP_WATER_ORB).steps[2].kind == RS_S_PUSH;
+  // every SRD record says it is the SRD's
+  for i: 0..<RS_SPELLS { #assert rs_spell(i).srd; }
+}
