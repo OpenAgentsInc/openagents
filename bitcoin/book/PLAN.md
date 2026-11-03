@@ -168,7 +168,7 @@ there is a need.
 | --- | --- | --- | --- |
 | [31. Seed phrases](ch031-seed-phrases.md) — implemented | 4, 7, 8 | The BIP-39 English vectors give their entropy, mnemonic and seed through PBKDF2-HMAC-SHA512. A phrase with a bad checksum refuses. | BIP-39, RFC 8018 |
 | [32. Hierarchical deterministic keys](ch032-hierarchical-deterministic-keys.md) — implemented | 6, 16, 31 | BIP-32 test vectors 1–5 give every extended key, and vector 5's invalid keys refuse. | BIP-32 |
-| 33. Derivation paths — planned | 29, 32 | The BIP-44, BIP-84 and BIP-86 vectors give their addresses, and NIP-06's path gives the Nostr book's chapter 46 key. | BIP-44, BIP-84, BIP-86, NIP-06 |
+| [33. Derivation paths](ch033-derivation-paths.md) — implemented | 29, 32 | The BIP-44, BIP-84 and BIP-86 vectors give their addresses, and NIP-06's path gives the Nostr book's chapter 46 key. | BIP-44, BIP-84, BIP-86, NIP-06 |
 
 ### Part VII. Transactions and script
 

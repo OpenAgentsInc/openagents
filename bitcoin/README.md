@@ -14,14 +14,16 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-38 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+39 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
 [`coax/lib/bitcoin/`](../coax/lib/bitcoin/). Chapter 36's script
 interpreter, [`script.coax`](../coax/lib/bitcoin/script.coax), runs the
 scripts every later chapter checks, from legacy script through segwit v0.
-Chapter 37 explains its legacy signature hash.
+Chapter 37 explains its legacy signature hash. Chapter 33's
+[`path.coax`](../coax/lib/bitcoin/path.coax) reads derivation paths and
+makes the standard BIP-44, 49, 84 and 86 addresses.
 
 ```sh
 python3 psionic/tests/book.py --book bitcoin                     # structure and registry

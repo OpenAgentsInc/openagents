@@ -1,0 +1,157 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/path.coax";
+#load "../../coax/lib/crypto/bip39.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+REFUSALS :: [10] string.["no root", "empty step", "bad step", "overflow", "too deep", "capacity",
+  "bad purpose", "bad field", "bad network", "not an account"];
+refusal :: (code: int) -> string { return ifx code < 0 && code >= -10 then REFUSALS[-code - 1] else "?"; }
+KINDS :: [6] string.["", "P2PKH", "P2SH-P2WPKH", "P2WPKH", "P2WSH", "P2TR"];
+// A path's indexes, and the path written back with h.
+show_path :: (text: string) {
+  indexes: [DP_MAX_DEPTH] int; back: [64] u8;
+  n := path_parse_vartime(text, indexes[..]);
+  if n < 0 { print("% -> %\n", text, refusal(n)); return; }
+  print("% ->", text);
+  if n == 0 { print(" (no steps)"); }
+  for k: 0..<n { print(" %", indexes[k]); }
+  m := path_format_vartime(indexes[0..<n], 'h', back[..]);
+  print(" -> %\n", cast(string) back[0..<m]);
+}
+// The address of a scriptPubKey on a network.
+address :: (network: int, script: [] u8, out: [] u8) -> string {
+  n := address_encode_vartime(network, script, out);
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+// A node as its xprv, xpub, tprv or tpub.
+text_of :: (node: [] u8, out: [] u8) -> string {
+  work: [BIP32_WORK_BYTES] u8;
+  #assert bip32_encode_ct(node, work[..], out) == BIP32_TEXT;
+  return cast(string) out[0..<BIP32_TEXT];
+}
+// The seed of a phrase with no passphrase (chapter 31).
+seed_of :: (phrase: string, out: [] u8) -> [] u8 {
+  work: [BIP39_WORK_BYTES] u8;
+  #assert bip39_seed_ct(phrase, "", work[..], out) == 64;
+  return out[0..<64];
+}
+// Account discovery on one chain: scan from index 0 and stop after gap
+// unused addresses in a row. Returns the highest used index found, or -1.
+scan :: (used: [] int, gap: int) -> int {
+  last := -1; index := 0;
+  while index - last <= gap {
+    for u: used { if u == index { last = index; } }
+    index += 1;
+  }
+  return last;
+}
+
+ABANDON :: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+NIP06_WORDS :: "leader monkey parrot ring guide accident before fence cannon height naive bean";
+// BIP-84's account zpub (SLIP-132 version 04b24746).
+BIP84_ZPUB :: "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs";
+
+main :: () {
+  // Path strings: h and ' both mark a hardened step.
+  print("Paths\n");
+  show_path("m");
+  show_path("m/84'/0'/0'/0/5");
+  show_path("m/84h/0h/0h/0/5");
+  show_path("m/44'/1237'/0'/0/0");
+  show_path("m/0/2147483647'");
+  show_path("m/2147483648");
+  show_path("m/0H");
+  show_path("m//0");
+  show_path("m/0/");
+  show_path("84'/0'");
+  show_path("m/+1");
+
+  // The standard paths of one wallet: the first receiving address of
+  // account 0 for each purpose.
+  print("Standard paths\n");
+  sb: [64] u8; work: [BIP32_WORK_BYTES] u8; node: [BIP32_NODE_BYTES] u8; text: [BIP32_TEXT] u8;
+  script: [AD_SCRIPT_MAX] u8; addr: [90] u8; indexes: [5] int; ptext: [64] u8;
+  seed := seed_of(ABANDON, sb[..]);
+  show("seed", seed);
+  purposes := [4] int.[44, 49, 84, 86];
+  for purpose: purposes {
+    #assert path_standard_vartime(purpose, SW_MAINNET, 0, 0, 0, indexes[..]) == 5;
+    p := cast(string) ptext[0..<path_format_vartime(indexes[..], '\'', ptext[..])];
+    #assert path_derive_ct(seed, false, p, work[..], node[..]) == BIP32_NODE_BYTES;
+    #assert bip32_neuter_ct(node[..], work[..], node[..]) == BIP32_NODE_BYTES;
+    n := path_script_vartime(purpose, node[HDK_KEY..<BIP32_NODE_BYTES], script[..]);
+    print("% %: %\n", p, KINDS[path_purpose_kind(purpose)], address(SW_MAINNET, script[0..<n], addr[..]));
+  }
+
+  // A watch-only wallet: BIP-86's account xpub makes the same addresses.
+  print("Watch-only\n");
+  account: [BIP32_NODE_BYTES] u8;
+  #assert path_derive_ct(seed, false, "m/86'/0'/0'", work[..], account[..]) == BIP32_NODE_BYTES;
+  print("m/86'/0'/0' xprv: %\n", text_of(account[..], text[..]));
+  #assert bip32_neuter_ct(account[..], work[..], account[..]) == BIP32_NODE_BYTES;
+  print("m/86'/0'/0' xpub: %\n", text_of(account[..], text[..]));
+  for c: 0..<2 { for i: 0..<2 {
+    n := path_account_script_ct(86, account[..], c, i, work[..], script[..]);
+    print("xpub/%/%: %\n", c, i, address(SW_MAINNET, script[0..<n], addr[..]));
+  } }
+  print("xpub/0/2147483648: %\n", refusal(path_account_script_ct(86, account[..], 0, BIP32_HARDENED, work[..], script[..])));
+
+  // BIP-84 publishes its account key as a zpub: the same 78 bytes with
+  // another version.
+  print("SLIP-132\n");
+  payload: [78] u8;
+  #assert base58check_decode_vartime(BIP84_ZPUB, payload[..]) == 78;
+  #assert path_derive_ct(seed, false, "m/84'/0'/0'", work[..], node[..]) == BIP32_NODE_BYTES;
+  #assert bip32_neuter_ct(node[..], work[..], node[..]) == BIP32_NODE_BYTES;
+  show("zpub version", payload[0..<4]);
+  show("xpub version", node[0..<4]);
+  same := true;
+  for k: 4..<78 { if payload[k] != node[k] { same = false; } }
+  print("the other 74 bytes match: %\n", same);
+  print("m/84'/0'/0' xpub: %\n", text_of(node[..], text[..]));
+
+  // Testnet: coin type 1, a tprv, and BIP-49's testnet address.
+  print("Testnet\n");
+  #assert path_standard_vartime(49, SW_TESTNET, 0, 0, 0, indexes[..]) == 5;
+  p := cast(string) ptext[0..<path_format_vartime(indexes[..], '\'', ptext[..])];
+  #assert path_derive_ct(seed, true, p, work[..], node[..]) == BIP32_NODE_BYTES;
+  show("m/49'/1'/0'/0/0 private key", node[HDK_KEY + 1..<BIP32_NODE_BYTES]);
+  #assert bip32_neuter_ct(node[..], work[..], node[..]) == BIP32_NODE_BYTES;
+  n := path_script_vartime(49, node[HDK_KEY..<BIP32_NODE_BYTES], script[..]);
+  print("%: %\n", p, address(SW_TESTNET, script[0..<n], addr[..]));
+  #assert path_derive_ct(seed, true, "m/49'/1'/0'", work[..], node[..]) == BIP32_NODE_BYTES;
+  print("m/49'/1'/0' tprv: %\n", text_of(node[..], text[..]));
+
+  // NIP-06: the Nostr book's chapter 46 key is a BIP-44 path.
+  print("NIP-06\n");
+  s2: [64] u8;
+  #assert path_derive_ct(seed_of(NIP06_WORDS, s2[..]), false, "m/44'/1237'/0'/0/0", work[..], node[..]) == BIP32_NODE_BYTES;
+  show("m/44'/1237'/0'/0/0 private key", node[HDK_KEY + 1..<BIP32_NODE_BYTES]);
+
+  // The gap limit: a wallet restored from words finds its addresses by
+  // scanning until 20 unused ones in a row.
+  print("Gap limit\n");
+  used := [5] int.[0, 1, 2, 5, 24];
+  print("used 0 1 2 5 24, gap 20: found up to %\n", scan(used[..], 20));
+  missed := [5] int.[0, 1, 2, 5, 26];
+  print("used 0 1 2 5 26, gap 20: found up to %\n", scan(missed[..], 20));
+  print("used 0 1 2 5 26, gap 25: found up to %\n", scan(missed[..], 25));
+
+  // Refusals.
+  print("Refusals\n");
+  print("purpose 48: %\n", refusal(path_standard_vartime(48, SW_MAINNET, 0, 0, 0, indexes[..])));
+  print("change 2: %\n", refusal(path_standard_vartime(84, SW_MAINNET, 0, 2, 0, indexes[..])));
+  print("account 2^31: %\n", refusal(path_standard_vartime(84, SW_MAINNET, BIP32_HARDENED, 0, 0, indexes[..])));
+  print("network 4: %\n", refusal(path_standard_vartime(84, 4, 0, 0, 0, indexes[..])));
+  #assert path_derive_ct(seed, false, "m/84'/0'", work[..], node[..]) == BIP32_NODE_BYTES;
+  print("a depth-2 node as an account: %\n", refusal(path_account_script_ct(84, node[..], 0, 0, work[..], script[..])));
+}
+// book:end example

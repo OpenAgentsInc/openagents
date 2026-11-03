@@ -317,6 +317,17 @@
       ]
     },
     {
+      "source": "bitcoin/examples/derivation-paths.coax",
+      "chapter": "bitcoin/book/ch033-derivation-paths.md",
+      "stdout": "bitcoin/fixtures/derivation-paths.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
       "source": "bitcoin/examples/transactions.coax",
       "chapter": "bitcoin/book/ch034-transactions-and-their-serialization.md",
       "stdout": "bitcoin/fixtures/transactions.out",

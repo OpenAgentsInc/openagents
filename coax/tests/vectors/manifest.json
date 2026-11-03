@@ -936,6 +936,19 @@
       "bytes": 4648
     },
     {
+      "path": "upstream/bip44/bip-0044.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0044.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "No standalone license declared in source; existing vendored protocol text, notices preserved; no new license asserted",
+      "covers": [
+        "bip44-derivation-path"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "6a541c79f94077ac529941a8cbd373ce077a5d6e97b6dd8209b45ac10f737eaf",
+      "bytes": 6710
+    },
+    {
       "path": "upstream/bip49/bip-0049.mediawiki",
       "kind": "upstream",
       "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0049.mediawiki",

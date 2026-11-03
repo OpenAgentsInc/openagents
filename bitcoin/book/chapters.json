@@ -738,15 +738,22 @@
   {
    "number": 33,
    "title": "Derivation paths",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch033-derivation-paths.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     29,
+    31,
     32
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/path.coax",
+    "bitcoin/examples/derivation-paths.coax",
+    "bitcoin/examples/checks/derivation-paths.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

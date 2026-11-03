@@ -1,0 +1,47 @@
+Paths
+m -> (no steps) -> m
+m/84'/0'/0'/0/5 -> 2147483732 2147483648 2147483648 0 5 -> m/84h/0h/0h/0/5
+m/84h/0h/0h/0/5 -> 2147483732 2147483648 2147483648 0 5 -> m/84h/0h/0h/0/5
+m/44'/1237'/0'/0/0 -> 2147483692 2147484885 2147483648 0 0 -> m/44h/1237h/0h/0/0
+m/0/2147483647' -> 0 4294967295 -> m/0/2147483647h
+m/2147483648 -> overflow
+m/0H -> bad step
+m//0 -> empty step
+m/0/ -> empty step
+84'/0' -> no root
+m/+1 -> bad step
+Standard paths
+seed: 5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4
+m/44'/0'/0'/0/0 P2PKH: 1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA
+m/49'/0'/0'/0/0 P2SH-P2WPKH: 37VucYSaXLCAsxYyAPfbSi9eh4iEcbShgf
+m/84'/0'/0'/0/0 P2WPKH: bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu
+m/86'/0'/0'/0/0 P2TR: bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr
+Watch-only
+m/86'/0'/0' xprv: xprv9xgqHN7yz9MwCkxsBPN5qetuNdQSUttZNKw1dcYTV4mkaAFiBVGQziHs3NRSWMkCzvgjEe3n9xV8oYywvM8at9yRqyaZVz6TYYhX98VjsUk
+m/86'/0'/0' xpub: xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ
+xpub/0/0: bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr
+xpub/0/1: bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh
+xpub/1/0: bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7
+xpub/1/1: bc1ptdg60grjk9t3qqcqczp4tlyy3z47yrx9nhlrjsmw36q5a72lhdrs9f00nj
+xpub/0/2147483648: bad field
+SLIP-132
+zpub version: 04b24746
+xpub version: 0488b21e
+the other 74 bytes match: true
+m/84'/0'/0' xpub: xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V
+Testnet
+m/49'/1'/0'/0/0 private key: c9bdb49cfbaedca21c4b1f3a7803c34636b1d7dc55a717132443fc3f4c5867e8
+m/49'/1'/0'/0/0: 2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2
+m/49'/1'/0' tprv: tprv8gRrNu65W2Msef2BdBSUgFdRTGzC8EwVXnV7UGS3faeXtuMVtGfEdidVeGbThs4ELEoayCAzZQ4uUji9DUiAs7erdVskqju7hrBcDvDsdbY
+NIP-06
+m/44'/1237'/0'/0/0 private key: 7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a
+Gap limit
+used 0 1 2 5 24, gap 20: found up to 24
+used 0 1 2 5 26, gap 20: found up to 5
+used 0 1 2 5 26, gap 25: found up to 26
+Refusals
+purpose 48: bad purpose
+change 2: bad field
+account 2^31: bad field
+network 4: bad network
+a depth-2 node as an account: not an account

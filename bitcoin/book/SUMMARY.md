@@ -53,6 +53,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 - [31. Seed phrases](ch031-seed-phrases.md) — implemented
 - [32. Hierarchical deterministic keys](ch032-hierarchical-deterministic-keys.md) — implemented
+- [33. Derivation paths](ch033-derivation-paths.md) — implemented
 
 **VII. Transactions and script**
 

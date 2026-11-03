@@ -1,0 +1,136 @@
+// The checks of derivation-paths.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/derivation-paths.coax
+#load "../derivation-paths.coax";
+#load "../../../coax/lib/nostr/nip06.coax";
+
+// Published values copied from BIP-86, BIP-84, BIP-49, BIP-44 and NIP-06,
+// pinned in coax/tests/vectors/upstream/ and nostr/nips/official/06.md;
+// coax/tests/bitcoin/path.py checks each copy against its pinned file.
+// The seed is BIP-39's of "abandon" eleven times and "about" (chapter 31).
+DPV_SEED :: "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4";
+DpvNode :: struct {path: string; xprv: string; xpub: string; address: string;}
+// BIP-86: the account and its three addresses, each with its xprv and xpub.
+DPV_BIP86 :: [4] DpvNode.[
+  DpvNode.{path="m/86'/0'/0'", xprv="xprv9xgqHN7yz9MwCkxsBPN5qetuNdQSUttZNKw1dcYTV4mkaAFiBVGQziHs3NRSWMkCzvgjEe3n9xV8oYywvM8at9yRqyaZVz6TYYhX98VjsUk", xpub="xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ", address=""},
+  DpvNode.{path="m/86'/0'/0'/0/0", xprv="xprvA449goEeU9okwCzzZaxiy475EQGQzBkc65su82nXEvcwzfSskb2hAt2WymrjyRL6kpbVTGL3cKtp9herYXSjjQ1j4stsXXiRF7kXkCacK3T", xpub="xpub6H3W6JmYJXN49h5TfcVjLC3onS6uPeUTTJoVvRC8oG9vsTn2J8LwigLzq5tHbrwAzH9DGo6ThGUdWsqce8dGfwHVBxSbixjDADGGdzF7t2B", address="bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"},
+  DpvNode.{path="m/86'/0'/0'/0/1", xprv="xprvA449goEeU9okyiF1LmKiDaTgeXvmh87DVyRd35VPbsSop8n8uALpbtrUhUXByPFKK7C2yuqrB1FrhiDkEMC4RGmA5KTwsE1aB5jRu9zHsuQ", xpub="xpub6H3W6JmYJXN4CCKUSnriaiQRCZmG6aq4sCMDqTu1ACyngw7HShf59hAxYjXgKDuuHThVEUzdHrc3aXCr9kfvQvZPit5dnD3K9xVRBzjK3rX", address="bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh"},
+  DpvNode.{path="m/86'/0'/0'/1/0", xprv="xprvA3Ln3Gt3aphvUgzgEDT8vE2cYqb4PjFfpmbiFKphxLg1FjXQpkAk5M1ZKDY15bmCAHA35jTiawbFuwGtbDZogKF1WfjwxML4gK7WfYW5JRP", xpub="xpub6GL8SnQwRCGDhB59LEz9HMyM6sRYoByXBzXK3iEKWgCz8XrZNHUzd9L3AUBELW5NzA7dEFvMas1F84TuPH3xqdUA5tumaGWFgihJzWytXe3", address="bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7"}];
+DpvKey :: struct {path: string; key: string; address: string;}
+// BIP-84: the three public keys and addresses, and the account's zpub.
+DPV_BIP84 :: [3] DpvKey.[
+  DpvKey.{path="m/84'/0'/0'/0/0", key="0330d54fd0dd420a6e5f8d3624f5f3482cae350f79d5f0753bf5beef9c2d91af3c", address="bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"},
+  DpvKey.{path="m/84'/0'/0'/0/1", key="03e775fd51f0dfb8cd865d9ff1cca2a158cf651fe997fdc9fee9c1d3b5e995ea77", address="bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g"},
+  DpvKey.{path="m/84'/0'/0'/1/0", key="03025324888e429ab8e3dbaf1f7802648b9cd01e9b418485c5fa4c1b9b5700e1a6", address="bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el"}];
+DPV_BIP84_ZPRV :: "zprvAdG4iTXWBoARxkkzNpNh8r6Qag3irQB8PzEMkAFeTRXxHpbF9z4QgEvBRmfvqWvGp42t42nvgGpNgYSJA9iefm1yYNZKEm7z6qUWCroSQnE";
+DPV_BIP84_ZPUB :: "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs";
+// BIP-49 (testnet, coin type 1): the account uprv and upub, and the first
+// receiving key, private and public, and its address.
+DPV_BIP49_UPRV :: "uprv91G7gZkzehuMVxDJTYE6tLivdF8e4rvzSu1LFfKw3b2Qx1Aj8vpoFnHdfUZ3hmi9jsvPifmZ24RTN2KhwB8BfMLTVqaBReibyaFFcTP1s9n";
+DPV_BIP49_UPUB :: "upub5EFU65HtV5TeiSHmZZm7FUffBGy8UKeqp7vw43jYbvZPpoVsgU93oac7Wk3u6moKegAEWtGNF8DehrnHtv21XXEMYRUocHqguyjknFHYfgY";
+DPV_BIP49_PRIVATE :: "c9bdb49cfbaedca21c4b1f3a7803c34636b1d7dc55a717132443fc3f4c5867e8";
+DPV_BIP49_KEY :: "03a1af804ac108a8a51782198c2d034b28bf90c8803f5a53f76276fa69a4eae77f";
+DPV_BIP49_ADDRESS :: "2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2";
+// BIP-44's example table, with the spaces taken out.
+DPV_BIP44 :: [6] string.["m/44'/0'/0'/0/1", "m/44'/0'/0'/1/0", "m/44'/0'/1'/0/1", "m/44'/0'/1'/1/0", "m/44'/1'/0'/0/1", "m/44'/1'/0'/1/0"];
+// NIP-06's first vector: the seed of its phrase, and the private key.
+DPV_NIP06_SEED :: "173b9c5f0d165502d08a4d122b2c9bf1e33e27806eac119713600a263c1241101dc55fb7cffb8f48a59b19a5ba65b037904f907bb8d08eb5bff8a17e85c2ee93";
+DPV_NIP06_KEY :: "7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a";
+
+// A node at a path below the seed, as its xprv (or tprv) text, and as its
+// xpub (or tpub).
+dpv_node :: (seed: string, testnet: bool, path: string, node: [] u8) {
+  sb: [64] u8; work: [BIP32_WORK_BYTES] u8;
+  #assert path_derive_ct(ad_unhex(seed, sb[..]), testnet, path, work[..], node) == BIP32_NODE_BYTES;
+  for b: work { #assert b == 0; }
+}
+dpv_text :: (node: [] u8, public: bool, out: [] u8) -> string {
+  work: [BIP32_WORK_BYTES] u8; n: [BIP32_NODE_BYTES] u8;
+  for k: 0..<BIP32_NODE_BYTES { n[k] = node[k]; }
+  if public { #assert bip32_neuter_ct(node, work[..], n[..]) == BIP32_NODE_BYTES; }
+  return text_of(n[..], out);
+}
+// A SLIP-132 key's 78 bytes match a node's except for the version.
+dpv_same_but_version :: (slip132: string, node: [] u8) -> bool {
+  payload: [78] u8;
+  if base58check_decode_vartime(slip132, payload[..]) != 78 { return false; }
+  for k: 4..<78 { if payload[k] != node[k] { return false; } }
+  return !(payload[0] == node[0] && payload[1] == node[1] && payload[2] == node[2] && payload[3] == node[3]);
+}
+
+// book:begin check
+// BIP-86: the account and each address node give the published xprv and
+// xpub, the address nodes give the published addresses, and the account
+// xpub alone gives the same addresses.
+#forall "BIP-86's nodes and addresses" i: 0..<4 #steps 3000000000 {
+  v := DPV_BIP86[i]; node: [BIP32_NODE_BYTES] u8; text: [BIP32_TEXT] u8; account: [BIP32_NODE_BYTES] u8;
+  script: [AD_SCRIPT_MAX] u8; addr: [90] u8; work: [BIP32_WORK_BYTES] u8;
+  dpv_node(DPV_SEED, false, v.path, node[..]);
+  #assert dpv_text(node[..], false, text[..]) == v.xprv && dpv_text(node[..], true, text[..]) == v.xpub;
+  if i > 0 {
+    #assert bip32_neuter_ct(node[..], work[..], node[..]) == BIP32_NODE_BYTES;
+    n := path_script_vartime(86, node[HDK_KEY..<BIP32_NODE_BYTES], script[..]);
+    #assert address(SW_MAINNET, script[0..<n], addr[..]) == v.address;
+    dpv_node(DPV_SEED, false, DPV_BIP86[0].path, account[..]);
+    #assert bip32_neuter_ct(account[..], work[..], account[..]) == BIP32_NODE_BYTES;
+    indexes: [5] int;
+    #assert path_parse_vartime(v.path, indexes[..]) == 5;
+    m := path_account_script_ct(86, account[..], indexes[3], indexes[4], work[..], script[..]);
+    #assert m == n && address(SW_MAINNET, script[0..<m], addr[..]) == v.address;
+  }
+}
+// BIP-84: each key and address, and the account's zprv and zpub: the same
+// 78 bytes as the xprv and xpub with SLIP-132's versions.
+#forall "BIP-84's keys, addresses and account" i: 0..<3 #steps 2000000000 {
+  v := DPV_BIP84[i]; node: [BIP32_NODE_BYTES] u8; script: [AD_SCRIPT_MAX] u8; addr: [90] u8; work: [BIP32_WORK_BYTES] u8;
+  dpv_node(DPV_SEED, false, v.path, node[..]);
+  #assert bip32_neuter_ct(node[..], work[..], node[..]) == BIP32_NODE_BYTES && ad_hex_is(node[HDK_KEY..<BIP32_NODE_BYTES], v.key);
+  n := path_script_vartime(84, node[HDK_KEY..<BIP32_NODE_BYTES], script[..]);
+  #assert address(SW_MAINNET, script[0..<n], addr[..]) == v.address;
+  if i == 0 {
+    dpv_node(DPV_SEED, false, "m/84'/0'/0'", node[..]);
+    #assert dpv_same_but_version(DPV_BIP84_ZPRV, node[..]);
+    #assert bip32_neuter_ct(node[..], work[..], node[..]) == BIP32_NODE_BYTES && dpv_same_but_version(DPV_BIP84_ZPUB, node[..]);
+  }
+}
+// BIP-49 on testnet: coin type 1, the account's uprv and upub, the key and
+// the P2SH-P2WPKH address.
+#test "BIP-49's testnet account and address" #steps 2000000000 {
+  node: [BIP32_NODE_BYTES] u8; script: [AD_SCRIPT_MAX] u8; addr: [90] u8; work: [BIP32_WORK_BYTES] u8; indexes: [5] int; p: [40] u8;
+  #assert path_standard_vartime(49, SW_TESTNET, 0, 0, 0, indexes[..]) == 5;
+  path := cast(string) p[0..<path_format_vartime(indexes[..], '\'', p[..])];
+  #assert path == "m/49'/1'/0'/0/0";
+  dpv_node(DPV_SEED, true, path, node[..]);
+  #assert ad_hex_is(node[HDK_KEY + 1..<BIP32_NODE_BYTES], DPV_BIP49_PRIVATE);
+  #assert bip32_neuter_ct(node[..], work[..], node[..]) == BIP32_NODE_BYTES && ad_hex_is(node[HDK_KEY..<BIP32_NODE_BYTES], DPV_BIP49_KEY);
+  n := path_script_vartime(49, node[HDK_KEY..<BIP32_NODE_BYTES], script[..]);
+  #assert address(SW_TESTNET, script[0..<n], addr[..]) == DPV_BIP49_ADDRESS;
+  dpv_node(DPV_SEED, true, "m/49'/1'/0'", node[..]);
+  #assert dpv_same_but_version(DPV_BIP49_UPRV, node[..]);
+  #assert bip32_neuter_ct(node[..], work[..], node[..]) == BIP32_NODE_BYTES && dpv_same_but_version(DPV_BIP49_UPUB, node[..]);
+}
+// BIP-44's examples parse to purpose 44', coin 0' or 1', an account, a
+// change and an index, the same as the standard path built from those
+// fields.
+#forall "BIP-44's example paths" i: 0..<6 {
+  got: [5] int; want: [5] int;
+  #assert path_parse_vartime(DPV_BIP44[i], got[..]) == 5;
+  network := ifx got[1] == BIP32_HARDENED then SW_MAINNET else SW_TESTNET;
+  #assert path_standard_vartime(44, network, got[2] - BIP32_HARDENED, got[3], got[4], want[..]) == 5;
+  for k: 0..<5 { #assert got[k] == want[k]; }
+}
+// NIP-06: the path string gives the indexes the Nostr code hard-codes, and
+// the seed of its phrase gives its private key there.
+#test "NIP-06's path and key" #steps 1000000000 {
+  got: [5] int; node: [BIP32_NODE_BYTES] u8; nip06 := NIP06_PATH;
+  #assert path_parse_vartime("m/44'/1237'/0'/0/0", got[..]) == 5;
+  for k: 0..<5 { #assert got[k] == nip06[k]; }
+  dpv_node(DPV_NIP06_SEED, false, "m/44'/1237'/0'/0/0", node[..]);
+  #assert ad_hex_is(node[HDK_KEY + 1..<BIP32_NODE_BYTES], DPV_NIP06_KEY);
+}
+// The gap-limit scan in the example.
+#test "the gap limit" {
+  a := [5] int.[0, 1, 2, 5, 24]; b := [5] int.[0, 1, 2, 5, 26]; none: [1] int;
+  #assert scan(a[..], 20) == 24 && scan(b[..], 20) == 5 && scan(b[..], 25) == 26 && scan(none[0..<0], 20) == -1;
+}
+// book:end check

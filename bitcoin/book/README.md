@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 38 are implemented and 86 are planned. The 38 implemented
+Of the 124 chapters, 39 are implemented and 85 are planned. The 39 implemented
 chapters have runnable examples, qualified on native CPU, and 31 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
-7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 34, 35, 36, 37, 40, 46, 47
-and 48 are new.
+7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 33, 34, 35, 36, 37, 40, 46,
+47 and 48 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -170,7 +170,7 @@ BIP-39 seed phrases, BIP-32 hierarchical keys and the standard derivation paths.
 | --- | --- | --- |
 | [31. Seed phrases](ch031-seed-phrases.md) | Runnable: native C and wasm | BIP-39 English phrases of 12 to 24 words to entropy and back, and the seed through PBKDF2-HMAC-SHA512, checked against all 24 English vectors of trezor/python-mnemonic, Python's `hashlib` and OpenSSL, natively and in Wasm. Word lookups read the whole list; non-ASCII text refuses instead of skipping NFKD. A phrase with a bad checksum refuses. |
 | [32. Hierarchical deterministic keys](ch032-hierarchical-deterministic-keys.md) | Runnable: native C and wasm | BIP-32 master keys, CKDpriv, CKDpub, fingerprints and the 78-byte `xprv`, `xpub`, `tprv` and `tpub` serialization, checked against BIP-32 test vectors 1–5, the `xprv` column of trezor/python-mnemonic's vectors and a separate Python implementation, natively and in Wasm. Private derivation and `xprv` text run in constant time; every vector 5 key refuses with its own code. |
-| 33. Derivation paths | Planned | The BIP-44, BIP-84 and BIP-86 vectors give their addresses, and NIP-06's path gives the Nostr book's chapter 46 key. |
+| [33. Derivation paths](ch033-derivation-paths.md) | Runnable: native C | Path strings with `h` or `'` to BIP-32 indexes and back, BIP-44's five levels for purposes 44, 49, 84 and 86 on mainnet and coin type 1, and each purpose's script from a seed or an account `xpub`, checked against BIP-84's, BIP-86's and BIP-49's addresses, BIP-44's example paths, NIP-06's key and a separate Python implementation. Empty steps, steps of `2^31` or more, other marks and 256 steps refuse with their own codes. |
 
 ### Part VII. Transactions and script (chapters 34–40)
 
