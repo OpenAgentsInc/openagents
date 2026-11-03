@@ -1,5 +1,15 @@
 # Owner actions
 
+## Psionic oracles: run check_decoder.sh and check_muon.sh on the Mac (#12695, 2026-11-03)
+
+The decoder and muon oracles now use correctly rounded sin, cos, exp, log
+and pow (`psionic/tests/cr_math.py`), and their references were rerecorded
+from them on Linux, where both checks pass. On the Mac, run
+`psionic/tests/check_decoder.sh` and `psionic/tests/check_muon.sh`. They
+should pass unchanged: the oracles no longer touch libm, and the Coax side
+compares within 1e-12. Both oracles need Python 3.12 or later. If either
+fails, comment on #12695.
+
 ## Ice Cream Man's camera on Aethyr's follow: approve the look (#12609, 2026-11-02)
 
 Ice Cream Man's boom camera now runs on `aethyr/follow.coax`, one step per

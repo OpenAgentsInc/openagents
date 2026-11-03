@@ -418,7 +418,10 @@ the planner's own settings with base_train's 0.28 Muon decay, for four steps.
 In its first gradient, one row is zero and one has norm 1e-9. The second case
 is a Muon-heavy model with other momentum, beta2, decay and three Polar
 Express steps, for five steps. The oracle also runs Polar Express alone on a
-square, a tall and a wide input. Its values are committed in
+square, a tall and a wide input. Its sines, cosines and powers are correctly
+rounded ([cr_math.py](../tests/cr_math.py) computes each in decimal and rounds
+once), not the C library's, which differ between Linux and macOS in the last
+place, so its values are the same on every platform. They are committed in
 [reference.coax](../fixtures/muon/reference.coax) and reproduce from the oracle
 on every check.
 

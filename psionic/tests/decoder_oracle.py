@@ -1,13 +1,25 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent definition of chapter 113's tiny decoder (pure Python, binary64).
 
 Written from the chapter's equations, not from the Coax code: it rebuilds the
 parameter tree by name, runs every position with full causal attention over
 the whole prefix, and prints the logits and mean next-token loss that
 psionic/lib/transformer/decoder.coax must reproduce.
+
+sin, cos, exp, log and pow are correctly rounded (cr_math.py), not the C
+library's, so the printed values are the same on every platform (#12695).
+sqrt is IEEE-exact everywhere. sum() is Python 3.12's compensated sum.
 """
 import argparse
 import math
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import cr_math  # noqa: E402
+
+assert sys.version_info >= (3, 12), "sum() must be the compensated sum of Python 3.12+"
 
 V, D, H, K, E, F, L = 5, 4, 2, 1, 2, 3, 2
 TOKENS = [1, 3, 0, 2]
@@ -27,7 +39,7 @@ def use_split():
 
 def parameters():
     n = count()
-    flat = [0.5 * math.sin(0.7 * i + 0.3) for i in range(n)]
+    flat = [0.5 * cr_math.sin(0.7 * i + 0.3) for i in range(n)]
     at = 0
 
     def take(rows, cols=None):
@@ -60,10 +72,10 @@ def rope(v, heads, pos):
     out = list(v)
     for h in range(heads):
         for i in range(E // 2):
-            ang = pos * THETA ** (-2 * i / E)
+            ang = pos * cr_math.pow(THETA, -2 * i / E)
             a, b = v[h * E + 2 * i], v[h * E + 2 * i + 1]
-            out[h * E + 2 * i] = a * math.cos(ang) - b * math.sin(ang)
-            out[h * E + 2 * i + 1] = a * math.sin(ang) + b * math.cos(ang)
+            out[h * E + 2 * i] = a * cr_math.cos(ang) - b * cr_math.sin(ang)
+            out[h * E + 2 * i + 1] = a * cr_math.sin(ang) + b * cr_math.cos(ang)
     return out
 
 
@@ -83,11 +95,11 @@ def logits(tokens):
                 q = qs[t][h * E:(h + 1) * E]
                 scores = [sum(a * b for a, b in zip(q, ks[j][g * E:(g + 1) * E])) / math.sqrt(E) for j in range(t + 1)]
                 top = max(scores)
-                weights = [math.exp(s - top) for s in scores]
+                weights = [cr_math.exp(s - top) for s in scores]
                 total = sum(weights)
                 context += [sum(weights[j] / total * vs[j][g * E + x] for j in range(t + 1)) for x in range(E)]
             mid = [a + b for a, b in zip(xs[t], mv(layer["wo"], context))]
-            hidden = [max(z, 0.0) ** 2 for z in mv(layer["w1"], norm(mid, layer["norm2"]))]
+            hidden = [cr_math.pow(max(z, 0.0), 2) for z in mv(layer["w1"], norm(mid, layer["norm2"]))]
             out.append([a + b for a, b in zip(mid, mv(layer["w2"], hidden))])
         xs = out
     return [mv(unembed, norm(x, final)) for x in xs]
@@ -97,7 +109,7 @@ def loss(z, tokens):
     terms = []
     for t in range(len(tokens) - 1):
         top = max(z[t])
-        terms.append(top + math.log(sum(math.exp(v - top) for v in z[t])) - z[t][tokens[t + 1]])
+        terms.append(top + cr_math.log(sum(cr_math.exp(v - top) for v in z[t])) - z[t][tokens[t + 1]])
     return sum(terms) / len(terms)
 
 

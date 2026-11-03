@@ -13,11 +13,20 @@ spelled out: lerp_ takes torch's two-branch form, norms are square roots of
 sums of squares, clamp_min is max. Everything is a Python float (binary64), the
 widest reading of nanochat's fp32 path; the bf16 cast of X is not modeled.
 
+sin, cos and every power are correctly rounded (cr_math.py), not the C
+library's, so the reference is the same on every platform (#12695); sqrt is
+IEEE-exact everywhere. sum() is Python 3.12's compensated sum.
+
 --write regenerates psionic/fixtures/muon/{reference.json,reference.coax};
 the default verifies the committed files reproduce; --header prints C goldens.
 """
-import argparse, json, math
+import argparse, json, math, sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import cr_math  # noqa: E402
+
+assert sys.version_info >= (3, 12), "sum() must be the compensated sum of Python 3.12+"
 
 D = Path(__file__).resolve().parents[1] / 'fixtures/muon'
 
@@ -78,7 +87,7 @@ def polar(X, ns_steps):
 POLAR_CASES = [(4, 4), (5, 3), (3, 5)]
 
 def polar_case(r, c):
-    X = mat(r, c, lambda i, j: math.cos(0.9 * i - 0.4 * j + r) * (1 + 0.3 * j))
+    X = mat(r, c, lambda i, j: cr_math.cos(0.9 * i - 0.4 * j + r) * (1 + 0.3 * j))
     X = scale(X, 1 / (fro(X) * 1.01 + 1e-6))
     return dict(rows=r, cols=c, input=[x for row in X for x in row], output=[x for row in polar(X, 5) for x in row])
 
@@ -88,7 +97,7 @@ def muon_fused(grad, param, buf, second, momentum, lr, wd, beta2, ns_steps, red_
     buf = [[lerp(buf[i][j], grad[i][j], 1 - momentum) for j in range(c)] for i in range(r)]
     g = [[lerp(grad[i][j], buf[i][j], momentum) for j in range(c)] for i in range(r)]
     X = g
-    target = fro(X) / (r ** 0.5)
+    target = fro(X) / cr_math.pow(r, 0.5)
     X = [[x * (target / max(math.sqrt(sum(y * y for y in row)), 1e-6)) for x in row] for row in X]
     X = scale(X, 1 / (fro(X) * 1.01 + 1e-6))
     for a, b, cc in POLAR[:ns_steps]:
@@ -105,13 +114,13 @@ def muon_fused(grad, param, buf, second, momentum, lr, wd, beta2, ns_steps, red_
             BX = matmul(B, X)
             X = [[a * X[i][j] + BX[i][j] for j in range(c)] for i in range(r)]
     g = X
-    target_norm = min(r, c) ** 0.5
+    target_norm = cr_math.pow(min(r, c), 0.5)
     g = scale(g, target_norm / max(fro(g), 1e-6))
     if red_dim == -1:
         v_mean = [sum(x * x for x in row) / c for row in g]
         size = c
     else:
-        v_mean = [sum(g[i][j] ** 2 for i in range(r)) / r for j in range(c)]
+        v_mean = [sum(cr_math.pow(g[i][j], 2) for i in range(r)) / r for j in range(c)]
         size = r
     v_norm = math.sqrt(sum(v_mean) * size)
     second = [lerp(s, v, 1 - beta2) for s, v in zip(second, v_mean)]
@@ -130,15 +139,15 @@ def adamw_fused(p, grad, m, v, step, lr, b1, b2, eps, wd):
     p = [x * (1 - lr * wd) for x in p]
     m = [lerp(a, g, 1 - b1) for a, g in zip(m, grad)]
     v = [lerp(a, g * g, 1 - b2) for a, g in zip(v, grad)]
-    bias1 = 1 - b1 ** step
-    bias2 = 1 - b2 ** step
+    bias1 = 1 - cr_math.pow(b1, step)
+    bias2 = 1 - cr_math.pow(b2, step)
     p = [x - (lr / bias1) * (a / (math.sqrt(s / bias2) + eps)) for x, a, s in zip(p, m, v)]
     return p, m, v
 
 def setup_optimizer(model, model_dim, unembedding_lr=0.004, embedding_lr=0.2, matrix_lr=0.02, weight_decay=0.0, scalar_lr=0.5):
     """GPT.setup_optimizer: names grouped exactly as nanochat groups modules."""
     by = lambda role: [name for name, (r, shape) in model if r == role]
-    s = (model_dim / 768) ** -0.5
+    s = cr_math.pow(model_dim / 768, -0.5)
     groups = [
         dict(kind='adamw', params=by('lm_head'), lr=unembedding_lr * s, betas=(0.8, 0.96), eps=1e-10, weight_decay=0.01),
         dict(kind='adamw', params=by('embedding'), lr=embedding_lr * s, betas=(0.8, 0.995), eps=1e-10, weight_decay=0.001),
@@ -174,7 +183,7 @@ def opt_step(groups, shapes, params, grads, state):
             red = r if r >= c else c
             st = state.setdefault(key, dict(momentum_buffer=[[0.0] * (r * c) for _ in names], second_momentum_buffer=[[0.0] * red for _ in names]))
             red_dim = -1 if r >= c else -2
-            lr = group['lr'] * max(1.0, r / c) ** 0.5
+            lr = group['lr'] * cr_math.pow(max(1.0, r / c), 0.5)
             for k, name in enumerate(names):
                 as_mat = lambda flat: [flat[i * c:(i + 1) * c] for i in range(r)]
                 p, buf, second = muon_fused(as_mat(grads[name]), as_mat(params[name]), as_mat(st['momentum_buffer'][k]),
@@ -214,7 +223,7 @@ def initial(name, shape, salt):
 
 def gradient(name, shape, step, salt):
     n = numel(shape)
-    out = [math.sin(0.37 * i + 1.3 * step + len(name) + salt) * (1 + 0.5 * step) for i in range(n)]
+    out = [cr_math.sin(0.37 * i + 1.3 * step + len(name) + salt) * (1 + 0.5 * step) for i in range(n)]
     if name.endswith('c_fc.weight') and step == 0:
         # a zero row and a row of norm ~1e-9: both row-norm clamps act
         for j in range(4):

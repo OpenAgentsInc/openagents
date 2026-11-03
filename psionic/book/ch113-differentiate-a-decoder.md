@@ -117,7 +117,9 @@ refuses another step (`position`).
 An independent definition, [decoder_oracle.py](../tests/decoder_oracle.py), is
 written from the equations above rather than from the Coax code. It builds
 the parameters by name and attends over the whole prefix for each position.
-On a deterministic tiny model (5 tokens, width 4, two query heads sharing one
+Its sine, cosine, exponential and logarithm are correctly rounded
+([cr_math.py](../tests/cr_math.py)), so it prints the same values on every
+platform. On a deterministic tiny model (5 tokens, width 4, two query heads sharing one
 key/value head, two blocks, four positions) the twenty Coax logits match its
 values within `1e-12`, and so does the loss.
 
