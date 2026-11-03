@@ -299,8 +299,8 @@ things change from a plain relay room:
 8. **Tickets.** Joining needs `?t=TICKET` (section 4.4). The server checks
    the ticket's signature, stamps the seat with its player id and name, and
    `j SS ID NAME` tells everyone who sat down. A socket without a valid
-   ticket is refused before the upgrade (401). Frames never claim an
-   identity.
+   ticket gets no seat (the socket is closed). Frames never claim an
+   identity. Built: section 4.4.
 9. **A late joiner** gets the full snapshot as its first state frame; there
    is no host to ask.
 
@@ -517,14 +517,27 @@ are stamped with it.
 
 ### 4.4 Anti-impersonation
 
-- **Room tickets.** `POST /api/playtest/room-ticket/<room>` (player key
-  required) returns `base64(player_id | name | room | expires | HMAC)`,
-  valid for 10 minutes, signed with a secret in Secret Manager
-  (`oa-room-ticket-key`) that both `oa-api` and `oa-room` read. The room
-  server checks it before the WebSocket upgrade and stamps the seat. Nothing a
-  client sends can change its id or name after that. Not built yet (section
-  13, item 8); until it is, the server takes the hello's name and marks the
-  seat unverified, and pages draw unverified seats without a gold name.
+- **Room tickets** (built, #12712). `POST /api/playtest/room-ticket/<room>`
+  needs the player key (`X-Verse-Player`). It returns
+  `{"ticket","id","account","name","expires"}`, and the ticket is
+  `v1.PID.ACCT.NAME64.ROOM.EXPIRES.MAC`:
+  - NAME64 is the account's name (else the name the body asks for) in
+    unpadded base64url, `-` if there is none.
+  - EXPIRES is 10 minutes ahead, in wall-clock milliseconds.
+  - MAC is the hex HMAC-SHA256 of the text before it.
+
+  It is signed with the Secret Manager secret `oa-room-ticket-key`, which
+  `oa-api` and `oa-room` both read (`coax/web/api/player.c room_ticket`,
+  `coax/web/room/room-ticket.coax`).
+- **The join.** The page asks for a new ticket before each socket open
+  (`everglade-net.coax`, pipe op 4, `net_ticket`) and joins with `?t=`. The
+  room refuses a forged, expired or other room's ticket, so that socket gets
+  no seat. The seat then carries the ticket's id, which is the id in its `n`
+  entry. It also carries the ticket's name and account bit, and the hello
+  cannot change them.
+- **Rolling out.** `OA_ROOM_TICKET_REQUIRED=0` lets a join without a ticket
+  sit with id `-` and no account bit until every page asks for tickets.
+  `room/deploy.sh` defaults to `1`.
 
 ## 5. Characters
 
