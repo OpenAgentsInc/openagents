@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-72 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+73 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -82,7 +82,10 @@ handshake and encrypted transport, with key rotation. Chapter 107's
 [`shachain.coax`](../coax/lib/lightning/shachain.coax) makes BOLT 3's
 per-commitment secrets and keeps a peer's in 49 slots. Chapter 106's
 [`keys.coax`](../coax/lib/lightning/keys.coax) derives each commitment's
-keys and the revocation key from the per-commitment point. Chapter 111's
+keys and the revocation key from the per-commitment point. Chapter 108's
+[`commitment.coax`](../coax/lib/lightning/commitment.coax) builds and
+signs BOLT 3's funding output, commitments and HTLC transactions, with
+and without anchors. Chapter 111's
 [`onion.coax`](../coax/lib/lightning/onion.coax) builds and peels BOLT 4's
 Sphinx onions, wraps and reads error onions, and makes and unblinds
 blinded paths. Chapter 114's
@@ -145,10 +148,11 @@ and Lightning also need:
   BIP-324 transport are built in chapters 66 and 67.)
 - FROST, adaptor signatures and silent payments. (MuSig2 is built in
   chapter 101, `coax/lib/bitcoin/musig.coax`.)
-- Lightning: commitment and HTLC transactions, BOLT 2 channels, BOLT 7
-  gossip and routing. (BOLT 1's messages and TLVs are built in chapter
-  104, the BOLT 8 Noise handshake in chapter 105, BOLT 3's keys and
-  revocation in chapter 106, shachain in chapter 107, BOLT 4 onions with
+- Lightning: BOLT 2 channels, BOLT 7 gossip and routing. (BOLT 1's
+  messages and TLVs are built in chapter 104, the BOLT 8 Noise handshake
+  in chapter 105, BOLT 3's keys and revocation in chapter 106, shachain
+  in chapter 107, commitment and HTLC transactions in chapter 108, BOLT 4
+  onions with
   blinded paths in chapter 111, BOLT 11 invoices in chapter 114, and
   BOLT 12 offers in chapter 115.)
 

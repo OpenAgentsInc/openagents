@@ -2110,16 +2110,26 @@
   {
    "number": 108,
    "title": "Commitment and HTLC transactions",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch108-commitment-and-htlc-transactions.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     38,
     100,
     106
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/lightning/commitment.coax",
+    "bitcoin/examples/lightning-commitment.coax",
+    "bitcoin/examples/checks/lightning-commitment.coax",
+    "coax/tests/lightning/commitment_vectors.coax",
+    "coax/tests/lightning/make_commitment_vectors.py",
+    "coax/tests/lightning/bolt3_tx.py",
+    "coax/tests/lightning/commitment.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

@@ -3037,7 +3037,8 @@
       "license": "CC-BY-4.0 (declared in source)",
       "covers": [
         "lightning-shachain",
-        "lightning-keys"
+        "lightning-keys",
+        "lightning-commitment"
       ],
       "retrieved": "2026-11-03",
       "sha256": "27ffbf1ae436f257bff3f255b4d1e4d4bbf8597fb1e2533d7ff9b66f4fe38d43",

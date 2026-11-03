@@ -1,0 +1,65 @@
+BOLT 3 Appendix B: the funding transaction
+  funding script: 5221023da092f6980e58d2c037173180e9a465476026ee50f96695963e8efe436f54eb21030e9f7b623d2ccc7c9bd44d66d5ce21ce504c0acf6385a132cec6d3c39fa711c152ae
+  funding output: 0020c015c4a6be010e21657068fc2e6a9d02b27ebe4d490a25846f7237f104d1a3cd
+  in the funding transaction: true
+BOLT 3 Appendix C (static_remotekey) and F (anchors)
+  C 0: outputs 2, base fee 10860, HTLC transactions 0: true
+  C 1: outputs 7, base fee 0, HTLC transactions 5: true
+  C 2: outputs 7, base fee 1024, HTLC transactions 5: true
+  C 3: outputs 6, base fee 914, HTLC transactions 4: true
+  C 4: outputs 6, base fee 2921, HTLC transactions 4: true
+  C 5: outputs 5, base fee 2566, HTLC transactions 3: true
+  C 6: outputs 5, base fee 2720, HTLC transactions 3: true
+  C 7: outputs 4, base fee 2344, HTLC transactions 2: true
+  C 8: outputs 4, base fee 3953, HTLC transactions 2: true
+  C 9: outputs 3, base fee 3317, HTLC transactions 1: true
+  C 10: outputs 3, base fee 4402, HTLC transactions 1: true
+  C 11: outputs 2, base fee 3558, HTLC transactions 0: true
+  C 12: outputs 2, base fee 6987454, HTLC transactions 0: true
+  C 13: outputs 1, base fee 6987455, HTLC transactions 0: true
+  C 14: outputs 1, base fee 6988001, HTLC transactions 0: true
+  C 15: outputs 5, base fee 313, HTLC transactions 3: true
+  F 16: outputs 4, base fee 16860, HTLC transactions 0: true
+  F 17: outputs 2, base fee 16860, HTLC transactions 0: true
+  F 18: outputs 9, base fee 1277, HTLC transactions 5: true
+  F 19: outputs 8, base fee 1168, HTLC transactions 4: true
+  F 20: outputs 6, base fee 3207, HTLC transactions 2: true
+  F 21: outputs 5, base fee 4778, HTLC transactions 1: true
+  F 22: outputs 4, base fee 5500, HTLC transactions 0: true
+  F 23: outputs 2, base fee 6986795, HTLC transactions 0: true
+  F 24: outputs 7, base fee 414, HTLC transactions 3: true
+  25 of 25 commitments and 48 of 48 HTLC transactions match
+Appendix C at feerate 647: the outputs in order
+  0 received 1000 sat, expiry 500, its HTLC-success pays 546
+  1 offered 2000 sat, expiry 502, its HTLC-timeout pays 1572
+  2 received 2000 sat, expiry 501, its HTLC-success pays 1546
+  3 offered 3000 sat, expiry 503, its HTLC-timeout pays 2572
+  4 received 4000 sat, expiry 504, its HTLC-success pays 3546
+  5 to_remote 3000000 sat
+  6 to_local 6986976 sat
+  sequence 802bb038, locktime 2052193e: commitment number 42
+Appendix F at feerate 644: the same HTLCs with anchors
+  0 local_anchor 330 sat
+  1 remote_anchor 330 sat
+  2 received 1000 sat, expiry 500, its HTLC-success pays 1000
+  3 offered 2000 sat, expiry 502, its HTLC-timeout pays 2000
+  4 received 2000 sat, expiry 501, its HTLC-success pays 2000
+  5 offered 3000 sat, expiry 503, its HTLC-timeout pays 3000
+  6 received 4000 sat, expiry 504, its HTLC-success pays 4000
+  7 to_remote 3000000 sat
+  8 to_local 6986063 sat
+  to_remote script: 21032c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991ad51b2
+  local anchor script: 21023da092f6980e58d2c037173180e9a465476026ee50f96695963e8efe436f54ebac736460b268
+spending the outputs (chapter 36's interpreter)
+  the commitment spends the funding output: OK
+  HTLC-success for output 0: OK
+  HTLC-timeout for output 1: OK
+  HTLC-success with the wrong preimage: EQUALVERIFY
+  to_local by the revocation key, at once: OK
+  to_local by the delayed key at sequence 0: UNSATISFIED_LOCKTIME
+  to_local by the delayed key at sequence 143: UNSATISFIED_LOCKTIME
+  to_local by the delayed key at sequence 144: OK
+refusals
+  9 HTLCs: TOO_MANY
+  more than the funding output: BAD_AMOUNT
+  an HTLC transaction for to_remote: NOT_HTLC

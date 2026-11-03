@@ -503,6 +503,16 @@ that a maliciously replaced manifest is authentic.
   `coax/tests/lightning/keys_vectors.coax`, and
   `coax/tests/lightning/keys.py` is the independent derivation the
   cross-check runs.
+- **Commitment and HTLC transactions (Bitcoin chapter 108):** the same
+  pinned BOLT 3. Its Appendix B gives the funding transaction, Appendix C
+  16 commitments under `option_static_remotekey` and Appendix F 9 under
+  `option_anchors`, with 48 HTLC-timeout and HTLC-success transactions
+  between them, all signed by both peers.
+  `coax/tests/lightning/make_commitment_vectors.py` reads them into
+  `coax/tests/lightning/commitment_vectors.coax` after
+  `coax/tests/lightning/bolt3_tx.py`, an independent Python builder and
+  RFC 6979 signer, rebuilds every one, and
+  `coax/tests/lightning/commitment.py` is the cross-check.
 - **Onion routing and blinded paths (Bitcoin chapter 111):** BOLT 4
   (`04-onion-routing.md`) and its five vector files in `bolt04/` at the
   same lightning/bolts revision, CC-BY-4.0, retrieved 2026-11-03:

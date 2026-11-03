@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: reads the BOLTs' published test vectors outside Coax)
-"""The pinned BOLT texts for Bitcoin chapters 104 to 107, 111, 114 and 115, read and checked.
+"""The pinned BOLT texts for Bitcoin chapters 104 to 108, 111, 114 and 115, read and checked.
 
 The BOLTs at lightning/bolts revision 19146282 are pinned in
 coax/tests/vectors/upstream/bolts/. Every read checks the file's SHA-256
@@ -267,3 +267,91 @@ def bolt12_json(name):
     """One of bolt12/format-string-test.json, offers-test.json,
     signature-test.json and payer-proof-test.json."""
     return json.loads(text(f'bolt12/{name}-test.json'))
+
+
+# ---- BOLT 3 transactions
+
+def _fields(body):
+    """`name: value` lines (and `INTERNAL: name: value`) as a dict of strings."""
+    out = {}
+    for name, value in re.findall(r'^\s*(?:INTERNAL: )?(\w+): (\S+)$', body, re.M):
+        out.setdefault(name, value)
+    return out
+
+
+def funding():
+    """Appendix B: the coinbase it spends, its key, the funding keys and
+    amounts, and the funding transaction."""
+    body = section(text('03-transactions.md'), '# Appendix B', '# Appendix C')
+    f = _fields(body)
+    one = lambda pattern: re.search(pattern, body).group(1)
+    return {
+        'coinbase': one(r'Block 1 coinbase transaction: (\w+)'),
+        'coinbase_privkey': one(r'Block 1 coinbase privkey: (\w{64})01'),
+        'local_funding_pubkey': f['local_funding_pubkey'], 'remote_funding_pubkey': f['remote_funding_pubkey'],
+        'witness_script': one(r'# funding witness script = (\w+)'),
+        'input_txid': one(r'input txid: (\w+)'),
+        'input_index': int(one(r'input index: (\d+)')),
+        'input_sat': int(one(r'input satoshis: (\d+)')),
+        'funding_sat': int(one(r'funding satoshis: (\d+)')),
+        'feerate': int(one(r'# feerate_per_kw: (\d+)')),
+        'change_sat': int(one(r'change satoshis: (\d+)')),
+        'tx': one(r'funding tx: (\w+)'),
+        'txid': one(r'# txid: (\w+)'),
+    }
+
+
+def commitment_params():
+    """Appendix C's shared parameters: the channel, the seven HTLCs, the
+    secrets in its comment and the keys it lists. Keys and secrets are hex;
+    secrets drop Bitcoin's trailing 01."""
+    body = section(text('03-transactions.md'), '# Appendix C', '    name: simple commitment tx')
+    f = _fields(body)
+    one = lambda pattern: re.search(pattern, body).group(1)
+    htlcs = [{'offered': f'htlc {i} direction: local->remote' in body,
+              'amount_msat': int(one(rf'htlc {i} amount_msat: (\d+)')),
+              'expiry': int(one(rf'htlc {i} expiry: (\d+)')),
+              'preimage': one(rf'htlc {i} payment_preimage: (\w+)')} for i in range(7)]
+    secret = lambda k: f[k][:64]
+    return {
+        'funding_txid': f['funding_tx_id'], 'funding_index': int(f['funding_output_index']),
+        'funding_sat': int(f['funding_amount_satoshi']), 'commitment_number': int(f['commitment_number']),
+        'to_self_delay': int(f['local_delay']), 'dust_limit': int(f['local_dust_limit_satoshi']),
+        'htlcs': htlcs,
+        'local_funding_privkey': secret('local_funding_privkey'), 'remote_funding_privkey': secret('remote_funding_privkey'),
+        'local_payment_basepoint_secret': secret('local_payment_basepoint_secret'),
+        'remote_revocation_basepoint_secret': secret('remote_revocation_basepoint_secret'),
+        'local_delayed_payment_basepoint_secret': secret('local_delayed_payment_basepoint_secret'),
+        'remote_payment_basepoint_secret': secret('remote_payment_basepoint_secret'),
+        'local_per_commitment_secret': secret('x_local_per_commitment_secret'),
+        **{k: f[k] for k in ('local_payment_basepoint', 'remote_payment_basepoint', 'local_htlc_basepoint',
+                             'remote_htlc_basepoint', 'local_funding_pubkey', 'remote_funding_pubkey',
+                             'local_htlcpubkey', 'remote_htlcpubkey', 'local_delayedpubkey',
+                             'local_revocation_pubkey', 'local_per_commitment_point')},
+    }
+
+
+def commitments():
+    """Appendix C's tests: name, to_local_msat, to_remote_msat, feerate,
+    the commitment transaction, and the HTLC transactions in output order
+    as (kind, HTLC number, hex)."""
+    body = section(text('03-transactions.md'), '    name: simple commitment tx', '# Appendix D')
+    tests = []
+    for block in re.split(r'\n    name: ', '\n' + body)[1:]:
+        one = lambda pattern: re.search(pattern, block).group(1)
+        tests.append({
+            'name': block.split('\n')[0].strip(),
+            'to_local_msat': int(one(r'to_local_msat: (\d+)')),
+            'to_remote_msat': int(one(r'to_remote_msat: (\d+)')),
+            'feerate': int(one(r'local_feerate_per_kw: (\d+)')),
+            'tx': one(r'output commit_tx: (\w+)'),
+            'htlc_txs': [(k, int(n), h) for k, n, h in
+                         re.findall(r'htlc_(success|timeout)_tx \(htlc #(\d+)\): (\w+)', block)],
+        })
+    return tests
+
+
+def anchors():
+    """Appendix F's tests, as BOLT 3 lists them in JSON."""
+    body = section(text('03-transactions.md'), '# Appendix F', '# Appendix G')
+    return json.loads(re.search(r'```yaml\n(.*?)\n```', body, re.S).group(1))

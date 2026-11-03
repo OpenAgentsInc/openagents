@@ -1,0 +1,58 @@
+// The checks of lightning-commitment.coax. They live apart so that running
+// the example doesn't also run them. The example runs BOLT 3's vectors;
+// these check the properties around them.
+// Checks: coax test bitcoin/examples/checks/lightning-commitment.coax
+#load "../lightning-commitment.coax";
+
+// book:begin check
+// For Appendix C's five HTLCs at twelve feerates, with and without
+// anchors: the outputs are in BIP-69 order, the HTLC outputs are the
+// untrimmed HTLCs, and the outputs and the fee spend the funding output
+// exactly, the fee at least the base fee.
+FEERATES :: [12] int.[0, 253, 647, 648, 2069, 2070, 2194, 3702, 3703, 4914, 9651180, 9651936];
+#forall "the outputs are sorted and account for every satoshi" k: 0..<24 #steps 3000000000 {
+  s: [1] LncSecrets; hs: [LNC_MAX_HTLCS] LncHtlc; pre: [LNC_MAX_HTLCS] [32] u8;
+  c := lnc_vector_channel(k >= 12, 546, s[..]);
+  n := lnc_vector_htlcs(31, hs[..], pre[..]);
+  feerate := FEERATES[k % 12];
+  m := lnc_commitment_vartime(c, 6988000000, 3000000000, feerate, hs[0..<n]);
+  #assert m.code == LNC_OK;
+  sum := 0; htlc_outputs := 0;
+  for i: 0..<m.n {
+    sum += m.out[i].sat;
+    if m.out[i].kind == LNC_OFFERED || m.out[i].kind == LNC_RECEIVED { htlc_outputs += 1; }
+    if i > 0 { #assert !lnc_before(m.out[i], m.out[i-1]); }
+  }
+  #assert htlc_outputs == m.untrimmed && m.fee == lnc_commit_fee(feerate, m.untrimmed, c.anchors);
+  #assert sum <= c.funding_sat && c.funding_sat - sum >= ifx m.fee < 6988000 then m.fee else 0;
+}
+// Every HTLC transaction of a commitment runs its HTLC script under
+// chapter 36's interpreter: Appendix C's at feerate 0 (SIGHASH_ALL,
+// sequence 0) and Appendix F's (SIGHASH_SINGLE|ANYONECANPAY from the
+// remote node, sequence 1 for the CSV of 1).
+#forall "every HTLC transaction spends its output" k: 0..<10 #steps 4000000000 {
+  v := LNC_VECTORS[ifx k < 5 then 1 else 18]; s: [1] LncSecrets;
+  c := lnc_vector_channel(v.anchors, v.dust_limit, s[..]);
+  hs: [LNC_MAX_HTLCS] LncHtlc; pre: [LNC_MAX_HTLCS] [32] u8;
+  n := lnc_vector_htlcs(v.htlcs, hs[..], pre[..]);
+  m := lnc_commitment_vartime(c, v.to_local_msat, v.to_remote_msat, v.feerate, hs[0..<n]);
+  i := k % 5 + ifx v.anchors then 2 else 0;                  // with anchors, the two anchors come first
+  h: [32] u8; rs: [LNC_DER] u8; ls: [LNC_DER] u8; tx: [LNC_HTLC_TX] u8;
+  #assert lnc_htlc_sighash_vartime(c, m, hs[0..<n], i, v.feerate, lnc_remote_hashtype(c), h[..]);
+  rn := lnc_sign(s[0].remote_htlc[..], h[..], rs[..]);
+  #assert lnc_htlc_sighash_vartime(c, m, hs[0..<n], i, v.feerate, BT_ALL, h[..]);
+  ln := lnc_sign(s[0].local_htlc[..], h[..], ls[..]);
+  t := lnc_htlc_signed_vartime(c, m, hs[0..<n], i, v.feerate, rs[0..<rn], ls[0..<ln], pre[m.out[i].htlc][..], tx[..]);
+  #assert runs(tx[0..<t], m.out[i].spk[0..<34], m.out[i].sat) == "OK";
+}
+// The commitment number survives the trip through locktime and sequence
+// for numbers up to 2^48 - 1, and the opener's point must come first.
+#forall "the obscured number comes back from locktime and sequence" k: 0..<6 {
+  a: [33] u8; b: [33] u8;
+  lnc_fill(LNC_PARAMS.local_payment_basepoint, a[..]); lnc_fill(LNC_PARAMS.remote_payment_basepoint, b[..]);
+  numbers := [6] int.[0, 1, 42, 0xffffff, 0x1000000, (1 << 48) - 1];
+  x := lnc_obscured_vartime(numbers[k], a[..], b[..]);
+  locktime := (0x20 << 24) | (x & 0xffffff); sequence := (0x80 << 24) | ((x >> 24) & 0xffffff);
+  #assert lnc_obscured_vartime(((sequence & 0xffffff) << 24) | (locktime & 0xffffff), a[..], b[..]) == numbers[k];
+}
+// book:end check
