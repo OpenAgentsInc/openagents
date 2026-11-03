@@ -244,37 +244,86 @@ static void frames(int i) {
    curl, its config on stdin (so the MAC is in no argument list). The curls are started by a small
    poster process forked before the server's memory is taken (a fork of the full server can fail on
    Cloud Run): the server writes each config to it down a pipe, "LEN\n" then the bytes, and never waits. */
-static int poster_fd = -1;
-static void poster_run(int in) {
-  static char cfg[16384];
+/* The poster also asks the API's word on the rooms (room-control.coax, #12714): a "G" request's
+   answer comes back down a second pipe, "LEN\n" then the bytes, which the server reads without waiting. */
+static int poster_fd = -1, answer_fd = -1;
+static void poster_run(int in, int back) {
+  static char cfg[16384], got[16384];
   FILE *f = fdopen(in, "r");
   for (;;) {
-    long n;
-    if (!f || fscanf(f, "%ld", &n) != 1 || fgetc(f) != '\n' || n <= 0 || n >= (long)sizeof cfg) _exit(0);
+    long n; int kind = f ? fgetc(f) : EOF;
+    if (kind == EOF || fscanf(f, "%ld", &n) != 1 || fgetc(f) != '\n' || n <= 0 || n >= (long)sizeof cfg) _exit(0);
     if (fread(cfg, 1, (size_t)n, f) != (size_t)n) _exit(0);
-    int p[2];
+    int p[2], o[2] = {-1, -1};
     if (pipe(p)) continue;
+    if (kind == 'G' && pipe(o)) { close(p[0]); close(p[1]); continue; }
     pid_t pid = fork();
     if (pid == 0) {
       dup2(p[0], 0);
+      if (o[1] >= 0) dup2(o[1], 1);
       for (int fd = 3; fd < 1024; fd++) close(fd);
       execlp("curl", "curl", "-K", "-", (char *)NULL);
       _exit(127);
     }
     close(p[0]);
+    if (o[1] >= 0) close(o[1]);
     if (pid > 0) { ssize_t w = write(p[1], cfg, (size_t)n); (void)w; }
-    else fprintf(stderr, "room: vitals: fork failed: %s\n", strerror(errno));
+    else fprintf(stderr, "room: poster: fork failed: %s\n", strerror(errno));
     close(p[1]);
+    if (o[0] >= 0) {
+      size_t k = 0; ssize_t r;
+      while (k < sizeof got && (r = read(o[0], got + k, sizeof got - k)) > 0) k += (size_t)r;
+      close(o[0]);
+      if (k > 0 && k < sizeof got) {
+        char head[24]; int hn = snprintf(head, sizeof head, "%zu\n", k);
+        if (write(back, head, (size_t)hn) != hn || write(back, got, k) != (ssize_t)k) _exit(0);
+      }
+    }
   }
 }
 static void poster_start(void) {
-  int p[2];
-  if (pipe(p)) { perror("room: vitals pipe"); return; }
+  int p[2], b[2];
+  if (pipe(p)) { perror("room: poster pipe"); return; }
+  if (pipe(b)) { perror("room: poster pipe"); close(p[0]); close(p[1]); return; }
   pid_t pid = fork();
-  if (pid == 0) { close(p[1]); poster_run(p[0]); _exit(0); }
-  close(p[0]);
-  if (pid < 0) { perror("room: vitals poster"); close(p[1]); return; }
-  poster_fd = p[1];
+  if (pid == 0) { close(p[1]); close(b[0]); poster_run(p[0], b[1]); _exit(0); }
+  close(p[0]); close(b[1]);
+  if (pid < 0) { perror("room: poster"); close(p[1]); close(b[0]); return; }
+  poster_fd = p[1]; answer_fd = b[0];
+  fcntl(answer_fd, F_SETFL, O_NONBLOCK);
+}
+static void poster_send(char kind, const char *cfg, size_t k) {
+  static char msg[16384 + 32];
+  if (poster_fd < 0 || k + 32 > sizeof msg) return;
+  int hn = snprintf(msg, sizeof msg, "%c%zu\n", kind, k);
+  memcpy(msg + hn, cfg, k);
+  if (write(poster_fd, msg, (size_t)hn + k) != (ssize_t)((size_t)hn + k)) fprintf(stderr, "room: poster: request dropped\n");
+}
+/* The control ask, every two seconds while the server has a key, and its answers as they come. */
+static void control_ask(void) {
+  if (!rm_control_due(view())) return;
+  const char *url = getenv("OA_ROOM_CONTROL_URL");
+  if (!url || !*url) url = "https://openagents.com/api/playtest/room-control";
+  char cfg[512];
+  int k = snprintf(cfg, sizeof cfg, "url = \"%s\"\nheader = \"X-Room-Mac: %.64s\"\nheader = \"X-Room-At: %.*s\"\nsilent\nshow-error\nfail\nmax-time = 5\n",
+                   url, (const char *)server->ctl.mac.e, (int)(server->ctl.ask_n - 2), (const char *)server->ctl.ask.e + 2);
+  if (k > 0 && k < (int)sizeof cfg) poster_send('G', cfg, (size_t)k);
+}
+static void control_hear(void) {
+  static char buf[32768]; static size_t have;
+  if (answer_fd < 0) return;
+  ssize_t r;
+  while (have < sizeof buf && (r = read(answer_fd, buf + have, sizeof buf - have)) > 0) have += (size_t)r;
+  for (;;) {
+    char *nl = memchr(buf, '\n', have);
+    if (!nl) break;
+    size_t len = (size_t)strtoul(buf, NULL, 10), head = (size_t)(nl - buf) + 1;
+    if (have < head + len) break;
+    rm_control(view(), (coax_string){buf + head, (int64_t)len});
+    memmove(buf, buf + head + len, have - head - len); have -= head + len;
+    for (int i = 0; i < CONNS; i++) if (conns[i].fd >= 0 && rm_relay_kicked(view(), i)) conns[i].doomed = true;
+  }
+  if (have == sizeof buf) have = 0;
 }
 static void vitals_post(void) {
   int64_t n = rm_vitals_due(view());
@@ -290,10 +339,8 @@ static void vitals_post(void) {
   }
   k += (size_t)snprintf(cfg + k, sizeof cfg - k, "\"\n");
   char head[24]; int hn = snprintf(head, sizeof head, "%zu\n", k);
-  /* a blocking write: the poster reads at once, and a post is a few hundred bytes */
-  static char msg[sizeof cfg + 24];
-  memcpy(msg, head, (size_t)hn); memcpy(msg + hn, cfg, k);
-  if (write(poster_fd, msg, (size_t)hn + k) != (ssize_t)((size_t)hn + k)) fprintf(stderr, "room: vitals: post dropped\n");
+  (void)head; (void)hn;
+  poster_send('P', cfg, k);
 }
 
 int main(int argc, char **argv) {
@@ -382,6 +429,7 @@ int main(int argc, char **argv) {
       next += tick;
       if ((double)now - next > 250.0) next = (double)now + tick;   // a stall: start the beat again
       if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); }
+      control_ask(); control_hear();
       if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak); ticks = 0; last_report = now; memcpy(fan_last, fan_now, sizeof fan_now); memset(fan_now, 0, sizeof fan_now); }
     }
   }

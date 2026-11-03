@@ -22,6 +22,7 @@
 #load "room-sky.coax";
 #load "room-ticket.coax";
 #load "room-vitals.coax";
+#load "room-control.coax";
 
 ROOMS :: 8;
 CONNS :: 512;
@@ -61,7 +62,8 @@ RmServer :: struct {
   eg: [EG_ROOMS] EgRoom;    // the everglade rooms' simulations (room-everglade.coax)
   tkey: [TICKET_KEY] u8; tkey_n: int;   // the seat-ticket key (rm_ticket_key): set, an everglade join's ticket must check
   tkey_must: bool;
-  vit: RmVitals;                         // players' HP between visits (room-vitals.coax)                       // and a join without one is refused (else it sits with no id, "-")
+  vit: RmVitals;
+  ctl: RmControl;                        // the API's word on pvp, edits and kicks (room-control.coax)                         // players' HP between visits (room-vitals.coax)                       // and a join without one is refused (else it sits with no id, "-")
 }
 
 // Every field's default (seats -1, the game's own defaults): the host calls
@@ -400,7 +402,7 @@ tk_test_ask :: (r: [] u8, t: [] u8, n: int) -> string {
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   a := eg_test_of(box[..], 1);
-  #assert eg_test_has(a, ";n 0 p-0011223344556677 ranger.2.1.0 druid 2 Ash Vale") && eg_test_has(a, ";n 1 p-8899aabbccddeeff ranger.0.0.0 druid 1 Guest");
+  #assert eg_test_has(a, ";n 0 p-0011223344556677 ranger.2.1.0 druid 2 Ash Vale") && eg_test_has(a, ";n 1 p-8899aabbccddeeff ranger.0.0.0 druid 1 -");
 }
 #test "ticket: a key without must lets a ticketless join sit with no id, but still refuses a forged ticket" #steps 2000000000 {
   v: [1] RmServer;
@@ -449,4 +451,31 @@ tk_test_ask :: (r: [] u8, t: [] u8, n: int) -> string {
   #assert rm_join(w[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
   kw := eg_room_at(w[..], w[0].conns[0].relay);
   #assert w[0].eg[kw].rules[0].b[0].c[ci].hp == 5;
+}
+#test "control: the API's pvp row reaches the rules, a changed edit stamp is said to every page, and a kicked player goes and can't sit again" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  #assert rm_control_due(v[..]) && !rm_control_due(v[..]) && cast(string) v[0].ctl.ask[0..<v[0].ctl.ask_n] == "t 1762190000000";
+  t: [256] u8; r: [512] u8;
+  n := tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  box: [1] EgInbox;
+  rm_control(v[..], "pvp 0\nedit 100\n");
+  #assert !v[0].eg[k].rules[0].pvp;
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert !eg_test_has(eg_test_of(box[..], 1), "e edit");   // the first stamp is only learned
+  rm_control(v[..], "pvp 1\nedit 107\nkick p-0011223344556677\n");
+  #assert v[0].eg[k].rules[0].pvp && rm_relay_kicked(v[..], 0) && !rm_relay_kicked(v[..], 1);
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 1), "e edit 107");
+  rm_left(v[..], 0);
+  n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) < 0;
 }

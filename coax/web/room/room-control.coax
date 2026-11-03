@@ -1,0 +1,83 @@
+// What the API says about Everglade's rooms, asked every two seconds (#12714; coax/web/api/player.c
+// room_control): "pvp 0|1\nedit STAMP\nkick PID\n...".
+//   - pvp: the realm's row (off unless switched on); the rules let harm reach another player only
+//     while it is on (everglade5e-room-rules.coax E5rRoom.pvp).
+//   - edit: when Everglade's world or board last changed. A change is said to every page in every
+//     room as "e edit STAMP" (wire_put_edit), and each page asks for the world again, so an admin's
+//     placed bench shows for everyone within seconds of the publish (spec section 6.8).
+//   - kick: who an admin kicked (24 hours): their sockets are closed, and a join with their ticket
+//     gets no seat.
+CONTROL_KICKS :: 64;
+CONTROL_EVERY_MS :: 2000;
+
+RmControl :: struct {
+  pvp: bool;
+  edit: int; edit_known: bool;
+  kick: [CONTROL_KICKS * TICKET_PID] u8; kick_n: [CONTROL_KICKS] int; kicks: int;
+  asked: int;                    // wall ms it was last asked (rm_control_due)
+  ask: [64] u8; ask_n: int;      // the ask's "t MS" and its MAC, for the host's request
+  mac: [64] u8;
+}
+
+rc_kicked :: (v: [] RmServer, pid: string) -> bool {
+  for i: 0..<v[0].ctl.kicks {
+    if cast(string) v[0].ctl.kick[i * TICKET_PID..<i * TICKET_PID + v[0].ctl.kick_n[i]] == pid { return true; }
+  }
+  return false;
+}
+// Whether it is time to ask: the ask's "t MS" in ctl.ask and its MAC in ctl.mac (none without a key).
+rm_control_due :: (v: [] RmServer) -> bool #export_c {
+  if v[0].tkey_n == 0 || v[0].wall_ms - v[0].ctl.asked < CONTROL_EVERY_MS { return false; }
+  v[0].ctl.asked = v[0].wall_ms;
+  n := tk_add(v[0].ctl.ask[..], 0, "t "); n = rv_int(v[0].ctl.ask[..], n, v[0].wall_ms);
+  v[0].ctl.ask_n = n;
+  return tk_mac(cast(string) v[0].tkey[0..<v[0].tkey_n], cast(string) v[0].ctl.ask[0..<n], v[0].ctl.mac[..]);
+}
+rc_word :: (line: string, at: int) -> string {
+  i := at;
+  while i < line.count && line[i] != ' ' { i += 1; }
+  return line[at..<i];
+}
+rc_num :: (t: string) -> int {
+  if t.count == 0 || t.count > 15 { return -1; }
+  n := 0;
+  for c: t { if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
+  return n;
+}
+// The API's answer: applied. Kicked players' sockets are marked (rm_relay_kicked) for the host to close.
+rm_control :: (v: [] RmServer, text: string) #export_c {
+  kicks := 0; pvp := v[0].ctl.pvp; edit := -1;
+  at := 0;
+  while at < text.count {
+    e := at;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[at..<e];
+    at = e + 1;
+    if line.count > 4 && line[0..<4] == "pvp " { pvp = line[4..<line.count] == "1"; }
+    if line.count > 5 && line[0..<5] == "edit " { edit = rc_num(line[5..<line.count]); }
+    if line.count > 5 && line[0..<5] == "kick " && kicks < CONTROL_KICKS {
+      pid := rc_word(line, 5);
+      if pid.count > 0 && pid.count <= TICKET_PID {
+        for i: 0..<pid.count { v[0].ctl.kick[kicks * TICKET_PID + i] = pid[i]; }
+        v[0].ctl.kick_n[kicks] = pid.count; kicks += 1;
+      }
+    }
+  }
+  v[0].ctl.kicks = kicks;
+  v[0].ctl.pvp = pvp;
+  for k: 0..<EG_ROOMS { v[0].eg[k].rules[0].pvp = pvp; }
+  // the board or world changed: every page asks for it again
+  if edit >= 0 {
+    if v[0].ctl.edit_known && edit != v[0].ctl.edit {
+      b: [48] u8;
+      n := wire_put_edit(b[..], 0, edit);
+      for k: 0..<EG_ROOMS { if v[0].eg[k].live { eg_event(v, k, cast(string) b[0..<n], 0, 0, true); } }
+    }
+    v[0].ctl.edit = edit; v[0].ctl.edit_known = true;
+  }
+  // the kicked go
+  for c: 0..<CONNS {
+    t := v[0].conns[c].ticket;
+    if v[0].conns[c].live && t.ok && rc_kicked(v, cast(string) t.pid[0..<t.pid_n]) { v[0].conns[c].kicked = true; }
+  }
+}

@@ -141,6 +141,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
   v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_BANK};
   e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
   rv_join(v, k, seat);   // the HP its player left with (room-vitals.coax, #12715)
+  v[0].eg[k].rules[0].pvp = v[0].ctl.pvp;   // the realm's pvp row (room-control.coax, #12714)
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   b: [128] u8;
   // the day and the weather: the server's (room-sky.coax)
@@ -243,7 +244,9 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   tk := eg_ticket(v, k, seat);
   if tk.ok {
     st[0].flags = (st[0].flags & 253) | (ifx tk.account then 2 else 0);
-    if tk.name_n > 0 { for i: 0..<tk.name_n { st[0].name[i] = tk.name[i]; } st[0].name_n = tk.name_n; }
+    // only the ticket's name, which the API filtered (verse.name_ok, #12714); none: "-"
+    for i: 0..<tk.name_n { st[0].name[i] = tk.name[i]; }
+    st[0].name_n = tk.name_n;
   }
 }
 // The seat's ticket (ok false: none, in a room that needs none).

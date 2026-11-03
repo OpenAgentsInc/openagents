@@ -519,6 +519,7 @@ static void edit_out(uint32_t state) {
                               (uint32_t)(uintptr_t)fork_state.req_body.e, (uint32_t)fork_state.req_body_n, (int32_t)fork_state.req_flags);
     everglade_fork_requested(at(state), id);
   }
+  if (net_edit_take(at(state)) && world_id < 0) world_asked = false;   /* "e edit": a publish reaches every page in the room (#12714) */
   if (facts_seen && !world_asked) {
     world_asked = true;
     world_id = coaxial_http(WORLD_URL_OF(state), 0, 0, 4);

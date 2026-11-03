@@ -85,6 +85,7 @@ EgNet :: struct {
   ticket: [NET_TICKET] u8; ticket_n: int; ticket_asked: bool; free: bool;
   // what you bring back into a room (#12715): the WANTED level and look last saved, and when
   saved_wanted: int; saved_look: [NET_LOOK] u8; saved_look_n: int; saved_at: int; restored: bool;
+  edit_due: bool;            // the server said "e edit": the world and the board are asked for again (#12714)
   pid: [NET_ID] u8; pid_n: int; account: bool;
   look: [NET_LOOK] u8; look_n: int;
   mono: int;                 // this frame's monotonic ms
@@ -276,6 +277,12 @@ net_save_state :: (s: [] Everglade, n: [] EgNet) {
   if pipe_put(n[0].pipe[..], NET_PIPE_STATE, -1, cast(string) b[0..<k]) {
     n[0].saved_wanted = level; n[0].saved_look_n = net_copy(n[0].saved_look[..], look); n[0].saved_at = n[0].mono;
   }
+}
+// Whether the server said the world changed since the face last asked (the face asks for it again).
+net_edit_take :: (s: [] Everglade) -> bool #export_c {
+  if !net_on(s) || !net_of(s)[0].edit_due { return false; }
+  net_of(s)[0].edit_due = false;
+  return true;
 }
 // The room's name (the chat's too).
 net_room :: (s: [] Everglade, room: string) -> string #export_c {
@@ -523,6 +530,12 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     r[0] = wire_rd(t, 5);
     who := wire_num(t, r[..]);
     if r[0].ok && who >= 2000 { n[0].creature_deaths += 1; }
+    return;
+  }
+  if t.count > 7 && t[0..<7] == "e edit " {
+    // an admin published or switched something: everyone's page asks for the world and the board again
+    n[0].edit_due = true;
+    if s[0].ev.ed.count > 0 { s[0].ev.ed[0].spec_due = true; }
     return;
   }
   if t == "e rebuild" { if sp_on(s) { _ := sp_restore(s, -1); } return; }
@@ -1261,6 +1274,18 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   pipe_drained(na[0].pipe[..]);
   net_step(a[..], 9000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   for k: 0..<na[0].pipe[0].n { #assert na[0].pipe[0].op[k] != NET_PIPE_STATE; }
+}
+#test "net: the server's e edit asks the face for the world again, and the board too, once" {
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100) && net_test_hear(a[..], 0, "y 0 1 5000100");
+  #assert !net_edit_take(a[..]);
+  a[0].ev.ed[0].spec_due = false;
+  w: [1] NetTestRoom;
+  net_test_world(w[..], 0);
+  #assert net_test_hear(a[..], 0, net_test_frame(w[..]));
+  net_test_tick(w[..], 1, 0); net_test_sep(w[..]); w[0].n = wire_put_edit(w[0].buf[..], w[0].n, 107);
+  #assert net_test_hear(a[..], 0, net_test_frame(w[..]));
+  #assert net_edit_take(a[..]) && !net_edit_take(a[..]) && a[0].ev.ed[0].spec_due;
 }
 #test "net: two pages in one room see each other move, as the server says, a jitter buffer behind it" {
   a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet; room: [1] NetTestRoom;

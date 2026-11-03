@@ -73,6 +73,7 @@ E5rRoom :: struct {
   beasts: [E5RR_BEASTS] E5rBeast;
   seen: int;
   started: bool;
+  pvp: bool;                                 // the realm's pvp row (oa-room room-control.coax): harm reaches other players too
 }
 
 e5rr_folk :: (j: int) -> int { return E5RR_FOLK0 + j; }
@@ -262,7 +263,7 @@ e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #e
   r[0].seat[s].turn.action = false; r[0].seat[s].turn.bonus = false; r[0].seat[s].turn.slot_spent = false;
   tx := e5r_sq(x); ty := e5r_sq(z);
   foe := ifx tgt > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, tgt) else e5rr_of_tgt(tgt);
-  if foe >= 0 && foe < E5RR_FOLK0 && !e5rr_helps(a) { foe = -1; }   // PvP is off: no harm aimed at a player
+  if foe >= 0 && foe < E5RR_FOLK0 && !e5rr_helps(a) && !r[0].pvp { foe = -1; }   // PvP off: no harm aimed at a player
   if foe < 0 {
     // the person nearest the point within 10 feet
     bd := 11;
@@ -280,7 +281,7 @@ e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #e
   // a harmful roll: the other players step out of the battle while it is rolled
   helps := e5rr_helps(a);
   kept_x: [E5RR_SEATS] int; kept_y: [E5RR_SEATS] int;
-  if !helps {
+  if !helps && !r[0].pvp {
     for o: 0..<E5RR_SEATS {
       i := E5RR_SEAT + o;
       kept_x[o] = b[0].c[i].x; kept_y[o] = b[0].c[i].y;
@@ -290,7 +291,7 @@ e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #e
   before: [10] int;
   for l: 0..<10 { before[l] = b[0].c[me].slots[l]; }
   ok := fb_seat_use(b, r[0].seat[s..<s + 1], a, foe, tx, ty, ally);
-  if !helps { for o: 0..<E5RR_SEATS { if o != s { b[0].c[E5RR_SEAT + o].x = kept_x[o]; b[0].c[E5RR_SEAT + o].y = kept_y[o]; } } }
+  if !helps && !r[0].pvp { for o: 0..<E5RR_SEATS { if o != s { b[0].c[E5RR_SEAT + o].x = kept_x[o]; b[0].c[E5RR_SEAT + o].y = kept_y[o]; } } }
   if ok && a.again >= 0 {
     spent := 0;
     for l: 1..<10 { if b[0].c[me].slots[l] < before[l] { spent = l; } }

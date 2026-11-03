@@ -160,7 +160,7 @@ schema = sent["generationConfig"]["responseSchema"]
 props = schema["properties"]
 check("voice edit: under the realm's catalogue as enums",
       props["edit"]["enum"] == ["place", "remove", "move", "resize", "rotate", "restore", "list", "undo", "switch", "show", "look", "none"]
-      and props["row"]["enum"] == ["unnamed", "flock", "floats", "undergrowth", "daycycle", "guards", "invincible"]
+      and props["row"]["enum"] == ["unnamed", "flock", "floats", "undergrowth", "daycycle", "guards", "invincible", "pvp"]
       and props["panel"]["enum"] == ["unsaid", "edit", "settings", "ideas", "close"]
       and len(props["item"]["enum"]) == 38 and props["item"]["enum"][:5] == ["crate", "barrel", "bench", "fence", "stall"]
       and props["item"]["enum"][34:] == ["person", "cat", "building", "something"]
