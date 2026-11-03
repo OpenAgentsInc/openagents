@@ -1,0 +1,179 @@
+// The current consumer report (issue #12630): coax/lib/nostr/consumers.coax
+// read against the files it names. For each consumer and axis it checks the
+// source is there and still has its symbol, hashes it, and finds whether the
+// named record exists and names that source; then it applies the registry's
+// rule to what it found. Chapter 97's report is a frozen example from
+// 73966b6359; this one is generated from the tree it runs in.
+//   coax/web/tool.sh coax/tests/nostr/consumer_report.coax          Markdown
+//   coax/web/tool.sh coax/tests/nostr/consumer_report.coax --json   JSON
+// (from the repo root). Exits 1 when the registry is stale: a source gone, a
+// symbol gone, a named record missing or not naming its source, a build
+// script gone.
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/crypto/sha256-memory.coax";
+#load "../../lib/nostr/consumers.coax";
+
+CR_FILE :: 1048576;
+
+cr_contains :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    k := 0;
+    while k < needle.count && hay[i + k] == needle[k] { k += 1; }
+    if k == needle.count { return true; }
+  }
+  return false;
+}
+cr_base :: (path: string) -> string {
+  i := path.count;
+  while i > 0 && path[i - 1] != '/' { i -= 1; }
+  return path[i..<path.count];
+}
+#test "contains and base" {
+  #assert cr_contains("abc nip98_check_coax(", "nip98_check_coax") && !cr_contains("abc", "abcd") && !cr_contains("abc", "");
+  #assert cr_contains("x", "x") && !cr_contains("xy", "yx");
+  #assert cr_base("a/b/c.coax") == "c.coax" && cr_base("c.coax") == "c.coax";
+}
+
+CrAxis :: struct { exists: bool; has_symbol: bool; digest: [64] u8; record_exists: bool; record_names: bool; }
+
+cr_hex :: (h: [] u8, out: [] u8) {
+  d := "0123456789abcdef";
+  for i: 0..<32 { out[2 * i] = d[cast(int) (h[i] >> 4)]; out[2 * i + 1] = d[cast(int) (h[i] & 15)]; }
+}
+
+// The first line of a command's output, or "".
+cr_line :: (argv: [] string, out: [] u8) -> string {
+  err: [4096] u8;
+  r := proc_run(argv, 30000, out, err[..]);
+  if r.started != 0 || r.status != 0 { return ""; }
+  n := 0;
+  while n < r.out_n && out[n] != '\n' { n += 1; }
+  return cast(string) out[0..<n];
+}
+
+// Line k (from 0) of a small text file, or "".
+cr_file_line :: (path: string, k: int, buf: [] u8) -> string {
+  n := fs_read(path, buf);
+  if n <= 0 { return ""; }
+  at := 0; line := 0;
+  while at < n {
+    e := at;
+    while e < n && buf[e] != '\n' { e += 1; }
+    if line == k { return cast(string) buf[at..<e]; }
+    line += 1; at = e + 1;
+  }
+  return "";
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("consumer_report: arguments too long"); return 2; }
+  json := args_has(a[..], "--json");
+  if fs_kind("coax/lib/nostr/consumers.coax") != FS_FILE { tool_errln("consumer_report: run from the repo root"); return 2; }
+
+  body: [CR_FILE] u8; rec: [CR_FILE] u8;
+  axes: [CP_CONSUMERS * CP_AXES] CrAxis;
+  builds: [CP_CONSUMERS] bool;
+  stale := 0;
+  for c: 0..<CP_CONSUMERS {
+    builds[c] = fs_kind(cp_build(c)) == FS_FILE;
+    if !builds[c] { stale += 1; }
+    for x: 0..<CP_AXES {
+      k := c * CP_AXES + x;
+      src := cp_source(c, x);
+      if src.count == 0 { continue; }
+      n := fs_read(src, body[..]);
+      axes[k].exists = n >= 0 && n < CR_FILE;
+      if axes[k].exists {
+        axes[k].has_symbol = cr_contains(cast(string) body[0..<n], cp_symbol(c, x));
+        h: [32] u8;
+        if sha256_hash(body[0..<n], h[..]) == SHA_OK { cr_hex(h[..], axes[k].digest[..]); } else { axes[k].exists = false; }
+      }
+      if !axes[k].exists || !axes[k].has_symbol { stale += 1; }
+      r := cp_record(c, x);
+      if r.count > 0 {
+        m := fs_read(r, rec[..]);
+        axes[k].record_exists = m >= 0;
+        axes[k].record_names = m > 0 && cr_contains(cast(string) rec[0..<m], cr_base(src));
+        if !axes[k].record_names { stale += 1; }
+      }
+    }
+  }
+
+  ob: [256] u8; fb: [512] u8;
+  head_argv := [3] string.["git", "rev-parse", "HEAD"];
+  commit := cr_line(head_argv[..], ob[..]);
+  input := cr_file_line("coax/bin/provenance.record", 1, fb[..]);
+  ib: [64] u8; for i: 0..<input.count { if i < 64 { ib[i] = input[i]; } }
+  input_s := cast(string) ib[0..<ifx input.count < 64 then input.count else 64];
+  binary := cr_file_line("coax/bin/provenance.record", 2, fb[..]);
+
+  complete := 0;
+  if json {
+    print("{\"schema\":\"openagents.nostr-consumers.v1\",\"base_commit\":\"%\",\"coax_input\":\"%\",\"coax_binary\":\"%\",", commit, input_s, binary);
+    print("\"production_approval\":\"none: test-key and public-event records only; production keys and payments are owner decisions (NEEDS_OWNER.md)\",\"consumers\":[");
+  }
+  for c: 0..<CP_CONSUMERS {
+    found := cast(u32) 0;
+    for x: 0..<CP_AXES { if axes[c * CP_AXES + x].record_names { found |= cast(u32) 1 << x; } }
+    blockers := cp_blockers(c, found);
+    if blockers == 0 { complete += 1; }
+    if json {
+      if c > 0 { print(","); }
+      print("{\"name\":\"%\",\"target\":\"%\",\"build\":\"%\",\"build_exists\":%,\"compiler\":\"%\",\"keys\":\"%\",\"complete\":%,\"axes\":[", cp_name(c), cp_target(c), cp_build(c), builds[c], cp_compiler(c), cp_keys(c), blockers == 0);
+      for x: 0..<CP_AXES {
+        ax := axes[c * CP_AXES + x];
+        if x > 0 { print(","); }
+        print("{\"axis\":\"%\",\"state\":\"%\",\"source\":\"%\",\"symbol\":\"%\",\"source_ok\":%,\"sha256\":\"%\",\"record\":\"%\",\"record_ok\":%,\"blocks\":%}",
+          CP_AXIS_NAMES[x], CP_STATE_NAMES[cp_state(c, x)], cp_source(c, x), cp_symbol(c, x), ax.exists && ax.has_symbol,
+          ifx ax.exists then cast(string) ax.digest[..] else "", cp_record(c, x), ax.record_names, (blockers & (cast(u32) 1 << x)) != 0);
+      }
+      print("]}");
+    }
+  }
+  if json { print("],\"complete\":%,\"stale\":%}\n", complete, stale); return ifx stale == 0 then 0 else 1; }
+
+  print("# Nostr consumer report (generated)\n\n");
+  print("Generated by `coax/web/tool.sh coax/tests/nostr/consumer_report.coax` from\n");
+  print("`coax/lib/nostr/consumers.coax` at base commit `%`, with the Coax compiler\n", commit);
+  print("whose input fingerprint is `%` (binary `%`).\n", input_s, binary);
+  print("Source hashes are of the files as they were when this ran. Chapter 97's\n");
+  print("report is a separate, frozen example from `73966b6359`; this report does not\n");
+  print("replace or rewrite it. Records are test-key or public-event evidence only:\n");
+  print("a complete profile here is not approval for a production key or payment.\n\n");
+  print("% of % consumer profiles are complete; % stale registry entries.\n\n", complete, CP_CONSUMERS, stale);
+  print("| Consumer | Target | Sign | Verify | Key storage | Transport | Complete |\n");
+  print("| --- | --- | --- | --- | --- | --- | --- |\n");
+  for c: 0..<CP_CONSUMERS {
+    found := cast(u32) 0;
+    for x: 0..<CP_AXES { if axes[c * CP_AXES + x].record_names { found |= cast(u32) 1 << x; } }
+    blockers := cp_blockers(c, found);
+    print("| `%` | % |", cp_name(c), cp_target(c));
+    for x: 0..<CP_AXES {
+      st := CP_STATE_NAMES[cp_state(c, x)];
+      mark := ifx (blockers & (cast(u32) 1 << x)) != 0 then " (blocks)" else "";
+      print(" %", st); print("% |", mark);
+    }
+    print(" % |\n", ifx blockers == 0 then "yes" else "no");
+  }
+  print("\n## Sources, symbols and records\n\n");
+  for c: 0..<CP_CONSUMERS {
+    print("### `%` (%)\n\nBuild: `%`%. Compiler path: %. Record keys: %.\n\n", cp_name(c), cp_target(c), cp_build(c), ifx builds[c] then "" else " (MISSING)", cp_compiler(c), cp_keys(c));
+    for x: 0..<CP_AXES {
+      ax := axes[c * CP_AXES + x];
+      src := cp_source(c, x);
+      if src.count == 0 { print("- %: unused\n", CP_AXIS_NAMES[x]); continue; }
+      print("- %: % in `%` (`%`%), sha256 `%`", CP_AXIS_NAMES[x], CP_STATE_NAMES[cp_state(c, x)], src, cp_symbol(c, x),
+        ifx ax.exists && ax.has_symbol then "" else ", STALE", ifx ax.exists then cast(string) ax.digest[..] else "missing");
+      r := cp_record(c, x);
+      if r.count == 0 { print("; no record\n"); }
+      else { print("; record `%`%\n", r, ifx ax.record_names then "" else " (MISSING or does not name the source)"); }
+    }
+    print("\n");
+  }
+  return ifx stale == 0 then 0 else 1;
+}

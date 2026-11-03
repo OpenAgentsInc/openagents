@@ -7,6 +7,12 @@ The example pins its rows to `73966b6359`; it does not read the current
 `chapters.json`. Its transcript therefore retains that snapshot's draft and
 partial statuses and empty adoption lists. Use the current registry and
 [completion route](COMPLETION.md) for today's status and remaining exits.
+This chapter's report stays frozen at `73966b6359`. Current consumer
+reports are generated beside it, one dated file per run, in
+[reports/](reports/README.md) by
+`coax/web/tool.sh coax/tests/nostr/consumer_report.coax`, from the consumer
+registry `coax/lib/nostr/consumers.coax`. They don't rewrite this chapter or
+any earlier report.
 
 Part VII, Interop and verification. Result: A machine-readable support matrix
 per profile (`core-read`, `core-write`, `phone-signer`, `openagents-host`,

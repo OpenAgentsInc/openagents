@@ -393,6 +393,23 @@ Details: `docs/verification/2026-11-01-nostr-book-chapters-11-104.md`.
    Until you decide, the relay has no key, signs nothing, and refuses
    every 39000 to 39005 event. Say yes or no here; nothing is built until
    then.
+5. **Presence frames against the relay's rate limit (#12630).** Two Verse
+   clients exchanged signed NIP-MV pose frames (kind 23300) through a local
+   Coax relay with test keys: every frame arrived, in order, median 5 ms
+   (`docs/verification/2026-11-03-nostr-consumers.md`). At 10 frames a
+   second the relay's default limit of 60 events a key a minute (the Rust
+   relay's too) refused every frame after the 60th; with `--rate
+   1200,120,1200` all 200 arrived. Decide the policy for presence before a
+   realm publishes frames: exempt ephemeral 23300 from the per-key limit,
+   give it its own limit, or cap realms at one frame a second. The relay
+   is #12631's; nothing was changed.
+6. **A wallet interaction for chapter 101 (#12630).** No regtest or Spark
+   test environment exists on this machine. Breez's local regtest is
+   third-party `docker compose` code that `docs/lightning/testing.md` says
+   to run on a cloud host, not here. Choose one: approve a GCE host for
+   Breez's local regtest (pinned to the SDK tag we ship), or supply a Spark
+   test environment. Until then the app-zap-with-payment exit stays open;
+   no real payment was made.
 
 ## Nostr chapter 103: export, shadow period, cutover and rollback rehearsal for relay.openagents.com (2026-11-01)
 

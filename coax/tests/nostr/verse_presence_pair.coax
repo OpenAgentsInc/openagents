@@ -1,0 +1,189 @@
+// Two-client Verse presence over a real relay (issue #12630, chapter 101's
+// next exit). One process is one client: it signs NIP-MV pose frames
+// (kind 23300, ephemeral) with its TEST key, publishes them to the relay on
+// one connection, and on another subscribes to the other client's frames,
+// which the relay client verifies (relay_read.coax) before nipmv.coax's
+// mv_frame_read admits them for the world and mv_order drops any replayed or
+// reordered one. Each received frame's latency is the receiver's wall clock
+// minus the sender's t, both on this machine. Run two at once:
+//   coax/web/tool.sh coax/tests/nostr/verse_presence_pair.coax --role a --relay ws://localhost:PORT &
+//   coax/web/tool.sh coax/tests/nostr/verse_presence_pair.coax --role b --relay ws://localhost:PORT
+// [--frames N (40)] [--every MS (250)] [--budget MS (100)] [--start WALL_MS: when both
+// begin sending, so neither sends before the other subscribes]. Prints one JSON
+// line and exits 0 when every frame of the other arrived, in order, admitted,
+// within the budget; 1 otherwise. Test keys only: each is SHA-256 of a fixed
+// public label, so these runs never hold or show a real key.
+// tool.sh: tls
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/nostr/event_sign.coax";
+#load "../../lib/crypto/bip32.coax";
+#load "../../lib/nostr/nipmv.coax";
+#load "../../lib/json/json.coax";
+#load "../../../apps/openagents-cli/relay.coax";
+#run_steps 250000000;
+
+cxproc_wall_us :: () -> int #foreign;
+
+// What apps/openagents-cli/relay.coax takes from the CLI around it.
+wipe :: (b: [] u8) { for i: 0..<b.count { b[i] = 0; } }
+cxcli_now_s :: () -> int { return cxproc_wall_us() / 1000000; }
+sign_event_at :: (secret: [] u8, at: int, kind: int, tags: string, content: string, out: [] u8) -> int {
+  aux: [32] u8;
+  if cxrand_draw(aux[..], 32) != 0 { return -1; }
+  work: [1] NostrSignWork; scratch: [8192] u8;
+  r := EVENT_MORE; steps := 0;
+  while r == EVENT_MORE && steps < 4096 {
+    r = nostr_event_sign_step(secret, aux[..], at, kind, tags, content, work[..], scratch[..], out, false);
+    steps += 1;
+  }
+  return ifx r > 0 then r else -1;
+}
+
+VP_LABEL :: "openagents verse-presence test key ";
+VP_MAX :: 1000;
+
+vp_key :: (role: string, key: [] u8) -> bool {
+  label: [64] u8; n := 0;
+  for c: VP_LABEL { label[n] = c; n += 1; }
+  for c: role { label[n] = c; n += 1; }
+  return sha256_hash_checked(label[0..<n], key, false) == SHA_OK;
+}
+vp_hex :: (b: [] u8, out: [] u8) {
+  d := "0123456789abcdef";
+  for i: 0..<b.count { out[2 * i] = d[cast(int) (b[i] >> 4)]; out[2 * i + 1] = d[cast(int) (b[i] & 15)]; }
+}
+vp_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+vp_int :: (out: [] u8, at: int, v: int) -> int {
+  if at < 0 { return -1; }
+  d: [24] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  if at + n > out.count { return -1; }
+  for i: 0..<n { out[at + i] = d[n - 1 - i]; }
+  return at + n;
+}
+#test "keys, hex and the frame's text" {
+  a: [32] u8; b: [32] u8;
+  #assert vp_key("a", a[..]) && vp_key("b", b[..]);
+  same := true; for i: 0..<32 { if a[i] != b[i] { same = false; } }
+  #assert !same;
+  h: [4] u8; two := [2] u8.[0xab, 0x01]; vp_hex(two[..], h[..]);
+  #assert cast(string) h[..] == "ab01";
+  t: [16] u8;
+  #assert vp_int(t[..], vp_put(t[..], 0, "n"), 812) == 4 && cast(string) t[0..<4] == "n812";
+  #assert vp_int(t[..], 0, 0) == 1 && t[0] == '0' && vp_put(t[..], 15, "ab") == -1;
+}
+
+vp_median :: (v: [] int, n: int) -> int {
+  if n <= 0 { return -1; }
+  s: [VP_MAX] int;
+  for i: 0..<n { s[i] = v[i]; }
+  for i: 1..<n { x := s[i]; j := i - 1; while j >= 0 && s[j] > x { s[j + 1] = s[j]; j -= 1; } s[j + 1] = x; }
+  return s[n / 2];
+}
+#test "median" {
+  v := [5] int.[9, 1, 5, 3, 7];
+  #assert vp_median(v[..], 5) == 5 && vp_median(v[..], 1) == 9 && vp_median(v[..], 0) == -1;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("verse_presence_pair: arguments too long"); return 2; }
+  role := args_value(a[..], "--role", "");
+  url := args_value(a[..], "--relay", "");
+  if (role != "a" && role != "b") || url.count == 0 { tool_errln("usage: verse_presence_pair --role a|b --relay ws://HOST:PORT [--frames N] [--every MS] [--budget MS] [--start WALL_MS]"); return 2; }
+  frames := args_whole(args_value(a[..], "--frames", "40"));
+  every := args_whole(args_value(a[..], "--every", "250"));
+  budget := args_whole(args_value(a[..], "--budget", "100"));
+  if frames < 1 || frames > VP_MAX || every < 10 || budget < 1 { tool_errln("verse_presence_pair: --frames 1..1000, --every >= 10, --budget >= 1"); return 2; }
+  peer := ifx role == "a" then "b" else "a";
+
+  key: [32] u8; pkey: [32] u8; pub: [33] u8; ppub: [33] u8;
+  if !vp_key(role, key[..]) || !vp_key(peer, pkey[..]) || !bip32_public(key[..], pub[..]) || !bip32_public(pkey[..], ppub[..]) { tool_errln("verse_presence_pair: no test key"); return 2; }
+  wipe(pkey[..]);   // only the peer's public key is needed
+  me_hex: [64] u8; peer_hex: [64] u8;
+  vp_hex(pub[1..<33], me_hex[..]); vp_hex(ppub[1..<33], peer_hex[..]);
+
+  out: [2] CliRelay;   // 0 publishes, 1 subscribes
+  if !cr_open(out[0..<1], url, key[..]) || !cr_open(out[1..<2], url, key[..]) { tool_errln("verse_presence_pair: can't connect"); wipe(key[..]); return 1; }
+  filter: [512] u8;
+  f := vp_put(filter[..], 0, "{\"kinds\":[23300],\"authors\":[\"");
+  f = vp_put(filter[..], f, cast(string) peer_hex[..]);
+  f = vp_put(filter[..], f, "\"],\"#w\":[\""); f = vp_put(filter[..], f, MV_PLAZA); f = vp_put(filter[..], f, "\"]}");
+  if f < 0 || !cr_req(out[1..<2], cast(string) filter[0..<f]) { tool_errln("verse_presence_pair: REQ failed"); wipe(key[..]); return 1; }
+  if cr_next(out[1..<2], cxsock_now_ms() + 5000) != CR_EOSE { tool_errln("verse_presence_pair: no EOSE"); wipe(key[..]); return 1; }
+  // Both clients subscribe before either sends: they start sending at the
+  // wall-clock --start (ms since the epoch) the runner gives both, or 1.5 s
+  // after this one's EOSE. A start more than 60 s ahead is refused.
+  wall := cxproc_wall_us() / 1000;
+  start := args_whole(args_value(a[..], "--start", "0"));
+  if start <= 0 { start = wall + 1500; }
+  if start - wall > 60000 { tool_errln("verse_presence_pair: --start is more than 60 s ahead"); wipe(key[..]); return 2; }
+  settle := cxsock_now_ms() + (ifx start > wall then start - wall else 0);
+
+  world := mv_plaza();
+  seen: [4] MvSeen; seen_n := 0;
+  lat: [VP_MAX] int; got := 0; admitted := 0; dropped := 0; refused := 0; sent := 0; pub_fail := 0;
+  have: [VP_MAX + 1] bool;
+  next_at := settle; end_at := -1;   // frames that come before then are read below like any other
+  session := ifx role == "a" then "pair-a" else "pair-b";
+  while true {
+    now := cxsock_now_ms();
+    if sent < frames && now >= next_at {
+      body: [512] u8; t := cxproc_wall_us() / 1000;
+      b := vp_put(body[..], 0, "{\"v\":1,\"s\":\""); b = vp_put(body[..], b, session);
+      b = vp_put(body[..], b, "\",\"n\":"); b = vp_int(body[..], b, sent + 1);
+      b = vp_put(body[..], b, ",\"t\":"); b = vp_int(body[..], b, t);
+      b = vp_put(body[..], b, ",\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":["); b = vp_int(body[..], b, sent % 50);
+      b = vp_put(body[..], b, ",0,"); b = vp_int(body[..], b, (sent * 3) % 50);
+      b = vp_put(body[..], b, "],\"q\":[0,0,0,1]}]}");
+      tags: [256] u8;
+      g := vp_put(tags[..], 0, "[[\"w\",\""); g = vp_put(tags[..], g, MV_PLAZA); g = vp_put(tags[..], g, "\"],[\"c\",\"0,0\"]]");
+      ev: [2048] u8;
+      n := ifx b > 0 && g > 0 then sign_event_at(key[..], t / 1000, MV_FRAME, cast(string) tags[0..<g], cast(string) body[0..<b], ev[..]) else -1;
+      if n <= 0 || !cr_publish(out[0..<1], cast(string) ev[0..<n], cxsock_now_ms() + 2000) { pub_fail += 1; }
+      sent += 1; next_at += every;
+      if sent == frames { end_at = cxsock_now_ms() + 3000; }
+    }
+    if end_at >= 0 && (cxsock_now_ms() >= end_at || got >= frames) { break; }
+    wait := ifx sent < frames then next_at else end_at;
+    if wait - cxsock_now_ms() > 50 { wait = cxsock_now_ms() + 50; }
+    if wait <= cxsock_now_ms() { wait = cxsock_now_ms() + 1; }
+    r := cr_next(out[1..<2], wait);
+    if r == CR_FAIL || r == CR_CLOSED { tool_errln("verse_presence_pair: subscription ended"); break; }
+    if r != CR_EVENT { continue; }
+    arrived := cxproc_wall_us() / 1000;
+    text := cr_event(out[1..<2]);
+    got += 1;
+    scratch: [4096] u8;
+    e := nostr_event_read(text, scratch[..], false);
+    if e.error != NE_OK || e.kind != MV_FRAME { refused += 1; continue; }
+    content: [1024] u8;
+    cn := json_unescape(text[e.content_from..<e.content_to], content[..]);
+    poses: [MV_ENTITIES] MvPose;
+    fr := ifx cn > 0 then mv_frame_read(e.kind, text[e.tags_from..<e.tags_to], cast(string) content[0..<cn], MV_PLAZA, world, poses[..]) else MvFrame.{code = MvCode.body};
+    if fr.code != MvCode.ok { refused += 1; continue; }
+    o := mv_order(seen[..], seen_n, cast(string) peer_hex[..], fr.s, fr.n, arrived);
+    if o.code != MvCode.ok { dropped += 1; continue; }
+    seen_n = o.count;
+    if admitted < VP_MAX { lat[admitted] = arrived - fr.t; }
+    if fr.n >= 1 && fr.n <= VP_MAX { have[fr.n] = true; }
+    admitted += 1;
+  }
+  wipe(key[..]);
+  missing := 0; first_missing := 0;
+  for k: 1..<frames + 1 { if !have[k] { if missing == 0 { first_missing = k; } missing += 1; } }
+  cr_close(out[0..<1]); cr_close(out[1..<2]);
+  worst := 0; for i: 0..<admitted { if lat[i] > worst { worst = lat[i]; } }
+  med := vp_median(lat[..], admitted);
+  pass := admitted == frames && dropped == 0 && refused == 0 && pub_fail == 0 && worst <= budget;
+  print("{\"role\":\"%\",\"pubkey\":\"%\",\"peer\":\"%\",\"relay\":\"%\",\"sent\":%,\"publish_failed\":%,\"received\":%,\"admitted\":%,\"missing\":%,\"first_missing\":%,\"dropped\":%,\"refused\":%,\"median_ms\":%,\"max_ms\":%,\"budget_ms\":%,\"pass\":%}\n",
+    role, cast(string) me_hex[..], cast(string) peer_hex[..], url, sent, pub_fail, got, admitted, missing, first_missing, dropped, refused, med, worst, budget, pass);
+  return ifx pass then 0 else 1;
+}

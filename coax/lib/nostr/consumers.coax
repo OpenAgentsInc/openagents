@@ -1,0 +1,286 @@
+// Complete consumer profiles (issue #12630; nostr/book/COMPLETION.md, part 2).
+// A consumer is one real program on one target: the CLI on Linux, a browser
+// page in Wasm, the iOS app. Its profile has four axes, each with the file
+// that does it there and the record that shows it running on that target:
+//   sign          the consumer makes a signature with a key it holds
+//   verify        the consumer checks signatures it is given
+//   key-storage   where the consumer keeps a secret between runs
+//   transport     how its events and requests travel
+// profiles.coax says which NIPs a profile needs; this file says which real
+// consumer does each part and in what code, so a Wasm arithmetic run, an iOS
+// compile or an external NIP-07 signer can't stand in for a whole consumer.
+//
+// The rule (cp_axis_ok): a consumer's profile is complete on its target only
+// when each axis it uses is done in Coax with a record from that target, or,
+// for key storage and transport alone, by the host platform (the Keychain, the
+// browser's sockets, OpenSSL's TLS) with a record. Code outside Coax that signs
+// or verifies (libsecp256k1, nostr-effect), a secret kept in the clear, a
+// refused key path and an axis that is missing all keep a profile incomplete.
+// Records here are test-key or public-event evidence only: a complete profile
+// is not approval to hold a production key or move money. That stays with the
+// owner (NEEDS_OWNER.md).
+//
+// coax/tests/nostr/consumer_report.coax reads the files named here, checks each
+// still has its symbol and each record still names its source, and writes the
+// current report beside chapter 97's frozen one (nostr/book/reports/).
+#authority;
+
+CP_AXES :: 4;
+CP_AXIS_NAMES :: [CP_AXES] string.["sign", "verify", "key-storage", "transport"];
+CA_SIGN :: 0; CA_VERIFY :: 1; CA_STORE :: 2; CA_TRANSPORT :: 3;
+
+// How an axis is done.
+CP_STATES :: 7;
+CP_STATE_NAMES :: [CP_STATES] string.["unused", "coax", "host", "foreign", "plaintext", "refused", "absent"];
+CS_UNUSED :: 0;    // the consumer doesn't do this (a reader signs nothing)
+CS_COAX :: 1;      // Coax code the consumer calls
+CS_HOST :: 2;      // a platform effect: Keychain, browser socket, OpenSSL TLS
+CS_FOREIGN :: 3;   // non-Coax code that decides (libsecp256k1, nostr-effect)
+CS_PLAIN :: 4;     // a secret kept unencrypted (a 0600 file, browser storage, an env var)
+CS_REFUSED :: 5;   // the path refuses real keys (Pylon's --key-file)
+CS_ABSENT :: 6;    // needed and not built
+
+CP_TARGETS :: 4;
+CP_TARGET_NAMES :: [CP_TARGETS] string.["native-c11-linux-x86_64", "wasm32-browser", "ios-arm64", "browser-js"];
+
+// What a record's keys were. A record never carries a production key.
+CP_KEY_NAMES :: [3] string.["none", "public-events", "test-keys"];
+CK_NONE :: 0; CK_PUBLIC :: 1; CK_TEST :: 2;
+
+CP_CONSUMERS :: 10;
+CP_NAMES :: [CP_CONSUMERS] string.["cli", "pylon", "api-nip98", "homepage", "project-page", "web-signin", "hosted-runner", "unlock-opener", "ios-app", "coder-host"];
+CP_TARGET :: [CP_CONSUMERS] int.[0, 0, 0, 1, 1, 1, 0, 3, 2, 0];
+// How it is built for its target: the script, and the compiler path it runs.
+CP_BUILD :: [CP_CONSUMERS] string.[
+  "apps/openagents-cli/build.sh",
+  "psionic/platform/pylon-build.sh",
+  "coax/web/api/nip98.sh",
+  "coax/web/project/build-home.sh",
+  "apps/openagents-web/build.sh",
+  "apps/openagents-web/build.sh",
+  "coax/web/agent/Dockerfile",
+  "coax/web/unlock/package.json",
+  "apps/openagents-ios/build.sh",
+  "coder/tui/coder.sh"];
+CP_COMPILER :: [CP_CONSUMERS] string.[
+  "coax c (C11) then gcc -O2, OpenSSL 3 TLS (tls-env.sh)",
+  "coax c (C11) then cc, OpenSSL 3 TLS (tls-env.sh)",
+  "coax c nip98.coax (C11) then cc into the API server",
+  "coax/web/wasm.sh: coax c then clang --target=wasm32",
+  "coax/web/wasm.sh: coax c then clang --target=wasm32",
+  "coax/web/wasm.sh: coax c then clang --target=wasm32",
+  "gcc -O2 runner.c with libsecp256k1, libcrypto, libcurl (no Coax)",
+  "bun bundle of TypeScript with nostr-effect (no Coax)",
+  "xcodebuild arm64: Swift with vendored libsecp256k1",
+  "coax/web/tool.sh: coax c (C11) then cc, OpenSSL 3 TLS (tls-env.sh)"];
+
+// Per consumer, per axis (consumer * 4 + axis): its state, the file that does
+// it, a symbol that must stay in that file, and the record from its target.
+CP_STATE :: [CP_CONSUMERS * CP_AXES] u8.[
+  1, 1, 4, 1,    // cli: Coax signs and verifies; the key is a 0600 file; Coax WebSocket over OpenSSL
+  1, 1, 5, 1,    // pylon: Coax; --key-file refused, test-key labels only
+  0, 1, 0, 2,    // api-nip98: verifies only; HTTPS ends at the load balancer
+  0, 1, 0, 2,    // homepage: verifies in Wasm; the browser's WebSocket
+  0, 6, 0, 2,    // project-page: live events are relay-trusted (project-page-verify)
+  1, 0, 4, 2,    // web-signin: Coax signs in Wasm; entropy kept as hex in browser storage
+  3, 0, 4, 2,    // hosted-runner: libsecp256k1; key in an environment variable
+  3, 3, 0, 2,    // unlock-opener: nostr-effect seals, opens and verifies
+  3, 0, 2, 2,    // ios-app: libsecp256k1 signs; Keychain; URLSession
+  1, 1, 4, 1];   // coder-host: Coax; the host key is a mode 600 file
+CP_SOURCE :: [CP_CONSUMERS * CP_AXES] string.[
+  "apps/openagents-cli/nostr.coax", "apps/openagents-cli/relay.coax", "apps/openagents-cli/nostr.coax", "coax/lib/net/relay_conn.coax",
+  "psionic/lib/pylon/run.coax", "psionic/lib/pylon/run.coax", "psionic/lib/pylon/run.coax", "psionic/lib/pylon/run.coax",
+  "", "coax/web/api/nostr.c", "", "coax/web/api/lb.sh",
+  "", "coax/web/project/landing-nostr.coax", "", "coax/web/host.js",
+  "", "apps/openagents-web/project-live.coax", "", "coax/web/host.js",
+  "coax/lib/nostr/weblogin.coax", "", "apps/openagents-web/private.coax", "coax/web/host.js",
+  "coax/web/agent/runner.c", "", "coax/web/agent/runner.c", "coax/web/agent/runner.c",
+  "coax/web/unlock/lib.ts", "coax/web/unlock/lib.ts", "", "coax/web/unlock/lib.ts",
+  "apps/openagents-ios/OpenAgents/SignIn/NostrKey.swift", "", "apps/openagents-ios/OpenAgents/SignIn/NostrKey.swift", "apps/openagents-ios/OpenAgents/SignIn/PhoneSignIn.swift",
+  "coder/tui/host.coax", "apps/openagents-cli/relay.coax", "coder/tui/host.coax", "coax/lib/net/relay_conn.coax"];
+CP_SYMBOL :: [CP_CONSUMERS * CP_AXES] string.[
+  "nostr_event_sign_step", "rl_read(", "cxcli_write_private", "relay_conn_open",
+  "nostr_event_sign_step", "rl_read(", "--key-file", "nip44_encrypt_checked",
+  "", "nip98_check_coax", "", "load balancer",
+  "", "nostr_fast_verify_vartime", "", "new WebSocket(",
+  "", "Relay-trusted display catch-up", "", "new WebSocket(",
+  "weblogin_sign", "", "localStorage", "fetch(",
+  "secp256k1_schnorrsig_sign32", "", "OA_RUNNER_KEY", "curl_easy_init",
+  "finalizeEvent", "verifyEvent", "", "fetchEvent",
+  "oa_nostr_sign", "", "kSecClassGenericPassword", "URLSession",
+  "nostr_event_sign_step", "rl_read(", "hs_write_private", "relay_conn_open"];
+// A record: a file in the repository that shows this axis running on this
+// consumer's target and names its source. Empty: none yet.
+CP_RECORD :: [CP_CONSUMERS * CP_AXES] string.[
+  "docs/verification/2026-11-03-nostr-consumers.md", "docs/verification/2026-11-03-nostr-consumers.md", "", "docs/verification/2026-11-03-nostr-consumers.md",
+  "docs/verification/2026-11-03-nostr-consumers.md", "docs/verification/2026-11-03-nostr-consumers.md", "", "docs/verification/2026-11-03-nostr-consumers.md",
+  "", "nostr/book/ch099-the-website-and-sign-in.md", "", "",
+  "", "docs/verification/2026-10-30-newland-coax-nostr.md", "", "",
+  "", "", "", "",
+  "", "", "", "",
+  "", "", "", "",
+  "", "", "", "",
+  "", "", "", "",
+  "docs/verification/2026-11-03-nostr-consumers.md", "docs/verification/2026-11-03-nostr-consumers.md", "", "docs/verification/2026-11-03-nostr-consumers.md"];
+CP_KEYS :: [CP_CONSUMERS] u8.[2, 2, 1, 1, 0, 0, 0, 0, 0, 2];
+
+cp_ok_consumer :: (c: int) -> bool { return c >= 0 && c < CP_CONSUMERS; }
+cp_ok_axis :: (a: int) -> bool { return a >= 0 && a < CP_AXES; }
+
+cp_name :: (c: int) -> string #export_c { return ifx cp_ok_consumer(c) then CP_NAMES[c] else ""; }
+cp_target :: (c: int) -> string #export_c { return ifx cp_ok_consumer(c) then CP_TARGET_NAMES[CP_TARGET[c]] else ""; }
+cp_build :: (c: int) -> string #export_c { return ifx cp_ok_consumer(c) then CP_BUILD[c] else ""; }
+cp_compiler :: (c: int) -> string #export_c { return ifx cp_ok_consumer(c) then CP_COMPILER[c] else ""; }
+cp_keys :: (c: int) -> string #export_c { return ifx cp_ok_consumer(c) then CP_KEY_NAMES[CP_KEYS[c]] else ""; }
+cp_state :: (c: int, a: int) -> int #export_c {
+  return ifx cp_ok_consumer(c) && cp_ok_axis(a) then cast(int) CP_STATE[c * CP_AXES + a] else CS_ABSENT;
+}
+cp_source :: (c: int, a: int) -> string #export_c { return ifx cp_ok_consumer(c) && cp_ok_axis(a) then CP_SOURCE[c * CP_AXES + a] else ""; }
+cp_symbol :: (c: int, a: int) -> string #export_c { return ifx cp_ok_consumer(c) && cp_ok_axis(a) then CP_SYMBOL[c * CP_AXES + a] else ""; }
+cp_record :: (c: int, a: int) -> string #export_c { return ifx cp_ok_consumer(c) && cp_ok_axis(a) then CP_RECORD[c * CP_AXES + a] else ""; }
+
+// Whether one axis may count toward a complete profile: unused, or done in
+// Coax with a record, or (key storage and transport only) by the host with a
+// record. `recorded` is whether the consumer's record for this axis exists
+// and names its source; the report tool measures it, nobody asserts it.
+cp_axis_ok :: (state: int, axis: int, recorded: bool) -> bool #export_c {
+  if !cp_ok_axis(axis) { return false; }
+  if state == CS_UNUSED { return true; }
+  if state == CS_COAX { return recorded; }
+  if state == CS_HOST { return recorded && (axis == CA_STORE || axis == CA_TRANSPORT); }
+  return false;
+}
+
+// The rule over one consumer's four axis states: the mask of axes that block
+// it (bit a: axis a), given which records the registry names and which the
+// report found. A found record counts only where one is named. A consumer
+// that uses no axis, or a view that isn't four states, is blocked on every axis.
+cp_rule :: (states: [] int, named: u32, found: u32) -> u32 #export_c {
+  if states.count != CP_AXES { return 15; }
+  mask := cast(u32) 0; used := false;
+  for a: 0..<CP_AXES {
+    if states[a] != CS_UNUSED { used = true; }
+    has := (found & named & (cast(u32) 1 << a)) != 0;
+    if !cp_axis_ok(states[a], a, has) { mask |= cast(u32) 1 << a; }
+  }
+  return ifx used then mask else 15;
+}
+cp_has :: (record: string) -> bool #export_c { return record.count > 0; }
+
+// The mask of axes whose records the registry names (what `found` can be at most).
+cp_named :: (c: int) -> u32 #export_c {
+  if !cp_ok_consumer(c) { return 0; }
+  m := cast(u32) 0;
+  for a: 0..<CP_AXES { if cp_has(CP_RECORD[c * CP_AXES + a]) { m |= cast(u32) 1 << a; } }
+  return m;
+}
+
+// The axes that keep consumer c's profile incomplete, given which of its
+// records the report found (bit a of found). An unknown consumer: all four.
+cp_blockers :: (c: int, found: u32) -> u32 #export_c {
+  if !cp_ok_consumer(c) { return 15; }
+  st: [CP_AXES] int;
+  for a: 0..<CP_AXES { st[a] = cp_state(c, a); }
+  return cp_rule(st[..], cp_named(c), found);
+}
+cp_done :: (blockers: u32) -> bool #export_c { return blockers == 0; }
+cp_complete :: (c: int, found: u32) -> bool #export_c { return cp_ok_consumer(c) && cp_done(cp_blockers(c, found)); }
+
+// ---- checks
+
+#test "the registry: names, targets, builds and key classes, frozen" {
+  #assert cp_name(0) == "cli" && cp_name(1) == "pylon" && cp_name(2) == "api-nip98" && cp_name(3) == "homepage";
+  #assert cp_name(4) == "project-page" && cp_name(5) == "web-signin" && cp_name(6) == "hosted-runner";
+  #assert cp_name(7) == "unlock-opener" && cp_name(8) == "ios-app" && cp_name(9) == "coder-host";
+  targets := [10] string.["native-c11-linux-x86_64", "native-c11-linux-x86_64", "native-c11-linux-x86_64", "wasm32-browser", "wasm32-browser", "wasm32-browser", "native-c11-linux-x86_64", "browser-js", "ios-arm64", "native-c11-linux-x86_64"];
+  keys := [10] string.["test-keys", "test-keys", "public-events", "public-events", "none", "none", "none", "none", "none", "test-keys"];
+  for c: 0..<10 {
+    #assert cp_target(c) == targets[c] && cp_keys(c) == keys[c];
+    #assert cp_build(c) == CP_BUILD[c] && cp_compiler(c) == CP_COMPILER[c];
+    #assert cp_build(c).count > 0 && cp_compiler(c).count > 0;
+  }
+  for bad: [4] int.[-2, -1, 10, 11] {
+    #assert cp_name(bad) == "" && cp_target(bad) == "" && cp_build(bad) == "" && cp_compiler(bad) == "" && cp_keys(bad) == "";
+    #assert cp_state(bad, 0) == CS_ABSENT && cp_source(bad, 0) == "" && cp_symbol(bad, 0) == "" && cp_record(bad, 0) == "";
+    #assert cp_named(bad) == 0 && cp_blockers(bad, 15) == 15 && !cp_complete(bad, 15);
+  }
+  for a: [4] int.[-2, -1, 4, 5] { #assert cp_state(0, a) == CS_ABSENT && cp_source(0, a) == "" && cp_symbol(0, a) == "" && cp_record(0, a) == ""; }
+}
+
+#test "each axis: its state, and a file and symbol exactly when it is used" {
+  states := [40] int.[1, 1, 4, 1, 1, 1, 5, 1, 0, 1, 0, 2, 0, 1, 0, 2, 0, 6, 0, 2, 1, 0, 4, 2, 3, 0, 4, 2, 3, 3, 0, 2, 3, 0, 2, 2, 1, 1, 4, 1];
+  for c: 0..<10 {
+    for a: 0..<4 {
+      st := cp_state(c, a);
+      #assert st == states[c * 4 + a];
+      #assert cp_source(c, a) == CP_SOURCE[c * 4 + a] && cp_symbol(c, a) == CP_SYMBOL[c * 4 + a] && cp_record(c, a) == CP_RECORD[c * 4 + a];
+      #assert (st == CS_UNUSED) == (cp_source(c, a).count == 0);
+      #assert (st == CS_UNUSED) == (cp_symbol(c, a).count == 0);
+      // a record only for what runs: never for an unused, foreign, plaintext, refused or absent axis
+      if cp_record(c, a).count > 0 { #assert st == CS_COAX || st == CS_HOST; }
+    }
+  }
+}
+
+#forall "the axis rule: Coax with a record, or the host for storage and transport with a record" st: -1..<8, a: -1..<5, rec: 0..<2 {
+  recorded := rec == 1;
+  expected := false;
+  if a >= 0 && a < 4 {
+    if st == CS_UNUSED { expected = true; }
+    if st == CS_COAX { expected = recorded; }
+    if st == CS_HOST { expected = recorded && (a == CA_STORE || a == CA_TRANSPORT); }
+  }
+  #assert cp_axis_ok(st, a, recorded) == expected;
+}
+
+#test "each consumer is blocked where the registry says" {
+  // with every named record found
+  blockers := [10] u32.[4, 4, 8, 8, 10, 13, 13, 11, 13, 4];
+  for c: 0..<10 {
+    #assert cp_blockers(c, cp_named(c)) == blockers[c];
+    #assert !cp_complete(c, cp_named(c)) && !cp_complete(c, 15);
+  }
+  named := [10] u32.[11, 11, 2, 2, 0, 0, 0, 0, 0, 11];
+  for c: 0..<10 { #assert cp_named(c) == named[c]; }
+  #assert cp_done(0) && !cp_done(1) && !cp_done(8);
+}
+
+#test "the homepage is one record short: its browser socket" {
+  #assert cp_blockers(3, 15) == 8 && cp_blockers(3, 2) == 8;
+  #assert cp_blockers(3, 0) == 10 && cp_blockers(3, 13) == 10;
+}
+
+#forall "a missing record blocks exactly its own axis" c: 0..<10, a: 0..<4 {
+  all := cp_named(c);
+  bit := cast(u32) 1 << a;
+  if (all & bit) != 0 {
+    #assert cp_blockers(c, all ^ bit) == (cp_blockers(c, all) | bit);
+  } else {
+    // a found flag for an axis with no named record changes nothing
+    #assert cp_blockers(c, all | bit) == cp_blockers(c, all);
+  }
+}
+
+#test "a found flag cannot make a record: an axis with no named record stays blocked" {
+  // cli's key storage is plaintext; pylon's refuses keys; the project page doesn't verify
+  #assert cp_blockers(0, 15) == 4 && cp_blockers(1, 15) == 4 && cp_blockers(4, 15) == 10;
+  // the unlock opener and the iOS app sign with code outside Coax
+  #assert (cp_blockers(7, 15) & 1) != 0 && (cp_blockers(8, 15) & 1) != 0;
+}
+
+#test "the rule on states no consumer has today" {
+  none := [4] int.[0, 0, 0, 0];
+  #assert cp_rule(none[..], 15, 15) == 15;
+  one := [4] int.[1, 0, 0, 0];
+  #assert cp_rule(one[..], 1, 1) == 0 && cp_rule(one[..], 1, 0) == 1 && cp_rule(one[..], 0, 1) == 1;
+  #assert cp_rule(one[0..<3], 1, 1) == 15 && cp_rule(none[0..<3], 15, 15) == 15;
+  host := [4] int.[0, 0, 2, 2];
+  #assert cp_rule(host[..], 12, 12) == 0 && cp_rule(host[..], 12, 4) == 8;
+  #assert cp_has("a") && !cp_has("");
+}
+
+#test "no record names a production key" {
+  for c: 0..<10 { #assert CP_KEYS[c] <= CK_TEST; }
+  for c: 0..<10 { if cp_named(c) == 0 { #assert CP_KEYS[c] == CK_NONE; } }
+  for c: 0..<10 { if cp_named(c) != 0 { #assert CP_KEYS[c] != CK_NONE; } }
+}

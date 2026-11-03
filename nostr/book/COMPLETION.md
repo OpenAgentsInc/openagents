@@ -33,10 +33,13 @@ from `73966b6359`, not a report generated from the current registry.
   `coax/lib/nostr/profiles.coax` and `profiles.json` begins `2fb1f51f`.
   The pin check remains failing until that review and update. A teaching
   chapter's completion does not bless a new protocol pin.
-- **Consumer regressions:** complete the recorded missing project-page check
-  after the NIP-22 refusal change, using its generated project inputs. Refresh
-  the Rust differential for the relay's newly wired COUNT, search and NIP-11
-  behavior; the earlier differential is evidence for its earlier source.
+- **Consumer regressions: done 2026-11-03.** With generated project inputs,
+  the project page's suites pass after the NIP-22 refusal change
+  (`project-checks.coax` 88 of 88, both native suites, the NIP guide
+  observer), and the project page's five-REQ relay differential matches the
+  Rust relay's recording ([record](../../docs/verification/2026-11-03-nostr-consumers.md)).
+  The Rust differential for COUNT, search and NIP-11 was refreshed in
+  `57c3f6e63a` (#12631).
 - **Scope acceptance:** retain the owner's pending review of the chapter 101
   and 102 done-criteria rewrites. Their offline examples do not replace the
   live application exits below.
@@ -63,7 +66,10 @@ The [web inventory](../../coax/nostr.md#live-web-surface-migration-inventory-202
 separates the completed verification cutover from these remaining signers.
 
 Qualify complete named consumer profiles on the native and browser targets
-they will use. A Wasm arithmetic run, an iOS compile or an external NIP-07
+they will use. `coax/lib/nostr/consumers.coax` now names ten consumers and,
+for each, how it signs, verifies, keeps keys and carries events, in which
+file and with which record; dated reports generated from it are in
+[reports/](reports/README.md). On 2026-11-03 none of the ten is complete. A Wasm arithmetic run, an iOS compile or an external NIP-07
 signer does not qualify the complete phone-signer or browser client profile.
 The signer source audit has completed, but real Pylon keys still require the
 owner decision and a safe host key-file path: `psionic/lib/pylon/run.coax`
@@ -120,6 +126,12 @@ changing DNS.
 | Agents, chapter 102 | Offline attestation, sealed job, atomic claim, journal and supplied payment proof | Runtime NIP-AA admission; schema-checked CJ/LAB binding; signed market/journal carriage; real wallet payment; staged runner migration and rollback | Coax boundary qualification and the Psionic Pylon/mesh consumers |
 
 The chapter 101 example assumes 40 ms per hop; it does not measure sockets.
+On 2026-11-03 two native clients exchanged signed NIP-MV frames through a
+local Coax relay with test keys (median 5 ms); the relay's default per-key
+rate refuses frames above one a second, which is an owner decision. The
+Pylon's provider, job and attempt binding and the coder host's relay-carried
+jobs also ran end to end with test keys; no wallet test environment exists
+here ([record](../../docs/verification/2026-11-03-nostr-consumers.md)).
 The chapter 102 example checks a supplied preimage; it does not pay an invoice.
 Record those distinctions until the corresponding applications supply evidence.
 
