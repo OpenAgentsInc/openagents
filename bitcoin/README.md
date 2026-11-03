@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-71 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+72 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -87,7 +87,9 @@ keys and the revocation key from the per-commitment point. Chapter 111's
 Sphinx onions, wraps and reads error onions, and makes and unblinds
 blinded paths. Chapter 114's
 [`invoice.coax`](../coax/lib/lightning/invoice.coax) reads, checks and
-writes BOLT 11 invoices and recovers the payee from the signature.
+writes BOLT 11 invoices and recovers the payee from the signature. Chapter 115's
+[`offers.coax`](../coax/lib/lightning/offers.coax) reads, checks and
+writes BOLT 12 offers, invoice requests, invoices and payer proofs.
 
 ```sh
 python3 psionic/tests/book.py --book bitcoin                     # structure and registry
@@ -144,11 +146,11 @@ and Lightning also need:
 - FROST, adaptor signatures and silent payments. (MuSig2 is built in
   chapter 101, `coax/lib/bitcoin/musig.coax`.)
 - Lightning: commitment and HTLC transactions, BOLT 2 channels, BOLT 7
-  gossip, routing and BOLT 12 offers. (BOLT 1's messages and TLVs are
-  built in chapter 104, the BOLT 8 Noise handshake in chapter 105, BOLT
-  3's keys and revocation in chapter 106, shachain in chapter 107, BOLT 4
-  onions with blinded paths in chapter 111, and BOLT 11 invoices in
-  chapter 114.)
+  gossip and routing. (BOLT 1's messages and TLVs are built in chapter
+  104, the BOLT 8 Noise handshake in chapter 105, BOLT 3's keys and
+  revocation in chapter 106, shachain in chapter 107, BOLT 4 onions with
+  blinded paths in chapter 111, BOLT 11 invoices in chapter 114, and
+  BOLT 12 offers in chapter 115.)
 
 ## Decisions
 

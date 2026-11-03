@@ -1,0 +1,78 @@
+// The checks of lightning-offers.coax. They live apart so that running
+// the example doesn't also run them. The example reads BOLT 12's vectors
+// and runs one offer through to a payer proof; these check the
+// properties around them.
+// Checks: coax test bitcoin/examples/checks/lightning-offers.coax --run-steps 250000000
+#load "../lightning-offers.coax";
+
+// book:begin check
+// Without a checksum, a changed character of a signed invoice request
+// still refuses: the prefix, the separator, the padding, the framing or
+// the signature over every field catches it.
+changed :: (at: int) -> int {
+  copy: [291] u8; b: [1] Bolt12;
+  for i: 0..<291 { copy[i] = OFFER_REQUEST[i]; }
+  copy[at] = ifx copy[at] == 'q' then 'p' else 'q';
+  return offer_decode_vartime(cast(string) copy[..], b[..]);
+}
+#forall "one changed character of a request refuses: 0 to 72" at: 0..<73 #steps 2000000000 { #assert changed(at) != OFR_OK; }
+#forall "one changed character of a request refuses: 73 to 145" at: 73..<146 #steps 2000000000 { #assert changed(at) != OFR_OK; }
+#forall "one changed character of a request refuses: 146 to 218" at: 146..<219 #steps 2000000000 { #assert changed(at) != OFR_OK; }
+#forall "one changed character of a request refuses: 219 to 290" at: 219..<291 #steps 2000000000 { #assert changed(at) != OFR_OK; }
+// A '+' and whitespace between any two characters leave the bytes as
+// they were.
+#forall "a '+' joins anywhere" at: 1..<97 {
+  text := OFFER_ROWS[7].text; joined: [100] u8; a: [64] u8; c: [64] u8;
+  for i: 0..<at { joined[i] = text[i]; }
+  joined[at] = '+'; joined[at + 1] = '\n';
+  for i: at..<97 { joined[i + 2] = text[i]; }
+  r := offer_text_decode_vartime(text, a[..]); s := offer_text_decode_vartime(cast(string) joined[0..<99], c[..]);
+  #assert r.code == OFR_OK && s.code == OFR_OK && r.length == s.length && cast(string) a[0..<r.length] == cast(string) c[0..<s.length];
+}
+// Any bytes survive the text and come back.
+#forall "bytes survive the text" n: 0..<64 {
+  b: [64] u8; for i: 0..<n { b[i] = cast(u8) ((37 * i + n) & 255); }
+  t: [110] u8; back: [64] u8;
+  m := offer_text_encode_vartime(OFR_OFFER, b[0..<n], t[..]);
+  r := offer_text_decode_vartime(cast(string) t[0..<m], back[..]);
+  #assert m == 4 + (8 * n + 4) / 5 && r.code == OFR_OK && r.length == n && cast(string) back[0..<n] == cast(string) b[0..<n];
+}
+// The root is BOLT 12's tree built level by level: join neighbors, then
+// neighbors of neighbors, a leaf with none waiting for the next level.
+#forall "the root is the tree built level by level" n: 1..<24 #steps 400000000 {
+  b: [1] Bolt12; at := 0; v := [1] u8.[7];
+  for k: 0..<n { at = tlv_write_vartime(b[0].data[..], at, cast(u64) (2 * k + 1), v[..]); }
+  b[0].n = at;
+  #assert ofr_frame_vartime(b[..]) == OFR_OK;
+  tags: [1] OfrTags; tags[0] = ofr_tags(ofr_raw(b[..], 0));
+  level: [24] [32] u8; nonce: [32] u8;
+  for k: 0..<n { ofr_nonce(tags[..], b[0].records[k].type, nonce[..]); ofr_leaf(tags[..], ofr_raw(b[..], k), nonce[..], level[k][..]); }
+  step := 1;
+  while step < n {
+    k := 0;
+    while k + step < n { joined: [32] u8; ofr_branch(tags[0].branch[..], level[k][..], level[k + step][..], joined[..]); level[k] = joined; k += 2 * step; }
+    step *= 2;
+  }
+  root: [32] u8;
+  #assert ofr_merkle_vartime(b[..], root[..]) && cast(string) root[..] == cast(string) level[0][..];
+}
+// A payer proof of BOLT 12's invoice that keeps any choice of four more
+// fields reads back, and its marker list hides the rest.
+proves :: (mask: int) -> bool {
+  inv: [1] Bolt12; w: [1] OfrWriter; key: [32] u8; pre: [32] u8; out: [2048] u8; proof: [1] Bolt12;
+  if offer_decode_vartime(PROOF_VALID[1].invoice, inv[..]) != OFR_OK { return false; }
+  if ln_unhex(PROOF_PAYER_KEY, key[..]).count != 32 || ln_unhex(PROOF_VALID[1].preimage, pre[..]).count != 32 { return false; }
+  more := [4] u64.[OFR_ISSUER_ID, REQ_AMOUNT, INV_PATHS, INV_AMOUNT];
+  keep: [7] u64; keep[0] = REQ_PAYER_ID; keep[1] = INV_PAYMENT_HASH; keep[2] = INV_NODE_ID; k := 3;
+  for i: 0..<4 { if (mask >> i) & 1 == 1 { keep[k] = more[i]; k += 1; } }
+  if offer_proof_vartime(inv[..], pre[..], keep[0..<k], key[..], pre[0..<0], false, w[..]) != OFR_OK { return false; }
+  n := offer_write_vartime(w[..], out[..]);
+  if offer_decode_vartime(cast(string) out[0..<n], proof[..]) != OFR_OK { return false; }
+  marks: [64] u64;
+  return ofr_markers(proof[..], marks[..]) == 9 - k && ofr_value(proof[..], PROOF_LEAVES).count == 32 * k;
+}
+#forall "any choice of fields gives a proof that checks: masks 0 to 3" mask: 0..<4 #steps 2000000000 { #assert proves(mask); }
+#forall "any choice of fields gives a proof that checks: masks 4 to 7" mask: 4..<8 #steps 2000000000 { #assert proves(mask); }
+#forall "any choice of fields gives a proof that checks: masks 8 to 11" mask: 8..<12 #steps 2000000000 { #assert proves(mask); }
+#forall "any choice of fields gives a proof that checks: masks 12 to 15" mask: 12..<16 #steps 2000000000 { #assert proves(mask); }
+// book:end check

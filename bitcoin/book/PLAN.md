@@ -305,7 +305,7 @@ there is a need.
 | 112. Gossip and the channel graph — planned | 19, 104 | Announcements from a pinned gossip snapshot verify. An announcement with a bad signature refuses. | BOLT 7 |
 | 113. Find a route and pay — planned | 109, 111, 112 | A payment routes over a three-node regtest network and settles. A failure returns its error to the sender. | BOLT 2, BOLT 4 |
 | [114. Invoices](ch114-invoices.md) — implemented | 22, 27 | All 31 examples of BOLT 11's `invoice-test.json` are valid or invalid as stated, each invalid one for its reason; the 11 signature breakdowns match; every valid example decodes to its stated fields and payee and is written again to the same text. A changed character refuses. Every line of the example agrees with an independent Python reader and writer. | BOLT 11 |
-| 115. Offers — planned | 5, 24, 104 | BOLT 12's offer, invoice-request and invoice vectors decode and verify. | BOLT 12 |
+| [115. Offers](ch115-offers.md) — implemented | 5, 24, 104 | BOLT 12's format strings, all 53 offers of `offers-test.json` (each invalid one for its reason), the Merkle roots, tagged hash and signature of `signature-test.json`, and the 5 valid and 23 invalid payer proofs of `payer-proof-test.json` give their stated results; the request and every payer proof are written again byte for byte. A changed character of a signed request refuses. Every line of the example agrees with an independent Python reader and writer. | BOLT 12 |
 
 ### Part XVIII. Interop and verification
 

@@ -527,6 +527,18 @@ that a maliciously replaced manifest is authentic.
   `coax/tests/lightning/invoice_vectors.coax`, and
   `coax/tests/lightning/invoice.py` runs them and the example on
   `coax/tests/lightning/bolt11.py`, the independent reader and writer.
+- **Offers (Bitcoin chapter 115):** BOLT 12 (`12-offer-encoding.md`)
+  and `bolt12/format-string-test.json`, `offers-test.json`,
+  `payer-proof-test.json` and `signature-test.json` at the same
+  lightning/bolts revision, CC-BY-4.0, retrieved 2026-11-03. They give
+  12 format strings, 53 offers (20 valid), the n1 Merkle roots and a
+  signed invoice request, and 5 valid and 23 invalid payer proofs with
+  their keys. Seven invalid offers are malformed earlier than their
+  description says; `coax/tests/lightning/make_offer_vectors.py` records
+  the earlier reason, reads the vectors into
+  `coax/tests/lightning/offer_vectors.coax`, and
+  `coax/tests/lightning/offers.py` runs them and the example on
+  `coax/tests/lightning/bolt12.py`, the independent reader and writer.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -846,4 +858,9 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bolts/bolt04/blinded-onion-message-onion-test.json`](upstream/bolts/bolt04/blinded-onion-message-onion-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/blinded-onion-message-onion-test.json) | `e5e8ac8a42d3d0ce3bb70c12c5bbd76408e022a63322dcf32b00ddd97d051f96` |
 | [`upstream/bolts/11-payment-encoding.md`](upstream/bolts/11-payment-encoding.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/11-payment-encoding.md) | `c659da1bc08091f7fe691cd4ce661e578dfbe1f77a0b9cd9c53d1839010ae029` |
 | [`upstream/bolts/bolt11/invoice-test.json`](upstream/bolts/bolt11/invoice-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt11/invoice-test.json) | `5d6af32b7dfb84722e4e8a94d633d1597b9504a836c32046219b82c1edb7824a` |
+| [`upstream/bolts/12-offer-encoding.md`](upstream/bolts/12-offer-encoding.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/12-offer-encoding.md) | `f85fbc0577536c82d94f713076221c76c32218b7728ccfed56962d59ccdcee89` |
+| [`upstream/bolts/bolt12/format-string-test.json`](upstream/bolts/bolt12/format-string-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt12/format-string-test.json) | `a88e3098b3afee8cd31bf1091d76f2f265f5f0e2e397f56fc2eef8da7e3f131d` |
+| [`upstream/bolts/bolt12/offers-test.json`](upstream/bolts/bolt12/offers-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt12/offers-test.json) | `d30991bbd31105f87b583e1d4168a9beb8b7f9cf2b23c729597428e0dce832c7` |
+| [`upstream/bolts/bolt12/payer-proof-test.json`](upstream/bolts/bolt12/payer-proof-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt12/payer-proof-test.json) | `bad5f365f02c3bd82fcb5d600ba941592b211e715103b134f4deed599a650ad9` |
+| [`upstream/bolts/bolt12/signature-test.json`](upstream/bolts/bolt12/signature-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt12/signature-test.json) | `03ddd14f5593bea0a97e5b3cbe3af9fe215d38443ae192a01bb72a840858d6a4` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

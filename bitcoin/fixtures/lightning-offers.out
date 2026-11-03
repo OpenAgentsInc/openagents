@@ -1,0 +1,76 @@
+BOLT 12's vectors
+  format strings: 6 read, 6 refused
+  offers refused: ORDER UNKNOWN_EVEN REQUIRED TRUNCATED TRUNCATED TRUNCATED TRUNCATED BAD_LENGTH BAD_UTF8 BAD_UTF8 BAD_UTF8 BAD_UTF8 BAD_PATH ORDER ORDER ORDER ORDER ORDER BAD_UTF8 BAD_UTF8 BAD_POINT RANGE TRUNCATED TRUNCATED BAD_FEATURES REQUIRED REQUIRED BAD_AMOUNT BAD_AMOUNT REQUIRED BAD_PATH BAD_LENGTH BAD_TEXT
+  20 of 20 valid offers read
+  5 of 5 payer proofs check; invalid ones refused: REQUIRED REQUIRED REQUIRED REQUIRED REQUIRED REQUIRED REQUIRED REQUIRED BAD_PREIMAGE BAD_OMITTED BAD_OMITTED BAD_OMITTED BAD_OMITTED BAD_OMITTED BAD_OMITTED BAD_OMITTED BAD_LEAVES BAD_LEAVES BAD_MISSING BAD_MISSING BAD_SIGNATURE BAD_SIGNATURE RANGE
+an offer priced in dollars
+  6 offer_currency: 3 bytes
+  8 offer_amount: 2 bytes
+  10 offer_description: 12 bytes
+  22 offer_issuer_id: 33 bytes
+  USD 10000 cents, "Test vectors"
+BOLT 12's invoice request
+  0 invreq_metadata: 8 bytes
+  6 offer_currency: 3 bytes
+  8 offer_amount: 1 bytes
+  10 offer_description: 23 bytes
+  22 offer_issuer_id: 33 bytes
+  88 invreq_payer_id: 33 bytes
+  240 signature: 64 bytes
+  Merkle root 608407c18ad9a94d9ea2bcdbe170b6c20c462a7833a197621c916f78cf18e624
+  signed hash aefe3aa88a69772c246dcaef75ed3e7566c08ecc4e9f995233526a5651fc34cd
+  the signature checks under invreq_payer_id: OK
+Dave's offer, behind a blinded path from Carol
+  465 characters, OK
+  8 offer_amount: 2 bytes
+  10 offer_description: 33 bytes
+  16 offer_paths: 238 bytes
+  18 offer_issuer: 4 bytes
+  20 offer_quantity_max: 1 bytes
+  split with '+' and newlines: OK, same bytes: true
+  no offer_issuer_id; the path ends at blinded node 03745dbfe9c55c4315bc0c50017024f6bfa8b78067f883a996a874fdb587127d3f
+  is that Dave's node ID: false
+Erin's invoice request
+  660 characters, OK
+  added 0 invreq_metadata: 16 bytes
+  added 86 invreq_quantity: 1 bytes
+  added 88 invreq_payer_id: 33 bytes
+  added 240 signature: 64 bytes
+  invreq_metadata is first, so it seeds every nonce: true
+Dave's invoice
+  Dave's blinded secret gives the path's last key: true
+  1220 characters, OK, 150000 msat for 3
+  added 160 invoice_paths: 238 bytes
+  added 162 invoice_blindedpay: 28 bytes
+  added 164 invoice_created_at: 4 bytes
+  added 168 invoice_payment_hash: 32 bytes
+  added 170 invoice_amount: 3 bytes
+  added 176 invoice_node_id: 33 bytes
+  added 240 signature: 64 bytes
+  Erin: it repeats her request: true
+  Erin: invoice_node_id is the path's last key: true
+  Erin: expired two hours and a second later: true
+Erin's payer proof
+  1112 characters, OK
+  10 offer_description: 33 bytes
+  88 invreq_payer_id: 33 bytes
+  168 invoice_payment_hash: 32 bytes
+  170 invoice_amount: 3 bytes
+  176 invoice_node_id: 33 bytes
+  240 signature: 64 bytes
+  241 proof_signature: 64 bytes
+  1001 proof_preimage: 32 bytes
+  1002 proof_omitted_tlvs: 8 bytes
+  1003 proof_missing_hashes: 192 bytes
+  1004 proof_leaf_hashes: 160 bytes
+  1005 proof_note: 4 bytes
+  proof_omitted_tlvs: 1 11 12 13 14 89 90 91
+  6 hashes stand for the 9 hidden fields
+changing them
+  the invoice's amount set to 1 msat: BAD_SIGNATURE
+  one character of the invoice changed: BAD_SIGNATURE
+  the invoice signed with Dave's node key: OK, but the path's key: false
+  the proof with another preimage: BAD_PREIMAGE
+  the proof with another note: BAD_SIGNATURE
+  a request for 11 of at most 10: BAD_QUANTITY
+  a request for 3 that pays 149999 msat: BAD_AMOUNT

@@ -3679,6 +3679,71 @@
       "retrieved": "2026-11-03",
       "sha256": "bd44b0074d6f271312a2de14697f28871087531b06c49d801ebbd988f65809c7",
       "bytes": 28523
+    },
+    {
+      "path": "upstream/bolts/12-offer-encoding.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/12-offer-encoding.md",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "115"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "f85fbc0577536c82d94f713076221c76c32218b7728ccfed56962d59ccdcee89",
+      "bytes": 54270
+    },
+    {
+      "path": "upstream/bolts/bolt12/format-string-test.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt12/format-string-test.json",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "115"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "a88e3098b3afee8cd31bf1091d76f2f265f5f0e2e397f56fc2eef8da7e3f131d",
+      "bytes": 2807
+    },
+    {
+      "path": "upstream/bolts/bolt12/offers-test.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt12/offers-test.json",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "115"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "d30991bbd31105f87b583e1d4168a9beb8b7f9cf2b23c729597428e0dce832c7",
+      "bytes": 22272
+    },
+    {
+      "path": "upstream/bolts/bolt12/payer-proof-test.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt12/payer-proof-test.json",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "115"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "bad5f365f02c3bd82fcb5d600ba941592b211e715103b134f4deed599a650ad9",
+      "bytes": 67179
+    },
+    {
+      "path": "upstream/bolts/bolt12/signature-test.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt12/signature-test.json",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "115"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "03ddd14f5593bea0a97e5b3cbe3af9fe215d38443ae192a01bb72a840858d6a4",
+      "bytes": 8334
     }
   ]
 }

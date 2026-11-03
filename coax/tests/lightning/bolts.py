@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: reads the BOLTs' published test vectors outside Coax)
-"""The pinned BOLT texts for Bitcoin chapters 104 to 107, 111 and 114, read and checked.
+"""The pinned BOLT texts for Bitcoin chapters 104 to 107, 111, 114 and 115, read and checked.
 
 The BOLTs at lightning/bolts revision 19146282 are pinned in
 coax/tests/vectors/upstream/bolts/. Every read checks the file's SHA-256
@@ -26,6 +26,11 @@ PINS = {
     '09-features.md': '39ead9fa5743104a3e66e0f6c342e34d64966dc943dcbcc337969e543e3e3cbe',
     '11-payment-encoding.md': 'c659da1bc08091f7fe691cd4ce661e578dfbe1f77a0b9cd9c53d1839010ae029',
     'bolt11/invoice-test.json': '5d6af32b7dfb84722e4e8a94d633d1597b9504a836c32046219b82c1edb7824a',
+    '12-offer-encoding.md': 'f85fbc0577536c82d94f713076221c76c32218b7728ccfed56962d59ccdcee89',
+    'bolt12/format-string-test.json': 'a88e3098b3afee8cd31bf1091d76f2f265f5f0e2e397f56fc2eef8da7e3f131d',
+    'bolt12/offers-test.json': 'd30991bbd31105f87b583e1d4168a9beb8b7f9cf2b23c729597428e0dce832c7',
+    'bolt12/payer-proof-test.json': 'bad5f365f02c3bd82fcb5d600ba941592b211e715103b134f4deed599a650ad9',
+    'bolt12/signature-test.json': '03ddd14f5593bea0a97e5b3cbe3af9fe215d38443ae192a01bb72a840858d6a4',
 }
 
 
@@ -254,3 +259,11 @@ def bolt11_examples():
             'digest': one(r'`(\w{64})` hex of SHA256 of the preimage'),
         }
     return key, secret, out
+
+
+# ---- BOLT 12
+
+def bolt12_json(name):
+    """One of bolt12/format-string-test.json, offers-test.json,
+    signature-test.json and payer-proof-test.json."""
+    return json.loads(text(f'bolt12/{name}-test.json'))

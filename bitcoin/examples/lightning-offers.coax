@@ -1,0 +1,226 @@
+// book:begin example
+#load "../../coax/lib/lightning/offers.coax";
+#load "../../coax/lib/lightning/onion.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex.
+show :: (b: [] u8) {
+  text: [600] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+CODES :: [25] string.["OK", "BAD_TEXT", "BAD_PREFIX", "TRUNCATED", "NOT_MINIMAL", "ORDER", "RANGE", "UNKNOWN_EVEN",
+                      "BAD_LENGTH", "BAD_UTF8", "BAD_POINT", "BAD_PATH", "BAD_FEATURES", "BAD_VALUE", "REQUIRED",
+                      "BAD_AMOUNT", "BAD_QUANTITY", "FORBIDDEN", "BAD_SIGNATURE", "WRONG_NODE", "BAD_PREIMAGE",
+                      "BAD_OMITTED", "BAD_LEAVES", "BAD_MISSING", "CAPACITY"];
+// A field's name in BOLT 12.
+name :: (t: u64) -> string {
+  if t == 0 { return "invreq_metadata"; } if t == 2 { return "offer_chains"; } if t == 4 { return "offer_metadata"; }
+  if t == 6 { return "offer_currency"; } if t == 8 { return "offer_amount"; } if t == 10 { return "offer_description"; }
+  if t == 12 { return "offer_features"; } if t == 14 { return "offer_absolute_expiry"; } if t == 16 { return "offer_paths"; }
+  if t == 18 { return "offer_issuer"; } if t == 20 { return "offer_quantity_max"; } if t == 22 { return "offer_issuer_id"; }
+  if t == 80 { return "invreq_chain"; } if t == 82 { return "invreq_amount"; } if t == 86 { return "invreq_quantity"; }
+  if t == 88 { return "invreq_payer_id"; } if t == 89 { return "invreq_payer_note"; }
+  if t == 160 { return "invoice_paths"; } if t == 162 { return "invoice_blindedpay"; } if t == 164 { return "invoice_created_at"; }
+  if t == 168 { return "invoice_payment_hash"; } if t == 170 { return "invoice_amount"; } if t == 176 { return "invoice_node_id"; }
+  if t == 240 { return "signature"; } if t == 241 { return "proof_signature"; } if t == 1001 { return "proof_preimage"; }
+  if t == 1002 { return "proof_omitted_tlvs"; } if t == 1003 { return "proof_missing_hashes"; }
+  if t == 1004 { return "proof_leaf_hashes"; } if t == 1005 { return "proof_note"; }
+  return "unknown";
+}
+// Each record: type, name and length.
+fields :: (b: [] Bolt12) {
+  for i: 0..<b[0].count {
+    r := b[0].records[i];
+    print("  % %: % bytes\n", r.type, name(r.type), r.length);
+  }
+}
+// A secret of 32 bytes made from two small numbers, for the example.
+secret :: (k: int, c: int) -> [32] u8 {
+  out: [32] u8;
+  for i: 0..<32 { out[i] = cast(u8) ((k * i + c) & 255); }
+  return out;
+}
+// Text with a '+' and a newline every 64 characters, as a writer may
+// split it.
+split :: (t: [] u8, out: [] u8) -> int {
+  n := 0;
+  for i: 0..<t.count {
+    if i > 0 && i % 64 == 0 { out[n] = '+'; out[n + 1] = '\n'; n += 2; }
+    out[n] = t[i]; n += 1;
+  }
+  return n;
+}
+// Puts every record of b but one type into w.
+copy_but :: (b: [] Bolt12, skip: u64, w: [] OfrWriter) {
+  offer_begin(w, b[0].kind);
+  for i: 0..<b[0].count {
+    r := b[0].records[i];
+    if r.type != skip { code := offer_put_vartime(w, r.type, b[0].data[r.start..<r.start + r.length]); }
+  }
+}
+
+main :: () {
+  b: [1] Bolt12; out: [2048] u8; n := 0; code := 0;
+
+  // ---- BOLT 12's vectors
+  print("BOLT 12's vectors\n");
+  valid := 0; refused := 0;
+  for f: OFFER_FORMATS { r := offer_text_decode_vartime(f.text, out[..]); if r.code == OFR_OK { valid += 1; } else { refused += 1; } }
+  print("  format strings: % read, % refused\n", valid, refused);
+  valid = 0; print("  offers refused:");
+  for row: OFFER_ROWS {
+    code = offer_decode_vartime(row.text, b[..]);
+    if code == OFR_OK { valid += 1; } else { print(" %", CODES[code]); }
+  }
+  print("\n  % of 20 valid offers read\n", valid);
+  valid = 0;
+  for row: PROOF_VALID { if offer_decode_vartime(row.proof, b[..]) == OFR_OK { valid += 1; } }
+  print("  % of 5 payer proofs check; invalid ones refused:", valid);
+  for row: PROOF_INVALID { print(" %", CODES[offer_decode_vartime(row.text, b[..])]); }
+  print("\n");
+
+  // ---- an offer in dollars
+  print("an offer priced in dollars\n");
+  code = offer_decode_vartime(OFFER_ROWS[7].text, b[..]);
+  fields(b[..]);
+  print("  % % cents, \"%\"\n", cast(string) ofr_value(b[..], OFR_CURRENCY), ofr_number(b[..], OFR_AMOUNT),
+        cast(string) ofr_value(b[..], OFR_DESCRIPTION));
+
+  // ---- the request's Merkle tree
+  print("BOLT 12's invoice request\n");
+  code = offer_decode_vartime(OFFER_REQUEST, b[..]);
+  fields(b[..]);
+  root: [32] u8; h: [32] u8;
+  ok := ofr_merkle_vartime(b[..], root[..]);
+  print("  Merkle root "); show(root[..]); print("\n");
+  ofr_sig_hash(OFR_REQUEST, "signature", root[..], h[..]);
+  print("  signed hash "); show(h[..]); print("\n");
+  print("  the signature checks under invreq_payer_id: %\n", CODES[code]);
+
+  // ---- Dave's offer, behind a blinded path that starts at Carol
+  print("Dave's offer, behind a blinded path from Carol\n");
+  carol := secret(7, 3); dave := secret(11, 5); erin := secret(13, 1);
+  carol_id := offer_public(carol[..]); dave_id := offer_public(dave[..]);
+  e := secret(17, 9); path_id := secret(19, 2);
+  carol_data: [35] u8; carol_data[0] = 4; carol_data[1] = 33; for i: 0..<33 { carol_data[2 + i] = dave_id[i]; }
+  dave_data: [34] u8; dave_data[0] = 6; dave_data[1] = 32; for i: 0..<32 { dave_data[2 + i] = path_id[i]; }
+  carol_box: [51] u8; dave_box: [50] u8;
+  cb := onion_blind_hop(e[..], carol_id[..], carol_data[..], carol_box[..]);
+  db := onion_blind_hop(e[..], dave_id[..], dave_data[..], dave_box[..]);
+  // first_node_id, first_path_key, num_hops, then each hop.
+  path: [256] u8; p := 0;
+  for i: 0..<33 { path[p + i] = carol_id[i]; } p += 33;
+  for i: 0..<33 { path[p + i] = cb.path_key[i]; } p += 33;
+  path[p] = 2; p += 1;
+  for i: 0..<33 { path[p + i] = cb.blinded[i]; } p += 33; ln_put16(path[..], p, 51); p += 2;
+  for i: 0..<51 { path[p + i] = carol_box[i]; } p += 51;
+  for i: 0..<33 { path[p + i] = db.blinded[i]; } p += 33; ln_put16(path[..], p, 50); p += 2;
+  for i: 0..<50 { path[p + i] = dave_box[i]; } p += 50;
+  w: [1] OfrWriter; t: [64] u8;
+  offer_begin(w[..], OFR_OFFER);
+  code = offer_put_vartime(w[..], OFR_DESCRIPTION, ofr_text("Bitcoin From Scratch, chapter 115", t[..]));
+  code = offer_put_number_vartime(w[..], OFR_AMOUNT, 50000);
+  code = offer_put_vartime(w[..], OFR_PATHS, path[0..<p]);
+  code = offer_put_vartime(w[..], OFR_ISSUER, ofr_text("Dave", t[..]));
+  code = offer_put_number_vartime(w[..], OFR_QUANTITY_MAX, 10);
+  n = offer_write_vartime(w[..], out[..]);
+  offer: [1] Bolt12;
+  code = offer_decode_vartime(cast(string) out[0..<n], offer[..]);
+  print("  % characters, %\n", n, CODES[code]);
+  fields(offer[..]);
+  joined: [2100] u8; j := split(out[0..<n], joined[..]); again: [1] Bolt12;
+  code = offer_decode_vartime(cast(string) joined[0..<j], again[..]);
+  print("  split with '+' and newlines: %, same bytes: %\n", CODES[code],
+        cast(string) again[0].data[0..<again[0].n] == cast(string) offer[0].data[0..<offer[0].n]);
+  final := ofr_paths_vartime(ofr_value(offer[..], OFR_PATHS), 0);
+  print("  no offer_issuer_id; the path ends at blinded node "); show(final.final[..]); print("\n");
+  print("  is that Dave's node ID: %\n", cast(string) final.final[..] == cast(string) dave_id[..]);
+
+  // ---- Erin asks for three
+  print("Erin's invoice request\n");
+  metadata := secret(23, 4);
+  code = offer_request_vartime(offer[..], metadata[0..<16], erin[..], 0, 3, w[..]);
+  n = offer_write_vartime(w[..], out[..]);
+  request: [1] Bolt12;
+  code = offer_decode_vartime(cast(string) out[0..<n], request[..]);
+  print("  % characters, %\n", n, CODES[code]);
+  for i: 0..<request[0].count {
+    r := request[0].records[i];
+    if r.type >= 80 || r.type == 0 { print("  added % %: % bytes\n", r.type, name(r.type), r.length); }
+  }
+  print("  invreq_metadata is first, so it seeds every nonce: %\n", request[0].records[0].type == 0);
+
+  // ---- Dave's invoice, signed with his key for the path
+  print("Dave's invoice\n");
+  blinded: [32] u8;
+  code = onion_blinded_secret(dave[..], db.path_key[..], blinded[..]);
+  key := offer_public(blinded[..]);
+  print("  Dave's blinded secret gives the path's last key: %\n", cast(string) key[..] == cast(string) final.final[..]);
+  preimage := secret(29, 6); hash: [32] u8;
+  ok = sha256_hash_checked(preimage[..], hash[..], false) == SHA_OK;
+  payinfo: [28] u8;
+  ok = cb_store_be32(payinfo[..], 0, 1000) && cb_store_be32(payinfo[..], 4, 100);
+  ln_put16(payinfo[..], 8, 144); payinfo[17] = 1;
+  ok = cb_store_be64(payinfo[..], 18, 10000000000);
+  amount := ofr_number(offer[..], OFR_AMOUNT) * ofr_number(request[..], REQ_QUANTITY);
+  code = offer_invoice_vartime(request[..], blinded[..], path[0..<p], payinfo[..], 1762156800, hash[..], amount, w[..]);
+  n = offer_write_vartime(w[..], out[..]);
+  invoice: [1] Bolt12;
+  code = offer_decode_vartime(cast(string) out[0..<n], invoice[..]);
+  print("  % characters, %, % msat for 3\n", n, CODES[code], ofr_number(invoice[..], INV_AMOUNT));
+  for i: 0..<invoice[0].count {
+    r := invoice[0].records[i];
+    if r.type >= 160 { print("  added % %: % bytes\n", r.type, name(r.type), r.length); }
+  }
+  print("  Erin: it repeats her request: %\n", offer_matches_vartime(request[..], invoice[..]));
+  print("  Erin: invoice_node_id is the path's last key: %\n",
+        cast(string) ofr_value(invoice[..], INV_NODE_ID) == cast(string) final.final[..]);
+  print("  Erin: expired two hours and a second later: %\n", offer_invoice_expired_vartime(invoice[..], 1762156800 + 7201));
+
+  // ---- Erin's payer proof, after she pays
+  print("Erin's payer proof\n");
+  keep := [5] u64.[OFR_DESCRIPTION, REQ_PAYER_ID, INV_PAYMENT_HASH, INV_AMOUNT, INV_NODE_ID];
+  code = offer_proof_vartime(invoice[..], preimage[..], keep[..], erin[..], ofr_text("paid", t[..]), false, w[..]);
+  n = offer_write_vartime(w[..], out[..]);
+  proof: [1] Bolt12;
+  code = offer_decode_vartime(cast(string) out[0..<n], proof[..]);
+  print("  % characters, %\n", n, CODES[code]);
+  fields(proof[..]);
+  marks: [64] u64; m := ofr_markers(proof[..], marks[..]);
+  print("  proof_omitted_tlvs:"); for i: 0..<m { print(" %", marks[i]); } print("\n");
+  print("  % hashes stand for the % hidden fields\n", ofr_value(proof[..], PROOF_MISSING).count / 32, m + 1);
+
+  // ---- changes
+  print("changing them\n");
+  changed: [1] Bolt12;
+  copy_but(invoice[..], INV_AMOUNT, w[..]);
+  code = offer_put_number_vartime(w[..], INV_AMOUNT, 1);
+  n = offer_write_vartime(w[..], out[..]);
+  print("  the invoice's amount set to 1 msat: %\n", CODES[offer_decode_vartime(cast(string) out[0..<n], changed[..])]);
+  copy_but(invoice[..], 0xffffffff, w[..]);
+  n = offer_write_vartime(w[..], out[..]);
+  out[100] = ifx out[100] == 'q' then 'p' else 'q';
+  print("  one character of the invoice changed: %\n", CODES[offer_decode_vartime(cast(string) out[0..<n], changed[..])]);
+  code = offer_invoice_vartime(request[..], dave[..], path[0..<p], payinfo[..], 1762156800, hash[..], amount, w[..]);
+  n = offer_write_vartime(w[..], out[..]);
+  code = offer_decode_vartime(cast(string) out[0..<n], changed[..]);
+  print("  the invoice signed with Dave's node key: %, but the path's key: %\n", CODES[code],
+        cast(string) ofr_value(changed[..], INV_NODE_ID) == cast(string) final.final[..]);
+  copy_but(proof[..], PROOF_PREIMAGE, w[..]);
+  code = offer_put_vartime(w[..], PROOF_PREIMAGE, hash[..]);
+  n = offer_write_vartime(w[..], out[..]);
+  print("  the proof with another preimage: %\n", CODES[offer_decode_vartime(cast(string) out[0..<n], changed[..])]);
+  copy_but(proof[..], PROOF_NOTE, w[..]);
+  code = offer_put_vartime(w[..], PROOF_NOTE, ofr_text("not paid", t[..]));
+  n = offer_write_vartime(w[..], out[..]);
+  print("  the proof with another note: %\n", CODES[offer_decode_vartime(cast(string) out[0..<n], changed[..])]);
+  code = offer_request_vartime(offer[..], metadata[0..<16], erin[..], 0, 11, w[..]);
+  n = offer_write_vartime(w[..], out[..]);
+  print("  a request for 11 of at most 10: %\n", CODES[offer_decode_vartime(cast(string) out[0..<n], changed[..])]);
+  code = offer_request_vartime(offer[..], metadata[0..<16], erin[..], 149999, 3, w[..]);
+  n = offer_write_vartime(w[..], out[..]);
+  print("  a request for 3 that pays 149999 msat: %\n", CODES[offer_decode_vartime(cast(string) out[0..<n], changed[..])]);
+}
+// book:end example
