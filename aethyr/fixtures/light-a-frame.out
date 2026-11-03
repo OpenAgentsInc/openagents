@@ -1,0 +1,16 @@
+clock 0.0: moon at elevation -20.0 deg, toward 0.7756 0.342 -0.5306
+clock 0.25: sun at elevation 20.0 deg, toward -0.1732 0.342 0.9236
+clock 0.5: sun at elevation 60.0 deg, toward 0.2823 0.866 0.4127
+clock 0.75: sun at elevation 20.0 deg, toward 0.9236 0.342 0.1732
+the realms' uniform block holds the same key, bit for bit: true
+texel 0.05859375 m; eye at 1.00 m: middle 0.99609375
+eye at 1.02 m: middle 0.99609375, the post at 2.5 m on texel 1049.6666
+eye at 1.03 m: middle 1.0546875, the post at 2.5 m on texel 1048.6666
+eye at 1.08 m: middle 1.0546875, the post at 2.5 m on texel 1048.6666
+lantern added true: 1 m away it gives 0.5625 0.45000002 0.28125
+16 lights: the 17th added false; refused 1
+a light of radius 0 added false
+haze at 20.0 m: 0.0
+haze at 100.0 m: 0.5852
+haze at 200.0 m: 0.8619
+haze at 5000.0 m: 0.88

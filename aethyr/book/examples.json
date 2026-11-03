@@ -212,6 +212,16 @@
       ]
     },
     {
+      "source": "aethyr/examples/light-a-frame.coax",
+      "chapter": "aethyr/book/ch013-light-and-shadow.md",
+      "stdout": "aethyr/fixtures/light-a-frame.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "aethyr/examples/hold-to-talk.coax",
       "chapter": "aethyr/book/ch069-voices-in-a-realm.md",
       "stdout": "aethyr/fixtures/hold-to-talk.out",

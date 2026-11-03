@@ -51,8 +51,8 @@ marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
 
-There are 14 implemented chapters (1–11 and 65–67), fourteen partly
-implemented chapters (12, 15, 16, 51–56, 69, 72, 80, 81 and 83), and 57 design drafts. An implemented chapter is
+There are 14 implemented chapters (1–11 and 65–67), fifteen partly
+implemented chapters (12, 13, 15, 16, 51–56, 69, 72, 80, 81 and 83), and 56 design drafts. An implemented chapter is
 qualified for its named profile; it does not imply that every realm adopted
 it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
@@ -171,7 +171,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | --- | --- | --- |
 | [11. The WGSL renderer](ch011-the-wgsl-renderer.md) | Runnable: shared renderer; Grid CPU/WebGPU/Vulkan teaching profile | Shared frame, geometry, bindings, pass and resource admission; checked shader emission and bounded quad CPU execution. The moving Grid's recorded frame has strict CPU/GPU parity. Catalogue, host and golden evidence keep their separate scopes; Everglade's complete CPU image and Dead Gears' boundary packets remain unqualified. |
 | [12. Materials](ch012-materials.md) | Partly implemented: shared shading functions and material admission; CPU (no realm draws from a material table yet) | The surface shading functions moved into `aethyr/render/material.coax` with every realm's WGSL byte-identical; a typed material record admitted whole or refused at load (missing texture layer, undrawn style); the CPU banded surface equals the fixture's fragment code bit for bit. |
-| [13. Light and shadow](ch013-light-and-shadow.md) | Unimplemented: design draft | One lighting record per frame: key light from the clock, hemisphere ambient, a texel-snapped shadow map that doesn't shimmer, height fog, tone mapping and bounded local lights. |
+| [13. Light and shadow](ch013-light-and-shadow.md) | Partly implemented: shared light functions, the key by clock, the snapped shadow space and local lights; CPU (realms still build their own light in their shaders) | Ambient, the shadow map's snap and place, contact shadow and haze moved into `aethyr/render/light.coax` with every realm's WGSL byte-identical; the key light by clock equals the realms' uniform block bit for bit; the map's middle moves in whole texels; at most 16 local lights, refused whole past it. |
 | [14. Figures and animation](ch014-figures-and-animation.md) | Unimplemented: design draft | The Grid's cast, skinned rigs and rounded-bone figures share one pose pipeline: fades blend each joint locally, gaits advance by distance, motions that break joint limits are refused, and bone lengths stay constant. |
 | [15. UI and the HUD](ch015-ui-and-the-hud.md) | Partly implemented: native C and browser WebGPU (visual foundations; UI tree remains a design draft) | Checked HUD geometry, focus/hit helpers and 18 Coax drawing components with a standalone catalog and four scenes; shared typed-step input, semantic UI tree and platform accessibility mirrors remain planned. |
 | [16. Budgets that refuse](ch016-budgets-that-refuse.md) | Partly implemented: native C (`ec-budget`; asset identity still to do) | Declared frame budgets (steps, vertices, draw records, bytes) in every realm, taken whole or refused, with a vertex limit below each buffer so a clipped frame fails; each realm's check draws three screens, and the first run found Hold the Stair's swarm clipping 3,318 vertices a frame. |

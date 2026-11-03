@@ -1,0 +1,52 @@
+// Book chapter 13: the key light through a day, against the uniform block the realms upload; a
+// shadow map that follows the eye in whole texels; local lights with a full list; haze.
+#load "../../verse/style-preset.coax";
+#import "Basic";
+
+// Printed to four places: sin, cos and exp come from each platform's libm, which rounds its
+// own last bit.
+r4 :: (x: f32) -> f32 { return cast(f32) floor(x * 10000 + 0.5) / 10000; }
+
+// book:begin example
+main :: () {
+  // 1. The key light at the four clock keys, from the painterly preset's sun.
+  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  u: [STYLE_FLOATS] f32;
+  same := true;
+  for i: 0..<4 {
+    clock := cast(f32) i * 0.25;
+    k := light_key(p.sun_low, p.sun_high, p.sun_azimuth, p.moon_below, clock);
+    print("clock %: % at elevation % deg, toward % % %\n", clock, ifx k.moon then "moon" else "sun", r4(k.elevation / DEG), r4(k.x), r4(k.y), r4(k.z));
+    if !verse_style_at(p, clock, u[..]) { print("no preset\n"); return; }
+    moon := ifx k.moon then 1.0f32 else 0.0f32;
+    same = same && u[SU_KEY_DIR] == k.x && u[SU_KEY_DIR + 1] == k.y && u[SU_KEY_DIR + 2] == k.z && u[SU_KEY_DIR + 3] == moon;
+  }
+  print("the realms' uniform block holds the same key, bit for bit: %\n", same);
+
+  // 2. A shadow map 2048 texels square reaching 60 m, the light straight overhead.
+  s := light_space(0, 1, 0, 1.0, 0, 60, 2048);
+  print("texel % m; eye at 1.00 m: middle %\n", s.texel, s.mx);
+  for x: [3] f32.[1.02, 1.03, 1.08] {
+    t := light_space(0, 1, 0, x, 0, 60, 2048);
+    print("eye at % m: middle %, the post at 2.5 m on texel %\n", x, t.mx, r4(light_map_texel(t, 2.5, 0, 0, 0)));
+  }
+
+  // 3. Local lights: a lantern of radius 4 m, then fifteen more and one too many.
+  lights: [1] LocalLights;
+  lamp := LocalLight.{x = 0, y = 2, z = 0, radius = 4, r = 1, g = 0.8, b = 0.5};
+  added := light_local_add(lights[..], lamp);
+  c := light_local_at(lights[0], 1, 2, 0);
+  print("lantern added %: 1 m away it gives % % %\n", added, c.r, c.g, c.b);
+  for i: 1..<LIGHT_LOCAL_MAX { added = added && light_local_add(lights[..], lamp); }
+  last := light_local_add(lights[..], lamp);
+  dark := LocalLight.{x = 0, y = 0, z = 0, radius = 0, r = 1, g = 1, b = 1};
+  print("% lights: the 17th added %; refused %\n", lights[0].count, last, lights[0].refused);
+  lights2: [1] LocalLights;
+  print("a light of radius 0 added %\n", light_local_add(lights2[..], dark));
+
+  // 4. The day's haze: none to 20 m, then thicker, capped at 0.88.
+  for d: [4] f32.[20, 100, 200, 5000] {
+    print("haze at % m: %\n", d, r4(verse_style_haze(d, 0, 0, 20, 0.011, 0.88, 60)));
+  }
+}
+// book:end example
