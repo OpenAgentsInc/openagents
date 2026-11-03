@@ -125,6 +125,19 @@ that a maliciously replaced manifest is authentic.
   valid uncompressed points, one compressed, and the off-curve,
   invalid-compressed, twist and empty points), and the keys in BIP-32,
   BIP-340 and BIP-341's files. The ECDH results themselves stay unadapted.
+- **Strict DER (Bitcoin chapter 21):** Bitcoin Core's `interpreter.cpp`
+  (`IsValidSignatureEncoding`, `IsLowDERSignature`,
+  `IsDefinedHashtypeSignature`, `CheckSignatureEncoding`) and `pubkey.cpp`
+  (`ecdsa_signature_parse_der_lax`, `CheckLowS`) at the same revision as
+  `tx_valid.json`, which the chapter transliterates rule by rule. From
+  `script_tests.json` it takes the 89 rows whose scriptSig is only pushes
+  and whose scriptPubKey is pushes then `CHECKSIG` or `CHECKMULTISIG`
+  (optionally `NOT`), in each group of rows sharing scripts where some row
+  sets `DERSIG` or `LOW_S` or expects `SIG_DER`, `SIG_HIGH_S` or
+  `SIG_HASHTYPE`; it computes their legacy signature hashes, and does not
+  claim the other rows. bitcoinjs/bip66 `test/fixtures.json` at commit
+  `08169640` (MIT) gives 9 valid DER encodings with their `r` and `s` and 15
+  invalid ones; the chapter uses its bytes, not its error strings.
 - **Base58Check (Bitcoin chapter 26):** Bitcoin Core's
   `base58_encode_decode.json`, `key_io_valid.json` and `key_io_invalid.json`
   at the same revision as `tx_valid.json`, retrieved 2026-11-02. All 21
@@ -255,4 +268,8 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/siphash/vectors.h`](upstream/siphash/vectors.h) | [pinned source](https://raw.githubusercontent.com/veorq/SipHash/32d067603b93b47828700880649198e0bfbbcffa/vectors.h) | `212c44114a63c6d84710b8627f3bc5ce155698accf2ea7bbff1c4b69c9f48d31` |
 | [`upstream/siphash/LICENSE_CC0`](upstream/siphash/LICENSE_CC0) | [pinned source](https://raw.githubusercontent.com/veorq/SipHash/32d067603b93b47828700880649198e0bfbbcffa/LICENSE_CC0) | `5537d4d10b76b81b6e8dfd8b644480a4b1efa332fbb0cdb61126c5be781ef7b4` |
 | [`upstream/bitcoin-core/hash_tests.cpp`](upstream/bitcoin-core/hash_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/hash_tests.cpp) | `c567bcc5c403b7098d1cf4caaa0a9817e3dc2438ba77c8f1fbef78100b3cab3f` |
+| [`upstream/bitcoin-core/interpreter.cpp`](upstream/bitcoin-core/interpreter.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/interpreter.cpp) | `57a6f328c7e6202f499e48366a86eb26e09c8ebb78e92eef7e839207230be333` |
+| [`upstream/bitcoin-core/pubkey.cpp`](upstream/bitcoin-core/pubkey.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/pubkey.cpp) | `13e59d462a35ba37f818538454228822718c3328d219a6a022e345d69c4b1d99` |
+| [`upstream/bip66/fixtures.json`](upstream/bip66/fixtures.json) | [pinned source](https://raw.githubusercontent.com/bitcoinjs/bip66/08169640fc2d9a5f4007f7a4493a2f4627c07cfc/test/fixtures.json) | `69b1504212b2596fdc62669e6193aebbb42c6e82ceec9f99ced205d557b7e83d` |
+| [`upstream/bip66/LICENSE`](upstream/bip66/LICENSE) | [pinned source](https://raw.githubusercontent.com/bitcoinjs/bip66/08169640fc2d9a5f4007f7a4493a2f4627c07cfc/LICENSE) | `51ad9defd71911dbe413daf277bcb2e1077743f5ee5ae48d0a3b90a5b7486f55` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

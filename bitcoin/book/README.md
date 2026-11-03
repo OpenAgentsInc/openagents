@@ -43,10 +43,10 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 26 are implemented and 98 are planned. The 26
-implemented chapters have runnable examples, qualified on native CPU, and 21
+Of the 124 chapters, 27 are implemented and 97 are planned. The 27
+implemented chapters have runnable examples, qualified on native CPU, and 22
 of them on Wasm. Sixteen of them are the cryptography Nostr already used;
-chapters 5, 6, 7, 10, 12, 17, 19, 20, 26 and 28 are new.
+chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 26 and 28 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -143,7 +143,7 @@ ECDSA as Bitcoin uses it, BIP-340 Schnorr signatures and batch verification.
 | --- | --- | --- |
 | [19. Verify ECDSA](ch019-verify-ecdsa.md) | Runnable: native C and wasm | ECDSA verification over a 32-byte hash with the low-S rule as the caller's choice and one strict DER reader, checked against all 464 Wycheproof `ecdsa_secp256k1_sha256_bitcoin_test.json` cases, Python integers and libsecp256k1, natively and in Wasm. A high-S signature refuses under the low-S rule. |
 | [20. Sign with ECDSA](ch020-sign-with-ecdsa.md) | Runnable: native C and wasm | RFC 6979 signing with low-S, equal byte for byte to libsecp256k1 on all 2,020 signing rows of tiny-secp256k1's `ecdsa.json`, natively and in Wasm, with every signature verified by libsecp256k1, Python and chapter 19's verifier. A Memcheck secret probe finds one key-dependent branch, the declared validity decision. |
-| 21. Strict DER | Planned | Every DER case in Bitcoin Core's `script_tests.json` that BIP-66 decides gives its expected result. |
+| [21. Strict DER](ch021-strict-der.md) | Runnable: native C and wasm | BIP-66's `IsValidSignatureEncoding` rule by rule, with a refusal code for each, the low-S and sighash-type policy checks and Core's lax parser. All 89 DER rows of Bitcoin Core's `script_tests.json` give their expected result, and 38,088 encodings agree with Python and libsecp256k1's strict and lax parsers, natively and in Wasm. |
 | 22. Public key recovery and signed messages | Planned | Bitcoin Core `signmessage` signatures for pinned keys verify, and recovery returns the signing key. A recovery ID out of range refuses. |
 | [23. Verify a Schnorr signature](ch023-verify-a-schnorr-signature.md) | Runnable: native C and wasm | BIP-340 verification over byte-view messages, checked against all 19 rows of the official `test-vectors.csv`, including messages of 0, 1, 17 and 100 bytes, with a Nostr wrapper that requires 32-byte event IDs. |
 | [24. Sign with Schnorr](ch024-sign-with-schnorr.md) | Runnable: native C and wasm | BIP-340 signing with auxiliary randomness, a nonce that never repeats for different messages, and fixed-work self-verification before a signature is released. |

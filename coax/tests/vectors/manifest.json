@@ -619,7 +619,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "secp256k1-point-encodings"
+        "secp256k1-point-encodings",
+        "bip66-strict-der"
       ],
       "retrieved": "2026-11-02",
       "sha256": "ccfadc13f9b06888faf57a4a2f86dd8feff35c80aa710cbf3eb421f326b8d8b7",
@@ -811,6 +812,58 @@
           "sha256": "b5f89374e4e1dbdee7881e8573b4313b6a89430a9c8d518471599ae0660cf0e2"
         }
       ]
+    },
+    {
+      "path": "upstream/bitcoin-core/interpreter.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/interpreter.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bip66-strict-der"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "57a6f328c7e6202f499e48366a86eb26e09c8ebb78e92eef7e839207230be333",
+      "bytes": 91396
+    },
+    {
+      "path": "upstream/bitcoin-core/pubkey.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/pubkey.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bip66-strict-der"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "13e59d462a35ba37f818538454228822718c3328d219a6a022e345d69c4b1d99",
+      "bytes": 13018
+    },
+    {
+      "path": "upstream/bip66/fixtures.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoinjs/bip66/08169640fc2d9a5f4007f7a4493a2f4627c07cfc/test/fixtures.json",
+      "revision": "git:08169640fc2d9a5f4007f7a4493a2f4627c07cfc",
+      "license": "MIT (bitcoinjs/bip66 LICENSE)",
+      "covers": [
+        "bip66-strict-der"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "69b1504212b2596fdc62669e6193aebbb42c6e82ceec9f99ced205d557b7e83d",
+      "bytes": 6133
+    },
+    {
+      "path": "upstream/bip66/LICENSE",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoinjs/bip66/08169640fc2d9a5f4007f7a4493a2f4627c07cfc/LICENSE",
+      "revision": "git:08169640fc2d9a5f4007f7a4493a2f4627c07cfc",
+      "license": "MIT",
+      "covers": [
+        "license"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "51ad9defd71911dbe413daf277bcb2e1077743f5ee5ae48d0a3b90a5b7486f55",
+      "bytes": 1081
     }
   ]
 }

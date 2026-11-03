@@ -1,0 +1,70 @@
+a script signature from script_tests.json (P2PK)
+size 71: 0x30, length 68, 0x02, length 32, r, 0x02, length 32, s, sighash 1
+r: 0a5c6163f07b8d3b013c4d1d6dba25e780b39658d79ba37af7057a3b7f15ffa1
+s: 1fd9b4eaa9943f734928b99a83592c2e7bf342ea2680f6a2bb705167966b7420
+der_check_vartime: 0 (ok)
+chapter 19's reader on the DER part: true
+chapter 20's encoder gives the same bytes back: true
+encoding (r, s)
+r = 0x01: 8 bytes, 3006020101020101
+r = 0x7f: 8 bytes, 300602017f020101
+r = 0x80: 9 bytes, 300702020080020101
+r = 0x00ff: 9 bytes, 3007020200ff020101
+r, s of 32 bytes, top bit clear: 70 bytes; set: 72 bytes
+refusals
+8 bytes: code 1, fewer than 9 bytes
+74 bytes: code 2, more than 73 bytes
+9 bytes: code 3, not a SEQUENCE
+9 bytes: code 4, sequence length is not size - 3
+9 bytes: code 5, R length leaves no room for S
+9 bytes: code 6, lengths do not add up
+9 bytes: code 7, R not an INTEGER
+9 bytes: code 8, R empty
+9 bytes: code 9, R negative
+10 bytes: code 10, R padded
+9 bytes: code 11, S not an INTEGER
+9 bytes: code 12, S empty
+9 bytes: code 13, S negative
+10 bytes: code 14, S padded
+read by the lax parser, refused by BIP-66
+30440220d7a0417c... (70 bytes): lax true, BIP-66 code 9 (R negative)
+3044022000605584... (70 bytes): lax true, BIP-66 code 10 (R padded)
+3000020101020102... (8 bytes): lax true, BIP-66 code 4 (sequence length is not size - 3)
+3006020101020102... (10 bytes): lax true, BIP-66 code 4 (sequence length is not size - 3)
+3081060201010201... (9 bytes): lax true, BIP-66 code 4 (sequence length is not size - 3)
+3008028101010201... (9 bytes): lax true, BIP-66 code 4 (sequence length is not size - 3)
+low-S
+high-S signature: DER code 0, DERSIG OK, LOW_S SIG_HIGH_S
+with n - s: 71 bytes, LOW_S OK
+sighash type 0x04: DERSIG OK, STRICTENC SIG_HASHTYPE
+Bitcoin Core script_tests.json: 89 rows
+OK: 43 of 43
+EVAL_FALSE: 9 of 9
+SIG_DER: 30 of 30
+SIG_HIGH_S: 1 of 1
+SIG_HASHTYPE: 2 of 2
+NULLFAIL: 3 of 3
+SIG_NULLDUMMY: 1 of 1
+89 of 89 rows give the expected result
+bip66 fixtures
+valid: 9 of 9 accepted, r and s as listed
+"DER sequence length is too short": code 1 (fewer than 9 bytes)
+"DER sequence length is too long": code 2 (more than 73 bytes)
+"Expected DER sequence (48)": code 3 (not a SEQUENCE)
+"DER sequence length is invalid": code 4 (sequence length is not size - 3)
+"DER sequence length is invalid": code 4 (sequence length is not size - 3)
+"Expected DER integer (2)": code 7 (R not an INTEGER)
+"Expected DER integer (2)": code 6 (lengths do not add up)
+"R length is zero": code 8 (R empty)
+"S length is zero": code 12 (S empty)
+"R length is too long": code 5 (R length leaves no room for S)
+"S length is invalid": code 6 (lengths do not add up)
+"R value is negative": code 9 (R negative)
+"S value is negative": code 13 (S negative)
+"R value excessively padded": code 10 (R padded)
+"S value excessively padded": code 14 (S padded)
+refusals
+empty signature, all flags: OK
+8 bytes with DERSIG: SIG_DER
+8 bytes without flags: OK
+lax parser, 33 nonzero bytes of r: true, r = s = 0

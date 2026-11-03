@@ -1,0 +1,356 @@
+// Strict DER as Bitcoin script applies it (Bitcoin chapter 21): BIP-66's
+// IsValidSignatureEncoding rule by rule, with one refusal code per rule;
+// the low-S and sighash-type policy checks beside it; the script check that
+// combines them under the DERSIG, LOW_S and STRICTENC flags; and Bitcoin
+// Core's lax DER parser, which script still uses to read a signature for
+// verification and which decided every signature before BIP-66.
+//
+// A script signature is a DER signature followed by one sighash type byte.
+// Chapter 19's ecdsa_der_read_vartime reads exactly one canonical DER
+// signature without that byte, and chapter 20's ecdsa_der writes one.
+// Everything here reads public data, so it runs in variable time and every
+// procedure that decides ends in _vartime (Bitcoin chapter 3).
+#load "../crypto/ecdsa_verify.coax";
+
+// book:begin codes
+// Refusal codes of der_check_vartime, one per rule of Bitcoin Core's
+// IsValidSignatureEncoding, in the order Core tests them.
+DER_OK :: 0;
+DER_TOO_SHORT :: 1;       // fewer than 9 bytes
+DER_TOO_LONG :: 2;        // more than 73 bytes
+DER_NOT_SEQUENCE :: 3;    // the first byte is not 0x30
+DER_BAD_LENGTH :: 4;      // the sequence length is not the size minus 3
+DER_R_TOO_LONG :: 5;      // R's length leaves no room for S's length byte
+DER_LENGTHS :: 6;         // R's and S's lengths plus 7 are not the size
+DER_R_NOT_INTEGER :: 7;   // R's tag is not 0x02
+DER_R_EMPTY :: 8;         // R has length 0
+DER_R_NEGATIVE :: 9;      // R's first byte has its top bit set
+DER_R_PADDED :: 10;       // R starts with a 0x00 that no top bit needs
+DER_S_NOT_INTEGER :: 11;  // the same four rules for S
+DER_S_EMPTY :: 12;
+DER_S_NEGATIVE :: 13;
+DER_S_PADDED :: 14;
+
+// Script verification flags and the errors der_signature_check_vartime
+// returns, named as Bitcoin Core names them.
+SCRIPT_DERSIG :: 1;       // BIP-66, consensus since block 363,725
+SCRIPT_LOW_S :: 2;        // policy
+SCRIPT_STRICTENC :: 4;    // policy
+SIG_OK :: 0;
+SIG_DER :: 1;
+SIG_HIGH_S :: 2;
+SIG_HASHTYPE :: 3;
+// book:end codes
+
+DlLength :: struct { value: int; next: int; ok: bool; }
+
+// ---- checks
+// Bitcoin Core's script_tests.json: a 73-byte signature (R and S of 33
+// bytes, accepted) and a 74-byte one (R of 34, refused for its size).
+DR_73 :: "30460221010101010101010101010101010101010101010101010101010101010101010101022101010101010101010101010101010101010101010101010101010101010101010101";
+DR_74 :: "3047022201010101010101010101010101010101010101010101010101010101010101010101022101010101010101010101010101010101010101010101010101010101010101010101";
+#test "each rule of IsValidSignatureEncoding refuses alone, with its own code" {
+  b: [80] u8;
+  #assert der_check_vartime(ev_unhex("300602010102010101", b[..])) == DER_OK;          // 9 bytes, the shortest
+  #assert der_check_vartime(ev_unhex(DR_73, b[..])) == DER_OK;                         // 73 bytes, the longest
+  #assert der_check_vartime(ev_unhex(DR_74, b[..])) == DER_TOO_LONG;
+  #assert der_check_vartime(ev_unhex("3006020101020101", b[..])) == DER_TOO_SHORT;     // no sighash byte
+  #assert der_check_vartime(b[0..<0]) == DER_TOO_SHORT;
+  #assert der_check_vartime(ev_unhex("310602010102010101", b[..])) == DER_NOT_SEQUENCE;
+  #assert der_check_vartime(ev_unhex("300702010102010101", b[..])) == DER_BAD_LENGTH;
+  #assert der_check_vartime(ev_unhex("300502010102010101", b[..])) == DER_BAD_LENGTH;
+  #assert der_check_vartime(ev_unhex("300602040102010101", b[..])) == DER_R_TOO_LONG;   // 5 + 4 = 9, the size
+  #assert der_check_vartime(ev_unhex("300602050102010101", b[..])) == DER_R_TOO_LONG;
+  #assert der_check_vartime(ev_unhex("300602010102020101", b[..])) == DER_LENGTHS;      // 1 + 2 + 7 = 10
+  #assert der_check_vartime(ev_unhex("300602030102030201", b[..])) == DER_LENGTHS;      // 5 + 3 = 8: S's length is the sighash byte
+  #assert der_check_vartime(ev_unhex("300602010102000101", b[..])) == DER_LENGTHS;      // 1 + 0 + 7 = 8
+  #assert der_check_vartime(ev_unhex("300603010102010101", b[..])) == DER_R_NOT_INTEGER;
+  #assert der_check_vartime(ev_unhex("300602000202010101", b[..])) == DER_R_EMPTY;
+  #assert der_check_vartime(ev_unhex("300602018102010101", b[..])) == DER_R_NEGATIVE;
+  #assert der_check_vartime(ev_unhex("30070202000102010101", b[..])) == DER_R_PADDED;
+  #assert der_check_vartime(ev_unhex("300602010103010101", b[..])) == DER_S_NOT_INTEGER;
+  #assert der_check_vartime(ev_unhex("300602020101020001", b[..])) == DER_S_EMPTY;
+  #assert der_check_vartime(ev_unhex("300602010102018101", b[..])) == DER_S_NEGATIVE;
+  #assert der_check_vartime(ev_unhex("30070201010202000101", b[..])) == DER_S_PADDED;
+}
+#test "zeros: one alone, one before a top bit, none before a low byte" {
+  b: [80] u8;
+  #assert der_check_vartime(ev_unhex("300602010002010001", b[..])) == DER_OK;          // r = s = 0 is well encoded
+  #assert der_check_vartime(ev_unhex("3008020200800202008001", b[..])) == DER_OK;      // 0x00 before 0x80
+  #assert der_check_vartime(ev_unhex("3007020200ff02010101", b[..])) == DER_OK;
+  #assert der_check_vartime(ev_unhex("30070202010102010101", b[..])) == DER_OK;        // two bytes, no zero
+  #assert der_check_vartime(ev_unhex("30070201010202010101", b[..])) == DER_OK;
+  #assert der_check_vartime(ev_unhex("30070201010202007f01", b[..])) == DER_S_PADDED;  // 0x00 before 0x7f
+  #assert der_check_vartime(ev_unhex("30070202007f02010101", b[..])) == DER_R_PADDED;
+}
+// Reads der with the lax parser and compares r || s with the two 32-byte
+// hex values, or, when r and s are empty, expects a refusal that leaves
+// every byte of out as it was.
+lax_case :: (der: string, r: string, s: string) -> bool {
+  b: [600] u8; out: [64] u8; want: [64] u8;
+  for i: 0..<64 { out[i] = 7; }
+  for i: 0..<64 { want[i] = 7; }
+  read := der_read_lax_vartime(ev_unhex(der, b[..]), out[..]);
+  filled := ev_unhex(r, want[..]).count + ev_unhex(s, want[32..<64]).count;
+  if read != (filled == 64) { return false; }
+  for i: 0..<64 { if out[i] != want[i] { return false; } }
+  return true;
+}
+DR_ONE :: "0000000000000000000000000000000000000000000000000000000000000001";
+DR_TWO :: "0000000000000000000000000000000000000000000000000000000000000002";
+DR_ZERO :: "0000000000000000000000000000000000000000000000000000000000000000";
+DR_SEVENS :: "0707070707070707070707070707070707070707070707070707070707070707";
+DR_N1 :: "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140";
+#test "the lax parser reads what Core read before BIP-66" {
+  #assert lax_case("3006020101020102", DR_ONE, DR_TWO);
+  #assert lax_case("3006020101020102ffff", DR_ONE, DR_TWO);            // bytes after S
+  #assert lax_case("3000020101020102", DR_ONE, DR_TWO);                // a wrong sequence length
+  #assert lax_case("308106020101020102", DR_ONE, DR_TWO);              // a long-form sequence length
+  #assert lax_case("3080020101020102", DR_ONE, DR_TWO);                // 0x80: no length bytes
+  #assert lax_case("30050280020101", DR_ZERO, DR_ONE);                 // R's 0x80: an empty R
+  #assert lax_case("3006020101028100", DR_ONE, DR_ZERO);               // S's length bytes end the input
+  // R's length in two bytes, 0x0104: 259 zeros, then 1.
+  #assert lax_case("3000028201040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001020102", DR_ONE, DR_TWO);
+  #assert lax_case("308400000000020101020102", DR_ONE, DR_TWO);        // four length bytes, skipped
+  #assert lax_case("300802810101020102", DR_ONE, DR_TWO);              // a long-form R length
+  #assert lax_case("300a028300000101020102", DR_ONE, DR_TWO);          // zeros in front of it
+  #assert lax_case("300602010102810102", DR_ONE, DR_TWO);              // a long-form S length
+  #assert lax_case("300602010102840000000102", DR_ONE, DR_TWO);
+  #assert lax_case("300c020400000001020400000002", DR_ONE, DR_TWO);    // zeros before the values
+  #assert lax_case("3006020181020101", "0000000000000000000000000000000000000000000000000000000000000081", DR_ONE);  // "negative"
+  #assert lax_case("30050201010200", DR_ONE, DR_ZERO);                 // an empty S is zero
+  #assert lax_case("30050200020101", DR_ZERO, DR_ONE);
+  #assert lax_case("30250220fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140020101", DR_N1, DR_ONE);
+  #assert lax_case("30250201010220fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140", DR_ONE, DR_N1);
+  // A 34-byte R whose first two bytes are zero still fits in 32.
+  #assert lax_case("3027022200000000000000000000000000000000000000000000000000000000000000000001020102", DR_ONE, DR_TWO);
+}
+#test "lax_case tells a wrong result from a right one" {
+  #assert !lax_case("", DR_SEVENS, DR_SEVENS);                          // refused, though out matches
+  #assert !lax_case("3006020101020102", "", "");                        // read, though a refusal was expected
+  #assert !lax_case("3006020101020102", "0100000000000000000000000000000000000000000000000000000000000001", DR_TWO);
+  #assert !lax_case("3006020101020102", DR_ONE, "0000000000000000000000000000000000000000000000000000000000000003");
+}
+#test "four length bytes refuse, though the input is long enough" {
+  // R's length 0x01000000 fits this 16 MiB input; Core refuses it anyway.
+  big: [16777227] u8; out: [64] u8;
+  big[0] = 0x30; big[2] = 0x02; big[3] = 0x84; big[4] = 1; big[8] = 1;
+  big[16777224] = 0x02; big[16777225] = 1; big[16777226] = 1;
+  #assert !der_read_lax_vartime(big[..], out[..]);
+}
+#test "the lax parser refuses broken structure and zeroes an overflow" {
+  b: [96] u8; out: [63] u8;
+  #assert lax_case("", "", "") && lax_case("31", "", "") && lax_case("30", "", "");
+  #assert lax_case("30ff020101020102", "", "");                        // 127 length bytes, 6 remain
+  #assert lax_case("3085020101", "", "");
+  #assert lax_case("3006", "", "") && lax_case("300603", "", "") && lax_case("300602", "", "");
+  #assert lax_case("30060281", "", "");                                // R's length bytes past the end
+  #assert lax_case("300702810000020101", "", "");                      // an empty R, then 0x00 where S's tag goes
+  #assert lax_case("300a028401000000", "", "");                        // 4 length bytes after the zeros
+  #assert lax_case("3006028400000001", "", "");                        // R's 1 byte past the end
+  #assert lax_case("3006020201", "", "") && lax_case("3006020101", "", "");
+  #assert lax_case("300602010103", "", "") && lax_case("30060201010201", "", "");
+  #assert lax_case("30060201010202ff", "", "");                        // S past the end
+  #assert lax_case("3006020101028201", "", "") && lax_case("300602010102810202", "", "");
+  #assert lax_case("300a02010102840100000002", "", "");
+  #assert !der_read_lax_vartime(ev_unhex("3006020101020102", b[..]), out[..]);   // a short output
+  // 33 nonzero bytes overflow, as does a value at least n, in R or in S:
+  // then the whole signature reads as zero.
+  #assert lax_case("30280221010000000000000000000000000000000000000000000000000000000000000000020101", DR_ZERO, DR_ZERO);
+  #assert lax_case("30280201010221010000000000000000000000000000000000000000000000000000000000000000", DR_ZERO, DR_ZERO);
+  #assert lax_case("30250220fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141020101", DR_ZERO, DR_ZERO);
+  #assert lax_case("30250201010220fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", DR_ZERO, DR_ZERO);
+}
+#test "low-S and the sighash type" {
+  b: [80] u8;
+  // s = (n-1)/2 is low and (n+1)/2 is high; s at least n reads as zero,
+  // which is low.
+  low := "302502010102207fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a001";
+  high := "302502010102207fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a101";
+  #assert der_check_vartime(ev_unhex(low, b[..])) == DER_OK && der_low_s_vartime(ev_unhex(low, b[..]));
+  #assert der_check_vartime(ev_unhex(high, b[..])) == DER_OK && !der_low_s_vartime(ev_unhex(high, b[..]));
+  over := "3026020101022100fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd036414101";
+  #assert der_check_vartime(ev_unhex(over, b[..])) == DER_OK && der_low_s_vartime(ev_unhex(over, b[..]));
+  #assert !der_low_s_vartime(ev_unhex("31", b[..])) && !der_low_s_vartime(b[0..<0]);
+  for t: 0..<256 {
+    sig := ev_unhex("300602010102010101", b[..]); sig[8] = cast(u8) t;
+    base := t & 0x7f;
+    #assert der_hashtype_defined_vartime(sig) == (base >= 1 && base <= 3);
+  }
+  #assert !der_hashtype_defined_vartime(b[0..<0]);
+}
+DR_HIGH :: "302502010102207fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a1";
+#test "the script check: which flag applies which rule" {
+  b: [80] u8; all := SCRIPT_DERSIG | SCRIPT_LOW_S | SCRIPT_STRICTENC;
+  #assert der_signature_check_vartime(ev_unhex("300602010102010101", b[..]), all) == SIG_OK;
+  #assert der_signature_check_vartime(b[0..<0], all) == SIG_OK;                   // empty: allowed
+  bad := "300602010102020101";                                                    // DER_LENGTHS
+  #assert der_signature_check_vartime(ev_unhex(bad, b[..]), 0) == SIG_OK;
+  #assert der_signature_check_vartime(ev_unhex(bad, b[..]), SCRIPT_DERSIG) == SIG_DER;
+  #assert der_signature_check_vartime(ev_unhex(bad, b[..]), SCRIPT_LOW_S) == SIG_DER;
+  #assert der_signature_check_vartime(ev_unhex(bad, b[..]), SCRIPT_STRICTENC) == SIG_DER;
+  high := ev_unhex(DR_HIGH, b[..]); b[high.count] = 0x01; high = b[0..<high.count+1];
+  #assert der_signature_check_vartime(high, SCRIPT_DERSIG | SCRIPT_STRICTENC) == SIG_OK;
+  #assert der_signature_check_vartime(high, SCRIPT_LOW_S) == SIG_HIGH_S;
+  b[high.count-1] = 0x04;                                                         // sighash type 4
+  #assert der_signature_check_vartime(high, all) == SIG_HIGH_S;                   // low-S comes first
+  #assert der_signature_check_vartime(ev_unhex("300602010102010104", b[..]), SCRIPT_DERSIG | SCRIPT_LOW_S) == SIG_OK;
+  #assert der_signature_check_vartime(ev_unhex("300602010102010104", b[..]), SCRIPT_STRICTENC) == SIG_HASHTYPE;
+  #assert der_signature_check_vartime(ev_unhex("300602010102020104", b[..]), all) == SIG_DER;  // DER first
+}
+// Wycheproof tcId 346 (chapter 19), valid, whose x(R) is at least n. The
+// hash is SHA-256 of its message, from Python's hashlib.
+DR_KEY :: "0407310f90a9eae149a08402f54194a0f7b4ac427bf8d9bd6c7681071dc47dc36226a6d37ac46d61fd600c0bf1bff87689ed117dda6b0e59318ae010a197a26ca0";
+DR_HASH :: "bb5a52f42f9c9261ed4361f59422a1e30036e7c32b270c8807a419feca605023";
+#test "checksig strips the sighash byte, reads laxly and accepts high S" #steps 2000000000 {
+  k: [65] u8; h: [32] u8; d: [80] u8;
+  key := ev_unhex(DR_KEY, k[..]); hash := ev_unhex(DR_HASH, h[..]);
+  #assert der_checksig_vartime(hash, key, ev_unhex("30160211014551231950b75fc4402da1722fc9baeb02010301", d[..]));
+  // A needless zero in front of r: the lax parser still reads it.
+  #assert der_checksig_vartime(hash, key, ev_unhex("3017021200014551231950b75fc4402da1722fc9baeb02010301", d[..]));
+  // s replaced by n - s: the verifier takes both halves, as Core's does after normalizing.
+  #assert der_checksig_vartime(hash, key, ev_unhex("30360211014551231950b75fc4402da1722fc9baeb022100fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd036413e01", d[..]));
+  #assert !der_checksig_vartime(hash, key, ev_unhex("30160211014551231950b75fc4402da1722fc9baeb02010401", d[..]));  // s = 4
+  #assert !der_checksig_vartime(hash, key, ev_unhex("31160211014551231950b75fc4402da1722fc9baeb02010301", d[..]));  // no lax reading
+  #assert !der_checksig_vartime(hash, key, d[0..<0]);
+}
+
+// ---- BIP-66
+// book:begin check
+// The four rules for one INTEGER: its tag at sig[at], its length at
+// sig[at+1], its value from sig[at+2]. Returns DER_OK, or first plus the
+// rule's place: first is DER_R_NOT_INTEGER for R and DER_S_NOT_INTEGER for S.
+// The caller has checked that the value lies inside sig.
+dr_integer_vartime :: (sig: [] u8, at: int, first: int) -> int {
+  length := cast(int) sig[at+1]; value := at + 2;
+  if sig[at] != 0x02 { return first; }                                  // not an INTEGER
+  if length == 0 { return first + 1; }                                  // empty
+  if (sig[value] & 0x80) != 0 { return first + 2; }                     // negative
+  if length > 1 && sig[value] == 0 && (sig[value+1] & 0x80) == 0 { return first + 3; }   // padded
+  return DER_OK;
+}
+// Bitcoin Core's IsValidSignatureEncoding on a script signature: DER, then
+// one sighash type byte. Returns DER_OK or the code of the first rule that
+// refuses, testing the rules in Core's order. It does not read r or s as
+// numbers: a value of 0 or at least n is well encoded.
+der_check_vartime :: (sig: [] u8) -> int #export_c {
+  size := sig.count;
+  if size < 9 { return DER_TOO_SHORT; }
+  if size > 73 { return DER_TOO_LONG; }
+  if sig[0] != 0x30 { return DER_NOT_SEQUENCE; }
+  if cast(int) sig[1] != size - 3 { return DER_BAD_LENGTH; }            // the sighash byte is outside
+  length_r := cast(int) sig[3];
+  if 5 + length_r >= size { return DER_R_TOO_LONG; }
+  length_s := cast(int) sig[5+length_r];
+  if length_r + length_s + 7 != size { return DER_LENGTHS; }
+  r := dr_integer_vartime(sig, 2, DER_R_NOT_INTEGER);
+  if r != DER_OK { return r; }
+  return dr_integer_vartime(sig, length_r + 4, DER_S_NOT_INTEGER);
+}
+// book:end check
+
+// ---- policy
+// book:begin policy
+// IsLowDERSignature after the encoding check: s, read by the lax parser
+// without the sighash byte, is at most (n-1)/2. A value of s at least n
+// reads as zero (the whole signature does), so it counts as low; the
+// verifier refuses it.
+der_low_s_vartime :: (sig: [] u8) -> bool #export_c {
+  compact: [64] u8;
+  if sig.count == 0 || !der_read_lax_vartime(sig[0..<sig.count-1], compact[..]) { return false; }
+  return !ev_high_s_vartime(sc_load(compact[32..<64]).value);
+}
+// IsDefinedHashtypeSignature: the last byte, without ANYONECANPAY (0x80),
+// is SIGHASH_ALL (1), SIGHASH_NONE (2) or SIGHASH_SINGLE (3).
+der_hashtype_defined_vartime :: (sig: [] u8) -> bool #export_c {
+  if sig.count == 0 { return false; }
+  base := cast(int) sig[sig.count-1] & 0x7f;
+  return base >= 1 && base <= 3;
+}
+// book:end policy
+
+// ---- script
+// book:begin script
+// CheckSignatureEncoding: what CHECKSIG and CHECKMULTISIG check before they
+// verify a signature, under the script flags. An empty signature passes:
+// script uses it to fail a check on purpose. Any of the three flags applies
+// BIP-66; LOW_S adds the low-S rule and STRICTENC the sighash type.
+der_signature_check_vartime :: (sig: [] u8, flags: int) -> int #export_c {
+  if sig.count == 0 { return SIG_OK; }
+  if (flags & (SCRIPT_DERSIG | SCRIPT_LOW_S | SCRIPT_STRICTENC)) != 0 && der_check_vartime(sig) != DER_OK { return SIG_DER; }
+  if (flags & SCRIPT_LOW_S) != 0 && !der_low_s_vartime(sig) { return SIG_HIGH_S; }
+  if (flags & SCRIPT_STRICTENC) != 0 && !der_hashtype_defined_vartime(sig) { return SIG_HASHTYPE; }
+  return SIG_OK;
+}
+// The verification CHECKSIG does after that check, for a hash the caller
+// computed for the signature's sighash type: drop the sighash byte, read
+// the rest with the lax parser, and verify with either half of s, as Core
+// does after secp256k1_ecdsa_signature_normalize. The key is SEC 1
+// (chapter 17); hybrid keys (0x06, 0x07) refuse here and are chapter 36's.
+der_checksig_vartime :: (hash: [] u8, public_key: [] u8, sig: [] u8) -> bool #export_c {
+  compact: [64] u8;
+  if sig.count == 0 || !der_read_lax_vartime(sig[0..<sig.count-1], compact[..]) { return false; }
+  return ecdsa_verify_vartime(hash, public_key, compact[..], false);
+}
+// book:end script
+
+// ---- the lax parser
+// book:begin lax
+// One INTEGER length at der[at]: below 0x80 it is the length; 0x80 + k is
+// followed by k bytes, big-endian. Core skips their leading zeros and
+// refuses when 4 or more bytes remain, that is, when the length is at
+// least 2^24, which is the test here. ok is false where Core returns 0.
+dl_length_vartime :: (der: [] u8, at: int) -> DlLength {
+  if at == der.count { return DlLength.{}; }
+  first := cast(int) der[at]; pos := at + 1;
+  if first < 0x80 { return DlLength.{value=first,next=pos,ok=true}; }
+  count := first - 0x80;
+  if count > der.count - pos { return DlLength.{}; }
+  value := 0;
+  for i: 0..<count {
+    value = value * 256 + cast(int) der[pos+i];
+    if value >= 0x1000000 { return DlLength.{}; }
+  }
+  return DlLength.{value=value,next=pos+count,ok=true};
+}
+// The value der[start..<start+length], right-aligned in out (32 bytes);
+// false when a nonzero byte lies to the left of out. The bytes are read
+// from the left, so a refusal comes before any write.
+dl_copy_vartime :: (der: [] u8, start: int, length: int, out: [] u8) -> bool {
+  for i: 0..<length {
+    place := length - 1 - i;                                            // bytes to its right
+    if place >= out.count {
+      if der[start+i] != 0 { return false; }
+    } else {
+      out[out.count-1-place] = der[start+i];
+    }
+  }
+  return true;
+}
+// Bitcoin Core's ecdsa_signature_parse_der_lax (pubkey.cpp), the parser
+// script uses before it verifies: 0x30, a sequence length it skips, then
+// two INTEGERs with short or long lengths and anything after them. It
+// refuses only a structure it cannot follow. A value of more than 32 bytes
+// after its zeros, or at least n, makes the whole r || s zero, which no
+// verifier accepts. out (64 bytes) is written only when the result is true.
+der_read_lax_vartime :: (der: [] u8, out: [] u8) -> bool #export_c {
+  if out.count != 64 || der.count == 0 || der[0] != 0x30 || der.count == 1 { return false; }
+  pos := 2;
+  if (der[1] & 0x80) != 0 { pos += cast(int) der[1] - 0x80; }          // long form: skip its bytes
+  if pos >= der.count || der[pos] != 0x02 { return false; }
+  r := dl_length_vartime(der, pos + 1);
+  if !r.ok { return false; }
+  pos = r.next + r.value;
+  if pos >= der.count || der[pos] != 0x02 { return false; }
+  s := dl_length_vartime(der, pos + 1);
+  if !s.ok || s.value > der.count - s.next { return false; }
+  compact: [64] u8;
+  r_fits := dl_copy_vartime(der, r.next, r.value, compact[0..<32]);
+  s_fits := dl_copy_vartime(der, s.next, s.value, compact[32..<64]);
+  if !r_fits || !s_fits || !sc_load(compact[0..<32]).ok || !sc_load(compact[32..<64]).ok {
+    for i: 0..<64 { compact[i] = 0; }
+  }
+  for i: 0..<64 { out[i] = compact[i]; }
+  return true;
+}
+// book:end lax

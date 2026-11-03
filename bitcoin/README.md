@@ -59,7 +59,7 @@ written; the rest are planned, with the existing code named in the
 
 Everything Nostr used is built. Bitcoin and Lightning also need:
 
-- Public key recovery and strict DER (BIP-66).
+- Public key recovery.
 - Batch Schnorr verification, Taproot script trees and tapscript.
 - MuHash3072, Merkle trees with the duplicate-leaf flaw, compact targets and
   chainwork.

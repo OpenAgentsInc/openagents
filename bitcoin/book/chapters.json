@@ -478,14 +478,23 @@
   {
    "number": 21,
    "title": "Strict DER",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch021-strict-der.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
-    19
+    19,
+    20
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/der.coax",
+    "coax/lib/crypto/ecdsa_sign.coax",
+    "bitcoin/examples/strict-der.coax",
+    "bitcoin/examples/checks/strict-der.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {
