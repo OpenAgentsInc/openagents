@@ -3,6 +3,10 @@
 // published only after the shared reader recomputes its ID from it, so the
 // preimage is the one event.coax verifies. Call until the result is not
 // EVENT_MORE: a positive result is the event's length in out.
+// Checked alone (coax check --library), the secp256k1 generator table that
+// signing builds at compile time takes about 63.4 million steps, past the
+// default 100000. Loaded, this is ignored: the loading program declares its own.
+#run_steps 100000000;
 #load "../crypto/schnorr_sign.coax";
 #load "event.coax";
 #load "../../tests/nostr/event_sign_vectors.coax";

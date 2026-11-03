@@ -34,6 +34,10 @@
 // relay lists), the write-verify step, NIP-09 deletion requests, listing
 // across relays, and wiki-link reachability.
 //   coax/bin/coax test coax/lib/nostr/nipae.coax --library --run-steps 250000000
+// Checked alone (coax check --library), the secp256k1 generator table that
+// signing builds at compile time takes about 63.4 million steps, past the
+// default 100000. Loaded, this is ignored: the loading program declares its own.
+#run_steps 100000000;
 #load "nip44-key.coax";
 #load "event.coax";
 #load "event_sign.coax";

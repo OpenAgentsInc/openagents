@@ -25,6 +25,10 @@
 // the conversation key is a zeroed local. Plain stores, as in nip44-key.coax.
 //
 // Checks: coax test coax/lib/nostr/host/grant.coax --run-steps 250000000 (its secp tables are built at compile time).
+// Checked alone (coax check --library), its fixture constants take 102,000 to
+// 135,000 compile-time steps, past the default 100000. Loaded, this is
+// ignored: the loading program declares its own.
+#run_steps 1000000;
 #load "../adapters/host-proto-import.coax";
 #load "../nip44-key.coax";
 #load "../event.coax";

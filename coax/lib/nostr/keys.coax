@@ -33,6 +33,10 @@
 // verification is variable-time. Only the local slot handles a secret.
 //
 // Checks: coax test coax/lib/nostr/keys.coax --run-steps 250000000 (its secp tables are built at compile time).
+// Checked alone (coax check --library), the secp256k1 generator table that
+// signing builds at compile time takes about 63.4 million steps, past the
+// default 100000. Loaded, this is ignored: the loading program declares its own.
+#run_steps 100000000;
 #load "event_sign.coax";
 #authority;
 

@@ -14,6 +14,10 @@
 // refuses an unbound write (caller-policy.coax).
 //   h: [N98S_HEADER] u8;
 //   n := n98s_header(key, aux, nonce, now_s, url, "POST", body_bytes, true, h[..]);   // its length, or -1
+// Checked alone (coax check --library), the secp256k1 generator table that
+// signing builds at compile time takes about 63.4 million steps, past the
+// default 100000. Loaded, this is ignored: the loading program declares its own.
+#run_steps 100000000;
 #load "event_sign.coax";
 #load "base64.coax";
 #authority;

@@ -44,6 +44,10 @@
 // Its signing tables are computed at compile time: build it with
 // --run-steps 250000000 (COAXIAL_RUN_STEPS for coax/web/wasm.sh).
 // Checks: coax/bin/coax test coax/lib/nostr/host/browser.coax --library --run-steps 250000000 --only "browser: "
+// Checked alone (coax check --library), the secp256k1 generator table that
+// signing builds at compile time takes about 63.4 million steps, past the
+// default 100000. Loaded, this is ignored: the loading program declares its own.
+#run_steps 100000000;
 #load "../nip44-key.coax";
 #load "../event.coax";
 #load "../event_sign.coax";

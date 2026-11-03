@@ -58,8 +58,9 @@ member = identifier, [ "=", expression ], ";" ;
 assertion = "#assert", expression, ";" ;
 authority = "#authority", ";" ;
 run-budget = "#run_steps", integer, ";" ;
-(* 1..250000000: the compilation's compile-time step budget. Only the entry
-   file declares it, at most once; --run-steps N overrides it. *)
+(* 1..250000000: the compilation's compile-time step budget, at most once a
+   file. Only the entry file's applies (a loaded file's is ignored);
+   --run-steps N overrides it. *)
 check = "#test", string, [ budget ], block
       | "#forall", [ string ], binding, { ",", binding }, [ budget ], block ;
 budget = "#steps", integer ;  (* positive: the check's own step budget *)

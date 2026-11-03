@@ -35,6 +35,10 @@
 // send refuses any kind but 14 and 15, and nip04.coax only reads old ones.
 //
 // Checks: coax test coax/lib/nostr/nip17.coax --run-steps 250000000
+// Checked alone (coax check --library), the secp256k1 generator table that
+// signing builds at compile time takes about 63.4 million steps, past the
+// default 100000. Loaded, this is ignored: the loading program declares its own.
+#run_steps 100000000;
 #load "nip59.coax";
 #load "tags.coax";
 #load "../net/relay_uri.coax";

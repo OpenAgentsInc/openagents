@@ -81,7 +81,37 @@ std::vector<coax_t_PS_Token> parser_tokens(const std::vector<Token> &tokens) {
   return input;
 }
 }
-bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File *out,bool development) {
+// #run_steps N; is the budget of the compile whose entry file declares it. A
+// loaded file's well-formed declaration is dropped here, before the parser
+// sees it, so a library declares what it needs when it is checked alone and
+// never raises the budget of a program that loads it. A malformed one still
+// reaches the parser (E0224), and so does a second one in the same file.
+// False with E0224 reported when a loaded file declares it twice.
+bool drop_loaded_run_steps(const Source *src,const std::vector<Token> &tokens,std::vector<Token> *kept) {
+  kept->clear();kept->reserve(tokens.size());
+  if(src->units.size()<2) {*kept=tokens;return true;}
+  const std::string &entry=src->units.front()->path;
+  std::vector<std::string> declared;
+  for(size_t i=0;i<tokens.size();i++) {
+    const auto &t=tokens[i];
+    // N from 1 through parser.coax's PS_RUN_STEPS_MAX, as the parser requires.
+    if(t.kind==Tok::directive && str_eq(t.text,"run_steps") && i+2<tokens.size() && tokens[i+1].kind==Tok::int_lit &&
+       tokens[i+1].int_value>=1 && tokens[i+1].int_value<=250000000 && tokens[i+2].kind==Tok::semicolon) {
+      const auto at=source_point(src,t.loc);
+      if(at.path!=entry) {
+        for(const auto &path:declared) if(path==at.path) {
+          error_at(src,t.loc,"E0224","#run_steps is declared more than once","declare one #run_steps N; in a file");return false;
+        }
+        declared.push_back(at.path);i+=2;continue;
+      }
+    }
+    kept->push_back(t);
+  }
+  return true;
+}
+bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,File *out,bool development) {
+  std::vector<Token> tokens;
+  if(!drop_loaded_run_steps(src,all_tokens,&tokens)) return false;
   auto input=parser_tokens(tokens);
   const auto caps=PS_caps((int64_t)input.size(),(int64_t)src->text.size());
   zvec<coax_t_PS_Node> nodes((size_t)caps.nodes);zvec<uint8_t> message((size_t)caps.message);
@@ -174,15 +204,8 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
     p->authority=src->units.empty()?nodes[(size_t)result.root].flag:source_authority(src,p->loc);
     p->root_source=src->units.empty() || source_point(src,p->loc).path==src->units.front()->path;
   }
-  // #run_steps N; is the entry file's to declare: a loaded library does not
-  // raise the budget of every program that loads it.
-  if(nodes[(size_t)result.root].value) {
-    const Loc at=parser_loc(nodes[(size_t)result.root].loc2);
-    if(!src->units.empty() && source_point(src,at).path!=src->units.front()->path) {
-      error_at(src,at,"E0224","#run_steps is declared only in the entry file, not in a loaded file");return false;
-    }
-    out->run_steps=nodes[(size_t)result.root].value;
-  }
+  // The entry file's #run_steps N; (a loaded file's never reaches the parser).
+  if(nodes[(size_t)result.root].value) out->run_steps=nodes[(size_t)result.root].value;
   out->src=src;out->authority=nodes[(size_t)result.root].flag;out->imports=to_slice(arena,imports);out->procs=to_slice(arena,procs);
   out->constants=to_slice(arena,constants);out->structs=to_slice(arena,structs);out->enums=to_slice(arena,enums);out->unions=to_slice(arena,unions);out->assertions=to_slice(arena,assertions);out->checks=to_slice(arena,checks);
   attach_check_input(out,nodes,objects,state.used);

@@ -13,6 +13,10 @@
 // caller's workspace, which is cleared on every return, and decide no
 // branch or index. Their public points come from the fixed-base comb k*G
 // (Bitcoin chapter 16).
+// Checked alone (coax check --library), the secp256k1 generator table that
+// signing builds at compile time takes about 63.4 million steps, past the
+// default 100000. Loaded, this is ignored: the loading program declares its own.
+#run_steps 100000000;
 #load "nipkeys.coax";
 #load "../bitcoin/sighash.coax";
 #load "../../tests/nostr/keys_sign_fixtures.coax";

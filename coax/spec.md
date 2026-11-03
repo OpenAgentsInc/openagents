@@ -911,10 +911,13 @@ Limits for the bootstrap:
 | Cast, enum value or shift out of range | E0411. |
 
 A program whose compile-time tables need more than the default declares its
-budget once, at the top level of its entry file: `#run_steps 250000000;`
-(an integer literal, 1 through 250,000,000; E0224 otherwise, for a second
-declaration and for one in a loaded file, so a library never raises the budget
-of every program that loads it). `--run-steps N` replaces the declared value.
+budget once, at the top level of a file: `#run_steps 250000000;` (an integer
+literal, 1 through 250,000,000; E0224 otherwise, and for a second declaration
+in the same file). Only the entry file's declaration applies. A library may
+declare the budget it needs when it is checked alone (`coax check --library
+FILE`); when it is loaded, its well-formed declaration is ignored, so a
+library never raises the budget of a program that loads it, and that program
+declares its own. `--run-steps N` replaces the declared value.
 
 The optional decimal `--run-steps N` applies to all compile commands, including
 `test` and `mutate`; it changes frontend evaluation only. It does not change

@@ -85,7 +85,7 @@ severity, code, message, source span, notes and proposed fixes.
 | `E0221` | parser resource limit | The Coax parser requires an EOF-terminated lexer token stream, caller-owned indexed-tree storage and at most 128 active recursive grammar entries. Reduce syntax nesting or supply the capacities returned by PS_caps. No partial syntax tree is admitted after a failure. |
 | `E0223` | malformed struct parameter list | A generic struct lists its parameters as $NAME, each once, separated by ',': Pair :: struct($T) { a: $T; b: $T; } or Box :: struct($T, $N) { items: [$N] $T; }. |
 | `E0222` | qualified name reaches through an alias | A qualified name is one module alias and one declaration: hud.Slot, hud.frame(x). Aliases are not reexported, so a.b.Name is refused; load that module with its own alias. |
-| `E0224` | malformed #run_steps | #run_steps N; declares the compile-time step budget of the whole compilation, N a whole number from 1 through 250000000: #run_steps 250000000;. Only the entry file declares it, at most once; a loaded file cannot. --run-steps N on the command line overrides it. |
+| `E0224` | malformed #run_steps | #run_steps N; declares the compile-time step budget of the whole compilation, N a whole number from 1 through 250000000: #run_steps 250000000;. A file declares it at most once, and only the entry file's applies: a loaded file's is ignored, so a library declares what it needs when checked alone and never raises the budget of a program that loads it. --run-steps N on the command line overrides it. |
 
 ## E03xx: checker
 

@@ -27,7 +27,10 @@ shared step budget: every `#run` and constant in the program draws on it, and
 each constant is evaluated once. A program whose tables need more (the
 secp256k1 generator table alone is about 63 million steps) declares its budget
 in its entry file, `#run_steps 250000000;`, as `apps/openagents-cli/main.coax`
-does; `--run-steps N` overrides it for one run. The `note: compile-time call
+does; `--run-steps N` overrides it for one run. A library that builds such a
+table declares it too, for when it is checked alone (`coax check --library`,
+as `coax/lib/nostr/keys.coax` does); loaded, its declaration is ignored, and
+the loading program declares its own. The `note: compile-time call
 at` lines name the file and line of each call, loaded files included.
 
 ## Build and inspect

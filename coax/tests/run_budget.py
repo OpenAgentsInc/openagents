@@ -217,11 +217,45 @@ class RunBudgetTests(unittest.TestCase):
         r = self.invoke('#run_steps 9; #run_steps 9; main :: () {}', 'check')
         self.assertEqual(r.returncode, 1, r.stderr)
         self.assertIn('E0224', r.stderr)
-        (Path(self.tmp.name) / 'tables.coax').write_text('#run_steps 1000000; ' + self.WORK.replace(' main :: () {}', ''))
+
+    # GitHub #12679: a library declares the budget it needs when it is
+    # checked alone; loaded, its declaration never raises the loader's.
+    def test_library_budget_applies_only_when_it_is_the_entry(self):
+        tables = Path(self.tmp.name) / 'tables.coax'
+        tables.write_text('#run_steps 1000000; ' + self.WORK.replace(' main :: () {}', ''))
+        report = Path(self.tmp.name) / 'alone.json'
+        r = subprocess.run([str(COMPILER), 'check', '--library', str(tables), '--timings', str(report)],
+                           text=True, capture_output=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(report.read_text())['run_steps'], 1000000)
+        # Loaded, it is ignored: the loader keeps the default and runs out.
         r = self.invoke('#load "tables.coax"; main :: () {}', 'check')
         self.assertEqual(r.returncode, 1, r.stderr)
-        self.assertIn('E0224', r.stderr)
-        self.assertIn('entry file', r.stderr)
+        self.assertIn('exceeded 100000 steps', r.stderr)
+        self.assertNotIn('E0224', r.stderr)
+        # The loader's own declaration, smaller or larger, is the one used,
+        # before or after the #load; two are not "declared more than once".
+        for entry in ('#run_steps 1000; #load "tables.coax"; main :: () {}',
+                      '#load "tables.coax"; #run_steps 1000; main :: () {}'):
+            with self.subTest(entry=entry):
+                r = self.invoke(entry, 'check')
+                self.assertEqual(r.returncode, 1, r.stderr)
+                self.assertIn('exceeded 1000 steps', r.stderr)
+        report = Path(self.tmp.name) / 'loader.json'
+        r = self.invoke('#load "tables.coax"; #run_steps 2000000; main :: () {}', 'check', '--timings', str(report))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(report.read_text())['run_steps'], 2000000)
+        # --run-steps still overrides whatever the entry declares.
+        r = self.invoke('#load "tables.coax"; main :: () {}', 'check', '--run-steps', '1000000')
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_loaded_declaration_is_still_well_formed(self):
+        for bad in ('0', '250000001', '1.5', 'x', '9; #run_steps 9'):
+            with self.subTest(value=bad):
+                (Path(self.tmp.name) / 'tables.coax').write_text('#run_steps %s; T :: 1;' % bad)
+                r = self.invoke('#load "tables.coax"; main :: () {}', 'check')
+                self.assertEqual(r.returncode, 1, r.stderr)
+                self.assertIn('E0224', r.stderr)
 
     def test_call_trace_names_the_loaded_file_and_its_line(self):
         (Path(self.tmp.name) / 'tables.coax').write_text('\n\n' + self.WORK.replace(' main :: () {}', ''))
