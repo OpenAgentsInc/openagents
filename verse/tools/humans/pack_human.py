@@ -41,7 +41,8 @@ piece's material, the normal and tangent (octahedral, 2 x unorm16 each), the bit
 sign, uv (2 x unorm16), four joints (u8) and their weights (u8, 255ths summing to 255), and the
 layers its material reads (base, normal, rough; 255 none).
 
-Materials: 1 skin, 2 eye, 3 hair, 4 brow, 5 cloth, 6 teeth, 7 eye wet layer.
+Materials: 1 skin, 2 eye, 3 hair, 4 brow, 5 cloth, 6 teeth, 7 eye wet layer, 8 to 16 more
+cloths (a colour each, from the portrait's materials). A material with no base layer is its tint.
 """
 import io, math, os, struct, sys
 from pathlib import Path
@@ -55,6 +56,7 @@ SPAN, LOW = 2.5, -0.25
 JOINTS = 65
 NONE = 255
 MATERIALS = {"skin": 1, "eye": 2, "hair": 3, "brow": 4, "cloth": 5, "teeth": 6, "wet": 7}
+MATERIALS.update({f"cloth{k}": 8 + k for k in range(9)})   # more cloths, each its own colour
 OUT_DIR = Path.home() / ".openagents/verse/private-build/web"
 
 QUATERNIUS = "~/Downloads/Universal Base Characters[Standard]"

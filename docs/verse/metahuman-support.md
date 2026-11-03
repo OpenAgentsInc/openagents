@@ -507,7 +507,14 @@ It holds no MetaHuman asset and draws with none.
   must sum to 255 and joints stay under 65, or it refuses.
   `pack_human.py standin` builds a CC0 stand-in (the Quaternius superhero
   male with eyes, brows and hair, on the rig already) for checking the look.
-  `pack_human.py metahuman EXPORT_DIR` is the MetaHuman source.
+  `pack_human.py metahuman EXPORT_DIR` is the MetaHuman source. When the
+  export's portrait (`latest/mh.neutral.glb`) is there, its grooms (hair cards
+  and brows, rigid to the head) and clothes join the pack: each clothing
+  vertex takes the weights of the nearest body vertex, and each cloth colour
+  becomes one of nine cloth materials (8 to 16).
+- **Hair and eyes.** Hair cards are lit along their strands (two shifted
+  Kajiya-Kay highlights, after Marschner's R and TRT lobes), not by GGX.
+  Eyes add a Fresnel sky reflection on the cornea and a sharp key glint.
 - **Private loading.** The world's assets are `private:human`. `host.js` asks
   for `/private/NAME.pack` only on a local address whose URL has `?pack`
   (`?pack=standin` for the stand-in), never in a golden; `serve.c` serves

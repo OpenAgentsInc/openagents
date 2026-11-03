@@ -24,16 +24,16 @@
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 40000;
-UNIFORM_FLOATS :: 324;
+UNIFORM_FLOATS :: 356;
 // The uniform block (gpu/metahumanlab.coax reads it at these float offsets).
 U_FLAGS :: 4; U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32;
 U_BOUND :: 36; U_HEAD :: 40; U_HEAD_F :: 44; U_HEAD_U :: 48; U_CAPS :: 52;
 CAPS :: 26;   // capsules, two vec4s each: (a, radius), (b, material)
-// The mesh's rows (a human pack): the figure's turn and place, the key's shadow box, eight
+// The mesh's rows (a human pack): the figure's turn and place, the key's shadow box, sixteen
 // materials, and the light rig (fill, rim, the key's strength and the exposure).
-U_FIG :: 260; U_LIGHT :: 264; U_MAT :: 280; U_RIG :: 312;
-MATS :: 8;
-DRAWS_MAX :: 16;
+U_FIG :: 260; U_LIGHT :: 264; U_MAT :: 280; U_RIG :: 344;
+MATS :: 16;
+DRAWS_MAX :: 48;
 // The pack's assets in the page's list (realms.json "private:human"): its catalog, vertices,
 // indices and layers.
 PACK_CATALOG :: 0; PACK_PARTS :: 4;

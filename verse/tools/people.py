@@ -83,6 +83,7 @@ def load(path):
         return out
     g["acc"] = acc
     g["dir"] = p.parent
+    g["bins"] = bins
     return g
 
 

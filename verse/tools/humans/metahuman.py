@@ -331,12 +331,123 @@ def build(pack, export):
         verts, tris = mesh(path, skin_file(src / f"{name}.skin.txt"), J, W, p, P, flip_v)
         pack.piece(name.replace("_lod0_mesh", ""), verts, tris, material,
                    maps / base, maps / normal if normal else None, maps / rough if rough else None)
+    portrait = export.parent / "latest/mh.neutral.glb"
+    if portrait.exists():
+        dressed(pack, portrait, (body, JB), (head, JH), W, p, P)
     pack.binds = [tuple(c / 100.0 for c in P[k]) for k in range(65)]
-    pack.tints = {"skin": (1.0, 1.0, 1.0, 1.0), "eye": (1.0, 1.0, 1.0, 0.25), "teeth": (1.0, 1.0, 1.0, 0.5),
-                  "brow": (1.0, 1.0, 1.0, 0.6), "hair": (1.0, 1.0, 1.0, 0.55), "cloth": (1.0, 1.0, 1.0, 1.0)}
+    pack.tints.update({"skin": (1.0, 1.0, 1.0, 1.0), "eye": (1.0, 1.0, 1.0, 0.25), "teeth": (1.0, 1.0, 1.0, 0.5),
+                       "brow": (1.0, 1.0, 1.0, 0.6), "hair": (1.0, 1.0, 1.0, 0.55)})
+    pack.tints.setdefault("cloth", (1.0, 1.0, 1.0, 1.0))
     # the people rig's body nearer this one's proportions plays its clips
     def off(sk):
         return sum(math.dist(a, b) for a, b in zip(sk, pack.binds))
     female = people.Skeleton(people.load(f"{OUTFITS}/Female_Peasant.gltf"))
     pack.body = "female" if off([tuple(m[r][3] for r in range(3)) for m in female.world]) < off(rest) else "male"
     return {"flip_v": flip_v}
+
+
+# ---- the portrait's groom and clothes
+
+# The portrait (the export's latest/mh.neutral.glb, metres, the DNA's bind space): its hair cards
+# and eyebrow cards ride the head; its clothes take each vertex's weights from the nearest skin
+# vertex (body or head), so they bend with the body, and go to the T pose with it. Its own head,
+# eyes and teeth are the DNA's already; its strand-dense hair body (1.5M vertices) and the
+# blended layers (cornea, wet edges) wait.
+GROOM = ("groom_Hair_S_UpdoBuns", "groom_Eyebrows_M_Natural")
+SKIP = ("draconia_skin", "mh_eye", "mh_cornea", "mh_wet", "mh_teeth", "mh_lashes", "draconia_hair", "draconia_brow")
+
+
+def skin_points(src, J, names):
+    """Every skin vertex of these DNA meshes (cm) with its weights folded onto the rig."""
+    pts = []
+    for name in names:
+        vs, _, _, _ = obj(src / f"{name}.obj")
+        for x, ws in zip(vs, skin_file(src / f"{name}.skin.txt")):
+            acc = {}
+            for j, w in ws:
+                k = J.kept[j]; acc[k] = acc.get(k, 0.0) + w
+            pts.append((x, sorted(acc.items(), key=lambda kv: -kv[1])[:4]))
+    return pts
+
+
+class Grid:
+    def __init__(self, pts, cell=2.0):
+        self.cell, self.cells, self.pts = cell, {}, pts
+        for i, (x, _) in enumerate(pts):
+            self.cells.setdefault(tuple(int(math.floor(c / cell)) for c in x), []).append(i)
+    def nearest(self, x):
+        c = tuple(int(math.floor(v / self.cell)) for v in x)
+        for r in range(0, 12):
+            best, bd = None, 1e18
+            for dx in range(-r, r + 1):
+                for dy in range(-r, r + 1):
+                    for dz in range(-r, r + 1):
+                        if max(abs(dx), abs(dy), abs(dz)) != r:
+                            continue
+                        for i in self.cells.get((c[0] + dx, c[1] + dy, c[2] + dz), ()):
+                            d = sum((a - b) ** 2 for a, b in zip(self.pts[i][0], x))
+                            if d < bd: best, bd = i, d
+            if best is not None and math.sqrt(bd) <= r * self.cell:
+                return self.pts[best][1]
+        return [(LOWER.index("spine_03"), 1.0)]
+
+
+def dressed(pack, portrait, body, head, W, p, P):
+    g = people.load(str(portrait))
+    pts = skin_points(body[0], body[1], ["body_lod0_mesh"]) + skin_points(head[0], head[1], ["head_lod0_mesh"])
+    grid = Grid(pts)
+    head_joint = LOWER.index("head")
+    images = {}
+    def image(t):
+        if not t:
+            return None
+        k = g["textures"][t["index"]]["source"]
+        if k not in images:
+            from PIL import Image
+            import io
+            im = g["images"][k]; bv = g["bufferViews"][im["bufferView"]]
+            raw = g["bins"][0][bv.get("byteOffset", 0):bv.get("byteOffset", 0) + bv["byteLength"]]
+            path = DUMP_DIR / "portrait" / (im.get("name", f"image{k}") + ".png")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists():
+                Image.open(io.BytesIO(raw)).save(path)
+            images[k] = path
+        return images[k]
+    cloth_ids = {}
+    for node in g["nodes"]:
+        if "mesh" not in node:
+            continue
+        for pr in g["meshes"][node["mesh"]]["primitives"]:
+            mat = g["materials"][pr["material"]]
+            if mat["name"] in SKIP:
+                continue
+            a = pr["attributes"]
+            pos, nor, uv = g["acc"](a["POSITION"]), g["acc"](a["NORMAL"]), g["acc"](a["TEXCOORD_0"])
+            idx = g["acc"](pr["indices"])
+            groom = mat["name"] in GROOM
+            pbr = mat.get("pbrMetallicRoughness", {})
+            if groom:
+                material = "brow" if "Eyebrows" in mat["name"] else "hair"
+            else:
+                rgb = tuple(pbr.get("baseColorFactor", (1, 1, 1, 1))[:3])
+                key = (rgb, pbr.get("roughnessFactor", 0.8))
+                if key not in cloth_ids:
+                    cloth_ids[key] = f"cloth{len(cloth_ids)}"
+                    pack.tints[cloth_ids[key]] = (*rgb, key[1])
+                material = cloth_ids[key]
+            verts = []
+            for x, nn, t in zip(pos, nor, uv):
+                xc = tuple(c * 100.0 for c in x)
+                ws = [(head_joint, 1.0)] if groom else grid.nearest(xc)
+                ws = (ws + [(0, 0.0)] * 4)[:4]
+                total = sum(w for _, w in ws) or 1.0
+                q = (0.0, 0.0, 0.0); m = (0.0, 0.0, 0.0)
+                for k, w in ws:
+                    if w <= 0: continue
+                    q = add(q, tuple(c * w / total for c in add(mv(W[k], sub(xc, p[k])), P[k])))
+                    m = add(m, tuple(c * w / total for c in mv(W[k], nn)))
+                verts.append({"p": tuple(c / 100.0 for c in q), "n": unit(m), "uv": tuple(t),
+                              "j": [k if w > 0 else 0 for k, w in ws], "w": people.quantize_weights([w for _, w in ws])})
+            tris = [tuple(idx[k:k + 3]) for k in range(0, len(idx), 3)]
+            pack.piece(node["name"], verts, tris, material, image(pbr.get("baseColorTexture")),
+                       image(mat.get("normalTexture")), image(pbr.get("metallicRoughnessTexture")))

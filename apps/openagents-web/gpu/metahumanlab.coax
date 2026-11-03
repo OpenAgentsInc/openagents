@@ -209,7 +209,7 @@ mhlab_scene_hit :: (eye:V3,rd:V3,h:MhlabHit,u:[]f32)->V3 {
 // (the mesh's own look, as Unreal's); without one, the capsule bench's soft tone as before.
 mhlab_out :: (c:V3,u:[]f32)->V3 {
   if (u[5]>0.5f32) {
-    return v3(mhlab_srgb(mhlab_aces(c.x*u[321])),mhlab_srgb(mhlab_aces(c.y*u[321])),mhlab_srgb(mhlab_aces(c.z*u[321])));
+    return v3(mhlab_srgb(mhlab_aces(c.x*u[353])),mhlab_srgb(mhlab_aces(c.y*u[353])),mhlab_srgb(mhlab_aces(c.z*u[353])));
   }
   return v3(verse_style_tone(c.x,1.2f32),verse_style_tone(c.y,1.2f32),verse_style_tone(c.z,1.2f32));
 }
@@ -250,8 +250,8 @@ mhlab_bg_fs :: (pos:V4,u:[]f32)->MhlabBg {
 // and the sky. MhlabU's mesh rows (floats):
 //   260: the figure's turn (cos, sin) and place (x, z)
 //   264: the shadow's box: centre xyz, 1 / half its size; 268: its right; 272: its up; 276: toward the key, bias
-//   280: eight materials (rgb tint, roughness scale), by material number less one
-//   312: the fill's direction xyz, strength; 316: the rim's, strength; 320: the key's strength, exposure
+//   280: sixteen materials (rgb tint, roughness scale), by material number less one
+//   344: the fill's direction xyz, strength; 348: the rim's, strength; 352: the key's strength, exposure
 // A vertex, 8 words (pack_human.py vertex): x y (unorm16 each), z (unorm16) | material << 16 |
 // the bitangent's sign << 31, the normal and the tangent (octahedral unorm16 pairs), uv (unorm16
 // pair), four joints (u8), four weights (unorm8), the layers base | normal << 8 | rough << 16.
@@ -404,7 +404,15 @@ mhlab_vis :: (nl:f32,nv:f32,a:f32)->f32 {
 }
 // One light's share: diffuse (skin wraps and reddens where the light turns away, the scatter a
 // pre-integrated skin BRDF gives), and specular (skin: two GGX lobes, as Unreal's dual specular).
-mhlab_light_one :: (n:V3,v:V3,l:V3,albedo:V3,rough:f32,material:u32,colour:V3)->V3 {
+// Hair (cards, material 3) is lit along its strands instead (Kajiya-Kay's two shifted
+// highlights, as Marschner's R and TRT lobes: a white one toward the root and a dimmer one in the
+// hair's own colour toward the tip).
+mhlab_strand :: (t:V3,n:V3,h:V3,shift:f32,power:f32)->f32 {
+  ts:V3=normalize3(add3(t,scale3(n,shift)));
+  th:f32=dot3(ts,h);
+  return pow(sqrt(fmax(1.0f32-(th*th),0.0f32)),power);
+}
+mhlab_light_one :: (n:V3,v:V3,l:V3,albedo:V3,rough:f32,material:u32,colour:V3,strand:V3)->V3 {
   nl:f32=dot3(n,l);
   nv:f32=fmax(dot3(n,v),0.001f32);
   diff:V3=scale3(albedo,saturate(nl)/3.14159265f32);
@@ -431,6 +439,12 @@ mhlab_light_one :: (n:V3,v:V3,l:V3,albedo:V3,rough:f32,material:u32,colour:V3)->
       lobe=(0.85f32*mhlab_ggx(nh,a1)*mhlab_vis(nl,nv,a1))+(0.15f32*mhlab_ggx(nh,a2)*mhlab_vis(nl,nv,a2));
     }
     spec=fr*lobe*nl;
+    if (material==3) {
+      wrap:f32=saturate((nl*0.6f32)+0.4f32);
+      r1:f32=mhlab_strand(strand,n,h,-0.08f32,90.0f32)*0.05f32;
+      r2:f32=mhlab_strand(strand,n,h,0.12f32,24.0f32)*0.12f32;
+      return v3(colour.x*((diff.x)+(r1+(r2*albedo.x))*wrap),colour.y*((diff.y)+(r1+(r2*albedo.y))*wrap),colour.z*((diff.z)+(r1+(r2*albedo.z))*wrap));
+    }
   }
   return v3(colour.x*(diff.x+spec),colour.y*(diff.y+spec),colour.z*(diff.z+spec));
 }
@@ -440,13 +454,15 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   // the skeleton overlay: the body as stippled glass, so the bones read through it
   if ((u[4]>0.5f32)&&(((cast(int)(s.pos.x)+cast(int)(s.pos.y))%2)==0)) { gpu_demote_helper(); }
   m:u32=s.material;
-  mat:V4=wg_at4(u,280+(cast(int)(clamp_u(m,1,8))-1)*4);
-  base:V4=mhlab_layer(sheets,sheet,s.uv,dx,dy,s.layers&255,v4(0.5f32,0.5f32,0.5f32,1.0f32));
+  mat:V4=wg_at4(u,280+(cast(int)(clamp_u(m,1,16))-1)*4);
+  base:V4=mhlab_layer(sheets,sheet,s.uv,dx,dy,s.layers&255,v4(1.0f32,1.0f32,1.0f32,1.0f32));
   if (base.w<0.35f32) { gpu_demote_helper(); }
   albedo:V3=v3(base.x*mat.x,base.y*mat.y,base.z*mat.z);
   ng:V3=normalize3(s.normal);
   if (!front) { ng=scale3(ng,-1.0f32); }
   n:V3=ng;
+  tg:V3=normalize3(sub3(v3(s.tangent.x,s.tangent.y,s.tangent.z),scale3(ng,dot3(ng,v3(s.tangent.x,s.tangent.y,s.tangent.z)))));
+  strand:V3=scale3(cross3(ng,tg),s.tangent.w);
   nm:V4=mhlab_layer(sheets,sheet,s.uv,dx,dy,(s.layers>>8)&255,v4(0.5f32,0.5f32,1.0f32,1.0f32));
   if (((s.layers>>8)&255)!=255) {
     // the layer is sRGB-decoded on the way in; a normal map is raw numbers, so encode it back
@@ -463,17 +479,23 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   v:V3=normalize3(sub3(wg_at3(u,16),s.world));
   key:V3=normalize3(wg_at3(u,276));
   sh:f32=mhlab_lit(s.world,ng,u,shadow_map,shadow_cmp);
-  c:V3=mhlab_light_one(n,v,key,albedo,rough,m,scale3(v3(1.0f32,0.95f32,0.88f32),u[320]*sh));
-  c=add3(c,mhlab_light_one(n,v,normalize3(wg_at3(u,312)),albedo,rough,m,scale3(v3(0.75f32,0.82f32,1.0f32),u[315])));
-  c=add3(c,mhlab_light_one(n,v,normalize3(wg_at3(u,316)),albedo,rough,m,scale3(v3(0.9f32,0.95f32,1.0f32),u[319])));
+  c:V3=mhlab_light_one(n,v,key,albedo,rough,m,scale3(v3(1.0f32,0.95f32,0.88f32),u[352]*sh),strand);
+  c=add3(c,mhlab_light_one(n,v,normalize3(wg_at3(u,344)),albedo,rough,m,scale3(v3(0.75f32,0.82f32,1.0f32),u[347]),strand));
+  c=add3(c,mhlab_light_one(n,v,normalize3(wg_at3(u,348)),albedo,rough,m,scale3(v3(0.9f32,0.95f32,1.0f32),u[351]),strand));
   // the sky and the floor's bounce, an ambient from above and below; the cavities darker
   sky:f32=(0.5f32+(0.5f32*n.y));
   amb:V3=add3(scale3(v3(0.36f32,0.4f32,0.48f32),sky*0.55f32),scale3(v3(0.22f32,0.2f32,0.18f32),(1.0f32-sky)*0.35f32));
   c=add3(c,v3(albedo.x*amb.x,albedo.y*amb.y,albedo.z*amb.z));
   // the eye's wet gloss: the sky's reflection on the cornea
   if (m==2) {
-    r:V3=reflect3(scale3(v,-1.0f32),n);
-    c=add3(c,scale3(v3(0.7f32,0.75f32,0.8f32),0.06f32+(0.25f32*saturate(r.y))));
+    // the cornea over it: a mirror-smooth coat on the eye's own shape (ng, not the iris's map) that
+    // shows the sky and a sharp glint of each light; the eye darkens toward its rim (the lids' shade)
+    r:V3=reflect3(scale3(v,-1.0f32),ng);
+    fr:f32=0.02f32+(0.98f32*pow(1.0f32-saturate(dot3(ng,v)),5.0f32));
+    c=add3(c,scale3(v3(0.55f32,0.6f32,0.68f32),fr*(0.4f32+(0.6f32*saturate(r.y)))));
+    hk:V3=normalize3(add3(key,v));
+    glint:f32=mhlab_ggx(saturate(dot3(ng,hk)),0.02f32)*0.0025f32*sh;
+    c=add3(c,scale3(v3(1.0f32,0.96f32,0.9f32),glint*u[352]));
   }
   c=mhlab_out(c,u);
   c=mhlab_strips(v2(s.pos.x,s.pos.y),c,u);
