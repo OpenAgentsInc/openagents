@@ -36,6 +36,12 @@ test("manifest realms preserve reviewed shared and legacy renderer adoption", ()
       expect(page(world.realm)).not.toContain('data-render-profile=')
       continue
     }
+    // the made-world template keeps its renderer until its carrier links (aethyr/render/adoption.coax)
+    if (world.realm.slug === "built") {
+      expect(page(world.realm)).toContain('data-app="myrealm"')
+      expect(page(world.realm)).not.toContain('data-render=')
+      continue
+    }
     expect(page(world.realm)).toContain(`data-render="/build/render/${world.realm.slug}/render.json"`)
     expect(page(world.realm)).toContain(`data-render-profile="${renderProfile(world.realm.slug)}"`)
   }

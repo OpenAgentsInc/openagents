@@ -29,12 +29,12 @@ mkdir -p "$(dirname "$out")"; out="$(cd "$(dirname "$out")" && pwd)/$(basename "
 source "$repo/coax/web/toolchain.sh"
 clang="$COAXIAL_CLANG"; sysroot="$COAXIAL_SYSROOT"; resources="$COAXIAL_RESOURCES"
 name="$(basename "$coax_file" .coax)"
-# The shared renderer's carriers are opt-in (COAXIAL_RENDER=auto or 1): the
-# chapter 11 snapshot (bc93d30672) is unpromoted, and with carriers on, release
-# builds failed (registry.coax and frame.coax clash with pages' procedures,
-# myrealm links sha256 twice). 0, the default, builds what production ran before
-# it. Auto-selection never substitutes a different source with the same basename.
-render="${COAXIAL_RENDER:-0}"
+# Catalog applications include the shared renderer in ordinary builds (host.js
+# needs each world's renderer facade: with 0 every world page fails "engine has
+# no compatible Coax renderer facade"). An explicit 0 retains the producer-only
+# artifact used by legacy diagnostics. Auto-selection never substitutes a
+# different source with the same basename.
+render="${COAXIAL_RENDER:-auto}"
 carrier="aethyr/render/carriers/$name.coax"
 if [[ "$render" == auto ]]; then
   render=0
