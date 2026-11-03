@@ -108,8 +108,8 @@ animelab=$!
 droprealm=$!
 # /worlds/built and every /worlds/<slug> made at /worlds/new: a realm someone built (myrealm.coax).
 # YOUR COMPUTER's wire (verse/edit/computer-wire.coax) links beside it; its signing tables need the larger budget.
-# It builds without its renderer carrier: the carrier and the wire both load sha256-kernel.coax,
-# whose S_hash and S_hex can have only one owner in the link (wasm.sh says so, #12661).
+# With its renderer carrier, which loads the wire and entropy too, so one load graph owns
+# sha256-kernel.coax's S_hash and S_hex (#12661); wasm.sh folds the two libraries into it (#12675).
 COAXIAL_RUN_STEPS=250000000 "$here/../../coax/web/wasm.sh" "$here/myrealm.coax" "$here/myrealm-face.c" "$here/build/myrealm.wasm" \
   "$here/../../verse/edit/computer-wire.coax" "$here/../../coax/lib/crypto/entropy.coax" &
 myrealm=$!

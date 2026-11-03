@@ -1,0 +1,6 @@
+// expect: E0334
+// Two files of one module scope still may not declare the same procedure:
+// #12675 frees locals, not top-level names.
+#load "local_names/other.coax";
+other :: () -> int { return 3; }
+main :: () {}

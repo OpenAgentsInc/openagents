@@ -23,7 +23,7 @@ class Node(C.Structure):
     _fields_ += [('quantity',C.c_uint8),('unit',Unit),('unit_form',C.c_int64),('unit_link',C.c_int64),('unit_generated',C.c_bool),('frame_decl',C.c_bool),('frame',Frame),('spatial_link',C.c_int64),('lowering',C.c_uint8),('mutation_status',C.c_uint8),('mutation_op',C.c_uint32),('mutation_proc',C.c_int64)]
     _fields_ += [(n,C.c_int64) for n in ('borrow_binding','borrow_owner','borrow_writes','borrow_returns','borrow_calls','borrow_next')]+[('borrow_status',C.c_uint8),('borrow_query',C.c_int64)]
     _fields_ += [('retain_head',C.c_int64),('retain_count',C.c_int64),('retain_mark',C.c_uint8),('retain_incomplete',C.c_bool),('retain_relation',C.c_bool)]
-    _fields_ += [('effect_present',C.c_bool),('pure_decl',C.c_bool),('effect_head',C.c_int64),('effect_loc',Loc),('sum_variant',C.c_int64),('propagate_type',C.c_int64)]
+    _fields_ += [('effect_present',C.c_bool),('pure_decl',C.c_bool),('effect_head',C.c_int64),('effect_loc',Loc),('sum_variant',C.c_int64),('propagate_type',C.c_int64),('source_unit',C.c_int64)]
 class Type(C.Structure):_fields_=[('kind',C.c_uint8),('name',LX.Text),('size',C.c_int64),('alignment',C.c_int64),('bits',C.c_int64),('is_signed',C.c_bool)]+[(n,C.c_int64) for n in ('elem','length','decl','id','scope','need','carrier','unit')]+[('space',Spatial),('retain_presence',C.c_uint8),('retain_mutable',C.c_uint8),('retain_fields',C.c_int64)]+[(n,C.c_int64) for n in ('sum_error','sum_payload_offset','sum_default')]
 class Caps(C.Structure):_fields_=[(n,C.c_int64) for n in ('nodes','types','locals','errors','bytes','result_work')]
 class Local(C.Structure):_fields_=[('name',LX.Text),('type',C.c_int64),('loc',Loc),('immutable',LX.Text),('local_backing',C.c_bool),('decl',C.c_int64)]

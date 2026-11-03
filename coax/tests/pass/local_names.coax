@@ -1,0 +1,14 @@
+// A local may share the name of a procedure another file declares (#12675).
+// Procedures are not values: a call names the procedure, a bare name the
+// local. Here `fresh` is a local beside local_names/page.coax's fresh(), and
+// that file's parameters named `seen` sit beside this file's seen(), in a
+// plain procedure and in a generic one's instance.
+#import "Basic";
+#load "local_names/page.coax";
+
+seen :: (n: int) -> int { return n + 1; }
+
+main :: () {
+  fresh := seen(1);
+  print("%\n", fresh + fresh() + page(3) + pick(5));
+}

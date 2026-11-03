@@ -1,0 +1,2 @@
+// The other file of tests/fail/local_names.coax and proc_duplicate_files.coax.
+other :: () -> int { return 2; }

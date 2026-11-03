@@ -1743,6 +1743,23 @@ refused (E0222, E0388): aliases are not reexported. Module parameters
 are not supported. Every declaration is still visible to every module;
 private-by-default modules are the next slice.
 
+Locals and other units' procedures (#12675): a local (a variable, parameter,
+loop or case binding) may share the name of a procedure declared in another
+physical unit of the graph. It is E0304 only when its own unit declares a
+procedure of that name. Procedures are not values (E0305), so a name in call
+position always names a procedure and a bare name names the local, and the
+two can't be confused at a use; the C spellings differ too (`l_NAME` against
+`coax_p_NAME` or the `#export_c` name). Without this, a library's locals
+depended on the top-level names of every page that loaded it, and a page
+adding a procedure could break a library it never edited. Inside one unit the
+rule stays, so a reader of one file never sees a local and a procedure share
+a name. The rule frees locals only: a local still may not take the name of a
+constant, type or builtin anywhere (E0342), since a bare name could mean
+either, and two top-level declarations keep the duplicate rules above (E0334
+for procedures within one module scope; across modules, qualified lookup).
+It changes no C: it admits programs that were refused, and a graph without
+units (one file) is one unit.
+
 `#import "Basic";` remains the only named built-in module, providing checked
 `print`. Explicit visibility, locked packages and conditional module
 parameters remain planned. Vendored/locked sources are explicit inputs; import does not download

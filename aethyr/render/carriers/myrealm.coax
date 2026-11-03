@@ -1,3 +1,9 @@
 // One physical source graph owns the producer and renderer facade.
 #load "../../../apps/openagents-web/myrealm.coax";
 #load "../native-host.coax";
+// and YOUR COMPUTER's wire and the browser's entropy, which the page links
+// beside it: the renderer and the wire both load sha256-kernel.coax, so one
+// graph owns S_hash and S_hex (#12661, #12675). wasm.sh folds these libraries
+// into this unit and gives the face their headers.
+#load "../../../verse/edit/computer-wire.coax";
+#load "../../../coax/lib/crypto/entropy.coax";

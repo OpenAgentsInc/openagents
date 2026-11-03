@@ -1,0 +1,5 @@
+// The other file of tests/pass/local_names.coax: it declares fresh(), and
+// names parameters after the entry file's seen().
+fresh :: () -> int { return 40; }
+page :: (seen: int) -> int { measure := seen * 2; return measure + seen(0); }
+pick :: (seen: $T) -> $T { kept := seen; return kept; }

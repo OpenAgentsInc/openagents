@@ -188,7 +188,7 @@ CK_Mutation :: enum u8 {unprepared;eligible;no_alternative;unsupported;}
 CR_Phase :: enum u8 {fresh;active;done;seeded;}
 CK_Node :: struct {kind:CK_Tag;loc:CK_Loc;name:string;name2:string;loc2:CK_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:u64;
   type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;skip_authority:bool;scope:int;collides:bool;clash:int;effects:u8;own_effects:u8;effects_known:bool;generic:bool;
-  origin:int;pristine:int;chain:int;key:string;quantity:u8;unit:Q_Unit;unit_form:int;unit_link:int;unit_generated:bool;frame_decl:bool;frame:SP_Frame;spatial_link:int;lowering:CK_Lowering;mutation_status:CK_Mutation;mutation_op:u32;mutation_proc:int;borrow_binding:int;borrow_owner:int;borrow_writes:int;borrow_returns:int;borrow_calls:int;borrow_next:int;borrow_status:u8;borrow_query:int;retain_head:int;retain_count:int;retain_mark:CR_Phase;retain_incomplete:bool;retain_relation:bool;effect_present:bool;pure_decl:bool;effect_head:int;effect_loc:CK_Loc;sum_variant:int= -1;propagate_type:int;}
+  origin:int;pristine:int;chain:int;key:string;quantity:u8;unit:Q_Unit;unit_form:int;unit_link:int;unit_generated:bool;frame_decl:bool;frame:SP_Frame;spatial_link:int;lowering:CK_Lowering;mutation_status:CK_Mutation;mutation_op:u32;mutation_proc:int;borrow_binding:int;borrow_owner:int;borrow_writes:int;borrow_returns:int;borrow_calls:int;borrow_next:int;borrow_status:u8;borrow_query:int;retain_head:int;retain_count:int;retain_mark:CR_Phase;retain_incomplete:bool;retain_relation:bool;effect_present:bool;pure_decl:bool;effect_head:int;effect_loc:CK_Loc;sum_variant:int= -1;propagate_type:int;source_unit:int;}
 CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;scope:int;need:int;carrier:int;unit:int;space:SP_Type;retain_presence:u8;retain_mutable:u8;retain_join:u8;retain_fields:int;sum_error:int;sum_payload_offset:int;sum_default:int= -1;}
 CK_Local :: struct {name:string;type:int;loc:CK_Loc;immutable:string;local_backing:bool;decl:int;}
 CK_Error :: struct {loc:CK_Loc;code:string;message:string;fix:string;}
@@ -2149,7 +2149,7 @@ CK_instance :: (c:CK_Context,id:int,proc:int)->int {
     a:=e.head;while a!=CK_NONE {ignored:=CK_value(c,a,CK_Hint.{});a=c.nodes[a].next;}return CK_NONE;}
   inst:=CK_new(c,CK_Tag.proc,t.loc);errors:=c.state[0].error_count;
   c.nodes[inst].effect_present=t.effect_present;c.nodes[inst].pure_decl=t.pure_decl;c.nodes[inst].effect_loc=t.effect_loc;c.nodes[inst].effect_head=CK_clone_list(c,t.effect_head);
-  c.nodes[inst].name=t.name;c.nodes[inst].scope=t.scope;c.nodes[inst].collides=t.collides;c.nodes[inst].origin=proc;
+  c.nodes[inst].name=t.name;c.nodes[inst].scope=t.scope;c.nodes[inst].source_unit=t.source_unit;c.nodes[inst].collides=t.collides;c.nodes[inst].origin=proc;
   // Typed arguments bind first, so an untyped literal for a bare $T takes the
   // type they bound, or its default, as a generic struct literal's fields do.
   a:=e.head;param:=t.head;i:=0;
@@ -2420,12 +2420,12 @@ CK_instantiate :: (c:CK_Context) {
  if full {state[0].instance_count=CK_INSTANCE_LIMIT;}
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
  for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.param,name="$T",decl=2};
- nodes[2]=CK_Node.{kind=CK_Tag.proc,name="id",head=3,a=7,type=16,generic=true,scope=4,collides=true};nodes[3]=CK_Node.{kind=CK_Tag.param,name="a",a=4,type=16};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,name="id",head=3,a=7,type=16,generic=true,scope=4,collides=true,source_unit=7};nodes[3]=CK_Node.{kind=CK_Tag.param,name="a",a=4,type=16};
  nodes[4]=CK_Node.{kind=CK_Tag.type_param,name="T"};nodes[7]=CK_Node.{kind=CK_Tag.type_param,name="T"};
  nodes[5]=CK_Node.{kind=CK_Tag.expr_call,name="id",head=6,loc=CK_Loc.{line=3,column=5}};nodes[6]=CK_Node.{kind=CK_Tag.expr_bool};
  nodes[9]=CK_Node.{kind=CK_Tag.proc,name="other",origin=8};
  t:=CK_instance(c,5,2);
- #assert nodes[10].name=="id" && nodes[10].origin==2 && nodes[10].scope==4 && nodes[10].collides && !nodes[10].generic && state[0].depth==0;
+ #assert nodes[10].name=="id" && nodes[10].origin==2 && nodes[10].scope==4 && nodes[10].source_unit==7 && nodes[10].collides && !nodes[10].generic && state[0].depth==0;
  if full {
   #assert t==0 && nodes[10].kind==CK_Tag.invalid && nodes[5].proc==0 && state[0].instance_count==CK_INSTANCE_LIMIT && nodes[9].chain==0 && state[0].instance_tail==9;
   #assert errors[0].code=="E0339" && errors[0].loc.line==3 && errors[0].message=="instantiating 'id' here would exceed 256 generic instances";
@@ -2516,13 +2516,44 @@ CK_taint_borrow :: (c:CK_Context,name:string,source:int) {
  // does not erase it; proving that overwrite safe requires flow analysis.
  at:=CK_local(c,name);if at>=0 && CK_local_backed(c,source) {c.locals[at].local_backing=true;}
 }
+// Whether the current procedure's physical unit declares a procedure named
+// name. A local may share the name of a procedure another unit declares:
+// procedures are not values, so a call names the procedure and a bare name
+// the local, and no unit's locals depend on another unit's top-level names
+// (#12675). source_unit is the bridge's 1-based unit; 0, a graph built
+// without units, is one unit.
+CK_unit_proc :: (c:CK_Context,name:string)->bool {
+  unit:=c.nodes[c.state[0].current].source_unit;id:=CK_first(c,name);
+  while id!=CK_NONE {n:=c.nodes[id];if n.kind==CK_Tag.proc && n.name==name && n.source_unit==unit {return true;}id=CK_after(c,id);}
+  return false;
+}
 CK_declare :: (c:CK_Context,name:string,ty:int,loc:CK_Loc,immutable:string) {
   prev:=CK_local(c,name);
   if prev>=0 {parts:=[5] string.["'",name,"' is already declared at line ",CK_count(c,c.locals[prev].loc.line),"; Coax does not allow shadowing"];CK_error(c,loc,"E0303",CK_text(c,parts[..]),"pick another name");return;}
-  if CK_find(c,CK_Tag.proc,name)!=0 {CK_error(c,loc,"E0304",CK_join3(c,"'",name,"' is already the name of a procedure"),"pick another name");return;}
+  if CK_unit_proc(c,name) {CK_error(c,loc,"E0304",CK_join3(c,"'",name,"' is already the name of a procedure"),"pick another name");return;}
   if CK_find(c,CK_Tag.constant,name)!=0 || CK_builtin_name(c,name) || CK_find(c,CK_Tag.struct_,name)!=0 || CK_find(c,CK_Tag.enum_,name)!=0 || CK_find(c,CK_Tag.union_,name)!=0 {CK_error(c,loc,"E0342",CK_join3(c,"'",name,"' is already a constant, type or intrinsic"),"pick another name");return;}
   at:=c.state[0].local_count;if at>=c.locals.count {CK_resource(c,loc);return;}
   c.locals[at]=CK_Local.{name=name,type=ty,loc=loc,immutable=immutable,local_backing=CK_aggregate(c,ty) && immutable==""};c.state[0].local_count+=1;
+}
+// A local takes a procedure's name only across physical units (#12675): "page"
+// (current) is in unit 1. 0: fresh() is unit 2's. 1: unit 1's. 2: unit 2 and
+// unit 1 both declare one, so the walk passes the first. 3: a graph without
+// units is one unit. 4: unit 1's constant "fresh" is still E0342, not E0304.
+#forall "a local shares a procedure's name only across physical units" variant:0..<5 {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=16,current=2}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="page",source_unit=1,next=3};nodes[3]=CK_Node.{kind=CK_Tag.proc,name="fresh",source_unit=2};
+ if variant==1 {nodes[3].source_unit=1;}
+ if variant==2 {nodes[3].next=4;nodes[4]=CK_Node.{kind=CK_Tag.proc,name="fresh",source_unit=1};}
+ if variant==3 {nodes[2].source_unit=0;nodes[3].source_unit=0;}
+ if variant==4 {nodes[3].kind=CK_Tag.constant;nodes[3].source_unit=1;}
+ #assert CK_unit_proc(c,"fresh")==(variant>=1 && variant<=3) && !CK_unit_proc(c,"other");
+ CK_declare(c,"fresh",11,CK_Loc.{line=4,column=2},"");
+ if variant==0 {#assert state[0].error_count==0 && state[0].local_count==1 && locals[0].name=="fresh" && locals[0].type==11;}
+ else {
+  code:="E0304";if variant==4 {code="E0342";}
+  #assert state[0].error_count==1 && state[0].local_count==0 && errors[0].code==code && errors[0].loc.line==4;
+ }
 }
 CK_compound :: (op:u32)->u32 {ops:=[10] u32.[34,35,36,37,38,39,40,41,42,43];if op<24 || op>33 {return CK_NONE;}return ops[cast(int)op-24];}
 CK_loop :: (c:CK_Context,id:int) {c.state[0].loop_depth+=1;CK_stmt(c,id);c.state[0].loop_depth-=1;}

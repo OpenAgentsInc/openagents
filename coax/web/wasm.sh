@@ -36,17 +36,39 @@ name="$(basename "$coax_file" .coax)"
 # different source with the same basename.
 render="${COAXIAL_RENDER:-auto}"
 carrier="aethyr/render/carriers/$name.coax"
+# A library the carrier itself #loads is part of the carrier's load graph, so
+# with the carrier it is not a second unit: one graph owns every #export_c the
+# two share (S_hash and S_hex, #12661), and the library's header is the
+# carrier's. Since #12675 a library's locals don't clash with the page's
+# procedures, so one graph can hold both (myrealm's carrier loads YOUR
+# COMPUTER's wire).
+folded=()
+fold_libraries() {
+  folded=()
+  [[ ${#libraries[@]} -gt 0 && -f "$repo/$carrier" ]] || return 0
+  local sources kept=() library
+  sources="$(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size sources "$carrier" 2> /dev/null)" || return 0
+  for library in "${libraries[@]}"; do
+    if grep -qxF "$library" <<< "$sources"; then folded+=("$library"); else kept+=("$library"); fi
+  done
+  libraries=(${kept[@]+"${kept[@]}"})
+}
 if [[ "$render" == auto ]]; then
   render=0
   if [[ "$coax_file" == "apps/openagents-web/$name.coax" && -f "$repo/$carrier" ]]; then render=1; fi
   # Each unit is its own C library, so a file with an #export_c procedure that
   # the carrier and a library both load is defined twice at the link (#12661:
   # the renderer and YOUR COMPUTER's wire both load sha256-kernel.coax, for
-  # S_hash and S_hex). One load graph can't own both while page and library
-  # names share one namespace, so such an app builds without its carrier, and
-  # says so; COAXIAL_RENDER=1 asks for the carrier and fails, naming the units.
+  # S_hash and S_hex). Libraries the carrier loads are folded into it; if one
+  # it doesn't load still shares an export, the app builds without its
+  # carrier, and says so; COAXIAL_RENDER=1 asks for the carrier and fails,
+  # naming the units.
+  if [[ "$render" == 1 ]]; then
+    all_libraries=(${libraries[@]+"${libraries[@]}"}); fold_libraries
+  fi
   if [[ "$render" == 1 && ${#libraries[@]} -gt 0 ]]; then
     if ! twice="$(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size exports "$carrier" "${libraries[@]}" 2>&1 > /dev/null)"; then
+      libraries=("${all_libraries[@]}"); folded=()
       render=0
       echo "wasm.sh: $(basename "$out"): built without its renderer carrier:" >&2
       grep '^wasm-size: ' <<< "$twice" | sed 's/^wasm-size: /  /' >&2 || true
@@ -54,6 +76,7 @@ if [[ "$render" == auto ]]; then
   fi
 fi
 case "$render" in 0|1) ;; *) echo "COAXIAL_RENDER must be auto,0 or1" >&2; exit 2 ;; esac
+[[ "${COAXIAL_RENDER:-auto}" != 1 ]] || fold_libraries
 if [[ "$render" == 1 && "$coax_file" != "apps/openagents-web/$name.coax" ]]; then
   echo "renderer source carrier requires the canonical catalog app path" >&2; exit 2
 fi
@@ -157,6 +180,11 @@ for unit in "${units[@]}"; do
 done
 for pid in "${gen[@]}"; do wait "$pid"; done
 if [[ "$render" == 1 ]]; then cp "$work/$name.h" "$work/Render.h"; fi
+# A folded library's header is the carrier's (a header may be included twice).
+for library in ${folded[@]+"${folded[@]}"}; do
+  base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
+  cp "$work/$name.h" "$work/$base.h"
+done
 if [[ -n "${COAXIAL_ADMITTED_DIR:-}" ]]; then
   mkdir -p "$COAXIAL_ADMITTED_DIR"
   cp "$work/"*.c "$work/"*.h "$COAXIAL_ADMITTED_DIR/"

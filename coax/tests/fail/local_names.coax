@@ -1,0 +1,6 @@
+// expect: E0304
+// A local may not share the name of a procedure its own file declares, even
+// in a graph of several files (#12675).
+#load "local_names/other.coax";
+seen :: () -> int { return 1; }
+main :: () { seen := other(); }

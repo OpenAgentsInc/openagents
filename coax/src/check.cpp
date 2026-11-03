@@ -160,7 +160,11 @@ static void attach_check_input(File *file,const zvec<coax_t_PS_Node> &nodes,cons
     n.quantity=v.quantity;n.unit={v.unit.e[0],v.unit.e[1],v.unit.e[2],v.unit.e[3],v.unit.e[4],v.unit.e[5]};
     n.frame_decl=v.frame_decl;n.frame={v.frame.e[0],(uint8_t)v.frame.e[1],(uint8_t)v.frame.e[2],v.frame.e[3]};
     n.effect_present=v.effect_present;n.pure_decl=v.pure_decl;n.effect_head=v.effect_head;n.effect_loc=checked_loc(v.effect_loc);
-    n.scope=module_scope(input.get(),source_unit_at(file->src,Loc{(int32_t)v.loc.line,(int32_t)v.loc.column,(int32_t)v.loc.offset}));
+    const SourceUnit *unit=source_unit_at(file->src,Loc{(int32_t)v.loc.line,(int32_t)v.loc.column,(int32_t)v.loc.offset});
+    n.scope=module_scope(input.get(),unit);
+    // The physical unit, 1-based (0: none), so a local may share the name of a
+    // procedure another unit declares (#12675, CK_unit_proc).
+    for(size_t i=0;unit && i<file->src->units.size();i++)if(file->src->units[i].get()==unit){n.source_unit=(int64_t)i+1;break;}
     if(v.kind==17 && v.width)n.type=v.width==32?6:7;if(v.kind==69)n.field_index=0;
   }
   file->check_input=std::move(input);
