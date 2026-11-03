@@ -1998,16 +1998,22 @@
   {
    "number": 105,
    "title": "The Noise handshake",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch105-the-noise-handshake.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     9,
     12,
     16
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/lightning/noise.coax",
+    "bitcoin/examples/lightning-noise.coax",
+    "bitcoin/examples/checks/lightning-noise.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

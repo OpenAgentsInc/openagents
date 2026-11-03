@@ -106,3 +106,95 @@ def features():
 def scid(text):
     block, tx, out = (int(x) for x in text.split('x'))
     return (block << 40) | (tx << 16) | out
+
+
+# ---- BOLT 8
+
+def _hex(value):
+    return value.strip().removeprefix('0x').lower()
+
+
+def handshakes():
+    """Appendix A's initiator and responder tests: one dict per test with
+    name, initiator, rs_pub, ls_priv, e_priv, act1, act2, act3, keys (the
+    64 bytes sk || rk for the initiator, rk || sk for the responder) and
+    error (BOLT 8's code without its ACTn_ prefix)."""
+    body = section(text('08-transport.md'), '## Initiator Tests', '## Message Encryption Tests')
+    tests = []
+    for side, chunk in (('initiator', section(body, '## Initiator Tests', '## Responder Tests')),
+                        ('responder', section(body, '## Responder Tests', None))):
+        for block in re.split(r'\n\s*name: ', chunk)[1:]:
+            lines = block.split('\n')
+            t = {'name': lines[0].strip(), 'initiator': side == 'initiator', 'rs_pub': '', 'act1': '',
+                 'act2': '', 'act3': '', 'keys': '', 'error': ''}
+            act = 0
+            for line in lines[1:]:
+                line = line.strip()
+                if line.startswith('# Act One'):
+                    act = 1
+                elif line.startswith('# Act Two'):
+                    act = 2
+                elif line.startswith('# Act Three'):
+                    act = 3
+                m = re.match(r'^(rs\.pub|ls\.priv|e\.priv|input|output)\s*[:=]\s*(.*)$', line)
+                if not m:
+                    continue
+                key, value = m.groups()
+                if key == 'rs.pub':
+                    t['rs_pub'] = _hex(value)
+                elif key == 'ls.priv':
+                    t['ls_priv'] = _hex(value)
+                elif key == 'e.priv':
+                    t['e_priv'] = _hex(value)
+                elif value.startswith('ERROR'):
+                    t['error'] = re.match(r'ERROR \((ACT\d_)?(\w+)', value).group(2)
+                elif value.startswith(('sk,rk=', 'rk,sk=')):
+                    a, b = value[6:].split(',')
+                    t['keys'] = _hex(a) + _hex(b)
+                else:
+                    # An initiator's first output is act one, before any "# Act One" line.
+                    t[f'act{act or 1}'] = _hex(value)
+            tests.append(t)
+    return tests
+
+
+def messages():
+    """The message encryption test: ck, sk, rk and the six outputs by index."""
+    body = section(text('08-transport.md'), '## Message Encryption Tests', '# Acknowledgments')
+    keys = dict(re.findall(r'^\s*(ck|sk|rk)=0x([0-9a-f]+)', body, re.M))
+    outputs = [(int(i), h) for i, h in re.findall(r'^\s*output (\d+): 0x([0-9a-f]+)', body, re.M)]
+    return keys, outputs
+
+
+# ---- BOLT 3
+
+def _int(value):
+    value = value.strip()
+    return int(value, 16) if value.startswith('0x') else int(value)
+
+
+def generation():
+    """Appendix D's generation tests: (name, seed, index, output)."""
+    body = section(text('03-transactions.md'), '## Generation Tests', '## Storage Tests')
+    return [(name.strip(), _hex(seed), _int(index), _hex(out)) for name, seed, index, out in
+            re.findall(r'name: ([^\n]*)\n\s*seed: (\S+)\n\s*I: (\S+)\n\s*output: (\S+)', body)]
+
+
+def storage():
+    """Appendix D's storage tests: (name, [(index, secret, ok), ...])."""
+    body = section(text('03-transactions.md'), '## Storage Tests', '# Appendix E')
+    tests = []
+    for block in re.split(r'\n\s*name: ', body)[1:]:
+        name = block.split('\n')[0].strip()
+        steps = [(_int(i), _hex(s), out == 'OK') for i, s, out in
+                 re.findall(r'I: (\S+)\n\s*secret: (\S+)\n\s*output: (\S+)', block)]
+        tests.append((name, steps))
+    return tests
+
+
+def keys():
+    """Appendix E: the shared secrets and points, and each derived key."""
+    body = section(text('03-transactions.md'), '# Appendix E', '# Appendix F')
+    return {k: _hex(v) for k, v in re.findall(
+        r'^\s*(base_secret|per_commitment_secret|base_point|per_commitment_point|localpubkey|localprivkey|'
+        r'revocationpubkey|revocationprivkey): (0x[0-9a-f]+)', body, re.M)}

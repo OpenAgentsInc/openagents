@@ -1,0 +1,41 @@
+handshake vectors
+  transport-initiator successful handshake: OK, session keys match: true
+  transport-initiator act2 short read test: READ_FAILED, BOLT 8 says READ_FAILED
+  transport-initiator act2 bad version test: BAD_VERSION, BOLT 8 says BAD_VERSION
+  transport-initiator act2 bad key serialization test: BAD_PUBKEY, BOLT 8 says BAD_PUBKEY
+  transport-initiator act2 bad MAC test: BAD_TAG, BOLT 8 says BAD_TAG
+  transport-responder successful handshake: OK, session keys match: true
+  transport-responder act1 short read test: READ_FAILED, BOLT 8 says READ_FAILED
+  transport-responder act1 bad version test: BAD_VERSION, BOLT 8 says BAD_VERSION
+  transport-responder act1 bad key serialization test: BAD_PUBKEY, BOLT 8 says BAD_PUBKEY
+  transport-responder act1 bad MAC test: BAD_TAG, BOLT 8 says BAD_TAG
+  transport-responder act3 bad version test: BAD_VERSION, BOLT 8 says BAD_VERSION
+  transport-responder act3 short read test: READ_FAILED, BOLT 8 says READ_FAILED
+  transport-responder act3 bad MAC for ciphertext test: BAD_CIPHERTEXT, BOLT 8 says BAD_CIPHERTEXT
+  transport-responder act3 bad rs test: BAD_PUBKEY, BOLT 8 says BAD_PUBKEY
+  transport-responder act3 bad MAC test: BAD_TAG, BOLT 8 says BAD_TAG
+the initiator, step by step
+  h before act one: 8401b3fdcaaa710b5405400536a3d5fd7792fe8e7fe29cd8b687216fe323ecbd
+  act one, 50 bytes: 00036360e856310ce5d294e8be33fc807077dc56ac80d95d9cd4ddbd21325eff73f70df6086551151f58b8afe6c195782c6a
+  h after act one: 9d1ffbb639e7e20021d9259491dc7b160aab270fb1339ef135053f6f2cebe9ce
+  act two read: OK, ck: e89d31033a1b6bf68c07d22e08ea4d7884646c4b60a9528598ccb4ee2c8f56ba
+  act three, 66 bytes: 00b9e3a702e93e3a9948c2ed6e5fd7590a6e1c3a0344cfc9d5b57357049aa22355361aa02e55a8fc28fef5bd6d71ad0c38228dc68b1c466263b47fdf31e560e139ba
+  sk: 969ab31b4d288cedf6218839b27a3e2140827047f2c0f01bf5c04435d43511a9
+  rk: bb9020b8965f4df047e07f955f3c4b88418984aadc5cdb35096b9ea8fa5c3442
+message vectors
+  message 0, 39 bytes: true, nonce now 2
+  message 1, 39 bytes: true, nonce now 4
+  message 500, 39 bytes: true, nonce now 2
+  message 501, 39 bytes: true, nonce now 4
+  message 1000, 39 bytes: true, nonce now 2
+  message 1001, 39 bytes: true, nonce now 4
+two nodes
+  responder's static key: 03acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbe
+  acts read: OK, OK, OK
+  the responder learned the initiator's static key: true
+  initiator sk = responder rk: true
+  act one read by a node with another key: BAD_TAG
+  init: 8 bytes, 42 on the wire: 9e58a5dc39563f339e23bb1c8160883350718616e3116b05b592d98f8f056bb8c2374dd73f3a8e4a8a28
+  the responder reads length 8, body OK, init ok, features 2
+  a changed body byte: length OK, body BAD_TAG
+  the first message replayed: BAD_TAG

@@ -295,7 +295,7 @@ there is a need.
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
 | [104. Messages and TLVs](ch104-messages-and-tlvs.md) — implemented | 1 | All 18 BigSize decodings and 8 encodings of BOLT 1's Appendix A, all 57 TLV streams of Appendix B in their namespaces (with the `n1` values), and the 5 `init` messages of Appendix C give BOLT 1's results. An unknown even type, feature bit or message type refuses; an unknown odd one is ignored. Every line of the example agrees with an independent Python reader. | BOLT 1 |
-| 105. The Noise handshake — planned | 9, 12, 16 | BOLT 8's handshake and message vectors match byte for byte, including key rotation. | BOLT 8 |
+| [105. The Noise handshake](ch105-the-noise-handshake.md) — implemented | 9, 12, 16 | All 15 handshake vectors of BOLT 8's Appendix A, 5 initiator and 10 responder, give its acts and session keys or the error it names, and the message vectors' six outputs match byte for byte across two key rotations. Every line of the example agrees with an independent Python handshake. | BOLT 8 |
 | 106. Commitment keys and revocation — planned | 4, 16 | BOLT 3's key-derivation vectors give every key. | BOLT 3 |
 | 107. Shachain — planned | 4 | BOLT 3's per-commitment secret storage vectors pass, including the cases that must fail. | BOLT 3 |
 | 108. Commitment and HTLC transactions — planned | 38, 100, 106 | BOLT 3's commitment and HTLC transaction vectors match byte for byte, with and without anchors. | BOLT 3 |

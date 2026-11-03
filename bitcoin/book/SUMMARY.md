@@ -98,3 +98,4 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 **XVII. Lightning**
 
 - [104. Messages and TLVs](ch104-messages-and-tlvs.md) — implemented
+- [105. The Noise handshake](ch105-the-noise-handshake.md) — implemented

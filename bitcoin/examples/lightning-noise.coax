@@ -1,0 +1,107 @@
+// book:begin example
+#load "../../coax/lib/lightning/noise.coax";
+#load "../../coax/lib/lightning/bolt1.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex, at most 256 of them.
+show :: (b: [] u8) {
+  text: [512] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+// A 32-byte secret key whose last byte is k.
+small :: (k: u8) -> [32] u8 { key: [32] u8; key[31] = k; return key; }
+
+main :: () {
+  // ---- BOLT 8's handshake vectors, each from the side it names
+  print("handshake vectors\n");
+  for row: NOISE_HANDSHAKES {
+    t: [1] NoiseTransport;
+    code := noise_run_vector(row, t[..]);
+    keys := false;
+    if code == NOISE_OK {
+      both: [64] u8; first := ifx row.initiator then t[0].sk else t[0].rk; second := ifx row.initiator then t[0].rk else t[0].sk;
+      for i: 0..<32 { both[i] = first[i]; both[32 + i] = second[i]; }
+      keys = nz_hex_is(both[..], row.keys);
+    }
+    print("  %: %", row.name, NOISE_CODE_NAMES[code]);
+    if code == NOISE_OK { print(", session keys match: %", keys); }
+    else { print(", BOLT 8 says %", row.error); }
+    print("\n");
+  }
+
+  // ---- the initiator's side of the successful vector, step by step
+  print("the initiator, step by step\n");
+  row := NOISE_HANDSHAKES[0];
+  hs: [1] NoiseHandshake; key: [32] u8; e: [32] u8; peer: [33] u8; m: [66] u8; out: [66] u8; t: [1] NoiseTransport;
+  nz_fill(row.ls_priv, key[..]); nz_fill(row.e_priv, e[..]); nz_fill(row.rs_pub, peer[..]);
+  code := noise_handshake_init(hs[..], true, key[..], peer[..]);
+  print("  h before act one: "); show(hs[0].h[..]); print("\n");
+  code = noise_act_one_write(hs[..], e[..], out[..]);
+  print("  act one, 50 bytes: "); show(out[0..<50]); print("\n");
+  print("  h after act one: "); show(hs[0].h[..]); print("\n");
+  code = noise_act_two_read(hs[..], nz_unhex(row.act2, m[..]));
+  print("  act two read: %, ck: ", NOISE_CODE_NAMES[code]); show(hs[0].ck[..]); print("\n");
+  code = noise_act_three_write(hs[..], out[..], t[..]);
+  print("  act three, 66 bytes: "); show(out[0..<66]); print("\n");
+  print("  sk: "); show(t[0].sk[..]); print("\n");
+  print("  rk: "); show(t[0].rk[..]); print("\n");
+
+  // ---- BOLT 8's message vectors: 1,002 "hello"s, two rotations
+  print("message vectors\n");
+  tm: [1] NoiseTransport; k: [32] u8;
+  nz_fill(NOISE_MESSAGES.sk, k[..]); tm[0].sk = k; nz_fill(NOISE_MESSAGES.ck, k[..]); tm[0].sck = k;
+  hello := [5] u8.['h', 'e', 'l', 'l', 'o']; box: [128] u8;
+  for i: 0..<1002 {
+    n := noise_encrypt(tm[..], hello[..], box[..]);
+    for o: NOISE_MESSAGES.outputs {
+      if o.index == i { print("  message %, % bytes: %, nonce now %\n", i, n, nz_hex_is(box[0..<n], o.hex), tm[0].sn); }
+    }
+  }
+
+  // ---- two Coax nodes: a handshake, then BOLT 1 messages
+  print("two nodes\n");
+  ka := small(7); kb := small(9); ea := small(11); eb := small(13);
+  a: [1] NoiseHandshake; b: [1] NoiseHandshake; ta: [1] NoiseTransport; tb: [1] NoiseTransport;
+  apub := noise_public(ka[..]); bpub := noise_public(kb[..]);
+  print("  responder's static key: "); show(bpub.bytes[..]); print("\n");
+  one: [50] u8; two: [50] u8; three: [66] u8;
+  code = noise_handshake_init(a[..], true, ka[..], bpub.bytes[..]);
+  code = noise_handshake_init(b[..], false, kb[..], bpub.bytes[..]);
+  code = noise_act_one_write(a[..], ea[..], one[..]);
+  r1 := noise_act_one_read(b[..], one[..]);
+  code = noise_act_two_write(b[..], eb[..], two[..]);
+  r2 := noise_act_two_read(a[..], two[..]);
+  code = noise_act_three_write(a[..], three[..], ta[..]);
+  r3 := noise_act_three_read(b[..], three[..], tb[..]);
+  print("  acts read: %, %, %\n", NOISE_CODE_NAMES[r1], NOISE_CODE_NAMES[r2], NOISE_CODE_NAMES[r3]);
+  same := true; for i: 0..<33 { if b[0].rs[i] != apub.bytes[i] { same = false; } }
+  print("  the responder learned the initiator's static key: %\n", same);
+  print("  initiator sk = responder rk: %\n", cb_ct_equal(ta[0].sk[..], tb[0].rk[..]) == CB_MAX64);
+  // A third node that does not hold the responder's key cannot finish act one.
+  c: [1] NoiseHandshake; kc := small(5); cpub := noise_public(kc[..]);
+  code = noise_handshake_init(c[..], false, kc[..], cpub.bytes[..]);
+  print("  act one read by a node with another key: %\n", NOISE_CODE_NAMES[noise_act_one_read(c[..], one[..])]);
+  // init (chapter 104) over the transport.
+  f: [3] u8; chains: [1] u8; msg: [64] u8; got: [64] u8; wire: [128] u8;
+  put := ln_feature_put(f[..], 8); put = ln_feature_put(f[..], 14);
+  n := ln_init_write_vartime(f[1..<3], chains[0..<0], msg[..]);
+  w := noise_encrypt(ta[..], msg[0..<n], wire[..]);
+  print("  init: % bytes, % on the wire: ", n, w); show(wire[0..<w]); print("\n");
+  l := noise_decrypt_length(tb[..], wire[0..<NOISE_HEADER]);
+  body := noise_decrypt_body(tb[..], wire[NOISE_HEADER..<w], got[..]);
+  r := ln_init_read_vartime(got[0..<l.n]);
+  print("  the responder reads length %, body %, init %, features %\n", l.n, NOISE_CODE_NAMES[body], CODES[r.code], r.features_n);
+  // The next message with one body byte changed, read by a copy of the
+  // responder's state: the length opens, the body does not.
+  again: [128] u8;
+  w2 := noise_encrypt(ta[..], msg[0..<n], again[..]); again[NOISE_HEADER + 3] ^= 1;
+  probe: [1] NoiseTransport; probe[0] = tb[0];
+  l = noise_decrypt_length(probe[..], again[0..<NOISE_HEADER]);
+  print("  a changed body byte: length %, body %\n", NOISE_CODE_NAMES[l.code], NOISE_CODE_NAMES[noise_decrypt_body(probe[..], again[NOISE_HEADER..<w2], got[..])]);
+  // The first message again: the responder's nonce has moved on.
+  print("  the first message replayed: %\n", NOISE_CODE_NAMES[noise_decrypt_length(tb[..], wire[0..<NOISE_HEADER]).code]);
+}
+CODES :: [9] string.["ok", "truncated", "not minimal", "order", "unknown even", "length", "value", "capacity", "too large"];
+// book:end example

@@ -2902,6 +2902,19 @@
       "retrieved": "2026-11-03",
       "sha256": "39ead9fa5743104a3e66e0f6c342e34d64966dc943dcbcc337969e543e3e3cbe",
       "bytes": 10888
+    },
+    {
+      "path": "upstream/bolts/08-transport.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/08-transport.md",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "lightning-noise"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "85a1d6402adb653416c5a48f3b4c8eac2d8964621c41cb1bb6e09b8e06fbde46",
+      "bytes": 43682
     }
   ]
 }

@@ -1,0 +1,53 @@
+// The checks of lightning-noise.coax. They live apart so that running the
+// example doesn't also run them. The example runs every BOLT 8 vector;
+// these check the properties around them.
+// Checks: coax test bitcoin/examples/checks/lightning-noise.coax
+#load "../lightning-noise.coax";
+
+// book:begin check
+// Two transports in step from BOLT 8's message keys: no handshake, so
+// each check starts cheaply.
+pair :: (a: [] NoiseTransport, b: [] NoiseTransport) {
+  k: [32] u8; ck: [32] u8; nz_fill(NOISE_MESSAGES.sk, k[..]); nz_fill(NOISE_MESSAGES.ck, ck[..]);
+  a[0] = NoiseTransport.{sk = k, sck = ck}; b[0] = NoiseTransport.{rk = k, rck = ck};
+}
+// Every one of the 312 single-bit changes to a 39-byte "hello" is refused,
+// in the length or in the body.
+#forall "one changed bit of a message" bit: 0..<312 #steps 40000000 {
+  a: [1] NoiseTransport; b: [1] NoiseTransport; pair(a[..], b[..]);
+  hello := [5] u8.['h', 'e', 'l', 'l', 'o']; box: [64] u8; got: [8] u8;
+  n := noise_encrypt(a[..], hello[..], box[..]);
+  box[bit / 8] ^= cast(u8) (1 << (bit % 8));
+  l := noise_decrypt_length(b[..], box[0..<NOISE_HEADER]);
+  #assert l.code != NOISE_OK || noise_decrypt_body(b[..], box[NOISE_HEADER..<n], got[..]) != NOISE_OK;
+}
+// 510 messages of different lengths, starting 10 uses before a rotation,
+// cross two rotations and all open, and both sides rotate in step.
+#test "messages open across two rotations" #steps 2000000000 {
+  a: [1] NoiseTransport; b: [1] NoiseTransport; pair(a[..], b[..]);
+  a[0].sn = 990; b[0].rn = 990;
+  m: [40] u8; box: [80] u8; got: [40] u8;
+  for i: 0..<510 {
+    size := i % 40; for j: 0..<size { m[j] = cast(u8) ((i + j) & 255); }
+    n := noise_encrypt(a[..], m[0..<size], box[..]);
+    l := noise_decrypt_length(b[..], box[0..<NOISE_HEADER]);
+    #assert l.code == NOISE_OK && l.n == size;
+    #assert noise_decrypt_body(b[..], box[NOISE_HEADER..<n], got[..]) == NOISE_OK;
+    for j: 0..<size { #assert got[j] == m[j]; }
+  }
+  // 5 messages to the first rotation, 500 to the second, 5 more.
+  #assert a[0].sn == 10 && b[0].rn == 10;
+  for i: 0..<32 { #assert a[0].sk[i] == b[0].rk[i] && a[0].sck[i] == b[0].rck[i]; }
+}
+// A changed byte in each part of act one fails the responder's read: the
+// version, the key's prefix, its x-coordinate, and the tag.
+ACT_ONE_BYTES :: [8] int.[0, 1, 2, 17, 33, 34, 41, 49];
+#forall "one changed byte of act one" k: 0..<8 #steps 2000000000 {
+  at := ACT_ONE_BYTES[k];
+  row := NOISE_HANDSHAKES[5]; hs: [1] NoiseHandshake; key: [32] u8; m: [50] u8;
+  nz_fill(row.ls_priv, key[..]); mine := noise_public(key[..]);
+  #assert noise_handshake_init(hs[..], false, key[..], mine.bytes[..]) == NOISE_OK;
+  nz_fill(row.act1, m[..]); m[at] ^= 0x10;
+  #assert noise_act_one_read(hs[..], m[..]) != NOISE_OK;
+}
+// book:end check

@@ -421,6 +421,15 @@ that a maliciously replaced manifest is authentic.
   into `coax/tests/lightning/bolt1_vectors.coax`, and
   `coax/tests/lightning/bolt1.py` is the independent reader the
   cross-check runs.
+- **The Noise handshake (Bitcoin chapter 105):** BOLT 8
+  (`08-transport.md`) at the same lightning/bolts revision, CC-BY-4.0,
+  retrieved 2026-11-03. Its Appendix A gives 5 initiator and 10 responder
+  handshake tests, with every act, the session keys or the expected error,
+  and the message test's six outputs across two key rotations.
+  `coax/tests/lightning/make_noise_vectors.py` reads them into
+  `coax/tests/lightning/noise_vectors.coax`, and
+  `coax/tests/lightning/noise.py` is the independent handshake the
+  cross-check runs, on `coax/tests/lightning/ln_crypto.py`.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -682,4 +691,5 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip157/bip-0157.mediawiki`](upstream/bip157/bip-0157.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0157.mediawiki) | `5405acbf04ebd8a1b92ae2b7188022f4c14723ed8a0ae0d077d12a1e6908da9a` |
 | [`upstream/bolts/01-messaging.md`](upstream/bolts/01-messaging.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/01-messaging.md) | `5801219aabcf854cf0a6dd4e98759b4351cbca238588061c680574912f6ef918` |
 | [`upstream/bolts/09-features.md`](upstream/bolts/09-features.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/09-features.md) | `39ead9fa5743104a3e66e0f6c342e34d64966dc943dcbcc337969e543e3e3cbe` |
+| [`upstream/bolts/08-transport.md`](upstream/bolts/08-transport.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/08-transport.md) | `85a1d6402adb653416c5a48f3b4c8eac2d8964621c41cb1bb6e09b8e06fbde46` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |
