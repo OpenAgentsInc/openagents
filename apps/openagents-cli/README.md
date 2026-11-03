@@ -99,6 +99,36 @@ checked id and signature; one that fails is dropped. Both answer the relay's
 NIP-42 challenge with your key when you have one. The relay is
 `wss://relay.openagents.com` unless you pass `--relay`.
 
+## Vault
+
+Files encrypted on this computer to your own Nostr key, with only the
+ciphertext stored in a private Google Cloud Storage bucket. Only this
+profile's secret key opens them.
+
+```sh
+openagents vault put statement.pdf taxes-2025.pdf   # prints each file's id
+openagents vault put scan.pdf --name "passport.pdf"
+openagents vault list                               # id, name, size
+openagents vault get ID [--out PATH] [--force]      # default ./NAME, mode 0600
+openagents vault rm ID --yes
+```
+
+- Encryption is NIP-44 v2 to yourself: the conversation key of your secret
+  and your own public key, as NIP-51 private lists use. The file goes up in
+  chunks of at most 65,535 bytes, each its own NIP-44 payload, after an
+  encrypted header that holds the id, the size, the SHA-256 and the name.
+  `get` writes nothing unless every chunk opens and the size and SHA-256
+  match. File names are encrypted too; the bucket sees only your public key,
+  a random id and the size.
+- The object is `gs://openagentsgemini-openagents-vault/v1/PUBKEY/ID`
+  (`OPENAGENTS_VAULT_BUCKET` picks another bucket). It needs `gcloud`. It runs
+  on `CLOUDSDK_CONFIG`, else the automation account's config in
+  `~/work/.secrets/gcloud-sa-config`, so for now it works where that account
+  is set up.
+- If you lose the key, the files can't be recovered. Back up your 12 words.
+- Not built yet: sharing with other keys, and an openagents.com API so it
+  works without gcloud.
+
 ## Pylon
 
 ```sh

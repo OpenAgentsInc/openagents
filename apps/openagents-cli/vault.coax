@@ -1,0 +1,407 @@
+// The vault domain: files encrypted on this computer to your own Nostr key
+// (NIP-44 v2, the conversation key of your secret and your own public key,
+// as NIP-51 private items are), and stored as ciphertext in a private Google
+// Cloud Storage bucket. Only someone with this profile's secret key can open
+// them. Nothing but ciphertext leaves this computer.
+//
+//   vault put FILE... [--name NAME]   encrypt and upload; prints each file's id
+//   vault list                         your files: id, size, name
+//   vault get ID [--out PATH] [--force]   download and decrypt (mode 0600)
+//   vault rm ID --yes                  delete the stored ciphertext
+//
+// The stored object, gs://BUCKET/v1/PUBKEY/ID, is text, one item a line:
+//   openagents.sealed-file.v1 PUBKEY
+//   NIP-44(header)   "id ID\nbytes N\nsha256 HEX\nchunks C\nname NAME"
+//   NIP-44(chunk 0) ... NIP-44(chunk C-1), each at most 65,535 bytes
+// and gs://BUCKET/v1/PUBKEY/ID.head holds its first two lines, so `list` is
+// one download however big the files are.
+// The header is authenticated by NIP-44's MAC, so a reader that checks its
+// id, its byte count and the SHA-256 of what the chunks decrypt to refuses
+// any swapped, reordered, truncated or extended object.
+//
+// The bucket is OPENAGENTS_VAULT_BUCKET, else openagentsgemini-openagents-vault;
+// gcloud runs on CLOUDSDK_CONFIG, else ~/work/.secrets/gcloud-sa-config.
+// Not built: sharing with other keys, and a server API (this needs gcloud).
+#load "../../coax/lib/nostr/nip44-key.coax";
+#load "../../coax/lib/nostr/nip44.coax";
+
+VT_FORMAT :: "openagents.sealed-file.v1";
+VT_BUCKET :: "openagentsgemini-openagents-vault";
+VT_CHUNK :: 65535;          // NIP44_COMPAT's largest plaintext
+VT_LINE :: 87480;           // a NIP-44 payload of VT_CHUNK bytes is 87,472 characters
+VT_WORK :: 131200;          // NIP-44 work for VT_CHUNK bytes (encrypt and decrypt)
+VT_HEADER :: 1024;
+VT_NAME_MAX :: 255;
+
+vault_usage :: () {
+  print("%\n", "Vault (files encrypted to your Nostr key, NIP-44; ciphertext in our private bucket):");
+  print("%\n", "  vault put FILE... [--name NAME]          encrypt here, upload the ciphertext; prints each id");
+  print("%\n", "  vault list                               your files: id, size, name");
+  print("%\n", "  vault get ID [--out PATH] [--force]      download and decrypt to PATH (default ./NAME), mode 0600");
+  print("%\n", "  vault rm ID --yes                        delete a stored file");
+  print("%\n", "");
+}
+
+vault_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb != "put" && verb != "list" && verb != "get" && verb != "rm" { return fail(r, EXIT_USAGE, "vault: put, list, get or rm (openagents help)"); }
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new` or `openagents nostr import --words`"); }
+  me: [1] VtMe;
+  if !vt_me(k[0].secret[..], me[..]) { wipe(k[0].secret[..]); return fail(r, EXIT_FAIL, "vault: this key can't make a NIP-44 key"); }
+  wipe(k[0].secret[..]);
+  code := EXIT_OK;
+  if verb == "put" { code = vault_put(a, r, me[..]); }
+  if verb == "list" { code = vault_list(r, me[..]); }
+  if verb == "get" { code = vault_get(a, r, me[..]); }
+  if verb == "rm" { code = vault_rm(a, r, me[..]); }
+  wipe(me[0].ck[..]);
+  return code;
+}
+
+// ---- keys -------------------------------------------------------------------
+
+VtMe :: struct { ck: [32] u8; pub: [64] u8; }
+
+vt_me :: (secret: [] u8, me: [] VtMe) -> bool {
+  pub33: [33] u8; x: [32] u8; work: [1] EcdhScratch;
+  if !bip32_public(secret, pub33[..]) { return false; }
+  for i: 0..<32 { x[i] = pub33[i + 1]; }
+  if nip44_conversation_key_from_keys_checked(secret, x[..], work[..], me[0].ck[..], false) != NIP44_OK { return false; }
+  return cli_hex(x[..], me[0].pub[..]);
+}
+vt_pub :: (me: [] VtMe) -> string { return cast(string) me[0].pub[..]; }
+
+// One NIP-44 payload of plain, into out; its length or -1.
+vt_seal :: (ck: [] u8, plain: [] u8, work: [] u8, out: [] u8) -> int {
+  nonce: [32] u8;
+  if cxrand_draw(nonce[..], 32) != 0 { return -1; }
+  s := nip44_encrypt_checked(NIP44_COMPAT, ck, nonce[..], plain, work, out, false);
+  return ifx s.error == NIP44_OK then s.written else -1;
+}
+vt_open :: (ck: [] u8, payload: string, work: [] u8, out: [] u8) -> int {
+  s := nip44_decrypt_checked(NIP44_COMPAT, ck, payload, work, out, false);
+  wipe(work);
+  return ifx s.error == NIP44_OK then s.written else -1;
+}
+
+// ---- the header ------------------------------------------------------------------
+
+VtHead :: struct { ok: bool; id: string; bytes: int; sha: string; chunks: int; name: string; }
+
+vt_head_text :: (id: string, bytes: int, sha: string, chunks: int, name: string, l: [] Ln) {
+  ln_s(l, "id "); ln_s(l, id); ln_s(l, "\nbytes "); ln_i(l, bytes);
+  ln_s(l, "\nsha256 "); ln_s(l, sha); ln_s(l, "\nchunks "); ln_i(l, chunks);
+  ln_s(l, "\nname "); ln_s(l, name);
+}
+// A whole decimal that fits in an int, or -1.
+vt_int :: (s: string) -> int {
+  if s.count < 1 || s.count > 15 { return -1; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+vt_head_read :: (text: string) -> VtHead {
+  h: VtHead; i := 0; field := 0;
+  keys := [5] string.["id ", "bytes ", "sha256 ", "chunks ", "name "];
+  while i <= text.count && field < 5 {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    line := text[i..<e]; key := keys[field];
+    if line.count < key.count || line[0..<key.count] != key { return VtHead.{}; }
+    v := line[key.count..<line.count];
+    if field == 0 { h.id = v; }
+    if field == 1 { h.bytes = vt_int(v); }
+    if field == 2 { h.sha = v; }
+    if field == 3 { h.chunks = vt_int(v); }
+    if field == 4 { h.name = v; if e != text.count { return VtHead.{}; } }
+    field += 1; i = e + 1;
+  }
+  h.ok = field == 5 && vt_id_ok(h.id) && h.bytes >= 0 && h.sha.count == 64 && h.chunks >= 0 && vt_name_ok(h.name)
+    && h.chunks == (h.bytes + VT_CHUNK - 1) / VT_CHUNK;
+  return h;
+}
+vt_id_ok :: (s: string) -> bool {
+  if s.count != 32 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+vt_name_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > VT_NAME_MAX || s == "." || s == ".." { return false; }
+  for c: s { if c < 32 || c == '/' || c == 127 { return false; } }
+  return true;
+}
+#test "vault headers read back exactly, and refuse anything else" {
+  l: [1] Ln;
+  vt_head_text("0123456789abcdef0123456789abcdef", 65536, "aa00000000000000000000000000000000000000000000000000000000000000", 2, "tax return.pdf", l[..]);
+  h := vt_head_read(ln_text(l[..]));
+  #assert h.ok && h.id == "0123456789abcdef0123456789abcdef" && h.bytes == 65536 && h.chunks == 2 && h.name == "tax return.pdf";
+  #assert !vt_head_read("id 0123456789abcdef0123456789abcdef\nbytes 65536\nsha256 aa00000000000000000000000000000000000000000000000000000000000000\nchunks 1\nname a").ok;
+  #assert vt_head_read("id 0123456789abcdef0123456789abcdef\nbytes 0\nsha256 aa00000000000000000000000000000000000000000000000000000000000000\nchunks 0\nname a").ok;
+  #assert !vt_head_read("id 0123456789abcdef0123456789abcdef\nbytes 0\nsha256 aa00000000000000000000000000000000000000000000000000000000000000\nchunks 0\nname ../a").ok;
+  #assert !vt_head_read("id 0123456789abcdef0123456789abcdef\nbytes 0\nsha256 aa00000000000000000000000000000000000000000000000000000000000000\nchunks 0\nname a\nextra").ok;
+  #assert !vt_head_read("bytes 0").ok && !vt_head_read("").ok;
+  #assert vt_name_ok("a.pdf") && !vt_name_ok("a/b") && !vt_name_ok("") && !vt_name_ok("a\nb") && !vt_name_ok("..");
+}
+
+// ---- gcloud --------------------------------------------------------------------------
+
+vt_bucket :: (out: [] u8) -> string {
+  b := proc_getenv("OPENAGENTS_VAULT_BUCKET", out);
+  return ifx b.count > 0 then b else VT_BUCKET;
+}
+// gs://BUCKET/v1/PUBKEY/ID (ID "" for the folder, with its slash).
+vt_url :: (me: [] VtMe, id: string, l: [] Ln) -> string {
+  bb: [256] u8;
+  ln_s(l, "gs://"); ln_s(l, vt_bucket(bb[..])); ln_s(l, "/v1/"); ln_s(l, vt_pub(me)); ln_s(l, "/"); ln_s(l, id);
+  return ln_text(l);
+}
+// gcloud with args; its stdout into out. The exit status, or -1 when it couldn't start.
+vt_gcloud :: (args: [] string, out: [] u8, n: [] int, quiet: bool) -> int {
+  cb: [2048] u8; hb: [1024] u8;
+  cfg := proc_getenv("CLOUDSDK_CONFIG", cb[..]);
+  if cfg.count == 0 { cfg = fs_join(home(hb[..]), "work/.secrets/gcloud-sa-config", cb[..]); }
+  argv: [16] string; c := 0;
+  e: [1] Ln; ln_s(e[..], "CLOUDSDK_CONFIG="); ln_s(e[..], cfg);
+  argv[0] = "env"; argv[1] = ln_text(e[..]); argv[2] = "gcloud"; c = 3;
+  for s: args { if c < 16 { argv[c] = s; c += 1; } }
+  err: [16384] u8;
+  got := proc_run(argv[0..<c], 900000, out, err[..]);
+  n[0] = got.out_n;
+  if got.started != 0 { return -1; }
+  if got.status != 0 && !quiet && got.err_n > 0 { tool_err(cast(string) err[0..<got.err_n]); if err[got.err_n - 1] != 10 { tool_err("\n"); } }
+  return got.status;
+}
+
+// ---- put ------------------------------------------------------------------------------
+
+vault_put :: (a: [] Args, r: [] Rep, me: [] VtMe) -> int {
+  first := positional(a, 2);
+  if first == "" { return fail(r, EXIT_USAGE, "vault put FILE... [--name NAME]"); }
+  if args_has(a, "--name") && positional(a, 3) != "" { return fail(r, EXIT_USAGE, "--name is for one file"); }
+  tb: [2048] u8;
+  dir := fs_temp("openagents-vault", tb[..]);
+  if dir == "" { return fail(r, EXIT_FAIL, "vault: can't make a temporary folder"); }
+  list: [1] Ln; shown: [1] Ln; count := 0; code := EXIT_OK;
+  i := 2;
+  while positional(a, i) != "" {
+    path := positional(a, i);
+    name := ifx args_has(a, "--name") then args_value(a, "--name", "") else fs_base(path);
+    idl: [1] Ln;
+    code = vt_put_one(r, me, path, name, dir, idl[..]);
+    if code != EXIT_OK { break; }
+    if count > 0 { ln_s(list[..], ","); }
+    ln_s(list[..], "{\"id\":\""); ln_s(list[..], ln_text(idl[..])); ln_s(list[..], "\",\"name\":"); vt_quote(list[..], name);
+    ln_s(list[..], ",\"bytes\":"); ln_i(list[..], fs_size(path)); ln_s(list[..], "}");
+    ln_s(shown[..], ln_text(idl[..])); ln_s(shown[..], " "); ln_s(shown[..], name); ln_s(shown[..], " "); ln_i(shown[..], fs_size(path)); ln_s(shown[..], " bytes\n");
+    count += 1; i += 1;
+  }
+  // One upload for every sealed file and its header.
+  if code == EXIT_OK {
+    src: [1] Ln; ln_s(src[..], dir); ln_s(src[..], "/*");
+    ul: [1] Ln; folder := vt_url(me, "", ul[..]);
+    args := [6] string.["storage", "cp", "--quiet", "--content-type=application/octet-stream", ln_text(src[..]), folder];
+    o: [4096] u8; on: [1] int;
+    if vt_gcloud(args[..], o[..], on[..], false) != 0 { code = fail(r, EXIT_FAIL, "vault put: the upload failed (gcloud storage cp)"); }
+  }
+  vt_clear(dir);
+  if code != EXIT_OK { return code; }
+  if !r[0].json { print("%", ln_text(shown[..])); }
+  if r[0].json { j: [1] Ln; ln_s(j[..], "["); ln_s(j[..], ln_text(list[..])); ln_s(j[..], "]"); rep_raw(r, "files", ln_text(j[..])); }
+  return rep_done(r, EXIT_OK);
+}
+vt_quote :: (l: [] Ln, s: string) {
+  digits := "0123456789abcdef";
+  ln_s(l, "\"");
+  for c: s {
+    if c == '"' || c == '\\' { ln_s(l, "\\"); one := [1] u8.[c]; ln_s(l, cast(string) one[..]); continue; }
+    if c < 32 { ln_s(l, "\\u00"); d := [2] u8.[digits[cast(int) (c >> 4)], digits[cast(int) (c & 15)]]; ln_s(l, cast(string) d[..]); continue; }
+    one := [1] u8.[c]; ln_s(l, cast(string) one[..]);
+  }
+  ln_s(l, "\"");
+}
+
+// Every file in a temporary folder, then the folder.
+vt_clear :: (dir: string) {
+  l: [1] FsList;
+  n := fs_list(dir, l[..]);
+  for i: 0..<n { pb: [2400] u8; gone := fs_remove(fs_join(dir, fs_entry(l[..], i), pb[..])); }
+  gone := fs_remove(dir);
+}
+
+VtBuf :: struct { plain: [VT_CHUNK] u8; work: [VT_WORK] u8; line: [VT_LINE + 1] u8; }
+
+vt_put_one :: (r: [] Rep, me: [] VtMe, path: string, name: string, dir: string, idl: [] Ln) -> int {
+  if fs_kind(path) != FS_FILE { return fail(r, EXIT_USAGE, "vault put: not a file"); }
+  if !vt_name_ok(name) { return fail(r, EXIT_USAGE, "vault put: a name is 1 to 255 bytes, with no slash or control character"); }
+  size := fs_size(path);
+  if size < 0 { return fail(r, EXIT_FAIL, "vault put: can't read the file"); }
+  b: [1] VtBuf;
+  // Pass 1: the plaintext's SHA-256.
+  st: [SHA_STATE_BYTES] u8; digest: [32] u8; sha: [64] u8;
+  if sha256_init(st[..]) != 0 { return fail(r, EXIT_FAIL, "vault put: sha256"); }
+  off := 0;
+  while off < size {
+    got := fs_read_at(path, off, b[0].plain[..]);
+    if got <= 0 { wipe(b[0].plain[..]); return fail(r, EXIT_FAIL, "vault put: can't read the file"); }
+    if sha256_update_checked(st[..], b[0].plain[0..<got], false) != 0 { return fail(r, EXIT_FAIL, "vault put: sha256"); }
+    off += got;
+  }
+  if sha256_final_checked(st[..], digest[..], false) != 0 || !cli_hex(digest[..], sha[..]) { return fail(r, EXIT_FAIL, "vault put: sha256"); }
+  // The id.
+  raw: [16] u8; idh: [32] u8;
+  if cxrand_draw(raw[..], 16) != 0 || !cli_hex(raw[..], idh[..]) { return fail(r, EXIT_FAIL, "vault put: no randomness"); }
+  id := cast(string) idh[..];
+  chunks := (size + VT_CHUNK - 1) / VT_CHUNK;
+  // Pass 2: the sealed object.
+  tp: [2100] u8; sealed := fs_join(dir, id, tp[..]);
+  top: [1] Ln; ln_s(top[..], VT_FORMAT); ln_s(top[..], " "); ln_s(top[..], vt_pub(me)); ln_s(top[..], "\n");
+  hl: [1] Ln; vt_head_text(id, size, cast(string) sha[..], chunks, name, hl[..]);
+  n := vt_seal(me[0].ck[..], hl[0].b[0..<hl[0].n], b[0].work[..], b[0].line[..]);
+  if n < 0 { return fail(r, EXIT_FAIL, "vault put: encryption failed"); }
+  b[0].line[n] = 10;
+  ln_s(top[..], cast(string) b[0].line[0..<n + 1]);
+  hp: [1] Ln; ln_s(hp[..], sealed); ln_s(hp[..], ".head");
+  if !fs_write(sealed, ln_text(top[..])) || !fs_write(ln_text(hp[..]), ln_text(top[..])) { return fail(r, EXIT_FAIL, "vault put: can't write a temporary file"); }
+  off = 0;
+  for c: 0..<chunks {
+    want := ifx size - off < VT_CHUNK then size - off else VT_CHUNK;
+    got := fs_read_at(path, off, b[0].plain[0..<want]);
+    if got != want { wipe(b[0].plain[..]); return fail(r, EXIT_FAIL, "vault put: the file changed while it was read"); }
+    n = vt_seal(me[0].ck[..], b[0].plain[0..<got], b[0].work[..], b[0].line[..]);
+    wipe(b[0].plain[..]); wipe(b[0].work[..]);
+    if n < 0 { return fail(r, EXIT_FAIL, "vault put: encryption failed"); }
+    b[0].line[n] = 10;
+    if !fs_append(sealed, cast(string) b[0].line[0..<n + 1]) { return fail(r, EXIT_FAIL, "vault put: can't write a temporary file"); }
+    off += got;
+  }
+  ln_s(idl, id);
+  return EXIT_OK;
+}
+
+// ---- list ------------------------------------------------------------------------------
+
+VT_LS :: 262144;
+
+vault_list :: (r: [] Rep, me: [] VtMe) -> int {
+  tb: [2048] u8;
+  dir := fs_temp("openagents-vault", tb[..]);
+  if dir == "" { return fail(r, EXIT_FAIL, "vault: can't make a temporary folder"); }
+  ul: [1] Ln; heads := vt_url(me, "*.head", ul[..]);
+  args := [5] string.["storage", "cp", "--quiet", heads, dir];
+  o: [4096] u8; on: [1] int;
+  status := vt_gcloud(args[..], o[..], on[..], true);   // no files is a failed cp too
+  if status < 0 { vt_clear(dir); return fail(r, EXIT_MISSING, "vault list: gcloud is missing"); }
+  l: [1] FsList;
+  n := fs_list(dir, l[..]);
+  j: [1] Ln; ln_s(j[..], "["); shown: [1] Ln; count := 0;
+  for i: 0..<n {
+    file := fs_entry(l[..], i);
+    if file.count != 37 || file[32..<37] != ".head" { continue; }
+    id := file[0..<32];
+    if !vt_id_ok(id) { continue; }
+    h: [1] VtHeadBuf; pb: [2400] u8;
+    got := fs_read(fs_join(dir, file, pb[..]), h[0].top[..]);
+    head := ifx got > 0 then vt_head_lines(me, id, cast(string) h[0].top[0..<got], h[..]) else VtHead.{};
+    if count > 0 { ln_s(j[..], ","); }
+    ln_s(j[..], "{\"id\":\""); ln_s(j[..], id); ln_s(j[..], "\"");
+    ln_s(shown[..], id); ln_s(shown[..], " ");
+    if head.ok {
+      ln_s(j[..], ",\"name\":"); vt_quote(j[..], head.name); ln_s(j[..], ",\"bytes\":"); ln_i(j[..], head.bytes);
+      ln_s(shown[..], head.name); ln_s(shown[..], " "); ln_i(shown[..], head.bytes); ln_s(shown[..], " bytes\n");
+    } else { ln_s(j[..], ",\"error\":\"doesn't open with this key\""); ln_s(shown[..], "(doesn't open with this key)\n"); }
+    ln_s(j[..], "}");
+    count += 1;
+  }
+  vt_clear(dir);
+  ln_s(j[..], "]");
+  if r[0].json { rep_raw(r, "files", ln_text(j[..])); }
+  else { print("%", ifx count == 0 then "no files\n" else ln_text(shown[..])); }
+  return rep_done(r, EXIT_OK);
+}
+
+VtHeadBuf :: struct { top: [4096] u8; work: [8192] u8; plain: [VT_HEADER] u8; }
+
+// The first two lines of a stored object: the format line, and the header for this key.
+vt_head_lines :: (me: [] VtMe, id: string, text: string, h: [] VtHeadBuf) -> VtHead {
+  e := 0; while e < text.count && text[e] != 10 { e += 1; }
+  want: [1] Ln; ln_s(want[..], VT_FORMAT); ln_s(want[..], " "); ln_s(want[..], vt_pub(me));
+  if text[0..<e] != ln_text(want[..]) { return VtHead.{}; }
+  s := e + 1; f := s; while f < text.count && text[f] != 10 { f += 1; }
+  if f >= text.count { return VtHead.{}; }
+  n := vt_open(me[0].ck[..], text[s..<f], h[0].work[..], h[0].plain[..]);
+  if n < 0 { return VtHead.{}; }
+  head := vt_head_read(cast(string) h[0].plain[0..<n]);
+  if !head.ok || head.id != id { return VtHead.{}; }
+  return head;
+}
+// ---- get ---------------------------------------------------------------------------------
+
+vault_get :: (a: [] Args, r: [] Rep, me: [] VtMe) -> int {
+  id := positional(a, 2);
+  if !vt_id_ok(id) { return fail(r, EXIT_USAGE, "vault get ID [--out PATH] [--force] (the id from vault list)"); }
+  tb: [2048] u8;
+  dir := fs_temp("openagents-vault", tb[..]);
+  if dir == "" { return fail(r, EXIT_FAIL, "vault: can't make a temporary folder"); }
+  tp: [2100] u8; sealed := fs_join(dir, "sealed", tp[..]);
+  code := vt_get_from(a, r, me, id, sealed);
+  gone := fs_remove(sealed); gone = fs_remove(dir);
+  return code;
+}
+vt_get_from :: (a: [] Args, r: [] Rep, me: [] VtMe, id: string, sealed: string) -> int {
+  ul: [1] Ln; url := vt_url(me, id, ul[..]);
+  args := [4] string.["storage", "cp", url, sealed];
+  o: [4096] u8; on: [1] int;
+  if vt_gcloud(args[..], o[..], on[..], false) != 0 { return fail(r, EXIT_NOT_FOUND, "vault get: no such file (gcloud storage cp)"); }
+  b: [1] VtBuf; h: [1] VtHeadBuf;
+  got := fs_read_at(sealed, 0, h[0].top[..]);
+  if got <= 0 { return fail(r, EXIT_FAIL, "vault get: the download is empty"); }
+  head := vt_head_lines(me, id, cast(string) h[0].top[0..<got], h[..]);
+  if !head.ok { return fail(r, EXIT_FAIL, "vault get: this file doesn't open with this key"); }
+  // Where the plaintext goes.
+  cw: [2048] u8; ob: [2400] u8;
+  out := ifx args_has(a, "--out") then args_value(a, "--out", "") else fs_join(fs_cwd(cw[..]), head.name, ob[..]);
+  if out == "" { return fail(r, EXIT_USAGE, "vault get: --out PATH"); }
+  if fs_exists(out) && !args_has(a, "--force") { return fail(r, EXIT_CONFLICT, "vault get: the output exists (--force replaces it)"); }
+  pl: [1] Ln; ln_s(pl[..], out); ln_s(pl[..], ".partial");
+  partial := ln_text(pl[..]);
+  pb: [2500] u8; pn := copy(partial, pb[..]);
+  empty: [1] u8;
+  if pn < 0 || cxcli_write_private(pb[0..<pn], empty[0..<0]) != 0 { return fail(r, EXIT_FAIL, "vault get: can't write the output"); }
+  // Skip the two header lines, then each chunk line.
+  off := 0;
+  for skip: 0..<2 { while off < got && h[0].top[off] != 10 { off += 1; } off += 1; }
+  st: [SHA_STATE_BYTES] u8; digest: [32] u8; sha: [64] u8;
+  ok := sha256_init(st[..]) == 0;
+  total := 0;
+  for c: 0..<head.chunks {
+    if !ok { break; }
+    n := fs_read_at(sealed, off, b[0].line[..]);
+    e := 0; while e < n && b[0].line[e] != 10 { e += 1; }
+    if n <= 0 || e >= n { ok = false; break; }
+    m := vt_open(me[0].ck[..], cast(string) b[0].line[0..<e], b[0].work[..], b[0].plain[..]);
+    if m <= 0 || (c < head.chunks - 1 && m != VT_CHUNK) { ok = false; break; }
+    ok = sha256_update_checked(st[..], b[0].plain[0..<m], false) == 0 && fs_append(partial, cast(string) b[0].plain[0..<m]);
+    wipe(b[0].plain[..]);
+    total += m; off += e + 1;
+  }
+  ok = ok && fs_size(sealed) == off && total == head.bytes;
+  ok = ok && sha256_final_checked(st[..], digest[..], false) == 0 && cli_hex(digest[..], sha[..]) && cast(string) sha[..] == head.sha;
+  if !ok { gone := fs_remove(partial); return fail(r, EXIT_FAIL, "vault get: the stored file is damaged or was changed; nothing was written"); }
+  if fs_exists(out) { gone := fs_remove(out); }
+  if !fs_rename(partial, out) { gone := fs_remove(partial); return fail(r, EXIT_FAIL, "vault get: can't write the output"); }
+  rep_str(r, "id", id); rep_str(r, "name", head.name); rep_int(r, "bytes", head.bytes); rep_str(r, "path", out);
+  return rep_done(r, EXIT_OK);
+}
+
+// ---- rm ------------------------------------------------------------------------------------
+
+vault_rm :: (a: [] Args, r: [] Rep, me: [] VtMe) -> int {
+  id := positional(a, 2);
+  if !vt_id_ok(id) || !args_has(a, "--yes") { return fail(r, EXIT_USAGE, "vault rm ID --yes"); }
+  ul: [1] Ln; url := vt_url(me, id, ul[..]);
+  hl: [1] Ln; ln_s(hl[..], url); ln_s(hl[..], ".head");
+  args := [5] string.["storage", "rm", "--quiet", url, ln_text(hl[..])];
+  o: [4096] u8; on: [1] int;
+  if vt_gcloud(args[..], o[..], on[..], false) != 0 { return fail(r, EXIT_NOT_FOUND, "vault rm: no such file"); }
+  rep_str(r, "deleted", id);
+  return rep_done(r, EXIT_OK);
+}
