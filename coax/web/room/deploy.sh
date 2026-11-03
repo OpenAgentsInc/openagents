@@ -43,11 +43,14 @@ gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$im
   --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET > "$stage/build.log" 2>&1 || { grep -E "error|undefined reference" "$stage/build.log" | head -30; exit 1; }
 # Shard K's service: oa-room for 1, oa-room-K after. 1 vCPU and 512 MiB each: one process's 30 Hz tick
 # fits about three full rooms on it (the directory's rooms_cap), and more vCPU would not speed one thread.
+# --no-cpu-throttling: the tick, the room-control poll and the HP posts run between requests too; with
+# Cloud Run's default the process froze once the last socket closed, and a leaving player's HP never
+# reached the API (#12715). Billed while an instance is up; min 0 still scales to none when idle.
 svc() { if [[ "$1" == 1 ]]; then echo "$service"; else echo "$service-$1"; fi; }
 for k in $(seq 1 "$shards"); do
   g run deploy "$(svc "$k")" --image "$image" --region "$region" \
     --allow-unauthenticated --port 8080 --cpu 1 --memory 512Mi \
-    --min-instances 0 --max-instances 1 --concurrency 1000 --timeout 3600 --session-affinity \
+    --min-instances 0 --max-instances 1 --concurrency 1000 --timeout 3600 --session-affinity --no-cpu-throttling \
     --set-secrets OA_ROOM_TICKET_KEY=oa-room-ticket-key:latest \
     --set-env-vars "OA_ROOM_TICKET_REQUIRED=${OA_ROOM_TICKET_REQUIRED:-1},OA_ROOM_SHARD=$k" 2>&1 | grep -E "ERROR|revision" | sed "s/^/shard $k: /" &
 done

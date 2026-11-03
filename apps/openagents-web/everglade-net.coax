@@ -1303,8 +1303,7 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   everglade_attach_net(a[..], na[..]);
   net_facts(a[..], "url=https://openagents.com/worlds/everglade?room=pair-a\nplayer=pa\nnow=5000000\nnav=0\n", "everglade", false);
   net_step(a[..], 100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
-  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-a?realm=everglade
-{}");
+  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET && jn_has(pipe_bytes(na[0].pipe[..], 0), "/api/playtest/room-ticket/pair-a?realm=everglade\n{}");
   pipe_drained(na[0].pipe[..]);
   net_step(a[..], 116, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
   #assert na[0].pipe[0].n == 0;   // asked once
