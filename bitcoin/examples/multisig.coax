@@ -1,0 +1,213 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/multisig.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+put_hex :: (b: [] u8) {
+  text: [512] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+yes :: (b: bool) -> string { return ifx b then "yes" else "no"; }
+put_address :: (spk: [] u8) {
+  a: [128] u8;
+  n := address_encode_vartime(SW_MAINNET, spk, a[..]);
+  if n < 0 { print("no address"); } else { print("%", cast(string) a[0..<n]); }
+}
+// The keys A, B and C: secret keys 0x11..11, 0x22..22 and 0x33..33.
+Keys :: struct { secret: [3][32] u8; pub: [99] u8; xonly: [96] u8; }
+make_keys :: () -> Keys {
+  k: Keys;
+  for i: 0..<3 {
+    for x: 0..<32 { k.secret[i][x] = cast(u8) (0x11 * (i + 1)); }
+    #assert bip32_public(k.secret[i][..], k.pub[33*i..<33*i+33]);
+    for x: 0..<32 { k.xonly[32*i+x] = k.pub[33*i+1+x]; }
+  }
+  return k;
+}
+put_le :: (out: [] u8, at: int, v: int, n: int) -> int {
+  for k: 0..<n { out[at+k] = cast(u8) ((v >> (8 * k)) & 255); }
+  return at + n;
+}
+// A transaction with one output per script, all of amount each, spending
+// the outpoint whose txid is 32 bytes of fill; its length.
+fund :: (fill: u8, spks: [] [128] u8, spk_n: [] int, count: int, amount: int, out: [] u8) -> int {
+  at := put_le(out, 0, 2, 4);
+  at = tx_compact_write_vartime(out, at, 1);
+  for k: 0..<32 { out[at+k] = fill; }
+  at = put_le(out, at + 32, 0, 4); out[at] = 0; at = put_le(out, at + 1, 0xffffffff, 4);
+  at = tx_compact_write_vartime(out, at, count);
+  for i: 0..<count {
+    at = put_le(out, at, amount, 8);
+    at = tx_compact_write_vartime(out, at, spk_n[i]); at = tx_put(out, at, spks[i][0..<spk_n[i]]);
+  }
+  return put_le(out, at, 0, 4);
+}
+
+main :: () {
+  // BIP-67: sort the keys, and every wallet gets the same address.
+  print("BIP-67's vectors, 2 of n with the keys sorted:\n");
+  for i: 0..<MS_BIP67.count {
+    v := MS_BIP67[i];
+    keys: [33 * 4] u8; script: [256] u8; want: [256] u8; spk: [34] u8; redeem: [34] u8;
+    k := ms_hex(v.keys, keys[..]);
+    n := multisig_script_vartime(2, k, k.count / 33, true, script[..]);
+    #assert multisig_output_vartime(MS_P2SH, script[0..<n], spk[..], redeem[..]) == 23;
+    print("  vector %: 2 of %, script %, ", i + 1, k.count / 33, yes(ps_equal(script[0..<n], ms_hex(v.script, want[..]))));
+    put_address(spk[0..<23]); print("\n");
+  }
+
+  // Which scripts Core's solver calls multisig.
+  print("Core's MatchMultisig and MatchMultiA:\n");
+  for i: 0..<MS_MATCH.count {
+    c := MS_MATCH[i];
+    s: [2048] u8; key: [MS_MAX_KEYS] int; key_n: [MS_MAX_KEYS] int;
+    b := ms_hex(c.script, s[..]);
+    x := ifx c.tapscript then multisig_a_match_vartime(b) else multisig_match_vartime(b, key[..], key_n[..]);
+    if x.ok { print("  %: % of %\n", c.name, x.m, x.n); } else { print("  %: not multisig\n", c.name); }
+  }
+
+  keys: [1] Keys; keys[0] = make_keys();
+  four(keys[..]);
+  tapscript(keys[..]);
+}
+// book:end example
+
+// book:begin four
+// One 2-of-3 of keys A, B and C, sorted, locked four ways, then spent in
+// one transaction through a PSBT: A and C sign each input.
+four :: (keys: [] Keys) {
+  script: [128] u8; spks: [4][128] u8; spk_n: [4] int; redeem: [34] u8;
+  n := multisig_script_vartime(2, keys[0].pub[..], 3, true, script[..]);
+  ws := script[0..<n];
+  print("One 2-of-3 (sortedmulti), % bytes, locked four ways:\n", n);
+  for kind: 0..<4 {
+    spk_n[kind] = multisig_output_vartime(kind, ws, spks[kind][..], redeem[..]);
+    print("  %: ", MS_KINDS[kind]); put_hex(spks[kind][0..<spk_n[kind]]); print(", "); put_address(spks[kind][0..<spk_n[kind]]); print("\n");
+  }
+  // The coins: one transaction with the four outputs, 100,000 each.
+  prev: [512] u8; id: [32] u8; pins: [1] TxIn; pouts: [4] TxOut; pitems: [1] TxItem;
+  pn := fund(1, spks[..], spk_n[..], 4, 100000, prev[..]);
+  pt := tx_read_vartime(prev[0..<pn], false, pins[..], pouts[..], pitems[0..<0]);
+  #assert tx_txid_vartime(prev[0..<pn], pt, id[..]);
+  // The spend: its four outputs to one P2WPKH output of key A.
+  tx: [512] u8; out: [22] u8;
+  at := put_le(tx[..], 0, 2, 4);
+  at = tx_compact_write_vartime(tx[..], at, 4);
+  for i: 0..<4 { at = tx_put(tx[..], at, id[..]); at = put_le(tx[..], at, i, 4); tx[at] = 0; at = put_le(tx[..], at + 1, 0xffffffff, 4); }
+  at = tx_compact_write_vartime(tx[..], at, 1);
+  at = put_le(tx[..], at, 399000, 8);
+  k := p2wpkh_script_vartime(keys[0].pub[0..<33], out[..]);
+  at = tx_compact_write_vartime(tx[..], at, k); at = tx_put(tx[..], at, out[0..<k]);
+  at = put_le(tx[..], at, 0, 4);
+  // Updater: the previous transaction for bare and P2SH, the output for
+  // the segwit kinds; the redeemScript under P2SH, the witnessScript
+  // under P2WSH.
+  m: [1] PsbtMaps; w: [1] PsbtSign; aux: [32] u8;
+  #assert psbt_create_vartime(tx[0..<at], m[..]);
+  for i: 0..<4 {
+    if i < 2 { #assert psbt_set1_vartime(m[..], PSBT_INPUT, i, 0x00, prev[0..<pn]); }
+    else { #assert psbt_set1_vartime(m[..], PSBT_INPUT, i, 0x01, prev[pouts[i].value..<pouts[i].script+pouts[i].script_n]); }
+  }
+  #assert psbt_set1_vartime(m[..], PSBT_INPUT, 1, 0x04, ws);
+  #assert psbt_set1_vartime(m[..], PSBT_INPUT, 2, 0x05, ws);
+  #assert psbt_set1_vartime(m[..], PSBT_INPUT, 3, 0x04, redeem[..]) && psbt_set1_vartime(m[..], PSBT_INPUT, 3, 0x05, ws);
+  print("Spending all four through one PSBT:\n");
+  for i: 0..<4 { print("  input % (%), key A: %\n", i, MS_KINDS[i], PSBT_SIGN_REASONS[psbt_sign_vartime(m[..], i, keys[0].secret[0][..], aux[..], true, w[..])]); }
+  one: [1] PsbtMaps; one[0] = m[0];
+  print("  with A's signatures only, input 0 is final: %\n", yes(psbt_finalize_input_vartime(one[..], 0, w[..])));
+  for i: 0..<4 { print("  input % (%), key C: %\n", i, MS_KINDS[i], PSBT_SIGN_REASONS[psbt_sign_vartime(m[..], i, keys[0].secret[2][..], aux[..], true, w[..])]); }
+  print("  Input Finalizer: final %\n", yes(psbt_finalize_vartime(m[..], w[..])));
+  net: [4096] u8; ins: [4] TxIn; outs: [1] TxOut; items: [32] TxItem; txid: [32] u8; rev: [32] u8;
+  size := psbt_extract_vartime(m[..], net[..], w[..]);
+  b := net[0..<size];
+  t := tx_read_vartime(b, true, ins[..], outs[..], items[..]);
+  #assert tx_txid_vartime(b, t, txid[..]);
+  for x: 0..<32 { rev[x] = txid[31-x]; }
+  print("  Transaction Extractor: % bytes, weight %, txid ", size, tx_weight_vartime(t)); put_hex(rev[..]); print("\n");
+  sw: [1] ScriptWork;
+  flags := SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_LOW_S | SCRIPT_VERIFY_STRICTENC
+    | SCRIPT_VERIFY_NULLDUMMY | SCRIPT_VERIFY_CLEANSTACK | SCRIPT_VERIFY_NULLFAIL | SCRIPT_VERIFY_WITNESS_PUBKEYTYPE;
+  for i: 0..<4 {
+    sp := ScriptSpend.{b=b, t=t, ins=ins[..], outs=outs[..], items=items[..], index=i, amount=100000, spk=spks[i][0..<spk_n[i]]};
+    in := ins[i];
+    print("  input % (%): scriptSig % bytes, % witness items, %\n", i, MS_KINDS[i], in.script_n, in.count, SCRIPT_ERR_NAMES[script_verify_vartime(sp, flags, sw[..])]);
+  }
+}
+// book:end four
+
+// book:begin tapscript
+// The same 2-of-3 as a Taproot leaf, multi_a sorted, under BIP-341's
+// unspendable internal key H: no key can spend the key path, so only the
+// leaf can. A and C sign the leaf's signature hash.
+NAMES :: [3] string.["A", "B", "C"];
+TAP_H :: "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0";
+tapscript :: (keys: [] Keys) {
+  print("The same 2-of-3 as a multi_a leaf under BIP-341's key H:\n");
+  leaf: [128] u8; order: [3] int; internal: [32] u8; tree: [1] TrTree; control: [33] u8; q: [32] u8;
+  n := multisig_a_script_vartime(2, keys[0].xonly[..], 3, true, order[..], leaf[..]);
+  s := leaf[0..<n];
+  hashes: [1][32] u8; depths := [1] int.[0];
+  #assert taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, s, hashes[0][..]) == TR_OK && taproot_tree_vartime(depths[..], hashes[..], tree[..]) == TR_OK;
+  #assert ms_hex(TAP_H, internal[..]).count == 32 && taproot_control_block_vartime(tree[..], 0, internal[..], TR_LEAF_TAPSCRIPT, control[..]) == 33;
+  #assert taproot_output_key_vartime(internal[..], tree[0].root[..], q[..]) >= 0;
+  spks: [4][128] u8; spk_n: [4] int;
+  spks[0][0] = 0x51; spks[0][1] = 32; for x: 0..<32 { spks[0][2+x] = q[x]; } spk_n[0] = 34;
+  print("  leaf, % bytes: ", n); put_hex(s); print("\n");
+  print("  output: "); put_address(spks[0][0..<34]); print("\n");
+  // The spend of its one coin of 100,000 to key A's P2WPKH.
+  prev: [128] u8; id: [32] u8; pins: [1] TxIn; pouts: [1] TxOut; pitems: [1] TxItem;
+  pn := fund(2, spks[..], spk_n[..], 1, 100000, prev[..]);
+  pt := tx_read_vartime(prev[0..<pn], false, pins[..], pouts[..], pitems[0..<0]);
+  #assert tx_txid_vartime(prev[0..<pn], pt, id[..]);
+  tx: [512] u8; out: [22] u8;
+  at := put_le(tx[..], 0, 2, 4);
+  at = tx_compact_write_vartime(tx[..], at, 1);
+  at = tx_put(tx[..], at, id[..]); at = put_le(tx[..], at, 0, 4); tx[at] = 0; at = put_le(tx[..], at + 1, 0xffffffff, 4);
+  at = tx_compact_write_vartime(tx[..], at, 1);
+  at = put_le(tx[..], at, 99000, 8);
+  k := p2wpkh_script_vartime(keys[0].pub[0..<33], out[..]);
+  at = tx_compact_write_vartime(tx[..], at, k); at = tx_put(tx[..], at, out[0..<k]);
+  at = put_le(tx[..], at, 0, 4);
+  unsigned := tx[0..<at];
+  amounts := [1] int.[100000]; spent: [1] BtScript; spent[0].n = 34;
+  for x: 0..<34 { spent[0].b[x] = spks[0][x]; }
+  sighash: [1][32] u8; hashtypes := [1] int.[0];
+  #assert multisig_a_sighash_vartime(unsigned, 0, amounts[..], spent[..], 0, s, sighash[0][..]);
+  // Each signer's place: the key at leaf position i takes item n-1-i.
+  sigs: [3][64] u8; aux: [32] u8; w: [1] SignWork; blank: [1] u8;
+  items: [3] [] u8;
+  for i: 0..<3 {
+    who := order[i];
+    items[2-i] = blank[0..<0];
+    if who != 1 {
+      #assert multisig_a_sign(keys[0].secret[who][..], sighash[0][..], aux[..], w[..], sigs[i][..]);
+      items[2-i] = sigs[i][..];
+    }
+    print("  key % at leaf position %: %\n", NAMES[who], i, ifx who == 1 then "no signature" else "signs");
+  }
+  print("  the control block commits to the output: %\n", yes(taproot_commitment_vartime(control[..], s, q[..]) == TR_OK));
+  print("  A's and C's signatures satisfy the leaf: %\n", yes(multisig_a_check_vartime(s, items[..], sighash[..], hashtypes[..])));
+  // The network transaction: the witness is the three items, the leaf
+  // and the control block.
+  net: [1024] u8;
+  nt := tx_put(net[..], 0, unsigned[0..<4]); net[nt] = 0; net[nt+1] = 1;
+  nt = tx_put(net[..], nt + 2, unsigned[4..<at-4]);
+  nt = tx_compact_write_vartime(net[..], nt, 5);
+  for i: 0..<3 { nt = tx_compact_write_vartime(net[..], nt, items[i].count); nt = tx_put(net[..], nt, items[i]); }
+  nt = tx_compact_write_vartime(net[..], nt, n); nt = tx_put(net[..], nt, s);
+  nt = tx_compact_write_vartime(net[..], nt, 33); nt = tx_put(net[..], nt, control[..]);
+  nt = tx_put(net[..], nt, unsigned[at-4..<at]);
+  ins: [1] TxIn; outs: [1] TxOut; titems: [8] TxItem; txid: [32] u8; rev: [32] u8;
+  t := tx_read_vartime(net[0..<nt], true, ins[..], outs[..], titems[..]);
+  #assert t.code == TX_OK && tx_txid_vartime(net[0..<nt], t, txid[..]);
+  for x: 0..<32 { rev[x] = txid[31-x]; }
+  print("  the spend: % bytes, weight %, txid ", nt, tx_weight_vartime(t)); put_hex(rev[..]); print("\n");
+  // What a node refuses: one signature, or C's signature in A's place.
+  one := items;
+  for i: 0..<3 { if order[i] == 0 { one[2-i] = blank[0..<0]; } }
+  print("  one signature satisfies it: %\n", yes(multisig_a_check_vartime(s, one[..], sighash[..], hashtypes[..])));
+  swapped := items; tmp := swapped[0]; swapped[0] = swapped[2]; swapped[2] = tmp;
+  print("  the signatures swapped satisfy it: %\n", yes(multisig_a_check_vartime(s, swapped[..], sighash[..], hashtypes[..])));
+}
+// book:end tapscript

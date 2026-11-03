@@ -1,0 +1,323 @@
+// Multisig (Bitcoin chapter 100): m-of-n CHECKMULTISIG scripts, bare and
+// under P2SH, P2WSH and P2SH-P2WSH, with BIP-67's sorted keys, and
+// Taproot's multi_a leaves (BIP-387), a CHECKSIG and CHECKSIGADD per key.
+//
+// multisig_script_vartime and multisig_a_script_vartime write the
+// scripts as Bitcoin Core's GetScriptForMultisig and descriptors write
+// them; multisig_match_vartime and multisig_a_match_vartime read them
+// back as Core's MatchMultisig and MatchMultiA (script/solver.cpp) do.
+// The classic kinds are signed and finalized by chapter 94's PSBT roles.
+// A multi_a leaf is signed here, with BIP-342's script-path signature
+// hash, and multisig_a_check_vartime decides a witness for the leaf as
+// BIP-342's interpreter would run it: each key's CHECKSIG or CHECKSIGADD
+// takes one stack item, an empty item counts nothing, any other must be a
+// valid signature, and the count must equal the threshold.
+//
+// Scripts, keys and signatures here are public; the signer's key goes
+// only to chapter 24's constant-time BIP-340 signer.
+// coax/tests/bitcoin/multisig.py checks the example against Python.
+#load "psbt.coax";
+#load "../../tests/bitcoin/multisig_vectors.coax";
+#authority;
+
+// book:begin codes
+// Results: a length, or one of these.
+MS_THRESHOLD :: -1;     // m is not from 1 to n
+MS_KEY_COUNT :: -2;     // no keys, or more than the kind allows
+MS_KEY :: -3;           // a key that doesn't start with 02 or 03
+MS_TOO_LONG :: -4;      // a P2SH redeem script over 520 bytes
+MS_CAPACITY :: -5;      // the output is too small
+MS_MAX_KEYS :: 20;      // MAX_PUBKEYS_PER_MULTISIG
+MS_A_MAX_KEYS :: 999;   // MAX_PUBKEYS_PER_MULTI_A
+MS_BARE_MAX :: 3;       // policy: a bare multisig output has at most 3 keys
+// Where the script goes.
+MS_BARE :: 0; MS_P2SH :: 1; MS_P2WSH :: 2; MS_P2SH_P2WSH :: 3;
+MS_KINDS :: [4] string.["bare", "P2SH", "P2WSH", "P2SH-P2WSH"];
+// book:end codes
+
+// book:begin build
+// CScript() << n for a count: OP_1 to OP_16, else the minimal CScriptNum
+// pushed. Returns the next position.
+ms_number :: (n: int, out: [] u8, at: int) -> int {
+  if n >= 1 && n <= 16 { out[at] = cast(u8) (0x50 + n); return at + 1; }
+  num: [9] u8;
+  k := script_num_write_vartime(n, num[..]);
+  out[at] = cast(u8) k;
+  for i: 0..<k { out[at+1+i] = num[i]; }
+  return at + 1 + k;
+}
+// The order of n keys of size bytes each, sorted as bytes (BIP-67).
+ms_sort :: (keys: [] u8, size: int, n: int, order: [] int) {
+  for i: 0..<n { order[i] = i; }
+  for i: 1..<n {
+    j := i;
+    while j > 0 && ms_before(keys, size, order[j], order[j-1]) { t := order[j]; order[j] = order[j-1]; order[j-1] = t; j -= 1; }
+  }
+}
+ms_before :: (keys: [] u8, size: int, a: int, b: int) -> bool {
+  for k: 0..<size { x := keys[a*size+k]; y := keys[b*size+k]; if x != y { return x < y; } }
+  return false;
+}
+// m <key 1> ... <key n> n OP_CHECKMULTISIG, for n compressed keys (33
+// bytes each, one after another), in their order or, with sorted, in
+// BIP-67's. Like Core's GetScriptForMultisig it doesn't check that a key
+// is on the curve; BIP-67 sorts only compressed keys. Returns the
+// script's length or a code.
+multisig_script_vartime :: (m: int, keys: [] u8, n: int, sorted: bool, out: [] u8) -> int #export_c {
+  if n < 1 || n > MS_MAX_KEYS || keys.count != 33 * n { return MS_KEY_COUNT; }
+  if m < 1 || m > n { return MS_THRESHOLD; }
+  for i: 0..<n {
+    k := keys[33*i..<33*i+33];
+    if k[0] != 2 && k[0] != 3 { return MS_KEY; }
+  }
+  if out.count < 3 + 2 + 34 * n { return MS_CAPACITY; }
+  order: [MS_MAX_KEYS] int;
+  if sorted { ms_sort(keys, 33, n, order[..]); } else { for i: 0..<n { order[i] = i; } }
+  at := ms_number(m, out, 0);
+  for i: 0..<n {
+    out[at] = 33;
+    for k: 0..<33 { out[at+1+k] = keys[33*order[i]+k]; }
+    at += 34;
+  }
+  at = ms_number(n, out, at);
+  out[at] = 0xae;                                         // OP_CHECKMULTISIG
+  return at + 1;
+}
+// The scriptPubKey that locks to script in one of the four kinds: the
+// script itself, its HASH160 under P2SH, its SHA-256 under P2WSH, or the
+// P2WSH program's HASH160 under P2SH. For P2SH-P2WSH the redeem script,
+// the P2WSH program, goes into redeem (34 bytes). Returns its length.
+multisig_output_vartime :: (kind: int, script: [] u8, out: [] u8, redeem: [] u8) -> int #export_c {
+  if out.count < 34 { return MS_CAPACITY; }
+  if kind == MS_BARE { if out.count < script.count { return MS_CAPACITY; } return tx_put(out, 0, script); }
+  if kind == MS_P2SH { if script.count > AD_REDEEM_MAX { return MS_TOO_LONG; } return p2sh_script_vartime(script, out); }
+  if kind == MS_P2WSH { return p2wsh_script_vartime(script, out); }
+  if redeem.count < 34 { return MS_CAPACITY; }
+  #assert p2wsh_script_vartime(script, redeem) == 34;
+  return p2sh_script_vartime(redeem[0..<34], out);
+}
+// book:end build
+
+// book:begin match
+// Core's CPubKey::ValidSize: 33 bytes after 02 or 03, 65 after 04, 06 or 07.
+ms_valid_size :: (s: [] u8, at: int, n: int) -> bool {
+  if n == 0 { return false; }
+  h := s[at];
+  return (n == 33 && (h == 2 || h == 3)) || (n == 65 && (h == 4 || h == 6 || h == 7));
+}
+// Core's GetScriptNumber: OP_1 to OP_16, or a minimal push of a minimal
+// CScriptNum, from lo to hi; -1 otherwise.
+ms_script_number :: (s: [] u8, op: ScriptOp, lo: int, hi: int) -> int {
+  v := -1;
+  if op.op >= OP_1 && op.op <= OP_16 { v = op.op - 0x50; }
+  else if op.ok && op.op <= OP_PUSHDATA4 {
+    data := s[op.at..<op.at+op.n];
+    if !script_minimal_push_vartime(data, op.op) { return -1; }
+    x := script_num_vartime(data, true, 4);
+    if !x.ok { return -1; }
+    v = x.value;
+  }
+  if v < lo || v > hi { return -1; }
+  return v;
+}
+// A matched script: m of n keys, the key i at s[key[i]] (key_n[i] bytes).
+MultisigMatch :: struct { ok: bool; m: int; n: int; }
+// Core's MatchMultisig: the last byte is OP_CHECKMULTISIG, then m, keys
+// of a valid size, n equal to the keys counted, and OP_CHECKMULTISIG.
+multisig_match_vartime :: (s: [] u8, key: [] int, key_n: [] int) -> MultisigMatch #export_c {
+  if s.count < 1 || s[s.count-1] != 0xae { return MultisigMatch.{}; }
+  op := script_op_vartime(s, 0);
+  if !op.ok { return MultisigMatch.{}; }
+  m := ms_script_number(s, op, 1, MS_MAX_KEYS);
+  if m < 0 { return MultisigMatch.{}; }
+  n := 0;
+  op = script_op_vartime(s, op.next);
+  while op.ok && op.op <= OP_PUSHDATA4 && ms_valid_size(s, op.at, op.n) {
+    if n < key.count { key[n] = op.at; key_n[n] = op.n; }
+    n += 1;
+    op = script_op_vartime(s, op.next);
+  }
+  count := ms_script_number(s, op, m, MS_MAX_KEYS);
+  if count < 0 || count != n || n > key.count { return MultisigMatch.{}; }
+  if op.next + 1 != s.count { return MultisigMatch.{}; }
+  return MultisigMatch.{ok=true, m=m, n=n};
+}
+// book:end match
+
+// book:begin multia
+// BIP-387's multi_a: <key 1> OP_CHECKSIG <key 2> OP_CHECKSIGADD ...
+// <key n> OP_CHECKSIGADD m OP_NUMEQUAL, for n x-only keys (32 bytes
+// each), in their order or sorted. Returns the leaf script's length.
+multisig_a_script_vartime :: (m: int, keys: [] u8, n: int, sorted: bool, order: [] int, out: [] u8) -> int #export_c {
+  if n < 1 || n > MS_A_MAX_KEYS || keys.count != 32 * n || order.count < n { return MS_KEY_COUNT; }
+  if m < 1 || m > n { return MS_THRESHOLD; }
+  if out.count < 34 * n + 5 { return MS_CAPACITY; }
+  if sorted { ms_sort(keys, 32, n, order); } else { for i: 0..<n { order[i] = i; } }
+  at := 0;
+  for i: 0..<n {
+    out[at] = 32;
+    for k: 0..<32 { out[at+1+k] = keys[32*order[i]+k]; }
+    out[at+33] = ifx i == 0 then 0xac else 0xba;         // OP_CHECKSIG, then OP_CHECKSIGADD
+    at += 34;
+  }
+  at = ms_number(m, out, at);
+  out[at] = 0x9c;                                         // OP_NUMEQUAL
+  return at + 1;
+}
+// Core's MatchMultiA: 32-byte keys, the first followed by OP_CHECKSIG
+// and the rest by OP_CHECKSIGADD, then the threshold and OP_NUMEQUAL. Key
+// i is at s[34 * i + 1].
+multisig_a_match_vartime :: (s: [] u8) -> MultisigMatch #export_c {
+  if s.count == 0 || s[0] != 32 || s[s.count-1] != 0x9c { return MultisigMatch.{}; }
+  at := 0; n := 0;
+  while s.count - at >= 34 {
+    if s[at] != 32 { return MultisigMatch.{}; }
+    n += 1; at += 33;
+    if cast(int) s[at] != (ifx n == 1 then 0xac else 0xba) { return MultisigMatch.{}; }
+    at += 1;
+  }
+  if n == 0 || n > MS_A_MAX_KEYS { return MultisigMatch.{}; }
+  op := script_op_vartime(s, at);
+  if !op.ok || op.next >= s.count || s[op.next] != 0x9c || op.next + 1 != s.count { return MultisigMatch.{}; }
+  m := ms_script_number(s, op, 1, n);
+  if m < 0 { return MultisigMatch.{}; }
+  return MultisigMatch.{ok=true, m=m, n=n};
+}
+// BIP-342's script-path signature hash of input index for a leaf of
+// version 0xc0: BIP-341's message with the leaf hash, key version 0 and
+// no OP_CODESEPARATOR.
+multisig_a_sighash_vartime :: (b: [] u8, index: int, amounts: [] int, spent: [] BtScript, hashtype: int, leaf: [] u8, out: [] u8) -> bool #export_c {
+  tp := bt_tx_read(b);
+  if !tp.ok { return false; }
+  h: [32] u8;
+  if taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, leaf, h[..]) != TR_OK { return false; }
+  return bt_sighash_taproot_ext(b, tp, index, amounts, spent, hashtype, b[0..<0], h[..], BT_NO_CODESEP, out);
+}
+// A BIP-340 signature of sighash by key (not tweaked: a script-path key
+// signs as itself), into out (64 bytes).
+multisig_a_sign :: (key: [] u8, sighash: [] u8, aux: [] u8, w: [] SignWork, out: [] u8) -> bool {
+  status := SIGN_REFUSED;
+  for k: 0..<6 { status = schnorr_sign_step(key, aux, sighash, w, out, false); }
+  return status == SIGN_DONE;
+}
+// The leaf run on its witness stack (items[0] at the bottom): the key
+// whose OP_CHECKSIG runs first takes the top item. An empty item counts
+// nothing; any other must be a valid signature (64 bytes, or 65 with a
+// hash type of 0x01 to 0x03 or 0x81 to 0x83 that hashtypes[] says the
+// hash was made with); the count must be m. False for a stack of the
+// wrong size.
+multisig_a_check_vartime :: (s: [] u8, items: [] [] u8, sighashes: [] [32] u8, hashtypes: [] int) -> bool #export_c {
+  x := multisig_a_match_vartime(s);
+  if !x.ok || items.count != x.n { return false; }
+  count := 0;
+  for i: 0..<x.n {
+    sig := items[x.n-1-i];
+    if sig.count == 0 { continue; }
+    t := ifx sig.count == 65 then cast(int) sig[64] else 0;
+    if (sig.count != 64 && sig.count != 65) || (sig.count == 65 && (t == 0 || !ps_hashtype(t))) { return false; }
+    h := -1;
+    for k: 0..<hashtypes.count { if hashtypes[k] == t { h = k; } }
+    if h < 0 || !schnorr_verify_vartime(sighashes[h][..], s[34*i+1..<34*i+33], sig[0..<64]) { return false; }
+    count += 1;
+  }
+  return count == x.m;
+}
+// book:end multia
+
+// ---- checks
+ms_hex :: (h: string, out: [] u8) -> [] u8 { return tx_unhex(h, out); }
+#test "the counts: OP_1 to OP_16, then a minimal push" {
+  out: [8] u8;
+  #assert ms_number(1, out[..], 0) == 1 && out[0] == 0x51 && ms_number(16, out[..], 0) == 1 && out[0] == 0x60;
+  #assert ms_number(17, out[..], 0) == 2 && out[0] == 1 && out[1] == 17;
+  #assert ms_number(128, out[..], 0) == 3 && out[0] == 2 && out[1] == 0x80 && out[2] == 0;
+  #assert ms_number(999, out[..], 0) == 3 && out[1] == 0xe7 && out[2] == 3;
+}
+#forall "BIP-67's vectors: sorted keys, script and P2SH script" i: 0..<MS_BIP67.count #steps 1000000000 {
+  v := MS_BIP67[i];
+  keys: [33 * 4] u8; script: [256] u8; want: [256] u8; spk: [34] u8; redeem: [34] u8;
+  k := ms_hex(v.keys, keys[..]);
+  n := multisig_script_vartime(2, k, k.count / 33, true, script[..]);
+  #assert ps_equal(script[0..<n], ms_hex(v.script, want[..]));
+  #assert multisig_output_vartime(MS_P2SH, script[0..<n], spk[..], redeem[..]) == 23;
+  // Unsorted, the keys keep their order; vector 2 was already sorted.
+  u := multisig_script_vartime(2, k, k.count / 33, false, script[..]);
+  #assert ps_equal(script[0..<u], want[0..<n]) == (i == 1);
+}
+#test "the builder refuses what Core's descriptors refuse" {
+  keys: [33 * 21] u8; out: [1024] u8;
+  #assert ms_hex(MS_BIP67[0].keys, keys[..]).count == 66;
+  for i: 1..<21 { for k: 0..<33 { keys[33*i+k] = keys[k]; } }
+  #assert multisig_script_vartime(0, keys[0..<66], 2, false, out[..]) == MS_THRESHOLD;
+  #assert multisig_script_vartime(3, keys[0..<66], 2, false, out[..]) == MS_THRESHOLD;
+  #assert multisig_script_vartime(1, keys[0..<0], 0, false, out[..]) == MS_KEY_COUNT;
+  #assert multisig_script_vartime(1, keys[..], 21, false, out[..]) == MS_KEY_COUNT;
+  #assert multisig_script_vartime(1, keys[0..<66], 2, false, out[0..<10]) == MS_CAPACITY;
+  n := multisig_script_vartime(20, keys[0..<660], 20, false, out[..]);
+  #assert n == 2 + 680 + 2 + 1 && out[0] == 1 && out[1] == 20;
+  spk: [34] u8; redeem: [34] u8;
+  #assert multisig_output_vartime(MS_P2SH, out[0..<n], spk[..], redeem[..]) == MS_TOO_LONG;
+  #assert multisig_output_vartime(MS_P2WSH, out[0..<n], spk[..], redeem[..]) == 34;
+  #assert multisig_output_vartime(MS_P2SH_P2WSH, out[0..<n], spk[..], redeem[..]) == 23 && redeem[0] == 0 && redeem[1] == 32;
+  #assert multisig_output_vartime(MS_BARE, out[0..<n], spk[..], redeem[..]) == MS_CAPACITY;
+  keys[0] = 4;
+  #assert multisig_script_vartime(1, keys[0..<66], 2, false, out[..]) == MS_KEY;
+}
+#forall "Core's MatchMultisig and MatchMultiA decide each case as Core does" i: 0..<MS_MATCH.count #steps 200000000 {
+  c := MS_MATCH[i];
+  s: [2048] u8; key: [MS_MAX_KEYS] int; key_n: [MS_MAX_KEYS] int;
+  b := ms_hex(c.script, s[..]);
+  x := ifx c.tapscript then multisig_a_match_vartime(b) else multisig_match_vartime(b, key[..], key_n[..]);
+  #assert x.ok == (c.m > 0) && x.m == c.m && x.n == c.n;
+}
+#forall "BIP-387's vectors: the multi_a leaf under its internal key" i: 0..<MS_BIP387.count #steps 2000000000 {
+  v := MS_BIP387[i];
+  keys: [32 * 3] u8; leaf: [256] u8; order: [3] int; internal: [32] u8; h: [32] u8; q: [32] u8; spk: [34] u8; want: [34] u8;
+  k := ms_hex(v.keys, keys[..]);
+  n := multisig_a_script_vartime(v.m, k, k.count / 32, v.sorted, order[..], leaf[..]);
+  #assert multisig_a_match_vartime(leaf[0..<n]).m == v.m;
+  #assert taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, leaf[0..<n], h[..]) == TR_OK;
+  #assert taproot_output_key_vartime(ms_hex(v.internal, internal[..]), h[..], q[..]) >= 0;
+  spk[0] = 0x51; spk[1] = 32; for x: 0..<32 { spk[2+x] = q[x]; }
+  #assert ps_equal(spk[..], ms_hex(v.spk, want[..]));
+}
+#test "a multi_a witness: m signatures pass; fewer, a bad one or a wrong count fail" #steps 4000000000 {
+  keys: [3][32] u8; xonly: [96] u8; pub: [33] u8; order: [3] int; leaf: [128] u8; aux: [32] u8; w: [1] SignWork;
+  for i: 0..<3 {
+    for k: 0..<32 { keys[i][k] = cast(u8) (0x11 * (i + 1)); }
+    #assert bip32_public(keys[i][..], pub[..]);
+    for k: 0..<32 { xonly[32*i+k] = pub[1+k]; }
+  }
+  n := multisig_a_script_vartime(2, xonly[..], 3, false, order[..], leaf[..]);
+  h: [1][32] u8; ht := [1] int.[0];
+  for k: 0..<32 { h[0][k] = cast(u8) k; }                           // any 32 bytes stand for the hash
+  a: [64] u8; c: [64] u8; blank: [1] u8; none := blank[0..<0];
+  #assert multisig_a_sign(keys[0][..], h[0][..], aux[..], w[..], a[..]) && multisig_a_sign(keys[2][..], h[0][..], aux[..], w[..], c[..]);
+  items := [3] [] u8.[c[..], none, a[..]];                        // key 3's item at the bottom, key 1's on top
+  #assert multisig_a_check_vartime(leaf[0..<n], items[..], h[..], ht[..]);
+  one := [3] [] u8.[none, none, a[..]];
+  #assert !multisig_a_check_vartime(leaf[0..<n], one[..], h[..], ht[..]);
+  swapped := [3] [] u8.[a[..], none, c[..]];
+  #assert !multisig_a_check_vartime(leaf[0..<n], swapped[..], h[..], ht[..]);
+  #assert !multisig_a_check_vartime(leaf[0..<n], items[0..<2], h[..], ht[..]);
+  a65: [65] u8; for k: 0..<64 { a65[k] = a[k]; } a65[64] = 0;      // hash type 0 is never written out
+  bad := [3] [] u8.[c[..], none, a65[..]];
+  #assert !multisig_a_check_vartime(leaf[0..<n], bad[..], h[..], ht[..]);
+}
+#test "a script-path signature hash commits to the leaf" #steps 2000000000 {
+  tx: [128] u8; leaf := [2] u8.[0x51, 0x9c]; other := [2] u8.[0x52, 0x9c];
+  tx[0] = 2; at := tx_compact_write_vartime(tx[..], 4, 1);
+  for k: 0..<36 { tx[at+k] = 1; }
+  for k: 0..<4 { tx[at+37+k] = 0xff; }
+  tx[at+36] = 0; at = tx_compact_write_vartime(tx[..], at + 41, 1);
+  for k: 0..<8 { tx[at+k] = 0; }
+  at = tx_compact_write_vartime(tx[..], at + 8, 0);
+  for k: 0..<4 { tx[at+k] = 0; }
+  amounts := [1] int.[1000]; spent: [1] BtScript; spent[0].n = 34; spent[0].b[0] = 0x51; spent[0].b[1] = 32;
+  a: [32] u8; b: [32] u8; k: [32] u8;
+  #assert multisig_a_sighash_vartime(tx[0..<at+4], 0, amounts[..], spent[..], 0, leaf[..], a[..]);
+  #assert multisig_a_sighash_vartime(tx[0..<at+4], 0, amounts[..], spent[..], 0, other[..], b[..]) && !ps_equal(a[..], b[..]);
+  tp := bt_tx_read(tx[0..<at+4]);
+  #assert bt_sighash_taproot(tx[0..<at+4], tp, 0, amounts[..], spent[..], 0, k[..]) && !ps_equal(a[..], k[..]);
+  #assert !multisig_a_sighash_vartime(tx[0..<2], 0, amounts[..], spent[..], 0, leaf[..], a[..]);
+}

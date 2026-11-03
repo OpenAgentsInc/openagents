@@ -1944,15 +1944,24 @@
   {
    "number": 100,
    "title": "Multisig",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch100-multisig.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     30,
     36
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "bitcoin/examples/multisig.coax",
+    "bitcoin/examples/checks/multisig.coax",
+    "coax/lib/bitcoin/multisig.coax",
+    "coax/tests/bitcoin/multisig_vectors.coax",
+    "coax/tests/bitcoin/make_multisig_vectors.py",
+    "coax/tests/bitcoin/multisig.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

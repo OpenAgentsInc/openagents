@@ -100,6 +100,10 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 - [94. PSBT](ch094-psbt.md) — implemented
 
+**XVI. Many signers**
+
+- [100. Multisig](ch100-multisig.md) — implemented
+
 **XVII. Lightning**
 
 - [104. Messages and TLVs](ch104-messages-and-tlvs.md) — implemented

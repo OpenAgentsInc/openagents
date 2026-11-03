@@ -3208,6 +3208,45 @@
       "retrieved": "2026-11-03",
       "sha256": "e5e8ac8a42d3d0ce3bb70c12c5bbd76408e022a63322dcf32b00ddd97d051f96",
       "bytes": 22519
+    },
+    {
+      "path": "upstream/bip67/bip-0067.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0067.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in source)",
+      "covers": [
+        "bitcoin-multisig"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "4cc48c5c159c05585962a8eb264b05ccb4ad710b1a16c870232e0f0eb1428991",
+      "bytes": 8686
+    },
+    {
+      "path": "upstream/bip387/bip-0387.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0387.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in source)",
+      "covers": [
+        "bitcoin-multisig"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "92a1a95be774be27f3f373e15dcd8bf291f542cd62535dd1ccbd95bd1022464e",
+      "bytes": 7046
+    },
+    {
+      "path": "upstream/bitcoin-core/solver.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/solver.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-multisig"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "d795354fafbbcef7c6d28ff8b9912e896575276b4ca85aeed2fc57f18c41174a",
+      "bytes": 8417
     }
   ]
 }

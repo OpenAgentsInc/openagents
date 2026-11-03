@@ -43,12 +43,12 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 66 are implemented and 58 are planned. The 66 implemented
+Of the 124 chapters, 67 are implemented and 57 are planned. The 67 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 62, 65, 66, 67,
-68, 69, 73, 74, 94, 104, 105, 106, 107 and 111 are new.
+68, 69, 73, 74, 94, 100, 104, 105, 106, 107 and 111 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
 `coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -308,7 +308,7 @@ Multisig, MuSig2, FROST threshold signatures and adaptor signatures.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 100. Multisig | Planned | 2-of-3 P2WSH `sortedmulti` descriptors give their addresses, and a spend signed by two keys validates. |
+| [100. Multisig](ch100-multisig.md) | Runnable: native C | m-of-n `OP_CHECKMULTISIG` scripts written as Bitcoin Core writes them, with BIP-67's sorted keys, and read back as Core's `MatchMultisig` reads them: all four BIP-67 vectors give their scripts and addresses, and twenty near misses match or refuse as Core decides. One `sortedmulti` 2-of-3 is locked bare, under P2SH, P2WSH and P2SH-P2WSH, signed by two keys through PSBT, finalized and extracted, and every input passes the script interpreter. BIP-387's `multi_a` leaves give every published scriptPubKey; a `sortedmulti_a` 2-of-3 is spent on the script path with two BIP-340 signatures, and one signature or swapped signatures fail. Checked against Python natively. |
 | 101. MuSig2 | Planned | Every BIP-327 vector file (key aggregation, nonces, signing, aggregation and tweaks) gives its result. A reused nonce refuses. |
 | 102. FROST threshold signatures | Planned | The FROST draft BIP's vectors give their results. A signature from fewer than t signers refuses. |
 | 103. Adaptor signatures | Planned | An adaptor signature verifies against its point, completes with the secret, and the secret is recovered from the final signature. |

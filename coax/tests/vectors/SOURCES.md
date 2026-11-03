@@ -341,6 +341,14 @@ that a maliciously replaced manifest is authentic.
   `psbt_reference.py` and checks the verdict against the published one,
   replays Core's signer, combiner, finalizer and extractor cases, and
   recomputes each `extraEntropy` signature.
+- **Multisig (Bitcoin chapter 100):** BIP-67 and BIP-387 at bips
+  revision `5aadddb5`, whose test-vector sections hold the sorted-key
+  2-of-n vectors and the `multi_a` and `sortedmulti_a` descriptors with
+  their scriptPubKeys; Bitcoin Core's `script/solver.cpp` at revision
+  `ddea9196`, the `MatchMultisig` and `MatchMultiA` that
+  `make_multisig_vectors.py` transliterates. It recomputes each BIP-67
+  script and address and each BIP-387 scriptPubKey, resolving WIF, hex
+  and BIP-32 keys in Python.
 - **Header rules (Bitcoin chapter 51):** Bitcoin Core's `validation.cpp`
   (`ContextualCheckBlockHeader`), `chain.h`, `consensus/consensus.h`,
   `versionbits.h`, `versionbits_impl.h` and `versionbits.cpp` at revision
@@ -584,6 +592,9 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/rpc_psbt.json`](upstream/bitcoin-core/rpc_psbt.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/data/rpc_psbt.json) | `6dc130e0ead807b7521e0f55dc60b6b8a6c10ffaf6c623eb524d814deda0c9ce` |
 | [`upstream/bitcoin-core/psbt_wallet_tests.cpp`](upstream/bitcoin-core/psbt_wallet_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/test/psbt_wallet_tests.cpp) | `e15530b0262b7114f2cb0a6552a516f7d5f9ce3a8ec714461ddfaf6ca4d7cfd1` |
 | [`upstream/bitcoin-core/pubkey.h`](upstream/bitcoin-core/pubkey.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/pubkey.h) | `b586b35e4749579e9dad6c6c56c1d7ceecce20ddbd7e066b5c86cadf5d16bb71` |
+| [`upstream/bip67/bip-0067.mediawiki`](upstream/bip67/bip-0067.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0067.mediawiki) | `4cc48c5c159c05585962a8eb264b05ccb4ad710b1a16c870232e0f0eb1428991` |
+| [`upstream/bip387/bip-0387.mediawiki`](upstream/bip387/bip-0387.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0387.mediawiki) | `92a1a95be774be27f3f373e15dcd8bf291f542cd62535dd1ccbd95bd1022464e` |
+| [`upstream/bitcoin-core/solver.cpp`](upstream/bitcoin-core/solver.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/solver.cpp) | `d795354fafbbcef7c6d28ff8b9912e896575276b4ca85aeed2fc57f18c41174a` |
 | [`upstream/mainnet/coinbase-proofs.json`](upstream/mainnet/coinbase-proofs.json) | [mempool.space API](https://mempool.space/api/block-height/840000) | `3a10ff94f45a2fbef360731be48c468ec7c2ecc3da760fb2861b97721aeb5efb` |
 | [`upstream/bitcoin-core/versionbits.cpp`](upstream/bitcoin-core/versionbits.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.cpp) | `4394f6fdf7656e0e6e4eb90a11c44875dab506345bde9a54d84ed9337d524ec8` |
 | [`upstream/bitcoin-core/versionbits.h`](upstream/bitcoin-core/versionbits.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.h) | `babd3b786f7d787f88b47da1effd47f631b3e37cba95c1d501f1a553c960f100` |

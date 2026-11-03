@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-66 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+67 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -61,7 +61,10 @@ coinbase rules: Core's `GetBlockSubsidy`, the BIP-34 height and the claim
 of subsidy plus fees. Chapter 94's [`psbt.coax`](../coax/lib/bitcoin/psbt.coax)
 reads and writes PSBTs (BIP-174, BIP-370 and BIP-371) as Core does, with
 the Creator, Updater, Signer, Combiner, Input Finalizer and Transaction
-Extractor.
+Extractor. Chapter 100's [`multisig.coax`](../coax/lib/bitcoin/multisig.coax)
+writes and matches m-of-n scripts as Core does: `OP_CHECKMULTISIG` bare,
+under P2SH, P2WSH and P2SH-P2WSH, BIP-67's sorted keys, and BIP-387's
+`multi_a` tapscript leaves with their script-path signatures.
 
 Lightning's code is in [`coax/lib/lightning/`](../coax/lib/lightning/).
 Chapter 104's [`bolt1.coax`](../coax/lib/lightning/bolt1.coax) reads and
@@ -110,10 +113,8 @@ redirect here. What stays in Nostr: x-only ECDH for NIP-44 (chapter 14),
 NIP-19, the JSON an event ID hashes, NIP-04, NIP-44, NIP-13 proof of work
 and the NIP-06 seed path (chapter 46). The Bitcoin halves of Nostr chapter 46
 (BIP-39 and BIP-32) and chapter 104 (PSBTs, descriptors, signature hashes
-and multisig) are chapters 31–32, 94 and 100. Chapters 31 (BIP-39) and 32
-(BIP-32) are written; the rest are planned, with the existing code named in the
-[plan](book/PLAN.md). Chapter 104's ECDSA signer is chapter 20, and its transaction reader is
-chapter 34's.
+and multisig) are chapters 31–32, 94 and 100, all written. Chapter 104's
+ECDSA signer is chapter 20, and its transaction reader is chapter 34's.
 
 ## Cryptography still to build
 

@@ -285,7 +285,7 @@ there is a need.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| 100. Multisig — planned | 30, 36 | 2-of-3 P2WSH `sortedmulti` descriptors give their addresses, and a spend signed by two keys validates. | BIP-11, BIP-67 |
+| [100. Multisig](ch100-multisig.md) — implemented | 30, 36 | 2-of-3 P2WSH `sortedmulti` descriptors give their addresses, and a spend signed by two keys validates. | BIP-11, BIP-67 |
 | 101. MuSig2 — planned | 24, 41 | Every BIP-327 vector file (key aggregation, nonces, signing, aggregation and tweaks) gives its result. A reused nonce refuses. | BIP-327 |
 | 102. FROST threshold signatures — planned | 101 | The FROST draft BIP's vectors give their results. A signature from fewer than t signers refuses. | RFC 9591, FROST draft BIPs |
 | 103. Adaptor signatures — planned | 24 | An adaptor signature verifies against its point, completes with the secret, and the secret is recovered from the final signature. | BIP-340 |

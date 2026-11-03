@@ -1,0 +1,48 @@
+// The checks of multisig.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/multisig.coax
+#load "../multisig.coax";
+
+// book:begin check
+// The six orders of three keys, three entries each.
+ORDERS :: [18] int.[0,1,2, 0,2,1, 1,0,2, 1,2,0, 2,0,1, 2,1,0];
+// sortedmulti doesn't depend on the order the keys come in: each of the
+// six orders of BIP-67's three keys gives the same script, for every
+// threshold.
+#forall "sortedmulti is the same script in every key order" p: 0..<18 #steps 20000000 {
+  raw: [128] u8; pub := ms_hex(MS_BIP67[1].keys, raw[..]); xonly: [96] u8;
+  for i: 0..<3 { for x: 0..<32 { xonly[32*i+x] = pub[33*i+1+x]; } }
+  m := p / 6 + 1; o := 3 * (p % 6);
+  shuffled: [99] u8; xs: [96] u8;
+  for i: 0..<3 {
+    for x: 0..<33 { shuffled[33*i+x] = pub[33*ORDERS[o+i]+x]; }
+    for x: 0..<32 { xs[32*i+x] = xonly[32*ORDERS[o+i]+x]; }
+  }
+  a: [128] u8; b: [128] u8; order: [3] int; order2: [3] int;
+  n := multisig_script_vartime(m, pub, 3, true, a[..]);
+  #assert multisig_script_vartime(m, shuffled[..], 3, true, b[..]) == n && ps_equal(a[0..<n], b[0..<n]);
+  n = multisig_a_script_vartime(m, xonly[..], 3, true, order[..], a[..]);
+  #assert multisig_a_script_vartime(m, xs[..], 3, true, order2[..], b[..]) == n && ps_equal(a[0..<n], b[0..<n]);
+}
+// What the builder writes, Core's solver reads back: m of n for every
+// m and n up to 20, as bare multisig and as multi_a.
+#forall "every built script matches with its m and n" c: 0..<400 #steps 20000000 {
+  m := c / 20 + 1; n := c % 20 + 1;
+  if m <= n {
+    raw: [128] u8; pub := ms_hex(MS_BIP67[1].keys, raw[..]); xonly: [96] u8;
+    for i: 0..<3 { for x: 0..<32 { xonly[32*i+x] = pub[33*i+1+x]; } }
+    many: [660] u8; xs: [640] u8;
+    for i: 0..<n {
+      for x: 0..<33 { many[33*i+x] = pub[33*(i%3)+x]; }
+      for x: 0..<32 { xs[32*i+x] = xonly[32*(i%3)+x]; }
+    }
+    s: [2048] u8; key: [MS_MAX_KEYS] int; key_n: [MS_MAX_KEYS] int; order: [20] int;
+    k := multisig_script_vartime(m, many[0..<33*n], n, false, s[..]);
+    x := multisig_match_vartime(s[0..<k], key[..], key_n[..]);
+    #assert x.ok && x.m == m && x.n == n;
+    k = multisig_a_script_vartime(m, xs[0..<32*n], n, false, order[..], s[..]);
+    y := multisig_a_match_vartime(s[0..<k]);
+    #assert y.ok && y.m == m && y.n == n;
+  }
+}
+// book:end check
