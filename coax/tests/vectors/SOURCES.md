@@ -426,6 +426,15 @@ that a maliciously replaced manifest is authentic.
   `net_processing.cpp`, `chainparams.cpp`, `chain.h`, `serialize.h`,
   `script.h` and `test/hash_tests.cpp`, pinned above, give the rest.
   `dos.py` transliterates them as the cross-check's oracle.
+- **Standardness (Bitcoin chapter 81):** Bitcoin Core's
+  `policy/policy.cpp` and `policy/policy.h` (`IsStandardTx`,
+  `GetDustThreshold`, `ValidateInputsStandardness`, `IsWitnessStandard`
+  and the limits), `script/solver.cpp` (`Solver`), `validation.cpp`
+  (the order of `PreChecks`), `script/script.cpp` and `script/script.h`
+  (`IsPayToAnchor`, `IsUnspendable`), and `test/transaction_tests.cpp`
+  (`test_IsStandard` and `max_standard_legacy_sigops`, the cases the
+  library ports), all pinned above at revision `ddea9196`. `policy.py`
+  transliterates them as the cross-check's oracle.
 - **The block index (Bitcoin chapter 59):** Bitcoin Core's
   `node/blockstorage.cpp` (`AddToBlockIndex`, `CBlockIndexWorkComparator`),
   `validation.h` (`nBlockSequenceId`), `rpc/blockchain.cpp`

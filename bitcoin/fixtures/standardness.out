@@ -1,0 +1,78 @@
+output types, and dust at -dustrelayfee=3000 sat/kvB
+  P2PK, compressed key: 35 bytes, pubkey, dust below 576 sat
+  P2PK, uncompressed key: 67 bytes, pubkey, dust below 672 sat
+  P2PKH: 25 bytes, pubkeyhash, dust below 546 sat
+  P2SH: 23 bytes, scripthash, dust below 540 sat
+  P2WPKH: 22 bytes, witness_v0_keyhash, dust below 294 sat
+  P2WSH: 34 bytes, witness_v0_scripthash, dust below 330 sat
+  P2TR: 34 bytes, witness_v1_taproot, dust below 330 sat
+  a version 2 program: 4 bytes, witness_unknown, dust below 240 sat
+  P2A: 4 bytes, anchor, dust below 240 sat
+  OP_RETURN: 7 bytes, nulldata, never dust
+  bare 2-of-4 multisig: 139 bytes, multisig, not standard
+  OP_1: 1 byte, nonstandard, not standard
+one transaction per rule: the reason Bitcoin Core refuses it, then what a block checks
+  607610f85e264ea0 a P2WSH spend to P2WPKH
+    policy: standard
+    a block: valid, 1 input, 1 output, weight 333, sigop cost 0
+  7ae3c640ac98e883 version 0
+    policy: version
+    a block: valid, 1 input, 1 output, weight 333, sigop cost 0
+  2959e2b2b7efb6af version 4
+    policy: version
+    a block: valid, 1 input, 1 output, weight 333, sigop cost 0
+  13cfee8aacb8a646 an OP_RETURN of 99,990 bytes
+    policy: tx-size
+    a block: valid, 1 input, 1 output, weight 400245, sigop cost 0
+  6c2e99a8aebbf567 a scriptSig of 2,014 bytes
+    policy: scriptsig-size
+    a block: valid, 1 input, 1 output, weight 8392, sigop cost 0
+  dc6c8710a9e48165 a scriptSig with OP_NOP
+    policy: scriptsig-not-pushonly
+    a block: valid, 1 input, 1 output, weight 332, sigop cost 0
+  9da298143dff767e an output of OP_1
+    policy: scriptpubkey
+    a block: valid, 1 input, 1 output, weight 249, sigop cost 0
+  d328c011ea4b0968 a 2-of-4 bare multisig output
+    policy: scriptpubkey
+    a block: valid, 1 input, 1 output, weight 801, sigop cost 80
+  c20116e96f5d078b an 84-byte OP_RETURN, -datacarriersize=83
+    policy: datacarrier
+    a block: valid, 1 input, 1 output, weight 581, sigop cost 0
+  ee2635833afd921c a 1-of-1 bare multisig output, -permitbaremultisig=0
+    policy: bare-multisig
+    a block: valid, 1 input, 1 output, weight 393, sigop cost 80
+  3066631dc42b7b4d two dust outputs
+    policy: dust
+    a block: valid, 1 input, 3 outputs, weight 581, sigop cost 0
+  ea5c0c75ac0b3319 61 bytes without the witness
+    policy: tx-size-small
+    a block: valid, 1 input, 1 output, weight 249, sigop cost 0
+  7efcf278bc72e4dd a spend of a bare OP_1
+    policy: bad-txns-nonstandard-inputs (input 0 script unknown)
+    a block: valid, 1 input, 1 output, weight 328, sigop cost 0
+  3dbc365a70179e34 a spend of a version 2 program
+    policy: bad-txns-nonstandard-inputs (input 0 witness program is undefined)
+    a block: valid, 1 input, 1 output, weight 328, sigop cost 0
+  1a6331a31c3655d9 a redeem script with 16 sigops
+    policy: bad-txns-nonstandard-inputs (p2sh redeemscript sigops exceed limit (input 0: 16 > 15))
+    a block: valid, 1 input, 1 output, weight 592, sigop cost 64
+  29938540986a52e4 167 redeem scripts with 15 sigops each
+    policy: bad-txns-nonstandard-inputs (non-witness sigops exceed bip54 limit)
+    a block: valid, 167 inputs, 1 output, weight 68968, sigop cost 10020
+  49c38c05d10a9f11 an 81-byte P2WSH item
+    policy: bad-witness-nonstandard
+    a block: valid, 1 input, 1 output, weight 416, sigop cost 0
+  d5fb10a36a464040 101 P2WSH items
+    policy: bad-witness-nonstandard
+    a block: valid, 1 input, 1 output, weight 535, sigop cost 0
+  cb03544fcb791543 a P2WSH script of 3,631 bytes
+    policy: bad-witness-nonstandard
+    a block: valid, 1 input, 1 output, weight 3965, sigop cost 0
+  f1f1ea4fc3d03bbe a witness on a P2A output
+    policy: bad-witness-nonstandard
+    a block: valid, 1 input, 1 output, weight 333, sigop cost 0
+  f9bb4a125ee70ffe 201 bare multisig outputs
+    policy: bad-txns-too-many-sigops (16080)
+    a block: valid, 1 input, 201 outputs, weight 37193, sigop cost 16080
+21 of 21 transactions are valid in a block; 1 of them is standard

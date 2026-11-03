@@ -1,0 +1,931 @@
+// Standardness (Bitcoin chapter 81): the rules Bitcoin Core applies to a
+// transaction before it relays one or keeps it in its mempool, on top of
+// consensus. A block may hold a transaction these rules refuse; a node
+// that follows them just won't pass it on.
+//
+// The rules are Core's policy/policy.cpp at the pinned release, in the
+// order MemPoolAccept::PreChecks (validation.cpp) runs them:
+//
+// - IsStandardTx: the version, the weight, each scriptSig's size and that
+//   it only pushes, each output's type through Solver (script/solver.cpp),
+//   the bytes OP_RETURN outputs carry, bare multisig, and dust.
+// - "tx-size-small": fewer than 65 bytes without the witness.
+// - ValidateInputsStandardness: BIP-54's 2,500 non-witness sigops, the
+//   type of each spent output, and the sigops of each P2SH redeem script.
+// - IsWitnessStandard: the P2WSH and Taproot witness limits.
+// - "bad-txns-too-many-sigops": a sigop cost above 16,000.
+//
+// PreChecks also runs CheckTransaction (chapter 52) first, and between
+// these the finality, the spent coins and the fee; those are chapter 82's
+// mempool. pol_consensus_vartime checks what a block would: chapter 52's
+// CheckTransaction, the inputs' value, chapter 36's VerifyScript under
+// the consensus flags, and chapter 53's weight and sigop cost.
+//
+// coax/tests/bitcoin/policy.py rebuilds the example's transactions and
+// checks every line against Core's transliterated policy.cpp.
+//
+// Transactions and scripts are public, so everything here runs in
+// variable time and every procedure that decides ends in _vartime
+// (Bitcoin chapter 3).
+#load "sigops.coax";
+#authority;
+
+// book:begin limits
+// policy/policy.h at the pinned release.
+POL_MIN_VERSION :: 1;               // TX_MIN_STANDARD_VERSION
+POL_MAX_VERSION :: 3;               // TX_MAX_STANDARD_VERSION
+POL_MAX_WEIGHT :: 400000;           // MAX_STANDARD_TX_WEIGHT
+POL_MIN_NONWITNESS :: 65;           // MIN_STANDARD_TX_NONWITNESS_SIZE (CVE-2017-12842)
+POL_MAX_SCRIPTSIG :: 1650;          // MAX_STANDARD_SCRIPTSIG_SIZE
+POL_MAX_P2SH_SIGOPS :: 15;          // MAX_P2SH_SIGOPS
+POL_MAX_LEGACY_SIGOPS :: 2500;      // MAX_TX_LEGACY_SIGOPS (BIP-54)
+POL_MAX_SIGOPS_COST :: 16000;       // MAX_STANDARD_TX_SIGOPS_COST, a fifth of a block's
+POL_MAX_P2WSH_ITEMS :: 100;         // MAX_STANDARD_P2WSH_STACK_ITEMS
+POL_MAX_P2WSH_ITEM :: 80;           // MAX_STANDARD_P2WSH_STACK_ITEM_SIZE
+POL_MAX_P2WSH_SCRIPT :: 3600;       // MAX_STANDARD_P2WSH_SCRIPT_SIZE
+POL_MAX_TAPSCRIPT_ITEM :: 80;       // MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE
+POL_DUST_RELAY_FEE :: 3000;         // DUST_RELAY_TX_FEE, sat/kvB
+POL_MAX_OP_RETURN :: 100000;        // MAX_OP_RETURN_RELAY, -datacarriersize's default
+POL_MAX_DUST_OUTPUTS :: 1;          // MAX_DUST_OUTPUTS_PER_TX
+// MANDATORY_SCRIPT_VERIFY_FLAGS: the flags every block enforces.
+POL_CONSENSUS_FLAGS :: SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_NULLDUMMY
+  | SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY | SCRIPT_VERIFY_CHECKSEQUENCEVERIFY | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT;
+// Taproot's annex tag and leaf version mask (script/interpreter.h).
+POL_ANNEX_TAG :: 0x50;
+POL_LEAF_MASK :: 0xfe;
+POL_LEAF_TAPSCRIPT :: 0xc0;
+// book:end limits
+
+// book:begin options
+// The node's settings: -datacarriersize (the OP_RETURN bytes one
+// transaction may carry; -datacarrier=0 makes it 0), -permitbaremultisig
+// and -dustrelayfee in sat/kvB.
+PolOptions :: struct { datacarrier: int; bare_multisig: bool; dust_rate: int; }
+pol_defaults :: () -> PolOptions {
+  return PolOptions.{datacarrier=POL_MAX_OP_RETURN, bare_multisig=true, dust_rate=POL_DUST_RELAY_FEE};
+}
+// book:end options
+
+// book:begin codes
+// The result of a check: a code with Core's reject reason, the input or
+// output it is about (-1 for the transaction), and for
+// "bad-txns-nonstandard-inputs" which of Core's debug messages, with its
+// numbers in a and b.
+PolResult :: struct { code: int; index: int; detail: int; a: int; b: int; }
+POL_OK :: 0;
+POL_VERSION :: 1;            // "version"
+POL_TX_SIZE :: 2;            // "tx-size"
+POL_SCRIPTSIG_SIZE :: 3;     // "scriptsig-size"
+POL_SCRIPTSIG_PUSHONLY :: 4; // "scriptsig-not-pushonly"
+POL_SCRIPTPUBKEY :: 5;       // "scriptpubkey"
+POL_DATACARRIER :: 6;        // "datacarrier"
+POL_BARE_MULTISIG :: 7;      // "bare-multisig"
+POL_DUST :: 8;               // "dust"
+POL_TX_SIZE_SMALL :: 9;      // "tx-size-small"
+POL_INPUTS :: 10;            // "bad-txns-nonstandard-inputs"
+POL_WITNESS :: 11;           // "bad-witness-nonstandard"
+POL_SIGOPS :: 12;            // "bad-txns-too-many-sigops"
+POL_CONTEXT :: 13;           // the transaction did not read, or the spent outputs are not one per input
+POL_REASONS :: [14] string.["standard", "version", "tx-size", "scriptsig-size", "scriptsig-not-pushonly",
+  "scriptpubkey", "datacarrier", "bare-multisig", "dust", "tx-size-small", "bad-txns-nonstandard-inputs",
+  "bad-witness-nonstandard", "bad-txns-too-many-sigops", "bad context"];
+// ValidateInputsStandardness's debug messages.
+POL_IN_BIP54 :: 1;           // "non-witness sigops exceed bip54 limit"
+POL_IN_UNKNOWN :: 2;         // "input %u script unknown"
+POL_IN_UNDEFINED :: 3;       // "input %u witness program is undefined"
+POL_IN_MALFORMED :: 4;       // "p2sh scriptsig malformed (input %u: %s)", the script error in a
+POL_IN_MISSING :: 5;         // "input %u P2SH redeemscript missing"
+POL_IN_P2SH_SIGOPS :: 6;     // "p2sh redeemscript sigops exceed limit (input %u: %u > %u)", a > b
+pol_refused :: (code: int, index: int) -> PolResult { return PolResult.{code=code, index=index}; }
+pol_inputs_refused :: (detail: int, index: int, a: int, b: int) -> PolResult {
+  return PolResult.{code=POL_INPUTS, index=index, detail=detail, a=a, b=b};
+}
+// book:end codes
+
+// ---- Solver
+// book:begin types
+// TxoutType (script/solver.h), with GetTxnOutputType's names.
+POL_NONSTANDARD :: 0; POL_ANCHOR :: 1; POL_PUBKEY :: 2; POL_PUBKEYHASH :: 3; POL_SCRIPTHASH :: 4;
+POL_MULTISIG :: 5; POL_NULL_DATA :: 6; POL_WITNESS_V0_KEYHASH :: 7; POL_WITNESS_V0_SCRIPTHASH :: 8;
+POL_WITNESS_V1_TAPROOT :: 9; POL_WITNESS_UNKNOWN :: 10;
+POL_TYPE_NAMES :: [11] string.["nonstandard", "anchor", "pubkey", "pubkeyhash", "scripthash", "multisig",
+  "nulldata", "witness_v0_keyhash", "witness_v0_scripthash", "witness_v1_taproot", "witness_unknown"];
+// A scriptPubKey's type, and for multisig its m and n.
+PolSolved :: struct { type: int; m: int; n: int; }
+// book:end types
+// book:begin shapes
+// CScript::IsPayToAnchor: OP_1 and the two bytes 4e73 (P2A).
+pol_anchor_vartime :: (s: [] u8) -> bool #export_c {
+  return s.count == 4 && s[0] == OP_1 && s[1] == 2 && s[2] == 0x4e && s[3] == 0x73;
+}
+// CScript::IsUnspendable: OP_RETURN first, or longer than a script may be.
+pol_unspendable_vartime :: (s: [] u8) -> bool #export_c {
+  return (s.count > 0 && s[0] == OP_RETURN) || s.count > SCRIPT_MAX_SIZE;
+}
+// CPubKey::ValidSize: 33 bytes after 02 or 03, 65 after 04, 06 or 07.
+pol_key_size :: (s: [] u8, at: int, n: int) -> bool {
+  if n == 0 { return false; }
+  h := s[at];
+  return (n == 33 && (h == 2 || h == 3)) || (n == 65 && (h == 4 || h == 6 || h == 7));
+}
+// GetScriptNumber: OP_1 to OP_16, or a minimal push of a minimal
+// CScriptNum, from lo to hi; -1 otherwise.
+pol_number :: (s: [] u8, op: ScriptOp, lo: int, hi: int) -> int {
+  v := -1;
+  if op.op >= OP_1 && op.op <= OP_16 { v = op.op - 0x50; }
+  else if op.ok && op.op <= OP_PUSHDATA4 {
+    data := s[op.at..<op.at+op.n];
+    if !script_minimal_push_vartime(data, op.op) { return -1; }
+    x := script_num_vartime(data, true, 4);
+    if !x.ok { return -1; }
+    v = x.value;
+  }
+  if v < lo || v > hi { return -1; }
+  return v;
+}
+// MatchMultisig: m, keys of a valid size, n equal to the keys counted,
+// then OP_CHECKMULTISIG as the last byte. m and n are 0 when it doesn't
+// match.
+pol_multisig :: (s: [] u8) -> PolSolved {
+  if s.count < 1 || s[s.count-1] != OP_CHECKMULTISIG { return PolSolved.{}; }
+  op := script_op_vartime(s, 0);
+  if !op.ok { return PolSolved.{}; }
+  m := pol_number(s, op, 1, SCRIPT_MAX_KEYS);
+  if m < 0 { return PolSolved.{}; }
+  n := 0;
+  op = script_op_vartime(s, op.next);
+  while op.ok && op.op <= OP_PUSHDATA4 && pol_key_size(s, op.at, op.n) { n += 1; op = script_op_vartime(s, op.next); }
+  count := pol_number(s, op, m, SCRIPT_MAX_KEYS);
+  if count < 0 || count != n || op.next + 1 != s.count { return PolSolved.{}; }
+  return PolSolved.{type=POL_MULTISIG, m=m, n=n};
+}
+// book:end shapes
+// book:begin solver
+// Solver: P2SH first, then witness programs by version and length, then
+// OP_RETURN followed only by pushes, then P2PK, P2PKH and bare multisig.
+// A version 0 program of another length is nonstandard; another version
+// is witness_unknown, except P2A.
+pol_solver_vartime :: (s: [] u8) -> PolSolved #export_c {
+  if script_p2sh_vartime(s) { return PolSolved.{type=POL_SCRIPTHASH}; }
+  version := script_witness_version_vartime(s);
+  if version >= 0 {
+    n := s.count - 2;
+    if version == 0 && n == 20 { return PolSolved.{type=POL_WITNESS_V0_KEYHASH}; }
+    if version == 0 && n == 32 { return PolSolved.{type=POL_WITNESS_V0_SCRIPTHASH}; }
+    if version == 1 && n == 32 { return PolSolved.{type=POL_WITNESS_V1_TAPROOT}; }
+    if pol_anchor_vartime(s) { return PolSolved.{type=POL_ANCHOR}; }
+    if version != 0 { return PolSolved.{type=POL_WITNESS_UNKNOWN}; }
+    return PolSolved.{type=POL_NONSTANDARD};
+  }
+  if s.count >= 1 && s[0] == OP_RETURN && script_push_only_vartime(s[1..<s.count]) { return PolSolved.{type=POL_NULL_DATA}; }
+  if s.count == 67 && s[0] == 65 && s[66] == OP_CHECKSIG && pol_key_size(s, 1, 65) { return PolSolved.{type=POL_PUBKEY}; }
+  if s.count == 35 && s[0] == 33 && s[34] == OP_CHECKSIG && pol_key_size(s, 1, 33) { return PolSolved.{type=POL_PUBKEY}; }
+  if s.count == 25 && s[0] == OP_DUP && s[1] == OP_HASH160 && s[2] == 20 && s[23] == OP_EQUALVERIFY && s[24] == OP_CHECKSIG {
+    return PolSolved.{type=POL_PUBKEYHASH};
+  }
+  return pol_multisig(s);   // POL_NONSTANDARD, 0, when it is not multisig either
+}
+// IsStandard for one scriptPubKey: any type but nonstandard, and
+// multisig only up to x-of-3.
+pol_standard_output_vartime :: (s: [] u8) -> bool #export_c {
+  t := pol_solver_vartime(s);
+  if t.type == POL_NONSTANDARD { return false; }
+  if t.type == POL_MULTISIG { return t.n >= 1 && t.n <= 3 && t.m >= 1 && t.m <= t.n; }  // mutant: equivalent (MatchMultisig already gives 1 <= m <= n)
+  return true;
+}
+// book:end solver
+
+// ---- dust
+// book:begin dust
+// GetDustThreshold: what spending the output would cost at rate sat/kvB,
+// rounded up: the output's size plus the input that spends it, 148 bytes,
+// or for a witness program 67, its 107-byte witness weighed at a quarter.
+// An unspendable output is never dust.
+pol_dust_threshold_vartime :: (spk: [] u8, rate: int) -> int #export_c {
+  if pol_unspendable_vartime(spk) { return 0; }
+  size := 8 + tx_compact_size_vartime(spk.count) + spk.count;
+  if script_witness_version_vartime(spk) >= 0 { size += 32 + 4 + 1 + 107 / TX_SCALE + 4; }
+  else { size += 32 + 4 + 1 + 107 + 4; }
+  return fee_for_rate_vartime(rate, size);
+}
+// book:end dust
+
+// ---- IsStandardTx
+// book:begin standard
+// IsStandardTx, its rules in its order. One dust output is allowed: it is
+// ephemeral dust, which the mempool accepts only from a transaction that
+// pays no fee (chapter 82).
+pol_standard_tx_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, o: PolOptions) -> PolResult #export_c {
+  version := tx_le_vartime(b, 0, 4);     // unsigned
+  if version > POL_MAX_VERSION || version < POL_MIN_VERSION { return pol_refused(POL_VERSION, -1); }
+  if tx_weight_vartime(t) > POL_MAX_WEIGHT { return pol_refused(POL_TX_SIZE, -1); }
+  for k: 0..<t.nin {
+    sig := b[ins[k].script..<ins[k].script+ins[k].script_n];
+    if sig.count > POL_MAX_SCRIPTSIG { return pol_refused(POL_SCRIPTSIG_SIZE, k); }
+    if !script_push_only_vartime(sig) { return pol_refused(POL_SCRIPTSIG_PUSHONLY, k); }
+  }
+  left := ifx o.datacarrier > 0 then o.datacarrier else 0;
+  for k: 0..<t.nout {
+    spk := b[outs[k].script..<outs[k].script+outs[k].script_n];
+    if !pol_standard_output_vartime(spk) { return pol_refused(POL_SCRIPTPUBKEY, k); }
+    type := pol_solver_vartime(spk).type;
+    if type == POL_NULL_DATA {
+      if spk.count > left { return pol_refused(POL_DATACARRIER, k); }
+      left -= spk.count;
+    } else if type == POL_MULTISIG && !o.bare_multisig { return pol_refused(POL_BARE_MULTISIG, k); }
+  }
+  dust := 0;
+  for k: 0..<t.nout {
+    spk := b[outs[k].script..<outs[k].script+outs[k].script_n];
+    if tx_le_vartime(b, outs[k].value, 8) < pol_dust_threshold_vartime(spk, o.dust_rate) { dust += 1; }
+  }
+  if dust > POL_MAX_DUST_OUTPUTS { return pol_refused(POL_DUST, -1); }
+  return PolResult.{index=-1};
+}
+// book:end standard
+
+// ---- the spent outputs
+// book:begin redeem
+// What EvalScript leaves from a push-only scriptSig: how many elements,
+// with the last copied to out (at most 520 bytes), or a script error.
+// OP_RESERVED counts as a push for IsPushOnly but fails here; a push over
+// 520 bytes or a stack over 1,000 fails too. The scriptSig is push-only,
+// as IsStandardTx made it; any other opcode is SCRIPT_ERR_SIG_PUSHONLY.
+PolStack :: struct { error: int; depth: int; n: int; }
+pol_stack_vartime :: (sig: [] u8, out: [] u8) -> PolStack {
+  if sig.count > SCRIPT_MAX_SIZE { return PolStack.{error=SCRIPT_ERR_SCRIPT_SIZE}; }
+  depth := 0; n := 0; pc := 0;
+  while pc < sig.count {
+    op := script_op_vartime(sig, pc);
+    if !op.ok { return PolStack.{error=SCRIPT_ERR_BAD_OPCODE}; }
+    if op.n > SCRIPT_MAX_ELEMENT { return PolStack.{error=SCRIPT_ERR_PUSH_SIZE}; }
+    if op.op <= OP_PUSHDATA4 { n = op.n; for i: 0..<n { out[i] = sig[op.at+i]; } }
+    else if op.op == OP_1NEGATE { n = 1; out[0] = 0x81; }
+    else if op.op >= OP_1 && op.op <= OP_16 { n = 1; out[0] = cast(u8) (op.op - 0x50); }
+    else if op.op == 0x50 { return PolStack.{error=SCRIPT_ERR_BAD_OPCODE}; }   // OP_RESERVED
+    else { return PolStack.{error=SCRIPT_ERR_SIG_PUSHONLY}; }
+    depth += 1;
+    if depth > SCRIPT_MAX_STACK { return PolStack.{error=SCRIPT_ERR_STACK_SIZE}; }
+    pc = op.next;
+  }
+  return PolStack.{depth=depth, n=n};
+}
+// book:end redeem
+// book:begin inputs
+// ValidateInputsStandardness: BIP-54's limit on the scriptSigs' and spent
+// scriptPubKeys' sigops across the whole transaction, counted the
+// accurate way and with each P2SH redeem script in place of its output;
+// then each spent output's type, which may be neither nonstandard nor an
+// undefined witness program; and each P2SH redeem script, which must be
+// there and hold at most 15 sigops. A coinbase spends nothing.
+pol_inputs_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, prev: [] u8, spent: [] SigopSpent) -> PolResult #export_c {
+  if tx_coinbase_vartime(b, t, ins) { return PolResult.{index=-1}; }
+  sigops := 0;
+  for k: 0..<t.nin {
+    sig := b[ins[k].script..<ins[k].script+ins[k].script_n];
+    spk := prev[spent[k].script..<spent[k].script+spent[k].script_n];
+    sigops += sigop_count_vartime(sig, true) + sigop_p2sh_vartime(spk, sig);
+    if sigops > POL_MAX_LEGACY_SIGOPS { return pol_inputs_refused(POL_IN_BIP54, -1, 0, 0); }
+  }
+  for k: 0..<t.nin {
+    spk := prev[spent[k].script..<spent[k].script+spent[k].script_n];
+    type := pol_solver_vartime(spk).type;
+    if type == POL_NONSTANDARD { return pol_inputs_refused(POL_IN_UNKNOWN, k, 0, 0); }
+    if type == POL_WITNESS_UNKNOWN { return pol_inputs_refused(POL_IN_UNDEFINED, k, 0, 0); }
+    if type == POL_SCRIPTHASH {
+      redeem: [SCRIPT_MAX_ELEMENT] u8;
+      st := pol_stack_vartime(b[ins[k].script..<ins[k].script+ins[k].script_n], redeem[..]);
+      if st.error != SCRIPT_ERR_OK { return pol_inputs_refused(POL_IN_MALFORMED, k, st.error, 0); }
+      if st.depth == 0 { return pol_inputs_refused(POL_IN_MISSING, k, 0, 0); }
+      count := sigop_count_vartime(redeem[0..<st.n], true);
+      if count > POL_MAX_P2SH_SIGOPS { return pol_inputs_refused(POL_IN_P2SH_SIGOPS, k, count, POL_MAX_P2SH_SIGOPS); }
+    }
+  }
+  return PolResult.{index=-1};
+}
+// book:end inputs
+
+// ---- IsWitnessStandard
+// book:begin witness
+// IsWitnessStandard, for each input with a witness: a P2A output may not
+// have one (witness stuffing); under P2SH the redeem script takes the
+// output's place; the script must be a witness program. A P2WSH witness
+// script may have at most 3,600 bytes, and the items under it at most 100
+// of at most 80 bytes each. A Taproot spend, not under P2SH, may not have
+// an annex, and a tapscript spend's items under the script and the
+// control block at most 80 bytes each.
+pol_witness_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, items: [] TxItem, prev: [] u8, spent: [] SigopSpent) -> PolResult #export_c {
+  if tx_coinbase_vartime(b, t, ins) { return PolResult.{index=-1}; }
+  for k: 0..<t.nin {
+    count := ins[k].count;
+    if count == 0 { continue; }
+    first := ins[k].first;
+    spk := prev[spent[k].script..<spent[k].script+spent[k].script_n];
+    if pol_anchor_vartime(spk) { return pol_refused(POL_WITNESS, k); }
+    redeem: [SCRIPT_MAX_ELEMENT] u8;
+    script := spk;
+    p2sh := false;
+    if script_p2sh_vartime(spk) {
+      st := pol_stack_vartime(b[ins[k].script..<ins[k].script+ins[k].script_n], redeem[..]);
+      if st.error != SCRIPT_ERR_OK || st.depth == 0 { return pol_refused(POL_WITNESS, k); }
+      script = redeem[0..<st.n];
+      p2sh = true;
+    }
+    version := script_witness_version_vartime(script);
+    if version < 0 { return pol_refused(POL_WITNESS, k); }
+    n := script.count - 2;
+    if version == 0 && n == 32 {
+      if items[first+count-1].n > POL_MAX_P2WSH_SCRIPT { return pol_refused(POL_WITNESS, k); }
+      if count - 1 > POL_MAX_P2WSH_ITEMS { return pol_refused(POL_WITNESS, k); }
+      for j: 0..<count-1 { if items[first+j].n > POL_MAX_P2WSH_ITEM { return pol_refused(POL_WITNESS, k); } }
+    }
+    if version == 1 && n == 32 && !p2sh {
+      top := items[first+count-1];
+      if count >= 2 && top.n > 0 && b[top.at] == POL_ANNEX_TAG { return pol_refused(POL_WITNESS, k); }
+      if count >= 2 {
+        if top.n == 0 { return pol_refused(POL_WITNESS, k); }    // the control block
+        if (cast(int) b[top.at] & POL_LEAF_MASK) == POL_LEAF_TAPSCRIPT {
+          for j: 0..<count-2 { if items[first+j].n > POL_MAX_TAPSCRIPT_ITEM { return pol_refused(POL_WITNESS, k); } }
+        }
+      }
+    }
+  }
+  return PolResult.{index=-1};
+}
+// book:end witness
+
+// ---- PreChecks
+// book:begin check
+// The standardness steps of PreChecks, in its order. prev holds the spent
+// outputs' scriptPubKeys, spent[k] the one input k spends.
+pol_check_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, prev: [] u8, spent: [] SigopSpent, o: PolOptions) -> PolResult #export_c {
+  if t.code != TX_OK || spent.count != t.nin { return pol_refused(POL_CONTEXT, -1); }
+  r := pol_standard_tx_vartime(b, t, ins, outs, o);
+  if r.code != POL_OK { return r; }
+  if t.stripped < POL_MIN_NONWITNESS { return pol_refused(POL_TX_SIZE_SMALL, -1); }
+  r = pol_inputs_vartime(b, t, ins, prev, spent);
+  if r.code != POL_OK { return r; }
+  r = pol_witness_vartime(b, t, ins, items, prev, spent);
+  if r.code != POL_OK { return r; }
+  cost := sigop_cost_vartime(b, t, ins, outs, items, prev, spent, POL_CONSENSUS_FLAGS);
+  if cost > POL_MAX_SIGOPS_COST { return PolResult.{code=POL_SIGOPS, index=-1, a=cost}; }
+  return PolResult.{index=-1, a=cost};
+}
+// book:end check
+
+// ---- what a block checks
+// book:begin consensus
+// What a block would check of the same transaction: CheckTransaction
+// (check, chapter 52's code), that the inputs pay for the outputs, each
+// input's VerifyScript under the consensus flags (input, script: the
+// first that fails, chapter 36's code), and the weight and sigop cost a
+// block may hold. valid when all of it passes.
+PolConsensus :: struct { valid: bool; check: int; funded: bool; input: int; script: int; weight: int; cost: int; }
+pol_consensus_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, prev: [] u8, spent: [] SigopSpent, w: [] ScriptWork) -> PolConsensus #export_c {
+  c := PolConsensus.{check=txcheck_vartime(b, t, ins, outs), input=-1};
+  if c.check != TXC_OK || spent.count != t.nin { return c; }
+  value_in := 0; value_out := 0;
+  for k: 0..<t.nin { value_in += spent[k].value; }
+  for k: 0..<t.nout { value_out += tx_le_vartime(b, outs[k].value, 8); }
+  c.funded = value_in >= value_out;
+  for k: 0..<t.nin {
+    sp := ScriptSpend.{b=b, t=t, ins=ins[0..<t.nin], outs=outs[0..<t.nout], items=items[0..<t.nitems],
+      index=k, amount=spent[k].value, spk=prev[spent[k].script..<spent[k].script+spent[k].script_n]};
+    e := script_verify_vartime(sp, POL_CONSENSUS_FLAGS, w);
+    if e != SCRIPT_ERR_OK && c.input < 0 { c.input = k; c.script = e; }
+  }
+  c.weight = tx_weight_vartime(t);
+  c.cost = sigop_cost_vartime(b, t, ins, outs, items, prev, spent, POL_CONSENSUS_FLAGS);
+  c.valid = c.funded && c.input < 0 && c.weight <= FEE_MAX_BLOCK_WEIGHT && c.cost <= BLOCK_MAX_SIGOPS_COST;
+  return c;
+}
+// book:end consensus
+
+// ---- building transactions
+// book:begin build
+// A transaction written field by field: the version, BIP-144's marker
+// and flag when segwit, the input count; each input spends output index
+// of the funding transaction FUNDING (32 bytes of 0x11) with scriptSig
+// sig; the output count and outputs; one witness stack per input when
+// segwit; a locktime of 0. Each returns where writing goes on.
+POL_FUNDING :: 0x11;
+pol_le :: (out: [] u8, at: int, value: int, width: int) -> int {
+  for i: 0..<width { out[at+i] = cast(u8) ((value >> (8 * i)) & 255); }
+  return at + width;
+}
+pol_start :: (out: [] u8, version: int, segwit: bool, nin: int) -> int {
+  at := pol_le(out, 0, version, 4);
+  if segwit { out[at] = 0; out[at+1] = 1; at += 2; }
+  return tx_compact_write_vartime(out, at, nin);
+}
+pol_input :: (out: [] u8, at: int, index: int, sig: [] u8) -> int {
+  for i: 0..<32 { out[at+i] = POL_FUNDING; }
+  a := pol_le(out, at + 32, index, 4);
+  a = tx_compact_write_vartime(out, a, sig.count);
+  a = tx_put(out, a, sig);
+  return pol_le(out, a, 0xffffffff, 4);
+}
+pol_output :: (out: [] u8, at: int, value: int, spk: [] u8) -> int {
+  a := pol_le(out, at, value, 8);
+  a = tx_compact_write_vartime(out, a, spk.count);
+  return tx_put(out, a, spk);
+}
+// A push of n copies of byte, in the shortest form, as CScript << does.
+pol_push :: (out: [] u8, at: int, byte: int, n: int) -> int {
+  a := at;
+  if n < OP_PUSHDATA1 { out[a] = cast(u8) n; a += 1; }
+  else if n <= 0xff { out[a] = OP_PUSHDATA1; out[a+1] = cast(u8) n; a += 2; }
+  else if n <= 0xffff { out[a] = OP_PUSHDATA2; a = pol_le(out, a + 1, n, 2); }
+  else { out[a] = OP_PUSHDATA4; a = pol_le(out, a + 1, n, 4); }
+  for i: 0..<n { out[a+i] = cast(u8) byte; }
+  return a + n;
+}
+// One spent output: its value, and its scriptPubKey appended to prev at at.
+pol_spent :: (prev: [] u8, at: int, spent: [] SigopSpent, k: int, value: int, spk: [] u8) -> int {
+  spent[k] = SigopSpent.{value=value, script=at, script_n=spk.count};
+  return tx_put(prev, at, spk);
+}
+// book:end build
+
+// ---- the pinned transactions
+// book:begin cases
+// The example's transactions, one per rule, by number: what each is, the
+// options it runs under, and the reason Core gives it. Each one spends
+// outputs of FUNDING worth POL_COIN each: case k spends output k, and
+// the case of 167 inputs outputs 0 to 166.
+POL_COIN :: 1000000;
+POL_CASES :: 21;
+POL_CASE_NAMES :: [21] string.["a P2WSH spend to P2WPKH", "version 0", "version 4",
+  "an OP_RETURN of 99,990 bytes", "a scriptSig of 2,014 bytes", "a scriptSig with OP_NOP",
+  "an output of OP_1", "a 2-of-4 bare multisig output", "an 84-byte OP_RETURN, -datacarriersize=83",
+  "a 1-of-1 bare multisig output, -permitbaremultisig=0", "two dust outputs", "61 bytes without the witness",
+  "a spend of a bare OP_1", "a spend of a version 2 program", "a redeem script with 16 sigops",
+  "167 redeem scripts with 15 sigops each", "an 81-byte P2WSH item", "101 P2WSH items",
+  "a P2WSH script of 3,631 bytes", "a witness on a P2A output", "201 bare multisig outputs"];
+POL_CASE_CODES :: [21] int.[POL_OK, POL_VERSION, POL_VERSION, POL_TX_SIZE, POL_SCRIPTSIG_SIZE,
+  POL_SCRIPTSIG_PUSHONLY, POL_SCRIPTPUBKEY, POL_SCRIPTPUBKEY, POL_DATACARRIER, POL_BARE_MULTISIG,
+  POL_DUST, POL_TX_SIZE_SMALL, POL_INPUTS, POL_INPUTS, POL_INPUTS, POL_INPUTS, POL_WITNESS,
+  POL_WITNESS, POL_WITNESS, POL_WITNESS, POL_SIGOPS];
+// The options case k runs under.
+pol_case_options :: (k: int) -> PolOptions {
+  o := pol_defaults();
+  if k == 8 { o.datacarrier = 83; }
+  if k == 9 { o.bare_multisig = false; }
+  return o;
+}
+// book:end cases
+// The scripts the cases spend and pay to.
+POL_P2WSH_TRUE :: "00204ae81572f06e1b88fd5ced7a1a000945432e83e1551e6f721ee9c00b8cc33260";   // P2WSH of OP_1
+POL_P2WPKH :: "0014751e76e8199196d454941c45d1b3a323f1433bd6";
+POL_P2SH_TRUE :: "a914da1745e9b549bd0bfa1a569971c77eba30cd5a4b87";    // P2SH of OP_1
+POL_KEY :: "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+// A P2SH output of a redeem script of n sigops: n times OP_0 OP_0
+// OP_CHECKSIG OP_DROP, then OP_1. Each CHECKSIG fails without an error.
+pol_sigops_redeem :: (n: int, out: [] u8) -> int {
+  for i: 0..<n { out[4*i] = OP_0; out[4*i+1] = OP_0; out[4*i+2] = OP_CHECKSIG; out[4*i+3] = OP_DROP; }
+  out[4*n] = OP_1;
+  return 4 * n + 1;
+}
+pol_p2sh_of :: (redeem: [] u8, out: [] u8) -> int {
+  out[0] = OP_HASH160; out[1] = 20;
+  #assert hash160_checked(redeem, out[2..<22], false) == SHA_OK;
+  out[22] = OP_EQUAL;
+  return 23;
+}
+pol_p2wsh_of :: (script: [] u8, out: [] u8) -> int {
+  out[0] = OP_0; out[1] = 32;
+  #assert sha256_hash_checked(script, out[2..<34], false) == SHA_OK;
+  return 34;
+}
+// count inputs, each spending a P2SH output of a 15-sigop redeem
+// script, paying to P2WPKH: Core's max_standard_legacy_sigops case.
+pol_fan :: (count: int, out: [] u8, prev: [] u8, spent: [] SigopSpent) -> PolCase {
+  r: [100] u8; s: [100] u8; h: [23] u8; k: [22] u8;
+  n := pol_sigops_redeem(15, r[..]);
+  s[0] = cast(u8) n; for i: 0..<n { s[1+i] = r[i]; }
+  spk := h[0..<pol_p2sh_of(r[0..<n], h[..])];
+  at := pol_start(out, 2, false, count); p := 0;
+  for i: 0..<count { p = pol_spent(prev, p, spent, i, POL_COIN, spk); at = pol_input(out, at, i, s[0..<n+1]); }
+  at = tx_compact_write_vartime(out, at, 1); at = pol_output(out, at, 900000, tx_unhex(POL_P2WPKH, k[..]));
+  at = pol_le(out, at, 0, 4);
+  return PolCase.{n=at, nspent=count};
+}
+// Writes case k: the transaction into out, its spent outputs into prev
+// and spent. Returns the transaction's length and how many it spends.
+PolCase :: struct { n: int; nspent: int; }
+pol_case :: (k: int, out: [] u8, prev: [] u8, spent: [] SigopSpent) -> PolCase {
+  h: [200] u8; s: [4000] u8; r: [100] u8;
+  p2wsh := tx_unhex(POL_P2WSH_TRUE, h[0..<34]);
+  p2wpkh := tx_unhex(POL_P2WPKH, h[34..<56]);
+  one := tx_unhex("51", h[56..<57]);
+  empty := h[0..<0];
+  witness_one := tx_unhex("010151", h[57..<60]);   // one witness item, OP_1
+  // Most cases: one P2WSH input whose witness script is OP_1, paying to
+  // P2WPKH, with the version, the output or the witness changed.
+  at := 0; p := 0;
+  if k <= 3 || k >= 6 && k <= 11 {
+    version := ifx k == 1 then 0 else ifx k == 2 then 4 else 2;
+    p = pol_spent(prev, 0, spent, 0, POL_COIN, p2wsh);
+    at = pol_start(out, version, true, 1);
+    at = pol_input(out, at, k, empty);
+    if k <= 2 { at = tx_compact_write_vartime(out, at, 1); at = pol_output(out, at, 900000, p2wpkh); }
+    if k == 3 {     // written in place: OP_RETURN and a PUSHDATA4 of 99,990 bytes
+      at = tx_compact_write_vartime(out, at, 1); at = pol_le(out, at, 0, 8);
+      at = tx_compact_write_vartime(out, at, 1 + 5 + 99990); out[at] = OP_RETURN; at = pol_push(out, at + 1, 0, 99990);
+    }
+    if k == 6 { at = tx_compact_write_vartime(out, at, 1); at = pol_output(out, at, 900000, one); }
+    if k == 7 || k == 9 {
+      // m keys n CHECKMULTISIG: 2-of-4, or 1-of-1
+      m := ifx k == 7 then 2 else 1; keys := ifx k == 7 then 4 else 1;
+      s[0] = cast(u8) (0x50 + m); n := 1;
+      for i: 0..<keys { s[n] = 33; n += 1; key := tx_unhex(POL_KEY, s[n..<n+33]); n += key.count; }
+      s[n] = cast(u8) (0x50 + keys); s[n+1] = OP_CHECKMULTISIG; n += 2;
+      at = tx_compact_write_vartime(out, at, 1); at = pol_output(out, at, 900000, s[0..<n]);
+    }
+    if k == 8 { s[0] = OP_RETURN; n := pol_push(s[..], 1, 0x42, 81); at = tx_compact_write_vartime(out, at, 1); at = pol_output(out, at, 0, s[0..<n]); }
+    if k == 10 {
+      at = tx_compact_write_vartime(out, at, 3);
+      at = pol_output(out, at, 900000, p2wpkh); at = pol_output(out, at, 293, p2wpkh); at = pol_output(out, at, 0, p2wpkh);
+    }
+    if k == 11 { at = tx_compact_write_vartime(out, at, 1); at = pol_output(out, at, 0, tx_unhex("6a", r[0..<1])); }
+    at = tx_put(out, at, witness_one);
+    at = pol_le(out, at, 0, 4);
+    return PolCase.{n=at, nspent=1};
+  }
+  // Cases that change the input: a legacy spend of P2SH or a bare script.
+  if k == 4 || k == 5 || k == 12 || k == 13 || k == 14 {
+    sig := s[0..<0];
+    if k == 4 {      // four pushes of 500 bytes, then the redeem script OP_1
+      n := 0;
+      for i: 0..<4 { n = pol_push(s[..], n, 0, 500); }
+      s[n] = 1; s[n+1] = OP_1;
+      sig = s[0..<n+2];
+      p = pol_spent(prev, 0, spent, 0, POL_COIN, tx_unhex(POL_P2SH_TRUE, h[60..<83]));
+    }
+    if k == 5 { sig = tx_unhex("61", s[0..<1]); p = pol_spent(prev, 0, spent, 0, POL_COIN, one); }
+    if k == 12 { p = pol_spent(prev, 0, spent, 0, POL_COIN, one); }
+    if k == 13 { p = pol_spent(prev, 0, spent, 0, POL_COIN, tx_unhex("5202beef", h[60..<64])); }
+    if k == 14 {
+      n := pol_sigops_redeem(16, r[..]);
+      s[0] = cast(u8) n; for i: 0..<n { s[1+i] = r[i]; }
+      sig = s[0..<n+1];
+      p = pol_spent(prev, 0, spent, 0, POL_COIN, h[60..<60+pol_p2sh_of(r[0..<n], h[60..<83])]);
+    }
+    at = pol_start(out, 2, false, 1);
+    at = pol_input(out, at, k, sig);
+    at = tx_compact_write_vartime(out, at, 1); at = pol_output(out, at, 900000, p2wpkh);
+    at = pol_le(out, at, 0, 4);
+    return PolCase.{n=at, nspent=1};
+  }
+  if k == 15 { return pol_fan(167, out, prev, spent); }
+  if k == 20 {      // 201 outputs of 1-of-1 bare multisig: 20 legacy sigops each
+    s[0] = OP_1; s[1] = 33; key := tx_unhex(POL_KEY, s[2..<35]); #assert key.count == 33; s[35] = OP_1; s[36] = OP_CHECKMULTISIG;
+    p = pol_spent(prev, 0, spent, 0, POL_COIN, p2wsh);
+    at = pol_start(out, 2, true, 1);
+    at = pol_input(out, at, k, empty);
+    at = tx_compact_write_vartime(out, at, 201);
+    for i: 0..<201 { at = pol_output(out, at, 1000, s[0..<37]); }
+    at = tx_put(out, at, witness_one);
+    at = pol_le(out, at, 0, 4);
+    return PolCase.{n=at, nspent=1};
+  }
+  // Witness cases: one input, its witness script and items changed.
+  script := s[0..<0];
+  item_n := 0; items := 0;
+  if k == 16 { script = tx_unhex("7551", s[0..<2]); item_n = 81; items = 1; }        // DROP 1
+  if k == 17 { for i: 0..<101 { s[i] = OP_DROP; } s[101] = OP_1; script = s[0..<102]; items = 101; }
+  if k == 18 {      // seven pushes of 515 bytes, 2DROP 2DROP 2DROP DROP 1
+    n := 0;
+    for i: 0..<7 { n = pol_push(s[..], n, 0, 515); }
+    s[n] = OP_2DROP; s[n+1] = OP_2DROP; s[n+2] = OP_2DROP; s[n+3] = OP_DROP; s[n+4] = OP_1;
+    script = s[0..<n+5];
+  }
+  if k == 19 {      // P2A, and a witness of one byte
+    p = pol_spent(prev, 0, spent, 0, POL_COIN, tx_unhex("51024e73", h[60..<64]));
+  } else {
+    p = pol_spent(prev, 0, spent, 0, POL_COIN, h[60..<60+pol_p2wsh_of(script, h[60..<94])]);
+  }
+  at = pol_start(out, 2, true, 1);
+  at = pol_input(out, at, k, empty);
+  at = tx_compact_write_vartime(out, at, 1); at = pol_output(out, at, 900000, p2wpkh);
+  if k == 19 { at = tx_compact_write_vartime(out, at, 1); at = tx_compact_write_vartime(out, at, 1); out[at] = 0xaa; at += 1; }
+  else {
+    at = tx_compact_write_vartime(out, at, items + 1);
+    for i: 0..<items { at = tx_compact_write_vartime(out, at, item_n); for j: 0..<item_n { out[at+j] = 0; } at += item_n; }
+    at = tx_compact_write_vartime(out, at, script.count);
+    at = tx_put(out, at, script);
+  }
+  at = pol_le(out, at, 0, 4);
+  return PolCase.{n=at, nspent=1};
+}
+
+// book:begin run
+// Case k checked both ways: the policy result under its options, and
+// what a block checks; and its wtxid.
+PolRun :: struct { r: PolResult; c: PolConsensus; stripped: int; nin: int; nout: int; wtxid: [32] u8; }
+pol_run :: (k: int, w: [] ScriptWork) -> PolRun {
+  out: [110000] u8; prev: [10000] u8; spent: [200] SigopSpent;
+  ins: [200] TxIn; outs: [300] TxOut; items: [200] TxItem;
+  c := pol_case(k, out[..], prev[..], spent[..]);
+  b := out[0..<c.n];
+  t := tx_read_vartime(b, true, ins[..], outs[..], items[..]);
+  r := pol_check_vartime(b, t, ins[..], outs[..], items[..], prev[..], spent[0..<c.nspent], pol_case_options(k));
+  cs := pol_consensus_vartime(b, t, ins[..], outs[..], items[..], prev[..], spent[0..<c.nspent], w);
+  run := PolRun.{r=r, c=cs, stripped=t.stripped, nin=t.nin, nout=t.nout};
+  #assert tx_wtxid_vartime(b, t, run.wtxid[..]);
+  return run;
+}
+// book:end run
+
+// ---- checks
+// IsStandardTx on version and nin inputs that each have scriptSig sig,
+// paying va to the scriptPubKey a (hex), and vb to b unless b is empty.
+pol_std :: (version: int, sig: [] u8, nin: int, a: string, va: int, b: string, vb: int, o: PolOptions) -> int {
+  out: [120000] u8; ins: [2500] TxIn; outs: [2] TxOut; items: [1] TxItem; s: [200] u8;
+  at := pol_start(out[..], version, false, nin);
+  for i: 0..<nin { at = pol_input(out[..], at, i, sig); }
+  at = tx_compact_write_vartime(out[..], at, ifx b.count > 0 then 2 else 1);
+  at = pol_output(out[..], at, va, tx_unhex(a, s[..]));
+  if b.count > 0 { at = pol_output(out[..], at, vb, tx_unhex(b, s[..])); }
+  at = pol_le(out[..], at, 0, 4);
+  t := tx_read_vartime(out[0..<at], true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK;
+  return pol_standard_tx_vartime(out[0..<at], t, ins[..], outs[..], o).code;
+}
+// The full check of a transaction that spends one output, spk (hex), with
+// scriptSig sig and the first n of the witness items x, y and z, paying
+// 900,000 to P2WPKH.
+pol_spend :: (spk: string, sig: string, n: int, x: string, y: string, z: string) -> PolResult {
+  out: [8000] u8; prev: [200] u8; spent: [1] SigopSpent; h: [200] u8; s: [2000] u8; k: [22] u8;
+  ins: [1] TxIn; outs: [1] TxOut; items: [8] TxItem;
+  p := pol_spent(prev[..], 0, spent[..], 0, POL_COIN, tx_unhex(spk, h[..]));
+  at := pol_start(out[..], 2, n > 0, 1);
+  at = pol_input(out[..], at, 0, tx_unhex(sig, s[..]));
+  at = tx_compact_write_vartime(out[..], at, 1); at = pol_output(out[..], at, 900000, tx_unhex(POL_P2WPKH, k[..]));
+  if n > 0 {
+    at = tx_compact_write_vartime(out[..], at, n);
+    for i: 0..<n {
+      item := tx_unhex(ifx i == 0 then x else ifx i == 1 then y else z, s[..]);
+      at = tx_compact_write_vartime(out[..], at, item.count); at = tx_put(out[..], at, item);
+    }
+  }
+  at = pol_le(out[..], at, 0, 4);
+  t := tx_read_vartime(out[0..<at], true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && p == spent[0].script_n;
+  return pol_check_vartime(out[0..<at], t, ins[..], outs[..], items[..], prev[..], spent[..], pol_defaults());
+}
+POL_P2PKH :: "76a914751e76e8199196d454941c45d1b3a323f1433bd688ac";
+POL_OP_RETURN_83 :: "6a4c5004678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef3804678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38";
+POL_OP_RETURN_42 :: "6a2804678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38";
+W80 :: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+W81 :: "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+POL_RETURN_30 :: "6a1300000000000000000000000000000000000000";
+POL_BARE_1 :: "51210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179851ae";
+POL_RETURN_31 :: "6a140000000000000000000000000000000000000000";
+
+#test "Core's test_IsStandard: version, dust, OP_RETURN, scriptSigs, weight and bare multisig" #steps 2000000000 {
+  o := pol_defaults();
+  z: [1700] u8; zs: [70] u8;
+  sig := zs[0..<pol_push(zs[..], 0, 0, 65)];
+  #assert pol_std(2, sig, 1, POL_P2PKH, 90000000, "", 0, o) == POL_OK;
+  // One dust output is allowed, two are not; 546 is the threshold.
+  #assert pol_std(2, sig, 1, POL_P2PKH, 90000000, POL_P2PKH, 0, o) == POL_OK;
+  #assert pol_std(2, sig, 1, POL_P2PKH, 545, POL_P2PKH, 0, o) == POL_DUST;
+  #assert pol_std(2, sig, 1, POL_P2PKH, 546, POL_P2PKH, 0, o) == POL_OK;
+  #assert pol_std(0xffffffff, sig, 1, POL_P2PKH, 546, POL_P2PKH, 0, o) == POL_VERSION;
+  #assert pol_std(0, sig, 1, POL_P2PKH, 546, POL_P2PKH, 0, o) == POL_VERSION;
+  #assert pol_std(4, sig, 1, POL_P2PKH, 546, POL_P2PKH, 0, o) == POL_VERSION;
+  #assert pol_std(1, sig, 1, POL_P2PKH, 546, POL_P2PKH, 0, o) == POL_OK;
+  #assert pol_std(3, sig, 1, POL_P2PKH, 546, POL_P2PKH, 0, o) == POL_OK;
+  // An odd rate rounds up: 182 × 3702 / 1000 = 673.764, so 674.
+  odd := o; odd.dust_rate = 3702;
+  #assert pol_std(2, sig, 1, POL_P2PKH, 673, POL_P2PKH, 0, odd) == POL_DUST;
+  #assert pol_std(2, sig, 1, POL_P2PKH, 674, POL_P2PKH, 0, odd) == POL_OK;
+  #assert pol_std(2, sig, 1, "51", 546, POL_P2PKH, 0, o) == POL_SCRIPTPUBKEY;
+  // OP_RETURN: 83 bytes pass at -datacarriersize=83 and refuse at 82.
+  #assert POL_OP_RETURN_83.count == 166;
+  small := o; small.datacarrier = 83;
+  #assert pol_std(2, sig, 1, POL_OP_RETURN_83, 546, POL_P2PKH, 0, small) == POL_OK;
+  small.datacarrier = 82;
+  #assert pol_std(2, sig, 1, POL_OP_RETURN_83, 546, POL_P2PKH, 0, small) == POL_DATACARRIER;
+  // The data may be any pushes, OP_RESERVED among them, but only pushes.
+  #assert pol_std(2, sig, 1, "6a00", 546, POL_P2PKH, 0, o) == POL_OK;
+  #assert pol_std(2, sig, 1, "6a01000101", 546, POL_P2PKH, 0, o) == POL_OK;
+  #assert pol_std(2, sig, 1, "6a504f000101525354555657585960", 546, POL_P2PKH, 0, o) == POL_OK;
+  #assert pol_std(2, sig, 1, "6a0001015224ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 546, POL_P2PKH, 0, o) == POL_OK;
+  #assert pol_std(2, sig, 1, "6a6a", 546, POL_P2PKH, 0, o) == POL_SCRIPTPUBKEY;
+  #assert pol_std(2, sig, 1, "6a", 546, "", 0, o) == POL_OK;
+  // Several OP_RETURN outputs share the budget.
+  #assert pol_std(2, sig, 1, POL_OP_RETURN_42, 0, POL_OP_RETURN_42, 0, o) == POL_OK;
+  #assert pol_std(2, sig, 1, POL_OP_RETURN_42, 0, "6a", 0, o) == POL_OK;
+  #assert pol_std(2, sig, 1, "6a", 0, "6a", 0, o) == POL_OK;
+  #assert pol_std(2, sig, 1, POL_OP_RETURN_83, 0, POL_OP_RETURN_83, 0, o) == POL_OK;
+  small.datacarrier = 166;
+  #assert pol_std(2, sig, 1, POL_OP_RETURN_83, 0, POL_OP_RETURN_83, 0, small) == POL_OK;
+  small.datacarrier = 165;
+  #assert pol_std(2, sig, 1, POL_OP_RETURN_83, 0, POL_OP_RETURN_83, 0, small) == POL_DATACARRIER;
+  none := o; none.datacarrier = 0;     // -datacarrier=0
+  #assert pol_std(2, sig, 1, "6a", 0, "", 0, none) == POL_DATACARRIER;
+  // A scriptSig of 1,650 bytes passes, 1,651 refuses.
+  #assert pol_std(2, z[0..<pol_push(z[..], 0, 0, 1647)], 1, POL_P2PKH, FEE_MAX_MONEY, "", 0, o) == POL_OK;
+  #assert pol_std(2, z[0..<pol_push(z[..], 0, 0, 1648)], 1, POL_P2PKH, FEE_MAX_MONEY, "", 0, o) == POL_SCRIPTSIG_SIZE;
+  // Only pushes: OP_1, OP_0, OP_1NEGATE, OP_16, three push forms, OP_9;
+  // each one-byte op replaced by a non-push op refuses.
+  n := 0;
+  pushes := [4] int.[OP_1, OP_0, OP_1NEGATE, OP_16];
+  for i: 0..<4 { z[n] = cast(u8) pushes[i]; n += 1; }
+  n = pol_push(z[..], n, 0, 75); n = pol_push(z[..], n, 0, 235); n = pol_push(z[..], n, 0, 1234);
+  z[n] = 0x59; n += 1;
+  #assert pol_std(2, z[0..<n], 1, POL_P2PKH, FEE_MAX_MONEY, "", 0, o) == POL_OK;
+  non_push := [13] int.[OP_NOP, OP_VERIFY, OP_IF, OP_ROT, OP_3DUP, OP_SIZE, OP_EQUAL, OP_ADD, OP_SUB, OP_HASH256, OP_CODESEPARATOR, OP_CHECKSIG, OP_CHECKLOCKTIMEVERIFY];
+  at := [5] int.[0, 1, 2, 3, n - 1];
+  for i: 0..<5 {
+    keep := z[at[i]];
+    for j: 0..<13 { z[at[i]] = cast(u8) non_push[j]; #assert pol_std(2, z[0..<n], 1, POL_P2PKH, FEE_MAX_MONEY, "", 0, o) == POL_SCRIPTSIG_PUSHONLY; }
+    z[at[i]] = keep;
+  }
+  #assert pol_std(2, z[0..<n], 1, POL_P2PKH, FEE_MAX_MONEY, "", 0, o) == POL_OK;
+  // 2,438 inputs with empty scriptSigs: 400,000 weight passes, 400,004 not.
+  #assert pol_std(2, z[0..<0], 2438, POL_RETURN_30, FEE_MAX_MONEY, "", 0, o) == POL_OK;
+  #assert pol_std(2, z[0..<0], 2438, POL_RETURN_31, FEE_MAX_MONEY, "", 0, o) == POL_TX_SIZE;
+  // Bare multisig, 1-of-1: standard unless -permitbaremultisig=0.
+  #assert pol_std(2, sig, 1, POL_BARE_1, FEE_MAX_MONEY, "", 0, o) == POL_OK;
+  off := o; off.bare_multisig = false;
+  #assert pol_std(2, sig, 1, POL_BARE_1, FEE_MAX_MONEY, "", 0, off) == POL_BARE_MULTISIG;
+}
+
+#test "Core's test_IsStandard: each output type's dust threshold" {
+  // The type, the threshold at 3,000 sat/kvB, as Core's test lists them.
+  b: [80] u8;
+  spks := [10] string.["21020202020202020202020202020202020202020202020202020202020202020202ac",
+    "410404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404ac",
+    "76a914000000000000000000000000000000000000000088ac", "a914000000000000000000000000000000000000000087",
+    "00140000000000000000000000000000000000000000", "00200000000000000000000000000000000000000000000000000000000000000000",
+    "51200000000000000000000000000000000000000000000000000000000000000000", "52020000", "51024e73", "6a"];
+  types := [10] int.[POL_PUBKEY, POL_PUBKEY, POL_PUBKEYHASH, POL_SCRIPTHASH, POL_WITNESS_V0_KEYHASH,
+    POL_WITNESS_V0_SCRIPTHASH, POL_WITNESS_V1_TAPROOT, POL_WITNESS_UNKNOWN, POL_ANCHOR, POL_NULL_DATA];
+  dust := [10] int.[576, 672, 546, 540, 294, 330, 330, 240, 240, 0];
+  for i: 0..<10 {
+    s := tx_unhex(spks[i], b[..]);
+    #assert pol_solver_vartime(s).type == types[i] && pol_standard_output_vartime(s);
+    #assert pol_dust_threshold_vartime(s, POL_DUST_RELAY_FEE) == dust[i];
+  }
+  // Every future version's 2-byte program: 240.
+  for v: 1..<17 { b[0] = cast(u8) (0x50 + v); b[1] = 2; b[2] = 0; b[3] = 0; #assert pol_dust_threshold_vartime(b[0..<4], POL_DUST_RELAY_FEE) == 240; }
+  // An unspendable script is never dust: OP_RETURN, or over 10,000 bytes.
+  big: [10001] u8;
+  #assert pol_unspendable_vartime(big[..]) && pol_dust_threshold_vartime(big[..], POL_DUST_RELAY_FEE) == 0;
+  #assert !pol_unspendable_vartime(big[0..<10000]) && pol_dust_threshold_vartime(big[0..<10000], POL_DUST_RELAY_FEE) == 30477;
+}
+
+#test "Solver: the shapes that are not standard" {
+  b: [300] u8;
+  // A version 0 program of 21 bytes, OP_1 alone, a 2-byte v1 program
+  // other than P2A (undefined, so witness_unknown and standard to pay to).
+  #assert pol_solver_vartime(tx_unhex("0015000000000000000000000000000000000000000000", b[..])).type == POL_NONSTANDARD;
+  #assert pol_solver_vartime(tx_unhex("51", b[..])).type == POL_NONSTANDARD;
+  #assert pol_solver_vartime(tx_unhex("51024e74", b[..])).type == POL_WITNESS_UNKNOWN;
+  #assert !pol_anchor_vartime(tx_unhex("51024e74", b[..])) && pol_anchor_vartime(tx_unhex("51024e73", b[..]));
+  // P2PK with a key of the wrong prefix for its size.
+  #assert pol_solver_vartime(tx_unhex("21040202020202020202020202020202020202020202020202020202020202020202ac", b[..])).type == POL_NONSTANDARD;
+  #assert !pol_key_size(tx_unhex("00", b[..]), 0, 0);
+  // Multisig: 1-of-1 to 3-of-3 are standard, 1-of-4 and 4-of-4 are not;
+  // m above n, a non-minimal m and a bad key do not match.
+  #assert pol_standard_output_vartime(tx_unhex("51210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179851ae", b[..]));
+  three := "53210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179853ae";
+  r := pol_solver_vartime(tx_unhex(three, b[..]));
+  #assert r.type == POL_MULTISIG && r.m == 3 && r.n == 3 && pol_standard_output_vartime(tx_unhex(three, b[..]));
+  four := "51210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179854ae";
+  r = pol_solver_vartime(tx_unhex(four, b[..]));
+  #assert r.type == POL_MULTISIG && r.m == 1 && r.n == 4 && !pol_standard_output_vartime(tx_unhex(four, b[..]));
+  #assert pol_solver_vartime(tx_unhex("52210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179851ae", b[..])).type == POL_NONSTANDARD;
+  #assert pol_solver_vartime(tx_unhex("0101210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179851ae", b[..])).type == POL_NONSTANDARD;
+  #assert pol_solver_vartime(tx_unhex("51210579be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179851ae", b[..])).type == POL_NONSTANDARD;
+  #assert pol_solver_vartime(tx_unhex("51210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179851aeae", b[..])).type == POL_NONSTANDARD;
+  #assert pol_solver_vartime(tx_unhex("ae", b[..])).type == POL_NONSTANDARD;
+  #assert pol_solver_vartime(tx_unhex("4cae", b[..])).type == POL_NONSTANDARD;
+  // pol_number: a push of 17 works; a push of 1 is not minimal (OP_1
+  // is), nor is 0x0100.
+  op := script_op_vartime(tx_unhex("0111", b[..]), 0);
+  #assert pol_number(tx_unhex("0111", b[..]), op, 1, 20) == 17;
+  op = script_op_vartime(tx_unhex("0101", b[..]), 0);
+  #assert pol_number(tx_unhex("0101", b[..]), op, 1, 20) == -1;
+  op = script_op_vartime(tx_unhex("020100", b[..]), 0);
+  #assert pol_number(tx_unhex("020100", b[..]), op, 1, 20) == -1;
+  op = script_op_vartime(tx_unhex("0115", b[..]), 0);
+  #assert pol_number(tx_unhex("0115", b[..]), op, 1, 20) == -1;
+}
+
+#test "EvalScript on a push-only scriptSig: the last element, or the error" {
+  b: [1200] u8; out: [520] u8;
+  s := pol_stack_vartime(tx_unhex("51024e734f", b[..]), out[..]);
+  #assert s.error == SCRIPT_ERR_OK && s.depth == 3 && s.n == 1 && out[0] == 0x81;
+  s = pol_stack_vartime(tx_unhex("0060", b[..]), out[..]);
+  #assert s.depth == 2 && s.n == 1 && out[0] == 16;
+  s = pol_stack_vartime(tx_unhex("0300ab00", b[..]), out[..]);
+  #assert s.depth == 1 && s.n == 3 && out[1] == 0xab;
+  #assert pol_stack_vartime(tx_unhex("", b[..]), out[..]).depth == 0;
+  #assert pol_stack_vartime(tx_unhex("50", b[..]), out[..]).error == SCRIPT_ERR_BAD_OPCODE;
+  #assert pol_stack_vartime(tx_unhex("4c", b[..]), out[..]).error == SCRIPT_ERR_BAD_OPCODE;
+  #assert pol_stack_vartime(tx_unhex("61", b[..]), out[..]).error == SCRIPT_ERR_SIG_PUSHONLY;
+  #assert pol_stack_vartime(b[0..<pol_push(b[..], 0, 0, 521)], out[..]).error == SCRIPT_ERR_PUSH_SIZE;
+  #assert pol_stack_vartime(b[0..<pol_push(b[..], 0, 0, 520)], out[..]).n == 520;
+  for i: 0..<1001 { b[i] = OP_1; }
+  #assert pol_stack_vartime(b[0..<1000], out[..]).depth == 1000;
+  #assert pol_stack_vartime(b[0..<1001], out[..]).error == SCRIPT_ERR_STACK_SIZE;
+  big: [10001] u8;
+  #assert pol_stack_vartime(big[..], out[..]).error == SCRIPT_ERR_SCRIPT_SIZE;
+}
+
+#test "ValidateInputsStandardness: each of Core's messages" {
+  r := pol_spend(POL_P2SH_TRUE, "0151", 0, "", "", "");
+  #assert r.code == POL_OK && r.a == 0;
+  r = pol_spend("51", "", 0, "", "", "");
+  #assert r.code == POL_INPUTS && r.detail == POL_IN_UNKNOWN && r.index == 0;
+  r = pol_spend("5202beef", "", 0, "", "", "");
+  #assert r.code == POL_INPUTS && r.detail == POL_IN_UNDEFINED && r.index == 0;
+  r = pol_spend(POL_P2SH_TRUE, "50", 0, "", "", "");
+  #assert r.code == POL_INPUTS && r.detail == POL_IN_MALFORMED && r.a == SCRIPT_ERR_BAD_OPCODE;
+  r = pol_spend(POL_P2SH_TRUE, "", 0, "", "", "");
+  #assert r.code == POL_INPUTS && r.detail == POL_IN_MISSING;
+  #assert pol_inputs_refused(POL_IN_BIP54, -1, 0, 0).code == POL_INPUTS && pol_refused(POL_DUST, 2).index == 2;
+}
+
+#test "Core's max_standard_legacy_sigops: 166 redeem scripts of 15 sigops pass, 167 refuse" #steps 1000000000 {
+  out: [20000] u8; prev: [5000] u8; spent: [170] SigopSpent; ins: [170] TxIn; outs: [1] TxOut; items: [1] TxItem;
+  for count: 166..<168 {
+    c := pol_fan(count, out[..], prev[..], spent[..]);
+    t := tx_read_vartime(out[0..<c.n], true, ins[..], outs[..], items[..]);
+    r := pol_inputs_vartime(out[0..<c.n], t, ins[..], prev[..], spent[0..<c.nspent]);
+    #assert (r.code == POL_OK) == (count == 166);
+    #assert count == 166 || (r.detail == POL_IN_BIP54 && r.index == -1);
+  }
+}
+
+#test "IsWitnessStandard: P2WSH, P2SH-P2WSH and Taproot limits" {
+  // A P2WSH script DROP 1 under one 80-byte item passes, under 81 not.
+  p2wsh := "002033198a9bfef674ebddb9ffaa52928017b8472791e54c609cb95f278ac6b1e349";
+  #assert pol_spend(p2wsh, "", 2, W80, "7551", "").code == POL_OK;
+  #assert pol_spend(p2wsh, "", 2, W81, "7551", "").code == POL_WITNESS;
+  // The same under P2SH: the redeem script is the P2WSH program.
+  nested := "a9144317f3ef3b77d76e0c9fa04d15fece404a80198b87";
+  push := "22002033198a9bfef674ebddb9ffaa52928017b8472791e54c609cb95f278ac6b1e349";
+  #assert pol_spend(nested, push, 2, W80, "7551", "").code == POL_OK;
+  #assert pol_spend(nested, push, 2, W81, "7551", "").code == POL_WITNESS;
+  // A witness on an output that is no witness program, nor wraps one.
+  #assert pol_spend(POL_P2SH_TRUE, "0151", 1, "aa", "", "").code == POL_WITNESS;
+  #assert pol_spend(POL_P2SH_TRUE, "", 1, "aa", "", "").code == POL_INPUTS;
+  // Taproot: a key path passes; an annex refuses; a tapscript item of 81
+  // bytes refuses, 80 passes, and under another leaf version passes; an
+  // empty control block refuses.
+  tr := "51200000000000000000000000000000000000000000000000000000000000000001";
+  sig := "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+  control := "c00000000000000000000000000000000000000000000000000000000000000001";
+  #assert pol_spend(tr, "", 1, sig, "", "").code == POL_OK;
+  #assert pol_spend(tr, "", 2, sig, "50", "").code == POL_WITNESS;
+  #assert pol_spend(tr, "", 2, sig, "51", "").code == POL_OK;
+  #assert pol_spend(tr, "", 3, W81, "51", control).code == POL_WITNESS;
+  #assert pol_spend(tr, "", 3, W80, "51", control).code == POL_OK;
+  #assert pol_spend(tr, "", 3, W81, "51", "c20000000000000000000000000000000000000000000000000000000000000001").code == POL_OK;
+  #assert pol_spend(tr, "", 2, "51", "", "").code == POL_WITNESS;
+  // Under P2SH a v1 program is no Taproot spend: its witness is not checked.
+  // (Core leaves it to the script interpreter, where it is unencumbered.)
+}
+
+#test "the pinned transactions: each refuses with Core's reason, and passes what a block checks" #steps 4000000000 {
+  w: [1] ScriptWork;
+  for k: 0..<POL_CASES {
+    run := pol_run(k, w[..]);
+    #assert run.r.code == POL_CASE_CODES[k];
+    #assert run.c.valid && run.c.check == TXC_OK && run.c.input == -1;
+    o := pol_case_options(k);
+    #assert (k == 8) == (o.datacarrier == 83) && (k == 9) == !o.bare_multisig;
+  }
+  w2: [1] ScriptWork;
+  #assert pol_run(14, w2[..]).r.a == 16 && pol_run(15, w2[..]).r.detail == POL_IN_BIP54;
+  #assert pol_run(20, w2[..]).r.a == 16080 && pol_run(11, w2[..]).stripped == 61;
+}
+
+#test "what a block checks: a refusal of each kind" {
+  w: [1] ScriptWork;
+  out: [400] u8; prev: [100] u8; spent: [1] SigopSpent; ins: [1] TxIn; outs: [1] TxOut; items: [2] TxItem; h: [40] u8;
+  // OP_1 spent with an empty scriptSig and paying more than it holds,
+  // then with the scriptSig OP_RETURN, then with no outputs.
+  p := pol_spent(prev[..], 0, spent[..], 0, POL_COIN, tx_unhex("51", h[..]));
+  for kind: 0..<3 {
+    at := pol_start(out[..], 2, false, 1);
+    at = pol_input(out[..], at, 0, ifx kind == 1 then tx_unhex("6a", h[..]) else h[0..<0]);
+    nout := ifx kind == 2 then 0 else 1;
+    at = tx_compact_write_vartime(out[..], at, nout);
+    if nout == 1 { at = pol_output(out[..], at, ifx kind == 0 then POL_COIN + 1 else 1000, tx_unhex(POL_P2WPKH, h[..])); }
+    at = pol_le(out[..], at, 0, 4);
+    t := tx_read_vartime(out[0..<at], true, ins[..], outs[..], items[..]);
+    c := pol_consensus_vartime(out[0..<at], t, ins[..], outs[..], items[..], prev[..], spent[..], w[..]);
+    #assert !c.valid && p == 1;
+    if kind == 0 { #assert !c.funded && c.input == -1; }
+    if kind == 1 { #assert c.funded && c.input == 0 && c.script == SCRIPT_ERR_OP_RETURN; }
+    if kind == 2 { #assert c.check == TXC_VOUT_EMPTY; }
+  }
+  // A transaction that did not read is no context for the policy.
+  #assert pol_check_vartime(out[0..<0], tx_refused(TX_TRUNCATED, 0), ins[..], outs[..], items[..], prev[..], spent[..], pol_defaults()).code == POL_CONTEXT;
+}

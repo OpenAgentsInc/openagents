@@ -98,6 +98,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [71. Misbehavior, limits and denial of service](ch071-misbehavior-limits-and-denial-of-service.md) — implemented
 - [73. Compact blocks](ch073-compact-blocks.md) — implemented
 - [74. Compact block filters](ch074-compact-block-filters.md) — implemented
+- [81. Policy is not consensus: standardness](ch081-policy-is-not-consensus-standardness.md) — implemented
 
 **XV. Wallets**
 

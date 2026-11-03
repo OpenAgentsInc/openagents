@@ -1,0 +1,42 @@
+// The checks of standardness.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/standardness.coax
+#load "../standardness.coax";
+
+// book:begin check
+// Policy only adds refusals. A P2WSH spend pays a P2WPKH output, one of
+// 0 sat (dust, which one output may be) and an OP_RETURN, with the
+// version, the first output's value, the OP_RETURN's data and
+// -datacarriersize drawn from the seed. The policy answers with the first
+// of IsStandardTx's rules that applies, in its order, and a block takes
+// every one of these transactions.
+#forall "policy refuses in IsStandardTx's order, and a block takes every one" seed: 0..<240 #steps 4000000000 {
+  version := seed % 6;                       // 0 to 5: 1, 2 and 3 are standard
+  value := (seed * 7919) % 700;              // dust below 294
+  data := (seed * 104729) % 120;             // OP_RETURN data bytes
+  o := pol_defaults();
+  o.datacarrier = (seed * 31) % 130;
+  out: [600] u8; prev: [40] u8; spent: [1] SigopSpent; s: [200] u8; h: [40] u8;
+  ins: [1] TxIn; outs: [3] TxOut; items: [1] TxItem;
+  p := pol_spent(prev[..], 0, spent[..], 0, POL_COIN, tx_unhex(POL_P2WSH_TRUE, h[..]));
+  at := pol_start(out[..], version, true, 1);
+  at = pol_input(out[..], at, 0, h[0..<0]);
+  at = tx_compact_write_vartime(out[..], at, 3);
+  at = pol_output(out[..], at, value, tx_unhex(POL_P2WPKH, h[..]));
+  at = pol_output(out[..], at, 0, tx_unhex(POL_P2WPKH, h[..]));
+  s[0] = OP_RETURN;
+  ret := s[0..<pol_push(s[..], 1, 0x6f, data)];
+  at = pol_output(out[..], at, 0, ret);
+  at = tx_put(out[..], at, tx_unhex("010151", h[..]));
+  at = pol_le(out[..], at, 0, 4);
+  t := tx_read_vartime(out[0..<at], true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK && p == 34;
+  want := POL_OK;
+  if version < 1 || version > 3 { want = POL_VERSION; }
+  else if ret.count > o.datacarrier { want = POL_DATACARRIER; }
+  else if value < 294 { want = POL_DUST; }
+  #assert pol_check_vartime(out[0..<at], t, ins[..], outs[..], items[..], prev[..], spent[..], o).code == want;
+  w: [1] ScriptWork;
+  #assert pol_consensus_vartime(out[0..<at], t, ins[..], outs[..], items[..], prev[..], spent[..], w[..]).valid;
+}
+// book:end check

@@ -821,6 +821,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/standardness.coax",
+      "chapter": "bitcoin/book/ch081-policy-is-not-consensus-standardness.md",
+      "stdout": "bitcoin/fixtures/standardness.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
     }
   ]
 }

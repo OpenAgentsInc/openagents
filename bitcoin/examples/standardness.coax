@@ -1,0 +1,64 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/policy.coax";
+#import "Basic";
+
+hex_digit :: (x: int) -> string { return "0123456789abcdef"[x..<x + 1]; }
+// The first 16 hex digits of a wtxid as explorers show it: bytes reversed.
+show_wtxid :: (h: [] u8) {
+  i := 31; while i >= 24 { print("%", hex_digit(cast(int) h[i] >> 4)); print("%", hex_digit(cast(int) h[i] & 15)); i -= 1; }
+}
+
+// ---- output types
+// Each scriptPubKey's type as Solver reads it, whether IsStandard takes
+// it, and the value below which it is dust at the default rate.
+outputs :: () {
+  print("output types, and dust at -dustrelayfee=3000 sat/kvB\n");
+  names := [12] string.["P2PK, compressed key", "P2PK, uncompressed key", "P2PKH", "P2SH", "P2WPKH", "P2WSH",
+    "P2TR", "a version 2 program", "P2A", "OP_RETURN", "bare 2-of-4 multisig", "OP_1"];
+  spks := [12] string.["210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ac",
+    "410479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8ac",
+    "76a914751e76e8199196d454941c45d1b3a323f1433bd688ac", "a914da1745e9b549bd0bfa1a569971c77eba30cd5a4b87",
+    "0014751e76e8199196d454941c45d1b3a323f1433bd6", "00204ae81572f06e1b88fd5ced7a1a000945432e83e1551e6f721ee9c00b8cc33260",
+    "51200000000000000000000000000000000000000000000000000000000000000001", "5202beef", "51024e73", "6a0568656c6c6f",
+    "52210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179854ae",
+    "51"];
+  for i: 0..<12 {
+    b: [200] u8;
+    s := tx_unhex(spks[i], b[..]);
+    print("  %: % byte%, %", names[i], s.count, ifx s.count == 1 then "" else "s", POL_TYPE_NAMES[pol_solver_vartime(s).type]);
+    if !pol_standard_output_vartime(s) { print(", not standard\n"); continue; }
+    d := pol_dust_threshold_vartime(s, POL_DUST_RELAY_FEE);
+    if d == 0 { print(", never dust\n"); } else { print(", dust below % sat\n", d); }
+  }
+}
+
+// ---- the pinned transactions
+// Core's debug message for "bad-txns-nonstandard-inputs".
+inputs_message :: (r: PolResult) {
+  if r.detail == POL_IN_BIP54 { print(" (non-witness sigops exceed bip54 limit)"); }
+  if r.detail == POL_IN_UNKNOWN { print(" (input % script unknown)", r.index); }
+  if r.detail == POL_IN_UNDEFINED { print(" (input % witness program is undefined)", r.index); }
+  if r.detail == POL_IN_P2SH_SIGOPS { print(" (p2sh redeemscript sigops exceed limit (input %: % > %))", r.index, r.a, r.b); }
+}
+cases :: () {
+  print("one transaction per rule: the reason Bitcoin Core refuses it, then what a block checks\n");
+  w: [1] ScriptWork;
+  valid := 0; standard := 0;
+  for k: 0..<POL_CASES {
+    run := pol_run(k, w[..]);
+    print("  "); show_wtxid(run.wtxid[..]); print(" %\n", POL_CASE_NAMES[k]);
+    print("    policy: %", POL_REASONS[run.r.code]);
+    if run.r.code == POL_INPUTS { inputs_message(run.r); }
+    if run.r.code == POL_SIGOPS { print(" (%)", run.r.a); }
+    print("\n");
+    c := run.c;
+    print("    a block: %, % input%, % output%, weight %, sigop cost %\n", ifx c.valid then "valid" else "invalid",
+      run.nin, ifx run.nin == 1 then "" else "s", run.nout, ifx run.nout == 1 then "" else "s", c.weight, c.cost);
+    if c.valid { valid += 1; }
+    if run.r.code == POL_OK { standard += 1; }
+  }
+  print("% of % transactions are valid in a block; % of them is standard\n", valid, POL_CASES, standard);
+}
+
+main :: () { outputs(); cases(); }
+// book:end example

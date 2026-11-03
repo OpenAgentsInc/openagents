@@ -1682,16 +1682,23 @@
   {
    "number": 81,
    "title": "Policy is not consensus: standardness",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch081-policy-is-not-consensus-standardness.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     36,
     40,
     53
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/policy.coax",
+    "bitcoin/examples/standardness.coax",
+    "bitcoin/examples/checks/standardness.coax",
+    "coax/tests/bitcoin/policy.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
