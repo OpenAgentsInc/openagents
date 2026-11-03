@@ -1,0 +1,75 @@
+KeyAgg of BIP-327's keys X1, X2, X3:
+  L = hash_KeyAgg list(X1 || X2 || X3): 9d3ba89d01849c97649989f2a441f701be800aaa15d957e687d4f56479bc49b9
+  the second key: X2, so its coefficient is 1
+  a_1: ad0537c883813849e3b95ce5db1d45eb25cc5fae197c4e8759719065932aa183
+  a_2: 0000000000000000000000000000000000000000000000000000000000000001
+  a_3: f45bb025038e68f050ce4dbf8c63e613678892e2a3e930780afe6293376005c6
+  Q of X1, X2, X3: 90539eede565f5d054f32cc0c220126889ed1e5d193baf15aef344fe59d4610c, as published: yes
+  Q of X3, X2, X1 (the order changes Q): 6204de8b083426dc6eaf9502d27024d53fc826bf7d2012148a0575435df54b2b, as published: yes
+  Q of X1 three times: b436e3bad62b8cd409969a224731c193d051162d8c5ae8b109306127da3aa935, as published: yes
+  Q of X1, X1, X2, X2: 69bc22bfa5d106306e48a20679de1d7389386124d07571d0d872686028c26a3e, as published: yes
+  refused: pubkey (signer 1)
+  refused: pubkey (signer 1)
+  refused: pubkey (signer 0)
+  refused: The tweak must be less than n. (signer -1)
+  refused: The result of tweaking cannot be infinity. (signer -1)
+KeySort:
+  023590a94e768f8e1815c2f24b4d80a8e3149316c3518ce7b7ad338368d038ca66
+  02dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8
+  02dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8
+  02dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eff
+  02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+  03dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+Tweaking the key of tweak_vectors (plain, plain, x-only, x-only):
+  Q: 03e2e14a303b7adeeaae81e72e9f26f75fb43102011b3803198351b48c82956c1f
+  after plain tweak 1: 03c7a4356ba33438b49ef0141e9f00eb8146d21ca1e4fcd7f7fecefac2ba4943de, gacc is 1
+  after plain tweak 2: 02fb7b7f46ee1ee138e039ecc8ef999ef231e485c666756a99f2569863219c257a, gacc is 1
+  after x-only tweak 3: 03f26d7e8d67d4c46dc5a960a23cb67e828a224fd040faae29aff625c77bafc376, gacc is 1
+  after x-only tweak 4: 0309faf3edbb16169fd17cbb8688142ab9099705548cd30761dc9cedc111ca4177, gacc is n - 1
+  tacc: 8d14a817082e1d084b60ec1f5947725bcf682484bb616bd325699f405e89a370
+Three signers sign one message:
+  aggregate key: fd18ec6fb3c2285e3876265dbf6bf574bb9389f2b7da5cc2e797b78b93fd83f0
+  signer 1's nonce: 022ba7efd6217eb04ce5c86f6ebe974aecb9076f8070e1adf558e5b120ad668f06022af17a6606dcc6021b92d4475141bc2146a6ca051b8727a82ab4edf245f5f5f7
+  signer 2's nonce: 02164a523285a188111ded81e0b49ede0e2c3510750441be7253bdb92d42cbed59033146b7c79e3e09f48eb1c8ca3d6dfaa0c717aabf8dcf03c8e501238a09c36faf
+  signer 3's nonce: 02d4dbdaa7fe131b67a7bf703a546a64da80379055f6ef656ed541c29dbe493b7503ef7f1acde574548c025f20826972377a658eb95e919318a33b7e1ce28d3e892f
+  aggnonce: 0310798d984f55c30a6636f46fe885ff428e518012bc4d25dc99ff9d558ab49a9103892b798d0c4fd2132a5bdf4d58517f27034849ba0944c75370d82a542d88d472
+  b: 973befa212fff41258f9bdcfa99894944a2325082a6e980bb43e97439013e205
+  R = R1 + b R2: 0363a2e49ffef909c1a38bcead40eb1df8a4ffdd30a6cd903f3d813f5e0c26deb7
+  e: 65f99b2bfeb4437f2e41ebb95653c1c027bd43aac732349b95b1f9fba75bcf37
+  signer 1's partial signature: a9d11ac00d28ae95b372e97fe2b2bc5c44ffbaa6d1497fdd3824b8c9e8df4b00
+    verifies: ok
+  signer 2's partial signature: b18a43768ea1b55df44ea1c4da0043b08f1e778d8196005b30f1eaf224b787f2
+    verifies: ok
+  signer 3's partial signature: 43f811100b7f332b5a7f5c2c50f0015e08f947c013c7967920067f40eb3a0572
+    verifies: ok
+  signer 1's with its last bit changed: invalid
+  signature: 63a2e49ffef909c1a38bcead40eb1df8a4ffdd30a6cd903f3d813f5e0c26deb79f536f46a749971f0240e7710da3016c22689d0db75e7675c94ac470289a9723
+  a valid BIP-340 signature under the aggregate key: yes
+The aggregate key as a Taproot internal key:
+  TapTweak(Q): d1ea9d044134464b742f112e28a8454f488d743c68e5b4eb29328812ec9bb600
+  output key: aaa05411e1c20921bb6d003a2ab19339f76d2254bc044952d3188bdf094bcf2f
+  chapter 41's output key of the same internal key: yes
+  address: bc1p42s9gy0pcgyjrwmdqqaz4vvn88mk6gj5hszyj5knrz9a7z2teuhs99qud8
+  key-path signature: c3add59e2f43e8711e7af265820eb8fc8908c193ad609565e7e7f53430dcab60d08eb865dec6fe0f8fb4c02d706ec15b8a387c5b6f46c653f631ba6aaab67801
+  verifies under the output key: yes
+Nonce reuse:
+  first Sign: ok
+  second Sign with the same secnonce: first secnonce value is out of range.
+  message 1: s = 86a5fcbd9978c1d2a3f5234ed48a2ddf93b46344ec5ad2a64c65d3fd6e84be07
+  message 2: s = 01b634405e7cd3b5dd743da441ff48e752a525e5d3986d19689a247120805988
+  message 3: s = 0a55c53b5861ee04e2e1d2b3ecd82824ceabafaaaa2d48c4f75ce38f6b3bb6cf
+  solved for the secret key: 1112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f30
+  it is signer 1's secret key: yes
+DeterministicSign (det_sign_vectors case 1):
+  pubnonce: 03d96275257c2fccbb6eeb77bddf51d3c88c26ee1626c6cda8999b9d34f4ba13a60309be2bf883c6abe907fa822d9ca166d51a3dcc28910c57528f6983fc378b7843
+  psig: 41ea65093f71d084785b20dc26a887cd941c9597860a21660cbdb9cc2113cad3
+  ok, as published: yes
+BIP-327's vector files, cases giving their stated result:
+  key_sort_vectors: 1 of 1
+  key_agg_vectors: 9 of 9
+  nonce_gen_vectors: 4 of 4
+  nonce_agg_vectors: 5 of 5
+  sign_verify_vectors and tweak_vectors, Sign: 18 of 18
+  sign_verify_vectors and tweak_vectors, PartialSigVerify: 16 of 16
+  det_sign_vectors: 9 of 9
+  sig_agg_vectors: 5 of 5

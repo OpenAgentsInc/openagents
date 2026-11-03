@@ -1,0 +1,201 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/musig.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+put_hex :: (b: [] u8) {
+  text: [300] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+line :: (label: string, b: [] u8) { print("  %: ", label); put_hex(b); print("\n"); }
+scalar_line :: (label: string, s: ScScalar) { b: [32] u8; #assert sc_store(s, b[..]); line(label, b[..]); }
+point_line :: (label: string, p: SgPoint) { b: [33] u8; ms_cbytes_vartime(p, b[..]); line(label, b[..]); }
+yes :: (b: bool) -> string { return ifx b then "yes" else "no"; }
+refusal :: (r: MsResult) -> string { return MS_REASONS[r.code]; }
+
+main :: () {
+  // KeyAgg: the coefficients, the second key's 1, and Q.
+  print("KeyAgg of BIP-327's keys X1, X2, X3:\n");
+  k: [512] u8; l: [32] u8; q: [32] u8;
+  keys := ms_hex(MS_KEY_AGG[0].keys, k[..]);
+  ms_hash_keys_vartime(keys, l[..]);
+  line("L = hash_KeyAgg list(X1 || X2 || X3)", l[..]);
+  second := ms_second_key_vartime(keys);
+  print("  the second key: X%, so its coefficient is 1\n", second + 1);
+  for i: 0..<3 {
+    a: [32] u8; #assert sc_store(ms_coeff_vartime(keys, l[..], second, keys[33*i..<33*i+33]), a[..]);
+    print("  a_%: ", i + 1); put_hex(a[..]); print("\n");
+  }
+  labels := [4] string.["X1, X2, X3", "X3, X2, X1 (the order changes Q)", "X1 three times", "X1, X1, X2, X2"];
+  for i: 0..<4 {
+    x := ms_key_agg_vartime(ms_hex(MS_KEY_AGG[i].keys, k[..]));
+    ms_xbytes_vartime(x.q, q[..]);
+    print("  Q of %: ", labels[i]); put_hex(q[..]); print(", as published: %\n", yes(bt_hex_is(q[..], MS_KEY_AGG[i].expected)));
+  }
+  for i: 4..<MS_KEY_AGG.count {
+    c := MS_KEY_AGG[i]; t: [64] u8; f: [2] bool;
+    r := ms_key_agg_tweak_vartime(ms_hex(c.keys, k[..]), ms_hex(c.tweaks, t[..]), ms_flags(c.xonly, f[..]));
+    print("  refused: % (signer %)\n", MS_REASONS[r.code], r.signer);
+  }
+
+  // KeySort.
+  print("KeySort:\n");
+  sorted := ms_hex(MS_SORT_KEYS, k[..]);
+  ms_key_sort_vartime(sorted);
+  for i: 0..<sorted.count/33 { print("  "); put_hex(sorted[33*i..<33*i+33]); print("\n"); }
+
+  // Tweaks: plain, plain, x-only, x-only, from tweak_vectors.
+  print("Tweaking the key of tweak_vectors (plain, plain, x-only, x-only):\n");
+  c := MS_SIGN[15]; t: [128] u8; f: [4] bool;
+  tweaks := ms_hex(c.tweaks, t[..]); xonly := ms_flags(c.xonly, f[..]);
+  x := ms_key_agg_vartime(ms_hex(c.keys, k[..]));
+  point_line("Q", x.q);
+  for i: 0..<4 {
+    x = ms_tweak_vartime(x, tweaks[32*i..<32*i+32], xonly[i]);
+    print("  after % tweak %: ", ifx xonly[i] then "x-only" else "plain", i + 1);
+    b: [33] u8; ms_cbytes_vartime(x.q, b[..]); put_hex(b[..]);
+    print(", gacc is %\n", ifx sc_equal(x.gacc, sc_small(1)) then "1" else "n - 1");
+  }
+  scalar_line("tacc", x.tacc);
+
+  // A three-signer session.
+  print("Three signers sign one message:\n");
+  sk: [96] u8; pks: [99] u8; msg: [32] u8;
+  for i: 0..<3 { ms_test_key(i, sk[32*i..<32*i+32], pks[33*i..<33*i+33]); }
+  for j: 0..<32 { msg[j] = cast(u8) (0xa0 + j); }
+  agg: [66] u8; pub: [198] u8; psigs: [96] u8; sig: [64] u8; aggpk: [32] u8;
+  nf: [1] bool;
+  ms_xbytes_vartime(ms_key_agg_vartime(pks[..]).q, aggpk[..]);
+  line("aggregate key", aggpk[..]);
+  session(sk[..], pks[..], k[0..<0], nf[0..<0], msg[..], 1, pub[..], agg[..], psigs[..], sig[..]);
+  for i: 0..<3 { print("  signer %'s nonce: ", i + 1); put_hex(pub[66*i..<66*i+66]); print("\n"); }
+  line("aggnonce", agg[..]);
+  s := ms_session_vartime(agg[..], pks[..], k[0..<0], nf[0..<0], msg[..]);
+  scalar_line("b", s.b);
+  point_line("R = R1 + b R2", s.r);
+  scalar_line("e", s.e);
+  for i: 0..<3 {
+    print("  signer %'s partial signature: ", i + 1); put_hex(psigs[32*i..<32*i+32]); print("\n");
+    print("    verifies: %\n", refusal(ms_partial_verify_vartime(psigs[32*i..<32*i+32], pub[..], pks[..], k[0..<0], nf[0..<0], msg[..], i)));
+  }
+  psigs[31] ^= 1;
+  print("  signer 1's with its last bit changed: %\n", refusal(ms_partial_verify_vartime(psigs[0..<32], pub[..], pks[..], k[0..<0], nf[0..<0], msg[..], 0)));
+  psigs[31] ^= 1;
+  line("signature", sig[..]);
+  print("  a valid BIP-340 signature under the aggregate key: %\n", yes(schnorr_verify_vartime(msg[..], aggpk[..], sig[..])));
+
+  // A Taproot key-path output.
+  print("The aggregate key as a Taproot internal key:\n");
+  tweak: [32] u8; output: [32] u8; addr: [100] u8; xf := [1] bool.[true];
+  #assert ms_taproot_tweak_vartime(pks[..], k[0..<0], tweak[..]) == MS_OK;
+  line("TapTweak(Q)", tweak[..]);
+  ms_xbytes_vartime(ms_key_agg_tweak_vartime(pks[..], tweak[..], xf[..]).q, q[..]);
+  line("output key", q[..]);
+  #assert taproot_output_key_vartime(aggpk[..], k[0..<0], output[..]) >= 0;
+  print("  chapter 41's output key of the same internal key: %\n", yes(bt_same(q[..], output[..])));
+  n := segwit_encode_vartime(SW_MAINNET, 1, q[..], addr[..]);
+  print("  address: %\n", cast(string) addr[0..<n]);
+  session(sk[..], pks[..], tweak[..], xf[..], msg[..], 11, pub[..], agg[..], psigs[..], sig[..]);
+  line("key-path signature", sig[..]);
+  print("  verifies under the output key: %\n", yes(taproot_key_path_verify_vartime(q[..], sig[..], msg[..])));
+
+  // A secnonce signs once; a copied one gives the key away.
+  print("Nonce reuse:\n");
+  nw: [1] MsNonceWork; sw: [1] MsSignWork; sec: [97] u8; copy: [97] u8; psig: [32] u8; rand: [32] u8;
+  for j: 0..<32 { rand[j] = 0x55; }
+  #assert ms_nonce_gen(rand[..], sk[0..<32], pks[0..<33], k[0..<0], k[0..<0], false, k[0..<0], sec[..], pub[0..<66], nw[..]) == MS_OK;
+  for j: 0..<97 { copy[j] = sec[j]; }
+  print("  first Sign: %\n", refusal(sign_one(sec[..], sk[..], pks[..], pub[..], msg[..], 0, psig[..], sw[..])));
+  print("  second Sign with the same secnonce: %\n", refusal(sign_one(sec[..], sk[..], pks[..], pub[..], msg[..], 0, psig[..], sw[..])));
+  // The bug: a copy of the secnonce signs three other messages.
+  rows: [3][4] ScScalar;
+  for j: 0..<3 {
+    for i: 0..<97 { sec[i] = copy[i]; }
+    m: [32] u8; for i: 0..<32 { m[i] = cast(u8) (j + 1); }
+    #assert sign_one(sec[..], sk[..], pks[..], pub[..], m[..], 20 + j, psig[..], sw[..]).code == MS_OK;
+    print("  message %: s = ", j + 1); put_hex(psig[..]); print("\n");
+    rows[j] = reuse_row(psig[..], pub[..], pks[..], m[..]);
+  }
+  d := solve(rows);
+  g := ms_parity_vartime(ms_key_agg_vartime(pks[..]).q);
+  d = sc_mul(d, g);
+  scalar_line("solved for the secret key", d);
+  print("  it is signer 1's secret key: %\n", yes(sc_equal(d, sc_load(sk[0..<32]).value)));
+
+  // DeterministicSign.
+  print("DeterministicSign (det_sign_vectors case 1):\n");
+  dw: [1] MsDetWork; dc := MS_DET_SIGN[0];
+  o: [66] u8; m: [64] u8; rd: [32] u8; key: [32] u8; tf: [1] bool;
+  r := ms_det_sign(ms_hex(dc.sk, key[..]), ms_hex(dc.aggother, o[..]), ms_hex(dc.keys, k[..]), k[0..<0], tf[0..<0], ms_hex(dc.msg, m[..]),
+    ms_hex(dc.rand, rd[..]), pub[0..<66], psig[..], dw[..]);
+  line("pubnonce", pub[0..<66]); line("psig", psig[..]);
+  print("  %, as published: %\n", refusal(r), yes(bt_hex_is(pub[0..<66], dc.pubnonce) && bt_hex_is(psig[..], dc.psig)));
+
+  // Every published vector.
+  print("BIP-327's vector files, cases giving their stated result:\n");
+  print("  key_sort_vectors: % of 1\n", msv_key_sort());
+  print("  key_agg_vectors: % of %\n", msv_key_agg(), MS_KEY_AGG.count);
+  print("  nonce_gen_vectors: % of %\n", msv_nonce_gen(), MS_NONCE_GEN.count);
+  print("  nonce_agg_vectors: % of %\n", msv_nonce_agg(), MS_NONCE_AGG.count);
+  print("  sign_verify_vectors and tweak_vectors, Sign: % of %\n", msv_sign(0, MS_SIGN.count), MS_SIGN.count);
+  print("  sign_verify_vectors and tweak_vectors, PartialSigVerify: % of %\n", msv_verify(0, MS_VERIFY.count), MS_VERIFY.count);
+  print("  det_sign_vectors: % of %\n", msv_det_sign(0, MS_DET_SIGN.count), MS_DET_SIGN.count);
+  print("  sig_agg_vectors: % of %\n", msv_sig_agg(), MS_SIG_AGG.count);
+}
+// One session of the three signers: each makes a nonce from rand bytes
+// seed + i, signs, and the partial signatures are added into sig.
+session :: (sk: [] u8, pks: [] u8, tweaks: [] u8, xonly: [] bool, msg: [] u8, seed: int, pub: [] u8, agg: [] u8, psigs: [] u8, sig: [] u8) {
+  nw: [1] MsNonceWork; sw: [1] MsSignWork; sec: [291] u8; rand: [32] u8; aggpk: [32] u8;
+  ms_xbytes_vartime(ms_key_agg_tweak_vartime(pks, tweaks, xonly).q, aggpk[..]);
+  for i: 0..<3 {
+    for j: 0..<32 { rand[j] = cast(u8) (seed + i); }
+    #assert ms_nonce_gen(rand[..], sk[32*i..<32*i+32], pks[33*i..<33*i+33], aggpk[..], msg, true, rand[0..<0], sec[97*i..<97*i+97], pub[66*i..<66*i+66], nw[..]) == MS_OK;
+  }
+  #assert ms_nonce_agg_vartime(pub, agg).code == MS_OK;
+  for i: 0..<3 {
+    #assert ms_sign(sec[97*i..<97*i+97], sk[32*i..<32*i+32], agg, pks, tweaks, xonly, msg, psigs[32*i..<32*i+32], sw[..]).code == MS_OK;
+  }
+  #assert ms_partial_agg_vartime(psigs, ms_session_vartime(agg, pks, tweaks, xonly, msg), sig).code == MS_OK;
+}
+// Signer 1 signs msg with secnonce while signers 2 and 3 bring fresh
+// nonces from rand bytes seed; signer 1's public nonce is pub[0..<66].
+sign_one :: (sec: [] u8, sk: [] u8, pks: [] u8, pub: [] u8, msg: [] u8, seed: int, psig: [] u8, sw: [] MsSignWork) -> MsResult {
+  nw: [1] MsNonceWork; other: [97] u8; rand: [32] u8; agg: [66] u8; aggpk: [32] u8;
+  for i: 1..<3 {
+    for j: 0..<32 { rand[j] = cast(u8) (seed + i); }
+    #assert ms_nonce_gen(rand[..], sk[32*i..<32*i+32], pks[33*i..<33*i+33], aggpk[0..<0], msg, true, rand[0..<0], other[..], pub[66*i..<66*i+66], nw[..]) == MS_OK;
+  }
+  #assert ms_nonce_agg_vartime(pub[0..<198], agg[..]).code == MS_OK;
+  nf: [1] bool;
+  return ms_sign(sec, sk[0..<32], agg[..], pks, pks[0..<0], nf[0..<0], msg, psig, sw);
+}
+// What anyone can compute from a public partial signature s: with σ the
+// sign of R's y, σ s = k_1 + b k_2 + σ e a d', where d' = g d. One row
+// (1, b, σ e a | σ s) of three equations in k_1, k_2 and d'.
+reuse_row :: (psig: [] u8, pub: [] u8, pks: [] u8, msg: [] u8) -> [4] ScScalar {
+  agg: [66] u8;
+  #assert ms_nonce_agg_vartime(pub[0..<198], agg[..]).code == MS_OK;
+  nf: [1] bool;
+  x := ms_session_vartime(agg[..], pks, pks[0..<0], nf[0..<0], msg);
+  a := ms_session_coeff_vartime(pks, pks[0..<33]).value;
+  sigma := ms_parity_vartime(x.r);
+  row: [4] ScScalar;
+  row[0] = sc_small(1); row[1] = x.b; row[2] = sc_mul(sigma, sc_mul(x.e, a)); row[3] = sc_mul(sigma, sc_load(psig).value);
+  return row;
+}
+det3 :: (m: [3][3] ScScalar) -> ScScalar {
+  a := sc_mul(m[0][0], sc_sub(sc_mul(m[1][1], m[2][2]), sc_mul(m[1][2], m[2][1])));
+  b := sc_mul(m[0][1], sc_sub(sc_mul(m[1][0], m[2][2]), sc_mul(m[1][2], m[2][0])));
+  c := sc_mul(m[0][2], sc_sub(sc_mul(m[1][0], m[2][1]), sc_mul(m[1][1], m[2][0])));
+  return sc_add(sc_sub(a, b), c);
+}
+// Cramer's rule for the third unknown, d'.
+solve :: (rows: [3][4] ScScalar) -> ScScalar {
+  m: [3][3] ScScalar; md: [3][3] ScScalar;
+  for i: 0..<3 { for j: 0..<3 { m[i][j] = rows[i][j]; md[i][j] = ifx j == 2 then rows[i][3] else rows[i][j]; } }
+  inverse := sc_inverse(det3(m));
+  #assert inverse.ok;
+  return sc_mul(det3(md), inverse.value);
+}
+// book:end example

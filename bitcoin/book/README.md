@@ -43,12 +43,12 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 69 are implemented and 55 are planned. The 69 implemented
+Of the 124 chapters, 70 are implemented and 54 are planned. The 70 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 62, 65, 66, 67, 68,
-69, 70, 73, 74, 94, 100, 104, 105, 106, 107, 111 and 114 are new.
+69, 70, 73, 74, 94, 100, 101, 104, 105, 106, 107, 111 and 114 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
 `coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -309,7 +309,7 @@ Multisig, MuSig2, FROST threshold signatures and adaptor signatures.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [100. Multisig](ch100-multisig.md) | Runnable: native C | m-of-n `OP_CHECKMULTISIG` scripts written as Bitcoin Core writes them, with BIP-67's sorted keys, and read back as Core's `MatchMultisig` reads them: all four BIP-67 vectors give their scripts and addresses, and twenty near misses match or refuse as Core decides. One `sortedmulti` 2-of-3 is locked bare, under P2SH, P2WSH and P2SH-P2WSH, signed by two keys through PSBT, finalized and extracted, and every input passes the script interpreter. BIP-387's `multi_a` leaves give every published scriptPubKey; a `sortedmulti_a` 2-of-3 is spent on the script path with two BIP-340 signatures, and one signature or swapped signatures fail. Checked against Python natively. |
-| 101. MuSig2 | Planned | Every BIP-327 vector file (key aggregation, nonces, signing, aggregation and tweaks) gives its result. A reused nonce refuses. |
+| [101. MuSig2](ch101-musig2.md) | Runnable: native C | BIP-327 in full: KeyAgg with coefficient hashing and the second-key optimization, KeySort, plain and x-only tweaks, NonceGen with secret inputs kept in an erased workspace, NonceAgg, Sign, PartialSigVerify, PartialSigAgg and DeterministicSign. Every case of BIP-327's eight vector files, refusals included, gives its stated result. A secnonce signs once and a second Sign refuses; three signatures from a copied secnonce give the secret key away. The aggregate key tweaked by TapTweak is chapter 41's output key, and its key-path signature verifies. Checked against BIP-327's reference.py natively. |
 | 102. FROST threshold signatures | Planned | The FROST draft BIP's vectors give their results. A signature from fewer than t signers refuses. |
 | 103. Adaptor signatures | Planned | An adaptor signature verifies against its point, completes with the secret, and the secret is recovered from the final signature. |
 

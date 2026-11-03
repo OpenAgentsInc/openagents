@@ -1,0 +1,41 @@
+// The checks of musig2.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/musig2.coax --run-steps 250000000
+#load "../musig2.coax";
+
+// book:begin check
+// The order of the keys is part of the key: every rotation of BIP-327's
+// three keys aggregates to a different Q, and sorting first gives one Q.
+#forall "key order changes Q, and KeySort removes it" r: 0..<3 #steps 4000000000 {
+  k: [99] u8; s: [99] u8; base: [256] u8; a: [32] u8; b: [32] u8;
+  keys := ms_hex(MS_KEY_AGG[0].keys, base[..]);
+  for i: 0..<99 { k[i] = keys[(i + 33 * r) % 99]; s[i] = k[i]; }
+  ms_xbytes_vartime(ms_key_agg_vartime(k[..]).q, a[..]);
+  ms_xbytes_vartime(ms_key_agg_vartime(keys).q, b[..]);
+  #assert bt_same(a[..], b[..]) == (r == 0);
+  ms_key_sort_vartime(s[..]); ms_key_sort_vartime(keys);
+  ms_xbytes_vartime(ms_key_agg_vartime(s[..]).q, a[..]);
+  ms_xbytes_vartime(ms_key_agg_vartime(keys).q, b[..]);
+  #assert bt_same(a[..], b[..]);
+}
+// Any one changed bit of a published partial signature fails
+// PartialSigVerify for its signer.
+#forall "a changed partial signature fails" bit: 0..<8 #steps 4000000000 {
+  c := MS_VERIFY[0];
+  s: [32] u8; k: [256] u8; n: [256] u8; f: [1] bool; m: [64] u8;
+  sig := ms_hex(c.sig, s[..]);
+  sig[(bit * 13) % 32] ^= cast(u8) (1 << bit);
+  r := ms_partial_verify_vartime(sig, ms_hex(c.nonces, n[..]), ms_hex(c.keys, k[..]), k[0..<0], f[0..<0], ms_hex(c.msg, m[..]), c.index);
+  #assert r.code == MS_INVALID;
+}
+// A secnonce signs once: after each published signing case, the same
+// secnonce refuses, whatever the message.
+#forall "a secnonce signs once" i: 0..<6 #steps 4000000000 {
+  c := MS_SIGN[i]; w: [1] MsSignWork;
+  sec: [97] u8; sk: [32] u8; agg: [66] u8; k: [256] u8; f: [1] bool; m: [64] u8; psig: [32] u8;
+  nonce := ms_hex(c.secnonce, sec[..]); key := ms_hex(c.sk, sk[..]); aggnonce := ms_hex(c.aggnonce, agg[..]); keys := ms_hex(c.keys, k[..]);
+  #assert ms_sign(nonce, key, aggnonce, keys, k[0..<0], f[0..<0], ms_hex(c.msg, m[..]), psig[..], w[..]).code == MS_OK;
+  m[0] ^= 1;
+  #assert ms_sign(nonce, key, aggnonce, keys, k[0..<0], f[0..<0], m[0..<32], psig[..], w[..]).code == MS_SECNONCE_1;
+}
+// book:end check

@@ -3358,6 +3358,136 @@
       "retrieved": "2026-11-03",
       "sha256": "5d6af32b7dfb84722e4e8a94d633d1597b9504a836c32046219b82c1edb7824a",
       "bytes": 13732
+    },
+    {
+      "path": "upstream/bip327/bip-0327.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327.mediawiki",
+      "revision": "git:ada341963ab3916e74c98e6de4ba48babc024a75",
+      "license": "BSD-3-Clause (BIP-327 header)",
+      "covers": [
+        "bitcoin-musig2"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "918555f9d67bf4c1124b004f43e7cfa2436570ce46466f06f83f836f58e8ff7c",
+      "bytes": 69444
+    },
+    {
+      "path": "upstream/bip327/reference.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/reference.py",
+      "revision": "git:ada341963ab3916e74c98e6de4ba48babc024a75",
+      "license": "BSD-3-Clause (BIP-327 header)",
+      "covers": [
+        "bitcoin-musig2"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "1167993fe159c39c004f74d9046e931ae700a2ce9203c4cf58a51a000c1294e8",
+      "bytes": 34695
+    },
+    {
+      "path": "upstream/bip327/vectors/key_sort_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/key_sort_vectors.json",
+      "revision": "git:ada341963ab3916e74c98e6de4ba48babc024a75",
+      "license": "BSD-3-Clause (BIP-327 header)",
+      "covers": [
+        "bitcoin-musig2"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "2389fa0c146cfd7455c643ca240ec32835dcfc916f430f50dd94d0b49c9ea16c",
+      "bytes": 992
+    },
+    {
+      "path": "upstream/bip327/vectors/key_agg_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/key_agg_vectors.json",
+      "revision": "git:ada341963ab3916e74c98e6de4ba48babc024a75",
+      "license": "BSD-3-Clause (BIP-327 header)",
+      "covers": [
+        "bitcoin-musig2"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "03c02a97e4ef3f2edfbc8e6013c127496dfcfd5889cfca60ddf009a4e9091cab",
+      "bytes": 3018
+    },
+    {
+      "path": "upstream/bip327/vectors/nonce_gen_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/nonce_gen_vectors.json",
+      "revision": "git:ada341963ab3916e74c98e6de4ba48babc024a75",
+      "license": "BSD-3-Clause (BIP-327 header)",
+      "covers": [
+        "bitcoin-musig2"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "2e823580fc072427f0db0f000212cc9124ad2b9dca2b58357eb65088aee4358d",
+      "bytes": 3533
+    },
+    {
+      "path": "upstream/bip327/vectors/nonce_agg_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/nonce_agg_vectors.json",
+      "revision": "git:ada341963ab3916e74c98e6de4ba48babc024a75",
+      "license": "BSD-3-Clause (BIP-327 header)",
+      "covers": [
+        "bitcoin-musig2"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "8409e87b81ea769759598ad3ce53b277a78afffb3a490a86ce02c4d69984524b",
+      "bytes": 2627
+    },
+    {
+      "path": "upstream/bip327/vectors/sign_verify_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/sign_verify_vectors.json",
+      "revision": "git:ada341963ab3916e74c98e6de4ba48babc024a75",
+      "license": "BSD-3-Clause (BIP-327 header)",
+      "covers": [
+        "bitcoin-musig2"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "692eecc101f3e515c29137f05031935e1210d2a01bab91e674eb0234f095c15c",
+      "bytes": 8857
+    },
+    {
+      "path": "upstream/bip327/vectors/tweak_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/tweak_vectors.json",
+      "revision": "git:ada341963ab3916e74c98e6de4ba48babc024a75",
+      "license": "BSD-3-Clause (BIP-327 header)",
+      "covers": [
+        "bitcoin-musig2"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "80ce6385ce062644ad1f4edcb9d4797f70ddb0b74769e4099f51b3c9e6ab4aff",
+      "bytes": 4032
+    },
+    {
+      "path": "upstream/bip327/vectors/det_sign_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/det_sign_vectors.json",
+      "revision": "git:ada341963ab3916e74c98e6de4ba48babc024a75",
+      "license": "BSD-3-Clause (BIP-327 header)",
+      "covers": [
+        "bitcoin-musig2"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "3d4fdb64b24e31762f20830036dc0c59d39fa896649131b54b87906ffdc6e9e8",
+      "bytes": 6932
+    },
+    {
+      "path": "upstream/bip327/vectors/sig_agg_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/sig_agg_vectors.json",
+      "revision": "git:ada341963ab3916e74c98e6de4ba48babc024a75",
+      "license": "BSD-3-Clause (BIP-327 header)",
+      "covers": [
+        "bitcoin-musig2"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "15f14c034fb2a5739d7ce638be94c5b37ea675a2e01159092dd93b59d69c3439",
+      "bytes": 5978
     }
   ]
 }

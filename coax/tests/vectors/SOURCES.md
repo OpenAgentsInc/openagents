@@ -322,6 +322,13 @@ that a maliciously replaced manifest is authentic.
   outputs block 514,999 spends, with each transaction's fee and sigop
   cost; `make_sigops_vectors.py` checks every spent script against the
   block's own scriptSigs and witnesses, and the fees against the coinbase.
+- **MuSig2 (Bitcoin chapter 101):** BIP-327 (`bip-0327.mediawiki`), its
+  reference implementation `reference.py` and its eight vector files
+  (`key_sort`, `key_agg`, `nonce_gen`, `nonce_agg`, `sign_verify`,
+  `tweak`, `det_sign` and `sig_agg`) at bitcoin/bips revision
+  `ada34196`. `make_musig_vectors.py` copies every case into Coax data;
+  `musig.py` runs the pinned `reference.py` over the pinned files and
+  writes the example's transcript with its functions.
 - **The subsidy and the coinbase (Bitcoin chapter 54):** Bitcoin Core's
   `test/validation_tests.cpp` at revision `ddea9196`, with the already
   pinned `validation.cpp`, `script.h`, `amount.h` and `chainparams.cpp`.
@@ -617,6 +624,16 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip387/bip-0387.mediawiki`](upstream/bip387/bip-0387.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0387.mediawiki) | `92a1a95be774be27f3f373e15dcd8bf291f542cd62535dd1ccbd95bd1022464e` |
 | [`upstream/bitcoin-core/solver.cpp`](upstream/bitcoin-core/solver.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/solver.cpp) | `d795354fafbbcef7c6d28ff8b9912e896575276b4ca85aeed2fc57f18c41174a` |
 | [`upstream/mainnet/coinbase-proofs.json`](upstream/mainnet/coinbase-proofs.json) | [mempool.space API](https://mempool.space/api/block-height/840000) | `3a10ff94f45a2fbef360731be48c468ec7c2ecc3da760fb2861b97721aeb5efb` |
+| [`upstream/bip327/bip-0327.mediawiki`](upstream/bip327/bip-0327.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327.mediawiki) | `918555f9d67bf4c1124b004f43e7cfa2436570ce46466f06f83f836f58e8ff7c` |
+| [`upstream/bip327/reference.py`](upstream/bip327/reference.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/reference.py) | `1167993fe159c39c004f74d9046e931ae700a2ce9203c4cf58a51a000c1294e8` |
+| [`upstream/bip327/vectors/key_sort_vectors.json`](upstream/bip327/vectors/key_sort_vectors.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/key_sort_vectors.json) | `2389fa0c146cfd7455c643ca240ec32835dcfc916f430f50dd94d0b49c9ea16c` |
+| [`upstream/bip327/vectors/key_agg_vectors.json`](upstream/bip327/vectors/key_agg_vectors.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/key_agg_vectors.json) | `03c02a97e4ef3f2edfbc8e6013c127496dfcfd5889cfca60ddf009a4e9091cab` |
+| [`upstream/bip327/vectors/nonce_gen_vectors.json`](upstream/bip327/vectors/nonce_gen_vectors.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/nonce_gen_vectors.json) | `2e823580fc072427f0db0f000212cc9124ad2b9dca2b58357eb65088aee4358d` |
+| [`upstream/bip327/vectors/nonce_agg_vectors.json`](upstream/bip327/vectors/nonce_agg_vectors.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/nonce_agg_vectors.json) | `8409e87b81ea769759598ad3ce53b277a78afffb3a490a86ce02c4d69984524b` |
+| [`upstream/bip327/vectors/sign_verify_vectors.json`](upstream/bip327/vectors/sign_verify_vectors.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/sign_verify_vectors.json) | `692eecc101f3e515c29137f05031935e1210d2a01bab91e674eb0234f095c15c` |
+| [`upstream/bip327/vectors/tweak_vectors.json`](upstream/bip327/vectors/tweak_vectors.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/tweak_vectors.json) | `80ce6385ce062644ad1f4edcb9d4797f70ddb0b74769e4099f51b3c9e6ab4aff` |
+| [`upstream/bip327/vectors/det_sign_vectors.json`](upstream/bip327/vectors/det_sign_vectors.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/det_sign_vectors.json) | `3d4fdb64b24e31762f20830036dc0c59d39fa896649131b54b87906ffdc6e9e8` |
+| [`upstream/bip327/vectors/sig_agg_vectors.json`](upstream/bip327/vectors/sig_agg_vectors.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/ada341963ab3916e74c98e6de4ba48babc024a75/bip-0327/vectors/sig_agg_vectors.json) | `15f14c034fb2a5739d7ce638be94c5b37ea675a2e01159092dd93b59d69c3439` |
 | [`upstream/bitcoin-core/versionbits.cpp`](upstream/bitcoin-core/versionbits.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.cpp) | `4394f6fdf7656e0e6e4eb90a11c44875dab506345bde9a54d84ed9337d524ec8` |
 | [`upstream/bitcoin-core/versionbits.h`](upstream/bitcoin-core/versionbits.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.h) | `babd3b786f7d787f88b47da1effd47f631b3e37cba95c1d501f1a553c960f100` |
 | [`upstream/bitcoin-core/versionbits_impl.h`](upstream/bitcoin-core/versionbits_impl.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits_impl.h) | `6c7b5afcaff8d99b2e9e1e62d11bc76adb6164dcce8add41aabde51bcbe7a9ce` |

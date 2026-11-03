@@ -104,6 +104,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 **XVI. Many signers**
 
 - [100. Multisig](ch100-multisig.md) — implemented
+- [101. MuSig2](ch101-musig2.md) — implemented
 
 **XVII. Lightning**
 
