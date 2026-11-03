@@ -1,0 +1,12 @@
+// expect: E0383
+// A helper points a caller-held writer at a local buffer; the text returned
+// through it dangles (#12674).
+W :: struct { buf: [] u8; n: int; }
+w_start :: (w: [] W, buf: [] u8) { w[0] = W.{buf = buf}; }
+w_text :: (w: [] W) -> string { return cast(string) w[0].buf[0..<w[0].n]; }
+bad :: () -> string {
+  local: [16] u8; w: [1] W;
+  w_start(w[..], local[..]);
+  return w_text(w[..]);
+}
+main :: () {}

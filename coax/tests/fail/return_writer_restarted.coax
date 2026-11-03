@@ -1,0 +1,14 @@
+// expect: E0383
+// The writer once held a local buffer and is restarted on the caller's; the
+// earlier local borrow still joins the returned one (spec.md: may-origin
+// joins can retain an earlier local borrow after reassignment; #12674).
+W :: struct { buf: [] u8; n: int; }
+w_start :: (w: [] W, buf: [] u8) { w[0] = W.{buf = buf}; }
+w_text :: (w: [] W) -> string { return cast(string) w[0].buf[0..<w[0].n]; }
+stage :: (result: [] u8) -> string {
+  rel: [16] u8; w: [1] W;
+  w_start(w[..], rel[..]);
+  w_start(w[..], result);
+  return w_text(w[..]);
+}
+main :: () {}

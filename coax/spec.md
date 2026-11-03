@@ -319,6 +319,8 @@ arrays. Concrete call targets, parameter positions and field projections are
 resolved by the checker. Reading an argument does not automatically make the
 result borrow it. An aggregate's inline storage and its contained descriptor
 pointees remain distinct: copying the aggregate does not rebase its views.
+Storing a whole fixed array into a place copies it there, so a later slice of
+that place borrows the place's own storage, never the stored value's.
 
 May-origin joins can retain an earlier local borrow after reassignment, so
 overwritten or unreachable borrows can be refused. A known local origin still

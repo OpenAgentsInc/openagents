@@ -80427,6 +80427,35 @@ CK_spatial_fixture :: (c:CK_Context) {
  nodes:[40]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=31,type_count=17}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};types[16]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[31]=CK_Node.{kind=CK_Tag.proc,type=16,head=3,b=7,borrow_returns=2};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,next=4,borrow_owner=31};nodes[4]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=31};nodes[2]=CK_Node.{kind=CK_Tag.stmt_return,a=8};nodes[7].kind=CK_Tag.stmt_block;nodes[8]=CK_Node.{kind=CK_Tag.expr_ifx,type=16,b=9,c=10};nodes[9]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=4};nodes[10]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};out:[2]BS_Origin;r:=CB_query(b,1,31,BS_Path.{},out[..]);#assert !state[0].fatal && r.count==2 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[1].kind==BS_PARAMETER && out[1].root==1;r=CB_query(b,1,31,BS_Path.{},out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==2 && !r.incomplete && out[0].root==0 && out[1].root==1;
 }
 
+// #12674/#12676: storing a whole array into a place copies it there, so the
+// place's storage stays its own; a stored descriptor is still a value.
+#forall "return borrow inline places ignore stores unless a descriptor follows" mode:0..<12 {
+ types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{type_count=20}];nodes:[4]CK_Node;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c};
+ types[16]=CK_Type.{kind=CK_Kind.array,elem=12,length=4};types[17]=CK_Type.{kind=CK_Kind.struct_};types[19]=CK_Type.{kind=CK_Kind.view,elem=12};
+ kinds:=[4]u8.[BS_FIELD,BS_ELEMENT,BS_DEREFERENCE,BS_VARIANT];rest:BS_Path;t:=ifx mode<6 then 16 else ifx mode<9 then 19 else 17;
+ // 0: no steps; 1: field; 2: element; 3: dereference; 4: field then dereference; 5: variant then element.
+ shape:=mode%6;if mode>=6 {shape=(mode-6)%3;}
+ if shape==1 {rest.count=1;rest.steps[0]=BS_Step.{kind=kinds[0]};}if shape==2 {rest.count=1;rest.steps[0]=BS_Step.{kind=kinds[1]};}if shape==3 {rest.count=1;rest.steps[0]=BS_Step.{kind=kinds[2]};}
+ if shape==4 {rest.count=2;rest.steps[0]=BS_Step.{kind=kinds[0]};rest.steps[1]=BS_Step.{kind=kinds[2]};}if shape==5 {rest.count=2;rest.steps[0]=BS_Step.{kind=kinds[3]};rest.steps[1]=BS_Step.{kind=kinds[1]};}
+ #assert CB_inline(b,t,rest)==(t==16 && shape!=3 && shape!=4) && !state[0].fatal && state[0].error_count==0;
+}
+
+#forall "return borrow a whole array stored into a pointee field keeps the field's storage" mode:0..<3 {
+ nodes:[48]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=40,type_count=20}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};
+ types[11]=CK_builtin(11);types[16]=CK_Type.{kind=CK_Kind.array,elem=12,length=4};types[17]=CK_Type.{kind=CK_Kind.struct_,decl=20};types[18]=CK_Type.{kind=CK_Kind.view,elem=17};types[19]=CK_Type.{kind=CK_Kind.view,elem=12};
+ field:=ifx mode==2 then 19 else 16;nodes[20]=CK_Node.{kind=CK_Tag.struct_,head=21};nodes[21]=CK_Node.{kind=CK_Tag.field,type=field};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,head=4};nodes[4]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2,next=5};nodes[5]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2};
+ nodes[3]=CK_Node.{kind=CK_Tag.stmt_var,type=18,a=6,borrow_owner=2,borrow_writes=30};nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=4};nodes[8]=CK_Node.{kind=CK_Tag.stmt_var,type=16,borrow_owner=2};
+ // 0: v = other (a descriptor, so the storage behind it moves); 1: v[0].a = l
+ // (a whole local array copied in); 2: v[0].a = l[..] (a stored descriptor).
+ if mode==0 {nodes[30]=CK_Node.{kind=CK_Tag.stmt_assign,c=31,a=7};nodes[31]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=3};nodes[7]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=5};}
+ else {nodes[30]=CK_Node.{kind=CK_Tag.stmt_assign,c=32,a=ifx mode==1 then 36 else 37};nodes[32]=CK_Node.{kind=CK_Tag.expr_field,type=field,a=33,field_index=0};nodes[33]=CK_Node.{kind=CK_Tag.expr_index,type=17,a=34,b=35};nodes[34]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=3};nodes[35]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[36]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=8};nodes[37]=CK_Node.{kind=CK_Tag.expr_slice,type=19,a=36};}
+ p:=BS_Path.{count=2};p.steps[0]=BS_Step.{kind=BS_DEREFERENCE};p.steps[1]=BS_Step.{kind=BS_FIELD};out:[64]BS_Origin;r:=CB_query(b,ifx mode==2 then cast(u8)2 else cast(u8)3,3,p,out[..]);
+ #assert !state[0].fatal && state[0].error_count==0 && !r.incomplete && r.count==(ifx mode==1 then 1 else 2);
+ if mode==2 {#assert out[0].kind==BS_LOCAL && out[0].root==8 && out[1].kind==BS_PARAMETER && out[1].root==0;}
+ else {#assert out[0].kind==BS_PARAMETER && out[0].root==0;if mode==0 {#assert out[1].kind==BS_PARAMETER && out[1].root==1;}}
+}
+
 #forall "return borrow caller pointee inline fields retain storage identity through a descriptor alias" writes:bool {
  nodes:[48]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=40,type_count=19}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};types[16]=CK_Type.{kind=CK_Kind.array,elem=12,length=4};types[17]=CK_Type.{kind=CK_Kind.struct_,decl=20};types[18]=CK_Type.{kind=CK_Kind.view,elem=17};nodes[20]=CK_Node.{kind=CK_Tag.struct_,head=21};nodes[21]=CK_Node.{kind=CK_Tag.field,type=16};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=4};nodes[4]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2,next=5};nodes[5]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2};nodes[3]=CK_Node.{kind=CK_Tag.stmt_var,type=18,a=6,borrow_owner=2};nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=4};if writes {nodes[3].borrow_writes=30;nodes[30]=CK_Node.{kind=CK_Tag.stmt_assign,c=31,a=7};nodes[31]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=3};nodes[7]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=5};}
  p:=BS_Path.{count=2};p.steps[0]=BS_Step.{kind=BS_DEREFERENCE};p.steps[1]=BS_Step.{kind=BS_FIELD};out:[64]BS_Origin;r:=CB_query(b,3,3,p,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==(ifx writes then 2 else 1) && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==12 && out[0].path.count==2;if writes {#assert out[1].kind==BS_PARAMETER && out[1].root==1 && out[1].type==12;}
@@ -81607,6 +81636,13 @@ CB_alias_writes_mode :: (b:CB_Context,decl:int,path:BS_Path,out:[]BS_Origin,resu
   }write=b.c.nodes[write].borrow_writes;
  }return r;
 }
+// A store copies its value into the place's own bytes. Where an inline
+// array lives is that place's, never the stored value's: only a descriptor
+// read on the way (a dereference after the written place) leads elsewhere.
+CB_inline :: (b:CB_Context,type:int,rest:BS_Path)->bool {
+ if b.c.types[type].kind!=CK_Kind.array {return false;}
+ for i:0..<rest.count {if rest.steps[i].kind==BS_DEREFERENCE {return false;}}return true;
+}
 CB_external_local :: (b:CB_Context,rhs:int,origins:[]BS_Origin,result:CB_Result) {
  if b.c.state[0].error_count>0 {return;}for i:0..<result.count {if origins[i].kind==BS_LOCAL {CK_error(b.c,b.c.nodes[rhs].loc,"E0383","retained borrow may refer to callee-local inline storage","keep retained backing in the caller and satisfy its outlives obligation");return;}}
 }
@@ -81742,7 +81778,7 @@ CB_query :: (b:CB_Context,kind:u8,decl:int,path:BS_Path,out:[]BS_Origin)->CB_Res
   else if n.kind==CK_Tag.stmt_each {collection:=b.c.types[b.c.nodes[n.a].type];r=CB_expr(b,n.a,CB_prepend(b,path,ifx collection.kind==CK_Kind.array then BS_ELEMENT else BS_DEREFERENCE,ifx collection.kind==CK_Kind.array then 2147483647 else 0),false,out);}
   else {CK_resource(b.c,n.loc);return CB_Result.{};}
   if !(kind==3 && !indirect) {write:=n.borrow_writes;temp:[64]BS_Origin;
-  while write!=0 {p:=CB_place(b,b.c.nodes[write].c);if p.decl!=decl {CK_resource(b.c,n.loc);return CB_Result.{};}if CB_prefix(p.path,path) {rest:BS_Path;for i:p.path.count..<path.count {rest=CB_add_path(b,rest,path.steps[i].kind,path.steps[i].index);}z:=CB_expr(b,b.c.nodes[write].a,rest,kind==3,temp[..]);if kind==5 {CB_external_local(b,b.c.nodes[write].a,temp[..],z);}r=CB_merge(b,out,r,temp[..],z);}write=b.c.nodes[write].borrow_next;}
+  while write!=0 {p:=CB_place(b,b.c.nodes[write].c);if p.decl!=decl {CK_resource(b.c,n.loc);return CB_Result.{};}if CB_prefix(p.path,path) {rest:BS_Path;for i:p.path.count..<path.count {rest=CB_add_path(b,rest,path.steps[i].kind,path.steps[i].index);}if !CB_inline(b,expected_type,rest) {z:=CB_expr(b,b.c.nodes[write].a,rest,kind==3,temp[..]);if kind==5 {CB_external_local(b,b.c.nodes[write].a,temp[..],z);}r=CB_merge(b,out,r,temp[..],z);}}write=b.c.nodes[write].borrow_next;}
   r=CB_alias_writes_mode(b,decl,path,out,r,kind==5);
   // Raw return queries compose selected helper writes. Retained-store-only
   // misses keep B1's manual boundary; a complete raw memo above is reusable.
