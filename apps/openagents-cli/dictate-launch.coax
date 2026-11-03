@@ -8,6 +8,7 @@ dictate_usage :: () {
   print("%\n", "Dictate (your microphone to text, on this computer):");
   print("%\n", "  dictate [--seconds N] [--wait-for-enter] [--json|--events] [--device gpu|cpu]");
   print("%\n", "          [--capture pipewire|pulse|alsa|coreaudio] [--input ID] [--model-dir DIR]");
+  print("%\n", "          [--format plain|code]   code: spoken symbols, casing, no fillers (JSON keeps raw_text)");
   print("%\n", "                                     Enter stops, Esc or Ctrl-C cancels; at most 60 s; pinned local Parakeet v3");
   print("%\n", "                                     prints the final text; nothing is pasted, typed, sent or saved");
   print("%\n", "                                     exit 0 text, 9 no speech, 130 cancelled, 4 microphone permission denied,");

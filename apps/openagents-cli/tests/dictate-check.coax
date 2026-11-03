@@ -140,6 +140,22 @@ tool_main :: () -> int #export_c {
     out = cast(string) r[0].out[0..<r[0].out_n];
     check(t[..], "final-text: stdout is only the text", r[..], ok && r[0].status == 0 && out == "Wait, stop.\n");
   }
+  // Opt-in text rules (GitHub #12670): the draft is formatted, the raw transcript stays in JSON.
+  coded := "OPENAGENTS_DICTATE_FIXTURE_TEXT=Um, open voice dot coax and press enter.";
+  if has("format-code", only) || only == "" {
+    ok := run(cli, "--capture|fixture|--json|--format|code", bar(kb[..], fixture, coded, stop, ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    check(t[..], "format-code: formatted text, raw_text kept, no send", r[..], ok && r[0].status == 0 && count(out, "\n") == 1
+      && has(out, "\"type\":\"final\",\"text\":\"Open voice.coax and press enter.\",\"raw_text\":\"Um, open voice dot coax and press enter.\",\"format\":\"code\",\"exit\":0,"));
+    ok = run(cli, "--capture|fixture|--format|code", bar(kb[..], fixture, coded, stop, ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    check(t[..], "format-code-text: stdout is the formatted draft", r[..], ok && r[0].status == 0 && out == "Open voice.coax and press enter.\n");
+    ok = run(cli, "--capture|fixture|--json", bar(kb[..], fixture, coded, stop, ""), false, "", -1, r[..]);
+    out = cast(string) r[0].out[0..<r[0].out_n];
+    check(t[..], "format-plain: without --format the transcript is untouched", r[..], ok && r[0].status == 0 && has(out, "\"text\":\"Um, open voice dot coax and press enter.\",\"exit\":0,") && !has(out, "raw_text"));
+    ok = run(cli, "--capture|fixture|--format|markdown", bar(kb[..], fixture, coded, stop, ""), false, "", -1, r[..]);
+    check(t[..], "format-bad: an unknown format is a usage error", r[..], ok && r[0].status == 2 && r[0].out_n == 0);
+  }
   if has("events", only) || only == "" {
     ok := run(cli, "--capture|fixture|--events", bar(kb[..], fixture, text, stop, ""), false, "", -1, r[..]);
     out = cast(string) r[0].out[0..<r[0].out_n];

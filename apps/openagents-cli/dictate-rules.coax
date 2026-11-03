@@ -65,6 +65,21 @@ dc_device :: (name: string) -> int {
   for name: [5] string.["GPU", "metal", "cuda", "auto", "CPU"] { #assert dc_device(name) == -1; }
 }
 
+// ---- text rules (GitHub #12670) ----
+// "" and "plain" print the transcript exactly as recognized. "code" applies
+// apps/shared/dictation-text.coax's spoken symbols, casing and filler rules,
+// and JSON also carries the raw transcript. Nothing else is a format.
+DC_PLAIN :: 0; DC_CODE :: 1;
+dc_format :: (name: string) -> int {
+  if name == "" || name == "plain" { return DC_PLAIN; }
+  if name == "code" { return DC_CODE; }
+  return -1;
+}
+#test "text rules are opt-in by name" {
+  #assert dc_format("") == DC_PLAIN && dc_format("plain") == DC_PLAIN && dc_format("code") == DC_CODE && DC_CODE == 1 && DC_PLAIN == 0;
+  for name: [6] string.["Code", "CODE", "markdown", "auto", "code ", "send"] { #assert dc_format(name) == -1; }
+}
+
 // ---- duration ----
 // Seconds of listening before dictation stops by itself: 1 through 60 (the
 // controller's complete capture cap). "" is the whole 60.

@@ -23,6 +23,7 @@
 // The controller is its own C library unit (Verse's voice engine names would
 // collide with this program's); its policy constants are loaded here.
 #load "../shared/dictation-policy.coax";
+#load "../shared/dictation-text.coax";
 #load "dictate-rules.coax";
 
 cxdict_now_ms :: () -> int #foreign;
@@ -75,7 +76,7 @@ DictFixture :: struct {
   fault: string; control: string; text: string; recognizer: bool;
 }
 Dict :: struct {
-  out: int; capture: int; gpu: int; seconds: int; wait: bool; input: string; model: string;
+  out: int; capture: int; gpu: int; format: int; seconds: int; wait: bool; input: string; model: string;
   tty: bool; opened: int; anchor: int; delivered: int; rate: int; last_audio: int; any: bool;
   segments: int; limited: bool; samples: int;
   error: int; message: [600] u8; message_n: int; reason: string;
@@ -103,8 +104,12 @@ dict_status :: (d: [] Dict, state: string, human: string) {
   else if d[0].out == DC_OUT_TEXT && d[0].tty { tool_err("openagents: "); tool_errln(human); }
 }
 
-dict_finish :: (d: [] Dict, result: int, text: string) -> int {
+dict_finish :: (d: [] Dict, result: int, raw: string) -> int {
   code := dc_exit(result, d[0].error);
+  // The opt-in text rules: the draft is the formatted text, or the raw
+  // transcript when a rule refuses (dictation-text.coax).
+  text := raw; fb: [8000] u8;
+  if result == DC_FINAL && d[0].format == DC_CODE { n := dtx_draft(raw, fb[..]); if n >= 0 { text = cast(string) fb[0..<n]; } }
   recognizer := ifx d[0].model == "" then "fixture" else "parakeet";
   if d[0].out == DC_OUT_TEXT {
     if result == DC_FINAL { print("%\n", text); }
@@ -117,6 +122,7 @@ dict_finish :: (d: [] Dict, result: int, text: string) -> int {
   kind := ifx result == DC_FINAL then "final" else ifx result == DC_NO_SPEECH then "no_speech" else ifx result == DC_CANCELLED then "cancelled" else "error";
   dict_json_head(r[..], kind);
   if result == DC_FINAL { dict_json_str(r[..], "text", text); }
+  if result == DC_FINAL && d[0].format == DC_CODE { dict_json_str(r[..], "raw_text", raw); dict_json_str(r[..], "format", "code"); }
   if result == DC_NO_SPEECH { dict_json_str(r[..], "reason", d[0].reason); }
   if result == DC_ERROR { dict_json_str(r[..], "error", dc_error_name(d[0].error)); dict_json_str(r[..], "message", cast(string) d[0].message[0..<d[0].message_n]); }
   dict_json_int(r[..], "exit", code);
@@ -368,6 +374,8 @@ dictate_main :: (a: [] Args, r: [] Rep) -> int {
   if d[0].capture == DC_NO_FIXTURE { return fail(r, EXIT_USAGE, "--capture fixture is for checks and needs OPENAGENTS_DICTATE_FIXTURE=FILE.wav"); }
   d[0].gpu = dc_device(args_value(a, "--device", ""));
   if d[0].gpu < 0 { return fail(r, EXIT_USAGE, "--device is gpu or cpu; a GPU failure never silently selects the CPU"); }
+  d[0].format = dc_format(args_value(a, "--format", ""));
+  if d[0].format < 0 { return fail(r, EXIT_USAGE, "--format is plain or code"); }
   d[0].seconds = dc_seconds(args_value(a, "--seconds", ""));
   if d[0].seconds < 0 { return fail(r, EXIT_USAGE, "--seconds is a whole number from 1 to 60"); }
   d[0].input = args_value(a, "--input", "");

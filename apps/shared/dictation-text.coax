@@ -1,0 +1,410 @@
+// Code-aware dictation text (GitHub #12670): opt-in, fixed rules that turn a
+// recognized transcript into the text a programmer meant. Spoken symbols
+// ("voice dot coax" -> "voice.coax", "open paren" -> "("), casing ("snake
+// case user id" -> "user_id", "camel case get user name" -> "getUserName",
+// "all caps max size" -> "MAX_SIZE") and filler words ("um", "uh").
+//
+// The rules only rewrite text that is already a draft. They never send,
+// submit, execute or select anything: the words "send", "enter", "submit",
+// "run" and every other word stay plain words, and the only control byte an
+// output can hold is the line feed of "new line", which a host inserts as
+// literal text (never as Enter). Numbers are protected: a word with a digit is
+// never changed, never joined to a symbol and never cased. A refusal (bad
+// UTF-8 or control bytes in, a result over DTX_MAX bytes, nothing left) means
+// the host keeps the raw transcript as the draft; the raw text always stays
+// available for review.
+#authority;
+DTX_MAX :: 8000;        // bytes, the dictation transcript limit
+DTX_TOKENS :: 4001;     // space-separated pieces of an 8000-byte text
+DTX_IDENT :: 6;         // most words one casing phrase takes
+DTX_OK :: 0; DTX_REFUSED_INPUT :: 1; DTX_REFUSED_SIZE :: 2; DTX_EMPTY :: 3;
+// Joins: a symbol sticks to the word before it, after it, or both.
+DTX_JOIN_NONE :: 0; DTX_JOIN_PREV :: 1; DTX_JOIN_NEXT :: 2; DTX_JOIN_BOTH :: 3;
+DTX_SNAKE :: 1; DTX_CAMEL :: 2; DTX_PASCAL :: 3; DTX_KEBAB :: 4; DTX_UPPER :: 5;
+
+DtxResult :: struct {status:int;n:int;changes:int;}
+// One space-separated piece: its leading punctuation, its core (from the
+// first to the last letter, digit or non-ASCII byte) and its trailing
+// punctuation, as offsets into the text.
+DtxTok :: struct {at:int;core:int;tail:int;end:int;}
+DtxToks :: struct {t:[DTX_TOKENS]DtxTok;n:int;}
+// The output so far, and whether the last item refuses a space after it.
+DtxOut :: struct {n:int;glue:bool;bad:bool;any:bool;}
+
+#test "spoken symbols join the words beside them" {
+ out:[256]u8;
+ #assert dtx_check("Open the file voice dot coax and run the checks.",out[..],"Open the file voice.coax and run the checks.");
+ #assert dtx_check("Put it in src slash main dot coax.",out[..],"Put it in src/main.coax.");
+ #assert dtx_check("Name it max underscore size.",out[..],"Name it max_size.");
+ #assert dtx_check("Use the dry dash run flag.",out[..],"Use the dry-run flag.");
+ #assert dtx_check("Call open paren close paren now.",out[..],"Call () now.");
+ #assert dtx_check("Call f open paren x close paren.",out[..],"Call f (x).");
+ #assert dtx_check("Write key colon value.",out[..],"Write key: value.");
+ #assert dtx_check("First line new line second line.",out[..],"First line\nsecond line.");
+ #assert dtx_check("A hyphen B.",out[..],"A-B.");
+ #assert dtx_check("Open bracket zero close bracket and open brace close brace.",out[..],"[zero] and {}.");
+}
+#test "casing phrases make one identifier and stop at ordinary words" {
+ out:[256]u8;
+ #assert dtx_check("Use snake case user ID in the struct.",out[..],"Use user_id in the struct.");
+ #assert dtx_check("Call camel case get user name.",out[..],"Call getUserName.");
+ #assert dtx_check("Pascal case zeron state is the type.",out[..],"ZeronState is the type.");
+ #assert dtx_check("Set all caps max size to it.",out[..],"Set MAX_SIZE to it.");
+ #assert dtx_check("The kebab case dry run is the flag.",out[..],"The dry-run is the flag.");
+ #assert dtx_check("snake case b c d e f g h",out[..],"b_c_d_e_f_g h");
+ #assert dtx_check("snake case a b",out[..],"snake case a b");
+ #assert dtx_check("Snake case, user id.",out[..],"Snake case, user id.");
+ #assert dtx_check("Use snake case user, id.",out[..],"Use user, id.");
+}
+#test "filler words go and give their capital to the next word" {
+ out:[256]u8;
+ #assert dtx_check("Um, open the file.",out[..],"Open the file.");
+ #assert dtx_check("Open, uh, the file.",out[..],"Open, the file.");
+ #assert dtx_check("Open the file, um.",out[..],"Open the file.");
+ #assert dtx_check("Hmm uh erm the end",out[..],"The end");
+ #assert dtx_check("Umbrella and uhuru stay.",out[..],"Umbrella and uhuru stay.");
+}
+#test "numbers are never changed joined or cased" {
+ out:[256]u8;
+ #assert dtx_check("Tag version 3 dot 2 now.",out[..],"Tag version 3 dot 2 now.");
+ #assert dtx_check("Set the timeout to 200 milliseconds.",out[..],"Set the timeout to 200 milliseconds.");
+ #assert dtx_check("The real-time factor is 0.0092.",out[..],"The real-time factor is 0.0092.");
+ #assert dtx_check("snake case version 2 now",out[..],"version 2 now");
+ #assert dtx_check("snake case 2 now",out[..],"snake case 2 now");
+ #assert dtx_check("Pull request 12665 dash 2.",out[..],"Pull request 12665 dash 2.");
+ #assert dtx_check("Send the email at 9.30.",out[..],"Send the email at 9.30.");
+}
+#test "spoken commands stay words and nothing but a line feed is a control byte" {
+ out:[256]u8;
+ #assert dtx_check("Send it now and press enter.",out[..],"Send it now and press enter.");
+ #assert dtx_check("Submit, execute, run, new line.",out[..],"Submit, execute, run, new line.");
+ #assert dtx_check("Escape colon quit.",out[..],"Escape: quit.");
+ r:=dtx_format("one new line new line two",out[..]);#assert r.status==DTX_OK;
+ for i:0..<r.n {#assert out[i]>=32 || out[i]==10;#assert out[i]!=127;}
+ #assert cast(string)out[0..<r.n]=="one\n\ntwo";
+}
+#test "symbols at an edge or beside punctuation stay words" {
+ out:[256]u8;
+ #assert dtx_check("A red dot.",out[..],"A red dot.");
+ #assert dtx_check("Dot the i.",out[..],"Dot the i.");
+ #assert dtx_check("It ends. Dot com",out[..],"It ends. Dot com");
+ #assert dtx_check("slash",out[..],"slash");
+ #assert dtx_check("a dot (b)",out[..],"a dot (b)");
+ #assert dtx_check("open paren",out[..],"(");
+ #assert dtx_check("x open",out[..],"x open");
+ #assert dtx_check("new line",out[..],"\n");
+}
+#test "refusals keep the raw transcript" {
+ out:[256]u8;
+ #assert dtx_format("",out[..]).status==DTX_EMPTY;
+ #assert dtx_format("Um.",out[..]).status==DTX_EMPTY;
+ #assert dtx_format("a\tb",out[..]).status==DTX_REFUSED_INPUT;
+ del:=[3]u8.[97,127,98];#assert dtx_format(cast(string)del[..],out[..]).status==DTX_REFUSED_INPUT;
+ #assert dtx_format("a\nb",out[..]).status==DTX_REFUSED_INPUT;
+ bad:=[3]u8.[97,0xc3,32];#assert dtx_format(cast(string)bad[..],out[..]).status==DTX_REFUSED_INPUT;
+ #assert dtx_format("voice dot coax",out[0..<9]).status==DTX_REFUSED_SIZE;
+ #assert dtx_format("voice dot coax",out[0..<10]).status==DTX_OK;
+ big:[8001]u8;for i:0..<8001 {big[i]=ifx i%2==0 then 97 else 32;}
+ #assert dtx_format(cast(string)big[0..<8000],out[..]).status==DTX_REFUSED_SIZE;
+ #assert dtx_format(cast(string)big[..],out[..]).status==DTX_REFUSED_INPUT;
+ // The draft a host uses: formatted on success, else the raw bytes.
+ n:=dtx_draft("Um.",out[..]);#assert cast(string)out[0..<n]=="Um.";
+ n=dtx_draft("max underscore size",out[..]);#assert cast(string)out[0..<n]=="max_size";
+ #assert dtx_draft("max underscore size",out[0..<3])== -1;
+ n=dtx_draft("a dash b",out[0..<3]);#assert cast(string)out[0..<n]=="a-b";
+ n=dtx_draft("a dash b",out[0..<2]);#assert n== -1;
+}
+#test "UTF-8 and other languages pass through untouched" {
+ out:[256]u8;
+ #assert dtx_check("Ça marche très bien.",out[..],"Ça marche très bien.");
+ #assert dtx_check("Größe unterstrich Wert.",out[..],"Größe unterstrich Wert.");
+ #assert dtx_check("café underscore crème",out[..],"café_crème");
+ b:=[20]u8.[0xe2,0x82,0xac,0x80,0xc0,0xaf,0xed,0xa0,0x80,0xf4,0x90,0x80,0x80,0xf0,0x9f,0x98,0x80,0xef,0xbf,0xbf];
+ #assert dtx_utf8(cast(string)b[0..<3]) && !dtx_utf8(cast(string)b[0..<2]) && !dtx_utf8(cast(string)b[3..<4]) && !dtx_utf8(cast(string)b[4..<6]);
+ #assert !dtx_utf8(cast(string)b[6..<9]) && !dtx_utf8(cast(string)b[9..<13]) && dtx_utf8(cast(string)b[13..<17]) && dtx_utf8(cast(string)b[17..<20]);
+ f8:=[5]u8.[0xf8,0x88,0x80,0x80,0x80];#assert !dtx_utf8(cast(string)f8[..]);
+ two:=[2]u8.[0xc3,0xa9];#assert dtx_utf8(cast(string)two[..]) && !dtx_utf8(cast(string)two[0..<1]);
+ e0:=[3]u8.[0xe0,0x9f,0xbf];#assert !dtx_utf8(cast(string)e0[..]);e0[1]=0xa0;#assert dtx_utf8(cast(string)e0[..]);
+ c2:=[2]u8.[0xc2,0xc0];#assert !dtx_utf8(cast(string)c2[..]);c2[1]=0x80;#assert dtx_utf8(cast(string)c2[..]);
+}
+#test "tokens split punctuation from their cores" {
+ k:[1]DtxToks;dtx_tokens("(voice.coax), \"x\"  ...",k[..]);
+ #assert k[0].n==3;
+ t:=k[0].t[0];#assert t.at==0 && t.core==1 && t.tail==11 && t.end==13;
+ t=k[0].t[1];#assert t.core==15 && t.tail==16 && t.end==17;
+ t=k[0].t[2];#assert t.at==19 && t.core==t.tail && t.end==22;
+}
+#test "every count stays within the output" {
+ out:[8]u8;
+ #assert dtx_format("ab cd ef",out[..]).status==DTX_OK && dtx_format("ab cd efg",out[..]).status==DTX_REFUSED_SIZE;
+ #assert dtx_format("snake case ab cd",out[0..<5]).status==DTX_OK && dtx_format("snake case ab cd",out[0..<4]).status==DTX_REFUSED_SIZE;
+ #assert dtx_format("camel case ab cd",out[0..<4]).status==DTX_OK && dtx_format("camel case ab cd",out[0..<3]).status==DTX_REFUSED_SIZE;
+ #assert dtx_format("a new line b",out[0..<3]).status==DTX_OK && dtx_format("a new line b",out[0..<2]).status==DTX_REFUSED_SIZE;
+ r:=dtx_format("Um, a dot b",out[..]);#assert r.status==DTX_OK && r.n==3 && r.changes==2;
+ big:[11]u8;r=dtx_format("plain words",big[..]);#assert r.status==DTX_OK && r.changes==0 && r.n==11;
+}
+
+#test "byte classes at their edges" {
+ #assert !dtx_wordy('@') && dtx_wordy('A') && dtx_wordy('Z') && !dtx_wordy('[') && !dtx_wordy('`') && dtx_wordy('a') && dtx_wordy('z') && !dtx_wordy('{');
+ #assert !dtx_wordy('/') && dtx_wordy('0') && dtx_wordy('9') && !dtx_wordy(':') && !dtx_wordy(127) && dtx_wordy(128) && dtx_wordy(255) && !dtx_wordy(' ');
+ #assert !dtx_digit("/") && dtx_digit("0") && dtx_digit("9") && !dtx_digit(":") && dtx_digit("ab7") && !dtx_digit("") && !dtx_digit("abc");
+ #assert dtx_letters("AZaz") && !dtx_letters("@") && !dtx_letters("[") && !dtx_letters("`") && !dtx_letters("{") && !dtx_letters("") && !dtx_letters("a1");
+ kb:[1]DtxKey;#assert dtx_key_of("AZaz",kb[..])=="azaz" && dtx_key_of("Mixed",kb[..])=="mixed" && dtx_key_of("x",kb[..])=="x";
+ #assert dtx_key_of("abcdefghijklmno",kb[..])=="abcdefghijklmno" && dtx_key_of("abcdefghijklmnop",kb[..])=="" && dtx_key_of("e2e",kb[..])=="";
+ #assert dtx_lower('A')=='a' && dtx_lower('Z')=='z' && dtx_lower('a')=='a' && dtx_lower('z')=='z';
+ out:[64]u8;#assert !dtx_check("a b",out[..],"a c") && !dtx_check("",out[..],"");
+}
+#test "UTF-8 boundaries" {
+ ok:=[11][4]u8.[[4]u8.[0xdf,0xbf,0,0],[4]u8.[0xe0,0xa0,0x80,0],[4]u8.[0xed,0x9f,0xbf,0],[4]u8.[0xee,0x80,0x80,0],[4]u8.[0xf0,0x90,0x80,0x80],[4]u8.[0xf4,0x8f,0xbf,0xbf],
+   [4]u8.[0xc2,0x80,0,0],[4]u8.[0xef,0xbf,0xbf,0],[4]u8.[0xe1,0x80,0x80,0],[4]u8.[0xf1,0x80,0x80,0x80],[4]u8.[0x7f,0,0,0]];
+ lens:=[11]int.[2,3,3,3,4,4,2,3,3,4,1];
+ for i:0..<11 {x:=ok[i];#assert dtx_utf8(cast(string)x[0..<lens[i]]);}
+ bad:=[10][4]u8.[[4]u8.[0xc1,0xbf,0,0],[4]u8.[0xe0,0x9f,0xbf,0],[4]u8.[0xed,0xa0,0x80,0],[4]u8.[0xed,0xbf,0xbf,0],[4]u8.[0xf0,0x8f,0xbf,0xbf],[4]u8.[0xf4,0x90,0x80,0x80],
+   [4]u8.[0xf5,0x80,0x80,0x80],[4]u8.[0xf8,0x90,0x80,0x80],[4]u8.[0x80,0,0,0],[4]u8.[0xc3,0x28,0,0]];
+ blens:=[10]int.[2,3,3,3,4,4,4,4,1,2];
+ for i:0..<10 {x:=bad[i];#assert !dtx_utf8(cast(string)x[0..<blens[i]]);}
+ #assert dtx_need(0x7f)==0 && dtx_need(0x80)== -1 && dtx_need(0xc1)== -1 && dtx_need(0xc2)==1 && dtx_need(0xdf)==1 && dtx_need(0xe0)==2;
+ #assert dtx_utf8("\0") && dtx_utf8("a\0b");
+ #assert dtx_need(0xef)==2 && dtx_need(0xf0)==3 && dtx_need(0xf4)==3 && dtx_need(0xf5)== -1;
+}
+#test "rule words are found only where the tokens are" {
+ s:="open paren user id brace";k:[1]DtxToks;dtx_tokens(s,k[..]);#assert k[0].n==5;
+ #assert dtx_is(s,k[..],1,"paren") && dtx_symbol(s,k[..],0).words==2;
+ k[0].n=1;#assert !dtx_is(s,k[..],1,"paren") && dtx_symbol(s,k[..],0).words==0 && dtx_symbol(s,k[..],1).words==0 && !dtx_joinable(s,k[..],1,false);
+ k[0].n=3;#assert dtx_ident_len(s,k[..],2)==1 && dtx_joinable(s,k[..],2,false);k[0].n=4;#assert dtx_ident_len(s,k[..],2)==2;
+ c:="snake case x";dtx_tokens(c,k[..]);#assert dtx_casing(c,k[..],0)==DTX_SNAKE;k[0].n=1;#assert dtx_casing(c,k[..],0)==0;
+ dtx_tokens("a  b ",k[..]);#assert k[0].n==2 && k[0].t[1].at==3 && k[0].t[1].end==4;
+ dtx_tokens("   ",k[..]);#assert k[0].n==0;
+ many:[8004]u8;for i:0..<8004 {many[i]=ifx i%2==0 then 97 else 32;}dtx_tokens(cast(string)many[..],k[..]);#assert k[0].n==DTX_TOKENS;
+ kb:[1]DtxKey;#assert dtx_key_of("abc",kb[..])=="abc" && dtx_key_of("de",kb[..])=="de" && kb[0].n==2;
+ dtx_tokens("all caps x",k[..]);#assert dtx_casing("all caps x",k[..],0)==DTX_UPPER;
+ dtx_tokens("all case x",k[..]);#assert dtx_casing("all case x",k[..],0)==0;
+ dtx_tokens("snake caps x",k[..]);#assert dtx_casing("snake caps x",k[..],0)==0;
+}
+#test "rules keep their edges" {
+ out:[256]u8;
+ #assert dtx_check("a (b c",out[..],"a (b c");
+ #assert dtx_check("open, paren x",out[..],"open, paren x");
+ #assert dtx_check("x close, paren",out[..],"x close, paren");
+ #assert dtx_check("x close brace y",out[..],"x} y");
+ #assert dtx_check("x close brace.",out[..],"x}.");
+ #assert dtx_check("f open paren, x",out[..],"f (, x");
+ #assert dtx_check("snake, case user",out[..],"snake, case user");
+ #assert dtx_check("um dot x",out[..],"dot x");
+ #assert dtx_check("x case y",out[..],"x case y");
+ #assert dtx_check("Go, um?",out[..],"Go?");
+ #assert dtx_check("Go, uh!",out[..],"Go!");
+ #assert dtx_check("a um.",out[..],"a.");
+ #assert dtx_check("um, open the file.",out[..],"open the file.");
+ #assert dtx_check("Use snake case user id dot x",out[..],"Use user_id.x");
+ #assert dtx_check("Um, snake case user id is it.",out[..],"user_id is it.");
+ #assert dtx_check("camel case user dot name",out[..],"user.name");
+ #assert dtx_check("snake case user camel case name x",out[..],"user nameX");
+ #assert dtx_check("Um, (open) it",out[..],"(Open) it");
+ #assert dtx_check("Um, 3 apples",out[..],"3 apples");
+ #assert dtx_check("Um, été",out[..],"été");
+ #assert dtx_check("Um, Bob",out[..],"Bob");
+ #assert dtx_check("Um, apple",out[..],"Apple");
+ #assert dtx_check("Um, zoo",out[..],"Zoo");
+ #assert dtx_check("Um, {x}",out[..],"{X}");
+ #assert dtx_check("Um, `x`",out[..],"`X`");
+ #assert dtx_check("x new line",out[..],"x\n");
+ #assert dtx_check("new line x",out[..],"\nx");
+ #assert dtx_check("a. new line x",out[..],"a. new line x");
+ r:=dtx_format("Use snake case user id",out[..]);#assert r.status==DTX_OK && r.changes==1;
+ n:=dtx_draft("Um.",out[0..<3]);#assert n==3 && cast(string)out[0..<3]=="Um.";
+}
+
+// Whether the transcript formats to exactly want.
+dtx_check :: (raw:string,out:[]u8,want:string)->bool {r:=dtx_format(raw,out);if r.status!=DTX_OK {return false;}return cast(string)out[0..<r.n]==want;}
+
+// Well-formed UTF-8: shortest forms, no surrogates, nothing above U+10FFFF.
+// A two-byte lead below 0xc2 would be an overlong form, so it is refused
+// with the other bytes that cannot start a character.
+dtx_need :: (c:int)->int {
+ if c<0x80 {return 0;}if c>=0xc2 && c<=0xdf {return 1;}if c>=0xe0 && c<=0xef {return 2;}if c>=0xf0 && c<=0xf4 {return 3;}return -1;
+}
+dtx_utf8 :: (s:string)->bool {
+ i:=0;lows:=[4]int.[0,0x80,0x800,0x10000];
+ while i<s.count {
+  c:=cast(int)s[i];need:=dtx_need(c);
+  if need<0 || i+need>=s.count {return false;}
+  v:=c&(0x7f>>need);
+  for k:1..<need+1 {b:=cast(int)s[i+k];if (b&0xc0)!=0x80 {return false;}v=(v<<6)|(b&0x3f);}
+  if v<lows[need] || v>0x10ffff || (v>=0xd800 && v<=0xdfff) {return false;}
+  i+=need+1;
+ }
+ return true;
+}
+// A byte of a word's core: an ASCII letter or digit, or any non-ASCII byte.
+dtx_letter :: (c:u8)->bool {return (c>='a' && c<='z') || (c>='A' && c<='Z');}
+dtx_wordy :: (c:u8)->bool {return dtx_letter(c) || (c>='0' && c<='9') || c>=128;}
+dtx_digit :: (s:string)->bool {for c:s {if c>='0' && c<='9' {return true;}}return false;}
+dtx_letters :: (s:string)->bool {if s.count==0 {return false;}for c:s {if !dtx_letter(c) {return false;}}return true;}
+dtx_tokens :: (s:string,k:[]DtxToks) {
+ k[0].n=0;i:=0;
+ while k[0].n<DTX_TOKENS {
+  while i<s.count && s[i]==' ' {i+=1;}
+  if i==s.count {break;}
+  j:=i;while j<s.count && s[j]!=' ' {j+=1;}
+  a:=i;while a<j && !dtx_wordy(s[a]) {a+=1;}
+  b:=j;while b>a && !dtx_wordy(s[b-1]) {b-=1;}
+  k[0].t[k[0].n]=DtxTok.{at=i,core=a,tail=b,end=j};k[0].n+=1;i=j;
+ }
+}
+// A core's ASCII-lowercased bytes, for matching rule words; "" when it is
+// not a plain ASCII word of at most 15 letters.
+DtxKey :: struct {b:[16]u8;n:int;}
+dtx_lower :: (c:u8)->u8 {return ifx c<'a' then c+32 else c;}   // letters only
+dtx_key_of :: (s:string,k:[]DtxKey)->string {
+ k[0].n=0;if s.count>15 || !dtx_letters(s) {return "";}
+ for c:s {k[0].b[k[0].n]=dtx_lower(c);k[0].n+=1;}
+ return cast(string)k[0].b[0..<k[0].n];
+}
+dtx_core :: (s:string,t:DtxTok)->string {return s[t.core..<t.tail];}
+dtx_lead :: (t:DtxTok)->bool {return t.core>t.at;}
+dtx_trail :: (t:DtxTok)->bool {return t.end>t.tail;}
+// Whether token i (with no punctuation before it) is the rule word w.
+dtx_is :: (s:string,k:[]DtxToks,i:int,w:string)->bool {
+ if i>=k[0].n {return false;}t:=k[0].t[i];
+ if dtx_lead(t) {return false;}kb:[1]DtxKey;return dtx_key_of(dtx_core(s,t),kb[..])==w;
+}
+dtx_filler :: (w:string)->bool {return w=="um" || w=="umm" || w=="uh" || w=="uhh" || w=="uhm" || w=="erm" || w=="hmm";}
+dtx_stop :: (w:string)->bool {
+ stops:=[30]string.["a","an","the","in","on","at","to","of","for","with","and","or","is","are","was","as","from","into","by","then","but","so","it","this","that","be","use","call","set","named"];
+ for x:stops {if w==x {return true;}}return false;
+}
+
+// Output: items separated by one space unless glued.
+dtx_put :: (o:[]DtxOut,out:[]u8,s:string,glue_before:bool,glue_after:bool) {
+ if o[0].any && !glue_before && !o[0].glue {dtx_byte(o,out,' ');}
+ for c:s {dtx_byte(o,out,c);}
+ o[0].glue=glue_after;o[0].any=true;
+}
+dtx_byte :: (o:[]DtxOut,out:[]u8,c:u8) {if o[0].n>=out.count {o[0].bad=true;return;}out[o[0].n]=c;o[0].n+=1;}
+// A word as part of an identifier: lower case, or with its first letter
+// raised (camel and Pascal), or all upper case.
+dtx_ident_word :: (o:[]DtxOut,out:[]u8,w:string,style:int,first:bool) {
+ for i:0..<w.count {
+  lower:=dtx_lower(w[i]);
+  up:=style==DTX_UPPER || (i==0 && (style==DTX_PASCAL || (style==DTX_CAMEL && !first)));
+  dtx_byte(o,out,ifx up then lower-32 else lower);
+ }
+}
+// The casing phrase at token i ("snake case", "all caps", ...): its
+// style, or 0; it is always two words, neither with punctuation after it.
+dtx_casing :: (s:string,k:[]DtxToks,i:int)->int {
+ style:=0;second:="case";
+ if dtx_is(s,k,i,"snake") {style=DTX_SNAKE;}
+ if dtx_is(s,k,i,"camel") {style=DTX_CAMEL;}
+ if dtx_is(s,k,i,"pascal") {style=DTX_PASCAL;}
+ if dtx_is(s,k,i,"kebab") {style=DTX_KEBAB;}
+ if dtx_is(s,k,i,"all") {style=DTX_UPPER;second="caps";}
+ if style==0 || !dtx_is(s,k,i+1,second) || dtx_trail(k[0].t[i]) || dtx_trail(k[0].t[i+1]) {return 0;}
+ return style;
+}
+// How many words from token i make the identifier: plain ASCII letter words
+// that are not stop words or the start of another rule, ending after the
+// first one with punctuation after it.
+dtx_ident_len :: (s:string,k:[]DtxToks,i:int)->int {
+ n:=0;
+ while n<DTX_IDENT {
+  j:=i+n;if j>=k[0].n {break;}
+  t:=k[0].t[j];kb:[1]DtxKey;w:=dtx_key_of(dtx_core(s,t),kb[..]);
+  if dtx_lead(t) || w=="" || dtx_stop(w) || dtx_casing(s,k,j)!=0 || dtx_symbol(s,k,j).words!=0 {break;}
+  n+=1;if dtx_trail(t) {break;}
+ }
+ return n;
+}
+// A spoken symbol starting at token i: its text, join, and how many tokens.
+DtxSymbol :: struct {text:string;join:int;words:int;}
+dtx_symbol :: (s:string,k:[]DtxToks,i:int)->DtxSymbol {
+ none:=DtxSymbol.{};
+ two:=!dtx_trail(k[0].t[i]);
+ if two && dtx_is(s,k,i,"open") {
+  if dtx_is(s,k,i+1,"bracket") {return DtxSymbol.{text="[",join=DTX_JOIN_NEXT,words=2};}
+  if dtx_is(s,k,i+1,"paren") {return DtxSymbol.{text="(",join=DTX_JOIN_NEXT,words=2};}
+  if dtx_is(s,k,i+1,"brace") {return DtxSymbol.{text="{",join=DTX_JOIN_NEXT,words=2};}
+ }
+ if two && dtx_is(s,k,i,"close") {
+  if dtx_is(s,k,i+1,"paren") {return DtxSymbol.{text=")",join=DTX_JOIN_PREV,words=2};}
+  if dtx_is(s,k,i+1,"bracket") {return DtxSymbol.{text="]",join=DTX_JOIN_PREV,words=2};}
+  if dtx_is(s,k,i+1,"brace") {return DtxSymbol.{text="}",join=DTX_JOIN_PREV,words=2};}
+ }
+ if two && dtx_is(s,k,i,"new") && dtx_is(s,k,i+1,"line") {return DtxSymbol.{text="\n",join=DTX_JOIN_BOTH,words=2};}
+ if dtx_is(s,k,i,"dot") {return DtxSymbol.{text=".",join=DTX_JOIN_BOTH,words=1};}
+ if dtx_is(s,k,i,"underscore") {return DtxSymbol.{text="_",join=DTX_JOIN_BOTH,words=1};}
+ if dtx_is(s,k,i,"slash") {return DtxSymbol.{text="/",join=DTX_JOIN_BOTH,words=1};}
+ if dtx_is(s,k,i,"dash") || dtx_is(s,k,i,"hyphen") {return DtxSymbol.{text="-",join=DTX_JOIN_BOTH,words=1};}
+ if dtx_is(s,k,i,"colon") {return DtxSymbol.{text=":",join=DTX_JOIN_PREV,words=1};}
+ return none;
+}
+// Whether token i is a word a symbol may stick to: it exists, has a core
+// without digits, and has no punctuation on the side facing the symbol.
+dtx_joinable :: (s:string,k:[]DtxToks,i:int,facing_tail:bool)->bool {
+ if i<0 || i>=k[0].n {return false;}t:=k[0].t[i];c:=dtx_core(s,t);
+ if c.count==0 || dtx_digit(c) {return false;}
+ return ifx facing_tail then !dtx_trail(t) else !dtx_lead(t);
+}
+
+dtx_format :: (raw:string,out:[]u8)->DtxResult {
+ if raw.count>DTX_MAX || !dtx_utf8(raw) {return DtxResult.{status=DTX_REFUSED_INPUT};}
+ for c:raw {if c<32 || c==127 {return DtxResult.{status=DTX_REFUSED_INPUT};}}
+ k:[1]DtxToks;dtx_tokens(raw,k[..]);
+ o:[1]DtxOut;changes:=0;capital:=false;last_tok:=-1;i:=0;
+ while i<k[0].n {
+  t:=k[0].t[i];kb:[1]DtxKey;w:=dtx_key_of(dtx_core(raw,t),kb[..]);
+  // Filler: dropped with its punctuation; a capital or a sentence end moves on.
+  if !dtx_lead(t) && dtx_filler(w) {
+   stop:u8=0;for c:raw[t.tail..<t.end] {if c=='.' || c=='?' || c=='!' {stop=c;}}
+   if raw[t.core]!=w[0] {capital=true;}
+   if stop!=0 && o[0].n>0 {
+    if out[o[0].n-1]==',' {o[0].n-=1;}
+    dtx_byte(o[..],out,stop);
+   }
+   changes+=1;i+=1;continue;
+  }
+  // Casing: the phrase and the identifier after it become one word.
+  style:=dtx_casing(raw,k[..],i);m:=0;
+  if style!=0 {m=dtx_ident_len(raw,k[..],i+2);}
+  if m>0 {
+   dtx_put(o[..],out,"",false,false);
+   for x:0..<m {
+    if x>0 && style!=DTX_CAMEL && style!=DTX_PASCAL {dtx_byte(o[..],out,ifx style==DTX_KEBAB then '-' else '_');}
+    dtx_ident_word(o[..],out,dtx_core(raw,k[0].t[i+2+x]),style,x==0);
+   }
+   l:=k[0].t[i+1+m];for c:raw[l.tail..<l.end] {dtx_byte(o[..],out,c);}
+   changes+=1;i+=2+m;last_tok=i-1;capital=false;continue;
+  }
+  // Spoken symbols, when the words they join are there.
+  y:=dtx_symbol(raw,k[..],i);
+  after:=i+y.words;prev_ok:=last_tok==i-1 && dtx_joinable(raw,k[..],i-1,true);next_ok:=dtx_joinable(raw,k[..],after,false);
+  ok:=false;line:=y.text=="\n";
+  if y.join==DTX_JOIN_BOTH {ok=(prev_ok || !o[0].any && line) && (next_ok || after==k[0].n && line);}
+  if y.join==DTX_JOIN_PREV {ok=prev_ok;}
+  if y.join==DTX_JOIN_NEXT {ok=next_ok || after==k[0].n;}
+  if ok {
+   lt:=k[0].t[after-1];
+   dtx_put(o[..],out,y.text,y.join!=DTX_JOIN_NEXT,y.join!=DTX_JOIN_PREV);
+   if dtx_trail(lt) {for c:raw[lt.tail..<lt.end] {dtx_byte(o[..],out,c);}o[0].glue=false;}
+   changes+=1;i=after;last_tok=i-1;continue;
+  }
+  // Anything else is copied as it is, taking a capital a filler left: the
+  // first letter is raised unless a digit or non-ASCII byte comes first.
+  if o[0].any && !o[0].glue {dtx_byte(o[..],out,' ');}
+  at:=o[0].n;dtx_put(o[..],out,raw[t.at..<t.end],true,false);
+  if capital {
+   for x:at..<o[0].n {c:=out[x];if c>='a' && c<='z' {out[x]=c-32;break;}if dtx_wordy(c) {break;}}
+  }
+  capital=false;last_tok=i;i+=1;
+ }
+ if o[0].bad {return DtxResult.{status=DTX_REFUSED_SIZE};}
+ if o[0].n==0 {return DtxResult.{status=DTX_EMPTY};}
+ return DtxResult.{status=DTX_OK,n=o[0].n,changes=changes};
+}
+// The draft a host inserts: the formatted text, or the raw transcript when a
+// rule refuses; -1 when neither fits out.
+dtx_draft :: (raw:string,out:[]u8)->int #export_c {
+ r:=dtx_format(raw,out);if r.status==DTX_OK {return r.n;}
+ if raw.count>out.count {return -1;}for i:0..<raw.count {out[i]=raw[i];}return raw.count;
+}

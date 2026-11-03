@@ -100,7 +100,7 @@ copy :: (s: string, out: [] u8) -> int {
 // ---- arguments: flags anywhere, positionals in order ----------------------
 
 // Flags that take a value, a domain's on its own line ("" pads the array).
-VALUE_FLAGS :: [78] string.["--profile",
+VALUE_FLAGS :: [80] string.["--profile",
   "--kind", "--content", "--tags", "--method", "--body", "--relay", "--limit", "--timeout",   // nostr
   "--model", "--label", "--slug", "--device", "--model-cache", "--source", "--wait", "--lines", "--port", "--trainer",   // pylon
   "--project", "--key", "--by", "--commit", "--before", "--after", "--dir", "--order",   // project
@@ -108,7 +108,7 @@ VALUE_FLAGS :: [78] string.["--profile",
   "--if-older", "--out", "--api", "--from", "--to",   // project snapshot, index, landing, adopt, review report
   "--rev", "--name", "--uses", "--days", "--visibility",   // realm, admin
   "--language", "--backend", "--threads", "--models", "--prompt", "--words", "--model-dir",   // transcribe (--model is pylon's)
-  "--capture", "--input",   // dictate (--seconds, --device and --model-dir above)
+  "--capture", "--input", "--format", "--terms",   // dictate (--seconds, --device and --model-dir above)
   "--size", "--eval", "--seconds", "--fps", "--skip", "--stage", "--frames",   // labs (--wait, --from above)
   "--quality", "--at", "--every", "--strip", "--set", "--seeds", "--against",   // labs
   "--doc", "--yaw", "--tools", "--ask", "--step", "--reward",   // realm edits
