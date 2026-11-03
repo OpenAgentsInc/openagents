@@ -1,0 +1,120 @@
+// The Unreal mannequin's body joints by name, in the order Aethyr's people rig keeps them
+// (verse/everglade/people-rig.coax: the Quaternius CC0 Modular Character Outfits' 65 joints,
+// whose names are the mannequin's). A body from another source binds to the same rig by name:
+// mannequin_fold takes one of its joint names and gives the joint here that carries it, so a pack
+// compiler keeps this skeleton and folds the rest into it (docs/verse/metahuman-support.md, "Body
+// skeleton and animation retargeting"). Names compare without case ("Head" and "head" are one).
+//
+// The folding rules, for the UE5 mannequin and the bodies built on it:
+// - spine_04 and spine_05 fold into spine_03, and neck_02 into neck_01 (this rig has three spine
+//   joints and one neck joint);
+// - a helper joint named for its bone and side (upperarm_twist_01_l, calf_twistCor_02_r,
+//   clavicle_pec_l, thigh_fwd_r) folds into that bone on that side;
+// - a metacarpal (index_metacarpal_l) folds into the hand;
+// - anything else is -1: the compiler folds it into its nearest ancestor that is kept.
+//   coax/bin/coax test aethyr/mannequin.coax --library
+
+MANNEQUIN_JOINTS :: 65;
+MANNEQUIN_NAME :: [65] string.[
+  "root", "pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head",
+  "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l",
+  "index_01_l", "index_02_l", "index_03_l", "index_04_leaf_l",
+  "middle_01_l", "middle_02_l", "middle_03_l", "middle_04_leaf_l",
+  "pinky_01_l", "pinky_02_l", "pinky_03_l", "pinky_04_leaf_l",
+  "ring_01_l", "ring_02_l", "ring_03_l", "ring_04_leaf_l",
+  "thumb_01_l", "thumb_02_l", "thumb_03_l", "thumb_04_leaf_l",
+  "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r",
+  "index_01_r", "index_02_r", "index_03_r", "index_04_leaf_r",
+  "middle_01_r", "middle_02_r", "middle_03_r", "middle_04_leaf_r",
+  "pinky_01_r", "pinky_02_r", "pinky_03_r", "pinky_04_leaf_r",
+  "ring_01_r", "ring_02_r", "ring_03_r", "ring_04_leaf_r",
+  "thumb_01_r", "thumb_02_r", "thumb_03_r", "thumb_04_leaf_r",
+  "thigh_l", "calf_l", "foot_l", "ball_l", "ball_leaf_l",
+  "thigh_r", "calf_r", "foot_r", "ball_r", "ball_leaf_r"
+];
+// The joints a figure is built on.
+MQ_ROOT :: 0; MQ_PELVIS :: 1; MQ_SPINE_01 :: 2; MQ_SPINE_02 :: 3; MQ_SPINE_03 :: 4; MQ_NECK :: 5; MQ_HEAD :: 6;
+MQ_CLAVICLE_L :: 7; MQ_UPPERARM_L :: 8; MQ_LOWERARM_L :: 9; MQ_HAND_L :: 10; MQ_MIDDLE_02_L :: 16; MQ_THUMB_01_L :: 27; MQ_THUMB_03_L :: 29;
+MQ_CLAVICLE_R :: 31; MQ_UPPERARM_R :: 32; MQ_LOWERARM_R :: 33; MQ_HAND_R :: 34; MQ_MIDDLE_02_R :: 40; MQ_THUMB_01_R :: 51; MQ_THUMB_03_R :: 53;
+MQ_THIGH_L :: 55; MQ_CALF_L :: 56; MQ_FOOT_L :: 57; MQ_BALL_L :: 58; MQ_TOE_L :: 59;
+MQ_THIGH_R :: 60; MQ_CALF_R :: 61; MQ_FOOT_R :: 62; MQ_BALL_R :: 63; MQ_TOE_R :: 64;
+
+mq_lower :: (c: u8) -> u8 { if c >= 'A' && c <= 'Z' { return c + 32; } return c; }
+// Whether two names are the same but for case.
+mq_same :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if mq_lower(a[i]) != mq_lower(b[i]) { return false; } }
+  return true;
+}
+// The joint named `name`, or -1.
+mannequin_find :: (name: string) -> int {
+  for j: 0..<MANNEQUIN_JOINTS { if mq_same(MANNEQUIN_NAME[j], name) { return j; } }
+  return -1;
+}
+// The name's side: 1 for a last part "_l", 2 for "_r", 0 for none.
+mq_side :: (name: string) -> int {
+  n := name.count;
+  if n < 3 || name[n - 2] != '_' { return 0; }
+  c := mq_lower(name[n - 1]);
+  return ifx c == 'l' then 1 else ifx c == 'r' then 2 else 0;
+}
+// The name's first part, up to its first '_'.
+mq_head :: (name: string) -> string {
+  for i: 0..<name.count { if name[i] == '_' { return cast(string) name[0..<i]; } }
+  return name;
+}
+mq_has :: (name: string, part: string) -> bool {
+  if part.count == 0 || part.count > name.count { return false; }
+  for i: 0..<(name.count - part.count + 1) { if mq_same(cast(string) name[i..<(i + part.count)], part) { return true; } }
+  return false;
+}
+// The joint here that carries a body's joint `name` (see the top of the file), or -1.
+mannequin_fold :: (name: string) -> int {
+  exact := mannequin_find(name);
+  if exact >= 0 { return exact; }
+  base := mq_head(name);
+  if mq_same(base, "spine") && name.count == 8 { return MQ_SPINE_03; }   // spine_04, spine_05
+  if mq_same(base, "neck") && name.count == 7 { return MQ_NECK; }       // neck_02
+  side := mq_side(name);
+  if side == 0 { return -1; }
+  if mq_has(name, "metacarpal") { return ifx side == 1 then MQ_HAND_L else MQ_HAND_R; }
+  // a helper on a bone: the bone on its side
+  bones := [7] string.["clavicle", "upperarm", "lowerarm", "hand", "thigh", "calf", "foot"];
+  for b: bones {
+    if mq_same(base, b) {
+      for j: 0..<MANNEQUIN_JOINTS {
+        m := MANNEQUIN_NAME[j];
+        if mq_side(m) == side && mq_same(mq_head(m), b) { return j; }
+      }
+    }
+  }
+  return -1;
+}
+
+// ---- checks
+
+#test "the names are the mannequin's, 65 of them, each once, in the rig's order" {
+  #assert mannequin_find("root") == MQ_ROOT && mannequin_find("pelvis") == MQ_PELVIS && mannequin_find("Head") == MQ_HEAD;
+  #assert mannequin_find("thigh_l") == MQ_THIGH_L && mannequin_find("ball_leaf_r") == MQ_TOE_R && mannequin_find("hand_r") == MQ_HAND_R;
+  #assert mannequin_find("middle_02_l") == MQ_MIDDLE_02_L && mannequin_find("thumb_03_r") == MQ_THUMB_03_R;
+  for a: 0..<MANNEQUIN_JOINTS { for b: (a + 1)..<MANNEQUIN_JOINTS { #assert !mq_same(MANNEQUIN_NAME[a], MANNEQUIN_NAME[b]); } }
+  // every left joint has its right twin 24 joints on in the arms, 5 on in the legs
+  for j: MQ_CLAVICLE_L..<(MQ_THUMB_03_L + 2) { #assert mq_side(MANNEQUIN_NAME[j]) == 1 && mq_side(MANNEQUIN_NAME[j + 24]) == 2; }
+  for j: MQ_THIGH_L..<MQ_THIGH_R { #assert mq_side(MANNEQUIN_NAME[j]) == 1 && mq_side(MANNEQUIN_NAME[j + 5]) == 2; }
+  #assert mannequin_find("nope") == -1 && mannequin_find("") == -1;
+}
+
+#test "a UE5 mannequin body folds onto these joints" {
+  // the same name, in any case
+  #assert mannequin_fold("head") == MQ_HEAD && mannequin_fold("PELVIS") == MQ_PELVIS && mannequin_fold("calf_r") == MQ_CALF_R;
+  // the spine and neck it has more of
+  #assert mannequin_fold("spine_04") == MQ_SPINE_03 && mannequin_fold("spine_05") == MQ_SPINE_03 && mannequin_fold("neck_02") == MQ_NECK;
+  // helpers fold into their bone on their side
+  #assert mannequin_fold("upperarm_twist_01_l") == MQ_UPPERARM_L && mannequin_fold("upperarm_twistCor_02_r") == MQ_UPPERARM_R;
+  #assert mannequin_fold("lowerarm_twist_02_l") == MQ_LOWERARM_L && mannequin_fold("thigh_fwd_r") == MQ_THIGH_R;
+  #assert mannequin_fold("calf_twist_01_l") == MQ_CALF_L && mannequin_fold("clavicle_pec_r") == MQ_CLAVICLE_R;
+  #assert mannequin_fold("index_metacarpal_l") == MQ_HAND_L && mannequin_fold("pinky_metacarpal_r") == MQ_HAND_R;
+  // what it can't place goes to the compiler's ancestor rule
+  #assert mannequin_fold("FACIAL_C_Jaw") == -1 && mannequin_fold("ik_foot_root") == -1 && mannequin_fold("spine_10_x") == -1;
+  #assert mannequin_fold("") == -1 && mannequin_fold("_l") == -1;
+}

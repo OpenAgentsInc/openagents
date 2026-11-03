@@ -366,6 +366,20 @@
         "slot": "5e-lab",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
         "assets": []
+      } },
+    { "id": "metahumanlab", "name": "METAHUMAN LAB", "kind": "open", "listed": false, "orbit": { "r": 0.38, "a": 2.7, "size": 0.02 },
+      "realm": {
+        "slug": "metahuman-lab",
+        "style": "lowpoly",
+        "clock": "fixed:0.0",
+        "title": "MetaHuman Lab",
+        "description": "MetaHuman Lab, a Verse world in the browser: one human figure on a lit studio floor, driven by a skeleton on the Unreal mannequin's joint names and playing twelve animation clips.",
+        "share": "A human figure on a skeleton with the Unreal mannequin's joint names, playing twelve clips on a studio floor.",
+        "alt": "MetaHuman Lab: a figure standing on a grey studio floor",
+        "module": "metahumanlab",
+        "slot": "metahuman-lab",
+        "golden": { "lit": 0.2, "settle": 3000, "blocks": 6 },
+        "assets": []
       } }
   ]
 }

@@ -1,7 +1,8 @@
 # MetaHuman support in Aethyr
 
-Status: design report, 2026-11-02. Nothing in this document is built yet.
-It covers how Aethyr, the Coax engine that every Verse realm runs on, loads,
+Status: design report, 2026-11-02. The first pieces are built: MetaHuman
+Lab and `aethyr/mannequin.coax` (see [MetaHuman Lab](#metahuman-lab)). The
+rest is not built yet. It covers how Aethyr, the Coax engine that every Verse realm runs on, loads,
 animates and draws Epic MetaHuman characters. It also covers a first plan for
 5E Lab (`openagents.com/worlds/5e-lab`) to draw MetaHumans in place of its
 analytic capsule figures.
@@ -454,6 +455,53 @@ No phase commits an asset.
    or move to the licensed-kit route (a pack served to every client and
    copied from the bucket at build time). Otherwise MetaHumans stay
    owner-only, and the public sees phase 1.
+
+## MetaHuman Lab
+
+`openagents.com/worlds/metahuman-lab` (unlisted) is the bench for phase 1.
+It holds no MetaHuman asset and draws with none.
+
+### Built
+
+- **The figure.** One human figure on a studio floor. Its skeleton and clips
+  are the CC0 people rig (`verse/everglade/people-rig.coax`: the Quaternius
+  male and female skeletons, 65 joints, and the Universal Animation
+  Library's 12 clips), played by `aethyr/skin.coax`. Its body is a building
+  block written in `apps/openagents-web/metahumanlab.coax`: 25 capsules, one
+  per bone, posed from the same joints, traced per pixel by
+  `gpu/metahumanlab.coax`. N and P cycle the clips; walk and run carry the
+  figure round a circle so the gait keeps pace with the floor. G switches
+  bodies, and K draws the skeleton over a glass body with the mannequin's
+  joint names.
+- **The camera.** Aethyr's orbit (`aethyr/shot.coax`) as 5E Lab uses it,
+  with its shoulder offset taken back out so the view centres on the
+  pivot: drag orbits, the wheel or a pinch zooms, Shift-drag or two fingers
+  pan, and held W, A, S, D, Q and E fly the pivot with eased speed.
+- **Joint names.** `aethyr/mannequin.coax` names the 65 joints in the rig's
+  order and folds another body's joint names onto them:
+  `spine_04` and `spine_05` into `spine_03`, `neck_02` into `neck_01`,
+  twist and corrective helpers into their bone on their side, metacarpals
+  into the hand, and -1 for anything else (the compiler's nearest kept
+  ancestor rule).
+
+### How a private pack plugs in next
+
+1. The pack compiler (`verse/tools/humans/pack_human.coax`, not built)
+   reads a MetaHuman body's joints and calls `mannequin_fold` on each name,
+   so the pack's skin weights land on the people rig's 65 joints. The
+   world's clips then play on it unchanged, because the joint order and
+   names are the same.
+2. The pack is written outside the repository and loaded only through the
+   private path: a gitignored local file on the owner's machine, or the
+   `verse-assets` broker for a granted reader key. MetaHuman Lab gets a
+   body source next to the two public bodies. When no pack is admitted,
+   that source is absent and the capsule body draws.
+3. A skinned mesh needs the raster pass the "rendering change" for 5E Lab
+   describes (`verse/gpu/human.coax`). The capsules stay as the fallback
+   and as the shadow and picking shapes.
+4. Renders of a private pack are never committed, used as goldens or
+   training data, or read by agents. The world's public golden shows the
+   capsule body only.
 
 ## 5E Lab
 

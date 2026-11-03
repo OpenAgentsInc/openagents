@@ -1,0 +1,3 @@
+--vertices mhlab_bg_vs,mhlab_fx_vs
+--fragments mhlab_bg_fs,mhlab_fx_fs
+--bindings apps/openagents-web/gpu/metahumanlab.bindings --strip mhlab_

@@ -1,0 +1,244 @@
+// MetaHuman Lab's shaders (metahumanlab.coax): build.sh writes apps/openagents-web/metahumanlab.wgsl
+// from this with coax/web/wgsl-module.coax (metahumanlab.module and metahumanlab.bindings beside it).
+#load "../../../verse/gpu/wgsl.coax";
+#load "../../../verse/style.coax";
+
+// bg_fs traces each pixel against the scene: a studio floor (a soft grey with a metre grid, fading
+// into the backdrop) and the figure, a capsule per bone posed from the skeleton (the ray tests the
+// figure's bounding sphere first). A sun ray from each lit point gives the figure's shadow. With
+// the skeleton overlay on, the body is drawn as glass: the scene behind it shows through, so the
+// overlay's bones read inside it. fx_vs/fx_fs draw the strokes metahumanlab.coax writes: the HUD
+// and the skeleton.
+// MhlabU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0: width, height, time, fade
+//   flags 4: the skeleton overlay (1 on), 0, the HUD strip's height and the key line's along the bottom (device px)
+//   eye 16: the camera's eye xyz (m), its focal length (px)
+//   fwd 20: forward xyz, the image centre's x (px)
+//   right 24: right xyz, the image centre's y (px)
+//   up 28: up xyz, 0
+//   sun 32: toward the sun xyz, 0
+//   bound 36: the figure's bounding sphere: centre xyz, radius
+//   head 40: the cranium's middle xyz, its radius; 44: the head's forward xyz; 48: its up xyz
+//   caps 52: twenty-six capsules, two vec4s each: (a xyz, radius; 0 for none), (b xyz, material:
+//            1 suit, 2 skin, 3 shoe, 4 head)
+MHLAB_CAPS :: 26;
+
+mhlab_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+
+// Whether a ray passes within r of c (from in front of it or inside it).
+mhlab_near :: (ro:V3,rd:V3,c:V3,r:f32)->bool {
+  oc:V3=sub3(ro,c);
+  b:f32=dot3(oc,rd);
+  k:f32=dot3(oc,oc)-(r*r);
+  if (k<0.0f32) { return true; }
+  if (b>0.0f32) { return false; }
+  return ((b*b)-k)>0.0f32;
+}
+// A ray's distance to a capsule from a to b, radius r, or -1.
+mhlab_capsule :: (ro:V3,rd:V3,a:V3,b:V3,r:f32)->f32 {
+  ba:V3=sub3(b,a);
+  oa:V3=sub3(ro,a);
+  baba:f32=fmax(dot3(ba,ba),0.0000001f32);
+  bard:f32=dot3(ba,rd);
+  baoa:f32=dot3(ba,oa);
+  rdoa:f32=dot3(rd,oa);
+  oaoa:f32=dot3(oa,oa);
+  qa:f32=baba-(bard*bard);
+  qb:f32=(baba*rdoa)-(baoa*bard);
+  qc:f32=((baba*oaoa)-(baoa*baoa))-((r*r)*baba);
+  h:f32=(qb*qb)-(qa*qc);
+  if (h<0.0f32) { return -1.0f32; }
+  t:f32=((-qb)-sqrt(h))/fmax(qa,0.000001f32);
+  y:f32=baoa+(t*bard);
+  if ((y>0.0f32)&&(y<baba)) {
+    if (t<0.0f32) { return -1.0f32; }
+    return t;
+  }
+  // the end caps
+  oc:V3=oa;
+  if (y>=baba) { oc=sub3(ro,b); }
+  b2:f32=dot3(rd,oc);
+  c2:f32=dot3(oc,oc)-(r*r);
+  h2:f32=(b2*b2)-c2;
+  if (h2<0.0f32) { return -1.0f32; }
+  t2:f32=(-b2)-sqrt(h2);
+  if (t2<0.0f32) { return -1.0f32; }
+  return t2;
+}
+mhlab_capsule_n :: (p:V3,a:V3,b:V3)->V3 {
+  ba:V3=sub3(b,a);
+  pa:V3=sub3(p,a);
+  h:f32=saturate(dot3(pa,ba)/fmax(dot3(ba,ba),0.000001f32));
+  return normalize3(sub3(pa,scale3(ba,h)));
+}
+// What a ray hits first: t (or 1e9), its normal, the material (0 floor, 1 suit, 2 skin, 3 shoe,
+// 4 head; -1 nothing) and which capsule. `shadow` leaves out the floor; `figure` false leaves out
+// the figure.
+MhlabHit :: struct {t:f32; n:V3; m:f32; who:f32; }
+mhlab_trace :: (ro:V3,rd:V3,u:[]f32,shadow:bool,figure:bool)->MhlabHit {
+  h:MhlabHit;
+  h.t=1000000000.0f32; h.n=v3(0.0f32,1.0f32,0.0f32); h.m=-1.0f32; h.who=-1.0f32;
+  if ((rd.y<(-0.0001f32))&&(!shadow)) {
+    h.t=(-ro.y)/rd.y; h.m=0.0f32;
+  }
+  bound:V4=wg_at4(u,36);
+  if (figure&&mhlab_near(ro,rd,v3(bound.x,bound.y,bound.z),bound.w)) {
+    i:int=0;
+    while i<MHLAB_CAPS {
+      ca:V4=wg_at4(u,52+(i*8));
+      cb:V4=wg_at4(u,56+(i*8));
+      if (ca.w>0.0f32) {
+        a:V3=v3(ca.x,ca.y,ca.z);
+        b:V3=v3(cb.x,cb.y,cb.z);
+        tc:f32=mhlab_capsule(ro,rd,a,b,ca.w);
+        if ((tc>0.0f32)&&(tc<h.t)) { h.t=tc; h.n=mhlab_capsule_n(add3(ro,scale3(rd,tc)),a,b); h.m=cb.w; h.who=cast(f32)i; }
+      }
+      i+=1;
+    }
+  }
+  return h;
+}
+
+// The backdrop: a studio's soft grey sweep, lighter toward the sun.
+mhlab_sky :: (rd:V3,sun:V3)->V3 {
+  up:f32=saturate(rd.y);
+  c:V3=mix3(v3(0.5f32,0.53f32,0.57f32),v3(0.2f32,0.23f32,0.29f32),pow(up,0.6f32));
+  c=add3(c,scale3(v3(1.0f32,0.9f32,0.75f32),verse_style_halo(dot3(rd,sun),6.0f32)*0.12f32));
+  return c;
+}
+// The floor at (x, z): pale grey, a line every metre and a fainter one every 25 cm near the middle.
+mhlab_floor :: (x:f32,z:f32)->V3 {
+  c:V3=v3(0.46f32,0.47f32,0.49f32);
+  c=scale3(c,0.94f32+(0.06f32*verse_style_noise(x*2.0f32,z*2.0f32)));
+  lx:f32=abs(fract(x+0.5f32)-0.5f32);
+  lz:f32=abs(fract(z+0.5f32)-0.5f32);
+  line:f32=1.0f32-smoothstep(0.004f32,0.014f32,fmin(lx,lz));
+  sx:f32=abs(fract((x*4.0f32)+0.5f32)-0.5f32)*0.25f32;
+  sz:f32=abs(fract((z*4.0f32)+0.5f32)-0.5f32)*0.25f32;
+  fine:f32=(1.0f32-smoothstep(0.002f32,0.008f32,fmin(sx,sz)))*(1.0f32-smoothstep(2.0f32,4.0f32,wg_length2(v2(x,z))));
+  c=mix3(c,v3(0.3f32,0.31f32,0.34f32),(line*0.55f32)+(fine*0.22f32));
+  return c;
+}
+
+// The colour a ray from the eye sees after hitting h.
+mhlab_shade :: (eye:V3,rd:V3,h:MhlabHit,u:[]f32,figure:bool)->V3 {
+  sun:V3=normalize3(wg_at3(u,32));
+  if (h.m<0.0f32) { return mhlab_sky(rd,sun); }
+  pos:V3=add3(eye,scale3(rd,h.t));
+  n:V3=h.n;
+  albedo:V3=v3(0.5f32,0.5f32,0.5f32);
+  spec:f32=0.0f32;
+  if (h.m<0.5f32) {
+    albedo=mhlab_floor(pos.x,pos.z);
+    // a soft dark pool under the figure
+    bound:V4=wg_at4(u,36);
+    d:f32=wg_length2(v2(pos.x-bound.x,pos.z-bound.z));
+    if (figure) { albedo=scale3(albedo,0.62f32+(0.38f32*smoothstep(0.05f32,0.75f32,d))); }
+  } else if (h.m<1.5f32) {
+    // the suit: a dark slate fabric, a seam down the sides
+    albedo=v3(0.13f32,0.15f32,0.19f32);
+    spec=0.12f32;
+  } else if (h.m<2.5f32) {
+    albedo=v3(0.72f32,0.5f32,0.4f32);
+    spec=0.2f32;
+  } else if (h.m<3.5f32) {
+    albedo=v3(0.06f32,0.06f32,0.07f32);
+    spec=0.3f32;
+  } else {
+    // the head: skin, with hair over the crown and back, brows and eyes on its forward side
+    albedo=v3(0.72f32,0.5f32,0.4f32);
+    spec=0.2f32;
+    hc:V3=wg_at3(u,40);
+    hf:V3=normalize3(wg_at3(u,44));
+    hu:V3=normalize3(wg_at3(u,48));
+    hs:V3=wg_cross3(hu,hf);
+    d:V3=normalize3(sub3(pos,hc));
+    fw:f32=dot3(d,hf); upw:f32=dot3(d,hu); side:f32=dot3(d,hs);
+    if (((upw>0.42f32)&&(fw<0.8f32))||((fw<(-0.15f32))&&(upw>(-0.55f32)))||((upw>0.15f32)&&(abs(side)>0.82f32))) {
+      albedo=v3(0.1f32,0.07f32,0.05f32); spec=0.35f32;
+    }
+    eye_d:f32=wg_length2(v2(abs(side)-0.34f32,upw-0.06f32));
+    if ((fw>0.7f32)&&(eye_d<0.075f32)) {
+      albedo=v3(0.9f32,0.88f32,0.85f32);
+      if (eye_d<0.045f32) { albedo=v3(0.18f32,0.26f32,0.32f32); }
+      if (eye_d<0.022f32) { albedo=v3(0.02f32,0.02f32,0.03f32); }
+      spec=0.8f32;
+    }
+    if ((fw>0.7f32)&&(abs(upw-0.2f32)<0.025f32)&&(abs(abs(side)-0.34f32)<0.11f32)) { albedo=v3(0.12f32,0.08f32,0.06f32); }
+  }
+  // the sun: a soft wrap, the shadow ray's answer folded in, a cool sky fill and a rim
+  ndl:f32=dot3(n,sun);
+  lit:f32=1.0f32;
+  if (ndl>0.0f32) {
+    sh:MhlabHit=mhlab_trace(add3(pos,scale3(n,0.01f32)),sun,u,true,figure);
+    if (sh.m>0.0f32) { lit=0.0f32; }
+  }
+  w:f32=verse_style_wrap(ndl)*lit;
+  amb:f32=verse_style_ambient(n.y,1.0f32,0.5f32,1.0f32);
+  sky:V3=scale3(v3(0.42f32,0.48f32,0.6f32),0.5f32*amb);
+  key:V3=scale3(v3(1.0f32,0.93f32,0.82f32),1.35f32*w);
+  c:V3=v3(albedo.x*(sky.x+key.x),albedo.y*(sky.y+key.y),albedo.z*(sky.z+key.z));
+  v:V3=scale3(rd,-1.0f32);
+  if (h.m>0.5f32) {
+    hv:V3=normalize3(add3(sun,v));
+    c=add3(c,scale3(v3(1.0f32,0.95f32,0.88f32),spec*pow(saturate(dot3(n,hv)),24.0f32)*lit));
+    rim:f32=pow(1.0f32-saturate(dot3(n,v)),3.0f32);
+    c=add3(c,scale3(v3(0.55f32,0.65f32,0.85f32),rim*0.25f32));
+  }
+  // the floor fades into the backdrop far off
+  fog:f32=1.0f32-exp((-h.t)*0.035f32);
+  return mix3(c,mhlab_sky(rd,sun),fog);
+}
+
+mhlab_scene :: (p:V2,u:[]f32)->V3 {
+  eye:V3=wg_at3(u,16);
+  f:f32=fmax(u[19],1.0f32);
+  fwd:V3=wg_at3(u,20);
+  right:V3=wg_at3(u,24);
+  up:V3=wg_at3(u,28);
+  rd:V3=normalize3(add3(fwd,add3(scale3(right,(p.x-u[23])/f),scale3(up,(u[27]-p.y)/f))));
+  h:MhlabHit=mhlab_trace(eye,rd,u,false,true);
+  c:V3=mhlab_shade(eye,rd,h,u,true);
+  // the skeleton overlay: the body as glass over what is behind it
+  if ((u[4]>0.5f32)&&(h.m>0.5f32)) {
+    back:MhlabHit=mhlab_trace(eye,rd,u,false,false);
+    behind:V3=mhlab_shade(eye,rd,back,u,false);
+    c=mix3(behind,scale3(c,0.8f32),0.32f32);
+  }
+  return c;
+}
+
+mhlab_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  p:V2=v2(pos.x,pos.y);
+  c:V3=mhlab_scene(p,u);
+  c=v3(verse_style_tone(c.x,1.2f32),verse_style_tone(c.y,1.2f32),verse_style_tone(c.z,1.2f32));
+  // the HUD's strip along the top and the key line's along the bottom: dark glass, so their text reads
+  if ((p.y<u[6])||(p.y>(u[1]-u[7]))) { c=add3(scale3(c,0.22f32),v3(0.01f32,0.012f32,0.016f32)); }
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+MhlabV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+mhlab_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+mhlab_fx_vs :: (_vid2:u32,_iid3:u32,in_:mhlab_fx_vs_in,u:[]f32)->MhlabV {
+  a:V4=in_.a;
+  o:MhlabV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=in_.b;
+  o.tint=in_.c;
+  o.bar=in_.d;
+  return o;
+}
+// A capsule stroke: shape.x its length, y its core's half width, z its light, w its glow's reach.
+mhlab_fx_fs :: (v:MhlabV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return mhlab_make_f4_f3f(scale3(scale3(scale3(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+mhlab_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
