@@ -493,7 +493,7 @@ fx_feat :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) -> bool {
   if f == RS_FT_LANDS_AID {
     if e.kind == RS_EV_ZONE {
       mid := f32(e.amount - 1) / 2;
-      fx_cause(s, FXR_THORNS, seed, t0, hand, fxp_v(wx(f32(e.x) + mid), 0, wz(f32(e.y) + mid)), fxp_v(0.35, 0.9, 0.4), 1, f32(e.amount) * f32(SQ) / 2);
+      fx_cause(s, FXR_THORNS, seed, t0, hand, fxp_v(wx(s, f32(e.x) + mid), 0, wz(s, f32(e.y) + mid)), fxp_v(0.35, 0.9, 0.4), 1, f32(e.amount) * f32(SQ) / 2);
       return true;
     }
     return e.kind == RS_EV_CAST;   // the sphere shows it; its healing shows on its HEAL
@@ -1991,7 +1991,7 @@ draw_fx3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   for i: 0..<s[0].battle[0].n {
     lf := fx_lasting(s, i);
     if lf == 0 { continue; }
-    feet := fxp_v(wx(s[0].dx[i]), 0, wz(s[0].dy[i]));
+    feet := fxp_v(wx(s, s[0].dx[i]), 0, wz(s, s[0].dy[i]));
     fxp_status(pf, feet, fxp_v(feet.x + 0.3, 1.1, feet.z), lf, now, f32(i) * 1.37 + 0.4);
   }
   rep := fxp_close(pf);
