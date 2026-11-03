@@ -88,3 +88,7 @@ names it.
 
 See [SUMMARY.md](SUMMARY.md) for the chapter list and [PLAN.md](PLAN.md) for
 what each chapter builds and checks.
+
+The [2026-11-03 review and roadmap](../../docs/coder/2026-11-03-book-review-and-roadmap.md)
+assesses the book's guarantees, live integration and measurements, with
+prioritized proposed work items and acceptance criteria.
