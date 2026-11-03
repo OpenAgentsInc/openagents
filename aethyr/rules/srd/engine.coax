@@ -134,8 +134,8 @@ RS_CLASS :: [13] string.["Druid", "Wizard", "Warlock", "Barbarian", "Monk", "Mon
 // Surge, free casts of one spell (Paladin's Smite, Favored Enemy), Sorcery Points, Innate Sorcery,
 // Wild Shape (spent on Land's Aid), and the Lay On Hands pool (Hit Points).
 RS_USE_CHANNEL :: 0; RS_USE_INSPIRE :: 1; RS_USE_WIND :: 2; RS_USE_SURGE :: 3; RS_USE_FREE :: 4;
-RS_USE_SORCERY :: 5; RS_USE_INNATE :: 6; RS_USE_WILD :: 7; RS_USE_LAY :: 8;
-RS_USES :: 9;
+RS_USE_SORCERY :: 5; RS_USE_INNATE :: 6; RS_USE_WILD :: 7; RS_USE_LAY :: 8; RS_USE_WHOLE :: 9;
+RS_USES :: 10;
 
 // Weapons a creature attacks with: the SRD's weapon table (p. 90) and Unarmed Strike. A Monk's
 // Unarmed Strike rolls its Martial Arts die in place of the 1 + Strength of anyone else's.
@@ -210,6 +210,11 @@ RsCreature :: struct {
   // (CS_*, the deciding routine sets it) and a Poisoner's Kit for its Poison; Uncanny Dodge
   expertise: int; cant: bool; fast_hands: bool; climb: int;
   cunning_strike: bool; strike_plan: int; poison_kit: bool; uncanny: bool;
+  // the Monk's: Uncanny Metabolism (on Initiative: all Focus back, and Martial Arts die + level Hit
+  // Points; a battle here starts fresh, so it changes nothing), Slow Fall (falls only), Stunning
+  // Strike (stun_ready: the deciding routine wants it on its next hit), Empowered Strikes; a Stunning
+  // Strike saved against halves Speed until (halved_until)
+  metabolism: bool; slow_fall: bool; stunning: bool; stun_ready: bool; empowered: bool; halved_until: f32;
   // Paladin: Sacred Weapon (Channel Divinity) until; Ranger: the Hunter's Colossus Slayer
   sacred_until: f32; colossus: bool;
   // Rogue: Sneak Attack dice (d6s), Cunning Action, Steady Aim
@@ -386,17 +391,25 @@ rs_monk :: (name: string, team: int, level: int) -> RsCreature {
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level; c[0].klass = RS_MONK; c[0].humanoid = true; c[0].ranged = -1;
   c[0].score = [6] int.[12, 16, 13, 10, 14, 8];
+  // an Ability Score Improvement at 4 (the feat, p. 87): Dexterity +2
+  if level >= 4 { c[0].score[RS_DEX] = rs_min(c[0].score[RS_DEX] + 2, 20); }
   c[0].save_prof[RS_STR] = true; c[0].save_prof[RS_DEX] = true;
   con := rs_mod(c[0].score[RS_CON]);
   c[0].hp_max = 8 + con + (level - 1) * (5 + con);
   c[0].hp = c[0].hp_max;
   c[0].ac = 10 + rs_mod(c[0].score[RS_DEX]) + rs_mod(c[0].score[RS_WIS]);
-  c[0].speed = 30 + ifx level >= 2 then 10 else 0;
+  // Unarmored Movement (p. 50-51): +10 feet from level 2, +15 from 6
+  c[0].speed = 30 + ifx level >= 6 then 15 else ifx level >= 2 then 10 else 0;
   c[0].spell_ability = -1;
   c[0].weapon = W_UNARMED;
   c[0].martial_die = ifx level >= 17 then 12 else ifx level >= 11 then 10 else ifx level >= 5 then 8 else 6;
   c[0].focus_max = ifx level >= 2 then level else 0; c[0].focus = c[0].focus_max;
   c[0].deflect = level >= 3; c[0].open_hand = level >= 3;
+  // Uncanny Metabolism at 2, Slow Fall at 4, Extra Attack and Stunning Strike at 5, Empowered
+  // Strikes at 6 (p. 51); the Open Hand's Wholeness of Body at 6 (p. 52): Wisdom modifier uses
+  c[0].metabolism = level >= 2; c[0].slow_fall = level >= 4; c[0].stunning = level >= 5; c[0].empowered = level >= 6;
+  if level >= 5 { c[0].extra_attack = 1; }
+  if level >= 6 { rs_use_set(c[..], RS_USE_WHOLE, rs_max(rs_mod(c[0].score[RS_WIS]), 1)); }
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }

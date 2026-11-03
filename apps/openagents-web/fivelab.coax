@@ -569,7 +569,11 @@ monk_turn :: (s: [] Lab, i: int) {
   }
   j := foe_at_hand(s, i, -1);
   if j < 0 { return; }
+  // from level 5, a Stunning Strike on its hits while it has Focus to spare; from 6, Wholeness of
+  // Body when badly hurt
+  b[0].c[i].stun_ready = b[0].c[i].focus > 2;
   ok := rs_attack(b, i, j, false, -1);
+  if b[0].c[i].hp * 5 < b[0].c[i].hp_max * 2 { ok = rs_wholeness(b, i); }
   brute := false;
   for k: 0..<b[0].n {
     c := b[0].c[k];
