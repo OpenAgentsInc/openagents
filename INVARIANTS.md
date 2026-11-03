@@ -3579,7 +3579,9 @@ Since #12659 the units without a cached result are checked alone in forked
 children, up to the core count (`$COAX_CHECK_JOBS`). A unit's child starts
 only after every unit before it in the sequential order that it loads has a
 verdict, and a child sees only its own closure, so the verdicts, cache
-records, C and diagnostics are the sequential ones for any job count.
+records, C and diagnostics are the sequential ones for any job count. The
+compiler's own SHA-256 (part of every key) is computed on a thread while the
+sources load and lex; reading it, and every fork, waits for that thread.
 
 Check: `coax/tests/library-checks.coax` (a first compile checks both loaded
 units, a second reuses both, a new cache gives the same C; the C has the

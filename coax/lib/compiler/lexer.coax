@@ -71,9 +71,9 @@ LX_divide53 :: (numerator:[] u32,denominator:[] u32)->u64 {
   for j:0..<53 {bit:=52-j;if LX_big_cmp(numerator,denominator,bit)>=0 {LX_big_sub(numerator,denominator,bit);quotient=quotient | (cast(u64)1<<bit);}}
   return quotient;
 }
-LX_decimal :: (text:string)->u64 #export_c {
-  numerator:[128] u32;denominator:[128] u32;denominator[0]=1;
-  parsed:=LX_read_decimal(text,numerator[..]);
+// The rounding of a read decimal: numerator holds its kept digits and
+// denominator 1, both wide enough for every value the steps below make.
+LX_convert :: (parsed:LX_Decimal,numerator:[] u32,denominator:[] u32)->u64 {
   significant:=parsed.significant;fraction:=parsed.fraction;kept:=parsed.kept;exponent:=parsed.exponent;sticky:=parsed.sticky;
   if significant==0 {return 0;}
   position:=significant-fraction+exponent;
@@ -92,6 +92,31 @@ LX_decimal :: (text:string)->u64 #export_c {
   if quotient==9007199254740992 {binary_exp+=1;}
   return (cast(u64)(binary_exp+1023)<<52) | (quotient&4503599627370495);
 }
+// The bignum path: 128 limbs hold 800 kept digits and every scaled operand.
+LX_decimal_big :: (text:string)->u64 {
+  numerator:[128] u32;denominator:[128] u32;denominator[0]=1;
+  return LX_convert(LX_read_decimal(text,numerator[..]),numerator[..],denominator[..]);
+}
+// Short decimals take the same steps in 8 limbs (256 bits): at most 15
+// significant digits (below 2^50) and a decimal exponent of at most 22 in
+// size (10^22 is below 2^74). A value under 1 then has a scale of at most
+// 126 bits, so the numerator stays below 2^176, the denominator (10^22,
+// shifted by at most 52 while dividing) below 2^126; a value of at least 1
+// is below 2^124 and its denominator below 2^72 before the same 52-bit
+// shift. Every operand fits, so the bits are the bignum path's, at a sixteenth
+// of the limb work. Anything else takes the bignum path.
+LX_fast :: (parsed:LX_Decimal)->bool {
+  scale:=parsed.exponent-parsed.fraction;
+  return parsed.significant<=15 && scale<=22 && scale>= -22;
+}
+LX_Converted :: struct {bits:u64;fast:bool;}
+LX_convert_text :: (text:string)->LX_Converted {
+  numerator:[8] u32;denominator:[8] u32;denominator[0]=1;
+  parsed:=LX_read_decimal(text,numerator[..]);
+  if LX_fast(parsed) {return LX_Converted.{bits=LX_convert(parsed,numerator[..],denominator[..]),fast=true};}
+  return LX_Converted.{bits=LX_decimal_big(text)};
+}
+LX_decimal :: (text:string)->u64 #export_c {return LX_convert_text(text).bits;}
 
 LX_Kind :: enum u8 {
   k_eof = 0;
@@ -1044,6 +1069,51 @@ LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #exp
 #test "decimal exponent and boundary 15" {#assert LX_decimal("1e")==0x3ff0000000000000;}
 
 #test "decimal exponent and boundary 16" {#assert LX_decimal("1.2e+")==0x3ff3333333333333;}
+
+#test "short decimals: 15 significant digits and a decimal exponent of 22 at most" {
+  n:[128] u32;
+  #assert LX_fast(LX_read_decimal("123456789012345",n[..])) && !LX_fast(LX_read_decimal("1234567890123456",n[..]));
+  #assert LX_fast(LX_read_decimal("0001.50000000000000",n[..])) && !LX_fast(LX_read_decimal("1.500000000000000",n[..]));
+  #assert LX_fast(LX_read_decimal("1e22",n[..])) && !LX_fast(LX_read_decimal("1e23",n[..]));
+  #assert LX_fast(LX_read_decimal("1e-22",n[..])) && !LX_fast(LX_read_decimal("1e-23",n[..]));
+  #assert LX_fast(LX_read_decimal("1.5e23",n[..])) && !LX_fast(LX_read_decimal("0.15e-21",n[..]));
+  #assert LX_fast(LX_read_decimal("0.0",n[..])) && !LX_fast(LX_read_decimal("0e99999",n[..]));
+}
+
+#test "short decimals round as the bignum path does: halfway, 2^53, extremes" {
+  // 36028797018964100 and ...300 lie halfway between doubles 8 apart: ties to even, down then up.
+  #assert LX_decimal("360287970189641e2")==0x4360000000000010 && LX_decimal("360287970189643e2")==0x436000000000002a;
+  #assert LX_decimal("720575940379279e2")==0x436ffffffffffffc && LX_decimal("900719925474099e1")==0x433ffffffffffffe;
+  #assert LX_decimal("999999999999999e22")==0x479e17b843576913 && LX_decimal("1e22")==0x4480f0cf064dd592;
+  #assert LX_decimal("1e-22")==0x3b5e392010175ee6 && LX_decimal("999999999999999e-22")==0x3e7ad7f29abcaf41;
+  #assert LX_decimal("123456789012345e-22")==0x3e4a831bd731a260 && LX_decimal("1.5e-7")==0x3e8421f5f40d8376;
+  #assert LX_convert_text("360287970189641e2").fast && LX_convert_text("1e-22").fast && LX_convert_text("0.0").bits==0;
+  // Past the short form: the bignum path, as before.
+  #assert !LX_convert_text("9007199254740993").fast && LX_decimal("9007199254740993")==0x4340000000000000;
+  #assert !LX_convert_text("4.9e-324").fast && LX_decimal("4.9e-324")==1;
+  #assert !LX_convert_text("2.2250738585072011e-308").fast && LX_decimal("2.2250738585072011e-308")==0xfffffffffffff;
+  #assert !LX_convert_text("1e23").fast && LX_decimal("1e23")==0x44b52d02c7e14af6;
+  #assert !LX_convert_text("7.205759403792795e16").fast && LX_decimal("7.205759403792795e16")==0x4370000000000001;
+}
+
+// Pseudo-random short decimals of each length from 1 to 15 digits, with the
+// dot anywhere, at every decimal exponent from -22 to 22: the short path's
+// bits are the bignum path's.
+#forall "short decimals round as the bignum path does" seed:0..<15, scale:-22..<23 #steps 600000000 {
+  text:[48] u8;count:=0;v:=seed*7919+(scale+22)*104729+1;digits:=1+seed%15;
+  v=(v*1103515245+12345)%2147483648;dot:=v%(digits+1);
+  for i:0..<digits {
+    if i==dot {text[count]=46;count+=1;}
+    v=(v*1103515245+12345)%2147483648;text[count]=cast(u8)(48+(v>>16)%10);count+=1;
+  }
+  if dot==digits {text[count]=46;count+=1;}
+  exponent:=scale+digits-dot;text[count]=101;count+=1;
+  if exponent<0 {text[count]=45;count+=1;exponent=-exponent;}
+  if exponent>=10 {text[count]=cast(u8)(48+exponent/10);count+=1;}
+  text[count]=cast(u8)(48+exponent%10);count+=1;
+  r:=LX_convert_text(cast(string)text[0..<count]);
+  #assert r.fast && r.bits==LX_decimal_big(cast(string)text[0..<count]);
+}
 
 #test "limbs, modular borrow and comparison boundaries" {
   a:=[3] u32.[0,0x89abcdef,0];b:[3] u32;

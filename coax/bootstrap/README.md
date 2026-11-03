@@ -43,7 +43,13 @@ in fixed 128-word unsigned limbs, scales a rational value and rounds to
 binary64, nearest ties to even. This exceeds the 768 significant digits needed
 to distinguish binary64 decimal rounding boundaries; see the primary
 [algorithm discussion](https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-float/docs/Algorithm.md#other-optimizations).
-No implementation was copied from that library. Native tests independently
+No implementation was copied from that library. A short decimal (at most 15
+significant digits, a decimal exponent of at most 22 either way) takes the same
+steps in 8 limbs instead of 128: every operand stays below 2^176, so its bits
+are the bignum path's at a sixteenth of the work (#12659). A `#forall` in
+`lexer.coax` compares both paths over each length and exponent, and the
+native tests compare 200,000 random short decimals and 1,000 exact halfway
+cases with Python's float conversion. Native tests independently
 compare against Python's float conversion and exact Decimal-generated
 midpoints, including values longer than the retained significand. Typed f32
 conversion continues to use the frontend's binary64 value plus its f32 hint.

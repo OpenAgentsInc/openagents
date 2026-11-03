@@ -104,6 +104,21 @@ class Lexer(unittest.TestCase):
         for text in ('1_2.3_4e+2','1e999999999999999999999','0e999999999999999999999','1e-999999999999999999999'):
             self.assertEqual(self.number(text),float_bits(float(text.replace('_',''))),text)
 
+    def test_short_decimals_against_float(self):
+        # LX_decimal's 8-limb path: at most 15 significant digits and a
+        # decimal exponent of at most 22 either way, then just past it.
+        rng=random.Random(12659)
+        for _ in range(200000):
+            digits=''.join(str(rng.randrange(10)) for _ in range(rng.randrange(1,16)))
+            at=rng.randrange(len(digits)+1);scale=rng.randrange(-23,24)
+            text=digits[:at]+'.'+digits[at:]+'e'+str(scale+len(digits)-at)
+            self.assertEqual(self.number(text),float_bits(float(text)),text)
+        # Odd 15-digit mantissas times 100 between 2^55 and 2^56 lie halfway
+        # between doubles 8 apart.
+        for m in range(360287970189641,360287970189641+2000,2):
+            text='%de2'%m
+            self.assertEqual(self.number(text),float_bits(float(text)),text)
+
     def test_exact_midpoints_and_more_than_800_significant_digits(self):
         cases=[0,1,2,3,0x000fffffffffffff,0x0010000000000000,0x3fefffffffffffff,0x3ff0000000000000,0x7feffffffffffffe]
         with localcontext() as context:

@@ -99,6 +99,8 @@ struct TimedLaps {
 #include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <pthread.h>
+#include <thread>
 
 extern char **environ;
 
@@ -972,11 +974,34 @@ static std::string library_cache_dir() {
 
 // The SHA-256 of this compiler's executable, once a process; "" in the
 // build-only stage0, which can't hash itself and so keeps no verdicts.
+// Hashing the executable takes most of a second, so a compile that keeps
+// check verdicts starts it on a thread (compiler_hash_start) while its
+// sources load and lex. compiler_hash waits for that thread, and so does
+// every fork (pthread_atfork), so a child never inherits it half done. The
+// thread and its result are never freed: a compile that stops early exits
+// with it still running, and nothing it touches is destroyed at exit.
+static std::thread *g_hash_thread = nullptr;
+static std::string *g_hash_result = nullptr;
+static void compiler_hash_join() {
+  if (g_hash_thread && g_hash_thread->joinable()) g_hash_thread->join();
+}
+static void compiler_hash_start() {
+#ifndef COAX_BOOTSTRAP_IMPORTER
+  if (g_hash_thread) return;
+  const std::string path = executable_path();
+  g_hash_result = new std::string;
+  g_hash_thread = new std::thread([path] { *g_hash_result = profile_file_hash(path); });
+  pthread_atfork(compiler_hash_join, nullptr, nullptr);
+#endif
+}
 static std::string compiler_hash() {
   static std::string hash;
   static bool known = false;
 #ifndef COAX_BOOTSTRAP_IMPORTER
-  if (!known) hash = profile_file_hash(executable_path());
+  if (!known) {
+    compiler_hash_join();
+    hash = g_hash_result ? *g_hash_result : profile_file_hash(executable_path());
+  }
 #endif
   known = true;
   return hash;
@@ -1423,6 +1448,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   Arena arena;
   File file;
   g_library_checks = what == Output::c || what == Output::header || what == Output::none;
+  if (g_library_checks) compiler_hash_start();
   if (!front_end(path, &src, &arena, &file, opts, library)) return false;
   if (what == Output::declarations || what == Output::modules) {
     LegacySumInventory inventory;
