@@ -14,6 +14,12 @@ links `libpsionic-parakeet.a`, and only final text is inserted. D0/D1 and
 D3/D4 are not completed by the Mac integration; the proposed latency targets
 are still targets. [Checks and limits](../verification/coder-dictation-2026-11-02/README.md).
 
+The default `openagents transcribe FILE` now also selects local Parakeet.
+[CLI setup and limits](../../psionic/docs/parakeet.md) are separate from
+D0 microphone capture; bounded long-file text/JSON/SRT/VTT is implemented,
+while changing the file backend does not implement microphone dictation or
+real streaming. Explicit Whisper compatibility remains available.
+
 This document does three things:
 
 1. It summarizes [Hex](https://github.com/anomalyco/hex), anomalyco's local
@@ -88,7 +94,7 @@ Two measured facts from Hex matter most for us:
 
 | Piece | State | Where |
 | --- | --- | --- |
-| Psionic Whisper (`tiny`…`large-v3-turbo`), beam search, word bias (`--words`), CPU and Metal; WER at or below whisper.cpp | Shipped, `openagents transcribe` default | `psionic/lib/whisper/`, [transcribe.md](../../psionic/docs/transcribe.md), #12614 |
+| Psionic Whisper (`tiny`…`large-v3-turbo`), beam search, word bias (`--words`), CPU and Metal; WER at or below whisper.cpp | Shipped historical profile; explicit `--backend psionic` compatibility | `psionic/lib/whisper/`, [transcribe.md](../../psionic/docs/transcribe.md), #12614 |
 | `psionic-stt.h`: open a model once, transcribe 16 kHz samples in process | Shipped, used by the voice host (#12622) | `psionic/platform/psionic-stt.h` |
 | Speed in the voice host: 184–240 ms per recognition of up to 4.3 s on `base.en` with the GPU encoder; re-recognizing every second makes the final ready when the turn ends | Measured | transcribe.md, "Engine API for in-game voice" |
 | Voice engine: resample to 16 kHz, levels, noise floor, VAD, end of turn, barge-in | Shipped | `verse/voice.coax`, `verse/platform/voice.h` |

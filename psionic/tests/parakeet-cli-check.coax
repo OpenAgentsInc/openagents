@@ -11,18 +11,33 @@ tool_main :: ()->int #export_c {
  if !fs_mkdir(model) || !fs_write(wav,"fixture: no speech inference occurs") {return 3;}
  env:[2048]u8;prefix:="OPENAGENTS_PARAKEET_CLI=";for i:0..<prefix.count {env[i]=prefix[i];}for i:0..<fixture.count {env[prefix.count+i]=fixture[i];}binding:=cast(string)env[0..<prefix.count+fixture.count];
  out:[32768]u8;err:[32768]u8;checks:=0;
- for json:0..<2 {for cpu:0..<2 {
-  argv:=[12]string.["env",binding,cli,"transcribe",wav,"--backend","parakeet","--model-dir",model,ifx json==1 then "--json" else "--text","--device",ifx cpu==1 then "cpu" else "gpu"];
+ flags_ok:=[4]string.["--text","--srt","--vtt","--json"];expected_ok:=[4]string.["fixture transcript","fixture subtitle SRT","fixture subtitle VTT","{\"text\":\"fixture transcript\",\"backend\":\"parakeet\"}"];
+ for format:0..<4 {for cpu:0..<2 {
+  argv:=[12]string.["env",binding,cli,"transcribe",wav,"--backend","parakeet","--model-dir",model,flags_ok[format],"--device",ifx cpu==1 then "cpu" else "gpu"];
   // proc_run transports complete lines without the terminal newline.
-  r:=proc_run(argv[..],10000,out[..],err[..]);expected:=ifx json==1 then "{\"text\":\"fixture transcript\",\"backend\":\"parakeet\"}" else "fixture transcript";
+  r:=proc_run(argv[..],10000,out[..],err[..]);expected:=expected_ok[format];
   if r.started!=0 || r.status!=0 || r.timed_out || cast(string)out[0..<r.out_n]!=expected {print("transport refused: started=% status=% timed_out=% bytes=% expected=% out=[%]\n",r.started,r.status,r.timed_out,r.out_n,expected.count,cast(string)out[0..<r.out_n]);tool_errln(cast(string)err[0..<r.err_n]);return 4;}checks+=1;
  }}
  // Flags before the domain/file exercise the shared positional parser too.
  before:=[12]string.["env",binding,cli,"--model-dir",model,"--backend","parakeet","transcribe",wav,"--text","--device","gpu"];
  before_run:=proc_run(before[..],10000,out[..],err[..]);if before_run.status!=0 || cast(string)out[0..<before_run.out_n]!="fixture transcript" {return 7;}checks+=1;
- flags:=[7]string.["--srt","--vtt","--language","--words","--prompt","--model","--threads"];
- values:=[7]string.["","","en","Coax","rewrite","tiny","8"];
- for i:0..<7 {
+ // The ordinary command has the same Parakeet ABI, with no Whisper effect.
+ for json:0..<2 {
+  argv:=[10]string.["env",binding,cli,"transcribe",wav,"--model-dir",model,ifx json==1 then "--json" else "--text","--device","gpu"];
+  got:=proc_run(argv[..],10000,out[..],err[..]);expected:=ifx json==1 then "{\"text\":\"fixture transcript\",\"backend\":\"parakeet\"}" else "fixture transcript";
+  if got.status!=0 || got.timed_out || cast(string)out[0..<got.out_n]!=expected {return 8;}checks+=1;
+ }
+ no_fetch:=[5]string.[cli,"transcribe","fetch","tiny","--json"];
+ fetch:=proc_run(no_fetch[..],10000,out[..],err[..]);if fetch.status!=2 || fetch.timed_out {return 9;}checks+=1;
+ unknown:=[7]string.[cli,"transcribe",wav,"--backend","auto","--model-dir",model];
+ bad:=proc_run(unknown[..],10000,out[..],err[..]);if bad.status!=2 || bad.timed_out {return 10;}checks+=1;
+ for legacy:[2]string.["psionic","whispercpp"] {
+  argv:=[9]string.[cli,"transcribe",wav,"--backend",legacy,"--model-dir",model,"--model","base"];
+  got:=proc_run(argv[..],10000,out[..],err[..]);if got.status!=2 || got.timed_out {return 11;}checks+=1;
+ }
+ flags:=[5]string.["--language","--words","--prompt","--model","--threads"];
+ values:=[5]string.["en","Coax","rewrite","tiny","8"];
+ for i:0..<5 {
   argv:=[11]string.["env",binding,cli,"transcribe",wav,"--backend","parakeet","--model-dir",model,flags[i],values[i]];
   r:=proc_run(argv[0..<ifx values[i]=="" then 10 else 11],10000,out[..],err[..]);if r.status!=2 || r.timed_out {return 5;}checks+=1;
  }

@@ -1,0 +1,7 @@
+format0: exit0 bytes71
+format1: exit0 bytes368
+format2: exit0 bytes358
+format3: exit0 bytes1642
+injected fault0: exit1 stdout0
+injected fault1: exit130 stdout0
+Parakeet native file effects: 11 cases PASS; model ABI fixture only, no inference

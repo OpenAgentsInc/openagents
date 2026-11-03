@@ -1,0 +1,3 @@
+ok   #test Parakeet file WAV windows preserve samples and reject truncated or misaligned data (1 case, 3996374 steps, 82 ms)
+1 of 17 checks (--only 'Parakeet file WAV windows'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

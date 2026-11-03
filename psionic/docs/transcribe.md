@@ -1,4 +1,41 @@
-# Transcription: Whisper in Psionic
+# Transcription: local Parakeet by default
+
+Current behavior, 2026-11-02: `openagents transcribe FILE` selects the pinned
+original Parakeet TDT v3 engine, with automatic language and the local Metal
+encoder/Coax decoder. It does not fetch a model, invoke a Whisper executable or
+fall back after an error. Follow [the exact model setup](parakeet.md), then:
+
+```shell
+openagents transcribe clip.wav
+openagents transcribe clip.wav --model-dir /path/to/pinned-parakeet --json
+openagents transcribe models
+```
+
+The file path accepts text, JSON, SRT and WebVTT through exact bounded offline
+windows, each 320..327,520 resampled mono 16 kHz samples. A final remainder
+shorter than 320 samples is redistributed from the previous window. No sample
+is silently discarded, duplicated or padded. There are at most 4,096 windows;
+the OpenAgents wrapper additionally enforces 14 minutes and 4 MiB of output.
+[File policy, native checks and reference evidence](../../docs/verification/parakeet-file-cli-2026-11-02/README.md)
+cover a 180-second file and speech crossing an actual window boundary.
+
+`--json` uses `openagents.parakeet.file.v1`, with a complete flag, each window's
+exact sample range and token/frame/global-sample metadata. The earlier
+single-window top-level metadata remains available. SRT/VTT have one nonempty
+cue per window, bounded by its first/last token emission frame and actual audio
+bounds. An encoded frame is 1,280 samples (80 ms); this is not forced word
+alignment. Punctuation can emit much later than the spoken word. Windows use
+independent full-attention requests; they are not causal streaming or equivalent
+to full-context decoding.
+`--backend psionic` and `--backend whispercpp` deliberately retain the earlier
+Whisper contracts, including their explicit model/fetch and subtitle behavior.
+They are compatibility/oracle paths, not hidden alternatives to Parakeet.
+
+## Historical Whisper qualification (2026-11-01)
+
+The following record describes the earlier default and its original tests.
+Its numerical results and evidence retain that scope; it does not describe
+what an unqualified transcription command selects today.
 
 Status, 2026-11-01: Psionic's Whisper transcribes end to end
 and is the CLI's default (`openagents transcribe FILE`), with beam search,

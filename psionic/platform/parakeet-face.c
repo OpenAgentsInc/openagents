@@ -139,16 +139,6 @@ static int write_bytes(const char *path,const void *data,size_t bytes){FILE*f=fo
 static int dump(psionic_parakeet *s,const char *prefix){char path[4096],json[JSON_MAX];if(!psionic_parakeet_json(s,json,sizeof json))return 0;
  snprintf(path,sizeof path,"%s.tokens.json",prefix);if(!write_bytes(path,json,strlen(json)))return 0;
  if(s->info.samples){snprintf(path,sizeof path,"%s.features.f32",prefix);if(!write_bytes(path,s->last_features,(size_t)s->info.feature_frames*128*4))return 0;snprintf(path,sizeof path,"%s.encoded.f32",prefix);if(!write_bytes(path,s->last_encoded,(size_t)s->info.encoded_frames*1024*4))return 0;}return 1;}
-int main(int argc,char **argv){
- if(argc<4||strcmp(argv[1],"transcribe")){fprintf(stderr,"usage: psionic-parakeet transcribe MODEL_DIR WAV [--gpu|--cpu] [--text|--json] [--dump-prefix PATH]\n");return 2;}
- int gpu=0,json_out=0;const char *prefix=NULL;for(int i=4;i<argc;i++){if(!strcmp(argv[i],"--gpu"))gpu=1;else if(!strcmp(argv[i],"--cpu"))gpu=0;else if(!strcmp(argv[i],"--text"))json_out=0;else if(!strcmp(argv[i],"--json"))json_out=1;else if(!strcmp(argv[i],"--dump-prefix")&&i+1<argc)prefix=argv[++i];else {fprintf(stderr,"unsupported Parakeet option: %s\n",argv[i]);return 2;}}
- mapped wav=map_file(argv[3]);if(!wav.data){fprintf(stderr,"cannot map WAV\n");return 65;}coax_t_WvInfo info=pkrt_wav_info((coax_v_u8){wav.data,wav.size});int64_t n=info.status==COAX_WvStatus_ok?pkrt_wav_length(info.frames,info.rate):-1;
- if(!pkrt_audio_count(n)){fprintf(stderr,"WAV refused: need320..327520 resampled16kHz mono samples (20.47s maximum)\n");unmap(wav);return 65;}
- float *mono=calloc((size_t)info.frames,4),*samples=calloc((size_t)n,4);if(!mono||!samples||pkrt_wav((coax_v_u8){wav.data,wav.size},(coax_v_f32){mono,info.frames},(coax_v_f32){samples,n})!=n){fprintf(stderr,"WAV conversion refused\n");free(mono);free(samples);unmap(wav);return 65;}free(mono);unmap(wav);
- char err[512],text[TEXT],json[JSON_MAX];psionic_parakeet *s=psionic_parakeet_open(argv[2],gpu,err,sizeof err);if(!s){fprintf(stderr,"%s\n",err);free(samples);return 1;}
- int ok=psionic_parakeet_text(s,samples,n,text,sizeof text,err,sizeof err);free(samples);if(!ok){fprintf(stderr,"%s\n",err);psionic_parakeet_close(s);return 1;}
- if(prefix&&!dump(s,prefix)){fprintf(stderr,"cannot write dump prefix\n");psionic_parakeet_close(s);return 1;}
- if(json_out){if(!psionic_parakeet_json(s,json,sizeof json)){psionic_parakeet_close(s);return 1;}puts(json);}else puts(text);
- psionic_parakeet_close(s);return 0;
-}
+int pkfile_main(int argc,char **argv);
+int main(int argc,char **argv){return pkfile_main(argc,argv);}
 #endif

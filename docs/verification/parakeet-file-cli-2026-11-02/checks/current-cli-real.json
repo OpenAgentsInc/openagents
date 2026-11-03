@@ -1,0 +1,23 @@
+{
+  "scope": "Current rebased complete OpenAgents CLI -> current standard native Parakeet build on the public short recording; explicit engine artifact path, no hosted fallback.",
+  "argv": [
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/apps/openagents-cli/build/openagents",
+    "transcribe",
+    "/tmp/parakeet-file-coax-inputs/count-short.wav",
+    "--json"
+  ],
+  "environment_override": {
+    "OPENAGENTS_PARAKEET_CLI": "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/psionic/build/parakeet-standard/psionic-parakeet"
+  },
+  "input_sha256": {
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/apps/openagents-cli/build/openagents": "372cb8fd229d7182f73c644f43e6bc612448c46ed0e9c58594f4940b38f52965",
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/psionic/build/parakeet-standard/psionic-parakeet": "7be7431297af8411824c186415fe94732e291735962e6a07e58a9eacf1909f49",
+    "/tmp/parakeet-file-coax-inputs/count-short.wav": "f5413a1368750191bbb12ced5bb5c7f605594254359ddbc8410941d9793c29a5"
+  },
+  "exit_status": 0,
+  "identities_unchanged": true,
+  "elapsed_ms": 14220.806666067801,
+  "latency_scope": "Whole process including model load; not release-to-composer latency.",
+  "exact_text": true,
+  "legacy_single_window_metadata_preserved": true
+}

@@ -1,0 +1,37 @@
+{
+  "schema": "psionic.parakeet.file-slow-pipe-cancel.v1",
+  "scope": "Actual production file-main ABI linked to injected model effects; no model loaded or inference performed.",
+  "argv": [
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/psionic/build/parakeet/parakeet-file-effects-fixture",
+    "transcribe",
+    "fixture-model",
+    "/tmp/parakeet-longfile-reference/count-180s-tail.wav",
+    "--json"
+  ],
+  "environment_overrides": {
+    "PKFILE_FIXTURE_LARGE": "1"
+  },
+  "input_sha256": {
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/psionic/build/parakeet/parakeet-file-effects-fixture": "6429756b2e00a2d3a0929fb033c505f716ce3626a0b5b61c8c0c554b52cab580",
+    "/tmp/parakeet-longfile-reference/count-180s-tail.wav": "5a71a94939d9926e0b98c72b1411cccd685d9d7a251e1b54ca66c871c934fda2",
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/psionic/platform/parakeet-file.c": "bc18b92ba26334bfe85ff5f1ae00c30b5766c46fc0fd00d64c53f0f81b444826",
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/psionic/tests/parakeet-file-effects-fixture.c": "e6b0f207e6ea4701f80e5fbe3652dbcd4b5640bf26b9137ba6e449238d5e6a1a",
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/psionic/build/parakeet/parakeet-file.c": "4df7a5a4c039c887679bc187b70add5920355dc73053c7dcbd1041009c4d8515",
+    "/tmp/parakeet-slow-pipe-cancel-oracle.py": "7e0148b3e5d53b3416b5ca8388a40dba9b144e29f040224d59f1f813a48a025f"
+  },
+  "started_utc": "2026-11-02T23:52:40.088297+00:00",
+  "first_stdout_byte_hex": "7b",
+  "publication_started_ms": 291.68750008102506,
+  "queued_stdout_bytes_before_signal": 65536,
+  "alive_before_signal": true,
+  "signal": "SIGINT",
+  "signal_to_exit_ms": 1.6956670442596078,
+  "exit_status": 130,
+  "whole_process_timeout": false,
+  "stdout_bytes": 65537,
+  "stdout_sha256": "457c856ed4ef8dd008150aff87cd4f1e98c8e1857e2e90cc51963534d73687ad",
+  "partial_output_diagnostic": true,
+  "complete_json_published": false,
+  "identities_unchanged": true,
+  "passed": true
+}

@@ -1,0 +1,26 @@
+// Reproduce public Count recording fixtures; no microphone or model effects.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../lib/whisper/wav.coax";
+pkfi_header :: (path:string,samples:int)->bool {
+ h:[44]u8;wv_header(h[..],1,1,16000,16,samples*2);return fs_write(path,cast(string)h[..]);
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}
+ source:[102240]u8;src:=args_at(a[..],0);dir:=args_at(a[..],1);
+ if fs_size(src)!=source.count || fs_read(src,source[..])!=source.count {tool_errln("expected public Count s16le PCM, 51120 samples");return 3;}
+ if fs_kind(dir)!=FS_DIR && !fs_mkdir(dir) {return 4;}
+ zeros:[655040]u8;pathbuf:[4096]u8;
+ for n:[2]int.[327520,259843] {
+  name:=ifx n==327520 then "count-327520.pcm" else "count-259843.pcm";
+  path:=fs_join(dir,name,pathbuf[..]);if !fs_write(path,cast(string)source[..]) || !fs_append(path,cast(string)zeros[0..<n*2-source.count]) {return 5;}
+ }
+ path:=fs_join(dir,"count-short.wav",pathbuf[..]);if !pkfi_header(path,51120) || !fs_append(path,cast(string)source[..]) {return 6;}
+ path=fs_join(dir,"count-180s-tail.wav",pathbuf[..]);if !pkfi_header(path,2880003) {return 7;}
+ for i:0..<9 {n:=ifx i<8 then 327520 else 259843;if !fs_append(path,cast(string)source[..]) || !fs_append(path,cast(string)zeros[0..<n*2-source.count]) {return 8;}}
+ path=fs_join(dir,"count-cross-window.wav",pathbuf[..]);if !pkfi_header(path,356280) || !fs_append(path,cast(string)zeros[0..<603920]) || !fs_append(path,cast(string)source[..]) || !fs_append(path,cast(string)zeros[0..<6400]) {return 9;}
+ path=fs_join(dir,"seam-left-327520.pcm",pathbuf[..]);if !fs_write(path,cast(string)zeros[0..<603920]) || !fs_append(path,cast(string)source[0..<51120]) {return 10;}
+ path=fs_join(dir,"seam-right-28760.pcm",pathbuf[..]);if !fs_write(path,cast(string)source[51120..<102240]) || !fs_append(path,cast(string)zeros[0..<6400]) {return 11;}
+ print("Public Parakeet file fixtures: 180s+3sample file, real speech-crossing seam and four model windows\n");return 0;
+}

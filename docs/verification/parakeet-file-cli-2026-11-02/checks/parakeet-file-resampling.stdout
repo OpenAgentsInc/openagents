@@ -1,0 +1,3 @@
+ok   #test Parakeet file global resampling phase equals the existing full-file oracle (1 case, 17717308 steps, 493 ms)
+1 of 18 checks (--only 'Parakeet file global resampling'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

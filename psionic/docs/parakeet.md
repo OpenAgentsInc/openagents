@@ -46,7 +46,7 @@ From the repository root, with a built Coax compiler and the host C compiler:
 psionic/platform/parakeet-build.sh
 psionic/build/parakeet/psionic-parakeet transcribe "$PARAKEET_MODEL" clip.wav --gpu --json
 apps/openagents-cli/build.sh
-apps/openagents-cli/build/openagents transcribe clip.wav --backend parakeet --model-dir "$PARAKEET_MODEL" --json
+apps/openagents-cli/build/openagents transcribe clip.wav --model-dir "$PARAKEET_MODEL" --json
 ```
 
 The Coax build tool accepts an output directory and optional source root;
@@ -59,10 +59,16 @@ handwritten kernels, MPS, Accelerate, cuBLAS or cuDNN execute production math.
 The public CLI defaults to the cache path above; `OPENAGENTS_PARAKEET_MODEL`
 or `--model-dir DIR` selects another copy of the same pinned model.
 `--device cpu` explicitly selects the slower compensated CPU route.
-Text and JSON are supported. Forced language, `--words`, `--prompt`, Whisper's
-`--model`/`--threads`, and SRT/VTT requests are refused explicitly. The model
+The file CLI supports text, versioned JSON, SRT and WebVTT through exact bounded
+independent windows. Forced language, `--words`, `--prompt` and Whisper's
+`--model`/`--threads` are refused explicitly. The model
 recognizes its language automatically; vocabulary rescoring is future work.
-Whisper remains the default backend when `--backend parakeet` is absent.
+Parakeet is the default local transcription backend. `--backend parakeet`
+is an explicit equivalent; `--backend psionic` retains legacy Whisper and
+`--backend whispercpp` selects its independent oracle. Neither is a fallback.
+`transcribe models` reports the pinned Parakeet path and file presence; full
+hashes are checked when the model opens. Normal transcription never downloads
+model data.
 
 ## Keep an engine resident
 
@@ -88,8 +94,26 @@ including the caller, with complete rows and unchanged compensated-sum order.
 smaller available pool preserves the same arithmetic; closing joins its workers.
 Inputs are mono f32 samples at 16 kHz in `[-1, 1]`, from 320 through 327,520
 samples (20 ms through 20.47 seconds). The low-level model cannot supply
-60-second dictation by silently changing this limit. Segmentation and its
-context policy belong to the dictation/streaming work.
+longer dictation by silently changing this limit. Coder's separate controller
+limits capture to 60 seconds. The file CLI now uses the checked
+[`file.coax`](../lib/parakeet/file.coax) policy for at most 4,096 windows.
+A final remainder below 320 samples borrows from its preceding window. Audio
+resampling keeps the whole file's phase and filter context across windows;
+model state resets between requests. The output JSON schema is
+`openagents.parakeet.file.v1`, with exact coverage and raw token emission times.
+Each nonempty window is one coarse subtitle cue. These 80 ms emission bounds
+are not word alignment and can include late punctuation after silence.
+
+The file host maps the immutable input read-only and keeps fixed-size inference
+scratch. Its virtual mapping grows with the file; constant total address space
+or operating-system page-cache use is not claimed. Keep the input unchanged
+while recognition runs. Output is privately spooled until every window succeeds;
+SIGINT/model failure before publication emits no transcript. A broken output
+pipe or cancellation after publication begins may leave partial bytes with a
+nonzero exit. Explicit `--dump-prefix` inspection is single-window only and
+can leave partial inspection files if writing fails; those files are separate
+from transcript publication. [File/CLI proof](../../docs/verification/parakeet-file-cli-2026-11-02/README.md)
+records the finite long-file and speech-seam qualification.
 
 A failed call leaves caller text and the previous successful inspection
 snapshot unchanged. Token/frame and feature/encoded inspections copy into

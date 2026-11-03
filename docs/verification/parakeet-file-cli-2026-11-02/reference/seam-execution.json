@@ -1,0 +1,15 @@
+{
+  "schema": "psionic.parakeet-longfile-reference-execution.v1",
+  "host": "coderos-4080/100.74.238.61",
+  "device": "NVIDIA GeForce RTX 4080",
+  "gpu_path": true,
+  "timeout_seconds": 600,
+  "exit_status": 0,
+  "harness_sha256": "b6f9ffcf6002c5cd5012147cc91843ff934c7c1829c056dee9cae647fb51ea84",
+  "harness_source": "psionic/tests/parakeet_reference.py (unchanged trusted repo harness)",
+  "model_sha256": "3a2026366188c8c68598edbbff92f8d11590a08e0ae2e6775544e7b07d6a5e11",
+  "nemo_source_revision": "5f15875acd0885ed92eadfee874ae87b0529ffa2",
+  "torch": "2.12.0+cu126",
+  "nemo": "3.1.0+5f15875",
+  "initial_failed_setup": "run.stdout/run.stderr: first launch preceded completion of input upload; no model inference occurred; run2 launched after upload completion."
+}

@@ -3278,6 +3278,27 @@ qualify the named offline Metal profile, not population accuracy, a complete
 CPU encoder, true streaming or key-release latency. Evidence:
 `psionic/docs/verification/parakeet-2026-11-02/README.md`.
 
+## File transcription defaults to bounded local Parakeet
+
+The ordinary `openagents transcribe FILE` selects the pinned Parakeet model;
+legacy Psionic Whisper and whisper.cpp require explicit backend names. Missing
+model/GPU/input failures never download a model or choose another backend.
+`psionic/lib/parakeet/file.coax` owns exact 320..327520-sample windows, short-tail
+redistribution, global resampling phase, TDT emission bounds and all writers.
+At most 4096 windows cover every original resampled sample exactly once; no
+model padding is passed off as real audio. Input WAVs must be complete.
+
+File JSON is explicitly `openagents.parakeet.file.v1`; single-window metadata
+retains its earlier top-level tokens/frames. Each nonempty independent window
+is one subtitle cue. Frame emission is not acoustic word alignment. The input
+mapping assumes immutable backing and grows in virtual extent; inference
+scratch is fixed. Before final publication, failed/cancelled inference emits no
+transcript. Output failure/cancellation during publication may leave partial
+bytes and returns nonzero. Inspection dumps are a separate explicit file effect.
+The model C ABI and its per-request limit are unchanged; this is not streaming.
+Checks and finite original-weight/NeMo evidence:
+`docs/verification/parakeet-file-cli-2026-11-02/README.md`.
+
 ## Source composition preserves physical ownership
 
 `coax/lib/compiler/sources.coax` owns literal load syntax, canonical identity

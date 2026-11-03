@@ -1,0 +1,4 @@
+psionic/lib/parakeet/file.coax:57:34: error[E0406]: assertion failed
+   info:=pkfile_wav_info(file[..]);#assert info.status==WvStatus.ok && info.frames==16;
+                                   ^
+  note: in #test Parakeet file WAV windows preserve samples and reject truncated or misaligned data

@@ -1,0 +1,22 @@
+{
+  "long-bindings.json.gz": {
+    "encoded_sha256": "8678a957f73c7c21e9e38ef2d467cc20b494328a11cf7b13efd2d55ed86f69da",
+    "decoded_sha256": "18e0c64f834ff68464a42e9017672f305cba437916b72e7a5794c18ce01677b0",
+    "decoded_bytes": 165504
+  },
+  "seam-bindings.json.gz": {
+    "encoded_sha256": "8678a957f73c7c21e9e38ef2d467cc20b494328a11cf7b13efd2d55ed86f69da",
+    "decoded_sha256": "18e0c64f834ff68464a42e9017672f305cba437916b72e7a5794c18ce01677b0",
+    "decoded_bytes": 165504
+  },
+  "long-record.json.gz": {
+    "encoded_sha256": "cbd35df007a5ad4b5a671a7393c8cebf9ec04c04ecd6b19ce0ba4e578dcea841",
+    "decoded_sha256": "fcb3c80257fa56ddb28d5962dfd0c60c12c310dfe4acdfb10e06d69f7c21e516",
+    "decoded_bytes": 169052
+  },
+  "seam-record.json.gz": {
+    "encoded_sha256": "433924361b958cc91a4d0a5941c85508e32f13a61f2b22d61e93b9e4955722d9",
+    "decoded_sha256": "837f15f4b7877677b8045e1f8c42cad6b814c384b4eafa71765b489224db857c",
+    "decoded_bytes": 168526
+  }
+}

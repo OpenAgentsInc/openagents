@@ -350,6 +350,68 @@ inventory check. The last command needs the downloaded file and prints
 checkpoint`. The sections below work each line out by hand before showing
 the code that prints it.
 
+## Transcribe a file without losing its last samples
+
+`openagents transcribe FILE` now defaults to this Parakeet engine. Whisper is
+an explicitly named compatibility path, never a retry after a Parakeet failure.
+Install the pinned data using the [engine guide](../docs/parakeet.md), then run:
+
+```shell
+apps/openagents-cli/build/openagents transcribe talk.wav --json
+apps/openagents-cli/build/openagents transcribe talk.wav --srt > talk.srt
+apps/openagents-cli/build/openagents transcribe talk.wav --vtt > talk.vtt
+coax/bin/coax test psionic/lib/parakeet/file.coax --library --only 'Parakeet file'
+```
+
+The resident model still admits only 320..327,520 samples per request. The
+[file policy](../lib/parakeet/file.coax) partitions the complete 16 kHz stream
+into at most 4,096 independent requests. A tiny final remainder borrows from
+the previous window:
+
+| Total samples | Model requests |
+| --- | --- |
+| 327,520 | 327,520 |
+| 327,521 | 327,201 + 320 |
+| 655,041 | 327,520 + 327,201 + 320 |
+| 2,880,003 | eight × 327,520 + 259,843 |
+
+Offsets are exact sample counts, not rounded milliseconds. The WAV reader and
+sinc resampler evaluate each output sample at its global file position; the
+filter sees original neighboring source samples across a model boundary.
+The independent 44.1/48 kHz check compares those slices bit-for-bit against the
+existing whole-file resampler. A physically truncated WAV cannot be relabelled
+as a complete file.
+
+Model context resets between windows. The file JSON schema,
+`openagents.parakeet.file.v1`, retains the whole text, exact window ranges,
+token IDs, local encoded-frame IDs and global token sample positions. For a
+token at frame `f`, its sample position is `window_offset + 1280*f`.
+Converting that total to milliseconds once preserves fractional offsets.
+Repeated frame IDs are valid: TDT can emit several symbols without advancing.
+
+Each nonempty window becomes one SRT/WebVTT cue, from its first token emission
+through the end of its last emitted frame, clamped to actual audio. This is
+coarse emission timing, not acoustic word alignment. In the padded Count
+recording, the final period emits at frame 253, long after the voice ends.
+A subtitle can therefore include a long silent span. Real alignment and
+population seam quality remain future evaluation work.
+
+The [native file host](../platform/parakeet-file.c) maps input read-only and
+uses fixed scratch plus private transcript spools. It clears each resident
+utterance after copying its result. Before publication, any failed/cancelled
+window discards the spool; a later output I/O failure may leave partial bytes
+and returns nonzero. This contract does not promise a single atomic operating
+system write for an arbitrarily long transcript. The OpenAgents wrapper also
+bounds child execution to 14 minutes and captured output to 4 MiB.
+
+The [file/CLI record](../../docs/verification/parakeet-file-cli-2026-11-02/README.md)
+compares a 180-second-plus-three-sample file and a sentence cut across an actual
+window boundary against pinned NeMo using the same four distinct request
+inputs. Tokens, frames and text match exactly. The crossing sentence has zero
+normalized word/character errors in this finite fixture, with case/punctuation
+differences retained. That is not a claim that independent windows equal a
+full-context model, nor that this is streaming.
+
 ## The checkpoint, by hand
 
 Count the tensors the architecture needs.

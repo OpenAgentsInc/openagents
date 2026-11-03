@@ -1,0 +1,2 @@
+transcript output I/O failed; output may be partial
+transcription cancelled during output; output may be partial

@@ -1,0 +1,20 @@
+{
+  "format": "s16le mono16000",
+  "source_samples": 51120,
+  "boundary_after_source_samples": 25560,
+  "windows": [
+    {
+      "path": "/tmp/parakeet-longfile-reference/seam-left-327520.pcm",
+      "samples": 327520,
+      "sha256": "99f0e2a891a99d4d952869299376907f9af4d0b98cb07379e446f488dd3ee722"
+    },
+    {
+      "path": "/tmp/parakeet-longfile-reference/seam-right-28760.pcm",
+      "samples": 28760,
+      "sha256": "db5505802d0253d92fcd7e9a71d7fcb54a0b371bdf707f7b18711d87fd10d77b"
+    }
+  ],
+  "file": "/tmp/parakeet-longfile-reference/count-cross-window.wav",
+  "samples": 356280,
+  "sha256": "c8020463f63dd0d0bb6a1c12dfd05d76eee9cc1f8e9435d3eb45ab115b8acccb"
+}

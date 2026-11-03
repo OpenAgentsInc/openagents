@@ -2,7 +2,7 @@
 // performs checkpoint/vocabulary validation and all inference in Coax.
 #load "parakeet-rules.coax";
 
-TR_PK_SOURCES :: [52]string.[
+TR_PK_SOURCES :: [54]string.[
   "coax/bin/coax", "psionic/lib/parakeet.coax", "psionic/lib/tdt.coax",
   "psionic/lib/conformer.coax", "psionic/lib/spectral.coax", "psionic/lib/pixels.coax",
   "psionic/lib/parakeet/runtime.coax", "psionic/lib/parakeet/fast.coax", "psionic/lib/parakeet/device.coax",
@@ -21,7 +21,8 @@ TR_PK_SOURCES :: [52]string.[
   "psionic/lib/whisper/ggml.coax", "psionic/tests/conformer-checks.coax",
   "psionic/tests/parakeet-model-checks.coax", "psionic/tests/tdt-checks.coax",
   "psionic/lib/parakeet/parallel-plan.coax", "psionic/lib/parakeet/parallel.coax",
-  "psionic/platform/parakeet-threads.c", "psionic/platform/parakeet-threads.h"];
+  "psionic/platform/parakeet-threads.c", "psionic/platform/parakeet-threads.h",
+  "psionic/lib/parakeet/file.coax", "psionic/platform/parakeet-file.c"];
 
 tr_pk_engine :: (out:[]u8)->string {
   override:=proc_getenv("OPENAGENTS_PARAKEET_CLI",out);if override!="" {return override;}
@@ -42,11 +43,19 @@ tr_pk_model :: (out:[]u8)->string {
   if s!="" {if s.count>out.count {return "";}for i:0..<s.count {out[i]=s[i];}return cast(string)out[0..<s.count];}
   h:[1024]u8;return fs_join(home(h[..]),".cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99",out);
 }
+tr_pk_models :: (r:[]Rep)->int {
+  path:[1200]u8;model:=tr_pk_model(path[..]);a:[1300]u8;b:[1300]u8;
+  rep_str(r,"backend","parakeet");rep_str(r,"model","parakeet-tdt-0.6b-v3");
+  rep_str(r,"revision","541d1f99c6b0c3cd0b11a95167540bb8edefd82b");rep_str(r,"path",model);
+  present:=fs_kind(fs_join(model,"model.safetensors",a[..]))==FS_FILE && fs_kind(fs_join(model,"tokenizer.json",b[..]))==FS_FILE;
+  rep_str(r,"files",ifx present then "present; complete hashes validated on open" else "missing; install pinned data using psionic/docs/parakeet.md");
+  return rep_done(r,EXIT_OK);
+}
 tr_parakeet :: (a:[]Args,r:[]Rep,file:string)->int {
   format:=tr_format(args_has(a,"--text"),args_has(a,"--srt"),args_has(a,"--vtt"),r[0].json);
   language:=args_value(a,"--language","auto");device:=args_value(a,"--device","gpu");
   status:=tr_pk_options(format,language,args_value(a,"--prompt",""),args_value(a,"--words",""),device);
-  if status==1 {return fail(r,EXIT_USAGE,"Parakeet supports --text or --json; select only one output format");}
+  if status==1 {return fail(r,EXIT_USAGE,"Parakeet supports --text, --json, --srt or --vtt; select only one output format");}
   if status==2 {return fail(r,EXIT_USAGE,"Parakeet detects its language; use --language auto without a forced language");}
   if status==3 {return fail(r,EXIT_USAGE,"Parakeet vocabulary rescoring is not implemented; --words and --prompt need the Whisper backend");}
   if status==4 {return fail(r,EXIT_USAGE,"Parakeet --device is gpu or cpu; GPU failure never silently selects CPU");}
@@ -64,12 +73,12 @@ tr_parakeet :: (a:[]Args,r:[]Rep,file:string)->int {
     input=fs_join(tmp,"audio.wav",wav[..]);code:=tr_decode(file,input,err[..]);
     if code!=EXIT_OK {rm:=fs_remove(tmp);return fail(r,code,"ffmpeg could not decode the audio for Parakeet");}
   }
-  output:[131072]u8;flag:=ifx format==3 then "--json" else "--text";dev:=ifx device=="gpu" then "--gpu" else "--cpu";
+  output:[4194304]u8;flag:=ifx format==3 then "--json" else ifx format==1 then "--srt" else ifx format==2 then "--vtt" else "--text";dev:=ifx device=="gpu" then "--gpu" else "--cpu";
   argv:=[6]string.[engine,"transcribe",model,input,dev,flag];got:=proc_run(argv[..],840000,output[..],err[..]);
   if tmp!="" {rm:=fs_remove(tmp);}
   if got.started!=0 || got.status!=0 || got.timed_out || got.cut {
     if got.err_n>0 {tool_err(cast(string)err[0..<got.err_n]);}
-    return fail(r,EXIT_FAIL,"Psionic Parakeet refused or failed; checkpoint, audio and GPU errors are not retried on another engine");
+    return fail(r,EXIT_FAIL,"Psionic Parakeet refused, failed or exceeded its 14-minute/4MiB output limit; no fallback or truncated success");
   }
   if got.err_n>0 {tool_err(cast(string)err[0..<got.err_n]);}
   print("%",cast(string)output[0..<got.out_n]);

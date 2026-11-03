@@ -1,0 +1,66 @@
+{
+  "language": "en",
+  "corpus": "parakeet-clips-v1",
+  "id": "seam-right-28760",
+  "reference": "I am convinced of what I say, said the Count.",
+  "samples": 28760,
+  "pcm_sha256": "db5505802d0253d92fcd7e9a71d7fcb54a0b371bdf707f7b18711d87fd10d77b",
+  "feature_frames": 179,
+  "encoded_frames": 23,
+  "tokens": [
+    3058,
+    7893,
+    7877,
+    5635,
+    506,
+    867,
+    1113,
+    7877
+  ],
+  "frames": [
+    2,
+    4,
+    5,
+    8,
+    10,
+    12,
+    14,
+    15
+  ],
+  "durations": [
+    2,
+    1,
+    1,
+    2,
+    2,
+    2,
+    1,
+    1
+  ],
+  "text": "Say, said the count,",
+  "score": {
+    "words": 10,
+    "word_errors": 6,
+    "characters": 43,
+    "character_errors": 25
+  },
+  "seconds": 0.032766096002887934,
+  "artifacts": {
+    "features": {
+      "file": "seam-right-28760/features.f32",
+      "shape": [
+        128,
+        179
+      ],
+      "sha256": "c7be14718323578975c6de9568e8bf7a76c4c86146a2575b96da260a5974746a"
+    },
+    "encoded": {
+      "file": "seam-right-28760/encoded.f32",
+      "shape": [
+        23,
+        1024
+      ],
+      "sha256": "1ce51e8e1627401e7e3b4e8d95c73f81d095b1bbcfa9cd1cc5292af8c33799e1"
+    }
+  }
+}

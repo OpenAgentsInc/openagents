@@ -1,0 +1,32 @@
+{
+  "schema": "psionic.parakeet.file-slow-pipe-cancel.v1",
+  "scope": "Actual production file-main ABI linked to injected model effects; no model loaded or inference performed.",
+  "argv": [
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/psionic/build/parakeet/parakeet-file-effects-fixture",
+    "transcribe",
+    "fixture-model",
+    "/tmp/parakeet-longfile-reference/count-180s-tail.wav",
+    "--json"
+  ],
+  "environment_overrides": {
+    "PKFILE_FIXTURE_LARGE": "1"
+  },
+  "input_sha256": {
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/psionic/build/parakeet/parakeet-file-effects-fixture": "2e7e43bb7f1baf702e3711c7f9d7a82a81eb84d1c73cc5114c42cce845eb17c8",
+    "/tmp/parakeet-longfile-reference/count-180s-tail.wav": "5a71a94939d9926e0b98c72b1411cccd685d9d7a251e1b54ca66c871c934fda2",
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/psionic/platform/parakeet-file.c": "df52a97a559c9ca9cf992023189b00d57109ccf4c43a90ae73694c7c4bbc5552",
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/psionic/tests/parakeet-file-effects-fixture.c": "e6b0f207e6ea4701f80e5fbe3652dbcd4b5640bf26b9137ba6e449238d5e6a1a",
+    "/Users/christopherdavid/.codex/worktrees/parakeet-file-cli/openagents/psionic/build/parakeet/parakeet-file.c": "4df7a5a4c039c887679bc187b70add5920355dc73053c7dcbd1041009c4d8515",
+    "/tmp/parakeet-slow-pipe-cancel-oracle.py": "7e0148b3e5d53b3416b5ca8388a40dba9b144e29f040224d59f1f813a48a025f"
+  },
+  "started_utc": "2026-11-02T23:51:03.834630+00:00",
+  "first_stdout_byte_hex": "7b",
+  "publication_started_ms": 312.89891700726,
+  "queued_stdout_bytes_before_signal": 65536,
+  "alive_before_signal": true,
+  "signal": "SIGINT",
+  "whole_process_timeout": true,
+  "error": "The whole process failed to exit within five seconds",
+  "terminated_owned_child": true,
+  "passed": false
+}

@@ -7,7 +7,9 @@
 //   openagents transcribe models          the cached models
 //   openagents transcribe fetch MODEL     downloads one to ~/.cache/openagents/models/whisper
 // Backends, on the same ggml model files:
-// - psionic: the default, Psionic's own Whisper (psionic/lib/whisper/), the
+// - parakeet: the default, pinned TDT v3 safetensors, resident native engine,
+//   Metal encoder and Coax decoder. No Whisper model or fallback is selected.
+// - psionic: explicitly selected legacy Whisper (psionic/lib/whisper/), the
 //   psionic-whisper host built from this checkout on first use
 //   (psionic/platform/whisper-build.sh). Beam search, temperature fallback and
 //   language detection, as whisper.cpp; the encoder and decoder run on the GPU
@@ -15,8 +17,6 @@
 //   (#12623).
 // - whispercpp: whisper.cpp's whisper-cli (Homebrew: brew install
 //   whisper-cpp), on request only; compare uses it as the reference.
-// - parakeet: the pinned TDT v3 safetensors model, explicitly selected;
-//   resident native API, Metal encoder and Coax decoder (chapter 153).
 // Decoding: Psionic reads WAV files itself (psionic/lib/whisper/wav.coax).
 // ffmpeg turns any other audio or video into 16 kHz mono 16-bit WAV.
 // Firm reason: 6 (no Coax decoder for compressed audio and video
@@ -34,14 +34,14 @@ TR_ENGINE_SOURCES :: [12] string.["psionic/lib/whisper/search.coax", "psionic/li
 
 transcribe_usage :: () {
   print("%\n", "Transcribe (speech to text, on this computer):");
-  print("%\n", "  transcribe FILE [--model tiny|base|small|medium|large-v3|large-v3-turbo] [--language en|auto|CODE]");
-  print("%\n", "                  [--text|--srt|--vtt|--json] [--backend psionic|whispercpp] [--threads N]");
-  print("%\n", "                  [--words Psionic,Coax] [--prompt TEXT]   names to spell right (psionic)");
-  print("%\n", "  transcribe FILE --backend parakeet [--model-dir DIR] [--device gpu|cpu] [--text|--json]");
-  print("%\n", "                                     pinned local Parakeet v3; automatic language, bounded utterance");
-  print("%\n", "                                     audio or video; base and English by default");
-  print("%\n", "  transcribe models                  the models in ~/.cache/openagents/models/whisper");
-  print("%\n", "  transcribe fetch MODEL             downloads a model (transcribe fetches one it needs)");
+  print("%\n", "  transcribe FILE [--model-dir DIR] [--device gpu|cpu] [--text|--json|--srt|--vtt]");
+  print("%\n", "                                     default: pinned local Parakeet v3; automatic language");
+  print("%\n", "                                     exact bounded offline windows; coarse TDT emission cues, not word alignment");
+  print("%\n", "  transcribe models                  the default Parakeet checkpoint and pinned cache");
+  print("%\n", "                                     setup: psionic/docs/parakeet.md; no automatic download");
+  print("%\n", "  transcribe FILE --backend psionic|whispercpp [--model SIZE] [--language CODE]");
+  print("%\n", "                  [--text|--srt|--vtt|--json] [--threads N]  explicit legacy Whisper");
+  print("%\n", "  transcribe fetch MODEL --backend psionic   fetch a legacy Whisper model explicitly");
   print("%\n", "  transcribe compare FILE|DIR... [--models tiny.en,base.en] [--device cpu|gpu] [--prompt TEXT] [--diffs]");
   print("%\n", "                                     Psionic and whisper.cpp side by side: error rates, time, memory");
   print("%\n", "  transcribe corpus DIR              writes the generated comparison clips (macOS say)");
@@ -145,10 +145,19 @@ tr_decode :: (file: string, wav: string, err: [] u8) -> int {
 
 transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   if verb == "" { transcribe_usage(); return EXIT_USAGE; }
-  if verb == "models" { return transcribe_models(r); }
+  selected:=tr_speech_backend(args_value(a,"--backend",""));
+  if selected<0 {return fail(r,EXIT_USAGE,"--backend is parakeet (default), psionic or whispercpp");}
+  if selected!=0 && args_has(a,"--model-dir") {return fail(r,EXIT_USAGE,"--model-dir selects the pinned Parakeet checkpoint; explicit Whisper backends use --model");}
+  if verb == "models" {
+    if selected==0 {return tr_pk_models(r);}
+    return transcribe_models(r);
+  }
   if verb == "compare" { return transcribe_compare(a, r); }
   if verb == "corpus" { return transcribe_corpus(r, positional(a, 2)); }
-  if args_value(a,"--backend","psionic")=="parakeet" { return tr_parakeet(a,r,verb); }
+  if selected==0 {
+    if verb=="fetch" {return fail(r,EXIT_USAGE,"Parakeet uses pinned safetensors data; install it with psionic/docs/parakeet.md (no implicit download)");}
+    return tr_parakeet(a,r,verb);
+  }
   language := args_value(a, "--language", "en");
   if !tr_language_ok(language) { return fail(r, EXIT_USAGE, "--language is en, auto, or a two or three letter code such as de"); }
   nb: [64] u8;

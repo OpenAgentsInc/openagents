@@ -1,0 +1,83 @@
+{
+  "long": {
+    "samples": 2880003,
+    "windows": [
+      {
+        "samples": 327520,
+        "sample_offset": 0,
+        "tokens_frames_text_exact": true
+      },
+      {
+        "samples": 327520,
+        "sample_offset": 327520,
+        "tokens_frames_text_exact": true
+      },
+      {
+        "samples": 327520,
+        "sample_offset": 655040,
+        "tokens_frames_text_exact": true
+      },
+      {
+        "samples": 327520,
+        "sample_offset": 982560,
+        "tokens_frames_text_exact": true
+      },
+      {
+        "samples": 327520,
+        "sample_offset": 1310080,
+        "tokens_frames_text_exact": true
+      },
+      {
+        "samples": 327520,
+        "sample_offset": 1637600,
+        "tokens_frames_text_exact": true
+      },
+      {
+        "samples": 327520,
+        "sample_offset": 1965120,
+        "tokens_frames_text_exact": true
+      },
+      {
+        "samples": 327520,
+        "sample_offset": 2292640,
+        "tokens_frames_text_exact": true
+      },
+      {
+        "samples": 259843,
+        "sample_offset": 2620160,
+        "tokens_frames_text_exact": true
+      }
+    ],
+    "word_errors": 0,
+    "reference_words": 90,
+    "character_errors": 0,
+    "reference_characters": 395,
+    "first_word_preserved": true,
+    "last_word_preserved": true,
+    "punctuation_case_exact": true,
+    "scope": "Finite public Count composition; independent-window parity, not full-context equivalence or population seam accuracy."
+  },
+  "seam": {
+    "samples": 356280,
+    "windows": [
+      {
+        "samples": 327520,
+        "sample_offset": 0,
+        "tokens_frames_text_exact": true
+      },
+      {
+        "samples": 28760,
+        "sample_offset": 327520,
+        "tokens_frames_text_exact": true
+      }
+    ],
+    "word_errors": 0,
+    "reference_words": 10,
+    "character_errors": 0,
+    "reference_characters": 43,
+    "first_word_preserved": true,
+    "last_word_preserved": true,
+    "punctuation_case_exact": false,
+    "scope": "Finite public Count composition; independent-window parity, not full-context equivalence or population seam accuracy."
+  }
+}

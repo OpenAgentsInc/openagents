@@ -1,0 +1,87 @@
+{
+  "language": "en",
+  "corpus": "parakeet-clips-v1",
+  "id": "count-259843",
+  "reference": "I am convinced of what I say, said the Count.",
+  "samples": 259843,
+  "pcm_sha256": "6fa2e607d582a883ccb110170b266d1b8c1e638bdb61e47338ac2c22967a8810",
+  "feature_frames": 1624,
+  "encoded_frames": 203,
+  "tokens": [
+    380,
+    692,
+    471,
+    3717,
+    4015,
+    592,
+    3470,
+    380,
+    7206,
+    7877,
+    5635,
+    506,
+    2871,
+    1113,
+    7883
+  ],
+  "frames": [
+    3,
+    5,
+    8,
+    9,
+    12,
+    14,
+    17,
+    19,
+    22,
+    25,
+    28,
+    30,
+    33,
+    37,
+    41
+  ],
+  "durations": [
+    2,
+    3,
+    1,
+    3,
+    2,
+    3,
+    2,
+    3,
+    3,
+    1,
+    2,
+    3,
+    4,
+    4,
+    4
+  ],
+  "text": "I am convinced of what I say, said the Count.",
+  "score": {
+    "words": 10,
+    "word_errors": 0,
+    "characters": 43,
+    "character_errors": 0
+  },
+  "seconds": 0.03972737898584455,
+  "artifacts": {
+    "features": {
+      "file": "count-259843/features.f32",
+      "shape": [
+        128,
+        1624
+      ],
+      "sha256": "21c251b2be781423d3055b99ea538c6fc00509c07787c08074b426ab932d9a07"
+    },
+    "encoded": {
+      "file": "count-259843/encoded.f32",
+      "shape": [
+        203,
+        1024
+      ],
+      "sha256": "6712f5c6eeda756a1e49437dcc269bb7ad30bb3b471b6d56dc51767c22a1bfc4"
+    }
+  }
+}

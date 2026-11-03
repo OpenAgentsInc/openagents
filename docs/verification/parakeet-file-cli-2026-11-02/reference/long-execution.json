@@ -1,0 +1,17 @@
+{
+  "schema": "psionic.parakeet-longfile-reference-execution.v1",
+  "scope": "Two distinct independent-window references for a180s+3sample repeated-public-clip file; not arbitrary3minute human-corpus accuracy or streaming qualification.",
+  "host": "coderos-4080 /100.74.238.61",
+  "device": "NVIDIA GeForce RTX 4080",
+  "gpu_path": true,
+  "timeout_seconds": 600,
+  "exit_status": 0,
+  "harness_sha256": "b6f9ffcf6002c5cd5012147cc91843ff934c7c1829c056dee9cae647fb51ea84",
+  "harness_source": "psionic/tests/parakeet_reference.py (unchanged trusted repo harness)",
+  "model_sha256": "3a2026366188c8c68598edbbff92f8d11590a08e0ae2e6775544e7b07d6a5e11",
+  "nemo_source_revision": "5f15875acd0885ed92eadfee874ae87b0529ffa2",
+  "torch": "2.12.0+cu126",
+  "nemo": "3.1.0+5f15875",
+  "ld_library_path": "/nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib:/nix/store/bn40ajln43biwf0clw26s4s8mqy64w8p-libsndfile-1.2.2/lib:/run/opengl-driver/lib",
+  "initial_failed_setup": "run.stdout/run.stderr: wrong old model path; no inference occurred; corrected existing pinned model path for run2."
+}

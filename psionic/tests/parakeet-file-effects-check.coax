@@ -1,0 +1,64 @@
+// Native file-effects oracle against a model-free child ABI fixture.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../lib/whisper/wav.coax";
+pkfe_count :: (text:string,part:string)->int {
+ n:=0;for i:0..<text.count {if part.count<=text.count-i && text[i..<i+part.count]==part {n+=1;}}return n;
+}
+pkfe_json :: (text:string,total:int,parts:int,last_offset:int,last_count:int,silent:bool)->bool {
+ nodes:[4096]JvNode;doc:[1]Jv;if !jv_parse(doc[..],text,nodes[..]) {return false;}d:=doc[0];
+ if jv_int(d,jv_get(d,0,"samples"),-1)!=total || !jv_bool(d,jv_get(d,0,"complete")) {return false;}
+ segments:=jv_get(d,0,"segments");if jv_len(d,segments)!=parts {return false;}
+ at:=0;
+ for i:0..<parts {
+  row:=jv_at(d,segments,i);offset:=jv_int(d,jv_get(d,row,"sample_offset"),-1);n:=jv_int(d,jv_get(d,row,"samples"),-1);
+  if offset!=at || n<320 || n>327520 {return false;}at+=n;
+  if i==parts-1 && (offset!=last_offset || n!=last_count) {return false;}
+  tokens:=jv_get(d,row,"tokens");frames:=jv_get(d,row,"frames");sample_times:=jv_get(d,row,"token_samples");
+  if jv_len(d,tokens)!=(ifx silent then 0 else 1) || jv_len(d,frames)!=jv_len(d,tokens) || jv_len(d,sample_times)!=jv_len(d,tokens) {return false;}
+  if !silent && (jv_int(d,jv_at(d,tokens,0),-1)!=7 || jv_int(d,jv_at(d,frames,0),-1)!=0 || jv_int(d,jv_at(d,sample_times,0),-1)!=offset) {return false;}
+ }
+ return at==total;
+}
+tool_main :: ()->int #export_c {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {tool_errln("usage: parakeet-file-effects-check FIXTURE_EXECUTABLE LONG_WAV");return 2;}
+ binary:=args_at(args[..],0);wav:=args_at(args[..],1);out:[262144]u8;err:[32768]u8;checks:=0;
+ formats:=[4]string.["--text","--srt","--vtt","--json"];
+ for mode:0..<4 {
+  argv:=[6]string.[binary,"transcribe","fixture-model",wav,"--gpu",formats[mode]];r:=proc_run(argv[..],30000,out[..],err[..]);text:=cast(string)out[0..<r.out_n];
+  if r.status!=0 || r.timed_out || r.cut {print("format% failed status%\n",mode,r.status);tool_errln(cast(string)err[0..<r.err_n]);return 3;}
+  if mode==3 {if !pkfe_json(text,2880003,9,2620160,259843,false) {return 4;}}
+  else {
+   if pkfe_count(text,"fixture")!=9 {return 5;}
+   if mode==1 && (pkfe_count(text,"9\n00:02:43,760 --> 00:02:43,840")!=1) {return 6;}
+   if mode==2 && (pkfe_count(text,"WEBVTT")!=1 || pkfe_count(text,"00:02:43.760 --> 00:02:43.840")!=1) {return 7;}
+  }
+  checks+=1;
+  print("format%: exit% bytes%\n",mode,r.status,r.out_n);
+ }
+ bindings:=[2]string.["PKFILE_FIXTURE_FAIL_AT=2","PKFILE_FIXTURE_CANCEL_AT=2"];
+ for i:0..<2 {
+  argv:=[8]string.["env",bindings[i],binary,"transcribe","fixture-model",wav,"--gpu","--json"];r:=proc_run(argv[..],30000,out[..],err[..]);
+  if r.status!=(ifx i==0 then 1 else 130) || r.out_n!=0 || r.timed_out {return 8;}checks+=1;print("injected fault%: exit% stdout%\n",i,r.status,r.out_n);
+ }
+ for mode:0..<2 {
+  argv:=[8]string.["env","PKFILE_FIXTURE_SILENT=1",binary,"transcribe","fixture-model",wav,"--gpu",ifx mode==0 then "--json" else "--srt"];r:=proc_run(argv[..],30000,out[..],err[..]);
+  if r.status!=0 || r.timed_out || (mode==0 && !pkfe_json(cast(string)out[0..<r.out_n],2880003,9,2620160,259843,true)) || (mode==1 && r.out_n!=0) {return 9;}checks+=1;
+ }
+ temp:[1024]u8;tmp:=fs_temp("parakeet-file-effects",temp[..]);if tmp=="" {return 10;}
+ paths:[4096]u8;path:=fs_join(tmp,"window-tail.wav",paths[..]);file:[655086]u8;
+ wv_header(file[..],1,1,16000,16,655042);if !fs_write(path,cast(string)file[..]) {return 11;}
+ argv:=[6]string.[binary,"transcribe","fixture-model",path,"--gpu","--json"];
+ r:=proc_run(argv[..],30000,out[..],err[..]);if r.status!=0 || r.timed_out || !pkfe_json(cast(string)out[0..<r.out_n],327521,2,327201,320,false) {return 12;}checks+=1;
+ // Declared physical truncation, and a valid WAV shorter than20ms, both refuse
+ // before a model can publish a fabricated completion.
+ for mode:0..<2 {
+  wv_header(file[..],1,1,16000,16,638);n:=ifx mode==0 then 681 else 682;
+  if !fs_write(path,cast(string)file[0..<n]) {return 13;}
+  r=proc_run(argv[..],30000,out[..],err[..]);if r.status!=65 || r.out_n!=0 || r.timed_out {return 14;}checks+=1;
+ }
+ removed:=fs_remove(tmp);print("Parakeet native file effects: % cases PASS; model ABI fixture only, no inference\n",checks);return 0;
+}

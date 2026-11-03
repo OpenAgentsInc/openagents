@@ -2,14 +2,30 @@
 // implement; a request must never silently run Whisper or force a language.
 #authority;
 
-#test "Parakeet admits text or JSON and an explicitly named device" {
-  for format: [2]int.[0,3] { for device: [2]string.["gpu","cpu"] {
+#test "Parakeet is the default and legacy engines require explicit names" {
+  #assert tr_speech_backend("")==0 && tr_speech_backend("parakeet")==0;
+  #assert tr_speech_backend("psionic")==1 && tr_speech_backend("whispercpp")==2;
+  for name: [5]string.["whisper","auto","Parakeet","cuda","remote"] {
+    #assert tr_speech_backend(name)== -1;
+  }
+}
+
+// 0 Parakeet default, 1 explicit legacy Psionic Whisper, 2 explicit oracle.
+tr_speech_backend :: (requested:string)->int {
+  if requested=="" || requested=="parakeet" { return 0; }
+  if requested=="psionic" { return 1; }
+  if requested=="whispercpp" { return 2; }
+  return -1;
+}
+
+#test "Parakeet admits all four offline file outputs and an explicitly named device" {
+  for format: [4]int.[0,1,2,3] { for device: [2]string.["gpu","cpu"] {
     #assert tr_pk_options(format,"auto","","",device)==0;
     #assert tr_pk_options(format,"","","",device)==0;
   }}
 }
 #test "Parakeet refuses every unsupported format before model effects" {
-  for format: [5]int.[-1,1,2,4,99] { #assert tr_pk_options(format,"auto","","","gpu")==1; }
+  for format: [3]int.[-1,4,99] { #assert tr_pk_options(format,"auto","","","gpu")==1; }
 }
 #test "Parakeet cannot pretend to honor language hints or Whisper bias" {
   for language: [4]string.["en","de","AUTO","fr"] { #assert tr_pk_options(0,language,"","","gpu")==2; }
@@ -23,7 +39,7 @@
 
 // 0 supported; 1 format; 2 forced language; 3 bias; 4 device.
 tr_pk_options :: (format:int,language:string,prompt:string,words:string,device:string)->int {
-  if format!=0 && format!=3 { return 1; }
+  if format<0 || format>3 { return 1; }
   if language!="" && language!="auto" { return 2; }
   if prompt!="" || words!="" { return 3; }
   if device!="gpu" && device!="cpu" { return 4; }

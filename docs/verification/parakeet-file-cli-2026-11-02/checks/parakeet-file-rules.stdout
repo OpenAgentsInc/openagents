@@ -1,0 +1,8 @@
+ok   #test Parakeet file windows cover short tails exactly without artificial padding (1 case, 56806 steps, 1 ms)
+ok   #test Parakeet file emission bounds preserve fractional global offsets and repeated frames (1 case, 957 steps, 0 ms)
+ok   #test Parakeet file parser versions outputs and never silently changes a named device (1 case, 1144 steps, 0 ms)
+FAIL #test Parakeet file WAV windows preserve samples and reject truncated or misaligned data (0 ms)
+ok   #test Parakeet file writers keep exact token offsets and escape literal transcript bytes (1 case, 22191 steps, 0 ms)
+ok   #test Parakeet file JSON framing preserves the legacy single-window snapshots (1 case, 4021803 steps, 86 ms)
+6 of 17 checks (--only 'Parakeet file'), 5 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

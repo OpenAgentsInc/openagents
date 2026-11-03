@@ -1,0 +1,26 @@
+{
+  "schema": "psionic.parakeet-speech-seam-reference.v1",
+  "scope": "One public Count utterance split exactly across two independent windows, with leading/trailing silence. Not full-context equivalence or representative-corpus qualification.",
+  "reference": "I am convinced of what I say, said the Count.",
+  "hypotheses": [
+    "I am convinced of what I",
+    "Say, said the count,"
+  ],
+  "combined": "I am convinced of what I Say, said the count,",
+  "normalization": "Existing pinned reference score: UnicodeNFKC+casefold; punctuation stripped; apostrophes retained.",
+  "score": {
+    "words": 10,
+    "word_errors": 0,
+    "characters": 43,
+    "character_errors": 0
+  },
+  "first_word_preserved": true,
+  "last_word_preserved": true,
+  "normalized_word_sequence_equal": true,
+  "punctuation_and_case_differ": true,
+  "profile_ids": [
+    "seam-left-327520",
+    "seam-right-28760"
+  ],
+  "per_half_score_fields_not_used": "The original harness repeats full-context text as transport metadata; no separate human per-half alignment is claimed."
+}

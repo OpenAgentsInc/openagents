@@ -293,35 +293,46 @@ openagents admin key add NPUB [--note T] | key remove NPUB   # a root admin only
 
 ## Transcribe
 
-```sh
-openagents transcribe talk.mp4                    # timestamped segments as text lines; base, English
-openagents transcribe talk.mp4 --srt > talk.srt   # or --vtt, or --json (one object with every segment)
-openagents transcribe memo.m4a --model small --language auto
-openagents transcribe models                      # the models in ~/.cache/openagents/models/whisper
-openagents transcribe fetch medium                # downloads one; transcribe also fetches what it needs
+```shell
+openagents transcribe clip.wav                    # default: local Parakeet, automatic language
+openagents transcribe clip.wav --json             # versioned file metadata, text and global token timing
+openagents transcribe talk.wav --srt > talk.srt    # or --vtt
+openagents transcribe models                      # pinned Parakeet directory and file presence
+openagents transcribe memo.m4a --model-dir /path/to/pinned-parakeet --device gpu
+openagents transcribe talk.wav --backend psionic --model small --language auto --srt
+openagents transcribe fetch medium --backend psionic   # explicit legacy Whisper download
 ```
 
-- Any audio or video file works: ffmpeg decodes it to 16 kHz mono first.
-- `--model` is `tiny`, `base` (the default), `small`, `medium`,
-  `large-v3` or `large-v3-turbo`. With `--language en` (the default) the
-  four smaller sizes use their English-only files (`base.en`). Small models
-  mishear names; use `small` or `medium` when names matter.
-- Models are whisper.cpp's ggml files from Hugging Face, kept in
-  `~/.cache/openagents/models/whisper` (`OPENAGENTS_MODEL_CACHE` moves it),
-  never in the checkout.
-- The default backend, `--backend psionic`, runs Psionic's own Whisper
-  (`psionic/lib/whisper/`), built from this checkout on first use, with
-  beam search and `--language auto`.
-- `--backend whispercpp` runs whisper.cpp's `whisper-cli` (`brew install
-  whisper-cpp ffmpeg`) on request. The measurements are in
-  [psionic/docs/transcribe.md](../../psionic/docs/transcribe.md).
-- `--backend parakeet` runs the pinned original Parakeet TDT v3 through our
-  Coax frontend, Metal encoder and CPU decoder. Use `--model-dir DIR` and
-  `--text` or `--json`; mono 16 kHz clips are bounded to 20.47 seconds.
-  Language is automatic; Whisper's word bias and subtitle flags are refused.
-  [Setup, native API and qualification](../../psionic/docs/parakeet.md).
-- A status line (model, backend, milliseconds) goes to stderr; the
-  transcript is the only thing on stdout.
+- The default is Psionic's pinned original Parakeet TDT v3 model. Its Metal
+  encoder and Coax TDT decoder run locally; no Whisper tool or model is used
+  and an error never chooses another backend. Install the exact model data
+  using [the pinned setup commands](../../psionic/docs/parakeet.md).
+- The default directory is
+  `~/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99`;
+  `OPENAGENTS_PARAKEET_MODEL` or `--model-dir DIR` selects another copy of
+  the same authenticated files. Transcription never downloads a model.
+- Text, JSON, SRT and WebVTT use complete nonoverlapping model windows of
+  320..327,520 mono 16 kHz samples. A short last remainder borrows from the
+  preceding window; no sample is dropped, repeated or invented as padding.
+  The file limit is 4,096 windows; the command also refuses a result exceeding
+  14 minutes of child execution or 4 MiB of captured transcript output.
+- JSON is versioned as `openagents.parakeet.file.v1`. Each window records its
+  exact sample range, tokens, local TDT frames and global token sample times.
+  Single-window JSON retains the earlier top-level token/frame metadata.
+  One nonempty model window becomes one subtitle cue; cue times bound TDT
+  emission, not acoustic word alignment. Independent windows reset context.
+- Forced language, `--model`, `--threads`, `--words` and `--prompt` remain
+  explicit refusals. Use `--language auto` or omit it.
+- A malformed/truncated WAV refuses. Cancellation or model failure before
+  final output leaves stdout empty; output-device failure or cancellation
+  during final publication can leave partial bytes and returns nonzero.
+- WAV decoding/resampling is Coax. Other audio/video containers use the
+  explicit local ffmpeg conversion boundary; it is not a speech provider.
+- `--backend psionic` retains the existing Whisper CLI contract and model
+  cache as explicit compatibility. `--backend whispercpp` explicitly invokes
+  the independent Whisper oracle. Their historical measurements remain in
+  [the transcription record](../../psionic/docs/transcribe.md).
+- Status/errors go to stderr; only successful transcript output goes to stdout.
 
 ## Labs
 

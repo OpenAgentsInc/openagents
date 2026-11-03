@@ -1,0 +1,22 @@
+{
+  "source": "psionic/fixtures/parakeet/6930-75918-0011.pcm",
+  "source_sha256": "caded890c7f34459729f8597df2d9fe575f199b465894b3dae852e9262b41a62",
+  "source_samples": 51120,
+  "windows": [
+    {
+      "path": "/tmp/parakeet-longfile-reference/count-327520.pcm",
+      "samples": 327520,
+      "format": "s16le mono16000",
+      "sha256": "536d833c0f289dd2e73bb570f05874a6acd9ce5174f6b57b35e4dd5400295fa8"
+    },
+    {
+      "path": "/tmp/parakeet-longfile-reference/count-259843.pcm",
+      "samples": 259843,
+      "format": "s16le mono16000",
+      "sha256": "6fa2e607d582a883ccb110170b266d1b8c1e638bdb61e47338ac2c22967a8810"
+    }
+  ],
+  "file": "/tmp/parakeet-longfile-reference/count-180s-tail.wav",
+  "file_samples": 2880003,
+  "file_sha256": "5a71a94939d9926e0b98c72b1411cccd685d9d7a251e1b54ca66c871c934fda2"
+}

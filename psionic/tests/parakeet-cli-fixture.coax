@@ -7,5 +7,7 @@ tool_main :: ()->int #export_c {
  if args_at(a[..],3)!="--gpu" && args_at(a[..],3)!="--cpu" {return 4;}
  if args_at(a[..],4)=="--text" {print("fixture transcript\n");return 0;}
  if args_at(a[..],4)=="--json" {print("{\"text\":\"fixture transcript\",\"backend\":\"parakeet\"}\n");return 0;}
+ if args_at(a[..],4)=="--srt" {print("fixture subtitle SRT\n");return 0;}
+ if args_at(a[..],4)=="--vtt" {print("fixture subtitle VTT\n");return 0;}
  return 5;
 }
