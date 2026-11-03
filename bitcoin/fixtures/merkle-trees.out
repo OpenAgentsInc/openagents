@@ -1,0 +1,57 @@
+block 100,000: ok, 4 transactions
+  txid: 8c14f0db3df150123e6f3dbbf30f8b955a8249b62ac1d1ff16284aefa3d06d87
+  txid: fff2525b8931402dd09222c50775608f75787bd2b87e56995a7bdd30f79702c4
+  txid: 6359f0868171b1d194cbee1af2f16ea598ae8fad666d9b012c8ed2b79a236ec4
+  txid: e9a66845e05d5abc0ad04ec80f774a7e585c6e8db975962d069a522137b80c1d
+  level 0: 8c14f0 fff252 6359f0 e9a668
+  level 1: ccdafb 8e3089
+  level 2: f3e947
+root: f3e94742aca4b5ef85488dc37c06c3282295ffec960994b2c0d5ac2a25a95766
+header's root: f3e94742aca4b5ef85488dc37c06c3282295ffec960994b2c0d5ac2a25a95766
+check: ok, published root matches: true
+block 514,999: ok, 19 transactions, depth 5
+  level 0: f4bf80 b49af2 797d67 f9aac6 1822a1 5f377f 42a75b 7cce4a 35d129 41a7bd f7e5d7 466796 7e2fc2 6d82e8 bda87e 761172 3b544a e9a028 d041bb  (odd: the last pairs with itself)
+  level 1: fba5b6 6d0718 aae49b 4f2dc3 70243d c8e1f9 a1b712 1bbc31 5fc5de 1e581e
+  level 2: 9d6741 5b7cfa 55bedf 64a0d8 be534d  (odd: the last pairs with itself)
+  level 3: 8ac33a 0e75c1 ed5e8a  (odd: the last pairs with itself)
+  level 4: 55f9aa 1f6201
+  level 5: a9cd74
+check: ok, published root matches: true
+witness root: 6947cde2e7987a0f5d059432c314d504304bb5f86e3138069bacb56e44b9e411
+SHA-256d(witness root, reserved value) is the coinbase's commitment: true
+block 413,567: 1557 transactions, depth 11, mutated false
+  root: 64a50c649fc816baaa2effda230c39cacf1504e4e616a2863685b72aaa7dce05
+check: ok, published root matches: true
+CVE-2012-2459
+  level 0: f4bf80 b49af2 797d67 f9aac6 1822a1 5f377f
+  level 1: fba5b6 6d0718 aae49b  (odd: the last pairs with itself)
+  level 2: 9d6741 c9f27c
+  level 3: 23ecb9
+  root of 1, 2, 3, 4, 5, 6: 23ecb979e55aa39a0fb4aa7ef6f90cb2594c0f26c554376f3fcdacc5dce76e7a
+  mutated: false
+  level 0: f4bf80 b49af2 797d67 f9aac6 1822a1 5f377f 1822a1 5f377f
+  level 1: fba5b6 6d0718 aae49b aae49b
+  two equal hashes paired here
+  level 2: 9d6741 c9f27c
+  level 3: 23ecb9
+  root of 1, 2, 3, 4, 5, 6, 5, 6: 23ecb979e55aa39a0fb4aa7ef6f90cb2594c0f26c554376f3fcdacc5dce76e7a
+  mutated: true, same root: true
+block 514,999 with its last transaction twice: ok, 20 transactions, 5418 bytes
+  same header, same block hash: true
+  check: mutated
+branch for transaction 2 of block 100,000: ok, 2 hashes
+  sibling: e9a66845e05d5abc0ad04ec80f774a7e585c6e8db975962d069a522137b80c1d
+  sibling: ccdafb73d8dcd0173d5d5c3c9a0770d0b3953db889dab99ef05b1907518cb815
+  proof: ok
+  as transaction 3: mismatch
+  with one hash left off: bad depth
+branch for transaction 1000 of block 413,567: 11 hashes, proof ok
+a 64-byte transaction
+  reads: true, stripped size 64
+  its txid is the parent of its two halves: true
+  a block with it: ok, the 64-byte one is transaction 1
+  proof of transaction 1: ok
+  the right half as leaf 3, one level deeper, reaches the root: true
+  proof with the true count of 2: bad index
+  proof with a claimed count of 4: ok
+  under BIP-54's proposed rule: 64-byte transaction at byte 216

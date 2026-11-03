@@ -303,6 +303,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "bitcoin/examples/merkle-trees.coax",
+      "chapter": "bitcoin/book/ch046-merkle-trees-and-the-duplicate-leaf-flaw.md",
+      "stdout": "bitcoin/fixtures/merkle-trees.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

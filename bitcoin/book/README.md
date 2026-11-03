@@ -43,10 +43,10 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 29 are implemented and 95 are planned. The 29
-implemented chapters have runnable examples, qualified on native CPU, and 24
+Of the 124 chapters, 30 are implemented and 94 are planned. The 30
+implemented chapters have runnable examples, qualified on native CPU, and 25
 of them on Wasm. Sixteen of them are the cryptography Nostr already used;
-chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 22, 26, 28 and 34 are new.
+chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 34 and 46 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -203,7 +203,7 @@ Merkle trees, headers and proof of work, the chain parameters, every consensus r
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 46. Merkle trees and the duplicate-leaf flaw | Planned | Merkle roots of pinned mainnet blocks match their headers. A block whose last transaction is duplicated is detected (CVE-2012-2459). |
+| [46. Merkle trees and the duplicate-leaf flaw](ch046-merkle-trees-and-the-duplicate-leaf-flaw.md) | Runnable: native C and wasm | Merkle roots of blocks 100,000, 514,999 and 413,567 match their headers, with Core's `mutated` flag on every equal pair. A block with its last transaction repeated keeps its header and is refused as mutated (CVE-2012-2459). Branches build and verify for SPV proofs, the witness root reaches block 514,999's commitment, and a 64-byte transaction shows why a proof needs the true count; checked against a Python transliteration of Core natively and in Wasm. |
 | 47. Block headers and proof of work | Planned | The genesis header and pinned headers hash below their targets; a header with one changed bit does not. |
 | 48. Compact targets, retargeting and chainwork | Planned | `nBits` round-trips for every mainnet retarget to a pinned height, computed retargets match the chain, and chainwork matches Bitcoin Core's `getblockheader`. |
 | 49. The witness commitment | Planned | The coinbase commitments of pinned segwit blocks match their computed witness roots. |

@@ -1,0 +1,134 @@
+// The checks of merkle-trees.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/merkle-trees.coax
+#load "../merkle-trees.coax";
+
+// book:begin check
+// The txids of merkle_tests.cpp's blocks: transaction j (below 256) has
+// version 2, no inputs, no outputs and locktime j.
+core_leaves :: (n: int, out: [] u8) {
+  for j: 0..<n {
+    tx := [10] u8.[2, 0, 0, 0, 0, 0, cast(u8) j, 0, 0, 0];
+    #assert sha256d_checked(tx[..], out[32*j..<32*j+32], false) == SHA_OK;
+  }
+}
+// The first two, as computed by merkle_reference.py.
+#test "Core's test transactions" {
+  leaves: [64] u8;
+  core_leaves(2, leaves[..]);
+  #assert id_is(leaves[0..<32], "4ebd325a4b394cff8c57e8317ccf5a8d0e2bdf1b8526f8aad6c8e43d8240621a");
+  #assert id_is(leaves[32..<64], "d877b150e2f2cb183f38643fca5169da842be9c8fb841570d6fdf496bd56e829");
+}
+// How many trailing transactions merkle_test repeats for a count above
+// zero: 2 to the number of trailing zero bits of the count.
+repeat :: (n: int) -> int {
+  r := 1;
+  while n % (2 * r) == 0 { r *= 2; }
+  return r;
+}
+// How many rounds of repetition merkle_test makes for 0 to 16
+// transactions, as merkle.py's transliteration counts them.
+ROUNDS :: [17] int.[0, 0, 0, 1, 0, 2, 1, 1, 0, 3, 2, 2, 1, 2, 1, 1, 0];
+// merkle_test for 0 to 16 transactions: up to three rounds of repeating
+// the last 2^ctz(count) transactions keep the root and set the mutated
+// flag, and the root is zero only for no transactions. Without
+// repetition, every transaction's branch rebuilds the root.
+#forall "Core's merkle_test" ntx: 0..<17 #steps 250000000 {
+  leaves: [32 * 64] u8; work: [32 * 64] u8; root: [32] u8; again: [32] u8; branch: [32 * 6] u8;
+  core_leaves(ntx, leaves[..]);
+  r := merkle_root_vartime(leaves[0..<32*ntx], work[..], root[..]);
+  #assert (r.code == MERKLE_EMPTY) == (ntx == 0) && !r.mutated;
+  zero := true;
+  for i: 0..<32 { if root[i] != 0 { zero = false; } }
+  #assert zero == (ntx == 0);
+  n := ntx; rounds := 0;
+  for round: 1..<4 {
+    if n == 0 { break; }
+    dup := repeat(n);
+    if dup >= n { break; }
+    rounds += 1;
+    for j: 0..<dup { for i: 0..<32 { leaves[32*(n+j)+i] = leaves[32*(n+j-dup)+i]; } }
+    n += dup;
+    m := merkle_root_vartime(leaves[0..<32*n], work[..], again[..]);
+    #assert m.code == MERKLE_OK && m.mutated;
+    for i: 0..<32 { #assert again[i] == root[i]; }
+    #assert merkle_check_vartime(leaves[0..<32*n], work[..], root[..]) == MERKLE_MUTATED;
+  }
+  #assert rounds == ROUNDS[ntx];
+  for i: 0..<ntx {
+    b := merkle_branch_vartime(leaves[0..<32*ntx], i, work[..], branch[..]);
+    #assert b.code == MERKLE_OK && merkle_verify_vartime(leaves[32*i..<32*i+32], branch[0..<32*b.depth], i, ntx, root[..]) == MERKLE_OK;
+  }
+}
+// merkle_test_oneTx_block, merkle_test_OddTxWithRepeatedLastTx_block and
+// merkle_test_LeftSubtreeRightSubtree.
+#test "Core's small blocks" #steps 100000000 {
+  leaves: [32 * 4] u8; work: [32 * 4] u8; a: [32] u8; b: [32] u8; halves: [64] u8;
+  core_leaves(4, leaves[..]);
+  r := merkle_root_vartime(leaves[0..<32], work[..], a[..]);
+  #assert r.code == MERKLE_OK && !r.mutated && equal_bytes(a[..], leaves[0..<32]);
+  r = merkle_root_vartime(leaves[0..<96], work[..], a[..]);
+  #assert !r.mutated;
+  for i: 0..<32 { leaves[96+i] = leaves[64+i]; }
+  r = merkle_root_vartime(leaves[..], work[..], b[..]);
+  #assert r.mutated && equal_bytes(a[..], b[..]);
+  core_leaves(4, leaves[..]);
+  #assert merkle_root_vartime(leaves[0..<64], work[..], halves[0..<32]).code == MERKLE_OK;
+  #assert merkle_root_vartime(leaves[64..<128], work[..], halves[32..<64]).code == MERKLE_OK;
+  #assert merkle_root_vartime(halves[..], work[..], a[..]).code == MERKLE_OK;
+  #assert merkle_root_vartime(leaves[..], work[..], b[..]).code == MERKLE_OK && equal_bytes(a[..], b[..]);
+}
+// Blocks 100,000 and 514,999: each root is the header's and the published
+// one, and block 514,999's witness root reaches its commitment.
+#test "mainnet roots" #steps 250000000 {
+  b: [6000] u8; ids: [32 * 19] u8; wids: [32 * 19] u8; work: [32 * 19] u8; root: [32] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  s := decode(MK_BLOCK_100000, b[..]);
+  k := merkle_block_ids_vartime(s, false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_OK && k.count == 4 && merkle_check_vartime(ids[0..<128], work[..], s[36..<68]) == MERKLE_OK;
+  #assert merkle_root_vartime(ids[0..<128], work[..], root[..]).code == MERKLE_OK && id_is(root[..], MK_ROOT_100000);
+  s = decode(MK_BLOCK_514999, b[..]);
+  k = merkle_block_ids_vartime(s, false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_OK && k.count == 19 && merkle_check_vartime(ids[..], work[..], s[36..<68]) == MERKLE_OK;
+  #assert merkle_root_vartime(ids[..], work[..], root[..]).code == MERKLE_OK && id_is(root[..], MK_ROOT_514999);
+  #assert merkle_witness_root_vartime(wids[..], work[..], root[..]) == MERKLE_OK && id_is(root[..], MK_WITNESS_ROOT_514999);
+}
+// Block 413,567 from Bitcoin Core's test data: 1,557 txids, an odd count.
+#test "block 413,567's root" #steps 1000000000 {
+  h: [80] u8; leaves: [32 * 1557] u8; work: [32 * 1557] u8; root: [32] u8;
+  header := decode(MK_HEADER_413567, h[..]);
+  big := decode(MK_LEAVES_413567, leaves[..]);
+  #assert big.count == 32 * MK_COUNT_413567 && merkle_check_vartime(big, work[..], header[36..<68]) == MERKLE_OK;
+  #assert merkle_root_vartime(big, work[..], root[..]).code == MERKLE_OK && id_is(root[..], MK_ROOT_413567);
+  #assert sha256d_checked(header, root[..], false) == SHA_OK && id_is(root[..], MK_HASH_413567);
+}
+// The worked example's verdicts: the repeated block, the branch, the
+// 64-byte transaction and the forged proof.
+#test "the example's verdicts" #steps 200000000 {
+  b: [6000] u8; ids: [32 * 20] u8; wids: [32 * 20] u8; work: [32 * 20] u8; root: [32] u8; d: [32] u8; branch: [64] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  s := decode(MK_BLOCK_100000, b[..]);
+  k := merkle_block_ids_vartime(s, false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  t := merkle_branch_vartime(ids[0..<128], 2, work[..], branch[..]);
+  #assert t.code == MERKLE_OK && t.depth == 2;
+  #assert merkle_verify_vartime(ids[64..<96], branch[..], 2, 4, s[36..<68]) == MERKLE_OK;
+  #assert merkle_verify_vartime(ids[64..<96], branch[..], 3, 4, s[36..<68]) == MERKLE_MISMATCH;
+  #assert merkle_verify_vartime(ids[64..<96], branch[0..<32], 2, 4, s[36..<68]) == MERKLE_BAD_DEPTH;
+  t64: [64] u8;
+  tx := decode(MK_TX64, t64[..]);
+  cb := tx_parse_vartime(s[81..<s.count], true, ins[..], outs[..], items[..]);
+  s[80] = 2;
+  end := 81 + cb.total;
+  for i: 0..<64 { s[end+i] = tx[i]; }
+  k = merkle_block_ids_vartime(s[0..<end+64], false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_OK && k.count == 2 && k.first64 == 1;
+  #assert merkle_root_vartime(ids[0..<64], work[..], root[..]).code == MERKLE_OK;
+  forged: [64] u8;
+  for i: 0..<32 { forged[i] = tx[i]; forged[32+i] = ids[i]; }
+  #assert merkle_branch_root_vartime(tx[32..<64], forged[..], 3, d[..]) == MERKLE_OK && equal_bytes(d[..], root[..]);
+  #assert merkle_verify_vartime(tx[32..<64], forged[..], 3, 2, root[..]) == MERKLE_BAD_INDEX;
+  #assert merkle_verify_vartime(tx[32..<64], forged[..], 3, 4, root[..]) == MERKLE_OK;
+  k = merkle_block_ids_vartime(s[0..<end+64], true, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_TX_64 && k.at == end && CODES[k.code] == "64-byte transaction";
+}
+// book:end check

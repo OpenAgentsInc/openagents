@@ -196,7 +196,7 @@ there is a need.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| 46. Merkle trees and the duplicate-leaf flaw — planned | 5 | Merkle roots of pinned mainnet blocks match their headers. A block whose last transaction is duplicated is detected (CVE-2012-2459). | CVE-2012-2459 |
+| [46. Merkle trees and the duplicate-leaf flaw](ch046-merkle-trees-and-the-duplicate-leaf-flaw.md) — implemented | 3, 5, 34 | Merkle roots of pinned mainnet blocks match their headers. A block whose last transaction is duplicated is detected (CVE-2012-2459). | CVE-2012-2459 |
 | 47. Block headers and proof of work — planned | 2, 5 | The genesis header and pinned headers hash below their targets; a header with one changed bit does not. | Bitcoin Core `pow.cpp` |
 | 48. Compact targets, retargeting and chainwork — planned | 47 | `nBits` round-trips for every mainnet retarget to a pinned height, computed retargets match the chain, and chainwork matches Bitcoin Core's `getblockheader`. | Bitcoin Core `pow.cpp` |
 | 49. The witness commitment — planned | 35, 46 | The coinbase commitments of pinned segwit blocks match their computed witness roots. | BIP-141 |

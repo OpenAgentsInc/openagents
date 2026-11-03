@@ -1113,6 +1113,149 @@
       "retrieved": "2026-11-02",
       "sha256": "51ad9defd71911dbe413daf277bcb2e1077743f5ee5ae48d0a3b90a5b7486f55",
       "bytes": 1081
+    },
+    {
+      "path": "upstream/bitcoin-core/merkle.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/merkle.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-merkle"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "abf9241785afd4b08735fde46ce9cabde9140331e061ed7e4ea74eb7f14b0af4",
+      "bytes": 7787
+    },
+    {
+      "path": "upstream/bitcoin-core/merkle.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/merkle.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-merkle"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "c00bd222d4d262cba361b7849020ea9af279ecd637c0137cd345757fe94ebb61",
+      "bytes": 1341
+    },
+    {
+      "path": "upstream/bitcoin-core/merkle_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/merkle_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-merkle"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "0902477c1f45d1536a1aafab6f931c478064e87099c7f8034025c09b3677fa5a",
+      "bytes": 10801
+    },
+    {
+      "path": "upstream/bitcoin-core/validation.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/validation.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-merkle"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "65e88786ccaaf4dd0ebd14e7a0b82d7fbe6b86a8f0b2f9de4cc2db7b983283d2",
+      "bytes": 316160
+    },
+    {
+      "path": "upstream/bitcoin-core/policy.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/policy/policy.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-merkle"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "7ffa54e839f78877c90ea59961995c38caf7015ad7280413cc49c37ab8c9a5cd",
+      "bytes": 10850
+    },
+    {
+      "path": "upstream/bitcoin-core/block413567.raw",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/bench/data/block413567.raw",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-merkle"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "71964cee18c58675784846d498944b35daa41e36b6f65a7e8feb291def924cce",
+      "bytes": 999887
+    },
+    {
+      "path": "upstream/bip54/bip-0054.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0054.md",
+      "revision": "git:927b6de9915c9262615a6399de51b200f81e5aa4",
+      "license": "CC0-1.0",
+      "covers": [
+        "bitcoin-merkle"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "6cb659a11692dc0e0f2837df9c43746121684b8aa5f12b3cb095f0c3e2cb029d",
+      "bytes": 19163
+    },
+    {
+      "path": "upstream/mainnet/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506.raw",
+      "kind": "upstream",
+      "url": "https://mempool.space/api/block/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506/raw",
+      "revision": "static: mempool.space's raw bytes of a confirmed mainnet block; its header hashes to the block hash; pinned by sha256",
+      "license": "Public Bitcoin blockchain data",
+      "covers": [
+        "bitcoin-merkle"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "b02256f05ce2fc0d152394b5cd2fa28fe4ab61100844c389581c4cffad88a2b1",
+      "bytes": 957
+    },
+    {
+      "path": "upstream/mainnet/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506.json",
+      "kind": "upstream",
+      "url": "https://mempool.space/api/block/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506",
+      "revision": "static: mempool.space's API record of a confirmed mainnet block (height, tx_count, merkle_root); pinned by sha256",
+      "license": "Public Bitcoin blockchain data",
+      "covers": [
+        "bitcoin-merkle"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "a40baaad74146e536439774ac3966f471c6745a942423db503789547cfe2b45e",
+      "bytes": 421
+    },
+    {
+      "path": "upstream/mainnet/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097.raw",
+      "kind": "upstream",
+      "url": "https://mempool.space/api/block/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097/raw",
+      "revision": "static: mempool.space's raw bytes of a confirmed mainnet block; its header hashes to the block hash; pinned by sha256",
+      "license": "Public Bitcoin blockchain data",
+      "covers": [
+        "bitcoin-merkle"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "7c0d1862284dcd240a63b5bcb75e956c3645ed5d7453799abb721ce06e6b2902",
+      "bytes": 5044
+    },
+    {
+      "path": "upstream/mainnet/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097.json",
+      "kind": "upstream",
+      "url": "https://mempool.space/api/block/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097",
+      "revision": "static: mempool.space's API record of a confirmed mainnet block (height, tx_count, merkle_root); pinned by sha256",
+      "license": "Public Bitcoin blockchain data",
+      "covers": [
+        "bitcoin-merkle"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "81682b48567be9bafe33b712930567fea33f9a18cbabc56eb89b82666d144d64",
+      "bytes": 432
     }
   ]
 }

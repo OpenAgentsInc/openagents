@@ -55,3 +55,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 **VII. Transactions and script**
 
 - [34. Transactions and their serialization](ch034-transactions-and-their-serialization.md) — implemented
+
+**IX. Blocks and consensus**
+
+- [46. Merkle trees and the duplicate-leaf flaw](ch046-merkle-trees-and-the-duplicate-leaf-flaw.md) — implemented

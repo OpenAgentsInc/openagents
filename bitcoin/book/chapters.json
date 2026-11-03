@@ -914,14 +914,23 @@
   {
    "number": 46,
    "title": "Merkle trees and the duplicate-leaf flaw",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch046-merkle-trees-and-the-duplicate-leaf-flaw.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
-    5
+    3,
+    5,
+    34
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/merkle.coax",
+    "bitcoin/examples/merkle-trees.coax",
+    "bitcoin/examples/checks/merkle-trees.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {

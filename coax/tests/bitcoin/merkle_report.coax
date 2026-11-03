@@ -1,0 +1,74 @@
+// A flat test-only C entry point over coax/lib/bitcoin/merkle.coax for
+// coax/tests/bitcoin/merkle.py: it runs one operation and writes what it
+// found as numbers and bytes, so Python can compare every field with its
+// own transliteration of Bitcoin Core. No tree logic lives here.
+#load "../../lib/bitcoin/merkle.coax";
+
+MR_LEAVES :: 4096;   // the most leaves or transactions a case may hold
+MR_ROOM :: 1024;     // inputs, outputs and witness items in one transaction
+// op 0, a tree: b is a header root (32 bytes), then the leaves. Writes the
+// root's code, its mutated flag and the root; the check's code; the
+// witness root's code and root; the depth; then for leaves 0, index,
+// 2 index, ... (every leaf when index is below 1) its branch's code and
+// depth, the branch, the root it gives and the proof's code with the true
+// count.
+// op 1, a block: b is a serialized block; index is 1 for BIP-54's rule.
+// Writes the reader's code, at, tx_code, count and first64; the txids and
+// wtxids; the check's code against the header and the witness root's code
+// and root.
+// op 2, a proof: b is a leaf, a root, then the branch; index and count
+// as given. Writes the branch root's code and root, and the proof's code.
+// Numbers are 8-byte little-endian. Returns the bytes written, or -1 when
+// out is too short or the case too large.
+merkle_report_vartime :: (op: int, b: [] u8, index: int, count: int, out: [] u8) -> int #export_c {
+  if out.count < 64 { return -1; }
+  work: [32 * MR_LEAVES] u8;
+  if op == 0 {
+    if b.count < 32 || b.count - 32 > 32 * MR_LEAVES { return -1; }
+    leaves := b[32..<b.count];
+    n := leaves.count / 32;
+    if out.count < 200 + n * (64 + 32 * 13 + 32) { return -1; }
+    r := merkle_root_vartime(leaves, work[..], out[16..<48]);
+    at := mr_put(out, 0, r.code); at = mr_put(out, at, ifx r.mutated then 1 else 0); at += 32;
+    at = mr_put(out, at, merkle_check_vartime(leaves, work[..], b[0..<32]));
+    at = mr_put(out, at, merkle_witness_root_vartime(leaves, work[..], out[at+8..<at+40])); at += 32;
+    at = mr_put(out, at, merkle_depth_vartime(n));
+    step := ifx index < 1 then 1 else index;
+    i := 0;
+    while i < n {
+      branch: [32 * 13] u8;
+      k := merkle_branch_vartime(leaves, i, work[..], branch[..]);
+      at = mr_put(out, at, k.code); at = mr_put(out, at, k.depth);
+      for j: 0..<32*k.depth { out[at+j] = branch[j]; }
+      at += 32 * k.depth;
+      at = mr_put(out, at, merkle_branch_root_vartime(leaves[32*i..<32*i+32], branch[0..<32*k.depth], i, out[at+8..<at+40])); at += 32;
+      at = mr_put(out, at, merkle_verify_vartime(leaves[32*i..<32*i+32], branch[0..<32*k.depth], i, n, out[16..<48]));
+      i += step;
+    }
+    return at;
+  }
+  if op == 1 {
+    ins: [MR_ROOM] TxIn; outs: [MR_ROOM] TxOut; items: [MR_ROOM] TxItem;
+    txids: [32 * MR_LEAVES] u8; wtxids: [32 * MR_LEAVES] u8;
+    k := merkle_block_ids_vartime(b, index == 1, ins[..], outs[..], items[..], txids[..], wtxids[..]);
+    if out.count < 100 + 64 * k.count { return -1; }
+    at := mr_put(out, 0, k.code); at = mr_put(out, at, k.at); at = mr_put(out, at, k.tx_code);
+    at = mr_put(out, at, k.count); at = mr_put(out, at, k.first64);
+    if k.code != MERKLE_OK { return at; }
+    for j: 0..<32*k.count { out[at+j] = txids[j]; out[at+32*k.count+j] = wtxids[j]; }
+    at += 64 * k.count;
+    at = mr_put(out, at, merkle_check_vartime(txids[0..<32*k.count], work[..], b[36..<68]));
+    at = mr_put(out, at, merkle_witness_root_vartime(wtxids[0..<32*k.count], work[..], out[at+8..<at+40]));
+    return at + 32;
+  }
+  if op == 2 {
+    if b.count < 64 { return -1; }
+    at := mr_put(out, 0, merkle_branch_root_vartime(b[0..<32], b[64..<b.count], index, out[8..<40])); at += 32;
+    return mr_put(out, at, merkle_verify_vartime(b[0..<32], b[64..<b.count], index, count, b[32..<64]));
+  }
+  return -1;
+}
+mr_put :: (out: [] u8, at: int, v: int) -> int {
+  for i: 0..<8 { out[at+i] = cast(u8) ((v >> (8 * i)) & 255); }
+  return at + 8;
+}

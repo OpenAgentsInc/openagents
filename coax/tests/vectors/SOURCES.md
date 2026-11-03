@@ -200,6 +200,21 @@ that a maliciously replaced manifest is authentic.
   Taproot key-path spend `33e794d0…` and the script-path spend
   `37777def…`, retrieved 2026-11-02; each raw file hashes to its txid, so
   the bytes cannot change, and the chapter uses the JSON's size and weight.
+- **Merkle trees (Bitcoin chapter 46):** Bitcoin Core's
+  `consensus/merkle.cpp` and `merkle.h` (`ComputeMerkleRoot` with its
+  `mutated` flag, `BlockWitnessMerkleRoot`, `TransactionMerklePath`),
+  `test/merkle_tests.cpp` (`merkle_test` and the older tree builder it checks
+  against), `validation.cpp` (`CheckMerkleRoot`, `IsBlockMutated`, and how a
+  mutated block is refused without marking its header invalid) and
+  `policy/policy.h` (`MIN_STANDARD_TX_NONWITNESS_SIZE`), all at the same
+  revision. `block413567.raw` is Core's benchmark block (1,557
+  transactions) from `src/bench/data/`. BIP-54 (Consensus Cleanup, bips
+  commit `927b6de9`, CC0-1.0) states the proposed 64-byte transaction rule;
+  it has no deployment parameters at that commit. The `mainnet/` block files
+  are mempool.space's raw bytes and JSON for block 100,000 (`…1afd33e506`,
+  four transactions) and block 514,999 (`…0ea61097`, 19 transactions, five
+  of them SegWit), retrieved 2026-11-02; each header hashes to its block
+  hash and its Merkle root commits to every transaction.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -226,8 +241,8 @@ execution, fuzzing, secret handling and production review remain separate tasks.
 
 BIP-340 is BSD-2-Clause OR MIT OR CC0-1.0; BIP-173 and BIP-350 declare BSD-2-Clause in their
 text, and BIP-341 declares BSD-3-Clause in its text. Bitcoin Core is MIT,
-btcd is ISC and rust-bitcoin is CC0-1.0; their license files are retained. The
-mainnet transactions are public blockchain data. SipHash is CC0-1.0, MIT or
+btcd is ISC, rust-bitcoin is CC0-1.0 and BIP-54 is CC0-1.0; their license files are retained. The
+mainnet transactions and blocks are public blockchain data. SipHash is CC0-1.0, MIT or
 Apache-2.0 with LLVM exception; its CC0 file is retained. The NIP-44 JavaScript subtree is Unlicense; Wycheproof is Apache-2.0;
 JSONTestSuite is MIT. Their provided license files are retained. `segwit_addr.py`
 carries its MIT notice in its own header. RFCs retain
@@ -326,4 +341,15 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/rpc_signmessagewithprivkey.py`](upstream/bitcoin-core/rpc_signmessagewithprivkey.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/rpc_signmessagewithprivkey.py) | `56e6f567ff363e884b27c03baee123deb9600ee2f62825317257a3e133fdd30b` |
 | [`upstream/secp256k1/recovery/tests_impl.h`](upstream/secp256k1/recovery/tests_impl.h) | [pinned source](https://raw.githubusercontent.com/bitcoin-core/secp256k1/6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d/src/modules/recovery/tests_impl.h) | `fc23430ea6e87f8f37bbf641236e71ead587e5438cf3d34f93de7ef39ebf3978` |
 | [`upstream/secp256k1/COPYING`](upstream/secp256k1/COPYING) | [pinned source](https://raw.githubusercontent.com/bitcoin-core/secp256k1/6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d/COPYING) | `a735999c7e5649df6fcda6fb06ab97435851c392b1b93494ae8725f37441632f` |
+| [`upstream/bitcoin-core/merkle.cpp`](upstream/bitcoin-core/merkle.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/merkle.cpp) | `abf9241785afd4b08735fde46ce9cabde9140331e061ed7e4ea74eb7f14b0af4` |
+| [`upstream/bitcoin-core/merkle.h`](upstream/bitcoin-core/merkle.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/consensus/merkle.h) | `c00bd222d4d262cba361b7849020ea9af279ecd637c0137cd345757fe94ebb61` |
+| [`upstream/bitcoin-core/merkle_tests.cpp`](upstream/bitcoin-core/merkle_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/merkle_tests.cpp) | `0902477c1f45d1536a1aafab6f931c478064e87099c7f8034025c09b3677fa5a` |
+| [`upstream/bitcoin-core/validation.cpp`](upstream/bitcoin-core/validation.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/validation.cpp) | `65e88786ccaaf4dd0ebd14e7a0b82d7fbe6b86a8f0b2f9de4cc2db7b983283d2` |
+| [`upstream/bitcoin-core/policy.h`](upstream/bitcoin-core/policy.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/policy/policy.h) | `7ffa54e839f78877c90ea59961995c38caf7015ad7280413cc49c37ab8c9a5cd` |
+| [`upstream/bitcoin-core/block413567.raw`](upstream/bitcoin-core/block413567.raw) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/bench/data/block413567.raw) | `71964cee18c58675784846d498944b35daa41e36b6f65a7e8feb291def924cce` |
+| [`upstream/bip54/bip-0054.md`](upstream/bip54/bip-0054.md) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0054.md) | `6cb659a11692dc0e0f2837df9c43746121684b8aa5f12b3cb095f0c3e2cb029d` |
+| [`upstream/mainnet/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506.raw`](upstream/mainnet/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506.raw) | [mempool.space API](https://mempool.space/api/block/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506/raw) | `b02256f05ce2fc0d152394b5cd2fa28fe4ab61100844c389581c4cffad88a2b1` |
+| [`upstream/mainnet/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506.json`](upstream/mainnet/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506.json) | [mempool.space API](https://mempool.space/api/block/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506) | `a40baaad74146e536439774ac3966f471c6745a942423db503789547cfe2b45e` |
+| [`upstream/mainnet/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097.raw`](upstream/mainnet/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097.raw) | [mempool.space API](https://mempool.space/api/block/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097/raw) | `7c0d1862284dcd240a63b5bcb75e956c3645ed5d7453799abb721ce06e6b2902` |
+| [`upstream/mainnet/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097.json`](upstream/mainnet/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097.json) | [mempool.space API](https://mempool.space/api/block/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097) | `81682b48567be9bafe33b712930567fea33f9a18cbabc56eb89b82666d144d64` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

@@ -1,0 +1,176 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/merkle.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/tests/bitcoin/merkle_block413567.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// A hash as explorers show it: the digest reversed.
+show_id :: (label: string, digest: [] u8) {
+  shown: [32] u8;
+  #assert bitcoin_reverse32(digest, shown[..]) == SHA_OK;
+  show(label, shown[..]);
+}
+// Decode hex into out and return the filled part. Every literal here and
+// in the vector tables is valid lowercase hex, so an error stops the program.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+equal_bytes :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// Is the digest, shown reversed, this hex?
+id_is :: (digest: [] u8, hex: string) -> bool {
+  want: [32] u8; shown: [32] u8;
+  #assert bitcoin_reverse32(digest, shown[..]) == SHA_OK;
+  return equal_bytes(shown[..], decode(hex, want[..]));
+}
+// The name of each result code.
+CODES :: [9] string.["ok", "empty", "mutated", "mismatch", "capacity", "bad index", "bad depth",
+  "64-byte transaction", "bad block"];
+// Print each level of the tree over n leaves, one short hash per node.
+levels :: (leaves: [] u8, n: int) {
+  work: [32 * 32] u8;
+  for i: 0..<32*n { work[i] = leaves[i]; }
+  level := 0; m := n;
+  while true {
+    print("  level %:", level);
+    for k: 0..<m {
+      shown: [32] u8;
+      #assert bitcoin_reverse32(work[32*k..<32*k+32], shown[..]) == SHA_OK;
+      text: [8] u8;
+      r := hex_encode_checked(cast(string) shown[0..<3], text[..], false);
+      print(" %", cast(string) text[0..<r.written]);
+    }
+    if m % 2 == 1 && m > 1 { print("  (odd: the last pairs with itself)"); }
+    print("\n");
+    if m == 1 { break; }
+    if merkle_pairs_equal_vartime(work[..], m) { print("  two equal hashes paired here\n"); }
+    merkle_level_vartime(work[..], m);
+    m = (m + 1) / 2; level += 1;
+  }
+}
+
+main :: () {
+  b: [6000] u8; x: [6000] u8; ids: [32 * 20] u8; wids: [32 * 20] u8; work: [32 * 1557] u8;
+  root: [32] u8; d: [32] u8; branch: [32 * 12] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem;
+
+  // Block 100,000: four transactions, two levels.
+  s := decode(MK_BLOCK_100000, b[..]);
+  k := merkle_block_ids_vartime(s, false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  print("block 100,000: %, % transactions\n", CODES[k.code], k.count);
+  for i: 0..<k.count { show_id("  txid", ids[32*i..<32*i+32]); }
+  levels(ids[..], k.count);
+  r := merkle_root_vartime(ids[0..<32*k.count], work[..], root[..]);
+  show_id("root", root[..]);
+  show_id("header's root", s[36..<68]);
+  print("check: %, published root matches: %\n", CODES[merkle_check_vartime(ids[0..<32*k.count], work[..], s[36..<68])], id_is(root[..], MK_ROOT_100000));
+
+  // Block 514,999: nineteen transactions, so odd levels.
+  s = decode(MK_BLOCK_514999, b[..]);
+  k = merkle_block_ids_vartime(s, false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  print("block 514,999: %, % transactions, depth %\n", CODES[k.code], k.count, merkle_depth_vartime(k.count));
+  levels(ids[..], k.count);
+  r = merkle_root_vartime(ids[0..<32*k.count], work[..], root[..]);
+  print("check: %, published root matches: %\n", CODES[merkle_check_vartime(ids[0..<32*k.count], work[..], s[36..<68])], id_is(root[..], MK_ROOT_514999));
+  // The witness root, with the coinbase's wtxid as zero.
+  #assert merkle_witness_root_vartime(wids[0..<32*k.count], work[..], root[..]) == MERKLE_OK;
+  show_id("witness root", root[..]);
+  pair: [64] u8; f: [32] u8;
+  for i: 0..<32 { pair[i] = root[i]; pair[32+i] = 0; }
+  #assert sha256d_checked(pair[..], d[..], false) == SHA_OK;
+  print("SHA-256d(witness root, reserved value) is the coinbase's commitment: %\n", equal_bytes(d[..], decode(MK_COMMITMENT_514999, f[..])));
+
+  // Block 413,567: 1,557 transactions from Bitcoin Core's test data.
+  h413567: [80] u8;
+  header := decode(MK_HEADER_413567, h413567[..]);
+  leaves: [32 * 1557] u8;
+  big := decode(MK_LEAVES_413567, leaves[..]);
+  r = merkle_root_vartime(big, work[..], root[..]);
+  print("block 413,567: % transactions, depth %, mutated %\n", big.count / 32, merkle_depth_vartime(MK_COUNT_413567), r.mutated);
+  show_id("  root", root[..]);
+  print("check: %, published root matches: %\n", CODES[merkle_check_vartime(big, work[..], header[36..<68])], id_is(root[..], MK_ROOT_413567));
+
+  // CVE-2012-2459: Core's construction, on block 514,999's first six
+  // txids, then the same six with the last two repeated.
+  print("CVE-2012-2459\n");
+  s = decode(MK_BLOCK_514999, b[..]);
+  k = merkle_block_ids_vartime(s, false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  six: [32 * 8] u8;
+  for i: 0..<192 { six[i] = ids[i]; }
+  for i: 0..<64 { six[192+i] = ids[128+i]; }
+  levels(six[0..<192], 6);
+  r = merkle_root_vartime(six[0..<192], work[..], root[..]);
+  show_id("  root of 1, 2, 3, 4, 5, 6", root[..]);
+  print("  mutated: %\n", r.mutated);
+  levels(six[..], 8);
+  r = merkle_root_vartime(six[..], work[..], d[..]);
+  show_id("  root of 1, 2, 3, 4, 5, 6, 5, 6", d[..]);
+  print("  mutated: %, same root: %\n", r.mutated, equal_bytes(root[..], d[..]));
+
+  // Block 514,999 with its last transaction repeated.
+  for i: 0..<80 { x[i] = s[i]; }
+  x[80] = 20;
+  for i: 81..<s.count { x[i] = s[i]; }
+  n := s.count;
+  for i: k.last..<s.count { x[n] = s[i]; n += 1; }
+  m := merkle_block_ids_vartime(x[0..<n], false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  print("block 514,999 with its last transaction twice: %, % transactions, % bytes\n", CODES[m.code], m.count, n);
+  #assert sha256d_checked(x[0..<80], d[..], false) == SHA_OK;
+  print("  same header, same block hash: %\n", id_is(d[..], MK_HASH_514999));
+  print("  check: %\n", CODES[merkle_check_vartime(ids[0..<32*m.count], work[..], x[36..<68])]);
+
+  // A Merkle branch: transaction 2 of block 100,000.
+  s = decode(MK_BLOCK_100000, b[..]);
+  k = merkle_block_ids_vartime(s, false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  t := merkle_branch_vartime(ids[0..<32*k.count], 2, work[..], branch[..]);
+  print("branch for transaction 2 of block 100,000: %, % hashes\n", CODES[t.code], t.depth);
+  for i: 0..<t.depth { show_id("  sibling", branch[32*i..<32*i+32]); }
+  print("  proof: %\n", CODES[merkle_verify_vartime(ids[64..<96], branch[0..<64], 2, 4, s[36..<68])]);
+  print("  as transaction 3: %\n", CODES[merkle_verify_vartime(ids[64..<96], branch[0..<64], 3, 4, s[36..<68])]);
+  print("  with one hash left off: %\n", CODES[merkle_verify_vartime(ids[64..<96], branch[0..<32], 2, 4, s[36..<68])]);
+  t = merkle_branch_vartime(big, 1000, work[..], branch[..]);
+  print("branch for transaction 1000 of block 413,567: % hashes, proof %\n", t.depth,
+    CODES[merkle_verify_vartime(big[32000..<32032], branch[0..<32*t.depth], 1000, MK_COUNT_413567, header[36..<68])]);
+
+  // A 64-byte transaction is also an inner node.
+  print("a 64-byte transaction\n");
+  t64: [64] u8;
+  tx := decode(MK_TX64, t64[..]);
+  y := tx_read_vartime(tx, true, ins[..], outs[..], items[..]);
+  print("  reads: %, stripped size %\n", y.code == TX_OK, y.stripped);
+  #assert tx_txid_vartime(tx, y, d[..]);
+  #assert merkle_parent_vartime(tx[0..<32], tx[32..<64], root[..]);
+  print("  its txid is the parent of its two halves: %\n", equal_bytes(d[..], root[..]));
+  // A block: block 100,000's header and coinbase, then the 64-byte one.
+  s = decode(MK_BLOCK_100000, b[..]);
+  cb := tx_parse_vartime(s[81..<s.count], true, ins[..], outs[..], items[..]);
+  s[80] = 2;
+  end := 81 + cb.total;
+  for i: 0..<64 { s[end+i] = tx[i]; }
+  blk := s[0..<end+64];
+  k = merkle_block_ids_vartime(blk, false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  print("  a block with it: %, the 64-byte one is transaction %\n", CODES[k.code], k.first64);
+  #assert merkle_root_vartime(ids[0..<64], work[..], root[..]).code == MERKLE_OK;
+  // The honest proof, and a forged one that takes the right half as a leaf.
+  print("  proof of transaction 1: %\n", CODES[merkle_verify_vartime(ids[32..<64], ids[0..<32], 1, 2, root[..])]);
+  forged: [64] u8;
+  for i: 0..<32 { forged[i] = tx[i]; forged[32+i] = ids[i]; }
+  #assert merkle_branch_root_vartime(tx[32..<64], forged[..], 3, d[..]) == MERKLE_OK;
+  print("  the right half as leaf 3, one level deeper, reaches the root: %\n", equal_bytes(d[..], root[..]));
+  print("  proof with the true count of 2: %\n", CODES[merkle_verify_vartime(tx[32..<64], forged[..], 3, 2, root[..])]);
+  print("  proof with a claimed count of 4: %\n", CODES[merkle_verify_vartime(tx[32..<64], forged[..], 3, 4, root[..])]);
+  k = merkle_block_ids_vartime(blk, true, ins[..], outs[..], items[..], ids[..], wids[..]);
+  print("  under BIP-54's proposed rule: % at byte %\n", CODES[k.code], k.at);
+}
+// book:end example

@@ -1,0 +1,584 @@
+// Merkle trees and the duplicate-leaf flaw (Bitcoin chapter 46): Bitcoin
+// Core's ComputeMerkleRoot with its mutated flag (CVE-2012-2459), the
+// header check in Core's order, the witness root, Merkle branches for SPV
+// proofs and their verification, and the txids and wtxids of a serialized
+// block.
+//
+// The tree follows Bitcoin Core's consensus/merkle.cpp: the leaves are
+// 32-byte hashes in hash order, each parent is SHA-256d of its two
+// children, and a level with an odd number of hashes pairs its last hash
+// with itself. Leaves are packed one after another in a byte view; a
+// procedure that builds levels takes a caller's work view at least as
+// long as the leaves, and copies nothing else.
+//
+// Every hash here is public, so everything runs in variable time and every
+// procedure that decides ends in _vartime (Bitcoin chapter 3).
+#load "tx.coax";
+#load "../../tests/bitcoin/merkle_vectors.coax";
+#authority;
+
+// book:begin codes
+// Result codes. Core's reject reason, where there is one, is in quotes.
+MERKLE_OK :: 0;
+MERKLE_EMPTY :: 1;      // no leaves: the root is zero; a block with none is "bad-blk-length"
+MERKLE_MUTATED :: 2;    // two equal hashes paired at some level: "bad-txns-duplicate" (CVE-2012-2459)
+MERKLE_MISMATCH :: 3;   // the root is not the one the header or the proof names: "bad-txnmrklroot"
+MERKLE_CAPACITY :: 4;   // a view is not whole hashes, or is too short for the result
+MERKLE_BAD_INDEX :: 5;  // a proof's position is not a leaf of a tree that size
+MERKLE_BAD_DEPTH :: 6;  // a proof's branch is not as long as a tree that size is deep
+MERKLE_TX_64 :: 7;      // a transaction of 64 stripped bytes, under BIP-54's proposed rule
+MERKLE_BAD_BLOCK :: 8;  // the block's bytes don't read; the transaction reader's code says why
+
+MERKLE_HASH :: 32;
+// book:end codes
+
+// ---- checks
+mk_unhex :: (text: string, out: [] u8) -> [] u8 {
+  for i: 0..<text.count/2 { out[i] = cast(u8) (mk_nibble(text[2*i])*16 + mk_nibble(text[2*i+1])); }
+  return out[0..<text.count/2];
+}
+mk_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+// Is the digest, reversed, the hex an explorer shows?
+mk_shown_is :: (digest: [] u8, text: string) -> bool {
+  if digest.count * 2 != text.count { return false; }
+  for i: 0..<digest.count {
+    if cast(int) digest[digest.count-1-i] != mk_nibble(text[2*i])*16 + mk_nibble(text[2*i+1]) { return false; }
+  }
+  return true;
+}
+// Leaf k of a test tree: the 32-byte little-endian number v, Core's
+// uint256{v}.
+mk_number :: (out: [] u8, k: int, v: int) {
+  out[32*k] = cast(u8) v;
+  for i: 1..<32 { out[32*k+i] = 0; }
+}
+#test "the check helpers notice every difference" {
+  b: [4] u8; t: [64] u8;
+  #assert mk_shown_is(mk_unhex("09af", b[..]), "af09") && b[0] == 9 && b[1] == 0xaf;
+  #assert !mk_shown_is(b[0..<2], "09af") && !mk_shown_is(b[0..<2], "af08") && !mk_shown_is(b[0..<2], "bf09");
+  #assert !mk_shown_is(b[0..<2], "af0") && !mk_shown_is(b[0..<1], "af09");
+  for i: 0..<64 { t[i] = 0xff; }
+  mk_number(t[..], 1, 7);
+  #assert t[31] == 0xff && t[32] == 7 && t[33] == 0 && t[63] == 0;
+}
+// The root of n test leaves 1, 2, ..., n, and whether it was mutated.
+mk_counting :: (n: int, out: [] u8) -> MerkleRoot {
+  leaves: [32 * 16] u8; work: [32 * 16] u8;
+  for k: 0..<n { mk_number(leaves[..], k, k + 1); }
+  return merkle_root_vartime(leaves[0..<32*n], work[..], out);
+}
+#test "one leaf is its own root; two are one SHA-256d" {
+  leaves: [64] u8; work: [64] u8; root: [32] u8; d: [32] u8;
+  mk_number(leaves[..], 0, 1); mk_number(leaves[..], 1, 2);
+  r := merkle_root_vartime(leaves[0..<32], work[0..<32], root[..]);
+  #assert r.code == MERKLE_OK && !r.mutated && root[0] == 1 && root[1] == 0;
+  r = merkle_root_vartime(leaves[..], work[..], root[..]);
+  #assert sha256d_checked(leaves[..], d[..], false) == SHA_OK;
+  #assert r.code == MERKLE_OK && !r.mutated;
+  for i: 0..<32 { #assert root[i] == d[i]; }
+}
+// merkle_tests.cpp's merkle_test_mutated_return_value: leaves 1 to 6 and
+// 1 to 6 then 5, 6 have one root; only the second is mutated. Leaves 1, 1,
+// 3, 4 are mutated though the pair is not at the end.
+#test "Core's CVE-2012-2459 case" {
+  a: [32] u8; b: [32] u8;
+  leaves: [32 * 8] u8; work: [32 * 8] u8;
+  r := mk_counting(6, a[..]);
+  #assert r.code == MERKLE_OK && !r.mutated;
+  for k: 0..<6 { mk_number(leaves[..], k, k + 1); }
+  mk_number(leaves[..], 6, 5); mk_number(leaves[..], 7, 6);
+  r = merkle_root_vartime(leaves[..], work[..], b[..]);
+  #assert r.code == MERKLE_OK && r.mutated;
+  for i: 0..<32 { #assert a[i] == b[i]; }
+  // The leaves pair (1, 2), (3, 4), (5, 6), (5, 6): no two equal. One
+  // level up, H(5, 6) pairs with itself.
+  #assert !merkle_pairs_equal_vartime(leaves[..], 8);
+  for k: 0..<4 { mk_number(leaves[..], k, ifx k == 1 then 1 else k + 1); }
+  r = merkle_root_vartime(leaves[0..<128], work[0..<128], b[..]);
+  #assert r.code == MERKLE_OK && r.mutated && merkle_pairs_equal_vartime(leaves[..], 4);
+  // Equal hashes that are not a pair, (2, 3), are not a mutation.
+  for k: 0..<4 { mk_number(leaves[..], k, ifx k == 2 then 2 else k + 1); }
+  #assert !merkle_pairs_equal_vartime(leaves[..], 4) && !merkle_root_vartime(leaves[0..<128], work[0..<128], b[..]).mutated;
+  // An odd level's last hash is not compared with anything.
+  #assert !merkle_pairs_equal_vartime(leaves[..], 3) && merkle_pairs_equal_vartime(leaves[32..<128], 3);
+}
+#test "three leaves: the last pairs with itself" {
+  leaves: [128] u8; work: [128] u8; a: [32] u8; b: [32] u8; p: [64] u8; q: [64] u8;
+  for k: 0..<3 { mk_number(leaves[..], k, k + 1); }
+  r := merkle_root_vartime(leaves[0..<96], work[0..<96], a[..]);
+  #assert r.code == MERKLE_OK && !r.mutated;
+  // By hand: H(H(1,2), H(3,3)).
+  for i: 0..<64 { p[i] = leaves[i]; }
+  #assert sha256d_checked(p[..], q[0..<32], false) == SHA_OK;
+  for i: 0..<32 { p[i] = leaves[64+i]; p[32+i] = leaves[64+i]; }
+  #assert sha256d_checked(p[..], q[32..<64], false) == SHA_OK;
+  #assert sha256d_checked(q[..], b[..], false) == SHA_OK;
+  for i: 0..<32 { #assert a[i] == b[i]; }
+  // Leaves 1, 2, 3, 3: the same root, mutated.
+  mk_number(leaves[..], 3, 3);
+  r = merkle_root_vartime(leaves[..], work[..], b[..]);
+  #assert r.code == MERKLE_OK && r.mutated;
+  for i: 0..<32 { #assert a[i] == b[i]; }
+}
+#test "the root's refusals" {
+  leaves: [96] u8; work: [96] u8; out: [33] u8;
+  for i: 0..<33 { out[i] = 0xa5; }
+  #assert merkle_root_vartime(leaves[0..<31], work[..], out[0..<32]).code == MERKLE_CAPACITY;
+  #assert merkle_root_vartime(leaves[0..<64], work[0..<63], out[0..<32]).code == MERKLE_CAPACITY;
+  #assert merkle_root_vartime(leaves[0..<64], work[0..<64], out[0..<31]).code == MERKLE_CAPACITY;
+  #assert merkle_root_vartime(leaves[0..<64], work[0..<64], out[0..<33]).code == MERKLE_CAPACITY;
+  for i: 0..<33 { #assert out[i] == 0xa5; }
+  r := merkle_root_vartime(leaves[0..<0], work[0..<0], out[0..<32]);
+  #assert r.code == MERKLE_EMPTY && !r.mutated;
+  for i: 0..<32 { #assert out[i] == 0; }
+  #assert out[32] == 0xa5;
+  // A work view longer than the leaves is fine.
+  #assert merkle_root_vartime(leaves[0..<64], work[..], out[0..<32]).code == MERKLE_OK;
+}
+#test "the header check, in Core's order" {
+  leaves: [32 * 8] u8; work: [32 * 8] u8; root: [32] u8; zero: [32] u8;
+  for k: 0..<6 { mk_number(leaves[..], k, k + 1); }
+  #assert merkle_root_vartime(leaves[0..<192], work[..], root[..]).code == MERKLE_OK;
+  #assert merkle_check_vartime(leaves[0..<192], work[..], root[..]) == MERKLE_OK;
+  mk_number(leaves[..], 6, 5); mk_number(leaves[..], 7, 6);
+  #assert merkle_check_vartime(leaves[..], work[..], root[..]) == MERKLE_MUTATED;
+  root[31] ^= 1;
+  // A wrong root is reported first, mutated or not.
+  #assert merkle_check_vartime(leaves[..], work[..], root[..]) == MERKLE_MISMATCH;
+  #assert merkle_check_vartime(leaves[0..<192], work[..], root[..]) == MERKLE_MISMATCH;
+  #assert merkle_check_vartime(leaves[0..<0], work[..], root[..]) == MERKLE_MISMATCH;
+  #assert merkle_check_vartime(leaves[0..<0], work[..], zero[..]) == MERKLE_EMPTY;
+  #assert merkle_check_vartime(leaves[0..<192], work[..], root[0..<31]) == MERKLE_CAPACITY;
+  #assert merkle_check_vartime(leaves[0..<192], work[0..<160], zero[..]) == MERKLE_CAPACITY;
+  #assert merkle_check_vartime(leaves[0..<192], work[0..<160], root[..]) == MERKLE_CAPACITY;
+  // A root that differs only in its first byte.
+  root[31] ^= 1;
+  #assert merkle_check_vartime(leaves[0..<192], work[..], root[..]) == MERKLE_OK;
+  root[0] ^= 1;
+  #assert merkle_check_vartime(leaves[0..<192], work[..], root[..]) == MERKLE_MISMATCH;
+}
+// merkle_tests.cpp's merkle_test_BlockWitness: three transactions; the
+// coinbase's wtxid counts as zero.
+#test "the witness root sets the first leaf to zero" {
+  leaves: [96] u8; zeroed: [96] u8; work: [96] u8; a: [33] u8; b: [32] u8;
+  for k: 0..<3 { mk_number(leaves[..], k, k + 7); mk_number(zeroed[..], k, ifx k == 0 then 0 else k + 7); }
+  #assert merkle_witness_root_vartime(leaves[..], work[..], a[0..<32]) == MERKLE_OK;
+  #assert merkle_root_vartime(zeroed[..], work[..], b[..]).code == MERKLE_OK;
+  for i: 0..<32 { #assert a[i] == b[i]; }
+  // The leaves are untouched; one leaf gives a root of zero.
+  #assert leaves[0] == 7;
+  #assert merkle_witness_root_vartime(leaves[0..<32], work[..], a[0..<32]) == MERKLE_OK;
+  for i: 0..<32 { #assert a[i] == 0; }
+  a[32] = 0xa5;
+  #assert merkle_witness_root_vartime(leaves[0..<0], work[..], a[0..<32]) == MERKLE_EMPTY;
+  #assert merkle_witness_root_vartime(leaves[0..<95], work[..], a[0..<32]) == MERKLE_CAPACITY;
+  #assert merkle_witness_root_vartime(leaves[..], work[0..<64], a[0..<32]) == MERKLE_CAPACITY;
+  #assert merkle_witness_root_vartime(leaves[..], work[..], a[..]) == MERKLE_CAPACITY;
+  #assert a[32] == 0xa5;
+  // A mutated witness tree is not refused: Core ignores the flag there.
+  for k: 0..<3 { mk_number(leaves[..], k, 9); }
+  #assert merkle_witness_root_vartime(leaves[..], work[..], a[0..<32]) == MERKLE_OK;
+}
+#test "depth: the levels above the leaves" {
+  depths := [10] int.[0, 0, 1, 2, 2, 3, 3, 3, 3, 4];
+  for n: 0..<10 { #assert merkle_depth_vartime(n) == depths[n]; }
+  #assert merkle_depth_vartime(1557) == 11 && merkle_depth_vartime(2048) == 11 && merkle_depth_vartime(2049) == 12;
+}
+// Every branch of trees of 1 to 9 leaves rebuilds the root, matches the
+// branch by hand for the last leaf of three, and verifies as a proof.
+#test "branches rebuild the root" #steps 250000000 {
+  leaves: [32 * 16] u8; work: [32 * 16] u8; root: [32] u8; again: [32] u8; branch: [32 * 4] u8;
+  for n: 1..<10 {
+    for k: 0..<n { mk_number(leaves[..], k, k + 1); }
+    #assert merkle_root_vartime(leaves[0..<32*n], work[..], root[..]).code == MERKLE_OK;
+    for i: 0..<n {
+      b := merkle_branch_vartime(leaves[0..<32*n], i, work[..], branch[..]);
+      #assert b.code == MERKLE_OK && b.depth == merkle_depth_vartime(n);
+      #assert merkle_branch_root_vartime(leaves[32*i..<32*i+32], branch[0..<32*b.depth], i, again[..]) == MERKLE_OK;
+      for j: 0..<32 { #assert again[j] == root[j]; }
+      #assert merkle_verify_vartime(leaves[32*i..<32*i+32], branch[0..<32*b.depth], i, n, root[..]) == MERKLE_OK;
+    }
+  }
+  // Leaf 2 of three: its sibling is itself, then H(1, 2).
+  b := merkle_branch_vartime(leaves[0..<96], 2, work[..], branch[..]);
+  #assert b.code == MERKLE_OK && b.depth == 2 && branch[0] == 3 && branch[1] == 0;
+  p: [64] u8;
+  for j: 0..<64 { p[j] = leaves[j]; }
+  #assert sha256d_checked(p[..], again[..], false) == SHA_OK;
+  for j: 0..<32 { #assert branch[32+j] == again[j]; }
+}
+#test "the branch's refusals" {
+  leaves: [96] u8; work: [96] u8; branch: [96] u8;
+  for i: 0..<96 { branch[i] = 0xa5; }
+  #assert merkle_branch_vartime(leaves[..], 3, work[..], branch[..]).code == MERKLE_BAD_INDEX;
+  #assert merkle_branch_vartime(leaves[..], -1, work[..], branch[..]).code == MERKLE_BAD_INDEX;
+  #assert merkle_branch_vartime(leaves[0..<0], 0, work[..], branch[..]).code == MERKLE_EMPTY;
+  #assert merkle_branch_vartime(leaves[0..<95], 0, work[..], branch[..]).code == MERKLE_CAPACITY;
+  #assert merkle_branch_vartime(leaves[..], 0, work[0..<64], branch[..]).code == MERKLE_CAPACITY;
+  #assert merkle_branch_vartime(leaves[..], 0, work[..], branch[0..<63]).code == MERKLE_CAPACITY;
+  for i: 0..<96 { #assert branch[i] == 0xa5; }
+  b := merkle_branch_vartime(leaves[..], 2, work[..], branch[0..<64]);
+  #assert b.code == MERKLE_OK && b.depth == 2 && branch[64] == 0xa5;
+  b = merkle_branch_vartime(leaves[0..<32], 0, work[..], branch[0..<0]);
+  #assert b.code == MERKLE_OK && b.depth == 0;
+}
+#test "a proof: index, depth and root" {
+  leaves: [32 * 5] u8; work: [32 * 5] u8; root: [32] u8; branch: [96] u8; out: [33] u8;
+  for k: 0..<5 { mk_number(leaves[..], k, k + 1); }
+  #assert merkle_root_vartime(leaves[..], work[..], root[..]).code == MERKLE_OK;
+  b := merkle_branch_vartime(leaves[..], 4, work[..], branch[..]);
+  #assert b.code == MERKLE_OK && b.depth == 3;
+  leaf := leaves[128..<160];
+  #assert merkle_verify_vartime(leaf, branch[..], 4, 5, root[..]) == MERKLE_OK;
+  #assert merkle_verify_vartime(leaf, branch[..], 5, 5, root[..]) == MERKLE_BAD_INDEX;
+  #assert merkle_verify_vartime(leaf, branch[..], -1, 5, root[..]) == MERKLE_BAD_INDEX;
+  #assert merkle_verify_vartime(leaf, branch[..], 0, 0, root[..]) == MERKLE_BAD_INDEX;
+  // A count of 8 has the same depth: the index decides, and 4 is still
+  // leaf 4. A count of 9 is one level deeper.
+  #assert merkle_verify_vartime(leaf, branch[..], 4, 8, root[..]) == MERKLE_OK;
+  #assert merkle_verify_vartime(leaf, branch[..], 4, 9, root[..]) == MERKLE_BAD_DEPTH;
+  #assert merkle_verify_vartime(leaf, branch[0..<64], 4, 5, root[..]) == MERKLE_BAD_DEPTH;
+  // Leaf 4 of five is paired with itself twice on the way up, so a tree
+  // said to have eight leaves holds copies of it at 5, 6 and 7. The count
+  // is not in the header: a verifier must learn it from elsewhere.
+  #assert merkle_verify_vartime(leaf, branch[..], 6, 8, root[..]) == MERKLE_OK;
+  #assert merkle_verify_vartime(leaf, branch[..], 6, 5, root[..]) == MERKLE_BAD_INDEX;
+  #assert merkle_verify_vartime(leaf, branch[..], 2, 5, root[..]) == MERKLE_MISMATCH;
+  #assert merkle_verify_vartime(leaves[0..<32], branch[..], 4, 5, root[..]) == MERKLE_MISMATCH;
+  root[0] ^= 1;
+  #assert merkle_verify_vartime(leaf, branch[..], 4, 5, root[..]) == MERKLE_MISMATCH;
+  root[0] ^= 1;
+  #assert merkle_verify_vartime(leaf, branch[0..<95], 4, 5, root[..]) == MERKLE_CAPACITY;
+  #assert merkle_verify_vartime(leaf[0..<31], branch[..], 4, 5, root[..]) == MERKLE_CAPACITY;
+  #assert merkle_verify_vartime(leaf, branch[..], 4, 5, root[0..<31]) == MERKLE_CAPACITY;
+  // The branch alone, without a count: any index, the bits past the depth
+  // ignored, as in Core.
+  #assert merkle_branch_root_vartime(leaf, branch[..], 4 + 8, out[0..<32]) == MERKLE_OK;
+  for i: 0..<32 { #assert out[i] == root[i]; }
+  out[32] = 0xa5;
+  #assert merkle_branch_root_vartime(leaf, branch[0..<95], 4, out[0..<32]) == MERKLE_CAPACITY;
+  #assert merkle_branch_root_vartime(leaf[0..<31], branch[..], 4, out[0..<32]) == MERKLE_CAPACITY;
+  #assert merkle_branch_root_vartime(leaf, branch[..], 4, out[..]) == MERKLE_CAPACITY;
+  #assert merkle_branch_root_vartime(leaf, branch[..], -1, out[0..<32]) == MERKLE_CAPACITY;
+  #assert out[32] == 0xa5;
+  // An empty branch: the leaf is the root.
+  #assert merkle_branch_root_vartime(leaf, branch[0..<0], 0, out[0..<32]) == MERKLE_OK && out[0] == 5;
+}
+// Block 100,000 and block 514,999: every txid and the header's root.
+#test "two mainnet blocks: txids, roots and the witness commitment" #steps 200000000 {
+  b: [6000] u8; ids: [32 * 19] u8; wids: [32 * 19] u8; work: [32 * 19] u8; root: [32] u8; c: [64] u8; d: [32] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  s := mk_unhex(MK_BLOCK_100000, b[..]);
+  k := merkle_block_ids_vartime(s, false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_OK && k.count == 4 && k.first64 == -1;
+  for i: 0..<4 { #assert mk_shown_is(ids[32*i..<32*i+32], MK_TXIDS_100000[64*i..<64*i+64]); }
+  #assert merkle_check_vartime(ids[0..<128], work[..], s[36..<68]) == MERKLE_OK;
+  #assert merkle_root_vartime(ids[0..<128], work[..], root[..]).code == MERKLE_OK && mk_shown_is(root[..], MK_ROOT_100000);
+  #assert sha256d_checked(s[0..<80], d[..], false) == SHA_OK && mk_shown_is(d[..], MK_HASH_100000);
+  s = mk_unhex(MK_BLOCK_514999, b[..]);
+  k = merkle_block_ids_vartime(s, false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_OK && k.count == 19;
+  for i: 0..<19 { #assert mk_shown_is(ids[32*i..<32*i+32], MK_TXIDS_514999[64*i..<64*i+64]); }
+  #assert merkle_check_vartime(ids[..], work[..], s[36..<68]) == MERKLE_OK && mk_shown_is(s[36..<68], MK_ROOT_514999);
+  // The witness root, and BIP-141's commitment to it (chapter 49).
+  #assert merkle_witness_root_vartime(wids[..], work[..], c[0..<32]) == MERKLE_OK && mk_shown_is(c[0..<32], MK_WITNESS_ROOT_514999);
+  e: [32] u8; f: [32] u8;
+  reserved := mk_unhex(MK_RESERVED_514999, e[..]);
+  for i: 0..<32 { c[32+i] = reserved[i]; }
+  commitment := mk_unhex(MK_COMMITMENT_514999, f[..]);
+  #assert sha256d_checked(c[..], d[..], false) == SHA_OK;
+  for i: 0..<32 { #assert d[i] == commitment[i]; }
+}
+// Block 514,999 with its last transaction repeated: the same header and
+// root, mutated.
+#test "a mutated block keeps its header" #steps 200000000 {
+  b: [6000] u8; m: [6000] u8; ids: [32 * 20] u8; wids: [32 * 20] u8; work: [32 * 20] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  for i: 0..<6000 { m[i] = 0xa5; }
+  s := mk_unhex(MK_BLOCK_514999, b[..]);
+  k := merkle_block_ids_vartime(s, false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  last := k.last;
+  n := mk_repeat_last(s, last, m[..]);
+  #assert n == s.count + s.count - last;
+  k = merkle_block_ids_vartime(m[0..<n], false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_OK && k.count == 20;
+  #assert merkle_check_vartime(ids[..], work[..], m[36..<68]) == MERKLE_MUTATED;
+  for i: 0..<80 { #assert m[i] == s[i]; }
+}
+// The block with transactions [last, end) appended and its count one more.
+mk_repeat_last :: (s: [] u8, last: int, out: [] u8) -> int {
+  for i: 0..<s.count { out[i] = s[i]; }
+  out[80] = cast(u8) (cast(int) s[80] + 1);
+  for i: last..<s.count { out[s.count + i - last] = s[i]; }
+  return s.count + s.count - last;
+}
+#test "the block reader's refusals" #steps 100000000 {
+  b: [6000] u8; ids: [32 * 19] u8; wids: [32 * 19] u8;
+  ins: [4] TxIn; outs: [4] TxOut; items: [4] TxItem;
+  s := mk_unhex(MK_BLOCK_100000, b[..]);
+  k := merkle_block_ids_vartime(s[0..<80], false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_BAD_BLOCK && k.tx_code == TX_TRUNCATED && k.at == 80 && k.first64 == -1;
+  k = merkle_block_ids_vartime(s[0..<79], false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_BAD_BLOCK && k.tx_code == TX_TRUNCATED && k.at == 0 && k.first64 == -1;
+  k = merkle_block_ids_vartime(s[0..<s.count-1], false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_BAD_BLOCK && k.tx_code == TX_TRUNCATED && k.at == s.count - 4;
+  b[s.count] = 0;
+  k = merkle_block_ids_vartime(b[0..<s.count+1], false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_BAD_BLOCK && k.tx_code == TX_TRAILING && k.at == s.count;
+  k = merkle_block_ids_vartime(s, false, ins[..], outs[..], items[..], ids[0..<127], wids[..]);
+  #assert k.code == MERKLE_CAPACITY && k.tx_code == TX_OK && k.at == 80 && k.first64 == -1;
+  k = merkle_block_ids_vartime(s, false, ins[..], outs[..], items[..], ids[..], wids[0..<127]);
+  #assert k.code == MERKLE_CAPACITY && k.at == 80;
+  k = merkle_block_ids_vartime(s, false, ins[..], outs[0..<1], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_CAPACITY && k.tx_code == TX_CAPACITY && k.at > 80;
+  // A count written in three bytes.
+  for i: 0..<80 { b[i] = s[i]; }
+  b[80] = 0xfd; b[81] = 4; b[82] = 0;
+  k = merkle_block_ids_vartime(b[0..<83], false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_BAD_BLOCK && k.tx_code == TX_NONCANONICAL && k.at == 80;
+  // No transactions reads, with a count of zero.
+  b[80] = 0;
+  k = merkle_block_ids_vartime(b[0..<81], false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_OK && k.count == 0 && k.first64 == -1;
+}
+// The 64-byte transaction reads; its txid is the parent of its halves.
+// Under BIP-54's proposed rule a block holding it refuses.
+#test "a 64-byte transaction is also an inner node" #steps 100000000 {
+  b: [1000] u8; t: [64] u8; d: [32] u8; e: [32] u8; ids: [64] u8; wids: [64] u8;
+  ins: [2] TxIn; outs: [2] TxOut; items: [2] TxItem;
+  s := mk_unhex(MK_TX64, t[..]);
+  x := tx_read_vartime(s, true, ins[..], outs[..], items[..]);
+  #assert x.code == TX_OK && x.stripped == 64;
+  #assert tx_txid_vartime(s, x, d[..]);
+  #assert merkle_parent_vartime(s[0..<32], s[32..<64], e[..]);
+  for i: 0..<32 { #assert d[i] == e[i]; }
+  // A block of block 100,000's header, its coinbase and then the 64-byte
+  // transaction: the reader says where that one is, and refuses only under
+  // the proposed rule.
+  blk := mk_unhex(MK_BLOCK_100000, b[..]);
+  first := mk_coinbase_end(blk);
+  b[80] = 2;
+  for i: 0..<64 { b[first+i] = s[i]; }
+  n := first + 64;
+  k := merkle_block_ids_vartime(b[0..<n], false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_OK && k.count == 2 && k.first64 == 1 && k.last == first;
+  #assert ids[32] == d[0] && ids[63] == d[31];
+  k = merkle_block_ids_vartime(b[0..<n], true, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_TX_64 && k.at == first && k.count == 1 && k.tx_code == TX_OK;
+  // One byte more in its output script: 65 bytes, no refusal.
+  b[first+55] = 5; b[first+64] = 0;
+  k = merkle_block_ids_vartime(b[0..<n+1], true, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_OK && k.first64 == -1;
+  // Two 64-byte transactions: first64 names the first.
+  b[80] = 2;
+  for i: 0..<64 { b[81+i] = s[i]; b[145+i] = s[i]; }
+  b[145+37] = 1;
+  k = merkle_block_ids_vartime(b[0..<209], false, ins[..], outs[..], items[..], ids[..], wids[..]);
+  #assert k.code == MERKLE_OK && k.count == 2 && k.first64 == 0;
+}
+// Where block 100,000's coinbase ends.
+mk_coinbase_end :: (blk: [] u8) -> int {
+  ins: [2] TxIn; outs: [2] TxOut; items: [2] TxItem;
+  t := tx_parse_vartime(blk[81..<blk.count], true, ins[..], outs[..], items[..]);   // mutant: equivalent (the coinbase has an input, so the witness flag reads it the same way)
+  return 81 + t.total;
+}
+#test "the parent's refusals" {
+  a: [64] u8; out: [33] u8;
+  out[32] = 0xa5;
+  #assert merkle_parent_vartime(a[0..<32], a[32..<64], out[0..<32]);
+  #assert !merkle_parent_vartime(a[0..<31], a[32..<64], out[0..<32]);
+  #assert !merkle_parent_vartime(a[0..<32], a[31..<64], out[0..<32]);
+  #assert !merkle_parent_vartime(a[0..<32], a[32..<64], out[..]);
+  #assert out[32] == 0xa5;
+}
+
+// book:begin parent
+// One inner node: SHA-256d of the left child's 32 bytes, then the right's,
+// into out. out may be either child: both are copied first.
+merkle_parent_vartime :: (left: [] u8, right: [] u8, out: [] u8) -> bool #export_c {
+  if left.count != MERKLE_HASH || right.count != MERKLE_HASH || out.count != MERKLE_HASH { return false; }
+  pair: [64] u8;
+  for i: 0..<32 { pair[i] = left[i]; pair[32+i] = right[i]; }
+  #assert sha256d_checked(pair[..], out, false) == SHA_OK;
+  return true;
+}
+// book:end parent
+
+// book:begin root
+// A root and whether two equal hashes were paired on the way up.
+MerkleRoot :: struct { code: int; mutated: bool; }
+// Core's mutation test for one level of n hashes: is any pair (0, 1),
+// (2, 3), ... two equal hashes? An odd level's last hash is not compared:
+// pairing it with itself is the rule, not a mutation.
+merkle_pairs_equal_vartime :: (work: [] u8, n: int) -> bool #export_c {
+  found := false;
+  for pos: 0..<n/2 {
+    same := true;
+    for i: 0..<32 { if work[64*pos+i] != work[64*pos+32+i] { same = false; } }
+    if same { found = true; }
+  }
+  return found;
+}
+// One level of the tree, in place: work holds n hashes; afterwards its
+// first (n + 1) / 2 hashes are their parents.
+merkle_level_vartime :: (work: [] u8, n: int) {
+  for k: 0..<(n+1)/2 {
+    right := ifx 2*k+1 < n then 2*k+1 else 2*k;    // an odd level's last hash pairs with itself
+    #assert merkle_parent_vartime(work[64*k..<64*k+32], work[32*right..<32*right+32], work[32*k..<32*k+32]);
+  }
+}
+// ComputeMerkleRoot: the root of the leaves (32-byte hashes, one after
+// another) into out, using work, which holds at least as many bytes as
+// the leaves. No leaves is MERKLE_EMPTY with a root of zero, as in Core.
+// mutated is Core's flag: some level paired two equal hashes.
+merkle_root_vartime :: (leaves: [] u8, work: [] u8, out: [] u8) -> MerkleRoot #export_c {
+  if leaves.count % MERKLE_HASH != 0 || work.count < leaves.count || out.count != MERKLE_HASH {
+    return MerkleRoot.{code=MERKLE_CAPACITY};
+  }
+  n := leaves.count / MERKLE_HASH;
+  if n == 0 {
+    for i: 0..<32 { out[i] = 0; }
+    return MerkleRoot.{code=MERKLE_EMPTY};
+  }
+  for i: 0..<leaves.count { work[i] = leaves[i]; }
+  mutated := false;
+  while n > 1 {
+    if merkle_pairs_equal_vartime(work, n) { mutated = true; }
+    merkle_level_vartime(work, n);
+    n = (n + 1) / 2;
+  }
+  for i: 0..<32 { out[i] = work[i]; }
+  return MerkleRoot.{code=MERKLE_OK, mutated=mutated};
+}
+// book:end root
+
+// book:begin check
+// CheckMerkleRoot: the leaves (a block's txids) against the root in the
+// block's header, in Core's order: a different root is "bad-txnmrklroot",
+// then a mutated tree is "bad-txns-duplicate". Core's CheckBlock then
+// refuses a block with no transactions; that is MERKLE_EMPTY here.
+merkle_check_vartime :: (leaves: [] u8, work: [] u8, header_root: [] u8) -> int #export_c {
+  if header_root.count != MERKLE_HASH { return MERKLE_CAPACITY; }
+  root: [32] u8;
+  r := merkle_root_vartime(leaves, work, root[..]);
+  if r.code == MERKLE_CAPACITY { return MERKLE_CAPACITY; }
+  for i: 0..<32 { if root[i] != header_root[i] { return MERKLE_MISMATCH; } }
+  if r.mutated { return MERKLE_MUTATED; }
+  return r.code;
+}
+// book:end check
+
+// book:begin witness
+// BlockWitnessMerkleRoot: the root of a block's wtxids, with the
+// coinbase's (the first) taken as 32 zero bytes. Core ignores the mutated
+// flag here: the txid tree has already refused a repeated transaction.
+merkle_witness_root_vartime :: (wtxids: [] u8, work: [] u8, out: [] u8) -> int #export_c {
+  if wtxids.count % MERKLE_HASH != 0 || work.count < wtxids.count || out.count != MERKLE_HASH { return MERKLE_CAPACITY; }
+  for i: 0..<wtxids.count { work[i] = ifx i < MERKLE_HASH then 0 else wtxids[i]; }
+  return merkle_root_vartime(work[0..<wtxids.count], work, out).code;
+}
+// book:end witness
+
+// book:begin branch
+// The number of levels above n leaves: how long a branch is.
+merkle_depth_vartime :: (n: int) -> int #export_c {
+  depth := 0; m := n;
+  while m > 1 { m = (m + 1) / 2; depth += 1; }
+  return depth;
+}
+MerkleBranch :: struct { code: int; depth: int; }
+// TransactionMerklePath: the siblings of leaf index from the leaves up,
+// into branch, depth hashes. At an odd level's end the sibling is the
+// hash itself.
+merkle_branch_vartime :: (leaves: [] u8, index: int, work: [] u8, branch: [] u8) -> MerkleBranch #export_c {
+  if leaves.count % MERKLE_HASH != 0 || work.count < leaves.count { return MerkleBranch.{code=MERKLE_CAPACITY}; }
+  n := leaves.count / MERKLE_HASH;
+  if n == 0 { return MerkleBranch.{code=MERKLE_EMPTY}; }
+  if index < 0 || index >= n { return MerkleBranch.{code=MERKLE_BAD_INDEX}; }
+  depth := merkle_depth_vartime(n);
+  if branch.count < depth * MERKLE_HASH { return MerkleBranch.{code=MERKLE_CAPACITY}; }
+  for i: 0..<leaves.count { work[i] = leaves[i]; }
+  d := 0; at := index;
+  while n > 1 {
+    sibling := ifx (at ^ 1) < n then at ^ 1 else n - 1;
+    for i: 0..<32 { branch[32*d+i] = work[32*sibling+i]; }
+    merkle_level_vartime(work, n);
+    n = (n + 1) / 2; at >>= 1; d += 1;
+  }
+  return MerkleBranch.{code=MERKLE_OK, depth=depth};
+}
+// book:end branch
+
+// book:begin proof
+// ComputeMerkleRootFromBranch: the root a branch gives for a leaf at
+// index. Each bit of index, from the lowest, says whether the node is a
+// right child (1) or a left one (0); bits past the branch are ignored.
+merkle_branch_root_vartime :: (leaf: [] u8, branch: [] u8, index: int, out: [] u8) -> int #export_c {
+  if leaf.count != MERKLE_HASH || branch.count % MERKLE_HASH != 0 || out.count != MERKLE_HASH || index < 0 { return MERKLE_CAPACITY; }
+  node: [32] u8; at := index;
+  for i: 0..<32 { node[i] = leaf[i]; }
+  for d: 0..<branch.count/MERKLE_HASH {
+    sibling := branch[32*d..<32*d+32];
+    if (at & 1) != 0 { #assert merkle_parent_vartime(sibling, node[..], node[..]); }
+    else { #assert merkle_parent_vartime(node[..], sibling, node[..]); }
+    at >>= 1;
+  }
+  for i: 0..<32 { out[i] = node[i]; }
+  return MERKLE_OK;
+}
+// An SPV proof: leaf is transaction index of a block of count
+// transactions whose header has root. The branch must be exactly as long
+// as that tree is deep. Without the count, a 64-byte transaction's two
+// halves pass as an inner node, and a branch one level longer or shorter
+// can prove a transaction the block doesn't hold.
+merkle_verify_vartime :: (leaf: [] u8, branch: [] u8, index: int, count: int, root: [] u8) -> int #export_c {
+  if leaf.count != MERKLE_HASH || branch.count % MERKLE_HASH != 0 || root.count != MERKLE_HASH { return MERKLE_CAPACITY; }
+  if count < 1 || index < 0 || index >= count { return MERKLE_BAD_INDEX; }
+  if branch.count != merkle_depth_vartime(count) * MERKLE_HASH { return MERKLE_BAD_DEPTH; }
+  got: [32] u8;
+  #assert merkle_branch_root_vartime(leaf, branch, index, got[..]) == MERKLE_OK;
+  for i: 0..<32 { if got[i] != root[i] { return MERKLE_MISMATCH; } }
+  return MERKLE_OK;
+}
+// book:end proof
+
+// book:begin block
+// The transactions of a block. code is MERKLE_OK or a refusal at byte at;
+// a refusal from the transaction reader keeps its TX_ code in tx_code.
+// count transactions were read; first64 is the first whose stripped size
+// is 64 bytes, or -1; last is where the last one starts.
+MerkleBlock :: struct { code: int; at: int; tx_code: int; count: int; first64: int; last: int; }
+MERKLE_HEADER :: 80;
+// Reads a serialized block: the 80-byte header, a CompactSize count, then
+// each transaction as chapter 34 reads it, with witnesses allowed, and
+// nothing after. Writes each txid into txids and each wtxid into wtxids
+// (hash order, 32 bytes each). With bip54, a transaction of 64 stripped
+// bytes refuses (MERKLE_TX_64); that rule is proposed, not consensus.
+merkle_block_ids_vartime :: (b: [] u8, bip54: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, txids: [] u8, wtxids: [] u8) -> MerkleBlock #export_c {
+  if b.count < MERKLE_HEADER { return MerkleBlock.{code=MERKLE_BAD_BLOCK, tx_code=TX_TRUNCATED, first64=-1}; }
+  c := tx_compact_read_vartime(b, MERKLE_HEADER);
+  if c.code != TX_OK { return MerkleBlock.{code=MERKLE_BAD_BLOCK, at=c.next, tx_code=c.code, first64=-1}; }
+  if txids.count < c.value * MERKLE_HASH || wtxids.count < c.value * MERKLE_HASH {
+    return MerkleBlock.{code=MERKLE_CAPACITY, at=MERKLE_HEADER, first64=-1};
+  }
+  k := MerkleBlock.{first64=-1};
+  at := c.next;
+  while k.count < c.value {
+    t := tx_parse_vartime(b[at..<b.count], true, ins, outs, items);
+    if t.code != TX_OK {
+      k.code = ifx t.code == TX_CAPACITY then MERKLE_CAPACITY else MERKLE_BAD_BLOCK;
+      k.tx_code = t.code; k.at = at + t.at;
+      return k;
+    }
+    if t.stripped == 64 {
+      if bip54 { k.code = MERKLE_TX_64; k.at = at; return k; }
+      if k.first64 < 0 { k.first64 = k.count; }
+    }
+    s := b[at..<at+t.total];
+    #assert tx_txid_vartime(s, t, txids[32*k.count..<32*k.count+32]) && tx_wtxid_vartime(s, t, wtxids[32*k.count..<32*k.count+32]);
+    k.last = at; k.count += 1; at += t.total;
+  }
+  if at != b.count { k.code = MERKLE_BAD_BLOCK; k.tx_code = TX_TRAILING; k.at = at; }
+  return k;
+}
+// book:end block
