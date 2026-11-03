@@ -1,0 +1,168 @@
+// book:begin example
+#load "../../coax/lib/lightning/onion.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex.
+show :: (b: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+// A 32-byte secret whose bytes are k, k + 1, k + 2, ...
+secret :: (k: int) -> [32] u8 { s: [32] u8; for i: 0..<32 { s[i] = cast(u8) ((k + i) & 255); } return s; }
+node_id :: (k: int) -> [33] u8 { s := secret(k); p := onion_public(s[..]); return p.bytes; }
+// A short channel ID, block x transaction x output, as 8 bytes.
+scid :: (block: u64, tx: u64, output: u64) -> [8] u8 {
+  v := (block << 40) | (tx << 16) | output; b: [8] u8;
+  for i: 0..<8 { b[i] = cast(u8) ((v >> cast(u64) (56 - 8 * i)) & 255); }
+  return b;
+}
+show_scid :: (b: [] u8) {
+  v: u64 = 0; for i: 0..<8 { v = (v << 8) | cast(u64) b[i]; }
+  print("%x%x%", v >> 40, (v >> 16) & 0xffffff, v & 0xffff);
+}
+// A TLV stream being written.
+Tlv :: struct { b: [256] u8; n: int; }
+put :: (t: [] Tlv, type: u64, value: [] u8) { t[0].n = tlv_write_vartime(t[0].b[..], t[0].n, type, value); }
+put_tu :: (t: [] Tlv, type: u64, v: u64) { b: [8] u8; n := tu_write_vartime(b[..], 0, v); put(t, type, b[0..<n]); }
+// A record's value as a number.
+number :: (payload: [] u8, type: u64) -> u64 {
+  r := onion_record_vartime(payload, type);
+  return tu_read_vartime(payload[r.start..<r.start + r.length], 8).value;
+}
+// A forwarding hop's payload: amt_to_forward (2), outgoing_cltv_value (4)
+// and short_channel_id (6). The last hop has no short_channel_id.
+forward :: (amount: u64, cltv: u64, channel: [] u8) -> Tlv {
+  t: [1] Tlv; put_tu(t[..], 2, amount); put_tu(t[..], 4, cltv);
+  if channel.count > 0 { put(t[..], 6, channel); }
+  return t[0];
+}
+// What a hop reads in its payload.
+report :: (name: string, p: OnionPeel, payload: [] u8) {
+  print("  %: % msat, cltv %", name, number(payload, 2), number(payload, 4));
+  r := onion_record_vartime(payload, 6);
+  if r.found { print(", forward over "); show_scid(payload[r.start..<r.start + 8]); }
+  if p.last { print(", last hop"); }
+  print("\n");
+}
+ONION_NAMES :: [11] string.["OK", "BAD_POINT", "BAD_KEY", "BAD_VERSION", "BAD_HMAC", "BAD_PAYLOAD", "TOO_LONG",
+                            "BAD_LENGTH", "CAPACITY", "BAD_TAG", "UNKNOWN"];
+
+main :: () {
+  // ---- BOLT 4's packet and error vectors
+  print("BOLT 4 vectors\n");
+  h: [1] OnionHops; buf: [1300] u8; onion: [1366] u8; next: [1366] u8; payload: [1300] u8; s: [32] u8; ad: [32] u8;
+  for row: ONION_TEST.hops {
+    key: [33] u8; p := ln_unhex(row.payload, buf[..]); l := bigsize_read_vartime(p, 0);
+    added := onion_add_hop_vartime(h[..], ln_unhex(row.pubkey, key[..]), p[l.next..<p.count]);
+  }
+  code := onion_wrap(ln_unhex(ONION_TEST.session, s[..]), h[0].pubkeys[0..<h[0].keys_n], h[0].payloads[0..<h[0].payloads_n],
+                     ln_unhex(ONION_TEST.ad, ad[..]), onion[..]);
+  print("  onion-test.json: the onion matches: %\n", ln_hex_is(onion[..], ONION_TEST.onion));
+  read := 0; last := 0;
+  for row, i: ONION_TEST.hops {
+    p := onion_peel(ln_unhex(row.secret, s[..]), onion[..], ad[..], payload[..], next[..]);
+    w := ln_unhex(row.payload, buf[..]); l := bigsize_read_vartime(w, 0);
+    if p.code == ONION_OK && p.payload_n == w.count - l.next {
+      same := true; for j: 0..<p.payload_n { if payload[j] != w[l.next + j] { same = false; } }
+      if same { read += 1; }
+    }
+    if p.last { last = i; }
+    onion = next;
+  }
+  print("  hops that read their own payload: % of 5, the last is hop %\n", read, last);
+  route: [1] OnionRoute; keys: [165] u8; f: [2] u8; packet: [292] u8;
+  for row, i: ONION_ERROR.hops { k := ln_unhex(row.pubkey, keys[33 * i..<33 * i + 33]); }
+  code = onion_route(ln_unhex(ONION_ERROR.session, s[..]), keys[..], route[..]);
+  n := onion_error_create(route[0].ss[128..<160], ln_unhex(ONION_ERROR.failure, f[..]), 256, packet[..]);
+  for k: 0..<4 { onion_error_forward(route[0].ss[32 * (3 - k)..<32 * (3 - k) + 32], packet[0..<n]); }
+  print("  onion-error-test.json: the error packet matches: %\n", ln_hex_is(packet[0..<n], ONION_ERROR.errorpacket));
+  got := onion_error_open(route[..], packet[0..<n]);
+  print("  the origin finds hop %, failure ", got.hop); show(packet[got.failure..<got.failure + got.failure_n]); print("\n");
+
+  // ---- a payment from Alice to Dave through Bob and Carol
+  print("Alice pays Dave through Bob and Carol\n");
+  bob := secret(21); carol := secret(41); dave := secret(61); session := secret(81); hash := secret(101);
+  bob_id := node_id(21); carol_id := node_id(41); dave_id := node_id(61);
+  bob_carol := scid(800000, 1, 0); carol_dave := scid(800001, 2, 1);
+  h[0] = OnionHops.{};
+  t := forward(1002000, 800180, bob_carol[..]); code = onion_add_hop_vartime(h[..], bob_id[..], t.b[0..<t.n]);
+  t = forward(1000000, 800140, carol_dave[..]); code = onion_add_hop_vartime(h[..], carol_id[..], t.b[0..<t.n]);
+  none: [1] u8;
+  t = forward(1000000, 800100, none[0..<0]); code = onion_add_hop_vartime(h[..], dave_id[..], t.b[0..<t.n]);
+  code = onion_wrap(session[..], h[0].pubkeys[0..<h[0].keys_n], h[0].payloads[0..<h[0].payloads_n], hash[..], onion[..]);
+  print("  onion: % bytes; payloads and HMACs use % of 1300\n", onion.count, h[0].payloads_n + 3 * 32);
+  first := onion;
+  names := [3] string.["Bob", "Carol", "Dave"];
+  for i: 0..<3 {
+    print("  % sees ephemeral key ", names[i]); show(onion[1..<34]); print("\n");
+    k := ifx i == 0 then bob else ifx i == 1 then carol else dave;
+    p := onion_peel(k[..], onion[..], hash[..], payload[..], next[..]);
+    report(names[i], p, payload[0..<p.payload_n]);
+    onion = next;
+  }
+  changed := first; changed[500] ^= 1;
+  print("  Bob given a changed byte: %\n", ONION_NAMES[onion_peel(bob[..], changed[..], hash[..], payload[..], next[..]).code]);
+  other := secret(102);
+  print("  Bob given another payment hash: %\n", ONION_NAMES[onion_peel(bob[..], first[..], other[..], payload[..], next[..]).code]);
+
+  // ---- Carol fails it
+  print("Carol fails the payment\n");
+  p := onion_peel(bob[..], first[..], hash[..], payload[..], next[..]);
+  bob_ss := p.ss;
+  p = onion_peel(carol[..], next[..], hash[..], payload[..], onion[..]);
+  failure := [4] u8.[0x10, 0x07, 0, 0];   // temporary_channel_failure, no channel_update
+  n = onion_error_create(p.ss[..], failure[..], 256, packet[..]);
+  onion_error_forward(bob_ss[..], packet[0..<n]);
+  print("  the packet Alice receives: % bytes\n", n);
+  code = onion_route(session[..], h[0].pubkeys[0..<h[0].keys_n], route[..]);
+  back := packet;
+  got = onion_error_open(route[..], packet[0..<n]);
+  print("  Alice finds hop % (%), failure ", got.hop, names[got.hop]); show(packet[got.failure..<got.failure + got.failure_n]); print("\n");
+  back[100] ^= 1;
+  print("  a packet changed on the way: %\n", ONION_NAMES[onion_error_open(route[..], back[0..<n]).code]);
+
+  // ---- Dave hides behind a blinded path that starts at Carol
+  print("Dave's blinded path from Carol\n");
+  e := secret(121); path_id := secret(141);
+  carol_data: [1] Tlv; put(carol_data[..], 2, carol_dave[..]);
+  dave_data: [1] Tlv; put(dave_data[..], 6, path_id[..]);
+  carol_box: [64] u8; dave_box: [64] u8;
+  cb := onion_blind_hop(e[..], carol_id[..], carol_data[0].b[0..<carol_data[0].n], carol_box[0..<carol_data[0].n + 16]);
+  db := onion_blind_hop(e[..], dave_id[..], dave_data[0].b[0..<dave_data[0].n], dave_box[0..<dave_data[0].n + 16]);
+  print("  Carol's blinded node ID is her node ID: %\n", cb_ct_equal(cb.blinded[..], carol_id[..]) == CB_MAX64);
+  print("  Dave's blinded node ID: "); show(db.blinded[..]); print("\n");
+  print("  Dave's blinded node ID is his node ID: %\n", cb_ct_equal(db.blinded[..], dave_id[..]) == CB_MAX64);
+  // Alice pays to the path: Carol, the introduction node, by her node ID
+  // with the first path key; Dave by his blinded node ID.
+  h[0] = OnionHops.{};
+  t = forward(1002000, 800180, bob_carol[..]); code = onion_add_hop_vartime(h[..], bob_id[..], t.b[0..<t.n]);
+  tt: [1] Tlv; put(tt[..], 10, carol_box[0..<carol_data[0].n + 16]); put(tt[..], 12, cb.path_key[..]);
+  code = onion_add_hop_vartime(h[..], carol_id[..], tt[0].b[0..<tt[0].n]);
+  tt[0] = Tlv.{}; put_tu(tt[..], 2, 1000000); put_tu(tt[..], 4, 800100);
+  put(tt[..], 10, dave_box[0..<dave_data[0].n + 16]); put_tu(tt[..], 18, 1000000);
+  code = onion_add_hop_vartime(h[..], db.blinded[..], tt[0].b[0..<tt[0].n]);
+  session2 := secret(161);
+  code = onion_wrap(session2[..], h[0].pubkeys[0..<h[0].keys_n], h[0].payloads[0..<h[0].payloads_n], hash[..], onion[..]);
+  p = onion_peel(bob[..], onion[..], hash[..], payload[..], next[..]);
+  report("Bob", p, payload[0..<p.payload_n]);
+  p = onion_peel(carol[..], next[..], hash[..], payload[..], onion[..]);
+  key := onion_record_vartime(payload[0..<p.payload_n], 12);
+  box := onion_record_vartime(payload[0..<p.payload_n], 10);
+  data: [64] u8;
+  u := onion_unblind(carol[..], payload[key.start..<key.start + 33], payload[box.start..<box.start + box.length], data[..]);
+  print("  Carol: introduction node, her data says forward over "); show_scid(data[2..<10]); print("\n");
+  print("  Carol passes on the path key Dave's hop was made with: %\n", cb_ct_equal(u.next_path_key[..], db.path_key[..]) == CB_MAX64);
+  blinded: [32] u8;
+  code = onion_blinded_secret(dave[..], u.next_path_key[..], blinded[..]);
+  p = onion_peel(blinded[..], onion[..], hash[..], payload[..], next[..]);
+  report("Dave", p, payload[0..<p.payload_n]);
+  box = onion_record_vartime(payload[0..<p.payload_n], 10);
+  v := onion_unblind(dave[..], u.next_path_key[..], payload[box.start..<box.start + box.length], data[..]);
+  print("  Dave's data holds his path_id: %\n", v.code == ONION_OK && cb_ct_equal(data[2..<34], path_id[..]) == CB_MAX64);
+  w := onion_unblind(bob[..], u.next_path_key[..], payload[box.start..<box.start + box.length], data[..]);
+  print("  Bob opening Dave's data: %\n", ONION_NAMES[w.code]);
+  print("  Dave's own key opening the onion: %\n", ONION_NAMES[onion_peel(dave[..], onion[..], hash[..], payload[..], next[..]).code]);
+}
+// book:end example

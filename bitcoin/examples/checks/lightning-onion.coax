@@ -1,0 +1,56 @@
+// The checks of lightning-onion.coax. They live apart so that running the
+// example doesn't also run them. The example runs BOLT 4's vectors and one
+// payment; these check the properties around them.
+// Checks: coax test bitcoin/examples/checks/lightning-onion.coax
+#load "../lightning-onion.coax";
+
+// book:begin check
+// For routes of one to four hops, each hop peels exactly its own payload,
+// and only the last hop sees an all-zero next HMAC.
+#forall "every hop of a route reads its own payload" hops: 1..<5 #steps 8000000000 {
+  h: [1] OnionHops; session := secret(7 * hops); ad := secret(3);
+  for i: 0..<hops {
+    id := node_id(10 * i + 1);
+    t := forward(cast(u64) (1000 * (i + 1)), cast(u64) (500 + i), ad[0..<8]);
+    #assert onion_add_hop_vartime(h[..], id[..], t.b[0..<t.n]) == ONION_OK;
+  }
+  onion: [1366] u8; next: [1366] u8; payload: [1300] u8;
+  #assert onion_wrap(session[..], h[0].pubkeys[0..<h[0].keys_n], h[0].payloads[0..<h[0].payloads_n], ad[..], onion[..]) == ONION_OK;
+  for i: 0..<hops {
+    k := secret(10 * i + 1);
+    p := onion_peel(k[..], onion[..], ad[..], payload[..], next[..]);
+    #assert p.code == ONION_OK && p.last == (i == hops - 1);
+    #assert number(payload[0..<p.payload_n], 2) == cast(u64) (1000 * (i + 1));
+    onion = next;
+  }
+}
+// Whichever hop of a three-hop route fails, the payer attributes the
+// failure to that hop and reads its message.
+#forall "the payer finds the hop that failed" erring: 0..<3 #steps 4000000000 {
+  route: [1] OnionRoute; keys: [99] u8; session := secret(5);
+  for i: 0..<3 { id := node_id(10 * i + 1); onion_copy(keys[33 * i..<33 * i + 33], id[..]); }
+  #assert onion_route(session[..], keys[..], route[..]) == ONION_OK;
+  failure := [2] u8.[0x40, cast(u8) erring]; packet: [292] u8;
+  #assert onion_error_create(route[0].ss[32 * erring..<32 * erring + 32], failure[..], 256, packet[..]) == 292;
+  for k: 0..<erring { i := erring - 1 - k; onion_error_forward(route[0].ss[32 * i..<32 * i + 32], packet[..]); }
+  got := onion_error_open(route[..], packet[..]);
+  #assert got.code == ONION_OK && got.hop == erring && got.failure_n == 2 && packet[got.failure + 1] == cast(u8) erring;
+}
+// On a three-hop blinded path, each hop's blinded secret times G is its
+// blinded node ID, and each hop passes on the path key the next hop's
+// entry was made with.
+#test "each hop's blinded secret matches its blinded node ID" #steps 4000000000 {
+  e := secret(9); data := [3] u8.[1, 1, 0]; boxes: [57] u8; made: [3] OnionBlindHop;
+  for i: 0..<3 { id := node_id(10 * i + 1); made[i] = onion_blind_hop(e[..], id[..], data[..], boxes[19 * i..<19 * i + 19]); }
+  out: [3] u8; blinded: [32] u8;
+  for i: 0..<3 {
+    k := secret(10 * i + 1);
+    #assert onion_blinded_secret(k[..], made[i].path_key[..], blinded[..]) == ONION_OK;
+    pub := onion_public(blinded[..]);
+    #assert cb_ct_equal(pub.bytes[..], made[i].blinded[..]) == CB_MAX64;
+    u := onion_unblind(k[..], made[i].path_key[..], boxes[19 * i..<19 * i + 19], out[..]);
+    #assert u.code == ONION_OK && u.data_n == 3;
+    if i < 2 { #assert cb_ct_equal(u.next_path_key[..], made[i + 1].path_key[..]) == CB_MAX64; }
+  }
+}
+// book:end check

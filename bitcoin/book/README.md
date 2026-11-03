@@ -43,12 +43,12 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 65 are implemented and 59 are planned. The 65 implemented
+Of the 124 chapters, 66 are implemented and 58 are planned. The 66 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 62, 65, 66, 67,
-68, 69, 73, 74, 94, 104, 105, 106 and 107 are new.
+68, 69, 73, 74, 94, 104, 105, 106, 107 and 111 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
 `coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -326,7 +326,7 @@ Lightning built in Coax on our node: messages, the Noise handshake, channels, on
 | 108. Commitment and HTLC transactions | Planned | BOLT 3's commitment and HTLC transaction vectors match byte for byte, with and without anchors. |
 | 109. Open, update and close a channel | Planned | Two Coax nodes open, update and close a channel on regtest. The state machine refuses every out-of-order message BOLT 2 names. |
 | 110. Watch the chain | Planned | A revoked commitment broadcast on regtest is swept by the penalty transaction, and an expired HTLC times out, with our node as the only chain source. |
-| 111. Onion routing and blinded paths | Planned | BOLT 4's onion and blinded-path vectors match. A tampered onion fails its HMAC. |
+| [111. Onion routing and blinded paths](ch111-onion-routing-and-blinded-paths.md) | Runnable: native C | BOLT 4's Sphinx packet: shared secrets, blinding factors, the rho, mu, um, pad and ammag keys, the ChaCha20 stream, the filler and the HMAC chain over 1,300 bytes of TLV hop payloads; error onions and their decryption by the payer; and route blinding with `encrypted_recipient_data` and path keys. Every BOLT 4 onion, error and blinded-path vector gives its result, and every line agrees with an independent Python Sphinx. |
 | 112. Gossip and the channel graph | Planned | Announcements from a pinned gossip snapshot verify. An announcement with a bad signature refuses. |
 | 113. Find a route and pay | Planned | A payment routes over a three-node regtest network and settles. A failure returns its error to the sender. |
 | 114. Invoices | Planned | BOLT 11's examples decode to their stated fields and payee. A changed character refuses. |

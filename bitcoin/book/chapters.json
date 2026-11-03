@@ -2122,16 +2122,22 @@
   {
    "number": 111,
    "title": "Onion routing and blinded paths",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch111-onion-routing-and-blinded-paths.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     8,
     11,
     16
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/lightning/onion.coax",
+    "bitcoin/examples/lightning-onion.coax",
+    "bitcoin/examples/checks/lightning-onion.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

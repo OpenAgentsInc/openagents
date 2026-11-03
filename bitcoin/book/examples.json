@@ -705,6 +705,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/lightning-onion.coax",
+      "chapter": "bitcoin/book/ch111-onion-routing-and-blinded-paths.md",
+      "stdout": "bitcoin/fixtures/lightning-onion.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

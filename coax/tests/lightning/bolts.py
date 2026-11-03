@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: reads the BOLTs' published test vectors outside Coax)
-"""The pinned BOLT texts for Bitcoin chapters 104 to 107, read and checked.
+"""The pinned BOLT texts for Bitcoin chapters 104 to 107 and 111, read and checked.
 
 The BOLTs at lightning/bolts revision 19146282 are pinned in
 coax/tests/vectors/upstream/bolts/. Every read checks the file's SHA-256
@@ -16,6 +16,12 @@ UP = HERE.parent / 'vectors/upstream/bolts'
 PINS = {
     '01-messaging.md': '5801219aabcf854cf0a6dd4e98759b4351cbca238588061c680574912f6ef918',
     '03-transactions.md': '27ffbf1ae436f257bff3f255b4d1e4d4bbf8597fb1e2533d7ff9b66f4fe38d43',
+    '04-onion-routing.md': '79f4e06d334a200f62b6053cc891f2c4dd710e7a43e1c7b3691848dc4c460070',
+    'bolt04/blinded-onion-message-onion-test.json': 'e5e8ac8a42d3d0ce3bb70c12c5bbd76408e022a63322dcf32b00ddd97d051f96',
+    'bolt04/blinded-payment-onion-test.json': 'ce74ab58d12031eebf080c3fde4e259baf9c66bbd1b1cf45f098669ad58b5dab',
+    'bolt04/onion-error-test.json': '374800b8d0dd21920299f4a998c4278f9d66f3a00b5e7b396765d38a50f2ea11',
+    'bolt04/onion-test.json': 'bff01ffc728c3fecbee133eedfdaf39a26984f35cf7e76ed80f14d6e78cb8d56',
+    'bolt04/route-blinding-test.json': 'd2c32e0260e6cb189246ec93bfc606459ef7c8abcad666fab4c496fe9644ef66',
     '08-transport.md': '85a1d6402adb653416c5a48f3b4c8eac2d8964621c41cb1bb6e09b8e06fbde46',
     '09-features.md': '39ead9fa5743104a3e66e0f6c342e34d64966dc943dcbcc337969e543e3e3cbe',
 }
@@ -198,3 +204,22 @@ def keys():
     return {k: _hex(v) for k, v in re.findall(
         r'^\s*(base_secret|per_commitment_secret|base_point|per_commitment_point|localpubkey|localprivkey|'
         r'revocationpubkey|revocationprivkey): (0x[0-9a-f]+)', body, re.M)}
+
+
+# ---- BOLT 4
+
+def bolt4_json(name):
+    """One of the bolt04/*.json vector files, parsed."""
+    return json.loads(text(f'bolt04/{name}'))
+
+
+def error_trace():
+    """The "Returning Errors" trace of BOLT 4's Test Vector section: the
+    failure message and its padded payload, the um key, the packet before
+    obfuscation, and for each node from 4 down to 0 its shared secret,
+    ammag key and the packet it sends back."""
+    body = section(text('04-onion-routing.md'), '## Returning Errors\n\nThe test vectors', '## Returning success')
+    one = lambda name: re.search(name + r' = (\w+)', body).group(1)
+    hops = [(int(n), ss, ammag, packet) for ss, ammag, n, packet in re.findall(
+        r'shared_secret = (\w+)\n\s*ammag_key = (\w+)\n\s*stream = \w+\n\s*error packet for node (\d): (\w+)', body)]
+    return {'payload': one('payload'), 'um_key': one('um_key'), 'raw': one('raw_error_packet'), 'hops': hops}

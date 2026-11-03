@@ -1,0 +1,30 @@
+BOLT 4 vectors
+  onion-test.json: the onion matches: true
+  hops that read their own payload: 5 of 5, the last is hop 4
+  onion-error-test.json: the error packet matches: true
+  the origin finds hop 4, failure 2002
+Alice pays Dave through Bob and Carol
+  onion: 1366 bytes; payloads and HMACs use 149 of 1300
+  Bob sees ephemeral key 03ade3c1324a45296291c9f53547457b43fb254d1b11e3cad30b6669a9584ba846
+  Bob: 1002000 msat, cltv 800180, forward over 800000x1x0
+  Carol sees ephemeral key 03c6a288bbb068819a0b82a010922d71ccc1e40ee354a59238586f68fc3da6403b
+  Carol: 1000000 msat, cltv 800140, forward over 800001x2x1
+  Dave sees ephemeral key 021834e7718c9a52f5782ea287143fea67d1aea5b162aa038ce149747a0afd37cc
+  Dave: 1000000 msat, cltv 800100, last hop
+  Bob given a changed byte: BAD_HMAC
+  Bob given another payment hash: BAD_HMAC
+Carol fails the payment
+  the packet Alice receives: 292 bytes
+  Alice finds hop 1 (Carol), failure 10070000
+  a packet changed on the way: UNKNOWN
+Dave's blinded path from Carol
+  Carol's blinded node ID is her node ID: false
+  Dave's blinded node ID: 023312129f6b26f277053cd00b51d6d3df9e40695e11e8f7c5af6261c3dddbc020
+  Dave's blinded node ID is his node ID: false
+  Bob: 1002000 msat, cltv 800180, forward over 800000x1x0
+  Carol: introduction node, her data says forward over 800001x2x1
+  Carol passes on the path key Dave's hop was made with: true
+  Dave: 1000000 msat, cltv 800100, last hop
+  Dave's data holds his path_id: true
+  Bob opening Dave's data: BAD_TAG
+  Dave's own key opening the onion: BAD_HMAC

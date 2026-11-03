@@ -466,6 +466,20 @@ that a maliciously replaced manifest is authentic.
   `coax/tests/lightning/keys_vectors.coax`, and
   `coax/tests/lightning/keys.py` is the independent derivation the
   cross-check runs.
+- **Onion routing and blinded paths (Bitcoin chapter 111):** BOLT 4
+  (`04-onion-routing.md`) and its five vector files in `bolt04/` at the
+  same lightning/bolts revision, CC-BY-4.0, retrieved 2026-11-03:
+  `onion-test.json` (a five-hop onion and each hop's key),
+  `onion-error-test.json` (each hop's shared secret and ammag key, and an
+  error packet), `route-blinding-test.json` (a blinded path made of two
+  joined paths, and each hop unblinding it),
+  `blinded-payment-onion-test.json` (a payment onion into a blinded path)
+  and `blinded-onion-message-onion-test.json` (an onion message along a
+  blinded path). BOLT 4's "Returning Errors" trace adds a long failure's
+  packet at every node. `coax/tests/lightning/make_onion_vectors.py` reads
+  them into `coax/tests/lightning/onion_vectors.coax`, and
+  `coax/tests/lightning/onion.py` runs them and the example on
+  `coax/tests/lightning/sphinx.py`, the independent Sphinx.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -744,4 +758,10 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/netgroup.cpp`](upstream/bitcoin-core/netgroup.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/netgroup.cpp) | `81d2a13a3801dae67f48ae45fc604c10358c4360a9dc11eccd7b6e535d162c60` |
 | [`upstream/bitcoin-core/netgroup.h`](upstream/bitcoin-core/netgroup.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/netgroup.h) | `e4a239b35db4d01d2e5e78ce7188e1d0e8b4ba3a4bba1f096b41319d5e0f1aa9` |
 | [`upstream/bitcoin-core/random.h`](upstream/bitcoin-core/random.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/random.h) | `5459198b3ae7962176537041ae01a8f74f7fa0a02e5b363ce378e6f5ac7ac430` |
+| [`upstream/bolts/04-onion-routing.md`](upstream/bolts/04-onion-routing.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/04-onion-routing.md) | `79f4e06d334a200f62b6053cc891f2c4dd710e7a43e1c7b3691848dc4c460070` |
+| [`upstream/bolts/bolt04/onion-test.json`](upstream/bolts/bolt04/onion-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/onion-test.json) | `bff01ffc728c3fecbee133eedfdaf39a26984f35cf7e76ed80f14d6e78cb8d56` |
+| [`upstream/bolts/bolt04/onion-error-test.json`](upstream/bolts/bolt04/onion-error-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/onion-error-test.json) | `374800b8d0dd21920299f4a998c4278f9d66f3a00b5e7b396765d38a50f2ea11` |
+| [`upstream/bolts/bolt04/route-blinding-test.json`](upstream/bolts/bolt04/route-blinding-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/route-blinding-test.json) | `d2c32e0260e6cb189246ec93bfc606459ef7c8abcad666fab4c496fe9644ef66` |
+| [`upstream/bolts/bolt04/blinded-payment-onion-test.json`](upstream/bolts/bolt04/blinded-payment-onion-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/blinded-payment-onion-test.json) | `ce74ab58d12031eebf080c3fde4e259baf9c66bbd1b1cf45f098669ad58b5dab` |
+| [`upstream/bolts/bolt04/blinded-onion-message-onion-test.json`](upstream/bolts/bolt04/blinded-onion-message-onion-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/blinded-onion-message-onion-test.json) | `e5e8ac8a42d3d0ce3bb70c12c5bbd76408e022a63322dcf32b00ddd97d051f96` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |
