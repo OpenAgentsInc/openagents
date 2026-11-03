@@ -527,6 +527,17 @@ implementation rather than against an eager Psionic path, so this chapter's
 claim, that eager and compiled training agree bit for bit on the same
 model, is not yet made for the GPU.
 
+Its tensor-core profile ([#12701](https://github.com/OpenAgentsInc/openagents/issues/12701))
+makes this chapter's recomputation trade on the GPU. Each layer's attention
+probabilities (50 MB per layer at this size) are not kept for the backward
+pass. The backward pass runs the same score product and softmax launches
+again, which gives the same bits, because every launch is deterministic.
+That costs 12 more tensor-core launches and 12 softmax launches a step.
+With BF16 storage of the product operands, the planned memory falls from
+1,738,416,198 to 1,370,547,798 bytes and the card's peak from 2,052 to
+1,702 MiB. A run saved at step 375 and resumed still ends with a
+byte-identical checkpoint.
+
 ## What remains
 
 - **Bounded dynamic batch sizes.** The block trains one fixed batch.

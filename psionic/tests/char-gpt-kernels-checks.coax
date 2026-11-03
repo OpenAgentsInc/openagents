@@ -156,3 +156,103 @@ ckt_fill :: (x:[]f32,seed:int) {for i:0..<x.count {x[i]=f32((i*7+seed)%23-11)*0.
     ck_mm_nt(0,m,n,k,1,5,1,0,a[..],0,0,0,k,1,b[..],0,0,0,1,k,c[..],0,0,0,n,1);
     for i:0..<m {for j:0..<n {s:f32=0;for q:0..<k {s+=ck_bf16(a[i*k+q])*ck_bf16(b[j*k+q]);}#assert c[i*n+j]==s;}}
 }
+
+// ---- The `bf16` profile on tensor cores (#12701) ----
+// Exact BF16 operands: small multiples of 1/16 (at most 8 significant bits).
+ckt_v :: (i:int,seed:int)->f32 {return f32((i*seed+3)%29-14)*0.0625;}
+// Fills a BF16 buffer (values) and its FP32 copy.
+ckt_fill16 :: (x:[]f32,q:[]u64,seed:int) {
+    for i:0..<x.count {x[i]=ckt_v(i,seed);}
+    for w:0..<q.count {ck_half(w,x.count,x,q);}
+}
+// The definition, in binary64, and the sum of |terms| that scales the
+// tolerance: |c - ref| <= 2^-20 (steps + 2) sum |a b|, plus one FP32
+// rounding of the result and of the old value it is added to (acc 1),
+// the bound frozen for chapter 37's tensor-core primitive.
+CkRef :: struct {value:f64;magnitude:f64;}
+ckt_ref16 :: (k0:int,k1:int,alpha:f32,a:[]f32,ai:int,ak:int,b:[]f32,bk:int,bj:int,i:int,j:int)->CkRef {
+    s:=0.0;mag:=0.0;
+    for q:k0..<k1 {t:=f64(a[i*ai+q*ak])*f64(b[q*bk+j*bj]);s+=t;mag+=abs(t);}
+    return CkRef.{value=f64(alpha)*s,magnitude=abs(f64(alpha))*mag};
+}
+ckt_close :: (got:f64,want:CkRef,steps:int,old:f64)->bool {
+    return abs(got-want.value)<=f64(steps+2)/1048576.0*want.magnitude+(abs(old)+abs(want.value))/8388608.0+0.0000000001;
+}
+#test "bf16 storage rounds to nearest even, four values to a word" {
+    #assert ck_b16(1.00390625)==0x3f80 && ck_b16(1.01171875)==0x3f82 && ck_b16(-2)==0xc000 && ck_b16(0)==0;
+    // Infinities and NaNs: cgn_mma (native, where non-finite values exist).
+    #assert ck_f16(0x3f82)==1.015625 && ck_f16(0xc000)== -2 && ck_b16(f32_from_bits(0x7f7f0000))==0x7f7f;
+    x:=[6]f32.[1,-2,0.5,1.00390625,3,-0.25];q:[2]u64;
+    for w:0..<2 {ck_half(w,6,x[..],q[..]);}
+    #assert q[0]==(cast(u64)0x3f80|(cast(u64)0xc000<<16)|(cast(u64)0x3f00<<32)|(cast(u64)0x3f80<<48));
+    #assert q[1]==(cast(u64)0x4040|(cast(u64)0xbe80<<16)) && ck_hq(q[..],5)==0xbe80 && ck_hq(q[..],2)==0x3f00 && ck_hq(q[..],7)==0;
+    u:=[5]f32.[-1,0,0.5,3,2];r:[2]u64;
+    for w:0..<2 {ck_relu2_half(w,5,u[..],r[..]);}
+    #assert r[0]==((cast(u64)0x3e80<<32)|(cast(u64)0x4110<<48)) && r[1]==0x4080;
+}
+#test "split slices add in order, onto the old value when acc is 1" {
+    part:=[6]f32.[1,2,4,8,16,32];out:=[2]f32.[100,200];
+    for item:0..<2 {ck_ksum(item,2,3,0,part[..],out[..]);}
+    #assert out[0]==1+4+16 && out[1]==2+8+32;
+    for item:0..<2 {ck_ksum(item,2,3,1,part[..],out[..]);}
+    #assert out[0]==42 && out[1]==84;
+}
+// One product on the tensor cores against its definition: A[m,k] and B[k,n]
+// stored with the given strides, every orientation through one kernel.
+ckt_mma_case :: (m:int,n:int,k:int,ai:int,ak:int,bk:int,bj:int,acc:int,split:int)->int {
+    bad:=0;af:[7000]f32;aq:[1750]u64;bf:[7000]f32;bq:[1750]u64;c:[6000]f32;old:[6000]f32;c16:[1500]u64;part:[24000]f32;
+    ckt_fill16(af[0..<m*k],aq[0..<(m*k+3)/4],7);ckt_fill16(bf[0..<k*n],bq[0..<(k*n+3)/4],11);
+    for i:0..<m*n {old[i]=f32(i%9)-4;c[i]=old[i];}
+    out:=c[..];off:=0;if split>1 {out=part[..];}
+    for item:0..<split*ck_mm_items(1,m,n) {
+        ck_mma(item,m,n,k,1,0,0.5,ifx split>1 then 0 else acc,split,aq[..],0,0,0,ai,ak,bq[..],0,0,0,bk,bj,out,c16[..],off,0,0,n,1);
+    }
+    if split>1 {for item:0..<m*n {ck_ksum(item,m*n,split,acc,part[..],c[..]);}}
+    steps:=(k+15)/16;
+    for i:0..<m {for j:0..<n {
+        want:=ckt_ref16(0,k,0.5,af[..],ai,ak,bf[..],bk,bj,i,j);
+        o:=0.0;if acc==1 {o=f64(old[i*n+j]);}
+        got:=f64(c[i*n+j]);
+        if acc==2 {got=f64(ck_f16(cast(u16)ck_hq(c16[..],i*n+j)));want.value+=o;
+            if !(abs(got-want.value)<=abs(want.value)/128+f64(steps+2)/1048576.0*want.magnitude) {bad+=1;}}
+        else {want.value+=o;if !ckt_close(got,want,steps,o) {bad+=1;}}
+    }}
+    return bad;
+}
+#test "tensor-core products match their definition in every orientation, load path and output" #steps 2000000000 {
+    // Quad-aligned shapes take the quad loads: k-major A and B (x W^T),
+    // m-major A and n-major B (X^T dY), mixed (x W, P V).
+    #assert ckt_mma_case(68,72,40,40,1,1,40,0,1)==0;
+    #assert ckt_mma_case(68,72,40,1,68,72,1,1,1)==0;
+    #assert ckt_mma_case(68,72,40,40,1,72,1,2,1)==0;
+    #assert ckt_mma_case(68,72,40,1,68,1,40,0,1)==0;
+    // Ragged shapes read value by value: m, n and k not multiples of 4.
+    #assert ckt_mma_case(70,37,45,45,1,37,1,1,1)==0;
+    #assert ckt_mma_case(70,37,45,1,70,1,45,0,1)==0;
+    // Split along k into 3 slices, written and added.
+    #assert ckt_mma_case(68,40,96,1,68,40,1,0,3)==0;
+    #assert ckt_mma_case(68,40,96,1,68,40,1,1,3)==0;
+    #assert ck_mm_items(1,68,72)==4;
+}
+#test "batched causal tensor-core products: skipped tiles, inner limits and head offsets" #steps 2000000000 {
+    // Two heads of 130 x 130 scores from 8-wide heads packed in rows of 16:
+    // tiles above the diagonal keep their old values.
+    t:=130;hd:=8;qf:[2080]f32;qq:[520]u64;s:[33800]f32;nil:[1]u64;
+    ckt_fill16(qf[..],qq[..],5);for i:0..<33800 {s[i]= -7;}
+    for item:0..<ck_mm_items(2,t,t) {ck_mma(item,t,t,hd,2,1,0.125,0,1,qq[..],0,0,hd,16,1,qq[..],0,0,hd,1,16,s[..],nil[..],0,0,t*t,t,1);}
+    for h:0..<2 {for i:0..<t {for j:0..<t {
+        v:=s[h*t*t+i*t+j];
+        if j/64>i/64 {#assert v== -7;}
+        else {want:=ckt_ref16(0,hd,0.125,qf[h*hd..<2080],16,1,qf[h*hd..<2080],1,16,i,j);#assert ckt_close(f64(v),want,1,0);}
+    }}}
+    // Mode 2 (P V) stops at the tile's last row and mode 3 (P^T dO) starts
+    // at its first; with P zero past the diagonal both equal the full product.
+    pf:[16900]f32;pq:[4225]u64;vf:[1040]f32;vq:[260]u64;o:[1040]f32;full:[1040]f32;
+    for i:0..<t {for j:0..<t {x:f32=0;if j<=i {x=f32((i*3+j)%5)*0.25;}pf[i*t+j]=x;}}
+    for w:0..<4225 {ck_half(w,16900,pf[..],pq[..]);}
+    ckt_fill16(vf[..],vq[..],2);
+    for item:0..<ck_mm_items(1,t,hd) {ck_mma(item,t,hd,t,1,2,1,0,1,pq[..],0,0,0,t,1,vq[..],0,0,0,hd,1,o[..],nil[..],0,0,0,hd,1);}
+    for i:0..<t {for j:0..<hd {want:=ckt_ref16(0,t,1,pf[..],t,1,vf[..],hd,1,i,j);#assert ckt_close(f64(o[i*hd+j]),want,9,0);}}
+    for item:0..<ck_mm_items(1,t,hd) {ck_mma(item,t,hd,t,1,3,1,0,1,pq[..],0,0,0,1,t,vq[..],0,0,0,hd,1,full[..],nil[..],0,0,0,hd,1);}
+    for i:0..<t {for j:0..<hd {want:=ckt_ref16(0,t,1,pf[..],1,t,vf[..],hd,1,i,j);#assert ckt_close(f64(full[i*hd+j]),want,9,0);}}
+}

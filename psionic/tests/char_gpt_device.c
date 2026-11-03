@@ -36,11 +36,12 @@
 #define TRY(x) do { PcStatus s_ = (x); if (s_ != PC_OK) { fprintf(stderr, "%s: %s\n", #x, pc_log()); exit(1); } } while (0)
 #define NEED(c, msg) do { if (!(c)) { fprintf(stderr, "%s\n", msg); exit(1); } } while (0)
 
-static const char *kernel_names[16] = {"ck_mm_nn","ck_mm_nt","ck_mm_tn","ck_softmax","ck_softmax_back","ck_rms","ck_rms_back","ck_ids","ck_embed","ck_embed_back","ck_pos_back","ck_relu2","ck_relu2_back","ck_ce","ck_sum","ck_adamw"};
+#define CG_KERNEL_COUNT 20
+static const char *kernel_names[CG_KERNEL_COUNT] = {"ck_mm_nn","ck_mm_nt","ck_mm_tn","ck_softmax","ck_softmax_back","ck_rms","ck_rms_back","ck_ids","ck_embed","ck_embed_back","ck_pos_back","ck_relu2","ck_relu2_back","ck_ce","ck_sum","ck_adamw","ck_mma","ck_half","ck_relu2_half","ck_ksum"};
 static int gpu;
-static PcKernel kernels[16];
-static PcBuffer dev[3];
-static float *hf; static uint8_t *hu; static int64_t *hw; /* CPU arenas */
+static PcKernel kernels[CG_KERNEL_COUNT];
+static PcBuffer dev[4];
+static float *hf; static uint8_t *hu; static int64_t *hw; static uint64_t *hh; /* CPU arenas; hh holds BF16 values four to a word */
 static coax_t_CgPlan plan;
 static int64_t launches_done;
 
@@ -58,32 +59,33 @@ static void write_all(const char *path, const void *a, size_t n, const void *b, 
     NEED(fwrite(a, 1, n, f) == n && (!m || fwrite(b, 1, m, f) == m) && fclose(f) == 0, "write failed");
     NEED(rename(tmp, path) == 0, "rename failed");
 }
-static const int64_t elem[3] = {4, 1, 8};
-static size_t arena_bytes(int a) { return (size_t)(a == 0 ? plan.floats : a == 1 ? plan.bytes : plan.offsets) * (size_t)elem[a]; }
+static const int64_t elem[4] = {4, 1, 8, 2};
+static size_t arena_bytes(int a) { return (size_t)(a == 0 ? plan.floats : a == 1 ? plan.bytes : a == 2 ? plan.offsets : plan.halves) * (size_t)elem[a]; }
+static uint8_t *host_arena(int a) { return a == 0 ? (uint8_t *)hf : a == 1 ? hu : a == 2 ? (uint8_t *)hw : (uint8_t *)hh; }
 static int buf_arena(int b) { return (int)plan.arena.e[b]; }
 /* Copies between a host array and a buffer's elements [first, first+count). */
 static void up(int b, int64_t first, const void *src, int64_t count) {
     int a = buf_arena(b); size_t off = (size_t)(plan.at.e[b] + first) * (size_t)elem[a], n = (size_t)count * (size_t)elem[a];
     if (gpu) TRY(pc_upload(dev[a] + off, src, n, NULL));
-    else memcpy((a == 0 ? (uint8_t *)hf : a == 1 ? hu : (uint8_t *)hw) + off, src, n);
+    else memcpy(host_arena(a) + off, src, n);
 }
 static void down(void *dst, int b, int64_t first, int64_t count) {
     int a = buf_arena(b); size_t off = (size_t)(plan.at.e[b] + first) * (size_t)elem[a], n = (size_t)count * (size_t)elem[a];
     if (gpu) TRY(pc_download(dst, dev[a] + off, n, NULL));
-    else memcpy(dst, (a == 0 ? (uint8_t *)hf : a == 1 ? hu : (uint8_t *)hw) + off, n);
+    else memcpy(dst, host_arena(a) + off, n);
 }
 static void run(coax_t_CgLaunch *ls, int64_t count) {
     for (int64_t i = 0; i < count; i++) {
         coax_t_CgLaunch *l = &ls[i];
         if (!gpu) {
-            cg_exec(*l, (coax_v_f32){hf, plan.floats}, (coax_v_u8){hu, plan.bytes}, (coax_v_s64){hw, plan.offsets});
+            cg_exec(*l, (coax_v_f32){hf, plan.floats}, (coax_v_u8){hu, plan.bytes}, (coax_v_s64){hw, plan.offsets}, (coax_v_u64){hh, plan.halves / 4});
         } else {
-            PcArg a[26];
+            PcArg a[27];
             for (int j = 0; j < l->argc; j++) {
                 coax_t_CgArg *x = &l->args.e[j];
                 if (x->kind == 0) a[j] = (PcArg){PC_ARG_INT, x->i, 0, 0, 0};
                 else if (x->kind == 1) a[j] = (PcArg){PC_ARG_F32, 0, x->f, 0, 0};
-                else { int ar = (int)x->kind - 2; a[j] = (PcArg){PC_ARG_VIEW, 0, 0, dev[ar] + (PcBuffer)(x->at * elem[ar]), x->count}; }
+                else { int ar = (int)x->kind - 2; a[j] = (PcArg){PC_ARG_VIEW, 0, 0, dev[ar] + (PcBuffer)(x->at * elem[ar]), ar == 3 ? x->count / 4 : x->count}; }
             }
             if (l->block) TRY(pc_launch_warps(kernels[l->kernel], l->items * l->block / 32, (int)l->block, a, (int)l->argc, NULL));
             else TRY(pc_launch(kernels[l->kernel], l->items, 256, a, (int)l->argc, NULL));
@@ -94,14 +96,15 @@ static void run(coax_t_CgLaunch *ls, int64_t count) {
 
 int main(int argc, char **argv) {
     if (argc >= 2 && !strcmp(argv[1], "selfcheck")) {
-        int64_t g = cgn_gradients(), a = cgn_accumulate(), u = cgn_update(), o = cgn_overflow();
-        printf("{\"gradients_failures\":%lld,\"accumulate_failures\":%lld,\"update_failures\":%lld,\"overflow_failures\":%lld}\n", (long long)g, (long long)a, (long long)u, (long long)o);
-        return g || a || u || o;
+        int64_t g = cgn_gradients(), a = cgn_accumulate(), u = cgn_update(), o = cgn_overflow(), m = cgn_mma();
+        printf("{\"gradients_failures\":%lld,\"accumulate_failures\":%lld,\"update_failures\":%lld,\"overflow_failures\":%lld,\"mma_failures\":%lld}\n", (long long)g, (long long)a, (long long)u, (long long)o, (long long)m);
+        return g || a || u || o || m;
     }
     NEED(argc >= 7 && !strcmp(argv[1], "run"), "usage: char-gpt selfcheck | run cpu|gpu tiny|full CORPUS OUT [options]");
     gpu = !strcmp(argv[2], "gpu");
     coax_t_CgShape s = !strncmp(argv[3], "full", 4) ? cg_full() : cg_tiny();
-    if (strstr(argv[3], "-bf16")) s = cg_with_profile(s, 1);
+    if (strstr(argv[3], "-bf16")) s = cg_with_profile(s, 1);   /* operands rounded, FP32 products */
+    if (strstr(argv[3], "-mma")) s = cg_with_profile(s, 2);    /* the frozen bf16 profile */
     const char *corpus = argv[4], *out = argv[5], *cu = NULL;
     int64_t target = cg_steps(), dump = 0, every = 250; double budget = 780; int64_t memory = (int64_t)8 << 30;
     for (int i = 6; i + 1 < argc; i += 2) {
@@ -126,18 +129,20 @@ int main(int argc, char **argv) {
     double compile_s = 0; size_t free0 = 0, free1 = 0, total = 0;
     if (gpu) {
         PcDeviceInfo info; NEED(pc_open(&info) == PC_OK, pc_log());
+        NEED(cgp_profile(s.profile, info.major, info.minor) == COAX_CgStatus_ok, "profile refused on this device");
         NEED(cu, "--kernels K.cu is required on the GPU");
         size_t cn = 0; char *src = (char *)read_all(cu, &cn); NEED(src, "cannot read kernels");
         PcModule mod; TRY(pc_compile(src, cn, "char-gpt-kernels.cu", &mod, &compile_s));
-        for (int k = 0; k < 16; k++) TRY(pc_kernel(mod, kernel_names[k], &kernels[k]));
+        for (int k = 0; k < CG_KERNEL_COUNT; k++) TRY(pc_kernel(mod, kernel_names[k], &kernels[k]));
         TRY(pc_memory(&free0, &total));
         fprintf(stderr, "device: %s (sm_%d%d), %zu MiB free of %zu; plan %lld bytes\n", info.name, info.major, info.minor, free0 >> 20, total >> 20, (long long)plan.used);
-        for (int a = 0; a < 3; a++) TRY(pc_alloc(arena_bytes(a), &dev[a]));
+        for (int a = 0; a < 4; a++) TRY(pc_alloc(arena_bytes(a) ? arena_bytes(a) : 8, &dev[a]));
         TRY(pc_fill(dev[0], 0, (size_t)plan.floats, NULL));
         TRY(pc_memory(&free1, &total));
     } else {
-        hf = calloc((size_t)plan.floats, 4); hu = calloc((size_t)plan.bytes, 1); hw = calloc((size_t)plan.offsets, 8);
-        NEED(hf && hu && hw, "out of host memory");
+        NEED(cgp_profile(s.profile, 0, 0) == COAX_CgStatus_ok, "profile refused");
+        hf = calloc((size_t)plan.floats, 4); hu = calloc((size_t)plan.bytes, 1); hw = calloc((size_t)plan.offsets, 8); hh = calloc((size_t)plan.halves / 4 + 1, 8);
+        NEED(hf && hu && hw && hh, "out of host memory");
     }
     up(CG_DATA_ID, 0, ids, (int64_t)n);
     /* Parameters: a checkpoint, or the specification's initial values. */

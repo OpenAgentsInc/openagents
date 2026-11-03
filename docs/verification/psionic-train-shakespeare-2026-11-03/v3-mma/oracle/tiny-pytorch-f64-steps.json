@@ -1,0 +1,34 @@
+{
+ "config": {
+  "vocab": 65,
+  "d": 128,
+  "layers": 2,
+  "heads": 2,
+  "context": 64,
+  "hidden": 512,
+  "rows": 4,
+  "steps": 750,
+  "warmup": 100
+ },
+ "dtype": "torch.float64",
+ "steps": [
+  {
+   "loss": 4.194554771123555,
+   "norm": 2.745650244982423,
+   "applied": true,
+   "rate": 1e-05
+  },
+  {
+   "loss": 4.2078147001772965,
+   "norm": 2.8526517437084244,
+   "applied": true,
+   "rate": 2e-05
+  },
+  {
+   "loss": 4.181378883082296,
+   "norm": 3.054090878421719,
+   "applied": true,
+   "rate": 3e-05
+  }
+ ]
+}

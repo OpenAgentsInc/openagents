@@ -10,7 +10,12 @@
 // library on the GPU, libm on the CPU), so device and CPU may differ in
 // their last bits wherever these appear.
 //
+// The `bf16` profile (#12701) adds three kernels: ck_mma, the same products
+// on the tensor cores (BF16 operands stored as u16, f32 accumulation), and
+// two conversions into BF16 storage. Their numerical contract is below.
+//
 // Checks: coax test psionic/lib/transformer/char-gpt-kernels.coax
+#load "../../../coax/lib/compute/mma.coax";
 #load "../../tests/char-gpt-kernels-checks.coax";
 
 CK_T :: 256;      // threads of a product item
@@ -171,6 +176,190 @@ ck_mm_tn :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,
         tx:=thread%16;ty:=thread/16;
         for rr:0..<4 {for cc:0..<4 {i:=i0+ty+16*rr;j:=j0+tx+16*cc;
             if live && i<m && j<n {at:=cbase+i*ci+j*cj;v:=alpha*acc_[thread*16+rr*4+cc];if acc==1 {v=c[at]+v;}c[at]=v;}}}
+    }
+}
+
+// ---- The `bf16` profile on tensor cores (#12701) ----
+// BF16 storage: a value is kept as the high 16 bits of its FP32 rounding to
+// nearest, ties to even (ck_bf16). Infinities stay infinite and every NaN
+// becomes the quiet NaN 0x7fc0, so a non-finite value is never stored as a
+// finite one and the step's overflow decision still sees it.
+ck_b16 :: (v:f32)->u16 {
+    if v!=v {return 0x7fc0;}
+    return cast(u16)(f32_bits(ck_bf16(v))>>16);
+}
+// A stored BF16 value as FP32, exactly.
+ck_f16 :: (h:u16)->f32 {return f32_from_bits(cast(u32)h<<16);}
+// BF16 buffers are views of u64 quads: value e of a buffer is bits
+// 16(e%4) ..< 16(e%4)+16 of word e/4. Every BF16 buffer starts at a
+// multiple of 4 values, and its words are written whole, four values at a
+// time, so no two work items ever write one word.
+ck_quad :: (a:f32,b:f32,c:f32,d:f32)->u64 {
+    return cast(u64)ck_b16(a)|(cast(u64)ck_b16(b)<<16)|(cast(u64)ck_b16(c)<<32)|(cast(u64)ck_b16(d)<<48);
+}
+// Value e of a BF16 buffer, in the low 16 bits.
+ck_hq :: (v:[]u64,e:int)->u32 {return cast(u32)((v[e/4]>>cast(u64)(16*(e%4)))&0xffff);}
+ck_lo :: (w:u64)->u32 {return cast(u32)(w&0xffffffff);}
+ck_hi :: (w:u64)->u32 {return cast(u32)(w>>32);}
+// y = bf16(x) for values 4 item ..< 4 item + 4 inside count (zero past it).
+ck_x :: (x:[]f32,e:int,count:int)->f32 {v:f32=0;if e<count {v=x[e];}return v;}
+ck_half :: (item:int,count:int,x:[]f32,y:[]u64) #export_c {
+    e:=4*item;y[item]=ck_quad(ck_x(x,e,count),ck_x(x,e+1,count),ck_x(x,e+2,count),ck_x(x,e+3,count));
+}
+// a = bf16(relu(u)^2), ck_relu2's FP32 arithmetic stored in BF16.
+ck_r2 :: (u:[]f32,e:int,count:int)->f32 {v:=ck_x(u,e,count);if !(v>0) {v=0;}return v*v;}
+ck_relu2_half :: (item:int,count:int,u:[]f32,a:[]u64) #export_c {
+    e:=4*item;a[item]=ck_quad(ck_r2(u,e,count),ck_r2(u,e+1,count),ck_r2(u,e+2,count),ck_r2(u,e+3,count));
+}
+// out = (acc ? out : 0) + the sum of split partial products in slice
+// order, one item per value: the end of a product split along k.
+ck_ksum :: (item:int,count:int,split:int,acc:int,part:[]f32,out:[]f32) #export_c {
+    s:f32=0;for sl:0..<split {s+=part[sl*count+item];}
+    if acc==1 {s=out[item]+s;}
+    out[item]=s;
+}
+
+// The products of ck_mm_nn/nt/tn with BF16 operands on the tensor cores.
+// One warp per item computes the same 64 x 64 tile as a product item (the
+// same items, batches, causal modes 0-3 and inner ranges) as 4 x 8
+// fragments of cu_mma_bf16_16x8x16 per 16 inner values, accumulating in
+// f32 from +0. Strides are free, so one kernel serves every orientation.
+// Each output is alpha * sum, and: acc 0 stores it in c, acc 1 adds it to
+// c (FP32), acc 2 stores bf16(alpha * sum) in c16, four columns to a word
+// (the caller's c16 has unit column stride and quad-aligned rows).
+// With split > 1, item % split takes one slice of the 16-value inner steps
+// and writes its tile at c + slice*m*n, for ck_ksum to add in order.
+//
+// A sum's terms are a fragment's, in an order of the tile's own: fragment
+// row r of fragment f is tile row ck_row(f, r%8, r/8), fragment column c of
+// fragment e is tile column ck_col(e, c), and fragment inner value 2t+u
+// (8+2t+u) is inner value 4t+u (4t+2+u) of the step. The same order on both
+// operands leaves every sum's terms unchanged, and it gives each lane four
+// consecutive values wherever an operand is contiguous: four inner values
+// of a row (k-major), or four rows (four columns) at one inner value
+// (m-major, n-major). So a lane loads one word per four values whenever the
+// operand is quad-aligned, and one value at a time otherwise. The tensor
+// core adds partial sums in an order of its own, so a result is compared
+// with the definition within a tolerance, not bit for bit; the device's
+// result is still deterministic (no atomics, a fixed sequence of
+// instructions per output).
+CK_MF :: 4;  // 16-row fragments of a tile
+CK_NF :: 8;  // 8-column fragments of a tile
+ck_row :: (f:int,g:int,hi:int)->int {return 32*(f/2)+4*g+2*(f%2)+hi;}
+ck_col :: (e:int,c:int)->int {return 32*(e/4)+4*c+e%4;}
+ck_mma :: (item:int,m:int,n:int,k:int,heads:int,mode:int,alpha:f32,acc:int,split:int,
+    a:[]u64,ao:int,ar:int,ah:int,ai:int,ak:int,b:[]u64,bo:int,br:int,bh:int,bk:int,bj:int,
+    c:[]f32,c16:[]u64,co:int,cr:int,ch:int,ci:int,cj:int) #export_c {
+    sl:=item%split;tile:=item/split;
+    tm:=(m+CK_TILE-1)/CK_TILE;tn:=(n+CK_TILE-1)/CK_TILE;per:=tm*tn;bt:=tile/per;t:=tile%per;
+    i0:=t/tn*CK_TILE;j0:=t%tn*CK_TILE;r:=bt/heads;h:=bt%heads;
+    abase:=ao+r*ar+h*ah;bbase:=bo+r*br+h*bh;cbase:=co+r*cr+h*ch+sl*m*n;
+    cm:=mode%4;k0:=ck_k0(cm,i0);k1:=ck_k1(cm,i0,k);steps:=ck_steps(cm,i0,j0,k);live:=ck_live(cm,i0,j0);
+    chunk:=(steps+split-1)/split;s0:=sl*chunk;s1:=s0+chunk;if s1>steps {s1=steps;}
+    // How each operand is read: k-major quads, m/n-major quads, or values.
+    aq:=ak==1 && ai%4==0 && abase%4==0 && k1%4==0;
+    am:=!aq && ai==1 && ak%4==0 && abase%4==0 && m%4==0;
+    bq:=bk==1 && bj%4==0 && bbase%4==0 && k1%4==0;
+    bn:=!bq && bj==1 && bk%4==0 && bbase%4==0 && n%4==0;
+    fa:[128]u32;fb:[64]u32;fc:[128]f32;av:[512]u32;bv:[512]u32;cv:[4096]f32;
+    for lane:0..<32 {for x:0..<128 {cv[lane*128+x]=0;}}
+    for s:s0..<s1 {
+        kb:=k0+s*CK_STEP;
+        if aq {
+            for lane:0..<32 {
+                g:=lane/4;q:=lane%4;kk:=kb+4*q;
+                for f:0..<CK_MF {for hi:0..<2 {
+                    i:=i0+ck_row(f,g,hi);w:u64=0;
+                    if i<m && kk<k1 {w=a[(abase+i*ai+kk)/4];}
+                    av[lane*16+f*4+hi]=ck_lo(w);av[lane*16+f*4+2+hi]=ck_hi(w);
+                }}
+            }
+        } else if am {
+            for lane:0..<32 {
+                g:=lane/4;q:=lane%4;
+                for x:0..<16 {av[lane*16+x]=0;}
+                for ff:0..<2 {for kp:0..<2 {for u:0..<2 {
+                    i:=i0+32*ff+4*g;kk:=kb+4*q+2*kp+u;w:u64=0;
+                    if i<m && kk<k1 {w=a[(abase+i+kk*ak)/4];}
+                    // Row i+2s+hi is fragment 2ff+s's row hi; inner value
+                    // 2kp+u is half u of register hi + 2kp.
+                    for s2:0..<2 {for hi:0..<2 {
+                        av[lane*16+(2*ff+s2)*4+hi+2*kp]=av[lane*16+(2*ff+s2)*4+hi+2*kp]|(cast(u32)((w>>cast(u64)(32*s2+16*hi))&0xffff)<<cast(u32)(16*u));
+                    }}
+                }}}
+            }
+        } else {
+            for lane:0..<32 {
+                g:=lane/4;q:=lane%4;
+                for f:0..<CK_MF {for x:0..<4 {
+                    i:=i0+ck_row(f,g,x%2);w:u32=0;
+                    for u:0..<2 {kk:=kb+4*q+2*(x/2)+u;if i<m && kk<k1 {w=w|(ck_hq(a,abase+i*ai+kk*ak)<<cast(u32)(16*u));}}
+                    av[lane*16+f*4+x]=w;
+                }}
+            }
+        }
+        if bq {
+            for lane:0..<32 {
+                g:=lane/4;q:=lane%4;kk:=kb+4*q;
+                for e:0..<CK_NF {
+                    j:=j0+ck_col(e,g);w:u64=0;
+                    if j<n && kk<k1 {w=b[(bbase+j*bj+kk)/4];}
+                    bv[lane*16+e*2]=ck_lo(w);bv[lane*16+e*2+1]=ck_hi(w);
+                }
+            }
+        } else if bn {
+            for lane:0..<32 {
+                g:=lane/4;q:=lane%4;
+                for x:0..<16 {bv[lane*16+x]=0;}
+                for ee:0..<2 {for kp:0..<2 {for u:0..<2 {
+                    j:=j0+32*ee+4*g;kk:=kb+4*q+2*kp+u;w:u64=0;
+                    if j<n && kk<k1 {w=b[(bbase+kk*bk+j)/4];}
+                    // Column j+y is fragment 4ee+y's column g.
+                    for y:0..<4 {bv[lane*16+(4*ee+y)*2+kp]=bv[lane*16+(4*ee+y)*2+kp]|(cast(u32)((w>>cast(u64)(16*y))&0xffff)<<cast(u32)(16*u));}
+                }}}
+            }
+        } else {
+            for lane:0..<32 {
+                g:=lane/4;q:=lane%4;
+                for e:0..<CK_NF {for x:0..<2 {
+                    j:=j0+ck_col(e,g);w:u32=0;
+                    for u:0..<2 {kk:=kb+4*q+2*x+u;if j<n && kk<k1 {w=w|(ck_hq(b,bbase+kk*bk+j*bj)<<cast(u32)(16*u));}}
+                    bv[lane*16+e*2+x]=w;
+                }}
+            }
+        }
+        for f:0..<CK_MF {for e:0..<CK_NF {
+            for lane:0..<32 {
+                for x:0..<4 {fa[lane*4+x]=av[lane*16+f*4+x];fc[lane*4+x]=cv[lane*128+(f*CK_NF+e)*4+x];}
+                for x:0..<2 {fb[lane*2+x]=bv[lane*16+e*2+x];}
+            }
+            cu_mma_bf16_16x8x16(fa[..],fb[..],fc[..]);
+            for lane:0..<32 {for x:0..<4 {cv[lane*128+(f*CK_NF+e)*4+x]=fc[lane*4+x];}}
+        }}
+    }
+    if acc==2 {
+        for lane:0..<32 {
+            g:=lane/4;q:=lane%4;
+            for f:0..<CK_MF {for hi:0..<2 {for ee:0..<2 {for u:0..<2 {
+                i:=i0+ck_row(f,g,hi);j:=j0+32*ee+8*q+4*u;
+                if live && i<m && j<n {
+                    c16[(cbase+i*ci+j)/4]=ck_quad(alpha*cv[lane*128+(f*CK_NF+4*ee)*4+2*hi+u],alpha*cv[lane*128+(f*CK_NF+4*ee+1)*4+2*hi+u],
+                        alpha*cv[lane*128+(f*CK_NF+4*ee+2)*4+2*hi+u],alpha*cv[lane*128+(f*CK_NF+4*ee+3)*4+2*hi+u]);
+                }
+            }}}}
+        }
+    } else {
+        for lane:0..<32 {
+            g:=lane/4;q:=lane%4;
+            for f:0..<CK_MF {for e:0..<CK_NF {for x:0..<4 {
+                i:=i0+ck_row(f,g,x/2);j:=j0+32*(e/4)+8*q+4*(x%2)+e%4;
+                if live && i<m && j<n {
+                    at:=cbase+i*ci+j*cj;v:=alpha*cv[lane*128+(f*CK_NF+e)*4+x];
+                    if acc==1 {v=c[at]+v;}
+                    c[at]=v;
+                }
+            }}}
+        }
     }
 }
 

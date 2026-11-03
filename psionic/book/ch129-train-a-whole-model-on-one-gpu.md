@@ -1,14 +1,15 @@
 # 129. Train a whole model on one GPU
 
 > **Status: partly implemented.** A 10,765,056-parameter decoder trains
-> whole-step on the RTX 4080 in Coax-generated cooperative kernels: 12.3M
-> tokens of Tiny Shakespeare at 108,122 tokens/s end to end, 1.7 GB of
-> device memory, held-out loss 1.5171 against an independent PyTorch
-> baseline's 1.5283 on the same frozen workload, exact resume, and a BF16
-> operand profile at 1.5154 (see "A useful-scale decoder" below). Chapter
-> 115's tiny decoder also trains on the device under chapter 118's trainer
-> (the rest of this chapter). An MLP and a CNN on the device, convolution
-> gradients, BF16 on tensor cores and BF16 storage remain.
+> whole-step on the RTX 4080 in Coax-generated kernels. In FP32 it runs
+> 12.3M tokens of Tiny Shakespeare at 108,122 tokens/s in 1.7 GB of device
+> memory, reaching held-out loss 1.5171. On the tensor cores, with BF16
+> storage, it runs at 236,998 tokens/s in 1.37 GB, reaching 1.5204. An
+> independent PyTorch baseline reaches 1.5283 on the same frozen workload,
+> and both profiles resume exactly (see "A useful-scale decoder" below).
+> Chapter 115's tiny decoder also trains on the device under chapter 118's
+> trainer (the rest of this chapter). An MLP and a CNN on the device and
+> convolution gradients remain.
 
 A separate [checked dense component](../lib/device/training-dense.coax),
 `training-dense-f32-v1`, now supplies cooperative `Y = XW`, `dX = dY Wᵀ`
@@ -56,7 +57,9 @@ the CPU.
 | PyTorch CUDA FP32 baseline | 1.5283 | ≈150,000 | 3.5 GB |
 | Coax `fp32` | **1.5171** | **108,122** | 1.74 GB |
 | Coax `fp32`, saved at 375 and resumed | 1.5171, checkpoint byte-identical | 108,191 | 1.74 GB |
-| Coax `bf16` (operands rounded to BF16) | 1.5154 | 108,748 | 1.74 GB |
+| Coax, operands rounded to BF16, FP32 products (#12627) | 1.5154 | 108,748 | 1.74 GB |
+| Coax `bf16` on tensor cores, BF16 storage (#12701) | **1.5204** | **236,998** | **1.37 GB** |
+| Coax `bf16`, saved at 375 and resumed | 1.5204, checkpoint byte-identical | 240,100 / 241,007 | 1.37 GB |
 
 The tiny shape of the same model matches a PyTorch float64 oracle on the CPU
 and on the device: identical initial bits, every step-1 gradient within
@@ -65,13 +68,46 @@ native self-check compares every tensor's gradients with central
 differences of the step's own loss. The [record](../../docs/verification/psionic-train-shakespeare-2026-11-03/README.md) keeps every
 attempt, including the first workload, retired because its own baseline
 overfit, and a 30% regression that chapter 130 traces. PyTorch's cuBLAS
-step is still about 1.4× faster, and the BF16 profile rounds operands but
-does not yet use tensor cores, so it is no faster.
+step is about 1.4× faster than the FP32 profile.
+
+### BF16 on the tensor cores
+
+The frozen `bf16` profile multiplies BF16 operands on the tensor cores and
+accumulates in FP32. Master parameters, gradients, moments, norms, softmax
+and loss stay FP32, and the loss scale is a static 1.
+[#12701](https://github.com/OpenAgentsInc/openagents/issues/12701) built it
+as profile 2 (`full-mma`):
+
+- `ck_mma` is one Coax warp kernel for every orientation and causal mode.
+  It calls chapter 37's `cu_mma_bf16_16x8x16`, which `coax cuda` emits as
+  one `mma.sync` m16n8k16 instruction. No cuBLAS, cuDNN or hand-written
+  CUDA is involved.
+- BF16 values are stored four to a u64 word. They cover a working copy of
+  the weights and every activation or gradient that is only a product
+  operand.
+- The kernel permutes fragment rows, columns and inner values, identically
+  on both operands so every sum keeps its terms. Each lane then reads one
+  word per four values whatever the operand's layout.
+- Attention keeps no per-layer probabilities. The backward pass recomputes
+  them with the same launches, so it gets the same bits.
+- Parameter gradients are split along the tokens and added in a fixed
+  slice order.
+
+A first version that read BF16 values one at a time ran at 72k tokens/s,
+slower than FP32. In a warp kernel every operand load is a bounds-checked
+load from device memory, so the number of loads, not the arithmetic, set
+the speed. The record keeps that failure. The tensor-core profile meets
+the frozen gate: 1.5204 ≤ 1.70, and 0.008 from the baseline. It also
+passes a PyTorch float64 oracle within a tolerance declared before the
+comparison ran: step-1 gradient cosine 0.999995 on both the CPU and the
+GPU. It runs 2.3× faster than the same-day FP32 run and about 1.6× faster
+than the PyTorch FP32 baseline.
 
 ```shell
 psionic/tests/char_gpt_build.sh BUILD
 BUILD/char-gpt selfcheck
 psionic/tests/char_gpt_acceptance.sh BUILD ~/.cache/psionic/tinyshakespeare/input.txt OUT
+psionic/tests/char_gpt_acceptance.sh BUILD ~/.cache/psionic/tinyshakespeare/input.txt OUT mma
 ```
 
 ## The tiny decoder on the device
@@ -587,9 +623,11 @@ chapters 66–70 do for inference; that is the next step, not this one.
 - The tiny decoder's own path still uses chapter 122's 4096-value
   checkpoint and one thread per row; the useful-scale decoder above uses
   its own checkpoint and cooperative kernels, not chapter 118's trainer.
-- BF16 on tensor cores, BF16 storage of weights and activations, and a
-  dynamic loss scale; the BF16 profile above rounds operands only.
-- Products as fast as cuBLAS (about 1.4× away).
+- Faster attention products: in the tensor-core profile, the causal score
+  tiles' FP32 stores and the 64-wide head products take about half of
+  kernel time. A dynamic loss scale was not needed: no step was skipped.
+- Tensor cores inside cooperative group kernels, so operands can be staged
+  in shared memory, which needs `coax cuda` support.
 - Decay spans, SGD and multi-row micro-batches on the device: each is a
   refusal today.
 

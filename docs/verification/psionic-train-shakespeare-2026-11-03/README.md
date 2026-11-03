@@ -256,3 +256,149 @@ rounding to the shared-memory store restored 108,122 tokens/s (0.150 s).
 - Faster products (larger register tiles, split-K for small outputs); the
   baseline's cuBLAS step is 1.4× faster.
 - Distributed training (chapters 132–135) was not started.
+
+## Evidence for #12701: the `bf16` profile on tensor cores
+
+This section serves [#12701](https://github.com/OpenAgentsInc/openagents/issues/12701).
+It runs the frozen `bf16` profile as written: products on the tensor cores
+with BF16 operands and FP32 accumulation; FP32 master parameters, gradients,
+moments, norms, softmax and loss; static loss scale 1. Nothing above is
+edited. Runs: `psionic/tests/char_gpt_acceptance.sh BUILD CORPUS OUT mma`
+(files in `v3-mma/`), one RTX 4080 idle at 146 MiB / 0% before and after;
+no other job was stopped. The driver names this profile `full-mma`
+(profile 2); `full-bf16` (profile 1) is #12627's operand-rounding profile,
+kept unchanged for comparison.
+
+### What runs
+
+- **Tensor cores.** `ck_mma` in `char-gpt-kernels.coax` is one Coax warp
+  kernel for every product orientation and causal mode. It calls the
+  existing primitive `cu_mma_bf16_16x8x16` (`coax/lib/compute/mma.coax`),
+  which `coax cuda` emits as one `mma.sync.aligned.m16n8k16` BF16
+  instruction with FP32 accumulation. Each warp owns one 64×64 output tile
+  as 4×8 fragments. No cuBLAS, cuDNN or hand-written CUDA is involved.
+- **BF16 storage.** BF16 values are packed four to a u64 word. The kernel
+  permutes fragment rows, columns and inner values (the same permutation on
+  both operands, so every sum has the same terms). With that permutation, a
+  lane loads one word per four values in every orientation (k-major,
+  m-major or n-major) and writes BF16 outputs as whole words.
+  Stored in BF16: a working copy of the parameters, rewritten from the FP32
+  masters at the start of each step and each held-out pass; Q, K and V; the
+  attention output; the normed activations' operand copies; ReLU²'s output;
+  and the gradients that are only product operands (logits, residual, ReLU²
+  input, attention output, dQ/dK/dV, dS). Kept in FP32: the masters,
+  gradients and moments, the residual stream, the norms' inputs and
+  outputs, scores and probabilities (softmax), the MLP pre-activation, the
+  logits and loss, and every gradient a norm, the softmax or ReLU²'s
+  backward reads.
+- **No stored attention.** The backward pass recomputes each layer's scores
+  and softmax with the same launches, so it gets the same bits, instead of
+  keeping 50 MB of probabilities per layer.
+- **Parameter gradients** are split along the 8,192 tokens into 10–64
+  slices (`cg_split`), written to a scratch buffer and added in slice order
+  by `ck_ksum`. Every sum still has a fixed order and there are no atomics,
+  so a run is deterministic.
+- **Policy** (`char-gpt-policy.coax`, `#authority`): profiles 0–2,
+  `cgp_mma`, and `cgp_profile`, which refuses the tensor-core profile below
+  compute capability 8.0. The header admits profile 2.
+  `coax mutate --root-only` killed **265 of 265** mutants.
+- **Loss scale.** Static 1, as frozen. No step was skipped, so no dynamic
+  scale is needed.
+
+### Independent numerical checks
+
+The tolerance was written into `char_gpt_torch.py compare --bf16` before
+the first comparison ran: step losses within 2e-3 relative, gradient norms
+within 1e-2, step-1 gradient cosine at least 0.999 with a relative L2 error
+of at most 0.05, parameters after three AdamW steps within 2× the sum of
+the step rates (1.2e-4), and an update cosine of at least 0.9.
+
+- **PyTorch float64 oracle, tiny shape** (`v3-mma/oracle/`): passes on the
+  CPU and on the RTX 4080. Initial bits are identical. Step losses are
+  within 1.2e-5 relative and norms within 3.3e-4. The step-1 gradient has
+  cosine 0.9999945 and relative L2 error 0.0033. Parameters after three
+  steps are within 5.3e-5, with update cosine 0.99985.
+- **Coax kernel checks** (`char-gpt-kernels-checks.coax`): `ck_mma` against
+  its binary64 definition, within 2⁻²⁰·(steps+2)·Σ|ab| plus one FP32
+  rounding. Covered: quad, m/n-major and value-by-value loads; ragged
+  shapes; acc 0, 1 and 2 (BF16 out); a 3-slice split; batched causal modes
+  1–3 with head offsets and skipped tiles. Also covered: BF16 packing
+  (ties to even), ReLU² into BF16 and the ordered slice sum.
+- **Plan check** (`char-gpt-checks.coax`): no per-layer scores or FP32
+  operand copies, every BF16 buffer word-aligned, every BF16 product output
+  whole words of a row, 234 tensor-core launches a step, and a smaller plan
+  than FP32's.
+- **Native self-check** (`char-gpt selfcheck`, 0 failures; new
+  `mma_failures`). The tensor-core step stays within 1% of the FP32 step's
+  loss and within 2% of its gradient norm, with cosine above 0.999. Two
+  runs of the same launches give the same bits. The held-out pass writes
+  only its windows. An infinite parameter still skips the step. Infinities
+  and every NaN survive BF16 storage.
+- **Resume**: a run saved after 375 steps and resumed in a new process ends
+  with a checkpoint byte-identical to the uninterrupted run
+  (`v3-mma/checkpoints.sha256`, `v3-mma/resume.txt`). Resume is exact,
+  with no tolerance.
+
+### Acceptance: before and after on the RTX 4080
+
+| | held-out 0 | 250 | 500 | **750** | tokens/s | plan | card peak (nvidia-smi) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PyTorch CUDA FP32 baseline (above) | 4.2363 | 1.7911 | 1.5451 | **1.5283** | ≈150,000 (cuBLAS) | — | 3.50 GB allocated |
+| Coax `fp32`, same build and day (before) | 4.2363 | 1.7860 | 1.5411 | **1.5171** | 102,828 | 1,738,416,198 B | 2,052 MiB |
+| Coax `fp32`, #12627's run | 4.2363 | 1.7860 | 1.5411 | **1.5171** | 108,122 | 1,738,416,198 B | 2,052 MiB |
+| Coax `bf16` on tensor cores (after) | 4.2362 | 1.7924 | 1.5383 | **1.5204** | **236,998** | **1,370,547,798 B** | **1,702 MiB** |
+| the same, saved at 375 and resumed | — | 1.7924 | 1.5383 | **1.5204**, checkpoint identical | 240,100 / 241,007 | 1,370,547,798 B | 1,702 MiB |
+
+- **Quality:** 1.5204 ≤ 1.70, and |1.5204 − 1.5283| = 0.008 ≤ 0.03. The
+  frozen gate is met; the result is 0.003 from FP32's 1.5171. No step was
+  skipped, and 57 were clipped (51 for FP32).
+- **Throughput:** 236,998 tokens/s end to end (12,288,000 tokens in 51.8 s
+  of steps), 2.3× the same-day FP32 run and about 1.6× the PyTorch FP32
+  baseline's cuBLAS step. The FP32 run's held-out losses repeat #12627's to
+  every printed digit, so the FP32 path is unchanged.
+- **Memory:** the plan falls by 21% (1.74 GB to 1.37 GB), and the card's
+  peak falls from 2,052 MiB to 1,702 MiB. The driver's free memory fell by
+  1,373,634,560 bytes.
+- **Startup:** 0.7–5.0 s, including NVRTC.
+
+### Profile (Nsight Systems, 10 steps and one held-out pass)
+
+The 10-step profile (`v3-mma/profile/`) ran at 203,017 tokens/s, slowed by
+the profiler. Kernel time splits as follows:
+
+- Tensor-core products: 78% of kernel time. Of that, the attention
+  products take 54 points: the 256 × 64 batched ones (P·V, Pᵀ·dO, dS·K,
+  dSᵀ·Q) 28 and the causal score and dP tiles 26. The split parameter
+  gradients take 18, and the dense forward and dX products the rest.
+- BF16 copies: 5.1%. Softmax: 3.5%. ReLU²'s backward: 3.5%. RMS backward:
+  2.6%.
+
+The score tiles have k = 64, so their FP32 stores, one 4-byte value per
+sector, dominate. They are the next bottleneck.
+
+### Failures and cost
+
+- **A naive tensor-core kernel was slower than FP32.** The first `ck_mma`
+  read BF16 as u16, two loads per fragment word, and ran at 72,489
+  tokens/s, 225 ms a step (`v3-mma/failures/`). The parameter-gradient
+  products (36–144 warps for k = 8,192) and the attention products were
+  the slowest. In a throwaway experiment that removed the generated code's
+  bounds checks on those loads (never shipped), the same kernel ran at
+  134,043 tokens/s. In a warp kernel every operand load comes straight from
+  device memory under a bounds check, so the fix had to load fewer, wider
+  words. Packing BF16 four to a word with the fragment permutation, plus
+  the token split for parameter gradients, gives 237k without touching the
+  checks.
+- **Toolchain.** Built with the cached checked compiler `727901f6a2be`
+  (`v3-mma/build.sha256`), because this worktree's own bootstrap had not
+  finished when the runs started. The compiler sources were not changed.
+- **Cost:** about 50 minutes of wall time from the first kernel to these
+  results; about 6 minutes of GPU time.
+
+### What remains
+
+- Faster attention products: FP32 score stores as whole words, or a
+  smaller tile for the 64-wide head products.
+- A tensor-core path inside group kernels (chapter 68), so operands can be
+  staged in shared memory. It needs compiler support in `coax cuda`.
+- Distributed training (chapters 132–135).

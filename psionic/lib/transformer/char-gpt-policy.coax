@@ -9,7 +9,7 @@
 #load "../../tests/char-gpt-policy-checks.coax";
 #authority;
 
-CgStatus :: enum u8 {ok;corpus;shape;budget;order;number;checkpoint;ledger;}
+CgStatus :: enum u8 {ok;corpus;shape;budget;order;number;checkpoint;ledger;device;}
 
 // The frozen corpus: Tiny Shakespeare, by length, FNV-1a 64 and its 65
 // distinct bytes.
@@ -42,6 +42,25 @@ cgp_shape :: (vocab:int,d:int,layers:int,heads:int,context:int,hidden:int,rows:i
 }
 cgp_budget :: (bytes:int,budget:int)->CgStatus #export_c {
     if bytes<1 || bytes>budget {return CgStatus.budget;}
+    return CgStatus.ok;
+}
+
+// Numerical profiles: 0 `fp32`; 1 FP32 products of operands rounded to
+// BF16 (#12627's partial BF16 profile, kept for comparison); 2 the frozen
+// `bf16` profile (#12701): products on the tensor cores with BF16 operands
+// and f32 accumulation, BF16 storage of the parameters' working copy and
+// of every activation that is only a product operand, and FP32 master
+// parameters, gradients, moments, norms, softmax and loss. Its loss scale
+// is the frozen static 1: BF16 has FP32's exponent range, and every
+// gradient is accumulated and stored in FP32.
+CGP_PROFILES :: 3;
+cgp_mma :: (profile:int)->bool #export_c {return profile==2;}
+// A profile runs on the CPU build (major 0: the C build of the same
+// kernels) or on a CUDA device; the tensor-core profile needs BF16
+// mma.sync, which starts at compute capability 8.0.
+cgp_profile :: (profile:int,major:int,minor:int)->CgStatus #export_c {
+    if profile<0 || profile>=CGP_PROFILES || major<0 || minor<0 {return CgStatus.shape;}
+    if cgp_mma(profile) && major!=0 && major<8 {return CgStatus.device;}
     return CgStatus.ok;
 }
 
@@ -94,7 +113,7 @@ cgp_ledger :: (rows:int,up:int,down:int,launches:int,planned:int)->CgStatus #exp
     return CgStatus.ok;
 }
 
-// The checkpoint header: 16 integers. 0 magic, 1 version, 2 profile (0 fp32),
+// The checkpoint header: 16 integers. 0 magic, 1 version, 2 profile (above),
 // 3 parameters, 4 completed steps, 5 skipped steps, 6..13 the shape
 // (vocab, d, layers, heads, context, hidden, rows, accumulate), 14 and 15
 // the payload's FNV-1a 64 as two 32-bit halves. The payload is the
@@ -102,7 +121,7 @@ cgp_ledger :: (rows:int,up:int,down:int,launches:int,planned:int)->CgStatus #exp
 CGP_MAGIC :: 0x43475054;
 CGP_VERSION :: 1;
 cgp_header :: (h:[]int,profile:int,n:int,step:int,skipped:int,shape:[]int,fnv:u64)->CgStatus #export_c {
-    if h.count!=16 || shape.count!=8 || n<1 || step<0 || skipped<0 || profile<0 || profile>1 {return CgStatus.checkpoint;}
+    if h.count!=16 || shape.count!=8 || n<1 || step<0 || skipped<0 || profile<0 || profile>=CGP_PROFILES {return CgStatus.checkpoint;}
     h[0]=CGP_MAGIC;h[1]=CGP_VERSION;h[2]=profile;h[3]=n;h[4]=step;h[5]=skipped;
     for i:0..<8 {h[6+i]=shape[i];}
     h[14]=cast(int)(fnv>>32);h[15]=cast(int)(fnv&0xffffffff);

@@ -86,5 +86,15 @@
     #assert cgp_header(h[0..<15],0,1,0,0,shape[..],fnv)==CgStatus.checkpoint && cgp_header(h[..],0,1,0,0,shape[0..<7],fnv)==CgStatus.checkpoint;
     #assert cgp_header(h[..],0,0,0,0,shape[..],fnv)==CgStatus.checkpoint && cgp_header(h[..],0,1,-1,0,shape[..],fnv)==CgStatus.checkpoint;
     #assert cgp_header(h[..],0,1,0,-1,shape[..],fnv)==CgStatus.checkpoint && cgp_header(h[..],-1,1,0,0,shape[..],fnv)==CgStatus.checkpoint;
-    #assert cgp_header(h[..],2,1,0,0,shape[..],fnv)==CgStatus.checkpoint && cgp_header(h[..],1,1,0,0,shape[..],fnv)==CgStatus.ok && h[2]==1;
+    #assert cgp_header(h[..],3,1,0,0,shape[..],fnv)==CgStatus.checkpoint && cgp_header(h[..],1,1,0,0,shape[..],fnv)==CgStatus.ok && h[2]==1;
+    #assert cgp_header(h[..],2,1,0,0,shape[..],fnv)==CgStatus.ok && h[2]==2;
+    #assert cgp_header_ok(h[..],2,1,0,shape[..],fnv)==CgStatus.ok && cgp_header_ok(h[..],1,1,0,shape[..],fnv)==CgStatus.checkpoint;
+}
+#test "only the bf16 profile runs on the tensor cores, and only from sm_80" {
+    #assert !cgp_mma(0) && !cgp_mma(1) && cgp_mma(2) && !cgp_mma(3) && !cgp_mma(-1);
+    for p:0..<3 {#assert cgp_profile(p,0,0)==CgStatus.ok && cgp_profile(p,8,9)==CgStatus.ok && cgp_profile(p,8,0)==CgStatus.ok;}
+    #assert cgp_profile(0,7,5)==CgStatus.ok && cgp_profile(1,7,5)==CgStatus.ok && cgp_profile(2,7,5)==CgStatus.device;
+    #assert cgp_profile(2,1,0)==CgStatus.device && cgp_profile(2,9,0)==CgStatus.ok && cgp_profile(2,12,0)==CgStatus.ok;
+    #assert cgp_profile(3,8,9)==CgStatus.shape && cgp_profile(-1,8,9)==CgStatus.shape;
+    #assert cgp_profile(0,-1,0)==CgStatus.shape && cgp_profile(0,8,-1)==CgStatus.shape && cgp_profile(2,0,0)==CgStatus.ok;
 }

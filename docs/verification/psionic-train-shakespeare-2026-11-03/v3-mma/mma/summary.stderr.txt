@@ -1,0 +1,5 @@
+device: NVIDIA GeForce RTX 4080 (sm_89), 15545 MiB free of 15937; plan 1370547798 bytes
+step 0 held-out 4.236243
+step 250 held-out 1.792390
+step 500 held-out 1.538334
+step 750 held-out 1.520398

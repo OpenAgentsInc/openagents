@@ -1,0 +1,6 @@
+{"device":"gpu","step":5,"steps_here":5,"skipped":0,"clipped_here":5,"train_seconds":1.134,"tokens_per_second":72223.8,"launches_per_step":461,"compile_seconds":0.216,"startup_seconds":2.063,"plan_bytes":1345775190,"driver_free_drop_bytes":1348468736,"wall_seconds":3.883}
+Collecting data...
+Generating '/tmp/nsys-report-e284.qdstrm'
+[1/1] [0%                          ] prof.nsys-rep[1/1] [0%                          ] prof.nsys-rep[1/1] [=15%                        ] prof.nsys-rep[1/1] [========42%                 ] prof.nsys-rep[1/1] [=========43%                ] prof.nsys-rep[1/1] [===========50%              ] prof.nsys-rep[1/1] [============57%             ] prof.nsys-rep[1/1] [=============58%            ] prof.nsys-rep[1/1] [=============59%            ] prof.nsys-rep[1/1] [==============61%           ] prof.nsys-rep[1/1] [=================73%        ] prof.nsys-rep[1/1] [========================100%] prof.nsys-rep[1/1] [========================100%] prof.nsys-rep
+Generated:
+	/tmp/claude-1000/-home-christopherdavid-openagents/d941957c-5176-4120-94f8-3ab0d4292b8c/scratchpad/t2/prof.nsys-rep

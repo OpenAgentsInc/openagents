@@ -145,7 +145,7 @@
         },
         {
           "path": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md",
-          "sha256": "5e58198e311bd19669cdff6f8c0c4863db25ef4fda30dd01d55343d85e4ae950"
+          "sha256": "b8b575e7b28ddb6fab415ecc4f35633ac672f72b18b6b53d25c2be0d0a53d39e"
         },
         {
           "path": "psionic/lib/transformer/train-kernels.coax",
@@ -230,7 +230,7 @@
         },
         {
           "path": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md",
-          "sha256": "5e58198e311bd19669cdff6f8c0c4863db25ef4fda30dd01d55343d85e4ae950"
+          "sha256": "b8b575e7b28ddb6fab415ecc4f35633ac672f72b18b6b53d25c2be0d0a53d39e"
         },
         {
           "path": "psionic/lib/transformer/train-kernels.coax",

@@ -8,8 +8,8 @@
 > points to (splitting one row's work across threads) and its
 > before-and-after measurement, launch overhead apart from kernel time,
 > and per-buffer allocation lifetimes remain for that step. Chapter 129's
-> useful-scale decoder has a measured profile and one fixed bottleneck
-> (see "A useful-scale step").
+> useful-scale decoder has a measured profile and two fixed bottlenecks,
+> the second its tensor-core products (see "A useful-scale step").
 
 You cannot speed up a training step until you know where its time goes.
 [Chapter 129](ch129-train-a-whole-model-on-one-gpu.md) trains chapter
@@ -504,6 +504,28 @@ the load has landed, restored 0.150 s a step, 108,122 tokens/s; both
 receipts are in the [record](../../docs/verification/psionic-train-shakespeare-2026-11-03/README.md).
 The next bottleneck is the products themselves: about 8 TFLOPS of FP32
 without FMA, where cuBLAS makes PyTorch's step about 1.4× faster.
+
+[#12701](https://github.com/OpenAgentsInc/openagents/issues/12701) put the
+products on the tensor cores (chapter 129) and profiled again, before and
+after. The first tensor-core kernel read BF16 operands one 16-bit value at
+a time and ran at 72,489 tokens/s (0.225 s a step), slower than FP32. The
+profile named two causes:
+
+- The parameter-gradient products had only 36–144 warps for 8,192 inner
+  values each.
+- The attention products took 0.4 ms each.
+
+An experiment that dropped the generated bounds checks on those loads (not
+shipped) ran at 134,043 tokens/s, so the loads themselves were the
+bottleneck. Packing BF16 four to a word with a matching fragment
+permutation, and splitting parameter gradients along the tokens, gives
+236,998 tokens/s (0.069 s a step) with the checks kept.
+The [new profile](../../docs/verification/psionic-train-shakespeare-2026-11-03/v3-mma/profile/)
+splits kernel time as follows:
+
+- Tensor-core products: 78%. Attention products are 54 points of that, and
+  the causal score tiles' FP32 stores are the next bottleneck.
+- BF16 copies: 5%. Softmax: 3.5%. ReLU²'s backward: 3.5%.
 
 ## What is not here yet
 

@@ -18,8 +18,14 @@ Modes:
       Writes the specification's initial parameters (f32), the first K
       steps' losses, gradient norms, gradients of step 1 and parameters
       after K AdamW steps, computed in the given dtype.
-  compare ORACLE_DIR COAX_DIR OUT.json [--rtol R]
-      Compares a Coax dump with an oracle dump and writes the gaps.
+  compare ORACLE_DIR COAX_DIR OUT.json [--rtol R] [--bf16]
+      Compares a Coax dump with an oracle dump and writes the gaps. With
+      --bf16, the tolerance declared for the `bf16` profile (#12701) before
+      its first comparison: step losses within 2e-3 relative, gradient
+      norms within 1e-2, step-1 gradient cosine at least 0.999 and relative
+      L2 error at most 0.05, parameters after the steps within 2 x the sum
+      of the steps' rates of the oracle's (AdamW moves a value at most about
+      its rate a step), and the parameter updates' cosine at least 0.9.
 """
 import json
 import math
@@ -247,6 +253,8 @@ def read64(path):
 def compare(args):
     a, b, out = Path(args[0]), Path(args[1]), Path(args[2])
     rtol = float(args[args.index("--rtol") + 1]) if "--rtol" in args else 1e-4
+    if "--bf16" in args:
+        return compare_bf16(a, b, out)
     result = dict(rtol=rtol, items={})
     ok = True
     ra, rb = json.loads((a / "oracle.json").read_text()), json.loads((b / "oracle.json").read_text())
@@ -274,6 +282,40 @@ def compare(args):
                                      cosine=float(torch.nn.functional.cosine_similarity(x, y, dim=0)))
         ok &= rel <= rtol
     result["init_bits_equal"] = same
+    result["passed"] = bool(ok)
+    out.write_text(json.dumps(result, indent=1) + "\n")
+    print(json.dumps(dict(passed=result["passed"], out=str(out))))
+    if not ok:
+        sys.exit(1)
+
+
+def compare_bf16(a, b, out):
+    result = dict(profile="bf16", items={})
+    ok = True
+    ra, rb = json.loads((a / "oracle.json").read_text()), json.loads((b / "oracle.json").read_text())
+    rates = 0.0
+    for i, (x, y) in enumerate(zip(ra["steps"], rb["steps"])):
+        rates += x["rate"]
+        for key, tol in (("loss", 2e-3), ("norm", 1e-2)):
+            gap = abs(x[key] - y[key]) / max(abs(x[key]), 1e-30)
+            result["items"][f"step{i + 1}.{key}"] = dict(oracle=x[key], coax=y[key], relative=gap, tolerance=tol)
+            ok &= gap <= tol
+    ia = torch.frombuffer(bytearray((a / "init.f32").read_bytes()), dtype=torch.float32).double()
+    ib = torch.frombuffer(bytearray((b / "init.f32").read_bytes()), dtype=torch.float32).double()
+    same = ia.shape == ib.shape and bool(torch.equal(ia, ib))
+    result["init_bits_equal"] = same
+    ok &= same
+    x, y = read64(a / "grad1.f64"), read64(b / "grad1.f64")
+    cos = float(torch.nn.functional.cosine_similarity(x, y, dim=0))
+    rel = float((x - y).norm() / x.norm())
+    result["items"]["grad1"] = dict(values=x.numel(), cosine=cos, relative_l2=rel, max_abs=float((x - y).abs().max()))
+    ok &= cos >= 0.999 and rel <= 0.05
+    x, y = read64(a / "params.f64"), read64(b / "params.f64")
+    gap = float((x - y).abs().max())
+    ua, ub = x - ia, y - ia
+    ucos = float(torch.nn.functional.cosine_similarity(ua, ub, dim=0))
+    result["items"]["params"] = dict(values=x.numel(), max_abs=gap, bound=2 * rates, update_cosine=ucos)
+    ok &= gap <= 2 * rates and ucos >= 0.9
     result["passed"] = bool(ok)
     out.write_text(json.dumps(result, indent=1) + "\n")
     print(json.dumps(dict(passed=result["passed"], out=str(out))))
