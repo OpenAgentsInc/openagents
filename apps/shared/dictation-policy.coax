@@ -1,9 +1,18 @@
 // Dictation admission is local, opt-in and ticketed. A transcript is only a
 // draft candidate; this controller has no send or engine-command operation.
 #authority;
+#load "../../verse/asr-cut.coax";
 DCT_OFF :: 0; DCT_IDLE :: 1; DCT_HELD :: 2; DCT_TAIL :: 3; DCT_CLIP :: 4; DCT_WORK :: 5;
 DCT_NONE :: 0; DCT_TAP :: 1; DCT_SILENCE :: 2; DCT_CANCEL :: 3; DCT_ERROR :: 4; DCT_SUCCESS :: 5; DCT_LIMIT :: 6;
 DCT_MAX :: 960000; DCT_PRE :: 7200; DCT_SEGMENT :: 327520;
+// Long clips (GitHub #12694): at most DCT_CALLS model calls covering every
+// sample once. Each cut is the quietest 20 ms frame boundary from DCT_WINDOW
+// frames (4 s) before the call's limit up to it, a frame's loudness being its
+// energy with DCT_SPREAD frames either side (so a cut lands in a pause, not a
+// stop consonant). A call never starts or ends abruptly: a host puts DCT_PAD
+// samples of silence before a later call's samples and after an earlier
+// call's, and the pads count against the model's DCT_SEGMENT.
+DCT_CALLS :: 3; DCT_PAD :: 4800; DCT_WINDOW :: 200; DCT_SPREAD :: 3; DCT_FRAMES :: 3000;
 DctGate :: struct {enabled:bool;active:bool;ready:bool;phase:int;outcome:int;fault:int;pending:int;ticket:u64;pressed:int;until:int;}
 #test "dictation capture requires all consent focus and readiness facts" {
  for bits:0..<8 {g:=DctGate.{enabled=(bits&1)!=0,active=(bits&2)!=0,ready=(bits&4)!=0,phase=DCT_IDLE};#assert dgp_capture(g)==(bits==7);n:=dgp_begin(g,1000);#assert (n.phase==DCT_HELD)==(bits==7);}
@@ -60,13 +69,100 @@ DctGate :: struct {enabled:bool;active:bool;ready:bool;phase:int;outcome:int;fau
  #assert dgp_preparing(g,0).pending==0 && dgp_preparing(g,4).pending==0;
  a:=dgp_ready(dgp_preparing(g,2),true);#assert a.ready && a.pending==0 && a.fault==0;
 }
-#forall "dictation model segments cover exact audio without a too-short final chunk" total:320..<1400 {
- offset:=0;for step:0..<4 {n:=dgp_segment(total,offset);if n>0 {#assert n>=320 && n<=327520;offset+=n;}}#assert offset==total;
+// Segments for a clip of `total` samples with `levels`: offsets, lengths and pads.
+#forall "dictation calls cover every sample once, at most three, each with its silence within the model's limit" step:0..<80,seed:0..<4 #steps 400000000 {
+ totals:=[12]int.[320,321,639,640,327520,327521,327839,327840,650240,650241,959999,960000];
+ total:=ifx step<12 then totals[step] else 320+(step-12)*14113+seed*331;
+ levels:[3000]u8;x:=seed*7919+17;
+ for f:0..<3000 {x=(x*1103515245+12345)&2147483647;levels[f]=cast(u8)((x>>16)&255);if seed==0 {levels[f]=100;}}
+ frames:=(total+319)/320;offset:=0;count:=0;
+ while offset<total && count<4 {
+  n:=dgp_segment(total,offset,levels[0..<frames]);lead:=dgp_lead(total,offset,levels[0..<frames]);trail:=dgp_trail(total,offset,levels[0..<frames]);
+  #assert n>=320 && n+lead+trail<=327520 && lead==(ifx count>0 then 4800 else 0) && trail==(ifx offset+n<total then 4800 else 0);
+  // Every cut is on a 20 ms frame boundary or at its call's limit.
+  if offset+n<total {#assert (offset+n)%320==0 || n+lead+trail==327520;}
+  // A call that could hold the rest of the clip takes it.
+  #assert (n==total-offset)==(total-offset+lead<=327520);
+  // Offsets inside a call start none.
+  #assert dgp_segment(total,offset+1,levels[0..<frames])==0 && dgp_lead(total,offset+1,levels[0..<frames])==0 && dgp_trail(total,offset+1,levels[0..<frames])==0;
+  offset+=n;count+=1;
+ }
+ #assert offset==total && count>=1 && count<=3 && dgp_segment(total,total,levels[0..<frames])==0 && dgp_lead(total,total,levels[0..<frames])==0 && dgp_trail(total,total,levels[0..<frames])==0;
 }
-#test "dictation segmentation handles every boundary without omitted or duplicated samples" {
- for total:[8]int.[327520,327521,327839,327840,655040,655041,655359,960000] {offset:=0;count:=0;while offset<total {n:=dgp_segment(total,offset);#assert n>=320 && n<=327520;offset+=n;count+=1;}#assert offset==total && count<=3;#assert dgp_segment(total,offset)==0;}
- #assert dgp_segment(319,0)==0 && dgp_segment(960001,0)==0 && dgp_segment(500,-1)==0 && dgp_segment(500,181)==0;
- #assert dgp_segment(327521,0)==327201 && dgp_segment(327521,327201)==320;
+#test "dictation cuts a long clip at the quietest frame boundary in the four seconds before the limit" {
+ levels:[3000]u8;for f:0..<3000 {levels[f]=100;}total:=496000;
+ // No quiet frame: the frame boundary nearest the limit, 327520 less both pads.
+ #assert dgp_segment(total,0,levels[0..<1550])==322560 && dgp_segment(total,322560,levels[0..<1550])==173440;
+ #assert dgp_lead(total,0,levels[0..<1550])==0 && dgp_lead(total,322560,levels[0..<1550])==4800;
+ #assert dgp_trail(total,0,levels[0..<1550])==4800 && dgp_trail(total,322560,levels[0..<1550])==0;
+ // A pause at frames 1000 and 1001: boundary 1001 has both neighbours quiet.
+ levels[1000]=10;levels[1001]=10;
+ #assert dgp_segment(total,0,levels[0..<1550])==320320 && dgp_segment(total,320320,levels[0..<1550])==175680;
+ #assert dgp_segment(total,322560,levels[0..<1550])==0 && dgp_lead(total,322560,levels[0..<1550])==0 && dgp_lead(total,320320,levels[0..<1550])==4800;
+ // An equally quiet boundary nearer the limit wins; a quieter one farther away beats it.
+ levels[1005]=10;levels[1006]=10;#assert dgp_segment(total,0,levels[0..<1550])==321920;
+ levels[900]=9;levels[901]=9;#assert dgp_segment(total,0,levels[0..<1550])==288320;
+ // The window is the 200 boundaries before the limit's: 808 (sample 258560) is its first.
+ for f:0..<3000 {levels[f]=100;}
+ levels[805]=0;levels[806]=0;#assert dgp_segment(total,0,levels[0..<1550])==322560;
+ levels[807]=0;#assert dgp_segment(total,0,levels[0..<1550])==258560;
+ // A later call has silence on both sides unless it is the last.
+ for f:0..<3000 {levels[f]=100;}
+ #assert dgp_segment(645280,322560,levels[0..<2017])==322720 && dgp_trail(645280,322560,levels[0..<2017])==0;
+ #assert dgp_segment(645281,322560,levels[0..<2017])==317760 && dgp_trail(645281,322560,levels[0..<2017])==4800 && dgp_lead(645281,322560,levels[0..<2017])==4800;
+ #assert dgp_segment(645281,640320,levels[0..<2017])==4961 && dgp_lead(645281,640320,levels[0..<2017])==4800 && dgp_trail(645281,640320,levels[0..<2017])==0;
+ // At the 60-second cap the window shrinks so that two more calls still cover the rest.
+ #assert dgp_segment(960000,0,levels[..])==322560 && dgp_segment(960000,322560,levels[..])==317760 && dgp_segment(960000,640320,levels[..])==319680;
+ levels[995]=0;levels[996]=0;#assert dgp_segment(960000,0,levels[..])==322560;
+ levels[997]=0;#assert dgp_segment(960000,0,levels[..])==319360;
+ // Then the second call's only feasible end is not a frame boundary: it ends at its limit.
+ #assert dgp_segment(960000,319360,levels[..])==317920 && dgp_segment(960000,637280,levels[..])==322720;
+ // The two later calls cover at most 640640 samples: in a 959681-sample clip the first call ends at 319041 or later.
+ for f:0..<3000 {levels[f]=100;}levels[996]=0;
+ #assert dgp_segment(959681,0,levels[..])==322560 && dgp_segment(959361,0,levels[..])==319040;
+}
+#test "dictation segmentation refuses clips and offsets it cannot plan" {
+ levels:[3000]u8;
+ #assert dgp_segment(319,0,levels[..])==0 && dgp_segment(320,0,levels[..])==320 && dgp_segment(960001,0,levels[..])==0 && dgp_segment(960000,0,levels[..])>0;
+ more:[3001]u8;#assert dgp_segment(960001,0,more[..])==0 && dgp_segment(960001,960000,more[..])==0 && dgp_lead(960001,640320,more[..])==0;
+ #assert dgp_segment(500,-1,levels[..])==0 && dgp_segment(500,181,levels[..])==0 && dgp_segment(500,500,levels[..])==0;
+ #assert dgp_segment(327520,0,levels[0..<1024])==327520 && dgp_trail(327520,0,levels[0..<1024])==0 && dgp_lead(327520,0,levels[0..<1024])==0;
+ // A clip that fits one call needs no levels; a longer one needs one for every started frame.
+ #assert dgp_segment(6400,0,levels[0..<0])==6400 && dgp_segment(327520,0,levels[0..<0])==327520 && dgp_segment(327521,0,levels[0..<1023])==0 && dgp_segment(327521,0,levels[0..<1024])==322560;
+ #assert dgp_segment(327520,327520,levels[0..<0])==0 && dgp_trail(327520,0,levels[0..<0])==0 && dgp_lead(6400,0,levels[0..<0])==0;
+ #assert dgp_lead(327521,322560,levels[0..<1023])==0 && dgp_lead(327521,322560,levels[0..<1024])==4800;
+ #assert dgp_trail(327521,0,levels[0..<1023])==0 && dgp_trail(327521,0,levels[0..<1024])==4800;
+ #assert dgp_segment(327521,0,levels[0..<1024])==322560 && dgp_segment(327521,322560,levels[0..<1024])==4961;
+}
+#test "dictation frame levels rise four steps for each doubling of energy" {
+ #assert dgp_level(0)==0 && dgp_level(-5)==0 && dgp_level(1)==4 && dgp_level(2)==8 && dgp_level(3)==10 && dgp_level(4)==12;
+ #assert dgp_level(5)==13 && dgp_level(6)==14 && dgp_level(7)==15 && dgp_level(8)==16 && dgp_level(15)==19 && dgp_level(16)==20;
+ #assert dgp_level(343597383680)==157 && dgp_level(343597383679)==156 && dgp_level(274877906943)==155 && dgp_level(274877906944)==156;
+ #assert dgp_level(2405181685760)==168 && dgp_level(4398046511103)==171;
+}
+#forall "dictation frame levels never fall as energy rises" e:0..<4096 {
+ #assert dgp_level(e)<=dgp_level(e+1) && dgp_level(e+1)<=dgp_level(e)+4;
+ if e>0 {#assert dgp_level(2*e)==dgp_level(e)+4;}
+}
+#test "dictation frame levels sum each frame's 16-bit energy with three frames either side" {
+ clip:[3300]f32;
+ // One loud frame (5) reaches frames 2..8 and no others.
+ for i:1600..<1920 {clip[i]=ifx i%2==0 then 0.5 else -0.5;}
+ out:[12]u8;for i:0..<12 {out[i]=99;}
+ #assert dgp_levels(clip[..],3300,out[..])==11 && out[11]==99;
+ for f:0..<11 {#assert out[f]==(ifx f>=2 && f<=8 then dgp_level(320*16384*16384) else 0);}
+ // A partial last frame: its samples count, the clip's later samples do not.
+ for i:0..<3300 {clip[i]=0;}clip[3200]=1.0/32768;clip[3201]=2.0/32768;clip[3202]=3.0/32768;
+ #assert dgp_levels(clip[..],3202,out[..])==11 && out[10]==dgp_level(5) && out[7]==dgp_level(5) && out[6]==0;
+ // The first frames count frames before them as silence; every sample of a frame counts.
+ for i:0..<3300 {clip[i]=0;}clip[0]= -1.0;clip[319]=1.0/32768;
+ #assert dgp_levels(clip[..],640,out[..])==2 && out[0]==dgp_level(32768*32768+1) && out[1]==out[0];
+ #assert dgp_levels(clip[..],0,out[..])==0 && dgp_levels(clip[..],-1,out[..])== -1 && dgp_levels(clip[..],3301,out[..])== -1 && dgp_levels(clip[..],3300,out[..])==11;
+ #assert dgp_levels(clip[..],3201,out[0..<10])== -1 && dgp_levels(clip[..],3200,out[0..<10])==10;
+}
+#test "dictation frame levels refuse more than the sixty-second clip" #steps 400000000 {
+ clip:[960001]f32;out:[3001]u8;clip[959999]=0.25;
+ #assert dgp_levels(clip[..],960001,out[..])== -1 && dgp_levels(clip[..],960000,out[..])==3000 && out[2999]==dgp_level(8192*8192) && out[2996]==out[2999] && out[2995]==0;
 }
 #test "dictation combined text stays bounded and never accepts another ticket" {
  #assert dgp_text(5,3,3,0,0)==0 && dgp_text(5,3,3,0,5)==5 && dgp_text(5,3,3,5,0)==5 && dgp_text(5,3,3,5,3)==9;
@@ -84,7 +180,6 @@ DctGate :: struct {enabled:bool;active:bool;ready:bool;phase:int;outcome:int;fau
  a=dgp_release(g,60349);#assert a.phase==3 && a.until==60549;
  a=dgp_release(g,1000000000000);#assert a.phase==3 && a.until==60550;
  g.phase=5;g.ticket=3;a=dgp_result(g,3,true,1);#assert a.fault==0 && a.outcome==5;
- #assert dgp_segment(327520,0)==327520 && dgp_segment(327840,0)==327520;
  #assert dgp_text(5,3,3,8000,0)==8000 && dgp_text(5,3,3,1,1)==3;
  #assert dgp_text(5,3,3,9223372036854775807,9223372036854775807)== -1;
 }
@@ -112,6 +207,37 @@ dgp_finish :: (g0:DctGate,samples:int,speech:int,power:f64)->DctGate {g:=g0;if g
 dgp_decode :: (g0:DctGate,ticket:u64)->DctGate {g:=g0;if g.phase==DCT_CLIP && g.ticket==ticket && dgp_capture(g) {g.phase=DCT_WORK;}return g;}
 dgp_result_ok :: (g:DctGate,ticket:u64,ok:bool)->bool {return g.phase==DCT_WORK && g.ticket==ticket && dgp_capture(g) && ok;}
 dgp_result :: (g0:DctGate,ticket:u64,ok:bool,bytes:int)->DctGate {g:=g0;if g.phase!=DCT_WORK || g.ticket!=ticket {return g;}g.phase=dgp_idle(g);g.outcome=ifx !ok then DCT_ERROR else ifx bytes>0 then DCT_SUCCESS else DCT_SILENCE;g.fault=ifx ok then 0 else 4;return g;}
-dgp_segment :: (total:int,offset:int)->int {if total<320 || total>DCT_MAX || offset<0 {return 0;}left:=total-offset;if left<320 {return 0;}if left<=DCT_SEGMENT {return left;}tail:=left-DCT_SEGMENT;short:=320-tail;return DCT_SEGMENT-(short&((short>>63)^(-1)));}
+// A level from a sum of squared 16-bit samples: four steps for each doubling
+// (about 1.5 dB), 0 for digital silence.
+dgp_level :: (energy:int)->u8 {b:=0;v:=energy;while v>0 {b+=1;v=v>>1;}return cast(u8)(4*b+(((energy<<3)>>b)&3));}
+// Each 20 ms frame's level for the clip's first n samples (the last frame may
+// be partial): the energy of the frame and the DCT_SPREAD frames either side.
+// The number of frames, or -1 when out cannot hold them.
+dgp_levels :: (clip:[]f32,n:int,out:[]u8)->int {
+ if n<0 || n>clip.count || n>DCT_MAX {return -1;}frames:=(n+319)/320;if frames>out.count {return -1;}
+ e:[DCT_FRAMES+2*DCT_SPREAD]int;for i:0..<n {v:=cast(int)(clip[i]*32768);e[i/320+DCT_SPREAD]+=v*v;}
+ for f:0..<frames {sum:=0;for j:f..<f+2*DCT_SPREAD+1 {sum+=e[j];}out[f]=dgp_level(sum);}
+ return frames;
+}
+// Where call `index` (0-based), starting at sample `start`, ends: the clip's
+// end when the rest fits, else the quietest boundary before this call's limit
+// that leaves the later calls enough room.
+dgp_cut :: (total:int,start:int,index:int,levels:[]u8)->int {
+ lead:=ifx index>0 then DCT_PAD else 0;if total-start<=DCT_SEGMENT-lead {return total;}
+ hi:=start+DCT_SEGMENT-lead-DCT_PAD;lo:=(hi/320-DCT_WINDOW)*320;
+ // No earlier than the later calls can cover from: lo becomes the larger of the two.
+ d:=total-(DCT_CALLS-1-index)*(DCT_SEGMENT-2*DCT_PAD)-DCT_PAD-lo;lo+=d&((d>>63)^(-1));
+ c:=voice_cut_quietest(lo,hi,hi,levels);return ifx c== -1 then hi else c;
+}
+// The clip's samples in the call that starts at `offset`: 0 when no call starts
+// there. A clip longer than one call needs a level for every started frame.
+dgp_segment :: (total:int,offset:int,levels:[]u8)->int {
+ if total<320 || total>DCT_MAX || (total>DCT_SEGMENT && levels.count*320<total) {return 0;}
+ start:=0;index:=0;while start<total {end:=dgp_cut(total,start,index,levels);if start==offset {return end-start;}start=end;index+=1;}
+ return 0;
+}
+// The silent samples before and after the call that starts at `offset`.
+dgp_lead :: (total:int,offset:int,levels:[]u8)->int {return ifx offset!=0 && dgp_segment(total,offset,levels)!=0 then DCT_PAD else 0;}
+dgp_trail :: (total:int,offset:int,levels:[]u8)->int {n:=dgp_segment(total,offset,levels);return ifx n!=0 && offset+n<total then DCT_PAD else 0;}
 dgp_text :: (phase:int,current:u64,ticket:u64,have:int,add:int)->int {if phase!=DCT_WORK || current!=ticket || have<0 || add<0 {return -1;}gap:u64=ifx have>0 && add>0 then 1 else 0;total:=cast(u64)have+cast(u64)add+gap;if total>8000 {return -1;}return cast(int)total;}
 dgp_delivery :: (g:DctGate)->bool {return dgp_capture(g) && g.phase==DCT_IDLE && g.outcome==DCT_SUCCESS;}

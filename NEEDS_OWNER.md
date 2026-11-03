@@ -646,6 +646,33 @@ path (key release to text in the composer) needs the app:
       checks its 38 pinned pieces on several threads; on Linux it went from
       27-41 s under load to 2.4-3.7 s).
 
+### Coder for Mac: rebuild and check long dictations after the seam fix (#12694)
+
+The shared dictation controller (`apps/shared/dictation.coax`,
+`dictation-policy.coax`) now cuts dictations over 20.47 s in a pause and
+asks for 300 ms of silence at each cut end of a model call
+([record](docs/verification/dictation-eval-2026-11-02/README.md#seams-after-the-fix-12694)).
+Its existing functions keep their signatures; it adds
+`dct_segment_lead` and `dct_segment_trail`. The Mac app's source was not
+built or changed here:
+
+- [ ] Rebuild OpenAgents for Mac and run
+      `apps/openagents-desktop/tests/dictation-controller.c` (the controller's
+      C checks). Without other changes the app gets the new cut positions,
+      but not the silence.
+- [ ] For the silence, `apps/openagents-desktop/dictation-face.c` needs
+      wrappers for the two new functions (like its `dct_segment`), and
+      `considerRecognition` in
+      `apps/openagents-desktop/Sources/Dictation.swift` should pass each
+      segment to the recognizer as `dct_segment_lead` zeros, the segment's
+      samples, then `dct_segment_trail` zeros (as `dict_recognize` in
+      `apps/openagents-cli/dictate.coax` does). On the six recorded long
+      dictations the new cuts alone lost no words at a seam, but the silence
+      is what recovered a 31 s dictation when its cut fell mid-sentence (see
+      the record), so add it.
+- [ ] Dictate about 30 s in one hold, in sentences, and check that no words
+      are missing or doubled where the text was split.
+
 ### Verse voice host: Parakeet recognition on the Mac (#12669)
 
 The Parakeet recognizer (`verse/voice-host --recognizer parakeet`) was built and

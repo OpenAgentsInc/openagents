@@ -59,6 +59,8 @@ cxdict_dct_samples :: () -> int #foreign;
 cxdict_dct_text_n :: () -> int #foreign;
 cxdict_dct_copy :: (offset: int, out: [] f32) -> int #foreign;
 cxdict_dct_segment :: (offset: int) -> int #foreign;
+cxdict_dct_lead :: (offset: int) -> int #foreign;
+cxdict_dct_trail :: (offset: int) -> int #foreign;
 cxdict_dct_decode :: (ticket: int) -> int #foreign;
 cxdict_dct_add :: (ticket: int, text: [] u8) -> int #foreign;
 cxdict_dct_complete :: (ticket: int, ok: int) -> int #foreign;
@@ -301,9 +303,10 @@ dict_listen :: (d: [] Dict, f: [] DictFixture, ticket: [] int) -> int {
 }
 
 // Recognizes the frozen clip, segment by segment, into the controller's
-// ticketed text; the model's utterance work is cleared after every call.
+// ticketed text; the model's utterance work is cleared after every call. Each
+// call is the segment with the controller's silence before and after it.
 dict_recognize :: (d: [] Dict, f: [] DictFixture, t: int, words: [] u8) -> int {
-  audio: [960000] f32; reply: [8200] u8; fired: [3] bool;
+  audio: [960000] f32; call: [327520] f32; reply: [8200] u8; fired: [3] bool;
   n := cxdict_dct_samples();
   if n < 1 || n > 960000 || cxdict_dct_copy(0, audio[0..<n]) != n || cxdict_dct_decode(t) != 1 {
     q := cxdict_dct_failed(4); return dict_set_error(d, DC_E_RECOGNITION, "the clip could not be handed to recognition");
@@ -313,21 +316,25 @@ dict_recognize :: (d: [] Dict, f: [] DictFixture, t: int, words: [] u8) -> int {
   while true {
     m := cxdict_dct_segment(offset);
     if m == 0 { break; }
+    lead := cxdict_dct_lead(offset); trail := cxdict_dct_trail(offset); k := lead + m + trail;
+    if lead < 0 || trail < 0 || k > 327520 { for i: 0..<n { audio[i] = 0; } q := cxdict_dct_failed(4); return dict_set_error(d, DC_E_RECOGNITION, "a segment does not fit one model call"); }
+    for i: 0..<k { call[i] = ifx i >= lead && i < lead + m then audio[offset + i - lead] else 0; }
     got := 0; reason := 0;
     if d[0].model == "" {
       if f[0].fault == "recognition" { got = -2; } else { got = copy(f[0].text, reply[..]); }
     } else {
-      if cxdict_model_start(audio[offset..<offset + m]) != 0 { got = -2; }
+      if cxdict_model_start(call[0..<k]) != 0 { got = -2; }
       else {
         got = -1;
         while got == -1 {
           got = cxdict_model_poll(reply[..], 50);
-          if dict_key(d, f, true, fired[..]) == DC_KEY_CANCEL { for i: 0..<n { audio[i] = 0; } q := cxdict_dct_abort(); return DC_CANCELLED; }
+          if dict_key(d, f, true, fired[..]) == DC_KEY_CANCEL { for i: 0..<n { audio[i] = 0; } for i: 0..<k { call[i] = 0; } q := cxdict_dct_abort(); return DC_CANCELLED; }
         }
         if got <= -2 { reason = -got - 2; }
         if cxdict_model_clear() != 0 && got >= 0 { got = -2; }
       }
     }
+    for i: 0..<k { call[i] = 0; }
     if got < 0 {
       for i: 0..<n { audio[i] = 0; }
       q := cxdict_dct_complete(t, 0);

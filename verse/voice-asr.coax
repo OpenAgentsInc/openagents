@@ -13,6 +13,7 @@
 //   coax/bin/coax test verse/voice-asr.coax
 //   coax/bin/coax mutate verse/voice-asr.coax
 #authority;
+#load "asr-cut.coax";
 
 // ---- Recognizers ----
 // A recognizer's number is its identity on the host's command line and in
@@ -127,9 +128,9 @@ verse_voice_asr_cut :: (start: int, n: int, left: int, speech: [] u8) -> int #ex
   while f <= target / ASR_FRAME + ASR_SEARCH {
     c := f * ASR_FRAME;
     if c - start >= ASR_MIN && c - start <= ASR_MAX && n - c >= after * ASR_MIN && n - c <= after * ASR_MAX {
-      cost := cast(int) speech[f - 1] + cast(int) speech[f];
+      cost := voice_cut_cost(speech, f);
       d := c - target;
-      if !found || cost < best_cost || (cost == best_cost && d * d < best_dist) {
+      if voice_cut_better(found, cost, d * d, best_cost, best_dist) {
         found = true;
         best = c;
         best_cost = cost;

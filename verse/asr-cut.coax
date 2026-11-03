@@ -1,0 +1,68 @@
+// Where to cut 16 kHz audio into bounded model calls: the quietest 20 ms
+// frame boundary in a range (GitHub #12669, #12694). The voice host's turns
+// (verse/voice-asr.coax, near an even split) and the dictation controller's
+// clips (apps/shared/dictation-policy.coax, before each call's limit) both
+// choose by the rule here. It exports nothing, so every C unit that loads it
+// keeps its own copy, and it is named outside verse/voice*.coax, which the
+// voice builds compile as one library each.
+//   coax/bin/coax test verse/asr-cut.coax --library
+//   coax/bin/coax mutate verse/asr-cut.coax --library
+#authority;
+VOICE_CUT_FRAME :: 320;   // 20 ms at 16 kHz: the voice engine's frame
+
+// The rule both cutters use. A boundary's cost is the loudness of the frames
+// on either side of it; it beats the best so far (if any) when it is quieter,
+// or as quiet and nearer the target (squared distance d). On a tie in both,
+// the boundary seen first stays: the earlier one, as both scan forward.
+voice_cut_cost :: (speech: [] u8, f: int) -> int { return cast(int) speech[f - 1] + cast(int) speech[f]; }
+voice_cut_better :: (found: bool, cost: int, d: int, best_cost: int, best_dist: int) -> bool {
+  return !found || cost < best_cost || (cost == best_cost && d < best_dist);
+}
+
+// The quietest frame boundary c (a multiple of VOICE_CUT_FRAME) with lo <= c <= hi
+// and a frame on each side in speech: the lowest speech[f - 1] + speech[f]
+// (f = c / VOICE_CUT_FRAME), then the nearest `target`, then the earlier. -1 when
+// the range holds no such boundary.
+voice_cut_quietest :: (lo: int, hi: int, target: int, speech: [] u8) -> int {
+  best := -1;
+  found := false;
+  best_cost: int;
+  best_dist: int;
+  f := (lo + VOICE_CUT_FRAME - 1) / VOICE_CUT_FRAME;
+  while f * VOICE_CUT_FRAME <= hi && f < speech.count {
+    if f >= 1 {
+      c := f * VOICE_CUT_FRAME;
+      cost := voice_cut_cost(speech, f);
+      d := (c - target) * (c - target);
+      if voice_cut_better(found, cost, d, best_cost, best_dist) {
+        found = true;
+        best = c;
+        best_cost = cost;
+        best_dist = d;
+      }
+    }
+    f += 1;
+  }
+  return best;
+}
+
+#test "the quietest boundary in a range" {
+  speech: [10] u8;
+  for f: 0..<10 { speech[f] = 100; }
+  speech[3] = 0; speech[4] = 0;                          // boundary 4 (1280) is quietest
+  #assert voice_cut_quietest(0, 3200, 0, speech[..]) == 1280;
+  #assert voice_cut_quietest(1280, 1280, 0, speech[..]) == 1280;
+  #assert voice_cut_quietest(1281, 3200, 0, speech[..]) == 1600;   // 5: 0 + 100, nearest of the rest
+  #assert voice_cut_quietest(0, 1279, 3200, speech[..]) == 960;    // 3: 100 + 0
+  // Equal cost: nearest the target, then the earlier.
+  for f: 0..<10 { speech[f] = 100; }
+  #assert voice_cut_quietest(0, 3200, 2000, speech[..]) == 1920;
+  #assert voice_cut_quietest(0, 3200, 2080, speech[..]) == 1920;
+  #assert voice_cut_quietest(0, 3200, 2081, speech[..]) == 2240;
+  #assert voice_cut_quietest(0, 100000, 100000, speech[..]) == 2880;   // frame 9 is the last with speech[f]
+  // Boundary 0 has no frame before it; an empty range has none.
+  #assert voice_cut_quietest(-640, 0, 0, speech[..]) == -1 && voice_cut_quietest(-640, 319, 0, speech[..]) == -1;
+  #assert voice_cut_quietest(-640, 320, 0, speech[..]) == 320;
+  #assert voice_cut_quietest(641, 959, 0, speech[..]) == -1 && voice_cut_quietest(640, 639, 0, speech[..]) == -1;
+  #assert voice_cut_quietest(0, 3200, 0, speech[0..<1]) == -1 && voice_cut_quietest(0, 3200, 0, speech[0..<2]) == 320;
+}

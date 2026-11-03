@@ -35,7 +35,11 @@ was used. The Mac (Metal) side and the Coder composer are owner measurements
   white noise at -40 dBFS).
 - **Seams:** a hard cut at 20.47 s can make Parakeet drop most or all of the
   next segment. One 31 s dictation lost its whole second segment (10.7 s of
-  speech). This is the largest quality defect found; see "Seams".
+  speech). This is the largest quality defect found; see "Seams". **Fixed
+  in #12694:** cuts now land in pauses and each model call gets 300 ms of
+  silence at its cut ends; the six long dictations lose and double no words
+  at their seams (65 extra word errors before, 0 after; see "Seams after
+  the fix").
 - **Optimizations:** (1) the clear after each recognition wiped 148 MB a byte
   at a time (70-350 ms per call, on the release path); it now uses `memset`
   kept by a compiler barrier. (2) The model's SHA-256 ran on one thread; the
@@ -321,7 +325,111 @@ quietest 20 ms frame in the last 2 s before the 20.47 s limit, and give each
 later segment a few hundred milliseconds of silence (or overlap) before its
 first sample. Both keep the exact-coverage rule if the padding is added to
 the model call, not to the clip. The seam gate is set at today's 9 so that
-it fails on anything worse; a fix should lower it.
+it fails on anything worse; a fix should lower it. #12694 made the fix:
+see the next section.
+
+## Seams after the fix (#12694)
+
+`dgp_segment` in `apps/shared/dictation-policy.coax` (`#authority`) now plans
+a long clip like this, still as at most three model calls that cover every
+sample exactly once:
+
+- **Where to cut.** Each 20 ms frame of the frozen clip gets a level from
+  the energy of that frame and the three frames either side (about 1.5 dB
+  steps), so a boundary is quiet only inside a pause of about 160 ms, not
+  in a stop consonant. Each cut is the quietest frame boundary in the 200
+  boundaries (4 s) before the call's limit, then the one nearest the limit.
+  The quietest-boundary rule (a boundary's cost is the two frames beside it;
+  ties go to the nearer, then the earlier) is `verse/asr-cut.coax`, which
+  the voice host's cuts (`verse/voice-asr.coax`) now use too. Near the
+  60-second cap the window starts later, so that two more calls can still
+  cover the rest.
+- **Silence at the cut ends.** The host puts 300 ms of zeros
+  (`dct_segment_lead`) before a later call's samples and 300 ms
+  (`dct_segment_trail`) after an earlier call's. The zeros count against the
+  model's 327,520 samples (an earlier call holds at most 322,720 of the
+  clip's samples), but they are never part of the clip, so coverage stays
+  exact and nothing is overlapped, and there are no duplicate words to
+  remove when joining. The existing `dct_next_segment` and
+  `dct_copy_samples` keep their signatures; `openagents dictate` adds the
+  silence (`dict_recognize`).
+
+What each piece did, on the six long dictations (seam step, `GPU`; "beyond"
+is word errors the joined text has beyond its rows recognized one by one):
+
+| Variant | Near seams | Beyond, whole dictations | What went wrong |
+| --- | ---: | ---: | --- |
+| before: hard cut at 20.47 s | 9 | 65 | 1320-122612 lost its second segment; 6930-81414 lost 7 words; 2 words doubled |
+| quietest boundary in 2 s, silence before later calls | 4 | 20 | 1320-122612 still lost 16 words, at the end of its first call |
+| the same, silence before and after | 2 | 1 | "justice, \| justice": the cut was inside a word |
+| 4 s window, 160 ms pauses, silence before and after (shipped) | **0** | **0** | none |
+| shipped cuts without the silence (Coder for Mac until it adds it) | 0 | 1 | "travellers" spelled differently; no seam loss |
+
+So the trailing silence is what saved 1320-122612 (Parakeet dropped speech
+just before an abrupt end, not only after an abrupt start), and the wider
+pause rule is what stopped cuts landing inside words. With the shipped rule
+all eight cuts land at a sentence or phrase boundary ("...the next day. |
+Congratulations...", "...in their cloaks, | stared rudely..."). Raw:
+[raw/seam-fix/](raw/seam-fix/) (`seam-no-silence.tsv` is the last row).
+
+| Dictation | Audio s | Segments | WER % joined | WER % pause-split | Errors near seams | Beyond pause-split |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| seam-6930-75918 | 46 | 3 | 0.00 | 0.00 | 0 | 0 |
+| seam-6930-76324 | 31 | 2 | 5.15 | 5.15 | 0 | 0 |
+| seam-6930-81414 | 31 | 2 | 1.32 | 1.32 | 0 | 0 |
+| seam-1320-122617 | 36 | 2 | 0.97 | 1.94 | 0 | 0 |
+| seam-1320-122612 | 31 | 2 | 0.00 | 0.00 | 0 | 0 |
+| seam-5639-40744 | 37 | 3 | 2.83 | 2.83 | 0 | 0 |
+
+Other clips: only dictations longer than one call (20.47 s) can change, and
+only they did: 5 of the 202 `gen` clips, 18 release and 18 press replays and
+4 SNR replays; every one-call transcript is byte-identical. The test-clean
+WER went from 3.23% to 1.94% (its three 22-27 s clips no longer split
+mid-sentence), test-other is unchanged at 3.78%, and 10 dB SNR moved from
+3.69% to 4.06% (one 27 s noisy clip: one word more). The 30-58 s dictations'
+stop-to-text p99 is 588 ms (570 before); the controller computes the clip's
+levels once (about 4 ms for 60 s) and keeps them with the frozen clip, and a
+clip that fits one call skips them. The full score of the new record (the
+fixed steps from [raw/seam-fix/](raw/seam-fix/); `noise`, `startup` and
+`voicehost` from [raw/final/](raw/final/), which the change does not reach)
+passes all 14 gates:
+
+```
+pass  WER test-clean speakers + ch.153 (%): 1.94 <= 4.00
+pass  WER test-other speakers (%): 3.78 <= 5.00
+pass  WER at 10 dB SNR (%): 4.06 <= 5.00
+pass  no-speech dictations that produce text: 1.00 <= 1.00
+pass  last word exact, released 0..+200 ms (%): 98.83 >= 97.00
+pass  last words dropped, released 0..+200 ms: 0.00 <= 0.00
+pass  first word exact, pressed 0..+300 ms late (%): 98.31 >= 97.00
+pass  first words dropped, pressed 0..+300 ms late: 1.00 <= 1.00
+pass  seam errors beyond pause-split, all seams: 0.00 <= 0.00
+pass  long dictations: word errors beyond pause-split: 0.00 <= 0.00
+pass  stop to final text p99, clips <= 20.47 s (ms): 318.69 <= 600.00
+pass  stop to final text p99, 30-58 s (ms): 588.03 <= 1000.00
+pass  model open p50, new process (ms): 9043.12 <= 12000.00
+pass  voice host turn end to transcript p99 (ms): 342.00 <= 400.00
+```
+
+The seam gate is now 0 and a second gate counts errors anywhere in the long
+dictations (the near-seam window counted only 3 of 1320-122612's 48). The
+old record scores 9 and 65 against them and fails both. The machine was
+shared (load average 30-130 during these runs); one earlier `gen` run at
+load 80-130 crossed the one-call stop-to-text gate (603 ms) with
+byte-identical transcripts and was rerun at load 40.
+
+Checks: `coax test apps/shared/dictation-policy.coax --library` 20/20 and
+`coax mutate ... --library --root-only` 350/350 killed;
+`coax test verse/asr-cut.coax --library` and `coax mutate` 40/40;
+`coax mutate verse/voice-asr.coax` 229/229 (its cut loop is unchanged; it
+calls the shared rule); `coax test apps/shared/dictation.coax --library`
+72/72; `dictate-check` 26/26 with the model
+([raw/seam-fix/dictate-check.txt](raw/seam-fix/dictate-check.txt)); the
+Coder for Mac controller's C test (`apps/openagents-desktop/tests/dictation-controller.c`,
+built on Linux against the new controller) passes. Chapter 153's parity was
+not rerun: no Psionic or engine file changed, so the 29/29 result from
+043ece3438 stands. Coder for Mac must be rebuilt and checked by the owner
+(`NEEDS_OWNER.md`).
 
 ## Gates
 

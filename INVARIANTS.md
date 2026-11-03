@@ -3230,7 +3230,11 @@ WebSocket binary message, encoded and decoded only by the generated Coax codec
 Coder dictation's `apps/shared/dictation-policy.coax` is `#authority`: it gates
 readiness/consent, 450 ms pre-roll, 300 ms minimum hold, 200 ms tail, a 60-second
 capture cap, silence and current-ticket final publication. `dictation.coax`
-reuses Verse's resampling/VAD and plans complete nonoverlapping Parakeet slices.
+reuses Verse's resampling/VAD and plans complete nonoverlapping Parakeet slices:
+at most three, each cut in a pause before its limit (the quietest-boundary
+rule `verse/asr-cut.coax` shares with the voice host), with 300 ms of silence
+the host adds before a later slice and after an earlier one inside the model's
+20.47 s; the silence is never part of the clip (#12694).
 The desktop insertion authority holds the original composer text, selection
 and send count. It admits one complete UTF-8 insertion only for the current
 unchanged draft; edits, cancellation, IME and navigation invalidate it. Literal

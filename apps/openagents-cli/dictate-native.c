@@ -295,6 +295,8 @@ int64_t cxdict_dct_samples(void) { return dct ? dct->n : 0; }
 int64_t cxdict_dct_text_n(void) { return dct ? dct->text_n : 0; }
 int64_t cxdict_dct_copy(int64_t offset, coax_v_f32 out) { return dct ? dct_copy_samples(dv(), offset, out) : -1; }
 int64_t cxdict_dct_segment(int64_t offset) { return dct ? dct_next_segment(dv(), offset) : 0; }
+int64_t cxdict_dct_lead(int64_t offset) { return dct ? dct_segment_lead(dv(), offset) : 0; }
+int64_t cxdict_dct_trail(int64_t offset) { return dct ? dct_segment_trail(dv(), offset) : 0; }
 int64_t cxdict_dct_decode(int64_t ticket) { return dct && dct_begin_decode(dv(), (uint64_t)ticket); }
 int64_t cxdict_dct_add(int64_t ticket, coax_v_u8 text) { return dct && dct_add_text(dv(), (uint64_t)ticket, (coax_string){(const char *)text.data, text.count}); }
 int64_t cxdict_dct_complete(int64_t ticket, int64_t ok) { return dct && dct_complete(dv(), (uint64_t)ticket, ok != 0); }

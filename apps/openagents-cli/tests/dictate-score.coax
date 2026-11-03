@@ -38,7 +38,8 @@ GATE_LAST_WORD :: 97.0;         // % of clips whose last word is exact, released
 GATE_LAST_DROPPED :: 0;         // last words missing (deletions, not substitutions), released 0..+200 ms (0)
 GATE_FIRST_WORD :: 97.0;        // % of clips whose first word is exact, pressed 0..+300 ms late (98.31)
 GATE_FIRST_DROPPED :: 1;        // first words missing, pressed 0..+300 ms late (1: "Every one" read as "Everyone")
-GATE_SEAM_EXTRA :: 9;           // word errors near seams beyond pause-split recognition, all 7 seams (9: a known defect)
+GATE_SEAM_EXTRA :: 0;           // word errors near seams beyond pause-split recognition, all seams (0 since #12694; 9 before)
+GATE_SEAM_WHOLE :: 0;           // word errors anywhere in the 6 long dictations beyond pause-split, none below 0 (0 since #12694; 65 before)
 GATE_STOP_P99_MS :: 600;        // ms, stop (after the 200 ms tail) to final text, dictations of one call, p99 (302-467)
 GATE_LONG_P99_MS :: 1000;       // ms, the same for the 30-58 s dictations (2-3 calls), p99 (570)
 GATE_OPEN_P50_MS :: 12000;      // ms, model open in a new process, p50 (3,472 at load 20; 9,043 at load 38)
@@ -474,8 +475,8 @@ score_main :: (dir: string) -> int {
   }
 
   // Seams: each long dictation against its rows recognized alone (pause-split).
-  seam := raw_load(dir, "seam.tsv", raw[..]); at[0] = 0; seams := 0; extra_total := 0; loss := 0; dup := 0;
-  t_add(o[..], "\n## Seams (independent segments, not full-context recognition)\n\n| Dictation | Audio s | Segments | WER % joined | WER % pause-split | Errors near seams | Pause-split near seams |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+  seam := raw_load(dir, "seam.tsv", raw[..]); at[0] = 0; seams := 0; extra_total := 0; loss := 0; dup := 0; whole := 0; dictations := 0;
+  t_add(o[..], "\n## Seams (independent segments, not full-context recognition)\n\n| Dictation | Audio s | Segments | WER % joined | WER % pause-split | Errors near seams | Pause-split near seams | Errors beyond pause-split |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
   base: [1] Text; refs: [1] Text; b: [1] Words; ba: [1] Align;
   while true {
     line := next_line(seam, at[..]); if line.count == 0 && at[0] >= seam.count { break; }
@@ -507,15 +508,21 @@ score_main :: (dir: string) -> int {
       }
       i = j + 3;
     }
-    seams += joins; extra_total += near - near_base;
+    seams += joins; extra_total += near - near_base; dictations += 1;
+    // The whole dictation: errors the joined result has beyond its rows recognized alone.
+    beyond := errors(s[0].a[..]) - errors(ba[..]); if beyond < 0 { beyond = 0; } whole += beyond;
     t_add(o[..], "| "); t_add(o[..], group); t_add(o[..], " | "); t_int(o[..], num(field(line, 6)) / 16000); t_add(o[..], " | "); t_add(o[..], field(line, 7)); t_add(o[..], " | ");
     t_fix(o[..], rate(errors(s[0].a[..]), s[0].r[0].count)); t_add(o[..], " | "); t_fix(o[..], rate(errors(ba[..]), s[0].r[0].count)); t_add(o[..], " | ");
-    t_int(o[..], near); t_add(o[..], " | "); t_int(o[..], near_base); t_add(o[..], " |\n");
+    t_int(o[..], near); t_add(o[..], " | "); t_int(o[..], near_base); t_add(o[..], " | "); t_int(o[..], beyond); t_add(o[..], " |\n");
     long_ms := num(field(line, 8)); s_add(long[..], long_ms);
   }
   t_add(o[..], "\nSeams: "); t_int(o[..], seams); t_add(o[..], "; errors within 3 reference words of a seam beyond the pause-split result: "); t_int(o[..], extra_total);
-  t_add(o[..], " (deletions near seams "); t_int(o[..], loss); t_add(o[..], ", insertions "); t_int(o[..], dup); t_add(o[..], ").\n");
-  if seams > 0 { gate(g[..], "seam errors beyond pause-split, all seams", extra_total * 100, GATE_SEAM_EXTRA * 100, true); }
+  t_add(o[..], " (deletions near seams "); t_int(o[..], loss); t_add(o[..], ", insertions "); t_int(o[..], dup); t_add(o[..], "). Whole dictations: ");
+  t_int(o[..], whole); t_add(o[..], " word errors beyond pause-split in "); t_int(o[..], dictations); t_add(o[..], " dictations.\n");
+  if seams > 0 {
+    gate(g[..], "seam errors beyond pause-split, all seams", extra_total * 100, GATE_SEAM_EXTRA * 100, true);
+    gate(g[..], "long dictations: word errors beyond pause-split", whole * 100, GATE_SEAM_WHOLE * 100, true);
+  }
 
   // Timings: the generous dictations (one call each, up to 20.47 s).
   at[0] = 0; buckets: [3] [1] Series; audio: [1] Series; calls := 0;
