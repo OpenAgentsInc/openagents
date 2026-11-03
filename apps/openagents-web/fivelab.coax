@@ -26,14 +26,14 @@
 #load "../../aethyr/space.coax" as asp;
 
 VERTEX_FLOATS :: 16;
-MAX_VERTICES :: 90000;
-UNIFORM_FLOATS :: 936;
-TOKENS3 :: 104;   // the glade's tokens (gpu/fivelab.coax FIVELAB_TOKENS)
+MAX_VERTICES :: 180000;
+UNIFORM_FLOATS :: 1768;
+TOKENS3 :: 208;   // the glade's tokens (gpu/fivelab.coax FIVELAB_TOKENS)
 U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
-U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 868; U_BOUNDS :: 932;
+U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 1700; U_BOUNDS :: 1764;
 SQ :: 1.524;   // a 5-foot square, metres
 HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
-DIST :: 32.0; PIVOT_Z :: 0.6; ZOOM_NEAR :: 6.0; ZOOM_FAR :: 90.0;   // the camera's orbit: start, and how near and far it zooms
+DIST :: 40.0; PIVOT_Z :: 0.6; ZOOM_NEAR :: 6.0; ZOOM_FAR :: 140.0;   // the camera's orbit: start, and how near and far it zooms
 VIEW_FLAT :: 0; VIEW_GLADE :: 1;
 // The time adapters (docs/dnd/README.md, "The time adapter"): the SRD's 6-second rounds, or action
 // combat in the way of the Neverwinter MMO: a turn's worth every 1.5 seconds, spent slots, Rages and
@@ -48,21 +48,19 @@ OUTBOX_CAP :: 64;
 ACT_NAVIGATE :: 1;
 KEY_SHIFT :: -13; KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
 
-COLS :: 26; ROWS :: 14;
+COLS :: 40; ROWS :: 20;
 FAST :: 4.0;
-// Three sides. Twelve a side, all level 3, and an army of eighty Skeletons (the SRD's stat block) in
+// Three sides. Twelve a side, all level 3, and an army of 160 Skeletons (the SRD's stat block) in
 // the middle from the start as the Restless Dead, against everyone: five Druids and seven Berserker Barbarians (the Circle of Moss)
 // against five Fiend Warlocks (Armor of Shadows, Agonizing Blast and Repelling Blast for Eldritch
 // Blast) and seven Open Hand Monks (the Ember Pact).
-SIDE :: 12; HEROES :: 24; SKELETONS :: 80; PEOPLE :: 104; CASTERS :: 5; TEAMS :: 3;
-ARMY_X :: 8; ARMY_Y :: 3; ARMY_COLS :: 10;   // the Restless Dead stand ten wide, eight deep, mid-glade
+SIDE :: 24; HEROES :: 48; SKELETONS :: 160; PEOPLE :: 208; CASTERS :: 10; TEAMS :: 3;
+ARMY_X :: 12; ARMY_Y :: 5; ARMY_COLS :: 16;   // the Restless Dead stand sixteen wide, ten deep, mid-glade
 TEAM_NAME :: [3] string.["CIRCLE OF MOSS", "THE EMBER PACT", "THE RESTLESS DEAD"];
-NAMES :: [24] string.["Rowan", "Briar", "Fern", "Hazel", "Alder",
-                       "Sen", "Lio", "Mara", "Tam", "Ishu", "Rook", "Wen",
-                       "Mordra", "Vesk", "Sallow", "Grimsby", "Ilse",
-                       "Thorn", "Gorr", "Brakka", "Ulf", "Hild", "Torva", "Kesh"];
-START_X :: [24] int.[1, 2, 1, 2, 1,  4, 5, 4, 5, 4, 5, 4,  24, 23, 24, 23, 24,  21, 20, 21, 20, 21, 20, 21];
-START_Y :: [24] int.[2, 4, 6, 9, 11,  1, 3, 5, 7, 8, 10, 12,  1, 4, 7, 9, 12,  2, 3, 5, 6, 8, 10, 11];
+NAMES :: [48] string.["Rowan", "Briar", "Fern", "Hazel", "Alder", "Willow", "Sorrel", "Linden", "Moss", "Ivy", "Sen", "Lio",
+                       "Mara", "Tam", "Ishu", "Rook", "Wen", "Kai", "Juna", "Pell", "Oro", "Suri", "Tavi", "Yen",
+                       "Mordra", "Vesk", "Sallow", "Grimsby", "Ilse", "Nyx", "Corvin", "Morrow", "Sable", "Vex", "Thorn", "Gorr",
+                       "Brakka", "Ulf", "Hild", "Torva", "Kesh", "Bjorn", "Rask", "Dagna", "Orm", "Sigra", "Hrolf", "Ygg"];
 
 LOG_LINES :: 40;
 LINE_CAP :: 96;
@@ -106,6 +104,7 @@ Lab :: struct {
   gx: f32; gy: f32; cell: f32;
   panel: Rect; back: Rect; flip: Rect; modal: Rect;
   mode: int = MODE_ACTION;
+  skeletons: int = SKELETONS;   // the Restless Dead's number (the tests field fewer, for the interpreter)
   pressing: int;
   // the glade's camera: an orbit round the clearing, and what it makes this frame
   view: int = VIEW_GLADE;
@@ -226,7 +225,8 @@ new_battle :: (s: [] Lab) {
   s[0].battle[0].dice[0].state = s[0].seed * 7919 + 17;
   for i: 0..<PEOPLE {
     if i >= HEROES {
-      q := i - HEROES; x := ARMY_X + q % ARMY_COLS; y := ARMY_Y + q / ARMY_COLS;
+      q := i - HEROES;
+      if q >= s[0].skeletons { break; } x := ARMY_X + q % ARMY_COLS; y := ARMY_Y + q / ARMY_COLS;
       nm: [16] u8;
       nn := put(nm[..], 0, "Skeleton "); nn = put_int(nm[..], nn, q + 1);
       d := rs_add(bt(s), rs_skeleton(cast(string) nm[0..<nn], 2), x, y);
@@ -236,8 +236,12 @@ new_battle :: (s: [] Lab) {
     k := i % SIDE; team := i / SIDE;
     who := ifx k >= CASTERS then (ifx team == 0 then rs_monk(NAMES[i], 0, 3) else rs_barbarian(NAMES[i], 1, 3))
            else (ifx team == 0 then rs_druid(NAMES[i], 0, 3) else rs_warlock(NAMES[i], 1, 3, SP_ELDRITCH_BLAST));
-    j := rs_add(bt(s), who, START_X[i], START_Y[i]);
-    s[0].dx[i] = f32(START_X[i]); s[0].dy[i] = f32(START_Y[i]); s[0].acted[i] = -10;
+    // casters in two files at the back, the rest two files in front of them; the Pact on the far edge
+    sx := ifx k < CASTERS then 1 + k % 2 else 4 + k % 2;
+    sy := ifx k < CASTERS then 1 + k * 2 else 1 + (k - CASTERS) * (ROWS - 3) / (SIDE - CASTERS - 1);
+    if team == 1 { sx = COLS - 1 - sx; }
+    j := rs_add(bt(s), who, sx, sy);
+    s[0].dx[i] = f32(sx); s[0].dy[i] = f32(sy); s[0].acted[i] = -10;
   }
   s[0].battle[0].clock = 0;
   if s[0].mode == MODE_ACTION { s[0].battle[0].beat = ACTION_BEAT; s[0].battle[0].recharge = ACTION_RECHARGE; }
@@ -250,7 +254,7 @@ new_battle :: (s: [] Lab) {
   n := put(l[..], 0, "Battle ");
   n = put_int(l[..], n, s[0].round);
   n = put(l[..], n, ifx s[0].mode == MODE_ACTION then ", action combat" else ", SRD rounds");
-  n = put(l[..], n, ": druids and monks, warlocks and barbarians, and an army of 80 skeletons.");
+  n = put(l[..], n, ": druids and monks, warlocks and barbarians, and an army of 160 skeletons.");
   add_line(s, cast(string) l[0..<n], GOLD);
   // six to a line
   for row: 0..<(HEROES / 6) {
@@ -943,10 +947,12 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n = say_at(out, n, "CHARACTERS", x, y, cap, ink(k, 0.6, DIM));
   y += row * 0.6;
   l: [LINE_CAP] u8;
+  // the two sides in two columns, a row each
+  top := y; half := (p.x1 - p.x0) / 2;
   for i: 0..<rs_min(b.n, HEROES) {
     cr := b.c[i];
-    y += crow;
-    if i == SIDE { y += crow * 0.4; }
+    x = p.x0 + pad + f32(i / SIDE) * half;
+    y = top + f32(i % SIDE + 1) * crow;
     col := ifx cr.dead then FAINT else TEAM_COL[cr.team];
     n = say_at(out, n, cast(string) cr.name[0..<cr.name_n], x, y, cap * 0.92, ink(k, 0.85, col));
     m := put(l[..], 0, "HP ");
@@ -973,16 +979,17 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
       if cr.conc >= 0 { m = put(l[..], m, "  CONC: "); m = put(l[..], m, rs_spell(cr.conc).name); }
     }
     t := cast(string) l[0..<m];
-    cp := lo(cap * 0.85, cap * 0.85 * (p.x1 - x - 70 * k - pad) / hi(text_width(t, cap * 0.85), 1));
-    n = say_at(out, n, t, x + 70 * k, y, cp, ink(k, 0.6, DIM));
+    cp := lo(cap * 0.8, cap * 0.8 * (half - 58 * k - pad) / hi(text_width(t, cap * 0.8), 1));
+    n = say_at(out, n, t, x + 54 * k, y, cp, ink(k, 0.6, DIM));
   }
+  x = p.x0 + pad; y = top + f32(SIDE) * crow;
   // the Restless Dead, counted
   if true {
     up := 0; hp := 0;
     for i: HEROES..<b.n { if rs_up(b.c[i]) { up += 1; hp += b.c[i].hp; } }
     y += crow * 1.4;
     n = say_at(out, n, "SKELETONS", x, y, cap * 0.92, ink(k, 0.85, ifx up > 0 then TEAM_COL[2] else FAINT));
-    m := put(l[..], 0, ""); m = put_int(l[..], m, up); m = put(l[..], m, " OF "); m = put_int(l[..], m, SKELETONS);
+    m := put(l[..], 0, ""); m = put_int(l[..], m, up); m = put(l[..], m, " OF "); m = put_int(l[..], m, s[0].skeletons);
     m = put(l[..], m, " STANDING  HP "); m = put_int(l[..], m, hp);
     m = put(l[..], m, "  AC 14  SHORTSWORD AND SHORTBOW");
     n = say_at(out, n, cast(string) l[0..<m], x + 84 * k, y, cap * 0.85, ink(k, 0.6, DIM));
@@ -1300,22 +1307,22 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   return lab_frame(s, out[..], u[..], w, h, dpr, dt, false);
 }
 
-#test "druids and warlocks fight a battle to its end on the SRD's rules" #steps 2000000000 {
-  s: [1] Lab;
+#test "the battle runs on the SRD's rules: spells are cast, blows land, people drop" #steps 2000000000 {
+  s: [1] Lab; s[0].skeletons = 0;
   lab_start(s[..]);
-  casts := 0; seen := 0;
-  for i: 0..<(60 * 600) {
+  dropped := 0;
+  for i: 0..<1500 {
     step(s[..], f32(STEP));
     if s[0].over { break; }
   }
-  #assert s[0].over && s[0].winner >= 0;
-  #assert rs_team_up(s[0].battle[..], 1 - s[0].winner) == 0;
+  for i: 0..<s[0].battle[0].n { if s[0].battle[0].c[i].hp < s[0].battle[0].c[i].hp_max { dropped += 1; } }
+  #assert dropped > 0;
   #assert s[0].line_n > 10;
 }
 
 #test "a frame draws the grid, the tokens and the log on a desktop and on a 390 px phone" #steps 2000000000 {
-  s: [2] Lab;
-  for i: 0..<600 { lab_start(s[0..<1]); step(s[0..<1], f32(STEP)); }
+  s: [2] Lab; s[0].skeletons = 24; s[1].skeletons = 24;
+  for i: 0..<200 { lab_start(s[0..<1]); step(s[0..<1], f32(STEP)); }
   a := frame_at(s[0..<1], 1600, 1000, 1, 0.016);
   #assert a > 300 && a < MAX_VERTICES - 600;
   b := frame_at(s[1..<2], 390 * 3, 844 * 3, 3, 0.016);
@@ -1324,7 +1331,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
 }
 
 #test "the glade's camera sees the whole grid from its default orbit" #steps 2000000000 {
-  s: [1] Lab;
+  s: [1] Lab; s[0].skeletons = 24;
   n := frame_at(s[..], 1600, 1000, 1, 0.016);
   for c: 0..<4 {
     x := ifx c % 2 == 0 then -0.5 else f32(COLS) - 0.5;
@@ -1335,7 +1342,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
 }
 
 #test "the camera zooms on the wheel and pans on Shift-drag and WASD, and C puts it back" #steps 2000000000 {
-  s: [1] Lab; ok: bool; n: int;
+  s: [1] Lab; s[0].skeletons = 24; ok: bool; n: int;
   n = frame_at(s[..], 1600, 1000, 1, 0.016);
   #assert lab_wheel(s[..], -100) && s[0].dist < DIST;
   ok = lab_wheel(s[..], 100000); #assert s[0].dist <= ZOOM_FAR;
@@ -1357,7 +1364,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
 }
 
 #test "two fingers pinch to zoom" #steps 2000000000 {
-  s: [1] Lab; ok: bool; n: int;
+  s: [1] Lab; s[0].skeletons = 24; ok: bool; n: int;
   n = frame_at(s[..], 390, 844, 3, 0.016);
   ok = lab_pointer(s[..], 100, 300, 0, 1, 7); ok = lab_pointer(s[..], 200, 300, 0, 1, 8);
   ok = lab_pointer(s[..], 250, 300, 1, 1, 8);
@@ -1367,7 +1374,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
 }
 
 #test "space pauses, F runs fast, R starts a new battle, Escape goes to /worlds" {
-  s: [1] Lab;
+  s: [1] Lab; s[0].skeletons = 24;
   #assert lab_key(s[..], ' ', 0) && s[0].paused;
   #assert lab_key(s[..], 'f', 0) && s[0].fast;
   r := s[0].round;

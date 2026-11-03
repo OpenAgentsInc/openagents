@@ -22,14 +22,14 @@
 //   right 24: right xyz, the image centre's y (px)
 //   up 28: up xyz, 0
 //   sun 32: toward the sun xyz, 0
-//   tokens 36: a hundred and four, two vec4s each: (x, z m, look (0 druid, 1 warlock, 2 barbarian, 3 monk,
+//   tokens 36: two hundred and eight, two vec4s each: (x, z m, look (0 druid, 1 warlock, 2 barbarian, 3 monk,
 //              4 skeleton; 0 and 3 the Circle of Moss, 1 and 2 the Ember Pact) or -1 for none, hit point share),
 //              (0 standing, 1 down, 2 dead; outlined; marks, a bit each: Restrained 1, Poisoned 2,
 //              Blinded 4, enfeebled 8, Temporary Hit Points 16,
 //              Paralyzed 32, hexed 64; whose turn just ran 0..1)
-//   zones 868: eight, two vec4s each: (x0, z0, x1, z1 m), (1 Entangle, 2 Faerie Fire, 0 none; 0; 0; 0)
-//   bounds 932: the grid's half width and half depth (m), the square (m), 0
-FIVELAB_TOKENS :: 104;
+//   zones 1700: eight, two vec4s each: (x0, z0, x1, z1 m), (1 Entangle, 2 Faerie Fire, 0 none; 0; 0; 0)
+//   bounds 1764: the grid's half width and half depth (m), the square (m), 0
+FIVELAB_TOKENS :: 208;
 FIVELAB_ZONES :: 8;
 FIVELAB_TREES :: 16;
 
@@ -117,8 +117,8 @@ fivelab_capsule_n :: (p:V3,a:V3,b:V3)->V3 {
 fivelab_tree :: (i:int,u:[]f32)->V4 {
   fi:f32=cast(f32)i;
   a:f32=(fi*0.3926991f32)+(0.35f32*sin(fi*2.3f32));
-  rx:f32=u[932]+5.5f32+(2.5f32*verse_style_hash(fi,3.0f32));
-  rz:f32=u[933]+5.0f32+(2.5f32*verse_style_hash(fi,7.0f32));
+  rx:f32=u[1764]+5.5f32+(2.5f32*verse_style_hash(fi,3.0f32));
+  rz:f32=u[1765]+5.0f32+(2.5f32*verse_style_hash(fi,7.0f32));
   size:f32=0.8f32+(0.45f32*verse_style_hash(fi,11.0f32));
   return v4(cos(a)*rx,0.0f32,sin(a)*rz,size);
 }
@@ -254,7 +254,7 @@ fivelab_grass :: (x:f32,z:f32,u:[]f32,t:f32)->V3 {
   dab:f32=verse_style_noise(x*6.0f32,z*6.0f32);
   c:V3=mix3(v3(0.16f32,0.3f32,0.07f32),v3(0.33f32,0.46f32,0.13f32),(n1*0.65f32)+(n2*0.35f32));
   c=scale3(c,0.88f32+(0.24f32*dab));
-  hw:f32=u[932]; hd:f32=u[933]; sq:f32=fmax(u[934],0.1f32);
+  hw:f32=u[1764]; hd:f32=u[1765]; sq:f32=fmax(u[1766],0.1f32);
   inside:f32=(1.0f32-smoothstep(hw,hw+0.3f32,abs(x)))*(1.0f32-smoothstep(hd,hd+0.3f32,abs(z)));
   // the clearing: shorter, lighter grass
   c=mix3(c,add3(scale3(c,0.82f32),v3(0.05f32,0.06f32,0.02f32)),inside*0.6f32);
@@ -287,8 +287,8 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
     {
       i:int=0;
       while i<FIVELAB_ZONES {
-        za:V4=wg_at4(u,868+(i*8));
-        zb:V4=wg_at4(u,872+(i*8));
+        za:V4=wg_at4(u,1700+(i*8));
+        zb:V4=wg_at4(u,1704+(i*8));
         if (zb.x>0.5f32) {
           if ((((pos.x>=za.x)&&(pos.x<=za.z))&&(pos.z>=za.y))&&(pos.z<=za.w)) {
             if (zb.x<1.5f32) {

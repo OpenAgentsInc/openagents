@@ -23,9 +23,9 @@ EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_defa
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_lab_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_lab_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_lab_uniform_floats(); }
-// The 3D glade traces every figure per pixel: drawn at most 2.5 million pixels (the host scales
+// The 3D glade traces every figure per pixel: drawn at most 1.6 million pixels (the host scales
 // the canvas up), it holds 60 frames a second on a Retina laptop.
-EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) { return 2500000u; }
+EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) { return 1600000u; }
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 
 EXPORT("coaxial_frame")

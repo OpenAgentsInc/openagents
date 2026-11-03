@@ -12,7 +12,7 @@
 //   coax/bin/coax test --library aethyr/rules/srd/battle.coax
 #load "spells.coax";
 
-RS_MAX :: 112;
+RS_MAX :: 216;
 RS_ZONES :: 8;
 RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; }
 RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool; }
