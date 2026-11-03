@@ -853,6 +853,11 @@ sorcerer_turn :: (s: [] Lab, i: int) {
   if !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, foe, 25, 60); }
   foe = nearest_foe(s, i);
   if foe < 0 { return; }
+  // Fireball (from level 5) where it catches three foes and no friend
+  if !b[0].turn.action && !b[0].turn.slot_spent && b[0].c[i].slots[3] > 0 {
+    fb := burst_at(s, i, 150, 20, false, 3);
+    if fb >= 0 { ok := rs_cast(b, i, SP_FIREBALL, 3, b[0].c[fb].x, b[0].c[fb].y, -1); }
+  }
   if !b[0].turn.action && !b[0].turn.slot_spent && b[0].c[i].slots[2] > 0 && rs_unit(dice(s)) < 0.55 { ok := rs_cast(b, i, SP_SCORCHING_RAY, 2, 0, 0, foe); }
   if !b[0].turn.action { ok := rs_cast(b, i, SP_FIRE_BOLT, 0, 0, 0, foe); }
   foe = nearest_foe(s, i);

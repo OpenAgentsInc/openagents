@@ -219,6 +219,7 @@ RsCreature :: struct {
   explorer: bool; lore: bool; swim: int;   // the Ranger's Deft Explorer, Hunter's Lore (record), a swim Speed
   ritual: bool; arcane_recovery: bool; scholar: bool; savant: bool; memorize: bool;   // the Wizard's, out of a battle's reach
   sculpt: bool;                    // Sculpt Spells (Evoker)
+  restoration: bool; affinity: int;   // Sorcerous Restoration (a rest), Elemental Affinity's damage type (Draconic)
   guard_slot: int; guard_turn: int;   // Spirit Guardians: the slot it was cast with; the turn this creature last saved against one
   aura: bool; steed: bool;          // Aura of Protection; Faithful Steed (Find Steed, a summoning this engine doesn't model)
   metabolism: bool; slow_fall: bool; stunning: bool; stun_ready: bool; empowered: bool; halved_until: f32;
@@ -626,6 +627,8 @@ rs_rogue :: (name: string, team: int, level: int) -> RsCreature {
 rs_sorcerer :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_hero(name, team, level, RS_SORCERER, [6] int.[8, 14, 13, 10, 12, 16], RS_CON, RS_CHA, 6);
+  // an Ability Score Improvement at 4 (the feat, p. 87): Charisma +2
+  if level >= 4 { c[0].score[RS_CHA] = rs_min(c[0].score[RS_CHA] + 2, 20); }
   c[0].ac = 10 + rs_mod(c[0].score[RS_DEX]);
   if level >= 3 { c[0].hp_max += 3 + (level - 3); c[0].hp = c[0].hp_max; c[0].ac += rs_mod(c[0].score[RS_CHA]); }
   c[0].spell_ability = RS_CHA; c[0].weapon = W_DAGGER;
@@ -633,6 +636,10 @@ rs_sorcerer :: (name: string, team: int, level: int) -> RsCreature {
   rs_use_set(c[..], RS_USE_INNATE, 2);
   if level >= 2 { rs_use_set(c[..], RS_USE_SORCERY, level); c[0].quickened = true; c[0].seeking = true; }
   c[0].shield_spell = true;
+  // Sorcerous Restoration at 5 (a Short Rest, p. 66); Elemental Affinity at 6 (p. 70): Fire, its
+  // Resistance and the Charisma modifier on one damage roll of a Fire spell; Fireball from 5
+  c[0].restoration = level >= 5;
+  if level >= 6 { c[0].affinity = RS_FIRE; c[0].resist = c[0].resist | (1 << RS_FIRE); }
   return c[0];
 }
 // A creature's Wisdom-based Monk save DC (8 + Wis + Proficiency).

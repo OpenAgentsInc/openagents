@@ -31,6 +31,7 @@ RsBattle :: struct {
   w: int; h: int;             // the grid, squares
   turn_no: int;               // turns begun, for what happens once a turn
   guards: int;                // Spirit Guardians cast and not yet ended
+  aff_used: bool;             // Elemental Affinity's one roll spent in this casting
   who: int;                   // whose turn is running (-1 none)
   turn: RsTurn;
   // The time adapter. The SRD's: a turn every 6 seconds (beat 0 means RS_ROUND), slots and uses back
@@ -293,6 +294,7 @@ rs_cast_quick :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, 
 rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool) -> bool {
   if !rs_can_cast_as(b, i, sp, slot, quick) { return false; }
   s := rs_spell(sp);
+  b[0].aff_used = false;
   me := b[0].c[i];
   smite := rs_is_smite(s);
   if s.area == RS_A_NONE {
@@ -553,6 +555,11 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       count += bane;
       if crit { count *= 2; }
       amount := rs_sum(b[0].dice[..], count, st.b);
+      // Elemental Affinity: the Charisma modifier on one damage roll (an area's one roll is every target's)
+      if b[0].c[i].affinity > 0 && b[0].c[i].affinity == st.c && (s.area != RS_A_NONE || !b[0].aff_used) {
+        amount += rs_mod(b[0].c[i].score[RS_CHA]);
+        if s.area == RS_A_NONE { b[0].aff_used = true; }
+      }
       // a save halves or stops the damage; for an Evoker's cantrip (Potent Cantrip) it halves it
       if ran_save && saved {
         half := (s.steps[0].kind == RS_S_SAVE && s.steps[0].b == RS_ON_SAVE_HALF) || (b[0].c[i].potent && s.level == 0);
@@ -2574,4 +2581,20 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert rs_has(b[0].c[t], RS_CHARMED) && rs_has(b[0].c[t], RS_INCAPACITATED) && !rs_can_act(b[0].c[t]) && !rs_can_move(b[0].c[t]);
   rs_damage(b[..], a, t, 1, RS_FIRE, false, -1);
   #assert !rs_has(b[0].c[t], RS_CHARMED) && rs_can_act(b[0].c[t]) && rs_can_move(b[0].c[t]);
+}
+
+#test "a level 6 Draconic Sorcerer: Charisma 18 (AC 16), three 3rd-level slots, Elemental Affinity (Fire Resistance, +Cha on a Fire spell)" {
+  c := rs_sorcerer("Ivy", 0, 6);
+  #assert c.score[RS_CHA] == 18 && c.ac == 10 + 2 + 4 && c.slots_max[3] == 3 && c.uses_max[RS_USE_SORCERY] == 6 && c.restoration;
+  #assert c.hp_max == 6 + 1 + 5 * (4 + 1) + 3 + 3 && c.affinity == RS_FIRE && (c.resist & (1 << RS_FIRE)) != 0;
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].state = 29;
+  s := rs_add(b[..], c, 1, 3);
+  t := rs_add(b[..], rs_skeleton("Skeleton", 2), 10, 3);
+  b[0].c[t].hp = 500; b[0].c[t].hp_max = 500; b[0].c[t].ac = 1;
+  // Fire Bolt: 2d10 + 4 at level 6, so never under 6
+  low := 100;
+  for k: 0..<20 { rs_fresh(b[..], s); hp := b[0].c[t].hp; ok := rs_cast(b[..], s, SP_FIRE_BOLT, 0, 0, 0, t); if b[0].c[t].hp < hp { low = rs_min(low, hp - b[0].c[t].hp); } }
+  #assert low >= 6 && low < 100;
+  // and its own Fire Resistance halves a Fireball on it
+  #assert rs_resisted(b[..], s, 20, RS_FIRE) == 10;
 }
