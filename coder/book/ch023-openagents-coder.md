@@ -146,7 +146,7 @@ apart:
 | `coder_decide` | `coder decide QUESTION --options A,B [--state S] --json` |
 | `coder_remember` | `coder remember KEY TEXT`, or `coder revise` when `reason` is given (`project` adds `--project`; it runs in `cwd`) |
 | `coder_recall` | `coder recall [QUERY] [--top N]` in `cwd` |
-| `coder_session_read` | `coder session-read list\|show [REF]`: read-only Claude conversation discovery and handoff JSON |
+| `coder_session_read` | `coder session-read list\|show\|context [REF]`: read-only Claude history and inert compaction context; also available directly in new Codex chats |
 
 `coder_run` always runs a background job, so a client's tool-call timeout
 never cuts a task short; the client follows it with `coder_status` and

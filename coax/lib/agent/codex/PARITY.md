@@ -40,6 +40,12 @@ Zeron's Codex harness sends (`~/work/zeron/crates/harness/src/codex/mod.rs`,
   the next line, they are declined, never allowed silently.
   `item/tool/requestUserInput` gets no answers, an MCP elicitation is
   declined, anything else gets -32601, as Zeron does when nothing can ask.
+- Dynamic tools: optional `CxSettings.dynamic_tools` is sent on
+  `thread/start` (experimental API is already enabled). `item/tool/call`
+  becomes a host event, answered with `cx_tool_answer` as `contentItems`
+  and `success`; unanswered calls fail before the next poll. Coder uses
+  this for its registered read-only Claude session reader. The 0.163.0
+  installed schema and a fresh live Coder Codex chat verify the contract.
 - On 0.163.0 an interrupted turn sends no `turn/completed`: the answer to
   `turn/interrupt` (and `thread/status/changed` to idle) ends it.
 

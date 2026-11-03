@@ -135,7 +135,14 @@ cx_test_replay :: (c: [] CxClient, lines: [] string, approve: [] bool, models: b
   #assert ev.kind == CxEventKind.none && cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":6,\"result\":{\"action\":\"decline\"}}\n";
   cx_outbox_clear(c[..]);
   ev = cx_feed(c[..], "{\"method\":\"item/tool/call\",\"id\":7,\"params\":{}}");
-  #assert cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-32601,\"message\":\"unsupported method: item/tool/call\"}}\n";
+  #assert ev.kind == CxEventKind.tool_call && c[0].asking == CX_ASK_TOOL && cx_outbox(c[..]).count == 0;
+  cx_tool_answer(c[..], "quoted \"history\"\n", true);
+  #assert cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"contentItems\":[{\"type\":\"inputText\",\"text\":\"quoted \\\"history\\\"\\n\"}],\"success\":true}}\n";
+  cx_outbox_clear(c[..]);
+  ev = cx_feed(c[..], "{\"method\":\"item/tool/call\",\"id\":\"unanswered\",\"params\":{}}");
+  cx_settle(c[..]);
+  #assert c[0].asking == 0 && cl_raw(cx_outbox(c[..]), "id") == "\"unanswered\"";
+  #assert cl_raw(cx_outbox(c[..]), "result.success") == "false";
   #assert cx_feed(c[..], "not json").kind == CxEventKind.invalid && cx_feed(c[..], "[1]").kind == CxEventKind.invalid;
 }
 

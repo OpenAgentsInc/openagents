@@ -18,6 +18,7 @@ CsrNode :: struct {
   cwd: string; branch: string;
   kind: int; removed: bool; selected: bool; child: bool; result: bool;
   boundary: bool; head: string; tail: string; anchor: string;
+  summary: bool;
 }
 CsrGraph :: struct {
   nodes: [CSR_NODES] CsrNode; n: int;
@@ -44,6 +45,14 @@ csr_cut :: (s: string, limit: int) -> string {
 }
 csr_uuid :: (s: string) -> bool {
   if s.count != 36 { return false; }
+  for c, i: s {
+    if i == 8 || i == 13 || i == 18 || i == 23 { if c != '-' { return false; } }
+    else if jv_hex(c) < 0 { return false; }
+  }
+  return true;
+}
+csr_uuid_prefix :: (s: string) -> bool {
+  if s.count < 8 || s.count > 36 { return false; }
   for c, i: s {
     if i == 8 || i == 13 || i == 18 || i == 23 { if c != '-' { return false; } }
     else if jv_hex(c) < 0 { return false; }
@@ -158,6 +167,7 @@ csr_record :: (g: [] CsrGraph, line: string) {
   } else { csr_warn(g, 14); }
   parent := csr_get(g, d[0], "parentUuid"); if parent.count == 0 { parent = csr_get(g, d[0], "logicalParentUuid"); }
   g[0].nodes[at] = CsrNode.{id = id, parent = parent, message_id = csr_get(g, d[0], "message.id"), timestamp = csr_get(g, d[0], "timestamp"), record = line, cwd = csr_get(g, d[0], "cwd"), branch = branch, kind = ifx kind == "user" then 1 else ifx kind == "assistant" then 2 else 3, boundary = boundary};
+  g[0].nodes[at].summary = kind == "user" && csr_bool(d[0], "isCompactSummary") && !csr_bool(d[0], "isMeta") && !csr_bool(d[0], "isVirtual");
   if boundary && preserved {
     g[0].nodes[at].head = csr_value(g, d[0], csr_alias(d[0], seg, "headUuid", "head_uuid"));
     g[0].nodes[at].tail = csr_value(g, d[0], csr_alias(d[0], seg, "tailUuid", "tail_uuid"));
@@ -378,13 +388,67 @@ csr_warnings :: (g: [] CsrGraph, out: [] u8, at: int) -> int {
   }
   return json_raw(out, n, "]");
 }
+
+// Only an explicitly marked summary on the recovered branch is context.
+// Keep generated summaries separate from the human's messages. Text blocks
+// alone are exposed; no thinking, signatures, system/attachment or tool data.
+csr_context_text :: (g: [] CsrGraph, index: int, out: [] u8) -> string {
+  r := g[0].nodes[index]; if !r.summary || r.removed || !r.selected { return ""; }
+  nb: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], r.record, nb[..]) { return ""; }
+  content := jv_path(d[0], 0, "message.content");
+  if jv_kind(d[0], content) == JV_STRING {
+    n := jv_str(d[0], content, out); return ifx n < 0 then "" else cast(string) out[0..<n];
+  }
+  n := 0;
+  for i: 0..<jv_len(d[0], content) {
+    b := jv_at(d[0], content, i); t := jv_raw(d[0], jv_get(d[0], b, "type"));
+    if t != "text" && t != "input_text" && t != "output_text" { continue; }
+    if n > 0 && n < out.count { out[n] = 10; n += 1; }
+    k := jv_str(d[0], jv_get(d[0], b, "text"), out[n..<out.count]);
+    if k < 0 { csr_warn(g, 10); break; } n += k;
+  }
+  return cast(string) out[0..<n];
+}
+csr_context_parts :: (text: string) -> int {
+  at := 0; parts := 0;
+  while at < text.count { at += csr_cut(cast(string) text[at..<text.count], 2048).count; parts += 1; }
+  return parts;
+}
+csr_context_turn :: (g: [] CsrGraph, index: int, part: int, out: [] u8) -> string {
+  scratch: [CSR_LINE_MAX] u8; text := csr_context_text(g, index, scratch[..]);
+  parts := csr_context_parts(text); if part < 0 || part >= parts { return ""; }
+  at := 0; for i: 0..<part { at += csr_cut(cast(string) text[at..<text.count], 2048).count; }
+  chunk := csr_cut(cast(string) text[at..<text.count], 2048);
+  n := json_raw(out, 0, "{\"role\":\"context\",\"kind\":\"compaction_summary\",\"uuid\":"); n = json_write_string(out, n, g[0].nodes[index].id);
+  n = json_raw(out, n, ",\"part\":"); n = json_write_int(out, n, part);
+  n = json_raw(out, n, ",\"parts\":"); n = json_write_int(out, n, parts);
+  n = json_raw(out, n, ",\"text\":"); n = json_write_string(out, n, chunk);
+  n = json_raw(out, n, ",\"tool_calls\":[],\"tool_results\":[],\"inert\":true}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
 csr_show :: (g: [] CsrGraph, sid: string, path: string, max_turns: int, before: int, max_tool: int, out: [] u8) -> string {
-  eligible: [CSR_NODES] int; total := 0; turn: [CSR_TURN_MAX] u8;
+  return csr_show_mode(g, sid, path, max_turns, before, max_tool, false, out);
+}
+csr_context_show :: (g: [] CsrGraph, sid: string, path: string, max_turns: int, before: int, max_tool: int, out: [] u8) -> string {
+  return csr_show_mode(g, sid, path, max_turns, before, max_tool, true, out);
+}
+csr_show_mode :: (g: [] CsrGraph, sid: string, path: string, max_turns: int, before: int, max_tool: int, context: bool, out: [] u8) -> string {
+  eligible: [CSR_NODES] int; chunks: [CSR_NODES] int; total := 0; turn: [CSR_TURN_MAX] u8; available := false;
   last_user: [512] u8; nu := 0; last_action: [512] u8; na := 0;
   first_user: [256] u8; nf := 0;
   for i: 0..<g[0].norder {
+    index := g[0].order[i];
+    if g[0].nodes[index].summary {
+      available = true;
+      if context {
+        scratch: [CSR_LINE_MAX] u8; text := csr_context_text(g, index, scratch[..]); parts := csr_context_parts(text);
+        if total + parts > CSR_NODES { return "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"error\":\"context_limit\"}"; }
+        for part: 0..<parts { eligible[total] = index; chunks[total] = part; total += 1; }
+      }
+    }
     v := csr_turn(g, g[0].order[i], max_tool, turn[..]); if v.count == 0 { continue; }
-    eligible[total] = g[0].order[i]; total += 1;
+    if !context { eligible[total] = g[0].order[i]; total += 1; }
     // Small summary fields are decoded from the bounded rendered turn.
     ar: [1] ClArena; ab: [8192] u8; ar[0].buf = ab[..]; text := cl_str(ar[..], v, "text");
     if g[0].nodes[g[0].order[i]].kind == 1 && text.count > 0 {
@@ -400,7 +464,7 @@ csr_show :: (g: [] CsrGraph, sid: string, path: string, max_turns: int, before: 
   observed := g[0].warnings;
   start := end; page: [CSR_OUTPUT_MAX] u8; used := 0;
   while start > 0 && end - start < max_turns {
-    t := csr_turn(g, eligible[start - 1], max_tool, turn[..]); g[0].warnings = observed;
+    t := ifx context then csr_context_turn(g, eligible[start - 1], chunks[start - 1], turn[..]) else csr_turn(g, eligible[start - 1], max_tool, turn[..]); g[0].warnings = observed;
     extra := t.count + (ifx used > 0 then 1 else 0);
     if used + extra > CSR_OUTPUT_MAX - 8192 { csr_warn(g, 11); break; }
     pos := page.count - used - extra;
@@ -417,6 +481,8 @@ csr_show :: (g: [] CsrGraph, sid: string, path: string, max_turns: int, before: 
   n = json_raw(out, n, ",\"updated_at\":"); n = json_write_string(out, n, csr_cut(g[0].last, 64));
   n = json_raw(out, n, ",\"last_user_request\":"); n = json_write_string(out, n, cast(string) last_user[0..<nu]);
   n = json_raw(out, n, ",\"last_assistant_action\":"); n = json_write_string(out, n, cast(string) last_action[0..<na]);
+  n = json_raw(out, n, ifx available then ",\"context_available\":true" else ",\"context_available\":false");
+  n = json_raw(out, n, ifx context then ",\"view\":\"compaction_context\"" else ",\"view\":\"conversation\"");
   n = json_raw(out, n, ",\"total_turns\":"); n = json_write_int(out, n, total);
   n = json_raw(out, n, ",\"start\":"); n = json_write_int(out, n, start); n = json_raw(out, n, ",\"end\":"); n = json_write_int(out, n, end);
   n = json_raw(out, n, ",\"next_before\":"); n = ifx start > 0 then json_write_int(out, n, start) else json_raw(out, n, "null");

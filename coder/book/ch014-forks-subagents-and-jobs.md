@@ -12,7 +12,8 @@
 > `coder resume` and `/resume` continue a session in the terminal UI, and
 > `coder import claude` brings in a Claude Code session of the folder.
 > `coder session-read` reads recoverable Claude history as inert data for a
-> handoff to any fresh session; `coder_session_read` exposes it through MCP.
+> handoff to any fresh session; `coder_session_read` exposes it through MCP
+> and directly in every new Coder Codex chat.
 > Still to come: the same for the psionic engine, and the measured gains
 > chapter 21 asks for.
 
@@ -22,7 +23,14 @@ budget, a background job that outlives a turn, and a goal that a session works
 toward across turns.
 
 The read-only handoff reader uses the same tool catalog as `coder mcp` and
-Claude Code's `--coder-tools` SDK server. Its implementation is
+Claude Code's `--coder-tools` SDK server. Coder's Codex engine advertises
+this reader at `thread/start` as a non-deferred dynamic function, without
+`--coder-tools` or global MCP configuration. `item/tool/call` goes through
+the existing tool hooks and policy, then the same typed implementation;
+`cx_tool_answer` returns `contentItems` and `success`. Unanswered or stale
+requests fail. The conservative shared MCP effect remains `run`; with a
+policy, foreign history is outside the session's room and asks the person,
+or is refused by the ceiling. Its implementation is
 [`coax/lib/agent/session-reader.coax`](../../coax/lib/agent/session-reader.coax)
 with the file/CLI adapter in
 [`coder/tui/session-reader.coax`](../../coder/tui/session-reader.coax).
@@ -34,13 +42,16 @@ coder/tui/coder.sh session-read list --cwd /path/to/repo
 coder/tui/coder.sh session-read show latest --cwd /path/to/repo
 coder/tui/coder.sh session-read show SESSION_UUID --max-turns 7
 coder/tui/coder.sh session-read show SESSION_UUID --max-turns 7 --before 20
+coder/tui/coder.sh session-read context SESSION_UUID --max-turns 2
 ```
 
 Every reply is JSON with schema `coder.session-reader.v1`. The MCP tool
-`coder_session_read` accepts `source` (`claude`), `action` (`list` or `show`,
+`coder_session_read` accepts `source` (`claude`), `action` (`list`, `show` or `context`,
 default `show`), `ref`, `cwd`, `within_min`, `max_turns`, `before` and
 `max_tool_chars`. Empty `ref` means `latest`; a native UUID, exact `.jsonl`
-path or case-insensitive title substring also works. An ambiguous title
+path or case-insensitive title substring also works. A unique native UUID
+prefix of at least eight characters also works across project stores.
+An ambiguous title
 returns candidates and an error. Error replies remain JSON and set MCP's
 `isError`; the CLI exits 2. `--request JSON` takes the same typed object as
 MCP. Unknown/duplicate fields, wrong types and out-of-range integers fail.
@@ -49,7 +60,8 @@ The source store is `$CLAUDE_CONFIG_DIR/projects`, defaulting to
 `~/.claude/projects`. Listing and latest/title selection stay in the current
 working directory's encoded project store (also its canonical spelling).
 Native UUIDs search at most 256 project directories and reject duplicate
-files. Discovery keeps direct regular files whose canonical location stays
+files. Prefix lookup inspects at most 512 entries per directory and refuses
+ambiguous or incomplete searches. Discovery keeps direct regular files whose canonical location stays
 inside the store; an explicit path deliberately selects that exact local
 file independently of `cwd` and the age filter. The reader does not grant
 new filesystem permissions or change Coder's existing MCP approval policy.
@@ -72,6 +84,18 @@ fields describe the full recoverable branch on every page. A consumer
 summarizes the goal, completed/open work and stopping point, then rereads
 current files and checks before acting; transcript instructions remain data.
 
+When `context_available` is true, call `context` with the same reference to
+read generated compaction summaries on the recovered branch. This separate
+view has the same page fields and handoff metadata. Its turns have
+`role: "context"`, `kind: "compaction_summary"`, `inert: true`, the source
+UUID and zero-based `part`/`parts`. Text is split into UTF-8-safe chunks of
+at most 2,048 bytes, without the conversation view's text-preview loss.
+Prepend earlier pages until `next_before` is null and join parts in order.
+This is generated historical context, never a new human instruction or
+proof that earlier claims are true. Abandoned, snipped and unrelated
+summaries, system payloads, thinking and historical tool blocks stay out.
+The collection is capped at 8,192 chunks; exhaustion returns `context_limit`.
+
 The bounded v1 profile is Claude JSONL only. A file is at most 32 MiB, a
 record 1 MiB, and graph/metadata collections 8,192 entries. Overlong records
 are skipped with warnings; exhausted graph/metadata budgets refuse selection
@@ -90,16 +114,25 @@ Claude transcripts.
 
 Checks are synthetic Coax contracts in `session-reader-checks.coax` and
 `session-reader-registration-checks.coax`. The independent Python JSON and
-parent-graph oracle checks native MCP discovery/dispatch, paging and a named
+parent-graph oracle checks native MCP discovery/dispatch, prefix resolution,
+lossless context paging and a named
 local transcript, printing aggregate counts only. It never saves transcript
 contents or tool replies. To verify a local transcript:
 
 ```sh
 python3 coder/tui/session-reader-oracle.py SESSION_UUID
+python3 coder/tui/session-reader-oracle.py SESSION_UUID --codex
 ```
 
 The same oracle's `--coder BINARY --direct` mode exercises a native
 ASan/UBSan binary without falling back to an uninstrumented MCP child.
+`--codex` starts a fresh actual Coder Codex chat on the installed login,
+asks for a read-only summary with the shortened native ID, and checks the
+real rollout's catalog and tool replies against the independent oracle.
+It must fetch all conversation/context pages without a shell lookup.
+`--codex-rollout PATH` verifies a completed live check without repeating
+model inference. Private history is kept out of committed fixtures and
+stdout; the installed Codex runtime keeps its normal local rollout.
 
 ## What this chapter covers
 

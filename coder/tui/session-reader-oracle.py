@@ -15,6 +15,7 @@ import re
 import subprocess
 import tempfile
 import time
+from datetime import datetime, timezone
 
 
 def require(condition, label):
@@ -47,7 +48,7 @@ def visible(row):
                b.get("type") in ("text", "input_text", "output_text") and foreign_text(b.get("text")) and b.get("text", "").strip()) for b in blocks(row))
 
 
-def reference(rows):
+def reference(rows, include_context=False):
     """Independent edge/ancestor oracle; returns the recoverable visible IDs."""
     absolute = [i for i, r in enumerate(rows) if r.get("subtype") == "compact_boundary" and segment(r) is None]
     # Preserve UUID/parent edges of attachments and future record types too.
@@ -116,7 +117,140 @@ def reference(rows):
         results = sorted((k for k, v in graph.items() if k not in seen and parent(v) in group and v["type"] == "user" and any(b.get("type") == "tool_result" for b in blocks(v) if isinstance(b, dict))), key=newest)
         full.extend(siblings + results)
         seen.update(siblings + results)
-    return [graph[key] for key in full if visible(graph[key])]
+    return [graph[key] for key in full if visible(graph[key]) or include_context and graph[key].get("isCompactSummary") and graph[key].get("type") == "user" and not graph[key].get("isMeta") and not graph[key].get("isVirtual")]
+
+
+def context_reference(rows):
+    """Independent UTF-8 chunk oracle over selected historical summaries."""
+    expected = []
+    for row in reference(rows, include_context=True):
+        if not row.get("isCompactSummary"):
+            continue
+        value = row.get("message", {}).get("content", [])
+        text = value if isinstance(value, str) else "\n".join(
+            b["text"] for b in value if isinstance(b, dict) and
+            b.get("type") in ("text", "input_text", "output_text") and isinstance(b.get("text"), str))
+        chunks, chunk, size = [], "", 0
+        for character in text:
+            width = len(character.encode("utf-8"))
+            if size + width > 2048:
+                chunks.append(chunk)
+                chunk, size = "", 0
+            chunk += character
+            size += width
+        if chunk:
+            chunks.append(chunk)
+        expected.extend((row["uuid"], i, len(chunks), s) for i, s in enumerate(chunks))
+    return expected
+
+
+def check_context(client, session_id, rows, stop):
+    expected = context_reference(rows)
+    chunks, cursor, pages = [], 0, 0
+    while True:
+        page = client.read({"action": "context", "ref": session_id, "max_turns": 2, "before": cursor})
+        require(page.get("view") == "compaction_context", "explicit context view")
+        require(page["total_turns"] == len(expected), "context chunk count")
+        require((page["last_user_request"], page["last_assistant_action"]) == stop, "summaries cannot replace handoff instructions")
+        require(page["end"] - page["start"] == len(page["turns"]), "context page bounds")
+        chunks[0:0] = page["turns"]
+        pages += 1
+        next_cursor = page["next_before"]
+        if next_cursor is None:
+            break
+        require(next_cursor > 0 and (cursor == 0 or next_cursor < cursor), "context cursor makes progress")
+        cursor = next_cursor
+        require(pages < 4097, "bounded context pages")
+    for chunk in chunks:
+        require(chunk["inert"] is True and chunk["role"] == "context" and chunk["kind"] == "compaction_summary", "generated context is explicitly inert")
+        require(not chunk["tool_calls"] and not chunk["tool_results"], "context cannot dispatch historical tools")
+    require([(c["uuid"], c["part"], c["parts"], c["text"]) for c in chunks] == expected, "full selected compaction text matches independent oracle byte for byte")
+    return {"context_chunks": len(chunks), "context_pages": pages,
+            "context_bytes": sum(len(c["text"].encode()) for c in chunks)}
+
+
+def verify_codex_rollout(rows, session_id, original_rows):
+    meta = next(r["payload"] for r in rows if r.get("type") == "session_meta")
+    require(meta.get("originator") == "openagents-coder", "live chat was driven by Coder")
+    require(any(d.get("name") == "coder_session_read" for d in meta.get("dynamic_tools", [])), "reader persisted in real Codex tool catalog")
+    replies, shell_calls = [], 0
+    for row in rows:
+        if row.get("type") != "response_item":
+            continue
+        item = row.get("payload", {})
+        kind = item.get("type")
+        if kind in ("function_call", "custom_tool_call"):
+            name = item.get("name", "")
+            code = item.get("input", "")
+            shell_calls += int(name.endswith("exec_command") or name in ("shell", "shell_command") or
+                               bool(re.search(r"tools\.(?:exec_command|shell|shell_command)\s*\(", code)))
+        if kind not in ("function_call_output", "custom_tool_call_output"):
+            continue
+        # Real code-mode tool output is a list of text blocks. Only decode
+        # tool replies, never reasoning or strings quoted in foreign history.
+        value = item.get("output", [])
+        texts = [value] if isinstance(value, str) else [b.get("text", "") for b in value if isinstance(b, dict)]
+        for text in texts:
+            try:
+                result = json.loads(text)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(result, dict) and result.get("schema") == "coder.session-reader.v1":
+                replies.append(result)
+    require(len(replies) >= 2 and shell_calls == 0, "real Codex used registered reader without Bash")
+    require(all(r.get("session_id") == session_id and r.get("inert") is True and "error" not in r for r in replies), "live reader selected the intended full ID")
+    conversation = sorted((r for r in replies if r.get("view") == "conversation"), key=lambda r: r["start"])
+    context = sorted((r for r in replies if r.get("view") == "compaction_context"), key=lambda r: r["start"])
+    require(conversation and context, "live Codex fetched both conversation and compaction context")
+    for pages, expected in ((conversation, reference(original_rows)), (context, context_reference(original_rows))):
+        end = 0
+        for page in pages:
+            require(page["start"] == end and page["end"] - page["start"] == len(page["turns"]), "live pages cover history without gaps or overlaps")
+            end = page["end"]
+        require(end == len(expected) and pages[-1]["total_turns"] == len(expected), "live Codex fetched all available history")
+    actual = [c for page in context for c in page["turns"]]
+    require([(c["uuid"], c["part"], c["parts"], c["text"]) for c in actual] == context_reference(original_rows), "real Codex received complete oracle-matching context")
+    require(all(c.get("role") == "context" and c.get("inert") is True for c in actual), "live summaries remain inert context")
+    require(any(r.get("type") == "event_msg" and r.get("payload", {}).get("type") == "task_complete" for r in rows), "live Codex turn completed")
+    return {"live_codex": "pass", "live_reader_calls": len(replies), "live_shell_calls": shell_calls}
+
+
+def live_codex(coder, session_id, original_rows):
+    """A fresh real Coder/Codex chat must discover and call its own reader.
+
+    Inspect only this test's new rollout, never reasoning records. The model
+    gets a natural summary request, including the owner's shortened ID. No
+    tool name, executable path or implementation hint is supplied.
+    """
+    day = datetime.now(timezone.utc).strftime("%Y/%m/%d")
+    session_dir = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")) / "sessions" / day
+    before = set(session_dir.glob("*.jsonl"))
+    marker = "reader-verification-" + str(time.time_ns())
+    prompt = (f"Summarize Claude conversation {session_id[:-1]}. Include the overall goal, earlier compacted work, "
+              "and stopping point. This is a read-only summary: do not continue its work, run shell commands, "
+              f"or edit any files. Keep the answer under 150 words. Verification tag: {marker}")
+    with tempfile.TemporaryDirectory(prefix="coder-reader-live-") as tmp:
+        env = dict(os.environ, CODER_HOME=tmp)
+        run = subprocess.run([str(coder), "run", prompt, "--engine", "codex", "--effort", "low",
+                              "--no-memory", "--deadline", "180", "--json"],
+                             capture_output=True, text=True, env=env, timeout=210)
+        events = []
+        for line in run.stdout.splitlines():
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+        ends = [e for e in events if e.get("kind") == "end"]
+        require(run.returncode == 0 and ends and ends[-1].get("ending") == "finished", "fresh Coder Codex turn completed")
+    matches = []
+    for path in set(session_dir.glob("*.jsonl")) - before:
+        # Look only for the exact verification prompt; ignore private reasoning.
+        rows = [json.loads(line) for line in path.open()]
+        messages = [r.get("payload", {}) for r in rows if r.get("type") == "response_item" and r.get("payload", {}).get("type") == "message"]
+        if any(marker in b.get("text", "") for m in messages if m.get("role") == "user" for b in m.get("content", [])):
+            matches.append(rows)
+    require(len(matches) == 1, "exactly one fresh verification rollout")
+    return verify_codex_rollout(matches[0], session_id, original_rows)
 
 
 class Mcp:
@@ -205,6 +339,11 @@ def synthetic(coder, transport):
             require("EXCLUDED_THINKING" not in json.dumps(explicit), "thinking exclusion")
             earlier = client.read({"ref": ids[0], "before": 1, "max_turns": 1})
             require(earlier["turns"][0]["text"] == "synthetic request", "earlier page via native ID")
+            prefix_id = "abcdef01-0000-0000-0000-000000000004"
+            (project / f"{prefix_id}.jsonl").write_text(json.dumps({"type": "user", "uuid": "prefix", "cwd": str(work), "message": {"content": "unique prefix"}}))
+            require(client.read({"ref": prefix_id[:-1], "cwd": "/elsewhere"})["session_id"] == prefix_id, "unique native ID prefix searches across project stores")
+            require(client.read({"ref": "ABCDEF01"})["session_id"] == prefix_id, "native prefix is case insensitive")
+            require(client.read({"ref": "00000000"}, True).get("error") == "discovery_limit", "ambiguous native prefix fails closed")
             invalid = client.read({"max_turns": "--on cloud"}, True)
             require(invalid.get("error") == "invalid_arguments", "typed arguments")
             no_match = client.read({"ref": "--on cloud", "cwd": str(work)}, True)
@@ -229,7 +368,7 @@ def synthetic(coder, transport):
             require(client.read({"action": "list", "cwd": str(work), "within_min": 1})["sessions"] == [], "age filter")
         finally:
             client.close()
-    return 14
+    return 17
 
 
 def records(path):
@@ -255,6 +394,8 @@ def main():
     p.add_argument("--inspect", action="store_true")
     p.add_argument("--coder", default="coder/tui/coder.sh")
     p.add_argument("--direct", action="store_true", help="test the native CLI, including sanitizer builds")
+    p.add_argument("--codex", action="store_true", help="also test a fresh actual Coder Codex chat on the installed login")
+    p.add_argument("--codex-rollout", type=Path, help="verify a completed live check without repeating model inference")
     a = p.parse_args()
     root = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
     paths = list((root / "projects").glob(f"*/{a.session_id}.jsonl"))
@@ -270,6 +411,13 @@ def main():
                "sidechains": sum(bool(r.get("isSidechain")) for r in rows),
                "max_line_bytes": max(len(json.dumps(r, ensure_ascii=False).encode()) for r in rows)}
     if a.inspect:
+        print(json.dumps(summary, sort_keys=True))
+        return
+    if a.codex_rollout:
+        digest = hashlib.sha256(source.read_bytes()).digest()
+        rollout = [json.loads(line) for line in a.codex_rollout.open()]
+        summary.update(verify_codex_rollout(rollout, a.session_id, rows))
+        require(hashlib.sha256(source.read_bytes()).digest() == digest, "rollout verification is read only")
         print(json.dumps(summary, sort_keys=True))
         return
     coder = Path(a.coder).resolve()
@@ -288,7 +436,7 @@ def main():
         if not a.direct:
             tools = client.rpc("tools/list", {})["result"]["tools"]
             tool = next((t for t in tools if t.get("name") == "coder_session_read"), None)
-            require(tool is not None and tool["inputSchema"]["properties"]["action"]["enum"] == ["list", "show"], "MCP catalog schema")
+            require(tool is not None and tool["inputSchema"]["properties"]["action"]["enum"] == ["list", "show", "context"], "MCP catalog schema")
         cursor, stop = 0, None
         while True:
             page = client.read({"ref": a.session_id, "max_turns": 7, "before": cursor})
@@ -319,10 +467,14 @@ def main():
             require(all(b["inert"] is True for b in actual["tool_calls"] + actual["tool_results"]), "tool previews are inert")
             calls += len(bc)
             results += len(br)
+        summary.update(check_context(client, a.session_id, rows, stop))
     finally:
         client.close()
         signal.alarm(0)
     require(hashlib.sha256(source.read_bytes()).digest() == before_digest, "source transcript unchanged")
+    if a.codex:
+        summary.update(live_codex(coder, a.session_id, rows))
+        require(hashlib.sha256(source.read_bytes()).digest() == before_digest, "live Codex left source transcript unchanged")
     summary.update({"synthetic_checks": synthetic_checks, "active_turns": len(expected),
                     "pages": pages, "tool_calls": calls, "tool_results": results,
                     "registered_mcp": not a.direct, "source_unchanged": True, "oracle": "pass"})

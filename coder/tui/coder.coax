@@ -156,6 +156,7 @@ App :: struct {
   cx_live: bool;                  // the server is running
   cx_ready: bool;                 // its thread is started
   cx_options: [1] CdCxOptions;     // Codex's own catalog, resolved config and session selection
+  cx_tools: [8192] u8;            // owned thread/start dynamic tool definitions
   err: [1024] u8; nerr: int;      // an error notification, for a failed turn
   // microcoder engine: its worker process (mcworker.coax), a run per message
   mc_h: int = -1;
@@ -2346,7 +2347,7 @@ tool_main :: () -> int #export_c {
   args_b: [1] Args; args := args_b[..];
   if !args_load(args) { tool_errln("coder: bad arguments"); return 2; }
   verb := cd_positional(args, 0);
-  if args_has(args, "--help") || args_has(args, "-h") || verb == "help" { tool_errln(USAGE); tool_errln(CODEX_HELP); tool_errln("       coder session-read list|show [REF] [--cwd DIR] [--within-min N] [--max-turns 1..256] [--before N] [--max-tool-chars 1..1024]   read-only Claude history as JSON; tool: coder_session_read"); return 0; }
+  if args_has(args, "--help") || args_has(args, "-h") || verb == "help" { tool_errln(USAGE); tool_errln(CODEX_HELP); tool_errln("       coder session-read list|show|context [REF] [--cwd DIR] [--within-min N] [--max-turns 1..256] [--before N] [--max-tool-chars 1..1024]   read-only Claude history as JSON; tool: coder_session_read"); return 0; }
   if args_has(args, "--version") || verb == "version" { tool_errln(CODER_VERSION); return 0; }
   json := args_has(args, "--json");
   // another machine: --on ssh:DEST or cloud runs the verb there; a session started that way is followed there

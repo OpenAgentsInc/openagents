@@ -28,6 +28,7 @@ CX_INITIALIZE :: 1; CX_THREAD_START :: 2; CX_THREAD_RESUME :: 3; CX_TURN_START :
 CX_TURN_INTERRUPT :: 5; CX_MODEL_LIST :: 6; CX_OTHER :: 7;
 // What an approval asks (ev.of on an approval): a command, a file change, more permissions.
 CX_ASK_EXEC :: 1; CX_ASK_PATCH :: 2; CX_ASK_PERMISSIONS :: 3; CX_ASK_EXEC_V1 :: 4; CX_ASK_PATCH_V1 :: 5;
+CX_ASK_TOOL :: 6;
 
 // Notifications nothing reads: the turn's running diff and each patch's
 // output stream (Zeron's OPTED_OUT_NOTIFICATIONS, less the command output:
@@ -41,6 +42,7 @@ CxEventKind :: enum u8 {
   refused;        // ... with an error: ev.of, ev.message
   notification;   // ev.method, ev.params (JSON)
   approval;       // a server request for the host: ev.of (CX_ASK_*), ev.method, ev.params; answer with cx_approve
+  tool_call;      // item/tool/call; answer with cx_tool_answer before the next poll
   invalid;        // a line that isn't a JSON-RPC message; the stream goes on
   failed;         // the client is over; cx_error says why
   end;            // the server closed its output
@@ -68,6 +70,7 @@ CxSettings :: struct {
   plan: bool;                 // the collaboration mode is plan
   name_mode: bool;            // name the collaboration mode on each turn (once plan was ever on)
   config: string;             // config overrides, a JSON object of dotted keys ("" for none)
+  dynamic_tools: string;      // thread/start's experimental dynamicTools JSON array; host dispatches calls
 }
 
 CxClient :: struct {
@@ -165,7 +168,9 @@ cx_put_thread_settings :: (o: [] ClOut, st: CxSettings) {
 cx_thread_start :: (c: [] CxClient, st: CxSettings) -> int {
   id := cx_open(c, CX_THREAD_START, "thread/start");
   o := c[0].out[..];
-  cl_put(o, "{"); cx_put_thread_settings(o, st); cl_put(o, "}");
+  cl_put(o, "{"); cx_put_thread_settings(o, st);
+  if st.dynamic_tools.count > 0 { cl_put(o, ",\"dynamicTools\":"); cl_put(o, st.dynamic_tools); }
+  cl_put(o, "}");
   cx_close(c);
   return id;
 }
@@ -247,6 +252,7 @@ cx_respond_error :: (c: [] CxClient, id_json: string, code: int, message: string
 cx_approve :: (c: [] CxClient, accept: bool) {
   k := c[0].asking;
   if k == 0 { return; }
+  if k == CX_ASK_TOOL { cx_tool_answer(c, "The tool request was denied.", false); return; }
   c[0].asking = 0;
   id := cast(string) c[0].ask_id[0..<c[0].ask_id_n];
   if k == CX_ASK_EXEC || k == CX_ASK_PATCH { cx_respond(c, id, ifx accept then "{\"decision\":\"accept\"}" else "{\"decision\":\"decline\"}"); return; }
@@ -255,6 +261,15 @@ cx_approve :: (c: [] CxClient, accept: bool) {
   cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(o, id); cl_put(o, ",\"result\":{\"permissions\":");
   cl_put(o, ifx accept && c[0].ask_grant_n > 0 then cast(string) c[0].ask_grant[0..<c[0].ask_grant_n] else "{}");
   cl_put(o, ",\"scope\":\"turn\"}}\n");
+}
+// Dynamic tool results are data, never a new user input or an executable call.
+cx_tool_answer :: (c: [] CxClient, text: string, success: bool) {
+  if c[0].asking != CX_ASK_TOOL { return; }
+  c[0].asking = 0;
+  o := c[0].out[..];
+  cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(o, cast(string) c[0].ask_id[0..<c[0].ask_id_n]);
+  cl_put(o, ",\"result\":{\"contentItems\":[{\"type\":\"inputText\",\"text\":"); cl_put_string(o, text);
+  cl_put(o, ifx success then "}],\"success\":true}}\n" else "}],\"success\":false}}\n");
 }
 // An approval left unanswered is declined before the next line (never allowed silently).
 cx_settle :: (c: [] CxClient) { if c[0].asking != 0 { cx_approve(c, false); } }
@@ -305,7 +320,7 @@ cx_feed :: (c: [] CxClient, line: string) -> CxEvent {
     }
     // a request from the server
     id_json := cl_json(line, idv);
-    kind := cx_ask_kind(method);
+    kind := ifx method == "item/tool/call" then CX_ASK_TOOL else cx_ask_kind(method);
     if kind != 0 {
       if id_json.count > CX_ID { cx_respond_error(c, id_json, -32000, "request id too long"); return CxEvent.{kind = CxEventKind.none, line = line}; }
       c[0].asking = kind;
@@ -315,7 +330,7 @@ cx_feed :: (c: [] CxClient, line: string) -> CxEvent {
         grant := cl_raw(line, "params.permissions");
         if grant.count <= c[0].ask_grant.count { c[0].ask_grant_n = cx_keep(c[0].ask_grant[..], grant); }
       }
-      return CxEvent.{kind = CxEventKind.approval, of = kind, method = method, params = params, line = line};
+      return CxEvent.{kind = ifx kind == CX_ASK_TOOL then CxEventKind.tool_call else CxEventKind.approval, of = kind, method = method, params = params, line = line};
     }
     // questions and elicitations Zeron's way when nothing can ask them: no answers, declined
     if method == "item/tool/requestUserInput" { cx_respond(c, id_json, "{\"answers\":{}}"); }

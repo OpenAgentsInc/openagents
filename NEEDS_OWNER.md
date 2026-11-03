@@ -1038,3 +1038,14 @@ The Mac was not available to the agent:
       and `/effort LEVEL` change the next Codex message and keep its conversation.
       Selections last for this Coder session. The separately installed legacy
       `~/.openagents/bin/coder` (1.0.0 at verification) is a different executable.
+
+### Coder terminal: Claude session reader in Codex (#12722)
+
+- [ ] After updating to the #12722 Codex follow-up, restart `openagents coder`
+      or `coder/tui/coder.sh` and open a fresh Codex chat. Tool definitions
+      are registered when its app-server thread starts. Ask it to summarize
+      the Claude conversation; it now has `coder_session_read` directly,
+      including paginated compaction context and unique native ID prefixes.
+      A fresh real Codex chat was verified programmatically with the owner's
+      shortened ID: three reader calls, all conversation/context pages and
+      no shell commands. An already running thread keeps its earlier catalog.

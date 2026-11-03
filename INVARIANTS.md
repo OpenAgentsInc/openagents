@@ -31,11 +31,21 @@ snapshots cannot publish a silently partial branch. Pages have explicit
 boundaries and a decreasing earlier-page cursor. This is a local data
 reader, not a new permission grant or a sanitizer for arbitrary retained
 text. Profile and limits: `coder/book/ch014-forks-subagents-and-jobs.md`.
+Every new Coder Codex thread advertises this same reader directly through
+app-server's dynamic tool contract. Calls pass existing hooks and ceiling
+decisions; they do not inherit a new filesystem permission. CLI, MCP and
+Codex dispatch share the typed implementation in the running binary.
+Generated compaction summaries on the recovered branch are available only
+in the explicit `context` view, labeled inert context, with UTF-8-safe
+parts and bounded pages. They never replace the last human request or
+become executable historical calls. Ambiguous/incomplete native ID-prefix
+searches refuse selection.
 Checks: `coder/tui/session-reader-checks.coax` (branch/compaction/snips,
 parallel recovery, non-rendered attachment links, UTF-8 and bounded pages),
 `session-reader-registration-checks.coax` (shared catalog and typed
 requests), and `session-reader-oracle.py` (independent graph and native
-MCP/CLI comparisons; only aggregate observations leave its private inputs).
+MCP/CLI comparisons and a fresh actual Coder Codex chat; only aggregate
+observations leave its private inputs).
 
 ## Realm creation is gated by one server-side rule
 

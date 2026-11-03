@@ -9,6 +9,15 @@
 #load "../../coax/lib/agent/codex/codex.coax";
 #load "codex-options.coax";
 
+// This read-only handoff is available in every Codex chat, without requiring
+// MCP configuration or --coder-tools. Share the public catalog's contract.
+cd_codex_tools :: (out: [] u8) -> string {
+  n := json_raw(out, 0, "[{\"type\":\"function\",\"name\":\"coder_session_read\",\"deferLoading\":false,\"description\":");
+  n = json_write_string(out, n, CD_MCP_ABOUT[11]);
+  n = json_raw(out, n, ",\"inputSchema\":"); n = json_raw(out, n, CD_MCP_SCHEMAS[11]); n = json_raw(out, n, "}]");
+  return ifx n < 0 then "[]" else cast(string) out[0..<n];
+}
+
 // The thread and its turns: no approvals and full access by default.
 cd_codex_settings :: (a: [] App) -> CxSettings {
   st: CxSettings;
@@ -26,7 +35,44 @@ cd_codex_settings :: (a: [] App) -> CxSettings {
   st.sandbox = cd_codex_sandbox(a[0].pol[..], asked);
   if asked { st.approval_policy = "untrusted"; st.ask_person = true; }
   else { st.approval_policy = "never"; }
+  st.dynamic_tools = cd_codex_tools(a[0].cx_tools[..]);
   return st;
+}
+
+cd_codex_reader_answer :: (a: [] App) {
+  out: [CSR_OUTPUT_MAX] u8;
+  got := csr_request_in(cast(string) a[0].ask_input[0..<a[0].nask_input], a[0].cwd, out[..]);
+  cx_tool_answer(a[0].cx, got, cl_raw(got, "error").count == 0);
+}
+
+// Client-executed tools must pass Coder's own hooks and existing policy:
+// the reader keeps the shared MCP tool's conservative unknown-tool/run
+// effect. Foreign-history files are outside the session's room. An ask in
+// a job with no person is refused by the existing job approval path.
+cd_codex_tool_call :: (a: [] App, ev: CxEvent) {
+  c := a[0].cx;
+  if a[0].engine != ENGINE_CODEX || !a[0].running || a[0].stopping { cx_tool_answer(c, "Coder's Codex turn is inactive.", false); return; }
+  name := cd_cx_str(a, ev.params, "tool");
+  if name != "coder_session_read" || cd_cx_str(a, ev.params, "namespace").count > 0 { cx_tool_answer(c, "Unknown Coder tool.", false); return; }
+  thread := cd_cx_str(a, ev.params, "threadId"); turn := cd_cx_str(a, ev.params, "turnId");
+  if (thread.count > 0 && thread != cx_thread_id(c)) || (turn.count > 0 && turn != cx_turn_id(c)) { cx_tool_answer(c, "Coder's Codex turn is inactive.", false); return; }
+  args := cl_raw(ev.params, "arguments");
+  if args.count == 0 || args.count > a[0].ask_input.count { cx_tool_answer(c, "Invalid or overlong reader arguments.", false); return; }
+  hw: [400] u8;
+  if !cd_hooks_run(a, "tool_call", "", name, args, hw[..]) { cx_tool_answer(c, "A Coder tool hook refused this call.", false); return; }
+  if a[0].pol[0].on {
+    why: [256] u8; verdict := cd_policy_tool(a[0].pol[..], name, false, why[..]);
+    k := 0; while k < why.count && why[k] != 0 { k += 1; }
+    cd_approval_note(a, name, cd_effect_of(name), false, verdict, cast(string) why[0..<k]);
+    if verdict == CD_VERDICT_REFUSE { cx_tool_answer(c, cast(string) why[0..<k], false); return; }
+    // An external history read cannot be silently approved through roots.
+  }
+  a[0].nask_input = cd_cat(a[0].ask_input[..], 0, args);
+  if a[0].ask_first || a[0].pol[0].on {
+    a[0].nask = cd_cat(a[0].ask_text[..], 0, "Allow coder_session_read to read local Claude history?");
+    a[0].ask = true; return;
+  }
+  cd_codex_reader_answer(a);
 }
 
 // Opening the Codex tab resolves its configuration and catalog without
@@ -295,6 +341,11 @@ cd_codex_poll :: (a: [] App) -> bool {
       if !a[0].cx_live { return true; }
       continue;
     }
+    if ev.kind == CxEventKind.tool_call {
+      cd_codex_tool_call(a, ev);
+      if a[0].ask { return true; }
+      continue;
+    }
     if ev.kind == CxEventKind.approval {
       lb: [1024] u8; what := "more permissions for this turn"; effect := CD_EFFECT_RUN; inside := true;
       if ev.of == CX_ASK_EXEC || ev.of == CX_ASK_EXEC_V1 {
@@ -359,6 +410,7 @@ cd_codex_poll :: (a: [] App) -> bool {
 }
 
 cd_codex_answer :: (a: [] App, c: int) {
+  if a[0].cx[0].asking == CX_ASK_TOOL && (c == 'y' || c == 'Y' || c == 'a' || c == 'A') { cd_codex_reader_answer(a); return; }
   cx_approve(a[0].cx, c == 'y' || c == 'Y' || c == 'a' || c == 'A');
 }
 

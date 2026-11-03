@@ -1,5 +1,66 @@
 #load "coder.coax";
 
+#test "session reader: MCP dispatch uses its own typed reader without a repository child executable" {
+  ar: [1] ClArena; arena: [8192] u8; ar[0].buf = arena[..];
+  out: [16384] u8; none: [1] string;
+  got := cd_mcp_call(ar[..], "{\"name\":\"coder_session_read\",\"arguments\":{\"source\":\"codex\"}}", none[0..<0], out[..]);
+  #assert csr_has(got, "unsupported_source") && cl_raw(got, "isError") == "true";
+}
+
+#test "session reader: Codex thread advertises the shared reader without an opt-in flag" {
+  a: [1] App; a[0].cwd = "/fixture";
+  c: [1] CxClient; line: [4096] u8; arena: [8192] u8; out: [16384] u8;
+  cx_init(c[..], line[..], arena[..], out[..]);
+  r := cx_thread_start(c[..], cd_codex_settings(a[..]));
+  tools := cl_raw(cx_outbox(c[..]), "params.dynamicTools");
+  #assert cl_count(tools) == 1;
+  #assert cl_raw(tools, "0.name") == "\"coder_session_read\"";
+  #assert cl_raw(tools, "0.type") == "\"function\"";
+  #assert cl_raw(tools, "0.inputSchema") == CD_MCP_SCHEMAS[11];
+}
+
+#test "session reader: Codex dispatch returns typed errors and refuses unknown or inactive calls" {
+  a: [1] App; logs: [1] CsLog; pl: [1] PlRegistry;
+  a[0].log = logs[..]; a[0].pl = pl[..]; logs[0].json = true;
+  a[0].plain = true; a[0].cols = 80; a[0].engine = ENGINE_CODEX; a[0].running = true;
+  c: [1] CxClient; line: [4096] u8; arena: [8192] u8; out: [16384] u8;
+  cx_init(c[..], line[..], arena[..], out[..]); a[0].cx = c[..];
+  ev := cx_feed(c[..], "{\"id\":\"read-1\",\"method\":\"item/tool/call\",\"params\":{\"tool\":\"coder_session_read\",\"arguments\":{\"source\":\"codex\"}}}");
+  #assert ev.kind == CxEventKind.tool_call;
+  cd_codex_tool_call(a[..], ev);
+  #assert csr_has(cx_outbox(c[..]), "unsupported_source") && csr_has(cx_outbox(c[..]), "\"success\":false");
+  cx_outbox_clear(c[..]);
+  ev = cx_feed(c[..], "{\"id\":2,\"method\":\"item/tool/call\",\"params\":{\"tool\":\"coder_run\",\"arguments\":{}}}");
+  cd_codex_tool_call(a[..], ev);
+  #assert csr_has(cx_outbox(c[..]), "Unknown Coder tool") && !a[0].ask;
+  cx_outbox_clear(c[..]); a[0].running = false;
+  ev = cx_feed(c[..], "{\"id\":3,\"method\":\"item/tool/call\",\"params\":{\"tool\":\"coder_session_read\",\"arguments\":{}}}");
+  cd_codex_tool_call(a[..], ev);
+  #assert csr_has(cx_outbox(c[..]), "inactive") && csr_has(cx_outbox(c[..]), "\"success\":false");
+}
+
+#test "session reader: Codex calls keep the existing ceiling and explicit ask behavior" {
+  a: [1] App; logs: [1] CsLog; pl: [1] PlRegistry;
+  a[0].log = logs[..]; a[0].pl = pl[..]; logs[0].json = true;
+  a[0].plain = true; a[0].cols = 80; a[0].engine = ENGINE_CODEX; a[0].running = true;
+  c: [1] CxClient; line: [4096] u8; arena: [8192] u8; out: [16384] u8;
+  cx_init(c[..], line[..], arena[..], out[..]); a[0].cx = c[..];
+  why := cd_policy_args(a[0].pol[..], "read", "read", "");
+  ev := cx_feed(c[..], "{\"id\":1,\"method\":\"item/tool/call\",\"params\":{\"tool\":\"coder_session_read\",\"arguments\":{\"source\":\"codex\"}}}");
+  cd_codex_tool_call(a[..], ev);
+  #assert !a[0].ask && csr_has(cx_outbox(c[..]), "above the ceiling") && !csr_has(cx_outbox(c[..]), "unsupported_source");
+  cx_outbox_clear(c[..]); a[0].pol[0].on = false; a[0].ask_first = true;
+  ev = cx_feed(c[..], "{\"id\":2,\"method\":\"item/tool/call\",\"params\":{\"tool\":\"coder_session_read\",\"arguments\":{\"source\":\"codex\"}}}");
+  cd_codex_tool_call(a[..], ev);
+  #assert a[0].ask && cx_outbox(c[..]).count == 0;
+  cd_codex_answer(a[..], 'y');
+  #assert csr_has(cx_outbox(c[..]), "unsupported_source");
+  cx_outbox_clear(c[..]); a[0].ask = false;
+  ev = cx_feed(c[..], "{\"id\":3,\"method\":\"item/tool/call\",\"params\":{\"tool\":\"coder_session_read\",\"arguments\":{}}}");
+  cd_codex_tool_call(a[..], ev); cd_codex_answer(a[..], 'n');
+  #assert csr_has(cx_outbox(c[..]), "denied") && csr_has(cx_outbox(c[..]), "\"success\":false");
+}
+
 #test "session reader: Claude SDK advertises the shared registered tool" {
   options: [1] ClOptions; cd_claude_coder_server(options[..]);
   found := false;

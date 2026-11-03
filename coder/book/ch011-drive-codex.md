@@ -33,6 +33,14 @@ Server requests for approval are answered with `cx_approve`. Two recorded
 sessions, scrubbed, replay byte for byte in the client's checks
 ([fixture.coax](../../coax/lib/agent/codex/fixture.coax)).
 
+`CxSettings.dynamic_tools` supplies `thread/start`'s experimental
+`dynamicTools`. `item/tool/call` becomes `CxEventKind.tool_call`, answered
+with `cx_tool_answer` before the next poll; an unanswered request fails.
+Coder registers `coder_session_read` in every fresh Codex thread through
+this route, sharing the MCP schema and typed reader. It reads Claude
+conversation turns and separately paginated inert compaction context
+([chapter 14](ch014-forks-subagents-and-jobs.md)).
+
 ## In Coder
 
 [codex.coax](../../coder/tui/codex.coax) starts the server on the first
