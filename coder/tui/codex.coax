@@ -7,13 +7,20 @@
 // sandbox follows its ceiling (cd_codex_sandbox): read-only below write.
 
 #load "../../coax/lib/agent/codex/codex.coax";
+#load "codex-options.coax";
 
 // The thread and its turns: no approvals and full access by default.
 cd_codex_settings :: (a: [] App) -> CxSettings {
   st: CxSettings;
   st.cwd = a[0].cwd;
   if a[0].model_engine == ENGINE_CODEX { st.model = a[0].model; }
-  st.effort = cd_effort(a);       // low, medium or high: the same words Codex takes
+  st.effort = cd_effort(a);
+  launch_effort := ccx_text(a[0].cx_options[0].launch_effort[..]);
+  if launch_effort.count > 0 { st.effort = launch_effort; }
+  if a[0].cx_options[0].selected {
+    st.model = ccx_model(a[0].cx_options[..]);
+    st.effort = ccx_effort(a[0].cx_options[..]);
+  }
   asked := a[0].ask_first || a[0].pol[0].on || cd_has_hook(a, "tool_call");
   // the sandbox follows the ceiling (ceiling.coax): a read ceiling is a read-only sandbox
   st.sandbox = cd_codex_sandbox(a[0].pol[..], asked);
@@ -22,7 +29,28 @@ cd_codex_settings :: (a: [] App) -> CxSettings {
   return st;
 }
 
-// Starts the server on the first message; later messages are turns on the same thread.
+// Opening the Codex tab resolves its configuration and catalog without
+// sending a prompt. All later messages remain turns on that same thread.
+cd_codex_open :: (a: [] App) {
+  if a[0].cx_live { return; }
+  a[0].cx_options[0].failed = false;
+  a[0].cx_options[0].resolved = false;
+  ok := ccx_keep(a[0].cx_options[0].actual_model[..], "");
+  ok = ccx_keep(a[0].cx_options[0].actual_effort[..], "");
+  fresh: CxClient; a[0].cx[0] = fresh;
+  cx_init(a[0].cx, a[0].cx_line, a[0].cx_arena, a[0].cx_outb);
+  l: [1] CxLaunch; l[0].cwd = a[0].cwd;
+  why := cx_start(a[0].cx, a[0].cxp, l[0]);
+  if why.count > 0 {
+    a[0].cx_options[0].failed = true;
+    if a[0].running { cd_finish(a, END_FAILED, why); }
+    else { cd_commit_prefixed(a, TUI_RED, "  Codex: ", "  ", why); }
+    return;
+  }
+  a[0].cx_live = true; a[0].cx_ready = false;
+  r := cx_initialize(a[0].cx, "openagents-coder", "Coder", CODER_VERSION);
+}
+
 cd_codex_send :: (a: [] App, msg: string) {
   none: [1] string;
   if a[0].cx_live && a[0].cx_ready {
@@ -30,21 +58,88 @@ cd_codex_send :: (a: [] App, msg: string) {
     return;
   }
   a[0].npending = cd_cat(a[0].pending[..], 0, msg);
-  if a[0].cx_live { return; }      // the thread is starting; the message goes once it is there
-  fresh: CxClient; a[0].cx[0] = fresh;
-  cx_init(a[0].cx, a[0].cx_line, a[0].cx_arena, a[0].cx_outb);
-  l: [1] CxLaunch; l[0].cwd = a[0].cwd;
-  why := cx_start(a[0].cx, a[0].cxp, l[0]);
-  if why.count > 0 { cd_finish(a, END_FAILED, why); return; }
-  a[0].cx_live = true; a[0].cx_ready = false;
-  r := cx_initialize(a[0].cx, "openagents-coder", "Coder", CODER_VERSION);
-  r = cx_thread_start(a[0].cx, cd_codex_settings(a));
+  cd_codex_open(a);
 }
 
 cd_codex_close :: (a: [] App) {
   if !a[0].cx_live { return; }
   cx_close_process(a[0].cxp);
   a[0].cx_live = false; a[0].cx_ready = false;
+}
+
+cd_codex_row :: (a: [] App, out: [] u8) -> string {
+  st := cd_codex_settings(a);
+  return ccx_row(a[0].cx_options[..], st.model, st.effort, out);
+}
+
+cd_codex_options_show :: (a: [] App, models: bool) {
+  o := a[0].cx_options[..]; b: [512] u8;
+  cd_commit_prefixed(a, TUI_DIM, "  ", "  ", cd_codex_row(a, b[..]));
+  st := cd_codex_settings(a);
+  model := st.model;
+  if model.count == 0 { model = ccx_text(o[0].actual_model[..]); }
+  for k: 0..<o[0].n {
+    if !models && ccx_id(o, k) != model { continue; }
+    n := cd_cat(b[..], 0, ccx_id(o, k));
+    n = cd_cat(b[..], n, " · reasoning: ");
+    if o[0].nlevels[k] == 0 { n = cd_cat(b[..], n, "default"); }
+    for j: 0..<o[0].nlevels[k] {
+      if j > 0 { n = cd_cat(b[..], n, ", "); }
+      n = cd_cat(b[..], n, ccx_text(o[0].levels[k][j][..]));
+    }
+    def := ccx_text(o[0].defaults[k][..]);
+    if def.count > 0 { n = cd_cat(b[..], n, " (default "); n = cd_cat(b[..], n, def); n = cd_cat(b[..], n, ")"); }
+    cd_commit_prefixed(a, TUI_DIM, "  ", "    ", cast(string) b[0..<n]);
+  }
+  cd_commit_prefixed(a, TUI_FAINT, "  ", "  ", "Change with /model MODEL [EFFORT] or /effort LEVEL. Applies to the next Codex message in this Coder session; switching agents keeps the selection.");
+  if o[0].catalog_failed { cd_commit(a, TUI_FAINT, "  Codex's model catalog is unavailable. /model retries it."); }
+  else if !o[0].listed { cd_commit(a, TUI_FAINT, "  Codex's model catalog is loading. /model shows it when ready."); }
+  else if ccx_find(o, model) < 0 && !models { cd_commit(a, TUI_FAINT, "  This model has no catalog entry; /model lists the available models and levels."); }
+  if o[0].n == CCX_MODELS { cd_commit(a, TUI_FAINT, "  Showing the first 64 models."); }
+}
+
+// These commands are handled here, never sent as prompts to an engine.
+cd_codex_options_cmd :: (a: [] App, msg: string) -> bool {
+  models := msg == "/model" || rt_has_prefix(msg, "/model ");
+  effort := msg == "/effort" || rt_has_prefix(msg, "/effort ");
+  if !models && !effort { return false; }
+  if a[0].engine != ENGINE_CODEX { cd_commit(a, TUI_DIM, "  /model and /effort configure Codex. Switch with /engine codex or Shift-Tab."); return true; }
+  cd_codex_open(a);
+  if models && a[0].cx_live && a[0].cx_options[0].catalog_failed {
+    cd_codex_catalog_start(a);
+  }
+  start := ifx models then 6 else 7;
+  s := start; while s < msg.count && msg[s] == ' ' { s += 1; }
+  e := s; while e < msg.count && msg[e] != ' ' { e += 1; }
+  if s == msg.count {
+    cd_codex_options_show(a, models);
+    a[0].cx_options[0].show_list = models && !a[0].cx_options[0].listed && a[0].cx_live;
+    return true;
+  }
+  if !a[0].cx_ready || !a[0].cx_options[0].listed { cd_commit(a, TUI_DIM, "  Wait for Codex's configuration and model catalog, then try again."); return true; }
+  if a[0].running { cd_commit(a, TUI_DIM, "  Stop the current turn before changing Codex's model or reasoning."); return true; }
+  value := cast(string) msg[s..<e];
+  while e < msg.count && msg[e] == ' ' { e += 1; }
+  model := value; level := cast(string) msg[e..<msg.count];
+  if effort {
+    if level.count > 0 { cd_commit(a, TUI_RED, "  Usage: /effort LEVEL"); return true; }
+    level = value;
+    st := cd_codex_settings(a); model = st.model;
+    if model.count == 0 { model = ccx_text(a[0].cx_options[0].actual_model[..]); }
+  }
+  why := ccx_choose(a[0].cx_options[..], model, level);
+  if why.count > 0 { cd_commit_prefixed(a, TUI_RED, "  ", "  ", why); return true; }
+  cd_codex_options_show(a, false);
+  return true;
+}
+
+CODEX_HELP :: "/model [MODEL [EFFORT]]  Codex's current settings and available models; select a model and optional reasoning level\n/effort [LEVEL]          Codex's supported reasoning levels; change the level for the next message\n                        Selections last for this Coder session and survive switching agents. Codex's --effort also accepts xhigh, max and ultra when supported.";
+
+cd_codex_catalog_start :: (a: [] App) {
+  o := a[0].cx_options[..]; o[0].n = 0; o[0].pages = 0;
+  o[0].listed = false; o[0].catalog_failed = false;
+  for k: 0..<CCX_MODELS { o[0].nlevels[k] = 0; o[0].defaults[k][0] = 0; }
+  r := cx_model_list(a[0].cx, "");
 }
 
 cd_cx_str :: (a: [] App, json: string, path: string) -> string { return cl_str(a[0].cx[0].ar[..], json, path); }
@@ -154,10 +249,30 @@ cd_codex_poll :: (a: [] App) -> bool {
       if why.count == 0 { why = "Codex exited."; }
       wb: [2600] u8; wn := cd_cat(wb[..], 0, why);
       cd_codex_close(a);
+      a[0].cx_options[0].failed = true;
       if a[0].running && a[0].engine == ENGINE_CODEX { cd_finish(a, END_FAILED, cast(string) wb[0..<wn]); }
+      else if a[0].engine == ENGINE_CODEX { cd_commit_prefixed(a, TUI_RED, "  Codex: ", "  ", cast(string) wb[0..<wn]); }
       return true;
     }
+    if ev.kind == CxEventKind.initialized {
+      // A restarted server may expose a different catalog.
+      cd_codex_catalog_start(a);
+      r := cx_thread_start(c, cd_codex_settings(a));
+      continue;
+    }
+    if ev.kind == CxEventKind.answered && ev.of == CX_MODEL_LIST {
+      ccx_page(a[0].cx_options[..], c[0].ar[..], ev.result);
+      cursor := cd_cx_str(a, ev.result, "nextCursor");
+      if cursor.count > 0 && a[0].cx_options[0].n < CCX_MODELS && a[0].cx_options[0].pages < CCX_MODELS { r := cx_model_list(c, cursor); }
+      else {
+        a[0].cx_options[0].listed = true;
+        if a[0].cx_options[0].show_list && a[0].engine == ENGINE_CODEX { cd_codex_options_show(a, true); }
+        a[0].cx_options[0].show_list = false;
+      }
+      continue;
+    }
     if ev.kind == CxEventKind.answered && ev.of == CX_THREAD_START {
+      ccx_resolved(a[0].cx_options[..], c[0].ar[..], ev.result);
       a[0].cx_ready = true;
       if a[0].npending > 0 && a[0].running {
         r := cx_turn_start(c, cast(string) a[0].pending[0..<a[0].npending], none[0..<0], cd_codex_settings(a));
@@ -167,8 +282,16 @@ cd_codex_poll :: (a: [] App) -> bool {
     }
     if ev.kind == CxEventKind.refused {
       mb: [1024] u8; mn := cd_cat(mb[..], 0, ev.message);
+      if ev.of == CX_MODEL_LIST {
+        a[0].cx_options[0].catalog_failed = true;
+        a[0].cx_options[0].show_list = false;
+        cd_commit_prefixed(a, TUI_RED, "  Codex model catalog: ", "  ", cast(string) mb[0..<mn]);
+        continue;
+      }
       if ev.of == CX_THREAD_START { cd_codex_close(a); }
+      if ev.of == CX_THREAD_START { a[0].cx_options[0].failed = true; }
       if a[0].running && ev.of != CX_TURN_INTERRUPT { cd_finish(a, END_FAILED, cast(string) mb[0..<mn]); a[0].stopping = false; }
+      else if ev.of == CX_THREAD_START { cd_commit_prefixed(a, TUI_RED, "  Codex: ", "  ", cast(string) mb[0..<mn]); }
       if !a[0].cx_live { return true; }
       continue;
     }

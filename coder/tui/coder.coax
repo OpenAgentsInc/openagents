@@ -154,6 +154,7 @@ App :: struct {
   cx: [] CxClient; cxp: [] ClProcess; cx_line: [] u8; cx_arena: [] u8; cx_outb: [] u8;
   cx_live: bool;                  // the server is running
   cx_ready: bool;                 // its thread is started
+  cx_options: [1] CdCxOptions;     // Codex's own catalog, resolved config and session selection
   err: [1024] u8; nerr: int;      // an error notification, for a failed turn
   // microcoder engine: its worker process (mcworker.coax), a run per message
   mc_h: int = -1;
@@ -305,6 +306,9 @@ cd_draw :: (a: [] App) {
   }
   db: [400] u8; drow := cd_dct_row(a, db[..]);
   if drow.count > 0 { dk := tui_rows_add(r, ifx a[0].dct_phase == CDD_LISTENING then TUI_BRIGHT else TUI_DIM, cast(string) drow[0..<tui_fit(drow, cols)]); }
+  if a[0].engine == ENGINE_CODEX {
+    cb: [512] u8; w := tui_rows_wrap(r, TUI_DIM, "", "", cd_codex_row(a, cb[..]), cols);
+  }
   rule: [4096] u8; nr := 0;
   for i: 0..<cols { nr = cd_cat(rule[..], nr, "─"); }
   k := tui_rows_add(r, TUI_FAINT, cast(string) rule[0..<nr]);
@@ -1112,7 +1116,8 @@ cd_submit :: (a: [] App) {
   if msg[0] == '/' {
     cd_commit_prefixed(a, TUI_DIM, "› ", "  ", msg);
     if msg == "/quit" || msg == "/exit" { a[0].quit = true; return; }
-    if msg == "/help" { cd_commit_prefixed(a, TUI_DIM, "  ", "  ", HELP); return; }
+    if msg == "/help" { cd_commit_prefixed(a, TUI_DIM, "  ", "  ", HELP); cd_commit_prefixed(a, TUI_DIM, "  ", "  ", CODEX_HELP); return; }
+    if cd_codex_options_cmd(a, msg) { return; }
     if msg == "/clear" {
       cd_claude_close(a); cd_codex_close(a); cd_micro_close(a); a[0].nav += 1;
       if !a[0].plain { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); tui_live_cleared(a[0].lv[..]); }
@@ -1445,6 +1450,7 @@ cd_switch :: (a: [] App, e: int) {
   ua := cd_usage_of(a, e); if ua >= 0 && !a[0].plain { us_force(a[0].use[ua..<ua + 1]); }
   if a[0].log[0].nid > 0 { cs_agent(a, e); }
   cd_commit(a, TUI_DIM, ifx e == ENGINE_CODEX then "  Agent: Codex" else ifx e == ENGINE_MICRO then "  Agent: Microcoder" else ifx e == ENGINE_PSIONIC then "  Agent: Microcoder on Psionic (this machine)" else "  Agent: Claude Code");
+  if e == ENGINE_CODEX { cd_codex_open(a); }
 }
 
 cd_key :: (a: [] App, k: TuiKey) {
@@ -2306,7 +2312,7 @@ tool_main :: () -> int #export_c {
   args_b: [1] Args; args := args_b[..];
   if !args_load(args) { tool_errln("coder: bad arguments"); return 2; }
   verb := cd_positional(args, 0);
-  if args_has(args, "--help") || args_has(args, "-h") || verb == "help" { tool_errln(USAGE); return 0; }
+  if args_has(args, "--help") || args_has(args, "-h") || verb == "help" { tool_errln(USAGE); tool_errln(CODEX_HELP); return 0; }
   if args_has(args, "--version") || verb == "version" { tool_errln(CODER_VERSION); return 0; }
   json := args_has(args, "--json");
   // another machine: --on ssh:DEST or cloud runs the verb there; a session started that way is followed there
@@ -2433,8 +2439,11 @@ tool_main :: () -> int #export_c {
   cd_policy_resolve(a[0].pol[..], a[0].cwd);
   ef := args_value(args, "--effort", "");
   if ef.count > 0 {
-    if ef != "low" && ef != "medium" && ef != "high" { tool_errln("coder: --effort is low, medium or high"); return 2; }
-    a[0].neffort = cd_cat(a[0].effort_b[..], 0, ef);
+    valid := ef == "low" || ef == "medium" || ef == "high";
+    if a[0].engine == ENGINE_CODEX { valid = valid || ef == "none" || ef == "minimal" || ef == "xhigh" || ef == "max" || ef == "ultra"; }
+    if !valid { tool_errln("coder: --effort is low, medium or high; Codex also accepts none, minimal, xhigh, max and ultra (model-dependent)"); return 2; }
+    if a[0].engine == ENGINE_CODEX { kept := ccx_keep(a[0].cx_options[0].launch_effort[..], ef); }
+    else { a[0].neffort = cd_cat(a[0].effort_b[..], 0, ef); }
   }
   a[0].model_engine = a[0].engine;
 
@@ -2579,6 +2588,7 @@ tool_main :: () -> int #export_c {
   if past.count > 0 { cd_show_past(a, past); cd_resumed_note(a, past_turns); }
   cd_recap_open(a);
   cd_usage_open(a);
+  if a[0].engine == ENGINE_CODEX { cd_codex_open(a); }
   cd_draw(a);
   last_draw := 0;
   while !a[0].quit {

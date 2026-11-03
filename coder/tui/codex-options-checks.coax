@@ -1,0 +1,61 @@
+#load "coder.coax";
+main :: () {}
+
+#test "Codex terminal: slash commands change the next wire request and preserve each engine's model" {
+  a: [1] App; logs: [1] CsLog; pl: [1] PlRegistry;
+  a[0].log = logs[..]; a[0].pl = pl[..]; logs[0].json = true;
+  a[0].plain = true; a[0].cols = 80; a[0].engine = ENGINE_CODEX;
+  a[0].cx_live = true; a[0].cx_ready = true;
+  a[0].model_engine = ENGINE_CLAUDE; a[0].model = "claude-model";
+  kept := ccx_keep(a[0].cx_options[0].launch_effort[..], "max");
+  #assert cd_codex_settings(a[..]).effort == "max";
+  #assert cd_effort(a[..]) == "";
+  ar: [1] ClArena; arb: [4096] u8; ar[0].buf = arb[..];
+  ccx_page(a[0].cx_options[..], ar[..], "{\"data\":[{\"model\":\"small\",\"defaultReasoningEffort\":\"low\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"low\"}]},{\"model\":\"deep\",\"defaultReasoningEffort\":\"high\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"high\"},{\"reasoningEffort\":\"ultra\"}]}]}");
+  ccx_resolved(a[0].cx_options[..], ar[..], "{\"model\":\"small\",\"reasoningEffort\":\"low\"}");
+  a[0].cx_options[0].listed = true;
+  tui_ed_set(a[0].ed[..], "/model deep ultra"); cd_submit(a[..]);
+  st := cd_codex_settings(a[..]);
+  #assert st.model == "deep" && st.effort == "ultra";
+  #assert a[0].starts == 0 && !a[0].running;
+  #assert cd_holds(cast(string) a[0].hist[0..<a[0].nhist], "reasoning ultra");
+  c: [1] CxClient; line: [4096] u8; arena: [4096] u8; out: [8192] u8;
+  cx_init(c[..], line[..], arena[..], out[..]);
+  r := cx_thread_start(c[..], st);
+  ev := cx_feed(c[..], "{\"id\":1,\"result\":{\"thread\":{\"id\":\"same-thread\"}}}");
+  cx_outbox_clear(c[..]); none: [1] string;
+  r = cx_turn_start(c[..], "next message", none[0..<0], st);
+  #assert cd_holds(cx_outbox(c[..]), "\"model\":\"deep\"");
+  #assert cd_holds(cx_outbox(c[..]), "\"effort\":\"ultra\"");
+  #assert cd_holds(cx_outbox(c[..]), "\"threadId\":\"same-thread\"");
+  tui_ed_set(a[0].ed[..], "/effort low"); cd_submit(a[..]);
+  #assert cd_codex_settings(a[..]).effort == "ultra"; // unsupported on deep
+  tui_ed_set(a[0].ed[..], "/effort high"); cd_submit(a[..]);
+  #assert cd_codex_settings(a[..]).effort == "high";
+  cd_key(a[..], TuiKey.{kind = TUI_K_BACKTAB}); // Codex -> Microcoder
+  cd_key(a[..], TuiKey.{kind = TUI_K_BACKTAB}); // -> Claude
+  #assert a[0].engine == ENGINE_CLAUDE && a[0].model == "claude-model";
+  tui_ed_set(a[0].ed[..], "/model small"); cd_submit(a[..]);
+  #assert ccx_model(a[0].cx_options[..]) == "deep";
+  cd_key(a[..], TuiKey.{kind = TUI_K_BACKTAB}); // -> Codex, same selection
+  #assert cd_codex_settings(a[..]).model == "deep";
+  #assert cd_codex_settings(a[..]).effort == "high";
+  a[0].running = true;
+  tui_ed_set(a[0].ed[..], "/model small"); cd_submit(a[..]);
+  #assert cd_codex_settings(a[..]).model == "deep";
+  a[0].running = false;
+  tui_ed_set(a[0].ed[..], "/model small"); cd_submit(a[..]);
+  #assert cd_codex_settings(a[..]).model == "small";
+  #assert cd_codex_settings(a[..]).effort == "low";
+  a[0].cx_ready = false;
+  tui_ed_set(a[0].ed[..], "/model deep ultra"); cd_submit(a[..]);
+  #assert cd_codex_settings(a[..]).model == "small";
+  #assert cd_holds(cast(string) a[0].hist[0..<a[0].nhist], "Wait for Codex");
+  a[0].cx = c[..]; a[0].cx_options[0].catalog_failed = true;
+  cx_outbox_clear(c[..]);
+  tui_ed_set(a[0].ed[..], "/model"); cd_submit(a[..]);
+  #assert cd_holds(cx_outbox(c[..]), "\"method\":\"model/list\"");
+  #assert !a[0].cx_options[0].catalog_failed && a[0].cx_options[0].show_list;
+  #assert cd_codex_settings(a[..]).model == "small";
+  #assert a[0].starts == 0;
+}

@@ -1022,3 +1022,12 @@ The Mac was not available to the agent:
       [the record](docs/verification/verse-parakeet-2026-11-02/README.md).
 - [ ] Hold to talk with the real microphone in Aethyrforge once its forge bar
       uses the local host; the checks use recorded fixtures only.
+
+### Coder terminal: model and reasoning controls
+
+- [ ] After updating the checkout, restart `openagents coder` or
+      `coder/tui/coder.sh`. Shift-Tab to Codex now shows the model and reasoning
+      level above the composer. `/model` lists models; `/model ID [LEVEL]`
+      and `/effort LEVEL` change the next Codex message and keep its conversation.
+      Selections last for this Coder session. The separately installed legacy
+      `~/.openagents/bin/coder` (1.0.0 at verification) is a different executable.

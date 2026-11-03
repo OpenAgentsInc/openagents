@@ -25,6 +25,19 @@ coder/tui/coder.sh resume                # this folder's newest session, to cont
 python3 coder/tui/smoke.py               # the offline smoke, in a pseudo-terminal and then without one
 ```
 
+When Shift-Tab selects Codex, a row above the composer shows its model and
+reasoning level, resolved from the installed Codex's configuration before
+the first message. `/model` lists Codex's own available model IDs, reasoning
+levels and defaults; `/model ID [LEVEL]` selects one. `/effort` shows the
+current model's levels, and `/effort LEVEL` changes the next message's
+reasoning. Selecting a model without a level uses that model's default.
+Selections keep the conversation and last for this Coder session, including
+across agent switches. Launch flags work too:
+`coder/tui/coder.sh --engine codex --model ID --effort xhigh` (levels are
+model-dependent). The catalog comes from Codex's
+[`model/list`](https://learn.chatgpt.com/docs/app-server#list-models-modellist),
+so Coder does not maintain a separate list of models.
+
 ### The pieces
 
 Each piece is a few functions in

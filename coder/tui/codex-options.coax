@@ -1,0 +1,162 @@
+// Codex's model catalog and the session's selections. All strings are owned:
+// app-server reuses its input line and JSON arena on every notification.
+#load "../../coax/lib/agent/claude/transport.coax";
+
+CCX_MODELS :: 64;
+CdCxOptions :: struct {
+  id: [CCX_MODELS] [128] u8;
+  defaults: [CCX_MODELS] [16] u8;
+  levels: [CCX_MODELS] [8] [16] u8;
+  nlevels: [CCX_MODELS] int;
+  n: int;
+  model: [128] u8; effort: [16] u8; selected: bool;
+  launch_effort: [16] u8;          // --engine codex --effort never leaks into another engine
+  actual_model: [128] u8; actual_effort: [16] u8; resolved: bool;
+  listed: bool; show_list: bool; failed: bool; catalog_failed: bool;
+  pages: int;
+}
+
+ccx_text :: (b: [] u8) -> string {
+  n := 0; while n < b.count && b[n] != 0 { n += 1; }
+  return cast(string) b[0..<n];
+}
+ccx_keep :: (b: [] u8, s: string) -> bool {
+  if s.count >= b.count { return false; }
+  for i: 0..<s.count { b[i] = s[i]; }
+  b[s.count] = 0; return true;
+}
+ccx_id :: (o: [] CdCxOptions, k: int) -> string { return ccx_text(o[0].id[k][..]); }
+ccx_model :: (o: [] CdCxOptions) -> string { return ccx_text(o[0].model[..]); }
+ccx_effort :: (o: [] CdCxOptions) -> string { return ccx_text(o[0].effort[..]); }
+ccx_find :: (o: [] CdCxOptions, id: string) -> int {
+  for k: 0..<o[0].n { if ccx_id(o, k) == id { return k; } }
+  return -1;
+}
+ccx_supports :: (o: [] CdCxOptions, k: int, effort: string) -> bool {
+  for j: 0..<o[0].nlevels[k] { if ccx_text(o[0].levels[k][j][..]) == effort { return true; } }
+  return false;
+}
+
+// Append one model/list page. A full catalog remains usable; never select
+// an ID or effort whose bytes did not fit. Hidden models stay out of /model.
+ccx_page :: (o: [] CdCxOptions, ar: [] ClArena, result: string) {
+  o[0].pages += 1;
+  data := cl_raw(result, "data");
+  for i: 0..<cl_count(data) {
+    if o[0].n >= CCX_MODELS { break; }
+    item := cl_json(data, cl_item(data, i));
+    if cl_bool(item, "hidden").value { continue; }
+    id := cl_str(ar, item, "model");
+    if id.count == 0 { id = cl_str(ar, item, "id"); }
+    if id.count == 0 || ccx_find(o, id) >= 0 { continue; }
+    k := o[0].n;
+    if !ccx_keep(o[0].id[k][..], id) { continue; }
+    ok := ccx_keep(o[0].defaults[k][..], cl_str(ar, item, "defaultReasoningEffort"));
+    efforts := cl_raw(item, "supportedReasoningEfforts");
+    for j: 0..<cl_count(efforts) {
+      if o[0].nlevels[k] >= 8 { break; }
+      v := cl_item(efforts, j);
+      name := cl_str(ar, cl_json(efforts, v), "reasoningEffort");
+      if name.count == 0 { name = cl_text(ar, efforts, v); }
+      if name.count == 0 { continue; }
+      l := o[0].nlevels[k];
+      if ccx_keep(o[0].levels[k][l][..], name) { o[0].nlevels[k] += 1; }
+    }
+    o[0].n += 1;
+  }
+}
+
+// No mutation on a refused selection. Choosing a model alone uses that
+// model's own default, rather than carrying another model's effort into it.
+ccx_choose :: (o: [] CdCxOptions, model: string, effort: string) -> string {
+  k := ccx_find(o, model);
+  if k < 0 { return "Unknown Codex model. /model lists the available IDs."; }
+  ef := effort;
+  if ef.count == 0 {
+    ef = ccx_text(o[0].defaults[k][..]);
+    if o[0].nlevels[k] > 0 && !ccx_supports(o, k, ef) { return "This model did not report a supported default. Use /model MODEL EFFORT; /model lists its levels."; }
+    if o[0].nlevels[k] == 0 { ef = ""; }
+  } else if !ccx_supports(o, k, ef) { return "Unsupported reasoning level for this model. /effort lists its levels."; }
+  ok := ccx_keep(o[0].model[..], model);
+  ok = ccx_keep(o[0].effort[..], ef);
+  o[0].selected = true;
+  return "";
+}
+
+// thread/start returns the configuration Codex actually resolved, including
+// config.toml and its provider defaults. Older servers put it in thread.
+ccx_resolved :: (o: [] CdCxOptions, ar: [] ClArena, result: string) {
+  model := cl_str(ar, result, "model");
+  if model.count == 0 { model = cl_str(ar, result, "thread.model"); }
+  ok := ccx_keep(o[0].actual_model[..], model);
+  effort := cl_str(ar, result, "reasoningEffort");
+  if effort.count == 0 { effort = cl_str(ar, result, "thread.reasoningEffort"); }
+  ok = ccx_keep(o[0].actual_effort[..], effort);
+  o[0].resolved = true; o[0].failed = false;
+}
+
+ccx_append :: (b: [] u8, at: int, s: string) -> int {
+  n := at; for c: s { if n < b.count { b[n] = c; n += 1; } } return n;
+}
+ccx_row :: (o: [] CdCxOptions, model: string, effort: string, b: [] u8) -> string {
+  m := model; ef := effort;
+  if m.count == 0 { m = ccx_text(o[0].actual_model[..]); }
+  if ef.count == 0 && !o[0].selected { ef = ccx_text(o[0].actual_effort[..]); }
+  if m.count == 0 { m = ifx o[0].failed then "model unavailable" else "model loading"; }
+  if ef.count == 0 { ef = ifx o[0].resolved then "default" else ifx o[0].failed then "unavailable" else "loading"; }
+  n := ccx_append(b, 0, "codex · "); n = ccx_append(b, n, m);
+  n = ccx_append(b, n, " · reasoning "); n = ccx_append(b, n, ef);
+  n = ccx_append(b, n, " · /model · /effort");
+  return cast(string) b[0..<n];
+}
+
+#test "Codex options: catalog pages own their strings, skip hidden models and keep each effort ladder" {
+  o: [1] CdCxOptions; ar: [1] ClArena; buf: [8192] u8; ar[0].buf = buf[..];
+  ccx_page(o[..], ar[..], "{\"data\":[{\"model\":\"first\",\"defaultReasoningEffort\":\"medium\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"low\"},{\"reasoningEffort\":\"medium\"}]},{\"id\":\"hidden\",\"hidden\":true}]}");
+  ccx_page(o[..], ar[..], "{\"data\":[{\"id\":\"second\",\"defaultReasoningEffort\":\"high\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"high\"},{\"reasoningEffort\":\"ultra\"}]}]}");
+  for i: 0..<buf.count { buf[i] = 0; }
+  #assert o[0].n == 2;
+  #assert ccx_id(o[..], 0) == "first";
+  #assert ccx_id(o[..], 1) == "second";
+  #assert ccx_find(o[..], "hidden") == -1;
+  #assert ccx_supports(o[..], 0, "medium");
+  #assert !ccx_supports(o[..], 0, "ultra");
+  #assert ccx_supports(o[..], 1, "ultra");
+  #assert ccx_choose(o[..], "second", "") == "";
+  #assert ccx_model(o[..]) == "second";
+  #assert ccx_effort(o[..]) == "high";
+  #assert ccx_choose(o[..], "second", "ultra") == "";
+  #assert ccx_effort(o[..]) == "ultra";
+  #assert ccx_choose(o[..], "first", "ultra").count > 0;
+  #assert ccx_model(o[..]) == "second";
+  #assert ccx_effort(o[..]) == "ultra";
+  #assert ccx_choose(o[..], "missing", "high").count > 0;
+  #assert ccx_choose(o[..], "first", "") == "";
+  #assert ccx_effort(o[..]) == "medium";
+}
+
+#test "Codex options: status reports resolved config and pending overrides with discoverable commands" {
+  o: [1] CdCxOptions; ar: [1] ClArena; arena: [4096] u8; ar[0].buf = arena[..]; b: [512] u8;
+  #assert ccx_row(o[..], "", "", b[..]) == "codex · model loading · reasoning loading · /model · /effort";
+  ccx_resolved(o[..], ar[..], "{\"model\":\"configured\",\"reasoningEffort\":\"xhigh\"}");
+  for i: 0..<arena.count { arena[i] = 0; }
+  #assert ccx_row(o[..], "", "", b[..]) == "codex · configured · reasoning xhigh · /model · /effort";
+  #assert ccx_row(o[..], "chosen", "ultra", b[..]) == "codex · chosen · reasoning ultra · /model · /effort";
+  ccx_resolved(o[..], ar[..], "{\"thread\":{\"model\":\"nested\",\"reasoningEffort\":\"low\"}}");
+  #assert ccx_row(o[..], "", "", b[..]) == "codex · nested · reasoning low · /model · /effort";
+}
+
+#test "Codex options: unsupported or oversized entries cannot become a truncated selection" {
+  o: [1] CdCxOptions; ar: [1] ClArena; arena: [4096] u8; ar[0].buf = arena[..];
+  ccx_page(o[..], ar[..], "{\"data\":[{\"model\":\"no-reasoning\"},{\"model\":\"bad-default\",\"defaultReasoningEffort\":\"made-up\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"high\"}]}]}");
+  #assert ccx_choose(o[..], "no-reasoning", "high").count > 0;
+  #assert ccx_choose(o[..], "no-reasoning", "") == "";
+  #assert ccx_effort(o[..]) == "";
+  #assert ccx_choose(o[..], "bad-default", "").count > 0;
+  #assert ccx_model(o[..]) == "no-reasoning";
+  #assert ccx_choose(o[..], "bad-default", "high") == "";
+  #assert ccx_effort(o[..]) == "high";
+  huge: [200] u8; for i: 0..<huge.count { huge[i] = 'a'; }
+  #assert !ccx_keep(o[0].model[..], cast(string) huge[..]);
+  #assert ccx_model(o[..]) == "bad-default";
+}
