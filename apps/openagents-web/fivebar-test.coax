@@ -9,6 +9,8 @@
 
 #load "../../aethyr/rules/srd/battle.coax";
 #load "fivebar.coax";
+#load "fivemmo-hotbar.coax";   // 5E MMO's hotbar pictures, by name
+#load "everglade-hotbar.coax";  // Everglade's
 
 FT_HERO :: 0; FT_FOE :: 1; FT_NEXT :: 2; FT_ALLY :: 3;
 // A small field: you at (10, 10), a foe two squares east and another beside it, a hurt friend
@@ -194,4 +196,20 @@ ft_slots :: (from: int, to: int) -> int {
   total := 0;
   for kl: 0..<RS_CLASSES { if kl != RS_MONSTER { total += fb_class_bar(kl, out[..]); } }
   #assert total == 70;
+}
+
+#test "every slot has its picture: 5E MMO's class bars and Everglade's bar" {
+  out: [FB_CLASS_SLOTS] FbAb;
+  for kl: 0..<RS_CLASSES {
+    if kl == RS_MONSTER { continue; }
+    n := fb_class_bar(kl, out[..]);
+    for k: 0..<n {
+      found := false;
+      for q: 0..<MH_ABILITIES { if MH_NAME[q] == out[k].art { found = true; } }
+      #assert found;
+    }
+  }
+  bar: [FB_EG_SLOTS] FbAb; n := fb_everglade(bar[..]);
+  #assert n == HB_SLOTS;
+  for k: 0..<n { #assert HB_NAME[k] == bar[k].art; }
 }

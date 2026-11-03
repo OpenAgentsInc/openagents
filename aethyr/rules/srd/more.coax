@@ -168,7 +168,7 @@ rs_more_spell :: (i: int) -> RsSpell {
   mb := rs_spell(SP_MOONBEAM); #assert mb.level == 2 && mb.concentration && mb.steps[0].a == RS_CON && mb.steps[1].b == 10 && mb.steps[1].d == 1;
   is := rs_spell(SP_ICE_STORM); #assert is.level == 4 && is.steps[1].c == RS_BLUDGEONING && is.steps[2].c == RS_COLD && is.area_ft == 20;
   cc := rs_spell(SP_CONE_OF_COLD); #assert cc.level == 5 && cc.steps[1].a == 8 && cc.steps[1].b == 8 && cc.steps[1].c == RS_COLD;
-  bt := rs_spell(SP_BLACK_TENTACLES); #assert bt.concentration && bt.steps[2].a == RS_RESTRAINED && bt.area_ft == 20;
+  tent := rs_spell(SP_BLACK_TENTACLES); #assert tent.concentration && tent.steps[2].a == RS_RESTRAINED && tent.area_ft == 20;
   sb := rs_spell(SP_SUNBURST); #assert sb.level == 8 && sb.steps[1].a == 12 && sb.steps[2].a == RS_BLINDED && sb.steps[2].c == RS_CON;
   #assert rs_spell(SP_FEATHER_FALL).cast_time == RS_T_REACTION && rs_spell(SP_ICE_KNIFE_BURST).part_of == SP_ICE_KNIFE;
   #assert rs_spell(SP_THUNDERWAVE).srd && rs_spell(SP_THUNDERWAVE).id == "thunderwave";

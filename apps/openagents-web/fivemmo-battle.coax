@@ -13,6 +13,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 #load "../../aethyr/rules/srd/battle.coax";
+#load "fivebar.coax";   // the hotbar on the engine, shared with Everglade 5E
 
 COLS :: 12; ROWS :: 12;
 LEVEL :: 6;
@@ -723,89 +724,19 @@ druid_turn :: (s: [] Mb, i: int) {
   }
 }
 
-// ---- the hotbar: each class's own abilities, a slot each
-SLOTS :: 9;
-AB_ATTACK :: 0; AB_DASH :: 1; AB_SPELL :: 2; AB_RECKLESS :: 3; AB_RAGE :: 4; AB_FLURRY :: 5; AB_PATIENT :: 6;
-AB_WIND :: 7; AB_WHOLE :: 8; AB_SECOND :: 9; AB_SURGE :: 10; AB_LAY :: 11; AB_SACRED :: 12; AB_CDASH :: 13;
-AB_AIM :: 14; AB_INNATE :: 15; AB_INSPIRE :: 16; AB_TURN :: 17; AB_PRESERVE :: 18; AB_LANDS :: 19;
-TG_FOE :: 0; TG_POINT :: 1; TG_SELF :: 2; TG_ALLY :: 3;   // a spell's aim: your target, the ground under it, you, the friend most hurt
-Ab :: struct { kind: int; sp: int; lvl: int; tg: int; name: string; }
-mk_ab :: (kind: int, name: string) -> Ab { return Ab.{kind = kind, sp = -1, name = name}; }
-spell_ab :: (sp: int, lvl: int, tg: int) -> Ab { return Ab.{kind = AB_SPELL, sp = sp, lvl = lvl, tg = tg, name = rs_spell(sp).name}; }
-// The abilities a class's hotbar holds, in slot order (the ones its rules in the engine support).
-abilities :: (kl: int, out: [] Ab) -> int {
-  n := 0;
-  if kl == RS_DRUID {
-    out[0] = spell_ab(SP_STARRY_WISP, 0, TG_FOE); out[1] = spell_ab(SP_PRODUCE_FLAME, 0, TG_SELF); out[2] = spell_ab(SP_FLAME_HURL, 0, TG_FOE);
-    out[3] = spell_ab(SP_THUNDERWAVE, 1, TG_POINT); out[4] = spell_ab(SP_ENTANGLE, 1, TG_POINT); out[5] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY);
-    out[6] = spell_ab(SP_CALL_LIGHTNING, 3, TG_POINT); out[7] = mk_ab(AB_LANDS, "LAND'S AID"); out[8] = mk_ab(AB_DASH, "DASH"); n = 9;
-  } else if kl == RS_WIZARD {
-    out[0] = spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = spell_ab(SP_CHILL_TOUCH, 0, TG_FOE); out[2] = spell_ab(SP_RAY_OF_SICKNESS, 1, TG_FOE);
-    out[3] = spell_ab(SP_FALSE_LIFE, 1, TG_SELF); out[4] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[5] = spell_ab(SP_BLINDNESS, 2, TG_FOE);
-    out[6] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[7] = mk_ab(AB_DASH, "DASH"); n = 8;
-  } else if kl == RS_WARLOCK {
-    out[0] = spell_ab(SP_ELDRITCH_BLAST, 0, TG_FOE); out[1] = spell_ab(SP_CHILL_TOUCH, 0, TG_FOE); out[2] = spell_ab(SP_HEX, 1, TG_FOE);
-    out[3] = spell_ab(SP_HOLD_PERSON, 2, TG_FOE); out[4] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[5] = spell_ab(SP_FIREBALL, 3, TG_POINT);
-    out[6] = mk_ab(AB_DASH, "DASH"); n = 7;
-  } else if kl == RS_SORCERER {
-    out[0] = spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[2] = spell_ab(SP_FIREBALL, 3, TG_POINT);
-    out[3] = mk_ab(AB_INNATE, "INNATE SORCERY"); out[4] = mk_ab(AB_DASH, "DASH"); n = 5;
-  } else if kl == RS_BARD {
-    out[0] = spell_ab(SP_VICIOUS_MOCKERY, 0, TG_FOE); out[1] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[2] = mk_ab(AB_INSPIRE, "BARDIC INSPIRATION");
-    out[3] = spell_ab(SP_HYPNOTIC_PATTERN, 3, TG_POINT); out[4] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[5] = mk_ab(AB_DASH, "DASH"); n = 6;
-  } else if kl == RS_CLERIC {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_SACRED_FLAME, 0, TG_FOE); out[2] = spell_ab(SP_GUIDING_BOLT, 1, TG_FOE);
-    out[3] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[4] = spell_ab(SP_SPIRIT_GUARDIANS, 3, TG_SELF); out[5] = mk_ab(AB_TURN, "TURN UNDEAD");
-    out[6] = mk_ab(AB_PRESERVE, "PRESERVE LIFE"); out[7] = mk_ab(AB_DASH, "DASH"); n = 8;
-  } else if kl == RS_FIGHTER {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_SECOND, "SECOND WIND"); out[2] = mk_ab(AB_SURGE, "ACTION SURGE"); out[3] = mk_ab(AB_DASH, "DASH"); n = 4;
-  } else if kl == RS_PALADIN {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_DIVINE_SMITE, 1, TG_FOE); out[2] = mk_ab(AB_LAY, "LAY ON HANDS");
-    out[3] = mk_ab(AB_SACRED, "SACRED WEAPON"); out[4] = spell_ab(SP_SACRED_FLAME, 0, TG_FOE); out[5] = mk_ab(AB_DASH, "DASH"); n = 6;
-  } else if kl == RS_BARBARIAN {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_RECKLESS, "RECKLESS ATTACK"); out[2] = mk_ab(AB_RAGE, "RAGE"); out[3] = mk_ab(AB_DASH, "DASH"); n = 4;
-  } else if kl == RS_MONK {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_FLURRY, "FLURRY OF BLOWS"); out[2] = mk_ab(AB_PATIENT, "PATIENT DEFENSE");
-    out[3] = mk_ab(AB_WIND, "STEP OF THE WIND"); out[4] = mk_ab(AB_WHOLE, "WHOLENESS OF BODY"); out[5] = mk_ab(AB_DASH, "DASH"); n = 6;
-  } else if kl == RS_ROGUE {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_AIM, "STEADY AIM"); out[2] = mk_ab(AB_CDASH, "CUNNING DASH"); out[3] = mk_ab(AB_DASH, "DASH"); n = 4;
-  } else if kl == RS_RANGER {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_HUNTERS_MARK, 1, TG_FOE); out[2] = mk_ab(AB_DASH, "DASH"); n = 3;
-  } else { out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_DASH, "DASH"); n = 2; }
-  return n;
-}
-// Whether a slot can be used now, from the hero's slots, uses, Rages and Focus.
-ab_ready :: (s: [] Mb, i: int, a: Ab) -> bool {
-  c := s[0].battle[0].c[i];
-  if a.kind == AB_SPELL { return a.lvl == 0 || free_slot(s, i, a.lvl) > 0; }
-  if a.kind == AB_RAGE { return c.rages > 0 && !c.raging; }
-  if a.kind == AB_FLURRY || a.kind == AB_PATIENT || a.kind == AB_WIND { return c.focus > 0; }
-  if a.kind == AB_WHOLE { return c.uses[RS_USE_WHOLE] > 0; }
-  if a.kind == AB_SECOND { return c.uses[RS_USE_WIND] > 0; }
-  if a.kind == AB_SURGE { return c.uses[RS_USE_SURGE] > 0; }
-  if a.kind == AB_LAY { return c.uses[RS_USE_LAY] > 0; }
-  if a.kind == AB_INSPIRE { return c.uses[RS_USE_INSPIRE] > 0; }
-  if a.kind == AB_INNATE { return c.uses[RS_USE_INNATE] > 0; }
-  if a.kind == AB_LANDS { return c.uses[RS_USE_WILD] > 0; }
-  if a.kind == AB_TURN || a.kind == AB_PRESERVE || a.kind == AB_SACRED { return c.uses[RS_USE_CHANNEL] > 0; }
-  return true;
-}
-// What a slot has left to show in its corner: spell slots at its level, uses, Rages or Focus (-1: none).
-ab_left :: (s: [] Mb, i: int, a: Ab) -> int {
-  c := s[0].battle[0].c[i];
-  if a.kind == AB_SPELL { if a.lvl == 0 { return -1; } sl := free_slot(s, i, a.lvl); return ifx sl > 0 then c.slots[sl] else 0; }
-  if a.kind == AB_RAGE { return c.rages; }
-  if a.kind == AB_FLURRY || a.kind == AB_PATIENT || a.kind == AB_WIND { return c.focus; }
-  if a.kind == AB_WHOLE { return c.uses[RS_USE_WHOLE]; }
-  if a.kind == AB_SECOND { return c.uses[RS_USE_WIND]; }
-  if a.kind == AB_SURGE { return c.uses[RS_USE_SURGE]; }
-  if a.kind == AB_LAY { return c.uses[RS_USE_LAY]; }
-  if a.kind == AB_INSPIRE { return c.uses[RS_USE_INSPIRE]; }
-  if a.kind == AB_INNATE { return c.uses[RS_USE_INNATE]; }
-  if a.kind == AB_LANDS { return c.uses[RS_USE_WILD]; }
-  if a.kind == AB_TURN || a.kind == AB_PRESERVE || a.kind == AB_SACRED { return c.uses[RS_USE_CHANNEL]; }
-  return -1;
-}
+// ---- the hotbar: each class's own abilities, a slot each, on the shared layer (fivebar.coax:
+// the entries, their art, and what the engine does with each). This file chooses who a slot is
+// used on: your target, the foe at hand, the friend most hurt.
+SLOTS :: FB_CLASS_SLOTS;
+AB_ATTACK :: FB_ATTACK; AB_DASH :: FB_DASH; AB_SPELL :: FB_SPELL; AB_RECKLESS :: FB_RECKLESS; AB_RAGE :: FB_RAGE;
+AB_FLURRY :: FB_FLURRY; AB_PATIENT :: FB_PATIENT; AB_WIND :: FB_WIND; AB_WHOLE :: FB_WHOLE; AB_SECOND :: FB_SECOND;
+AB_SURGE :: FB_SURGE; AB_LAY :: FB_LAY; AB_SACRED :: FB_SACRED; AB_CDASH :: FB_CDASH; AB_AIM :: FB_AIM;
+AB_INNATE :: FB_INNATE; AB_INSPIRE :: FB_INSPIRE; AB_TURN :: FB_TURN; AB_PRESERVE :: FB_PRESERVE; AB_LANDS :: FB_LANDS;
+TG_FOE :: FB_FOE; TG_POINT :: FB_POINT; TG_SELF :: FB_SELF; TG_ALLY :: FB_ALLY;
+// The abilities a class's hotbar holds, in slot order.
+abilities :: (kl: int, out: [] FbAb) -> int { return fb_class_bar(kl, out); }
+ab_ready :: (s: [] Mb, i: int, a: FbAb) -> bool { return fb_ready(bt(s), i, a); }
+ab_left :: (s: [] Mb, i: int, a: FbAb) -> int { return fb_left(bt(s), i, a); }
 // The friend nearest you that isn't you, or -1.
 nearest_friend :: (s: [] Mb, i: int) -> int {
   b := bt(s);
@@ -824,44 +755,35 @@ default_attack :: (s: [] Mb, i: int, foe: int) {
   if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
   if foe < 0 { return; }
   if b[0].c[i].ranged >= 0 { ok := rs_shoot(b, i, foe); return; }
-  list: [SLOTS] Ab; n := abilities(b[0].c[i].klass, list[..]);
+  list: [SLOTS] FbAb; n := abilities(b[0].c[i].klass, list[..]);
   for k: 0..<n {
     if list[k].kind == AB_SPELL && list[k].lvl == 0 && list[k].tg == TG_FOE { ok := rs_cast(b, i, list[k].sp, 0, 0, 0, foe); return; }
   }
 }
 // A slot used on your turn; a bonus-action one leaves your action, which then attacks.
-use_ab :: (s: [] Mb, i: int, a: Ab, foe: int) {
+use_ab :: (s: [] Mb, i: int, a: FbAb, foe: int) {
   b := bt(s);
-  ok := false;
   at := ifx foe >= 0 && rs_feet_to(b, i, foe) <= 5 then foe else foe_at_hand(s, i, -1);
   if a.kind == AB_ATTACK { default_attack(s, i, foe); return; }
+  if a.kind == AB_SPELL && a.lvl > 0 && fb_free_slot(b, i, a.lvl) == 0 { default_attack(s, i, foe); return; }
+  // who it is used on, as this world chooses
+  who := foe; ally := -1; go := true;
+  tx := ifx foe >= 0 then b[0].c[foe].x else 0; ty := ifx foe >= 0 then b[0].c[foe].y else 0;
   if a.kind == AB_SPELL {
-    sl := ifx a.lvl == 0 then 0 else free_slot(s, i, a.lvl);
-    if a.lvl > 0 && sl == 0 { default_attack(s, i, foe); return; }
-    if a.tg == TG_SELF { ok = rs_cast(b, i, a.sp, sl, 0, 0, i); }
-    else if a.tg == TG_ALLY { w := most_hurt(s, i, 60, 0.99); ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx w >= 0 then w else i); }
-    else if foe >= 0 && a.tg == TG_POINT { ok = rs_cast(b, i, a.sp, sl, b[0].c[foe].x, b[0].c[foe].y, -1); }
-    else if foe >= 0 { ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx a.sp == SP_DIVINE_SMITE && at >= 0 then at else foe); }
+    if a.tg == TG_ALLY { w := most_hurt(s, i, 60, 0.99); ally = ifx w >= 0 then w else i; }
+    else if (a.tg == TG_FOE || a.tg == TG_POINT) && foe < 0 { go = false; }
+    if a.sp == SP_DIVINE_SMITE && at >= 0 { who = at; }
   }
-  else if a.kind == AB_RECKLESS { if at >= 0 { ok = rs_attack(b, i, at, true, -1); } }
-  else if a.kind == AB_RAGE { ok = rs_rage(b, i); }
-  else if a.kind == AB_FLURRY { if at >= 0 { ok = rs_attack(b, i, at, false, -1); if rs_up(b[0].c[at]) { ok = rs_flurry(b, i, at, OH_TOPPLE); } } }
-  else if a.kind == AB_PATIENT { ok = rs_patient_defense(b, i); }
-  else if a.kind == AB_WHOLE { ok = rs_wholeness(b, i); }
-  else if a.kind == AB_SECOND { ok = rs_second_wind(b, i); }
-  else if a.kind == AB_SURGE { ok = rs_action_surge(b, i); }
-  else if a.kind == AB_LAY { w := most_hurt(s, i, 5, 0.99); w = ifx w >= 0 then w else i; ok = rs_lay_on_hands(b, i, w, ifx b[0].c[w].hp == 0 then 5 else 10); }
-  else if a.kind == AB_SACRED { ok = rs_sacred_weapon(b, i); }
-  else if a.kind == AB_AIM { ok = rs_steady_aim(b, i); }
-  else if a.kind == AB_INNATE { ok = rs_innate_sorcery(b, i); }
-  else if a.kind == AB_INSPIRE { w := nearest_friend(s, i); if w >= 0 { ok = rs_inspire(b, i, w); } }
-  else if a.kind == AB_TURN { ok = rs_turn_undead(b, i); }
-  else if a.kind == AB_PRESERVE { ok = rs_preserve_life(b, i); }
-  else if a.kind == AB_LANDS { if foe >= 0 { ok = rs_lands_aid(b, i, b[0].c[foe].x, b[0].c[foe].y, most_hurt(s, i, 60, 0.7)); } }
+  else if a.kind == AB_RECKLESS || a.kind == AB_FLURRY { who = at; go = at >= 0; }
+  else if a.kind == AB_LAY { w := most_hurt(s, i, 5, 0.99); ally = ifx w >= 0 then w else i; }
+  else if a.kind == AB_INSPIRE { ally = nearest_friend(s, i); go = ally >= 0; }
+  else if a.kind == AB_LANDS { go = foe >= 0; ally = most_hurt(s, i, 60, 0.7); }
+  if go { ok := fb_use(b, i, a, who, tx, ty, ally); }
   if !b[0].turn.action { default_attack(s, i, foe); }
   // Action Surge gives a second action: attack with it too
   if a.kind == AB_SURGE && !b[0].turn.action { default_attack(s, i, foe); }
 }
+
 // The hero you play: the first of the Living's heroes of the picked class still up, or -1.
 
 // ---- your turn: walk to your body's square, then the slot you queued, else Attack
@@ -870,7 +792,7 @@ mmo_turn :: (s: [] Mb, i: int) {
   b := bt(s);
   tgt := s[0].target;
   if tgt >= 0 && !rs_up(b[0].c[tgt]) { tgt = -1; s[0].target = -1; }
-  list: [SLOTS] Ab; nab := abilities(b[0].c[i].klass, list[..]);
+  list: [SLOTS] FbAb; nab := abilities(b[0].c[i].klass, list[..]);
   queued := s[0].act >= 0 && s[0].act < nab;
   a := list[0];
   if queued { a = list[s[0].act]; }
@@ -1063,7 +985,7 @@ mb_next_target :: (s: [] Mb) #export_c {
 mb_queue :: (s: [] Mb, slot: int) -> bool #export_c {
   b := bt(s);
   me := s[0].me;
-  list: [SLOTS] Ab; n := abilities(b[0].c[me].klass, list[..]);
+  list: [SLOTS] FbAb; n := abilities(b[0].c[me].klass, list[..]);
   if slot < 0 || slot >= n || !rs_up(b[0].c[me]) { return false; }
   if s[0].act == slot { s[0].act = -1; return true; }
   if !ab_ready(s, me, list[slot]) { return false; }
@@ -1075,7 +997,7 @@ mb_queue :: (s: [] Mb, slot: int) -> bool #export_c {
 mb_bar :: (s: [] Mb, out: [] f32) -> int #export_c {
   b := bt(s);
   me := s[0].me;
-  list: [SLOTS] Ab; n := abilities(b[0].c[me].klass, list[..]);
+  list: [SLOTS] FbAb; n := abilities(b[0].c[me].klass, list[..]);
   n = rs_min(n, out.count / MB_SLOT_FLOATS);
   for k: 0..<n {
     o := k * MB_SLOT_FLOATS;
@@ -1086,9 +1008,16 @@ mb_bar :: (s: [] Mb, out: [] f32) -> int #export_c {
   return n;
 }
 mb_slot_name :: (s: [] Mb, slot: int, out: [] u8) -> int #export_c {
-  list: [SLOTS] Ab; n := abilities(s[0].battle[0].c[s[0].me].klass, list[..]);
+  list: [SLOTS] FbAb; n := abilities(s[0].battle[0].c[s[0].me].klass, list[..]);
   if slot < 0 || slot >= n { return 0; }
   return put(out, 0, list[slot].name);
+}
+// A slot's picture: its name in realms/5e-mmo/hotbar/ (fivemmo-hotbar.coax MH_NAME), the spell's
+// engine id or the feature's.
+mb_slot_art :: (s: [] Mb, slot: int, out: [] u8) -> int #export_c {
+  list: [SLOTS] FbAb; n := abilities(s[0].battle[0].c[s[0].me].klass, list[..]);
+  if slot < 0 || slot >= n { return 0; }
+  return put(out, 0, list[slot].art);
 }
 // Your spell slots: how many you have left at each level 1 to 5, then their most (10 numbers).
 mb_slots :: (s: [] Mb, out: [] f32) #export_c {
@@ -1135,4 +1064,13 @@ mb_class_of :: (pick: int) -> int #export_c { return ROSTER[rs_max(0, rs_min(11,
   out: [9 * MB_SLOT_FLOATS] f32;
   n := mb_bar(m[..], out[..]);
   #assert n == 4 && out[0] == f32(AB_ATTACK) && out[MB_SLOT_FLOATS] == f32(AB_SECOND);
+}
+
+#test "5E MMO: each slot names its picture (realms/5e-mmo/hotbar/)" #steps 400000000 {
+  m: [1] Mb;
+  mb_new(m[..], 0, 3);   // the Druid
+  buf: [40] u8;
+  n := mb_slot_art(m[..], 7, buf[..]); #assert cast(string) buf[0..<n] == "lands-aid";
+  n = mb_slot_art(m[..], 2, buf[..]); #assert cast(string) buf[0..<n] == "produce-flame-hurl";
+  #assert mb_slot_art(m[..], 9, buf[..]) == 0;
 }
