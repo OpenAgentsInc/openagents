@@ -37,7 +37,7 @@ PATH_BLEND :: 3.0;     // metres beyond a path's edge the ground eases back to t
 FLAT :: 4;             // numbers per flat: x, z, radius, level
 NODE :: 2;             // numbers per node: x, z
 LINK :: 2;             // numbers per link: two nodes
-MAX_NODES :: 48;
+MAX_NODES :: 64;
 OFF_PATH :: 2.2;       // a metre over grass costs this much
 ARRIVE :: 0.8;         // metres: at a node, it heads for the next one
 DIRECT :: 5.0;         // metres: this near the target, it walks straight there
@@ -133,6 +133,9 @@ shaped :: (g: Ground, nodes: [] f32, links: [] int, close: [] int, half: f32, fl
   }
   for i: 0..<flats.count / FLAT {
     fx := flats[i * FLAT]; fz := flats[i * FLAT + 1]; r := flats[i * FLAT + 2]; level := flats[i * FLAT + 3];
+    // past the flat's blend on either axis its smooth step is exactly 1: the same sum, without the root
+    far := r + f32(PATH_BLEND);
+    if x - fx > far || fx - x > far || z - fz > far || fz - z > far { h = level + (h - level); continue; }
     d := sqrt((x - fx) * (x - fx) + (z - fz) * (z - fz));
     h = lerp(level, h, smooth(r, r + f32(PATH_BLEND), d));
   }

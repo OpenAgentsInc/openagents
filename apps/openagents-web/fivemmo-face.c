@@ -35,7 +35,7 @@ static int32_t pick = 6;
 static uint32_t frames, river_gen;
 static coax_t_River river;
 static bool river_built;
-static float river_levels[105 + 16];
+static float river_levels[177 + 16];
 static float river_floats[28 * 8];
 static coax_v_t_River rv(void) { return (coax_v_t_River){&river, 1}; }
 static coax_v_t_Mb mb(void) { return (coax_v_t_Mb){&battle, 1}; }
@@ -85,8 +85,8 @@ static void start(uint32_t state) {
   // the camera behind you, looking up the grid at the Skeletons
   city(state)->orbit.yaw = 3.14159265f;
   if (!river_built) {
-    everglade_levels(at(state), (coax_v_f32){river_levels, 105 + 16});
-    everglade_river_start(rv(), (coax_v_f32){city(state)->heights.e, 105 * 105}, (coax_v_f32){river_levels, 105 + 16}, 104, 2, -104, -104);
+    everglade_levels(at(state), (coax_v_f32){river_levels, 177 + 16});
+    everglade_river_start(rv(), (coax_v_f32){city(state)->heights.e, 177 * 177}, (coax_v_f32){river_levels, 177 + 16}, 176, 2, -176, -176);
     river_built = true; river_gen += 1;
   }
 }

@@ -17,15 +17,21 @@
 
 #load "../../aethyr/terrain.coax";
 
-EG_CELLS :: 104;        // the ground's cells a side
+// Wave 1 of the map's expansion (docs/verse/2026-11-03-everglade-map-gap-analysis.md): the world
+// grew from 208 m to 352 m a side, as the previous engine's first expansion grew its glade into a
+// town about 272 m across. The old walled town is the middle; the open town (everglade_in_town)
+// runs 140 m out from the fountain, round at the corners, and the woods ring it to the edge.
+EG_CELLS :: 176;        // the ground's cells a side
 EG_CELL :: 2.0;         // metres each
-EG_EDGE :: -104.0;      // its west and south edge
-EG_BOUND :: 100.0;      // metres from the middle you may walk
-// The woods are open: you walk among the trees, round their trunks and rocks, out to EG_BOUND
-// (the ruins' pillars stand at 98.5). Past it a thicket stands (everglade.coax plant_thicket):
-// dense brush backed by close-set trees, so the world's end shows before you reach it.
-EG_THICKET :: 101.3;    // the thicket's front row, where its brush's middles stand
-EG_RIM_FROM :: 80.0;    // the forest's hills rise from here
+EG_EDGE :: -176.0;      // its west and south edge
+EG_BOUND :: 168.0;      // metres from the middle you may walk
+// The woods are open: you walk among the trees, round their trunks and rocks, out to EG_BOUND.
+// Past it a thicket stands (everglade.coax plant_thicket): dense brush backed by close-set
+// trees, so the world's end shows before you reach it.
+EG_THICKET :: 169.3;    // the thicket's front row, where its brush's middles stand
+EG_RIM_FROM :: 140.0;   // the forest's hills rise from here
+EG_TOWN :: 140.0;       // the open town: metres from the fountain east, west, north and south
+EG_TOWN_ROUND :: 40.0;  // and the radius its corners are rounded to
 EG_RIM :: 0.004;
 EG_PATH_HALF :: 1.5;    // a street's half width: three metres across
 EG_BOX :: 5;
@@ -88,6 +94,80 @@ EG_DOORWAY :: 1.9;      // the gap a doorway leaves in a wall
 EG_INN :: 0; EG_STORE :: 1; EG_SMITHY :: 2; EG_ALCHEMIST :: 3; EG_FIGHTERS :: 4; EG_RANGERS :: 5;
 EG_MAGES :: 6; EG_TEMPLE :: 7; EG_OBSERVATORY :: 8; EG_STABLES :: 9; EG_HOUSES :: 10;
 
+// ---- wave 1's districts past the old town (docs/verse/everglade.md, "The districts"): the map's
+// landmarks and the houses and shops on their streets, built from the same kit as the old town's.
+// Each is a box, the spot just outside its door on the street, its name ("" for a plain house or
+// workshop) and whether its walls are stone. They are shut: their doors open (everglade-doors.coax)
+// on a dark hall you don't go into yet, as the crypt's does, so each stands in the way as one box.
+EG_DHOUSES :: 44;
+EG_DHOUSE :: [220] f32.[
+  // Main Street, north from the north roundabout: shops on its east side, the Market Hall on its west
+  31, 86, 41, 94, 9,     31, 96, 41, 104, 6,    31, 106, 41, 114, 9,   31, 116, 41, 124, 6,   31, 126, 41, 134, 9,
+  47, 84, 63, 98, 11,
+  // Stoop Lane, west off Main Street: houses either side
+  48, 100, 56, 108, 6,   58, 100, 66, 108, 9,   68, 100, 76, 108, 6,
+  48, 112, 56, 120, 9,   58, 112, 66, 120, 6,   68, 112, 76, 120, 9,
+  // the Foundry on Foundry Road, east from the east roundabout: the Foundry Barn and the workshops
+  -96, 8, -86, 18, 6,    -108, 8, -100, 18, 9,  -130, 8, -112, 22, 10,
+  -96, -10, -86, 0, 6,   -108, -10, -100, 0, 6, -120, -10, -112, 0, 9,  -132, -10, -124, 0, 6,
+  // the Makers' Quarter on Studio Road: the Makers' Hall, the Boardwalk, the studios
+  -106, 60, -90, 72, 10, -122, 60, -110, 70, 6,
+  -96, 42, -88, 52, 9,   -108, 42, -100, 52, 6, -120, 42, -112, 52, 9,  -132, 42, -124, 52, 6,
+  // the Scholars' Quarter on Library Way: the Stacks, the Old College, the scholars' houses
+  -110, -72, -96, -60, 11,   -132, -72, -116, -56, 10,
+  -96, -90, -88, -80, 9, -106, -90, -98, -80, 6, -116, -90, -108, -80, 9, -126, -90, -118, -80, 6,
+  // the Lantern Quarter across the river, on Lantern Road: the Music Hall, the meeting hall, the inns
+  108, -10, 124, 6, 11,  108, -26, 116, -18, 9, 108, -38, 116, -30, 6,  108, 10, 116, 18, 9,  108, 22, 116, 30, 6,
+  120, 12, 132, 26, 10,
+  // Brownstone Row, west off Lantern Road: brownstones on its north side, row houses on its south
+  108, -86, 116, -76, 9, 118, -86, 126, -76, 9, 128, -86, 136, -76, 9,
+  108, -104, 116, -94, 6, 118, -104, 126, -94, 6, 128, -104, 136, -94, 6,
+  // the boathouse on Lantern Pond's north bank, on the great lawn
+  38, -92, 48, -84, 6
+];
+EG_DHOUSE_DOOR :: [88] f32.[
+  42, 90,   42, 100,   42, 110,   42, 120,   42, 130,
+  46, 91,
+  52, 109,   62, 109,   72, 109,   52, 111,   62, 111,   72, 111,
+  -91, 7,   -104, 7,   -121, 7,   -91, 1,   -104, 1,   -116, 1,   -128, 1,
+  -98, 59,   -116, 59,   -92, 53,   -104, 53,   -116, 53,   -128, 53,
+  -103, -73,   -124, -73,   -92, -79,   -102, -79,   -112, -79,   -122, -79,
+  107, -2,   107, -22,   107, -34,   107, 14,   107, 26,   119, 19,
+  112, -87,   122, -87,   132, -87,   112, -93,   122, -93,   132, -93,
+  43, -83
+];
+EG_DHOUSE_NAME :: [44] string.[
+  "BAKERY", "BOOKSHOP", "GROCER", "TAILOR", "CHANDLER",
+  "MARKET HALL",
+  "", "", "", "", "", "",
+  "", "", "FOUNDRY BARN", "", "", "", "",
+  "MAKERS' HALL", "THE BOARDWALK", "", "", "", "",
+  "THE STACKS", "OLD COLLEGE", "", "", "", "",
+  "MUSIC HALL", "THE FIDDLE", "THE SNUG", "THE LAMPLIGHTER", "", "MEETING HALL",
+  "", "", "", "", "", "",
+  "BOATHOUSE"
+];
+EG_DHOUSE_STONE :: [44] bool.[
+  false, false, false, false, false,  true,
+  false, false, false, false, false, false,
+  false, false, true, false, false, false, false,
+  false, false, false, false, false, false,
+  true, true, false, false, false, false,
+  true, false, false, false, false, false,
+  true, true, true, false, false, false,
+  false
+];
+
+// The great lawn's park trees (x, z, size, kind: everglade.coax KIT_TREES, 2 and 3 the broadleafs),
+// in the open between its paths and ponds, where the map draws them.
+EG_PARK_TREES :: 20;
+EG_PARK_TREE :: [80] f32.[
+  -20, -70, 1.1, 2,   -34, -74, 0.95, 3,   -50, -70, 1.15, 2,   -62, -84, 1.0, 3,   -44, -92, 1.2, 2,
+  -28, -100, 1.0, 3,  -58, -104, 1.1, 2,   -40, -118, 0.95, 3,  -22, -122, 1.15, 2, -12, -108, 1.0, 3,
+  26, -70, 1.05, 2,   36, -78, 0.95, 3,    54, -74, 1.15, 2,    66, -86, 1.0, 3,    60, -96, 1.1, 2,
+  62, -104, 0.95, 3,  26, -124, 1.1, 2,    8, -116, 1.0, 3,     -8, -80, 1.05, 2,   -60, -94, 0.9, 3
+];
+
 // ---- props that stand in the way: the fountain, the quest board, the six
 // market stalls, and the landmarks at the trails' ends (the deep wood's
 // waystone, the ruins' broken pillars, the crypt, the river's banks).
@@ -97,10 +177,10 @@ EG_PROP :: [75] f32.[
   5, -5.3, 7.4, -4.7, 2.4,
   24.5, 5, 27.5, 7, 2.6,      30.5, 5, 33.5, 7, 2.6,      36.5, 5, 39.5, 7, 2.6,
   24.5, -7, 27.5, -5, 2.6,    30.5, -7, 33.5, -5, 2.6,    36.5, -7, 39.5, -5, 2.6,
-  -90.3, 21.6, -89.5, 22.4, 1.8,
-  13.5, 94.5, 14.5, 95.5, 3.2,   29.5, 95.5, 30.5, 96.5, 2.2,   19.5, 97.5, 20.5, 98.5, 4.0,
-  62, 91, 70, 97, 3.5,
-  86, -100, 90, -18, 0.3,     86, -5, 90, 100, 0.3
+  -148.3, 21.6, -147.5, 22.4, 1.8,
+  13.5, 152.5, 14.5, 153.5, 3.2,   29.5, 153.5, 30.5, 154.5, 2.2,   19.5, 155.5, 20.5, 156.5, 4.0,
+  62, 149, 70, 155, 3.5,
+  86, -168, 90, -18, 0.3,     86, -5, 90, 168, 0.3
 ];
 EG_PROP_NAME :: [15] string.[
   "FOUNTAIN", "QUEST BOARD", "STALL", "STALL", "STALL", "STALL", "STALL", "STALL",
@@ -111,56 +191,89 @@ EG_FOUNTAIN :: 0; EG_BOARD :: 1; EG_STALL :: 2; EG_WAYSTONE :: 8; EG_PILLAR :: 9
 EG_BRIDGE :: [5] f32.[84, -18, 92, -5, 0.5];   // its ends on the ground the river's carve leaves as it was
 
 // ---- the streets and the trails out (aethyr/terrain.coax nodes and links)
-EG_NODES :: 30;
-EG_NODE_XZ :: [60] f32.[
+// Nodes 0 to 29 are the old town's and its trails' (their numbers are kept: the signposts, the
+// guide and the people's walks name them); from 30 on, wave 1's: the Commons Loop round the old
+// town and the great lawn (31 to 37, with 11, 15, 20 and 26 on it: its six roundabouts are 26
+// north, 32 north-east, 20 east, 33 south-east, 11 south and 36 south-west), the radials out
+// through the new districts, and the trails on to the far woods.
+EG_NODES :: 52;
+EG_NODE_XZ :: [104] f32.[
   0, 12,   12, 0,   0, -12,   -12, 0,   8.5, 8.5,   8.5, -8.5,   -8.5, -8.5,   -8.5, 8.5,
-  0, -34,  0, -56,  0, -70,   0, -98,
+  0, -34,  0, -56,  0, -70,   0, -132,
   24, 0,   44, 0,   64, 0,    80, -4,   96, -16,
-  -26, 0,  -48, 0,  -64, 0,   -80, 4,   -96, 18,
-  0, 26,   26, 30,  44, 44,   44, 60,   44, 74,   22, 92,   66, 88,
-  -26, 30
+  -26, 0,  -48, 0,  -64, 0,   -80, 4,   -154, 18,
+  0, 26,   26, 30,  44, 44,   44, 60,   44, 80,   22, 150,   66, 146,
+  -26, 30,
+  0, -166,
+  -56, 80,   -80, 56,   -80, -76,   -48, -132,   48, -132,   80, -100,   80, 56,
+  44, 110,   44, 138,   80, 110,
+  -138, 4,   -136, 56,   -136, -76,
+  104, -16,   104, 60,   104, -90,   136, -90,   104, -120,   124, -144,
+  -136, 140,   -130, 146
 ];
-EG_LINKS :: 30;
-EG_LINK_AB :: [60] int.[
+EG_LINKS :: 56;
+EG_LINK_AB :: [112] int.[
   0, 4,  4, 1,  1, 5,  5, 2,  2, 6,  6, 3,  3, 7,  7, 0,
   2, 8,  8, 9,  9, 10,  10, 11,
   1, 12,  12, 13,  13, 14,  14, 15,  15, 16,
-  3, 17,  17, 18,  18, 19,  19, 20,  20, 21,
-  0, 22,  22, 23,  23, 24,  24, 25,  25, 26,  26, 27,  26, 28,
-  22, 29
+  3, 17,  17, 18,  18, 19,  19, 20,  41, 21,
+  0, 22,  22, 23,  23, 24,  24, 25,  25, 26,  39, 27,  39, 28,
+  22, 29,
+  11, 30,
+  26, 31,  31, 32,  32, 20,  20, 33,  33, 34,  34, 11,  11, 35,  35, 36,  36, 15,  15, 37,  37, 26,
+  26, 38,  38, 39,  38, 40,
+  20, 41,  32, 42,  42, 50,  50, 51,  33, 43,
+  16, 44,  44, 45,  44, 46,  46, 48,  46, 47,  48, 49
 ];
 // The street and trail names, for the map: a link each.
-EG_LINK_NAME :: [30] string.[
+EG_LINK_NAME :: [56] string.[
   "COMMONS RING", "COMMONS RING", "COMMONS RING", "COMMONS RING", "COMMONS RING", "COMMONS RING", "COMMONS RING", "COMMONS RING",
   "INN STREET", "INN STREET", "THE ROAD IN", "THE ROAD IN",
   "MARKET STREET", "MARKET STREET", "MARKET STREET", "RIVER TRAIL", "RIVER TRAIL",
-  "GUILD ROW", "GUILD ROW", "GUILD ROW", "DEEP WOOD TRAIL", "DEEP WOOD TRAIL",
-  "TEMPLE WALK", "STARGAZERS' LANE", "STARGAZERS' LANE", "NORTH LANE", "NORTH TRAIL", "RUINS TRAIL", "CRYPT TRAIL",
-  "MAGES' LANE"
+  "GUILD ROW", "GUILD ROW", "GUILD ROW", "FOUNDRY ROAD", "DEEP WOOD TRAIL",
+  "TEMPLE WALK", "STARGAZERS' LANE", "STARGAZERS' LANE", "NORTH LANE", "MAIN STREET", "RUINS TRAIL", "CRYPT TRAIL",
+  "MAGES' LANE",
+  "THE ROAD IN",
+  "COMMONS LOOP", "COMMONS LOOP", "COMMONS LOOP", "COMMONS LOOP", "COMMONS LOOP", "COMMONS LOOP",
+  "COMMONS LOOP", "COMMONS LOOP", "COMMONS LOOP", "COMMONS LOOP", "COMMONS LOOP",
+  "MAIN STREET", "MAIN STREET", "STOOP LANE",
+  "FOUNDRY ROAD", "STUDIO ROAD", "FERNHOLLOW PATH", "FERNHOLLOW PATH", "LIBRARY WAY",
+  "LANTERN ROAD", "LANTERN ROAD", "LANTERN ROAD", "LANTERN ROAD", "BROWNSTONE ROW", "WALDEN PATH"
 ];
+// The Commons Loop's roundabouts (EG_NODE_XZ indices): six, as the map has.
+EG_ROUNDABOUTS :: 6;
+EG_ROUNDABOUT :: [6] int.[26, 32, 20, 33, 11, 15];
 EG_SOUTH_GATE_NODE :: 9;
 
 // ---- where things are, for the HUD's labels and the map: x, z each.
-EG_PLACES :: 13;
-EG_PLACE :: [26] f32.[
+// From 13 on, wave 1's districts past the old town, by the map's names where they fit a medieval
+// town: the map's Knowledge District is the Scholars' Quarter, its Creative District the Makers'
+// Quarter, and its great lawn the Great Lawn (the old town's paved commons keeps its name).
+EG_PLACES :: 21;
+EG_PLACE :: [42] f32.[
   0, 0,   34, 0,   -37, 0,   0, 30,   28, 50,   -14, -49,
-  0, -85,  -92, 25,   22, 90,   66, 99,   93, -12,  0, -62,  50, 60
+  0, -85,  -150, 25,   22, 148,   66, 157,   93, -12,  0, -62,  50, 60,
+  -20, -100,   44, 100,   62, 116,   -114, 2,   -108, 66,   -110, -66,   116, 0,   122, -90
 ];
-EG_PLACE_NAME :: [13] string.[
+EG_PLACE_NAME :: [21] string.[
   "THE COMMONS", "THE MARKET", "GUILD ROW", "TEMPLE HILL", "THE OBSERVATORY", "INN STREET",
-  "THE ROAD IN", "THE DEEP WOOD", "THE RUINS", "THE CRYPT", "THE RIVER CROSSING", "SOUTH GATE", "NORTH GATE"
+  "THE ROAD IN", "THE DEEP WOOD", "THE RUINS", "THE CRYPT", "THE RIVER CROSSING", "SOUTH GATE", "NORTH GATE",
+  "THE GREAT LAWN", "MAIN STREET", "STOOP LANE", "THE FOUNDRY", "MAKERS' QUARTER", "SCHOLARS' QUARTER",
+  "LANTERN QUARTER", "BROWNSTONE ROW"
 ];
 // The hash a link starts you at (#market): an id per place.
-EG_PLACE_ID :: [13] string.[
+EG_PLACE_ID :: [21] string.[
   "commons", "market", "guilds", "temple", "observatory", "inn",
-  "road", "deep-wood", "ruins", "crypt", "river", "gate", "north-gate"
+  "road", "deep-wood", "ruins", "crypt", "river", "gate", "north-gate",
+  "lawn", "main-street", "stoop-lane", "foundry", "makers", "scholars", "lantern-quarter", "brownstone-row"
 ];
 
 // ---- where the city's characters stand: x, z, the way they face (radians,
 // 0 north, as yaw_of), and what they are. eg-people gives them names and
 // days; this is where each one's day starts.
-EG_SPOTS :: 22;
-EG_SPOT :: [66] f32.[
+// From 22 on, wave 1's townsfolk, one at each district's landmark.
+EG_SPOTS :: 28;
+EG_SPOT :: [84] f32.[
   -4.5, -59.5, 3.14,    4.5, -59.5, 3.14,     5.0, -72.0, -1.57,
   3.2, -6.4, -0.6,      -3.6, 4.6, 0.0,
   -3.4, -37.0, 1.57,    -3.4, -33.5, 1.57,
@@ -169,9 +282,11 @@ EG_SPOT :: [66] f32.[
   -37.0, 4.0, 3.14,     -37.0, -4.0, 0.0,
   -27.0, 34.0, 3.14,    -24.5, 34.2, 3.14,
   0.0, 32.0, 3.14,      28.0, 38.0, 3.14,
-  -88.0, 18.0, 1.57,    91.5, -19.5, 0.0,     21.0, 89.0, 0.0
+  -146.0, 18.0, 1.57,    91.5, -19.5, 0.0,     21.0, 147.0, 0.0,
+  46.2, 87.5, -1.57,     106.4, 2.5, -1.57,    -99.0, -73.4, 3.14,
+  -117.0, 6.6, 3.14,     -94.0, 58.6, 3.14,     39.0, -82.6, 0.0
 ];
-EG_SPOT_NAME :: [22] string.[
+EG_SPOT_NAME :: [28] string.[
   "GATE GUARD", "GATE GUARD", "STABLE HAND",
   "TOWN CRIER", "ERRAND CAT",
   "INNKEEPER", "INN CAT",
@@ -180,11 +295,13 @@ EG_SPOT_NAME :: [22] string.[
   "FIGHTERS' MASTER", "RANGERS' WARDEN",
   "ARCHMAGE", "GUILD FAMILIAR",
   "PRIEST", "ASTRONOMER",
-  "WOODWARDEN", "FERRYMAN", "RUIN SCHOLAR"
+  "WOODWARDEN", "FERRYMAN", "RUIN SCHOLAR",
+  "MARKET WARDEN", "MUSICIAN", "LIBRARIAN", "FOUNDRY MASTER", "MAKER", "BOATWRIGHT"
 ];
-EG_SPOT_CAT :: [22] bool.[
+EG_SPOT_CAT :: [28] bool.[
   false, false, false, false, true, false, true, false, false, false, false,
-  false, false, false, false, false, true, false, false, false, false, false
+  false, false, false, false, false, true, false, false, false, false, false,
+  false, false, false, false, false, false
 ];
 
 // You arrive on the road in, south of the gate, facing it.
@@ -205,7 +322,7 @@ EG_GROUND_POINTS :: (EG_CELLS + 1) * (EG_CELLS + 1);
 // the street's level there.
 EG_SQUARES :: 3;
 EG_SQUARE :: [12] f32.[0, 0, 16, 0,   34, 0, 13, 0,   0, 31, 9, 0];
-EG_FLATS :: EG_SQUARES + EG_BUILDINGS;
+EG_FLATS :: EG_SQUARES + EG_BUILDINGS + EG_DHOUSES;
 
 everglade_flats :: (out: [] f32) -> int {
   if out.count < EG_FLATS * FLAT { return 0; }
@@ -217,6 +334,33 @@ everglade_flats :: (out: [] f32) -> int {
     o := (EG_SQUARES + b) * FLAT;
     out[o] = x; out[o + 1] = z; out[o + 2] = sqrt(dx * dx + dz * dz) / 2 + 1;
     out[o + 3] = hills_rim(x, z, f32(EG_RIM_FROM), f32(EG_RIM)) * f32(PATH_LEVEL);
+  }
+  for b: 0..<EG_DHOUSES {
+    k := b * EG_BOX;
+    x := (EG_DHOUSE[k] + EG_DHOUSE[k + 2]) / 2; z := (EG_DHOUSE[k + 1] + EG_DHOUSE[k + 3]) / 2;
+    dx := EG_DHOUSE[k + 2] - EG_DHOUSE[k]; dz := EG_DHOUSE[k + 3] - EG_DHOUSE[k + 1];
+    o := (EG_SQUARES + EG_BUILDINGS + b) * FLAT;
+    out[o] = x; out[o + 1] = z; out[o + 2] = sqrt(dx * dx + dz * dz) / 2 + 1;
+    out[o + 3] = hills_rim(x, z, f32(EG_RIM_FROM), f32(EG_RIM)) * f32(PATH_LEVEL);
+  }
+  // A row of houses stands on one level: houses whose flats meet, one to the next, share the first
+  // one's level, so a later flat never tilts the ground under an earlier house.
+  group: [EG_DHOUSES] int;
+  for b: 0..<EG_DHOUSES { group[b] = b; }
+  for b: 0..<EG_DHOUSES {
+    o := (EG_SQUARES + EG_BUILDINGS + b) * FLAT;
+    for j: 0..<b {
+      q := (EG_SQUARES + EG_BUILDINGS + j) * FLAT;
+      gx := out[q] - out[o]; gz := out[q + 1] - out[o + 1];
+      if sqrt(gx * gx + gz * gz) >= out[o + 2] + out[q + 2] + f32(PATH_BLEND) { continue; }
+      from := group[b]; to := group[j];
+      if from == to { continue; }
+      if from < to { t := from; from = to; to = t; }
+      for k: 0..<EG_DHOUSES { if group[k] == from { group[k] = to; } }
+    }
+  }
+  for b: 0..<EG_DHOUSES {
+    out[(EG_SQUARES + EG_BUILDINGS + b) * FLAT + 3] = out[(EG_SQUARES + EG_BUILDINGS + group[b]) * FLAT + 3];
   }
   return EG_FLATS;
 }
@@ -241,13 +385,16 @@ EG_PONDS :: 4;
 EG_POND_LANTERN :: 0; EG_POND_REED :: 1; EG_POND_THINKING :: 2; EG_POND_FERN :: 3;
 // x, z, rim radius, depth at the middle under the level; then each one's clearing's radius, which
 // reaches the open corridor of the trail beside it
+// Since wave 1 Lantern Pond and the Reed Pond lie on the great lawn, as the map has them, Lantern
+// Pond grown to 22 m across; the Thinking Pond is in Walden Woods past Brownstone Row, the Fern Pond
+// in Fernhollow past the Makers' Quarter, each off its path.
 EG_POND :: [16] f32.[
-  -77, -11, 6.0, 3.0,
+  44, -110, 11.0, 3.0,
   14, -90, 5.0, 1.6,
-  28, 73, 5.5, 2.5,
-  -79, 21, 5.0, 2.0
+  134, -150, 5.5, 2.5,
+  -142, 150, 5.0, 2.0
 ];
-EG_POND_OPEN :: [4] f32.[12.5, 12.5, 9.5, 12.0];
+EG_POND_OPEN :: [4] f32.[15.0, 12.5, 12.0, 12.0];
 EG_POND_NAME :: [4] string.["LANTERN POND", "REED POND", "THE THINKING POND", "THE FERN POND"];
 EG_POND_ID :: [4] string.["lantern-pond", "reed-pond", "thinking-pond", "fern-pond"];   // the hash that starts you at its bank
 EG_POND_BANK :: 0.25;
@@ -317,7 +464,7 @@ EG_RIVER_DEPTH :: 2.2;    // under the level at the middle
 EG_RIVER_RIM :: 0.25;     // under the level at the banks
 EG_RIVER_FALL :: 0.008;   // the least the level falls each ground row (2 m)
 EG_RIVER_FREEBOARD :: 0.2;
-EG_RIVER_COL :: 96;       // the ground's column at x = 88
+EG_RIVER_COL :: 132;      // the ground's column at x = 88
 // The weir (Glade Run's, from the old W3): the level steps down 0.25 m more
 // between the ground row at z = -30 and the next downstream, over a stone
 // sill, into a plunge pool 1.6 m deeper than the channel at its middle,
@@ -406,8 +553,9 @@ everglade_walk_height :: (heights: [] f32, deck: f32, x: f32, z: f32) -> f32 {
 // ---- what stands in the way
 
 // Every box a walker can't pass, five numbers each: the palisade, the
-// buildings, the solid props, and the edge of the world. Returns how many.
-EG_SOLIDS :: EG_PALISADE_N + EG_BUILDINGS + 4 * EG_INTERIORS + EG_RIVER + 4;
+// buildings, the solid props, the districts' shut houses, and the edge of the world (always the
+// last four). Returns how many.
+EG_SOLIDS :: EG_PALISADE_N + EG_BUILDINGS + 4 * EG_INTERIORS + EG_RIVER + EG_DHOUSES + 4;
 everglade_solids :: (out: [] f32) -> int {
   bld := EG_BUILDING;
   pal := EG_PALISADE;
@@ -421,6 +569,8 @@ everglade_solids :: (out: [] f32) -> int {
   // The river's banks are in the props for the map, but you may wade and
   // swim in it (verse/everglade/river.coax): they stand in no one's way.
   for i: 0..<EG_PROPS { if i < EG_RIVER { n = put_box(out, n, prp[..], i); } }
+  dh := EG_DHOUSE;
+  for i: 0..<EG_DHOUSES { n = put_box(out, n, dh[..], i); }
   b := f32(EG_BOUND);
   edges := [20] f32.[-b - 4, -b - 4, b + 4, -b, 12,   -b - 4, b, b + 4, b + 4, 12,   -b - 4, -b, -b, b, 12,   b, -b, b + 4, b, 12];
   for i: 0..<4 { n = put_box(out, n, edges[..], i); }
@@ -521,14 +671,20 @@ EG_CLEARINGS :: 6;
 // x, z, radius each: the stables, where you arrive, the deep wood's
 // waystone, the ruins, the crypt and the river's far bank.
 EG_CLEARING :: [18] f32.[
-  14, -70, 11,    0, -88, 7,    -91, 20, 9,    22, 94, 12,    66, 92, 9,    93, -13, 8
+  14, -70, 11,    0, -88, 7,    -149, 20, 9,    22, 152, 12,    66, 150, 9,    93, -13, 8
 ];
 
 // The river's glade: x, z of its middle and its half widths across and along.
 EG_GLADE :: [4] f32.[88, -14, 7, 26];
+// The open town: EG_TOWN either way from the fountain, its corners rounded to EG_TOWN_ROUND.
+everglade_in_town :: (x: f32, z: f32) -> bool {
+  ax := abs(x); az := abs(z); t := f32(EG_TOWN); r := f32(EG_TOWN_ROUND);
+  if ax > t || az > t { return false; }
+  if ax > t - r && az > t - r { dx := ax - (t - r); dz := az - (t - r); return dx * dx + dz * dz < r * r; }
+  return true;
+}
 everglade_in_woods :: (x: f32, z: f32) -> bool {
-  a := f32(EG_APRON);
-  if x > -65.25 - a && x < 65.25 + a && z > -57.5 - a && z < 61.25 + a { return false; }
+  if everglade_in_town(x, z) { return false; }
   for c: 0..<EG_CLEARINGS {
     dx := x - EG_CLEARING[c * 3]; dz := z - EG_CLEARING[c * 3 + 1]; r := EG_CLEARING[c * 3 + 2];
     if dx * dx + dz * dz < r * r { return false; }
@@ -541,15 +697,28 @@ everglade_in_woods :: (x: f32, z: f32) -> bool {
     px := EG_POND[p * 4]; pz := EG_POND[p * 4 + 1]; r := EG_POND_OPEN[p];
     if (x - px) * (x - px) + (z - pz) * (z - pz) < r * r { return false; }
   }
-  nodes := EG_NODE_XZ; links := EG_LINK_AB;
-  return verse_path_nearest(nodes[..], links[..], x, z).d >= f32(EG_TRAIL_FREE);
+  // no trail within EG_TRAIL_FREE (each link's box first: most are far)
+  f := f32(EG_TRAIL_FREE);
+  for l: 0..<EG_LINKS {
+    a := EG_LINK_AB[l * 2]; b := EG_LINK_AB[l * 2 + 1];
+    ax := EG_NODE_XZ[a * 2]; bx := EG_NODE_XZ[b * 2];
+    if (x < ax - f && x < bx - f) || (x > ax + f && x > bx + f) { continue; }
+    az := EG_NODE_XZ[a * 2 + 1]; bz := EG_NODE_XZ[b * 2 + 1];
+    if (z < az - f && z < bz - f) || (z > az + f && z > bz + f) { continue; }
+    dx := bx - ax; dz := bz - az;
+    size := dx * dx + dz * dz;
+    t := ifx size > 0.000001 then clamp01(((x - ax) * dx + (z - az) * dz) / size) else 0.0f32;
+    ex := x - ax - dx * t; ez := z - az - dz * t;
+    if ex * ex + ez * ez < f * f { return false; }
+  }
+  return true;
 }
 
 // ---- reachability: a grid over the walkable ground, filled from the spawn
 
 EG_REACH_CELL :: 0.5;
-EG_REACH_N :: 400;      // cells a side: the world inside the edge
-EG_REACH_WEST :: -100.0;
+EG_REACH_N :: 672;      // cells a side: the world inside the edge
+EG_REACH_WEST :: -168.0;
 
 reach_index :: (x: f32, z: f32) -> int {
   i := cast(int) floor((x - f32(EG_REACH_WEST)) / f32(EG_REACH_CELL));
@@ -641,6 +810,41 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
     for j: i + 1..<EG_PROPS { #assert boxes_gap(prp[..], i, prp[..], j) >= f32(EG_PROP_GAP); }
     for p: 0..<EG_PALISADE_N { #assert boxes_gap(prp[..], i, pal[..], p) >= f32(EG_GAP); }
   }
+  // The districts' houses keep apart from each other and from everything else, outside the
+  // palisade, inside the open town, each with its door's spot a metre out on its street side.
+  dh := EG_DHOUSE;
+  for i: 0..<EG_DHOUSES {
+    k := i * EG_BOX;
+    #assert EG_DHOUSE[k] < EG_DHOUSE[k + 2] && EG_DHOUSE[k + 1] < EG_DHOUSE[k + 3] && EG_DHOUSE[k + 4] > 2;
+    for j: i + 1..<EG_DHOUSES { #assert boxes_gap(dh[..], i, dh[..], j) >= f32(EG_GAP); }
+    for j: 0..<EG_BUILDINGS { #assert boxes_gap(dh[..], i, bld[..], j) >= f32(EG_GAP); }
+    for p: 0..<EG_PALISADE_N { #assert boxes_gap(dh[..], i, pal[..], p) >= f32(EG_GAP); }
+    for p: 0..<EG_PROPS { #assert boxes_gap(dh[..], i, prp[..], p) >= f32(EG_PROP_GAP); }
+    #assert !inside_walls(dh[..], i);
+    for c: 0..<4 {
+      #assert everglade_in_town(EG_DHOUSE[k + (c % 2) * 2], EG_DHOUSE[k + 1 + (c / 2) * 2]);
+    }
+    // its sides are whole 2 m wall modules
+    w := EG_DHOUSE[k + 2] - EG_DHOUSE[k]; d := EG_DHOUSE[k + 3] - EG_DHOUSE[k + 1];
+    #assert abs(w / 2 - floor(w / 2 + 0.5)) < 0.01 && abs(d / 2 - floor(d / 2 + 0.5)) < 0.01;
+    #assert abs(box_gap(dh[..], i, EG_DHOUSE_DOOR[i * 2], EG_DHOUSE_DOOR[i * 2 + 1]) - 1) < 0.01;
+    // off the ponds, past where their beds are carved
+    for q: 0..<EG_PONDS {
+      px := EG_POND[q * 4]; pz := EG_POND[q * 4 + 1];
+      #assert box_gap(dh[..], i, px, pz) > EG_POND[q * 4 + 2] + 6.5;
+    }
+  }
+  // The great lawn's trees stand in the open: in the town, off every path, pond and box.
+  nodes := EG_NODE_XZ; links := EG_LINK_AB;
+  solids: [EG_SOLIDS * EG_BOX] f32;
+  ns := everglade_solids(solids[..]);
+  for t: 0..<EG_PARK_TREES {
+    x := EG_PARK_TREE[t * 4]; z := EG_PARK_TREE[t * 4 + 1];
+    #assert everglade_in_town(x, z) && !everglade_in_pond(x, z, 3);
+    #assert verse_path_nearest(nodes[..], links[..], x, z).d > f32(EG_PATH_HALF) + 2.5;
+    for k: 0..<ns { #assert box_gap(solids[..], k, x, z) > 2.5; }
+    #assert EG_PARK_TREE[t * 4 + 3] >= 2 && EG_PARK_TREE[t * 4 + 3] <= 3;
+  }
   // The palisade's pieces meet but never overlap.
   for i: 0..<EG_PALISADE_N {
     for j: i + 1..<EG_PALISADE_N {
@@ -652,7 +856,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
 }
 
-#test "the streets and trails keep clear of everything in the way" #steps 47000000 {
+#test "the streets and trails keep clear of everything in the way" #steps 600000000 {
   solids: [EG_SOLIDS * EG_BOX] f32;
   n := everglade_solids(solids[..]);
   #assert n == EG_SOLIDS;
@@ -677,6 +881,12 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
   for k: 0..<EG_NODES { #assert seen[k]; }
   #assert EG_NODES <= MAX_NODES;
+  // The Commons Loop's six roundabouts each join three ways or more.
+  for r: 0..<EG_ROUNDABOUTS {
+    ways := 0;
+    for l: 0..<EG_LINKS { if EG_LINK_AB[l * 2] == EG_ROUNDABOUT[r] || EG_LINK_AB[l * 2 + 1] == EG_ROUNDABOUT[r] { ways += 1; } }
+    #assert ways >= 3;
+  }
   // Each gate has a link through the middle of its gap.
   for g: 0..<EG_GATES {
     gx := EG_GATE[g * 4]; gz := EG_GATE[g * 4 + 1];
@@ -692,7 +902,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
 }
 
-#test "everything is reachable on foot from the road in" #steps 454000000 {
+#test "everything is reachable on foot from the road in" #steps 3000000000 {
   bld := EG_BUILDING;
   grid: [EG_REACH_N * EG_REACH_N] u8;
   queue: [EG_REACH_N * EG_REACH_N] u32;
@@ -712,20 +922,20 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
     if d.side < 2 { #assert !reached(grid[..], d.along + 1.6, ifx d.side == 0 then z0 + 0.2 else z1 - 0.2); }
     else { #assert !reached(grid[..], ifx d.side == 2 then x0 + 0.2 else x1 - 0.2, d.along + 1.6); }
   }
+  for h: 0..<EG_DHOUSES { #assert reached(grid[..], EG_DHOUSE_DOOR[h * 2], EG_DHOUSE_DOOR[h * 2 + 1]); }
   for s: 0..<EG_SPOTS { #assert reached(grid[..], EG_SPOT[s * 3], EG_SPOT[s * 3 + 1]); }
   for k: 0..<EG_NODES { #assert reached(grid[..], EG_NODE_XZ[k * 2], EG_NODE_XZ[k * 2 + 1]); }
   for g: 0..<EG_GATES { #assert reached(grid[..], EG_GATE[g * 4], EG_GATE[g * 4 + 1]); }
   // The quest board, the stalls and the trails' ends are reachable from beside them.
   #assert reached(grid[..], 6.2, -6.4) && reached(grid[..], 32, 3.5) && reached(grid[..], 32, -3.5);
-  #assert reached(grid[..], -88, 22) && reached(grid[..], 22, 95) && reached(grid[..], 66, 89.5) && reached(grid[..], 96, -16);
+  #assert reached(grid[..], -146, 22) && reached(grid[..], 22, 153) && reached(grid[..], 66, 147.5) && reached(grid[..], 96, -16);
 }
 
-#test "the open ground: past the apron only a trail or a clearing is, where the people walk and an admin places" #steps 893000000 {
+#test "the open ground: the town is open to its edge, and past it only a trail or a clearing is" #steps 4000000000 {
   grid: [EG_REACH_N * EG_REACH_N] u8;
   queue: [EG_REACH_N * EG_REACH_N] u32;
   count := everglade_reach(grid[..], queue[..]);
-  #assert count > 60000;
-  nodes := EG_NODE_XZ; links := EG_LINK_AB;
+  #assert count > 200000;
   deep := 0;
   for j: 0..<EG_REACH_N {
     for i: 0..<EG_REACH_N {
@@ -734,22 +944,23 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
       if everglade_in_woods(x, z) { deep += 1; #assert grid[j * EG_REACH_N + i] == 0; }
     }
   }
-  // Most of what lies outside the walls is forest.
-  #assert deep > 60000;
-  // Straight out from each wall, between the gates, the forest stops you within the apron.
-  #assert !reached(grid[..], -40, -64.5) && !reached(grid[..], 40, 69) && !reached(grid[..], 72.5, 30) && !reached(grid[..], -72.5, -30);
-  #assert reached(grid[..], -40, -60) && reached(grid[..], 70, 30);
-  // The far bank is reached by the bridge, and the forest beyond it is not.
-  #assert reached(grid[..], 96, -16) && !reached(grid[..], 95, 40);
-  // In the glade you may wade and swim across beside the bridge; up and down
-  // the river past it the forest closes in on both banks.
-  #assert reached(grid[..], 88, -30) && reached(grid[..], 88, 4) && reached(grid[..], 84, -34) && reached(grid[..], 92, -34);
-  #assert !reached(grid[..], 88, -60) && !reached(grid[..], 88, 40) && !reached(grid[..], 88, -95) && !reached(grid[..], 88, 95);
-  // Each trail stays open from its gate to its end.
-  #assert reached(grid[..], -80, 4) && reached(grid[..], 44, 74) && reached(grid[..], 80, -4) && reached(grid[..], 0, -98);
+  // The woods ring the town.
+  #assert deep > 100000;
+  // Out past the palisade the town is open ground: the great lawn, the districts, the far bank.
+  #assert reached(grid[..], -40, -64.5) && reached(grid[..], 40, 69) && reached(grid[..], 72.5, 30) && reached(grid[..], -72.5, -30);
+  #assert reached(grid[..], 0, -110) && reached(grid[..], -110, 30) && reached(grid[..], 130, 40) && reached(grid[..], 0, 136);
+  // Past the town's edge, between the trails, the woods stop you.
+  #assert !reached(grid[..], -152, -40) && !reached(grid[..], 152, 60) && !reached(grid[..], 60, -152) && !reached(grid[..], -60, 152);
+  // You may wade and swim the river anywhere in the town; up and down it past the town the
+  // forest closes in on both banks.
+  #assert reached(grid[..], 88, -30) && reached(grid[..], 88, 4) && reached(grid[..], 88, -80) && reached(grid[..], 88, 120);
+  #assert !reached(grid[..], 88, -155) && !reached(grid[..], 88, 155);
+  // Each trail stays open to its end.
+  #assert reached(grid[..], -154, 18) && reached(grid[..], 22, 150) && reached(grid[..], 66, 146) && reached(grid[..], 0, -166);
+  #assert reached(grid[..], 124, -144) && reached(grid[..], -130, 146);
 }
 
-#test "the palisade keeps you in but for its gates" #steps 444000000 {
+#test "the palisade keeps you in but for its gates" #steps 1500000000 {
   grid: [EG_REACH_N * EG_REACH_N] u8;
   everglade_open(grid[..]);
   // Walk the walls' line: open only in a gate.
@@ -771,7 +982,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
 }
 
-#test "the ground is built: flat where the city stands, rising into the forest" #steps 35000000 {
+#test "the ground is built: flat where the city stands, rising into the forest" #steps 400000000 {
   heights: [EG_GROUND_POINTS] f32;
   #assert everglade_build_ground(heights[..]);
   g := everglade_ground();
@@ -789,9 +1000,18 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
     }
     #assert highest - lowest < 0.25;
   }
+  for b: 0..<EG_DHOUSES {
+    k := b * EG_BOX;
+    lowest := 1000.0f32; highest := -1000.0f32;
+    for c: 0..<4 {
+      h := verse_terrain_height(g, heights[..], EG_DHOUSE[k + (c % 2) * 2], EG_DHOUSE[k + 1 + (c / 2) * 2]);
+      lowest = lo(lowest, h); highest = hi(highest, h);
+    }
+    #assert highest - lowest < 0.25;
+  }
   // The forest past the walls rises; the trails out climb gently, the river trail over the bridge's deck.
   deck := everglade_deck(heights[..]);
-  #assert verse_terrain_height(g, heights[..], -96, -96) > verse_terrain_height(g, heights[..], -40, -40) + 2;
+  #assert verse_terrain_height(g, heights[..], -160, -160) > verse_terrain_height(g, heights[..], -40, -40) + 2;
   for l: 0..<EG_LINKS {
     a := EG_LINK_AB[l * 2]; b := EG_LINK_AB[l * 2 + 1];
     ax := EG_NODE_XZ[a * 2]; az := EG_NODE_XZ[a * 2 + 1]; bx := EG_NODE_XZ[b * 2]; bz := EG_NODE_XZ[b * 2 + 1];
@@ -805,7 +1025,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
 }
 
-#test "the river runs in its carved bed, falling south, with the deck over it" #steps 34000000 {
+#test "the river runs in its carved bed, falling south, with the deck over it" #steps 400000000 {
   heights: [EG_GROUND_POINTS] f32;
   #assert everglade_build_ground(heights[..]);
   levels: [EG_CELLS + 1] f32;
@@ -850,6 +1070,8 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
   for s: 0..<EG_SPOTS { #assert EG_SPOT_NAME[s].count > 0 && EG_SPOT_NAME[s].count <= 20; }
   for b: 0..<EG_BUILDINGS { #assert EG_BUILDING_NAME[b].count > 0; }
+  // every landmark and shop of the districts is named once
+  for b: 0..<EG_DHOUSES { for c: b + 1..<EG_DHOUSES { if EG_DHOUSE_NAME[b].count > 0 { #assert EG_DHOUSE_NAME[b] != EG_DHOUSE_NAME[c]; } } }
   // A character stands in the open, not in a wall.
   solids: [EG_SOLIDS * EG_BOX] f32;
   n := everglade_solids(solids[..]);
@@ -858,7 +1080,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
 }
 
-#test "the ponds: off the trails and the river, clear of the walls, each in a clearing that meets its trail, carved to their depths" #steps 66000000 {
+#test "the ponds: off the trails and the river, clear of the walls, on the lawn or in a clearing that meets its trail, carved to their depths" #steps 600000000 {
   nodes := EG_NODE_XZ; links := EG_LINK_AB;
   heights: [EG_GROUND_POINTS] f32;
   #assert everglade_build_ground(heights[..]);
@@ -867,11 +1089,13 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
     // the water stays off the trail, with a bank to stand on
     trail := verse_path_nearest(nodes[..], links[..], x, z).d;
     #assert trail > r + f32(EG_PATH_HALF) + 1.5;
-    #assert EG_POND_OPEN[p] >= r + 4 && EG_POND_OPEN[p] > trail - f32(EG_TRAIL_FREE) + 1;
+    town := everglade_in_town(x, z);
+    #assert EG_POND_OPEN[p] >= r + 4;
+    if !town { #assert EG_POND_OPEN[p] > trail - f32(EG_TRAIL_FREE) + 1; }
     #assert !everglade_in_river(x, r + 3);
     #assert abs(x) + r < f32(EG_BOUND) - 4 && abs(z) + r < f32(EG_BOUND) - 4;
-    // outside the palisade and its apron
-    #assert x - r > 65.25 || x + r < -65.25 || z - r > 61.25 || z + r < -57.5;
+    // outside the palisade, with a bank between
+    #assert x - r > 70 || x + r < -70 || z - r > 66 || z + r < -63;
     // the pond and the ground between it and its trail are open
     #assert !everglade_in_woods(x, z) && !everglade_in_woods(x + r + 1, z) && !everglade_in_woods(x - r - 1, z);
     level := everglade_pond_level(heights[..], p);

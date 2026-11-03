@@ -94,17 +94,32 @@ def fmt(seconds):
     return f"{s} s" if s < 60 else f"{s // 60} min {s % 60:02d} s"
 
 
+MAP_SCALE = 3.0
+
+
 def svg(a):
-    S = 4.0                     # pixels a metre
-    W = H = int(208 * S)
+    S = MAP_SCALE               # pixels a metre
+    E = -a["EG_EDGE"]           # the ground's half width (m)
+    B = a["EG_BOUND"]           # the world's edge
+    T, TR = a["EG_TOWN"], a["EG_TOWN_ROUND"]
+    W = H = int(2 * E * S)
     pad_top = 70
-    def X(x): return (104 - x) * S          # +x is west: the map's left
-    def Y(z): return (104 - z) * S + pad_top
+    def X(x): return (E - x) * S          # +x is west: the map's left
+    def Y(z): return (E - z) * S + pad_top
     o = []
     o.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H + pad_top + 60}" width="{W}" height="{H + pad_top + 60}" font-family="Georgia, serif">')
     o.append("<title>Everglade: the forest city's plan</title>")
     o.append(f'<rect width="{W}" height="{H + pad_top + 60}" fill="#eadfc4"/>')
-    o.append(f'<rect x="{X(100)}" y="{Y(100)}" width="{200 * S}" height="{200 * S}" fill="#cfd8a6" stroke="#8a7a52" stroke-width="2"/>')
+    o.append(f'<rect x="{X(B)}" y="{Y(B)}" width="{2 * B * S}" height="{2 * B * S}" fill="#cfd8a6" stroke="#8a7a52" stroke-width="2"/>')
+    # The town outside the palisade: open ground to its rounded edge (plan.coax everglade_in_town).
+    o.append(f'<rect x="{X(T)}" y="{Y(T)}" width="{2 * T * S}" height="{2 * T * S}" rx="{TR * S}" fill="#dcd9a8"/>')
+    def in_town(x, z):
+        ax, az = abs(x), abs(z)
+        if ax > T or az > T:
+            return False
+        if ax > T - TR and az > T - TR:
+            return math.hypot(ax - (T - TR), az - (T - TR)) < TR
+        return True
     # The forest ring: trees everywhere past the palisade but the trails, the river and the landmarks.
     nodes, links, near = walk_graph(a)
     rnd = random.Random(7)
@@ -118,19 +133,25 @@ def svg(a):
     def box_d(b, x, z):
         return math.hypot(max(b[0] - x, x - b[2], 0), max(b[1] - z, z - b[3], 0))
     trees = []
-    for _ in range(2600):
-        x, z = rnd.uniform(-99, 99), rnd.uniform(-99, 99)
-        if -70 < x < 70 and -62 < z < 66:
+    houses = groups(a["EG_DHOUSE"], 5)
+    for _ in range(9000):
+        x, z = rnd.uniform(-B + 1, B - 1), rnd.uniform(-B + 1, B - 1)
+        if in_town(x, z):
             continue
         if min(seg_d(nodes[p], nodes[q], x, z) for p, q in links) < 5:
             continue
-        if any(box_d(b, x, z) < 4 for b in props + buildings):
+        if any(box_d(b, x, z) < 4 for b in props + buildings + houses):
             continue
         if any(math.dist(t[:2], (x, z)) < 3.2 for t in trees):
             continue
         trees.append((x, z, rnd.uniform(1.6, 2.6)))
     for x, z, r in trees:
         o.append(f'<circle cx="{X(x):.1f}" cy="{Y(z):.1f}" r="{r * S:.1f}" fill="#6f8f4e" stroke="#4f6b36" stroke-width="1"/>')
+    # The ponds, and the great lawn's trees.
+    for x, z, r, _ in groups(a["EG_POND"], 4):
+        o.append(f'<circle cx="{X(x):.1f}" cy="{Y(z):.1f}" r="{r * S:.1f}" fill="#8fb4c8" stroke="#5f7f90" stroke-width="1.5"/>')
+    for x, z, size, _ in groups(a["EG_PARK_TREE"], 4):
+        o.append(f'<circle cx="{X(x):.1f}" cy="{Y(z):.1f}" r="{2.2 * size * S:.1f}" fill="#6f8f4e" stroke="#4f6b36" stroke-width="1"/>')
     # Inside the walls: the city's ground.
     o.append(f'<rect x="{X(63.6)}" y="{Y(59.6)}" width="{127.2 * S}" height="{115.2 * S}" fill="#e2d6b0"/>')
     for x, z, r, _ in groups(a["EG_SQUARE"], 4):
@@ -155,7 +176,15 @@ def svg(a):
         o.append(f'<rect x="{X(b[2])}" y="{Y(b[3])}" width="{(b[2] - b[0]) * S}" height="{(b[3] - b[1]) * S}" fill="{fill}" stroke="#5a4428" stroke-width="2"/>')
         if name != "HOUSE":
             cx, cz = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
-            o.append(label(X(cx), Y(cz) + 4, name.title(), 12, "#3a2a18"))
+            o.append(label(X(cx), Y(cz) + 4, name.title(), 12, "#3a2a18", width=W))
+    for b, name, stone in zip(houses, a["EG_DHOUSE_NAME"], a["EG_DHOUSE_STONE"]):
+        fill = "#c79a6a" if name else ("#c2a888" if stone else "#d9c2a0")
+        o.append(f'<rect x="{X(b[2])}" y="{Y(b[3])}" width="{(b[2] - b[0]) * S}" height="{(b[3] - b[1]) * S}" fill="{fill}" stroke="#5a4428" stroke-width="1.5"/>')
+        if name:
+            cx, cz = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+            o.append(label(X(cx), Y(cz) + 4, name.title(), 10, "#3a2a18", width=W))
+    for (x, z) in groups(a["EG_DHOUSE_DOOR"], 2):
+        o.append(f'<rect x="{X(x) - 2}" y="{Y(z) - 2}" width="4" height="4" fill="#3a2a18"/>')
     for (x, z) in groups(a["EG_DOOR"], 2):
         o.append(f'<rect x="{X(x) - 3}" y="{Y(z) - 3}" width="6" height="6" fill="#3a2a18"/>')
     for b, name in zip(props, a["EG_PROP_NAME"]):
@@ -171,14 +200,14 @@ def svg(a):
         o.append(f'<circle cx="{X(x):.1f}" cy="{Y(z):.1f}" r="4" fill="{fill}" stroke="#fff6e0" stroke-width="1.2"/>')
     # The districts and the trails' ends.
     for (x, z), name in zip(groups(a["EG_PLACE"], 2), a["EG_PLACE_NAME"]):
-        o.append(label(X(x), Y(z) - 14, name, 15, "#2a1e10", bold=True))
+        o.append(label(X(x), Y(z) - 14, name, 15, "#2a1e10", bold=True, width=W))
     for g, name in zip(groups(a["EG_GATE"], 4), a["EG_GATE_NAME"]):
         if name in ("SOUTH GATE", "NORTH GATE"):
             continue
         dx = 16 if g[0] < 0 else -16
-        o.append(label(X(g[0]) + dx * 3, Y(g[1]) - 14, name, 13, "#2a1e10", bold=True))
+        o.append(label(X(g[0]) + dx * 3, Y(g[1]) - 14, name, 13, "#2a1e10", bold=True, width=W))
     # The title, the scale and the key.
-    o.append(label(W / 2, 44, "EVERGLADE · the forest city", 30, "#2a1e10", bold=True))
+    o.append(label(W / 2, 44, "EVERGLADE · the forest city", 30, "#2a1e10", bold=True, width=W))
     y = H + pad_top + 30
     x0 = 30
     o.append(f'<rect x="{x0}" y="{y - 6}" width="{35 * S}" height="8" fill="#2a1e10"/>')
@@ -195,9 +224,9 @@ def svg(a):
     return "\n".join(o) + "\n"
 
 
-def label(x, y, text, size, fill, bold=False):
+def label(x, y, text, size, fill, bold=False, width=832):
     half = len(text) * size * 0.36
-    x = min(max(x, half + 8), 208 * 4.0 - half - 8)
+    x = min(max(x, half + 8), width - half - 8)
     text = text.replace("&", "&amp;").replace("'", "&#39;")
     weight = ' font-weight="bold"' if bold else ""
     return (f'<text x="{x:.1f}" y="{y:.1f}" font-size="{size}" fill="{fill}" text-anchor="middle"{weight} '

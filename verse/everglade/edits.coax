@@ -129,6 +129,8 @@ eg_edit_fault :: (e: EgEdits, i: int) -> int {
   if box[0] < -b || box[2] > b || box[1] < -b || box[3] > b { return EG_FAULT_EDGE; }
   // on another's top it stands on that, not the ground: only the edge holds it
   if t.lift > 0.05 { return EG_FAULT_NONE; }
+  // nor in the river, which runs open through the town (wave 1): it is the city's water
+  if box[0] < f32(EG_RIVER_X) + 3 && box[2] > f32(EG_RIVER_X) - 3 { return EG_FAULT_SOLID; }
   // a patch of flowers or crops is walked through: its middle out of the woods is enough
   // (the page leaves out each flower that would stand in something)
   if EG_EDIT_SORT[eg_edit_kind(t.kind)] == EG_SORT_PATCH { return ifx everglade_in_woods(t.x, t.z) then EG_FAULT_WOODS else EG_FAULT_NONE; }
@@ -459,10 +461,10 @@ eg_one :: (t: EgThing) -> EgEdits { e: EgEdits; e.things[0] = t; e.n = 1; return
   #assert eg_edit_fault(eg_one(eg_thing(0, -14, -37, 0, 1)), 0) == EG_FAULT_NONE;          // in the inn's room: it furnishes it
   #assert eg_edit_fault(eg_one(eg_thing(1, 20, -56, 0, 1)), 0) == EG_FAULT_SOLID;         // in the south wall
   #assert eg_edit_fault(eg_one(eg_thing(1, 1, 1, 0, 1)), 0) == EG_FAULT_SOLID;            // in the fountain
-  #assert eg_edit_fault(eg_one(eg_thing(1, -40, -75, 0, 1)), 0) == EG_FAULT_WOODS;        // in the woods
+  #assert eg_edit_fault(eg_one(eg_thing(1, -150, -40, 0, 1)), 0) == EG_FAULT_WOODS;        // in the woods
   #assert eg_edit_fault(eg_one(eg_thing(1, 88, 40, 0, 1)), 0) != EG_FAULT_NONE;           // in the river
   #assert eg_edit_fault(eg_one(eg_thing(1, 88, -11, 0, 1)), 0) == EG_FAULT_SOLID;         // on the bridge's deck
-  #assert eg_edit_fault(eg_one(eg_thing(4, 0, -99.4, 0, 1)), 0) == EG_FAULT_EDGE;         // past the edge
+  #assert eg_edit_fault(eg_one(eg_thing(4, 0, -167.4, 0, 1)), 0) == EG_FAULT_EDGE;         // past the edge
   // a bench turned a quarter is long the other way; a big one reaches the wall a small one doesn't
   #assert eg_edit_fault(eg_one(eg_thing(2, 6, -51.5, 0, 1)), 0) == EG_FAULT_NONE;
   #assert eg_edit_fault(eg_one(eg_thing(2, 6, -51.5, f32(PI) / 2, 1)), 0) == EG_FAULT_NONE;

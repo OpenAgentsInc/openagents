@@ -259,15 +259,15 @@ eg_quest_load :: (text: string, stages: [] int, player: string) -> bool {
 
 #test "a quest is taken, followed and handed in, and only in that order" {
   st := [3] int.[0, 0, 0];
-  #assert !eg_quest_hand_in(st[..], 0, 0) && eg_quest_talk(st[..], 19) == -1 && eg_quest_reach(st[..], -92, 25) == 0;
+  #assert !eg_quest_hand_in(st[..], 0, 0) && eg_quest_talk(st[..], 19) == -1 && eg_quest_reach(st[..], -150, 25) == 0;
   #assert eg_quest_state(0, st[0]) == "NEW";
   #assert eg_quest_take(st[..], 0, 0) && !eg_quest_take(st[..], 0, 0) && st[0] == 1;
   #assert eg_quest_todo(0, st[0]) == "GO OUT BY THE EAST GATE TO THE DEEP WOOD" && eg_quest_state(0, st[0]) == "UNDER WAY";
   // talking to Moss before you're there counts for nothing; far away nothing moves
   #assert eg_quest_talk(st[..], 19) == -1 && eg_quest_reach(st[..], 0, 0) == 0 && st[0] == 1;
   m := eg_quest_mark(0, st[0]);
-  #assert m.ok && m.x == -92 && m.z == 25;
-  #assert eg_quest_reach(st[..], -88, 18) == 1 && st[0] == 2 && eg_quest_kind_at(0, st[0]) == EG_STEP_TALK;
+  #assert m.ok && m.x == -150 && m.z == 25;
+  #assert eg_quest_reach(st[..], -146, 18) == 1 && st[0] == 2 && eg_quest_kind_at(0, st[0]) == EG_STEP_TALK;
   #assert !eg_quest_hand_in(st[..], 0, 0);
   #assert eg_quest_talk(st[..], 21) == -1 && eg_quest_talk(st[..], 19) == 0 && st[0] == 3;
   #assert eg_quest_ready(0, st[0]) && eg_quest_state(0, st[0]) == "HAND IN";
@@ -285,7 +285,7 @@ eg_quest_load :: (text: string, stages: [] int, player: string) -> bool {
 #test "two quests at once move on their own" {
   st := [3] int.[0, 0, 0];
   #assert eg_quest_take(st[..], 0, 0) && eg_quest_take(st[..], 1, 0);
-  #assert eg_quest_reach(st[..], 22, 90) == 1 && st[0] == 1 && st[1] == 2;
+  #assert eg_quest_reach(st[..], 22, 148) == 1 && st[0] == 1 && st[1] == 2;
   #assert eg_quest_talk(st[..], 21) == 1 && st[1] == 3 && st[0] == 1;
 }
 
@@ -320,6 +320,6 @@ eg_quest_load :: (text: string, stages: [] int, player: string) -> bool {
   st: [EG_QUESTS] int;
   #assert !eg_quest_take(st[..], 0, moss) && st[0] == 0 && eg_quest_take(st[..], 1, moss);
   // under way when Moss went: up to the board, but not handed in until Moss is back
-  #assert eg_quest_take(st[..], 0, 0) && eg_quest_reach(st[..], -88, 18) == 1 && eg_quest_talk(st[..], 19) == 0;
+  #assert eg_quest_take(st[..], 0, 0) && eg_quest_reach(st[..], -146, 18) == 1 && eg_quest_talk(st[..], 19) == 0;
   #assert eg_quest_ready(0, st[0]) && !eg_quest_hand_in(st[..], 0, moss) && eg_quest_hand_in(st[..], 0, 0);
 }

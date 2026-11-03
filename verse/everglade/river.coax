@@ -56,20 +56,20 @@
 #load "../../aethyr/loop.coax";   // the floats' fixed steps: Aethyr's one clock (aethyr/book ch001)
 
 RIVER_X :: 88.0;          // the plan's river runs along x = 88 (EG_RIVER_X)
-RIVER_NORTH :: 104.0;     // from the north edge of the ground, flowing south
-RIVER_SOUTH :: -104.0;
+RIVER_NORTH :: 176.0;     // from the north edge of the ground, flowing south
+RIVER_SOUTH :: -176.0;
 RIVER_WIDTH :: 6.0;       // the outline: the 4 m channel and its wet banks
-RIVER_POINTS :: 27;       // the course, every 8 m
-RIVER_PROFILE :: 105;     // its level, every 2 m (a ground row), so the weir's step stays where it is
+RIVER_POINTS :: 45;       // the course, every 8 m
+RIVER_PROFILE :: 177;     // its level, every 2 m (a ground row), so the weir's step stays where it is
 RIVER_COLS :: 13;         // the baked nodes: 0.5 m across, from -3 to 3 m
-RIVER_ROWS :: 209;        // and 1 m along
+RIVER_ROWS :: 353;        // and 1 m along
 RIVER_ACROSS :: 0.5;
 RIVER_ALONG :: 1.0;
 RIVER_PATCH_ROWS :: 4;    // a patch (an instance) is 4 m of river
-RIVER_PATCHES :: 52;
+RIVER_PATCHES :: 88;
 RIVER_NODES :: RIVER_COLS * RIVER_ROWS * WATER_NODE;
 RIVER_FLOW_CELL :: 0.5;
-RIVER_FLOW :: 7600;       // the flow grid's nodes (17 by 433)
+RIVER_FLOW :: 12300;      // the flow grid's nodes (17 by 721)
 RIVER_SPEED :: 0.45;      // m/s, the mean current
 RIVER_PILES :: 2;         // the bridge's piles, in the stream
 RIVER_PILE :: [6] f64.[87.0, -11.0, 0.5,   89.0, -11.0, 0.5];   // each holds five of the flow grid's nodes
@@ -1283,13 +1283,13 @@ everglade_river_fx :: (r: [] River, out: [] f32, dt: f32, time: f64, you_x: f32,
 
 // A test river: the plan's levels as a gentle fall, the bed its carve (a
 // V 2.45 m deep at the middle), on the plan's ground grid.
-TEST_N :: 104;
+TEST_N :: 176;
 test_ground :: (heights: [] f32, levels: [] f32) {
   for j: 0..<TEST_N + 1 {
-    z := -104.0f32 + f32(j) * 2;
+    z := -176.0f32 + f32(j) * 2;
     levels[j] = -0.6 - (100 - z) * 0.002;
     for i: 0..<TEST_N + 1 {
-      x := -104.0f32 + f32(i) * 2;
+      x := -176.0f32 + f32(i) * 2;
       d := abs(x - 88);
       h := 1.0f32;
       if d <= 2 { h = levels[j] - 0.25 - 1.95 * (1 - d / 2); }
@@ -1350,7 +1350,7 @@ test_ground :: (heights: [] f32, levels: [] f32) {
   levels: [TEST_N + 1] f32;
   test_ground(heights[..], levels[..]);
   r: [1] River;
-  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -104, -104);
+  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -176, -176);
   #assert r[0].ready && r[0].bodies[0].flow.nx * r[0].bodies[0].flow.nz <= RIVER_FLOW;
   // the level falls downstream (south), as the plan's levels do
   s0 := water_sample(r[0].set, 88, 40, 0); s1 := water_sample(r[0].set, 88, -40, 0);
@@ -1370,10 +1370,10 @@ test_ground :: (heights: [] f32, levels: [] f32) {
   // not in the woods' ground beyond the banks
   #assert !water_sample(r[0].set, 92.5, -40, 0).found;
   // nodes: the middle is 2.45 m deep at rest, the bank's dry nodes have no shore distance
-  mid := (100 * RIVER_COLS + 6) * WATER_NODE;
+  mid := (172 * RIVER_COLS + 6) * WATER_NODE;
   #assert abs(r[0].nodes[mid] - 88) < 0.001 && abs(r[0].nodes[mid + 2] - 4) < 0.001;
   #assert abs(r[0].nodes[mid + 3] - 2.2) < 0.06;
-  edge := (100 * RIVER_COLS + 0) * WATER_NODE;
+  edge := (172 * RIVER_COLS + 0) * WATER_NODE;
   #assert r[0].nodes[edge + 3] < 0 && r[0].nodes[edge + 4] == 0;
   #assert r[0].nodes[mid + 4] > 1.0 && r[0].nodes[mid + 6] < -0.3;
   // white water down the weir and in its pool, none in the open stream
@@ -1402,7 +1402,7 @@ test_ground :: (heights: [] f32, levels: [] f32) {
   levels: [TEST_N + 1] f32;
   test_ground(heights[..], levels[..]);
   r: [1] River;
-  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -104, -104);
+  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -176, -176);
   // on the bank: ground, full pace
   a := everglade_river_swim(r[..], heights[..], 83.0, -30, false, 1.0 / 60.0, 1.0);
   #assert a.medium == MEDIUM_GROUND && a.pace == 1;
@@ -1437,7 +1437,7 @@ test_ground :: (heights: [] f32, levels: [] f32) {
   levels: [TEST_N + 1] f32;
   test_ground(heights[..], levels[..]);
   r: [1] River;
-  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -104, -104);
+  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -176, -176);
   out: [FLOATS * 8] f32;
   n := 0;
   for k: 0..<150 { n = everglade_river_floats(r[..], 1.0 / 60.0, out[..]); }
@@ -1460,7 +1460,7 @@ test_ground :: (heights: [] f32, levels: [] f32) {
   levels: [TEST_N + 1] f32;
   test_ground(heights[..], levels[..]);
   r: [1] River;
-  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -104, -104);
+  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -176, -176);
   out: [FLOATS * 8] f32;
   #assert r[0].float_clock.step_ns == FLOAT_STEP_NS && r[0].float_clock.max_steps == 8 && r[0].float_clock.max_frame_ns == 250000000;
   _ := everglade_river_floats(r[..], 1.0 / 60.0, out[..]);
@@ -1483,7 +1483,7 @@ test_ground :: (heights: [] f32, levels: [] f32) {
   // a bowl 3 m deep under a level of 0.75 at (-40, 20), rim 6 m (plan.coax everglade_pond_bed)
   for j: 0..<TEST_N + 1 {
     for i: 0..<TEST_N + 1 {
-      x := -104.0f32 + f32(i) * 2; z := -104.0f32 + f32(j) * 2;
+      x := -176.0f32 + f32(i) * 2; z := -176.0f32 + f32(j) * 2;
       d := sqrt((x + 40) * (x + 40) + (z - 20) * (z - 20));
       t := d / 6;
       bed := ifx d < 6 then 0.75 + 0.25 - 3.25 * (1 - t * t) else 1.0 + (d - 6) * 0.7;
@@ -1493,7 +1493,7 @@ test_ground :: (heights: [] f32, levels: [] f32) {
   k := TEST_N + 1;
   all[k] = -40; all[k + 1] = 20; all[k + 2] = 6; all[k + 3] = 0.75;
   r: [1] River;
-  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -104, -104);
+  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -176, -176);
   s := water_sample(r[0].set, -40, 20, 0);
   #assert s.found && abs(s.height - 0.75) < 0.0001 && water_still(s);
   #assert !water_sample(r[0].set, -40, 28, 0).found;
@@ -1542,7 +1542,7 @@ test_pond :: (heights: [] f32, all: [] f32) {
   test_ground(heights, all);
   for j: 0..<TEST_N + 1 {
     for i: 0..<TEST_N + 1 {
-      x := -104.0f32 + f32(i) * 2; z := -104.0f32 + f32(j) * 2;
+      x := -176.0f32 + f32(i) * 2; z := -176.0f32 + f32(j) * 2;
       d := sqrt((x + 40) * (x + 40) + (z - 20) * (z - 20));
       t := d / 6;
       bed := ifx d < 6 then 0.75 + 0.25 - 3.25 * (1 - t * t) else 1.0 + (d - 6) * 0.7;
@@ -1558,7 +1558,7 @@ test_pond :: (heights: [] f32, all: [] f32) {
   all: [TEST_N + 1 + PONDS * 4] f32;
   test_pond(heights[..], all[..]);
   r: [1] River;
-  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -104, -104);
+  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -176, -176);
   out: [FLOATS * 8] f32;
   for q: 0..<30 { fl := everglade_river_floats(r[..], 1.0 / 60.0, out[..]); }
   boat := everglade_river_first_boat(r[..]);
@@ -1602,7 +1602,7 @@ test_pond :: (heights: [] f32, all: [] f32) {
   all: [TEST_N + 1 + PONDS * 4] f32;
   test_pond(heights[..], all[..]);
   r: [1] River;
-  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -104, -104);
+  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -176, -176);
   // the water holds a hull out to about 5.6 m of the 6 m rim, the same all round
   for k: 0..<POND_POINTS { #assert r[0].boat_room[k] > 4.5 && r[0].boat_room[k] < 6.0; }
   out: [FLOATS * 8] f32;
@@ -1636,7 +1636,7 @@ test_pond :: (heights: [] f32, all: [] f32) {
   levels: [TEST_N + 1] f32;
   test_ground(heights[..], levels[..]);
   r: [1] River;
-  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -104, -104);
+  everglade_river_start(r[..], heights[..], levels[..], TEST_N, 2, -176, -176);
   u: [FX_ROWS * 4] f32;
   // a swimmer heading south at 1 m/s for 3 s
   for q: 0..<180 { everglade_river_fx(r[..], u[..], 1.0 / 60.0, 10 + f64(q) / 60.0, 88, -30 - f32(q) / 60.0, MEDIUM_SWIMMING, 88, 5, -40); }
@@ -1667,7 +1667,7 @@ test_pond :: (heights: [] f32, all: [] f32) {
   all: [TEST_N + 1 + PONDS * 4] f32;
   test_pond(heights[..], all[..]);
   r: [1] River;
-  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -104, -104);
+  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -176, -176);
   out: [FLOATS * 8] f32;
   for q: 0..<30 { fl := everglade_river_floats(r[..], 1.0 / 60.0, out[..]); }
   boat := everglade_river_first_boat(r[..]);

@@ -88,7 +88,7 @@ static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static coax_t_River river;
 static bool river_built;
 static uint32_t river_gen, frames;   // the river's bake (store 3) and frames drawn (stores 1 and 2 change every frame)
-static float river_levels[105 + 16];   // the river's levels, then the ponds' rows (everglade_levels)
+static float river_levels[177 + 16];   // the river's levels, then the ponds' rows (everglade_levels)
 static float river_floats[28 * 8];
 static coax_t_Swim swim;
 static coax_v_t_River rv(void) { return (coax_v_t_River){&river, 1}; }
@@ -142,8 +142,8 @@ static void start(uint32_t state) {
   sticks = verse_sticks_reset();
   placed = true;
   if (!river_built) {
-    everglade_levels(at(state), (coax_v_f32){river_levels, 105 + 16});
-    everglade_river_start(rv(), (coax_v_f32){city(state)->heights.e, 105 * 105}, (coax_v_f32){river_levels, 105 + 16}, 104, 2, -104, -104);
+    everglade_levels(at(state), (coax_v_f32){river_levels, 177 + 16});
+    everglade_river_start(rv(), (coax_v_f32){city(state)->heights.e, 177 * 177}, (coax_v_f32){river_levels, 177 + 16}, 176, 2, -176, -176);
     river_built = true; river_gen += 1;
     swim.pace = 1; swim.breath = 1;
   }
@@ -242,7 +242,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   // the river: what water you are in, on the bridge's deck none
   // the rain's rise on it and its current's gain (verse/water-weather.coax, W9)
   everglade_river_weather(rv(), everglade_rise(at(state)), everglade_flow_gain(at(state)));
-  coax_v_f32 heights = {g->heights.e, 105 * 105};
+  coax_v_f32 heights = {g->heights.e, 177 * 177};
   // Water Breathing (everglade-tide.coax): your breath never runs short under water
   everglade_river_gills(rv(), everglade_water_breathing(at(state)));
   // on the bridge's deck, or in Part Water's trench (everglade-tide.coax), you are out of the water
