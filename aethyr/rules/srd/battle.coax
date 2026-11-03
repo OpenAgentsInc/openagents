@@ -729,12 +729,21 @@ rs_escape :: (b: [] RsBattle, i: int) -> bool {
   dc := rs_spell_dc(b[0].c[b[0].zone[z].by]);
   downs := ifx rs_has(b[0].c[i], RS_POISONED) || rs_effect(b[0].c[i], EF_ENFEEBLED) then 1 else 0;
   for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == EF_HEX && b[0].c[i].eff[k].cond == RS_STR { downs += 1; } }
-  d := rs_d20(b[0].dice[..], rs_edge(ifx b[0].c[i].raging then 1 else 0, downs));
+  // Rage and Remarkable Athlete (p. 49) give Advantage on Strength (Athletics) checks
+  d := rs_d20(b[0].dice[..], rs_edge(ifx b[0].c[i].raging || b[0].c[i].athlete then 1 else 0, downs));
   total := d.roll + rs_mod(b[0].c[i].score[RS_STR]);
+  total += rs_inspired_roll(b, i, total, dc);
+  // Tactical Mind (p. 48): a failed check takes 1d10 from a Second Wind use, spent only if it succeeds
+  mind := 0;
+  if total < dc && b[0].c[i].tactical && b[0].c[i].uses[RS_USE_WIND] > 0 {
+    mind = rs_roll(b[0].dice[..], 10);
+    if total + mind >= dc { total += mind; b[0].c[i].uses[RS_USE_WIND] -= 1; } else { mind = 0; }
+  }
   ok := total >= dc;
   if ok { b[0].c[i].restrained_by = -1; b[0].c[i].cond = rs_clear(b[0].c[i].cond, RS_RESTRAINED); }
   l: [1] RsLine;
   rs_add_name(l[..], b, i); rs_add_text(l[..], " strains against the plants: STR (Athletics) "); rs_add_int(l[..], total);
+  if mind > 0 { rs_add_text(l[..], " (Tactical Mind +"); rs_add_int(l[..], mind); rs_add_text(l[..], ")"); }
   rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); rs_add_text(l[..], ifx ok then ": free" else ": still held");
   rs_tell(b, RS_EV_CONDITION, -1, i, i, total, 0, l[..]);
   return ok;
@@ -1082,7 +1091,27 @@ rs_attack :: (b: [] RsBattle, i: int, j: int, reckless: bool, cleave_to: int) ->
     rs_tell(b, RS_EV_CONDITION, -1, i, k, 0, 0, l[..]);
     ok := rs_strike(b, i, k, w, true);
   }
+  rs_after_blow(b, i);
+  // Extra Attack (p. 29, 48, 51, 55, 59): the Attack action's other attacks, at the same foe while
+  // it stands, else another beside it
+  for e: 0..<b[0].c[i].extra_attack {
+    t := ifx rs_up(b[0].c[j]) then j else rs_beside(b, i);
+    if t < 0 || !rs_can_act(b[0].c[i]) { break; }
+    again := rs_strike(b, i, t, w, false);
+    rs_after_blow(b, i);
+  }
   return true;
+}
+// A foe standing within 5 feet of i, or -1.
+rs_beside :: (b: [] RsBattle, i: int) -> int {
+  for k: 0..<b[0].n {
+    if k != i && rs_up(b[0].c[k]) && b[0].c[k].team != b[0].c[i].team && rs_feet_to(b, i, k) <= 5 { return k; }
+  }
+  return -1;
+}
+// After each attack: Remarkable Athlete (p. 49) moves half its Speed after a Critical Hit.
+rs_after_blow :: (b: [] RsBattle, i: int) {
+  if b[0].turn.last_crit && b[0].c[i].athlete && !b[0].turn.anchored { b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE / 2; b[0].turn.last_crit = false; }
 }
 
 // The Attack action with its ranged weapon, at j within its long range.
@@ -1091,6 +1120,12 @@ rs_shoot :: (b: [] RsBattle, i: int, j: int) -> bool {
   if j < 0 || j >= b[0].n || b[0].c[j].dead || j == i || rs_feet_to(b, i, j) > rs_weapon(b[0].c[i].ranged).long_ft { return false; }
   b[0].turn.action = true;
   ok := rs_strike(b, i, j, b[0].c[i].ranged, false);
+  rs_after_blow(b, i);
+  for e: 0..<b[0].c[i].extra_attack {
+    if !rs_up(b[0].c[j]) || !rs_can_act(b[0].c[i]) { break; }
+    again := rs_strike(b, i, j, b[0].c[i].ranged, false);
+    rs_after_blow(b, i);
+  }
   return true;
 }
 
@@ -1271,6 +1306,8 @@ rs_second_wind :: (b: [] RsBattle, i: int) -> bool {
   b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_WIND] -= 1;
   rs_say(b, RS_EV_CAST, i, i, 0, " takes a Second Wind");
   got := rs_feature_heal(b, i, i, rs_roll(b[0].dice[..], 10) + b[0].c[i].level, "Second Wind");
+  // Tactical Shift (p. 48): half its Speed more (no Opportunity Attacks in this engine to avoid)
+  if b[0].c[i].shift && !b[0].turn.anchored { b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE / 2; }
   return true;
 }
 // Action Surge (p. 48): one more action this turn, once.
@@ -2114,4 +2151,57 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   }
   // a d20's mean is 10.5, with Advantage about 13.8
   #assert champ > plain + 150;
+}
+
+#test "a level 6 Champion: Strength 20 from two Ability Score Improvements, Extra Attack, Tactical Mind and Tactical Shift" {
+  c := rs_fighter("Garr", 0, 6);
+  // Ability Score Improvement (p. 87) at 4 and 6: Strength 16 to 20; Greatsword +5 (Str) +3 (Proficiency)
+  #assert c.score[RS_STR] == 20 && rs_weapon_attack(c, c.weapon) == 8 && c.extra_attack == 1 && c.uses_max[RS_USE_WIND] == 3;
+  #assert rs_fighter("Garr", 0, 4).score[RS_STR] == 18 && rs_fighter("Garr", 0, 4).extra_attack == 0;
+  #assert c.hp_max == 10 + 2 + 5 * (6 + 2);
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 9;
+  f := rs_add(b[..], c, 3, 3);
+  t := rs_add(b[..], rs_skeleton("Skeleton", 2), 4, 3);
+  b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
+  // Extra Attack: two attack rolls for one Attack action
+  rs_fresh(b[..], f); seq := b[0].book[0].seq;
+  #assert rs_attack(b[..], f, t, false, -1) && b[0].turn.action;
+  rolls := 0;
+  for e: 0..<(b[0].book[0].seq - seq) {
+    ev := rs_recent(b[0].book[0], e);
+    tx := cast(string) ev.text[0..<ev.text_n];
+    for q: 0..<rs_max(ev.text_n - 6, 0) { if tx[q..<(q + 7)] == " vs AC " { rolls += 1; } }
+  }
+  #assert rolls == 2;
+  // Tactical Shift: Second Wind gives half its Speed (3 squares) more
+  b[0].c[f].hp = 10; rs_fresh(b[..], f);
+  #assert rs_second_wind(b[..], f) && b[0].turn.move_left == 6 + 3 && b[0].c[f].uses[RS_USE_WIND] == 2;
+  // Remarkable Athlete: half its Speed after a Critical Hit
+  rs_fresh(b[..], f); b[0].turn.last_crit = true; rs_after_blow(b[..], f);
+  #assert b[0].turn.move_left == 6 + 3 && !b[0].turn.last_crit;
+}
+
+#test "Tactical Mind: a failed Strength (Athletics) check takes 1d10 more from a Second Wind use, spent only when it then succeeds" {
+  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 5;
+  a := rs_add(b[..], rs_druid("Rowan", 0, 3), 1, 3);
+  b[0].c[a].score[RS_WIS] = 30;   // DC 8 + 2 + 10 = 20: hard enough that the plants hold
+  f := rs_add(b[..], rs_fighter("Garr", 1, 6), 8, 3);
+  b[0].c[f].score[RS_STR] = 10;
+  mind := false;
+  for k: 0..<40 {
+    if !rs_has(b[0].c[f], RS_RESTRAINED) {
+      for j: 0..<RS_ZONES { b[0].zone[j].on = false; }
+      b[0].c[a].conc = -1; b[0].c[a].slots[1] = 4;
+      rs_fresh(b[..], a);
+      ok := rs_cast(b[..], a, SP_ENTANGLE, 1, 8, 3, -1);
+      continue;
+    }
+    rs_fresh(b[..], f); seq := b[0].book[0].seq;
+    was := b[0].c[f].uses[RS_USE_WIND];
+    freed := rs_escape(b[..], f);
+    if rs_saw(b[..], seq, "Tactical Mind") { mind = true; #assert freed && b[0].c[f].uses[RS_USE_WIND] == was - 1; }
+    else { #assert b[0].c[f].uses[RS_USE_WIND] == was; }
+    if b[0].c[f].uses[RS_USE_WIND] == 0 { b[0].c[f].uses[RS_USE_WIND] = 3; }
+  }
+  #assert mind;
 }

@@ -202,6 +202,8 @@ RsCreature :: struct {
   // Fighter: the Champion's Improved Critical (crit_range: a Critical Hit on 20 - crit_range or
   // higher) and Remarkable Athlete; the Archery fighting style (+2 to ranged weapon attack rolls)
   crit_range: int; athlete: bool; archery: bool;
+  extra_attack: int;               // Extra Attack: more attacks with the Attack action
+  tactical: bool; shift: bool;     // Tactical Mind, Tactical Shift (Fighter)
   // Paladin: Sacred Weapon (Channel Divinity) until; Ranger: the Hunter's Colossus Slayer
   sacred_until: f32; colossus: bool;
   // Rogue: Sneak Attack dice (d6s), Cunning Action, Steady Aim
@@ -495,8 +497,11 @@ rs_cleric :: (name: string, team: int, level: int) -> RsCreature {
 }
 // The SRD 5.2.1 Fighter (p. 47-49): Strength and Constitution saves, a d10 hit die, Chain Mail (AC
 // 16) with the Defense fighting style (+1), a Greatsword and its Graze mastery. Second Wind (two
-// uses, 1d10 + level), Action Surge from level 2, and the Champion's Improved Critical and
-// Remarkable Athlete at 3. Strength first.
+// uses, three from level 4; 1d10 + level), Action Surge and Tactical Mind from level 2, the
+// Champion's Improved Critical and Remarkable Athlete at 3, Ability Score Improvements at 4 and 6
+// (the feat, p. 87: Strength +2 each time, to 20), Extra Attack and Tactical Shift at 5. Weapon
+// Mastery's other weapons are carried in the record only: a Fighter here fights with its Greatsword.
+// Strength first.
 rs_fighter :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_hero(name, team, level, RS_FIGHTER, [6] int.[16, 13, 14, 8, 12, 10], RS_STR, RS_CON, 10);
@@ -506,6 +511,10 @@ rs_fighter :: (name: string, team: int, level: int) -> RsCreature {
   if level >= 2 { rs_use_set(c[..], RS_USE_SURGE, ifx level >= 17 then 2 else 1); }
   c[0].crit_range = ifx level >= 15 then 2 else ifx level >= 3 then 1 else 0;
   c[0].athlete = level >= 3;
+  c[0].tactical = level >= 2; c[0].shift = level >= 5;
+  c[0].extra_attack = ifx level >= 20 then 3 else ifx level >= 11 then 2 else ifx level >= 5 then 1 else 0;
+  if level >= 4 { c[0].score[RS_STR] = rs_min(c[0].score[RS_STR] + 2, 20); }
+  if level >= 6 { c[0].score[RS_STR] = rs_min(c[0].score[RS_STR] + 2, 20); }
   return c[0];
 }
 // The SRD 5.2.1 Paladin (p. 53-56): Charisma casting, Wisdom and Charisma saves, a d10 hit die,
