@@ -20,39 +20,20 @@ staging. If not, say what to tune: distance, spring or ease.
 keyboard only through the accessible layer (MOVE, TURN IT, SAVE, UNDO, REDO,
 a row's checkbox), the names, roles and live region a screen reader reads,
 leave and reopen with an unsaved change, freeze and resume, and a guest's W
-key and a stand-in controller. On coderos-4080 it runs only on SwiftShader,
-whose WebGPU device Chrome destroys every few seconds; its keyboard and
-accessibility steps passed there before the host gave up after four losses
-in a minute. On the Mac, build the page's module (`apps/openagents-web/build.sh`,
-or just `build/myrealm.wasm`) and run `COAX=... coax/web/api/realm-gate.sh --page`,
-and add the result to issue #12629. Not blocking.
-
-## GPU resource ledger: check on a real GPU (#12628, 2026-11-02)
-
-`aethyr/tests/render-ledger.coax` passed on coderos-4080 only on SwiftShader,
-against the Grid and the fixture realm. Headless Chromium's GPU process dies
-on the RTX 4080 here. On the Mac, with a served build (`coax/web/serve.sh
-apps/openagents-web`), run `coax/web/tool.sh aethyr/tests/render-ledger.coax
-http://127.0.0.1:8800/realms/the-grid/`, then the same for `/realms/everglade/`.
-Add the results to issue #12628. Not blocking.
+key and a stand-in controller. Since #12678 it runs on coderos-4080's RTX
+4080 (headless Chromium, Vulkan, no device loss): 11 checks passed and 12
+failed there on 2026-11-02, the failures in the realm itself (the board's
+checkbox rows missing, SAVE not reaching the server's next revision, the
+guest's page not opening), not the GPU; see the comment on #12629. Whoever
+picks up #12629 runs `COAX=... coax/web/api/realm-gate.sh --page` with a full
+`apps/openagents-web/build.sh` build to tell a realm bug from a partial build.
+Not blocking.
 
 ## iOS Metal host onto the render admission ledger (#12628, 2026-11-02)
 
 Move the iOS Metal host (`apps/openagents-ios` `HomeRenderer.swift`) onto
 the shared render admission ledger (`aethyr/render/registry.coax`). This
 needs an agent on the Mac with Xcode; coderos-4080 can't build the app.
-
-## GPU device loss and trap recovery: check on real GPUs (#12651, 2026-11-02)
-
-`coax/web/host.js` now replaces a lost GPU device and keeps the realm's
-state, and saves a realm whose engine traps so the reload puts it back. The
-check, `coax/web/gpu-recovery.coax`, passed on coderos-4080 against the Grid
-only on SwiftShader (headless Chromium's GPU process still dies there, see
-"Coax Nostr queue" below), so the 3-second budget is not yet measured on a
-real GPU. On the Mac, with a served build (`coax/web/serve.sh
-apps/openagents-web`), run `coax/web/tool.sh coax/web/gpu-recovery.coax
-http://127.0.0.1:8800/realms/the-grid/` and then the same against Everglade
-and the fixture realm, and add the results to issue #12651. Not blocking.
 
 ## Realm seats: release oa-api, the site and the runner (2026-11-02, #12655)
 
@@ -83,7 +64,9 @@ a WebGPU canvas (no shared image for its swap chain), not staging. One risk for
 step 1: if the runner image's Chromium has the same gap, a hosted seat's page
 loses its device on its first frame and never lays out (the offscreen fallback
 works only on a localhost page). Check that the first hosted seat says what it
-sees.
+sees. (On this machine's GPU, the default since #12678, a canvas presents
+without losing its device: Everglade drew 8 s with no loss. Only a
+screenshot leaves the canvas out, since Chrome composites in software.)
 
 The agent pane (EDIT > AGENT on a made realm; `verse/edit/agent.coax`,
 `seats.c` now takes the page's logged-in session) ships with the same release.
@@ -150,20 +133,17 @@ changes the machine's configuration, so it waits for you:
    returns to tty1; Ctrl+Alt+F3 resumes. Say whether it should become tty1
    (booting straight into the Verse), which is V0's last step.
 
-## Every realm's 60 FPS report: the first sweep needs a hardware GPU (2026-11-02, #12649)
+## Every realm's 60 FPS report: which machine is the reference (2026-11-02, #12649)
 
 `coax/web/realm-perf.coax` times every realm in `realms.json` at dpr 1 and
 2 and as a 390x844 phone, and `release.sh` now runs it after each release as
-a report (`releases/<time>/REALMS.tsv` and `REALMS.txt`). On coderos-4080
-headless Chromium gets no WebGPU adapter (Google Chrome gets only
-SwiftShader), so the tool refuses to measure there and no first sweep exists
-yet. Run it on the release Mac, from the repository root, in three parts of
-under 15 minutes each:
-
-    for p in 1 2 3; do coax/web/tool.sh realm-perf https://openagents.com --shard $p/3 --out realms.$p.tsv; done
-
-Or let the next release run it. To measure on coderos-4080, its headless
-Chromium needs a hardware Vulkan WebGPU adapter (the NVIDIA ICD).
+a report (`releases/<time>/REALMS.tsv` and `REALMS.txt`). Since #12678 it
+measures on coderos-4080's RTX 4080; the first sweep of production there
+(2026-11-02, a shared machine at load 16 to 47) is on #12649: every realm
+draws, and the misses are single 33 ms frames except hold-the-stair at
+1440x900 dpr 1 in one of two runs. What is left for you: whether the release
+Mac's sweep should stay the reference, since frames on coderos-4080 share
+the machine with every agent's builds. Not blocking.
 
 ## Background jobs stopped after desktop lockups (2026-11-02)
 
