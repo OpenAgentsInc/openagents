@@ -362,6 +362,18 @@
       "timeout": 420
     },
     {
+      "source": "bitcoin/examples/segwit-sighash.coax",
+      "chapter": "bitcoin/book/ch038-segwit-v0-signature-hashes.md",
+      "stdout": "bitcoin/fixtures/segwit-sighash.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 420
+    },
+    {
       "source": "bitcoin/examples/taproot-key-path.coax",
       "chapter": "bitcoin/book/ch041-the-key-tweak-and-the-key-path.md",
       "stdout": "bitcoin/fixtures/taproot-key-path.out",

@@ -8,6 +8,7 @@ examples and BIP-341 wallet test vectors.
 The inputs are bitcoin/bips master's bip-0143.mediawiki and
 bip-0341/wallet-test-vectors.json; their SHA-256 must equal the pins below,
 so a changed upstream file refuses instead of silently changing the checks.
+bip-0143.mediawiki is pinned at coax/tests/vectors/upstream/bip143/.
 Nothing here computes a sighash or a signature: every value is copied."""
 import hashlib,json,re,sys
 from pathlib import Path

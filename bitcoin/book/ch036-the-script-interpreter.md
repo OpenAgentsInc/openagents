@@ -885,7 +885,8 @@ sequence. Chapters 37 and 38 explain them field by field; here they are
 computed over chapter 34's reader, for transactions of any size and with
 witnesses. `sighash.coax`, written for Nostr chapter 104, has its own
 BIP-143 hash over unsigned transactions of at most 16 inputs and 4,096
-bytes. Both give BIP-143's digests, and chapter 38 keeps one.
+bytes. Both give BIP-143's digests, and
+[chapter 38](ch038-segwit-v0-signature-hashes.md) explains why both remain.
 
 The scriptCode a legacy signature hashes leaves out the
 `OP_CODESEPARATOR`s:
@@ -1146,10 +1147,7 @@ si_witness_program :: (sp: ScriptSpend, w: [] ScriptWork, version: int, program:
   if version == 0 && prog.count == 20 {
     if count != 2 { return SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH; }
     script := si_new(w, 25);
-    code := w[0].arena[script.at..<script.at+25];  // mutant: equivalent (only the first 25 bytes are written and read)
-    code[0] = OP_DUP; code[1] = OP_HASH160; code[2] = 20;
-    for i: 0..<20 { code[3+i] = prog[i]; }
-    code[23] = OP_EQUALVERIFY; code[24] = OP_CHECKSIG;
+    script_p2wpkh_code_vartime(prog, w[0].arena[script.at..<script.at+25]);
     return si_execute_witness(sp, w, 2, script, flags);
   }
   if version == 0 { return SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH; }
@@ -1610,7 +1608,8 @@ On 2026-11-02, 16,178 cases agree with Python in native checked and release buil
   The seven rows they need are not run, and a v1 program under `TAPROOT`
   refuses.
 - The signature hashes in detail: chapters
-  [37 (legacy)](ch037-legacy-signature-hashes.md) and 38 (BIP-143).
+  [37 (legacy)](ch037-legacy-signature-hashes.md) and
+  [38 (BIP-143)](ch038-segwit-v0-signature-hashes.md).
 - What the lock times mean for a transaction, and BIP-68's relative lock
   times: chapter 39.
 - Which flags apply at which height: chapter 55. The transaction rules

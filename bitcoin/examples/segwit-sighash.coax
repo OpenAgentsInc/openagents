@@ -1,0 +1,173 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/script.coax";
+#import "Basic";
+
+// A transaction read into fixed room, with witnesses.
+Spend :: struct {
+  b: [4096] u8; spk: [64] u8;
+  ins: [8] TxIn; outs: [8] TxOut; items: [16] TxItem;
+}
+spend_of :: (s: [] Spend, tx: string, index: int, amount: int) -> ScriptSpend {
+  b := tx_unhex(tx, s[0].b[..]);
+  t := tx_read_vartime(b, true, s[0].ins[..], s[0].outs[..], s[0].items[..]);
+  #assert t.code == TX_OK;
+  return ScriptSpend.{b=b, t=t, ins=s[0].ins[0..<t.nin], outs=s[0].outs[0..<t.nout], items=s[0].items[0..<t.nitems],
+    index=index, amount=amount, spk=b[0..<0]};
+}
+show_hex :: (b: [] u8) {
+  digits := "0123456789abcdef";
+  for k: 0..<b.count {
+    pair: [2] u8;
+    pair[0] = digits[b[k] >> 4]; pair[1] = digits[b[k] & 15];
+    print("%", cast(string) pair[..]);
+  }
+}
+same32 :: (a: [] u8, b: [] u8) -> bool {
+  for k: 0..<32 { if a[k] != b[k] { return false; } }
+  return true;
+}
+
+// BIP-143's other published signature hashes, copied from its "Native
+// P2WSH" and "No FindAndDelete" examples
+// (coax/tests/vectors/upstream/bip143/bip-0143.mediawiki). Each scriptCode
+// is without its length byte.
+Example :: struct { label: string; tx: string; index: int; code: string; amount: int; hashtype: int; sighash: string; }
+P2WSH_A :: "0100000002fe3dc9208094f3ffd12645477b3dc56f60ec4fa8e6f5d67c565d1c6b9216b36e0000000000ffffffff0815cf020f013ed6cf91d29f4202e8a58726b1ac6c79da47c23d1bee0a6925f80000000000ffffffff0100f2052a010000001976a914a30741f8145e5acadf23f751864167f32e0963f788ac00000000";
+P2WSH_B :: "0100000002e9b542c5176808107ff1df906f46bb1f2583b16112b95ee5380665ba7fcfc0010000000000ffffffff80e68831516392fcd100d186b3c2c7b95c80b53c77e77c35ba03a66b429a2a1b0000000000ffffffff0280969800000000001976a914de4b231626ef508c9a74a8517e6783c0546d6b2888ac80969800000000001976a9146648a8cd4531e1ec47f35916de8e259237294d1e88ac00000000";
+// The same transaction signed, with its two input-output pairs swapped.
+P2WSH_B_SWAPPED :: "0100000000010280e68831516392fcd100d186b3c2c7b95c80b53c77e77c35ba03a66b429a2a1b0000000000ffffffffe9b542c5176808107ff1df906f46bb1f2583b16112b95ee5380665ba7fcfc0010000000000ffffffff0280969800000000001976a9146648a8cd4531e1ec47f35916de8e259237294d1e88ac80969800000000001976a914de4b231626ef508c9a74a8517e6783c0546d6b2888ac024730440220032521802a76ad7bf74d0e2c218b72cf0cbc867066e2e53db905ba37f130397e02207709e2188ed7f08f4c952d9d13986da504502b8c3be59617e043552f506c46ff83275163ab68210392972e2eb617b2388771abe27235fd5ac44af8e61693261550447a4c3e39da98ac02483045022100f6a10b8604e6dc910194b79ccfc93e1bc0ec7c03453caaa8987f7d6c3413566002206216229ede9b4d6ec2d325be245c5b508ff0339bf1794078e20bfe0babc7ffe683270063ab68210392972e2eb617b2388771abe27235fd5ac44af8e61693261550447a4c3e39da98ac00000000";
+P2WSH_B_SPK :: [2] string.["0020ba468eea561b26301e4cf69fa34bde4ad60c81e70f059f045ca9a79931004a4d", "0020d9bbfbe56af7c4b7f960a70d7ea107156913d9e5a26b0a71429df5e097ca6537"];
+NO_FAD_TX :: "010000000169c12106097dc2e0526493ef67f21269fe888ef05c7a3a5dacab38e1ac8387f14c1d000000ffffffff0101000000000000000000000000";
+NO_FAD_SIGNED :: "0100000000010169c12106097dc2e0526493ef67f21269fe888ef05c7a3a5dacab38e1ac8387f14c1d000000ffffffff01010000000000000000034830450220487fb382c4974de3f7d834c1b617fe15860828c7f96454490edd6d891556dcc9022100baf95feb48f845d5bfc9882eb6aeefa1bc3790e39f59eaa46ff7f15ae626c53e012102a9781d66b61fb5a7ef00ac5ad5bc6ffc78be7b44a566e3c87870e1079368df4c4aad4830450220487fb382c4974de3f7d834c1b617fe15860828c7f96454490edd6d891556dcc9022100baf95feb48f845d5bfc9882eb6aeefa1bc3790e39f59eaa46ff7f15ae626c53e0100000000";
+NO_FAD_SPK :: "00209e1be07558ea5cc8e02ed1d80c0911048afad949affa36d5c3951e3159dbea19";
+NO_FAD_SIG :: "30450220487fb382c4974de3f7d834c1b617fe15860828c7f96454490edd6d891556dcc9022100baf95feb48f845d5bfc9882eb6aeefa1bc3790e39f59eaa46ff7f15ae626c53e01";
+MORE :: [5] Example.[
+  Example.{label="native P2WSH, the key before CODESEPARATOR", tx=P2WSH_A, index=1, amount=4900000000, hashtype=3,
+    code="21026dccc749adc2a9d0d89497ac511f760f45c47dc5ed9cf352a58ac706453880aeadab210255a9626aebf5e29c0e6538428ba0d1dcf6ca98ffdf086aa8ced5e0d0215ea465ac",
+    sighash="82dde6e4f1e94d02c2b7ad03d2115d691f48d064e9d52f58194a6637e4194391"},
+  Example.{label="native P2WSH, the key after CODESEPARATOR", tx=P2WSH_A, index=1, amount=4900000000, hashtype=3,
+    code="210255a9626aebf5e29c0e6538428ba0d1dcf6ca98ffdf086aa8ced5e0d0215ea465ac",
+    sighash="fef7bd749cce710c5c052bd796df1af0d935e59cea63736268bcbe2d2134fc47"},
+  Example.{label="native P2WSH, CODESEPARATOR in an IF not taken", tx=P2WSH_B, index=0, amount=16777215, hashtype=0x83,
+    code="0063ab68210392972e2eb617b2388771abe27235fd5ac44af8e61693261550447a4c3e39da98ac",
+    sighash="e9071e75e25b8a1e298a72f0d2e9f4f95a0f5cdf86a533cda597eb402ed13b3a"},
+  Example.{label="native P2WSH, CODESEPARATOR in an IF taken", tx=P2WSH_B, index=1, amount=16777215, hashtype=0x83,
+    code="68210392972e2eb617b2388771abe27235fd5ac44af8e61693261550447a4c3e39da98ac",
+    sighash="cd72f1f1a433ee9df816857fad88d8ebd97e09a75cd481583eb841c330275e54"},
+  Example.{label="P2WSH without FindAndDelete", tx=NO_FAD_TX, index=0, amount=200000, hashtype=1,
+    code="ad4830450220487fb382c4974de3f7d834c1b617fe15860828c7f96454490edd6d891556dcc9022100baf95feb48f845d5bfc9882eb6aeefa1bc3790e39f59eaa46ff7f15ae626c53e01",
+    sighash="71c9cd9b2869b9c70b01b1f0360c148f42dee72297db312638df136f43311f23"},
+];
+LABELS :: [8] string.["native P2WPKH", "P2SH-P2WPKH", "P2SH-P2WSH 6-of-6", "P2SH-P2WSH 6-of-6", "P2SH-P2WSH 6-of-6",
+  "P2SH-P2WSH 6-of-6", "P2SH-P2WSH 6-of-6", "P2SH-P2WSH 6-of-6"];
+hashtype_name :: (hashtype: int) -> string {
+  if hashtype == 1 { return "ALL"; } if hashtype == 2 { return "NONE"; } if hashtype == 3 { return "SINGLE"; }
+  if hashtype == 0x81 { return "ALL|ANYONECANPAY"; } if hashtype == 0x82 { return "NONE|ANYONECANPAY"; }
+  return "SINGLE|ANYONECANPAY";
+}
+// One published example: the three hashes this type signs, the hash, and
+// whether it is BIP-143's.
+show_example :: (s: [] Spend, label: string, tx: string, index: int, code: [] u8, amount: int, hashtype: int, want: string) -> bool {
+  sp := spend_of(s, tx, index, amount);
+  pre := script_v0_hashes_vartime(sp);
+  h := script_v0_select_vartime(sp, pre, hashtype);
+  out: [32] u8;
+  script_sighash_v0_from_vartime(sp, pre, code, hashtype, out[..]);
+  ok := tx_hex_is(out[..], want);
+  print("  %, input %, %: %\n    hashPrevouts ", label, index, hashtype_name(hashtype), ifx ok then "matches" else "DIFFERS");
+  show_hex(h.prevouts[..]); print("\n    hashSequence "); show_hex(h.sequences[..]);
+  print("\n    hashOutputs  "); show_hex(h.outputs[..]); print("\n    sigHash      "); show_hex(out[..]); print("\n");
+  return ok;
+}
+
+// Bytes the first SHA-256 reads, for n inputs and two 34-byte outputs. A
+// legacy P2PKH input hashes about the whole transaction (chapter 37). A
+// BIP-143 P2WPKH input hashes 182 bytes: the version, the three hashes,
+// its outpoint, its 26-byte scriptCode, amount and sequence, the lock time
+// and the hash type. The three hashes read 36 and 4 bytes per input and
+// the 68 bytes of outputs, once for the transaction.
+legacy_bytes :: (n: int) -> int { return n * (4 + tx_compact_size_vartime(n) + 41 * (n - 1) + 66 + 1 + 68 + 4 + 4); }
+V0_INPUT :: 4 + 32 + 32 + 36 + 26 + 8 + 4 + 32 + 4 + 4;
+v0_once :: (n: int) -> int { return 36 * n + 4 * n + 68; }
+
+main :: () {
+  s: [1] Spend; c: [512] u8; h: [32] u8;
+
+  // Every published signature hash of BIP-143, worked through.
+  print("BIP-143's examples\n");
+  good := 0;
+  for i: 0..<8 {
+    v := BT_V143[i];
+    code := tx_unhex(v.code, c[..]);
+    if show_example(s[..], LABELS[i], v.tx, v.index, code[1..<code.count], v.amount, v.hashtype, v.sighash) { good += 1; }
+  }
+  for e: MORE {
+    if show_example(s[..], e.label, e.tx, e.index, tx_unhex(e.code, c[..]), e.amount, e.hashtype, e.sighash) { good += 1; }
+  }
+  print("  % of % match\n", good, BT_V143.count + MORE.count);
+
+  // The scriptCode of a P2WPKH input: its program in a P2PKH script.
+  print("the P2WPKH scriptCode\n");
+  spk := tx_unhex("00141d0f172a0ecb48aee1be1f2687d2963ae33f71a1", c[..]);
+  code: [25] u8;
+  script_p2wpkh_code_vartime(spk[2..<22], code[..]);
+  print("  scriptPubKey 00141d0f172a0ecb48aee1be1f2687d2963ae33f71a1\n  scriptCode   19");
+  show_hex(code[..]);
+  print("\n");
+
+  // The amount is signed: one satoshi more is another hash. A legacy hash
+  // of the same input has no amount to change.
+  print("the amount\n");
+  sp := spend_of(s[..], BT_V143[0].tx, 1, 600000000);
+  for amount: [2] int.[600000000, 600000001] {
+    sp.amount = amount;
+    script_sighash_v0_vartime(sp, code[..], 1, h[..]);
+    print("  BIP-143, % sat: ", amount);
+    show_hex(h[..]);
+    print("\n");
+  }
+  for amount: [2] int.[600000000, 600000001] {
+    sp.amount = amount;
+    script_sighash_legacy_vartime(sp, code[..], 1, h[..]);
+    print("  legacy, % sat: ", amount);
+    show_hex(h[..]);
+    print("\n");
+  }
+
+  // SINGLE|ANYONECANPAY signs no index: with the pairs swapped, both
+  // signatures still verify. And FindAndDelete isn't applied: the witness
+  // script pushes the signature that signs it.
+  print("signed spends\n");
+  w: [1] ScriptWork;
+  flags := SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS;
+  for k: 0..<2 {
+    sp = spend_of(s[..], P2WSH_B_SWAPPED, k, 16777215);
+    sp.spk = tx_unhex(P2WSH_B_SPK[1 - k], s[0].spk[..]);
+    print("  pairs swapped, input %: %\n", k, SCRIPT_ERR_NAMES[script_verify_vartime(sp, flags, w[..])]);
+  }
+  sp = spend_of(s[..], NO_FAD_SIGNED, 0, 200000);
+  sp.spk = tx_unhex(NO_FAD_SPK, s[0].spk[..]);
+  print("  without FindAndDelete: %\n", SCRIPT_ERR_NAMES[script_verify_vartime(sp, flags, w[..])]);
+  sig: [80] u8;
+  si_code(w[..], tx_unhex(MORE[4].code, c[..]), 0);
+  print("    FindAndDelete would remove % push of the signature\n", si_find_delete(w[..], tx_unhex(NO_FAD_SIG, sig[..])));
+
+  // One computation of the three hashes serves every input.
+  print("the three hashes, once\n");
+  sp = spend_of(s[..], BT_V143[0].tx, 0, 625000000);
+  pre := script_v0_hashes_vartime(sp);
+  for k: 0..<2 {
+    sp.index = k;
+    one: [32] u8;
+    script_sighash_v0_from_vartime(sp, pre, code[..], 1, h[..]);
+    script_sighash_v0_vartime(sp, code[..], 1, one[..]);
+    print("  input %: % as computed alone\n", k, ifx same32(h[..], one[..]) then "the same" else "NOT the same");
+  }
+
+  // Linear against quadratic.
+  print("bytes hashed, n inputs and 2 outputs\n");
+  for n: [6] int.[1, 10, 100, 1000, 5000, 6756] {
+    print("  n %: legacy %, BIP-143 % (% once, % per input)\n", n, legacy_bytes(n), v0_once(n) + n * V0_INPUT, v0_once(n), V0_INPUT);
+  }
+}
+// book:end example

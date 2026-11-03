@@ -9,8 +9,8 @@
 //
 // Tapscript (BIP-342) is chapter 44: a v1 witness program under the
 // TAPROOT flag refuses with SCRIPT_TAPROOT_UNBUILT instead of running.
-// The two signature hashes are chapters 37 (legacy) and 38 (BIP-143);
-// here they are computed over chapter 34's reader, without size limits.
+// The two signature hashes are chapters 37 (legacy) and 38 (BIP-143),
+// computed over chapter 34's reader, without size limits.
 //
 // Scripts, stacks and transactions are public, so everything runs in
 // variable time and every procedure that decides ends in _vartime
@@ -435,48 +435,70 @@ script_sighash_legacy_vartime :: (sp: ScriptSpend, code: [] u8, hashtype: int, o
 }
 // book:end legacy
 // book:begin bip143
-// The BIP-143 signature hash (SigVersion::WITNESS_V0; chapter 38 explains
-// it): hashes of all prevouts, all sequences and all outputs, which the
-// hash type zeroes or narrows, then this input's outpoint, scriptCode,
-// amount and sequence.
-script_sighash_v0_vartime :: (sp: ScriptSpend, code: [] u8, hashtype: int, out: [] u8) {
-  b := sp.b; t := sp.t; index := sp.index;
+// The three hashes of BIP-143, Core's PrecomputedTransactionData: the
+// SHA-256d of every input's outpoint, of every input's sequence, and of
+// every output. They depend on neither the input nor the hash type, so a
+// transaction needs them once, however many inputs it signs.
+ScriptV0Hashes :: struct { prevouts: [32] u8; sequences: [32] u8; outputs: [32] u8; }
+script_v0_hashes_vartime :: (sp: ScriptSpend) -> ScriptV0Hashes {
+  b := sp.b; t := sp.t;
+  h: ScriptV0Hashes; part: [SHA_STATE_BYTES] u8;
+  si_start(part[..]);
+  for k: 0..<t.nin { si_absorb(part[..], b[sp.ins[k].outpoint..<sp.ins[k].outpoint+36]); }
+  si_finish(part[..], h.prevouts[..]);
+  si_start(part[..]);
+  for k: 0..<t.nin { si_absorb(part[..], b[sp.ins[k].sequence..<sp.ins[k].sequence+4]); }
+  si_finish(part[..], h.sequences[..]);
+  si_start(part[..]);
+  for k: 0..<t.nout { si_absorb(part[..], b[sp.outs[k].value..<sp.outs[k].script+sp.outs[k].script_n]); }
+  si_finish(part[..], h.outputs[..]);
+  return h;
+}
+// The three hashes a signature of this hash type signs. ANYONECANPAY
+// zeroes hashPrevouts; ANYONECANPAY, NONE and SINGLE zero hashSequence;
+// NONE zeroes hashOutputs, and SINGLE replaces it with the hash of the
+// output at this input's index, or zeros when there is none.
+script_v0_select_vartime :: (sp: ScriptSpend, pre: ScriptV0Hashes, hashtype: int) -> ScriptV0Hashes {
+  b := sp.b; index := sp.index;
   anyone := (hashtype & 0x80) != 0;
   single := (hashtype & 0x1f) == 3; none := (hashtype & 0x1f) == 2;
-  prevouts: [32] u8; sequences: [32] u8; outputs: [32] u8;
-  part: [SHA_STATE_BYTES] u8;
-  if !anyone {
-    si_start(part[..]);
-    for k: 0..<t.nin { si_absorb(part[..], b[sp.ins[k].outpoint..<sp.ins[k].outpoint+36]); }
-    si_finish(part[..], prevouts[..]);
-  }
-  if !anyone && !single && !none {
-    si_start(part[..]);
-    for k: 0..<t.nin { si_absorb(part[..], b[sp.ins[k].sequence..<sp.ins[k].sequence+4]); }
-    si_finish(part[..], sequences[..]);
-  }
-  if !single && !none {
-    si_start(part[..]);
-    for k: 0..<t.nout { si_absorb(part[..], b[sp.outs[k].value..<sp.outs[k].script+sp.outs[k].script_n]); }
-    si_finish(part[..], outputs[..]);
-  } else if single && index < t.nout {
-    si_start(part[..]);
+  h := pre;
+  zero: [32] u8;
+  if anyone { h.prevouts = zero; }
+  if anyone || single || none { h.sequences = zero; }
+  if none || (single && index >= sp.t.nout) { h.outputs = zero; }
+  else if single {
+    part: [SHA_STATE_BYTES] u8; si_start(part[..]);
     si_absorb(part[..], b[sp.outs[index].value..<sp.outs[index].script+sp.outs[index].script_n]);
-    si_finish(part[..], outputs[..]);
+    si_finish(part[..], h.outputs[..]);
   }
+  return h;
+}
+// The BIP-143 signature hash (SigVersion::WITNESS_V0) from the three
+// hashes: the version, the selected hashes around this input's outpoint,
+// scriptCode, amount and sequence, the lock time and the hash type.
+script_sighash_v0_from_vartime :: (sp: ScriptSpend, pre: ScriptV0Hashes, code: [] u8, hashtype: int, out: [] u8) {
+  b := sp.b; t := sp.t; index := sp.index;
+  h := script_v0_select_vartime(sp, pre, hashtype);
   state: [SHA_STATE_BYTES] u8; si_start(state[..]);
   si_absorb(state[..], b[0..<4]);
-  si_absorb(state[..], prevouts[..]);
-  si_absorb(state[..], sequences[..]);
+  si_absorb(state[..], h.prevouts[..]);
+  si_absorb(state[..], h.sequences[..]);
   si_absorb(state[..], b[sp.ins[index].outpoint..<sp.ins[index].outpoint+36]);
   si_absorb_compact(state[..], code.count);
   si_absorb(state[..], code);
   si_absorb_le(state[..], sp.amount, 8);
   si_absorb(state[..], b[sp.ins[index].sequence..<sp.ins[index].sequence+4]);
-  si_absorb(state[..], outputs[..]);
+  si_absorb(state[..], h.outputs[..]);
   si_absorb(state[..], b[t.locktime..<t.locktime+4]);
   si_absorb_le(state[..], hashtype, 4);
   si_finish(state[..], out);
+}
+// The same for one signature: the three hashes, then the hash. The
+// interpreter calls this, so it computes a transaction's three hashes
+// again for each signature it checks.
+script_sighash_v0_vartime :: (sp: ScriptSpend, code: [] u8, hashtype: int, out: [] u8) {
+  script_sighash_v0_from_vartime(sp, script_v0_hashes_vartime(sp), code, hashtype, out);
 }
 // book:end bip143
 
@@ -950,6 +972,16 @@ si_witness :: (sp: ScriptSpend, k: int) -> ScriptItem {
   item := sp.items[sp.ins[sp.index].first + k];
   return ScriptItem.{src=SRC_TX, at=item.at, n=item.n};
 }
+// book:begin p2wpkh
+// The script a P2WPKH program runs, and the scriptCode its signature
+// hashes (BIP-143): DUP HASH160 <program> EQUALVERIFY CHECKSIG, the P2PKH
+// script of the same 20-byte key hash. Writes its 25 bytes to out.
+script_p2wpkh_code_vartime :: (program: [] u8, out: [] u8) {
+  out[0] = OP_DUP; out[1] = OP_HASH160; out[2] = 20;
+  for i: 0..<20 { out[3+i] = program[i]; }
+  out[23] = OP_EQUALVERIFY; out[24] = OP_CHECKSIG;
+}
+// book:end p2wpkh
 // book:begin witness
 // ExecuteWitnessScript for SigVersion::WITNESS_V0: the witness items
 // (count of them) become the stack, none may exceed 520 bytes, the script
@@ -988,10 +1020,7 @@ si_witness_program :: (sp: ScriptSpend, w: [] ScriptWork, version: int, program:
   if version == 0 && prog.count == 20 {
     if count != 2 { return SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH; }
     script := si_new(w, 25);
-    code := w[0].arena[script.at..<script.at+25];  // mutant: equivalent (only the first 25 bytes are written and read)
-    code[0] = OP_DUP; code[1] = OP_HASH160; code[2] = 20;
-    for i: 0..<20 { code[3+i] = prog[i]; }
-    code[23] = OP_EQUALVERIFY; code[24] = OP_CHECKSIG;
+    script_p2wpkh_code_vartime(prog, w[0].arena[script.at..<script.at+25]);
     return si_execute_witness(sp, w, 2, script, flags);
   }
   if version == 0 { return SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH; }
@@ -1309,6 +1338,21 @@ si_delete_is :: (code: string, sig: [] u8, found: int, left: string) -> bool {
   code := tx_unhex(v.code, c[..]);
   script_sighash_v0_vartime(sp, code[1..<code.count], v.hashtype, h[..]);
   #assert tx_hex_is(h[..], v.sighash);
+}
+// BIP-143's published hashPrevouts, hashSequence and hashOutputs for its
+// native P2WPKH example, and the P2WPKH scriptCode of its second input.
+#test "the BIP-143 hashes and the P2WPKH scriptCode" #steps 50000000 {
+  b: [1024] u8; c: [32] u8; ins: [4] TxIn; outs: [4] TxOut; items: [1] TxItem;
+  tx := tx_unhex(BT_V143[0].tx, b[..]);
+  t := tx_read_vartime(tx, true, ins[..], outs[..], items[..]);
+  sp := ScriptSpend.{b=tx, t=t, ins=ins[0..<t.nin], outs=outs[0..<t.nout], items=items[0..<0], index=1, spk=tx[0..<0]};
+  h := script_v0_hashes_vartime(sp);
+  #assert tx_hex_is(h.prevouts[..], "96b827c8483d4e9b96712b6713a7b68d6e8003a781feba36c31143470b4efd37");
+  #assert tx_hex_is(h.sequences[..], "52b0a642eea2fb7ae638c36f6252b6750293dbe574a806984b8e4d8548339a3b");
+  #assert tx_hex_is(h.outputs[..], "863ef3e1a92afbfdb97f31ad0fc7683ee943e9abcf2501590ff8f6551f47e5e5");
+  code: [25] u8;
+  script_p2wpkh_code_vartime(tx_unhex("1d0f172a0ecb48aee1be1f2687d2963ae33f71a1", c[..]), code[..]);
+  #assert tx_hex_is(code[..], "76a9141d0f172a0ecb48aee1be1f2687d2963ae33f71a188ac");
 }
 // Each case's result is the error script_reference.py decides: values,
 // branches, every opcode, the limits, the flags, P2SH, witness programs,

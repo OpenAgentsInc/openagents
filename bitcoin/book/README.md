@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 40 are implemented and 84 are planned. The 40 implemented
-chapters have runnable examples, qualified on native CPU, and 31 of them on
-Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
-7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32, 33, 34, 35, 36, 37, 40, 41,
-46, 47 and 48 are new.
+Of the 124 chapters, 41 are implemented and 83 are planned. The 41
+implemented chapters have runnable examples, qualified on native CPU, and
+32 of them on Wasm. Fifteen of them are the cryptography Nostr already
+used; chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 31, 32,
+33, 34, 35, 36, 37, 38, 40, 41, 46, 47 and 48 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -182,7 +182,7 @@ Transactions, their IDs, the script interpreter, signature hashes, timelocks and
 | [35. Txids, wtxids and malleability](ch035-txids-wtxids-and-malleability.md) | Runnable: native C | Ten forms of the 2011 spend `23b397ed`, Core's four changed forms rebuilt byte for byte among them, give ten txids: another DER encoding, `n − s`, `OP_PUSHDATA1`, another `CHECKMULTISIG` dummy and an extra item, each named with the rule that refuses it (BIP-66, low-S, `MINIMALDATA`, BIP-147, `CLEANSTACK`). The P2WPKH spend `f5864806` verifies against its BIP-143 digest, and its high-S twin changes only the wtxid; a signer's two signatures of BIP-143's P2SH-P2WPKH example share a txid. Checked against Python natively. |
 | [36. The script interpreter](ch036-the-script-interpreter.md) | Runnable: native C and wasm | Bitcoin Core's `EvalScript` and `VerifyScript` for legacy script, P2SH and segwit v0, with Core's error numbers. All 1,256 runnable rows of `script_tests.json` and all 4,532 flag sets of `tx_valid.json` and `tx_invalid.json` give Core's result, checked against a Python transliteration of Core on 16,178 cases natively and in Wasm. The 7 tapscript rows wait for chapter 44, and a Taproot output refuses instead of running. |
 | [37. Legacy signature hashes](ch037-legacy-signature-hashes.md) | Runnable: native C and wasm | The legacy signature hash of chapter 36's interpreter, field by field: what each of the six hash types signs, found by changing one byte at a time, the `SIGHASH_SINGLE` bug, FindAndDelete and `OP_CODESEPARATOR` in the scriptCode, undefined hash types, and quadratic hashing (1.87 GB for a 1,000,000-byte transaction of 6,756 inputs). All 500 rows of `sighash.json` match, 488 of them with undefined types, and the example agrees with a Python transliteration of Core. |
-| 38. Segwit v0 signature hashes | Planned | BIP-143's examples give their digests for every hash type. |
+| [38. Segwit v0 signature hashes](ch038-segwit-v0-signature-hashes.md) | Runnable: native C and wasm | BIP-143's hash as its steps: the three hashes computed once per transaction, the ones each hash type signs, and the hash, with the P2WPKH scriptCode, the amount commitment and its two-input limit, and linear hashing (1,499,900 bytes at 6,756 inputs against legacy's 1.87 GB). All thirteen signature hashes BIP-143 publishes match with their intermediate hashes, two signed BIP spends pass `VerifyScript`, and the example agrees with a Python transliteration of Core. |
 | 39. Timelocks | Planned | The `CHECKLOCKTIMEVERIFY` and `CHECKSEQUENCEVERIFY` cases in `script_tests.json` and `tx_valid.json` pass, and BIP-68 sequence encodings round-trip. |
 | [40. Weight, vsize and fees](ch040-weight-vsize-and-fees.md) | Runnable: native C | The fee as inputs minus outputs with Core's `MoneyRange` and in-below-out refusals, matching mempool.space for three segwit mainnet transactions; feerates in sat/vB, sat/kvB and sat/kWU and the fee for a rate, rounded up; Core's sigop-adjusted vsize (`GetVirtualTransactionSize`, 20 bytes per sigop); and pre-signing weights with the longest signatures (P2PKH 592, P2WPKH 272, key-path P2TR 230) that equal the signed weights of `f5864806` and `33e794d0`. Checked against Python natively. |
 

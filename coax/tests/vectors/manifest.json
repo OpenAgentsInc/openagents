@@ -1418,6 +1418,19 @@
       "bytes": 19163
     },
     {
+      "path": "upstream/bip143/bip-0143.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0143.mediawiki",
+      "revision": "git:927b6de9915c9262615a6399de51b200f81e5aa4",
+      "license": "PD (declared in source)",
+      "covers": [
+        "bitcoin-script-interpreter"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "62bc71351563e68baeb12643c68355d217953ae9eb6a6e68b2b0323275b6beec",
+      "bytes": 57755
+    },
+    {
       "path": "upstream/mainnet/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506.raw",
       "kind": "upstream",
       "url": "https://mempool.space/api/block/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506/raw",

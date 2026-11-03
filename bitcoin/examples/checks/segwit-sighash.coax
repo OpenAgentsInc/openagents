@@ -1,0 +1,91 @@
+// The checks of segwit-sighash.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/segwit-sighash.coax
+#load "../segwit-sighash.coax";
+
+// book:begin check
+// Every published BIP-143 signature hash, from the three hashes computed
+// once, and the same hash computed alone.
+#forall "BIP-143's thirteen signature hashes" i: 0..<13 #steps 100000000 {
+  s: [1] Spend; c: [512] u8; h: [32] u8; one: [32] u8;
+  sp: ScriptSpend; code: [] u8; hashtype: int; want: string;
+  if i < 8 {
+    v := BT_V143[i];
+    sp = spend_of(s[..], v.tx, v.index, v.amount);
+    all := tx_unhex(v.code, c[..]);
+    code = all[1..<all.count]; hashtype = v.hashtype; want = v.sighash;
+  } else {
+    e := MORE[i - 8];
+    sp = spend_of(s[..], e.tx, e.index, e.amount);
+    code = tx_unhex(e.code, c[..]); hashtype = e.hashtype; want = e.sighash;
+  }
+  script_sighash_v0_from_vartime(sp, script_v0_hashes_vartime(sp), code, hashtype, h[..]);
+  script_sighash_v0_vartime(sp, code, hashtype, one[..]);
+  #assert tx_hex_is(h[..], want) && same32(h[..], one[..]);
+}
+// The intermediate hashes BIP-143 publishes: P2SH-P2WPKH's three, SINGLE's
+// one output in the 6-of-6, the zeros of SINGLE past the outputs, and the
+// No FindAndDelete example's three.
+#test "BIP-143's published intermediate hashes" #steps 100000000 {
+  s: [1] Spend;
+  sp := spend_of(s[..], BT_V143[1].tx, 0, BT_V143[1].amount);
+  h := script_v0_select_vartime(sp, script_v0_hashes_vartime(sp), 1);
+  #assert tx_hex_is(h.prevouts[..], "b0287b4a252ac05af83d2dcef00ba313af78a3e9c329afa216eb3aa2a7b4613a");
+  #assert tx_hex_is(h.sequences[..], "18606b350cd8bf565266bc352f0caddcf01e8fa789dd8a15386327cf8cabe198");
+  #assert tx_hex_is(h.outputs[..], "de984f44532e2173ca0d64314fcefe6d30da6f8cf27bafa706da61df8a226c83");
+  sp = spend_of(s[..], BT_V143[4].tx, 0, BT_V143[4].amount);
+  h = script_v0_select_vartime(sp, script_v0_hashes_vartime(sp), 3);
+  #assert tx_hex_is(h.outputs[..], "9efe0c13a6b16c14a41b04ebe6a63f419bdacb2f8705b494a43063ca3cd4f708");
+  sp = spend_of(s[..], P2WSH_A, 1, 4900000000);
+  h = script_v0_select_vartime(sp, script_v0_hashes_vartime(sp), 3);
+  #assert tx_hex_is(h.prevouts[..], "ef546acf4a020de3898d1b8956176bb507e6211b5ed3619cd08b6ea7e2a09d41");
+  for k: 0..<32 { #assert h.sequences[k] == 0 && h.outputs[k] == 0; }
+  sp = spend_of(s[..], NO_FAD_TX, 0, 200000);
+  h = script_v0_select_vartime(sp, script_v0_hashes_vartime(sp), 1);
+  #assert tx_hex_is(h.prevouts[..], "b67c76d200c6ce72962d919dc107884b9d5d0e26f2aea7474b46a1904c53359f");
+  #assert tx_hex_is(h.sequences[..], "3bb13029ce7b1f559ef5e747fcac439f1455a2ec7c5f09b72290795e70665044");
+  #assert tx_hex_is(h.outputs[..], "e5d196bfb21caca9dbd654cafb3b4dc0c4882c8927d2eb300d9539dd0b934228");
+}
+// The amount is in the BIP-143 hash and not in the legacy one; the P2WPKH
+// scriptCode is the program's P2PKH script.
+#test "the amount and the P2WPKH scriptCode" #steps 100000000 {
+  s: [1] Spend; c: [32] u8; code: [25] u8; a: [32] u8; b: [32] u8;
+  script_p2wpkh_code_vartime(tx_unhex("1d0f172a0ecb48aee1be1f2687d2963ae33f71a1", c[..]), code[..]);
+  #assert tx_hex_is(code[..], "76a9141d0f172a0ecb48aee1be1f2687d2963ae33f71a188ac");
+  sp := spend_of(s[..], BT_V143[0].tx, 1, 600000000);
+  script_sighash_v0_vartime(sp, code[..], 1, a[..]);
+  #assert tx_hex_is(a[..], BT_V143[0].sighash);
+  sp.amount = 600000001;
+  script_sighash_v0_vartime(sp, code[..], 1, b[..]);
+  #assert !same32(a[..], b[..]);
+  script_sighash_legacy_vartime(sp, code[..], 1, a[..]);
+  sp.amount = 600000000;
+  script_sighash_legacy_vartime(sp, code[..], 1, b[..]);
+  #assert same32(a[..], b[..]);
+}
+// The signed spends verify: both inputs with their pairs swapped, and the
+// witness script that pushes its own signature. Legacy FindAndDelete would
+// have found that push.
+#test "signed spends: pairs swapped, no FindAndDelete" #steps 2000000000 {
+  s: [1] Spend; w: [1] ScriptWork; c: [128] u8; sig: [80] u8;
+  flags := SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS;
+  for k: 0..<2 {
+    sp := spend_of(s[..], P2WSH_B_SWAPPED, k, 16777215);
+    sp.spk = tx_unhex(P2WSH_B_SPK[1 - k], s[0].spk[..]);
+    #assert script_verify_vartime(sp, flags, w[..]) == SCRIPT_ERR_OK;
+  }
+  sp := spend_of(s[..], NO_FAD_SIGNED, 0, 200000);
+  sp.spk = tx_unhex(NO_FAD_SPK, s[0].spk[..]);
+  #assert script_verify_vartime(sp, flags, w[..]) == SCRIPT_ERR_OK;
+  sp.amount = 200001;
+  #assert script_verify_vartime(sp, flags, w[..]) == SCRIPT_ERR_CHECKSIGVERIFY;
+  si_code(w[..], tx_unhex(MORE[4].code, c[..]), 0);
+  #assert si_find_delete(w[..], tx_unhex(NO_FAD_SIG, sig[..])) == 1;
+}
+// Linear against quadratic: 182 bytes per P2WPKH input, and the three
+// hashes once.
+#test "BIP-143 hashing is linear" {
+  #assert V0_INPUT == 182 && v0_once(1) == 108 && v0_once(6756) + 6756 * V0_INPUT == 1499900;
+  #assert legacy_bytes(6756) == 1872121380 && legacy_bytes(1) == 148;
+}
+// book:end check
