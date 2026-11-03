@@ -16,8 +16,8 @@
 # in memory. The API's directory (coax/web/api/rooms.c) places each instance on a shard and the
 # seat ticket names it; the load balancer sends /api/room/sK/ to shard K. None run while nobody
 # plays (min 0); a WebSocket keeps one up, for an hour at most (the service's timeout), and the
-# game joins again. Placement fills the lowest shard first (3 instances each), so shard K runs only
-# while more than 3(K-1) instances are open.
+# game joins again. Placement fills the lowest shard first (2 instances each, verse.room_shards.rooms_cap), so shard K runs only
+# while more than 2(K-1) instances are open.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../../.." && pwd)"
