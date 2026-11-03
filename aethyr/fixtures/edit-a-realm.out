@@ -1,0 +1,19 @@
+read: true, revision 4, dirty false
+  trees:3 at (125, -250) cm, yaw 0, size 100 percent
+move trees:3 to (300, -100): true; done 1 of 1, dirty true
+lore for mara: true; done 2 of 2, dirty true
+undo: true; done 1 of 2, dirty true
+  lore:mara is there: false
+redo: true; done 2 of 2, dirty true
+  lore:mara: keeps the lamp lit
+undo: true; done 1 of 2, dirty true
+undo: true; done 0 of 2, dirty false
+  trees:3 at (125, -250) cm, yaw 0, size 100 percent
+redo: true; done 1 of 2, dirty true
+turn rocks:0 45 degrees: true; done 2 of 2, dirty true
+  the lore can be done again: false
+a stale move of trees:3 from (125, -250): false; done 2 of 2, dirty true
+  trees:3 at (300, -100) cm, yaw 0, size 100 percent
+save: {"rev":4,"moved":[{"entity":"trees:3","x":3.00,"z":-1.00},{"entity":"rocks:0","x":-40.00,"z":0.07}],"shaped":[{"entity":"rocks:0","yaw":45,"scale":100,"gone":false}]}
+kept as revision 5: true; done 2 of 2, dirty false
+replayed onto revision 4: true, the same realm: true

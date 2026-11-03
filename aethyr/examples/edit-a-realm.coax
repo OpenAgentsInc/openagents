@@ -1,0 +1,49 @@
+// book:begin example
+#load "../forge/doc.coax";
+#import "Basic";
+
+// Where an entity stands now, in centimetres, and its turn and size.
+show :: (d: [] ForgeDoc, key: string) {
+  s := forge_shape_of(d, key); w := forge_where(d, key);
+  print("  % at (%, %) cm, yaw %, size % percent\n", key, w.x, w.z, s.yaw, s.scale);
+}
+// The log's position: steps applied, steps kept, and whether anything is unsaved.
+step :: (d: [] ForgeDoc, what: string, ok: bool) {
+  print("%: %; done % of %, dirty %\n", what, ok, d[0].done, d[0].op_n, forge_dirty(d));
+}
+
+// Lamp Cove at revision 4, edited in place: a move and a line of lore, undone and done again, a
+// new edit after an undo, a stale edit refused, and the save that names revision 4.
+main :: () {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  read := forge_read_doc(d[..], FORGE_DOC_V1);
+  print("read: %, revision %, dirty %\n", read.ok, d[0].rev, forge_dirty(d[..]));
+  show(d[..], "trees:3");
+  step(d[..], "move trees:3 to (300, -100)", forge_move(d[..], "trees:3", 300, -100));
+  step(d[..], "lore for mara", forge_lore(d[..], "mara", "keeps the lamp lit"));
+  step(d[..], "undo", forge_undo(d[..]));
+  print("  lore:mara is there: %\n", forge_slot_at(d[..], "lore:mara").found);
+  step(d[..], "redo", forge_redo(d[..]));
+  print("  lore:mara: %\n", forge_slot_text(d[..], "lore:mara"));
+  step(d[..], "undo", forge_undo(d[..]));
+  step(d[..], "undo", forge_undo(d[..]));
+  show(d[..], "trees:3");
+  step(d[..], "redo", forge_redo(d[..]));
+  step(d[..], "turn rocks:0 45 degrees", forge_rotate(d[..], "rocks:0", 45));
+  print("  the lore can be done again: %\n", forge_can_redo(d[..]));
+  // A stale edit: made when trees:3 still stood at (125, -250); it has moved since.
+  stale: [1] ForgeOp; stale[0].kind = FORGE_ENTITY; forge_key_into(stale[..], "trees:3");
+  stale[0].b = ForgeShape.{at = true, x = 125, z = -250}; stale[0].a = ForgeShape.{at = true, x = 0, z = 0};
+  step(d[..], "a stale move of trees:3 from (125, -250)", forge_apply(d[..], stale[..]));
+  show(d[..], "trees:3");
+  body: [2048] u8; n := forge_save_body(d[..], body[..]);
+  print("save: %\n", cast(string) body[0..<n]);
+  forge_saved(d[..], 5);
+  step(d[..], "kept as revision 5", true);
+  // The same steps replayed onto a fresh read of revision 4 give the same document.
+  again: [1] ForgeDoc; forge_reset(again[..], 1);
+  replayed := forge_read_doc(again[..], FORGE_DOC_V1).ok && forge_replay(again[..], d[..]);
+  a: [8192] u8; an := forge_doc_text(d[..], a[..]); b: [8192] u8; bn := forge_doc_text(again[..], b[..]);
+  print("replayed onto revision 4: %, the same realm: %\n", replayed, cast(string) a[6..<an] == cast(string) b[6..<bn]);
+}
+// book:end example

@@ -13,9 +13,13 @@
 > quests are in the document (`0111_realm_edit_log.sql`). The page has REDO
 > beside UNDO, and the picked thing turns, grows, shrinks and goes from the
 > keyboard and the accessible layer (`myrealm-a11y.coax`); `openagents realm
-> redo` and the MCP tool `realm_redo` walk the server's log forward. There
-> are no drag gestures for turning or sizing yet; see
-> [Still to do](#still-to-do).
+> redo` and the MCP tool `realm_redo` walk the server's log forward. The
+> trace below is worked by hand and run in
+> [aethyr/examples/edit-a-realm.coax](../examples/edit-a-realm.coax), debug
+> and release, with a stale edit refused. Not built yet: drag gestures for
+> turning and sizing, voice revisions and proposals as client-replayable
+> edits, the asks ledger's revert rule in Coax, and Everglade's edit mode on
+> the same log; see [Still to do](#still-to-do).
 
 Editing a realm while people walk in it is the same problem as replaying it.
 Each change must be a recorded, ordered operation over the state. It must be
@@ -264,6 +268,117 @@ never simply wins. The rule lives in
 [coax/web/api/migrations/0093_realm_documents.sql](../../coax/web/api/migrations/0093_realm_documents.sql)
 (`verse.realm_save`).
 
+## Worked by hand
+
+Lamp Cove is read at revision 4 ([chapter 51](ch051-a-realm-is-a-document.md)):
+`trees:3` stands at (125, −250) cm, `rocks:0` at (−4000, 7) cm, neither
+turned, and there is no lore. Nothing is unsaved: `done` and `saved` are
+both 0. Then, in order:
+
+| Step | Edit | Log after (`done` of `op_n`) | Dirty | Why |
+| --- | --- | --- | --- | --- |
+| 1 | move `trees:3` to (300, −100) | 1 of 1 | yes | before: at (125, −250), which holds |
+| 2 | lore for `mara` | 2 of 2 | yes | before: no `lore:mara` slot, which holds |
+| 3 | undo | 1 of 2 | yes | step 2's inverse: the slot goes; step 1 is still applied |
+| 4 | redo | 2 of 2 | yes | step 2 again: its before (no slot) holds once more |
+| 5 | undo, undo | 0 of 2 | no | `done` is back at `saved`; `trees:3` is at (125, −250) |
+| 6 | redo | 1 of 2 | yes | the move again |
+| 7 | turn `rocks:0` 45° | 2 of 2 | yes | a new edit after an undo: the lore step past `done` is dropped |
+| 8 | a move of `trees:3` that says it was at (125, −250) | 2 of 2 | yes | refused: it stands at (300, −100) now; nothing changes |
+
+The save names revision 4, every place in metres (`rocks:0` keeps the place
+it was read with) and the one shaped entity. When the server keeps it as
+revision 5, `saved` becomes 2 and the page is clean. The two steps replayed
+onto a fresh read of revision 4 give the same realm, the check computed
+another way.
+
+## Edit Lamp Cove
+
+The program is
+[aethyr/examples/edit-a-realm.coax](../examples/edit-a-realm.coax):
+
+<!-- source: aethyr/examples/edit-a-realm.coax example -->
+```jai
+#load "../forge/doc.coax";
+#import "Basic";
+
+// Where an entity stands now, in centimetres, and its turn and size.
+show :: (d: [] ForgeDoc, key: string) {
+  s := forge_shape_of(d, key); w := forge_where(d, key);
+  print("  % at (%, %) cm, yaw %, size % percent\n", key, w.x, w.z, s.yaw, s.scale);
+}
+// The log's position: steps applied, steps kept, and whether anything is unsaved.
+step :: (d: [] ForgeDoc, what: string, ok: bool) {
+  print("%: %; done % of %, dirty %\n", what, ok, d[0].done, d[0].op_n, forge_dirty(d));
+}
+
+// Lamp Cove at revision 4, edited in place: a move and a line of lore, undone and done again, a
+// new edit after an undo, a stale edit refused, and the save that names revision 4.
+main :: () {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  read := forge_read_doc(d[..], FORGE_DOC_V1);
+  print("read: %, revision %, dirty %\n", read.ok, d[0].rev, forge_dirty(d[..]));
+  show(d[..], "trees:3");
+  step(d[..], "move trees:3 to (300, -100)", forge_move(d[..], "trees:3", 300, -100));
+  step(d[..], "lore for mara", forge_lore(d[..], "mara", "keeps the lamp lit"));
+  step(d[..], "undo", forge_undo(d[..]));
+  print("  lore:mara is there: %\n", forge_slot_at(d[..], "lore:mara").found);
+  step(d[..], "redo", forge_redo(d[..]));
+  print("  lore:mara: %\n", forge_slot_text(d[..], "lore:mara"));
+  step(d[..], "undo", forge_undo(d[..]));
+  step(d[..], "undo", forge_undo(d[..]));
+  show(d[..], "trees:3");
+  step(d[..], "redo", forge_redo(d[..]));
+  step(d[..], "turn rocks:0 45 degrees", forge_rotate(d[..], "rocks:0", 45));
+  print("  the lore can be done again: %\n", forge_can_redo(d[..]));
+  // A stale edit: made when trees:3 still stood at (125, -250); it has moved since.
+  stale: [1] ForgeOp; stale[0].kind = FORGE_ENTITY; forge_key_into(stale[..], "trees:3");
+  stale[0].b = ForgeShape.{at = true, x = 125, z = -250}; stale[0].a = ForgeShape.{at = true, x = 0, z = 0};
+  step(d[..], "a stale move of trees:3 from (125, -250)", forge_apply(d[..], stale[..]));
+  show(d[..], "trees:3");
+  body: [2048] u8; n := forge_save_body(d[..], body[..]);
+  print("save: %\n", cast(string) body[0..<n]);
+  forge_saved(d[..], 5);
+  step(d[..], "kept as revision 5", true);
+  // The same steps replayed onto a fresh read of revision 4 give the same document.
+  again: [1] ForgeDoc; forge_reset(again[..], 1);
+  replayed := forge_read_doc(again[..], FORGE_DOC_V1).ok && forge_replay(again[..], d[..]);
+  a: [8192] u8; an := forge_doc_text(d[..], a[..]); b: [8192] u8; bn := forge_doc_text(again[..], b[..]);
+  print("replayed onto revision 4: %, the same realm: %\n", replayed, cast(string) a[6..<an] == cast(string) b[6..<bn]);
+}
+```
+
+```shell
+coax/bin/coax run aethyr/examples/edit-a-realm.coax
+```
+
+```text
+read: true, revision 4, dirty false
+  trees:3 at (125, -250) cm, yaw 0, size 100 percent
+move trees:3 to (300, -100): true; done 1 of 1, dirty true
+lore for mara: true; done 2 of 2, dirty true
+undo: true; done 1 of 2, dirty true
+  lore:mara is there: false
+redo: true; done 2 of 2, dirty true
+  lore:mara: keeps the lamp lit
+undo: true; done 1 of 2, dirty true
+undo: true; done 0 of 2, dirty false
+  trees:3 at (125, -250) cm, yaw 0, size 100 percent
+redo: true; done 1 of 2, dirty true
+turn rocks:0 45 degrees: true; done 2 of 2, dirty true
+  the lore can be done again: false
+a stale move of trees:3 from (125, -250): false; done 2 of 2, dirty true
+  trees:3 at (300, -100) cm, yaw 0, size 100 percent
+save: {"rev":4,"moved":[{"entity":"trees:3","x":3.00,"z":-1.00},{"entity":"rocks:0","x":-40.00,"z":0.07}],"shaped":[{"entity":"rocks:0","yaw":45,"scale":100,"gone":false}]}
+kept as revision 5: true; done 2 of 2, dirty false
+replayed onto revision 4: true, the same realm: true
+```
+
+Every line is the table's. The stale move is the broken case: `forge_apply`
+answers false and `trees:3` stays where step 6 put it. The last line compares
+the two documents' texts after their first line, `rev 5` and `rev 4`, which
+differ only because the edited one was saved.
+
 ## On the page
 
 In a made realm, the owner sees a row of controls above the tools. Each one
@@ -315,6 +430,8 @@ shortened to PUT HERE.
 
 ## Checks
 
+- `coax/bin/coax run aethyr/examples/edit-a-realm.coax` (in the book's
+  `--coax` runs, debug and release): the worked trace above.
 - `coax/bin/coax test aethyr/forge/edit.coax --library`: a move, its undo and
   redo; an undo of a second move puts back the first; an edit whose entity
   moved since is refused; apply then inverse restores the document; saved is
