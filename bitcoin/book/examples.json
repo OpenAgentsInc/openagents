@@ -798,6 +798,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/block-index.coax",
+      "chapter": "bitcoin/book/ch059-the-block-index-and-the-most-work-chain.md",
+      "stdout": "bitcoin/fixtures/block-index.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

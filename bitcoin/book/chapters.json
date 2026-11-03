@@ -1289,15 +1289,24 @@
   {
    "number": 59,
    "title": "The block index and the most-work chain",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch059-the-block-index-and-the-most-work-chain.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     48,
     51
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/blockindex.coax",
+    "bitcoin/examples/block-index.coax",
+    "bitcoin/examples/checks/block-index.coax",
+    "coax/tests/bitcoin/blockindex_vectors.coax",
+    "coax/tests/bitcoin/make_blockindex_vectors.py",
+    "coax/tests/bitcoin/blockindex.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

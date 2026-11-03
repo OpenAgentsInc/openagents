@@ -84,6 +84,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [53. Sigops, weight and block limits](ch053-sigops-weight-and-block-limits.md) — implemented
 - [54. The subsidy and the coinbase](ch054-the-subsidy-and-the-coinbase.md) — implemented
 - [56. The UTXO set and MuHash3072](ch056-the-utxo-set-and-muhash3072.md) — implemented
+- [59. The block index and the most-work chain](ch059-the-block-index-and-the-most-work-chain.md) — implemented
 - [62. A key-value store for the chainstate](ch062-a-key-value-store-for-the-chainstate.md) — implemented
 
 **XI. The network**

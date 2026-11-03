@@ -1,0 +1,56 @@
+// The checks of block-index.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/block-index.coax
+#load "../block-index.coax";
+
+// book:begin check
+// Skip pointers only shorten the walk: GetAncestor finds the same entry
+// as following parents one at a time, on a random tree of 3,000 entries.
+#forall "GetAncestor equals the walk through parents" seed: 1..<9 #steps 4000000000 {
+  l: [3000] BiLink;
+  rng := [1] BiRng.[BiRng.{s=seed}];
+  l[0] = BiLink.{height=0, prev=-1, skip=-1};
+  for i: 1..<3000 {
+    p := ifx bi_rand(rng[..], 4) == 0 then bi_rand(rng[..], i) else i - 1;
+    l[i] = BiLink.{height=l[p].height + 1, prev=p};
+    bi_build_skip(l[..], i);
+  }
+  for k: 0..<300 {
+    i := bi_rand(rng[..], 3000);
+    h := bi_rand(rng[..], l[i].height + 1);
+    j := i;
+    while l[j].height > h { j = l[j].prev; }
+    #assert bi_ancestor(l[..], i, h) == j;
+    // LastCommonAncestor: the highest entry both reach.
+    o := bi_rand(rng[..], 3000);
+    a := i; b := o;
+    while a != b { if l[a].height >= l[b].height { a = l[a].prev; } else { b = l[b].prev; } }
+    #assert bi_last_common_ancestor(l[..], i, o) == a;
+  }
+}
+// Whatever order regtest blocks arrive in, the tip is the candidate
+// FindMostWorkChain must choose: no block with data on a fully linked,
+// unfailed chain has more work.
+#forall "the tip has the most work of any linked block" seed: 1..<7 #steps 4000000000 {
+  l: [48] BiLink; e: [48] BiEntry; slots: [128] int; chain: [48] int; t: [1] BlockTree;
+  bi_regtest(t[..], l[..], e[..], slots[..], chain[..]);
+  rng := [1] BiRng.[BiRng.{s=seed * 977}];
+  for k: 0..<40 {
+    p := bi_rand(rng[..], t[0].count);
+    if e[p].status & BLOCK_FAILED_VALID == 0 {
+      c := bi_extend(t[..], p, 1, cast,trunc(u8) (k + 1), bi_rand(rng[..], 3) != 0);
+    }
+    if bi_rand(rng[..], 9) == 0 { bi_invalid_block_found(t[..], 1 + bi_rand(rng[..], t[0].count - 1), false); }
+    if bi_rand(rng[..], 4) == 0 {
+      w := bi_rand(rng[..], t[0].count);
+      if e[w].status & BLOCK_HAVE_DATA == 0 { bi_received_block_vartime(t[..], w, 1); }
+    }
+    tip := bi_activate_best_chain(t[..]);
+    for i: 0..<t[0].count {
+      if e[i].chain_tx != 0 && e[i].status & BLOCK_FAILED_VALID == 0 {
+        #assert !bi_worse(e[..], tip, i) || e[tip].status & BLOCK_FAILED_VALID != 0;
+      }
+    }
+  }
+}
+// book:end check

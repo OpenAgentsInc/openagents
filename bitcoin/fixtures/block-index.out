@@ -1,0 +1,33 @@
+skip pointers
+  GetSkipHeight of 1 to 20: 0 0 1 0 1 4 1 0 1 8 1 8 1 12 9 0 1 16 1 16
+  300000 entries, steps from 299999 to 0: 7 1: 6 150000: 58 262143: 7 299998: 1
+  from 262143 (2^18 - 1) to any lower height: at most 105 steps, to 2; one parent at a time it is up to 262143
+locators
+  main tip 99999 (28 entries): 99999 99998 99997 99996 99995 99994 99993 99992 99991 99990 99989 99988 99986 99982 99974 99958 99926 99862 99734 99478 98966 97942 95894 91798 83606 67222 34454 0
+  branch tip 99999 (28 entries): 99999b 99998b 99997b 99996b 99995b 99994b 99993b 99992b 99991b 99990b 99989b 99988b 99986b 99982b 99974b 99958b 99926b 99862b 99734b 99478b 98966b 97942b 95894b 91798b 83606b 67222b 34454 0
+  the two tips' last common ancestor: 49999
+mainnet headers 0 to 2016
+  2017 accepted; tip 2016 00000000a141216a896c54f211301c436e557a8d55900637bbdce14c6c7bddef
+  chainwork 000000000000000000000000000000000000000000000000000007e107e107e1
+  best header 2016, transactions 2017, median time past 1233057128, time max 1233063531
+  locator (22 entries): 2016 2015 2014 2013 2012 2011 2010 2009 2008 2007 2006 2005 2003 1999 1991 1975 1943 1879 1751 1495 983 0
+  block 2016 again: ok
+  block 2016 with one bit of its nonce changed: high-hash
+  block 5 before block 4: prev-blk-not-found
+regtest
+  genesis 0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206, work 2, status 0x8b
+  A1 to A5 with data: tip A5, best header A5
+  headers on A5: nBits 0x207ffffe: bad-diffbits, time at the median time past 1296690403: time-too-old, version 3: bad-version, 2 hours and 1 second ahead: time-too-new
+  B3, B4 on A2, work 10 against A5's 12: tip A5, best header A5
+  B5, B6 headers only: tip A5, best header B6
+  B6's data first: B6 has 0 transactions in its chain, sequence 1; tip A5, best header B6
+  then B5's: sequence B5 10, B6 11; tip B6, best header B6
+  fork of A5 from the active chain: A2, last common ancestor of A5 and B6: A2
+  C7 then D7 headers on B6, D7's data first: sequence C7 13, D7 12; tip D7, best header C7
+  with both at sequence 1, as after a restart, the lower position wins: C7
+  F6 to F8 on A5, and F7 fails ConnectBlock: tip D7, best header D7, best invalid F8
+  a header on F8: bad-prevblk; F7 again: duplicate-invalid
+  invalidateblock B5: tip B4, then tip F6, best header F6, best invalid F8
+  failed: B5 B6 C7 D7 F7 F8
+  entries: G0=0x8b A1=0x8b A2=0x8b A3=0x8b A4=0x8b A5=0x8b B3=0x8b B4=0x8b B5=0xab B6=0xab C7=0xab D7=0xab F6=0x8b F7=0xab F8=0xab
+  locator from the tip: F6 A5 A4 A3 A2 A1 G0

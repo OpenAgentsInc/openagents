@@ -1,0 +1,206 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/blockindex.coax";
+#import "Basic";
+
+REGTEST_TIME :: 1296688602;    // regtest's genesis time
+LATER :: 1793664000;           // 2026-11-03, the node's clock
+
+hex_digit :: (x: int) -> string { return "0123456789abcdef"[x..<x + 1]; }
+// A hash as explorers show it: the bytes reversed.
+show_hash :: (h: [] u8) {
+  i := 31; while i >= 0 { print("%", hex_digit(cast(int) h[i] >> 4)); print("%", hex_digit(cast(int) h[i] & 15)); i -= 1; }
+}
+show_status :: (s: u32) { print("0x%", hex_digit(cast(int) (s >> 4))); print("%", hex_digit(cast(int) (s & 15))); }
+show_work :: (a: U256) { b: [32] u8; ok := u256_to_hash_vartime(a, b[..]); show_hash(b[..]); }
+
+// ---- skip pointers and locators, on bare heights
+skips :: () {
+  print("skip pointers\n");
+  print("  GetSkipHeight of 1 to 20:");
+  for h: 1..<21 { print(" %", bi_skip_height(h)); }
+  print("\n");
+  l: [300000] BiLink;
+  bi_line(l[..], 300000, 0, 0);
+  print("  300000 entries, steps from 299999 to");
+  to := [5] int.[0, 1, 150000, 262143, 299998];
+  for k: 0..<5 { print(" %: %", to[k], bi_ancestor_walk(l[..], 299999, to[k]).steps); }
+  print("\n");
+  most := 0; at := 0;
+  for h: 0..<262143 { s := bi_ancestor_walk(l[..], 262143, h).steps; if s > most { most = s; at = h; } }
+  print("  from 262143 (2^18 - 1) to any lower height: at most % steps, to %; one parent at a time it is up to 262143\n", most, at);
+}
+locators :: () {
+  print("locators\n");
+  l: [150000] BiLink;
+  bi_line(l[..], 100000, 0, 0);
+  bi_line(l[..], 50000, 100000, 50000);    // a branch whose first parent is 49999
+  out: [64] int;
+  tips := [2] int.[99999, 149999];
+  labels := [2] string.["main tip 99999", "branch tip 99999"];
+  for k: 0..<2 {
+    n := bi_locator(l[..], tips[k], out[..]);
+    print("  % (% entries):", labels[k], n);
+    for i: 0..<n { print(" %", l[out[i]].height); if out[i] >= 100000 { print("b"); } }
+    print("\n");
+  }
+  print("  the two tips' last common ancestor: %\n", l[bi_last_common_ancestor(l[..], 99999, 149999)].height);
+}
+
+// ---- mainnet's first 2,017 headers
+mainnet :: () {
+  print("mainnet headers 0 to 2016\n");
+  l: [2048] BiLink; e: [2048] BiEntry; slots: [4096] int; chain: [2048] int; t: [1] BlockTree;
+  ok := bi_init(t[..], CHAIN_MAINNET_PARAMS, l[..], e[..], slots[..], chain[..]);
+  raw: [80] u8;
+  accepted := 0;
+  for k: 0..<BI_MAINNET_COUNT {
+    n := cp_unhex(BI_MAINNET_HEADERS[160 * k..<160 * (k + 1)], raw[..]);
+    a := bi_accept_header_vartime(t[..], raw[..], LATER);
+    if a.code == BI_OK { accepted += 1; bi_received_block_vartime(t[..], a.index, 1); }
+  }
+  tip := bi_activate_best_chain(t[..]);
+  print("  % accepted; tip % ", accepted, l[tip].height); show_hash(e[tip].hash[..]); print("\n");
+  print("  chainwork "); show_work(e[tip].work); print("\n");
+  print("  best header %, transactions %, median time past %, time max %\n",
+    l[t[0].best_header].height, e[tip].chain_tx, bi_median_time_past(l[..], e[..], tip), e[tip].time_max);
+  out: [64] int;
+  n := bi_locator(l[..], tip, out[..]);
+  print("  locator (% entries):", n);
+  for i: 0..<n { print(" %", l[out[i]].height); }
+  print("\n");
+  n = cp_unhex(BI_MAINNET_HEADERS[160 * 2016..<160 * 2017], raw[..]);
+  print("  block 2016 again: %\n", bi_reason(bi_accept_header_vartime(t[..], raw[..], LATER).code));
+  raw[76] ^= 1;
+  print("  block 2016 with one bit of its nonce changed: %\n", bi_reason(bi_accept_header_vartime(t[..], raw[..], LATER).code));
+  // A second index that has only seen genesis to block 3.
+  l2: [8] BiLink; e2: [8] BiEntry; slots2: [16] int; chain2: [8] int; t2: [1] BlockTree;
+  ok = bi_init(t2[..], CHAIN_MAINNET_PARAMS, l2[..], e2[..], slots2[..], chain2[..]);
+  for k: 0..<4 { n = cp_unhex(BI_MAINNET_HEADERS[160 * k..<160 * (k + 1)], raw[..]); a := bi_accept_header_vartime(t2[..], raw[..], LATER); }
+  n = cp_unhex(BI_MAINNET_HEADERS[160 * 5..<160 * 6], raw[..]);
+  print("  block 5 before block 4: %\n", bi_reason(bi_accept_header_vartime(t2[..], raw[..], LATER).code));
+}
+
+// ---- regtest forks, mined here
+Names :: struct { letter: [64] u8; last: int; }
+name :: (names: [] Names, i: int, l: [] BiLink) {
+  k := cast(int) names[0].letter[i];
+  print("%", "GABCDEFGHIJ"[k..<k + 1]); print("%", l[i].height);
+}
+// Mine a header on prev: version 4, nBits 0x207fffff, a Merkle root of 32
+// copies of the letter, ten minutes a block plus the letter in seconds,
+// and the lowest nonce that meets the target.
+mine :: (t: [] BlockTree, names: [] Names, prev: int, letter: int, data: bool) -> int {
+  time := REGTEST_TIME + 600 * (t[0].l[prev].height + 1) + letter;
+  return mine_with(t, names, prev, letter, data, 4, 0x207fffff, time);
+}
+mine_with :: (t: [] BlockTree, names: [] Names, prev: int, letter: int, data: bool, version: int, bits: u32, time: int) -> int {
+  e := t[0].e;
+  h: BlockHeader;
+  h.version = version; h.bits = bits; h.time = cast(u32) time;
+  for k: 0..<32 { h.prev[k] = e[prev].hash[k]; h.merkle_root[k] = cast,trunc(u8) letter; }
+  raw: [80] u8;
+  while true {
+    ok := pow_header_write_vartime(h, raw[..]);
+    if pow_header_check_vartime(raw[..], t[0].p.retarget.pow_limit) == POW_OK { break; }
+    h.nonce += 1;
+  }
+  a := bi_accept_header_vartime(t, raw[..], LATER);
+  names[0].last = a.code;
+  if a.code != BI_OK { return -1; }
+  names[0].letter[a.index] = cast,trunc(u8) letter;
+  if data { bi_received_block_vartime(t, a.index, 1); }
+  return a.index;
+}
+run :: (t: [] BlockTree, names: [] Names, prev: int, letter: int, count: int, data: bool) -> int {
+  at := prev;
+  for k: 0..<count { at = mine(t, names, at, letter, data); }
+  return at;
+}
+// A header on prev that is refused: its reason.
+check :: (t: [] BlockTree, names: [] Names, prev: int, version: int, bits: u32, time: int) -> int {
+  i := mine_with(t, names, prev, 9, false, version, bits, time);
+  return names[0].last;
+}
+state :: (t: [] BlockTree, names: [] Names) {
+  l := t[0].l;
+  print("tip "); name(names, bi_tip(t), l);
+  print(", best header "); name(names, t[0].best_header, l);
+  if t[0].best_invalid >= 0 { print(", best invalid "); name(names, t[0].best_invalid, l); }
+  print("\n");
+}
+regtest :: () {
+  print("regtest\n");
+  l: [64] BiLink; e: [64] BiEntry; slots: [128] int; chain: [64] int; t: [1] BlockTree; names: [1] Names;
+  ok := bi_init(t[..], CHAIN_REGTEST_PARAMS, l[..], e[..], slots[..], chain[..]);
+  g: [CHAIN_GENESIS_MAX] u8;
+  n := chain_genesis_block_vartime(CHAIN_REGTEST_PARAMS.genesis, g[..]);
+  a := bi_accept_header_vartime(t[..], g[0..<80], LATER);
+  bi_received_block_vartime(t[..], 0, 1);
+  tip := bi_activate_best_chain(t[..]);
+  print("  genesis "); show_hash(e[0].hash[..]); print(", work %, status ", u256_low64(e[0].work)); show_status(e[0].status); print("\n");
+  a5 := run(t[..], names[..], 0, 1, 5, true);
+  tip = bi_activate_best_chain(t[..]);
+  print("  A1 to A5 with data: "); state(t[..], names[..]);
+  mtp := bi_median_time_past(l[..], e[..], a5);
+  print("  headers on A5: nBits 0x207ffffe: %", bi_reason(check(t[..], names[..], a5, 4, 0x207ffffe, mtp + 1)));
+  print(", time at the median time past %: %", mtp, bi_reason(check(t[..], names[..], a5, 4, 0x207fffff, mtp)));
+  print(", version 3: %", bi_reason(check(t[..], names[..], a5, 3, 0x207fffff, mtp + 1)));
+  print(", 2 hours and 1 second ahead: %\n", bi_reason(check(t[..], names[..], a5, 4, 0x207fffff, LATER + 7201)));
+  a2 := bi_ancestor(l[..], a5, 2);
+  b4 := run(t[..], names[..], a2, 2, 2, true);
+  tip = bi_activate_best_chain(t[..]);
+  print("  B3, B4 on A2, work % against A5's %: ", u256_low64(e[b4].work), u256_low64(e[a5].work)); state(t[..], names[..]);
+  b5 := mine(t[..], names[..], b4, 2, false);
+  b6 := mine(t[..], names[..], b5, 2, false);
+  tip = bi_activate_best_chain(t[..]);
+  print("  B5, B6 headers only: "); state(t[..], names[..]);
+  bi_received_block_vartime(t[..], b6, 1);
+  tip = bi_activate_best_chain(t[..]);
+  print("  B6's data first: B6 has % transactions in its chain, sequence %; ", e[b6].chain_tx, e[b6].seq); state(t[..], names[..]);
+  bi_received_block_vartime(t[..], b5, 1);
+  tip = bi_activate_best_chain(t[..]);
+  print("  then B5's: sequence B5 %, B6 %; ", e[b5].seq, e[b6].seq); state(t[..], names[..]);
+  print("  fork of A5 from the active chain: "); name(names[..], bi_find_fork(t[..], a5), l[..]);
+  print(", last common ancestor of A5 and B6: "); name(names[..], bi_last_common_ancestor(l[..], a5, b6), l[..]); print("\n");
+  c7 := mine(t[..], names[..], b6, 3, false);
+  d7 := mine(t[..], names[..], b6, 4, false);
+  bi_received_block_vartime(t[..], d7, 1);
+  bi_received_block_vartime(t[..], c7, 1);
+  tip = bi_activate_best_chain(t[..]);
+  print("  C7 then D7 headers on B6, D7's data first: sequence C7 %, D7 %; ", e[c7].seq, e[d7].seq); state(t[..], names[..]);
+  pair: [2] BiEntry;
+  pair[0] = e[c7]; pair[1] = e[d7];
+  pair[0].seq = SEQ_ID_INIT_FROM_DISK; pair[1].seq = SEQ_ID_INIT_FROM_DISK;
+  print("  with both at sequence 1, as after a restart, the lower position wins: %\n", ifx bi_worse(pair[..], 1, 0) then "C7" else "D7");
+  f8 := run(t[..], names[..], a5, 6, 3, true);
+  f7 := l[f8].prev;
+  bi_invalid_block_found(t[..], f7, false);
+  tip = bi_activate_best_chain(t[..]);
+  print("  F6 to F8 on A5, and F7 fails ConnectBlock: "); state(t[..], names[..]);
+  g9 := mine(t[..], names[..], f8, 7, false);
+  raw: [80] u8;
+  h: BlockHeader;
+  h.version = e[f7].version; h.time = e[f7].time; h.bits = e[f7].bits; h.nonce = e[f7].nonce;
+  h.prev = e[l[f7].prev].hash; h.merkle_root = e[f7].merkle_root;
+  ok = pow_header_write_vartime(h, raw[..]);
+  print("  a header on F8: %; F7 again: %\n", bi_reason(names[0].last), bi_reason(bi_accept_header_vartime(t[..], raw[..], LATER).code));
+  bi_invalidate_block(t[..], b5);
+  print("  invalidateblock B5: tip "); name(names[..], bi_tip(t[..]), l[..]);
+  tip = bi_activate_best_chain(t[..]);
+  print(", then "); state(t[..], names[..]);
+  print("  failed:");
+  for i: 0..<t[0].count { if e[i].status & BLOCK_FAILED_VALID != 0 { print(" "); name(names[..], i, l[..]); } }
+  print("\n  entries:");
+  for i: 0..<t[0].count {
+    print(" "); name(names[..], i, l[..]);
+    print("="); show_status(e[i].status);
+  }
+  out: [64] int;
+  n = bi_locator(l[..], tip, out[..]);
+  print("\n  locator from the tip:");
+  for i: 0..<n { print(" "); name(names[..], out[i], l[..]); }
+  print("\n");
+}
+
+main :: () { skips(); locators(); mainnet(); regtest(); }
+// book:end example

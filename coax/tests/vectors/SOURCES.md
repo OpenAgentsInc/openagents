@@ -426,6 +426,20 @@ that a maliciously replaced manifest is authentic.
   `net_processing.cpp`, `chainparams.cpp`, `chain.h`, `serialize.h`,
   `script.h` and `test/hash_tests.cpp`, pinned above, give the rest.
   `dos.py` transliterates them as the cross-check's oracle.
+- **The block index (Bitcoin chapter 59):** Bitcoin Core's
+  `node/blockstorage.cpp` (`AddToBlockIndex`, `CBlockIndexWorkComparator`),
+  `validation.h` (`nBlockSequenceId`), `rpc/blockchain.cpp`
+  (`GetDifficulty`), and `test/skiplist_tests.cpp` and
+  `test/blockchain_tests.cpp`, the cases the library ports, all at revision
+  `ddea9196`. `chain.h`, `chain.cpp`, `validation.cpp`, `pow.cpp` and
+  `kernel/chainparams.cpp`, pinned above, give the rest. `blockindex.py`
+  transliterates them as the cross-check's oracle.
+  `mainnet/headers-0-2016.txt` holds mainnet's first 2,017 headers, genesis
+  to block 2,016, one per line as height, block hash and the 80 bytes in
+  hex, assembled on 2026-11-03 from mempool.space's
+  `/api/v1/blocks/{height}` records; each line's 80 bytes hash to its block
+  hash and name the line before, so the bytes cannot change.
+  `make_blockindex_vectors.py` checks every hash and link.
 - **Chain parameters (Bitcoin chapter 50):** Bitcoin Core's
   `kernel/chainparams.cpp` (every network's class), `kernel/signet.h`
   (`SIGNET_DEFAULT_CHALLENGE`, `GetSignetMessageStart`), `signet.cpp`
@@ -774,6 +788,7 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/transaction_utils.cpp`](upstream/bitcoin-core/transaction_utils.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/util/transaction_utils.cpp) | `d90dcb4affb043b6b738c673c507318821f3d1252bfe6665680af7594efc977f` |
 | [`upstream/bitcoin-core/sighash.json`](upstream/bitcoin-core/sighash.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/sighash.json) | `52cf23c2076e7f129c71d5508631d3e5ae3be1b1cb0585c0e23bbb4bb373e924` |
 | [`upstream/mainnet/retarget-boundaries.txt`](upstream/mainnet/retarget-boundaries.txt) | [mempool.space API](https://mempool.space/api/v1/blocks/32256), assembled | `06c7e555e0812abb2a12246ea1326ec79f6c0c379cc88a83bb31a5c6fb297a2e` |
+| [`upstream/mainnet/headers-0-2016.txt`](upstream/mainnet/headers-0-2016.txt) | [mempool.space API](https://mempool.space/api/v1/blocks/2016), assembled | `a938d6efa4a87e3cb4e14f4868f46a59e7c8119db9a3ee50a16be2c09e0218b8` |
 | [`upstream/bitcoin-core/protocol.h`](upstream/bitcoin-core/protocol.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/protocol.h) | `92d6290df90eaea49b4a110b518ff34be914666471a5dee7e5eaa26832986738` |
 | [`upstream/bitcoin-core/protocol.cpp`](upstream/bitcoin-core/protocol.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/protocol.cpp) | `dd933f035e3d104bea8db6f83970787912357f8aebf6a01c8afc6992e93c6dfe` |
 | [`upstream/bitcoin-core/net.h`](upstream/bitcoin-core/net.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/net.h) | `c268325ae03f4f80e8427af80eb794265b08e3686923b7a5a8b850416bed213b` |
@@ -860,6 +875,11 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/bloom_tests.cpp`](upstream/bitcoin-core/bloom_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/bloom_tests.cpp) | `12ddab254a360858cb4f567bd2c5f1ef735464d6292eec5b9b6b7b5686a330b1` |
 | [`upstream/bitcoin-core/fastrange.h`](upstream/bitcoin-core/fastrange.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/util/fastrange.h) | `01d238a309b0a7737f72549785da0a90088068a462539f36e920f70764fe144a` |
 | [`upstream/bitcoin-core/txdownloadman_impl.cpp`](upstream/bitcoin-core/txdownloadman_impl.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/txdownloadman_impl.cpp) | `bd44b0074d6f271312a2de14697f28871087531b06c49d801ebbd988f65809c7` |
+| [`upstream/bitcoin-core/blockstorage.cpp`](upstream/bitcoin-core/blockstorage.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/blockstorage.cpp) | `5063ae02875b3370cb0d1ca4ec41003853d102ba74ab7354a342bc3cb8dc8d6f` |
+| [`upstream/bitcoin-core/skiplist_tests.cpp`](upstream/bitcoin-core/skiplist_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/skiplist_tests.cpp) | `9eec53e04cf2a5a6a4269687da834bb0c61b52396212ef1b902df22e3a46c588` |
+| [`upstream/bitcoin-core/blockchain_tests.cpp`](upstream/bitcoin-core/blockchain_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/blockchain_tests.cpp) | `613c4f9158dfddb5b6cbdbc07d71f2043d8295eec18869591ea5550b0aea1e25` |
+| [`upstream/bitcoin-core/validation.h`](upstream/bitcoin-core/validation.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/validation.h) | `2eec09d952cd5b5e509d9ca7f41367b7ffaf6321f559c4a6d763063882fb9bad` |
+| [`upstream/bitcoin-core/blockchain.cpp`](upstream/bitcoin-core/blockchain.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/rpc/blockchain.cpp) | `2b415f9689e667529bad2465f672065c7f898fad2b7cb980c01bfda12ccd5eb0` |
 | [`upstream/bolts/04-onion-routing.md`](upstream/bolts/04-onion-routing.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/04-onion-routing.md) | `79f4e06d334a200f62b6053cc891f2c4dd710e7a43e1c7b3691848dc4c460070` |
 | [`upstream/bolts/bolt04/onion-test.json`](upstream/bolts/bolt04/onion-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/onion-test.json) | `bff01ffc728c3fecbee133eedfdaf39a26984f35cf7e76ed80f14d6e78cb8d56` |
 | [`upstream/bolts/bolt04/onion-error-test.json`](upstream/bolts/bolt04/onion-error-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt04/onion-error-test.json) | `374800b8d0dd21920299f4a998c4278f9d66f3a00b5e7b396765d38a50f2ea11` |

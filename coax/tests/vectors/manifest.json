@@ -859,7 +859,8 @@
       "covers": [
         "sha256d-block-hash",
         "bitcoin-p2p",
-        "bitcoin-dos"
+        "bitcoin-dos",
+        "bitcoin-block-index"
       ],
       "retrieved": "2026-11-02",
       "sha256": "cfadf1478377c32625280520655b598674e6d487f08d7f7a80ac69252104b5e1",
@@ -1458,7 +1459,8 @@
       "covers": [
         "bitcoin-merkle",
         "bitcoin-witness-commitment",
-        "bitcoin-compact-blocks"
+        "bitcoin-compact-blocks",
+        "bitcoin-block-index"
       ],
       "retrieved": "2026-11-02",
       "sha256": "65e88786ccaaf4dd0ebd14e7a0b82d7fbe6b86a8f0b2f9de4cc2db7b983283d2",
@@ -1539,7 +1541,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-locktime",
-        "bitcoin-dos"
+        "bitcoin-dos",
+        "bitcoin-block-index"
       ],
       "retrieved": "2026-11-03",
       "sha256": "a1b863764bc6e40ed79a447805843eb7b18a09730eb3a849bf9fe43f17274aba",
@@ -1607,7 +1610,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-pow"
+        "bitcoin-pow",
+        "bitcoin-block-index"
       ],
       "retrieved": "2026-11-02",
       "sha256": "cad89cf4d7b99f3f6d3e93393febe523133320a5f4e92a61c8179bb5ac526a8a",
@@ -1647,7 +1651,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-pow",
-        "bitcoin-p2p"
+        "bitcoin-p2p",
+        "bitcoin-block-index"
       ],
       "retrieved": "2026-11-02",
       "sha256": "f817c51d79daa78fa3cb24506938c2523409c0703a2e0384794515d2cfc879a5",
@@ -3745,6 +3750,84 @@
       "retrieved": "2026-11-03",
       "sha256": "03ddd14f5593bea0a97e5b3cbe3af9fe215d38443ae192a01bb72a840858d6a4",
       "bytes": 8334
+    },
+    {
+      "path": "upstream/bitcoin-core/blockstorage.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/blockstorage.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-block-index"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "5063ae02875b3370cb0d1ca4ec41003853d102ba74ab7354a342bc3cb8dc8d6f",
+      "bytes": 52720
+    },
+    {
+      "path": "upstream/bitcoin-core/skiplist_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/skiplist_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-block-index"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "9eec53e04cf2a5a6a4269687da834bb0c61b52396212ef1b902df22e3a46c588",
+      "bytes": 11371
+    },
+    {
+      "path": "upstream/bitcoin-core/blockchain_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/blockchain_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-block-index"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "613c4f9158dfddb5b6cbdbc07d71f2043d8295eec18869591ea5550b0aea1e25",
+      "bytes": 5015
+    },
+    {
+      "path": "upstream/bitcoin-core/validation.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/validation.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-block-index"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "2eec09d952cd5b5e509d9ca7f41367b7ffaf6321f559c4a6d763063882fb9bad",
+      "bytes": 67783
+    },
+    {
+      "path": "upstream/bitcoin-core/blockchain.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/rpc/blockchain.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-block-index"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "2b415f9689e667529bad2465f672065c7f898fad2b7cb980c01bfda12ccd5eb0",
+      "bytes": 173428
+    },
+    {
+      "path": "upstream/mainnet/headers-0-2016.txt",
+      "kind": "upstream",
+      "url": "https://mempool.space/api/v1/blocks/2016",
+      "revision": "static: mainnet headers 0 to 2,016 assembled from mempool.space's /api/v1/blocks/{height} records (this URL is one of them); each line's 80 bytes hash to its block hash and name the line before; pinned by sha256",
+      "license": "Public Bitcoin blockchain data",
+      "covers": [
+        "bitcoin-block-index"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "a938d6efa4a87e3cb4e14f4868f46a59e7c8119db9a3ee50a16be2c09e0218b8",
+      "bytes": 464817
     }
   ]
 }
