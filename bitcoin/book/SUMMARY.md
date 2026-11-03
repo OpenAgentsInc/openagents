@@ -56,6 +56,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 **VII. Transactions and script**
 
 - [34. Transactions and their serialization](ch034-transactions-and-their-serialization.md) — implemented
+- [36. The script interpreter](ch036-the-script-interpreter.md) — implemented
 
 **IX. Blocks and consensus**
 

@@ -1,0 +1,1345 @@
+// The script interpreter (Bitcoin chapter 36): Bitcoin Core's EvalScript
+// and VerifyScript (script/interpreter.cpp) for legacy and segwit v0
+// script. A stack machine over byte strings, CScriptNum arithmetic, the
+// IF/NOTIF condition stack, the stack, numeric and crypto opcodes,
+// OP_CHECKSIG and OP_CHECKMULTISIG with FindAndDelete and the extra dummy
+// element, the limits, P2SH (BIP-16), witness v0 programs (P2WPKH and
+// P2WSH) and the script verification flags. Every failure is one of
+// Core's ScriptError codes, with the same number.
+//
+// Tapscript (BIP-342) is chapter 44: a v1 witness program under the
+// TAPROOT flag refuses with SCRIPT_TAPROOT_UNBUILT instead of running.
+// The two signature hashes are chapters 37 (legacy) and 38 (BIP-143);
+// here they are computed over chapter 34's reader, without size limits.
+//
+// Scripts, stacks and transactions are public, so everything runs in
+// variable time and every procedure that decides ends in _vartime
+// (Bitcoin chapter 3).
+#load "tx.coax";
+#load "der.coax";
+#load "hash160.coax";
+#load "../crypto/sha1.coax";
+#load "../../tests/bitcoin/script_lib_vectors.coax";
+#load "../../tests/bitcoin/sighash_vectors.coax";
+#authority;
+
+// book:begin errors
+// Bitcoin Core's ScriptError (script/script_error.h), in its order, so
+// each code is Core's number.
+SCRIPT_ERR_OK :: 0;
+SCRIPT_ERR_UNKNOWN_ERROR :: 1;
+SCRIPT_ERR_EVAL_FALSE :: 2;
+SCRIPT_ERR_OP_RETURN :: 3;
+SCRIPT_ERR_SCRIPTNUM :: 4;
+SCRIPT_ERR_SCRIPT_SIZE :: 5;
+SCRIPT_ERR_PUSH_SIZE :: 6;
+SCRIPT_ERR_OP_COUNT :: 7;
+SCRIPT_ERR_STACK_SIZE :: 8;
+SCRIPT_ERR_SIG_COUNT :: 9;
+SCRIPT_ERR_PUBKEY_COUNT :: 10;
+SCRIPT_ERR_VERIFY :: 11;
+SCRIPT_ERR_EQUALVERIFY :: 12;
+SCRIPT_ERR_CHECKMULTISIGVERIFY :: 13;
+SCRIPT_ERR_CHECKSIGVERIFY :: 14;
+SCRIPT_ERR_NUMEQUALVERIFY :: 15;
+SCRIPT_ERR_BAD_OPCODE :: 16;
+SCRIPT_ERR_DISABLED_OPCODE :: 17;
+SCRIPT_ERR_INVALID_STACK_OPERATION :: 18;
+SCRIPT_ERR_INVALID_ALTSTACK_OPERATION :: 19;
+SCRIPT_ERR_UNBALANCED_CONDITIONAL :: 20;
+SCRIPT_ERR_NEGATIVE_LOCKTIME :: 21;
+SCRIPT_ERR_UNSATISFIED_LOCKTIME :: 22;
+SCRIPT_ERR_SIG_HASHTYPE :: 23;
+SCRIPT_ERR_SIG_DER :: 24;
+SCRIPT_ERR_MINIMALDATA :: 25;
+SCRIPT_ERR_SIG_PUSHONLY :: 26;
+SCRIPT_ERR_SIG_HIGH_S :: 27;
+SCRIPT_ERR_SIG_NULLDUMMY :: 28;
+SCRIPT_ERR_PUBKEYTYPE :: 29;
+SCRIPT_ERR_CLEANSTACK :: 30;
+SCRIPT_ERR_MINIMALIF :: 31;
+SCRIPT_ERR_SIG_NULLFAIL :: 32;
+SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS :: 33;
+SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM :: 34;
+SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH :: 38;     // 35 to 37: Taproot's DISCOURAGE codes
+SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY :: 39;
+SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH :: 40;
+SCRIPT_ERR_WITNESS_MALLEATED :: 41;
+SCRIPT_ERR_WITNESS_MALLEATED_P2SH :: 42;
+SCRIPT_ERR_WITNESS_UNEXPECTED :: 43;
+SCRIPT_ERR_WITNESS_PUBKEYTYPE :: 44;
+SCRIPT_ERR_OP_CODESEPARATOR :: 53;                 // 45 to 52: Taproot and tapscript
+SCRIPT_ERR_SIG_FINDANDDELETE :: 54;
+SCRIPT_ERR_COUNT :: 55;                            // SCRIPT_ERR_ERROR_COUNT
+// Not Core's: a v1 witness program under TAPROOT (chapters 43 and 44), and
+// a flag set Core's VerifyScript asserts against (CLEANSTACK without
+// WITNESS and P2SH, or WITNESS without P2SH).
+SCRIPT_TAPROOT_UNBUILT :: 100;
+SCRIPT_BAD_FLAGS :: 101;
+// book:end errors
+
+// book:begin flags
+// The script verification flags (script/interpreter.h), one bit each in
+// Core's order.
+SCRIPT_VERIFY_P2SH :: 1 << 0;                 // BIP-16
+SCRIPT_VERIFY_STRICTENC :: 1 << 1;            // policy: key and sighash shapes
+SCRIPT_VERIFY_DERSIG :: 1 << 2;               // BIP-66
+SCRIPT_VERIFY_LOW_S :: 1 << 3;                // policy
+SCRIPT_VERIFY_NULLDUMMY :: 1 << 4;            // BIP-147
+SCRIPT_VERIFY_SIGPUSHONLY :: 1 << 5;          // policy
+SCRIPT_VERIFY_MINIMALDATA :: 1 << 6;          // policy
+SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS :: 1 << 7;
+SCRIPT_VERIFY_CLEANSTACK :: 1 << 8;           // policy
+SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY :: 1 << 9;  // BIP-65
+SCRIPT_VERIFY_CHECKSEQUENCEVERIFY :: 1 << 10; // BIP-112
+SCRIPT_VERIFY_WITNESS :: 1 << 11;             // BIP-141
+SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM :: 1 << 12;
+SCRIPT_VERIFY_MINIMALIF :: 1 << 13;           // policy, witness v0
+SCRIPT_VERIFY_NULLFAIL :: 1 << 14;            // policy
+SCRIPT_VERIFY_WITNESS_PUBKEYTYPE :: 1 << 15;  // policy
+SCRIPT_VERIFY_CONST_SCRIPTCODE :: 1 << 16;    // policy
+SCRIPT_VERIFY_TAPROOT :: 1 << 17;             // BIP-341 and BIP-342
+SCRIPT_VERIFY_FLAG_BITS :: 21;                // three more: Taproot's DISCOURAGE flags
+// book:end flags
+
+// book:begin opcodes
+// The opcodes the interpreter names (script/script.h).
+OP_0 :: 0x00; OP_PUSHDATA1 :: 0x4c; OP_PUSHDATA2 :: 0x4d; OP_PUSHDATA4 :: 0x4e;
+OP_1NEGATE :: 0x4f; OP_1 :: 0x51; OP_16 :: 0x60;
+OP_NOP :: 0x61; OP_IF :: 0x63; OP_NOTIF :: 0x64; OP_ELSE :: 0x67; OP_ENDIF :: 0x68;
+OP_VERIFY :: 0x69; OP_RETURN :: 0x6a; OP_TOALTSTACK :: 0x6b; OP_FROMALTSTACK :: 0x6c;
+OP_2DROP :: 0x6d; OP_2DUP :: 0x6e; OP_3DUP :: 0x6f; OP_2OVER :: 0x70; OP_2ROT :: 0x71;
+OP_2SWAP :: 0x72; OP_IFDUP :: 0x73; OP_DEPTH :: 0x74; OP_DROP :: 0x75; OP_DUP :: 0x76;
+OP_NIP :: 0x77; OP_OVER :: 0x78; OP_PICK :: 0x79; OP_ROLL :: 0x7a; OP_ROT :: 0x7b;
+OP_SWAP :: 0x7c; OP_TUCK :: 0x7d; OP_SIZE :: 0x82; OP_EQUAL :: 0x87; OP_EQUALVERIFY :: 0x88;
+OP_1ADD :: 0x8b; OP_1SUB :: 0x8c; OP_NEGATE :: 0x8f; OP_ABS :: 0x90; OP_NOT :: 0x91;
+OP_0NOTEQUAL :: 0x92; OP_ADD :: 0x93; OP_SUB :: 0x94; OP_BOOLAND :: 0x9a; OP_BOOLOR :: 0x9b;
+OP_NUMEQUAL :: 0x9c; OP_NUMEQUALVERIFY :: 0x9d; OP_NUMNOTEQUAL :: 0x9e; OP_LESSTHAN :: 0x9f;
+OP_GREATERTHAN :: 0xa0; OP_LESSTHANOREQUAL :: 0xa1; OP_GREATERTHANOREQUAL :: 0xa2;
+OP_MIN :: 0xa3; OP_MAX :: 0xa4; OP_WITHIN :: 0xa5;
+OP_RIPEMD160 :: 0xa6; OP_SHA1 :: 0xa7; OP_SHA256 :: 0xa8; OP_HASH160 :: 0xa9; OP_HASH256 :: 0xaa;
+OP_CODESEPARATOR :: 0xab; OP_CHECKSIG :: 0xac; OP_CHECKSIGVERIFY :: 0xad;
+OP_CHECKMULTISIG :: 0xae; OP_CHECKMULTISIGVERIFY :: 0xaf;
+OP_NOP1 :: 0xb0; OP_CHECKLOCKTIMEVERIFY :: 0xb1; OP_CHECKSEQUENCEVERIFY :: 0xb2; OP_NOP10 :: 0xb9;
+// OP_CAT to OP_RSHIFT minus the ones kept: disabled since 2010 (CVE-2010-5137).
+SCRIPT_DISABLED :: [15] int.[0x7e, 0x7f, 0x80, 0x81, 0x83, 0x84, 0x85, 0x86, 0x8d, 0x8e, 0x95, 0x96, 0x97, 0x98, 0x99];
+// book:end opcodes
+
+// book:begin limits
+SCRIPT_MAX_SIZE :: 10000;        // MAX_SCRIPT_SIZE
+SCRIPT_MAX_ELEMENT :: 520;       // MAX_SCRIPT_ELEMENT_SIZE
+SCRIPT_MAX_OPS :: 201;           // MAX_OPS_PER_SCRIPT
+SCRIPT_MAX_STACK :: 1000;        // MAX_STACK_SIZE: the stack and the alt stack together
+SCRIPT_MAX_KEYS :: 20;           // MAX_PUBKEYS_PER_MULTISIG
+SCRIPT_LOCKTIME_THRESHOLD :: 500000000;
+SCRIPT_SEQUENCE_FINAL :: 0xffffffff;
+SCRIPT_SEQUENCE_DISABLE :: 1 << 31;
+SCRIPT_SEQUENCE_TYPE :: 1 << 22;
+SCRIPT_SEQUENCE_MASK :: 0xffff;
+// book:end limits
+
+// book:begin work
+// A stack element is a view: n bytes at at of one of three sources, the
+// spending transaction's bytes (scriptSigs and witness items), the spent
+// scriptPubKey, or the workspace's arena (values the opcodes compute).
+// Copying an element copies the view, never the bytes.
+SRC_TX :: 0; SRC_SPK :: 1; SRC_ARENA :: 2;
+ScriptItem :: struct { src: int; at: int; n: int; }
+// The input being checked (Core's checker): the spending transaction as
+// chapter 34's tx_read_vartime read it, which input, the value and the
+// scriptPubKey of the output it spends.
+ScriptSpend :: struct {
+  b: [] u8; t: Tx; ins: [] TxIn; outs: [] TxOut; items: [] TxItem;
+  index: int; amount: int; spk: [] u8;
+}
+// Room for the stack: 1,000 elements and the three an opcode may add
+// before the size check, or the top SCRIPT_ROOM of a larger witness stack
+// with the rest counted in hidden.
+SCRIPT_ROOM :: 1100;
+SCRIPT_CAP :: 1104;
+// Each run of EvalScript computes at most 201 values of at most 32 bytes,
+// and VerifyScript runs it at most four times.
+SCRIPT_ARENA :: 32768;
+ScriptWork :: struct {
+  stack: [SCRIPT_CAP] ScriptItem; depth: int; hidden: int;
+  alt: [SCRIPT_CAP] ScriptItem; alt_depth: int;
+  saved: [SCRIPT_CAP] ScriptItem; saved_depth: int;
+  arena: [SCRIPT_ARENA] u8; used: int;
+  code: [SCRIPT_MAX_SIZE] u8; code_n: int;   // the scriptCode a signature hash signs
+}
+// book:end work
+ScriptOp :: struct { ok: bool; op: int; at: int; n: int; next: int; }
+ScriptNum :: struct { value: int; ok: bool; }
+// Core's ConditionStack: how many IFs are open and where the first false
+// one is, -1 when every one is true.
+ScriptCond :: struct { size: int; first_false: int; }
+// What CHECKMULTISIG did: an error, and the keys it counted as ops.
+ScriptStep :: struct { error: int; keys: int; }
+// SigVersion: legacy script and witness v0 script.
+SCRIPT_BASE :: 0; SCRIPT_V0 :: 1;
+// The names script_tests.json gives the codes, and the flag names.
+SCRIPT_ERR_NAMES :: [55] string.["OK", "UNKNOWN_ERROR", "EVAL_FALSE", "OP_RETURN", "SCRIPTNUM", "SCRIPT_SIZE",
+  "PUSH_SIZE", "OP_COUNT", "STACK_SIZE", "SIG_COUNT", "PUBKEY_COUNT", "VERIFY", "EQUALVERIFY",
+  "CHECKMULTISIGVERIFY", "CHECKSIGVERIFY", "NUMEQUALVERIFY", "BAD_OPCODE", "DISABLED_OPCODE",
+  "INVALID_STACK_OPERATION", "INVALID_ALTSTACK_OPERATION", "UNBALANCED_CONDITIONAL", "NEGATIVE_LOCKTIME",
+  "UNSATISFIED_LOCKTIME", "SIG_HASHTYPE", "SIG_DER", "MINIMALDATA", "SIG_PUSHONLY", "SIG_HIGH_S",
+  "SIG_NULLDUMMY", "PUBKEYTYPE", "CLEANSTACK", "MINIMALIF", "NULLFAIL", "DISCOURAGE_UPGRADABLE_NOPS",
+  "DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM", "DISCOURAGE_UPGRADABLE_TAPROOT_VERSION", "DISCOURAGE_OP_SUCCESS",
+  "DISCOURAGE_UPGRADABLE_PUBKEYTYPE", "WITNESS_PROGRAM_WRONG_LENGTH", "WITNESS_PROGRAM_WITNESS_EMPTY",
+  "WITNESS_PROGRAM_MISMATCH", "WITNESS_MALLEATED", "WITNESS_MALLEATED_P2SH", "WITNESS_UNEXPECTED",
+  "WITNESS_PUBKEYTYPE", "SCHNORR_SIG_SIZE", "SCHNORR_SIG_HASHTYPE", "SCHNORR_SIG", "TAPROOT_WRONG_CONTROL_SIZE",
+  "TAPSCRIPT_VALIDATION_WEIGHT", "TAPSCRIPT_CHECKMULTISIG", "TAPSCRIPT_MINIMALIF", "TAPSCRIPT_EMPTY_PUBKEY",
+  "OP_CODESEPARATOR", "SIG_FINDANDDELETE"];
+SCRIPT_FLAG_NAMES :: [21] string.["P2SH", "STRICTENC", "DERSIG", "LOW_S", "NULLDUMMY", "SIGPUSHONLY", "MINIMALDATA",
+  "DISCOURAGE_UPGRADABLE_NOPS", "CLEANSTACK", "CHECKLOCKTIMEVERIFY", "CHECKSEQUENCEVERIFY", "WITNESS",
+  "DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM", "MINIMALIF", "NULLFAIL", "WITNESS_PUBKEYTYPE", "CONST_SCRIPTCODE",
+  "TAPROOT", "DISCOURAGE_UPGRADABLE_TAPROOT_VERSION", "DISCOURAGE_OP_SUCCESS", "DISCOURAGE_UPGRADABLE_PUBKEYTYPE"];
+
+// ---- reading a script
+// book:begin getop
+// GetScriptOp at s[pc]: one opcode and, for a push, its data at s[at..<at+n].
+// A push whose length bytes or data run past the end refuses, and next is
+// where Core's iterator stopped: after the opcode, and after the length
+// bytes when they were all there.
+script_op_vartime :: (s: [] u8, pc: int) -> ScriptOp #export_c {
+  if pc >= s.count { return ScriptOp.{next=pc, op=0xff}; }
+  op := cast(int) s[pc]; at := pc + 1;
+  if op > OP_PUSHDATA4 { return ScriptOp.{ok=true, op=op, at=at, next=at}; }
+  width := ifx op < OP_PUSHDATA1 then 0 else ifx op == OP_PUSHDATA1 then 1 else ifx op == OP_PUSHDATA2 then 2 else 4;
+  if width > s.count - at { return ScriptOp.{op=0xff, next=at}; }
+  n := ifx width == 0 then op else tx_le_vartime(s, at, width);
+  at += width;
+  if n > s.count - at { return ScriptOp.{op=0xff, next=at}; }
+  return ScriptOp.{ok=true, op=op, at=at, n=n, next=at+n};
+}
+// book:end getop
+// book:begin pushonly
+// IsPushOnly: every op parses and none is above OP_16. OP_RESERVED (0x50)
+// counts as a push here; running it fails.
+script_push_only_vartime :: (s: [] u8) -> bool #export_c {
+  pc := 0;
+  while pc < s.count {
+    op := script_op_vartime(s, pc);
+    if !op.ok || op.op > OP_16 { return false; }
+    pc = op.next;
+  }
+  return true;
+}
+// CheckMinimalPush: the data was pushed by the shortest form: OP_0 for
+// nothing, OP_1NEGATE and OP_1 to OP_16 for those single bytes, a direct
+// push to 75 bytes, then PUSHDATA1, then PUSHDATA2.
+script_minimal_push_vartime :: (data: [] u8, op: int) -> bool #export_c {
+  n := data.count;
+  if n == 0 { return op == OP_0; }
+  if n == 1 && data[0] >= 1 && data[0] <= 16 { return false; }
+  if n == 1 && data[0] == 0x81 { return false; }
+  if n <= 75 { return op == n; }  // mutant: equivalent (at 76 bytes op == 76 is OP_PUSHDATA1, the next line's answer)
+  if n <= 255 { return op == OP_PUSHDATA1; }
+  if n <= 65535 { return op == OP_PUSHDATA2; }
+  return true;
+}
+// book:end pushonly
+
+// ---- numbers
+// book:begin scriptnum
+// CScriptNum from a stack element: little-endian, the top bit of the last
+// byte the sign, at most max bytes (4, or 5 for the locktime opcodes).
+// With minimal, the last byte must carry a bit other than the sign,
+// unless the byte before it needs the sign bit to itself: so 0x80
+// (negative zero) and 0x0100 refuse, and 0xff00 (255) does not.
+script_num_vartime :: (b: [] u8, minimal: bool, max: int) -> ScriptNum #export_c {
+  n := b.count;
+  if n > max { return ScriptNum.{}; }
+  if n == 0 { return ScriptNum.{ok=true}; }
+  last := cast(int) b[n-1];
+  if minimal && (last & 0x7f) == 0 && (n == 1 || (b[n-2] & 0x80) == 0) { return ScriptNum.{}; }
+  value := 0;
+  for i: 0..<n-1 { value |= cast(int) b[i] << (8 * i); }
+  value |= (last & 0x7f) << (8 * (n - 1));
+  return ScriptNum.{value=ifx (last & 0x80) != 0 then -value else value, ok=true};
+}
+// CScriptNum::serialize into out (9 bytes of room): the magnitude,
+// little-endian, and the sign in the top bit, with one more byte when the
+// top bit is taken. Zero is no bytes. Returns the length.
+script_num_write_vartime :: (value: int, out: [] u8) -> int #export_c {
+  magnitude := ifx value < 0 then -value else value;  // mutant: equivalent (the negation of zero is zero)
+  n := 0;
+  while magnitude > 0 { out[n] = cast(u8) (magnitude & 255); magnitude >>= 8; n += 1; }
+  if n == 0 { return 0; }
+  if (out[n-1] & 0x80) != 0 { out[n] = ifx value < 0 then 0x80 else 0; return n + 1; }  // mutant: equivalent (zero returned above)
+  if value < 0 { out[n-1] |= 0x80; }  // mutant: equivalent (zero returned above)
+  return n;
+}
+// CastToBool: any nonzero byte is true, except a last byte of 0x80 with
+// zeros before it: negative zero is false.
+script_bool_vartime :: (b: [] u8) -> bool #export_c {
+  for i: 0..<b.count {
+    if b[i] != 0 { return i != b.count - 1 || b[i] != 0x80; }
+  }
+  return false;
+}
+// book:end scriptnum
+
+// ---- the condition stack
+// book:begin cond
+// Core's ConditionStack: IF pushes a value, ELSE flips the top one, ENDIF
+// pops it, and an opcode runs when every value is true. Only the first
+// false value is observable, so the stack is its size and that position.
+si_cond_push :: (c: ScriptCond, value: bool) -> ScriptCond {
+  r := c;
+  if r.first_false < 0 && !value { r.first_false = r.size; }
+  r.size += 1;
+  return r;
+}
+si_cond_pop :: (c: ScriptCond) -> ScriptCond {
+  r := c;
+  r.size -= 1;
+  if r.first_false == r.size { r.first_false = -1; }
+  return r;
+}
+si_cond_toggle :: (c: ScriptCond) -> ScriptCond {
+  r := c;
+  if r.first_false < 0 { r.first_false = r.size - 1; }
+  else if r.first_false == r.size - 1 { r.first_false = -1; }
+  return r;
+}
+// book:end cond
+
+// ---- the stack
+// The bytes of an element.
+si_bytes :: (sp: ScriptSpend, w: [] ScriptWork, el: ScriptItem) -> [] u8 {
+  if el.src == SRC_TX { return sp.b[el.at..<el.at+el.n]; }
+  if el.src == SRC_SPK { return sp.spk[el.at..<el.at+el.n]; }
+  return w[0].arena[el.at..<el.at+el.n];
+}
+// The element i from the top (1 is the top). The caller has checked the
+// size; an element below the stored ones is never read (see si_pick).
+si_top :: (w: [] ScriptWork, i: int) -> ScriptItem { return w[0].stack[w[0].depth-i]; }
+si_size :: (w: [] ScriptWork) -> int { return w[0].depth + w[0].hidden; }
+si_push :: (w: [] ScriptWork, el: ScriptItem) { w[0].stack[w[0].depth] = el; w[0].depth += 1; }
+si_pop :: (w: [] ScriptWork, k: int) { w[0].depth -= k; }
+// Removes the element i from the top, moving the ones above it down.
+si_erase :: (w: [] ScriptWork, i: int) {
+  for k: w[0].depth-i..<w[0].depth-1 { w[0].stack[k] = w[0].stack[k+1]; }  // mutant: equivalent (one more step writes only the slot the decrement drops)
+  w[0].depth -= 1;
+}
+// n fresh bytes in the arena. A run of VerifyScript writes at most
+// 4 × 201 × 32 bytes plus the constants, so the arena never fills.
+si_new :: (w: [] ScriptWork, n: int) -> ScriptItem {
+  #assert w[0].used + n <= SCRIPT_ARENA;  // mutant: equivalent (the arena never fills: 4 x 201 x 32 + 25 + 17 < 32768)
+  el := ScriptItem.{src=SRC_ARENA, at=w[0].used, n=n};  // mutant: equivalent (si_bytes reads any source past SRC_SPK as the arena)
+  w[0].used += n;
+  return el;
+}
+// The arena starts with OP_1NEGATE's 0x81 at 0, then 1 to 16 at 1 to 16:
+// what OP_1NEGATE and OP_1 to OP_16 push, and true (0x01).
+si_constant :: (k: int) -> ScriptItem { return ScriptItem.{src=SRC_ARENA, at=ifx k < 0 then 0 else k, n=1}; }  // mutant: equivalent (k is -1 or 1 to 16, never 0; any source past SRC_SPK is the arena)
+SI_TRUE :: ScriptItem.{src=SRC_ARENA, at=1, n=1};
+SI_FALSE :: ScriptItem.{src=SRC_ARENA, at=0, n=0};
+si_bool :: (value: bool) -> ScriptItem { return ifx value then SI_TRUE else SI_FALSE; }
+si_number :: (w: [] ScriptWork, value: int) -> ScriptItem {
+  b: [9] u8;
+  n := script_num_write_vartime(value, b[..]);
+  el := si_new(w, n);
+  for i: 0..<n { w[0].arena[el.at+i] = b[i]; }
+  return el;
+}
+si_reset :: (w: [] ScriptWork) {
+  w[0].depth = 0; w[0].hidden = 0;
+  w[0].arena[0] = 0x81;
+  for k: 1..<17 { w[0].arena[k] = cast(u8) k; }  // mutant: equivalent (arena[17] is written before any read)
+  w[0].used = 17;  // mutant: equivalent (a skipped arena byte is never read)
+}
+
+// ---- signature hashes
+// SHA-256 absorbing, through chapter 34's piecewise update.
+si_absorb :: (state: [] u8, b: [] u8) { tx_absorb(state, b, tx_hash_limit()); }
+si_absorb_compact :: (state: [] u8, value: int) {
+  b: [9] u8;
+  si_absorb(state, b[0..<tx_compact_write_vartime(b[..], 0, value)]);
+}
+si_absorb_le :: (state: [] u8, value: int, width: int) {
+  b: [8] u8;
+  for i: 0..<width { b[i] = cast(u8) ((value >> (8 * i)) & 255); }
+  si_absorb(state, b[0..<width]);
+}
+// The SHA-256d of what state absorbed, into out.
+si_finish :: (state: [] u8, out: [] u8) {
+  first: [32] u8;
+  #assert sha256_final_checked(state, first[..], false) == SHA_OK;
+  #assert sha256_hash_checked(first[..], out, false) == SHA_OK;
+}
+si_start :: (state: [] u8) { #assert sha256_init(state) == SHA_OK; }
+// book:begin scriptcode
+// CTransactionSignatureSerializer::SerializeScriptCode: the scriptCode
+// without its OP_CODESEPARATORs, prefixed by its length minus their
+// number. Like Core, it copies only up to where GetOp stopped, so a
+// script that ends inside a push contributes fewer bytes than its prefix
+// says.
+si_absorb_code :: (state: [] u8, code: [] u8) {
+  separators := 0; pc := 0;
+  while true {
+    op := script_op_vartime(code, pc);
+    if !op.ok { break; }
+    if op.op == OP_CODESEPARATOR { separators += 1; }
+    pc = op.next;
+  }
+  si_absorb_compact(state, code.count - separators);
+  begin := 0; pc = 0;
+  while true {
+    op := script_op_vartime(code, pc);
+    pc = op.next;
+    if !op.ok { break; }
+    if op.op == OP_CODESEPARATOR { si_absorb(state, code[begin..<pc-1]); begin = pc; }
+  }
+  if begin != code.count { si_absorb(state, code[begin..<pc]); }
+}
+// book:end scriptcode
+// book:begin legacy
+// The legacy signature hash (Core's SignatureHash for SigVersion::BASE;
+// chapter 37 explains it): the transaction with every other input's
+// scriptSig empty, this input's replaced by the scriptCode, and the parts
+// NONE, SINGLE and ANYONECANPAY leave out, then the 4-byte hash type,
+// SHA-256d into out. SIGHASH_SINGLE with no output at this input's index
+// signs the number 1, Core's historical bug.
+script_sighash_legacy_vartime :: (sp: ScriptSpend, code: [] u8, hashtype: int, out: [] u8) {
+  b := sp.b; t := sp.t; index := sp.index;
+  anyone := (hashtype & 0x80) != 0;
+  single := (hashtype & 0x1f) == 3; none := (hashtype & 0x1f) == 2;
+  if single && index >= t.nout {
+    for i: 0..<32 { out[i] = 0; }  // mutant: equivalent (out[0] is set to 1 next)
+    out[0] = 1;
+    return;
+  }
+  state: [SHA_STATE_BYTES] u8; si_start(state[..]);
+  si_absorb(state[..], b[0..<4]);
+  inputs := ifx anyone then 1 else t.nin;
+  si_absorb_compact(state[..], inputs);
+  for k: 0..<inputs {
+    i := ifx anyone then index else k;
+    si_absorb(state[..], b[sp.ins[i].outpoint..<sp.ins[i].outpoint+36]);
+    if i == index { si_absorb_code(state[..], code); } else { si_absorb_compact(state[..], 0); }
+    if i != index && (single || none) { si_absorb_le(state[..], 0, 4); }
+    else { si_absorb(state[..], b[sp.ins[i].sequence..<sp.ins[i].sequence+4]); }
+  }
+  outputs := ifx none then 0 else ifx single then index + 1 else t.nout;
+  si_absorb_compact(state[..], outputs);
+  for k: 0..<outputs {
+    o := sp.outs[k];
+    if single && k != index { si_absorb_le(state[..], -1, 8); si_absorb_compact(state[..], 0); }
+    else { si_absorb(state[..], b[o.value..<o.script+o.script_n]); }
+  }
+  si_absorb(state[..], b[t.locktime..<t.locktime+4]);
+  si_absorb_le(state[..], hashtype, 4);
+  si_finish(state[..], out);
+}
+// book:end legacy
+// book:begin bip143
+// The BIP-143 signature hash (SigVersion::WITNESS_V0; chapter 38 explains
+// it): hashes of all prevouts, all sequences and all outputs, which the
+// hash type zeroes or narrows, then this input's outpoint, scriptCode,
+// amount and sequence.
+script_sighash_v0_vartime :: (sp: ScriptSpend, code: [] u8, hashtype: int, out: [] u8) {
+  b := sp.b; t := sp.t; index := sp.index;
+  anyone := (hashtype & 0x80) != 0;
+  single := (hashtype & 0x1f) == 3; none := (hashtype & 0x1f) == 2;
+  prevouts: [32] u8; sequences: [32] u8; outputs: [32] u8;
+  part: [SHA_STATE_BYTES] u8;
+  if !anyone {
+    si_start(part[..]);
+    for k: 0..<t.nin { si_absorb(part[..], b[sp.ins[k].outpoint..<sp.ins[k].outpoint+36]); }
+    si_finish(part[..], prevouts[..]);
+  }
+  if !anyone && !single && !none {
+    si_start(part[..]);
+    for k: 0..<t.nin { si_absorb(part[..], b[sp.ins[k].sequence..<sp.ins[k].sequence+4]); }
+    si_finish(part[..], sequences[..]);
+  }
+  if !single && !none {
+    si_start(part[..]);
+    for k: 0..<t.nout { si_absorb(part[..], b[sp.outs[k].value..<sp.outs[k].script+sp.outs[k].script_n]); }
+    si_finish(part[..], outputs[..]);
+  } else if single && index < t.nout {
+    si_start(part[..]);
+    si_absorb(part[..], b[sp.outs[index].value..<sp.outs[index].script+sp.outs[index].script_n]);
+    si_finish(part[..], outputs[..]);
+  }
+  state: [SHA_STATE_BYTES] u8; si_start(state[..]);
+  si_absorb(state[..], b[0..<4]);
+  si_absorb(state[..], prevouts[..]);
+  si_absorb(state[..], sequences[..]);
+  si_absorb(state[..], b[sp.ins[index].outpoint..<sp.ins[index].outpoint+36]);
+  si_absorb_compact(state[..], code.count);
+  si_absorb(state[..], code);
+  si_absorb_le(state[..], sp.amount, 8);
+  si_absorb(state[..], b[sp.ins[index].sequence..<sp.ins[index].sequence+4]);
+  si_absorb(state[..], outputs[..]);
+  si_absorb(state[..], b[t.locktime..<t.locktime+4]);
+  si_absorb_le(state[..], hashtype, 4);
+  si_finish(state[..], out);
+}
+// book:end bip143
+
+// ---- keys and signatures
+// book:begin keys
+// IsCompressedOrUncompressedPubKey (STRICTENC) and IsCompressedPubKey
+// (WITNESS_PUBKEYTYPE): shapes only, not points.
+si_key_shape :: (key: [] u8) -> bool {
+  if key.count == 33 { return key[0] == 2 || key[0] == 3; }
+  return key.count == 65 && key[0] == 4;
+}
+si_key_compressed :: (key: [] u8) -> bool { return key.count == 33 && (key[0] == 2 || key[0] == 3); }
+// CheckPubKeyEncoding.
+si_key_check :: (key: [] u8, flags: int, version: int) -> int {
+  if (flags & SCRIPT_VERIFY_STRICTENC) != 0 && !si_key_shape(key) { return SCRIPT_ERR_PUBKEYTYPE; }
+  if (flags & SCRIPT_VERIFY_WITNESS_PUBKEYTYPE) != 0 && version == SCRIPT_V0 && !si_key_compressed(key) { return SCRIPT_ERR_WITNESS_PUBKEYTYPE; }
+  return SCRIPT_ERR_OK;
+}
+// CheckSignatureEncoding, through chapter 21's check, whose flags are
+// DERSIG 1, LOW_S 2 and STRICTENC 4.
+si_sig_check :: (sig: [] u8, flags: int) -> int {
+  der := (ifx (flags & SCRIPT_VERIFY_DERSIG) != 0 then SCRIPT_DERSIG else 0)
+    | (ifx (flags & SCRIPT_VERIFY_LOW_S) != 0 then SCRIPT_LOW_S else 0)
+    | (ifx (flags & SCRIPT_VERIFY_STRICTENC) != 0 then SCRIPT_STRICTENC else 0);
+  error := der_signature_check_vartime(sig, der);
+  if error == SIG_DER { return SCRIPT_ERR_SIG_DER; }
+  if error == SIG_HIGH_S { return SCRIPT_ERR_SIG_HIGH_S; }
+  if error == SIG_HASHTYPE { return SCRIPT_ERR_SIG_HASHTYPE; }
+  return SCRIPT_ERR_OK;
+}
+// book:end keys
+// book:begin checker
+// CheckECDSASignature: a key CPubKey reads (33 bytes with prefix 02 or
+// 03, 65 with 04, or a hybrid 65 with 06 or 07 whose low bit is y's
+// parity), a signature with its sighash byte, the hash for its
+// SigVersion, then chapter 21's lax parser and chapter 19's verifier,
+// which accepts either half of s as Core does after normalizing.
+si_ecdsa_vartime :: (sp: ScriptSpend, sig: [] u8, key: [] u8, code: [] u8, version: int) -> bool {
+  if sig.count == 0 || key.count == 0 { return false; }
+  prefix := cast(int) key[0];
+  wanted := ifx prefix == 2 || prefix == 3 then 33 else ifx prefix == 4 || prefix == 6 || prefix == 7 then 65 else 0;  // mutant: equivalent (else 1 lets a 1-byte key on to a verification that fails)
+  if key.count != wanted { return false; }
+  point: [65] u8;
+  for i: 0..<key.count { point[i] = key[i]; }
+  if prefix >= 6 {
+    if (cast(int) key[64] & 1) != (prefix & 1) { return false; }
+    point[0] = 4;
+  }
+  hash: [32] u8;
+  hashtype := cast(int) sig[sig.count-1];
+  if version == SCRIPT_V0 { script_sighash_v0_vartime(sp, code, hashtype, hash[..]); }
+  else { script_sighash_legacy_vartime(sp, code, hashtype, hash[..]); }
+  compact: [64] u8;
+  if !der_read_lax_vartime(sig[0..<sig.count-1], compact[..]) { return false; }
+  return ecdsa_verify_vartime(hash[..], point[0..<key.count], compact[..], false);
+}
+// book:end checker
+// book:begin finddelete
+// FindAndDelete(scriptCode, CScript() << sig) on w.code[0..<w.code_n]:
+// removes every copy of the signature's push that starts where an op
+// starts, in place, and returns how many it removed. The push of an empty
+// signature is the single byte 0x00, so an empty signature removes every
+// OP_0.
+si_find_delete :: (w: [] ScriptWork, sig: [] u8) -> int {
+  pattern: [SCRIPT_MAX_ELEMENT + 3] u8;
+  head := ifx sig.count < OP_PUSHDATA1 then 1 else ifx sig.count <= 255 then 2 else 3;
+  if head == 1 { pattern[0] = cast(u8) sig.count; }
+  else if head == 2 { pattern[0] = OP_PUSHDATA1; pattern[1] = cast(u8) sig.count; }
+  else { pattern[0] = OP_PUSHDATA2; pattern[1] = cast(u8) (sig.count & 255); pattern[2] = cast(u8) (sig.count >> 8); }
+  for i: 0..<sig.count { pattern[head+i] = sig[i]; }
+  p := pattern[0..<head+sig.count];
+  code := w[0].code[0..<w[0].code_n];
+  found := 0; out := 0; pc := 0; kept := 0;  // mutant: equivalent (the first copy runs from kept to pc = 0, empty for kept 0 or 1)
+  while true {
+    for k: kept..<pc { code[out] = code[k]; out += 1; }
+    while code.count - pc >= p.count && si_same(code[pc..<pc+p.count], p) { pc += p.count; found += 1; }
+    kept = pc;
+    op := script_op_vartime(code, pc);
+    if !op.ok { break; }
+    pc = op.next;
+  }
+  if found > 0 {  // mutant: equivalent (with nothing found out equals kept, so the copy is onto itself)
+    for k: kept..<code.count { code[out] = code[k]; out += 1; }
+    w[0].code_n = out;
+  }
+  return found;
+}
+si_same :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// book:end finddelete
+// The scriptCode from pbegincodehash to the end of the script, into w.code.
+si_code :: (w: [] ScriptWork, script: [] u8, begin: int) {
+  for k: begin..<script.count { w[0].code[k-begin] = script[k]; }
+  w[0].code_n = script.count - begin;
+}
+
+// ---- CHECKSIG and CHECKMULTISIG
+// book:begin checksig
+// OP_CHECKSIG and OP_CHECKSIGVERIFY (EvalChecksigPreTapscript): the
+// scriptCode from the last OP_CODESEPARATOR, with the signature's push
+// removed in legacy script; the encoding checks; the verification; and
+// NULLFAIL, which turns a failed non-empty signature into an error.
+si_checksig :: (sp: ScriptSpend, w: [] ScriptWork, script: [] u8, begin: int, op: int, flags: int, version: int) -> int {
+  if si_size(w) < 2 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+  sig := si_bytes(sp, w, si_top(w, 2)); key := si_bytes(sp, w, si_top(w, 1));
+  si_code(w, script, begin);
+  if version == SCRIPT_BASE && si_find_delete(w, sig) > 0 && (flags & SCRIPT_VERIFY_CONST_SCRIPTCODE) != 0 { return SCRIPT_ERR_SIG_FINDANDDELETE; }
+  error := si_sig_check(sig, flags);
+  if error == SCRIPT_ERR_OK { error = si_key_check(key, flags, version); }
+  if error != SCRIPT_ERR_OK { return error; }
+  ok := si_ecdsa_vartime(sp, sig, key, w[0].code[0..<w[0].code_n], version);
+  if !ok && (flags & SCRIPT_VERIFY_NULLFAIL) != 0 && sig.count > 0 { return SCRIPT_ERR_SIG_NULLFAIL; }
+  si_pop(w, 2);
+  if op == OP_CHECKSIGVERIFY { return ifx ok then SCRIPT_ERR_OK else SCRIPT_ERR_CHECKSIGVERIFY; }
+  si_push(w, si_bool(ok));
+  return SCRIPT_ERR_OK;
+}
+// book:end checksig
+// book:begin multisig
+// OP_CHECKMULTISIG and OP_CHECKMULTISIGVERIFY: <dummy> <sigs...> m
+// <keys...> n. Each key counts toward the 201-op limit. Signatures are
+// matched to keys in order, each key tried once, and the loop stops as
+// soon as too few keys remain. Then every argument is popped, under
+// NULLFAIL each signature must be empty if the check failed, and one more
+// element, the dummy, is popped: an off-by-one in the first release that
+// NULLDUMMY (BIP-147) now requires to be empty.
+si_checkmultisig :: (sp: ScriptSpend, w: [] ScriptWork, script: [] u8, begin: int, op: int, flags: int, version: int, ops: int) -> ScriptStep {
+  minimal := (flags & SCRIPT_VERIFY_MINIMALDATA) != 0;
+  i := 1;
+  if si_size(w) < i { return ScriptStep.{error=SCRIPT_ERR_INVALID_STACK_OPERATION}; }
+  keys := script_num_vartime(si_bytes(sp, w, si_top(w, i)), minimal, 4);
+  if !keys.ok { return ScriptStep.{error=SCRIPT_ERR_SCRIPTNUM}; }
+  if keys.value < 0 || keys.value > SCRIPT_MAX_KEYS { return ScriptStep.{error=SCRIPT_ERR_PUBKEY_COUNT}; }
+  if ops + keys.value > SCRIPT_MAX_OPS { return ScriptStep.{error=SCRIPT_ERR_OP_COUNT}; }
+  nkeys := keys.value;
+  i += 1; ikey := i; ikey2 := nkeys + 2;
+  i += nkeys;
+  if si_size(w) < i { return ScriptStep.{error=SCRIPT_ERR_INVALID_STACK_OPERATION}; }
+  sigs := script_num_vartime(si_bytes(sp, w, si_top(w, i)), minimal, 4);
+  if !sigs.ok { return ScriptStep.{error=SCRIPT_ERR_SCRIPTNUM}; }
+  if sigs.value < 0 || sigs.value > nkeys { return ScriptStep.{error=SCRIPT_ERR_SIG_COUNT}; }
+  nsigs := sigs.value;
+  i += 1; isig := i;
+  i += nsigs;
+  if si_size(w) < i { return ScriptStep.{error=SCRIPT_ERR_INVALID_STACK_OPERATION}; }
+  si_code(w, script, begin);
+  for k: 0..<nsigs {
+    if version == SCRIPT_BASE && si_find_delete(w, si_bytes(sp, w, si_top(w, isig + k))) > 0 && (flags & SCRIPT_VERIFY_CONST_SCRIPTCODE) != 0 { return ScriptStep.{error=SCRIPT_ERR_SIG_FINDANDDELETE}; }
+  }
+  ok := true;
+  while ok && nsigs > 0 {
+    sig := si_bytes(sp, w, si_top(w, isig)); key := si_bytes(sp, w, si_top(w, ikey));
+    error := si_sig_check(sig, flags);
+    if error == SCRIPT_ERR_OK { error = si_key_check(key, flags, version); }
+    if error != SCRIPT_ERR_OK { return ScriptStep.{error=error}; }
+    if si_ecdsa_vartime(sp, sig, key, w[0].code[0..<w[0].code_n], version) { isig += 1; nsigs -= 1; }
+    ikey += 1; nkeys -= 1;
+    if nsigs > nkeys { ok = false; }                      // too many have failed
+  }
+  while i > 1 {
+    i -= 1;
+    if !ok && (flags & SCRIPT_VERIFY_NULLFAIL) != 0 && ikey2 == 0 && si_top(w, 1).n > 0 { return ScriptStep.{error=SCRIPT_ERR_SIG_NULLFAIL}; }
+    if ikey2 > 0 { ikey2 -= 1; }
+    si_pop(w, 1);
+  }
+  if si_size(w) < 1 { return ScriptStep.{error=SCRIPT_ERR_INVALID_STACK_OPERATION}; }  // mutant: equivalent (unreachable: the size check before the loop counted the dummy)
+  if (flags & SCRIPT_VERIFY_NULLDUMMY) != 0 && si_top(w, 1).n > 0 { return ScriptStep.{error=SCRIPT_ERR_SIG_NULLDUMMY}; }
+  si_pop(w, 1);
+  if op == OP_CHECKMULTISIGVERIFY { return ScriptStep.{error=ifx ok then SCRIPT_ERR_OK else SCRIPT_ERR_CHECKMULTISIGVERIFY, keys=keys.value}; }
+  si_push(w, si_bool(ok));
+  return ScriptStep.{keys=keys.value};
+}
+// book:end multisig
+
+// ---- the other opcodes
+// book:begin stackops
+// The stack opcodes. Each checks the depth it needs first; OP_PICK and
+// OP_ROLL read their index as a 4-byte number.
+si_stack_op :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int {
+  size := si_size(w);
+  if op == OP_TOALTSTACK {
+    if size < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+    w[0].alt[w[0].alt_depth] = si_top(w, 1); w[0].alt_depth += 1; si_pop(w, 1);
+  } else if op == OP_FROMALTSTACK {
+    if w[0].alt_depth < 1 { return SCRIPT_ERR_INVALID_ALTSTACK_OPERATION; }
+    w[0].alt_depth -= 1; si_push(w, w[0].alt[w[0].alt_depth]);
+  } else if op == OP_2DROP {
+    if size < 2 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+    si_pop(w, 2);
+  } else if op == OP_2DUP || op == OP_3DUP || op == OP_2OVER {
+    need := ifx op == OP_2DUP then 2 else ifx op == OP_3DUP then 3 else 4;
+    if size < need { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+    copies := ifx op == OP_3DUP then 3 else 2;
+    for k: 0..<copies { si_push(w, si_top(w, need)); }
+  } else if op == OP_2ROT {
+    if size < 6 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+    a := si_top(w, 6); b := si_top(w, 5);
+    si_erase(w, 6); si_erase(w, 5);
+    si_push(w, a); si_push(w, b);
+  } else if op == OP_2SWAP {
+    if size < 4 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+    si_swap(w, 4, 2); si_swap(w, 3, 1);
+  } else if op == OP_IFDUP {
+    if size < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+    if script_bool_vartime(si_bytes(sp, w, si_top(w, 1))) { si_push(w, si_top(w, 1)); }
+  } else if op == OP_DEPTH {
+    si_push(w, si_number(w, size));
+  } else if op == OP_DROP || op == OP_DUP {
+    if size < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+    if op == OP_DROP { si_pop(w, 1); } else { si_push(w, si_top(w, 1)); }
+  } else if op == OP_PICK || op == OP_ROLL {
+    return si_pick(sp, w, op, minimal);
+  } else {
+    if size < (ifx op == OP_ROT then 3 else 2) { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+    if op == OP_NIP { si_erase(w, 2); }
+    else if op == OP_OVER { si_push(w, si_top(w, 2)); }
+    else if op == OP_ROT { si_swap(w, 3, 2); si_swap(w, 2, 1); }
+    else if op == OP_SWAP { si_swap(w, 2, 1); }
+    else {                                                   // OP_TUCK: (x1 x2 -- x2 x1 x2)
+      top := si_top(w, 1);
+      si_push(w, top); si_swap(w, 3, 2);
+    }
+  }
+  return SCRIPT_ERR_OK;
+}
+si_swap :: (w: [] ScriptWork, i: int, j: int) {
+  a := si_top(w, i);
+  w[0].stack[w[0].depth-i] = si_top(w, j);
+  w[0].stack[w[0].depth-j] = a;
+}
+// OP_PICK and OP_ROLL. An index can reach below the stored elements only
+// in the first opcode of a witness script whose stack is larger than
+// SCRIPT_ROOM; there the size check after the opcode fails whatever the
+// element was, so the result is STACK_SIZE at once.
+si_pick :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int {
+  if si_size(w) < 2 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+  n := script_num_vartime(si_bytes(sp, w, si_top(w, 1)), minimal, 4);
+  if !n.ok { return SCRIPT_ERR_SCRIPTNUM; }
+  si_pop(w, 1);
+  if n.value < 0 || n.value >= si_size(w) { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+  if n.value >= w[0].depth { return SCRIPT_ERR_STACK_SIZE; }
+  el := si_top(w, n.value + 1);
+  if op == OP_ROLL { si_erase(w, n.value + 1); }
+  si_push(w, el);
+  return SCRIPT_ERR_OK;
+}
+// book:end stackops
+// book:begin numeric
+// The numeric opcodes: operands are 4-byte CScriptNums, results are
+// written back however long they are (OP_ADD can make 5 bytes, which no
+// later numeric opcode accepts).
+si_numeric :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int {
+  arity := ifx op <= OP_0NOTEQUAL then 1 else ifx op == OP_WITHIN then 3 else 2;
+  if si_size(w) < arity { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+  v: [3] int;
+  for k: 0..<arity {
+    n := script_num_vartime(si_bytes(sp, w, si_top(w, arity - k)), minimal, 4);
+    if !n.ok { return SCRIPT_ERR_SCRIPTNUM; }
+    v[k] = n.value;
+  }
+  si_pop(w, arity);
+  a := v[0]; b := v[1];
+  if op == OP_WITHIN { si_push(w, si_bool(b <= a && a < v[2])); return SCRIPT_ERR_OK; }
+  r := 0;  // mutant: equivalent (every branch assigns r)
+  if op == OP_1ADD { r = a + 1; }
+  else if op == OP_1SUB { r = a - 1; }
+  else if op == OP_NEGATE { r = -a; }
+  else if op == OP_ABS { r = ifx a < 0 then -a else a; }  // mutant: equivalent (the absolute value of zero is zero)
+  else if op == OP_NOT { r = ifx a == 0 then 1 else 0; }
+  else if op == OP_0NOTEQUAL { r = ifx a != 0 then 1 else 0; }
+  else if op == OP_ADD { r = a + b; }
+  else if op == OP_SUB { r = a - b; }
+  else if op == OP_BOOLAND { r = ifx a != 0 && b != 0 then 1 else 0; }
+  else if op == OP_BOOLOR { r = ifx a != 0 || b != 0 then 1 else 0; }
+  else if op == OP_NUMEQUAL || op == OP_NUMEQUALVERIFY { r = ifx a == b then 1 else 0; }
+  else if op == OP_NUMNOTEQUAL { r = ifx a != b then 1 else 0; }
+  else if op == OP_LESSTHAN { r = ifx a < b then 1 else 0; }
+  else if op == OP_GREATERTHAN { r = ifx a > b then 1 else 0; }
+  else if op == OP_LESSTHANOREQUAL { r = ifx a <= b then 1 else 0; }
+  else if op == OP_GREATERTHANOREQUAL { r = ifx a >= b then 1 else 0; }
+  else if op == OP_MIN { r = ifx a < b then a else b; }  // mutant: equivalent (equal operands give the same minimum)
+  else { r = ifx a > b then a else b; }                  // OP_MAX; mutant: equivalent (equal operands give the same maximum)
+  if op == OP_NUMEQUALVERIFY { return ifx r != 0 then SCRIPT_ERR_OK else SCRIPT_ERR_NUMEQUALVERIFY; }
+  si_push(w, si_number(w, r));
+  return SCRIPT_ERR_OK;
+}
+// book:end numeric
+// book:begin crypto
+// The hash opcodes: RIPEMD-160, SHA-1 and HASH160 give 20 bytes, SHA-256
+// and HASH256 32.
+si_hash :: (sp: ScriptSpend, w: [] ScriptWork, op: int) -> int {
+  if si_size(w) < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+  input := si_bytes(sp, w, si_top(w, 1));
+  el := si_new(w, ifx op <= OP_SHA1 || op == OP_HASH160 then 20 else 32);
+  out := w[0].arena[el.at..<el.at+el.n];
+  if op == OP_RIPEMD160 { #assert ripemd160_hash_checked(input, out, false) == RMD_OK; }
+  else if op == OP_SHA1 { #assert sha1_hash(cast(string) input, out); }
+  else if op == OP_SHA256 { #assert sha256_hash_checked(input, out, false) == SHA_OK; }
+  else if op == OP_HASH160 { #assert hash160_checked(input, out, false) == RMD_OK; }
+  else { #assert sha256d_checked(input, out, false) == SHA_OK; }
+  si_pop(w, 1); si_push(w, el);
+  return SCRIPT_ERR_OK;
+}
+// book:end crypto
+// book:begin locktime
+// CheckLockTime and CheckSequence (BIP-65 and BIP-112; chapter 39): the
+// script's number against this input's transaction.
+si_locktime :: (sp: ScriptSpend, value: int) -> bool {
+  locktime := tx_le_vartime(sp.b, sp.t.locktime, 4);
+  if (locktime < SCRIPT_LOCKTIME_THRESHOLD) != (value < SCRIPT_LOCKTIME_THRESHOLD) { return false; }
+  if value > locktime { return false; }
+  return tx_le_vartime(sp.b, sp.ins[sp.index].sequence, 4) != SCRIPT_SEQUENCE_FINAL;
+}
+si_sequence :: (sp: ScriptSpend, value: int) -> bool {
+  sequence := tx_le_vartime(sp.b, sp.ins[sp.index].sequence, 4);  // mutant: equivalent (a fifth byte lands above bit 31, outside every mask)
+  if tx_le_vartime(sp.b, 0, 4) < 2 { return false; }
+  if (sequence & SCRIPT_SEQUENCE_DISABLE) != 0 { return false; }
+  mask := SCRIPT_SEQUENCE_TYPE | SCRIPT_SEQUENCE_MASK;
+  have := sequence & mask; want := value & mask;
+  if (have < SCRIPT_SEQUENCE_TYPE) != (want < SCRIPT_SEQUENCE_TYPE) { return false; }
+  return want <= have;
+}
+// OP_CHECKLOCKTIMEVERIFY and OP_CHECKSEQUENCEVERIFY, when their flags are
+// set: a 5-byte number at the top, left there, not negative, and
+// satisfied by the transaction. CSV with the disable bit set is a NOP.
+si_lock_op :: (sp: ScriptSpend, w: [] ScriptWork, op: int, minimal: bool) -> int {
+  if si_size(w) < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+  n := script_num_vartime(si_bytes(sp, w, si_top(w, 1)), minimal, 5);
+  if !n.ok { return SCRIPT_ERR_SCRIPTNUM; }
+  if n.value < 0 { return SCRIPT_ERR_NEGATIVE_LOCKTIME; }
+  if op == OP_CHECKLOCKTIMEVERIFY {
+    if !si_locktime(sp, n.value) { return SCRIPT_ERR_UNSATISFIED_LOCKTIME; }
+  } else if (n.value & SCRIPT_SEQUENCE_DISABLE) == 0 && !si_sequence(sp, n.value) {
+    return SCRIPT_ERR_UNSATISFIED_LOCKTIME;
+  }
+  return SCRIPT_ERR_OK;
+}
+// book:end locktime
+
+// ---- EvalScript
+si_disabled :: (op: int) -> bool {
+  for d: SCRIPT_DISABLED { if op == d { return true; } }
+  return false;
+}
+// book:begin eval
+// EvalScript: runs the script (an element, so its pushes are views into
+// the same bytes) on the workspace's stack, with an empty alt stack. Each
+// opcode is read, its push checked against 520 bytes, counted against
+// 201 when it is above OP_16, and refused when disabled, all whether or
+// not its branch runs. Pushes and opcodes run only in a running branch;
+// IF, NOTIF, ELSE and ENDIF always run, and so do VERIF and VERNOTIF,
+// which sit between them and fail. After each opcode the two stacks
+// together may hold 1,000 elements.
+si_eval :: (sp: ScriptSpend, w: [] ScriptWork, script: ScriptItem, flags: int, version: int) -> int {
+  s := si_bytes(sp, w, script);
+  if s.count > SCRIPT_MAX_SIZE { return SCRIPT_ERR_SCRIPT_SIZE; }
+  w[0].alt_depth = 0;
+  minimal := (flags & SCRIPT_VERIFY_MINIMALDATA) != 0;
+  cond := ScriptCond.{first_false=-1};
+  ops := 0; pc := 0; begin := 0;
+  while pc < s.count {
+    running := cond.first_false < 0;
+    o := script_op_vartime(s, pc);
+    if !o.ok { return SCRIPT_ERR_BAD_OPCODE; }
+    pc = o.next; op := o.op;
+    if o.n > SCRIPT_MAX_ELEMENT { return SCRIPT_ERR_PUSH_SIZE; }
+    if op > OP_16 { ops += 1; if ops > SCRIPT_MAX_OPS { return SCRIPT_ERR_OP_COUNT; } }
+    if si_disabled(op) { return SCRIPT_ERR_DISABLED_OPCODE; }
+    if op == OP_CODESEPARATOR && version == SCRIPT_BASE && (flags & SCRIPT_VERIFY_CONST_SCRIPTCODE) != 0 { return SCRIPT_ERR_OP_CODESEPARATOR; }
+    error := SCRIPT_ERR_OK;
+    if running && op <= OP_PUSHDATA4 {
+      if minimal && !script_minimal_push_vartime(s[o.at..<o.at+o.n], op) { return SCRIPT_ERR_MINIMALDATA; }
+      si_push(w, ScriptItem.{src=script.src, at=script.at+o.at, n=o.n});
+    } else if op >= OP_IF && op <= OP_ENDIF {
+      if op == OP_IF || op == OP_NOTIF {
+        value := false;  // mutant: equivalent (in a skipped branch the pushed value is never read)
+        if running {
+          if si_size(w) < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+          top := si_bytes(sp, w, si_top(w, 1));
+          if version == SCRIPT_V0 && (flags & SCRIPT_VERIFY_MINIMALIF) != 0 && (top.count > 1 || (top.count == 1 && top[0] != 1)) { return SCRIPT_ERR_MINIMALIF; }
+          value = script_bool_vartime(top) != (op == OP_NOTIF);
+          si_pop(w, 1);
+        }
+        cond = si_cond_push(cond, value);
+      } else if op == OP_ELSE || op == OP_ENDIF {
+        if cond.size == 0 { return SCRIPT_ERR_UNBALANCED_CONDITIONAL; }
+        cond = ifx op == OP_ELSE then si_cond_toggle(cond) else si_cond_pop(cond);
+      } else { return SCRIPT_ERR_BAD_OPCODE; }               // OP_VERIF, OP_VERNOTIF
+    } else if running && (op == OP_CHECKMULTISIG || op == OP_CHECKMULTISIGVERIFY) {
+      step := si_checkmultisig(sp, w, s, begin, op, flags, version, ops);
+      error = step.error; ops += step.keys;
+    } else if running {
+      error = si_run(sp, w, s, begin, op, flags, version);
+      if op == OP_CODESEPARATOR { begin = pc; }
+    }
+    if error != SCRIPT_ERR_OK { return error; }
+    if si_size(w) + w[0].alt_depth > SCRIPT_MAX_STACK { return SCRIPT_ERR_STACK_SIZE; }
+  }
+  if cond.size != 0 { return SCRIPT_ERR_UNBALANCED_CONDITIONAL; }
+  return SCRIPT_ERR_OK;
+}
+// book:end eval
+// book:begin run
+// One opcode in a running branch, other than a push, a conditional and
+// CHECKMULTISIG.
+si_run :: (sp: ScriptSpend, w: [] ScriptWork, s: [] u8, begin: int, op: int, flags: int, version: int) -> int {
+  minimal := (flags & SCRIPT_VERIFY_MINIMALDATA) != 0;
+  if op == OP_1NEGATE || (op >= OP_1 && op <= OP_16) { si_push(w, si_constant(op - 0x50)); return SCRIPT_ERR_OK; }
+  if op == OP_NOP || op == OP_CODESEPARATOR { return SCRIPT_ERR_OK; }
+  // CLTV and CSV without their flags are the NOP2 and NOP3 they replaced.
+  if op == OP_CHECKLOCKTIMEVERIFY {
+    return ifx (flags & SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY) != 0 then si_lock_op(sp, w, op, minimal) else SCRIPT_ERR_OK;
+  }
+  if op == OP_CHECKSEQUENCEVERIFY {
+    return ifx (flags & SCRIPT_VERIFY_CHECKSEQUENCEVERIFY) != 0 then si_lock_op(sp, w, op, minimal) else SCRIPT_ERR_OK;
+  }
+  if op >= OP_NOP1 && op <= OP_NOP10 {
+    // NOP1 and NOP4 to NOP10: reserved for soft forks, so policy may
+    // refuse them.
+    return ifx (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS) != 0 then SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS else SCRIPT_ERR_OK;
+  }
+  if op == OP_VERIFY {
+    if si_size(w) < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+    if !script_bool_vartime(si_bytes(sp, w, si_top(w, 1))) { return SCRIPT_ERR_VERIFY; }
+    si_pop(w, 1);
+    return SCRIPT_ERR_OK;
+  }
+  if op == OP_RETURN { return SCRIPT_ERR_OP_RETURN; }
+  if (op >= OP_TOALTSTACK && op <= OP_TUCK) { return si_stack_op(sp, w, op, minimal); }  // mutant: equivalent (0x7e is OP_CAT, refused as disabled before)
+  if op == OP_SIZE {
+    if si_size(w) < 1 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+    si_push(w, si_number(w, si_top(w, 1).n));
+    return SCRIPT_ERR_OK;
+  }
+  if op == OP_EQUAL || op == OP_EQUALVERIFY {
+    if si_size(w) < 2 { return SCRIPT_ERR_INVALID_STACK_OPERATION; }
+    equal := si_same(si_bytes(sp, w, si_top(w, 2)), si_bytes(sp, w, si_top(w, 1)));
+    si_pop(w, 2);
+    if op == OP_EQUALVERIFY { return ifx equal then SCRIPT_ERR_OK else SCRIPT_ERR_EQUALVERIFY; }
+    si_push(w, si_bool(equal));
+    return SCRIPT_ERR_OK;
+  }
+  if (op >= OP_1ADD && op <= OP_0NOTEQUAL && op != 0x8d && op != 0x8e) || (op >= OP_ADD && op <= OP_WITHIN) { return si_numeric(sp, w, op, minimal); }  // mutant: equivalent (0x8d and 0x8e are disabled, and 0x93 is OP_ADD)
+  if op >= OP_RIPEMD160 && op <= OP_HASH256 { return si_hash(sp, w, op); }  // mutant: equivalent (0xab is OP_CODESEPARATOR, handled above)
+  if op == OP_CHECKSIG || op == OP_CHECKSIGVERIFY { return si_checksig(sp, w, s, begin, op, flags, version); }
+  return SCRIPT_ERR_BAD_OPCODE;      // OP_RESERVED, OP_VER, OP_RESERVED1/2, OP_CHECKSIGADD, 0xbb and up
+}
+// book:end run
+
+// ---- VerifyScript
+// book:begin program
+// CScript::IsWitnessProgram: a version opcode (OP_0, or OP_1 to OP_16)
+// and one direct push of 2 to 40 bytes, nothing else. Returns the
+// version, or -1.
+script_witness_version_vartime :: (s: [] u8) -> int #export_c {
+  if s.count < 4 || s.count > 42 { return -1; }
+  if s[0] != OP_0 && (s[0] < OP_1 || s[0] > OP_16) { return -1; }
+  if cast(int) s[1] + 2 != s.count { return -1; }
+  return ifx s[0] == OP_0 then 0 else cast(int) s[0] - 0x50;
+}
+// CScript::IsPayToScriptHash: OP_HASH160, a 20-byte push, OP_EQUAL.
+script_p2sh_vartime :: (s: [] u8) -> bool #export_c {
+  return s.count == 23 && s[0] == OP_HASH160 && s[1] == 0x14 && s[22] == OP_EQUAL;
+}
+// book:end program
+// The witness items of this input, first to first + count.
+si_witness :: (sp: ScriptSpend, k: int) -> ScriptItem {
+  item := sp.items[sp.ins[sp.index].first + k];
+  return ScriptItem.{src=SRC_TX, at=item.at, n=item.n};
+}
+// book:begin witness
+// ExecuteWitnessScript for SigVersion::WITNESS_V0: the witness items
+// (count of them) become the stack, none may exceed 520 bytes, the script
+// runs, and it must leave exactly one element, which must be true. A
+// stack larger than SCRIPT_ROOM keeps its top SCRIPT_ROOM elements and
+// counts the rest.
+si_execute_witness :: (sp: ScriptSpend, w: [] ScriptWork, count: int, script: ScriptItem, flags: int) -> int {
+  for k: 0..<count { if si_witness(sp, k).n > SCRIPT_MAX_ELEMENT { return SCRIPT_ERR_PUSH_SIZE; } }
+  w[0].hidden = ifx count > SCRIPT_ROOM then count - SCRIPT_ROOM else 0;
+  w[0].depth = 0;
+  for k: w[0].hidden..<count { si_push(w, si_witness(sp, k)); }
+  error := si_eval(sp, w, script, flags, SCRIPT_V0);
+  if error != SCRIPT_ERR_OK { return error; }
+  if si_size(w) != 1 { return SCRIPT_ERR_CLEANSTACK; }
+  if !script_bool_vartime(si_bytes(sp, w, si_top(w, 1))) { return SCRIPT_ERR_EVAL_FALSE; }
+  return SCRIPT_ERR_OK;
+}
+// VerifyWitnessProgram for a program at program (its bytes in prog):
+// version 0 with 32 bytes is P2WSH, whose last witness item is the script
+// and must hash to the program; 20 bytes is P2WPKH, whose two items run
+// against DUP HASH160 <program> EQUALVERIFY CHECKSIG; any other length
+// refuses. Version 1 with 32 bytes outside P2SH is Taproot (chapter 43)
+// when its flag is set; the 2-byte anchor 4e73 (P2A) and every other
+// version and length succeed, unless policy discourages them.
+si_witness_program :: (sp: ScriptSpend, w: [] ScriptWork, version: int, program: ScriptItem, flags: int, p2sh: bool) -> int {
+  prog := si_bytes(sp, w, program);
+  count := sp.ins[sp.index].count;
+  if version == 0 && prog.count == 32 {
+    if count == 0 { return SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY; }
+    script := si_witness(sp, count - 1);
+    hash: [32] u8;
+    #assert sha256_hash_checked(si_bytes(sp, w, script), hash[..], false) == SHA_OK;
+    if !si_same(hash[..], prog) { return SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH; }
+    return si_execute_witness(sp, w, count - 1, script, flags);
+  }
+  if version == 0 && prog.count == 20 {
+    if count != 2 { return SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH; }
+    script := si_new(w, 25);
+    code := w[0].arena[script.at..<script.at+25];  // mutant: equivalent (only the first 25 bytes are written and read)
+    code[0] = OP_DUP; code[1] = OP_HASH160; code[2] = 20;
+    for i: 0..<20 { code[3+i] = prog[i]; }
+    code[23] = OP_EQUALVERIFY; code[24] = OP_CHECKSIG;
+    return si_execute_witness(sp, w, 2, script, flags);
+  }
+  if version == 0 { return SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH; }
+  if version == 1 && prog.count == 32 && !p2sh {
+    return ifx (flags & SCRIPT_VERIFY_TAPROOT) != 0 then SCRIPT_TAPROOT_UNBUILT else SCRIPT_ERR_OK;
+  }
+  if version == 1 && prog.count == 2 && prog[0] == 0x4e && prog[1] == 0x73 && !p2sh { return SCRIPT_ERR_OK; }
+  if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) != 0 { return SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM; }
+  return SCRIPT_ERR_OK;
+}
+// book:end witness
+// book:begin verify
+// VerifyScript for input sp.index: the scriptSig and the scriptPubKey run
+// in turn on one stack, and the top must be true. A bare witness program
+// then needs an empty scriptSig and runs its witness. Under P2SH, a
+// scriptPubKey of the P2SH form needs a push-only scriptSig, whose last
+// push is the redeem script: it runs on the scriptSig's other pushes, and
+// if it is a witness program the scriptSig must be exactly its push.
+// CLEANSTACK wants one element left, and WITNESS refuses witness data no
+// program used. Returns SCRIPT_ERR_OK or the error, Core's number.
+script_verify_vartime :: (sp: ScriptSpend, flags: int, w: [] ScriptWork) -> int {
+  if (flags & SCRIPT_VERIFY_WITNESS) != 0 && (flags & SCRIPT_VERIFY_P2SH) == 0 { return SCRIPT_BAD_FLAGS; }  // mutant: equivalent (with P2SH clear, flags & 2049 is flags & 2048)
+  if (flags & SCRIPT_VERIFY_CLEANSTACK) != 0 && (flags & SCRIPT_VERIFY_WITNESS) == 0 { return SCRIPT_BAD_FLAGS; }
+  si_reset(w);
+  input := sp.ins[sp.index];
+  sig := ScriptItem.{src=SRC_TX, at=input.script, n=input.script_n};
+  spk := ScriptItem.{src=SRC_SPK, n=sp.spk.count};
+  sig_bytes := si_bytes(sp, w, sig);
+  if (flags & SCRIPT_VERIFY_SIGPUSHONLY) != 0 && !script_push_only_vartime(sig_bytes) { return SCRIPT_ERR_SIG_PUSHONLY; }
+  error := si_eval(sp, w, sig, flags, SCRIPT_BASE);
+  if error != SCRIPT_ERR_OK { return error; }
+  for k: 0..<w[0].depth { w[0].saved[k] = w[0].stack[k]; }
+  w[0].saved_depth = w[0].depth;
+  error = si_eval(sp, w, spk, flags, SCRIPT_BASE);
+  if error != SCRIPT_ERR_OK { return error; }
+  if w[0].depth == 0 || !script_bool_vartime(si_bytes(sp, w, si_top(w, 1))) { return SCRIPT_ERR_EVAL_FALSE; }
+  witnessed := false;
+  version := script_witness_version_vartime(sp.spk);
+  if (flags & SCRIPT_VERIFY_WITNESS) != 0 && version >= 0 {
+    witnessed = true;
+    if sig.n != 0 { return SCRIPT_ERR_WITNESS_MALLEATED; }
+    error = si_witness_program(sp, w, version, ScriptItem.{src=SRC_SPK, at=2, n=sp.spk.count-2}, flags, false);
+    if error != SCRIPT_ERR_OK { return error; }  // mutant: equivalent (returning OK early skips only checks a witnessed spend passes)
+    w[0].depth = 1;
+  }
+  if (flags & SCRIPT_VERIFY_P2SH) != 0 && script_p2sh_vartime(sp.spk) {
+    if !script_push_only_vartime(sig_bytes) { return SCRIPT_ERR_SIG_PUSHONLY; }
+    for k: 0..<w[0].saved_depth { w[0].stack[k] = w[0].saved[k]; }
+    w[0].depth = w[0].saved_depth;  // mutant: equivalent (a P2SH scriptPubKey leaves the depth it started with)
+    redeem := si_top(w, 1);
+    si_pop(w, 1);
+    error = si_eval(sp, w, redeem, flags, SCRIPT_BASE);
+    if error != SCRIPT_ERR_OK { return error; }
+    if w[0].depth == 0 || !script_bool_vartime(si_bytes(sp, w, si_top(w, 1))) { return SCRIPT_ERR_EVAL_FALSE; }
+    code := si_bytes(sp, w, redeem);
+    version = script_witness_version_vartime(code);
+    if (flags & SCRIPT_VERIFY_WITNESS) != 0 && version >= 0 {
+      witnessed = true;
+      // The scriptSig must be exactly one push of the redeem script, a
+      // direct push since a program has at most 42 bytes.
+      if sig.n != redeem.n + 1 || sig_bytes[0] != cast(u8) redeem.n || !si_same(sig_bytes[1..<sig.n], code) { return SCRIPT_ERR_WITNESS_MALLEATED_P2SH; }  // mutant: equivalent (a longer scriptSig also fails the comparison, and one of n + 1 bytes ending in an n-byte push is that direct push)
+      error = si_witness_program(sp, w, version, ScriptItem.{src=redeem.src, at=redeem.at+2, n=redeem.n-2}, flags, true);
+      if error != SCRIPT_ERR_OK { return error; }  // mutant: equivalent (returning OK early skips only checks a witnessed spend passes)
+      w[0].depth = 1;
+    }
+  }
+  if (flags & SCRIPT_VERIFY_CLEANSTACK) != 0 && w[0].depth != 1 { return SCRIPT_ERR_CLEANSTACK; }
+  if (flags & SCRIPT_VERIFY_WITNESS) != 0 && !witnessed && input.count != 0 { return SCRIPT_ERR_WITNESS_UNEXPECTED; }
+  return SCRIPT_ERR_OK;
+}
+// book:end verify
+
+// ---- checks
+// Reads a case's transaction and runs VerifyScript for its input 0.
+si_case_run :: (c: SiCase, amount: int, w: [] ScriptWork) -> int {
+  b: [4096] u8; s: [10100] u8; ins: [2] TxIn; outs: [2] TxOut; items: [1300] TxItem;
+  tx := tx_unhex(c.tx, b[..]);
+  t := tx_read_vartime(tx, true, ins[..], outs[..], items[..]);
+  #assert t.code == TX_OK;
+  sp := ScriptSpend.{b=tx, t=t, ins=ins[0..<t.nin], outs=outs[0..<t.nout], items=items[0..<t.nitems], index=0, amount=amount, spk=tx_unhex(c.spk, s[..])};
+  return script_verify_vartime(sp, c.flags, w);
+}
+#test "GetScriptOp: each push form, and where a short push stops" {
+  b: [16] u8;
+  o := script_op_vartime(tx_unhex("51", b[..]), 0);
+  #assert o.ok && o.op == 0x51 && o.at == 1 && o.n == 0 && o.next == 1;
+  o = script_op_vartime(tx_unhex("00", b[..]), 0);
+  #assert o.ok && o.op == 0 && o.n == 0 && o.next == 1;
+  s := tx_unhex("02aabb", b[..]);
+  o = script_op_vartime(s, 0);
+  #assert o.ok && o.op == 2 && o.at == 1 && o.n == 2 && o.next == 3;
+  o = script_op_vartime(s, 3);
+  #assert !o.ok && o.op == 0xff && o.next == 3;
+  o = script_op_vartime(s, 1);
+  #assert o.ok && o.op == 0xaa && o.n == 0 && o.next == 2;
+  o = script_op_vartime(tx_unhex("03aabb", b[..]), 0);
+  #assert !o.ok && o.op == 0xff && o.next == 1;
+  o = script_op_vartime(tx_unhex("4c", b[..]), 0);
+  #assert !o.ok && o.op == 0xff && o.next == 1;
+  o = script_op_vartime(tx_unhex("4c02aa", b[..]), 0);
+  #assert !o.ok && o.next == 2;
+  o = script_op_vartime(tx_unhex("4c01aa", b[..]), 0);
+  #assert o.ok && o.op == 0x4c && o.at == 2 && o.n == 1 && o.next == 3;
+  o = script_op_vartime(tx_unhex("4d0100aa", b[..]), 0);
+  #assert o.ok && o.op == 0x4d && o.at == 3 && o.n == 1 && o.next == 4;
+  o = script_op_vartime(tx_unhex("4d01", b[..]), 0);
+  #assert !o.ok && o.next == 1;
+  o = script_op_vartime(tx_unhex("4d0001aa", b[..]), 0);
+  #assert !o.ok && o.next == 3;
+  o = script_op_vartime(tx_unhex("4e01000000aa", b[..]), 0);
+  #assert o.ok && o.op == 0x4e && o.at == 5 && o.n == 1 && o.next == 6;
+  o = script_op_vartime(tx_unhex("4e010000", b[..]), 0);
+  #assert !o.ok && o.next == 1;
+  o = script_op_vartime(tx_unhex("4f", b[..]), 0);
+  #assert o.ok && o.op == 0x4f && o.n == 0 && o.next == 1;
+  o = script_op_vartime(tx_unhex("ff", b[..]), 0);
+  #assert o.ok && o.op == 0xff && o.next == 1;
+}
+#test "IsPushOnly and CheckMinimalPush" {
+  b: [16] u8;
+  #assert script_push_only_vartime(b[0..<0]) && script_push_only_vartime(tx_unhex("0051604f5002aabb", b[..]));
+  #assert !script_push_only_vartime(tx_unhex("5161", b[..])) && !script_push_only_vartime(tx_unhex("4c", b[..]));
+  big: [65536] u8;
+  #assert script_minimal_push_vartime(big[0..<0], OP_0) && !script_minimal_push_vartime(big[0..<0], OP_PUSHDATA1);
+  ones := [6] int.[1, 16, 0x81, 0, 17, 0x80];
+  minimal := [6] bool.[false, false, false, true, true, true];
+  for k: 0..<6 {
+    big[0] = cast(u8) ones[k];
+    #assert script_minimal_push_vartime(big[0..<1], 1) == minimal[k];
+  }
+  big[0] = 1;
+  #assert script_minimal_push_vartime(big[0..<2], 2) && !script_minimal_push_vartime(big[0..<2], OP_PUSHDATA1);
+  #assert script_minimal_push_vartime(big[0..<75], 75) && !script_minimal_push_vartime(big[0..<75], OP_PUSHDATA1);
+  #assert script_minimal_push_vartime(big[0..<76], OP_PUSHDATA1) && !script_minimal_push_vartime(big[0..<76], 75);
+  #assert script_minimal_push_vartime(big[0..<255], OP_PUSHDATA1) && !script_minimal_push_vartime(big[0..<255], OP_PUSHDATA2);
+  #assert script_minimal_push_vartime(big[0..<256], OP_PUSHDATA2) && !script_minimal_push_vartime(big[0..<256], OP_PUSHDATA1);
+  #assert script_minimal_push_vartime(big[0..<65535], OP_PUSHDATA2) && !script_minimal_push_vartime(big[0..<65535], OP_PUSHDATA4);
+  #assert script_minimal_push_vartime(big[0..<65536], OP_PUSHDATA4);
+}
+// A number from hex, read with the given rule.
+si_num_is :: (text: string, minimal: bool, max: int, ok: bool, value: int) -> bool {
+  b: [16] u8;
+  n := script_num_vartime(tx_unhex(text, b[..]), minimal, max);
+  return n.ok == ok && (!ok || n.value == value);
+}
+#test "CScriptNum: reading, the size limit and the minimal rule" {
+  #assert si_num_is("", true, 4, true, 0) && si_num_is("01", true, 4, true, 1) && si_num_is("81", true, 4, true, -1);
+  #assert si_num_is("7f", true, 4, true, 127) && si_num_is("8000", true, 4, true, 128) && si_num_is("8080", true, 4, true, -128);
+  #assert si_num_is("ff00", true, 4, true, 255) && si_num_is("ff80", true, 4, true, -255) && si_num_is("0001", true, 4, true, 256);
+  #assert si_num_is("ffffff7f", true, 4, true, 2147483647) && si_num_is("ffffffff", true, 4, true, -2147483647);
+  #assert si_num_is("80", true, 4, false, 0) && si_num_is("80", false, 4, true, 0);
+  #assert si_num_is("0080", true, 4, false, 0) && si_num_is("0080", false, 4, true, 0);
+  #assert si_num_is("0100", true, 4, false, 0) && si_num_is("0100", false, 4, true, 1);
+  #assert si_num_is("00", true, 4, false, 0) && si_num_is("00", false, 4, true, 0);
+  #assert si_num_is("0000008000", true, 4, false, 0) && si_num_is("0000008000", true, 5, true, 2147483648);
+  #assert si_num_is("ffffffff00", true, 5, true, 4294967295) && si_num_is("ffffffff80", true, 5, true, -4294967295);
+  #assert si_num_is("000000000000", false, 5, false, 0) && si_num_is("0102030405", false, 5, true, 0x0504030201);
+  #assert si_num_is("ffffffff7f", true, 5, true, 549755813887);
+  #assert !si_num_is("02", true, 4, true, 3) && !si_num_is("80", true, 4, true, 0) && !si_num_is("80", false, 4, false, 0);
+}
+SI_NUMBERS :: [24] int.[0, 1, -1, 127, -127, 128, -128, 255, -255, 256, -256, 32767, -32768, 32768, 8388607, -8388608,
+  8388608, 2147483647, -2147483647, 2147483648, -2147483648, 4294967295, -4294967295, 549755813887];
+SI_LENGTHS :: [24] int.[0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5];
+#forall "CScriptNum: what serialize writes reads back, at its length" i: 0..<24 {
+  b: [9] u8;
+  n := script_num_write_vartime(SI_NUMBERS[i], b[..]);
+  #assert n == SI_LENGTHS[i];
+  r := script_num_vartime(b[0..<n], true, 5);
+  #assert r.ok && r.value == SI_NUMBERS[i];
+  #assert n == 0 || ((b[n-1] & 0x80) != 0) == (SI_NUMBERS[i] < 0);
+}
+#test "CastToBool: any nonzero byte, except negative zero" {
+  b: [8] u8;
+  falses := [5] string.["", "00", "80", "0080", "000000"];
+  trues := [6] string.["01", "8000", "000001", "0081", "ff", "800000"];
+  for f: falses { #assert !script_bool_vartime(tx_unhex(f, b[..])); }
+  for t: trues { #assert script_bool_vartime(tx_unhex(t, b[..])); }
+}
+#test "the condition stack keeps where the first false is" {
+  c := ScriptCond.{first_false=-1};
+  c = si_cond_push(c, true);  #assert c.size == 1 && c.first_false == -1;
+  c = si_cond_push(c, false); #assert c.size == 2 && c.first_false == 1;
+  c = si_cond_push(c, true);  #assert c.size == 3 && c.first_false == 1;
+  c = si_cond_push(c, false); #assert c.size == 4 && c.first_false == 1;
+  c = si_cond_toggle(c);      #assert c.first_false == 1;
+  c = si_cond_pop(c);         #assert c.size == 3 && c.first_false == 1;
+  c = si_cond_pop(c);         #assert c.size == 2 && c.first_false == 1;
+  c = si_cond_toggle(c);      #assert c.first_false == -1;
+  c = si_cond_toggle(c);      #assert c.first_false == 1;
+  c = si_cond_pop(c);         #assert c.size == 1 && c.first_false == -1;
+  c = si_cond_toggle(c);      #assert c.first_false == 0;
+  c = si_cond_push(c, false); #assert c.size == 2 && c.first_false == 0;
+  c = si_cond_pop(c);         #assert c.size == 1 && c.first_false == 0;
+  c = si_cond_pop(c);         #assert c.size == 0 && c.first_false == -1;
+}
+// FindAndDelete on a scriptCode from hex: the count and what is left.
+si_delete_is :: (code: string, sig: [] u8, found: int, left: string) -> bool {
+  w: [1] ScriptWork; b: [600] u8;
+  c := tx_unhex(code, b[..]);
+  si_code(w[..], c, 0);
+  n := si_find_delete(w[..], sig);
+  return n == found && tx_hex_is(w[0].code[0..<w[0].code_n], left);
+}
+#test "FindAndDelete: whole pushes at op boundaries, every copy" {
+  sig: [300] u8;
+  sig[0] = 1; sig[1] = 0xaa;
+  #assert si_delete_is("00510000", sig[0..<0], 3, "51");
+  #assert si_delete_is("0201aa0201aa510201aa", sig[0..<2], 3, "51");
+  #assert si_delete_is("030201aa51", sig[0..<2], 0, "030201aa51");
+  #assert si_delete_is("510201", sig[0..<2], 0, "510201");
+  #assert si_delete_is("514c050201aa", sig[0..<2], 0, "514c050201aa");
+  #assert si_delete_is("0201aa4c", sig[0..<2], 1, "4c");
+  #assert si_delete_is("0201ab0201aa", sig[0..<2], 1, "0201ab");
+  #assert si_delete_is("", sig[0..<2], 0, "");
+  #assert si_delete_is("0201aa", sig[0..<1], 0, "0201aa");
+  #assert !si_delete_is("0201aa", sig[0..<2], 0, "") && !si_delete_is("0201aa", sig[0..<2], 1, "51");
+  for i: 0..<300 { sig[i] = 0x77; }
+  // A 76-byte signature's push is PUSHDATA1, a 256-byte one's PUSHDATA2.
+  b: [600] u8;
+  b[0] = OP_PUSHDATA1; b[1] = 76; for i: 0..<76 { b[2+i] = 0x77; } b[78] = 0x51;
+  w: [1] ScriptWork;
+  si_code(w[..], b[0..<79], 0);
+  #assert si_find_delete(w[..], sig[0..<76]) == 1 && w[0].code_n == 1 && w[0].code[0] == 0x51;
+  si_code(w[..], b[0..<79], 0);
+  #assert si_find_delete(w[..], sig[0..<75]) == 0 && w[0].code_n == 79;
+  b[0] = OP_PUSHDATA2; b[1] = 0; b[2] = 1; for i: 0..<256 { b[3+i] = 0x77; } b[259] = 0x51;
+  si_code(w[..], b[0..<260], 0);
+  #assert si_find_delete(w[..], sig[0..<256]) == 1 && w[0].code_n == 1 && w[0].code[0] == 0x51;
+  // 300 bytes: the low length byte is 44, not 0.
+  b[1] = 44; for i: 0..<300 { b[3+i] = 0x77; } b[303] = 0x51;
+  si_code(w[..], b[0..<304], 0);
+  #assert si_find_delete(w[..], sig[0..<300]) == 1 && w[0].code_n == 1 && w[0].code[0] == 0x51;
+  b[1] = 0; b[259] = 0x51;
+  si_code(w[..], b[0..<260], 1);
+  #assert w[0].code_n == 259 && w[0].code[0] == 0;
+  b[0] = OP_PUSHDATA1; b[1] = 0xff; b[2] = 0x77; b[257] = 0x51;
+  si_code(w[..], b[0..<258], 0);
+  #assert si_find_delete(w[..], sig[0..<255]) == 1 && w[0].code_n == 1;
+}
+#test "witness programs and P2SH, by shape" {
+  b: [48] u8;
+  b[0] = OP_0; b[1] = 2;
+  #assert script_witness_version_vartime(b[0..<4]) == 0 && script_witness_version_vartime(b[0..<3]) == -1;
+  b[1] = 40;
+  #assert script_witness_version_vartime(b[0..<42]) == 0;
+  b[1] = 41;
+  #assert script_witness_version_vartime(b[0..<43]) == -1;
+  b[1] = 2; b[0] = OP_1;
+  #assert script_witness_version_vartime(b[0..<4]) == 1;
+  b[0] = OP_16;
+  #assert script_witness_version_vartime(b[0..<4]) == 16;
+  b[0] = OP_1NEGATE;
+  #assert script_witness_version_vartime(b[0..<4]) == -1;
+  b[0] = 0x61;
+  #assert script_witness_version_vartime(b[0..<4]) == -1;
+  b[0] = OP_0; b[1] = 3;
+  #assert script_witness_version_vartime(b[0..<4]) == -1;
+  b[0] = OP_HASH160; b[1] = 0x14; b[22] = OP_EQUAL;
+  #assert script_p2sh_vartime(b[0..<23]) && !script_p2sh_vartime(b[0..<22]) && !script_p2sh_vartime(b[0..<24]);
+  b[22] = OP_EQUALVERIFY;
+  #assert !script_p2sh_vartime(b[0..<23]);
+  b[22] = OP_EQUAL; b[1] = 0x15;
+  #assert !script_p2sh_vartime(b[0..<23]);
+  b[1] = 0x14; b[0] = OP_SHA256;
+  #assert !script_p2sh_vartime(b[0..<23]);
+}
+#test "the error and flag names are Core's" {
+  #assert SCRIPT_ERR_NAMES[SCRIPT_ERR_SIG_NULLFAIL] == "NULLFAIL" && SCRIPT_ERR_NAMES[SCRIPT_ERR_SIG_FINDANDDELETE] == "SIG_FINDANDDELETE";
+  #assert SCRIPT_ERR_NAMES[SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH] == "WITNESS_PROGRAM_WRONG_LENGTH" && SCRIPT_ERR_NAMES[SCRIPT_ERR_OP_CODESEPARATOR] == "OP_CODESEPARATOR";
+  #assert SCRIPT_ERR_NAMES[SCRIPT_ERR_WITNESS_PUBKEYTYPE] == "WITNESS_PUBKEYTYPE" && SCRIPT_ERR_COUNT == SCRIPT_ERR_NAMES.count;
+  #assert SCRIPT_FLAG_NAMES[17] == "TAPROOT" && SCRIPT_VERIFY_TAPROOT == 1 << 17 && SCRIPT_VERIFY_CONST_SCRIPTCODE == 1 << 16;
+  #assert SCRIPT_FLAG_NAMES[11] == "WITNESS" && SCRIPT_VERIFY_WITNESS == 1 << 11 && SCRIPT_FLAG_NAMES.count == SCRIPT_VERIFY_FLAG_BITS;
+}
+// Bitcoin Core's sighash.json, one row per kind of hash type, among them
+// a negative type, an undefined one, two OP_CODESEPARATORs in the
+// scriptCode and one at its start, and NONE and SINGLE past input 0.
+#forall "the legacy signature hash: sighash.json rows" i: 0..<SI_SIGHASH.count #steps 50000000 {
+  v := SI_SIGHASH[i];
+  b: [4096] u8; c: [512] u8; ins: [8] TxIn; outs: [8] TxOut; items: [1] TxItem; h: [32] u8;
+  tx := tx_unhex(v.tx, b[..]);
+  t := tx_read_vartime(tx, true, ins[..], outs[..], items[..]);
+  sp := ScriptSpend.{b=tx, t=t, ins=ins[0..<t.nin], outs=outs[0..<t.nout], items=items[0..<0], index=v.index, spk=tx[0..<0]};
+  script_sighash_legacy_vartime(sp, tx_unhex(v.code, c[..]), v.hashtype, h[..]);
+  #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK && tx_hex_is(h[..], v.hash);
+}
+// SIGHASH_SINGLE for an input with no output at its index signs the
+// number 1 (sighash.json has no such row); one output fewer than the index
+// is enough, and NONE and ALL there hash as usual.
+#test "the legacy signature hash: SIGHASH_SINGLE past the outputs" #steps 50000000 {
+  v := SI_SIGHASH[0];
+  b: [4096] u8; ins: [8] TxIn; outs: [8] TxOut; items: [1] TxItem; h: [32] u8;
+  tx := tx_unhex(v.tx, b[..]);
+  t := tx_read_vartime(tx, true, ins[..], outs[..], items[..]);
+  sp := ScriptSpend.{b=tx, t=t, ins=ins[0..<t.nin], outs=outs[0..<t.nout], items=items[0..<0], index=t.nout, spk=tx[0..<0]};
+  #assert t.nin > t.nout;
+  for k: 0..<32 { h[k] = 0xee; }
+  script_sighash_legacy_vartime(sp, tx[0..<0], 3, h[..]);
+  #assert h[0] == 1;
+  for k: 1..<32 { #assert h[k] == 0; }
+  script_sighash_legacy_vartime(sp, tx[0..<0], 0x83, h[..]);
+  #assert h[0] == 1 && h[31] == 0;
+  script_sighash_legacy_vartime(sp, tx[0..<0], 2, h[..]);
+  #assert h[0] != 1 || h[1] != 0;
+  sp.index = t.nout - 1;
+  script_sighash_legacy_vartime(sp, tx[0..<0], 3, h[..]);
+  #assert h[0] != 1 || h[1] != 0;
+}
+// BIP-143's published signature hashes, every hash type.
+#forall "the BIP-143 signature hash: the BIP's examples" i: 0..<8 #steps 50000000 {
+  v := BT_V143[i];
+  b: [1024] u8; c: [512] u8; ins: [4] TxIn; outs: [4] TxOut; items: [1] TxItem; h: [32] u8;
+  tx := tx_unhex(v.tx, b[..]);
+  t := tx_read_vartime(tx, true, ins[..], outs[..], items[..]);
+  sp := ScriptSpend.{b=tx, t=t, ins=ins[0..<t.nin], outs=outs[0..<t.nout], items=items[0..<0], index=v.index, amount=v.amount, spk=tx[0..<0]};
+  code := tx_unhex(v.code, c[..]);
+  script_sighash_v0_vartime(sp, code[1..<code.count], v.hashtype, h[..]);
+  #assert tx_hex_is(h[..], v.sighash);
+}
+// Each case's result is the error script_reference.py decides: values,
+// branches, every opcode, the limits, the flags, P2SH, witness programs,
+// witness stacks larger than the workspace keeps, and the lock times.
+// Each runs in a workspace the next case has just used, so nothing may
+// carry over from one run of VerifyScript to the next.
+#forall "VerifyScript: the library cases" i: 0..<SI_CASES.count #steps 400000000 {
+  w: [1] ScriptWork;
+  next := SI_CASES[(i + 1) % SI_CASES.count];
+  #assert si_case_run(next, next.amount, w[..]) == next.error;
+  #assert si_case_run(SI_CASES[i], SI_CASES[i].amount, w[..]) == SI_CASES[i].error;
+}
+// The signed spends pass. The legacy ones pass with any amount, which they
+// do not sign; the P2WPKH one fails with another amount, and NULLFAIL
+// names the failed signature.
+#forall "VerifyScript: signed spends" i: 0..<SI_SIGNED.count #steps 2000000000 {
+  w: [1] ScriptWork;
+  c := SI_SIGNED[i];
+  #assert si_case_run(c, c.amount, w[..]) == c.error;
+  if c.amount == 0 { #assert si_case_run(c, -1, w[..]) == c.error; }
+  else { #assert si_case_run(c, -1, w[..]) == SCRIPT_ERR_SIG_NULLFAIL; }
+}
+// BIP-143 hashes of sighash.json transactions that Python computes, for
+// the hash types and input positions the BIP's examples leave out: NONE
+// and SINGLE past input 0, SINGLE with no output at the index.
+#forall "the BIP-143 signature hash: more positions" i: 0..<SI_SIGHASH_V0.count #steps 50000000 {
+  v := SI_SIGHASH_V0[i];
+  b: [4096] u8; c: [512] u8; ins: [8] TxIn; outs: [8] TxOut; items: [1] TxItem; h: [32] u8;
+  tx := tx_unhex(v.tx, b[..]);
+  t := tx_read_vartime(tx, true, ins[..], outs[..], items[..]);
+  sp := ScriptSpend.{b=tx, t=t, ins=ins[0..<t.nin], outs=outs[0..<t.nout], items=items[0..<0], index=v.index, amount=v.amount, spk=tx[0..<0]};
+  script_sighash_v0_vartime(sp, tx_unhex(v.code, c[..]), v.hashtype, h[..]);
+  #assert tx_hex_is(h[..], v.hash);
+}

@@ -176,7 +176,7 @@ there is a need.
 | --- | --- | --- | --- |
 | [34. Transactions and their serialization](ch034-transactions-and-their-serialization.md) — implemented | 1, 3, 5 | Every transaction in Bitcoin Core's `tx_valid.json` and `tx_invalid.json` parses, and serialization round-trips byte for byte with and without witnesses. | BIP-144 |
 | 35. Txids, wtxids and malleability — planned | 34 | Txids and wtxids of pinned segwit transactions match. Changing a witness changes the wtxid and leaves the txid. | BIP-141 |
-| 36. The script interpreter — planned | 6, 19, 21, 34 | Every case in Bitcoin Core's `script_tests.json` gives its expected result under its stated flags. | Bitcoin Core `script_tests.json` |
+| [36. The script interpreter](ch036-the-script-interpreter.md) — implemented | 6, 19, 21, 34 | Every case in Bitcoin Core's `script_tests.json` gives its expected result under its stated flags. | Bitcoin Core `script_tests.json` |
 | 37. Legacy signature hashes — planned | 34, 36 | Every case in Bitcoin Core's `sighash.json` gives its digest, including `SIGHASH_SINGLE` with no matching output. | Bitcoin Core `sighash.json` |
 | 38. Segwit v0 signature hashes — planned | 5, 34 | BIP-143's examples give their digests for every hash type. | BIP-143 |
 | 39. Timelocks — planned | 36 | The `CHECKLOCKTIMEVERIFY` and `CHECKSEQUENCEVERIFY` cases in `script_tests.json` and `tx_valid.json` pass, and BIP-68 sequence encodings round-trip. | BIP-65, BIP-68, BIP-112, BIP-113 |

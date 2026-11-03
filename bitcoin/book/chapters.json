@@ -782,17 +782,24 @@
   {
    "number": 36,
    "title": "The script interpreter",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch036-the-script-interpreter.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
     6,
     19,
     21,
     34
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/script.coax",
+    "bitcoin/examples/script-interpreter.coax",
+    "bitcoin/examples/checks/script-interpreter.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {

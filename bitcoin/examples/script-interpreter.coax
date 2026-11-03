@@ -1,0 +1,122 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/script.coax";
+#load "../../coax/tests/bitcoin/script_vectors.coax";
+#import "Basic";
+
+// The transaction, its inputs, outputs and witness items, and the bytes of
+// the scriptPubKey the input spends: room for the largest test case.
+Spend :: struct {
+  b: [10240] u8; spk: [10100] u8;
+  ins: [16] TxIn; outs: [16] TxOut; items: [1300] TxItem;
+}
+// Reads hex into the spend and returns the input-0 view of it.
+spend_of :: (s: [] Spend, tx: string, spk: string, index: int, amount: int) -> ScriptSpend {
+  b := tx_unhex(tx, s[0].b[..]);
+  t := tx_read_vartime(b, true, s[0].ins[..], s[0].outs[..], s[0].items[..]);
+  #assert t.code == TX_OK;
+  return ScriptSpend.{b=b, t=t, ins=s[0].ins[0..<t.nin], outs=s[0].outs[0..<t.nout], items=s[0].items[0..<t.nitems],
+    index=index, amount=amount, spk=tx_unhex(spk, s[0].spk[..])};
+}
+// The name of a result.
+name :: (error: int) -> string {
+  if error == SCRIPT_TAPROOT_UNBUILT { return "TAPROOT_UNBUILT"; }
+  if error == SCRIPT_BAD_FLAGS { return "BAD_FLAGS"; }
+  return SCRIPT_ERR_NAMES[error];
+}
+// Runs one library case and prints its label and result.
+show_case :: (s: [] Spend, w: [] ScriptWork, label: string) {
+  for c: SI_CASES {
+    if c.label != label { continue; }
+    error := script_verify_vartime(spend_of(s, c.tx, c.spk, 0, c.amount), c.flags, w);
+    print("  %: %\n", label, name(error));
+    return;
+  }
+  #assert false;
+}
+
+main :: () {
+  s: [1] Spend; w: [1] ScriptWork;
+
+  // Numbers on the stack: CScriptNum's little-endian sign-magnitude form.
+  print("CScriptNum\n");
+  for v: [7] int.[0, 1, -1, 127, 128, -255, 2147483648] {
+    b: [9] u8;
+    n := script_num_write_vartime(v, b[..]);
+    print("  %:", v);
+    digits := "0123456789abcdef";
+    for k: 0..<n {
+      pair: [2] u8; pair[0] = digits[b[k] >> 4]; pair[1] = digits[b[k] & 15];
+      print(" %", cast(string) pair[..]);
+    }
+    print(" (% bytes)\n", n);
+  }
+
+  // A few scripts and what VerifyScript says about each.
+  print("scripts\n");
+  labels := [16] string.["ADD", "ELSE taken", "IF without ENDIF", "VERIF unexecuted", "disabled CAT", "2ROT",
+    "PICK past the end", "a push of 521", "202 ops", "1,001 elements", "negative zero, minimal",
+    "CHECKMULTISIG, NULLDUMMY", "P2SH", "P2WSH, MINIMALIF", "CSV, more", "v1 of 32 bytes, Taproot on"];
+  for l: labels { show_case(s[..], w[..], l); }
+
+  // Three spends with real signatures.
+  print("signed spends\n");
+  for c: SI_SIGNED {
+    sp := spend_of(s[..], c.tx, c.spk, 0, c.amount);
+    print("  %: %\n", c.label, name(script_verify_vartime(sp, c.flags, w[..])));
+    // One byte of the signed transaction changed: its locktime.
+    sp.b[sp.t.locktime] ^= 1;
+    print("    with the locktime changed: %\n", name(script_verify_vartime(sp, c.flags, w[..])));
+  }
+
+  // Every row of script_tests.json, counted by the error it expects.
+  print("Bitcoin Core script_tests.json\n");
+  rows: [SCRIPT_ERR_COUNT] int; passed: [SCRIPT_ERR_COUNT] int;
+  for r: SCRIPT_ROWS {
+    error := script_verify_vartime(spend_of(s[..], r.tx, r.spk, 0, r.amount), r.flags, w[..]);
+    rows[r.error] += 1;
+    if error == r.error { passed[r.error] += 1; }
+  }
+  total := 0; good := 0;
+  for e: 0..<SCRIPT_ERR_COUNT {
+    if rows[e] == 0 { continue; }
+    print("  %: % of %\n", SCRIPT_ERR_NAMES[e], passed[e], rows[e]);
+    total += rows[e]; good += passed[e];
+  }
+  print("  all: % of % rows give the expected result\n", good, total);
+  print("  not run: % rows that need Taproot (chapter 44):", SCRIPT_SKIPPED.count);
+  for r: SCRIPT_SKIPPED { print(" %", r.line); }
+  print("\n");
+
+  // tx_valid.json and tx_invalid.json: every input of every transaction,
+  // under the first flag set Core's test uses for it: every flag but the
+  // listed ones for a valid transaction, the listed ones for an invalid
+  // one. The other flag sets run in coax/tests/bitcoin/script.py.
+  print("Bitcoin Core tx_valid.json and tx_invalid.json\n");
+  agree := 0; runs := 0; last := -1;
+  for c: SCRIPT_TX_CASES {
+    if c.tx == last { continue; }
+    last = c.tx;
+    x := SCRIPT_TXS[c.tx];
+    valid := true;
+    for k: 0..<x.count {
+      p := SCRIPT_PREVS[x.first + k];
+      runs += 1;
+      if script_verify_vartime(spend_of(s[..], x.tx, p.spk, k, p.amount), c.flags, w[..]) != SCRIPT_ERR_OK { valid = false; break; }
+    }
+    if valid == c.valid { agree += 1; }
+  }
+  print("  % transactions, % inputs run, % verdicts as Core's\n", SCRIPT_TXS.count, runs, agree);
+
+  // sighash.json: the legacy signature hash.
+  print("Bitcoin Core sighash.json\n");
+  same := 0;
+  for r: SCRIPT_SIGHASH {
+    sp := spend_of(s[..], r.tx, "", r.index, 0);
+    c: [10100] u8; h: [32] u8;
+    script_sighash_legacy_vartime(sp, tx_unhex(r.code, c[..]), r.hashtype, h[..]);
+    #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK;
+    if tx_hex_is(h[..], r.hash) { same += 1; }
+  }
+  print("  % of % signature hashes match\n", same, SCRIPT_SIGHASH.count);
+}
+// book:end example

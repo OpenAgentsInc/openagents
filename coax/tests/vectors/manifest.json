@@ -596,7 +596,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "sha256d-txid",
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-script-interpreter"
       ],
       "retrieved": "2026-11-02",
       "sha256": "0abeb1a6e4b942e4e43ef8d49b7356c1f6204bcb14163f24153f4d0ec5418011",
@@ -609,7 +610,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-script-interpreter"
       ],
       "retrieved": "2026-11-02",
       "sha256": "0c02ce44ff3a880458f9569a25589315a07f924fcaadac828613d4615776ca52",
@@ -648,7 +650,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-script-interpreter"
       ],
       "retrieved": "2026-11-02",
       "sha256": "00ba5afda75e3505209f276b49b7934760ad19aed7cfdb55457533a2f74c6034",
@@ -661,7 +664,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-script-interpreter"
       ],
       "retrieved": "2026-11-02",
       "sha256": "210b1720acce295de54c6a08c76b97fa4cfe835f64e0ff7e0730c57ebebb8c55",
@@ -674,7 +678,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-script-interpreter"
       ],
       "retrieved": "2026-11-02",
       "sha256": "43e4eb10ee85ac31996e257d0c5dc45cbe3b29b2d61d1a72d101453ba64ded01",
@@ -818,7 +823,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "secp256k1-point-encodings",
-        "bip66-strict-der"
+        "bip66-strict-der",
+        "bitcoin-script-interpreter"
       ],
       "retrieved": "2026-11-02",
       "sha256": "ccfadc13f9b06888faf57a4a2f86dd8feff35c80aa710cbf3eb421f326b8d8b7",
@@ -971,6 +977,97 @@
       "bytes": 9011
     },
     {
+      "path": "upstream/bitcoin-core/script_error.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/script_error.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-script-interpreter"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "a2ea50346edfa59b979747b5d7573027989fabdad90af103119d23ff9db46bb9",
+      "bytes": 2640
+    },
+    {
+      "path": "upstream/bitcoin-core/script_error.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/script_error.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-script-interpreter"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "92404c34ad460931639e6fb05c615d06c2a3410d7ac357084226c59ca72382c3",
+      "bytes": 6223
+    },
+    {
+      "path": "upstream/bitcoin-core/script_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/script_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-script-interpreter"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "8ecf8bfc15190cce1b1f6893329c828b4ce732179a200147009fafb0e8e30bc9",
+      "bytes": 104631
+    },
+    {
+      "path": "upstream/bitcoin-core/transaction_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/transaction_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-script-interpreter"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "eb0b3f38018ec8fa383e993ee5f0df4887d5ff2784cb80b4f648011e24ded5d5",
+      "bytes": 68522
+    },
+    {
+      "path": "upstream/bitcoin-core/interpreter.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/script/interpreter.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-script-interpreter"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "e22719ed2cdd2cd381ae183bb0b16c8204d7b8b1da103435d0f2e084fa809e96",
+      "bytes": 16962
+    },
+    {
+      "path": "upstream/bitcoin-core/transaction_utils.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/util/transaction_utils.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-script-interpreter"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "d90dcb4affb043b6b738c673c507318821f3d1252bfe6665680af7594efc977f",
+      "bytes": 4208
+    },
+    {
+      "path": "upstream/bitcoin-core/sighash.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/sighash.json",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-script-interpreter"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "52cf23c2076e7f129c71d5508631d3e5ae3be1b1cb0585c0e23bbb4bb373e924",
+      "bytes": 210483
+    },
+    {
       "path": "derived/catalog.json",
       "kind": "derived",
       "url": "local:make_catalog.py",
@@ -1070,7 +1167,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bip66-strict-der"
+        "bip66-strict-der",
+        "bitcoin-script-interpreter"
       ],
       "retrieved": "2026-11-02",
       "sha256": "57a6f328c7e6202f499e48366a86eb26e09c8ebb78e92eef7e839207230be333",
@@ -1083,7 +1181,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bip66-strict-der"
+        "bip66-strict-der",
+        "bitcoin-script-interpreter"
       ],
       "retrieved": "2026-11-02",
       "sha256": "13e59d462a35ba37f818538454228822718c3328d219a6a022e345d69c4b1d99",

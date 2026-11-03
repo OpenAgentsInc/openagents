@@ -1,0 +1,39 @@
+// A flat test-only C entry point over coax/lib/bitcoin/script.coax for
+// coax/tests/bitcoin/script.py: it reads one spending transaction, runs
+// VerifyScript for one of its inputs and returns the result, or computes
+// one signature hash. No parsing or policy lives here.
+#load "../../lib/bitcoin/script.coax";
+
+SR_INS :: 64;       // the most inputs and outputs a case may have
+SR_ITEMS :: 4096;   // the most witness items
+SR_Room :: struct { ins: [SR_INS] TxIn; outs: [SR_INS] TxOut; items: [SR_ITEMS] TxItem; work: [1] ScriptWork; }
+
+// Reads tx with witnesses and runs VerifyScript for input index, which
+// spends spk holding amount satoshis, under flags.
+// Returns Core's error number, SCRIPT_TAPROOT_UNBUILT or SCRIPT_BAD_FLAGS;
+// -1 when the transaction does not read or index is out of range.
+script_report_vartime :: (tx: [] u8, spk: [] u8, index: int, amount: int, flags: int) -> int #export_c {
+  room: [1] SR_Room;
+  sp: [1] ScriptSpend;
+  if !sr_spend(tx, spk, index, amount, room[..], sp[..]) { return -1; }
+  return script_verify_vartime(sp[0], flags, room[0].work[..]);
+}
+// The legacy (v0 == 0) or BIP-143 (v0 == 1) signature hash of input index
+// for scriptCode code and hashtype, in hash order, into out (32 bytes).
+// Returns 32, or -1 when the transaction does not read, index is out of
+// range or out is short.
+script_sighash_report_vartime :: (tx: [] u8, code: [] u8, index: int, amount: int, hashtype: int, v0: int, out: [] u8) -> int #export_c {
+  room: [1] SR_Room;
+  sp: [1] ScriptSpend;
+  if out.count < 32 || !sr_spend(tx, code[0..<0], index, amount, room[..], sp[..]) { return -1; }
+  if v0 != 0 { script_sighash_v0_vartime(sp[0], code, hashtype, out[0..<32]); }
+  else { script_sighash_legacy_vartime(sp[0], code, hashtype, out[0..<32]); }
+  return 32;
+}
+sr_spend :: (tx: [] u8, spk: [] u8, index: int, amount: int, room: [] SR_Room, sp: [] ScriptSpend) -> bool {
+  t := tx_read_vartime(tx, true, room[0].ins[..], room[0].outs[..], room[0].items[..]);
+  if t.code != TX_OK || index < 0 || index >= t.nin { return false; }
+  sp[0] = ScriptSpend.{b=tx, t=t, ins=room[0].ins[0..<t.nin], outs=room[0].outs[0..<t.nout],
+    items=room[0].items[0..<t.nitems], index=index, amount=amount, spk=spk};
+  return true;
+}

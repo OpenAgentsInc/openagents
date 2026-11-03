@@ -1,0 +1,82 @@
+CScriptNum
+  0: (0 bytes)
+  1: 01 (1 bytes)
+  -1: 81 (1 bytes)
+  127: 7f (1 bytes)
+  128: 80 00 (2 bytes)
+  -255: ff 80 (2 bytes)
+  2147483648: 00 00 00 80 00 (5 bytes)
+scripts
+  ADD: OK
+  ELSE taken: OK
+  IF without ENDIF: UNBALANCED_CONDITIONAL
+  VERIF unexecuted: BAD_OPCODE
+  disabled CAT: DISABLED_OPCODE
+  2ROT: OK
+  PICK past the end: INVALID_STACK_OPERATION
+  a push of 521: PUSH_SIZE
+  202 ops: OP_COUNT
+  1,001 elements: STACK_SIZE
+  negative zero, minimal: SCRIPTNUM
+  CHECKMULTISIG, NULLDUMMY: OK
+  P2SH: OK
+  P2WSH, MINIMALIF: MINIMALIF
+  CSV, more: UNSATISFIED_LOCKTIME
+  v1 of 32 bytes, Taproot on: TAPROOT_UNBUILT
+signed spends
+  legacy 1 of 2, a hybrid key, CODESEPARATOR, FindAndDelete: OK
+    with the locktime changed: EVAL_FALSE
+  P2WPKH: OK
+    with the locktime changed: NULLFAIL
+  legacy CHECKSIGVERIFY and 4 of 4, keys 02 to 07, a high s: OK
+    with the locktime changed: NULLFAIL
+Bitcoin Core script_tests.json
+  OK: 685 of 685
+  EVAL_FALSE: 81 of 81
+  OP_RETURN: 5 of 5
+  SCRIPTNUM: 67 of 67
+  SCRIPT_SIZE: 1 of 1
+  PUSH_SIZE: 2 of 2
+  OP_COUNT: 6 of 6
+  STACK_SIZE: 5 of 5
+  SIG_COUNT: 2 of 2
+  PUBKEY_COUNT: 2 of 2
+  VERIFY: 1 of 1
+  EQUALVERIFY: 9 of 9
+  CHECKMULTISIGVERIFY: 1 of 1
+  CHECKSIGVERIFY: 1 of 1
+  NUMEQUALVERIFY: 1 of 1
+  BAD_OPCODE: 89 of 89
+  DISABLED_OPCODE: 24 of 24
+  INVALID_STACK_OPERATION: 104 of 104
+  INVALID_ALTSTACK_OPERATION: 3 of 3
+  UNBALANCED_CONDITIONAL: 17 of 17
+  NEGATIVE_LOCKTIME: 2 of 2
+  UNSATISFIED_LOCKTIME: 8 of 8
+  SIG_HASHTYPE: 2 of 2
+  SIG_DER: 30 of 30
+  MINIMALDATA: 21 of 21
+  SIG_PUSHONLY: 5 of 5
+  SIG_HIGH_S: 1 of 1
+  SIG_NULLDUMMY: 3 of 3
+  PUBKEYTYPE: 8 of 8
+  CLEANSTACK: 16 of 16
+  MINIMALIF: 12 of 12
+  NULLFAIL: 3 of 3
+  DISCOURAGE_UPGRADABLE_NOPS: 10 of 10
+  DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM: 1 of 1
+  WITNESS_PROGRAM_WRONG_LENGTH: 1 of 1
+  WITNESS_PROGRAM_WITNESS_EMPTY: 1 of 1
+  WITNESS_PROGRAM_MISMATCH: 4 of 4
+  WITNESS_MALLEATED: 3 of 3
+  WITNESS_MALLEATED_P2SH: 1 of 1
+  WITNESS_UNEXPECTED: 3 of 3
+  WITNESS_PUBKEYTYPE: 11 of 11
+  OP_CODESEPARATOR: 2 of 2
+  SIG_FINDANDDELETE: 2 of 2
+  all: 1256 of 1256 rows give the expected result
+  not run: 7 rows that need Taproot (chapter 44): 1296 1297 1298 1299 1300 1301 1302
+Bitcoin Core tx_valid.json and tx_invalid.json
+  206 transactions, 268 inputs run, 206 verdicts as Core's
+Bitcoin Core sighash.json
+  500 of 500 signature hashes match

@@ -1,0 +1,44 @@
+// The checks of script-interpreter.coax. They live apart so that running
+// the example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/script-interpreter.coax
+#load "../script-interpreter.coax";
+
+// book:begin check
+// Every row of script_tests.json whose signatures, if any, never reach the
+// curve gives exactly the error Core's test expects. The rows that verify
+// a signature run in the example, natively, where a verification takes
+// microseconds rather than seconds. One workspace serves every row, since
+// VerifyScript resets it.
+#test "script_tests.json rows without curve work" #steps 100000000 {
+  s: [1] Spend; w: [1] ScriptWork;
+  for r: SCRIPT_ROWS {
+    if r.curve == 0 { #assert script_verify_vartime(spend_of(s[..], r.tx, r.spk, 0, r.amount), r.flags, w[..]) == r.error; }
+  }
+}
+// One row in sixteen of those that verify signatures, to keep the
+// interpreter's share of them in every run.
+#forall "script_tests.json rows with signatures, a sample" i: 0..<SCRIPT_ROWS.count #steps 2000000000 {
+  r := SCRIPT_ROWS[i];
+  if r.curve > 0 && r.curve <= 2 && i % 16 == 0 {
+    s: [1] Spend; w: [1] ScriptWork;
+    #assert script_verify_vartime(spend_of(s[..], r.tx, r.spk, 0, r.amount), r.flags, w[..]) == r.error;
+  }
+}
+// Every row of sighash.json: the published legacy signature hash.
+#forall "sighash.json" i: 0..<SCRIPT_SIGHASH.count #steps 100000000 {
+  r := SCRIPT_SIGHASH[i];
+  s: [1] Spend; c: [10100] u8; h: [32] u8;
+  sp := spend_of(s[..], r.tx, "", r.index, 0);
+  script_sighash_legacy_vartime(sp, tx_unhex(r.code, c[..]), r.hashtype, h[..]);
+  #assert bitcoin_reverse32(h[..], h[..]) == SHA_OK && tx_hex_is(h[..], r.hash);
+}
+// The rows not run are the seven that need Taproot, and each names it.
+#test "the rows not run" {
+  #assert SCRIPT_SKIPPED.count == 7 && SCRIPT_ROWS.count + SCRIPT_SKIPPED.count == 1263;
+  for r: SCRIPT_SKIPPED { #assert r.comment.count > 9 && r.comment[0..<9] == "TAPSCRIPT"; }
+}
+// The example's names for the two errors that are not Core's.
+#test "the example's names" {
+  #assert name(SCRIPT_TAPROOT_UNBUILT) == "TAPROOT_UNBUILT" && name(SCRIPT_BAD_FLAGS) == "BAD_FLAGS" && name(SCRIPT_ERR_OK) == "OK";
+}
+// book:end check
