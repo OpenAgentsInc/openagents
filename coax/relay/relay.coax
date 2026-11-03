@@ -185,6 +185,9 @@ RyConn :: struct {
   msg: [RS_MAX_MESSAGE] u8;
   subs: [RS_MAX_SUBS] RsSub;
   neg: [RR_NEG_SESSIONS] RrNeg;   // NIP-77 syncs
+  // who reads each subscription and sync: the connection's NIP-42 keys
+  // when it was opened, as the Rust relay keeps them (relay_private.coax)
+  sub_auth: [RS_MAX_SUBS] RrAuth; neg_auth: [RR_NEG_SESSIONS] RrAuth;
 }
 RyWork :: struct {
   frame: [RS_MAX_MESSAGE] u8;     // one unmasked frame payload
@@ -243,11 +246,14 @@ ry_closed :: (c: [] RyConn, w: [] RyWork, sub: string, reason: int) -> bool {
   return ry_text(c, w, ms_write_closed(sub, rs_prefix(reason), rs_text(reason), w[0].body[..]));
 }
 
-// A new event goes to every matching live subscription on every connection.
+// The readers an RrAuth holds: its keys, 32 bytes each.
+ry_readers :: (a: [] RrAuth) -> [] u8 { return a[0].keys[0..<32 * a[0].n]; }
+// A new event goes to every matching live subscription on every connection
+// whose readers may have it.
 ry_fanout :: (conns: [] RyConn, w: [] RyWork, e: NostrEvent) {
   for i: 0..<conns.count {
     for k: 0..<RS_MAX_SUBS {
-      if !rr_deliver(conns[i].h >= 0, conns[i].ws, rd_sub_matches(conns[i].subs[..], k, e, w[0].search[..])) { continue; }
+      if !rr_deliver(conns[i].h >= 0, conns[i].ws, rd_sub_matches(conns[i].subs[..], k, e, w[0].search[..], ry_readers(conns[i].sub_auth[k..<k + 1]))) { continue; }
       sid := conns[i].subs[k].id;
       n := ms_write_event(cast(string) sid[0..<conns[i].subs[k].id_n], e.original, w[0].body[..]);
       if !ry_text(conns[i..<i + 1], w, n) { ry_shut(conns[i..<i + 1]); break; }
@@ -350,12 +356,18 @@ ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string, m: MsMsg
   v := rr_req_filters(m.filters);
   if v == RS_ACCEPT { v = rd_req(m, text, w[0].search[..]); }
   if v != RS_ACCEPT { ok := ry_closed(c, w, sub, v); return; }
+  // the Rust relay's private reads (relay_private.coax): a filter for a
+  // private kind that these readers may not ask is CLOSED
+  readers := ry_readers(c[0].auth[..]);
+  deny := rd_req_deny(m, text, w[0].search[..], readers);
+  if deny != RP_OK { ok := ry_text(c, w, ms_write_closed(sub, RP_PREFIX[deny], RP_TEXT[deny], w[0].body[..])); return; }
   slot := rs_sub_open(c[0].subs[..], m, text, RS_MAX_SUBS);
   if slot < 0 { ok := ry_closed(c, w, sub, -slot); return; }
+  c[0].sub_auth[slot] = c[0].auth[0];
   now := cxsrv_now_s(); sent := 0;
   for k: 0..<m.filters {
     idx: [RS_MAX_LIMIT] int;
-    n := rd_req_filter(store, text, m, k, now, w[0].search[..], idx[..]);
+    n := rd_req_filter(store, text, m, k, now, w[0].search[..], idx[..], readers);
     for q: 0..<n {
       t := rr_take(w[0].sent[..], sent, idx[q]);
       if t == -1 { continue; }
@@ -375,7 +387,7 @@ ry_count :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string, m: MsM
     rt := rt_req(c[0].rt[..], w[0].rate, cxsrv_now_s());
     if rt != RT_OK { ok := ry_text(c, w, ms_write_closed(cast(string) mm.sub[0..<mm.sub_n], rt_prefix(rt), rt_text(rt), w[0].body[..])); return; }
   }
-  ok := ry_text(c, w, rd_count(store, text, cxsrv_now_s(), w[0].count[..], w[0].body[..]));
+  ok := ry_text(c, w, rd_count(store, text, cxsrv_now_s(), w[0].count[..], w[0].body[..], ry_readers(c[0].auth[..])));
 }
 // AUTH: the event's id first (for the OK), then nip42_admit (the signature
 // and nip42.coax's check), then relay_route.coax keeps the key and names
@@ -418,7 +430,7 @@ ry_neg_fail :: (c: [] RyConn, w: [] RyWork, k: int, reason: int) {
 ry_neg_answer :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, k: int, msg_n: int) {
   now := cxsrv_now_s();
   filter := c[0].neg[k].filter;
-  n := rd_neg_items(store, cast(string) filter[0..<c[0].neg[k].filter_n], now, w[0].neg_items[..]);
+  n := rd_neg_items(store, cast(string) filter[0..<c[0].neg[k].filter_n], now, w[0].neg_items[..], ry_readers(c[0].neg_auth[k..<k + 1]));
   e := rr_neg_items(n);
   if e != RR_NE_OK { ry_neg_fail(c, w, k, e); return; }
   neg: [1] Neg;
@@ -453,6 +465,7 @@ ry_neg :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string) {
   }
   k := rr_neg_open(c[0].neg[..], sub, text[f.filter_from..<f.filter_to], cxsrv_now_s());
   if k < 0 { ry_neg_err(c, w, sub, -k); return; }
+  c[0].neg_auth[k] = c[0].auth[0];
   ry_neg_answer(c, w, store, k, f.msg_n);
 }
 ry_message :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: string) {

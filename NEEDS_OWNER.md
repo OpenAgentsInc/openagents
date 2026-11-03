@@ -13,11 +13,31 @@ and SHA-256, checked on start, rewritten after every commit). Parity table:
 relay.openagents.com, its database, DNS or a secret. Yours, each yes or no
 unless it says otherwise:
 
-1. **Private reads (blocks cutover).** The Rust relay serves gift wraps
-   (1059, 21059) and OpenAgents' private kinds only to the authenticated
-   owner or single recipient, and never serves 39604 to 39613, 39620, 39650
-   or 30179. The Coax relay serves all of them to anyone. Port the Rust
-   relay's read rules whole, port a subset (name it), or accept the change.
+1. **Private reads: ported whole (2026-11-03), three questions left.** The
+   Coax relay now serves gift wraps and OpenAgents' private kinds exactly as
+   the Rust relay does (`coax/lib/nostr/relay_private.coax`; all 33
+   private-read observations in the Rust differential match). Yours:
+   a. **Private and hidden NIP-29 groups** are not ported: the Rust relay
+      reads `relay_group` and `relay_group_member`, which the Coax relay
+      doesn't hold without a relay key. If production has any private or
+      hidden group (`SELECT count(*) FROM relay_group WHERE private OR
+      hidden` on the restored copy), its events would be served to anyone,
+      so this blocks cutover until you decide it with the relay key
+      question.
+   b. **The Rust relay's stored and live rules disagree**, and the Coax relay
+      copies both as they are: a gift wrap needs one distinct `p` value in
+      history but exactly one `p` tag live; kinds 24200, 30622 and 44200
+      need one distinct `p` in history but only the first `p` live; 30175
+      and 30178 count any tag holding "shared" and "true" in history but
+      only exactly `["shared","true"]` live; 39604 to 39613, 39620 and 39650
+      are never served from history but are delivered live. Keep them, or
+      align them (say which way)?
+   c. **Writes of the private kinds** keep the Coax relay's rules: the Rust
+      relay also refuses kind 78 and 30078 from a connection not
+      authenticated as their author, the relay-only Block kinds, malformed
+      run, artifact and private-policy envelopes, and a 3188 whose content
+      isn't NIP-44 v2 or whose `p` isn't a point. Port those write checks
+      too? Reads never depend on them.
 2. **Advertisement.** Rust advertises 17, 59, 65, 67, 94 and 98, which the
    Coax relay doesn't. For each: wire it before cutover, or drop it from
    the advertisement. Nothing was changed.

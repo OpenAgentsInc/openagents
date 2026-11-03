@@ -104,9 +104,12 @@ rd_query :: (d: [] RdStore, f: NostrFilter, now: int, out: [] int) -> int {
 }
 
 // The reply to one COUNT frame (NIP-45, nip45.coax's n45_answer over a
-// current index) into out: its length, or -1.
-rd_count :: (d: [] RdStore, text: string, now: int, w: [] N45Work, out: [] u8) -> int {
+// current index) into out: its length, or -1. readers (the connection's
+// NIP-42 keys, 32 bytes each) are who reads: relay_private.coax refuses
+// a filter they may not ask and drops what they may not read.
+rd_count :: (d: [] RdStore, text: string, now: int, w: [] N45Work, out: [] u8, readers: [] u8) -> int {
   built := rd_index(d);
+  w[0].gated = true; w[0].readers = readers;
   return n45_answer(text, d[0].s[..], d[0].ix[..], now, w, out);
 }
 
@@ -142,38 +145,58 @@ rd_req :: (m: MsMsg, text: string, w: [] RdSearch) -> int {
   }
   return RS_ACCEPT;
 }
+// Why the REQ's readers may not ask its filters (relay_private.coax's
+// rp_deny, the first filter that is refused), or RP_OK.
+rd_req_deny :: (m: MsMsg, text: string, w: [] RdSearch, readers: [] u8) -> int {
+  for k: 0..<m.filters {
+    strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
+    sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+    f: [1] NostrFilter;
+    if rd_filter(text[m.filter_from[k]..<m.filter_to[k]], f[..], sp[..], w).error != FR_OK { continue; }
+    why := rp_deny(f[0], readers);
+    if why != RP_OK { return why; }
+  }
+  return RP_OK;
+}
 // Filter k of an admitted REQ answered into out: rd_query, or n50_scan
-// (best match first) when it has a search. The count.
-rd_req_filter :: (d: [] RdStore, text: string, m: MsMsg, k: int, now: int, w: [] RdSearch, out: [] int) -> int {
+// (best match first) when it has a search; only what readers may read
+// (relay_private.coax's stored rule, its search rule with a search). The count.
+rd_req_filter :: (d: [] RdStore, text: string, m: MsMsg, k: int, now: int, w: [] RdSearch, out: [] int, readers: [] u8) -> int {
   strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
   sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
   f: [1] NostrFilter;
   r := rd_filter(text[m.filter_from[k]..<m.filter_to[k]], f[..], sp[..], w);
   if r.error != FR_OK { return 0; }
+  f[0].gate = ifx r.has then RP_SEARCH else RP_STORED; f[0].readers = readers;
   if !r.has { return rd_query(d, f[0], now, out); }
   built := rd_index(d);
   a := n50_scan(d[0].s[..], d[0].ix[..], f[0], w[0].q[0], now, w[0].buf[..], out, w[0].score[0..<out.count]);
   return ifx a.n < 0 then 0 else a.n;
 }
 // Whether filter k of subscription i matches the live event e, its search
-// included: every term in e's decoded content, and never a ciphertext kind.
-rd_sub_filter :: (subs: [] RsSub, i: int, k: int, e: NostrEvent, w: [] RdSearch) -> bool {
+// included: every term in e's decoded content, and never a ciphertext kind
+// or one the Rust relay's search never matches; and the subscription's
+// readers may have it (relay_private.coax's live rule).
+rd_sub_filter :: (subs: [] RsSub, i: int, k: int, e: NostrEvent, w: [] RdSearch, readers: [] u8) -> bool {
   strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
   sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
   f: [1] NostrFilter;
   r := rd_filter(cast(string) subs[i].text[subs[i].from[k]..<subs[i].to[k]], f[..], sp[..], w);
-  if r.error != FR_OK || !nf_match(f[0], e) { return false; }
+  f[0].gate = RP_LIVE; f[0].readers = readers;
+  if r.error != FR_OK || !rsd_match(f[0], e) { return false; }
   if !r.has { return true; }
-  if n50_excluded(e.kind) { return false; }
+  if n50_excluded(e.kind) || rp_unsearched(e.kind) { return false; }
   if w[0].q[0].n == 0 { return true; }
   n := json_unescape(n50_content(e.original), w[0].buf[..]);
   return n >= 0 && n50_score(cast(string) w[0].buf[0..<n], w[0].q[0]) > 0;
 }
 // A live event goes to subscription i when any of its filters matches
-// (rs_sub_matches, with search).
-rd_sub_matches :: (subs: [] RsSub, i: int, e: NostrEvent, w: [] RdSearch) -> bool {
+// (rs_sub_matches, with search) and its readers (the keys the connection
+// had authenticated when it was opened, as the Rust relay keeps them) may
+// have it.
+rd_sub_matches :: (subs: [] RsSub, i: int, e: NostrEvent, w: [] RdSearch, readers: [] u8) -> bool {
   if !subs[i].live { return false; }
-  for k: 0..<subs[i].filters { if rd_sub_filter(subs, i, k, e, w) { return true; } }
+  for k: 0..<subs[i].filters { if rd_sub_filter(subs, i, k, e, w, readers) { return true; } }
   return false;
 }
 
@@ -184,16 +207,18 @@ rd_sub_matches :: (subs: [] RsSub, i: int, e: NostrEvent, w: [] RdSearch) -> boo
 // out.count match (relay_route.coax's RR_NEG_MAX in the relay), -2 when the
 // filter doesn't read by relay_server.coax's rules (filter_read: no
 // "search"; no empty arrays). The filter's limit is not applied: a sync
-// covers every match.
-rd_neg_items :: (d: [] RdStore, filter: string, now: int, out: [] NegItem) -> int {
+// covers every match that readers may read (relay_private.coax's stored
+// rule, as the Rust relay's sync reads its history).
+rd_neg_items :: (d: [] RdStore, filter: string, now: int, out: [] NegItem, readers: [] u8) -> int {
   strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
   sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
   f: [1] NostrFilter;
   if filter_read(filter, f[..], sp[..]) != FR_OK || rs_empty(f[0]) { return -2; }
+  f[0].gate = RP_STORED; f[0].readers = readers;
   s := d[0].s[..];
   later := ns_store_seen(s, now); n := 0;
   for i: 0..<s[0].n {
-    if !ns_store_visible(s, i, now) || !nf_match(f[0], rsd_event(s, i)) { continue; }
+    if !ns_store_visible(s, i, now) || !rsd_match(f[0], rsd_event(s, i)) { continue; }
     if n == out.count { return -1; }
     out[n] = NegItem.{created = s[0].recs[i].created, id = s[0].recs[i].id};
     n += 1;
@@ -263,16 +288,17 @@ RD_T_DEL :: "{\"id\":\"08df718fe6f4fcf0794d3e1154204a3ad61ab675b63b1d216b08d3d7e
 RD_T_VANISH :: "{\"id\":\"f64c68b89efc1f2f80e46f16057cf6cd4d461b1dfd64fcaf5e720d6d1d1d5811\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1001,\"kind\":62,\"tags\":[[\"relay\",\"wss://r\"]],\"content\":\"\",\"sig\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}";
 RD_T_VANISH_OTHER :: "{\"id\":\"0c4de3267d0088f7cc5557615d5eccbfa20b918501354ce4afad69b23002c2fe\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1002,\"kind\":62,\"tags\":[[\"relay\",\"wss://other\"]],\"content\":\"\",\"sig\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}";
 #test "COUNT counts what REQ would serve, without the limit, after a change to the store" {
+  nr: [32] u8;
   t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
   scratch: [4096] u8; w: [1] N45Work; out: [512] u8;
   #assert rd_admit(d, rst_store_read(RST_PLAIN, scratch[..]), RST_PLAIN) == RS_ACCEPT;
   #assert rd_admit(d, rst_store_read(RST_EDGE, scratch[..]), RST_EDGE) == RS_ACCEPT;
-  n := rd_count(d, "[\"COUNT\",\"c\",{\"kinds\":[1],\"limit\":1}]", 1000, w[..], out[..]);
+  n := rd_count(d, "[\"COUNT\",\"c\",{\"kinds\":[1],\"limit\":1}]", 1000, w[..], out[..], nr[0..<0]);
   #assert cast(string) out[0..<n] == "[\"COUNT\",\"c\",{\"count\":2}]";
   #assert rd_admit(d, rst_store_read(RD_T_DEL, scratch[..]), RD_T_DEL) == RS_ACCEPT;
-  n = rd_count(d, "[\"COUNT\",\"c\",{\"kinds\":[1]},{\"kinds\":[5]}]", 1000, w[..], out[..]);
+  n = rd_count(d, "[\"COUNT\",\"c\",{\"kinds\":[1]},{\"kinds\":[5]}]", 1000, w[..], out[..], nr[0..<0]);
   #assert cast(string) out[0..<n] == "[\"COUNT\",\"c\",{\"count\":2}]";
-  n = rd_count(d, "[\"COUNT\",\"c\",{\"kinds\":[]}]", 1000, w[..], out[..]);
+  n = rd_count(d, "[\"COUNT\",\"c\",{\"kinds\":[]}]", 1000, w[..], out[..], nr[0..<0]);
   #assert cast(string) out[0..<n] == "[\"CLOSED\",\"c\",\"invalid: filter arrays must not be empty\"]";
 }
 #test "a stored kind 5 retires its target, which can't come back; the index keeps up" {
@@ -308,6 +334,7 @@ rd_t_firsts :: (d: [] RdStore, idx: [] int, n: int, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 #test "search: a REQ is read with search, answered best first, ciphertext never" {
+  nr: [32] u8;
   t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
   scratch: [4096] u8; w: [1] RdSearch; idx: [8] int; first: [8] u8;
   texts := [4] string.[RD_T_S1, RD_T_S2, RD_T_S3, RD_T_S4];
@@ -316,25 +343,25 @@ rd_t_firsts :: (d: [] RdStore, idx: [] int, n: int, out: [] u8) -> string {
   m := ms_read(t1);
   #assert rd_req(m, t1, w[..]) == RS_ACCEPT && rs_req(m, t1) == RS_FILTER;
   // "coax": S2 has it twice, S1 once; S3 is kind 4
-  n := rd_req_filter(d, t1, m, 0, 1000, w[..], idx[..]); #assert n == 2 && rd_t_firsts(d, idx[..], n, first[..]) == "nC";
+  n := rd_req_filter(d, t1, m, 0, 1000, w[..], idx[..], nr[0..<0]); #assert n == 2 && rd_t_firsts(d, idx[..], n, first[..]) == "nC";
   #assert w[0].score[0] == 2 && w[0].score[1] == 1;
   // "relay coax" on kind 1: S2 3, S1 2
-  n = rd_req_filter(d, t1, m, 1, 1000, w[..], idx[..]); #assert n == 2 && rd_t_firsts(d, idx[..], n, first[..]) == "nC" && w[0].score[0] == 3 && w[0].score[1] == 2;
+  n = rd_req_filter(d, t1, m, 1, 1000, w[..], idx[..], nr[0..<0]); #assert n == 2 && rd_t_firsts(d, idx[..], n, first[..]) == "nC" && w[0].score[0] == 3 && w[0].score[1] == 2;
   // no search: the index's answer, kind 4 included
-  n = rd_req_filter(d, t1, m, 2, 1000, w[..], idx[..]); #assert n == 1 && rd_t_firsts(d, idx[..], n, first[..]) == "c";
+  n = rd_req_filter(d, t1, m, 2, 1000, w[..], idx[..], nr[0..<0]); #assert n == 1 && rd_t_firsts(d, idx[..], n, first[..]) == "c";
   // no terms: time order, without the ciphertext kind
-  n = rd_req_filter(d, t1, m, 3, 1000, w[..], idx[..]); #assert n == 3 && rd_t_firsts(d, idx[..], n, first[..]) == "snC";
-  n = rd_req_filter(d, t1, m, 4, 1000, w[..], idx[..]); #assert n == 0;
+  n = rd_req_filter(d, t1, m, 3, 1000, w[..], idx[..], nr[0..<0]); #assert n == 3 && rd_t_firsts(d, idx[..], n, first[..]) == "snC";
+  n = rd_req_filter(d, t1, m, 4, 1000, w[..], idx[..], nr[0..<0]); #assert n == 0;
   // the limit applies after the ordering
   t2 := "[\"REQ\",\"s\",{\"search\":\"coax\",\"limit\":1},{\"search\":\"coax\",\"since\":991}]"; m = ms_read(t2);
-  n = rd_req_filter(d, t2, m, 0, 1000, w[..], idx[..]); #assert n == 1 && rd_t_firsts(d, idx[..], n, first[..]) == "n";
-  n = rd_req_filter(d, t2, m, 1, 1000, w[..], idx[..]); #assert n == 1 && rd_t_firsts(d, idx[..], n, first[..]) == "n";
+  n = rd_req_filter(d, t2, m, 0, 1000, w[..], idx[..], nr[0..<0]); #assert n == 1 && rd_t_firsts(d, idx[..], n, first[..]) == "n";
+  n = rd_req_filter(d, t2, m, 1, 1000, w[..], idx[..], nr[0..<0]); #assert n == 1 && rd_t_firsts(d, idx[..], n, first[..]) == "n";
   // a filter that doesn't read answers nothing
   t3 := "[\"REQ\",\"s\",{\"search\":7}]"; m = ms_read(t3);
-  #assert rd_req(m, t3, w[..]) == RS_FILTER && rd_req_filter(d, t3, m, 0, 1000, w[..], idx[..]) == 0;
+  #assert rd_req(m, t3, w[..]) == RS_FILTER && rd_req_filter(d, t3, m, 0, 1000, w[..], idx[..], nr[0..<0]) == 0;
   // seventeen terms are refused; sixteen are read
   t4 := "[\"REQ\",\"s\",{\"search\":\"a b c d e f g h i j k l m n o p q\"}]"; m = ms_read(t4);
-  #assert rd_req(m, t4, w[..]) == RS_FILTER && rd_req_filter(d, t4, m, 0, 1000, w[..], idx[..]) == 0;
+  #assert rd_req(m, t4, w[..]) == RS_FILTER && rd_req_filter(d, t4, m, 0, 1000, w[..], idx[..], nr[0..<0]) == 0;
   t4 = "[\"REQ\",\"s\",{\"search\":\"a b c d e f g h i j k l m n o p\"},{\"search\":\"a b c d e f g h i j k l m n o p q\"}]"; m = ms_read(t4);
   #assert rd_req(m, t4, w[..]) == RS_FILTER;
   t4 = "[\"REQ\",\"s\",{\"search\":\"a b c d e f g h i j k l m n o p\"}]"; m = ms_read(t4);
@@ -343,20 +370,21 @@ rd_t_firsts :: (d: [] RdStore, idx: [] int, n: int, out: [] u8) -> string {
   t5 := "[\"REQ\",\"s\",{\"search\":\"a\",\"kinds\":[]}]"; m = ms_read(t5); #assert rd_req(m, t5, w[..]) == RS_EMPTY;
   // out shorter than the answer: the best ones
   t6 := "[\"REQ\",\"s\",{\"search\":\"coax\"},{\"search\":\"\"}]"; m = ms_read(t6);
-  n = rd_req_filter(d, t6, m, 0, 1000, w[..], idx[0..<1]); #assert n == 1 && rd_t_firsts(d, idx[..], n, first[..]) == "n";
+  n = rd_req_filter(d, t6, m, 0, 1000, w[..], idx[0..<1], nr[0..<0]); #assert n == 1 && rd_t_firsts(d, idx[..], n, first[..]) == "n";
   // with no terms the index answers out.count records, then the ciphertext
   // ones are dropped (as in n50_query): here the newest is kind 4
-  n = rd_req_filter(d, t6, m, 1, 1000, w[..], idx[0..<1]); #assert n == 0;
-  n = rd_req_filter(d, t6, m, 1, 1000, w[..], idx[0..<2]); #assert n == 1 && rd_t_firsts(d, idx[..], n, first[..]) == "s";
+  n = rd_req_filter(d, t6, m, 1, 1000, w[..], idx[0..<1], nr[0..<0]); #assert n == 0;
+  n = rd_req_filter(d, t6, m, 1, 1000, w[..], idx[0..<2], nr[0..<0]); #assert n == 1 && rd_t_firsts(d, idx[..], n, first[..]) == "s";
   // a stale index is rebuilt before a search with no terms
   d[0].ix[0].ok = false;
-  n = rd_req_filter(d, t6, m, 1, 1000, w[..], idx[..]); #assert n == 3 && d[0].ix[0].ok;
+  n = rd_req_filter(d, t6, m, 1, 1000, w[..], idx[..], nr[0..<0]); #assert n == 3 && d[0].ix[0].ok;
   // and without room for it, nothing (the scan answers searches with terms)
   d[0].ix[0].by_time = t[0].by_time[0..<1]; d[0].ix[0].ok = false;
-  #assert rd_req_filter(d, t6, m, 1, 1000, w[..], idx[..]) == 0;
-  n = rd_req_filter(d, t6, m, 0, 1000, w[..], idx[..]); #assert n == 2;
+  #assert rd_req_filter(d, t6, m, 1, 1000, w[..], idx[..], nr[0..<0]) == 0;
+  n = rd_req_filter(d, t6, m, 0, 1000, w[..], idx[..], nr[0..<0]); #assert n == 2;
 }
 #test "search: a live event reaches a search subscription only with every term" {
+  nr: [32] u8;
   scratch: [4096] u8; w: [1] RdSearch; subs: [4] RsSub;
   t := "[\"REQ\",\"a\",{\"search\":\"relay coax\"}]";
   #assert rs_sub_open(subs[..], ms_read(t), t, 4) == 0;
@@ -367,45 +395,97 @@ rd_t_firsts :: (d: [] RdStore, idx: [] int, n: int, out: [] u8) -> string {
   t = "[\"REQ\",\"d\",{\"search\":\"a b c d e f g h i j k l m n o p q\"},{\"search\":1}]";
   #assert rs_sub_open(subs[..], ms_read(t), t, 4) == 3;
   e1 := rst_store_read(RD_T_S1, scratch[..]).e;
-  #assert rd_sub_matches(subs[..], 0, e1, w[..]) && !rd_sub_matches(subs[..], 1, e1, w[..]) && !rd_sub_matches(subs[..], 2, e1, w[..]);
+  #assert rd_sub_matches(subs[..], 0, e1, w[..], nr[0..<0]) && !rd_sub_matches(subs[..], 1, e1, w[..], nr[0..<0]) && !rd_sub_matches(subs[..], 2, e1, w[..], nr[0..<0]);
   e3 := rst_store_read(RD_T_S3, scratch[..]).e;
   // kind 4: a plain filter takes it, a search (even with no terms) never
-  #assert !rd_sub_matches(subs[..], 0, e3, w[..]) && !rd_sub_matches(subs[..], 1, e3, w[..]) && rd_sub_matches(subs[..], 2, e3, w[..]);
+  #assert !rd_sub_matches(subs[..], 0, e3, w[..], nr[0..<0]) && !rd_sub_matches(subs[..], 1, e3, w[..], nr[0..<0]) && rd_sub_matches(subs[..], 2, e3, w[..], nr[0..<0]);
   e4 := rst_store_read(RD_T_S4, scratch[..]).e;
-  #assert !rd_sub_matches(subs[..], 0, e4, w[..]) && rd_sub_matches(subs[..], 1, e4, w[..]);
+  #assert !rd_sub_matches(subs[..], 0, e4, w[..], nr[0..<0]) && rd_sub_matches(subs[..], 1, e4, w[..], nr[0..<0]);
   // filters that don't read, and a closed subscription, match nothing
-  #assert !rd_sub_matches(subs[..], 3, e1, w[..]) && !rd_sub_matches(subs[..], 3, e4, w[..]);
-  #assert rs_sub_close(subs[..], "a") && !rd_sub_matches(subs[..], 0, e1, w[..]);
+  #assert !rd_sub_matches(subs[..], 3, e1, w[..], nr[0..<0]) && !rd_sub_matches(subs[..], 3, e4, w[..], nr[0..<0]);
+  #assert rs_sub_close(subs[..], "a") && !rd_sub_matches(subs[..], 0, e1, w[..], nr[0..<0]);
   // a search with no terms takes every other kind
   t = "[\"REQ\",\"e\",{\"search\":\"x:y\"}]";
-  #assert rs_sub_open(subs[..], ms_read(t), t, 4) == 0 && rd_sub_matches(subs[..], 0, e1, w[..]) && rd_sub_matches(subs[..], 0, e4, w[..]);
+  #assert rs_sub_open(subs[..], ms_read(t), t, 4) == 0 && rd_sub_matches(subs[..], 0, e1, w[..], nr[0..<0]) && rd_sub_matches(subs[..], 0, e4, w[..], nr[0..<0]);
   // content that doesn't decode matches nothing
   t = "[\"REQ\",\"e\",{\"search\":\"coax\"}]";
-  #assert rs_sub_open(subs[..], ms_read(t), t, 4) == 0 && rd_sub_matches(subs[..], 0, e1, w[..]);
+  #assert rs_sub_open(subs[..], ms_read(t), t, 4) == 0 && rd_sub_matches(subs[..], 0, e1, w[..], nr[0..<0]);
   e1.original = "{\"content\":\"coax \\u00\"}";
-  #assert !rd_sub_matches(subs[..], 0, e1, w[..]);
+  #assert !rd_sub_matches(subs[..], 0, e1, w[..], nr[0..<0]);
 }
 #test "Negentropy items: every visible match, sorted, the limit not applied; too many; a bad filter" {
+  nr: [32] u8;
   t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
   scratch: [4096] u8; items: [4] NegItem;
   texts := [4] string.[RD_T_S1, RD_T_S2, RD_T_S3, RD_T_S4];
   for x: texts { #assert rd_admit(d, rst_store_read(x, scratch[..]), x) == RS_ACCEPT; }
   // created_at 990, 995, 998 (S4), 999 (S3, kind 4)
-  #assert rd_neg_items(d, "{}", 1000, items[..]) == 4;
+  #assert rd_neg_items(d, "{}", 1000, items[..], nr[0..<0]) == 4;
   #assert items[0].created == 990 && items[0].id[0] == 0xdd && items[1].created == 995 && items[1].id[0] == 0x9b;
   #assert items[2].created == 998 && items[2].id[0] == 0x7d && items[3].created == 999 && items[3].id[0] == 0x93;
-  #assert rd_neg_items(d, "{\"kinds\":[1],\"limit\":1}", 1000, items[..]) == 3 && items[2].created == 998;
-  #assert rd_neg_items(d, "{\"kinds\":[4]}", 1000, items[..]) == 1 && items[0].created == 999;
-  #assert rd_neg_items(d, "{\"since\":996}", 1000, items[..]) == 2 && items[0].created == 998;
-  #assert rd_neg_items(d, "{\"kinds\":[7]}", 1000, items[..]) == 0;
+  #assert rd_neg_items(d, "{\"kinds\":[1],\"limit\":1}", 1000, items[..], nr[0..<0]) == 3 && items[2].created == 998;
+  #assert rd_neg_items(d, "{\"kinds\":[4]}", 1000, items[..], nr[0..<0]) == 1 && items[0].created == 999;
+  #assert rd_neg_items(d, "{\"since\":996}", 1000, items[..], nr[0..<0]) == 2 && items[0].created == 998;
+  #assert rd_neg_items(d, "{\"kinds\":[7]}", 1000, items[..], nr[0..<0]) == 0;
   // more matches than room: -1; exactly enough room: the count
-  #assert rd_neg_items(d, "{}", 1000, items[0..<3]) == -1 && rd_neg_items(d, "{\"kinds\":[1]}", 1000, items[0..<3]) == 3;
-  #assert rd_neg_items(d, "{\"kinds\":[1]}", 1000, items[0..<0]) == -1 && rd_neg_items(d, "{\"kinds\":[7]}", 1000, items[0..<0]) == 0;
+  #assert rd_neg_items(d, "{}", 1000, items[0..<3], nr[0..<0]) == -1 && rd_neg_items(d, "{\"kinds\":[1]}", 1000, items[0..<3], nr[0..<0]) == 3;
+  #assert rd_neg_items(d, "{\"kinds\":[1]}", 1000, items[0..<0], nr[0..<0]) == -1 && rd_neg_items(d, "{\"kinds\":[7]}", 1000, items[0..<0], nr[0..<0]) == 0;
   // filters that don't read
-  #assert rd_neg_items(d, "{\"search\":\"coax\"}", 1000, items[..]) == -2 && rd_neg_items(d, "{\"kinds\":[]}", 1000, items[..]) == -2;
-  #assert rd_neg_items(d, "[]", 1000, items[..]) == -2 && rd_neg_items(d, "{\"ids\":[\"zz\"]}", 1000, items[..]) == -2;
+  #assert rd_neg_items(d, "{\"search\":\"coax\"}", 1000, items[..], nr[0..<0]) == -2 && rd_neg_items(d, "{\"kinds\":[]}", 1000, items[..], nr[0..<0]) == -2;
+  #assert rd_neg_items(d, "[]", 1000, items[..], nr[0..<0]) == -2 && rd_neg_items(d, "{\"ids\":[\"zz\"]}", 1000, items[..], nr[0..<0]) == -2;
   // an expired event is not an item
   u: [1] RdT; rd_t_init(u[..]); e := u[0].d[..];
   #assert rd_admit(e, rst_store_read(RST_LIVE, scratch[..]), RST_LIVE) == RS_ACCEPT && rd_admit(e, rst_store_read(RST_PLAIN, scratch[..]), RST_PLAIN) == RS_ACCEPT;
-  #assert rd_neg_items(e, "{}", 1000, items[..]) == 2 && rd_neg_items(e, "{}", 1001, items[..]) == 1;
+  #assert rd_neg_items(e, "{}", 1000, items[..], nr[0..<0]) == 2 && rd_neg_items(e, "{}", 1001, items[..], nr[0..<0]) == 1;
+}
+
+// ---- private reads (relay_private.coax, #12631) --------------------------------------
+RD_T_GW :: "{\"id\":\"b3b925220b257be7f8d2fddae0bcb982af96ce31a24741efff0b8782b33451ae\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":990,\"kind\":1059,\"tags\":[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]],\"content\":\"x\",\"sig\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}";
+RD_T_APP :: "{\"id\":\"614d936a04183dfc7fe723b99b12bbd76d5b71b01346058a95f949d115a1563f\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":991,\"kind\":30078,\"tags\":[[\"d\",\"s\"]],\"content\":\"theme\",\"sig\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}";
+// A key's 64 hex digits as its 32 bytes in out.
+rd_t_key :: (hex: string, out: [] u8) -> [] u8 {
+  for i: 0..<32 {
+    h := hex[2 * i]; l := hex[2 * i + 1];
+    out[i] = cast(u8) ((ifx h >= 'a' then h - 'a' + 10 else h - '0') * 16 + (ifx l >= 'a' then l - 'a' + 10 else l - '0'));
+  }
+  return out[0..<32];
+}
+#test "private reads: REQ, COUNT, sync and live delivery ask relay_private.coax" {
+  t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
+  scratch: [4096] u8; w: [1] RdSearch; idx: [8] int; items: [4] NegItem; nr: [32] u8; ka: [32] u8; kb: [32] u8;
+  a := rd_t_key("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", ka[..]);
+  b := rd_t_key("c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5", kb[..]);
+  none := nr[0..<0];
+  for x: [3] string.[RST_PLAIN, RD_T_GW, RD_T_APP] { #assert rd_admit(d, rst_store_read(x, scratch[..]), x) == RS_ACCEPT; }
+  // REQ: the gift wrap to its recipient, the app data to its author
+  q := "[\"REQ\",\"s\",{}]"; m := ms_read(q);
+  #assert rd_req_filter(d, q, m, 0, 1000, w[..], idx[..], none) == 1;
+  #assert rd_req_filter(d, q, m, 0, 1000, w[..], idx[..], a) == 2 && rsd_text(rd_store(d), idx[1]) == RD_T_APP;
+  #assert rd_req_filter(d, q, m, 0, 1000, w[..], idx[..], b) == 2 && rsd_text(rd_store(d), idx[1]) == RD_T_GW;
+  // a search never matches app data, even for its author
+  q = "[\"REQ\",\"s\",{\"search\":\"theme\"}]"; m = ms_read(q);
+  #assert rd_req(m, q, w[..]) == RS_ACCEPT && rd_req_filter(d, q, m, 0, 1000, w[..], idx[..], a) == 0;
+  // the refusals: no AUTH, then #p naming only the readers
+  q = "[\"REQ\",\"s\",{\"kinds\":[1]},{\"kinds\":[1059]}]"; m = ms_read(q);
+  #assert rd_req_deny(m, q, w[..], none) == RP_GIFT_AUTH && rd_req_deny(m, q, w[..], b) == RP_GIFT_P;
+  q = "[\"REQ\",\"s\",{\"kinds\":[1059],\"#p\":[\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]}]"; m = ms_read(q);
+  #assert rd_req_deny(m, q, w[..], b) == RP_OK && rd_req_filter(d, q, m, 0, 1000, w[..], idx[..], b) == 1;
+  q = "[\"REQ\",\"s\",{\"kinds\":[1]}]"; m = ms_read(q); #assert rd_req_deny(m, q, w[..], none) == RP_OK;
+  // COUNT
+  c: [1] N45Work; out: [512] u8;
+  n := rd_count(d, "[\"COUNT\",\"c\",{}]", 1000, c[..], out[..], none); #assert cast(string) out[0..<n] == "[\"COUNT\",\"c\",{\"count\":1}]";
+  n = rd_count(d, "[\"COUNT\",\"c\",{}]", 1000, c[..], out[..], a); #assert cast(string) out[0..<n] == "[\"COUNT\",\"c\",{\"count\":2}]";
+  n = rd_count(d, "[\"COUNT\",\"c\",{\"kinds\":[1]},{\"kinds\":[1059]}]", 1000, c[..], out[..], none);
+  #assert cast(string) out[0..<n] == "[\"CLOSED\",\"c\",\"auth-required: gift-wrap reads require recipient authentication\"]";
+  // NIP-77
+  #assert rd_neg_items(d, "{}", 1000, items[..], none) == 1 && rd_neg_items(d, "{}", 1000, items[..], b) == 2;
+  // live delivery
+  subs: [2] RsSub; l := "[\"REQ\",\"l\",{}]";
+  #assert rs_sub_open(subs[..], ms_read(l), l, 2) == 0;
+  g := rst_store_read(RD_T_GW, scratch[..]).e;
+  #assert !rd_sub_matches(subs[..], 0, g, w[..], none) && !rd_sub_matches(subs[..], 0, g, w[..], a) && rd_sub_matches(subs[..], 0, g, w[..], b);
+  // a live search never takes app data
+  l = "[\"REQ\",\"k\",{\"search\":\"theme\"}]"; #assert rs_sub_open(subs[..], ms_read(l), l, 2) == 1;
+  p := rst_store_read(RD_T_APP, scratch[..]).e;
+  #assert !rd_sub_matches(subs[..], 1, p, w[..], a) && rd_sub_matches(subs[..], 0, p, w[..], a);
 }

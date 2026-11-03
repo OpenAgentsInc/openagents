@@ -15,6 +15,7 @@
 // tombstones, no durable file, no trusted recovery (#966b).
 #load "relay_server.coax";
 #load "store_core.coax";
+#load "relay_private.coax";
 
 #test "the store's results are the relay's reasons" {
   #assert NSS_ACCEPT == RS_ACCEPT && NSS_DUP == RS_DUP && NSS_SUPERSEDED == RS_SUPERSEDED;
@@ -100,13 +101,22 @@ rsd_event :: (s: [] RsdStore, i: int) -> NostrEvent {
   e.tags_from = r.tags_from - r.from; e.tags_to = r.tags_to - r.from;
   return e;
 }
+// Whether e matches f (filter.coax's nf_match) and, when f has a gate, its
+// readers may read it (relay_private.coax's rp_visible, issue #12631). Every
+// stored read and live delivery of the relay goes through this.
+rsd_match :: (f: NostrFilter, e: NostrEvent) -> bool {
+  if !nf_match(f, e) { return false; }
+  if f.gate == 0 { return true; }
+  ok := e.tags_from >= 0 && e.tags_from <= e.tags_to && e.tags_to <= e.original.count;
+  return rp_visible(f.gate, e.kind, e.public_key, ifx ok then e.original[e.tags_from..<e.tags_to] else "", f.readers);
+}
 // Up to rs_limit(f) (and out.count) live, unexpired records matching f,
 // newest first, then lowest id, as indexes into out: the count.
 rsd_query :: (s: [] RsdStore, f: NostrFilter, now: int, out: [] int) -> int {
   later := ns_store_seen(s, now);
   limit := rs_limit(f); n := 0;
   for i: 0..<s[0].n {
-    if !ns_store_visible(s, i, now) || !nf_match(f, rsd_event(s, i)) { continue; }
+    if !ns_store_visible(s, i, now) || !rsd_match(f, rsd_event(s, i)) { continue; }
     n = ns_store_insert(s, i, n, limit, out);
   }
   return n;

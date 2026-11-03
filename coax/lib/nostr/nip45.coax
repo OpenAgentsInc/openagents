@@ -59,6 +59,9 @@ N45Work :: struct {
   // A store larger than RSD_MAX records (the relay's --store-capacity):
   // the caller's slots, used in place of out and seen when not empty.
   big_out: [] int; big_seen: [] u8;
+  // The relay's (#12631): when gated, the COUNT's readers (NIP-42 keys, 32
+  // bytes each) and relay_private.coax's rules decide what it may count.
+  gated: bool; readers: [] u8;
 }
 
 // ---- test helpers ------------------------------------------------------------
@@ -456,6 +459,15 @@ n45_answer :: (text: string, s: [] RsdStore, ix: [] NsiIndex, now: int, w: [] N4
   why = RS_SUB_SPACE;
   for k: 0..<m.filters {
     if rs_filter(text, m, k, w[0].filters[k..<m.filters], sp[..]) != FR_OK { return ms_write_closed(sub, rs_prefix(why), rs_text(why), out); }
+  }
+  // the relay's readers (#12631): a filter they may not ask is refused, and
+  // only what they may read is counted (relay_private.coax)
+  if w[0].gated {
+    for k: 0..<m.filters {
+      d := rp_deny(w[0].filters[k], w[0].readers);
+      if d != RP_OK { return ms_write_closed(sub, RP_PREFIX[d], RP_TEXT[d], out); }
+      w[0].filters[k].gate = RP_STORED; w[0].filters[k].readers = w[0].readers;
+    }
   }
   slots := w[0].out[..]; seen := w[0].seen[..];
   if w[0].big_out.count > 0 { slots = w[0].big_out; seen = w[0].big_seen; }

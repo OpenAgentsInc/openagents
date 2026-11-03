@@ -303,7 +303,7 @@ n50_query :: (s: [] RsdStore, ix: [] NsiIndex, x: [] N50Index, f: NostrFilter, q
   n := 0;
   for p: from..<to {
     i := x[0].rec[p]; res.scanned += 1;
-    if !ns_store_visible(s, i, now) || !nf_match(f, rsd_event(s, i)) { continue; }
+    if !ns_store_visible(s, i, now) || !rsd_match(f, rsd_event(s, i)) { continue; }
     k := json_unescape(n50_content(rsd_text(s, i)), buf);
     if k < 0 { res.unread += 1; continue; }
     sc := n50_score(cast(string) buf[0..<k], q);
@@ -313,6 +313,10 @@ n50_query :: (s: [] RsdStore, ix: [] NsiIndex, x: [] N50Index, f: NostrFilter, q
   return res;
 }
 ```
+
+`rsd_match` is chapter 36's: with the relay's gate set, a search also never
+matches the private kinds the Rust relay keeps out of search (chapter 103),
+even for their owner.
 
 `unread` counts candidates whose decoded content didn't fit the caller's
 buffer. Give it 65,536 bytes (the longest string chapter 21's reader

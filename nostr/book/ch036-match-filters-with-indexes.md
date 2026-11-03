@@ -139,7 +139,7 @@ built or whose store has changed since, returns `n = -1`.
 // Reads record i as a candidate: inserted into out in query order when it is
 // visible, matches f and is not already there.
 nsi_take :: (s: [] RsdStore, f: NostrFilter, now: int, i: int, n: int, limit: int, out: [] int) -> int {
-  if !ns_store_visible(s, i, now) || !nf_match(f, rsd_event(s, i)) { return n; }
+  if !ns_store_visible(s, i, now) || !rsd_match(f, rsd_event(s, i)) { return n; }
   for k: 0..<n { if out[k] == i { return n; } }
   return ns_store_insert(s, i, n, limit, out);
 }
@@ -206,6 +206,13 @@ nsi_query_limit :: (s: [] RsdStore, ix: [] NsiIndex, f: NostrFilter, now: int, l
   return res;
 }
 ```
+
+A candidate passes `rsd_match` (`store.coax`): filter.coax's `nf_match`,
+and, when the relay sets the filter's `gate`, whether the filter's readers
+may read it. The relay sets it for every REQ, COUNT and sync; chapter 103
+describes the rules (OpenAgents' private kinds, from the Rust relay). The
+gate is checked before the limit, so a hidden event never takes a place in
+the answer.
 
 ## Worked example: eight events and eleven filters
 

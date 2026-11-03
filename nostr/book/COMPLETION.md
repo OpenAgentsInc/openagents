@@ -88,8 +88,8 @@ NIP-29 (with `--groups`, short of relay-signed group state). NIP-43 and the
 rest of NIP-29 wait for the owner's relay-key decision. The 2026-11-03
 [parity table](../../docs/verification/2026-11-03-coax-relay-parity.md) lists
 what the Rust relay advertises that the Coax relay doesn't (17, 59, 65, 67,
-94, 98) and its private-kind read rules, which block cutover until the owner
-decides. Do not advertise a library module merely because its chapter is
+94, 98). Its private-kind read rules are ported whole
+(`relay_private.coax`) and match it in the differential. Do not advertise a library module merely because its chapter is
 implemented.
 
 `--store-capacity EVENTS` now selects host-allocated arrays. The default is

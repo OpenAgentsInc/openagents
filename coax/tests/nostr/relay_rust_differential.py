@@ -57,6 +57,9 @@ KNOWN = {
         'intentional: nip42.coax requires exactly one relay and one challenge tag (R1 record, AUTH policy)',
     'EVENT malformed (no object)':
         'intentional: a malformed EVENT gets a NOTICE; Rust answers OK with an id hint (R1 record, Known differences)',
+    'COUNT private cg4':
+        'intentional: Coax adds NIP-45\'s hll to a count whose filter has one #p value (nip45.coax); Rust sends the '
+        'count alone. The counts agree, and the registers come from the events the reader may count',
     'vanish: the author\'s note after a kind 62':
         'intentional: NIP-62 is a Coax extension the Rust relay never had; an imported kind 62 is reviewed by the owner',
     'NEG-OPEN over more events than a REQ returns':
@@ -86,11 +89,6 @@ OWNER = {
         '(ceil(127/n) each); R1 answers filter by filter, each with its own limit',
     'REQ two-filters':
         'owner: as above, Rust orders a multi-filter REQ newest first across filters; R1 keeps filter order',
-    'REQ gift wrap, not its recipient':
-        'owner: Rust serves kind 1059 only to its authenticated single p recipient; Coax serves it to anyone '
-        '(parity record, private reads: blocks cutover)',
-    'REQ app data 30078, not its author':
-        'owner: Rust serves kind 30078 only to its authenticated author; Coax serves it to anyone (parity record)',
     'search a word inside others':
         'owner: Rust matches a search term anywhere in the content (n1 finds n10 to n19); Coax matches whole words',
     'NIP-86 supportedmethods, u as ws':
@@ -468,11 +466,12 @@ def r2_events(now, pk):
         {"kind": 1, "created_at": T + 5, "tags": [["-"]], "content": "protected"},
         {"kind": 1, "created_at": T + 6, "tags": [["-"]], "content": "p2"},
         {"kind": 1059, "created_at": T + 7, "tags": [["p", opk]], "content": wrapped},
-        {"kind": 30078, "created_at": T + 8, "tags": [["d", "settings"]], "content": "{\"theme\":\"dark\"}"}])
+        {"kind": 30078, "created_at": T + 8, "tags": [["d", "settings"]], "content": "{\"theme\":\"dark\"}"},
+        {"kind": 1059, "created_at": T + 12, "tags": [["p", opk]], "content": wrapped}])
     o = rs.sign([{"kind": 1, "created_at": T + 9, "tags": [["-"]], "content": "protected, other"},
                  {"kind": 1, "created_at": T + 250, "tags": [], "content": "after the ban"}], OTHER_KEY)
     v1, = rs.sign([{"kind": 1, "created_at": T + 10, "tags": [], "content": "before vanishing"}], VANISH_KEY)
-    names = ['d_e', 'd_other', 'd_a', 'a_after', 'prot', 'prot_noauth', 'wrap', 'app']
+    names = ['d_e', 'd_other', 'd_a', 'a_after', 'prot', 'prot_noauth', 'wrap', 'app', 'wrap_live']
     e = dict(zip(names, r))
     e.update(other=other, x=x, prot_other=o[0], banned_later=o[1], v1=v1, wrapped=wrapped, T=T)
     return e
@@ -481,6 +480,60 @@ def r2_events(now, pk):
 def per_relay(frames):
     """An OK for an event signed per relay (it names the relay's URL), compared without its id."""
     return [['OK', '<per-relay id>'] + m[2:] if isinstance(m, list) and m and m[0] == 'OK' else m for m in frames]
+
+
+# The private-read observations (#12631), printed when they match too, for the record.
+PRIVATE = set()
+
+
+def private_reads(port, g, h, e, pk, opk, note):
+    """The Rust relay's private reads (#12631): gift wraps only to their
+    recipient, app data only to its author, through REQ, COUNT, NIP-77 and
+    live delivery, and the filter refusals. g is authenticated as the
+    session's key, h not at all, go as the gift wraps' recipient."""
+    go = Ws(port)
+    go.auth(go.auth_event(label=OTHER_KEY))
+    wid, aid = e['wrap']['id'], e['app']['id']
+    inner = note
+
+    def note(label, value):
+        PRIVATE.add(label)
+        inner(label, value)
+    for label in ('REQ gift wrap, not its recipient', 'search gift wrap content', 'REQ app data 30078, not its author'):
+        PRIVATE.add(label)
+    note('REQ gift wrap by a key that is not its recipient', req(g, 'gw2', {'kinds': [1059]}))
+    note('REQ gift wrap #p another key', req(g, 'gw3', {'kinds': [1059], '#p': [opk]}))
+    note('REQ gift wrap by its recipient', req(go, 'gw4', {'kinds': [1059], '#p': [opk]}))
+    note('REQ gift wrap by id, unauthenticated', req(h, 'gw5', {'ids': [wid]}))
+    note('REQ gift wrap by id, another key', req(g, 'gw6', {'ids': [wid]}))
+    note('REQ gift wrap by id, its recipient', req(go, 'gw7', {'ids': [wid]}))
+    note('REQ by #p only, unauthenticated', req(h, 'gw8', {'#p': [opk]}))
+    for sub, ws, flt in [('cg1', h, {'kinds': [1059]}), ('cg2', h, {'ids': [wid]}), ('cg3', g, {'kinds': [1059], '#p': [opk]}),
+                         ('cg4', go, {'kinds': [1059], '#p': [opk]}), ('cg5', go, {'ids': [wid]}),
+                         ('ca1', h, {'kinds': [30078]}), ('ca2', g, {'kinds': [30078], 'authors': [pk]})]:
+        ws.send(['COUNT', sub, flt])
+        note('COUNT private %s' % sub, [short(m) for m in until(ws, ('COUNT', 'CLOSED'), 5.0)])
+    note('NEG-OPEN gift wrap by id, unauthenticated', neg_open(h, 'ngw1', {'ids': [wid]}, []))
+    note('NEG-OPEN gift wrap by id, its recipient', neg_open(go, 'ngw2', {'ids': [wid]}, []))
+    note('NEG-OPEN app data, another key', neg_open(go, 'nad1', {'kinds': [30078]}, []))
+    note('NEG-OPEN app data, its author', neg_open(g, 'nad2', {'kinds': [30078]}, []))
+    note('REQ app data by its author', req(g, 'ad2', {'kinds': [30078], 'authors': [pk]}))
+    note('REQ app data by id, unauthenticated', req(h, 'ad3', {'ids': [aid]}))
+    note('search app data by its author', req(g, 'ads', {'search': 'theme'}))
+    note('REQ Block kind 30300 unauthenticated', req(h, 'bk1', {'kinds': [30300]}))
+    note('REQ Block kind 30300 without authors', req(g, 'bk2', {'kinds': [30300]}))
+    note('REQ Block kind 30300 by its author', req(g, 'bk3', {'kinds': [30300], 'authors': [pk]}))
+    note('REQ agent engrams by neither', req(g, 'bk4', {'kinds': [30174]}))
+    note('REQ agent engrams #p own', req(g, 'bk5', {'kinds': [30174], '#p': [pk]}))
+    note('REQ agent observer #p another key', req(g, 'bk6', {'kinds': [24200], '#p': [opk]}))
+    # live: a new gift wrap reaches its recipient's subscription, not an anonymous one
+    req(go, 'lg', {'#p': [opk]}, keep=True)
+    req(h, 'lh', {'#p': [opk]}, keep=True)
+    note('live gift wrap stored', publish(g, e['wrap_live']))
+    note('live gift wrap to its recipient', [short(m) for m in drain(go, 2.0)])
+    note('live gift wrap, unauthenticated subscription', [short(m) for m in drain(h, 2.0)])
+    h.send(['CLOSE', 'lh'])
+    go.close()
 
 
 def r2(port, ev, note):
@@ -542,6 +595,7 @@ def r2(port, ev, note):
     note('search gift wrap content', req(h, 'gws', {'search': e['wrapped'][4:12]}))
     note('app data stored', publish(g, e['app']))
     note('REQ app data 30078, not its author', req(h, 'ad', {'kinds': [30078]}))
+    private_reads(port, g, h, e, pk, opk, note)
 
     # NIP-77 over the project page's issues (fewer than any limit)
     issues = [m for m in req(g, 'iss', {'kinds': [1621]}) if m[0] == 'EVENT']
@@ -680,6 +734,8 @@ def compare(rust, coax):
         r, c = rd[label], cd.get(label, '<missing>')
         if r == c:
             counts['match'] += 1
+            if label in PRIVATE:
+                print('[match] %s: %s' % (label, json.dumps(r)[:300]))
             continue
         why = KNOWN.get(label)
         if not why and label in OWNER:

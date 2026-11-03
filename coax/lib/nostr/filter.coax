@@ -56,6 +56,10 @@ NostrFilter :: struct {
   has_kinds:bool; kinds:[]int; tags:[]NostrTagFilter;
   has_since:bool; since:int; has_until:bool; until:int;
   has_limit:bool; limit:int;
+  // Who reads (#12631): gate 0 matches as NIP-01 says; otherwise the
+  // relay's store also asks relay_private.coax whether the readers (NIP-42
+  // keys, 32 bytes each) may read each match. nf_match doesn't read these.
+  gate:int; readers:[]u8;
 }
 NF_SAFE :: 9007199254740991;
 nf_hex :: (s:string)->bool {

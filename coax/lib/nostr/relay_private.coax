@@ -1,0 +1,475 @@
+// OpenAgents' private reads (issue #12631): who may read an event the relay
+// holds, as relay.openagents.com's Rust relay decides it today. Matching
+// that relay, not a new policy: every rule below is read from it at
+// 0b401561a0^ (crates/nostr-relay/src/store/statements.rs, QUERY_FILTER_SQL
+// and QUERY_FILTER_IDS_SQL, for stored reads; gateway/subscription.rs,
+// event_visible_to_reader, for live delivery; gateway/server.rs,
+// owner_scoped_filter_denial, for the REQ and COUNT refusals; and the nostr
+// crate's run.rs, cap.rs and contracts/body.rs for the OpenAgents kinds).
+//
+// Readers are the keys a connection has authenticated with NIP-42 (32 bytes
+// each). A tag value names a reader when it is that key as 64 lowercase hex
+// digits, the string the Rust relay compares.
+//
+// Stored reads (REQ, COUNT, NIP-77 sync; rp_stored):
+// - Never: kinds 39604 to 39613, 39620, 39650 and 30179.
+// - With a search, never: 78, 1059, 21059, 30078, 30174, 30175, 30178,
+//   30179, 30300, 30350, 30622, 44200, 3187, 3188, 30186, and a kind 30181
+//   tagged ["t","oa:cap-policy:private:v1"] (the SQL's search clause).
+// - Kind 30181 with that t tag: its author only.
+// - 1059, 21059, 24200, 30622, 44200: the reader is the event's one p
+//   recipient (one distinct p value: the SQL counts indexed rows, which the
+//   primary key makes distinct).
+// - 78, 30078, 30300, 30350: the author only.
+// - 30174: the author, or any p value.
+// - 30175, 30178: the author, or anyone when a tag holds both "shared" and
+//   "true" (the jsonb containment @> '[["shared","true"]]').
+// - 3187, 3188, 30186: the author, or the one p recipient.
+// - Every other kind: anyone.
+// Live delivery (rp_live) differs where the Rust relay's Rust code does:
+// 1059 and 21059 need exactly one p tag with a value (not one distinct
+// value); 24200, 30622 and 44200 go to the first p value; 30175 and 30178
+// count only a tag that is exactly ["shared","true"]; 3187 and 30186 also
+// need the run envelope's tags (one p, one h of 64 hex digits, one t
+// "oa:run:v1", and for 30186 one d equal to the h); 3188 needs the artifact
+// envelope's (exactly three tags of two strings: a p and an h of 64 hex
+// digits and t "oa:artifact:v1"); a private 30181 needs exactly one p tag,
+// naming its author, and a d of 64 hex digits; 30179 never; 39604 to 39650
+// are not hidden live. Two checks the Rust relay makes on a live 3188 are
+// not repeated here: that its p is a point on the curve and that its
+// content is NIP-44 version 2 ciphertext. Both only ever hide an event from
+// its own author or recipient (no one else sees it either way), and the
+// Rust relay refused such an event when it was written.
+//
+// The filter refusals (rp_deny), per filter in order, for a filter whose
+// kinds include 1059, 24200, 44200, 30174, 30300, 30350 or 30622: without
+// AUTH, "auth-required:" (gift wraps' text when the kinds include 1059);
+// then 1059, and 24200, 44200 or 30622, need #p naming only the readers;
+// 30300 and 30350 need authors naming only the readers; 30174 needs one
+// of the two.
+//
+// Not here: the Rust relay's NIP-29 private and hidden groups, which read
+// group state the Coax relay doesn't hold (NEEDS_OWNER, "Coax relay
+// cutover").
+#load "filter.coax";
+#authority;
+
+RP_STORED :: 1;   // a REQ, COUNT or sync without a search
+RP_SEARCH :: 2;   // a REQ filter with a search
+RP_LIVE :: 3;     // a new event to a live subscription
+RP_POLICY :: "oa:cap-policy:private:v1";
+RP_RUN :: "oa:run:v1";
+RP_ARTIFACT :: "oa:artifact:v1";
+
+// What one reading of an event's tags found (rp_read).
+RpTags :: struct {
+  tags: int; two: bool = true;            // how many tags; whether every one has exactly two strings
+  p_named: int; p_values: int;            // tags named p; those with a value
+  p_same: bool = true;                    // every p value is the first one
+  p_first: bool; p_any: bool;             // the first p value, and any, names a reader
+  p_author: bool; p_hex: bool;            // a p value is the author; the first is 64 hex digits
+  h_named: int; h_values: int; h_hex: bool;
+  d_values: int; d_is_h: bool; d_hex: bool;  // the first d is the first h; some d is 64 hex digits
+  t_named: int; policy: bool; run: int; artifact: int;
+  shared: bool; shared_exact: bool;
+  first_p: [64] u8; first_p_n: int = -1;  // the first p value when it is at most 64 bytes
+  first_h: [64] u8; first_h_n: int = -1;
+}
+
+// Whether v is 64 lowercase hex digits.
+rp_hex :: (v: string) -> bool {
+  if v.count != 64 { return false; }
+  for c: v { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+// Whether key (32 bytes) is one of readers (32 bytes each).
+rp_has :: (readers: [] u8, key: [32] u8) -> bool {
+  for r: 0..<readers.count / 32 {
+    same := true;
+    for b: 0..<32 { if readers[32 * r + b] != key[b] { same = false; } }
+    if same { return true; }
+  }
+  return false;
+}
+// Whether v names a reader: 64 lowercase hex digits spelling one's key.
+rp_names :: (v: string, readers: [] u8) -> bool {
+  if !rp_hex(v) { return false; }
+  key: [32] u8;
+  for i: 0..<32 {
+    hi := v[2 * i]; lo := v[2 * i + 1];
+    h := ifx hi >= 'a' then hi - 'a' + 10 else hi - '0';
+    l := ifx lo >= 'a' then lo - 'a' + 10 else lo - '0';
+    key[i] = cast(u8) (h * 16 + l);
+  }
+  return rp_has(readers, key);
+}
+
+// Reads tags (an event's tags array) once, against readers and author.
+rp_read :: (tags: string, author: [32] u8, readers: [] u8) -> RpTags {
+  t: [1] RpTags;
+  j: [1] Json; json_start(j[..], tags);
+  if json_next(j[..]) != JSON_ARRAY { return t[0]; }
+  tok := json_next(j[..]);
+  while tok == JSON_ARRAY {
+    t[0].tags += 1;
+    // the name, when it is one of the six bytes or fewer a rule reads ("shared" is the longest)
+    name: [6] u8; nm := ""; strings := 0; shared := false; truth := false;
+    v := json_next(j[..]);
+    while v == JSON_STRING {
+      buf: [65] u8;
+      n := json_unescape(json_text(j[..]), buf[..]);
+      long := n < 0 || n > 64;   // over 64 bytes, or not text
+      s := ifx long then "" else cast(string) buf[0..<n];
+      if s == "shared" { shared = true; }
+      if s == "true" { truth = true; }
+      if strings == 0 && !long && n <= 6 { for i: 0..<n { name[i] = buf[i]; } nm = cast(string) name[0..<n]; }
+      if strings == 1 { rp_value(t[..], nm, s, long, author, readers); }
+      strings += 1;
+      v = json_next(j[..]);
+    }
+    if nm == "p" { t[0].p_named += 1; }
+    if nm == "h" { t[0].h_named += 1; }
+    if nm == "t" { t[0].t_named += 1; }
+    if strings == 2 && nm == "shared" && truth { t[0].shared_exact = true; }
+    if strings != 2 { t[0].two = false; }
+    if shared && truth { t[0].shared = true; }
+    tok = json_next(j[..]);
+  }
+  return t[0];
+}
+// One tag's first value s, by the tag's name. long: s is over 64 bytes (or
+// doesn't decode), so it is no key, no hex id, and equal to no short value.
+rp_value :: (t: [] RpTags, name: string, s: string, long: bool, author: [32] u8, readers: [] u8) {
+  if name == "p" {
+    if t[0].p_values == 0 {
+      t[0].p_first = rp_names(s, readers); t[0].p_hex = rp_hex(s);
+      if !long { t[0].first_p_n = s.count; for i: 0..<s.count { t[0].first_p[i] = s[i]; } }
+    } else if long || t[0].first_p_n != s.count || cast(string) t[0].first_p[0..<s.count] != s { t[0].p_same = false; }
+    t[0].p_values += 1;
+    if rp_names(s, readers) { t[0].p_any = true; }
+    me := author;
+    if rp_names(s, me[..]) { t[0].p_author = true; }
+  }
+  if name == "h" {
+    if t[0].h_values == 0 {
+      t[0].h_hex = rp_hex(s);
+      if !long { t[0].first_h_n = s.count; for i: 0..<s.count { t[0].first_h[i] = s[i]; } }
+    }
+    t[0].h_values += 1;
+  }
+  if name == "d" {
+    if t[0].d_values == 0 { t[0].d_is_h = !long && t[0].first_h_n == s.count && cast(string) t[0].first_h[0..<s.count] == s; }
+    if rp_hex(s) { t[0].d_hex = true; }
+    t[0].d_values += 1;
+  }
+  if name == "t" {
+    if s == RP_POLICY { t[0].policy = true; }
+    if s == RP_RUN { t[0].run += 1; }
+    if s == RP_ARTIFACT { t[0].artifact += 1; }
+  }
+}
+
+// To their p recipient; to their author.
+rp_wrap :: (k: int) -> bool { return k == 1059 || k == 21059 || k == 24200 || k == 30622 || k == 44200; }
+rp_owned :: (k: int) -> bool { return k == 78 || k == 30078 || k == 30300 || k == 30350; }
+// The kinds the SQL doesn't serve to anyone; the kinds a search never matches.
+rp_listed :: (k: int) -> bool { return rp_wrap(k) || rp_owned(k) || k == 30174 || k == 30175 || k == 30178 || k == 3187 || k == 3188 || k == 30186; }
+// (The SQL's search list also names 30179, which is never served at all.)
+rp_unsearched :: (k: int) -> bool { return rp_listed(k) && k != 24200; }
+// Never served by a stored read.
+rp_hidden :: (kind: int) -> bool { return (kind >= 39604 && kind <= 39613) || kind == 39620 || kind == 39650 || kind == 30179; }
+
+// Whether readers may read an event of kind by author with tags (its tags
+// array's text): a stored read (mode RP_STORED, or RP_SEARCH for a filter
+// with a search) or a live delivery (RP_LIVE). Kinds no rule names need no
+// tags read.
+rp_visible :: (mode: int, kind: int, author: [32] u8, tags: string, readers: [] u8) -> bool {
+  live := mode == RP_LIVE;
+  if !live && rp_hidden(kind) { return false; }
+  if mode == RP_SEARCH && rp_unsearched(kind) { return false; }
+  if !rp_listed(kind) && kind != 30181 && kind != 30179 { return true; }
+  t := rp_read(tags, author, readers);
+  a := rp_has(readers, author);
+  if live { return rp_live(kind, a, t); }
+  return rp_stored(kind, a, t, mode == RP_SEARCH);
+}
+// The SQL's rule (a: the author is a reader).
+rp_stored :: (kind: int, a: bool, t: RpTags, search: bool) -> bool {
+  if kind == 30181 && t.policy { return a && !search; }
+  one := t.p_same && t.p_first;
+  if rp_wrap(kind) { return one; }
+  if rp_owned(kind) { return a; }
+  if kind == 30174 { return a || t.p_any; }
+  if kind == 30175 || kind == 30178 { return a || t.shared; }
+  if kind == 3187 || kind == 3188 || kind == 30186 { return a || one; }
+  return true;
+}
+// event_visible_to_reader's rule.
+rp_live :: (kind: int, a: bool, t: RpTags) -> bool {
+  if kind == 1059 || kind == 21059 { return t.p_values == 1 && t.p_first; }
+  if rp_wrap(kind) { return t.p_first; }
+  if rp_owned(kind) { return a; }
+  if kind == 30179 { return false; }
+  if kind == 3188 {
+    return t.tags == 3 && t.two && t.p_named == 1 && t.h_named == 1 && t.t_named == 1 && t.artifact == 1 && t.p_hex && t.h_hex && (a || t.p_first);
+  }
+  if kind == 3187 || kind == 30186 {
+    envelope := t.p_values == 1 && t.h_values == 1 && t.run == 1 && t.h_hex && (kind == 3187 || (t.d_values == 1 && t.d_is_h));
+    return envelope && (a || t.p_first);
+  }
+  if kind == 30181 && t.policy { return t.p_named == 1 && t.p_author && t.d_hex && a; }
+  if kind == 30174 { return a || t.p_any; }
+  if kind == 30175 || kind == 30178 { return a || t.shared_exact; }
+  return true;
+}
+
+// ---- refusing a filter (owner_scoped_filter_denial) -----------------------------
+RP_OK :: 0; RP_GIFT_AUTH :: 1; RP_BLOCK_AUTH :: 2; RP_GIFT_P :: 3; RP_PRIVATE_P :: 4; RP_PRIVATE_AUTHORS :: 5; RP_ENGRAM :: 6;
+RP_PREFIX :: [7] string.["", "auth-required", "auth-required", "restricted", "restricted", "restricted", "restricted"];
+RP_TEXT :: [7] string.["",
+  "gift-wrap reads require recipient authentication",
+  "private Block NIP reads require authentication",
+  "to read gift wraps, filter #p to your own authenticated public key",
+  "to read these private events, filter #p to your own authenticated public key",
+  "to read these private events, filter authors to your own authenticated public key",
+  "to read agent engrams, filter authors to the agent or #p to its owner, using your authenticated public key"];
+// Whether every one of values names a reader, and there is one.
+rp_all :: (values: [] string, readers: [] u8) -> bool {
+  if values.count == 0 { return false; }
+  for v: values { if !rp_names(v, readers) { return false; } }
+  return true;
+}
+// Whether f's kinds name kind.
+rp_asks :: (f: NostrFilter, kind: int) -> bool {
+  for k: f.kinds { if k == kind { return true; } }
+  return false;
+}
+// Why f may not be read by readers, or RP_OK.
+rp_deny :: (f: NostrFilter, readers: [] u8) -> int {
+  gifts := rp_asks(f, 1059);
+  p_kinds := rp_asks(f, 24200) || rp_asks(f, 44200) || rp_asks(f, 30622);
+  author_kinds := rp_asks(f, 30300) || rp_asks(f, 30350);
+  engrams := rp_asks(f, 30174);
+  if !gifts && !p_kinds && !author_kinds && !engrams { return RP_OK; }
+  if readers.count == 0 { return ifx gifts then RP_GIFT_AUTH else RP_BLOCK_AUTH; }
+  p_scoped := false; seen := false;
+  for tf: f.tags { if tf.name == 'p' && !seen { p_scoped = rp_all(tf.values, readers); seen = true; } }
+  author_scoped := f.has_authors && rp_all(f.authors, readers);
+  if gifts && !p_scoped { return RP_GIFT_P; }
+  if p_kinds && !p_scoped { return RP_PRIVATE_P; }
+  if author_kinds && !author_scoped { return RP_PRIVATE_AUTHORS; }
+  if engrams && !p_scoped && !author_scoped { return RP_ENGRAM; }
+  return RP_OK;
+}
+
+// ---- checks ---------------------------------------------------------------------
+RP_HA :: "1111111111111111111111111111111111111111111111111111111111111111";
+RP_HB :: "2222222222222222222222222222222222222222222222222222222222222222";
+RP_HC :: "3333333333333333333333333333333333333333333333333333333333333333";
+RP_H64 :: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+// Readers by number: 0 none, 1 A, 2 B, 3 C, 4 B then A. The author is A.
+rp_t_key :: (b: u8) -> [32] u8 { k: [32] u8; for i: 0..<32 { k[i] = b; } return k; }
+rp_t_readers :: (who: int, out: [] u8) -> [] u8 {
+  if who == 0 { return out[0..<0]; }
+  bytes := [4] u8.[0x11, 0x22, 0x33, 0x22];
+  for i: 0..<32 { out[i] = bytes[who - 1]; out[32 + i] = 0x11; }
+  return out[0..<32 * ifx who == 4 then 2 else 1];
+}
+// Which readers (bit who) may read kind with tags in mode.
+rp_t_bits :: (mode: int, kind: int, tags: string) -> int {
+  bits := 0; buf: [64] u8;
+  for who: 0..<5 { if rp_visible(mode, kind, rp_t_key(0x11), tags, rp_t_readers(who, buf[..])) { bits += 1 << who; } }
+  return bits;
+}
+#test "hex keys: 64 lowercase digits, each reader's key, every byte" {
+  #assert rp_hex(RP_H64) && rp_hex(RP_HA) && !rp_hex(RP_H64[0..<63]) && !rp_hex("");
+  x: [64] u8; for i: 0..<64 { x[i] = RP_H64[i]; }
+  for c: [6] u8.['A', 'F', 'g', '/', ':', '`'] { x[5] = c; #assert !rp_hex(cast(string) x[..]); }
+  for c: [4] u8.['0', '9', 'a', 'f'] { x[5] = c; #assert rp_hex(cast(string) x[..]); }
+  buf: [64] u8; r := rp_t_readers(4, buf[..]);
+  #assert rp_names(RP_HA, r) && rp_names(RP_HB, r) && !rp_names(RP_HC, r) && !rp_names(RP_HA, r[0..<32]) && !rp_names(RP_HA, r[0..<0]);
+  #assert rp_has(r, rp_t_key(0x11)) && !rp_has(r, rp_t_key(0x33)) && !rp_has(r[0..<63], rp_t_key(0x11));
+  // each digit's value and each byte counts
+  k: [32] u8; for i: 0..<32 { k[i] = cast(u8) (i * 8 + 7); }
+  h := "070f171f272f373f474f575f676f777f878f979fa7afb7bfc7cfd7dfe7eff7ff";
+  #assert rp_names(h, k[..]) && !rp_names("170f171f272f373f474f575f676f777f878f979fa7afb7bfc7cfd7dfe7eff7ff", k[..]);
+  #assert !rp_names("070f171f272f373f474f575f676f777f878f979fa7afb7bfc7cfd7dfe7eff7fe", k[..]);
+  k[31] = 0xfe; #assert !rp_names(h, k[..]);
+  // 9 and a, high and low
+  m := [4] u8.[0x9a, 0xa9, 0x99, 0xaa]; for i: 0..<32 { k[i] = m[i % 4]; }
+  #assert rp_names("9aa999aa9aa999aa9aa999aa9aa999aa9aa999aa9aa999aa9aa999aa9aa999aa", k[..]);
+}
+#test "one reading of the tags: names, values, the first p and h, the markers" {
+  buf: [64] u8; b := rp_t_readers(2, buf[..]); a := rp_t_key(0x11);
+  t := rp_read("[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"p\",\"\\u0032222222222222222222222222222222222222222222222222222222222222222\"],[\"e\",\"x\"],[\"shared\",\"true\"],[\"t\",\"oa:cap-policy:private:v1\"]]", a, b);
+  #assert t.tags == 5 && t.two && t.p_named == 2 && t.p_values == 2 && t.p_same && t.p_first && t.p_any && !t.p_author && t.p_hex;
+  #assert t.shared && t.shared_exact && t.policy && t.t_named == 1 && t.run == 0 && t.artifact == 0 && t.h_named == 0 && t.d_values == 0;
+  t = rp_read("[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"p\",\"3333333333333333333333333333333333333333333333333333333333333333\"],[\"p\"],[\"shared\",\"x\",\"true\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:run:v1\"],[\"t\",\"oa:run:v1\"],[\"t\",\"oa:artifact:v1\"]]", a, b);
+  #assert t.tags == 9 && !t.two && t.p_named == 3 && t.p_values == 2 && !t.p_same && t.p_first && t.p_any && !t.p_author;
+  #assert t.shared && !t.shared_exact && t.h_named == 1 && t.h_values == 1 && t.h_hex && t.d_values == 1 && t.d_is_h && t.d_hex;
+  #assert t.run == 2 && t.artifact == 1 && t.t_named == 3 && !t.policy;
+  // the p's second value differs; the first names no reader but the second does
+  t = rp_read("[[\"p\",\"3333333333333333333333333333333333333333333333333333333333333333\"],[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"]]", a, b);
+  #assert !t.p_first && t.p_any && !t.p_same && t.p_values == 2;
+  // an escaped name; a p naming the author
+  t = rp_read("[[\"\\u0070\",\"1111111111111111111111111111111111111111111111111111111111111111\",\"x\"]]", a, b);
+  #assert t.p_named == 1 && t.p_values == 1 && t.p_author && !t.p_first && !t.two;
+  // values over 64 bytes: no key, no id, equal to nothing
+  long := "[[\"p\",\"22222222222222222222222222222222222222222222222222222222222222222\"],[\"p\",\"22222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"01234567890123456789012345678901234567890123456789012345678901234\"],[\"d\",\"01234567890123456789012345678901234567890123456789012345678901234\"]]";
+  t = rp_read(long, a, b);
+  #assert t.p_values == 2 && !t.p_same && !t.p_first && !t.p_hex && !t.h_hex && !t.d_is_h && !t.d_hex && t.d_values == 1;
+  // a first p of 64 bytes and a second of 65 that starts the same
+  t = rp_read("[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"p\",\"22222222222222222222222222222222222222222222222222222222222222222\"]]", a, b);
+  #assert t.p_first && !t.p_same;
+  t = rp_read("[[\"p\",\"222\"],[\"p\",\"22\"]]", a, b); #assert !t.p_same && !t.p_hex;
+  t = rp_read("[[\"p\",\"22\"],[\"p\",\"23\"]]", a, b); #assert !t.p_same;
+  t = rp_read("[[\"p\",\"22\"],[\"p\",\"22\"]]", a, b); #assert t.p_same;
+  // short h and d, equal; a d before any h; a second h and d are not the first
+  t = rp_read("[[\"h\",\"ab\"],[\"d\",\"ab\"],[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]]", a, b);
+  #assert !t.h_hex && t.d_is_h && t.d_hex && t.d_values == 2;
+  t = rp_read("[[\"h\",\"ab\"],[\"d\",\"ac\"]]", a, b); #assert !t.d_is_h;
+  t = rp_read("[[\"h\",\"ab\"],[\"d\",\"a\"]]", a, b); #assert !t.d_is_h;
+  t = rp_read("[[\"d\",\"ab\"],[\"h\",\"ab\"]]", a, b); #assert !t.d_is_h && t.h_values == 1;
+  t = rp_read("[[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"h\",\"ab\"],[\"d\",\"ab\"]]", a, b);
+  #assert t.h_hex && t.h_values == 2 && !t.d_is_h;
+  // names: over 8 bytes count as none; exactly 8 is a name; an empty tag
+  t = rp_read("[[\"pppppppppp\",\"x\"],[\"abcdefgh\",\"p\"],[]]", a, b);
+  #assert t.tags == 3 && !t.two && t.p_named == 0 && t.p_values == 0;
+  // shared and true anywhere in one tag; not across two
+  t = rp_read("[[\"true\",\"shared\"]]", a, b); #assert t.shared && !t.shared_exact;
+  t = rp_read("[[\"shared\",\"true\",\"x\"]]", a, b); #assert t.shared && !t.shared_exact;
+  t = rp_read("[[\"shared\"],[\"true\"]]", a, b); #assert !t.shared && !t.shared_exact;
+  t = rp_read("[[\"x\",\"shared\",\"true\"]]", a, b); #assert t.shared && !t.shared_exact;
+  t = rp_read("[[\"shared\",\"x\"],[\"x\",\"true\"],[\"shared\",\"true\",\"true\"]]", a, b); #assert t.shared && !t.shared_exact;
+  t = rp_read("[[\"shared\",\"x\"]]", a, b); #assert !t.shared && !t.shared_exact;
+  // empty values are values; a name of seven bytes is none a rule reads
+  t = rp_read("[[\"p\",\"\"],[\"p\",\"\"]]", a, b); #assert t.p_same && t.p_values == 2 && !t.p_first;
+  t = rp_read("[[\"sharedx\",\"true\"],[\"abcdefg\",\"p\"]]", a, b); #assert !t.shared_exact && t.p_named == 0 && t.p_values == 0;
+  // not an array: nothing; a value that doesn't decode is long
+  t = rp_read("{}", a, b); #assert t.tags == 0 && t.two;
+  t = rp_read("[[\"p\",\"\\ud800\"]]", a, b); #assert t.p_values == 1 && !t.p_first && t.first_p_n == -1;
+}
+RP_T_PB :: "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"]]";
+RP_T_PBB :: "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"]]";
+RP_T_PBC :: "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"p\",\"3333333333333333333333333333333333333333333333333333333333333333\"]]";
+RP_T_SH :: "[[\"shared\",\"true\"]]";
+RP_T_SHX :: "[[\"true\",\"shared\",\"x\"]]";
+RP_T_POL :: "[[\"t\",\"oa:cap-policy:private:v1\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]]";
+RP_T_POL2 :: "[[\"t\",\"oa:cap-policy:private:v1\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]]";
+RP_T_POLB :: "[[\"t\",\"oa:cap-policy:private:v1\"],[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]]";
+RP_T_POLD :: "[[\"t\",\"oa:cap-policy:private:v1\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"d\",\"mailbox\"]]";
+RP_T_RUN :: "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:run:v1\"]]";
+RP_T_RUNH :: "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:run:v1\"],[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]]";
+RP_T_RUNS :: "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123\"],[\"t\",\"oa:run:v1\"]]";
+RP_T_RUN2 :: "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:run:v1\"]]";
+RP_T_RUNT :: "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:run:v1\"],[\"t\",\"oa:run:v1\"]]";
+RP_T_RUNP :: "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:run:v1\"]]";
+RP_T_ART :: "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:artifact:v1\"]]";
+#test "stored reads: the SQL's rules for every listed kind" {
+  #assert rp_t_bits(RP_STORED, 1, RP_T_PB) == 31 && rp_t_bits(RP_STORED, 30023, "[]") == 31 && rp_t_bits(RP_STORED, 4, "[]") == 31;
+  // gift wraps and the other wraps: the one p recipient, one distinct value
+  for k: [5] int.[1059, 21059, 24200, 30622, 44200] {
+    #assert rp_t_bits(RP_STORED, k, RP_T_PB) == 20 && rp_t_bits(RP_STORED, k, RP_T_PBB) == 20 && rp_t_bits(RP_STORED, k, RP_T_PBC) == 0 && rp_t_bits(RP_STORED, k, "[]") == 0;
+  }
+  // the author's own
+  for k: [4] int.[78, 30078, 30300, 30350] { #assert rp_t_bits(RP_STORED, k, RP_T_PB) == 18 && rp_t_bits(RP_STORED, k, "[]") == 18; }
+  #assert rp_t_bits(RP_STORED, 30174, RP_T_PBC) == 30 && rp_t_bits(RP_STORED, 30174, "[]") == 18 && rp_t_bits(RP_STORED, 30174, RP_T_PB) == 22;
+  for k: [2] int.[30175, 30178] {
+    #assert rp_t_bits(RP_STORED, k, RP_T_SH) == 31 && rp_t_bits(RP_STORED, k, RP_T_SHX) == 31 && rp_t_bits(RP_STORED, k, RP_T_PB) == 18;
+  }
+  for k: [3] int.[3187, 3188, 30186] {
+    #assert rp_t_bits(RP_STORED, k, RP_T_PB) == 22 && rp_t_bits(RP_STORED, k, RP_T_PBB) == 22 && rp_t_bits(RP_STORED, k, RP_T_PBC) == 18 && rp_t_bits(RP_STORED, k, "[]") == 18;
+  }
+  // kind 30181: private only with the marker
+  #assert rp_t_bits(RP_STORED, 30181, RP_T_POL) == 18 && rp_t_bits(RP_STORED, 30181, RP_T_POL2) == 18 && rp_t_bits(RP_STORED, 30181, RP_T_PB) == 31;
+  #assert rp_t_bits(RP_STORED, 30182, RP_T_POL) == 31;
+  // never: 39604 to 39613, 39620, 39650, 30179
+  for k: [5] int.[39604, 39613, 39620, 39650, 30179] { #assert rp_t_bits(RP_STORED, k, "[]") == 0 && rp_t_bits(RP_SEARCH, k, "[]") == 0; }
+  for k: [4] int.[39603, 39614, 39621, 39651] { #assert rp_t_bits(RP_STORED, k, "[]") == 31; }
+}
+#test "a search never matches the private kinds, even for their owner" {
+  for k: [15] int.[78, 1059, 21059, 30078, 30174, 30175, 30178, 30179, 30300, 30350, 30622, 44200, 3187, 3188, 30186] {
+    #assert rp_t_bits(RP_SEARCH, k, RP_T_SH) == 0 && rp_t_bits(RP_SEARCH, k, RP_T_PB) == 0;
+  }
+  #assert rp_t_bits(RP_SEARCH, 30181, RP_T_POL) == 0 && rp_t_bits(RP_SEARCH, 30181, RP_T_PB) == 31;
+  // 24200 is not on the search list: its stored rule applies
+  #assert rp_t_bits(RP_SEARCH, 24200, RP_T_PB) == 20 && rp_t_bits(RP_SEARCH, 1, "[]") == 31;
+}
+#test "live delivery: event_visible_to_reader's rules" {
+  for k: [2] int.[1059, 21059] {
+    #assert rp_t_bits(RP_LIVE, k, RP_T_PB) == 20 && rp_t_bits(RP_LIVE, k, RP_T_PBB) == 0 && rp_t_bits(RP_LIVE, k, RP_T_PBC) == 0 && rp_t_bits(RP_LIVE, k, "[]") == 0;
+  }
+  for k: [3] int.[24200, 30622, 44200] { #assert rp_t_bits(RP_LIVE, k, RP_T_PBC) == 20 && rp_t_bits(RP_LIVE, k, "[]") == 0; }
+  for k: [4] int.[78, 30078, 30300, 30350] { #assert rp_t_bits(RP_LIVE, k, RP_T_PB) == 18; }
+  #assert rp_t_bits(RP_LIVE, 30174, RP_T_PBC) == 30 && rp_t_bits(RP_LIVE, 30174, "[]") == 18;
+  for k: [2] int.[30175, 30178] { #assert rp_t_bits(RP_LIVE, k, RP_T_SH) == 31 && rp_t_bits(RP_LIVE, k, RP_T_SHX) == 18; }
+  #assert rp_t_bits(RP_LIVE, 30179, RP_T_SH) == 0;
+  for k: [4] int.[39604, 39613, 39620, 39650] { #assert rp_t_bits(RP_LIVE, k, "[]") == 31; }
+  // run records and heads: the envelope's tags, then the author or the one p
+  #assert rp_t_bits(RP_LIVE, 3187, RP_T_RUN) == 22 && rp_t_bits(RP_LIVE, 3187, RP_T_RUNH) == 22 && rp_t_bits(RP_LIVE, 3187, RP_T_PB) == 0;
+  #assert rp_t_bits(RP_LIVE, 30186, RP_T_RUNH) == 22 && rp_t_bits(RP_LIVE, 30186, RP_T_RUN) == 0;
+  for x: [4] string.[RP_T_RUNS, RP_T_RUN2, RP_T_RUNT, RP_T_RUNP] { #assert rp_t_bits(RP_LIVE, 3187, x) == 0; }
+  // a head's d must be its h
+  #assert rp_t_bits(RP_LIVE, 30186, "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:run:v1\"],[\"d\",\"1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]]") == 0;
+  #assert rp_t_bits(RP_LIVE, 30186, "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:run:v1\"],[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]]") == 0;
+  // the artifact envelope: exactly a p, an h and the marker, two strings each
+  #assert rp_t_bits(RP_LIVE, 3188, RP_T_ART) == 22 && rp_t_bits(RP_LIVE, 3188, RP_T_PB) == 0 && rp_t_bits(RP_LIVE, 3188, RP_T_RUN) == 0;
+  #assert rp_t_bits(RP_LIVE, 3188, "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:artifact:v1\"],[\"x\",\"y\"]]") == 0;
+  #assert rp_t_bits(RP_LIVE, 3188, "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:artifact:v1\",\"x\"]]") == 0;
+  #assert rp_t_bits(RP_LIVE, 3188, "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"t\",\"oa:artifact:v1\"]]") == 0;
+  #assert rp_t_bits(RP_LIVE, 3188, "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"h\",\"oa:artifact:v1\"]]") == 0;
+  #assert rp_t_bits(RP_LIVE, 3188, "[[\"p\",\"22\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:artifact:v1\"]]") == 0;
+  #assert rp_t_bits(RP_LIVE, 3188, "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"01\"],[\"t\",\"oa:artifact:v1\"]]") == 0;
+  #assert rp_t_bits(RP_LIVE, 3188, "[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:run:v1\"]]") == 0;
+  // a private preference: one p, naming the author, a d of 64 hex digits, the author reading
+  #assert rp_t_bits(RP_LIVE, 30181, RP_T_POL) == 18 && rp_t_bits(RP_LIVE, 30181, RP_T_POL2) == 0 && rp_t_bits(RP_LIVE, 30181, RP_T_POLB) == 0;
+  #assert rp_t_bits(RP_LIVE, 30181, RP_T_POLD) == 0 && rp_t_bits(RP_LIVE, 30181, RP_T_PB) == 31 && rp_t_bits(RP_LIVE, 1, RP_T_POL) == 31;
+}
+// A filter of kinds (k, or k and l), with #p p and authors au when given.
+// (A value "" names no reader, as an absent #p or authors does.)
+rp_t_deny :: (k: int, l: int, p: string, au: string, who: int) -> int {
+  kinds := [2] int.[k, l]; ps := [1] string.[p]; aus := [1] string.[au];
+  tags := [1] NostrTagFilter.[NostrTagFilter.{name = 'p', values = ps[..]}];
+  f: NostrFilter; f.kinds = kinds[..]; f.tags = tags[..]; f.has_authors = true; f.authors = aus[..];
+  buf: [64] u8;
+  return rp_deny(f, rp_t_readers(who, buf[..]));
+}
+#test "the filter refusals, in the Rust relay's order and words" {
+  // without AUTH
+  #assert rp_t_deny(1059, 1059, "", "", 0) == RP_GIFT_AUTH && rp_t_deny(1, 1059, "", "", 0) == RP_GIFT_AUTH;
+  for k: [6] int.[24200, 44200, 30174, 30300, 30350, 30622] { #assert rp_t_deny(k, k, RP_HA, RP_HA, 0) == RP_BLOCK_AUTH && rp_t_deny(k, k, RP_HA, RP_HA, 1) == RP_OK; }
+  #assert rp_t_deny(1, 4, "", "", 0) == RP_OK && rp_t_deny(30301, 30301, "", "", 0) == RP_OK && rp_t_deny(1058, 1058, "", "", 0) == RP_OK;
+  f: NostrFilter; nb: [64] u8; #assert rp_deny(f, nb[0..<0]) == RP_OK && rp_deny(f, rp_t_readers(1, nb[..])) == RP_OK;
+  // gift wraps: #p naming only the readers
+  #assert rp_t_deny(1059, 1059, "", "", 1) == RP_GIFT_P && rp_t_deny(1059, 1059, RP_HA, "", 1) == RP_OK && rp_t_deny(1059, 1059, RP_HB, "", 1) == RP_GIFT_P;
+  #assert rp_t_deny(1059, 1059, RP_HB, "", 4) == RP_OK && rp_t_deny(1059, 1059, "", RP_HA, 1) == RP_GIFT_P;
+  for k: [3] int.[24200, 44200, 30622] { #assert rp_t_deny(k, k, "", RP_HA, 1) == RP_PRIVATE_P && rp_t_deny(k, k, RP_HA, "", 1) == RP_OK; }
+  for k: [2] int.[30300, 30350] { #assert rp_t_deny(k, k, RP_HA, "", 1) == RP_PRIVATE_AUTHORS && rp_t_deny(k, k, "", RP_HA, 1) == RP_OK && rp_t_deny(k, k, "", RP_HB, 1) == RP_PRIVATE_AUTHORS; }
+  #assert rp_t_deny(30174, 30174, "", "", 1) == RP_ENGRAM && rp_t_deny(30174, 30174, RP_HA, "", 1) == RP_OK && rp_t_deny(30174, 30174, "", RP_HA, 1) == RP_OK;
+  #assert rp_t_deny(30174, 30174, RP_HB, RP_HC, 1) == RP_ENGRAM;
+  // in order: gift wraps first, then #p, then authors
+  #assert rp_t_deny(1059, 30300, "", "", 1) == RP_GIFT_P && rp_t_deny(1059, 30300, RP_HA, "", 1) == RP_PRIVATE_AUTHORS && rp_t_deny(24200, 30300, "", "", 1) == RP_PRIVATE_P;
+  // no #p, an empty #p, no authors
+  k1 := [1] int.[1059]; k2 := [1] int.[30300]; empty := [1] string.[RP_HA];
+  h: NostrFilter; h.kinds = k1[..]; nb2: [64] u8; r1 := rp_t_readers(1, nb2[..]);
+  #assert rp_deny(h, r1) == RP_GIFT_P;
+  et := [1] NostrTagFilter.[NostrTagFilter.{name = 'p', values = empty[0..<0]}]; h.tags = et[..];
+  #assert rp_deny(h, r1) == RP_GIFT_P;
+  et[0].values = empty[..]; #assert rp_deny(h, r1) == RP_OK;
+  h.kinds = k2[..]; #assert rp_deny(h, r1) == RP_PRIVATE_AUTHORS;
+  h.has_authors = true; h.authors = empty[0..<0]; #assert rp_deny(h, r1) == RP_PRIVATE_AUTHORS;
+  h.authors = empty[..]; #assert rp_deny(h, r1) == RP_OK;
+  // the first #p entry is the one read; another tag is no #p
+  ps := [1] string.[RP_HB]; pa := [1] string.[RP_HA];
+  two := [2] NostrTagFilter.[NostrTagFilter.{name = 'p', values = ps[..]}, NostrTagFilter.{name = 'p', values = pa[..]}];
+  kinds := [1] int.[1059]; g: NostrFilter; g.kinds = kinds[..]; g.tags = two[..];
+  buf: [64] u8; r := rp_t_readers(1, buf[..]);
+  #assert rp_deny(g, r) == RP_GIFT_P;
+  two[0].name = 'e'; #assert rp_deny(g, r) == RP_OK;
+  #assert RP_PREFIX[RP_GIFT_AUTH] == "auth-required" && RP_TEXT[RP_GIFT_AUTH] == "gift-wrap reads require recipient authentication";
+  #assert RP_PREFIX[RP_BLOCK_AUTH] == "auth-required" && RP_TEXT[RP_BLOCK_AUTH] == "private Block NIP reads require authentication";
+  #assert RP_PREFIX[RP_GIFT_P] == "restricted" && RP_TEXT[RP_GIFT_P] == "to read gift wraps, filter #p to your own authenticated public key";
+  #assert RP_PREFIX[RP_PRIVATE_P] == "restricted" && RP_TEXT[RP_PRIVATE_P] == "to read these private events, filter #p to your own authenticated public key";
+  #assert RP_PREFIX[RP_PRIVATE_AUTHORS] == "restricted" && RP_TEXT[RP_PRIVATE_AUTHORS] == "to read these private events, filter authors to your own authenticated public key";
+  #assert RP_PREFIX[RP_ENGRAM] == "restricted" && RP_TEXT[RP_ENGRAM] == "to read agent engrams, filter authors to the agent or #p to its owner, using your authenticated public key";
+}

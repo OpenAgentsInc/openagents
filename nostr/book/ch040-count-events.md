@@ -348,6 +348,15 @@ n45_answer :: (text: string, s: [] RsdStore, ix: [] NsiIndex, now: int, w: [] N4
   for k: 0..<m.filters {
     if rs_filter(text, m, k, w[0].filters[k..<m.filters], sp[..]) != FR_OK { return ms_write_closed(sub, rs_prefix(why), rs_text(why), out); }
   }
+  // the relay's readers (#12631): a filter they may not ask is refused, and
+  // only what they may read is counted (relay_private.coax)
+  if w[0].gated {
+    for k: 0..<m.filters {
+      d := rp_deny(w[0].filters[k], w[0].readers);
+      if d != RP_OK { return ms_write_closed(sub, RP_PREFIX[d], RP_TEXT[d], out); }
+      w[0].filters[k].gate = RP_STORED; w[0].filters[k].readers = w[0].readers;
+    }
+  }
   slots := w[0].out[..]; seen := w[0].seen[..];
   if w[0].big_out.count > 0 { slots = w[0].big_out; seen = w[0].big_seen; }
   c := n45_count(s, ix, w[0].filters[0..<m.filters], now, slots, seen, w[0].regs[..]);
@@ -368,7 +377,11 @@ It writes, in this order:
 3. `CLOSED` "invalid: COUNT needs at least one filter".
 4. `CLOSED` "restricted: subscription filters exceed 8192 bytes" when the
    filters together don't fit the work space.
-5. `CLOSED` "error: the store index is out of date".
+5. In the relay (`gated`), `CLOSED` with relay_private.coax's refusal when
+   a filter asks for a private kind its readers may not ask for (chapter
+   103: gift wraps need AUTH and `#p` naming only the readers), and every
+   filter then counts only what those readers may read.
+6. `CLOSED` "error: the store index is out of date".
 6. Otherwise `COUNT`, with `hll` when the one filter has an offset.
 
 ## The example

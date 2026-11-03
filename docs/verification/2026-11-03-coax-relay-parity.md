@@ -33,14 +33,14 @@ protocol difference a shadow period would see.
 | 9 | yes | yes | wired (`store_delete.coax` through `rd_admit`) | Rust never deletes kind 30350 by an `e` tag (`DELETE_EVENT_TARGET_SQL`); Rust keeps a tombstone after NIP-40 removes the deletion event (`0002_nip_expansion.sql`), Coax rebuilds tombstones only from stored requests (the table is sized from the input since the second run, no cap) | owner: carry orphan tombstones (below) |
 | 11 | yes | yes | wired | extra limitation fields differ (R1 record) | none needed |
 | 13 | no | with `--pow` | wired, off by default | Coax extra | none needed (off) |
-| 17 | with relay URL | no | **not wired** | Rust serves kinds 1059, 21059 (and 24200, 30622, 44200) only to an authenticated reader who is the event's single `p` recipient; Coax serves them to anyone | **owner, blocks cutover** |
+| 17 | with relay URL | no | not advertised; the gift-wrap reads are wired (`relay_private.coax`, below) | none in what is served: kinds 1059 and 21059 (and 24200, 30622, 44200) go only to their authenticated `p` recipient, as Rust's | owner: advertise or not |
 | 29 | with relay signer | with `--groups` | partly wired (`nip29.coax`, `RyWork.groups`) | no relay key, so no 39000 to 39003 group state; no private-group or hidden-group read gating; no group methods over NIP-86 | owner: relay key (NEEDS_OWNER Nostr follow-ups, question 4) |
 | 40 | yes | yes | wired | none known | none needed |
 | 42 | with relay URL | yes | wired (`nip42.coax`) | Coax requires AUTH for writes (R1 decision) | decided R1 |
 | 43 | no | no | not wired | none: neither relay advertises it | owner: relay key (question 4); not a parity requirement |
 | 45 | yes | yes | wired (`nip45.coax`) | not re-measured against Rust since R1 | differential refresh |
-| 50 | yes | yes | wired (`nip50.coax`) | Rust excludes the private kinds below from search too | follows the private-kind decision |
-| 59 | with relay URL | no | **not wired** | as NIP-17 | **owner, blocks cutover** |
+| 50 | yes | yes | wired (`nip50.coax`) | none for the private kinds (a search never matches them, as Rust's); whole words against substrings remains | owner (search matching) |
+| 59 | with relay URL | no | not advertised; reads wired, as NIP-17 | as NIP-17 | owner: advertise or not |
 | 62 | no | yes | wired | Coax extra. An imported kind 62 that names relay.openagents.com or `ALL_RELAYS` retires its author's earlier events, which the Rust relay still serves | owner: review each kind 62 the import applies |
 | 65 | yes | no | stored as replaceable kind 10002 | no relay behaviour beyond storage | owner: advertise or not |
 | 67 | yes | no | **not wired** | Rust ends stored results with `["EOSE",sub,["finish"]]` or `["more"]`; Coax sends `["EOSE",sub]` | owner: wire or drop |
@@ -50,7 +50,7 @@ protocol difference a shadow period would see.
 | 94 | yes (media service) | no | **not wired** | no media upload or NIP-94 metadata endpoint | owner: keep media elsewhere, or drop |
 | 98 | with management or media | no | used inside NIP-86 only | no separate advertisement | owner: advertise with 86 or not |
 
-### Private and hidden kinds (not a NIP, but the largest served-set gap)
+### Private and hidden kinds (not a NIP, but the largest served-set gap; wired since the third run)
 
 The Rust relay's query (`crates/nostr-relay/src/store/statements.rs`, the
 REQ select) never serves kinds 39604 to 39613, 39620, 39650 and 30179. It
@@ -62,11 +62,27 @@ single `p` recipient: 78, 30078, 30300 and 30350 (author); 1059, 21059,
 `oa:cap-policy:private:v1` (author). Search never matches any of them.
 Events in private NIP-29 groups go only to members.
 
-The Coax relay serves all of these to anyone who asks. During a shadow
-period every REQ that touches them is an unexplained answer, and after a
-cutover it would be a privacy regression. Wiring them is a policy port with
-an `#authority` unit, but the list itself is OpenAgents product policy that
-grew kind by kind, so whether to copy it whole is the owner's decision.
+The Coax relay served all of these to anyone who asked. **Since the third
+run (#12631) it matches the Rust relay**, because matching existing
+production behaviour needs no new policy: `coax/lib/nostr/relay_private.coax`
+(`#authority`, 531 mutants, 531 killed) holds the Rust relay's three rule
+sets as the Rust code states them: the SQL's stored-read rule (REQ, COUNT,
+NIP-77 sync), `event_visible_to_reader` for live delivery (with the readers
+the connection had when the subscription opened), and
+`owner_scoped_filter_denial`'s REQ and COUNT refusals, word for word. Every
+stored read goes through `rsd_match` before the limit. The Rust
+differential's 33 private-read observations (gift wraps by recipient,
+another key and anonymously, by id and by `#p`; COUNT; NIP-77; app data;
+Block kinds 30300, 30174 and 24200; live delivery to the recipient and not
+to an anonymous subscription) all match, one with Coax's extra NIP-45 `hll`
+(record: [import, restart and differential](2026-11-03-coax-relay-import-restart.md)).
+
+Not ported: the Rust relay's NIP-29 private and hidden groups, which read
+group state (`relay_group`, `relay_group_member`) that the Coax relay
+doesn't hold without a relay key; and, for a live 3188, the curve-point and
+NIP-44 content checks (they only ever hide a malformed event from its own
+author or recipient). Both are in NEEDS_OWNER, with the places where the
+Rust relay's own stored and live rules disagree.
 
 ## NIP-77, 86, 43 and 29: what this run wired
 
@@ -80,7 +96,7 @@ No advertisement changed.
 
 1. Which of NIPs 17, 59, 65, 67, 94 and 98 must the Coax relay serve before
    cutover, and which are dropped from the advertisement. The private-kind
-   read rules above block cutover until decided either way.
+   read rules no longer block it: they match the Rust relay's.
 2. The relay key question (29's group state, 43) stands.
 3. Carrying the Rust relay's NIP-86 policy tables and orphan tombstones
    (tombstones whose deletion event NIP-40 already removed): neither is in

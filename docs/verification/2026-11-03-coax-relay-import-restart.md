@@ -210,6 +210,28 @@ bad NEG-OPEN; Coax syncing up to 100,000 events where Rust refuses a sync
 larger than one REQ; `restricted:` (Coax) against `auth-required:` (Rust)
 for a protected event from another authenticated key; NIP-62.
 
+### Private reads (third run)
+
+`relay_private.coax` wired (parity record, private kinds). The driver
+gained a private-reads section: a second connection authenticated as the
+gift wraps' recipient, and gift wraps read by a key that isn't the
+recipient, by `#p` naming another key, by the recipient, by id (anonymous,
+another key, the recipient), by `#p` alone anonymously; COUNT of gift wraps
+and app data each way; NIP-77 over a gift wrap's id and over app data, each
+way; app data by its author and by id anonymously; a search for app data's
+content by its author; Block kinds 30300 (anonymous, without authors, by
+the author), 30174 (neither scope, `#p` own) and 24200 (`#p` another key);
+and a new gift wrap delivered live to its recipient's `#p` subscription and
+not to an anonymous one.
+
+Result: 193 observations; 148 match, 21 same verdict and prefix with other
+text, 14 intentional, 10 for the owner, 0 unexplained; ASan/UBSan clean.
+All 33 private-read observations match, the two R2 ones that were the
+owner's ("REQ gift wrap, not its recipient", "REQ app data 30078, not its
+author") included, except that the recipient's COUNT with one `#p` value
+carries Coax's NIP-45 `hll` beside the same count (intentional: the
+registers come from the events the reader may count).
+
 ## Also run
 
 - `relay_session.py` (ASan/UBSan): ok, with a new `checkpoint` case: a

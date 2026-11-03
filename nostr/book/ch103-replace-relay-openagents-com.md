@@ -497,10 +497,15 @@ Nothing in this chapter has run any of them.
    owner decides which advertised NIPs are dropped (R2). The parity table
    is [2026-11-03-coax-relay-parity.md](../../docs/verification/2026-11-03-coax-relay-parity.md):
    NIP-77 and NIP-86 are wired, NIP-29 up to the relay key, NIP-43 needs
-   the key; 17, 59, 65, 67, 94 and 98 are not wired, and the Rust relay's
-   private-kind read rules (gift wraps only to their recipient, OpenAgents'
-   private kinds only to their owner) block cutover until the owner
-   decides.
+   the key; 17, 59, 65, 67, 94 and 98 are not advertised. The Rust relay's
+   private reads (gift wraps only to their recipient, OpenAgents' private
+   kinds only to their owner, with NIP-42) are ported whole into
+   `relay_private.coax` (`#authority`) and checked against it: every REQ,
+   COUNT and NIP-77 sync asks its stored-read rule before the limit, live
+   delivery its live rule with the readers a subscription opened with, and
+   a REQ or COUNT for a private kind its readers may not ask is `CLOSED`
+   with the Rust relay's words. Its NIP-29 private groups are not ported
+   (they need group state the Coax relay doesn't hold).
 2. The Coax store holds the whole export. By default it holds 2,048
    records and 4 MiB (`RSD_MAX`, `RSD_ARENA`); an export larger than the
    store imports as `RI_INCOMPLETE` (`relay_import.coax` checks this), and
@@ -666,6 +671,7 @@ Part VI are wired into it, and what the rest still need.
 | Module | Chapter | Status | What wiring it needs, or how it is wired |
 | --- | --- | --- | --- |
 | `store_index.coax` | 36 | Wired | `relay_store.coax` keeps an `NsiIndex` beside the store: `nsi_add` after each admission that appends, a rebuild (`nsi_build`) before the next query after one that may have compacted (`rr_may_compact`, `rr_index_step`), and `ry_req` answers with `nsi_query` (`rd_query`) |
+| `relay_private.coax` | 103 | Wired | `rsd_match` (`store.coax`) asks `rp_visible` for every stored read (`rd_req_filter`, `rd_count` through `n45_answer`, `rd_neg_items`) and live delivery (`rd_sub_matches`, with the `RrAuth` saved when the subscription or sync opened); `ry_req` and `n45_answer` send `rp_deny`'s `CLOSED` first |
 | `store_delete.coax` | 39 | Wired | Every admission goes through `nsd_plan` and `nsd_apply_plan` (`rsd_admit_deleting`), saving to the `--store` file between them; a covered event is refused "blocked:"; replay (`rsd_replay_deleting`) rebuilds the tombstones from the saved requests. A kind 62 must name the relay's URL (the NIP-42 one) or `ALL_RELAYS` |
 | `relay_rate.coax` | 44 | Wired | An `RtConn` in each `RyConn` and one `RtKeys`: `rt_event` once an EVENT's signature holds, `rt_req` before a REQ's filters, refused "rate-limited:"; the served NIP-11 document is `rt_nip11(RR_NIP11, ...)`. Limits from `--rate EVENTS,REQS,KEY_EVENTS`, else 120, 120 and 60 |
 | `nip45.coax` | 40 | Wired | `rr_message` routes `COUNT` to `ry_count`, which charges it as a REQ and answers with `n45_answer` over a current index (`rd_count`) |
