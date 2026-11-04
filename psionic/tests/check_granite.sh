@@ -55,6 +55,12 @@ for f in "${ggufs[@]}";do
  "$out/granite-run" "$f" "$out/k.metal" generate --prompt "What is the capital of France? Answer in one sentence." --steps 24 --capacity 1024 > "$out/answer.txt"
  grep -q "Paris" "$out/answer.txt" || { echo "$q: the answer does not name Paris" >&2; cat "$out/answer.txt" >&2; exit 1; }
  tail -2 "$out/answer.txt" | sed "s|^|$q: |"
+ # Tool calling: the model calls get_weather in the template's format, the
+ # result goes back as a tool turn, and the answer uses it.
+ "$out/granite-run" "$f" "$out/k.metal" tools --tools psionic/fixtures/granite/tools.jsonl --prompt "What's the weather in Paris right now?" --steps 64 --capacity 1024 --result '{"sky": "light rain", "temp_c": 11}' > "$out/tools.txt"
+ grep -qx "call 0: get_weather(city=Paris)" "$out/tools.txt" || { echo "$q: no get_weather(city=Paris) call" >&2; cat "$out/tools.txt" >&2; exit 1; }
+ grep -q "11" <(sed -n '/^turn 2/,$p' "$out/tools.txt") || { echo "$q: the answer does not use the tool's result" >&2; cat "$out/tools.txt" >&2; exit 1; }
+ echo "$q: tool call get_weather(city=Paris), and the answer uses its result"
 done
 # Step 5: parity with the packaged llama.cpp (a reference, never a runtime
 # dependency): token ids, every layer's residual stream, full logits and a

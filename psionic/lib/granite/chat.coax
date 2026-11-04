@@ -5,14 +5,22 @@
 // it refuses, and gr_chat renders the template's meaning for plain
 // conversations: an optional first system message, then user and
 // assistant turns, with enable_thinking, low_effort and the default
-// truncate_history_thinking. Tools, tool calls, tool results,
-// reasoning_content and other roles are refused, not approximated.
+// truncate_history_thinking. gr_chat_tools adds the template's tools: the
+// definitions in the system block, an assistant turn's tool calls and tool
+// results, and gr_tool_calls reads the calls back out of a reply.
+// reasoning_content, defer_loading and other roles are refused or left to
+// the caller, not approximated.
 #load "tokenizer.coax";
 #load "../chat-template.coax";
 #authority;
 
-GrChatStatus :: enum u8 {ok;role;size;utf8;empty;}
-GrMessage :: struct {role:string;content:string;}
+GrChatStatus :: enum u8 {ok;role;size;utf8;empty;tool;}
+// A tool call's argument as the template writes it: the caller renders the
+// value (a string as it is; a mapping or a list as JSON, `tojson`).
+GrArg :: struct {name:string;value:string;}
+GrToolCall :: struct {name:string;args:[]GrArg;}
+// calls: an assistant turn's tool calls (empty: none).
+GrMessage :: struct {role:string;content:string;calls:[]GrToolCall;}
 GrChat :: struct {status:GrChatStatus;written:int;cause:int;}
 GR_CHAT_MESSAGES :: 256;
 
@@ -83,7 +91,7 @@ gr_emit :: (w:GrWriter,s:string)->GrWriter {
     m[1].content=" <think> half";r=gr_chat(m[0..<3],false,true,false,out[..]);#assert gr_find_text(cast(string)out[0..<r.written],"assistant\n<think> half<|im_end|>",0)>0;
     s:=[2]GrMessage.[GrMessage.{role="system",content="S"},GrMessage.{role="user",content="u"}];r=gr_chat(s[..],false,true,false,out[..]);#assert cast(string)out[0..<r.written]=="<|im_start|>system\nS<|im_end|>\n<|im_start|>user\nu<|im_end|>\n";
     s[1].role="system";#assert gr_chat(s[..],false,true,false,out[..]).status==GrChatStatus.role && gr_chat(s[..],false,true,false,out[..]).cause==1;
-    s[1].role="tool";#assert gr_chat(s[..],false,true,false,out[..]).status==GrChatStatus.role;
+    s[1].role="developer";#assert gr_chat(s[..],false,true,false,out[..]).status==GrChatStatus.role;
     #assert gr_chat(s[0..<0],true,true,false,out[..]).status==GrChatStatus.empty && gr_chat(m[0..<1],true,true,false,out[0..<40]).status==GrChatStatus.size;
     bad:=[1]u8.[255];m[0].content=cast(string)bad[..];#assert gr_chat(m[0..<1],true,true,false,out[..]).status==GrChatStatus.utf8;
     w:=gr_emit(GrWriter.{out=out[0..<2]},"abc");#assert w.status==GrChatStatus.size && w.at==0;#assert gr_emit(w,"").status==GrChatStatus.size;
@@ -92,17 +100,56 @@ gr_emit :: (w:GrWriter,s:string)->GrWriter {
 }
 // book:begin render
 gr_chat :: (messages:[]GrMessage,generation:bool,thinking:bool,low_effort:bool,out:[]u8)->GrChat #export_c {
+    none:[1]string;return gr_chat_tools(messages,none[0..<0],generation,thinking,low_effort,out);
+}
+// The template's instructions after the tool definitions, verbatim.
+GR_TOOL_RULES :: "\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>";
+// A function or parameter name the call format can carry: non-empty, with no '>', '<' or line break.
+gr_tool_name :: (s:string)->bool {
+    if s.count==0 {return false;}
+    for i:0..<s.count {c:=s[i];if c=='>' || c=='<' || c=='\n' || c=='\r' {return false;}}
+    return true;
+}
+// tools: each definition as the template's tool_to_json writes it, one JSON
+// object a tool (the caller leaves out a deferred tool and the defer_loading
+// and strict keys, and writes `"key": value` pairs joined by ", ").
+gr_chat_tools :: (messages:[]GrMessage,tools:[]string,generation:bool,thinking:bool,low_effort:bool,out:[]u8)->GrChat #export_c {
     if messages.count>GR_CHAT_MESSAGES {return GrChat.{status=GrChatStatus.size};}
     if messages.count==0 {return GrChat.{status=GrChatStatus.empty};}
+    for t:0..<tools.count {if !gr_utf8(tools[t]) {return GrChat.{status=GrChatStatus.utf8,cause=t};}if tools[t].count==0 {return GrChat.{status=GrChatStatus.tool,cause=t};}}
     for i:0..<messages.count {m:=messages[i];
         if !gr_utf8(m.role) || !gr_utf8(m.content) {return GrChat.{status=GrChatStatus.utf8,cause=i};}
-        if m.role!="user" && m.role!="assistant" && !(m.role=="system" && i==0) {return GrChat.{status=GrChatStatus.role,cause=i};}
+        if m.role!="user" && m.role!="assistant" && m.role!="tool" && !(m.role=="system" && i==0) {return GrChat.{status=GrChatStatus.role,cause=i};}
+        if m.calls.count>0 && m.role!="assistant" {return GrChat.{status=GrChatStatus.tool,cause=i};}
+        for c:0..<m.calls.count {k:=m.calls[c];
+            if !gr_utf8(k.name) {return GrChat.{status=GrChatStatus.utf8,cause=i};}
+            if !gr_tool_name(k.name) {return GrChat.{status=GrChatStatus.tool,cause=i};}
+            for a:0..<k.args.count {
+                if !gr_utf8(k.args[a].name) || !gr_utf8(k.args[a].value) {return GrChat.{status=GrChatStatus.utf8,cause=i};}
+                if !gr_tool_name(k.args[a].name) {return GrChat.{status=GrChatStatus.tool,cause=i};}
+            }
+        }
     }
     first:=0;system:="";if messages[0].role=="system" {first=1;system=messages[0].content;}
     // An assistant turn before the last user turn drops its thinking.
     users_left:=0;for i:first..<messages.count {if messages[i].role=="user" {users_left+=1;}}
-    w:=GrWriter.{out=out};w=gr_emit(w,"<|im_start|>system\n");w=gr_emit(w,system);w=gr_emit(w,"<|im_end|>\n");
+    w:=GrWriter.{out=out};w=gr_emit(w,"<|im_start|>system\n");w=gr_emit(w,system);
+    if tools.count>0 {
+        if system.count>0 {w=gr_emit(w,"\n\n");}
+        w=gr_emit(w,"# Tools\n\nYou have access to the following functions:\n\n<tools>");
+        for t:0..<tools.count {w=gr_emit(w,"\n");w=gr_emit(w,tools[t]);}
+        w=gr_emit(w,"\n</tools>");w=gr_emit(w,GR_TOOL_RULES);
+    }
+    w=gr_emit(w,"<|im_end|>\n");
     for i:first..<messages.count {m:=messages[i];
+        if m.role=="tool" {
+            // Consecutive results share one user turn.
+            if i>first && messages[i-1].role!="tool" {w=gr_emit(w,"<|im_start|>user\n");}
+            w=gr_emit(w,"<tool_response>\n");w=gr_emit(w,m.content);w=gr_emit(w,"\n</tool_response>\n");
+            if i+1==messages.count || messages[i+1].role!="tool" {w=gr_emit(w,"<|im_end|>\n");}
+            continue;
+        }
+        if m.role=="assistant" && m.calls.count>0 {w=gr_calls(w,m,users_left>0);continue;}
         if m.role=="user" {
             users_left-=1;w=gr_emit(w,"<|im_start|>user\n");w=gr_emit(w,m.content);
             if users_left==0 && low_effort {w=gr_emit(w,"\n\n{reasoning effort: low}");}
@@ -122,6 +169,105 @@ gr_chat :: (messages:[]GrMessage,generation:bool,thinking:bool,low_effort:bool,o
     return GrChat.{written=w.at};
 }
 // book:end render
+// An assistant turn with tool calls: its content (the thinking an earlier turn
+// drops, as above), then each call in the format the system block asks for.
+gr_calls :: (w0:GrWriter,m:GrMessage,earlier:bool)->GrWriter {
+    w:=gr_emit(w0,"<|im_start|>assistant\n");c:=m.content;
+    tagged:=gr_find_text(c,"<think>",0)>=0 || gr_find_text(c,"</think>",0)>=0;
+    if !earlier {
+        if tagged {w=gr_emit(w,gr_trim(c));} else {w=gr_emit(w,"<think></think>");w=gr_emit(w,gr_trim_end(c));}
+    } else {
+        k:=c;close:=gr_find_last(c,"</think>");open:=gr_find_text(c,"<think>",0);
+        if close>=0 {k=c[close+8..<c.count];} else if open>=0 {k=c[0..<open];}
+        w=gr_emit(w,"<think></think>");w=gr_emit(w,gr_trim(k));
+    }
+    w=gr_emit(w,"\n");
+    for q:0..<m.calls.count {k:=m.calls[q];
+        w=gr_emit(w,"<tool_call>\n<function=");w=gr_emit(w,k.name);w=gr_emit(w,">\n");
+        for a:0..<k.args.count {w=gr_emit(w,"<parameter=");w=gr_emit(w,k.args[a].name);w=gr_emit(w,">\n");w=gr_emit(w,k.args[a].value);w=gr_emit(w,"\n</parameter>\n");}
+        w=gr_emit(w,"</function>\n</tool_call>\n");
+    }
+    return gr_emit(w,"<|im_end|>\n");
+}
+
+// ---- tool calls in a reply
+
+GrCallsStatus :: enum u8 {ok;none;malformed;size;}
+// A call read from a reply: its name and its arguments args[first..<first+count].
+GrParsedCall :: struct {name:string;first:int;count:int;}
+// text: what comes before the first call (the reply's words); at: where reading stopped.
+GrCalls :: struct {status:GrCallsStatus;calls:int;args:int;text:int;at:int;}
+gr_ws :: (s:string,p:int)->int {q:=p;while q<s.count && (s[q]==' ' || s[q]=='\n' || s[q]=='\t' || s[q]=='\r') {q+=1;}return q;}
+gr_starts :: (s:string,p:int,word:string)->bool {return p+word.count<=s.count && s[p..<p+word.count]==word;}
+// The calls in a reply, in order. Each is
+//   <tool_call> <function=NAME> (<parameter=KEY>\nVALUE\n</parameter>)* </function> </tool_call>
+// with any whitespace between the tags; a value keeps its own lines except
+// the one line break the format puts on each side. A reply ends at </think>
+// for this: calls inside the thinking are not read.
+gr_tool_calls :: (reply:string,calls:[]GrParsedCall,args:[]GrArg)->GrCalls #export_c {
+    base:=0;close:=gr_find_last(reply,"</think>");if close>=0 {base=close+8;}
+    s:=reply;r:=GrCalls.{text=s.count,at=base};
+    p:=gr_find_text(s,"<tool_call>",base);
+    if p<0 {r.status=GrCallsStatus.none;return r;}
+    r.text=p;
+    while p>=0 {
+        q:=gr_ws(s,p+11);
+        if !gr_starts(s,q,"<function=") {r.status=GrCallsStatus.malformed;r.at=q;return r;}
+        e:=gr_find_text(s,">",q+10);
+        if e<0 || !gr_tool_name(s[q+10..<e]) {r.status=GrCallsStatus.malformed;r.at=q;return r;}
+        if r.calls>=calls.count {r.status=GrCallsStatus.size;r.at=p;return r;}
+        call:=GrParsedCall.{name=s[q+10..<e],first=r.args};
+        q=gr_ws(s,e+1);
+        while gr_starts(s,q,"<parameter=") {
+            k:=gr_find_text(s,">",q+11);
+            if k<0 || !gr_tool_name(s[q+11..<k]) {r.status=GrCallsStatus.malformed;r.at=q;return r;}
+            v0:=k+1;if v0<s.count && s[v0]=='\n' {v0+=1;}
+            end:=gr_find_text(s,"</parameter>",v0);
+            if end<0 {r.status=GrCallsStatus.malformed;r.at=q;return r;}
+            v1:=end;if v1>v0 && s[v1-1]=='\n' {v1-=1;}
+            if r.args>=args.count {r.status=GrCallsStatus.size;r.at=q;return r;}
+            args[r.args]=GrArg.{name=s[q+11..<k],value=s[v0..<v1]};r.args+=1;call.count+=1;
+            q=gr_ws(s,end+12);
+        }
+        if !gr_starts(s,q,"</function>") {r.status=GrCallsStatus.malformed;r.at=q;return r;}
+        q=gr_ws(s,q+11);
+        if !gr_starts(s,q,"</tool_call>") {r.status=GrCallsStatus.malformed;r.at=q;return r;}
+        calls[r.calls]=call;r.calls+=1;r.at=q+12;
+        p=gr_find_text(s,"<tool_call>",r.at);
+        // Only whitespace may sit between calls and after the last one.
+        n:=gr_ws(s,r.at);if p<0 {if n<s.count {r.status=GrCallsStatus.malformed;r.at=n;}return r;}
+        if n!=p {r.status=GrCallsStatus.malformed;r.at=n;return r;}
+    }
+    return r;
+}
+#test "tool calls: one with two arguments after words, two in a row, none, and malformed ones refused" {
+    calls:[4]GrParsedCall;args:[8]GrArg;
+    t:="I'll look.\n<tool_call>\n<function=get_weather>\n<parameter=city>\nParis\n</parameter>\n<parameter=days>\n3\n</parameter>\n</function>\n</tool_call>";
+    r:=gr_tool_calls(t,calls[..],args[..]);
+    #assert r.status==GrCallsStatus.ok && r.calls==1 && r.args==2 && t[0..<r.text]=="I'll look.\n" && calls[0].name=="get_weather" && calls[0].count==2;
+    #assert args[0].name=="city" && args[0].value=="Paris" && args[1].name=="days" && args[1].value=="3";
+    two:="<think>\nplan <tool_call>\n</think>\n<tool_call>\n<function=a>\n</function>\n</tool_call>\n<tool_call>\n<function=b>\n<parameter=x>\nline 1\nline 2\n</parameter>\n</function>\n</tool_call>\n";
+    r=gr_tool_calls(two,calls[..],args[..]);
+    #assert r.status==GrCallsStatus.ok && r.calls==2 && calls[0].name=="a" && calls[0].count==0 && calls[1].name=="b" && args[0].value=="line 1\nline 2";
+    #assert gr_tool_calls("Paris is the capital.",calls[..],args[..]).status==GrCallsStatus.none;
+    #assert gr_tool_calls("<tool_call>\n<function=a>\n</tool_call>",calls[..],args[..]).status==GrCallsStatus.malformed;
+    #assert gr_tool_calls("<tool_call>\n<function=a b>\n<parameter=x>\n1\n</function>\n</tool_call>",calls[..],args[..]).status==GrCallsStatus.malformed;
+    #assert gr_tool_calls("<tool_call>\n<function=a>\n</function>\n</tool_call>\nand more",calls[..],args[..]).status==GrCallsStatus.malformed;
+    #assert gr_tool_calls("<tool_call><function=a></function></tool_call>",calls[..],args[..]).status==GrCallsStatus.ok;
+    #assert gr_tool_calls(t,calls[0..<0],args[..]).status==GrCallsStatus.size && gr_tool_calls(t,calls[..],args[0..<1]).status==GrCallsStatus.size;
+}
+#test "tool chats: definitions in the system block, a call and its result, refusals" {
+    out:[8192]u8;tools:=[1]string.["{\"name\": \"get_weather\", \"parameters\": {}}"];
+    a:=[1]GrArg.[GrArg.{name="city",value="Paris"}];c:=[1]GrToolCall.[GrToolCall.{name="get_weather",args=a[..]}];
+    m:=[4]GrMessage.[GrMessage.{role="user",content="Weather?"},GrMessage.{role="assistant",content="",calls=c[..]},GrMessage.{role="tool",content="sunny"},GrMessage.{role="tool",content="22 C"}];
+    r:=gr_chat_tools(m[..],tools[..],true,false,false,out[..]);#assert r.status==GrChatStatus.ok;
+    o:=cast(string)out[0..<r.written];
+    #assert gr_find_text(o,"<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"name\": \"get_weather\", \"parameters\": {}}\n</tools>\n\nIf you choose",0)==0;
+    #assert gr_find_text(o,"<|im_start|>assistant\n<think></think>\n<tool_call>\n<function=get_weather>\n<parameter=city>\nParis\n</parameter>\n</function>\n</tool_call>\n<|im_end|>\n<|im_start|>user\n<tool_response>\nsunny\n</tool_response>\n<tool_response>\n22 C\n</tool_response>\n<|im_end|>\n<|im_start|>assistant\n<think></think>",0)>0;
+    bad:=[1]GrToolCall.[GrToolCall.{name="a>b"}];m[1].calls=bad[..];#assert gr_chat_tools(m[..],tools[..],true,false,false,out[..]).status==GrChatStatus.tool;
+    m[1].calls=c[..];m[0].calls=c[..];#assert gr_chat_tools(m[..],tools[..],true,false,false,out[..]).status==GrChatStatus.tool && gr_chat_tools(m[..],tools[..],true,false,false,out[..]).cause==0;
+    empty:=[1]string.[""];m[0].calls=c[0..<0];#assert gr_chat_tools(m[..],empty[..],true,false,false,out[..]).status==GrChatStatus.tool;
+}
 #test "think tags at the start, a system block before the turns, the message limit" {
     out:[8192]u8;
     one:=[1]GrMessage.[GrMessage.{role="assistant",content="<think>x</think>y"}];r:=gr_chat(one[..],false,true,false,out[..]);

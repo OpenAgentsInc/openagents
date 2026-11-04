@@ -32,6 +32,19 @@ CHATS=[
  dict(messages=[dict(role='user',content='q1'),dict(role='assistant',content='<think>t</think>  '),dict(role='user',content='q2')],gen=True,kw=dict(enable_thinking=False)),
  dict(messages=[dict(role='system',content='only system')],gen=False,kw={}),
 ]
+# Tool chats (the template's tools, tool calls and tool results).
+MOVE=dict(type='function',function=dict(name='move_object',description='Move a placed object in the world by meters.',parameters=dict(type='object',properties=dict(object=dict(type='string'),dx=dict(type='number'),dz=dict(type='number')),required=['object','dx','dz'])))
+WEATHER=dict(type='function',function=dict(name='get_weather',description='Météo: the weather for a city, in °C.',parameters=dict(type='object',properties=dict(city=dict(type='string')),required=['city']),strict=True))
+def call(name,**a):return dict(type='function',function=dict(name=name,arguments=a))
+TOOL_CHATS=[
+ dict(messages=[dict(role='user',content='Move the oak tree two meters west.')],tools=[MOVE],gen=True,kw=dict(enable_thinking=False)),
+ dict(messages=[dict(role='system',content='You edit worlds.'),dict(role='user',content='Weather in Paris?')],tools=[MOVE,WEATHER],gen=True,kw={}),
+ dict(messages=[dict(role='user',content='Weather in Paris?'),dict(role='assistant',content='',tool_calls=[call('get_weather',city='Paris')]),dict(role='tool',content='{"sky": "sunny", "c": 22}')],tools=[WEATHER],gen=True,kw=dict(enable_thinking=False)),
+ dict(messages=[dict(role='user',content='Move it.'),dict(role='assistant',content='<think>\nwhich one\n</think>\nMoving both.',tool_calls=[call('move_object',object='oak',dx=-2,dz=0),call('move_object',object='well',dx=0.5,dz=1)]),dict(role='tool',content='ok'),dict(role='tool',content='ok'),dict(role='assistant',content='Done.'),dict(role='user',content='Thanks')],tools=[MOVE],gen=True,kw=dict(low_effort=True)),
+ dict(messages=[dict(role='user',content='a'),dict(role='assistant',content='<think>\nplan\n</think>\nLet me check.',tool_calls=[call('get_weather',city='Rome')])],tools=[WEATHER],gen=False,kw={}),
+ dict(messages=[dict(role='user',content='a'),dict(role='assistant',content='  checking  ',tool_calls=[call('move_object',object='crate',dx=1,dz=2)]),dict(role='tool',content='moved'),dict(role='user',content='b')],tools=[MOVE],gen=True,kw=dict(enable_thinking=False)),
+ dict(messages=[dict(role='user',content='a'),dict(role='assistant',content=None,tool_calls=[call('place',spec={'kind': 'lantern', 'at': [1, 2]},tags=['a','b'])])],tools=[MOVE],gen=False,kw={}),
+]
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def main():
     model=Path(sys.argv[1]);tok=Tokenizer.from_file(str(model/'tokenizer.json'))
@@ -46,6 +59,9 @@ def main():
     for c in CHATS:
         text=hf.apply_chat_template(c['messages'],tokenize=False,add_generation_prompt=c['gen'],**c['kw'])
         chats.append(dict(messages=c['messages'],generation=c['gen'],options=c['kw'],text=text,ids=tok.encode(text,add_special_tokens=False).ids))
+    for c in TOOL_CHATS:
+        text=hf.apply_chat_template(c['messages'],tools=c['tools'],tokenize=False,add_generation_prompt=c['gen'],**c['kw'])
+        chats.append(dict(messages=c['messages'],tools=c['tools'],generation=c['gen'],options=c['kw'],text=text,ids=tok.encode(text,add_special_tokens=False).ids))
     OUT.mkdir(parents=True,exist_ok=True)
     (OUT/'tokenizer-vectors.json').write_text(json.dumps(vectors,ensure_ascii=False,indent=1)+'\n')
     (OUT/'chat-vectors.json').write_text(json.dumps(chats,ensure_ascii=False,indent=1)+'\n')

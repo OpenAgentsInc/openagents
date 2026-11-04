@@ -9,12 +9,25 @@ from pathlib import Path
 FIX=Path(__file__).resolve().parents[1]/'fixtures/granite'
 def load():return json.loads((FIX/'tokenizer-vectors.json').read_text()),json.loads((FIX/'chat-vectors.json').read_text())
 def pack(s):b=s.encode();return struct.pack('<I',len(b))+b
+def tool_json(f):return '{'+', '.join(f'"{k}": '+json.dumps(v,ensure_ascii=False) for k,v in f.items() if k not in ('defer_loading','strict'))+'}'
 def cases(path):
     texts,chats=load();out=b''
     for v in texts:out+=struct.pack('<I',0)+pack(v['text'])
     for c in chats:
-        o=c['options'];out+=struct.pack('<I',1)+bytes([c['generation'],o.get('enable_thinking',True),o.get('low_effort',False)])+struct.pack('<I',len(c['messages']))
-        for m in c['messages']:out+=pack(m['role'])+pack(m['content'])
+        o=c['options'];flags=bytes([c['generation'],o.get('enable_thinking',True),o.get('low_effort',False)])
+        if 'tools' not in c:
+            out+=struct.pack('<I',1)+flags+struct.pack('<I',len(c['messages']))
+            for m in c['messages']:out+=pack(m['role'])+pack(m['content'])
+            continue
+        # kind 2: the tools as the template's tool_to_json writes them, then each message with its calls
+        out+=struct.pack('<I',2)+flags+struct.pack('<I',len(c['tools']))
+        for t in c['tools']:out+=pack(tool_json(t.get('function',t)))
+        out+=struct.pack('<I',len(c['messages']))
+        for m in c['messages']:
+            calls=m.get('tool_calls') or [];out+=pack(m['role'])+pack(m.get('content') or '')+struct.pack('<I',len(calls))
+            for k in calls:
+                f=k.get('function',k);a=f.get('arguments',{});out+=pack(f['name'])+struct.pack('<I',len(a))
+                for n,v in a.items():out+=pack(n)+pack(json.dumps(v,ensure_ascii=False) if isinstance(v,(dict,list)) else str(v))
     Path(path).write_bytes(out)
 def gguf_text(path):
     f=open(path,'rb');rd=f.read
@@ -37,7 +50,7 @@ def check(results,model=None,gguf=None):
     for c,line in zip(chats,lines[len(texts):]):
         parts=line.split();text=bytes.fromhex(parts[1]).decode() if len(parts)>1 and parts[1]!='refused' else None
         got=[int(x) for x in parts[2:]] if text is not None and 'roundtrip-failed' not in parts else None
-        if text!=c['text'] or got!=c['ids']:bad+=1;print('chat differs:',c['messages'],c['options'],repr(text))
+        if text!=c['text'] or got!=c['ids']:bad+=1;print('chat differs:',c['messages'],c['options'],repr(text),repr(c['text']))
     assert len(lines)==len(texts)+len(chats),(len(lines),len(texts)+len(chats))
     print(f'{len(texts)} texts and {len(chats)} chat renders: {len(texts)+len(chats)-bad} equal Hugging Face token for token')
     if model:

@@ -34,6 +34,28 @@ static int64_t prompt_ids(const GrFile *f, const char *prompt, const char *ids, 
     if (r.status) { fprintf(stderr, "tokenizer refused: %u\n", r.status); return -1; }
     return r.written;
 }
+/* A conversation with tools, rendered by gr_chat_tools and tokenized. */
+static int64_t chat_ids(const GrFile *f, coax_t_GrMessage *m, int64_t count, coax_string *tools, int64_t ntools, int think, int64_t *out, int64_t max) {
+    static uint8_t text[1 << 20];
+    coax_t_GrChat c = gr_chat_tools((coax_v_t_GrMessage){m, count}, (coax_v_string){tools, ntools}, 1, think, 0, (coax_v_u8){text, sizeof text});
+    if (c.status) { fprintf(stderr, "chat render refused: %u (message %lld)\n", c.status, (long long)c.cause); return -1; }
+    static int64_t symbols[4096];
+    coax_t_GrTokResult r = gr_encode(f->tables, (coax_string){(const char *)text, c.written}, (coax_v_s64){out, max}, (coax_v_s64){symbols, 4096});
+    if (r.status) { fprintf(stderr, "tokenizer refused: %u\n", r.status); return -1; }
+    return r.written;
+}
+/* Greedy tokens until the end token or steps; the reply's text into reply (NUL-ended). */
+static int64_t reply(GrSession *s, const GrFile *f, int64_t next, int64_t steps, char *reply, int64_t cap, int64_t *ids, int64_t *made) {
+    *made = 0;
+    for (int64_t step = 0; step < steps && next >= 0; step++) {
+        if (next == f->binding.shape.eos) break;
+        ids[(*made)++] = next;
+        if (gr_session_eval(s, &next, 1, &next, NULL, NULL, NULL)) { fprintf(stderr, "%s\n", gr_session_error(s)); return -1; }
+    }
+    coax_t_GrTokResult d = gr_decode(f->tables, (coax_v_s64){ids, *made}, (coax_v_u8){(uint8_t *)reply, cap - 1});
+    if (d.status) { fprintf(stderr, "decode refused %u\n", d.status); return -1; }
+    reply[d.written] = 0; return d.written;
+}
 static void print_text(const GrFile *f, const int64_t *ids, int64_t n) {
     static uint8_t out[1 << 20]; coax_t_GrTokResult d = gr_decode(f->tables, (coax_v_s64){(int64_t *)ids, n}, (coax_v_u8){out, sizeof out});
     if (d.status) { printf("(decode refused %u)\n", d.status); return; }
@@ -52,20 +74,61 @@ static double distance(const float *a, const float *b, int64_t n) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 4) { fprintf(stderr, "usage: granite_run MODEL.gguf KERNELS.metal generate|compare|dump [options]\n"); return 2; }
-    const char *model = argv[1], *mode = argv[3], *prompt = "Hello", *ids_text = NULL, *out_path = NULL; int cpu = 0, raw = 0; int64_t steps = 16, capacity = 4096;
+    if (argc < 4) { fprintf(stderr, "usage: granite_run MODEL.gguf KERNELS.metal generate|compare|dump|tools [options]\n"); return 2; }
+    const char *model = argv[1], *mode = argv[3], *prompt = "Hello", *ids_text = NULL, *out_path = NULL, *tools_path = NULL, *result = NULL; int cpu = 0, raw = 0, think = 0; int64_t steps = 16, capacity = 4096;
     for (int i = 4; i < argc; i++) {
         if (!strcmp(argv[i], "--cpu")) cpu = 1; else if (!strcmp(argv[i], "--raw")) raw = 1;
         else if (i + 1 < argc && !strcmp(argv[i], "--prompt")) prompt = argv[++i]; else if (i + 1 < argc && !strcmp(argv[i], "--ids")) ids_text = argv[++i];
         else if (i + 1 < argc && !strcmp(argv[i], "--steps")) steps = atoll(argv[++i]); else if (i + 1 < argc && !strcmp(argv[i], "--capacity")) capacity = atoll(argv[++i]);
         else if (i + 1 < argc && !strcmp(argv[i], "--out")) out_path = argv[++i];
+        else if (i + 1 < argc && !strcmp(argv[i], "--tools")) tools_path = argv[++i]; else if (i + 1 < argc && !strcmp(argv[i], "--result")) result = argv[++i];
+        else if (!strcmp(argv[i], "--think")) think = 1;
         else { fprintf(stderr, "unknown option %s\n", argv[i]); return 2; }
     }
     size_t source_bytes = 0; char *source = slurp(argv[2], &source_bytes); if (!source) { fprintf(stderr, "cannot read %s\n", argv[2]); return 1; }
     char error[512]; GrSession *s;
     if (gr_session_open(model, capacity, cpu && strcmp(mode, "compare") ? GR_CPU : GR_METAL, source, source_bytes, &s, error, sizeof error)) { fprintf(stderr, "%s\n", error); return 1; }
     const GrFile *f = gr_session_file(s); int64_t vocab = f->binding.shape.vocab, width = f->binding.shape.width, layers = f->binding.shape.layers;
-    static int64_t ids[1 << 15]; int64_t n = strcmp(mode, "bench-kernels") ? prompt_ids(f, prompt, ids_text, raw, ids, 1 << 14) : 1; if (n < 1) return 1;
+    static int64_t ids[1 << 15];
+    if (!strcmp(mode, "tools")) {
+        /* tools --tools FILE (one definition a line, as the template's tool_to_json writes it) --prompt TEXT
+           [--result TEXT] [--think]: the model's reply and its calls; with --result, each call answered with
+           TEXT and the model's next reply. The second turn reuses the first's cache when it extends it. */
+        size_t tb = 0; char *tt = tools_path ? slurp(tools_path, &tb) : NULL; if (!tt) { fprintf(stderr, "tools needs --tools FILE\n"); return 2; }
+        coax_string tools[64]; int64_t nt = 0;
+        for (char *line = strtok(tt, "\n"); line && nt < 64; line = strtok(NULL, "\n")) if (*line) tools[nt++] = (coax_string){line, (int64_t)strlen(line)};
+        coax_t_GrMessage m[3] = {{{"user", 4}, {prompt, (int64_t)strlen(prompt)}}};
+        int64_t n = chat_ids(f, m, 1, tools, nt, think, ids, 1 << 14); if (n < 1) return 1;
+        printf("turn 1: %lld prompt tokens, %lld tools\n", (long long)n, (long long)nt);
+        int64_t next, made; double t; static char text[1 << 16]; static int64_t got[4096];
+        if (gr_session_eval(s, ids, n, &next, NULL, NULL, &t)) { fprintf(stderr, "%s\n", gr_session_error(s)); return 1; }
+        printf("prefill %.1f s\n", t);
+        if (reply(s, f, next, steps, text, sizeof text, got, &made) < 0) return 1;
+        printf("reply:\n%s\n", text);
+        static coax_t_GrParsedCall calls[16]; static coax_t_GrArg args[64];
+        coax_t_GrCalls r = gr_tool_calls((coax_string){text, (int64_t)strlen(text)}, (coax_v_t_GrParsedCall){calls, 16}, (coax_v_t_GrArg){args, 64});
+        if (r.status) { printf("calls: %s\n", r.status == 1 ? "none" : r.status == 2 ? "malformed" : "too many"); gr_session_close(s); return r.status == 1 ? 0 : 1; }
+        for (int64_t c = 0; c < r.calls; c++) {
+            printf("call %lld: %.*s(", (long long)c, (int)calls[c].name.count, calls[c].name.data);
+            for (int64_t a = 0; a < calls[c].count; a++) { coax_t_GrArg *x = &args[calls[c].first + a]; printf("%s%.*s=%.*s", a ? ", " : "", (int)x->name.count, x->name.data, (int)x->value.count, x->value.data); }
+            printf(")\n");
+        }
+        if (!result) { gr_session_close(s); return 0; }
+        /* Turn 2: the reply as an assistant turn with its calls, one result a call. */
+        static coax_t_GrToolCall tc[16]; for (int64_t c = 0; c < r.calls; c++) tc[c] = (coax_t_GrToolCall){calls[c].name, (coax_v_t_GrArg){args + calls[c].first, calls[c].count}};
+        static coax_t_GrMessage m2[18]; m2[0] = m[0];
+        m2[1] = (coax_t_GrMessage){{"assistant", 9}, {text, r.text}, (coax_v_t_GrToolCall){tc, r.calls}};
+        for (int64_t c = 0; c < r.calls; c++) m2[2 + c] = (coax_t_GrMessage){{"tool", 4}, {result, (int64_t)strlen(result)}};
+        static int64_t ids2[1 << 15]; int64_t n2 = chat_ids(f, m2, 2 + r.calls, tools, nt, think, ids2, 1 << 14); if (n2 < 1) return 1;
+        int64_t had = n + made, same = 0; while (same < had && same < n2 && ids2[same] == (same < n ? ids[same] : got[same - n])) same++;
+        if (same == had) printf("turn 2: %lld tokens, %lld of them already in the cache\n", (long long)n2, (long long)had);
+        else { printf("turn 2: %lld tokens, the cache shares %lld of %lld: evaluated from the start\n", (long long)n2, (long long)same, (long long)had); gr_session_reset(s); had = 0; }
+        if (gr_session_eval(s, ids2 + had, n2 - had, &next, NULL, NULL, &t)) { fprintf(stderr, "%s\n", gr_session_error(s)); return 1; }
+        printf("prefill %.1f s\n", t);
+        if (reply(s, f, next, steps, text, sizeof text, got, &made) < 0) return 1;
+        printf("reply:\n%s\n", text); gr_session_close(s); return 0;
+    }
+    int64_t n = strcmp(mode, "bench-kernels") ? prompt_ids(f, prompt, ids_text, raw, ids, 1 << 14) : 1; if (n < 1) return 1;
     printf("prompt %lld tokens:", (long long)n); for (int64_t i = 0; i < n; i++) printf(" %lld", (long long)ids[i]); printf("\n");
     int code = 0;
     if (!strcmp(mode, "bench-kernels")) {

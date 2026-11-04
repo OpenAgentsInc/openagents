@@ -1,0 +1,2 @@
+{"name": "move_object", "description": "Move a placed object in the world by meters along x (east) and z (south).", "parameters": {"type": "object", "properties": {"object": {"type": "string", "description": "The object's name"}, "dx": {"type": "number"}, "dz": {"type": "number"}}, "required": ["object", "dx", "dz"]}}
+{"name": "get_weather", "description": "The current weather for a city.", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}

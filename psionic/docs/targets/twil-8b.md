@@ -174,3 +174,16 @@ Without them the gate runs only the owned tiny model.
 - **Our eval:** an evaluation by OpenAgents to inform a product decision is
   arguably commercial use. Ask the owner or counsel before running it,
   or ask webAI for an evaluation or commercial license.
+
+## Status
+
+- 2026-11-04: #12870 steps 1–5 landed (Granite 4.2 8B on Metal, parity with
+  llama.cpp). Tool calling: `gr_chat_tools` renders tool definitions, an
+  assistant turn's calls and tool results exactly as the published template
+  does (all 18 recorded chat renders, 7 with tools, equal Hugging Face token
+  for token), and `gr_tool_calls` reads `<tool_call>` blocks out of a reply.
+  `granite_run tools` runs the loop on Metal: Granite 4.2 8B calls
+  `get_weather(city=Paris)`, takes the result as a tool turn reusing 401 of
+  433 tokens from the cache, and answers with it, on Q4_K_M and Q8_0. TwIL-8B
+  uses the same template byte for byte.
+
