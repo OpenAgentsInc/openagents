@@ -2127,7 +2127,8 @@ function draw(now) {
   const sorted = gpu.sort && gpu.particles && draws ? sortFrame(encoder, x) : false;
   const timed = sorted && gpu.timing && !gpu.timer.busy;
   const target = (view) => ({ view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } });
-  const screen = () => target(context.getCurrentTexture().createView());
+  const texture = context.getCurrentTexture();
+  const screen = () => target(texture.createView());
   let pass = encoder.beginRenderPass({ colorAttachments: post ? [target(gpu.light.createView()), target(gpu.aux.createView())] : [screen()],
     ...(gpu.scene || gpu.surface ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: post ? "store" : "discard" } } : {}),
     ...(timed ? { timestampWrites: { querySet: gpu.timer.set, beginningOfPassWriteIndex: 2, endOfPassWriteIndex: 3 } } : {}) });
@@ -2206,13 +2207,14 @@ function draw(now) {
     encoder.resolveQuerySet(gpu.timer.set, 0, 4, gpu.timer.resolve, 0);
     encoder.copyBufferToBuffer(gpu.timer.resolve, 0, gpu.timer.read, 0, 32);
   }
-  const texture = context.getCurrentTexture();
-  const readback = probe && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;
+  const readback = captureRequested && probeArmed && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;
   device.queue.submit([encoder.finish()]);
   if (timed) timingRead(gpu.timer);
   if (gpu.snap) { const take = gpu.snap; gpu.snap = null; take(); }   // card.js: this frame, before it is shown
-  if (draws && shaderLoads === 0 && installedGeneration === wanted && !globalThis.coaxial.sceneReady && pendingSceneEpoch !== sceneEpoch) {
-    let nonempty = false;
+  if (shaderLoads === 0 && installedGeneration === wanted && !globalThis.coaxial.sceneReady && pendingSceneEpoch !== sceneEpoch) {
+    // A stroke-only world declares readiness in Coax after writing its world
+    // geometry. Mesh worlds still require a nonempty admitted scene draw.
+    let nonempty = !gpu.scene && x.coaxial_scene_ready?.(arena.state) === 1;
     for (let i = 0; i < draws; i++) if (list[i * 4 + 1] && list[i * 4 + 3]) { nonempty = true; break; }
     if (nonempty) {
       const epoch = sceneEpoch, generation = installedGeneration, frameEngine = engine, frameGpu = gpu, frameScene = gpu.scene;
@@ -2646,18 +2648,17 @@ async function report({ buffer, row, pixelBytes = 4, rendererSnapshot, validatio
   const validated = validation ? await validation : null;
   if (validated && !validated.ok) { buffer.destroy();throw Error(validated.error); }
   await buffer.mapAsync(GPUMapMode.READ);
-  const px = new Uint8Array(buffer.getMappedRange());
+  const mapped = new Uint8Array(buffer.getMappedRange());
   const w = texture.width, h = texture.height, cols = 110, rows = 14;
-  if (gpu.renderer) {
-    if (textureCapture) rendererSnapshot.textures.push(...await textureCapture);
-    const tight = new Uint8Array(w * h * pixelBytes);
-    for (let y = 0; y < h; y++) tight.set(px.subarray(y * row, y * row + w * pixelBytes), y * w * pixelBytes);
-    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", tight));
-    globalThis.coaxial.renderCapture = { schema: "aethyr.render.readback.v1", width: w, height: h, format: texture.format, frame_validation: validated,
-      row_bytes: w * pixelBytes, sha256: [...digest].map((b) => b.toString(16).padStart(2, "0")).join(""), bytes: Array.from(tight),
-      ...rendererSnapshot };
-    buffer.unmap();buffer.destroy();return;
-  }
+  if (textureCapture && rendererSnapshot) rendererSnapshot.textures.push(...await textureCapture);
+  const px = new Uint8Array(w * h * pixelBytes);
+  for (let y = 0; y < h; y++) px.set(mapped.subarray(y * row, y * row + w * pixelBytes), y * w * pixelBytes);
+  buffer.unmap();buffer.destroy();
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", px));
+  globalThis.coaxial.renderCapture = { schema: "aethyr.render.readback.v1", width: w, height: h, format: texture.format, frame_validation: validated,
+    row_bytes: w * pixelBytes, sha256: [...digest].map((b) => b.toString(16).padStart(2, "0")).join(""), bytes: Array.from(px),
+    ...rendererSnapshot };
+  if (gpu.renderer || pixelBytes !== 4) return;
   const x0 = Math.floor(w * 0.3), x1 = Math.floor(w * 0.7), y0 = Math.floor(h * 0.47), y1 = Math.floor(h * 0.53);
   let art = "", peak = 0, sum = 0;
   for (let r = 0; r < rows; r++) {
@@ -2666,7 +2667,7 @@ async function report({ buffer, row, pixelBytes = 4, rendererSnapshot, validatio
       let m = 0;
       for (let y = y0 + Math.floor((y1 - y0) * r / rows); y < y0 + Math.floor((y1 - y0) * (r + 1) / rows); y++)
         for (let x = x0 + Math.floor((x1 - x0) * c / cols); x < x0 + Math.floor((x1 - x0) * (c + 1) / cols); x++)
-          m = Math.max(m, px[y * row + x * 4 + 1]);
+          m = Math.max(m, px[(y * w + x) * pixelBytes + 1]);
       line += " .:-=+*#%@"[Math.min(9, Math.floor(m / 26))];
     }
     art += line + "\n";

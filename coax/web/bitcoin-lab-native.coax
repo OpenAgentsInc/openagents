@@ -1,0 +1,20 @@
+// Compiled native smoke of the real realm frame, independent of test evaluation.
+#import "Basic";
+#load "../../apps/openagents-web/bitcoin-lab.coax";
+tool_main :: ()->int #export_c {
+  s:[1]BitcoinLab;vertices:[LAB_VERTICES*12]f32;uniforms:[LAB_UNIFORMS]f32;
+  n:=lab_frame(s[..],vertices[..],uniforms[..],1440,900,1,0,false);
+  print("Bitcoin Lab native: % vertices, chapter %, refusals %\n",n,lab_guard(s[..],1),lab_guard(s[..],7));
+  if n<=0 || n>LAB_BUDGET.vertices || lab_guard(s[..],7)!=0 {return 1;}
+  widths:=[3]f32.[320,390,1440];heights:=[3]f32.[568,844,900];dprs:=[3]f32.[1,3,2];peak:=n;
+  for screen:0..<3 {
+    for chapter:0..<125 {
+      s[0].chapter=chapter;s[0].selected=LAB_CHAPTERS[chapter].station;
+      used:=lab_frame(s[..],vertices[..],uniforms[..],widths[screen]*dprs[screen],heights[screen]*dprs[screen],dprs[screen],0,false);
+      if used>peak {peak=used;}
+      if used<=0 || used>LAB_BUDGET.vertices || !budget_ok(s[0].meter[0]) || !lab_scene_ready(s[..]) {return 1;}
+    }
+  }
+  print("PASS: 375 chapter/layout frames, peak % vertices, state % bytes, arena % bytes\n",peak,size_of(BitcoinLab),budget_arena_bytes(size_of(BitcoinLab),LAB_VERTICES,12,LAB_UNIFORMS));
+  return 0;
+}

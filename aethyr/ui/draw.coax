@@ -8,7 +8,7 @@
 
 VERTEX_FLOATS :: 12;
 // quiet: the instruments without their specimen captions, for a consumer that labels them itself.
-HdPen :: struct { d:f32; cyan:bool; top:f32; bottom:f32; quiet:bool=false; }
+HdPen :: struct { d:f32; cyan:bool; top:f32; bottom:f32; quiet:bool=false; sans:bool=true; }
 HdRow :: struct { label:string; value:string; status:int=1; }
 HdMeter :: struct { label:string; value:f32; readout:string; }
 HdMessage :: struct { channel:string; title:string; line1:string; line2:string; footer:string; }
@@ -41,6 +41,12 @@ HdAlert :: struct { title:string; detail:string; active:bool; }
   loud:=hd_heading(out[..],0,b,p,2);hush:=hd_heading(out[..],0,b,q,2);
   #assert hush>0 && hush<loud;
 }
+#test "HUD labels can use Filament without requiring a glyph texture" {
+  out:[36000]f32;p:=HdPen.{d=1,top=0,bottom=200,sans=false};
+  n:=hd_text_fit(out[..],0,"Readable 42",10,40,12,180,p,0);
+  #assert n>0 && n<=3000 && n%6==0;
+  for i:0..<n {#assert out[i*VERTEX_FLOATS+11]<3.5;}
+}
 
 #test "advisories draw their supplied active or acknowledged state" {
   out:[36000]f32;p:=HdPen.{d=1,cyan=true,top=0,bottom=1000};
@@ -70,7 +76,7 @@ lit :: (out:[]f32,at:int,ax:f32,ay:f32,bx:f32,by:f32,core:f32,light:f32,glow:f32
 
 hd_ink :: (p:HdPen,kind:int)->Ink {
   k:=Ink.{core=0.48*p.d,light=0.92,glow=2*p.d,red=HUD_GREY_WHITE,green=HUD_GREY_WHITE,
-    blue=HUD_GREY_WHITE,scale=p.d,sans=true};
+    blue=HUD_GREY_WHITE,scale=p.d,sans=p.sans};
   if kind==1 {k.red=HUD_GREY_MID;k.green=HUD_GREY_MID;k.blue=HUD_GREY_MID;}
   if kind==3 {k.red=HUD_GREY_DIM;k.green=HUD_GREY_DIM;k.blue=HUD_GREY_DIM;}
   if kind==2 && p.cyan {k.red=HUD_ACCENT_R;k.green=HUD_ACCENT_G;k.blue=HUD_ACCENT_B;}
@@ -91,7 +97,7 @@ hd_line :: (out:[]f32,at:int,ax:f32,ay:f32,bx:f32,by:f32,p:HdPen,kind:int,light:
 
 hd_text :: (out:[]f32,at:int,text:string,x:f32,y:f32,cap:f32,p:HdPen,kind:int)->int {
   if p.quiet || y-cap<p.top || y+3>p.bottom || at<0 {return at;}
-  k:=hd_ink(p,kind);k.sans=cap<15;
+  k:=hd_ink(p,kind);k.sans=cap<15 && p.sans;
   return draw_text(out,at,text,x*p.d,y*p.d,cap*p.d,0.22,0.72,k,false,false);
 }
 
@@ -99,7 +105,7 @@ hd_text :: (out:[]f32,at:int,text:string,x:f32,y:f32,cap:f32,p:HdPen,kind:int)->
 // both the fitted prefix and the actual rendered advance, at every DPR.
 hd_text_fit :: (out:[]f32,at:int,text:string,x:f32,y:f32,cap:f32,width:f32,p:HdPen,kind:int)->int {
   if width<=0 {return at;}
-  k:=hd_ink(p,kind);k.sans=cap<15;k.scale=1;
+  k:=hd_ink(p,kind);k.sans=cap<15 && p.sans;k.scale=1;
   if ink_width(text,cap,0.22,0.72,k)<=width {return hd_text(out,at,text,x,y,cap,p,kind);}
   dots:=ink_width("...",cap,0.22,0.72,k);
   if dots>width {return at;}

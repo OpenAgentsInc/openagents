@@ -14,6 +14,7 @@ bun "$here/../../coax/web/connect-pylon-page.ts" --check
 python3 "$here/../../coax/web/tests/wasm_isolation.py"
 # The realm host's table (realms.json): the galaxy's worlds into realms.coax
 # and each realm's page (docs/verse/realm-host.md).
+(cd "$here/../.." && coax/web/tool.sh bitcoin-lab-map)
 bun "$here/../../coax/web/realms.ts"
 # wasm.sh keys its cache of each unit's C and object by the unit's #load closure
 # (coax/web/tool.sh wasm-size sources): build that tool once here, before the
@@ -109,6 +110,8 @@ fixture=$!
 # /worlds/waterlab: the water system's test scene (docs/verse/water.md), the spectral sea in Coax.
 "$here/../../coax/web/wasm.sh" "$here/waterlab.coax" "$here/waterlab-face.c" "$here/build/waterlab.wasm" &
 waterlab=$!
+"$here/../../coax/web/wasm.sh" "$here/bitcoin-lab.coax" "$here/bitcoin-lab-face.c" "$here/build/bitcoin-lab.wasm" &
+bitcoin_lab=$!
 # /worlds/anime-lab: direct an anime (docs/verse/anime-lab.md): the director and stage (verse/anime/), the
 # anime style's block from its own library (animelab-style.coax). (animelab.wgsl loads verse/style.coax in gpu/animelab.coax.)
 "$here/../../coax/web/wasm.sh" "$here/animelab.coax" "$here/animelab-face.c" "$here/build/animelab.wasm" "$here/animelab-style.coax" &
@@ -262,6 +265,7 @@ wait "$garden"
 wait "$characters"
 wait "$fixture"
 wait "$waterlab"
+wait "$bitcoin_lab"
 wait "$animelab"
 wait "$droprealm"
 wait "$builder"

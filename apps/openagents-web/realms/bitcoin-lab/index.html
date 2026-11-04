@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bitcoin Lab · OpenAgents</title>
+<meta name="description" content="An unlisted Bitcoin learning workbench: a walkable fixture Grid, seven stations and the book's 125 chapters.">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OpenAgents">
+<meta property="og:title" content="Bitcoin Lab">
+<meta property="og:description" content="An unlisted Bitcoin learning workbench: a walkable fixture Grid, seven stations and the book's 125 chapters.">
+<meta property="og:url" content="https://openagents.com/worlds/bitcoin-lab">
+<meta property="og:image" content="https://openagents.com/og/realms/bitcoin-lab.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Bitcoin Lab: a still of the world, with its name">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Bitcoin Lab">
+<meta name="twitter:description" content="An unlisted Bitcoin learning workbench: a walkable fixture Grid, seven stations and the book's 125 chapters.">
+<meta name="twitter:image" content="https://openagents.com/og/realms/bitcoin-lab.jpg">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate" type="text/markdown" href="/worlds/bitcoin-lab/index.md">
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
+<style>
+html,body{margin:0;height:100%;background:#000;color:#ededed}
+body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
+canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+canvas[data-cursor=pointer]{cursor:pointer}
+main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
+html:not(.gpu) body{overflow:auto}
+a{color:#ff8c1f}
+/* When the GPU draws the page, the text stays for agents, search engines and screen readers only. */
+.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+#coaxial-load{position:fixed;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;padding:0 16px;background:#000;color:#f0f0f0;font:500 11px/1.5 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;transition:opacity .35s ease-out}
+#coaxial-load.gone{opacity:0;pointer-events:none}
+#coaxial-load .lf{position:relative;box-sizing:border-box;width:min(360px,100%);padding:22px 22px 20px;background:rgba(240,240,240,.28);clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px))}
+#coaxial-load .lf::before{content:"";position:absolute;inset:1px;background:#000;clip-path:polygon(0 0,calc(100% - 11.6px) 0,100% 11.6px,100% 100%,11.6px 100%,0 calc(100% - 11.6px))}
+#coaxial-load .lf>*{position:relative}
+#coaxial-load .lf>s{position:absolute;width:22px;height:13px;border:0 solid #f0f0f0}
+#coaxial-load .lf>.c1{top:0;left:0;border-width:1px 0 0 1px}
+#coaxial-load .lf>.c2{right:0;bottom:0;border-width:0 1px 1px 0}
+#coaxial-load .ln{display:block;margin:0 0 18px;font:600 16px/1.3 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;letter-spacing:.2em;overflow-wrap:anywhere}
+#coaxial-load .lr{display:grid;grid-template-columns:1fr auto;column-gap:12px}
+#coaxial-load .lb{grid-column:1/3;display:block;height:2px;margin:0 0 10px;background:rgba(240,240,240,.14);overflow:hidden}
+#coaxial-load .lb i{display:block;height:100%;background:hsl(180,68.07%,53.33%);transform:scaleX(0);transform-origin:0 50%;transition:transform .2s linear}
+#coaxial-load .lt{color:#c7c7c7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#coaxial-load .lp{color:#999;font-variant-numeric:tabular-nums}
+#coaxial-load .le,#coaxial-load .la{display:none}
+html:not(.gpu) #coaxial-load .lr,#coaxial-load[data-state=fail] .lr{display:none}
+html:not(.gpu) #coaxial-load .le,#coaxial-load[data-state=fail] .le{display:block;color:#f0f0f0}
+html:not(.gpu) #coaxial-load .la,#coaxial-load[data-state=fail] .la{display:inline-block;margin-top:16px;padding:8px 12px;border:1px solid rgba(240,240,240,.45);color:#f0f0f0;text-decoration:none}
+#coaxial-load .la:hover,#coaxial-load .la:focus-visible{color:hsl(180,68.07%,53.33%);border-color:hsl(180,68.07%,53.33%);outline:none}
+@media (prefers-reduced-motion:reduce){#coaxial-load,#coaxial-load .lb i{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<!-- loader: coax/web/loader.js -->
+<div id="coaxial-load" role="progressbar" aria-label="Loading Bitcoin Lab" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="lf"><s class="c1"></s><s class="c2"></s>
+<b class="ln">Bitcoin Lab</b>
+<div class="lr"><i class="lb"><i></i></i><span class="lt">ENGINE</span><span class="lp">0%</span></div>
+<span class="le">NO WEBGPU IN THIS BROWSER</span>
+<a class="la" href="/worlds/bitcoin-lab/index.md">READ ABOUT Bitcoin Lab</a>
+</div></div>
+<!-- /loader -->
+<main>
+<h1>Bitcoin Lab</h1><p><a href="/worlds/bitcoin-lab/index.md">Bitcoin Lab</a></p>
+<h2>Chapter map</h2><p>FIXTURE / UNLISTED. No node snapshot, network, cursor or validation claim. Each chapter has a primary station. Book status and visual exercises are separate. WASD walks; left and right arrows turn; 1-7 selects stations; PageUp/PageDown changes chapter; M toggles the map. Touch: left side walks, right side looks. Escape exits to Worlds.</p><table><caption>All 125 chapters</caption><thead><tr><th>Chapter</th><th>Station</th><th>Book status</th><th>Visual exercise</th></tr></thead><tbody>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch001-bytes-hex-and-base64.md">1. Bytes, hex and base64</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch002-big-integers-in-fixed-limbs.md">2. Big integers in fixed limbs</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch003-constant-time-rules.md">3. Constant-time rules and secrets</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch004-sha-256.md">4. SHA-256</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch005-sha-256d-and-tagged-hashes.md">5. SHA-256d and tagged hashes</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch006-ripemd-160-and-hash160.md">6. RIPEMD-160 and HASH160</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch007-sha-512.md">7. SHA-512</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch008-hmac-sha256.md">8. HMAC-SHA256</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch009-hkdf.md">9. HKDF</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch010-siphash-2-4.md">10. SipHash-2-4</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch011-chacha20.md">11. ChaCha20</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch012-poly1305-and-chacha20-poly1305.md">12. Poly1305 and ChaCha20-Poly1305</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch013-field-arithmetic-mod-p.md">13. Field arithmetic mod p</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch014-scalars-mod-n.md">14. Scalars mod n</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch015-the-secp256k1-group-law.md">15. The secp256k1 group law</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch016-scalar-multiplication.md">16. Scalar multiplication</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch017-point-encodings-compressed-uncompressed-and-x-only.md">17. Point encodings: compressed, uncompressed and x-only</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch018-keys-and-randomness.md">18. Keys and randomness</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch019-verify-ecdsa.md">19. Verify ECDSA</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch020-sign-with-ecdsa.md">20. Sign with ECDSA</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch021-strict-der.md">21. Strict DER</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch022-public-key-recovery-and-signed-messages.md">22. Public key recovery and signed messages</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch023-verify-a-schnorr-signature.md">23. Verify a Schnorr signature</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch024-sign-with-schnorr.md">24. Sign with Schnorr</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch025-batch-verification.md">25. Batch verification</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch026-base58check.md">26. Base58Check</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch027-bech32.md">27. Bech32</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch028-bech32m.md">28. Bech32m</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch029-addresses.md">29. Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch030-output-descriptors-and-their-checksum.md">30. Output descriptors and their checksum</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch031-seed-phrases.md">31. Seed phrases</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch032-hierarchical-deterministic-keys.md">32. Hierarchical deterministic keys</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch033-derivation-paths.md">33. Derivation paths</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch034-transactions-and-their-serialization.md">34. Transactions and their serialization</a></td><td>Transactions/UTXOs</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch035-txids-wtxids-and-malleability.md">35. Txids, wtxids and malleability</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch036-the-script-interpreter.md">36. The script interpreter</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch037-legacy-signature-hashes.md">37. Legacy signature hashes</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch038-segwit-v0-signature-hashes.md">38. Segwit v0 signature hashes</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch039-timelocks.md">39. Timelocks</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch040-weight-vsize-and-fees.md">40. Weight, vsize and fees</a></td><td>Transactions/UTXOs</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch041-the-key-tweak-and-the-key-path.md">41. The key tweak and the key path</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch042-script-trees-tapleaves-and-tapbranches.md">42. Script trees: tapleaves and tapbranches</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch043-taproot-signature-hashes.md">43. Taproot signature hashes</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch044-tapscript.md">44. Tapscript</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch045-control-blocks-and-script-path-spends.md">45. Control blocks and script-path spends</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch046-merkle-trees-and-the-duplicate-leaf-flaw.md">46. Merkle trees and the duplicate-leaf flaw</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch047-block-headers-and-proof-of-work.md">47. Block headers and proof of work</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch048-compact-targets-retargeting-and-chainwork.md">48. Compact targets, retargeting and chainwork</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch049-the-witness-commitment.md">49. The witness commitment</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch050-chain-parameters-mainnet-testnet4-signet-and-regtest.md">50. Chain parameters: mainnet, testnet4, signet and regtest</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch051-header-rules-time-versions-and-deployments.md">51. Header rules: time, versions and deployments</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch052-transaction-checks-outside-script.md">52. Transaction checks outside script</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch053-sigops-weight-and-block-limits.md">53. Sigops, weight and block limits</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch054-the-subsidy-and-the-coinbase.md">54. The subsidy and the coinbase</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch055-script-flags-by-height-and-their-exceptions.md">55. Script flags by height and their exceptions</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch056-the-utxo-set-and-muhash3072.md">56. The UTXO set and MuHash3072</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch057-validate-a-block-every-consensus-rule.md">57. Validate a block: every consensus rule</a></td><td>Transactions/UTXOs</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch058-connect-and-disconnect-a-block.md">58. Connect and disconnect a block</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch059-the-block-index-and-the-most-work-chain.md">59. The block index and the most-work chain</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch060-reorganizations-and-invalid-chains.md">60. Reorganizations and invalid chains</a></td><td>Chain</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch061-block-files-and-undo-files.md">61. Block files and undo files</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch062-a-key-value-store-for-the-chainstate.md">62. A key-value store for the chainstate</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch063-the-coins-cache-and-crash-safe-flushes.md">63. The coins cache and crash-safe flushes</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L223">64. Pruning</a></td><td>Node</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch065-p2p-messages-and-checksums.md">65. P2P messages and checksums</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch066-elligatorswift.md">66. ElligatorSwift</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch067-the-v2-encrypted-transport.md">67. The v2 encrypted transport</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch068-the-handshake-and-feature-negotiation.md">68. The handshake and feature negotiation</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch069-addresses-and-the-address-manager.md">69. Addresses and the address manager</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch070-connections-outbound-block-relay-only-feelers-and-eviction.md">70. Connections: outbound, block-relay-only, feelers and eviction</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch071-misbehavior-limits-and-denial-of-service.md">71. Misbehavior, limits and denial of service</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch072-headers-sync-and-block-download.md">72. Headers sync and block download</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch073-compact-blocks.md">73. Compact blocks</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch074-compact-block-filters.md">74. Compact block filters</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch075-proxies-tor-and-i2p.md">75. Proxies, Tor and I2P</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L245">76. The signature cache and parallel script checks</a></td><td>Node</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch077-faster-verification-the-glv-endomorphism.md">77. Faster verification: the GLV endomorphism</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L247">78. assumevalid</a></td><td>Node</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L248">79. AssumeUTXO snapshots</a></td><td>Node</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L249">80. Sync mainnet from genesis</a></td><td>Node</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch081-policy-is-not-consensus-standardness.md">81. Policy is not consensus: standardness</a></td><td>Mempool/Mining</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch082-mempool-acceptance-and-limits.md">82. Mempool acceptance and limits</a></td><td>Mempool/Mining</td><td>partly implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L257">83. Transaction relay and orphans</a></td><td>Mempool/Mining</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L258">84. Replacement: RBF and TRUC</a></td><td>Mempool/Mining</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L259">85. Packages, CPFP and anchors</a></td><td>Mempool/Mining</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L260">86. Eviction, expiry and persistence</a></td><td>Mempool/Mining</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L261">87. Fee estimation</a></td><td>Mempool/Mining</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L262">88. Block templates and mining</a></td><td>Mempool/Mining</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L268">89. The node process: configuration, data directory, logs and shutdown</a></td><td>Node</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch090-json-rpc-and-rest.md">90. JSON-RPC and REST</a></td><td>Node</td><td>partly implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch091-indexes-transactions-filters-and-coin-statistics.md">91. Indexes: transactions, filters and coin statistics</a></td><td>Node</td><td>partly implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L271">92. Notifications for wallets and Lightning</a></td><td>Node</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L272">93. Shadow mode beside Bitcoin Core</a></td><td>Node</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch094-psbt.md">94. PSBT</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch095-coin-selection-and-change.md">95. Coin selection and change</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch096-message-signing.md">96. Message signing</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch097-silent-payments.md">97. Silent payments</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L282">98. Miniscript</a></td><td>Wallets</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L283">99. A descriptor wallet on our node</a></td><td>Wallets</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch100-multisig.md">100. Multisig</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch101-musig2.md">101. MuSig2</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch102-frost-threshold-signatures.md">102. FROST threshold signatures</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch103-adaptor-signatures.md">103. Adaptor signatures</a></td><td>Proof/Script</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch104-messages-and-tlvs.md">104. Messages and TLVs</a></td><td>Lightning</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch105-the-noise-handshake.md">105. The Noise handshake</a></td><td>Lightning</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch106-commitment-keys-and-revocation.md">106. Commitment keys and revocation</a></td><td>Lightning</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch107-shachain.md">107. Shachain</a></td><td>Lightning</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch108-commitment-and-htlc-transactions.md">108. Commitment and HTLC transactions</a></td><td>Lightning</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch109-open-update-and-close-a-channel.md">109. Open, update and close a channel</a></td><td>Lightning</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L304">110. Watch the chain</a></td><td>Lightning</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch111-onion-routing-and-blinded-paths.md">111. Onion routing and blinded paths</a></td><td>Lightning</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch112-gossip-and-the-channel-graph.md">112. Gossip and the channel graph</a></td><td>Lightning</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch113-find-a-route-and-pay.md">113. Find a route and pay</a></td><td>Lightning</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch114-invoices.md">114. Invoices</a></td><td>Lightning</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch115-offers.md">115. Offers</a></td><td>Lightning</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch116-test-vectors-and-their-provenance.md">116. Test vectors and their provenance</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L316">117. Differential tests</a></td><td>Node</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L317">118. Bitcoin Core's functional tests against our node</a></td><td>Node</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch119-fuzzing.md">119. Fuzzing</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L319">120. Formal properties</a></td><td>Node</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch121-one-seed-for-nostr-and-bitcoin.md">121. One seed for Nostr and Bitcoin</a></td><td>Node</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch122-agent-treasuries.md">122. Agent treasuries</a></td><td>Wallets</td><td>implemented</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L327">123. Paying for requests</a></td><td>Wallets</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L328">124. Our node on Pylons and Verse OS</a></td><td>Node</td><td>planned</td><td>not available</td></tr>
+<tr><td><a href="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch125-address-history-balances-and-spends.md">125. Address history, balances and spends</a></td><td>Transactions/UTXOs</td><td>implemented</td><td>not available</td></tr>
+</tbody></table>
+</main>
+<script type="module" src="/coaxial/host.js" data-app="bitcoin-lab" data-realm="bitcoin-lab" data-slot="bitcoin-lab" data-style="lowpoly" data-clock="fixed:0.5"></script>
+</body>
+</html>

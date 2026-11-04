@@ -110,7 +110,12 @@ for f in sorted(os.listdir(os.path.join(app, "well-known"))) if os.path.isdir(os
     os.makedirs(os.path.join(site, ".well-known"), exist_ok=True)
     shutil.copy(os.path.join(app, "well-known", f), os.path.join(site, ".well-known", f[:-5] + ".wellknown" if f == "apple-app-site-association.json" else f))
 # For agents: llms-full.txt is every public page's Markdown twin in one file, and sitemap.xml lists those pages.
+# Coax projects the registry's hidden directories. Direct realm pages ship;
+# neither those pages nor their child pages enter agent/search discovery.
+registry = os.path.join(app, "realms.json")
+hidden_realms = subprocess.check_output([os.path.join(tools, "tool.sh"), "discovery-realms", registry], text=True).splitlines() if os.path.isfile(registry) else []
 def unlisted(f):
+    if any(f.replace(os.sep, "/").startswith(prefix) for prefix in hidden_realms): return True
     j = os.path.join(app, os.path.dirname(f), "project.json")
     return f.startswith("projects" + os.sep) and os.path.exists(j) and json.load(open(j, encoding="utf-8")).get("visibility") in ("unlisted", "private")
 public = sorted(f for f in pages if f.endswith("index.md") and not f.startswith(("admin", "chat", "login", "og" + os.sep, "projects" + os.sep + "private")) and not unlisted(f))

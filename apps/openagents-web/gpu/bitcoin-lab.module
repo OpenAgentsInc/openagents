@@ -1,0 +1,3 @@
+--vertices bitcoin_lab_bg_vs,bitcoin_lab_fx_vs
+--fragments bitcoin_lab_bg_fs,bitcoin_lab_fx_fs
+--bindings apps/openagents-web/gpu/bitcoin-lab.bindings --strip bitcoin_lab_

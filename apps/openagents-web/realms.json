@@ -453,5 +453,14 @@
         "golden": { "lit": 0.05, "settle": 3000, "blocks": 6 },
         "assets": ["particles:/splatlab-fx.wgsl", "local:/private/splats/skull.splat"]
       } }
+    ,{ "id": "bitcoin-lab", "name": "BITCOIN LAB", "kind": "open", "listed": false,
+      "orbit": { "r": 0.49, "a": 2.4, "size": 0.018 },
+      "realm": {
+        "slug": "bitcoin-lab", "title": "Bitcoin Lab",
+        "description": "An unlisted Bitcoin learning workbench: a walkable fixture Grid, seven stations and the book's 125 chapters.",
+        "alt": "Bitcoin Lab fixture Grid with linked block plinths and seven learning stations",
+        "module": "bitcoin-lab", "slot": "bitcoin-lab", "style": "lowpoly", "clock": "fixed:0.5",
+        "golden": { "lit": 0.02, "settle": 1000, "blocks": 6 }, "assets": []
+      } }
   ]
 }

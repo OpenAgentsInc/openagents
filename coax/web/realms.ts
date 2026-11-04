@@ -266,7 +266,7 @@ ${links}
 // so the others don't log a 404 for every visitor (host.js, data-maker).
 export const hasMaker = (slug: string, site = SITE) => existsSync(join(site, "realms", slug, "tip", "index.html"))
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
-export function page(r: Realm): string {
+export function page(r: Realm, isListed = true): string {
   const url = `https://openagents.com/worlds/${r.slug}`, t = esc(r.title), d = esc(r.description), share = esc(r.share ?? brief(r.description))
   // its link preview (docs/web/og-tags.md): its hand-made card, else the one og-render.ts renders from a still of it
   const card = `https://openagents.com${r.card ?? renderedCard(`realms/${r.slug}`)}`
@@ -287,7 +287,8 @@ export function page(r: Realm): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${t} · OpenAgents</title>
-<meta name="description" content="${d}">
+<meta name="description" content="${d}">${isListed ? "" : `
+<meta name="robots" content="noindex, nofollow">`}
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OpenAgents">
 <meta property="og:title" content="${t}">
@@ -322,7 +323,7 @@ ${LOADER_CSS}
 <canvas id="coaxial" aria-hidden="true"></canvas>
 ${loaderMarkup(r.title, `/worlds/${r.slug}/index.md`)}
 <main>
-<h1>${t}</h1><p><a href="/worlds/${r.slug}/index.md">${t}</a></p>
+<h1>${t}</h1><p><a href="/worlds/${r.slug}/index.md">${t}</a></p>${existsSync(join(SITE, "realms", r.slug, "map.fallback")) ? "\n" + readFileSync(join(SITE, "realms", r.slug, "map.fallback"), "utf8").trimEnd() : ""}
 </main>
 <script type="module" src="/coaxial/host.js" data-app="${r.module}"${renderAttributes(r.slug, r.module)}${slot}${assets}></script>
 </body>
@@ -335,7 +336,7 @@ if (import.meta.main) {
   const list = worlds()
   const out: [string, string][] = [[join(SITE, "realms.coax"), coax(list)], [join(SITE, "realms", "list.coax"), listCoax(list)],
     [join(SITE, "realms", "index.md"), listMarkdown(list)], [join(SITE, "realms", "index.html"), listPage(list)]]
-  for (const w of list) if (w.realm) out.push([join(SITE, "realms", w.realm.slug, "index.html"), page(w.realm)])
+  for (const w of list) if (w.realm) out.push([join(SITE, "realms", w.realm.slug, "index.html"), page(w.realm, w.listed !== false)])
   const behind: string[] = []
   for (const [file, text] of out) {
     if (existsSync(file) && readFileSync(file, "utf8") === text) continue

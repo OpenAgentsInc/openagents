@@ -8,7 +8,7 @@
 //   2. Trap: N frames more, the digest, then a real trap in the next frame (its state pointer out
 //      of bounds). The reload message shows and the rescue save is written; its action reloads the
 //      page, which puts the save back: the same digest, and the next frame draws.
-//   COAX=... coax/web/tool.sh coax/web/gpu-recovery.coax http://127.0.0.1:PORT/realms/the-grid/ [--within MS] [--require-hardware]
+//   COAX=... coax/web/tool.sh coax/web/gpu-recovery.coax http://127.0.0.1:PORT/realms/the-grid/ [--within MS] [--size WxH] [--require-hardware]
 // Headless and muted; never a window. It prints the WebGPU adapter the realm got (cdp_adapter);
 // --require-hardware fails the check unless that is a GPU's, not SwiftShader. CDP_WEBGPU=swiftshader
 // runs it on SwiftShader.
@@ -155,8 +155,11 @@ tool_main :: () -> int #export_c {
   if w > 0 {n := args_number(args_at(a[..], w + 1)); if !n.ok || n.value < 0.0 {ok = false;} else {within = cast(int) n.value;}}
   if !ok || !gr_local(url) {tool_errln("usage: coax/web/tool.sh coax/web/gpu-recovery.coax http://127.0.0.1:PORT/realms/SLUG/ [--within MS] [--require-hardware]"); return 2;}
   need := args_has(a[..], "--require-hardware");
+  size:=args_find(a[..],"--size");
+  wh:=args_size(ifx size>0 then args_at(a[..],size+1) else "320x240");
+  if !wh.ok {tool_errln("gpu-recovery: --size needs positive WxH");return 2;}
   c: [1] Cdp;
-  if !cdp_launch(c[..], 320, 240, "coax-gpu-recovery-") {tool_err("gpu-recovery: "); tool_errln(cdp_error(c[..])); return 1;}
+  if !cdp_launch(c[..], wh.w, wh.h, "coax-gpu-recovery-") {tool_err("gpu-recovery: "); tool_errln(cdp_error(c[..])); return 1;}
   r: [1] GpuRecovery;
   ran := gr_run(c[..], url, r[..]);
   if !ran {

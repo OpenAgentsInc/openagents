@@ -1,0 +1,10 @@
+// The existing HUD projection and Filament stroke renderer. No texture atlas.
+// All world geometry, projection, labels and input are decided by bitcoin-lab.coax.
+#load "splash.coax";
+bitcoin_lab_bg_vs :: (i:u32,j:u32)->V4 {return splash_bg_vs(i,j);}
+bitcoin_lab_bg_fs :: (pos:V4,u:[]f32)->V4 {return v4(0.008f32,0.012f32,0.019f32,1.0f32);}
+bitcoin_lab_vertex :: struct {a:V4;b:V4;c:V4;}
+bitcoin_lab_fx_vs :: (i:u32,j:u32,a:bitcoin_lab_vertex,u:[]f32)->SplashV {
+  return splash_fx_vs(i,j,splash_fx_vs_in.{a=a.a,b=a.b,c=a.c,d=v4(0.0f32,0.0f32,0.0f32,0.0f32)},u);
+}
+bitcoin_lab_fx_fs :: (v:SplashV,u:[]f32)->V4 {return splash_fx_fs(v,u);}

@@ -1,0 +1,318 @@
+// Bitcoin Lab: an unlisted fixture Grid, not a node or a transaction graph.
+// The shared Grid session owns walking, fixed steps, input, follow camera and replay.
+// Aethyr's HUD renderer and UI tree own strokes, text, picking and focus.
+#load "../../verse/gridwalk.coax" as gw;
+#load "../../aethyr/points.coax";
+#load "../../aethyr/ui/draw.coax";
+#load "../../aethyr/ui/tree.coax";
+#load "../../aethyr/budget.coax";
+#load "bitcoin-lab-chapters.coax";
+
+LAB_VERTICES :: 72000;
+LAB_UNIFORMS :: 88;
+LAB_BUDGET :: FrameBudget.{steps=8,vertices=70000,draws=2,bytes=5000000};
+LAB_NAMES :: [7]string.["Chain","Transactions / UTXOs","Proof / Script","Node","Mempool / Mining","Wallets","Lightning"];
+LAB_SHORT :: [7]string.["Chain","UTXOs","Proof","Node","Mining","Wallets","Lightning"];
+LAB_X :: [7]f32.[0,-8,8,-12,12,-8,8];
+LAB_Z :: [7]f32.[0,7,7,15,15,23,23];
+LAB_NODES :: 20;
+BitcoinLab :: struct {
+  ready:bool;session:[1]gw.GridWalk;
+  w:f32;h:f32;d:f32=1;keys:int;look:f32;
+  selected:int;chapter:int;map:bool=true;focus:int=-1;
+  nodes:[LAB_NODES]UiNode;count:int;
+  pointers:[4]int;press:[4]int;active:[4]bool;
+  action:int;out_n:int;outbox:[256]u8;
+  eye:Point;forward:Point;right:Point;up:Point;
+  used:int;steps:int;world_vertices:int;
+  meter:[1]BudgetMeter;
+}
+
+#test "Bitcoin Lab has all 125 book states, separate from exercises" {
+  counts:[3]int;
+  for i:0..<125 {
+    c:=LAB_CHAPTERS[i];#assert c.title!="" && c.file!="" && c.station>=0 && c.station<7;
+    if c.status=="implemented" {counts[0]+=1;}
+    else if c.status=="partly implemented" {counts[1]+=1;}
+    else {#assert c.status=="planned";counts[2]+=1;}
+    #assert lab_exercise(i)=="not available";
+  }
+  #assert counts[0]==100 && counts[1]==3 && counts[2]==22;
+  #assert LAB_CHAPTERS[81].status=="partly implemented" && LAB_CHAPTERS[89].status=="partly implemented" && LAB_CHAPTERS[90].status=="partly implemented";
+}
+#test "Bitcoin Lab station, chapter, source and exit navigation stay bounded" {
+  s:[1]BitcoinLab;lab_start(s[..]);
+  for station:0..<7 {lab_do(s[..],station+1);#assert s[0].selected==station && LAB_CHAPTERS[s[0].chapter].station==station;}
+  s[0].chapter=0;lab_do(s[..],8);#assert s[0].chapter==124;
+  lab_do(s[..],9);#assert s[0].chapter==0;
+  lab_do(s[..],10);#assert s[0].action==1 && lab_out(s[..])=="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch001-bytes-hex-and-base64.md";
+  lab_do(s[..],11);#assert lab_out(s[..])=="/worlds";
+  lab_do(s[..],12);#assert !s[0].map;
+}
+#test "Bitcoin Lab keyboard and touch selection never leave walking held" {
+  s:[1]BitcoinLab;lab_start(s[..]);lab_layout(s[..],390,844,1);
+  #assert ui_check(s[0].nodes[0..<s[0].count]).reason==UI_OK;
+  #assert lab_key(s[..],119,true,0) && s[0].keys==1;
+  #assert lab_key(s[..],-15,true,0) && s[0].keys==0 && s[0].focus>=0;
+  #assert lab_key(s[..],-2,true,0) && s[0].keys==0;
+  b:=s[0].nodes[1].box;
+  #assert lab_pointer(s[..],b.x+2,b.y+2,0,1,81);
+  #assert !s[0].session[0].thumbs.move_on && !s[0].session[0].thumbs.look_on;
+  #assert lab_pointer(s[..],b.x+2,b.y+2,2,1,81) && s[0].selected==1;
+  #assert lab_pointer(s[..],30,660,0,1,82);
+  #assert !s[0].session[0].thumbs.move_on;
+  #assert lab_pointer(s[..],30,660,3,1,82);
+  lab_blur(s[..]);#assert s[0].keys==0 && !s[0].active[0];
+}
+#test "Bitcoin Lab walks from spawn to chain and back on the replayable Grid session" {
+  s:[1]BitcoinLab;lab_start(s[..]);
+  for i:0..<128 {gw.gridwalk_frame(s[0].session[..],0,1,true,false,0,0,0,1440,900,1,1.0/64.0,false);}
+  feet:=gw.gridwalk_feet(s[0].session[..]);#assert feet.z> -1.5 && feet.z<1 && abs(feet.x)<0.01;
+  for i:0..<128 {gw.gridwalk_frame(s[0].session[..],0,-1,true,false,0,0,0,1440,900,1,1.0/64.0,false);}
+  feet=gw.gridwalk_feet(s[0].session[..]);#assert feet.z< -6 && feet.z> -9;
+  again:[1]gw.GridWalk;#assert gw.gridwalk_replay(s[0].session[..],again[..]);
+}
+#test "Bitcoin Lab desktop and phone frames fit declared buffers and touch targets" {
+  s:[1]BitcoinLab;out:[LAB_VERTICES*12]f32;u:[LAB_UNIFORMS]f32;
+  for d:[3]f32.[1,2,3] {
+    n:=lab_frame(s[..],out[..],u[..],390*d,844*d,d,0.016,true);
+    #assert n>0 && n<=LAB_BUDGET.vertices && n%6==0;
+    #assert budget_ok(s[0].meter[0]);
+    for i:0..<7 {b:=s[0].nodes[i].box;#assert b.width>=44 && b.height>=44 && b.x>=0 && b.x+b.width<=390;}
+  }
+  n:=lab_frame(s[..],out[..],u[..],1440,900,1,0.25,false);
+  #assert n<=LAB_BUDGET.vertices && s[0].steps<=LAB_BUDGET.steps;
+  #assert budget_ok(s[0].meter[0]);
+  #assert budget_declared(LAB_BUDGET,LAB_VERTICES)==BUDGET_NONE;
+  #assert budget_arena_bytes(size_of(BitcoinLab),LAB_VERTICES,12,LAB_UNIFORMS)<=LAB_BUDGET.bytes;
+}
+
+lab_exercise :: (chapter:int)->string {return "not available";}
+lab_start :: (s:[]BitcoinLab) {
+  if s[0].ready {return;}s[0].ready=true;s[0].map=true;s[0].focus=-1;
+  gw.gridwalk_place(s[0].session[..],0,-7,0,1.08,9);
+  s[0].meter[0]=budget_meter(LAB_BUDGET);
+  s[0].chapter=45;
+}
+lab_out :: (s:[]BitcoinLab)->string {return cast(string)s[0].outbox[0..<s[0].out_n];}
+lab_send :: (s:[]BitcoinLab,text:string) {
+  s[0].out_n=0;
+  for c:text {s[0].outbox[s[0].out_n]=c;s[0].out_n+=1;}
+  s[0].action=1;
+}
+lab_stop :: (s:[]BitcoinLab) {s[0].keys=0;s[0].look=0;gw.gridwalk_blur(s[0].session[..]);}
+lab_blur :: (s:[]BitcoinLab) #export_c {
+  lab_stop(s);for i:0..<4 {s[0].active[i]=false;}
+}
+lab_do :: (s:[]BitcoinLab,action:int) {
+  lab_stop(s);
+  if action>=1 && action<=7 {
+    s[0].selected=action-1;s[0].map=true;
+    for i:0..<125 {if LAB_CHAPTERS[i].station==s[0].selected {s[0].chapter=i;break;}}
+  }
+  if action==8 || action==9 {
+    s[0].chapter=(s[0].chapter+(ifx action==8 then 124 else 1))%125;
+    s[0].selected=LAB_CHAPTERS[s[0].chapter].station;
+  }
+  if action==10 {
+    prefix:="https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/";
+    s[0].out_n=0;
+    for c:prefix {s[0].outbox[s[0].out_n]=c;s[0].out_n+=1;}
+    for c:LAB_CHAPTERS[s[0].chapter].file {s[0].outbox[s[0].out_n]=c;s[0].out_n+=1;}
+    s[0].action=1;
+  }
+  if action==11 {lab_send(s,"/worlds");}
+  if action==12 {s[0].map=!s[0].map;}
+}
+lab_node :: (s:[]BitcoinLab,b:HudBox,action:int) {
+  i:=s[0].count;if i>=LAB_NODES {return;}
+  s[0].nodes[i]=UiNode.{box=b,role=UI_BUTTON,label=action,action=action};s[0].count+=1;
+}
+lab_layout :: (s:[]BitcoinLab,w:f32,h:f32,d:f32) {
+  s[0].w=w;s[0].h=h;s[0].d=d;s[0].count=0;
+  cols:=ifx w<700 then 3 else 7;cw:=(w-32)/cast(f32)cols;
+  for i:0..<7 {lab_node(s,HudBox.{x=16+cast(f32)(i%cols)*cw,y=76+cast(f32)(i/cols)*48,width=cw-4,height=44},i+1);}
+  bottom:=h-194;
+  if s[0].map {
+    for i:0..<3 {lab_node(s,HudBox.{x=16+cast(f32)i*(w-32)/3,y=h-82,width=(w-32)/3-4,height=44},i+8);}
+  }
+  lab_node(s,HudBox.{x=w-96,y=16,width=80,height=44},11);
+  lab_node(s,HudBox.{x=w-96,y=h-294,width=80,height=44},12);
+}
+lab_key :: (s:[]BitcoinLab,key:int,down:bool,mods:int)->bool #export_c {
+  lab_start(s);bit:=0;
+  if key==119 || key==87 {bit=1;}if key==115 || key==83 {bit=2;}
+  if key==97 || key==65 {bit=4;}if key==100 || key==68 {bit=8;}
+  if key==32 {bit=16;}if key== -13 {bit=32;}
+  if bit!=0 {
+    if down && s[0].focus<0 {s[0].keys|=bit;}else {s[0].keys=(s[0].keys|bit)-bit;}return true;
+  }
+  if !down {return false;}
+  if key== -15 {lab_stop(s);s[0].focus=ui_focus_next(s[0].nodes[0..<s[0].count],s[0].focus,(mods&1)!=0,UI_NONE);return true;}
+  if key== -2 && s[0].focus>=0 {lab_do(s,ui_activate(s[0].nodes[0..<s[0].count],s[0].focus,UI_NONE));return true;}
+  if key>=49 && key<=55 {lab_do(s,key-48);return true;}
+  if key== -10 || key== -11 {lab_do(s,ifx key== -10 then 8 else 9);return true;}
+  if key==109 || key==77 {lab_do(s,12);return true;}
+  if key== -1 {if s[0].focus>=0 {s[0].focus=-1;}else {lab_do(s,11);}return true;}
+  if key==110 || key==78 {lab_do(s,(s[0].selected+1)%7+1);return true;}
+  if key== -4 {s[0].look+=0.12;return true;}if key== -5 {s[0].look-=0.12;return true;}
+  return false;
+}
+lab_pointer :: (s:[]BitcoinLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
+  lab_start(s);cx:=x/s[0].d;cy:=y/s[0].d;slot:=-1;
+  for i:0..<4 {if s[0].active[i] && s[0].pointers[i]==id {slot=i;}}
+  if phase==0 {
+    for i:0..<4 {if !s[0].active[i] {slot=i;break;}}
+    if slot<0 {return false;}
+    s[0].active[slot]=true;s[0].pointers[slot]=id;
+    s[0].press[slot]=ui_tap(s[0].nodes[0..<s[0].count],cx,cy,UI_NONE);
+    if s[0].press[slot]==0 && (cy<(ifx s[0].w<700 then 224.0f32 else 128.0f32) || (s[0].map && cy>=s[0].h-246)) {s[0].press[slot]=-1;}
+    s[0].focus=-1;
+    if s[0].press[slot]!=0 {lab_stop(s);}
+  }
+  if slot<0 {return false;}
+  action:=s[0].press[slot];
+  if action!=0 {
+    if action>0 && phase==2 && ui_tap(s[0].nodes[0..<s[0].count],cx,cy,UI_NONE)==action {lab_do(s,action);}
+  }else {gw.gridwalk_touch(s[0].session[..],slot,phase,x,y);}
+  if phase==2 || phase==3 {s[0].active[slot]=false;}
+  return true;
+}
+// Perspective projection of the shared follow shot; the mesh is a bounded wire fixture.
+LabPoint :: struct {x:f32;y:f32;depth:f32;}
+lab_project :: (s:[]BitcoinLab,p:Point)->LabPoint {
+  rel:=sub(p,s[0].eye);depth:=dot(rel,s[0].forward);
+  if depth<=0.2 {return LabPoint.{depth=depth};}
+  scale:=s[0].h*0.78;
+  return LabPoint.{x=s[0].w*0.5+dot(rel,s[0].right)*scale/depth,y=s[0].h*(ifx s[0].w<700 then 0.52f32 else 0.46f32)-dot(rel,s[0].up)*scale/depth,depth=depth};
+}
+lab_line :: (s:[]BitcoinLab,out:[]f32,n:int,a:Point,b:Point,pen:HdPen,kind:int)->int {
+  p:=lab_project(s,a);q:=lab_project(s,b);
+  if p.depth<=0.2 || q.depth<=0.2 {return n;}
+  if abs(p.x)>s[0].w*4 || abs(q.x)>s[0].w*4 {return n;}
+  return hd_line(out,n,p.x,p.y,q.x,q.y,pen,kind,0.7);
+}
+lab_cube :: (s:[]BitcoinLab,out:[]f32,n:int,x:f32,y:f32,z:f32,r:f32,pen:HdPen,kind:int)->int {
+  at:=n;
+  for i:0..<8 {
+    a:=v3(x+(ifx (i&1)==0 then -r else r),y+(ifx (i&2)==0 then 0.0f32 else r*2),z+(ifx (i&4)==0 then -r else r));
+    for bit:[3]int.[1,2,4] {if (i&bit)==0 {
+      j:=i|bit;b:=v3(x+(ifx (j&1)==0 then -r else r),y+(ifx (j&2)==0 then 0.0f32 else r*2),z+(ifx (j&4)==0 then -r else r));
+      at=lab_line(s,out,at,a,b,pen,kind);
+    }}
+  }
+  return at;
+}
+lab_frame :: (s:[]BitcoinLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c {
+  lab_start(s);if !(d>0) || !(w>0) || !(h>0) || u.count<LAB_UNIFORMS {return 0;}
+  lab_layout(s,w/d,h/d,d);
+  keys:=s[0].keys;before:=s[0].session[0].you.clock.ticks;
+  gw.gridwalk_frame(s[0].session[..],cast(f32)((ifx (keys&8)!=0 then 1 else 0)-(ifx (keys&4)!=0 then 1 else 0)),cast(f32)((ifx (keys&1)!=0 then 1 else 0)-(ifx (keys&2)!=0 then 1 else 0)),(keys&32)!=0,(keys&16)!=0,s[0].look,0,0,w,h,d,dt,false);
+  s[0].look=0;s[0].steps=s[0].session[0].you.clock.ticks-before;
+  eye:=gw.gridwalk_eye(s[0].session[..]);at:=gw.gridwalk_at(s[0].session[..]);
+  s[0].eye=v3(eye.x,eye.y,eye.z);
+  s[0].forward=unit_or(sub(v3(at.x,at.y,at.z),s[0].eye),v3(0,0,1));
+  s[0].right=unit_or(cross(s[0].forward,v3(0,1,0)),v3(-1,0,0));s[0].up=cross(s[0].right,s[0].forward);
+  for i:0..<LAB_UNIFORMS {u[i]=0;}u[0]=w;u[1]=h;u[3]=1;
+  floor_pen:=HdPen.{d=d,top=ifx s[0].w<700 then 224.0f32 else 128.0f32,bottom=ifx s[0].map then s[0].h-246 else s[0].h-60,cyan=true,sans=false};
+  n:=0;
+  for i: -16..<37 {
+    v:=cast(f32)i*2;
+    n=lab_line(s,out,n,v3(-32,0,v),v3(32,0,v),floor_pen,3);
+    n=lab_line(s,out,n,v3(v,0,-32),v3(v,0,72),floor_pen,3);
+  }
+  for i:0..<7 {
+    n=lab_cube(s,out,n,LAB_X[i],0,LAB_Z[i],1.2,floor_pen,ifx s[0].selected==i then 2 else 0);
+    p:=lab_project(s,v3(LAB_X[i],3.2,LAB_Z[i]));
+    if p.depth>0.2 && p.x>80 && p.x<s[0].w-80 && p.y>floor_pen.top+14 && p.y<floor_pen.bottom-44 {
+      b:=HudBox.{x=p.x-78,y=p.y-20,width=156,height=44};
+      lab_node(s,b,i+1);n=hd_panel(out,n,b,floor_pen,s[0].selected==i);
+      n=hd_text_fit(out,n,LAB_SHORT[i],b.x+10,b.y+27,13,136,floor_pen,0);
+    }
+  }
+  // Seven linked fixture blocks on the Chain plinth; links are decoration, not sat flows.
+  for i:0..<7 {
+    x:=-2.7+cast(f32)i*0.9;n=lab_cube(s,out,n,x,2.5,0,0.28,floor_pen,2);
+    if i<6 {n=lab_line(s,out,n,v3(x+0.28,2.78,0),v3(x+0.62,2.78,0),floor_pen,2);}
+  }
+  feet:=gw.gridwalk_feet(s[0].session[..]);
+  n=lab_cube(s,out,n,feet.x,feet.y,feet.z,0.3,floor_pen,2);
+  s[0].world_vertices=n;
+  pen:=HdPen.{d=d,top=0,bottom=s[0].h,cyan=true,sans=false};
+  thumbs:=s[0].session[0].thumbs;
+  if thumbs.move_on {
+    n=hd_ring(out,n,thumbs.ox/d,thumbs.oy/d,44,44,0,6.2831853,pen,2);
+    n=hd_ring(out,n,thumbs.ox/d+thumbs.pad_x*44,thumbs.oy/d-thumbs.pad_y*44,12,12,0,6.2831853,pen,0);
+  }
+  n=hd_text(out,n,"BITCOIN LAB",16,34,18,pen,0);
+  n=hd_text(out,n,"FIXTURE / UNLISTED",16,61,12,pen,2);
+  for i:0..<s[0].count {
+    node:=s[0].nodes[i];if i>=(ifx s[0].map then 12 else 9) {continue;}
+    b:=node.box;active:=s[0].focus==i || node.action==s[0].selected+1;
+    n=hd_panel(out,n,b,pen,active);
+    label:="";
+    if node.action<=7 {label=LAB_SHORT[node.action-1];}
+    if node.action==8 {label="< PREV";}if node.action==9 {label="NEXT >";}if node.action==10 {label="SOURCE";}
+    if node.action==11 {label="WORLDS";}if node.action==12 {label="MAP";}
+    n=hd_text_fit(out,n,label,b.x+8,b.y+27,12,b.width-16,pen,ifx active then 2 else 0);
+  }
+  if s[0].map {
+    y:=s[0].h-194;chapter:=LAB_CHAPTERS[s[0].chapter];
+    n=hd_text_fit(out,n,LAB_NAMES[s[0].selected],16,y,18,s[0].w-32,pen,2);
+    buf:[32]u8;num:[1]int;num[0]=s[0].chapter+1;
+    // Filament's integer writer is supplied locally to keep the display bounded.
+    digits:=lab_decimal(buf[..],num[0]);
+    n=hd_text(out,n,"CH",16,y+27,12,pen,1);n=hd_text(out,n,cast(string)buf[0..<digits],40,y+27,12,pen,0);
+    n=hd_text_fit(out,n,chapter.title,80,y+27,13,s[0].w-96,pen,0);
+    n=hd_text(out,n,"BOOK:",16,y+51,12,pen,1);n=hd_text(out,n,chapter.status,64,y+51,12,pen,0);
+    n=hd_text(out,n,"VISUAL EXERCISE: not available",16,y+75,12,pen,1);
+    n=hd_text_fit(out,n,"Fixture map only. No node snapshot or validation claim.",16,y+96,11,s[0].w-32,pen,1);
+  }
+  n=hd_text_fit(out,n,ifx s[0].w<700 then "Left thumb: walk / right: look. Tap station." else "WASD walk / arrows look / 1-7 stations / N next / Tab + Enter / M map / Esc exit",16,s[0].h-18,11,s[0].w-32,pen,1);
+  budget_measure(s[0].meter[..],n,2,budget_arena_bytes(size_of(BitcoinLab),LAB_VERTICES,12,LAB_UNIFORMS));
+  _:=budget_take(s[0].meter[..],BUDGET_STEPS,s[0].steps);
+  s[0].used=n;return n;
+}
+lab_decimal :: (out:[]u8,value:int)->int {
+  digits:[16]u8;v:=value;n:=0;
+  while true {digits[n]=cast(u8)(48+v%10);n+=1;v/=10;if v==0 {break;}}
+  for i:0..<n {out[i]=digits[n-1-i];}return n;
+}
+lab_label :: (action:int)->string {
+  if action>=1 && action<=7 {return LAB_NAMES[action-1];}
+  if action==8 {return "Previous chapter";}if action==9 {return "Next chapter";}
+  if action==10 {return "Read source chapter";}if action==11 {return "Exit to worlds";}
+  return "Show or hide chapter map";
+}
+lab_text :: (out:[]u8,at:int,text:string)->int {
+  n:=at;for c:text {if n>=out.count {return n;}out[n]=c;n+=1;}return n;
+}
+lab_a11y :: (s:[]BitcoinLab,out:[]u8)->int #export_c {
+  lab_start(s);n:=0;number:[16]u8;
+  for action:1..<13 {
+    if !s[0].map && action>=8 && action<=10 {continue;}
+    digits:=lab_decimal(number[..],action);n=lab_text(out,n,cast(string)number[0..<digits]);
+    n=lab_text(out,n," button - ");n=lab_text(out,n,lab_label(action));n=lab_text(out,n,"\n");
+  }
+  n=lab_text(out,n,"100 status - FIXTURE. Unlisted Bitcoin Lab. Station: ");
+  n=lab_text(out,n,LAB_NAMES[s[0].selected]);n=lab_text(out,n,". Chapter ");
+  digits:=lab_decimal(number[..],s[0].chapter+1);n=lab_text(out,n,cast(string)number[0..<digits]);
+  n=lab_text(out,n,": ");n=lab_text(out,n,LAB_CHAPTERS[s[0].chapter].title);
+  n=lab_text(out,n,". Book: ");n=lab_text(out,n,LAB_CHAPTERS[s[0].chapter].status);
+  return lab_text(out,n,". Visual exercise: not available. No node snapshot.\n");
+}
+lab_access :: (s:[]BitcoinLab,action:int,activate:bool) #export_c {
+  lab_stop(s);s[0].focus=-1;
+  for i:0..<s[0].count {if s[0].nodes[i].action==action {s[0].focus=i;break;}}
+  if activate && action>=1 && action<=12 {lab_do(s,action);}
+}
+lab_guard :: (s:[]BitcoinLab,field:int)->int #export_c {
+  if field==0 {return s[0].selected;}if field==1 {return s[0].chapter+1;}
+  if field>=2 && field<=4 {return cast(int)(gw.gridwalk_pose(s[0].session[..],field-2)*1000);}
+  if field==5 {return s[0].keys;}if field==6 {return s[0].used;}
+  if field==7 {return s[0].meter[0].refused;}
+  if field==8 {return s[0].session[0].you.clock.ticks;}
+  if field==9 {return s[0].focus;}
+  return -1;
+}
+lab_scene_ready :: (s:[]BitcoinLab)->bool #export_c {return s[0].world_vertices>0 && s[0].world_vertices<=s[0].used;}

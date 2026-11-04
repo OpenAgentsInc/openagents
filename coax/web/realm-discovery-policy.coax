@@ -1,0 +1,21 @@
+// Registry admission to generated public discovery. Unlisted is not access control.
+#authority;
+#test "only an explicit false registry value hides a realm from discovery" {
+  #assert realm_discovery_hidden(2);
+  for kind:[8]int.[-1,0,1,3,4,5,6,7] {#assert !realm_discovery_hidden(kind);}
+}
+#test "discovery slugs are bounded registry identifiers rather than paths" {
+  #assert realm_discovery_slug("bitcoin-lab") && realm_discovery_slug("a") && realm_discovery_slug("9-lab");
+  for s:[8]string.["","-lab","../lab","lab/child","lab\\child","lab\n","lab|child","LAB"] {#assert !realm_discovery_slug(s);}
+  #assert realm_discovery_slug("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  #assert !realm_discovery_slug("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  #assert realm_discovery_slug("az09");
+  #assert !realm_discovery_slug("{") && !realm_discovery_slug(":") && !realm_discovery_slug("/");
+}
+// JSON's stable JV_FALSE kind is 2. Missing listed preserves default listing.
+realm_discovery_hidden :: (listed_kind:int)->bool {return listed_kind==2;}
+realm_discovery_slug :: (s:string)->bool {
+  if s.count<1 || s.count>48 || s[0]=='-' {return false;}
+  for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
+  return true;
+}

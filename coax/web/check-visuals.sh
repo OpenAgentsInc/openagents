@@ -21,10 +21,10 @@ while IFS= read -r page; do
     grep -q '<div id="coaxial-load"' <<< "$loader" || bad "${page#$app/}: a loader block that isn't the loading screen"
   fi
   body="$(sed -n '/<body>/,/<\/body>/p' "$page" | sed '/<!-- loader: coax\/web\/loader.js -->/,/<!-- \/loader -->/d')"
-  extra="$(printf '%s\n' "$body" | grep -oE '<[a-z][a-z0-9]*' | sort -u | grep -vxE '<(body|canvas|main|h1|h2|p|a|script|ul|li|em|strong|code)' || true)"
+  extra="$(printf '%s\n' "$body" | grep -oE '<[a-z][a-z0-9]*' | sort -u | grep -vxE '<(body|canvas|main|h1|h2|p|a|script|ul|li|em|strong|code|table|caption|thead|tbody|tr|th|td)' || true)"
   [[ -z "$extra" ]] || bad "${page#$app/}: visible elements $(echo $extra)"
   # Links and text live only inside <main>, which the GPU page clips away.
-  outside="$(printf '%s\n' "$body" | sed '/<main>/,/<\/main>/d' | grep -E '<a |<h1|<p>' || true)"
+  outside="$(printf '%s\n' "$body" | sed '/<main>/,/<\/main>/d' | grep -E '<a |<h1|<p>|<table|<caption|<thead|<tbody|<tr>|<th>|<td>' || true)"
   [[ -z "$outside" ]] || bad "${page#$app/}: text or links outside the hidden <main>"
 done < <(find "$app" -name '*.html' -not -path '*/build/*' -not -path '*/node_modules/*' | sort)
 # The host and the crypto glue build no UI: no styled or created elements

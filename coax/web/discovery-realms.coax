@@ -1,0 +1,37 @@
+// Deployment's unlisted realm directories, from the same registry as /worlds.
+// This is discovery exclusion, never authentication. Direct pages still ship.
+// coax/web/tool.sh discovery-realms [realms.json]
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/json/json.coax";
+#load "realm-discovery-policy.coax";
+
+#test "unlisted directory projection includes only explicitly hidden realm roots" {
+  nodes:[64]JvNode;d:[1]Jv;
+  #assert jv_parse(d[..],"{\"worlds\":[{\"listed\":false,\"realm\":{\"slug\":\"bitcoin-lab\"}},{\"realm\":{\"slug\":\"public\"}},{\"listed\":true,\"realm\":{\"slug\":\"also-public\"}},{\"listed\":false}]}",nodes[..]);
+  a:=jv_get(d[0],0,"worlds");
+  slug:[48]u8;
+  #assert discovery_hidden(d[0],jv_at(d[0],a,0),slug[..])=="bitcoin-lab";
+  for i:1..<4 {#assert discovery_hidden(d[0],jv_at(d[0],a,i),slug[..])=="";}
+  #assert jv_parse(d[..],"{\"listed\":false,\"realm\":{\"slug\":\"bitcoin\\u002dlab\"}}",nodes[..]);
+  #assert discovery_hidden(d[0],0,slug[..])=="bitcoin-lab";
+}
+discovery_hidden :: (d:Jv,w:int,out:[]u8)->string {
+  if !realm_discovery_hidden(jv_kind(d,jv_get(d,w,"listed"))) {return "";}
+  n:=jv_str(d,jv_path(d,w,"realm.slug"),out);if n<0 {return "";}
+  slug:=cast(string)out[0..<n];return ifx realm_discovery_slug(slug) then slug else "";
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])>1 {return 2;}
+  path:=ifx args_count(args[..])==1 then args_at(args[..],0) else "apps/openagents-web/realms.json";
+  bytes:[262144]u8;n:=fs_read(path,bytes[..]);nodes:[16384]JvNode;d:[1]Jv;
+  if n<0 || !jv_parse(d[..],cast(string)bytes[0..<n],nodes[..]) {return 2;}
+  worlds:=jv_get(d[0],0,"worlds");if jv_kind(d[0],worlds)!=JV_ARRAY {return 2;}
+  for i:0..<jv_len(d[0],worlds) {
+    w:=jv_at(d[0],worlds,i);name:[48]u8;slug:=discovery_hidden(d[0],w,name[..]);
+    if realm_discovery_hidden(jv_kind(d[0],jv_get(d[0],w,"listed"))) && jv_kind(d[0],jv_get(d[0],w,"realm"))==JV_OBJECT && slug=="" {return 2;}
+    if slug!="" {print("realms/%/\n",slug);}
+  }
+  return 0;
+}

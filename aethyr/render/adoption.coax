@@ -25,6 +25,8 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
 #test "the made-world template is a tracked legacy consumer until its carrier links" {
   route := render_adoption("built", "myrealm");
   #assert !route.shared && route.tracked_legacy && route.profile == -1;
+  #assert !render_adoption("built", "not-myrealm").tracked_legacy;
+  #assert !render_adoption("not-built", "myrealm").tracked_legacy;
 }
 // 5E Lab (the SRD engine's bare grid) draws with its own two passes until it has a catalog profile.
 #test "5E Lab is a tracked legacy consumer" {
@@ -67,6 +69,12 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
   #assert !route.shared && route.tracked_legacy && route.profile == -1;
   #assert !render_adoption("one-shot", "fivelab").tracked_legacy;
 }
+#test "Bitcoin Lab uses the existing HUD stroke renderer with its exact producer" {
+  route:=render_adoption("bitcoin-lab","bitcoin-lab");
+  #assert !route.shared && route.tracked_legacy && route.profile== -1;
+  #assert !render_adoption("bitcoin-lab","newland").tracked_legacy;
+  #assert !render_adoption("bitcoin-la","bitcoin-lab").tracked_legacy;
+}
 #test "unknown page identities cannot gain a fallback renderer" {
   for slug: [5] string.["", "future-realm", "anime-la", "anime-lab/", "../anime-lab"] {
     route := render_adoption(slug, "animelab");
@@ -75,6 +83,7 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
 }
 render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c {
   if slug == "built" && app == "myrealm" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "bitcoin-lab" && app == "bitcoin-lab" { return RenderAdoption.{tracked_legacy = true}; }
   index := render_catalog_find(slug);
   if index >= 0 {
     p := render_catalog(index);

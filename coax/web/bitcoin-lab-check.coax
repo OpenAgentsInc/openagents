@@ -1,0 +1,100 @@
+// Muted headless walkthrough of the actual realm. No private game simulation.
+// coax/web/tool.sh bitcoin-lab-check [BASE_URL] [OUT_DIR]
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+lab_check_eval :: (c:[]Cdp,script:string)->bool {
+  n:=cdp_evaluate(c,script);return n>=0 && jv_raw(c[0].doc[0],n)=="true";
+}
+lab_check_value :: (c:[]Cdp,script:string)->int {
+  n:=cdp_evaluate(c,script);return ifx n<0 then -1000000000 else jv_int(c[0].doc[0],n,-1000000000);
+}
+lab_check_key :: (c:[]Cdp,key:string,code:string,down:bool)->bool {
+  bytes:[1024]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);
+  jo_key(o[..],"type");jo_str(o[..],ifx down then "keyDown" else "keyUp");
+  jo_key(o[..],"key");jo_str(o[..],key);jo_key(o[..],"code");jo_str(o[..],code);jo_end(o[..]);
+  return cdp_call(c,"Input.dispatchKeyEvent",jo_text(o[..]),30000)>=0;
+}
+lab_check_param :: (c:[]Cdp,method:string,key:string,value:string)->bool {
+  bytes:[8192]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],key);jo_str(o[..],value);jo_end(o[..]);
+  return cdp_call(c,method,jo_text(o[..]),30000)>=0;
+}
+lab_check_run :: (c:[]Cdp,url:string,out:string,phone:bool)->bool {
+  unused1:=cdp_call(c,"Page.enable","",30000);
+  metrics:=ifx phone then "{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}" else "{\"width\":1440,\"height\":900,\"deviceScaleFactor\":1,\"mobile\":false}";
+  metric_result:=cdp_call(c,"Emulation.setDeviceMetricsOverride",metrics,30000);
+  unused2:=lab_check_param(c,"Page.addScriptToEvaluateOnNewDocument","source","globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.labErrors=[];const ce=console.error;console.error=(...a)=>{labErrors.push(a.map(String).join(' '));ce(...a)}");
+  if phone {unused3:=cdp_call(c,"Emulation.setTouchEmulationEnabled","{\"enabled\":true,\"maxTouchPoints\":5}",30000);}
+  if !lab_check_param(c,"Page.navigate","url",url) {return false;}
+  ready:=false;until:=proc_now_ms()+30000;
+  while proc_now_ms()<until {
+    if lab_check_eval(c,"(async()=>!!globalThis.coaxial?.ready && (await globalThis.coaxialClipStep?.(1,Infinity))===1 && coaxial.sceneReady===true)()") {ready=true;break;}
+    proc_sleep(100);
+  }
+  if !ready {
+    v:=cdp_evaluate(c,"JSON.stringify({text:document.body.innerText.slice(0,400),errors:globalThis.labErrors,lost:globalThis.coaxial?.renderDeviceLost,recovery:globalThis.coaxial?.gpuRecovery})");
+    if v>=0 {print("%\n",jv_raw(c[0].doc[0],v));}return false;
+  }
+  print("Bitcoin Lab: ready %, %\n",ifx phone then "phone" else "desktop",url);
+  adapter:[256]u8;print("Bitcoin Lab: WebGPU adapter: %\n",cdp_adapter(c,adapter[..]));
+  if !lab_check_eval(c,"coaxial.guardProbe(7)===0 && coaxial.probe()===46") {return false;}
+  collected:=cdp_call(c,"HeapProfiler.collectGarbage","",30000);
+  // Two seconds slowly forwards to the Chain floor marker, then back.
+  if !lab_check_key(c,"Shift","ShiftLeft",true) || !lab_check_key(c,"w","KeyW",true) {return false;}
+  if !lab_check_eval(c,"coaxialClipStep(32,16).then(()=>coaxial.guardProbe(4)>-1500 && coaxial.guardProbe(4)<1000)") {return false;}
+  if !lab_check_key(c,"w","KeyW",false) || !lab_check_key(c,"s","KeyS",true) {return false;}
+  if !lab_check_eval(c,"coaxialClipStep(32,16).then(()=>coaxial.guardProbe(4)<-6000 && coaxial.guardProbe(4)>-9000)") {return false;}
+  unused4:=lab_check_key(c,"s","KeyS",false);unused5:=lab_check_key(c,"Shift","ShiftLeft",false);
+  print("Bitcoin Lab: spawn -> Chain -> spawn\n");
+  if phone {
+    // Real touch gestures travel in both directions through the shared thumb session.
+    t1:=cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":80,\"y\":440,\"id\":2}]}",30000);
+    t2:=cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchMove\",\"touchPoints\":[{\"x\":80,\"y\":384,\"id\":2}]}",30000);
+    if !lab_check_eval(c,"coaxialClipStep(16,16).then(()=>coaxial.guardProbe(4)>-6000)") {return false;}
+    forward:=lab_check_value(c,"coaxial.guardProbe(4)");
+    t3:=cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchMove\",\"touchPoints\":[{\"x\":80,\"y\":496,\"id\":2}]}",30000);
+    if !lab_check_eval(c,"coaxialClipStep(16,16).then(()=>true)") {return false;}
+    back:=lab_check_value(c,"coaxial.guardProbe(4)");
+    if back>=forward-500 || back< -9000 || back> -5000 {return false;}
+    t4:=cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}",30000);
+    print("Bitcoin Lab: phone thumb walks forward and back\n");
+  }
+  if !lab_check_key(c,"7","Digit7",true) || !lab_check_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(0)===6 && coaxial.probe()===104 && coaxial.guardProbe(5)===0)") {return false;}
+  unused6:=lab_check_key(c,"7","Digit7",false);
+  if !lab_check_key(c,"PageDown","PageDown",true) || !lab_check_eval(c,"coaxial.probe()===105") {return false;}
+  unused7:=lab_check_key(c,"PageDown","PageDown",false);
+  // A real pointer selects Transactions/UTXOs from the second tab.
+  if phone {
+    if cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":170,\"y\":98,\"id\":1}]}",30000)<0 {return false;}
+    if cdp_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}",30000)<0 {return false;}
+  }else {
+    if cdp_call(c,"Input.dispatchMouseEvent","{\"type\":\"mousePressed\",\"x\":260,\"y\":98,\"button\":\"left\",\"clickCount\":1}",30000)<0 {return false;}
+    if cdp_call(c,"Input.dispatchMouseEvent","{\"type\":\"mouseReleased\",\"x\":260,\"y\":98,\"button\":\"left\",\"clickCount\":1}",30000)<0 {return false;}
+  }
+  if !lab_check_eval(c,"coaxialClipStep(1,60).then(()=>coaxial.guardProbe(0)===1 && coaxial.probe()===34 && coaxial.guardProbe(5)===0 && coaxial.guardProbe(7)===0)") {return false;}
+  print("Bitcoin Lab: keyboard chapters and pointer station selection\n");
+  // Readable fallback and noindex; all 125 source links, exact status labels.
+  if !lab_check_eval(c,"(async()=>{let h=await(await fetch('/worlds/bitcoin-lab')).text();let d=new DOMParser().parseFromString(h,'text/html');return document.querySelector('meta[name=robots]')?.content==='noindex, nofollow' && d.querySelectorAll('tbody tr').length===125 && [...d.querySelectorAll('tbody tr')].filter(r=>r.textContent.includes('partly implemented')).length===3})()") {return false;}
+  if !lab_check_eval(c,"(async()=>{coaxial.captureFrame();await coaxialClipStep(1,60);for(let i=0;i<100&&!coaxial.renderCapture;i++)await new Promise(r=>setTimeout(r,10));return coaxial.renderCapture?.format==='rgba8unorm'})()") {return false;}
+  // Encode the actual GPU bytes; no DOM recreation of the realm or pixel editing.
+  v:=cdp_evaluate(c,"(async()=>{let r=coaxial.renderCapture,c=new OffscreenCanvas(r.width,r.height);c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(r.bytes),r.width,r.height),0,0);let b=new Uint8Array(await(await c.convertToBlob({type:'image/png'})).arrayBuffer()),s='';for(let i=0;i<b.length;i+=32768)s+=String.fromCharCode(...b.subarray(i,i+32768));return btoa(s)})()");
+  if v<0 {return false;}png:[16777216]u8;n:=b64_decode(jv_raw(c[0].doc[0],v),png[..]);if n<=0 || !fs_write(out,cast(string)png[0..<n]) {return false;}
+  print("Bitcoin Lab: screenshot %\n",out);
+  if !lab_check_key(c,"Escape","Escape",true) {return false;}
+  until=proc_now_ms()+5000;
+  while proc_now_ms()<until {if lab_check_eval(c,"location.pathname==='/worlds' || location.pathname==='/worlds/'") {print("Bitcoin Lab: exit to Worlds\n");return true;}proc_sleep(50);}
+  return false;
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) {return 2;}
+  base:=ifx args_count(args[..])>0 then args_at(args[..],0) else "http://127.0.0.1:8832";
+  dir:=ifx args_count(args[..])>1 then args_at(args[..],1) else "/tmp/bitcoin-lab-12802";
+  path:[4096]u8;url:[4096]u8;joined:=fs_join(base,"worlds/bitcoin-lab",url[..]);
+  for i:0..<2 {
+    c:[1]Cdp;if !cdp_launch_background(c[..],ifx i==0 then 1440 else 390,ifx i==0 then 900 else 844,"bitcoin-lab-check-") {tool_errln(cdp_error(c[..]));return 1;}
+    good:=lab_check_run(c[..],joined,fs_join(dir,ifx i==0 then "desktop-walk.png" else "phone-walk.png",path[..]),i==1);
+    if !good {v:=cdp_evaluate(c[..],"JSON.stringify({path:location.pathname,text:document.body.innerText.slice(0,400),errors:globalThis.labErrors,lost:globalThis.coaxial?.renderDeviceLost,recovery:globalThis.coaxial?.gpuRecovery,probe:globalThis.coaxial?.probe?.(),guard:Array.from({length:10},(_,i)=>globalThis.coaxial?.guardProbe?.(i))})");if v>=0 {print("%\n",jv_raw(c[0].doc[0],v));}}
+    cdp_close(c[..]);if !good {tool_errln("Bitcoin Lab walkthrough failed");return 1;}
+  }
+  return 0;
+}

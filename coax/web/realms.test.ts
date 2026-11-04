@@ -84,17 +84,21 @@ test("refuses a missing or bad clock", () => {
 })
 test("refuses a painterly realm whose WGSL has no style block", () => {
   const site = mkdtempSync(join(tmpdir(), "realms-site-"))
+  const module = worlds().find(w => w.id === "everglade")!.realm!.module
+  for (const w of worlds()) if (w.realm) writeFileSync(join(site, `${w.realm.module}.wgsl`), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
+  writeFileSync(join(site, `${module}.wgsl`), "// no block\n")
   writeFileSync(join(site, "everglade.wgsl"), "// no block\n")
   writeFileSync(join(site, "villa.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, "fairy.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, "waterlab.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, "orbitleague.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, "animelab.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
-  expect(check(() => {}, { site, styleBlock: true })).toThrow(/everglade.wgsl has no style block/)
+  expect(check(() => {}, { site, styleBlock: true })).toThrow(new RegExp(`${module}.wgsl has no style block`))
+  writeFileSync(join(site, `${module}.wgsl`), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, "everglade.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   expect(check(() => {}, { site, styleBlock: true })).not.toThrow()
   // or a whole module from Coax, the style its own functions
-  writeFileSync(join(site, "everglade.wgsl"), `// ---- generated: verse/everglade/gpu.coax (the module) by coax wgsl; do not edit\n${STYLE_MODULE}tone(p_c: f32) -> f32 {\n  return p_c;\n}\n`)
+  writeFileSync(join(site, `${module}.wgsl`), `// ---- generated: verse/everglade/gpu.coax (the module) by coax wgsl; do not edit\n${STYLE_MODULE}tone(p_c: f32) -> f32 {\n  return p_c;\n}\n`)
   expect(check(() => {}, { site, styleBlock: true })).not.toThrow()
   // or a module whose Coax source loads the presets, though it calls none of them
   const root = mkdtempSync(join(tmpdir(), "realms-root-"))
@@ -112,7 +116,7 @@ test("refuses a painterly realm whose WGSL has no style block", () => {
   expect(check(() => {}, { site, styleBlock: true })).toThrow(/fairy.wgsl has no style block/)
   writeFileSync(join(site, "fairy.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   // a lowpoly realm with a painterly zone needs it too
-  writeFileSync(join(site, "everglade.wgsl"), "// no block\n")
+  writeFileSync(join(site, `${module}.wgsl`), "// no block\n")
   expect(check((r) => { r.style = "lowpoly"; r.zones = [{ id: "glade", style: "painterly" }] }, { site, styleBlock: true })).toThrow(/partly painterly/)
 })
 // anime (docs/verse/art-styles.md, Anime): a style with variants, named by the realm or a zone
@@ -140,7 +144,7 @@ test("an anime realm, or an anime zone, needs the style block in its WGSL", () =
   const site = mkdtempSync(join(tmpdir(), "realms-site-"))
   const packs = mkdtempSync(join(tmpdir(), "realms-packs-"))
   const block = `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`
-  for (const m of ["everglade", "villa", "fairy", "waterlab", "orbitleague", "animelab"]) writeFileSync(join(site, `${m}.wgsl`), block)
+  for (const w of worlds()) if (w.realm) writeFileSync(join(site, `${w.realm.module}.wgsl`), block)
   const t = table()
   const fixture = t.worlds.find((w: any) => w.id === "fixture").realm.module
   writeFileSync(join(site, `${fixture}.wgsl`), "// no block\n")
@@ -177,19 +181,30 @@ test("refuses a painterly realm with a lowpoly pack, and a pack of another style
   expect(check(() => {}, { styleBlock: false, packs }, "fixture")).toThrow(/drawn lowpoly but its pack fixture is painterly/)
   // a lowpoly realm with a painterly zone may carry a painterly pack
   expect(check((r) => (r.zones = [{ id: "glade", style: "painterly" }]), { styleBlock: false, packs }, "fixture")).not.toThrow()
-  // Everglade waits on its own pack task, but only while its pack names no style
+  // Other consumers of Everglade's pack do not inherit its pending-style exception.
   writeFileSync(join(packs, "fixture.json"), JSON.stringify({ pack: "fixture" }))
   writeFileSync(join(packs, "everglade.json"), JSON.stringify({ pack: "everglade" }))
-  expect(check(() => {}, { styleBlock: false, packs })).not.toThrow()
+  expect(check(() => {}, { styleBlock: false, packs })).toThrow(/its pack everglade is lowpoly/)
   writeFileSync(join(packs, "everglade.json"), JSON.stringify({ pack: "everglade", style: "lowpoly" }))
   expect(check(() => {}, { styleBlock: false, packs })).toThrow(/its pack everglade is lowpoly/)
 })
-test("Everglade and Hold the Stair play by the SRD 5e ruleset and their pages say so; no other realm has one", () => {
+test("the SRD worlds carry their ruleset into their generated pages", () => {
   const all = worlds().filter((w) => w.realm)
-  const srd = ["everglade", "stair"]
+  const srd = ["everglade", "stair", "fivelab", "fivemmo", "evergladeclassic", "oneshot"]
   for (const w of all) expect(w.realm!.ruleset).toBe(srd.includes(w.id) ? "srd5" : undefined)
   expect(page(all.find((w) => w.id === "everglade")!.realm!)).toContain(`data-ruleset="srd5"`)
   expect(page(all.find((w) => w.id === "haunted")?.realm ?? all.find((w) => !srd.includes(w.id))!.realm!)).not.toContain("data-ruleset")
+})
+test("unlisted realms keep direct routes and noindex, outside the public catalogs", () => {
+  const w = worlds().find(w => w.id === "bitcoin-lab")!
+  expect(w.listed).toBe(false)
+  const html = page(w.realm!, false)
+  expect(html).toContain('<meta name="robots" content="noindex, nofollow">')
+  expect(html).toContain('data-app="bitcoin-lab"')
+  expect(html).toContain('data-slot="bitcoin-lab"')
+  expect(html).toContain('<caption>All 125 chapters</caption>')
+  expect(listMarkdown(worlds())).not.toContain("bitcoin-lab")
+  expect(listPage(worlds())).not.toContain("bitcoin-lab")
 })
 test("refuses an unknown ruleset", () => expect(check((r) => (r.ruleset = "pathfinder"))).toThrow(/ruleset is one of/))
 
