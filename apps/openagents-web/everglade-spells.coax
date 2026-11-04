@@ -2058,6 +2058,9 @@ spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) ->
 HB_ICON :: 36.0; HB_STEP :: 42.0; HB_PAD :: 8.0; HB_MARGIN :: 8.0;
 HB_HOVER :: 0.35; HB_LONG :: 0.45; HB_WARM :: 0.3;   // tooltip.rs HOVER_DELAY, LONG_PRESS, WARM
 HB_PHONE_BOTTOM :: 136.0;    // CSS px: the old phone app's hotbar_bottom, over its sticks
+// CSS px a phone held sideways keeps under its tray: the bar sits low between the thumbs, since 136 px
+// up a 390 px tall view would put it over the middle, on you (phone QA, November 4)
+HB_PHONE_LAND_BOTTOM :: 30.0;
 HB_RESERVE :: 22.0;          // CSS px over the tray for its line
 HB_PHONE_TOP :: 176.0;       // CSS px at a phone's top the open tray keeps clear: the title, HP, the chat line and TALK
 HB_URL :: "/worlds/everglade/hotbar/";
@@ -2088,7 +2091,10 @@ sp_round :: (v: f32) -> f32 { return floor(v + 0.5); }
 // One CSS unit of the tray in device pixels.
 sp_unit :: (s: [] Everglade) -> f32 { k := hi(s[0].dpr, 0.5); return hi(s[0].height / k / 768, 1) * k; }
 // The tray's bottom over the screen's, device pixels.
-sp_bar_bottom :: (s: [] Everglade) -> f32 { return ifx phone(s) then f32(HB_PHONE_BOTTOM) * hi(s[0].dpr, 0.5) else 0.0f32; }
+sp_bar_bottom :: (s: [] Everglade) -> f32 {
+  if !phone(s) { return 0; }
+  return f32(ifx s[0].width > s[0].height then HB_PHONE_LAND_BOTTOM else HB_PHONE_BOTTOM) * hi(s[0].dpr, 0.5);
+}
 // How much of the screen's bottom the bar and its line keep from the hint (none on a phone, where
 // the bar stands over the sticks), device pixels.
 spells_reserve :: (s: [] Everglade) -> f32 {
@@ -2448,6 +2454,18 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   #assert everglade_pointer(g[..], 125, 925, 0, 1, 8) && g[0].sp.slot_held == 1;
   _ := everglade_pointer(g[..], 600, 300, 0, 1, 9);
   #assert g[0].sp.slot_held == -1;
+}
+
+#test "phone: the bar stands over the thumbs upright, and low between them held sideways, never over the middle" {
+  g: [1] Everglade;
+  g[0].touch = true; g[0].dpr = 3;
+  g[0].width = 1170; g[0].height = 2532;
+  #assert sp_bar_bottom(g[..]) == 136 * 3;
+  g[0].width = 2532; g[0].height = 1170;
+  #assert sp_bar_bottom(g[..]) == 30 * 3;
+  #assert sp_bar_bottom(g[..]) < g[0].height * 0.1;
+  g[0].touch = false; g[0].dpr = 1; g[0].width = 1440; g[0].height = 900;
+  #assert sp_bar_bottom(g[..]) == 0;
 }
 
 // Whether a wall of s's covers (x, z) on the ground.
