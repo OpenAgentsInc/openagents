@@ -40,7 +40,8 @@
 #import "Basic";
 #load "../lib/net/cdp.coax";
 
-DR_COLS :: 28;            // everglade-drift.js D.cols
+DR_JS_COLS :: 28;         // everglade-drift.js D.cols
+DR_COLS :: 30;            // those, then C_LX and C_LZ (dr_local)
 DR_ROWS :: 20000;         // frames kept a page (5 minutes at 60 a second)
 DR_PART :: 300;           // rows read back at once
 DR_RUN :: 6;              // frames failing in a row that make a drift
@@ -54,7 +55,7 @@ DR_PROFILES :: 6;
 C_T :: 0; C_X :: 2; C_Y :: 3; C_Z :: 4; C_YAW :: 5; C_LIFT :: 6; C_RERUNS :: 7; C_FIX :: 8; C_SPRITES :: 9;
 C_RG :: 10; C_WW :: 11; C_WOS :: 12; C_SPELLS :: 13; C_BAR :: 14; C_COND :: 15; C_SCOND :: 16; C_OCOND :: 17;
 C_FCOND :: 18; C_ECOND :: 19; C_SDOWN :: 20; C_SALL :: 21; C_ACT :: 22; C_CLIP :: 23; C_NET :: 24;
-C_WALK :: 25; C_STALL :: 26; C_MOVED :: 27;
+C_WALK :: 25; C_STALL :: 26; C_MOVED :: 27; C_LX :: 28; C_LZ :: 29;
 
 Buf :: struct { b: [16384] u8; n: int; bad: bool; }
 bput :: (o: [] Buf, s: string) {
@@ -78,6 +79,7 @@ DrPage :: struct {
   rows: [DR_ROWS * DR_COLS] int; n: int;
   marks: [DR_MARKS] DrMark; marks_n: int;
   texts: [DR_TEXTS] DrText; texts_n: int;
+  hold_from: int = -1; hold_to: int = -1;   // the hold's length, not compared (dr_hold_window)
 }
 dr_at :: (p: [] DrPage, r: int, c: int) -> int { return p[0].rows[r * DR_COLS + c]; }
 dr_mark_name :: (p: [] DrPage, k: int) -> string { return cast(string) p[0].marks[k].name[0..<p[0].marks[k].name_n]; }
@@ -114,11 +116,11 @@ dr_tol :: (pr: DrProbe, a: int, b: int) -> int {
 // one was within the tolerance (closest b value in *other).
 dr_match :: (pr: DrProbe, a: [] DrPage, r: int, b: [] DrPage, window: int, lo: int, other: [] int) -> int {
   t := dr_at(a, r, C_T);
-  va := dr_at(a, r, pr.col); va2 := ifx pr.how == DR_PLACE then dr_at(a, r, C_Z) else 0;
+  va := dr_at(a, r, pr.col); va2 := ifx pr.how == DR_PLACE then dr_at(a, r, pr.col + ifx pr.col == C_X then 2 else 1) else 0;
   best := 1000000000; k := lo;
   while k < b[0].n && dr_at(b, k, C_T) < t - window { k += 1; }
   while k < b[0].n && dr_at(b, k, C_T) <= t + window {
-    vb := dr_at(b, k, pr.col); vb2 := ifx pr.how == DR_PLACE then dr_at(b, k, C_Z) else 0;
+    vb := dr_at(b, k, pr.col); vb2 := ifx pr.how == DR_PLACE then dr_at(b, k, pr.col + ifx pr.col == C_X then 2 else 1) else 0;
     d := dr_diff(pr.how, va, vb, va2, vb2);
     if d < best { best = d; other[0] = vb; }
     if d <= dr_tol(pr, va, vb) { return -1; }
@@ -132,6 +134,7 @@ dr_way :: (pr: DrProbe, a: [] DrPage, b: [] DrPage, window: int, t0: int, t1: in
   for r: 0..<a[0].n {
     t := dr_at(a, r, C_T);
     if t < t0 || t > t1 { continue; }
+    if pr.col == C_COND && t >= a[0].hold_from && t <= a[0].hold_to { continue; }
     while lo < b[0].n && dr_at(b, lo, C_T) < t - window { lo += 1; }
     other: [1] int;
     by := dr_match(pr, a, r, b, window, lo, other[..]);
@@ -242,7 +245,7 @@ dr_pull :: (c: [] Cdp, pg: [] DrPage) -> bool {
     if v < 0 { return false; }
     d := cdp_doc(c);
     e := d.nodes[v].first; i := 0;
-    while e != -1 && i < k * DR_COLS { pg[0].rows[at * DR_COLS + i] = jv_int(d, e, 0); i += 1; e = d.nodes[e].next; }
+    while e != -1 && i < k * DR_JS_COLS { pg[0].rows[(at + i / DR_JS_COLS) * DR_COLS + i % DR_JS_COLS] = jv_int(d, e, 0); i += 1; e = d.nodes[e].next; }
     at += k;
   }
   pg[0].n = n;
@@ -279,6 +282,7 @@ dr_text_way :: (a: [] DrPage, b: [] DrPage, which: int, window: int, t0: int, t1
   for k: 0..<a[0].texts_n {
     x := a[0].texts[k];
     if x.which != which || x.t < t0 || x.t > t1 { continue; }
+    if which == 1 && x.t >= a[0].hold_from && x.t <= a[0].hold_to { continue; }
     want := cast(string) a[0].texts[k].text[0..<x.n];
     ok := false;
     t := x.t - window;
@@ -297,13 +301,58 @@ DR_PROBES :: 32;
 DrReport :: struct { r: [DR_PROBES] DrResult; n: int; }
 dr_add :: (rep: [] DrReport, name: string, v: DrVerdict) { if rep[0].n < DR_PROBES { rep[0].r[rep[0].n] = DrResult.{name = name, v = v}; rep[0].n += 1; } }
 
+// The held step's two holds are not one spell yet: offline it is the watch's own (net_probe 59, the
+// Watch Mage's 3 s hold), in the room a bot's SRD Hold Person (paralyzed, a Wisdom save each 6 s
+// round). Until the offline page runs the room's rules (#12784) and can be held by the same spell,
+// only the hold's start is compared: what holds you and the status lines are not compared from 1 s
+// after the later page shows you held to 1 s after the later page shows you free.
+dr_hold_window :: (a: [] DrPage, b: [] DrPage) {
+  on: [2] int; off: [2] int;
+  for side: 0..<2 {
+    p := ifx side == 0 then a else b;
+    h := dr_mark_t(p, "held"); on[side] = -1; off[side] = -1;
+    if h < 0 { continue; }
+    for r: 0..<p[0].n {
+      t := dr_at(p, r, C_T);
+      if t < h { continue; }
+      held := (dr_at(p, r, C_COND) & 3) != 0;
+      if held && on[side] < 0 { on[side] = t; }
+      if !held && on[side] >= 0 && off[side] < 0 { off[side] = t; }
+    }
+    if on[side] >= 0 && off[side] < 0 { off[side] = dr_at(p, p[0].n - 1, C_T); }
+  }
+  if on[0] < 0 || on[1] < 0 { return; }
+  from := (ifx on[0] > on[1] then on[0] else on[1]) + 1000;
+  to := (ifx off[0] > off[1] then off[0] else off[1]) + 1000;
+  a[0].hold_from = from; a[0].hold_to = to; b[0].hold_from = from; b[0].hold_to = to;
+}
+
+// Where you are in your own heading (C_LX, C_LZ, mm): what you moved since the step began, turned by
+// the camera's yaw that frame. Your keys move you by the camera, and the two browsers get each key
+// in turn, so one page's camera can come to rest a frame's turn (about 13 mrad) from the other's;
+// over a 26 m walk that alone opens 36 cm between the places. In each page's own heading the
+// walks agree; a real snap shows in the corrections.
+dr_local :: (p: [] DrPage) {
+  m := 0;
+  for r: 0..<p[0].n {
+    t := dr_at(p, r, C_T);
+    for k: 0..<p[0].marks_n { if p[0].marks[k].t <= t && (r == 0 || p[0].marks[k].t > dr_at(p, r - 1, C_T)) { m = r; } }
+    dx := f64(dr_at(p, r, C_X) - dr_at(p, m, C_X)); dz := f64(dr_at(p, r, C_Z) - dr_at(p, m, C_Z));
+    th := f64(dr_at(p, r, C_YAW)) / 1000.0;
+    p[0].rows[r * DR_COLS + C_LX] = cast(int) (dx * cos(th) - dz * sin(th));
+    p[0].rows[r * DR_COLS + C_LZ] = cast(int) (dx * sin(th) + dz * cos(th));
+  }
+}
+
 // Every probe of the paired session, offline (a) against the room (b) and back.
 dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport) {
   window := 250 + rtt;
+  dr_hold_window(a, b);
+  dr_local(a); dr_local(b);
   t0 := dr_mark_t(a, "start"); t1 := dr_mark_t(a, "end");
   if t0 < 0 || t1 < 0 { t0 = 0; t1 = 1 << 50; }
   probes := [16] DrProbe.[
-    DrProbe.{name = "position", col = C_X, how = DR_PLACE, tol = 350},
+    DrProbe.{name = "position (in your heading, since the step)", col = C_LX, how = DR_PLACE, tol = 350},
     DrProbe.{name = "camera heading", col = C_YAW, how = DR_ANGLE, tol = 200},
     DrProbe.{name = "lift height", col = C_LIFT, how = DR_NEAR, tol = 50},
     DrProbe.{name = "Reverse Gravity shown", col = C_RG, how = DR_ON},
