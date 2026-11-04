@@ -18,6 +18,9 @@
 //     a Warlock's violet, its casting hand alight; Darian taller, in black, with a staff. The cult's
 //     look on the body (rp_parts) is the one place the Blender robes plug in, by look id. The
 //     watch in the town guard's leathers, the line with sword and shield (everglade-watch.coax);
+//   - each body its own gait (#12769): a looping clip it starts at its own phase, and a stride up to
+//     RP_STRIDE longer or shorter, from its id (the room creature's, the same on every page), so a
+//     squad never runs in step (rp_gait); its pace is the battle's (everglade-raid-tactics.coax rt_pace);
 //   - &cine=1, a flight for a film: behind Darian over his swarm, the waves, the charge into the
 //     watch, then on over the gate to the commons, where it settles into your own camera behind you
 //     and the HUD comes back. Without it the camera is yours from the start.
@@ -69,6 +72,7 @@ RaidPreview :: struct {
   wall_t: f32 = -1;          // the raid's clock when the palisade's posts were last looked at (everglade_raid_wall)
   wall_sig: int;             // and what was down then
   steps: int;                // the raiders' footfalls played this frame (RP_STEPS at most)
+  ids: [RAID_SHOWN] int;     // each body's raider: the room creature's id (0: the preview's, its place)
 }
 
 // ?raid=preview (and &cine=1): you by the commons facing the South Gate, the raid to come.
@@ -99,7 +103,7 @@ everglade_raid_clock :: (s: [] Everglade, t: f32) #export_c {
 }
 // The palisade's posts down in this page's town (verse/demolish.coax: broken or knocked loose), so the
 // raid's breaches open only where its wall is broken through (everglade5e-raid.coax e5r_raid_broke;
-// #12747): looked at twice a second, into out the x, z of each, as many as out holds; their count,
+// #12747), and the stables' pieces down, which take from them (#12769): looked at twice a second, into out the x, z of each, as many as out holds; their count,
 // or -1 when they are as they were.
 RP_WALL_EVERY :: 0.5;
 everglade_raid_wall :: (s: [] Everglade, out: [] f32) -> int #export_c {
@@ -111,13 +115,18 @@ everglade_raid_wall :: (s: [] Everglade, out: [] f32) -> int #export_c {
   for i: 0..<dm[0].n {
     if dm[0].pieces[i].state == DP_STANDING { continue; }
     x := dm[0].pieces[i].cx; z := dm[0].pieces[i].cz;
-    if !rp_in_palisade_wall(x, z) { continue; }
+    if !rp_in_palisade_wall(x, z) && !rp_in_stables(x, z) { continue; }
     if n * 2 + 1 < out.count { out[n * 2] = x; out[n * 2 + 1] = z; n += 1; }
     sig = (sig * 31 + i + 1) % 1000000007;
   }
   if sig == s[0].rp.wall_sig { return -1; }
   s[0].rp.wall_sig = sig;
   return n;
+}
+// Whether (x, z) is in the stables (plan.coax EG_STABLES), which the raid burns down (#12769).
+rp_in_stables :: (x: f32, z: f32) -> bool {
+  k := EG_STABLES * EG_BOX;
+  return x >= EG_BUILDING[k] - 0.5 && x <= EG_BUILDING[k + 2] + 0.5 && z >= EG_BUILDING[k + 1] - 0.5 && z <= EG_BUILDING[k + 3] + 0.5;
 }
 // Whether (x, z) is in one of the palisade's walls (plan.coax EG_PALISADE, not its gate towers).
 rp_in_palisade_wall :: (x: f32, z: f32) -> bool {
@@ -269,6 +278,38 @@ RP_DYE :: [16] f32.[0.3, 0.03, 0.035, 1,   0.16, 0.014, 0.022, 1,   0.13, 0.035,
 RP_GOLD :: [4] int.[0, 1, 0, 1];
 RP_FAR :: 22.0;            // metres from you: past this a raider wears the robe's far copy
 RP_VIOLET :: Point.{x = 0.75, y = 0.35, z = 1.0};
+// Each body's own gait (#12769): from its id, the same on every page and every run.
+RP_STRIDE :: 0.08;         // a stride up to 8% longer or shorter than the clip's: its pace's (rt_pace RT_PACE)
+// A number from 0 to 1 for raider `id` and `salt`: everglade-raid-tactics.coax rt_hash, which this
+// module doesn't load (everglade-raid-town.coax holds them alike).
+rp_hash :: (id: int, salt: int) -> f32 {
+  h := ((id % 1000003 + 1000003) % 1000003 * 2654435761 + salt * 40503 + 12345) % 2147483647;
+  h = h * h % 2147483647;
+  h = (h * 48271 + salt) % 2147483647;
+  h = h * h % 2147483647;
+  return f32(h % 100003) / 100003.0;
+}
+// Raider id's pace against its kind's, as the battle moves it (rt_pace).
+rp_pace :: (id: int) -> f32 { return 1 + 0.08 * (2 * rp_hash(id, 1) - 1); }
+// Body q's raider: the room's creature, else the preview's person q.
+rp_id :: (s: [] Everglade, q: int) -> int { return ifx s[0].rp.ids[q] != 0 then s[0].rp.ids[q] else q + 1; }
+// Where in a looping clip raider id starts it (0 to 1 of the clip): the golden ratio's steps, so a
+// squad's consecutive ids spread evenly round the loop. Its stride against the clip's: its pace's
+// share of RP_STRIDE (a faster raider strides longer), and up to RP_OWN of its own, so its feet keep
+// to the ground and its step drifts slowly against its neighbours'.
+RP_OWN :: 0.02;
+rp_phase :: (id: int) -> f32 { u := f32(id) * 0.618034; return u - floor(u); }
+rp_stride :: (id: int) -> f32 { return rp_pace(id) * (1 + f32(RP_OWN) * (2 * rp_hash(id, 5) - 1)); }
+// Body q plays `clip` at `speed` for `owed` s: a looping clip it changes to starts at its own phase,
+// and its gait goes at its own stride.
+rp_gait :: (s: [] Everglade, rig: SkinRig, sk: [] Skin, q: int, clip: int, speed: f32, owed: f32) {
+  id := rp_id(s, q);
+  if sk[0].clip != clip && clip != PEOPLE_DIE && clip != PEOPLE_SPELL && clip != PEOPLE_SLASH {
+    skin_advance(rig, sk, clip, 0, 0);   // into the clip, its blend begun
+    sk[0].time = rp_phase(id) * rig.duration[clip];
+  }
+  skin_advance(rig, sk, clip, speed / rp_stride(id), owed);
+}
 // Whether raid person q, `d` m from you, is posed this frame (`new_clip`: its clip changed): the
 // seconds of its clip to play then, else -1 (they wait, owed).
 rp_pose_due :: (s: [] Everglade, q: int, new_clip: bool, d: f32, dt: f32) -> f32 {
@@ -356,7 +397,7 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
       if sk[0].clip != PEOPLE_DIE { skin_advance(rig, sk, PEOPLE_DIE, 0, owed); }
       else { left := hi(rig.duration[PEOPLE_DIE] - 0.02 - sk[0].time, 0); skin_advance(rig, sk, PEOPLE_DIE, 0, lo(owed, left)); }
     } else {
-      skin_advance(rig, sk, clip, speed, owed);
+      rp_gait(s, rig, sk, q, clip, speed, owed);
     }
     skin_palette(rig, sk, pal);
   }
@@ -487,4 +528,56 @@ rp_person_at :: (s: [] Everglade, q: int, npc: int, x: f32, z: f32, yaw: f32, sp
   everglade_raider(g[..], 0, RP_CULTIST, 0, -88.6, 0, 0, 0, 0, 0.0);
   _ = everglade_sound_lines(g[..]);
   #assert egs_heard(g[..], 0).name == "death";
+}
+
+// How bunched raid bodies first to first + n are in clip `clip` now: the length of the mean of their
+// phases round the clip's loop (1 all in step, near 0 spread evenly), and into gap the least gap
+// between two phases (0 to 0.5 of the loop).
+rp_test_bunched :: (g: [] Everglade, first: int, n: int, clip: int, gap: [] f32) -> f32 {
+  rig := people_rig(g[0].people_rig[..], false);
+  cx: f32 = 0; cz: f32 = 0; least: f32 = 1;
+  for a: first..<first + n {
+    pa := g[0].rp.skins[a].time / rig.duration[clip];
+    cx += cos(pa * 6.2831853); cz += sin(pa * 6.2831853);
+    for b: a + 1..<first + n {
+      d := abs(pa - g[0].rp.skins[b].time / rig.duration[clip]);
+      least = lo(least, lo(d, 1 - d));
+    }
+  }
+  gap[0] = least;
+  return sqrt(cx * cx + cz * cz) / f32(n);
+}
+
+#test "raid preview: a squad that charges as one runs out of step, near or far off, posed every frame or one in four, the same on every page (#12769)" #steps 8000000000 {
+  g: [1] Everglade;
+  rp_facts(g[..], "/worlds/everglade?raid=preview");
+  people_load(g[0].people_rig[..]);
+  g[0].pack_ready = true;
+  g[0].feet = v3(0, 0, -16);
+  dt := 1.0f32 / 60;
+  // two squads of eight side by side, one at your side and one 60 m off (posed one frame in four):
+  // still, then all at once they run at one speed
+  for f: 0..<240 {
+    for k: 0..<8 {
+      // each at its own pace, as the battle moves them (rt_pace)
+      sa := ifx f < 60 then 0.0f32 else 7.0f32 * rp_pace(2 + k);
+      sb := ifx f < 60 then 0.0f32 else 7.0f32 * rp_pace(10 + k);
+      everglade_raider(g[..], 1 + k, RP_CULTIST, f32(k) * 1.5, -20 + sa * f32(f) * dt, 0, sa, 1, 0, -1);
+      everglade_raider(g[..], 9 + k, RP_CULTIST, f32(k) * 1.5, -80 + sb * f32(f) * dt, 0, sb, 1, 0, -1);
+    }
+    rp_draw(g[..], dt);
+  }
+  gap: [1] f32;
+  #assert g[0].rp.skins[1].clip == PEOPLE_RUN && g[0].rp.skins[9].clip == PEOPLE_RUN;
+  // at this instant, each squad's eight are spread round the run's loop, none two in step
+  near := rp_test_bunched(g[..], 1, 8, PEOPLE_RUN, gap[..]);
+  #assert near < 0.5 && gap[0] > 0.003;
+  far := rp_test_bunched(g[..], 9, 8, PEOPLE_RUN, gap[..]);
+  #assert far < 0.5 && gap[0] > 0.003;
+  // each its own stride: one stride's phase drifts against another's as they run on
+  #assert rp_stride(2) != rp_stride(3);
+  for id: 1..<200 { #assert abs(rp_stride(id) - 1) <= f32(RP_STRIDE) + f32(RP_OWN) * 1.1 && abs(rp_stride(id) / rp_pace(id) - 1) <= f32(RP_OWN); }
+  // a room's raider's gait is its creature's, wherever its body is on the page
+  g[0].rp.ids[4] = 1234;
+  #assert rp_id(g[..], 4) == 1234 && rp_id(g[..], 5) == 6 && rp_phase(1234) == rp_phase(rp_id(g[..], 4));
 }

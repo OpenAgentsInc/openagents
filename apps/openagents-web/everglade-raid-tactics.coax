@@ -21,7 +21,14 @@
 //   - the town stands in the way as it does for the players (#12747): a raider goes round the
 //     houses, the walls and the gate towers by their corners, crosses the palisade only by a gate
 //     or its squad's gate's breaches (rt_way), and slides along whatever it meets (rt_slide), so it
-//     never stands in a footprint (RT_BOX) but in a breach.
+//     never stands in a footprint (RT_BOX) but in a breach;
+//   - the stables, the one building outside the palisade, burn (#12769): one caster in each squad
+//     at the South Gate puts its volleys on them while they stand (RT_AIM_HOUSE); what they take
+//     goes by stages (rt_house_stage) to the fall, and fallen they are rubble a raider walks over
+//     (RtGate.fallen), until the town is rebuilt;
+//   - each raider has its own pace, a little over or under its kind's, and starts its charge a
+//     moment after its squad's call, both from its id (rt_pace, rt_start), so a squad never moves
+//     as one block.
 //   coax test --library apps/openagents-web/everglade5e-rules.coax --only "raid tactics"
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
@@ -49,14 +56,35 @@ RT_SCREEN_EVERY :: 3;       // one Cultist in three screens in melee; the others
 RT_KEEP :: 18.0;            // m a caster keeps from its foe
 RT_SELF :: 12.0;            // m: a foe this near a caster in a siege is shot first
 RT_MELEE :: 0; RT_CASTER :: 1; RT_LEAD :: 2;
-RT_AIM_TOWER :: 0; RT_AIM_WALL :: 1; RT_AIM_FOES :: 2;
+RT_AIM_TOWER :: 0; RT_AIM_WALL :: 1; RT_AIM_FOES :: 2; RT_AIM_HOUSE :: 3;
 
 // A gate in a wall: its middle, width, the wall's way (along) and the way out of the town, and how
 // far the wall runs either side of the gate (lo < 0 < hi, m along).
 // A way in with no wall (wall false: a bridge, an open road) has no siege: its raiders go straight in.
 // `hole`: what of each RT_BREACH section of the wall is broken in the town (rt_wall_broke), so a
 // raider may go through it: bit i of hole[n] the i-th post of section n, from RT_SPAN before it.
-RtGate :: struct { x: f32; z: f32; w: f32; ax: f32; az: f32; ox: f32; oz: f32; lo: f32; hi: f32; wall: bool = true; hole: [RT_BREACHES] int; }
+// `fallen`: the stables are down (rt_house_stage RT_HOUSE_FALLEN), their footprint rubble a raider
+// walks over.
+RtGate :: struct { x: f32; z: f32; w: f32; ax: f32; az: f32; ox: f32; oz: f32; lo: f32; hi: f32; wall: bool = true; hole: [RT_BREACHES] int; fallen: bool; }
+
+// ---- each raider's own pace and start (#12769)
+
+RT_PACE :: 0.08;            // a raider's pace: its kind's, up to 8% over or under
+RT_START_S :: 1.2;          // s: a raider starts its charge up to this long after its squad's call
+// A number from 0 to 1 for raider `id` and `salt`, the same on every client and every run.
+// Squared twice, so that two salts of one id don't move together (everglade-raid-preview.coax
+// rp_hash is the same: everglade-raid-town.coax holds them alike).
+rt_hash :: (id: int, salt: int) -> f32 {
+  h := ((id % 1000003 + 1000003) % 1000003 * 2654435761 + salt * 40503 + 12345) % 2147483647;
+  h = h * h % 2147483647;
+  h = (h * 48271 + salt) % 2147483647;
+  h = h * h % 2147483647;
+  return f32(h % 100003) / 100003.0;
+}
+// Raider id's pace against its kind's: 1 - RT_PACE to 1 + RT_PACE.
+rt_pace :: (id: int) -> f32 { return 1 + f32(RT_PACE) * (2 * rt_hash(id, 1) - 1); }
+// The seconds raider id waits after its squad's call to charge: 0 to RT_START_S.
+rt_start :: (id: int) -> f32 { return f32(RT_START_S) * rt_hash(id, 2); }
 
 rt_hi :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
 rt_lo :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
@@ -112,6 +140,13 @@ rt_breach_along :: (g: RtGate, s: int) -> f32 {
 // the squad's breach, a little across it each time so it opens wide. Then the foes (o untouched).
 rt_siege_aim :: (g: RtGate, s: int, k: int, v: int, o: [] f32) -> int {
   if v >= RT_SIEGE_VOLLEYS { return RT_AIM_FOES; }
+  // one caster in each squad at a gate near the stables burns them while they stand, a little
+  // across them each time (#12769)
+  if k % RT_SQUAD == 3 && rt_house_near(g) {
+    rt_house_mid(o);
+    o[0] += f32(v % 3 - 1) * 3.0; o[1] += f32((v / 3) % 3 - 1) * 3.0;
+    return RT_AIM_HOUSE;
+  }
   if k % 2 == 0 {
     side := ifx (s + v / (RT_SIEGE_VOLLEYS / 2)) % 2 == 0 then -1.0f32 else 1.0f32;
     rt_at(g, side * g.w * f32(RT_TOWER_AT), 0, o);
@@ -431,6 +466,7 @@ rt_blocked_in :: (g: RtGate, from: int, to: int, x: f32, z: f32, r: f32) -> int 
     k := b * 4;
     if x <= RT_BOX[k] - r || x >= RT_BOX[k + 2] + r || z <= RT_BOX[k + 1] - r || z >= RT_BOX[k + 3] + r { continue; }
     if b < RT_WALLS && rt_hole(g, x, z) { continue; }
+    if b == RT_HOUSE && g.fallen { continue; }   // the stables' rubble
     return b;
   }
   return -1;
@@ -491,6 +527,7 @@ rt_first :: (g: RtGate, x0: f32, z0: f32, x1: f32, z1: f32) -> int {
     if hx <= RT_GROUP[m + 2] || lx >= RT_GROUP[m + 4] || hz <= RT_GROUP[m + 3] || lz >= RT_GROUP[m + 5] { continue; }
     for b: int(RT_GROUP[m])..<int(RT_GROUP[m + 1]) {
       if b < RT_WALLS && hole { continue; }
+      if b == RT_HOUSE && g.fallen { continue; }
       t := rt_enters(b, x0, z0, x1, z1, r);
       if t < bt { bt = t; best = b; }
     }
@@ -559,6 +596,65 @@ rt_corners_open :: (b: int) -> int {
   for c: 0..<4 { rt_corner(b, c, p[..]); if rt_blocked(none, p[0], p[1], f32(RT_BODY)) < 0 { bits = bits | (1 << c); } }
   return bits;
 }
+// ---- the stables, burnt down (#12769)
+
+// The stables (plan.coax EG_STABLES), the one building outside the palisade: their footprint, just
+// out of the South Gate on the road in. What the raid's volleys and Darian's spells, and the town's
+// pieces of them broken, take from them (`hurt`, against RT_HOUSE_HP) is the raid's record; by it
+// they stand whole, scorched, ablaze, then fall (rt_house_stage).
+RT_HOUSE :: RT_WALLS + 9;
+RT_HOUSE_HP :: 120;
+RT_HOUSE_PIECE :: 2;        // what a piece of them broken in the town takes
+RT_HOUSE_BOLT :: 6;         // a bolt's or a beam's on them: 1 to this
+RT_HOUSE_REACH :: 40.0;     // m from a gate's middle: a siege there burns them
+RT_HOUSE_WHOLE :: 0; RT_HOUSE_SCORCHED :: 1; RT_HOUSE_ABLAZE :: 2; RT_HOUSE_FALLEN :: 3;
+RT_HOUSE_BLASTS :: 5;       // the blasts that bring the rest of them down as they fall
+// Their middle: into o.
+rt_house_mid :: (o: [] f32) {
+  k := RT_HOUSE * 4;
+  o[0] = (RT_BOX[k] + RT_BOX[k + 2]) / 2; o[1] = (RT_BOX[k + 1] + RT_BOX[k + 3]) / 2;
+}
+// Whether a siege at gate g burns them: they stand, near its wall.
+rt_house_near :: (g: RtGate) -> bool {
+  if !g.wall || g.fallen { return false; }
+  o: [2] f32; rt_house_mid(o[..]);
+  dx := o[0] - g.x; dz := o[1] - g.z;
+  return dx * dx + dz * dz < f32(RT_HOUSE_REACH) * f32(RT_HOUSE_REACH);
+}
+// Their stage for `hurt`: whole, scorched from a third, ablaze from two thirds, fallen at RT_HOUSE_HP.
+rt_house_stage :: (hurt: int) -> int {
+  if hurt >= RT_HOUSE_HP { return RT_HOUSE_FALLEN; }
+  if hurt * 3 >= RT_HOUSE_HP * 2 { return RT_HOUSE_ABLAZE; }
+  if hurt * 3 >= RT_HOUSE_HP { return RT_HOUSE_SCORCHED; }
+  return RT_HOUSE_WHOLE;
+}
+// The least `hurt` of stage st (0 to 3).
+rt_house_at :: (st: int) -> int {
+  if st >= RT_HOUSE_FALLEN { return RT_HOUSE_HP; }
+  return (st * RT_HOUSE_HP + 2) / 3;
+}
+// `hurt` after a blow of n: a blow takes them one stage on at most, so each stage is seen.
+rt_house_add :: (hurt: int, n: int) -> int {
+  to := hurt + rt_hi_i(n, 0);
+  st := rt_house_stage(hurt);
+  if st + 2 <= RT_HOUSE_FALLEN && to >= rt_house_at(st + 2) { to = rt_house_at(st + 2) - 1; }
+  return to;
+}
+rt_hi_i :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+// Whether a piece of the town at (x, z) is theirs.
+rt_house_has :: (x: f32, z: f32) -> bool {
+  k := RT_HOUSE * 4;
+  return x >= RT_BOX[k] - 0.5 && x <= RT_BOX[k + 2] + 0.5 && z >= RT_BOX[k + 1] - 0.5 && z <= RT_BOX[k + 3] + 0.5;
+}
+// Blast n of the RT_HOUSE_BLASTS that bring them down: its middle, then each quarter's (into o).
+rt_house_blast :: (n: int, o: [] f32) {
+  rt_house_mid(o);
+  if n <= 0 { return; }
+  o[0] += ifx n % 2 == 1 then -3.0f32 else 3.0f32; o[1] += ifx n <= 2 then -3.0f32 else 3.0f32;
+}
+// Gate g as the raid's record has the stables: fallen or standing.
+rt_with_house :: (hurt: int, g: RtGate) -> RtGate { o := g; o.fallen = rt_house_stage(hurt) == RT_HOUSE_FALLEN; return o; }
+
 // Whether (x, z) is inside the palisade.
 rt_inside :: (x: f32, z: f32) -> bool { return x > f32(RT_IN_X0) && x < f32(RT_IN_X1) && z > f32(RT_IN_Z0) && z < f32(RT_IN_Z1); }
 // The way from (x, z) to (tx, tz) for a raider in by gate g, round the town's footprints (and not by
@@ -664,11 +760,14 @@ rt_door :: (x: f32, z: f32, fx: f32, fz: f32, hx: f32, hz: f32, o: [] f32) {
 // Whether (x, z) stands where a raider can't: in one of the town's footprints (RT_BOX, the plan's:
 // everglade-raid-town.coax holds them alike) but where a palisade post of the n broken ones (x, z
 // pairs in posts) stood, or out past RT_AREA, where the woods' trees stand.
-rt_test_clips :: (x: f32, z: f32, posts: [] f32, n: int) -> bool {
+rt_test_clips :: (x: f32, z: f32, posts: [] f32, n: int) -> bool { return rt_test_clips_in(x, z, posts, n, false); }
+// rt_test_clips with the stables `fallen` or not: their rubble is ground a raider may stand on.
+rt_test_clips_in :: (x: f32, z: f32, posts: [] f32, n: int, fallen: bool) -> bool {
   if abs(x) > f32(RT_AREA) || abs(z) > f32(RT_AREA) { return true; }
   for b: 0..<RT_BOXES {
     k := b * 4;
     if x <= RT_BOX[k] || x >= RT_BOX[k + 2] || z <= RT_BOX[k + 1] || z >= RT_BOX[k + 3] { continue; }
+    if b == RT_HOUSE && fallen { continue; }
     if b >= RT_WALLS || RT_BOX[k + 2] - RT_BOX[k] < 3.5 && RT_BOX[k + 3] - RT_BOX[k + 1] < 3.5 { return true; }   // a building, a trunk, a gate tower
     // a wall: every post standing within 0.6 m (a post's half and a raider's capsule) holds it
     along_x := RT_BOX[k + 2] - RT_BOX[k] > RT_BOX[k + 3] - RT_BOX[k + 1];
@@ -782,7 +881,7 @@ rt_test_walk :: (g: RtGate, x: f32, z: f32, tx: f32, tz: f32, n: int, cz: f32, p
     rt_slide(g, px, pz, dx / d * m, dz / d * m, p[..]);
     if (pz - cz) * (p[1] - cz) <= 0 && pz != p[1] { cross = abs(p[0]); }
     px = p[0]; pz = p[1];
-    if rt_test_clips(px, pz, posts, np) { clip = 1; }
+    if rt_test_clips_in(px, pz, posts, np, g.fallen) { clip = 1; }
   }
   o[0] = px; o[1] = pz; o[2] = cross; o[3] = clip;
 }
@@ -836,4 +935,68 @@ rt_test_walk :: (g: RtGate, x: f32, z: f32, tx: f32, tz: f32, n: int, cz: f32, p
   // and out again from the square by the gate
   rt_test_walk(open, 20, 0, 30, -80, 800, -56, posts[..], np, o[..]);
   #assert abs(o[0] - 30) < 0.1 && abs(o[1] + 80) < 0.1 && o[3] == 0 && o[2] < 3;
+}
+
+#test "raid tactics: each raider its own pace and start, spread over a squad and the same every run (#12769)" {
+  // the same id, the same pace and start, every time
+  #assert rt_pace(41) == rt_pace(41) && rt_start(41) == rt_start(41);
+  lo_p: f32 = 2; hi_p: f32 = 0; lo_s: f32 = 9; hi_s: f32 = -1;
+  // a squad's eight, as the room numbers its beasts and the preview its people
+  for base: [3] int.[1, 9, 1201] {
+    paces: [8] f32; starts: [8] f32;
+    for k: 0..<8 {
+      paces[k] = rt_pace(base + k); starts[k] = rt_start(base + k);
+      #assert paces[k] >= 1 - f32(RT_PACE) && paces[k] <= 1 + f32(RT_PACE) && starts[k] >= 0 && starts[k] <= f32(RT_START_S);
+      lo_p = rt_lo(lo_p, paces[k]); hi_p = rt_hi(hi_p, paces[k]); lo_s = rt_lo(lo_s, starts[k]); hi_s = rt_hi(hi_s, starts[k]);
+    }
+    // no two of the eight start within 0.02 s of each other, and they span most of the second
+    close := 0;
+    for a: 0..<8 { for b: a + 1..<8 { if abs(starts[a] - starts[b]) < 0.02 { close += 1; } } }
+    smin: f32 = 9; smax: f32 = -1; pmin: f32 = 2; pmax: f32 = 0;
+    for k: 0..<8 { smin = rt_lo(smin, starts[k]); smax = rt_hi(smax, starts[k]); pmin = rt_lo(pmin, paces[k]); pmax = rt_hi(pmax, paces[k]); }
+    #assert close <= 2 && smax - smin > f32(RT_START_S) * 0.3 && pmax - pmin > f32(RT_PACE) * 0.5;
+  }
+}
+
+#test "raid tactics: the stables burn by stages to rubble a raider walks over, and pathing never goes through them standing (#12769)" #steps 600000000 {
+  south := rt_gate(0, -56, 6, false, -64, 64, 0, 0);
+  east := rt_gate(64, 0, 5, true, -56, 60, 0, 0);
+  o: [4] f32;
+  // one caster in a squad at the South Gate aims at them; the East Gate's never
+  #assert rt_house_near(south) && !rt_house_near(east);
+  hits := 0;
+  for k: 0..<8 {
+    a := rt_siege_aim(south, 0, k, 2, o[..]);
+    if a == RT_AIM_HOUSE { hits += 1; #assert rt_house_has(o[0], o[1]); }
+    #assert rt_siege_aim(east, 0, k, 2, o[..]) != RT_AIM_HOUSE;
+  }
+  #assert hits == 1;
+  // the stages: whole, scorched, ablaze, fallen
+  #assert rt_house_stage(0) == RT_HOUSE_WHOLE && rt_house_stage(RT_HOUSE_HP / 3 + 1) == RT_HOUSE_SCORCHED;
+  #assert rt_house_stage(RT_HOUSE_HP * 2 / 3 + 1) == RT_HOUSE_ABLAZE && rt_house_stage(RT_HOUSE_HP) == RT_HOUSE_FALLEN;
+  for st: 0..<4 { #assert rt_house_stage(rt_house_at(st)) == st && (st == 0 || rt_house_stage(rt_house_at(st) - 1) == st - 1); }
+  // one big blow takes them a stage on at most
+  #assert rt_house_stage(rt_house_add(0, 1000)) == RT_HOUSE_SCORCHED && rt_house_stage(rt_house_add(rt_house_at(2), 1000)) == RT_HOUSE_FALLEN;
+  // the blasts that bring them down fall on them
+  for n: 0..<RT_HOUSE_BLASTS { rt_house_blast(n, o[..]); #assert rt_house_has(o[0], o[1]); }
+  posts: [8] f32;
+  // standing, at every stage before the fall: the way north from the road goes round them, never in
+  for hurt: [3] int.[0, RT_HOUSE_HP / 2, RT_HOUSE_HP - 1] {
+    g := rt_with_house(hurt, south);
+    #assert !g.fallen && rt_blocked(g, 14, -70, 0) == RT_HOUSE;
+    rt_test_walk(g, 14, -90, 14, -60, 400, -1000, posts[..], 0, o[..]);
+    #assert abs(o[0] - 14) < 0.1 && abs(o[1] + 60) < 0.1 && o[3] == 0;
+    #assert !rt_test_clips_in(o[0], o[1], posts[..], 0, false);
+  }
+  // once they are fallen nobody aims at them and the way runs straight over the rubble
+  g := rt_with_house(RT_HOUSE_HP, south);
+  #assert g.fallen && !rt_house_near(g) && rt_blocked(g, 14, -70, 0) < 0;
+  for k: 0..<8 { #assert rt_siege_aim(g, 0, k, 2, o[..]) != RT_AIM_HOUSE; }
+  rt_way(g, 14, -90, 14, -60, 0, -84, f32(RT_SPAWN_R), o[..]);
+  #assert o[2] > 0.5 && abs(o[0] - 14) < 0.01;
+  rt_test_walk(g, 14, -90, 14, -60, 400, -1000, posts[..], 0, o[..]);
+  #assert abs(o[0] - 14) < 0.1 && abs(o[1] + 60) < 0.1 && o[3] == 0;
+  // a goal in them is no longer moved out, and a fallen house standing again (a rebuild) blocks again
+  rt_free(g, 14, -70, o[..]); #assert o[0] == 14 && o[1] == -70;
+  #assert rt_with_house(0, g).fallen == false && rt_blocked(rt_with_house(0, g), 14, -70, 0) == RT_HOUSE;
 }

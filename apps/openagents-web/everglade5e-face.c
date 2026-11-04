@@ -562,9 +562,9 @@ static void e5_frame(uint32_t state) {
     if (e5r_raid_started(e5r())) {
       everglade_raid_clock(g, e5r_raid_t(e5r()));
       if (everglade_raid_you(g, (coax_v_f32){rb, 10}) == 2) e5r_raid_you(e5r(), rb[0], rb[1]);
-      /* the palisade's posts down in this page's town: the raid's breaches open only there (#12747) */
-      static float wb[512];
-      int64_t wn = everglade_raid_wall(g, (coax_v_f32){wb, 512});
+      /* the palisade's posts and the stables' pieces down in this page's town: the raid's breaches open only there (#12747), the stables burn down (#12769) */
+      static float wb[1024];   /* the posts and the stables' pieces down */
+      int64_t wn = everglade_raid_wall(g, (coax_v_f32){wb, 1024});
       if (wn >= 0) { e5r_raid_whole(e5r()); for (int64_t q = 0; q < wn; q++) e5r_raid_broke(e5r(), wb[2 * q], wb[2 * q + 1]); }
       for (int64_t q = 0; q < 63; q++) {
         int64_t npc = e5r_raider(e5r(), q, (coax_v_f32){rb, 10});

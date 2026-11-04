@@ -58,7 +58,8 @@ EGS_LEVEL :: [SFX_COUNT] int.[
   420, 750, 750, 600, 450,    // swing, hit, heavy hit, death, standing up
   900, 750, 950, 800, 800,    // the raid: horn, wall, tower, won, lost
   300, 300, 300, 1000, 450,   // footsteps, the bed (its own level, EGS_BED), Levitate
-  550, 520];                  // splash, ice
+  550, 520,                   // splash, ice
+  950];                       // a building's fall (the raid's stables)
 
 // What a spell sounds like: its cast (from the caster), its flight (between them) and its impact
 // (where it lands); -1 none.
@@ -133,6 +134,7 @@ EgSound :: struct {
   // the town's pieces as last heard (egs_stones): each one's DP_* state, how many, and the town's
   // DemoWorld.fell and broken_n then (-1: not yet read)
   stone: [DEMO_PIECES] u8; stone_n: int = -1; stone_fell: int = -1; stone_broken: int = -1;
+  house_down: bool;               // the stables have fallen (egs_stones), their fall heard
   // SOUND and its pane: the label, the pane, the slider's track, MUTE; the finger on them (-1 none)
   open: bool; label: Box; pane: Box; track: Box; mute: Box; finger: int = -1; what: int;
   cued: int;                      // cues taken, for the checks
@@ -217,14 +219,24 @@ egs_stones :: (s: [] Everglade, pieces: [] DemoPiece, n: int, fell: int, broken:
   if m == d[0].stone_n && fell == d[0].stone_fell && broken == d[0].stone_broken { return; }
   fresh := m != d[0].stone_n;
   played := 0;
+  hn := 0; hd := 0; hx: f32 = 0; hz: f32 = 0;
   for i: 0..<m {
     st := pieces[i].state;
     if heard && !fresh && st != DP_STANDING && cast(int) d[0].stone[i] == DP_STANDING && played < EGS_STONES {
       egs_break(s, pieces[i]); played += 1;
     }
     d[0].stone[i] = cast,trunc(u8) st;
+    if rp_in_stables(pieces[i].cx, pieces[i].cz) { hn += 1; hx += pieces[i].cx; hz += pieces[i].cz; if st != DP_STANDING { hd += 1; } }
   }
   d[0].stone_n = m; d[0].stone_fell = fell; d[0].stone_broken = broken;
+  // the stables (the raid burns them down, #12769): half their pieces down is their fall, heard
+  // once, online too (the room's e breaks bring them down here as on the server); stood up again,
+  // they can fall again
+  if hn > 0 {
+    down := hd * 2 >= hn;
+    if down && !d[0].house_down && !fresh { egs_cue(s, SFX_HOUSE_FALL, v3(hx / f32(hn), 2, hz / f32(hn)), 0, 1); }
+    if down { d[0].house_down = true; } else if hd * 5 < hn { d[0].house_down = false; }
+  }
 }
 // The watch and the town's people: who falls, who gets up, who swings.
 egs_watch :: (s: [] Everglade) {
@@ -659,6 +671,38 @@ egs_test_town :: (out: [] DemoPiece) {
   town[2].state = DP_BROKEN;
   egs_stones(g[..], town[..], 2, 3, 1, true);
   #assert g[0].snd[0].cue_n == 0;
+}
+
+#test "sound: the stables falling are heard once, where they stand, offline or in a room; stood up again they can fall again (#12769)" {
+  g: [1] Everglade;
+  egs_test_page(g[..]);
+  g[0].snd[0].ear = Shot.{eye = v3(0, 1.6, -95), at = v3(14, 1.6, -70)};
+  // four pieces of the stables and a wall's
+  town: [5] DemoPiece;
+  for i: 0..<4 { town[i] = DemoPiece.{cx = 10 + f32(i) * 2, cy = 1.5, cz = -70, hx = 1, hy = 1.5, hz = 0.2, y0 = 0, y1 = 3}; }
+  town[4] = DemoPiece.{cx = 30, cy = 1, cz = -56, hx = 2, hy = 1, hz = 0.3, y0 = 0, y1 = 2};
+  egs_stones(g[..], town[..], 5, 0, 0, false);
+  #assert g[0].snd[0].cue_n == 0;
+  // one down: a stone, no fall yet (in a room, not even the stone: e break plays it)
+  town[0].state = DP_BROKEN;
+  egs_stones(g[..], town[..], 5, 1, 1, false);
+  #assert g[0].snd[0].cue_n == 0;
+  // half down: their fall, once
+  town[1].state = DP_BROKEN;
+  egs_stones(g[..], town[..], 5, 2, 2, false);
+  _ := everglade_sound_lines(g[..]);
+  #assert egs_heard(g[..], 0).name == "house-fall" && egs_heard(g[..], 0).gain > 0 && !egs_heard(g[..], 1).ok;
+  town[2].state = DP_BROKEN; town[3].state = DP_LOOSE;
+  egs_stones(g[..], town[..], 5, 4, 3, false);
+  _ = everglade_sound_lines(g[..]);
+  #assert !egs_heard(g[..], 0).ok;
+  // a rebuild stands them up; they can fall again
+  for i: 0..<4 { town[i].state = DP_STANDING; }
+  egs_stones(g[..], town[..], 5, 4, 0, false);
+  for i: 0..<3 { town[i].state = DP_BROKEN; }
+  egs_stones(g[..], town[..], 5, 7, 3, false);
+  _ = everglade_sound_lines(g[..]);
+  #assert egs_heard(g[..], 0).name == "house-fall";
 }
 
 #test "sound: in a room the town's stones are the server's e break, so a look only learns them" {

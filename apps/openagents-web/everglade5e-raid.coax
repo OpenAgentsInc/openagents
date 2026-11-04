@@ -18,6 +18,12 @@
 //     Cultists' Fire Bolt, Ray of Frost and Chill Touch, the Warlocks' Hex, Burning Hands, Eldritch
 //     Blast and their Hellish Rebuke when the watch hurts one, a Fanatic's Hold Person, each rolled
 //     by the engine in the caster's own turn.
+//   - one caster in each squad burns the stables outside the gate (RT_AIM_HOUSE), and Darian puts
+//     Fireballs and Eldritch Blasts on them too; by what they take, and their pieces down in the
+//     page's town, they go scorched, ablaze, then fall to Darian's last Fireballs, and fallen are
+//     rubble the cult walks over (#12769);
+//   - each raider goes at its own pace and starts its charge its own moment after its squad's
+//     call (rt_pace, rt_start), so a squad never moves as one block (#12769).
 // The watch holds the gate: the Guards and the Knight in a line meet whoever reaches them, the
 // Veterans and Scouts on its flanks shoot their Heavy Crossbows and Longbows at the nearest.
 // Whoever drops to 0 Hit Points is dead and stays where it fell (the page plays the fall and the body).
@@ -83,6 +89,12 @@ E5rRaid :: struct {
   // what of the palisade's breach sections the page's town has broken (rt_wall_broke): the cult goes
   // through only there (#12747)
   holes: [RT_TOWN_GATES * RT_BREACHES] int;
+  // what the stables took from the cult's casts, their pieces down in the page's town (e5r_raid_broke),
+  // the most it has come to (rt_house_stage: they never stand again in a raid), and whether their fall's
+  // Fireballs have gone
+  house_cast: int; house_pieces: int; house: int; house_down: bool;
+  house_seen: int = 1;           // the stages they have been through (bit rt_house_stage), a check's
+  go_t: [E5R_RAID_SQUADS] f32;   // when each squad's siege was done (-1 not yet): its charge from then
 }
 
 E5R_DEFEND_ROLES :: [12] int.[RS_NPC_GUARD, RS_NPC_GUARD, RS_NPC_KNIGHT, RS_NPC_GUARD, RS_NPC_GUARD, RS_NPC_GUARD,
@@ -109,6 +121,7 @@ e5r_raid_start :: (r: [] E5r, lead_x: f32, lead_z: f32, gate_x: f32, gate_z: f32
   g := rt_gate(gate_x, gate_z, 6, false, gate_x - 64, gate_x + 64, in_x, in_z);
   w[0] = E5rRaid.{on = true, started = true, lead_x = lead_x, lead_z = lead_z, gate = g, in_x = in_x, in_z = in_z,
                   you_x = in_x, you_z = in_z + 9};
+  for sq: 0..<E5R_RAID_SQUADS { w[0].go_t[sq] = -1; }
   ox := g.ox; oz := g.oz;
   numbers: [12] int;
   p: [2] f32;
@@ -153,9 +166,21 @@ e5r_raid_start :: (r: [] E5r, lead_x: f32, lead_z: f32, gate_x: f32, gate_z: f32
 
 e5r_raid_started :: (r: [] E5r) -> bool #export_c { return r[0].raid[0].started; }
 // The page's town: the palisade whole again (then each post down, e5r_raid_broke).
-e5r_raid_whole :: (r: [] E5r) #export_c { for n: 0..<RT_TOWN_GATES * RT_BREACHES { r[0].raid[0].holes[n] = 0; } }
-// A palisade post down in the page's town at (x, z) (everglade-raid-preview.coax everglade_raid_wall).
-e5r_raid_broke :: (r: [] E5r, x: f32, z: f32) #export_c { rt_wall_broke(r[0].raid[0].holes[..], x, z); }
+e5r_raid_whole :: (r: [] E5r) #export_c { for n: 0..<RT_TOWN_GATES * RT_BREACHES { r[0].raid[0].holes[n] = 0; } r[0].raid[0].house_pieces = 0; }
+// A palisade post or a piece of the stables down in the page's town at (x, z) (everglade-raid-preview.coax
+// everglade_raid_wall).
+e5r_raid_broke :: (r: [] E5r, x: f32, z: f32) #export_c {
+  rt_wall_broke(r[0].raid[0].holes[..], x, z);
+  if rt_house_has(x, z) { r[0].raid[0].house_pieces += 1; e5r_raid_house(r[0].raid[..], 0); }
+}
+// The stables take n from a cast: what they have taken now, the most it has come to.
+e5r_raid_house :: (w: [] E5rRaid, n: int) {
+  w[0].house_cast += n;
+  w[0].house = rt_house_add(w[0].house, rs_max(w[0].house_cast + w[0].house_pieces * RT_HOUSE_PIECE - w[0].house, 0));
+  w[0].house_seen = w[0].house_seen | (1 << rt_house_stage(w[0].house));
+}
+// The stables' stage now (rt_house_stage).
+e5r_raid_house_stage :: (r: [] E5r) -> int #export_c { return rt_house_stage(r[0].raid[0].house); }
 e5r_raid_t :: (r: [] E5r) -> f32 #export_c { return r[0].raid[0].t; }
 // Where the page's player stands: the cult stops short of it (a preview's player is no one's quarry).
 e5r_raid_you :: (r: [] E5r, x: f32, z: f32) #export_c { r[0].raid[0].you_x = x; r[0].raid[0].you_z = z; }
@@ -283,6 +308,21 @@ e5r_raid_arch :: (w: [] E5rRaid, b: [] RsBattle, q: int, foe: int, siege: bool) 
   a[0].cast_t = w[0].t;
   p: [2] f32;
   b[0].who = i; rs_start_turn(b, i);
+  if siege && rt_house_near(g) && n % 2 == 1 {
+    // the stables (#12769): a Fireball while a slot is spare, else Eldritch Blast's beams
+    rt_house_mid(p[..]);
+    a[0].yaw = e5rr_heading(p[0] - a[0].x, p[1] - a[0].z);
+    if spend && n % 4 == 1 {
+      b[0].c[i].slots[5] -= 1;
+      e5r_raid_look(w, b, q, RT_K_FIREBALL, p[0], p[1], false, 0);
+      e5r_raid_house(w, 12 + rs_roll(b[0].dice[..], 8));
+    } else {
+      e5r_raid_look(w, b, q, RT_K_BLAST, p[0], p[1], false, beams);
+      e5r_raid_house(w, rs_roll(b[0].dice[..], RT_HOUSE_BOLT));
+    }
+    rs_end_turn(b, i); b[0].who = -1;
+    return;
+  }
   if siege {
     rt_at(g, (ifx n % 2 == 0 then -1.0f32 else 1.0f32) * g.w * f32(RT_TOWER_AT), 0, p[..]);
     a[0].yaw = e5rr_heading(p[0] - a[0].x, p[1] - a[0].z);
@@ -339,8 +379,15 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
   b := r[0].b[..];
   w[0].t += dt;
   t := w[0].t;
-  w[0].gate = rt_with_holes(w[0].holes[..], w[0].gate);   // its wall as the page's town has it now
+  w[0].gate = rt_with_house(w[0].house, rt_with_holes(w[0].holes[..], w[0].gate));   // its wall and the stables as the page's town has them now
   g := w[0].gate;
+  // the stables fall: Darian's last Fireballs across them bring the rest down (#12769)
+  if g.fallen && !w[0].house_down && w[0].n > 0 {
+    w[0].house_down = true;
+    hp: [2] f32;
+    for k: 0..<RT_HOUSE_BLASTS { rt_house_blast(k, hp[..]); e5r_raid_look(w, b, 0, RT_K_FIREBALL, hp[0], hp[1], false, 0); }
+  }
+  for sq: 0..<E5R_RAID_SQUADS { if w[0].go_t[sq] < 0 && e5r_raid_done(w, sq) { w[0].go_t[sq] = t; } }
   period := f32(RT_VOLLEY_BEATS) * rs_beat(b);
   call := ifx t < f32(E5R_RAID_CALL) then -1 else int((t - f32(E5R_RAID_CALL)) / period);
   calling := call >= 0 && call >= w[0].call;   // a new call this step
@@ -388,9 +435,11 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
         a[0].x = p[0]; a[0].z = p[1]; tx = p[0]; tz = p[1];
       }
     } else {
-      rt_order(g, a[0].squad, a[0].k, a[0].role, w[0].sq_v[s], done, a[0].x, a[0].z, a[0].post_x, a[0].post_z, p[..]);
+      // its charge its own moment after its squad's call (rt_start)
+      going := done && t >= w[0].go_t[s] + rt_start(q + 1);   // q + 1: the page's id for it (everglade-raid-preview.coax rp_id)
+      rt_order(g, a[0].squad, a[0].k, a[0].role, w[0].sq_v[s], going, a[0].x, a[0].z, a[0].post_x, a[0].post_z, p[..]);
       tx = p[0]; tz = p[1]; aim = int(p[2]); ax = p[3]; az = p[4];
-      run = done;
+      run = going;
       if a[0].role == RT_MELEE {
         foe = e5r_raid_foe(w, b, q, f32(E5R_RAID_MEET), taken[..]);
         if foe >= 0 && (done || e5r_raid_gap(w[0].who[foe], a[0].x, a[0].z) < f32(E5R_RAID_MEET) * 0.6) { taken[foe] += 1; tx = w[0].who[foe].x; tz = w[0].who[foe].z; stop = f32(E5R_RAID_REACH) * 0.8; run = true; }
@@ -412,7 +461,7 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
     wx := p[0] - a[0].x; wz := p[1] - a[0].z; wd := sqrt(wx * wx + wz * wz); direct := p[2] > 0.5;
     left := ifx direct then wd - stop else wd;
     if d > stop && left > 0 && wd > 0.0001 {
-      speed := f32(E5R_RAID_RUN) * f32(b[0].c[i].speed) / 40.0 * (ifx run then f32(E5R_RAID_DASH) else 0.55f32);
+      speed := f32(E5R_RAID_RUN) * f32(b[0].c[i].speed) / 40.0 * (ifx run then f32(E5R_RAID_DASH) else 0.55f32) * rt_pace(q + 1);   // its own pace
       st := lo_r(speed * dt, left);
       mx := wx / wd * st; mz := wz / wd * st;
       if !a[0].town {
@@ -459,6 +508,7 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
       a[0].cast_t = t;
       a[0].yaw = e5rr_heading(ax - a[0].x, az - a[0].z);
       e5r_raid_look(w, b, q, rt_siege_look(npc), ax, az, false, ifx npc == RS_NPC_WARLOCK then e5r_raid_beams(b[0].c[i].level) else 1);
+      if aim == RT_AIM_HOUSE { e5r_raid_house(w, rs_roll(b[0].dice[..], RT_HOUSE_BOLT)); }   // the stables take its bolt or its beams
       continue;
     }
     if b[0].clock < a[0].act_at || foe < 0 || !rs_can_act(b[0].c[i]) { continue; }
@@ -561,7 +611,7 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
     for q: 0..<E5R_RAID_PEOPLE {
       a := r[0].raid[0].who[q];
       if a.died_t >= 0 { was[q] = a.z; continue; }
-      if rt_test_clips(a.x, a.z, posts[..], np) { clips += 1; }
+      if rt_test_clips_in(a.x, a.z, posts[..], np, r[0].raid[0].gate.fallen) { clips += 1; }   // the stables' rubble is ground once they fall (#12769)
       // through the line of the South wall
       if (was[q] + 56) * (a.z + 56) < 0 && abs(a.x) < 64 {
         if abs(a.x) < 3 { by_gate += 1; } else if a.x > 12.6 && a.x < 15.4 { by_breach += 1; } else { elsewhere += 1; }
@@ -572,4 +622,44 @@ e5r_raid_step :: (r: [] E5r, dt: f32) {
   #assert clips == 0 && elsewhere == 0 && by_gate > 0 && by_breach > 0;
   for q: 1..<E5R_RAIDERS { a := r[0].raid[0].who[q]; if a.died_t < 0 && rt_inside(a.x, a.z) { through += 1; } }
   #assert through > 5;
+}
+
+#test "raid: the cult burns the stables by stages till Darian's Fireballs bring them down, never stands in them before, and charges a raider at a time (#12769)" #steps 8000000000 {
+  r: [1] E5r;
+  e5r_start(r[..], 7);
+  e5r_raid_start(r[..], 0, -106, 0, -56, 0, -25);
+  e5r_raid_you(r[..], 0, -16);
+  posts: [2] f32;
+  stage := RT_HOUSE_WHOLE; stages := 1; clips := 0; fall_balls := 0; fell_at: f32 = -1;
+  moved: [E5R_RAID_PEOPLE] f32; was: [E5R_RAID_PEOPLE] f32;
+  for q: 0..<E5R_RAID_PEOPLE { moved[q] = -1; }
+  c: [7] f32;
+  for f: 0..<1500 {
+    e5r_step(r[..], r[0].b[0].clock + 0.04);
+    w := r[0].raid[0];
+    now := e5r_raid_house_stage(r[..]);
+    #assert now >= stage;
+    if now != stage { stages = stages | (1 << now); stage = now; if now == RT_HOUSE_FALLEN { fell_at = w.t; } }
+    while e5r_raid_cast(r[..], c[..]) {
+      // the fall's Fireballs: Darian's, at the stables, the step they fall
+      if fell_at >= 0 && w.t - fell_at < 0.05 && int(c[0]) == RT_K_FIREBALL && rt_house_has(c[3], c[4]) { fall_balls += 1; }
+    }
+    for q: 1..<E5R_RAIDERS {
+      a := w.who[q];
+      if a.died_t >= 0 { continue; }
+      if rt_test_clips_in(a.x, a.z, posts[..], 0, w.gate.fallen) { clips += 1; }
+      // the first step each takes toward the wall once its squad's siege is done: its charge
+      if e5r_raid_done(r[0].raid[..], a.squad) && moved[q] < 0 && f > 0 && a.z - was[q] > 0.02 && a.role != RT_LEAD { moved[q] = w.t; }
+      was[q] = a.z;
+    }
+  }
+  // whole, scorched, ablaze, fallen: each in turn
+  #assert stage == RT_HOUSE_FALLEN && r[0].raid[0].house_seen == 15 && (stages & 9) == 9;
+  #assert fell_at > f32(E5R_RAID_CALL) + 4 && fell_at < 24;   // they burn a while before they fall, in the siege
+  #assert fall_balls >= RT_HOUSE_BLASTS;
+  #assert clips == 0;
+  // squad 0's charges: spread over most of RT_START_S, not one block
+  first: f32 = 1000; last: f32 = -1;
+  for q: 1..<1 + RT_SQUAD { if moved[q] >= 0 { first = lo_r(first, moved[q]); last = hi_r(last, moved[q]); } }
+  #assert last > first && last - first > f32(RT_START_S) * 0.4;
 }

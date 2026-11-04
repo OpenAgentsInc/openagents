@@ -21,6 +21,13 @@
 //   - the ward stones (AC 15, 60 Hit Points) stand still; while one stands, nothing hurts Darian
 //     Odiodei (RsCreature.floor at his whole Hit Points); with all broken his floor is half his Hit
 //     Points, and the room withdraws him when he reaches it, so he never drops;
+//   - one caster in each squad at the South Gate burns the stables outside it (RT_AIM_HOUSE), and Darian
+//     with no foe in reach casts at them too; what they take, and their pieces broken in the room's
+//     town, is the raid's record (house): by it they go scorched, ablaze, then fall, and the room
+//     brings the rest down with RT_HOUSE_BLASTS blasts; fallen, a raider walks over their rubble;
+//     a rebuild stands them up again (#12769);
+//   - each raider goes at its own pace (rt_pace) and starts its charge its own moment after its
+//     squad's siege is done (rt_start), so a squad never moves as one block (#12769);
 //   - Darian stays RT_BACK behind his lines, and casts Dimension Door away from a foe at hand while he
 //     has a Pact slot; he fights by the aggression dial: 0 watches, 1 Eldritch Blast
 //     and Blight, 2 also Fireball at three or more together and Lightning Bolt down a Line of two or
@@ -86,12 +93,38 @@ E5rdRaid :: struct {
   // what of the palisade's breach sections is broken in the room's town (rt_wall_broke): a raider
   // goes through only there (#12747)
   holes: [RT_TOWN_GATES * RT_BREACHES] int;
+  // what the stables have taken (rt_house_stage), whether their fall is still to bring the rest
+  // down in the room's town (e5rd_house_falls), and how high their blasts go off
+  house: int; house_fall: bool; house_y: f32;
+  sq_go: [RT_SQUADS] f32;                    // when each squad's siege was done (-1 not yet): its charge from then
 }
 // A piece of the room's town broke at (x, z) (room-everglade.coax rm_eg_piece): a palisade post in
-// a breach section opens it.
-e5rd_wall_broke :: (r: [] E5rRoom, x: f32, z: f32) { rt_wall_broke(r[0].raid[0].holes[..], x, z); }
-// The town is whole again (a rebuild): no breach.
-e5rd_wall_whole :: (r: [] E5rRoom) { for n: 0..<RT_TOWN_GATES * RT_BREACHES { r[0].raid[0].holes[n] = 0; } }
+// a breach section opens it; one of the stables' takes from them.
+e5rd_wall_broke :: (r: [] E5rRoom, x: f32, z: f32) {
+  rt_wall_broke(r[0].raid[0].holes[..], x, z);
+  if rt_house_has(x, z) { e5rd_house_hurt(r, RT_HOUSE_PIECE); }
+}
+// The town is whole again (a rebuild): no breach, the stables standing.
+e5rd_wall_whole :: (r: [] E5rRoom) {
+  for n: 0..<RT_TOWN_GATES * RT_BREACHES { r[0].raid[0].holes[n] = 0; }
+  r[0].raid[0].house = 0; r[0].raid[0].house_fall = false;
+}
+// The stables take `n`: as they reach their fall, it is owed to the room's town (e5rd_house_falls).
+e5rd_house_hurt :: (r: [] E5rRoom, n: int) {
+  w := r[0].raid[..];
+  if rt_house_stage(w[0].house) == RT_HOUSE_FALLEN || n <= 0 { return; }
+  w[0].house = rt_house_add(w[0].house, n);
+  if rt_house_stage(w[0].house) == RT_HOUSE_FALLEN { w[0].house_fall = true; }
+}
+// The stables' stage now (rt_house_stage).
+e5rd_house_stage :: (r: [] E5rRoom) -> int { return rt_house_stage(r[0].raid[0].house); }
+// Whether the stables' fall is owed to the room's town, once: then it is the room's
+// (room-events.coax ev_raid_step strikes RT_HOUSE_BLASTS Fireballs across them).
+e5rd_house_falls :: (r: [] E5rRoom) -> bool {
+  if !r[0].raid[0].house_fall { return false; }
+  r[0].raid[0].house_fall = false;
+  return true;
+}
 E5RD_WATCH_THROW :: 20;   // feet: a Guard's Spear thrown (its normal range, SRD 5.2.1 Weapons)
 E5RD_WATCH_LOOK :: 120;   // feet: how far the watch looks for a raider to shoot at
 
@@ -146,6 +179,7 @@ e5rd_join :: (r: [] E5rRoom, c: RsCreature, form: int, x0: f32, z0: f32, g: RtGa
   s := squad % RT_SQUADS;
   if w[0].sq_id[s] != squad + 1 {
     w[0].sq_id[s] = squad + 1; w[0].sq_anchor[s] = b[0].c[i].turn_at; w[0].sq_at[s] = b[0].clock; w[0].sq_v[s] = 0; w[0].sq_last[s] = -1;
+    w[0].sq_go[s] = -1;
   }
   if role == RT_CASTER { b[0].c[i].turn_at = rt_align(b[0].c[i].turn_at, w[0].sq_anchor[s], rs_beat(b)); }
   id := r[0].next_id; r[0].next_id += 1;
@@ -298,6 +332,15 @@ e5rd_done :: (r: [] E5rRoom, q: int) -> bool {
   s := sl.squad % RT_SQUADS;
   return r[0].raid[0].sq_v[s] >= RT_SIEGE_VOLLEYS || r[0].b[0].clock - r[0].raid[0].sq_at[s] >= f32(RT_SIEGE_S);
 }
+// Whether raid creature q goes in: its squad's siege done (e5rd_done), and its own moment after
+// that come (rt_start), so the squad starts a raider at a time.
+e5rd_going :: (r: [] E5rRoom, q: int) -> bool {
+  if !e5rd_done(r, q) { return false; }
+  w := r[0].raid[..];
+  s := w[0].slot[q].squad % RT_SQUADS;
+  if w[0].sq_go[s] < 0 { w[0].sq_go[s] = r[0].b[0].clock; }
+  return r[0].b[0].clock - w[0].sq_go[s] >= rt_start(r[0].beasts[q].id);
+}
 
 // The foe for raid creature q within reach metres: the nearest player, else the nearest townsperson
 // (a player up to E5RD_SEAT_FIRST farther still comes first). -1 none.
@@ -364,9 +407,12 @@ e5rd_turn :: (r: [] E5rRoom, q: int) {
       // the siege: this call's volley at the wall (the squad's volleys count once a call)
       if w[0].sq_last[s] != v { w[0].sq_last[s] = v; w[0].sq_v[s] += 1; }
       o: [2] f32;
-      if rt_siege_aim(sl[0].g, sl[0].squad, sl[0].k, w[0].sq_v[s] - 1, o[..]) != RT_AIM_FOES && w[0].harm {
+      aim := rt_siege_aim(sl[0].g, sl[0].squad, sl[0].k, w[0].sq_v[s] - 1, o[..]);
+      if aim != RT_AIM_FOES && w[0].harm {
         bt[0].yaw = e5rr_heading(o[0] - bt[0].x, o[1] - bt[0].z);
         e5rd_cast(r, q, rt_siege_look(npc), -1, o[0], o[1]);
+        // the stables take its bolt or its beams (#12769)
+        if aim == RT_AIM_HOUSE { w[0].house_y = bt[0].y; e5rd_house_hurt(r, rs_roll(b[0].dice[..], RT_HOUSE_BOLT)); }
       }
       return;
     }
@@ -487,13 +533,38 @@ e5rd_door :: (r: [] E5rRoom, q: int) -> bool {
   b[0].c[i].x = e5r_sq(o[0]); b[0].c[i].y = e5r_sq(o[1]);
   return true;
 }
+// Darian with no foe in reach, the stables standing within Fireball's 150 feet at his gate: a
+// Fireball on them while he has a Pact slot to spare (one kept for Dimension Door), else Eldritch
+// Blast's beams (#12769).
+E5RD_HOUSE_REACH :: 45.0;
+e5rd_arch_house :: (r: [] E5rRoom, q: int) {
+  b := r[0].b[..];
+  i := E5RR_BEAST0 + q;
+  w := r[0].raid[..];
+  bt := r[0].beasts[q..<q + 1];
+  if !w[0].harm || !rt_house_near(w[0].slot[q].g) || b[0].turn.action { return; }
+  o: [2] f32; rt_house_mid(o[..]);
+  dx := o[0] - bt[0].x; dz := o[1] - bt[0].z;
+  if dx * dx + dz * dz > f32(E5RD_HOUSE_REACH) * f32(E5RD_HOUSE_REACH) { return; }
+  b[0].turn.action = true;
+  bt[0].yaw = e5rr_heading(dx, dz);
+  w[0].house_y = bt[0].y;
+  if b[0].c[i].slots[5] > 1 {
+    b[0].c[i].slots[5] -= 1;
+    e5rd_cast(r, q, E5RD_K_FIREBALL, -1, o[0], o[1]);
+    e5rd_house_hurt(r, 12 + rs_roll(b[0].dice[..], 8));
+    return;
+  }
+  e5rd_cast(r, q, E5RD_K_BLAST, -1, o[0], o[1]);
+  e5rd_house_hurt(r, rs_roll(b[0].dice[..], RT_HOUSE_BOLT));
+}
 e5rd_arch_act :: (r: [] E5rRoom, q: int, aggr: int) {
   b := r[0].b[..];
   i := E5RR_BEAST0 + q;
   c := b[0].c[i];
   foe := e5rd_foe(r, q, f32(E5RD_REACH_ARCH));
   r[0].beasts[q].foe = foe;
-  if foe < 0 { return; }
+  if foe < 0 { e5rd_arch_house(r, q); return; }
   n: [1] int;
   // Circle of Death (his 6th-level Arcanum) and Finger of Death (the 7th), razing
   if aggr >= 3 && c.slots[6] > 0 {
@@ -555,7 +626,7 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
     i := E5RR_BEAST0 + q;
     bt[0].moving = false;
     if bt[0].form == E5RR_FORM_WARD || b[0].c[i].dead { continue; }
-    sl[0].g = rt_with_holes(w[0].holes[..], sl[0].g);   // its wall as the town has it now
+    sl[0].g = rt_with_house(w[0].house, rt_with_holes(w[0].holes[..], sl[0].g));   // its wall and the stables as the town has them now
     foe := bt[0].foe;
     if foe >= 0 && !e5rd_up(r, foe) { foe = -1; bt[0].foe = -1; }
     tx := bt[0].x; tz := bt[0].z; stop: f32 = 0.3;
@@ -572,7 +643,7 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
       stop = ifx sl[0].role == RT_CASTER then f32(RT_KEEP) else f32(E5RR_REACH) * 0.6;
     } else {
       s := sl[0].squad % RT_SQUADS;
-      rt_order(sl[0].g, sl[0].squad, sl[0].k, sl[0].role, w[0].sq_v[s], e5rd_done(r, q), bt[0].x, bt[0].z, sl[0].sx, sl[0].sz, o[..]);
+      rt_order(sl[0].g, sl[0].squad, sl[0].k, sl[0].role, w[0].sq_v[s], e5rd_going(r, q), bt[0].x, bt[0].z, sl[0].sx, sl[0].sz, o[..]);
       tx = o[0]; tz = o[1];
     }
     // round the spawn (one fleeing goes home by the way it came)
@@ -584,7 +655,7 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
     rt_way(sl[0].g, bt[0].x, bt[0].z, tx, tz, f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]);
     wx := o[0] - bt[0].x; wz := o[1] - bt[0].z;
     wd := sqrt(wx * wx + wz * wz);
-    step := f32(E5RR_RUN) * dt * f32(b[0].c[i].speed) / 40.0;
+    step := f32(E5RR_RUN) * dt * f32(b[0].c[i].speed) / 40.0 * rt_pace(bt[0].id);   // its own pace
     mx: f32 = 0; mz: f32 = 0;
     left := ifx o[2] > 0.5 then wd - stop else wd;   // to the goal, `stop` short; to a corner, all the way
     if d > stop && left > 0 && wd > 0.001 { m := rt_lo(step, left); mx = wx / wd * m; mz = wz / wd * m; }
@@ -741,7 +812,7 @@ e5rd_test_room :: (r: [] E5rRoom) {
     #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, k + 1, (f32(k) - 3.5) * 1.5, -100, south, 0, k, p[0], p[1]) > 0;
   }
   t: f32 = 0;
-  towers := 0; walls := 0; together := 0; most_on_spawn: f32 = 1000; kinds := 0;
+  towers := 0; walls := 0; together := 0; most_on_spawn: f32 = 1000; kinds := 0; house := 0;
   for f: 0..<900 {
     t += 0.05; e5rr_step(r[..], t);
     // the casts this tick: at the wall (to -1), a tower's middle (x 4.5 off) or the breach (x 12 to 17 off)
@@ -749,6 +820,7 @@ e5rd_test_room :: (r: [] E5rRoom) {
     for c: 0..<n {
       cs := r[0].raid[0].casts[c];
       if cs.to >= 0 { kinds = kinds | (1 << cs.k); continue; }   // in the town, at the watch
+      if rt_house_has(cs.ax, cs.az) && cs.az < -60 { house += 1; continue; }   // at the stables (#12769)
       #assert abs(cs.az + 56) < 0.01;
       if abs(abs(cs.ax) - 4.5) < 0.01 { towers += 1; } else { #assert abs(cs.ax) > 12 && abs(cs.ax) < 17; walls += 1; }
     }
@@ -763,6 +835,8 @@ e5rd_test_room :: (r: [] E5rRoom) {
   }
   // the casters fired together, at both the tower and the breach, and the squad's siege is done
   #assert towers > 0 && walls > 0 && together > 0 && r[0].raid[0].sq_v[0] >= RT_SIEGE_VOLLEYS;
+  // and one of them at the stables, which took it
+  #assert house > 0 && r[0].raid[0].house > 0;
   // all of them in the town now, none on another, and none ever came near the spawn
   #assert most_on_spawn >= f32(RT_SPAWN_R) - 0.5;
   for a: 0..<E5RR_BEASTS {
@@ -872,4 +946,50 @@ e5rd_test_room :: (r: [] E5rRoom) {
   // a rebuild shuts the breach
   e5rd_wall_whole(r[..]);
   #assert r[0].raid[0].holes[1 * RT_BREACHES + 1] == 0;
+}
+
+#test "room raid: the stables burn by stages and fall once, raiders go round them standing and over their rubble fallen, a rebuild stands them up; a squad charges a raider at a time (#12769)" #steps 30000000000 {
+  r: [1] E5rRoom;
+  e5rd_test_room(r[..]);
+  south := rt_gate(0, -56, 6, false, -64, 64, 0, 0);
+  for k: 0..<8 {
+    p: [2] f32; rt_ring(k, 0, 0, 3, 12, p[..]);
+    #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, k + 1, (f32(k) - 3.5) * 1.5, -100, south, 0, k, p[0], p[1]) > 0;
+  }
+  t: f32 = 0;
+  posts: [2] f32;
+  stage := RT_HOUSE_WHOLE; stages := 1; clips := 0; falls := 0;
+  going: [E5RR_BEASTS] f32;
+  for q: 0..<E5RR_BEASTS { going[q] = -1; }
+  for f: 0..<1200 {
+    t += 0.05; e5rr_step(r[..], t);
+    r[0].raid[0].cast_n = 0;
+    // the room's town breaks a piece of them now and then, as their bolts strike
+    if f % 10 == 0 && f > 200 { e5rd_wall_broke(r[..], 14, -70); }
+    now := e5rd_house_stage(r[..]);
+    #assert now >= stage;   // by stages, never back
+    if now != stage { stages = stages | (1 << now); stage = now; }
+    if e5rd_house_falls(r[..]) { falls += 1; }
+    for q: 0..<E5RR_BEASTS {
+      bt := r[0].beasts[q];
+      if !e5rd_is(bt) { continue; }
+      // never in the stables while they stand (nor in a wall or another building), at any stage
+      if rt_test_clips_in(bt.x, bt.z, posts[..], 0, now == RT_HOUSE_FALLEN) { clips += 1; }
+      if going[q] < 0 && e5rd_going(r[..], q) { going[q] = t; }
+    }
+  }
+  // whole, scorched, ablaze, fallen: each seen, the fall owed to the town once, nobody in them
+  #assert stages == 15 && stage == RT_HOUSE_FALLEN && falls == 1 && clips == 0;
+  #assert !e5rd_house_falls(r[..]);
+  // fallen, they are no one's aim and a raider's way runs over them
+  for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) { #assert r[0].raid[0].slot[q].g.fallen; } }
+  // the squad went in a raider at a time: their charges spread over most of RT_START_S
+  first: f32 = 1000; last: f32 = -1; n := 0;
+  for q: 0..<E5RR_BEASTS { if going[q] >= 0 { n += 1; first = lo_r(first, going[q]); last = hi_r(last, going[q]); } }
+  #assert n == 8 && last - first > f32(RT_START_S) * 0.4;
+  // a rebuild stands them up: whole, in the way again
+  e5rd_wall_whole(r[..]);
+  #assert e5rd_house_stage(r[..]) == RT_HOUSE_WHOLE && !e5rd_house_falls(r[..]);
+  t += 0.05; e5rr_step(r[..], t);
+  for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) { #assert !r[0].raid[0].slot[q].g.fallen; } }
 }

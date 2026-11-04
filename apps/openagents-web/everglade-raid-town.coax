@@ -28,6 +28,10 @@ rp_same_box :: (src: [] f32, i: int, n: int) -> bool {
     n += 1;
   }
   #assert n == RT_BOXES && RT_TOWN_GATES == EG_GATES;
+  // a raider's own pace and gait are the same numbers in the rules and on the page (#12769)
+  for id: 0..<64 { for salt: 1..<6 { #assert rp_hash(id, salt) == rt_hash(id, salt); } #assert rp_pace(id) == rt_pace(id); }
+  // the house the raid burns down is the stables, the one building outside the palisade (#12769)
+  #assert RT_HOUSE == RT_WALLS + EG_STABLES && rp_same_box(bld[..], EG_STABLES, RT_HOUSE);
   for k: 0..<EG_GATES * 4 { #assert RT_TOWN_GATE[k] == EG_GATE[k]; }
   // every solid of the plan's but the world's edges lies in one of them
   solids: [EG_SOLIDS * EG_BOX] f32;

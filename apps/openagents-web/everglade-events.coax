@@ -195,6 +195,7 @@ ege_raider_draw :: (s: [] Everglade, n: [] EgNet, en: NetEnt, age: f32) {
   if q < 0 { return; }
   e := ege_of(s);
   e[0].body_t[q] = s[0].time;
+  s[0].rp.ids[q] = en.eid;   // its own gait, the same on every page (everglade-raid-preview.coax rp_gait)
   everglade_raider(s, q, en.p1 - EGE_FORM_RAID, p.x, p.z, p.yaw, sqrt(p.vx * p.vx + p.vz * p.vz), p.f / 256, lit, -1);
 }
 // The body that room creature `id` draws as: its own, else a free one (-1: all taken).
@@ -227,7 +228,7 @@ ege_bodies :: (s: [] Everglade) {
       if dead < f32(EGE_BODY_LIE) && o.npc != 0 { everglade_raider(s, q, o.npc, o.x, o.z, o.yaw, 0, o.level, 0, dead); continue; }
     } else if s[0].time - e[0].body_t[q] < EGE_BODY_LOST { continue; }
     everglade_raider(s, q, 0, 0, 0, 0, 0, 0, 0, -1);
-    e[0].body_id[q] = 0;
+    e[0].body_id[q] = 0; s[0].rp.ids[q] = 0;
   }
 }
 ege_ward_draw :: (s: [] Everglade, n: [] EgNet, x: f32, z: f32, age: f32) {

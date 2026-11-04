@@ -642,6 +642,22 @@ ev_raid_step :: (v: [] RmServer, k: int) {
   }
   for c: 0..<w[0].cast_n { ev_raid_cast(v, k, w[0].casts[c]); }
   w[0].cast_n = 0;
+  if v[0].eg[k].strike_n + RT_HOUSE_BLASTS <= EG_CASTS && e5rd_house_falls(r) { ev_house_fall(v, k); }   // the next tick when the strikes are full
+}
+// The stables fall (everglade5e-room-raid.coax e5rd_house_hurt; #12769): RT_HOUSE_BLASTS Fireballs
+// across them bring down what still stands in the server's town, and every page hears it break.
+ev_house_fall :: (v: [] RmServer, k: int) {
+  if !v[0].evc.d.harm { return; }
+  r := ev_rules(v, k);
+  y := r[0].raid[0].house_y;
+  o: [2] f32;
+  for n: 0..<RT_HOUSE_BLASTS {
+    if v[0].eg[k].strike_n >= EG_CASTS { return; }
+    rt_house_blast(n, o[..]);
+    seed := rs_roll(r[0].b[0].dice[..], 999983);
+    v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = -1, slot = EG_WL_BLAST + RT_K_FIREBALL, fx = o[0], fy = y + 9, fz = o[1] - 2, ax = o[0], ay = y + 1.5, az = o[1], seed = seed};
+    v[0].eg[k].strike_n += 1;
+  }
 }
 // A raid creature's cast: `e rc ID K AX AY AZ SEED` to the pages near it (K the look the page plays,
 // everglade-raid-spells.coax RT_K_*), and the strike on the server's town of a spell that harms
@@ -1034,4 +1050,36 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   rm_left(v[..], 0);
   #assert rm_vitals_due(v[..]) > 0;
   #assert eg_test_has(cast(string) v[0].vit.out[0..<v[0].vit.out_n], " 450\n");
+}
+
+#test "events: the stables' fall brings the rest down in the server's town once, and a rebuild stands them up (#12769)" #steps 8000000000 {
+  v: [1] RmServer;
+  k := ev_test_server(v[..]);
+  rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 0 0\n");
+  rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 1 0\n");
+  eg_test_tick(v[..], k);
+  ev_test_skip(v[..], k);
+  #assert v[0].ev[k].phase == EV_WAVE;
+  r := v[0].eg[k].rules[..];
+  // a piece of them broken in the town takes from them; their fall comes from the raid's bolts
+  e5rd_wall_broke(r, 14, -70);
+  #assert r[0].raid[0].house == RT_HOUSE_PIECE && e5rd_house_stage(r) == RT_HOUSE_WHOLE;
+  for n: 0..<3 { e5rd_house_hurt(r, RT_HOUSE_HP); }   // a blow takes them a stage on at most
+  #assert e5rd_house_stage(r) == RT_HOUSE_FALLEN;
+  v[0].eg[k].strike_n = 0;
+  ev_raid_step(v[..], k);
+  // RT_HOUSE_BLASTS Fireballs across them, each in them, by no seat
+  #assert v[0].eg[k].strike_n == RT_HOUSE_BLASTS;
+  for q: 0..<RT_HOUSE_BLASTS {
+    st := v[0].eg[k].strikes[q];
+    #assert st.by == -1 && st.slot == EG_WL_BLAST + RT_K_FIREBALL && rt_house_has(st.ax, st.az);
+  }
+  // once: the next tick strikes nothing more of theirs, and more hurt doesn't fall them again
+  v[0].eg[k].strike_n = 0;
+  e5rd_house_hurt(r, 10);
+  ev_raid_step(v[..], k);
+  #assert v[0].eg[k].strike_n == 0;
+  // the aftermath's rebuild stands them up
+  ev_rebuild(v[..], k);
+  #assert e5rd_house_stage(r) == RT_HOUSE_WHOLE && r[0].raid[0].house == 0;
 }
