@@ -12,6 +12,11 @@
 //   POST /api/playtest/world/everglade     publish {doc, summary}: the world document written, the next
 //                                          version, every room and page told (room-host.c dev_publish)
 //   POST /api/playtest/world/everglade/reset  the designed city back: {doc: null, version: 0}
+//   GET  /api/playtest/realms/everglade    the realm's edit spec (verse.edit_spec): its role, tools,
+//                                          things and the board's rows (migrations 0050_realm_edit.sql)
+//   POST /api/playtest/realms/everglade/switch    {row, on}: a board row on or off, an admin's
+//   POST /api/playtest/realms/everglade/settings  {tools}: the tools visitors get, an admin's
+//   GET  /api/playtest/realms/everglade/proposals, /asks, /panes   none waiting (empty)
 //   GET  /api/auth/viewer                  "A|1": the local player is the realm's admin, so EDIT and
 //                                          Aethyr Forge work as production's do for an admin (on by default
 //                                          in --dev, OA_ROOM_DEV_ADMIN=0 a visitor; there is no --dev in
@@ -21,6 +26,12 @@
 
 DEV_KEY :: "local-development-room-ticket-key-not-a-secret";   // the stand-in's ticket key (>= 32 bytes)
 DEV_OUT :: 1024;
+// Everglade's realm as migrations/0050_realm_edit.sql seeds it: the tools its code honours, the things a
+// visitor may propose, and the board's rows (KEY, LABEL).
+DEV_TOOLS :: [2] string.["map", "build"];
+DEV_THINGS :: [5] string.["crate", "barrel", "bench", "fence", "stall"];
+DEV_ROWS :: [4] string.["flock", "floats", "undergrowth", "daycycle"];
+DEV_ROW_LABELS :: [4] string.["The flock that follows you", "Ducks and lily pads", "Bushes, ferns and rocks", "Day turning to night"];
 DEV_NAMES_A :: [8] string.["Mossy", "Quiet", "Amber", "Swift", "Cedar", "Misty", "Bright", "Rowan"];
 DEV_NAMES_B :: [8] string.["Heron", "Otter", "Wren", "Badger", "Lynx", "Finch", "Hare", "Newt"];
 
@@ -28,6 +39,8 @@ RmDev :: struct {
   on: bool;
   admin: bool;               // the viewer is the realm's admin (rm_dev_start: on unless OA_ROOM_DEV_ADMIN=0)
   minted: int;               // players made (each key's number)
+  row_off: [4] bool;         // the board's rows switched off (DEV_ROWS), in memory for the room's life
+  tool_off: [2] bool;        // the tools visitors don't get (DEV_TOOLS)
   out: [DEV_OUT] u8;         // the answer: "STATUS\n" then the JSON body
 }
 
@@ -149,8 +162,105 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c {
   if dv_path(req, "POST", "/api/playtest/world/everglade") && !v[0].dev.admin { return dv_answer(v, "403", "{\"error\":\"an admin's\"}"); }
   if dv_path(req, "POST", "/api/playtest/world/everglade") { return -1; }   // the host writes the world document (room-host.c dev_publish)
   if dv_path(req, "GET", "/api/playtest/rooms/") || dv_path(req, "GET", "/api/playtest/world/") { return -1; }
+  if dv_path(req, "GET", "/api/playtest/realms/everglade") || dv_path(req, "POST", "/api/playtest/realms/everglade") { return dv_realm(v, req); }
   if dv_path(req, "GET", "/api/") || dv_path(req, "POST", "/api/") { return dv_answer(v, "404", "{\"error\":\"not in the local API\"}"); }
   return -1;
+}
+
+// ---- the realm's edit layer (verse/edit/edit.coax), as the API's verse.edit_spec, edit_switch and edit_settings
+dv_realm :: (v: [] RmServer, req: string) -> int {
+  base := "/api/playtest/realms/everglade";
+  at := (ifx req[0] == 'G' then 4 else 5) + base.count;
+  e := at;
+  while e < req.count && req[e] != ' ' && req[e] != '?' { e += 1; }
+  tail := req[at..<e];
+  admin := v[0].dev.admin;
+  if req[0] == 'G' && tail.count == 0 {
+    b: [DEV_OUT] u8;
+    n := dv_put(b[..], 0, "realm everglade\nrole "); n = dv_put(b[..], n, ifx admin then "admin" else "visitor");
+    n = dv_put(b[..], n, ifx admin then "\nowner 1\n" else "\nowner 0\n");
+    for t: 0..<DEV_TOOLS.count { n = dv_put(b[..], n, "tool "); n = dv_put(b[..], n, DEV_TOOLS[t]); n = dv_put(b[..], n, ifx v[0].dev.tool_off[t] then " 0\n" else " 1\n"); }
+    for t: 0..<DEV_THINGS.count { n = dv_put(b[..], n, "thing "); n = dv_put(b[..], n, DEV_THINGS[t]); n = dv_put(b[..], n, "\n"); }
+    for r: 0..<DEV_ROWS.count {
+      n = dv_put(b[..], n, "row "); n = dv_put(b[..], n, DEV_ROWS[r]); n = dv_put(b[..], n, ifx v[0].dev.row_off[r] then " 0 " else " 1 ");
+      n = dv_put(b[..], n, DEV_ROW_LABELS[r]); n = dv_put(b[..], n, "\n");
+    }
+    if admin { n = dv_put(b[..], n, "waiting 0\n"); }
+    return dv_answer(v, "200", cast(string) b[0..<n]);
+  }
+  if req[0] == 'G' && (tail == "/proposals" || tail == "/asks" || tail == "/panes") { return dv_answer(v, "200", ""); }
+  if req[0] == 'P' && (tail == "/switch" || tail == "/settings") {
+    if !admin { return dv_answer(v, "403", "{\"error\":\"only its owner and admins\"}"); }
+    body := dv_body(req);
+    if tail == "/switch" {
+      key := dv_json_text(body, "row"); on := dv_json_flag(body, "on");
+      if key.count == 0 || on < 0 { return dv_answer(v, "404", "{\"error\":\"a row and on\"}"); }
+      for r: 0..<DEV_ROWS.count {
+        if DEV_ROWS[r] != key { continue; }
+        v[0].dev.row_off[r] = on == 0;
+        b: [96] u8;
+        n := dv_put(b[..], 0, "{\"row\":\""); n = dv_put(b[..], n, key); n = dv_put(b[..], n, ifx on == 1 then "\",\"on\":true}" else "\",\"on\":false}");
+        return dv_answer(v, "200", cast(string) b[0..<n]);
+      }
+      return dv_answer(v, "404", "{\"error\":\"no such row\"}");
+    }
+    for t: 0..<DEV_TOOLS.count { f := dv_json_flag(body, DEV_TOOLS[t]); if f >= 0 { v[0].dev.tool_off[t] = f == 0; } }
+    return dv_answer(v, "200", "{\"ok\":true}");
+  }
+  return dv_answer(v, "404", "{\"error\":\"not in the local API\"}");
+}
+// A request's body: after its blank line.
+dv_body :: (req: string) -> string {
+  for i: 3..<req.count { if req[i - 3] == '\r' && req[i - 2] == '\n' && req[i - 1] == '\r' && req[i] == '\n' { return req[i + 1..<req.count]; } }
+  return "";
+}
+// A JSON body's "name":"TEXT" (the first), "" none.
+dv_json_text :: (t: string, name: string) -> string {
+  a := dv_json_at(t, name);
+  if a < 0 || a >= t.count || t[a] != '"' { return ""; }
+  e := a + 1;
+  while e < t.count && t[e] != '"' { e += 1; }
+  return t[a + 1..<e];
+}
+// "name":true 1, false 0, else -1.
+dv_json_flag :: (t: string, name: string) -> int {
+  a := dv_json_at(t, name);
+  if a < 0 { return -1; }
+  if a + 4 <= t.count && t[a..<a + 4] == "true" { return 1; }
+  if a + 5 <= t.count && t[a..<a + 5] == "false" { return 0; }
+  return -1;
+}
+// Where "name"'s value starts (past the colon and spaces), -1 not there.
+dv_json_at :: (t: string, name: string) -> int {
+  for i: 0..<t.count {
+    if t[i] != '"' || i + name.count + 2 > t.count || t[i + 1..<i + 1 + name.count] != name || t[i + 1 + name.count] != '"' { continue; }
+    a := i + 2 + name.count;
+    while a < t.count && t[a] == ' ' { a += 1; }
+    if a >= t.count || t[a] != ':' { continue; }
+    a += 1;
+    while a < t.count && t[a] == ' ' { a += 1; }
+    return a;
+  }
+  return -1;
+}
+
+#test "dev: the realm's edit spec says the local admin's role, tools, things and rows; a switch and the settings stick; a visitor may not" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_dev_start(v[..]);
+  spec := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "GET /api/playtest/realms/everglade HTTP/1.1\r\n\r\n")];
+  #assert spec == "200\nrealm everglade\nrole admin\nowner 1\ntool map 1\ntool build 1\nthing crate\nthing barrel\nthing bench\nthing fence\nthing stall\nrow flock 1 The flock that follows you\nrow floats 1 Ducks and lily pads\nrow undergrowth 1 Bushes, ferns and rocks\nrow daycycle 1 Day turning to night\nwaiting 0\n";
+  sw := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/realms/everglade/switch HTTP/1.1\r\nContent-Length: 30\r\n\r\n{\"row\":\"daycycle\",\"on\":false}")];
+  #assert sw == "200\n{\"row\":\"daycycle\",\"on\":false}" && v[0].dev.row_off[3];
+  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/realms/everglade/switch HTTP/1.1\r\n\r\n{\"row\":\"moon\",\"on\":true}")][0..<4] == "404\n";
+  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/realms/everglade/settings HTTP/1.1\r\n\r\n{\"tools\":{\"map\":true,\"build\":false}}")][0..<4] == "200\n";
+  spec2 := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "GET /api/playtest/realms/everglade?x=1 HTTP/1.1\r\n\r\n")];
+  #assert spec2 == "200\nrealm everglade\nrole admin\nowner 1\ntool map 1\ntool build 0\nthing crate\nthing barrel\nthing bench\nthing fence\nthing stall\nrow flock 1 The flock that follows you\nrow floats 1 Ducks and lily pads\nrow undergrowth 1 Bushes, ferns and rocks\nrow daycycle 0 Day turning to night\nwaiting 0\n";
+  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "GET /api/playtest/realms/everglade/proposals HTTP/1.1\r\n\r\n")] == "200\n";
+  v[0].dev.admin = false;
+  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/realms/everglade/switch HTTP/1.1\r\n\r\n{\"row\":\"flock\",\"on\":false}")][0..<4] == "403\n";
+  vs := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "GET /api/playtest/realms/everglade HTTP/1.1\r\n\r\n")];
+  #assert vs[0..<33] == "200\nrealm everglade\nrole visitor\n";
 }
 
 #test "dev: the stand-in mints a player, signs a ticket the room checks, and names it" {
