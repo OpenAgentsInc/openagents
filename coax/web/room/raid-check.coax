@@ -6,7 +6,9 @@
 // stone), their casts (e rc), the hits on them (e hit), and the XP and levels it earned (e xp, e
 // level, v). The raid's start and its dials are the room's control lines: run it as raid-proof.sh
 // does, with a local room server whose control URL is a file the script writes.
-//   coax/web/tool.sh coax/web/room/raid-check.coax ws://127.0.0.1:8871 [N] [SECONDS]
+//   coax/web/tool.sh coax/web/room/raid-check.coax ws://127.0.0.1:8871 [N] [SECONDS] [ROOM]
+// ROOM: the room's number (pair-raid-ROOM), so browser players (?relay=ws://localhost:8871&room=
+// pair-raid-ROOM) can join the same raid; a number from the clock when it isn't given.
 // Prints one JSON line, then "raids" and exits 0, or "fails" and 1.
 #load "room-socket.coax";
 
@@ -118,7 +120,8 @@ tool_main :: () -> int #export_c {
   n := ifx args_count(a[..]) > 1 then rc_max(rc_min(rs_num(args_at(a[..], 1)), RC_MAX), 1) else 8;
   secs := ifx args_count(a[..]) > 2 then rc_max(rs_num(args_at(a[..], 2)), 10) else 150;
   u: [1024] u8;
-  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-raid-", rs_stamp());
+  room := ifx args_count(a[..]) > 3 then rs_num(args_at(a[..], 3)) else rs_stamp();
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-raid-", room);
   c: [RC_MAX] RelayConn; h: [RC_MAX] RcHeard; seq: [RC_MAX] int; next: [RC_MAX] int;
   for i: 0..<n {
     ub: [1024] u8; pid: [32] u8; nm: [32] u8;
