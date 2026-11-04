@@ -85,8 +85,33 @@ checked ASan/UBSan pass 105 HTTP comparisons each with forced replay pauses,
 503 until complete, continuation, missing interior segments and unavailable
 archive links, in addition to the existing recovery and reorg journey.
 
-The full signet run reached a synced height 326,651 before the VM's global
-OOM killer ended the process. Its durable journals remain intact. Closed
-journals are being moved to verified, read-only disk-backed archives, and
-the new bounded restart path will replay them. This is recovery progress;
-it does not yet qualify the frozen 329,338 Core/Electrs reference.
+The first full signet run reached a synced height 326,651 before the VM's
+global OOM killer ended the process. RAM-backed raw files and journals
+competed with its growing arena. All durable journals were preserved. The
+qualification host moved closed journals and immutable raw-file prefixes
+to disk-backed archives, checking complete SHA-256 identities before
+publication. Read-only mounted copies were compared again, including reads
+through the remote filesystem. A bounded temporary cache accelerated replay;
+each cached journal also passed its complete original SHA-256 before use,
+and completed cache files were released. This is qualification infrastructure,
+not a new journal format or a product dependency on an RPC backend.
+
+The replacement process from `4f25b20dc0` replayed the retained prefix and
+finished the frozen signet import at 23:35 CST on November 3. Height 329,338
+is synced at sequence 23,932, journal segment 69, with an arena extent of
+100,078,620,649 bytes. The Linux release binary's SHA-256 is
+`6b43cfea7af814c4afd4377b59e56b7773d7921668f3377fe0c17cb92a7accb7`.
+Its cgroup reports zero high/max/OOM events. Core and Electrs are stopped.
+The independent frozen-reference and browser results belong in the
+[reference record](bitcoin-explorer-reference-2026-11-03.md).
+
+The full-chain browser check exposed a height-lookup timeout after the API
+comparison passed. Lookup now seeks only through `J` block receipts; its
+128-mutant root gate has zero survivors. A complete restart also defers
+raw-file cataloging until another block needs admission, while reading the
+XOR key at startup and preserving every query body's existing framing,
+header, Merkle and witness checks. The independent native oracle fails on
+the previous eager-catalog startup and now passes 108 HTTP comparisons in
+release and checked ASan/UBSan, including missing-body refusal and recovery.
+Both current profiles pass the 133 Core/Electrs reorg responses and browser
+journey; the teaching API's original 75 sanitized responses also pass.

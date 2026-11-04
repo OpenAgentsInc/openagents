@@ -51,6 +51,10 @@ listener for large journals so continuation retains that work. The optional
 budget is milliseconds from 1 to 780000. Segment names must form a contiguous
 inventory; an unavailable archive target refuses the restart. Each owned
 directory is bounded at 4,096 names.
+A complete durable cursor reads query bodies on demand through its block
+receipts. Raw-file cataloging runs when another block needs admission.
+A missing body returns unavailable data for its route; restoring the same
+immutable file recovers that route without changing the cursor.
 The node also notices a header-feed replacement made during initial import. No data pages are served before the admitted tip
 reaches the preferred known header. Once serving, the node watches atomic
 replacements of `HEADERS` and follows reorgs using its retained headers and

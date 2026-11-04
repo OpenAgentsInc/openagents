@@ -329,4 +329,10 @@ there is a need.
 
 ## Explorer extension: address index (chapter 125)
 
-Added for [#12704](https://github.com/OpenAgentsInc/openagents/issues/12704) after the original 124-chapter plan. [Chapter 125](ch125-address-history-balances-and-spends.md) depends on chapters 29, 58, 60 and 91. It indexes exact scripts, confirmed histories, balances and output spend links in the light chain’s atomic batch. Native debug/release answers must match an independent transaction replay before and after both reorg directions; crash cuts must expose one whole snapshot. Full validation remains outside the explorer light profile.
+Added for [#12704](https://github.com/OpenAgentsInc/openagents/issues/12704)
+after the original 124-chapter plan. Full validation remains outside the
+explorer light profile.
+
+| Chapter | Depends on | Done means | Spec |
+| --- | --- | --- | --- |
+| [125. Address history, balances and spends](ch125-address-history-balances-and-spends.md) — implemented | 29, 58, 60, 91 | Exact-script histories, confirmed balances and output spend links share the light chain's atomic batch. Native debug/release answers match independent transaction replay through both reorg directions; every crash cut exposes one whole snapshot. | Explorer address-index schema 1 |

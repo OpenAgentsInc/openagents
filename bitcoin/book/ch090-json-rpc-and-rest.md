@@ -94,8 +94,8 @@ and its exact static asset allowlist. Build it first, then append
 This adapter retains a 64 MiB table and reads a state log up to 256 MiB.
 Address responses require at most 16,384 output/history rows and all JSON
 must fit 32 MiB. Exhaustion returns 503 rather than silently truncating a
-history. These are explicit adapter limits. Full signet node/storage
-integration remains the epic's end-to-end acceptance work.
+history. These are explicit teaching-adapter limits. The native service
+below uses bounded replay and indexed storage for the full signet chain.
 
 ## Check both envelopes and real files
 

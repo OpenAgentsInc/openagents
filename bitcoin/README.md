@@ -23,8 +23,10 @@ Chapters [58](book/ch058-connect-and-disconnect-a-block.md) and
 light connect/reorg path: coins, ordered undo and tip share one atomic
 storage batch. The Coax [file adapter](examples/live/light-chain.coax)
 applies raw blocks on admitted headers and acknowledges only after sync.
-Its profile remains proof-of-work-only; full consensus validation and the
-rest of the explorer are later steps of #12704. Chapter
+Its profile remains proof-of-work-only. The
+[native explorer](explorer/README.md) adds address histories, a read-only
+HTTP API, Coax/WebGPU pages and unvalidated mempool observations. Full
+consensus validation remains later work in chapters 55, 57, 58 and 63. Chapter
 [91](book/ch091-indexes-transactions-filters-and-coin-statistics.md) now adds
 the transaction index: durable positions, active and stale lookup, and raw
 file reads across reorgs.

@@ -77,9 +77,13 @@ node_headers :: (s: [] NativeExplorer, path: string, p: ChainParams, now: int, a
   if archive.count > 0 && pending > 0 && !bf_append_sync(archive,s[0].scratch[0..<pending]) { return false; }
   return fs_size(path) == n && fs_mtime_ns(path) == stamp;
 }
-node_catalog :: (s: [] NativeExplorer, store: string, p: ChainParams) -> bool {
+node_mask :: (s: [] NativeExplorer, store: string) -> bool {
   pathbuf: [4096] u8; keybuf: [4096] u8; key := fs_join(store,"xor.dat",keybuf[..]); mask: [8] u8;
   if fs_exists(key) { if bf_read_at(key,0,mask[..]) != 8 || fs_size(key) != 8 { return false; } s[0].mask = kv_get64(mask[..],0); }
+  return true;
+}
+node_catalog :: (s: [] NativeExplorer, store: string, p: ChainParams) -> bool {
+  pathbuf: [4096] u8;
   magicbytes := p.magic; magic := cb_load_le32(magicbytes[..],0).value; file := 0;
   for i: 0..<s[0].tree[0].count { s[0].sizes[i] = 0; }
   while true {
@@ -207,6 +211,10 @@ node_finish_replay :: (s: [] NativeExplorer, state: string, store: string, liste
   return result;
 }
 node_finish_import :: (s: [] NativeExplorer, state: string, store: string, deadline: int, listener: int, p: ChainParams, web: string, control: string) -> int {
+  tip := lc_tip_vartime(s[0].live,s[0].used);
+  // A complete durable cursor already locates every query body through J.
+  // Catalog raw files only when another block actually needs admission.
+  if bi_find(s[0].tree[..],tip.hash[..]) != s[0].tree[0].best_header && !node_catalog(s,store,p) { return 1; }
   result := node_import(s,state,store,deadline);
   while result == 75 && listener >= 0 {
     node_wait_continue(s,state,store,listener,p,web,control,"import");
@@ -238,7 +246,7 @@ node_main :: (s: [] NativeExplorer) -> int #export_c {
   if !bi_init(s[0].tree[..],p,s[0].links[..],s[0].entries[..],s[0].slots[..],s[0].chain[..]) { return 1; }
   if fs_exists(archive) && !node_headers(s,archive,p,now,"") { return 1; }
   source := args_at(a[..],3); source_stamp := fs_mtime_ns(source);
-  if !node_headers(s,source,p,now,archive) || !node_catalog(s,store,p) { released := bf_unlock(lock); return 1; }
+  if !node_headers(s,source,p,now,archive) || !node_mask(s,store) { released := bf_unlock(lock); return 1; }
   api := s[0].api[..]; api[0].table = s[0].live; api[0].external = true; api[0].mask = s[0].mask;
   #assert ex_id(p.genesis.hash,api[0].genesis[..]);
   listener := ifx port > 0 then cxsock_listen(port) else -1; if port > 0 && listener < 0 { return 1; }
@@ -254,7 +262,7 @@ node_main :: (s: [] NativeExplorer) -> int #export_c {
     elapsed := cxsock_now_ms()-checked;
     if elapsed >= 10000 && fs_mtime_ns(source) != stamp {
       api[0].loaded = false;
-      if !node_headers(s,source,p,now+(cxsock_now_ms()-started)/1000,archive) || !node_catalog(s,store,p) { return 1; }
+      if !node_headers(s,source,p,now+(cxsock_now_ms()-started)/1000,archive) { return 1; }
       result = node_finish_import(s,state,store,cxsock_now_ms()+s[0].budget_ms,listener,p,args_at(a[..],6),control); if result != 0 { return result; }
       api[0].used = s[0].used; api[0].tip = lc_tip_vartime(s[0].live,s[0].used); api[0].loaded = true;
       stamp = fs_mtime_ns(source); checked = cxsock_now_ms();

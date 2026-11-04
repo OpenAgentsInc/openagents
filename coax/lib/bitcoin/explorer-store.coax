@@ -43,6 +43,26 @@ ExOutput :: struct { code: int; status: int; spend: AxiSpend; }
   badkey := [1] u8.['J']; badvalue := [1] u8.[1]; #assert lc_put_vartime(table[..],c[..],batch[..],badkey[..],badvalue[..]);
   #assert ex_block_key(table[..],c[0].used,"2",g[..]).code == TXI_CORRUPT;
 }
+#test "explorer store: height lookup confines both table representations to block receipts" {
+  for indexed: 0..<2 {
+    table: [16384] u8; stage: [16384] u8; batch: [8192] u8; seed: [16] u8; g: [32] u8; hash: [32] u8; hash[0] = 7;
+    r := axi_init_vartime(5,g[..],table[..],0,stage[..],batch[..]); #assert r.code == LC_OK;
+    used := r.used;
+    if indexed == 0 { for k: 0..<r.used { table[k] = stage[k]; } }
+    else { initial := ks_init(table[..],seed[..]); used = kv_apply_vartime(table[..],initial,batch[0..<r.n],0); #assert used >= KS_HEAD; }
+    c := [1] LcCursor.[LcCursor.{used=used,n=kv_batch_new(batch[..])}];
+    key: [1] u8; value := [1] u8.[1]; key[0] = '!'; #assert lc_put_vartime(table[..],c[..],batch[..],key[..],value[..]);
+    key[0] = 'Z'; #assert lc_put_vartime(table[..],c[..],batch[..],key[..],value[..]);
+    #assert ex_block_key(table[..],c[0].used,"1",g[..]).code == TXI_MISS;
+    #assert txi_put_block_vartime(table[..],c[..],batch[..],hash[..],TxiBlock.{height=1,count=1,seq=0,file=17,pos=256,n=100});
+    hk: [33] u8; txi_blockkey('H',hash[..],hk[..]); hv: [80] u8; kv_put32(hv[..],0,1); kv_put32(hv[..],4,1);
+    #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);
+    b := ex_block_key(table[..],c[0].used,"1",g[..]); #assert b.code == LC_OK && b.active && b.hash[0] == 7 && b.record.file == 17;
+    #assert ex_block_key(table[..],c[0].used,"2",g[..]).code == TXI_MISS;
+    hv[0] = 2; #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);
+    #assert ex_block_key(table[..],c[0].used,"1",g[..]).code == TXI_CORRUPT;
+  }
+}
 #test "explorer store: output statuses and inconsistent spend/coin refusal" {
   table: [8192] u8; stage: [8192] u8; batch: [8192] u8; g: [32] u8; point: [36] u8; point[0] = 19;
   script := [1] u8.[0x51]; burn := [1] u8.[0x6a];
@@ -95,9 +115,10 @@ ex_block_key :: (table: [] u8, used: int, key: string, genesis: [] u8) -> ExBloc
     if !lc_same(hash[..],genesis) { return ex_block_hash(table,used,hash[..]); } height = 0;
   }
   if height == 0 { r := ExBlock.{active=true,record=TxiBlock.{file=-1}}; for k: 0..<32 { r.hash[k] = genesis[k]; } return r; }
-  at := 0;
-  while at < used {
-    e := kv_entry_vartime(table,used,at); at = e.next; if e.key[0] != 'J' { continue; }
+  prefix := [1] u8.['J']; at := kv_seek_vartime(table,used,prefix[..]);
+  // Both representations return used as the end iterator.
+  while at != used {
+    e := kv_entry_vartime(table,used,at); at = e.next; if e.key[0] != 'J' { break; }
     if e.key.count != 33 { return ExBlock.{code=TXI_CORRUPT}; }
     b := ex_block_hash(table,used,e.key[1..<33]); if b.code != LC_OK { return b; }
     if b.active && b.record.height == height { return b; }

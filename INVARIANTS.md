@@ -114,6 +114,11 @@ serves an exact static allowlist, never a user-selected filesystem path.
 spent states, balances through both reorgs and failure/recovery against the
 real writer, with independent raw-block replay as its oracle.
 
+Height lookup seeks to the `J` block-receipt range and ends at its boundary,
+using the exact end iterator of either table representation. Receipt and
+active-membership checks remain mandatory. The explorer-store root gate
+kills all 128 mutants; its checks cover packed and indexed representations.
+
 ## Address histories and spend links share the light chain's cursor
 
 `coax/lib/bitcoin/addrindex.coax`, `addrindex-stage.coax` and

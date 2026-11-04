@@ -54,8 +54,24 @@ The reference server used a 1,000-entry lookup limit after an overly broad
 query exceeded Core's 50,000-item P2P getdata limit. This is reference setup
 evidence, not a passing explorer result.
 
-The full-chain native import is still in progress. Core and Electrs have
-been stopped; final acceptance must compare the completed own-node API to
-this fixed record and run `bitcoin/explorer/signet-check.coax` on desktop
-and mobile. The earlier 329,328 snapshot in the native integration record
-was superseded by a signet reorg and is not this fixture's chain identity.
+The first complete native import reached this tip at 23:35 CST on November
+3. With Core and Electrs stopped, all 63 HTTP comparisons passed: tip,
+height/hash block lookups and searches, transactions, and complete address
+histories, balances and spend sets. The comparison finished within fifteen
+minutes. This is sampled reference coverage, not an exhaustive comparison
+of every transaction or address.
+
+The full-chain browser journey then exposed a height-search timeout: the
+lookup iterated the entire 100 GB arena before reaching block receipts.
+It now seeks directly to the `J` range and ends at that range's boundary.
+All 128 explorer-store mutants are killed, with zero survivors. Release
+and checked ASan/UBSan pass 108 native HTTP comparisons each, including
+complete restart with a missing raw body and recovery after its return.
+Both profiles also pass the 133 real Core/Electrs reorg comparisons and
+the same open browser through both branches. The teaching API and writer
+pass all 75 original HTTP/RPC responses under ASan/UBSan.
+
+The updated native process is replaying the completed signet journal for
+the final browser acceptance. The earlier 329,328 snapshot in the native
+integration record was superseded by a signet reorg and is not this
+fixture's chain identity.

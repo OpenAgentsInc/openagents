@@ -152,6 +152,30 @@ def check(node,browser=False):
             # Restore the completed restart journey's header feed.
             headers.write_bytes(b"".join(b[:80] for b in all_blocks))
 
+        # A complete durable cursor needs no raw-file catalog scan to restart.
+        # Missing immutable bodies refuse only their data route and recover
+        # when the same file returns; no stale or synthetic body is served.
+        rawfile=root/"blk00000.dat"; held=root/"held-blockfile";rawfile.rename(held)
+        with socket.socket() as reservation:
+            reservation.bind(("127.0.0.1",0));port=reservation.getsockname()[1]
+        log=root/"on-demand.log"
+        with log.open("w+") as stream:
+            proc=subprocess.Popen([str(node),"regtest",str(state),str(root),str(headers),"2000000000",str(port),"","268435456",str(root/"overflow"),"65536","5000"],cwd=ROOT,stdout=stream,stderr=stream)
+            try:
+                deadline=time.monotonic()+15
+                while "explorer-node ready" not in log.read_text():
+                    assert proc.poll() is None,log.read_text()
+                    assert time.monotonic()<deadline,log.read_text();time.sleep(.02)
+                assert request("tip")==dict(snapshot=snap)
+                request("block/1",503)
+                held.rename(rawfile)
+                assert request("block/1")["hash"]==tx.digest(prefix[1][:80])[::-1].hex()
+                print("Complete restart reads raw bodies on demand; unavailable body refuses and recovers without a state change.",flush=True)
+            finally:
+                proc.terminate();proc.wait(timeout=10)
+                if held.exists():held.rename(rawfile)
+                assert "runtime error:" not in log.read_text() and "ERROR: AddressSanitizer" not in log.read_text(),log.read_text()
+
         # The last append can tear: reopening discards exactly that frame
         # and reconstructs the final branch from immutable imported blocks.
         segments=[state,*root.glob("state.segment-*"),*(root/"overflow").glob("state.segment-*")]
