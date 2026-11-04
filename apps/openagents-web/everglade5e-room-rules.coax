@@ -196,16 +196,15 @@ e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c {
   if dt <= 0 { return; }
   rs_tick(b, dt);
   for s: 0..<E5RR_SEATS { if r[0].live[s] { fb_seat_step(b, r[0].seat[s..<s + 1]); } }
+  // each creature read in place, not copied whole, every tick (a raid's hundreds: #12717)
   for j: 0..<E5R_FOLK {
     i := e5rr_folk(j);
-    c := b[0].c[i];
-    if c.dead || c.x == E5R_AWAY || c.turn_at > b[0].clock { continue; }
+    if b[0].c[i].dead || b[0].c[i].x == E5R_AWAY || b[0].c[i].turn_at > b[0].clock { continue; }
     b[0].who = i; rs_start_turn(b, i); rs_end_turn(b, i); b[0].who = -1;
   }
   for q: 0..<E5RR_BEASTS {
     i := E5RR_BEAST0 + q;
-    c := b[0].c[i];
-    if r[0].beasts[q].id == 0 || c.dead || c.turn_at > b[0].clock { continue; }
+    if r[0].beasts[q].id == 0 || b[0].c[i].dead || b[0].c[i].turn_at > b[0].clock { continue; }
     b[0].who = i; rs_start_turn(b, i); rs_end_turn(b, i); b[0].who = -1;
   }
   e5rr_rise(r);
@@ -440,9 +439,9 @@ e5rr_beasts_check :: (r: [] E5rRoom) {
 // Creature i (seat or person): hp, max, temp, conditions, dead (0 or 1), concentration's spell (-1).
 E5RR_OUT_FLOATS :: 6;
 e5rr_creature :: (r: [] E5rRoom, i: int, out: [] f32) {
-  c := r[0].b[0].c[i];
-  out[0] = f32(c.hp); out[1] = f32(c.hp_max); out[2] = f32(c.temp); out[3] = f32(c.cond);
-  out[4] = ifx c.dead then 1.0f32 else 0.0f32; out[5] = f32(c.conc);
+  b := r[0].b[..];   // read in place: the host asks for every seat and person every tick
+  out[0] = f32(b[0].c[i].hp); out[1] = f32(b[0].c[i].hp_max); out[2] = f32(b[0].c[i].temp); out[3] = f32(b[0].c[i].cond);
+  out[4] = ifx b[0].c[i].dead then 1.0f32 else 0.0f32; out[5] = f32(b[0].c[i].conc);
 }
 e5rr_seat_out :: (r: [] E5rRoom, s: int, out: [] f32) #export_c { if s >= 0 && s < E5RR_SEATS && out.count >= E5RR_OUT_FLOATS { e5rr_creature(r, E5RR_SEAT + s, out); } }
 e5rr_folk_out :: (r: [] E5rRoom, j: int, out: [] f32) #export_c { if j >= 0 && j < E5R_FOLK && out.count >= E5RR_OUT_FLOATS { e5rr_creature(r, e5rr_folk(j), out); } }
