@@ -5,7 +5,8 @@
 # on openagents.com and staging.openagents.com to it, ahead of the API's /api/ rule.
 # Then it runs, through the site's address, the load test (load.coax: four players,
 # 60 Hz each, the same ball), the relay's check, its slow-socket check, and the
-# everglade check (two players share one world: sim-check.coax) and load test (64 players in 16s,
+# everglade checks (two players share one world: sim-check.coax; the bridge: bridge-check.coax; a
+# player whose network drops comes back where they stood, once: rejoin-check.coax) and load test (64 players in 16s,
 # 20 s; spec section 11.3), each shard's health through /api/room/sK/health, and the fan-out check
 # (fanout-check.coax: 17 guests through the API's directory fill one instance and spill into the next).
 #   coax/web/room/deploy.sh
@@ -120,7 +121,7 @@ shards_ok() { for k in $(seq 1 "$shards"); do [[ "$(curl -s -m 20 "https://opena
 # Through the site's address (the rule takes a minute or two to reach every edge).
 for try in 1 2 3 4 5 6 7 8 9 10; do
   "$here/../tool.sh" "$here/load.coax" wss://openagents.com 4 10 && "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com &&
-    "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com slow && "$here/../tool.sh" "$here/sim-check.coax" wss://openagents.com && "$here/../tool.sh" "$here/bridge-check.coax" wss://openagents.com && "$here/../tool.sh" "$here/load.coax" everglade wss://openagents.com 32 20 &&
+    "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com slow && "$here/../tool.sh" "$here/sim-check.coax" wss://openagents.com && "$here/../tool.sh" "$here/bridge-check.coax" wss://openagents.com && "$here/../tool.sh" "$here/rejoin-check.coax" wss://openagents.com && "$here/../tool.sh" "$here/load.coax" everglade wss://openagents.com 32 20 &&
     [[ "$(curl -s -m 20 https://openagents.com/api/playtest/rooms/everglade)" == '{"realm":"everglade"'* ]] &&
     shards_ok &&
     "$here/../tool.sh" "$here/fanout-check.coax" https://openagents.com 17 5 &&

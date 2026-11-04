@@ -172,6 +172,7 @@ rl_replace_stale :: (v: [] RmServer, r: int, pid: string) {
     c := v[0].conns[i];
     if !c.live || c.relay != r || c.kicked || !c.ticket.ok || cast(string) c.ticket.pid[0..<c.ticket.pid_n] != pid { continue; }
     if c.seat < 0 || c.seat >= EG_SEATS || v[0].mono_ms - v[0].eg[k].seat[c.seat].heard_ms < RL_STALE_MS { continue; }
+    rv_note_seat(v, k, c.seat);    // its HP, XP and place now, for the new seat (rv_join, ev_join, rv_back)
     v[0].conns[i].kicked = true;   // the host closes it (rm_relay_kicked) and its seat goes
   }
 }

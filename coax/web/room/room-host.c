@@ -197,7 +197,9 @@ static void everglade_tick(void) {
     if (!rm_eg_begin(view(), k)) continue;
     int64_t tm = now_us();
     for (int s = 0; s < WORLD_SEATS; s++) {
-      if (rm_eg_unplaced(view(), k, s) && world_place(k, s, pose))
+      if (rm_eg_unplaced(view(), k, s) &&
+          (rm_eg_back(view(), k, s, 0) > 0 ? world_place_at(k, s, rm_eg_back(view(), k, s, 1), rm_eg_back(view(), k, s, 2), rm_eg_back(view(), k, s, 3), rm_eg_back(view(), k, s, 4), pose)
+                                            : world_place(k, s, pose)))
         rm_eg_moved(view(), k, s, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
       while (rm_eg_input(view(), k, s, inv)) {
         if (!world_step(k, s, in, pose)) break;
@@ -528,7 +530,9 @@ int main(int argc, char **argv) {
       if (c->fd >= 0 && c->n >= IN_CAP) c->doomed = true;
       if (r > 0 && conns[i].ws) fan_add(now_us() - t_in);
     }
-    for (int i = 0; i < CONNS; i++) if (conns[i].fd >= 0 && now - conns[i].heard > 20000) conns[i].doomed = true;
+    /* silent 20 s, or kicked: a player's silent socket their new one replaced (rl_replace_stale) says
+       nothing more, so no frame of its own will doom it; nor may it wait on the API's next control reply */
+    for (int i = 0; i < CONNS; i++) if (conns[i].fd >= 0 && (now - conns[i].heard > 20000 || (conns[i].ws && rm_relay_kicked(view(), i)))) conns[i].doomed = true;
     reap();
     if ((double)now >= next) {
       clock_in();

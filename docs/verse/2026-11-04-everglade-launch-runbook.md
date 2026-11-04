@@ -149,8 +149,8 @@ coax/web/room/deploy.sh
 `oa-room-6`. It then checks each shard's health and the load balancer rules,
 and runs its own checks through `wss://openagents.com`, retrying for up to
 5 minutes while the rule reaches every edge. Those checks are the room load
-(4 players), `relay-check` (normal and slow), `sim-check`, `bridge-check`, the
-32-player everglade load, the rooms list, every shard's health, `fanout-check`
+(4 players), `relay-check` (normal and slow), `sim-check`, `bridge-check`,
+`rejoin-check`, the 32-player everglade load, the rooms list, every shard's health, `fanout-check`
 with 17 guests, and the relay's p95. It ends with
 `room: deployed IMAGE behind wss://openagents.com/api/room/`. Any other ending
 is a failure.
@@ -177,6 +177,7 @@ export OA_ROOM_TICKET_KEY="$(gcloud secrets versions access latest --secret oa-r
 | 5 | Abilities | `coax/web/tool.sh coax/web/room/abilities-check.coax wss://openagents.com` | It prints `lifts`. Both sockets hear A's Reverse Gravity cast and get the server's cylinder. The server lifts A over 3 m within 3 s. B's own cylinder stands beside A's. A's second press ends only A's, and B's E ends B's. |
 | 6 | Bridge | `coax/web/tool.sh coax/web/room/bridge-check.coax wss://openagents.com` | It prints `holds`. Both hear the same bridge pieces break. A walking over the broken deck is in the river on both sockets. After R, A walks over dry. |
 | 7 | Shared world | `coax/web/tool.sh coax/web/room/sim-check.coax wss://openagents.com` | It prints `shares`. A's wolves, B's hits and the kill reach both sockets. The pack stays when A leaves. WANTED goes to B, not A. Breaks match up to the rebuild. Late joiner C has the broken town within 1 s. R is refused while the spell is fresh, then rebuilds. |
+| 8 | Rejoin | `coax/web/tool.sh coax/web/room/rejoin-check.coax wss://openagents.com` | It prints `rejoins`. A walks off the gate, then A's socket goes silent without a close. A's new socket for the same player puts A back where A stood (within 1 m, not at the gate), and B hears A's old seat go and has one A. |
 
 If `sim-check` fails only on `breaks_up` (A and B counting a different number
 of breaks), run it once more. Tonight's investigation found no dropped frames.

@@ -65,6 +65,7 @@ EgSeat :: struct {
   live: bool; conn: int = -1;
   q: [EG_INPUTS] EgIn; q_n: int; bank: int; took: int; ack: int;   // took: inputs stepped this tick
   pose: EgPose; placed: bool;    // placed: the host has put it in the world (rm_eg_moved)
+  back: bool; back_x: f32; back_y: f32; back_z: f32; back_yaw: f32;   // where its player stood in this room (rv_back)
   look: [EG_LOOK] u8; look_n: int; klass: [EG_NAME] u8; klass_n: int; flags: int; name: [EG_NAME] u8; name_n: int;
   last_cast: int = -1000;
   heard_ms: int;                 // when its page last sent a frame (G's AWAY bit after WIRE_AWAY_MS)
@@ -186,6 +187,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
   v[0].eg[k].wanted[seat] = 0;
   e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
   rv_join(v, k, seat);   // the HP its player left with (room-vitals.coax, #12715)
+  rv_back(v, k, seat);   // and where they stood in this room, if lately
   ev_join(v, k, seat);   // its XP and its character's level (room-events.coax, #12739)
   v[0].eg[k].rules[0].pvp = v[0].ctl.pvp;   // the realm's pvp row (room-control.coax, #12714)
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;

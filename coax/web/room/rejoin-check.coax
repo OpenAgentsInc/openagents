@@ -1,0 +1,132 @@
+// The everglade rooms' rejoin check (room-relay.coax rl_replace_stale, room-vitals.coax rv_back,
+// room-world.c world_place_at): a player whose network drops without a close comes back where they
+// stood, once. A and B sit in one room with seat tickets; A walks east off the gate for 3 s, then
+// A's socket goes silent (it neither sends nor reads, and never closes, as a phone between networks).
+// 7 s on (the page's own quiet check, everglade-net.coax NET_SILENT_MS, is 6 s), A opens a new
+// socket with a fresh ticket for the same player. A's new seat's first word on itself is where A
+// stood, within 1 m, not the gate; B hears A's old seat go and A's new one where A was, and has one A.
+// It needs the seat-ticket key (OA_ROOM_TICKET_KEY): run it as deploy.sh does, or against a local
+// room server started with the same key (raid-proof.sh's way).
+//   coax/web/tool.sh coax/web/room/rejoin-check.coax [ws://localhost:8830]
+// Prints one JSON line, then "rejoins" and exits 0, or "fails" and 1.
+#load "room-socket.coax";
+
+RJ_SEATS :: 16;
+RjHeard :: struct {
+  seat: int = -1;
+  d: int;
+  x: [RJ_SEATS] f32; z: [RJ_SEATS] f32; seen: [RJ_SEATS] bool; gone: [RJ_SEATS] bool;
+  first_ok: bool; first_x: f32; first_z: f32;   // this socket's first word on its own seat
+}
+rj_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
+rj_hear :: (h: [] RjHeard, t: string) {
+  if rs_starts(t, "y ") { h[0].seat = rs_num(rs_field(t, 1)); return; }
+  if !rs_starts(t, "D ") { return; }
+  h[0].d += 1;
+  at := 0; sp := 0;
+  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
+  while at < t.count {
+    e := at;
+    while e < t.count && t[e] != ';' { e += 1; }
+    q := t[at..<e];
+    k := rs_field(q, 0);
+    if k == "p" {
+      ss := rs_num(rs_field(q, 1));
+      if ss >= 0 && ss < RJ_SEATS {
+        h[0].x[ss] = rj_cm(rs_field(q, 2)); h[0].z[ss] = rj_cm(rs_field(q, 4)); h[0].seen[ss] = true; h[0].gone[ss] = false;
+        if ss == h[0].seat && !h[0].first_ok { h[0].first_ok = true; h[0].first_x = h[0].x[ss]; h[0].first_z = h[0].z[ss]; }
+      }
+    }
+    if k == "x" && rs_field(q, 1) == "p" {
+      ss := rs_num(rs_field(q, 2));
+      if ss >= 0 && ss < RJ_SEATS { h[0].gone[ss] = true; h[0].seen[ss] = false; }
+    }
+    at = e + 1;
+  }
+}
+rj_drain :: (c: [] RelayConn, h: [] RjHeard) {
+  if c[0].h < 0 { return; }
+  while relay_conn_poll(c, 0) == RC_TEXT { rj_hear(h, cast(string) c[0].text[0..<c[0].text_n]); }
+}
+// An input from socket c: walking east (kx 100) when `walk`, else standing.
+rj_input :: (c: [] RelayConn, seq: int, walk: bool) -> bool {
+  m: [64] u8;
+  k := rs_int(m[..], rs_put(m[..], 0, "I "), seq);
+  k = rs_put(m[..], k, ifx walk then " 100 0 0 0 0 0" else " 0 0 0 0 0 0");
+  return relay_conn_send(c, cast(string) m[0..<k]);
+}
+// The players other than seat `me` this socket has now.
+rj_others :: (h: [] RjHeard, me: int) -> int { n := 0; for s: 0..<RJ_SEATS { if s != me && h[0].seen[s] { n += 1; } } return n; }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("rejoin-check: bad arguments"); return 2; }
+  kb: [128] u8;
+  if proc_getenv("OA_ROOM_TICKET_KEY", kb[..]).count < 32 { tool_errln("rejoin-check: needs OA_ROOM_TICKET_KEY (the player's seat tickets name who comes back)"); print("fails\n"); return 1; }
+  b: [512] u8;
+  base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
+  u: [1024] u8;
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-rejoin-", rs_stamp());
+  c: [3] RelayConn; h: [3] RjHeard;   // 0 A's first socket, 1 B, 2 A's second
+  for i: 0..<3 { c[i].h = -1; }
+  ua: [1024] u8; ub: [1024] u8;
+  url_a := rs_ticketed(ua[..], url, "p-rejoincheck-a", "Rejoin A"); url_b := rs_ticketed(ub[..], url, "p-rejoincheck-b", "Rejoin B");
+  if url.count == 0 || url_a.count == 0 || url_b.count == 0 || !relay_conn_open(c[0..<1], url_a) || !relay_conn_open(c[1..<2], url_b) { tool_err("rejoin-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
+  sent := relay_conn_send(c[0..<1], "H 1 ranger.2.1.0 druid 0 Rejoin A") && relay_conn_send(c[1..<2], "H 1 ranger.0.0.0 druid 0 Rejoin B");
+  seq_a := 0; seq_b := 0;
+  // both stand 1 s, then A walks east 3 s
+  t0 := rs_now(); n := 0;
+  while rs_now() - t0 < 4000 {
+    seq_a += 1; seq_b += 1;
+    sent = rj_input(c[0..<1], seq_a, rs_now() - t0 > 1000) && rj_input(c[1..<2], seq_b, false) && sent;
+    n += 1;
+    while rs_now() - t0 < n * 33 { rj_drain(c[0..<1], h[0..<1]); rj_drain(c[1..<2], h[1..<2]); proc_sleep(2); }
+  }
+  sa := h[0].seat; sb := h[1].seat;
+  // a short stand, so A's place settles; then A's socket goes silent: B alone talks and reads for 7 s
+  t1 := rs_now(); n = 0;
+  while rs_now() - t1 < 7500 {
+    if rs_now() - t1 < 500 { seq_a += 1; sent = rj_input(c[0..<1], seq_a, false) && sent; rj_drain(c[0..<1], h[0..<1]); }
+    seq_b += 1; sent = rj_input(c[1..<2], seq_b, false) && sent;
+    n += 1;
+    while rs_now() - t1 < n * 33 { rj_drain(c[1..<2], h[1..<2]); proc_sleep(2); }
+  }
+  stood_x := ifx sa >= 0 then h[1].x[sa] else 0; stood_z := ifx sa >= 0 then h[1].z[sa] else 0;
+  walked := sa >= 0 && h[1].seen[sa] && stood_x > 3;
+  // A's page opens a new socket, with a fresh ticket for the same player
+  ua2: [1024] u8;
+  url_a2 := rs_ticketed(ua2[..], url, "p-rejoincheck-a", "Rejoin A");
+  opened := url_a2.count > 0 && relay_conn_open(c[2..<3], url_a2);
+  sent = opened && relay_conn_send(c[2..<3], "H 1 ranger.2.1.0 druid 0 Rejoin A") && sent;
+  t2 := rs_now(); n = 0;
+  while opened && rs_now() - t2 < 3000 {
+    seq_a += 1; seq_b += 1;
+    sent = rj_input(c[2..<3], seq_a, false) && rj_input(c[1..<2], seq_b, false) && sent;
+    n += 1;
+    while rs_now() - t2 < n * 33 { rj_drain(c[1..<2], h[1..<2]); rj_drain(c[2..<3], h[2..<3]); proc_sleep(2); }
+  }
+  sa2 := h[2].seat;
+  dx := h[2].first_x - stood_x; dz := h[2].first_z - stood_z;
+  back_m := ifx h[2].first_ok then sqrt(dx * dx + dz * dz) else -1;
+  where_b := ifx sa2 >= 0 && h[1].seen[sa2] then sqrt((h[1].x[sa2] - stood_x) * (h[1].x[sa2] - stood_x) + (h[1].z[sa2] - stood_z) * (h[1].z[sa2] - stood_z)) else -1;
+  old_gone := sa >= 0 && sa != sa2 && !h[1].seen[sa];
+  once := rj_others(h[1..<2], sb) == 1;
+  ok := sent && walked && opened && h[2].first_ok && back_m >= 0 && back_m < 1 && where_b >= 0 && where_b < 1 && old_gone && once;
+  out: [1024] u8; o: [1] Jo;
+  jo_start(o[..], out[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "seat_a"); jo_int(o[..], sa);
+  jo_key(o[..], "seat_a_again"); jo_int(o[..], sa2);
+  jo_key(o[..], "stood_cm"); jo_int(o[..], cast(int) (stood_x * 100)); jo_key(o[..], "stood_z_cm"); jo_int(o[..], cast(int) (stood_z * 100));
+  jo_key(o[..], "first_cm"); jo_int(o[..], cast(int) (h[2].first_x * 100)); jo_key(o[..], "first_z_cm"); jo_int(o[..], cast(int) (h[2].first_z * 100));
+  jo_key(o[..], "back_cm"); jo_int(o[..], cast(int) (back_m * 100));
+  jo_key(o[..], "b_sees_a_again_cm"); jo_int(o[..], cast(int) (where_b * 100));
+  jo_key(o[..], "old_seat_gone"); jo_bool(o[..], old_gone);
+  jo_key(o[..], "b_others"); jo_int(o[..], rj_others(h[1..<2], sb));
+  jo_key(o[..], "walked"); jo_bool(o[..], walked);
+  jo_key(o[..], "sent"); jo_bool(o[..], sent);
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  print("%\n", ifx ok then "rejoins" else "fails");
+  return ifx ok then 0 else 1;
+}

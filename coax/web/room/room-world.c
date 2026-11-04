@@ -119,6 +119,15 @@ bool world_place(int k, int s, float out[WORLD_POSE]) {
   return true;
 }
 
+bool world_place_at(int k, int s, float x, float y, float z, float yaw, float out[WORLD_POSE]) {
+  if (!world_of(k) || s < 0 || s >= WORLD_SEATS) return false;
+  if (!(x == x) || !(y == y) || !(z == z) || !(yaw == yaw)) return world_place(k, s, out);
+  seat_p[k][s] = verse_player_place(x, y, z, yaw);
+  if (river[k]) { seat_dry(k, s); seat_w[k][s].breath = river[k]->breath; }
+  pose_of(seat_p[k][s], false, out);
+  return true;
+}
+
 bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]) {
   if (!world_of(k) || s < 0 || s >= WORLD_SEATS) return false;
   coax_t_Everglade *g = world[k];

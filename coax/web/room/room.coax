@@ -386,8 +386,9 @@ rm_players :: (v: [] RmServer) -> int #export_c {
 }
 
 // Seat tickets at the join (room-ticket.coax, #12712).
-tk_test_ask :: (r: [] u8, t: [] u8, n: int) -> string {
-  k := tk_add(r, 0, "GET /api/room/relay/everglade/pair-tk?relay=x&t="); k = tk_add(r, k, cast(string) t[0..<n]); k = tk_add(r, k, " HTTP/1.1\r\n\r\n");
+tk_test_ask :: (r: [] u8, t: [] u8, n: int) -> string { return tk_test_ask_in(r, t, n, "pair-tk"); }
+tk_test_ask_in :: (r: [] u8, t: [] u8, n: int, room: string) -> string {
+  k := tk_add(r, 0, "GET /api/room/relay/everglade/"); k = tk_add(r, k, room); k = tk_add(r, k, "?relay=x&t="); k = tk_add(r, k, cast(string) t[0..<n]); k = tk_add(r, k, " HTTP/1.1\r\n\r\n");
   return cast(string) r[0..<k];
 }
 #test "ticket: with a key an everglade join needs this room's ticket; the seat carries its id, name and account, not the hello's" #steps 2000000000 {
@@ -499,6 +500,43 @@ tk_test_ask :: (r: [] u8, t: [] u8, n: int) -> string {
   rm_left(v[..], 0);
   n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) < 0;
+}
+#test "vitals: a player back in the same room within VITALS_PLACE_MS stands where they were, not at the gate" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8;
+  n := tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  #assert rm_eg_back(v[..], k, 0, 0) == 0;   // a first visit: the gate
+  rm_eg_moved(v[..], k, 0, 0, 0, 0, -56, 0, 0, 0, 0, 1, 0, 0);
+  rm_heard(v[..], 0, "I 1 0 0 0 0 0 0");
+  rm_eg_moved(v[..], k, 0, 1, 12.5, 0.25, -30, 1.5, 0, 0, 0, 1, 0, 0);
+  n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
+  // A's socket goes silent (a network that dropped) and A's page opens a new one 7 s on
+  rm_clock(v[..], 7000, now + 7000);
+  rm_heard(v[..], 1, "I 1 0 0 0 0 0 0");
+  n = tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 600000, -1, t[..]);
+  s2 := rm_join(v[..], 2, tk_test_ask(r[..], t[..], n));
+  #assert s2 == 2 && rm_relay_kicked(v[..], 0);
+  #assert rm_eg_back(v[..], k, s2, 0) == 1 && rm_eg_back(v[..], k, s2, 1) == 12.5 && rm_eg_back(v[..], k, s2, 2) == 0.25 && rm_eg_back(v[..], k, s2, 3) == -30 && rm_eg_back(v[..], k, s2, 4) == 1.5;
+  rm_left(v[..], 0);
+  // B leaves and comes back after VITALS_PLACE_MS: the gate
+  rm_left(v[..], 1);
+  rm_clock(v[..], 7000 + VITALS_PLACE_MS + 1000, now + 7000 + VITALS_PLACE_MS + 1000);
+  n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 600000 + VITALS_PLACE_MS, -1, t[..]);
+  s3 := rm_join(v[..], 1, tk_test_ask(r[..], t[..], n));
+  #assert s3 >= 0 && rm_eg_back(v[..], k, s3, 0) == 0;
+  // A in another room: the gate there
+  n = tk_sign(key, "p-0011223344556677", false, "", "pair-other", now + 600000 + VITALS_PLACE_MS, -1, t[..]);
+  #assert rm_join(v[..], 3, tk_test_ask_in(r[..], t[..], n, "pair-other")) >= 0;
+  ko := eg_room_at(v[..], v[0].conns[3].relay);
+  #assert ko != k && rm_eg_back(v[..], ko, v[0].conns[3].seat, 0) == 0;
 }
 #test "relay: a player's own silent socket gives way to their new one (no twin in the town); one still talking stays" #steps 2000000000 {
   v: [1] RmServer;

@@ -12,6 +12,8 @@
 /* The realm's published world (its JSON answer), laid over every room's plan and each new room's. */
 void world_edits(const char *text, int64_t n);
 bool world_place(int k, int s, float out[WORLD_POSE]);
+/* seat s of room k where its player stood (x, y, z, facing yaw), as world_place does at the gate */
+bool world_place_at(int k, int s, float x, float y, float z, float yaw, float out[WORLD_POSE]);
 /* Seat s of room k steps one input (1 / WORLD_HZ s): its pose after it. */
 bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]);
 /* The ground's height at (x, z) in room k's world. */

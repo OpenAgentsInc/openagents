@@ -8,6 +8,10 @@
 // post, wins when the same player sits again here.
 VITALS :: 64;
 VITALS_KEEP_MS :: 600000;
+// Where the player stood is kept too, by the room's code, so a socket that dropped (a phone between
+// networks, a tab that slept past the server's silence check) or a reload puts them back where they
+// were in that room instead of at the gate: within VITALS_PLACE_MS of the note.
+VITALS_PLACE_MS :: 120000;
 VITALS_EVERY_MS :: 10000;
 VITALS_BODY :: 4096;
 
@@ -18,6 +22,8 @@ RoomVital :: struct {
   xp: int;          // the XP it has (room-events.coax)
   at: int;          // wall ms it was noted
   sent: bool;       // the API has this one
+  // where it stood, in which room's code, and when (wall ms; 0 none)
+  room: [RELAY_NAME] u8; room_n: int; x: f32; y: f32; z: f32; yaw: f32; placed_at: int;
 }
 RmVitals :: struct {
   v: [VITALS] RoomVital;
@@ -52,12 +58,46 @@ rv_note :: (v: [] RmServer, pid: string, hp: int, max: int, xp: int) {
   }
   v[0].vit.v[i].hp = hp; v[0].vit.v[i].max = max; v[0].vit.v[i].xp = xp; v[0].vit.v[i].at = v[0].wall_ms; v[0].vit.v[i].sent = false;
 }
-// Seat s of everglade room k: its HP noted, when its ticket names a player.
+// Seat s of everglade room k: its HP noted, and where it stands, when its ticket names a player.
 rv_note_seat :: (v: [] RmServer, k: int, s: int) {
   tk := eg_ticket(v, k, s);
   if !tk.ok { return; }
   c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];
-  rv_note(v, cast(string) tk.pid[0..<tk.pid_n], c.hp, c.hp_max, ev_xp_of(v, k, s));
+  pid := cast(string) tk.pid[0..<tk.pid_n];
+  rv_note(v, pid, c.hp, c.hp_max, ev_xp_of(v, k, s));
+  i := rv_find(v, pid);
+  st := v[0].eg[k].seat[s];
+  r := v[0].eg[k].relay;
+  if i < 0 || !st.placed || r < 0 { return; }
+  e := v[0].vit.v[i..<i + 1];
+  e[0].room_n = v[0].relays[r].code_n;
+  for q: 0..<e[0].room_n { e[0].room[q] = v[0].relays[r].code[q]; }
+  e[0].x = st.pose.x; e[0].y = st.pose.y; e[0].z = st.pose.z; e[0].yaw = st.pose.yaw; e[0].placed_at = v[0].wall_ms;
+}
+// A seat that just joined: where its player stood in this room, when this server noted it in the last
+// VITALS_PLACE_MS (the host puts it there instead of the gate: rm_eg_back).
+rv_back :: (v: [] RmServer, k: int, s: int) {
+  tk := eg_ticket(v, k, s);
+  r := v[0].eg[k].relay;
+  if !tk.ok || r < 0 { return; }
+  i := rv_find(v, cast(string) tk.pid[0..<tk.pid_n]);
+  if i < 0 { return; }
+  e := v[0].vit.v[i];
+  if e.placed_at == 0 || v[0].wall_ms - e.placed_at > VITALS_PLACE_MS { return; }
+  if cast(string) e.room[0..<e.room_n] != cast(string) v[0].relays[r].code[0..<v[0].relays[r].code_n] { return; }
+  st := v[0].eg[k].seat[s..<s + 1];
+  st[0].back = true; st[0].back_x = e.x; st[0].back_y = e.y; st[0].back_z = e.z; st[0].back_yaw = e.yaw;
+}
+// For the host, placing seat s of room k: 1 when it goes back where its player stood, then (field 1
+// to 4) that place's x, y, z and facing; 0 to the gate.
+rm_eg_back :: (v: [] RmServer, k: int, s: int, field: int) -> f32 #export_c {
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].back { return 0; }
+  st := v[0].eg[k].seat[s];
+  if field == 1 { return st.back_x; }
+  if field == 2 { return st.back_y; }
+  if field == 3 { return st.back_z; }
+  if field == 4 { return st.back_yaw; }
+  return 1;
 }
 // A seat that just joined (after e5rr_join): the HP its player left with, this server's note when it
 // has one from the last 10 minutes, else its ticket's. None (or 0: it fell) leaves it full.
