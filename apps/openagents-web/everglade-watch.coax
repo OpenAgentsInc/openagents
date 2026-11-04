@@ -48,6 +48,7 @@ WatchView :: struct {
   seen: [WATCH_ACTORS] WatchSeen; seen_you: WatchSeen;
   // the room server's town (everglade_room_town): where each seat stands, whether it sat and lay dead last tick
   room_at: [WATCH_YOUS] Point; room_live: [WATCH_YOUS] bool; room_dead: [WATCH_YOUS] bool;
+  room_talk: [WATCH_YOUS] int;     // the townsperson each seat talks to (spot), -1 none: they stop and face that seat (everglade_room_talk)
   // a page in a room: the server's townsfolk (net_folk), drawn instead of the page's own watch; and
   // the server, whose town takes no blast of its own (the rules do: everglade5e-room-rules.coax)
   net: bool;
@@ -765,7 +766,7 @@ EG_ROOM_HEAR :: 60.0;          // m a crime carries (the bolt's: everglade-spell
 // took[WATCH_YOUS + p] who dealt them: the nearest of the town hunting p (a watch actor, -1 none).
 everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: int, took: [] f32) #export_c {
   if !s[0].started { everglade_start(s); }
-  if !s[0].wv.started { watch_page_start(s); }
+  if !s[0].wv.started { watch_page_start(s); for p: 0..<WATCH_YOUS { s[0].wv.room_talk[p] = -1; } }   // nobody talks yet
   w := watch_w(s);
   w[0].on = true; w[0].peace = false; w[0].unhurt = false;
   s[0].wv.server = true;
@@ -782,7 +783,13 @@ everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: 
     w[0].me = p;
     if live[p] && (!s[0].wv.room_live[p] || seats[o + 3] > 1.5) { watch_start_you(w); s[0].wv.room_dead[p] = false; }   // a new player: whole, unwanted
     s[0].wv.room_live[p] = live[p]; s[0].wv.room_at[p] = at[p];
-    if !live[p] { continue; }
+    if !live[p] { s[0].wv.room_talk[p] = -1; continue; }
+    // a talk the seat walked away from is over
+    tk := s[0].wv.room_talk[p];
+    if tk >= 0 && tk < EG_SPOTS {
+      dx := s[0].folk[tk].x - at[p].x; dz := s[0].folk[tk].z - at[p].z;
+      if dx * dx + dz * dz > f32(EG_TALK_LET_GO) * f32(EG_TALK_LET_GO) { s[0].wv.room_talk[p] = -1; }
+    }
     y := watch_you(w[..]);
     dead := hp[p] <= 0;
     if s[0].wv.room_dead[p] && !dead { watch_stand_down(w); }   // risen: the watch forgets them
@@ -796,7 +803,10 @@ everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: 
     if eg_gone(s[0].ev.edits, i) || EG_SPOT_CAT[i] { continue; }
     near := eg_room_nearest(s, s[0].folk[i].x, s[0].folk[i].z, m);
     you := ifx near >= 0 then at[near] else FOLK_AWAY;
-    folk_step(s[0].folk[i..<i + 1], i, dt, you, false, 1000.0f32, c, s[0].heights[..]);
+    // talked to: they stop and face whoever talks to them, on every page
+    talking := false;
+    for p: 0..<m { if s[0].wv.room_live[p] && s[0].wv.room_talk[p] == i { talking = true; you = at[p]; break; } }
+    folk_step(s[0].folk[i..<i + 1], i, dt, you, talking, 1000.0f32, c, s[0].heights[..]);
     watch_home(w, i, s[0].folk[i].x, s[0].folk[i].z, s[0].folk[i].yaw, s[0].folk[i].indoors);
   }
   for k: 0..<WATCH_NEW {
@@ -1116,16 +1126,30 @@ everglade_room_rebuild :: (s: [] Everglade) #export_c {
   if s[0].wv.started { _ := watch_restore(watch_w(s)); }
 }
 // A new room in this world's slot: the town whole again, everyone on their day, no player known.
+EG_TALK_LET_GO :: 8.0;    // m: a seat this far from who it talks to has let them go
+// Seat p talks to townsperson i (-1: stops talking), standing at (x, z): false when they are not there
+// or too far (TALK_NEAR and a metre and a half the page's view of you may be off).
+everglade_room_talk :: (s: [] Everglade, p: int, i: int, x: f32, z: f32) -> bool #export_c {
+  if p < 0 || p >= WATCH_YOUS { return false; }
+  if i < 0 { s[0].wv.room_talk[p] = -1; return true; }
+  if i >= EG_SPOTS || eg_gone(s[0].ev.edits, i) || EG_SPOT_CAT[i] { return false; }
+  dx := s[0].folk[i].x - x; dz := s[0].folk[i].z - z;
+  r := f32(TALK_NEAR) + 1.5f32;
+  if dx * dx + dz * dz > r * r { return false; }
+  s[0].wv.room_talk[p] = i;
+  return true;
+}
 everglade_room_fresh :: (s: [] Everglade) #export_c {
   if !s[0].started { everglade_start(s); }
   if s[0].wv.started { watch_start(watch_w(s), s[0].heights[..]); }
-  for p: 0..<WATCH_YOUS { s[0].wv.room_live[p] = false; s[0].wv.room_dead[p] = false; }
+  for p: 0..<WATCH_YOUS { s[0].wv.room_live[p] = false; s[0].wv.room_dead[p] = false; s[0].wv.room_talk[p] = -1; }
   if sp_on(s) {
     for q: 0..<SP_METEORS * 2 { s[0].sp.meteors[q].live = false; }
     s[0].sp.bolt.live = false; s[0].sp.orb_live = false;
     eg_ra_fresh(s);   // the room before's abilities stop here (everglade-room-abilities.coax)
     _ := sp_restore(s, -1); eg_room_known(s);
   }
+  for i: 0..<EG_DOORS { s[0].doors.d[i].open = false; s[0].doors.d[i].t = 0; }   // every door shut (everglade-doors.coax)
 }
 // The room server steps seat p's movement next (room-world.c world_step): the conditions, the slow and
 // the throw everglade_move_world reads are theirs.
@@ -1144,4 +1168,25 @@ everglade_room_cond :: (s: [] Everglade, p: int) -> int #export_c {
   y := s[0].wt[0].yous[p];
   if y.dead { return 0; }
   return (ifx y.held_t > 0 then WC_PARALYZED else 0) | (ifx y.slow_t > 0 then WC_SLOWED else 0) | (ifx y.bound_t > 0 then WC_BOUND else 0);
+}
+#test "room town: a seat talks to a townsperson only within reach, they face that seat, and walking off lets them go" #steps 2000000000 {
+  g: [1] Everglade;
+  everglade_room_fresh(g[..]);
+  i := -1;
+  for q: 0..<EG_SPOTS { if !EG_SPOT_CAT[q] && !eg_gone(g[0].ev.edits, q) { i = q; break; } }
+  #assert i >= 0;
+  // the town runs a tick with nobody there first (where they are at this hour), as a room does
+  seats: [EG_ROOM_SEAT_FLOATS * 2] f32; took: [WATCH_YOUS * 2] f32;
+  everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
+  fx := g[0].folk[i].x; fz := g[0].folk[i].z;
+  #assert !everglade_room_talk(g[..], 0, i, fx + 20, fz);   // too far
+  #assert everglade_room_talk(g[..], 0, i, fx + 1.5, fz) && g[0].wv.room_talk[0] == i;
+  seats[0] = fx + 1.5; seats[1] = 0; seats[2] = fz; seats[3] = 1; seats[4] = 10; seats[5] = 10;
+  for t: 0..<30 { everglade_room_town(g[..], 1.0 / 30.0, 1000.0 + f64(t) / 30.0, seats[..], 1, took[..]); }
+  #assert g[0].wv.room_talk[0] == i && g[0].folk[i].facing;
+  // the seat walks 20 m off: the talk is over
+  seats[0] = g[0].folk[i].x + 20;
+  everglade_room_town(g[..], 1.0 / 30.0, 1002.0, seats[..], 1, took[..]);
+  #assert g[0].wv.room_talk[0] == -1;
+  #assert everglade_room_talk(g[..], 0, i, fx, fz) && everglade_room_talk(g[..], 0, -1, 0, 0) && g[0].wv.room_talk[0] == -1;
 }

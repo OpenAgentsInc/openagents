@@ -69,7 +69,10 @@ EG_ENT :: 192;                  // bytes of one cached n entry (eg_table) at mos
 // creatures, the rules' zones, then the world's abilities' entities as they come and go
 EG_SLOT_FOLK :: EG_SEATS; EG_SLOT_BEAST :: EG_SLOT_FOLK + E5R_FOLK; EG_SLOT_ZONE :: EG_SLOT_BEAST + E5RR_BEASTS;
 // (the watch's effects on the seats take slots of the same EG_SLOT_AB pool, fx_slot)
-EG_SLOT_AB :: EG_SLOT_ZONE + E5RR_ZONES; EG_SLOT_ABS :: WIRE_SLOTS - EG_SLOT_AB;
+EG_SLOT_AB :: EG_SLOT_ZONE + E5RR_ZONES; EG_SLOT_ABS :: WIRE_SLOTS - EG_SLOT_AB - 1;
+EG_SLOT_DOORS :: WIRE_SLOTS - 1;   // the town's doors, one row always (WK_DOORS)
+EG_DOORS_ID :: WIRE_DOORS_EID;    // its id: WIRE_ID_MADE + EG_DOORS_ID
+EG_USE_ASKS :: 16;                // doors and talks a tick at most
 EG_FX_ID :: 950000;              // a watch effect's id: WIRE_ID_MADE + EG_FX_ID + SS * WE_WATCH + cause
 
 EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: int; at: int; }   // theta in WIRE_FINE units; at: mono ms it was heard (room-stats.coax)
@@ -132,6 +135,8 @@ EgRoom :: struct {
   wanted: [EG_SEATS] int;
   // the harm seats did the town since the world last heard (a crime each), and who last harmed each person
   crimes: [EG_CRIMES] EgCrime; crime_n: int;
+  use_ask: [EG_USE_ASKS] int; use_ask_n: int;   // the seats' doors and talks since the world last heard (eg_use_code)
+  doors: [WIRE_DOOR_WORDS] int;                    // the doors the world has open (rm_eg_doors), for the WK_DOORS row
   folk_by: [E5R_FOLK] int;
   // the town's pieces: Everglade's four spells' strikes for the world (it breaks and burns the pieces),
   // the rebuild asked for, and what is broken and burning now (a seat's snapshot names them)
@@ -210,7 +215,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     v[0].eg[q].cast_order = 0; v[0].eg[q].hurt_n = 0;
     v[0].eg[q].ev_n = 0; v[0].eg[q].ev_bytes = 0;
     // the town as new: the world's (the host's) is made whole again on rm_eg_fresh
-    v[0].eg[q].folk_on = false; v[0].eg[q].crime_n = 0; v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
+    v[0].eg[q].folk_on = false; v[0].eg[q].crime_n = 0; v[0].eg[q].use_ask_n = 0; for w: 0..<WIRE_DOOR_WORDS { v[0].eg[q].doors[w] = 0; } v[0].eg[q].strike_n = 0; v[0].eg[q].rebuild = false; v[0].eg[q].fresh = true;
     v[0].eg[q].broke_at = -100000; v[0].eg[q].rebuilt_at = -100000;
     for s: 0..<EG_SEATS { v[0].eg[q].wanted[s] = 0; }
     for j: 0..<E5R_FOLK { v[0].eg[q].folk_by[j] = -1; }
@@ -295,7 +300,15 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
     rd: [1] WireRd; rd[0] = wire_rd(text, 1);
     u := wire_read_use(text, rd[..]);
     if !rd[0].ok || eg_fields(text) != 4 { return; }
-    // talking, doors, boats and boards are the world's, not yet the server's: only ending a slot is
+    // a door: the world opens or shuts it for every seat, its collider with it; a talk: the townsperson
+    // stops and faces that seat on every page (-1 lets them go). The world checks the reach (rm_eg_use_asks).
+    if u.kind == WE_DOOR || u.kind == WE_TALK {
+      if u.kind == WE_DOOR && (u.id < 0 || u.id >= WIRE_DOOR_WORD * WIRE_DOOR_WORDS) { return; }
+      if u.kind == WE_TALK && (u.id < -1 || u.id >= 999) { return; }
+      if v[0].eg[k].use_ask_n < EG_USE_ASKS { v[0].eg[k].use_ask[v[0].eg[k].use_ask_n] = eg_use_code(u.kind, seat, u.id); v[0].eg[k].use_ask_n += 1; }
+      return;
+    }
+    // boats and boards are the world's, not yet the server's: only ending a slot is
     if u.kind != WE_END { eg_refuse(v, k, seat, u.seq, "unbuilt"); return; }
     world := ra_end(v, k, seat, u.id);   // the world's (room-abilities.coax), and the rules' concentration
     if ra_whole(u.id) { return; }
@@ -614,6 +627,15 @@ rm_eg_crime :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
   out[0] = f32(c.by); out[1] = c.x; out[2] = c.z;
 }
 rm_eg_crimes_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].crime_n = 0; } }
+// The doors and talks since the world last heard: q's KIND * 1000000 + SEAT * 1000 + ID + 1 (eg_use_code).
+eg_use_code :: (kind: int, seat: int, id: int) -> int { return kind * 1000000 + seat * 1000 + id + 1; }
+rm_eg_use_asks :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live(v, k) then v[0].eg[k].use_ask_n else 0; }
+rm_eg_use_ask :: (v: [] RmServer, k: int, q: int) -> int #export_c {
+  if !rm_eg_live(v, k) || q < 0 || q >= v[0].eg[k].use_ask_n { return -1; }
+  return v[0].eg[k].use_ask[q];
+}
+rm_eg_use_asks_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].use_ask_n = 0; } }
+rm_eg_doors :: (v: [] RmServer, k: int, w: int, bits: int) #export_c { if rm_eg_live(v, k) && w >= 0 && w < WIRE_DOOR_WORDS { v[0].eg[k].doors[w] = bits; } }
 // The strikes since the world last heard: q's BY SLOT FX FY FZ AX AY AZ SEED.
 rm_eg_strikes :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live(v, k) then v[0].eg[k].strike_n else 0; }
 rm_eg_strike :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
@@ -828,6 +850,8 @@ eg_table :: (v: [] RmServer, k: int) {
     }
   }
   ra_table(v, k);   // what the world's abilities hold up (room-abilities.coax)
+  // the town's doors as the world has them, every seat's however far (late joiners' snapshots have them open)
+  wire_hist_put(h, EG_SLOT_DOORS, WireS.{id = WIRE_ID_MADE + EG_DOORS_ID, kind = WK_DOORS, g = 1, p1 = rm[0].doors[0], p2 = rm[0].doors[1]}, wire_rel(WK_DOORS), true, false);
 }
 
 // Seat s's state this tick: a D frame (in parts when it runs past EG_CHUNK) of its rows (cut from the
@@ -1265,4 +1289,34 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   rm_heard(v[..], 0, "E 3 5 20");
   eg_test_drain(v[..], box[..]);
   #assert eg_test_of(box[..], 0) == "r 3 nothing";
+}
+#test "everglade room: a door one seat uses is the world's to open (and a talk the world's to hold), every seat's row says it is open, and a late joiner's snapshot has it" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-door HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 3 ranger.0.0.0 druid 0 A"); rm_heard(v[..], 1, "H 3 ranger.0.0.0 druid 0 B");
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  doors := WIRE_ID_MADE + EG_DOORS_ID;
+  #assert eg_test_ent(box[..], 0, doors).kind == WK_DOORS && eg_test_ent(box[..], 0, doors).p1 == 0;   // every door shut
+  // seat 0's E on door 5, and seat 1's talk to spot 3 and letting go, wait for the world (the host: rm_eg_use_asks), no refusal
+  rm_heard(v[..], 0, "E 1 2 5"); rm_heard(v[..], 1, "E 1 1 3"); rm_heard(v[..], 1, "E 2 1 -1");
+  #assert rm_eg_use_asks(v[..], k) == 3 && rm_eg_use_ask(v[..], k, 0) == eg_use_code(WE_DOOR, 0, 5);
+  #assert rm_eg_use_ask(v[..], k, 1) == 1001004 && rm_eg_use_ask(v[..], k, 2) == 1001000;
+  rm_eg_use_asks_heard(v[..], k);
+  rm_eg_doors(v[..], k, 0, 1 << 5);   // the world opened it
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert !eg_test_has(eg_test_of(box[..], 0), "r 1 ");
+  #assert eg_test_ent(box[..], 0, doors).p1 == 32 && eg_test_ent(box[..], 1, doors).p1 == 32;
+  // a seat that joins now has it open in its first snapshot
+  #assert rm_join(v[..], 2, ev) == 2;
+  rm_heard(v[..], 2, "H 3 ranger.0.0.0 druid 0 C");
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  #assert eg_test_ent(box[..], 2, doors).p1 == 32;
+  // a door past the doors there are is dropped
+  rm_heard(v[..], 1, "E 3 2 99");
+  #assert rm_eg_use_asks(v[..], k) == 0;
 }

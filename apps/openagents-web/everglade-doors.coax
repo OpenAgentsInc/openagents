@@ -40,6 +40,7 @@ EgDoor :: struct {
   object: int;                  // its kit instance, -1 none
   piece: int; looked: int;      // its piece in the town's demolition (-1 none), and the pieces there when looked for
   open: bool;                   // where it is going
+  pred: f32;                    // in a room: s the page's own E outranks the room's word (DOOR_PRED)
   t: f32;                       // 0 shut, 1 open
 }
 Doors :: struct {
@@ -126,18 +127,55 @@ door_prompt :: (s: [] Everglade) -> string {
   return ifx open then "E · CLOSE THE DOOR" else "E · OPEN THE DOOR";
 }
 // E (or the button) on door i: it opens, or shuts if it is open (or opening).
+// In a room the room owns the door (its collider is the room's for every seat): E goes to it, and the
+// page swings the leaf at once as a prediction the room's word (WK_DOORS) then keeps or puts back.
 door_use :: (s: [] Everglade, i: int) {
   if !door_up(s, i) { return; }
+  if net_live(s) {
+    if !net_door(s, i) { return; }   // the room's socket is down: nothing to predict
+    s[0].doors.d[i].pred = f32(DOOR_PRED);
+  }
   s[0].doors.d[i].open = !s[0].doors.d[i].open;
+}
+DOOR_PRED :: 1.0;               // s: longer than a round trip and a tick
+
+// ---- the room's side (room-world.c): the room's headless town holds the doors every seat walks
+// through. The room swings none: a door is open or shut at once, its capsules with it (door_bodies).
+DOOR_SLACK :: 1.5;              // m past DOOR_REACH the room allows for where the page had you
+// Seat at (x, z) uses door i: opened or shut. False when it is down or out of reach.
+everglade_room_door :: (s: [] Everglade, i: int, x: f32, z: f32) -> bool #export_c {
+  if !door_up(s, i) { return false; }
+  d := s[0].doors.d[i..<i + 1];
+  dx := d[0].mx - x; dz := d[0].mz - z;
+  r := f32(DOOR_REACH + DOOR_SLACK);
+  if dx * dx + dz * dz > r * r { return false; }
+  d[0].open = !d[0].open; d[0].t = ifx d[0].open then 1.0f32 else 0.0f32;
+  return true;
+}
+// The doors open, word w of them (a bit each, WIRE_DOOR_WORD a word: everglade-wire.coax WK_DOORS).
+everglade_room_doors :: (s: [] Everglade, w: int) -> int #export_c {
+  bits := 0;
+  for b: 0..<WIRE_DOOR_WORD {
+    i := w * WIRE_DOOR_WORD + b;
+    if i >= 0 && i < EG_DOORS && s[0].doors.d[i].live && s[0].doors.d[i].open { bits = bits | (1 << b); }
+  }
+  return bits;
 }
 
 // Each frame, after the town's pieces are posed (spells_frame): each door swings toward where it is
 // going, and its leaf's instance is where the swing has it.
 doors_frame :: (s: [] Everglade, dt: f32) {
   step := ifx finite(dt) then clamp(dt, 0, 0.25) / f32(DOOR_SWING) else 0.0f32;
+  // in a room: each door as the room has it, unless your own E on it is newer (door_use)
+  w0 := net_doors(s, 0); w1 := net_doors(s, 1);
   for i: 0..<EG_DOORS {
     if !door_up(s, i) { continue; }
     d := s[0].doors.d[i..<i + 1];
+    if d[0].pred > 0 { d[0].pred -= hi(ifx finite(dt) then dt else 0.0f32, 0); }
+    else if w0 >= 0 {
+      w := ifx i < WIRE_DOOR_WORD then w0 else w1;
+      d[0].open = ((w >> (i % WIRE_DOOR_WORD)) & 1) == 1;
+    }
     d[0].t = ifx d[0].open then lo(d[0].t + step, 1) else hi(d[0].t - step, 0);
     if d[0].object < 0 { continue; }
     a := door_leaf_yaw(d[0]);
@@ -289,4 +327,34 @@ door_spot :: (s: [] Everglade, i: int) -> DoorSpot {
   #assert you_inside(g[..]);
   g[0].lift = 1;            // the map takes the eye out again
   #assert !you_inside(g[..]);
+}
+#test "doors: in a room your E goes to the room and swings the leaf at once; the room's word opens it on every page and outlasts your guess" #steps 2000000000 {
+  a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet; room: [1] NetTestRoom;
+  #assert net_test_pair(a[..], na[..], b[..], nb[..], room[..]);
+  everglade_start(a[..]); everglade_start(b[..]);
+  i := 5;
+  #assert door_up(a[..], i) && !a[0].doors.d[i].open;
+  out: [256] u8;
+  _ := net_test_sent(na[..], 'E', out[..]);
+  door_use(a[..], i);
+  t := net_test_sent(na[..], 'E', out[..]);
+  r: [1] WireRd; r[0] = wire_rd(t, 1); u := wire_read_use(t, r[..]);
+  #assert r[0].ok && u.kind == WE_DOOR && u.id == i;
+  #assert a[0].doors.d[i].open && a[0].doors.d[i].pred > 0;   // predicted
+  // the room opened it: its doors row on both pages
+  net_test_tick(room[..], 2, 0);
+  net_test_s(room[..], WireS.{id = NET_MADE_ID + 960000, kind = WK_DOORS, g = 1, p1 = 1 << i});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  for f: 0..<90 { doors_frame(a[..], 1.0 / 60.0); doors_frame(b[..], 1.0 / 60.0); }
+  #assert a[0].doors.d[i].open && b[0].doors.d[i].open && b[0].doors.d[i].t > 0.99;
+  // the room shut it again (another seat): your guess is long over, so the room's word wins
+  net_test_tick(room[..], 3, 0);
+  net_test_s(room[..], WireS.{id = NET_MADE_ID + 960000, kind = WK_DOORS, g = 1, p1 = 0});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  doors_frame(a[..], 1.0 / 60.0);
+  #assert !a[0].doors.d[i].open;
+  // offline (never in a room) the door is the page's own
+  c: [1] Everglade; everglade_start(c[..]);
+  door_use(c[..], i);
+  #assert c[0].doors.d[i].open && c[0].doors.d[i].pred == 0;
 }

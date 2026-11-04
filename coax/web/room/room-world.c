@@ -206,6 +206,15 @@ int world_spells(int k, float dt) { return world_of(k) ? (int)everglade_room_spe
 bool world_event(int k, int q, float out[WORLD_EVENT]) { return world_of(k) && everglade_room_event(at(k), q, (coax_v_f32){out, WORLD_EVENT}); }
 bool world_sight(int k, const float from[3], const float to[3]) { return !world_of(k) || everglade_room_sight(at(k), from[0], from[1], from[2], to[0], to[1], to[2]); }
 void world_fresh(int k) { if (world_of(k)) everglade_room_fresh(at(k)); }
+/* Seat s uses door i or talks to townsperson i where the room has them (everglade_room_door, everglade_room_talk). */
+bool world_use(int k, int kind, int s, int i) {
+  if (!world_of(k) || s < 0 || s >= WORLD_SEATS) return false;
+  float x = seat_p[k][s].pos.x, z = seat_p[k][s].pos.z;
+  if (kind == 2) return everglade_room_door(at(k), i, x, z);      /* WE_DOOR */
+  if (kind == 1) return everglade_room_talk(at(k), s, i, x, z);   /* WE_TALK */
+  return false;
+}
+int world_doors(int k, int w) { return world_of(k) ? (int)everglade_room_doors(at(k), w) : 0; }
 void world_rebuild(int k) { if (world_of(k)) everglade_room_rebuild(at(k)); }
 int world_pieces(int k) { return world_of(k) ? (int)everglade_room_pieces(at(k)) : 0; }
 bool world_piece_up(int k, int i) { return world_of(k) && everglade_room_piece_up(at(k), i); }

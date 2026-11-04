@@ -1021,6 +1021,34 @@ net_end :: (s: [] Everglade, b: int) -> bool {
   net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].seq, kind = WE_END, id = b}));
   return true;
 }
+// E on door i: the room opens or shuts it for every seat (WE_DOOR, everglade-doors.coax). False
+// when the socket is down.
+net_door :: (s: [] Everglade, i: int) -> bool {
+  if !net_open(s) || i < 0 || i >= WIRE_DOOR_WORD * WIRE_DOOR_WORDS { return false; }
+  n := net_of(s);
+  n[0].seq += 1;
+  net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].seq, kind = WE_DOOR, id = i}));
+  return true;
+}
+// Talking to townsperson i (-1: done): the room stops them and turns them to you on every page.
+net_talk :: (s: [] Everglade, i: int) -> bool {
+  if !net_open(s) { return false; }
+  n := net_of(s);
+  n[0].seq += 1;
+  net_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = n[0].seq, kind = WE_TALK, id = i}));
+  return true;
+}
+// Word w of the doors the room has open (its WK_DOORS row): -1 while none is heard (offline, or before
+// the room's first word).
+net_doors :: (s: [] Everglade, w: int) -> int {
+  if !net_live(s) { return -1; }
+  n := net_of(s);
+  for e: 0..<NET_ENTS {
+    en := n[0].ents[e];
+    if en.live && en.kind == WK_DOORS { return ifx w == 0 then en.p1 else en.p2; }
+  }
+  return -1;
+}
 net_rebuild :: (s: [] Everglade) -> bool {
   if !net_open(s) { return false; }
   n := net_of(s);
@@ -1517,6 +1545,9 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 64 { return ifx net_rejoining(s) then 1 else 0; }
   if field == 65 { return ifx ege_kit_on(s) then 1 else 0; }
   if field == 66 { return ege_of(s)[0].level; }
+  if field == 67 { return s[0].doors.near; }                            // the door you stand at (-1 none)
+  if field == 68 { return net_doors(s, 0); }                             // the room's open doors, word 0 (-1 none heard)
+  if field == 69 { return ifx door_prompt_on(s) then 1 else 0; }
   // Repair and the placed things' fire (everglade-repair.coax, everglade-placed-fire.coax)
   if field == 70 { return n[0].mends_heard; }
   if field == 71 || field == 72 { k := 0; for i: 0..<s[0].ev.edits.n { if (field == 71 && pf_burning(s, i)) || (field == 72 && pf_gone(s, i)) { k += 1; } } return k; }

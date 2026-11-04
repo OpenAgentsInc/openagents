@@ -292,6 +292,16 @@ static void everglade_town(int k) {
   int64_t cn = rm_eg_crimes(view(), k);
   for (int64_t q = 0; q < cn; q++) { rm_eg_crime(view(), k, q, crv); world_crime(k, (int)cr[0], cr[1], cr[2]); }
   rm_eg_crimes_heard(view(), k);
+  /* the doors the seats used (before this tick's steps, so the doorway is open for them) and the talks, then which doors stand open */
+  int64_t dn = rm_eg_use_asks(view(), k);
+  for (int64_t q = 0; q < dn; q++) {
+    int64_t a = rm_eg_use_ask(view(), k, q);
+    if (a < 0) continue;
+    int kind = (int)(a / 1000000), seat = (int)(a / 1000 % 1000), id = (int)(a % 1000) - 1;
+    (void)world_use(k, kind, seat, id);
+  }
+  rm_eg_use_asks_heard(view(), k);
+  for (int w = 0; w < 2; w++) rm_eg_doors(view(), k, w, world_doors(k, w));
   for (int s = 0; s < WORLD_SEATS; s++) rm_eg_seat_town(view(), k, s, (coax_v_f32){seats + s * WORLD_SEAT_TOWN, WORLD_SEAT_TOWN});
   int64_t t0 = now_us();
   world_town(k, 1.0f / WORLD_HZ, (double)wall_ms() / 1000.0, seats, took);

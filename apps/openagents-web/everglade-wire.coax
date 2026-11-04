@@ -86,6 +86,9 @@ WK_TENTACLES :: 21;        // Black Tentacles' square: its middle; P2 its side
 WK_THORNS :: 22;           // a Wall of Thorns: its middle, its way; P2 its length
 WK_LINE :: 23;             // a wall of wind or fire: P1 the ability (AB_*), P2 its length
 WK_ZONE :: 24;             // a lingering zone (Moonbeam, Sleet Storm, Fog Cloud...): P1 the ability, P2 its radius
+WK_DOORS :: 31;            // the town's doors the room has open: one row always, P1 doors 0 to 30, P2 31 to 61 (a bit each; WIRE_DOOR_WORD)
+WIRE_DOOR_WORD :: 31; WIRE_DOOR_WORDS :: 2;
+WIRE_DOORS_EID :: 960000;   // the doors row's id: WIRE_ID_MADE + WIRE_DOORS_EID
 WK_EFFECT :: 30;           // a condition, buff or hold that lasts: OWNER the TGT code it is on, P1 the slot or ability, P2 its WC_* bit, T0 and DUR
 // an effect's cause (WK_EFFECT's P1) for the watch's spells on a player (everglade-status.coax ST_*)
 WE_HOLD_PERSON :: 0; WE_EARTHBIND :: 1; WE_RAY_OF_FROST :: 2; WE_WATCH :: 3;

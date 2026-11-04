@@ -1663,6 +1663,7 @@ talk_to :: (s: [] Everglade, i: int) {
   everglade_guard_invalidate(s);
   s[0].talk = i; s[0].line_n = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0;
   s[0].held = 0; s[0].talk_quest = -1;
+  _ := net_talk(s, i);   // in a room they stop for you on every page (everglade_room_talk)
   folk_nod(s[0].folk[i..<i + 1]);
   eg_first_note(s);   // talking to Bram is the first goal's first step (everglade-guide.coax)
   q := eg_quest_talk(s[0].stages[..], i);
@@ -1678,7 +1679,7 @@ talk_to :: (s: [] Everglade, i: int) {
   }
   add_line(s, true, EG_GREET[i]);
 }
-end_talk :: (s: [] Everglade) { s[0].talk = -1; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0; }
+end_talk :: (s: [] Everglade) { if s[0].talk >= 0 { _ := net_talk(s, -1); } s[0].talk = -1; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0; }
 
 // What the one you talk to knows of your quest with them, for the character chat.
 quest_note :: (s: [] Everglade) -> string {

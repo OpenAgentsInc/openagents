@@ -1,0 +1,153 @@
+// Doors are the room's (#12858): two sockets walk to the inn's door. Shut, it stops seat A at the doorway;
+// A's E (WE_DOOR) opens it in the room's world for every seat: both hear the inn's bit in the town's
+// doors row (WK_DOORS P1), and both walk through to 3 m inside.
+//   coax/web/tool.sh coax/web/room/door-check.coax ws://127.0.0.1:PORT
+// Run it against a local room (room --dev DIR). Prints one JSON line, then "opens" and exits 0, or
+// "fails" and 1.
+#load "room-socket.coax";
+
+DC_AT_X :: -4.59; DC_AT_Z :: -37.0;     // where to stand at the inn's door (everglade-doors.coax door_spot)
+DC_IN_X :: -9.09; DC_IN_Z :: -37.0;     // 3 m past its doorway, inside
+DC_DOOR :: 0;
+DC_GATE_X :: 0.0; DC_GATE_Z :: -44.0;   // the road just past the south gate (the way in from the spawn at (0, -84))                           // the inn's door (EG_INN)
+
+DcSeat :: struct {
+  c: [1] RelayConn; m: [1] WireMirror; seq: int; me: int = -1;
+  x: f32; z: f32; seen: bool; doors: int = -1; bad: int;
+  h0: f32; turn: f32 = 1;   // the heading THETA 0 walks, and which way THETA turns it
+}
+dc_hear :: (s: [] DcSeat, t: string) {
+  if rs_starts(t, "y ") { s[0].me = rs_num(rs_field(t, 1)); return; }
+  if !rs_starts(t, "D ") { return; }
+  _ := wire_mirror_frame(s[0].m[..], t);
+  if s[0].me >= 0 {
+    w := wire_mirror_of(s[0].m[..], s[0].me);
+    if w.id >= 0 && w.kind == WK_PLAYER { s[0].x = w.x; s[0].z = w.z; s[0].seen = true; }
+  }
+  d := wire_mirror_of(s[0].m[..], WIRE_ID_MADE + WIRE_DOORS_EID);
+  if d.id >= 0 && d.kind == WK_DOORS { s[0].doors = d.p1; }
+}
+// Both seats, ms long: each sends an input each 1/30 s (A walks forward on THETA tha when ga, B on thb when gb).
+dc_steps :: (a: [] DcSeat, b: [] DcSeat, ga: bool, gb: bool, tha: f32, thb: f32, ms: int) -> bool {
+  ok := true;
+  t0 := rs_now(); n := 0;
+  while rs_now() - t0 < ms {
+    for q: 0..<2 {
+      s := ifx q == 0 then a else b;
+      s[0].seq += 1;
+      m: [128] u8;
+      go := ifx q == 0 then ga else gb; th := ifx q == 0 then tha else thb;
+      k := wire_put_in(m[..], 0, WireIn.{seq = s[0].seq, ky = ifx go then 1 else 0, theta = th, heard = s[0].m[0].heard});
+      if !relay_conn_send(s[0].c[..], cast(string) m[0..<k]) { ok = false; }
+    }
+    n += 1;
+    while rs_now() - t0 < n * 1000 / 30 {
+      while relay_conn_poll(a[0].c[..], 0) == RC_TEXT { dc_hear(a, cast(string) a[0].c[0].text[0..<a[0].c[0].text_n]); }
+      while relay_conn_poll(b[0].c[..], 0) == RC_TEXT { dc_hear(b, cast(string) b[0].c[0].text[0..<b[0].c[0].text_n]); }
+      proc_sleep(2);
+    }
+  }
+  return ok;
+}
+DC_PI :: 3.14159265; DC_TAU :: 6.2831853;
+// atan2 to about 0.005 rad (enough to steer by)
+dc_atan2 :: (y: f32, x: f32) -> f32 {
+  ax := ifx x < 0 then -x else x; ay := ifx y < 0 then -y else y;
+  if ax < 0.000001 && ay < 0.000001 { return 0; }
+  t := ifx ax > ay then ay / ax else ax / ay;
+  r := t * (0.9998660 + t * t * (-0.3302995 + t * t * (0.1801410 + t * t * (-0.0851330 + t * t * 0.0208351))));
+  if ay > ax { r = f32(DC_PI) / 2 - r; }
+  if x < 0 { r = f32(DC_PI) - r; }
+  return ifx y < 0 then -r else r;
+}
+dc_bit :: (d: int) -> bool { return d >= 0 && ((d >> DC_DOOR) & 1) == 1; }
+dc_wrap :: (a: f32) -> f32 { r := a; while r > f32(DC_PI) { r -= f32(DC_TAU); } while r < -f32(DC_PI) { r += f32(DC_TAU); } return r; }
+// Learn seat q's heading: forward on THETA 0, then on a quarter turn.
+dc_learn :: (a: [] DcSeat, b: [] DcSeat) -> bool {
+  x0: [2] f32; z0: [2] f32; x1: [2] f32; z1: [2] f32;
+  for q: 0..<2 { s := ifx q == 0 then a else b; x0[q] = s[0].x; z0[q] = s[0].z; }
+  ok := dc_steps(a, b, true, true, 0, 0, 700) && dc_steps(a, b, false, false, 0, 0, 300);
+  for q: 0..<2 { s := ifx q == 0 then a else b; x1[q] = s[0].x; z1[q] = s[0].z; s[0].h0 = dc_atan2(x1[q] - x0[q], z1[q] - z0[q]); }
+  q4 := f32(DC_PI) / 2;
+  ok = dc_steps(a, b, true, true, q4, q4, 700) && dc_steps(a, b, false, false, q4, q4, 300) && ok;
+  for q: 0..<2 {
+    s := ifx q == 0 then a else b;
+    h1 := dc_atan2(s[0].x - x1[q], s[0].z - z1[q]);
+    s[0].turn = ifx dc_wrap(h1 - s[0].h0) > 0 then 1 else -1;
+  }
+  return ok;
+}
+dc_theta :: (s: [] DcSeat, tx: f32, tz: f32) -> f32 { return s[0].turn * dc_wrap(dc_atan2(tx - s[0].x, tz - s[0].z) - s[0].h0); }
+dc_far :: (s: [] DcSeat, tx: f32, tz: f32) -> f32 { return sqrt((tx - s[0].x) * (tx - s[0].x) + (tz - s[0].z) * (tz - s[0].z)); }
+// Walk seat A to (ax, az) and seat B to (bx, bz), each stopping within tol, for at most ms. The nearest each came.
+DcWalk :: struct { a: f32; b: f32; }
+dc_walk :: (a: [] DcSeat, b: [] DcSeat, ax: f32, az: f32, bx: f32, bz: f32, tol: f32, ms: int, ok: [] bool) -> DcWalk {
+  w := DcWalk.{a = dc_far(a, ax, az), b = dc_far(b, bx, bz)};
+  t0 := rs_now();
+  while rs_now() - t0 < ms {
+    ga := dc_far(a, ax, az) > tol; gb := dc_far(b, bx, bz) > tol;
+    if !ga && !gb { break; }
+    if !dc_steps(a, b, ga, gb, dc_theta(a, ax, az), dc_theta(b, bx, bz), 100) { ok[0] = false; }
+    fa := dc_far(a, ax, az); fb := dc_far(b, bx, bz);
+    if fa < w.a { w.a = fa; }
+    if fb < w.b { w.b = fb; }
+  }
+  return w;
+}
+dc_open :: (s: [] DcSeat, url: string, pid: string, name: string) -> bool {
+  ut: [1024] u8;
+  url_t := rs_ticketed(ut[..], url, pid, name);
+  if url_t.count == 0 || !relay_conn_open(s[0].c[..], url_t) { return false; }
+  h: [128] u8;
+  k := rs_put(h[..], 0, "H "); k = rs_int(h[..], k, WIRE_VERSION); k = rs_put(h[..], k, " ranger.1.0.0 druid 64 "); k = rs_put(h[..], k, name);
+  return relay_conn_send(s[0].c[..], cast(string) h[0..<k]);
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("door-check: bad arguments"); return 2; }
+  b: [512] u8;
+  base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8841", b[..]);
+  u: [1024] u8;
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-door-", rs_stamp());
+  sa: [1] DcSeat; sb: [1] DcSeat;
+  if url.count == 0 || !dc_open(sa[..], url, "p-doorcheck-a", "Door A") || !dc_open(sb[..], url, "p-doorcheck-b", "Door B") {
+    tool_err("door-check: can't open "); tool_errln(url); print("fails\n"); return 1;
+  }
+  ok: [1] bool; ok[0] = true;
+  ok[0] = dc_steps(sa[..], sb[..], false, false, 0, 0, 2000) && ok[0];
+  ok[0] = dc_learn(sa[..], sb[..]) && ok[0];
+  // up the road through the south gate, then both to the door, B a metre to A's side
+  gate := dc_walk(sa[..], sb[..], DC_GATE_X, DC_GATE_Z, DC_GATE_X + 1.0, DC_GATE_Z - 1.0, 0.8, 30000, ok[..]);
+  at := dc_walk(sa[..], sb[..], DC_AT_X, DC_AT_Z, DC_AT_X + 0.4, DC_AT_Z - 1.2, 0.5, 40000, ok[..]);
+  shut0 := sa[0].doors; shut0_b := sb[0].doors;
+  // shut, it stops A at the doorway
+  shut := dc_walk(sa[..], sb[..], DC_IN_X, DC_IN_Z, sb[0].x, sb[0].z, 0.5, 2500, ok[..]);
+  // A uses it: E SEQ WE_DOOR DOOR
+  sa[0].seq += 1;
+  m: [96] u8;
+  k := wire_put_use(m[..], 0, WireUse.{seq = sa[0].seq, kind = WE_DOOR, id = DC_DOOR});
+  ok[0] = relay_conn_send(sa[0].c[..], cast(string) m[0..<k]) && ok[0];
+  ok[0] = dc_steps(sa[..], sb[..], false, false, 0, 0, 1500) && ok[0];
+  open_a := sa[0].doors; open_b := sb[0].doors;
+  // open: both walk in
+  inside := dc_walk(sa[..], sb[..], DC_IN_X, DC_IN_Z, DC_IN_X, DC_IN_Z + 1.0, 0.6, 8000, ok[..]);
+  pass := ok[0] && sa[0].seen && sb[0].seen && at.a < 1.0 && at.b < 1.5 && !dc_bit(shut0) && !dc_bit(shut0_b) && shut.a > 1.5 && dc_bit(open_a) && dc_bit(open_b) && inside.a < 1.0 && inside.b < 1.2;
+  out: [1024] u8; o: [1] Jo;
+  jo_start(o[..], out[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "seats"); jo_arr(o[..]); jo_int(o[..], sa[0].me); jo_int(o[..], sb[0].me); jo_end(o[..]);
+  jo_key(o[..], "past_gate_cm"); jo_arr(o[..]); jo_int(o[..], cast(int) (gate.a * 100)); jo_int(o[..], cast(int) (gate.b * 100)); jo_end(o[..]);
+  jo_key(o[..], "at_door_cm"); jo_arr(o[..]); jo_int(o[..], cast(int) (at.a * 100)); jo_int(o[..], cast(int) (at.b * 100)); jo_end(o[..]);
+  jo_key(o[..], "doors_before"); jo_arr(o[..]); jo_int(o[..], shut0); jo_int(o[..], shut0_b); jo_end(o[..]);
+  jo_key(o[..], "shut_stopped_a_cm"); jo_int(o[..], cast(int) (shut.a * 100));
+  jo_key(o[..], "doors_after_e"); jo_arr(o[..]); jo_int(o[..], open_a); jo_int(o[..], open_b); jo_end(o[..]);
+  jo_key(o[..], "inside_cm"); jo_arr(o[..]); jo_int(o[..], cast(int) (inside.a * 100)); jo_int(o[..], cast(int) (inside.b * 100)); jo_end(o[..]);
+  jo_key(o[..], "a_at"); jo_arr(o[..]); jo_int(o[..], cast(int) (sa[0].x * 100)); jo_int(o[..], cast(int) (sa[0].z * 100)); jo_end(o[..]);
+  jo_key(o[..], "b_at"); jo_arr(o[..]); jo_int(o[..], cast(int) (sb[0].x * 100)); jo_int(o[..], cast(int) (sb[0].z * 100)); jo_end(o[..]);
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  _ := relay_conn_close(sa[0].c[..], 1000); _ = relay_conn_close(sb[0].c[..], 1000);
+  print("%\n", ifx pass then "opens" else "fails");
+  return ifx pass then 0 else 1;
+}

@@ -67,4 +67,6 @@ bool world_hurt(int k, int q, float out[3]);
 bool world_sight(int k, const float from[3], const float to[3]);
 /* A new room in slot k: its town whole and nobody known. */
 void world_fresh(int k);
+bool world_use(int k, int kind, int s, int i);   /* seat s uses i (WE_DOOR: opens or shuts door i; WE_TALK: talks to spot i, -1 lets go): false when it can't */
+int world_doors(int k, int w);          /* the doors open, word w of them (WK_DOORS) */
 #endif

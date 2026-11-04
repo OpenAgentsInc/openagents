@@ -54,7 +54,7 @@ eg_old_f :: (f: [] s32, q: int) -> int { return cast(int) f[q]; }
 // for (an effect: the old page reads it from the player's COND).
 eg_old_row :: (f: [] s32, id: int, out: [] u8) -> int {
   kind := eg_old_f(f, WS_KIND);
-  if kind == WK_EFFECT { return 0; }
+  if kind == WK_EFFECT || kind == WK_DOORS { return 0; }
   if id < WIRE_ID_FOLK {
     // p SS X Y Z YAW VX VY VZ G CLIP HP MAX TEMP COND FORM CARRY
     n := wire_int(out, wire_put(out, 0, "p"), id);
