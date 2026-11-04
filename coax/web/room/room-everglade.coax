@@ -94,6 +94,7 @@ EgSeat :: struct {
   // its D's are snapshots (F 1: the page forgets everything first) from its first, until its page
   // says it heard one (full_t: the first's tick); the town's broken pieces go with the first (pieces)
   full: bool; full_t: int; pieces: bool;
+  old: bool;                                          // a page from before wire 3: its state on the old wire (room-oldwire.coax)
   fresh: bool;                                        // just sat: the world's watch meets a new player
   wcond: int;                                         // the world's conditions on it (WC_*), with the rules' in p's COND
   fx_left: [WE_WATCH] f32; fx_t0: [WE_WATCH] int; fx_dur: [WE_WATCH] int;   // its watch effects (WE_*): seconds left, start tick, ticks
@@ -109,6 +110,7 @@ EgCast :: struct {
 }
 EgRoom :: struct {
   stale_n: int;        // hellos refused for another WIRE_VERSION (#12788)
+  old_n: int;          // seats on the old wire, its window open (room-oldwire.coax)
   behind_n: int;       // seat ticks whose rows waited, its socket behind
   live: bool; relay: int = -1;
   tick: int; seed: int;
@@ -331,6 +333,7 @@ eg_seat_heard :: (v: [] RmServer, k: int, seat: int, heard: int) {
 // I SEQ KX KY PX PY THETA B HEARD: one step's input (THETA in WIRE_FINE units), queued for the tick; and the state tick its page
 // heard whole, which is now its page's (wire_seat_ack), and ends its snapshots once it is one of them.
 eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
+  if v[0].eg[k].seat[seat].old { eg_old_input(v, k, seat, text); return; }   // (room-oldwire.coax)
   r: [1] WireRd; r[0] = wire_rd(text, 1);
   w := wire_read_in(text, r[..]);
   if !r[0].ok || eg_fields(text) != 9 { return; }
@@ -355,9 +358,11 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   h := wire_read_hello(text, r[..]);
   if !r[0].ok { return; }
   st := v[0].eg[k].seat[seat..<seat + 1];
-  // a page on another wire (one loaded before a release): told why, and its socket closed (the host
-  // closes a kicked one); a new page reloads, an old one can't read this room at all (#12788)
-  if h.version != WIRE_VERSION {
+  // a page from before wire 3 (H 1): seated on the old wire while its window is open (room-oldwire.coax);
+  // a page on any other wire: told why, and its socket closed (the host closes a kicked one), and
+  // the page reloads (#12788)
+  if h.version == WIRE_OLD_HELLO && eg_old_open(v) { eg_old_seat(v, k, seat); }
+  else if h.version != WIRE_VERSION {
     eg_refuse(v, k, seat, 0, WIRE_REFUSE_VERSION);
     if st[0].conn >= 0 && st[0].conn < CONNS { v[0].conns[st[0].conn].kicked = true; }
     v[0].eg[k].stale_n += 1;
@@ -650,7 +655,7 @@ rm_eg_wanted :: (v: [] RmServer, k: int, s: int, level: int) #export_c { if rm_e
 
 // ---- what a seat hears
 
-EgOut :: struct { b: [EG_CHUNK + 512] u8; n: int; any: bool; part: int; }
+EgOut :: struct { b: [EG_CHUNK + 512] u8; n: int; any: bool; part: int; old: bool; }   // old: D's header on the old wire (room-oldwire.coax)
 eg_out_entry :: (o: [] EgOut, v: [] RmServer, k: int, s: int, f: int, entry: string) {
   if o[0].any && o[0].n + entry.count + 1 > EG_CHUNK { eg_out_send(o, v, k, s, f | 2); }
   if o[0].any { o[0].b[o[0].n] = ';'; o[0].n += 1; }
@@ -661,6 +666,7 @@ eg_out_entry :: (o: [] EgOut, v: [] RmServer, k: int, s: int, f: int, entry: str
 eg_out_send :: (o: [] EgOut, v: [] RmServer, k: int, s: int, f: int) {
   h: [64] u8;
   n := wire_put_d(h[..], 0, WireD.{tick = v[0].eg[k].tick, ack = v[0].eg[k].seat[s].ack, f = f, part = o[0].part});
+  if o[0].old { n = wire_put(h[..], wire_int(h[..], wire_int(h[..], wire_int(h[..], wire_put(h[..], 0, "D"), v[0].eg[k].tick), v[0].eg[k].seat[s].ack), f), " "); }
   rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[s].conn, -1, cast(string) h[0..<n], cast(string) o[0].b[0..<o[0].n]);
   o[0].n = 0; o[0].any = false; o[0].part += 1;
 }
@@ -766,6 +772,7 @@ eg_table :: (v: [] RmServer, k: int) {
 // world's event, and the events near it. Until its page has heard one, every D is a snapshot (F 1:
 // whole, the page forgetting all it held first, the budget off); the town's broken pieces go with the first.
 eg_send :: (v: [] RmServer, k: int, s: int) {
+  if v[0].eg[k].seat[s].old { eg_old_send(v, k, s); return; }   // a page from before wire 3 (room-oldwire.coax)
   st := v[0].eg[k].seat[s..<s + 1];
   now := v[0].eg[k].tick;
   full := st[0].full;

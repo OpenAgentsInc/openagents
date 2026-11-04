@@ -64,6 +64,9 @@
 
 WIRE_VERSION :: 3;
 WIRE_REFUSE_VERSION :: "version";   // r 0 version: the room speaks another WIRE_VERSION than the hello's (the page reloads)
+// a page from before wire 3 says hello "H 1"; the room seats it on the old wire until WIRE_OLD_UNTIL_MS
+// (coax/web/room/room-oldwire.coax), since nothing in such a page reloads it
+WIRE_OLD_HELLO :: 1; WIRE_OLD_UNTIL_MS :: 1794463200000;   // 2026-11-12 00:00 Chicago (06:00 UTC)
 WIRE_FRAME :: 1024;        // a page's frame at most
 WIRE_SERVER_FRAME :: 3800; // a server's
 // A heading's units a radian on I's THETA (#12718): 0.1 mrad, where centiradians were 5 mrad

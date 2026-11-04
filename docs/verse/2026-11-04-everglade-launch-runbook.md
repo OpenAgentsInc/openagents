@@ -217,7 +217,7 @@ Every page connected to a shard reconnects when its revision changes. Since
 that message arrives only with step 3's page release. Deploy oa-room when few
 players are on.
 
-### Wire version 3: step 2 and step 3 ship back to back (#12783, #12788)
+### Wire version 3, and pages from before it (#12783, #12788)
 
 Since #12783 the room server and the page speak wire version 3
 (`apps/openagents-web/everglade-wire.coax`, `WIRE_VERSION`). Every entity is
@@ -230,13 +230,33 @@ page says its version in its hello (`H 3 ...`) and the room checks it (#12788):
   opens no socket again, and reloads itself once (with `reload=1` in its
   address). If the reload still gets an old page from a cache, it shows
   A NEW VERSION IS OUT · RELOAD THE PAGE and stops.
-- A page from before this release (it says `H 1`) can't reload itself. It
-  shows CAN'T · VERSION and rejoins on its normal backoff until the player
-  reloads. Between step 2 and step 3, every player on the old page is in
-  that state, so run step 3 right after step 2 passes, with few players on.
-- `rejoin-check` (deploy.sh runs it in step 2) ends by joining with a
-  version 2 hello. It passes only when that socket hears `r 0 version` and is
-  closed (`"old_wire_refused":true,"old_wire_closed":true`).
+- A page from before this release says `H 1`, and nothing in it can reload
+  it: `host.js` navigates only on the page's own action 1 (FORK IT), a
+  refusal only shows CAN'T · VERSION and rejoins on its backoff, and no
+  field of the ticket, rooms or control answers makes it navigate. So the
+  room keeps the old wire for that page until `WIRE_OLD_UNTIL_MS`,
+  2026-11-12 00:00 Chicago (`coax/web/room/room-oldwire.coax`). Its hello
+  seats it, and its state is cut from the same table as everyone else's, in
+  the old entries (`D TICK ACK F`, then `p`, `n`, `f`, `c`, `a`, `w`,
+  `x K ID`). Players on old pages stay in the same rooms as players on new
+  pages, and each sees the other. A player who reloads, or opens the world
+  again, gets the new page. You don't need to time step 3 against step 2 for
+  old pages: they play on between the two steps.
+- After `WIRE_OLD_UNTIL_MS`, an `H 1` hello is refused like any other
+  version. A tab left open for over a week then shows CAN'T · VERSION until
+  the player reloads it. A room control line `oldwire 0` closes the window
+  early. The API doesn't send it, but a local room reads it from
+  `dev/room-control.txt`.
+- `rejoin-check` (deploy.sh runs it in step 2) then joins with a version 2
+  hello. It passes only when that socket hears `r 0 version` and is closed
+  (`"old_wire_refused":true,"old_wire_closed":true`). Last, it joins as an
+  old page (`H 1`). Before `WIRE_OLD_UNTIL_MS` (by the clock in the room's
+  `y`), it passes when that page is seated on the old wire and its inputs are
+  acknowledged (`"page2_window":true,"page2_plays":true`). After that time,
+  it passes when the page is refused and closed (`"page2_refused":true`).
+- After 2026-11-12, delete `room-oldwire.coax`, its `#load` in `room.coax`,
+  the three lines that call it (`eg_heard_hello`, `eg_heard_input` and
+  `eg_send` in `room-everglade.coax`), and rejoin-check's `H 1` step.
 - If you roll back either step, roll back both: shards and page together. A
   rolled-back room predates the check: it ignores the new page's hello rather
   than refusing it, so the new page stays joined and draws no one.

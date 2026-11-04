@@ -21,6 +21,7 @@
 #load "room-interest.coax";   // who may receive what, each tick (#12789)
 #load "room-blocks.coax";     // and who each seat blocks
 #load "room-everglade.coax";
+#load "room-oldwire.coax";   // pages from before wire 3, for the week after it ships
 #load "room-casts.coax";   // casts under latency: their phases and a tick's order (#12790)
 #load "../../../apps/openagents-web/everglade-cast-rules.coax";
 #load "room-abilities.coax";
