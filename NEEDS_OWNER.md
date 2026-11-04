@@ -1,5 +1,13 @@
 # Owner actions
 
+## WoW recording run: input handover (#12799, 2026-11-04)
+
+- [x] Owner confirmed no key/button was held, clicked and released ground,
+      then requested resume. Verse still reported held physical input.
+      Operator-only release events cleared the stale virtual state;
+      the normal broker gate continues to apply. The failed attempts and
+      recovery events are retained with the [recorded trial](docs/verification/verse-combat-2026-11-04/README.md).
+
 ## Verse OS: optional visible WoW trial (#12724–#12727, 2026-11-03)
 
 - [ ] Try the installed Verse window using [the gaming commands](docs/os/verse-gaming.md).

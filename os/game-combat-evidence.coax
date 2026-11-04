@@ -1,0 +1,27 @@
+// Lossless controller captures; compression/hashing are platform process effects.
+#load "game-observation.coax";
+#load "../coax/lib/sys/proc.coax";
+ev_number :: (n: int, out: [] u8) -> string { o: [1] Jo; jo_start(o[..],out); jo_int(o[..],n); return jo_text(o[..]); }
+#test "archive names distinguish every observation and its pre-input recheck" {
+  b: [128] u8;
+  #assert ev_name(1,false,b[..]) == "observe-1.ppm.zst";
+  #assert ev_name(1200,true,b[..]) == "recheck-1200.ppm.zst";
+}
+ev_name :: (sequence: int, recheck: bool, out: [] u8) -> string {
+  number: [32] u8; o: [1] Jo; jo_start(o[..],out);
+  jo_put(o[..],ifx recheck then "recheck-" else "observe-"); jo_put(o[..],ev_number(sequence,number[..])); jo_put(o[..],".ppm.zst"); return jo_text(o[..]);
+}
+ev_archive :: (image: string, dir: string, journal: string, sequence: int, recheck: bool, started: int) -> int {
+  namebuf: [128] u8; pathbuf: [4096] u8; name := ev_name(sequence,recheck,namebuf[..]); path := fs_join(dir,name,pathbuf[..]);
+  args := [8] string.["zstd","-q","-1","--check","-o",path,"--",image]; output: [64] u8; errors: [1024] u8;
+  r := proc_run(args[..],5000,output[..],errors[..]);
+  if r.started != 0 || r.status != 0 { tool_errln("combat: lossless capture failed"); tool_errln(cast(string) errors[0..<r.err_n]); return -1; }
+  size := fs_size(path); if size <= 0 { return -1; }
+  row: [8192] u8; o: [1] Jo; jo_start(o[..],row[..]); jo_obj(o[..]);
+  jo_key(o[..],"type"); jo_str(o[..],"image"); jo_key(o[..],"observation"); jo_int(o[..],sequence);
+  jo_key(o[..],"phase"); jo_str(o[..],ifx recheck then "recheck" else "observe");
+  jo_key(o[..],"path"); jo_str(o[..],name); jo_key(o[..],"bytes"); jo_int(o[..],size);
+  jo_key(o[..],"started_ms"); jo_int(o[..],started); jo_key(o[..],"ended_ms"); jo_int(o[..],proc_now_ms()); jo_end(o[..]);
+  line := jo_text(o[..]); row[line.count] = '\n';
+  return ifx fs_append_durable(journal,cast(string) row[0..<line.count + 1]) then size else -1;
+}

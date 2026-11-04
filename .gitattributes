@@ -1,2 +1,4 @@
 # Coax has no Linguist grammar yet; Jai is its closest relative on GitHub.
 *.coax linguist-language=Jai
+# Preserve the client's original CRLF combat evidence byte for byte.
+docs/verification/verse-combat-2026-11-04/client-combat-log.txt -text whitespace=cr-at-eol

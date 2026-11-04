@@ -1,0 +1,45 @@
+// Integration oracle: a real retained image must verify; damaged/missing/misbound/orphaned evidence must refuse.
+#import "Basic";
+#load "game-combat-evidence.coax";
+#load "game-client.coax";
+ec_append :: (path: string, body: string) -> bool {
+  out: [32768] u8; if body.count >= out.count { return false; } for i: 0..<body.count { out[i] = body[i]; } out[body.count] = '\n';
+  return fs_append(path,cast(string) out[0..<body.count + 1]);
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 2 { tool_errln("usage: evidence-check ANALYZER_BIN SOURCE_RUN"); return 2; }
+  bin := args_at(a[..],0); source := args_at(a[..],1); rootbuf: [4096] u8; root := fs_temp("verse-evidence-check-",rootbuf[..]); pathbuf: [4096] u8;
+  body: [65536] u8; n := fs_read_at(fs_join(source,"journal.jsonl",pathbuf[..]),0,body[..]); if n <= 0 { return 1; }
+  image := ""; observation := ""; sensor := ""; navigation := ""; stamp := 0; begin := 0; nodes: [4096] JvNode; parsed: [1] Jv;
+  for end: 0..<n {
+    if body[end] != '\n' { continue; } line := cast(string) body[begin..<end]; begin = end + 1;
+    if !jv_parse(parsed[..],line,nodes[..]) { return 1; } d := parsed[0]; kind := jv_raw(d,jv_get(d,0,"type"));
+    if kind == "image" && image.count == 0 { image = line; }
+    if kind == "observation" { observation = line; sensor = jv_raw(d,jv_get(d,0,"sensor")); navigation = jv_raw(d,jv_get(d,0,"navigation")); stamp = jv_int(d,jv_get(d,0,"monotonic_ms"),0); break; }
+  }
+  if image.count == 0 || observation.count == 0 { return 1; }
+  wirebody: [65536] u8; nw := fs_read_at(fs_join(source,"wire.jsonl",pathbuf[..]),0,wirebody[..]); wire := ""; begin = 0;
+  for end: 0..<nw {
+    if wirebody[end] != '\n' { continue; } line := cast(string) wirebody[begin..<end]; begin = end + 1;
+    if !jv_parse(parsed[..],line,nodes[..]) { return 1; } raw: [8192] u8; count := jv_str(parsed[0],jv_get(parsed[0],0,"request_json"),raw[..]);
+    inner: [512] JvNode; request: [1] Jv; if count > 0 && jv_parse(request[..],cast(string) raw[0..<count],inner[..]) && jv_raw(request[0],jv_get(request[0],0,"type")) == "shot" { wire = line; break; }
+  }
+  if wire.count == 0 { return 1; }
+  names := [5] string.["valid","truncated","missing","misbound","orphan"];
+  for trial: 0..<5 {
+    paths: [6] [4096] u8; dir := fs_join(root,names[trial],paths[0][..]); if !fs_mkdir(dir) { return 1; }
+    archive := fs_join(dir,"observe-1.ppm.zst",paths[1][..]); original := fs_join(source,"observe-1.ppm.zst",paths[2][..]);
+    cp := [3] string.["cp",original,archive]; out: [8192] u8; err: [4096] u8; r := proc_run(cp[..],5000,out[..],err[..]); if r.started != 0 || r.status != 0 { return 1; }
+    journal := fs_join(dir,"journal.jsonl",paths[3][..]); if !ec_append(journal,image) { return 1; }
+    row: [16384] u8; o: [1] Jo; jo_start(o[..],row[..]); jo_obj(o[..]); jo_key(o[..],"type"); jo_str(o[..],"observation"); jo_key(o[..],"sequence"); jo_int(o[..],2);
+    jo_key(o[..],"monotonic_ms"); jo_int(o[..],stamp); jo_key(o[..],"sensor"); jo_raw(o[..],sensor); jo_key(o[..],"navigation"); jo_raw(o[..],navigation); jo_end(o[..]);
+    if !ec_append(journal,ifx trial == 3 then jo_text(o[..]) else observation) || !ec_append(journal,"{\"type\":\"outcome\",\"status\":\"stopped\"}") || !ec_append(fs_join(dir,"wire.jsonl",paths[4][..]),wire) { return 1; }
+    if trial == 1 { if !fs_truncate(archive,fs_size(archive) - 1) { return 1; } }
+    if trial == 2 { if !fs_remove(archive) { return 1; } }
+    if trial == 4 { extra := fs_join(dir,"orphan.ppm.zst",paths[5][..]); copy := [3] string.["cp",original,extra]; r = proc_run(copy[..],5000,out[..],err[..]); if r.status != 0 { return 1; } }
+    reportbuf: [4096] u8; report := fs_join(dir,"analysis",reportbuf[..]); argv := [4] string.[bin,dir,"--out",report]; r = proc_run(argv[..],30000,out[..],err[..]);
+    expected := ifx trial == 0 then 0 else 1; print("%: expected exit %, got % (started %)\n",names[trial],expected,r.status,r.started);
+    if r.started != 0 || r.status != expected { tool_errln(cast(string) err[0..<r.err_n]); return 1; }
+  }
+  print("ok real image accepted; truncated, missing, misbound and orphaned evidence refused; fixtures %\n",root); return 0;
+}

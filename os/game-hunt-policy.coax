@@ -50,6 +50,38 @@ hunt_action :: (r: NavRoute) -> CombatDecision {
   #assert hunt_visualturn(-400) == 35 && hunt_visualturn(400) == 35 && hunt_visualturn(0) == 35;
 }
 hunt_visualturn :: (offset: int) -> int { return ifx offset < -400 || offset > 400 then 90 else 35; }
+#test "visual acquisition uses a native-width centre band and refuses invalid pixels" {
+  #assert hunt_aim(955,2548).action == CT_LEFT && hunt_aim(956,2548).action == CT_SELECT;
+  #assert hunt_aim(1592,2548).action == CT_SELECT && hunt_aim(1593,2548).action == CT_RIGHT;
+  #assert hunt_aim(0,640).action == CT_LEFT && hunt_aim(639,640).action == CT_RIGHT;
+  #assert hunt_aim(2048,4096).action == CT_SELECT;
+  #assert !hunt_aim(-1,640).ok && !hunt_aim(640,640).ok && !hunt_aim(320,639).ok && !hunt_aim(320,4097).ok;
+  #assert hunt_aim(800,2548).milliseconds == 90 && hunt_aim(955,2548).milliseconds == 35;
+  #assert hunt_aim(1274,2548).milliseconds == 40;
+}
+hunt_aim :: (x: int, width: int) -> CombatDecision {
+  if width < 640 || width > 4096 || x < 0 || x >= width { return CombatDecision.{}; }
+  offset := x - width / 2;
+  d := cb_action(ifx offset < -(width / 8) then CT_LEFT else ifx offset > width / 8 then CT_RIGHT else CT_SELECT);
+  if d.action != CT_SELECT { d.milliseconds = hunt_visualturn(offset); } return d;
+}
+#test "empty-view scans turn without selecting off-screen targets, and travel keeps geometric admission" {
+  d := hunt_scan_action(true,NavRoute.{}); #assert d.ok && d.action == CT_RIGHT && d.milliseconds == 160;
+  #assert !hunt_scan_action(false,NavRoute.{}).ok;
+  r := NavRoute.{ok = true,distance = 100}; #assert hunt_scan_action(false,r).action == CT_FORWARD;
+}
+hunt_scan_action :: (scanning: bool, route: NavRoute) -> CombatDecision {
+  if !scanning { return hunt_action(route); }
+  d := cb_action(CT_RIGHT); d.milliseconds = 160; return d;
+}
+#test "a visually bound pre-pull approach uses one full bounded step without changing combat movement" {
+  d := cb_action(CT_FORWARD); #assert hunt_pull_pulse(d,true,false).milliseconds == 300;
+  #assert hunt_pull_pulse(d,false,false).milliseconds == 200 && hunt_pull_pulse(d,true,true).milliseconds == 200;
+  d = cb_action(CT_LEFT); #assert hunt_pull_pulse(d,true,false).milliseconds == 60;
+}
+hunt_pull_pulse :: (decision: CombatDecision, bound: bool, engaged: bool) -> CombatDecision {
+  d := decision; if d.action == CT_FORWARD && bound && !engaged { d.milliseconds = 300; } return d;
+}
 #test "survey progress has an inclusive distance gain and bounded blocked-leg deadline" {
   #assert hunt_progress(100,88,0) == 1 && hunt_progress(100,88,12000) == 1;
   #assert hunt_progress(100,89,11999) == 0;

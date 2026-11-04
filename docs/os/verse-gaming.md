@@ -154,6 +154,46 @@ eligibility, cast/range feedback and resources before fighting. Kills count
 only with a matched player kill event and actual XP gain. Between pulls it
 eats/drinks or waits for natural regeneration. It does not do quests.
 
+The current control profile is [V3](../protocol/external-combat-control-v3.md).
+It records every observation and pre-input recheck losslessly as PPM.zst,
+plus `wire.jsonl` with exact requests/replies and timing. Zstandard must be
+on PATH (the Nix package wrapper supplies it). The eight-GiB archive budget
+drains the current fight before ending a run. Keep runs in persistent local
+storage; no previous recording is automatically deleted.
+
+For a second, passive video stream, start this in another terminal before
+the hunt, using a new directory:
+
+```sh
+"$d/verse-game-video" --out /absolute/recordings/run-01.video --seconds 600
+```
+
+It captures the same visible game at a target of 4 fps and logs a public
+sensor sample for each video frame. Wait until that directory's
+`frames.jsonl` contains its first row before starting the hunt; launching
+both commands together can leave a video warm-up gap. Stop it cleanly with
+`touch /absolute/recordings/run-01.video/stop`. It acquires no input lease.
+After the hunt, verify the retained images and export a sampled replay:
+
+```sh
+"$d/verse-combat-analyze" /absolute/recordings/run-01 \
+  --out /absolute/recordings/run-01.analysis --video
+```
+
+The analyzer checks decompression, image/sensor binding, missing/orphaned
+captures, action/effect counts and raw wire outcomes, then writes reports
+and image hashes. The sampled replay and separate 4-fps recording have
+different coverage. Full records from the measured improvements are in the
+[2026-11-04 evidence index](../verification/verse-combat-2026-11-04/README.md).
+
+On this computer the outer Verse window lives on desk 2 and hosts the game
+inside it. Use `coder-desk list`, then `coder-desk focus HANDLE` for the
+Verse window to watch. The game broker is the inner `verse-desk.sock`; the
+default outer `CODER_DESK_SOCKET` is a different desktop. A character-select
+screen or disconnect is not proof of successful world entry. Physical
+input can interrupt the controller; use the graceful finish control for
+a routine development pause.
+
 Pause after the current encounter, then verify `finished` in the journal:
 
 ```sh

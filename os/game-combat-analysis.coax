@@ -1,0 +1,45 @@
+// Interval labels describe observed resources/combat, not inferred server simulation.
+#authority;
+#load "../aethyr/points.coax";
+CombatAnalysis :: struct {
+  observations: int; elapsed: int; search: int; combat: int; recovery: int; unavailable: int;
+  previous_ms: int = -1; mode: int; min_health: int = 65536; health: int; mana: int; level: int; xp: int; clock_errors: int;
+}
+#test "observed mode boundaries distinguish combat, recovery, search and unavailable samples" {
+  #assert ca_mode(3,85,100,60,100) == 0 && ca_mode(3,84,100,60,100) == 2;
+  #assert ca_mode(3,85,100,59,100) == 2 && ca_mode(7,1,100,0,100) == 1;
+  #assert ca_mode(11,85,100,60,100) == 3 && ca_mode(1,85,100,60,100) == 3;
+  #assert ca_mode(3,1,0,1,100) == 3 && ca_mode(3,1,100,1,0) == 3;
+  #assert ca_mode(3,8480,10000,6000,10000) == 2 && ca_mode(3,8500,10000,5980,10000) == 2;
+  #assert ca_mode(3,1,1,1,100) == 2 && ca_mode(3,1,100,1,1) == 2;
+}
+ca_mode :: (flags: int, health: int, maximum: int, mana: int, mana_max: int) -> int {
+  if (flags & 11) != 3 || maximum <= 0 || mana_max <= 0 { return 3; }
+  if (flags & 4) != 0 { return 1; }
+  return ifx health * 100 < maximum * 85 || mana * 100 < mana_max * 60 then 2 else 0;
+}
+#test "sample intervals preserve every millisecond, resource minimum and clock regressions" {
+  s: [1] CombatAnalysis;
+  ca_observe(s[..],0,0,100,100,4,10); ca_observe(s[..],1000,1,90,80,4,10);
+  ca_observe(s[..],4000,0,100,80,4,20); ca_observe(s[..],5000,2,100,20,4,20);
+  ca_observe(s[..],8000,3,100,100,5,1); ca_observe(s[..],9000,0,100,100,5,1);
+  #assert s[0].observations == 6 && s[0].elapsed == 9000 && s[0].search == 2000 && s[0].combat == 3000 && s[0].recovery == 3000 && s[0].unavailable == 1000;
+  #assert s[0].min_health == 90 && s[0].health == 100 && s[0].mana == 100 && s[0].level == 5 && s[0].xp == 1;
+  ca_observe(s[..],8999,0,89,100,5,2); #assert s[0].clock_errors == 1 && s[0].elapsed == 9000 && s[0].min_health == 89;
+  ca_observe(s[..],8999,0,89,100,5,2); #assert s[0].clock_errors == 1;
+  ca_observe(s[..],9000,0,0,100,5,2); #assert s[0].min_health == 0;
+}
+ca_observe :: (state: [] CombatAnalysis, now: int, mode: int, health: int, mana: int, level: int, xp: int) {
+  s := state[0];
+  if s.previous_ms >= 0 {
+    dt := now - s.previous_ms;
+    if dt < 0 { s.clock_errors += 1; }
+    else {
+      s.elapsed += dt;
+      if s.mode == 0 { s.search += dt; } else if s.mode == 1 { s.combat += dt; } else if s.mode == 2 { s.recovery += dt; } else { s.unavailable += dt; }
+    }
+  }
+  s.previous_ms = now; s.mode = mode; s.observations += 1;
+  s.min_health = cast(int) clamp(cast(f32) health,f32(0),cast(f32) s.min_health);
+  s.health = health; s.mana = mana; s.level = level; s.xp = xp; state[0] = s;
+}

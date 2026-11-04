@@ -1,9 +1,13 @@
 // Shared desk-control-v2 transport for the direct CLI and the navigation loop.
 #load "../coax/lib/json/json.coax";
 #load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
 #load "desk-client.coax";
 #load "game-target-policy.coax";
 gc_exchange :: (h: int, t: GameTarget, ty: string, code: int, down: bool, ms: int, x: int, y: int, path: string, reply: [] u8, want: string) -> int {
+  return gc_exchange_logged(h,t,ty,code,down,ms,x,y,path,reply,want,"");
+}
+gc_exchange_logged :: (h: int, t: GameTarget, ty: string, code: int, down: bool, ms: int, x: int, y: int, path: string, reply: [] u8, want: string, trace: string) -> int {
   bytes: [8192] u8; o: [1] Jo; jo_start(o[..], bytes[..]); jo_obj(o[..]);
   jo_key(o[..], "generation"); jo_int(o[..], 2); jo_key(o[..], "type"); jo_str(o[..], ty);
   if t.session > 0 { jo_key(o[..], "session"); jo_int(o[..], t.session); }
@@ -15,12 +19,23 @@ gc_exchange :: (h: int, t: GameTarget, ty: string, code: int, down: bool, ms: in
     jo_key(o[..], ifx ty == "move" then "y" else "dy"); jo_int(o[..], y);
   }
   if ty == "shot" { jo_key(o[..], "path"); jo_str(o[..], path); } jo_end(o[..]);
-  if o[0].bad || !dc_send(h, jo_text(o[..])) { tool_errln("game: could not send to the desk"); return -1; }
-  n := dc_line(h, reply); nodes: [4096] JvNode; d: [1] Jv;
+  if o[0].bad { return -1; }
+  started := proc_now_ms(); sent := dc_send(h,jo_text(o[..]));
+  n := ifx sent then dc_line(h,reply) else -1;
+  if trace.count > 0 && !gc_wire_record(trace,jo_text(o[..]),ifx n >= 0 then cast(string) reply[0..<n] else "",started,proc_now_ms(),n,sent) { tool_errln("game: wire recording failed"); return -1; }
+  if !sent { tool_errln("game: could not send to the desk"); return -1; }
+  nodes: [4096] JvNode; d: [1] Jv;
   if n < 0 || !jv_parse(d[..], cast(string) reply[0..<n], nodes[..]) || jv_int(d[0], jv_get(d[0], 0, "generation"), 0) != 2 { tool_errln("game: no complete v2 desk reply"); return -1; }
   if t.session > 0 && jv_int(d[0], jv_get(d[0], 0, "session"), 0) != t.session { tool_errln("game: the desk session changed"); return -1; }
   if jv_raw(d[0], jv_get(d[0], 0, "type")) != want {
     tool_err("game: desk refused "); tool_err(ty); tool_err(": "); tool_errln(jv_raw(d[0], jv_get(d[0], 0, "code"))); return -1;
   }
   return n;
+}
+gc_wire_record :: (path: string, request: string, reply: string, started: int, ended: int, count: int, sent: bool) -> bool {
+  row: [1048576] u8; o: [1] Jo; jo_start(o[..],row[..]); jo_obj(o[..]);
+  jo_key(o[..],"type"); jo_str(o[..],"exchange"); jo_key(o[..],"request_json"); jo_str(o[..],request);
+  jo_key(o[..],"reply_json"); jo_str(o[..],reply); jo_key(o[..],"started_ms"); jo_int(o[..],started); jo_key(o[..],"ended_ms"); jo_int(o[..],ended);
+  jo_key(o[..],"read_result"); jo_int(o[..],count); jo_key(o[..],"sent"); jo_bool(o[..],sent); jo_end(o[..]);
+  text := jo_text(o[..]); if o[0].bad || text.count >= row.count { return false; } row[text.count] = '\n'; return fs_append_durable(path,cast(string) row[0..<text.count + 1]);
 }

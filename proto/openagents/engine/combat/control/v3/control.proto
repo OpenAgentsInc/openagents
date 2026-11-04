@@ -1,0 +1,8 @@
+syntax = "proto3";
+package openagents.engine.combat.control.v3;
+// Uses observation v1, evidence v1 and the existing bounded action envelope.
+message VisualSurveyProfile {
+  uint32 alignment_width_divisor = 1;
+  uint32 scan_pulse_ms = 2;
+  bool tab_during_survey = 3;
+}

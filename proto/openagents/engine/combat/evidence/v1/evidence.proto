@@ -1,0 +1,25 @@
+syntax = "proto3";
+package openagents.engine.combat.evidence.v1;
+// Composes unchanged observation v1 and control v2. Times are monotonic milliseconds.
+message Image {
+  uint64 observation = 1;
+  string phase = 2;
+  string path = 3;
+  uint64 bytes = 4;
+  uint64 started_ms = 5;
+  uint64 ended_ms = 6;
+}
+message Exchange {
+  string request_json = 1;
+  string reply_json = 2;
+  uint64 started_ms = 3;
+  uint64 ended_ms = 4;
+  sint64 read_result = 5;
+  bool sent = 6;
+}
+message Effect {
+  uint64 observation = 1;
+  bool applied = 2;
+  uint64 started_ms = 3;
+  uint64 ended_ms = 4;
+}

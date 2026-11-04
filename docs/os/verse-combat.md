@@ -170,3 +170,22 @@ The installed executable then passed the same live finish fixture: request
 at active combat observation 15, one wolf for 26 XP, minimum 86/88 health,
 final 88/88, alive and out of combat, zero held keys/buttons. Final XP:
 1898/2100, level 4. The controller is stopped; the game remains open.
+
+## Recorded improvement run, 2026-11-04
+
+Repeated the hunt with complete lossless observation/recheck capture, exact
+wire traffic, candidate sets, controller state and actual effect results.
+Added a separate passive 4-fps native game video with per-frame public
+sensor samples, archive verification, timing reports, hashes and source
+provenance. Large artifacts live under
+`~/.local/share/verse-os/combat/2026-11-04/`.
+
+V3 removes redundant Tab/clear churn, widens the central visual selection
+band, uses the full 300-ms bound for a visually bound pre-pull step, and
+counts transport/logging time against pulse sleep. Fourteen additional
+verified XP kills advanced Foob to level 5, 219/2800 XP. Final sanitized
+trial: three kills in 64.236 s, 70 XP, 102 lossless images verified, zero
+sensor mismatches. Installed native encounter drain passed too. The earlier
+three-kill baseline took 164.876 s; field conditions and levels differed.
+The longer intermediate trial remains evidence that search/path quality
+still varies. See the [full record and limits](../verification/verse-combat-2026-11-04/README.md).

@@ -1,0 +1,176 @@
+// Analyze retained gameplay without opening a game, model or input lease.
+#import "Basic";
+#load "game-combat-analysis.coax";
+#load "game-combat-evidence.coax";
+#load "game-combat-observation.coax";
+an_int :: (d: Jv, key: string) -> int { return jv_int(d,jv_get(d,0,key),0); }
+an_append :: (path: string, body: string) -> bool {
+  out: [65536] u8; if body.count >= out.count { return false; }
+  for i: 0..<body.count { out[i] = body[i]; } out[body.count] = '\n'; return fs_append(path,cast(string) out[0..<body.count + 1]);
+}
+an_line :: (path: string, offset: int, out: [] u8) -> int {
+  n := fs_read_at(path,offset,out); if n <= 0 { return -1; }
+  for i: 0..<n { if out[i] == '\n' { return i; } } return -1;
+}
+#test "visual replay durations preserve millisecond decimal places" {
+  b: [128] u8; #assert an_seconds(0,b[..]) == "0.000" && an_seconds(1,b[..]) == "0.001";
+  #assert an_seconds(999,b[..]) == "0.999" && an_seconds(1000,b[..]) == "1.000" && an_seconds(12345,b[..]) == "12.345";
+}
+an_seconds :: (ms: int, out: [] u8) -> string {
+  integer: [32] u8; o: [1] Jo; jo_start(o[..],out); jo_put(o[..],ev_number(ms / 1000,integer[..])); jo_put(o[..],".");
+  jo_byte(o[..],cast(u8) ('0' + ms / 100 % 10)); jo_byte(o[..],cast(u8) ('0' + ms / 10 % 10)); jo_byte(o[..],cast(u8) ('0' + ms % 10)); return jo_text(o[..]);
+}
+an_process :: (argv: [] string, timeout: int) -> bool {
+  out: [1024] u8; err: [4096] u8; r := proc_run(argv,timeout,out[..],err[..]);
+  if r.started != 0 || r.status != 0 { tool_errln(cast(string) err[0..<r.err_n]); return false; } return true;
+}
+WireAudit :: struct { captures: int; refusals: int; errors: int; exchanges: int; active: bool; final_seen: bool; final_keys: int; final_buttons: int; held: [256] bool; buttons: [8] bool; began: [256] int; max_hold_upper_ms: int; }
+#test "wire audit distinguishes observed input from refused proposals and detects missing releases" {
+  s: [1] WireAudit;
+  an_wire_fact(s[..],"{\"type\":\"acquire\"}","{\"type\":\"done\"}",0,1);
+  an_wire_fact(s[..],"{\"type\":\"key\",\"code\":17,\"down\":true}","{\"type\":\"done\"}",10,11);
+  an_wire_fact(s[..],"{\"type\":\"key\",\"code\":17,\"down\":false}","{\"type\":\"done\"}",210,212);
+  #assert s[0].max_hold_upper_ms == 202 && !s[0].held[17] && s[0].errors == 0;
+  an_wire_fact(s[..],"{\"type\":\"stop\"}","{\"type\":\"done\"}",213,214);
+  an_wire_fact(s[..],"{\"type\":\"acquire\"}","{\"type\":\"refused\"}",215,216); #assert !s[0].active && s[0].refusals == 1;
+  an_wire_fact(s[..],"{\"type\":\"info\"}","{\"type\":\"info\",\"active\":false,\"keys\":0,\"buttons\":0}",217,218); #assert s[0].final_seen && s[0].errors == 0;
+  an_wire_fact(s[..],"{\"type\":\"key\",\"code\":17,\"down\":true}","{\"type\":\"done\"}",219,220); #assert s[0].errors == 1;
+  an_wire_fact(s[..],"{\"type\":\"shot\"}","{\"type\":\"shot\"}",221,222); #assert s[0].captures == 1;
+  an_wire_fact(s[..],"bad","bad",223,222); #assert s[0].errors == 2;
+}
+an_wire_fact :: (state: [] WireAudit, request: string, reply: string, started: int, ended: int) {
+  state[0].exchanges += 1; rn: [512] JvNode; pn: [4096] JvNode; r: [1] Jv; p: [1] Jv;
+  if ended < started || !jv_parse(r[..],request,rn[..]) || !jv_parse(p[..],reply,pn[..]) { state[0].errors += 1; return; }
+  q := jv_raw(r[0],jv_get(r[0],0,"type")); ty := jv_raw(p[0],jv_get(p[0],0,"type"));
+  if ty == "refused" { state[0].refusals += 1; return; }
+  if q == "shot" && ty == "shot" { state[0].captures += 1; return; }
+  if q == "info" && ty == "info" {
+    state[0].final_seen = true; state[0].final_keys = an_int(p[0],"keys"); state[0].final_buttons = an_int(p[0],"buttons");
+    if jv_bool(p[0],jv_get(p[0],0,"active")) || state[0].final_keys != 0 || state[0].final_buttons != 0 { state[0].errors += 1; } return;
+  }
+  if q == "list" && ty == "windows" { return; }
+  if ty != "done" { state[0].errors += 1; return; }
+  if q == "acquire" || q == "stop" {
+    state[0].active = q == "acquire"; for i: 0..<256 { state[0].held[i] = false; } for i: 0..<8 { state[0].buttons[i] = false; } return;
+  }
+  if !state[0].active { state[0].errors += 1; return; }
+  code := an_int(r[0],"code"); down := jv_bool(r[0],jv_get(r[0],0,"down"));
+  if q == "key" {
+    if code < 1 || code > 255 || state[0].held[code] == down { state[0].errors += 1; return; }
+    if down { state[0].began[code] = started; }
+    else { length := ended - state[0].began[code]; if length > state[0].max_hold_upper_ms { state[0].max_hold_upper_ms = length; } }
+    state[0].held[code] = down;
+  }
+  if q == "button" {
+    if code < 272 || code > 279 || state[0].buttons[code - 272] == down { state[0].errors += 1; return; } state[0].buttons[code - 272] = down;
+  }
+}
+an_wire :: (path: string) -> WireAudit {
+  s: [1] WireAudit; row: [65536] u8; nodes: [512] JvNode; parsed: [1] Jv; request: [8192] u8; reply: [32768] u8; offset := 0; size := fs_size(path);
+  if size < 0 { s[0].errors += 1; return s[0]; }
+  while offset < size {
+    n := an_line(path,offset,row[..]); if n < 0 || !jv_parse(parsed[..],cast(string) row[0..<n],nodes[..]) { s[0].errors += 1; break; } offset += n + 1; d := parsed[0];
+    nr := jv_str(d,jv_get(d,0,"request_json"),request[..]); np := jv_str(d,jv_get(d,0,"reply_json"),reply[..]);
+    if nr < 0 || np < 0 || !jv_bool(d,jv_get(d,0,"sent")) || an_int(d,"read_result") < 0 { s[0].errors += 1; continue; }
+    an_wire_fact(s[..],cast(string) request[0..<nr],cast(string) reply[0..<np],an_int(d,"started_ms"),an_int(d,"ended_ms"));
+  }
+  for held: s[0].held { if held { s[0].errors += 1; } } for held: s[0].buttons { if held { s[0].errors += 1; } }
+  return s[0];
+}
+an_run :: (dir: string, destination: string, video: bool) -> int {
+  paths: [8] [4096] u8;
+  journal := fs_join(dir,"journal.jsonl",paths[0][..]); scratch := fs_join(destination,"verify.ppm",paths[1][..]);
+  manifest := fs_join(destination,"images.sha256",paths[2][..]); report := fs_join(destination,"report.json",paths[3][..]);
+  replay := fs_join(destination,"replay",paths[4][..]); concat := fs_join(replay,"frames.ffconcat",paths[5][..]);
+  if video && (!fs_mkdir(replay) || !fs_write(concat,"ffconcat version 1.0\n")) { return 1; }
+  row: [65536] u8; nodes: [4096] JvNode; parsed: [1] Jv; buf: [16384] u8; navbuf: [1024] u8;
+  state: [1] CombatAnalysis; offset := 0; images := 0; compressed := 0; rechecks := 0; bad := 0; kills := 0; xp := 0; fight_ms := 0;
+  actions := 0; effects := 0; failed := 0; discarded := 0; turns := 0; tabs := 0; casts := 0; selections := 0;
+  observed: [1301] bool; checked: [1301] bool; decoded: CombatSample; navigation: NavSample; last_image := 0; last_recheck := false;
+  last_time := -1; last_sequence := 0; terminal := false; completed := false;
+  size := fs_size(journal); if size < 0 { return 1; }
+  while offset < size {
+    n := an_line(journal,offset,row[..]); if n < 0 || !jv_parse(parsed[..],cast(string) row[0..<n],nodes[..]) { return 1; } offset += n + 1; d := parsed[0]; kind := jv_raw(d,jv_get(d,0,"type"));
+    if kind == "image" {
+      sequence := an_int(d,"observation"); phase := jv_raw(d,jv_get(d,0,"phase")); is_recheck := phase == "recheck";
+      if sequence < 1 || sequence > 1300 || (phase != "observe" && !is_recheck) { return 1; }
+      namebuf: [128] u8; actual: [128] u8; name := ev_name(sequence,is_recheck,namebuf[..]);
+      if jv_str(d,jv_get(d,0,"path"),actual[..]) != name.count || cast(string) actual[0..<name.count] != name { return 1; }
+      archivebuf: [4096] u8; archive := fs_join(dir,name,archivebuf[..]);
+      if fs_size(archive) != an_int(d,"bytes") || (ifx is_recheck then checked[sequence] else observed[sequence]) { return 1; }
+      unpack := [8] string.["zstd","-q","-d","-f","-o",scratch,"--",archive];
+      if !an_process(unpack[..],5000) { return 1; }
+      decoded = ct_read(scratch); navigation = nav_read(scratch); last_image = sequence; last_recheck = is_recheck;
+      if is_recheck { checked[sequence] = true; } else { observed[sequence] = true; }
+      hashargs := [3] string.["sha256sum","--",archive]; hash: [8192] u8; err: [1024] u8; h := proc_run(hashargs[..],5000,hash[..],err[..]);
+      if h.started != 0 || h.status != 0 || h.out_n < 64 { return 1; }
+      o: [1] Jo; jo_start(o[..],buf[..]); jo_put(o[..],cast(string) hash[0..<64]); jo_put(o[..],"  "); jo_put(o[..],name);
+      if !an_append(manifest,jo_text(o[..])) { return 1; }
+      images += 1; compressed += an_int(d,"bytes");
+      if video && !is_recheck {
+        number: [32] u8; filebuf: [128] u8; destbuf: [4096] u8; jo_start(o[..],filebuf[..]); jo_put(o[..],"frame-"); jo_put(o[..],ev_number(sequence,number[..])); jo_put(o[..],".ppm");
+        file := fs_join(replay,jo_text(o[..]),destbuf[..]); copy := [3] string.["cp",scratch,file]; if !an_process(copy[..],5000) { return 1; }
+      }
+      if images % 100 == 0 { print("verified % images\n",images); }
+    }
+    if kind == "observation" || kind == "recheck" {
+      is_recheck := kind == "recheck"; sequence := an_int(d,ifx is_recheck then "observation" else "sequence");
+      if last_image != sequence || last_recheck != is_recheck || jv_raw(d,jv_get(d,0,"sensor")) != ct_json(decoded,buf[..]) || jv_raw(d,jv_get(d,0,"navigation")) != nav_json(navigation,navbuf[..]) { bad += 1; }
+      if is_recheck { rechecks += 1; }
+      else {
+        if sequence != state[0].observations + 1 || !observed[sequence] { bad += 1; }
+        now := an_int(d,"monotonic_ms"); ca_observe(state[..],now,ca_mode(decoded.flags,decoded.health,decoded.health_max,decoded.mana,decoded.mana_max),decoded.health,decoded.mana,decoded.level,decoded.xp);
+        if video {
+          number: [32] u8; decimal: [128] u8; o: [1] Jo; jo_start(o[..],buf[..]);
+          if last_time >= 0 { jo_put(o[..],"duration "); jo_put(o[..],an_seconds(now - last_time,decimal[..])); jo_put(o[..],"\n"); }
+          jo_put(o[..],"file frame-"); jo_put(o[..],ev_number(sequence,number[..])); jo_put(o[..],".ppm"); if !an_append(concat,jo_text(o[..])) { return 1; }
+        }
+        last_time = now; last_sequence = sequence;
+      }
+    }
+    if kind == "verified-kill" { kills += 1; xp += an_int(d,"gained_xp"); fight_ms += an_int(d,"fight_ms"); }
+    if kind == "action" {
+      actions += 1; name := jv_raw(d,jv_get(d,0,"name"));
+      if name == "turn-left" || name == "turn-right" { turns += 1; }
+      if name == "target-next" { tabs += 1; } if name == "shadow-bolt" { casts += 1; } if name == "select-visible-creature" { selections += 1; }
+    }
+    if kind == "effect" { effects += 1; if !jv_bool(d,jv_get(d,0,"applied")) { failed += 1; } }
+    if kind == "action-discarded" { discarded += 1; }
+    if kind == "outcome" { terminal = true; completed = jv_raw(d,jv_get(d,0,"status")) == "completed"; }
+  }
+  list: [1] FsList; count := fs_list(dir,list[..]); archive_count := 0;
+  for i: 0..<count { name := fs_entry(list[..],i); if name.count >= 8 && name[name.count - 8..<name.count] == ".ppm.zst" { archive_count += 1; } }
+  if count < 0 || list[0].full || archive_count != images || images != state[0].observations + rechecks || actions != effects || !terminal { bad += 1; }
+  removed := fs_remove(scratch); video_ok := !video;
+  if video && last_sequence > 0 {
+    number: [32] u8; o: [1] Jo; jo_start(o[..],buf[..]); jo_put(o[..],"duration 0.500\nfile frame-"); jo_put(o[..],ev_number(last_sequence,number[..])); jo_put(o[..],".ppm"); saved := an_append(concat,jo_text(o[..]));
+    moviebuf: [4096] u8; movie := fs_join(destination,"replay.mp4",moviebuf[..]);
+    // Generated relative names need no untrusted concat quoting; work only in this new replay directory.
+    argv := [19] string.["ffmpeg","-v","error","-nostdin","-f","concat","-safe","0","-i",concat,"-fps_mode","vfr","-c:v","libx264","-preset","veryfast","-crf","20",movie];
+    video_ok = saved && an_process(argv[..],240000);
+    if video_ok { cleaned := fs_remove(replay); }
+  }
+  wirebuf: [4096] u8; wire := an_wire(fs_join(dir,"wire.jsonl",wirebuf[..]));
+  if wire.errors != 0 || wire.captures != images { bad += 1; }
+  s := state[0]; o: [1] Jo; jo_start(o[..],buf[..]); jo_obj(o[..]);
+  jo_key(o[..],"schema"); jo_str(o[..],"external-combat-analysis-v1");
+  jo_key(o[..],"evidence_ok"); jo_bool(o[..],bad == 0 && s.clock_errors == 0); jo_key(o[..],"completed"); jo_bool(o[..],completed);
+  jo_key(o[..],"observations"); jo_int(o[..],s.observations); jo_key(o[..],"images"); jo_int(o[..],images); jo_key(o[..],"rechecks"); jo_int(o[..],rechecks);
+  jo_key(o[..],"compressed_bytes"); jo_int(o[..],compressed); jo_key(o[..],"mismatches"); jo_int(o[..],bad); jo_key(o[..],"clock_errors"); jo_int(o[..],s.clock_errors);
+  jo_key(o[..],"elapsed_ms"); jo_int(o[..],s.elapsed); jo_key(o[..],"observed_search_ms"); jo_int(o[..],s.search); jo_key(o[..],"observed_combat_ms"); jo_int(o[..],s.combat); jo_key(o[..],"observed_recovery_ms"); jo_int(o[..],s.recovery);
+  jo_key(o[..],"unavailable_ms"); jo_int(o[..],s.unavailable); jo_key(o[..],"kills"); jo_int(o[..],kills); jo_key(o[..],"gained_xp"); jo_int(o[..],xp); jo_key(o[..],"verified_fight_ms"); jo_int(o[..],fight_ms);
+  jo_key(o[..],"min_health"); jo_int(o[..],s.min_health); jo_key(o[..],"final_health"); jo_int(o[..],s.health); jo_key(o[..],"final_mana"); jo_int(o[..],s.mana); jo_key(o[..],"final_level"); jo_int(o[..],s.level); jo_key(o[..],"final_xp"); jo_int(o[..],s.xp);
+  jo_key(o[..],"actions"); jo_int(o[..],actions); jo_key(o[..],"failed_effects"); jo_int(o[..],failed); jo_key(o[..],"discarded_actions"); jo_int(o[..],discarded); jo_key(o[..],"turns"); jo_int(o[..],turns); jo_key(o[..],"tabs"); jo_int(o[..],tabs); jo_key(o[..],"casts"); jo_int(o[..],casts); jo_key(o[..],"selections"); jo_int(o[..],selections);
+  jo_key(o[..],"video_ok"); jo_bool(o[..],video_ok); jo_end(o[..]); if !fs_write(report,jo_text(o[..])) { return 1; } print("%\n",jo_text(o[..]));
+  jo_start(o[..],buf[..]); jo_obj(o[..]); jo_key(o[..],"exchanges"); jo_int(o[..],wire.exchanges); jo_key(o[..],"successful_shots"); jo_int(o[..],wire.captures);
+  jo_key(o[..],"refusals"); jo_int(o[..],wire.refusals); jo_key(o[..],"errors"); jo_int(o[..],wire.errors); jo_key(o[..],"final_broker_observed"); jo_bool(o[..],wire.final_seen);
+  jo_key(o[..],"final_keys"); jo_int(o[..],wire.final_keys); jo_key(o[..],"final_buttons"); jo_int(o[..],wire.final_buttons); jo_key(o[..],"max_key_hold_upper_ms"); jo_int(o[..],wire.max_hold_upper_ms); jo_end(o[..]);
+  auditbuf: [4096] u8; if !fs_write(fs_join(destination,"wire-audit.json",auditbuf[..]),jo_text(o[..])) { return 1; }
+  return ifx bad == 0 && s.clock_errors == 0 && video_ok then 0 else 1;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 3 { tool_errln("usage: combat-analyze RUN_DIR --out NEW_ABSOLUTE_DIR [--video]"); return 2; }
+  dir := args_at(a[..],0); destination := args_value(a[..],"--out","");
+  if dir.count == 0 || dir[0] != '/' || destination.count == 0 || destination[0] != '/' || fs_exists(destination) || !fs_mkdir(destination) { return 2; }
+  return an_run(dir,destination,args_has(a[..],"--video"));
+}

@@ -1,0 +1,2 @@
+warning: Git tree '/home/christopherdavid/oa-wow-analysis' is dirty
+/nix/store/7qy239ys86ni9sfjmbfb4dzi68qdfn22-verse-realms-0.drv

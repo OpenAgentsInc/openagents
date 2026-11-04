@@ -1,0 +1,6 @@
+valid: expected exit 0, got 0 (started 0)
+truncated: expected exit 1, got 1 (started 0)
+missing: expected exit 1, got 1 (started 0)
+misbound: expected exit 1, got 1 (started 0)
+orphan: expected exit 1, got 1 (started 0)
+ok real image accepted; truncated, missing, misbound and orphaned evidence refused; fixtures /tmp/verse-evidence-check-KaSec4
