@@ -22,7 +22,7 @@
 //   the offline page, net_probe 59; then W, which mustn't move you), folk (standing, the town's people
 //   walking), end.
 // Then the raid (unless --no-raid): the offline page's preview raid (?raid=preview) and the room's
-// own (the shortest dials, harm on, levels on to cap 2, reward 300%) with raid-check.coax's bots;
+// own (one wave and Darian at the climax, harm on, levels on to cap 2, reward 300%) with raid-check.coax's bots;
 // the room page walks to the square and casts Starry Wisp at the nearest raider. Both pages' stables
 // must fall, and the room page's LEVEL plate must climb from LEVEL 1 to LEVEL 2 with its bar.
 //
@@ -293,7 +293,7 @@ dr_text_way :: (a: [] DrPage, b: [] DrPage, which: int, window: int, t0: int, t1
 }
 
 DrResult :: struct { name: string; v: DrVerdict; }
-DR_PROBES :: 24;
+DR_PROBES :: 32;
 DrReport :: struct { r: [DR_PROBES] DrResult; n: int; }
 dr_add :: (rep: [] DrReport, name: string, v: DrVerdict) { if rep[0].n < DR_PROBES { rep[0].r[rep[0].n] = DrResult.{name = name, v = v}; rep[0].n += 1; } }
 
@@ -483,8 +483,8 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
 // The raid, on one profile: the offline page's preview raid (a) and the room's own (b), with
 // raid-check.coax's bots holding the square; the room page walks there and casts Starry Wisp at the
 // nearest raider. Its verdicts into rep.
-DR_RAID_DIALS :: "event 1 0 2 8 6 0 0 1 1 0 3 1 300 5";   // 2 waves of 8 Cultists at the South Gate, no leader, harm on, reward 300%, 5 minutes
-DR_RAID_S :: 240;
+DR_RAID_DIALS :: "event 1 0 1 8 3 1 3 1 1 1 3 1 300 5";   // 1 wave of 8 at the South Gate (Cultists, a Fanatic, Warlocks), Darian at the climax, harm on, reward 300%, 5 minutes
+DR_RAID_S :: 360;   // the announce, the wave, the lull and the climax, with Darian's Fireballs on the stables
 // The bar's slots (its hash) page pg drew at wall ms t.
 dr_bar_at :: (pg: [] DrPage, t: int) -> int { h := 0; for r: 0..<pg[0].n { if dr_at(pg, r, C_T) <= t { h = dr_at(pg, r, C_BAR); } } return h; }
 dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPage, b: [] DrPage) -> bool {
