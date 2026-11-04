@@ -124,6 +124,14 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
 
         let config = WKWebViewConfiguration()
         config.userContentController.add(self, name: "forgeVoiceStatus")
+        config.userContentController.add(self, name: "forgeVoiceCoder")
+        config.userContentController.addUserScript(WKUserScript(source: """
+        globalThis.coaxialVoiceFinal = e => {
+          webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'final',ticket:e.ticket,text:e.text}));
+          return true;
+        };
+        globalThis.coaxialVoiceStopped = ticket => webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'cancel',ticket}));
+        """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.websiteDataStore = .nonPersistent()
         if launchReport != nil {
             config.userContentController.addUserScript(WKUserScript(source: "globalThis.__forgeFrameCount=0;const nativeRAF=requestAnimationFrame;globalThis.requestAnimationFrame=f=>nativeRAF(t=>{__forgeFrameCount++;f(t);});", injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -646,7 +654,12 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         defer { voiceStartup = nil }
         try await task.value
     }
-    func cancelVoice() { _ = web?.evaluateJavaScript("globalThis.coaxialVoiceCancel?.(); true") }
+    func cancelVoice() { fgv_cancel(); _ = web?.evaluateJavaScript("globalThis.coaxialVoiceCancel?.(); true") }
+    func armVoiceCapture() async throws {
+        let ticket = fgv_arm()
+        guard ticket > 0 else { throw ShellError.failed("Voice capture generation is exhausted; reopen the app.") }
+        _ = try await web.evaluateJavaScript("globalThis.coaxialCoderVoiceTicket=\(ticket); true")
+    }
     func applicationDidResignActive(_ notification: Notification) { cancelVoice() }
     func windowDidResignKey(_ notification: Notification) { coderHeldKeys.removeAll(); cancelVoice() }
     func windowDidMiniaturize(_ notification: Notification) { cancelVoice() }
@@ -657,15 +670,47 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         if let file = try? FileHandle(forWritingTo: path) { defer { try? file.close() }; _ = try? file.seekToEnd(); try? file.write(contentsOf: Data((line + "\n").utf8)) }
     }
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        if message.frameInfo.isMainFrame, let line = message.body as? String { traceVoice(line) }
+        let origin = message.frameInfo.securityOrigin
+        guard message.frameInfo.isMainFrame, origin.protocol == "http", origin.host == "127.0.0.1", origin.port == pageURL?.port,
+              let line = message.body as? String else { return }
+        if message.name == "forgeVoiceStatus" { traceVoice(line); return }
+        guard message.name == "forgeVoiceCoder", line.utf8.count <= 131072 else { return }
+        let available = !stopping && sceneReady && setupPane.isHidden && (voiceSmoke || window.isKeyWindow && !window.isMiniaturized)
+        let bytes = Array(line.utf8)
+        let action = bytes.withUnsafeBufferPointer { fgv_message($0.baseAddress, Int64($0.count), available, chatPane.busy) }
+        if action == 1 {
+            var text = [UInt8](repeating: 0, count: 16384)
+            let n = fgv_copy(&text, Int64(text.count))
+            if n > 0 { chatPane.startTurn(String(decoding: text.prefix(Int(n)), as: UTF8.self), voice: true) }
+        } else if action == 2 {
+            let notice = "Coder is busy. This voice message was not sent.\n"
+            chatPane.append(notice, color: .systemOrange); chatPane.appendMessage(notice)
+            cancelVoice()
+        }
     }
 
     func voiceSmokeCheck(_ resources: URL) async throws {
         guard let report, voiceHost == nil else { throw ShellError.failed("Voice loaded before it was requested.") }
+        enterWorld()
+        guard setupPane.isHidden else { throw ShellError.failed("Voice-to-Coder needs the ready world.") }
+        let root = report.deletingLastPathComponent()
+        chatPane.home = root; chatPane.cliOverride = resources.appendingPathComponent("openagents")
+        chatPane.cwd = root.appendingPathComponent("workspace")
+        try fm.createDirectory(at: chatPane.cwd, withIntermediateDirectories: true)
+        let config = root.appendingPathComponent(".openagents/coder/router.json")
+        try fm.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !fm.fileExists(atPath: config.path) { try fm.copyItem(at: fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/coder/router.json"), to: config) }
+        try fm.createDirectory(at: root.appendingPathComponent(".openagents/aethyrforge"), withIntermediateDirectories: true)
+        chatPane.input.string = "UNSENT_TYPED_DRAFT"
         try await ensureVoiceHost()
         let fixture = try Data(contentsOf: resources.appendingPathComponent("hello-foreman.wav")).base64EncodedString()
         _ = try await web.evaluateJavaScript("""
-        globalThis.__voiceCheck = []; globalThis.__voiceError = ''; globalThis.__voiceSockets = 0;
+        globalThis.__voiceCheck = []; globalThis.__voiceError = ''; globalThis.__voiceSockets = 0; globalThis.__voiceFinals = [];
+        globalThis.__voiceRuntimeErrors = [];
+        addEventListener('error',e=>__voiceRuntimeErrors.push(String(e.message)));
+        addEventListener('unhandledrejection',e=>__voiceRuntimeErrors.push(String(e.reason)));
+        globalThis.__voiceDeliverFinal = globalThis.coaxialVoiceFinal;
+        globalThis.coaxialVoiceFinal = e => {__voiceFinals.push(e); return __voiceDeliverFinal(e);};
         globalThis.__voiceTest = (async () => {
           const {startVoice} = await import('/coaxial/voice.js');
           const W = WebSocket;
@@ -687,11 +732,19 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
           const capture = fixtureContext.createMediaStreamDestination(); source.connect(capture);
           md.getUserMedia = async () => capture.stream;
           globalThis.__voiceFixture = source;
+          globalThis.__voiceFixtureEnded = false; source.onended = () => {__voiceFixtureEnded = true;};
           globalThis.__voiceClient = startVoice({send:(k,t)=>__voiceCheck.push(t),route:'everglade',wasmUrl:'/build/voice.wasm'});
-          __voiceClient.face('Everglade builder'); await __voiceClient.toggle('on');
+          __voiceClient.face('Coding agent');
           globalThis.__voiceRestore = () => {md.getUserMedia=original;};
         })().catch(e=>{globalThis.__voiceError=String(e)}); true;
         """)
+        let readyDeadline = Date().addingTimeInterval(15)
+        while Date() < readyDeadline {
+            if try await web.evaluateJavaScript("!!globalThis.__voiceClient") as? Bool == true { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try await armVoiceCapture()
+        _ = try await web.evaluateJavaScript("__voiceClient.toggle('on'); true")
         let listenDeadline = Date().addingTimeInterval(15)
         var listening = false
         while Date() < listenDeadline {
@@ -700,23 +753,48 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         }
         guard listening else { throw ShellError.failed("Browser voice did not listen: \(String(describing: try await web.evaluateJavaScript("__voiceError || JSON.stringify(__voiceCheck)")))") }
         _ = try await web.evaluateJavaScript("__voiceFixture.start(); true")
-        try await Task.sleep(for: .seconds(4.2))
+        let audioDeadline = Date().addingTimeInterval(15)
+        while Date() < audioDeadline {
+            if try await web.evaluateJavaScript("__voiceFixtureEnded") as? Bool == true { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        try await Task.sleep(for: .milliseconds(800))
         _ = try await web.evaluateJavaScript("__voiceClient.toggle('end'); true")
         let finalDeadline = Date().addingTimeInterval(30)
         var transcript = ""
         while Date() < finalDeadline {
-            transcript = try await web.evaluateJavaScript("__voiceCheck.find(t=>t.startsWith('heard|'))?.slice(6) || ''") as? String ?? ""
+            transcript = try await web.evaluateJavaScript("__voiceFinals[0]?.text || ''") as? String ?? ""
             if !transcript.isEmpty { break }
             try await Task.sleep(for: .milliseconds(100))
         }
         let cancelled = try await web.evaluateJavaScript("__voiceCancelled === true") as? Bool == true
         _ = try await web.evaluateJavaScript("__voiceClient.toggle(false); __voiceRestore?.(); __voiceFixtureContext.close(); true")
         guard cancelled, transcript.lowercased().contains("hello foreman"), transcript.lowercased().contains("building today") else {
-            throw ShellError.failed("The local browser voice fixture failed: \(transcript). Cancellation: \(cancelled).")
+            let detail = try await web.evaluateJavaScript("JSON.stringify({phases:__voiceCheck,error:__voiceError,runtime:__voiceRuntimeErrors,finals:__voiceFinals})") as? String ?? ""
+            throw ShellError.failed("The local browser voice fixture failed: \(transcript). Cancellation: \(cancelled). \(detail)")
         }
+        let coderDeadline = Date().addingTimeInterval(90)
+        var deniedRequests = 0
+        while (chatPane.busy || chatPane.session.isEmpty) && Date() < coderDeadline {
+            if chatPane.pending { chatPane.reject(); deniedRequests += 1 }
+            if deniedRequests > 3 { chatPane.stopTurn(); break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        guard !chatPane.busy, chatPane.lastEnding.hasPrefix("finished"), chatPane.liveChunks > 0, chatPane.streamedWithoutComposer,
+              !chatPane.composerOpen, chatPane.input.string == "UNSENT_TYPED_DRAFT", !chatPane.session.isEmpty else {
+            throw ShellError.failed("Final Parakeet words did not finish a routed, streamed Coder turn with the bar closed: \(chatPane.lastEnding)")
+        }
+        let session = chatPane.session
+        let log = try String(contentsOf: chatPane.sessions.appendingPathComponent(session + ".jsonl"), encoding: .utf8)
+        guard log.contains("\"schema\":\"coder.route.v2\""), log.contains("\"ok\":true"), log.contains("\"kind\":\"reply\""), !log.contains("reply_delta") else { throw ShellError.failed("Routed voice turn did not retain a canonical whole-reply log.") }
+        _ = try await web.evaluateJavaScript("__voiceDeliverFinal(__voiceFinals[0]); true")
+        try await Task.sleep(for: .milliseconds(200))
+        guard !chatPane.busy, chatPane.session == session else { throw ShellError.failed("A duplicate final started another Coder turn.") }
         let result: [String: Any] = ["local": true, "transcript": transcript, "lateMicrophoneCancelled": cancelled,
             "voicePID": voiceHost!.processIdentifier, "roomPID": room!.processIdentifier, "pagePID": page!.processIdentifier,
-            "startupModelLoaded": false]
+            "startupModelLoaded": false, "coderSession": session, "engine": chatPane.selectedEngine,
+            "liveChunks": chatPane.liveChunks, "streamedWithBarClosed": chatPane.streamedWithoutComposer,
+            "draftPreserved": true, "duplicateIgnored": true, "canonicalLog": true, "fixtureToolRequestsDenied": deniedRequests]
         try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: report, options: .atomic)
         stopChildren(); NSApp.terminate(nil)
     }
@@ -776,7 +854,11 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             let allowed = await AVCaptureDevice.requestAccess(for: .audio)
             traceVoice("microphone permission: \(allowed)")
             guard allowed, !stopping else { decisionHandler(.deny); return }
-            do { try await ensureVoiceHost(); decisionHandler(.grant) }
+            do {
+                try await ensureVoiceHost()
+                guard !stopping, sceneReady, setupPane.isHidden, window.isKeyWindow, origin.port == pageURL?.port else { decisionHandler(.deny); return }
+                try await armVoiceCapture(); decisionHandler(.grant)
+            }
             catch { notice.stringValue = "Local voice: \(error.localizedDescription)"; notice.isHidden = false; decisionHandler(.deny) }
         }
     }

@@ -17,6 +17,7 @@
 //
 // The ID is the UTC start time and milliseconds (20261102-153012-417): it
 // sorts by time. Nothing here leaves the machine (chapter 18's rule).
+#load "reply-stream-policy.coax";
 
 cxproc_wall_us :: () -> int #foreign;
 
@@ -26,6 +27,7 @@ CS_LINE :: 262144;
 CsLog :: struct {
   on: bool;                      // the session has a file
   json: bool;                    // also print each line to stdout (coder run --json)
+  live: bool; live_sent:int; live_segment:int; // --stream-json; durable replies remain whole
   id: [32] u8; nid: int;
   path: [1200] u8; npath: int;
   line: [CS_LINE] u8;
@@ -321,14 +323,49 @@ cs_diff :: (a: [] App, path: string, adds: int, dels: int, texts: bool, old: str
 }
 
 // The reply streams in pieces; it is logged whole, before the next tool and at the end.
-cs_reply_add :: (a: [] App, s: string) { l := a[0].log; for c: s { if l[0].nreply < l[0].reply.count { l[0].reply[l[0].nreply] = c; l[0].nreply += 1; } } }
+cs_reply_add :: (a: [] App, s: string) {
+  l := a[0].log; for c: s { if l[0].nreply < l[0].reply.count { l[0].reply[l[0].nreply] = c; l[0].nreply += 1; } }
+  if l[0].live && l[0].json {cs_live_emit(l,false);}
+}
+// Only the safe suffix is emitted, after full-credential redaction. Streaming
+// events are stdout-only; a replay/fork reads the original whole-reply log.
+cs_live_line :: (l:[]CsLog,final:bool,out:[]u8)->string {
+  secrets:[32]string;
+  for i:0..<l[0].nsec {secrets[i]=cast(string)l[0].sec[l[0].secat[i]..<l[0].secat[i]+l[0].seclen[i]];}
+  safe:=crs_visible(cast(string)l[0].reply[0..<l[0].nreply],secrets[0..<l[0].nsec],final);
+  clean:[131072]u8;for i:0..<safe {clean[i]=l[0].reply[i];}
+  n:=cs_hide(l,clean[..],safe);
+  if n<=l[0].live_sent {return "";}
+  end:=ifx n-l[0].live_sent>8192 then l[0].live_sent+8192 else n;
+  while end>l[0].live_sent && end<n && (clean[end] & 0xc0)==0x80 {end-=1;}
+  k:=json_raw(out,0,"{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"segment\":");
+  k=json_write_int(out,k,l[0].live_segment);k=json_raw(out,k,",\"text\":");
+  k=json_write_string(out,k,cast(string)clean[l[0].live_sent..<end]);k=json_raw(out,k,"}\n");
+  if k<0 {return "";}l[0].live_sent=end;return cast(string)out[0..<k];
+}
+cs_live_emit :: (l:[]CsLog,final:bool) {
+  for guard:0..<32 {
+    line:=cs_live_line(l,final,l[0].line[..]);if line.count==0 {break;}
+    r:=cxterm_write(l[0].line[0..<line.count]);
+  }
+}
 cs_reply_flush :: (a: [] App) {
   l := a[0].log;
   if l[0].nreply == 0 { return; }
+  live:=l[0].live && l[0].json;
+  if live {
+    cs_live_emit(l,true);
+    o:=l[0].line[..];n:=json_raw(o,0,"{\"kind\":\"reply_end\",\"schema\":\"coder.reply-stream.v1\",\"segment\":");
+    n=json_write_int(o,n,l[0].live_segment);n=json_raw(o,n,"}\n");
+    if n>0 {r:=cxterm_write(o[0..<n]);}
+    l[0].json=false;
+  }
   cs_text(a, "reply", "text", cast(string) l[0].reply[0..<l[0].nreply]);
+  if live {l[0].json=true;}
   l[0].nlast = cd_cat(l[0].last[..], 0, cast(string) l[0].reply[0..<ifx l[0].nreply < l[0].last.count then l[0].nreply else l[0].last.count]);
   l[0].nlast = cs_hide(l, l[0].last[..], l[0].nlast);
   l[0].nreply = 0;
+  l[0].live_sent=0;l[0].live_segment+=1;
 }
 
 cs_end :: (a: [] App, ending: string, ms: int, steps: int, text: string) {

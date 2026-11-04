@@ -2446,7 +2446,7 @@ tool_main :: () -> int #export_c {
   verb := cd_positional(args, 0);
   if args_has(args, "--help") || args_has(args, "-h") || verb == "help" { tool_errln(USAGE); tool_errln(CODEX_HELP); tool_errln("       coder session-read list|show|context [REF] [--cwd DIR] [--within-min N] [--max-turns 1..256] [--before N] [--max-tool-chars 1..1024]   read-only Claude history as JSON; tool: coder_session_read"); return 0; }
   if args_has(args, "--version") || verb == "version" { tool_errln(CODER_VERSION); return 0; }
-  json := args_has(args, "--json");
+  json := args_has(args, "--json") || args_has(args,"--stream-json");
   // another machine: --on ssh:DEST or cloud runs the verb there; a session started that way is followed there
   on := args_value(args, "--on", "");
   if !cd_on_local(on) { return cd_cmd_on(args, verb, on); }
@@ -2626,6 +2626,7 @@ tool_main :: () -> int #export_c {
   if verb == "run" || verb == "fork" || task.count > 0 || args_has(args, "--print") {
     a[0].plain = true; a[0].cols = 100; a[0].rows = 40;
     a[0].log[0].json = json;
+    a[0].log[0].live = args_has(args,"--stream-json");
     if task.count == 0 { tool_errln("coder run: needs a task: coder run \"TASK\""); return 2; }
     tui_ed_set(a[0].ed[..], task);
     // No --engine: System One chooses (chapter 13); the session's first lines say what and why.

@@ -4,7 +4,16 @@
 #include <string.h>
 static coax_t_ForgeChatEvent event;
 static coax_t_ForgeChatModels models;
-void fgc_reset(void) { coax_default_t_ForgeChatEvent(&event); }
+static coax_t_ForgeVoiceCoder voice;
+void fgc_reset(void) { coax_default_t_ForgeChatEvent(&event); coax_default_t_ForgeVoiceCoder(&voice); }
+int64_t fgv_arm(void) {return fv_arm((coax_v_t_ForgeVoiceCoder){&voice,1});}
+void fgv_cancel(void) {fv_cancel((coax_v_t_ForgeVoiceCoder){&voice,1},0);}
+int64_t fgv_message(const uint8_t *p,int64_t n,bool available,bool busy) {
+  return fv_message((coax_v_t_ForgeVoiceCoder){&voice,1},(coax_string){(const char *)p,n},available,busy);
+}
+int64_t fgv_copy(uint8_t *p,int64_t cap) {
+  if(voice.n>cap) return -1;memcpy(p,voice.text.e,(size_t)voice.n);return voice.n;
+}
 int64_t fgc_read(const uint8_t *p, int64_t n) {
   return fc_read((coax_v_t_ForgeChatEvent){&event,1}, (coax_string){(const char *)p,n});
 }

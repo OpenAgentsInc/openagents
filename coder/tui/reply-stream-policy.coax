@@ -1,0 +1,37 @@
+// Withhold any unfinished credential prefix from live output. The ordinary
+// session scrubber then redacts complete credentials before JSON encoding.
+#authority;
+#test "streaming withholds split credentials and releases ordinary text" {
+  secrets:=[2]string.["TOKEN-12345","another-secret"];
+  #assert crs_visible("ordinary",secrets[..],false)==8;
+  #assert crs_visible("hello TOK",secrets[..],false)==6;
+  #assert crs_visible("hello TOKEN-1234",secrets[..],false)==6;
+  #assert crs_visible("hello TOKEN-12345",secrets[..],false)==17;
+  #assert crs_visible("hello TOK",secrets[..],true)==9;
+  #assert crs_visible("hello T",secrets[..],false)==6;
+  #assert crs_visible("another-",secrets[..],false)==0;
+  #assert crs_visible("",secrets[..],false)==0;
+  #assert crs_visible("TOx",secrets[..],false)==3;
+  empty:=[1]string.[""];#assert crs_visible("x",empty[..],false)==1;
+  unicode:=[1]string.["éTOKEN"];
+  #assert crs_visible("xé",unicode[..],false)==1;
+  raw:[2]u8;raw[0]=0xc3;raw[1]=0xa9;
+  fragment:[2]u8;fragment[0]=0xa9;fragment[1]='x';
+  unusual:=[1]string.[cast(string)fragment[..]];
+  #assert crs_visible(cast(string)raw[..],unusual[..],false)==0;
+  raw[0]=0xa9;#assert crs_visible(cast(string)raw[0..<1],unusual[..],false)==0;
+}
+crs_visible :: (text:string,secrets:[]string,final:bool)->int {
+  if final {return text.count;}
+  end:=text.count;
+  for secret:secrets {
+    for n:1..<secret.count {
+      if n>text.count {break;}
+      start:=text.count-n;same:=true;
+      for i:0..<n {if text[start+i]!=secret[i] {same=false;break;}}
+      if same {while end>start {end-=1;}}
+    }
+  }
+  while end>0 && end<text.count && (text[end] & 0xc0)==0x80 {end-=1;}
+  return end;
+}

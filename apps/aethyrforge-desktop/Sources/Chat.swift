@@ -116,6 +116,8 @@ final class ForgeChatPane: NSView {
     var parent = ""
     var lastEnding = ""
     var selectedEngine = "auto"
+    var liveChunks = 0
+    var streamedWithoutComposer = false
     var engineOverride: String? // native test fixture only; the product always routes
     var cwd: URL
     var home = FileManager.default.homeDirectoryForCurrentUser
@@ -270,14 +272,21 @@ final class ForgeChatPane: NSView {
     }
     @objc func submit() {
         if busy { stopTurn(); return }
-        let text = input.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        startTurn(input.string, voice: false)
+    }
+    func startTurn(_ draft: String, voice: Bool) {
+        guard !stopping else { return }
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let bytes = Array(text.utf8)
         guard bytes.withUnsafeBufferPointer({ fgc_send(busy, $0.baseAddress, Int64($0.count)) }) else { status.stringValue = "Enter a message of at most 16 KiB."; return }
-        save(); onActivity?(); input.string = ""; messages.string = ""; busy = true; pending = false; session = ""; lastEnding = ""
+        save(); onActivity?(); if !voice { input.string = "" }
+        messages.string = ""; busy = true; pending = false; session = ""; lastEnding = ""
+        liveChunks = 0; streamedWithoutComposer = false
         closeComposer()
-        append("\nYOU\n\(text)\n\n", color: .white)
+        append("\n\(voice ? "VOICE" : "YOU")\n\(text)\n\n", color: .white)
+        if voice { appendMessage("You: \(text)\n\n") }
         var args = ["coder"] + (parent.isEmpty ? ["run", text] : ["fork", parent, text])
-        args += ["--engine", engineOverride ?? "auto", "--cwd", cwd.path, "--json", "--ask"]
+        args += ["--engine", engineOverride ?? "auto", "--cwd", cwd.path, "--stream-json", "--ask"]
         let p = Process(); p.executableURL = cli; p.arguments = args; p.currentDirectoryURL = cwd; p.environment = environment()
         let output = Pipe(); let errors = Pipe(); p.standardOutput = output; p.standardError = errors; p.standardInput = FileHandle.nullDevice
         selectedEngine = engineOverride ?? "auto"
@@ -323,6 +332,11 @@ final class ForgeChatPane: NSView {
         case 8: append("Edited: \(text)\n", color: .systemTeal)
         case 9: append("Model: \(text)\n", color: .systemTeal); router.stringValue = text; router.toolTip = text
         case 10: append("Router: \(text)\n", color: .systemTeal); router.stringValue = text; router.toolTip = text
+        case 11, 12:
+            if kind == 11 { append("\(selectedEngine.uppercased())\n") }
+            append(text); appendMessage(text); liveChunks += 1
+            if busy && !composerOpen && hud.isHidden && inputScroll.isHidden && !messagesScroll.isHidden { streamedWithoutComposer = true }
+        case 13: append("\n\n"); appendMessage("\n\n")
         default: break
         }
     }

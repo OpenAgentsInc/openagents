@@ -75,6 +75,7 @@ export function startVoice({ send, route, wasmUrl }) {
   let turn = "", turns = 0, speaking = false, ended = false, utterance = "", replyTurn = "", sent = 0, played = 0, playedAtStart = 0;
   let phase = "off", caption = "";
   let facing = "", heardTurn = "", heardAt = 0, letGo = 0;
+  let nativeTicket = 0;
   const enc = new TextEncoder(), dec = new TextDecoder();
 
   const show = (p, c = caption) => {
@@ -114,6 +115,7 @@ export function startVoice({ send, route, wasmUrl }) {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
       if (!running || owner !== generation) { stream.getTracks().forEach(t => t.stop()); return; }
       mic = stream;
+      nativeTicket = globalThis.coaxialCoderVoiceTicket || 0;
       await resumed;
       if (!running || owner !== generation) return;
       await engine();
@@ -141,6 +143,7 @@ export function startVoice({ send, route, wasmUrl }) {
     if (letGo) { clearTimeout(letGo); letGo = 0; }
     if (!running) return;
     running = false;
+    globalThis.coaxialVoiceStopped?.(nativeTicket); nativeTicket = 0;
     if (turn) control(CONTROL.CANCEL, turn);
     clearInterval(timer); timer = 0;
     try { ws?.close(); } catch {}
@@ -164,7 +167,7 @@ export function startVoice({ send, route, wasmUrl }) {
       out(x.vw_hello(a, b, OUT_RATE));
       if (facing) { const [t] = strings(facing); out(x.vw_route(t)); }
     };
-    s.onmessage = (e) => { if (e.data instanceof ArrayBuffer) receive(new Uint8Array(e.data)); };
+    s.onmessage = (e) => { if (running && ws === s && e.data instanceof ArrayBuffer) receive(new Uint8Array(e.data)); };
     s.onclose = () => {
       if (ws !== s || !running) return;
       welcomed = false; turn = ""; cut();
@@ -264,7 +267,10 @@ export function startVoice({ send, route, wasmUrl }) {
       else if (p === PHASE.FINAL) {
         // Facing someone, the host leaves this turn for the app to answer.
         if (facing) { heardTurn = string(2); heardAt = Date.now(); }
-        show("heard", text);
+        // A native owner may consume the finalized transcript. The ordinary
+        // realm then gets status only, so the same words cannot edit the world.
+        const consumed = globalThis.coaxialVoiceFinal?.({ ticket: nativeTicket, text }) === true;
+        show("heard", consumed ? "" : text);
       } else if ((p === PHASE.ENDED || p === PHASE.INTERRUPTED) && !speaking && (phase === "thinking" || phase === "heard")) show("listening", "");
     } else if (kind === MSG.SPEECH) {
       const epoch = x.vw_field(3), text = string(0), utt = string(1), t = string(2);

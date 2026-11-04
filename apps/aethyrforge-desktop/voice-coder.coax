@@ -1,0 +1,76 @@
+// One final transcript per explicitly granted microphone capture. No audio
+// or partial transcript reaches Coder. Busy turns are never interrupted.
+#authority;
+#load "chat-policy.coax";
+#load "../../coax/lib/json/json.coax";
+ForgeVoiceCoder :: struct {ticket:int=0;armed:bool=false;text:[16384]u8;n:int;}
+
+#test "empty final packets consume their capture without dispatch" {
+  s:[1]ForgeVoiceCoder;t:=fv_arm(s[..]);
+  #assert fv_message(s[..],"{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"final\",\"ticket\":1,\"text\":\"\"}",true,false)==0 && !s[0].armed;
+}
+
+#test "voice requires the current granted capture and a final nonblank bounded transcript" {
+  s:[1]ForgeVoiceCoder;
+  #assert fv_message(s[..],"{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"final\",\"ticket\":1,\"text\":\"hello\"}",true,false)==0;
+  #assert fv_arm(s[..])==1;
+  #assert fv_take(s[..],1,false,true,false,"hello")==0 && s[0].armed;
+  #assert fv_take(s[..],1,true,false,false,"hello")==0 && !s[0].armed;
+  #assert fv_arm(s[..])==2;
+  #assert fv_take(s[..],1,true,true,false,"old")==0 && s[0].armed;
+  #assert fv_take(s[..],2,true,true,false," \n\t")==0 && !s[0].armed;
+  #assert fv_arm(s[..])==3;
+  #assert fv_message(s[..],"{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"final\",\"ticket\":3,\"text\":\"hello\"}",true,false)==1;
+  #assert cast(string)s[0].text[0..<s[0].n]=="hello";
+  #assert fv_take(s[..],3,true,true,false,"duplicate")==0;
+  #assert fv_arm(s[..])==4;
+  #assert fv_take(s[..],4,true,true,true,"busy")==2 && !s[0].armed && s[0].n==0;
+}
+#test "cancel and malformed messages cannot revive or consume another capture" {
+  s:[1]ForgeVoiceCoder; t:=fv_arm(s[..]);
+  #assert fv_message(s[..],"invalid",true,false)==0 && s[0].armed;
+  #assert fv_message(s[..],"{\"schema\":\"wrong\",\"kind\":\"final\",\"ticket\":1,\"text\":\"x\"}",true,false)==0 && s[0].armed;
+  #assert fv_message(s[..],"{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"partial\",\"ticket\":1,\"text\":\"x\"}",true,false)==0 && s[0].armed;
+  #assert fv_message(s[..],"{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"cancel\",\"ticket\":0}",true,false)==0 && s[0].armed;
+  #assert fv_message(s[..],"{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"final\",\"text\":\"x\"}",true,false)==0 && s[0].armed;
+  #assert fv_message(s[..],"{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"final\",\"ticket\":1}",true,false)==0 && s[0].armed;
+  #assert fv_message(s[..],"{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"cancel\",\"ticket\":1}",true,false)==0 && !s[0].armed;
+  t=fv_arm(s[..]);
+  #assert fv_take(s[..],t,true,true,false,"")==0 && !s[0].armed;
+  t=fv_arm(s[..]);
+  fv_cancel(s[..],t+1); #assert s[0].armed;
+  fv_cancel(s[..],t); #assert !s[0].armed;
+  #assert fv_take(s[..],t,true,true,false,"late")==0;
+  t=fv_arm(s[..]);fv_cancel(s[..],0);#assert !s[0].armed;
+  b:[16385]u8; for i:0..<b.count {b[i]='x';}
+  t=fv_arm(s[..]);#assert fv_take(s[..],t,true,true,false,cast(string)b[0..<16384])==1;
+  t=fv_arm(s[..]);#assert fv_take(s[..],t,true,true,false,cast(string)b[..])==0;
+  s[0].ticket=9007199254740990;#assert fv_arm(s[..])==9007199254740991;
+  #assert fv_arm(s[..])==0 && !s[0].armed;
+}
+fv_arm :: (s:[]ForgeVoiceCoder)->int #export_c {
+  s[0].armed=false;
+  if s[0].ticket>=9007199254740991 {return 0;}
+  s[0].ticket+=1;s[0].armed=true;return s[0].ticket;
+}
+fv_cancel :: (s:[]ForgeVoiceCoder,ticket:int) #export_c {
+  if ticket==0 || ticket==s[0].ticket {s[0].armed=false;}
+}
+fv_take :: (s:[]ForgeVoiceCoder,ticket:int,final:bool,available:bool,busy:bool,text:string)->int {
+  if !s[0].armed || ticket!=s[0].ticket || !final {return 0;}
+  s[0].armed=false;s[0].n=0;
+  if !available || !fc_can_send(false,text) {return 0;}
+  if busy {return 2;}
+  for i:0..<text.count {s[0].text[i]=text[i];}s[0].n=text.count;return 1;
+}
+fv_message :: (s:[]ForgeVoiceCoder,line:string,available:bool,busy:bool)->int #export_c {
+  nodes:[32]JvNode;d:[1]Jv;
+  if !jv_parse(d[..],line,nodes[..]) {return 0;}
+  v:=d[0];if jv_raw(v,jv_get(v,0,"schema"))!="aethyrforge.voice-coder.v1" {return 0;}
+  ticket:=jv_int(v,jv_get(v,0,"ticket"),0);k:=jv_raw(v,jv_get(v,0,"kind"));
+  if k=="cancel" {if ticket>0 {fv_cancel(s,ticket);}return 0;}
+  if k!="final" {return 0;}
+  text:[16385]u8;n:=jv_str(v,jv_get(v,0,"text"),text[..]);
+  if n<0 {return 0;}
+  return fv_take(s,ticket,true,available,busy,cast(string)text[0..<n]);
+}

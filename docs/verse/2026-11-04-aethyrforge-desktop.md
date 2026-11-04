@@ -78,7 +78,28 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   or quit. A canceled permission request cannot later reopen capture. Speech
   stays on this Mac; the public voice service is not used.
 - Audio output remains muted through a live zero-gain graph so the microphone's
-  AudioWorklet can process samples. The existing page displays final words.
+  AudioWorklet can process samples. A final Parakeet transcript now starts the
+  same automatically routed Coder run/fork as typed input, while the Enter bar
+  stays closed and typed drafts remain intact. Recognized words and live reply
+  chunks float on the left; the words are consumed by the native bridge and
+  cannot also trigger an Everglade edit. A native microphone-grant ticket,
+  local top-frame origin and current foreground/world readiness gate one final
+  dispatch. Partials, canceled or duplicate finals and blank input do not run
+  Coder; busy turns are retained and show that the new voice input was not sent.
+  Coding-provider selection applies to finalized text; audio remains local.
+  Tool consent still requires the existing explicit Allow once / Deny action.
+  New opt-in `--stream-json` emits `coder.reply-stream.v1` deltas as Coder receives
+  them, with credential-prefix withholding and full-value redaction. Legacy JSON
+  output and durable whole-reply histories are unchanged. The
+  [separate stream/IPC contract](../protocol/coder-reply-stream-v1.md) records the
+  new schemas and progress-versus-durable semantics.
+  Verification: the actual muted WKWebView fixture traversed AudioWorklet,
+  loopback Parakeet on Metal, Elephant routing and Microcoder, delivering live
+  reply output with the bar closed, preserving a draft and ignoring a duplicate
+  final. Its unnecessary tool request was denied by the fixture; production
+  approvals remain manual. 435 Coder and 135 desktop checks passed; all 74 voice
+  admission mutants and all 31 credential-prefix mutants were killed. The
+  repository tools check reports 28 existing unrelated missing-header files.
   The dedicated voice transcript bar, Space binding, model download, typed model
   edits, durable undo log, remote PUBLISH/REVERT, bots and raid controls are not
   wired into this shell yet.

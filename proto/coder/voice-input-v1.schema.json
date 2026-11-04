@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/proto/coder/voice-input-v1.schema.json",
+  "title": "Aethyrforge finalized local voice input (native IPC)",
+  "type": "object",
+  "required": ["schema", "kind", "ticket"],
+  "properties": {
+    "schema": {"const": "aethyrforge.voice-coder.v1"},
+    "kind": {"enum": ["final", "cancel"]},
+    "ticket": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "text": {"type": "string"}
+  },
+  "if": {"properties": {"kind": {"const": "final"}}},
+  "then": {"required": ["text"]},
+  "additionalProperties": false
+}

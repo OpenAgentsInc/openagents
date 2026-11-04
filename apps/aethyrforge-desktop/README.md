@@ -59,7 +59,7 @@ Pending tool requests show a message to press Enter for Allow once / Deny;
 closing the composer never grants approval. New chat and folder changes start fresh.
 Slash commands, history browsing and attachment to a running PID are future work.
 
-The UI calls shared `~/.openagents/bin/openagents coder run|fork --engine auto --json --ask`,
+The UI calls shared `~/.openagents/bin/openagents coder run|fork --engine auto --stream-json --ask`,
 the same Coder as the TUI. Every submitted turn routes, including follow-ups,
 which carry the previous durable session's
 context. Prebuilt Coder/Microcoder are bundled; messages do not build tools or
@@ -220,16 +220,39 @@ before showing it, and `--launch-check-retry` to terminate its own room once
 and exercise the real Retry button. These checks preserve the world document;
 they do not synthesize animation frames or override page visibility.
 
+Finalized Parakeet speech starts the same routed Coder turn directly. It keeps
+the Enter bar closed, preserves any typed draft and shows the recognized words
+and live reply chunks on the left. It does not also send those words to the
+realm's editor. Canceled captures, partials and duplicate finals never dispatch;
+if Coder is busy, a message says the new voice input was not sent. Tool consent
+still waits for Enter and Allow once / Deny. Speech recognition stays local;
+the finalized text goes to the coding provider selected by the router.
+
+`--stream-json` adds opt-in live stdout deltas; ordinary `--json` and durable
+whole-reply logs stay unchanged. Known credentials are scrubbed before live
+encoding, including values split across chunks. See the
+[stream and voice IPC contract](../../docs/protocol/coder-reply-stream-v1.md).
+
 The hidden voice check plays the committed fixture through a synthetic media
 stream, the actual WKWebView AudioWorklet and voice Wasm, the loopback voice
 socket and resident Parakeet on Metal. It requires the shared model, opens no
-physical microphone, keeps output muted, checks cancellation of a delayed capture
-request, and stops all three servers:
+physical microphone, keeps output muted, checks cancellation of a delayed capture,
+then requires an actual routed Coder reply streamed with the bar closed, a
+preserved typed draft, canonical durable history and duplicate-final rejection.
+It stops all three servers:
 
 ```sh
 mkdir -p /tmp/aethyrforge-voice
 apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --voice-smoke /tmp/aethyrforge-voice/voice.json
 ```
+
+Verified on 2026-11-04: the recorded “Hello Foreman…” final reached Elephant
+routing and Microcoder, then delivered live reply output with the bar closed.
+The fixture denied one unnecessary tool request; production tool consent stays
+manual. The typed draft survived and the duplicate final was ignored. 435 Coder
+checks and 135 desktop checks passed; voice admission killed all 74 mutants,
+and live credential-prefix handling killed all 31. Repository tools-check
+reports 28 unrelated existing missing-header files at this base.
 
 The Coax `voice-build.coax` packages the existing voice engine and a Parakeet-only
 native voice host using serial compilation. It adds no inference or protocol logic.

@@ -49,6 +49,32 @@ main :: () {}
   #assert cd_holds(line,"\"schema\":\"coder.route.v2\"") && cd_holds(line,"\"ran\":\"codex\"") && cd_holds(line,"unavailable");
 }
 
+#test "live stdout emits safe suffixes while durable replies remain canonical" {
+  l:[1]CsLog;out:[262144]u8;ab:[65536]u8;ar:[1]ClArena;ar[0].buf=ab[..];
+  cs_secret_add(l[..],"TOKEN-12345");
+  l[0].nreply=cd_cat(l[0].reply[..],0,"hello TOK");
+  line:=cs_live_line(l[..],false,out[..]);
+  #assert cl_str(ar[..],line,"text")=="hello " && cd_holds(line,"coder.reply-stream.v1");
+  l[0].nreply=cd_cat(l[0].reply[..],l[0].nreply,"EN-12345");
+  line=cs_live_line(l[..],false,out[..]);
+  #assert cl_str(ar[..],line,"text")=="[credential]" && !cd_holds(line,"TOKEN");
+  #assert cs_live_line(l[..],false,out[..])=="";
+  l[0].nreply=cd_cat(l[0].reply[..],l[0].nreply," world");
+  line=cs_live_line(l[..],true,out[..]);#assert cl_str(ar[..],line,"text")==" world";
+  a:[1]App;a[0].log=l[..];cs_reply_flush(a[..]);
+  #assert cd_holds(cast(string)l[0].line[..],"\"kind\":\"reply\"") && !cd_holds(cast(string)l[0].line[..],"reply_delta");
+  #assert l[0].live_sent==0 && l[0].live_segment==1;
+}
+#test "live records bound escaping and preserve multibyte chunk boundaries" {
+  l:[1]CsLog;out:[65536]u8;ab:[65536]u8;ar:[1]ClArena;ar[0].buf=ab[..];
+  for i:0..<8191 {l[0].reply[i]='x';}l[0].nreply=cd_cat(l[0].reply[..],8191,"é!");
+  line:=cs_live_line(l[..],false,out[..]);#assert cl_str(ar[..],line,"text").count==8191;
+  line=cs_live_line(l[..],false,out[..]);#assert cl_str(ar[..],line,"text")=="é!";
+  l[0].live_sent=0;l[0].nreply=8193;for i:0..<8193 {l[0].reply[i]=0;}
+  line=cs_live_line(l[..],false,out[..]);#assert line.count<65536 && json_valid(line) && l[0].live_sent==8192;
+  line=cs_live_line(l[..],false,out[..]);#assert json_valid(line) && l[0].live_sent==8193;
+}
+
 #test "an unfinished durable turn has unknown effects even after a tool result" {
   s: [1] CsSummary; ar: [1] ClArena; ab: [8192] u8; ar[0].buf = ab[..]; b: [4096] u8;
   cs_read("{\"kind\":\"session\",\"id\":\"x\"}\n{\"kind\":\"user\",\"text\":\"edit\"}\n{\"kind\":\"tool\",\"label\":\"Write(file)\"}\n{\"kind\":\"result\",\"text\":\"done\",\"error\":false}\n", s[..], ar[..]);

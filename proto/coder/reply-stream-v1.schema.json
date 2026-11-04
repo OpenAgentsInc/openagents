@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/proto/coder/reply-stream-v1.schema.json",
+  "title": "Opt-in Coder live stdout reply events",
+  "type": "object",
+  "required": ["kind", "schema", "segment"],
+  "properties": {
+    "kind": {"enum": ["reply_delta", "reply_end"]},
+    "schema": {"const": "coder.reply-stream.v1"},
+    "segment": {"type": "integer", "minimum": 0},
+    "text": {"type": "string"}
+  },
+  "if": {"properties": {"kind": {"const": "reply_delta"}}},
+  "then": {"required": ["text"]},
+  "additionalProperties": false
+}
