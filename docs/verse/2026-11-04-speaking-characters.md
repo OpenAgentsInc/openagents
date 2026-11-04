@@ -14,9 +14,9 @@ below with these limits:
 - **Stage.** `?stage=speak&track=...` takes the track inline in the URL. The stage plays no sound:
   the tool adds each take to the video at the composite step. It has one backdrop, a dark warm glow,
   and no outfit choice.
-- **Cast.** The mayor's pack is a placeholder, MetaHuman Lab's own pack, resolved by the owner-local
-  `~/.openagents/verse/private-build/speak/packs.txt`. Auditions, pickups (`--revoice N` voices one
-  cue again) and the `talk`-clip body aren't built.
+- **Cast.** The mayor's pack is his own MetaHuman (`everglade-mayor`, see "Making the mayor"),
+  resolved by the owner-local `~/.openagents/verse/private-build/speak/packs.txt`. Auditions,
+  pickups (`--revoice N` voices one cue again) and the `talk`-clip body aren't built.
 
 The first output is the Cultist Raid promo with the mayor's two lines, from
 `verse/cast/cues/raid-promo.cues`.
@@ -208,21 +208,33 @@ ten costs nothing extra.
 
 ## Making the mayor
 
-This repeats the pipeline that built Draconia's MetaHuman, already proven, with one new character:
+`verse/tools/humans/make_character.py` makes the mayor with no clicks. It runs inside Unreal Editor
+5.8, headless (`UnrealEditor-Cmd -unattended -RenderOffscreen`), on a private project copy at
+`~/work/film-out/everglade-mayor/ue/Mayor/`, never the project open in the editor. Its look is the
+recipe `verse/tools/humans/characters/everglade-mayor.json`, in git: names and numbers only.
 
-1. **Design (owner).** In MetaHuman Creator, the owner makes a man in his fifties: weathered, a
-   short grey beard, kind and anxious. This is an owner step, recorded in `NEEDS_OWNER.md`, because
-   it needs the owner's Epic login. The design can start from a preset.
-2. **Export.** Unreal 5.7 or later, run headless (the `draconia_rebuild.py` path), exports DNA,
-   meshes and textures to `~/work/film-out/everglade-mayor/metahuman/`. The export carries
-   `NO-TRAINING.txt`.
-3. **Pack.** `python3 verse/tools/humans/pack_human.py metahuman EXPORT_DIR` builds the pack with its
-   face rig. `pack_checks.py` checks that the mouth moves: each viseme must move the lips by at least
-   0.3 cm, and `mbp` must close them.
-4. **Upload.** `upload_packs.sh` puts it in the private bucket. The owner-local placements file maps
-   `everglade-mayor` to it.
-5. **Outfit.** The mayor's coat, chain of office and hat go in `outfits.py`, made from CC0 parts or
-   modelled for us, never from MetaHuman garments.
+1. **Look.** The script duplicates the `Bruce` preset and blends 30% of `Walter`'s face into it (the
+   1,397 face coefficients). It then sets the skin, the eyes, short casual grey hair, a short grey
+   beard and moustache, and grey brows. Grey is high `Whiteness` over dark `Melanin`, since low
+   melanin reads as blonde.
+2. **Renders.** The `render` step shoots the preview from the front, three-quarter and side into
+   `~/work/film-out/everglade-mayor/renders/`, which carries `NO-TRAINING.txt`.
+3. **Rig, textures and export.** `request_auto_rigging(JOINTS_AND_BLEND_SHAPES)` and
+   `request_texture_sources` use the editor's stored Epic sign-in (a persistent login). Neither
+   needs a person. The head and body DNA and the DCC maps go to
+   `~/work/film-out/everglade-mayor/metahuman/export/`.
+4. **Pack.** `python3 verse/tools/humans/pack_human.py metahuman EXPORT_DIR OUT.pack --phone` builds
+   the pack with its face rig (`DNA_DUMP` names OpenRigLogic's `dna_dump`). `pack_checks.py` checks
+   that the mouth moves: each viseme must move the lips by at least 0.3 cm, and `mbp` must close
+   them. The pack is `~/.openagents/verse/private-build/web/everglade-mayor.pack`, and the
+   owner-local `speak/packs.txt` maps `everglade-mayor` to it.
+5. **Upload.** `upload_packs.sh` puts it in the private bucket. This step is on hold while
+   production deploys are paused.
+6. **Hair and outfit.** The pack has no hair, beard or clothes yet. Unreal's export library writes
+   no grooms, and the packer takes hair cards only from Draconia's portrait. The mayor's hair and
+   beard cards need the groom-card step back (`groom_export.py` at `853417f290`). His coat, chain of
+   office and hat go in `outfits.py`, made from CC0 parts or modelled for us, never from MetaHuman
+   garments.
 
 ## Face rig work this needs
 

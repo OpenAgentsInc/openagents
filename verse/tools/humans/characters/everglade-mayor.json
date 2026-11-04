@@ -1,0 +1,67 @@
+{
+  "name": "Mayor",
+  "about": "Everglade's mayor: a man in his fifties, weathered, short grey beard, grey hair, kind but anxious.",
+  "base": "Bruce",
+  "blend": {
+    "Walter": 0.3
+  },
+  "skin": {
+    "u": 0.36,
+    "v": 0.7,
+    "face_texture_index": 13,
+    "body_texture_index": 6,
+    "roughness": 1.08
+  },
+  "eyes": {
+    "pattern": "IRIS002",
+    "primary_color_u": 0.62,
+    "primary_color_v": 0.45,
+    "secondary_color_u": 0.55,
+    "secondary_color_v": 0.35,
+    "color_blend": 0.35,
+    "limbal_ring_size": 0.6,
+    "global_saturation": 0.7
+  },
+  "grooms": {
+    "Hair": [
+      "WI_Hair_S_Casual",
+      {
+        "Melanin": 0.55,
+        "Redness": 0.0,
+        "Whiteness": 0.85
+      }
+    ],
+    "Eyebrows": [
+      "WI_Eyebrows_M_Messy",
+      {
+        "Melanin": 0.6,
+        "Redness": 0.0,
+        "Whiteness": 0.6
+      }
+    ],
+    "Beard": [
+      "WI_Beard_S_Full",
+      {
+        "Melanin": 0.55,
+        "Redness": 0.0,
+        "Whiteness": 0.8
+      }
+    ],
+    "Mustache": [
+      "WI_Mustache_S_Full",
+      {
+        "Melanin": 0.55,
+        "Redness": 0.0,
+        "Whiteness": 0.8
+      }
+    ],
+    "Eyelashes": [
+      "WI_Eyelashes_S_Sparse",
+      {}
+    ],
+    "Peachfuzz": [
+      "WI_Peachfuzz_M_Thin",
+      {}
+    ]
+  }
+}

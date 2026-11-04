@@ -580,9 +580,14 @@ def main(argv):
         if len(argv) < 2:
             raise SystemExit("pack_human: metahuman EXPORT_DIR [OUT.pack]")
         pack = Pack("metahuman", "male", "MetaHuman (private; never committed, never used to train AI models)")
-        pack.outfit = (outfit or "student", "human")
-        metahuman.build(pack, Path(os.path.expanduser(argv[1])), outfit)
+        export = Path(os.path.expanduser(argv[1]))
         out = Path(argv[2]) if len(argv) > 2 else OUT_DIR / f"human{suffix}.pack"
+        # the portrait's clothes (the student's) only where the export has a portrait; the base is
+        # the pack's own name without the outfit
+        base = out.stem[:-len(suffix)] if suffix and out.stem.endswith(suffix) else out.stem
+        dressed = (export.parent / "latest/mh.neutral.glb").exists()
+        pack.outfit = (outfit or ("student" if dressed else "bare"), base)
+        metahuman.build(pack, export, outfit)
         size = max(size, 2048) if "--size" not in sys.argv else size
     catalog, total = write(pack, out, size)
     print(catalog.splitlines()[-1], f"-> {out} ({total} bytes)")

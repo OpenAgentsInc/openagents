@@ -144,6 +144,12 @@ def dna_space(joints):
 def dump(dna, out):
     tool = os.environ.get("DNA_DUMP") or str(Path(dna).resolve().parents[4] / "src/openriglogic/build/dna_dump")
     out.mkdir(parents=True, exist_ok=True)
+    # the dump is one DNA's: another character's export (a newer file elsewhere) dumps again
+    source, was = f"{Path(dna).resolve()} {Path(dna).stat().st_mtime_ns}\n", out / "source.txt"
+    fresh = was.exists() and was.read_text() == source
+    if not fresh:
+        for stale in ("joints.txt", "targets.bin"):
+            (out / stale).unlink(missing_ok=True)
     if not (out / "joints.txt").exists() or (out / "joints.txt").stat().st_mtime < Path(dna).stat().st_mtime:
         subprocess.run([tool, str(dna), str(out), "--skin"], check=True, capture_output=True)
     # the face rig's tables (a head DNA): dna_behavior, built beside dna_dump (DNA_BEHAVIOR names it)
@@ -151,6 +157,7 @@ def dump(dna, out):
     if "_Head" in Path(dna).name and behave.exists() and \
             (not (out / "targets.bin").exists() or (out / "targets.bin").stat().st_mtime < Path(dna).stat().st_mtime):
         subprocess.run([str(behave), str(dna), str(out / "behavior.txt"), str(out / "targets.bin")], check=True, capture_output=True)
+    was.write_text(source)
     return out
 
 
@@ -370,14 +377,18 @@ def build(pack, export, outfit=None):
     flip_v = lips_v(head / "head_lod0_mesh.obj", maps / "Head_Basecolor.png")
     portrait = export.parent / "latest/mh.neutral.glb"
     skin = skin_maps(portrait, maps) if portrait.exists() else {}
-    # her figure (shape.py): the trunk sculpted in both the bind and the arms-down pose
+    # her figure (shape.py): the trunk sculpted in both the bind and the arms-down pose; a female
+    # body's sculpt, so a male body keeps Creator's own trunk
+    female = body_female(P)
     down_path = export.parent / "rig-body-down/body_lod0_mesh.obj"
-    old_down = obj(down_path)[0] if down_path.exists() else obj(body / "body_lod0_mesh.obj")[0]
-    wbind = folded_weights(skin_file(body / "body_lod0_mesh.skin.txt"), JB)
-    spine_z = JB.p[JB.of[LOWER.index("pelvis")]][2]
-    body, down_path, moves = shape.figure(body, down_path, wbind, LOWER, spine_z, obj, DUMP_DIR / "body-shaped")
-    old_near = Near(old_down)
-    garment_moved = lambda pts: shape.moved(pts, old_down, moves, old_near)
+    garment_moved = lambda pts: pts
+    if female:
+        old_down = obj(down_path)[0] if down_path.exists() else obj(body / "body_lod0_mesh.obj")[0]
+        wbind = folded_weights(skin_file(body / "body_lod0_mesh.skin.txt"), JB)
+        spine_z = JB.p[JB.of[LOWER.index("pelvis")]][2]
+        body, down_path, moves = shape.figure(body, down_path, wbind, LOWER, spine_z, obj, DUMP_DIR / "body-shaped")
+        old_near = Near(old_down)
+        garment_moved = lambda pts: shape.moved(pts, old_down, moves, old_near)
     # the bind pose: the clothes' own (the body with its arms lowered), each joint's motion to it
     down = arms_down(body, JB, down_path, rest_parent)
     down["moved"] = garment_moved
@@ -428,7 +439,7 @@ def build(pack, export, outfit=None):
                        "brow": (1.0, 1.0, 1.0, 0.6), "hair": (1.0, 1.0, 1.0, 0.55)})
     pack.tints.setdefault("cloth", (1.0, 1.0, 1.0, 1.0))
     pack.tints.update(pack_human.EYE_TINTS)
-    pack.body = "female" if body_female(P) else "male"
+    pack.body = "female" if female else "male"
     return {"flip_v": flip_v}
 
 
