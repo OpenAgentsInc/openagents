@@ -641,15 +641,31 @@ wire_bucket :: (a: f32) -> int { b := 0; v := a * 64; while v >= 2 && b < 31 { v
 // own player's row (slot me), then the rest by priority until `budget` bytes of rows are spent. Who
 // sits at (px, pz) hears what is within `view` m, and every entity marked all. The bytes written.
 wire_seat_frame :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f32, view: f32, budget: int, out: [] u8) -> int {
+  row := h[0].now % WIRE_BASES;
+  pick: [WIRE_SLOTS] f32;
+  for q: 0..<WIRE_SLOTS {
+    dx := h[0].x[q] - px; dz := h[0].z[q] - pz;
+    pick[q] = ifx h[0].id[row * WIRE_SLOTS + q] != 0 && (h[0].all[q] || dx * dx + dz * dz <= view * view) then 0.0f32 else -1.0f32;
+  }
+  return wire_seat_frame_in(st, h, me, px, pz, pick[..], budget, out);
+}
+// The same, with what the seat may hear already picked (coax/web/room/room-interest.coax, #12789):
+// pick[q] below 0, slot q isn't for this seat; WIRE_PICK_OWN and up, it goes with your own player,
+// budget or not (your own effects); WIRE_PICK_ROOM and up, it gains that much priority more a tick
+// (the room-wide ones: Darian, the ward stones, zones).
+WIRE_PICK_OWN :: 4.0; WIRE_PICK_ROOM :: 2.0;
+wire_seat_frame_in :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f32, pick: [] f32, budget: int, out: [] u8) -> int {
   now := h[0].now; row := now % WIRE_BASES;
   keep := ((1 << WIRE_ACKS) - 1) ^ (1 << (now % WIRE_ACKS));
   n := 0; e: [WIRE_ROW] u8;
   cand: [WIRE_SLOTS] int; cn := 0;
+  mine: [WIRE_SLOTS] int; mn := 0;
   for q: 0..<WIRE_SLOTS {
     st[0].sent[q] = st[0].sent[q] & keep;   // that bit is now's, not WIRE_ACKS ticks ago's
     id1 := cast(int) h[0].id[row * WIRE_SLOTS + q];
     dx := h[0].x[q] - px; dz := h[0].z[q] - pz; d2 := dx * dx + dz * dz;
-    seen := id1 != 0 && (q == me || h[0].all[q] || d2 <= view * view);
+    pk := ifx q < pick.count then pick[q] else -1.0f32;
+    seen := id1 != 0 && (q == me || pk >= 0);
     held := cast(int) st[0].held[q];
     // what the page holds that is gone, out of view, or another entity now: an x, until acknowledged
     if held != 0 && (!seen || held != id1) {
@@ -671,7 +687,8 @@ wire_seat_frame :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f32, 
       l := wire_hist_at(h, st[0].last[q], q, id1);
       if l >= 0 && now - st[0].last[q] < WIRE_RESEND && wire_rows_same(h[0].f[..], l, cur) { continue; }
     }
-    st[0].acc[q] += h[0].w[q] / (1 + sqrt(d2) / f32(WIRE_NEAR));
+    if pk >= f32(WIRE_PICK_OWN) { mine[mn] = q; mn += 1; continue; }
+    st[0].acc[q] += h[0].w[q] / (1 + sqrt(d2) / f32(WIRE_NEAR)) + (ifx pk >= f32(WIRE_PICK_ROOM) then pk else 0.0f32);
     cand[cn] = q; cn += 1;
   }
   // your own player first, every tick: its row with the ACK is where your page re-runs from
@@ -679,6 +696,14 @@ wire_seat_frame :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f32, 
   if me >= 0 && me < WIRE_SLOTS && h[0].id[row * WIRE_SLOTS + me] != 0 {
     if n > 0 { n = wire_sep(out, n); }
     was := n; n = wire_seat_put(st, h, me, out, n); wrote += n - was;
+  }
+  // then what is on you (your effects), budget or not
+  for c: 0..<mn {
+    m := wire_seat_put_try(st, h, mine[c], e[..], out.count);
+    if m <= 0 || n + m + 1 > out.count { continue; }
+    if n > 0 { n = wire_sep(out, n); }
+    for i: 0..<m { out[n + i] = e[i]; }
+    n += m; wrote += m;
   }
   // the rest, the highest priority first (by its power of two), as long as each fits the budget
   count: [32] int; start: [32] int; order: [WIRE_SLOTS] int;

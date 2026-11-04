@@ -21,6 +21,7 @@ The code:
 2. Range and line of sight
 3. Command age
 4. A target that falls, leaves or becomes invalid
+4a. Blocked players
 5. The order of one tick
 6. What your page predicts, and how a refusal looks
 7. The wire
@@ -94,6 +95,25 @@ half a second of the room's time when it starts, and no client time can move it.
 | During the bar, the caster drops to 0 hit points | The bar stops: `dead`. |
 | During the bar, the caster is incapacitated, paralyzed, petrified, stunned or unconscious | The bar stops: `held`. Restrained doesn't stop a cast. |
 | The caster leaves | Casts in their bar stop for everyone (`left`); released casts still strike. |
+
+## 4a. Blocked players
+
+When either player in a pair blocks the other (the page's BLOCK, sent to the room as `K`), the
+room keeps them apart in both directions, so no one fights a body they can't see (#12789):
+
+- **What you see:** the room never sends you the other player. That covers their state row, name,
+  WANTED level, level, effects, and the casts, stops and hits that name them. It also covers the
+  snapshot you get when you join. The rows go away (`x`) as soon as you block.
+- **Targeting:** a cast that names the other player as its target falls back to its aim point. A
+  heal that names them goes to the caster instead. Neither player counts as "the most hurt ally"
+  for the other.
+- **Harm and help:** while either player's roll is made, the other player is out of the battle. An
+  area spell neither hits nor heals them. PvP doesn't change this.
+- **Everyone else:** the other players in the room still see and fight both of them as usual.
+
+The rules live in `everglade5e-room-rules.coax` (`apart`, `e5rr_apart`). The room fills them from
+the blocks in `coax/web/room/room-blocks.coax`. The test "interest on the wire" in that file reads
+every byte sent to a blocker from its join and checks that none of it names the blocked player.
 
 ## 5. The order of one tick
 

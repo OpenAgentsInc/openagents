@@ -59,6 +59,9 @@ E5rRoom :: struct {
   started: bool;
   raid: [1] E5rdRaid;                        // the Cultist Raid's (everglade5e-room-raid.coax)
   pvp: bool;                                 // the realm's pvp row (oa-room room-control.coax): harm reaches other players too
+  // each seat's blocked pairs, one bit a seat, both ways (oa-room room-blocks.coax, #12789): neither
+  // targets, harms nor heals the other, so a body withheld from you can't fight you unseen
+  apart: [E5RR_SEATS] int;
 }
 
 e5rr_folk :: (j: int) -> int { return E5RR_FOLK0 + j; }
@@ -238,10 +241,15 @@ e5rr_most_hurt :: (r: [] E5rRoom, s: int) -> int {
   for o: 0..<E5RR_SEATS {
     i := E5RR_SEAT + o;
     c := b[0].c[i];
-    if o == s || !r[0].live[o] || c.dead || rs_feet_to(b, me, i) > 60 { continue; }
+    if o == s || !r[0].live[o] || c.dead || rs_feet_to(b, me, i) > 60 || ((r[0].apart[s] >> o) & 1) != 0 { continue; }
     if c.hp_max - c.hp > worst { worst = c.hp_max - c.hp; best = i; }
   }
   return best;
+}
+// Whether seats s and o are a blocked pair (either blocks the other).
+e5rr_apart :: (r: [] E5rRoom, s: int, o: int) -> bool {
+  if s < 0 || s >= E5RR_SEATS || o < 0 || o >= E5RR_SEATS { return false; }
+  return ((r[0].apart[s] >> o) & 1) != 0;
 }
 // Seat s uses bar slot k, landing at (x, z), at the target tgt (a TGT code, -1 none: the person
 // nearest the point within 10 feet). The engine rolls it. False (nothing spent) when it can't: no
@@ -264,6 +272,7 @@ e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #e
   tx := e5r_sq(x); ty := e5r_sq(z);
   foe := ifx tgt > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, tgt) else e5rr_of_tgt(tgt);
   if foe >= 0 && foe < E5RR_FOLK0 && !e5rr_helps(a) && !r[0].pvp { foe = -1; }   // PvP off: no harm aimed at a player
+  if foe >= E5RR_SEAT && foe < E5RR_SEAT + E5RR_SEATS && e5rr_apart(r, s, foe - E5RR_SEAT) { foe = -1; }   // a blocked pair: neither aims at the other
   if foe < 0 {
     // the person nearest the point within 10 feet
     bd := 11;
@@ -278,22 +287,22 @@ e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #e
   if a.tg == FB_SELF { foe = -1; tx = b[0].c[me].x; ty = b[0].c[me].y; }
   ally := e5rr_most_hurt(r, s);
   if a.tg == FB_ALLY { foe = ifx tgt > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, tgt) else ifx tgt >= E5RR_TGT_SEAT then e5rr_of_tgt(tgt) else ally; }
-  // a harmful roll: the other players step out of the battle while it is rolled
+  if a.tg == FB_ALLY && foe >= E5RR_SEAT && foe < E5RR_SEAT + E5RR_SEATS && e5rr_apart(r, s, foe - E5RR_SEAT) { foe = me; }
+  // a harmful roll: the other players step out of the battle while it is rolled; a blocked pair's
+  // other player steps out of every roll, harm or help (#12789)
   helps := e5rr_helps(a);
   kept_x: [E5RR_SEATS] int; kept_y: [E5RR_SEATS] int;
-  if !helps && !r[0].pvp {
-    for o: 0..<E5RR_SEATS {
-      i := E5RR_SEAT + o;
-      kept_x[o] = b[0].c[i].x; kept_y[o] = b[0].c[i].y;
-      if o != s { b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY; }
-    }
+  for o: 0..<E5RR_SEATS {
+    i := E5RR_SEAT + o;
+    kept_x[o] = b[0].c[i].x; kept_y[o] = b[0].c[i].y;
+    if o != s && ((!helps && !r[0].pvp) || e5rr_apart(r, s, o)) { b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY; }
   }
   before: [10] int;
   for l: 0..<10 { before[l] = b[0].c[me].slots[l]; }
   ok := fb_seat_use(b, r[0].seat[s..<s + 1], a, foe, tx, ty, ally);
   // a Warlock's harm aimed at a person sends its Zombies at them
   if ok && !helps && foe >= E5RR_FOLK0 && foe < E5RR_FOLK0 + E5R_FOLK { e5rr_send(r, s, foe, x, z); }
-  if !helps && !r[0].pvp { for o: 0..<E5RR_SEATS { if o != s { b[0].c[E5RR_SEAT + o].x = kept_x[o]; b[0].c[E5RR_SEAT + o].y = kept_y[o]; } } }
+  for o: 0..<E5RR_SEATS { if o != s { b[0].c[E5RR_SEAT + o].x = kept_x[o]; b[0].c[E5RR_SEAT + o].y = kept_y[o]; } }
   if ok && a.again >= 0 {
     spent := 0;
     for l: 1..<10 { if b[0].c[me].slots[l] < before[l] { spent = l; } }

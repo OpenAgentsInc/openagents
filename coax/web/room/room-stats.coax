@@ -5,8 +5,8 @@
 //   - admission refusals by reason (rl_join: ST_* below), and reconnects: a join whose request says
 //     re=1 (the page's own rejoin after it lost the room, everglade-net.coax) and whether it sat;
 //   - input to acknowledgement: when each seat's newest acknowledged input was heard (rm_st_ack);
-//   - relevant entities: what a seat's page is told about, by the wire's own rule (players always,
-//     creatures, zones and townsfolk within EG_VIEW), counted when asked (once a second);
+//   - relevant entities: what a seat's page may be told about, as its last interest pick had it
+//     (room-interest.coax, #12789), read when asked (once a second);
 //   - the signature over the host's report (rm_st_sign), with the seat-ticket key, as room-vitals is.
 // Every counter here is a total since the start; the host takes differences for its window.
 
@@ -60,24 +60,13 @@ rm_st_ack :: (v: [] RmServer, k: int, s: int) -> int #export_c {
   return st[0].ack_at;
 }
 
-// What seat s's page is told about now: every other player, and the creatures, zones and townsfolk
-// within EG_VIEW of it.
+// What seat s's page may be told about this tick, as its last interest pick had it (room-interest.coax,
+// #12789): the entities picked whole or health-only, its own among them.
 rm_st_relevant :: (v: [] RmServer, k: int, s: int) -> int #export_c {
   if !rm_eg_seat_live(v, k, s) || !v[0].eg[k].seat[s].placed { return 0; }
-  me := v[0].eg[k].seat[s].pose;
-  n := 0;
-  for q: 0..<EG_SEATS { if q != s && v[0].eg[k].seat[q].live && v[0].eg[k].seat[q].placed { n += 1; } }
-  zf: [E5RR_ZONE_FLOATS] f32;
-  for q: 0..<E5RR_ZONES { if e5rr_zone(v[0].eg[k].rules[..], q, zf[..]) > 0 && eg_near(me, zf[2], zf[3]) { n += 1; } }
-  bf: [E5RR_BEAST_FLOATS] f32;
-  for q: 0..<E5RR_BEASTS { if e5rr_beast(v[0].eg[k].rules[..], q, bf[..]) > 0 && eg_near(me, bf[0], bf[2]) { n += 1; } }
-  if v[0].eg[k].folk_on {
-    for i: 0..<E5R_FOLK {
-      fo := i * EG_FOLK_FLOATS;
-      if v[0].eg[k].folk[fo + 6] > 0.5 && eg_near(me, v[0].eg[k].folk[fo], v[0].eg[k].folk[fo + 1]) { n += 1; }
-    }
-  }
-  return n;
+  c: [4] int;
+  im_counts(v[0].eg[k].im[..], s, c[..]);
+  return c[0] + c[1];
 }
 
 // The X-Room-Mac of body (64 hex into out), with the seat-ticket key; false without one.

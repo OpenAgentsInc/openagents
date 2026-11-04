@@ -129,6 +129,7 @@ EgRoom :: struct {
   // the events since the last D, as entry text, each with where it happened
   ev: [EG_EV_BYTES] u8; ev_bytes: int; ev_n: int;
   ev_at: [EG_EVENTS] int; ev_len: [EG_EVENTS] int; ev_x: [EG_EVENTS] f32; ev_z: [EG_EVENTS] f32; ev_all: [EG_EVENTS] bool;
+  ev_who: [EG_EVENTS] int;       // the seats an event also tells of beyond its own fields, one bit each (room-blocks.coax eg_im_event)
   // the town, as the host's world steps it (everglade-watch.coax everglade_room_town): each person as a
   // page hears them (EG_FOLK_FLOATS: X Z YAW CLIP MODE HP SHOWN), each seat's WANTED level
   folk: [E5R_FOLK * EG_FOLK_FLOATS] f32; folk_on: bool;
@@ -275,12 +276,14 @@ rm_eg_dropped :: (v: [] RmServer) -> int #export_c {
   return n;
 }
 // An event since the last D, heard within EG_VIEW of (x, z), or by everyone (all).
-eg_event :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool) {
+eg_event :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool) { eg_event_who(v, k, text, x, z, all, 0); }
+// The same, telling of the seats in `who` too (a raider's cast aimed at a seat): one bit a seat.
+eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool, who: int) {
   e := v[0].eg[k].ev_n;
   if e >= EG_EVENTS || v[0].eg[k].ev_bytes + text.count > EG_EV_BYTES { v[0].eg[k].ev_dropped += 1; return; }
   a := v[0].eg[k].ev_bytes;
   for i: 0..<text.count { v[0].eg[k].ev[a + i] = text[i]; }
-  v[0].eg[k].ev_at[e] = a; v[0].eg[k].ev_len[e] = text.count; v[0].eg[k].ev_x[e] = x; v[0].eg[k].ev_z[e] = z; v[0].eg[k].ev_all[e] = all;
+  v[0].eg[k].ev_at[e] = a; v[0].eg[k].ev_len[e] = text.count; v[0].eg[k].ev_x[e] = x; v[0].eg[k].ev_z[e] = z; v[0].eg[k].ev_all[e] = all; v[0].eg[k].ev_who[e] = who;
   v[0].eg[k].ev_bytes += text.count; v[0].eg[k].ev_n = e + 1;
 }
 
@@ -853,6 +856,7 @@ eg_table :: (v: [] RmServer, k: int) {
   ra_table(v, k);   // what the world's abilities hold up (room-abilities.coax)
   // the town's doors as the world has them, every seat's however far (late joiners' snapshots have them open)
   wire_hist_put(h, EG_SLOT_DOORS, WireS.{id = WIRE_ID_MADE + EG_DOORS_ID, kind = WK_DOORS, g = 1, p1 = rm[0].doors[0], p2 = rm[0].doors[1]}, wire_rel(WK_DOORS), true, false);
+  eg_im_table(v, k);   // and the table into the interest grid (room-blocks.coax, #12789)
 }
 
 // Seat s's state this tick: a D frame (in parts when it runs past EG_CHUNK) of its rows (cut from the
@@ -893,7 +897,10 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   c := st[0].conn;
   behind := !full && c >= 0 && c < CONNS && v[0].conns[c].waiting > EG_BEHIND;
   if behind { v[0].eg[k].behind_n += 1; }
-  n := wire_seat_frame(st[0].rep[..], rm[0].hist[..], s, me.x, me.z, f32(EG_VIEW), ifx full then rows.count else ifx behind then 0 else WIRE_BUDGET, rows[..]);
+  // what this seat may hear (room-interest.coax, #12789): near it, room-wide, its own; never whom it blocks
+  pick: [WIRE_SLOTS] f32;
+  eg_im_pick(v, k, s, me.x, me.z, pick[..]);
+  n := wire_seat_frame_in(st[0].rep[..], rm[0].hist[..], s, me.x, me.z, pick[..], ifx full then rows.count else ifx behind then 0 else WIRE_BUDGET, rows[..]);
   for q: 0..<wire_entries(cast(string) rows[0..<n], 0) {
     en := wire_entry(cast(string) rows[0..<n], 0, q);
     if en.count > 0 { eg_out_entry(o[..], v, k, s, f, en); }
@@ -901,10 +908,12 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   // who each seat is and its WANTED level: on change, and again WIRE_RESEND ticks on until a tick that
   // held it is acknowledged (a frame the relay's queue had no room for)
   keep := ((1 << WIRE_ACKS) - 1) ^ (1 << (now % WIRE_ACKS));
+  unseen := eg_im_unseen(v, k, s, pick[..]);
   for q: 0..<EG_SEATS {
     st[0].n_bits[q] = st[0].n_bits[q] & keep; st[0].w_bits[q] = st[0].w_bits[q] & keep;
     other := v[0].eg[k].seat[q];
-    if !other.live || !other.placed { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; continue; }
+    // (outside this seat's interest or blocked: nothing of them, sent again when they come in, #12789)
+    if !other.live || !other.placed || ((unseen >> q) & 1) != 0 { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; continue; }
     h := rm[0].cn_h[q];
     if h != st[0].heard_n[q] || (!st[0].n_ok[q] && now - st[0].n_t[q] >= WIRE_RESEND) {
       if h != st[0].heard_n[q] { st[0].n_bits[q] = 0; st[0].n_ok[q] = false; }
@@ -920,10 +929,11 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
       st[0].heard_w[q] = w1; st[0].w_t[q] = now; st[0].w_bits[q] = st[0].w_bits[q] | (1 << (now % WIRE_ACKS));
     }
   }
-  ev_send(v, k, s, full, o[..]);   // the world event and everyone's level (room-events.coax)
+  ev_send(v, k, s, full, unseen, o[..]);   // the world event and the level of everyone in view (room-events.coax)
   // the events since the last state, near you
   for q: 0..<v[0].eg[k].ev_n {
     if !v[0].eg[k].ev_all[q] && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }
+    if eg_im_event_withheld(v, k, s, q, unseen) { continue; }   // of a player it blocks or can't see (room-blocks.coax, #12789)
     a := v[0].eg[k].ev_at[q];
     eg_out_entry(o[..], v, k, s, f, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]);
   }
@@ -1273,11 +1283,11 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   a := eg_test_of(box[..], 0); c := eg_test_of(box[..], 1);
   mb := eg_test_ent(box[..], 0, WIRE_ID_MADE + 1);
   #assert mb.kind == WK_ZONE && mb.owner == 0 && mb.p1 == 16 && eg_test_ent(box[..], 1, WIRE_ID_MADE + 1).id == -1 && !eg_test_has(c, "e cast");
-  #assert eg_test_ent(box[..], 1, 0).id == 0;   // players are always heard
+  #assert eg_test_ent(box[..], 1, 0).id == -1;   // nor is a player, past the exit radius (room-interest.coax, #12789)
   rm_eg_moved(v[..], k, 1, 0, 10, 0, 0, 0, 0, 0, 0, 1, 0, 0);
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
-  #assert eg_test_ent(box[..], 1, WIRE_ID_MADE + 1).kind == WK_ZONE;
+  #assert eg_test_ent(box[..], 1, WIRE_ID_MADE + 1).kind == WK_ZONE && eg_test_ent(box[..], 1, 0).id == 0;
   rm_eg_moved(v[..], k, 1, 0, 300, 0, 0, 0, 0, 0, 0, 1, 0, 0);
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);

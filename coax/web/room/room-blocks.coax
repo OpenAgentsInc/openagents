@@ -1,5 +1,112 @@
-// Who each seat of an Everglade room blocks (#12714, #12789): the page's K frame, kept by player id,
-// and the per-seat masks room-interest.coax withholds those players by.
+// The Everglade rooms' side of interest management (room-interest.coax, #12789): each tick's table
+// of entities put into the grid, each seat's pick handed to the send path, and who each seat blocks
+// (#12714: the page's K frame, kept by player id, as the masks the picks withhold those players by).
+
+EG_REVEAL_TICKS :: 90;   // a hidden player who starts a cast is seen within EG_VIEW for this long (3 s)
+
+// Room k's table this tick (eg_table) into its grid, once: each slot's entity by its wire ID, tagged
+// with the slot. A player rides on its own seat, and is hidden while its COND has RS_INVISIBLE; an
+// effect rides on, stands with and hides with the player it is on. Darian, the ward stones and the
+// zones no player made are room-wide; a player's spells are heard near them, as everything else. The raid's state goes to everyone in its own entries (ev_send).
+eg_im_table :: (v: [] RmServer, k: int) {
+  rm := v[0].eg[k..<k + 1];
+  h := rm[0].hist[..]; im := rm[0].im[..];
+  now := h[0].now; row := now % WIRE_BASES;
+  for q: 0..<WIRE_SLOTS {
+    id1 := cast(int) h[0].id[row * WIRE_SLOTS + q];
+    if id1 == 0 { continue; }
+    a := (row * WIRE_SLOTS + q) * WIRE_SF;
+    kind := cast(int) h[0].f[a + WS_KIND];
+    of := -1; flags := 0; x := h[0].x[q]; z := h[0].z[q];
+    if kind == WK_PLAYER {
+      of = id1 - 1;
+      if (cast(int) h[0].f[a + WS_COND] & IM_WIRE_COND_INVISIBLE) != 0 { flags = IM_HIDDEN; }
+    } else if kind == WK_EFFECT {
+      on := cast(int) h[0].f[a + WS_OWNER] - WIRE_TGT_SEAT;
+      if on >= 0 && on < EG_SEATS {
+        of = on; x = h[0].x[on]; z = h[0].z[on];
+        b := (row * WIRE_SLOTS + on) * WIRE_SF;
+        if h[0].id[row * WIRE_SLOTS + on] != 0 && (cast(int) h[0].f[b + WS_COND] & IM_WIRE_COND_INVISIBLE) != 0 { flags = IM_HIDDEN; }
+      }
+    } else if kind == WK_BEAST {
+      form := cast(int) h[0].f[a + WS_P1];
+      if form == E5RR_FORM_RAID + RS_NPC_ARCH || form == E5RR_FORM_WARD { flags = IM_ROOM; }
+    } else if kind == WK_DOORS {
+      flags = IM_ROOM;   // the town's doors: every seat's, however far
+    } else if (kind == WK_ZONE || kind == WK_STONE || kind == WK_TENTACLES || kind == WK_THORNS || kind == WK_LINE) && cast(int) h[0].f[a + WS_OWNER] < 0 {
+      flags = IM_ROOM;   // a zone the world made, not a player's spell
+    }
+    im_put_at(im, now, id1 - 1, q, x, z, of, flags);
+  }
+  im_sweep(im, now);
+  // a hidden player who starts a cast this tick gives itself away to those near
+  for c: 0..<EG_CASTS {
+    ca := rm[0].casts[c];
+    if !ca.on || ca.start != rm[0].tick || ca.seat < 0 || ca.seat >= EG_SEATS { continue; }
+    i := im_find(im, ca.seat);
+    if i < 0 || (im[0].e[i].flags & IM_HIDDEN) == 0 { continue; }
+    for s: 0..<EG_SEATS {
+      p := rm[0].seat[s].pose;
+      if s != ca.seat && rm[0].seat[s].live && eg_near(p, im[0].e[i].x, im[0].e[i].z) { im_reveal(im, ca.seat, s, now + EG_REVEAL_TICKS); }
+    }
+  }
+}
+// Seat s's pick this tick as the send path takes it: each table slot's priority (-1 not for this seat).
+eg_im_pick :: (v: [] RmServer, k: int, s: int, x: f32, z: f32, pick: [] f32) {
+  for q: 0..<pick.count { pick[q] = -1; }
+  p: [IM_PICKS] ImPick;
+  n := im_pick(v[0].eg[k].im[..], s, x, z, v[0].eg[k].hist[0].now, p[..]);
+  for q: 0..<n { if p[q].tag >= 0 && p[q].tag < pick.count { pick[p[q].tag] = p[q].prio; } }
+}
+// Whether seat s blocks seat q (its n entry, who q is, isn't sent either).
+eg_im_blocks :: (v: [] RmServer, k: int, s: int, q: int) -> bool {
+  return s >= 0 && s < IM_SEATS && q >= 0 && q < IM_SEATS && ((v[0].eg[k].im[0].blocks[s] >> q) & 1) != 0;
+}
+
+// The seats that seat s doesn't hear of this tick, one bit each: those it blocks, and those outside
+// its interest (eg_im_pick's -1). Never s itself, nor a seat that has left or isn't placed: there is
+// nothing of it to hide, and the word that it went (e stop SS SLOT left) must reach everyone.
+eg_im_unseen :: (v: [] RmServer, k: int, s: int, pick: [] f32) -> int {
+  m := v[0].eg[k].im[0].blocks[s];
+  for q: 0..<IM_SEATS {
+    if q != s && q < pick.count && pick[q] < 0 && v[0].eg[k].seat[q].live && v[0].eg[k].seat[q].placed { m = m | (1 << q); }
+  }
+  return m - (m & (1 << s));
+}
+// The seats event q of room k tells of, one bit each: who acts and who is acted on, as the wire writes
+// them (e cast, e stop, e xp, e level SS; e hit WHO BY and e heal, e die WHO as TGT codes, 1000 + SS a
+// seat), and the seats it names beyond its fields (ev_who).
+eg_im_event_seats :: (v: [] RmServer, k: int, q: int) -> int {
+  m := v[0].eg[k].ev_who[q];
+  a := v[0].eg[k].ev_at[q];
+  text := cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]];
+  if text.count < 3 || text[0] != 'e' || text[1] != ' ' { return m; }
+  r: [1] WireRd; r[0] = wire_rd(text, 1);
+  what := wire_word(text, r[..]);
+  if what == "cast" || what == "stop" || what == "xp" || what == "level" {
+    ss := wire_num(text, r[..]);
+    if r[0].ok && ss >= 0 && ss < IM_SEATS { m = m | (1 << ss); }
+  }
+  if what == "hit" || what == "heal" || what == "die" {
+    for f: 0..<(ifx what == "hit" then 2 else 1) {
+      code := wire_num(text, r[..]);
+      if !r[0].ok { return m; }
+      ss := code - WIRE_TGT_SEAT;
+      if ss >= 0 && ss < IM_SEATS { m = m | (1 << ss); }
+    }
+  }
+  return m;
+}
+// Whether event q isn't sent to seat s: it tells of a player s blocks; or, unless it's room-wide or
+// tells of s itself (a hit on you from out of sight still reaches you), of a player outside s's
+// interest (unseen, eg_im_unseen).
+eg_im_event_withheld :: (v: [] RmServer, k: int, s: int, q: int, unseen: int) -> bool {
+  if unseen == 0 { return false; }
+  m := eg_im_event_seats(v, k, q);
+  if (m & v[0].eg[k].im[0].blocks[s]) != 0 { return true; }
+  if v[0].eg[k].ev_all[q] || ((m >> s) & 1) != 0 { return false; }
+  return (m & unseen) != 0;
+}
 
 // K PID PID ...: seat s's blocks, by player id (the page's list: the ticket's "blocked" and its BLOCK
 // presses). Kept by id, so a blocked player who sits later is withheld from the tick they sit.
@@ -34,6 +141,12 @@ im_room_blocks :: (v: [] RmServer, k: int) {
     }
     im_blocks(v[0].eg[k].im[..], s, mask);
   }
+  // the rules keep each blocked pair apart, both ways: neither targets, harms nor heals the other
+  for s: 0..<IM_SEATS {
+    both := v[0].eg[k].im[0].blocks[s];
+    for q: 0..<IM_SEATS { if ((v[0].eg[k].im[0].blocks[q] >> s) & 1) != 0 { both = both | (1 << q); } }
+    v[0].eg[k].rules[0].apart[s] = both;
+  }
 }
 
 #test "blocks: a seat's K list withholds those players by id, a later joiner too; K - clears it; a leaver's blocks go with it" #steps 4000000000 {
@@ -64,4 +177,116 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   #assert im[0].blocks[2] == 1;
   rm_left(v[..], 2);
   #assert im[0].blocks[2] == 0;
+}
+
+#test "interest in the room: a blocked player's row and name never reach the blocker; a far player goes past 130 m and comes back within 110 m" #steps 6000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8;
+  box: [1] EgInbox;
+  n := tk_sign(key, "p-00000000000000aa", false, "", "pair-im", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-im")) == 0;
+  n = tk_sign(key, "p-00000000000000bb", false, "", "pair-im", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-im")) == 1;
+  n = tk_sign(key, "p-00000000000000cc", false, "", "pair-im", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 2, tk_test_ask_in(r[..], t[..], n, "pair-im")) == 2;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  for q: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  #assert eg_test_ent(box[..], 0, 1).id == 1 && eg_test_ent(box[..], 2, 1).id == 1;
+  // seat 0 blocks bb: its row goes (x 1) and its name doesn't come again; seat 2 still has it
+  rm_heard(v[..], 0, "K p-00000000000000bb");
+  for q: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  #assert eg_test_ent(box[..], 0, 1).id == -1 && eg_test_ent(box[..], 2, 1).id == 1 && eg_test_ent(box[..], 0, 2).id == 2;
+  // bb walks and changes: still nothing of it reaches seat 0, not even its n entry
+  rm_eg_moved(v[..], k, 1, 0, 5, 0, 3, 0, 0, 0, 0, 1, 0, 0);
+  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+  a := eg_test_of(box[..], 0);
+  #assert !eg_test_has(a, "s 1 ") && !eg_test_has(a, "n 1 ") && eg_test_has(eg_test_of(box[..], 2), "s 1 ");
+  rm_heard(v[..], 0, "K -");
+  for q: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  #assert eg_test_ent(box[..], 0, 1).id == 1;
+  // seat 2 walks 125 m off: still held (between the radii); 135 m: gone; 115 m: not back; 105 m: back
+  rm_eg_moved(v[..], k, 2, 0, 125, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  for q: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  #assert eg_test_ent(box[..], 0, 2).id == 2;
+  rm_eg_moved(v[..], k, 2, 0, 135, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  for q: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  #assert eg_test_ent(box[..], 0, 2).id == -1;
+  rm_eg_moved(v[..], k, 2, 0, 115, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  for q: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  #assert eg_test_ent(box[..], 0, 2).id == -1;
+  rm_eg_moved(v[..], k, 2, 0, 105, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  for q: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  #assert eg_test_ent(box[..], 0, 2).id == 2;
+  c: [4] int;
+  im_counts(v[0].eg[k].im[..], 0, c[..]);
+  #assert c[0] == 3 && rm_st_relevant(v[..], k, 0) == 3;
+}
+
+// The raw wire, every byte seat 0 is sent from its join on: nothing of a player it blocks, nor of a
+// player outside its interest, in any entry (rows, names, WANTED, levels, casts, hits), the join's
+// full snapshot included; neither of the blocked pair can hit the other, with PvP on.
+#test "interest on the wire: no row, name, level, cast or position of a blocked or far player reaches the seat, from its join's snapshot on; a blocked pair can't harm each other" #steps 9000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_control(v[..], "pvp 1\n");
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8;
+  box: [1] EgInbox;
+  // bb (a Warlock) and cc are in first: bb 55 m off the gate at (37.21, 41.13), cc 300 m off
+  n := tk_sign(key, "p-00000000000000bb", false, "", "pair-imw", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-imw")) == 0;
+  n = tk_sign(key, "p-00000000000000cc", false, "", "pair-imw", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-imw")) == 1;
+  rm_heard(v[..], 0, "H 3 ranger.0.0.0 warlock 0 -");
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  for q: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  rm_eg_moved(v[..], k, 0, 0, 37.21, 0, 41.13, 0, 0, 0, 0, 1, 0, 0);
+  rm_eg_moved(v[..], k, 1, 0, 300.17, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  for q: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  // aa joins on seat 2 and says at once that it blocks bb, as the page's hello does
+  n = tk_sign(key, "p-00000000000000aa", false, "", "pair-imw", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 2, tk_test_ask_in(r[..], t[..], n, "pair-imw")) == 2;
+  rm_heard(v[..], 2, "K p-00000000000000bb");
+  heard: [65536] u8; hn := 0;
+  for q: 0..<60 {
+    if q == 10 { rm_eg_moved(v[..], k, 0, 0, 3, 0, 0, 0, 0, 0, 0, 1, 0, 0); }   // bb walks up to aa
+    if q == 12 || q == 30 || q == 48 { b: [64] u8; c := wire_put(b[..], 0, "C"); c = wire_int(b[..], c, q); c = wire_put(b[..], c, " 64 200 0 0 1002"); rm_heard(v[..], 0, cast(string) b[0..<c]); }   // Eldritch Blast at aa
+    if q == 20 || q == 40 { b: [64] u8; c := wire_put(b[..], 0, "C"); c = wire_int(b[..], c, 100 + q); c = wire_put(b[..], c, " 1 300 0 0 1000"); rm_heard(v[..], 2, cast(string) b[0..<c]); }   // and aa's Thunderbolt at bb
+    eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+    a := eg_test_of(box[..], 2);
+    for i: 0..<a.count { if hn < heard.count { heard[hn] = a[i]; hn += 1; } }
+    if hn < heard.count { heard[hn] = '|'; hn += 1; }
+  }
+  w := cast(string) heard[0..<hn];
+  #assert hn > 0 && hn < heard.count && eg_test_has(w, "D ");
+  #assert !eg_test_has(w, ";s 0 ");
+  #assert !eg_test_has(w, ";n 0 ");
+  #assert !eg_test_has(w, ";w 0 ");
+  #assert !eg_test_has(w, ";v 0 ");
+  #assert !eg_test_has(w, "e cast 0 ");
+  #assert !eg_test_has(w, "e stop 0 ");
+  #assert !eg_test_has(w, "e hit 1002 1000");
+  #assert !eg_test_has(w, "e hit 1000 ");
+  #assert !eg_test_has(w, ";s 1 ");
+  #assert !eg_test_has(w, ";n 1 ");
+  #assert !eg_test_has(w, ";w 1 ");
+  #assert !eg_test_has(w, ";v 1 ");
+  #assert !eg_test_has(w, " 3721 ");
+  #assert !eg_test_has(w, " 4113 ");
+  #assert !eg_test_has(w, " 30017 ");
+  // aa still hears itself and the room's own
+  #assert eg_test_ent(box[..], 2, 2).id == 2;
+  #assert eg_test_ent(box[..], 2, 0).id == -1 && eg_test_ent(box[..], 2, 1).id == -1;
+  #assert eg_test_has(w, "s 2 ");
+  // neither of the pair hurt the other, PvP on
+  bb := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + 0]; aa := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + 2];
+  #assert aa.hp == aa.hp_max && bb.hp == bb.hp_max && e5rr_apart(v[0].eg[k].rules[..], 0, 2) && e5rr_apart(v[0].eg[k].rules[..], 2, 0) && !e5rr_apart(v[0].eg[k].rules[..], 0, 1);
 }
