@@ -18,6 +18,11 @@ realm, a feature being shown off, or a moment a player really had.
 
    `--skip` runs game time without capturing (the lead-up); `--eval` runs a
    script before it (inputs, camera); `--frames DIR` keeps the PNGs.
+   `--audio` adds the page's own sound: nothing plays while the frames are
+   drawn, host.js keeps each sound line with its frame's game time, and after
+   the last frame it renders them in an `OfflineAudioContext` through the
+   same voices the live page uses. The recorder muxes that WAV in as AAC, so
+   the sound is in step with the frames however slowly they were captured.
    `tool.sh` builds the recorder on first use (the Coax compiler and a C
    compiler); it needs Chrome and ffmpeg.
 2. **Staged moments** (`?stage=NAME` in the page's URL). Each game knows its

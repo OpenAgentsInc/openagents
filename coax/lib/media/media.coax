@@ -149,7 +149,11 @@ media_shot :: (c: [] Cdp, url: string, out: string, wh: ArgsSize, o: MediaShotOp
 // is one fixed step of game time, so a slow machine never makes it stutter
 // and the same staged moment gives the same frames. Each frame is captured
 // as a PNG; media_encode joins them into an MP4 with ffmpeg. Nothing opens
-// on screen and no sound plays. The callers are coax/web/clip.coax
+// on screen and no sound plays. media_record_sound also keeps the page's
+// sound: host.js keeps each sound line with its frame's game time and, after
+// the last frame, renders the clip's stretch of them offline through the
+// same voices (coaxialClipMix), written as a WAV that media_encode_sound
+// muxes in, so the sound is in step with the frames. The callers are coax/web/clip.coax
 // (`coax/web/tool.sh clip`) and the CLI's `openagents labs clip`.
 // A page stages its own moments from its URL (?stage=NAME): see
 // docs/verse/clips.md.
@@ -162,6 +166,13 @@ media_record :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: f64, f
 // A typed consumer can require a page capability before it records any frames.
 // Existing media callers retain their original unguarded interface.
 media_record_guarded :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: f64, fr: string, skip: f64, script: string, frames: string, guard: string) -> string {
+  return media_record_with(c, url, wh, seconds, fps, fr, skip, script, frames, guard, "");
+}
+// The same, and the page's sound over the frames as a 16-bit stereo 48 kHz WAV at wav.
+media_record_sound :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: f64, fr: string, skip: f64, script: string, frames: string, wav: string) -> string {
+  return media_record_with(c, url, wh, seconds, fps, fr, skip, script, frames, "", wav);
+}
+media_record_with :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: f64, fr: string, skip: f64, script: string, frames: string, guard: string, wav: string) -> string {
   params: [65536] u8; o: [1] Jo;
   if !media_size(c, wh) { return cdp_error(c); }
   if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return cdp_error(c); }
@@ -169,6 +180,7 @@ media_record_guarded :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps
   // Page.enable comes before the scripts: without it they do not run on the next document.
   if cdp_call(c, "Page.enable", "", CDP_CALL_MS) < 0 { return cdp_error(c); }
   if cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"globalThis.coaxialClip = true\"}", CDP_CALL_MS) < 0 { return cdp_error(c); }
+  if wav.count > 0 && cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"globalThis.coaxialClipAudio = true\"}", CDP_CALL_MS) < 0 { return cdp_error(c); }
   // a clip never counts as a visit
   if cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"Object.defineProperty(Navigator.prototype, 'sendBeacon', { value: () => false })\"}", CDP_CALL_MS) < 0 { return cdp_error(c); }
   jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
@@ -197,12 +209,28 @@ media_record_guarded :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps
   }
   total := clip_round(seconds * fps);
   one := clip_step(1, fr, expr[..]);
+  if wav.count > 0 {
+    v := cdp_evaluate(c, "typeof coaxialClipMark === 'function' && coaxialClipMark()");
+    if jv_kind(cdp_doc(c), v) != JV_TRUE { return "the page has no sound to record (its audio did not start)"; }
+  }
   png: [MEDIA_PNG] u8; name: [16] u8; path: [4200] u8;
   for i: 0..<total {
     v := cdp_evaluate(c, one);
     n := cdp_screenshot(c, png[..]);
     if n < 0 { return cdp_error(c); }
     if !fs_write(fs_join(frames, clip_frame_name(i, name[..]), path[..]), cast(string) png[0..<n]) { return "could not write a frame"; }
+  }
+  if wav.count > 0 {
+    // the frames' own seconds, so the sound is as long as the picture
+    mix: [128] u8;
+    k := ws_put(mix[..], 0, "coaxialClipMix("); k = ws_digits(mix[..], k, total); k = ws_put(mix[..], k, " / "); k = ws_put(mix[..], k, fr);
+    k = ws_put(mix[..], k, ", "); k = ws_put(mix[..], k, fr); k = ws_put(mix[..], k, ")");
+    v := cdp_evaluate(c, cast(string) mix[0..<k]);
+    d := cdp_doc(c);
+    if jv_kind(d, v) != JV_STRING || jv_raw(d, v).count == 0 { return "the page's sound did not render"; }
+    n := b64_decode(jv_raw(d, v), png[..]);   // the frames are written: their buffer holds the WAV
+    if n < 44 { return "the page's sound is too long or is not base64"; }
+    if !fs_write(wav, cast(string) png[0..<n]) { return "could not write the sound"; }
   }
   return "";
 }
@@ -239,7 +267,20 @@ clip_step :: (k: int, fps: string, out: [] u8) -> string {
 // at out, by ffmpeg (the program named, or "ffmpeg"). "" when it worked,
 // else ffmpeg's words, into err.
 media_encode :: (ffmpeg: string, frames: string, fps_text: string, out: string, err: [] u8) -> string {
+  return media_encode_sound(ffmpeg, frames, fps_text, "", out, err);
+}
+// The same with the WAV at wav (none: "") as its AAC sound track.
+media_encode_sound :: (ffmpeg: string, frames: string, fps_text: string, wav: string, out: string, err: [] u8) -> string {
   pattern: [4200] u8;
+  if wav.count > 0 {
+    av := [23] string.[ifx ffmpeg.count > 0 then ffmpeg else "ffmpeg", "-v", "error", "-y", "-framerate", fps_text, "-i", fs_join(frames, "f%05d.png", pattern[..]),
+                       "-i", wav, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out];
+    so: [4096] u8;
+    enc := proc_run(av[..], -1, so[..], err);
+    if enc.started != 0 { return "ffmpeg was not found"; }
+    if enc.status != 0 { return ifx enc.err_n > 0 then cast(string) err[0..<enc.err_n] else "ffmpeg failed"; }
+    return "";
+  }
   argv := [17] string.[ifx ffmpeg.count > 0 then ffmpeg else "ffmpeg", "-v", "error", "-y", "-framerate", fps_text, "-i", fs_join(frames, "f%05d.png", pattern[..]),
                        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-movflags", "+faststart", out];
   so: [4096] u8;

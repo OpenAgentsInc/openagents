@@ -2,10 +2,12 @@
 // step of game time (host.js clip mode), captured one by one, then encoded with ffmpeg.
 // Nothing opens on screen and no sound plays.
 //   coax/web/tool.sh clip URL OUT.mp4 [--size 1280x720] [--seconds 3] [--fps 30]
-//       [--skip SECONDS] [--eval JS] [--frames DIR]
+//       [--skip SECONDS] [--eval JS] [--frames DIR] [--audio]
 // --skip runs that much game time first without capturing (the lead-up to the moment);
 // --eval runs a script once the page has started, before the skip (a staged moment's inputs).
 // --frames keeps the PNG frames (f00000.png, ...) in DIR.
+// --audio records the page's own sound in step with the frames (host.js renders the
+// lines its frames sent, offline) and muxes it in as AAC; with --frames, DIR keeps it as audio.wav.
 // A page stages its own moments from its URL (?stage=NAME): see docs/verse/clips.md.
 // The recording is coax/lib/media/media.coax, which `openagents labs clip` uses too.
 #import "Basic";
@@ -16,7 +18,7 @@ tool_main :: () -> int #export_c {
   ok := args_load(a[..]);
   url := args_at(a[..], 0); out := args_at(a[..], 1);
   if !ok || url.count == 0 || out.count == 0 || (url.count >= 2 && url[0] == '-' && url[1] == '-') {
-    tool_errln("usage: coax/web/tool.sh clip URL OUT.mp4 [--size WxH] [--seconds S] [--fps N] [--skip S] [--eval JS] [--frames DIR]");
+    tool_errln("usage: coax/web/tool.sh clip URL OUT.mp4 [--size WxH] [--seconds S] [--fps N] [--skip S] [--eval JS] [--frames DIR] [--audio]");
     return 2;
   }
   wh := args_size(args_value(a[..], "--size", "1280x720"));
@@ -36,16 +38,19 @@ tool_main :: () -> int #export_c {
   if frames.count == 0 { frames = fs_temp("coax-clip-frames-", dirbuf[..]); }
   if frames.count == 0 || !fs_mkdir(frames) { tool_errln("clip: could not make the frames directory"); return 1; }
 
+  wavbuf: [4200] u8;
+  wav := ifx args_has(a[..], "--audio") then fs_join(frames, "audio.wav", wavbuf[..]) else "";
   c: [1] Cdp;
   failed := "";
   if !cdp_launch(c[..], wh.w, wh.h, "coax-clip-") { failed = cdp_error(c[..]); }
+  else if wav.count > 0 { failed = media_record_sound(c[..], url, wh, seconds.value, fps.value, fps_text, skip.value, script, frames, wav); }
   else { failed = media_record(c[..], url, wh, seconds.value, fps.value, fps_text, skip.value, script, frames); }
   // the error text lives in c, which closing keeps
   if failed.count > 0 { tool_err("clip: "); tool_errln(failed); cdp_close(c[..]); return 1; }
   cdp_close(c[..]);
 
   se: [65536] u8;
-  bad := media_encode("ffmpeg", frames, fps_text, out, se[..]);
+  bad := media_encode_sound("ffmpeg", frames, fps_text, wav, out, se[..]);
   if bad.count > 0 { tool_err("clip: ffmpeg failed: "); tool_errln(bad); return 1; }
   if !keep { gone := fs_remove(frames); }
   print("%\n", out);
