@@ -2747,6 +2747,8 @@ async function main() {
     loading.fail(`${gpu || /gpu|adapter|device/i.test(e.message) ? "GPU" : "ENGINE"} FAILED: ${e.message}`);
     say(`${app}: ${e.message}`, true);
   }
-  if (dev) live();
+  // a clip is one pass: no live swap (a changed file's "wasm", "wgsl" or "page") mid-recording, which
+  // restarted the engine and the film with it (the night raid video cut back to its start at 19.5 s)
+  if (dev && !clipping) live();
 }
 main();
