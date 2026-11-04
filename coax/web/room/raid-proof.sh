@@ -5,8 +5,8 @@
 # it (--dev, room-dev.coax): its world is dev/'s, its control lines the file, its key the stand-in's,
 # and nothing here reaches the API.
 #   coax/web/room/raid-proof.sh BIN [N] [SECONDS] [PORT]
-# RAID_CLASS (druid, warlock, mix), RAID_MODE (square, fight) and RAID_LEVEL2=1 (every player must
-# reach level 2) pass to raid-check.coax.
+# RAID_CLASS (druid, warlock, mix), RAID_MODE (square, fight), RAID_LEVEL2=1 (every player must
+# reach level 2) and RAID_EXPECT (hold, fall, any: the siege's front, #12860) pass to raid-check.coax.
 # Exits 0 when raid-check prints "raids".
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd -P)"
@@ -30,7 +30,7 @@ sleep 3
 (sleep $((3 + n / 2)); printf '%s 1 0\nlevels 1 2\n' "$dials" > "$ctl") &
 # the server's own health every 5 s: the Everglade tick's p50 and 95th percentile (room-host.c GET /health)
 ( while kill -0 "$room" 2>/dev/null; do curl -s --max-time 2 "http://127.0.0.1:$port/health" >> "$dir/health.log" || true; sleep 5; done ) &
-OA_ROOM_TICKET_KEY="$key" "$root/coax/web/tool.sh" "$root/coax/web/room/raid-check.coax" "ws://127.0.0.1:$port" "$n" "$secs" "$(date +%s)" "${RAID_CLASS:-druid}" "${RAID_MODE:-square}" "${RAID_LEVEL2:-0}" | tee "$dir/check.out"
+OA_ROOM_TICKET_KEY="$key" "$root/coax/web/tool.sh" "$root/coax/web/room/raid-check.coax" "ws://127.0.0.1:$port" "$n" "$secs" "$(date +%s)" "${RAID_CLASS:-druid}" "${RAID_MODE:-square}" "${RAID_LEVEL2:-0}" "${RAID_EXPECT:-any}" | tee "$dir/check.out"
 # the worst 95th percentile tick seen, and the minute reports (ticks, sends, events with no room)
 worst=$(sed -n 's/.*at the 95th \([0-9]*\) us.*/\1/p' "$dir/health.log" | sort -n | tail -1)
 echo "tick p95 at worst: ${worst:-?} us"

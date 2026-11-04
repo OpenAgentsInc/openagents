@@ -208,6 +208,7 @@ rc_release :: (v: [] RmServer, k: int, q: int) {
   if cr_repair(c.slot) {
     if !cr_in_reach(at.x - me.x, at.z - me.z, f32(CR_REPAIR_REACH), true) { rc_stop(v, k, q, CR_RANGE); return; }
     v[0].eg[k].seat[c.seat].repaired = v[0].eg[k].tick;
+    ev_repair(v, k, c.seat);   // a repair under the siege is help on its line (room-events.coax, #12860)
   }
   cs := v[0].eg[k].casts[q..<q + 1];
   cs[0].phase = RC_FLIGHT;

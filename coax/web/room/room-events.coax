@@ -12,15 +12,21 @@
 // EVERY (minutes, 0 off) starts a raid in every live room at each whole multiple of it on the wall
 // clock, so every shard and instance starts together.
 //
-// The lifecycle (spec 3.2): idle, announce (30 s), wave (until it is down, 90 s at most), lull
-// (15 s), the waves again, climax (until the leader withdraws, 3 minutes at most), end (5 s) and
-// aftermath (60 s, then the server's own rebuild). The time limit, the town's people all down and
-// an admin's STOP end it early (spec 3.3).
+// The lifecycle (spec 3.2; #12860): idle, announce (30 s), then the standing siege: the watch and
+// the cult fight over a front on the south road (apps/openagents-web/everglade-raid-front.coax), each
+// side reinforced, until the players push it to the cult's camp (stand: the camp's ward stones can
+// break, Darian Odiodei makes a stand and withdraws at half his Hit Points). Then the camp falls: end
+// (5 s, the XP) and aftermath (EV_AFTER_S, the regroup, then the server's own rebuild), and the cult
+// musters again. The town never falls: pushed back, the watch holds at the gate. The siege stands
+// while the event is on; an admin's STOP ends it (spec 3.3), and a new room starts it too.
 //
 // What a seat hears, in its D frames (pages that don't know them skip them):
 //   g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME FOLK LEVELS CAP PLAYERS
+//     FRONT TOWN CULTCAP TOWNCAP
 //       the event's state on change (KIND 0: none); SECS the phase's seconds left (idle: to the
-//       next scheduled start, -1 none), LEFT the time limit's
+//       next scheduled start, -1 none; the siege: 0; the aftermath: to the cult's muster); STANDING
+//       the cult's, TOWN the watch's, FRONT the line's place on the road in thousandths (0 the camp,
+//       1000 the South Gate), the caps each side's fighters at most. WAVE, WAVES, LEFT and SQUARE are 0.
 //   v SS LEVEL XP CAP LO HI   each seat's level, XP, the level cap, and the bar slots its character has
 //       (bit q of LO: druid slot q; bit q of HI: Warlock slot FB_WL0 + q; both 0: the whole bar)
 //   e xp SS AMOUNT, e level SS LEVEL   a gain, a level-up
@@ -36,7 +42,8 @@
 
 EV_NONE :: 0; EV_RAID :: 1;
 EV_IDLE :: 0; EV_ANNOUNCE :: 1; EV_WAVE :: 2; EV_LULL :: 3; EV_CLIMAX :: 4; EV_END :: 5; EV_AFTER :: 6;
-EV_OUT_NONE :: 0; EV_OUT_HELD :: 1; EV_OUT_FELL :: 2; EV_OUT_OFF :: 3;
+EV_SIEGE :: 7; EV_STAND :: 8;   // the standing siege, and its stand at the camp (#12860)
+EV_OUT_NONE :: 0; EV_OUT_HELD :: 1; EV_OUT_OFF :: 3;   // HELD: the camp fell to the town (2, the town fell, is no more)
 EV_ARCH_AWAY :: 0; EV_ARCH_WARDED :: 1; EV_ARCH_EXPOSED :: 2; EV_ARCH_GONE :: 3;
 // the phases' lengths, seconds (spec 3.2)
 EV_ANNOUNCE_S :: 30; EV_WAVE_S :: 90; EV_LULL_S :: 15; EV_CLIMAX_S :: 180; EV_END_S :: 5; EV_AFTER_S :: 60;
@@ -44,26 +51,25 @@ EV_ANNOUNCE_S :: 30; EV_WAVE_S :: 90; EV_LULL_S :: 15; EV_CLIMAX_S :: 180; EV_EN
 EV_XP2 :: 300; EV_XP3 :: 900; EV_LEVEL_TOP :: 3;   // the cap is a dial (EvDials.cap), 1 to EV_LEVEL_TOP
 // The raid's XP, every number of it here (spec 4.1, 6.4 and 7), each times the reward dial. A raider
 // gives EV_XP_SRD_X times its SRD XP, split evenly among every seat that hurt it (the SRD's split
-// among those who took part): the waves grow with the players (everglade-raid-scale.coax), so a
-// group earns about what one player does. A ward stone gives EV_XP_WARD the same way. At the raid's
-// end, each seat that earned XP in it gets EV_XP_HELD when the town held, EV_XP_FELL when it fell
-// (an admin's STOP: nothing). Tuned so a new player who fights reaches level 2 in about one raid,
-// held or fallen, with 1 player or 16 (raid-proof.sh RAID_MODE=fight RAID_LEVEL2=1).
+// among those who took part). A ward stone gives EV_XP_WARD the same way; one of the watch nothing.
+// When the camp falls, each seat that earned XP in the siege gets EV_XP_HELD (an admin's STOP:
+// nothing). Tuned so a new player who fights reaches level 2 in about one push to the camp
+// (raid-proof.sh RAID_MODE=fight RAID_LEVEL2=1).
 EV_XP_SRD_X :: 2;               // the raid pays twice the SRD's XP for each raider
 EV_XP_CULTIST :: 25;            // SRD: Cultist, CR 1/8
 EV_XP_FANATIC :: 450;           // SRD: Cultist Fanatic, CR 2
 EV_XP_WARLOCK :: [3] int.[50, 100, 200];   // Warlock, level 1 to 3: CR 1/4, 1/2, 1 (a house rule)
 EV_XP_WARD :: 100;              // a ward stone
-EV_XP_HELD :: 200;              // the town held
-EV_XP_FELL :: 150;              // the town fell
+EV_XP_HELD :: 200;              // the camp fell: each seat that earned XP in the siege
 EV_DEMO_FLAG :: 64;             // the hello's FLAGS bit: an admin plays Everglade's own character, the demo
 EV_XP_MAX :: 9999999;
 EV_G :: 160;                    // the g entry's bytes at most
 // the raid (spec 4 and 5): at most this many raiders stand at once, waves together
-EV_STANDING_MAX :: 60;          // (with Darian Odiodei and 3 ward stones, the raid's 64 places: E5RD_MAX)
-EV_SQUARE_PLAYER :: 2;
+EV_LONG_S :: 86400;             // s: the siege's phases run until something ends them
+EV_QUIET_S :: 90;               // s with no seat's help that take the stand at the camp back to the siege
+EV_STAND_BACK :: 8.0;           // m the line falls back from RF_STAND_Z that ends the stand
+EV_WORTH_AT :: 24;              // the watch's cap the players' worth is tuned at (raid_siege_caps(12))
 EV_RISE_S :: 10;                // s a fallen player lies before standing again, whole, where they fell          // on the square a player counts as this many of the town
-EV_SQUARE_R :: 18.0;            // m: the square, about its well (plan.coax EG_SQUARE 0)
 EV_GATES :: 5;                  // the dial's bits: plan.coax EG_GATE's four (South, North, East, West), then the river bridge
 EV_OUT_M :: 20.0;               // m outside its gate a raider comes from
 // the town's places (verse/everglade/plan.coax, which the room server doesn't load: keep them alike)
@@ -82,6 +88,7 @@ RmEvents :: struct {
   known: bool;                  // the API has answered once (until then, nothing starts)
   start_seen: int; stop_seen: int;
   slot: int = -1;               // the schedule's period last started (wall ms / EVERY minutes)
+  siege: bool;                  // the siege stands: START or the schedule began it, STOP ends it (every room, new ones too)
   levels: bool = true;          // the levels switch as the rooms last applied it
   cap: int = 2;                 // and the cap
 }
@@ -105,6 +112,14 @@ EvRoom :: struct {
   down: [EG_SEATS] int;                // each seat: the seconds it has lain dead (ev_rise)
   fought: [EG_SEATS] int;              // each seat: the tick + 1 it last cast or lost Hit Points (0 never), for the Long Rest
   hp_was: [EG_SEATS] int;              // its Hit Points at the last second (ev_calm)
+  // the standing siege's (#12860)
+  front: [1] RfFront;                  // the line on the south road
+  pts: [EG_SEATS] f32;                 // each seat's help, fading (everglade-raid-scale.coax raid_player_worth)
+  worth: f32;                          // the players' worth on the line last second, in fighters
+  town: int;                           // the watch standing
+  caps: [2] int;                       // each side's fighters at most (RF_CULT, RF_TOWN)
+  tsent: int;                          // the watch sent so far
+  quiet: int;                          // s with no seat's help
 }
 
 // ---- the dials, from the API
@@ -152,11 +167,17 @@ ev_control_done :: (v: [] RmServer) {
   } else {
     if d.stop != v[0].evc.stop_seen {
       v[0].evc.stop_seen = d.stop;
+      v[0].evc.siege = false;
       for k: 0..<EG_ROOMS { if v[0].eg[k].live { ev_stop(v, k); } }
     }
     if d.start != v[0].evc.start_seen {
       v[0].evc.start_seen = d.start;
-      if d.on { for k: 0..<EG_ROOMS { if v[0].eg[k].live { ev_start(v, k); } } }
+      if d.on { v[0].evc.siege = true; for k: 0..<EG_ROOMS { if v[0].eg[k].live { ev_start(v, k); } } }
+    }
+    // events off: the siege ends everywhere
+    if !d.on && v[0].evc.siege {
+      v[0].evc.siege = false;
+      for k: 0..<EG_ROOMS { if v[0].eg[k].live { ev_stop(v, k); } }
     }
   }
   if d.levels != v[0].evc.levels || d.cap != v[0].evc.cap {
@@ -310,17 +331,16 @@ ev_phase :: (v: [] RmServer, k: int, phase: int, secs: int) {
   v[0].ev[k].phase = phase;
   v[0].ev[k].until = v[0].eg[k].tick + ev_secs(secs);
 }
-// A raid starts in room k now (one already running goes on).
+// A raid starts in room k now (one already running goes on): the announcement, then the siege.
 ev_start :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
   if e[0].phase != EV_IDLE { return; }
   e[0].kind = EV_RAID; e[0].wave = 0; e[0].standing = 0; e[0].slain = 0; e[0].outcome = EV_OUT_NONE;
-  e[0].arch = EV_ARCH_AWAY; e[0].wards = 0; e[0].square = 0;
-  for s: 0..<EG_SEATS { e[0].earned[s] = false; }
-  e[0].ends = v[0].eg[k].tick + ev_secs(v[0].evc.d.minutes * 60);
+  e[0].arch = EV_ARCH_AWAY; e[0].wards = 0; e[0].square = 0; e[0].town = 0;
+  for s: 0..<EG_SEATS { e[0].earned[s] = false; e[0].pts[s] = 0; }
   ev_phase(v, k, EV_ANNOUNCE, EV_ANNOUNCE_S);
 }
-// An admin's STOP: called off, the raiders gone, no bonus.
+// An admin's STOP: called off, the raiders and the watch gone, no bonus.
 ev_stop :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
   if e[0].phase == EV_IDLE || e[0].phase == EV_END || e[0].phase == EV_AFTER { return; }
@@ -329,11 +349,11 @@ ev_stop :: (v: [] RmServer, k: int) {
 }
 ev_end :: (v: [] RmServer, k: int, outcome: int) {
   e := v[0].ev[k..<k + 1];
-  // the raiders that fell this tick first: a town that falls still pays for its last kills
+  // the raiders that fell this tick first: the camp's fall still pays for its last kills
   ev_raid_downs(v, k);
   e[0].outcome = outcome;
-  award := ifx outcome == EV_OUT_HELD then EV_XP_HELD else (ifx outcome == EV_OUT_FELL then EV_XP_FELL else 0);
-  if award > 0 { for s: 0..<EG_SEATS { if e[0].earned[s] { ev_award(v, k, s, award); } } }
+  if outcome == EV_OUT_HELD { for s: 0..<EG_SEATS { if e[0].earned[s] { ev_award(v, k, s, EV_XP_HELD); } } }
+  ev_rules(v, k)[0].raid[0].stand = false;
   ev_phase(v, k, EV_END, EV_END_S);
 }
 // The town's people standing (of those the world has out of doors and in the rules).
@@ -375,10 +395,13 @@ ev_tick :: (v: [] RmServer, k: int) {
     if v[0].evc.slot < 0 { v[0].evc.slot = slot; }
     if slot != v[0].evc.slot {
       v[0].evc.slot = slot;
+      v[0].evc.siege = true;
       for q: 0..<EG_ROOMS { if v[0].eg[q].live { ev_start(v, q); } }
     }
   }
   if t % EG_HZ == 0 { ev_rise(v, k); ev_calm(v, k); }
+  // the siege stands in every room while it is on, a new room's too
+  if t % EG_HZ == 0 && v[0].evc.siege && d.on && e[0].phase == EV_IDLE { ev_start(v, k); }
   if e[0].phase != EV_IDLE {
     if t % EG_HZ == 0 { ev_second(v, k); }
     if t >= e[0].until { ev_next(v, k); }
@@ -440,49 +463,150 @@ ev_long_rest :: (v: [] RmServer, k: int, s: int) {
   for u: 0..<RS_USES { c[0].uses[u] = c[0].uses_max[u]; }
   v[0].ev[k].hp_was[s] = c[0].hp;
 }
-// Once a second while an event runs: what it counts, and the ends that come early.
+// Once a second while an event runs: what it counts, and the siege's second.
 ev_second :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
-  e[0].standing = ev_raid_standing(v, k);
+  e[0].standing = e5rd_standing(ev_rules(v, k));
   e[0].folk = ev_folk_up(v, k);
-  p := e[0].phase;
-  if p != EV_WAVE && p != EV_LULL && p != EV_CLIMAX { return; }
-  if e[0].kind == EV_RAID { ev_raid_square(v, k); }
-  if ev_folk_known(v, k) && e[0].folk == 0 { ev_raid_clear(v, k); ev_end(v, k, EV_OUT_FELL); return; }
-  if e[0].square >= ev_secs(60) { ev_raid_clear(v, k); ev_end(v, k, EV_OUT_FELL); return; }
-  if v[0].eg[k].tick >= e[0].ends { ev_raid_clear(v, k); ev_end(v, k, ifx e[0].square > 0 then EV_OUT_FELL else EV_OUT_HELD); return; }
-  // a wave that is down ends early: the lull comes at once
-  if p == EV_WAVE && e[0].standing == 0 { e[0].until = v[0].eg[k].tick; }
-  if p == EV_CLIMAX && e[0].arch == EV_ARCH_GONE { ev_end(v, k, EV_OUT_HELD); }
+  if e[0].kind == EV_RAID && (e[0].phase == EV_SIEGE || e[0].phase == EV_STAND) { ev_siege_second(v, k); }
 }
 // The phase is over: the next one.
 ev_next :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
-  d := v[0].evc.d;
   p := e[0].phase;
-  if p == EV_ANNOUNCE || p == EV_LULL {
-    e[0].wave += 1;
-    ev_phase(v, k, EV_WAVE, EV_WAVE_S);
-    ev_raid_wave(v, k);
-    e[0].standing = ev_raid_standing(v, k);
-    return;
-  }
-  if p == EV_WAVE {
-    if e[0].wave < d.waves { ev_phase(v, k, EV_LULL, EV_LULL_S); return; }
-    if d.arch { ev_phase(v, k, EV_CLIMAX, EV_CLIMAX_S); ev_raid_arch(v, k); return; }
-    // no leader: the town held once the last wave is down (it fights on until it is)
-    if e[0].standing == 0 { ev_end(v, k, EV_OUT_HELD); } else { e[0].until = v[0].eg[k].tick + EG_HZ; }
-    return;
-  }
-  // the climax's time up: Darian Odiodei withdraws, and the town held (the square, lost, already ended it: ev_second)
-  if p == EV_CLIMAX { ev_raid_withdraw(v, k); ev_end(v, k, EV_OUT_HELD); return; }
+  if p == EV_ANNOUNCE { ev_siege_begin(v, k); return; }
+  if p == EV_SIEGE || p == EV_STAND || p == EV_WAVE || p == EV_LULL || p == EV_CLIMAX { e[0].until = v[0].eg[k].tick + ev_secs(EV_LONG_S); return; }
   if p == EV_END { ev_raid_flee(v, k); ev_phase(v, k, EV_AFTER, EV_AFTER_S); return; }
   if p == EV_AFTER {
     ev_raid_clear(v, k);
     ev_rebuild(v, k);
+    ev_rules(v, k)[0].raid[0].siege = false;
+    // the camp fell: the cult regroups and musters again while the siege is on
+    if e[0].outcome == EV_OUT_HELD && v[0].evc.siege && v[0].evc.d.on { ev_siege_begin(v, k); return; }
     e[0].phase = EV_IDLE; e[0].kind = EV_NONE;
     return;
   }
+}
+
+// ---- the standing siege (#12860; spec section 4)
+
+// The siege begins (or the cult musters again): the line in the middle, the camp's three ward stones
+// and Darian Odiodei behind them (the arch dial), and both sides at their caps, from the camp and the
+// South Gate.
+ev_siege_begin :: (v: [] RmServer, k: int) {
+  e := v[0].ev[k..<k + 1];
+  r := ev_rules(v, k);
+  d := v[0].evc.d;
+  e[0].front[0] = rf_fresh();
+  r[0].raid[0].siege = true; r[0].raid[0].stand = false; r[0].raid[0].front_z = e[0].front[0].z;
+  raid_siege_caps(d.size, e[0].caps[..]);
+  e[0].outcome = EV_OUT_NONE; e[0].arch = EV_ARCH_AWAY; e[0].quiet = 0;
+  for n: 0..<RS_NPCS { e[0].mix[n] = 0; }
+  ev_phase(v, k, EV_SIEGE, EV_LONG_S);
+  o: [2] f32;
+  wards := 0;
+  for n: 0..<3 { rf_ward_at(n, o[..]); if e5rd_ward(r, o[0], o[1]) > 0 { wards += 1; } }
+  e5rd_wards_hold(r, true);
+  e[0].wards = wards;
+  if d.arch {
+    id := e5rd_arch(r, 0, f32(RF_CAMP_Z) - 4, 0, f32(RF_CAMP_Z), 0, f32(RF_CAMP_Z) - 4);
+    e[0].arch = ifx id <= 0 then EV_ARCH_GONE else EV_ARCH_WARDED;
+  }
+  ev_muster(v, k, RF_CULT, e[0].caps[RF_CULT]);
+  ev_muster(v, k, RF_TOWN, e[0].caps[RF_TOWN]);
+  e[0].front[0].due[RF_CULT] = f32(RF_EVERY_S); e[0].front[0].due[RF_TOWN] = f32(RF_EVERY_S);
+  e[0].standing = e5rd_standing(r); e[0].town = e5rd_town_standing(r);
+}
+// n of side's fighters come: the cult's from its camp, the watch's from inside the South Gate.
+ev_muster :: (v: [] RmServer, k: int, side: int, n: int) {
+  for m: 0..<n { if !(ifx side == RF_CULT then ev_cult_one(v, k) else ev_town_one(v, k)) { return; } }
+}
+// The cult's next: its stat block by the dials' parts (each the most behind its share), about the camp.
+ev_cult_one :: (v: [] RmServer, k: int) -> bool {
+  e := v[0].ev[k..<k + 1];
+  d := v[0].evc.d;
+  kinds := [3] int.[RS_NPC_CULTIST, RS_NPC_FANATIC, RS_NPC_WARLOCK];
+  parts: [3] int;
+  raid_wave_parts(d.cult, d.fan, d.wl, 1, 1, parts[..]);
+  total := parts[0] + parts[1] + parts[2];
+  made := 0; for c: 0..<3 { made += e[0].mix[kinds[c]]; }
+  npc := RS_NPC_CULTIST; lag := -1000000;
+  for c: 0..<3 {
+    if parts[c] <= 0 { continue; }
+    l := parts[c] * (made + 1) - e[0].mix[kinds[c]] * total;
+    if l > lag { lag = l; npc = kinds[c]; }
+  }
+  level := 1;
+  if npc == RS_NPC_WARLOCK { level = 1 + e[0].number[RS_NPC_WARLOCK] % rs_max(d.wlmax, 1); }
+  p: [2] f32;
+  rf_muster(RF_CULT, e[0].sent, p[..]);
+  x := p[0] + ev_jitter(v, k, 0.5); z := p[1] + ev_jitter(v, k, 0.5);
+  id := e5rd_raider(ev_rules(v, k), npc, level, e[0].number[npc] + 1, x, z, ev_way(0), e[0].sent / RT_SQUAD, e[0].sent % RT_SQUAD, x, z);
+  if id <= 0 { return false; }
+  q := ev_slot_of(v, k, id);
+  if q >= 0 { e[0].hurt[q] = 0; }
+  e[0].number[npc] += 1; e[0].mix[npc] += 1; e[0].sent += 1;
+  return true;
+}
+// The watch's next (everglade-raid-front.coax RF_TOWN_MIX), just inside the South Gate.
+ev_town_one :: (v: [] RmServer, k: int) -> bool {
+  e := v[0].ev[k..<k + 1];
+  npc := rf_town_npc(e[0].tsent);
+  p: [2] f32;
+  rf_muster(RF_TOWN, e[0].tsent, p[..]);
+  id := e5rd_defender(ev_rules(v, k), npc, e[0].number[npc] + 1, p[0] + ev_jitter(v, k, 0.3), p[1] + ev_jitter(v, k, 0.3), ev_way(0));
+  if id <= 0 { return false; }
+  q := ev_slot_of(v, k, id);
+  if q >= 0 { e[0].hurt[q] = 0; }
+  e[0].number[npc] += 1; e[0].tsent += 1;
+  return true;
+}
+// The siege's second: the players' worth, the line's move, each side's reinforcements, the stand at
+// the camp and the camp's fall.
+ev_siege_second :: (v: [] RmServer, k: int) {
+  e := v[0].ev[k..<k + 1];
+  r := ev_rules(v, k);
+  w := r[0].raid[..];
+  d := v[0].evc.d;
+  raid_siege_caps(d.size, e[0].caps[..]);
+  n_cult := e5rd_standing(r); n_town := e5rd_town_standing(r);
+  e[0].standing = n_cult; e[0].town = n_town;
+  // each seat's help fades; what is left is its worth on the line
+  worth: f32 = 0; helped := false;
+  for s: 0..<EG_SEATS {
+    if !v[0].eg[k].seat[s].live { e[0].pts[s] = 0; continue; }
+    e[0].pts[s] = raid_points_fade(e[0].pts[s], 1);
+    if e[0].pts[s] < 0.5 { e[0].pts[s] = 0; }
+    if e[0].pts[s] > 0 { helped = true; }
+    worth += raid_player_worth(e[0].pts[s]);
+  }
+  worth = worth * f32(e[0].caps[RF_TOWN]) / f32(EV_WORTH_AT);
+  e[0].worth = worth;
+  rf_step_caps(e[0].front[..], n_cult, e[0].caps[RF_CULT], n_town, e[0].caps[RF_TOWN], worth, 1);
+  w[0].front_z = e[0].front[0].z;
+  // reinforcements: the cult's but at the stand, the watch's always
+  if e[0].phase == EV_SIEGE && rf_due(e[0].front[..], RF_CULT) { ev_muster(v, k, RF_CULT, rf_wave(e[0].caps[RF_CULT], n_cult)); }
+  if rf_due(e[0].front[..], RF_TOWN) { ev_muster(v, k, RF_TOWN, rf_wave(e[0].caps[RF_TOWN], n_town)); }
+  e[0].quiet = ifx helped then 0 else e[0].quiet + 1;
+  e[0].wards = e5rd_wards(r);
+  z := e[0].front[0].z;
+  if e[0].phase == EV_SIEGE && z <= f32(RF_STAND_Z) {
+    // the line at the camp: its stones can break, Darian makes his stand
+    ev_phase(v, k, EV_STAND, EV_LONG_S);
+    w[0].stand = true; e5rd_wards_hold(r, false);
+  } else if e[0].phase == EV_STAND && (z > f32(RF_STAND_Z) + f32(EV_STAND_BACK) || e[0].quiet >= EV_QUIET_S) {
+    ev_phase(v, k, EV_SIEGE, EV_LONG_S);
+    w[0].stand = false; e5rd_wards_hold(r, true);
+  }
+  // the camp falls: Darian withdrawn (or, with no Darian, every stone broken)
+  if e[0].phase == EV_STAND && ((e[0].arch == EV_ARCH_GONE) || (e[0].arch == EV_ARCH_AWAY && e[0].wards == 0)) { ev_end(v, k, EV_OUT_HELD); }
+}
+// Seat s repaired a piece of the town (the palisade or the stables) during the siege: its help on
+// the line, as a kill's or a heal's is (the Repair ability calls it).
+ev_repair :: (v: [] RmServer, k: int, s: int) {
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS { return; }
+  p := v[0].ev[k].phase;
+  if p == EV_SIEGE || p == EV_STAND { v[0].ev[k].pts[s] += f32(RAID_PTS_REPAIR); }
 }
 
 // ---- the raid's content: the waves, the ward stones and the leader as creatures of the room's
@@ -512,102 +636,12 @@ ev_way :: (g: int) -> RtGate {
   along_z := EV_GATE[g * 4 + 3] > 0.5;
   return rt_gate(p[0], p[1], EV_GATE[g * 4 + 2], along_z, ifx along_z then -56.0f32 else -64.0f32, ifx along_z then 60.0f32 else 64.0f32, EV_SQUARE[0], EV_SQUARE[1]);
 }
-// The n-th gate of those the dial picked (any of them, in turn).
-ev_gate_of :: (v: [] RmServer, n: int) -> int {
-  bits := v[0].evc.d.gates;
-  on := 0; for g: 0..<EV_GATES { if (bits & (1 << g)) != 0 { on += 1; } }
-  if on == 0 { return n % EV_GATES; }
-  m := n % on;
-  for g: 0..<EV_GATES { if (bits & (1 << g)) != 0 { if m == 0 { return g; } m -= 1; } }
-  return 0;
-}
 ev_jitter :: (v: [] RmServer, k: int, m: f32) -> f32 { return f32(rs_roll(v[0].eg[k].rules[0].b[0].dice[..], 2001) - 1001) / 1000.0 * m; }
 // The raid creature whose beast id is id: its place among the beasts, -1 none.
 ev_slot_of :: (v: [] RmServer, k: int, id: int) -> int {
   if id <= 0 { return -1; }
   for q: 0..<E5RR_BEASTS { if v[0].eg[k].rules[0].beasts[q].tag == id { return q; } }
   return -1;
-}
-// The next raider of the wave: its stat block by the dials' parts (each the most behind its share),
-// its gate in turn (groups of up to 8), a little apart outside it.
-ev_raid_one :: (v: [] RmServer, k: int) -> bool {
-  e := v[0].ev[k..<k + 1];
-  d := v[0].evc.d;
-  kinds := [3] int.[RS_NPC_CULTIST, RS_NPC_FANATIC, RS_NPC_WARLOCK];
-  // this wave's mix and its Warlocks' top level (apps/openagents-web/everglade-raid-scale.coax)
-  parts: [3] int;
-  raid_wave_parts(d.cult, d.fan, d.wl, e[0].wave, d.waves, parts[..]);
-  wlmax := raid_wave_wlmax(d.wlmax, e[0].wave, d.waves);
-  total := parts[0] + parts[1] + parts[2];
-  made := 0; for c: 0..<3 { made += e[0].mix[kinds[c]]; }
-  npc := RS_NPC_CULTIST; lag := -1000000;
-  for c: 0..<3 {
-    if parts[c] <= 0 { continue; }
-    l := parts[c] * (made + 1) - e[0].mix[kinds[c]] * total;
-    if l > lag { lag = l; npc = kinds[c]; }
-  }
-  level := 1;
-  if npc == RS_NPC_WARLOCK { level = 1 + e[0].number[RS_NPC_WARLOCK] % wlmax; }
-  g: [4] f32;
-  gate := ev_gate_of(v, e[0].sent / 8);
-  ev_gate(gate, g[..]);
-  // across the road from it, two deep, clear of the players' spawn
-  ox := g[2] - g[0]; oz := g[3] - g[1]; od := sqrt(ox * ox + oz * oz); ox /= od; oz /= od;
-  side := f32(e[0].sent % 8) - 3.5;
-  p: [2] f32;
-  rt_clear(g[2] + oz * side * 1.4 + ox * f32((e[0].sent % 8) / 4) * 1.6 + ev_jitter(v, k, 0.4),
-           g[3] - ox * side * 1.4 + oz * f32((e[0].sent % 8) / 4) * 1.6 + ev_jitter(v, k, 0.4),
-           f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R) + 2, p[..]);
-  x := p[0]; z := p[1];
-  // its way in (a gate in the wall, or the bridge: no wall), its squad, and its own place about the square
-  way := ev_way(gate);
-  rt_ring(e[0].sent, EV_SQUARE[0], EV_SQUARE[1], 3, f32(EV_SQUARE_R) - 3, p[..]);
-  id := e5rd_raider(ev_rules(v, k), npc, level, e[0].number[npc] + 1, x, z, way, e[0].sent / RT_SQUAD, e[0].sent % RT_SQUAD, p[0], p[1]);
-  if id <= 0 { return false; }
-  q := ev_slot_of(v, k, id);
-  if q >= 0 { e[0].hurt[q] = 0; }
-  e[0].number[npc] += 1; e[0].mix[npc] += 1; e[0].sent += 1;
-  return true;
-}
-// The wave's raiders come: as many as stand room for, the rest as others fall.
-ev_raid_spawn :: (v: [] RmServer, k: int) {
-  e := v[0].ev[k..<k + 1];
-  while e[0].pending > 0 && e5rd_standing(ev_rules(v, k)) < EV_STANDING_MAX {
-    if !ev_raid_one(v, k) { return; }
-    e[0].pending -= 1;
-  }
-}
-ev_raid_wave :: (v: [] RmServer, k: int) {
-  e := v[0].ev[k..<k + 1];
-  for n: 0..<RS_NPCS { e[0].mix[n] = 0; }
-  e[0].pending += raid_wave_size(v[0].evc.d.size, ev_players(v, k));   // the SIZE dial for the players here
-  ev_raid_spawn(v, k);
-}
-// The climax: three ward stones raised just inside three of the gates, and Darian Odiodei at the
-// first, holding behind his lines.
-ev_raid_arch :: (v: [] RmServer, k: int) {
-  e := v[0].ev[k..<k + 1];
-  r := ev_rules(v, k);
-  g: [4] f32;
-  wards := 0;
-  for n: 0..<3 {
-    ev_gate(ev_gate_of(v, n) % 4, g[..]);   // a stone stands at a gate in the wall (the bridge's go to the wall's)
-    ix := -g[0]; iz := -g[1]; d := sqrt(ix * ix + iz * iz);
-    if e5rd_ward(r, g[0] + ix / d * 6 + f32(n) * 0.01, g[1] + iz / d * 6) > 0 { wards += 1; }
-  }
-  // Darian at the first gate, coming from outside it; with none of his lines left he holds 10 m inside it
-  ev_gate(ev_gate_of(v, 0), g[..]);
-  ex := g[0] - EV_SQUARE[0]; ez := g[1] - EV_SQUARE[1]; ed := sqrt(ex * ex + ez * ez);
-  p: [2] f32;
-  rt_clear(g[2], g[3], f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R) + 2, p[..]);
-  id := e5rd_arch(r, p[0], p[1], g[0], g[1], g[0] - ex / ed * 10, g[1] - ez / ed * 10);
-  e[0].wards = wards;
-  e[0].arch = ifx id <= 0 then EV_ARCH_GONE else (ifx wards > 0 then EV_ARCH_WARDED else EV_ARCH_EXPOSED);
-  if id > 0 && wards == 0 { e5rd_expose(r); }
-}
-ev_raid_withdraw :: (v: [] RmServer, k: int) {
-  if v[0].ev[k].arch != EV_ARCH_AWAY && v[0].ev[k].arch != EV_ARCH_GONE { _ := e5rd_withdraw(ev_rules(v, k)); }
-  if v[0].ev[k].arch != EV_ARCH_AWAY { v[0].ev[k].arch = EV_ARCH_GONE; }
 }
 ev_raid_flee :: (v: [] RmServer, k: int) { v[0].ev[k].pending = 0; e5rd_flee(ev_rules(v, k)); if v[0].ev[k].arch != EV_ARCH_AWAY { v[0].ev[k].arch = EV_ARCH_GONE; } }
 ev_raid_clear :: (v: [] RmServer, k: int) { ev_raid_downs(v, k); v[0].ev[k].pending = 0; e5rd_clear(ev_rules(v, k)); }
@@ -624,37 +658,33 @@ ev_players :: (v: [] RmServer, k: int) -> int {
   for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { n += 1; } }
   return n;
 }
-// The raiders standing, and those of the wave still to come.
-ev_raid_standing :: (v: [] RmServer, k: int) -> int { return e5rd_standing(ev_rules(v, k)) + v[0].ev[k].pending; }
-// The square's second (spec 3.3): the cult holds it while more of it stand there than the town, each
-// player there counting EV_SQUARE_PLAYER and each townsperson one.
-ev_raid_square :: (v: [] RmServer, k: int) {
+// The engine's event (room-everglade.coax eg_engine_events): a seat's harm to one of the cult, or its
+// summons', is that seat's share of its XP and its help on the siege's line (amount points); a seat's
+// healing of a player or of the watch is help too.
+ev_engine :: (v: [] RmServer, k: int, kind: int, by: int, who: int, amount: int) {
   e := v[0].ev[k..<k + 1];
-  r := ev_rules(v, k);
-  cult := e5rd_in(r, EV_SQUARE[0], EV_SQUARE[1], f32(EV_SQUARE_R), false);
-  town := e5rd_in(r, EV_SQUARE[0], EV_SQUARE[1], f32(EV_SQUARE_R), true) * EV_SQUARE_PLAYER;
-  b := r[0].b[..];
-  for j: 0..<E5R_FOLK {
-    i := E5RR_FOLK0 + j;
-    if !e5rd_up(r, i) { continue; }
-    dx := r[0].folk_x[j] - EV_SQUARE[0]; dz := r[0].folk_z[j] - EV_SQUARE[1];
-    if dx * dx + dz * dz <= f32(EV_SQUARE_R) * f32(EV_SQUARE_R) { town += 1; }
-  }
-  if cult > town { e[0].square += EG_HZ; } else { e[0].square = 0; }
-}
-// The engine's event (room-everglade.coax eg_engine_events): a seat's harm to a raid creature, or its
-// summons', is that seat's share of its XP.
-ev_engine :: (v: [] RmServer, k: int, kind: int, by: int, who: int) {
-  if kind != RS_EV_DAMAGE || who <= E5RR_TGT_BEAST || v[0].ev[k].phase == EV_IDLE { return; }
-  q := ev_slot_of(v, k, who - E5RR_TGT_BEAST);
-  if q < 0 || v[0].eg[k].rules[0].beasts[q].form < E5RR_FORM_RAID { return; }
+  if e[0].phase == EV_IDLE || (kind != RS_EV_DAMAGE && kind != RS_EV_HEAL) { return; }
   s := -1;
   if by >= EG_TGT_SEAT && by < EG_TGT_SEAT + EG_SEATS { s = by - EG_TGT_SEAT; }
   else if by > E5RR_TGT_BEAST {
     o := ev_slot_of(v, k, by - E5RR_TGT_BEAST);
     if o >= 0 { s = v[0].eg[k].rules[0].beasts[o].by; }
   }
-  if s >= 0 && s < EG_SEATS { v[0].ev[k].hurt[q] = v[0].ev[k].hurt[q] | (1 << s); }
+  if s < 0 || s >= EG_SEATS { return; }
+  siege := e[0].phase == EV_SIEGE || e[0].phase == EV_STAND;
+  if kind == RS_EV_HEAL {
+    if !siege { return; }
+    town := false;
+    if who > E5RR_TGT_BEAST { q := ev_slot_of(v, k, who - E5RR_TGT_BEAST); town = q >= 0 && e5rd_town(v[0].eg[k].rules[0].beasts[q]); }
+    if town || (who >= EG_TGT_SEAT && who < EG_TGT_SEAT + EG_SEATS) { e[0].pts[s] += f32(rs_max(amount, 0) * RAID_PTS_HEAL); }
+    return;
+  }
+  if who <= E5RR_TGT_BEAST { return; }
+  q := ev_slot_of(v, k, who - E5RR_TGT_BEAST);
+  f := ifx q >= 0 then v[0].eg[k].rules[0].beasts[q].form else 0;
+  if q < 0 || f < E5RR_FORM_RAID || (f > E5RR_FORM_RAID && f <= E5RR_FORM_RAID + RS_NPC_SCOUT) { return; }   // the cult's (one just fallen keeps its tag and form)
+  e[0].hurt[q] = e[0].hurt[q] | (1 << s);
+  if siege { e[0].pts[s] += f32(rs_max(amount, 0)); }
 }
 // A raid creature's XP (EV_XP_*): a warlock's by its level, EV_XP_SRD_X times the SRD's.
 ev_xp_for :: (npc: int, level: int) -> int {
@@ -668,9 +698,12 @@ ev_xp_for :: (npc: int, level: int) -> int {
 // creature they summoned), however far they stand now and whoever struck last (each at least 1).
 ev_fell :: (v: [] RmServer, k: int, dn: E5rdDown) {
   e := v[0].ev[k..<k + 1];
-  if dn.npc != 0 { e[0].slain += 1; }
   bits := ifx dn.q >= 0 && dn.q < E5RR_BEASTS then e[0].hurt[dn.q] else 0;
   if dn.q >= 0 && dn.q < E5RR_BEASTS { e[0].hurt[dn.q] = 0; }
+  if dn.npc >= RS_NPC_GUARD && dn.npc <= RS_NPC_SCOUT { return; }   // one of the watch: no XP (#12860)
+  if dn.npc != 0 { e[0].slain += 1; }
+  siege := e[0].phase == EV_SIEGE || e[0].phase == EV_STAND;
+  for s: 0..<EG_SEATS { if siege && (bits & (1 << s)) != 0 { e[0].pts[s] += f32(ifx dn.npc == 0 then RAID_PTS_WARD else RAID_PTS_KILL); } }
   n := 0;
   for s: 0..<EG_SEATS { if (bits & (1 << s)) != 0 && v[0].eg[k].seat[s].live { n += 1; } }
   if n == 0 { return; }
@@ -678,7 +711,7 @@ ev_fell :: (v: [] RmServer, k: int, dn: E5rdDown) {
   for s: 0..<EG_SEATS { if (bits & (1 << s)) != 0 && v[0].eg[k].seat[s].live { ev_award(v, k, s, share); } }
 }
 // Each tick while the raid runs: what its creatures cast reaches the pages (and the town, when its
-// damage dial is on), who fell gets its XP, the wave's rest come, the wards and the leader.
+// damage dial is on), who fell gets its XP, the wards and the leader.
 ev_raid_step :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
   r := ev_rules(v, k);
@@ -688,7 +721,6 @@ ev_raid_step :: (v: [] RmServer, k: int) {
   w[0].aggr = d.aggr; w[0].harm = d.harm;
   ev_raid_downs(v, k);
   if v[0].eg[k].tick % EG_HZ == 0 {
-    if e[0].phase == EV_WAVE || e[0].phase == EV_LULL || e[0].phase == EV_CLIMAX { ev_raid_spawn(v, k); }
     if e[0].arch == EV_ARCH_WARDED || e[0].arch == EV_ARCH_EXPOSED {
       e[0].wards = e5rd_wards(r);
       if e[0].arch == EV_ARCH_WARDED && e[0].wards == 0 { e[0].arch = EV_ARCH_EXPOSED; e5rd_expose(r); }
@@ -751,6 +783,7 @@ ev_beast_f :: (v: [] RmServer, k: int, q: int) -> int {
 // The seconds the banner counts: the phase's, or (idle) to the next scheduled start (-1 none).
 ev_banner_secs :: (v: [] RmServer, k: int) -> int {
   e := v[0].ev[k];
+  if e.phase == EV_SIEGE || e.phase == EV_STAND { return 0; }
   if e.phase != EV_IDLE { return rs_max((e.until - v[0].eg[k].tick + EG_HZ - 1) / EG_HZ, 0); }
   d := v[0].evc.d;
   if !d.on || d.every <= 0 { return -1; }
@@ -764,15 +797,20 @@ ev_cache :: (v: [] RmServer, k: int) {
   e[0].g_tick = v[0].eg[k].tick;
   d := v[0].evc.d;
   kind := ifx e[0].phase != EV_IDLE then e[0].kind else (ifx d.on && d.every > 0 then EV_RAID else EV_NONE);
-  left := ifx e[0].phase == EV_IDLE then 0 else rs_max((e[0].ends - v[0].eg[k].tick + EG_HZ - 1) / EG_HZ, 0);
   b := e[0].g[..];
   n := wire_put(b, 0, "g");
-  n = wire_int(b, n, kind); n = wire_int(b, n, e[0].phase); n = wire_int(b, n, e[0].wave); n = wire_int(b, n, d.waves);
-  n = wire_int(b, n, ev_banner_secs(v, k)); n = wire_int(b, n, left);
-  n = wire_int(b, n, e[0].standing); n = wire_int(b, n, e[0].slain); n = wire_int(b, n, e[0].square / EG_HZ);
+  n = wire_int(b, n, kind); n = wire_int(b, n, e[0].phase); n = wire_int(b, n, 0); n = wire_int(b, n, 0);
+  n = wire_int(b, n, ev_banner_secs(v, k)); n = wire_int(b, n, 0);
+  n = wire_int(b, n, e[0].standing); n = wire_int(b, n, e[0].slain); n = wire_int(b, n, 0);
   n = wire_int(b, n, e[0].wards); n = wire_int(b, n, e[0].arch); n = wire_int(b, n, e[0].outcome); n = wire_int(b, n, e[0].folk);
   n = wire_int(b, n, ifx d.levels then 1 else 0); n = wire_int(b, n, d.cap);
-  n = wire_int(b, n, ev_players(v, k));   // the players the waves are for (the EVENTS pane shows the scale)
+  n = wire_int(b, n, ev_players(v, k));   // the players here (the EVENTS pane)
+  // the standing siege (#12860): the line, the watch, and each side's cap
+  siege := e[0].phase == EV_SIEGE || e[0].phase == EV_STAND || e[0].phase == EV_END || e[0].phase == EV_AFTER;
+  n = wire_int(b, n, ifx siege then int(rf_u(e[0].front[0].z) * 1000 + 0.5) else 500);
+  n = wire_int(b, n, e[0].town);
+  caps: [2] int; raid_siege_caps(d.size, caps[..]);
+  n = wire_int(b, n, caps[RF_CULT]); n = wire_int(b, n, caps[RF_TOWN]);
   e[0].g_n = n; e[0].g_h = eg_hash(cast(string) b[0..<n]);
 }
 // Seat s's D (room-everglade.coax eg_send): the g entry and each seat's v, on change.
@@ -863,120 +901,82 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   return n;
 }
 
-#test "events: a raid's waves come by the gates and fall for XP; Darian behind his wards can't be hurt, then withdraws; the town held" #steps 16000000000 {
+#test "events: the siege musters both sides at their caps, the cult at its camp and the watch at the South Gate; the cult's fall pays XP, the watch's none; Darian and his stones can't be hurt till the stand; the camp falls and the cult musters again (#12860)" #steps 30000000000 {
   v: [1] RmServer;
   box: [1] EgInbox;
   k := ev_test_server(v[..]);
-  // two waves of 24 at 5 players (10 for these 2): 6 Cultists, 1 Fanatic, 3 Warlocks in parts by the
-  // last wave, levels 1 to 3; all gates; the leader on
-  rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 0 0\n");
-  rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 1 0\n");
-  #assert v[0].ev[k].until == v[0].eg[k].tick + ev_secs(EV_ANNOUNCE_S);
-  eg_test_tick(v[..], k);
-  eg_test_drain(v[..], box[..]);
-  #assert eg_test_has(eg_test_of(box[..], 0), ";g 1 1 0 2 30 900 ") && eg_test_has(eg_test_of(box[..], 1), ";g 1 1 0 2 ");
+  rm_control(v[..], "event 1 0 2 12 6 1 3 3 31 1 2 1 100 15 0 0\n");
+  rm_control(v[..], "event 1 0 2 12 6 1 3 3 31 1 2 1 100 15 1 0\n");
+  #assert v[0].ev[k].phase == EV_ANNOUNCE && v[0].ev[k].until == v[0].eg[k].tick + ev_secs(EV_ANNOUNCE_S) && v[0].evc.siege;
   ev_test_skip(v[..], k);
-  #assert v[0].ev[k].phase == EV_WAVE && v[0].ev[k].wave == 1;
-  m := raid_wave_size(24, 2);
-  #assert m == 12 && ev_raid_standing(v[..], k) == m && ev_test_count(v[..], k, -1) == m;
-  // the first wave: no Fanatic yet, one Warlock part in 7, all at level 1 (everglade-raid-scale.coax)
-  pt: [3] int; ct: [3] int;
-  raid_wave_parts(6, 1, 3, 1, 2, pt[..]); raid_wave_counts(m, pt[..], ct[..]);
-  #assert v[0].ev[k].mix[RS_NPC_CULTIST] == ct[0] && v[0].ev[k].mix[RS_NPC_FANATIC] == 0 && v[0].ev[k].mix[RS_NPC_WARLOCK] == ct[2] && ct[2] >= 1;
-  // (a Cult Priest is a level 3 Cleric whatever the wave: #12771)
-  lv := 0; for q: 0..<E5RR_BEASTS { if e5rd_is(v[0].eg[k].rules[0].beasts[q]) && v[0].eg[k].rules[0].raid[0].slot[q].npc != RS_NPC_CULT_PRIEST && v[0].eg[k].rules[0].raid[0].slot[q].level > lv { lv = v[0].eg[k].rules[0].raid[0].slot[q].level; } }
-  #assert lv == 1;
-  // each outside a gate, a long way from the square
+  #assert v[0].ev[k].phase == EV_SIEGE;
   r := v[0].eg[k].rules[..];
-  far := 0;
-  was: [E5RR_BEASTS] f32;
-  for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; was[q] = sqrt(bt.x * bt.x + bt.z * bt.z); if e5rd_is(bt) && was[q] > 60 { far += 1; } }
-  #assert far == m;
-  // they march to their own places in their squads' siege lines outside the wall
-  // (everglade-raid-tactics.coax): in a few seconds every one is there, none in the spawn's clear ground
-  ev_test_ticks(v[..], k, 4 * EG_HZ);
-  near := 0;
+  c: [2] int; raid_siege_caps(12, c[..]);
+  #assert v[0].ev[k].standing == c[RF_CULT] && v[0].ev[k].town == c[RF_TOWN];
+  #assert ev_test_count(v[..], k, E5RR_FORM_WARD) == 3 && ev_test_count(v[..], k, E5RR_FORM_RAID + RS_NPC_ARCH) == 1 && v[0].ev[k].arch == EV_ARCH_WARDED;
+  // the cult about its camp, the watch inside the gate, of the town's team
   for q: 0..<E5RR_BEASTS {
     bt := r[0].beasts[q];
     if !e5rd_is(bt) { continue; }
-    sl := r[0].raid[0].slot[q];
-    o: [2] f32;
-    rt_siege_pos(sl.g, sl.squad, sl.k, sl.role, o[..]);
-    if (bt.x - o[0]) * (bt.x - o[0]) + (bt.z - o[1]) * (bt.z - o[1]) < 4 * 4 { near += 1; }
-    sx := bt.x - f32(E5RD_SPAWN_X); sz := bt.z - f32(E5RD_SPAWN_Z);
-    #assert sx * sx + sz * sz >= f32(RT_SPAWN_R) * f32(RT_SPAWN_R);
+    if e5rd_town(bt) { #assert bt.z > -56 && r[0].b[0].c[E5RR_BEAST0 + q].team == 1 && r[0].raid[0].slot[q].front; }
+    else { #assert bt.z < -100; }
   }
-  #assert near == m;
-  // a raider the page sees: a creature row with its look (P1 27 a Cultist) and its level in G
-  q0 := -1;
-  for q: 0..<E5RR_BEASTS { if q0 < 0 && r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_CULTIST { q0 = q; } }
-  e5rr_beast_ground(r, q0, 0);
-  ev_test_strike(v[..], k, 0, q0, 1);   // a metre from seat 0
-  eg_test_drain(v[..], box[..]);
-  ev_test_ticks(v[..], k, 3);
-  eg_test_drain(v[..], box[..]);
-  seen := eg_test_ent(box[..], 0, WIRE_ID_MADE + r[0].beasts[q0].id);
-  #assert seen.kind == WK_BEAST && seen.p1 == E5RR_FORM_RAID + RS_NPC_CULTIST && (seen.g >> 8) == r[0].raid[0].slot[q0].level;
-  // seat 0 cuts the wave down: twice the SRD's 25 XP a Cultist, 450 the Fanatic, 50, 100 or 200 a Warlock by its level
-  want := 0;
-  for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; if e5rd_is(bt) { want += ev_xp_for(r[0].raid[0].slot[q].npc, r[0].raid[0].slot[q].level); } }
-  ev_test_rout(v[..], k, 0);
   eg_test_tick(v[..], k);
-  #assert v[0].ev[k].slain == m && v[0].ev[k].xp[0] == want && v[0].ev[k].xp[1] == 0;
   eg_test_drain(v[..], box[..]);
-  #assert eg_test_has(eg_test_of(box[..], 0), "e xp 0 50");
-  ev_test_second(v[..], k); eg_test_tick(v[..], k);   // the wave is down: the lull comes at once
-  #assert v[0].ev[k].phase == EV_LULL && v[0].ev[k].until > v[0].eg[k].tick + ev_secs(EV_LULL_S) - 3;
-  ev_test_skip(v[..], k);
-  #assert v[0].ev[k].phase == EV_WAVE && v[0].ev[k].wave == 2 && ev_raid_standing(v[..], k) == m;
-  // both seats fight this wave: each raider hit by both, so each seat gets half of its XP
-  had0 := v[0].ev[k].xp[0]; had1 := v[0].ev[k].xp[1];
-  want = 0;
-  for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) { want += ev_xp_for(r[0].raid[0].slot[q].npc, r[0].raid[0].slot[q].level) / 2; ev_test_strike(v[..], k, 1, q, 1); } }
-  ev_test_rout(v[..], k, 0);
-  eg_test_tick(v[..], k);
-  #assert v[0].ev[k].slain == 2 * m && v[0].ev[k].xp[0] - had0 == want && v[0].ev[k].xp[1] - had1 == want;
-  ev_test_second(v[..], k); eg_test_tick(v[..], k);
-  // the climax: three ward stones and Darian Odiodei, warded
-  #assert v[0].ev[k].phase == EV_CLIMAX && v[0].ev[k].arch == EV_ARCH_WARDED && v[0].ev[k].wards == 3;
-  #assert ev_test_count(v[..], k, E5RR_FORM_WARD) == 3 && ev_test_count(v[..], k, E5RR_FORM_RAID + RS_NPC_ARCH) == 1;
+  // the g entry: the siege, the line in the middle, the watch and the caps at its end
+  #assert eg_test_has(eg_test_of(box[..], 0), ";g 1 7 0 0 0 0 30 0 0 3 1 0 ");
+  // they march to the front: the cult north from its camp, the watch out of the gate
+  cz: f32 = 0; tz: f32 = 0;
+  for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; if e5rd_is(bt) && bt.form < E5RR_FORM_WARD && bt.form != E5RR_FORM_RAID + RS_NPC_ARCH { if e5rd_town(bt) { tz += bt.z; } else { cz += bt.z; } } }
+  ev_test_ticks(v[..], k, 3 * EG_HZ);
+  cz2: f32 = 0; tz2: f32 = 0;
+  for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; if e5rd_is(bt) && bt.form < E5RR_FORM_WARD && bt.form != E5RR_FORM_RAID + RS_NPC_ARCH { if e5rd_town(bt) { tz2 += bt.z; } else { cz2 += bt.z; } } }
+  #assert cz2 > cz + f32(c[RF_CULT]) * 3 && tz2 < tz - f32(c[RF_TOWN]) * 3 && v[0].ev[k].phase == EV_SIEGE;
+  // Darian and his stones can't be hurt in the siege
   hp: [2] int;
-  da := r[0].raid[0].arch;
-  ev_test_strike(v[..], k, 0, da, 400);
+  ev_test_strike(v[..], k, 0, r[0].raid[0].arch, 400);
   #assert e5rd_arch_hp(r, hp[..]) && hp[0] == hp[1];
-  // the stones broken: exposed, worth 100 XP each
-  had0 = v[0].ev[k].xp[0];
+  // seat 0 cuts down a Cultist for XP; one of the watch that falls pays none
+  qc := -1; qt := -1;
+  for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; if qc < 0 && bt.form == E5RR_FORM_RAID + RS_NPC_CULTIST && e5rd_is(bt) { qc = q; } if qt < 0 && e5rd_town(bt) { qt = q; } }
+  had := v[0].ev[k].xp[0];
+  ev_test_strike(v[..], k, 0, qc, 999);
+  ev_test_strike(v[..], k, 0, qt, 999);
+  eg_test_tick(v[..], k);
+  #assert v[0].ev[k].xp[0] == had + EV_XP_SRD_X * EV_XP_CULTIST;
+  #assert v[0].ev[k].pts[0] > 0;   // and its help on the line
+  // the line at the camp: the stand; the stones break, Darian is exposed and withdraws, the camp falls
+  v[0].ev[k].front[0].z = f32(RF_STAND_Z) - 1;
+  v[0].ev[k].pts[0] = 1000;
+  ev_test_second(v[..], k);
+  #assert v[0].ev[k].phase == EV_STAND && r[0].raid[0].stand;
+  had = v[0].ev[k].xp[0];
   for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) && r[0].beasts[q].form == E5RR_FORM_WARD { ev_test_strike(v[..], k, 0, q, 60); } }
   ev_test_second(v[..], k);
-  #assert v[0].ev[k].arch == EV_ARCH_EXPOSED && v[0].ev[k].wards == 0 && v[0].ev[k].xp[0] == had0 + 3 * EV_XP_SRD_X * EV_XP_WARD;
-  eg_test_drain(v[..], box[..]);
-  #assert eg_test_has(eg_test_of(box[..], 1), ";g 1 4 2 2 ");
-  // a hit past half leaves him at half, and he withdraws (never among the slain)
-  ev_test_strike(v[..], k, 0, da, 400);
+  #assert v[0].ev[k].wards == 0 && v[0].ev[k].arch == EV_ARCH_EXPOSED && v[0].ev[k].xp[0] == had + 3 * EV_XP_SRD_X * EV_XP_WARD;
+  ev_test_strike(v[..], k, 0, r[0].raid[0].arch, 400);
   #assert e5rd_arch_hp(r, hp[..]) && hp[0] == hp[1] / 2;
-  ev_test_second(v[..], k);
-  #assert v[0].ev[k].arch == EV_ARCH_GONE && ev_test_count(v[..], k, E5RR_FORM_RAID + RS_NPC_ARCH) == 0 && v[0].ev[k].slain == 2 * m;
-  eg_test_drain(v[..], box[..]);
-  #assert eg_test_has(eg_test_of(box[..], 0), "e rc ");   // his Dimension Door, for the pages
-  had0 = v[0].ev[k].xp[0];
-  ev_test_second(v[..], k);
-  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_HELD && v[0].ev[k].xp[0] == had0 + EV_XP_HELD;
+  had = v[0].ev[k].xp[0];
+  ev_test_second(v[..], k); ev_test_second(v[..], k);
+  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_HELD && v[0].ev[k].xp[0] == had + EV_XP_HELD;
+  #assert cast(string) v[0].ev[k].g[0..<6] == "g 1 5 ";   // what every seat hears next
   ev_test_skip(v[..], k);
-  #assert v[0].ev[k].phase == EV_AFTER && v[0].ev[k].until > v[0].eg[k].tick + ev_secs(EV_AFTER_S) - 3;
-  eg_test_drain(v[..], box[..]);
+  #assert v[0].ev[k].phase == EV_AFTER;
   ev_test_skip(v[..], k);
   eg_test_drain(v[..], box[..]);
-  #assert v[0].ev[k].phase == EV_IDLE && ev_test_count(v[..], k, -1) == 0 && eg_test_has(eg_test_of(box[..], 0), "e rebuild") && eg_test_has(eg_test_of(box[..], 1), ";g 0 0 ");
+  // the regroup over: the rebuild, and the cult musters again
+  #assert eg_test_has(eg_test_of(box[..], 0), "e rebuild") && v[0].ev[k].phase == EV_SIEGE && v[0].ev[k].standing == c[RF_CULT] && v[0].ev[k].arch == EV_ARCH_WARDED;
 }
 
-#test "events: an assist shares a raider's XP, however far the seat stands and whoever struck last; a town that falls pays EV_XP_FELL and its last kills" #steps 16000000000 {
+#test "events: an assist shares a raider's XP, however far the seat stands and whoever struck last; the camp's fall pays EV_XP_HELD and its last kills" #steps 16000000000 {
   v: [1] RmServer;
   box: [1] EgInbox;
   k := ev_test_server(v[..]);
   rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 0 0\n");
   rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 1 0\n");
   ev_test_skip(v[..], k);
-  #assert v[0].ev[k].phase == EV_WAVE;
+  #assert v[0].ev[k].phase == EV_SIEGE;
+  ev_test_ticks(v[..], k, EG_HZ);   // past the muster's first turns
   r := v[0].eg[k].rules[..];
   q0 := -1;
   for q: 0..<E5RR_BEASTS { if q0 < 0 && r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_CULTIST { q0 = q; } }
@@ -986,20 +986,18 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   v[0].eg[k].seat[1].pose.x += 200;
   ev_test_strike(v[..], k, 0, q0, 999);
   eg_test_tick(v[..], k);
-  eg_test_drain(v[..], box[..]);
   half := EV_XP_SRD_X * EV_XP_CULTIST / 2;
   #assert v[0].ev[k].xp[0] == half && v[0].ev[k].xp[1] == half;
-  #assert eg_test_has(eg_test_of(box[..], 1), "e xp 1 25");
-  // a raider struck down in the tick the town falls still pays, and then the fall's award
+  // a raider struck down in the tick the camp falls still pays, and then the fall's award
   q1 := -1;
   for q: 0..<E5RR_BEASTS { if q1 < 0 && r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_CULTIST && e5rd_is(r[0].beasts[q]) { q1 = q; } }
   had0 := v[0].ev[k].xp[0];
   ev_test_strike(v[..], k, 0, q1, 999);
   e5rr_beasts_check(r); eg_engine_events(v[..], k);    // it falls in the rules, its hit heard,
-  ev_raid_clear(v[..], k); ev_end(v[..], k, EV_OUT_FELL);   // and the town falls before the raid's step (ev_second)
-  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_FELL;
-  #assert v[0].ev[k].xp[0] == had0 + EV_XP_SRD_X * EV_XP_CULTIST + EV_XP_FELL;
-  #assert v[0].ev[k].xp[1] == half + EV_XP_FELL;
+  ev_end(v[..], k, EV_OUT_HELD);                       // and the camp falls before the raid's step
+  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_HELD;
+  #assert v[0].ev[k].xp[0] == had0 + EV_XP_SRD_X * EV_XP_CULTIST + EV_XP_HELD;
+  #assert v[0].ev[k].xp[1] == half + EV_XP_HELD;
 }
 
 #test "events: a fallen player stands again whole after EV_RISE_S, where they fell" #steps 4000000000 {
@@ -1037,7 +1035,7 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   rm_heard(v[..], 0, "L 9");
   #assert b[0].c[i].hp == b[0].c[i].hp_max;
   // during a raid: none, and the aftermath again allows it
-  v[0].ev[k].phase = EV_WAVE;
+  v[0].ev[k].phase = EV_SIEGE;
   #assert !ev_rest_ok(v[..], k, 0);
   v[0].ev[k].phase = EV_AFTER;
   #assert ev_rest_ok(v[..], k, 0);
@@ -1046,24 +1044,31 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   #assert !ev_rest_ok(v[..], k, 0);
 }
 
-#test "events: the time limit and STOP end a raid; STOP pays no bonus" #steps 8000000000 {
+#test "events: the siege has no time limit and the town never falls; STOP ends it with no bonus, events off end it, and START begins it in every room (#12860)" #steps 16000000000 {
   v: [1] RmServer;
   k := ev_test_server(v[..]);
-  rm_control(v[..], "event 1 0 8 12 6 1 3 3 31 0 2 1 100 5 0 0\n");
-  rm_control(v[..], "event 1 0 8 12 6 1 3 3 31 0 2 1 100 5 1 0\n");
-  #assert v[0].ev[k].ends == v[0].eg[k].tick + ev_secs(5 * 60);
+  rm_control(v[..], "event 1 0 8 4 6 1 3 3 31 0 2 1 100 5 0 0\n");
+  rm_control(v[..], "event 1 0 8 4 6 1 3 3 31 0 2 1 100 5 1 0\n");
   ev_test_skip(v[..], k);
-  v[0].ev[k].earned[0] = true;
-  v[0].ev[k].ends = v[0].eg[k].tick;   // the time limit is out
-  ev_test_second(v[..], k);
-  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_HELD && v[0].ev[k].xp[0] == EV_XP_HELD;
+  #assert v[0].ev[k].phase == EV_SIEGE && v[0].ev[k].arch == EV_ARCH_AWAY;
+  // past its phase's end, every one of the town's people down, the line at the gate: it stands
+  b := v[0].eg[k].rules[0].b[..];
+  for j: 0..<E5R_FOLK { b[0].c[E5RR_FOLK0 + j].hp = 0; b[0].c[E5RR_FOLK0 + j].dead = true; }
+  v[0].ev[k].front[0].z = f32(RF_HOLD_Z);
+  ev_test_skip(v[..], k);   // its phase's end comes: it runs on
+  for t: 0..<3 { ev_test_second(v[..], k); }
+  #assert v[0].ev[k].phase == EV_SIEGE && v[0].ev[k].front[0].z <= f32(RF_HOLD_Z);
+  v[0].ev[k].earned[1] = true;
+  rm_control(v[..], "event 1 0 8 4 6 1 3 3 31 0 2 1 100 5 1 1\n");
+  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_OFF && v[0].ev[k].xp[1] == 0 && !v[0].evc.siege;
   ev_test_skip(v[..], k); ev_test_skip(v[..], k);
   #assert v[0].ev[k].phase == EV_IDLE;
-  rm_control(v[..], "event 1 0 8 12 6 1 3 3 31 0 2 1 100 5 2 0\n");
+  ev_test_second(v[..], k); ev_test_second(v[..], k);
+  #assert v[0].ev[k].phase == EV_IDLE;   // stopped, it stays stopped
+  rm_control(v[..], "event 1 0 8 4 6 1 3 3 31 0 2 1 100 5 2 1\n");
   #assert v[0].ev[k].phase == EV_ANNOUNCE;
-  v[0].ev[k].earned[1] = true;
-  rm_control(v[..], "event 1 0 8 12 6 1 3 3 31 0 2 1 100 5 2 1\n");
-  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_OFF && v[0].ev[k].xp[1] == 0;
+  rm_control(v[..], "event 0 0 8 4 6 1 3 3 31 0 2 1 100 5 2 1\n");
+  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_OFF;
 }
 
 #test "events: the schedule starts every live room at a whole multiple of EVERY on the wall clock" #steps 8000000000 {
@@ -1179,7 +1184,7 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 1 0\n");
   eg_test_tick(v[..], k);
   ev_test_skip(v[..], k);
-  #assert v[0].ev[k].phase == EV_WAVE;
+  #assert v[0].ev[k].phase == EV_SIEGE;
   r := v[0].eg[k].rules[..];
   // a piece of them broken in the town takes from them; their fall comes from the raid's bolts
   e5rd_wall_broke(r, 14, -70);

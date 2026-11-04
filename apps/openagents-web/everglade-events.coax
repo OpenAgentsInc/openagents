@@ -2,8 +2,11 @@
 // docs/verse/2026-11-03-everglade-world-events.md). Loaded by everglade-net.coax. The room server runs
 // them (coax/web/room/room-events.coax); this page shows what it hears:
 //   g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME FOLK LEVELS CAP
-//       the room's event: a banner under the top row while one runs (and the next one's time while
-//       the realm's schedule has one coming);
+//     PLAYERS FRONT TOWN CULTCAP TOWNCAP
+//       the room's event: under the top row while the siege stands, the front (#12860): a bar along
+//       the south road from the cult's camp to the South Gate with the line on it, each side's
+//       fighters standing, the camp's ward stones and Darian Odiodei's state (ege_front); the next
+//       raid's time while the realm's schedule has one coming;
 //   v SS LEVEL XP CAP LO HI
 //       each seat's level and XP, the level cap, and the bar slots its character has: yours is the
 //       LEVEL · XP plate left of your HP, and your bar shows those slots only (ege_kit_place for the
@@ -18,8 +21,8 @@
 
 #load "everglade-raid-scale.coax";   // the raid's waves for the players present, as the server builds them
 EGE_DEMO_FLAG :: 64;        // room-events.coax EV_DEMO_FLAG
-EGE_IDLE :: 0; EGE_ANNOUNCE :: 1; EGE_WAVE :: 2; EGE_LULL :: 3; EGE_CLIMAX :: 4; EGE_END :: 5; EGE_AFTER :: 6;
-EGE_HELD :: 1; EGE_FELL :: 2; EGE_OFF :: 3;
+EGE_IDLE :: 0; EGE_ANNOUNCE :: 1; EGE_END :: 5; EGE_AFTER :: 6; EGE_SIEGE :: 7; EGE_STAND :: 8;
+EGE_HELD :: 1; EGE_OFF :: 3;   // HELD: the camp fell to the town
 EGE_WARDED :: 1; EGE_EXPOSED :: 2;
 EGE_XP2 :: 300; EGE_XP3 :: 900;
 EGE_UP_SECS :: 4.0;         // the level-up notice's seconds on screen
@@ -28,14 +31,15 @@ EGE_LEADER :: "DARIAN ODIODEI";
 EGE_DRUID_ORDER :: [10] int.[21, 22, 43, 28, 9, 26, 13, 27, 20, 47];
 
 // The admin pane's dials: each one's API key, its words, its range, its step; the pane shows its range.
-EGE_DIALS :: 9;
-EGE_D_EVERY :: 0; EGE_D_WAVES :: 1; EGE_D_SIZE :: 2; EGE_D_AGGR :: 3; EGE_D_REWARD :: 4; EGE_D_MINUTES :: 5; EGE_D_WLLVL :: 6; EGE_D_CAP :: 7; EGE_D_GATES :: 8;
-EGE_DIAL_KEY :: [9] string.["every", "waves", "size", "aggression", "reward", "minutes", "warlock_level", "level_cap", "gates"];
-EGE_DIAL_WORD :: [9] string.["EVERY", "WAVES", "RAIDERS A WAVE FOR 4 PLAYERS", "AGGRESSION", "XP REWARD", "TIME LIMIT", "CULT WARLOCKS UP TO LEVEL", "LEVEL CAP", "GATES"];
-EGE_DIAL_LO :: [9] int.[0, 1, 4, 0, 50, 5, 1, 1, 1];
-EGE_DIAL_HI :: [9] int.[240, 8, 24, 3, 300, 30, 3, 3, 4];
-EGE_DIAL_STEP :: [9] int.[15, 1, 2, 1, 25, 5, 1, 1, 1];
-EGE_DIAL_DEF :: [9] int.[0, 3, 12, 2, 100, 15, 3, 2, 4];
+// (The standing siege, #12860, has no waves, time limit or gates: the API keeps those dials, unused.)
+EGE_DIALS :: 6;
+EGE_D_EVERY :: 0; EGE_D_SIZE :: 1; EGE_D_AGGR :: 2; EGE_D_REWARD :: 3; EGE_D_WLLVL :: 4; EGE_D_CAP :: 5;
+EGE_DIAL_KEY :: [6] string.["every", "size", "aggression", "reward", "warlock_level", "level_cap"];
+EGE_DIAL_WORD :: [6] string.["EVERY", "SIEGE SIZE", "AGGRESSION", "XP REWARD", "CULT WARLOCKS UP TO LEVEL", "LEVEL CAP"];
+EGE_DIAL_LO :: [6] int.[0, 4, 0, 50, 1, 1];
+EGE_DIAL_HI :: [6] int.[240, 24, 3, 300, 3, 3];
+EGE_DIAL_STEP :: [6] int.[15, 2, 1, 25, 1, 1];
+EGE_DIAL_DEF :: [6] int.[0, 12, 2, 100, 3, 2];
 // switches: on, levels, the leader, town damage, demo; buttons: START NOW, STOP, CLOSE
 EGE_B_ON :: 0; EGE_B_LEVELS :: 1; EGE_B_LEADER :: 2; EGE_B_HARM :: 3; EGE_B_DEMO :: 4; EGE_B_START :: 5; EGE_B_STOP :: 6; EGE_B_CLOSE :: 7;
 EGE_BUTTONS :: 8;
@@ -61,7 +65,8 @@ EgEvents :: struct {
   // the room's event (g), and when it was heard (its SECS count down from then)
   heard: bool; kind: int; phase: int; wave: int; waves: int; secs: int; left: int; standing: int; slain: int;
   square: int; wards: int; arch: int; outcome: int; folk: int; levels: bool; cap: int = 2; at: int;
-  players: int = 1;                         // the players in the room, the waves are for (everglade-raid-scale.coax)
+  players: int = 1;                         // the players in the room
+  front: int = 500; town: int; caps: [2] int;   // the siege's: the line (thousandths, 0 the camp), the watch standing, each side's cap
   parts: [3] int;                           // the raid's parts of Cultists, Fanatics and Warlocks (the API's dials)
   // you (your seat's v): level 0 Everglade's own character
   mine: bool; level: int; xp: int; lo: int; hi: int;
@@ -70,7 +75,7 @@ EgEvents :: struct {
   demo: bool;                               // DEMO CHARACTER (an admin's)
   // the admin pane
   open: bool; asked: int; known: bool;
-  on: bool; lv_on: bool; leader: bool = true; harm: bool = true; gates_mask: int = 31;
+  on: bool; lv_on: bool; leader: bool = true; harm: bool = true;
   dial: [EGE_DIALS] int;
   button: Box; pane: Box;
   banner_box: Box;   // where the banner was drawn last frame (none: empty), for the names over the world to keep clear of
@@ -121,6 +126,11 @@ ege_entry :: (s: [] Everglade, n: [] EgNet, t: string) -> bool {
     e[0].standing = f[6]; e[0].slain = f[7]; e[0].square = f[8]; e[0].wards = f[9]; e[0].arch = f[10]; e[0].outcome = f[11]; e[0].folk = f[12];
     e[0].levels = f[13] == 1; e[0].cap = f[14]; e[0].at = n[0].mono;
     if wire_more(t, r[..]) { pl := wire_num(t, r[..]); if r[0].ok { e[0].players = pl; } }   // older servers send no PLAYERS
+    if wire_more(t, r[..]) {
+      // the siege's (#12860)
+      fr := wire_num(t, r[..]); tw := wire_num(t, r[..]); cc := wire_num(t, r[..]); tc := wire_num(t, r[..]);
+      if r[0].ok { e[0].front = clamp_i(fr, 0, 1000); e[0].town = tw; e[0].caps[0] = cc; e[0].caps[1] = tc; }
+    }
     return true;
   }
   if wire_is(t, "v") {
@@ -216,6 +226,12 @@ ege_body :: (s: [] Everglade, id: int) -> int {
     if e[0].body_id[q] == id { return q; }
     if free < 0 && e[0].body_id[q] == 0 { free = q; }
   }
+  if free < 0 {
+    // all taken: the body fallen longest ago goes first (a siege's hundreds of falls, #12860)
+    old := s[0].time;
+    for q: 0..<EGE_BODIES { if e[0].body_fell[q] >= 0 && e[0].body_fell[q] < old { old = e[0].body_fell[q]; free = q; } }
+    if free >= 0 { everglade_raider(s, free, 0, 0, 0, 0, 0, 0, 0, -1); s[0].rp.ids[free] = 0; }
+  }
   if free >= 0 { e[0].body_id[free] = id; e[0].body_fell[free] = -1; }
   return free;
 }
@@ -281,42 +297,91 @@ ege_secs :: (s: [] Everglade) -> int {
   e := ege_of(s);
   return hi_int(e[0].secs - (net_of(s)[0].mono - e[0].at) / 1000, 0);
 }
-// The banner's two lines: what the raid does now, and how it stands. 0 lines while none runs.
+// The banner's line: the next raid's time while one is scheduled, the camp's fall (CAMP TAKEN, then
+// the cult's muster's time), or the call-off. 0 while the siege stands: the front shows it (ege_front).
 ege_banner :: (s: [] Everglade, top: [] u8, sub: [] u8) -> [2] int {
   e := ege_of(s);
   out: [2] int;
   if !e[0].heard || e[0].kind == 0 { return out; }
-  t := 0; u := 0;
+  t := 0;
   secs := ege_secs(s);
   if e[0].phase == EGE_IDLE {
     if e[0].secs < 0 { return out; }
     t = ege_clock(top, ege_put(top, 0, "NEXT CULTIST RAID IN "), secs);
-    out[0] = t; return out;
   }
-  if e[0].phase == EGE_ANNOUNCE { t = ege_clock(top, ege_put(top, 0, "THE CULT MARCHES ON EVERGLADE · "), secs); }
-  if e[0].phase == EGE_WAVE {
-    t = ege_put(top, 0, "CULTIST RAID · WAVE "); t = ege_int(top, t, e[0].wave); t = ege_put(top, t, " OF "); t = ege_int(top, t, e[0].waves);
-    t = ege_clock(top, ege_put(top, t, " · "), secs);
-  }
-  if e[0].phase == EGE_LULL { t = ege_clock(top, ege_put(top, 0, "THE CULT REGROUPS · "), secs); }
-  if e[0].phase == EGE_CLIMAX { t = ege_clock(top, ege_put(top, ege_put(top, 0, EGE_LEADER), " ATTACKS · "), secs); }
-  if e[0].phase == EGE_END || e[0].phase == EGE_AFTER {
-    t = ege_put(top, 0, ifx e[0].outcome == EGE_HELD then "EVERGLADE HELD" else ifx e[0].outcome == EGE_FELL then "EVERGLADE FELL" else "THE RAID WAS CALLED OFF");
-    if e[0].phase == EGE_AFTER { t = ege_clock(top, ege_put(top, t, " · THE TOWN STANDS AGAIN IN "), secs); }
-  }
-  if e[0].phase >= EGE_ANNOUNCE && e[0].phase <= EGE_CLIMAX {
-    // STANDING is the raiders standing (with those still to come), FOLK the townsfolk standing
-    u = ege_put(sub, 0, "TOWNSFOLK STANDING "); u = ege_int(sub, u, e[0].folk);
-    u = ege_put(sub, u, " · RAIDERS STANDING "); u = ege_int(sub, u, e[0].standing);
-    u = ege_put(sub, u, " · RAIDERS SLAIN "); u = ege_int(sub, u, e[0].slain);
-    if e[0].square > 0 { u = ege_int(sub, ege_put(sub, u, " · RAIDERS HOLD THE SQUARE "), e[0].square); u = ege_put(sub, u, " S OF 60"); }
-    if e[0].arch == EGE_WARDED { u = ege_int(sub, ege_put(sub, ege_put(sub, ege_put(sub, u, " · "), EGE_LEADER), ": "), e[0].wards); u = ege_put(sub, u, " WARDS, CAN'T BE KILLED"); }
-    else if e[0].arch == EGE_EXPOSED { u = ege_put(sub, ege_put(sub, ege_put(sub, u, " · "), EGE_LEADER), " UNWARDED: DRIVE HIM OFF"); }
-    left := hi_int(e[0].left - (net_of(s)[0].mono - e[0].at) / 1000, 0);
-    if left > 0 { u = ege_clock(sub, ege_put(sub, u, " · ENDS IN "), left); }
-  }
-  out[0] = t; out[1] = u;
+  if e[0].phase == EGE_END && e[0].outcome == EGE_HELD { t = ege_put(top, 0, "CAMP TAKEN"); }
+  if e[0].phase == EGE_END && e[0].outcome == EGE_OFF { t = ege_put(top, 0, "RAID CALLED OFF"); }
+  out[0] = t;
   return out;
+}
+// Whether the front shows: the march, the siege, the stand, and the regroup after the camp fell.
+ege_front_on :: (s: [] Everglade) -> bool {
+  e := ege_of(s);
+  if !e[0].heard || e[0].kind == 0 { return false; }
+  p := e[0].phase;
+  return p == EGE_ANNOUNCE || p == EGE_SIEGE || p == EGE_STAND || (p == EGE_AFTER && e[0].outcome == EGE_HELD);
+}
+// The front's place (0 the camp, 1 the gate).
+ege_front_u :: (s: [] Everglade) -> f32 { return clamp01(f32(ege_of(s)[0].front) / 1000.0); }
+EGE_FRONT_W :: 300.0;   // CSS px: the front's bar at most
+// The front (#12860): a plate under the top row, the camp (violet, its ward stones over it and
+// Darian's mark beside) at the left, the South Gate (gold) at the right, the road between them
+// violet to the line and gold after it, the line a white mark; each side's fighters standing under
+// its end; the march's or the regroup's time in the middle. Its box (for the names to keep clear of).
+ege_front :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, y0: f32) -> int {
+  e := ege_of(s);
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; gutter := 16 * k;
+  bw := lo(f32(EGE_FRONT_W) * k, w - 2 * gutter);
+  b := Box.{x0 = (w - bw) / 2, y0 = y0, x1 = (w + bw) / 2, y1 = y0 + 44 * k};
+  stand := e[0].phase == EGE_STAND;
+  plate(s, u, b, 0.85, ifx stand then 2.0f32 else 1.0f32);
+  e[0].banner_box = b;
+  n := at;
+  cap := 8 * k;
+  x0 := b.x0 + 30 * k; x1 := b.x1 - 30 * k; y := b.y0 + 16 * k;
+  vr: f32 = 0.62; vg: f32 = 0.38; vb: f32 = 0.95;
+  // the camp: a tent's two sides and floor
+  cx := b.x0 + 15 * k;
+  if lit(out, n, cx - 7 * k, y + 5 * k, cx, y - 6 * k, 1.6 * k, 0.95, 1.2 * k, vr, vg, vb, 0) { n += 6; }
+  if lit(out, n, cx, y - 6 * k, cx + 7 * k, y + 5 * k, 1.6 * k, 0.95, 1.2 * k, vr, vg, vb, 0) { n += 6; }
+  if lit(out, n, cx - 7 * k, y + 5 * k, cx + 7 * k, y + 5 * k, 1.6 * k, 0.95, 1.2 * k, vr, vg, vb, 0) { n += 6; }
+  // its ward stones: lit while they stand
+  for q: 0..<3 {
+    sx := cx - 6 * k + f32(q) * 6 * k; on := q < e[0].wards;
+    if lit(out, n, sx, y - 13 * k, sx, y - 9 * k, 1.6 * k, ifx on then 0.95f32 else 0.25f32, ifx on then 1.5f32 * k else 0, vr, vg, vb, 0) { n += 6; }
+  }
+  // the gate: two posts and a lintel
+  gx := b.x1 - 15 * k;
+  if lit(out, n, gx - 6 * k, y + 5 * k, gx - 6 * k, y - 6 * k, 1.6 * k, 0.95, 1.2 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
+  if lit(out, n, gx + 6 * k, y + 5 * k, gx + 6 * k, y - 6 * k, 1.6 * k, 0.95, 1.2 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
+  if lit(out, n, gx - 7 * k, y - 6 * k, gx + 7 * k, y - 6 * k, 1.6 * k, 0.95, 1.2 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
+  // the road, and the line on it
+  lx := x0 + (x1 - x0) * ege_front_u(s);
+  if lit(out, n, x0, y, lx, y, 2.2 * k, 0.9, 1.4 * k, vr, vg, vb, 0) { n += 6; }
+  if lit(out, n, lx, y, x1, y, 2.2 * k, 0.9, 1.4 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
+  if lit(out, n, lx, y - 7 * k, lx, y + 7 * k, 2.0 * k, 1.0, 2.5 * k, 1.0, ifx stand then 0.55f32 else 0.97f32, ifx stand then 0.45f32 else 0.92f32, 0) { n += 6; }
+  // Darian's mark by the camp: a diamond, violet warded, red exposed, dim gone or away
+  dx := cx + 13 * k; dy := y - 11 * k; r := 3.5 * k;
+  dr := vr; dg := vg; db := vb; da: f32 = 0.95;
+  if e[0].arch == EGE_EXPOSED { dr = WATCH_RED_R; dg = WATCH_RED_G; db = WATCH_RED_B; }
+  else if e[0].arch != EGE_WARDED { da = 0.25; }
+  if lit(out, n, dx - r, dy, dx, dy - r, 1.4 * k, da, 1.0 * k, dr, dg, db, 0) { n += 6; }
+  if lit(out, n, dx, dy - r, dx + r, dy, 1.4 * k, da, 1.0 * k, dr, dg, db, 0) { n += 6; }
+  if lit(out, n, dx + r, dy, dx, dy + r, 1.4 * k, da, 1.0 * k, dr, dg, db, 0) { n += 6; }
+  if lit(out, n, dx, dy + r, dx - r, dy, 1.4 * k, da, 1.0 * k, dr, dg, db, 0) { n += 6; }
+  // each side's fighters standing, under its end; the march's or the regroup's time in the middle
+  nb: [16] u8;
+  m := ege_int(nb[..], 0, e[0].standing);
+  ty := b.y1 - 8 * k;
+  n = draw_text(out, n, cast(string) nb[0..<m], cx - text_width(cast(string) nb[0..<m], cap) / 2, ty, cap, GAP, SPACE, ink(k, 0.95, vr, vg, vb), false, false);
+  m = ege_int(nb[..], 0, e[0].town);
+  n = draw_text(out, n, cast(string) nb[0..<m], gx - text_width(cast(string) nb[0..<m], cap) / 2, ty, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  if e[0].phase == EGE_ANNOUNCE || e[0].phase == EGE_AFTER {
+    m = ege_clock(nb[..], 0, ege_secs(s));
+    n = draw_text(out, n, cast(string) nb[0..<m], (b.x0 + b.x1) / 2 - text_width(cast(string) nb[0..<m], cap) / 2, ty, cap, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
+  }
+  return n;
 }
 // Your plate's words: LEVEL 1 · 120 / 300 XP, LEVEL 2 · 450 XP · CAP 2, or DEMO CHARACTER.
 ege_level_words :: (s: [] Everglade, b: [] u8) -> int {
@@ -463,11 +528,16 @@ ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_ti
       if share > 0 && lit(out, n, bx0, by, bx0 + (bx1 - bx0) * share, by, 1.5 * k, 0.95, 1.6 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
     }
   }
-  // the banner, centred under the right column's plates
+  // the front while the siege stands, else the banner, centred under the right column's plates
   t1: [160] u8; t2: [200] u8;
   lines := ege_banner(s, t1[..], t2[..]);
   e[0].banner_box = Box.{};
-  if lines[0] > 0 {
+  if ege_front_on(s) {
+    fy := top + 76 * k;
+    if phone(s) && s[0].chat.box.y1 > s[0].chat.box.y0 { fy = hi(fy, s[0].chat.box.y1 + 8 * k); }
+    if e[0].level_box.x0 < w / 2 && e[0].level_box.y1 > top { fy = hi(fy, e[0].level_box.y1 + 8 * k); }
+    n = ege_front(s, out, u, n, fy);
+  } else if lines[0] > 0 {
     cap := 9 * k; small := 7 * k;
     l1 := cast(string) t1[0..<lines[0]]; l2 := cast(string) t2[0..<lines[1]];
     s1 := cap; s2 := small;
@@ -488,7 +558,7 @@ ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_ti
     lead := s2 + 8 * k;
     bh := ifx subs > 0 then s1 + s2 + 30 * k + f32(subs - 1) * lead else s1 + 20 * k;
     b := Box.{x0 = (w - bw) / 2, y0 = y0, x1 = (w + bw) / 2, y1 = y0 + bh};
-    hot := e[0].phase == EGE_WAVE || e[0].phase == EGE_CLIMAX;
+    hot := false;
     plate(s, u, b, 0.85, ifx hot then 2.0f32 else 1.0f32);
     e[0].banner_box = b;
     n = draw_text(out, n, l1, b.x0 + 12 * k, y0 + 10 * k + s1, s1, GAP, SPACE, ink(k, 0.95, ifx hot then WATCH_RED_R else GOLD_R, ifx hot then WATCH_RED_G else GOLD_G, ifx hot then WATCH_RED_B else GOLD_B), false, false);
@@ -531,35 +601,16 @@ ege_dial_words :: (e: [] EgEvents, d: int, b: [] u8) -> int {
   }
   n = ege_int(b, n, v);
   if d == EGE_D_REWARD { n = ege_put(b, n, "%"); }
-  if d == EGE_D_MINUTES { n = ege_put(b, n, " MIN"); }
   n = ege_int(b, ege_put(b, n, " · "), EGE_DIAL_LO[d]); n = ege_int(b, ege_put(b, n, " TO "), EGE_DIAL_HI[d]);
   if d == EGE_D_REWARD { n = ege_put(b, n, "%"); }
   if d == EGE_D_AGGR { n = ege_put(b, n, " (0 HOLD BACK, 3 ALL IN)"); }
   return n;
 }
-// What wave `wave` brings for the players here, as the server builds it: "FOR 4 PLAYERS, WAVE 1:
-// 12 RAIDERS · 10 CULTISTS, 2 WARLOCKS UP TO LEVEL 1".
-ege_scale_words :: (e: [] EgEvents, wave: int, b: [] u8) -> int {
-  waves := e[0].dial[EGE_D_WAVES];
-  m := raid_wave_size(e[0].dial[EGE_D_SIZE], e[0].players);
-  p: [3] int; c: [3] int;
-  raid_wave_parts(e[0].parts[0], e[0].parts[1], e[0].parts[2], wave, waves, p[..]);
-  raid_wave_counts(m, p[..], c[..]);
-  n := ege_put(b, 0, "FOR ");
-  n = ege_int(b, n, ifx e[0].players < 1 then 1 else e[0].players); n = ege_put(b, n, ifx e[0].players == 1 then " PLAYER, " else " PLAYERS, ");
-  n = ege_put(b, n, ifx wave == 1 then "WAVE 1: " else "LAST WAVE: ");
-  n = ege_put(b, ege_int(b, n, m), " RAIDERS");
-  names := [3] string.[" CULTIST", " FANATIC", " WARLOCK"];
-  first := true;
-  for k: 0..<3 {
-    if c[k] == 0 { continue; }
-    n = ege_put(b, n, ifx first then " · " else ", ");
-    n = ege_put(b, ege_int(b, n, c[k]), names[k]);
-    if c[k] > 1 { n = ege_put(b, n, "S"); }
-    first = false;
-  }
-  if c[2] > 0 { n = ege_int(b, ege_put(b, n, " UP TO LEVEL "), raid_wave_wlmax(e[0].dial[EGE_D_WLLVL], wave, waves)); }
-  return n;
+// What the siege size dial gives (everglade-raid-scale.coax raid_siege_caps): "AT ONCE: CULT 30 · WATCH 24".
+ege_scale_words :: (e: [] EgEvents, b: [] u8) -> int {
+  c: [2] int; raid_siege_caps(e[0].dial[EGE_D_SIZE], c[..]);
+  n := ege_int(b, ege_put(b, 0, "AT ONCE: CULT "), c[0]);
+  return ege_int(b, ege_put(b, n, " · WATCH "), c[1]);
 }
 ege_pane :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int {
   e := ege_of(s);
@@ -567,7 +618,7 @@ ege_pane :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int 
   gutter := 16 * k;
   cap := 8 * k; row := 34 * k; bh := 28 * k;
   pw := lo(520 * k, s[0].width - 2 * gutter);
-  rows := 3 + EGE_DIALS + 2 + 1;
+  rows := 3 + EGE_DIALS + 1 + 1;
   pane := Box.{x0 = gutter, y0 = top, x1 = gutter + pw, y1 = top + 16 * k + f32(rows) * row};
   e[0].pane = pane;
   plate(s, u, pane, 0.92, 0);
@@ -611,13 +662,11 @@ ege_pane :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int 
     n = draw_text(out, n, cast(string) dw[0..<dn], tx, y + bh - 10 * k, sz, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
     y += row;
   }
-  // what the dials give here: each wave for the players in this room (everglade-raid-scale.coax)
-  for w: 0..<2 {
-    sn := ege_scale_words(e, ifx w == 0 then 1 else e[0].dial[EGE_D_WAVES], dw[..]);
-    sz := lo(cap, cap * (pw - 24 * k) / hi(text_width(cast(string) dw[0..<sn], cap), 1));
-    n = draw_text(out, n, cast(string) dw[0..<sn], x, y + bh - 10 * k, sz, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
-    y += row;
-  }
+  // what the size gives: each side's fighters at once (everglade-raid-scale.coax)
+  sn := ege_scale_words(e, dw[..]);
+  sz := lo(cap, cap * (pw - 24 * k) / hi(text_width(cast(string) dw[0..<sn], cap), 1));
+  n = draw_text(out, n, cast(string) dw[0..<sn], x, y + bh - 10 * k, sz, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  y += row;
   note := "EVERY CHANGE REACHES THE REALM'S ROOMS WITHIN 2 S";
   return draw_text(out, n, note, x, y + cap + 4 * k, lo(7 * k, 7 * k * (pw - 24 * k) / hi(text_width(note, 7 * k), 1)), GAP, SPACE, ink(k, 0.7, PARCH_R, PARCH_G, PARCH_B), false, false);
 }
@@ -671,7 +720,6 @@ ege_dial :: (s: [] Everglade, d: int, way: int) {
   n := ege_put(b[..], 0, "{\"dials\":{\"");
   key := EGE_DIAL_KEY[d];
   val := v;
-  if d == EGE_D_GATES { key = "gates"; val = (1 << v) - 1; }   // the first N gates (bits of the four, and the square's)
   n = ege_put(b[..], n, key); n = ege_put(b[..], n, "\":"); n = ege_int(b[..], n, val); n = ege_put(b[..], n, "}}");
   ege_ask(s, cast(string) b[0..<n], EGE_ASK_SET);
 }
@@ -694,8 +742,8 @@ ege_act :: (s: [] Everglade, b: int) {
   if b == EGE_B_LEVELS { e[0].lv_on = !e[0].lv_on; ege_switch(s, "levels", e[0].lv_on); }
   if b == EGE_B_LEADER { e[0].leader = !e[0].leader; ege_switch(s, "leader", e[0].leader); }
   if b == EGE_B_HARM { e[0].harm = !e[0].harm; ege_switch(s, "town_damage", e[0].harm); }
-  if b == EGE_B_START { ege_ask(s, "{\"dials\":{\"on\":true},\"start\":true}", EGE_ASK_SET); e[0].on = true; sp_say(s, "THE RAID STARTS IN EVERY ROOM WITHIN 2 S", -1, ""); }
-  if b == EGE_B_STOP { ege_ask(s, "{\"stop\":true}", EGE_ASK_SET); sp_say(s, "THE RAID STOPS IN EVERY ROOM WITHIN 2 S", -1, ""); }
+  if b == EGE_B_START { ege_ask(s, "{\"dials\":{\"on\":true},\"start\":true}", EGE_ASK_SET); e[0].on = true; sp_say(s, "THE SIEGE STARTS IN EVERY ROOM WITHIN 2 S", -1, ""); }
+  if b == EGE_B_STOP { ege_ask(s, "{\"stop\":true}", EGE_ASK_SET); sp_say(s, "THE SIEGE STOPS IN EVERY ROOM WITHIN 2 S", -1, ""); }
 }
 // A JSON value by its key, spaces trimmed (the API's jsonb has a space after each colon).
 ege_json :: (t: string, name: string) -> string {
@@ -734,20 +782,17 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   e[0].leader = ege_json(t, "leader") != "false"; e[0].harm = ege_json(t, "town_damage") != "false";
   for d: 0..<EGE_DIALS { e[0].dial[d] = ege_json_int(t, EGE_DIAL_KEY[d], EGE_DIAL_DEF[d]); }
   e[0].parts[0] = ege_json_int(t, "cultists", 6); e[0].parts[1] = ege_json_int(t, "fanatics", 1); e[0].parts[2] = ege_json_int(t, "warlocks", 3);
-  g := e[0].dial[EGE_D_GATES]; c := 0;
-  for b: 0..<5 { if (g & (1 << b)) != 0 { c += 1; } }
-  e[0].dial[EGE_D_GATES] = clamp_i(c, 1, 4);
   e[0].known = true;
   return true;
 }
 
-#test "events: on a 390 px phone your LEVEL plate keeps off the title, CHAT opens the room's line, and the banner's long line breaks at its dots, readable" {
+#test "events: on a 390 px phone your LEVEL plate keeps off the title, CHAT opens the room's line, the front fits under them, and a long line breaks at its dots, readable" {
   g: [1] Everglade; nn: [1] EgNet;
   everglade_attach_net(g[..], nn[..]);
   n := net_of(g[..]);
   n[0].seat = 2; n[0].state = NET_OPEN; n[0].mono = 1000;
   g[0].touch = true; g[0].dpr = 3; g[0].width = 1170; g[0].height = 2532; g[0].talk = -1;
-  #assert ege_entry(g[..], n, "g 1 2 2 3 45 600 30 12 12 3 1 0 38 1 2");
+  #assert ege_entry(g[..], n, "g 1 7 0 0 0 0 30 12 0 3 1 0 38 1 2 1 520 24 30 24");
   #assert ege_entry(g[..], n, "v 2 1 120 2 0 0");
   #assert ege_live(g[..]);
   out: [40000] f32; u: [8000] f32;
@@ -764,10 +809,11 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   #assert c.x1 > c.x0 && c.y0 >= b.y1;
   #assert chat_pointer(g[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 0, 4) && chat_pointer(g[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 2, 4);
   #assert g[0].chat.typing;
-  // the banner's second line: in lines that each fit at the banner's own size (7 CSS px)
-  t1: [160] u8; t2: [200] u8;
-  l := ege_banner(g[..], t1[..], t2[..]);
-  l2 := cast(string) t2[0..<l[1]];
+  // the front: on the screen, under the LEVEL plate, within the gutters
+  fb := ege_of(g[..])[0].banner_box;
+  #assert fb.x1 > fb.x0 && fb.x0 >= 16 * k && fb.x1 <= 1170 - 16 * k && (fb.y0 >= b.y1 || fb.x0 >= b.x1 || fb.x1 <= b.x0);
+  // a long line: in lines that each fit at 7 CSS px
+  l2 := "CULTIST RAID · RAIDERS STANDING 30 · RAIDERS SLAIN 12 · THE WATCH 24 · DARIAN ODIODEI: 3 WARDS, CAN'T BE KILLED · AND MORE WORDS STILL";
   room := 1170 - 2 * 16 * k - 24 * k;
   ends: [EGE_SUB_LINES] int;
   lines := ege_sub_wrap(l2, 7 * k, room, ends[..]);
@@ -778,16 +824,37 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   #assert ege_sub_wrap(l2, 7, 5000, ends[..]) == 1 && ends[0] == l2.count;
 }
 
-#test "events: g and v draw the raid's banner and your level; a level's kit is your bar" {
+#test "events: g draws the siege's front (the line, each side, the stones, Darian), the camp's fall and the next raid; v your level; a level's kit is your bar (#12860)" {
   g: [1] Everglade; nn: [1] EgNet;
   everglade_attach_net(g[..], nn[..]);
   n := net_of(g[..]);
   n[0].seat = 2; n[0].state = NET_OPEN; n[0].mono = 1000;
-  #assert ege_entry(g[..], n, "g 1 2 2 3 45 600 30 12 12 3 1 0 38 1 2");
+  // the siege: the front, no words
+  #assert ege_entry(g[..], n, "g 1 7 0 0 0 0 30 12 0 3 1 0 38 1 2 1 520 24 30 24");
+  e := n[0].evp[..];
   t1: [160] u8; t2: [200] u8;
   l := ege_banner(g[..], t1[..], t2[..]);
-  #assert cast(string) t1[0..<l[0]] == "CULTIST RAID · WAVE 2 OF 3 · 0:45";
-  #assert cast(string) t2[0..<l[1]] == "TOWNSFOLK STANDING 38 · RAIDERS STANDING 30 · RAIDERS SLAIN 12 · RAIDERS HOLD THE SQUARE 12 S OF 60 · DARIAN ODIODEI: 3 WARDS, CAN'T BE KILLED · ENDS IN 10:00";
+  #assert l[0] == 0 && l[1] == 0 && ege_front_on(g[..]) && e[0].front == 520 && e[0].town == 24 && e[0].standing == 30 && e[0].caps[0] == 30 && e[0].caps[1] == 24;
+  #assert ege_front_u(g[..]) > 0.51 && ege_front_u(g[..]) < 0.53;
+  g[0].width = 1600; g[0].height = 1000; g[0].dpr = 1;
+  out: [40000] f32; u: [8000] f32;
+  m := ege_front(g[..], out[..], u[..], 0, 100);
+  #assert m > 0 && e[0].banner_box.x1 - e[0].banner_box.x0 == f32(EGE_FRONT_W);
+  // the stand; the camp taken: its word, then the regroup's time on the front
+  #assert ege_entry(g[..], n, "g 1 8 0 0 0 0 4 40 0 1 1 0 38 1 2 1 20 24 30 24") && ege_front_on(g[..]);
+  #assert ege_entry(g[..], n, "g 1 5 0 0 5 0 0 44 0 0 3 1 38 1 2 1 0 24 30 24") && !ege_front_on(g[..]);
+  l = ege_banner(g[..], t1[..], t2[..]);
+  #assert cast(string) t1[0..<l[0]] == "CAMP TAKEN" && l[1] == 0;
+  #assert ege_entry(g[..], n, "g 1 6 0 0 60 0 0 44 0 0 3 1 38 1 2 1 0 24 30 24") && ege_front_on(g[..]);
+  // called off: its word; idle with a schedule: the next one's time
+  #assert ege_entry(g[..], n, "g 1 5 0 0 5 0 0 44 0 0 3 3 38 1 2 1 500 0 30 24");
+  l = ege_banner(g[..], t1[..], t2[..]);
+  #assert cast(string) t1[0..<l[0]] == "RAID CALLED OFF";
+  #assert ege_entry(g[..], n, "g 1 0 0 0 90 0 0 0 0 0 0 0 38 1 2 1 500 0 30 24");
+  l = ege_banner(g[..], t1[..], t2[..]);
+  #assert cast(string) t1[0..<l[0]] == "NEXT CULTIST RAID IN 1:30";
+  // an older server's g, with no siege fields, still parses
+  #assert ege_entry(g[..], n, "g 1 7 0 0 0 0 30 12 0 3 1 0 38 1 2");
   // another seat's v is theirs; yours sets your kit
   #assert ege_entry(g[..], n, "v 1 2 300 2 0 0") && !n[0].evp[0].mine;
   lo := (1 << 21) | (1 << 22) | (1 << 43) | (1 << 28) | (1 << 9) | (1 << 26) | (1 << 13) | (1 << 47) | (1 << 48);
@@ -849,17 +916,12 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   #assert n[0].evp[0].open && n[0].pipe[0].n == 1 && pipe_bytes(n[0].pipe[..], 0) == "/api/playtest/room-event\n{}";
   net_moderated(g[..], "200\n{\"dials\" : {\"on\": false, \"size\": 12, \"every\": 0, \"gates\": 31, \"waves\": 8, \"leader\": true, \"levels\": true, \"reward\": 100, \"minutes\": 15, \"cultists\": 6, \"fanatics\": 1, \"warlocks\": 3, \"level_cap\": 2, \"aggression\": 2, \"town_damage\": true, \"warlock_level\": 3}, \"start_n\" : 0}");
   e := n[0].evp[..];
-  #assert e[0].known && !e[0].on && e[0].lv_on && e[0].dial[EGE_D_WAVES] == 8 && e[0].dial[EGE_D_CAP] == 2 && e[0].dial[EGE_D_GATES] == 4 && e[0].asked == 0;
-  // what the dials give for the players here, as the server builds it (everglade-raid-scale.coax)
-  #assert e[0].parts[0] == 6 && e[0].parts[1] == 1 && e[0].parts[2] == 3;
-  e[0].players = 4;
-  sw: [160] u8; sn := ege_scale_words(e, 1, sw[..]);
-  #assert cast(string) sw[0..<sn] == "FOR 4 PLAYERS, WAVE 1: 12 RAIDERS · 10 CULTISTS, 2 WARLOCKS UP TO LEVEL 1";
-  sn = ege_scale_words(e, 8, sw[..]);
-  #assert cast(string) sw[0..<sn] == "FOR 4 PLAYERS, LAST WAVE: 12 RAIDERS · 7 CULTISTS, 1 FANATIC, 4 WARLOCKS UP TO LEVEL 3";
-  e[0].players = 1; sn = ege_scale_words(e, 1, sw[..]);
-  #assert cast(string) sw[0..<sn] == "FOR 1 PLAYER, WAVE 1: 3 RAIDERS · 3 CULTISTS";
-  ege_dial(g[..], EGE_D_WAVES, 1);   // 8 is the top: nothing asked
+  #assert e[0].known && !e[0].on && e[0].lv_on && e[0].dial[EGE_D_SIZE] == 12 && e[0].dial[EGE_D_CAP] == 2 && e[0].asked == 0;
+  // what the size gives: each side's fighters at once (everglade-raid-scale.coax)
+  sw: [160] u8; sn := ege_scale_words(e, sw[..]);
+  #assert cast(string) sw[0..<sn] == "AT ONCE: CULT 30 · WATCH 24";
+  e[0].dial[EGE_D_SIZE] = 24;
+  ege_dial(g[..], EGE_D_SIZE, 1);   // 24 is the top: nothing asked
   #assert n[0].pipe[0].n == 1;
   ege_dial(g[..], EGE_D_CAP, 1);
   #assert e[0].dial[EGE_D_CAP] == 3 && pipe_bytes(n[0].pipe[..], 1) == "/api/playtest/room-event\n{\"dials\":{\"level_cap\":3}}";

@@ -5,8 +5,9 @@ the Everglade multiplayer epic #12718.
 
 This spec adds world events to Everglade (`/worlds/everglade`, Everglade 5E). A world event is a
 timed happening that the room server runs for everyone in an instance at once. The first event
-type is the **Cultist Raid**: waves of cultists and low-level warlocks, led by a level 17 Fiend
-Warlock, attack the town. The spec also adds character progression: every character starts at
+type is the **Cultist Raid**: a standing siege on the south road, where the town's watch and the
+cult of a level 17 Fiend Warlock fight to a standstill, each side reinforced, until enough players
+join to tip it (section 4.2, #12860). The spec also adds character progression: every character starts at
 level 1 and gains experience points (XP), fighting the raiders, up to a level cap: level 2 for now,
 and level 3 once the owner raises it.
 
@@ -45,8 +46,8 @@ Related reading:
 - An admin turns a world event on or off for the Everglade realm, starts one now or on a
   schedule, and sets its intensity. Changes reach every instance on every shard within a few
   seconds, with no deploy.
-- Every event ends at a point that everyone can see coming: a timer, a wave count, or an
-  objective. The banner says which.
+- Everyone can see how an event stands: the siege's front shows the line, each side and the
+  leader's state, and the camp's fall ends it.
 - The raiders are SRD 5e creatures at levels 1 to 3. Players can kill them and earn XP for it.
 - The raid's leader can't be killed, and the page always shows why a hit didn't hurt it.
 - A character starts at level 1 with exactly the SRD level 1 kit of its class, reaches level 2
@@ -92,54 +93,46 @@ players hold back at the bridges. Each new type is its own issue.
 
 ### 3.2 Lifecycle
 
-Each instance runs at most one event at a time. An event moves through these phases:
+Each instance runs at most one event at a time. The Cultist Raid moves through these phases:
 
 | Phase | Lasts | What happens |
 | --- | --- | --- |
-| `idle` | Until a start | Nothing. The banner shows the next scheduled start, if there is one. |
-| `announce` | 30 s | The banner says what is coming and from where. Horns sound; nothing spawns yet. |
-| `wave` | Until the wave is down, or 90 s | One wave spawns at the gates and attacks. |
-| `lull` | 15 s | A pause between waves. The banner counts down to the next wave. |
-| `climax` | Until the leader withdraws, or 3 minutes | After the last wave, the leader comes in person. |
-| `end` | 5 s | The outcome shows: the town held, or the town fell. |
-| `aftermath` | 60 s | Rewards are paid. Raiders who are still up flee. The town rebuilds. |
+| `idle` | Until a start | Nothing. The front shows the next scheduled start, if there is one. |
+| `announce` | 30 s | Horns sound. The front shows the time to the siege. |
+| `siege` | Until the line reaches the camp | The watch and the cult hold the south road between the cult's camp and the South Gate, each side reinforced (section 4.2). |
+| `stand` | Until the camp falls, or the line falls back | The line is at the camp. Darian Odiodei's ward stones can break, and he makes his stand (section 5). |
+| `end` | 5 s | `CAMP TAKEN` shows. |
+| `aftermath` | 60 s | Rewards are paid. The cult's survivors flee. The town rebuilds. Then the cult musters again: the next siege starts. |
 
 An event starts in one of two ways:
 
 - **On a schedule.** The admin sets a period, for example every 60 minutes. Each start is at a
   wall-clock time that is a whole multiple of the period, so every shard and instance starts the
-  same raid at the same moment.
+  same siege at the same moment.
 - **Now.** The admin presses **START NOW**. Every live instance starts within 2 s, which is the
-  control poll's period. An instance that opens after the start doesn't join a raid in progress;
-  it waits for the next one.
+  control poll's period. While events are on, an instance that opens later starts its own siege.
 
-An admin's **STOP** ends every running event at once. Raiders vanish, the outcome is "called
-off", and no end award is paid. XP already earned stays.
+Once started, a siege runs while events are on: after each camp's fall, the cult regroups and
+musters again. An admin's **STOP**, or switching events off, ends every siege at once. The
+fighters vanish, `RAID CALLED OFF` shows, and no end award is paid. XP already earned stays.
 
 ### 3.3 How an event ends
 
-Every event ends. Each type names its end conditions, and the banner always shows the one
-that is closest. For the Cultist Raid, the first of these to happen ends it:
+The siege has no time limit, and the town never falls. The watch holds at the South Gate, though
+the palisade and the stables outside it can burn. A siege ends in one of two ways:
 
-| End | Outcome | How the banner shows it |
-| --- | --- | --- |
-| Every wave is beaten and the leader withdraws | The town held | `WAVE 3 OF 3`, then `DARIAN ODIODEI WITHDRAWS` |
-| The time limit runs out | The town held if the square is still held; else it fell | `9:12 LEFT` |
-| The raiders hold the square for 60 s | The town fell | `THE SQUARE: CULT 0:42` |
-| The town's people are all down | The town fell | `TOWNSFOLK 6 OF 38 STANDING` |
-| An admin presses STOP | Called off | `CALLED OFF` |
-
-The square is the town's central square, a circle of 18 m about its well. The cult holds it
-while more raiders stand in it than the town has there. Each player there counts as 2, and each
-of the watch and the townsfolk as 1.
+| End | How it shows |
+| --- | --- |
+| The players push the line to the camp, and Darian Odiodei withdraws (or, with the leader dial off, every ward stone breaks) | `CAMP TAKEN` |
+| An admin presses STOP, or switches events off | `RAID CALLED OFF` |
 
 ## 4. The Cultist Raid
 
 ### 4.1 The cult
 
 The cult reuses the 5E Lab Siege's stat blocks and mix (`aethyr/rules/srd/npcs.coax`,
-`rs_siege_attacker`), so the Lab and Everglade field the same armies. A wave is drawn from the
-cult's mix, scaled by the admin's dials:
+`rs_siege_attacker`), so the Lab and Everglade field the same armies. The cult is drawn from its
+mix, scaled by the admin's dials:
 
 | Raider | SRD 5.2.1 | AC | HP | Attack | XP |
 | --- | --- | --- | --- | --- | --- |
@@ -153,44 +146,61 @@ The SRD gives a Challenge Rating and XP for stat blocks, not for class levels. T
 is a house rule: a level 1 warlock counts as CR 1/4, level 2 as CR 1/2 and level 3 as CR 1, the
 SRD's XP for those ratings. The raid caps the cult's warlocks at level 3 (the Siege's go to 5).
 
-### 4.2 Waves
+### 4.2 The siege
 
-**A wave's size and mix follow the players present** (`apps/openagents-web/everglade-raid-scale.coax`,
-shared by the room server and the admin pane, so the pane shows exactly what comes):
+**Two standing forces.** The watch (Guards, Warrior Veterans, Knights and Scouts) musters inside
+the South Gate. The cult (Cultists, Fanatics, Warlocks and Cult Priests) musters at its camp on the
+south road, about 50 m out at z -106. Each side's fighters are the room's creatures, with the
+SRD stat blocks and rolls of section 4.1. The **Siege size** dial sets how many stand on each side
+at once (`everglade-raid-scale.coax` `raid_siege_caps`): at the default 12, the cult has 30 and
+the watch 24, and at 24 (the most), 33 and 27. Darian Odiodei and his 3 ward stones stand at the
+camp. Together they stay within the raid's 64 places.
 
-- The **Wave size** dial is the wave for 4 players. Each player in the instance brings a quarter
-  of it, so the default 12 is 3 raiders a player: 3 for one player, 12 for four, 24 for eight.
-  A wave has at least 3. At 24 it is 6 a player, for a brutal raid.
-- **Fanatics and Warlocks grow wave by wave.** Wave w of W has w/W of the Fanatic and Warlock
-  parts, rounded down, and always one Warlock part when the dial has any. The last wave has
-  the dials' whole mix, and Cultists are the rest.
-- **Warlock levels grow the same way**, from level 1 in the first wave to the dial's in the
-  last.
-- With the defaults and 4 players, wave 1 is 10 Cultists and 2 level 1 Warlocks. The last wave
-  is 7 Cultists, a Fanatic and 4 Warlocks of levels 1 to 3.
+**The front.** The line is a place on the road, from the camp (0) to the gate (1). The room moves
+it each second by the two sides' strengths (`apps/openagents-web/everglade-raid-front.coax`, shared
+by the room and the page):
+
+- A side's strength is mostly its whole army's (85%), which its reinforcements keep refilling,
+  and the rest its share of fighters standing now. Full sides match. The cult's casters drop the
+  watch much faster than the watch drops them, so by standing alone the watch would always lose
+  the field. Past the road's
+  middle (z -72), a side's strength falls off with how far it has pushed, down to 30% at 40 m
+  past. A side that pushes forward fights farther from home.
+- The line moves at up to 0.5 m/s toward the weaker side, by the difference over the sum.
+- **Reinforcements.** Every 10 s, each side gets back what it lacks of its cap in fresh fighters. A side that has lost ground reinforces faster, by up to 60% at 40 m lost.
+  The cult musters at its camp and the watch inside the gate.
+- Fighters hold posts about the line: melee in front, ranged behind, spread across the road's
+  width. They fight whoever of the other side is in reach. The cult also sets on players outside
+  the players' spawn. The watch never sets on the ward stones or Darian until the stand.
+
+**Without players, it holds.** Matched sides, the fall-off past the middle and the faster
+reinforcement of the side behind keep the line in a band before the palisade, between z -81 and
+z -63. Both sides keep losing fighters and reinforcing.
+
+**Players tip it.** Each player's help adds to the watch's strength: damage to the cult, kills
+(6 points), ward stones broken (20), heals of a player or of the watch (1 a point), and repairs
+of the town (12, the Repair ability on R calls `ev_repair`). A player's points fade by half every
+20 s, so only help that keeps coming counts. A player who keeps up 15 points is worth 6 of the
+watch, and a player is worth 9 at most, scaled to the siege's size:
+
+- One player who fights moves the line a few metres toward the camp. It stays contested.
+- About four players who fight take the line to the camp (z -100) in under 10 minutes. The
+  `stand` begins: the ward stones can break, and Darian Odiodei makes his stand (section 5). The
+  cult gets no more reinforcements.
+- If the players stop helping for 90 s, or the line falls back 8 m, the stand ends and the cult
+  reinforces again.
 
 **The fallen stand again.** A player who falls in a room (0 Hit Points, dying or dead) stands
-again where they fell, with all their Hit Points, 10 s later, as a page on its own stands you up
-after `YOU DIED`. Before this, a death in a room lasted until the player left, so a raid's fallen
-were out of it for good.
+again where they fell, with all their Hit Points, 10 s later.
 
-**The watch fights.** The town's Guards, Warrior Veterans and Knights fight raiders from where
-the watch stands, with their stat blocks' weapons. A Guard strikes with its Spear at hand, or
-throws it at a raider within 20 ft. A Veteran or a Knight uses its Greatsword at hand, or its
-Heavy Crossbow out to 120 ft. Raiders set on the watch as they set on townsfolk.
+**The HUD.** The front shows at the top of the screen, in place of the old banner: a bar along the
+road from the cult's camp to the gate, the line's marker on it (red during the stand), each side's
+fighters standing, the 3 ward stones' pips and Darian Odiodei's mark (warded, exposed or gone). It
+has no words. Before a siege and after a camp's fall, it shows the time to the next siege.
 
-- Each wave spawns at the gates the admin picked: north road, east road, south road, the west
-  wood and the river bridge. Raiders of a wave spawn in groups of up to 8, spread over those
-  gates.
-- Raiders lay siege to the wall, then take the square (section 4.3). Each attacks whatever is
-  nearest within reach: a player, then a guard, then a townsperson.
-- Fanatics and one Cultist in three run in and strike in melee, and screen the casters. The other
-  Cultists cast Fire Bolt, and the Warlocks cast Eldritch Blast, from 18 m off. A Fanatic casts
-  Hold Person at the strongest player in reach once a raid.
-- When the town's damage dial is on, the casters' volleys at the wall break and burn the town's
-  pieces the way a player's do (spec 6.6). When it is off, the raid harms only creatures.
-- A wave is beaten when all its raiders are down. The next wave starts after a 15 s lull, or
-  at once if the 90 s wave timer runs out first; a wave still up then stays and fights.
+**Town damage.** When the town's damage dial is on, the cult's casts at the palisade and the
+stables break and burn them the way a player's do (spec 6.6). One cult caster in 8 aims at the
+stables near the gate, and Darian Odiodei razes them from his post. Repair rebuilds them.
 
 ### 4.3 How raiders decide
 
@@ -231,8 +241,8 @@ fiction and the page both say why.
 
 ### 5.1 The wards
 
-Darian Odiodei enters the town in the climax behind three **ward stones**: dark obelisks that the cult
-raises at three of the gates as the climax starts.
+Darian Odiodei holds his camp behind three **ward stones**: dark obelisks about the camp. Until the
+stand (section 4.2), the stones can't be hurt.
 
 - While any ward stone stands, nothing hurts Darian Odiodei. Every hit on Darian Odiodei shows `WARDED`
   instead of a number, and a beam runs from each standing stone to Darian Odiodei, so everyone can
@@ -246,11 +256,9 @@ raises at three of the gates as the climax starts.
 
 Darian Odiodei's HP never reaches 0:
 
-- When Darian Odiodei drops to half its Hit Points or below, it casts Dimension Door (a 5th-level Pact
-  slot; the SRD's 500-foot teleport) out of the town, and the raid ends with
-  `DARIAN ODIODEI WITHDRAWS`. The town held.
-- When the climax's 3 minutes run out, Darian Odiodei withdraws the same way, unhurt. The town held:
-  only the square's own rule (the cult holds it for 60 seconds, section 3.3) ends a raid as fallen.
+- When Darian Odiodei drops to half its Hit Points or below during the stand, it casts Dimension
+  Door (a 5th-level Pact slot; the SRD's 500-foot teleport) away, and the camp falls:
+  `CAMP TAKEN`.
 - Damage that would take Darian Odiodei below half its Hit Points takes it to half, then it
   withdraws. The page shows the hit's real number, then `DIMENSION DOOR`.
 
@@ -355,12 +363,12 @@ Darian Odiodei, stays level 17 and can't be killed.
 
 ## 7. Rewards and aftermath
 
-- **The raid's end award.** At the end, every seat that earned XP in the raid gets 200 XP times
-  the multiplier when the town holds, or 150 XP when it falls. An admin's STOP pays nothing.
-  Raiders struck down in the tick the town falls still pay their XP.
+- **The camp's award.** When the camp falls, every seat that earned XP in the siege gets 200 XP
+  times the multiplier. An admin's STOP pays nothing. Raiders struck down in the tick the camp
+  falls still pay their XP. The watch's fallen pay no XP.
 - **One raid to level 2.** A new player who fights reaches level 2 (300 XP) in about one raid,
   held or fallen, with 1 player or 16 (`coax/web/room/raid-proof.sh` with `RAID_MODE=fight
-  RAID_LEVEL2=1`). Every XP number is in one place: `EV_XP_*` in `coax/web/room/room-events.coax`.
+  RAID_LEVEL2=1`), when it helps take the camp. Every XP number is in one place: `EV_XP_*` in `coax/web/room/room-events.coax`.
 - **The aftermath.** For 60 s after the end, raiders still standing flee to the gates and
   vanish, and Darian Odiodei's Zombies fall. At the aftermath's end, the server runs the R rebuild
   itself (spec 6.6): the town's pieces stand, the fires go out, and the town's people stand up
@@ -393,23 +401,20 @@ value outside one is set to the nearest end and shown as set.
 | --- | --- | --- | --- |
 | Event | on, off | off | Whether events start, on a schedule or by START NOW. |
 | Every | off, 15 to 240 minutes | off | The schedule's period. |
-| Waves | 1 to 8 | 3 | How many waves before the climax. |
-| Wave size | 4 to 24 raiders | 12 | The wave for 4 players; it scales with the players present (section 4.2). |
-| Cultists, Fanatics, Warlocks | 0 to 10 parts each | 6, 1, 3 | The last wave's mix, in parts; earlier waves have fewer Fanatics and Warlocks (section 4.2). |
-| Warlock levels | 1 to 3 | 3 | The last wave's warlocks are levels 1 up to this; earlier waves' go less high. |
-| Gates | any of 5 | all 5 | Where waves spawn. |
-| Leader | on, off | on | Whether Darian Odiodei comes in the climax. |
+| Siege size | 4 to 24 | 12 | Each side's fighters at once: at 12, the cult 30 and the watch 24 (section 4.2). |
+| Cultists, Fanatics, Warlocks | 0 to 10 parts each | 6, 1, 3 | The cult's mix, in parts. |
+| Warlock levels | 1 to 3 | 3 | The cult's warlocks are levels 1 up to this. |
+| Leader | on, off | on | Whether Darian Odiodei holds the camp. |
 | Aggression | 0 to 3 | 2 | How Darian Odiodei fights (section 5.3). |
 | Town damage | on, off | on | Whether the raid breaks and burns the town. |
 | Reward | 50% to 300% | 100% | The XP multiplier. |
-| Time limit | 5 to 30 minutes | 15 | The whole raid, from the announcement. |
 | Levels | on, off | off | Characters at their level's SRD kit from their XP (section 6.1). |
 | Level cap | 1 to 3 | 2 | The highest level a character reaches. |
 
-The pane shows what the dials give for the players in your instance, the first wave's and the
-last's, for example `FOR 4 PLAYERS, WAVE 1: 12 RAIDERS · 10 CULTISTS, 2 WARLOCKS UP TO LEVEL 1`.
-At most 60 raiders stand in an instance at once, waves together, with Darian Odiodei and his 3 ward stones the raid's 64 places. A wave that would go past it spawns the rest as others
-fall.
+The pane shows what the size gives, for example `AT ONCE: CULT 30 · WATCH 24`. The siege
+(#12860) dropped three dials from the pane: Waves, Gates and Time limit. The API keeps them, so
+older pages and shards still read the same line, but the siege ignores them: it has no waves,
+the cult comes from its camp on the south road, and it has no time limit.
 
 ### 8.3 The API
 
@@ -449,9 +454,12 @@ fall.
 
 New D entries, which pages that don't know them skip:
 
-- `g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME FOLK LEVELS CAP PLAYERS`: the event's state,
-  heard by every seat on change. SECS is the phase's seconds left; SQUARE who holds the square
-  and for how long; ARCH Darian Odiodei's state (away, warded, exposed, withdrawn).
+- `g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME FOLK LEVELS CAP PLAYERS FRONT TOWN CULTCAP TOWNCAP`:
+  the event's state, heard by every seat on change. PHASE 7 is the siege and 8 the stand. SECS
+  is the phase's seconds left outside the siege; WAVE, WAVES, LEFT and SQUARE are 0. STANDING is
+  the cult's fighters standing and TOWN the watch's; FRONT is the line's place in thousandths of
+  the road (0 the camp, 1000 the gate); CULTCAP and TOWNCAP each side's size. ARCH is Darian
+  Odiodei's state (away, warded, exposed, withdrawn).
 - `v SS LEVEL XP CAP LO HI`: a seat's level, XP, the cap, and the bar slots its character has
   (bit masks of the druid's and the warlock's bars; both 0 means the whole bar), heard by every
   seat on change, for nameplates, your XP bar and your hotbar.
@@ -461,8 +469,8 @@ New D entries, which pages that don't know them skip:
   5 Dimension Door) from where the creature stands. With the town's damage dial on, Eldritch
   Blast and Fireball also strike the server's town, as a player's do; the watch blames nobody.
 - Raiders, Darian Odiodei and the stones are `c` entries of kind `WK_BEAST` (12), as the
-  summoned creatures are: P1 the form (27 Cultist, 28 Cultist Fanatic, 29 Warlock, 30 Darian
-  Odiodei, 40 a ward stone), P2 the most Hit Points, OWNER -1, and F 1 while it moves plus the
+  summoned creatures are: P1 the form (21 to 24 the watch's Guard, Veteran, Knight and Scout,
+  27 Cultist, 28 Cultist Fanatic, 29 Warlock, 30 Darian Odiodei, 31 Cult Priest, 40 a ward stone), P2 the most Hit Points, OWNER -1, and F 1 while it moves plus the
   raider's level times 256. A hit on Darian Odiodei while the wards stand changes nothing, and
   the page shows `WARDED` there in place of its number.
 - A cast refused for the character's level is `r SEQ level`.
@@ -514,8 +522,9 @@ XP saves the way HP does (#12715):
 
 ## 11. Testing
 
-- **Room checks** (`coax test coax/web/room/room.coax --only "events:"`): the lifecycle from
-  start to aftermath on a test clock; each end condition; the dials' clamping; XP split among
+- **Room checks** (`coax test coax/web/room/room.coax --only "events:"`): the siege's muster at
+  both caps, its marching and no time limit, STOP and events off, the camp's fall and the cult's
+  regroup; the dials' clamping; XP split among
   two seats; level-up at 300 and 900 and the cap; a level 1 seat refused a 2nd-level spell;
   Darian Odiodei's wards, retreat at half HP, and never 0 HP.
 - **API checks** (`coax/web/api/test_room.py`): `room-event` refuses visitors; dials round-trip;
@@ -523,13 +532,29 @@ XP saves the way HP does (#12715):
 - **Page checks** (`everglade5e.coax --only "events:"`): the banner from `g` entries, the XP
   bar, `WARDED`, and the admin pane's dials and ranges.
 - **Load**: section 9.3's raid case.
+- **The siege with no players** (`coax/web/tool.sh coax/web/room/siege-sim.coax [MINUTES] [SIZE]`):
+  a room's own ticks, as fast as they run, with two idle seats at the spawn. It prints each
+  minute's front and each side's fighters, and passes when the front keeps its band 90% of the
+  time, the camp stands, and both sides lose fighters and reinforce. At the default dials,
+  2026-11-04: in 30 minutes the front stayed between z -72.4 and z -71.4 (100% in the band); the
+  cult lost and reinforced 363 fighters and the watch 843; the room's tick cost 0.11 ms.
 - **A local raid** (`coax/web/room/raid-proof.sh BIN [N] [SECONDS] [PORT]`): it starts a room server
   built by `build.sh`, with a local key, its control lines read from a file, and nothing sent to
   the API. Then it joins N players, presses START NOW once they're in, and runs
   `raid-check.coax`. Each player walks to the square and casts Starry Wisp at the nearest raider.
   The check reports what every seat heard: the phases, waves, raiders by kind, their casts, the
   hits on them, XP, refusals by reason, and the D rate. `RAID_DIALS` sets other dials.
-  - The balance at the default dials (3 waves, Wave size 12, aggression 2), 3 rounds each, level 1
+  - The siege (#12860), 2026-11-04, at the default dials, players in fight mode (`RAID_MODE=fight`,
+    `RAID_EXPECT=hold|fall`). The check follows the front's FRONT field: its least and most, its
+    share of seconds in the band, the camp's fall and the cult's regroup.
+
+    | Players | Front (thousandths of the road) | Camp | Tick p95 at worst | Bytes a second a player |
+    | --- | --- | --- | --- | --- |
+    | 0 (`siege-sim.coax`, 30 min) | 667 to 687, always in the band | Stood | 0.11 ms a tick, mean | - |
+    | 1 (a druid) | 525 to 680, always in the band | Stood, contested | 0.5 ms | 26,958 |
+    | 4 (mixed druids and warlocks) | 86 to 680 | Taken at 310 s; the cult regrouped | 0.7 ms | 22,679 |
+
+  - Before the siege, the waves (kept for reference): the balance at the default dials (3 waves, Wave size 12, aggression 2), 3 rounds each, level 1
     players with the watch, by the shared tactics (section 4.3). A fallen player stands again
     after 10 s; "deaths" counts the casts refused because the caster was down.
 

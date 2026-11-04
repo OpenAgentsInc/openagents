@@ -187,8 +187,9 @@ egs_break :: (s: [] Everglade, p: DemoPiece) {
 // The raid's phase from `was` to `now` (g): the horn as it starts and at its climax, its end held or fallen.
 egs_raid :: (s: [] Everglade, was: int, now: int, outcome: int) {
   if was == now { return; }
-  if now == EGE_ANNOUNCE || (now == EGE_WAVE && was == EGE_IDLE) || now == EGE_CLIMAX { egs_here(s, SFX_HORN, ifx now == EGE_CLIMAX then 1.0f32 else 0.85f32); }
-  if now == EGE_END { egs_here(s, ifx outcome == EGE_FELL then SFX_RAID_LOST else SFX_RAID_WON, 1); }
+  // the horn as the cult marches, and as the line reaches its camp (the stand: #12860); the camp's fall won
+  if now == EGE_ANNOUNCE || now == EGE_STAND { egs_here(s, SFX_HORN, ifx now == EGE_STAND then 1.0f32 else 0.85f32); }
+  if now == EGE_END && outcome == EGE_HELD { egs_here(s, SFX_RAID_WON, 1); }
 }
 
 // ---- each frame (everglade.coax everglade_frame, after your figure): the listener, and what the
@@ -741,12 +742,12 @@ egs_test_bank_page :: (g: [] Everglade) {
   #assert g[0].snd[0].cue_n == 0;
   egs_test_page(g[..]);
   egs_raid(g[..], EGE_IDLE, EGE_ANNOUNCE, 0);
-  egs_raid(g[..], EGE_CLIMAX, EGE_END, EGE_HELD);
+  egs_raid(g[..], EGE_STAND, EGE_END, EGE_HELD);
   _ := everglade_sound_lines(g[..]);
   #assert egs_heard(g[..], 0).name == "horn" && egs_heard(g[..], 0).pan == 0 && egs_heard(g[..], 1).name == "raid-won";
-  egs_raid(g[..], EGE_CLIMAX, EGE_END, EGE_FELL);
+  egs_raid(g[..], EGE_SIEGE, EGE_STAND, 0);
   _ = everglade_sound_lines(g[..]);
-  #assert egs_heard(g[..], 0).name == "raid-lost";
+  #assert egs_heard(g[..], 0).name == "horn";
 }
 
 // Three pieces of a town: a low wall, a tall tower, another wall.

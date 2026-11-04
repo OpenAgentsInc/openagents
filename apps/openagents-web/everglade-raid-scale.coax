@@ -1,5 +1,7 @@
-// The Cultist Raid's scale (docs/verse/2026-11-03-everglade-world-events.md 4.2): how many come in
-// each wave for the players present, and what they are. The room server builds its waves with it
+// The Cultist Raid's scale (docs/verse/2026-11-03-everglade-world-events.md 4.2): each side's
+// fighters at once in the standing siege, what a player's help is worth on the front
+// (everglade-raid-front.coax), and the cult's mix. Older: how many came in each wave for the players
+// present, and what they were. The room server builds its waves with it
 // (coax/web/room/room-events.coax ev_raid_wave), and the admin's EVENTS pane shows what it gives
 // (everglade-events.coax), so nothing about a raid's size is hidden. Pure arithmetic: no state.
 //
@@ -12,6 +14,48 @@
 //   Cultists make up the rest.
 // Created with SRD 5.2.1 stat blocks (Cultist, Cultist Fanatic, Warlock): the System Reference
 // Document 5.2.1 by Wizards of the Coast LLC, licensed under CC-BY-4.0.
+
+// ---- the standing siege (#12860)
+//
+// The SIZE dial (4 to 24, 12 by default) sets both sides at once: RAID_FIGHTERS_PER times it, up to
+// RAID_FIGHTERS_MAX (the room's raid places less Darian and his 3 ward stones), the cult
+// RAID_CULT_SHARE of them and the watch the rest. The default: the cult 30, the watch 24.
+RAID_FIGHTERS_PER :: 9;        // fighters on both sides for each 2 of SIZE
+RAID_FIGHTERS_MAX :: 60;       // E5RD_MAX (64) less Darian and the 3 ward stones
+RAID_CULT_SHARE :: 5;          // ninths of them the cult's
+// A player's help on the front: what each seat does adds points, which fade over RAID_WORTH_FADE_S;
+// a seat with RAID_WORTH_FULL points is an active player, worth RAID_WORTH_FIGHTERS of the watch on
+// the line, and no seat counts for more than RAID_WORTH_MOST active players. Tuned so one player
+// shifts the line a little and about 4 take it to the camp (raid-proof.sh, spec 4.2).
+RAID_WORTH_FADE_S :: 20.0;     // s: a seat's points fade by this time constant
+RAID_WORTH_FULL :: 15;         // points an active player keeps up between its falls (raid-proof.sh, 4 players: #12860)
+RAID_WORTH_FIGHTERS :: 6.0;    // what an active player is worth on the line, in fighters
+RAID_WORTH_MOST :: 1.5;        // a seat's worth at most, in active players
+RAID_PTS_KILL :: 6;            // points for a share in a raider's fall (beside its damage)
+RAID_PTS_WARD :: 20;           // a ward stone broken: an objective
+RAID_PTS_REPAIR :: 12;         // a repair of the town's palisade or stables under fire
+RAID_PTS_HEAL :: 1;            // each Hit Point healed, on a player or the watch
+// The fighters at once for the SIZE dial: the cult's into o[0], the watch's into o[1].
+raid_siege_caps :: (size: int, o: [] int) {
+  f := size * RAID_FIGHTERS_PER / 2;
+  if f > RAID_FIGHTERS_MAX { f = RAID_FIGHTERS_MAX; }
+  if f < 12 { f = 12; }
+  o[0] = f * RAID_CULT_SHARE / 9; o[1] = f - o[0];
+}
+// A seat's points after dt seconds of fading.
+raid_points_fade :: (points: f32, dt: f32) -> f32 {
+  k := 1 - dt / f32(RAID_WORTH_FADE_S);
+  return ifx k <= 0 then 0.0f32 else points * k;
+}
+// A seat's worth on the line, in fighters, for its points.
+raid_player_worth :: (points: f32) -> f32 {
+  if points <= 0 { return 0; }
+  a := points / f32(RAID_WORTH_FULL);
+  if a > f32(RAID_WORTH_MOST) { a = f32(RAID_WORTH_MOST); }
+  return a * f32(RAID_WORTH_FIGHTERS);
+}
+
+// ---- the waves (the raid before the siege; the admin pane's mix still reads them)
 
 RAID_SIZE_AT :: 4;     // the SIZE dial is the wave for this many players
 RAID_WAVE_MIN :: 3;    // raiders a wave at least, whoever is there
@@ -54,6 +98,15 @@ raid_wave_counts :: (n: int, parts: [] int, out: [] int) {
     }
     out[best] += 1;
   }
+}
+
+#test "raid scale: the siege's sides by SIZE, within the raid's places; a player's worth fades and has a ceiling" {
+  c: [2] int;
+  raid_siege_caps(12, c[..]); #assert c[0] == 30 && c[1] == 24;
+  raid_siege_caps(24, c[..]); #assert c[0] + c[1] == RAID_FIGHTERS_MAX && c[0] > c[1];
+  raid_siege_caps(4, c[..]); #assert c[0] + c[1] == 18 && c[1] >= 8;
+  #assert raid_points_fade(40, 1) < 40 && raid_points_fade(40, 1) > 37 && raid_points_fade(40, 100) == 0;
+  #assert raid_player_worth(f32(RAID_WORTH_FULL)) == f32(RAID_WORTH_FIGHTERS) && raid_player_worth(1000) == f32(RAID_WORTH_FIGHTERS) * f32(RAID_WORTH_MOST);
 }
 
 #test "raid scale: a wave grows with the players; the Fanatics, Warlocks and their levels with the waves" {

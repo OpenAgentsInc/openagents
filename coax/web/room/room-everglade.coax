@@ -567,7 +567,7 @@ eg_engine_events :: (v: [] RmServer, k: int) {
     at := eg_where(v, k, who, ev[o + 6], ev[o + 7]);
     b: [96] u8; m := 0;
     if kind == RS_EV_DAMAGE { eg_crime(v, k, by, who, at.x, at.z); }
-    ev_engine(v, k, kind, by, who);   // a raider's harm, the XP's (room-events.coax)
+    ev_engine(v, k, kind, by, who, cast(int) ev[o + 4]);   // a raider's harm, the XP's, the siege's help (room-events.coax)
     if kind == RS_EV_DAMAGE { m = wire_put_hit(b[..], 0, WireHit.{who = who, by = by, amt = cast(int) ev[o + 4], kind = cast(int) ev[o + 5]}); }
     else if kind == RS_EV_HEAL { m = wire_put_heal(b[..], 0, who, cast(int) ev[o + 4]); }
     else if kind == RS_EV_DEATH { m = wire_put_die(b[..], 0, who); }

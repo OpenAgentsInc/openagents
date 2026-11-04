@@ -1003,11 +1003,14 @@ net_cast :: (s: [] Everglade, b: int, at: Point, target: int) -> bool #export_c 
 }
 // The TGT code (2000 + EID) of the summoned creature nearest the point within `reach` m, -1 none.
 NET_PICK :: 1.6;
+// Whether a creature's P1 is one of the town's watch in the siege (a Guard to a Scout: room-events.coax
+// e5rd_defender), on your side.
+net_watch_form :: (p1: int) -> bool { return p1 > EGE_FORM_RAID && p1 <= EGE_FORM_RAID + 4; }
 net_creature_at :: (n: [] EgNet, at: Point, reach: f32) -> int {
   best := -1; bd := reach * reach;
   for e: 0..<NET_ENTS {
     en := n[0].ents[e];
-    if !en.live || en.kind != WK_BEAST || en.ring_n == 0 || en.hp <= 0 { continue; }
+    if !en.live || en.kind != WK_BEAST || en.ring_n == 0 || en.hp <= 0 || net_watch_form(en.p1) { continue; }   // never the town's watch (#12860)
     dx := en.shown.x - at.x; dz := en.shown.z - at.z;
     d := dx * dx + dz * dz;
     if d <= bd { bd = d; best = 2000 + en.eid - NET_MADE_ID; }
@@ -1245,7 +1248,9 @@ net_bars :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
     half := (18 + 14 * far) * k;
     share := clamp01(f32(en.hp) / f32(en.max));
     if lit(out, n, sc.x - half, sc.y, sc.x + half, sc.y, 2.5 * k, 0.3, 0.4 * k, 0.1, 0.08, 0.07, 0) { n += 6; }
-    if share > 0 && lit(out, n, sc.x - half, sc.y, sc.x - half + 2 * half * share, sc.y, 2.5 * k, 0.95, 1.4 * k, WATCH_RED_R, WATCH_RED_G, WATCH_RED_B, 0) { n += 6; }
+    // the town's watch on your side in gold, every foe in red (#12860)
+    ally := net_watch_form(en.p1);
+    if share > 0 && lit(out, n, sc.x - half, sc.y, sc.x - half + 2 * half * share, sc.y, 2.5 * k, 0.95, 1.4 * k, ifx ally then GOLD_R else WATCH_RED_R, ifx ally then GOLD_G else WATCH_RED_G, ifx ally then GOLD_B else WATCH_RED_B, 0) { n += 6; }
   }
   return n;
 }

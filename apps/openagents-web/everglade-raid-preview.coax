@@ -77,7 +77,7 @@ RaidPreview :: struct {
   // his staff's orb and how bright it burns (its light, rp_lamps)
   arch_on: bool; arch_name: Point; arch_orb: Point; arch_glow: f32;
   arch_feet: Point; arch_left: Point;   // where he stands, and his left (his staff's side)
-  stage: f32;                // ?stage=darian (4 m) or darian-15: the camera this far off his left side, 0 none
+  stage: f32;                // ?stage=darian (4 m) or darian-15: the camera this far off his left side; -1 ?stage=front (RP_FRONT_EYE); 0 none
 }
 
 // ?raid=preview (and &cine=1): you by the commons facing the South Gate, the raid to come.
@@ -85,6 +85,7 @@ rp_facts :: (s: [] Everglade, url: string) {
   // a staged shot of Darian and his staff (docs/verse/clips.md), in the preview or a room
   if eg_query_is(url, "stage", "darian") { s[0].rp.stage = 4; }
   if eg_query_is(url, "stage", "darian-15") { s[0].rp.stage = 15; }
+  if eg_query_is(url, "stage", "front") { s[0].rp.stage = -1; }   // the siege's front from above the South Gate (#12860)
   if !eg_query_is(url, "raid", "preview") { return; }
   s[0].rp.on = true;
   s[0].rp.cine = eg_query_is(url, "cine", "1");
@@ -266,8 +267,13 @@ rp_path :: (k: [27] f32, t: f32) -> Point {
   u := clamp((t - RP_KEY_T[i]) / (RP_KEY_T[i + 1] - RP_KEY_T[i]), 0, 1);
   return rp_spline(rp_key(k, i - 1), rp_key(k, i), rp_key(k, i + 1), rp_key(k, i + 2), u);
 }
+// ?stage=front: the camera over the palisade east of the South Gate, looking down the south road at the
+// siege's line and the cult's camp beyond it (#12860).
+RP_FRONT_EYE :: Point.{x = 14, y = 13, z = -50};
+RP_FRONT_AT :: Point.{x = -2, y = 0.5, z = -84};
 // The camera: with &cine=1 the flight, then your own (`follow`) from its last key; else yours.
 rp_shot :: (s: [] Everglade, follow: Shot) -> Shot {
+  if s[0].rp.stage < 0 { return Shot.{eye = RP_FRONT_EYE, at = RP_FRONT_AT}; }
   if s[0].rp.stage > 0 && s[0].rp.arch_on {
     // ?stage=darian: from his left, a little above, looking at his chest and staff
     d := s[0].rp.stage;
@@ -780,6 +786,10 @@ rp_test_bunched :: (g: [] Everglade, first: int, n: int, clip: int, gap: [] f32)
   #assert abs(flat_gap(sh.eye, h[0].rp.arch_feet) - 4) < 0.05 && flat_gap(sh.at, h[0].rp.arch_feet) < 0.5;
   rp_facts(h[..], "/worlds/everglade?stage=darian-15");
   #assert abs(flat_gap(rp_shot(h[..], follow).eye, h[0].rp.arch_feet) - 15) < 0.05;
+  // ?stage=front: over the gate, down the road at the siege's line
+  rp_facts(h[..], "/worlds/everglade?stage=front");
+  fs := rp_shot(h[..], follow);
+  #assert fs.eye.z > -56 && fs.at.z < -72 && fs.eye.y > 8;
 }
 
 #test "raid preview: every kind of raider draws, a Cult Priest in its own vestment (#12771)" #steps 2000000000 {
