@@ -306,8 +306,10 @@ When steps 2 and 3 hold, post the evidence on #12733 and close it.
 Start a local room with `coax/web/room/local.sh` (#12773). It runs `bin/room
 --dev coax/web/room/dev` and the page server with `--api`, so the page's
 `/api/` requests go to the room. The room and the page then read the same world
-document, `coax/web/room/dev/world-everglade-5e.json`. In production both read
-the API's `/api/playtest/world/everglade-5e` (the room through `OA_ROOM_API`).
+document, `coax/web/room/dev/world-everglade-5e.json`, but only if the page asks
+for `everglade-5e`. The Everglade page asks `/api/playtest/world/everglade`, which
+the stand-in doesn't answer (see the drift check below). In production the room
+reads the API's `/api/playtest/world/everglade-5e` (through `OA_ROOM_API`).
 
 Since #12774 the room is also the API's stand-in (`coax/web/room/room-dev.coax`):
 it mints players, signs and checks seat tickets with names, reads levels, cap,
@@ -346,6 +348,71 @@ them:
 So after step 2, use the pair check from `main` (the harness runs from this
 checkout, not from the release). An older harness reports false move-latency
 misses.
+
+### The drift check: offline against a room, frame by frame (#12778)
+
+`coax/web/tool.sh everglade-drift` plays one scripted session in two headless
+pages and fails on any per-frame difference between them:
+
+- The offline page has its `/api/` sent nowhere, so it joins no room.
+- The room page joins a local `bin/room --dev` through
+  `coax/web/room/net-proxy.coax`, with three `drift-bots.coax` players
+  around you.
+
+The script walks into the crate, strafes along a wall, jumps, and casts
+Reverse Gravity, Wall of Stone and Wind Wall from the bar. You are then held by
+Hold Person: a bot casts it in the room, and the watch's spell holds you
+offline. Last, the script watches the townsfolk walk. The raid segment then
+plays each page's raid (offline `?raid=preview`, in the room the shortest
+dials at cap 2) until both pages' stables fall and the room page's plate climbs
+from LEVEL 1 to LEVEL 2.
+
+Before you run it, build `coax/web/room/build.sh` and the page's
+`everglade5e.wasm`: the check serves the built files with `--static`.
+
+```sh
+coax/web/tool.sh everglade-drift                      # local, 100 and 250 ms, then the raid
+coax/web/tool.sh everglade-drift --profiles local --no-raid
+```
+
+The profiles are localhost, then a 100 ms and a 250 ms round trip, each with
+30 ms of jitter and 2% of reads lost (resent after twice the round trip). It
+uses ports 8960 to 8963 by default (`--port`) and refuses any range that
+touches 8830 or 8872.
+
+A failure prints the probe, the time, the step and how far apart the pages
+were, for example:
+
+```
+DRIFT 100 Reverse Gravity particles: at 15677 ms (step rg): offline 303 against room 0, by 311 (703 frames off)
+```
+
+It then prints a table of probes by profile and ends with `holds` or `fails`.
+Both pages' rows, their screenshots at the end of each step and the servers'
+logs are saved in `coax/web/build/everglade-drift/STAMP/`.
+
+`deploy.sh` runs the check before it builds the image. Today the check prints
+its table and the deploy goes on; `OA_ROOM_DRIFT_GATE=1` makes a failure stop
+the deploy, and `OA_ROOM_DRIFT=0` skips the check.
+
+On 2026-11-04 (`79a9fa7e90`, local profile) these probes drift:
+
+| Probe | Offline | Room | Likely owner |
+| --- | --- | --- | --- |
+| Position, from the crate | walks through | stops at the crate | #12773 |
+| Reverse Gravity particles | 303 to 311 | none | #12775, #12776 |
+| Wall of Stone panels | 2 | 4 | #12775 |
+| Hold Person on you | HELD · HOLD PERSON · 3 S, for 3 s | no status line, held 6 s or more | #12776 |
+| Corrections | none | 112 over 5 cm in 60 s, the largest 483 mm | #12783, #12777 |
+| Townsfolk walking in place | 8% of walking frames | 33% | #12783 |
+
+The position difference comes from the world source. The page asks
+`/api/playtest/world/everglade` (its realm is `everglade`), and the room reads
+`/api/playtest/world/everglade-5e`. Locally the `--dev` stand-in answers only
+`everglade-5e`, so an offline page plays without the published edits, the
+crate among them. In production both documents hold the same edits today
+(`everglade-5e` version 1 was copied from `everglade`), so the next publish to
+`everglade` leaves the rooms on the old world.
 
 ### Rollback for step 3
 

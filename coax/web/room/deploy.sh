@@ -9,6 +9,10 @@
 # player whose network drops comes back where they stood, once: rejoin-check.coax) and load test (64 players in 16s,
 # 20 s; spec section 11.3), each shard's health through /api/room/sK/health, and the fan-out check
 # (fanout-check.coax: 17 guests through the API's directory fill one instance and spill into the next).
+# Before any of that it runs the drift check on this machine (coax/web/everglade-drift.coax, #12778):
+# the same scripted session offline and in a local room, on localhost and at 100 and 250 ms with
+# jitter and loss, frame by frame. It prints its table either way; OA_ROOM_DRIFT_GATE=1 stops the
+# deploy when it fails, and OA_ROOM_DRIFT=0 skips it.
 #   coax/web/room/deploy.sh
 #
 # Everglade's instances run on shards (#12717): oa-room is shard 1 (with Orbit League's rooms and
@@ -23,6 +27,12 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../../.." && pwd)"
 cd "$root"
+if [[ "${OA_ROOM_DRIFT:-1}" != 0 ]]; then
+  if "$here/../tool.sh" everglade-drift; then echo "room: the drift check holds"
+  elif [[ "${OA_ROOM_DRIFT_GATE:-0}" == 1 ]]; then echo "room: the drift check fails (OA_ROOM_DRIFT_GATE=1): not deploying" >&2; exit 1
+  else echo "room: the drift check fails (its table above); deploying anyway (OA_ROOM_DRIFT_GATE=1 makes it stop)" >&2
+  fi
+fi
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
 project=openagentsgemini region=us-central1 service=oa-room map=coaxial-openagents-web-staging shards=6
 g() { gcloud "$@" --project "$project" --quiet; }
