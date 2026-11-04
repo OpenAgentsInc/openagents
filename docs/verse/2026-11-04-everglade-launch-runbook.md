@@ -602,7 +602,7 @@ windows in a row (20 seconds) is a real alarm.
 | `writing p95 ms` | 0.14 | Over 1.5 | Serialization. Compare `out bytes a second`. |
 | `queue age ms most` | 0 | Over 500 | A socket isn't keeping up. Its row in the seats table has the queue. At 3000 ms (or 256 KB) the server closes it. |
 | `queue bytes most` | 0 | Over 65536 | As above. |
-| `input to ack p95 ms` | 34 before the fight, 294 to 528 during it (see below) | Over 250 (spec acceptance 1) | Check the seats table: one seat's round trip is the network; every seat's is the server. |
+| `input to ack p95 ms` | 12 before the fight, 30 during it (see below) | Over 250 (spec acceptance 1) | Check the seats table: one seat's round trip is the network; every seat's is the server. |
 | `join burst ms most` | 70 | Over 2000 | A join's first whole snapshot took too long to reach the page. |
 | `join burst bytes most` | 2691 | Over 131072 | The snapshot grew (many broken pieces or entities). |
 | `rejoins seated` against `rejoins tried` | Equal | Seated under 90% of tried | Rejoins are failing. Check `refused` by reason. |
@@ -615,11 +615,14 @@ windows in a row (20 seconds) is a real alarm.
 
 The normal column is from a 16-player local raid (`raid-proof.sh` with
 `RAID_MODE=fight RAID_CLASS=mix`, 120 seconds, on an M-series Mac). In that
-raid `input to ack p95 ms` climbs about 100 ms every 10 seconds once the fight
-starts and stops near 528 ms. The bots send inputs slightly faster than the
-30 Hz tick, so each seat's input queue fills, and the server applies one input
-a tick. A real player whose page sends faster than the tick sees the same
-delay. If every seat shows it, the input queue is full, not the network.
+raid `input to ack p95 ms` stays flat: 12 ms before the fight, 30 ms during
+it. A seat earns one step for each 1/30 s of the server's clock, so a tick
+that runs late costs it nothing, and the server holds at most 4 inputs past
+what the seat has earned. A page that sends faster than 30 a second loses its
+oldest inputs past those 4 instead of waiting behind them. Before this change
+(#12718), the server stepped one input a tick and the bots sent every 33 ms,
+so the queue filled and input-to-ack climbed to 528 ms. If every seat shows a
+high value now, the server's ticks are slow, not the queue.
 
 ## Owner-only steps
 
