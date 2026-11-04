@@ -1233,9 +1233,10 @@ live acceptance: passed
   against its header and Merkle root. One of them is 1,066,136 bytes,
   which found a limit of chapter 65's frame reader: its checksum goes through
   the byte helpers, which take at most 1 MiB (`CB_MAX_BYTES`), so it
-  reports a larger message as a wrong checksum. The tool hashes such a
-  payload in 1 MiB pieces and reads the frame again; the limit itself is
-  left to chapter 65.
+  reported a larger message as a wrong checksum in that original run.
+  Chapter 65 now streams the checksum in the shared frame reader and
+  writer; this tool uses that reader directly. The independent large-frame
+  oracle also covers the writer's endian fields in large workspaces.
 - Signet's blocks below those 200 were not downloaded or checked.
 
 ## How the code is checked

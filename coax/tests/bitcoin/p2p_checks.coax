@@ -1,0 +1,124 @@
+// Boundary checks for the shared chapter-65 codec. Expected layouts are
+// explicit wire lengths and bytes, not re-derived from the size helpers.
+#test "P2P framing: nonempty full command, exact extents and identity" { p2pc_case0(); }
+p2pc_case0 :: () {
+  raw := [3] u8.[97,98,99]; b: [64] u8; for i: 0..<b.count { b[i] = 165; }
+  f := p2p_framed("abcdefghijkl",raw[..],b[..]); #assert f.count == 27;
+  r := p2p_frame_read_vartime(f,P2P_NETWORKS[0].magic);
+  #assert r.code == 0 && r.length == 3 && r.payload == 24 && r.next == 27 && r.command_n == 12;
+  #assert b[16] == 3 && b[17] == 0 && b[18] == 0 && b[19] == 0 && b[24] == 97 && b[25] == 98 && b[26] == 99 && b[27] == 165;
+  #assert p2p_command_is(f,r,"abcdefghijkl") && !p2p_command_is(f,r,"xbcdefghijkl");
+  #assert !p2p_same(raw[..],raw[0..<2]) && p2p_same(raw[..],b[24..<27]);
+  b[24] ^= 1; #assert !p2p_same(raw[..],b[24..<27]);
+}
+#test "P2P framing: mismatches, empty samples and maximum extent" { p2pc_case1(); }
+p2pc_case1 :: () {
+  a := [2] u8.[1,2]; b := [2] u8.[3,2]; #assert !p2p_same(a[..],b[..]);
+  out: [64] u8; #assert p2p_sample("absent sample",out[..]).count == 0;
+  command: [12] u8; #assert !p2p_command_valid_vartime(command[0..<11]) && !p2p_command_valid_vartime(command[0..<0]);
+  #assert p2p_frame_extent(4000000,4000024) && !p2p_frame_extent(4000001,4000025);
+  #assert !p2p_frame_extent(4000000,4000023) && p2p_frame_extent(0,24) && !p2p_frame_extent(0,23) && !p2p_frame_extent(-1,24);
+  #assert p2p_inv_extent(50000,1800003) && !p2p_inv_extent(50001,1800039) && !p2p_inv_extent(50000,1800002);
+  #assert p2p_inv_extent(0,1) && !p2p_inv_extent(0,0) && !p2p_inv_extent(-1,1);
+  for i: 0..<8 { #assert p2p_compact64_size([8] u64.[0,252,253,65535,65536,4294967295,4294967296,18446744073709551615][i]) == [8] int.[1,1,3,3,5,5,9,9][i]; }
+}
+#test "P2P numbers: signed boundaries, CompactSize offsets and fee range" { p2pc_case2(); }
+p2pc_case2 :: () {
+  b: [16] u8;
+  for i: 0..<3 { _ := p2p_put_u32(b[..],3,[3] u32.[0x7fffffff,0x80000000,0xffffffff][i]); #assert p2p_signed32(b[..],3) == [3] int.[2147483647,-2147483648,-1][i]; }
+  for value: [8] u64.[0,252,253,65535,65536,4294967295,4294967296,18446744073709551615] {
+    n := p2p_compact64_write_vartime(b[..],2,value); r := p2p_compact64_read_vartime(b[0..<n],2);
+    #assert r.code == 0 && r.value == value && r.next == n;
+    for end: 2..<n { #assert p2p_compact64_read_vartime(b[0..<end],2).code == 6; }
+  }
+  for value: [5] int.[-1,0,1,2100000000000000,2100000000000001] {
+    _ := p2p_put_u64(b[..],0,cast,trunc(u64)value); r := p2p_feefilter_read_vartime(b[0..<8]);
+    #assert r.code == 0 && r.rate == value && r.in_range == (value >= 0 && value <= 2100000000000000);
+  }
+  for end: 0..<8 { #assert p2p_feefilter_read_vartime(b[0..<end]).code == 6; }
+}
+#test "P2P version: every optional extent, false relay and address family" { p2pc_case3(); }
+p2pc_case3 :: () {
+  b: [160] u8; src: [32] u8; for i: 0..<src.count { src[i] = cast(u8)(i+1); }
+  v := P2pVersion.{version=70016,services=9,time=123456,recv=P2pAddress.{services=5,net=1,n=4,port=8333},from=P2pAddress.{services=7,net=2,at=4,n=16,port=18444},nonce=0x123456789abcdef,agent=20,agent_n=3,height=-2147483648,relay=false};
+  for parts: 0..<5 {
+    v.parts = parts; need := [5] int.[46,80,84,88,89][parts];
+    #assert p2p_version_write_vartime(src[..],v,b[0..<need-1]) == -1;
+    #assert p2p_version_write_vartime(src[..],v,b[0..<need]) == need;
+    r := p2p_version_read_vartime(b[0..<need]); #assert r.code == 0 && r.parts == parts && r.next == need && r.version == 70016 && r.services == 9 && r.time == 123456;
+    #assert r.recv.known && r.recv.net == 1 && r.recv.n == 4 && r.recv.port == 8333 && r.recv.services == 5;
+    if parts >= 1 { #assert r.from.known && r.from.net == 2 && r.from.n == 16 && r.from.port == 18444 && r.from.services == 7 && r.nonce == v.nonce; }
+    if parts >= 2 { #assert r.agent_n == 3 && p2p_same(b[r.agent..<r.agent+3],src[20..<23]); }
+    if parts >= 3 { #assert r.height == -2147483648; } #assert r.relay == (parts < 4);
+  }
+  for changed: 0..<13 {
+    for i: 0..<12 { b[8+i] = P2P_V4_PREFIX[i]; } b[24] = 0x12; b[25] = 0x34;
+    if changed < 12 { b[8+changed] ^= 1; }
+    r := p2p_addr_v1_read_vartime(b[..],0); #assert r.known && r.port == 0x1234;
+    #assert r.net == ifx changed < 12 then 2 else 1; #assert r.at == ifx changed < 12 then 8 else 20; #assert r.n == ifx changed < 12 then 16 else 4;
+  }
+}
+#test "P2P lists: exact capacity, malformed headers and locator wire sizes" { p2pc_case4(); }
+p2pc_case4 :: () {
+  b: [4096] u8; src: [3264] u8; for i: 0..<src.count { src[i] = cast,trunc(u8)(i+1); }
+  inv := [1] P2pInv.[P2pInv.{type=0x40000002}]; decoded: [1] P2pInv;
+  #assert p2p_inv_write_vartime(src[..],inv[..],b[0..<36]) == -1 && p2p_inv_write_vartime(src[..],inv[..],b[0..<37]) == 37;
+  r := p2p_inv_read_vartime(b[0..<37],decoded[..]); #assert r.code == 0 && r.count == 1 && r.next == 37 && decoded[0].type == 0x40000002 && decoded[0].hash == 5 && p2p_same(b[5..<37],src[0..<32]);
+  #assert p2p_inv_read_vartime(b[0..<37],decoded[0..<0]).code == 8;
+  for count: [4] int.[0,1,101,102] {
+    need := 37+32*count; result := p2p_locator_write_vartime(70016,src[0..<32*count],src[0..<32],b[0..<need]);
+    if count == 102 { #assert result == -1; continue; }
+    #assert result == need && p2p_locator_write_vartime(70016,src[0..<32*count],src[0..<32],b[0..<need-1]) == -1;
+    loc := p2p_locator_read_vartime(b[0..<need]); #assert loc.code == 0 && loc.count == count && loc.version == 70016 && loc.first == 5 && loc.stop == 5+32*count && loc.next == need;
+    #assert p2p_same(b[5..<5+32*count],src[0..<32*count]) && p2p_same(b[5+32*count..<need],src[0..<32]);
+  }
+  b[0] = 1; for i: 1..<82 { b[i] = 0; } positions: [1] int;
+  r = p2p_headers_read_vartime(b[0..<82],positions[..]); #assert r.code == 0 && r.count == 1 && r.next == 82 && positions[0] == 1;
+  #assert p2p_headers_read_vartime(b[0..<82],positions[0..<0]).code == 8;
+  for end: 0..<82 { #assert p2p_headers_read_vartime(b[0..<end],positions[..]).code == 6; }
+  b[0] = 0xfd; #assert p2p_headers_read_vartime(b[0..<1],positions[..]).code == 6;
+}
+#test "P2P addresses: limits, exact v1 and v2 writes and truncations" { p2pc_case5(); }
+p2pc_case5 :: () {
+  b: [40000] u8; src: [513] u8; for i: 0..<src.count { src[i] = cast,trunc(u8)(i+1); }
+  entries: [1001] P2pAddress; decoded: [1000] P2pAddress;
+  for i: 0..<entries.count { entries[i] = P2pAddress.{time=123,services=1,net=1,n=4,port=8333,known=true}; }
+  #assert p2p_addr_write_vartime(src[..],entries[0..<1001],false,b[..]) == -1;
+  #assert p2p_addr_write_vartime(src[..],entries[0..<1000],false,b[0..<30002]) == -1;
+  #assert p2p_addr_write_vartime(src[..],entries[0..<1000],false,b[0..<30003]) == 30003;
+  r := p2p_addr_read_vartime(b[0..<30003],false,decoded[..]); #assert r.code == 0 && r.count == 1000 && r.next == 30003;
+  #assert p2p_addr_read_vartime(b[0..<30003],false,decoded[0..<999]).code == 8;
+  for i: 0..<30 { b[30003+i] = b[3+i]; } _ := tx_compact_write_vartime(b[..],0,1001);
+  #assert p2p_addr_read_vartime(b[0..<30033],false,decoded[..]).code == 7;
+  for size: [5] int.[0,4,16,512,513] {
+    for service: [4] u64.[0,253,4294967295,18446744073709551615] {
+      entries[0] = P2pAddress.{time=123,services=service,net=7,n=size,port=0x2030};
+      need := 1+4+(ifx service == 0 then 1 else (ifx service == 253 then 3 else (ifx service == 4294967295 then 5 else 9)))+1+(ifx size < 253 then 1 else 3)+size+2;
+      #assert p2p_addr_write_vartime(src[..],entries[0..<1],true,b[0..<need-1]) == -1;
+      #assert p2p_addr_write_vartime(src[..],entries[0..<1],true,b[0..<need]) == need;
+      r = p2p_addr_read_vartime(b[0..<need],true,decoded[0..<1]);
+      if size == 513 { #assert r.code == 6; continue; }
+      #assert r.code == 0 && r.count == 1 && r.next == need && !decoded[0].known && decoded[0].services == service && decoded[0].net == 7 && decoded[0].n == size && decoded[0].port == 0x2030 && decoded[0].time == 123;
+      #assert p2p_same(b[decoded[0].at..<decoded[0].at+size],src[0..<size]);
+      for end: 0..<need { #assert p2p_addr_read_vartime(b[0..<end],true,decoded[0..<1]).code == 6; }
+    }
+  }
+  for net: [2] int.[6,7] {
+    entries[0] = P2pAddress.{net=net,n=16}; n := p2p_addr_write_vartime(src[..],entries[0..<1],true,b[..]);
+    r = p2p_addr_read_vartime(b[0..<n],true,decoded[0..<1]); #assert r.code == 0 && decoded[0].known == (net == 6);
+  }
+  malformed := [8] u8.[1,4,0,0,0,0xfd,0,0]; #assert p2p_addr_read_vartime(malformed[..],true,decoded[..]).code == 6;
+  malformed_size := [11] u8.[1,0,0,0,0,0,7,0xfd,0,0,0]; #assert p2p_addr_read_vartime(malformed_size[..],true,decoded[..]).code == 6;
+}
+
+#test "P2P endian words use the exact field in a large workspace" { p2pc_case7(); }
+p2pc_case7 :: () {
+  b: [1048584] u8; b[4] = 165; b[1048579] = 166;
+  #assert p2p_put_u32(b[..],0,0x12345678) == 4 && b[0] == 0x78 && b[3] == 0x12 && b[4] == 165;
+  #assert p2p_put_u32(b[..],1048580,0xabcdef01) == 1048584 && b[1048580] == 1 && b[1048583] == 0xab && b[1048579] == 166;
+  #assert p2p_put_u64(b[..],1048576,0x0123456789abcdef) == 1048584;
+  #assert p2p_u64(b[..],1048576) == 0x0123456789abcdef;
+  digest: [5] u8; digest[4] = 165; raw := [3] u8.[97,98,99]; p2p_checksum_vartime(raw[..],digest[..]);
+  #assert bh_hex_equal(digest[0..<4],"4f8b42c2") && digest[4] == 165;
+  p2p_checksum_vartime(raw[0..<0],digest[..]); #assert bh_hex_equal(digest[0..<4],"5df6e0e2");
+}

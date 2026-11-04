@@ -81,39 +81,12 @@ send_version :: (node: [] Node, k: int, now: int) -> bool {
   b[at] = 0; at += 1;
   return send(node, k, "version", b[0..<at]);
 }
-// Chapter 65's frame reader checks the checksum with the byte helpers,
-// which take at most 1 MiB (CB_MAX_BYTES), so it refuses a larger block
-// as a wrong checksum. Here a payload over 1 MiB is hashed in 1 MiB pieces
-// and the frame read again.
-big_checksum_ok :: (payload: [] u8, checksum: [] u8) -> bool {
-  st: [SHA_STATE_BYTES] u8; d: [32] u8; d2: [32] u8;
-  if sha256_init(st[..]) != SHA_OK { return false; }
-  at := 0;
-  while at < payload.count {
-    n := ifx payload.count - at < CB_MAX_BYTES then payload.count - at else CB_MAX_BYTES;
-    if sha256_update_checked(st[..], payload[at..<at + n], false) != SHA_OK { return false; }
-    at += n;
-  }
-  if sha256_final_checked(st[..], d[..], false) != SHA_OK || sha256_hash_checked(d[..], d2[..], false) != SHA_OK { return false; }
-  for i: 0..<4 { if d2[i] != checksum[i] { return false; } }
-  return true;
-}
-frame_read :: (b: [] u8, magic: [4] u8) -> P2pFrame {
-  f := p2p_frame_read_vartime(b, magic);
-  if f.code != P2P_BAD_CHECKSUM { return f; }
-  length := tx_le_vartime(b, 16, 4);
-  if length <= CB_MAX_BYTES || !big_checksum_ok(b[P2P_HEADER..<P2P_HEADER + length], b[20..<24]) { return f; }
-  if !p2p_command_valid_vartime(b[4..<16]) { return P2pFrame.{code=P2P_BAD_COMMAND}; }
-  n := 0;
-  while n < P2P_COMMAND && b[4 + n] != 0 { n += 1; }
-  return P2pFrame.{command_n=n, length=length, payload=P2P_HEADER, next=P2P_HEADER + length};
-}
 // One message from peer k, or none: P2P_TRUNCATED until a whole one is in.
 // Its payload is c[k].rx[f.payload..<f.next]; consume() drops it after.
 Got :: struct { f: P2pFrame; closed: bool; }
 receive :: (node: [] Node, k: int, wait_ms: int) -> Got {
   c := node[0].c[..];
-  g := Got.{f=frame_read(c[k].rx[0..<c[k].n], node[0].t[0].p.magic)};
+  g := Got.{f=p2p_frame_read_vartime(c[k].rx[0..<c[k].n], node[0].t[0].p.magic)};
   if g.f.code != P2P_TRUNCATED { return g; }
   r := cxsock_read(c[k].h, wait_ms);
   if r == -2 { return g; }                // CXSOCK_TIMEOUT
@@ -121,7 +94,7 @@ receive :: (node: [] Node, k: int, wait_ms: int) -> Got {
   if c[k].n + r > RX { g.closed = true; return g; }
   for i: 0..<r { c[k].rx[c[k].n + i] = cast,trunc(u8) cxsock_byte(c[k].h, i); }
   c[k].n += r;
-  g.f = frame_read(c[k].rx[0..<c[k].n], node[0].t[0].p.magic);
+  g.f = p2p_frame_read_vartime(c[k].rx[0..<c[k].n], node[0].t[0].p.magic);
   return g;
 }
 consume :: (node: [] Node, k: int, f: P2pFrame) {

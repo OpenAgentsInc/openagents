@@ -1,0 +1,6 @@
+// Native oracle ABI: public message bytes, no admission shortcuts.
+#load "../../lib/bitcoin/p2p.coax";
+p2pl_write :: (payload: [] u8, frame: [] u8) -> int #export_c { return p2p_frame_write_vartime(P2P_NETWORKS[P2P_SIGNET].magic,"block",payload,frame); }
+p2pl_read :: (frame: [] u8) -> int #export_c { return p2p_frame_read_vartime(frame,P2P_NETWORKS[P2P_SIGNET].magic).code; }
+p2pl_next :: (frame: [] u8) -> int #export_c { return p2p_frame_read_vartime(frame,P2P_NETWORKS[P2P_SIGNET].magic).next; }
+p2pl_boundaries :: () -> int #export_c { p2pc_case0(); p2pc_case1(); p2pc_case2(); p2pc_case3(); p2pc_case4(); p2pc_case5(); p2pc_case7(); return 0; }

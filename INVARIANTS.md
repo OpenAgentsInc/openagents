@@ -1,5 +1,21 @@
 # Invariants
 
+## P2P frames honor the protocol limit independently of SHA workspace limits
+
+`coax/lib/bitcoin/p2p.coax` reads and writes full v1 messages through
+4,000,000 payload bytes. Checksums reuse chapter 34's bounded streaming
+SHA-256d updates; chapter 5's one-shot bound stays intact. Endian fields
+address exactly their own bytes even inside a larger caller workspace.
+Magic, length, checksum and command refusals keep Core's order. Address and
+inventory writers preflight their exact serialized capacity. Malformed
+payloads never become admitted list results.
+
+`coax/tests/bitcoin/p2p_checks.coax`, the 718-mutant root gate and the
+independent `p2p-large.py` oracle cover these boundaries, exact wire bytes,
+fragmentation and corruption in debug/release and under ASan/UBSan.
+`bitcoin/examples/live/sync-node.coax` uses this shared reader directly;
+it has no second checksum/admission path.
+
 ## Explorer responses describe one committed snapshot
 
 `coax/lib/bitcoin/explorer-{request,rpc,store,body,json}.coax` and

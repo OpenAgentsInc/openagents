@@ -1469,7 +1469,10 @@
    "source": [
     "coax/lib/bitcoin/p2p.coax",
     "bitcoin/examples/p2p-messages.coax",
-    "bitcoin/examples/checks/p2p-messages.coax"
+    "bitcoin/examples/checks/p2p-messages.coax",
+    "coax/tests/bitcoin/p2p_checks.coax",
+    "coax/tests/bitcoin/p2p-large.coax",
+    "coax/tests/bitcoin/p2p-large.py"
    ],
    "qualified_targets": [
     "cpu"
