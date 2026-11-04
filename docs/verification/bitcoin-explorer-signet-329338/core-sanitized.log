@@ -1,0 +1,5 @@
+Core/Electrs comparison: 47 HTTP answers match at regtest height 102; 3 full address histories/balances/spend sets
+Core/Electrs comparison: 39 HTTP answers match at regtest height 103; 3 full address histories/balances/spend sets
+Core/Electrs comparison: 47 HTTP answers match at regtest height 104; 3 full address histories/balances/spend sets
+Native node browser: height/hash/txid/address search and both balance-changing reorgs pass on one open page and one writer process.
+Real Core/Electrs fork references and one open native explorer browser agree through 102 → 103 → 104.

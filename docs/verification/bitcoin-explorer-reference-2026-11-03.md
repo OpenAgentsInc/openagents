@@ -71,7 +71,32 @@ Both profiles also pass the 133 real Core/Electrs reorg comparisons and
 the same open browser through both branches. The teaching API and writer
 pass all 75 original HTTP/RPC responses under ASan/UBSan.
 
-The updated native process is replaying the completed signet journal for
-the final browser acceptance. The earlier 329,328 snapshot in the native
-integration record was superseded by a signet reorg and is not this
-fixture's chain identity.
+The updated Linux release process from `f28e24aa616deee4b5f7cb0ebc87e26c6c5ace24`
+finished replay at 00:59 CST on November 4, still at durable sequence 23,932
+in segment 69. Core and Electrs remained stopped. Before running the new
+reference comparison, one fresh headless, muted Metal WebGPU browser passed
+typed height, hash, txid and address searches against this full index.
+The exact 4,384,562,810-sat balance passed. Desktop (1440×1000) and mobile
+(390×844 CSS pixels, device scale 2) captures were inspected: identifiers
+wrap completely, the balance fits, and history and output states are legible.
+The updated service then passed all 63 independent reference responses.
+
+The optional mempool page also passed on the full index. Its retained public
+P2P feed contains 315 observations; the own-node projection prices 31 and
+omits 284 against this frozen chain. It reports `unvalidated` and
+`complete: false`. Public fee parity with Core is not claimed; the controlled
+three-transaction Core fee comparison is the separate mempool evidence.
+
+Retained evidence: [result and producer identities](bitcoin-explorer-signet-329338/result.json),
+[desktop](bitcoin-explorer-signet-329338/desktop.png),
+[mobile](bitcoin-explorer-signet-329338/mobile.png),
+[mempool](bitcoin-explorer-signet-329338/mempool.png), and the passing logs,
+public input feed and output JSON in that directory. `SHA256SUMS` binds those
+artifacts. The full-size run is release; sanitizer qualification uses the
+bounded independent fixtures described above. The service's cgroup peaked
+at 107,002,216,448 bytes including cache, with zero high/max/OOM events.
+
+This completes #12704's proof-of-work-only explorer acceptance. Full script
+validation and chapter 82's full acceptance/relay policy remain later work.
+The earlier 329,328 snapshot in the native integration record was superseded
+by a signet reorg and is not this fixture's chain identity.

@@ -46,7 +46,9 @@ including positional XOR. Header updates retain the node's own admitted
 archive, so a competing feed cannot erase the old branch. The native
 fixture journey covers both reorgs, cross-directory journal recovery and
 one open headless browser; the full signet reference comparison is a
-separate acceptance gate. A listening importer retains its private arena at
+separate acceptance gate, qualified at frozen height 329,338 in
+`docs/verification/bitcoin-explorer-reference-2026-11-03.md`.
+A listening importer retains its private arena at
 bounded checkpoints and serves HTTP 503 until the preferred known chain is
 complete. Only a local continuation file resumes the next slice. A header
 feed changed during initial import must still be observed afterward.

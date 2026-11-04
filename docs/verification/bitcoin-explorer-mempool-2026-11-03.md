@@ -53,7 +53,15 @@ The new protobuf package and owned descriptor were generated with pinned
 protoc 29.3 / protobuf 5.29.3; compatibility and consumer profiles pass.
 
 Repeatable commands are in [the explorer README](../../bitcoin/explorer/README.md).
-The separate full-signet/Core/Electrs acceptance gate is still pending.
+The separate full-signet/Core/Electrs acceptance gate passed on November 4;
+see the [reference record](bitcoin-explorer-reference-2026-11-03.md).
+The public signet collector's 315-record feed was also exercised against
+that full frozen index: 31 observations are priced and 284 omitted. Its
+unvalidated/incomplete projection and fee-rate page passed visual review.
+The [retained evidence](bitcoin-explorer-signet-329338/result.json) includes
+the public input, output and screenshot. This public sample does not claim
+Core fee parity; the three controlled regtest transactions above establish
+that separate comparison.
 
 The Bitcoin registry, closed example inventory, local links and 861 exact
 source listings pass. tools-check inventories 1,766 tracked tools and reports

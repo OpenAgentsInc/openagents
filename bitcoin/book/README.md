@@ -43,7 +43,7 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 125 chapters, 96 are implemented, 4 are partly implemented and 25 are planned. The 96 implemented
+Of the 125 chapters, 96 are implemented, 5 are partly implemented and 24 are planned. The 96 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
@@ -56,6 +56,8 @@ Chapters 58 and 60 are partly implemented: their native explorer light path
 tracks coins and complete inverses, prepares branch changes atomically, and
 persists them with an explicit proof-of-work-only profile. Full consensus
 validation and validated-node chainstate integration remain separate work.
+Chapter 82 implements bounded, unvalidated local mempool observations and
+their fees; script execution and full acceptance/relay policy remain planned.
 Chapter 90 implements the read-only explorer HTTP/RPC profile; full node RPC
 compatibility and cookie authentication remain planned.
 Chapter 91 is partly implemented for its transaction index; filters and

@@ -1,0 +1,69 @@
+{
+ "schema": 1,
+ "qualified_at": "2026-11-04",
+ "source_commit": "f28e24aa616deee4b5f7cb0ebc87e26c6c5ace24",
+ "snapshot": {
+  "chain": "signet",
+  "height": 329338,
+  "hash": "00000002c7899f4927ee1bd6cac42d972ebacd4ea1294f21b0140edd882d9f81",
+  "profile": "pow-only"
+ },
+ "producer": {
+  "coax_version": "0.48.0",
+  "coax_sha256": "cdaceb89e69c8d523e41242a940af34774e8b6b4f945998c2d3bf38486c357fb",
+  "host_compiler": "gcc (GCC) 15.2.0",
+  "linux_release_binary_sha256": "a90ee16a40da86d623175c222a18d7f25cf7b8224760d1bc5d6482867a76917b",
+  "served_wasm_sha256": "2195c3a0381741c4de8d6e17f4c01b24c91a2e90a90bb7d88814903c087878cc"
+ },
+ "durable_cursor": {
+  "sequence": 23932,
+  "last_journal_segment": 69
+ },
+ "full_size_release_checks": {
+  "reference_fixture": "bitcoin/fixtures/explorer-signet-329338.json",
+  "reference_backends_stopped": true,
+  "http_answers_matched": 63,
+  "sample_blocks": 6,
+  "sample_transactions": 15,
+  "complete_sample_address_histories": 4,
+  "browser_ran_before_reference_suite": true,
+  "typed_height_search": true,
+  "hash_search": true,
+  "txid_search": true,
+  "address_search": true,
+  "expected_address_balance_sat": 4384562810,
+  "desktop_css_pixels": [1440, 1000],
+  "mobile_css_pixels": [390, 844],
+  "mobile_device_scale_factor": 2,
+  "visual_review": true,
+  "headless": true,
+  "muted": true,
+  "hardware_webgpu": "apple metal-3"
+ },
+ "bounded_fixture_checks": {
+  "explorer_store_mutants_killed": 128,
+  "explorer_store_mutants_survived": 0,
+  "native_http_per_release_and_sanitized_profile": 108,
+  "core_electrs_reorg_http_per_profile": 133,
+  "same_open_browser_both_reorgs_per_profile": true,
+  "http_rpc_api_and_writer_sanitized": 75
+ },
+ "mempool_observations": {
+  "validation": "unvalidated",
+  "complete": false,
+  "observed_at": 1793768691,
+  "received": 315,
+  "priced": 31,
+  "omitted": 284,
+  "public_fee_core_parity_claimed": false
+ },
+ "service_cgroup": {
+  "memory_high_bytes": 107374182400,
+  "memory_max_bytes": 118111600640,
+  "memory_peak_bytes": 107002216448,
+  "high_events": 0,
+  "max_events": 0,
+  "oom_events": 0,
+  "oom_kills": 0
+ }
+}

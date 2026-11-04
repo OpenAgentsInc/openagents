@@ -1,0 +1,4 @@
+Native node browser: height/hash/txid/address search and both balance-changing reorgs pass on one open page and one writer process.
+Native node notices a header-feed replacement made while its import is paused.
+Complete restart reads raw bodies on demand; unavailable body refuses and recovers without a state change.
+native explorer: 108 independent HTTP comparisons; XOR blocks, journal rollover, physical padding, both reorgs, exclusive writer, budget pause/503/continuation and torn-frame restart pass

@@ -1,0 +1,263 @@
+{
+ "snapshot": {
+  "chain": "signet",
+  "height": 329338,
+  "hash": "00000002c7899f4927ee1bd6cac42d972ebacd4ea1294f21b0140edd882d9f81",
+  "profile": "pow-only"
+ },
+ "validation": "unvalidated",
+ "complete": false,
+ "observed_at": 1793768691,
+ "received": 315,
+ "omitted": 284,
+ "transactions": [
+  {
+   "txid": "ae6fa9e4350f5a3cd51674e34b8f639d6a74cc6db5254354e637dccc05a590e1",
+   "wtxid": "65073e743072b97a8b4e0aa857c717da9495f3ea831b2ce01d10406b98e8e295",
+   "fee_sat": 816,
+   "weight": 1084,
+   "vsize": 271,
+   "rate_sat_kvb": 3011
+  },
+  {
+   "txid": "cc04b3bdd43aec780beb7b66545adf308732ad2446ab0151c83b9368d6e7c9f9",
+   "wtxid": "cc96dd274d7e531626a6e1e395308a4637608866860e802f9e036be15b7c6bd9",
+   "fee_sat": 435,
+   "weight": 1553,
+   "vsize": 389,
+   "rate_sat_kvb": 1118
+  },
+  {
+   "txid": "d8f9c0301632acf1003d0db8b915db0fef9aa0e2a1a8196cd415f88ebd367e64",
+   "wtxid": "221e7a0b68baca5e0f3dd421b68bbfe7550744feca411bc37c624a115f314f07",
+   "fee_sat": 282,
+   "weight": 610,
+   "vsize": 153,
+   "rate_sat_kvb": 1843
+  },
+  {
+   "txid": "4cb7bcad4b441795ec4507dae410085e5060d7dffaef4148ff3982b76e668b57",
+   "wtxid": "a1dd443cce7ff927cf56502d4049458da6805c31d66cccddabd12c2e9d052476",
+   "fee_sat": 221,
+   "weight": 880,
+   "vsize": 220,
+   "rate_sat_kvb": 1004
+  },
+  {
+   "txid": "a745e27c7a16dca6a08697d61b2b1d7c2d27039b6cb668c83598bfd6e7d5b5bc",
+   "wtxid": "eee0d1ad36b78796541c51d88faf8491469f997840910f1248177b88fe0f5368",
+   "fee_sat": 153,
+   "weight": 610,
+   "vsize": 153,
+   "rate_sat_kvb": 1000
+  },
+  {
+   "txid": "7f3d322012a2ccef1f38bfaa34e979fa435142ad376b6b3314414ea7ad702381",
+   "wtxid": "6f19cc0c1a5689f81343ffc2d35a40316e9239f0dca7e35579e3ed82c5b967b1",
+   "fee_sat": 798,
+   "weight": 1594,
+   "vsize": 399,
+   "rate_sat_kvb": 2000
+  },
+  {
+   "txid": "aacad830b5bf3a6b76ab783e34132edcaa6e14bf4a1411a8e590b16a04554e2b",
+   "wtxid": "f8dda88ef5e6e6b4eeafd06f0946bae70cc76689cfb03d3b93559181427dfb9b",
+   "fee_sat": 221,
+   "weight": 881,
+   "vsize": 221,
+   "rate_sat_kvb": 1000
+  },
+  {
+   "txid": "80bf46a66c6cc8c741bdf9065d8b0d3fd12a5caddb23e72d06fbbe9b39453922",
+   "wtxid": "4b1f0142b9215b18b2151f51b1f2d2ce7c00fcbc168bf1bfc962055e5dbe3284",
+   "fee_sat": 221,
+   "weight": 881,
+   "vsize": 221,
+   "rate_sat_kvb": 1000
+  },
+  {
+   "txid": "3df1ee63eccfda236aa81b019b267a6be9a0d7ff55b064bc1179fec6567e8256",
+   "wtxid": "9075980a0f7d88052229ce8ba3e0423db46304997e8ef01a9b079265ee06ce35",
+   "fee_sat": 2120,
+   "weight": 846,
+   "vsize": 212,
+   "rate_sat_kvb": 10000
+  },
+  {
+   "txid": "8a0cb6b98d77eb3ddfa619263197f5167a773d3122061dfb78b87fd3eb1c2f9c",
+   "wtxid": "c9b4ba3a2383e130f85efb1e931b159374e9f73d100ab3db9feb854483c926ff",
+   "fee_sat": 196,
+   "weight": 782,
+   "vsize": 196,
+   "rate_sat_kvb": 1000
+  },
+  {
+   "txid": "9877c9c5efdc8fb3996ae2b621124a8583b7032604c996a94a9e655ef29612a3",
+   "wtxid": "91c47650c608fc4bc7de653b28ad6f3a08893dfbdcc7bc6204e80d567fdb10f1",
+   "fee_sat": 2120,
+   "weight": 846,
+   "vsize": 212,
+   "rate_sat_kvb": 10000
+  },
+  {
+   "txid": "0490206fb53f1ae2711e4b69a08d908e6b41a478fce63c68842cf5ee301b4c00",
+   "wtxid": "5929630e7b01a80187d52e7d80b0c2a0dbf856173ae714047320972cf1807dbf",
+   "fee_sat": 2120,
+   "weight": 846,
+   "vsize": 212,
+   "rate_sat_kvb": 10000
+  },
+  {
+   "txid": "9513f8cf2c93984a4f51779288f03d56cb4ad423dd451ab56eb6f94e222deec3",
+   "wtxid": "02d5871d7794c67c031453e9abc7db59e54e16cccbfbe0087d0cbdb883d2ab52",
+   "fee_sat": 221,
+   "weight": 882,
+   "vsize": 221,
+   "rate_sat_kvb": 1000
+  },
+  {
+   "txid": "d3143226890f2bbc24160dc1c8931dcba2ffbab4ec7036a0eceecbc7fa7e49d6",
+   "wtxid": "244c3e73e82fe2b71c46b9b371c614e757300753b337b2345e9ca53ef21c39a2",
+   "fee_sat": 2120,
+   "weight": 846,
+   "vsize": 212,
+   "rate_sat_kvb": 10000
+  },
+  {
+   "txid": "a054bf7e3781375d7a0f49e17311d002a8dcd9a1d6c9e62c579550d09f250272",
+   "wtxid": "cd01e411919147808cee79ae7bd5a7127a58baa207d05efe8edf756f341bfb7f",
+   "fee_sat": 651,
+   "weight": 485,
+   "vsize": 122,
+   "rate_sat_kvb": 5336
+  },
+  {
+   "txid": "fb0562b45b198190e277d8e8d758d621406ee48853ee28fdf2ef7e4b0662c3b1",
+   "wtxid": "382ae0417a0705ce1450ad0a07d94a16dbabd53952248abfc24a5074348064c8",
+   "fee_sat": 435,
+   "weight": 1553,
+   "vsize": 389,
+   "rate_sat_kvb": 1118
+  },
+  {
+   "txid": "166636eaa07d7b50fc8e715956f299c8684fcdc74747c8018b9877d99d22cd11",
+   "wtxid": "b0920947ec4118d97ef198169206751214f49dbc123bdabbf5807dd72fb9e24c",
+   "fee_sat": 221,
+   "weight": 882,
+   "vsize": 221,
+   "rate_sat_kvb": 1000
+  },
+  {
+   "txid": "5ed91a0ddba769bdec36df3a7a3bc6545bd18a8aab364652066c704d2d1f507d",
+   "wtxid": "c7d75566dcd642beb40da75a3775284478d245a87798c02340bc03cc1e284281",
+   "fee_sat": 454,
+   "weight": 485,
+   "vsize": 122,
+   "rate_sat_kvb": 3721
+  },
+  {
+   "txid": "1bf951b9181314d4d89a000e421cf370688a77966555793bde3d17e38be760b2",
+   "wtxid": "71503286fecdf916a9fa833a9699a400815fc68a544c58817be957bc8cda210a",
+   "fee_sat": 230,
+   "weight": 832,
+   "vsize": 208,
+   "rate_sat_kvb": 1105
+  },
+  {
+   "txid": "31ceaff75a27bff59ca5e2c5dfadc6b8dcdb645c8e404f5828e5a777973f23e9",
+   "wtxid": "74adef4aed561a5691d72066e670e2f785b5b8f1eaa302681895898a9c6beaf4",
+   "fee_sat": 2120,
+   "weight": 846,
+   "vsize": 212,
+   "rate_sat_kvb": 10000
+  },
+  {
+   "txid": "b51a5b1708b4a14db27179026316eda65ada5c9711f9adc38c966685162da85e",
+   "wtxid": "13f693db7c299b8ba25a566723c081ad132e067c12c40a2f780628ceee156dc8",
+   "fee_sat": 221,
+   "weight": 881,
+   "vsize": 221,
+   "rate_sat_kvb": 1000
+  },
+  {
+   "txid": "7d78f6b9dbd7b43bd65eb2c06fcf74617ce8bed28da5e454761731cb11086f3f",
+   "wtxid": "326955a981dfc0aabf907d913076754d7867cbe813e6957200a28fd6a8dfc140",
+   "fee_sat": 221,
+   "weight": 881,
+   "vsize": 221,
+   "rate_sat_kvb": 1000
+  },
+  {
+   "txid": "915babb05e7152102129ee3e14713deb3a42873fcb87e9a86fd42506ce033439",
+   "wtxid": "4ae327aef45e93fe352d16d124ef13f0be36216c0850f6de2ec6bf5db4c8d955",
+   "fee_sat": 221,
+   "weight": 882,
+   "vsize": 221,
+   "rate_sat_kvb": 1000
+  },
+  {
+   "txid": "8e72e91e00fba7b626bc8894b5331512f7e4a2452a5ef34a1f46773078e48b41",
+   "wtxid": "0aae295618f32148ae35a0136683d61ff3a3ff712860b79aa721019553794bf2",
+   "fee_sat": 221,
+   "weight": 880,
+   "vsize": 220,
+   "rate_sat_kvb": 1004
+  },
+  {
+   "txid": "3f54a174b78d9b9d321407a807ff33e427579b5c11d0667fb772af6151a8eae5",
+   "wtxid": "e0ffe5b778fcbf31d39b037719ad6943902c8e0bd44bbfd4513019c798e83b7a",
+   "fee_sat": 221,
+   "weight": 882,
+   "vsize": 221,
+   "rate_sat_kvb": 1000
+  },
+  {
+   "txid": "f9677660af6b70c8a66861298380bf06635cf61fdf5d41a558ea455635413f1f",
+   "wtxid": "76aa292648ce7c8a06155827a53bc5700245b45928bfb430bb07709bce2ae738",
+   "fee_sat": 212,
+   "weight": 834,
+   "vsize": 209,
+   "rate_sat_kvb": 1014
+  },
+  {
+   "txid": "c28b39c14e55e5b2063c5632fe7f3a0125edffa538a882b9540122fb2b0178b7",
+   "wtxid": "897486cb47cf6ebb0869b57cf7675ddac099234f2541a5bfbb2d5a0a87697ae3",
+   "fee_sat": 1635,
+   "weight": 1304,
+   "vsize": 326,
+   "rate_sat_kvb": 5015
+  },
+  {
+   "txid": "6f10dd813e0423c59b1357a050f59b7b4f656c186223bdd6bf72498e70868b0f",
+   "wtxid": "2dc795ccd3ea17c9c062df691018f4af6faa9f18728916dea547c90315456e00",
+   "fee_sat": 550045,
+   "weight": 561,
+   "vsize": 141,
+   "rate_sat_kvb": 3901028
+  },
+  {
+   "txid": "7dc927a522e388a2e28625ac7e94938a24783b3dd007042b2398d576a6b73ac5",
+   "wtxid": "305604f973dc7bb5f4ca2c80e1244d5d1a18a454a2e38c0043689e6943efeced",
+   "fee_sat": 435,
+   "weight": 1553,
+   "vsize": 389,
+   "rate_sat_kvb": 1118
+  },
+  {
+   "txid": "f6b073e0e2bd32c856c1031cc5f9edb892c4cc3dafe43196083817aad88396bd",
+   "wtxid": "feae8e07977beeacf0bd11346111c0d77167a587f3d8cf1f0cecdb06a8416ca2",
+   "fee_sat": 465,
+   "weight": 616,
+   "vsize": 154,
+   "rate_sat_kvb": 3019
+  },
+  {
+   "txid": "65d0fc421e6e084b5962f07db5c00f608e626f06fd2e2ae88457dd4a4725e2a3",
+   "wtxid": "6665871dcb97b1f8a6d71226dd8b0f4b9e9c6c68aeee70c5c30ed22b4e253227",
+   "fee_sat": 282,
+   "weight": 609,
+   "vsize": 153,
+   "rate_sat_kvb": 1843
+  }
+ ]
+}

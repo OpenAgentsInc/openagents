@@ -93,10 +93,11 @@ when WebGPU is unavailable.
 
 The browser bounds one reply at 16 MiB and 65,536 JSON nodes. A reply that
 does not fit becomes unavailable data; it is never presented as a complete
-truncated history. The service has its own documented finite bounds. Full
-signet writer/storage integration and live Core/address-reference acceptance
-remain a separate #12704 acceptance gate; native regtest qualification does
-not complete that requirement.
+truncated history. The service has its own documented finite bounds. The
+full native service is qualified at frozen signet height 329,338 against
+Core/Electrs references, with typed searches and desktop/mobile visual
+review. The [reference record](../../docs/verification/bitcoin-explorer-reference-2026-11-03.md)
+states the sampled coverage and retains the results and screenshots.
 
 Checks:
 
@@ -140,7 +141,7 @@ python3 coax/tests/bitcoin/explorer-reference.py --fixture bitcoin/fixtures/expl
 ```
 
 See [the reference record](../../docs/verification/bitcoin-explorer-reference-2026-11-03.md)
-for provenance, coverage and the current full-signet acceptance status.
+for provenance, coverage and the completed full-signet acceptance results.
 
 The MEMPOOL page shows bounded local unconfirmed observations, their exact
 fees and serialized virtual-size rates. It labels them unvalidated, reports

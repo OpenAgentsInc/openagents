@@ -39,7 +39,10 @@ Generated WGSL passes its drift check. Tools inventory ran over 1,753 tracked
 files and reports eleven untouched existing files without reason headers.
 The new Python fixture oracle declares independent-oracle reason 2.
 
-This is frontend qualification against complete regtest fixture history.
-Serving the full signet chain from our own writer and comparing its answers
-with Core and an address-indexing reference remain explicit epic acceptance
-work. No signet completion is claimed by these checks.
+Those checks qualify complete regtest fixture history. Full signet
+acceptance subsequently passed at frozen height 329,338 on November 4:
+the updated own node serves typed height/hash/txid/address searches, the
+exact reference balance, and inspected desktop/mobile pages, with Core and
+Electrs stopped. All 63 independent reference responses match. The
+[reference record](bitcoin-explorer-reference-2026-11-03.md) retains the
+producer identities, screenshots, passing logs and sampled coverage.

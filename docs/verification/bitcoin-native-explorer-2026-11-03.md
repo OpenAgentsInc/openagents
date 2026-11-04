@@ -1,8 +1,8 @@
 # Native explorer integration — 2026-11-03
 
 Epic #12704, following indexed-store checkpoint `897b6f08ed`. This record
-qualifies the native integration on independent regtest fixtures. It does
-not claim the separate full signet/Core/Electrs acceptance comparison.
+qualifies the native integration on independent regtest fixtures. The full
+signet/Core/Electrs acceptance results are linked at the end of this record.
 
 The native host allocates caller-owned arena views and performs file/time
 effects. Coax owns header admission, bounded log replay, block-file catalog,
@@ -115,3 +115,15 @@ the previous eager-catalog startup and now passes 108 HTTP comparisons in
 release and checked ASan/UBSan, including missing-body refusal and recovery.
 Both current profiles pass the 133 Core/Electrs reorg responses and browser
 journey; the teaching API's original 75 sanitized responses also pass.
+
+The updated Linux release binary's SHA-256 is
+`a90ee16a40da86d623175c222a18d7f25cf7b8224760d1bc5d6482867a76917b`
+(GCC 15.2.0). Its complete restart finished at 00:59 CST on November 4,
+retaining the same durable sequence 23,932 and preferred height 329,338.
+The cold browser journey passed typed height, hash, txid and address searches
+before the 63-response Core/Electrs reference comparison passed again.
+Desktop/mobile and public mempool captures passed visual review. The
+[retained result](bitcoin-explorer-signet-329338/result.json) identifies the
+producer, actual served Wasm, memory bounds and evidence. This completes
+the full-signet fast-path gate; the original 329,328 import paragraph above
+remains historical progress on the superseded chain.
