@@ -968,6 +968,12 @@ edit_changed :: (s: [] Everglade, summary: string) {
 edit_walls :: (s: [] Everglade) {
   edit_relay_town(s);
   edit_spots(s);
+  edit_walls_put(s);
+}
+// The placed things that stand in your way, as walls after the town's (from ev.wall_base). The spells'
+// walls laid again (sp_open_walls) call it too: without it a page's town and the room server's, which
+// lay their walls again at different times, disagreed on a thing on the street (#12731).
+edit_walls_put :: (s: [] Everglade) {
   w := s[0].ev.wall_base;
   box: [EG_BOX] f32;
   for i: 0..<s[0].ev.edits.n {

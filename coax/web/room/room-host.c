@@ -387,7 +387,17 @@ static void control_ask(void) {
                    url, (const char *)server->ctl.mac.e, (int)(server->ctl.ask_n - 2), (const char *)server->ctl.ask.e + 2);
   if (k > 0 && k < (int)sizeof cfg) poster_send('G', cfg, (size_t)k);
 }
+/* The realm's published world, asked for at the start and again each time the control says it
+   changed (its edit stamp): the answer is laid over every room (room-world.c world_edits, #12731). */
+static void world_ask(void) {
+  const char *url = getenv("OA_ROOM_WORLD_URL");
+  if (!url || !*url) url = "https://openagents.com/api/playtest/world/everglade-5e";
+  char cfg[512];
+  int k = snprintf(cfg, sizeof cfg, "url = \"%s\"\nsilent\nshow-error\nfail\nmax-time = 10\n", url);
+  if (k > 0 && k < (int)sizeof cfg) poster_send('G', cfg, (size_t)k);
+}
 static void control_hear(void) {
+  static int64_t edit_asked = -1;
   static char buf[32768]; static size_t have;
   if (answer_fd < 0) return;
   ssize_t r;
@@ -397,7 +407,12 @@ static void control_hear(void) {
     if (!nl) break;
     size_t len = (size_t)strtoul(buf, NULL, 10), head = (size_t)(nl - buf) + 1;
     if (have < head + len) break;
-    rm_control(view(), (coax_string){buf + head, (int64_t)len});
+    /* the world's answer is JSON ({"doc": ...}); the control's is lines */
+    if (len > 0 && buf[head] == '{') { world_edits(buf + head, (int64_t)len); printf("room: the realm's world (%zu bytes) laid over the rooms\n", len); }
+    else {
+      rm_control(view(), (coax_string){buf + head, (int64_t)len});
+      if (server->ctl.edit_known && server->ctl.edit != edit_asked) { edit_asked = server->ctl.edit; world_ask(); }
+    }
     memmove(buf, buf + head + len, have - head - len); have -= head + len;
     for (int i = 0; i < CONNS; i++) if (conns[i].fd >= 0 && rm_relay_kicked(view(), i)) conns[i].doomed = true;
   }
@@ -455,6 +470,7 @@ int main(int argc, char **argv) {
   server = calloc(1, sizeof *server);
   if (!server) { fprintf(stderr, "room: out of memory\n"); return 1; }
   rm_init(view());
+  world_ask();   /* the realm's published world, for every room's plan (room-world.c world_edits) */
   /* the seat-ticket key (Secret Manager oa-room-ticket-key): set, an everglade join needs a ticket (room-ticket.coax) */
   const char *tkey = getenv("OA_ROOM_TICKET_KEY");
   const char *must = getenv("OA_ROOM_TICKET_REQUIRED");   /* "0": a join without a ticket sits with no id (while pages roll out) */

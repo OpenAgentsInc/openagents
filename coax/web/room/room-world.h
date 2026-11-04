@@ -9,6 +9,8 @@
 #define WORLD_IN 7       /* EG_IN_FIELDS: SEQ KX KY PX PY THETA B */
 #define WORLD_POSE 10    /* X Y Z YAW VX VY VZ G CLIP CARRY */
 /* Seat s of room k stands at the gate: its pose. */
+/* The realm's published world (its JSON answer), laid over every room's plan and each new room's. */
+void world_edits(const char *text, int64_t n);
 bool world_place(int k, int s, float out[WORLD_POSE]);
 /* Seat s of room k steps one input (1 / WORLD_HZ s): its pose after it. */
 bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]);

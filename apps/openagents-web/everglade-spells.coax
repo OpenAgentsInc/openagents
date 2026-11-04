@@ -1416,6 +1416,9 @@ sp_open_walls :: (s: [] Everglade) {
   for k: 0..<12 { out[on * 6 + k] = s[0].sp.wall_keep[keep * 6 + k]; }
   for k: 0..<(on + 2) * 6 { s[0].walls[k] = out[k]; }
   s[0].wall_n = on;
+  // and the placed things (an admin's edits) after them, as edit_walls lays them
+  s[0].ev.wall_base = on;
+  edit_walls_put(s);
 }
 
 // ---- drawing the spells
@@ -2386,4 +2389,24 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   #assert everglade_pointer(g[..], 125, 925, 0, 1, 8) && g[0].sp.slot_held == 1;
   _ := everglade_pointer(g[..], 600, 300, 0, 1, 9);
   #assert g[0].sp.slot_held == -1;
+}
+
+// Whether a wall of s's covers (x, z) on the ground.
+sp_test_walled :: (s: [] Everglade, x: f32, z: f32) -> bool {
+  for b: 0..<s[0].wall_n { k := b * 6; if s[0].walls[k] <= x && s[0].walls[k + 3] >= x && s[0].walls[k + 2] <= z && s[0].walls[k + 5] >= z { return true; } }
+  return false;
+}
+#test "spells: the town's walls laid again keep a placed thing in your way, on a page and on the room server alike (#12731)" #steps 3000000000 {
+  s: [1] Everglade;
+  dm: [1] DemoWorld;
+  everglade_room_spells_start(s[..], dm[..], "");
+  #assert !sp_test_walled(s[..], 0, -82.51);
+  everglade_world(s[..], "200\n{\"doc\": {\"edits\": \"eg-edit 1\\nt 0 0 -8251 0 100 6\\n\", \"everglade\": 1}, \"version\": 1}");
+  #assert s[0].ev.edits.n == 1;
+  #assert eg_edit_blocks(s[0].ev.edits.things[0]);
+  #assert s[0].ev.wall_base + 1 == s[0].wall_n;
+  #assert sp_test_walled(s[..], 0, -82.51);
+  n := s[0].wall_n;
+  sp_open_walls(s[..]);   // as a break or a burn lays them again
+  #assert sp_test_walled(s[..], 0, -82.51) && s[0].wall_n == n;
 }

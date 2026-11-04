@@ -10,6 +10,8 @@
    stay at rest until the world's step owns them per seat.
    This file includes only the Everglade units' headers; room-host.c calls it with plain numbers. */
 #include "everglade.h"
+#include <stdlib.h>
+#include <string.h>
 #include "everglade-step.h"
 #include "river.h"
 #include "room-world.h"
@@ -41,6 +43,20 @@ static void seat_dry(int k, int s) {
 static coax_v_t_Everglade at(int k) { return (coax_v_t_Everglade){world[k], 1}; }
 
 /* Room k's world, made (and its city built) the first time; kept for the next room in that slot. */
+/* The realm's published world (an admin's placed things: GET /api/playtest/world/everglade-5e), laid over
+   every room's plan as each page lays it (everglade-voice.coax everglade_world). Without it a thing
+   placed on a street stood in a page's way and not in the server's: the page's prediction stopped
+   at it while the server walked on, and its next word snapped you past (#12731). */
+static char *edits_text; static int64_t edits_n;
+static bool world_of(int k);
+void world_edits(const char *text, int64_t n) {
+  /* as the page's answer comes: "200\n" and the JSON (verse/everglade/edits.coax eg_edits_answer) */
+  char *copy = malloc((size_t)n + 5);
+  if (!copy) return;
+  memcpy(copy, "200\n", 4); memcpy(copy + 4, text, (size_t)n); copy[n + 4] = 0;
+  free(edits_text); edits_text = copy; edits_n = n + 4;
+  for (int k = 0; k < WORLD_ROOMS; k++) if (world[k]) everglade_world(at(k), (coax_string){edits_text, edits_n});
+}
 static bool world_of(int k) {
   if (k < 0 || k >= WORLD_ROOMS) return false;
   if (!world[k]) {
@@ -61,6 +77,7 @@ static bool world_of(int k) {
     pieces[k] = calloc(1, sizeof *pieces[k]);
     if (pieces[k])
       everglade_room_spells_start(at(k), (coax_v_t_DemoWorld){pieces[k], 1}, (coax_string){(const char *)room_catalog, room_catalog_n});
+    if (edits_text) everglade_world(at(k), (coax_string){edits_text, edits_n});
   }
   return true;
 }
