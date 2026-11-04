@@ -79,11 +79,13 @@ for f in pages:
         rest = m.group(1)
         rest = re.sub(r'data-render="([^"]+)"', lambda r: 'data-render="' + stage_package(Path(app), r.group(1), Path(stage)) + '"', rest)
         # A scene's assets (data-assets): each URL named by its content too,
-        # under /build/ (the page's directory's assets/ in development).
+        # under /build/ (the page's directory's assets/ in development). A local: asset stays as it
+        # is: only a local address loads it, from a cache outside the repo (host.js), so it never ships.
         def asset(u):
-            stem = u.group(2)[1:]
-            return u.group(1) + put(os.path.join(app, stem), "build/" + stem)
-        rest = re.sub(r'data-assets="[^"]*"', lambda a: re.sub(r'([:|=])(/[^\s|"]+)', asset, a.group(0)), rest)
+            if u.group(1): return u.group(0)
+            stem = u.group(3)[1:]
+            return u.group(2) + put(os.path.join(app, stem), "build/" + stem)
+        rest = re.sub(r'data-assets="[^"]*"', lambda a: re.sub(r'(\blocal)?([:|=])(/[^\s|"]+)', asset, a.group(0)), rest)
         # A page that talks (data-voice): the voice engine (coax/web/voice/build.sh), named by its content too.
         if "data-voice=" in rest: rest += f' data-voice-wasm="{put(os.path.join(app, "build", "voice.wasm"), "build/voice.wasm")}"'
         # The engine is the page's biggest file and host.js asks for it only once it has run:
