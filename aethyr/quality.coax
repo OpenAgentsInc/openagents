@@ -35,7 +35,7 @@ QUALITY_HOST :: [4] string.["high", "medium", "low", "auto"];   // the names hos
 //   fx:      the share of its fire, smoke and glow puffs a frame
 //   scenery: the share of its far scenery's reach and count (trees)
 QUALITY_RUNGS :: 7;
-QUALITY_SCALE :: [7] f32.[0.75, 1.0, 1.0, 1.5, 1.5, 2.0, 3.0];
+QUALITY_SCALE :: [7] f32.[1.0, 1.0, 1.0, 1.5, 1.5, 2.0, 3.0];
 QUALITY_DEBRIS :: [7] f32.[0.3, 0.3, 0.4, 0.5, 1.0, 1.0, 1.0];
 QUALITY_FINE :: [7] f32.[0.25, 0.25, 0.4, 0.5, 1.0, 1.0, 1.0];
 QUALITY_FX :: [7] f32.[0.15, 0.2, 0.3, 0.4, 1.0, 1.0, 1.0];
