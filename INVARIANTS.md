@@ -198,6 +198,27 @@ independent live Core, historical, exact-undo, crash-cut, native file and
 sanitizer comparisons. Historical mainnet fixtures supply an archival parent
 and touched coins, not a global mainnet UTXO snapshot or a sync from genesis.
 
+## Validated Bitcoin reorganizations publish only a durable cursor
+
+`coax/lib/bitcoin/chainreorg.coax` alternates disjoint private validated coin
+views while detaching to the fork and connecting the preferred target path.
+`chainbatch.coax` joins checked unsealed KV bodies before one final frame.
+Any refusal publishes neither coins nor an active index; scratch is discarded.
+Only after append and sync may the caller publish the replacement snapshot
+and bind the index to its exact validated network/height/hash. Complete
+transaction-data receipts and immutable archived bodies are prerequisites.
+Bounded preferred prefixes are permitted; they do not declare sync complete.
+
+Completed script checks may advance validity caches during preparation.
+Only stable contextual consensus verdicts mark the block and known descendants
+failed. Framing, Merkle, witness mutation, signet preflight, local context,
+damaged undo and capacity failures never authorize cached invalidity. Archive
+data/undo ownership flags remain the adapter's responsibility. Recovery trusts
+only the checked durable `V` cursor, never a light or unauthenticated imported
+snapshot. Chapter 60's models, zero-survivor mutation receipts, native/Core
+full-set MuHash comparisons, fork reversals and exhaustive frame cuts qualify
+this boundary; they do not grant money admission or prove mainnet sync.
+
 ## Bitcoin block validation changes only private coins
 
 `coax/lib/bitcoin/validation.coax` requires chapter 59's admitted header tree

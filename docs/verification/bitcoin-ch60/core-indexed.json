@@ -1,0 +1,36 @@
+{
+ "schema": 1,
+ "version": "/Satoshi:32.1.0/",
+ "indexed": true,
+ "states": [
+  {
+   "index": 102,
+   "height": 102,
+   "hash": "2d289b40201c58dad1f19754fc6299aebd7000f3a512c828492254b716ab5e36",
+   "muhash": "750ba8d8990d5e5b14951087241be1ca2c0b6830ddd1225d70e9a67b4fdc4912"
+  },
+  {
+   "index": 105,
+   "height": 103,
+   "hash": "62a232ea8a9ad3c5e2d08f8f5b1c4e259f6c17c28c49329e35fbba45417be860",
+   "muhash": "f8bf3d0c6b623f7f1b10a11a25cc87896262c6e40babdf1cec23b5c662d47a19"
+  },
+  {
+   "index": 109,
+   "height": 104,
+   "hash": "49f911317d91c9a06b94cec4008c09478e5f60d1ce858c98bda4cfe324a7f1b3",
+   "muhash": "667e574c76d84f86a1db8f41979f4e2ed1bc502f2015ebcdff7aa8f925bbe6af"
+  }
+ ],
+ "invalid_reasons": [
+  null,
+  "bad-txns-inputs-missingorspent",
+  "duplicate-invalid"
+ ],
+ "crash_cut_cases": 9136,
+ "side_replies": [
+  "inconclusive",
+  "inconclusive"
+ ],
+ "restart": true
+}

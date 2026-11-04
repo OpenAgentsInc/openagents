@@ -1142,6 +1142,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/validated-reorg.coax",
+      "chapter": "bitcoin/book/ch060-reorganizations-and-invalid-chains.md",
+      "stdout": "bitcoin/fixtures/validated-reorg.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 600
     }
   ]
 }

@@ -1,0 +1,27 @@
+#run_steps 250000000;
+#load "../../coax/lib/bitcoin/chainreorg.coax";
+#import "Basic";
+
+main :: () {
+  d: [1] CrDemo; cr_demo_setup(d[..]); cr_demo_a(d[..]); c := d[0].core[..];
+  print("validated A: height %\n", cs_tip_vartime(c[0].live[..], c[0].used).height);
+  bad: [5] CrBlock; for k: 0..<5 { bad[k] = cr_demo_block(d[..], k+2); }
+  r := cr_demo_prepare(d[..], 107, bad[..]);
+  #assert r.code == CS_CONSENSUS && r.block == 106 && r.n == 0;
+  #assert bi_tip(c[0].tree[..]) == 102 && cs_tip_vartime(c[0].live[..], c[0].used).height == 102;
+  #assert c[0].entries[106].status & BLOCK_FAILED_VALID != 0 && c[0].entries[107].status & BLOCK_FAILED_VALID != 0;
+  print("invalid B104: A retained; B104 and B105 failed\n");
+  #assert bi_find_most_work_chain(c[0].tree[..]) == 105;
+  good := bad[0..<3]; r = cr_demo_prepare(d[..], 105, good);
+  #assert r.disconnected == 2 && r.connected == 3 && bi_tip(c[0].tree[..]) == 102;
+  cr_demo_commit(d[..], r, 105);
+  print("validated B: height %, detached %, attached %\n", cs_tip_vartime(c[0].live[..], c[0].used).height, r.disconnected, r.connected);
+  cr_demo_receive(d[..], 7); cr_demo_receive(d[..], 8);
+  back := [4] CrBlock.[cr_demo_block(d[..],0),cr_demo_block(d[..],1),cr_demo_block(d[..],7),cr_demo_block(d[..],8)];
+  r = cr_demo_prepare(d[..],109,back[..]);
+  #assert r.disconnected == 3 && r.connected == 4;
+  cr_demo_commit(d[..],r,109);
+  print("validated A: height %, detached %, attached %\n", cs_tip_vartime(c[0].live[..], c[0].used).height, r.disconnected, r.connected);
+  #assert c[0].entries[109].status & BLOCK_VALID_MASK == BLOCK_VALID_SCRIPTS;
+  print("published index: scripts checked\n");
+}

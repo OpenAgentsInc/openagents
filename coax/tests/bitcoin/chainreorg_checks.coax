@@ -1,0 +1,231 @@
+#load "chainreorg_vectors.coax";
+CrRaw :: struct { bytes: [1024] u8; n: int; }
+CrDemo :: struct {
+  core: [1] CsDemo; scratch: [131072] u8; aggregate: [524288] u8;
+  temp: [262144] u8; path: [128] int; branch: [9] CrRaw;
+}
+cr_demo_work :: (d: [] CrDemo) -> CrWork { return CrWork.{validate=cs_demo_work(d[0].core[..]), path=d[0].path[..]}; }
+cr_demo_block :: (d: [] CrDemo, k: int) -> CrBlock {
+  return CrBlock.{index=101+k, bytes=d[0].branch[k].bytes[0..<d[0].branch[k].n]};
+}
+cr_demo_receive :: (d: [] CrDemo, k: int) {
+  c := d[0].core[..]; b := cr_demo_block(d, k);
+  checked := block_check_vartime(b.bytes, c[0].ins[..], c[0].outs[..], c[0].items[..], c[0].ids[..], c[0].wids[..], c[0].merkle[..]);
+  #assert checked.code == BLOCK_OK;
+  bi_received_block_vartime(c[0].tree[..], b.index, checked.count);
+}
+cr_demo_minimal :: (d: [] CrDemo) {
+  c := d[0].core[..]; cs_demo_init(c);
+  bi_received_block_vartime(c[0].tree[..], 0, 1); bi_received_block_vartime(c[0].tree[..], 1, 1);
+  #assert cr_publish_vartime(c[0].tree[..], c[0].live[..], c[0].used, 0);
+}
+cr_demo_setup :: (d: [] CrDemo) {
+  c := d[0].core[..]; cs_demo_init(c);
+  bi_received_block_vartime(c[0].tree[..], 0, 1); bi_received_block_vartime(c[0].tree[..], 1, 1);
+  for h: 2..<LC_PREFIX.count {
+    b := tx_unhex(LC_PREFIX[h], c[0].raw[..]);
+    #assert bi_accept_header_vartime(c[0].tree[..], b[0..<80], 2000000000).code == BI_OK;
+    bi_received_block_vartime(c[0].tree[..], h, 1);
+  }
+  for k: 0..<9 {
+    text := ifx k < 6 then LC_BRANCH[k] else CR_EXTRA[k-6];
+    b := tx_unhex(text, d[0].branch[k].bytes[..]); d[0].branch[k].n = b.count;
+    #assert bi_accept_header_vartime(c[0].tree[..], b[0..<80], 2000000000).code == BI_OK;
+    if k < 7 { cr_demo_receive(d, k); }
+  }
+  for h: 1..<LC_PREFIX.count {
+    b := tx_unhex(LC_PREFIX[h], c[0].raw[..]);
+    cs_demo_publish(c, cs_connect_vartime(c[0].tree[..], h, b, c[0].live[..], c[0].used, c[0].stage[..], c[0].batch[..], cs_demo_work(c), c[0].undo[..]));
+  }
+  #assert cr_publish_vartime(c[0].tree[..], c[0].live[..], c[0].used, 100);
+}
+cr_demo_prepare :: (d: [] CrDemo, target: int, blocks: [] CrBlock) -> CrResult {
+  c := d[0].core[..];
+  return cr_reorg_vartime(c[0].tree[..], c[0].live[..], c[0].used, target, blocks, c[0].stage[..], d[0].scratch[..], d[0].aggregate[..], d[0].temp[..], cr_demo_work(d), c[0].undo[..]);
+}
+cr_demo_commit :: (d: [] CrDemo, r: CrResult, target: int) {
+  c := d[0].core[..]; #assert r.code == CS_OK && r.block == -1;
+  replay: [131072] u8; for k: 0..<c[0].used { replay[k] = c[0].live[k]; }
+  applied := kv_apply_vartime(replay[..], c[0].used, d[0].aggregate[0..<r.n], 0);
+  #assert applied == r.used && lc_same(replay[0..<applied], c[0].stage[0..<r.used]);
+  for k: 0..<r.used { c[0].live[k] = c[0].stage[k]; } c[0].used = r.used;
+  #assert cr_publish_vartime(c[0].tree[..], c[0].live[..], c[0].used, target);
+}
+cr_demo_a :: (d: [] CrDemo) {
+  blocks := [2] CrBlock.[cr_demo_block(d, 0),cr_demo_block(d, 1)];
+  r := cr_demo_prepare(d, 102, blocks[..]); #assert r.disconnected == 0 && r.connected == 2;
+  cr_demo_commit(d, r, 102);
+}
+
+#test "validated reorg: cache only stable consensus failure families" {
+  r := CsResult.{code=CS_CONSENSUS, vcode=VALIDATE_SCRIPT, detail=SCRIPT_ERR_EVAL_FALSE};
+  #assert cr_cacheable(r);
+  r.vcode = VALIDATE_BIP30; r.detail = 0; #assert cr_cacheable(r);
+  r.vcode = VALIDATE_TX;
+  for detail: [6] int.[TXC_MISSING,TXC_PREMATURE,TXC_INPUT_RANGE,TXC_IN_BELOW_OUT,TXC_FEE_RANGE,TXC_NONFINAL] {
+    r.detail = detail; #assert cr_cacheable(r);
+  }
+  for detail: [4] int.[TXC_OK,TXC_VIN_EMPTY,TXC_PREVOUT_NULL,TXC_CONTEXT] { r.detail = detail; #assert !cr_cacheable(r); }
+  r.vcode = VALIDATE_SUBSIDY;
+  for detail: [3] int.[SUBSIDY_CB_HEIGHT,SUBSIDY_CB_AMOUNT,SUBSIDY_FEE_RANGE] { r.detail = detail; #assert cr_cacheable(r); }
+  r.detail = SUBSIDY_CONTEXT; #assert !cr_cacheable(r);
+  r.vcode = VALIDATE_BLOCK;
+  for detail: [2] int.[BLOCK_WEIGHT,BLOCK_SIGOPS] { r.detail = detail; #assert cr_cacheable(r); }
+  for detail: [4] int.[BLOCK_BAD,BLOCK_MERKLE,BLOCK_DUPLICATE,BLOCK_LENGTH] { r.detail = detail; #assert !cr_cacheable(r); }
+  for code: [3] int.[VALIDATE_WITNESS,VALIDATE_SIGNET,VALIDATE_CONTEXT] { r.vcode = code; #assert !cr_cacheable(r); }
+  r.vcode = VALIDATE_SCRIPT;
+  for code: [4] int.[CS_OK,CS_CONTEXT,CS_CAPACITY,CS_UNDO] { r.code = code; #assert !cr_cacheable(r); }
+}
+#test "validated reorg: genesis and a single exact-sized extension publish separately" #steps 100000000 {
+  d: [1] CrDemo; cr_demo_minimal(d[..]); c := d[0].core[..];
+  #assert bi_tip(c[0].tree[..]) == 0 && c[0].entries[0].status & BLOCK_VALID_MASK == BLOCK_VALID_SCRIPTS;
+  #assert c[0].entries[0].status & BLOCK_HAVE_DATA != 0;
+  block := [1] CrBlock.[CrBlock.{index=1, bytes=c[0].raw[0..<c[0].n]}];
+  r := cr_reorg_vartime(c[0].tree[..], c[0].live[..], c[0].used, 1, block[..], c[0].stage[0..<424], d[0].scratch[..], d[0].aggregate[..], d[0].temp[..], cr_demo_work(d[..]), c[0].undo[..]);
+  #assert r.code == CS_OK && r.used == 424 && r.disconnected == 0 && r.connected == 1 && r.n > 12;
+  #assert bi_tip(c[0].tree[..]) == 0 && cs_tip_vartime(c[0].live[..], c[0].used).height == 0;
+  cr_demo_commit(d[..], r, 1);
+  #assert bi_tip(c[0].tree[..]) == 1 && c[0].entries[1].status & BLOCK_VALID_MASK == BLOCK_VALID_SCRIPTS;
+}
+#test "validated reorg: late invalid child preserves coins and falls back to valid prefix" #steps 2000000000 {
+  d: [1] CrDemo; cr_demo_setup(d[..]); cr_demo_a(d[..]); c := d[0].core[..];
+  saved: [131072] u8; used := c[0].used; for k: 0..<used { saved[k] = c[0].live[k]; }
+  bad: [5] CrBlock; for k: 0..<5 { bad[k] = cr_demo_block(d[..], 2+k); }
+  r := cr_demo_prepare(d[..], 107, bad[..]);
+  #assert r.code == CS_CONSENSUS && r.vcode == VALIDATE_TX && r.detail == TXC_MISSING && r.block == 106 && r.n == 0 && r.used == 0;
+  #assert lc_same(c[0].live[0..<used], saved[0..<used]) && bi_tip(c[0].tree[..]) == 102;
+  #assert c[0].entries[106].status & BLOCK_FAILED_VALID != 0 && c[0].entries[107].status & BLOCK_FAILED_VALID != 0;
+  for i: 103..<106 { #assert c[0].entries[i].status & BLOCK_VALID_MASK == BLOCK_VALID_SCRIPTS; }
+  #assert bi_find_most_work_chain(c[0].tree[..]) == 105 && c[0].tree[0].best_invalid == 107;
+  good: [3] CrBlock; for k: 0..<3 { good[k] = cr_demo_block(d[..], 2+k); }
+  r = cr_demo_prepare(d[..], 105, good[..]);
+  #assert r.code == CS_OK && r.disconnected == 2 && r.connected == 3;
+  cr_demo_commit(d[..], r, 105);
+  #assert bi_tip(c[0].tree[..]) == 105 && cs_tip_vartime(c[0].live[..], c[0].used).height == 103;
+}
+#test "validated reorg: both directions and exact unwind preserve original A" #steps 2000000000 {
+  d: [1] CrDemo; cr_demo_setup(d[..]); cr_demo_a(d[..]); c := d[0].core[..];
+  saved: [131072] u8; used := c[0].used; for k: 0..<used { saved[k] = c[0].live[k]; }
+  b: [3] CrBlock; for k: 0..<3 { b[k] = cr_demo_block(d[..], 2+k); }
+  cr_demo_commit(d[..], cr_demo_prepare(d[..], 105, b[..]), 105);
+  a := [2] CrBlock.[cr_demo_block(d[..], 0),cr_demo_block(d[..], 1)];
+  #assert cr_demo_prepare(d[..], 102, a[..]).code == CR_NOT_BETTER;
+  cr_demo_receive(d[..], 7); cr_demo_receive(d[..], 8);
+  back := [4] CrBlock.[a[0],a[1],cr_demo_block(d[..], 7),cr_demo_block(d[..], 8)];
+  r := cr_demo_prepare(d[..], 109, back[..]); #assert r.disconnected == 3 && r.connected == 4;
+  cr_demo_commit(d[..], r, 109);
+  #assert cs_tip_vartime(c[0].live[..], c[0].used).height == 104;
+  for k: 0..<2 { cs_demo_publish(c, cs_disconnect_vartime(c[0].live[..], c[0].used, c[0].stage[..], c[0].batch[..], c[0].undo[..])); }
+  #assert c[0].used == used && lc_same(c[0].live[0..<used], saved[0..<used]);
+}
+#test "validated reorg: changed body refuses without poisoning its header" #steps 2000000000 {
+  d: [1] CrDemo; cr_demo_setup(d[..]); cr_demo_a(d[..]); c := d[0].core[..];
+  a := [1] CrBlock.[cr_demo_block(d[..], 7)]; cr_demo_receive(d[..], 7);
+  end := a[0].bytes.count-1; a[0].bytes[end] ^= 1;
+  r := cr_demo_prepare(d[..], 108, a[..]);
+  #assert r.code == CS_CONSENSUS && r.vcode == VALIDATE_BLOCK && r.detail == BLOCK_MERKLE && r.block == 108;
+  #assert c[0].entries[108].status & BLOCK_FAILED_VALID == 0 && bi_tip(c[0].tree[..]) == 102;
+  a[0].bytes[end] ^= 1;
+  cr_demo_commit(d[..], cr_demo_prepare(d[..], 108, a[..]), 108);
+}
+#test "validated reorg: an invalidated active branch permits a detach-only repair" #steps 2000000000 {
+  d: [1] CrDemo; cr_demo_setup(d[..]); cr_demo_a(d[..]); c := d[0].core[..];
+  bi_invalid_block_found(c[0].tree[..], 102, false);
+  empty: [] CrBlock; w := cr_demo_work(d[..]); w.path = d[0].path[0..<0];
+  r := cr_reorg_vartime(c[0].tree[..], c[0].live[..], c[0].used, 100, empty, c[0].stage[..], d[0].scratch[..], d[0].aggregate[..], d[0].temp[..], w, c[0].undo[..]);
+  #assert r.code == CS_OK && r.disconnected == 2 && r.connected == 0;
+  cr_demo_commit(d[..], r, 100);
+}
+#test "validated reorg: publication binds network, height, hash and index validity" #steps 100000000 {
+  d: [1] CrDemo; cr_demo_minimal(d[..]); c := d[0].core[..];
+  #assert !cr_publish_vartime(c[0].tree[0..<0], c[0].live[..], c[0].used, 0);
+  for target: [3] int.[-1,1,2] { #assert !cr_publish_vartime(c[0].tree[..], c[0].live[..], c[0].used, target); }
+  key := CS_META; f := kv_find_vartime(c[0].live[..], c[0].used, key[..]); at := f.at+7;
+  kv_put32(c[0].live[..], at+4, 1);
+  #assert !cr_publish_vartime(c[0].tree[..], c[0].live[..], c[0].used, 0); kv_put32(c[0].live[..], at+4, 5);
+  kv_put32(c[0].live[..], at+8, 1);
+  #assert !cr_publish_vartime(c[0].tree[..], c[0].live[..], c[0].used, 0); kv_put32(c[0].live[..], at+8, 0);
+  c[0].live[at+12] ^= 1;
+  #assert !cr_publish_vartime(c[0].tree[..], c[0].live[..], c[0].used, 0); c[0].live[at+12] ^= 1;
+  c[0].entries[0].status |= BLOCK_FAILED_VALID;
+  #assert !cr_publish_vartime(c[0].tree[..], c[0].live[..], c[0].used, 0);
+  #assert bi_tip(c[0].tree[..]) == 0;
+}
+#test "validated reorg: context and missing-data failures have no batch" #steps 200000000 {
+  for which: 0..<12 {
+    d: [1] CrDemo; cr_demo_minimal(d[..]); c := d[0].core[..];
+    body := [1] CrBlock.[CrBlock.{index=1,bytes=c[0].raw[0..<c[0].n]}]; target := 1; used := c[0].used;
+    tree := c[0].tree[..]; blocks := body[..]; w := cr_demo_work(d[..]);
+    if which == 0 { tree = c[0].tree[0..<0]; }
+    if which == 1 { target = -1; }
+    if which == 2 { target = 2; }
+    if which == 3 { c[0].tree[0].p.chain = 1; }
+    if which == 4 { c[0].entries[1].status = BLOCK_VALID_TREE; }
+    if which == 5 { c[0].entries[1].chain_tx = 0; }
+    if which == 6 { blocks = body[0..<0]; }
+    if which == 7 { body[0].index = 0; }
+    if which == 8 { used = 0; }
+    if which == 9 { key := CS_META; f := kv_find_vartime(c[0].live[..], used, key[..]); c[0].live[f.at+7+12] ^= 1; }
+    if which == 10 { key := CS_META; f := kv_find_vartime(c[0].live[..], used, key[..]); kv_put32(c[0].live[..], f.at+7+8, 1); }
+    if which == 11 { c[0].entries[1].status &= 0xffffffff ^ BLOCK_HAVE_DATA; }
+    r := cr_reorg_vartime(tree, c[0].live[..], used, target, blocks, c[0].stage[..], d[0].scratch[..], d[0].aggregate[..], d[0].temp[..], w, c[0].undo[..]);
+    #assert r.code == CS_CONTEXT && r.n == 0 && r.used == 0 && r.block == -1;
+    #assert bi_tip(c[0].tree[..]) == 0 && c[0].entries[1].status & BLOCK_FAILED_VALID == 0;
+  }
+}
+#test "validated reorg: every workspace can refuse without invalidating a block" #steps 200000000 {
+  for which: 0..<7 {
+    d: [1] CrDemo; cr_demo_minimal(d[..]); c := d[0].core[..];
+    body := [1] CrBlock.[CrBlock.{index=1,bytes=c[0].raw[0..<c[0].n]}];
+    stage := c[0].stage[..]; scratch := d[0].scratch[..]; aggregate := d[0].aggregate[..]; temp := d[0].temp[..]; undo := c[0].undo[..]; w := cr_demo_work(d[..]);
+    if which == 0 { stage = c[0].stage[0..<0]; }
+    if which == 1 { scratch = d[0].scratch[0..<0]; }
+    if which == 2 { aggregate = d[0].aggregate[0..<11]; }
+    if which == 3 { aggregate = d[0].aggregate[0..<20]; }
+    if which == 4 { temp = d[0].temp[0..<11]; }
+    if which == 5 { undo = c[0].undo[0..<0]; }
+    if which == 6 { stage = c[0].stage[0..<51]; }
+    r := cr_reorg_vartime(c[0].tree[..], c[0].live[..], c[0].used, 1, body[..], stage, scratch, aggregate, temp, w, undo);
+    #assert r.code == CS_CAPACITY && r.n == 0 && r.used == 0;
+    #assert bi_tip(c[0].tree[..]) == 0 && c[0].entries[1].status & BLOCK_FAILED_VALID == 0;
+  }
+  d: [1] CrDemo; cr_demo_minimal(d[..]); c := d[0].core[..];
+  body := [1] CrBlock.[CrBlock.{index=1,bytes=c[0].raw[0..<c[0].n]}]; w := cr_demo_work(d[..]); w.path = d[0].path[0..<0];
+  r := cr_reorg_vartime(c[0].tree[..], c[0].live[..], c[0].used, 1, body[..], c[0].stage[..], d[0].scratch[..], d[0].aggregate[..], d[0].temp[..], w, c[0].undo[..]);
+  #assert r.code == CS_CAPACITY && r.block == -1;
+}
+#test "validated reorg: damaged undo after a detach preserves the published A tip" #steps 2000000000 {
+  d: [1] CrDemo; cr_demo_setup(d[..]); cr_demo_a(d[..]); c := d[0].core[..];
+  hash := c[0].entries[101].hash; hk: [33] u8; hk[0] = 'H'; for k: 0..<32 { hk[1+k] = hash[k]; }
+  f := kv_find_vartime(c[0].live[..], c[0].used, hk[..]); c[0].live[f.at+39+84] ^= 1;
+  saved: [131072] u8; for k: 0..<c[0].used { saved[k] = c[0].live[k]; }
+  b: [3] CrBlock; for k: 0..<3 { b[k] = cr_demo_block(d[..], k+2); }
+  r := cr_demo_prepare(d[..], 105, b[..]);
+  #assert r.code == CS_UNDO && r.n == 0 && r.block == -1;
+  #assert lc_same(c[0].live[0..<c[0].used], saved[0..<c[0].used]) && bi_tip(c[0].tree[..]) == 102;
+  #assert c[0].entries[103].status & BLOCK_FAILED_VALID == 0;
+}
+
+#test "validated reorg: a recovered cursor can publish from header-only validity" #steps 100000000 {
+  d: [1] CrDemo; c := d[0].core[..]; cs_demo_init(c);
+  #assert c[0].entries[0].status == BLOCK_VALID_TREE;
+  #assert cr_publish_vartime(c[0].tree[..], c[0].live[..], c[0].used, 0);
+  #assert c[0].entries[0].status == BLOCK_VALID_SCRIPTS && bi_tip(c[0].tree[..]) == 0;
+}
+#test "validated reorg: a loaded valid active header still refuses a weaker branch" #steps 100000000 {
+  d: [1] CrDemo; cr_demo_minimal(d[..]); c := d[0].core[..];
+  body := [1] CrBlock.[CrBlock.{index=1,bytes=c[0].raw[0..<c[0].n]}];
+  cr_demo_commit(d[..], cr_demo_prepare(d[..], 1, body[..]), 1);
+  c[0].entries[1].status = BLOCK_VALID_TREE;
+  empty: [] CrBlock; r := cr_demo_prepare(d[..], 0, empty);
+  #assert r.code == CR_NOT_BETTER && r.n == 0 && r.used == 0 && bi_tip(c[0].tree[..]) == 1;
+}
+#test "validated reorg: detach aggregate capacity refuses before publication" #steps 100000000 {
+  d: [1] CrDemo; cr_demo_minimal(d[..]); c := d[0].core[..];
+  body := [1] CrBlock.[CrBlock.{index=1,bytes=c[0].raw[0..<c[0].n]}];
+  cr_demo_commit(d[..], cr_demo_prepare(d[..], 1, body[..]), 1);
+  bi_invalid_block_found(c[0].tree[..], 1, false); empty: [] CrBlock;
+  r := cr_reorg_vartime(c[0].tree[..], c[0].live[..], c[0].used, 0, empty, c[0].stage[..], d[0].scratch[..], d[0].aggregate[0..<12], d[0].temp[..], cr_demo_work(d[..]), c[0].undo[..]);
+  #assert r.code == CS_CAPACITY && r.n == 0 && r.used == 0 && r.block == -1;
+  #assert bi_tip(c[0].tree[..]) == 1 && cs_tip_vartime(c[0].live[..], c[0].used).height == 1;
+}

@@ -1,0 +1,5 @@
+validated A: height 102
+invalid B104: A retained; B104 and B105 failed
+validated B: height 103, detached 2, attached 3
+validated A: height 104, detached 3, attached 4
+published index: scripts checked

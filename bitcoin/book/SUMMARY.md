@@ -91,7 +91,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [57. Validate a block: every consensus rule](ch057-validate-a-block-every-consensus-rule.md) — implemented
 - [58. Connect and disconnect a block](ch058-connect-and-disconnect-a-block.md) — implemented
 - [59. The block index and the most-work chain](ch059-the-block-index-and-the-most-work-chain.md) — implemented
-- [60. Reorganizations and invalid chains](ch060-reorganizations-and-invalid-chains.md) — partly implemented
+- [60. Reorganizations and invalid chains](ch060-reorganizations-and-invalid-chains.md)
 - [61. Block files and undo files](ch061-block-files-and-undo-files.md) — implemented
 - [62. A key-value store for the chainstate](ch062-a-key-value-store-for-the-chainstate.md) — implemented
 

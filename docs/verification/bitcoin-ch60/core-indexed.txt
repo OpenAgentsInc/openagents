@@ -1,0 +1,2 @@
+validated reorg: three independently mined extra blocks and their digests match
+validated reorg: Core agrees on three full coin sets/MuHashes, invalid descendant fallback, both fork directions and restart; 9136 physical cuts exported

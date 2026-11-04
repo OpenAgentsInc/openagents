@@ -15,21 +15,19 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-98 of the book's 125 chapters are implemented and 4 are partly implemented;
+99 of the book's 125 chapters are implemented and 3 are partly implemented;
 the [status table](book/README.md#status) lists them.
 
-Chapters [58](book/ch058-connect-and-disconnect-a-block.md) and
-[60](book/ch060-reorganizations-and-invalid-chains.md) build the explorer's
-light connect/reorg path: coins, ordered undo and tip share one atomic
-storage batch. The Coax [file adapter](examples/live/light-chain.coax)
-applies raw blocks on admitted headers and acknowledges only after sync.
-Its profile remains proof-of-work-only. The
-[native explorer](explorer/README.md) adds address histories, a read-only
-HTTP API, Coax/WebGPU pages and unvalidated mempool observations. Full
-consensus validation remains later work in chapters 55, 57, 58 and 63. Chapter
-[91](book/ch091-indexes-transactions-filters-and-coin-statistics.md) now adds
-the transaction index: durable positions, active and stale lookup, and raw
-file reads across reorgs.
+Chapters [57](book/ch057-validate-a-block-every-consensus-rule.md),
+[58](book/ch058-connect-and-disconnect-a-block.md) and
+[60](book/ch060-reorganizations-and-invalid-chains.md) validate complete blocks,
+commit coins with exact Core undo, and reorganize validated branches atomically.
+Invalid descendants are excluded; damaged bodies remain retryable. The
+[native explorer](explorer/README.md) retains its separate proof-of-work-only
+light profile and read-only API. Chapter
+[91](book/ch091-indexes-transactions-filters-and-coin-statistics.md) adds
+transaction positions and active/stale lookup. Full-node sync and money
+admission still require chapters 80, 93 and 118.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and

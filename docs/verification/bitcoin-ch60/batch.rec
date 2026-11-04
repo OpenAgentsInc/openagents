@@ -1,0 +1,35 @@
+coax-mutation-shard v1
+shard 1/1
+file ea69bd2c59807d96 mutants 31 shards 1 scheduling full borrowed 1 strings 1 unstable 0 scope root-only
+outcome 0 1 1 0
+outcome 1 1 1 0
+outcome 2 1 1 0
+outcome 3 2 3 0
+outcome 4 2 1 0
+outcome 5 2 1 0
+outcome 6 2 1 0
+outcome 7 2 1 0
+outcome 8 2 1 0
+outcome 9 2 1 0
+outcome 10 2 1 0
+outcome 11 2 1 0
+outcome 12 2 1 0
+outcome 13 2 1 0
+outcome 14 2 1 0
+outcome 15 2 1 0
+outcome 16 2 1 0
+outcome 17 2 1 0
+outcome 18 2 1 0
+outcome 19 2 1 0
+outcome 20 2 1 0
+outcome 21 2 1 0
+outcome 22 2 1 0
+outcome 23 2 1 0
+outcome 24 1 2 0
+outcome 25 0 3 0
+outcome 26 0 3 0
+outcome 27 0 1 0
+outcome 28 0 1 0
+outcome 29 0 1 0
+outcome 30 0 1 0
+end 31

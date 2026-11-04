@@ -1,0 +1,116 @@
+// Chapter 60. Headers and transaction-data receipts are admitted by chapter
+// 59; block bodies stay immutable in the caller's archive. All workspaces are
+// live and disjoint. Validation/invalidity caches may advance during prepare;
+// the active index and published coins move only after the returned frame is
+// appended and synced. A refusal poisons private scratch and publishes no batch.
+#run_steps 250000000;
+#load "chainstate.coax";
+#load "chainbatch.coax";
+#authority;
+
+// book:begin types
+CR_NOT_BETTER :: 5;
+CrBlock :: struct { index: int; bytes: [] u8; }
+CrWork :: struct { validate: ValidationWork; path: [] int; }
+CrResult :: struct {
+  code: int; vcode: int; detail: int; tx: int; input: int;
+  used: int; n: int; disconnected: int; connected: int; block: int;
+}
+// block is a diagnostic index, never an invalidity proof by itself. Only the
+// cache predicate below authorizes marking a branch; local/transport failures
+// preserve its validity. Success has block=-1. Publication is a separate step.
+// book:end types
+
+#load "../../tests/bitcoin/chainreorg_checks.coax";
+
+// The receipt already passed CheckBlock. Do not turn framing, Merkle,
+// witness-malleation, signet preflight, context or resource failures into a
+// cached invalid header. These families correspond to contextual/ConnectBlock
+// consensus failures in pinned Core; unknown errors remain retryable.
+cr_cacheable :: (r: CsResult) -> bool {
+  if r.code != CS_CONSENSUS { return false; }
+  if r.vcode == VALIDATE_BLOCK { return r.detail == BLOCK_WEIGHT || r.detail == BLOCK_SIGOPS; }
+  if r.vcode == VALIDATE_TX {
+    return r.detail == TXC_MISSING || r.detail == TXC_PREMATURE || r.detail == TXC_INPUT_RANGE ||
+      r.detail == TXC_IN_BELOW_OUT || r.detail == TXC_FEE_RANGE || r.detail == TXC_NONFINAL;
+  }
+  if r.vcode == VALIDATE_SUBSIDY {
+    return r.detail == SUBSIDY_CB_HEIGHT || r.detail == SUBSIDY_CB_AMOUNT || r.detail == SUBSIDY_FEE_RANGE;
+  }
+  return r.vcode == VALIDATE_BIP30 || r.vcode == VALIDATE_SCRIPT;
+}
+cr_refused :: (code: int) -> CrResult { return CrResult.{code=code, block=-1}; }
+cr_from_cs :: (r: CsResult, block: int) -> CrResult {
+  return CrResult.{code=r.code, vcode=r.vcode, detail=r.detail, tx=r.tx, input=r.input, block=block};
+}
+// Validity is a cache of completed checks, independent of active membership.
+// Data/undo ownership flags remain the archive adapter's responsibility.
+cr_good :: (tree: [] BlockTree, i: int) {
+  status := [1] u32.[tree[0].e[i].status];
+  raised := bi_raise_validity(status[..], BLOCK_VALID_SCRIPTS);
+  tree[0].e[i].status = status[0];
+}
+// Call only after the accepted state frame is durable, under exclusive index
+// ownership. A loaded validated V cursor certifies its complete active ancestry.
+cr_publish_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int) -> bool #export_c {
+  tip := cs_tip_vartime(table, used);
+  if tip.code != CS_OK || tree.count != 1 { return false; }
+  if tip.chain != tree[0].p.chain || !lc_index_extent(target, tree[0].count) { return false; }
+  if tree[0].l[target].height != tip.height || !lc_same(tree[0].e[target].hash[..], tip.hash[..]) { return false; }
+  if !bi_is_valid(tree[0].e[target].status, BLOCK_VALID_TREE) { return false; }
+  j := target;
+  while j >= 0 { cr_good(tree, j); j = tree[0].l[j].prev; }
+  bi_set_tip(tree, target); return true;
+}
+// The target is a preferred prefix selected by chapter 59. This permits bounded
+// progress toward a distant best candidate; serving/admission waits for the
+// node's complete selection cycle. A failed active branch may rewind to a valid
+// ancestor. The supplied bodies are exactly fork's child through target.
+cr_reorg_vartime :: (tree: [] BlockTree, table: [] u8, used: int, target: int, blocks: [] CrBlock, stage: [] u8, scratch: [] u8, aggregate: [] u8, temp: [] u8, w: CrWork, undo: [] u8) -> CrResult #export_c {
+  tip := cs_tip_vartime(table, used);
+  if tip.code != CS_OK || tree.count != 1 { return cr_refused(CS_CONTEXT); }
+  if tip.chain != tree[0].p.chain || !lc_index_extent(target, tree[0].count) { return cr_refused(CS_CONTEXT); }
+  l := tree[0].l; e := tree[0].e;
+  current := bi_find(tree, tip.hash[..]);
+  if current < 0 || l[current].height != tip.height { return cr_refused(CS_CONTEXT); }
+  if !bi_is_valid(e[target].status, BLOCK_VALID_TRANSACTIONS) || e[target].chain_tx == 0 { return cr_refused(CS_CONTEXT); }
+  if !bi_worse(e, current, target) && bi_is_valid(e[current].status, BLOCK_VALID_TREE) { return cr_refused(CR_NOT_BETTER); }
+  fork := bi_last_common_ancestor(l, current, target);
+  count := l[target].height-l[fork].height;
+  if count != blocks.count { return cr_refused(CS_CONTEXT); }
+  if count > w.path.count { return cr_refused(CS_CAPACITY); }
+  j := target;
+  for n: 0..<count { w.path[count-1-n] = j; j = l[j].prev; }
+  for n: 0..<count {
+    if blocks[n].index != w.path[n] { return cr_refused(CS_CONTEXT); }
+    if !bi_is_valid(e[w.path[n]].status, BLOCK_VALID_TRANSACTIONS) || e[w.path[n]].status & BLOCK_HAVE_DATA == 0 { return cr_refused(CS_CONTEXT); }
+  }
+  c: [1] LcCursor;
+  if !lc_begin_vartime(table, used, stage, aggregate, c[..]) { return cr_refused(CS_CAPACITY); }
+  view := stage; spare := scratch; n := c[0].n; current_used := used;
+  disconnected := tip.height-l[fork].height;
+  for step: 0..<disconnected {
+    r := cs_disconnect_vartime(view, current_used, spare, temp, undo);
+    if r.code != CS_OK { return cr_from_cs(r, -1); }
+    joined := cb_join_vartime(aggregate, n, temp[0..<r.n]);
+    if joined == -KV_FULL { return cr_refused(CS_CAPACITY); }
+    n = joined; current_used = r.used;
+    old := view; view = spare; spare = old;
+  }
+  for step: 0..<count {
+    block := blocks[step];
+    r := cs_connect_vartime(tree, block.index, block.bytes, view, current_used, spare, temp, w.validate, undo);
+    if r.code != CS_OK {
+      if cr_cacheable(r) { bi_invalid_block_found(tree, block.index, false); }
+      return cr_from_cs(r, block.index);
+    }
+    cr_good(tree, block.index);
+    joined := cb_join_vartime(aggregate, n, temp[0..<r.n]);
+    if joined == -KV_FULL { return cr_refused(CS_CAPACITY); }
+    n = joined; current_used = r.used;
+    old := view; view = spare; spare = old;
+  }
+  if !lc_extent(stage, current_used) { return cr_refused(CS_CAPACITY); }
+  for k: 0..<current_used { stage[k] = view[k]; }
+  return CrResult.{used=current_used, n=n, disconnected=disconnected, connected=count, block=-1};
+}

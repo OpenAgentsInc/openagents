@@ -1,0 +1,20 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+coax/lib/bitcoin/chainreorg.coax:60:45: mutant survived: 2 became 3
+    if !bi_is_valid(tree[0].e[target].status, BLOCK_VALID_TREE) { return false; }
+                                              ^
+coax/lib/bitcoin/chainreorg.coax:77:70: mutant survived: 2 became 3
+    if !bi_worse(e, current, target) && bi_is_valid(e[current].status, BLOCK_VALID_TREE) { return cr_refused(CR_NOT_BETTER); }
+                                                                       ^
+coax/lib/bitcoin/chainreorg.coax:95:50: mutant survived: 0 became 1
+      joined := cb_join_vartime(aggregate, n, temp[0..<r.n]);
+                                                   ^
+coax/lib/bitcoin/chainreorg.coax:96:18: mutant survived: -2 became -1
+      if joined == -KV_FULL { return cr_refused(CS_CAPACITY); }
+                   ^
+coax/lib/bitcoin/chainreorg.coax:96:47: mutant survived: 2 became 3
+      if joined == -KV_FULL { return cr_refused(CS_CAPACITY); }
+                                                ^
+coax/lib/bitcoin/chainreorg.coax:97:7: mutant survived: the assignment was removed
+      n = joined; current_used = r.used;
+        ^
+shard 1/1: 181 of 181 mutants, 175 killed, 6 survived

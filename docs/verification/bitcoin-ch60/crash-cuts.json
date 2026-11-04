@@ -1,0 +1,36 @@
+{
+ "schema": 1,
+ "cases": [
+  {
+   "target": 102,
+   "digest": "ef5c526c38f34560645c579dc3724d323bf5996e193f69bd2e300701d04e2e17",
+   "frame": "0b883ed78a4bf990fa8ded6e18665c188a9aeb39ccad9fe5516027278b3724a1",
+   "cuts": 2122,
+   "packed_equals_indexed": true
+  },
+  {
+   "target": 105,
+   "digest": "650321d79b75b84a2a5fe970bf0141ca8771831ce477869ba4ae7916d18e0b22",
+   "frame": "34c76e7cf35f42b798a81f300e6005ce7d27f13a70a3c207c17a0a0618307159",
+   "cuts": 3053,
+   "packed_equals_indexed": true
+  },
+  {
+   "target": 109,
+   "digest": "49a691776468ace39d3e02e65200460d338196e459c70b91470e74d061d0a978",
+   "frame": "585da9efce9edf58ea0bfc7364df480211e27d5289c2440c93faa83888279f61",
+   "cuts": 3961,
+   "packed_equals_indexed": true
+  }
+ ],
+ "receipts": 24,
+ "cuts": 9136,
+ "sources": {
+  "coax/lib/bitcoin/chainreorg.coax": "69c950fd498561022f927fb47cf0a54c3174b763dc474b6fcc95895cbcf8e27d",
+  "coax/lib/bitcoin/chainbatch.coax": "b500226014ff43d69bd803eb659e1d46e23ecac4ae1b33d02201ed2da39f851e",
+  "coax/tests/bitcoin/chainreorg-native.coax": "d0066b06402835422a2bd5de3557ebfba5a690bc6bf6f774918a6f09109b876c",
+  "coax/tests/bitcoin/chainreorg.py": "50a8bc8890cbaa119c530cfc73f9d449d7dd85387ef23a6a7002033684581846",
+  "coax/bin/chainreorg-native.c": "d568280b1c8ae5ebd080e943364a45720015a0a420e0fa7d77a45c0bf90cb43e"
+ },
+ "runtime": "Linux x86_64; generated checked C compiled with cc -std=c11 -O2 -fPIC -shared"
+}

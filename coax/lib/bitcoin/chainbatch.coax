@@ -1,0 +1,71 @@
+// Chapter 60: combine accepted, unsealed transition bodies into one atomic
+// KV v1 commit. Inputs are disjoint; no destination byte changes on refusal.
+#load "kvstore.coax";
+#authority;
+
+#test "chain batch: operation order and exact v1 bytes survive concatenation" {
+  out: [128] u8; next: [128] u8; table: [128] u8; back: [8] u8;
+  a := [1] u8.['a']; b := [1] u8.['b']; one := [1] u8.['1']; two := [1] u8.['2']; nine := [1] u8.['9'];
+  n := kv_batch_new(out[..]); n = kv_batch_put_vartime(out[..], n, a[..], one[..]);
+  m := kv_batch_new(next[..]); m = kv_batch_put_vartime(next[..], m, a[..], two[..]); m = kv_batch_delete_vartime(next[..], m, b[..]);
+  joined := cb_join_vartime(out[0..<34], n, next[0..<m]);
+  #assert joined == 34 && bh_hex_equal(out[0..<joined], "00000000000000000300000001010001000000613101010001000000613202010062");
+  #assert kv_batch_check_vartime(out[0..<joined]).count == 3;
+  used := kv_set_vartime(table[..], 0, b[..], nine[..]);
+  used = kv_apply_vartime(table[..], used, out[0..<joined], 0);
+  #assert used == 8 && kv_get_vartime(table[..], used, a[..], back[..]).code == KV_OK && back[0] == '2';
+  #assert !kv_find_vartime(table[..], used, b[..]).found;
+}
+#test "chain batch: empty bodies and exact capacity are valid" {
+  out: [12] u8; body: [12] u8;
+  #assert kv_batch_new(out[..]) == 12 && kv_batch_new(body[..]) == 12;
+  #assert cb_join_vartime(out[..], 12, body[..]) == 12;
+  #assert bh_hex_equal(out[..], "000000000000000000000000");
+  #assert cb_size_ok(12, 12) && !cb_size_ok(12, 11) && !cb_size_ok(11, 12);
+  #assert cb_size_ok(KV_FRAME_MAX, KV_FRAME_MAX) && !cb_size_ok(KV_FRAME_MAX+1, KV_FRAME_MAX+1);
+  #assert !cb_size_ok(-1, 12) && !cb_size_ok(12, -1);
+}
+#test "chain batch: refusals preserve the whole destination" {
+  for which: 0..<10 {
+    out: [64] u8; body: [64] u8; saved: [64] u8;
+    for i: 0..<64 { out[i] = 0xa5; }
+    n := kv_batch_new(out[..]); m := kv_batch_new(body[..]); limit := 64;
+    if which == 0 { n = -1; }
+    if which == 1 { n = 11; }
+    if which == 2 { n = 65; }
+    if which == 3 { m = 11; }
+    if which == 4 { kv_put32(body[..], 8, 1); }
+    if which == 5 { kv_put32(out[..], 8, 1); }
+    if which == 6 { kv_put64(out[..], 0, 1); }
+    if which == 7 { kv_put64(body[..], 0, 1); }
+    if which == 8 { m = 13; }
+    if which == 9 { n = 13; }
+    for i: 0..<64 { saved[i] = out[i]; }
+    #assert cb_join_vartime(out[0..<limit], n, body[0..<m]) == -KV_BAD_BATCH;
+    for i: 0..<64 { #assert out[i] == saved[i]; }
+  }
+  out: [64] u8; body: [64] u8; saved: [64] u8;
+  key := [1] u8.['k']; value := [1] u8.['v'];
+  n := kv_batch_new(out[..]); m := kv_batch_new(body[..]); m = kv_batch_put_vartime(body[..], m, key[..], value[..]);
+  for i: 0..<64 { saved[i] = out[i]; }
+  #assert cb_join_vartime(out[0..<20], n, body[0..<m]) == -KV_FULL;
+  for i: 0..<64 { #assert out[i] == saved[i]; }
+  #assert cb_join_vartime(out[0..<21], n, body[0..<m]) == 21;
+}
+
+cb_size_ok :: (n: int, capacity: int) -> bool {
+  return n <= capacity && kv_frame_size_ok(n);
+}
+cb_join_vartime :: (out: [] u8, n: int, body: [] u8) -> int #export_c {
+  if !cb_size_ok(n, out.count) || !kv_frame_size_ok(body.count) { return -KV_BAD_BATCH; }
+  a := kv_batch_check_vartime(out[0..<n]); b := kv_batch_check_vartime(body);
+  if a.code != KV_OK || b.code != KV_OK || a.seq != 0 || b.seq != 0 { return -KV_BAD_BATCH; }
+  total := n + body.count - KV_BODY_HEAD;
+  if !cb_size_ok(total, out.count) { return -KV_FULL; }
+  // A valid frame has at most 2^26 bytes and each operation at least four;
+  // its operation count therefore fits uint32 without another overflow gate.
+  tail := body[KV_BODY_HEAD..<body.count];
+  for i: 0..<tail.count { out[n+i] = tail[i]; }
+  kv_put32(out, 8, a.count+b.count);
+  return total;
+}

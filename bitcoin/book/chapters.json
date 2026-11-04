@@ -1384,11 +1384,13 @@
    "number": 60,
    "title": "Reorganizations and invalid chains",
    "file": "ch060-reorganizations-and-invalid-chains.md",
-   "status": "partly implemented",
-   "profile": "native C (explorer light)",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
+    57,
     58,
-    59
+    59,
+    62
    ],
    "source": [
     "coax/lib/bitcoin/lightstore.coax",
@@ -1400,7 +1402,14 @@
     "coax/tests/bitcoin/lightchain_cases.coax",
     "coax/tests/bitcoin/lightchain_vectors.coax",
     "coax/tests/bitcoin/lightchain-native.coax",
-    "coax/tests/bitcoin/lightchain.py"
+    "coax/tests/bitcoin/lightchain.py",
+    "coax/lib/bitcoin/chainbatch.coax",
+    "coax/lib/bitcoin/chainreorg.coax",
+    "bitcoin/examples/validated-reorg.coax",
+    "coax/tests/bitcoin/chainreorg_checks.coax",
+    "coax/tests/bitcoin/chainreorg_vectors.coax",
+    "coax/tests/bitcoin/chainreorg-native.coax",
+    "coax/tests/bitcoin/chainreorg.py"
    ],
    "qualified_targets": [
     "cpu"
