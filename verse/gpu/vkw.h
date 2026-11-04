@@ -27,7 +27,7 @@ typedef struct {
   void (*wheel)(void *user, float dy);                        // CSS pixels, 100 a notch
   void *user;
   void (*moved)(void *user, float x, float y);                // any motion, where it is: the person is there
-  int (*key)(int code, int pressed);                          // a key before the realm's mapping: 1 takes it
+  int (*key)(int code, int pressed);                          // 0 up, 1 press, 2 held-focus snapshot; return 1 to take it
 } VkwTo;
 
 typedef struct {
@@ -76,7 +76,22 @@ static void vkw_output_scale(void *d, struct wl_output *o, int32_t s) { (void)d;
 static const struct wl_output_listener vkw_output_listener = {.geometry = vkw_geometry, .mode = vkw_mode, .done = vkw_output_done, .scale = vkw_output_scale};
 
 static void vkw_keymap(void *d, struct wl_keyboard *k, uint32_t f, int32_t fd, uint32_t n) { (void)d; (void)k; (void)f; (void)n; close(fd); }
-static void vkw_kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *w, struct wl_array *keys) { (void)d; (void)k; (void)s; (void)w; (void)keys; }
+static void vkw_kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *w, struct wl_array *keys) {
+  (void)d; (void)k; (void)s; (void)w;
+  unsigned char actual[KEY_MAX+1] = {0};
+  const uint32_t *codes = keys->data;
+  for (size_t i=0; i<keys->size/sizeof *codes; i++) if (codes[i]<=KEY_MAX) actual[codes[i]]=1;
+  vkw_->shift = actual[KEY_LEFTSHIFT]+actual[KEY_RIGHTSHIFT];
+  for (int c=0; c<=KEY_MAX; c++) {
+    if (vkw_->forwarded_down[c] && !actual[c]) {
+      if (vkw_->to.key) vkw_->to.key(c,0);
+      vkw_->forwarded_down[c]=0;
+    }
+    if (vkw_->keys_down[c] && !actual[c]) { realm_key_up(NULL,vkw_->keys_down[c]); vkw_->keys_down[c]=0; }
+    // A snapshot preserves real physical ownership without retriggering panel toggles or voice.
+    if (actual[c] && !vkw_->forwarded_down[c] && !vkw_->keys_down[c] && vkw_->to.key && vkw_->to.key(c,2)) vkw_->forwarded_down[c]=1;
+  }
+}
 // Focus gone: every key held is let go, so none sticks while the window is behind another.
 static void vkw_kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *w) {
   (void)d; (void)k; (void)s; (void)w;

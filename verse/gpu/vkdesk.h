@@ -23,6 +23,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <linux/input-event-codes.h>
 
 extern char **environ;
 // os/verse-panel.coax's modes and routes
@@ -46,6 +47,8 @@ typedef struct {
   int64_t mode;               // PANEL_CLOSED, PANEL_DOCKED, PANEL_FLAT
   uint32_t sw, sh;            // the screen it is shown on, for the pointer
   int attached;               // the session's compositor (outlives this realm), not a child of ours
+  int pointer_down;           // a left-button press actually forwarded to this desk
+  unsigned char key_down[KEY_MAX+1]; // releases still belong here after a panel mode change
   // F8: where the realm drew the desk's screen this frame, in the swapchain's pixels (0: not there)
   int (*world)(int32_t corners[8], uint32_t w, uint32_t h);
   int32_t world_c[8]; int world_ok;
@@ -240,32 +243,42 @@ static void vkdesk_overlay(VkCommandBuffer cmd, VkImage dst, uint32_t w, uint32_
 // A key by its evdev code: 1 when the desk took it (a toggle, or a key while the desk shows).
 static int vkdesk_key(int code, int pressed) {
   VkDesk *d = vkdesk_;
-  if (!d || d->pid <= 0) return 0;
+  if (!d || d->pid <= 0 || code<0 || code>KEY_MAX) return 0;
+  if (!pressed && d->key_down[code]) {
+    char release[64]; snprintf(release,sizeof release,"keydown %d 0\n",code);
+    vkdesk_say(d,release); d->key_down[code]=0; return 1;
+  }
   int64_t to = verse_panel_key_to(d->mode, code);
   if (to == PANEL_TOGGLE) {
-    if (pressed) { d->mode = verse_panel_next(d->mode, code); fprintf(stderr, "vk-realm: the desk is %s\n", d->mode == PANEL_CLOSED ? "closed" : d->mode == PANEL_FLAT ? "flat" : d->mode == PANEL_WORLD ? "in the world" : "docked"); }
+    if (pressed==1) { d->mode = verse_panel_next(d->mode, code); fprintf(stderr, "vk-realm: the desk is %s\n", d->mode == PANEL_CLOSED ? "closed" : d->mode == PANEL_FLAT ? "flat" : d->mode == PANEL_WORLD ? "in the world" : "docked"); }
     return 1;
   }
   if (to == verse_panel_voice()) {
     // the session listens and types what it heard (os/verse-session.coax "voice"); a press each way
     const char *run = getenv("VERSE_RUN");
-    if (pressed && run) { char path[1100]; snprintf(path, sizeof path, "%s/requests", run); FILE *f = fopen(path, "a"); if (f) { fputs("voice\n", f); fclose(f); } fprintf(stderr, "vk-realm: voice\n"); }
+    if (pressed==1 && run) { char path[1100]; snprintf(path, sizeof path, "%s/requests", run); FILE *f = fopen(path, "a"); if (f) { fputs("voice\n", f); fclose(f); } fprintf(stderr, "vk-realm: voice\n"); }
     return 1;
   }
   if (to != PANEL_TO_DESK) return 0;
   char cmd[64];
   snprintf(cmd, sizeof cmd, "keydown %d %d\n", code, pressed ? 1 : 0);
   vkdesk_say(d, cmd);
+  d->key_down[code]=pressed!=0;
   return 1;
 }
 // The pointer at screen point x, y (the swapchain's pixels): 1 when it is over the panel, and then
 // the desk's (moved there; down/up 1/0 for the left button, -1 for a move).
+static int vkdesk_pointer_release(VkDesk *d,int button) {
+  if (button!=0 || !d->pointer_down) return 0;
+  vkdesk_say(d,"button 272 0\n"); d->pointer_down=0; return 1;
+}
 static int vkdesk_pointer(float x, float y, int button) {
   VkDesk *d = vkdesk_;
-  if (!d || d->pid <= 0 || d->mode == PANEL_CLOSED || !d->sw) return 0;
+  if (!d || d->pid <= 0) return 0;
+  if (d->mode == PANEL_CLOSED || !d->sw) return vkdesk_pointer_release(d,button);
   int64_t px, py;
   if (d->mode == PANEL_WORLD) {
-    if (!d->world_ok) return 0;
+    if (!d->world_ok) return vkdesk_pointer_release(d,button);
     int32_t *c = d->world_c;
     px = verse_panel_point_quad(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], VKDESK_STRIPS, d->dw, d->dh, (int64_t)x, (int64_t)y, 0);
     py = verse_panel_point_quad(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], VKDESK_STRIPS, d->dw, d->dh, (int64_t)x, (int64_t)y, 1);
@@ -273,11 +286,11 @@ static int vkdesk_pointer(float x, float y, int button) {
     px = verse_panel_point(d->mode, d->sw, d->sh, d->dw, d->dh, (int64_t)x, (int64_t)y, 0);
     py = verse_panel_point(d->mode, d->sw, d->sh, d->dw, d->dh, (int64_t)x, (int64_t)y, 1);
   }
-  if (px < 0 || py < 0) return d->mode == PANEL_FLAT;   // flat: the whole screen is the desk's
+  if (px < 0 || py < 0) return vkdesk_pointer_release(d,button) || d->mode == PANEL_FLAT;
   char cmd[96];
   snprintf(cmd, sizeof cmd, "move %lld %lld\n", (long long)px, (long long)py);
   vkdesk_say(d, cmd);
-  if (button >= 0) { snprintf(cmd, sizeof cmd, "button 272 %d\n", button); vkdesk_say(d, cmd); }
+  if (button >= 0) { snprintf(cmd, sizeof cmd, "button 272 %d\n", button); vkdesk_say(d, cmd); d->pointer_down=button!=0; }
   return 1;
 }
 

@@ -62,7 +62,11 @@ static void vkhands_poll(VkHands *h, double now, uint32_t w, uint32_t hgt, void 
       to(sx, sy, h->down && !was ? 0 : !h->down && was ? 2 : 1);
     }
   }
-  if (n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) { close(h->fd); h->fd = -1; }
+  if (n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
+    if (h->down && h->x>=0 && h->y>=0) to((float)h->x*w/1e6f,(float)h->y*hgt/1e6f,2);
+    h->down=0; h->run=0; h->seen=0; h->line_n=0;
+    close(h->fd); h->fd = -1;
+  }
 }
 static void vkhands_close(VkHands *h) { if (h->fd >= 0) close(h->fd); h->fd = -1; }
 #endif
