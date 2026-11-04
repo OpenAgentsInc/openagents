@@ -368,7 +368,7 @@ only with the owner's yes, since spec acceptance 7 sets 5 ms.
 Placement reads `verse.room_shards.rooms_cap` on every pick, so the change
 takes effect without a room server deploy. Ship it as a migration, the way
 0117 set it to 2. Add
-`coax/web/api/migrations/0119_room_shard_cap_three.sql`:
+`coax/web/api/migrations/0120_room_shard_cap_three.sql`:
 
 ```sql
 -- Everglade instances on oa-room shards (#12717): three instances a shard. After the shared-seat
@@ -383,7 +383,7 @@ rooms a shard" in `coax/web/room/deploy.sh`, `coax/web/room/load.coax` and
 `coax/web/room/everglade-proof.sh` to three. Then:
 
 ```sh
-git add coax/web/api/migrations/0119_room_shard_cap_three.sql coax/web/room/deploy.sh \
+git add coax/web/api/migrations/0120_room_shard_cap_three.sql coax/web/room/deploy.sh \
   coax/web/room/load.coax coax/web/room/everglade-proof.sh
 git commit -m "Everglade: three instances a shard (#12717)"
 git pull -q --rebase origin main && git push -q origin HEAD:main
