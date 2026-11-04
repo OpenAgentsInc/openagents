@@ -63,7 +63,7 @@ fc_models :: (m:[]ForgeChatModels,line:string)->bool #export_c {
 #test "HUD keeps the composer at the bottom and the settings beside each other" {
   for w:[3]f32.[900,1280,1920] {
     b:=fc_box(0,w,800); t:=fc_box(1,w,800); i:=fc_box(2,w,800);
-    #assert b.x==24 && b.y+b.height==776 && b.width==w-48;
+    #assert b.x==16 && b.y+b.height==788 && b.width==w-32 && b.height==88;
     #assert t.y+t.height<b.y && i.y>b.y && i.x+i.width<b.x+b.width;
     #assert fc_box(3,w,800).y==fc_box(4,w,800).y;
   }
@@ -95,21 +95,19 @@ fc_read :: (s:[]ForgeChatEvent,line:string)->int #export_c {
 }
 // Shared point-space boxes: native text controls and the GPU frames use these.
 fc_box :: (kind:int,w:f32,h:f32)->HudBox #export_c {
-  if kind==0 {return HudBox.{x=24,y=h-174,width=w-48,height=150};}
-  if kind==1 {return HudBox.{x=24,y=h-508,width=620,height=318};}
-  if kind==2 {return HudBox.{x=40,y=h-112,width=w-220,height=58};}
-  if kind==3 {return HudBox.{x=40,y=h-150,width=156,height=26};}
-  if kind==4 {return HudBox.{x=206,y=h-150,width=200,height=26};}
-  if kind==5 {return HudBox.{x=416,y=h-150,width=140,height=26};}
-  if kind==6 {return HudBox.{x=566,y=h-150,width=w-606,height=26};}
-  if kind==7 {return HudBox.{x=w-160,y=h-112,width=120,height=36};}
+  if kind==0 {return HudBox.{x=16,y=h-100,width=w-32,height=88};}
+  if kind==1 {return HudBox.{x=16,y=h-356,width=620,height=244};}
+  if kind==2 {return HudBox.{x=28,y=h-68,width=w-152,height=30};}
+  if kind==3 {return HudBox.{x=28,y=h-94,width=132,height=22};}
+  if kind==4 {return HudBox.{x=168,y=h-94,width=180,height=22};}
+  if kind==5 {return HudBox.{x=356,y=h-94,width=120,height=22};}
+  if kind==6 {return HudBox.{x=484,y=h-94,width=240,height=22};}
+  if kind==7 {return HudBox.{x=w-112,y=h-66,width=84,height=26};}
   return HudBox.{};
 }
 fc_draw :: (out:[]f32,w:f32,h:f32,d:f32,busy:bool)->int #export_c {
   p:=HdPen.{d=d,cyan=true,top=0,bottom=h,sans=false}; n:=0;
-  n=hd_panel(out,n,HudBox.{x=12,y=12,width=w-24,height=h-24},p,false);
-  n=hd_panel(out,n,fc_box(0,w,h),p,true); n=hd_panel(out,n,fc_box(1,w,h),p,busy);
+  n=hd_panel(out,n,fc_box(0,w,h),p,busy);
   n=hd_panel(out,n,fc_box(2,w,h),p,false);
-  n=hd_text_fit(out,n,"CODER",w*0.5-36,30,12,100,p,2);
   return n;
 }

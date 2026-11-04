@@ -36,8 +36,11 @@ Refresh repeats discovery; only pressing Verify voice model hashes the pinned
 complete weight/tokenizer files. No model is loaded
 and no microphone or agent session starts during setup.
 
-The Coder HUD uses `aethyr/ui/draw.coax` frames and shared layout, a native Metal
-overlay and AppKit text/IME. Enter sends; Shift-Enter inserts a line. Agent,
+The Coder HUD uses `aethyr/ui/draw.coax` for a compact, lightly tinted 88-point
+composer and shared layout, a native Metal overlay and AppKit text/IME. There
+is no frame or label around the whole window. Messages float over the world
+with no panel background or border; empty message space passes clicks through.
+Enter sends; Shift-Enter inserts a line. Agent,
 model, effort and working folder sit directly above the bottom input. Cmd+L
 focuses input, Shift-Tab changes agent and Esc/Stop cancels. The left transcript
 shows replies, tools, results, file-change paths and errors. Tool consent is

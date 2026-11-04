@@ -82,8 +82,10 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   The dedicated voice transcript bar, Space binding, model download, typed model
   edits, durable undo log, remote PUBLISH/REVERT, bots and raid controls are not
   wired into this shell yet.
-- Basic coding-agent chat uses the same `openagents coder` as the TUI. Aethyr
-  HUD frames surround the view. The left transcript shows replies/tools, and
+- Basic coding-agent chat uses the same `openagents coder` as the TUI. The
+  compact Aethyr composer is 88 points high with a faint tint; there is no
+  full-window frame or label. The left transcript floats without a background
+  or border, showing replies/tools, and
   agent/model/effort/folder controls sit above the bottom input. Enter sends,
   Shift-Enter inserts a line, Shift-Tab changes agent, Cmd+L focuses input and
   Esc/Stop cancels. Tools require Allow once / Deny. Follow-ups use Coder's

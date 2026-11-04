@@ -133,6 +133,8 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         appearance = NSAppearance(named: .darkAqua)
         for view in [transcript, input] { view.isRichText = false; view.font = .monospacedSystemFont(ofSize: 13, weight: .regular); view.textColor = NSColor(white: 0.9, alpha: 1); view.backgroundColor = .clear; view.drawsBackground = false; view.textContainerInset = NSSize(width: 4, height: 6); view.isAutomaticQuoteSubstitutionEnabled = false; view.isAutomaticDashSubstitutionEnabled = false }
         transcript.isEditable = false; transcript.isSelectable = true
+        input.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        input.textContainerInset = NSSize(width: 4, height: 3)
         for (scroll, text) in [(transcriptScroll, transcript), (inputScroll, input)] {
             scroll.documentView = text; scroll.hasVerticalScroller = true; scroll.drawsBackground = false
             text.isVerticallyResizable = true; text.isHorizontallyResizable = false
@@ -152,8 +154,13 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         allow.title = "Allow once"; allow.target = self; allow.action = #selector(approve)
         deny.title = "Deny"; deny.target = self; deny.action = #selector(reject)
         for view in [agent, model, effort, folder, send, fresh, allow, deny, heading, status] { addSubview(view) }
+        for control in [agent as NSControl, model, effort, folder, send, fresh, allow, deny] {
+            control.controlSize = .small; control.font = .systemFont(ofSize: 11)
+        }
+        folder.isBordered = false; fresh.isBordered = false
         for label in [heading, status] { label.textColor = NSColor(calibratedRed: 0.4, green: 0.9, blue: 0.9, alpha: 1); label.font = .monospacedSystemFont(ofSize: 11, weight: .medium) }
         heading.lineBreakMode = .byTruncatingMiddle
+        status.font = .monospacedSystemFont(ofSize: 10, weight: .medium)
         status.lineBreakMode = .byTruncatingTail
         input.setAccessibilityLabel("Message to coding agent")
         input.send = { [weak self] in self?.submit() }; input.stop = { [weak self] in self?.stopTurn() }
@@ -166,7 +173,6 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
             if let e = saved["engine"] as? String, let i = (0..<6).first(where: { catalog($0, label: false) == e }) { agent.selectItem(at: i) }
         }
         loadModels(); update()
-        append("Choose an agent and send a message. Coder uses that CLI’s existing login.\nTools wait for approval here. Conversations are saved in ~/.openagents/coder/sessions.\n", color: .secondaryLabelColor)
     }
     required init?(coder: NSCoder) { fatalError() }
     func box(_ kind: Int) -> NSRect {
@@ -176,27 +182,30 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
     override func layout() {
         super.layout(); hud.frame = bounds
         let t = box(1)
-        heading.frame = NSRect(x: t.minX + 16, y: t.minY + 12, width: t.width - 132, height: 20)
-        fresh.frame = NSRect(x: t.maxX - 104, y: t.minY + 8, width: 92, height: 28)
-        transcriptScroll.frame = NSRect(x: t.minX + 12, y: t.minY + 40, width: t.width - 24, height: t.height - 88)
-        allow.frame = NSRect(x: t.minX + 12, y: t.maxY - 40, width: 108, height: 28)
-        deny.frame = NSRect(x: t.minX + 126, y: t.maxY - 40, width: 74, height: 28)
+        heading.frame = NSRect(x: t.minX + 8, y: t.minY + 4, width: t.width - 104, height: 16)
+        fresh.frame = NSRect(x: t.maxX - 88, y: t.minY + 1, width: 80, height: 22)
+        transcriptScroll.frame = NSRect(x: t.minX + 4, y: t.minY + 28, width: t.width - 8, height: t.height - (pending ? 64 : 32))
+        allow.frame = NSRect(x: t.minX + 4, y: t.maxY - 30, width: 90, height: 24)
+        deny.frame = NSRect(x: t.minX + 100, y: t.maxY - 30, width: 60, height: 24)
         agent.frame = box(3); model.frame = box(4); effort.frame = box(5); folder.frame = box(6)
         inputScroll.frame = box(2); send.frame = box(7)
-        status.frame = NSRect(x: 40, y: bounds.height - 46, width: bounds.width - 80, height: 16)
+        status.frame = NSRect(x: 28, y: bounds.height - 29, width: bounds.width - 56, height: 12)
         for (scroll, text) in [(transcriptScroll, transcript), (inputScroll, input)] {
             text.setFrameSize(NSSize(width: scroll.contentSize.width, height: max(text.frame.height, scroll.contentSize.height)))
         }
         hud.needsDisplay = true
     }
     override func draw(_ dirtyRect: NSRect) {
-        NSColor(calibratedWhite: 0.025, alpha: 0.95).setFill()
-        for k in [0, 1] { NSBezierPath(roundedRect: box(k), xRadius: 8, yRadius: 8).fill() }
+        // Messages float directly over the world. Only the compact composer
+        // gets a faint tint, so the game stays visible through it too.
+        NSColor(calibratedWhite: 0.08, alpha: 0.22).setFill()
+        NSBezierPath(roundedRect: box(0), xRadius: 6, yRadius: 6).fill()
     }
     // Only the HUD panels own hits. The center/right world stays interactive.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let p = convert(point, from: superview)
-        guard box(0).contains(p) || box(1).contains(p) else { return nil }
+        let messages = box(1).contains(p) && (!transcript.string.isEmpty || pending)
+        guard box(0).contains(p) || messages || fresh.frame.contains(p) else { return nil }
         return super.hitTest(point)
     }
     func append(_ text: String, color: NSColor = NSColor(white: 0.9, alpha: 1)) {
@@ -213,7 +222,7 @@ final class ForgeChatPane: NSView, NSComboBoxDelegate {
         send.title = busy ? "Stop ⎋" : "Send ↵"; allow.isHidden = !pending; deny.isHidden = !pending
         heading.stringValue = pending ? "CODER / APPROVAL NEEDED" : busy ? "CODER / WORKING · \(selectedEngine)" : "CODER / MESSAGES"
         folder.title = "\(cwd.lastPathComponent) ▾"; folder.toolTip = cwd.path
-        hud.busy = busy; hud.needsDisplay = true; needsDisplay = true
+        hud.busy = busy; hud.needsDisplay = true; needsDisplay = true; needsLayout = true
     }
     func loadModels() {
         model.removeAllItems()
