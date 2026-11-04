@@ -78,7 +78,14 @@ eg_haze_colour :: (f:f32,v:V3,u:[]f32)->V3 {
   green:V3=wg_div_f3f(eg_meadow_srgb(0.5f32),wg_dot3(eg_meadow_srgb(0.5f32),v3(0.3333f32,0.3333f32,0.3333f32)));
   level:f32=1.0f32-smoothstep(0.05f32,0.35f32,abs(v.y));
   h=wg_mix_f3f3f(h,wg_mul_f3f3(h,green),(0.38f32*level)*(1.0f32-eg_st(14,u).w));
-  return wg_mix_f3f3f(h,wg_sw_xyz_f4(eg_st(11,u)),verse_style_haze_glow(wg_dot3(v,wg_sw_xyz_f4(eg_st(1,u)))));
+  glow:f32=verse_style_haze_glow(wg_dot3(v,wg_sw_xyz_f4(eg_st(1,u))));
+  // under the moon the haze takes its light as the sky round it does (eg_sky: the key's colour at its
+  // strength, added by half the halo), never the key-through-haze colour, many times the night haze's:
+  // that lit the far ridges and hills a flat grey band under the dark sky (the owner, November 4)
+  if (eg_st(1,u).w>0.5f32) {
+    return wg_add_f3f3(h,wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),(eg_st(0,u).w*glow)*0.5f32));
+  }
+  return wg_mix_f3f3f(h,wg_sw_xyz_f4(eg_st(11,u)),glow);
 }
 // The spell bar's square pieces (everglade-spells.coax sp_bar), as the previous engine's HUD drew
 // them (hotbar.rs draw_of, demolition/hotbar.rs meter): a pixel is in the rect when its centre is,
@@ -332,7 +339,12 @@ eg_ridges :: (d:V3,sky_c:V3,u:[]f32)->V3 {
       // never less than the haze a surface that far off takes (the owner, October 29: in fog and storm the far
       // trees in front of them hazed nearly white while the ridges stayed dark, cut-outs against the hills)
       fog:f32=fmax(eg_st(9,u).z*(0.15f32+(0.25f32*(cast(f32)(i)))),eg_haze_share(t,r.y*0.5f32,u));
-      return wg_mix_f3f3f(lit,eg_haze_colour(fog,d,u),fog);
+      // after dusk the haze a ridge takes is the sky's behind it (its stars left out), so the far hills
+      // stand dark against the night sky as hills do, never a flat lighter strip between the near hills
+      // and the stars (the owner, November 4: "what's that band across the screen"); by day the painted haze
+      night:f32=eg_st(14,u).w;
+      behind:V3=wg_max_f3f3(wg_sub_f3f3(sky_c,wg_make_f3_f((eg_stars(d)*night)*0.6f32)),v3(0.0f32,0.0f32,0.0f32));
+      return wg_mix_f3f3f(lit,wg_mix_f3f3f(eg_haze_colour(fog,d,u),wg_mul_f3f(behind,0.8f32),night),fog);
       i=add_wrap(i,1);
     }
   }

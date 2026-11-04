@@ -3574,16 +3574,17 @@ Label :: struct { text: string; p: Point; cap: f32; light: f32; gold: bool; d: f
 labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
   k := hi(s[0].dpr, 0.5);
   overview := s[0].lift > 0.5;
+  film := rp_hud_off(s);   // the raid preview's flight: people's names only, no place's or house's
   here := where(you);
   ls: [LABELS_MAX] Label;
   c := 0;
-  for p: 0..<EG_PLACES {
+  for p: 0..<(ifx film then 0 else EG_PLACES) {
     if !overview && EG_PLACE_NAME[p] == here { continue; }
     pp := v3(EG_PLACE[p * 2], ground_at(s, EG_PLACE[p * 2], EG_PLACE[p * 2 + 1]) + 3, EG_PLACE[p * 2 + 1]);
     if !overview && flat_gap(pp, you) > f32(PLACE_NEAR) { continue; }
     ls[c] = Label.{text = EG_PLACE_NAME[p], p = pp, cap = (ifx overview then 8.0f32 else 9.0f32) * k, light = 0.95, gold = true, d = flat_gap(pp, you), done = false, person = false}; c += 1;
   }
-  for b: 0..<EG_BUILDINGS {
+  for b: 0..<(ifx film then 0 else EG_BUILDINGS) {
     if b >= EG_HOUSES || eg_hidden(s[0].ev.edits, b) { continue; }
     q := b * EG_BOX;
     cx := (EG_BUILDING[q] + EG_BUILDING[q + 2]) / 2; cz := (EG_BUILDING[q + 1] + EG_BUILDING[q + 3]) / 2;
@@ -3592,13 +3593,14 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
     ls[c] = Label.{text = EG_BUILDING_NAME[b], p = pp, cap = (ifx overview then 6.0f32 else 7.5f32) * k, light = 0.85, gold = false, d = flat_gap(pp, you), done = false, person = false}; c += 1;
   }
   // The people's names (eg-npc-labels): over each one's head as they walk and turn, fading out toward
-  // NAME_NEAR; none over someone not drawn, indoors, or behind a wall from the eye.
+  // NAME_NEAR from the eye (the camera, whatever its mode: yours, the raid's cinematic, a staged shot);
+  // none over someone not drawn, indoors, or behind a wall from the eye.
+  eye := v3(u[U_EYE], u[U_EYE + 1], u[U_EYE + 2]);
   if !overview {
-    eye := v3(u[U_EYE], u[U_EYE + 1], u[U_EYE + 2]);
     for i: 0..<EG_SPOTS {
       if eg_gone(s[0].ev.edits, i) || s[0].folk[i].indoors { continue; }
       pp := name_point(s, i);
-      d := flat_gap(pp, you);
+      d := flat_gap(pp, eye);
       if d > f32(NAME_NEAR) { continue; }
       if !EG_SPOT_CAT[i] && !s[0].head_on[i] { continue; }   // not drawn this frame: no name in the air
       if name_hidden(s, eye, pp) { continue; }
@@ -3606,8 +3608,8 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
       ls[c] = Label.{text = EG_SPOT_NAME[i], p = pp, cap = 6.5 * k, light = light, gold = false, d = d, done = false, person = true}; c += 1;
     }
   }
-  if !overview { c = room_labels(s, ls[..], c, you, k); }   // the others' names (everglade-room.coax)
-  if !overview { c = rp_labels(s, ls[..], c, you, k); }     // Darian Odiodei's, in a raid (everglade-raid-preview.coax)
+  if !overview { c = room_labels(s, ls[..], c, eye, k); }   // the others' names, within 60 m of the eye (everglade-room.coax)
+  if !overview { c = rp_labels(s, ls[..], c, eye, k); }     // Darian Odiodei's, in a raid, the same (everglade-raid-preview.coax)
   boxes: [(LABELS_MAX + 1) * 4] f32;
   placed := 0;
   // the raid's banner (everglade-events.coax) is the first box: no name is drawn over it
@@ -3921,7 +3923,8 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   w := s[0].width; h := s[0].height;
   s[0].q_box = Box.{};
   st_blind_plate(s, u);   // Blinded: the world dark under the HUD (everglade-storm.coax)
-  if rp_hud_off(s) { s[0].map_button = Box.{}; return 0; }   // the raid preview's flight: the film clean (everglade-raid-preview.coax)
+  // the raid preview's flight: the film clean but for the names over heads, Darian's among them (everglade-raid-preview.coax)
+  if rp_hud_off(s) { s[0].map_button = Box.{}; return labels(s, out, u, 0, you); }
   if forge_on(s) { s[0].map_button = Box.{}; return forge_hud(s, out, u, 0); }   // EDIT: Aethyrforge's panels alone (everglade-forge.coax)
   md_plates_clear(s);
   n := ifx s[0].paint_only || eg_pane_open(s) then 0 else labels(s, out, u, 0, you);   // the feature list's pane open: no place names over it

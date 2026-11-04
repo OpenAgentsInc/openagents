@@ -259,7 +259,7 @@ wl_land :: (s: [] Everglade, c: WlShot) {
   p := s[0].wl.fx[..];
   now := s[0].wl.clock;
   k := c.k;
-  from := wl_v(c.from); to := wl_v(c.at);
+  from := wl_v(wl_path_from(c)); to := wl_v(c.at);
   // its impact: each of Eldritch Blast's beams where and when it strikes (everglade-sound.coax)
   if k == WL_BLAST { for b: 0..<(ifx c.beams > 0 then c.beams else WL_BEAMS) { egs_hit(s, egs_wl_look(k), wl_beam_at(c, b), f32(b) * 0.13); } }
   else { egs_hit(s, egs_wl_look(k), c.at, 0); }
@@ -360,6 +360,16 @@ wl_lightning_damage :: (seed: int) -> SrdDamage {
   return SrdDamage.{amount = srd_sum(d[..], 10, 6), kind = DMG_LIGHTNING};
 }
 // Beam b's point: within a beam's reach of the aim, by the cast's seed.
+// Where a cast's drawn path starts: its caster's hand, or, when that is farther off than the spell's
+// range (a stale or far caster's), the range back along it from where it strikes. A beam is never
+// drawn longer than its spell reaches (Eldritch Blast's 120 feet), in a room or not.
+wl_path_from :: (c: WlShot) -> Point {
+  reach := WL_RANGE[c.k];
+  d := sub(c.from, c.at);
+  n := length(d);
+  if reach <= 0 || !(n > reach) { return c.from; }
+  return add(c.at, times(d, reach / n));
+}
 wl_beam_at :: (c: WlShot, b: int) -> Point {
   if b == 0 { return c.at; }
   a := f32(b) * 2.1 + wl_seed(c.seed, b);
@@ -570,6 +580,14 @@ wl_sweep :: (s: [] Everglade, b: int, size: string, ib: Box, f: f32) {
   for i: 0..<4 { n = sp_put(m, n, " "); if e[i] < 0 { n = sp_put(m, n, "-"); } n = put_digits(m, n, cast(int) abs(sp_round(e[i]))); }
   n = sp_put(m, n, " 30 0 "); n = put_digits(m, n, cast(int) floor(f * 1000 + 0.5));
   s[0].sp.media_n = n;
+}
+
+#test "warlock: a beam is drawn no longer than its spell's range" {
+  c := WlShot.{k = WL_BLAST, from = v3(0, 1.5, 0), at = v3(100, 1.5, 0)};
+  f := wl_path_from(c);
+  #assert abs(length(sub(f, c.at)) - WL_RANGE[WL_BLAST]) < 0.01 && f.x > 60;
+  c.from = v3(80, 1.5, 0);
+  #assert length(sub(wl_path_from(c), c.from)) < 0.001;   // within range: from the hand
 }
 
 #test "warlock: Eldritch Blast's beams wear down what they strike, Fireball breaks and sets alight; the bar is seven slots on 1 to 6 and R" #steps 2000000000 {
