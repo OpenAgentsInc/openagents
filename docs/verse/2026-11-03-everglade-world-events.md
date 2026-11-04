@@ -114,7 +114,7 @@ An event starts in one of two ways:
   it waits for the next one.
 
 An admin's **STOP** ends every running event at once. Raiders vanish, the outcome is "called
-off", and no completion bonus is paid. XP already earned stays.
+off", and no end award is paid. XP already earned stays.
 
 ### 3.3 How an event ends
 
@@ -338,22 +338,29 @@ Darian Odiodei, stays level 17 and can't be killed.
 
 ### 6.4 Earning XP
 
-- A raider gives its SRD XP (section 4.1), times the admin's reward multiplier.
-- **The split in multiplayer.** The SRD divides an encounter's XP among the characters who took
-  part. The room does the same per raider: its XP is split evenly among the seats that hurt it
-  (themselves or by a creature they summoned) during the raid, and who are within 60 m of where
-  it fell. Each share is rounded down, and at least 1. Healing doesn't earn a share yet.
-- A ward stone gives 100 XP, split the same way. Darian Odiodei gives no kill XP, since it can't be
-  killed; its withdrawal pays the completion bonus (section 7).
+- A raider gives twice its SRD XP (section 4.1 has the SRD's), times the admin's reward
+  multiplier: a Cultist 50, a level 1 warlock 100, a Fanatic 900.
+- **Credit in multiplayer.** The SRD divides an encounter's XP among the characters who took
+  part. The room does the same per raider: its XP is split evenly among every seat that hurt it
+  during the raid (itself, or by a creature it summoned), however far it stands and whoever
+  struck last. Each share is rounded down, and at least 1. Waves grow with the players
+  (section 4.2), so a group earns about what one player does. Healing doesn't earn a share yet.
+- A ward stone gives 200 XP (twice 100), split the same way. Darian Odiodei gives no kill XP,
+  since he can't be killed; his withdrawal ends the raid with the town held (section 7).
 - Townsfolk, guards and other players give no XP.
-- The page shows each gain over the raider (`+25 XP`) and a level-up as a banner
-  (`LEVEL 2`). Every nameplate shows its player's level.
+- The page shows each gain over your head (`+50 XP`) and a level-up as a banner (`LEVEL 2`).
+  The LEVEL plate shows your XP to the next level as words (`LEVEL 1 · 120 / 300 XP`) and as a
+  bar under them, full at the cap (`LEVEL 2 · 450 XP · CAP 2`). Every nameplate shows its
+  player's level.
 
 ## 7. Rewards and aftermath
 
-- **The completion bonus.** When the town holds, every seat that earned XP in the raid gets
-  100 XP times the multiplier. When the town falls or the raid is called off, there is no
-  bonus.
+- **The raid's end award.** At the end, every seat that earned XP in the raid gets 150 XP times
+  the multiplier when the town holds, or 100 XP when it falls. An admin's STOP pays nothing.
+  Raiders struck down in the tick the town falls still pay their XP.
+- **One raid to level 2.** A new player who fights reaches level 2 (300 XP) in about one raid,
+  held or fallen, with 1 player or 16 (`coax/web/room/raid-proof.sh` with `RAID_MODE=fight
+  RAID_LEVEL2=1`). Every XP number is in one place: `EV_XP_*` in `coax/web/room/room-events.coax`.
 - **The aftermath.** For 60 s after the end, raiders still standing flee to the gates and
   vanish, and Darian Odiodei's Zombies fall. At the aftermath's end, the server runs the R rebuild
   itself (spec 6.6): the town's pieces stand, the fires go out, and the town's people stand up

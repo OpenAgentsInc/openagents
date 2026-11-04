@@ -41,8 +41,21 @@ EV_ARCH_AWAY :: 0; EV_ARCH_WARDED :: 1; EV_ARCH_EXPOSED :: 2; EV_ARCH_GONE :: 3;
 EV_ANNOUNCE_S :: 30; EV_WAVE_S :: 90; EV_LULL_S :: 15; EV_CLIMAX_S :: 180; EV_END_S :: 5; EV_AFTER_S :: 60;
 // levels (SRD 5.2.1, Character Advancement): XP for level 2 and 3; 3 is the cap
 EV_XP2 :: 300; EV_XP3 :: 900; EV_LEVEL_TOP :: 3;   // the cap is a dial (EvDials.cap), 1 to EV_LEVEL_TOP
+// The raid's XP, every number of it here (spec 4.1, 6.4 and 7), each times the reward dial. A raider
+// gives EV_XP_SRD_X times its SRD XP, split evenly among every seat that hurt it (the SRD's split
+// among those who took part): the waves grow with the players (everglade-raid-scale.coax), so a
+// group earns about what one player does. A ward stone gives EV_XP_WARD the same way. At the raid's
+// end, each seat that earned XP in it gets EV_XP_HELD when the town held, EV_XP_FELL when it fell
+// (an admin's STOP: nothing). Tuned so a new player who fights reaches level 2 in about one raid,
+// held or fallen, with 1 player or 16 (raid-proof.sh RAID_MODE=fight RAID_LEVEL2=1).
+EV_XP_SRD_X :: 2;               // the raid pays twice the SRD's XP for each raider
+EV_XP_CULTIST :: 25;            // SRD: Cultist, CR 1/8
+EV_XP_FANATIC :: 450;           // SRD: Cultist Fanatic, CR 2
+EV_XP_WARLOCK :: [3] int.[50, 100, 200];   // Warlock, level 1 to 3: CR 1/4, 1/2, 1 (a house rule)
+EV_XP_WARD :: 100;              // a ward stone
+EV_XP_HELD :: 150;              // the town held
+EV_XP_FELL :: 100;              // the town fell
 EV_DEMO_FLAG :: 64;             // the hello's FLAGS bit: an admin plays Everglade's own character, the demo
-EV_BONUS :: 100;                // XP to each seat that earned XP in a raid the town held (spec 7)
 EV_XP_MAX :: 9999999;
 EV_G :: 160;                    // the g entry's bytes at most
 // the raid (spec 4 and 5): at most this many raiders stand at once, waves together
@@ -50,8 +63,6 @@ EV_STANDING_MAX :: 60;          // (with Darian Odiodei and 3 ward stones, the r
 EV_SQUARE_PLAYER :: 2;
 EV_RISE_S :: 10;                // s a fallen player lies before standing again, whole, where they fell          // on the square a player counts as this many of the town
 EV_SQUARE_R :: 18.0;            // m: the square, about its well (plan.coax EG_SQUARE 0)
-EV_XP_SHARE_M :: 60.0;          // m: a seat this near where a raider fell shares its XP
-EV_XP_WARD :: 100;
 EV_GATES :: 5;                  // the dial's bits: plan.coax EG_GATE's four (South, North, East, West), then the river bridge
 EV_OUT_M :: 20.0;               // m outside its gate a raider comes from
 // the town's places (verse/everglade/plan.coax, which the room server doesn't load: keep them alike)
@@ -316,7 +327,10 @@ ev_stop :: (v: [] RmServer, k: int) {
 ev_end :: (v: [] RmServer, k: int, outcome: int) {
   e := v[0].ev[k..<k + 1];
   e[0].outcome = outcome;
-  if outcome == EV_OUT_HELD { for s: 0..<EG_SEATS { if e[0].earned[s] { ev_award(v, k, s, EV_BONUS); } } }
+  // the raiders that fell this tick first: a town that falls still pays for its last kills
+  ev_raid_downs(v, k);
+  award := ifx outcome == EV_OUT_HELD then EV_XP_HELD else (ifx outcome == EV_OUT_FELL then EV_XP_FELL else 0);
+  if award > 0 { for s: 0..<EG_SEATS { if e[0].earned[s] { ev_award(v, k, s, award); } } }
   ev_phase(v, k, EV_END, EV_END_S);
 }
 // The town's people standing (of those the world has out of doors and in the rules).
@@ -555,7 +569,14 @@ ev_raid_withdraw :: (v: [] RmServer, k: int) {
   if v[0].ev[k].arch != EV_ARCH_AWAY { v[0].ev[k].arch = EV_ARCH_GONE; }
 }
 ev_raid_flee :: (v: [] RmServer, k: int) { v[0].ev[k].pending = 0; e5rd_flee(ev_rules(v, k)); if v[0].ev[k].arch != EV_ARCH_AWAY { v[0].ev[k].arch = EV_ARCH_GONE; } }
-ev_raid_clear :: (v: [] RmServer, k: int) { v[0].ev[k].pending = 0; e5rd_clear(ev_rules(v, k)); }
+ev_raid_clear :: (v: [] RmServer, k: int) { ev_raid_downs(v, k); v[0].ev[k].pending = 0; e5rd_clear(ev_rules(v, k)); }
+// The raid creatures that fell since the last step: their XP to the seats that hurt them.
+ev_raid_downs :: (v: [] RmServer, k: int) {
+  r := ev_rules(v, k);
+  w := r[0].raid[..];
+  for c: 0..<w[0].down_n { ev_fell(v, k, w[0].downs[c]); }
+  w[0].down_n = 0;
+}
 // The players in room k now.
 ev_players :: (v: [] RmServer, k: int) -> int {
   n := 0;
@@ -594,30 +615,25 @@ ev_engine :: (v: [] RmServer, k: int, kind: int, by: int, who: int) {
   }
   if s >= 0 && s < EG_SEATS { v[0].ev[k].hurt[q] = v[0].ev[k].hurt[q] | (1 << s); }
 }
-// A raid creature's SRD XP (spec 4.1): a warlock's by its level, a house rule.
+// A raid creature's XP (EV_XP_*): a warlock's by its level, EV_XP_SRD_X times the SRD's.
 ev_xp_for :: (npc: int, level: int) -> int {
-  if npc == RS_NPC_CULTIST { return 25; }
-  if npc == RS_NPC_FANATIC { return 450; }
-  if npc == RS_NPC_WARLOCK { return ifx level >= 3 then 200 else (ifx level == 2 then 100 else 50); }
-  return EV_XP_WARD;
+  if npc == RS_NPC_CULTIST { return EV_XP_SRD_X * EV_XP_CULTIST; }
+  if npc == RS_NPC_FANATIC { return EV_XP_SRD_X * EV_XP_FANATIC; }
+  if npc == RS_NPC_WARLOCK { return EV_XP_SRD_X * EV_XP_WARLOCK[ev_clamp(level, 1, 3) - 1]; }
+  return EV_XP_SRD_X * EV_XP_WARD;
 }
-// One fell: its XP split evenly among the seats that hurt it and stand within 60 m (each at least 1).
+// One fell: its XP split evenly among the seats in the room that hurt it (themselves, or by a
+// creature they summoned), however far they stand now and whoever struck last (each at least 1).
 ev_fell :: (v: [] RmServer, k: int, dn: E5rdDown) {
   e := v[0].ev[k..<k + 1];
   if dn.npc != 0 { e[0].slain += 1; }
   bits := ifx dn.q >= 0 && dn.q < E5RR_BEASTS then e[0].hurt[dn.q] else 0;
   if dn.q >= 0 && dn.q < E5RR_BEASTS { e[0].hurt[dn.q] = 0; }
-  who: [EG_SEATS] bool; n := 0;
-  for s: 0..<EG_SEATS {
-    if (bits & (1 << s)) == 0 || !v[0].eg[k].seat[s].live { continue; }
-    p := v[0].eg[k].seat[s].pose;
-    dx := p.x - dn.x; dz := p.z - dn.z;
-    if dx * dx + dz * dz > f32(EV_XP_SHARE_M) * f32(EV_XP_SHARE_M) { continue; }
-    who[s] = true; n += 1;
-  }
+  n := 0;
+  for s: 0..<EG_SEATS { if (bits & (1 << s)) != 0 && v[0].eg[k].seat[s].live { n += 1; } }
   if n == 0 { return; }
   share := rs_max(ev_xp_for(dn.npc, dn.level) / n, 1);
-  for s: 0..<EG_SEATS { if who[s] { ev_award(v, k, s, share); } }
+  for s: 0..<EG_SEATS { if (bits & (1 << s)) != 0 && v[0].eg[k].seat[s].live { ev_award(v, k, s, share); } }
 }
 // Each tick while the raid runs: what its creatures cast reaches the pages (and the town, when its
 // damage dial is on), who fell gets its XP, the wave's rest come, the wards and the leader.
@@ -628,8 +644,7 @@ ev_raid_step :: (v: [] RmServer, k: int) {
   if e[0].phase == EV_IDLE { w[0].cast_n = 0; w[0].down_n = 0; return; }
   d := v[0].evc.d;
   w[0].aggr = d.aggr; w[0].harm = d.harm;
-  for c: 0..<w[0].down_n { ev_fell(v, k, w[0].downs[c]); }
-  w[0].down_n = 0;
+  ev_raid_downs(v, k);
   if v[0].eg[k].tick % EG_HZ == 0 {
     if e[0].phase == EV_WAVE || e[0].phase == EV_LULL || e[0].phase == EV_CLIMAX { ev_raid_spawn(v, k); }
     if e[0].arch == EV_ARCH_WARDED || e[0].arch == EV_ARCH_EXPOSED {
@@ -863,24 +878,25 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   eg_test_drain(v[..], box[..]);
   bc: [48] u8; bn := wire_put(bc[..], 0, ";c"); bn = wire_int(bc[..], bn, r[0].beasts[q0].id);
   #assert eg_test_has(eg_test_of(box[..], 0), cast(string) bc[0..<bn]);
-  // seat 0 cuts the wave down: 25 XP a Cultist, 450 the Fanatic, 50, 100 or 200 a Warlock by its level
+  // seat 0 cuts the wave down: twice the SRD's 25 XP a Cultist, 450 the Fanatic, 50, 100 or 200 a Warlock by its level
   want := 0;
   for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; if e5rd_is(bt) { want += ev_xp_for(r[0].raid[0].slot[q].npc, r[0].raid[0].slot[q].level); } }
   ev_test_rout(v[..], k, 0);
   eg_test_tick(v[..], k);
   #assert v[0].ev[k].slain == m && v[0].ev[k].xp[0] == want && v[0].ev[k].xp[1] == 0;
   eg_test_drain(v[..], box[..]);
-  #assert eg_test_has(eg_test_of(box[..], 0), "e xp 0 25");
+  #assert eg_test_has(eg_test_of(box[..], 0), "e xp 0 50");
   ev_test_second(v[..], k); eg_test_tick(v[..], k);   // the wave is down: the lull comes at once
   #assert v[0].ev[k].phase == EV_LULL && v[0].ev[k].until > v[0].eg[k].tick + ev_secs(EV_LULL_S) - 3;
   ev_test_skip(v[..], k);
   #assert v[0].ev[k].phase == EV_WAVE && v[0].ev[k].wave == 2 && ev_raid_standing(v[..], k) == m;
-  // both seats share this wave: each hit by both, so each gets half
+  // both seats fight this wave: each raider hit by both, so each seat gets half of its XP
   had0 := v[0].ev[k].xp[0]; had1 := v[0].ev[k].xp[1];
-  for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) { ev_test_strike(v[..], k, 1, q, 1); } }
+  want = 0;
+  for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) { want += ev_xp_for(r[0].raid[0].slot[q].npc, r[0].raid[0].slot[q].level) / 2; ev_test_strike(v[..], k, 1, q, 1); } }
   ev_test_rout(v[..], k, 0);
   eg_test_tick(v[..], k);
-  #assert v[0].ev[k].slain == 2 * m && v[0].ev[k].xp[0] - had0 == v[0].ev[k].xp[1] - had1 && v[0].ev[k].xp[1] > had1;
+  #assert v[0].ev[k].slain == 2 * m && v[0].ev[k].xp[0] - had0 == want && v[0].ev[k].xp[1] - had1 == want;
   ev_test_second(v[..], k); eg_test_tick(v[..], k);
   // the climax: three ward stones and Darian Odiodei, warded
   #assert v[0].ev[k].phase == EV_CLIMAX && v[0].ev[k].arch == EV_ARCH_WARDED && v[0].ev[k].wards == 3;
@@ -893,7 +909,7 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   had0 = v[0].ev[k].xp[0];
   for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) && r[0].beasts[q].form == E5RR_FORM_WARD { ev_test_strike(v[..], k, 0, q, 60); } }
   ev_test_second(v[..], k);
-  #assert v[0].ev[k].arch == EV_ARCH_EXPOSED && v[0].ev[k].wards == 0 && v[0].ev[k].xp[0] == had0 + 3 * EV_XP_WARD;
+  #assert v[0].ev[k].arch == EV_ARCH_EXPOSED && v[0].ev[k].wards == 0 && v[0].ev[k].xp[0] == had0 + 3 * EV_XP_SRD_X * EV_XP_WARD;
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 1), ";g 1 4 2 2 ");
   // a hit past half leaves him at half, and he withdraws (never among the slain)
@@ -905,13 +921,46 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   #assert eg_test_has(eg_test_of(box[..], 0), "e rc ");   // his Dimension Door, for the pages
   had0 = v[0].ev[k].xp[0];
   ev_test_second(v[..], k);
-  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_HELD && v[0].ev[k].xp[0] == had0 + EV_BONUS;
+  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_HELD && v[0].ev[k].xp[0] == had0 + EV_XP_HELD;
   ev_test_skip(v[..], k);
   #assert v[0].ev[k].phase == EV_AFTER && v[0].ev[k].until > v[0].eg[k].tick + ev_secs(EV_AFTER_S) - 3;
   eg_test_drain(v[..], box[..]);
   ev_test_skip(v[..], k);
   eg_test_drain(v[..], box[..]);
   #assert v[0].ev[k].phase == EV_IDLE && ev_test_count(v[..], k, -1) == 0 && eg_test_has(eg_test_of(box[..], 0), "e rebuild") && eg_test_has(eg_test_of(box[..], 1), ";g 0 0 ");
+}
+
+#test "events: an assist shares a raider's XP, however far the seat stands and whoever struck last; a town that falls pays EV_XP_FELL and its last kills" #steps 16000000000 {
+  v: [1] RmServer;
+  box: [1] EgInbox;
+  k := ev_test_server(v[..]);
+  rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 0 0\n");
+  rm_control(v[..], "event 1 0 2 24 6 1 3 3 31 1 2 1 100 15 1 0\n");
+  ev_test_skip(v[..], k);
+  #assert v[0].ev[k].phase == EV_WAVE;
+  r := v[0].eg[k].rules[..];
+  q0 := -1;
+  for q: 0..<E5RR_BEASTS { if q0 < 0 && r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_CULTIST { q0 = q; } }
+  // seat 1 lands a hit and walks 200 m off (a ranged caster far back); seat 0 strikes it down
+  ev_test_strike(v[..], k, 1, q0, 1);
+  eg_test_tick(v[..], k);
+  v[0].eg[k].seat[1].pose.x += 200;
+  ev_test_strike(v[..], k, 0, q0, 999);
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  half := EV_XP_SRD_X * EV_XP_CULTIST / 2;
+  #assert v[0].ev[k].xp[0] == half && v[0].ev[k].xp[1] == half;
+  #assert eg_test_has(eg_test_of(box[..], 1), "e xp 1 25");
+  // a raider struck down in the tick the town falls still pays, and then the fall's award
+  q1 := -1;
+  for q: 0..<E5RR_BEASTS { if q1 < 0 && r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_CULTIST && e5rd_is(r[0].beasts[q]) { q1 = q; } }
+  had0 := v[0].ev[k].xp[0];
+  ev_test_strike(v[..], k, 0, q1, 999);
+  e5rr_beasts_check(r); eg_engine_events(v[..], k);    // it falls in the rules, its hit heard,
+  ev_raid_clear(v[..], k); ev_end(v[..], k, EV_OUT_FELL);   // and the town falls before the raid's step (ev_second)
+  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_FELL;
+  #assert v[0].ev[k].xp[0] == had0 + EV_XP_SRD_X * EV_XP_CULTIST + EV_XP_FELL;
+  #assert v[0].ev[k].xp[1] == half + EV_XP_FELL;
 }
 
 #test "events: a fallen player stands again whole after EV_RISE_S, where they fell" #steps 4000000000 {
@@ -936,7 +985,7 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   v[0].ev[k].earned[0] = true;
   v[0].ev[k].ends = v[0].eg[k].tick;   // the time limit is out
   ev_test_second(v[..], k);
-  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_HELD && v[0].ev[k].xp[0] == EV_BONUS;
+  #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_HELD && v[0].ev[k].xp[0] == EV_XP_HELD;
   ev_test_skip(v[..], k); ev_test_skip(v[..], k);
   #assert v[0].ev[k].phase == EV_IDLE;
   rm_control(v[..], "event 1 0 8 12 6 1 3 3 31 0 2 1 100 5 2 0\n");

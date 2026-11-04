@@ -321,6 +321,15 @@ ege_level_words :: (s: [] Everglade, b: [] u8) -> int {
   n = ege_int(b, ege_put(b, n, " · "), e[0].xp); n = ege_int(b, ege_put(b, n, " / "), next);
   return ege_put(b, n, " XP");
 }
+// How far your XP is to the next level, 0 to 1 (1 at the cap: the bar full, the plate says CAP).
+ege_xp_share :: (s: [] Everglade) -> f32 {
+  e := ege_of(s);
+  if e[0].level <= 0 { return 0; }
+  if e[0].level >= e[0].cap || e[0].level >= 3 { return 1; }
+  from := ifx e[0].level == 1 then 0 else EGE_XP2;
+  to := ifx e[0].level == 1 then EGE_XP2 else EGE_XP3;
+  return clamp01(f32(e[0].xp - from) / f32(to - from));
+}
 // What the level brought, for its notice (the SRD 5.2.1 class tables, as the server builds them).
 ege_up_words :: (s: [] Everglade, b: [] u8) -> int {
   e := ege_of(s);
@@ -423,7 +432,14 @@ ege_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32, under_ti
     if b.x0 < gutter { b = Box.{x0 = w - gutter - tw, y0 = top + 36 * k, x1 = w - gutter, y1 = top + 64 * k}; }
     e[0].level_box = b;
     plate(s, u, b, 0.82, 0);
-    n = draw_text(out, n, cast(string) lw[0..<ln], b.x0 + 12 * k, b.y1 - 10 * k, cap, GAP, SPACE, ink(k, 0.92, GOLD_R, GOLD_G, GOLD_B), false, false);
+    n = draw_text(out, n, cast(string) lw[0..<ln], b.x0 + 12 * k, b.y1 - 12 * k, cap, GAP, SPACE, ink(k, 0.92, GOLD_R, GOLD_G, GOLD_B), false, false);
+    // the XP bar under the words: to the next level, full at the cap
+    if ege_of(s)[0].level > 0 {
+      bx0 := b.x0 + 12 * k; bx1 := b.x1 - 12 * k; by := b.y1 - 6 * k;
+      if lit(out, n, bx0, by, bx1, by, 1.5 * k, 0.22, 0.4 * k, 0.5, 0.42, 0.36, 0) { n += 6; }
+      share := ege_xp_share(s);
+      if share > 0 && lit(out, n, bx0, by, bx0 + (bx1 - bx0) * share, by, 1.5 * k, 0.95, 1.6 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
+    }
   }
   // the banner, centred under the right column's plates
   t1: [160] u8; t2: [200] u8;
@@ -756,12 +772,12 @@ ege_answered :: (s: [] Everglade, answer: string) -> bool {
   v: [64] u8; vn := wire_int(v[..], wire_int(v[..], wire_put(v[..], 0, "v 2 1 120 2"), lo), 0);
   #assert ege_entry(g[..], n, cast(string) v[0..<vn]);
   lw: [64] u8; ln := ege_level_words(g[..], lw[..]);
-  #assert cast(string) lw[0..<ln] == "LEVEL 1 · 120 / 300 XP";
+  #assert cast(string) lw[0..<ln] == "LEVEL 1 · 120 / 300 XP" && ege_xp_share(g[..]) > 0.39 && ege_xp_share(g[..]) < 0.41;
   #assert ege_kit_on(g[..]) && ege_kit_place(g[..], 21) == 0 && ege_kit_place(g[..], 13) == 6 && ege_kit_place(g[..], 47) == 7 && ege_kit_place(g[..], 0) == -1 && ege_kit_place(g[..], 27) == -1;
   // at the cap
   #assert ege_entry(g[..], n, "v 2 2 450 2 0 3");
   ln = ege_level_words(g[..], lw[..]);
-  #assert cast(string) lw[0..<ln] == "LEVEL 2 · 450 XP · CAP 2";
+  #assert cast(string) lw[0..<ln] == "LEVEL 2 · 450 XP · CAP 2" && ege_xp_share(g[..]) == 1;
   #assert wl_has(g[..], 0) && wl_has(g[..], 1) && !wl_has(g[..], 2);
   // your level-up: its notice; another's, nothing
   g[0].time = 5;

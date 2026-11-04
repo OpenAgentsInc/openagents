@@ -9,7 +9,15 @@
 //   coax/web/tool.sh coax/web/room/raid-check.coax ws://127.0.0.1:8871 [N] [SECONDS] [ROOM]
 // ROOM: the room's number (pair-raid-ROOM), so browser players (?relay=ws://localhost:8871&room=
 // pair-raid-ROOM) can join the same raid; a number from the clock when it isn't given.
-// Prints one JSON line, then "raids" and exits 0, or "fails" and 1.
+// CLASS: druid (the default), warlock, or mix (every other seat a Warlock). MODE: square (the default:
+// each walks to the square and holds it, casting at what comes in range) or fight (each goes into
+// range of the nearest raider it sees, as a new player does, and casts its level 1 kit at it: the
+// druid's Starry Wisp, Produce Flame and Ray of Frost, and Ice Knife while it has slots; the
+// Warlock's Eldritch Blast, and Chill Touch up close). LEVEL2: 1 to fail unless every seat reached
+// level 2 (the XP check, raid-proof.sh RAID_LEVEL2=1).
+//   coax/web/tool.sh coax/web/room/raid-check.coax URL N SECONDS ROOM CLASS MODE LEVEL2
+// Prints one JSON line (each seat's XP, and the part of it after the outcome: the raid's end
+// award), then "raids" and exits 0, or "fails" and 1.
 #load "room-socket.coax";
 
 RC_MAX :: 16;
@@ -28,7 +36,18 @@ RcHeard :: struct {
   bad: int;
   refused: int; r_cool: int; r_range: int; r_level: int; r_other: int; r_dead: int; r_busy: int; r_slot: int;
   flip: f32; last_gap: f32 = -1; gap_at: int;   // the walk to the square: its yaw's sign, and the gap a second ago
+  wl: bool; casts_n: int;                        // a Warlock's seat; its casts sent, for the kit's turn
+  xp_end: int;                                   // XP heard after the raid's outcome (its end award)
 }
+// The level 1 kit's next attack for seat h (fivebar.coax bar slots), and its reach in metres (the
+// spell's range less a little, so the raider's step doesn't take it out of range).
+rc_kit_slot :: (h: [] RcHeard, close: bool) -> int {
+  n := h[0].casts_n;
+  if h[0].wl { return ifx close && n % 2 == 1 then 71 else 64; }   // Chill Touch (touch), Eldritch Blast (120 ft)
+  if n % 6 == 5 { return 13; }                                       // Ice Knife (60 ft), a 1st-level slot
+  return ifx n % 3 == 0 then 22 else (ifx n % 3 == 1 then 21 else 43);   // Starry Wisp, Produce Flame, Ray of Frost (60 ft)
+}
+rc_reach :: (h: [] RcHeard) -> f32 { return ifx h[0].wl then 32.0f32 else 16.0f32; }
 // The angle of (y, x), radians.
 rc_atan2 :: (y: f32, x: f32) -> f32 {
   if x == 0 && y == 0 { return 0; }
@@ -85,7 +104,7 @@ rc_entry :: (h: [] RcHeard, me: int, t: string) {
     w := rs_field(t, 1);
     if w == "rc" { h[0].casts += 1; if rs_field(t, 7).count == 0 { h[0].bad += 1; } }
     if w == "hit" && rs_num(rs_field(t, 2)) > 2000 { h[0].hits_on += 1; }
-    if w == "xp" && rs_num(rs_field(t, 2)) == me { h[0].xp += rs_num(rs_field(t, 3)); }
+    if w == "xp" && rs_num(rs_field(t, 2)) == me { h[0].xp += rs_num(rs_field(t, 3)); if h[0].outcome != 0 { h[0].xp_end += rs_num(rs_field(t, 3)); } }
     if w == "level" && rs_num(rs_field(t, 2)) == me { h[0].level = rs_num(rs_field(t, 3)); h[0].levels_heard += 1; }
   }
 }
@@ -122,6 +141,9 @@ tool_main :: () -> int #export_c {
   u: [1024] u8;
   room := ifx args_count(a[..]) > 3 then rs_num(args_at(a[..], 3)) else rs_stamp();
   url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-raid-", room);
+  klass := ifx args_count(a[..]) > 4 then args_at(a[..], 4) else "druid";
+  fight := args_count(a[..]) > 5 && args_at(a[..], 5) == "fight";
+  want2 := args_count(a[..]) > 6 && args_at(a[..], 6) == "1";
   c: [RC_MAX] RelayConn; h: [RC_MAX] RcHeard; seq: [RC_MAX] int; next: [RC_MAX] int;
   for i: 0..<n {
     ub: [1024] u8; pid: [32] u8; nm: [32] u8;
@@ -130,7 +152,8 @@ tool_main :: () -> int #export_c {
     ui := rs_ticketed(ub[..], url, cast(string) pid[0..<pn], cast(string) nm[0..<mn]);
     if ui.count == 0 || !relay_conn_open(c[i..<i + 1], ui) { tool_err("raid-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
     hm: [96] u8;
-    hn := rs_put(hm[..], rs_put(hm[..], 0, "H 1 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
+    h[i].wl = klass == "warlock" || (klass == "mix" && i % 2 == 1);
+    hn := rs_put(hm[..], rs_put(hm[..], 0, ifx h[i].wl then "H 1 ranger.0.0.0 warlock 0 " else "H 1 ranger.0.0.0 druid 0 "), cast(string) nm[0..<mn]);
     _ := relay_conn_send(c[i..<i + 1], cast(string) hm[0..<hn]);
     t1 := rs_now();
     while rs_now() - t1 < 300 { rc_drain(c[..], h[..], i + 1); proc_sleep(5); }
@@ -147,8 +170,16 @@ tool_main :: () -> int #export_c {
       // to the square, to hold it (EG_SQUARE 0, about (0, 16)): ahead at the yaw that faces it, and
       // the other way if a second of that went away from it (the camera's yaw convention)
       sx := RC_SQUARE_X + f32(i % 4) * 2 - 3; sz := RC_SQUARE_Z + f32(i / 4) * 2 - 3;
+      // fight: to the nearest raider it sees (a ward stone or Darian too), until it is in reach
+      nq := -1; nd: f32 = 1000000;
+      for q: 0..<h[i].n {
+        dx := h[i].xs[q] - h[i].me_x; dz := h[i].zs[q] - h[i].me_z;
+        if dx * dx + dz * dz < nd { nd = dx * dx + dz * dz; nq = q; }
+      }
+      stop: f32 = 3;
+      if fight && nq >= 0 { sx = h[i].xs[nq]; sz = h[i].zs[nq]; stop = rc_reach(h[i..<i + 1]) - 2; }
       wx := sx - h[i].me_x; wz := sz - h[i].me_z; gap := sqrt(wx * wx + wz * wz);
-      ahead := ifx h[i].me_seen && gap > 3 then 100 else 0;
+      ahead := ifx h[i].me_seen && gap > stop then 100 else 0;
       if h[i].me_seen && tick - h[i].gap_at >= 30 {
         if h[i].last_gap >= 0 && ahead > 0 && gap > h[i].last_gap - 0.5 { h[i].flip = ifx h[i].flip == 0 then 3.14159 else 0; }
         h[i].last_gap = gap; h[i].gap_at = tick;
@@ -162,15 +193,18 @@ tool_main :: () -> int #export_c {
       // about every 0.6 s, a Starry Wisp at the nearest raider within 18 m (its 60 feet)
       if tick < next[i] || !h[i].me_seen { continue; }
       next[i] = tick + 16 + i % 4;
-      best := -1; bd: f32 = 18 * 18;
+      reach := ifx fight then rc_reach(h[i..<i + 1]) else 18.0f32;
+      best := -1; bd: f32 = reach * reach;
       for q: 0..<h[i].n {
         dx := h[i].xs[q] - h[i].me_x; dz := h[i].zs[q] - h[i].me_z;
         if dx * dx + dz * dz < bd { bd = dx * dx + dz * dz; best = q; }
       }
       if best < 0 { continue; }
+      slot := ifx fight then rc_kit_slot(h[i..<i + 1], bd < 9) else (ifx h[i].wl then 64 else 22);
+      h[i].casts_n += 1;
       seq[i] += 1;
       k = rs_int(m[..], rs_put(m[..], 0, "C "), seq[i]);
-      k = rs_put(m[..], k, " 22 "); k = rs_int(m[..], k, cast(int) (h[i].xs[best] * 100));
+      k = rs_put(m[..], k, " "); k = rs_int(m[..], k, slot); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, cast(int) (h[i].xs[best] * 100));
       k = rs_put(m[..], k, " 100 "); k = rs_int(m[..], k, cast(int) (h[i].zs[best] * 100)); k = rs_put(m[..], k, " ");
       k = rs_int(m[..], k, 2000 + h[i].ids[best]);
       _ = relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]);
@@ -191,7 +225,7 @@ tool_main :: () -> int #export_c {
   ran := rc_max((rs_now() - t0) / 1000, 1);
   rate := f32(d) / f32(ran);
   // a wave seen by all, raiders' casts and our hits heard by all, XP earned, nothing malformed, the D rate kept
-  ok := waves >= 1 && seen >= 4 && casts > 0 && hits > 0 && earned >= 1 && bad == 0 && rate > 20;
+  ok := waves >= 1 && seen >= 4 && casts > 0 && hits > 0 && earned >= 1 && bad == 0 && rate > 20 && (!want2 || lv2 == n);
   out: [2048] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
@@ -215,6 +249,19 @@ tool_main :: () -> int #export_c {
   maxxp := 0; for i: 0..<n { if h[i].xp > maxxp { maxxp = h[i].xp; } }
   jo_key(o[..], "most_xp_a_seat"); jo_int(o[..], maxxp);
   jo_key(o[..], "bad"); jo_int(o[..], bad);
+  minxp := 1000000; for i: 0..<n { if h[i].xp < minxp { minxp = h[i].xp; } }
+  jo_key(o[..], "least_xp_a_seat"); jo_int(o[..], minxp);
+  jo_key(o[..], "mode"); jo_str(o[..], ifx fight then "fight" else "square");
+  jo_key(o[..], "class"); jo_str(o[..], klass);
+  // each seat's XP: "w" a Warlock's, "d" a druid's, and after "+" its end award
+  sb: [1024] u8; sn := 0;
+  for i: 0..<n {
+    if sn > 990 { break; }
+    if i > 0 { sn = rs_put(sb[..], sn, " "); }
+    sn = rs_put(sb[..], sn, ifx h[i].wl then "w" else "d"); sn = rs_int(sb[..], sn, h[i].xp - h[i].xp_end);
+    sn = rs_put(sb[..], sn, "+"); sn = rs_int(sb[..], sn, h[i].xp_end);
+  }
+  jo_key(o[..], "xp_seats"); jo_str(o[..], cast(string) sb[0..<sn]);
   far := 0; for i: 0..<n { if h[i].last_gap > 8 { far += 1; } }
   rf := 0; rcool := 0; rrange := 0; rlevel := 0; rother := 0;
   for i: 0..<n { rf += h[i].refused; rcool += h[i].r_cool; rrange += h[i].r_range; rlevel += h[i].r_level; rother += h[i].r_other; }
