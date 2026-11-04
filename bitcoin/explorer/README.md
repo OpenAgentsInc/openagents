@@ -31,7 +31,7 @@ bitcoin/explorer/build/native-release/explorer-node signet STATE BLOCK_DIRECTORY
 ```
 
 The optional trailing arguments are `ARENA_BYTES OVERFLOW_DIRECTORY
-SEGMENT_BYTES`. The default arena capacity is 128 GiB of virtual address
+SEGMENT_BYTES BUDGET_MS`. The default arena capacity is 128 GiB of virtual address
 space, committed as needed; a small fixture can use 268435456 bytes. Journal
 segments target one GiB and preserve the unchanged KV v1 format. New segments
 can use a dedicated overflow directory on another filesystem; existing
@@ -42,8 +42,11 @@ raw imported records must remain immutable. A partial interior journal never
 becomes a repaired prefix. The node keeps its own `STATE.headers` archive.
 
 Port zero runs one import slice and exits. Each slice has a thirteen-minute
-budget and exits 75 at a synced checkpoint when more blocks remain. Re-run
-the same command to resume. No data pages are served before the admitted tip
+budget. Port zero exits 75 at a synced checkpoint when more blocks remain.
+A listening service retains its arena and serves unavailable data while
+paused; update `STATE.continue` to resume the next slice without replaying
+the whole log. The optional budget is milliseconds from 1 to 780000.
+The node also notices a header-feed replacement made during initial import. No data pages are served before the admitted tip
 reaches the preferred known header. Once serving, the node watches atomic
 replacements of `HEADERS` and follows reorgs using its retained headers and
 raw block directory. A reorg is one state frame; the bounded workspace

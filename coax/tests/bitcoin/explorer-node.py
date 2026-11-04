@@ -30,7 +30,7 @@ def check(node,browser=False):
             plain = b"".join(bytes.fromhex("fabfb5da")+struct.pack("<I",len(b))+b for b in all_blocks[start:start+30])
             encoded = bytes(v ^ mask[i%8] for i,v in enumerate(plain))
             (root/f"blk{file:05}.dat").write_bytes(encoded+bytes(1231))
-        total = 0; balances = []
+        total = 0; balances = []; pauses=0
         for known, active in ((all_blocks[:103], prefix[1:]+branches[:2]),
                               (all_blocks[:106], prefix[1:]+branches[2:5]),
                               (all_blocks, prefix[1:]+branches[:2]+branches[5:])):
@@ -39,12 +39,18 @@ def check(node,browser=False):
                 reservation.bind(("127.0.0.1",0)); port = reservation.getsockname()[1]
             log = root/"node.log"
             with log.open("w+") as stream:
-                proc = subprocess.Popen([str(node),"regtest",str(state),str(root),str(headers),"2000000000",str(port),str(ROOT/"bitcoin/explorer"),"268435456",str(root/"overflow"),"65536"],cwd=ROOT,stdout=stream,stderr=stream)
+                proc = subprocess.Popen([str(node),"regtest",str(state),str(root),str(headers),"2000000000",str(port),str(ROOT/"bitcoin/explorer"),"268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,stdout=stream,stderr=stream)
                 try:
-                    deadline = time.monotonic()+60
+                    deadline = time.monotonic()+60; resumed=set()
                     while "explorer-node ready" not in log.read_text():
-                        assert proc.poll() is None, log.read_text()
-                        assert time.monotonic()<deadline, log.read_text()
+                        text=log.read_text();assert proc.poll() is None,text
+                        assert time.monotonic()<deadline,text
+                        for line in text.splitlines():
+                            if line.startswith("import paused") and line not in resumed:
+                                try: urllib.request.urlopen(f"http://127.0.0.1:{port}/api/v1/tip",timeout=5)
+                                except urllib.error.HTTPError as error: assert error.code==503
+                                else: raise AssertionError("partial import was exposed as ready")
+                                resumed.add(line);Path(str(state)+".continue").touch();pauses+=1
                         time.sleep(.02)
                     snap = dict(chain="regtest",height=len(active),hash=tx.digest(active[-1][:80])[::-1].hex(),profile="pow-only")
                     def request(path, status=200):
@@ -84,12 +90,13 @@ def check(node,browser=False):
                             assert request("search/"+t["id"][::-1].hex())["kind"]=="transaction"
                     request("transaction/"+"ff"*32,404)
                     # The exclusive lock must reject a second writer.
-                    second=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536"],cwd=ROOT,capture_output=True,timeout=15)
+                    second=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,capture_output=True,timeout=15)
                     assert second.returncode==1 and b"exclusive ownership" in second.stderr
                 finally:
                     proc.terminate(); proc.wait(timeout=10)
                     assert "runtime error:" not in log.read_text() and "ERROR: AddressSanitizer" not in log.read_text(),log.read_text()
         assert balances==[1999998000,0,1999998000],balances
+        assert pauses>0,"bounded import did not retain its arena across a pause"
         if browser:
             # A fresh native process follows both updates on one open page.
             headers.write_bytes(b"".join(b[:80] for b in all_blocks[:103]))
@@ -100,17 +107,46 @@ def check(node,browser=False):
             with socket.socket() as reservation:
                 reservation.bind(("127.0.0.1",0));port=reservation.getsockname()[1]
             with (root/"watch.log").open("w+") as log:
-                proc=subprocess.Popen([str(node),"regtest",str(root/"watch-state"),str(root),str(headers),"2000000000",str(port),str(ROOT/"bitcoin/explorer"),"268435456",str(root/"overflow"),"65536"],cwd=ROOT,stdout=log,stderr=log)
+                proc=subprocess.Popen([str(node),"regtest",str(root/"watch-state"),str(root),str(headers),"2000000000",str(port),str(ROOT/"bitcoin/explorer"),"268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,stdout=log,stderr=log)
                 try:
-                    deadline=time.monotonic()+60
+                    deadline=time.monotonic()+60;resumed=set()
                     while "explorer-node ready" not in (root/"watch.log").read_text():
-                        assert proc.poll() is None,(root/"watch.log").read_text()
-                        assert time.monotonic()<deadline;time.sleep(.02)
+                        text=(root/"watch.log").read_text();assert proc.poll() is None,text
+                        assert time.monotonic()<deadline,text
+                        for line in text.splitlines():
+                            if line.startswith("import paused") and line not in resumed:
+                                resumed.add(line);(root/"watch-state.continue").touch();pauses+=1
+                        time.sleep(.02)
                     p=subprocess.run([str(ROOT/"coax/web/tool.sh"),"bitcoin/explorer/node-check.coax",f"http://127.0.0.1:{port}",str(root),address.address(scripts[1]),tx.transactions(branches[0])[1]["id"][::-1].hex(),tx.digest(branches[0][:80])[::-1].hex()],cwd=ROOT,capture_output=True,text=True,timeout=180)
                     assert p.returncode==0,(p.stdout,p.stderr,(root/"watch.log").read_text())
                     assert proc.poll() is None;print(p.stderr.strip(),flush=True)
                 finally:
                     proc.terminate();proc.wait(timeout=10)
+            # A feed replacement during a long initial import must still
+            # be noticed after the first ready cursor, without another touch.
+            headers.write_bytes(b"".join(b[:80] for b in all_blocks[:103]))
+            with socket.socket() as reservation:
+                reservation.bind(("127.0.0.1",0));port=reservation.getsockname()[1]
+            with (root/"late.log").open("w+") as log:
+                proc=subprocess.Popen([str(node),"regtest",str(root/"late-state"),str(root),str(headers),"2000000000",str(port),str(ROOT/"bitcoin/explorer"),"268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,stdout=log,stderr=log)
+                try:
+                    deadline=time.monotonic()+30
+                    while "import paused" not in (root/"late.log").read_text():
+                        assert proc.poll() is None,(root/"late.log").read_text()
+                        assert time.monotonic()<deadline;time.sleep(.02)
+                    replacement=root/"late-headers";replacement.write_bytes((root/"headers-b").read_bytes());replacement.replace(headers)
+                    (root/"late-state.continue").touch()
+                    while True:
+                        assert proc.poll() is None,(root/"late.log").read_text()
+                        try:
+                            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/v1/tip",timeout=5) as r:tip=json.load(r)["snapshot"]
+                            if tip["height"]==103:
+                                assert tip["hash"]==tx.digest(branches[4][:80])[::-1].hex();break
+                        except urllib.error.HTTPError as error: assert error.code==503
+                        assert time.monotonic()<deadline,"header update during import was lost";time.sleep(.1)
+                finally:
+                    proc.terminate();proc.wait(timeout=10)
+            print("Native node notices a header-feed replacement made while its import is paused.",flush=True)
             # Restore the completed restart journey's header feed.
             headers.write_bytes(b"".join(b[:80] for b in all_blocks))
 
@@ -122,34 +158,35 @@ def check(node,browser=False):
         # A valid checksum cannot hide a discontinuity between segments.
         first=min((p for p in segments if p!=state),key=lambda p:int(p.name.rsplit("-",1)[1]))
         relocated=(root/"overflow" if first.parent==root else root)/first.name
+        if last==first:last=relocated
         first.rename(relocated);first=relocated
         saved=first.read_bytes(); damaged=bytearray(saved); n=struct.unpack_from("<I",damaged,20)[0]
         struct.pack_into("<Q",damaged,28,struct.unpack_from("<Q",damaged,28)[0]+7)
         damaged[24:28]=tx.digest(damaged[28:28+n])[:4];first.write_bytes(damaged)
-        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536"],cwd=ROOT,capture_output=True,timeout=60)
+        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,capture_output=True,timeout=60)
         assert refused.returncode==1 and first.read_bytes()==damaged
         first.write_bytes(saved)
         # A torn interior segment must never be trimmed past a later one.
-        first.write_bytes(saved[:-1])
-        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536"],cwd=ROOT,capture_output=True,timeout=60)
-        assert refused.returncode==1 and first.read_bytes()==saved[:-1]
-        first.write_bytes(saved)
+        base_saved=state.read_bytes();state.write_bytes(base_saved[:-1])
+        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,capture_output=True,timeout=60)
+        assert refused.returncode==1 and state.read_bytes()==base_saved[:-1],(refused.returncode,refused.stdout,refused.stderr)
+        state.write_bytes(base_saved)
         # Creation of the next segment can tear only its known v1 header.
         next_index=int(last.name.rsplit("-",1)[1])+1
         extra=(root/"overflow" if next_index%2 else root)/f"state.segment-{next_index}"
         plain_header=b"OAKV"+bytes([1,0,0,0])+bytes(8);plain_header+=tx.digest(plain_header)[:4]
         for cut in (0,1,4,19):
             extra.write_bytes(plain_header[:cut])
-            repaired=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536"],cwd=ROOT,capture_output=True,timeout=60)
+            repaired=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,capture_output=True,timeout=60)
             assert repaired.returncode==0,(cut,repaired.stdout,repaired.stderr)
             assert extra.read_bytes()==plain_header;extra.unlink()
         extra.write_bytes(b"BAD")
-        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536"],cwd=ROOT,capture_output=True,timeout=60)
+        refused=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,capture_output=True,timeout=60)
         assert refused.returncode==1 and extra.read_bytes()==b"BAD";extra.unlink()
         original=last.read_bytes(); last.write_bytes(original[:-1])
-        recovered=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536"],cwd=ROOT,capture_output=True,text=True,timeout=60)
+        recovered=subprocess.run([str(node),"regtest",str(state),str(root),str(headers),"2000000000","0","","268435456",str(root/"overflow"),"65536","1"],cwd=ROOT,capture_output=True,text=True,timeout=60)
         assert recovered.returncode==0,(recovered.stdout,recovered.stderr)
-        print(f"native explorer: {total} independent HTTP comparisons; XOR blocks, journal rollover, physical padding, both reorgs, exclusive writer and torn-frame restart pass",flush=True)
+        print(f"native explorer: {total} independent HTTP comparisons; XOR blocks, journal rollover, physical padding, both reorgs, exclusive writer, budget pause/503/continuation and torn-frame restart pass",flush=True)
 
 
 if __name__=="__main__":

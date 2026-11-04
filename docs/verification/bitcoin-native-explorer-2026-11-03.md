@@ -69,3 +69,11 @@ inventory covers 1,759 tracked files and reports 12 unrelated missing reason
 headers, including the newly present upstream `coax/web/api/test_room_events.py`.
 Both new Python independent oracles carry Firm reason 2. The full book's
 previously recorded capability-evidence mismatch remains outside this change.
+
+The listening node also retains its arena between bounded import slices.
+The independent native journey forces a pause, checks HTTP 503 while the
+preferred chain is incomplete, updates the local continuation file and
+checks the completed cursor. Both release and checked ASan/UBSan profiles
+also notice a header feed replaced while import is paused, without another
+file update after the initial ready cursor. The forward batch limit is 64
+blocks; whole reorgs keep their independent 4,096-block workspace bound.

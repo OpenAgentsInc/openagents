@@ -15,7 +15,7 @@ NativeExplorer :: struct {
   path: [NODE_CAP] int; raw: [134217728] u8;
   batch: [67108864] u8; frame: [67108872] u8; scratch: [1048576] u8;
   blocks: [NODE_BATCH] LcBlock; locations: [NODE_BATCH] TxiLoc;
-  used: int; seq: u64; mask: u64; segment: int; segment_limit: int; overflow: string;
+  used: int; seq: u64; mask: u64; segment: int; segment_limit: int; overflow: string; budget_ms: int;
 }
 #test "native explorer resource numbers keep exact signed boundaries" {
   #assert node_number("") == -1 && node_number("-1") == -1 && node_number("1a") == -1;
@@ -149,7 +149,7 @@ node_import :: (s: [] NativeExplorer, state: string, store: string, deadline: in
       index := s[0].path[next+n]; size := s[0].sizes[index];
       if size < 81 { print("missing block at height %\n",s[0].links[index].height); return 1; }
       // Keep frames comfortably below 64 MiB. Dense blocks stand alone.
-      if !reorg && n > 0 && bytes+size > 1048576 { break; }
+      if !reorg && n > 0 && (n == 64 || bytes+size > 1048576) { break; }
       if size > s[0].raw.count-bytes { return 1; }
       loc := s[0].files[index]; buffer: [4096] u8; path := api_block_path(store,loc.file,buffer[..]);
       raw := s[0].raw[bytes..<bytes+size]; if bf_read_at(path,loc.pos,raw) != size { return 1; }
@@ -165,43 +165,64 @@ node_import :: (s: [] NativeExplorer, state: string, store: string, deadline: in
   }
   return 0;
 }
+// A listener-backed service retains its arena at a bounded checkpoint.
+// The local controller resumes it by updating STATE.continue. Data routes
+// remain unavailable until the preferred chain is completely imported.
+node_finish_import :: (s: [] NativeExplorer, state: string, store: string, deadline: int, listener: int, p: ChainParams, web: string, control: string) -> int {
+  result := node_import(s,state,store,deadline);
+  while result == 75 && listener >= 0 {
+    stamp := fs_mtime_ns(control);
+    print("import paused sequence %; update %.continue to resume\n",s[0].seq,state); flushed := cxtool_out_flush();
+    while fs_mtime_ns(control) == stamp {
+      h := cxsock_accept(listener,1000);
+      if h >= 0 { api_connection(s[0].api[..],h,state,store,p,web); closed := cxsock_close(h); }
+    }
+    result = node_import(s,state,store,cxsock_now_ms()+s[0].budget_ms);
+  }
+  return result;
+}
 node_main :: (s: [] NativeExplorer) -> int #export_c {
   a: [1] Args;
-  if !args_load(a[..]) || (args_count(a[..]) < 7 || args_count(a[..]) > 10) { tool_errln("usage: explorer-node CHAIN STATE BLOCK_DIRECTORY HEADERS NOW PORT WEB_ROOT [ARENA_BYTES [OVERFLOW_DIRECTORY [SEGMENT_BYTES]]]"); return 2; }
+  if !args_load(a[..]) || (args_count(a[..]) < 7 || args_count(a[..]) > 11) { tool_errln("usage: explorer-node CHAIN STATE BLOCK_DIRECTORY HEADERS NOW PORT WEB_ROOT [ARENA_BYTES [OVERFLOW_DIRECTORY [SEGMENT_BYTES [BUDGET_MS]]]]"); return 2; }
   chain := 0; for i: 1..<6 { if args_at(a[..],0) == CHAIN_NAMES[i] { chain = i; } }
   now := node_number(args_at(a[..],4)); port := node_number(args_at(a[..],5));
   if chain == 0 || now < 0 || port < 0 || port > 65535 { return 2; }
-  s[0].segment_limit = ifx args_count(a[..]) == 10 then node_number(args_at(a[..],9)) else 1073741824;
+  s[0].budget_ms = ifx args_count(a[..]) == 11 then node_number(args_at(a[..],10)) else 780000;
+  if s[0].budget_ms < 1 || s[0].budget_ms > 780000 { return 2; }
+  s[0].segment_limit = ifx args_count(a[..]) >= 10 then node_number(args_at(a[..],9)) else 1073741824;
   if s[0].segment_limit < 1024 || s[0].segment_limit > 1073741824 { return 2; }
   s[0].overflow = ifx args_count(a[..]) >= 9 then args_at(a[..],8) else "";
   if s[0].overflow.count > 0 && !fs_mkdir(s[0].overflow) { return 1; }
   overflowbuf: [4096] u8;
   if s[0].overflow.count > 0 { overflow_lock := bf_lock(fs_join(s[0].overflow,".explorer-lock",overflowbuf[..])); if overflow_lock < 0 { tool_errln("overflow directory requires exclusive ownership"); return 1; } }
-  p := chain_params(chain); state := args_at(a[..],1); store := args_at(a[..],2); deadline := cxsock_now_ms()+780000;
+  p := chain_params(chain); state := args_at(a[..],1); store := args_at(a[..],2); started := cxsock_now_ms(); deadline := started+s[0].budget_ms;
   lock := bf_lock(state); if lock < 0 { tool_errln("state requires exclusive ownership"); return 1; }
   archivebuf: [4096] u8; o: [1] Jo; jo_start(o[..],archivebuf[..]); jo_put(o[..],state); jo_put(o[..],".headers");
   archive := jo_text(o[..]); if o[0].bad { return 2; }
+  controlbuf: [4096] u8; jo_start(o[..],controlbuf[..]); jo_put(o[..],state); jo_put(o[..],".continue");
+  control := jo_text(o[..]); if o[0].bad { return 2; }
   if !bi_init(s[0].tree[..],p,s[0].links[..],s[0].entries[..],s[0].slots[..],s[0].chain[..]) { return 1; }
   if fs_exists(archive) && !node_headers(s,archive,p,now,"") { return 1; }
-  source := args_at(a[..],3);
+  source := args_at(a[..],3); source_stamp := fs_mtime_ns(source);
   if !node_headers(s,source,p,now,archive) || !node_catalog(s,store,p) || !node_init(s,state,p) { released := bf_unlock(lock); return 1; }
-  result := node_import(s,state,store,deadline); if result != 0 { released := bf_unlock(lock); return result; }
-  api := s[0].api[..]; api[0].table = s[0].live; api[0].used = s[0].used;
-  api[0].tip = lc_tip_vartime(s[0].live,s[0].used); api[0].loaded = true; api[0].external = true; api[0].mask = s[0].mask;
+  api := s[0].api[..]; api[0].table = s[0].live; api[0].external = true; api[0].mask = s[0].mask;
   #assert ex_id(p.genesis.hash,api[0].genesis[..]);
+  listener := ifx port > 0 then cxsock_listen(port) else -1; if port > 0 && listener < 0 { return 1; }
+  result := node_finish_import(s,state,store,deadline,listener,p,args_at(a[..],6),control);
+  if result != 0 { released := bf_unlock(lock); return result; }
+  api[0].used = s[0].used; api[0].tip = lc_tip_vartime(s[0].live,s[0].used); api[0].loaded = true;
   if port == 0 { released := bf_unlock(lock); return 0; }
-  listener := cxsock_listen(port); if listener < 0 { return 1; }
   print("explorer-node ready height % on 127.0.0.1:% profile pow-only\n",api[0].tip.height,cxsock_port(listener)); flushed := cxtool_out_flush();
-  stamp := fs_mtime_ns(source); checked := cxsock_now_ms(); wall := now;
+  stamp := source_stamp; checked := cxsock_now_ms();
   while true {
     h := cxsock_accept(listener,1000); if h >= 0 { api_connection(api,h,state,store,p,args_at(a[..],6)); closed := cxsock_close(h); }
     elapsed := cxsock_now_ms()-checked;
     if elapsed >= 10000 && fs_mtime_ns(source) != stamp {
       api[0].loaded = false;
-      if !node_headers(s,source,p,wall+elapsed/1000,archive) || !node_catalog(s,store,p) { return 1; }
-      result = node_import(s,state,store,cxsock_now_ms()+780000); if result != 0 { return result; }
+      if !node_headers(s,source,p,now+(cxsock_now_ms()-started)/1000,archive) || !node_catalog(s,store,p) { return 1; }
+      result = node_finish_import(s,state,store,cxsock_now_ms()+s[0].budget_ms,listener,p,args_at(a[..],6),control); if result != 0 { return result; }
       api[0].used = s[0].used; api[0].tip = lc_tip_vartime(s[0].live,s[0].used); api[0].loaded = true;
-      stamp = fs_mtime_ns(source); wall += elapsed/1000; checked = cxsock_now_ms();
+      stamp = fs_mtime_ns(source); checked = cxsock_now_ms();
     }
   }
   return 0;
