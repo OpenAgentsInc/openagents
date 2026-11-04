@@ -839,10 +839,13 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
     // the Warlock's (everglade-warlock.coax): its look, from the caster's hand
     if fx.slot >= WL_SLOT0 { wl_play(s, fx.slot - WL_SLOT0, ifx fx.caster == n[0].seat then wl_hand(s) else sub(from, v3(0, 0.15, 0)), fx.at, fx.seed, fx.caster == n[0].seat); n[0].played += 1; continue; }
     if fx.slot >= SP_SLOTS {
-      // an ability the server runs in its caster's copy: this page's copy of the caster plays it,
-      // where the caster is drawn now (everglade-room-abilities.coax)
+      // an ability the server runs in its caster's copy. One that lasts is its entity's alone
+      // (net_follow, eg_ra_keep): its cast event is a cue and never plays it, or a toggle such as
+      // Reverse Gravity would go up and down again in one frame (#12775). One that goes off once
+      // is played by its event, by this page's copy of the caster, where the caster is drawn now.
       ak := fx.slot - SP_SLOTS;
       pose: [4] f32;
+      if eg_ra_world(ak) && eg_ra_lasts(ak) { n[0].played += 1; continue; }
       if eg_ra_world(ak) && net_seat_pose(s, fx.caster, pose[..]) {
         c := v3(pose[0], pose[1], pose[2]);
         eg_ra_play(s, fx.caster, ak, c, eg_ra_facing(c, fx.at, pose[3]), fx.at, fx.mode);

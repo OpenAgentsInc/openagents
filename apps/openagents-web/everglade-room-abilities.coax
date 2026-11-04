@@ -153,6 +153,15 @@ eg_ra_holds :: (s: [] Everglade, k: int) -> bool {
   if k == AB_HOLD { return po[0].hp_on; }
   return false;
 }
+// Whether ability k lasts (it holds something up, which the server sends as an entity while it does):
+// a page's copy of it is the entity's, and its cast event is a cue only (#12775). The rest go off once,
+// and their cast event plays them.
+eg_ra_lasts :: (k: int) -> bool {
+  return k == AB_REVERSE || k == AB_WIND || k == AB_GUST || k == AB_LEVITATE || k == AB_FEATHER || k == AB_STONE || k == AB_TK ||
+         k == AB_TENTACLES || k == AB_STORM || k == AB_SLEET || k == AB_CONTROL || k == AB_CREATE || k == AB_MOON || k == AB_FLAME ||
+         k == AB_SHILLELAGH || k == AB_ENTANGLE || k == AB_FAERIE || k == AB_SPIKE || k == AB_CALL || k == AB_WALLFIRE ||
+         k == AB_SUNBEAM || k == AB_THORNS || k == AB_VENGEANCE || k == AB_FOG || k == AB_HOLD;
+}
 // Ends what ability k holds up (its caster's E, or its entity gone from a page).
 eg_ra_drop :: (s: [] Everglade, k: int) {
   if !eg_ra_holds(s, k) { return; }
@@ -437,8 +446,11 @@ eg_ra_keep :: (s: [] Everglade, q: int, k: int, id: int, p: Point, face: f32, at
   if c[0].heard[k] == id { return; }
   c[0].heard[k] = id;
   off := flat_gap(c[0].cast_at[k], p);
-  if c[0].used && c[0].live[k] && off <= f32(EG_RA_MOVED) { return; }
-  if c[0].used && c[0].live[k] {
+  // a new Wind Wall or Wall of Stone (a new entity while one stands) is raised beside the others, as
+  // the server raises it: they stack and each falls at its own time
+  stacks := net_stacks(k) && c[0].used && c[0].live[k];
+  if !stacks && c[0].used && c[0].live[k] && off <= f32(EG_RA_MOVED) { return; }
+  if !stacks && c[0].used && c[0].live[k] {
     was := eg_ra_in(s, q, at, at_face);
     if was.ok { eg_ra_drop(s, k); eg_ra_out(s, q, was); }
   }
