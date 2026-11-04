@@ -23,7 +23,8 @@
 //   7. Reverse Gravity (slot 4, #12733): A casts it, the server's cylinder (an entity from 900000) is
 //      on both pages, the server lifts A over 3 m (A's own word and B's D), A's press again ends it;
 //   8. INVITE: a third page opens A's link (the page with ?room= A's instance, as INVITE copies it)
-//      and must sit in A's instance on A's shard, with A in its state;
+//      and must sit in A's instance on A's shard, with A in its state; then B blocks A (BLOCK in the
+//      pane a nameplate opens): A's body goes from B's view at once, and again after B reloads;
 //   9. with OA_EVERGLADE_ADMIN_SESSION (an admin's oa_session) and --allow-public-edit: A places a
 //      thing in EDIT and publishes; B hears e edit and fetches the world within 2 s. Off by default:
 //      it publishes to the realm's world.
@@ -97,6 +98,13 @@ ep_press :: (c: [] Cdp, down: bool, key: string, code: string, vk: int) -> bool 
   return ep_int(c, btext(q[..]), 0) == 1;
 }
 ep_w :: (c: [] Cdp, down: bool) -> bool { return ep_press(c, down, "w", "KeyW", 87); }
+// A mouse click at (x, y) CSS px, as the host hears one (coax/web/host.js: pointer events on the window).
+ep_click :: (c: [] Cdp, x: int, y: int) -> bool {
+  q: [1] Buf;
+  bput(q[..], "(() => { for (const t of ['pointerdown', 'pointerup']) dispatchEvent(new PointerEvent(t, {clientX: "); bint(q[..], x);
+  bput(q[..], ", clientY: "); bint(q[..], y); bput(q[..], ", pointerId: 1, pointerType: 'mouse', isPrimary: true, button: 0, buttons: 1, bubbles: true})); return 1; })()");
+  return ep_int(c, btext(q[..]), 0) == 1;
+}
 ep_escape :: (c: [] Cdp) -> bool { return ep_press(c, true, "Escape", "Escape", 27) && ep_press(c, false, "Escape", "Escape", 27); }
 ep_mark :: (ca: [] Cdp, cb: [] Cdp, name: string) {
   q: [1] Buf; bput(q[..], "__eg.mark('"); bput(q[..], name); bput(q[..], "')");
@@ -360,6 +368,36 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
     }
   }
   all = ep_check(inv_ok, "INVITE: a page opening A's ?room= link lands in A's instance, on A's shard, and has A") && all;
+  // 8b. BLOCK (#12714): B opens the pane on A (as a tap on A's nameplate does), clicks BLOCK: A's body
+  // goes from B's view at once while A stays in B's state, and after B reloads and joins again the
+  // seat ticket's answer brings the block back
+  if ep_int(cb, "__eg.probe(37)", -1) < 0 {
+    print("skip BLOCK (this page has no moderation probes yet: net_probe 31 to 38)\n");
+  } else {
+    qo: [1] Buf; bput(qo[..], "__eg.probe("); bint(qo[..], 300 + sa); bput(qo[..], ")");
+    opened := ep_int(cb, btext(qo[..]), 0) == 1;
+    bx := -1; bly := -1;
+    dl := proc_now_ms() + 3000;
+    while opened && bx < 0 && proc_now_ms() < dl { proc_sleep(100); bx = ep_int(cb, "__eg.probe(35)", -1); bly = ep_int(cb, "__eg.probe(36)", -1); }
+    if bx >= 0 { _ = ep_click(cb, bx, bly); }
+    hid := false;
+    dl = proc_now_ms() + 3000;
+    while bx >= 0 && !hid && proc_now_ms() < dl { proc_sleep(150); hid = ep_int(cb, "__eg.probe(37)", 0) >= 1 && ep_int(cb, "__eg.probe(38)", -1) == 0 && ep_int(cb, "__eg.probe(2)", 0) >= 1; }
+    all = ep_check(opened && hid, "BLOCK: B's BLOCK on A hides A's body at once, while A stays in B's state") && all;
+    // B reloads: the seat ticket's answer has A blocked again
+    reloaded := ep_int(cb, "(setTimeout(() => location.reload(), 50), 1)", 0) == 1;
+    proc_sleep(2500);
+    kept := false;
+    dl = proc_now_ms() + 60000;
+    while hid && reloaded && !kept && proc_now_ms() < dl {
+      proc_sleep(700);
+      _ = ep_press(cb, true, "Enter", "Enter", 13); _ = ep_press(cb, false, "Enter", "Enter", 13);
+      kept = ep_int(cb, "__eg.live()", 0) == 1 && ep_int(cb, "__eg.probe(2)", 0) >= 1 && ep_int(cb, "__eg.probe(37)", 0) >= 1 && ep_int(cb, "__eg.probe(38)", -1) == 0;
+    }
+    print("  BLOCK: pane %, button at % %, hidden %; after the reload: blocks %, bodies %, players %\n", opened, bx, bly, hid,
+      ep_int(cb, "__eg.probe(37)", -1), ep_int(cb, "__eg.probe(38)", -1), ep_int(cb, "__eg.probe(2)", -1));
+    all = ep_check(kept, "BLOCK: after B reloads and joins again, A is still hidden (the seat ticket's blocks)") && all;
+  }
   // 9. live admin edits (opt in): A, an admin (OA_EVERGLADE_ADMIN_SESSION, its oa_session), places a
   // thing and publishes (B: EDIT, 1: the first thing, B: DONE publishes at once); B's socket hears
   // e edit and B's page fetches the world within 2 s

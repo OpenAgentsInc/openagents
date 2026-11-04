@@ -197,6 +197,48 @@ net_moderated :: (s: [] Everglade, answer: string) #export_c {
   else if asked == MD_ASK_KICK { md_say(s, "KICKED · ", cast(string) m[0].name[0..<m[0].name_n]); }
 }
 
+// For a headless check (net_probe): 31 nameplates you could tap this frame, 32 and 33 the first one's
+// middle (CSS px), 34 the pane open (1), 35 and 36 its BLOCK's middle (CSS px, -1 while it isn't
+// drawn), 37 the players you block, 38 the other players drawn as bodies (those you don't block).
+// 300 + SEAT opens the pane on that seat's player, as a tap on their nameplate does: 1 when it did.
+md_probe :: (s: [] Everglade, field: int) -> int {
+  if !net_on(s) { return -1; }
+  n := net_of(s);
+  m := n[0].mod[..];
+  k := hi(s[0].dpr, 0.5);
+  if field == 31 { return m[0].plates; }
+  if field == 32 || field == 33 {
+    if m[0].plates == 0 { return -1; }
+    b := m[0].plate_box[0];
+    return cast(int) (ifx field == 32 then (b.x0 + b.x1) / 2 / k else (b.y0 + b.y1) / 2 / k);
+  }
+  if field == 34 { return ifx m[0].open then 1 else 0; }
+  if field == 35 || field == 36 {
+    b := m[0].boxes[MB_BLOCK];
+    if b.x1 <= b.x0 { return -1; }
+    return cast(int) (ifx field == 35 then (b.x0 + b.x1) / 2 / k else (b.y0 + b.y1) / 2 / k);
+  }
+  if field == 37 { return m[0].blocks; }
+  if field == 38 {
+    c := 0;
+    for j: 0..<net_count(s, WK_PLAYER) { v := net_view(s, WK_PLAYER, j); if v.ok && !net_blocks(s, net_view_id(s, WK_PLAYER, j)) { c += 1; } }
+    return c;
+  }
+  if field >= 300 && field < 300 + EG_RA_SEATS {
+    for j: 0..<net_count(s, WK_PLAYER) {
+      v := net_view(s, WK_PLAYER, j);
+      if !v.ok || v.eid != field - 300 { continue; }
+      id := net_view_id(s, WK_PLAYER, j);
+      if id.count == 0 { return 0; }
+      m[0].who_n = md_copy(m[0].who[..], 0, NET_ID, id);
+      m[0].name_n = md_copy(m[0].name[..], 0, NET_NAME, net_view_name(s, WK_PLAYER, j));
+      m[0].open = true;
+      return 1;
+    }
+    return 0;
+  }
+  return -1;
+}
 #test "moderate: the ticket's blocks hide those players' bodies, and BLOCK hides one at once" {
   g: [1] Everglade; nn: [1] EgNet;
   everglade_attach_net(g[..], nn[..]);
@@ -207,10 +249,17 @@ net_moderated :: (s: [] Everglade, answer: string) #export_c {
   #assert n[0].mod[0].blocks == 0;
   // a tap on a nameplate opens the pane; BLOCK hides them and asks the API
   md_plate(g[..], Box.{x0 = 100, y0 = 100, x1 = 160, y1 = 120}, "p-00000000000000cc", "Willow Salmon");
+  // the check's probes (net_probe 31 to 38): the plate's middle, and nothing open yet
+  #assert net_probe(g[..], 31) == 1 && net_probe(g[..], 34) == 0 && net_probe(g[..], 35) == -1 && net_probe(g[..], 37) == 0;
+  g[0].dpr = 2;
+  #assert net_probe(g[..], 32) == 65 && net_probe(g[..], 33) == 55;
+  g[0].dpr = 1;
+  #assert net_probe(g[..], 300) == 0;   // no seat 0 here to open it on
   #assert md_pointer(g[..], 130, 110, 0, 1) && md_pointer(g[..], 130, 110, 2, 1) && n[0].mod[0].open;
   n[0].mod[0].boxes[MB_BLOCK] = Box.{x0 = 10, y0 = 10, x1 = 50, y1 = 40};
+  #assert net_probe(g[..], 34) == 1 && net_probe(g[..], 35) == 30 && net_probe(g[..], 36) == 25;
   #assert md_pointer(g[..], 20, 20, 0, 2) && md_pointer(g[..], 20, 20, 2, 2);
-  #assert !n[0].mod[0].open && md_is_blocked(n, "p-00000000000000cc") && n[0].mod[0].asked == MD_ASK_BLOCK;
+  #assert !n[0].mod[0].open && md_is_blocked(n, "p-00000000000000cc") && n[0].mod[0].asked == MD_ASK_BLOCK && net_probe(g[..], 37) == 1;
   #assert n[0].pipe[0].n == 1 && n[0].pipe[0].op[0] == NET_PIPE_ASK && pipe_bytes(n[0].pipe[..], 0) == "/api/playtest/block\n{\"player\":\"p-00000000000000cc\",\"on\":true}";
 }
 

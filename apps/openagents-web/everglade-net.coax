@@ -1242,7 +1242,8 @@ net_self_max :: (s: [] Everglade) -> int {
 // their deaths heard, 20 the server's y for you (cm), 21 your feet's y as the face gives it, 22 the
 // floor's height under you, 23 the town's people heard (f), 24 your WANTED level (w, -1 none), 25 the
 // people drawn off their day, 26 breaks heard (e break), 27 fires heard (e burn), 28 the pieces down,
-// 29 your act as this frame drew you, 30 the clip your body plays.
+// 29 your act as this frame drew you, 30 the clip your body plays; 31 to 38 and 300 + SEAT the
+// nameplates, BLOCK and its pane (everglade-moderate.coax md_probe).
 // 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
 // summoned creature, else 3 m ahead of you (an ability you don't point with: 2 m ahead, as its press
 // does): 1 when it went out.
@@ -1286,6 +1287,7 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 19 { return n[0].creature_deaths; }
   // you as this frame drew you: the controller's act (aethyr/walk.coax Act: 3 airborne) and the clip
   // your body plays (aethyr/skin.coax SKIN_*: 3 the jump), for a check that the jump's pose ends
+  if field >= 31 && field <= 38 || field >= 300 && field < 300 + EG_RA_SEATS { return md_probe(s, field); }   // the others, as you deal with them (everglade-moderate.coax)
   if field == 29 { return s[0].act; }
   if field == 30 { return s[0].skin[0].clip; }
   if field >= 200 && field < 200 + SP_SLOTS + AB_N {
