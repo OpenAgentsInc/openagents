@@ -1,0 +1,7 @@
+#import "Basic";
+#load "game-combat-observation.coax";
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: combat-sense CAPTURE.ppm"); return 2; }
+  s := ct_read(args_at(a[..], 0)); if !s.ok { tool_errln("combat-sense: incomplete sensor"); return 1; }
+  out: [8192] u8; print("%\n", ct_json(s, out[..])); return 0;
+}

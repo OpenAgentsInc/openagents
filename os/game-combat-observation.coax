@@ -1,0 +1,32 @@
+// Decode both visible strips from one captured image; SDK effects remain in Lua.
+#load "game-observation.coax";
+#load "game-combat-sensor.coax";
+ct_read :: (path: string) -> CombatSample {
+  header: [128] u8; n := fs_read_at(path, 0, header[..]); if n < 0 { return CombatSample.{}; }
+  p := nav_ppm(cast(string) header[0..<n]);
+  if p.width == 0 || fs_size(path) != p.offset + p.width * p.height * 3 { return CombatSample.{}; }
+  row: [12288] u8; nav: [24] u8; bytes: [168] u8; other: [12288] u8;
+  if fs_read_at(path, p.offset + 4 * p.width * 3, row[0..<p.width * 3]) != p.width * 3 { return CombatSample.{}; }
+  last_y := -1;
+  for pitch16: 64..<513 {
+    if (111 * pitch16 / 32) >= p.width { continue; }
+    for cell: 0..<8 { for c: 0..<3 { nav[cell * 3 + c] = row[((2 * cell + 1) * pitch16 / 32) * 3 + c]; } }
+    if !nav_sample(nav[..]).ok { continue; }
+    y := pitch16 / 8;
+    if y != last_y { if fs_read_at(path, p.offset + y * p.width * 3, other[0..<p.width * 3]) != p.width * 3 { return CombatSample.{}; } last_y = y; }
+    for cell: 0..<56 { for c: 0..<3 { bytes[cell * 3 + c] = other[((2 * cell + 1) * pitch16 / 32) * 3 + c]; } }
+    s := ct_sample(bytes[..]); if s.ok { return s; }
+  }
+  return CombatSample.{};
+}
+ct_json :: (s: CombatSample, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  names := [26] string.["serial","flags","level","class","health","health_max","mana","mana_max","xp","xp_max","target_flags","target_level","target_health","target_max","target_epoch","npc","spawn","cast_left","error_serial","error_type","skin","corruption","immolate","plate_x","plate_y","extra"];
+  values := [26] int.[s.serial,s.flags,s.level,s.class_id,s.health,s.health_max,s.mana,s.mana_max,s.xp,s.xp_max,s.target_flags,s.target_level,s.target_health,s.target_max,s.target_epoch,s.npc,s.spawn,s.cast_left,s.error_serial,s.error_type,s.skin,s.corruption,s.immolate,s.plate_x,s.plate_y,s.extra];
+  for i: 0..<values.count { jo_key(o[..], names[i]); jo_int(o[..], values[i]); }
+  jo_key(o[..], "kill_serial"); jo_int(o[..], s.kill_serial); jo_key(o[..], "kill_npc"); jo_int(o[..], s.kill_npc);
+  jo_key(o[..], "kill_spawn"); jo_int(o[..], s.kill_spawn); jo_key(o[..], "kill_time"); jo_int(o[..], s.kill_time);
+  jo_key(o[..], "slots"); jo_arr(o[..]);
+  for a: s.slots { jo_obj(o[..]); jo_key(o[..], "flags"); jo_int(o[..], a.flags); jo_key(o[..], "id"); jo_int(o[..], a.id); jo_key(o[..], "cooldown"); jo_int(o[..], a.cooldown); jo_key(o[..], "count"); jo_int(o[..], a.count); jo_end(o[..]); }
+  jo_end(o[..]); jo_end(o[..]); return jo_text(o[..]);
+}

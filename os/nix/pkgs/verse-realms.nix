@@ -39,6 +39,8 @@ stdenv.mkDerivation {
        entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-game
      gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-navigate.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c tls-native.c entropy-native.c entropy-foreign.c entropy.c $(pkg-config --cflags --libs openssl) -lpthread -lm -o ../verse-navigate
      gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-sense.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-sense
+     gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-combat.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-combat
+     gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-combat-sense.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-combat-sense
      gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. gpu-limits.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
        entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../gpu-limits
      # the desk's headless compositor (os/compositor.coax), which vk-realm --desk runs
@@ -74,7 +76,7 @@ stdenv.mkDerivation {
     runHook preInstall
     mkdir -p $out/share/verse-os $out/bin
     for r in $(cat realms); do cp -a $r $out/share/verse-os/; rm -f $out/share/verse-os/$r/*.o; done
-    cp net verse-session verse-transcript verse-battlenet verse-game verse-navigate verse-sense gpu-limits realms travel $out/share/verse-os/
+    cp net verse-session verse-transcript verse-battlenet verse-game verse-navigate verse-sense verse-combat verse-combat-sense gpu-limits realms travel $out/share/verse-os/
     cp -a wow $out/share/verse-os/
     mkdir -p $out/share/verse-os/desk/launch
     cp desk/compositor desk/compositor-us.xkb $out/share/verse-os/desk/
@@ -86,6 +88,8 @@ stdenv.mkDerivation {
     ln -s $out/share/verse-os/verse-game $out/bin/verse-game
     ln -s $out/share/verse-os/verse-navigate $out/bin/verse-navigate
     ln -s $out/share/verse-os/verse-sense $out/bin/verse-sense
+    ln -s $out/share/verse-os/verse-combat $out/bin/verse-combat
+    ln -s $out/share/verse-os/verse-combat-sense $out/bin/verse-combat-sense
     ln -s $out/share/verse-os/verse-battlenet $out/bin/verse-battlenet
     ln -s $out/share/verse-os/verse-session $out/bin/verse-session
     runHook postInstall

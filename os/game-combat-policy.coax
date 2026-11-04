@@ -1,0 +1,179 @@
+// Starter-warlock combat admission. No game effects or invented enemy positions.
+#authority;
+#load "game-combat-sensor.coax";
+CT_WAIT :: 0; CT_TAB :: 1; CT_LEFT :: 2; CT_RIGHT :: 3; CT_FORWARD :: 4;
+CT_BOLT :: 5; CT_ATTACK :: 6; CT_SKIN :: 7; CT_FOOD :: 8; CT_WATER :: 9; CT_CLEAR :: 10;
+CombatDecision :: struct { ok: bool; action: int; key: int; milliseconds: int; }
+#test "starter eligibility excludes gray players tapped elites dead and dangerous targets" {
+  s := CombatSample.{ok = true, flags = 3, class_id = 9, level = 4, health = 88, health_max = 88, mana = 272, mana_max = 272,
+    target_flags = 67, target_level = 2, target_health = 40, target_max = 40, npc = 113, spawn = 7};
+  #assert cb_eligible(s);
+  for flag: [5] int.[4,8,16,32,128] { t := s; t.target_flags |= flag; #assert !cb_eligible(t); }
+  t := s; t.target_flags = 3; #assert !cb_eligible(t);
+  t = s; t.target_flags = 66; #assert !cb_eligible(t);
+  t = s; t.target_flags = 65; #assert !cb_eligible(t);
+  t = s; t.target_level = 5; #assert !cb_eligible(t);
+  t = s; t.target_level = 0; #assert !cb_eligible(t);
+  t = s; t.target_level = 1; #assert cb_eligible(t);
+  t = s; t.target_level = 4; #assert cb_eligible(t);
+  t = s; t.target_health = 0; #assert !cb_eligible(t);
+  t = s; t.target_health = 1; t.npc = 1; #assert cb_eligible(t);
+  t = s; t.npc = 0; #assert !cb_eligible(t);
+  t = s; t.target_flags |= 128; t.extra = 2; #assert cb_eligible(t);
+  t.extra = 1; #assert !cb_eligible(t);
+}
+cb_eligible :: (s: CombatSample) -> bool {
+  return (s.target_flags & 67) == 67 && (s.target_flags & 60) == 0 && s.target_level >= 1 && s.target_level <= s.level
+    && s.target_health > 0 && s.npc > 0 && ((s.target_flags & 128) == 0 || (s.extra & 2) != 0);
+}
+#test "XP is an observed delta including exactly one level rollover, not target death" {
+  a := CombatSample.{level = 4, xp = 2000, xp_max = 2100}; b := a; b.xp = 2045; #assert cb_xp(a, b) == 45;
+  #assert cb_xp(a, a) == 0;
+  b.xp = 1999; #assert cb_xp(a, b) == -1;
+  b.xp = 1998; #assert cb_xp(a, b) == -1;
+  b.level = 5; b.xp = 20; #assert cb_xp(a, b) == 120;
+  b.xp = 2005; #assert cb_xp(a, b) == 2105;
+  b.level = 6; #assert cb_xp(a, b) == -1;
+  b.level = 3; #assert cb_xp(a, b) == -1;
+}
+cb_xp :: (a: CombatSample, b: CombatSample) -> int {
+  if b.level == a.level && b.xp >= a.xp { return b.xp - a.xp; }
+  if b.level == a.level + 1 { return a.xp_max - a.xp + b.xp; }
+  return -1;
+}
+#test "a kill needs the player's new combat event, bound creature and positive XP" {
+  a := CombatSample.{level = 4, xp = 200, xp_max = 2100, npc = 705, spawn = 9, kill_serial = 12};
+  b := a; b.xp = 252; b.kill_serial = 13; b.kill_npc = 705; b.kill_spawn = 9;
+  #assert cb_kill(a, b);
+  // Target can disappear between samples; its matched event remains evidence.
+  b.npc = 0; b.target_flags = 0; #assert cb_kill(a, b);
+  b.kill_serial = 12; #assert !cb_kill(a, b); b.kill_serial = 13;
+  b.kill_npc = 706; #assert !cb_kill(a, b); b.kill_npc = 705;
+  b.kill_spawn = 10; #assert !cb_kill(a, b); b.kill_spawn = 9;
+  b.xp = 200; #assert !cb_kill(a, b); b.xp = 199; #assert !cb_kill(a, b);
+  b.xp = 201; a.npc = 1; b.kill_npc = 1; #assert cb_kill(a, b);
+  a.npc = 0; b.kill_npc = 0; #assert !cb_kill(a, b);
+}
+cb_kill :: (a: CombatSample, b: CombatSample) -> bool {
+  return a.npc > 0 && b.kill_serial != a.kill_serial && b.kill_npc == a.npc && b.kill_spawn == a.spawn && cb_xp(a, b) > 0;
+}
+#test "a measured kill allows only a bounded idle grace while combat clears" {
+  s := CombatSample.{ok = true, flags = 7, health = 35, health_max = 100};
+  #assert cb_afterkill(s, 0) && cb_afterkill(s, 3000);
+  #assert !cb_afterkill(s, -1) && !cb_afterkill(s, 3001);
+  t := s; t.ok = false; #assert !cb_afterkill(t, 100);
+  t = s; t.flags = 5; #assert !cb_afterkill(t, 100);
+  t = s; t.flags = 15; #assert !cb_afterkill(t, 100);
+  t = s; t.health = 34; #assert !cb_afterkill(t, 100);
+  t = s; t.health_max = 0; #assert !cb_afterkill(t, 100);
+  t = s; t.health_max = 10000; t.health = 3480; #assert !cb_afterkill(t, 100);
+  t = s; t.health_max = 1; t.health = 1; #assert cb_afterkill(t, 100);
+  t = s; t.target_flags = 1; #assert !cb_afterkill(t, 100);
+}
+cb_afterkill :: (s: CombatSample, age: int) -> bool {
+  return age >= 0 && age <= 3000 && s.ok && (s.flags & 11) == 3 && s.health_max > 0
+    && s.health * 100 >= s.health_max * 35 && (s.target_flags & 1) == 0;
+}
+#test "all supported effects have exact bounded keyboard adapters" {
+  keys := [11] int.[0,15,30,32,17,3,2,4,13,12,1];
+  for i: 0..<11 {
+    d := cb_action(i); #assert d.ok && d.action == i && d.key == keys[i];
+    #assert d.milliseconds == (ifx i == CT_WAIT then 0 else ifx i == CT_FORWARD then 200 else ifx i == CT_LEFT || i == CT_RIGHT then 60 else 40);
+  }
+  #assert !cb_action(-1).ok && !cb_action(11).ok;
+}
+cb_action :: (action: int) -> CombatDecision {
+  if action < 0 || action > CT_CLEAR { return CombatDecision.{}; }
+  keys := [11] int.[0,15,30,32,17,3,2,4,13,12,1];
+  return CombatDecision.{ok = true, action = action, key = keys[action], milliseconds =
+    ifx action == CT_WAIT then 0 else ifx action == CT_FORWARD then 200 else ifx action == CT_LEFT || action == CT_RIGHT then 60 else 40};
+}
+#test "health mana cast range and action identity govern observed combat" {
+  s := CombatSample.{ok = true, flags = 3, class_id = 9, level = 4, health = 88, health_max = 88, mana = 272, mana_max = 272, skin = 65535,
+    target_flags = 67, target_level = 2, target_health = 40, target_max = 40, npc = 113};
+  s.slots[1] = CombatSlot.{flags = 27, id = 686};
+  #assert cb_choose(s, false).action == CT_BOLT;
+  t := s; t.flags |= 16; #assert cb_choose(t, true).action == CT_WAIT;
+  t = s; t.slots[1].cooldown = 1; #assert cb_choose(t, true).action == CT_WAIT;
+  t = s; t.slots[1].flags = 11; #assert cb_choose(t, false).action == CT_FORWARD;
+  t = s; t.extra = 1; t.plate_x = 20000; #assert cb_choose(t, false).action == CT_LEFT;
+  t.plate_x = 45000; #assert cb_choose(t, false).action == CT_RIGHT;
+  t.plate_x = 32768; #assert cb_choose(t, false).action == CT_BOLT;
+  t = s; t.target_flags = 64; #assert cb_choose(t, false).action == CT_TAB;
+  t.flags |= 4; #assert !cb_choose(t, false).ok;
+  t = s; t.slots[1].id = 172; #assert !cb_choose(t, true).ok;
+  t = s; t.flags = 1; #assert !cb_choose(t, true).ok;
+  t = s; t.flags |= 8; #assert !cb_choose(t, true).ok;
+  t = s; t.health = 30; #assert !cb_choose(t, true).ok;
+  t = s; t.mana = 100; #assert cb_choose(t, false).action == CT_WAIT;
+  t.slots[10] = CombatSlot.{flags = 3, id = 159, count = 1}; #assert cb_choose(t, false).action == CT_WATER;
+  t = s; t.health = 60; t.slots[11] = CombatSlot.{flags = 3, id = 4604, count = 1}; #assert cb_choose(t, false).action == CT_FOOD;
+  t = s; t.skin = 0; t.slots[2] = CombatSlot.{flags = 3, id = 687}; #assert cb_choose(t, false).action == CT_SKIN;
+  t = s; t.mana = 10; t.flags |= 4; t.slots[0] = CombatSlot.{flags = 67, id = 6603};
+  t.slots[1].flags = 5; #assert cb_choose(t, true).action == CT_ATTACK;
+  t.slots[0].flags |= 32; #assert cb_choose(t, true).action == CT_WAIT;
+}
+#test "combat admission percentage boundaries and missing resource actions" {
+  s := CombatSample.{ok = true, flags = 3, class_id = 9, level = 4, health = 100, health_max = 100, mana = 100, mana_max = 100, skin = 1,
+    target_flags = 67, target_level = 2, target_health = 1, target_max = 1, npc = 1};
+  s.slots[1] = CombatSlot.{flags = 27, id = 686};
+  for level: [2] int.[2,5] { t := s; t.level = level; #assert cb_choose(t, false).action == CT_BOLT; }
+  for level: [2] int.[1,6] { t := s; t.level = level; #assert !cb_choose(t, false).ok; }
+  t := s; t.health_max = 0; #assert !cb_choose(t, true).ok;
+  t = s; t.mana_max = 0; #assert !cb_choose(t, true).ok;
+  t = s; t.health = 1; t.health_max = 1; t.mana = 1; t.mana_max = 1; #assert cb_choose(t, true).action == CT_BOLT;
+  t = s; t.health = 35; #assert cb_choose(t, true).ok;
+  t.health = 34; #assert !cb_choose(t, true).ok;
+  t.health_max = 10000; t.health = 3480; #assert !cb_choose(t, true).ok;
+  t = s; t.health = 85; #assert cb_choose(t, false).action == CT_BOLT;
+  t.health_max = 10000; t.health = 8480; #assert cb_choose(t, false).action == CT_WAIT;
+  t = s;
+  t.health = 84; #assert cb_choose(t, false).action == CT_WAIT;
+  t.slots[11] = CombatSlot.{flags = 3, id = 4604, count = 0}; #assert cb_choose(t, false).action == CT_WAIT;
+  t.slots[11].count = 1; #assert cb_choose(t, false).action == CT_FOOD;
+  t.slots[11].id = 159; #assert cb_choose(t, false).action == CT_WAIT;
+  t.flags |= 4; #assert cb_choose(t, false).action == CT_BOLT;
+  t.flags = 3; #assert cb_choose(t, true).action == CT_BOLT;
+  t = s; t.mana = 60; #assert cb_choose(t, false).action == CT_BOLT;
+  t.mana_max = 10000; t.mana = 5980; #assert cb_choose(t, false).action == CT_WAIT;
+  t = s;
+  t.mana = 59; #assert cb_choose(t, false).action == CT_WAIT;
+  t.slots[10] = CombatSlot.{flags = 3, id = 159, count = 0}; #assert cb_choose(t, false).action == CT_WAIT;
+  t.slots[10].count = 1; #assert cb_choose(t, false).action == CT_WATER;
+  t.flags |= 4; #assert cb_choose(t, false).action == CT_BOLT;
+  t = s; t.skin = 0; #assert cb_choose(t, false).action == CT_BOLT;
+  t.slots[2] = CombatSlot.{flags = 3, id = 687}; #assert cb_choose(t, false).action == CT_SKIN;
+  t.skin = 1; #assert cb_choose(t, false).action == CT_BOLT;
+  t = s; t.extra = 1;
+  t.plate_x = 24999; #assert cb_choose(t, false).action == CT_LEFT;
+  t.plate_x = 25000; #assert cb_choose(t, false).action == CT_BOLT;
+  t.plate_x = 40535; #assert cb_choose(t, false).action == CT_BOLT;
+  t.plate_x = 40536; #assert cb_choose(t, false).action == CT_RIGHT;
+  t = s; t.slots[1].flags = 1; t.slots[0] = CombatSlot.{flags = 67, id = 6603}; #assert cb_choose(t, true).action == CT_WAIT;
+  t.slots[1].flags = 4; #assert cb_choose(t, true).action == CT_ATTACK;
+  t.slots[0].id = 0; #assert cb_choose(t, true).action == CT_WAIT;
+}
+cb_slot :: (a: CombatSlot, id: int) -> bool { return a.id == id && (a.flags & 7) == 3 && a.cooldown == 0; }
+cb_choose :: (s: CombatSample, engaged: bool) -> CombatDecision {
+  bad: CombatDecision;
+  if !s.ok || (s.flags & 11) != 3 || s.class_id != 9 || s.level < 2 || s.level > 5 || s.health_max <= 0 || s.mana_max <= 0 { return bad; }
+  if s.health * 100 < s.health_max * 35 { return bad; }
+  if (s.flags & 16) != 0 { return cb_action(CT_WAIT); }
+  if !engaged && (s.flags & 4) == 0 {
+    if s.health * 100 < s.health_max * 85 { return cb_action(ifx cb_slot(s.slots[11], 4604) && s.slots[11].count > 0 then CT_FOOD else CT_WAIT); }
+    if s.mana * 100 < s.mana_max * 60 { return cb_action(ifx cb_slot(s.slots[10], 159) && s.slots[10].count > 0 then CT_WATER else CT_WAIT); }
+    if s.skin == 0 && cb_slot(s.slots[2], 687) { return cb_action(CT_SKIN); }
+  }
+  if !cb_eligible(s) { return ifx (s.flags & 4) != 0 then bad else cb_action(CT_TAB); }
+  if (s.extra & 1) != 0 {
+    if s.plate_x < 25000 { return cb_action(CT_LEFT); }
+    if s.plate_x > 40535 { return cb_action(CT_RIGHT); }
+  }
+  if s.slots[1].id != 686 { return bad; }
+  if (s.slots[1].flags & 8) != 0 && (s.slots[1].flags & 16) == 0 { return cb_action(CT_FORWARD); }
+  if cb_slot(s.slots[1], 686) { return cb_action(CT_BOLT); }
+  if (s.slots[1].flags & 4) != 0 && cb_slot(s.slots[0], 6603) {
+    return cb_action(ifx (s.slots[0].flags & 32) != 0 then CT_WAIT else CT_ATTACK);
+  }
+  return cb_action(CT_WAIT);
+}

@@ -1,0 +1,33 @@
+syntax = "proto3";
+package openagents.engine.combat.v1;
+
+// Semantic projection of the local external-combat-v1 journal.
+// These are public UI observations, never authoritative simulation state.
+message Creature {
+  uint32 target_epoch = 1;
+  uint32 npc = 2;
+  uint32 spawn_suffix = 3;
+  uint32 level = 4;
+  uint32 health = 5;
+  uint32 health_max = 6;
+  uint32 flags = 7;
+}
+message ActionSlot { uint32 slot = 1; uint32 flags = 2; uint32 id = 3; uint32 cooldown_ms = 4; uint32 count = 5; }
+message Observation {
+  uint64 desk_session = 1;
+  uint32 handle = 2;
+  uint64 revision = 3;
+  uint32 serial = 4;
+  uint64 monotonic_ms = 5;
+  uint32 level = 6;
+  uint32 health = 7;
+  uint32 health_max = 8;
+  uint32 power = 9;
+  uint32 power_max = 10;
+  uint64 xp = 11;
+  uint64 xp_max = 12;
+  Creature target = 13;
+  repeated ActionSlot slots = 14;
+  string image = 15;
+}
+message Outcome { string status = 1; uint32 verified_kills = 2; uint64 gained_xp = 3; uint32 deaths = 4; }

@@ -168,6 +168,8 @@ coax="${COAX:-$root/coax/bin/coax}"
 (cd "$root" && "$coax" c os/game.coax --library) > "$work/ship/net-src/verse-game.c"
 (cd "$root" && "$coax" c os/game-navigate.coax --library) > "$work/ship/net-src/verse-navigate.c"
 (cd "$root" && "$coax" c os/game-sense.coax --library) > "$work/ship/net-src/verse-sense.c"
+(cd "$root" && "$coax" c os/game-combat.coax --library) > "$work/ship/net-src/verse-combat.c"
+(cd "$root" && "$coax" c os/game-combat-sense.coax --library) > "$work/ship/net-src/verse-combat-sense.c"
 mkdir -p "$work/ship/wow"
 cp -a "$root/os/wow/VerseNavigation" "$work/ship/wow/"
 (cd "$root" && "$coax" c os/battlenet.coax --library) > "$work/ship/net-src/verse-battlenet.c"
@@ -213,6 +215,8 @@ nix-shell -p gcc pkg-config libdrm libglvnd libgbm vulkan-headers vulkan-loader 
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-game
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-navigate.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c tls-native.c entropy-native.c entropy-foreign.c entropy.c \$(pkg-config --cflags --libs openssl) -lpthread -lm -o ../verse-navigate
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-sense.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-sense
+   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-combat.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-combat
+   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-combat-sense.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-combat-sense
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-battlenet.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-battlenet
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. gpu-limits.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \

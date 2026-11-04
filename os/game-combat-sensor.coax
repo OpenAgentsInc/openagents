@@ -1,0 +1,70 @@
+// Public UI observation bytes, never permissions or an external simulation state.
+#authority;
+#load "game-sensor.coax";
+#load "../coax/lib/image/png.coax";
+CombatSlot :: struct { flags: int; id: int; cooldown: int; count: int; }
+CombatSample :: struct {
+  ok: bool; serial: int; flags: int; level: int; class_id: int;
+  health: int; health_max: int; mana: int; mana_max: int; xp: int; xp_max: int;
+  target_flags: int; target_level: int; target_health: int; target_max: int;
+  target_epoch: int; npc: int; spawn: int; cast_left: int; error_serial: int; error_type: int;
+  slots: [12] CombatSlot; skin: int; corruption: int; immolate: int; plate_x: int; plate_y: int; extra: int;
+  kill_serial: int; kill_npc: int; kill_spawn: int; kill_time: int;
+}
+#test "independent combat strip fixture checks every field and every corrupted byte" {
+  b: [168] u8; b[0] = 86; b[1] = 67; b[2] = 1; b[3] = 1; b[4] = 2;
+  b[5] = 3; b[6] = 4; b[7] = 9;
+  // Deliberately distinct big-endian words, not a round trip through the decoder.
+  for i: 8..<48 { b[i] = cast,trunc(u8) i; } b[46] = 0; b[47] = 0;
+  for i: 0..<12 { at := 48 + i * 7; b[at] = 127; for j: 1..<7 { b[at + j] = cast,trunc(u8) (i + j); } }
+  for i: 132..<142 { b[i] = cast,trunc(u8) i; } b[142] = 3;
+  for i: 144..<158 { b[i] = cast,trunc(u8) (i - 140); }
+  ct_test_seal(b[..]);
+  // Python zlib, independently calculated over this exact 164-byte fixture.
+  #assert ct_uint(b[..], 164, 4) == 2729212416;
+  s := ct_sample(b[..]);
+  #assert s.ok && s.serial == 258 && s.flags == 3 && s.level == 4 && s.class_id == 9;
+  #assert s.health == 2057 && s.health_max == 2571 && s.mana == 3085 && s.mana_max == 3599;
+  #assert s.xp == 269554195 && s.xp_max == 336926231;
+  #assert s.target_flags == 24 && s.target_level == 25 && s.target_health == 6683 && s.target_max == 7197;
+  #assert s.target_epoch == 7711 && s.npc == 539042339 && s.spawn == 606414375;
+  #assert s.cast_left == 10281 && s.error_serial == 10795 && s.error_type == 11309;
+  for i: 0..<12 { #assert s.slots[i].flags == 127 && s.slots[i].id == (i + 1) * 65536 + (i + 2) * 256 + i + 3 && s.slots[i].cooldown == (i + 4) * 256 + i + 5 && s.slots[i].count == i + 6; }
+  #assert s.skin == 33925 && s.corruption == 34439 && s.immolate == 34953 && s.plate_x == 35467 && s.plate_y == 35981 && s.extra == 3;
+  #assert s.kill_serial == 1029 && s.kill_npc == 101124105 && s.kill_spawn == 168496141 && s.kill_time == 235868177;
+  for i: 0..<168 { bad := b; bad[i] = bad[i] ^ 1; #assert !ct_sample(bad[..]).ok; }
+  for i: 0..<3 { bad := b; bad[i] -= 1; ct_test_seal(bad[..]); #assert !ct_sample(bad[..]).ok; }
+  #assert !ct_sample(b[0..<167]).ok;
+  // Reserved bits/bytes still refuse when the checksum is adjusted to match.
+  for i: [5] int.[5,46,47,48,142] {
+    bad := b; bit := ifx i == 5 then 64 else ifx i == 48 then 128 else ifx i == 142 then 4 else 1;
+    bad[i] = bad[i] | cast(u8) bit; ct_test_seal(bad[..]);
+    #assert !ct_sample(bad[..]).ok;
+  }
+  for i: [7] int.[143,158,159,160,161,162,163] { bad := b; bad[i] = 1; ct_test_seal(bad[..]); #assert !ct_sample(bad[..]).ok; }
+  b[5] = 2; ct_test_seal(b[..]); #assert !ct_sample(b[..]).ok;
+}
+ct_test_seal :: (b: [] u8) {
+  crc := png_crc(b[0..<164]); for i: 0..<4 { b[164 + i] = cast,trunc(u8) (crc >> ((3 - i) * 8)); }
+}
+ct_uint :: (b: [] u8, at: int, width: int) -> int {
+  value := 0; for i: 0..<width { value = value * 256 + cast(int) b[at + i]; } return value;
+}
+ct_sample :: (b: [] u8) -> CombatSample {
+  bad: CombatSample;
+  if b.count != 168 || b[0] != 86 || b[1] != 67 || b[2] != 1 { return bad; }
+  if png_crc(b[0..<164]) != ct_uint(b, 164, 4) || (b[5] & 1) == 0 || (b[5] >> 6) != 0 || b[46] != 0 || b[47] != 0 || (b[142] >> 2) != 0 { return bad; }
+  for i: [7] int.[143,158,159,160,161,162,163] { if b[i] != 0 { return bad; } }
+  s := CombatSample.{serial = nav_word(b, 3), flags = cast(int) b[5], level = cast(int) b[6], class_id = cast(int) b[7],
+    health = nav_word(b, 8), health_max = nav_word(b, 10), mana = nav_word(b, 12), mana_max = nav_word(b, 14),
+    xp = ct_uint(b, 16, 4), xp_max = ct_uint(b, 20, 4), target_flags = cast(int) b[24], target_level = cast(int) b[25],
+    target_health = nav_word(b, 26), target_max = nav_word(b, 28), target_epoch = nav_word(b, 30),
+    npc = ct_uint(b, 32, 4), spawn = ct_uint(b, 36, 4), cast_left = nav_word(b, 40), error_serial = nav_word(b, 42), error_type = nav_word(b, 44),
+    skin = nav_word(b, 132), corruption = nav_word(b, 134), immolate = nav_word(b, 136), plate_x = nav_word(b, 138), plate_y = nav_word(b, 140), extra = cast(int) b[142],
+    kill_serial = nav_word(b, 144), kill_npc = ct_uint(b, 146, 4), kill_spawn = ct_uint(b, 150, 4), kill_time = ct_uint(b, 154, 4)};
+  for i: 0..<12 {
+    at := 48 + i * 7; if (b[at] >> 7) != 0 { return bad; }
+    s.slots[i] = CombatSlot.{flags = cast(int) b[at], id = ct_uint(b, at + 1, 3), cooldown = nav_word(b, at + 4), count = cast(int) b[at + 6]};
+  }
+  s.ok = true; return s;
+}

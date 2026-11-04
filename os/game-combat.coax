@@ -1,0 +1,110 @@
+// external-combat-v1: observe, admit one bounded key, release, observe again.
+#import "Basic";
+#load "game-combat-observation.coax";
+#load "game-combat-policy.coax";
+#load "game-client.coax";
+#load "game-policy.coax";
+CC_NAMES :: [11] string.["wait","target-next","turn-left","turn-right","approach","shadow-bolt","melee","demon-skin","food","water","clear-target"];
+cc_num :: (n: int, out: [] u8) -> string { o: [1] Jo; jo_start(o[..], out); jo_int(o[..], n); return jo_text(o[..]); }
+cc_record :: (path: string, line: string) -> bool {
+  out: [32768] u8; if line.count >= out.count { return false; }
+  for i: 0..<line.count { out[i] = line[i]; } out[line.count] = '\n';
+  return fs_append_durable(path, cast(string) out[0..<line.count + 1]);
+}
+cc_stop :: (journal: string, reason: string) -> int {
+  out: [1024] u8; o: [1] Jo; jo_start(o[..], out[..]); jo_obj(o[..]);
+  jo_key(o[..], "type"); jo_str(o[..], "stop-reason"); jo_key(o[..], "reason"); jo_str(o[..], reason); jo_end(o[..]);
+  saved := cc_record(journal, jo_text(o[..])); print("%\n", jo_text(o[..])); return 1;
+}
+cc_target :: (h: int, reply: [] u8) -> GameTarget {
+  empty: GameTarget; n := gc_exchange(h, empty, "list", 0, false, 0, 0, 0, "", reply, "windows");
+  return ifx n > 0 then gc_target(cast(string) reply[0..<n], "World of Warcraft", 0, 0) else empty;
+}
+cc_key :: (h: int, t: GameTarget, d: CombatDecision, reply: [] u8) -> bool {
+  if !d.ok || d.milliseconds < 0 || d.milliseconds > 300 { return false; }
+  if d.action == CT_WAIT { return true; }
+  if gc_exchange(h, t, "acquire", 0, false, 1000, 0, 0, "", reply, "done") < 0 { return false; }
+  if gc_exchange(h, t, "key", d.key, true, 0, 0, 0, "", reply, "done") < 0 { return false; }
+  proc_sleep(d.milliseconds);
+  if gc_exchange(h, t, "key", d.key, false, 0, 0, 0, "", reply, "done") < 0 { return false; }
+  return gc_exchange(h, t, "stop", 0, false, 0, 0, 0, "", reply, "done") > 0;
+}
+cc_snapshot :: (image: string, dir: string, sequence: int) -> bool {
+  name: [64] u8; number: [32] u8; path: [4096] u8; o: [1] Jo; jo_start(o[..], name[..]); jo_put(o[..], "evidence-"); jo_put(o[..], cc_num(sequence, number[..])); jo_put(o[..], ".ppm");
+  destination := fs_join(dir, jo_text(o[..]), path[..]);
+  args := [3] string.["cp", image, destination]; out: [64] u8; err: [512] u8;
+  r := proc_run(args[..], 10000, out[..], err[..]); return r.started == 0 && r.status == 0;
+}
+cc_run :: (h: int, t: GameTarget, dir: string, steps: int, wanted: int) -> int {
+  paths: [3] [4096] u8;
+  image := fs_join(dir, "frame.ppm", paths[0][..]); journal := fs_join(dir, "journal.jsonl", paths[1][..]); stop := fs_join(dir, "stop", paths[2][..]);
+  reply: [262144] u8; out: [16384] u8; sensor: [8192] u8; navtext: [1024] u8;
+  previous: CombatSample; beginning: CombatSample; start_nav: NavSample; fight: CombatSample;
+  engaged := false; fight_started := 0; last_progress := 0; scans := 0; kills := 0; total_xp := 0; rest_until := 0; killed_at := 0;
+  initial := cc_record(journal, "{\"type\":\"start\",\"schema\":\"external-combat-v1\",\"policy\":\"starter-warlock-v1\",\"images\":\"rolling frame.ppm plus immutable evidence-N.ppm at starts and outcomes\"}"); if !initial { return 1; }
+  for i: 0..<steps {
+    if fs_exists(stop) { return cc_stop(journal, "stop-file"); }
+    current := cc_target(h, reply[..]);
+    if current.session != t.session || current.handle != t.handle || current.revision != t.revision { return cc_stop(journal, "window-changed"); }
+    n := gc_exchange(h, t, "shot", 0, false, 0, 0, 0, image, reply[..], "shot"); if n < 0 { return 1; }
+    s := ct_read(image); nav := nav_read(image); now := proc_now_ms();
+    o: [1] Jo; jo_start(o[..], out[..]); jo_obj(o[..]);
+    jo_key(o[..], "type"); jo_str(o[..], "observation"); jo_key(o[..], "sequence"); jo_int(o[..], i + 1); jo_key(o[..], "monotonic_ms"); jo_int(o[..], now);
+    jo_key(o[..], "capture"); jo_raw(o[..], cast(string) reply[0..<n]); jo_key(o[..], "sensor"); jo_raw(o[..], ct_json(s, sensor[..]));
+    jo_key(o[..], "combat_sensor_valid"); jo_bool(o[..], s.ok); jo_key(o[..], "navigation_sensor_valid"); jo_bool(o[..], nav.ok);
+    jo_key(o[..], "navigation"); jo_raw(o[..], nav_json(nav, navtext[..])); jo_end(o[..]);
+    if !cc_record(journal, jo_text(o[..])) { return 1; }
+    if !s.ok || !nav.ok || !nav.alive || nav.blocked || nav.map != 1426 { return cc_stop(journal, "unavailable-dead-menu-or-map"); }
+    if i == 0 { beginning = s; start_nav = nav; if !cc_snapshot(image, dir, i + 1) { return 1; } }
+    else if s.serial == previous.serial { return cc_stop(journal, "stale-sensor"); }
+    if abs(cast(f32) (nav.x - start_nav.x)) + abs(cast(f32) (nav.y - start_nav.y)) > 1200 { return cc_stop(journal, "survey-radius"); }
+    d := cb_choose(s, engaged);
+    if engaged {
+      if s.target_health < previous.target_health { last_progress = now; }
+      if cb_kill(fight, s) {
+        gained := cb_xp(fight, s); kills += 1; total_xp += gained;
+        jo_start(o[..], out[..]); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "verified-kill"); jo_key(o[..], "sequence"); jo_int(o[..], i + 1);
+        jo_key(o[..], "npc"); jo_int(o[..], fight.npc); jo_key(o[..], "spawn"); jo_int(o[..], fight.spawn); jo_key(o[..], "gained_xp"); jo_int(o[..], gained);
+        jo_key(o[..], "kills"); jo_int(o[..], kills); jo_key(o[..], "total_xp"); jo_int(o[..], total_xp); jo_key(o[..], "fight_ms"); jo_int(o[..], now - fight_started); jo_end(o[..]);
+        if !cc_record(journal, jo_text(o[..])) || !cc_snapshot(image, dir, i + 1) { return 1; } print("%\n", jo_text(o[..])); engaged = false; scans = 0; killed_at = now;
+        if kills >= wanted { return 0; } d = cb_action(ifx (s.target_flags & 1) != 0 then CT_CLEAR else CT_WAIT);
+      } else if now - fight_started > 45000 || now - last_progress > 12000 { return cc_stop(journal, "fight-or-damage-deadline"); }
+      else if s.kill_serial != fight.kill_serial && s.kill_npc == fight.npc && s.kill_spawn == fight.spawn { d = cb_action(CT_WAIT); }
+      else if s.target_epoch != fight.target_epoch || s.npc != fight.npc || s.spawn != fight.spawn { return cc_stop(journal, "engaged-target-changed"); }
+      else if (s.target_flags & 4) != 0 { d = cb_action(CT_WAIT); }
+    }
+    if !d.ok && !engaged && killed_at > 0 && cb_afterkill(s, now - killed_at) { d = cb_action(CT_WAIT); }
+    if !d.ok { return cc_stop(journal, "combat-policy-refused"); }
+    if now < rest_until && (d.action == CT_FOOD || d.action == CT_WATER || d.action == CT_WAIT) { d = cb_action(CT_WAIT); }
+    if d.action == CT_TAB {
+      scans += 1;
+      if scans % 12 == 0 { d = cb_action(CT_FORWARD); }
+      else if scans % 3 == 0 { d = cb_action(CT_RIGHT); d.milliseconds = 160; }
+    }
+    if d.action == CT_BOLT || d.action == CT_ATTACK {
+      if !engaged { fight = s; engaged = true; fight_started = now; last_progress = now; if !cc_snapshot(image, dir, i + 1) { return 1; } }
+    }
+    if d.action == CT_FOOD || d.action == CT_WATER { rest_until = now + 20000; }
+    // Snapshot is current; no model inference or long work runs while a key is held.
+    if fs_exists(stop) { return cc_stop(journal, "stop-file"); }
+    jo_start(o[..], out[..]); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "action"); jo_key(o[..], "observation"); jo_int(o[..], i + 1);
+    jo_key(o[..], "name"); jo_str(o[..], CC_NAMES[d.action]); jo_key(o[..], "milliseconds"); jo_int(o[..], d.milliseconds);
+    jo_key(o[..], "target_epoch"); jo_int(o[..], s.target_epoch); jo_key(o[..], "npc"); jo_int(o[..], s.npc); jo_key(o[..], "spawn"); jo_int(o[..], s.spawn); jo_end(o[..]);
+    if !cc_record(journal, jo_text(o[..])) { return 1; } if d.action != CT_WAIT { print("%\n", jo_text(o[..])); }
+    if !cc_key(h, t, d, reply[..]) { return cc_stop(journal, "input-interrupted"); }
+    previous = s; proc_sleep(500);
+  }
+  return cc_stop(journal, "observation-budget");
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  runtime: [4096] u8; default_socket: [4096] u8;
+  socket := args_value(a[..], "--socket", fs_join(proc_getenv("XDG_RUNTIME_DIR", runtime[..]), "verse-desk.sock", default_socket[..]));
+  dir := args_value(a[..], "--out", ""); steps := game_integer(args_value(a[..], "--steps", "360")); wanted := game_integer(args_value(a[..], "--kills", "3"));
+  if dir.count == 0 || dir[0] != '/' || fs_exists(dir) || !steps.ok || steps.value < 1 || steps.value > 1200 || !wanted.ok || wanted.value < 1 || wanted.value > 20 { tool_errln("usage: verse-combat --out NEW_ABSOLUTE_DIR [--socket PATH] [--steps 1..1200] [--kills 1..20]"); return 2; }
+  if !fs_mkdir(dir) { return 1; } h := dc_open(socket); if h < 0 { return 1; }
+  reply: [262144] u8; target := cc_target(h, reply[..]); result := ifx target.handle > 0 then cc_run(h, target, dir, steps.value, wanted.value) else 1;
+  closed := cxsock_close(h); path: [4096] u8;
+  saved := cc_record(fs_join(dir, "journal.jsonl", path[..]), ifx result == 0 then "{\"type\":\"outcome\",\"status\":\"completed\"}" else "{\"type\":\"outcome\",\"status\":\"stopped\"}");
+  return ifx saved then result else 1;
+}
