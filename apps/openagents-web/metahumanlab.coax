@@ -101,7 +101,7 @@ Lab :: struct {
   clock: f32;
   pace: FrameClock;
   golden: bool; golden_ran: bool;
-  width: f32; height: f32; dpr: f32; portrait: bool; strip: f32;
+  width: f32; height: f32; dpr: f32; portrait: bool; strip: f32; status_row: bool;
   back: Rect; bones_b: Rect; clip_b: Rect; body_b: Rect;
   pressing: int;
   // the camera: Aethyr's orbit round a pivot, and what it makes this frame
@@ -503,6 +503,15 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   s[0].body_b = Rect.{x0 = s[0].back.x0 - gap - bw, y0 = y0, x1 = s[0].back.x0 - gap, y1 = y0 + 28 * k};
   s[0].clip_b = Rect.{x0 = s[0].body_b.x0 - gap - bw, y0 = y0, x1 = s[0].body_b.x0 - gap, y1 = y0 + 28 * k};
   s[0].bones_b = Rect.{x0 = s[0].clip_b.x0 - gap - bw, y0 = y0, x1 = s[0].clip_b.x0 - gap, y1 = y0 + 28 * k};
+  // the status line goes beside the title when it fits before the buttons, else on a row of its
+  // own under them (the strip grows to hold it), so the two never overlap
+  if !s[0].portrait {
+    l: [192] u8;
+    m := status_text(s, l[..]);
+    x := pad + text_width("METAHUMAN LAB", 18 * k) + 28 * k;
+    s[0].status_row = x + text_width(cast(string) l[0..<m], 10 * k) > s[0].bones_b.x0 - 12 * k;
+    if s[0].status_row { s[0].strip = 84 * k; }
+  }
   // the view below the HUD's strip
   ry0 := s[0].strip; ry1 := h;
   s[0].cx = w / 2; s[0].cy = (ry0 + ry1) / 2;
@@ -552,20 +561,27 @@ button :: (out: [] f32, at: int, b: Rect, t: string, on: bool, pressed: bool, k:
   return say_mid(out, n, t, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, ifx on then GOLD else WHITE));
 }
 
+// The status line: the body, the clip, the joints, and the face, level of detail and pause when
+// they apply. Its length is in l.
+status_text :: (s: [] Lab, l: [] u8) -> int {
+  m := put(l, 0, ifx s[0].female then "FEMALE BODY" else "MALE BODY");
+  m = put(l, m, "   CLIP "); m = put(l, m, clip_name(s[0].clip));
+  m = put(l, m, " "); m = put_int(l, m, s[0].clip + 1); m = put(l, m, "/"); m = put_int(l, m, PEOPLE_CLIPS);
+  m = put(l, m, "   65 JOINTS");
+  if s[0].face_state == 2 { m = put(l, m, "   FACE "); m = put(l, m, cast(string) s[0].expr_name[0..<s[0].expr_name_n]); }
+  if s[0].lod_pick >= 0 || s[0].lod > 0 { m = put(l, m, "   LOD "); m = put_int(l, m, s[0].lod); }
+  if s[0].paused { m = put(l, m, "   PAUSED"); }
+  return m;
+}
+
 draw_top :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n := at; pad := 16 * k;
   title_cap := ifx s[0].portrait then 16 * k else 18 * k;
   n = say_at(out, n, "METAHUMAN LAB", pad, (ifx s[0].portrait then 34 else 38) * k, title_cap, ink(k, 0.95, WHITE));
   l: [192] u8;
-  m := put(l[..], 0, ifx s[0].female then "FEMALE BODY" else "MALE BODY");
-  m = put(l[..], m, "   CLIP "); m = put(l[..], m, clip_name(s[0].clip));
-  m = put(l[..], m, " "); m = put_int(l[..], m, s[0].clip + 1); m = put(l[..], m, "/"); m = put_int(l[..], m, PEOPLE_CLIPS);
-  m = put(l[..], m, "   65 JOINTS");
-  if s[0].face_state == 2 { m = put(l[..], m, "   FACE "); m = put(l[..], m, cast(string) s[0].expr_name[0..<s[0].expr_name_n]); }
-  if s[0].lod_pick >= 0 || s[0].lod > 0 { m = put(l[..], m, "   LOD "); m = put_int(l[..], m, s[0].lod); }
-  if s[0].paused { m = put(l[..], m, "   PAUSED"); }
-  sx0 := ifx s[0].portrait then pad else pad + text_width("METAHUMAN LAB", title_cap) + 28 * k;
-  sy0 := ifx s[0].portrait then 54 * k else 34 * k;
+  m := status_text(s, l[..]);
+  sx0 := ifx s[0].portrait || s[0].status_row then pad else pad + text_width("METAHUMAN LAB", title_cap) + 28 * k;
+  sy0 := ifx s[0].portrait then 54 * k else ifx s[0].status_row then 66 * k else 34 * k;
   n = say_at(out, n, cast(string) l[0..<m], sx0, sy0, ifx s[0].portrait then 8.5 * k else 10 * k, ink(k, 0.7, DIM));
   keys := ifx s[0].portrait then "DRAG ORBIT   PINCH ZOOM   TWO FINGERS PAN"
           else "DRAG ORBIT   SHIFT+DRAG PAN   WHEEL ZOOM   WASD FLY   Q E DOWN UP   K SKELETON   N P CLIP   X FACE   G BODY OR OUTFIT   SPACE PAUSE   C RESET";
@@ -1148,6 +1164,19 @@ frame_u :: (s: [] Lab, u: [] f32) -> int {
   b := frame_at(s[1..<2], 390 * 3, 844 * 3, 3, 0.016);
   #assert b > 100 && b < MAX_VERTICES - 600 && s[1].portrait;
   #assert s[1].bones_b.x0 >= 0 && s[1].back.x1 <= 390 * 3;
+}
+
+#test "the status line never runs under the buttons: at 1280 px with the face and a pause it takes its own row" #steps 2000000000 {
+  s: [1] Lab;
+  a := frame_at(s[..], 1600, 1000, 1, 0.016);
+  #assert a > 300 && !s[0].status_row && s[0].strip == 64;
+  s[0].face_state = 2; s[0].paused = true;
+  s[0].expr_name[0] = 'N'; s[0].expr_name[1] = 'E'; s[0].expr_name[2] = 'U'; s[0].expr_name[3] = 'T'; s[0].expr_name_n = 4;
+  b := frame_at(s[..], 1280, 960, 1, 0.016);
+  #assert b > 300 && s[0].status_row && s[0].strip == 84;
+  l: [192] u8;
+  m := status_text(s[..], l[..]);
+  #assert 16 + text_width(cast(string) l[0..<m], 10) < 1280 - 16;
 }
 
 #test "K shows the skeleton over the body, and its button does too" #steps 2000000000 {

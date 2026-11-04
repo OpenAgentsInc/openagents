@@ -519,11 +519,16 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   m:u32=s.material;
   mat:V4=wg_at4(u,280+(cast(int)(clamp_u(m,1,24))-1)*4);
   base:V4=mhlab_layer(sheets,sheet,s.uv,dx,dy,s.layers&255,v4(1.0f32,1.0f32,1.0f32,1.0f32));
-  // hair and brow cards: the faintest texels (a flyaway's thin edge) go, the solid ones stay, and
-  // between the two an ordered 4x4 dither fades them (a stable, sort-free stand-in for alpha to
-  // coverage: the same pixels every frame); everything else cuts at 0.35
+  // hair and brow cards: the faint texels go, the solid ones stay, and between the two an ordered
+  // 4x4 dither fades them (a stable, sort-free stand-in for alpha to coverage: the same pixels
+  // every frame). A mip's texel averages a strand with the gaps beside it, so the farther the
+  // atlas is minified the more its alpha is raised (coverage kept, as a strand's width on screen
+  // can't go below a pixel): the hair stays full at a distance instead of thinning to a dither.
+  // Everything else cuts at 0.35.
   if ((m==3)||(m==4)) {
-    if (base.w<(0.06f32+(0.5f32*mhlab_bayer(cast(int)(s.pos.x),cast(int)(s.pos.y))))) { gpu_demote_helper(); }
+    texels:f32=fmax(fmax(abs(dx.x),abs(dx.y)),fmax(abs(dy.x),abs(dy.y)))*2048.0f32;
+    lift:f32=1.0f32+(0.45f32*clampf(wg_log2(fmax(texels,1.0f32)),0.0f32,4.0f32));
+    if ((base.w*lift)<(0.2f32+(0.4f32*mhlab_bayer(cast(int)(s.pos.x),cast(int)(s.pos.y))))) { gpu_demote_helper(); }
   } else if (m!=1) {
     if (base.w<0.35f32) { gpu_demote_helper(); }
   }
@@ -547,6 +552,12 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   if (m==3) {
     radial:V3=normalize3(sub3(s.world,wg_at3(u,40)));
     ng=normalize3(add3(scale3(ng,0.35f32),scale3(radial,0.65f32)));
+    // the hair's depth: the cards nearest the scalp lie under the others, so they are darker
+    // (the light that reaches the roots has passed through the strands above them), which gives
+    // the hair body instead of one flat colour
+    deep:f32=wg_length3(sub3(s.world,wg_at3(u,40)))/fmax(u[43],0.01f32);
+    ao=0.45f32+(0.55f32*smoothstep(0.8f32,1.25f32,deep));
+    albedo=scale3(albedo,0.6f32+(0.4f32*ao));
   }
   nm:V4=mhlab_layer(sheets,sheet,s.uv,dx,dy,(s.layers>>8)&255,v4(0.5f32,0.5f32,1.0f32,1.0f32));
   if (((s.layers>>8)&255)!=255) {

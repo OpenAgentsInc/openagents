@@ -449,9 +449,9 @@ def face(pack, head):
         meshes.append((name, vs, position_normals(vs, vns, fs), skin_file(head / f"{name}.skin.txt")))
         first[name] = at; at += len(vs)
     index = {n: i for i, n in enumerate(bh.meshes)}
-    def block(pieces):
+    def block(pieces, lean=False):
         points = [first[p["face"]] + v["pt"] for p in pieces for v in p["verts"]]
-        return face_rig.pack(bh, tg, meshes, index, points)
+        return face_rig.pack(bh, tg, meshes, index, points, lean)
     pack.face = block
     # the reference's reach, as numbers (an expression that moves nothing is a broken rig)
     vs, _, _, _ = obj(head / "head_lod0_mesh.obj"); sk = skin_file(head / "head_lod0_mesh.skin.txt")
@@ -483,6 +483,13 @@ GOWN = ("robe", "robe_lower", "hood", "hood_lining")
 HAND_CM = 1.5        # cloth this near the hands' skin is a glove's
 GLOVED = ("lower_body",)   # the film's body suit (tights), whose arms end in gloves
 GLOVE_CM = 3.0       # its cloth this near the arms' or hands' skin is left out
+# The skirt and the sweater's hem only have the hands resting against them in the bind (the
+# sweater's sleeves end at the elbow): cutting them there left holes through which their own
+# dark insides showed as black blotches beside the hands.
+HANDS_REST = ("skirt", "sweater")
+# The shirt's sleeves show below the sweater's three-quarter ones only as torn strips (the gown's
+# cuffs covered them): the forearms are bare instead.
+BARE_FOREARM = ("shirt",)
 # The pleated skirt was cut to hang from a gown's waist: from its top to the widest hips it is
 # drawn in to her (WAIST_CM off the skin at the waist, nothing by WAIST_LOW), so it sits on her
 # hips and flares from there instead of standing off them as a drum.
@@ -509,6 +516,102 @@ def waisted(pos, near, ref_x, ref_n, ref_arm):
         want = sd + (WAIST_CM - sd) * t if sd > WAIST_CM else sd
         out.append(add(x, tuple(c * (want - sd) for c in n)))
     return out
+# The sweater was cut to sit under the gown over a heavier figure: its body stood off her as a
+# barrel wider than her hips and its sleeves flared to bells at the elbows. Each point further
+# than SWEATER_CM off the skin it lies over (the trunk's for the body, its own arm's for a sleeve)
+# goes most of the way in, keeping SWEATER_KEEP of the rest, so the knit follows her waist and
+# arms and keeps a little of its drape. Its normals are made again from the moved surface.
+FITTED = ("sweater",)
+SWEATER_CM, SWEATER_SLEEVE_CM, SWEATER_KEEP = 1.2, 1.4, 0.2
+
+
+def fitted_garment(pos, near, ref_x, ref_n, ref_arm):
+    out = []
+    for x in pos:
+        found = sorted(near.within(x, 24.0))
+        if not found:
+            out.append(x); continue
+        # a sleeve's point: most of the skin nearest it is one arm's
+        sides = [ref_arm[i] for d, i in found[:8]]
+        arm = max(("l", "r"), key=sides.count)
+        sleeve = sides.count(arm) * 2 > len(sides)
+        hit = next((i for d, i in found[:64] if (ref_arm[i] == arm if sleeve else ref_arm[i] is None)
+                    and dot(sub(x, ref_x[i]), ref_n[i]) > 0.3 * d), None)
+        if hit is None:
+            out.append(x); continue
+        n = ref_n[hit]; sd = dot(sub(x, ref_x[hit]), n)
+        cm = SWEATER_SLEEVE_CM if sleeve else SWEATER_CM
+        want = cm + (sd - cm) * SWEATER_KEEP if sd > cm else sd
+        out.append(add(x, tuple(c * (want - sd) for c in n)))
+    return out
+
+
+def surface_normals(pos, idx, keys_of):
+    """Each vertex's normal from the triangles round its position (area weighted, welded by key)."""
+    acc = {}
+    for k in range(0, len(idx) - 2, 3):
+        a, b, c = (pos[idx[k + j]] for j in range(3))
+        e1 = sub(b, a); e2 = sub(c, a)
+        nn = (e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0])
+        for j in range(3):
+            q = keys_of[idx[k + j]]
+            s = acc.setdefault(q, [0.0, 0.0, 0.0])
+            for i in range(3):
+                s[i] += nn[i]
+    return [unit(tuple(acc.get(keys_of[i], (0.0, 1.0, 0.0)))) for i in range(len(pos))]
+
+
+# The hair cards' atlas holds fine strands, most of its texels faint: without temporal
+# accumulation the faint ones only dither, and at the lab's distance the hair read as a fuzzy halo
+# of stray strands. hair_atlas() thickens each strand (its alpha's maximum over HAIR_GROW texels
+# at the atlas's own size) and lifts the faint part of the curve (HAIR_LIFT), and fills the new
+# coverage with the strands' own colour; cards whose atlas region is nearly empty (a mean
+# coverage under HAIR_SPARSE: lone flyaways round the outline) are left out.
+HAIR_GROW, HAIR_LIFT, HAIR_SPARSE = 5, 0.55, 0.035
+
+
+def hair_atlas(path):
+    from PIL import Image, ImageChops, ImageFilter
+    out = DUMP_DIR / "portrait" / (Path(path).stem + "_thick.png")
+    im = Image.open(path).convert("RGBA")
+    r, g, b, a = im.split()
+    grown = a.filter(ImageFilter.MaxFilter(HAIR_GROW)).point(lambda v: int(v * 0.8))
+    lifted = a.point(lambda v: min(255, round(255 * (v / 255.0) ** HAIR_LIFT)))
+    alpha = ImageChops.lighter(grown, lifted)
+    small = im.resize((256, 256))
+    px = [p for p in small.getdata() if p[3] > 160]
+    mean = tuple(int(0.85 * sum(p[c] for p in px) / len(px)) for c in range(3)) if px else (90, 75, 55)
+    # the strands' colour where they were, theirs blurred round them, the mean where nothing was
+    rgb = Image.merge("RGB", (r, g, b))
+    fill = Image.composite(rgb, Image.new("RGB", im.size, mean), a.point(lambda v: 255 if v > 60 else v * 4))
+    fill = Image.composite(fill, fill.filter(ImageFilter.GaussianBlur(HAIR_GROW)), a.point(lambda v: 255 if v > 60 else 0))
+    Image.merge("RGBA", (*fill.split(), alpha)).save(out)
+    print(f"hair: the atlas's strands thickened ({HAIR_GROW} texels) and lifted (^{HAIR_LIFT})")
+    return out
+
+
+def sparse_cards(tris, uv, alpha):
+    """The triangles of the cards (connected by shared vertices) whose atlas region is nearly empty."""
+    par = list(range(len(uv)))
+    def root(i):
+        while par[i] != i:
+            par[i] = par[par[i]]; i = par[i]
+        return i
+    for a, b, c in tris:
+        par[root(b)] = root(a); par[root(c)] = root(a)
+    W, H = alpha.size; px = alpha.load()
+    cover = {}
+    for a, b, c in tris:
+        s = cover.setdefault(root(a), [0, 0.0])
+        for x in range(1, 4):
+            for y in range(1, 4 - x + 1):
+                wa, wb = x / 4.0, y / 4.0; wc = 1.0 - wa - wb
+                u = wa * uv[a][0] + wb * uv[b][0] + wc * uv[c][0]; v = wa * uv[a][1] + wb * uv[b][1] + wc * uv[c][1]
+                s[0] += 1; s[1] += px[min(W - 1, max(0, int(u % 1.0 * W))), min(H - 1, max(0, int(v % 1.0 * H)))] / 255.0
+    thin = {k for k, (n, s) in cover.items() if s / n < HAIR_SPARSE}
+    return [t for t in tris if root(t[0]) not in thin], len(thin), len(cover)
+
+
 SKIP = ("draconia_skin", "mh_eye", "mh_cornea", "mh_wet", "mh_teeth", "mh_lashes", "draconia_hair", "draconia_brow",
         "draconia_body_skin")
 
@@ -555,11 +658,12 @@ def skin_maps(portrait, maps):
     o = Image.open(orm).convert("RGB")
     if not head_base.exists():
         Image.merge("RGBA", (*Image.open(base).convert("RGB").split(), o.split()[0])).save(head_base)
-    body_base = out / "body_base_toned.png"
+    body_base = out / "body_base_toned3.png"
     if not body_base.exists():
         ch = Image.open(maps / "Body_Basecolor.png").convert("RGB").split()
         ch = [c.point(lambda x, k=k, b=b: max(0, min(255, round(k * x + b)))) for c, (k, b) in zip(ch, line)]
-        Image.merge("RGB", ch).save(body_base)
+        toned = Image.merge("RGB", ch)
+        body_tint(toned, DUMP_DIR / "body" / "body_lod0_mesh.obj").save(body_base)
     g_mean = round(sum(o.split()[1].resize((64, 64)).tobytes()) / 4096)
     body_rough = out / "body_rough.png"
     if not body_rough.exists():
@@ -568,8 +672,34 @@ def skin_maps(portrait, maps):
             "body_lod0_mesh": (body_base, maps / "Body_Normal.png", body_rough)}
 
 
+# Toned by the head's line the body still reads pinker than the face (its map is cooler and
+# bluer: blue over green where the face's is under it), worst on the arms and hands. Below the
+# shoulders its colour takes BODY_TINT; the neck, where it meets the head, keeps the line's.
+BODY_TINT = (1.02, 0.99, 0.86)
+BODY_TINT_TOP, BODY_TINT_LOW = 138.0, 126.0   # cm: none above, all below (the bind's A pose)
+
+
+def body_tint(img, body_obj):
+    from PIL import Image, ImageDraw, ImageFilter
+    if not Path(body_obj).exists():
+        return img
+    vs, vts, _, faces = obj(body_obj)
+    W, H = img.size
+    mask = Image.new("L", (W, H), 0)
+    draw = ImageDraw.Draw(mask)
+    for f in faces:
+        y = sum(vs[pi][1] for (pi, _, _) in f) / len(f)
+        k = min(1.0, max(0.0, (BODY_TINT_TOP - y) / (BODY_TINT_TOP - BODY_TINT_LOW)))
+        if k <= 0.0:
+            continue
+        draw.polygon([(vts[ti][0] * W, (1.0 - vts[ti][1]) * H) for (_, ti, _) in f], fill=round(255 * k))
+    mask = mask.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.GaussianBlur(W / 512.0))
+    tinted = Image.merge("RGB", [c.point(lambda x, g=g: min(255, round(x * g))) for c, g in zip(img.split(), BODY_TINT)])
+    return Image.composite(tinted, img, mask)
+
+
 SCALP_CM = 1.6       # a head point with hair cards this near, outward, is scalp under the hair
-SCALP_CARDS = 4      # and at least this many card points (every third) that near: a lone strand over the brow isn't hair
+SCALP_CARDS = 10     # and at least this many solid card samples (every third) that near: a lone strand over the brow isn't hair
 SCALP_COVER = 0.7    # how much of the hair's colour the scalp takes
 
 
@@ -623,7 +753,7 @@ def scalp(base, head_obj, pack, flip_v):
                 pts.append((u * W, v * H))
             draw.polygon(pts, fill=255)
     # shrunk from its edge and feathered, so the hairline fades into the skin
-    mask = mask.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(W / 200.0))
+    mask = mask.filter(ImageFilter.MinFilter(15)).filter(ImageFilter.GaussianBlur(W / 160.0))
     # the hair's colour under it: its atlas's solid texels' mean, a little darker (the roots)
     root = (96, 82, 60)
     if src:
@@ -818,6 +948,8 @@ def dressed(pack, sources, down, head, W, p, P, keep=None):
                     pos = down["moved"](pos)   # cut on the old figure: moved as the skin under it
                 if node["name"] in WAISTED:
                     pos = waisted(pos, near, ref_x, ref_n, ref_arm)
+                if node["name"] in FITTED:
+                    pos = fitted_garment(pos, near, ref_x, ref_n, ref_arm)
                 data.append((pr, mat, pos, g["acc"](a["NORMAL"]), g["acc"](a["TEXCOORD_0"]), g["acc"](pr["indices"])))
                 ks = []
                 for x in pos:
@@ -880,6 +1012,8 @@ def dressed(pack, sources, down, head, W, p, P, keep=None):
                     for t in range(0, len(idx), 3):
                         a, b, c = ks[idx[t]], ks[idx[t + 1]], ks[idx[t + 2]]
                         nbr[a].update((b, c)); nbr[b].update((a, c)); nbr[c].update((a, b))
+                if node["name"] in SLEEVED:
+                    cand, kw = sleeve_sides(keys, nbr, kw, near, ref_x, ref_w, ref_arm, arm_bones)
                 kw = sleeves(kw, kw_core, cand, nbr, keys, arm_bones)
                 # loose cloth (most of it off the body: a robe, a skirt) hangs from the hips all the
                 # way down, half or more from the pelvis (a long hem between the legs can't follow both
@@ -896,7 +1030,9 @@ def dressed(pack, sources, down, head, W, p, P, keep=None):
                     kw = loose(kw, gap)
                     # a layer over clothes (a sweater over a shirt) blends over a little space too,
                     # where its sleeve was fitted against its side
-                    if gs[len(gs) // 2] > 0.5:
+                    # (not a SLEEVED one: blended in space, its side took the sleeve's weights
+                    # across the gap to the hanging arm, the barrel sleeve_sides is there to stop)
+                    if gs[len(gs) // 2] > 0.5 and node["name"] not in SLEEVED:
                         kw = spread(kw, keys, sigma=3.0, reach=2)
                 # smoothing over the cloth's own neighbours
                 for _ in range(6):
@@ -915,7 +1051,7 @@ def dressed(pack, sources, down, head, W, p, P, keep=None):
                 # sleeve meets its side; loose cloth (a robe) is blended over 6 cm already, and
                 # more there spikes its edges in a walk
                 if close:
-                    kw = armpit(kw, nbr)
+                    kw = armpit(kw, nbr, keys)
                 # a small piece (a tie, a collar's fall, a trim, a shirt's front) moves as one: its
                 # vertices all take the piece's mean weights, so it can't stretch
                 lo = [min(x[i] for x in keys) for i in range(3)]; hi = [max(x[i] for x in keys) for i in range(3)]
@@ -936,6 +1072,8 @@ def dressed(pack, sources, down, head, W, p, P, keep=None):
                         cloth_ids[key] = f"cloth{len(cloth_ids)}"
                         pack.tints[cloth_ids[key]] = (*rgb, key[1])
                     material = cloth_ids[key]
+                if node["name"] in FITTED:
+                    nor = surface_normals(pos, idx, ks)
                 verts, fw = [], []
                 for x, nn, t, kk in zip(pos, nor, uv, ks):
                     w = sorted(kw[kk].items(), key=lambda kv: -kv[1])[:4]
@@ -948,20 +1086,35 @@ def dressed(pack, sources, down, head, W, p, P, keep=None):
                     if not groom:
                         garment_x.append(x); garment_w.append(dict(w))
                 tris = [tuple(idx[k:k + 3]) for k in range(0, len(idx), 3)]
+                base_image = image(pbr.get("baseColorTexture"))
+                if groom and material == "hair" and base_image:
+                    from PIL import Image
+                    alpha = Image.open(base_image).convert("RGBA").getchannel("A").resize((1024, 1024))
+                    tris, thin, cards = sparse_cards(tris, uv, alpha)
+                    print(f"hair: {thin} of {cards} cards nearly empty (flyaways) left out")
+                    base_image = hair_atlas(base_image)
                 if not groom:
                     # cloth over the hands (the film's tights end in gloves the gown's cuffs hid):
                     # her own hands show
                     if node["name"] in GLOVED:
                         # a body suit: all of it along the arms (its gloves' cuffs too) goes
                         on_hand = [any(ref_arm[i] is not None for d, i in near.within(x, GLOVE_CM) if d < GLOVE_CM) for x in pos]
+                    elif node["name"] in HANDS_REST:
+                        on_hand = [False] * len(pos)
                     else:
                         on_hand = [any(ref_hand[i] for d, i in near.within(x, HAND_CM) if d < HAND_CM) for x in pos]
+                    if node["name"] in BARE_FOREARM or node["name"] in GLOVED:
+                        # past the sweater's cuff (the shirt's), or anywhere along the arm (the
+                        # body suit's, under the sleeves): what an arm's weight leads
+                        bones = ("lowerarm", "hand") if node["name"] in BARE_FOREARM else ("upperarm", "lowerarm", "hand")
+                        fore = {LOWER.index(f"{b}_{s}") for b in bones for s in "lr"}
+                        on_hand = [h or sum(v for k, v in w if k in fore) > 0.5 for h, w in zip(on_hand, fw)]
                     n0 = len(tris)
                     tris = [t for t in tris if not all(on_hand[i] for i in t)]
                     if len(tris) < n0:
                         print(f"{node['name']}: {n0 - len(tris)} triangles over the hands left out")
                     report.append((node["name"], edge_check(pos, fw, tris, poses)))
-                pack.piece(node["name"], verts, tris, material, image(pbr.get("baseColorTexture")),
+                pack.piece(node["name"], verts, tris, material, base_image,
                            image(mat.get("normalTexture")), image(pbr.get("metallicRoughnessTexture")))
                 packed.append(node["name"])
     # the checks a render can't be looked at for
@@ -1097,16 +1250,23 @@ def limb_side(k):
     return None
 
 
-def armpit(kw, nbr, iters=30, rings=2):
+ARMPIT_LOW = 118.0   # cm (the bind): the armpit's band reaches no lower
+
+
+def armpit(kw, nbr, keys=None, iters=30, rings=2):
     """Where a garment's weights mix the arm with the trunk (a sleeve meeting the side), and two
     rings round that, its weights smoothed over its neighbours 30 times more: a raised arm (the
     slash, the spell) stretches the cloth across that whole band instead of along the seam. The
-    sleeve's own points stay with the arm (in the clips, 95% within about a centimetre)."""
+    sleeve's own points stay with the arm (in the clips, 95% within about a centimetre).
+    Only above ARMPIT_LOW: lower, the hanging arm lies against the waist, and a band there gave
+    the sweater's side the elbow's weight (a barrel wider than her hips once the arms swung out)
+    and the sleeve's inside the trunk's (a bell at the elbow)."""
     arm = {k for k, n in enumerate(LOWER) if n.split("_")[0] in ARM + HAND}
     share = lambda w: sum(v for k, v in w.items() if k in arm) / max(sum(w.values()), 1e-9)
-    band = {i for i, w in enumerate(kw) if 0.02 < share(w) < 0.98}
+    high = (lambda i: keys[i][1] >= ARMPIT_LOW) if keys is not None else (lambda i: True)
+    band = {i for i, w in enumerate(kw) if 0.02 < share(w) < 0.98 and high(i)}
     for _ in range(rings):
-        band |= {j for i in band for j in nbr[i]}
+        band |= {j for i in band for j in nbr[i] if high(j)}
     for _ in range(iters):
         nxt = list(kw)
         for i in band:
@@ -1228,6 +1388,67 @@ def wraps(xs, a, b):
             v = sub(x, add(a, tuple(c * t for c in sub(b, a))))
             hit.add(int((math.atan2(dot(v, e2), dot(v, e1)) + math.pi) / (2 * math.pi) * 12) % 12)
     return len(hit)
+
+
+# A fitted sleeve lies against her side from the armpit to the elbow in the bind, so the body
+# point nearest a cloth point there can be the other's: the sleeve's inside took the trunk's
+# weights (it stayed by the waist as the arm swung, a bell at the elbow) and the side the arm's
+# (it went out with the arm, a barrel). For SLEEVED garments each point's side comes from the
+# cloth itself instead: points sure to be a sleeve's (round an arm's bones, only that arm's skin
+# near, the trunk's farther than SURE_CM) or the body's (no arm's skin within SURE_CM) seed it,
+# and every other point takes the side of the seed nearest along the cloth (the sleeve's inside
+# joins its outside round the tube, not across the gap to the side). A sleeve point's weights are
+# that arm's skin's alone.
+SLEEVED = ("sweater",)
+SURE_CM = 5.0
+
+
+def sleeve_sides(keys, nbr, kw, near, ref_x, ref_w, ref_arm, arm_bones):
+    import heapq
+    side, dist, heap = [None] * len(keys), [math.inf] * len(keys), []
+    for i, x in enumerate(keys):
+        found = sorted(near.within(x, 12.0))
+        if not found:
+            continue
+        arms = {ref_arm[j] for d, j in found[:6]}
+        trunk = min((d for d, j in found if ref_arm[j] is None), default=99.0)
+        arm = min((d for d, j in found if ref_arm[j] is not None), default=99.0)
+        label = 0
+        if len(arms) == 1 and None not in arms and trunk > SURE_CM:
+            sd = next(iter(arms))
+            if any(seg(x, a, b)[0] < 8.0 and -0.05 <= seg(x, a, b)[1] <= 1.05 for a, b in arm_bones[sd]):
+                label = sd
+        elif arm > SURE_CM:
+            label = "-"
+        if label:
+            side[i] = label; dist[i] = 0.0; heapq.heappush(heap, (0.0, i))
+    while heap:
+        d, i = heapq.heappop(heap)
+        if d > dist[i]:
+            continue
+        for j in nbr[i]:
+            nd = d + math.dist(keys[i], keys[j])
+            if nd < dist[j]:
+                dist[j] = nd; side[j] = side[i]; heapq.heappush(heap, (nd, j))
+    out_side, out_kw = [], []
+    for i, (x, w) in enumerate(zip(keys, kw)):
+        sd = side[i] if side[i] in ("l", "r") else None
+        out_side.append(sd)
+        if sd is None:
+            out_kw.append(w); continue
+        found = sorted((d, j) for d, j in near.within(x, 16.0) if ref_arm[j] == sd)[:24]
+        if not found:
+            out_kw.append(w); continue
+        acc, s = {}, max(1.0, 1.5 * found[0][0])
+        for d, j in found:
+            f = math.exp(-(d / s) ** 2)
+            for k, v in ref_w[j].items():
+                acc[k] = acc.get(k, 0.0) + f * v
+        tot = sum(acc.values()) or 1.0
+        out_kw.append({k: v / tot for k, v in acc.items()})
+    n = sum(1 for s in out_side if s)
+    print(f"sleeves: {n} of {len(keys)} points a sleeve's (seeded {sum(1 for s in side if s) and sum(1 for d in dist if d == 0.0)})")
+    return out_side, out_kw
 
 
 def sleeves(kw, kw_core, cand, nbr, keys, arm_bones):

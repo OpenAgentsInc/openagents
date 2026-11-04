@@ -223,12 +223,17 @@ Visitors who never open a page with a `private:` asset cost nothing.
 Refetching on every visit is the price of `no-store`. The daily budget
 bounds the worst case at $144 a month, well inside the $1,500 cap.
 
-**Only the LOD the client needs (not built yet).** LOD0 is about 70% of the
-geometry (548k of 787k triangles). The face-rig block (most of the 11.7 MB
-catalog) is LOD0 only. A phone pack without LOD0 and without the face block
-would be about 25 MB raw, roughly 45% of the default pack. Building it needs
-`pack_human.py` to write that pack and the lab to pick it on small screens.
-That is follow-up work in the figure code.
+**Phone packs.** `pack_human.py ... --phone` writes `NAME-phone.pack` beside
+each pack from the same build: its layers are 1024 texels a side, the body
+and its clothes start at the first lower level of detail (its P lines are
+LOD 1's and its D lines LOD 2's), and the face rig keeps only what the lab's
+expressions reach (`face_rig.pack` lean: the joint groups' inputs those can
+set and the blend shape targets of their controls, deltas from 0.3 mm). The
+face pieces, the hair and the brows stay whole. The student's phone pack is
+14.4 MB against 40.2 MB, its face rig 3.2 MB against 12.0 MB. `host.js`
+asks a phone (a coarse pointer on a screen no wider than 820 px, or `?phone`;
+`?phone=0` never) for `NAME-phone` first and falls back to `NAME`.
+`upload_packs.sh` uploads both.
 
 ### The old `verse-assets` service
 
@@ -859,14 +864,32 @@ It holds no MetaHuman asset and draws with none.
   passes on denser pieces), and the normals are recomputed with creases kept.
 - **Her own clothes.** The pack's own outfit (`?pack`) drops the film's gown
   (robe, its lower skirt, hood and lining): it was cut round clasped hands
-  and tears into strips when the arms move. What stays is fitted with three
-  rules: cloth over the hands goes (triangles within 1.5 cm of a point mostly
-  weighted to a hand, and on the lower body's piece, which carries gloves,
-  anything within 3 cm of the arms or hands); the skirt's top is drawn in to
-  the hips between 74 and 92 cm, 1 cm off the skin; and the scalp under the
-  hair cards is painted the hair's colour (80% of the mean of its solid
-  texels) where four cards' solid texels lie within 1.6 cm, feathered, so
-  skin no longer shows between the strands.
+  and tears into strips when the arms move. What stays is fitted with these
+  rules:
+  - Cloth over the hands goes: triangles within 1.5 cm of a point mostly
+    weighted to a hand, and on the lower body's piece, which carries gloves,
+    anything within 3 cm of the arms or hands. The skirt and the sweater's
+    hem, which the hands only rest against, keep their cloth (holes there
+    showed their dark insides as blotches).
+  - Her forearms are bare under the elbow-length sleeves: the shirt's
+    triangles mostly weighted to the forearms and hands, and the lower
+    body's (its gloves) mostly weighted to the arms, go, so no dark cloth
+    pokes out at the elbow.
+  - The skirt's top is drawn in to the hips between 74 and 92 cm, 1 cm off
+    the skin.
+  - The sweater's sleeves lie against her sides from armpit to elbow, so the
+    nearest skin can't tell sleeve from side: the sleeve's inside took the
+    trunk's weights (a bell at the elbow when the arm swung) and the side the
+    arm's (a barrel wider than her hips). `sleeve_sides` seeds the points
+    that are surely a sleeve's or the body's and gives every other point the
+    side of the seed nearest along the cloth; a sleeve point takes its arm's
+    skin weights alone. The armpit's blending band stops at 118 cm.
+  - The scalp under the hair cards is painted the hair's colour (80% of the
+    mean of its solid texels) where ten solid card samples lie within
+    1.6 cm, feathered, so skin no longer shows between the strands.
+  - Below the shoulders the body's map takes a warm tint (red 2% up, blue
+    14% down), fading out by the neck, so the arms and hands match the face
+    instead of reading pinker.
 - **Her posture.** The people rig's clips were made on a stooped body, and
   the lab's retarget passes their global orientations straight to her, so
   the stoop showed. Per clip and joint the lab takes the mean local
@@ -897,12 +920,23 @@ It holds no MetaHuman asset and draws with none.
   with the source texture at each pixel's uv (mean difference and hue and
   saturation per region), count capsule pixels with a pack in (none), and
   check the skin's pixels take the scatter path.
-- **Hair and eyes.** Hair cards are lit along their strands (two shifted
-  Kajiya-Kay highlights, after Marschner's R and TRT lobes), not by GGX, with
-  the normal bent toward the way out from the head; their faintest texels go,
-  their solid ones stay, and a stable 4x4 dither fades the rest (from 6%
-  coverage up, so fine strands at the edge of the hair still draw). Eyes add
-  a Fresnel sky reflection on the cornea and a sharp key glint.
+- **Hair and eyes.** The groom's atlas is fine strands, most of its texels
+  faint; without temporal accumulation those only dither, and at the lab's
+  distance the hair read as a fuzzy halo of stray strands. The compiler
+  thickens each strand (`hair_atlas`: the alpha's maximum over 5 texels at
+  80%, and the faint part of its curve lifted, alpha to the 0.55), fills the
+  new coverage with the strands' colour, and leaves out the cards whose
+  atlas region is nearly empty (under 3.5% mean coverage: a third of them,
+  lone flyaways round the outline). The shader cuts hair below 20% coverage,
+  keeps it above 60% and dithers between with a stable 4x4 pattern; the
+  further a card's atlas is minified, the more its alpha is raised (45% per
+  mip level, up to four), so the hair stays full at a distance. Hair cards
+  are lit along their strands (two shifted Kajiya-Kay highlights, after
+  Marschner's R and TRT lobes), not by GGX, with the normal bent toward the
+  way out from the head. Hair deep in the volume (nearer the head's centre
+  than its outer shell) is darkened to 45%, so the bun and the layers read
+  as full hair with depth instead of one flat colour. Eyes add a Fresnel sky reflection on the cornea and
+  a sharp key glint.
 - **Skin and light.** The skin's albedo is graded before lighting: its
   saturation raised 15% about its luma and tinted slightly warm (1.02,
   0.97, 0.93), so it reads as living skin and not grey. The rig is a key of

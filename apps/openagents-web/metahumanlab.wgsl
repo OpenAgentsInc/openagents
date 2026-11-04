@@ -252,6 +252,8 @@ fn coax_p_scene_fs(p_s: coax_t14, p_front: bool) -> coax_t24 {
   var l_m: u32;
   var l_mat: vec4f;
   var l_base: vec4f;
+  var l_texels: f32;
+  var l_lift: f32;
   var l_ao: f32;
   var l_albedo: vec3f;
   var l_lum: f32;
@@ -260,6 +262,7 @@ fn coax_p_scene_fs(p_s: coax_t14, p_front: bool) -> coax_t24 {
   var l_tg: vec3f;
   var l_strand: vec3f;
   var l_radial: vec3f;
+  var l_deep: f32;
   var l_nm: vec4f;
   var l_tn: vec3f;
   var l_t: vec3f;
@@ -292,7 +295,9 @@ fn coax_p_scene_fs(p_s: coax_t14, p_front: bool) -> coax_t24 {
   l_base = coax_p_mhlab_layer(l_s.f4, l_dx, l_dy, (l_s.f5 & 255u), coax_p_v4(0x1.000000p0f, 0x1.000000p0f, 0x1.000000p0f, 0x1.000000p0f));
   if (((l_m == 3u) || (l_m == 4u)))
   {
-    if ((l_base.w < (0x1.eb851ep-5f + (0x1.000000p-1f * coax_p_mhlab_bayer(i32(l_s.x.x), i32(l_s.x.y))))))
+    l_texels = (coax_p_fmax(coax_p_fmax(abs(l_dx.x), abs(l_dx.y)), coax_p_fmax(abs(l_dy.x), abs(l_dy.y))) * 0x1.000000p11f);
+    l_lift = (0x1.000000p0f + (0x1.ccccccp-2f * coax_p_clampf(coax_p_wg_log2(coax_p_fmax(l_texels, 0x1.000000p0f)), 0.0f, 0x1.000000p2f)));
+    if (((l_base.w * l_lift) < (0x1.99999ap-3f + (0x1.99999ap-2f * coax_p_mhlab_bayer(i32(l_s.x.x), i32(l_s.x.y))))))
     {
       discard;
     }
@@ -330,6 +335,9 @@ fn coax_p_scene_fs(p_s: coax_t14, p_front: bool) -> coax_t24 {
   {
     l_radial = coax_p_normalize3(coax_p_sub3(l_s.y, coax_p_wg_at3(40i)));
     l_ng = coax_p_normalize3(coax_p_add3(coax_p_scale3(l_ng, 0x1.666666p-2f), coax_p_scale3(l_radial, 0x1.4cccccp-1f)));
+    l_deep = (coax_p_wg_length3(coax_p_sub3(l_s.y, coax_p_wg_at3(40i))) / coax_p_fmax(coax_at_u(i32(43i)), 0x1.47ae14p-7f));
+    l_ao = (0x1.ccccccp-2f + (0x1.19999ap-1f * coax_p_smoothstep(0x1.99999ap-1f, 0x1.400000p0f, l_deep)));
+    l_albedo = coax_p_scale3(l_albedo, (0x1.333334p-1f + (0x1.99999ap-2f * l_ao)));
   }
   l_nm = coax_p_mhlab_layer(l_s.f4, l_dx, l_dy, ((l_s.f5 >> u32(8u)) & 255u), coax_p_v4(0x1.000000p-1f, 0x1.000000p-1f, 0x1.000000p0f, 0x1.000000p0f));
   if ((((l_s.f5 >> u32(8u)) & 255u) != 255u))
@@ -918,6 +926,16 @@ fn coax_p_mhlab_layer(p_uv: vec2f, p_dx: vec2f, p_dy: vec2f, p_layer: u32, p_non
   }
   return coax_p_render_sample_layer8_grad(l_uv, i32(l_layer), l_dx, l_dy, 0.0f);
 }
+fn coax_p_wg_log2(p_x: f32) -> f32 {
+  var l_x: f32 = p_x;
+  return (log(l_x) / 0x1.62e430p-1f);
+}
+fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_low: f32 = p_low;
+  var l_high: f32 = p_high;
+  return coax_p_fmin(coax_p_fmax(l_x, l_low), l_high);
+}
 fn coax_p_mhlab_bayer(p_x: i32, p_y: i32) -> f32 {
   var l_x: i32 = p_x;
   var l_y: i32 = p_y;
@@ -943,6 +961,18 @@ fn coax_p_cross3(p_a: vec3f, p_b: vec3f) -> vec3f {
   var l_b: vec3f = p_b;
   return vec3f(((l_a.y * l_b.z) - (l_a.z * l_b.y)), ((l_a.z * l_b.x) - (l_a.x * l_b.z)), ((l_a.x * l_b.y) - (l_a.y * l_b.x)));
 }
+fn coax_p_wg_length3(p_a: vec3f) -> f32 {
+  var l_a: vec3f = p_a;
+  return sqrt(dot(l_a, l_a));
+}
+fn coax_p_smoothstep(p_a: f32, p_b: f32, p_x: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
+  var l_x: f32 = p_x;
+  var l_t: f32;
+  l_t = coax_p_saturate(((l_x - l_a) / (l_b - l_a)));
+  return ((l_t * l_t) * (0x1.800000p1f - (0x1.000000p1f * l_t)));
+}
 fn coax_p_mhlab_srgb(p_x: f32) -> f32 {
   var l_x: f32 = p_x;
   var l_c: f32;
@@ -952,12 +982,6 @@ fn coax_p_mhlab_srgb(p_x: f32) -> f32 {
     return (l_c * 0x1.9d70a4p3f);
   }
   return ((0x1.0e147ap0f * coax_pow_bg_vs(l_c, (0x1.000000p0f / 0x1.333334p1f))) - 0x1.c28f5cp-5f);
-}
-fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
-  var l_x: f32 = p_x;
-  var l_low: f32 = p_low;
-  var l_high: f32 = p_high;
-  return coax_p_fmin(coax_p_fmax(l_x, l_low), l_high);
 }
 fn coax_p_mhlab_light_one(p_n: vec3f, p_v: vec3f, p_l: vec3f, p_albedo: vec3f, p_rough: f32, p_material: u32, p_colour: vec3f, p_strand: vec3f) -> vec3f {
   var l_n: vec3f = p_n;
@@ -1061,14 +1085,6 @@ fn coax_p_mhlab_lid_shade(p_uv: vec2f) -> f32 {
   l_edge = (0x1.000000p0f - coax_p_smoothstep(0.0f, 0x1.19999ap-1f, l_uv.x));
   l_upper = (0x1.19999ap-1f + (0x1.ccccccp-2f * coax_p_smoothstep(0x1.666666p-2f, 0x1.ccccccp-1f, l_uv.y)));
   return coax_p_saturate((l_edge * l_upper));
-}
-fn coax_p_smoothstep(p_a: f32, p_b: f32, p_x: f32) -> f32 {
-  var l_a: f32 = p_a;
-  var l_b: f32 = p_b;
-  var l_x: f32 = p_x;
-  var l_t: f32;
-  l_t = coax_p_saturate(((l_x - l_a) / (l_b - l_a)));
-  return ((l_t * l_t) * (0x1.800000p1f - (0x1.000000p1f * l_t)));
 }
 fn coax_p_mhlab_vis(p_nl: f32, p_nv: f32, p_a: f32) -> f32 {
   var l_nl: f32 = p_nl;

@@ -4,8 +4,10 @@ one VPK1 file (verse/tools/pack_realm.py has the container) that the lab's page 
 `private:human` (coax/web/host.js). Offline tooling; never shipped or run by a page.
 
     python3 verse/tools/humans/pack_human.py standin [OUT.pack] [--outfit NAME]
-    python3 verse/tools/humans/pack_human.py metahuman EXPORT_DIR [OUT.pack] [--outfit NAME]
+    python3 verse/tools/humans/pack_human.py metahuman EXPORT_DIR [OUT.pack] [--outfit NAME] [--phone]
 
+--phone also writes NAME-phone.pack beside it (write(): smaller layers, the body and clothes from
+their first lower level of detail, a lean face rig), the one host.js asks for on a phone.
 --outfit dresses the body in a Quaternius fantasy outfit (outfits.py: fantasy, hooded, robe)
 instead of the portrait's clothes (a MetaHuman) or none (the stand-in). OUT.pack defaults to
 ~/.openagents/verse/private-build/web/NAME.pack (standin.pack or human.pack, or with the
@@ -372,7 +374,20 @@ class Pack:
         self.pieces.append({"name": name, "verts": verts, "tris": tris, "material": MATERIALS[material], "layers": layers})
 
 
-def write(pack, out, size):
+# A phone pack (--phone, NAME-phone.pack beside NAME.pack): the same figure for a phone's memory
+# and download. Its layers are PHONE_SIZE texels a side; the body and its clothes start at the
+# first lower level of detail (its P lines are LOD 1's, its D lines LOD 2's twice), while the face
+# rig's pieces, the hair and the brows (whose cards a reduction would tear) and the eyes' blended
+# layers stay as they are; the face rig keeps only what the lab's expressions reach
+# (face_rig.pack lean). host.js asks for it on a phone.
+PHONE_SIZE = 1024
+
+
+def phone_keeps(p):
+    return "face" in p or p["material"] in (3, 4) or p["material"] in BLENDED
+
+
+def write(pack, out, size, phone=False):
     vb = bytearray(); ib = []; lines = [f"human {pack.name}", f"body {pack.body}", f"licence {pack.licence}"]
     if pack.outfit:
         lines.append(f"outfit {pack.outfit[0]} {pack.outfit[1]}")
@@ -393,9 +408,16 @@ def write(pack, out, size):
         return (blended, face != blended, cut)
     order = sorted(pack.pieces, key=rank)
     face_first = None
+    top = {}
     for p in order:
-        ts = tangents(p["verts"], p["tris"])
-        for v, t in zip(p["verts"], ts):
+        verts, tris = p["verts"], p["tris"]
+        if phone and not phone_keeps(p):
+            verts, tris = reduce(verts, tris, LODS[0])
+        top[id(p)] = (verts, tris)
+    for p in order:
+        verts, tris = top[id(p)]
+        ts = tangents(verts, tris)
+        for v, t in zip(verts, ts):
             if abs(sum(v["w"]) - 255) > 0:
                 raise SystemExit(f"pack_human: {p['name']}: weights that don't sum to 255")
             if max(v["j"]) >= JOINTS:
@@ -405,14 +427,18 @@ def write(pack, out, size):
         if "face" in p and face_first is None:
             face_first = count
         first = len(ib)
-        ib += [count + k for t in p["tris"] for k in t]
+        ib += [count + k for t in tris for k in t]
         lines.append(f"P {p['name']} {first} {len(ib) - first} {p['material']}")
-        count += len(p["verts"])
+        count += len(verts)
     for level, cell in enumerate(LODS, 1):
+        if phone and level == 2:
+            # the phone's second level is its first again (its top is LOD 1, its first LOD 2)
+            lines += [l.replace("D 1 ", "D 2 ", 1) for l in lines if l.startswith("D 1 ")]
+            break
         for p in order:
             if p["material"] in BLENDED:
                 continue
-            verts, tris = reduce(p["verts"], p["tris"], cell)
+            verts, tris = reduce(p["verts"], p["tris"], LODS[-1] if phone else cell)
             if not tris:
                 continue
             for v, t in zip(verts, tangents(verts, tris)):
@@ -430,7 +456,7 @@ def write(pack, out, size):
     if pack.face and face_first is not None:
         faces = [p for p in order if "face" in p]
         n = sum(len(p["verts"]) for p in faces)
-        block = pack.face(faces)
+        block = pack.face(faces, phone)
         # the face rig: its vertices' range and its block's length (the block follows the text, after a NUL)
         lines.append(f"F {face_first} {n} {len(block)}")
     catalog = ("\n".join(lines) + "\n").encode() + (b"\0" + block if block else b"")
@@ -536,6 +562,8 @@ def main(argv):
     size = 1024
     if "--size" in argv:
         k = argv.index("--size"); size = int(argv[k + 1]); argv = argv[:k] + argv[k + 2:]
+    phone = "--phone" in argv
+    argv = [a for a in argv if a != "--phone"]
     outfit = None
     if "--outfit" in argv:
         k = argv.index("--outfit"); outfit = argv[k + 1]; argv = argv[:k] + argv[k + 2:]
@@ -558,6 +586,10 @@ def main(argv):
         size = max(size, 2048) if "--size" not in sys.argv else size
     catalog, total = write(pack, out, size)
     print(catalog.splitlines()[-1], f"-> {out} ({total} bytes)")
+    if phone:
+        small = out.with_name(out.stem + "-phone.pack")
+        catalog, total = write(pack, small, PHONE_SIZE, phone=True)
+        print(catalog.splitlines()[-1], f"-> {small} ({total} bytes)")
 
 
 if __name__ == "__main__":

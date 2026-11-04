@@ -119,7 +119,8 @@
 //                 (POST /api/verse/packs/NAME, coax/web/api/verse_packs.c) whose bytes are opened in
 //                 privatePack; on a local address only when its URL asks (/private/NAME.pack from
 //                 coax/web/serve.c's private builds). ?pack=OTHER asks for another, &outfit=NAME its NAME
-//                 outfit, the pack OTHER-NAME. Never in a golden, nowhere else. Its four parts as pack:'s.
+//                 outfit, the pack OTHER-NAME. On a phone (or ?phone) it asks first for NAME-phone, the
+//                 pack's phone build, then NAME. Never in a golden, nowhere else. Its four parts as pack:'s.
 //                 Not asked for, absent, refused or broken, its parts fail quietly (bytes 0, no error,
 //                 the world loads on), so the page draws what it has without it.
 //   message 608     a claimed realm's maker's display name (oa-api /api/playtest/makers/<realm>), to draw "Made by <name>" and TIP
@@ -1189,8 +1190,14 @@ function parseAssets(text) {
       const q = new URLSearchParams(location.search), site = /(^|\.)openagents\.com$/.test(location.hostname);
       const pick = golden ? null : dev ? q.get("pack") : site ? q.get("pack") || rest : null;
       const outfit = pick !== null ? q.get("outfit") : null, name = (pick || rest) + (outfit ? `-${outfit}` : "");
-      const pack = { url: dev ? `/private/${name}.pack` : `/api/verse/packs/${name}`, broker: !dev, quiet: true,
-        away: pick === null || !/^[a-z0-9-]{1,64}$/.test(name) };
+      // a phone (a coarse pointer on a small screen, or ?phone; ?phone=0 never) asks first for the
+      // pack's phone build, NAME-phone (pack_human.py --phone: smaller layers and meshes), and the
+      // full pack when there is none
+      const asked = q.get("phone"), phone = asked !== null ? asked !== "0"
+        : matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) <= 820;
+      const urls = (phone ? [`${name}-phone`, name] : [name]).map((n) => dev ? `/private/${n}.pack` : `/api/verse/packs/${n}`);
+      const pack = { url: urls[0], urls, broker: !dev, quiet: true,
+        away: pick === null || !/^[a-z0-9-]{1,58}$/.test(name) };
       for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack });
     }
     else list.push({ i, kind, url: rest, urls: rest.split("|") });
@@ -1204,14 +1211,19 @@ async function loadPack(pack) {
   let entries = null;
   try {
     if (pack.away) throw new Error("private");
-    let session = null;
-    if (pack.broker) {
-      const s = await fetch(pack.url, { method: "POST", cache: "no-store", credentials: "same-origin" });
-      if (!s.ok) throw new Error(`${pack.url}: ${s.status}`);
-      session = await s.json();
+    let session = null, r = null;
+    // the first of its urls that answers (a phone's build, then the full pack)
+    for (const url of pack.urls || [pack.url]) {
+      session = null;
+      if (pack.broker) {
+        const s = await fetch(url, { method: "POST", cache: "no-store", credentials: "same-origin" });
+        if (!s.ok) { r = s; continue; }
+        session = await s.json();
+      }
+      r = await fetch(session ? session.url : url, pack.quiet ? { cache: "no-store" } : undefined);
+      if (r.ok && r.body) { pack.url = url; break; }
     }
-    const r = await fetch(session ? session.url : pack.url, pack.quiet ? { cache: "no-store" } : undefined);
-    if (!r.ok || !r.body) throw new Error(`${pack.url}: ${r.status}`);
+    if (!r || !r.ok || !r.body) throw new Error(`${pack.url}: ${r ? r.status : 0}`);
     const reader = r.body.getReader(), chunks = [];
     let loaded = 0, total = session ? session.size : Number(r.headers.get("content-length")) || 0, told = 0;
     for (;;) {

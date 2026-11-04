@@ -179,7 +179,25 @@ def skinned(bh, tg, raw, points, skins, base):
     return out
 
 
-def pack(bh, tg, meshes, mesh_index, vertex_points):
+LEAN_DELTA_MIN = 0.03   # cm: a phone pack's blend shape deltas below this (0.3 mm) are dropped
+
+
+def active_controls(bh):
+    """The controls the lab can ever set: every expression's, alone and blended with any other
+    (the lab eases from one to the next, with the blink and the jaw on top), after the PSDs."""
+    exprs = [{bh.control(k): v for k, v in e.items()} for e in EXPRESSIONS.values()]
+    on = set()
+    for a in exprs:
+        for b in exprs:
+            raw = dict(a)
+            for k, v in b.items():
+                raw[k] = min(1.0, raw.get(k, 0.0) + v)
+            c, _ = evaluate(bh, raw)
+            on |= {i for i, v in enumerate(c) if abs(v) > 1e-6}
+    return on
+
+
+def pack(bh, tg, meshes, mesh_index, vertex_points, lean=False):
     """The block the lab reads (little-endian, 4-byte aligned):
 
       FRG1, u32 controls, raws, psds, groups, joints, points, vertices, targets, expressions
@@ -192,7 +210,23 @@ def pack(bh, tg, meshes, mesh_index, vertex_points):
       expressions name (16 bytes), n, n x (control u32, value f32)
 
     meshes: [(name, points, normals, skins)]; mesh_index: DNA mesh index by name;
-    vertex_points: per face vertex of the pack, its point (in the meshes' concatenation)."""
+    vertex_points: per face vertex of the pack, its point (in the meshes' concatenation).
+
+    lean (a phone pack's): only what the lab's expressions reach. A joint group keeps the inputs
+    those can set and the outputs they move; a blend shape target is kept only for a control
+    they set, without its deltas under LEAN_DELTA_MIN. The block's layout is the same."""
+    on = active_controls(bh) if lean else None
+    groups = bh.groups
+    if lean:
+        groups = []
+        for g in bh.groups:
+            n = len(g["in"])
+            cols = [k for k, i in enumerate(g["in"]) if i in on]
+            rows = [r for r in range(len(g["out"])) if any(g["values"][r * n + k] for k in cols)]
+            if not cols or not rows:
+                continue
+            groups.append({"in": [g["in"][k] for k in cols], "out": [g["out"][r] for r in rows],
+                           "values": [g["values"][r * n + k] for r in rows for k in cols]})
     b = bytearray(MAGIC)
     first, at = {}, 0
     for name, pts, _, _ in meshes:
@@ -201,14 +235,19 @@ def pack(bh, tg, meshes, mesh_index, vertex_points):
     for name, pts, _, _ in meshes:
         m = mesh_index[name]
         for ch, ds in tg.get(m, []):
+            ctl = bh.channel_control[ch]
+            if lean:
+                if ctl not in on:
+                    continue
+                ds = [(v, d) for v, d in ds if abs(d[0]) + abs(d[1]) + abs(d[2]) >= LEAN_DELTA_MIN]
             if ds:
-                tlist.append((bh.channel_control[ch], first[m], ds))
+                tlist.append((ctl, first[m], ds))
     exprs = [(n, {bh.control(k): v for k, v in e.items()}) for n, e in EXPRESSIONS.items()]
-    b += struct.pack("<9I", bh.controls, len(bh.raw), len(bh.psds), len(bh.groups), len(bh.joints), at,
+    b += struct.pack("<9I", bh.controls, len(bh.raw), len(bh.psds), len(groups), len(bh.joints), at,
                      len(vertex_points), len(tlist), len(exprs))
     for out, w, ins in bh.psds:
         b += struct.pack(f"<IfI{len(ins)}I", out, w, len(ins), *ins)
-    for g in bh.groups:
+    for g in groups:
         b += struct.pack(f"<II{len(g['in'])}I{len(g['out'])}I{len(g['values'])}f", len(g["out"]), len(g["in"]),
                          *g["in"], *g["out"], *g["values"])
     for _, par, t, r in bh.joints:
