@@ -8,6 +8,16 @@
 }
 c5_scan :: () -> CombatDecision { d:=cb_action(CT_RIGHT); d.milliseconds=300; return d; }
 c5_scanned :: (count: int) -> bool { return count>=8; }
+#test "recorded repeated low-tier candidates cannot interrupt an active survey leg or exhaust its scan budget" {
+  #assert !c5_visible(true,8,CT_TAB) && !c5_visible(true,8,CT_FORWARD) && !c5_visible(true,8,CT_BOLT);
+  #assert !c5_visible(true,0,CT_TAB);
+  #assert c5_visible(false,7,CT_TAB) && c5_visible(false,7,CT_FORWARD) && c5_visible(false,7,CT_BOLT);
+  #assert !c5_visible(false,8,CT_TAB) && !c5_visible(false,9,CT_TAB);
+  #assert !c5_visible(false,0,CT_SKIP) && !c5_visible(false,0,CT_WAIT);
+}
+c5_visible :: (roaming: bool,scans: int,action: int) -> bool {
+  return !roaming && !c5_scanned(scans) && (action==CT_TAB || action==CT_FORWARD || action==CT_BOLT);
+}
 #test "observation-only waits use cast completion or resource ticks, subtracting work already done" {
   s:=CombatSample.{ok=true,flags=19,cast_left=1300,health=100,health_max=100,mana=100,mana_max=100};
   #assert c5_pause(s,CT_WAIT,0)==1300 && c5_pause(s,CT_WAIT,300)==1000;

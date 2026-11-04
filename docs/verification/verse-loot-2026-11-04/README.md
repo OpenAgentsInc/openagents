@@ -300,3 +300,34 @@ Installed V2 and tested `health-live-01` on clear ground with original local
 Elephant: three admitted forward decisions, arrived at (18717,45627), still
 103 HP, alive/OOC. This qualifies the ordinary V2 path, not the hazard escape.
 The third death's recovery and this trial are retained in passive recordings.
+
+## Survey priority correction and repaired combat
+
+Pushed guarded navigation as `cb747cc466`. A full-checkout tools-check after
+the upstream update reports 29 existing missing reason headers; the new SDK
+oracle has its independent-oracle header. A sparse-checkout run had reported
+83 because omitted files were unreadable; that is not the full-checkout gate.
+
+| Run | XP kills / XP | Captures | Archive bytes | Result |
+| --- | --- | --- | --- | --- |
+| `defensive-03` | 1 / 42 | 490 | 205,127,257 | ASan/UBSan; minimum 96 HP; item receipt; immediate stop file OOC near home |
+| `survey-04` | 1 / 42 | 343 | 146,784,363 | ASan/UBSan; minimum 96 HP; receipt; finish file drained and parked at (20308,45909) |
+
+Both audits pass with zero mismatches/clock errors. `defensive-03` exposed
+search starvation: at observations 190–192 a low-tier visible candidate
+interrupted an already active survey leg (`roaming=true`, scans=8). Rejected
+low-tier selections now count toward the scan budget, and unbound candidates
+wait until an active leg ends. The corrected V5 authority kills 213/213
+mutants; the controller passes 190 checks. `survey-04` exercised advancement
+to leg 1 and completed its explicit park. Legacy profiles are unchanged.
+
+The southern circuit still mostly contains low-level wolves. At this point
+Foob is level 5, 1189/2800 XP, 103 HP / 298 mana, four free slots: 21 verified
+XP kills and +970 XP this pass. These isolated boar runs do not qualify the
+new continued-combat/corpse-deferral transition. Three deaths remain recorded
+in the pass, with no additional death in these two batches.
+
+Deduplicated only byte-identical completed SDK-fixture images with hardlinks
+to their immutable original frames after `cmp`; paths and bytes remain.
+More operator PPMs were round-trip-verified as lossless PNG. No unique
+evidence, inventory item or another task's data was removed.

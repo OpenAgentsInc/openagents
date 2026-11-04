@@ -51,3 +51,9 @@ and defense against an eligible creature whose public target is the player
 while already in combat. The normal 85% health / 60% mana new-pull thresholds
 remain. Legacy profiles retain their health-floor behavior. This does not
 guarantee survival against multiple attackers or provide emergency escape.
+
+Rejected low-tier selections consume the scan budget too. Once survey travel
+has begun, unbound visible candidates wait until that leg ends; they cannot
+continually interrupt it. This corrects a recorded starvation loop in the
+initial implementation of the survey/scan contract. Bound fights and defense
+retain their original admission.
