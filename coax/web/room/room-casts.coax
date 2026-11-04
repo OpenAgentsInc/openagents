@@ -286,6 +286,7 @@ rc_left :: (v: [] RmServer, k: int, s: int) {
 
 // eg_test_tick with the host's line of sight: every question answered `clear`.
 rc_test_tick :: (v: [] RmServer, k: int, clear: bool) {
+  eg_test_clock(v);
   if !rm_eg_begin(v, k) { return; }
   in: [EG_IN_FIELDS] int;
   for s: 0..<EG_SEATS {
