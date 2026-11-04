@@ -5,6 +5,7 @@
 // the page's both #load it.
 //   coax/bin/coax test --library apps/openagents-web/everglade-cast-rules.coax
 
+// book:begin cast-rules
 // ---- range and sight
 CR_SLACK :: 3.0;          // m past a spell's range at its start: where the page and the server have you differ a little
 CR_SLACK_END :: 6.0;      // m past it at its release: the target walks during the cast bar
@@ -21,6 +22,7 @@ CR_SHOW :: 0.9;           // s a refused cast's bar shows its reason icon
 // Everglade's own four's cast bars (verse/rules/srd5.coax srd_spell bar: Meteor Swarm, Thunderbolt,
 // Mega Thunderbolt, Water Orb). Every other cast has none: it is released as it starts.
 CR_BAR :: [4] f32.[2.5, 1.2, 0.5, 0.6];
+// book:end cast-rules
 
 // ---- why a cast didn't go (the wire's r SEQ WHY and e stop SS SLOT WHY)
 CR_OK :: 0; CR_RANGE :: 1; CR_SIGHT :: 2; CR_GONE :: 3; CR_HELD :: 4; CR_DEAD :: 5; CR_BUSY :: 6; CR_COOLDOWN :: 7;

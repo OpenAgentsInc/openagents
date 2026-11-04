@@ -52,8 +52,8 @@ marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
 
-There are 14 implemented chapters (1–11 and 65–67), 31
-partly implemented chapters (12–16, 51–56, 64, 68, 69, 72, 75, 76, 80, 81, 83, 86–90, 93, 94 and 98–101), and 56 design drafts. An implemented chapter is
+There are 14 implemented chapters (1–11 and 65–67), 32
+partly implemented chapters (12–16, 51–56, 64, 68, 69, 72, 75, 76, 80, 81, 83, 86–90, 93, 94, 96 and 98–101), and 55 design drafts. An implemented chapter is
 qualified for its named profile; it does not imply that every realm adopted
 it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
@@ -300,7 +300,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [93. One interpolation buffer for every remote entity](ch093-one-interpolation-buffer.md) | Partly implemented: browser Wasm (an adaptive buffer for players and creatures; townsfolk still sent per kind) | Every remote entity drawn from a ring of 8 states a delay behind a ping-estimated server clock, the delay adapting from 80 to 300 ms with lateness and jitter. |
 | [94. Effects are state, events are cues](ch094-effects-are-state-events-are-cues.md) | Partly implemented: browser Wasm (lasting abilities as entities; one status state) | Lasting effects as entities with an owner, a cause, `T0` and `DUR`; particles, rings and status lines derived from them; one-shot events as cues that can't change state. |
 | [95. Offline is a local server](ch095-offline-is-a-local-server.md) | Unimplemented: design draft | The room's simulation built to Wasm and run in a Web Worker as the offline host, so the page is always a client and the offline game's own paths are deleted. |
-| [96. Casts and combat under latency](ch096-casts-and-combat-under-latency.md) | Unimplemented: design draft | Written rules for range and sight checks, command age, bounded client times, a target dying mid-cast and ordering within a tick, tested at 250 ms with 2% loss. |
+| [96. Casts and combat under latency](ch096-casts-and-combat-under-latency.md) | Partly implemented: native C and browser Wasm (range and sight at start and release, a half-second command age, one order a tick) | Written rules: range and line of sight at a cast's start and release, a cast waiting at most 0.5 s for the inputs before it with no client clock, a target falling mid-cast, heals before harm in each tick; `cast-proof.sh` holds at 250 ms with 2% loss. |
 | [97. Interest without leaks](ch097-interest-without-leaks.md) | Unimplemented: design draft | Interest from a cell index with separate entry and exit radii, non-spatial subscriptions, and nothing private on the wire: blocked players and unseen invisible entities are never sent. |
 | [98. Versions, deploys and reconnect](ch098-versions-deploys-and-reconnect.md) | Partly implemented: native C and browser Wasm (rejoin after a quiet socket, back where you stood) | A wire version handshake with a reload, deploys that drain a shard, and reconnect with seat generations, a grace hold and stale frames dropped; today's rejoin after a quiet socket. |
 | [99. Watch the whole action path](ch099-watch-the-whole-action-path.md) | Partly implemented: native C (tick percentiles and time by part) | The action path measured stage by stage: tick percentiles by workload, queue depth and age, bytes by message type, entities per seat, join bursts and input-to-acknowledgement time. |

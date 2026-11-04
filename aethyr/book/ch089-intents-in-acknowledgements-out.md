@@ -4,9 +4,9 @@
 > step, numbered; oa-room queues at most 16 a seat, drops old and repeated
 > ones, steps them only as fast as time passes, and acknowledges the last one
 > it stepped in every state frame (`room-everglade.coax`, #12731). Casts,
-> interactions and rebuilds are refused with a reason (`r SEQ REASON`). No
-> command expires by age, and casts have no written latency rules yet: that
-> is chapter 96 (#12790).
+> interactions and rebuilds are refused with a reason (`r SEQ REASON`). A
+> cast waits at most 0.5 s for the inputs sent before it, by the rules of
+> chapter 96 (#12790).
 
 A client never tells the server what happened. It tells the server what its
 player asked for: a move, a cast, a door. The server decides whether and when
@@ -89,8 +89,8 @@ the bar, for example `CAN'T · COOLDOWN`.
 
 ## What is left
 
-- A command carries no client time, so the server can't tell how old a cast
-  is when it arrives. Chapter 96 writes the rules for that (#12790).
+- A command carries no client time by design; chapter 96 bounds a cast's
+  age by its place in the input sequence instead.
 - Casts and interactions are refused but not acknowledged when accepted;
   the page learns of an accepted cast from its `e cast` event.
 

@@ -5,7 +5,7 @@
 > placed by the API's instance directory (#12705, #12717), with the Cultist
 > Raid of up to 60 standing raiders on the server (#12740). Placement holds
 > 2 rooms a shard today, 192 players in all. The pieces still open are
-> chapters 91, 92 and 95 to 98, and the drift check holding (chapter 100).
+> chapters 91, 92, 95, 97 and 98, and the drift check holding (chapter 100).
 
 This chapter puts the part together: the full Everglade room, built from
 chapters 86 to 100, at the scale it runs.
@@ -36,7 +36,7 @@ EG_HZ :: 30;
 | Drawing others | 93 | one adaptive buffer, 80 to 300 ms |
 | Effects | 94 | lasting abilities as entities; one status state |
 | Offline | 95 | the page's own game today; a local worker host next (#12784) |
-| Combat rules | 96 | cast bar, cooldown and refusals; written rules next (#12790) |
+| Combat rules | 96 | range and sight at start and release, a 0.5 s command age, heals before harm |
 | Interest | 97 | one 120 m radius; hysteresis and privacy next (#12789) |
 | Live operations | 98 | rejoin after silence; version check, drain and reconnect next |
 | Measurement | 99 | tick percentiles and time by part |

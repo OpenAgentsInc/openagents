@@ -133,7 +133,7 @@
 - [93. One interpolation buffer for every remote entity](ch093-one-interpolation-buffer.md) — partly implemented
 - [94. Effects are state, events are cues](ch094-effects-are-state-events-are-cues.md) — partly implemented
 - [95. Offline is a local server](ch095-offline-is-a-local-server.md) — design draft
-- [96. Casts and combat under latency](ch096-casts-and-combat-under-latency.md) — design draft
+- [96. Casts and combat under latency](ch096-casts-and-combat-under-latency.md) — partly implemented
 - [97. Interest without leaks](ch097-interest-without-leaks.md) — design draft
 - [98. Versions, deploys and reconnect](ch098-versions-deploys-and-reconnect.md) — partly implemented
 - [99. Watch the whole action path](ch099-watch-the-whole-action-path.md) — partly implemented
