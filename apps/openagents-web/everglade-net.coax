@@ -2116,6 +2116,14 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert cast(string) n[0].url[0..<n[0].url_n] == "wss://openagents.com/api/room/relay/everglade/" && n[0].want && n[0].join[0].list_due;
   net_facts(s[..], "url=https://openagents.com/worlds/everglade\n", "everglade", true);
   #assert !n[0].want;
+  // ?offline=worker: the local host's one-seat room (#12784), no ticket and no list; never for a golden page
+  l: [1] Everglade; nl: [1] EgNet;
+  everglade_attach_net(l[..], nl[..]);
+  net_facts(l[..], "url=https://openagents.com/worlds/everglade?offline=worker\n", "everglade", false);
+  #assert nl[0].local_host && nl[0].want && !nl[0].join[0].list_due;
+  #assert cast(string) nl[0].url[0..<nl[0].url_n] == "local:/api/room/relay/everglade/local-1";
+  net_facts(l[..], "url=https://openagents.com/worlds/everglade?offline=worker\n", "everglade", true);
+  #assert !nl[0].local_host;
   // a page with no socket attached is no room's
   t: [1] Everglade;
   #assert !net_live(t[..]) && net_room(t[..], "everglade") == "everglade" && net_probe(t[..], 0) == -1;
